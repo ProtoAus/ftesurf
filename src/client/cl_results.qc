@@ -906,13 +906,13 @@ void() Results_Frame =
 
   Built on the split-flash idiom rather than on sui -- it takes no input, it has
   no hit target, and a sui frame per stage boundary would be a frame stack push
-  for something that is one string.
+  for something that is one string.  Patch 904: a Dusk pill, like the card.
 */
 void(vector scr) Results_DrawToast =
 {
-	local float a, sz, life, tick;
+	local float a, u, sz, lsz, life, tick, lw, tw, rw, w, h, pad;
 	local vector p, col;
-	local string s;
+	local string lab, t, r;
 
 	if (ui_rs_toastat <= 0)
 		return;
@@ -932,43 +932,83 @@ void(vector scr) Results_DrawToast =
 	if (a > 1)
 		a = 1;
 
-	Font_Set(ui_font_mono);
-	sz = Font_Px(8 * ui_cv_scale);
-
-	col = RSC_TEXT;
+	col = SUI_THEME_TEXT;
 	if (ui_rs_toastword & SF_KNOWN)
 	if (ui_rs_toastword & SF_DIRTY)
-		col = RSC_DIM;          // it did not record; say so by going quiet
+		col = SUI_THEME_DIM;    // it did not record; say so by going quiet
 
+	u   = ui_cv_scale;
+	pad = 7 * u;
+	lab = sprintf("Stage %g", ui_rs_toastseg);
+	t   = Time_TickString(ui_rs_toastticks, tick);
+	r   = "";
 	if (ui_rs_toastrank > 0)
-		s = sprintf("stage %g  %s  #%g of %g",
-		            ui_rs_toastseg,
-		            Time_TickString(ui_rs_toastticks, tick),
-		            ui_rs_toastrank, ui_rs_toastof);
-	else
-		s = sprintf("stage %g  %s",
-		            ui_rs_toastseg,
-		            Time_TickString(ui_rs_toastticks, tick));
+		r = sprintf("#%g of %g", ui_rs_toastrank, ui_rs_toastof);
+	Font_Set(ui_font_ui);
+	lsz = Font_Px(8 * u);
+	lw  = stringwidth(lab, TRUE, [lsz, lsz]);
+	Font_Set(ui_font_mono);
+	sz  = Font_Px(8 * u);
+	tw  = stringwidth(t, TRUE, [sz, sz]);
+	rw  = 0;
+	if (r != "")
+		rw = stringwidth(r, TRUE, [sz, sz]) + pad;
+	w = pad + lw + pad + tw + rw + pad;
+	h = sz + 8 * u;
 
-	p = [scr_x * cvar("hud_splits_x"), scr_y * cvar("hud_splits_y") * 0.62, 0];
-	HUD_Text(p, s, sz, col, a);
+	p = [floor(scr_x * cvar("hud_splits_x")), floor(scr_y * cvar("hud_splits_y") * 0.62 - 4 * u), 0];
+	sui_style_hud(scr);
+	_sui_round_draw(p, [w, h, 0], h * 0.5, SUI_THEME_EDGE, a * 0.95);
+	_sui_round_draw(p + '1 1 0', [w - 2, h - 2, 0], h * 0.5 - 1, SUI_THEME_PANEL, a * 0.95);
+	HUD_Text([p_x + pad + lw + pad, p_y + 4 * u], t, sz, col, a);
+	if (r != "")
+		HUD_Text([p_x + pad + lw + pad + tw + pad, p_y + 4 * u], r, sz, SUI_THEME_DIM, a);
+	Font_Set(ui_font_ui);
+	HUD_Text([p_x + pad, p_y + (h - lsz) * 0.5], lab, lsz, SUI_THEME_ACCENT, a);
 	Font_Reset();
 };
 
 /*
   The card.
 
-  DRAWN WITH RAW HUD_Text AND drawfill WHILE PASSIVE, and only wrapped in a sui
-  frame once the cursor has been taken.  A sui_begin/sui_end pair every frame
-  for a panel with no hit targets would put this file in the input system's way
-  for no benefit, and "appears free" means exactly that: until you ask for it,
-  this is a picture.
+  DRAWN RAW WHILE PASSIVE, and only wrapped in a sui frame once the cursor has
+  been taken: it has no hit targets, and "appears free" means exactly that.
+  Patch 904: a Dusk panel -- sh_ui.qc's theme, drawn as the chat box draws its
+  own (sui_style_hud, then _sui_round_draw) -- where it was a flat build-47 fill.
+  The height follows the rows, centred on hud_results_y.
 */
+
+// A keycap, then what it does (Scores_Hint's shape).  -> where the next one starts.
+float(float x, float y, string key, string what, float sz, float a) Results_Hint =
+{
+	local float kw;
+	kw = stringwidth(key, TRUE, [sz, sz]) + sz;
+	_sui_round_draw([x, y - 2 * ui_cv_scale, 0], [kw, sz + 4 * ui_cv_scale, 0], 3 * ui_cv_scale,
+	                SUI_THEME_CHIP, a);
+	HUD_Text([x + sz * 0.5, y], key, sz, SUI_THEME_TEXT, a);
+	x = x + kw + sz * 0.4;
+	if (what == "")
+		return x;
+	HUD_Text([x, y], what, sz, SUI_THEME_DIM, a);
+	return x + stringwidth(what, TRUE, [sz, sz]) + sz * 1.4;
+};
+
+// A world note without the old card's "--  " / "...  " lead: the colour says it is no rank.
+string(string s) Results_NoteText =
+{
+	if (substring(s, 0, 4) == "--  ")
+		return substring(s, 4, -1);
+	if (substring(s, 0, 5) == "...  ")
+		return substring(s, 5, -1);
+	return s;
+};
+
 void(vector scr) Results_Draw =
 {
-	local float a, y, sz, hero, w, hgt, x, tick;
-	local vector p, col;
-	local string s;
+	local float a, u, x, y, w, hgt, pad, tick, lsz, tsz, msz, hsz, rowh, wellh, ph, tw;
+	local float first, nrows, i, fin, wst, wrank, wof, lx, tx, dx;
+	local vector p, tcol, col, mcol, fill;
+	local string s, mark;
 
 	if (!ui_rs_open || !cvar("hud_results"))
 		return;
@@ -976,8 +1016,6 @@ void(vector scr) Results_Draw =
 	if (spc_stat > 0)
 		return;
 
-	// Taken here rather than passed in, so the two call sites in cl_main.qc are
-	// one argument each and neither has to know this panel formats times at all.
 	tick = Timer_Tick();
 
 	// A 100 ms beat before it appears, so the stopped clock registers as the
@@ -990,176 +1028,188 @@ void(vector scr) Results_Draw =
 	if (a > 1)
 		a = 1;
 
+	u   = ui_cv_scale;
+	pad = 10 * u;
+	Font_Set(ui_font_ui);
+	lsz = Font_Px(7 * u);
+	tsz = Font_Px(9 * u);
 	Font_Set(ui_font_mono);
-	sz   = Font_Px(7 * ui_cv_scale);
-	hero = Font_Px(18 * ui_cv_scale);
-
-	w   = 300 * ui_cv_scale;
-	hgt = (10 + RS_ROWS) * (sz + 3 * ui_cv_scale) + hero;
-	x   = scr_x * cvar("hud_results_x") - w * 0.5;
-	if (x < 0) x = 0;
-	if (x + w > scr_x) x = scr_x - w;
-
-	p = [x, scr_y * cvar("hud_results_y") - hgt * 0.5, 0];
-
-	drawfill(p, [w, hgt, 0], RSC_PANEL, a * 0.92, 0);
-	drawfill(p, [w, 1 * ui_cv_scale, 0],
-	// BUILD 85, AND THIS LINE BELONGS TO A DIFFERENT WORKSTREAM.  The uncommitted
-	// Build 86 work gave Timer_Color a fifth parameter (`pace`) and updated one of
-	// its three call sites, so cl_progs.src did not compile at all -- which
-	// blocked the anti-cheat build from verifying its own client half.  0 is the
-	// value that changes nothing: TS_FINISHED takes its colour from the whole
-	// run's PB well above the pace branch.  Flagged rather than adopted -- whoever
-	// finishes Build 86 should confirm it, and this comment is how they find it.
-	         Timer_Color(TS_FINISHED, ui_rs_ticks, ui_rs_pb, ui_rs_flags, 0), a, 0);
-
-	y = p_y + 8 * ui_cv_scale;
-
-	// The one number the card is for.
+	msz = Font_Px(7 * u);
 	Font_Set(ui_font_display);
-	HUD_Text([p_x + 10 * ui_cv_scale, y],
-	         Time_TickString(ui_rs_ticks, tick),
-	         Font_Px(18 * ui_cv_scale),
-	         Timer_Color(TS_FINISHED, ui_rs_ticks, ui_rs_pb, ui_rs_flags, 0), a);
-	Font_Set(ui_font_mono);
+	hsz = Font_Px(22 * u);
+	rowh  = msz + 5 * u;
+	wellh = rowh * 2 + 6 * u;
 
-	// ...and what it was against.  ui_rs_pb is PBWAS, so this is a real delta
-	// on a personal best rather than the zero TIMERPB would give.
+	// The table is the TAIL of ui_sp_*: on a long map the stages you just did are
+	// the ones you came to read.
+	first = max(0, ui_sp_n - RS_ROWS);
+	nrows = ui_sp_n - first;
+
+	w   = 300 * u;
+	hgt = pad + tsz + 6 * u + hsz + 4 * u + lsz + 10 * u + wellh + 10 * u
+	    + lsz + 5 * u + nrows * rowh + 8 * u + lsz + 4 * u + pad;
+	x = bound(4 * u, scr_x * cvar("hud_results_x") - w * 0.5, max(4 * u, scr_x - w - 4 * u));
+	y = bound(4 * u, scr_y * cvar("hud_results_y") - hgt * 0.5, max(4 * u, scr_y - hgt - 4 * u));
+	p = [floor(x), floor(y), 0];
+
+	tcol = Timer_Color(TS_FINISHED, ui_rs_ticks, ui_rs_pb, ui_rs_flags, 0);
+	sui_style_hud(scr);
+	_sui_round_draw(p + [-2 * u, -1 * u, 0], [w + 4 * u, hgt + 4 * u, 0], 9 * u, '0 0 0', 0.2 * a);
+	_sui_round_draw(p, [w, hgt, 0], 7 * u, SUI_THEME_EDGE, a);
+	_sui_round_draw(p + '1 1 0', [w - 2, hgt - 2, 0], 7 * u - 1, SUI_THEME_PANEL, 0.97 * a);
+	// The run's colour down the left edge, as the medal toast carries its medal's.
+	_sui_round_draw([p_x + 1, p_y + 8 * u, 0], [3 * u, hgt - 16 * u, 0], 1.5 * u, tcol, a);
+
+	// ---- the map, and the kind of run as a chip
+	y = p_y + pad;
+	Font_Set(ui_font_ui);
+	s  = FS_RunKindName(ui_rs_flags);
+	tw = stringwidth(s, TRUE, [lsz, lsz]) + lsz * 1.4;
+	fill = SUI_THEME_CHIP;
+	col  = SUI_THEME_DIM;
+	if (s == "clean")    { fill = SUI_THEME_GOOD_BG; col = SUI_THEME_GOOD; }
+	if (s == "practice") col = SUI_THEME_WARN;
+	_sui_round_draw([p_x + w - pad - tw, y - 1 * u, 0], [tw, tsz + 2 * u, 0], (tsz + 2 * u) * 0.5, fill, a);
+	HUD_Text([p_x + w - pad - tw + lsz * 0.7, y + (tsz - lsz) * 0.5], s, lsz, col, a);
+	HUD_Text([p_x + pad, y], Chat_Fit(serverkey("map"), w - pad * 3 - tw, tsz), tsz, SUI_THEME_TEXT, a);
+	y = y + tsz + 6 * u;
+
+	// ---- the one number the card is for, and what it was against.  ui_rs_pb is
+	// PBWAS, so this is a real delta on a personal best, not TIMERPB's zero.
+	Font_Set(ui_font_display);
+	HUD_Text([p_x + pad, y], Time_TickString(ui_rs_ticks, tick), hsz, tcol, a);
+	Font_Set(ui_font_mono);
+	ph   = msz + 6 * u;
+	s    = "first";
+	fill = SUI_THEME_CHIP;
+	col  = SUI_THEME_ACCENT;
 	if (ui_rs_pb > 0)
 	{
-		col = (ui_rs_ticks < ui_rs_pb) ? RSC_GOOD : RSC_BAD;
-		HUD_TextR([p_x + w - 10 * ui_cv_scale, y + 6 * ui_cv_scale],
-		          Time_DeltaString(ui_rs_ticks - ui_rs_pb, tick), sz, col, a);
+		s    = Time_DeltaString(ui_rs_ticks - ui_rs_pb, tick);
+		fill = SUI_THEME_BAD_BG;
+		col  = SUI_THEME_BAD;
+		if (ui_rs_ticks < ui_rs_pb) { fill = SUI_THEME_GOOD_BG; col = SUI_THEME_GOOD; }
 	}
-	else
-		HUD_TextR([p_x + w - 10 * ui_cv_scale, y + 6 * ui_cv_scale],
-		          "first", sz, RSC_DIM, a);
+	tw = stringwidth(s, TRUE, [msz, msz]) + msz * 1.4;
+	_sui_round_draw([p_x + w - pad - tw, y + 1 * u, 0], [tw, ph, 0], ph * 0.5, fill, a);
+	HUD_Text([p_x + w - pad - tw + msz * 0.7, y + 1 * u + (ph - msz) * 0.5], s, msz, col, a);
+	if (ui_rs_pb > 0)
+	{
+		Font_Set(ui_font_ui);
+		HUD_TextR([p_x + w - pad, y + 1 * u + ph + 3 * u],
+		          strcat("PB was ", Time_TickString(ui_rs_pb, tick)), lsz, SUI_THEME_MUTED, a);
+	}
+	y = y + hsz + 4 * u;
 
-	y = y + hero + 4 * ui_cv_scale;
-
-	HUD_Text([p_x + 10 * ui_cv_scale, y],
-	         sprintf("%s  -  %s  -  %s",
-	                 serverkey("map"),
-	                 Results_LegName(ui_rs_track, ui_rs_leg),
-	                 FS_RunKindName(ui_rs_flags)),
-	         sz, RSC_DIM, a);
-	y = y + (sz + 6 * ui_cv_scale);
+	Font_Set(ui_font_ui);
+	HUD_Text([p_x + pad, y], Results_LegName(ui_rs_track, ui_rs_leg), lsz, SUI_THEME_DIM, a);
+	y = y + lsz + 10 * u;
 
 	/*
-	  THE RANK BLOCK.  Two rows, and the second is always drawn.
-
-	  `world` WAS a reserved dash and is now a real answer.  The reservation in
-	  sh_defs.qc (stats 90 and 91) still stands and is still unregistered -- it
-	  is NOT what shipped, and the essay beside it says why two numbers with no
-	  subject cannot answer this question.  What arrives instead is one userinfo
-	  key that names the run it is about, which is what lets this row tell "your
-	  rank" from "somebody's rank", and lets a late reply land on a card that is
-	  already on screen.
-
-	  SIX SENTENCES, NOT A NUMBER AND A DASH.  Every one of these was, before
-	  this build, drawn as the same "no board yet" -- including the two that
-	  describe a FAULT an operator could fix and the one where the run really is
-	  on the board.  A single dash covering all of them is how a working feature
-	  and a broken one came to look identical from the player's seat, which is
-	  the report that started this work.
+	  ---- THE RANK WELL: local, and world -- which is always drawn, because its
+	  note is the answer when there is no rank (Build 65: six sentences, not a dash,
+	  so a broken board and a working one cannot look alike).
 	*/
+	_sui_round_draw([p_x + pad, y, 0], [w - pad * 2, wellh, 0], 5 * u, SUI_THEME_WELL, a);
+	lx = p_x + pad + 8 * u;
+	tx = p_x + pad + 52 * u;
+	y  = y + 3 * u;
+	HUD_Text([lx, y + (rowh - lsz) * 0.5], "Local", lsz, SUI_THEME_MUTED, a);
 	if (ui_rs_rank > 0)
-		s = sprintf("#%g of %g", ui_rs_rank, ui_rs_of);
+	{
+		Font_Set(ui_font_mono);
+		HUD_Text([tx, y + (rowh - msz) * 0.5], sprintf("#%g of %g", ui_rs_rank, ui_rs_of),
+		         msz, SUI_THEME_TEXT, a);
+		Font_Set(ui_font_ui);
+	}
 	else
-		s = "--  no local archive yet";
-	HUD_Text([p_x + 10 * ui_cv_scale, y], "local", sz, RSC_DIM, a);
-	HUD_Text([p_x + 60 * ui_cv_scale, y], s, sz, RSC_TEXT, a);
-	y = y + (sz + 3 * ui_cv_scale);
+		HUD_Text([tx, y + (rowh - lsz) * 0.5], "no local archive yet", lsz, SUI_THEME_DIM, a * 0.8);
+	y = y + rowh;
 
+	// Initialised for the COMPILER: fteqcc cannot see through __inout and warns
+	// F302 otherwise.  Results_WorldRank zeroes both on its first two lines.
+	wrank = 0;
+	wof   = 0;
+	wst   = Results_WorldRank(ui_rs_track, ui_rs_leg, ui_rs_ticks, wrank, wof);
+	s     = Results_WorldNote(wst, wrank, wof, ui_rs_flags);
+	HUD_Text([lx, y + (rowh - lsz) * 0.5], "World", lsz, SUI_THEME_MUTED, a);
+	if (wst == WR_RANKED && wrank > 0)
 	{
-		local float  wst, wrank, wof, wlit;
-		local vector wcol;
-
-		// Initialised for the COMPILER, not because the callee might not write
-		// them: fteqcc cannot see through __inout and warns F302 on the call
-		// otherwise.  Results_WorldRank zeroes both on its first two lines.
-		wrank = 0;
-		wof   = 0;
-		wst   = Results_WorldRank(ui_rs_track, ui_rs_leg, ui_rs_ticks,
-		                          wrank, wof);
-		s     = Results_WorldNote(wst, wrank, wof, ui_rs_flags);
-		wlit  = (wst == WR_RANKED && wrank > 0);   // an ANSWER, or a note?
-
-		// Nested rather than a ternary on the colour: fteqcc's ternary
-		// evaluates BOTH arms, which is a documented trap in this tree, and a
-		// vector-valued one is not worth finding the edge of.
-		wcol = RSC_DIM;
-		if (wlit)
-			wcol = RSC_TEXT;
-
-		HUD_Text([p_x + 10 * ui_cv_scale, y], "world", sz, RSC_DIM,
-		         wlit ? a : a * 0.7);
-		HUD_Text([p_x + 60 * ui_cv_scale, y], s, sz, wcol,
-		         wlit ? a : a * 0.7);
+		Font_Set(ui_font_mono);
+		HUD_Text([tx, y + (rowh - msz) * 0.5], s, msz, SUI_THEME_TEXT, a);
+		Font_Set(ui_font_ui);
 	}
-	y = y + (sz + 8 * ui_cv_scale);
+	else
+		HUD_Text([tx, y + (rowh - lsz) * 0.5],
+		         Chat_Fit(Results_NoteText(s), p_x + w - pad - 6 * u - tx, lsz), lsz, SUI_THEME_DIM, a * 0.8);
+	y = y + rowh + 3 * u + 10 * u;
 
-	drawfill([p_x + 10 * ui_cv_scale, y], [w - 20 * ui_cv_scale, 1, 0],
-	         RSC_LINE, a * 0.4, 0);
-	y = y + 6 * ui_cv_scale;
+	// ---- the splits: ui_sp_*, the same rows the column down the left draws,
+	// class marks and deltas included -- one table, two presentations.
+	HUD_Text([p_x + pad, y], "Splits", lsz, SUI_THEME_MUTED, a);
+	if (first > 0 || ui_sp_over > 0)
+		HUD_TextR([p_x + w - pad, y], sprintf("+%g earlier", first + ui_sp_over), lsz, SUI_THEME_MUTED, a);
+	y = y + lsz + 5 * u;
 
-	/*
-	  THE TABLE.  ui_sp_*, the same rows the column down the left is drawing,
-	  including its class marks -- one table, two presentations, and no second
-	  copy of the list.  The TAIL is shown: on a long map the stages you just
-	  did are the ones you came to read.
-	*/
+	lx = p_x + pad + 8 * u;
+	tx = p_x + pad + 56 * u;
+	dx = p_x + pad + 112 * u;
+	for (i = first; i < ui_sp_n; i = i + 1)
 	{
-		local float i, first;
-		local string mark;
-		local vector mcol;
+		fin = (ui_sp_kind[i] == SPK_FINISH);
+		if (fin)
+			_sui_round_draw([p_x + pad, y, 0], [w - pad * 2, rowh, 0], 4 * u, SUI_THEME_SELECTED, 0.7 * a);
+		else if ((i - first) & 1)
+			_sui_round_draw([p_x + pad, y, 0], [w - pad * 2, rowh, 0], 4 * u, SUI_THEME_WELL, 0.6 * a);
 
-		first = ui_sp_n - RS_ROWS;
-		if (first < 0)
-			first = 0;
-
-		if (first > 0 || ui_sp_over > 0)
+		col = SUI_THEME_DIM;
+		if (fin)
 		{
-			HUD_Text([p_x + 10 * ui_cv_scale, y],
-			         sprintf("+%g earlier", first + ui_sp_over),
-			         sz, RSC_DIM, a * 0.8);
-			y = y + (sz + 3 * ui_cv_scale);
+			s   = "Finish";
+			col = SUI_THEME_TEXT;
 		}
-
-		for (i = first; i < ui_sp_n; i = i + 1)
+		else if (ui_sp_kind[i] == SPK_CP)
 		{
-			if (ui_sp_kind[i] == SPK_FINISH)
-				s = "finish";
-			else if (ui_sp_kind[i] == SPK_CP)
-				s = sprintf("cp %g", ui_sp_seg[i]);
-			else
-				s = sprintf("stage %g", ui_sp_seg[i]);
-
-			col  = RSC_TEXT;
-			mcol = col;
-			mark = Timer_SplitsClass(ui_sp_class[i], mcol);
-			if (mark != "")
-			{
-				HUD_Text([p_x + 4 * ui_cv_scale, y], mark, sz, mcol, a);
-				col = mcol;
-			}
-
-			HUD_Text([p_x + 14 * ui_cv_scale, y], s, sz, col, a * 0.9);
-			HUD_Text([p_x + 70 * ui_cv_scale, y],
-			         Time_TickString(ui_sp_ticks[i], tick), sz, RSC_TEXT, a);
-			if (ui_sp_speed[i] > 0)
-				HUD_TextR([p_x + w - 10 * ui_cv_scale, y],
-				          sprintf("%d u/s", rint(ui_sp_speed[i])),
-				          sz, RSC_DIM, a * 0.85);
-			y = y + (sz + 3 * ui_cv_scale);
+			s   = sprintf("CP %g", ui_sp_seg[i]);
+			col = SUI_THEME_FOCUS;      // the checkpoint gate's orange, in the theme's peach
 		}
+		else
+			s = sprintf("Stage %g", ui_sp_seg[i]);
+
+		Font_Set(ui_font_mono);
+		mcol = col;
+		mark = Timer_SplitsClass(ui_sp_class[i], mcol);
+		if (mark != "")
+		{
+			HUD_Text([p_x + pad + 2 * u, y + (rowh - msz) * 0.5], mark, msz, mcol, a);
+			col = mcol;
+		}
+		HUD_Text([tx, y + (rowh - msz) * 0.5], Time_TickString(ui_sp_ticks[i], tick), msz,
+		         SUI_THEME_TEXT, a);
+		if (ui_sp_delta[i] != 0)
+		{
+			mcol = SUI_THEME_BAD;
+			if (ui_sp_delta[i] < 0)
+				mcol = SUI_THEME_GOOD;
+			HUD_Text([dx, y + (rowh - msz) * 0.5], Time_DeltaString(ui_sp_delta[i], tick), msz, mcol, a);
+		}
+		if (ui_sp_speed[i] > 0)
+			HUD_TextR([p_x + w - pad - 6 * u, y + (rowh - msz) * 0.5],
+			          sprintf("%d u/s", rint(ui_sp_speed[i])), msz, SUI_THEME_MUTED, a);
+		Font_Set(ui_font_ui);
+		HUD_Text([lx, y + (rowh - lsz) * 0.5], s, lsz, col, a);
+		y = y + rowh;
 	}
 
-	// The footer says how to reach the buttons, because a panel that needs a
-	// gesture nobody guesses is a panel with no buttons.
+	// ---- the keys, because a panel that needs a gesture nobody guesses has none.
+	y = p_y + hgt - pad - lsz;
+	x = p_x + pad;
 	if (!ui_rs_cursor)
-		HUD_Text([p_x + 10 * ui_cv_scale, p_y + hgt - (sz + 8 * ui_cv_scale)],
-		         "f1 or mouse3 for cursor    esc to close", sz, RSC_DIM, a * 0.7);
+	{
+		x = Results_Hint(x, y, "F1", "", lsz, a * 0.9);
+		x = Results_Hint(x, y, "MOUSE3", "cursor", lsz, a * 0.9);
+	}
+	Results_Hint(x, y, "ESC", "close", lsz, a * 0.9);
 
 	Font_Reset();
 	HUD_Rect("results", p, [w, hgt, 0], p);
@@ -1320,6 +1370,21 @@ float(string cmd) Results_ConsoleCommand =
 		              (wst == WR_NONE) ? "   (nothing published about this run)"
 		                               : ""));
 		print(sprintf("  draws  = %s\n", Results_WorldNote(wst, wrank, wof, qflags)));
+		return TRUE;
+	}
+
+	// Patch 904: `results toast <stage> <ticks> [rank of]` raises the stage toast while a
+	// run is going, so its look can be checked: a noclip stage never closes with a time.
+	if (argv(1) == "toast")
+	{
+		ui_rs_toastat    = cltime;
+		ui_rs_toastseg   = stof(argv(2));
+		ui_rs_toastticks = stof(argv(3));
+		ui_rs_toastrank  = stof(argv(4));
+		ui_rs_toastof    = stof(argv(5));
+		ui_rs_toastword  = 0;
+		print(sprintf("results: toast stage %g ticks %g rank %g of %g\n", ui_rs_toastseg,
+		              ui_rs_toastticks, ui_rs_toastrank, ui_rs_toastof));
 		return TRUE;
 	}
 
