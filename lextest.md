@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## P879 — water reflections at Source's cost (surf_garden saves 1-3, ~120 fps)
+
+Your 2.2x draw calls came from `hl2_water 2` at map load: it splits the water per height, and every
+height rendered its own reflection and refraction (garden save 3: 6 water views, 3,880 of 4,945 draws).
+Source renders one reflection and refraction per view, for the water you see most of, and every water
+surface uses it. Now so do we. With your cfg on the rig: garden saves 1-3 from 8/8/6 water views to 2,
+frame ~5.9 -> ~2.6 ms; boreas 4 -> 2 views; no added hitch when water first comes into view.
+
+- Garden saves 1-3 and the canal steps: fps up; water looks the same (other heights now mirror the
+  chosen water's plane, as in Source -- say if a pool's reflection looks shifted).
+- Maps with "cheap" water (e.g. surf_fortum): it is now opaque with a cubemap, as Source draws it,
+  instead of see-through. Say if one looks wrong.
+- `r_waterviews 0` brings the old per-surface captures back.
+
+In both installs 01:04Z (exe 2b94393b). "Water fps ok / <map + spot>". Verdict PENDING.
+
 ## P881/P882/P886/P890 — Momentum's limit zones and slides, network2008's falls, rope textures
 
 Live since 00:00Z 21 Oct UTC (11:00 your time) on the lobbies (game code 23:50Z), and 00:04Z in both

@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   2af5c856fcc049e7f53ced56442f53c7f2be4bbe
+commit   65a5950e9f6304a3801760465e4918828ecb23e7
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,14 @@ commit   2af5c856fcc049e7f53ced56442f53c7f2be4bbe
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-890
+tag      patch-879
 patch    890
+# Patch 879 (client exe + hl2 plugin, on patch-890 2af5c856f): one water reflection and refraction per view,
+# as Source -- r_waterviews 1 weighs each level water plane by its on-screen solid angle (occlusion-traced)
+# and every same-facing water shares that capture; $forcecheap water is Source's opaque cheap water. Lex's
+# garden saves 1-3: 8/8/6 -> 2 nested views, p50 ~5.9 -> ~2.6 ms; boreas 4 -> 2. Exe 2b94393b
+# (git-7655-patch-879-0-g65a5950e9), hl2 aec7a92e, cod aa5905ff, server 164d0a86, both installs 2026-10-21
+# 01:04Z (.prev abe4e7f9 / f27ea1a5). QC unchanged (29856955/5f6d1119). Client only.
 # Patches 881, 882, 886, 890 (tag patch-890 = b3d851127 on P888's e6d7ca9f4; log 2af5c856f): Source
 # triggers clip with every contents bit, so grate/translucent trigger brushes fire (and trigger_teleport
 # no longer asks find() for an empty target, which answered client slot 0); limitmovement and slide reach

@@ -85,6 +85,22 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   and whether a route crosses its doorway plane is unmeasured. 30 s after load `pushtimer` enables a
   15 u/s push over the start floor, the same for everyone (SV_StartCapClamp owns it).
 
+## One water view pair (P879): what is left
+
+- The light-only occluder rule skips an OPAQUE-only brush only when EVERY side is nodraw; Source's
+  CONTENTS_IGNORE_NODRAW_OPAQUE skips it with ANY nodraw side (from memory; cmodel.cpp not in the SDK),
+  and see-through WINDOW/GRATE/TRANSLUCENT+OPAQUE brushes still hide water: 542 brushes on 20 water maps
+  (e.g. surf_not_so_disaster) can make a smaller water win the choice.
+- Not shown in a game: the under-water choice (garden's water is a fail zone, boreas's pond has no
+  underside), $forcecheap water animating (shots paused), and the hidden-plane rejection (no camera
+  produced a "hidden" line).
+- R_SetFrustum's "near" plane is GL's far plane under the infinite projection: water closer than mindist
+  is weighed though clipped (eye within ~4 units looking steeply down).
+- garden save 3 at r_waterviews 0 draws 899 per view where the old exe drew 900; pictures identical.
+- The occluder tree for capture water on maps without world lights is built at load (bhop_kiitovittu
+  111k leaves, ~200 ms); after a mid-map hl2_water change it is built lazily on the first occlusion
+  trace, a one-off hitch of that size (P894's live reload should keep that path working).
+
 ## Water fog (P877): what is left
 
 - **Eye under water**: the refraction capture is water-fogged over the whole eye distance (the view fog
@@ -225,8 +241,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Water, glass and the finish frame (P866-P868, P875): what is left
 
-- **Lex's game draws ~2.2x a fresh client** at surf_garden save 3 (6,023 against 2,803 draws, same
-  cfg): unexplained. Needs his `r_viewstats` from that save (lextest P868).
 - No refraction blur on water. Captures are 0.5x the framebuffer; Source's are 1024^2.
 - P868's under-water exception (3D sky kept in the refraction) is unmeasured in game.
 - P866: glass seen in a reflection or through a portal shows the last main-view copy.
