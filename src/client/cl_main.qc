@@ -1473,6 +1473,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 	{
 		if (chary < 32 || chary > 126)
 			return TRUE;                // the fields are ASCII
+		if (HUD_EditPaste(chary)) return TRUE;   // Patch 901: the ghost offset field
 		if (Account_Paste(chary)) return TRUE;
 		if (Chat_Paste(chary)) return TRUE;
 		if (ZoneEdit_Paste(chary)) return TRUE;

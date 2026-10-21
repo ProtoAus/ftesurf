@@ -417,6 +417,8 @@ void() HE_BuildTable =
               one.  values are the pixel sizes (four at most), names unused.
               0 is auto: the lit box clicked again.
           b   Patch 630: boxes, one per value, names "S;M;L;XL".  No auto.
+          n   Patch 901: a typed number.  values "scale min max", names the
+              unit: the row shows cvar*scale and writes back typed/scale.
 
   Returns "" to end the element's list.  Rows are asked for in order and the
   first "" stops the walk, so a gap in the numbering would silently truncate a
@@ -724,14 +726,17 @@ string(string id, float row) HE_OptDef =
 		if (row == 3) return "hud_ghost_lines|Ticked runs|c|0 1 4 8|none;first;first 4;first 8"
 		                     "|Also a ghost for the runs ticked in the leaderboard's LINE column, yours or anyone's.";
 		if (row == 4) return "hud_ghost_offset|Time offset|c|-2 -1 -0.5 0 0.5 1 2|-2 s;-1 s;-0.5 s;none;+0.5 s;+1 s;+2 s"
-		                     "|Plus runs the ghost that far ahead of your clock, minus that far behind. Any value from the console.";
-		if (row == 5) return "hud_ghost_alpha|Opacity|c|0.25 0.4 0.55 0.75 1|25%;40%;55%;75%;100%"
+		                     "|Plus runs the ghost that far ahead of your clock, minus that far behind. The row below takes any value in ms.";
+		// Patch 901: the same setting typed, in milliseconds.
+		if (row == 5) return "hud_ghost_offset|Offset in ms|n|1000 -60000 60000|ms"
+		                     "|Click and type the offset in milliseconds, then Enter: 250 runs the ghost a quarter second ahead, -250 behind.";
+		if (row == 6) return "hud_ghost_alpha|Opacity|c|0.25 0.4 0.55 0.75 1|25%;40%;55%;75%;100%"
 		                     "|How solid the ghost's body is.";
-		if (row == 6) return "hud_ghost_dither|Opacity by|c|1 0|dither;blend"
+		if (row == 7) return "hud_ghost_dither|Opacity by|c|1 0|dither;blend"
 		                     "|dither: a fixed pattern of solid pixels, sorted with the world. blend: smooth see-through, can sort wrongly behind glass.";
-		if (row == 7) return "hud_ghost_near|Fade near you|c|0 64 96 160 256|off;64;96;160;256"
+		if (row == 8) return "hud_ghost_near|Fade near you|c|0 64 96 160 256|off;64;96;160;256"
 		                     "|Within this many units of your eye the body fades out, so a ghost level with you does not block the view.";
-		if (row == 8) return "hud_ghost_names|Name tag|t||"
+		if (row == 9) return "hud_ghost_names|Name tag|t||"
 		                     "|Whose run each ghost is, over its head as a player's name is.";
 		return "";
 	}
@@ -1007,6 +1012,8 @@ float(float lo, float mid, float hi, float lim, float axis) HE_Snap =
   Opening and closing
 ===========================================================================
 */
+void() HE_NumStop;
+
 void() HUD_EditClose =
 {
 	if (!ui_he_open)
@@ -1014,6 +1021,7 @@ void() HUD_EditClose =
 	ui_he_open = FALSE;
 	ui_he_drag = FALSE;
 	ui_he_held = "";
+	HE_NumStop();
 	sui_tooltip_reset();
 
 	/*
@@ -1145,6 +1153,169 @@ float(string id, vector pos, vector sz, string label, float on, float sc,
 	return sui_is_released(id);
 };
 
+/*
+  Patch 901: a typed number row, kind n -- "cvar|Label|n|scale min max|unit|tip".
+  The chip shows the cvar times scale; a click opens a field there, Enter writes
+  the typed value back divided by scale, ESC leaves it.  Keys come from
+  HUD_EditInputEvent through sui_text_event (the zone editor's shape), and a key
+  pressed while typing is held here until it is let go, so its bind never fires
+  (1 is sl_save).
+*/
+#define HE_FKEYS 2048
+string he_fcv;                  // the cvar being typed into; "" = none
+string he_fvals;                // that row's "scale min max"
+string he_ftext;
+float  he_fcaret;
+string he_fnote;                // why the last Enter was refused
+float  *he_fkeys;               // 1 = pressed while typing, eaten on its release
+float  he_fseen;                // the open field drew this frame
+
+void(string s) HE_NumNote =
+{
+	if (he_fnote != "") strunzone(he_fnote);
+	he_fnote = "";
+	if (s != "") he_fnote = strzone(s);
+};
+
+float(string s) HE_NumOk =
+{
+	local float i, c, digits, dot;
+	digits = dot = 0;
+	if (s == "" || strlen(s) > 12)
+		return FALSE;
+	for (i = 0; i < strlen(s); i = i + 1)
+	{
+		c = str2chr(s, i);
+		if ((c == '-' || c == '+') && i == 0)
+			continue;
+		if (c == '.')
+		{
+			if (dot) return FALSE;
+			dot = TRUE;
+		}
+		else if (c >= '0' && c <= '9') digits = digits + 1;
+		else return FALSE;
+	}
+	return digits > 0;
+};
+
+// The cvar as the row shows it: times scale, whole when it is whole.
+string(string cv, string vals) HE_NumShow =
+{
+	local float v;
+	tokenize(vals);
+	v = cvar(cv) * stof(argv(0));
+	if (fabs(v - rint(v)) < 0.001)
+		v = rint(v);
+	return sprintf("%g", v);
+};
+
+void() HE_NumStop =
+{
+	if (he_fcv != "") strunzone(he_fcv);
+	if (he_fvals != "") strunzone(he_fvals);
+	if (he_ftext != "") strunzone(he_ftext);
+	he_fcv = he_fvals = he_ftext = "";
+	he_fcaret = 0;
+	if (sui_text_has_focus("he_num"))
+		sui_text_unfocus();
+};
+
+void(string cv, string vals) HE_NumBegin =
+{
+	HE_NumStop();
+	he_fcv    = strzone(cv);
+	he_fvals  = strzone(vals);
+	he_ftext  = "";
+	he_fcaret = 0;
+	HE_NumNote("");
+	sui_field_focus("he_num");
+};
+
+// Enter.  -> the field closed (written, or left as it was when empty), or FALSE
+// with he_fnote saying why.
+float() HE_NumApply =
+{
+	local float v, sc, lo, hi;
+	if (he_fcv == "")
+		return FALSE;
+	if (he_ftext == "")
+	{
+		HE_NumStop();
+		return TRUE;
+	}
+	tokenize(he_fvals);
+	sc = stof(argv(0));
+	lo = stof(argv(1));
+	hi = stof(argv(2));
+	v  = stof(he_ftext);
+	if (!HE_NumOk(he_ftext) || v < lo || v > hi || sc == 0)
+	{
+		HE_NumNote(sprintf("a number from %g to %g", lo, hi));
+		print(sprintf("^3hud_edit^7: %s takes %s, not \"%s\"\n", he_fcv, he_fnote, he_ftext));
+		return FALSE;
+	}
+	localcmd(sprintf("seta %s %.9g\n", he_fcv, v / sc));
+	print(sprintf("^5hud_edit^7: %s %.9g (typed %g)\n", he_fcv, v / sc, v));
+	ui_he_dirty = TRUE;
+	HE_NumNote("");
+	HE_NumStop();
+	return TRUE;
+};
+
+void(float evtype, float scan, float char) HE_NumKey =
+{
+	local string was;
+	was = he_ftext;
+	sui_text_event(evtype, scan, char, "he_num", he_ftext, he_fcaret);
+	he_ftext  = strzone(substring(he_ftext, 0, 12));
+	he_fcaret = min(he_fcaret, strlen(he_ftext));
+	if (was != "") strunzone(was);
+	if (evtype == IE_KEYDOWN)
+		HE_NumNote("");
+};
+
+// Patch 901: one pasted character, for the field while it is open.
+float(float c) HUD_EditPaste =
+{
+	if (c < 32 || c > 126 || !ui_he_open || he_fcv == "")
+		return FALSE;
+	HE_NumKey(IE_KEYDOWN, 0, c);
+	return TRUE;
+};
+
+void(string cv, string vals, string unit, string tip, vector pos, vector sz, float sc) HE_NumRow =
+{
+	local vector glyph, tp;
+	local float tw;
+	glyph = sui_native_text_size(8 * sc);
+	if (he_fcv != cv)
+	{
+		if (HE_Chip(strcat("he_n_", cv), pos, sz,
+		            strcat((cvar(cv) > 0) ? "+" : "", HE_NumShow(cv, vals), " ", unit),
+		            cvar(cv) != 0, sc, tip))
+			HE_NumBegin(cv, vals);
+		return;
+	}
+	he_fseen = TRUE;
+	sui_style_box(pos, sz, 3 * sc, SUI_THEME_WELL,
+	              (he_fnote != "") ? SUI_THEME_BAD : SUI_THEME_ACCENT, 1);
+	sui_text_metrics(4 * sc, glyph);
+	sui_text_input("he_num", pos, sz, he_ftext, he_fcaret);
+	tp = [pos_x + 4 * sc, pos_y + (sz_y - glyph_y) * 0.5, 0];
+	if (he_ftext == "")
+		sui_native_text(tp, HE_NumShow(cv, vals), 8 * sc, SUI_THEME_MUTED, 1);
+	else
+		sui_native_text(tp, he_ftext, 8 * sc, SUI_THEME_TEXT, 1);
+	tw = stringwidth(substring(he_ftext, 0, he_fcaret), TRUE, glyph);
+	if (sui_text_has_focus("he_num"))
+		drawfill(tp + [tw, -1, 0], [1, glyph_y + 2, 0], SUI_THEME_ACCENT, 1, 0);
+	sui_native_text([pos_x + sz_x - stringwidth(unit, TRUE, glyph) - 4 * sc, tp_y, 0],
+	                unit, 8 * sc, (he_fnote != "") ? SUI_THEME_BAD : SUI_THEME_MUTED, 1);
+	sui_tooltip_for("he_num", (he_fnote != "") ? strcat("Enter ", he_fnote, ". ESC leaves it.")
+	                : "Type, then Enter. Empty or ESC leaves it as it was.", sc);
+};
+
 void(vector scr) HUD_EditDraw =
 {
 	local float i, k, r, sc, psc, lim, held, mode, x, y, w, rowh, panw, ii;
@@ -1182,6 +1353,7 @@ void(vector scr) HUD_EditDraw =
 	ui_he_snapy = -1;
 
 	sui_begin(scr_x, scr_y);
+	he_fseen = FALSE;
 
 	// The world stays visible.  You are laying out a HUD against the thing it
 	// goes over, and dimming it to a menu grey would be laying it out against
@@ -1738,6 +1910,15 @@ void(vector scr) HUD_EditDraw =
 
 			sui_fill([x, y, 0], [w, rowh, 0], HEC_PANE, 0.5, 0);
 
+			if (okind == "n")
+			{
+				sui_native_text([ox, y + (rowh - 7 * psc) * 0.5, 0], olab, 7 * psc, HEC_DIM, 0.9);
+				HE_NumRow(ocv, oval, onam, otip, [ox + ow * 0.62, y + 1 * psc, 0],
+				          [ow * 0.38, rowh - 4 * psc, 0], psc);
+				y = y + rowh;
+				continue;
+			}
+
 			// Patch 630: boxes at the size row's own geometry.  A text size (s) names
 			// its state in the label, as that row does: no box is lit at auto.  Only
 			// the word, where that row has the size too: "Subtext 16 auto" ended 4 px
@@ -1884,6 +2065,9 @@ void(vector scr) HUD_EditDraw =
 
 	sui_native_text([x, y, 0], "drag to move   SHIFT: no snap", 7 * psc, HEC_DIM, 0.8);
 
+	// Patch 901: a field whose pane closed is dropped, not left taking keys.
+	if (he_fcv != "" && !he_fseen)
+		HE_NumStop();
 	sui_end();
 	Font_Reset();
 
@@ -2370,6 +2554,63 @@ void() HUD_EditUIProbe =
 	}
 };
 
+float(float evtype, float scanx, float chary, float devid) HUD_EditInputEvent;
+
+/*
+  Patch 901: `hud_edit type <cvar> <keys...>` -- a click on the open pane's number
+  row for cvar, then each key as an IE_KEYDOWN/IE_KEYUP pair through
+  HUD_EditInputEvent.  @enter, @esc and @bs are those keys; anything else is
+  typed a character at a time.  A capture run has no hand (see `hud_edit <id>`).
+*/
+void(string cv, string keys) HE_NumProbe =
+{
+	local float r, k, n, c, j;
+	local string def, vals, a;
+
+	vals = "";
+	if (ui_he_open && ui_he_sel >= 0 && ui_he_sel < he_n)
+	for (r = 0; r < 32; r = r + 1)
+	{
+		def = HE_OptDef(he_id[ui_he_sel], r);
+		if (def == "")
+			break;
+		if (Gfx_Field(def, 0, "|") == cv && Gfx_Field(def, 2, "|") == "n")
+			vals = Gfx_Field(def, 3, "|");
+	}
+	if (vals == "")
+	{
+		print(sprintf("^3hud_edit^7: no number row for %s in the open pane\n", cv));
+		return;
+	}
+	if (he_fcv != cv)
+		HE_NumBegin(cv, vals);
+	n = tokenize(keys);
+	for (k = 0; k < n; k = k + 1)
+	{
+		tokenize(keys);
+		a = argv(k);
+		c = -1;
+		j = 0;
+		if (a == "@enter") { c = K_ENTER;     j = 13; }
+		if (a == "@esc")   { c = K_ESCAPE;    j = 27; }
+		if (a == "@bs")    { c = K_BACKSPACE; j = 8; }
+		if (c >= 0)
+		{
+			HUD_EditInputEvent(IE_KEYDOWN, c, j, 0);
+			HUD_EditInputEvent(IE_KEYUP, c, j, 0);
+			continue;
+		}
+		for (j = 0; j < strlen(a); j = j + 1)
+		{
+			c = str2chr(a, j);
+			HUD_EditInputEvent(IE_KEYDOWN, c, c, 0);
+			HUD_EditInputEvent(IE_KEYUP, c, c, 0);
+		}
+	}
+	print(sprintf("^5hud_edit^7: type %s -> field \"%s\" %s, %s %s\n", cv, he_ftext,
+	              (he_fcv != "") ? "open" : "closed", cv, cvar_string(cv)));
+};
+
 float(string cmd) HUD_EditConsoleCommand =
 {
 	local float i;
@@ -2406,6 +2647,15 @@ float(string cmd) HUD_EditConsoleCommand =
 	{
 		HE_ResetAll();
 		print("^5hud_edit^7: positions, sizes, toggles and options all back to shipped\n");
+		return TRUE;
+	}
+
+	if (argv(1) == "type")
+	{
+		if (argv(3) == "")
+			HE_NumProbe(argv(2), "");
+		else
+			HE_NumProbe(argv(2), substring(cmd, argv_start_index(3), -1));
 		return TRUE;
 	}
 
@@ -2509,12 +2759,46 @@ float(string cmd) HUD_EditConsoleCommand =
 */
 float(float evtype, float scanx, float chary, float devid) HUD_EditInputEvent =
 {
+	local float owned, valid;
+
+	// Patch 901: a release of a key the field took is eaten even after a close.
+	valid = (scanx >= 0 && scanx < HE_FKEYS);
+	owned = 0;
+	if (he_fkeys && valid)
+		owned = he_fkeys[scanx];
+	if (evtype == IE_KEYUP && owned)
+	{
+		he_fkeys[scanx] = 0;
+		if (he_fcv != "")
+			HE_NumKey(evtype, scanx, chary);
+		return TRUE;
+	}
+
 	if (!ui_he_open)
 		return FALSE;
 
 	if (evtype == IE_MOUSEABS)
 	{
 		sui_input_event(evtype, scanx, chary, devid);
+		return TRUE;
+	}
+
+	if (evtype == IE_KEYDOWN && valid && he_fcv != "")
+	if (scanx != K_MOUSE1 && scanx != K_MOUSE2 && scanx != K_MWHEELUP && scanx != K_MWHEELDOWN)
+	if (scanx != K_LSHIFT && scanx != K_RSHIFT)
+	{
+		if (!he_fkeys)
+		{
+			he_fkeys = memalloc(sizeof(float) * HE_FKEYS);
+			memfill8(he_fkeys, 0i, sizeof(float) * HE_FKEYS);
+		}
+		he_fkeys[scanx] = 1;
+		if (scanx == K_ESCAPE)
+			HE_NumStop();
+		else if (scanx == K_ENTER || scanx == K_KP_ENTER)
+			HE_NumApply();
+		else
+			HE_NumKey(evtype, scanx, chary);
 		return TRUE;
 	}
 
