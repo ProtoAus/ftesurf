@@ -21,6 +21,21 @@
 
 ## next
 
+### P890 Map fixes: surf_network2008_final's falls go back to the start
+- Maps can carry small fixes the way surf servers patch them. The first sends every fall on surf_network2008_final back to the start, stopped, instead of its round-based jail, and one player can no longer reset everyone else there.
+
+### P886 Ropes draw their own textures
+- Ropes and chains with a custom look (string lights, banners, chains, coloured cables) now draw their textures instead of a plain fallback.
+
+### P882 Momentum's no-bhop, key-limit and slide zones
+- Zones from Momentum maps that block jumping, crouching, bunny hopping or certain movement keys now work, such as bhop_offstyles' one-key sections and bhop_mom_training_beta.
+- A no-bhop zone keeps you on the ground for 0.2 s after each landing.
+- Slide zones (bhop_parallel, surf_rogue) make the floor slippery.
+- run_momtriggers 0 turns them off with the other Momentum anti-bhop triggers.
+
+### P881 Triggers made of see-through brushes fire
+- Teleports and other triggers built from grate or see-through brushes now work: surf_network2008_final's falls no longer leave you standing on the floor under the map.
+
 ### P891 KSF stage recordings
 - KSF recordings of single stages can be watched from the stage boards, starting with surf_kepler's.
 - KSF recordings download again: one broken file on KSF's side had stopped them since 19 October.

@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## P881/P882/P886/P890 — Momentum's limit zones and slides, network2008's falls, rope textures
+
+Live since 00:00Z 21 Oct UTC (11:00 your time) on the lobbies (game code 23:50Z), and 00:04Z in both
+installs.
+- surf_network2008_final: fall off anywhere, also after the first 30 s: you land in the start zone,
+  standing still. Someone leaving the end room through its door no longer resets everyone, and the 666
+  button no longer shuts the leet area for good.
+- Momentum's no-jump / no-bhop / key zones (124 on 38 maps) and slide zones work:
+  bhop_mom_training_beta (no jumping where the course says so), surf_affliction's lody bonus (a short wait
+  on the floor after each landing), bhop_offstyles' one-key sections, bhop_parallel and surf_rogue slides.
+  Holding jump and forward in such a start (surf_journeys) walks out normally.
+- Ropes with their own look (bhop_angst's green cables, string lights, chains) draw their textures.
+- Online, the edge of a limit zone can stutter for a moment. Known gap in BACKLOG (limits are read
+  once per packet).
+"Zones and slides feel right, or <map>", "network2008 ok", "ropes ok". Verdicts PENDING.
+
 ## P887-P889 — surf_demise's ramp, surf_pantheon's floating ramp, surf_nuclear's spawn hub
 
 Live since 23:13Z 20 Oct UTC (10:13 21 Oct your time) in both installs, the lobbies since 22:14Z.

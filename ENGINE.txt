@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   e6d7ca9f4114ae1909127383ee0ab3128fc1b417
+commit   2af5c856fcc049e7f53ced56442f53c7f2be4bbe
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,21 @@ commit   e6d7ca9f4114ae1909127383ee0ab3128fc1b417
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-889
-patch    889
+tag      patch-890
+patch    890
+# Patches 881, 882, 886, 890 (tag patch-890 = b3d851127 on P888's e6d7ca9f4; log 2af5c856f): Source
+# triggers clip with every contents bit, so grate/translucent trigger brushes fire (and trigger_teleport
+# no longer asks find() for an empty target, which answered client slot 0); limitmovement and slide reach
+# the mover at Source mover 10 (PMSRC_VERSION 10 = 9 + limits; pin 73 names, landticks in seed); ropes
+# ask for <material>.vmt (csprogs); cfg/maps/entfix_<map>.cfg applied at map load, its identity in
+# *entfile and a recording's `entfile` (absent 0, a different one REFUSEs). Reader first:
+# tools/reccheck.py 2cd945c2 on the Pi 2026-10-20 23:48:55Z (it also carried P869's momtrig, catapult and
+# reverse). QC next: lobbies 23:50Z qwprogs 29856955, csprogs 5f6d1119 (.prev 89550455 / 25e272c3).
+# Lobby native 2026-10-21 00:00:19Z: 3c2dbd26, hl2 84e04c8b, cfg/maps/entfix_surf_network2008_final.cfg
+# 37100699, pm_sourceversion 10 on all 12; rollback *.pre890-20261021T000015Z. NEVER roll the sweeper
+# below 890. Windows 00:04:17Z, both installs: client abe4e7f9, fteqwsv64 862a2ccf, hl2 f27ea1a5, cod
+# e7535d19 (stamp git-7640-patch-890-0-gb3d851127; .prev a2ce8e61 / 05e3ccf4 / 9d369cd3 / e2fa205c);
+# C:\FTESurf QC as the lobbies; C:\FTEQuake gains cfg/maps with the fix file only.
 # Patches 887, 888, 889 (tag patch-889, main e6d7ca9f4 on 0a884e464): HDR (RGBA16F) envmap cubes encoded
 # to display gamma at load (surf_demise's ramp); .phy hulls past 65,536 copied points unwrapped at Source
 # mover 9 (PMSRC_VERSION 9; pins <= 8 keep the old wrapped geometry; surf_pantheon's phantom ramp);

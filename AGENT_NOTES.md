@@ -1,5 +1,27 @@
 # AGENT_NOTES.md
 
+## Map entity fixes and Momentum's limit zones (P881, P882, P890, 2026-10-21)
+
+- `cfg/maps/entfix_<map>.cfg` (Stripper:Source syntax, gl_model.c Mod_EntFix) changes a map's entities
+  at load, server and client alike, from a trusted local dir only. Its identity is a 24-bit hash of the
+  file's bytes (CRLF as LF): ANY edit refuses every earlier run on that map, the verifier reads its own
+  cfg/maps, and a lobby keeps the old lump across map_restart. Ship a fix with a map change, to the
+  verifier no later than the lobbies, QC before the engine (old QC writes no `entfile`). Check a new
+  fix offline before a game run: tools/test_entfix.py's applier build run on the map's real lump.
+- find(world, targetname, "") returns the first edict with no targetname -- client slot 0 -- not world.
+  Never look up an empty name; trigger_teleport did until P881, and P881 makes all 823 target-less
+  Source teleports fire.
+- Limits: QC reads the limit/slide triggers per command where the move starts (SV_MomLimitFrame) and the
+  engine applies them at mover 10 (stats 22-24 are taken). A replay arm for them needs a run that stands
+  on the ground inside a limit: surf_journeys' start drops away, so every row of a run there is airborne
+  and nothing a limit carries can act -- three controls measured nothing that way. The discriminating
+  control is the recording with its seed's landticks 0 (diverges at the jump) beside landticks 0 plus
+  momlimit 0 (does not); cfg/test/p882rec.cfg + p882rec2.cfg.
+- The client's prestrafe aid (run_prestrafe, cl_main.qc) took +forward on a jump edge until the body
+  left the ground; inside a jump limit it never does, and the body stood still. It now reads stat 22.
+- Mover numbers: 9 is P888, 10 is P882. NEVER roll the sweeper below 890. Deploy record:
+  tools/lobby-engine-p890-20261021.md.
+
 ## KSF stage demos and the stuck demo grab (P891, 2026-10-20)
 
 - KSF serves each stage as its own replay (a series per stage: kepler's main is 4459, stages

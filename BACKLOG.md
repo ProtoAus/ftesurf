@@ -5,6 +5,86 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Map entities 2 (P881, P882, P886, P890): what is left
+
+- **Limits are read once per command (P882; Lex: ship now, fix after).** QC tests the limit and
+  slide triggers where a command's move starts and the mover applies the result to every tick of
+  it, so a command of several ticks can enter a thin limit trigger partway without being limited
+  until the next; Momentum touches per tick. Detail (which maps) in a private note. Fix direction:
+  hand the triggers to the mover as physents with flags (P280's func_slide pattern) so it tests them
+  per tick and the `pe` digest pins them.
+- **34 limit/slide triggers on 8 maps never exist (P882).** Momentum's zone tool writes them
+  without a model and shapes them at OnMapSpawn (`AddOutput solid 2`, `mins`, `maxs`);
+  SV_MomTrigSpawn removes a model-less trigger and SV_IOAddOutput takes neither key. surf_greek
+  25, surf_aeron 4, surf_anoobis, surf_christmas2 (jump+crouch+bhop), surf_excavation,
+  surf_overgrowth, surf_parc_colore, surf_voyager -- mostly bhop limits at checkpoints. Falsifier:
+  `momlimit` dprints inside surf_greek's first checkpoint.
+- **A limit that changes writes a full `pm` row (P882).** momlimit/momcool/momslide are in the pin,
+  so each change bumps pmepoch and the recorder writes the whole pin (~1.3 KB) where the line caps
+  assume ~98 bytes a line; trigger_gravity's persist 0 has the same shape. A small per-row record or
+  a delta would end it (cost detail in a private note).
+- **Entity-fix deploys (P890).** The world model is cached across `map_restart`, so a lobby keeps
+  the old lump until a real map load; the verifier reads cfg/maps from its own game dir
+  (SURFD_GAME), which must hold the same file; and any edit to a fix file refuses every earlier run
+  on that map (`entfile` is the fix's bytes). Ship a fix file before a map's first ranked run, to the
+  verifier no later than the lobbies, with a map change.
+- **P881 changed which triggers fire.** Source triggers whose brushes are only GRATE/TRANSLUCENT
+  (CLIP after the remap) never fired before it; runs recorded before it may have crossed dead fail
+  teleports. Only surf_network2008_final is measured. A census of trigger brush contents would
+  list the others and their boards.
+- **The bhop cooldown's refusal still latches run_jumpcmd (P882).** QC masks a jump-limit strip,
+  but whether CheckJumpButton refused a cooldown jump is not published, so a hopped-start tag can
+  count a jump the mover refused. Needs a stat or field from the mover.
+- **Round logic on maps without zones (P890).** 91 library maps switch teleports from a timer
+  (about 34 jails, 20 "round over"/"time's up", 7 send-backs, 30 real mechanics); 6 have zone
+  files and only surf_network2008_final needed a fix. When a zone file arrives for one of the other
+  85, run `python tools/census/roundlogic.py <maps dir> --zones ... --map <name>` and write
+  cfg/maps/entfix_<map>.cfg if its timers break a timed run. Falsifier: a fall after the timer
+  fires ends outside the start zone.
+- **Limit and slide triggers are not predicted (P882).** The client takes the server's values
+  from stats 22-24, so online a jump just inside a jump/bhop limit is predicted, then corrected
+  (Momentum networks its mask the same way). A cl_triggers.qc mirror like the push/setspeed ones
+  would end it. Falsifier: `cl_prederror` lines at a limit edge on a dedicated server.
+- **trigger_momentum_slide StuckOnGround (P882)** snaps to any face within 64 u below; Momentum
+  checks the face is inside the trigger (mom_gamemovement.cpp StuckGround). 15 of the library's
+  24 slides write it, all on triggertests.
+- **Overlapping limitmovement triggers OR their flags (P882)**; Momentum re-enables a key on leaving
+  one even inside another until that one's next Touch, and the bhop cooldown takes the largest. A
+  limit's filter is tested every command; Momentum tests it on entry (bhop_restricted only).
+- **Limitmovement's walk flag (AHOP's IN_WALK) has no FTESurf button (P882)**; carried in the pin,
+  never read.
+- **Entity fixes take a /wrapped/ value as a '*' wildcard (P890)**, not Stripper's regex; any
+  other character in it is literal.
+- **The limit traces overwrite trace_* mid-PlayerPreThink (P882).** PlayerPreThink itself reads
+  no trace_* global today.
+- **A fix that adds a solid or a mover depends on `hl2_overlays` (P890).** `add:` entities go after
+  the overlay entities the plugin synthesizes, so their edict numbers move with that cvar while
+  `entfile` does not; the `pe` digest would HOLD a run whose recorder and verifier differ. No config
+  sets it and network2008's addition is not a physent. Falsifier: a fix adding a func_brush, verified
+  with `hl2_overlays 0` against a run recorded at 1.
+- **Prestrafe gives +forward back after 0.5 s on the ground (P882).** Long enough for a ping of ~400 ms
+  to see the server lift the body; a jump refused for longer (a bhop cooldown set above 0.5 s, a
+  ceiling) gets W back while jump is still held. Falsifier: `run_prestrafe 1`, a BhopCooldown 1.0
+  limit, held W+jump: W returns before the hop.
+- **A `pm` row's own effect has no discriminating arm (P882).** The header pin's limits are shown
+  applied (p882rec2: landticks 0 diverges, with momlimit 0 too it does not); a `pm` row goes through
+  the same SV_PMPinApply, but every recording so far changes its limit only while airborne. A map
+  whose run crosses a limit edge on the ground would make one.
+- **`entfile` names the fix file's bytes, not what the applier does with them (P890).** A change to the
+  applier's matching or output rules would keep every `entfile` while changing the lump. Fold an
+  applier version into the hash when that happens.
+- **Records set while target-less teleports misbehaved (P881).** Before P881's QC a teleport with no
+  target sent its toucher somewhere other than the map meant (a private note has the detail); 53 zoned
+  maps carry 76 always-active ones. Scan stored records on those maps for `warp tele` rows whose
+  destination is no teleport destination, and review what turns up.
+- **pm_dettest has no mover-10 pass (P882)**, so the limit paths are outside the determinism hash;
+  pm_selftest covers them. `tools/test_portal_landing.py:111` still asserts pin 8 is refused (stale
+  since P813).
+- **surf_network2008_final, two leftovers (P890 review 5).** Touching the start room's two corner
+  trigger_onces turns on `secret_tele` for everyone; it keeps velocity but lands upstream (costs time),
+  and whether a route crosses its doorway plane is unmeasured. 30 s after load `pushtimer` enables a
+  15 u/s push over the start floor, the same for everyone (SV_StartCapClamp owns it).
+
 ## Water fog (P877): what is left
 
 - **Eye under water**: the refraction capture is water-fogged over the whole eye distance (the view fog
