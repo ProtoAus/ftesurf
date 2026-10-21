@@ -1053,7 +1053,7 @@ def check_rec(path, verbose=False, *, data=None):
     in_offgrid_ln = None    # v9: first such row, for the fault
     in_badshape = 0         # rows this tool could not parse (reported once)
     in_flx = 0              # v9: rows with fl 2 or 4 (never on a clean run)
-    in_split = in_split_odd = 0   # Patch 893: fl 8 rows, and those not repeating the row before
+    in_split = in_split_odd = 0   # Patch 893: fl 8 rows, and those that are not a split's later part
     in_prevtok = None
     # Patch 493: the move triple against the header's `movebnd`.  Counted as the
     # rows stream past, for the reason this whole block exists.
@@ -1249,6 +1249,11 @@ def check_rec(path, verbose=False, *, data=None):
             if ang_holdmt is not None and mt < ang_holdmt:
                 r.fault("line %d: 'in' below the preceding hold horizon" % (lineno + 1))
                 ang_holdbad = True
+            # Patch 893: a later part of a split usercmd, in a file whose server splits, repeats the row
+            # before it (packet, moves, angles, buttons) one tick on.  Only such a row leaves the join.
+            in_later = (ver >= 9 and infl & 8 and head.get("tickparts") == "1" and in_prevtok is not None
+                        and (tok[1], tok[4:11]) == (in_prevtok[1], in_prevtok[4:11])
+                        and mt == int(in_prevtok[2]) + 1)
             if not excluded:
                 ang_prev = mt - ang_frozen if holdclock == "1" else mt
                 if not -2147483648 <= ang_prev <= 2147483647:
@@ -1260,9 +1265,9 @@ def check_rec(path, verbose=False, *, data=None):
                     r.fault("line %d: 'in' projected angle tick is below the initial "
                             "timer origin" % (lineno + 1))
                     ang_holdbad = True
-                # Patch 893: a later part of a split usercmd carries the command's angles at a
-                # tick where the client drew a later frame; only the command's first row is joined.
-                if not (ver >= 9 and infl & 8):
+                # Patch 893: a later part carries the command's angles at a tick where the client drew
+                # a later frame; only the command's first row is joined.
+                if not in_later:
                     ang_mt.append(ang_prev)
                     ang_pit.append(ang[0])
                     ang_yaw.append(ang[1])
@@ -1331,9 +1336,8 @@ def check_rec(path, verbose=False, *, data=None):
                 elif infl & 6:
                     in_flx += 1
                 if infl & 8:
-                    # Patch 893: a later part repeats its usercmd: packet, moves, angles, buttons.
                     in_split += 1
-                    if in_prevtok is not None and (tok[1], tok[4:11]) != (in_prevtok[1], in_prevtok[4:11]):
+                    if not in_later:
                         in_split_odd += 1
                 in_prevtok = tok
 
@@ -2089,8 +2093,8 @@ def check_rec(path, verbose=False, *, data=None):
         if in_split:
             r.info["split_rows"] = in_split
         if in_split_odd:
-            r.note("%d 'in' row(s) flagged fl 8 (a later part of a split usercmd) do not repeat "
-                   "the row before them" % in_split_odd)
+            r.note("%d 'in' row(s) flagged fl 8 are not a split's later part (no `tickparts 1`, or not "
+                   "the row before them repeated one tick on) and were joined like any row" % in_split_odd)
         r.info["in_packets"] = in_packets
         # THE WHOLE REASON THE PACKET ORDINAL IS IN THE FILE, expressed as one
         # number.  The run's start and finish are latched once per packet, not

@@ -2888,9 +2888,13 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             one that is not a decimal in 0..16777215.  Absent
                             = 0 (before Patch 890; no install shipped a .ent).
     tickparts <n>           Patch 893: 1 when the server runs a usercmd of several
-                            ticks one tick per part (sv_tickparts), each part
-                            its own `in` row and a later part's flagged fl 8;
-                            0 or absent, one row a usercmd.
+                            ticks one tick per part (sv_tickparts, read at open;
+                            a server does not change it mid-run), each part its
+                            own `in` row and a later part's flagged fl 8; 0 or
+                            absent, one row a usercmd.  A reader takes an fl 8
+                            row out of the angle join only in a `tickparts 1`
+                            file and only when it repeats the row before it
+                            (pk, moves, angles, bt) at that row's mt + 1.
     proprule <n>            which prop-geometry rule built this run's collision
                             world.  Absent or 0 = prop scale as the map wrote it;
                             1 = floored to the 1/16 the wire carries, so the

@@ -1731,10 +1731,12 @@ def case_split_part_rows_are_not_joined():
     L = build(sweep=128, packets=400)
     view = view_for(L)
 
-    def split(bit, repeat=True):
-        # A later part repeats its usercmd: packet, moves, angles and buttons; mt and carry move on.
+    def split(bit, repeat=True, step=1, header=True):
+        # A later part repeats its usercmd (packet, moves, angles, buttons) one tick on.
         out, prev, k = [], None, 0
         for l in L:
+            if header and l == "begin":
+                out.append("tickparts 1")
             if l.startswith("in "):
                 f = l.split()
                 if prev is not None:
@@ -1745,24 +1747,29 @@ def case_split_part_rows_are_not_joined():
                             f[4:11] = prev[4:11]
                         else:
                             f[7], f[8] = prev[7], prev[8]
+                        f[2] = str(int(prev[2]) + step)
                         f[11] = str(int(f[11]) | bit)
                         l = " ".join(f)
                 prev = f
             out.append(l)
         return out
 
+    def joined(f):
+        return any("not this recording" in x or "does not describe" in x for x in f)
+
     f, n = run(split(8), view=view)
-    check(not any("not this recording" in x or "does not describe" in x for x in f),
-          "a later part's row (fl 8) with the command's angles is not joined to its tick's frame")
+    check(not joined(f), "a later part's row (fl 8) with the command's angles is not joined to its tick's frame")
     if f:
         print("        %s" % f)
-    check(not any("do not repeat" in x for x in n), "...and a row that repeats its command draws no note")
-    f, n = run(split(8, repeat=False), view=view)
-    check(any("do not repeat" in x for x in n),
-          "an fl 8 row whose packet, moves or buttons differ from the row before is noted")
+    check(not any("not a split's later part" in x for x in n), "...and draws no note")
+    for what, kw in (("whose angles differ from the row before", dict(repeat=False)),
+                     ("two ticks after the row before", dict(step=2)),
+                     ("in a file without `tickparts 1`", dict(header=False))):
+        f, n = run(split(8, **kw), view=view)
+        check(joined(f) and any("not a split's later part" in x for x in n),
+              "an fl 8 row %s is joined (and faults) and is noted" % what)
     f, _ = run(split(0), view=view)
-    check(any("not this recording" in x or "does not describe" in x for x in f),
-          "...and the same rows without fl 8 are a fault (the control)")
+    check(joined(f), "...and the same rows without fl 8 are a fault (the control)")
     f, _ = run(insert_before(build(), "inend", "in 0 0 0 0 0 0 0 0 0 0 16"))
     check(any("fl 16 is outside 0..15" in x for x in f), "fl 16 is still outside the grammar")
 
