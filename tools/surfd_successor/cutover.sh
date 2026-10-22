@@ -48,15 +48,8 @@ $GUARD_OLD --timeout 1 close || true
 grep -q '"admission": "CLOSED"' $OLD/state/state.json || { say "FAIL: old guard not CLOSED"; exit 5; }
 
 say "2. stop the old master $MASTER"
-kill -TERM "$MASTER"
-i=0
-while [ -d /proc/$MASTER ] && [ $i -lt 45 ]; do sleep 1; i=$((i+1)); done
-if [ -d /proc/$MASTER ]; then
-  say "   master survived 45 s: SIGKILL to the old generation's gunicorn processes"
-  for p in $(pgrep -f "$OLD/control witness_wsgi:app" || true); do kill -KILL "$p" 2>/dev/null || true; done
-  sleep 2
-fi
-[ ! -d /proc/$MASTER ] || { say "FAIL: master $MASTER still alive; run rollback.sh"; exit 6; }
+# Bind the inspected master by pidfd; never rediscover/force-kill a process set.
+$PY "$(dirname "$0")/stop_master.py" "$MASTER" "$OLD"
 i=0
 while ss -ltnH | grep -q ':8084 ' && [ $i -lt 20 ]; do sleep 1; i=$((i+1)); done
 ss -ltnH | grep -q ':8084 ' && { say "FAIL: 8084 still bound"; exit 6; }

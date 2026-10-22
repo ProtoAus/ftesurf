@@ -1001,6 +1001,15 @@ renderer; source and build in `src/viewer/` (its README). The bundle
   the guard, THEN require health12 and ordinary reads. Requiring health12 before
   reopen is circular. A board smoke needs a valid map/track/leg; empty HID body
   is the declared length413 arm, not the later header-parser400 arm.
+- P933 delivery preparation (2026-10-22): the stock successor cutover/rollback
+  helpers still had the old grep-discovered SIGKILL fallback. Both now share
+  stop_master.py: pin the inspected pidfile master by pidfd, check start/PPID1,
+  exact generation chdir/WSGI role and cwd, send only graceful TERM, and fail
+  without rediscovering/forcing a process set. Rollback skips a current master
+  belonging to another generation. Linux acted synthetic daemon control proves
+  wrong-root strict refusal and optional skip both leave it alive; exact role
+  stops it. No real service/gate was touched by that test. Copy the helper beside
+  both shell entrypoints; a timeout is a recovery blocker, not permission to kill.
 - P804 used the documented guard steps with an identity-bound PIDFD graceful stop,
   not the old helper's forced discovered-process fallback. No SIGKILL or database
   restore. Canonical stubs/cron were exact CAS; the new momrequests process held

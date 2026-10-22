@@ -10,11 +10,10 @@ GUARD_OLD="$PY -I $OLD/control/surfd_transition_guard.py --state-dir $OLD/state"
 GUARD_NEW="$PY -I $ROOT/control/surfd_transition_guard.py --state-dir $ROOT/state"
 say() { echo "$(date -u +%H:%M:%S.%N | cut -c1-12)Z $*"; }
 umask 077
-stop() {    # TERM, then KILL after 45 s, every gunicorn process of one generation
-  for p in $(pgrep -f "$1/control witness_wsgi:app" || true); do kill -TERM "$p" 2>/dev/null || true; done
-  i=0; while pgrep -f "$1/control witness_wsgi:app" > /dev/null && [ $i -lt 45 ]; do sleep 1; i=$((i+1)); done
-  for p in $(pgrep -f "$1/control witness_wsgi:app" || true); do kill -KILL "$p" 2>/dev/null || true; done
-  sleep 1
+stop() {    # Only the current pidfile master, if it belongs to this generation.
+  [ -r /srv/nvme/surfd/surfd.pid ] || return 0
+  STOPPID=$(cat /srv/nvme/surfd/surfd.pid)
+  $PY "$(dirname "$0")/stop_master.py" "$STOPPID" "$1" --if-matches
 }
 
 $GUARD_OLD status | grep -q '"admission": "CLOSED"' || { say "REFUSED: $OLDGEN is OPEN; nothing to roll back"; exit 3; }
