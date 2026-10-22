@@ -94,6 +94,26 @@ Additional runtime results:
   default sweep hit a deliberately access-denied kept save fixture; no
   permission was changed and that failed invocation is not called a pass.
 
+Independent review findings and focused corrections:
+- P1: the actual shipped walk is260*.52=135.2, not135. The old control ACTED
+  at135.2 with2unwanted steps/gain.200696. A135.25 cosmetic deadband covers
+  the cap without changing movement. A boundary-only attempt still emitted a
+  step while steering into a wall/step; this is retained as a failed arm.
+  Foley now also reads the existing walk bit before input mutators, caching
+  only a local boolean and never modifying/sending/recording input. This keeps
+  steering residual speed from making walk-key movement audible.
+  Final acted flat-ground samples: real Shift-forward135.2,0calls/0steps;
+  Shift-diagonal135.2003 with two velocity components, still0calls/0steps;
+  release Shift260.022 ->2steps at.6; settled180 ->4total steps/gain.355991.
+  A zone-goto/drop diagnostic with a blocked straight arm was NOT a walk pass;
+  the final arm walked to flat ground first, with sound off, then settled.
+- P2: an unreadable optional private-record test printed its pathname via a
+  command-bearing exception. A nonsensitive missing-name control proves the
+  leak. The corrected failure stays nonzero/native status3 but prints neither
+  the sentinel name nor a traceback; stderr/exception text are not exposed.
+- Both fixes compile0/0/0 warnings. Initial native review found no native-source
+  blocker; focused finding closure is pending. No player data was changed.
+
 Status: implemented/isolated-verified, not yet delivered. Independent frozen
 review, final clean-commit build, guarded dual Windows and compatible fleet
 progs remain in scope. Human visual/aural feel remains in lextest.md. No full

@@ -79,6 +79,7 @@
 #define BTN_ATTACK  1
 #define BTN_JUMP    2
 #define BTN_DUCK    8
+#define BTN_SPEED   128                       // pmove.h; +speed with in_speedbutton
 
 // Standard .weapon / STAT_ACTIVEWEAPON bit values; no new stat channel.
 #define FS_WEAPON_KNIFE 1

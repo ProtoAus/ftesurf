@@ -153,7 +153,13 @@ def main():
             cases += 1
     print(f'PASS {cases} native control/candidate edge and short-read cases')
     if a.recording:
-        result = subprocess.check_output([str(exe), str(a.recording), '0'], text=True).strip()
+        try:
+            result = subprocess.check_output([str(exe), str(a.recording), '0'],
+                                             text=True, stderr=subprocess.PIPE).strip()
+        except subprocess.CalledProcessError as exc:
+            raise SystemExit(f'FAIL private recording comparison (native status {exc.returncode})') from None
+        except OSError:
+            raise SystemExit('FAIL private recording comparison (native invocation unavailable)') from None
         print('PASS intact private recording:', result)
 
 

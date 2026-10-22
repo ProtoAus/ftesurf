@@ -1,7 +1,7 @@
 /* Opt-in local CSS movement Foley. No movement or recording writes. */
 float ga_valid, ga_next, ga_ground, ga_water, ga_stride, ga_stepat, ga_variant;
 float ga_steps, ga_lands, ga_splashes, ga_swims, ga_calls, ga_jumps;
-float ga_css, ga_fall, ga_jumpseq, ga_volume, ga_speed;
+float ga_css, ga_fall, ga_jumpseq, ga_volume, ga_speed, ga_walking;
 vector ga_pos, ga_vel;
 string ga_last;
 
@@ -49,8 +49,9 @@ float(string path, float volume) GA_Play =
 
 float(float speed) GA_StepVolume =
 {
-	if (speed <= 135) return 0;
-	return 0.2 + 0.4 * bound(0, (speed - 135) / 115, 1);
+	// Shipped walk cap is 260 * 0.52 = 135.2; allow 0.05 for float noise.
+	if (speed <= 135.25) return 0;
+	return 0.2 + 0.4 * bound(0, (speed - 135.25) / 114.75, 1);
 };
 
 float(vector feet) GA_Water =
@@ -96,6 +97,12 @@ float(vector feet, float water, float volume) GA_Foot =
 	return GA_Play(sprintf("player/footsteps/%s%g.wav", material, ga_variant), volume);
 };
 
+void() GA_InputFrame =
+{
+	// Read only: walk intent also stays quiet during steering velocity overshoot.
+	ga_walking = ((input_buttons & BTN_SPEED) != 0);
+};
+
 void() GA_Frame =
 {
 	local vector feet, vel, delta;
@@ -135,7 +142,7 @@ void() GA_Frame =
 	vel_z = 0;
 	speed = vlen(vel);
 	ga_speed = speed;
-	volume = ducked ? 0 : GA_StepVolume(speed);
+	volume = (ducked || ga_walking) ? 0 : GA_StepVolume(speed);
 	if ((water > 0) != (ga_water > 0))
 	{
 		if (GA_Play(sprintf("player/footsteps/wade%g.wav", ga_variant), 0.65))
