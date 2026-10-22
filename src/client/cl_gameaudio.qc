@@ -1,7 +1,7 @@
-/* Local body Foley from the player's mounted CS:S content. No movement writes. */
+/* Opt-in local CSS movement Foley. No movement or recording writes. */
 float ga_valid, ga_next, ga_ground, ga_water, ga_stride, ga_stepat, ga_variant;
-float ga_steps, ga_lands, ga_splashes, ga_swims, ga_calls;
-float ga_css, ga_fall;
+float ga_steps, ga_lands, ga_splashes, ga_swims, ga_calls, ga_jumps;
+float ga_css, ga_fall, ga_jumpseq, ga_volume, ga_speed, ga_walking;
 vector ga_pos, ga_vel;
 string ga_last;
 
@@ -23,20 +23,35 @@ void() GA_Assets =
 
 void() GA_Register =
 {
-	registercvar("cl_game_sfx", "1", CVAR_ARCHIVE);
+	registercvar("cl_game_sfx", "0", CVAR_ARCHIVE);
 	registercommand("gameaudio_info");
 	GA_Assets();
 };
 
-void(string path, float volume) GA_Play =
+// Shared safe emitter; weapons have their OWN opt-in/volume, not the feet gate.
+float(string path, float volume) GA_Emit =
 {
-	if (!ga_css || cvar("cl_game_sfx") <= 0) return;
-	// A partly mounted pack must not produce a missing-sound storm.
-	if (!GA_Exists(path)) return;
-	localsound(path, 0, bound(0, cvar("cl_game_sfx") * volume, 1));
+	if (volume <= 0) return FALSE;
+	if (!GA_Exists(path)) return FALSE;
+	localsound(path, 0, bound(0, volume, 1));
 	if (strcmp(ga_last, "")) strunzone(ga_last);
 	ga_last = strzone(path);
+	ga_volume = bound(0, volume, 1);
 	ga_calls = ga_calls + 1;
+	return TRUE;
+};
+
+float(string path, float volume) GA_Play =
+{
+	if (!ga_css || cvar("cl_game_sfx") <= 0) return FALSE;
+	return GA_Emit(path, cvar("cl_game_sfx") * volume);
+};
+
+float(float speed) GA_StepVolume =
+{
+	// Shipped walk cap is 260 * 0.52 = 135.2; allow 0.05 for float noise.
+	if (speed <= 135.25) return 0;
+	return 0.2 + 0.4 * bound(0, (speed - 135.25) / 114.75, 1);
 };
 
 float(vector feet) GA_Water =
@@ -58,7 +73,6 @@ string(vector feet) GA_Surface =
 {
 	local string s;
 
-	// Texture families are a conservative fallback, not Source surfaceprops.
 	s = "";
 	traceline(feet + '0 0 4', feet - '0 0 12', TRUE, world);
 	if (trace_surface_id > 0)
@@ -75,11 +89,24 @@ string(vector feet) GA_Surface =
 	return "concrete";
 };
 
+float(vector feet, float water, float volume) GA_Foot =
+{
+	local string material;
+
+	material = water ? "slosh" : GA_Surface(feet);
+	return GA_Play(sprintf("player/footsteps/%s%g.wav", material, ga_variant), volume);
+};
+
+void() GA_InputFrame =
+{
+	// Read only: walk intent also stays quiet during steering velocity overshoot.
+	ga_walking = ((input_buttons & BTN_SPEED) != 0);
+};
+
 void() GA_Frame =
 {
 	local vector feet, vel, delta;
-	local float grounded, water, speed, swimspeed;
-	local string material;
+	local float grounded, water, speed, swimspeed, jumpseq, jumped, volume, ducked;
 
 	if (cvar("cl_game_sfx") <= 0 || !LT_StatsAreMine() || rec_gh_on || rec_wt_on ||
 	    getstatf(STAT_FS_SPEC) || rw_on || getstatf(STAT_FS_MOVETYPE) != MOVETYPE_WALK)
@@ -90,10 +117,11 @@ void() GA_Frame =
 	}
 	if (time < ga_next) return;
 	ga_next = time + 0.03;
-	// Native simorg, not the camera: visual head duck must not lower the feet.
 	feet = pmove_org;
 	vel = [getstatf(STAT_FS_VELOCITY), getstatf(STAT_FS_VELOCITY + 1), getstatf(STAT_FS_VELOCITY + 2)];
 	grounded = ((getstatf(STAT_FS_FLAGS) & FL_ONGROUND) != 0);
+	ducked = ((getstatf(STAT_FS_PMFLAGS) & PMF_DUCKED) != 0);
+	jumpseq = getstatf(STAT_FS_FOLEYJUMP);
 	water = GA_Water(feet);
 	delta = feet - ga_pos;
 	if (!ga_valid || vlen(delta) > 256)
@@ -105,41 +133,51 @@ void() GA_Frame =
 		ga_water = water;
 		ga_pos = feet;
 		ga_vel = vel;
+		ga_jumpseq = jumpseq;
 		return;
 	}
 	ga_variant = (ga_variant % 4) + 1;
-	if ((water > 0) != (ga_water > 0))
-	{
-		GA_Play(sprintf("player/footsteps/wade%g.wav", ga_variant), 0.65);
-		ga_splashes = ga_splashes + 1;
-	}
-	if (grounded && !ga_ground && ga_vel_z < -160 && !water)
-	{
-		if (ga_vel_z < -580 && ga_fall)
-			GA_Play("player/pl_fallpain1.wav", 0.7);
-		else
-			GA_Play(sprintf("player/footsteps/%s%g.wav", GA_Surface(feet), ga_variant), 0.75);
-		ga_lands = ga_lands + 1;
-		ga_stepat = time + 0.15;
-	}
-	delta_z = 0;
+	jumped = (jumpseq != ga_jumpseq);
 	swimspeed = vlen(vel);
 	vel_z = 0;
 	speed = vlen(vel);
+	ga_speed = speed;
+	volume = (ducked || ga_walking) ? 0 : GA_StepVolume(speed);
+	if ((water > 0) != (ga_water > 0))
+	{
+		if (GA_Play(sprintf("player/footsteps/wade%g.wav", ga_variant), 0.65))
+			ga_splashes = ga_splashes + 1;
+	}
+	// Jump contact is not walking: even a standing/crouch jump has a cue.
+	// The authoritative edge survives a land+jump between render samples.
+	if (jumped && water < 2)
+	{
+		if (GA_Foot(feet, water, 0.35 + 0.25 * bound(0, speed / 250, 1))) ga_jumps = ga_jumps + 1;
+		ga_stride = 0;
+		ga_stepat = time + 0.18;
+	}
+	else if (grounded && !ga_ground && ga_vel_z < -160 && !water)
+	{
+		if (ga_vel_z < -580 && ga_fall)
+		{
+			if (GA_Play("player/pl_fallpain1.wav", 0.7)) ga_lands = ga_lands + 1;
+		}
+		else if (GA_Foot(feet, water, volume)) ga_lands = ga_lands + 1;
+		ga_stepat = time + 0.15;
+	}
+	delta_z = 0;
 	if (water >= 2 && swimspeed > 30 && time >= ga_stepat)
 	{
-		GA_Play(sprintf("player/footsteps/wade%g.wav", ga_variant), 0.55);
-		ga_swims = ga_swims + 1;
+		if (GA_Play(sprintf("player/footsteps/wade%g.wav", ga_variant), 0.55))
+			ga_swims = ga_swims + 1;
 		ga_stepat = time + 0.65;
 	}
-	else if (grounded && speed > 30)
+	else if (grounded && volume > 0)
 	{
 		ga_stride = ga_stride + vlen(delta);
 		if (ga_stride >= 86 && time >= ga_stepat)
 		{
-			material = water ? "slosh" : GA_Surface(feet);
-			GA_Play(sprintf("player/footsteps/%s%g.wav", material, ga_variant), 0.6);
-			ga_steps = ga_steps + 1;
+			if (GA_Foot(feet, water, volume)) ga_steps = ga_steps + 1;
 			ga_stride = 0;
 			ga_stepat = time + 0.18;
 		}
@@ -149,6 +187,7 @@ void() GA_Frame =
 	ga_water = water;
 	ga_pos = feet;
 	ga_vel = [getstatf(STAT_FS_VELOCITY), getstatf(STAT_FS_VELOCITY + 1), getstatf(STAT_FS_VELOCITY + 2)];
+	ga_jumpseq = jumpseq;
 };
 
 float() GA_Command =
@@ -158,5 +197,6 @@ float() GA_Command =
 	print(sprintf("gameaudio: css %g shared-fall %g calls %g steps %g land %g water %g swim %g\n",
 		ga_css, ga_fall, ga_calls, ga_steps, ga_lands, ga_splashes, ga_swims));
 	print(sprintf("gameaudio: last '%s' active %g ground %g depth %g\n", ga_last, ga_valid, ga_ground, ga_water));
+	print(sprintf("gameaudio: speed %g volume %g hop-cues %g contact-seq %g\n", ga_speed, ga_volume, ga_jumps, ga_jumpseq));
 	return TRUE;
 };

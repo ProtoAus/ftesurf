@@ -75,6 +75,7 @@
 #define BTN_ATTACK  1
 #define BTN_JUMP    2
 #define BTN_DUCK    8
+#define BTN_SPEED   128                       // pmove.h; +speed with in_speedbutton
 
 // Standard .weapon / STAT_ACTIVEWEAPON bit values; no new stat channel.
 #define FS_WEAPON_KNIFE 1
@@ -123,6 +124,7 @@
 // (sv_user.c) -- and the strafe ideal needs it, because crouching crops the
 // wishspeed and the ideal turn rate follows it down.
 #define STAT_FS_PMFLAGS    48
+#define STAT_FS_FOLEYJUMP 180  // cosmetic contact edge; no body/recorder state
 
 /*
   The plane the CURRENT tick clipped against (engine Patch 137).

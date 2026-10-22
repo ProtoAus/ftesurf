@@ -973,6 +973,7 @@ void() PreStrafe_InputFrame =
 
 void() CSQC_Input_Frame =
 {
+	GA_InputFrame();                // read-only walk intent for local Foley
 	// Patch 385: the spectate window, countdown included, ahead of the replay so
 	// its time is zeroed whatever else is open.  The stat, not spc_stat: this can
 	// run before the frame that latches it.

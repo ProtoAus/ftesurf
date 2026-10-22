@@ -1107,7 +1107,7 @@ void() SV_SpawnGoto =
 
 void(string cmd) SV_ParseClientCommand =
 {
-	local string c;
+	local string c, weaponarg;
 	local float  cmdargc, go, won, wvoid, wrw, wser, wst0, wtk, wsq;
 	local vector was;
 
@@ -1122,30 +1122,39 @@ void(string cmd) SV_ParseClientCommand =
 	}
 	cmdargc = tokenize(cmd);
 	c = argv(0);
-	if (!strcmp(c, "weapon"))
+	if (!strcmp(c, "weapon") || !strcmp(c, "give"))
 	{
-		if (strcmp(self.classname, "player") || !self.run_inserver ||
-		    self.run_pmhold || self.movetype != MOVETYPE_WALK) return;
-		go = stof(argv(1));
-		if (!strcmp(argv(1), "knife")) go = FS_WEAPON_KNIFE;
-		if (!strcmp(argv(1), "usp")) go = FS_WEAPON_USP;
-		if (!strcmp(argv(1), "scout")) go = FS_WEAPON_SCOUT;
-		if (!strcmp(argv(1), "glock")) go = FS_WEAPON_GLOCK;
-		if (go != FS_WEAPON_KNIFE && go != FS_WEAPON_USP &&
-		    go != FS_WEAPON_SCOUT && go != FS_WEAPON_GLOCK)
+		weaponarg = strtolower(argv(1));
+		if (!strcmp(substring(weaponarg, 0, 7), "weapon_")) weaponarg = substring(weaponarg, 7, -1);
+		go = 0;
+		if (!strcmp(c, "weapon")) go = stof(weaponarg);
+		if (!strcmp(weaponarg, "knife")) go = FS_WEAPON_KNIFE;
+		if (!strcmp(weaponarg, "usp")) go = FS_WEAPON_USP;
+		if (!strcmp(weaponarg, "scout")) go = FS_WEAPON_SCOUT;
+		if (!strcmp(weaponarg, "glock")) go = FS_WEAPON_GLOCK;
+		if (cmdargc == 2 && (go == FS_WEAPON_KNIFE || go == FS_WEAPON_USP ||
+		    go == FS_WEAPON_SCOUT || go == FS_WEAPON_GLOCK))
+		{
+			if (strcmp(self.classname, "player") || !self.run_inserver ||
+			    self.run_pmhold || self.movetype != MOVETYPE_WALK) return;
+			if (self.weapon != go)
+			{
+				self.weapon = go;
+				self.weaponframe = 0;
+				self.vbsp_lastshot = self.button0;
+				self.vbsp_nextshot = time + 0.15;
+			}
+			// ONLY the player's explicit give command opts into presentation.
+			if (!strcmp(c, "give")) stuffcmd(self, "cl_viewweapon 1\n");
+			sprint(self, PRINT_HIGH, sprintf("weapon: selected %g (map targets only; existing damage policy)\n", go));
+			return;
+		}
+		if (!strcmp(c, "weapon"))
 		{
 			sprint(self, PRINT_HIGH, "weapon: knife | usp | scout | glock\n");
 			return;
 		}
-		if (self.weapon != go)
-		{
-			self.weapon = go;
-			self.weaponframe = 0;
-			self.vbsp_lastshot = self.button0;
-			self.vbsp_nextshot = time + 0.15;
-		}
-		sprint(self, PRINT_HIGH, sprintf("weapon: selected %g (map damage retains run_shoot/lobby_shoot gates)\n", go));
-		return;
+		// Unknown give syntax follows the pre-existing command path unchanged.
 	}
 	if (!strcmp(c, "archive"))
 	{

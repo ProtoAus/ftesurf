@@ -1087,6 +1087,7 @@ float vbsp_conveyor_any, vbsp_conv_dist, vbsp_conv_stand, vbsp_conv_quads;
   with a mechanism, which is not the same as a measurement.
 */
 .float  run_jumpcmd;
+.float  run_foleyjump;             // P935: latched local-audio cue, not movement
 
 /*
   PATCH 411: the pad took the ground flag before PreThink could read it.
@@ -4726,6 +4727,7 @@ void(entity p) SV_TriggerJumpEdge =
 	local entity t;
 	local int    bit;
 
+	p.run_foleyjump = (p.run_foleyjump + 1) % 65536;
 	if (!vbsp_io_on)
 		return;
 
