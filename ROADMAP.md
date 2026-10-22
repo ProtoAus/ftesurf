@@ -5,10 +5,14 @@
 Delivered: P929 stable Open Lobby #1..#12 names (live, no restarts); P930 updated
 100-slot Story/Event lists (live rev 3283c5845c06). Momentum-first canonical
 roster names use available-build fallback; no demo/BSP identities were falsified.
-P933 implements fresh, auto-revealed compact Friends, live stage/bonus activity,
-profile/name versus location/join targets, public in-menu profile preview and
-shared textbox double-click select-all. Its tests and delivery states are in
-tools/p933-friends-ui.md; real-account visual/join acceptance remains in lextest.md.
+P933 Friends/profile/selection is now delivered on both Windows installs and,
+without a producer/native upgrade, on the compatible fleet/backend. Combined
+QC49a1078a and backendcc0b7ffa preserve P932's concurrent demo update. Exact
+source/hash/guard/schema20/12-lobby/cold-client proof is in tools/p933-delivery.md;
+UI/SQL controls are in tools/p933-friends-ui.md. Real-account Stage/Bonus,
+visual/profile/join and selection feel are still owner-pending in lextest.md.
+P934 native bindlist is installed in both Windows client images and requires
+the owner's next launch; the running game was not closed.
 
 Remaining requested work (not silently folded into the completed items):
 - Higher-resolution Steam portraits, including both the fetch/encoding pipeline

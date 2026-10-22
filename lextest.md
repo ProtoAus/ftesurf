@@ -5,8 +5,15 @@ installs and compatible progs on all12lobbies (22October2026 UTC). This is
 availability, NOT human acceptance. Native client fixes require the updated
 Windows engine. Exact sources/readbacks/live proof: tools/p931-delivery.md.
 
+## P934 — bound keys (22 Oct 2026)
+PENDING owner: after the next game launch, type `bindlist` and confirm the local
+console list is readable. Synthetic old/new/clean-native controls pass; the
+owner's actual bindings were never read or altered. Both Windows images installed.
+
 ## P933 — browser Friends cards and profile preview (22 Oct 2026)
-PENDING after matching delivery: open the map browser and confirm Friends appears;
+Matching Windows/fleet/backend delivery is verified in tools/p933-delivery.md;
+this is availability, NOT owner acceptance.
+PENDING human: open the map browser and confirm Friends appears;
 with one mutual friend online and one offline, check two centered text lines,
 faded offline card, green map + Stage/Bonus for the online card. Click the name
 for its public profile preview, Back, then the green location to request a join.
@@ -19,7 +26,8 @@ acted native control/subject check; a quick map-search double click is welcome.
 
 PENDING owner acceptance: matching Windows/Pi/backend delivery and a fresh
 real-lobby CSQC download have been exercised (including integrated P933 Friends).
-Reconnect to avoid an old client program, then on surf_chateau open Online,
+Exact combined provenance: tools/p933-delivery.md. Reconnect to avoid an old
+client program, then on surf_chateau open Online,
 choose KSF and Watch Leacon's 0:46.470 recording. Confirm the camera keeps moving,
 pause/seek work and closing returns control. The info card must retain
 surf_chateau_fix as a linked build and say imported/not verified; the loaded

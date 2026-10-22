@@ -42,18 +42,23 @@ A broad stamp regex initially captured an adjacent sentence's period; a bounded
 source-stamp regex verified the existing valid artifact without another rebuild.
 The clean-stamped client then passed the seven-entry/sort/immutability/empty
 runtime suite. Final LSP diagnostics are only two untouched warnings (lines22
-and1872), no errors or diagnostics in the new code. Windows dual-install
-promotion is recorded separately; this report alone is not deployment evidence.
+and1872), no errors or diagnostics in the new code. Both Windows client images
+matched that SHA256 at2026-10-22T18:39:58Z, with predecessors preserved. Owner's
+running game was left alone; next launch loads the command. No server/plugin
+binary was replaced. Full combined delivery provenance: tools/p933-delivery.md.
 No Pi server/native or unrelated producer promotion is part of bindlist. A
 running owner's client is never killed or restarted by the agent; new native
 code takes effect on their next launch.
 
 ## P933 and download observations
 
-P933 backend code/fleet progs are NOT promoted: the independent NanoPi
-producer/native qualification gate remains. An older fleet still supplies its
-normal five-second map presence, not the new stage/bonus field. Windows UI
-remains backward-compatible; publication is not claimed as fleet delivery.
+At the initial P934 install, P933 backend/fleet promotion was still pending.
+That is now superseded by the combined compatible delivery in
+tools/p933-delivery.md: QC49a1078a and backendcc0b7ffa preserve P932 and add
+P933 without changing the independent held producer/native cohort. Full staged
+suite, guarded OPEN/schema20/fresh worker, all12lobbies and an exact cold-client
+CSQC download/acted command are verified. Real-account Stage/Bonus/join/profile
+appearance remains owner-only pending, not inferred from deployment.
 
 P933 QC f58269636a521cdcd4c26fe87495790fd6241951 and engine-log
 15c32d096ff5adc38ff7f8dcbaeb3b325619a200 are pushed. At
