@@ -1011,6 +1011,8 @@ float(entity p) SV_TrigPending =
 */
 .vector run_basevel;
 .float  run_basevel_armed;
+.vector vbsp_conveyorvel;       // P924: static Source ground carrier, not brush motion
+float vbsp_conveyor_any, vbsp_conv_dist, vbsp_conv_stand, vbsp_conv_quads;
 
 /*
   PATCH 409: a mover acted on this player this packet.  Read ONLY by the
@@ -1151,6 +1153,47 @@ void(entity e) SV_ClearCarrier =
 {
 	e.run_basevel = '0 0 0';
 	e.run_basevel_armed = FALSE;
+};
+
+// P924: CheckMovingGround's missing conveyor arm. Only an already-armed
+// push is summed; last command's unarmed belt is replaced, never compounded.
+void(entity pl) SV_ConveyorArm =
+{
+	local entity ground;
+	local vector carrier, end, mn, mx;
+	local float q, ok;
+	if (!vbsp_conveyor_any) return;
+	if (pl.movetype != MOVETYPE_WALK) return;
+	if (!(pl.flags & FL_ONGROUND)) return;
+	ground = pl.groundentity;
+	// A placement can retain ONGROUND but not its native ground edict until the
+	// next move. Reacquire actual contact; never infer carry from a nearby bbox.
+	if (ground == world)
+	{
+		end = pl.origin - [0, 0, vbsp_conv_dist];
+		tracebox(pl.origin, pl.mins, pl.maxs, end, MOVE_NORMAL, pl);
+		ok = (trace_fraction < 1 && trace_plane_normal_z >= vbsp_conv_stand && !trace_startsolid && !trace_allsolid);
+		if (!ok)
+		if (vbsp_conv_quads)
+			for (q = 0; q < 4 && !ok; q = q + 1)
+			{
+				mn = pl.mins;
+				mx = pl.maxs;
+				if (q & 1) mn_x = (pl.mins_x + pl.maxs_x) * 0.5;
+				else mx_x = (pl.mins_x + pl.maxs_x) * 0.5;
+				if (q & 2) mn_y = (pl.mins_y + pl.maxs_y) * 0.5;
+				else mx_y = (pl.mins_y + pl.maxs_y) * 0.5;
+				tracebox(pl.origin, mn, mx, end, MOVE_NORMAL, pl);
+				ok = (trace_fraction < 1 && trace_plane_normal_z >= vbsp_conv_stand && !trace_startsolid && !trace_allsolid);
+			}
+		if (!ok) return;
+		ground = trace_ent;
+	}
+	carrier = ground.vbsp_conveyorvel;
+	if (carrier == '0 0 0') return;
+	if (pl.run_basevel_armed) carrier = carrier + pl.run_basevel;
+	pl.run_basevel = carrier;
+	pl.run_basevel_armed = TRUE;
 };
 
 void(entity pl) SV_BaseVelocityFrame =
@@ -8816,15 +8859,13 @@ void() func_monitor           = { func_brush(); };
   so solid by default, non-solid only under SF_CONVEYOR_NOTSOLID
   (bmodels.cpp:188, tested at :251).  355 instances / 89 maps.
 
-  The SOLIDITY is all this does.  Source also sets FL_CONVEYOR (bmodels.cpp:248)
-  and gives the player the belt's ground velocity, which is a MOVEMENT feature
-  and not a spawn one -- it belongs with the pmove work, not here.  Naming it
-  rather than leaving it in the catch-all is the point: the "unknown and owns
-  brushes" warning is only useful while it means "nobody has looked at this",
-  and a class we have looked at and deliberately half-implemented should not be
-  in it.
+  P924 adds static ground carry: movedir is authored angles, speed defaults to
+  100, and VISUAL has no carrier. SV_ConveyorArm feeds CheckMovingGround before
+  the existing basevelocity/ride handoff. The brush itself never translates.
+  Source speed/direction inputs and material conveyor animation remain separate.
 */
-#define SF_CONVEYOR_NOTSOLID 2          // bmodels.cpp:188
+#define SF_CONVEYOR_VISUAL   1
+#define SF_CONVEYOR_NOTSOLID 2          // Source bmodels.cpp
 
 void() func_conveyor =
 {
@@ -8837,6 +8878,13 @@ void() func_conveyor =
 	self.movetype = MOVETYPE_PUSH;
 	self.solid = (self.spawnflags & SF_CONVEYOR_NOTSOLID) ? SOLID_NOT : SOLID_BSP;
 	self.vbsp_io_solid = self.solid;
+	if (!(self.spawnflags & (SF_CONVEYOR_VISUAL | SF_CONVEYOR_NOTSOLID)))
+	{
+		if (!self.speed) self.speed = 100;
+		makevectors(self.movedir);
+		self.vbsp_conveyorvel = v_forward * self.speed;
+		vbsp_conveyor_any = 1;
+	}
 };
 
 /*
@@ -10304,19 +10352,24 @@ void(entity t, entity att, float dmg) SV_EntityDamage =
 };
 
 /*
-  Patch 865: a silent test shot.  +attack fires once per press along the view;
+  Patch 865's map-target shot, now with basic CSS weapon presentation/cadence.
+  +attack fires once per press along the view;
   `run_shoot_damage` per hit.  Gated by run_shoot, and by lobby_shoot on a lobby,
   where a break is everyone's.  A break changes the physents mid-run,
   so a verifier that does not run the map's I/O HOLDs on it (BACKLOG).
 */
 .float vbsp_lastshot;
+.float vbsp_nextshot;
 float  vbsp_shoot_ok;           // latched in StartFrame: run_shoot, and lobby_shoot on a lobby
 
 void(entity pl) SV_ShootFrame =
 {
 	local vector src;
 	local int mask;
+	local float reach, damage, delay;
 
+	// No weapon/sequence mutation on a held, watched or detached body.
+	if (pl.movetype != MOVETYPE_WALK) return;
 	if (!pl.button0)
 	{
 		pl.vbsp_lastshot = FALSE;
@@ -10325,6 +10378,20 @@ void(entity pl) SV_ShootFrame =
 	if (pl.vbsp_lastshot)
 		return;
 	pl.vbsp_lastshot = TRUE;
+	if (time < pl.vbsp_nextshot) return;
+	delay = 0.15;
+	reach = 8192;
+	damage = cvar("run_shoot_damage");
+	if (pl.weapon == FS_WEAPON_KNIFE)
+	{
+		delay = 0.45;
+		reach = 80;
+		damage = min(damage, 25);
+	}
+	if (pl.weapon == FS_WEAPON_SCOUT) delay = 1.25;
+	pl.vbsp_nextshot = time + delay;
+	pl.weaponframe = (pl.weaponframe + 1) % 256;
+	// Cosmetic firing is available without permitting shared map destruction.
 	if (!vbsp_shoot_ok || !vbsp_io_on)
 		return;
 
@@ -10336,13 +10403,13 @@ void(entity pl) SV_ShootFrame =
 	// stays transparent to the shot, as it is to bullets.
 	mask = pl.hitcontentsmaski;
 	pl.hitcontentsmaski = CONTENTBITS_POINTSOLID | CONTENTBIT_MONSTERCLIP;
-	traceline(src, src + v_forward * 8192, FALSE, pl);
+	traceline(src, src + v_forward * reach, FALSE, pl);
 	pl.hitcontentsmaski = mask;
 	if (SV_DevOn())
 		dprint(sprintf("shot: %s %s at %v\n", trace_ent.classname, trace_ent.model, trace_endpos));
 	if (!trace_ent || trace_ent == world)
 		return;
-	SV_EntityDamage(trace_ent, pl, cvar("run_shoot_damage"));
+	SV_EntityDamage(trace_ent, pl, damage);
 };
 
 /*

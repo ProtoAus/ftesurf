@@ -76,6 +76,12 @@
 #define BTN_JUMP    2
 #define BTN_DUCK    8
 
+// Standard .weapon / STAT_ACTIVEWEAPON bit values; no new stat channel.
+#define FS_WEAPON_KNIFE 1
+#define FS_WEAPON_USP   2
+#define FS_WEAPON_SCOUT 4
+#define FS_WEAPON_GLOCK 8
+
 // pmove_flags, set by the engine when pm_physicsmode is 1 (pmove.h).
 #define PMF_JUMP_HELD 1
 #define PMF_LADDER    2
@@ -501,6 +507,7 @@
 #define WOPLEG_CHUNKS          6
 #define STAT_FS_WOPACK         177  // the last op's command, sent with what it moved
 #define STAT_FS_SAVEROOT       178  // Patch 811: the player's save root, a string (SV_SaveRootFor)
+#define STAT_FS_SOURCEPHASE    179  // P924: atomic owner:seqlo:seqhi:native sub-tick remainder
 #define SL_TOKRATE             20   // sl_ commands a second, burst and sustained (SV_SaveLocRate)
 #define WOPD_NONE  0                // no prediction: the server would refuse or cannot say
 #define WOPD_KEEP  1                // destination, angles kept

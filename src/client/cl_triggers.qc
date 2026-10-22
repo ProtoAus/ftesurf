@@ -156,6 +156,7 @@ float  tg_tspeed[TG_MAX];
 vector tg_pushdir[TG_MAX];
 float  tg_speed[TG_MAX];
 float  tg_onceseq[TG_MAX];      // SF_PUSH_ONCE: -1 unarmed, else the sequence it fired on
+float  tg_onceoffset[TG_MAX];   // P924: first firing part within that sequence
 
 // setspeed (dialect resolved at load)
 float  tg_sshmode[TG_MAX];
@@ -175,6 +176,7 @@ vector tt_ang[TG_TT_MAX];
 
 // chain state
 float  tg_lastseq;              // sequence of the last command hooked
+float  tg_lastoffset, predmove_offset; // P924: increasing means a split continuation
 float  tg_teleseq;              // Patch 611: ...and of the last one a teleport was predicted on (cl_trail.qc)
 float  tg_pusharmed;
 vector tg_pushvec;
@@ -499,6 +501,7 @@ float  tg_io_tbase;             // PERSISTENT: clock value at the last ack
 float  tg_iotime0;              // client time at load, for mapspawn delays
 float  tg_c_event, tg_c_iodem, tg_c_sdok, tg_c_ioown, tg_c_iogated;
 .float tg_netgate, tg_netready, tg_neton;
+.float tg_sspartoffset;          // EveryTick's last applied part within tg_ssinseq
 void() Body_TrigSeed;       // cl_body: retain snapshots across mirror reloads
 string tg_io_esc;
 
@@ -1220,15 +1223,14 @@ float(float i, float seq) TG_FirePush =
 
 	if (tg_flags[i] & TG_SF_PUSH_ONCE)
 	{
-		// Fired-once bookkeeping by SEQUENCE, not by flag: the chain replays
-		// this command on every rendered frame until it is acked, and a bare
-		// flag set by an extrapolated pass would swallow the replay's copy of
-		// the same impulse.  s == fired re-fires (the chain is rebuilt from
-		// the acked state each frame, so re-firing is idempotent); s > fired
-		// skips (the server disarmed on the first touch and never re-arms).
-		if (tg_onceseq[i] >= 0 && seq > tg_onceseq[i])
-			return 0;
+		// Reapply the first firing part on replay, never on a later split part.
+		if (tg_onceseq[i] >= 0)
+		{
+			if (seq > tg_onceseq[i]) return 0;
+			if (seq == tg_onceseq[i] && predmove_offset > tg_onceoffset[i]) return 0;
+		}
 		tg_onceseq[i] = seq;
+		tg_onceoffset[i] = predmove_offset;
 
 		if (dir_z > 0)
 			predmove_onground = 0;
@@ -1278,9 +1280,13 @@ float(float i, float seq) TG_FireSpeed =
 	TG_IOEdge(i, seq);
 
 	if (tg_ssinseq[i] == seq)
-		return 0;                            // split leaves / second pass
-	enter = (tg_ssinseq[i] != seq - 1);
+	{
+		if (!tg_ssevery[i]) return 0;         // enter-only, including later parts
+		if (predmove_offset <= tg_ent[i].tg_sspartoffset) return 0;
+	}
+	enter = (tg_ssinseq[i] != seq && tg_ssinseq[i] != seq - 1);
 	tg_ssinseq[i] = seq;
+	tg_ent[i].tg_sspartoffset = predmove_offset;
 	if (!enter && !tg_ssevery[i])
 		return 0;
 
@@ -1408,13 +1414,14 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 	local vector smin, smax, org1, b0, b1;
 
 	WarpOp_PostMove(seat, seq);
-	if (!cvar("cl_triggers") || !tg_n)
-		return;
+	if (!cvar("cl_triggers")) return;
+	if (!tg_n) return;
 	tg_cv_debug = cvar("cl_trigdebug");
 
-	if (seq <= tg_lastseq)
+	if (seq < tg_lastseq || (seq == tg_lastseq && predmove_offset <= tg_lastoffset))
 		TG_ChainStart(seq);
 	tg_lastseq = seq;
+	tg_lastoffset = predmove_offset;
 	tg_io_clock = tg_io_clock + msec;
 
 	// One-shot proof of life for the headless tests: it appears exactly once
@@ -1455,17 +1462,9 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 	  That is also what rules out Patch 403's run_startcap, which was blamed for
 	  this in commit 341341b: the server was doing 3243 u/s past a cap of 290.
 
-	  TWO MORE VICTIMS OF THE SAME REPEAT CALLS, both older than this patch and
-	  both left alone on purpose -- they need a hitch (under ~18 fps) or an
-	  extrapolated frame to fire, so neither is the reported bug, and both want
-	  their own falsifier:
-	    - TG_FirePush's once arm tests `seq > tg_onceseq[i]`, so a repeat call at
-	      the SAME seq re-adds the one-shot impulse the server fires exactly once.
-	    - `if (seq <= tg_lastseq) TG_ChainStart(seq)`, a few lines above, reads a
-	      repeat call as a new chain, so TG_IOCommit folds still-unacked IO edges
-	      into the committed state and drops the ring -- permanent, rest of map.
-	  Both want the same discriminator: a repeat call re-enters at the PREVIOUS
-	  call's end origin, a real chain restart re-enters at the acked one.
+	  P924 supplies a read-only logical-input offset: increasing offsets at the
+	  same sequence continue a split, rather than starting another replay. The
+	  once arm and IO chain-start test use that distinction above.
 	*/
 	tg_pusharmed = 0;
 	tg_pushvec   = '0 0 0';
@@ -1545,7 +1544,7 @@ void() Trig_LoadForMap =
 {
 	local string tok, key, cn, mdl;
 	local string target, landmark, filt, tname, uselm_s, snapv_s, farg;
-	local vector org, ang, pushdir, ssang, ssdir;
+	local vector org, ang, pushdir, ssang, ssdir, cvdir;
 	local float  spawnflags, disabled, vmode, tspeed, speed;
 	local float  hmode, hs, hsmode, vsmode, hsp, vsp, ssstrict;
 	local float  negu, negl, ftype, fi, r;
@@ -1557,8 +1556,9 @@ void() Trig_LoadForMap =
 	for (i = 0; i < tg_n; i = i + 1)
 		remove(tg_ent[i]);
 	tg_n = 0;
+	Conveyor_Clear();
 	tt_n = 0;
-	tg_lastseq = -1;
+	tg_lastseq = tg_lastoffset = -1;
 	tg_teleseq = 0;
 	tg_pusharmed = 0;
 	tg_hookseen = 0;
@@ -1592,7 +1592,7 @@ void() Trig_LoadForMap =
 
 		cn = mdl = "";
 		target = landmark = filt = tname = uselm_s = snapv_s = farg = "";
-		org = ang = pushdir = ssang = ssdir = '0 0 0';
+		org = ang = pushdir = ssang = ssdir = cvdir = '0 0 0';
 		spawnflags = disabled = vmode = tspeed = speed = 0;
 		hmode = hs = hsmode = vsmode = hsp = vsp = ssstrict = 0;
 		keeph = keepv = hsamount = vsamount = 0;
@@ -1661,6 +1661,7 @@ void() Trig_LoadForMap =
 			else if (key == "velocitymode")           vmode    = stof(tok);
 			else if (key == "setspeed")               tspeed   = stof(tok);
 			else if (key == "pushdir")                pushdir  = stov(tok);
+			else if (!strcmp(key, "movedir"))          cvdir    = stov(tok);
 			else if (key == "speed")                  speed    = stof(tok);
 			// setspeed, new (shipped-FGD) dialect
 			else if (key == "horizontalspeedmode")    hsmode   = stof(tok);
@@ -1680,6 +1681,9 @@ void() Trig_LoadForMap =
 			else if (key == "everytick")              everytick = stof(tok);
 			else if (key == "wait")                   waitk    = stof(tok);
 		}
+
+		if (!strcmp(cn, "func_conveyor"))
+			Conveyor_Add(mdl, org, cvdir, speed, spawnflags);
 
 		// The targetname table takes EVERY entity, point or brush: the
 		// server's find(world, targetname, ...) does not care what class the
@@ -1769,14 +1773,16 @@ void() Trig_LoadForMap =
 			setmodel(e, mdl);
 			e.solid = TG_SOLID_BSPTRIGGER;
 		}
+		// Match the server's rotated brush clip and its linked world bounds.
+		e.angles = ang;
 		setorigin(e, org);
 		e.tg_isbox = box;
 		tg_ent[i]   = e;
 		tg_kind[i]  = kind;
 		tg_flags[i] = spawnflags;
-		tg_bmin[i]  = org + e.mins;
-		tg_bmax[i]  = org + e.maxs;
-		tg_onceseq[i] = -1;
+		tg_bmin[i]  = e.absmin;
+		tg_bmax[i]  = e.absmax;
+		tg_onceseq[i] = tg_onceoffset[i] = -1;
 		tg_ssinseq[i] = -99999;
 		tg_filt[i] = filt;
 		tg_tname[i] = tname;
@@ -1899,6 +1905,7 @@ void() Trig_LoadForMap =
 	Body_TrigSeed();
 
 	tg_map = serverkey("map");
+	if (cv_n) print(sprintf("conveyor: %g static ground carriers loaded\n", cv_n));
 	print(sprintf("trig: %s -- %g teleports, %g pushes, %g setspeeds predicted (%g zone-tool boxes)\n",
 	              tg_map, tg_c_tele, tg_c_push, tg_c_speed, tg_c_box));
 	print(sprintf("trig: skipped %g filtered, %g startdisabled, %g over cap; "

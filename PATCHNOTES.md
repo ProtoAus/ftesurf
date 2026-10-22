@@ -21,6 +21,18 @@
 
 ## next
 
+### P931 Basic CS:S held weapons
+- Select a knife, USP, Scout or Glock without changing your save-key binds. Mounted models have idle/fire animations and sounds; supported map targets use the existing damage-policy gate. This is basic single-press firing, not full CS:S combat.
+
+### P927 Mounted CS:S movement sounds
+- Mounted CS:S packs provide footsteps, landing and water-movement sounds. A standing conveyor rider does not count as walking; missing sound packs stay silent.
+
+### P926 Smooth the real teleport, not a false one
+- Rotated trigger prediction now matches the server, removing surf_me's early false view reset while keeping the real map teleport and its destination angle.
+
+### P924 Source conveyor carry
+- Static Source conveyors carry you on surf_parc_colore and surf_classics stage 4, with matching client prediction and the existing step-off momentum behavior.
+
 ### P922 Local filters and a scoreboard that stays open
 - Keep the direction and Segmented controls on Local, with a Practice filter. Existing local recordings stay Normal until directional recording is available; filters do not relabel runs.
 - Right-click the scoreboard to keep it open after releasing Tab. Another right-click does not dismiss it; Esc closes it, even while searching.

@@ -73,6 +73,13 @@ void() SV_UpdateMovementServerInfo =
 		run_bv_tick = 0.015;
 
 	run_bv_debug = cvar("run_bv_debug");
+	// P924: match the native pre-move contact probe without per-player cvar reads.
+	vbsp_conv_dist = cvar("pm_groundtracedist");
+	if (!(vbsp_conv_dist > 0)) vbsp_conv_dist = 2;
+	vbsp_conv_stand = cvar("pm_standablenormal");
+	if (!(vbsp_conv_stand > 0)) vbsp_conv_stand = 0.7;
+	if (!strlen(cvar_string("pm_groundquadrants"))) vbsp_conv_quads = 1;
+	else vbsp_conv_quads = cvar("pm_groundquadrants");
 
 	/*
 	  PATCH 270, STAGE 2.  Latched here for the reason the run_bv_debug comment
@@ -442,6 +449,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_WOPLEGS + 5,    EV_STRING, wop_legs5);
 	clientstat(STAT_FS_WOPACK,         EV_FLOAT, wop_ack);
 	clientstat(STAT_FS_SAVEROOT,       EV_STRING, sl_rootstat);
+	clientstat(STAT_FS_SOURCEPHASE,    EV_STRING, svpm_phase_stat);
 	clientstat(STAT_FS_SLACK,          EV_FLOAT, rec_sl_ack);
 	clientstat(STAT_FS_SLTRAILTAG,     EV_FLOAT, rec_sl_eventtag);
 	clientstat(STAT_FS_SLSAVEACK,      EV_FLOAT, rec_sl_answer_tag);
@@ -499,6 +507,10 @@ void() SV_RegisterStats =
 
 void() worldspawn =
 {
+	// P924: this progs declares input_cmd_later; clients may mirror sv_tickparts.
+	forceinfokey(world, "fs_tickparts", "1");
+	forceinfokey(world, "fs_sourcephase", "1");
+	vbsp_conveyor_any = 0;
 	SV_MapTierInit();
 	// worldspawn is the first entity in the lump, so this zeroes the spawn
 	// tallies before anything counts into them -- and re-arms the report.

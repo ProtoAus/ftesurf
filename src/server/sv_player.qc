@@ -180,8 +180,10 @@ void() PutClientInServer =
 	self.fixangle    = TRUE;
 	self.max_health  = 100;
 	self.items       = 0;
-	self.weapon      = 0;
-	self.weaponmodel = "";
+	self.weapon      = FS_WEAPON_KNIFE;
+	self.weaponframe = 0;
+	self.vbsp_lastshot = self.vbsp_nextshot = 0;
+	self.weaponmodel = "";          // models are mounted/rendered client-locally
 
 	/*
 	  No model: this is a first-person training tool and nobody else is
@@ -336,6 +338,7 @@ void() ClientConnect =
 
 void() ClientDisconnect =
 {
+	SV_SourcePhaseClear(self);
 	Archive_Reset(self);
 	SV_StartMarkForget(self);
 	Lobby_AnnDisconnect(self);          // Patch 371: the chat line, if the join was said
@@ -446,6 +449,7 @@ void() SetChangeParms = { };
 // entity stood orphaned until the map changed, one per cycle.
 void() SpectatorDisconnect =
 {
+	SV_SourcePhaseClear(self);
 	Account_Disconnect(self);
 	SV_ViewEyeDetach(self);
 };
@@ -454,6 +458,8 @@ void() SpectatorThink = { Account_Think(self); };
 
 void() PlayerPreThink =
 {
+	self.svpm_phase_lo = input_cmd_sequence_lo;
+	self.svpm_phase_hi = input_cmd_sequence_hi;
 	// Patch 753: first, where a stringcmd sent just before this command would run.
 	SV_WarpOpCommand();
 
@@ -567,6 +573,7 @@ void() PlayerPreThink =
 	  written from .run_basevelocity a few lines into that call, so the file can
 	  only ever carry the clamped number.
 	*/
+	SV_ConveyorArm(self); // P924: arm before start-cap clamp and the existing ride handoff
 	if (self.run_t_state == TS_ARMED && self.run_t_armzone >= 0 &&
 	    SV_ZoneIn(self.run_t_armzone, self.origin,
 	              SV_RunHullMins(self), SV_RunHullMaxs(self)))
@@ -754,6 +761,8 @@ void() PlayerPostThink =
 {
 	local vector dest;
 
+	SV_SourcePhaseClear(self);
+	self.svpm_phase_stat = strzone(sprintf("%.0f:%.0f:%.0f:%.9g", num_for_edict(self), self.svpm_phase_lo, self.svpm_phase_hi, self.run_movecarry));
 	self.run_pkn = self.run_pkn + 1;    // Patch 382: the trigger gate's packet count
 
 	SV_WatchHoldMove(self);             // Patch 499: ahead of the watcher that reads it
@@ -799,7 +808,7 @@ void() PlayerPostThink =
 	// +use, for maps that wire a func_button.  A rising edge on .button5 and a
 	// short trace; nothing at all happens on a map that wires nothing.
 	SV_UseFrame(self);
-	SV_ShootFrame(self);            // Patch 865: +attack, the test shot
+	SV_ShootFrame(self);            // map-target attack; shared damage gates retained
 
 	/*
 	  The timer, the zone scan and the recorder, once per usercmd.
@@ -1113,6 +1122,31 @@ void(string cmd) SV_ParseClientCommand =
 	}
 	cmdargc = tokenize(cmd);
 	c = argv(0);
+	if (!strcmp(c, "weapon"))
+	{
+		if (strcmp(self.classname, "player") || !self.run_inserver ||
+		    self.run_pmhold || self.movetype != MOVETYPE_WALK) return;
+		go = stof(argv(1));
+		if (!strcmp(argv(1), "knife")) go = FS_WEAPON_KNIFE;
+		if (!strcmp(argv(1), "usp")) go = FS_WEAPON_USP;
+		if (!strcmp(argv(1), "scout")) go = FS_WEAPON_SCOUT;
+		if (!strcmp(argv(1), "glock")) go = FS_WEAPON_GLOCK;
+		if (go != FS_WEAPON_KNIFE && go != FS_WEAPON_USP &&
+		    go != FS_WEAPON_SCOUT && go != FS_WEAPON_GLOCK)
+		{
+			sprint(self, PRINT_HIGH, "weapon: knife | usp | scout | glock\n");
+			return;
+		}
+		if (self.weapon != go)
+		{
+			self.weapon = go;
+			self.weaponframe = 0;
+			self.vbsp_lastshot = self.button0;
+			self.vbsp_nextshot = time + 0.15;
+		}
+		sprint(self, PRINT_HIGH, sprintf("weapon: selected %g (map damage retains run_shoot/lobby_shoot gates)\n", go));
+		return;
+	}
 	if (!strcmp(c, "archive"))
 	{
 		Archive_Command(self, cmdargc);
