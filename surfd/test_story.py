@@ -167,7 +167,7 @@ class Story(unittest.TestCase):
             S._story_install(calc, S._story["rev"], self.now, S._story["seq"])
         body = self.get(story="list")[1]
         matches = [(L["id"], lv) for L in body["lists"] for lv in L["levels"]
-                   if lv["map"] == "surf_cyberwave" and lv["track"] == 0]
+                   if lv["map"] == "surf_zoomathon" and lv["track"] == 0]
         self.assertEqual({lid for lid, _ in matches}, {"story", "events"})
         for _, lv in matches:
             for ch in lv["ch"]:
@@ -177,6 +177,28 @@ class Story(unittest.TestCase):
         finish_medals = {lid: [ch["m"] for ch in lv["ch"] if ch["k"] == "finish"]
                          for lid, lv in matches}
         self.assertEqual(finish_medals, {"story": ["b"], "events": ["g"]})
+
+    def test_owner_list_slots_are_not_compacted(self):
+        lists, problems = S.story_parse(Path(__file__).with_name("story.txt").read_text())
+        self.assertFalse(problems)
+        levels = [[lv for ch in L["chapters"] for lv in ch["levels"]] for L in lists[:2]]
+        self.assertEqual([len(lv) for lv in levels], [100, 100])
+        self.assertTrue(all(len(ch["levels"]) == 5 for L in lists[:2] for ch in L["chapters"]))
+        for n, name in {16: "surf_whiteout", 18: "surf_artois", 19: "surf_aura",
+                        20: "surf_pools", 25: "surf_leidenfrost", 43: "surf_facility",
+                        44: "surf_overgrowth", 45: "surf_overgrowth2", 59: "",
+                        78: "surf_goliath", 79: "surf_antagonist", 93: "surf_antagonist2",
+                        96: "surf_deity_ksf", 99: "surf_sirena", 100: "surf_anubis"}.items():
+            self.assertEqual(levels[0][n - 1]["map"], name, n)
+        for n, name, bonus in [(1, "surf_legends", 0), (2, "surf_leet_xl_beta7z", 0),
+                               (4, "surf_voyager", 0), (27, "surf_zoomathon", 0),
+                               (53, "surf_axiom", 4), (54, "", 0), (55, "surf_mdrn", 4),
+                               (77, "surf_kvas", 4), (85, "surf_kvas", 4),
+                               (93, "surf_kismet", 2), (98, "surf_shape", 1),
+                               (100, "surf_monolith", 4)]:
+            self.assertEqual((levels[1][n - 1]["map"], levels[1][n - 1]["track"]),
+                             (name, bonus), n)
+        self.assertTrue(all(not lv["map"].endswith("_css") for group in levels for lv in group))
 
     def test_shipped_story_gate_curve_is_reachable(self):
         text = Path(__file__).with_name("story.txt").read_text()
@@ -192,7 +214,7 @@ class Story(unittest.TestCase):
         ladder = calc["lists"][0]
         bars = ladder["bars"]
         self.assertEqual(bars, [0, 9, 18, 27, 29, 38, 47, 51, 58, 60, 69,
-                                86, 99, 110, 112, 120, 122, 131, 141, 147])
+                                86, 98, 106, 110, 119, 122, 129, 137, 143])
         avail = 0
         for j, bar in enumerate(bars):
             self.assertLessEqual(bar, avail, (j, bar, avail))

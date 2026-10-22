@@ -42,8 +42,13 @@
 // Silver and gold times below are PLACEHOLDERS: Lex's surf_demise 1:05 / 1:01
 // scaled by each track's record on any board (1.75x and 1.64x).
 
+// P930: owner list, 22 Oct 2026. Blank slots retain their level numbers.
+// Story 43 is Facility (the first duplicate 44); 59 awaits Monkeys2/Whoknows3 clarification.
+// Bare roster names use Momentum where available; no Momentum build means KSF fallback.
+// Existing Story medal targets follow the map, not the old level number.
+// New Story maps initially have a bronze finish; new time targets are not invented.
+
 list story "Story"
-unlock 60%
 chapter "Tier 1"
 level surf_colin_blaster_69000
   bronze reach 9        "Get to the last stage"
@@ -108,20 +113,18 @@ level surf_sodacity
   silver time 1:09
   gold   time 1:05          // record 0:39.040
 chapter "Tier 1"
-level surf_kitsune
+level surf_whiteout
   bronze finish
-  silver time 1:46
-  gold   time 1:39          // record 0:59.970
-level surf_tendies                // P905: placeholder challenges, Lex will set them
+level surf_tendies
   bronze finish
   silver time 1:13
   gold   time 1:08          // record 0:41.190 (KSF)
-level soon
-level soon
-level soon
-// Chapters 5-11 keep the existing early bars. From Tier 5 the share rises:
-// 65% of prior timed trophies at Tier 5, then 70% from Tier 6 on (rounded up).
-// Empty slots and the maps marked no zones offer no trophies toward these bars.
+level surf_artois
+  bronze finish
+level surf_aura
+  bronze finish
+level surf_pools
+  bronze finish
 chapter "Tier 2" unlock 29
 level surf_me
   bronze finish
@@ -139,10 +142,8 @@ level surf_cyberwave
   bronze finish
   silver time 1:41
   gold   time 1:35          // record 0:57.465
-level surf_borderlands
+level surf_leidenfrost
   bronze finish
-  silver time 2:39
-  gold   time 2:29          // record 1:30.238
 chapter "Tier 2" unlock 38
 level surf_hotwheels
   bronze finish
@@ -152,29 +153,27 @@ level surf_classics
   bronze finish
   silver time 10:43
   gold   time 10:04          // record 6:06.900
-level surf_classics2
+level surf_borderlands
   bronze finish
-  silver time 5:58
-  gold   time 5:36          // record 3:24.195
+  silver time 2:39
+  gold   time 2:29          // record 1:30.238
 level surf_sandtrap2
   bronze finish
   silver time 1:24
   gold   time 1:19          // record 0:47.505
-level surf_not_so_sinister_ksf
+level surf_not_so_sinister
   bronze finish
-  silver time 2:15
-  gold   time 2:06          // record 1:16.620
 chapter "Tier 2" unlock 47
 level surf_not_so_disaster
   bronze finish
   silver time 2:05
   gold   time 1:57          // record 1:11.175
-level surf_fruits
+level soon
+level surf_classics2
   bronze finish
-  silver time 2:43
-  gold   time 2:33          // record 1:32.669
-level surf_vegetables                 // no zones yet
-level surf_affliction             // P905: placeholder challenges, Lex will set them
+  silver time 5:58
+  gold   time 5:36          // record 3:24.195
+level surf_affliction
   bronze finish
   silver time 1:20
   gold   time 1:15          // record 0:45.216
@@ -184,7 +183,7 @@ level surf_executioner
   bronze finish
   silver time 1:28
   gold   time 1:23          // record 0:49.940
-level surf_fruits2                 // no zones yet
+level soon
 level surf_classics3
   bronze finish
   silver time 24:35
@@ -202,10 +201,14 @@ level surf_borderlands_h
   bronze finish
   silver time 2:53
   gold   time 2:42          // record 1:38.400
-level soon
-level soon
-level soon
-level soon
+level surf_chateau
+  bronze finish
+level surf_facility
+  bronze finish
+level surf_overgrowth
+  bronze finish
+level surf_overgrowth2
+  bronze finish
 chapter "Tier 4" unlock 60
 level surf_loweffort
   bronze finish
@@ -232,10 +235,8 @@ level surf_whoknows2
   bronze finish
   silver time 1:47
   gold   time 1:40          // record 1:00.552
-level surf_whoknows3
+level surf_loweffort2
   bronze finish
-  silver time 1:57
-  gold   time 1:50          // record 1:06.525
 level surf_runewords
   bronze finish
   silver time 3:04
@@ -244,9 +245,11 @@ level surf_runewords2
   bronze finish
   silver time 3:04
   gold   time 2:52          // record 1:44.639
-level soon
+level surf_cannonball
+  bronze finish
 chapter "Tier 5" unlock 86
-level surf_stonework3                 // no zones yet
+level surf_stonework3 // no zones yet
+  bronze finish
 level surf_spacemonkeys
   bronze finish
   silver time 2:55
@@ -255,12 +258,10 @@ level surf_ab
   bronze finish
   silver time 11:41
   gold   time 10:58          // record 6:39.959
-level surf_monkeys2
+level soon // awaiting level 59 clarification
+level surf_lt_omnific
   bronze finish
-  silver time 2:38
-  gold   time 2:29          // record 1:30.135
-level soon
-chapter "Tier 6" unlock 99
+chapter "Tier 6" unlock 98
 level surf_666
   bronze finish
   silver time 5:08
@@ -273,15 +274,16 @@ level surf_bugs
   bronze finish
   silver time 1:03
   gold   time 0:59          // record 0:35.625
-level surf_monkeys
-  bronze finish
-  silver time 2:40
-  gold   time 2:30          // record 1:31.124
+level soon
 level surf_garden_h
   bronze finish
   silver time 3:12
   gold   time 3:00          // record 1:49.425
-chapter "Tier 6" unlock 110
+chapter "Tier 6" unlock 106
+level surf_monkeys
+  bronze finish
+  silver time 2:40
+  gold   time 2:30          // record 1:31.124
 level surf_sinister_evil
   bronze finish
   silver time 2:20
@@ -289,8 +291,7 @@ level surf_sinister_evil
 level soon
 level soon
 level soon
-level soon
-chapter "Tier 7" unlock 112
+chapter "Tier 7" unlock 110
 level surf_sandtrap2 bonus 4
   bronze finish
   silver time 0:14
@@ -307,15 +308,19 @@ level surf_spectra
   bronze finish
   silver time 2:42
   gold   time 2:32          // record 1:32.328
-level surf_starvald                 // no zones yet
-chapter "Tier 7" unlock 120
-level surf_olivia                 // no zones yet
+level surf_starvald // no zones yet
+  bronze finish
+chapter "Tier 7" unlock 119
+level surf_olivia // no zones yet
+  bronze finish
 level surf_sidistic
   bronze finish
   silver time 3:31
   gold   time 3:18          // record 2:00.420
-level soon
-level soon
+level surf_goliath
+  bronze finish
+level surf_antagonist
+  bronze finish
 level soon
 chapter "Tier 8" unlock 122
 level surf_axiom bonus 4
@@ -330,12 +335,10 @@ level surf_hunty
   bronze finish
   silver time 3:41
   gold   time 3:28          // record 2:06.150
-level surf_sinister                 // no zones yet
-level surf_corruption
+level surf_sinister // no zones yet
   bronze finish
-  silver time 5:04
-  gold   time 4:46          // record 2:53.430
-chapter "Tier 8" unlock 131
+level soon
+chapter "Tier 8" unlock 129
 level surf_ruse
   bronze finish
   silver time 2:26
@@ -352,91 +355,202 @@ level surf_gigapede
   bronze finish
   silver time 2:58
   gold   time 2:47          // record 1:41.113
-level surf_joutsenlaulu
-  bronze finish
-  silver time 6:44
-  gold   time 6:19          // record 3:50.295
-chapter "Tier 9" unlock 141
+level soon
+chapter "Tier 9" unlock 137
 level surf_devil
   bronze finish
   silver time 5:48
   gold   time 5:27          // record 3:18.495
-level surf_doomsday
+level soon
+level surf_antagonist2 // no zones yet
   bronze finish
-  silver time 6:21
-  gold   time 5:57          // record 3:37.050
+level surf_corruption
+  bronze finish
+  silver time 5:04
+  gold   time 4:46          // record 2:53.430
 level surf_tensor2
   bronze finish
   silver time 5:50
   gold   time 5:29          // record 3:19.830
-level soon
-level soon
-chapter "Tier 10" unlock 147
+chapter "Tier 10" unlock 143
+level surf_deity_ksf // no zones yet
+  bronze finish
+level surf_doomsday
+  bronze finish
+  silver time 6:21
+  gold   time 5:57          // record 3:37.050
+level surf_joutsenlaulu
+  bronze finish
+  silver time 6:44
+  gold   time 6:19          // record 3:50.295
+level surf_sirena // no zones yet
+  bronze finish
 level surf_anubis
   bronze finish
   silver time 38:47
   gold   time 36:23          // record 22:08.220
-level soon
-level soon
-level soon
-level soon
 
 list events "Events"
 chapter
-level soon
-level soon
 level surf_legends
-  gold   finish         "Beat surf_legends"
-level surf_leet_xl_beta7z                 // no zones yet
-  gold   finish         "Beat surf_leet_xl_beta7z"
+  gold finish
+level surf_leet_xl_beta7z
+  gold finish
+level soon
 level surf_voyager
-  gold   via other      "Beat it without the main route"
+  gold via other "Beat it without the main route"
+level soon
 chapter
-level surf_leidenfrost
-  bronze time 1:12     
-  silver time 1:04     
-  gold   time 0:56     
-level surf_cyberwave
-  gold   finish         "Beat surf_cyberwave"
+level surf_lessons
+  gold finish
+level surf_progress
+  gold finish
+level surf_network2008_final
+  gold finish
+level soon
+level surf_spacejam
+  gold finish
+chapter
+level surf_beginner
+  gold finish
+level soon
+level surf_fruits
+  gold finish
+level soon
+level surf_vegetables
+  gold finish
+chapter
+level surf_kitsune
+  gold finish
+level soon
+level surf_fruits2
+  gold finish
+level soon
+level soon
+chapter
+level soon
+level soon
+level surf_kitsune2
+  gold finish
+level soon
+level soon
+chapter
+level soon
 level surf_zoomathon
-  gold   finish         "Play it with max fog (for fun, not checked)"
-level surf_1998                 // no zones yet
-  gold   finish         "Finish surf_1998"
+  gold finish "Max fog is not checked yet; finish only"
+level soon
+level soon
+level surf_1998
+  gold finish
+chapter
+level soon
+level soon
+level surf_simpsons2
+  gold finish
+level soon
 level surf_dragon bonus 1
-  gold   finish         "Finish bonus 1"
+  gold finish
 chapter
+level soon
+level soon
+level soon
+level soon
 level surf_board_this
-  gold   finish         "Beat surf_board_this"
-level surf_anoobis
-  gold   wonly          "Beat it W-only"
-level surf_fiellu bonus 4
-  gold   via ramp       "Reach the final ramp of bonus 4"
-level surf_4am bonus 4
-  gold   finish         "Beat bonus 4"
-level surf_kvas bonus 4
-  gold   finish         "Beat bonus 4"
+  gold finish
 chapter
+level soon
+level soon
+level soon
+level soon
+level soon
+chapter
+level soon
+level soon
+level soon
+level soon
+level surf_anoobis
+  gold wonly "Beat it W-only"
+chapter
+level soon
+level soon
+level surf_axiom bonus 4
+  gold finish
+level soon
+level surf_mdrn bonus 4
+  gold finish
+chapter
+level soon
+level soon
+level surf_excavation
+  gold finish
+level soon
+level surf_fiellu bonus 4
+  gold via ramp "Reach the final ramp of bonus 4"
+chapter
+level soon
+level soon
+level soon
+level soon
+level soon
+chapter
+level soon
 level bhop_futile
-  gold   finish         "Beat bhop_futile"
+  gold finish
+level soon
+level soon
+level soon
+chapter
+level soon
+level soon
+level soon
+level soon
+level surf_4am bonus 4
+  gold finish
+chapter
+level soon
+level surf_kvas bonus 4
+  gold finish
+level soon
+level soon
+level soon
+chapter
 level surf_blackheart
-  gold   finish         "Beat surf_blackheart"
+  gold finish
+level soon
 level surf_facility bonus 4
-  gold   finish         "Beat bonus 4"
+  gold finish
 level surf_bugs bonus 4
-  gold   finish         "Beat bonus 4"
-level surf_gigapede bonus 4
-  gold   finish         "Beat bonus 4"
+  gold finish
+level surf_kvas bonus 4
+  gold finish
 chapter
 level surf_gigapede bonus 3
-  gold   finish         "Beat bonus 3"
-level surf_prosurf bonus 4
-  gold   finish         "Beat bonus 4"
+  gold finish
+level surf_fornax bonus 4
+  gold finish
+level soon
+level soon
+level soon
+chapter
+level soon
+level soon
+level surf_kismet bonus 2
+  gold finish
 level surf_medley bonus 4
-  gold   finish         "Beat bonus 4"
-level surf_monolith bonus 4
-  gold   finish         "Beat bonus 4"
+  gold finish
+level surf_gigapede bonus 4
+  gold finish
+chapter
+level surf_exonic bonus 3
+  gold finish
+level surf_prosurf bonus 4
+  gold finish
+level surf_shape bonus 1
+  gold finish
 level surf_dune bonus 10
-  gold   finish         "Beat bonus 10"
+  gold finish
+level surf_monolith bonus 4
+  gold finish
 
 list halloween "Halloween"
 dates 2026-10-24 2026-11-02

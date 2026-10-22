@@ -21,6 +21,10 @@
 
 ## next
 
+### P930 Updated Story and Events
+- Story and Events now follow the updated 100-level lists, including the new maps and bonus challenges. Blank slots keep their level numbers; Momentum builds are used where the roster has one.
+- Existing Story medal targets move with their map. New Story maps begin with a bronze finish; later trophy gates retain the existing 65%/70% progression policy.
+
 ### P929 Stable lobby names
 - Servers are now Open Lobby #1 through Open Lobby #12. Their names no longer promise a map tier or mode that changes when someone chooses a different map.
 
