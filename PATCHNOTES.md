@@ -21,6 +21,9 @@
 
 ## next
 
+### P918 Crisp missing textures
+- The missing-texture checker now stays nearest-neighbour crisp without changing filtering on ordinary map textures.
+
 ### P917 Steady head clearance
 - The ceiling-lowered camera no longer bobs with the mismatch between movement ticks and rendered frames while rising beneath a roof.
 

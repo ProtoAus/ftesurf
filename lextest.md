@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P918 — missing checker filtering
+
+PENDING: after the P918 client update, look at any missing-texture checker close
+up. Its texel edges should stay nearest-neighbour sharp at normal global texture
+filtering, while ordinary map textures keep their usual filtering. Sampler/code
+and existing asset tests passed; no GPU/manual visual acceptance is claimed.
+
 ## P916 — ceiling eye clearance and water exit
 
 OWNER CONFIRMED 2026-10-22: "works well and my head ducks and I bounce out of
