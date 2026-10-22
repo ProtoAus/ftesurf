@@ -3463,7 +3463,12 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             bhop cooldown's clock, 0..1000000), required for an
                             exact replay at pmsrcver 10 and unused below it; a
                             present value that does not read makes the state
-                            unknown at any version.
+                            unknown at any version. Patch 916 adds wjtime (0..2
+                            seconds), wjx and wjy (-50..50): Source's water-lip
+                            assist timer and fixed XY push. All three are needed
+                            for exact replay at pmsrcver 11; absent together in
+                            old state means no assist. A partial or unreadable
+                            present assist makes the carried state unknown.
     zseed <name=value ...>  v9, build 88, additive (no bump): once, before the
                             first `in` row -- the timer latches the START packet
                             left: evzone azone cpzone track startseg stagerun, and

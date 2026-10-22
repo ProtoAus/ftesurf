@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P916 — ceiling eye clearance and water exit
+
+PENDING human acceptance; do this only on the matching mover-11 client/server.
+Near a low roof, stand and jump: the view should lower before entering the roof,
+then return in open space, without crouching/shrinking the body. At the surface
+of water, face a low ledge with room above: swim/jump up to the surface and let
+the assist lift you onto the lip. Compare facing away and a wall too tall to
+climb. The lip check itself needs neither jump nor +up. Automated real hull-trace,
+movement/state and legacy controls passed; that is not visual/feel confirmation.
+
 ## P914 — clock while watching (matching deployment pending)
 
 Native live-body/clock, save/continuation, reader and malformed-input controls

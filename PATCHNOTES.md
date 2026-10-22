@@ -21,6 +21,10 @@
 
 ## next
 
+### P916 Duck your view under roofs and climb out of water
+- Your view lowers when a ceiling would clip through the camera, on the ground or in the air. This does not crouch or shrink your collision box.
+- At the water's surface, face a low ledge with room above it for a Source-style upward assist. Jump or swim up to reach the surface; the ledge assist itself needs neither button.
+
 ### P914 Your run clock keeps going while you watch
 - Spectating another player or watching a recording no longer pauses your own run timer. Your body stays held; the time spent watching is added to the run and current stage without inventing movement.
 - Repeated viewing and supported save, rewind and resume paths preserve the accumulated time. Older recordings keep their original timing rather than being reinterpreted.
