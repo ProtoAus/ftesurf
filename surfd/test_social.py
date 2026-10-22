@@ -33,12 +33,94 @@ GAME = hashlib.sha256(GAME_BYTES).hexdigest()
 
 
 class Friends(unittest.TestCase):
+    def test_activity_is_volatile_bounded_and_schema_unchanged(self):
+        with patch.object(F, "_ACTIVITY_MAX", 2):
+            F.remember_activity("fixture-one", self.now, "Stage 1")
+            F.remember_activity("fixture-two", self.now, "Stage 2")
+            F.remember_activity("fixture-three", self.now, "Bonus 3")
+            self.assertEqual(set(F._activities), {"fixture-two", "fixture-three"})
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 20)
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(social_sessions)")}
+        self.assertNotIn("activity", columns)
+
+    def test_activity_changes_and_disappears_with_presence(self):
+        self.action(0, "add", 1)
+        self.action(1, "add", 0)
+
+        def poll(activity=None):
+            target = {"token": self.tokens[1]}
+            if activity is not None:
+                target["activity"] = activity
+            r = self.post("/api/social/poll", roster=json.dumps([
+                {"token": self.tokens[0]}, target]))
+            self.assertEqual(r.status_code, 200)
+            return r.get_json()["players"][0]
+
+        stage = poll("Stage 3")
+        self.assertEqual(stage["friends"][0]["activity"], "Stage 3")
+        bonus = poll("Bonus 5")
+        self.assertEqual(bonus["friends"][0]["activity"], "Bonus 5")
+        self.assertNotEqual(stage["hash"], bonus["hash"])
+        # Worker restart / another worker has no sample: online remains SQL's
+        # fact, but no stage is invented. The next valid poll repopulates it.
+        F._activities.clear()
+        absent = F.presence(self.db, IDS[1], self.now, S.LOBBY_TTL)
+        self.assertEqual((absent["online"], absent["activity"]), (1, ""))
+        self.assertEqual(poll("Stage 9")["friends"][0]["activity"], "Stage 9")
+        self.heartbeat("p27510", 27510, "surf_newmap")
+        self.assertEqual(F.presence(self.db, IDS[1], self.now, S.LOBBY_TTL)["activity"], "")
+        # An older lobby omitting the optional field clears rather than freezes it.
+        self.assertEqual(poll()["friends"][0]["activity"], "")
+        poll("Spectating")
+        self.now += F.PRESENCE_TTL + 1
+        expired = F.presence(self.db, IDS[1], self.now, S.LOBBY_TTL)
+        self.assertEqual((expired["online"], expired["activity"]), (0, ""))
+        row = self.poll(indices=(0,))[0]["friends"][0]
+        self.assertEqual((row["online"], row["activity"]), (0, ""))
+
+    def test_activity_not_disclosed_to_unaccepted_or_blocked_adds(self):
+        self.action(0, "add", 1)
+
+        def poll():
+            r = self.post("/api/social/poll", roster=json.dumps([
+                {"token": self.tokens[0]}, {"token": self.tokens[1], "activity": "Stage 8"}]))
+            self.assertEqual(r.status_code, 200)
+            return r.get_json()["players"][0]["friends"][0]
+
+        row = poll()
+        self.assertEqual((row["online"], row["activity"]), (0, ""))
+        self.action(1, "add", 0)
+        self.assertEqual(poll()["activity"], "Stage 8")
+        self.action(0, "block", 1)
+        row = poll()
+        self.assertEqual((row["online"], row["activity"]), (0, ""))
+
+    def test_failed_poll_does_not_publish_activity(self):
+        self.action(0, "add", 1)
+        self.action(1, "add", 0)
+        self.poll()
+        self.now += 1
+        with patch.object(F, "friend_rows", side_effect=sqlite3.OperationalError("fixture rollback")):
+            r = self.post("/api/social/poll", roster=json.dumps([
+                {"token": self.tokens[0]}, {"token": self.tokens[1], "activity": "Stage 7"}]))
+        self.assertEqual(r.status_code, 503)
+        self.assertNotIn(F.digest(self.tokens[1]), F._activities)
+        self.assertEqual(F.presence(self.db, IDS[1], self.now, S.LOBBY_TTL)["activity"], "")
+
+    def test_activity_payload_is_bounded(self):
+        for activity in ["Stage 0", "Bonus 1000", "Stage 2; quit", "Anything", 7, None]:
+            with self.subTest(activity=activity):
+                r = self.post("/api/social/poll", roster=json.dumps([
+                    {"token": self.tokens[0], "activity": activity}]))
+                self.assertEqual(r.status_code, 400)
+
     def setUp(self):
         self.now = 1800000000
         self.clock = patch.object(S.time, "time", lambda: self.now)
         self.clock.start()
         self.addCleanup(self.clock.stop)
         S._rate.clear()
+        F._activities.clear()
         self.client = S.app.test_client()
         self.db = S.connect()
         self.addCleanup(self.db.close)
