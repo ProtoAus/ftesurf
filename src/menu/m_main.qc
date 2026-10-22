@@ -151,6 +151,12 @@ void() MF_Init;
 void(float visible) MF_Poll;
 void() MF_ResumeJoin;
 void(vector pos, vector size) MF_Draw;
+void() MF_Open;
+void() MFP_Close;
+float() MFP_IsOpen;
+void(string who, string name) MFP_Open;
+void(vector pos, vector size) MFP_Draw;
+float(float reqid, float code, string body) MFP_Reply;
 void() MM_Init;
 float() MM_Active;
 void(vector screensize) MM_Frame;
@@ -3488,6 +3494,7 @@ void(float on) ui_showall_set =
 */
 void() ui_create_open =
 {
+	MF_Open();
 	registercvar("ui_maps_modes", ftos(FS_MODES_DEFAULT), 32);
 	ms_modes = ui_modes_sane(cvar("ui_maps_modes"));
 	registercvar("ui_maps_showall", "0", 32);       // ROADMAP 10, same rules
@@ -7971,6 +7978,7 @@ void() m_init =
 	registercvar("ui_maps_filters", "0", 32);
 	registercvar("ui_maps_large", "1", 32);
 	registercvar("ui_maps_friends", "0", 32);
+	registercvar("ui_friends_activity", "-1", 0);
 	// Repair P731's level30 ui_updates bind too; menu commands reject that level.
 	// P823: F2 opens the journal panel (ui_journal); ui_updates was its name before.
 	if (checkbuiltin(localcmd_local))

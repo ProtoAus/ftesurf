@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## P933 — volatile Friends activity and text-field controls (2026-10-22)
+
+- Stage/bonus is transient lobby presence, not recorder history. social.py keeps
+  a bounded digest-keyed sample, requires the session's SQL seen and lobby map
+  to match, and omits activity after worker/cache loss until the next real poll.
+  SQL still decides relationship/online expiry; no schema migration is needed.
+- The menu keeps old six-field snapshots readable; new rows add one activity
+  field. Last-seen flag 2 is not online flag 1: fade it and do not offer a join.
+- An isolated text-field rig needs the existing consent-file fixture even with
+  online features off. Without it, m_draw correctly replaces forced Name with
+  Terms, and synthetic Tab can report took=1 while typed text has no field.
+  p933ui_smoke.py uses p615link's rig and p655text's consent fixture, never the
+  owner's clipboard or processes. Control/subject prove selection ACTED.
+- fteqcc's varargs warning counts the format parameter too: eight substitutions
+  plus format warned; seven substitutions plus format compiled without warning.
+
+
 ## Backend startup after reader promotion (2026-10-22)
 
 A sealed backend generation can pin canonical readers and native consumers in

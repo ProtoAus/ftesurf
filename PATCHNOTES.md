@@ -21,6 +21,11 @@
 
 ## next
 
+### P933 Friends and textbox selection
+- Opening the map browser reveals Friends and asks for fresh presence. Friends use compact two-line cards; offline cards are faded and online map/stage or bonus text is green.
+- Click a friend's name for an in-menu public profile preview, or their green location to ask to join their lobby.
+- Double-click a textbox to select all its text. Normal clicks, dragging and slow separate clicks still work.
+
 ### P932 Watch KSF runs on linked Momentum maps
 - KSF recordings can play on their configured Momentum map versions, including surf_chateau. Original KSF files and downloaded recordings use the same map links; unrelated maps are still refused.
 - Linked recordings keep their actual source-map name and imported status. Downloaded recordings can be watched again from cache without fetching the same file twice.

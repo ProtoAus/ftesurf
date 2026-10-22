@@ -1,5 +1,41 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
+## Owner feature-list ledger (22 Oct 2026)
+
+Delivered: P929 stable Open Lobby #1..#12 names (live, no restarts); P930 updated
+100-slot Story/Event lists (live rev 3283c5845c06). Momentum-first canonical
+roster names use available-build fallback; no demo/BSP identities were falsified.
+P933 implements fresh, auto-revealed compact Friends, live stage/bonus activity,
+profile/name versus location/join targets, public in-menu profile preview and
+shared textbox double-click select-all. Its tests and delivery states are in
+tools/p933-friends-ui.md; real-account visual/join acceptance remains in lextest.md.
+
+Remaining requested work (not silently folded into the completed items):
+- Higher-resolution Steam portraits, including both the fetch/encoding pipeline
+  and client/menu caches (current transport encodes 32x32).
+- Game-running presence while disconnected, main-menu shared lobby/chat and DMs.
+  Existing lobby-mediated friends/DM do not make a disconnected install online.
+  Preserve account consent, mutual/blocked visibility and authenticated actions.
+- Height/ramp-driven sine tone and drums on A/D press; audible owner acceptance
+  and explicit local opt-in/volume are needed, not just sample-generation tests.
+- Native sorted `bindlist` listing every bound key/modifier/bindmap.
+- Practice-only slow motion via host_timescale, preserving fixed movement ticks
+  and slowing the timer correctly. It must never make ranked/evidence eligibility
+  out of slowed input. Requires engine/movement/recorder contract controls.
+- Remove the extra clipboard-paste dialog while preserving a real user paste
+  gesture, permissions and protection against server-driven clipboard reads.
+- Audit global Momentum preference and cross-source demo compatibility. Equivalent
+  builds can share playback; differing geometry cannot be fixed by name alone.
+- Verify map compression and remove the old download throughput cap on the R2
+  path without weakening transfer integrity or fallback/rate protections.
+- Renderer/material/reporting bugs from the five screenshots are in BACKLOG.md.
+
+Story/event content gaps: fourteen selected entries lack timing zones; Voyager
+alternate-route and Fiellu final-ramp targets need authored coordinates; max fog
+is not enforced. Story 59 needs Monkeys2 versus Whoknows3 clarification. Facility
+is treated as Story 43 to resolve the repeated 44; repeated Event Kvas B4 slots
+77/85 are both retained. Details and exact fallback maps: tools/p930-story-lists.md.
+
 ## Requested: automatic movement-style detection (Lex, 21 Oct 2026)
 
 P909 supplies the manual Normal, Sideways, Half-Sideways and Backwards filters,

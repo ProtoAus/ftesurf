@@ -50,6 +50,20 @@ CREATE INDEX IF NOT EXISTS social_messages_recipient ON social_messages (recipie
 """
 
 
+# Activity is volatile presence, not run history or a schema migration. A worker
+# without this poll's sample shows no stage, never a guessed/stale one. The lobby
+# refreshes every five seconds; SQL remains the authority for online/visibility.
+_activities = {}  # session digest -> (SQL seen, lobby map, bounded label)
+_ACTIVITY_MAX = 16384  # more than the directory's 200 nodes x 64 players
+
+
+def remember_activity(token, seen, label, mapname=""):
+    _activities.pop(token, None)
+    if len(_activities) >= _ACTIVITY_MAX:
+        _activities.pop(next(iter(_activities)))
+    _activities[token] = (seen, mapname, label)
+
+
 def digest(token):
     return hashlib.sha256(token.encode("ascii")).hexdigest()
 
@@ -130,15 +144,18 @@ def resolve(db, mark, owner=None):
 
 def presence(db, sid, now, lobby_ttl):
     row = db.execute(
-        "SELECT l.addr,l.name,l.map FROM social_sessions s"
+        "SELECT l.addr,l.name,l.map,s.token,s.seen FROM social_sessions s"
         " JOIN keylinks k ON k.pub=s.pub AND k.steamid=s.steamid"
         " JOIN accounts a ON a.steamid=s.steamid JOIN lobbies l ON l.node=s.node"
         " WHERE s.steamid=? AND s.seen>? AND s.issued>? AND a.banned_at=0"
         " AND l.last_seen>? ORDER BY s.seen DESC,s.node LIMIT 1",
         (sid, now - PRESENCE_TTL, now - SESSION_TTL, now - lobby_ttl)).fetchone()
     if not row:
-        return {"online": 0, "addr": "", "server": "", "map": ""}
-    return {"online": 1, "addr": row["addr"], "server": row["name"], "map": row["map"]}
+        return {"online": 0, "addr": "", "server": "", "map": "", "activity": ""}
+    sample = _activities.get(row["token"])
+    activity = sample[2] if sample and sample[0] == row["seen"] and sample[1] == row["map"] else ""
+    return {"online": 1, "addr": row["addr"], "server": row["name"], "map": row["map"],
+            "activity": activity}
 
 
 def friend_rows(db, sid, now, lobby_ttl):
@@ -156,7 +173,7 @@ def friend_rows(db, sid, now, lobby_ttl):
         # P788: presence is for friendships only -- an add I have not returned
         # must not let its author watch where I play.
         live = presence(db, other, now, lobby_ttl) if rel == 3 and available else {
-            "online": 0, "addr": "", "server": "", "map": ""}
+            "online": 0, "addr": "", "server": "", "map": "", "activity": ""}
         rows.append(dict(who=accounts.who_of(other), name=accounts.game_name(account["name"]) if available else "Unavailable account",
                          relation=rel, **live))
     # Incoming adds last ("at the bottom", Lex). They take no slot, so the list
@@ -331,15 +348,26 @@ def register(app, d):
                 if type(ack) is not int or not 0 <= ack <= 2147483647:
                     raise ValueError()
                 r["ack"] = ack
+                activity = r.get("activity", "")
+                if not isinstance(activity, str):
+                    raise ValueError()
+                if activity and not re.fullmatch(r"(?:Stage|Bonus) [1-9][0-9]{0,2}|Spectating", activity):
+                    raise ValueError()
                 if not isinstance(r.get("hash", ""), str) or len(r.get("hash", "")) > 64:
                     raise ValueError()
         except (ValueError, TypeError):
             return reply({"ok": 0, "error": "bad roster"}, 400)
         db = d.get_db()
         out = []
+        updated = set()
+        for token, sample in list(_activities.items()):
+            if not now - PRESENCE_TTL < sample[0] <= now:
+                _activities.pop(token, None)
         try:
             with db:
                 db.execute("BEGIN IMMEDIATE")
+                location = db.execute("SELECT map FROM lobbies WHERE node=?", (node,)).fetchone()
+                mapname = location[0] if location else ""
                 db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
                 db.execute("DELETE FROM social_sessions WHERE issued<?", (now - SESSION_TTL,))
                 # Full-node snapshot. Tokens of disconnected slots cannot keep presence alive.
@@ -349,6 +377,8 @@ def register(app, d):
                     if s is not None:
                         db.execute("UPDATE social_sessions SET seen=?,ack=MAX(ack,?) WHERE token=?",
                                    (now, r.get("ack", 0), s["token"]))
+                        remember_activity(s["token"], now, r.get("activity", ""), mapname)
+                        updated.add(s["token"])
                 for r in roster:
                     s = session(db, r["token"], node, now)
                     if s is None:
@@ -377,6 +407,9 @@ def register(app, d):
                         row["friends"] = friends
                     out.append(row)
         except sqlite3.Error:
+            # A rolled-back SQL poll cannot leave an acted activity sample.
+            for token in updated:
+                _activities.pop(token, None)
             return reply({"ok": 0, "error": "friends unavailable"}, 503)
         return reply({"ok": 1, "players": out})
 

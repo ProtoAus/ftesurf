@@ -25,7 +25,8 @@ commit   a0ebb9d06afd0e9fe552bb86030be34c809d97c8
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-924
-patch    932
+patch    933
+# Patch 933: compact fresh friends, stage/bonus presence, menu profiles and double-click selection.
 # Patch 932: KSF playback on explicit Momentum map-port families, source identity
 # and imported status retained; native/Momentum fences unchanged.
 # Patch 931: basic mounted CS:S knife/USP/scout/Glock idle/fire and map-target attacks.

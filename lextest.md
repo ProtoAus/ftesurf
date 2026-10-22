@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P933 — browser Friends cards and profile preview (22 Oct 2026)
+PENDING after matching delivery: open the map browser and confirm Friends appears;
+with one mutual friend online and one offline, check two centered text lines,
+faded offline card, green map + Stage/Bonus for the online card. Click the name
+for its public profile preview, Back, then the green location to request a join.
+Ask the friend to move to another stage/bonus and reopen the browser to check
+refresh. No live appearance, real-account join or profile acceptance is claimed.
+Double-click selection/replacement and slow-click behavior already have an
+acted native control/subject check; a quick map-search double click is welcome.
+
 ## P932 — KSF Watch on linked Momentum maps
 
 PENDING after matching client/backend delivery: on surf_chateau, open Online,

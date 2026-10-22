@@ -40,9 +40,14 @@ use the existing 65% then 70% prior timed trophy policy, rounded up.
 Live initial Story hash 15c610edb7cc77d488645212fddd97a512903384a2ad50dafdf98c128f4fe00c
 matches published QC commit 69cf8badfbba70ea790ef9ed428987f8fa41a0b9.
 It is an older published list, not an unidentified peer edit. Preserve it as a
-remote pre930 backup before promotion. The matching API revision, destination
-hash and UTC are recorded after promotion; publication alone is not deployment.
-No backend code, generation guard or progs is replaced by this data update.
+remote pre930 backup before promotion. Promotion succeeded using story_push.py
+without --force. Destination SHA256 is
+3283c5845c068fa40973100ae022bab6ee3b357890ddfe3b030310741b79bf43;
+the live API serves rev 3283c5845c06. Readback at 2026-10-22T17:47:21Z and
+subsequent flattened-list check prove Story 100 levels/20 chapters, Events
+100/20 and unchanged Halloween 11/3. Backup is
+/srv/nvme/surfd/data/story.txt.pre930-20261022T1708Z.
+No backend code, generation guard or progs was replaced by this data update.
 
 ## Not functional acceptance
 

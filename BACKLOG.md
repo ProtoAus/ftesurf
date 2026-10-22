@@ -1,5 +1,31 @@
 # BACKLOG.md
 
+## Owner screenshots, 22 Oct 2026 — missing map materials / black Epiphany
+
+- Sites to investigate: hl2 plugin VBSP/VMT/VTF resolution and missing-asset
+  reporting. `surf_phantasia_css_000.png` shows large magenta/black surfaces;
+  owner reports both variants. `bhop_autumnal_000.png` shows checkerboard ramp
+  tops. No material fix or diagnostic-report coverage is claimed yet.
+- Falsifier: load each exact map build in an owned rig with mounted owner content,
+  reproduce the screenshot view, identify the requested material/texture and
+  prove the asset resolution/fallback and missing report. Compare both Phantasia
+  builds; do not relabel a BSP or package Valve assets as a repair.
+- Epiphany: `surf_epiphany_000.png` shows the whole world black while the HUD
+  draws. Site not isolated yet (world visibility, material/light or fog path).
+  Falsifier: reproduce on the actual installed binary at the saved view, prove
+  world geometry acted, then compare bounded world/material/lighting controls.
+  A newer in-game owner check has been requested, not received.
+
+## Owner screenshots, 22 Oct 2026 — sky cuts world/props
+
+- Sites to investigate: engine sky depth/masking and hl2 3D-sky world/prop
+  composition. `surf_kvas_000.png` (bonus 4, save 1) cuts tree tops along a
+  horizontal sky boundary; `surf_boreas_010.png` (save 11) has a sky-colored
+  cutout through mountain geometry. Both screenshots have been opened.
+- Falsifier: exact save/view and BSP control, then isolate sky depth versus world
+  and prop passes. Preserve legitimate sky occlusion and camera boundaries;
+  blindly disabling sky depth globally is not a demonstrated fix.
+
 ## Historical full P603 lifecycle fixture versus current Players globals
 
 - Site: tools/fixtures/p603life_runtime.qc / tools/p603scores.py default full

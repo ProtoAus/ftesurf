@@ -110,7 +110,7 @@ void() MF_Save =
 	local string text;
 	text = "";
 	for (i = 0; i < mf_count; i = i + 1)
-		if (tokenize(bufstr_get(mf_rows, i)) == 6)
+		if (tokenize(bufstr_get(mf_rows, i)) >= 6)
 		if (MF_WhoSafe(argv(0)))
 			text = strcat(text, argv(1), " \"", argv(3), "\"\n");
 	if (strlen(text) == mf_siglen && crc16(FALSE, text) == mf_sigcrc) return;
@@ -180,19 +180,19 @@ void(float stage, float n) MF_Swap =
 	{
 		was = hash_createtab(256, EV_FLOAT);
 		for (i = 0; i < mf_count; i = i + 1)
-			if (tokenize(bufstr_get(mf_rows, i)) == 6)
+			if (tokenize(bufstr_get(mf_rows, i)) >= 6)
 			if (stof(argv(2)) == 1)
 				hash_add(was, argv(0), i + 1, HASH_REPLACE | EV_FLOAT);
 		for (i = 0; i < n; i = i + 1)
 		{
-			if (tokenize(bufstr_get(stage, i)) != 6) continue;
+			if (tokenize(bufstr_get(stage, i)) < 6) continue;
 			if (stof(argv(1)) != 3 || stof(argv(2)) != 0) continue;
 			j = hash_get(was, argv(0), 0, EV_FLOAT);
 			if (!j) continue;
 			who = argv(0);
 			nm = argv(3);
 			tokenize(bufstr_get(mf_rows, j - 1));
-			bufstr_set(stage, i, sprintf("%s 3 2 \"%s\" \"%s\" \"%s\"", who, nm, argv(4), argv(5)));
+			bufstr_set(stage, i, sprintf("%s 3 2 \"%s\" \"%s\" \"%s\" \"%s\"", who, nm, argv(4), argv(5), argv(6)));
 		}
 		hash_destroytab(was);
 	}
@@ -208,7 +208,7 @@ void(float stage, float n) MF_Swap =
 // Connected: CSQC publishes a completed snapshot (~5 s); copy it so rows survive a disconnect.
 void() MF_TakeCvars =
 {
-	local float i, n, k, stage;
+	local float i, n, k, stage, fields;
 	local string row;
 	n = cvar("ui_friends_count");
 	if (n < 0) return;
@@ -218,7 +218,8 @@ void() MF_TakeCvars =
 	for (i = 0; i < n; i = i + 1)
 	{
 		row = cvar_string(strcat("ui_friend_", ftos(i)));
-		if (tokenize(row) != 6) continue;
+		fields = tokenize(row);
+		if (fields != 6 && fields != 7) continue;
 		if (!MF_WhoSafe(argv(0))) continue;
 		bufstr_set(stage, k, row);
 		k = k + 1;
@@ -283,6 +284,18 @@ void(float visible) MF_Poll =
 
 // Only a fresh backend check can choose a destination. A name prompt resumes
 // with a NEW proof, not a retained address or mutable directory row number.
+// Each map-browser opening reveals Friends and requests new presence.
+void() MF_Open =
+{
+	MFP_Close();
+	cvar_set("ui_maps_friends", "1");
+	mf_next = 0;
+	if (MF_Online())
+	if (clientstate() == 2)
+	if (cvar("ui_friends_activity") > 0 && cvar("ui_friends_activity") == cvar("ui_friends_epoch"))
+		localcmd("cmd friend refresh -\n");
+};
+
 void() MF_ResumeJoin =
 {
 	if (!MF_Active() || ui_join_busy()) return;
@@ -311,6 +324,7 @@ float(float reqid, float code, string body) MF_Reply =
 	local int root, arr, o;
 	local float n, i, rel, online, stage;
 	local string nonce, expires, ticket, proof, pub, sig, form, who, addr, map, why;
+	if (MFP_Reply(reqid, code, body)) return TRUE;
 	if (!mf_wire || reqid != mf_wire) return FALSE;
 	mf_wire = 0;
 	if (!mf_req || reqid != mf_req) return TRUE;
@@ -416,10 +430,11 @@ float(float reqid, float code, string body) MF_Reply =
 		rel = json_get_float(json_find_object_child(o, "relation"));
 		if (!MF_WhoSafe(who) || rel < 1 || rel > 4 || rel != floor(rel)) break;
 		online = (rel == 3 && json_get_float(json_find_object_child(o, "online")) == 1);
-		bufstr_set(stage, i, sprintf("%s %g %g \"%s\" \"%s\" \"%s\"", who, rel, online,
+		bufstr_set(stage, i, sprintf("%s %g %g \"%s\" \"%s\" \"%s\" \"%s\"", who, rel, online,
 			uri_escape(substring(json_get_string(json_find_object_child(o, "name")), 0, 64)),
 			uri_escape(substring(json_get_string(json_find_object_child(o, "server")), 0, 128)),
-			uri_escape(substring(json_get_string(json_find_object_child(o, "map")), 0, 64))));
+			uri_escape(substring(json_get_string(json_find_object_child(o, "map")), 0, 64)),
+			uri_escape(substring(json_get_string(json_find_object_child(o, "activity")), 0, 24))));
 	}
 	if (i != n)
 	{
@@ -440,9 +455,10 @@ float(float reqid, float code, string body) MF_Reply =
 
 void(vector pos, vector size) MF_Draw =
 {
-	local float i, rel, online, at, fresh;
+	local float i, rel, online, at, fresh, alpha, flag, room;
 	local vector rp;
-	local string who, nm, server, map, status, id, ago;
+	local string who, nm, server, map, status, id, ago, activity;
+	if (MFP_IsOpen()) { MFP_Draw(pos, size); return; }
 	sui_style_panel(pos, size, 12, 1);
 	sui_push_frame(pos, size);
 	sui_text('16 12 0', SZ_HEAD, "friends", COL_ACCENT, 1, 0);
@@ -478,52 +494,55 @@ void(vector pos, vector size) MF_Draw =
 				status = strcat(status, " -- ", mf_note);
 		}
 		sui_text('16 52 0', '12 12 0', ui_fit_text(status, size_x - 32, '12 12 0'), COL_DIM, 1, 0);
-		sui_list_view_begin("mf_list", '12 76 0', [size_x - 24, size_y - 88], [size_x - 38, 102], mf_count, mf_scroll, [0, 8]);
+		sui_list_view_begin("mf_list", '12 76 0', [size_x - 24, size_y - 88], [size_x - 38, 64], mf_count, mf_scroll, [0, 8]);
 		rp = '0 0 0';
 		for (i = sui_list_item(rp); i > -1; i = sui_list_item(rp))
 		{
 			at = tokenize(bufstr_get(mf_rows, i));
-			if (at != 6) continue;
+			if (at != 6 && at != 7) continue;
 			who = argv(0);
 			rel = stof(argv(1));
-			online = (rel == 3 && stof(argv(2)) != 0);
+			flag = stof(argv(2));
+			online = (rel == 3 && flag == 1 && fresh);
 			nm = uri_unescape(argv(3));
 			server = uri_unescape(argv(4));
 			map = uri_unescape(argv(5));
-			id = strcat("mf_join", who);
-			// P788: incoming adds, listed last, are drawn faded.
-			sui_style_box(rp, [size_x - 38, 96], 8, SUI_THEME_WELL, SUI_THEME_EDGE, rel == 2 ? 0.4 : 1);
-			// Patch 789: their picture, as the in-game Friends tab draws it.
+			activity = at == 7 ? uri_unescape(argv(6)) : "";
+			alpha = online ? 1 : 0.45;
+			room = size_x - 114;
+			sui_style_box(rp, [size_x - 38, 64], 8, SUI_THEME_WELL, SUI_THEME_EDGE, alpha);
 			if (MF_WhoSafe(who))
-			if (!MP_Draw(rp + '10 10 0', 44, who, rel == 2 ? 0.45 : 1))
-				sui_roundbox(rp + '10 10 0', '44 44 0', 8, SUI_THEME_CHIP, rel == 2 ? 0.45 : 1);
-			sui_text(rp + '64 8 0', SZ_ROW, ui_fit_text(nm, size_x - 114, SZ_ROW), rel == 2 ? COL_DIM : COL_TEXT, 1, 0);
-			status = "Offline";
-			if (!fresh)
-				status = (mf_seen > 0) ? strcat("Offline as of ", ago, " ago") : "Checking...";
-			if (rel == 1) status = "Added -- waiting for them to add you back";
-			if (rel == 2) status = (clientstate() == 2) ? "Added you" : "Added you -- add them back in a lobby";
+			if (!MP_Draw(rp + '10 10 0', 44, who, alpha))
+				sui_roundbox(rp + '10 10 0', '44 44 0', 8, SUI_THEME_CHIP, alpha);
+			id = strcat("mf_profile", who);
+			sui_action_element(rp + '64 8 0', [room, 24], id, sui_noop);
+			sui_text(rp + '64 12 0', SZ_ROW, ui_fit_text(nm, room, SZ_ROW), COL_TEXT, alpha, 0);
+			if (sui_is_released(id) && MF_WhoSafe(who))
+			{
+				MFP_Open(who, nm);
+			}
+			status = fresh ? "Offline" : "Checking...";
+			if (rel == 1) status = "Added -- waiting for them";
+			if (rel == 2) status = "Added you";
 			if (rel == 4) status = "Blocked";
-			if (online) status = fresh ? server : strcat("Last seen: ", server);
-			sui_text(rp + '64 32 0', '12 12 0', ui_fit_text(status, size_x - 114, '12 12 0'), (online && fresh) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
-			// The menu route reads only; adding back goes through the lobby's game.
-			if (rel == 2 && clientstate() == 2 && MF_WhoSafe(who))
-			if (ui_button(strcat("mf_add", who), rp + [size_x - 146, 54], [98, 28], "Add back"))
-				localcmd(sprintf("friends_menu_add %s\n", who));
 			if (online)
 			{
-				sui_text(rp + '64 54 0', '12 12 0', ui_fit_text(map, size_x - 198, '12 12 0'), COL_DIM, 1, 0);
-				// Join asks the backend afresh; a stale row only offers the question.
-				if (MF_WhoSafe(who))
-				if (ui_button(id, rp + [size_x - 122, 54], [74, 28], "Join"))
+				status = strcat(ui_fit_text(map, max(16, room - stringwidth(activity, TRUE, '12 12 0') - 8), '12 12 0'), "  ", activity);
+				id = strcat("mf_join", who);
+				sui_action_element(rp + '64 32 0', [room, 24], id, sui_noop);
+				// The location is the join target, never the profile/name row.
+				if (sui_is_released(id) && MF_WhoSafe(who))
 				if (!ui_join_busy())
 				{
-					if (clientstate() == 2)
-						localcmd(sprintf("friends_menu_join %s\n", who));
-					else
-						MF_Join(who);
+					if (clientstate() == 2) localcmd(sprintf("friends_menu_join %s\n", who));
+					else MF_Join(who);
 				}
 			}
+			else if (rel == 3 && flag == 2) status = strcat("Last seen: ", map);
+			sui_text(rp + '64 36 0', '12 12 0', ui_fit_text(status, room, '12 12 0'), online ? SUI_THEME_GOOD : COL_DIM, alpha, 0);
+			if (rel == 2 && clientstate() == 2 && MF_WhoSafe(who))
+			if (ui_button(strcat("mf_add", who), rp + [size_x - 126, 32], [78, 24], "Add back"))
+				localcmd(sprintf("friends_menu_add %s\n", who));
 		}
 		sui_list_view_end();
 	}
