@@ -802,6 +802,183 @@ string(float idx) Scores_LegTier =
 	                    rec_sb_legtrack[idx] == 0 && rec_sb_legnum[idx] == 0);
 };
 
+// Patch 915: current-leg owner archive rows share Local's selection/Watch_Open.
+#define AR_EV_ROW 40
+#define AR_EV_END 41
+#define AR_EV_DATA 42
+float ar_query, ar_track, ar_leg, ar_state, ar_rows, ar_owners, ar_dates, ar_flags;
+float ar_fh, ar_seq, ar_bytes, ar_at, ar_refresh, ar_transfer, ar_total;
+string ar_map, ar_path;
+
+void() Archive_ClientCancel =
+{
+	if (ar_fh > 0) fclose(ar_fh - 1);
+	ar_fh = 0;
+	if (strcmp(ar_path, ""))
+	{
+		fremove(strcat(ar_path, ".part"));
+		strunzone(ar_path);
+		ar_path = "";
+	}
+	if (ar_state == 2) ar_state = 0;
+};
+
+float(string leaf) Archive_ClientLeaf =
+{
+	local float i, c;
+	if (strlen(leaf) < 12 || strlen(leaf) > 180) return FALSE;
+	if (strcmp(substring(leaf, strlen(leaf) - 4, 4), ".rec")) return FALSE;
+	for (i = 0; i < strlen(leaf) - 4; i = i + 1)
+	{
+		c = str2chr(leaf, i);
+		if (!(c >= 48 && c <= 57) && !(c >= 97 && c <= 122) && c != 45 && c != 95) return FALSE;
+	}
+	return FS_NameTicks(substring(leaf, 0, strlen(leaf) - 4)) > 0;
+};
+
+void() Archive_ClientNeed =
+{
+	local string map;
+	local float track, leg;
+	if (rec_sb_tab != SB_T_LOCAL || rec_sb_leg < 0 || rec_sb_leg >= rec_sb_legn) return;
+	track = rec_sb_legtrack[rec_sb_leg]; leg = rec_sb_legnum[rec_sb_leg]; map = serverkey("map");
+	if (leg < 1 || !strcmp(map, "")) return;
+	if (!strcmp(ar_map, map) && ar_track == track && ar_leg == leg && cltime < ar_refresh) return;
+	if (ar_state == 2) return;
+	Archive_ClientCancel();
+	if (ar_rows > 0) { buf_del(ar_rows); buf_del(ar_owners); buf_del(ar_dates); buf_del(ar_flags); }
+	ar_rows = buf_create_ex("string", 0); ar_owners = buf_create_ex("string", 0);
+	ar_dates = buf_create_ex("string", 0); ar_flags = buf_create_ex("string", 0);
+	if (strcmp(ar_map, "")) strunzone(ar_map);
+	ar_map = strzone(map); ar_track = track; ar_leg = leg;
+	ar_query = ar_query + 1; ar_transfer = 0;
+	ar_state = 1; ar_at = cltime + 12; ar_refresh = cltime + 30;
+	localcmd(sprintf("cmd archive list %d %d %d\n", ar_query, track, leg));
+};
+
+void(float row) Archive_ClientGet =
+{
+	if (!ar_rows || row < 1 || row > buf_getsize(ar_rows)) return;
+	if (strcmp(ar_map, serverkey("map"))) return;
+	if (ar_transfer >= 16000000) { ar_refresh = 0; return; }
+	Archive_ClientCancel();
+	ar_transfer = ar_transfer + 1;
+	ar_path = strzone(strcat(FS_RunDir(ar_map, ar_track, ar_leg), bufstr_get(ar_rows, row - 1)));
+	ar_fh = fopen(strcat(ar_path, ".part"), FILE_WRITE) + 1;
+	if (ar_fh <= 0) { Archive_ClientCancel(); return; }
+	ar_state = 2; ar_seq = ar_bytes = ar_total = 0; ar_at = cltime + 15;
+	localcmd(sprintf("cmd archive get %d %d %d\n", ar_query, row, ar_transfer));
+	print("scores: fetching your stage recording...\n");
+};
+
+void(float ev) Archive_ClientEvent =
+{
+	local float query, row, flags, status, seq, done, transfer, total, fh;
+	local string leaf, owner, date, data, path;
+	query = readlong();
+	if (ev == AR_EV_ROW)
+	{
+		row = readshort(); leaf = readstring(); owner = readstring(); date = readstring(); flags = readlong();
+		if (query != ar_query || ar_state != 1 || strcmp(ar_map, serverkey("map"))) return;
+		if (row < 1 || row > 128 || !Archive_ClientLeaf(leaf)) return;
+		bufstr_set(ar_rows, row - 1, leaf); bufstr_set(ar_owners, row - 1, owner);
+		bufstr_set(ar_dates, row - 1, date); bufstr_set(ar_flags, row - 1, ftos(flags));
+		ar_at = cltime + 12;
+	}
+	else if (ev == AR_EV_END)
+	{
+		transfer = readlong(); status = readbyte();
+		if (query != ar_query) return;
+		if (ar_state == 2)
+		{
+			if (transfer != ar_transfer) return;
+			Archive_ClientCancel(); print("scores: stage recording unavailable; reopen Local to refresh.\n");
+		}
+		else if (ar_state == 1)
+		{
+			if (transfer != 0) return;
+			ar_state = 0; rec_sb_legbuilt = -2;
+			if (status == 3) { ar_refresh = cltime + 2; return; }
+			print(sprintf("scores: owner archive %d rows (status %d)\n", buf_getsize(ar_rows), status));
+		}
+	}
+	else if (ev == AR_EV_DATA)
+	{
+		transfer = readlong(); total = readlong(); seq = readlong(); done = readbyte(); data = readstring();
+		if (query != ar_query || transfer != ar_transfer || ar_state != 2 || strcmp(ar_map, serverkey("map"))) return;
+		if (ar_total == 0) ar_total = total;
+		if (!(total >= 1 && total <= 8388608 && total == floor(total)) || total != ar_total
+		    || seq != ar_seq || ar_bytes + strlen(data) > total || strlen(data) > 900 || done > 1)
+		{
+			Archive_ClientCancel(); return;
+		}
+		fputs(ar_fh - 1, data); ar_seq = ar_seq + 1; ar_bytes = ar_bytes + strlen(data); ar_at = cltime + 15;
+		if (!done) return;
+		fclose(ar_fh - 1); ar_fh = 0;
+		fh = fopen(strcat(ar_path, ".part"), FILE_READ);
+		status = -1;
+		if (fh >= 0) { status = fsize(fh); fclose(fh); }
+		if (ar_bytes != ar_total || status != ar_total)
+		{
+			Archive_ClientCancel(); print("scores: incomplete stage recording; reopen Local to retry.\n"); return;
+		}
+		if (frename(strcat(ar_path, ".part"), ar_path) != 0)
+		{
+			Archive_ClientCancel(); print("scores: could not keep stage recording.\n"); return;
+		}
+		path = strzone(ar_path);
+		print(sprintf("scores: owner archive received %d bytes\n", ar_bytes));
+		Archive_ClientCancel(); ar_state = 0;
+		Scores_Close(); Watch_Open(path); strunzone(path);
+	}
+};
+
+void() Archive_ClientFrame =
+{
+	if (ar_state)
+	if (cltime > ar_at || strcmp(ar_map, serverkey("map")))
+	{
+		if (ar_state == 2) localcmd(sprintf("cmd archive cancel %d\n", ar_query));
+		Archive_ClientCancel(); ar_state = 0;
+		print("scores: owner archive request expired.\n");
+	}
+};
+
+void() Archive_ClientRows =
+{
+	local float i, r, fh;
+	local string leaf, path, base;
+	if (!ar_rows || strcmp(ar_map, serverkey("map"))) return;
+	if (ar_track != rec_sb_legtrack[rec_sb_leg] || ar_leg != rec_sb_legnum[rec_sb_leg]) return;
+	for (i = 0; i < buf_getsize(ar_rows) && rec_sb_rown < SB_MAXROW; i = i + 1)
+	{
+		leaf = bufstr_get(ar_rows, i);
+		if (!Archive_ClientLeaf(leaf)) continue;
+		path = strcat(FS_RunDir(ar_map, ar_track, ar_leg), leaf);
+		fh = fopen(path, FILE_READ);
+		if (fh >= 0) { fclose(fh); continue; }
+		r = rec_sb_rown; base = substring(leaf, 0, strlen(leaf) - 4);
+		rec_sb_rowticks[r] = FS_NameTicks(base); rec_sb_rowtag[r] = FS_TagFromName(FS_NameTag(base));
+		rec_sb_rowflags[r] = stof(bufstr_get(ar_flags, i)); rec_sb_rowver[r] = 5;
+		bufstr_set(rec_sb_bpath, r, sprintf("archive:%d", i + 1));
+		bufstr_set(rec_sb_bowner, r, bufstr_get(ar_owners, i)); bufstr_set(rec_sb_bdate, r, bufstr_get(ar_dates, i));
+		rec_sb_rown = rec_sb_rown + 1;
+	}
+};
+
+void(float row) Scores_LocalWatch =
+{
+	local string path;
+	path = bufstr_get(rec_sb_bpath, row);
+	if (!strcmp(substring(path, 0, 8), "archive:"))
+		Archive_ClientGet(stof(substring(path, 8, 8)));
+	else
+	{
+		Scores_Close();
+		Watch_Open(path);
+	}
+};
+
 /*
   The rows for one leg.
 
@@ -841,10 +1018,7 @@ void(float leg) Scores_BuildRows =
 	                                  rec_sb_legtrack[leg], rec_sb_legnum[leg]),
 	                        "*.rec"),
 	                 FS_NAMESORT, TRUE);
-	if (h < 0)
-		return;
-
-	n = search_getsize(h);
+	n = (h < 0) ? 0 : search_getsize(h);
 	for (i = 0; i < n; i = i + 1)
 	{
 		if (rec_sb_rown >= SB_MAXROW)
@@ -917,7 +1091,8 @@ void(float leg) Scores_BuildRows =
 
 		rec_sb_rown = rec_sb_rown + 1;
 	}
-	search_end(h);
+	if (h >= 0) search_end(h);
+	Archive_ClientRows();
 
 	/*
 	  The reference the deltas are measured against: the fastest CLEAN run on the
@@ -968,6 +1143,7 @@ void() Scores_Refresh =
 	if (rec_sb_finpend)
 	if (rec_sb_open || sc_held)
 		Scores_ApplyFollow();
+	Archive_ClientNeed();
 	if (rec_sb_legbuilt != rec_sb_leg)
 		Scores_BuildRows(rec_sb_leg);
 
@@ -1322,6 +1498,12 @@ void(float row) Scores_LineToggle =
 	local string key, s;
 	local float i;
 
+	if (rec_sb_tab == SB_T_LOCAL)
+	if (!strcmp(substring(bufstr_get(rec_sb_bpath, row), 0, 8), "archive:"))
+	{
+		print("scores: watch this owner recording once to fetch its line.\n");
+		return;
+	}
 	key = Scores_LineKey(row);
 	if (key == "")
 	{
@@ -2865,9 +3047,7 @@ void(vector p, vector sz, float pad, vector scr, float pick) Scores_Finish =
 			print("^3scores:^7 that time was set on a lobby -- no replay\n");
 		else
 		{
-			s = bufstr_get(rec_sb_bpath, pick);
-			Scores_Close();
-			Watch_Open(s);
+			Scores_LocalWatch(pick);
 		}
 	}
 
@@ -3587,6 +3767,8 @@ void(vector scr) Scores_Draw =
 */
 void() Scores_Close =
 {
+	if (ar_state == 2) localcmd(sprintf("cmd archive cancel %d\n", ar_query));
+	Archive_ClientCancel();
 	/*
 	  CLOSING THE BOARD CANCELS A PENDING REPLAY, and this line is the whole
 	  reason rec_sb_wantrep exists.  The download itself is not cancelled --
@@ -3643,6 +3825,7 @@ void() Scores_Open =
 		return;
 	Scores_NativeReset(!sc_held);
 	rec_sb_open = TRUE;
+	ar_refresh = 0;
 	// Re-read the folder every time it opens; a pin from the hold keeps the
 	// player's place (-2, Patch 357).
 	rec_sb_legbuilt = sc_held ? -2 : -1;
@@ -4199,8 +4382,7 @@ float(string cmd) Scores_ConsoleCommand =
 					print("^3scores:^7 that time was set on a lobby -- no replay\n");
 				else
 				{
-					Scores_Close();
-					Watch_Open(bufstr_get(rec_sb_bpath, stof(argv(2)) - 1));
+					Scores_LocalWatch(stof(argv(2)) - 1);
 				}
 			}
 			return TRUE;

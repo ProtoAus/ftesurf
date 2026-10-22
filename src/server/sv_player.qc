@@ -269,6 +269,7 @@ void() PutClientInServer =
 */
 void() ClientConnect =
 {
+	Archive_Reset(self);
 	// Patch 371: a join line only for a new connection -- this runs again for
 	// everyone on every changelevel (Lobby_AnnConnect).
 	Lobby_AnnConnect(self);
@@ -335,6 +336,7 @@ void() ClientConnect =
 
 void() ClientDisconnect =
 {
+	Archive_Reset(self);
 	SV_StartMarkForget(self);
 	Lobby_AnnDisconnect(self);          // Patch 371: the chat line, if the join was said
 
@@ -1111,6 +1113,11 @@ void(string cmd) SV_ParseClientCommand =
 	}
 	cmdargc = tokenize(cmd);
 	c = argv(0);
+	if (!strcmp(c, "archive"))
+	{
+		Archive_Command(self, cmdargc);
+		return;
+	}
 	if (c == "friend")
 	{
 		if (cmdargc >= 3)

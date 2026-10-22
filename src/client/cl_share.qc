@@ -280,6 +280,11 @@ void() CSQC_Parse_Event =
 	local float size, alpha;
 
 	t = readbyte();
+	if (t >= AR_EV_ROW && t <= AR_EV_DATA)
+	{
+		Archive_ClientEvent(t);
+		return;
+	}
 	if (t >= MM_EV_TEXT && t <= MM_EV_SHAKE)    // Patch 870
 	{
 		MapMsg_Event(t);

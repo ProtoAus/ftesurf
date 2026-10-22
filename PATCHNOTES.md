@@ -25,6 +25,12 @@
 - Your view lowers when a ceiling would clip through the camera, on the ground or in the air. This does not crouch or shrink your collision box.
 - At the water's surface, face a low ledge with room above it for a Source-style upward assist. Jump or swim up to reach the surface; the ledge assist itself needs neither button.
 
+### P915 Disconnected time counts, and clean stages stay watchable
+- Resuming a clean whole-main run now counts the entire time disconnected, including overnight, while preserving your physical movement history.
+- Every newly completed clean stage attempt is kept under the normal recording limits, even if it is not a PB or you cancel the main run.
+- On lobbies, Local can retrieve your newly saved stage recordings once your connection is identified. Choose an attempt to fetch and watch it; this does not award a record.
+- Older saves retain their original timing. A slot whose clock cannot be resumed safely is left untouched rather than consumed; removing it remains your choice.
+
 ### P914 Your run clock keeps going while you watch
 - Spectating another player or watching a recording no longer pauses your own run timer. Your body stays held; the time spent watching is added to the run and current stage without inventing movement.
 - Repeated viewing and supported save, rewind and resume paths preserve the accumulated time. Older recordings keep their original timing rather than being reinterpreted.

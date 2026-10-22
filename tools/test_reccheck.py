@@ -3181,10 +3181,10 @@ def case_v11_fzin():
     faults_with(old, "requires format 11", "old prefixes cannot silently claim new input semantics")
 
 
-def v12_fixture(seconds=0.0):
+def v12_fixture(seconds=0.0, **kw):
     from reccheck import viewing_ticks, qc_float
     seconds = qc_float(seconds)
-    lines = v11_fixture()
+    lines = v11_fixture(**kw)
     lines[0] = "FTESURF-REC 12"
     lines.insert(lines.index("begin"), "viewclock 1")
     close = next(i for i, l in enumerate(lines) if l.startswith("clockend "))
@@ -3200,6 +3200,53 @@ def v12_fixture(seconds=0.0):
     tail.append(str(len(edges)))
     lines[ix] = " ".join(tail)
     return lines
+
+
+def v13_fixture(gap=None):
+    from reccheck import viewing_ticks
+    lines = v12_fixture(ver=10, sessions=[(15, 3, "drop")] if gap is not None else ())
+    if gap is not None:
+        lines = [l.replace("clockend viewing %d 0 0" % HORIZON,
+                           "clockend viewing 3 16 0") for l in lines]
+        ix = next(i for i, l in enumerate(lines) if l.startswith("end "))
+        tail = lines[ix].split()
+        mt = int(next(l for l in lines if l.startswith("inend ")).split()[1])
+        tail[1] = str(mt - 3 + 16)
+        lines[ix] = " ".join(tail)
+    lines[0] = "FTESURF-REC 13"
+    ix = next(i for i, l in enumerate(lines) if l.startswith("end "))
+    tail = lines[ix].split()
+    tail.append(str(int(gap is not None)))
+    if gap is not None:
+        tail[1] = str(int(tail[1]) + viewing_ticks(gap, TICK))
+        close = next(i for i, l in enumerate(lines) if l.startswith("clockend "))
+        lines[close] = lines[close].rsplit(" ", 1)[0] + " %.9g" % gap
+        lines.insert(close, "parkclock %.9g %.9g" % (gap, gap))
+        ix += 1
+    lines[ix] = " ".join(tail)
+    return lines
+
+
+def case_sv_resume_parkclock():
+    for gap in (None, 0, 5, 86401):
+        ok_clean(v13_fixture(gap), "v13 explicit offline carry %s" % gap)
+    for label, old, new, diagnostic in (
+            ("negative", "parkclock 5 5", "parkclock -5 -5", "non-negative"),
+            ("fractional", "parkclock 5 5", "parkclock 0.5 0.5", "integral"),
+            ("nonfinite", "parkclock 5 5", "parkclock inf inf", "finite"),
+            ("wrong carry", "parkclock 5 5", "parkclock 5 4", "shared carry"),
+            ("duplicate session", "parkclock 5 5", "parkclock 5 5\nparkclock 1 6", "new matched session"),
+            ("wrong version", "FTESURF-REC 13", "FTESURF-REC 12", "requires format 13")):
+        lines = [l.replace(old, new) for l in v13_fixture(5)]
+        faults_with(lines, diagnostic, "v13 refuses " + label)
+    lines = v13_fixture(5)
+    ix = next(i for i, l in enumerate(lines) if l.startswith("end "))
+    lines[ix] = lines[ix].rsplit(" ", 1)[0] + " 0"
+    faults_with(lines, "parkclock edge count", "v13 counts landed park edges")
+    lines = v13_fixture()
+    ix = next(i for i, l in enumerate(lines) if l.startswith("clockend "))
+    lines.insert(ix, "parkclock 0 0")
+    faults_with(lines, "new matched session", "v13 requires pause/session before park")
 
 
 def case_sv_timer_viewclock():
@@ -3282,7 +3329,7 @@ def case_sv_timer_viewclock_review():
 
 
 def main():
-    for fn in (case_sv_timer_viewclock, case_sv_timer_viewclock_review, case_control,
+    for fn in (case_sv_resume_parkclock, case_sv_timer_viewclock, case_sv_timer_viewclock_review, case_control,
                case_no_horizon, case_horizon_without_rows,
                case_trailer_width, case_trailer_count,
                case_row_width,

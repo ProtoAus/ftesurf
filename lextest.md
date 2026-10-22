@@ -10,6 +10,27 @@ the assist lift you onto the lip. Compare facing away and a wall too tall to
 climb. The lip check itself needs neither jump nor +up. Automated real hull-trace,
 movement/state and legacy controls passed; that is not visual/feel confirmation.
 
+## P915 — disconnected clocks and retained stage attempts (deployment pending)
+
+Actual dedicated-socket controls pass for disconnected-time carry, overflow
+refusal with every slot byte retained, last-valid clock, twice-parked rewind,
+and independent Local selection/byte-exact playback after main cancellation.
+Account proof itself is an existing dependency, not newly tested against the
+remote service. Human acceptance PENDING; do not try these on old live P911.
+
+After the matching rollout, two small checks:
+- Complete two clean attempts of one stage, cancel the enclosing main run,
+  then open Local for that stage. Both new attempts should be selectable and
+  visibly play the right attempt. Lobby retrieval needs your connection's
+  normal account proof; older unsealed files keep their prior availability.
+- Leave a clean whole-main run, spend about ten seconds disconnected, then
+  accept the normal resume offer. Its clock should include the time away and
+  your body should resume normally. Old saves do not invent a disconnect time.
+
+Recording/retention limits still apply. No native verification of parked-time
+or positive viewing-time runs, official record grant, Build bump or release is
+claimed. Record Lex's actual observation here; programmatic passes are not it.
+
 ## P914 — clock while watching (matching deployment pending)
 
 Native live-body/clock, save/continuation, reader and malformed-input controls

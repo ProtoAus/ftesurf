@@ -14,6 +14,10 @@ void() SV_Shutdown =
 {
 	local entity p;
 
+	p = world;
+	while ((p = findfloat(p, acct_here, TRUE)))
+		Archive_Reset(p);             // map changes do not call ClientDisconnect
+
 	// Patch 382: every spectate ends first -- the park writes `pause` after the
 	// `spec 0`, and a run that is not parked must not arrive on the next map held.
 	p = world;
@@ -201,6 +205,7 @@ void() StartFrame =
 	Pose_Frame();                   // Patch 383: spectator counts and the publish gap
 	Pose_SpecBy();                  // Patch 429: who watches whom, after the counts
 	SV_SpecPublish();               // Patch 382: reads what Lobby_Frame just cached
+	Archive_Frame();
 	SV_SaveLocFrame();              // Patch 428: delete-all sweeps
 
 	/*

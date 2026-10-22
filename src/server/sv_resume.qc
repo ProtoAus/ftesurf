@@ -37,7 +37,8 @@ entity  rec_ms_owner;   // one copy per lobby: the first fgets reads the whole f
 float  ms_ticks, ms_seg, ms_segs, ms_track, ms_leg, ms_sess, ms_day, ms_tickrate;
 float  ms_maxvel;               // P841: -1 = a slot written before the cap was recorded
 float  ms_lines, ms_bytes, ms_n, ms_padn, ms_cp, ms_in, ms_pk, ms_warp, ms_ride;
-float ms_views;
+float ms_views, ms_parks;
+float ms_utcday, ms_utcsec, ms_utcbad, ms_gap;
 float  ms_pm, ms_pe, ms_portal, ms_pauses, ms_rsess, ms_posts, ms_pinned, ms_full;
 float  ms_stseg, ms_sttick, ms_starmed, ms_legzone, ms_legtrack, ms_legseg;
 string ms_why, ms_mapcrc, ms_zonecrc, ms_zonerule, ms_rec, ms_rid;
@@ -86,6 +87,49 @@ void(entity e) SV_MsAdopt =
   ms.txt
 ===========================================================================
 */
+// UTC day and second-of-day stay exact in QC; never store a float Unix epoch.
+float ms_nowday, ms_nowsec;
+void() SV_MsUTC =
+{
+	local string stamp;
+	stamp = strftime(FALSE, "%Y%m%d %H %M %S");
+	tokenize(stamp);
+	ms_nowday = FS_DayNumOf(argv(0));
+	ms_nowsec = stof(argv(1)) * 3600 + stof(argv(2)) * 60 + stof(argv(3));
+};
+
+float() SV_MsGapValid =
+{
+	local float days;
+	ms_gap = 0;
+	if (ms_utcbad) return FALSE;
+	if (ms_utcday < 0) return TRUE; // Legacy slots retain their original clock.
+	SV_MsUTC();
+	days = ms_nowday - ms_utcday;
+	if (days < 0 || days > 194) return FALSE;
+	ms_gap = days * 86400 + (ms_nowsec - ms_utcsec);
+	if (ms_gap < 0 || ms_gap > 16777215) return FALSE;
+	if (run_t_tick <= 0) return FALSE;
+	if (!(ms_ticks >= 0 && ms_ticks <= 16777215)) return FALSE;
+	return TRUE;
+};
+
+// Validate the restored accessor, not a separately rounded gap-tick sum.
+float(entity e) SV_MsAppliedGapValid =
+{
+	local float old, total, counted;
+	if (ms_utcday < 0) return TRUE;
+	old = e.run_t_viewsec;
+	e.run_t_viewsec = old + ms_gap;
+	total = SV_TimerTicks(e);
+	// The native clock may latch on its first packet after applying the save.
+	counted = e.run_t_tickcarry + SV_ViewTicks(e);
+	e.run_t_viewsec = old;
+	if (!(total >= 0 && total <= 16777215)) return FALSE;
+	if (!(counted >= 0 && counted <= 16777215)) return FALSE;
+	return TRUE;
+};
+
 void(entity e, float ticks, string why, string mode, float bytes) SV_MsWriteMeta =
 {
 	local filestream f;
@@ -96,6 +140,11 @@ void(entity e, float ticks, string why, string mode, float bytes) SV_MsWriteMeta
 	fputs(f, "FTESURF-RESUME 1\n");
 	fputs(f, sprintf("map %s\n", mapname));
 	fputs(f, sprintf("day %s\n", strftime(TRUE, "%Y%m%d")));
+	if (e.rec_rec_ver >= 13 || !strcmp(mode, "none"))
+	{
+		SV_MsUTC();
+		fputs(f, sprintf("parkutc %d %d\n", ms_nowday, ms_nowsec));
+	}
 	fputs(f, sprintf("why %s\n", why));
 	fputs(f, sprintf("sessions %d\n", e.run_ms_sessions));
 	fputs(f, sprintf("ticks %d\n", ticks));
@@ -119,6 +168,7 @@ void(entity e, float ticks, string why, string mode, float bytes) SV_MsWriteMeta
 	fputs(f, sprintf("recrows %d %d %d %d\n", e.rec_rec_in, e.rec_rec_pk, e.rec_rec_warp, e.rec_rec_ride));
 	fputs(f, sprintf("recstate %d %d %d %d\n", e.rec_rec_pm, e.rec_rec_pe, e.rec_rec_portal, e.rec_rec_pinned));
 	fputs(f, sprintf("recviews %d\n", e.rec_rec_views));
+	fputs(f, sprintf("recparks %d\n", e.rec_rec_parks));
 	fputs(f, sprintf("recsess %d %d %d %d\n", e.rec_rec_pauses, e.rec_rec_sess, e.rec_rec_posts, e.rec_rec_full));
 	if (e.rec_rec_rid != "")
 		fputs(f, sprintf("runid %s\n", e.rec_rec_rid));
@@ -137,7 +187,8 @@ float(string path) SV_MsReadMeta =
 	ms_ticks = ms_seg = ms_segs = ms_track = ms_leg = ms_sess = ms_day = ms_tickrate = 0;
 	ms_maxvel = -1;
 	ms_lines = ms_n = ms_padn = ms_cp = ms_in = ms_pk = ms_warp = ms_ride = 0;
-	ms_views = 0;
+	ms_views = ms_parks = 0;
+	ms_utcday = -1; ms_utcsec = ms_utcbad = 0;
 	ms_pm = ms_pe = ms_portal = ms_pauses = ms_rsess = ms_posts = ms_pinned = ms_full = 0;
 	ms_bytes = -1;
 	ms_stseg = ms_legzone = -1;
@@ -154,7 +205,10 @@ float(string path) SV_MsReadMeta =
 	{
 		n = tokenize(k);
 		if (n < 2)
+		{
+			if (!strcmp(argv(0), "parkutc")) ms_utcbad = TRUE;
 			continue;
+		}
 		k = argv(0);
 		if (k == "FTESURF-RESUME") ok = TRUE;
 		else if (k == "day")       ms_day = FS_DayNumOf(argv(1));
@@ -178,6 +232,18 @@ float(string path) SV_MsReadMeta =
 			if (n >= 4)
 				ms_zonerule = sprintf("%s %s %s", argv(1), argv(2), argv(3));
 		}
+		else if (!strcmp(k, "parkutc"))
+		{
+			if (ms_utcday >= 0) ms_utcbad = TRUE;
+			ms_utcday = stof(argv(1)); ms_utcsec = stof(argv(2));
+			if (n != 3 || strcmp(ftos(ms_utcday), argv(1)) || strcmp(ftos(ms_utcsec), argv(2)))
+				ms_utcbad = TRUE;
+			if (!(ms_utcday >= 0 && ms_utcday <= 200000 && ms_utcday == floor(ms_utcday)))
+				ms_utcbad = TRUE;
+			if (!(ms_utcsec >= 0 && ms_utcsec < 86400 && ms_utcsec == floor(ms_utcsec)))
+				ms_utcbad = TRUE;
+		}
+		else if (!strcmp(k, "recparks")) ms_parks = stof(argv(1));
 		else if (!strcmp(k, "recviews")) ms_views = stof(argv(1));
 		else if (n >= 5)
 		{
@@ -646,6 +712,11 @@ void(entity e) SV_MsAccept =
 	// by a connection that has proved that key; the slot stays as it is.
 	if (SV_MsForeign(e))
 		return;
+	if (!SV_MsGapValid())
+	{
+		sprint(e, PRINT_HIGH, "^3resume:^7 invalid or out-of-range parked clock; the slot stays where it is\n");
+		return;
+	}
 	// The claim.  POSIX rename is atomic, so a second lobby's fails here.
 	claim = SV_MsPath(e, SV_MsClaimLeaf());
 	fremove(claim);
@@ -807,6 +878,7 @@ void(entity e) SV_MsRecAttach =
 		e.rec_rec_pauses = ms_pauses;
 		e.rec_rec_sess = ms_rsess;
 		e.rec_rec_views = ms_views;
+		e.rec_rec_parks = ms_parks;
 		e.rec_rec_full = ms_full;
 		if (e.rec_rec_pk < ms_pk)
 			e.rec_rec_pk = ms_pk;
@@ -932,6 +1004,13 @@ void(entity e) SV_MsApply =
 		return;
 	}
 
+	if (!SV_MsGapValid())
+	{
+		SV_MsAbortHere(e);
+		sprint(e, PRINT_HIGH, "^3resume:^7 invalid or out-of-range parked clock; slot retained\n");
+		return;
+	}
+
 	SV_WatchRelease(e);                 // Patch 477: a pin taken since the accept
 	e.movetype = MOVETYPE_WALK;
 	oldroot = sl_root;
@@ -942,6 +1021,13 @@ void(entity e) SV_MsApply =
 	{
 		SV_MsAbortHere(e);
 		sprint(e, PRINT_HIGH, "^3resume:^7 the paused run could not be applied\n");
+		return;
+	}
+
+	if (!SV_MsAppliedGapValid(e))
+	{
+		SV_MsAbortHere(e);
+		sprint(e, PRINT_HIGH, "^3resume:^7 restored clock is out of range; slot retained\n");
 		return;
 	}
 
@@ -962,6 +1048,18 @@ void(entity e) SV_MsApply =
 	SV_TimerClock(e);
 
 	SV_MsRecAttach(e);
+	if (ms_utcday >= 0)
+	{
+		// Open the old frozen-clock session BEFORE adding its offline gap.
+		SV_RecSession(e);
+		if (!SV_RecLive(e) || e.rec_rec_ver == 13)
+		{
+			e.run_t_viewsec = e.run_t_viewsec + ms_gap;
+			ok = e.rec_rec_lines;
+			SV_RecPut(e, sprintf("parkclock %.9g %.9g", ms_gap, e.run_t_viewsec));
+			if (e.rec_rec_lines != ok) e.rec_rec_parks = e.rec_rec_parks + 1;
+		}
+	}
 
 	// The stage in progress spans the pause, so it never qualifies (run_st_ms);
 	// a box exit from here starts a clean one.  Its base is the original tick.

@@ -82,7 +82,7 @@ EXP_OK_V9 = {"in": {3}, "warp": set(range(5, 11)), "ride": {4, 5, 6},
              "seed": set(range(1, 7)), "portal": set(range(4, 10)),
              "inend": {2}, "pause": {2}, "session": {3},     # Patch 364: <carry>
              "spec": set(range(4, 11)),                      # Patch 382: <carry> <o> <v>
-             "fzin": {3}, "clockend": {3, 5}, "viewclock": {3, 4}}                   # P842: native carry
+             "fzin": {3}, "clockend": {3, 5}, "parkclock": {1, 2}, "viewclock": {3, 4}}                   # P842: native carry
 
 SURFDIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNS = os.path.join(SURFDIR, "ftesurf", "data", "runs")
@@ -309,6 +309,7 @@ HEAD_V10 = HEAD_V9
 COLUMNS[11] = COLUMNS[10]
 # Format 12 keeps the sampled pose columns; viewing time is a separate clock lane.
 COLUMNS[12] = COLUMNS[11]
+COLUMNS[13] = COLUMNS[12]
 
 # v9 warp kinds.  v8 and older keep the five, so their notes do not move.
 WARP_KINDS_V7 = ("tele", "telerel", "bhop", "speed", "push")
@@ -1120,6 +1121,8 @@ def check_rec(path, verbose=False, *, data=None):
     spec_windows = []       # closed: (held wall seconds or None, why)
     spec_next = []          # 0s awaiting the next counter-bearing line: (ln, mt, carry,
                             # line of the warm rewind since, or None)
+    park_edges = 0
+    park_session = 0
     view_edges = 0
     view_open = None
     view_total = 0.0
@@ -1398,10 +1401,31 @@ def check_rec(path, verbose=False, *, data=None):
             continue
 
         kind = tok[0]
-        if kind == "viewclock":
+        if kind == "parkclock":
+            park_edges += 1
+            try:
+                if ver != 13 or len(tok) != 3:
+                    raise ValueError("requires format 13 and gapSeconds totalSeconds")
+                if view_open is not None:
+                    raise ValueError("viewing owner is open")
+                if len(session_edges) <= park_session:
+                    raise ValueError("requires a new matched session")
+                gap, total = (qc_float(float(x)) for x in tok[1:])
+                if any(not math.isfinite(x) or x < 0 for x in (gap, total)):
+                    raise ValueError("requires finite non-negative seconds")
+                if gap != int(gap) or gap > 16777215:
+                    raise ValueError("gap is not a bounded integral UTC duration")
+                if total != qc_float(view_total + gap):
+                    raise ValueError("shared carry disagrees with offline gap")
+                view_total = total
+                view_ticks = viewing_ticks(total, tickrate)
+                park_session = len(session_edges)
+            except (ValueError, OverflowError) as exc:
+                r.fault("line %d: invalid parkclock: %s" % (lineno + 1, exc))
+        elif kind == "viewclock":
             view_edges += 1
             try:
-                if ver != 12 or head.get("viewclock") != "1":
+                if ver not in (12, 13) or head.get("viewclock") != "1":
                     raise ValueError("requires format 12 and viewclock 1")
                 if len(tok) != 5 or tok[1] not in ("spec", "replay") or tok[2] not in ("0", "1"):
                     raise ValueError("takes <spec|replay> <0|1> <wall> <totalSeconds>")
@@ -2917,8 +2941,8 @@ def check_rec(path, verbose=False, *, data=None):
         # one missing fact but a WRONG carrier held for every command after it,
         # which does not heal.  The count is the only handle a reader has on that.
         # v9 (build 87): TEN -- <pms> <pes> <portals>, exact, counted like <rides>.
-        if ver == 12:
-            want_end = 13
+        if ver == 13:
+            want_end = 14
         elif ver == 12:
             want_end = 13
         elif ver == 11:
@@ -3021,18 +3045,18 @@ def check_rec(path, verbose=False, *, data=None):
     clock_faults = len(r.faults)
     r.info["fzin"] = thawrows
     r.info["clockends"] = len(clockends)
-    if clockends and ver not in (11, 12):
+    if clockends and ver not in (11, 12, 13):
         r.fault("'clockend' requires format 11")
-    elif ver in (11, 12):
+    elif ver in (11, 12, 13):
         if len(clockends) > 1 or (saw_end is not None and len(clockends) != 1):
             r.fault("v11 finished recording requires exactly one 'clockend'")
         if len(clockends) == 1:
             ln, a = clockends[0]
             mode = a[0] if a else ""
-            if ver == 12 and mode == "counted":
+            if ver in (12, 13) and mode == "counted":
                 r.fault("v12 counted finish requires explicit viewing clockend")
             r.info["closing_clock"] = mode or "malformed"
-            if mode == "counted" or (mode == "viewing" and ver == 12):
+            if mode == "counted" or (mode == "viewing" and ver in (12, 13)):
                 try:
                     # Validate types even when an independently damaged inend
                     # leaves no trustworthy closing horizon for the equation.
@@ -3066,17 +3090,22 @@ def check_rec(path, verbose=False, *, data=None):
                 r.fault("line %d: kept clockend requires an abandon" % ln)
     independent_closing_faults += len(r.faults) - clock_faults
 
-    if ver != 12 and "viewclock" in head:
+    if ver not in (12, 13) and "viewclock" in head:
         r.fault("viewclock capability requires format 12")
-    if ver == 12:
+    if ver in (12, 13):
         if head.get("viewclock") != "1":
             r.fault("format 12 requires viewclock 1")
         if saw_end is not None:
             if view_open is not None:
                 r.fault("finished recording has an open viewclock")
             a = saw_end[1]
-            if len(a) == 13 and (not is_int(a[12]) or int(a[12]) != view_edges):
+            if len(a) >= 13 and (not is_int(a[12]) or int(a[12]) != view_edges):
                 r.fault("end viewclock edge count disagrees with body")
+        if ver == 13:
+            if saw_end is not None and len(saw_end[1]) >= 14:
+                if not is_int(saw_end[1][13]) or int(saw_end[1][13]) != park_edges:
+                    r.fault("end parkclock edge count disagrees with body")
+            r.info["park_edges"] = park_edges
         r.info["view_seconds"] = view_total
         r.info["view_edges"] = view_edges
 
@@ -3141,7 +3170,9 @@ def check_rec(path, verbose=False, *, data=None):
     r.angle_epoch = [k for k, v in (("resume", resumes), ("retry", retries),
                                     ("pause", pauses), ("session", sessions))
                      if v]
-    if ver == 12 and view_total > 0:
+    if park_edges:
+        r.angle_epoch.append("offline gap: physical continuation not modelled")
+    if ver in (12, 13) and view_total > 0:
         r.angle_epoch.append("inclusive viewing clock: held camera join not modelled")
     if has_fzin:
         r.angle_epoch.append("excluded-clock release inputs (v11)")

@@ -1,5 +1,15 @@
 # AGENT_NOTES.md
 
+## File-backed archive fixture boundaries (P915, 2026-10-22)
+
+- FTE FILE_READ materializes private bytes on its first fread. Hash and parse
+  the SAME open handle, rewound, rather than reopening a mutable source path.
+- QC writes are buffered. Accepted fwrite counts alone are not persisted-file
+  evidence: close, reopen and check the required length/content before use.
+- Files created externally after engine startup can miss its filesystem lookup
+  index. Precreate fixture paths before startup or write them through the engine;
+  prove the actual copied bytes, not merely that the injection hook fired.
+
 ## Inclusive viewing clock and reader integration (P914, 2026-10-21)
 
 - Viewing duration is server-frame time, not physical input. Add its cumulative

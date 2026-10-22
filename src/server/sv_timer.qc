@@ -1200,6 +1200,7 @@ float rec_retry_armed;
 .float run_t_viewwall;          // opening sv_ck_frame
 .float run_t_viewbase;          // physical elapsed at spectator entry (sampled fallback too)
 .float run_t_viewowner;         // 0 body, 1 spectator, 2 recorded replay
+.float rec_rec_parks;           // v13 landed closed offline-gap edges
 .float rec_rec_views;           // exact number of body viewclock edges
 .float  run_t_tickcarry;         // Patch 363: ticks restored by SV_TimerResume, counted on top
 .float  run_t_resumesec;         // Patch 363: the restored seconds, for a latch deferred to the first packet
@@ -2404,7 +2405,7 @@ void(string dst) SV_RecCopyDrop =
 int   rec_snap_bytes;                   // SV_RecSnapshot -> SV_RecSaveKeys, one save
 int   rs_bytes;                         // the save being loaded: 0 = no stream copy
 float rs_gen, rs_ver, rs_flagofs, rs_pend;
-float rs_views;
+float rs_views, rs_parks;
 float rs_in, rs_pk, rs_warp, rs_ride, rs_pm, rs_pe, rs_portal, rs_pinned;
 float rs_pauses, rs_sess, rs_inmt, rs_incy, rs_infz;
 string rs_rid, rs_branch;
@@ -2865,7 +2866,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 ===========================================================================
   The recorder
 
-  FTESURF-REC 12, in full, because four different things are going to read this
+  FTESURF-REC 13, in full, because four different things are going to read this
   and a grammar spread across five functions is one nobody can check against.
 
   (This heading said "FTESURF-REC 5" while the writer emitted 6, from build 82
@@ -2873,7 +2874,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
   who edits this block by following its own title documents the wrong version,
   and that is a trap worth one sentence.)
 
-    FTESURF-REC 12          new recordings; retained v9/v10/v11 prefixes keep
+    FTESURF-REC 13          new recordings; retained v9/v10/v11/v12 prefixes keep
                             their semantics and cannot open inclusive viewing
                             windows. v9 -> v10 on pause remains Patch 364.
     viewclock 1            v12 capability: cumulative authoritative viewing-wall
@@ -3751,13 +3752,28 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             Rebased stage slices remain sample-only v5, with no
                             native trajectory/clock claim for a viewed interval.
 
+  v13 closed offline gaps (legacy prefixes are never upgraded):
+
+    parkclock <gapSeconds> <totalSeconds>
+                            After a matched pause/session, no viewing owner open.
+                            gapSeconds is integral UTC elapsed seconds, including
+                            copy/countdown. totalSeconds = float32(previous closed
+                            shared carry + gapSeconds); %.9g round-trips float32.
+                            Same inclusive tick projection as v12; no physical
+                            input, mover ticks or frozen exclusions are invented.
+                            At most one edge per session. Any edge is explicitly
+                            unsupported by native verification, including zero.
+                            UTC day/seconds saved only by new parks; missing legacy
+                            timestamps never acquire retrospective elapsed time.
+
   Then, written at close:
 
     clockend viewing <start> <tickcarry> <frozen> <viewSeconds>
                           v12: physical origin/carry/exclusions retain v11 meanings.
                           end = inend.mt - start + tickcarry - frozen (QC float32,
                           integer rounding) + cumulative viewclock ticks above.
-                          viewSeconds equals the final CLOSED edge carry. Positive
+                          viewSeconds equals the final CLOSED shared edge carry (v13
+                          includes parkclock). Positive
                           viewing carry is not a supported native eligibility path.
     clockend counted <start> <tickcarry> <frozen>
                           v11: current native timer origin, carried rank ticks
@@ -3797,6 +3813,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
         <sessions>                                              (v10: `session`s)
         <clocks>                                                (v11: clockend)
         <views>                                                 (v12: body viewclock edges)
+        <parks>                                                 (v13: body parkclock edges)
     split <seg> <ticks>     one per completed segment, ascending
 
   <pms> <pes> <portals> ARE v9 AND COUNTED BY LANDED LINE, like <rides>: `pm` is a
@@ -5074,7 +5091,7 @@ float(entity e) SV_ViewAllowed =
 {
 	if (e.run_t_state == TS_RUNNING)
 	if (SV_RecLive(e))
-	if (e.rec_rec_ver != 12)
+	if (e.rec_rec_ver < 12)
 	{
 		sprint(e, PRINT_HIGH, "^3view: this saved recording uses an older clock; restart the attempt first\n");
 		return FALSE;
@@ -5118,8 +5135,9 @@ void(entity e) SV_RecOpen =
 	SV_RecFailDrop(e);                  // Patch 817: you left the start
 	SV_RecCopyFlush(e);                 // Patch 375: the part file is about to be reopened
 	SV_RecGenBegin(e);
-	e.rec_rec_ver = 12;
+	e.rec_rec_ver = 13;
 	e.rec_rec_views = 0;
+	e.rec_rec_parks = 0;
 	e.rec_rec_inmt = -1;
 	e.rec_rec_infz = FALSE;
 	e.rec_mc_n = e.rec_mc_bad = 0;      // Patch 376
@@ -5244,7 +5262,7 @@ void(entity e) SV_RecOpen =
 	  already joined to the row that shows it.  Same shape as the padding ring:
 	  the cheap route was the one that added nothing.
 	*/
-	SV_RecPut(e, "FTESURF-REC 12");
+	SV_RecPut(e, "FTESURF-REC 13");
 	SV_RecPut(e, sprintf("map %s", mapname));
 	SV_RecPut(e, sprintf("track %g", e.run_t_track));
 	SV_RecPut(e, sprintf("startseg %g", e.run_t_startseg));
@@ -5630,7 +5648,7 @@ void(entity e, float kept) SV_RecClockEnd =
 		SV_RecPut(e, "clockend sampled");
 	else if (SV_TickCounted(e) < 0)
 		SV_RecPut(e, "clockend pending");
-	else if (e.rec_rec_ver == 12)
+	else if (e.rec_rec_ver >= 12)
 		SV_RecPut(e, sprintf("clockend viewing %d %.9g %d %.9g",
 		                     e.run_t_starttick, e.run_t_tickcarry, e.run_t_frzticks, SV_ViewSeconds(e)));
 	else
@@ -5652,8 +5670,10 @@ void(entity e, float ticks) SV_RecTrailer =
 		s = strcat(s, sprintf(" %d 1", e.rec_rec_sess));
 	else if (e.rec_rec_pauses > 0)
 		s = strcat(s, sprintf(" %d", e.rec_rec_sess));
-	if (e.rec_rec_ver == 12)
+	if (e.rec_rec_ver >= 12)
 		s = strcat(s, sprintf(" %d", e.rec_rec_views));
+	if (e.rec_rec_ver >= 13)
+		s = strcat(s, sprintf(" %d", e.rec_rec_parks));
 	SV_RecPut(e, s);
 };
 
@@ -6536,6 +6556,7 @@ void(entity e, filestream f) SV_RecSaveKeys =
 		return;
 	fputs(f, sprintf("recbytes %s\n", itos(rec_snap_bytes)));
 	fputs(f, sprintf("recviews %d\n", e.rec_rec_views));
+	fputs(f, sprintf("recparks %d\n", e.rec_rec_parks));
 	fputs(f, sprintf("recstream %d %d %d\n", e.rec_rec_ver, e.rec_rec_flagofs, e.rec_rec_sesspend));
 	fputs(f, sprintf("recrows %d %d %d %d\n", e.rec_rec_in, e.rec_rec_pk, e.rec_rec_warp, e.rec_rec_ride));
 	fputs(f, sprintf("recstate %d %d %d %d\n", e.rec_rec_pm, e.rec_rec_pe, e.rec_rec_portal, e.rec_rec_pinned));
@@ -6556,7 +6577,7 @@ void() SV_RecKeysReset =
 		strunzone(rs_branch);
 	rs_branch = "";
 	rs_ver = 9;
-	rs_views = 0;
+	rs_views = rs_parks = 0;
 	rs_flagofs = -1;
 	rs_pend = rs_in = rs_pk = rs_warp = rs_ride = rs_pm = rs_pe = rs_portal = 0;
 	rs_pinned = rs_pauses = rs_sess = rs_incy = rs_infz = 0;
@@ -6566,6 +6587,7 @@ void() SV_RecKeysReset =
 // One state.txt line, already tokenized; TRUE if it was ours.
 float(string k, float n) SV_RecKeyRead =
 {
+	if (!strcmp(k, "recparks")) { rs_parks = stof(argv(1)); return TRUE; }
 	if (!strcmp(k, "recviews")) { rs_views = stof(argv(1)); return TRUE; }
 	if (k == "recgen")    { rs_gen = stof(argv(1)); return TRUE; }
 	if (k == "recrid")    { if (rs_rid != "") strunzone(rs_rid); rs_rid = strzone(argv(1)); return TRUE; }
@@ -6602,6 +6624,7 @@ void(entity e, float mark, float samples, float padn, float cps) SV_RecRestore =
 	e.rec_rec_pauses = rs_pauses;
 	e.rec_rec_sess = rs_sess;
 	e.rec_rec_views = rs_views;
+	e.rec_rec_parks = rs_parks;
 	if (e.rec_rec_pk < rs_pk)
 		e.rec_rec_pk = rs_pk;
 	e.rec_rec_sesspend = rs_pend;
@@ -6720,6 +6743,7 @@ void(entity e) SV_RecRecount =
 	e.rec_rec_inmt = -1;
 	e.rec_rec_incy = e.rec_rec_infz = 0;
 	e.rec_rec_views = 0;
+	e.rec_rec_parks = 0;
 	last = -1;
 	pend = FALSE;
 	for (i = 0; i < e.rec_rec_lines; i = i + 1)
@@ -6736,6 +6760,8 @@ void(entity e) SV_RecRecount =
 		         (substring(l, 0, 15) == "viewclock spec " ||
 		          substring(l, 0, 17) == "viewclock replay "))
 			e.rec_rec_views = e.rec_rec_views + 1;
+		else if (c == 112 && substring(l, 0, 10) == "parkclock ")
+			e.rec_rec_parks = e.rec_rec_parks + 1;
 		else if (c == 115 && substring(l, 0, 8) == "session ")    // s
 		{
 			e.rec_rec_sess = e.rec_rec_sess + 1;
@@ -7889,42 +7915,63 @@ float(entity e) SV_StageFlags =
 };
 
 void(entity e, float seg, float dur, float tbase, float tickbase,
-     float first, float last) SV_StageWrite =
+     float first, float last, float tag) SV_StageWrite =
 {
 	local float buf, i, fh, samples, cps, pad;
 	local float gfirst;             // build 48: the slice's first ghost record, or -1
 	local float leg;                // build 57: the leg this slice is filed under
-	local string l, dst, who;
+	local string l, dst, who, owner;
+	local float sourcebuf, serial, probe;
+	local int bytes;
+	local string prefix;
 
-	/*
-	  BUILD 66: A STREAMED RUN HAS NO LINES TO LIFT.
-
-	  The slice below reads rec_rec_buf[first..last] of a run that is still
-	  going, and a stream is not addressable -- those lines are on disk, behind a
-	  write-only handle, in a file that is not finished.  Producing a stage demo
-	  anyway would mean a second stream opened at every stage boundary, written
-	  in parallel, renamed or removed once the boundary decides whether the stage
-	  qualifies.  That is a real design and it is not this one.
-
-	  SAID OUT LOUD rather than returned quietly, because unlike the save-state
-	  pair above this one HAS a caller in a lobby: finishing a stage during a main
-	  run is ordinary play, and the stage board would simply have no replay behind
-	  its rows with nothing anywhere saying why.  A stage run ARMED at the stage
-	  is an ordinary run and streams like any other -- it is only the lift out of
-	  a main run that is missing.
-	*/
+	// Reuse the sample-only slicer on a bounded readback, never a parallel writer.
+	sourcebuf = e.rec_rec_buf;
 	if (e.rec_rec_stream)
 	{
-		if (SV_DevOn())
-			dprint(sprintf("stage: seg %g not lifted -- this run is streamed, and a "
-			               "slice needs the buffer\n", seg));
-		return;
+		// Patch375 fsize flushes without truncation; a live stdio prefix can
+		// otherwise still read as zero bytes. Keep the writer and EOF intact.
+		if (!checkbuiltin(fcopyrange)) return;
+		bytes = fsize(e.rec_rec_fh);
+		if (bytes <= 0i || bytes > FS_RECCOPY_MAX)
+		{
+			dprint("stage: invalid or oversized streamed prefix; main recording preserved\n");
+			return;
+		}
+		prefix = strcat(SV_RecPartPath(e), ".stage");
+		// A live .part is not in the engine's search hash yet. The existing
+		// direct byte-range copier reads it without closing the active writer.
+		probe = fopen(prefix, FILE_WRITE);
+		if (probe < 0) return;
+		fclose(probe);
+		if (fcopyrange(SV_RecPartPath(e), 0i, bytes, prefix, FALSE) != bytes)
+		{
+			fremove(prefix);
+			return;
+		}
+		sourcebuf = buf_create_ex("string", 0);
+		if (sourcebuf < 1) { fremove(prefix); return; }
+		probe = buf_loadfile(prefix, sourcebuf);
+		fremove(prefix);
+		if (!probe)
+		{
+			dprint("stage: cannot read the streamed prefix\n");
+			buf_del(sourcebuf);
+			return;
+		}
+		if (buf_getsize(sourcebuf) != e.rec_rec_lines)
+		{
+			dprint(sprintf("stage: streamed prefix has %g lines, expected %g\n", buf_getsize(sourcebuf), e.rec_rec_lines));
+			buf_del(sourcebuf);
+			return;
+		}
 	}
 
 	buf = buf_create_ex("string", 0);
 	if (buf < 1)
 	{
 		dprint("stage: buf_create failed; not writing this stage\n");
+		if (e.rec_rec_stream) buf_del(sourcebuf);
 		return;
 	}
 
@@ -8067,7 +8114,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 		gfirst = -1;
 		for (i = first; i < last; i = i + 1)
 		{
-			l = bufstr_get(e.rec_rec_buf, i);
+			l = bufstr_get(sourcebuf, i);
 			if (substring(l, 0, 6) == "ghost ")
 			{
 				tokenize(l);
@@ -8108,7 +8155,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	*/
 	for (i = first; i < last; i = i + 1)
 	{
-		l = bufstr_get(e.rec_rec_buf, i);
+		l = bufstr_get(sourcebuf, i);
 		if (FS_IsSample(l))
 		{
 			cps = strstrofs(l, " ");        // reused as a scratch offset
@@ -8123,7 +8170,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	pad     = 0;
 	for (i = first; i < last; i = i + 1)
 	{
-		l = SV_StageLine(bufstr_get(e.rec_rec_buf, i), tbase, tickbase);
+		l = SV_StageLine(bufstr_get(sourcebuf, i), tbase, tickbase);
 		if (l == "")
 			continue;
 		if (FS_IsSample(l))
@@ -8155,13 +8202,32 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	bufstr_set(buf, buf_getsize(buf),
 	           sprintf("end %d %d %d %d", dur, samples, pad, cps));
 
-	// BUILD 66: by player as well, on the same terms as a full run.  Unreachable
-	// with a non-empty `who` today -- a lobby streams, and a streamed run cannot
-	// be sliced, so SV_StageWrite refuses above -- but it is spelled correctly
-	// rather than left as a thing that becomes wrong the day that changes.
+	dst = "";
 	who = SV_RecWho(e);
-	dst = FS_RunPathWho(mapname, e.run_t_track, leg, dur, who,
-	                    FS_TagName(RT_PB), "rec");
+	owner = who;
+	if (tag == RT_RUN)
+	{
+		if (!strcmp(owner, "")) owner = "local";
+		serial = 0;
+		while (serial < 1024)
+		{
+			who = sprintf("%s-%s-%d-%d", owner, strftime(FALSE, "%Y%m%d%H%M%S"),
+			              e.rec_rec_serial, serial);
+			dst = FS_RunPathWho(mapname, e.run_t_track, leg, dur, who, "run", "rec");
+			probe = fopen(dst, FILE_READ);
+			if (probe < 0) break;
+			fclose(probe);
+			serial = serial + 1;
+		}
+		if (serial >= 1024)
+		{
+			buf_del(buf);
+			if (e.rec_rec_stream) buf_del(sourcebuf);
+			return;
+		}
+	}
+	else
+		dst = FS_RunPathWho(mapname, e.run_t_track, leg, dur, who, FS_TagName(tag), "rec");
 	fh = fopen(dst, FILE_WRITE);
 	if (fh < 0)
 		dprint(sprintf("stage: cannot open %s for writing\n", dst));
@@ -8169,17 +8235,19 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	{
 		buf_writefile(fh, buf, 0, buf_getsize(buf));
 		fclose(fh);
+		Archive_Seal(e, dst, buf);
 		if (SV_DevOn())
 			dprint(sprintf("stage: wrote %s (%g samples from lines %g..%g)\n",
 			               dst, samples, first, last));
 
 		// Same pruner and the same rule as a full run: the archive grows one
 		// file per improvement and is capped per leg, per player.
-		SV_RecPrune(e, leg, FS_TagName(RT_PB), who,
-		            FS_RunLeaf(dur, who, FS_TagName(RT_PB), "rec"));
+		SV_RecPrune(e, leg, FS_TagName(tag), (tag == RT_RUN) ? strcat(owner, "-*") : who,
+		            FS_RunLeaf(dur, who, FS_TagName(tag), "rec"));
 	}
 
 	buf_del(buf);
+	if (e.rec_rec_stream) buf_del(sourcebuf);
 };
 
 /*
@@ -9113,8 +9181,15 @@ void(entity e, float ticks) SV_StageClose =
 	  Stage times in a lobby belong in Stage 3's telemetry, which has a player
 	  dimension.)
 	*/
-	if (Lobby_NoPB())
+	leg = FS_LegOf(seg, TRUE);
+	pb = SV_PBGet(e.run_t_track, leg);
+	if (Lobby_NoPB() || (pb > 0 && dur >= pb))
+	{
+		if (FS_RunClass(SV_StageFlags(e)) == RC_CLEAN)
+			SV_StageWrite(e, seg, dur, e.run_st_tick * run_t_tick, e.run_st_tick,
+			              e.run_st_line, e.rec_rec_lines, RT_RUN);
 		return;
+	}
 
 	/*
 	  BUILD 57: THE LEG, seg + 1, for everything below -- the best this stage must
@@ -9130,7 +9205,7 @@ void(entity e, float ticks) SV_StageClose =
 		return;
 
 	SV_StageWrite(e, seg, dur, e.run_st_tick * run_t_tick, e.run_st_tick,
-	              e.run_st_line, e.rec_rec_lines);
+	              e.run_st_line, e.rec_rec_lines, RT_PB);
 
 	// The stage leg's own record, through the same table a deliberate stage run
 	// writes: one PB per (track, leg), and best.pb is rewritten whole.

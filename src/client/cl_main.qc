@@ -835,7 +835,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	print("FTESurf CSQC loaded\n");
 };
 
-void() CSQC_Shutdown = { Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
+void() CSQC_Shutdown = { Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
 
 /*
   Forced view angles from the server -- svc_setangle, its relative form, and
@@ -1723,6 +1723,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	Emit_Frame();
 	Paint_Frame();                  // Patch 772: the camera is final; the world pass draws it
 	Share_Frame();                  // Patch 777: the pick reads the same camera
+	Archive_ClientFrame();
 	SaveSync_Frame();               // Patch 811
 
 	// Build 66.  Beside Emit_Frame and for the same reason: VF_ORIGIN is final

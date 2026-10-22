@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   eacc763469d1b42f7d54f4b696a7c5121999b578
+commit   14c3030275736ae5548f725d5d04dd05122ecef6
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -30,6 +30,9 @@ patch    916
 # surface-water ledge assist (face a reachable lip with headroom/landing).
 # Mover 11 carries the assist through prediction and recorded state; old
 # movers retain their original rules. Native/QC verification: tools/p916-source-clearance.md.
+# The merged source pin retains published P915 REC13 structural reader support.
+# Ordinary zero-carry runs can simulate; parked time and positive viewing carry
+# remain explicitly unsupported. Published patch-915/916 tag identities are unchanged.
 # Patch 914: native structural support for version12 viewing-clock declarations.
 # Supported zero-view runs can simulate; positive viewing carry remains explicitly
 # unsupported. This source pin is not a claim that the matching binary is installed.

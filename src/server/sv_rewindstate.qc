@@ -56,6 +56,7 @@ void(entity e, float b) SV_RewindStateSample =
 	m[b+65] = e.rec_rec_infz;
 	m[b+66] = SV_ViewSeconds(e);
 	m[b+67] = e.rec_rec_views;
+	m[b+68] = e.rec_rec_parks;
 	m[b+50] = e.run_t_handcarry;
 	m[b+51] = e.run_t_clock;
 	m[b+54] = e.run_t_pendarm;
@@ -196,7 +197,7 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	                 rw_o_x, rw_o_y, rw_o_z, rw_v_x, rw_v_y, rw_v_z));
 	fputs(f, sprintf("angles %.4f %.4f\nduck %d\nstate %d\nticks %d\nelapsed %.6f\n",
 	                 rw_pit, rw_yaw, rw_dk, TS_RUNNING, rw_t, m[b+15]));
-	fputs(f, sprintf("viewseconds %.9g\nrecviews %d\n", m[b+66], m[b+67]));
+	fputs(f, sprintf("viewseconds %.9g\nrecviews %d\nrecparks %d\n", m[b+66], m[b+67], m[b+68]));
 	SV_RewindWriteName(e, f, b);
 	fputs(f, sprintf("momon %g\n", e.run_momon));     // Patch 869: the run's trigger switch
 	fputs(f, sprintf("track %d\nstartseg %d\nstagerun %d\nseg %d\nsegs %d\nsplit %d\ndelta %d\n",
