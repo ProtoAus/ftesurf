@@ -979,6 +979,8 @@ void() CSQC_Input_Frame =
 		Spec_InputFrame();
 		return;
 	}
+	if (Timer_ResumeInputFrame()) // P920: no hidden mouse turn during count-in
+		return;
 
 	/*
 	  BUILD 24: WATCHING A RECORDING SENDS NOTHING.
@@ -1131,6 +1133,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		// IE_FOCUS has independent mouse/keyboard values; -1 is unchanged.
 		if (scanx >= 0) sui_style_mouse_focus = (scanx != 0);
 		if (chary >= 0) sui_style_key_focus = (chary != 0);
+		if (chary == 0) Timer_ResumeBlur(); // a lost release must not eat the next answer
 		sui_style_focused = (sui_style_mouse_focus && sui_style_key_focus);
 		if (!sui_style_focused) Scores_NativeClose();
 		if (!sui_style_focused) LineGraph_NativeBlur();
@@ -1145,6 +1148,9 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	*/
 	Vote_Track(evtype, scanx);      // Patch 372: observes only -- the draft below swallows key-ups
 	MPad_Track(evtype, scanx, chary);   // Patch 390: observes only -- the draft swallows deltas
+	if (evtype == IE_KEYUP)
+	if (Timer_ResumeInputKey(evtype, scanx)) // owned releases; observers still saw both edges
+		return TRUE;
 	if (KC_CaptureEvent(evtype, scanx, chary, devid))   // Patch 762: a key being bound takes any key
 		return TRUE;
 	// A release of the editor's press is still its own after closing/changing modes.
@@ -1297,13 +1303,10 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		// answers only F1 and ESC (Patch 904), and only while a card is actually up.
 		if (Results_PassiveKey(scanx))
 			return TRUE;
-		// Multi-Session: F2 takes a paused run's offer, only while one is up.
+		// P920: preserve the existing F2 shortcut before the friends toast.
 		if (scanx == K_F2)
-		if (Timer_ResumeOffered())
-		{
-			localcmd("cmd ms_resume\n");
+		if (Timer_ResumeInputKey(evtype, scanx))
 			return TRUE;
-		}
 		if (Friends_ToastKey(scanx))    // P788: F2 adds back, only while the toast is up
 			return TRUE;
 		// ESC puts the inspector overlay away; its toggle is the ent_cursor bind
@@ -1322,6 +1325,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Share_Key(scanx))           // Patch 777: only while a share card is up
 			return TRUE;
 		if (Gfx_Key(scanx, TRUE))
+			return TRUE;
+		if (Timer_ResumeInputKey(evtype, scanx)) // 1/2 before save-lock digit keys
 			return TRUE;
 		if (SaveLoc_Key(scanx, TRUE))
 			return TRUE;
@@ -1508,6 +1513,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// CSQC_Input_Frame let four frames in five render from a moved angle -- the
 	// bounce.  See SaveLoc_LockAngles.
 	SaveLoc_LockAngles();
+	Timer_ResumeLockAngles(); // P920: also pin the native accumulator at render rate
 
 	// The angle sidecar, AFTER the lock: what belongs in the file is the angle
 	// this frame is actually drawn at, not the one the mouse asked for.  Runs

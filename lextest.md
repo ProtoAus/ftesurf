@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P920 — paused-run choice and count-in view lock
+
+PENDING after matching client update: return to a paused run. Check the left
+panel's map/time/stage details; press 2 to put it away without discarding it.
+Return/reconnect to that offer and press 1 (F2 also works). During the count-in,
+move the physical mouse: the view should stay fixed, then turn normally at GO
+without a banked jump. Programmatic/native-look checks are not physical-mouse
+or visual acceptance. The actual dedicated control turned during count-in;
+the new client held still and turned normally after GO, with No byte-preserving
+and repeat/release controls passed. Implementation: tools/p920-resume-ui.md.
+
 ## P919 — bhop_goldsrc2 save 2
 
 PENDING after matching client update: load save 2 / slot002 (15:47.230), then

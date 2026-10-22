@@ -21,6 +21,10 @@
 
 ## next
 
+### P920 A proper paused-run choice
+- A paused run now offers a left-side details panel with 1. Yes and 2. No. No means not now: it does not discard the paused run, and F2 still accepts it.
+- Your view stays locked during the resume count-in, without banking a hidden look turn before GO.
+
 ### P919 Decorative sheets stay walk-through
 - Fix a client/server collision mismatch on empty brush volumes, including the illusionary sheet at bhop_goldsrc2 save 2. Decorative illusionaries remain walk-through, without the client trying to stand on them.
 

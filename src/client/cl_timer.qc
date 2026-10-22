@@ -1234,74 +1234,7 @@ void() Timer_ResumeRows =
 	ui_sp_over = ui_sp_over + stof(argv(2));
 };
 
-/*
-  Multi-Session: the offer and its progress, from the local player's `*resume`
-  key (SV_MsKeySet).  Centred, not a layout panel.
-  F2 takes the offer (cl_main.qc) only while an `O` is up -- this machine's
-  ftesurf.cfg binds F2, so outside the prompt the key is untouched.
-*/
-string ui_ms_key;               // zoned copy of the last key seen
-float  ui_ms_keyat;             // cltime it changed
-
-string() Timer_ResumeKey =
-{
-	local string k;
-	k = getplayerkeyvalue(player_localnum, "*resume");
-	if (k != ui_ms_key)
-	{
-		if (ui_ms_key != "")
-			strunzone(ui_ms_key);
-		ui_ms_key = (k != "") ? strzone(k) : "";
-		ui_ms_keyat = cltime;
-	}
-	return ui_ms_key;
-};
-
-float() Timer_ResumeOffered = { return substring(Timer_ResumeKey(), 0, 2) == "O "; };
-
-void(vector scr) Timer_DrawResumeOffer =
-{
-	local string k, a, b, what;
-	local float n, left;
-	local vector p;
-
-	if (rec_wt_on)
-		return;
-	k = Timer_ResumeKey();
-	if (k == "")
-		return;
-	n = tokenize(k);
-	what = argv(0);
-	a = b = "";
-	if (what == "O" && n >= 7)
-	{
-		a = strcat("PAUSED RUN  ", Time_TickString(stof(argv(1)), Timer_Tick()));
-		if (stof(argv(3)) > 1)
-			a = strcat(a, sprintf("  -  STAGE %g/%g", stof(argv(2)) + 1, stof(argv(3))));
-		b = "say !resume or press F2 to continue it  -  !discard drops it";
-	}
-	else if (what == "R" && n >= 2)
-		a = sprintf("RESTORING THE RECORDING  %g%%", stof(argv(1)));
-	else if (what == "C" && n >= 2)
-	{
-		left = ceil(stof(argv(1)) - (cltime - ui_ms_keyat));
-		a = sprintf("RESUMING IN %g", max(1, left));
-	}
-	// `A` draws nothing: the panel's sub-label says `session N` from here on.
-	if (a == "")
-		return;
-
-	// Below the timer panel and its sub-label (measured: they end near 0.21).
-	Font_Set(ui_font_ui);
-	p = [scr_x * 0.5, scr_y * 0.30, 0];
-	HUD_TextC(p, a, 10 * ui_cv_scale, '0.45 0.85 1.00', 0.95);
-	if (b != "")
-	{
-		p_y = p_y + Font_Px(10 * ui_cv_scale) + 3 * ui_cv_scale;
-		HUD_TextC(p, b, 7 * ui_cv_scale, '0.78 0.80 0.86', 0.85);
-	}
-	Font_Reset();
-};
+// P920: the existing *resume offer/count-in UI is in cl_resume.qc.
 
 /*
   Patch 744: what Timer_Draw's live path reads -- your stats, or while spectating

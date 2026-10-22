@@ -2259,6 +2259,11 @@ From `src/`, with pwsh 7 (NOT `powershell`):
     Use the actual `NoDeploy QC outputs:` path and verify the compiler output.
     Copy only inspected-commit artifacts for intentional dual deployment. See
     historical `cfg/test/p439smoke.cfg` for the earlier control recipe.
+- FTEQCC can terminate with Windows access violation -1073741819 and no captured
+  diagnostic. In P920, bisection isolated our angle helper; correcting nonexistent
+  STAT_SLSEQ/STAT_SLOP to the existing STAT_FS_* names restored normal compilation.
+  Do not infer that empty compiler output means success or blame the draw module
+  without an acting isolation. Check the native exit and declaration/constant names.
 - CSPROGS SITS AT FTEQCC'S GLOBAL LIMIT (131,072). Patch 474's ten 1,000-float
   arrays took it to 131,418 and the build died with `Too many globals`, reported
   as `Error in client/cl_main.qc on line 0`. Big tables go in `memalloc`'d memory

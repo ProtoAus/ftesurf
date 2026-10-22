@@ -109,6 +109,8 @@ client/cl_netmon.qc
 // is the same slot that file documents for the same reason.
 client/cl_boarding.qc
 client/cl_timer.qc
+// P920: Timer/Font/Spec helpers first; resume input hooks are in cl_main below.
+client/cl_resume.qc
 client/cl_saveloc.qc
 // Patch 874: before cl_gfx.qc, whose Sun/Ropes rows read sun_have and ropes_n.
 client/cl_sun.qc
