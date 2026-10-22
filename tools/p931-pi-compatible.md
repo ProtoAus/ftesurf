@@ -57,11 +57,25 @@ Qualified candidate SHA256s:
 
 ## Delivery boundary
 
-NOT deployed. The fresh directory boundary still has12rows and one player on
-Open Lobby #10. The normal build.ps1 -Pi guard restarts every active lobby and
-must refuse while occupied. No force permission, native/progs copy, collection
-activation, maintenance gate or restart was used by this candidate. Once the
-normal empty-fleet guard permits, deploy only this inspected clean variant,
-verify hashes/.prev, live behavior and preservation, and record new UTC
-provenance. Windows already has the separately verified mainline bundle; do not
-roll either Windows install back to this compatibility variant.
+The earlier one-player boundary was respected. Once the fleet became empty,
+standard build.ps1 -Pi from clean2ec1792344e9fc63eebebdf67530590a9713c083
+rechecked all12rows/zero players, compiled0/0/0 warnings, uploaded/hash-checked
+both .new files, preserved .prev and restarted all12active units. Postflight at
+**2026-10-22 17:59:00 UTC** found the exact qualified pair above, exact prior
+P922 pair in .prev,12new PIDs and unchanged executable/mapped-HL2 hashes.
+All546configuration hashes and all27722pre-existing data-path sizes/mtimes
+were unchanged immediately after restart;6new data paths were present. This is
+metadata preservation, not a claim to have hashed every recording's contents.
+
+A cold-cache installed Windows client then joined live Open Lobby #12/agtricks.
+The candidate cache file was parked only in the owned fixture, never a shared
+install. The new csprogsvers/e6c1bb7e.dat download SHA256 matches11701c87...
+above. After CSQC was actually ready, the real server selected Glock8, advanced
+shot sequence1 and the client reported ready1/@glock_firesingle with positive
+duration. The first too-early echo was not acceptance. Own client quit normally;
+the original cache was restored with exact-hash ownership checks. No terms were
+accepted and no recording/leaderboard qualification is claimed.
+
+No force, new native/producer promotion, collection activation or maintenance
+gate was used. Windows retains its separately verified newer mainline/P932
+bundle, not this compatibility variant. Native/held policy remains unchanged.
