@@ -78,5 +78,23 @@ were included before the final build. Spectator/replay exclusion and stale-C
 resume-event release were reviewed, not separately packet-race falsified.
 
 Owner physical-mouse and aesthetic acceptance remain pending in lextest.md.
-Commit-clean rebuild and deployment provenance will be recorded separately;
-this paragraph does not claim an already completed deployment.
+## Installed / remaining deployment
+
+Clean inspected feature commit e7637907d7e369b594ca25ff45537001b716f907 was
+rebuilt with the normal build entrypoint: all three progs, zero warnings. Both
+Windows installs match its six DAT/LNO files as of 2026-10-22T10:14:33Z;
+predecessors remain as .prev. CSQC SHA256:
+`e9e220a5faa31b4aa5a861e73b6fd64e948145a46f790abceb4a6f19ce4b88c5`.
+Native binaries/configs were not deployed by P920; the P919 native code remains.
+Server/shared/menu source is identical to the already handed-off P915 source;
+normal recompilation does not introduce another recorder change.
+
+The build's Pi gate found one live player on surf_boreas. It refused before
+copy/swap/restart, without override. Thus the Pi and lobby-served CSQC remain
+on their predecessor; Windows installation is NOT a claim of what an occupied
+lobby client runs. Complete the normal rollout and a fresh-client hash smoke
+when the fleet is empty. Do not interrupt that run or repeatedly rebuild the
+already verified artifacts. Local cache seeding was done only after confirming
+no temporary downloads, without deleting another session's active download.
+The owned artifacts/p920-windows-deployment.json and p920-commit-deploy.*
+record this partial state. No Build bump or release.

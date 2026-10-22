@@ -14,7 +14,9 @@ PENDING owner/native-panel visual acceptance after matching client update:
 
 ## P920 — paused-run choice and count-in view lock
 
-PENDING after matching client update: return to a paused run. Check the left
+Both Windows installs have the clean P920 progs (22 Oct 10:14 UTC); Pi rollout
+is blocked by an occupied lobby, so lobby clients still receive the predecessor.
+PENDING after the matching lobby/client update: return to a paused run. Check the left
 panel's map/time/stage details; press 2 to put it away without discarding it.
 Return/reconnect to that offer and press 1 (F2 also works). During the count-in,
 move the physical mouse: the view should stay fixed, then turn normally at GO
