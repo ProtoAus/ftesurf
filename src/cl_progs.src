@@ -289,4 +289,6 @@ client/cl_mapmsg.qc
 // Patch 777: sharing paint and saves; reads cl_paint.qc, cl_body.qc (Body_Find) and the
 // HUD's KeyMenu_Row; cl_paint.qc calls Share_OnPaint through a prototype.
 client/cl_share.qc
+// Local Foley reads the body/owner and camera-mode helpers declared above.
+client/cl_gameaudio.qc
 client/cl_main.qc

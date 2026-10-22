@@ -342,6 +342,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	*/
 	Emit_RegisterCvars();
 	Snds_RegisterCvars();           // build 66, env_soundscape
+	GA_Register();                 // local movement Foley from mounted CSS
 	MapMsg_Init();                  // Patch 870, map text and screen effects
 	Ropes_RegisterCvars();          // Patch 874, env_sun and ropes
 	Trig_RegisterCvars();           // Patch 335, predicted triggers
@@ -1736,6 +1737,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// by this point, and the soundscape selection traces from it.  Cheap --
 	// the trace pass is on a 4 Hz timer and only the volume ramp runs per frame.
 	Snds_Frame();
+	GA_Frame();                    // actual local body, after camera/body capture
 
 	// Patch 335.  Normally empty; it is the retry for a map whose entity lump
 	// was not readable when WorldLoaded ran (Patch 207's ordering wart).
@@ -2040,6 +2042,7 @@ float(string cmd) CSQC_ConsoleCommand =
 	// next thing to run is very likely a command.  Nothing real is nested here.
 	cl_input_real = FALSE;
 	tokenize(cmd);
+	if (GA_Command()) return TRUE;
 	if (argv(0) == "milk_skyinfo")
 	{
 		MilkSky_Info();

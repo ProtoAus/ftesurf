@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P927 — CS:S movement Foley
+
+PENDING after matching delivery: walk on a flat floor, jump/land, then enter,
+move through and leave water. Confirm the CS:S sounds and their balance feel
+right; cl_game_sfx 0 disables them, 1 is normal volume. Actual dedicated walk
+on/off, landing, water-entry and crouched swimming callbacks pass with mounted
+CS:S/shared WAVs; this does not certify audible output. Water exit, hard-fall
+voice, other surfaces and physical listening remain human-only acceptance.
+Details: tools/p927-css-foley.md. No Valve assets are redistributed.
+
 ## P926 — surf_me save9 view continuity
 
 PENDING after matching client progs are installed: load save9 on surf_me and

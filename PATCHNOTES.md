@@ -21,6 +21,9 @@
 
 ## next
 
+### P927 Hear your feet and the water
+- Add local footsteps, landing impacts, water entry/exit and swimming sounds using your mounted CS:S content. Walking sounds follow body travel, not camera movement; cl_game_sfx controls their volume.
+
 ### P926 Rotated teleports turn you at the right place
 - Fix rotated map triggers predicting a teleport before the server reaches it, including surf_me save 9. The map's intended view turn now happens with the actual teleport rather than early during the fall.
 
