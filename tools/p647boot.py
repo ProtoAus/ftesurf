@@ -339,6 +339,29 @@ def main():
                         bool(box), True)
                 time.sleep(2)
                 L.check("...and it draws", shot("p647_3_prompt"), True)
+                send("cmd timer")
+                consent_report = cl.wait(r"public pause metadata consent: (\d+) \(needs (\d+)\)", 6)
+                L.check("G  CSQC reports the renewed online answer to the actual server",
+                        consent_report.groups() if consent_report else None,
+                        (str(online_tier), str(online_tier)))
+                send("rec_upload 0")
+                time.sleep(1)
+                send("cmd timer")
+                L.check("G  upload opt-out also clears public pause metadata permission",
+                        bool(cl.wait(r"public pause metadata consent: 0 \(needs %d\)" % online_tier, 6)), True)
+                send("rec_upload 1")
+                time.sleep(1)
+                send("cmd timer")
+                L.check("G  restoring upload uses the fixture's already accepted answer",
+                        bool(cl.wait(r"public pause metadata consent: %d \(needs %d\)" % (online_tier, online_tier), 6)), True)
+                # Only this already-consenting fixture: downgrade its current
+                # menu answer and try an ordinary userinfo claim over it.
+                send("rec_terms %d" % (online_tier - 1))
+                send("setinfo recterms %d" % online_tier)
+                time.sleep(1)
+                send("cmd timer")
+                L.check("G  an older current answer clears permission; userinfo cannot restore it",
+                        bool(cl.wait(r"public pause metadata consent: 0 \(needs %d\)" % online_tier, 6)), True)
         L.check("no VM error or unknown command in the client's log",
                 [w for w in ("Unknown command", "QC VM error", "Cannot call", "stack overflow")
                  if w in cl.text()], [])

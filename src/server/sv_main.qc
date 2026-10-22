@@ -186,6 +186,7 @@ void() StartFrame =
 	SV_BrushRenderTestFrame();
 	SV_UpdateMovementServerInfo();
 	SV_ZoneFrame();
+	SV_HeldFrame();                // previous message/callback closure is now complete
 
 	// Patch 270.  Returns immediately unless lobby_enable is set, except for
 	// the dimension pass -- which has to run either way, because turning the
@@ -574,6 +575,7 @@ void() worldspawn =
 	  Set 0 if you want the timer without the ~1.5 MB per five minutes.
 	*/
 	registercvar("rec_enable", "1");
+	registercvar("rec_held_metadata", "0"); // explicit operator opt-in, never inferred
 
 	/*
 	  PATCH 270 -- public lobbies.  All default OFF: a solo session must be

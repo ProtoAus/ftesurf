@@ -3169,6 +3169,24 @@ string(entity e, float track, float leg, float ticks, float flags,
 	return body;
 };
 
+// Snapshot all connection/run-owned form fields at the finish, before a
+// deferred recording publication can cross an arm, name or account change.
+string(entity e, float track, float leg, float ticks, float flags,
+       string rec, float recbytes, float rectrunc) Lobby_FinishedBody =
+{
+	local string body;
+
+	body = Lobby_RunBody(e, track, leg, ticks, flags, rec, recbytes, rectrunc);
+	if (body == "")
+		return "";
+	if (leg == 0)
+	if (!(flags & TF_MULTISESSION))
+	if (e.lobby_sty_ok)
+		body = sprintf("%s&sfails=%d&smask=%d&stop=%d", body, e.lobby_sty_fails,
+		               e.lobby_sty_mask, e.lobby_sty_top);
+	return body;
+};
+
 // ODD, always: even ids route to the heartbeat's reply (see Lobby_RunReply).
 float() Lobby_NextRunId =
 {
@@ -3179,26 +3197,15 @@ float() Lobby_NextRunId =
 };
 
 void(entity e, float track, float leg, float ticks, float flags,
-     string rec, float recbytes, float rectrunc) Lobby_SubmitRun =
+     string url, string body, string recording) Lobby_PostFinishedBody =
 {
-	local string url, body;
 	local float story_serial;
 
-	// Consume even when a submission gate returns early. Only this completion
-	// may associate its emitted event with the request about to be created.
+	// The caller built the exact body once; consume this completion even on a gate.
 	story_serial = e.lobby_sty_completion_serial;
 	e.lobby_sty_completion_serial = 0;
-	body = Lobby_RunBody(e, track, leg, ticks, flags, rec, recbytes, rectrunc);
 	if (body == "")
 		return;
-	// Patch 856: a full run made in one session only; a resumed run's first part
-	// was counted by a session that is gone.
-	if (leg == 0)
-	if (!(flags & TF_MULTISESSION))
-	if (e.lobby_sty_ok)
-		body = sprintf("%s&sfails=%d&smask=%d&stop=%d", body, e.lobby_sty_fails,
-		               e.lobby_sty_mask, e.lobby_sty_top);
-	url = cvar_string("lobby_master");
 
 	/*
 	  ODD, ALWAYS.  Seeded to 1 in Lobby_NextRunId rather than at a registration
@@ -3259,9 +3266,21 @@ void(entity e, float track, float leg, float ticks, float flags,
 	  "submitting" already told the story and a blank value invites the reader
 	  to wonder which half broke.
 	*/
+	if (recording != "")
+		print(strcat("^5board:^7   recording ", recording, "\n"));
+};
+
+void(entity e, float track, float leg, float ticks, float flags,
+     string rec, float recbytes, float rectrunc) Lobby_SubmitRun =
+{
+	local string body, recording;
+
+	body = Lobby_FinishedBody(e, track, leg, ticks, flags, rec, recbytes, rectrunc);
+	recording = "";
 	if (rec != "")
-		print(sprintf("^5board:^7   recording %s (%g bytes%s)\n",
-		              rec, recbytes, rectrunc ? ", TRUNCATED" : ""));
+		recording = sprintf("%s (%g bytes%s)", rec, recbytes, rectrunc ? ", TRUNCATED" : "");
+	Lobby_PostFinishedBody(e, track, leg, ticks, flags,
+	                       cvar_string("lobby_master"), body, recording);
 };
 
 /*

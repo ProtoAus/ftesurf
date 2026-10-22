@@ -281,6 +281,10 @@ float() fs_randomf               = #0:fs_randomf;
 int(string src, int ofs, int len, string dst, float append) fcopyrange = #0:fcopyrange;
 int(filestream fh, string src, int ofs, int len) fappendrange = #0:fappendrange;
 
+string(entity player, float opcode, string generation, string argument) held_metadata = #0:held_metadata;
+// Coupled native route; operator defaults OFF and an empty staging root disables it.
+#define FS_HELD_PRODUCER_READY 1
+
 /*
   buf_create, with the arguments the platform dump's prototype leaves off.
 
@@ -1874,6 +1878,7 @@ float() SV_RecEnabled =
 */
 .float  run_t_jev;        // 0 = never reported; non-zero = this client's CSQC has spoken
 .float  run_t_jevhid;     // what Rec_HidOK() answered: 1 journalling, 0 not
+.float  run_t_terms;      // renewed public-metadata answer, CSQC only; silence = 0
 
 /*
   ...AND WHAT ITS OWN JOURNAL'S IDENTITY CHECK FOUND, over that same channel.
@@ -2187,6 +2192,41 @@ vector  input_cursor_trace_start, input_cursor_trace_endpos;
 .vector rec_mc_ring, rec_mc_read;    // the last `mc` written
 .float  rec_mc_n, rec_mc_bad, rec_mc_badrow;
 .float  rec_mc_sup;                 // Patch 405: commands that sent cursor data
+.vector rec_mc_origin_ring, rec_mc_origin_read, rec_mc_carry_ring, rec_mc_carry_read;
+.float  rec_mc_origin_valid;        // runtime only; omitted from REC/slot snapshots
+
+float(float v) SV_RecMCWrap =
+{
+	return v - floor(v / 1048576) * 1048576;
+};
+
+void(entity e) SV_RecMCReset =
+{
+	e.rec_mc_n = e.rec_mc_bad = e.rec_mc_sup = 0;
+	e.rec_mc_badrow = -1;
+	e.rec_mc_ring = e.rec_mc_read = '0 0 0';
+	e.rec_mc_origin_ring = e.rec_mc_origin_read = '0 0 0';
+	e.rec_mc_carry_ring = e.rec_mc_carry_read = '0 0 0';
+	e.rec_mc_origin_valid = FALSE;
+};
+
+// Reconstruct only already-written relative totals, never a raw client origin.
+void(entity e, string line) SV_RecMCRecountLine =
+{
+	local vector r, a;
+	if (strcmp(substring(line, 0, 3), "mc ")) return;
+	if (tokenize(line) != 8) return;
+	r_x = stof(argv(3)); r_y = stof(argv(4)); r_z = 1;
+	a_x = stof(argv(5)); a_y = stof(argv(6)); a_z = stof(argv(7));
+	e.rec_mc_ring = r; e.rec_mc_read = a;
+	e.rec_mc_n = e.rec_mc_n + 1;
+	if (r_x != a_x || r_y != a_y)
+	{
+		if (!e.rec_mc_bad) e.rec_mc_badrow = stof(argv(2));
+		e.rec_mc_bad = e.rec_mc_bad + 1;
+	}
+	e.rec_mc_origin_valid = FALSE;
+};
                                     // instead of counts -- the off switch, seen
 // Patch 416: the run nonce.  See SV_RecNonce for what it is for and what it is
 // worth.  Zoned, freed and rebuilt at every open.
@@ -2406,6 +2446,8 @@ int   rec_snap_bytes;                   // SV_RecSnapshot -> SV_RecSaveKeys, one
 int   rs_bytes;                         // the save being loaded: 0 = no stream copy
 float rs_gen, rs_ver, rs_flagofs, rs_pend;
 float rs_views, rs_parks;
+vector rs_mc_ring, rs_mc_read;
+float rs_mc_n, rs_mc_bad, rs_mc_badrow, rs_mc_sup, rs_mc_cap;
 float rs_in, rs_pk, rs_warp, rs_ride, rs_pm, rs_pe, rs_portal, rs_pinned;
 float rs_pauses, rs_sess, rs_inmt, rs_incy, rs_infz;
 string rs_rid, rs_branch;
@@ -2799,6 +2841,17 @@ float   rec_rewind_cold;         // SV_RecRewind's last success read its prefix 
   older process's saves miss too; %d in the save and < 2^24, so it stays exact.
 */
 .float  rec_rec_serial;
+// Native metadata ABI. Source-only/pre-admission is0; selected12 never reverts.
+.float  rec_hm_cap, rec_hm_allow, rec_hm_mode;
+.float  rec_hm_alias_in, rec_hm_alias_fzin;
+.float  rec_hm_failed;
+.string rec_hm_generation, rec_hm_source, rec_hm_destination;
+// One closed ordinary file waits for the actual enclosing native closure.
+.float  rec_hm_closing, rec_hm_closeby, rec_hm_abandoned;
+.float  rec_hm_ticks, rec_hm_stamp, rec_hm_tag, rec_hm_flags, rec_hm_track, rec_hm_leg, rec_hm_full;
+.float  rec_hm_rcpt, rec_hm_postflags, rec_hm_pwhy, rec_hm_ckshort;
+.string rec_hm_who, rec_hm_rid, rec_hm_nonce, rec_hm_postbody, rec_hm_posturl;
+
 float() SV_RecNextSerial =
 {
 	local float s;
@@ -5035,6 +5088,12 @@ void(entity e) SV_RecFailKeep =
 {
 	local string p;
 
+	// Selected12 has no legacy rewind handoff; preserve the prior failed slot.
+	if (e.rec_hm_mode == 12)
+	{
+		dprint("timer: native selected12 skips failed-attempt handoff\n");
+		return;
+	}
 	SV_RecFailDrop(e);
 	if (!SV_RecLive(e) || e.rec_rec_lines <= 0)
 		return;
@@ -5072,6 +5131,180 @@ void(entity e) SV_RecFailKeep =
 };
 
 float(entity e) SV_ProfileWhy;          // Patch 840: the header's verdict
+float(entity e) SV_HeldAllowed;
+float(entity e) SV_HeldPump;
+void(entity e, float ticks, float stamp, float tag, float flags, string destination, string who) SV_HeldQueueClose;
+
+void(entity e) SV_HeldAbort =
+{
+	if (e.rec_hm_mode != 12)
+	if (!strcmp(e.rec_hm_generation, ""))
+		return;
+	e.rec_hm_failed = TRUE;
+	// Qualification failure does not revoke consent for a generic-only close.
+	e.rec_hm_allow = SV_HeldAllowed(e);
+	if (e.rec_hm_generation != "")
+	if (checkbuiltin(held_metadata))
+		held_metadata(e, 4, e.rec_hm_generation, "");
+};
+
+// New recording/teardown only, never an error-path downgrade to legacy.
+void(entity e) SV_HeldReset =
+{
+	SV_HeldAbort(e);
+	if (e.rec_hm_generation != "") strunzone(e.rec_hm_generation);
+	if (e.rec_hm_source != "") strunzone(e.rec_hm_source);
+	if (e.rec_hm_destination != "") strunzone(e.rec_hm_destination);
+	if (e.rec_hm_who != "") strunzone(e.rec_hm_who);
+	if (e.rec_hm_rid != "") strunzone(e.rec_hm_rid);
+	if (e.rec_hm_nonce != "") strunzone(e.rec_hm_nonce);
+	if (e.rec_hm_postbody != "") strunzone(e.rec_hm_postbody);
+	if (e.rec_hm_posturl != "") strunzone(e.rec_hm_posturl);
+	e.rec_hm_generation = e.rec_hm_source = e.rec_hm_destination = "";
+	e.rec_hm_who = e.rec_hm_rid = e.rec_hm_nonce = e.rec_hm_postbody = e.rec_hm_posturl = "";
+	e.rec_hm_closing = e.rec_hm_closeby = e.rec_hm_abandoned = 0;
+	e.rec_hm_cap = e.rec_hm_allow = e.rec_hm_mode = 0;
+	e.rec_hm_alias_in = e.rec_hm_alias_fzin = 0;
+	e.rec_hm_failed = FALSE;
+};
+
+float(entity e) SV_HeldAllowed =
+{
+	registercvar("rec_held_metadata", "0");
+	if (!cvar("rec_held_metadata"))
+		return FALSE;
+	if (e.run_t_terms != FS_TERMS_ONLINE)
+		return FALSE;
+	return TRUE;
+};
+
+void(entity e) SV_HeldCheck =
+{
+	if (e.rec_hm_mode != 12)
+	if (!strcmp(e.rec_hm_generation, ""))
+		return;
+	e.rec_hm_allow = SV_HeldAllowed(e);
+	if (!e.rec_hm_allow)
+		SV_HeldAbort(e);
+};
+
+void(entity e, string site) SV_HeldEvent =
+{
+	local string status;
+
+	if (e.rec_hm_mode != 12)
+	{
+		if (!strcmp(e.rec_hm_generation, ""))
+			return;
+		if (strcmp(site, "entry"))
+			return;
+		// A failed candidate still latches privacy before any held formatting.
+		// Native selects12; unavailable/failed native support can only fail12.
+		if (checkbuiltin(held_metadata))
+		{
+			status = held_metadata(e, 2, e.rec_hm_generation, site);
+			if (e.rec_hm_mode == 12)
+			if (!strcmp(status, "ok"))
+				return;
+		}
+		e.rec_hm_mode = 12;
+		SV_HeldAbort(e);
+		return;
+	}
+	if (!SV_HeldAllowed(e))
+	{
+		SV_HeldAbort(e);
+		return;
+	}
+	if (e.rec_hm_failed)
+		return;
+	if (!checkbuiltin(held_metadata))
+	{
+		SV_HeldAbort(e);
+		return;
+	}
+	status = held_metadata(e, 2, e.rec_hm_generation, site);
+	if (strcmp(status, "ok"))
+		SV_HeldAbort(e);
+};
+
+void(entity e) SV_HeldOpen =
+{
+#if FS_HELD_PRODUCER_READY
+	local string generation, status;
+
+	if (!SV_HeldAllowed(e) || !e.rec_rec_stream || e.rec_rec_fh < 0)
+		return;
+	if (!checkbuiltin(held_metadata))
+		return;
+	if (strcmp(held_metadata(e, 0, "", ""), "aircell1:1"))
+		return;
+	if (!checkbuiltin(fs_randomhex))
+		return;
+	generation = fs_randomhex(16);
+	if (!SV_RecIsHex(generation, 32))
+		return;
+
+	e.rec_hm_cap = 1;
+	e.rec_hm_allow = 1;
+	// Candidacy remains0; only the first pre-write pin irreversibly selects12.
+	e.rec_hm_generation = strzone(generation);
+	status = held_metadata(e, 1, e.rec_hm_generation,
+	                       strcat(e.rec_rec_rid, sprintf(" %d", e.rec_rec_serial)));
+	if (strcmp(status, "pending"))
+		SV_HeldAbort(e);
+#endif
+};
+
+void(entity e) SV_RecNewId =
+{
+	if (e.rec_rec_rid != "")
+		strunzone(e.rec_rec_rid);
+	if (Lobby_Active())
+		e.rec_rec_rid = strzone(sprintf("%s-%g-p%s", strftime(TRUE, "%Y%m%d-%H%M%S"),
+		                                e.run_t_slot, cvar_string("sv_port")));
+	else
+		e.rec_rec_rid = strzone(sprintf("%s-%g", strftime(TRUE, "%Y%m%d-%H%M%S"),
+		                                e.run_t_slot));
+};
+
+float(entity e) SV_HeldCreateSource =
+{
+	local string status;
+
+	// Deliberately independent of held capability. Native `off` can allocate
+	// an ordinary source while the incomplete producer still captures nothing.
+	if (e.rec_rec_rid != "")
+		strunzone(e.rec_rec_rid);
+	e.rec_rec_rid = "";
+	if (!checkbuiltin(held_metadata))
+	{
+		dprint("timer: native create-new source unavailable; no legacy overwrite\n");
+		return FALSE;
+	}
+	SV_RecNewId(e);
+	e.rec_hm_cap = 1;
+	e.rec_hm_allow = SV_HeldAllowed(e);
+	e.rec_hm_source = strzone(SV_RecPartPath(e));
+	status = held_metadata(e, 1, "",
+	                       strcat(e.rec_rec_rid, sprintf(" %d", e.rec_rec_serial)));
+	if (!strcmp(status, "off"))
+		if (e.rec_rec_fh >= 0)
+			if (!e.rec_hm_mode)
+				if (!strcmp(e.rec_hm_generation, ""))
+				{
+					dprint("timer: native create-new source allocated (ordinary, no held admission)\n");
+					return TRUE;
+				}
+	SV_HeldAbort(e);
+	if (e.rec_rec_fh >= 0)
+		fclose(e.rec_rec_fh);
+	e.rec_rec_fh = -1;
+	strunzone(e.rec_rec_rid);
+	e.rec_rec_rid = "";
+	dprint("timer: create-new source refused; no legacy overwrite or buffer fallback\n");
+	return FALSE;
+};
 
 // One server-world clock in every hook. Round the cumulative carry only once.
 float(entity e) SV_ViewSeconds =
@@ -5104,6 +5337,7 @@ void(entity e, float owner) SV_ViewWindow =
 	local float was;
 	local string name;
 	if (e.run_t_viewowner == owner) return;
+	e.rec_mc_origin_valid = FALSE;   // no cumulative delta across viewing windows
 	if (e.run_t_viewowner)
 	{
 		name = (e.run_t_viewowner == 1) ? "spec" : "replay";
@@ -5125,24 +5359,25 @@ void(entity e, float owner) SV_ViewWindow =
 
 void(entity e) SV_RecOpen =
 {
-	local float i, s, base;
+	local float i, s, base, native_source;
 	local string mcrc;	// build 73; `s` above is the padding-ring index, not a string
 	local string pin;	// build 87
 
+	if (!SV_HeldPump(e))            // never truncate a still-pending source
+		return;
+	SV_HeldReset(e);                // before the serial/source can be reused
 	if (e.rec_fa_on)
 		if (SV_DevOn())
 			dprint("timer: a new recording drops the kept attempt\n");
 	SV_RecFailDrop(e);                  // Patch 817: you left the start
 	SV_RecCopyFlush(e);                 // Patch 375: the part file is about to be reopened
 	SV_RecGenBegin(e);
-	e.rec_rec_ver = 13;
+	e.rec_rec_ver = FS_REC_VERSION;
 	e.rec_rec_views = 0;
 	e.rec_rec_parks = 0;
 	e.rec_rec_inmt = -1;
 	e.rec_rec_infz = FALSE;
-	e.rec_mc_n = e.rec_mc_bad = 0;      // Patch 376
-	e.rec_mc_badrow = -1;
-	e.rec_mc_sup = 0;                   // Patch 405
+	SV_RecMCReset(e);
 	if (e.rec_rec_nonce != "")          // Patch 416: the last run's, freed here
 	{
 		strunzone(e.rec_rec_nonce);
@@ -5213,11 +5448,23 @@ void(entity e) SV_RecOpen =
 	  padding flush and every sample go through SV_RecPut and it is SV_RecPut
 	  that knows where they land.
 	*/
+	native_source = (cvar("rec_held_metadata") != 0);
 	e.rec_rec_stream = SV_RecStreams();
+	if (native_source)
+		e.rec_rec_stream = TRUE;
 	if (e.rec_rec_stream)
 	{
 		e.rec_rec_partlob = Lobby_Active() ? 1 : 2;
-		e.rec_rec_fh = fopen(SV_RecPartPath(e), FS_FILE_WRITESTREAM);
+		if (native_source)
+		{
+			if (!SV_HeldCreateSource(e))
+			{
+				e.rec_rec_stream = FALSE;
+				return;
+			}
+		}
+		else
+			e.rec_rec_fh = fopen(SV_RecPartPath(e), FS_FILE_WRITESTREAM);
 		if (e.rec_rec_fh < 0)
 		{
 			// Not fatal to the run, only to its recording -- the same shape as
@@ -5262,7 +5509,7 @@ void(entity e) SV_RecOpen =
 	  already joined to the row that shows it.  Same shape as the padding ring:
 	  the cheap route was the one that added nothing.
 	*/
-	SV_RecPut(e, "FTESURF-REC 13");
+	SV_RecPut(e, sprintf("FTESURF-REC %g", FS_REC_VERSION));
 	SV_RecPut(e, sprintf("map %s", mapname));
 	SV_RecPut(e, sprintf("track %g", e.run_t_track));
 	SV_RecPut(e, sprintf("startseg %g", e.run_t_startseg));
@@ -5339,17 +5586,10 @@ void(entity e) SV_RecOpen =
 	SV_RecPut(e, "holdclock 1");
 	SV_RecPut(e, "viewclock 1");
 	SV_RecPut(e, sprintf("owner %s", e.netname));
-	// Patch 360: kept (zoned) as the run's id for stage posts and the evidence
-	// file; a lobby appends its port -- 12 lobbies share one data dir.  Readers
-	// slice only the date prefix.
-	if (e.rec_rec_rid != "")
-		strunzone(e.rec_rec_rid);
-	if (Lobby_Active())
-		e.rec_rec_rid = strzone(sprintf("%s-%g-p%s", strftime(TRUE, "%Y%m%d-%H%M%S"),
-		                                e.run_t_slot, cvar_string("sv_port")));
-	else
-		e.rec_rec_rid = strzone(sprintf("%s-%g", strftime(TRUE, "%Y%m%d-%H%M%S"),
-		                                e.run_t_slot));
+	// Patch 360: kept (zoned) for stage posts and evidence. The native path
+	// creates exactly this same ID before the source so it can bind ownership.
+	if (!native_source)
+		SV_RecNewId(e);
 	SV_RecPut(e, strcat("runid ", e.rec_rec_rid));
 	// Patch 629: the key this run is posted under is the one proved by now
 	// (sv_lobby.qc, run_pub).  Not in the recording: it is the lobby's note.
@@ -5596,6 +5836,7 @@ void(entity e) SV_RecOpen =
 	e.rec_rec_lastbc = e.run_boardcount;
 
 	e.run_t_flags = e.run_t_flags | TF_RECORDING;
+	SV_HeldOpen(e);
 
 	// The padding, oldest first.  Timestamps are absolute on the clock the ring
 	// stamps -- SV_ClockSec since build 76, sv.time before it -- and are made
@@ -5709,6 +5950,13 @@ float(entity e) SV_RecKeepEvidence =
 		SV_RecPut(e, sprintf("inend %d %.9g", endmt, endcarry));
 	SV_RecTrailer(e, ticks);
 	dst = sprintf("data/evidence/%s/%s.rec", mapname, e.rec_rec_rid);
+	if (e.rec_hm_mode == 12)
+	{
+		SV_HeldAbort(e);
+		e.rec_hm_abandoned = TRUE;
+		SV_HeldQueueClose(e, 0, -1, RT_NONE, flags, dst, "");
+		return TRUE;
+	}
 	if (e.rec_rec_stream)
 	{
 		if (e.rec_rec_fh < 0)
@@ -5803,6 +6051,8 @@ void() SV_EvidenceSweep =
 {
 	local string today;
 
+	if (checkbuiltin(held_metadata))
+		held_metadata(world, 6, mapname, "map");
 	SV_EvidenceSweepPat(sprintf("data/evidence/%s/*.*", mapname));
 
 	/*
@@ -5833,12 +6083,18 @@ void() SV_EvidenceSweep =
 	if (infokey(world, "fs_evswept") == today)
 		return;
 	localcmd(sprintf("localinfo fs_evswept %s\n", today));
+	if (checkbuiltin(held_metadata))
+		held_metadata(world, 6, "", "all");
 	SV_EvidenceSweepPat("data/evidence/*/*.*");
 };
 
 void(entity e) SV_RecDiscard =
 {
 	local float live;
+
+	if (!SV_HeldPump(e))
+		return;
+	SV_HeldAbort(e);
 
 	/*
 	  ONLY clear the tag if there was actually a recording to throw away, and
@@ -5862,6 +6118,8 @@ void(entity e) SV_RecDiscard =
 	if (live)
 	if (SV_RecKeepEvidence(e))          // Patch 360: posted stages keep the file
 	{
+		if (e.rec_hm_closing)
+			return;
 		if (!e.rec_rec_stream)
 		{
 			if (e.rec_fa_take)
@@ -5907,18 +6165,22 @@ void(entity e) SV_RecDiscard =
 		{
 			if (e.rec_rec_fh >= 0)
 				fclose(e.rec_rec_fh);
-			// Patch 817: to SV_RecFailKeep's name; a failed rename loses it as before
-			if (e.rec_fa_take)
+			// Native selected12 owns its source, including a failed discard.
+			if (e.rec_hm_mode != 12)
 			{
-				fremove(e.rec_fa_path);
-				if (frename(SV_RecPartPath(e), e.rec_fa_path) != 0)
+				// Patch 817: only a legacy attempt can replace the rewind slot.
+				if (e.rec_fa_take)
 				{
-					fremove(SV_RecPartPath(e));
-					e.rec_fa_bytes = 0i;
+					fremove(e.rec_fa_path);
+					if (frename(SV_RecPartPath(e), e.rec_fa_path) != 0)
+					{
+						fremove(SV_RecPartPath(e));
+						e.rec_fa_bytes = 0i;
+					}
 				}
+				else
+					fremove(SV_RecPartPath(e));
 			}
-			else
-				fremove(SV_RecPartPath(e));
 		}
 		else if (e.rec_fa_take)
 			e.rec_fa_buf = e.rec_rec_buf;       // Patch 817
@@ -5963,6 +6225,7 @@ void(entity e) SV_RecDiscard =
 		strunzone(e.rec_rec_nonce);
 	e.rec_rec_nonce = "";
 	e.rec_fa_take = FALSE;
+	if (e.rec_hm_mode != 12)
 	if (e.rec_fa_on)
 	if (e.rec_fa_stream ? e.rec_fa_bytes <= 0i : e.rec_fa_buf < 1)
 		SV_RecFailDrop(e);              // Patch 817: nothing was handed over
@@ -6081,6 +6344,192 @@ void(entity e, float leg, string tag, string who, string keepme) SV_RecPrune =
   remove and the rename lost the previous recording as well as this one.  A
   single fopen of the final path cannot do that.
 */
+// Snapshot the finish form before deferred publication can cross an arm or
+// account change. The body/URL may contain credentials: never print them.
+void(entity e, float leg, float ticks, float flags) SV_HeldQueuePost =
+{
+	local string body;
+
+	if (!e.rec_hm_closing || e.rec_hm_postbody != "")
+		return;
+	if (ticks != e.rec_hm_ticks || leg != e.rec_hm_leg || e.run_t_track != e.rec_hm_track)
+		return;
+	body = Lobby_FinishedBody(e, e.run_t_track, leg, ticks, flags, "", -1, e.rec_hm_full);
+	if (body == "")
+		return;
+	e.rec_hm_postbody = strzone(body);
+	e.rec_hm_posturl = strzone(cvar_string("lobby_master"));
+	e.rec_hm_postflags = flags;
+	e.rec_hm_pwhy = e.lobby_rq_pwhy;
+	e.rec_hm_ckshort = e.lobby_rq_ckshort;
+};
+
+void(entity e, float published) SV_HeldFinishClose =
+{
+	local float fh, p;
+	local string leaf, body, recording, hint;
+
+	e.rec_hm_closing = FALSE;
+	e.rec_rec_saved = published;
+	e.rec_rec_bytes = -1;
+	e.rec_rec_ticks = -1;
+	e.rec_rec_tag = RT_NONE;
+	leaf = recording = "";
+	if (published)
+	{
+		fh = fopen(e.rec_hm_destination, FILE_READ);
+		if (fh >= 0)
+		{
+			e.rec_rec_bytes = fsize(fh);
+			fclose(fh);
+		}
+		e.rec_rec_ticks = e.rec_hm_stamp;
+		e.rec_rec_tag = e.rec_hm_tag;
+		e.rec_rec_leg = e.rec_hm_track * 100 + e.rec_hm_leg + 1;
+		if (e.rec_hm_stamp >= 0)
+		if (FS_TagArchived(e.rec_hm_tag))
+			leaf = FS_RunLeaf(e.rec_hm_stamp, e.rec_hm_who, SV_RecTagName(e.rec_hm_tag), "rec");
+		// A later arm must not make this sweep another track's archive.
+		if (e.rec_hm_stamp >= 0)
+		if (e.run_t_track == e.rec_hm_track)
+			SV_RecPrune(e, e.rec_hm_leg, SV_RecTagName(e.rec_hm_tag), e.rec_hm_who,
+			            FS_RunLeaf(e.rec_hm_stamp, e.rec_hm_who, SV_RecTagName(e.rec_hm_tag), "rec"));
+	}
+	else
+		dprint("timer: native recording publication refused; ordinary source preserved\n");
+
+	SV_RecGenReset(e);
+	e.rec_rec_buf = -1;
+	e.rec_rec_stream = FALSE;
+	e.rec_rec_lines = 0;
+	// No sidecar/receipt promotion for a source which never became public.
+	SV_RecEndHold(e, (published && e.rec_hm_flags & TF_NONCE && !e.rec_hm_rcpt) ? e.rec_hm_rid : "",
+	              published ? e.rec_hm_nonce : "", e.rec_hm_ticks);
+	if (e.rec_hm_abandoned)
+	{
+		if (e.rec_rec_rid != "") strunzone(e.rec_rec_rid);
+		if (e.rec_rec_nonce != "") strunzone(e.rec_rec_nonce);
+		e.rec_rec_rid = e.rec_rec_nonce = "";
+	}
+
+	if (e.rec_hm_postbody != "")
+	{
+		body = e.rec_hm_postbody;
+		hint = "&rec=&recbytes=-1&";
+		p = strstrofs(body, hint, 0);
+		if (p >= 0)
+		if (strstrofs(body, hint, p + 1) < 0)
+		{
+			body = strreplace(hint, sprintf("&rec=%s&recbytes=%d&", uri_escape(leaf), e.rec_rec_bytes), body);
+			if (leaf != "")
+				recording = sprintf("%s (%g bytes%s)", leaf, e.rec_rec_bytes,
+				                    e.rec_hm_full ? ", TRUNCATED" : "");
+			e.lobby_rq_pwhy = e.rec_hm_pwhy;
+			e.lobby_rq_ckshort = e.rec_hm_ckshort;
+			Lobby_PostFinishedBody(e, e.rec_hm_track, e.rec_hm_leg, e.rec_hm_ticks,
+			                       e.rec_hm_postflags, e.rec_hm_posturl, body, recording);
+		}
+		strunzone(e.rec_hm_postbody);
+		e.rec_hm_postbody = "";
+		strunzone(e.rec_hm_posturl);
+		e.rec_hm_posturl = "";
+	}
+};
+
+float(entity e) SV_HeldPump =
+{
+	local string status;
+
+	if (!e.rec_hm_closing)
+		return TRUE;
+	SV_HeldCheck(e);
+	if (!checkbuiltin(held_metadata) || e.rec_hm_generation == "")
+	{
+		SV_HeldFinishClose(e, FALSE);
+		return TRUE;
+	}
+	status = held_metadata(e, 5, e.rec_hm_generation,
+	                       strcat(e.rec_hm_source, " ", e.rec_hm_destination));
+	if (!strcmp(status, "pending"))
+	{
+		if (time < e.rec_hm_closeby)
+			return FALSE;
+		SV_HeldAbort(e);
+		// A timeout can close generically, never seal partial detail.
+		status = held_metadata(e, 5, e.rec_hm_generation,
+		                       strcat(e.rec_hm_source, " ", e.rec_hm_destination));
+	}
+	SV_HeldFinishClose(e, !strcmp(status, "published"));
+	return TRUE;
+};
+
+void() SV_HeldFrame =
+{
+	local entity e;
+
+	e = world;
+	while ((e = find(e, classname, "player")))
+		SV_HeldPump(e);
+};
+
+void(entity e) SV_HeldDisconnect =
+{
+	if (e.rec_hm_closing)
+	if (!SV_HeldPump(e))
+	{
+		SV_HeldAbort(e);
+		SV_HeldFinishClose(e, FALSE);
+	}
+};
+
+void(entity e, float ticks, float stamp, float tag, float flags, string destination, string who) SV_HeldQueueClose =
+{
+	local string status;
+
+	if (e.rec_hm_closing)
+		return;
+	SV_RecCopyFlush(e);
+	e.rec_hm_destination = strzone(destination);
+	e.rec_hm_ticks = ticks;
+	e.rec_hm_stamp = stamp;
+	e.rec_hm_tag = tag;
+	e.rec_hm_flags = flags;
+	e.rec_hm_track = e.run_t_track;
+	e.rec_hm_leg = FS_LegOf(e.run_t_startseg, e.run_t_stagerun);
+	e.rec_hm_full = e.rec_rec_full;
+	e.rec_hm_rcpt = e.rec_rec_rcpt;
+	e.rec_hm_who = strzone(who);
+	e.rec_hm_rid = strzone(e.rec_rec_rid);
+	e.rec_hm_nonce = strzone(e.rec_rec_nonce);
+	// Only streamed ordinary sources can have selected this profile.
+	if (e.rec_rec_fh >= 0)
+	{
+		e.rec_rec_bytes = fseek(e.rec_rec_fh);
+		if (e.rec_rec_flagofs >= 0)
+		{
+			fseek(e.rec_rec_fh, e.rec_rec_flagofs);
+			fputs(e.rec_rec_fh, SV_RecFlagLine(flags));
+		}
+		fclose(e.rec_rec_fh);
+		e.rec_rec_fh = -1;
+	}
+	e.rec_rec_flagofs = -1;
+	e.rec_rec_saved = FALSE;
+	e.run_t_flags = e.run_t_flags - (e.run_t_flags & TF_RECORDING);
+	e.rec_hm_closing = TRUE;
+	e.rec_hm_closeby = time + 2;
+	SV_HeldCheck(e);
+	if (checkbuiltin(held_metadata))
+	{
+		status = held_metadata(e, 3, e.rec_hm_generation, "");
+		if (strcmp(status, "pending") && strcmp(status, "sealed"))
+			SV_HeldAbort(e);
+	}
+	else
+		SV_HeldAbort(e);
+	// No poll/publication here: the callback/message still owns its tail.
+};
+
 void(entity e, float ticks, float tag, float flags) SV_RecClose =
 {
 	local float i, base, fh, stamp;
@@ -6088,6 +6537,13 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 
 	if (!SV_RecLive(e))
 		return;
+	// No physical hold: erase candidacy before the unchanged ordinary close.
+	if (!e.rec_hm_mode)
+	if (strcmp(e.rec_hm_generation, ""))
+	{
+		SV_HeldAbort(e);
+		strunzone(e.rec_hm_generation); e.rec_hm_generation = "";
+	}
 	SV_RecEndHold(e, "", "", 0);        // Patch 426: held again below, once it has ended
 
 	/*
@@ -6261,6 +6717,12 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		dst = sprintf("data/evidence/%s/%s.rec", mapname, e.rec_rec_rid);
 		tag = RT_NONE;
 		print(sprintf("^5board:^7 kept %s (%g posted stage(s))\n", dst, e.rec_rec_posts));
+	}
+
+	if (e.rec_hm_mode == 12)
+	{
+		SV_HeldQueueClose(e, ticks, stamp, tag, flags, dst, who);
+		return;
 	}
 
 	/*
@@ -6506,6 +6968,11 @@ float(entity e) SV_RecDestream =
 
 	if (!e.rec_rec_stream)
 		return TRUE;
+	if (e.rec_hm_mode == 12)
+	{
+		SV_HeldAbort(e);               // private original cannot become a replay seed
+		return FALSE;
+	}
 	SV_RecCopyFlush(e);                 // Patch 375
 	fclose(e.rec_rec_fh);
 	e.rec_rec_fh = -1;
@@ -6557,6 +7024,12 @@ void(entity e, filestream f) SV_RecSaveKeys =
 	fputs(f, sprintf("recbytes %s\n", itos(rec_snap_bytes)));
 	fputs(f, sprintf("recviews %d\n", e.rec_rec_views));
 	fputs(f, sprintf("recparks %d\n", e.rec_rec_parks));
+	if (e.rec_rec_ver >= 14)
+	{
+		fputs(f, sprintf("recmc %d %d %d %d\n", e.rec_mc_n, e.rec_mc_bad, e.rec_mc_badrow, e.rec_mc_sup));
+		fputs(f, sprintf("recmcv %.10g %.10g %.10g %.10g %d\n",
+		                 e.rec_mc_ring_x, e.rec_mc_ring_y, e.rec_mc_read_x, e.rec_mc_read_y, e.rec_mc_read_z));
+	}
 	fputs(f, sprintf("recstream %d %d %d\n", e.rec_rec_ver, e.rec_rec_flagofs, e.rec_rec_sesspend));
 	fputs(f, sprintf("recrows %d %d %d %d\n", e.rec_rec_in, e.rec_rec_pk, e.rec_rec_warp, e.rec_rec_ride));
 	fputs(f, sprintf("recstate %d %d %d %d\n", e.rec_rec_pm, e.rec_rec_pe, e.rec_rec_portal, e.rec_rec_pinned));
@@ -6578,6 +7051,8 @@ void() SV_RecKeysReset =
 	rs_branch = "";
 	rs_ver = 9;
 	rs_views = rs_parks = 0;
+	rs_mc_ring = rs_mc_read = '0 0 0';
+	rs_mc_n = rs_mc_bad = rs_mc_sup = rs_mc_cap = 0; rs_mc_badrow = -1;
 	rs_flagofs = -1;
 	rs_pend = rs_in = rs_pk = rs_warp = rs_ride = rs_pm = rs_pe = rs_portal = 0;
 	rs_pinned = rs_pauses = rs_sess = rs_incy = rs_infz = 0;
@@ -6589,6 +7064,18 @@ float(string k, float n) SV_RecKeyRead =
 {
 	if (!strcmp(k, "recparks")) { rs_parks = stof(argv(1)); return TRUE; }
 	if (!strcmp(k, "recviews")) { rs_views = stof(argv(1)); return TRUE; }
+	if (!strcmp(k, "recmc") && n == 5)
+	{
+		rs_mc_n = stof(argv(1)); rs_mc_bad = stof(argv(2));
+		rs_mc_badrow = stof(argv(3)); rs_mc_sup = stof(argv(4));
+		rs_mc_cap = rs_mc_cap | 1; return TRUE;
+	}
+	if (!strcmp(k, "recmcv") && n == 6)
+	{
+		rs_mc_ring_x = stof(argv(1)); rs_mc_ring_y = stof(argv(2)); rs_mc_ring_z = 1;
+		rs_mc_read_x = stof(argv(3)); rs_mc_read_y = stof(argv(4)); rs_mc_read_z = stof(argv(5));
+		rs_mc_cap = rs_mc_cap | 2; return TRUE;
+	}
 	if (k == "recgen")    { rs_gen = stof(argv(1)); return TRUE; }
 	if (k == "recrid")    { if (rs_rid != "") strunzone(rs_rid); rs_rid = strzone(argv(1)); return TRUE; }
 	if (k == "recbranch") { if (rs_branch != "") strunzone(rs_branch); rs_branch = strzone(argv(1)); return TRUE; }
@@ -6625,6 +7112,13 @@ void(entity e, float mark, float samples, float padn, float cps) SV_RecRestore =
 	e.rec_rec_sess = rs_sess;
 	e.rec_rec_views = rs_views;
 	e.rec_rec_parks = rs_parks;
+	if (e.rec_rec_ver >= 14)
+	{
+		SV_RecMCReset(e);
+		e.rec_mc_ring = rs_mc_ring; e.rec_mc_read = rs_mc_read;
+		e.rec_mc_n = rs_mc_n; e.rec_mc_bad = rs_mc_bad;
+		e.rec_mc_badrow = rs_mc_badrow; e.rec_mc_sup = rs_mc_sup;
+	}
 	if (e.rec_rec_pk < rs_pk)
 		e.rec_rec_pk = rs_pk;
 	e.rec_rec_sesspend = rs_pend;
@@ -6650,6 +7144,13 @@ float(entity e, string path, float mark, float serial,
 
 	if (!checkbuiltin(fappendrange))
 		return FALSE;
+	if (e.rec_hm_mode == 12)
+	{
+		SV_HeldAbort(e);               // first native profile is initial-only
+		return FALSE;                 // no truncate/unlink of its creator source
+	}
+	if (rs_ver >= 14 && rs_mc_cap != 3)
+		return FALSE;                 // never silently zero a restored relative prefix
 	if (e.run_ms_phase)                 // the resume's copy owns the part file (SV_SaveLocLoad refuses too)
 		return FALSE;
 	SV_RecCopyFlush(e);
@@ -6744,12 +7245,14 @@ void(entity e) SV_RecRecount =
 	e.rec_rec_incy = e.rec_rec_infz = 0;
 	e.rec_rec_views = 0;
 	e.rec_rec_parks = 0;
+	if (e.rec_rec_ver >= 14) SV_RecMCReset(e);
 	last = -1;
 	pend = FALSE;
 	for (i = 0; i < e.rec_rec_lines; i = i + 1)
 	{
 		l = bufstr_get(e.rec_rec_buf, i);
 		c = str2chr(l, 0);
+		if (e.rec_rec_ver >= 14) SV_RecMCRecountLine(e, l);
 		if ((c == 105 && substring(l, 0, 3) == "in ") ||
 		    (c == 102 && substring(l, 0, 5) == "fzin "))          // i / f
 		{
@@ -9483,6 +9986,7 @@ float(entity e) SV_TimerElapsed =
 void(entity e) SV_TimerFreeze =
 {
 	e.run_t_freeze = TRUE;
+	e.rec_mc_origin_valid = FALSE;   // exclude private/ambiguous boundary deltas
 
 	/*
 	  A stopped clock is not something a kept run may have.
@@ -9654,7 +10158,7 @@ void(entity e) SV_TimerSlowClock =
 
 void(entity e) SV_TimerFreezeFrame =
 {
-	local float now;
+	local float now, wasfrozen;
 
 	/*
 	  BUILD 74/76, and it must run on EVERY call, above the branch, for two
@@ -9703,6 +10207,7 @@ void(entity e) SV_TimerFreezeFrame =
 
 	now = SV_ClockSec(e);
 	SV_ClockFrame(e, now - e.run_t_lastsec);    // Patch 840: before lastsec moves
+	wasfrozen = e.run_t_frzon;
 	if (e.run_t_frzon && e.run_t_starttick >= 0)
 	{
 		e.run_t_frzticks = e.run_t_frzticks + (e.run_movetick - e.run_t_lastmt);
@@ -9731,6 +10236,8 @@ void(entity e) SV_TimerFreezeFrame =
 			e.run_t_frzcarry = e.run_movecarry;
 		}
 		e.run_t_flags = e.run_t_flags | TF_FROZEN;
+		if (!wasfrozen)
+			SV_HeldEvent(e, "freeze");
 		return;
 	}
 
@@ -9748,6 +10255,8 @@ void(entity e) SV_TimerFreezeFrame =
 	e.run_t_frzon = FALSE;
 	e.run_t_frzat = 0;
 	e.run_t_flags = e.run_t_flags - (e.run_t_flags & TF_FROZEN);
+	if (wasfrozen)
+		SV_HeldEvent(e, "thaw");
 };
 
 /*
@@ -10470,6 +10979,16 @@ void(float hid) CSEv_rechid_f =
 	self.run_t_jevhid = hid;
 };
 
+// The matching Rec_TermsReport sends only the current online tier or zero.
+// Userinfo and console commands are not permission. Like the local terms file,
+// this is a consent record, not proof against a modified client.
+void(float version) CSEv_recterms_f =
+{
+	self.run_t_terms = (version == FS_TERMS_ONLINE) ? FS_TERMS_ONLINE : 0;
+	if (self.run_t_terms != FS_TERMS_ONLINE)
+		SV_HeldAbort(self);
+};
+
 /*
   ...AND WHAT ITS JOURNAL'S OWN IDENTITY CHECK FOUND.  Patch 486, over engine
   Patch 484's five cvars.  The partner is sendevent("injrn", "ffffff", ...) in
@@ -10541,6 +11060,7 @@ void(float have, float frames, float ghosts, float viol, float bad, float skip)
 */
 void(entity e) SV_CSQCForget =
 {
+	SV_HeldReset(e);                   // queued payload must not cross client/slot reuse
 	e.run_t_pev      = 0;
 	e.run_t_pevhave  = 0;
 	e.run_t_pevraw   = 0;
@@ -10550,6 +11070,7 @@ void(entity e) SV_CSQCForget =
 	e.run_t_pevgrant = 0;
 	e.run_t_jev      = 0;
 	e.run_t_jevhid   = 0;
+	e.run_t_terms    = 0;
 	// Patch 486: the third report, cleared in the one place its handler writes.
 	// The rule is stated at this function, not here: EVERY FIELD A CSEv_ HANDLER
 	// IN THIS FILE WRITES IS CLEARED IN THIS FUNCTION, and there is no second
@@ -12785,6 +13306,7 @@ void(entity e, float ticks) SV_TimerFinish =
 	// The flags as they stand HERE, which is after every taint has been applied
 	// and after the tag has been decided from them -- so the header line and the
 	// filename are two views of one value rather than two reads of a field.
+	SV_HeldEvent(e, "terminal");
 	SV_RecClose(e, ticks, tag, e.run_t_flags);
 
 	/*
@@ -12857,8 +13379,11 @@ void(entity e, float ticks) SV_TimerFinish =
 
 	Lobby_StoryLocal(e, e.run_t_track, leg, ticks, e.run_t_flags);
 	Lobby_RqDetail(e);
-	Lobby_SubmitRun(e, e.run_t_track, leg, ticks, e.run_t_flags,
-	                SV_RecKeptLeaf(e), e.rec_rec_bytes, e.rec_rec_full);
+	if (e.rec_hm_closing)
+		SV_HeldQueuePost(e, leg, ticks, e.run_t_flags);
+	else
+		Lobby_SubmitRun(e, e.run_t_track, leg, ticks, e.run_t_flags,
+		                SV_RecKeptLeaf(e), e.rec_rec_bytes, e.rec_rec_full);
 
 	/*
 	  PATCH 448: THE HOPPED-START TAG DIES WITH THE RUN IT DESCRIBED.
@@ -13872,10 +14397,32 @@ void(entity e) SV_RecCounts =
 			e.rec_mc_sup = e.rec_mc_sup + 1;
 		return;
 	}
+	// Old selected files retain their no-absolute-counts policy.
+	if (e.rec_hm_mode == 12)
+		if (e.rec_rec_ver < 14) return;
+	if (e.rec_rec_ver >= 14)
+		if (e.run_t_frzon || e.run_t_freeze)
+		{
+			e.rec_mc_origin_valid = FALSE;
+			return;
+		}
 	if (e.rec_rec_in < 1)
 		return;
 	r = input_cursor_trace_start;
 	a = input_cursor_trace_endpos;
+	if (e.rec_rec_ver >= 14)
+	{
+		if (!e.rec_mc_origin_valid)
+		{
+			e.rec_mc_origin_ring = r; e.rec_mc_origin_read = a;
+			e.rec_mc_carry_ring = e.rec_mc_ring; e.rec_mc_carry_read = e.rec_mc_read;
+			e.rec_mc_origin_valid = TRUE;
+		}
+		r = r - e.rec_mc_origin_ring + e.rec_mc_carry_ring;
+		a = a - e.rec_mc_origin_read + e.rec_mc_carry_read;
+		r_x = SV_RecMCWrap(r_x); r_y = SV_RecMCWrap(r_y); r_z = 1;
+		a_x = SV_RecMCWrap(a_x); a_y = SV_RecMCWrap(a_y); a_z = SV_RecMCWrap(a_z);
+	}
 	if (e.rec_mc_n > 0 && r == e.rec_mc_ring && a == e.rec_mc_read)
 		return;
 	was = e.rec_rec_lines;
@@ -14017,6 +14564,11 @@ void(entity e) SV_TimerInFrame =
 	  writers on ONE rule also means the interleaving a reader groups by never
 	  develops a span with inputs and no sample to terminate it.
 	*/
+	// A selected native profile never exports physically pinned input. The
+	// release can still write fzin while packet accounting is catching up.
+	if (e.rec_hm_mode == 12)
+	if (e.movetype == MOVETYPE_NONE)
+		return;
 	if (!SV_RecMoveTrace(e))
 		return;
 
@@ -14082,6 +14634,11 @@ void(entity e) SV_TimerInFrame =
 		e.rec_rec_inmt = e.run_movetick;    // Patch 375: a stream's `pause` reads these
 		e.rec_rec_incy = e.run_movecarry;
 		e.rec_rec_infz = e.run_t_frzon;
+		if (e.rec_hm_mode == 12)
+		{
+			if (e.run_t_frzon) e.rec_hm_alias_fzin = e.rec_hm_alias_fzin + 1;
+			else e.rec_hm_alias_in = e.rec_hm_alias_in + 1;
+		}
 	}
 
 	/*
@@ -14252,6 +14809,21 @@ string() SV_VerifyZonePin =
 		return "";
 	return sprintf("%s %s %d %d %d", Zone_SourceTag(zone_source), zone_crc,
 	               run_t_swept, run_t_hull, run_t_hulllive);
+};
+
+// Full native identity: exact built floats and the rules the shared scan reads.
+string() SV_VerifyZoneFullPin =
+{
+	local string geometry;
+
+	if ((run_t_swept != 0 && run_t_swept != 1) || (run_t_hull != 0 && run_t_hull != 1)
+	    || (run_t_hulllive != 0 && run_t_hulllive != 1))
+		return "";
+	geometry = Zone_FullHash();
+	if (strlen(geometry) != 64)
+		return "";
+	return strtolower(digest_hex("SHA256", strcat("aircell1-zones1 ", geometry,
+	                  sprintf(" %d %d %d", run_t_swept, run_t_hull, run_t_hulllive))));
 };
 
 void(float evzone, float azone, float track, float stagerun, float startseg) SV_VerifyBegin =
@@ -15588,6 +16160,10 @@ void(entity e) SV_TimerReport =
 	               e.run_t_jevhid,
 	               (e.run_t_flags & TF_NOJOURNAL) ? 1 : 0,
 	               SV_JournalBroken(e)));
+	sprint(e, PRINT_HIGH, sprintf("        public pause metadata consent: %g (needs %g)\n",
+	                            e.run_t_terms, FS_TERMS_ONLINE));
+	sprint(e, PRINT_HIGH, sprintf("        pause metadata: mode %g cap %g allow %g ready %g\n",
+	                            e.rec_hm_mode, e.rec_hm_cap, e.rec_hm_allow, FS_HELD_PRODUCER_READY));
 
 	/*
 	  PATCH 486: WHAT THE JOURNAL'S OWN IDENTITY CHECK FOUND, as the client

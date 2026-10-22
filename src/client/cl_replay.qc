@@ -295,6 +295,7 @@ float() Rec_ViewKeys =
 */
 float rec_rp_consent;            // the accepted terms version, read off disk at init
 float rec_rp_hidsent;            // last `setinfo rechid` value sent; -1 = none yet
+float rec_rp_termssent;          // renewed online answer sent over CSQC; -1 = none yet
 
 // Build 72: the last `setinfo inprof` sent, as its parts.  Cached as FLOATS and
 // not as the assembled string on purpose -- a cached string would have to be
@@ -373,6 +374,8 @@ float() Rec_ConsentRead =
   it leaves their machine.  So the upload asks THIS, and `rec_upload` is its own
   switch beside it -- the way `rec_hid` is the journal's.
 */
+#define CVAR_TYPEFLAG_EXISTS 1   // pr_common.h:225
+
 float() Rec_ConsentOK =
 {
 	if (rec_rp_consent >= FS_TERMS_VERSION)
@@ -390,6 +393,26 @@ float() Rec_UploadConsentOK =
 	if (cvar("rec_terms") >= FS_TERMS_ONLINE)
 		return TRUE;
 	return FALSE;
+};
+
+// Consent, not an artifact or an attestation. Report before a run can arm;
+// silence and an older online answer cannot enable the new public metadata.
+void() Rec_TermsReport =
+{
+	local float v;
+
+	v = rec_rp_consent;
+	// A registered menu answer is current, including an explicit downgrade.
+	// Only the headless/no-menu case falls back to the answer read at init.
+	if (cvar_type("rec_terms") & CVAR_TYPEFLAG_EXISTS)
+		v = cvar("rec_terms");
+	v = v >= FS_TERMS_ONLINE ? FS_TERMS_ONLINE : 0;
+	if (!cvar("rec_upload"))
+		v = 0;
+	if (v == rec_rp_termssent)
+		return;
+	sendevent("recterms", "f", v);
+	rec_rp_termssent = v;
 };
 
 float() Rec_HidOK =
@@ -500,8 +523,6 @@ void() Rec_HidReport =
   pr_bgcmd.c:1944 says so on the line itself, which is why it is safe to ask
   first and why nothing else here can be.
 */
-#define CVAR_TYPEFLAG_EXISTS 1   // pr_common.h:225
-
 float(string name, float bit, __inout float have) Rec_InputCvar =
 {
 	if (!(cvar_type(name) & CVAR_TYPEFLAG_EXISTS))
@@ -1974,6 +1995,8 @@ void() Rec_ViewFrame =
 {
 	local float rec, flags;
 
+	Rec_TermsReport();
+
 	// Build 58: unconditional and first, because the server has to have this
 	// before a run arms rather than when one does.  See Rec_HidReport.
 	Rec_HidReport();
@@ -2323,6 +2346,7 @@ void() Rec_ViewInit =
 	// no real answer can equal, or the first frame skips the send that would
 	// have repopulated it.  See Rec_HidReport.
 	rec_rp_hidsent = -1;
+	rec_rp_termssent = -1;
 
 	/*
 	  BUILD 78: EXPLICIT, AND NO LONGER MERELY TIDY.  A fresh VM zeroes it

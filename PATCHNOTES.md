@@ -21,6 +21,10 @@
 
 ## next
 
+### P923 Keep recording attempts separate
+- Starting or resuming a recording no longer carries another attempt's bookkeeping into the new recording. Existing recordings keep their original meaning.
+- A selected recording that cannot be completed is preserved privately for recovery instead of discarded. This does not create a leaderboard result or change the existing retention period.
+
 ### P922 Local filters and a scoreboard that stays open
 - Keep the direction and Segmented controls on Local, with a Practice filter. Existing local recordings stay Normal until directional recording is available; filters do not relabel runs.
 - Right-click the scoreboard to keep it open after releasing Tab. Another right-click does not dismiss it; Esc closes it, even while searching.

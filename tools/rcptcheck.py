@@ -278,19 +278,26 @@ def join_rec(r):
         selected = False
         try:
             # Unrelated recordings cost only a header scan, as before. Capture
-            # the selected one's remaining text BEFORE closing this same handle.
-            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            # the selected one's exact bytes BEFORE closing this same handle.
+            with open(path, "rb") as fh:
                 head, prefix = {}, []
-                for ln in fh:
-                    prefix.append(ln)
-                    if ln.strip() == "begin":
+                for raw in fh:
+                    prefix.append(raw)
+                    # Preserve legacy CR-only header discovery as well as LF
+                    # and CRLF, without normalizing the captured byte buffer.
+                    began = False
+                    for ln in io.StringIO(raw.decode("utf-8", errors="replace"), newline=None):
+                        if ln.strip() == "begin":
+                            began = True
+                            break
+                        k, _sp, v = ln.strip().partition(" ")
+                        head[k] = v
+                    if began:
                         break
-                    k, _sp, v = ln.strip().partition(" ")
-                    head[k] = v
                 if head.get("runid") != runid:
                     continue
                 selected = True
-                text = "".join(prefix) + fh.read()
+                data = b"".join(prefix) + fh.read()
         except OSError as exc:
             if selected:
                 # The matched recording exists, but its session nonce/angles
@@ -299,13 +306,14 @@ def join_rec(r):
                 r.note("the selected .rec read is deferred (%r)" % exc)
                 return
             continue
-        # No digest covers the .rec; its decoded observation is shared by the
-        # nonce and angle readers. Re-encoding preserves replacement/newlines.
-        with io.StringIO(text, newline=None) as fh:
+        # No digest covers the .rec. Nonce/ticks/angles share ONE observation;
+        # REC12 lexical checks must see its original suffix bytes, not CRLF
+        # converted to LF by a text read and then re-encoded.
+        with io.StringIO(data.decode("utf-8", errors="replace"), newline=None) as fh:
             lines = list(fh)
         r.note("joined %s" % os.path.relpath(path, GAME))
         r.recpath = path
-        r.recdata = text.encode("utf-8")
+        r.recdata = data
         r.rec_report = None
         want = signed_get(r, "nonce")
 

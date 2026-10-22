@@ -339,6 +339,7 @@ void() ClientDisconnect =
 	Archive_Reset(self);
 	SV_StartMarkForget(self);
 	Lobby_AnnDisconnect(self);          // Patch 371: the chat line, if the join was said
+	SV_HeldDisconnect(self);           // frozen finish payload still belongs to this client
 
 	// Before the timer teardown, because it only removes an entity and the
 	// timer's teardown is the part that must not be skipped if this throws.
@@ -367,6 +368,7 @@ void() ClientDisconnect =
 	// writes the file, and a leaked handle is one of MAX_QC_FILES gone for
 	// the rest of the session.
 	SV_TimerIdle(self);
+	SV_HeldDisconnect(self);           // an abandoned posted-stage source may have closed here
 	SV_RecFailDrop(self);               // Patch 817: an edict is reused uncleared
 	SV_TimerReleaseSlot(self);
 	SV_RecEndHold(self, "", "", 0);     // Patch 426: nobody is left to sign it
@@ -454,6 +456,7 @@ void() SpectatorThink = { Account_Think(self); };
 
 void() PlayerPreThink =
 {
+	SV_HeldCheck(self);
 	// Patch 753: first, where a stringcmd sent just before this command would run.
 	SV_WarpOpCommand();
 
@@ -480,6 +483,8 @@ void() PlayerPreThink =
 	// SV_WatchHoldMove (sv_saveloc.qc); the second call site is PlayerPostThink's,
 	// ahead of SV_NoclipWatch.
 	SV_WatchHoldMove(self);
+	if (self.rec_wt_hold)
+		SV_HeldEvent(self, "maint-pre");
 	if (self.run_pmhold) SV_MonolithB4Reset(self);
 	else SV_MonolithB4Command(self);
 	SV_MomLimitFrame(self);         // Patch 882: after the movetype is final, before the move
@@ -754,9 +759,12 @@ void() PlayerPostThink =
 {
 	local vector dest;
 
+	SV_HeldCheck(self);
 	self.run_pkn = self.run_pkn + 1;    // Patch 382: the trigger gate's packet count
 
 	SV_WatchHoldMove(self);             // Patch 499: ahead of the watcher that reads it
+	if (self.rec_wt_hold)
+		SV_HeldEvent(self, "maint-post");
 	SV_NoclipWatch(self);
 	Account_Think(self);                // Patch 619: a started Steam link, waited on
 

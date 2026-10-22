@@ -4434,6 +4434,7 @@ void(entity e) SV_WatchRelease =
 	SV_ClearCarrier(e);
 
 	SV_TimerThaw(e);
+	SV_HeldEvent(e, "release");
 };
 
 /*
@@ -4449,6 +4450,7 @@ void(entity e) SV_WatchFrame =
 		return;
 	e.velocity = '0 0 0';
 	SV_ClearCarrier(e);
+	SV_HeldEvent(e, "maint-tail");
 };
 
 /*
@@ -4569,8 +4571,10 @@ void(entity e, float on) SV_WatchHold =
 		SV_SpecRelease(e, "leave");  // existing evidence reason: leaving spectate for replay
 
 	SV_ViewWindow(e, 2);
-	e.rec_wt_hold     = TRUE;
+	// Save the derivable prior mode before native PRE-pin observation.
 	e.rec_wt_holdmove = e.movetype;
+	SV_HeldEvent(e, "entry");
+	e.rec_wt_hold = TRUE;
 
 	moving = (e.velocity != '0 0 0' || e.run_basevel != '0 0 0');
 	// Round 17: a Multi-Session session still pending is seeded before the zero

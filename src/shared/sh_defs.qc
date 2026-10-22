@@ -27,6 +27,10 @@
 ===========================================================================
 */
 
+// Legacy12/13 keep absolute MC semantics. New14/15 use recording-relative MC.
+#define FS_REC_VERSION 14
+#define FS_REC_NATIVE_VERSION 15
+
 // Typed extension of the CSQC entity stream (body flag byte bit 128).
 #define ENTWIRE_TYPED 128
 #define ENTWIRE_TRIGSTATE 1
@@ -1107,7 +1111,8 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 // Tier-6 answers promised separate permission and must be asked again.
 // P823: a new online answer is also the update permission. Still 7: earlier
 // answers keep the update choice they made, so nobody gets more than they read.
-#define FS_TERMS_ONLINE 7
+// Public pause-check metadata needs a renewed online answer; offline stays 1.
+#define FS_TERMS_ONLINE 8
 
 #define TS_IDLE      0   // nothing armed
 #define TS_ARMED     1   // standing in the zone the run will start from

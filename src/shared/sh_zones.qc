@@ -310,6 +310,84 @@ void() Zone_Hash =
 	buf_del(b);
 };
 
+// Native replay identity, separate from the unchanged short compatibility CRC.
+float(float v) Zone_HashFinite =
+{
+	return ((v - v) == 0);
+};
+
+float(vector v) Zone_HashVectorFinite =
+{
+	return (Zone_HashFinite(v_x) && Zone_HashFinite(v_y) && Zone_HashFinite(v_z));
+};
+
+string() Zone_FullHash =
+{
+	local float z, p, b, valid;
+	local vector v;
+	local string result;
+
+	if (zone_overflow || zone_count <= 0 || zone_count > ZONE_MAX
+	    || zone_ptcount < 3 || zone_ptcount > ZONE_MAX_POINTS)
+		return "";
+	if (!Zone_HashFinite(zone_count) || !Zone_HashFinite(zone_ptcount)
+	    || zone_count != floor(zone_count) || zone_ptcount != floor(zone_ptcount)
+	    || !Zone_HashFinite(zone_maxvel))
+		return "";
+	b = buf_create();
+	if (b < 0)
+		return "";
+	bufstr_add(b, sprintf("zones1 %d %d %.9g", zone_count, zone_ptcount, zone_maxvel), TRUE);
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		valid = (Zone_HashFinite(zone_type[z]) && Zone_HashFinite(zone_track[z])
+		         && Zone_HashFinite(zone_seg[z]) && Zone_HashFinite(zone_cp[z]));
+		if (valid)
+			valid = (Zone_HashFinite(zone_first[z]) && Zone_HashFinite(zone_npts[z])
+			         && Zone_HashFinite(zone_bottom[z]) && Zone_HashFinite(zone_top[z]));
+		if (valid)
+			valid = (Zone_HashFinite(zone_radius[z]) && Zone_HashVectorFinite(zone_centre[z])
+			         && Zone_HashVectorFinite(zone_zmins[z]) && Zone_HashVectorFinite(zone_zmaxs[z]));
+		if (valid)
+			valid = (zone_first[z] >= 0 && zone_npts[z] >= 3
+			         && zone_first[z] == floor(zone_first[z]) && zone_npts[z] == floor(zone_npts[z])
+			         && zone_first[z] + zone_npts[z] <= zone_ptcount);
+		if (!valid)
+		{
+			buf_del(b);
+			return "";
+		}
+		bufstr_add(b, sprintf("z %.9g %.9g %.9g %.9g",
+		                      zone_type[z], zone_track[z], zone_seg[z], zone_cp[z]), TRUE);
+		bufstr_add(b, sprintf("b %.9g %.9g %.9g %.9g",
+		                      zone_first[z], zone_npts[z], zone_bottom[z], zone_top[z]), TRUE);
+		v = zone_centre[z];
+		bufstr_add(b, sprintf("c %.9g %.9g %.9g %.9g", v_x, v_y, v_z, zone_radius[z]), TRUE);
+		v = zone_zmins[z];
+		bufstr_add(b, sprintf("mn %.9g %.9g %.9g", v_x, v_y, v_z), TRUE);
+		v = zone_zmaxs[z];
+		bufstr_add(b, sprintf("mx %.9g %.9g %.9g", v_x, v_y, v_z), TRUE);
+	}
+	for (p = 0; p < zone_ptcount; p = p + 1)
+	{
+		v = zone_pt[p];
+		if (!Zone_HashVectorFinite(v))
+		{
+			buf_del(b);
+			return "";
+		}
+		bufstr_add(b, sprintf("p %.9g %.9g %.9g", v_x, v_y, v_z), TRUE);
+	}
+	if (buf_getsize(b) != 1 + 5 * zone_count + zone_ptcount)
+	{
+		buf_del(b);
+		return "";
+	}
+	result = strtolower(digest_hex("SHA256", buf_implode(b, "\n")));
+	buf_del(b);
+	return result;
+};
+
 /*
   HOW MANY SEGMENTS A TRACK HAS, and there is now exactly ONE speller of it.
 

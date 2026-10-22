@@ -799,7 +799,9 @@ void(entity e) SV_MsCopyStep =
 			if (strcmp(l, "FTESURF-REC 9") == 0)
 				l = "FTESURF-REC 10";
 			e.rec_ms_ver = stof(substring(l, 12, -1));
+			if (e.rec_ms_ver >= 14) SV_RecMCReset(e);
 		}
+		if (e.rec_ms_ver >= 14) SV_RecMCRecountLine(e, l);
 		// The version line may have grown a byte: take the offset from this copy.
 		if (substring(l, 0, 6) == "flags ")
 			e.rec_ms_flagofs = fseek(e.rec_ms_dst);
@@ -1052,7 +1054,7 @@ void(entity e) SV_MsApply =
 	{
 		// Open the old frozen-clock session BEFORE adding its offline gap.
 		SV_RecSession(e);
-		if (!SV_RecLive(e) || e.rec_rec_ver == 13)
+		if (!SV_RecLive(e) || e.rec_rec_ver == 13 || e.rec_rec_ver == FS_REC_VERSION)
 		{
 			e.run_t_viewsec = e.run_t_viewsec + ms_gap;
 			ok = e.rec_rec_lines;

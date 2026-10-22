@@ -214,7 +214,7 @@ try {
         finally { if ($controlSrc) { Remove-Item -LiteralPath $controlSrc } }
         if ($LASTEXITCODE -ne 0) {
             $out | Write-Host
-            throw "fteqcc failed on $src"
+            throw "fteqcc failed on $src (native exit $LASTEXITCODE)"
         }
         $warn = $out | Select-String -Pattern 'warning' -SimpleMatch
         if ($warn) { $warn | ForEach-Object { Write-Host "    $_" -ForegroundColor Yellow } }

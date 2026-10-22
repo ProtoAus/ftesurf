@@ -57,6 +57,8 @@ import struct
 import sys
 from decimal import Decimal, InvalidOperation
 
+import heldmeta
+
 # BUILD 80.  A token in exponent form anywhere after `begin`.
 #
 # No writer of this format ever emits one deliberately: every column is either
@@ -309,7 +311,12 @@ HEAD_V10 = HEAD_V9
 COLUMNS[11] = COLUMNS[10]
 # Format 12 keeps the sampled pose columns; viewing time is a separate clock lane.
 COLUMNS[12] = COLUMNS[11]
+# Public13 adds parked clocks; historical private native13 has a v12 body.
+# Ordinary14/native15 inherit public13 clocks and use recording-relative MC.
 COLUMNS[13] = COLUMNS[12]
+COLUMNS[14] = COLUMNS[12]
+COLUMNS[15] = COLUMNS[12]
+VIEW_VERSIONS = (12, 13, 14, 15)
 
 # v9 warp kinds.  v8 and older keep the five, so their notes do not move.
 WARP_KINDS_V7 = ("tele", "telerel", "bhop", "speed", "push")
@@ -483,6 +490,7 @@ class Report:
         self.notes = []
         self.info = {}
         self.finish_ticks = None   # computed only, never supplied by a header key
+        self.held = None           # structural witness only, never a native verdict
         # The angle stream: (ticks, yaw, pitch, instart, source) or None.  Only
         # check_rec fills it, and only angle_join reads it.
         self.angles = None
@@ -695,6 +703,9 @@ def read_lines(path, data=None):
 
 def check_rec(path, verbose=False, *, data=None):
     r = Report(path)
+    if data is None:
+        with open(path, "rb") as stream:
+            data = stream.read()
     lines = read_lines(path, data)
 
     if not lines:
@@ -715,6 +726,17 @@ def check_rec(path, verbose=False, *, data=None):
                 % (ver, ", ".join(str(v) for v in sorted(COLUMNS))))
         return r
     r.info["version"] = ver
+    if heldmeta.is_native_recording(data, ver):
+        try:
+            framed = heldmeta.parse_recording(data)
+        except heldmeta.Malformed as exc:
+            r.fault("REC%d held metadata: %s" % (ver, exc))
+            return r
+        r.held = framed.witness
+        r.info["held_status"] = r.held.status
+        r.note("REC%d %s witness: structural check only, not NativePASS" % (ver, r.held.status))
+        lines = read_lines(path, framed.ordinary)
+        ver = 12 if ver == 13 else 14  # Body grammar, not a header/byte rewrite.
     want_cols = COLUMNS[ver]
     if ver >= 10:
         allowed = HEAD_V10
@@ -1404,8 +1426,8 @@ def check_rec(path, verbose=False, *, data=None):
         if kind == "parkclock":
             park_edges += 1
             try:
-                if ver != 13 or len(tok) != 3:
-                    raise ValueError("requires format 13 and gapSeconds totalSeconds")
+                if ver not in (13, 14) or len(tok) != 3:
+                    raise ValueError("requires format 13/14 and gapSeconds totalSeconds")
                 if view_open is not None:
                     raise ValueError("viewing owner is open")
                 if len(session_edges) <= park_session:
@@ -1425,7 +1447,7 @@ def check_rec(path, verbose=False, *, data=None):
         elif kind == "viewclock":
             view_edges += 1
             try:
-                if ver not in (12, 13) or head.get("viewclock") != "1":
+                if ver not in VIEW_VERSIONS or head.get("viewclock") != "1":
                     raise ValueError("requires format 12 and viewclock 1")
                 if len(tok) != 5 or tok[1] not in ("spec", "replay") or tok[2] not in ("0", "1"):
                     raise ValueError("takes <spec|replay> <0|1> <wall> <totalSeconds>")
@@ -1833,6 +1855,8 @@ def check_rec(path, verbose=False, *, data=None):
                 if why is not None and why not in SPEC_WHY:
                     r.note("line %d: spec reason %r is not one this tool knows (%s)"
                            % (lineno + 1, why, ", ".join(SPEC_WHY)))
+        elif kind in heldmeta.SCHEMAS:
+            r.fault("line %d: native held metadata requires REC%d (historical REC13 also supported)" % (lineno + 1, heldmeta.NATIVE_VERSION))
         else:
             r.note("line %d: unknown record %r" % (lineno + 1, kind))
 
@@ -2158,12 +2182,17 @@ def check_rec(path, verbose=False, *, data=None):
                         % ln)
         # Patch 376: additive.  Format is a fault; ring != read is evidence, so
         # a note (pm_verify HOLDs on it).
-        for ln, a, seen in mcs:
+        for mc_index, (ln, a, seen) in enumerate(mcs):
             if (len(a) != 7 or not is_int(a[0]) or not is_int(a[6])
                     or not all(is_float(x) for x in a[2:6])):
                 r.fault("line %d: 'mc' takes 7 fields (pk row rx ry ax ay rej)" % ln)
                 continue
             check_row(r, ln, "mc", a[1], seen)
+            if ver in (14, 15):
+                if not 0 <= int(a[6]) < 1048576:
+                    r.fault("line %d: relative 'mc' rejects outside its 2^20 wrap" % ln)
+                if mc_index == 0 and any(float(x) != 0 for x in a[2:7]):
+                    r.fault("line %d: recording-relative 'mc' must start at zero" % ln)
             if not all(0 <= float(x) < 1048576 for x in a[2:6]):
                 r.fault("line %d: 'mc' count outside its 2^20 wrap" % ln)
             elif (float(a[2]), float(a[3])) != (float(a[4]), float(a[5])):
@@ -2173,6 +2202,7 @@ def check_rec(path, verbose=False, *, data=None):
         r.info["pes"] = len(pes)
         r.info["portals"] = len(portals)
         r.info["mcs"] = len(mcs)
+        r.info["mc_scope"] = "recording-relative modulo2^20; boundary packets excluded" if ver in (14, 15) else "legacy client-cumulative modulo2^20"
 
     # ---- the trace and its horizon must agree, build 82 ---------------------
     #
@@ -2941,11 +2971,11 @@ def check_rec(path, verbose=False, *, data=None):
         # one missing fact but a WRONG carrier held for every command after it,
         # which does not heal.  The count is the only handle a reader has on that.
         # v9 (build 87): TEN -- <pms> <pes> <portals>, exact, counted like <rides>.
-        if ver == 13:
+        if ver in (13, 14):
             want_end = 14
         elif ver == 12:
             want_end = 13
-        elif ver == 11:
+        elif ver >= 11:
             want_end = 12               # P842: required closing declaration
         elif ver >= 10:
             want_end = 11               # Patch 364: <sessions>
@@ -2959,14 +2989,14 @@ def check_rec(path, verbose=False, *, data=None):
             want_end = 5
         else:
             want_end = 4
-        missing_clock_count = (ver == 11 and len(args) == 11)
-        if len(args) != want_end and not (ver == 11 and len(args) >= 11):
+        missing_clock_count = (ver >= 11 and len(args) == 11)
+        if len(args) != want_end and not (ver >= 11 and len(args) >= 11):
             r.fault("line %d: 'end' takes %d fields in a v%d file, has %d"
                     % (ln, want_end, ver, len(args)))
         else:
             # A damaged new suffix cannot suppress validation of intact legacy
             # fields, or grant/revoke independently validated reset history.
-            if ver == 11 and len(args) != want_end:
+            if ver >= 11 and len(args) != want_end:
                 if missing_clock_count:
                     r.fault("line %d: 'end' is missing its v11 clockend count" % ln)
                 else:
@@ -3045,18 +3075,18 @@ def check_rec(path, verbose=False, *, data=None):
     clock_faults = len(r.faults)
     r.info["fzin"] = thawrows
     r.info["clockends"] = len(clockends)
-    if clockends and ver not in (11, 12, 13):
+    if clockends and ver < 11:
         r.fault("'clockend' requires format 11")
-    elif ver in (11, 12, 13):
+    elif ver >= 11:
         if len(clockends) > 1 or (saw_end is not None and len(clockends) != 1):
             r.fault("v11 finished recording requires exactly one 'clockend'")
         if len(clockends) == 1:
             ln, a = clockends[0]
             mode = a[0] if a else ""
-            if ver in (12, 13) and mode == "counted":
+            if ver in VIEW_VERSIONS and mode == "counted":
                 r.fault("v12 counted finish requires explicit viewing clockend")
             r.info["closing_clock"] = mode or "malformed"
-            if mode == "counted" or (mode == "viewing" and ver in (12, 13)):
+            if mode == "counted" or (mode == "viewing" and ver in VIEW_VERSIONS):
                 try:
                     # Validate types even when an independently damaged inend
                     # leaves no trustworthy closing horizon for the equation.
@@ -3090,9 +3120,9 @@ def check_rec(path, verbose=False, *, data=None):
                 r.fault("line %d: kept clockend requires an abandon" % ln)
     independent_closing_faults += len(r.faults) - clock_faults
 
-    if ver not in (12, 13) and "viewclock" in head:
-        r.fault("viewclock capability requires format 12")
-    if ver in (12, 13):
+    if ver not in VIEW_VERSIONS and "viewclock" in head:
+        r.fault("viewclock capability requires a viewing-clock format")
+    if ver in VIEW_VERSIONS:
         if head.get("viewclock") != "1":
             r.fault("format 12 requires viewclock 1")
         if saw_end is not None:
@@ -3101,7 +3131,7 @@ def check_rec(path, verbose=False, *, data=None):
             a = saw_end[1]
             if len(a) >= 13 and (not is_int(a[12]) or int(a[12]) != view_edges):
                 r.fault("end viewclock edge count disagrees with body")
-        if ver == 13:
+        if ver in (13, 14):
             if saw_end is not None and len(saw_end[1]) >= 14:
                 if not is_int(saw_end[1][13]) or int(saw_end[1][13]) != park_edges:
                     r.fault("end parkclock edge count disagrees with body")
@@ -3172,7 +3202,7 @@ def check_rec(path, verbose=False, *, data=None):
                      if v]
     if park_edges:
         r.angle_epoch.append("offline gap: physical continuation not modelled")
-    if ver in (12, 13) and view_total > 0:
+    if ver in VIEW_VERSIONS and view_total > 0:
         r.angle_epoch.append("inclusive viewing clock: held camera join not modelled")
     if has_fzin:
         r.angle_epoch.append("excluded-clock release inputs (v11)")

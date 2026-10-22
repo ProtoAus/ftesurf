@@ -81,6 +81,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import heldmeta
+
 # --------------------------------------------------------------------------
 # parsing
 # --------------------------------------------------------------------------
@@ -201,8 +204,10 @@ def parse_rec(path, strict=False, max_bytes=None, max_moves=None):
 def _parse_rec(path, max_bytes=None, max_moves=None):
     r = Rec(path)
     body = False
+    data = None
+    rec_native = []
     if max_bytes is None:
-        fh = open(path, "r", errors="replace")
+        fh = open(path, "r", errors="replace", newline="")
     else:
         # Bound the actual capture, not stat size: files can grow during a read.
         # StringIO preserves the text reader's universal newline/locale behavior.
@@ -214,15 +219,21 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
         fh = io.StringIO(data.decode(locale.getpreferredencoding(False), errors="replace"),
                          newline=None)
     with fh:
-        for line in fh:
+        for lineno, line in enumerate(fh, 1):
+            if r.ver in heldmeta.NATIVE_VERSIONS:
+                rec_native.append(line)
             if not body:
                 if line.startswith("FTESURF-REC"):
                     try:
                         r.ver = int(line.split()[1])
                     except (IndexError, ValueError):
                         r.ver = 0
-                    if r.ver >= 12:
+                    if r.ver >= 12 and r.ver not in heldmeta.NATIVE_VERSIONS:
                         raise MalformedRec("inclusive viewing-clock format is not modelled")
+                    if r.ver in heldmeta.NATIVE_VERSIONS:
+                        if lineno != 1:
+                            raise MalformedRec("native held recording must start at the first byte")
+                        rec_native.append(line)
                 elif line.startswith("map "):
                     f = line.split()
                     if len(f) < 2:
@@ -245,8 +256,8 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
             tag = line.split(None, 1)[:1]
             excluded = tag == ["fzin"]
             if line.startswith("in ") or excluded:
-                if excluded and r.ver != 11:
-                    raise MalformedRec("excluded-clock input requires format 11")
+                if excluded and r.ver not in (11, 12, *heldmeta.NATIVE_VERSIONS):
+                    raise MalformedRec("excluded-clock input requires format 11 or 12")
                 if max_moves is not None and len(r.moves) >= max_moves:
                     raise SourceLimit("source move limit reached")
                 f = line.split()
@@ -263,6 +274,8 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
                 r.mt.append(mt)
                 r.moves.append(move)
                 r.btns.append(btn)
+            elif tag and tag[0] in heldmeta.SCHEMAS and r.ver not in heldmeta.NATIVE_VERSIONS:
+                raise MalformedRec("native held metadata requires REC13 or REC15")
             elif line.startswith("end "):
                 f = line.split()
                 if len(f) > 1:
@@ -270,6 +283,16 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
                         r.end_ticks = int(float(f[1]))
                     except (ValueError, OverflowError):
                         pass
+    if r.ver in heldmeta.NATIVE_VERSIONS:
+        # Unbounded text mode preserves endings; bounded mode checks exact bytes.
+        # Only retained ordinary inputs enter similarity; never a native verdict.
+        try:
+            native_data = data if data is not None else "".join(rec_native).encode("utf-8")
+            if not heldmeta.is_native_recording(native_data, r.ver):
+                raise MalformedRec("inclusive viewing-clock format is not modelled")
+            heldmeta.parse_recording(native_data)
+        except heldmeta.Malformed as exc:
+            raise MalformedRec("native held metadata: %s" % exc) from exc
     if not r.moves:
         return None
     return r

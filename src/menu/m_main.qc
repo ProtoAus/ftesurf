@@ -5537,6 +5537,8 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_par(p, w, draw, "The people on the map see your position and view angle, and you see theirs. Voice and text chat reach everyone there.", COL_TEXT);
 		ui_tm_head(p, draw, "What is uploaded");
 		ui_tm_par(p, w, draw, "Your finish time goes to play.proto.bar and appears on a public leaderboard. That server also keeps its own recording of the run (positions, velocities and angles), which anyone can download from the board.", SUI_THEME_WARN);
+		ui_tm_par(p, w, draw, "Public server replays can also include limited pause-check timing and order, movement settings, physical state and clock snapshots. This adds no raw paused input to those replays and no new player or device identifiers. The same public downloads and replay retention apply.", SUI_THEME_WARN);
+		ui_tm_par(p, w, draw, "Detailed pause-check records appear only for qualifying intervals. Their presence indicates the permitted movement/jump mode and absence of relevant use actions, unmodeled transitions and effects. Other intervals receive only a generic unsupported or incomplete result.", SUI_THEME_WARN);
 		ui_tm_par(p, w, draw, "Your client's view-angle sidecar also goes to that server for anti-cheat review (rec_upload controls it). Choosing play online includes raw mouse and keyboard event journals, with timings, sent to play.proto.bar over HTTPS for private review, not public replays. Untick the journal box on the summary to opt out, or stop uploads later with F2. Stopping does not delete evidence already received.", COL_TEXT);
 		ui_tm_par(p, w, draw, "With online features enabled, play.proto.bar refreshes the map list at startup and serves zones, leaderboards and player pictures. Selecting a map can fetch its backdrop from dl.proto.bar. These services see your IP address, as does any lobby you join.", COL_TEXT);
 		ui_tm_par(p, w, draw, "A zone admin can upload saved zones to play.proto.bar. They are stored with the linked account and go live on the lobbies once none of them has the map loaded; existing times stay.", COL_TEXT);
@@ -5603,6 +5605,8 @@ float(vector p, float w, float draw) ui_terms_short =
 	ui_tm_dot(p, w, draw, "Each run is recorded on this PC: your position, speed and view, and your mouse and keyboard input.");
 	ui_tm_dot(p, w, draw, "Offline, nothing about a run leaves your PC.");
 	ui_tm_dot(p, w, draw, "Online, times and server replays are public. Your view-angle file and, unless you untick below, input journal go to play.proto.bar for anti-cheat review. Playing online also turns on automatic updates from proto.bar. Players see your play and chat; servers see your IP address.");
+	ui_tm_dot(p, w, draw, "Public replays can also include pause-check timing, order, movement settings and physical/clock snapshots, but no raw paused input or new player/device identifiers.");
+	ui_tm_dot(p, w, draw, "Detailed pause checks mean the interval qualified: they indicate the allowed movement/jump mode and absence of relevant use actions or unmodeled effects/transitions. Other intervals get only a generic unsupported/incomplete result.");
 	ui_tm_dot(p, w, draw, "Never recorded: what you type (only that a key was pressed, and when), or anything outside the game.");
 	return tm_y - 3;
 };
