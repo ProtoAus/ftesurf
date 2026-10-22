@@ -73,8 +73,8 @@ install. The new csprogsvers/e6c1bb7e.dat download SHA256 matches11701c87...
 above. After CSQC was actually ready, the real server selected Glock8, advanced
 shot sequence1 and the client reported ready1/@glock_firesingle with positive
 duration. The first too-early echo was not acceptance. Own client quit normally;
-the original cache was restored with exact-hash ownership checks. No terms were
-accepted and no recording/leaderboard qualification is claimed.
+the original cache was restored with exact-hash ownership checks. No acceptance
+commands were issued; no recording/leaderboard qualification is claimed.
 
 No force, new native/producer promotion, collection activation or maintenance
 gate was used. Windows retains its separately verified newer mainline/P932
