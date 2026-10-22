@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P926 — surf_me save9 view continuity
+
+PENDING after matching client progs are installed: load save9 on surf_me and
+let it fall without touching movement/look. The old early view reset should be
+gone; the map's intended turn should occur only with the actual teleport.
+Dedicated old/new geometry and snap/ack controls pass; physical feel is not yet
+owner-confirmed. Native source/tag remains P924. Details: tools/p926-rotated-triggers.md.
+
 ## P924 — Source conveyor carry
 
 PENDING after the matching native/client and lobby update: stand on the belt at

@@ -1,0 +1,59 @@
+# P926 — rotated trigger prediction matches server geometry
+
+## Cause and acting control
+
+The owner's surf_me save9 was read without modifying it. Only its numeric body
+origin, zero velocity and view angles were used for a fresh isolated actor;
+no identity, saved run or clock was copied. A no-destination zone reproduces
+that origin through normal zone_goto (bottom+2), with no movement/look input.
+
+surf_me has ordinary trigger_teleport entities, not linked_portal_door. Its *32
+brush targets tele4 and has authored yaw-180. The client parser read `angles`
+but never assigned them to its probe entity. It also culled against unrotated
+local mins/maxs. The server retains the authored rotation and links world bounds.
+
+With native source/tag P924, real dedicated socket,100fps, normal extrapolation,
+cl_prederror.25 and predicted triggers ON, the original mirror ACTS: it fires
+tele4 around.8seconds before the server, with four4205..4257-unit corrections.
+It resets pitch/yaw to0 at that false hit, then misses the real crossing and
+gets a5352-unit correction there. With prediction OFF, the early turn disappears
+but the expected late unpredicted crossing remains. This distinguishes the
+reported view discontinuity from the map's legitimate final destination angle.
+An initial.48second probe ended before crossing and is NOT the acting evidence;
+the longer original logs are retained. Mouse sensitivity/pitch/yaw were zeroed
+for the final positive/subject comparison so a background physical device cannot
+change the no-input premise.
+
+At the measured early body point the old trigger probe returns startsolid1.
+The subject returns startsolid0/allsolid0/fraction1 at that same point. The
+subject later fires one real teleport and native angle debugging reports the
+same command sequence for its predicted snap and server acknowledgement. No
+false-teleport or unpredicted-real-crossing correction remains. The expected
+zone-placement correction and an unrelated sub-2-unit slope correction remain
+explicit; this patch does not claim all movement prediction is error-free.
+
+## Change and scope
+
+Set the parsed angle on the probe before setorigin, then use its engine-linked
+world absmin/absmax for the broad phase. This reuses the same brush/link behavior
+as the server rather than inventing rotated-corner math or suppressing view
+snaps. Existing server-authored destination angles, masks, filters and gates
+are unchanged. Named zone-tool boxes retain their existing shaping path.
+
+Client QC only: no physical server, evidence writer/reader, held qualification,
+coverage, ranking policy, native source/tag pin or qcbuild change. Three product
+VMs compile with zero warnings. QuakeC's LSP result is not used as compile proof.
+P924's reader864/0 and byte-identical-reader corpus evidence remain valid because
+this change does not touch those dependencies.
+
+## Delivery and acceptance
+
+Not yet deployed or owner-accepted. Canonical game was running at P924's guarded
+Windows deployment attempt, which refused before copying anything. The read-only
+Pi directory had12rows/3players and the independent mainline P923 producer gate
+remains held; neither is permission to force a swap. P924 native/API is required
+for the already combined conveyor feature, not for this old angle/link API.
+
+Small owner check after matching delivery: load surf_me save9, touch no controls,
+and confirm there is no early view reset during the fall; the actual map
+teleport may still turn you to its authored destination. Pending in lextest.md.

@@ -25,7 +25,8 @@ commit   a0ebb9d06afd0e9fe552bb86030be34c809d97c8
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-924
-patch    924
+patch    926
+# Patch 926: rotated trigger prediction uses authored angles and linked world bounds.
 # Patch 924: static Source conveyor carry and exact-ground prediction metadata.
 # CheckMovingGround uses the existing basevelocity/ride contract; mover stays v11.
 # Patch 923: recording-relative counters, private failed-source recovery and

@@ -1773,13 +1773,15 @@ void() Trig_LoadForMap =
 			setmodel(e, mdl);
 			e.solid = TG_SOLID_BSPTRIGGER;
 		}
+		// Match the server's rotated brush clip and its linked world bounds.
+		e.angles = ang;
 		setorigin(e, org);
 		e.tg_isbox = box;
 		tg_ent[i]   = e;
 		tg_kind[i]  = kind;
 		tg_flags[i] = spawnflags;
-		tg_bmin[i]  = org + e.mins;
-		tg_bmax[i]  = org + e.maxs;
+		tg_bmin[i]  = e.absmin;
+		tg_bmax[i]  = e.absmax;
 		tg_onceseq[i] = tg_onceoffset[i] = -1;
 		tg_ssinseq[i] = -99999;
 		tg_filt[i] = filt;

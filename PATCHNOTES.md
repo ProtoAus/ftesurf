@@ -21,6 +21,9 @@
 
 ## next
 
+### P926 Rotated teleports turn you at the right place
+- Fix rotated map triggers predicting a teleport before the server reaches it, including surf_me save 9. The map's intended view turn now happens with the actual teleport rather than early during the fall.
+
 ### P924 Source conveyor belts carry you
 - Static conveyor belts now carry you at their authored speed and direction, including parc_colore and classics stage 4. Stepping off keeps the belt momentum.
 - Client prediction follows the belt movement instead of repeatedly correcting your position.
