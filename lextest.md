@@ -2,13 +2,13 @@
 
 ## P916 — ceiling eye clearance and water exit
 
-PENDING human acceptance; do this only on the matching mover-11 client/server.
-Near a low roof, stand and jump: the view should lower before entering the roof,
-then return in open space, without crouching/shrinking the body. At the surface
-of water, face a low ledge with room above: swim/jump up to the surface and let
-the assist lift you onto the lip. Compare facing away and a wall too tall to
-climb. The lip check itself needs neither jump nor +up. Automated real hull-trace,
-movement/state and legacy controls passed; that is not visual/feel confirmation.
+OWNER CONFIRMED 2026-10-22: "works well and my head ducks and I bounce out of
+water". This is manual acceptance of the observed head lowering/water exit,
+not measured performance, collision/evidence proof or every edge case.
+Remaining reported defect: very small frame-to-frame eye-height oscillation
+while jumping upward into a roof, noticeable at both 50 and 1000+ FPS (P917).
+After the matching P917 client update, repeat that small roof jump and confirm
+whether the micro-jitter is gone; broad camera/device feel is still human-only.
 
 ## P915 — disconnected clocks and retained stage attempts (deployment pending)
 

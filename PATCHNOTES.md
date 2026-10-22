@@ -21,6 +21,9 @@
 
 ## next
 
+### P917 Steady head clearance
+- The ceiling-lowered camera no longer bobs with the mismatch between movement ticks and rendered frames while rising beneath a roof.
+
 ### P916 Duck your view under roofs and climb out of water
 - Your view lowers when a ceiling would clip through the camera, on the ground or in the air. This does not crouch or shrink your collision box.
 - At the water's surface, face a low ledge with room above it for a Source-style upward assist. Jump or swim up to reach the surface; the ledge assist itself needs neither button.
