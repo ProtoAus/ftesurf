@@ -180,8 +180,10 @@ void() PutClientInServer =
 	self.fixangle    = TRUE;
 	self.max_health  = 100;
 	self.items       = 0;
-	self.weapon      = 0;
-	self.weaponmodel = "";
+	self.weapon      = FS_WEAPON_KNIFE;
+	self.weaponframe = 0;
+	self.vbsp_lastshot = self.vbsp_nextshot = 0;
+	self.weaponmodel = "";          // models are mounted/rendered client-locally
 
 	/*
 	  No model: this is a first-person training tool and nobody else is
@@ -814,7 +816,7 @@ void() PlayerPostThink =
 	// +use, for maps that wire a func_button.  A rising edge on .button5 and a
 	// short trace; nothing at all happens on a map that wires nothing.
 	SV_UseFrame(self);
-	SV_ShootFrame(self);            // Patch 865: +attack, the test shot
+	SV_ShootFrame(self);            // map-target attack; shared damage gates retained
 
 	/*
 	  The timer, the zone scan and the recorder, once per usercmd.
@@ -1128,6 +1130,31 @@ void(string cmd) SV_ParseClientCommand =
 	}
 	cmdargc = tokenize(cmd);
 	c = argv(0);
+	if (!strcmp(c, "weapon"))
+	{
+		if (strcmp(self.classname, "player") || !self.run_inserver ||
+		    self.run_pmhold || self.movetype != MOVETYPE_WALK) return;
+		go = stof(argv(1));
+		if (!strcmp(argv(1), "knife")) go = FS_WEAPON_KNIFE;
+		if (!strcmp(argv(1), "usp")) go = FS_WEAPON_USP;
+		if (!strcmp(argv(1), "scout")) go = FS_WEAPON_SCOUT;
+		if (!strcmp(argv(1), "glock")) go = FS_WEAPON_GLOCK;
+		if (go != FS_WEAPON_KNIFE && go != FS_WEAPON_USP &&
+		    go != FS_WEAPON_SCOUT && go != FS_WEAPON_GLOCK)
+		{
+			sprint(self, PRINT_HIGH, "weapon: knife | usp | scout | glock\n");
+			return;
+		}
+		if (self.weapon != go)
+		{
+			self.weapon = go;
+			self.weaponframe = 0;
+			self.vbsp_lastshot = self.button0;
+			self.vbsp_nextshot = time + 0.15;
+		}
+		sprint(self, PRINT_HIGH, sprintf("weapon: selected %g (map damage retains run_shoot/lobby_shoot gates)\n", go));
+		return;
+	}
 	if (!strcmp(c, "archive"))
 	{
 		Archive_Command(self, cmdargc);

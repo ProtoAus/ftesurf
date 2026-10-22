@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P931 — CS:S held weapons
+
+PENDING after matching delivery: use surf_weapon knife / usp / scout / glock,
+watch idle/fire and listen to a few +attack presses. Confirm right-hand position
+and animation/sound balance; cl_viewweapon 0 hides, cl_viewweapon_left 1 swaps.
+All four real screenshots and frame/cadence readbacks pass. Actual bhop_badges
+map-target gate/reach controls pass, not full CS:S ammo/ballistics. Public lobby
+damage enablement is a separate owner decision; existing gates remain unchanged.
+No save binds were overwritten. Details: tools/p931-css-weapons.md.
+
 ## P927 — CS:S movement Foley
 
 PENDING after matching delivery: walk on a flat floor, jump/land, then enter,

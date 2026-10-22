@@ -291,4 +291,5 @@ client/cl_mapmsg.qc
 client/cl_share.qc
 // Local Foley reads the body/owner and camera-mode helpers declared above.
 client/cl_gameaudio.qc
+client/cl_weapon.qc
 client/cl_main.qc

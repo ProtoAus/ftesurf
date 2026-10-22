@@ -10352,19 +10352,24 @@ void(entity t, entity att, float dmg) SV_EntityDamage =
 };
 
 /*
-  Patch 865: a silent test shot.  +attack fires once per press along the view;
+  Patch 865's map-target shot, now with basic CSS weapon presentation/cadence.
+  +attack fires once per press along the view;
   `run_shoot_damage` per hit.  Gated by run_shoot, and by lobby_shoot on a lobby,
   where a break is everyone's.  A break changes the physents mid-run,
   so a verifier that does not run the map's I/O HOLDs on it (BACKLOG).
 */
 .float vbsp_lastshot;
+.float vbsp_nextshot;
 float  vbsp_shoot_ok;           // latched in StartFrame: run_shoot, and lobby_shoot on a lobby
 
 void(entity pl) SV_ShootFrame =
 {
 	local vector src;
 	local int mask;
+	local float reach, damage, delay;
 
+	// No weapon/sequence mutation on a held, watched or detached body.
+	if (pl.movetype != MOVETYPE_WALK) return;
 	if (!pl.button0)
 	{
 		pl.vbsp_lastshot = FALSE;
@@ -10373,6 +10378,20 @@ void(entity pl) SV_ShootFrame =
 	if (pl.vbsp_lastshot)
 		return;
 	pl.vbsp_lastshot = TRUE;
+	if (time < pl.vbsp_nextshot) return;
+	delay = 0.15;
+	reach = 8192;
+	damage = cvar("run_shoot_damage");
+	if (pl.weapon == FS_WEAPON_KNIFE)
+	{
+		delay = 0.45;
+		reach = 80;
+		damage = min(damage, 25);
+	}
+	if (pl.weapon == FS_WEAPON_SCOUT) delay = 1.25;
+	pl.vbsp_nextshot = time + delay;
+	pl.weaponframe = (pl.weaponframe + 1) % 256;
+	// Cosmetic firing is available without permitting shared map destruction.
 	if (!vbsp_shoot_ok || !vbsp_io_on)
 		return;
 
@@ -10384,13 +10403,13 @@ void(entity pl) SV_ShootFrame =
 	// stays transparent to the shot, as it is to bullets.
 	mask = pl.hitcontentsmaski;
 	pl.hitcontentsmaski = CONTENTBITS_POINTSOLID | CONTENTBIT_MONSTERCLIP;
-	traceline(src, src + v_forward * 8192, FALSE, pl);
+	traceline(src, src + v_forward * reach, FALSE, pl);
 	pl.hitcontentsmaski = mask;
 	if (SV_DevOn())
 		dprint(sprintf("shot: %s %s at %v\n", trace_ent.classname, trace_ent.model, trace_endpos));
 	if (!trace_ent || trace_ent == world)
 		return;
-	SV_EntityDamage(trace_ent, pl, cvar("run_shoot_damage"));
+	SV_EntityDamage(trace_ent, pl, damage);
 };
 
 /*

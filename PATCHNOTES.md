@@ -21,6 +21,10 @@
 
 ## next
 
+### P931 Bring a knife—or a Glock
+- Add mounted CS:S knife, USP, Scout and Glock viewmodels with idle/fire animations and shot sounds. Select with surf_weapon knife, usp, scout or glock; existing save keys stay unchanged.
+- Basic attacks use supported map buttons/breakables, retaining the server's shared-damage gates and no PvP. cl_viewweapon hides the model; cl_viewweapon_left swaps hands.
+
 ### P930 Updated Story and Events
 - Story and Events now follow the updated 100-level lists, including the new maps and bonus challenges. Blank slots keep their level numbers; Momentum builds are used where the roster has one.
 - Existing Story medal targets move with their map. New Story maps begin with a bronze finish; later trophy gates retain the existing 65%/70% progression policy.

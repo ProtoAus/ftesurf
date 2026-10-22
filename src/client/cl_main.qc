@@ -343,6 +343,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Emit_RegisterCvars();
 	Snds_RegisterCvars();           // build 66, env_soundscape
 	GA_Register();                 // local movement Foley from mounted CSS
+	WP_Register();                 // mounted viewmodels, no bind overrides
 	MapMsg_Init();                  // Patch 870, map text and screen effects
 	Ropes_RegisterCvars();          // Patch 874, env_sun and ropes
 	Trig_RegisterCvars();           // Patch 335, predicted triggers
@@ -1694,6 +1695,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	RG_DrawBodies();                // Patch 746: the race ghosts, with the scene's other bodies
 	Prox_Frame();                   // Patch 810: before addentities, which calls Prox_Delta
 	addentities(MASK_ENGINE | MASK_VIEWMODEL);
+	WP_Frame();                    // after the final camera, view-relative model
 
 	// Zones go in BEFORE renderscene: R_BeginPolygon queues into the scene,
 	// and the default shader is depth-tested, so this is what makes a zone
@@ -2043,6 +2045,7 @@ float(string cmd) CSQC_ConsoleCommand =
 	cl_input_real = FALSE;
 	tokenize(cmd);
 	if (GA_Command()) return TRUE;
+	if (WP_Command()) return TRUE;
 	if (argv(0) == "milk_skyinfo")
 	{
 		MilkSky_Info();
