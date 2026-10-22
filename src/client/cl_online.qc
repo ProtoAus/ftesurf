@@ -276,6 +276,7 @@ float  *ob_run;
 float  *ob_ver;
 
 float  ob_bget;            // strbuf: NanoPi Momentum demo handle per row
+float  ob_bmap;            // P925: a KSF row's actual source-map cache folder
 float  ob_bname;           // strbuf: display name per row
 float  ob_bplayer;         // strbuf: stable player id per row
 float  ob_bwho;            // strbuf: the player's 8-hex mark where the row says `av`, else ""
@@ -561,6 +562,7 @@ void(float i, int row) Online_RowSet =
 	ob_src[i]   = !strcmp(s, OB_TIER_MOM) ? OB_SRC_MOM :
 	              !strcmp(s, OB_TIER_KSF) ? OB_SRC_KSF : OB_SRC_OURS;
 
+	bufstr_set(ob_bmap, i, json_get_string(json_find_object_child(row, "map")));
 	bufstr_set(ob_bget, i, json_get_string(json_find_object_child(row, "get")));
 	bufstr_set(ob_bname,   i, json_get_string(json_find_object_child(row, "name")));
 	s = json_get_string(json_find_object_child(row, "player"));
@@ -658,6 +660,8 @@ void(string body) Online_Parse =
 		return;
 	}
 	Online_Alloc();
+	if (!ob_bmap)
+		ob_bmap = buf_create();
 	if (!ob_bget)
 		ob_bget = buf_create();
 	if (!ob_bname)
@@ -705,6 +709,7 @@ void(string body) Online_Parse =
 	ob_have_track = json_get_float(json_find_object_child(root, "track"));
 	ob_have_leg   = json_get_float(json_find_object_child(root, "leg"));
 	ob_have_zoned = TRUE;
+	MapPort_Board(ob_have_map, root);
 
 	rows = json_find_object_child(root, "rows");
 	n = json_get_length(rows);
@@ -1396,14 +1401,29 @@ float(float i) Online_RowLeg =
 
 // Row i's recording, looked up in the one folder its header files it in: the
 // row's leg for its own `rep`, the track's full run (leg 0) for a `run`.
+string(float i) Online_RowMap =
+{
+	local string s;
+
+	s = "";
+	if (ob_bmap > 0 && i >= 0 && i < ob_n)
+		s = bufstr_get(ob_bmap, i);
+	if (MapPort_Word(s)) return s;
+	return ob_have_map;
+};
+
+string(float i) Online_RowReplayHint =
+{
+	if (!ob_have_zoned) return "";
+	return Online_CacheDir(Online_RowMap(i), ob_have_track,
+	                       (Online_RowLeg(i) > 0) ? 0 : ob_have_leg);
+};
+
 float(float i) Online_ReplayFetchRow =
 {
 	local string hint;
 
-	hint = "";
-	if (ob_have_zoned)
-		hint = Online_CacheDir(ob_have_map, ob_have_track,
-		                       (Online_RowLeg(i) > 0) ? 0 : ob_have_leg);
+	hint = Online_RowReplayHint(i);
 	return Online_ReplayFetchIn(Online_RowRep(i), hint);
 };
 
