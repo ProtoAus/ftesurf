@@ -52,6 +52,37 @@ python tools/p922scoreboard.py --mode control --out <owned>/control --artifacts 
 python tools/p922scoreboard.py --mode subject --out <owned>/subject --artifacts <current-VM-output>
 ```
 
+## Deployment, 22 Oct 2026 UTC
+
+Product source `54d221cd2aa41714e11c4b12a7b896a5cd5fce8f`; feature commit
+`05696eb2` plus the published P920 notes-only merge. Engine ledger-only commit
+`df3cb06cbc3a6b2d301de01ca4f0b30b8cf76db0`; native commit/tag pins unchanged.
+
+At **11:03:36 UTC**, both Windows installs had all six matching DAT/LNO files,
+byte-identical to the qualified isolated build. The normal-emission three-VM
+build had zero warnings. Native executable/plugin and protected owner/default
+config hashes were unchanged. The predecessor Windows files are retained.
+
+| DAT | SHA256 |
+|---|---|
+| qwprogs.dat | `cb9f62d8b4e97f52101c34f77f5a56c0205e7370907e849f143b9e19d453ac60` |
+| csprogs.dat | `da33105e8b8a364526ab3f7c30014aa7437de7ecd821d34b01e44c37db71a2f8` |
+| menu.dat | `6879abac4b8aa313b2bf66a74dd7c7392cabce5849658438993a5cc165eb267b` |
+
+**Pi promotion is held, not deployed.** The normal guard found a player connected
+in open3 after compilation, before upload/swap/restart. A later readback still
+had one player connected. All12 lobbies were left running their existing pair;
+no force, partial Pi swap or override of an active player's session was made.
+The Windows Story menu update is installed; a Pi server can still advertise and
+download its older CSQC until that separate guarded promotion is completed.
+
+Owned runtime clients/servers have exited. Only65 proved duplicate static/native
+copies (47,781,469 logical bytes) were retired; original native copies, sources,
+qualified artifacts, screenshots and original failures remain. The clean
+ledger-only engine worktree was normally removed after proving no ignored files;
+history and its patch are retained. QC/evidence is deliberately retained for the
+pending Pi step and owner checks. No source/player/key/installed data was deleted.
+
 No backend/reader/evidence/movement/native-binary change, consent bypass, Build
-number change or release is part of this patch. Deployment provenance is recorded
-separately after the actual destination readback; a compile is not a deployment.
+number change or release is part of this patch. Human/native-panel visual
+acceptance remains pending; Windows installation is not a claim of Pi delivery.
