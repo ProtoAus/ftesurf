@@ -5,6 +5,8 @@ void() Friends_MenuClear =
 	local float i;
 	registercvar("ui_friends_count", "-1", 0);
 	registercvar("ui_friends_epoch", "0", 0);
+	registercvar("ui_friends_activity", "-1", 0);
+	cvar_set("ui_friends_activity", "-1");
 	cvar_set("ui_friends_count", "-1");
 	cvar_set("ui_friends_epoch", ftos(cvar("ui_friends_epoch") + 1));
 	for (i = 0; i < FR_MAX; i = i + 1)
@@ -18,16 +20,17 @@ void() Friends_MenuPublish =
 {
 	local float i, at;
 	local string row;
+	cvar_set("ui_friends_activity", fr_activity_capable ? ftos(cvar("ui_friends_epoch") + 1) : "-1");
 	for (i = 0; i < FR_MAX; i = i + 1)
 	{
 		row = "";
 		if (i < fr_n)
 		{
 			at = i * FR_FIELDS;
-			row = sprintf("%s %s %s \"%s\" \"%s\" \"%s\"",
+			row = sprintf("%s %s %s \"%s\" \"%s\" \"%s\" \"%s\"",
 				bufstr_get(fr_buf, at), bufstr_get(fr_buf, at + 1), bufstr_get(fr_buf, at + 2),
 				uri_escape(bufstr_get(fr_buf, at + 3)), uri_escape(bufstr_get(fr_buf, at + 4)),
-				uri_escape(bufstr_get(fr_buf, at + 5)));
+				uri_escape(bufstr_get(fr_buf, at + 5)), uri_escape(bufstr_get(fr_buf, at + 6)));
 		}
 		cvar_set(strcat("ui_friend_", ftos(i)), row);
 	}

@@ -25,7 +25,9 @@ commit   a0ebb9d06afd0e9fe552bb86030be34c809d97c8
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-924
-patch    931
+patch    933
+# Compatible fleet source: published P931 REC13 baseline plus P933 Friends-only hunks.
+# No mainline held producer, native server, recorder or evidence-policy change.
 # Compatible fleet source: P922 writer13 plus owned P924/P926/P927/P931 features.
 # P924 pin is the client API. Existing lobby native/producer generation is retained.
 # This does NOT promote the independently held P923 producer/native set.

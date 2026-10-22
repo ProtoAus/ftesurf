@@ -2,8 +2,9 @@
    Separate staging store: a paced list update replaces the visible list only
    at friend_end. No installation-local friendship file or public HTTP reader. */
 #define FR_MAX 128
-#define FR_FIELDS 6
+#define FR_FIELDS 7
 float fr_buf, fr_stage, fr_ready, fr_n, fr_sn, fr_loading;
+float fr_activity_capable;
 vector fr_scroll;
 string fr_notice, fr_msgpick, fr_profpick;
 float fr_joinuntil, fr_rowh, fr_wheel;
@@ -309,7 +310,7 @@ void(vector p, vector sz, float tsz, float hint) Friends_Draw =
 		if (rel == 2) s = "Added you -- add them back";
 		if (rel == 4) s = "Blocked: cannot add or message you";
 		if (rel == 3 && online)
-			s = strcat(bufstr_get(fr_buf, at + 5), "  /  ", bufstr_get(fr_buf, at + 4));
+			s = strcat(bufstr_get(fr_buf, at + 5), "  /  ", bufstr_get(fr_buf, at + 6));
 		sui_text([x, lp_y + tsz * 1.65], [hint, hint], Chat_Fit(s, w - tsz * 3, hint),
 		         online ? SUI_THEME_GOOD : (rel == 2 ? SUI_THEME_DIM : SUI_THEME_MUTED), 1, 0);
 		y = lp_y + tsz * 2.45;
@@ -395,7 +396,13 @@ float(string cmd) Friends_ConsoleCommand =
 		Friends_MenuClear();
 		return TRUE;
 	}
-	if (c == "friend_begin") { fr_sn = 0; fr_loading = TRUE; return TRUE; }
+	if (c == "friend_begin")
+	{
+		fr_sn = 0;
+		fr_loading = TRUE;
+		fr_activity_capable = (n >= 2 && stof(argv(1)) == 1);
+		return TRUE;
+	}
 	if (c == "friend_row")
 	{
 		if (fr_loading && fr_sn < FR_MAX && n >= 7)
@@ -406,6 +413,7 @@ float(string cmd) Friends_ConsoleCommand =
 			bufstr_set(fr_stage, fr_sn * FR_FIELDS + 3, uri_unescape(argv(4)));
 			bufstr_set(fr_stage, fr_sn * FR_FIELDS + 4, uri_unescape(argv(5)));
 			bufstr_set(fr_stage, fr_sn * FR_FIELDS + 5, uri_unescape(argv(6)));
+			bufstr_set(fr_stage, fr_sn * FR_FIELDS + 6, n >= 8 ? uri_unescape(argv(7)) : "");
 			fr_sn = fr_sn + 1;
 		}
 		return TRUE;
