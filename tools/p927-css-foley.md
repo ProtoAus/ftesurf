@@ -53,9 +53,14 @@ this feature changes no writer/reader/evidence/native dependency.
 
 ## Delivery state
 
-Implemented and fixture-verified, not yet installed or owner-accepted. Windows
-was guarded by an active canonical game; Pi has occupied lobbies and an
-independent P923 mainline-producer/native acceptance hold. Do not force either
-or promote a partial producer set. Compatible fleet source, if used, needs its
-own clean commit, acting smoke and provenance. Weapons/viewmodels remain a
-separate active part of the original task, not excluded by this patch.
+Implemented, fixture-verified and installed in both Windows copies on22October
+2026 UTC. The later published P932 CSQC update was preserved and the current
+installed combination acting-verified; [delivery](p931-delivery.md) records the
+exact sources/readbacks. Listening and owner feel remain pending.
+
+Weapons/viewmodels are also implemented and acting-verified in P931. After the
+normal zero-player guard passed, compatible variant2ec17923 deployed on all12Pi
+lobbies with exact progs/.prev, unchanged native/plugins/configs and preserved
+pre-existing data metadata. A cold-cache live client downloaded the exact CSQC
+and ACTED. Mainline's producer gate remains separate; no force, partial producer
+promotion or qualification change was used. Listening remains human-pending.

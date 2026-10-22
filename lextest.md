@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+Source-polish checks below now have matching native/progs in both Windows
+installs and compatible progs on all12lobbies (22October2026 UTC). This is
+availability, NOT human acceptance. Native client fixes require the updated
+Windows engine. Exact sources/readbacks/live proof: tools/p931-delivery.md.
+
 ## P933 — browser Friends cards and profile preview (22 Oct 2026)
 PENDING after matching delivery: open the map browser and confirm Friends appears;
 with one mutual friend online and one offline, check two centered text lines,

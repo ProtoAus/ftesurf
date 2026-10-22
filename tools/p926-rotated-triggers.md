@@ -53,11 +53,16 @@ regression pass; use the fresh-start proof instead.
 
 ## Delivery and acceptance
 
-Not yet deployed or owner-accepted. Canonical game was running at P924's guarded
-Windows deployment attempt, which refused before copying anything. The read-only
-Pi directory had12rows/3players and the independent mainline P923 producer gate
-remains held; neither is permission to force a swap. P924 native/API is required
-for the already combined conveyor feature, not for this old angle/link API.
+Installed in both Windows copies on22October2026 UTC after the earlier guarded
+attempt refused the owner's running game. The later published P932 CSQC update
+was preserved and the installed combination checked; [delivery](p931-delivery.md)
+records exact source, hashes and acting proof. Owner acceptance is still pending.
+
+The P922-based compatible variant2ec17923 is now deployed on all12Pi lobbies:
+normal12row/zero-player guard, exact hashes/.prev, unchanged native/plugins and
+positive cold-cache live-client smoke. Mainline's producer gate stays separate;
+no force or partial promotion was used. P924 native/API is required on the client
+for the combined conveyor feature, not for this old angle/link API.
 
 Small owner check after matching delivery: load surf_me save9, touch no controls,
 and confirm there is no early view reset during the fall; the actual map

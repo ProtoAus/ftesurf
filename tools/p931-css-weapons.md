@@ -28,8 +28,9 @@ number change.
 The existing map-target dispatcher is reused: only supported damage buttons and
 breakables, never PvP. Knife reach80 and damage capped25; guns retain the existing
 8192 trace and run_shoot_damage setting. Press cadence is.45/.15/1.25/.15seconds
-for knife/USP/Scout/Glock. NO ammo/reload, penetration, spread/recoil simulation,
-zoom, weapon movement-speed tuning or complete CS:S ballistics is claimed.
+for knife/USP/Scout/Glock. Single-press fire only: no secondary/burst modes,
+ammo/reload, penetration, spread/recoil simulation, zoom, weapon movement-speed
+tuning or complete CS:S ballistics is claimed.
 
 Both run_shoot and existing lobby_shoot policy remain in force. Cosmetic firing
 works with damage off. This patch does NOT silently enable shared-lobby damage;
@@ -70,8 +71,16 @@ small pending check in lextest.md. No device-capture harness is required.
 
 ## Delivery
 
-Implemented/acting-verified; final clean build, publish and destination readback
-are recorded separately. Native source/tag remains a0ebb9d06/patch-924, while
-ENGINE.txt's product ledger advances. Mainline producer is still subject to the
-independent P923 fleet gate. Do not force a partial producer/native swap; a
-compatible fleet build would require separately inspected clean source/proof.
+Committed/pushed, clean-built and installed in both Windows copies on22October
+2026 UTC. [Delivery](p931-delivery.md) records destination hashes, matching live
+installed binaries/plugins, actual Glock shot/frame, and the later published
+P932 CSQC update that was preserved and checked rather than overwritten.
+Native source/tag remains a0ebb9d06/patch-924; no new Build decision was made.
+
+Mainline's independent fleet producer gate remains separate. The clean P922-based
+compatible variant2ec17923 deployed on all12Pi lobbies only after the normal
+12row/zero-player guard passed. Exact progs/.prev,12new native processes with
+unchanged executable/HL2 hashes, configuration hashes and pre-existing data
+metadata were checked. A cold-cache live client downloaded the exact CSQC and
+reported actual Glock8/shot1/ready1/@glock_firesingle. No force, native-producer
+upgrade, qualification relaxation or shared-damage policy change occurred.

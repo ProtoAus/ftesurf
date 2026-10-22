@@ -128,9 +128,14 @@ cleanup does not add held effects, and closed-world coverage is unchanged.
 
 ## Delivery state
 
-Commit/push and guarded dual Windows/Pi deployment remain pending. Pi promotion
-of this P923-based mainline producer remains subject to the independent P923
-native/progs gate; do not force a partial producer or weaken held qualification
-to ship this feature. Windows installation and any separately qualified compatible
-fleet source must be recorded as distinct deliveries. Owner acceptance remains
-pending. A held fleet step does not block independent work in the broader task.
+Committed/pushed and installed in both Windows copies on22October2026 UTC;
+the later published P932 CSQC update was preserved and the current installed
+combination acting-verified. Exact source/hash/provenance: [delivery](p931-delivery.md).
+
+Mainline Pi promotion remains subject to its independent producer/native gate.
+The separately qualified P922-based compatible variant2ec17923 retains the old
+writer/native generation and is now deployed on all12lobbies after the normal
+zero-player guard passed. Postflight17:59UTC confirms exact progs/.prev,12new
+processes, unchanged native/plugins/configs and preserved pre-existing data
+metadata. A cold-cache live client downloaded the exact CSQC and fired a real
+Glock shot. No force or qualification relaxation. Owner acceptance is pending.
