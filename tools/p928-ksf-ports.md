@@ -92,9 +92,60 @@ This is not an exhaustive every-map/style/stage/bonus runtime matrix. Those path
 share the policy; their existing decoder/cut logic was not changed. KSF top-up's
 separate exact-source queue bug remains tracked in BACKLOG.md, not claimed fixed.
 
-At this feature verification checkpoint, publication and development deployment
-are still pending. Windows must retain newer committed native/other feature
-work; Pi deployment must not accidentally ship the unrelated unqualified P923
-native producer. No release, Build-number bump, native binary, engine pin/tag,
-BSP identity or evidence-policy change is part of P932. Human-only confirmation
-is tracked in lextest.md.
+## Development delivery and concurrent-update preservation
+
+Main feature `3a8d2427` is published. Its clean supported build installed the
+DAT/LNO sets in **both Windows installs**, retaining predecessors and leaving
+native binaries/plugins/config/player data unchanged. Actual installed online
+and warm-cache controls passed. Later mainline Windows work is not rolled back.
+
+The Pi needed the existing REC13-compatible producer cohort, not full mainline.
+An exact rebuild of published P931-compatible `2ec17923` matched the then-live
+pair before adding P932. Clean compatible `240440a4` was delivered by the normal
+empty-fleet `build.ps1 -Pi` at **2026-10-22 18:44 UTC**: all12 new processes,
+unchanged native mappings,562 configuration hashes and27757 pre-existing data
+size/mtime pairs. Older `.prev` bytes were retained separately before the normal
+predecessor swap. Neither Windows install was touched by that Pi operation.
+
+A concurrent P933 rollout then replaced this with P933-only `ae3eb28f`, which
+explicitly excludes P932. A real cold-client readback caught the replacement;
+publication or an earlier deployment is not evidence of what a later client runs.
+The integrated source is **`1fdb668a2ad5253282b08cd45d2f8da7eff60456`**, merging
+both inspected compatible branches. Its five replay-policy/cache QC files are
+identical to P932 and all three Friends files to P933. Its SSQC is byte-identical
+to the current P933 program (`9e0bde1c...`); recorder/shared/native sources and
+producer qualification remain unchanged. Three VMs compile with zero warnings.
+
+At **19:39 UTC**, readback already found that exact integrated pair and12 new
+processes, so our predecessor guard correctly refused an unnecessary second
+promotion. This is an observed promotion, not a claim that our second builder
+ran. At **19:42 UTC** a fresh spectator-requesting real lobby connection actually
+downloaded integrated CSQC **`86096e49550ae9f1851b7d36d5ee443e3bc16f8db0d909d046a4974dba4aca17`**
+from the server; that version was not preseeded. Its unrelated-map raw fence
+acted closed with cursor released. The same compiled bytes in an owned dedicated
+Chateau fixture advance genuine normalized/raw input **10.0000 -> 11.6602 /
+11.8010** and clear the native mismatch. These wall-clock/no-trace controls are
+separate acceptance: the original combined frame/trace arm's frozen-clock
+assertion is retained as a failure, not relabelled a pass. Both crossed
+client/server isolation arms also passed their ten controls.
+
+The schema20 code-only backend successor was measured/published at
+**19:08 UTC** with the ordinary guarded receipt, all seven entrypoints/four cron
+routes and12 heartbeats. All existing reader/native consumer bytes were retained;
+no evidence policy or eligibility changed. Actual game API readbacks of both
+`surf_chateau` and `surf_chateau_fix` expose the same197 KSF rows, explicit
+family and Leacon replay21517 under its real `surf_chateau_fix` source. The
+actual replay response equals the retained qualified playback input byte for
+byte. The public HTTPS board also returned its exact expected page with200.
+A subsequent social-only backend handoff belongs to the concurrent P933 rollout;
+that rollout must preserve this P932 `surfd.py`, not restore the old masked one.
+
+**Preservation contract:** do not deploy historical P922-only `94d74f14`,
+P932-only `240440a4` or P933-only `ae3eb28f` over the integrated current cohort.
+Keep both features; backend social updates must likewise retain P932's existing
+recording-ID/source/family behavior. Reinspect actual source/hash and occupancy
+at the final boundary, not only before a long preparation phase.
+
+No release, Build-number bump, native binary, engine pin/tag, BSP identity or
+evidence-policy change is part of P932. Human-only confirmation remains PENDING
+in lextest.md; this is not a claim of exhaustive every-map compatibility.

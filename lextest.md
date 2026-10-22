@@ -17,7 +17,9 @@ acted native control/subject check; a quick map-search double click is welcome.
 
 ## P932 — KSF Watch on linked Momentum maps
 
-PENDING after matching client/backend delivery: on surf_chateau, open Online,
+PENDING owner acceptance: matching Windows/Pi/backend delivery and a fresh
+real-lobby CSQC download have been exercised (including integrated P933 Friends).
+Reconnect to avoid an old client program, then on surf_chateau open Online,
 choose KSF and Watch Leacon's 0:46.470 recording. Confirm the camera keeps moving,
 pause/seek work and closing returns control. The info card must retain
 surf_chateau_fix as a linked build and say imported/not verified; the loaded
