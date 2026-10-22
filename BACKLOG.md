@@ -1,5 +1,15 @@
 # BACKLOG.md
 
+## Native verification of viewing/disconnected clock carry (P914/P915)
+
+- Site: engine `SV_RecVerify` clock capabilities and the matching verifier
+  contract. Ordinary zero-carry REC13 is supported; positive viewing or parked
+  wall-time carry remains explicitly unsupported, although the game retains
+  the recording and displays the inclusive clock. This is not a verified tier.
+- Falsifier: preserve the ordinary zero-carry PASS control, and keep positive
+  carry an explicit REFUSE until a separately reviewed, complete timing model
+  can verify it. Do not silently drop the carry or manufacture physical input.
+
 ## Intermittent departed player left as unnamed, not spectatable (owner, 21 Oct)
 
 - Surface not yet identified beyond the player/lobby list. Prior ordinary

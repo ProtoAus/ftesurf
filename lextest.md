@@ -10,15 +10,18 @@ the assist lift you onto the lip. Compare facing away and a wall too tall to
 climb. The lip check itself needs neither jump nor +up. Automated real hull-trace,
 movement/state and legacy controls passed; that is not visual/feel confirmation.
 
-## P915 — disconnected clocks and retained stage attempts (deployment pending)
+## P915 — disconnected clocks and retained stage attempts (deployed)
 
+Source bf3c4199 reached both Windows installs and all 12 Pi lobbies on
+22 Oct at 08:53 UTC, after the matching backend/reader handoff. P916 native
+movement is retained. Provenance and machine checks: tools/p915-player-fixes.md.
 Actual dedicated-socket controls pass for disconnected-time carry, overflow
 refusal with every slot byte retained, last-valid clock, twice-parked rewind,
 and independent Local selection/byte-exact playback after main cancellation.
 Account proof itself is an existing dependency, not newly tested against the
-remote service. Human acceptance PENDING; do not try these on old live P911.
+remote service. Human acceptance remains PENDING.
 
-After the matching rollout, two small checks:
+On the deployed build, two small checks:
 - Complete two clean attempts of one stage, cancel the enclosing main run,
   then open Local for that stage. Both new attempts should be selectable and
   visibly play the right attempt. Lobby retrieval needs your connection's
@@ -31,29 +34,29 @@ Recording/retention limits still apply. No native verification of parked-time
 or positive viewing-time runs, official record grant, Build bump or release is
 claimed. Record Lex's actual observation here; programmatic passes are not it.
 
-## P914 — clock while watching (matching deployment pending)
+## P914 — clock while watching (Windows, Pi and backend deployed)
 
 Native live-body/clock, save/continuation, reader and malformed-input controls
-passed; owner feel PENDING. After the matching rollout, start a clean run, watch
-another player or a recording for a few seconds, then return. Your own run and
-stage clock should have kept advancing, with your body/velocity restored. Try a
-second viewing window and an ordinary save/load without losing or doubling time.
-Positive viewing-time runs remain outside native verification; disconnected
-wall time is not added by this patch. Do not test against the old live P911.
+passed; owner feel PENDING. On the matching 22 Oct rollout, start a clean run,
+watch another player or a recording for a few seconds, then return. Your own run
+and stage clock should have kept advancing, with your body/velocity restored.
+Try a second viewing window and an ordinary save/load without losing or doubling
+time. Positive viewing-time runs remain outside native verification. P914 did
+not add disconnected wall time; the deployed P915 adds it for eligible resumes.
 
-## P913 — restrictive automatic resume (matching deployment pending)
+## P913 — restrictive automatic resume (Windows and Pi deployed)
 
 Native park, countdown and rejection/nonmutation controls passed; owner check
-PENDING. After matching deployment, reconnect with a clean whole-main parked
-run and confirm the ordinary resume route still works. Practice, segmented,
-bonus and standalone-stage slots must refuse without moving you or disappearing;
-!discard is explicit removal. Manual saves remain usable. This patch does NOT
-add disconnected wall time or select a cannot-beat-stage threshold.
+PENDING. Reconnect with a clean whole-main parked run after stage progress and
+confirm the ordinary resume route still works. Practice, segmented, bonus and
+standalone-stage slots must refuse without moving you or disappearing; !discard
+is explicit removal. Manual saves remain usable. The deployed P915 adds the
+disconnected clock. No cannot-beat-stage attempt/time threshold was invented.
 
-## P912 — immediate Story tasks (matching deployment pending)
+## P912 — immediate Story tasks (Windows, Pi and backend deployed)
 
 Source/native/API controls and independent review passed; owner feel PENDING.
-Do this only after matching server/client/menu/backend handoff, not on P911.
+Matching server/client/menu/backend handoff completed on 22 Oct; check these now.
 
 - Keep Story open while completing one visible task. Its provisional progress
   should change without closing/reopening; later validation reconciles it.
@@ -81,8 +84,9 @@ Native controls passed; human reset feel PENDING. Matching progs are now ready.
 - In a practice main, return to a later stage's start after noclip, switch to
   WALK inside the box, then leave and finish: a genuinely fresh clean stage can
   qualify while the enclosing main remains practice. Counters stay retained.
-- Native evidence proves clean stage PB/VIEW retention after main cancellation;
-  keeping every non-PB attempt is a separate policy question, not claimed here.
+- P911 native evidence proves clean stage PB/VIEW retention after main
+  cancellation. The later deployed P915 adds new non-PB clean stage attempts
+  under the normal recording limits; its manual check is above.
 
 ## P910 — recording from spectating (Windows and Pi deployed)
 
@@ -97,7 +101,7 @@ passed; no force or backend app reload. Matching progs are now ready.
 - Native delay/ownership controls passed; human camera feel PENDING. Charging
   elapsed viewing time to the run is separate work, not a P910 acceptance pass.
 
-## P909 — leaderboard defaults and styling (client deployed; backend extension pending)
+## P909 — leaderboard defaults and styling (client and backend deployed)
 
 - Load a map: World of Surf records first. Choose another game explicitly;
   choosing Normal/Sideways/Half-Sideways/Backwards must not change that game.
@@ -105,9 +109,17 @@ passed; no force or backend app reload. Matching progs are now ready.
   empty categories are expected until they have records/style support. No old
   clean times should appear as segmented. There is no +100 KSF button.
 - Native 640x480 knob/label click and all query controls passed; owner readability
-  and real-use feel remain PENDING. Menu and online TAB client files are deployed.
-  The three new segmented-direction queries still need the separately approved
-  backend handoff; backend acceptance pending.
+  and real-use feel remain PENDING. The 22 Oct backend handoff now accepts all
+  three segmented-direction queries; normal and invalid-key controls were also
+  checked against the actual live API. No records were relabeled.
+
+## Intermittent departed player row — still unconfirmed
+
+The bounded disconnect/crash/timeout probes did not reproduce a persistent
+unnamed, non-spectatable row. No speculative name filter was shipped; legitimate
+accented names must remain. If it returns, capture the exact visible list and
+screenshot, and say whether the player quit, crashed or timed out. Acceptance
+PENDING; BACKLOG.md keeps the precise sites and falsifier.
 
 ## P907, P908 — F2 version choice and the post-title catalogue hitch
 

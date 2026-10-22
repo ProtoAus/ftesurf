@@ -1,5 +1,14 @@
 # AGENT_NOTES.md
 
+## Final operator audit events (2026-10-22)
+
+A transaction can finish serving and then fail on its last journal append.
+Do not replay the handoff to fix that note. Check the completed receipt, live
+state/witness, aliases, cron and health first; finish only the missing audit step.
+A result may already contain `utc`: preserve it as `result_utc` and give the
+journal event its own UTC, rather than passing duplicate dictionary keywords or
+redating the original result. Keep the original executed helper and failed log.
+
 ## File-backed archive fixture boundaries (P915, 2026-10-22)
 
 - FTE FILE_READ materializes private bytes on its first fread. Hash and parse
