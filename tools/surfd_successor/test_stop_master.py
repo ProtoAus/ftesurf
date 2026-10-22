@@ -19,6 +19,8 @@ def main():
     assert any((p / 'OWNER.md').is_file() for p in root.parents), 'Owned task root required'
     control = root / 'control'
     control.mkdir(parents=True)
+    runtime = root / 'runtime'
+    runtime.mkdir()
     helper = Path(__file__).with_name('stop_master.py')
     read, write = os.pipe()
     parent = os.fork()
@@ -26,7 +28,7 @@ def main():
         os.close(read)
         child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)',
                                   '--chdir', str(control), 'witness_wsgi:app'],
-                                 cwd=control, start_new_session=True,
+                                 cwd=runtime, start_new_session=True,
                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL)
         os.write(write, str(child.pid).encode())

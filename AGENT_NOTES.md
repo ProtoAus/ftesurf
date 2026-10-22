@@ -1008,8 +1008,15 @@ renderer; source and build in `src/viewer/` (its README). The bundle
   without rediscovering/forcing a process set. Rollback skips a current master
   belonging to another generation. Linux acted synthetic daemon control proves
   wrong-root strict refusal and optional skip both leave it alive; exact role
-  stops it. No real service/gate was touched by that test. Copy the helper beside
-  both shell entrypoints; a timeout is a recovery blocker, not permission to kill.
+  stops it. No real service/gate was touched by that test. The real guard's
+  linux_process/fixed_exec contract has cwd=source_home (generation/runtime),
+  NOT the --chdir generation/control module-search argument. The initial helper
+  assumed control and correctly refused before sending a signal, after close.
+  Corrected it to exact runtime, used normal guarded rollback to restore old
+  OPEN/schema20/fresh worker, then reran the owned daemon test with real runtime
+  cwd. New candidate never started; no grant/receipt/witness reset or forced kill.
+  Copy the helper beside both shell entrypoints; a timeout is a recovery blocker,
+  not permission to kill.
 - P804 used the documented guard steps with an identity-bound PIDFD graceful stop,
   not the old helper's forced discovered-process fallback. No SIGKILL or database
   restore. Canonical stubs/cron were exact CAS; the new momrequests process held

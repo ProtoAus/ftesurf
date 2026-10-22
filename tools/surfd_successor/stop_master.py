@@ -31,7 +31,7 @@ def stop_master(pid, old, if_matches=False):
         matches = (identity() == before and before[0] == 1
                    and str(old / 'control').encode() in args
                    and b'witness_wsgi:app' in args
-                   and Path(os.readlink(proc / 'cwd')).resolve() == old / 'control')
+                   and Path(os.readlink(proc / 'cwd')).resolve() == old / 'runtime')
         if not matches:
             if if_matches:
                 return False
