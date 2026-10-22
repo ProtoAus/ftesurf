@@ -19,7 +19,7 @@ from test_ui_modern import make_map
 ARMS = ('legacy', 'native1', 'native2', 'absent', 'oldplugin', 'oldengine')
 
 
-def compile_client(rig):
+def compile_client(rig, source_overrides=None, minimal=False):
     src = ROOT / 'src'
     lines = (src / 'cl_progs.src').read_text(encoding='utf-8').splitlines()
     result = [os.path.relpath(rig / 'csprogs.dat', src).replace('\\', '/')]
@@ -27,17 +27,20 @@ def compile_client(rig):
         name = line.strip()
         if name == 'client/cl_main.qc':
             result.append('../tools/fixtures/p603scores_prefix.qc')
-        if name == 'client/cl_scores_native.qc':
+        if name == 'client/cl_scores_native.qc' and not minimal:
             result.append('../tools/fixtures/p603life_prefix.qc')
-        result.append(line)
-        if name == 'client/cl_scores_native.qc':
+        result.append((source_overrides or {}).get(name, line))
+        if name == 'client/cl_scores_native.qc' and not minimal:
             result.append('../tools/fixtures/p603life_postfix.qc')
     result.append('../tools/fixtures/p603scores_runtime.qc')
-    result.append('../tools/fixtures/p603follow_runtime.qc')
-    result.append('../tools/fixtures/p603http_runtime.qc')
-    result.append('../tools/fixtures/p603life_runtime.qc')
-    result.append('../tools/fixtures/p603font_runtime.qc')
-    result.append('../tools/fixtures/p603dense_runtime.qc')
+    if minimal:
+        result.append('../tools/fixtures/p922scores_stubs.qc')
+    else:
+        result.append('../tools/fixtures/p603follow_runtime.qc')
+        result.append('../tools/fixtures/p603http_runtime.qc')
+        result.append('../tools/fixtures/p603life_runtime.qc')
+        result.append('../tools/fixtures/p603font_runtime.qc')
+        result.append('../tools/fixtures/p603dense_runtime.qc')
     #Old-style fteqcc rejects absolute input paths. Use an owned same-directory
     #manifest with unchanged relative inputs, exactly as build.ps1 -NoDeploy.
     manifest = src / (rig.name + '-cl_progs.src')

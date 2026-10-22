@@ -263,7 +263,6 @@ void(float tab) Scores_TabSet =
 {
 	rec_sb_tab = tab;
 	rec_sb_imponly = FALSE;
-	rec_sb_ksfstyle = 0;
 };
 
 string() Scores_TierOf =
@@ -682,6 +681,9 @@ float(float r) Scores_Passes =
 {
 	local float c;
 
+	// Local native recordings have no directional-style classification yet.
+	if (rec_sb_ksfstyle != 0)
+		return FALSE;
 	if (rec_sb_filter == SB_F_ALL)
 		return TRUE;
 
@@ -1133,6 +1135,7 @@ void() Scores_Refresh =
 		rec_sb_legmap   = strzone(m);
 		rec_sb_legzoned = TRUE;
 
+		rec_sb_ksfstyle = 0;
 		Scores_TabSet(SB_T_ONLINE);
 		Scores_ImpSet(TRUE, 0);
 		Scores_BuildLegs();
@@ -2846,6 +2849,8 @@ string() Scores_CountLine =
 // The footer's left sentence: the count, or for four seconds what the LINE heading did.
 string() Scores_FootLine =
 {
+	if (!Scores_IsOnline() && rec_sb_ksfstyle != 0)
+		return "Local directions are not recorded yet; use Normal";
 	if (rec_sb_note)
 	if (cltime - rec_sb_noteat < 4)
 	if (rec_sb_notectx == [rec_sb_leg, rec_sb_tab, Scores_ImpState()])
@@ -3292,7 +3297,7 @@ void() Scores_ShowBoard =
 {
 	if (rec_sb_tab != SB_T_PLAYERS) return;
 	Scores_TabSet(sb_viewtab);
-	if (sb_viewtab == SB_T_ONLINE || sb_viewtab == SB_T_SEGMENT) rec_sb_ksfstyle = sb_viewksf;
+	rec_sb_ksfstyle = sb_viewksf;
 	rec_sb_tabauto = FALSE;
 	Profile_OnClear();
 };
@@ -3568,11 +3573,8 @@ void(vector scr) Scores_Draw =
 	yc = ytabs + floor((tabh - chiph) * 0.5);
 	if (!online)
 	{
-		if (Scores_Chip("sb_fx", [x, yc], [chipw, chiph], "practice", rec_sb_filter == SB_F_PRACTICE))
-			rec_sb_filter = SB_F_PRACTICE;
-		x = x - chipw - 6;
-		if (Scores_Chip("sb_fs", [x, yc], [chipw, chiph], "stitched", rec_sb_filter == SB_F_STITCHED))
-			rec_sb_filter = SB_F_STITCHED;
+		if (Scores_Chip("sb_fx", [x, yc], [chipw, chiph], "Practice", rec_sb_filter == SB_F_PRACTICE))
+			rec_sb_filter = (rec_sb_filter == SB_F_PRACTICE) ? SB_F_ALL : SB_F_PRACTICE;
 		x = x - chipw - 6;
 		if (Scores_Chip("sb_fc", [x, yc], [chipw, chiph], "clean", rec_sb_filter == SB_F_CLEAN))
 			rec_sb_filter = SB_F_CLEAN;
@@ -3591,8 +3593,7 @@ void(vector scr) Scores_Draw =
 	if (online)
 		Scores_FilterDraw(x - ceil(pad * 0.75), ytabs, tabh);
 
-	// Direction chips and an independent segmented switch. Neither changes game.
-	if (online)
+	// Keep direction and Segmented available on Local too; neither changes game.
 	{
 		x = x0 + pad;
 		yc = ytabs + tabh + pad * 0.5;
@@ -3607,6 +3608,7 @@ void(vector scr) Scores_Draw =
 				rec_sb_ksfstyle = idx;
 				rec_sb_tabauto = FALSE;
 				rec_sb_oscroll = '0 0 0';
+				rec_sb_scroll = '0 0 0';
 				Profile_OnClear();
 			}
 			x = x + stylew + 4;
@@ -3615,15 +3617,19 @@ void(vector scr) Scores_Draw =
 		stylew = chiph * 1.6;
 		sui_action_element([x, yc], [stylew + pad + chipw, chiph], "sb_t1", sui_noop);
 		sui_roundbox([x, yc + 2], [stylew, chiph - 4], (chiph - 4) * 0.5, SUI_THEME_WELL, 1);
-		on = (rec_sb_tab == SB_T_SEGMENT);
+		on = online ? (rec_sb_tab == SB_T_SEGMENT) : (rec_sb_filter == SB_F_STITCHED);
 		sui_roundbox([x + (on ? stylew - chiph + 4 : 2), yc + 4], [chiph - 8, chiph - 8],
 		             (chiph - 8) * 0.5, on ? SUI_THEME_ACCENT : SUI_THEME_DIM, 1);
 		Scores_Text([x + stylew + pad * 0.5, yc + (chiph - sb_szui) * 0.5], sb_szui, "Segmented", SBC_TEXT, 1);
 		if (sui_is_released("sb_t1"))
 		{
-			rec_sb_tab = on ? SB_T_ONLINE : SB_T_SEGMENT;
+			if (online)
+				rec_sb_tab = on ? SB_T_ONLINE : SB_T_SEGMENT;
+			else
+				rec_sb_filter = on ? SB_F_ALL : SB_F_STITCHED;
 			rec_sb_tabauto = FALSE;
 			rec_sb_oscroll = '0 0 0';
+			rec_sb_scroll = '0 0 0';
 			Profile_OnClear();
 		}
 	}
@@ -3733,7 +3739,7 @@ void(vector scr) Scores_Draw =
 	yfoot = ylist + listh + ceil(pad * 0.75);
 	sui_fill([x0 + pad, ylist + listh + floor(pad * 0.3)], [w - pad * 2, 1], SUI_THEME_EDGE, 1, 0);
 	Font_Set(ui_font_ui);
-	x = Scores_Hint(x0 + w - pad, yfoot, "tab", "close");
+	x = Scores_Hint(x0 + w - pad, yfoot, "esc", "close");
 	if (online)
 	{
 		x = Scores_Hint(x, yfoot, "rmb", "cursor");
@@ -3858,41 +3864,25 @@ void() Scores_Toggle =
 float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 {
 	local float native, notch;
-	/*
-	  PATCH 341: THE PIN.  MOUSE2 while the held board is up toggles the pinned
-	  state -- the one press that makes the scoreboard stay.  Swallowed, so the
-	  pin click is not also a jump; every other mouse2 in the game is untouched,
-	  because the gate is "the board is up because the key is down and not
-	  because it was pinned", which is exactly the moment a click can only
-	  have meant "keep this" or "let it go".
-	*/
-	if (evtype == IE_KEYDOWN && scanx == K_MOUSE2 && sc_held && !rec_sb_open)
+	// Right-click pins idempotently: neither another click nor TAB-up unpins.
+	// Consume it so the game's jump binding does not also fire.
+	if (evtype == IE_KEYDOWN && scanx == K_MOUSE2 && (sc_held || rec_sb_open))
 	{
 		Scores_Open();
-		return TRUE;
-	}
-	// Patch 784: not over a replay or profile card, where the held board is dead.
-	if (evtype == IE_KEYDOWN && scanx == K_MOUSE2 && sc_held && rec_sb_open)
-	if (!(UI_CursorHeld() & (UIC_WATCH | UIC_AVATAR)))
-	{
-		Scores_Close();
-		/*
-		  BUILD 86: BACK TO THE PEEK, NOT TO NOTHING.  Scores_Close clears sc_held
-		  as well -- it has to, because esc closes mid-hold -- but the key is still
-		  down on this path, and now that letting go of it is what closes the board
-		  (see Scores_ConsoleCommand) the two would otherwise disagree: unpinning
-		  would end a gesture the player is still making.  The pin owns the cursor;
-		  the key owns the board.
-		*/
-		sc_held = TRUE;
 		return TRUE;
 	}
 
 	if (!rec_sb_open && !sc_held)
 		return FALSE;
 
-	// Patch 663: the search field first. While it has the keyboard a key is
-	// text, not a bind and not this board's own arrows or ESC.
+	// Escape closes on the first press, even while the search field owns keys.
+	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE)
+	{
+		Scores_Close();
+		return TRUE;
+	}
+
+	// Other keys still belong to an active search field before board navigation.
 	if (rec_sb_open)
 	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP)
 	if (Profile_FieldEvent(evtype, scanx, chary))
@@ -3962,14 +3952,6 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 
 		if (evtype == IE_KEYDOWN)
 		{
-			// keys.c:3205 -- "csqc is allowed to steal the escape key (unless
-			// shift)" -- and the board is open with key_dest still kdm_game, so
-			// the test there passes and the menu never opens behind it.
-			if (scanx == K_ESCAPE)
-			{
-				Scores_Close();
-				return TRUE;
-			}
 			if (scanx == K_UPARROW)
 			{
 				if (rec_sb_leg > 0)
@@ -4039,7 +4021,7 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
   keeps it off screen, but leaving a handler out because something else happens
   to hide the result is how a feature breaks when that something else changes.
 
-  BUILD 86: THE RELEASE CLOSES THE PIN TOO.
+  HISTORICAL BUILD 86 policy, superseded: right-click now persists until Esc.
 
       "When you release +showscores the scoreboard should close even when you
        toggle it on with mouse2."
@@ -4060,11 +4042,11 @@ float(string cmd) Scores_ConsoleCommand =
 {
 	if (argv(0) == "+showscores")
 	{
-		if (!sc_held) Scores_NativeReset(TRUE);
+		if (!sc_held && !rec_sb_open) Scores_NativeReset(TRUE);
 		sc_held = TRUE;
 		// Patch 784: over an open replay or profile card the pointer is already
 		// up, and a held board drops clicks (Patch 635) -- so it opens pinned,
-		// and a row or a name replaces what is open.  Letting go still closes it.
+		// and a row or a name replaces what is open. Release keeps that pin.
 		if (!rec_sb_open)
 		if (UI_CursorHeld() & (UIC_WATCH | UIC_AVATAR))
 			Scores_Open();
@@ -4075,8 +4057,8 @@ float(string cmd) Scores_ConsoleCommand =
 		// Patch 663: a pinned board whose search field has the keyboard stays.
 		// Its player let go of the key to type; ESC or the key again closes it.
 		// Patch 666: and one showing who that search found.  Patch 784: and one
-		// fetching the replay it was asked for, which closes it when it lands.
-		if (rec_sb_open && (pf_q_focus || pf_q_open || pf_on_who != "" || rec_sb_wantrep))
+		// fetching a replay. A right-click pin now also survives release.
+		if (rec_sb_open)
 		{
 			sc_held = FALSE;
 			return TRUE;
@@ -4224,11 +4206,13 @@ float(string cmd) Scores_ConsoleCommand =
 		else if (argv(1) == "style")
 		{
 			rec_sb_ksfstyle = FS_BoardDirection(argv(2));
-			if (!Scores_IsOnline()) rec_sb_tab = SB_T_ONLINE;
 		}
 		else if (argv(1) == "segmented")
 		{
-			rec_sb_tab = stof(argv(2)) ? SB_T_SEGMENT : SB_T_ONLINE;
+			if (Scores_IsOnline())
+				rec_sb_tab = stof(argv(2)) ? SB_T_SEGMENT : SB_T_ONLINE;
+			else
+				rec_sb_filter = stof(argv(2)) ? SB_F_STITCHED : SB_F_ALL;
 		}
 		else if (argv(1) == "ksfmore")
 		{

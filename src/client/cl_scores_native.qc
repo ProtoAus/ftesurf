@@ -169,8 +169,8 @@ void(float id, float row, float type, float value, string label) Scores_NativeCe
 string() Scores_NativeContext =
 {
 	//Patch 635: and which list Online holds (its filter), once a tab's own.
-	return sprintf("%s|%g|%g|%g|%g|%g", rec_sb_legmap, rec_sb_leg, rec_sb_tab,
-		rec_sb_filter, Scores_IsOnline() ? 0 : rec_sb_rowgen, Scores_ImpState());
+	return sprintf("%s|%g|%g|%g|%g|%g|%g", rec_sb_legmap, rec_sb_leg, rec_sb_tab,
+		rec_sb_filter, Scores_IsOnline() ? 0 : rec_sb_rowgen, Scores_ImpState(), rec_sb_ksfstyle);
 };
 
 string(float row) Scores_NativeKey =
@@ -384,8 +384,8 @@ float(vector p, vector sz) Scores_NativeDraw =
 		if (!Online_Shows(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
 			Scores_TierOf(), Scores_StyleOf())) { Scores_NativeClose(); return FALSE; }
 	}
-	context = sprintf("%s|%g|%g|%g|%g", rec_sb_legmap, rec_sb_leg, rec_sb_tab, rec_sb_filter,
-		Scores_ImpState());
+	context = sprintf("%s|%g|%g|%g|%g|%g", rec_sb_legmap, rec_sb_leg, rec_sb_tab, rec_sb_filter,
+		Scores_ImpState(), rec_sb_ksfstyle);
 	context = strcat(context, "|", ob_name);
 	if (strcmp(context, scn_context) != 0)
 	{

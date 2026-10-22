@@ -25,7 +25,9 @@ commit   0265ae46068d633e9779182f48a140f1c9bf2517
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-919
-patch    920
+patch    922
+# Patch 922: Local direction/Segmented/Practice controls, right-click pin until Esc,
+# and no zero-player Story labels. Mod-side only; native commit/tag unchanged.
 # Patch 920: left paused-run choice/details, nondestructive No, count-in view lock.
 # CSQC only; server transaction/evidence unchanged. Checks: tools/p920-resume-ui.md.
 # Patch 919: client EMPTY (-1) brush contents match existing server nonsolid logic.

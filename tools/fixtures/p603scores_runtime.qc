@@ -92,7 +92,7 @@ float(string cmd) P603_DenseCommand;
 float(string cmd) CSQC_ConsoleCommand =
 {
 	local string op, label;
-	local float i, lines;
+	local float i, lines, styles, segmented, practice, clean, stitched, practiced, c;
 	tokenize(cmd);
 	if (P603_FollowCommand(cmd)) return TRUE;
 	if (P603_HttpCommand(cmd)) return TRUE;
@@ -118,6 +118,34 @@ float(string cmd) CSQC_ConsoleCommand =
 	else if (!strcmp(op, "move")) P603_Point(argv(2));
 	else if (!strcmp(op, "tab"))
 		print(sprintf("P603 TAB %s tab=%g online=%g\n", argv(2), rec_sb_tab, Scores_IsOnline()));
+	else if (!strcmp(op, "filters"))
+	{
+		styles = segmented = practice = clean = stitched = practiced = 0;
+		for (i = 0; i < _action_elements_index; i = i + 1)
+		{
+			if (!strcmp(substring(_action_elements[(int)i].id, 0, 5), "sb_ks")) styles = styles + 1;
+			if (!strcmp(_action_elements[(int)i].id, "sb_t1")) segmented = 1;
+			if (!strcmp(_action_elements[(int)i].id, "sb_fx")) practice = 1;
+		}
+		for (i = 0; i < rec_sb_rown; i = i + 1)
+		if (Scores_Passes(i))
+		{
+			c = Scores_Clean(i);
+			if (c == RC_CLEAN) clean = clean + 1;
+			if (c == RC_SEGMENT) stitched = stitched + 1;
+			if (c == RC_PRACTICE || c == RC_CHEAT) practiced = practiced + 1;
+		}
+		print(sprintf("P603 FILTER %s tab=%g direction=%g kind=%g clean=%g segmented=%g practice=%g\n",
+			argv(2), rec_sb_tab, rec_sb_ksfstyle, rec_sb_filter, clean, stitched, practiced));
+		print(sprintf("P603 WIDGETS %s styles=%g segmented=%g practice=%g\n", argv(2), styles, segmented, practice));
+	}
+	else if (!strcmp(op, "escape")) CSQC_InputEvent(IE_KEYDOWN, K_ESCAPE, 0, 0);
+	else if (!strcmp(op, "field"))
+	{
+		pf_q_focus = TRUE;
+		pf_q_open = TRUE;
+		print("P603 FIELD focused\n");
+	}
 	else if (!strcmp(op, "down"))
 	{
 		P603_Mouse();

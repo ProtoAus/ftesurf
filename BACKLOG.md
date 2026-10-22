@@ -1,5 +1,18 @@
 # BACKLOG.md
 
+## Historical full P603 lifecycle fixture versus current Players globals
+
+- Site: tools/fixtures/p603life_runtime.qc / tools/p603scores.py default full
+  fixture compilation. Current cl_players removed pl_panelpos/pl_panelsize;
+  the old lifecycle fixture fails compilation on those untouched references.
+- Falsifier: compile the complete lifecycle arm against current production
+  declarations, then prove real panel creation/close/cursor action. P922's
+  minimal route deliberately excludes that suite; it is not full-suite repair.
+- Its minimal native-requested arm also fell back (handle0/painted0/failed1)
+  on both old/new source. Native-panel visual acceptance needs an actually
+  painted acting control; selected cvars and passing shared-input checks are
+  not one. No cause or product regression is assigned from that fixture.
+
 ## Native verification of viewing/disconnected clock carry (P914/P915)
 
 - Site: engine `SV_RecVerify` clock capabilities and the matching verifier

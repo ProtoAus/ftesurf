@@ -21,6 +21,11 @@
 
 ## next
 
+### P922 Local filters and a scoreboard that stays open
+- Keep the direction and Segmented controls on Local, with a Practice filter. Existing local recordings stay Normal until directional recording is available; filters do not relabel runs.
+- Right-click the scoreboard to keep it open after releasing Tab. Another right-click does not dismiss it; Esc closes it, even while searching.
+- Story maps with nobody playing no longer show a zero-player label. Positive counts and unavailable-directory status remain distinct.
+
 ### P920 A proper paused-run choice
 - A paused run now offers a left-side details panel with 1. Yes and 2. No. No means not now: it does not discard the paused run, and F2 still accepts it.
 - Your view stays locked during the resume count-in, without banking a hidden look turn before GO.

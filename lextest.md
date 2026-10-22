@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P922 — Local filters, right-click pin, quiet empty Story maps
+
+PENDING owner/native-panel visual acceptance after matching client update:
+- On TAB, right-click, release TAB, then right-click again: the board stays up.
+  Press Esc once (also while searching): board/cursor close. Without right-click,
+  ordinary TAB hold/release still closes it.
+- Local retains the style and Segmented controls. Practice selects practice
+  rows; All restores types. Existing native local runs remain Normal; selecting
+  another direction explains the missing classification rather than relabeling.
+- In Story, an empty map has no zero-player label/blank detail line; a populated
+  map still shows its count and unavailable data is not disguised as zero.
+
 ## P920 — paused-run choice and count-in view lock
 
 PENDING after matching client update: return to a paused run. Check the left

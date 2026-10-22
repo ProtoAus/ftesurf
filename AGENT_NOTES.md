@@ -1,5 +1,29 @@
 # AGENT_NOTES.md
 
+## Local filters and held scoreboard (P922, 2026-10-22)
+
+- Right-click now pins until Esc, including focused search; TAB-up and another
+  right-click no longer unpin. Ordinary unpinned hold/release still peeks. Keep
+  the +showscores reset gated on neither-held-nor-open to preserve a live pin.
+- Local uses the common direction/Segmented row plus All/Clean/Practice presets.
+  Native local records are currently Normal, not inferred sideways/backwards;
+  other selections explicitly explain this. Direction joins both native cache
+  identities and survives view changes, but a new map resets the default.
+- Actual-client old/new controls: 19 checks per selected legacy/native-requested
+  mode. Both fixture modes used legacy rendering: requested-native reported
+  handle0/painted0/failed1 on BOTH old and new. Do not call this a native-panel
+  pass. Shared input, SUI clicks and the actual menu formatter did act; PNGs
+  inspected. Owner feel/native-panel visual acceptance remains in lextest.md.
+- FTEQCC can succeed with all text on stderr (observed rc0/stdout0/stderr905).
+  Check combined output like build.ps1, not stdout alone. The historical full
+  p603 lifecycle fixture also references removed pl_panelpos/pl_panelsize; use
+  the explicit minimal route for this bounded test, not repair unrelated suites
+  or claim follow/HTTP/lifecycle/font/dense coverage. Failure logs stay retained.
+- Claim the number visibly before long proofs: a parallel conveyors task claimed
+  P921 while this task's uncommitted local header was invisible. This task moved
+  to P922 before publication; old P921 test transport/captures remain historical,
+  not renamed evidence. Never move a peer's claim or retag published history.
+
 ## Final operator audit events (2026-10-22)
 
 A transaction can finish serving and then fail on its last journal append.

@@ -842,6 +842,7 @@ float(float L, string map) Sty_LivePlayers =
 string(float n) Sty_Population =
 {
 	if (n < 0) return "Players live: unavailable";
+	if (n == 0) return "";
 	return sprintf("%g %s live", n, n == 1 ? "player" : "players");
 };
 
@@ -1090,7 +1091,9 @@ void(vector rp, vector rs, float L, float i, float on, float hot) Sty_LevelRow =
 	tw = rs_x - (nx - rp_x) - 92 - 80 - 110;
 	sui_text([nx + 92, rp_y + 7], SZ_ROW, ui_fit_text(map, tw, SZ_ROW),
 	         ((on || hot) && !locked) ? COL_ACCENT : COL_TEXT, a, 0);
-	sub = strcat(Sty_Population(Sty_LivePlayers(L, map)), track ? sprintf("  bonus %g", track) : "");
+	sub = Sty_Population(Sty_LivePlayers(L, map));
+	if (track)
+		sub = strcat(sub, sub == "" ? "" : "  ", sprintf("bonus %g", track));
 	if (when != "")
 		sub = strcat(sub, sub == "" ? "" : "  ", "^xfc3", when, "^7");
 	if (!timed)
@@ -1183,8 +1186,12 @@ void(vector pos, vector size, float L) Sty_Side =
 	sui_text([pos_x + 12, y], SZ_LABEL, sprintf("Level %g, chapter %g%s", i + 1, chap + 1,
 	         txt == "" ? "" : strcat(", ", txt)), COL_DIM, 1, 0);
 	y = y + 20;
-	sui_text([pos_x + 12, y], SZ_LABEL, Sty_Population(Sty_LivePlayers(L, map)), COL_DIM, 1, 0);
-	y = y + 24;
+	txt = Sty_Population(Sty_LivePlayers(L, map));
+	if (txt != "")
+	{
+		sui_text([pos_x + 12, y], SZ_LABEL, txt, COL_DIM, 1, 0);
+		y = y + 24;
+	}
 	for (m = 0; m < 3; m = m + 1)
 	{
 		txt = bufstr_get(sty_lvtxt[L], i * 3 + m);
@@ -1389,7 +1396,11 @@ void(vector screensize) screen_story =
 	}
 
 	if (sty_tab < sty_n)
-		sui_text([180, 18], SZ_LABEL, strcat(Sty_Population(Sty_LivePlayers(sty_tab, "")), " on this ladder's maps"), COL_DIM, 1, 0);
+	{
+		msg = Sty_Population(Sty_LivePlayers(sty_tab, ""));
+		if (msg != "")
+			sui_text([180, 18], SZ_LABEL, strcat(msg, " on this ladder's maps"), COL_DIM, 1, 0);
+	}
 
 	// The foot: back, the join strip, and Play for the selected level.
 	if (ui_button("sty_back", [16, by], [100, 30], "back"))
