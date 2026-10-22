@@ -21,6 +21,10 @@
 
 ## next
 
+### P936 Clearer Steam portraits
+- Profiles, Friends and boards use 64x64 Steam pictures instead of 32x32, retaining four times as many source pixels. Existing cached pictures and older clients are left intact.
+- Browser profile previews can load the picture using the same public profile identity as the website.
+
 ### P934 Bound keys in the console
 - Type `bindlist` to print your current bindings in alphabetical order, including modifier overrides and alternate bindmaps. Listing them never changes or executes a bind.
 

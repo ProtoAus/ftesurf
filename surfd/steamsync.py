@@ -33,7 +33,6 @@ it would do and writes nothing.  Steam not answering is one line and exit 0:
 cron tries again in half an hour, and a stale name is not an emergency.
 """
 import argparse
-import io
 import os
 import re
 import sqlite3
@@ -90,23 +89,8 @@ def have_pillow():
 
 
 def game_form(jpeg):
-    """A picture as the game reads it: a header line, then one line of RGBA
-    hex a row.  None when Pillow is not on this box, or these bytes are not a
-    picture it will open."""
-    try:
-        from PIL import Image
-    except ImportError:
-        return None
-    try:
-        img = Image.open(io.BytesIO(jpeg))
-        if max(img.size) > 1024:
-            return None
-        img = img.convert("RGBA").resize((GAME_PX, GAME_PX), Image.LANCZOS)
-    except Exception:           # Pillow raises its own family, and OSError
-        return None
-    px, row = img.tobytes(), GAME_PX * 4
-    return ("FTESURF-AVATAR 1 %d %d\n" % (GAME_PX, GAME_PX)
-            + "".join(px[y * row:(y + 1) * row].hex() + "\n" for y in range(GAME_PX)))
+    """Keep the legacy on-disk copy at 32px; the API also derives 64px."""
+    return steam.game_form(jpeg, GAME_PX)
 
 
 def _write(path, data):

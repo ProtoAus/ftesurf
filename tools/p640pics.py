@@ -16,7 +16,8 @@ Graded on three things, each the subject's own:
      surfd files the account by
   D  THE SCREENSHOT: the four quadrants, in their places, on the board.  The
      cache's count is what the game meant to draw; this is what it drew.
-  V  the same two after `vid_restart`, which takes the textures and shaders
+  V  the same two after `vid_restart`, by a fresh ask or validated disk copy
+  P  --picture-size 64 also requires the actual response and uploaded texture to be 64px
 
 --slow N has surfd take N seconds over the picture (past the cache's 20):
 nothing else may be asked meanwhile, and the late answer must still be taken
@@ -103,15 +104,25 @@ def main():
     ap.add_argument("--no-picture", action="store_true")
     ap.add_argument("--slow", type=float, default=0)
     ap.add_argument("--busy", type=int, default=0)
+    ap.add_argument("--picture-size", type=int, choices=(32, 64), help="grade transport/native dimensions")
+    ap.add_argument("--menu-picture", action="store_true", help="also draw the real menu leaderboard picture")
     a = ap.parse_args()
     a.client = a.client or a.content / "ftesurf64.exe"
     a.progs = a.progs.resolve()
     a.output_dir = (a.output_dir or pathlib.Path(tempfile.gettempdir())).resolve()
+    a.output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Synthetic consent belongs ONLY to this fresh localhost fixture, never
+    # the owner's profile. Read the matching source tier, not obsolete "4".
+    terms = int(re.search(r"^#define FS_TERMS_ONLINE (\d+)",
+                         (L.ROOT / "src/shared/sh_defs.qc").read_text(), re.M).group(1))
     rig, gd, junctions = L.build_rig(a)
     print("rig", rig)
     client = web = None
     try:
+        (gd / "data").mkdir(exist_ok=True)
+        (gd / "data/consent.txt").write_text(
+            "FTESURF-CONSENT 1\nversion %d\naccepted 20000101-000000\n" % terms)
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             probe.bind(("127.0.0.1", 0))
             hport = probe.getsockname()[1]
@@ -138,7 +149,7 @@ def main():
                 fh.write(steamsync.game_form(jpeg))
         S.avatars_reset()
         S.people_reset()
-        real_avatar, asks = S.game_avatar, []
+        real_avatar, asks, payloads = S.game_avatar, [], []
 
         def avatar(who, now):               # surfd's own route, made slow or busy
             asks.append(time.time())
@@ -146,7 +157,10 @@ def main():
                 time.sleep(a.slow)
             if len(asks) <= a.busy:
                 return S.fail(429, "rate limited")
-            return real_avatar(who, now)
+            response = real_avatar(who, now)
+            if response.status_code == 200:
+                payloads.append(response.get_data(as_text=True).splitlines()[0])
+            return response
         S.game_avatar = avatar
         base = "http://127.0.0.1:%d" % hport
         with urllib.request.urlopen(base + "/api/board?map=%s&tier=combined" % a.map, timeout=20) as r:
@@ -170,6 +184,9 @@ def main():
             cwd=a.content, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, startupinfo=si)
 
+        (rig / "process.json").write_text(json.dumps({"pid": client.pid, "rig": str(rig),
+                                                     "stopped": False}))
+
         def send(line):
             client.stdin.write(line.encode("ascii") + b"\n")
             client.stdin.flush()
@@ -185,12 +202,12 @@ def main():
         L.check("the client is on the map and its game code loaded", bool(up), True)
         shot = None
         if up:
-            send("closemenu")
-            send("set rec_terms 4")             # FS_TERMS_ONLINE: the board may ask
+            send("menu_restart; ui_close")
+            send("set rec_terms %d" % terms)    # isolated synthetic online fixture only
             send('set lobby_dir "%s"' % base)    # quoted: // starts a console comment
             time.sleep(1)
             send("scores open")
-            send("scores tab online")
+            send("scores tab online; scores source all; scores style clean")
             # The board's own status, until it has drawn its columns and holds
             # the fixture's rows.  Not a fixed sleep: one run sat 8 s after the
             # map loaded without drawing a frame, and was graded on nothing.
@@ -230,11 +247,27 @@ def main():
                         (len(asks), [g >= 55 for g in gaps]), (1 + a.busy, [True] * a.busy))
                 time.sleep(1.5)
             slots = re.findall(r"steampic: slot .*", cl.text())[-1:]     # the last word on it
-            want = ("0", "0", "0") if a.no_picture else (str(1 + a.busy), "1", "0")
-            L.check("F  the client's cache: one ask and one picture (none without one)",
-                    said.groups() if said else None, want)
+            disk_counts = re.findall(r"steampic: disk hits (\d+)", cl.text())
+            disk_before = int(disk_counts[-1]) if disk_counts else 0
+            final_counts = said.groups() if said else None
+            if a.no_picture:
+                valid_cache = (final_counts == ("0", "0", "0") and not disk_before)
+            else:
+                valid_cache = bool(final_counts and final_counts[0] == str(1 + a.busy)
+                                   and final_counts[2] == "0"
+                                   and (final_counts[1] == "1" or disk_before > 0))
+            L.check("F  one successful ask, then a visible upload from HTTP or warmed disk "
+                    "(none without a picture)", valid_cache, True)
             L.check("F  ...held under the mark surfd files the account by, as drawable",
                     slots, [] if a.no_picture else ["steampic: slot 0 mark %s state 3" % who])
+            if a.picture_size:
+                L.check("P  the actual HTTP payload has the requested source dimensions",
+                        sorted(set(payloads)), [] if a.no_picture else [
+                            "FTESURF-AVATAR 1 %d %d" % (a.picture_size, a.picture_size)])
+                dimensions = re.findall(r"steampic: texture slot \d+ pixels (\d+) (\d+)", cl.text())
+                L.check("P  the native uploaded texture, not only the requested size",
+                        dimensions[-1:], [] if a.no_picture else [
+                            (str(a.picture_size), str(a.picture_size))])
             send("screenshot p640board")
             end = time.time() + 15
             while time.time() < end and not shot:
@@ -254,21 +287,35 @@ def main():
             L.check("D  a screenshot was taken", False, True)
         if shot and not (a.no_picture or a.slow or a.busy):
             # V  A renderer restart (what F11 does) takes every texture and
-            # shader with it.  The picture must be fetched again and DRAWN: a
-            # build that kept its slot "held" drew the engine's checker here.
+            # shader with it.  Reload from HTTP or disk and actually DRAW it.
+            # A build that only kept its slot "held" drew the missing checker.
+            restart_at = len(cl.text())
             send("vid_restart")
             time.sleep(6)
-            send("closemenu")
+            send("ui_close")
             again = None
+            restored = False
             end = time.time() + 40
             while time.time() < end:
                 send("scores pics")
                 again = cl.wait(r"steampic: asked (\d+) got (\d+) inflight (\d+)", 6)
-                if again and again.group(2) == "2":
+                disk = re.findall(r"steampic: disk hits (\d+)", cl.text()[restart_at:])
+                fetched_again = bool(again and final_counts and again.groups() ==
+                                     (str(int(final_counts[0]) + 1),
+                                      str(int(final_counts[1]) + 1), "0"))
+                disk_again = bool(again and again.groups() == final_counts and disk
+                                  and int(disk[-1]) > disk_before)
+                restored = fetched_again or disk_again
+                if restored:
                     break
                 time.sleep(2)
-            L.check("V  after a renderer restart the picture is asked for and had again",
-                    again.groups() if again else None, ("2", "2", "0"))
+            L.check("V  after a renderer restart a fresh ask or validated disk upload ACTED",
+                    restored, True)
+            if a.picture_size:
+                dimensions = re.findall(r"steampic: texture slot \d+ pixels (\d+) (\d+)",
+                                        cl.text()[restart_at:])
+                L.check("V  the reloaded native texture retains its source dimensions",
+                        dimensions[-1:], [(str(a.picture_size), str(a.picture_size))])
             time.sleep(1.5)
             send("screenshot p640again")
             shot2 = None
@@ -283,6 +330,37 @@ def main():
             L.check("V  ...and THE SCREENSHOT after it holds the four quadrants again", n2 > 0, True)
             if shot2:
                 shutil.copyfile(shot2, a.output_dir / ("p640again" + shot2.suffix))
+        if a.menu_picture and not a.no_picture:
+            send("scores close; menu_restart")
+            time.sleep(1)
+            send("ui_board_test " + a.map + " ksf")
+            held = False
+            for _ in range(20):
+                send("ui_board_test")
+                state = cl.wait(r"pictures: rows have them (\d+); slots held (\d+)", 3)
+                if state and state.groups() == ("1", "1"):
+                    held = True
+                    break
+                time.sleep(.25)
+            L.check("M  the menu's real picture reader uploaded its visible fixture", held, True)
+            native_at = len(cl.text())
+            send("r_imagelist menupic64")
+            time.sleep(.5)
+            L.check("M  native menu texture dimensions are 64x64",
+                    bool(re.search(r"menupic64/.*loaded \(64\*64", cl.text()[native_at:])), True)
+            send("screenshot p640menu")
+            menu_shot = None
+            for _ in range(30):
+                found = list((gd / "screenshots").glob("p640menu.*"))
+                if found:
+                    menu_shot = found[0]
+                    break
+                time.sleep(.25)
+            time.sleep(.5)
+            L.check("M  the menu screenshot draws the four source quadrants",
+                    bool(menu_shot and quadrants(menu_shot)[0] > 0), True)
+            if menu_shot:
+                shutil.copyfile(menu_shot, a.output_dir / ("p640menu" + menu_shot.suffix))
         L.check("no VM error or unknown command in the client's log",
                 [w for w in ("Unknown command", "QC VM error", "Cannot call", "stack overflow",
                              "PF_CL_uploadimage") if w in cl.text()], [])
@@ -296,6 +374,9 @@ def main():
         if client is not None and client.poll() is None:
             client.terminate()
             client.wait(timeout=10)
+        if client is not None:
+            (rig / "process.json").write_text(json.dumps({"pid": client.pid, "rig": str(rig),
+                                                         "stopped": client.poll() is not None}))
         if web is not None:
             web.shutdown()
         for path in junctions:

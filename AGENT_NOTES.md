@@ -1,5 +1,29 @@
 # AGENT_NOTES.md
 
+## P936 — portrait transport and current picture fixtures (2026-10-22)
+
+- Steam's already-kept `_medium` JPEG is 64px. The default game text copy stays
+  32px for old clients; `size=64` derives the new body without Steam fetches or
+  asset writes. `steam.game_form` is the shared bounded codec. The new game/menu
+  cache is `cache/steampic64/`, not a migration or cleanup of the old cache.
+- The browser profile carries a public 12-hex handle; lobby pictures use an
+  8-hex mark. The 64px endpoint/menu accepts either via the existing visibility
+  tables. Do not truncate a handle or reinterpret it as a lobby mark. The
+  legacy default still refuses 12-hex aliases.
+- `p640pics.py --picture-size 64 --menu-picture` now checks actual response and
+  native texture dimensions, game/menu quadrant screenshots and renderer reload.
+  Its isolated localhost fixture reads the matching source's online tier rather
+  than hardcoding obsolete tier4. It never changes the owner's consent/config.
+  Set `scores source all`: the current default WOS-only source can warm an
+  imported picture without drawing any fixture row. Warm-disk/reload counters
+  differ from HTTP counters; require positive upload/ink evidence, not a fixed
+  second download. No clipboard or physical input is needed.
+- A tool timeout can leave the helper's process.json stale and content junctions
+  behind. Verify registered process identities/stoppage, then unlink ONLY its
+  exact reparse points. `samefile` verifies the target despite Windows extended
+  path prefixes; textual `Path.resolve` equality alone can disagree. Preserve
+  failed-arm evidence; a timeout is never a pass.
+
 ## P933 — volatile Friends activity and text-field controls (2026-10-22)
 
 - Stage/bonus is transient lobby presence, not recorder history. social.py keeps

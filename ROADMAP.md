@@ -15,8 +15,9 @@ P934 native bindlist is installed in both Windows client images and requires
 the owner's next launch; the running game was not closed.
 
 Remaining requested work (not silently folded into the completed items):
-- Higher-resolution Steam portraits, including both the fetch/encoding pipeline
-  and client/menu caches (current transport encodes 32x32).
+- Higher-resolution Steam portraits: P936 implementation and native game/menu
+  controls pass; matching delivery is in progress (tools/p936-portraits.md).
+  Real-account visual acceptance remains pending.
 - Game-running presence while disconnected, main-menu shared lobby/chat and DMs.
   Existing lobby-mediated friends/DM do not make a disconnected install online.
   Preserve account consent, mutual/blocked visibility and authenticated actions.

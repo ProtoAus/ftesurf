@@ -1,7 +1,7 @@
 /*
   Steam pictures (Patch 640).  A linked player's picture beside their name, by
   the 8-hex mark a lobby publishes as *phash and FS_GuidId of a board row's
-  `player` gives.  surfd serves a 32 x 32 RGBA copy as hex text
+  `player` gives.  surfd serves a 64 x 64 RGBA copy as hex text
   (/api/board?avatar=<mark>, Patch 639): uri_get hands QuakeC a string, and
   r_uploadimage takes the pixels.
 
@@ -24,10 +24,10 @@
   The tables are memalloc'd: csprogs sits at fteqcc's global limit.
 */
 #define SPIC_MAX  64            // every lobby slot; overhead labels must not thrash 32 slots
-#define SP_PX     32
-#define SP_HEAD   23            // "FTESURF-AVATAR 1 32 32\n"
-#define SP_ROW    257           // 32 pixels of 8 hex, and the newline
-#define SP_ROUND  6             // corner radius, px of SP_PX: the site's 4 of 20
+#define SP_PX     64
+#define SP_HEAD   23            // "FTESURF-AVATAR 1 64 64\n"
+#define SP_ROW    513           // 64 pixels of 8 hex, and the newline
+#define SP_ROUND  12            // same corner fraction as the 32px copy
 #define SP_GAP    1.5
 #define SP_SEEN   3
 #define SP_MISS   900
@@ -60,9 +60,8 @@ string sp_origin;              // directory that owns these marks/pictures
 float(float reqid, float code, string bdy) SteamPic_Reply;
 float(float slot, string bdy) SP_Upload;
 
-// One file per origin+mark SHA256 (P755). P715's 256 two-hex buckets evicted
-// each other and expired every (local) day; they are still read, never written.
-// The stamp is strftime(TRUE): the local date, read and written alike.
+// P936: a separate 64px namespace leaves legacy 32px clients/caches intact.
+// One file per origin+mark SHA256; local dates are read and written alike.
 string(string mark) SP_DiskKey =
 {
 	local string key;
@@ -72,7 +71,7 @@ string(string mark) SP_DiskKey =
 };
 string(string key) SP_DiskPath =
 {
-	return strcat("cache/steampic/", key, ".txt");
+	return strcat("cache/steampic64/", key, ".txt");
 };
 string(string key) SP_DiskHeader =
 {
@@ -131,13 +130,10 @@ string(string path, string key) SP_DiskRead =
 };
 string(string mark) SP_DiskLoad =
 {
-	local string key, body;
+	local string key;
 	key = SP_DiskKey(mark);
 	if (!strlen(key)) return "";
-	body = SP_DiskRead(SP_DiskPath(key), key);
-	if (!strlen(body))
-		body = SP_DiskRead(strcat("cache/steampic/", substring(key, 0, 2), ".txt"), key);
-	return body;
+	return SP_DiskRead(SP_DiskPath(key), key);
 };
 void(string mark) SP_DiskForget =
 {
@@ -227,7 +223,7 @@ void() SP_WarmAsk =
 		sp_asked = sp_asked + 1;
 		if (sp_wmark != "") strunzone(sp_wmark);
 		sp_wmark = strzone(mark);
-		if (!uri_get(sprintf("%s/api/board?avatar=%s", cvar_string("lobby_dir"), mark), sp_wreq))
+		if (!uri_get(sprintf("%s/api/board?avatar=%s&size=64", cvar_string("lobby_dir"), mark), sp_wreq))
 		{
 			sp_wreq = 0;
 			sp_next = cltime + SP_PAUSE;
@@ -293,7 +289,7 @@ string(string mark) SteamPic_Of =
 	if (sp_st[old] != SP_OLD)
 	if (sp_st[old] != SP_FRESH)
 		return "";
-	return sprintf("steampic/%g", old);
+	return sprintf("steampic64/%g", old);
 };
 
 // Patch 789: a connected player's mark -- the account's, else the board's.
@@ -434,7 +430,7 @@ void() SteamPic_Frame =
 	sp_at[i] = cltime;
 	sp_req = sp_base + sp_asked - floor(sp_asked / 4000) * 4000;
 	sp_reqslot = i;
-	if (!uri_get(sprintf("%s/api/board?avatar=%s", cvar_string("lobby_dir"),
+	if (!uri_get(sprintf("%s/api/board?avatar=%s&size=64", cvar_string("lobby_dir"),
 	                     bufstr_get(sp_bmark, i)), sp_req))
 	{
 		sp_req = 0;
@@ -459,11 +455,11 @@ float(float slot, string bdy) SP_Upload =
 
 	if (strlen(bdy) != SP_HEAD + SP_PX * SP_ROW)
 		return FALSE;
-	if (strcmp(substring(bdy, 0, SP_HEAD), "FTESURF-AVATAR 1 32 32\n"))
+	if (strcmp(substring(bdy, 0, SP_HEAD), "FTESURF-AVATAR 1 64 64\n"))
 		return FALSE;
 
 	// A damaged disk file must not be silently interpreted as black pixels.
-	for (i = SP_HEAD; i < strlen(bdy); i = i + 1)
+	for (i = SP_HEAD; i < SP_HEAD + SP_PX * SP_ROW; i = i + 1)
 	{
 		digit = substring(bdy, i, 1);
 		if (floor((i - SP_HEAD + 1) / SP_ROW) * SP_ROW == i - SP_HEAD + 1)
@@ -500,13 +496,13 @@ float(float slot, string bdy) SP_Upload =
 		memfree(px);                        // nothing opaque: junk of the right length
 		return FALSE;
 	}
-	r_uploadimage(sprintf("steampic/%g", slot), SP_PX, SP_PX, px);
+	r_uploadimage(sprintf("steampic64/%g", slot), SP_PX, SP_PX, px);
 	memfree(px);
 	// A shader of our own, once per slot.  drawpic's default loads its picture
 	// PREMULTIPLIED (gl_shader.c Shader_Default2D), which is another texture
 	// than the one just uploaded: it drew the engine's missing-texture checker.
-	shaderforname(sprintf("steampic/%g", slot),
-	              sprintf("{\naffine\nnomipmaps\nprogram default2d\n{\nclampmap steampic/%g\nblendfunc blend\n}\nsort additive\n}\n",
+	shaderforname(sprintf("steampic64/%g", slot),
+	              sprintf("{\naffine\nnomipmaps\nprogram default2d\n{\nclampmap steampic64/%g\nblendfunc blend\n}\nsort additive\n}\n",
 	                      slot));
 	return TRUE;
 };
@@ -528,7 +524,7 @@ float(float reqid, float code, string bdy) SteamPic_Reply =
 		sp_bad = 0;
 		if (!code)
 		if (strlen(bdy) == SP_HEAD + SP_PX * SP_ROW)
-		if (!strcmp(substring(bdy, 0, SP_HEAD), "FTESURF-AVATAR 1 32 32\n"))
+		if (!strcmp(substring(bdy, 0, SP_HEAD), "FTESURF-AVATAR 1 64 64\n"))
 		{
 			SP_DiskStore(sp_wmark, bdy);
 			sp_wgot = sp_wgot + 1;
@@ -577,6 +573,7 @@ float(float reqid, float code, string bdy) SteamPic_Reply =
 void() SteamPic_Status =
 {
 	local float i;
+	local vector sz;
 
 	print(sprintf("steampic: asked %g got %g inflight %g strikes %g hold %g\n", sp_asked, sp_got,
 	              sp_req ? 1 : 0, sp_bad, max(0, cvar("_steampic_hold") - gettime(0))));
@@ -585,5 +582,12 @@ void() SteamPic_Status =
 	if (sp_st)
 	for (i = 0; i < SPIC_MAX; i = i + 1)
 		if (sp_st[i])
+		{
 			print(sprintf("steampic: slot %g mark %s state %g\n", i, bufstr_get(sp_bmark, i), sp_st[i]));
+			if (sp_st[i] == SP_HAVE || sp_st[i] == SP_OLD || sp_st[i] == SP_FRESH)
+			{
+				sz = drawgetimagesize(sprintf("steampic64/%g", i));
+				print(sprintf("steampic: texture slot %g pixels %g %g\n", i, sz_x, sz_y));
+			}
+		}
 };

@@ -5,6 +5,15 @@ installs and compatible progs on all12lobbies (22October2026 UTC). This is
 availability, NOT human acceptance. Native client fixes require the updated
 Windows engine. Exact sources/readbacks/live proof: tools/p931-delivery.md.
 
+## P936 — clearer Steam portraits (22 Oct 2026)
+Implementation/native fixture validation is complete; deployment provenance is
+tracked in tools/p936-portraits.md. Do not assume availability until that receipt
+says deployed. PENDING owner after the matching update: open a player profile
+and Friends, and check whether the portrait looks clearer and its rounded corners
+still look right. Actual 64px source/transport/native game and menu uploads,
+quadrant screenshots and renderer restart pass, with 32px/no-picture controls.
+This is not real-account visual acceptance or a frame-time measurement.
+
 ## P934 — bound keys (22 Oct 2026)
 PENDING owner: after the next game launch, type `bindlist` and confirm the local
 console list is readable. Synthetic old/new/clean-native controls pass; the

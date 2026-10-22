@@ -19,6 +19,7 @@ Deliberate design notes:
 
 import collections
 import datetime
+import functools
 import hashlib
 import hmac
 import ipaddress
@@ -4670,6 +4671,21 @@ def avatars_reset():
     _av = _av_none
 
 
+@functools.lru_cache(maxsize=64)
+def _avatar64(path, file_size, mtime_ns):
+    # Stat arguments invalidate this bounded cache if a kept JPEG is replaced.
+    if file_size > steam.HTTP_LIMIT:
+        return None
+    try:
+        with open(path, "rb") as fh:
+            jpeg = fh.read(steam.HTTP_LIMIT + 1)
+    except OSError:
+        return None
+    if len(jpeg) > steam.HTTP_LIMIT:
+        return None
+    return steam.game_form(jpeg, 64)
+
+
 def _avatar_file(h, ext, mimetype):
     try:
         with open(os.path.join(AVATAR_DIR, h + ext), "rb") as fh:
@@ -4737,16 +4753,38 @@ def game_avatar(who, now):
     forwards a fixed list of paths, and adding one needs root on the host.
     Only while the board is by account: otherwise a lobby's mark is the digest
     of a string its client chose."""
-    if not RANKED_LINKED or not re.fullmatch(r"[0-9a-f]{8}", who or ""):
+    if not RANKED_LINKED:
+        return fail(404, "not found")
+    size = request.args.get("size", "32")
+    if re.fullmatch(r"[0-9a-f]{8}", who or ""):
+        field = "who"
+    elif size == "64" and re.fullmatch(r"[0-9a-f]{12}", who or ""):
+        field = "handle"       # same public picture identity as /board/avatar
+    else:
         return fail(404, "not found")
     try:
-        h = avatars(now)["who"].get(who)
+        h = avatars(now)[field].get(who)
     except sqlite3.Error as exc:
         log.exception("game avatar db error: %s", exc)
         return fail(500, "storage error")
     if not h:
         return fail(404, "not found")
-    return _avatar_file(h, ".txt", "text/plain")
+    if size == "32":
+        return _avatar_file(h, ".txt", "text/plain")
+    if size != "64":
+        return fail(400, "invalid picture size")
+    path = os.path.join(AVATAR_DIR, h + ".jpg")
+    try:
+        st = os.stat(path)
+        body = _avatar64(path, st.st_size, st.st_mtime_ns)
+    except OSError:
+        body = None
+    if body is None:
+        return fail(404, "not found")
+    resp = Response(body, status=200, mimetype="text/plain")
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    resp.add_etag()
+    return resp.make_conditional(request)
 # --------------------------------------------------------------------------
 # Story and Event mode (Patches 854, 856)
 # --------------------------------------------------------------------------
