@@ -1,14 +1,29 @@
 # lextest.md — things waiting on a human
 
+## P919 — bhop_goldsrc2 save 2
+
+PENDING after matching client update: load save 2 / slot002 (15:47.230), then
+walk/jump through the reported *93 func_illusionary. It is decorative and should
+remain walk-through; check that the earlier large/16-unit prederr corrections
+and collision glitching have stopped. Nine contents and five native collision
+controls pass; do not report a measured real-socket correction count yet.
+
+## P918 — missing checker filtering
+
+PENDING: after the P918 client update, look at any missing-texture checker close
+up. Its texel edges should stay nearest-neighbour sharp at normal global texture
+filtering, while ordinary map textures keep their usual filtering. Sampler/code
+and existing asset tests passed; no GPU/manual visual acceptance is claimed.
+
 ## P916 — ceiling eye clearance and water exit
 
-PENDING human acceptance; do this only on the matching mover-11 client/server.
-Near a low roof, stand and jump: the view should lower before entering the roof,
-then return in open space, without crouching/shrinking the body. At the surface
-of water, face a low ledge with room above: swim/jump up to the surface and let
-the assist lift you onto the lip. Compare facing away and a wall too tall to
-climb. The lip check itself needs neither jump nor +up. Automated real hull-trace,
-movement/state and legacy controls passed; that is not visual/feel confirmation.
+OWNER CONFIRMED 2026-10-22: "works well and my head ducks and I bounce out of
+water". This is manual acceptance of the observed head lowering/water exit,
+not measured performance, collision/evidence proof or every edge case.
+Remaining reported defect: very small frame-to-frame eye-height oscillation
+while jumping upward into a roof, noticeable at both 50 and 1000+ FPS (P917).
+After the matching P917 client update, repeat that small roof jump and confirm
+whether the micro-jitter is gone; broad camera/device feel is still human-only.
 
 ## P915 — disconnected clocks and retained stage attempts (deployed)
 

@@ -21,6 +21,15 @@
 
 ## next
 
+### P919 Decorative sheets stay walk-through
+- Fix a client/server collision mismatch on empty brush volumes, including the illusionary sheet at bhop_goldsrc2 save 2. Decorative illusionaries remain walk-through, without the client trying to stand on them.
+
+### P918 Crisp missing textures
+- The missing-texture checker now stays nearest-neighbour crisp without changing filtering on ordinary map textures.
+
+### P917 Steady head clearance
+- The ceiling-lowered camera no longer bobs with the mismatch between movement ticks and rendered frames while rising beneath a roof.
+
 ### P916 Duck your view under roofs and climb out of water
 - Your view lowers when a ceiling would clip through the camera, on the ground or in the air. This does not crouch or shrink your collision box.
 - At the water's surface, face a low ledge with room above it for a Source-style upward assist. Jump or swim up to reach the surface; the ledge assist itself needs neither button.
