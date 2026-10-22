@@ -13,18 +13,17 @@ UI/SQL controls are in tools/p933-friends-ui.md. Real-account Stage/Bonus,
 visual/profile/join and selection feel are still owner-pending in lextest.md.
 P934 native bindlist is installed in both Windows client images and requires
 the owner's next launch; the running game was not closed.
+P936 64px portraits and P937 optional local height sine/A-D drums are now delivered:
+compatible QC50e7d8f3, backend3f97cf9c/schema20, native client5fd6c6790/patch-937.
+Both Windows installs and12empty lobbies verified, fresh cold CSQC download and
+new audio diagnostics ACTED. REC13/lobby native preserved. Exact receipt/limits:
+tools/p936-p937-delivery.md. Real-account portraits and listening/feel remain
+owner-only acceptance, pending in lextest.md, not a further deployment blocker.
 
 Remaining requested work (not silently folded into the completed items):
-- Higher-resolution Steam portraits: P936 implementation and native game/menu
-  controls pass; matching delivery is in progress (tools/p936-portraits.md).
-  Real-account visual acceptance remains pending.
 - Game-running presence while disconnected, main-menu shared lobby/chat and DMs.
   Existing lobby-mediated friends/DM do not make a disconnected install online.
   Preserve account consent, mutual/blocked visibility and authenticated actions.
-- Height-driven sine and A/D drums are implemented as P937, default-off with
-  local volume. Native fixture/volume0 controls pass; independent frame/input
-  review and compatible delivery are pending. Listening/feel is
-  owner-only acceptance (tools/p937-motionaudio.md, lextest.md).
 - Native sorted `bindlist` is implemented as P934; controls and exact delivery
   state are in tools/p934-bindlist.md, rather than assumed from publication.
 - Practice-only slow motion via host_timescale, preserving fixed movement ticks

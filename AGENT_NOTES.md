@@ -28,6 +28,22 @@
   Supported `-Engine -Full -NoDeploy` fixed937 stamp in both PEs. Compare full
   warnings to full baseline (74 unchanged here), not a quiet incremental log.
   Regenerate with QC `tools/clangdb.py --engine <root>`; it is not in engine/tools.
+- In a worktree, ordinary build products are its OWN ftesurf/ plus C:/FTEQuake,
+  NOT canonical C:/FTESurf. `-Pi` correctly shipped/restarted12 but primary local
+  still needed explicit generated-product copying from clean50e7d8f3, preserving
+  predecessors and checking both destinations. There is NO -DeployDir parameter;
+  that attempted invocation refused before compilation/copy. Do not rebuild or
+  assume a wrapper success proves the owner's actual install. No cfg needed:
+  MA_Register self-registers the same defaults without overwriting peer configs.
+- Guarded backend runtime includes test files too. Derive the COMPLETE expected
+  delta from Git AND witness/build hashes: P936 source changed steam.py,
+  steamsync.py, surfd.py, test_ranked.py, not merely three production files.
+  Incorrect narrower CLI lists correctly refused; no guard/receipt was weakened.
+- Use the ACTUAL serving predecessor's verified published operator source7548,
+  not unused earlier backend/operator (88). Wrong copied operator and guessed
+  source-ID assertions refused during CLOSED preparation; no live gate changed.
+  Preserve/correct only the owned unused operator copy, inspect actual hashes,
+  then run unchanged preflight once with the derived complete inputs.
 
 ## P936 — portrait transport and current picture fixtures (2026-10-22)
 

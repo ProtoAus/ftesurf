@@ -6,7 +6,8 @@ availability, NOT human acceptance. Native client fixes require the updated
 Windows engine. Exact sources/readbacks/live proof: tools/p931-delivery.md.
 
 ## P937 — optional movement instrument (22 Oct 2026)
-PENDING owner after matching delivery (tools/p937-motionaudio.md): while playing,
+Matching delivery verified22Oct23:18UTC (tools/p936-p937-delivery.md).
+PENDING owner after restarting/reconnecting: while playing,
 try `cl_surf_tone 1` and surf up/down a ramp. Pitch follows body height relative
 to enabling/recentering, not camera bob; 1024 units per octave, 220Hz reference.
 Try `cl_surf_drums 1`: A kicks, D snares; chat typing should stay silent. Both
@@ -16,9 +17,9 @@ and `cl_surf_drums 0` to stop, or volume0. Native muted queue/counter/body/input
 checks are not a speaker/headphone, musical feel or performance acceptance.
 
 ## P936 — clearer Steam portraits (22 Oct 2026)
-Implementation/native fixture validation is complete; deployment provenance is
-tracked in tools/p936-portraits.md. Do not assume availability until that receipt
-says deployed. PENDING owner after the matching update: open a player profile
+Implementation/native fixture validation and matching Windows/12-lobby/backend
+availability verified22Oct23:18UTC (tools/p936-p937-delivery.md).
+PENDING owner after the matching update: open a player profile
 and Friends, and check whether the portrait looks clearer and its rounded corners
 still look right. Actual 64px source/transport/native game and menu uploads,
 quadrant screenshots and renderer restart pass, with 32px/no-picture controls.
