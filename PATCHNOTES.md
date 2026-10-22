@@ -25,6 +25,11 @@
 - Profiles, Friends and boards use 64x64 Steam pictures instead of 32x32, retaining four times as many source pixels. Existing cached pictures and older clients are left intact.
 - Browser profile previews can load the picture using the same public profile identity as the website.
 
+### P935 Quieter walking, Source weapon feel and faster saved runs
+- Footsteps are silent at 135 u/s or less and while crouched, with speed-scaled volume and reliable hop cues. Foot sounds and weapon models now default off; selecting a supported weapon turns its model on.
+- Add mounted weapon draw sounds, better idle/shot presentation, independent viewmodel FOV and natural give aliases. Existing map-target damage gates and no PvP stay unchanged.
+- Hands no longer let sprites show through; weapon environment lighting samples your eye position. Large saved recordings load with buffered reads instead of pausing for byte-at-a-time disk reads.
+
 ### P934 Bound keys in the console
 - Type `bindlist` to print your current bindings in alphabetical order, including modifier overrides and alternate bindmaps. Listing them never changes or executes a bind.
 

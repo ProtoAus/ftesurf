@@ -14,6 +14,20 @@ still look right. Actual 64px source/transport/native game and menu uploads,
 quadrant screenshots and renderer restart pass, with 32px/no-picture controls.
 This is not real-account visual acceptance or a frame-time measurement.
 
+## P935 - Source presentation and saved-run load (22 Oct 2026)
+Implemented and isolated runtime checks pass; delivery is still pending, not
+implied by this entry. After the matching update, check three small things:
+- Enable cl_game_sfx 1: walk/crouch quietly and hold jump for repeated hop cues.
+- Give usp/scout/knife/glock: check draw/idle/shot sound and model size/lighting;
+  r_viewmodel_fov defaults to 54 independently of world FOV. Fresh model/Foley
+  defaults are off; existing saved personal cvar choices are not overwritten.
+- Load Goldsrc2 save2: check that the old pause before the count-in is gone.
+The exact large-save cold test improved from 18.05s to .23s with the same body,
+clock and shadow recording; this is measured fixture evidence, not owner
+acceptance. Native edge/data preservation, sprites/depth, aliases, quiet-speed
+and held-jump controls pass. Source feel remains human-only. Details:
+tools/p935-css-feel.md. No full ammo/reload/secondary-fire simulation is claimed.
+
 ## P934 — bound keys (22 Oct 2026)
 PENDING owner: after the next game launch, type `bindlist` and confirm the local
 console list is readable. Synthetic old/new/clean-native controls pass; the
@@ -69,11 +83,12 @@ Details: tools/p927-css-foley.md. No Valve assets are redistributed.
 
 ## P926 — surf_me save9 view continuity
 
-PENDING after matching client progs are installed: load save9 on surf_me and
-let it fall without touching movement/look. The old early view reset should be
-gone; the map's intended turn should occur only with the actual teleport.
-Dedicated old/new geometry and snap/ack controls pass; physical feel is not yet
-owner-confirmed. Native source/tag remains P924. Details: tools/p926-rotated-triggers.md.
+OWNER CONFIRMED 2026-10-22: "surf_me is good now" for the reported save9 case.
+This is manual acceptance of that observed case, not every teleport or measured
+performance. The old client predicted a rotated trigger early and reset the
+view before the real crossing; the map's legitimate destination turn remains.
+Dedicated geometry and snap/ack controls also pass. Native source/tag remains
+P924. Details: tools/p926-rotated-triggers.md.
 
 ## P924 — Source conveyor carry
 
@@ -117,11 +132,14 @@ and repeat/release controls passed. Implementation: tools/p920-resume-ui.md.
 
 ## P919 — bhop_goldsrc2 save 2
 
-PENDING after matching client update: load save 2 / slot002 (15:47.230), then
-walk/jump through the reported *93 func_illusionary. It is decorative and should
-remain walk-through; check that the earlier large/16-unit prederr corrections
-and collision glitching have stopped. Nine contents and five native collision
-controls pass; do not report a measured real-socket correction count yet.
+OWNER CONFIRMED 2026-10-22: save2 "doesn't cause prederrors or bad movement"
+now. This accepts the reported decorative *93 func_illusionary/collision case;
+nine contents and five native collision controls also pass. No new measured
+real-socket correction count is claimed.
+P935 separately reproduces and fixes the load pause in an isolated intact-copy
+cold test: byte-at-a-time buffered-string file loading was the server stall,
+not the decorative sheet or weapon rendering. Owner confirmation of the new
+load feel remains pending after matching delivery; see P935 above.
 
 ## P918 — missing checker filtering
 

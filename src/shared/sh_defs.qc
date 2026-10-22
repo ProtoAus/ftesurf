@@ -127,6 +127,7 @@
 // (sv_user.c) -- and the strafe ideal needs it, because crouching crops the
 // wishspeed and the ideal turn rate follows it down.
 #define STAT_FS_PMFLAGS    48
+#define STAT_FS_FOLEYJUMP 180  // cosmetic contact edge; no body/recorder state
 
 /*
   The plane the CURRENT tick clipped against (engine Patch 137).

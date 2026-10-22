@@ -1,7 +1,22 @@
-/* Basic CSS presentation. Standard weapon/weaponframe stats remain authoritative. */
+/* Opt-in mounted CSS presentation; server owns selection and map-target shots. */
 entity wp_ent;
-float wp_weapon, wp_sequence, wp_animat, wp_until, wp_shots, wp_ready;
-string wp_model;
+float wp_weapon, wp_sequence, wp_until, wp_animat, wp_ready, wp_shots;
+float wp_eventat, wp_drawing, wp_events, wp_sndnext, wp_callbacks;
+float wp_scriptbytes, wp_scriptalias, wp_scripthits;
+string wp_model, wp_frame, wp_soundlast;
+string wp_sndname[16], wp_sndpath[16];
+
+void() WP_Register =
+{
+	registercvar("cl_viewweapon", "0", CVAR_ARCHIVE);
+	registercvar("cl_viewweapon_left", "0", CVAR_ARCHIVE);
+	registercvar("cl_weapon_sfx", "1", CVAR_ARCHIVE);
+	// Existing independent projection, not a scale hack or a change to world FOV.
+	if (!strcmp(cvar_string("r_viewmodel_fov"), "")) cvar_set("r_viewmodel_fov", "54");
+	registercommand("surf_weapon");
+	registercommand("give"); // Native give may forward instead; SSQC handles the same aliases.
+	registercommand("weapon_info");
+};
 
 string(float w) WP_Model =
 {
@@ -19,128 +34,216 @@ string(float w) WP_Idle =
 	return "idle";
 };
 
-string(float w) WP_Fire =
-{
-	if (w == FS_WEAPON_KNIFE) return "midslash1";
-	if (w == FS_WEAPON_USP) return "shoot1";
-	if (w == FS_WEAPON_SCOUT) return "shoot";
-	return "glock_firesingle";
-};
-
-void(string name, float oneshot) WP_Animate =
+float(string name, float oneshot) WP_Animate =
 {
 	local float f, duration;
 
 	f = frameforname(wp_ent.modelindex, name);
-	// The Source loader exposes sequence groups with an @ prefix.
 	if (f < 0) f = frameforname(wp_ent.modelindex, strcat("@", name));
 	if (f < 0)
 	{
 		wp_ready = FALSE;
 		print(sprintf("weapon: unavailable animation '%s' in '%s'\n", name, wp_model));
-		return;
+		return FALSE;
 	}
 	wp_ent.frame = f;
 	wp_ent.frame2 = f;
 	wp_ent.lerpfrac = 0;
 	wp_animat = time;
+	wp_eventat = -0.001;
+	wp_drawing = FALSE;
 	duration = frameduration(wp_ent.modelindex, f);
 	wp_until = oneshot ? time + bound(0.08, duration, 3) : 0;
+	if (strcmp(wp_frame, "")) strunzone(wp_frame);
+	wp_frame = strzone(frametoname(wp_ent.modelindex, f));
+	return TRUE;
 };
 
-void() WP_Register =
+// Resolve mounted Source sound-script names. Cache successes AND missing names.
+string(string name) WP_SoundPath =
 {
-	registercvar("cl_viewweapon", "1", CVAR_ARCHIVE);
-	registercvar("cl_viewweapon_left", "0", CVAR_ARCHIVE);
-	registercommand("surf_weapon");
-	registercommand("weapon_info");
+	local float i, f, count, k, depth, active, wave, p, n, comment;
+	local string text, line, token, path;
+
+	for (i = 0; i < 16; i = i + 1)
+		if (!strcmp(wp_sndname[i], name)) return wp_sndpath[i];
+	path = "";
+	depth = 0;
+	active = wave = FALSE;
+	f = fopen("scripts/game_sounds_weapons.txt", FILE_READNL);
+	if (f >= 0)
+	{
+		// Same blank-line-safe reader contract as Snds_ParseFile: READNL once.
+		text = fgets(f);
+		fclose(f);
+		wp_scriptbytes = strlen(text);
+		wp_scriptalias = strstrofs(text, name, 0); // exact-case diagnostic; never casefold the whole file
+		wp_scripthits = 0;
+		p = 0;
+		for (i = 0; i < 40000; i = i + 1)
+		{
+			n = strstrofs(text, "\n", p);
+			line = (n < 0) ? substring(text, p, -1) : substring(text, p, n - p);
+			comment = strstrofs(line, "//", 0);
+			if (comment >= 0) line = substring(line, 0, comment);
+			count = tokenize(line);
+			for (k = 0; k < count; k = k + 1)
+			{
+				token = argv(k);
+				if (strlen(token) > 255) continue; // bounded names/paths, including on older clients
+				if (!depth && !strcmp(strtolower(token), strtolower(name)))
+				{
+					active = TRUE;
+					wp_scripthits = wp_scripthits + 1;
+				}
+				if (!strcmp(token, "{")) depth = depth + 1;
+				else if (!strcmp(token, "}"))
+				{
+					depth = max(0, depth - 1);
+					if (!depth) active = FALSE;
+				}
+				else if (active)
+				{
+					if (wave)
+					{
+						while (!strcmp(substring(token, 0, 1), "*") || !strcmp(substring(token, 0, 1), "#") || !strcmp(substring(token, 0, 1), "^"))
+							token = substring(token, 1, -1);
+						path = strzone(token);
+						break;
+					}
+					wave = !strcmp(token, "wave");
+				}
+			}
+			if (strcmp(path, "") || n < 0) break;
+			p = n + 1;
+		}
+	}
+	// Content-only CSS packs can have the WAV/model but no legacy sound script
+	// (or a higher-priority game's script). Timing still comes from the MODEL.
+	if (!strcmp(path, ""))
+	{
+		if (!strcmp(strtolower(name), "weapon_usp.slideback"))
+			path = strzone("weapons/usp/usp_slideback.wav");
+		if (!strcmp(strtolower(name), "weapon_glock.sliderelease"))
+			path = strzone("weapons/glock/glock_sliderelease.wav");
+	}
+	i = wp_sndnext;
+	wp_sndnext = (wp_sndnext + 1) % 16;
+	if (strcmp(wp_sndname[i], "")) strunzone(wp_sndname[i]);
+	if (strcmp(wp_sndpath[i], "")) strunzone(wp_sndpath[i]);
+	wp_sndname[i] = strzone(name);
+	wp_sndpath[i] = path;
+	return path;
 };
 
-void() WP_Shot =
+void(float timestamp, int code, string data) WP_Event =
 {
-	local string s;
+	local string path;
+
+	wp_callbacks = wp_callbacks + 1;
+	if (!wp_drawing || !strcmp(data, "") || cvar("cl_weapon_sfx") <= 0) return;
+	path = WP_SoundPath(data);
+	if (!strcmp(path, "")) return;
+	if (GA_Emit(path, cvar("cl_weapon_sfx") * 0.8))
+	{
+		wp_events = wp_events + 1;
+		if (strcmp(wp_soundlast, "")) strunzone(wp_soundlast);
+		wp_soundlast = strzone(data);
+	}
+};
+
+void(float w) WP_Shot =
+{
+	local string snd;
 	local vector src;
 	local float reach;
 
 	wp_shots = wp_shots + 1;
-	if (wp_ready) WP_Animate(WP_Fire(wp_weapon), TRUE);
-	s = "weapons/glock/glock18-1.wav";
-	if (wp_weapon == FS_WEAPON_KNIFE) s = "weapons/knife/knife_slash1.wav";
-	if (wp_weapon == FS_WEAPON_USP) s = "weapons/usp/usp1.wav";
-	if (wp_weapon == FS_WEAPON_SCOUT) s = "weapons/scout/scout_fire-1.wav";
-	GA_Play(s, 0.8);
-	// Cosmetic wall feedback only, never a damage or hit-confirmation claim.
-	reach = (wp_weapon == FS_WEAPON_KNIFE) ? 80 : 8192;
+	if (w == FS_WEAPON_KNIFE)
+	{
+		WP_Animate("midslash1", TRUE);
+		snd = "weapons/knife/knife_slash1.wav";
+	}
+	else if (w == FS_WEAPON_USP)
+	{
+		WP_Animate("shoot1", TRUE);
+		snd = "weapons/usp/usp1.wav";
+	}
+	else if (w == FS_WEAPON_SCOUT)
+	{
+		WP_Animate("shoot", TRUE);
+		snd = "weapons/scout/scout_fire-1.wav";
+	}
+	else
+	{
+		WP_Animate("glock_firesingle", TRUE);
+		snd = "weapons/glock/glock18-1.wav";
+	}
+	GA_Emit(snd, cvar("cl_weapon_sfx") * 0.8);
+	// Preserve the existing cosmetic wall feedback, never a hit/PvP claim.
+	reach = (w == FS_WEAPON_KNIFE) ? 80 : 8192;
 	src = pmove_org + [0, 0, getstatf(STAT_VIEWHEIGHT)];
 	makevectors(getproperty(VF_ANGLES));
 	traceline(src, src + v_forward * reach, TRUE, world);
 	if (trace_fraction < 1)
 	{
-		if (wp_weapon == FS_WEAPON_KNIFE)
-			GA_Play("weapons/knife/knife_hitwall1.wav", 0.6);
-		else
-			GA_Play("physics/concrete/concrete_impact_bullet1.wav", 0.4);
+		if (w == FS_WEAPON_KNIFE) GA_Emit("weapons/knife/knife_hitwall1.wav", cvar("cl_weapon_sfx") * 0.6);
+		else GA_Emit("physics/concrete/concrete_impact_bullet1.wav", cvar("cl_weapon_sfx") * 0.4);
 	}
 };
 
 void() WP_Frame =
 {
-	local float w, seq, f;
-	local string modelname, drawname;
+	local float w, seq;
+	local string mdl;
 
 	w = getstatf(STAT_ACTIVEWEAPON);
 	seq = getstatf(STAT_WEAPONFRAME);
-	if (!LT_StatsAreMine() || rec_gh_on || rec_wt_on || rw_on ||
-	    getstatf(STAT_FS_SPEC) || getstatf(STAT_FS_MOVETYPE) != MOVETYPE_WALK)
+	if (cvar("cl_viewweapon") <= 0 || !LT_StatsAreMine() || rec_gh_on || rec_wt_on ||
+	    getstatf(STAT_FS_SPEC) || rw_on || getstatf(STAT_FS_MOVETYPE) != MOVETYPE_WALK)
 	{
-		wp_sequence = seq;
 		wp_weapon = 0;
+		wp_ready = FALSE;
+		wp_sequence = seq;
 		return;
 	}
+	mdl = WP_Model(w);
+	if (!strcmp(mdl, "")) return;
+	if (!wp_ent) wp_ent = spawn();
 	if (w != wp_weapon)
 	{
 		wp_weapon = w;
 		wp_sequence = seq;
 		wp_ready = FALSE;
-		modelname = WP_Model(w);
 		if (strcmp(wp_model, "")) strunzone(wp_model);
-		wp_model = strzone(modelname);
-		if (strcmp(modelname, ""))
-		{
-			f = fopen(modelname, FILE_READ);
-			if (f >= 0)
-			{
-				fclose(f);
-				if (!wp_ent) wp_ent = spawn();
-				setmodel(wp_ent, modelname);
-				wp_ready = (wp_ent.modelindex != 0);
-				if (wp_ready)
-				{
-					drawname = (w == FS_WEAPON_GLOCK) ? "glock_draw" : "draw";
-					WP_Animate(drawname, TRUE);
-				}
-			}
-		}
+		wp_model = strzone(mdl);
+		setmodel(wp_ent, wp_model);
+		if (wp_ent.modelindex == 0) return; // CSQC's private model slots are NEGATIVE.
+		wp_ready = WP_Animate((w == FS_WEAPON_GLOCK) ? "glock_draw" : "draw", TRUE);
+		wp_drawing = wp_ready;
 	}
+	if (!wp_ready) return;
 	if (seq != wp_sequence)
 	{
 		wp_sequence = seq;
-		if (w) WP_Shot();
+		WP_Shot(w);
 	}
-	if (!wp_ready) return;
-	if (wp_until > 0 && time >= wp_until) WP_Animate(WP_Idle(w), FALSE);
-	if (cvar("cl_viewweapon") <= 0) return;
+	if (wp_drawing)
+	if (checkbuiltin(processmodelevents))
+		processmodelevents(wp_ent.modelindex, wp_ent.frame, wp_eventat, time - wp_animat, WP_Event);
+	if (wp_until > 0 && time >= wp_until) wp_ready = WP_Animate(WP_Idle(w), FALSE);
 	wp_ent.origin = '0 0 0';
 	wp_ent.angles = '0 0 0';
-	wp_ent.renderflags = RF_VIEWMODEL | RF_DEPTHHACK | RF_NOSHADOW;
-	// CSS gun meshes are left-authored; the knife is right-authored.
-	if (w == FS_WEAPON_KNIFE)
-	{
-		if (cvar("cl_viewweapon_left")) wp_ent.renderflags = wp_ent.renderflags | RF_XFLIP;
-	}
-	else if (!cvar("cl_viewweapon_left")) wp_ent.renderflags = wp_ent.renderflags | RF_XFLIP;
+	wp_ent.colormod = '1 1 1';
 	wp_ent.alpha = 1;
 	wp_ent.scale = 1;
+	wp_ent.renderflags = RF_VIEWMODEL | RF_DEPTHHACK | RF_NOSHADOW;
+	// CSS guns are left-authored; the knife is right-authored.
+	if (w == FS_WEAPON_KNIFE)
+	{
+		if (cvar("cl_viewweapon_left")) wp_ent.renderflags |= RF_XFLIP;
+	}
+	else if (!cvar("cl_viewweapon_left")) wp_ent.renderflags |= RF_XFLIP;
 	wp_ent.frame1time = time - wp_animat;
 	wp_ent.frame2time = wp_ent.frame1time;
 	addentity(wp_ent);
@@ -148,27 +251,67 @@ void() WP_Frame =
 
 float() WP_Command =
 {
-	local string s;
-	local float w;
+	local string cmd, arg, eventname, resolved;
+	local float w, giving, f, eventframe, timestamp;
+	local int code, i;
+	local int *header;
 
-	if (!strcmp(argv(0), "weapon_info"))
+	cmd = argv(0);
+	if (!strcmp(cmd, "weapon_info"))
 	{
 		if (!strcmp(argv(1), "refresh")) wp_weapon = 0;
-		print(sprintf("weapon: type %g sequence %g ready %g shots %g model '%s'\n",
-			wp_weapon, wp_sequence, wp_ready, wp_shots, wp_model));
+		if (!strcmp(argv(1), "events") && wp_ready)
+		{
+			f = fopen(wp_model, FILE_READ);
+			if (f >= 0)
+			{
+				header = memalloc(196i);
+				if (fread(f, header, 196) == 196)
+					print(sprintf("weapon: MDL version %g sequences %g offset %g bytes %g\n", (float)header[1i], (float)header[47i], (float)header[48i], (float)header[19i]));
+				memfree(header);
+				fclose(f);
+			}
+			print(sprintf("weapon: event API %g indexed API %g\n", checkbuiltin(processmodelevents), checkbuiltin(getmodeleventidx)));
+			eventframe = frameforname(wp_ent.modelindex, (wp_weapon == FS_WEAPON_GLOCK) ? "@glock_draw" : "@draw");
+			if (checkbuiltin(getmodeleventidx))
+			for (i = 0i; i < 16i; i += 1i)
+			{
+				if (!getmodeleventidx(wp_ent.modelindex, eventframe, i, timestamp, code, eventname)) break;
+				print(sprintf("weapon: event %g time %g code %g '%s'\n", (float)i, timestamp, (float)code, eventname));
+				resolved = WP_SoundPath(eventname);
+				print(sprintf("weapon: resolved '%s' present %g\n", resolved, GA_Exists(resolved)));
+			}
+			print(sprintf("weapon: sound-script bytes %g exact-name-offset %g definition-hits %g\n", wp_scriptbytes, wp_scriptalias, wp_scripthits));
+		}
+		print(sprintf("weapon: type %g sequence %g ready %g shots %g model '%s'\n", wp_weapon, wp_sequence, wp_ready, wp_shots, wp_model));
 		if (wp_ready)
-			print(sprintf("weapon: frame '%s' duration %g time %g\n",
-				frametoname(wp_ent.modelindex, wp_ent.frame), frameduration(wp_ent.modelindex, wp_ent.frame), wp_ent.frame1time));
+			print(sprintf("weapon: frame '%s' duration %g time %g\n", wp_frame, frameduration(wp_ent.modelindex, wp_ent.frame), wp_ent.frame1time));
+		print(sprintf("weapon: enabled %g sfx %g fov %g draw-sounds %g callbacks %g last '%s'\n", cvar("cl_viewweapon"), cvar("cl_weapon_sfx"), cvar("r_viewmodel_fov"), wp_events, wp_callbacks, wp_soundlast));
 		return TRUE;
 	}
-	if (strcmp(argv(0), "surf_weapon")) return FALSE;
-	s = strtolower(argv(1));
+	giving = !strcmp(cmd, "give");
+	if (strcmp(cmd, "surf_weapon") && !giving) return FALSE;
+	arg = strtolower(argv(1));
+	if (!strcmp(substring(arg, 0, 7), "weapon_")) arg = substring(arg, 7, -1);
 	w = 0;
-	if (!strcmp(s, "knife")) w = FS_WEAPON_KNIFE;
-	if (!strcmp(s, "usp")) w = FS_WEAPON_USP;
-	if (!strcmp(s, "scout")) w = FS_WEAPON_SCOUT;
-	if (!strcmp(s, "glock")) w = FS_WEAPON_GLOCK;
-	if (w) localcmd(sprintf("cmd weapon %g\n", w));
-	else print("surf_weapon knife | usp | scout | glock (existing binds unchanged)\n");
+	if (!strcmp(arg, "knife")) w = FS_WEAPON_KNIFE;
+	if (!strcmp(arg, "usp")) w = FS_WEAPON_USP;
+	if (!strcmp(arg, "scout")) w = FS_WEAPON_SCOUT;
+	if (!strcmp(arg, "glock")) w = FS_WEAPON_GLOCK;
+	if (!giving)
+	{
+		if (!strcmp(arg, "1")) w = FS_WEAPON_KNIFE;
+		if (!strcmp(arg, "2")) w = FS_WEAPON_USP;
+		if (!strcmp(arg, "4")) w = FS_WEAPON_SCOUT;
+		if (!strcmp(arg, "8")) w = FS_WEAPON_GLOCK;
+	}
+	if (!w || strcmp(argv(2), ""))
+	{
+		if (giving) return FALSE;
+		print("surf_weapon knife|usp|scout|glock (or give weapon_glock / give scout)\n");
+		return TRUE;
+	}
+	cvar_set("cl_viewweapon", "1");
+	localcmd(sprintf("cmd weapon %g\n", w));
 	return TRUE;
 };
