@@ -1,5 +1,23 @@
 # AGENT_NOTES.md
 
+## Momentum/build audit22Oct23:35UTC (read-only)
+
+- Primary modeled order remains gamedir >Momentum >CS:S >HL2. Only two named
+  BSP pairs byte-hashed: historical surf_dune now SAME as Momentum/Pi; primary
+  loose surf_fantasy still differs, while installed Momentum/Pi held/cached-
+  published hashes agree. Do not repeat the old two-shadow statement as current.
+- Owner has2explicit saved CSS picks; blank menu choices already prefer Momentum,
+  with disabled-build fallback. Do not call a preference a forced global override
+  or clear player data. Secondary control descriptor has no direct addons mount;
+  actual launch-time shared assets were not traced. Audit limits/decision are in
+  tools/momentum-preference-audit.md and BACKLOG.md.
+- Mapwatch manifest has no --maps override: it uses S.MAPS_DIR, default
+  game/momentum/maps with possible SURFD_MAPS env. Derive from actual config,
+  never guess game/ftesurf/maps. --updates is enabled in current route; no watcher
+  operation was invoked for this audit. Catalogue timestamp is cached, not proof
+  of fresh upstream API state. A linked imported family is not geometry/timer
+  equivalence; zonefit/native build-bound evidence remain independent.
+
 ## P937 — native raw-audio fixture (2026-10-22)
 
 - `queueaudio` uses INTEGER ABI arguments for rate/channels/format/pointer/frame
