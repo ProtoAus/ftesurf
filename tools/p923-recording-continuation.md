@@ -41,12 +41,44 @@ Old/future mover contexts are not silently promoted into this current-only profi
   on Windows and ARM before the mover adjustment; those earlier receipts are
   not relabeled as final-artifact or current-mover ARM acceptance.
 
-## Remaining execution gates
+## Delivery — 22 October 2026 UTC
 
-Final clean public source identities, correctly stamped Windows/ARM artifacts,
-matching-platform controls, reader-first rollout, destination/live readbacks and
-UTC provenance are separate from the implementation checks above. Preserve prior
-binaries/progs, respect occupied-lobby refusal and never ship peer working changes.
+Published engine `a14ad147c74e6828109f40b6be8fe169182010af`, tag `patch-923`;
+QC feature `9e168015b0d6a3259fb4e75a9ad05aa4aac89bea`, followed by published
+`7e6b3459ad3439dc284b1b6656268798bf3bc175` merging only P922 delivery notes.
+The post-build merge changes exactly two documentation files, not build inputs;
+the qualified artifacts were reused, not rebuilt to give them another identity.
+
+At **11:22:13 UTC**, BOTH Windows installs had all32 intended reader/native/plugin/
+DAT/LNO destinations hash-verified against the clean qualified inputs. Readers
+were promoted before producer progs. Native stamp:
+`git-7709-patch-923-0-ga14ad147c`. Predecessors and prior `.prev` generations are
+retained; protected owner/default config, installed/crash files and player data
+were not changed. No owner or peer process was stopped. Fresh dedicated processes
+launched from BOTH actual installed paths loaded the matching HL2 plugin, exposed
+the correct stamp and passed `pm_selftest`; these owned smoke processes exited.
+
+Final clean-artifact real-source REC15 proof: cold PASS49ticks47rows after
+producer/client exit; all19 altered-evidence controls act. Physical374/0 with25
+native moves, ledger164/0, input66/0, clock adapter57/0, source-file42/0 and dummy
+filesystem134/0. Structural/synthetic checks are not general replay admission.
+No human/UI/device acceptance is inferred from these checks.
+
+At **11:31:25 UTC**, the Pi's three committed reader files were promoted under
+the canonical sweep lock and hash/import-verified. No native/progs, backend/DB,
+service, collector, maintenance-gate or player-data action accompanied that step.
+ARM metadata controls on byte-identical reader inputs:24 tests, one existing skip.
+An optional full reader-suite invocation hit its100-second wall limit; its partial
+log is retained and is NOT an ARM864-check pass. Windows864/0 remains valid.
+
+**Pi native/progs delivery remains held, not deployed.** The exact published
+native source/archive and bounded build command are staged privately. Build
+resource headroom and the required fresh live-directory/occupancy guard are not
+currently satisfied; no build, force, partial producer swap or lobby restart was
+used to bypass them. Earlier ARM artifact receipts are not relabeled as P923
+native qualification. Matching-platform native checks and guarded promotion with
+live destination readback/UTC provenance remain.
+
 No release, Build-number bump, historical reread/reclassification, broader
 collection/access/retention, threshold/badge change or human/device attestation is
 implied by this patch.
