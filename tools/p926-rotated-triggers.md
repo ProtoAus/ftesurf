@@ -44,7 +44,12 @@ Client QC only: no physical server, evidence writer/reader, held qualification,
 coverage, ranking policy, native source/tag pin or qcbuild change. Three product
 VMs compile with zero warnings. QuakeC's LSP result is not used as compile proof.
 P924's reader864/0 and byte-identical-reader corpus evidence remain valid because
-this change does not touch those dependencies.
+this change does not touch those dependencies. The committed clean build at
+`0d3f0e672e59529ed88e901388ee3ce101e6895f` compiles0/0/0 warnings and its CSQC is byte-identical to the acting
+subject. A fresh, fully spawned classics socket also carries37.5 units in the
+first.25seconds with no post-placement above-.25 correction. The earlier chained
+map-load auxiliary probe had no acting carry and is retained as invalid, not a
+regression pass; use the fresh-start proof instead.
 
 ## Delivery and acceptance
 
