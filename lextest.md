@@ -2,7 +2,9 @@
 
 ## P922 — Local filters, right-click pin, quiet empty Story maps
 
-PENDING owner/native-panel visual acceptance after matching client update:
+PENDING owner/native-panel visual acceptance. Both Windows sets are installed;
+Pi promotion is held by a connected player, so a Pi lobby can still download its
+older CSQC. Do not grade these checks against that older server pair.
 - On TAB, right-click, release TAB, then right-click again: the board stays up.
   Press Esc once (also while searching): board/cursor close. Without right-click,
   ordinary TAB hold/release still closes it.
