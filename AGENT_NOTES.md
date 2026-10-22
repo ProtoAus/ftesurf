@@ -6679,8 +6679,14 @@ Measured Windows/NanoPi cleanup pitfalls (2026-10-08), not a product patch:
   emptied three external bind views this way, despite never following its two
   symlinks. The data was verified in R2 and the bind-source restore was started;
   the privileged remount remains a separate required step. Recreating the source
-  pathname does not reconnect mounts pinned to the deleted inode. Preserve the
-  old read-only/read-write mount flags and do not delete a still-required bind
+  pathname does not reconnect mounts pinned to the deleted inode. Overmounting
+  such a view also fails `ENOENT`: normally unmount the exact stale mount first,
+  then bind the verified replacement onto the revealed ordinary directory;
+  never clear underlying data or force/lazy-unmount a busy view. Actual kernel
+  controls in a private unprivileged mount namespace reproduced the failure and
+  proved ro/rw recovery, busy refusal, underlying-data preservation and safe
+  resume after a post-unmount bind failure, without changing host mounts. Preserve
+  the old read-only/read-write mount flags and do not delete a still-required bind
   source merely because its cloud copy is verified.
 - **POSIX unlink changes surviving hardlink aliases' ctime.** A strict guard
   can stop after deleting one alias even though the other name's bytes have
