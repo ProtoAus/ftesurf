@@ -74,12 +74,21 @@ void() Social_Drain =
 	}
 };
 
-string(string token, string hash, string ack) Social_RosterRow =
+string(entity e) Social_Activity =
+{
+	if (e.run_sp_phase == 2) return "Spectating";
+	if (e.run_t_segs <= 0) return "";
+	if (e.run_t_track > 0)
+		return sprintf("Bonus %g", bound(1, e.run_t_track, 999));
+	return sprintf("Stage %g", bound(1, e.run_t_seg + 1, 999));
+};
+
+string(string token, string hash, string ack, string activity) Social_RosterRow =
 {
 	// uri_escape has an 8192-byte output limit. Encode each bounded row,
 	// never the complete 64-player snapshot (which exceeds that limit).
-	return uri_escape(sprintf("{\"token\":\"%s\",\"hash\":\"%s\",\"ack\":%s}",
-	                         token, hash, ack != "" ? ack : "0"));
+	return uri_escape(sprintf("{\"token\":\"%s\",\"hash\":\"%s\",\"ack\":%s,\"activity\":\"%s\"}",
+	                         token, hash, ack != "" ? ack : "0", activity));
 };
 
 void() Social_Frame =
@@ -100,7 +109,7 @@ void() Social_Frame =
 	{
 		if (n < 64)
 		{
-			r = Social_RosterRow(e.social_token, e.social_hash, e.social_ack);
+			r = Social_RosterRow(e.social_token, e.social_hash, e.social_ack, Social_Activity(e));
 			roster = strcat(roster, n ? "%2C" : "", r);
 			n = n + 1;
 		}
@@ -135,6 +144,11 @@ void(entity e, string op, string who, string text) Social_Action =
 		return;
 	}
 	e.social_last = time + 1;
+	if (!strcmp(op, "refresh"))
+	{
+		social_next = 0;
+		return;
+	}
 	if (!SV_RecIsHex(who, FS_WHO_IDLEN) && !SV_RecIsHex(who, 12)) return;
 	if (op != "add" && op != "accept" && op != "remove" && op != "message" && op != "join"
 	    && op != "block" && op != "unblock") return;
@@ -207,18 +221,19 @@ float(float reqid, float code, string body) Social_Reply =
 			e.social_buf = buf_create();
 			e.social_buffered = TRUE;
 			e.social_sendrow = 0;
-			bufstr_add(e.social_buf, "friend_begin\n", TRUE);
+			bufstr_add(e.social_buf, "friend_begin 1\n", TRUE);
 			for (j = 0; j < min(128, json_get_length(friends)); j = j + 1)
 			{
 				f = json_get_child_at_index(friends, j);
 				// All variable text is percent encoded; never an executable argument.
-				bufstr_add(e.social_buf, sprintf("friend_row %s %g %g \"%s\" \"%s\" \"%s\"\n",
+				bufstr_add(e.social_buf, sprintf("friend_row %s %g %g \"%s\" \"%s\" \"%s\" \"%s\"\n",
 				         json_get_string(json_find_object_child(f, "who")),
 				         json_get_float(json_find_object_child(f, "relation")),
 				         json_get_float(json_find_object_child(f, "online")),
 				         uri_escape(json_get_string(json_find_object_child(f, "name"))),
 				         uri_escape(substring(json_get_string(json_find_object_child(f, "server")), 0, 80)),
-				         uri_escape(substring(json_get_string(json_find_object_child(f, "map")), 0, 64))), TRUE);
+				         uri_escape(substring(json_get_string(json_find_object_child(f, "map")), 0, 64)),
+				         uri_escape(substring(json_get_string(json_find_object_child(f, "activity")), 0, 24))), TRUE);
 			}
 			bufstr_add(e.social_buf, "friend_end\n", TRUE);
 		}
