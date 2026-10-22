@@ -76,6 +76,15 @@ no force, partial Pi swap or override of an active player's session was made.
 The Windows Story menu update is installed; a Pi server can still advertise and
 download its older CSQC until that separate guarded promotion is completed.
 
+At **13:21 UTC**, the separately requested backend recovery restored the public
+board and directory with all12 lobby heartbeats, without restarting game actors.
+A subsequent normal P922 build from clean `26070cea` again produced zero warnings;
+its second-install target was the same isolated checkout, so newer P923 Windows
+installs were not overwritten. The Pi occupancy check then found one player in
+the beginner lobby and stopped BEFORE upload. No progs, native files or game
+services were changed by that attempt. A fresh empty boundary or explicit current
+restart permission is still required; broad backend approval is not that consent.
+
 Owned runtime clients/servers have exited. Only65 proved duplicate static/native
 copies (47,781,469 logical bytes) were retired; original native copies, sources,
 qualified artifacts, screenshots and original failures remain. The clean

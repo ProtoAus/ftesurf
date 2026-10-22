@@ -71,13 +71,31 @@ ARM metadata controls on byte-identical reader inputs:24 tests, one existing ski
 An optional full reader-suite invocation hit its100-second wall limit; its partial
 log is retained and is NOT an ARM864-check pass. Windows864/0 remains valid.
 
-**Pi native/progs delivery remains held, not deployed.** The exact published
-native source/archive and bounded build command are staged privately. Build
-resource headroom and the required fresh live-directory/occupancy guard are not
-currently satisfied; no build, force, partial producer swap or lobby restart was
-used to bypass them. Earlier ARM artifact receipts are not relabeled as P923
-native qualification. Matching-platform native checks and guarded promotion with
-live destination readback/UTC provenance remain.
+At **13:21:30 UTC**, the backend was restored through a new sealed generation
+bound to the published readers and the unchanged installed native consumers.
+The predecessor's startup pins no longer matched the promoted reader set; its
+worker refused startup, causing the board and directory's shared 502. Historical
+pins were not rewritten and newer readers were not rolled back. All80 runtime
+files match the published source. The additional receipt reader was promoted
+before candidate import; all six reader bindings were checked. Four isolated
+reader suites passed and a fresh read-only schema20 snapshot passed quick_check.
+The public board, directory and board API return200; all12 game units remained
+running and reported heartbeats. No database restore, schema change, collector
+activation or gameplay restart was part of this recovery.
+
+**P923 Pi native/progs delivery remains held, not deployed.** The build-resource
+block was resolved with a genuinely smaller jobs1/hard512MiB ARM build from the
+exact published source, rather than weakening the same768MiB job's headroom gate.
+Matching new ARM server/plugin spawn and kernel checks, five-map Windows/ARM
+physics equality, ordinary14/legacy controls and long compatibility runs passed.
+These do not establish a genuine ARM-produced REC15 positive: Windows source
+fixtures are bound to their original native artifacts and correctly refuse on
+ARM. The existing genuine-source actor is Windows-only. No fixture identities
+were rebound and these refusals are not positive ARM admission. No new native or
+P923 producer was installed. Matching-platform genuine-source acceptance and a
+fresh guarded promotion remain; the separate P922 progs attempt also stopped
+before upload when a player joined. No force or partial producer swap bypassed
+these boundaries.
 
 No release, Build-number bump, historical reread/reclassification, broader
 collection/access/retention, threshold/badge change or human/device attestation is

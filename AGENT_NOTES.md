@@ -1,5 +1,24 @@
 # AGENT_NOTES.md
 
+## Backend startup after reader promotion (2026-10-22)
+
+A sealed backend generation can pin canonical readers and native consumers in
+addition to its own runtime. Updating the readers can leave existing game units
+healthy while a backend restart refuses before serving; the board and directory
+then share the same 502. Inspect the actual worker exception and live identities,
+not just the service wrapper's exit. Do not rewrite historical pins or downgrade
+newer readers. Stage a successor against the inspected published inputs, preserve
+a fresh database snapshot, drain the predecessor, then verify CLOSED candidate
+behavior and measured admission before publishing routes. Check public HTTP and
+all live heartbeats separately. Backend-only recovery need not interrupt games;
+a later progs restart still requires its own fresh occupancy guard.
+
+Exact owner-only guard directory modes also reject inherited NVMe setgid bits.
+Set the owned successor parent mode explicitly before guard-owned initialization;
+do not precreate the guard's state directory. Hash transferred helper bytes, not
+a local text copy whose CRLF translation changed its digest. Four cron routes can
+contain eight root-path occurrences: compare routes, not an assumed token count.
+
 ## Local filters and held scoreboard (P922, 2026-10-22)
 
 - Right-click now pins until Esc, including focused search; TAB-up and another
@@ -32,6 +51,8 @@ state/witness, aliases, cron and health first; finish only the missing audit ste
 A result may already contain `utc`: preserve it as `result_utc` and give the
 journal event its own UTC, rather than passing duplicate dictionary keywords or
 redating the original result. Keep the original executed helper and failed log.
+A historical copied helper can predate the logger fix: verify the actual selected
+executable path and hash, not a similarly named maintained copy.
 
 ## File-backed archive fixture boundaries (P915, 2026-10-22)
 
