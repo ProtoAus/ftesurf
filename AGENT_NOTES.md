@@ -16,6 +16,18 @@
   reading diagnostics; an earlier recenter response must not masquerade as the
   next query. The height assertion uses the same captured body/anchor snapshot,
   not camera height, guessed jump height or a movement-accuracy claim.
+- Native before937 leaks its retained raw buffer when EOF marks a slot reusable
+  and the next call discards the pointer.937 releases/clears data before publishing
+  reuse under the existing last-channel callback contract. The exact-C ownership
+  adapter proves acting old control4095 orphaned after4096 cycles/final purge,
+  new4096 allocations/frees; it is NOT mixer concurrency/RSS evidence.
+- An off-switch check after volume0 starts inactive and cannot prove its own
+  fade. Reenable positive volume, snapshot status + disable in ONE command-buffer
+  pass, then require active1 ->0 and exactly1 accepted block before quiescence.
+- Native revision flags changed: incremental make retained934 version objects.
+  Supported `-Engine -Full -NoDeploy` fixed937 stamp in both PEs. Compare full
+  warnings to full baseline (74 unchanged here), not a quiet incremental log.
+  Regenerate with QC `tools/clangdb.py --engine <root>`; it is not in engine/tools.
 
 ## P936 — portrait transport and current picture fixtures (2026-10-22)
 

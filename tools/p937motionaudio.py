@@ -96,11 +96,11 @@ def main():
 
         serial = 0
 
-        def status():
+        def status(after=""):
             nonlocal serial
             serial += 1
             marker = "P937_QUERY_%d" % serial
-            send("echo %s; motionaudio_info" % marker)
+            send("echo %s; motionaudio_info%s" % (marker, "; " + after if after else ""))
             if not log.wait(marker, 4):
                 raise RuntimeError("native query marker missing")
             c, b = log.wait(COUNTS, 4), log.wait(BODY, 4)
@@ -171,13 +171,28 @@ def main():
         volume_control, _ = status()
         L.check("V volume0 suppresses both instruments despite acted gameplay keys",
                 (volume_control[1], volume_control[2:] == zero_volume[2:]), (0, True))
-        send("set cl_surf_tone 0; set cl_surf_drums 0; set cl_surf_audio_volume 0.15")
+        send("set cl_surf_audio_volume 0.15; set cl_surf_tone 1; set cl_surf_drums 0")
+        time.sleep(.3)
+        # Snapshot and switches execute in ONE command-buffer pass, with no
+        # intervening render-frame synthesis. Only the stop fade may add a block.
+        active_before, _ = status("set cl_surf_tone 0; set cl_surf_drums 0")
         time.sleep(.3)
         stopped, tail = status()
         time.sleep(.3)
         quiescent, drained = status()
-        L.check("Q disable becomes quiescent after its one fade block",
-                (stopped[1], stopped[2] == quiescent[2], drained[5] <= .002), (0, True, True))
+        L.check("Q an ACTIVE instrument switches off with exactly one fade, then quiesces",
+                (active_before[1], stopped[1], stopped[2] - active_before[2],
+                 stopped[2] == quiescent[2], drained[5] <= .002), (1, 0, 1, True, True))
+        cycles = []
+        for _ in range(3):
+            send("set cl_surf_tone 1")
+            time.sleep(.2)
+            before, _ = status("set cl_surf_tone 0")
+            time.sleep(.2)
+            after, b = status()
+            cycles.append((before[1], after[1], after[2] - before[2], b[5] <= .002))
+        L.check("R repeated native drain/restart cycles ACT with one fade and no backlog",
+                cycles, [(1, 0, 1, True)] * 3)
         L.check("NATIVE a real mixer queue ACTED (muted only in this owned client)",
                 drained[6] > 0, True)
         L.check("No native/builtin/VM error",
