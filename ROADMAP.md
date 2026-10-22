@@ -18,7 +18,8 @@ Remaining requested work (not silently folded into the completed items):
   Preserve account consent, mutual/blocked visibility and authenticated actions.
 - Height/ramp-driven sine tone and drums on A/D press; audible owner acceptance
   and explicit local opt-in/volume are needed, not just sample-generation tests.
-- Native sorted `bindlist` listing every bound key/modifier/bindmap.
+- Native sorted `bindlist` is implemented as P934; controls and exact delivery
+  state are in tools/p934-bindlist.md, rather than assumed from publication.
 - Practice-only slow motion via host_timescale, preserving fixed movement ticks
   and slowing the timer correctly. It must never make ranked/evidence eligibility
   out of slowed input. Requires engine/movement/recorder contract controls.
@@ -26,8 +27,10 @@ Remaining requested work (not silently folded into the completed items):
   gesture, permissions and protection against server-driven clipboard reads.
 - Audit global Momentum preference and cross-source demo compatibility. Equivalent
   builds can share playback; differing geometry cannot be fixed by name alone.
-- Verify map compression and remove the old download throughput cap on the R2
-  path without weakening transfer integrity or fallback/rate protections.
+- Download audit: the R2 path is already uncapped (observed 2MiB range at
+  7.519MiB/s, not an engine-speed acceptance test); the BSP response was identity
+  encoded and the mirror preserves original BSP bytes. The1MiB/s cap belongs
+  only to the Pi's origin fallback. No integrity/fallback guard was weakened.
 - Renderer/material/reporting bugs from the five screenshots are in BACKLOG.md.
 
 Story/event content gaps: fourteen selected entries lack timing zones; Voyager

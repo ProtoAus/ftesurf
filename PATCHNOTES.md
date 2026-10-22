@@ -21,6 +21,9 @@
 
 ## next
 
+### P934 Bound keys in the console
+- Type `bindlist` to print your current bindings in alphabetical order, including modifier overrides and alternate bindmaps. Listing them never changes or executes a bind.
+
 ### P933 Friends and textbox selection
 - Opening the map browser reveals Friends and asks for fresh presence. Friends use compact two-line cards; offline cards are faded and online map/stage or bonus text is green.
 - Click a friend's name for an in-menu public profile preview, or their green location to ask to join their lobby.
