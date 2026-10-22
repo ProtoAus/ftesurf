@@ -21,6 +21,9 @@
 
 ## next
 
+### P919 Decorative sheets stay walk-through
+- Fix a client/server collision mismatch on empty brush volumes, including the illusionary sheet at bhop_goldsrc2 save 2. Decorative illusionaries remain walk-through, without the client trying to stand on them.
+
 ### P918 Crisp missing textures
 - The missing-texture checker now stays nearest-neighbour crisp without changing filtering on ordinary map textures.
 

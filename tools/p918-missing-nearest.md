@@ -13,7 +13,10 @@ nearest/global-mode cases all pass. An initial compiler environment failure was
 fixed by supplying the same UCRT PATH as the native build, not by altering code.
 Existing test_missing_assets.py passes all 8 controls (including exact 64x64
 owner PNG bytes/alias and ship entries). Native client/server/plugin build passes
-without new warnings; final clean stamped client artifact readback follows.
+without new warnings. Clean stamped c958a3d3e client/server/plugin rebuild also
+passed all native selftests, including P916's 36 and P917's 21 checks. Deployed
+both Windows installs UTC 2026-10-22T08:20:40Z, all 10 destination hashes match,
+QC/settings unchanged. Backups `.pre918-20261022T082038Z`; no owner process stopped.
 
 This is sampler/native/source evidence, not GPU screenshot/manual acceptance.
 Owner: after the matching client update, view any missing checker close up and

@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   c958a3d3e9977954c41edca24ba652944255829a
+commit   0265ae46068d633e9779182f48a140f1c9bf2517
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,10 @@ commit   c958a3d3e9977954c41edca24ba652944255829a
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-918
-patch    918
+tag      patch-919
+patch    919
+# Patch 919: client EMPTY (-1) brush contents match existing server nonsolid logic.
+# bhop_goldsrc2's *93 sheet, contents controls and trace evidence: tools/p919-empty-volume.md.
 # Patch 918: nearest-filter the shared missing diffuse, not the world's ordinary textures.
 # Source and asset/sampler validation: tools/p918-missing-nearest.md.
 # Patch 917: apply the roof's world-space eye limit after render/stair interpolation.

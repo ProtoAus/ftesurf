@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P919 — bhop_goldsrc2 save 2
+
+PENDING after matching client update: load save 2 / slot002 (15:47.230), then
+walk/jump through the reported *93 func_illusionary. It is decorative and should
+remain walk-through; check that the earlier large/16-unit prederr corrections
+and collision glitching have stopped. Nine contents and five native collision
+controls pass; do not report a measured real-socket correction count yet.
+
 ## P918 — missing checker filtering
 
 PENDING: after the P918 client update, look at any missing-texture checker close
