@@ -1,44 +1,48 @@
-# P935 compatible REC13 source — prepared, not deployed
+# P935 compatible REC13 source — prepared, not yet P935-deployed
 
-Parent1fdb668a2ad5253282b08cd45d2f8da7eff60456 is the published P932/P933
-continuation of the qualified P931 REC13 cohort. Read-only preparation observed
-live QW9e0bde1c... / C86096e49..., with all12 original native/plugin pairs.
-This is baseline discovery, NOT a fresh empty-fleet or swap authorization.
+The initial b2f55f7b backport was prepared on the then-live P932/P9331fdb668a
+source. Before any swap, the P936/P937 workstream completed its rollout at
+2026-10-22T23:18:56Z. This merged variant uses ACTUAL new live50e7d8f32a102b9ba4f57cd308aa8c41a91eb6f2
+as the control and preserves its64px portraits, instrument and REC13 policy.
+The older b2f-only artifacts must NOT overwrite that newer cohort.
 
 Apply ONLY approved mainline P935875fd7db and walk correctionae9e483c hunks:
 - client/cl_gameaudio.qc, client/cl_weapon.qc, client/cl_main.qc
 - server/sv_entities.qc, server/sv_main.qc, server/sv_player.qc
 - shared/sh_defs.qc
 
-The added field/stat180 is a local presentation contact counter, not a recorder
-input/counter or qualification decision. The walk observer reads existing bit128
-before mutators and caches only a local boolean. No input is changed or newly
-transmitted/recorded. Existing in_speedbutton1 remains; actual135.2 walk is
-quiet without changing physics, with intent also covering steering overshoot.
-Model/Foley defaults are0 at registration; existing explicit archived choices
-are not forcibly overwritten. Giving a named model is an explicit opt-in.
+The field/stat180 is a local presentation contact counter, not a recorder
+input/counter or qualification decision. The observer reads existing bit128
+before mutators and caches only a local boolean; no input is changed, newly
+transmitted or recorded. Existing in_speedbutton1 remains. Real135.2 walking
+is quiet without changing physics; intent covers steering residual speed.
+Model/Foley defaults are0 at registration; existing explicit archive choices
+are not forcibly overwritten. Named give is an explicit presentation opt-in.
 
-Every baseline server/shared blob outside the FOUR reviewed cosmetic/stat files
-remains exact, including writer/recorder/timer/hold/evidence/reader contracts.
-No modern mainline writer14, native server replacement, consumer/native13/14/15
-promotion, collection/consent change, or saved-data migration is included.
-P936's 64px portrait frontend and P937's CSQC instrument are NOT imported;
-32px transport and existing features remain until the combined rollout owner
-qualifies the separate backend-first delivery. ENGINE's client pin retains the
-published P937 native audio ownership fix as well as the P935 native changes.
-This does not upgrade any lobby executable/plugin.
+Every current50e7 server/shared blob outside the FOUR reviewed cosmetic/stat
+files remains exact. More strongly, all runtime source outside the SEVEN-file
+set above remains exact to50e7. Recorder/timer/hold/evidence/reader contracts
+and P936/P937 modules are unchanged. This is NOT promotion of mainline writer14,
+native server replacement, consumer/native13/14/15, consent or saved-data policy.
+The client pin includes P935 native fixes AND published P937 audio ownership.
+No lobby executable/plugin upgrade is included.
 
-Preregistered validation: existing current-live source is the control; outside
-that seven-source-file set all runtime source must remain exact; build all3VMs
-with0new warnings using the standard owned NoDeploy target. Mainline's acted
-walk/model controls and independent P1/P2 closures cover the exact backported
-hunks, not a new fleet movement/producer qualification. A live acted client is
-still required at the actual deployment boundary.
+The P936 backend was already qualified/promoted FIRST by its owner; public
+mainline tools/p936-p937-delivery.md records sources, hashes and live readiness.
+No backend promotion or generation/tool work is repeated for this follow-up.
+Both Windows installs currently use this compatible REC13 family too. Unlike
+the superseded b2f-only menu, the merged menu preserves the actual current64px
+and other UI source exactly and is the correct matching Windows product.
 
-Build status is recorded in the owned task artifacts after the committed clean
-source build, not inferred here. Do NOT copy this older menu to either Windows
-install. Use only qwprogs/csprogs with normal -Pi, owned QuakeDir sink, exact
-current predecessor/empty-fleet/native checks, .prev preservation and final
-hash/live verification. No force/disconnect or maintenance gate during prep.
-Shared swap ownership is pending coordination with the P936/P937 workstream;
-source publication alone is not deployed or owner listening/visual acceptance.
+Preregistered validation: exact new predecessor is the control; runtime sources
+outside seven-file set exact; standard clean build3VM0warnings; positive native
+named give/draw and quiet real walk/running controls from approved identical
+code, plus new live client at deployment. These are not new movement/producer
+qualification or human audio/visual acceptance. Build/live evidence is recorded
+in task artifacts and the delivery receipt, not inferred by this source file.
+
+Deploy only from this committed source: normal dual Windows process/predecessor
+and staged-hash guards; standard -Pi with OWN tree/sink, no force/disconnect,
+qwprogs/csprogs only, .prev retained. Refresh actual predecessor/empty fleet/
+native hashes at swap boundary. Verify destinations/live client and UTC; retain
+configs/player data. No maintenance gate was held during source preparation.

@@ -1,16 +1,16 @@
 /*
   Patch 789: Steam pictures in the menu, as cl_steampic.qc draws them in game.
-  The game's disk copies first (cache/steampic/<sha256(lobby_dir "\n" mark)>.txt,
+  The game's disk copies first (cache/steampic64/<sha256(lobby_dir "\n" mark)>.txt,
   "FTESURF-AVCACHE1 <key> <YYYYMMDD>" then the body), else one paced ask of
   <lobby_dir>/api/board?avatar=<mark> -- the board's shared budget, so one in
   flight, MP_GAP apart, only for a mark drawn within MP_SEEN.  No stoh in the
   menu VM: the hex is read a digit at a time.
 */
 #define MP_MAX    24
-#define MP_PX     32
-#define MP_HEAD   23            // "FTESURF-AVATAR 1 32 32\n"
-#define MP_ROW    257
-#define MP_ROUND  6
+#define MP_PX     64
+#define MP_HEAD   23            // "FTESURF-AVATAR 1 64 64\n"
+#define MP_ROW    513
+#define MP_ROUND  12
 #define MP_GAP    1.5
 #define MP_SEEN   3
 #define MP_MISS   900
@@ -71,7 +71,7 @@ string(string mark) MP_DiskRead =
 	local float fh, i, age;
 	key = MP_Key(mark);
 	if (key == "") return "";
-	fh = fopen(strcat("cache/steampic/", key, ".txt"), FILE_READ);
+	fh = fopen(strcat("cache/steampic64/", key, ".txt"), FILE_READ);
 	if (fh < 0) return "";
 	if (fsize(fh) > MP_HEAD + MP_PX * MP_ROW + 128) { fclose(fh); return ""; }
 	hdr = fgets(fh);
@@ -95,7 +95,7 @@ void(string mark, string body) MP_DiskStore =
 	if (key == "") return;
 	// Written in place (fremove/frename are declared after this file); both
 	// readers validate the whole body, so a torn write is only a miss.
-	dst = strcat("cache/steampic/", key, ".txt");
+	dst = strcat("cache/steampic64/", key, ".txt");
 	fh = fopen(dst, FILE_WRITE);
 	if (fh < 0) return;
 	fputs(fh, sprintf("FTESURF-AVCACHE1 %s %s\n%s", key, strftime(TRUE, "%Y%m%d"), body));
@@ -110,8 +110,8 @@ float(float slot, string bdy) MP_Upload =
 	local int *px;
 
 	if (strlen(bdy) != MP_HEAD + MP_PX * MP_ROW) return FALSE;
-	if (strcmp(substring(bdy, 0, MP_HEAD), "FTESURF-AVATAR 1 32 32\n")) return FALSE;
-	for (i = MP_HEAD; i < strlen(bdy); i = i + 1)
+	if (strcmp(substring(bdy, 0, MP_HEAD), "FTESURF-AVATAR 1 64 64\n")) return FALSE;
+	for (i = MP_HEAD; i < MP_HEAD + MP_PX * MP_ROW; i = i + 1)
 	{
 		if (floor((i - MP_HEAD + 1) / MP_ROW) * MP_ROW == i - MP_HEAD + 1)
 		{
@@ -139,10 +139,10 @@ float(float slot, string bdy) MP_Upload =
 		px[i] = (hi >> 8) | ((hi & 255) << 8) | ((lo >> 8) << 16) | (a << 24);
 	}
 	if (!seen) { memfree(px); return FALSE; }
-	r_uploadimage(sprintf("menupic/%g", slot), MP_PX, MP_PX, px);
+	r_uploadimage(sprintf("menupic64/%g", slot), MP_PX, MP_PX, px);
 	memfree(px);
-	shaderforname(sprintf("menupic/%g", slot),
-	              sprintf("{\naffine\nnomipmaps\nprogram default2d\n{\nclampmap menupic/%g\nblendfunc blend\n}\nsort additive\n}\n", slot));
+	shaderforname(sprintf("menupic64/%g", slot),
+	              sprintf("{\naffine\nnomipmaps\nprogram default2d\n{\nclampmap menupic64/%g\nblendfunc blend\n}\nsort additive\n}\n", slot));
 	return TRUE;
 };
 
@@ -150,7 +150,9 @@ string(string mark) MP_Of =
 {
 	local float i, old;
 
-	if (strlen(mark) != 8 || mp_origin == "") return "";
+	if (mp_origin == "") return "";
+	if (strlen(mark) != 8)
+	if (strlen(mark) != 12) return "";
 	if (mp_bmark <= 0) mp_bmark = buf_create();
 	old = -1;
 	for (i = 0; i < MP_MAX; i = i + 1)
@@ -158,7 +160,7 @@ string(string mark) MP_Of =
 		if (!strcmp(bufstr_get(mp_bmark, i), mark)) { old = i; break; }
 	if (old < 0)
 	{
-		for (i = 0; i < 8; i = i + 1)
+		for (i = 0; i < strlen(mark); i = i + 1)
 			if (MP_Hex1(substring(mark, i, 1)) < 0) return "";
 		for (i = 0; i < MP_MAX; i = i + 1)
 		{
@@ -179,7 +181,7 @@ string(string mark) MP_Of =
 		mp_disked[old] = FALSE;     // MP_Frame tries the disk, two a frame
 	}
 	mp_used[old] = time;
-	return (mp_st[old] == MP_HAVE) ? sprintf("menupic/%g", old) : "";
+	return (mp_st[old] == MP_HAVE) ? sprintf("menupic64/%g", old) : "";
 };
 
 // Slots holding a mark, for ui_board_test's status (P795's arm).
@@ -270,7 +272,7 @@ void() MP_Frame =
 	mp_slot = i;
 	mp_asked = mp_asked + 1;
 	mp_req = mp_base + mp_asked;
-	if (!uri_get(sprintf("%s/api/board?avatar=%s", base, bufstr_get(mp_bmark, i)), mp_req))
+	if (!uri_get(sprintf("%s/api/board?avatar=%s&size=64", base, bufstr_get(mp_bmark, i)), mp_req))
 	{
 		mp_req = 0;
 		mp_next = time + 60;            // the directory's trouble: the mark stays wanted

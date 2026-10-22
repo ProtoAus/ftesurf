@@ -25,14 +25,13 @@ commit   3afdd0fa313394854c56f83c1d6a3c6a597f1c67
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-935
-patch    935
-# Compatible fleet source: current P931 REC13 + P932/P933 + reviewed P935 cosmetics.
-# Client API pin includes P935 presentation/cold-save fixes and published P937 audio ownership.
-# P936's 64px frontend and P937's CSQC instrument are NOT added by this backport.
-# Preserve current P933 social and exact recorder/hold/evidence source outside the
-# reviewed cosmetic/stat hunks; no held mainline producer or native-server promotion.
+patch    937
+# Current live50e7d8f3 P936 portraits/P937 instrument PLUS reviewed P935 cosmetics.
+# Client pin contains BOTH P935 renderer/loader/cold-save and P937 raw-audio ownership.
+# P935 was reserved before936/937; highest applied stays937. Existing64px and
+# instrument implementation remain exact. No held producer/recorder/policy change.
 # Compatible fleet source: P922 writer13 plus owned P924/P926/P927/P931 features.
-# The pin is the required CLIENT API. Existing lobby native/producer generation is retained.
+# The pin is the required CLIENT API. Lobby native/producer generation is retained.
 # This does NOT promote the independently held P923 producer/native set.
 # Patch 922: Local direction/Segmented/Practice controls, right-click pin until Esc,
 # and no zero-player Story labels. Mod-side only; native commit/tag unchanged.
