@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P924 — Source conveyor carry
+
+PENDING after the matching native/client and lobby update: stand on the belt at
+surf_parc_colore and the stage-4 belt at surf_classics. Check smooth carry and
+retained momentum when stepping or jumping off, without multiplying the boost.
+Normal-extrapolation dedicated belt/step-off controls pass at a .25-unit error
+threshold. Jump input and a separate legacy push-pad fixture did not ACT in the
+automated rig and are not physical acceptance; a quick in-game check is still
+needed. Once-pad and dynamic conveyor I/O/material animation are not claimed
+as runtime-tested. No owner acceptance has been received for this patch.
+Implementation and limits: tools/p924-conveyors.md.
+
 ## P922 — Local filters, right-click pin, quiet empty Story maps
 
 PENDING owner/native-panel visual acceptance. Both Windows sets are installed;

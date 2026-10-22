@@ -79,6 +79,8 @@ client/cl_soundscape.qc
 // Trig_RegisterCvars from CSQC_Init, Trig_LoadForMap from CSQC_WorldLoaded,
 // Trig_Frame from CSQC_UpdateView and Trig_ConsoleCommand from
 // CSQC_ConsoleCommand.
+// P924: metadata helper is called by the trigger loader and pre-move carrier mirror.
+client/cl_conveyor.qc
 client/cl_triggers.qc
 client/cl_maptier.qc
 client/cl_hud.qc

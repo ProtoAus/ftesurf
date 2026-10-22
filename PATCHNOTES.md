@@ -21,6 +21,10 @@
 
 ## next
 
+### P924 Source conveyor belts carry you
+- Static conveyor belts now carry you at their authored speed and direction, including parc_colore and classics stage 4. Stepping off keeps the belt momentum.
+- Client prediction follows the belt movement instead of repeatedly correcting your position.
+
 ### P923 Keep recording attempts separate
 - Starting or resuming a recording no longer carries another attempt's bookkeeping into the new recording. Existing recordings keep their original meaning.
 - A selected recording that cannot be completed is preserved privately for recovery instead of discarded. This does not create a leaderboard result or change the existing retention period.

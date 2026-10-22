@@ -505,6 +505,7 @@
 #define WOPLEG_CHUNKS          6
 #define STAT_FS_WOPACK         177  // the last op's command, sent with what it moved
 #define STAT_FS_SAVEROOT       178  // Patch 811: the player's save root, a string (SV_SaveRootFor)
+#define STAT_FS_SOURCEPHASE    179  // P924: atomic owner:seqlo:seqhi:native sub-tick remainder
 #define SL_TOKRATE             20   // sl_ commands a second, burst and sustained (SV_SaveLocRate)
 #define WOPD_NONE  0                // no prediction: the server would refuse or cannot say
 #define WOPD_KEEP  1                // destination, angles kept

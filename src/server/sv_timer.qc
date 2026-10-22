@@ -1088,6 +1088,14 @@ float rec_retry_armed;
 */
 // run_movetick: native cumulative mover ticks, declared in sv_monolith.qc (P732).
 .float  run_movecarry;           // sub-tick remainder, seconds
+// P924: one atomic stat pairs the native phase with its player and command.
+.float svpm_phase_lo, svpm_phase_hi;
+.string svpm_phase_stat;
+void(entity e) SV_SourcePhaseClear =
+{
+	if (strlen(e.svpm_phase_stat)) strunzone(e.svpm_phase_stat);
+	e.svpm_phase_stat = "";
+};
 // BUILD 87, engine Patch 346: what the mover was handed.  Optional fields, written
 // after every move; 0 on an older engine, and run_pmepoch > 0 is how the recorder
 // knows the engine publishes (a client cannot write an edict field).

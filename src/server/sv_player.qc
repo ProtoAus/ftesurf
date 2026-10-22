@@ -336,6 +336,7 @@ void() ClientConnect =
 
 void() ClientDisconnect =
 {
+	SV_SourcePhaseClear(self);
 	Archive_Reset(self);
 	SV_StartMarkForget(self);
 	Lobby_AnnDisconnect(self);          // Patch 371: the chat line, if the join was said
@@ -448,6 +449,7 @@ void() SetChangeParms = { };
 // entity stood orphaned until the map changed, one per cycle.
 void() SpectatorDisconnect =
 {
+	SV_SourcePhaseClear(self);
 	Account_Disconnect(self);
 	SV_ViewEyeDetach(self);
 };
@@ -457,6 +459,8 @@ void() SpectatorThink = { Account_Think(self); };
 void() PlayerPreThink =
 {
 	SV_HeldCheck(self);
+	self.svpm_phase_lo = input_cmd_sequence_lo;
+	self.svpm_phase_hi = input_cmd_sequence_hi;
 	// Patch 753: first, where a stringcmd sent just before this command would run.
 	SV_WarpOpCommand();
 
@@ -572,6 +576,7 @@ void() PlayerPreThink =
 	  written from .run_basevelocity a few lines into that call, so the file can
 	  only ever carry the clamped number.
 	*/
+	SV_ConveyorArm(self); // P924: arm before start-cap clamp and the existing ride handoff
 	if (self.run_t_state == TS_ARMED && self.run_t_armzone >= 0 &&
 	    SV_ZoneIn(self.run_t_armzone, self.origin,
 	              SV_RunHullMins(self), SV_RunHullMaxs(self)))
@@ -760,6 +765,8 @@ void() PlayerPostThink =
 	local vector dest;
 
 	SV_HeldCheck(self);
+	SV_SourcePhaseClear(self);
+	self.svpm_phase_stat = strzone(sprintf("%.0f:%.0f:%.0f:%.9g", num_for_edict(self), self.svpm_phase_lo, self.svpm_phase_hi, self.run_movecarry));
 	self.run_pkn = self.run_pkn + 1;    // Patch 382: the trigger gate's packet count
 
 	SV_WatchHoldMove(self);             // Patch 499: ahead of the watcher that reads it
