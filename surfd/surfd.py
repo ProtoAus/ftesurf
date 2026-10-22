@@ -2724,6 +2724,13 @@ def _board_scope(mapname, base, col):
             TIERS_IMPORTED + tuple(imports) + TIERS_IMPORTED + (mapname,))
 
 
+def _ksf_playback_family(mapname, base):
+    """Configured imported scope, never a BSP-equivalence or native-trust claim."""
+    return sorted({mapname} | ({base} | {
+        k for k, b in _variants["ports"].items() if b == base
+    } if base else set()))
+
+
 def _board_name_key(name):
     return web_plain(clean_text(name)).lower()
 
@@ -2794,8 +2801,7 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
             # `replays` id, 0 when no recording is indexed (a legitimate
             # time).  An integer: the client keeps rows in fixed float arrays,
             # and /api/replay's whole surface stays one integer.
-            "rep": (0 if row["rtier"] == TIER_KSF and row["rmap"] != mapname
-                    else row["replay_id"]),
+            "rep": row["replay_id"],
             # Schema 6: a stage row's parent replay (_PARENT_SQL), else 0.
             "run": row["prun"] or 0,
             "ver": row["ver"],
@@ -2806,6 +2812,9 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
         # that was asked for, so it would carry no information anyway.
         if combined:
             rows[-1]["tr"] = row["rtier"]
+        if row["rtier"] == TIER_KSF:
+            # Keep the real source-map cache folder; never rewrite the recording.
+            rows[-1]["map"] = row["rmap"]
         if row["rtier"] == TIER_MOMENTUM:
             import momrequest
             token = momrequest.handle(row)
@@ -3965,6 +3974,8 @@ def board():
                 + [(t, counts.get(t, 0)) for t in TIERS_IMPORTED]),
             "offset": offset,
             "rows": rows,
+            **({"family": _ksf_playback_family(mapname, base)}
+               if tier == TIER_KSF or TIER_KSF in TIER_EXPAND.get(tier, ()) else {}),
             **({"name": name_query} if name else {}),
         }
     )
