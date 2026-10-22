@@ -69,8 +69,8 @@ used. The failed/timeout arms are not counted as feature passes.
 
 ## Delivery
 
-Pending: inspect/commit/push source; build compatible recorder-preserving QC and
-backend variants; qualify the immutable backend source/runtime through the
-existing guarded transaction; promote backend first, then both Windows installs
-and all available empty lobbies; verify hashes and a fresh live client. Do not
-ship mainline producer/reader changes to the older fleet.
+Completed22Oct2026 23:18UTC with P937: tools/p936-p937-delivery.md has exact
+compatible50e7d8f3/backend3f97cf9c/native5fd6c6790 sources, destination hashes,
+full guarded suite/cutover/worker readback,12lobby rollout and fresh cold client.
+Mainline held producer/reader set was NOT shipped; REC13/schema20 preserved.
+Real-account appearance is still human-pending, not inferred from pixels.

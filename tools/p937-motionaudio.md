@@ -77,6 +77,7 @@ No audio module or input/frame wiring changed from the first reviewed snapshot.
 Actual listening remains owner-only; native ABI/recorder/physics semantics stay
 fixed. These controls do NOT establish concurrency/RSS/latency/performance.
 
-Implementation / final validation / deployment: in progress. P936 is published but still
-not deployed; prepare one compatible backend/progs delivery after offline audio
-work, not a succession of redundant fleet swaps. Serving P933 remains untouched.
+Implemented, independently reviewed, published and delivered22Oct2026 23:18UTC
+with P936. tools/p936-p937-delivery.md records matching compatible progs/backend,
+fixed native images, all12lobbies, hashes/fresh live client and preservation.
+P932/P933 and REC13/schema20/lobby native are preserved. Listening remains pending.
