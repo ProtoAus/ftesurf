@@ -106,6 +106,7 @@ string wt_nextmark;              // Patch 789: the board row's mark, set just be
 string(float slot) SteamPic_SlotMark;
 void(vector pos, float px, string mark, float has, string name) Profile_Face;
 string rec_wt_map;               // its `map` header key
+string rec_wt_playmap;           // P925: loaded-map lifetime, not a rewritten header
 float  rec_wt_endticks;          // the `end` record's tick count
 float  rec_wt_nsamp;             // samples in the file
 float  rec_wt_recflags;          // the `flags` header key, -1 when absent
@@ -685,6 +686,8 @@ void() Watch_Free =
 	Line_Clear(0);
 	rec_wt_evn  = 0;
 	rec_wt_ftn  = 0;                // Patch 778
+	if (rec_wt_playmap != "") strunzone(rec_wt_playmap);
+	rec_wt_playmap = "";
 	rec_wt_on   = FALSE;
 	rec_wt_wincut = FALSE;          // Patch 395: no window survives the file
 	rec_wt_winseg = -1;
@@ -4788,8 +4791,8 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 		return FALSE;
 	}
 
-	// KSF has only an external map-name binding, never a BSP digest. Do not
-	// fly its clip on another named map. Native/Momentum warning behavior stays.
+	// KSF is observational: a configured port family permits the camera path,
+	// not a claim that the BSP/physics match. Preserve the actual header map.
 	if (strcmp(rec_wt_source, "ksf") == 0)
 	{
 		if (rec_wt_map == "")
@@ -4799,20 +4802,27 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 			Watch_Free();
 			return FALSE;
 		}
-		if (strcmp(rec_wt_map, serverkey("map")) != 0)
+		if (!MapPort_Match(rec_wt_map, serverkey("map")))
 		{
 			print(sprintf("^3replay: this run is on %s and you are on %s -- "
-			              "KSF playback refused\n", rec_wt_map, serverkey("map")));
+			              "no configured KSF port link, playback refused\n", rec_wt_map, serverkey("map")));
 			Watch_Stop();
 			Watch_Free();
 			return FALSE;
 		}
+		rec_wt_playmap = strzone(serverkey("map"));
+		if (strcmp(rec_wt_map, serverkey("map")))
+			print(sprintf("^3replay: KSF build %s on linked port %s -- geometry may differ\n",
+			              rec_wt_map, serverkey("map")));
 	}
 	else if (rec_wt_map != "")
-	if (rec_wt_map != serverkey("map"))
-		print(sprintf("^3replay: this run is on %s and you are on %s -- "
-		              "the camera will fly through nothing\n",
-		              rec_wt_map, serverkey("map")));
+	{
+		rec_wt_playmap = strzone(rec_wt_map);
+		if (strcmp(rec_wt_map, serverkey("map")))
+			print(sprintf("^3replay: this run is on %s and you are on %s -- "
+			              "the camera will fly through nothing\n",
+			              rec_wt_map, serverkey("map")));
+	}
 
 	/*
 	  Said at the open rather than left in the header, because a number
@@ -5619,8 +5629,9 @@ void(vector scr) Watch_Info =
 	*/
 	s = (rec_wt_map != "") ? rec_wt_map : "unknown";
 	if (rec_wt_map != "")
-	if (rec_wt_map != serverkey("map"))
-		s = strcat(s, " (elsewhere)");
+	if (strcmp(rec_wt_map, serverkey("map")))
+		s = strcat(s, (!strcmp(rec_wt_source, "ksf") && !strcmp(rec_wt_playmap, serverkey("map")))
+		              ? " (linked build)" : " (elsewhere)");
 	Watch_InfoRow([p_x, y], w, sz, cw, "map", s);                           y = y + lh;
 
 	Watch_InfoRow([p_x, y], w, sz, cw, "tag", FS_TagName(rec_wt_tag));       y = y + lh;
@@ -5870,8 +5881,8 @@ void(float navfocus) Watch_Frame =
 
 	// The map changed under us.  The camera would be flying through another
 	// map's geometry, and the frozen player is a different edict now.
-	if (rec_wt_map != "")
-	if (rec_wt_map != serverkey("map"))
+	if (rec_wt_playmap != "")
+	if (strcmp(rec_wt_playmap, serverkey("map")))
 	{
 		Watch_Stop();
 		return;

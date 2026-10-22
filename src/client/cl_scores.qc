@@ -1546,10 +1546,7 @@ void(float row) Scores_LineToggle =
 		if (sb_ln_rep[i] < 1)
 		if (sb_ln_get[i])
 			sb_ln_st[i] = SBL_MOM;
-		s = "";
-		if (ob_have_zoned)
-			s = Online_CacheDir(ob_have_map, ob_have_track,
-			                    (sb_ln_leg[i] > 0) ? 0 : ob_have_leg);
+		s = Online_RowReplayHint(row);
 		sb_ln_hint[i] = strzone(s);
 		s = Online_ReplayFind(sb_ln_rep[i], s);
 		if (s == "")
