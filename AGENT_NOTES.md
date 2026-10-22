@@ -6677,17 +6677,20 @@ Measured Windows/NanoPi cleanup pitfalls (2026-10-08), not a product patch:
   filesystem roots for overlap, and match external mounted directory identities
   against the source inventory BEFORE unlinking. On 21 Oct an archive cleanup
   emptied three external bind views this way, despite never following its two
-  symlinks. The data was verified in R2 and the bind-source restore was started;
-  the privileged remount remains a separate required step. Recreating the source
-  pathname does not reconnect mounts pinned to the deleted inode. Overmounting
-  such a view also fails `ENOENT`: normally unmount the exact stale mount first,
-  then bind the verified replacement onto the revealed ordinary directory;
-  never clear underlying data or force/lazy-unmount a busy view. Actual kernel
-  controls in a private unprivileged mount namespace reproduced the failure and
-  proved ro/rw recovery, busy refusal, underlying-data preservation and safe
-  resume after a post-unmount bind failure, without changing host mounts. Preserve
-  the old read-only/read-write mount flags and do not delete a still-required bind
-  source merely because its cloud copy is verified.
+  symlinks. The R2-verified backing folder was restored and checksummed, then all
+  three views were normally unmounted/rebound with their original flags on 22 Oct.
+  Recreating the source pathname alone does not reconnect mounts pinned to the
+  deleted inode. Overmounting such a view also fails `ENOENT`: normally unmount
+  the exact stale mount first, then bind the verified replacement onto the revealed
+  ordinary directory; never clear underlying data or force/lazy-unmount a busy
+  view. Actual kernel controls in a private unprivileged mount namespace reproduced
+  the failure and proved ro/rw recovery, busy refusal, underlying-data preservation
+  and safe resume after a post-unmount bind failure, without changing host mounts.
+  Preserve the old mount flags and retain a required bind source despite its cloud
+  copy. A known whole-archive share may intentionally reflect the same archive
+  deletion, but requires explicit operator opt-in plus exact canonical-inode,
+  mount-ID/root/flags checks. Never blanket-exempt unknown or application/subtree
+  aliases. Final unused cleanup and all three repaired views passed postflight.
 - **POSIX unlink changes surviving hardlink aliases' ctime.** A strict guard
   can stop after deleting one alias even though the other name's bytes have
   not changed. Do not broadly ignore ctime: accept only an inode this exact
