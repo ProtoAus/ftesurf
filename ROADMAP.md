@@ -21,8 +21,10 @@ Remaining requested work (not silently folded into the completed items):
 - Game-running presence while disconnected, main-menu shared lobby/chat and DMs.
   Existing lobby-mediated friends/DM do not make a disconnected install online.
   Preserve account consent, mutual/blocked visibility and authenticated actions.
-- Height/ramp-driven sine tone and drums on A/D press; audible owner acceptance
-  and explicit local opt-in/volume are needed, not just sample-generation tests.
+- Height-driven sine and A/D drums are implemented as P937, default-off with
+  local volume. Native fixture/volume0 controls pass; independent frame/input
+  review and compatible delivery are pending. Listening/feel is
+  owner-only acceptance (tools/p937-motionaudio.md, lextest.md).
 - Native sorted `bindlist` is implemented as P934; controls and exact delivery
   state are in tools/p934-bindlist.md, rather than assumed from publication.
 - Practice-only slow motion via host_timescale, preserving fixed movement ticks

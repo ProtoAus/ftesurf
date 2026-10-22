@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   35345c00d23269639c4db29609b7390527856be7
+commit   3afdd0fa313394854c56f83c1d6a3c6a597f1c67
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -25,10 +25,12 @@ commit   35345c00d23269639c4db29609b7390527856be7
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-935
-patch    936
+patch    937
+# Patch 937: optional local altitude sine/A-D drums; fixed native raw-buffer EOF ownership.
+# The P935 source pin includes that published ownership fix; no input/body/evidence/ABI change.
 # Patch 936: retain 64px Steam portrait detail in game/menu, preserving legacy 32px clients.
 # Patch 935: opt-in Source weapon/Foley feel, weapon depth/eye samples and buffered cold saves.
-# P935 was reserved before P936; patch above remains the highest applied number.
+# P935 was reserved before P936/P937; patch above remains the highest applied number.
 # Patch 934: native local-console bindlist; sorted modifiers/maps, no binding changes.
 # Patch 933: compact fresh friends, stage/bonus presence, menu profiles and double-click selection.
 # Patch 932: KSF playback on explicit Momentum map-port families, source identity

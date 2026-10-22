@@ -135,6 +135,7 @@ void() CSQC_WorldLoaded =
 
 	// Patch 475: the trail's two slots may still hold the LAST map's run -- the
 	// arenas outlive a map change and only the CSQC globals are zeroed.
+	MA_Reset();
 	LineGraph_Reset();
 	Trail_Reset();
 	RG_Reset();                     // Patch 746: and the race ghost's two PB slots
@@ -343,6 +344,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Emit_RegisterCvars();
 	Snds_RegisterCvars();           // build 66, env_soundscape
 	GA_Register();                 // local movement Foley from mounted CSS
+	MA_Register();                 // opt-in local altitude tone and A/D drums
 	WP_Register();                 // mounted viewmodels, no bind overrides
 	MapMsg_Init();                  // Patch 870, map text and screen effects
 	Ropes_RegisterCvars();          // Patch 874, env_sun and ropes
@@ -837,7 +839,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	print("FTESurf CSQC loaded\n");
 };
 
-void() CSQC_Shutdown = { Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
+void() CSQC_Shutdown = { MA_Shutdown(); Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
 
 /*
   Forced view angles from the server -- svc_setangle, its relative form, and
@@ -1496,11 +1498,13 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 		return TRUE;
 	}
 
+	MA_Release(evtype, scanx);         // clear held latches even when a UI takes keyup
 	Paint_InputEvent(evtype, scanx);    // Patch 773: watches only
 	Share_Track(evtype, scanx);         // Patch 777: the same
 	cl_input_real = TRUE;
 	took = CL_InputEvent(evtype, scanx, chary, devid);
 	cl_input_real = FALSE;
+	if (!took) MA_Key(evtype, scanx);   // observes declined gameplay keys; never consumes one
 	return took;
 };
 
@@ -1741,6 +1745,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// the trace pass is on a 4 Hz timer and only the volume ramp runs per frame.
 	Snds_Frame();
 	GA_Frame();                    // actual local body, after camera/body capture
+	MA_Frame(notmenu);              // same body, bounded local audio only
 
 	// Patch 335.  Normally empty; it is the retry for a map whose entity lump
 	// was not readable when WorldLoaded ran (Patch 207's ordering wart).
@@ -2046,6 +2051,7 @@ float(string cmd) CSQC_ConsoleCommand =
 	cl_input_real = FALSE;
 	tokenize(cmd);
 	if (GA_Command()) return TRUE;
+	if (MA_Command()) return TRUE;
 	if (WP_Command()) return TRUE;
 	if (argv(0) == "milk_skyinfo")
 	{

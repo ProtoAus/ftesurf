@@ -112,11 +112,25 @@ Independent review findings and focused corrections:
   leak. The corrected failure stays nonzero/native status3 but prints neither
   the sentinel name nor a traceback; stderr/exception text are not exposed.
 - Both fixes compile0/0/0 warnings. Initial native review found no native-source
-  blocker; focused finding closure is pending. No player data was changed.
+  blocker. Both focused follow-ups close P1/P2 with no remaining source-backed
+  findings (read-only reviews, runtime evidence supplied by parent). No player
+  data was changed.
 
-Status: implemented/isolated-verified, not yet delivered. Independent frozen
-review, final clean-commit build, guarded dual Windows and compatible fleet
-progs remain in scope. Human visual/aural feel remains in lextest.md. No full
-combat/ammo simulation, qualifying-recording claim or NanoPi native promotion
-is implied. P935 was reserved before P936; highest-applied patch stays936 while
-the native source pin moves for P935. A passed actor is not task completion.
+Status: implemented, independently reviewed and clean-source Full-built; not yet
+shared-target delivered. The clean tagged cohort restores the same clock/body
+and running shadow recorder; pure cold acknowledgment.62s including100ms query
+wait. A separate2.17s arm also ran native version/system-info first and is not
+called pure load latency. A three-word `give weapon usp` diagnostic is invalid
+syntax and correctly hits the old cheat gate; it is NOT a weapon-ready pass.
+Use the requested two-word `give weapon_usp` or `give usp` for the acting check.
+
+Published P937's native raw-buffer ownership fix is integrated without changing
+P935's native source hunks; its frame/key hooks are disjoint from the read-only
+walk-bit observer. Native/QC highest-applied patch is937; P935 was reserved
+before P936/P937. P936's frontend remains backend-first and unpromoted. Another
+workstream is preparing that combined deployment, so shared Windows/lobby swaps
+need one coordinated owner rather than racing independent frozen artifacts.
+No maintenance gate/process is active. Guarded dual Windows and recorder13
+compatible fleet progs, destination/live checks and final retention remain in
+scope. Human visual/aural feel remains in lextest.md. No full combat/ammo,
+qualifying-recording or NanoPi native-promotion claim is implied.
