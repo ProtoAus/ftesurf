@@ -1342,6 +1342,24 @@ Fixed items are removed; remaining reader contracts need acting controls.
 - fluidadj_model (q1bsp.c) is keyed on the world's address: a restart that reloads the same map
   is harmless; a different map at the same address was not constructed.
 
+## KSF variant top-up loses the exact imported map — observed 22 Oct
+
+- Site: `surfd/surfd.py:ksf_topup_request`, its unconditional
+  `variant_base(mp) or mp`, and exact-source `mapwant` priority.
+- `surf_chateau` aggregates197 Normal KSF times from `surf_chateau_fix`, but a
+  top-up POST for the real `_fix` main leg is normalized to the plain name,
+  which owns no KSF rows, and returns404 `unknown KSF leg`. The existing
+  `ksftopup.known_leg`/`enqueue` accepts that same exact `_fix` scope; the
+  failure is scope selection, not an unknown source board. Normal imported
+  GET demand also records only the plain name, not the demo source map.
+- Falsifier for a fix: a temporary database with KSF rows only under the
+  imported variant and a corresponding base mapping. POST the known variant's
+  main leg: expect202 and a queue key for the actual imported scope; an unknown
+  leg must still404 and normal caps/coalescing must still act. Demand should
+  also reach the exact source map used by demo discovery.
+- Do not fix this by enabling KSF playback across different map names: sharing
+  times does not authorize replaying or relabeling the other map's recording.
+
 ## KSF converter: P757 is live; its falsifier is not run yet
 
 - Site: `tools/ksfconvert.py` (P757). Live since 2026-10-17T22:58:21Z: the
