@@ -5,6 +5,16 @@ installs and compatible progs on all12lobbies (22October2026 UTC). This is
 availability, NOT human acceptance. Native client fixes require the updated
 Windows engine. Exact sources/readbacks/live proof: tools/p931-delivery.md.
 
+## P937 — optional movement instrument (22 Oct 2026)
+PENDING owner after matching delivery (tools/p937-motionaudio.md): while playing,
+try `cl_surf_tone 1` and surf up/down a ramp. Pitch follows body height relative
+to enabling/recentering, not camera bob; 1024 units per octave, 220Hz reference.
+Try `cl_surf_drums 1`: A kicks, D snares; chat typing should stay silent. Both
+are off by default; `cl_surf_audio_volume 0.15` is the initial gentle setting.
+Confirm the sound, latency and volume balance are pleasant. Use `cl_surf_tone 0`
+and `cl_surf_drums 0` to stop, or volume0. Native muted queue/counter/body/input
+checks are not a speaker/headphone, musical feel or performance acceptance.
+
 ## P936 — clearer Steam portraits (22 Oct 2026)
 Implementation/native fixture validation is complete; deployment provenance is
 tracked in tools/p936-portraits.md. Do not assume availability until that receipt

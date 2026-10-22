@@ -25,7 +25,8 @@ commit   f76bd37bfee96521c4d845dc16da5bba1af5ef8b
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-934
-patch    936
+patch    937
+# Patch 937: optional local altitude sine and A/D drums; no input/body/evidence writes.
 # Patch 936: retain 64px Steam portrait detail in game/menu, preserving legacy 32px clients.
 # Patch 934: native local-console bindlist; sorted modifiers/maps, no binding changes.
 # Patch 933: compact fresh friends, stage/bonus presence, menu profiles and double-click selection.

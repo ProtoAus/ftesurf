@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## P937 — native raw-audio fixture (2026-10-22)
+
+- `queueaudio` uses INTEGER ABI arguments for rate/channels/format/pointer/frame
+  count, but a FLOAT return (1 on accepted format/data). Signed16 is -16i. It
+  refuses rate0/frame0; those are NOT a flush. The local instrument submits one
+  finite fade block then stops feeding. There is one raw stream per VM, so mix
+  tone/drums together; do not independently overwrite the CSQC source later.
+- `p937motionaudio.py` uses a real dedicated socket, owned minimized/no-activation
+  client and normal WM key messages to THAT window. Only its own `volume0` and
+  `s_inactive0` mute it; do not touch system/owner volume. Do not use -nosound
+  when claiming the mixer queue ACTED. Positive queue/drain is not listening.
+- Audio needs no online/recording consent: the fixture keeps rec_terms0, writes
+  no consent file, and asserts no run data. Use per-query echo markers before
+  reading diagnostics; an earlier recenter response must not masquerade as the
+  next query. The height assertion uses the same captured body/anchor snapshot,
+  not camera height, guessed jump height or a movement-accuracy claim.
+
 ## P936 — portrait transport and current picture fixtures (2026-10-22)
 
 - Steam's already-kept `_medium` JPEG is 64px. The default game text copy stays
