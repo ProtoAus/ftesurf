@@ -117,12 +117,19 @@ Independent review findings and focused corrections:
   data was changed.
 
 Status: implemented, independently reviewed and clean-source Full-built; not yet
-shared-target delivered. The clean tagged cohort restores the same clock/body
-and running shadow recorder; pure cold acknowledgment.62s including100ms query
-wait. A separate2.17s arm also ran native version/system-info first and is not
-called pure load latency. A three-word `give weapon usp` diagnostic is invalid
-syntax and correctly hits the old cheat gate; it is NOT a weapon-ready pass.
-Use the requested two-word `give weapon_usp` or `give usp` for the acting check.
+shared-target delivered. The pre-P937-integration clean cohort35345c00d /
+QCae9e483c restores the same clock/body and running shadow recorder; pure cold
+acknowledgment.62s including100ms query wait. A separate2.17s arm also ran native
+version/system-info first and is not called pure load latency. A three-word
+`give weapon usp` diagnostic is invalid syntax and correctly hits the old cheat
+gate; it is NOT a weapon-ready pass.
+
+Integrated clean3afdd0fa3 / QCdb701488 Full build: all3VM0/0/0, no compiler
+diagnostics in changed native units; clangdb regenerated. Requested TWO-word
+`give weapon_usp` ACTS with sv_cheats0/run_shoot0: hidden/default0 -> selected2,
+ready1, actual USP idle, FOV54, callback1/draw-sound1 at Weapon_USP.Slideback.
+Feet remain inactive0/steps0. This proves default opt-in and queued draw sound,
+not listening/visual feel. Source code blobs remain identical to reviews.
 
 Published P937's native raw-buffer ownership fix is integrated without changing
 P935's native source hunks; its frame/key hooks are disjoint from the read-only
@@ -134,3 +141,9 @@ No maintenance gate/process is active. Guarded dual Windows and recorder13
 compatible fleet progs, destination/live checks and final retention remain in
 scope. Human visual/aural feel remains in lextest.md. No full combat/ammo,
 qualifying-recording or NanoPi native-promotion claim is implied.
+
+Published sources and checksum-pinned clean artifacts, including a recorder13
+backport on actual current P932/P933 baseline, are listed in p935-delivery.md.
+Both mainline and compatible clean builds are0/0/0. These are prepared inputs,
+NOT shared-target deployment evidence; one swap owner/backend-first readiness
+and destination/live checks are still required.
