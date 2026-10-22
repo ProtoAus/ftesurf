@@ -1263,6 +1263,62 @@ else:
           "route",
           (r.status_code, r.mimetype, r.get_data(as_text=True).split("\n")[0]),
           (200, "text/plain", "FTESURF-AVATAR 1 32 32"))
+    before_pics = {f: hashlib.sha256(open(os.path.join(m.AVATAR_DIR, f), "rb").read()).hexdigest()
+                   for f in files()}
+    before_fetches = len(FETCHED)
+    large = anon.get("/api/board?avatar=" + WHO1 + "&size=64")
+    high = large.get_data(as_text=True).split("\n")
+    check("P936: explicit 64px uses the kept source JPEG, without changing the legacy 32px "
+          "endpoint, fetching from Steam or writing picture files",
+          (large.status_code, large.mimetype, high[0], len(high),
+           {len(row) for row in high[1:65]}, high[-1],
+           r.get_data() == steamsync.game_form(JPEG).encode(),
+           before_fetches == len(FETCHED), before_pics == {
+               f: hashlib.sha256(open(os.path.join(m.AVATAR_DIR, f), "rb").read()).hexdigest()
+               for f in files()}),
+          (200, "text/plain", "FTESURF-AVATAR 1 64 64", 66, {512}, "", True, True, True))
+    check("P936: 32px and 64px have different conditional identities; a 64px cache hit is 304",
+          (anon.get("/api/board?avatar=" + WHO1 + "&size=64",
+                    headers={"If-None-Match": r.headers.get("ETag", "")}).status_code,
+           anon.get("/api/board?avatar=" + WHO1 + "&size=64",
+                    headers={"If-None-Match": large.headers.get("ETag", "")}).status_code,
+           m._avatar64.cache_info().maxsize), (200, 304, 64))
+    check("P936: the browser's existing public profile handle resolves to the same 64px "
+          "picture, without expanding the legacy 32px endpoint",
+          (anon.get("/api/board?avatar=" + h1 + "&size=64").get_data() == large.get_data(),
+           anon.get("/api/board?avatar=" + h1).status_code,
+           anon.get("/api/board?avatar=" + "f" * 12 + "&size=64").status_code),
+          (True, 404, 404))
+    check("P936: arbitrary requested dimensions are refused",
+          [anon.get("/api/board?avatar=" + WHO1 + "&size=" + size).status_code
+           for size in ("0", "63", "128", "-1")], [400, 400, 400, 400])
+    pattern = _Image.new("RGBA", (64, 64))
+    pattern.putdata([(255 * (x % 2), 0, 0, 255) for y in range(64) for x in range(64)])
+    pattern_bytes = _bio.BytesIO()
+    pattern.save(pattern_bytes, "PNG")
+    encoded = ST.game_form(pattern_bytes.getvalue(), 64)
+    reduced = ST.game_form(pattern_bytes.getvalue(), 32)
+    exact = bytes.fromhex("".join(encoded.splitlines()[1:]))
+    low = bytes.fromhex("".join(reduced.splitlines()[1:]))
+    check("P936: real 64px detail survives pixel-for-pixel, not an upscale of the 32px copy",
+          (exact == pattern.tobytes(), all(0 < value < 255 for value in low[0::4]),
+           ST.game_form(JPEG, 63), ST.game_form(CUT, 64),
+           ST.game_form(_pic("JPEG", (1025, 8)), 64)), (True, True, None, None, None))
+    jpeg_path = os.path.join(m.AVATAR_DIR, HA + ".jpg")
+    try:
+        with open(jpeg_path, "wb") as fh:
+            fh.write(b"x" * (ST.HTTP_LIMIT + 1))
+        too_large = anon.get("/api/board?avatar=" + WHO1 + "&size=64").status_code
+        with open(jpeg_path, "wb") as fh:
+            fh.write(CUT)
+        cut_code = anon.get("/api/board?avatar=" + WHO1 + "&size=64").status_code
+    finally:
+        with open(jpeg_path, "wb") as fh:
+            fh.write(JPEG)
+    check("P936: over-limit and broken kept JPEGs fail closed; a replacement invalidates "
+          "the cache (CONTROL: the restored source is served)",
+          (too_large, cut_code, anon.get("/api/board?avatar=" + WHO1 + "&size=64").status_code),
+          (404, 404, 200))
     check("...and nothing for a mark nobody has, a malformed one, or an account whose "
           "picture was not kept",
           [anon.get("/api/board?avatar=" + x).status_code
@@ -1304,26 +1360,31 @@ else:
           "starts it again",
           (ban(c, token, SID)[1], anon.get("/board/avatar/" + h1).status_code,
            anon.get("/api/board?avatar=" + WHO1).status_code,
+           anon.get("/api/board?avatar=" + WHO1 + "&size=64").status_code,
+           anon.get("/api/board?avatar=" + h1 + "&size=64").status_code,
            ban(c, token, SID, action="unban")[1],
-           anon.get("/board/avatar/" + h1).status_code), (True, 404, 404, True, 200))
+           anon.get("/board/avatar/" + h1).status_code), (True, 404, 404, 404, 404, True, 200))
 
     real_who = A.who_of
     A.who_of = lambda sid: "abcdef01" if sid in (SID, SID3) else real_who(sid)
     m.avatars_reset()
     clash = (anon.get("/api/board?avatar=abcdef01").status_code, first("/api/board?map=surf_test"),
-             anon.get("/board/avatar/" + h1).status_code)
+             anon.get("/board/avatar/" + h1).status_code,
+             anon.get("/api/board?avatar=abcdef01&size=64").status_code)
     A.who_of = real_who
     m.avatars_reset()
     check("an account whose 8-hex mark another account shares, pictured or not, has no "
           "picture in the game (it could not tell them apart); the site, which knows them by "
-          "handle, still has it", clash, (404, None, 200))
+          "handle, still has it", clash, (404, None, 200, 404))
 
     keep, m.RANKED_LINKED = m.RANKED_LINKED, False
-    off = anon.get("/api/board?avatar=" + WHO1).status_code
+    off = (anon.get("/api/board?avatar=" + WHO1).status_code,
+           anon.get("/api/board?avatar=" + WHO1 + "&size=64").status_code,
+           anon.get("/api/board?avatar=" + h1 + "&size=64").status_code)
     m.RANKED_LINKED = keep
     check("with the board by install and not by account a mark is the digest of a string its "
           "client chose, and the game's route answers nothing (CONTROL: back on, it does)",
-          (off, anon.get("/api/board?avatar=" + WHO1).status_code), (404, 200))
+          (off, anon.get("/api/board?avatar=" + WHO1).status_code), ((404, 404, 404), 200))
     # --- Patch 660: the players of imported rows, who are nobody's account ---
     import time
     IM1, IM2, IM3, IM4 = ("76561198000000101", "76561198000000102", "76561198000000103",

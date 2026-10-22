@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-steam.py -- what surfd asks Steam: an OpenID sign-in and a profile.  Stdlib only.
+steam.py -- Steam identity checks (stdlib), plus an optional Pillow avatar codec.
 
 A sign-in has THREE answers: a SteamID, Refused (a local check or Steam said
 no) and Unavailable (Steam was not reached).  The third is not a refusal and
@@ -11,6 +11,7 @@ is not reloaded with it.
 """
 
 import calendar
+import io
 import json
 import re
 import ssl
@@ -57,6 +58,26 @@ class Refused(Exception):
 
 class Unavailable(Exception):
     """Steam could not be asked.  Never carries a URL: one of them holds a key."""
+
+
+def game_form(jpeg, size=32):
+    """Bounded RGBA hex transport; 32px remains the legacy default."""
+    if type(size) is not int or size not in (32, 64):
+        return None
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    try:
+        with Image.open(io.BytesIO(jpeg)) as source:
+            if max(source.size) > 1024:
+                return None
+            img = source.convert("RGBA").resize((size, size), Image.LANCZOS)
+    except Exception:           # Pillow's own exceptions and OSError
+        return None
+    px, row = img.tobytes(), size * 4
+    return ("FTESURF-AVATAR 1 %d %d\n" % (size, size)
+            + "".join(px[y * row:(y + 1) * row].hex() + "\n" for y in range(size)))
 
 
 def is_steamid64(s):
