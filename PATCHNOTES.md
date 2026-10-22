@@ -21,6 +21,9 @@
 
 ## next
 
+### P929 Stable lobby names
+- Servers are now Open Lobby #1 through Open Lobby #12. Their names no longer promise a map tier or mode that changes when someone chooses a different map.
+
 ### P927 Hear your feet and the water
 - Add local footsteps, landing impacts, water entry/exit and swimming sounds using your mounted CS:S content. Walking sounds follow body travel, not camera movement; cl_game_sfx controls their volume.
 

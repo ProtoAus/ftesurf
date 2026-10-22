@@ -25,7 +25,8 @@ commit   a0ebb9d06afd0e9fe552bb86030be34c809d97c8
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-924
-patch    927
+patch    929
+# Patch 929: stable Open Lobby #1 through #12 names; ports/rotations unchanged.
 # Patch 927: mounted CS:S local-body footsteps, landing and water Foley.
 # Patch 926: rotated trigger prediction uses authored angles and linked world bounds.
 # Patch 924: static Source conveyor carry and exact-ground prediction metadata.
