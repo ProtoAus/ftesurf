@@ -1357,8 +1357,10 @@ Fixed items are removed; remaining reader contracts need acting controls.
   main leg: expect202 and a queue key for the actual imported scope; an unknown
   leg must still404 and normal caps/coalescing must still act. Demand should
   also reach the exact source map used by demo discovery.
-- Do not fix this by enabling KSF playback across different map names: sharing
-  times does not authorize replaying or relabeling the other map's recording.
+- P932 separately permits observational KSF playback on configured map-port
+  families at the owner's request, retaining the actual source and imported
+  status. That permission does not fix this top-up scope loss and must not be
+  mistaken for queue-source selection, BSP identity or a relabeled recording.
 
 ## KSF converter: P757 is live; its falsifier is not run yet
 

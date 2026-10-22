@@ -1293,7 +1293,7 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
         self.assertEqual(state['jobs'],{})
         self.assertEqual(len(state['failed']),1)
 
-    def test_variant_board_times_survive_without_unplayable_watch(self):
+    def test_linked_variant_board_exposes_recording_and_source_map(self):
         rid=G.install(self.conn,self.job,binary())
         path=Path(S.DATA_DIR)/'mapwatch/catalogue.json'
         path.parent.mkdir(parents=True,exist_ok=True)
@@ -1303,8 +1303,34 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
             base=cl.get('/api/board?map=surf_test&tier=ksf').get_json()
             variant=cl.get('/api/board?map=surf_test_css&tier=ksf').get_json()
         self.assertEqual(base['rows'][0]['rep'],rid)
-        self.assertEqual(variant['rows'][0]['rep'],0)
+        self.assertEqual(variant['rows'][0]['rep'],rid)
+        self.assertEqual(variant['rows'][0]['map'],'surf_test')
+        self.assertEqual(variant['family'],['surf_test','surf_test_css'])
         self.assertEqual(base['rows'][0]['ms'],variant['rows'][0]['ms'])
+        self.assertFalse(variant['rows'][0]['ver'])
+
+    def test_real_ksf_port_playback_scope_is_explicit_and_keeps_native_bytes(self):
+        rid=G.install(self.conn,self.job,binary())
+        other=raw(record_id=222)
+        K.write_rows([K.rec_row('surf_test_fix',0,0,other)])
+        port_id=G.install(self.conn,G.candidate('surf_test_fix',0,0,other),binary())
+        path=Path(S.DATA_DIR)/'mapwatch/catalogue.json'
+        path.parent.mkdir(parents=True,exist_ok=True)
+        path.write_text(json.dumps({'maps':{'surf_test_fix':{'of':'surf_test','port':True}}}))
+        S._variants['at']=None
+        with S.app.test_client() as cl:
+            for mp in ['surf_test','surf_test_fix']:
+                reply=cl.get('/api/board?map='+mp+'&tier=ksf').get_json()
+                self.assertEqual(reply['family'],['surf_test','surf_test_fix'])
+                self.assertEqual({r['rep']:r['map'] for r in reply['rows']},
+                                 {rid:'surf_test',port_id:'surf_test_fix'})
+                self.assertTrue(all(not r['ver'] for r in reply['rows']))
+            for mp in ['surf_other','surf_test_css']:
+                reply=cl.get('/api/board?map='+mp+'&tier=ksf').get_json()
+                self.assertEqual(reply['rows'],[])
+                self.assertEqual(reply['family'],[mp])
+            native=cl.get('/api/board?map=surf_test&tier=ranked').get_json()
+            self.assertNotIn('family',native)
 
     def stage_map(self, stages=4, linear=False):
         K._save(os.path.join(self.cache, 'maps', 'surf_test.json'),

@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P932 — KSF Watch on linked Momentum maps
+
+PENDING after matching client/backend delivery: on surf_chateau, open Online,
+choose KSF and Watch Leacon's 0:46.470 recording. Confirm the camera keeps moving,
+pause/seek work and closing returns control. The info card must retain
+surf_chateau_fix as a linked build and say imported/not verified; the loaded
+map remains surf_chateau. Geometry may differ between versions. Dedicated
+normalized/original playback, missing/unrelated/native mismatch/map-change
+controls, JSON-family admission and one-download warm cache all pass. The
+retained screenshot was inspected; physical feel is not owner-confirmed.
+Details: tools/p928-ksf-ports.md (P928 test transport, final product P932).
+No claim of exact BSP or native run verification.
+
 ## P931 — CS:S held weapons
 
 PENDING after matching delivery: use surf_weapon knife / usp / scout / glock,

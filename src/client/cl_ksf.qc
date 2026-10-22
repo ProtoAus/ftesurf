@@ -41,9 +41,9 @@ float(string path, float buf, string boundmap, float bonus, string style) KSF_Bu
 	local int buttons, classified;
 	local string row, moves;
 
-	if (boundmap == "" || strcmp(boundmap, serverkey("map")))
+	if (boundmap == "" || !MapPort_Match(boundmap, serverkey("map")))
 	{
-		print("replay: KSF explicit map binding differs from the loaded map -- refused\n");
+		print("replay: KSF explicit map binding differs (no configured port link) -- refused\n");
 		return FALSE;
 	}
 	if (bonus < 0 || bonus > 69 || bonus != floor(bonus)) return FALSE;

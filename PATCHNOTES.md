@@ -21,6 +21,10 @@
 
 ## next
 
+### P932 Watch KSF runs on linked Momentum maps
+- KSF recordings can play on their configured Momentum map versions, including surf_chateau. Original KSF files and downloaded recordings use the same map links; unrelated maps are still refused.
+- Linked recordings keep their actual source-map name and imported status. Downloaded recordings can be watched again from cache without fetching the same file twice.
+
 ### P931 Bring a knife—or a Glock
 - Add mounted CS:S knife, USP, Scout and Glock viewmodels with idle/fire animations and shot sounds. Select with surf_weapon knife, usp, scout or glock; existing save keys stay unchanged.
 - Basic attacks use supported map buttons/breakables, retaining the server's shared-damage gates and no PvP. cl_viewweapon hides the model; cl_viewweapon_left swaps hands.

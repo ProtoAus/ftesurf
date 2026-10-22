@@ -8,6 +8,7 @@ into `runs`: what is under test is which rows a board READS.
 """
 import atexit
 import importlib
+import importlib.util
 import json
 import logging
 import os
@@ -168,10 +169,47 @@ def main():
     check("...and a board asked for the ordinary way is still a board",
           (r.status_code, [x["name"] for x in r.get_json()["rows"]]), (200, ["ksf-1", "ksf-2"]))
 
+    if os.environ.get("SURFD_BASELINE_MODULE"):
+        baseline_contrast(os.environ["SURFD_BASELINE_MODULE"])
     print("\n%d failed" % len(FAILED))
     for f in FAILED:
         print("  " + f)
     return 1 if FAILED else 0
+
+
+def baseline_contrast(path):
+    """Same tiny fixture, same synthetic response clock, old/new actual bytes."""
+    from unittest.mock import patch
+    # Earlier negative arms intentionally removed the catalogue.
+    catalogue({"surf_x_css": {"of": "surf_x"},
+               "surf_x_ksf": {"of": "surf_x", "port": True}})
+    conn = S.connect()
+    conn.execute("UPDATE runs SET replay_id=919 WHERE tier='ksf' AND player='ksf-1'")
+    conn.commit()
+    conn.close()
+    spec = importlib.util.spec_from_file_location("surfd_before_ports", path)
+    old = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = old
+    spec.loader.exec_module(old)
+    old._rate.clear()
+    S._rate.clear()
+    previous, current = old.app.test_client(), S.app.test_client()
+    # Freeze only this throwaway fixture's response clock: compare every byte.
+    with patch("time.time", return_value=1700000000):
+        for mp in ("surf_x", "surf_x_css", "surf_x_ksf"):
+            for tier in ("ranked", "community"):
+                query = dict(map=mp, tier=tier, track=0, leg=0, style="clean")
+                a = previous.get("/api/board", query_string=query)
+                b = current.get("/api/board", query_string=query)
+                check("native-only status " + mp + "/" + tier,
+                      (a.status_code, b.status_code), (200, 200))
+                check("native-only exact bytes " + mp + "/" + tier,
+                      a.get_data() == b.get_data(), True)
+        query = dict(map="surf_x_css", tier="ksf", style="clean")
+        a = previous.get("/api/board", query_string=query).get_json()
+        b = current.get("/api/board", query_string=query).get_json()
+        check("old masking control really acted", any(r["rep"] == 919 for r in a["rows"]), False)
+        check("new linked recording really exposed", any(r["rep"] == 919 for r in b["rows"]), True)
 
 
 if __name__ == "__main__":

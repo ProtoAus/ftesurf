@@ -132,6 +132,7 @@ client/cl_lines.qc
 // AFTER cl_zones.qc: the path is drawn with Zone_Line, and before cl_main.qc,
 // which calls into it from CSQC_UpdateView and CSQC_InputEvent.
 // Original KSF CSS/66t binary normalization into Watch's imported buffer.
+client/cl_mapports.qc
 client/cl_ksf.qc
 client/cl_watch.qc
 // Patch 475: the live run line, slots 9 and 10.  AFTER cl_lines.qc (it feeds

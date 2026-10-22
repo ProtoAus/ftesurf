@@ -25,7 +25,9 @@ commit   a0ebb9d06afd0e9fe552bb86030be34c809d97c8
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-924
-patch    931
+patch    932
+# Patch 932: KSF playback on explicit Momentum map-port families, source identity
+# and imported status retained; native/Momentum fences unchanged.
 # Patch 931: basic mounted CS:S knife/USP/scout/Glock idle/fire and map-target attacks.
 # Patch 930: updated 100-slot Story and Event lists, Momentum-first roster names.
 # Patch 929: stable Open Lobby #1 through #12 names; ports/rotations unchanged.
