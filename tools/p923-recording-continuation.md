@@ -93,9 +93,14 @@ fixtures are bound to their original native artifacts and correctly refuse on
 ARM. The existing genuine-source actor is Windows-only. No fixture identities
 were rebound and these refusals are not positive ARM admission. No new native or
 P923 producer was installed. Matching-platform genuine-source acceptance and a
-fresh guarded promotion remain; the separate P922 progs attempt also stopped
-before upload when a player joined. No force or partial producer swap bypassed
-these boundaries.
+fresh guarded promotion remain. The separate P922 progs attempt initially stopped
+before upload when a player joined. At **13:39 UTC**, explicit current permission
+to disconnect that player allowed the normal P922 `-PiForce` rollout: all12 units
+restarted on the verified compatible P922 pair with the unchanged native engine.
+An unseeded client downloaded its exact CSQC and drew the board without QC errors;
+public backend routes stayed200. That permission did not bypass P923 ARM acceptance
+or promote a partial P923 producer/native set. See `p922scoreboard.md` for exact
+artifacts and destination/rollback provenance.
 
 No release, Build-number bump, historical reread/reclassification, broader
 collection/access/retention, threshold/badge change or human/device attestation is

@@ -3,8 +3,9 @@
 ## P922 — Local filters, right-click pin, quiet empty Story maps
 
 PENDING owner/native-panel visual acceptance. Both Windows sets are installed;
-Pi promotion is held by a connected player, so a Pi lobby can still download its
-older CSQC. Do not grade these checks against that older server pair.
+the owner-approved P922 Pi rollout completed22Oct13:39UTC on all12 lobbies.
+An unseeded client downloaded the exact new CSQC and drew the board, but that
+smoke is not manual acceptance of the Local filters, pin behavior or Story art.
 - On TAB, right-click, release TAB, then right-click again: the board stays up.
   Press Esc once (also while searching): board/cursor close. Without right-click,
   ordinary TAB hold/release still closes it.
@@ -16,9 +17,9 @@ older CSQC. Do not grade these checks against that older server pair.
 
 ## P920 — paused-run choice and count-in view lock
 
-Both Windows installs have the clean P920 progs (22 Oct 10:14 UTC); Pi rollout
-is blocked by an occupied lobby, so lobby clients still receive the predecessor.
-PENDING after the matching lobby/client update: return to a paused run. Check the left
+Both Windows installs received clean P920 progs (22 Oct10:14UTC); the later
+P922 Pi rollout (22 Oct13:39UTC) now includes this UI on all12 lobbies.
+PENDING human acceptance: return to a paused run. Check the left
 panel's map/time/stage details; press 2 to put it away without discarding it.
 Return/reconnect to that offer and press 1 (F2 also works). During the count-in,
 move the physical mouse: the view should stay fixed, then turn normally at GO

@@ -82,8 +82,35 @@ A subsequent normal P922 build from clean `26070cea` again produced zero warning
 its second-install target was the same isolated checkout, so newer P923 Windows
 installs were not overwritten. The Pi occupancy check then found one player in
 the beginner lobby and stopped BEFORE upload. No progs, native files or game
-services were changed by that attempt. A fresh empty boundary or explicit current
-restart permission is still required; broad backend approval is not that consent.
+services were changed by that attempt. That attempt required a fresh empty boundary
+or explicit current restart permission; broad backend approval was not that consent.
+
+### Pi deployed — 2026-10-22 13:39 UTC
+
+The owner explicitly approved applying the update and disconnecting the connected
+player. The normal `build.ps1 -Jobs 8 -Pi -PiForce` path ran from clean P922 source
+`26070cea`, with its second-install target set to the same owned checkout to avoid
+rolling back the newer P923 Windows installs. All three VMs compiled with zero
+warnings. Both staged files and live destinations hash-match; each `.prev` matches
+the actual pre-deploy file. The exact deployed SHA256s are:
+
+- `qwprogs.dat`: `5fb0afc76d19b2f692d0429dbd952cf2ea7e6094acc152e7a8062fa4fb81675e`
+- `csprogs.dat`: `9c79d9856e52b52eca4ad61ca59869b27f7e504f5cebb01dbbdbb5731e3234b9`
+
+All12 units restarted, and postflight at **13:39:48 UTC** independently read12
+new running processes using the unchanged native engine and mapped HL2 plugin.
+Protected default/local configuration hashes and all pre-existing run/evidence
+paths were preserved. The sealed backend remains OPEN with unchanged consumer
+bindings; all12 directory rows and public board/directory/API HTTP200 survived.
+No P923 native/producer, collector activation or database change was included.
+
+A fresh client with NO seeded CSQC joined a real lobby, downloaded exactly the
+CSQC hash above, and drew the scoreboard (9columns/type14); it exited0 with no
+QC error and a screenshot was captured and inspected. The displayed tab was
+Online with terms not accepted, as expected for the isolated identity: this
+checks actual served code and drawing, not online submission or a new Local
+filter/right-click acceptance run. Earlier actual-client feature controls remain
+the feature evidence, and human feel/visual acceptance remains in `lextest.md`.
 
 Owned runtime clients/servers have exited. Only65 proved duplicate static/native
 copies (47,781,469 logical bytes) were retired; original native copies, sources,
