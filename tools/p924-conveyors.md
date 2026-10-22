@@ -96,9 +96,41 @@ by weakening server checks or by treating a quiet subset of the noisy run as a p
   Once-pad physical acceptance remains untested. Keep the small human checks in
   `lextest.md`; do not spend another large harness campaign claiming to replace them.
 
+## Final integration verification — 22 October 2026 UTC
+
+At QC `78bb485ac1ad6a07d186c4fde80855140ec983be` and native
+`a0ebb9d06afd0e9fe552bb86030be34c809d97c8`, the standard isolated
+`build.ps1 -Jobs 8 -Engine -Full -NoDeploy` completed: all three VMs have zero
+warnings and native/plugins have zero NEW compiler warnings against the retained
+Full-build baseline. The rebuilt native stamp is
+`git-7710-patch-923-1-ga0ebb9d06`; the inspected source/tag is P924, not P923's
+previous binary. The existing build uses annotated-tag description for its stamp.
+
+The matching final binaries/progs passed dedicated parc and classics smoke with
+normal extrapolation and .25-unit correction reporting. Both arms positively
+moved across their belts; each had exactly the intentional zone-placement
+correction and no subsequent above-threshold error. Native `pm_selftest` reports
+all checks passed. Earlier disabled-conveyor and phase controls remain the
+negative evidence; this smoke is integration confirmation, not a replacement
+for those controls or owner jump/feel acceptance.
+
+The reader suite passes864/0. The current corpus has419REC and126VIEW, including
+279 faulting REC and4 faulting VIEW files /284 diagnostics, with no read errors.
+This is a newer corpus than P923's captured405/120. The P923 baseline reader and
+P924 reader are byte-identical (SHA256
+`b22487bdc5625ed0928f393a9851a0dd32aed65a09d08c9c6ed5420228f9104f`), and
+the current corpus therefore has identical baseline/subject diagnostics; none
+is introduced by this feature. No player bytes were modified.
+
+A targeted independent integration review found no issues: held checks remain
+first in both callbacks, native context boundaries are intact, phase-string
+cleanup does not add held effects, and closed-world coverage is unchanged.
+
 ## Delivery state
 
-Published P923 integration, its changed dependency build, final reader/corpus
-checks, commit/push and guarded dual Windows/Pi deployment are still pending.
-No deployment or owner acceptance is claimed by this document yet. Any blocked
-fleet step does not block independent authorized work in the broader task.
+Commit/push and guarded dual Windows/Pi deployment remain pending. Pi promotion
+of this P923-based mainline producer remains subject to the independent P923
+native/progs gate; do not force a partial producer or weaken held qualification
+to ship this feature. Windows installation and any separately qualified compatible
+fleet source must be recorded as distinct deliveries. Owner acceptance remains
+pending. A held fleet step does not block independent work in the broader task.
