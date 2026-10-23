@@ -1147,6 +1147,13 @@ class RacingConn(object):
             self.raced = True
         return self._real.execute(sql, *args)
 
+    def __enter__(self):
+        self._real.__enter__()
+        return self
+
+    def __exit__(self, *args):
+        return self._real.__exit__(*args)
+
     def __getattr__(self, name):
         return getattr(self._real, name)
 
