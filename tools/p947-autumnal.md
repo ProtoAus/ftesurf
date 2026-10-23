@@ -33,6 +33,9 @@ wrong/missing predecessor refusal, creation/idempotence, bad header/name/spec,
 and an ACTED failed replacement preserving the old file and cleaning its temp.
 Actual CLI preview left the source bytes exact; actual update added only
 `dep bhop_autumnal steam:Counter-Strike Global Offensive/csgo`.
+Actual CLI wrong-predecessor and absent-map controls both refuse without changing
+the generated subject. Three VMs compile with0warnings before and after preserving
+published peer P946; no generated progs are deployed for this metadata-only fix.
 These are trusted local generated-file checks, not a cross-process CAS,
 hostile-path or power-loss guarantee.
 
@@ -55,7 +58,25 @@ was bypassed and neither failure is feature acceptance.
 
 ## Delivery
 
-Pending source publication and dual Windows generated-catalogue delivery.
-No native/VM binary, persistent mount list, owner config/keys/saves or Pi swap.
+Published source: QC `b296168b7225a4735024e2ca93822dd595777dcb`, engine ledger
+`e236a3b60f1d47f6409f70f5083e394beb1e9637`. Both preserve published P946; native
+commit/tag stay unchanged. No native/VM binary or Pi deployment.
+
+Generated through that clean committed tool on23Oct2026:
+
+- `C:/FTESurf/ftesurf/data/mapdeps.txt`,11:17:55Z:29766bytes,
+  SHA256 `4da8d2c18523224c128c5ab7f684f0bfc1c7246414a10b3307638b141c2a35f5`.
+  Exactly the native subject bytes. Its29705-byte predecessor is retained;
+  removing only the added Autumnal row reproduces every original byte.
+- `C:/FTEQuake/ftesurf/data/mapdeps.txt`,11:17:56Z:79bytes,
+  SHA256 `9f5ac45de5adf60bb9e00ccaab2012cf94ecbc1f4c948c8981db6378cac7b7ea`.
+  This cache was absent; the new file contains the native version1 header and
+  only Autumnal's row. This does NOT claim a full dependency-catalogue sync.
+
+Both destination hashes read back. Protected progs/native/config/mount-list
+files remain unchanged; no owner process was restarted. This is a generated
+asset-cache update using the README map-data procedure, not a player-data edit.
+The controlled native cold pair proves behavior; fresh owner-session appearance
+still needs the check below, not a claim from hashes alone.
 Human visual acceptance remains pending in lextest.md. Phantasia, Epiphany and
 the Kvas/Boreas sky cuts are separate unresolved cases.

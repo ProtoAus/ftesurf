@@ -45,8 +45,9 @@ finish-only while the owner chooses whether to preserve legacy credit or require
 new whole-fog completion; no policy answer or medal conversion has been invented.
 
 ## P947 — Autumnal platform textures (23 Oct 2026)
-PENDING owner visual confirmation; native cold control/subject now shows the
-checkerboard tops replaced by blacktop with one generated dependency row.
+PENDING owner visual confirmation. Generated metadata delivered/hash-verified
+in BOTH Windows installs23Oct11:17Z; no native/progs or persistent mount changes.
+Native cold control/subject shows checker tops replaced by blacktop with one row.
 After a fresh game start, load bhop_autumnal: are the platform tops now textured?
 Do NOT add a permanent fs_load mount for this check; on-demand mounting is the fix.
 Source1 CS:GO content must be installed; modern CS2 assets are not a substitute.
