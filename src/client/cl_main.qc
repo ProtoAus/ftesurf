@@ -307,6 +307,32 @@ void() CSQC_WorldLoaded =
 	CL_RenderMapFrame();
 };
 
+float run_ts_pred_held, run_ts_pred_saved;
+
+// Slow practice uses the shipped non-extrapolating prediction mode.
+void() TimeScale_PredictLock =
+{
+	if (!run_ts_pred_held)
+	{
+		run_ts_pred_saved = cvar("cl_predict_extrapolate");
+		run_ts_pred_held = TRUE;
+	}
+	if (cvar("cl_predict_extrapolate") != 0)
+	{
+		cvar_set("cl_predict_extrapolate", "0");
+		print("host_timescale: slow practice requires cl_predict_extrapolate 0\n");
+	}
+};
+
+void() TimeScale_PredictRelease =
+{
+	if (!run_ts_pred_held)
+		return;
+	if (cvar("cl_predict_extrapolate") == 0)
+		cvar_set("cl_predict_extrapolate", sprintf("%g", run_ts_pred_saved));
+	run_ts_pred_held = FALSE;
+};
+
 void(float apilevel, string enginename, float engineversion) CSQC_Init =
 {
 	Font_Init();
@@ -854,7 +880,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	print("FTESurf CSQC loaded\n");
 };
 
-void() CSQC_Shutdown = { MA_Shutdown(); Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
+void() CSQC_Shutdown = { TimeScale_PredictRelease(); MA_Shutdown(); Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
 
 /*
   Forced view angles from the server -- svc_setangle, its relative form, and
@@ -988,28 +1014,45 @@ void() PreStrafe_InputFrame =
 		input_movevalues_x = 0;
 };
 
-float run_ts_scale, run_ts_carry;
+#define RUN_TS_SEATS 4
+float run_ts_scale[RUN_TS_SEATS], run_ts_carry[RUN_TS_SEATS];
+float run_ts_pending[RUN_TS_SEATS]; // a bare slow request not yet observed in stats
 
-// P954: retain sub-ms duration; the native fixed-tick mover stays unchanged.
+// P954: retain sub-ms duration per local seat; native fixed ticks stay unchanged.
 void() TimeScale_InputFrame =
 {
-	local float scale, msecs, whole;
+	local float seat, scale, msecs, whole, was, i, active;
 
+	seat = getproperty(VF_ACTIVESEAT);
+	if (!(seat >= 0 && seat < RUN_TS_SEATS))
+		return;
 	scale = getstatf(STAT_FS_TIMESCALE);
 	if (!(scale >= 0.1 && scale < 1))
 	{
-		run_ts_scale = 1;
-		run_ts_carry = 0;
+		was = (run_ts_scale[seat] > 0 && run_ts_scale[seat] < 1);
+		run_ts_scale[seat] = 1;
+		run_ts_carry[seat] = 0;
+		if (was)
+		{
+			active = FALSE;
+			for (i = 0; i < RUN_TS_SEATS; i = i + 1)
+				if ((run_ts_scale[i] > 0 && run_ts_scale[i] < 1) || run_ts_pending[i])
+					active = TRUE;
+			if (!active)
+				TimeScale_PredictRelease();
+		}
 		return;
 	}
-	if (scale != run_ts_scale)
-		run_ts_carry = 0;
-	run_ts_scale = scale;
+	TimeScale_PredictLock();
+	run_ts_pending[seat] = FALSE;
+	if (scale != run_ts_scale[seat])
+		run_ts_carry[seat] = 0;
+	run_ts_scale[seat] = scale;
 	if (input_timelength <= 0)
 		return;
-	msecs = input_timelength * 1000 * scale + run_ts_carry;
+	msecs = input_timelength * 1000 * scale + run_ts_carry[seat];
 	whole = floor(msecs);
-	run_ts_carry = msecs - whole;
+	run_ts_carry[seat] = msecs - whole;
 	input_timelength = whole * 0.001;
 };
 
@@ -1080,6 +1123,7 @@ void() CSQC_Input_Frame =
 	if (rec_gh_on)
 	{
 		Ghost_InputFrame();
+		TimeScale_InputFrame();
 		return;
 	}
 
@@ -2094,7 +2138,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 
 float(string cmd) CSQC_ConsoleCommand =
 {
-	local float cmdargc;
+	local float cmdargc, tsseat, tsvalue;
 
 	// Patch 617: a QC error inside CL_InputEvent would leave this set, and the
 	// next thing to run is very likely a command.  Nothing real is nested here.
@@ -2105,10 +2149,24 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (WP_Command()) return TRUE;
 	if (!strcmp(argv(0), "host_timescale"))
 	{
+		tsseat = getproperty(VF_ACTIVESEAT);
+		if (!(tsseat >= 0 && tsseat < RUN_TS_SEATS))
+		{
+			print("host_timescale: unsupported local seat\n");
+			return TRUE;
+		}
 		if (cmdargc == 1)
-			localcmd("cmd host_timescale\n");
+			localcmd(sprintf("p%g cmd host_timescale\n", tsseat + 1));
 		else if (cmdargc == 2)
-			localcmd(sprintf("cmd host_timescale %.9g\n", stof(argv(1))));
+		{
+			tsvalue = stof(argv(1));
+			if (tsvalue >= 0.1 && tsvalue < 1)
+			{
+				run_ts_pending[tsseat] = TRUE;
+				TimeScale_PredictLock();
+			}
+			localcmd(sprintf("p%g cmd host_timescale %.9g\n", tsseat + 1, tsvalue));
+		}
 		else
 			print("host_timescale: use 0.1..1\n");
 		return TRUE;

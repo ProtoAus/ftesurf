@@ -1,5 +1,28 @@
 # AGENT_NOTES.md
 
+## Per-player slow practice and recording density (P954, 2026-10-23)
+
+- Scale command duration, not the Source tick or global sv_gamespeed. Preserve
+  fractional milliseconds PER VF_ACTIVESEAT and retain pN when requeuing a bare
+  command. Native MAX_SPLITS is4. Ghost still advances a body: scale after its
+  camera consumes wall input, before its early return; real zero-time holds stay0.
+- Native cl_predict_extrapolate1 previews not-yet-sent input outside CSQC. Slow
+  practice is bounded to shipped mode0, selected before requesting slow speed;
+  restore only the owned setting after the last observed slow seat returns to1
+  or VM shutdown. Pending slow requests must not release another seat's lock.
+- Body samples per real packet become too dense per SIMULATED second: completed
+  normal66.465/s faults0 vs half-speed133.234/s faults1. Space only slow visual
+  samples by >=one tick; preserve all in/fzin/event rows and truthful timestamps.
+  Fresh/reset/stream-prefix/buffer-recount spacing state matters. %.4f can turn
+  slightly negative padding into zero. Do not relax reccheck's rate check.
+- A p2 command WRAPS to p1 when only one native seat exists. Dedicated server
+  allow_splitscreen defaults off: enable it in the OWNED fixture BEFORE connect
+  and prove a second player was admitted, not merely that p2 printed a reply.
+- run_class0 leaves SV_TimerCheat's refined fields alone; grade forced
+  TF_PRACTICE with an actually running clean control, not that call's cheat bits.
+  run_t_tick is a cached GLOBAL, not an entity field. The tested fteqcc can AV
+  on the mistaken e.run_t_tick rather than print a useful missing-field error.
+
 ## P952 — Epiphany blackness was a LUT path, not HDR/PVS (24 Oct 2026)
 
 Actual winning Epiphany has corresponding valid HDR/LDR faces and HDR-only light;

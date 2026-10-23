@@ -2065,6 +2065,7 @@ void(entity e) SV_TimerMapTeleport =
 .float  rec_rec_lines;           // lines in it: the buf_writefile count
 .float  rec_rec_n;               // samples written since `begin`
 .float  rec_rec_padn;            // how many of them were padding
+.float  rec_rec_samplet;         // P954: runtime sample spacing; negative after prefix restore
 .float  rec_rec_cp;              // checkpoints crossed
 .float  rec_rec_full;            // said once that this run hit its line cap
 .float  rec_rec_lastbc;          // v4: last run_boardcount a `board` record covered
@@ -4132,15 +4133,29 @@ void(entity e, string s) SV_RecPut =
 void(entity e, float t, vector org, vector vel, vector mv,
      float pit, float yaw, float fl, float keys, vector n) SV_RecLine =
 {
-	// FOUR sprintfs on purpose: fteqcc caps varargs at 8 and SILENTLY drops
-	// the rest, so a single seventeen-value format would write zeroes for the
-	// tail rather than fail to compile.
+	// Slow practice keeps full input/event rows, but samples stay <= tick rate.
+	// Include negative padding that %.4f would round to zero in the reader.
+	if (SV_TimeScaleActive(e))
+	if (t >= -0.00005)
+	{
+		if (e.rec_rec_samplet < 0 || t < e.rec_rec_samplet)
+		{
+			// A restored prefix can end at this time: wait a tick, never duplicate it.
+			e.rec_rec_samplet = max(0, t);
+			return;
+		}
+		if (t - e.rec_rec_samplet < run_t_tick)
+			return;
+	}
+	// FOUR sprintfs: fteqcc silently drops varargs beyond eight.
 	SV_RecPut(e, strcat(sprintf("%.4f %.2f %.2f %.2f ", t, org_x, org_y, org_z),
 	                    sprintf("%.2f %.2f %.2f %.1f %.1f ",
 	                            vel_x, vel_y, vel_z, pit, yaw),
 	                    sprintf("%g %g %g %g %g ", fl, keys, mv_x, mv_y, mv_z),
 	                    sprintf("%.4f %.4f %.4f", n_x, n_y, n_z)));
 	e.rec_rec_n = e.rec_rec_n + 1;
+	if (t >= 0)
+		e.rec_rec_samplet = t;
 };
 
 /*
@@ -5408,6 +5423,7 @@ void(entity e) SV_RecOpen =
 	e.rec_rec_stream = FALSE;
 	e.rec_rec_flagofs = -1;
 	e.rec_rec_lines = e.rec_rec_n = e.rec_rec_padn = e.rec_rec_cp = 0;
+	e.rec_rec_samplet = 0;
 	e.rec_rec_full = FALSE;
 	/*
 	  BUILD 82.  Both reset here and nowhere else, because this is the one place
@@ -7119,6 +7135,7 @@ float(string k, float n) SV_RecKeyRead =
 // SV_RecRecount for a stream: the counters the save stated, the latches cleared.
 void(entity e, float mark, float samples, float padn, float cps) SV_RecRestore =
 {
+	e.rec_rec_samplet = -1;
 	e.rec_rec_lines = mark;
 	e.rec_rec_n     = samples;
 	e.rec_rec_padn  = padn;
@@ -7256,6 +7273,7 @@ void(entity e) SV_RecRecount =
 	local float i, c, last, pend, pk;
 	local string l;
 
+	e.rec_rec_samplet = -1;
 	e.rec_rec_ver = stof(substring(bufstr_get(e.rec_rec_buf, 0), 12, -1));
 	e.rec_rec_in = e.rec_rec_warp = e.rec_rec_ride = 0;
 	e.rec_rec_pm = e.rec_rec_pe = e.rec_rec_portal = 0;

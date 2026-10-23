@@ -29,7 +29,7 @@
 - Hard-landings use CSS's damage sounds rather than Half-Life 2's fall-pain sample.
 
 ### P954 Practice slow motion
-- Type host_timescale 0.5 for half-speed practice, or choose 0.1 through 1. Movement and the timer slow together without changing the physics tick or other players. Restoring 1 keeps the active attempt marked as practice.
+- Type host_timescale 0.5 for half-speed practice, or choose 0.1 through 1. Movement and the timer slow together without changing the physics tick or other players. Restoring 1 keeps the active attempt marked as practice. Slow practice uses the normal non-extrapolating prediction mode.
 
 - Restore Epiphany's world instead of a black screen, while keeping its intended colour grading.
 - Restore Phantasia's glass ramps in both CSS and Momentum versions instead of drawing a missing-texture checkerboard.
