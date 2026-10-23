@@ -27,7 +27,8 @@ commit   5734db88e4dbe5fd82f250af8a06910002a4dbd1
 tag      patch-939
 patch    939
 # Patch 939: native paste without a second confirmation; real gesture gates retained.
-# Patch 938: retain published live symbol/context-prefix checks, no retained VM lookup state.
+# Patch 938: cheaper live symbol/context checks without retained VM bindings.
+# Lookup order, recording formats, collection/admission and movement are unchanged.
 # Patch 937: optional local altitude sine/A-D drums; fixed native raw-buffer EOF ownership.
 # The current pin retains that published ownership fix; no body/evidence/plugin ABI change.
 # Patch 936: retain 64px Steam portrait detail in game/menu, preserving legacy 32px clients.
