@@ -28,6 +28,8 @@ tag      patch-939
 patch    942
 # Patch 942: ambiguous repeated verifier results are retryable, with no counts.
 # Backend-only output attribution; native commit/tag and evidence formats unchanged.
+# Patch 941: subtler model motion, unarmed spawns, looping idle and real-map CSS footsteps.
+# QC-only; reserved before P942. Native pin/tag and highest applied patch942 stay unchanged.
 # Patch 940: cosmetic Source-style weapon motion, default FOV70 and material footsteps.
 # QC-only: native pin/tag, movement, aim, recording and collection are unchanged.
 # Patch 939: native paste without a second confirmation; real gesture gates retained.

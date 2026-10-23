@@ -1,5 +1,18 @@
 # BACKLOG.md
 
+## P941 — matched CSS viewmodel lighting comparison (23 Oct 2026)
+- Sites: engine/gl/gl_alias.c:R_CalcModelLighting and plugins/hl2/mat_vmt.c's
+  VertexLitGeneric path; the mounted surf_axiom BSP/cubemap provenance matters.
+- Owner reports different hand/blade lighting. The supplied FTE and CSS views
+  use different BSP builds (Momentum vs CSS); not a proven uniform shader error.
+  An owned native control loaded the exact CSS BSP, but camera/idle phase were
+  not matched. No lighting fix or exact-parity pass is claimed.
+- Next falsifier: owner CSS `getpos` at the reference spot, then compare the SAME
+  BSP, camera, viewmodel FOV and idle pose with explicit renderer settings. A
+  residual hand/blade mismatch there establishes a renderer case; differing map
+  lighting alone does not justify a global model-brightness change. Human check
+  and request are in lextest.md; source facts in tools/p941-source-polish.md.
+
 ## Primary local surf_fantasy override versus Momentum/Pi (22 Oct audit)
 
 - Site: C:/FTESurf/ftesurf/maps/surf_fantasy.bsp and maproster.resolve mount

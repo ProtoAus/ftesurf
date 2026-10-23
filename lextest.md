@@ -25,6 +25,21 @@ Windows native/menu were preserved. Automated source/cold/corpus checks, live
 version/hash readback and two fresh-cache client/board smokes passed. Those are
 not human feel, production-performance or device-authenticity acceptance.
 
+## P941 — subtler motion, idle and real Axiom footsteps (23 Oct 2026)
+P940 owner feedback: bob and turning sway were much too strong; real Axiom did
+not sound like CSS, lighting differed, idle appeared absent, and spawn should be
+unarmed. This is feedback, NOT acceptance of P940's presentation.
+P941 implementation/socket controls pass; delivery and human acceptance pending.
+After the matching update/reconnect, with cl_viewweapon1 you should see NO weapon
+until `give knife` (or usp/scout/glock). Walk/turn: motion should be much subtler,
+with idle continuing after15seconds. `cmd respawn` should put the weapon away.
+With cl_game_sfx1, Axiom's authored-metal floor should play CSS metal footsteps;
+walk/crouch should remain quiet. Do the motion and sound now feel right?
+Lighting is NOT claimed fixed: native FTE uses Momentum's Axiom build, whereas
+CSS's BSP is different. Owner was asked for CSS `getpos` at the comparison spot
+so map/camera/pose can be matched before judging the residual shader difference.
+No global brightness or map-priority change was made. See tools/p941-source-polish.md.
+
 ## P940 — viewmodel motion and material footsteps (23 Oct 2026)
 BOTH Windows installs and all12Pi lobbies verified23Oct04:54UTC, including a
 real cold client downloading the exact new code (tools/p940-delivery.md).

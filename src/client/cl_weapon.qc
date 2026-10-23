@@ -1,6 +1,6 @@
 /* Opt-in mounted CSS presentation; server owns selection and map-target shots. */
 entity wp_ent;
-float wp_weapon, wp_sequence, wp_until, wp_animat, wp_ready, wp_shots;
+float wp_weapon, wp_sequence, wp_until, wp_animat, wp_ready, wp_shots, wp_duration;
 float wp_eventat, wp_drawing, wp_events, wp_sndnext, wp_callbacks;
 float wp_scriptbytes, wp_scriptalias, wp_scripthits;
 string wp_model, wp_frame, wp_soundlast;
@@ -14,6 +14,8 @@ void() WP_Register =
 {
 	registercvar("cl_viewweapon", "0", CVAR_ARCHIVE);
 	registercvar("cl_viewweapon_left", "0", CVAR_ARCHIVE);
+	registercvar("cl_viewweapon_bob", "0.2", CVAR_ARCHIVE);
+	registercvar("cl_viewweapon_sway", "0.2", CVAR_ARCHIVE);
 	registercvar("cl_weapon_sfx", "1", CVAR_ARCHIVE);
 	// Existing independent projection, not a scale hack or a change to world FOV.
 	if (!strcmp(cvar_string("r_viewmodel_fov"), "")) cvar_set("r_viewmodel_fov", "70");
@@ -57,6 +59,7 @@ float(string name, float oneshot) WP_Animate =
 	wp_eventat = -0.001;
 	wp_drawing = FALSE;
 	duration = frameduration(wp_ent.modelindex, f);
+	wp_duration = duration;
 	wp_until = oneshot ? time + bound(0.08, duration, 3) : 0;
 	if (strcmp(wp_frame, "")) strunzone(wp_frame);
 	wp_frame = strzone(frametoname(wp_ent.modelindex, f));
@@ -218,8 +221,8 @@ void() WP_Motion =
 		speed = bound(0, vlen([pmove_vel_x, pmove_vel_y, 0]), 320);
 		wp_bobtime = wp_bobtime + dt * speed / 320;
 		wp_bobtime = wp_bobtime - floor(wp_bobtime / 0.9) * 0.9;
-		vbob = speed * 0.005 * (0.3 + 0.7 * sin(wp_bobtime * 6.2831853 / 0.45));
-		lbob = speed * 0.005 * (0.3 + 0.7 * sin(wp_bobtime * 6.2831853 / 0.9));
+		vbob = speed * 0.005 * bound(0, cvar("cl_viewweapon_bob"), 1) * (0.3 + 0.7 * sin(wp_bobtime * 6.2831853 / 0.45));
+		lbob = speed * 0.005 * bound(0, cvar("cl_viewweapon_bob"), 1) * (0.3 + 0.7 * sin(wp_bobtime * 6.2831853 / 0.9));
 		delta = fwd - wp_facing;
 		amount = 5;
 		if (vlen(delta) > 1.5) amount = amount * vlen(delta) / 1.5;
@@ -227,6 +230,7 @@ void() WP_Motion =
 		wp_facing = normalize(wp_facing + delta * alpha);
 		lag = (fwd - wp_facing) * -5;
 		if (vlen(lag) > 3) lag = normalize(lag) * 3;
+		lag = lag * bound(0, cvar("cl_viewweapon_sway"), 1);
 		wp_motionorg = [lag * fwd, -(lag * right), lag * up];
 		wp_motionorg_x = wp_motionorg_x + vbob * 0.1 + vbob * 0.1 * fwd_z;
 		wp_motionorg_y = wp_motionorg_y - lbob * 0.8 - vbob * 0.1 * right_z;
@@ -247,17 +251,17 @@ void() WP_Frame =
 
 	w = getstatf(STAT_ACTIVEWEAPON);
 	seq = getstatf(STAT_WEAPONFRAME);
-	if (cvar("cl_viewweapon") <= 0 || !LT_StatsAreMine() || rec_gh_on || rec_wt_on ||
+	mdl = WP_Model(w);
+	if (!strcmp(mdl, "") || cvar("cl_viewweapon") <= 0 || !LT_StatsAreMine() || rec_gh_on || rec_wt_on ||
 	    getstatf(STAT_FS_SPEC) || rw_on || getstatf(STAT_FS_MOVETYPE) != MOVETYPE_WALK)
 	{
 		wp_weapon = 0;
 		wp_ready = FALSE;
+		wp_drawing = FALSE;
 		wp_motionvalid = FALSE;
 		wp_sequence = seq;
 		return;
 	}
-	mdl = WP_Model(w);
-	if (!strcmp(mdl, "")) return;
 	if (!wp_ent) wp_ent = spawn();
 	if (w != wp_weapon)
 	{
@@ -296,7 +300,10 @@ void() WP_Frame =
 		if (cvar("cl_viewweapon_left")) wp_ent.renderflags |= RF_XFLIP;
 	}
 	else if (!cvar("cl_viewweapon_left")) wp_ent.renderflags |= RF_XFLIP;
-	wp_ent.frame1time = time - wp_animat;
+	wp_ent.frame1time = max(0, time - wp_animat);
+	// Raw MDL animation flags do not carry the sequence's idle-loop flag.
+	if (wp_until <= 0 && wp_duration > 0)
+		wp_ent.frame1time = wp_ent.frame1time - floor(wp_ent.frame1time / wp_duration) * wp_duration;
 	wp_ent.frame2time = wp_ent.frame1time;
 	addentity(wp_ent);
 };
@@ -335,9 +342,12 @@ float() WP_Command =
 			}
 			print(sprintf("weapon: sound-script bytes %g exact-name-offset %g definition-hits %g\n", wp_scriptbytes, wp_scriptalias, wp_scripthits));
 		}
-		print(sprintf("weapon: type %g sequence %g ready %g shots %g model '%s'\n", wp_weapon, wp_sequence, wp_ready, wp_shots, wp_model));
+		print(sprintf("weapon: type %g sequence %g ready %g shots %g model '%s'\n", wp_weapon, wp_sequence, wp_ready, wp_shots, wp_ready ? wp_model : ""));
 		if (wp_ready)
+		{
 			print(sprintf("weapon: frame '%s' duration %g time %g\n", wp_frame, frameduration(wp_ent.modelindex, wp_ent.frame), wp_ent.frame1time));
+			print(sprintf("weapon: pose-time %g age %g bob %g sway %g\n", wp_ent.frame1time, time - wp_animat, cvar("cl_viewweapon_bob"), cvar("cl_viewweapon_sway")));
+		}
 		print(sprintf("weapon: enabled %g sfx %g fov %g draw-sounds %g callbacks %g last '%s'\n", cvar("cl_viewweapon"), cvar("cl_weapon_sfx"), cvar("r_viewmodel_fov"), wp_events, wp_callbacks, wp_soundlast));
 		print(sprintf("weapon: motion valid %g offset %v angles %v\n", wp_motionvalid, wp_motionorg, wp_motionang));
 		return TRUE;

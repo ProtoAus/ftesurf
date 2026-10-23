@@ -21,6 +21,10 @@
 
 ## next
 
+### P941 Subtler weapons and authentic floor sounds
+- Weapon bob and turning sway are one-fifth as strong by default. Idle animations keep looping, and spawning starts unarmed even if weapon models are enabled; select a weapon when you want one.
+- Fix long material names on maps such as Axiom falling back to concrete. When CSS is mounted, its footstep samples take priority over Momentum's versions; quiet walking and crouching stay silent.
+
 ### P940 Source-style weapon motion and material footsteps
 - Viewmodels rock as you move and gently trail your turns, without moving the camera or aim. The default viewmodel FOV is 70; existing personal FOV choices stay unchanged.
 - Footsteps follow mounted material surface properties and left/right sound variants, with safe fallbacks for older maps or missing content. Quiet walking and crouching remain silent.

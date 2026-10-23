@@ -180,7 +180,7 @@ void() PutClientInServer =
 	self.fixangle    = TRUE;
 	self.max_health  = 100;
 	self.items       = 0;
-	self.weapon      = FS_WEAPON_KNIFE;
+	self.weapon      = 0;           // Unarmed on spawn; explicit give/select opts in.
 	self.weaponframe = 0;
 	self.vbsp_lastshot = self.vbsp_nextshot = 0;
 	self.weaponmodel = "";          // models are mounted/rendered client-locally

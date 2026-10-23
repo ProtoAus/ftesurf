@@ -8,7 +8,12 @@ string *gm_props;
 string *gm_sounds;
 string *gm_mats;
 int gm_propn, gm_soundn, gm_matn, gm_cursor, gm_reads, gm_hits;
-float gm_loaded;
+float gm_loaded, gm_css, gm_contactface, gm_contactmodel;
+entity gm_contactent;
+int gm_surfacescans;
+// Existing named FTE search APIs; keep scoped file reads out of generated defs.
+string(searchhandle handle, float num) GM_SearchPackage = #0:search_getpackagename;
+filestream(searchhandle handle, float num) GM_SearchOpen = #0:search_fopen;
 string gm_lasttex, gm_lastprop, gm_lastsource;
 // Existing EXT_CSQC trace output; unlike trace_ent it also names world hull hits.
 string trace_surfacename;
@@ -42,7 +47,9 @@ void() GM_Clear =
 	}
 	gm_props = 0; gm_sounds = 0; gm_mats = 0;
 	gm_propn = 0i; gm_soundn = 0i; gm_matn = 0i; gm_cursor = 0i;
-	gm_reads = 0i; gm_hits = 0i; gm_loaded = FALSE;
+	gm_reads = 0i; gm_hits = 0i; gm_loaded = FALSE; gm_css = FALSE;
+	gm_contactface = -1; gm_contactmodel = 0; gm_contactent = world;
+	gm_surfacescans = 0i;
 	gm_lasttex = ""; gm_lastprop = ""; gm_lastsource = "";
 };
 
@@ -86,14 +93,10 @@ string(string path) GM_Wave =
 };
 
 // mode0: merge property scalars; mode1: only WAVs for already referenced aliases.
-void(string path, float mode) GM_LoadScript =
+void(float f, float mode) GM_LoadFile =
 {
-	local float f;
 	local int i, n, depth, slot, field, wave, bytes;
 	local string line, tok, name, key, value;
-	gm_reads += 1i;
-	f = fopen(path, FILE_READ);
-	if (f < 0) return;
 	depth = 0i; slot = -1i; field = 0i; wave = 0i; bytes = 0i;
 	name = ""; key = "";
 	while ((line = fgets(f)))
@@ -168,6 +171,38 @@ void(string path, float mode) GM_LoadScript =
 	if (strcmp(name, "")) strunzone(name);
 	if (strcmp(key, "")) strunzone(key);
 	fclose(f);
+};
+
+void(string path, float mode) GM_LoadScript =
+{
+	local float f;
+	gm_reads += 1i;
+	f = fopen(path, FILE_READ);
+	if (f >= 0) GM_LoadFile(f, mode);
+};
+
+// CSS foot aliases must not inherit Momentum's different sample set by VFS order.
+void() GM_LoadCSS =
+{
+	local float h, i, n, f;
+	local string package;
+	if (!checkbuiltin(GM_SearchPackage)) return;
+	if (!checkbuiltin(GM_SearchOpen)) return;
+	h = search_begin("scripts/game_sounds_physics.txt", 6, TRUE); // full package paths + duplicates; no inactive-package force
+	if (h < 0) return;
+	n = bound(0, search_getsize(h), 64);
+	for (i = 0; i < n; i += 1)
+	{
+		package = strtolower(GM_SearchPackage(h, i));
+		if (strstrofs(package, "cstrike", 0) < 0) continue;
+		gm_reads += 1i;
+		f = GM_SearchOpen(h, i);
+		if (f < 0) continue;
+		GM_LoadFile(f, TRUE);
+		gm_css = TRUE;
+		break;
+	}
+	search_end(h);
 };
 
 // Follow the selected game's manifest: Momentum separates footsteps from physics.
@@ -264,6 +299,7 @@ void() GM_Load =
 	for (j = 2i; j <= 3i; j += 1i)
 		GM_SoundSlot(gm_props[i * 4i + j], TRUE);
 	GM_LoadSounds();
+	GM_LoadCSS();
 };
 
 // Returned nonempty property is zoned; recursion follows only safe material paths.
@@ -390,16 +426,54 @@ int(string texture) GM_Material =
 string(vector org, float step) GM_Sound =
 {
 	local int at, side, choice;
+	local float near;
+	local vector p, clipped, ofwd, oright, oup;
 	local string texture;
 	texture = "";
 	traceline(org + '0 0 4', org - '0 0 72', MOVE_NOMONSTERS, world);
-	if (trace_fraction < 1) texture = trace_surfacename;
+	// Collision names are16bytes; render names retain the full cubemap VMT path.
 	// FTE's trace id is 1-based; DP_QC_GETSURFACE takes a 0-based index.
-	if (!strcmp(texture, ""))
 	if (trace_fraction < 1)
 	if (trace_surface_id > 0i)
 	if (checkbuiltin(getsurfacetexture))
 		texture = getsurfacetexture(trace_ent, (float)(trace_surface_id - 1i));
+	if (!strcmp(texture, ""))
+	if (trace_fraction < 1)
+	if (checkbuiltin(getsurfacenearpoint))
+	if (checkbuiltin(getsurfaceclippedpoint))
+	if (checkbuiltin(getsurfacetexture))
+	{
+		p = trace_endpos - trace_ent.origin;
+		ofwd = v_forward; oright = v_right; oup = v_up;
+		makevectors(trace_ent.angles);
+		p = [p * v_forward, -(p * v_right), p * v_up];
+		v_forward = ofwd; v_right = oright; v_up = oup;
+		near = -1;
+		if (trace_ent == gm_contactent && trace_ent.modelindex == gm_contactmodel && gm_contactface >= 0)
+		{
+			clipped = getsurfaceclippedpoint(trace_ent, gm_contactface, p);
+			// Reuse only while this new contact still lies on the SAME polygon.
+			if (vlen(clipped - p) <= 0.125) near = gm_contactface;
+		}
+		if (near < 0)
+		{
+			gm_surfacescans += 1i;
+			near = getsurfacenearpoint(trace_ent, p);
+		}
+		if (near >= 0)
+		{
+			clipped = getsurfaceclippedpoint(trace_ent, near, p);
+			// Do not substitute a distant world floor under a prop's collision hull.
+			if (vlen(clipped - p) <= 2)
+			{
+				texture = getsurfacetexture(trace_ent, near);
+				gm_contactent = trace_ent; gm_contactmodel = trace_ent.modelindex;
+				gm_contactface = near;
+			}
+		}
+	}
+	if (!strcmp(texture, ""))
+	if (trace_fraction < 1) texture = trace_surfacename;
 	at = GM_Material(texture);
 	gm_lasttex = gm_mats[at * GM_FIELDS];
 	gm_lastprop = gm_mats[at * GM_FIELDS + 1i];
@@ -410,7 +484,7 @@ string(vector org, float step) GM_Sound =
 
 void() GM_Info =
 {
-	print(sprintf("gameaudio: material-db profiles %g aliases %g\n", (float)gm_propn, (float)gm_soundn));
+	print(sprintf("gameaudio: material-db profiles %g aliases %g CSS-samples %g surface-scans %g\n", (float)gm_propn, (float)gm_soundn, gm_css, (float)gm_surfacescans));
 	print(sprintf("gameaudio: texture '%s' surface '%s' via %s metadata-reads %g cache-hits %g\n",
 		gm_lasttex, gm_lastprop, gm_lastsource, (float)gm_reads, (float)gm_hits));
 };
