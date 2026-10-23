@@ -1,9 +1,9 @@
 # lextest.md — things waiting on a human
 
 ## P948 — Kvas bonus4 tree crowns (23 Oct 2026)
-PENDING owner Save1 view; implementation/native controls pass, delivery status
-in tools/p948-kvas-sky.md. After the updated CSQC/configs are delivered, reconnect
-and load Kvas B4 Save1: do the full tree crowns now draw above the former cut?
+PENDING owner Save1 view; implementation/native controls pass and final code is
+DELIVERED to both Windows installs/all12lobbies23Oct13:35Z. Reconnect and load
+Kvas B4 Save1: do the full tree crowns now draw above the former cut?
 No manual r_sky_forcedepth command should be needed. Native2/1/2 and real dedicated
 before/after reproduce/repair the same trees; that is not your exact save view.
 Other maps must retain ordinary depth2. Boreas/Epiphany/Phantasia are not accepted

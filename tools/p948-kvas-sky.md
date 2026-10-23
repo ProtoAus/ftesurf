@@ -44,10 +44,20 @@ actual Kvas layer applications. This closes baseline leakage and a same-map
 no-op arm. Original direct2/1/2 and listen pair are retained, not replaced.
 Three VMs compile0warnings; LSP does not parse QC and is not that proof.
 
-## Pending delivery
+## Delivered
 
-Final clean-commit artifact qualification, dual Windows progs/config delivery,
-ordinary Pi progs swap/readback and a cold client remain pending. No native
-rebuild/tag/pin, release or qcbuild decision. Owner Save1 acceptance is pending
-in lextest.md, not inferred from the controlled views. No claim for Boreas,
+Final source856d03f4 uses explicit strcmp for all dynamic comparisons. Its clean
+three-VM build equals the qualified dedicated/mounted-reentry artifact. Final
+CSQC67b40bdd and QWd2d507cc are hash-verified in BOTH Windows installs and Pi;
+QW differs from the first wave by one compiler-date byte only. MENU5429 retained.
+Client render configs/cache are present in both Windows installs. Final Pi
+positive-empty12socket gate13:27:56Z,12fresh active epochs/live+prev/history
+readback13:31:03Z; cold actual677685ce.dat/full67b40bdd download and drawn9col/
+type14 board inspected, clientexit0, termsNOTaccepted. See p948-delivery.md.
+
+One final preflight correctly refused a newly occupied socket; no Pi mutation
+occurred then. After a later read-only diagnostic showed it empty, the SAME
+unchanged positive-empty guard passed immediately before the ordinary build-Pi.
+No force, native rebuild/tag/pin, release or qcbuild decision. Owner Save1 remains
+pending in lextest.md, not inferred from controlled views. No claim for Boreas,
 Phantasia or Epiphany. No persistent personal config, keys or saves are edited.

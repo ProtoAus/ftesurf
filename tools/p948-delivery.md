@@ -81,5 +81,23 @@ differ from the first wave by exactly ONE byte at offset115 in that stamp,
 with unchanged lengths and every other byte equal; not a gameplay-code change.
 Candidate QW `d2d507cc366599c90bb06dbd17f6e37c4eb30d55c6784dac14b03e719fb79003`.
 Candidate MENU `2f42dcad770c094dd55b4aadb4cf5dbc6647d2f73e1ea016eb9a0ca3321eb42e`
-need not replace the retained live5429 menu. Clean-commit artifact, final Windows/
-Pi promotion and final cold client are NEXT; first-wave evidence above is retained.
+does not replace the retained live5429 menu. Clean source856d03f49535b11d2083731e1d0056501c8c4225
+reproduces all three qualified DATs exactly. BOTH Windows final progs/LNO/cache
+verified13:22:21.846Z;28 protected native/menu/config files unchanged. Final cache
+is677685ce.dat; original configs and both code generations remain retained.
+
+Final Pi preflight initially refused an occupied socket although the directory
+had0players; no live file/history was written and build-Pi was NOT called. No
+force and no weakened gate. A later read-only status diagnostic found it empty;
+the SAME saved preflight then passed all12positive-empty sockets13:27:56.187Z.
+The existing build-Pi uploaded/swapped the exact final pair and restarted12units.
+13:31:03.313Z actual live/.prev/two preserved history generations match; no.new;
+all12process epochs fresh, native executable/cwd/basedir unchanged. Final.prev is
+the first-wave06a25ecc/7dc387a9 pair. Earlier history is independently retained.
+
+ONE final cold client actually downloaded677685ce.dat/full67b40bdd, progressed
+board0/0 to9/type14, captured an inspected screenshot and exited0 without QC
+errors. Three copied native fingerprints equal installed sources.13:35:02.724Z
+proof also rechecks both Windows final QW/CSQC and retained menu. Terms still
+NOT accepted: no consent/run/human acceptance is manufactured. Final deployment
+is complete; exact owner Save1 remains pending. Broader original work continues.

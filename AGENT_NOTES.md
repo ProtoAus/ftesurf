@@ -14,6 +14,12 @@
   Kvas/other/Kvas/same-map reload reads1/2/1/1 with three application logs; an
   unchanged value alone would not prove the same-map arm acted. No native/input/
   evidence/body-read changes; the server can still require its sky mask.
+- Final review made all four dynamic comparisons explicit strcmp. The follow-up
+  mounted reentry again proves1/2/1/1. An unmounted arm had silently stayed on
+  Kvas instead of loading Autumnal: its1/1/1/1 and wrapper0 were NOT a pass.
+  Always prove the OTHER map actually loaded. Local midnight changed exactly
+  one compiler-stamp byte (offset115,23to24) in QW/menu; compare actual bytes,
+  do not assume a new hash is new gameplay or call unequal images identical.
 
 ## P947 — stale per-map dependency metadata / cold native controls (23 Oct 2026)
 
@@ -6302,6 +6308,20 @@ script rather than passing it as an argument, where `ps` would show it.
   we already hold for the same run.
 
 ## Pi operations (public lobbies)
+
+P948 delivery,23Oct2026: a real positive QW status response had1021bytes of valid
+serverinfo but NO map key (bounded1024-byte info). Validate actual protocol/game
+fields and player records; don't require an optional map field or count silence
+as empty. Directory0players and an occupied socket briefly disagreed: the guard
+correctly refused BEFORE any mutation. Later emptiness was rechecked by the SAME
+strict guard at the actual boundary; no force. First/final live+prev and two
+independent prior-history generations were verified, not hardlinked aliases.
+Bash/pwsh-Command mangled an unquotedC:/selfsink toC, then raisedC:\\Program AFTER
+compiling. Windows Python subprocess argv/-File fixed the SAME build entrypoint;
+QuakeDir selfsink is the repo root, NOT its ftesurf subfolder. Verify actual
+binding/output before-Pi. Existing seed_csprogs.py deletes every*.tmp/.dcl in its
+cache directory: use a fresh OWNED stage then copy ONLY the resulting hash.dat
+when seeding a live install; never delete another client's partial downloads.
 
 P943 runtime readback,23Oct2026: systemd's configured WorkingDirectory is NOT
 necessarily the server's actual cwd. Here the unit reports
