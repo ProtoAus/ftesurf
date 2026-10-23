@@ -22,7 +22,10 @@ trusted server-reported gameplay state, NOT cryptographic pixel/device attestati
 No movement, native pin/tag, body/journal, reader or collector change is made.
 
 The backend supports a `maxfog` challenge and an additive Story column whose old
-rows default to unknown (-1). **The default Event27 gold remains `finish`.** A
+rows default to unknown (-1). Concurrent cron/gunicorn initializers serialize the
+column check and ALTER in a short immediate transaction. A real two-connection
+SQLite control reproduces the old duplicate-column race; the subject admits both
+initializers and preserves the old row. **The default Event27 gold remains `finish`.** A
 prechange public aggregate showed one gold holder. The owner was asked whether to
 preserve legacy gold or require a new whole-fog finish; no answer/credit migration
 is invented. Enabling the gameplay mode and recording future facts is independent
@@ -44,7 +47,7 @@ of that still-blocked criterion decision.
 
 All actual compiler directories are taken from `build.ps1 -NoDeploy -Jobs 8`
 output, not guessed from `ftesurf/`. Three VMs compile with zero warnings.
-Existing `surfd/test_story.py`:50 tests pass, including five new schema, fact,
+Existing `surfd/test_story.py`:51 tests pass, including six new schema, fact,
 metadata, answer/ladder and dated/full controls. Existing native runner's pure cfg
 transport regression:four tests pass, with no native processes or player data.
 
@@ -73,7 +76,7 @@ fdb69ce974eb1d6009c211f49e42759616b0952c is documentation only.
 ## Remaining boundary
 
 Final rebased P944 source builds all three VMs with zero warnings using the owned
-clean engine root;50 Story/four transport tests pass. Its exact compiled programs
+clean engine root;51 Story/four transport tests pass. Its exact compiled programs
 again produce real dedicated full-finish facts1,0,0. One earlier invocation returned
 a postcompile PowerShell error; it is retained, not called a code failure or pass.
 The bounded same-entry diagnostic build completed0 and supplied the final tested

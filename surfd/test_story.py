@@ -2,6 +2,7 @@
 """Patch 854: the Story list's grammar and the medals worked out from WOS rows.
 
 Real Flask routes on an isolated database; the map library is patched, no HTTP."""
+from contextlib import closing
 import hashlib
 import os
 from pathlib import Path
@@ -571,6 +572,80 @@ class Story2(Story):
             self.assertEqual(after[:-1], before)
             self.assertEqual(after[-1], -1)
             self.assertEqual(db.execute("SELECT COUNT(*) FROM story_runs").fetchone()[0], 1)
+
+    def test_maxfog_schema_serializes_concurrent_importers(self):
+        def old_schema(db):
+            db.executescript(S.STORY_RUNS_DDL)
+            if "maxfog" not in {r[1] for r in db.execute("PRAGMA table_info(story_runs)")}:
+                db.execute("ALTER TABLE story_runs ADD COLUMN maxfog INTEGER NOT NULL DEFAULT -1")
+
+        def race(migrate):
+            ready = threading.Barrier(2)
+            observed_old_schema = threading.Barrier(2)
+            errors, writers = [], []
+            with tempfile.TemporaryDirectory(dir=HOME, prefix="story-schema-race-") as home:
+                path = Path(home) / "legacy.db"
+                with closing(sqlite3.connect(path)) as db, db:
+                    db.executescript(S.STORY_RUNS_DDL.replace(
+                        " maxfog INTEGER NOT NULL DEFAULT -1,", ""))
+                    db.execute("INSERT INTO story_runs(id,map,track,player,millis,at)"
+                               " VALUES(42,'surf_two',0,'fixture',90000,7)")
+
+                class Importer:
+                    def __init__(self, conn):
+                        self.conn = conn
+
+                    def executescript(self, sql):
+                        result = self.conn.executescript(sql)
+                        ready.wait(timeout=5)
+                        return result
+
+                    def execute(self, sql, *args):
+                        result = self.conn.execute(sql, *args)
+                        if sql == "BEGIN IMMEDIATE":
+                            writers.append(True)
+                        if sql == "PRAGMA table_info(story_runs)" and not self.conn.in_transaction:
+                            # Force the old unlocked importers to observe the same old schema.
+                            rows = result.fetchall()
+                            observed_old_schema.wait(timeout=5)
+                            return rows
+                        return result
+
+                    def __enter__(self):
+                        self.conn.__enter__()
+                        return self
+
+                    def __exit__(self, *args):
+                        return self.conn.__exit__(*args)
+
+                def worker():
+                    conn = sqlite3.connect(path, timeout=5)
+                    try:
+                        migrate(Importer(conn))
+                    except Exception as exc:
+                        errors.append(exc)
+                    finally:
+                        conn.close()
+
+                threads = [threading.Thread(target=worker, daemon=True) for _ in range(2)]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join(timeout=10)
+                self.assertFalse(any(thread.is_alive() for thread in threads))
+                with closing(sqlite3.connect(path)) as db:
+                    self.assertEqual(db.execute("SELECT id,map,millis,at,maxfog FROM story_runs").fetchall(),
+                                     [(42, "surf_two", 90000, 7, -1)])
+            return errors, len(writers)
+
+        old_errors, old_writers = race(old_schema)
+        self.assertEqual(old_writers, 0)
+        self.assertEqual(len(old_errors), 1)  # the control actually reproduces the unsafe ALTER race
+        self.assertIsInstance(old_errors[0], sqlite3.OperationalError)
+        self.assertIn("duplicate column", str(old_errors[0]))
+        errors, writers = race(S.story_schema)
+        self.assertEqual(errors, [])
+        self.assertEqual(writers, 2)
 
     def test_maxfog_needs_an_explicit_complete_trusted_fact(self):
         known = (0, 1, 900)

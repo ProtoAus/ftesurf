@@ -4859,8 +4859,11 @@ STORY_RUNS_DDL = (
 def story_schema(db):
     """Additive Story schema; old finishes remain unknown, never Max Fog passes."""
     db.executescript(STORY_RUNS_DDL)
-    if "maxfog" not in {r[1] for r in db.execute("PRAGMA table_info(story_runs)")}:
-        db.execute("ALTER TABLE story_runs ADD COLUMN maxfog INTEGER NOT NULL DEFAULT -1")
+    # Cron and gunicorn both migrate on import. Serialize the check AND ALTER.
+    with db:
+        db.execute("BEGIN IMMEDIATE")
+        if "maxfog" not in {r[1] for r in db.execute("PRAGMA table_info(story_runs)")}:
+            db.execute("ALTER TABLE story_runs ADD COLUMN maxfog INTEGER NOT NULL DEFAULT -1")
 
 
 # story_tracks' `prior`: a WOS full-run board row on the track (map, track) whose
