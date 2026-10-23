@@ -5,6 +5,16 @@ installs and compatible progs on all12lobbies (22October2026 UTC). This is
 availability, NOT human acceptance. Native client fixes require the updated
 Windows engine. Exact sources/readbacks/live proof: tools/p931-delivery.md.
 
+## P940 — viewmodel motion and material footsteps (23 Oct 2026)
+PENDING owner after the matching client update/reconnect: select a weapon with
+`give usp`, then walk and look left/right. Check that its rocking and turning
+sway feel natural, including while airborne; the camera/aim should not sway.
+The default viewmodel FOV is now70, retaining existing personal values.
+With `cl_game_sfx 1`, run across wood, grating and glass, then walk/crouch:
+materials should sound different and quiet movement should stay silent.
+Native socket tests prove model offsets/settling/reset and material WAV
+selection, not visual/ear acceptance. Details: tools/p940-viewmodel-materials.md.
+
 ## P939 — paste without an approval question (23 Oct 2026)
 Native patch-939 and compatible local MENU source258210ea are installed in BOTH
 Windows sets, hashes verified23Oct03:33:58Z. Four QW/CSQC gameplay DATs stayed
@@ -42,7 +52,7 @@ availability/machine evidence, NOT owner acceptance. Restart/reconnect, then
 PENDING human — three small checks:
 - Enable cl_game_sfx 1: walk/crouch quietly and hold jump for repeated hop cues.
 - `give weapon_usp` or `give usp` (also scout/knife/glock): check draw/idle/shot
-  sound and model size/lighting. r_viewmodel_fov defaults54 independently of
+  sound and model size/lighting. r_viewmodel_fov now defaults70 (P940), independently of
   world FOV. Fresh model/Foley defaults0; existing personal choices untouched.
 - Load Goldsrc2 save2: confirm the old pause before count-in feels gone.
 Exact actually delivered-cohort cold control improved17.92s ->.56s, same body,

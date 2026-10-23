@@ -176,6 +176,7 @@ void() CSQC_WorldLoaded =
 	// soundscapes can play, and this hook is the documented place for that.
 	// cl_soundscape.qc.
 	Snds_LoadFromWorld();
+	GM_Clear();                   // map-pak VMTs can shadow the same texture name
 
 	// Patch 335.  The client-side trigger mirror, out of the same lump and here
 	// for the same reason: the prediction hook needs the map's teleport/push/

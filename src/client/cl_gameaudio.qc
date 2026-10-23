@@ -4,6 +4,11 @@ float ga_steps, ga_lands, ga_splashes, ga_swims, ga_calls, ga_jumps;
 float ga_css, ga_fall, ga_jumpseq, ga_volume, ga_speed, ga_walking;
 vector ga_pos, ga_vel;
 string ga_last;
+float ga_footvariant;
+void() GM_Clear;
+void() GM_Info;
+void(string texture) GM_Inspect;
+string(vector org, float step) GM_Sound;
 
 float(string path) GA_Exists =
 {
@@ -17,6 +22,8 @@ float(string path) GA_Exists =
 
 void() GA_Assets =
 {
+	GM_Clear();
+	ga_footvariant = 0;
 	ga_css = GA_Exists("player/footsteps/concrete1.wav");
 	ga_fall = GA_Exists("player/pl_fallpain1.wav");
 };
@@ -25,6 +32,7 @@ void() GA_Register =
 {
 	registercvar("cl_game_sfx", "0", CVAR_ARCHIVE);
 	registercommand("gameaudio_info");
+	registercommand("gameaudio_material");
 	GA_Assets();
 };
 
@@ -69,32 +77,14 @@ float(vector feet) GA_Water =
 	return level;
 };
 
-string(vector feet) GA_Surface =
-{
-	local string s;
-
-	s = "";
-	traceline(feet + '0 0 4', feet - '0 0 12', TRUE, world);
-	if (trace_surface_id > 0)
-	if (checkbuiltin(getsurfacetexture))
-		s = strtolower(getsurfacetexture(trace_ent, trace_surface_id - 1));
-	if (strstrofs(s, "grate", 0) >= 0) return "metalgrate";
-	if (strstrofs(s, "metal", 0) >= 0) return "metal";
-	if (strstrofs(s, "wood", 0) >= 0) return "wood";
-	if (strstrofs(s, "tile", 0) >= 0) return "tile";
-	if (strstrofs(s, "grass", 0) >= 0) return "grass";
-	if (strstrofs(s, "sand", 0) >= 0) return "sand";
-	if (strstrofs(s, "dirt", 0) >= 0) return "dirt";
-	if (strstrofs(s, "gravel", 0) >= 0) return "gravel";
-	return "concrete";
-};
-
 float(vector feet, float water, float volume) GA_Foot =
 {
-	local string material;
-
-	material = water ? "slosh" : GA_Surface(feet);
-	return GA_Play(sprintf("player/footsteps/%s%g.wav", material, ga_variant), volume);
+	local float emitted;
+	if (!ga_css || volume <= 0 || cvar("cl_game_sfx") <= 0) return FALSE;
+	if (water) return GA_Play(sprintf("player/footsteps/slosh%g.wav", ga_variant), volume);
+	emitted = GA_Play(GM_Sound(feet, ga_footvariant), volume);
+	if (emitted) ga_footvariant = (ga_footvariant + 1) % 4;
+	return emitted;
 };
 
 void() GA_InputFrame =
@@ -192,11 +182,17 @@ void() GA_Frame =
 
 float() GA_Command =
 {
+	if (!strcmp(argv(0), "gameaudio_material"))
+	{
+		GM_Inspect(argv(1));
+		return TRUE;
+	}
 	if (strcmp(argv(0), "gameaudio_info")) return FALSE;
 	if (!strcmp(argv(1), "refresh")) GA_Assets();
 	print(sprintf("gameaudio: css %g shared-fall %g calls %g steps %g land %g water %g swim %g\n",
 		ga_css, ga_fall, ga_calls, ga_steps, ga_lands, ga_splashes, ga_swims));
 	print(sprintf("gameaudio: last '%s' active %g ground %g depth %g\n", ga_last, ga_valid, ga_ground, ga_water));
 	print(sprintf("gameaudio: speed %g volume %g hop-cues %g contact-seq %g\n", ga_speed, ga_volume, ga_jumps, ga_jumpseq));
+	GM_Info();
 	return TRUE;
 };

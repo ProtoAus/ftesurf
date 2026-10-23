@@ -25,7 +25,9 @@ commit   5734db88e4dbe5fd82f250af8a06910002a4dbd1
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-939
-patch    939
+patch    940
+# Patch 940: cosmetic Source-style weapon motion, default FOV70 and material footsteps.
+# QC-only: native pin/tag, movement, aim, recording and collection are unchanged.
 # Patch 939: native paste without a second confirmation; real gesture gates retained.
 # Patch 938: cheaper live symbol/context checks without retained VM bindings.
 # Lookup order, recording formats, collection/admission and movement are unchanged.

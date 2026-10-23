@@ -2294,6 +2294,13 @@ cannot be used, ask; do not silently scatter copies elsewhere.
 
 ## Build
 
+- **P940: FILE_READNL does not mean line reads retaining newlines.** Native
+  PF_fgets returns the whole file without advancing that mode. A while/fgets
+  parser reread the same manifest to its byte/count caps (35 metadata opens
+  instead of11). Use FILE_READ for linewise loops. Native corrected control
+  keeps111profiles/67aliases and selects the same mounted WAVs; do not normalize
+  a surprising counter until checking the builtin's actual contract.
+
 **QC-only dual deployment (P814 delivery tooling).** The old build had no QC
 secondary-copy step: a successful default build changed the primary csprogs but
 left C:\FTEQuake's prior bytes intact. Do not infer deployment from a clean compile

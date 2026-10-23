@@ -4,6 +4,10 @@ float wp_weapon, wp_sequence, wp_until, wp_animat, wp_ready, wp_shots;
 float wp_eventat, wp_drawing, wp_events, wp_sndnext, wp_callbacks;
 float wp_scriptbytes, wp_scriptalias, wp_scripthits;
 string wp_model, wp_frame, wp_soundlast;
+float wp_motionvalid, wp_motiontime, wp_bobtime;
+vector wp_facing, wp_motionbody, wp_motionorg, wp_motionang;
+// Existing DPEF_NOGUNBOB: replace Quake weapon-matrix bob for this entity only.
+#define WP_EF_NOGUNBOB 256i
 string wp_sndname[16], wp_sndpath[16];
 
 void() WP_Register =
@@ -12,7 +16,7 @@ void() WP_Register =
 	registercvar("cl_viewweapon_left", "0", CVAR_ARCHIVE);
 	registercvar("cl_weapon_sfx", "1", CVAR_ARCHIVE);
 	// Existing independent projection, not a scale hack or a change to world FOV.
-	if (!strcmp(cvar_string("r_viewmodel_fov"), "")) cvar_set("r_viewmodel_fov", "54");
+	if (!strcmp(cvar_string("r_viewmodel_fov"), "")) cvar_set("r_viewmodel_fov", "70");
 	registercommand("surf_weapon");
 	registercommand("give"); // Native give may forward instead; SSQC handles the same aliases.
 	registercommand("weapon_info");
@@ -192,6 +196,50 @@ void(float w) WP_Shot =
 	}
 };
 
+// Public Source SDK bob/facing-lag maths, confined to the render-only model.
+void() WP_Motion =
+{
+	local float dt, speed, vbob, lbob, alpha, amount;
+	local vector fwd, right, up, ofwd, oright, oup, delta, lag;
+	ofwd = v_forward; oright = v_right; oup = v_up;
+	makevectors(getproperty(VF_ANGLES));
+	fwd = v_forward; right = v_right; up = v_up;
+	v_forward = ofwd; v_right = oright; v_up = oup;
+	dt = cltime - wp_motiontime;
+	if (!wp_motionvalid || dt < 0 || dt > 0.1 || vlen(pmove_org - wp_motionbody) > 128)
+	{
+		wp_motionvalid = TRUE;
+		wp_facing = fwd;
+		wp_bobtime = 0;
+		wp_motionorg = '0 0 0'; wp_motionang = '0 0 0';
+	}
+	else if (dt > 0)
+	{
+		speed = bound(0, vlen([pmove_vel_x, pmove_vel_y, 0]), 320);
+		wp_bobtime = wp_bobtime + dt * speed / 320;
+		wp_bobtime = wp_bobtime - floor(wp_bobtime / 0.9) * 0.9;
+		vbob = speed * 0.005 * (0.3 + 0.7 * sin(wp_bobtime * 6.2831853 / 0.45));
+		lbob = speed * 0.005 * (0.3 + 0.7 * sin(wp_bobtime * 6.2831853 / 0.9));
+		delta = fwd - wp_facing;
+		amount = 5;
+		if (vlen(delta) > 1.5) amount = amount * vlen(delta) / 1.5;
+		alpha = 1 - pow(2.7182818, -amount * dt);
+		wp_facing = normalize(wp_facing + delta * alpha);
+		lag = (fwd - wp_facing) * -5;
+		if (vlen(lag) > 3) lag = normalize(lag) * 3;
+		wp_motionorg = [lag * fwd, -(lag * right), lag * up];
+		wp_motionorg_x = wp_motionorg_x + vbob * 0.1 + vbob * 0.1 * fwd_z;
+		wp_motionorg_y = wp_motionorg_y - lbob * 0.8 - vbob * 0.1 * right_z;
+		wp_motionorg_z = wp_motionorg_z + vbob * 0.1 * up_z;
+		// Alias pitch is inverted by the engine's r_meshpitch.
+		wp_motionang = [vbob * 0.4, -lbob * 0.3, vbob * 0.5];
+	}
+	wp_motiontime = cltime;
+	wp_motionbody = pmove_org;
+	wp_ent.origin = wp_motionorg;
+	wp_ent.angles = wp_motionang;
+};
+
 void() WP_Frame =
 {
 	local float w, seq;
@@ -204,6 +252,7 @@ void() WP_Frame =
 	{
 		wp_weapon = 0;
 		wp_ready = FALSE;
+		wp_motionvalid = FALSE;
 		wp_sequence = seq;
 		return;
 	}
@@ -213,6 +262,7 @@ void() WP_Frame =
 	if (w != wp_weapon)
 	{
 		wp_weapon = w;
+		wp_motionvalid = FALSE;
 		wp_sequence = seq;
 		wp_ready = FALSE;
 		if (strcmp(wp_model, "")) strunzone(wp_model);
@@ -234,6 +284,8 @@ void() WP_Frame =
 	if (wp_until > 0 && time >= wp_until) wp_ready = WP_Animate(WP_Idle(w), FALSE);
 	wp_ent.origin = '0 0 0';
 	wp_ent.angles = '0 0 0';
+	wp_ent.effects = WP_EF_NOGUNBOB;
+	WP_Motion();
 	wp_ent.colormod = '1 1 1';
 	wp_ent.alpha = 1;
 	wp_ent.scale = 1;
@@ -287,6 +339,7 @@ float() WP_Command =
 		if (wp_ready)
 			print(sprintf("weapon: frame '%s' duration %g time %g\n", wp_frame, frameduration(wp_ent.modelindex, wp_ent.frame), wp_ent.frame1time));
 		print(sprintf("weapon: enabled %g sfx %g fov %g draw-sounds %g callbacks %g last '%s'\n", cvar("cl_viewweapon"), cvar("cl_weapon_sfx"), cvar("r_viewmodel_fov"), wp_events, wp_callbacks, wp_soundlast));
+		print(sprintf("weapon: motion valid %g offset %v angles %v\n", wp_motionvalid, wp_motionorg, wp_motionang));
 		return TRUE;
 	}
 	giving = !strcmp(cmd, "give");

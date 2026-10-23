@@ -293,6 +293,8 @@ client/cl_mapmsg.qc
 client/cl_share.qc
 // Local Foley reads the body/owner and camera-mode helpers declared above.
 client/cl_gameaudio.qc
+// Foley's lazy, bounded Source material/sound-property cache uses GA_Exists.
+client/cl_gamaterial.qc
 client/cl_motionaudio.qc
 client/cl_weapon.qc
 client/cl_main.qc
