@@ -27,6 +27,10 @@
 - Equip with `knife`, `usp`, `scout` or `glock`, as well as the existing give commands. USP/Scout shots have smooth, render-only upward camera kick and recovery; aim and movement remain unchanged.
 - Footstep samples vary within the material's left/right set, and closely adjacent jump/contact cues merge instead of double-stepping. Default viewmodel FOV is now75; explicit preferences and bindings are preserved.
 
+### P944 Personal Max Fog event
+- Playing the Zoomathon Max Fog event now starts a dense personal fog attempt without changing anyone else's view. Type cmd maxfog 0 to restore normal map fog, or cmd maxfog status to inspect the mode.
+- Whole-run tracking distinguishes staying in fog from switching it off or enabling it late. Existing gold credit is unchanged while the legacy-credit policy is pending.
+
 ### P941 Subtler weapons and authentic floor sounds
 - Weapon bob and turning sway are one-fifth as strong by default. Idle animations keep looping, and spawning starts unarmed even if weapon models are enabled; select a weapon when you want one.
 - Fix long material names on maps such as Axiom falling back to concrete. When CSS is mounted, its footstep samples take priority over Momentum's versions; quiet walking and crouching stay silent.

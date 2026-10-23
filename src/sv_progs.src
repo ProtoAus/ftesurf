@@ -27,6 +27,8 @@ server/sv_zones.qc
 // (sv_player.qc's connect/disconnect, sv_main.qc's frame), and calls still run
 // downhill.
 server/sv_lobby.qc
+// Event fog owns per-player mode; the timer below latches its whole-run fact.
+server/sv_eventfog.qc
 // Patch 372: the map clock's votes.  After sv_lobby.qc, whose Lobby_Cycle state
 // it writes; sv_player.qc and sv_main.qc below call into it.
 server/sv_vote.qc

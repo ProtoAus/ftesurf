@@ -182,6 +182,7 @@
 .float   lobby_sty_fails;
 .float   lobby_sty_mask;
 .float   lobby_sty_top;
+.float   lobby_sty_maxfog;      // mode at start, cleared permanently on disable
 .float   lobby_sty_serial;      // the *story toasts sent on this map
 // Set by SV_TimerStart: a run carried onto a fresh edict (`retry` is a map
 // restart) reads 0, and its facts are not sent -- they start at the restore.
@@ -3182,8 +3183,8 @@ string(entity e, float track, float leg, float ticks, float flags,
 	if (leg == 0)
 	if (!(flags & TF_MULTISESSION))
 	if (e.lobby_sty_ok)
-		body = sprintf("%s&sfails=%d&smask=%d&stop=%d", body, e.lobby_sty_fails,
-		               e.lobby_sty_mask, e.lobby_sty_top);
+		body = sprintf("%s&sfails=%d&smask=%d&stop=%d&smaxfog=%d", body, e.lobby_sty_fails,
+		               e.lobby_sty_mask, e.lobby_sty_top, e.lobby_sty_maxfog);
 	return body;
 };
 

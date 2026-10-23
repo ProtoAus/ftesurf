@@ -3729,6 +3729,7 @@ string ui_name_field;           // what the field holds, strzone-free: sui owns 
 float  ui_name_caret;
 string ui_name_err;
 float  ui_name_back;            // the screen to return to on cancel
+float  ui_launch_maxfog;        // retained only across this launch's name gate
 float  ui_name_resume;          // 1 = ui_launch, 2 = ui_connect(ui_name_arg)
 float  ui_name_arg;
 
@@ -3843,7 +3844,23 @@ string(string s) ui_name_take =
 	return "";
 };
 
-void() ui_launch =
+void(string target) ui_eventfog_target =
+{
+	local float serial;
+
+	registercvar("fs_eventfog_map", "", 0);
+	registercvar("fs_eventfog_until", "0", 0);
+	registercvar("fs_eventfog_serial", "0", 0);
+	cvar_set("fs_eventfog_map", target);
+	cvar_set("fs_eventfog_until", "0");
+	if (!strlen(target)) return;
+	serial = cvar("fs_eventfog_serial") + 1;
+	if (serial > 1000000) serial = 1;
+	cvar_set("fs_eventfog_serial", ftos(serial));
+	cvar_set("fs_eventfog_until", ftos(gettime(0) + 300));
+};
+
+void(float eventmax) ui_launch_mode =
 {
 	string mapname = ui_selected_name();
 	if (mapname == "")
@@ -3854,6 +3871,7 @@ void() ui_launch =
 	// ui_connect, which has its own rule.
 	if (ui_join_busy())
 		return;
+	ui_launch_maxfog = eventmax;
 
 	/*
 	  BUILD 22.  Belt and braces beside m_draw's screen override: this is the
@@ -3900,6 +3918,9 @@ void() ui_launch =
 	  rather than a consent gate -- the consent gate is rec_terms and it is
 	  checked separately, inside Lob_JoinAsk.
 	*/
+	// Only a data-marked Story Play passes eventmax. Ordinary launches clear
+	// earlier requests, including another attempt on the exact same map.
+	ui_eventfog_target(eventmax ? mapname : "");
 	if (ui_online_opt())
 	if (Lob_JoinAsk(mapname))
 	{
@@ -3917,6 +3938,8 @@ void() ui_launch =
 
 	ui_launch_local(mapname);
 };
+
+void() ui_launch = { ui_launch_mode(FALSE); };
 
 /*
   Patch 270 -- joining a public lobby.
@@ -4589,6 +4612,7 @@ void() ui_join_cancel =
 {
 	if (!ui_join_pending)
 		return;
+	ui_eventfog_target("");
 	ui_join_pending = FALSE;
 	Lob_JoinClear();
 };
@@ -4732,6 +4756,7 @@ void(float i) ui_connect =
 	// not a connect already held for a download -- ui_prejoin holds one only,
 	// and an ask's local fallback would leave that one to connect later.
 	// After the address checks, so a refused click leaves the ask alone.
+	ui_eventfog_target("");
 	ui_join_cancel();
 	if (ui_join_busy())
 		return;
@@ -6036,7 +6061,7 @@ void(vector screensize) screen_name =
 			// re-run their gates; the name gate now passes.
 			menu_screen = ui_name_back;
 			if (ui_name_resume == 1)
-				ui_launch();
+				ui_launch_mode(ui_launch_maxfog);
 			else if (ui_name_resume == 2)
 				ui_connect(ui_name_arg);
 			else if (ui_name_resume == 3)
@@ -6637,6 +6662,7 @@ float(float withdl) ui_strip_cancel_join =
 	if (pj_addr == "")
 		return FALSE;
 
+	ui_eventfog_target("");
 	print(sprintf("^5online:^7 join cancelled -- not connecting to %s\n", pj_addr));
 	ui_st_result(sprintf("Join cancelled -- %s keeps downloading", pj_map), 0);
 	if (withdl)

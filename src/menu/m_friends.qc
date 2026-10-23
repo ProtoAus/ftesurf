@@ -405,6 +405,7 @@ float(float reqid, float code, string body) MF_Reply =
 			MF_Cancel();
 			mf_next = time + 5;
 			MF_Note("Joining your friend...");
+			ui_eventfog_target("");
 			ui_join_cancel();
 			if (!ui_prejoin(addr, map))
 			{

@@ -2,6 +2,7 @@
 """Patch 854: the Story list's grammar and the medals worked out from WOS rows.
 
 Real Flask routes on an isolated database; the map library is patched, no HTTP."""
+from contextlib import closing
 import hashlib
 import os
 from pathlib import Path
@@ -485,11 +486,12 @@ class Story2(Story):
         return [(e["m"], e["n"], e["t"], e["tot"], e["ch"]) for e in r.get_json().get("story", [])]
 
     def srun(self, mapname, player, ms, at=None, track=0, prevms=0, fails=-1, inmask=-1, top=-1,
-             spots="", runid="", pub="", leg=0, replay_id=0):
+             spots="", runid="", pub="", leg=0, replay_id=0, maxfog=-1):
         self.db.execute("INSERT INTO story_runs(map,track,leg,player,pub,name,millis,prevms,at,runid,"
-                        "replay_id,fails,inmask,top,spots) VALUES(?,?,?,?,?,'n',?,?,?,?,?,?,?,?,?)",
+                        "replay_id,fails,inmask,top,spots,maxfog) VALUES(?,?,?,?,?,'n',?,?,?,?,?,?,?,?,?,?)",
                         (mapname, track, leg, player, pub, ms, prevms,
-                         self.now if at is None else at, runid, replay_id, fails, inmask, top, spots))
+                         self.now if at is None else at, runid, replay_id, fails, inmask, top, spots,
+                         maxfog))
         self.db.commit()
 
     def settle(self):
@@ -553,6 +555,155 @@ class Story2(Story):
         rows = self.db.execute("SELECT player, fails, inmask, top FROM story_runs ORDER BY id").fetchall()
         self.assertEqual([tuple(r) for r in rows], [(G3, 1, 5, 900), (G3, 0, 5, 900),
                                                    (G3, 0, 49, 900), (G3, 0, 1, -1)])
+
+    def test_maxfog_schema_preserves_legacy_rows_and_stays_idempotent(self):
+        with sqlite3.connect(":memory:") as db:
+            column = " maxfog INTEGER NOT NULL DEFAULT -1,"
+            legacy = S.STORY_RUNS_DDL.replace(column, "")
+            self.assertNotEqual(legacy, S.STORY_RUNS_DDL)
+            db.executescript(legacy)
+            db.execute("INSERT INTO story_runs(id,map,track,player,millis,at)"
+                       " VALUES(42,'surf_two',0,'fixture',90000,7)")
+            before = db.execute("SELECT * FROM story_runs").fetchone()
+            self.assertNotIn("maxfog", {r[1] for r in db.execute("PRAGMA table_info(story_runs)")})
+            S.story_schema(db)
+            S.story_schema(db)
+            after = db.execute("SELECT * FROM story_runs").fetchone()
+            self.assertEqual(after[:-1], before)
+            self.assertEqual(after[-1], -1)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM story_runs").fetchone()[0], 1)
+
+    def test_maxfog_schema_serializes_concurrent_importers(self):
+        def old_schema(db):
+            db.executescript(S.STORY_RUNS_DDL)
+            if "maxfog" not in {r[1] for r in db.execute("PRAGMA table_info(story_runs)")}:
+                db.execute("ALTER TABLE story_runs ADD COLUMN maxfog INTEGER NOT NULL DEFAULT -1")
+
+        def race(migrate):
+            ready = threading.Barrier(2)
+            observed_old_schema = threading.Barrier(2)
+            errors, writers = [], []
+            with tempfile.TemporaryDirectory(dir=HOME, prefix="story-schema-race-") as home:
+                path = Path(home) / "legacy.db"
+                with closing(sqlite3.connect(path)) as db, db:
+                    db.executescript(S.STORY_RUNS_DDL.replace(
+                        " maxfog INTEGER NOT NULL DEFAULT -1,", ""))
+                    db.execute("INSERT INTO story_runs(id,map,track,player,millis,at)"
+                               " VALUES(42,'surf_two',0,'fixture',90000,7)")
+
+                class Importer:
+                    def __init__(self, conn):
+                        self.conn = conn
+
+                    def executescript(self, sql):
+                        result = self.conn.executescript(sql)
+                        ready.wait(timeout=5)
+                        return result
+
+                    def execute(self, sql, *args):
+                        result = self.conn.execute(sql, *args)
+                        if sql == "BEGIN IMMEDIATE":
+                            writers.append(True)
+                        if sql == "PRAGMA table_info(story_runs)" and not self.conn.in_transaction:
+                            # Force the old unlocked importers to observe the same old schema.
+                            rows = result.fetchall()
+                            observed_old_schema.wait(timeout=5)
+                            return rows
+                        return result
+
+                    def __enter__(self):
+                        self.conn.__enter__()
+                        return self
+
+                    def __exit__(self, *args):
+                        return self.conn.__exit__(*args)
+
+                def worker():
+                    conn = sqlite3.connect(path, timeout=5)
+                    try:
+                        migrate(Importer(conn))
+                    except Exception as exc:
+                        errors.append(exc)
+                    finally:
+                        conn.close()
+
+                threads = [threading.Thread(target=worker, daemon=True) for _ in range(2)]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join(timeout=10)
+                self.assertFalse(any(thread.is_alive() for thread in threads))
+                with closing(sqlite3.connect(path)) as db:
+                    self.assertEqual(db.execute("SELECT id,map,millis,at,maxfog FROM story_runs").fetchall(),
+                                     [(42, "surf_two", 90000, 7, -1)])
+            return errors, len(writers)
+
+        old_errors, old_writers = race(old_schema)
+        self.assertEqual(old_writers, 0)
+        self.assertEqual(len(old_errors), 1)  # the control actually reproduces the unsafe ALTER race
+        self.assertIsInstance(old_errors[0], sqlite3.OperationalError)
+        self.assertIn("duplicate column", str(old_errors[0]))
+        errors, writers = race(S.story_schema)
+        self.assertEqual(errors, [])
+        self.assertEqual(writers, 2)
+
+    def test_maxfog_needs_an_explicit_complete_trusted_fact(self):
+        known = (0, 1, 900)
+        for raw in ("", "-1", "2", "1.0", "true", "x"):
+            with self.subTest(raw=raw):
+                self.assertEqual(S.story_maxfog({"smaxfog": raw}, True, known), -1)
+        self.assertEqual(S.story_maxfog({"maxfog": "1"}, True, known), -1)
+        for flag in (0, 1):
+            form = {"smaxfog": str(flag)}
+            self.assertEqual(S.story_maxfog(form, True, known), flag)
+            self.assertEqual(S.story_maxfog(form, False, known), -1)
+            for partial in ((-1, 1, 900), (0, -1, 900), (0, 1, -1)):
+                self.assertEqual(S.story_maxfog(form, True, partial), -1)
+
+    def test_maxfog_mode_is_explicit_not_a_map_name_or_gold_inference(self):
+        text = ('list story "S"\nchapter\nlevel surf_two\n mode maxfog\n gold maxfog\n'
+                'level surf_two\n gold finish\n')
+        lists, problems = S.story_parse(text)
+        self.assertEqual(problems, [])
+        levels = lists[0]["chapters"][0]["levels"]
+        self.assertEqual([lv.get("mode", "") for lv in levels], ["maxfog", ""])
+        self.assertEqual(levels[0]["ch"][0]["t"], "Finish with Max Fog for the whole run")
+        (HOME / "story.txt").write_text(text)
+        _, body = self.get(story="list")
+        self.assertEqual([lv["mode"] for lv in body["lists"][0]["levels"]], ["maxfog", ""])
+        _, problems = S.story_parse('list a\n mode maxfog\nlevel surf_two\n mode other\n mode\n')
+        self.assertEqual(len(problems), 3)
+
+    def test_maxfog_finish_answer_and_ladder_agree_without_legacy_backfill(self):
+        (HOME / "story.txt").write_text('list story "S"\nchapter\nlevel surf_two\n'
+                                       ' mode maxfog\n bronze finish\n gold maxfog\n')
+        self.get(story="list")
+        self.assertEqual(self.post("surf_two", G3, 90000, sfails=0, smask=1, stop=900),
+                         [("b", 1, "Complete the map", 1, "")])
+        self.assertEqual(self.post("surf_two", G3, 91000, sfails=0, smask=1, stop=900, smaxfog=0), [])
+        self.assertEqual(self.post("surf_two", G3, 92000, sfails=0, smask=1, smaxfog=1), [])
+        self.assertEqual(self.post("surf_two", G3, 93000, sfails=0, smask=1, stop=900, smaxfog=1),
+                         [("g", 1, "Finish with Max Fog for the whole run", 3, "")])
+        self.assertEqual(self.post("surf_two", G3, 94000, leg=1,
+                                   sfails=0, smask=1, stop=900, smaxfog=1), [])
+        # A duplicate cannot replace its original latched fact with the caller's current mode.
+        self.assertEqual(self.post("surf_two", G3, 93000, sfails=0, smask=1, stop=900, smaxfog=0), [])
+        self.assertEqual([r[0] for r in self.db.execute("SELECT maxfog FROM story_runs ORDER BY id")],
+                         [-1, 0, -1, 1])
+        # The stage POST acted on the board, but this undated full-run level does not log it.
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM runs WHERE leg=1").fetchone()[0], 1)
+        self.settle()
+        self.assertEqual(self.mine(G3)[2][0], (3, 90000))
+
+    def test_dated_maxfog_needs_a_full_finish_in_its_window(self):
+        (HOME / "story.txt").write_text('list events "E"\ndates 2027-01-10 2027-01-20\n'
+                                       'chapter\nlevel surf_two\n gold maxfog\n')
+        self.srun("surf_two", A, 90000, at=self.now - 30 * 86400, maxfog=1)
+        self.srun("surf_two", B, 90000, maxfog=1)
+        self.srun("surf_two", G2, 90000, leg=1, maxfog=1)
+        self.srun("surf_two", G3, 90000)    # a legacy complete finish is not evidence of fog
+        self.assertEqual([self.mine(w, "events")[2].get(0, (0,))[0] for w in (A, B, G2, G3)],
+                         [0, 3, 0, 0])
 
     def test_facts_need_a_trusted_lobby_and_a_key_names_the_account(self):
         self.get(story="list")

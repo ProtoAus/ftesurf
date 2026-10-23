@@ -277,6 +277,94 @@ entity(string nm) Fog_FindByName =
 	return world;
 };
 
+float vbsp_fog_eventmax;
+float vbsp_fog_eventpending, vbsp_fog_eventserial;
+float vbsp_fog_eventdeadline, vbsp_fog_eventnext;
+
+void() Fog_EventCancel =
+{
+	// An old world's receiver must not clear a newer menu launch's ticket.
+	if (cvar("fs_eventfog_serial") == vbsp_fog_eventserial)
+	{
+		cvar_set("fs_eventfog_map", "");
+		cvar_set("fs_eventfog_until", "0");
+	}
+	vbsp_fog_eventpending = FALSE;
+};
+
+void() Fog_EventWorld =
+{
+	local string target;
+	local float until, now;
+
+	registercvar("fs_eventfog_map", "", 0);
+	registercvar("fs_eventfog_until", "0", 0);
+	registercvar("fs_eventfog_serial", "0", 0);
+	vbsp_fog_eventpending = FALSE;
+	target = cvar_string("fs_eventfog_map");
+	if (!strlen(target)) return;
+	vbsp_fog_eventserial = cvar("fs_eventfog_serial");
+	now = gettime(0);
+	until = cvar("fs_eventfog_until");
+	// WorldLoaded precedes serverinfo on a real socket. Match the map only
+	// once that connection is active; the original launch expiry still holds.
+	if (until <= now)
+	{
+		dprint(sprintf("maxfog: discarded request map=%S current=%S expiry=%g now=%g\n",
+		               target, serverkey("map"), until, now));
+		Fog_EventCancel();
+		return;
+	}
+	vbsp_fog_eventpending = TRUE;
+	vbsp_fog_eventdeadline = until;
+	vbsp_fog_eventnext = 0;
+};
+
+void() Fog_EventFrame =
+{
+	local float now;
+	local string current;
+
+	if (!vbsp_fog_eventpending) return;
+	if (cvar("fs_eventfog_serial") != vbsp_fog_eventserial)
+	{
+		vbsp_fog_eventpending = FALSE;
+		return;
+	}
+	now = gettime(0);
+	if (now >= vbsp_fog_eventdeadline)
+	{
+		print("^3maxfog:^7 could not enable the event mode on this server.\n");
+		Fog_EventCancel();
+		return;
+	}
+	if (strcmp(serverkey("constate"), "active")) return;
+	if (vbsp_fog_eventnext == 0)
+		vbsp_fog_eventdeadline = min(vbsp_fog_eventdeadline, now + 12);
+	current = serverkey("map");
+	if (!strlen(current)) return;
+	if (strcmp(cvar_string("fs_eventfog_map"), current))
+	{
+		dprint(sprintf("maxfog: cancelled request map=%S current=%S\n",
+		               cvar_string("fs_eventfog_map"), current));
+		Fog_EventCancel();
+		return;
+	}
+	if (player_localnum < 0) return;
+	if (now < vbsp_fog_eventnext) return;
+	if (vbsp_fog_eventnext > 0)
+	if (!strcmp(getplayerkeyvalue(player_localnum, "*maxfog"), "1"))
+	{
+		Fog_EventCancel();
+		return;
+	}
+	if (strcmp(serverkey("*maxfogver"), "1")) return;
+	if (getstatf(STAT_HEALTH) <= 0) return;
+	// A world-load is earlier than spawn. Retry idempotently until its ACK.
+	localcmd("cmd maxfog 1\n");
+	vbsp_fog_eventnext = now + 1;
+};
+
 void() Fog_LoadFromWorld =
 {
 	local string tok, key, cn, nm;
@@ -289,6 +377,7 @@ void() Fog_LoadFromWorld =
 	vbsp_fog_lastname = "";
 	vbsp_fog_lastonoff = -1;
 	vbsp_fog_lastsettings = "";
+	vbsp_fog_eventmax = FALSE;
 	vbsp_fog_skyhave  = FALSE;
 	best = world;
 
@@ -400,6 +489,22 @@ void() Fog_Frame =
 	local float onoff;
 	local entity c;
 
+	Fog_EventFrame();
+	// Server-owned, personal event mode. Its gamecode fog is deliberately
+	// locked; do not queue map/user overrides behind it. Off unlocks natively
+	// first, then this edge re-emits the ordinary authored/settings state.
+	if (player_localnum >= 0)
+	if (!strcmp(getplayerkeyvalue(player_localnum, "*maxfog"), "1"))
+	{
+		vbsp_fog_eventmax = TRUE;
+		return;
+	}
+	if (vbsp_fog_eventmax)
+	{
+		vbsp_fog_eventmax = FALSE;
+		vbsp_fog_lastonoff = -1;
+		vbsp_fog_lastsettings = "";
+	}
 	onoff = cvar("vbsp_fog") ? 1 : 0;
 	want  = getstats(STAT_FS_FOGCTRL);
 

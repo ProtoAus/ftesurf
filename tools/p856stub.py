@@ -4,7 +4,7 @@
   usage:  p856stub.py <port> <log file>
 
 Each full-run post (leg=0) takes the next entry of STORY below as the reply's
-`story` (past the end: none), and its Story facts (sfails, smask, stop) are
+`story` (past the end: none), and its Story facts (sfails, smask, stop, smaxfog) are
 logged one line per post, key stripped.  Heartbeats and stage posts get a plain
 stored answer.  cfg/test/p856sv.cfg points a lobby at it.
 """
@@ -47,10 +47,10 @@ class Handler(BaseHTTPRequestHandler):
                 NEXT[0] += 1
             if i < len(STORY):
                 out["story"] = STORY[i]
-            note("run %d map=%s ticks=%s flags=%s sfails=%s smask=%s stop=%s story=%d" % (
+            note("run %d map=%s ticks=%s flags=%s sfails=%s smask=%s stop=%s smaxfog=%s story=%d" % (
                 i + 1, form.get("map"), form.get("ticks"), form.get("flags"),
                 form.get("sfails", "-"), form.get("smask", "-"), form.get("stop", "-"),
-                len(out.get("story", []))))
+                form.get("smaxfog", "-"), len(out.get("story", []))))
         elif self.path.endswith("/api/run"):
             note("stage leg=%s sfails=%s" % (form.get("leg"), form.get("sfails", "-")))
         data = json.dumps(out).encode()

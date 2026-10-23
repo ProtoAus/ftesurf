@@ -344,9 +344,10 @@ void(string body) Sty_ParseList =
 			win = json_find_object_child(lv, "in");
 			dated = json_get_length(win);
 			bufstr_set(sty_lvinfo[L], k, strcat(info, sprintf("%g %g %g ", kb, ks, kg),
-			           sprintf("%g %d %d", dated == 2,
+			           sprintf("%g %d %d %g", dated == 2,
 			                   json_get_float(json_get_child_at_index(win, 0)),
-			                   json_get_float(json_get_child_at_index(win, 1)))));
+			                   json_get_float(json_get_child_at_index(win, 1)),
+			                   !strcmp(json_get_string(json_find_object_child(lv, "mode")), "maxfog"))));
 		}
 		// Chapters after the last level still get their header row.
 		while (chap < sty_nch[L] - 1)
@@ -1130,7 +1131,7 @@ float(float L, float i) Sty_Locked =
 
 void(float L, float i) Sty_Play =
 {
-	local float row;
+	local float row, eventmax;
 	local string map;
 	map = bufstr_get(sty_lvmap[L], i);
 	row = Sty_MapRow(L, i);
@@ -1149,7 +1150,10 @@ void(float L, float i) Sty_Play =
 	if (!ui_online_opt())
 		Sty_Note("Online play is off: medals come only from lobby runs.");
 	print(sprintf("^5story:^7 play %s (level %g of %s)\n", map, i + 1, sty_lid[L]));
-	ui_launch();
+	eventmax = FALSE;
+	if (tokenize(bufstr_get(sty_lvinfo[L], i)) >= 13)
+		eventmax = (stof(argv(12)) == 1);
+	ui_launch_mode(eventmax);
 };
 
 void(vector pos, vector size, float L) Sty_Side =

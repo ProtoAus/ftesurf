@@ -25,10 +25,12 @@ commit   5734db88e4dbe5fd82f250af8a06910002a4dbd1
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-939
-patch    943
+patch    944
+# Patch 944: personal Max Fog launches, native fog locks and fresh whole-run tracking.
+# Legacy gold credit remains unchanged; native pin/tag and evidence formats stay fixed.
 # Patch 943: held/alternate weapons, USP silencer, Glock burst, cosmetic shot punch,
 # authored Scout bolt sound, random/coalesced footsteps and default viewmodel FOV75.
-# QC-only; native pin/tag, body/aim/evidence/collection and player health unchanged.
+# Reserved before P944; QC-only, native pin/tag and player health unchanged.
 # Patch 942: ambiguous repeated verifier results are retryable, with no counts.
 # Backend-only output attribution; native commit/tag and evidence formats unchanged.
 # Patch 941: subtler model motion, unarmed spawns, looping idle and real-map CSS footsteps.

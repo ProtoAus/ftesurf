@@ -1,5 +1,34 @@
 # AGENT_NOTES.md
 
+## P944 - personal fog / one-shot launch controls (23 Oct 2026)
+
+- Native fog distances must be positive. Negative values changed console getters
+  but left rendered geometry clear; actual screenshots caught the failure. Use
+  a pixel/scene control, not just the native fog structure's readback.
+- On a real dedicated connection, CSQC_WorldLoaded saw serverkey("map") EMPTY
+  (observed frame time15.7781). Do not discard a valid menu ticket there for a
+  map mismatch. Keep its original expiry; wait for constate=active, then match
+  the actual map and bound the protocol ACK window. Never auto-enable by the map
+  name alone. Newer serials belong to newer launches, not the old world's cleanup.
+- m_close calls ui_join_cancel even on SUCCESS. Preserve its no-pending early
+  return: unconditional descriptor cleanup erased a successful launch. Ordinary
+  ui_launch, accepted direct/friend joins and actual cancellation clear intent;
+  an address-refused click does not mutate another pending operation.
+- runlines_smoke's old global `map NAME` text replacement also matched the suffix
+  of `set fs_eventfog_map NAME`, producing `set fs_eventfog_connect ADDRESS`.
+  dedicated_cfg now rewrites only actual standalone map commands; four pure
+  transport tests cover the cvar/comment/quote/repetition counterfactuals.
+- -NoDeploy emits isolated rig/build-nodeploy-* artifacts. Copying ftesurf/*.dat
+  afterward selected an older unrelated program, despite a clean compiler exit.
+  Parse the printed output path and hash those exact files. The mistaken copy
+  was never run; only its verified duplicate files were individually retired.
+- Existing P856 sink/walkable zones suffice for native finish snapshots: full
+  fog, off-midrun and late-on posted1,0,0. Keep its loopback key/endpoints in the
+  fixture cfg, synthetic OFFLINE consent and private logs; this is not physical
+  input, ranked acceptance or a crypto-renderer guarantee. Preserve previous
+  failures. `mode maxfog` metadata is separate from the optional maxfog medal
+  rule; default gold credit is deliberately unchanged pending the owner policy.
+
 ## Momentum/build audit22Oct23:35UTC (read-only)
 
 - Primary modeled order remains gamedir >Momentum >CS:S >HL2. Only two named
