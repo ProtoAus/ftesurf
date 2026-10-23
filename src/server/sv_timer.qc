@@ -705,6 +705,15 @@ float  run_t_cheatwatch;
   -- which is a rule short enough to hold, where "the gate is in both and the
   second one is a bisection" was not.
 */
+// P954: session-only control, not saved clock/evidence state.
+.float run_timescale;
+.float run_ts_next;
+
+float(entity e) SV_TimeScaleActive =
+{
+	return (e.run_timescale > 0 && e.run_timescale < 1);
+};
+
 float() SV_CheatsOn =
 {
 	if (!run_t_cheatwatch) return FALSE;
@@ -713,6 +722,8 @@ float() SV_CheatsOn =
 
 float(entity e) SV_CheatLevel =
 {
+	if (SV_TimeScaleActive(e))
+		return TRUE;
 	/*
 	  The NOCLIP half still carries the run_class gate, so at 0 noclip alone
 	  leaves run_st_cheat untouched and build 43's single umbrella is all that is

@@ -344,6 +344,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Online_RegisterCommands();
 	Online_MigrateBegin();          // Patch 395: the flat replay cache, moved per frame
 	registercommand("timefmt");     // Patch 496: sh_time.qc's own harness handle
+	registercommand("host_timescale"); // P954: server-authorized, per-player practice
 	Ghost_RegisterCvars();
 	Results_RegisterCvars();        // build 48
 	Banner_RegisterCvars();         // Patch 361
@@ -987,6 +988,31 @@ void() PreStrafe_InputFrame =
 		input_movevalues_x = 0;
 };
 
+float run_ts_scale, run_ts_carry;
+
+// P954: retain sub-ms duration; the native fixed-tick mover stays unchanged.
+void() TimeScale_InputFrame =
+{
+	local float scale, msecs, whole;
+
+	scale = getstatf(STAT_FS_TIMESCALE);
+	if (!(scale >= 0.1 && scale < 1))
+	{
+		run_ts_scale = 1;
+		run_ts_carry = 0;
+		return;
+	}
+	if (scale != run_ts_scale)
+		run_ts_carry = 0;
+	run_ts_scale = scale;
+	if (input_timelength <= 0)
+		return;
+	msecs = input_timelength * 1000 * scale + run_ts_carry;
+	whole = floor(msecs);
+	run_ts_carry = msecs - whole;
+	input_timelength = whole * 0.001;
+};
+
 void() CSQC_Input_Frame =
 {
 	GA_InputFrame();                // read-only walk intent for local Foley
@@ -1060,6 +1086,7 @@ void() CSQC_Input_Frame =
 	SaveLoc_InputFrame();
 	WarpOp_InputFrame();            // Patch 753: a queued op rides this command
 	PreStrafe_InputFrame();
+	TimeScale_InputFrame();
 
 	/*
 	  Patch 462: the strafe trainer's one sample per outgoing command.  LAST,
@@ -2067,13 +2094,25 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 
 float(string cmd) CSQC_ConsoleCommand =
 {
+	local float cmdargc;
+
 	// Patch 617: a QC error inside CL_InputEvent would leave this set, and the
 	// next thing to run is very likely a command.  Nothing real is nested here.
 	cl_input_real = FALSE;
-	tokenize(cmd);
+	cmdargc = tokenize(cmd);
 	if (GA_Command()) return TRUE;
 	if (MA_Command()) return TRUE;
 	if (WP_Command()) return TRUE;
+	if (!strcmp(argv(0), "host_timescale"))
+	{
+		if (cmdargc == 1)
+			localcmd("cmd host_timescale\n");
+		else if (cmdargc == 2)
+			localcmd(sprintf("cmd host_timescale %.9g\n", stof(argv(1))));
+		else
+			print("host_timescale: use 0.1..1\n");
+		return TRUE;
+	}
 	if (argv(0) == "milk_skyinfo")
 	{
 		MilkSky_Info();

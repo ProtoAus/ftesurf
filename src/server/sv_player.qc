@@ -273,6 +273,8 @@ void() PutClientInServer =
 */
 void() ClientConnect =
 {
+	self.run_timescale = 1;
+	self.run_ts_next = 0;
 	Archive_Reset(self);
 	EventFog_Reset(self);          // recycled slot/map must not inherit event fog
 	// Patch 371: a join line only for a new connection -- this runs again for
@@ -727,7 +729,7 @@ void(entity e) SV_NoclipWatch =
 	local float nc, sc, nocliponly;
 
 	nc = (e.movetype == MOVETYPE_NOCLIP) ? TRUE : FALSE;
-	sc = SV_CheatsOn();
+	sc = (SV_CheatsOn() || SV_TimeScaleActive(e));
 
 	// ---- LEVEL: every tick either is true, whatever fired when ----------
 	if (nc)
@@ -1117,6 +1119,41 @@ void() SV_SpawnGoto =
 	sprint(self, PRINT_HIGH, "^5goto_spawn:^7 back at the map's spawn\n");
 };
 
+// P954: taint on the server before the stat can change any outgoing command.
+void(entity e, float argc, string arg) SV_TimeScaleCommand =
+{
+	local float value;
+
+	if (strcmp(e.classname, "player") || !e.run_inserver)
+		return;
+	if (time < e.run_ts_next)
+		return;
+	e.run_ts_next = time + 0.2;
+	if (argc == 1)
+	{
+		sprint(e, PRINT_HIGH, sprintf("host_timescale: %g (per-player; 0.1..1; slow values force practice)\n", e.run_timescale));
+		return;
+	}
+	value = stof(arg);
+	if (argc != 2 || !(value >= 0.1 && value <= 1))
+	{
+		sprint(e, PRINT_HIGH, "host_timescale: use 0.1..1 (1 restores speed, not this attempt's flags)\n");
+		return;
+	}
+	if (value < 1)
+	{
+		if (e.run_movetickrate <= 0)
+		{
+			sprint(e, PRINT_HIGH, "host_timescale: a counted-clock engine is required\n");
+			return;
+		}
+		SV_TimerCheat(e);
+	}
+	e.run_timescale = value;
+	sprint(e, PRINT_HIGH, sprintf("host_timescale: %g (%s)\n", value,
+		value < 1 ? "per-player practice; movement and timer" : "normal speed; attempt flags retained"));
+};
+
 void(string cmd) SV_ParseClientCommand =
 {
 	local string c, weaponarg;
@@ -1134,6 +1171,11 @@ void(string cmd) SV_ParseClientCommand =
 	}
 	cmdargc = tokenize(cmd);
 	c = argv(0);
+	if (!strcmp(c, "host_timescale"))
+	{
+		SV_TimeScaleCommand(self, cmdargc, argv(1));
+		return;
+	}
 	if (!strcmp(c, "maxfog"))
 	{
 		EventFog_Command(self, cmdargc, argv(1));

@@ -26,6 +26,8 @@ commit   93a891fea47f3c5f64e44fc2da8ef5ab7ad6cd0b
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-953
 patch    955
+# Patch 954: per-player practice host_timescale; movement and counted timer slow together.
+# Fixed native ticks, saved clock/evidence formats and native pin/tag stay unchanged.
 # Patch 953: apply the existing trust boundary before native local file-writer work.
 # Trusted operator behaviour remains; no evidence, schema or movement change.
 # Patch 952: Epiphany's extensionless colour-correction LUT keeps its authored grade.

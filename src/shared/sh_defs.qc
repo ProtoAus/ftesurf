@@ -134,6 +134,7 @@
 // wishspeed and the ideal turn rate follows it down.
 #define STAT_FS_PMFLAGS    48
 #define STAT_FS_FOLEYJUMP 180  // cosmetic contact edge; no body/recorder state
+#define STAT_FS_TIMESCALE 181  // P954: connection-local practice command duration
 
 /*
   The plane the CURRENT tick clipped against (engine Patch 137).
