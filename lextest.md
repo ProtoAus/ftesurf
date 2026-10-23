@@ -1,12 +1,13 @@
 # lextest.md — things waiting on a human
 
-## P955 — CSS weapon follow-up (human check pending)
+## P955 — CSS weapon follow-up (delivered; human check pending)
 
+BOTH Windows verified23Oct2026 20:33UTC and all12empty Pi lobbies by20:35UTC.
+Exact source c36d16f2, served-code/board smoke0failures; tools/p955-source-followup.md.
 Native controls prove single-fire zero cosmetic kick versus an acting burst,
 held save/load without a new draw, and a visible noclip weapon. Inspected native
 screenshots show the CSS scope at both zoom levels and muzzle flashes. That is
-not owner acceptance of their appearance/sound/feel. Once delivery is recorded
-in tools/p955-source-followup.md, reconnect and check: Glock single vs burst;
+not owner acceptance of their appearance/sound/feel. Reconnect and check: Glock single vs burst;
 Scout secondary40/15/off, shot/bolt/rezoom; hold/release a save, noclip and bare
 drop. Do the flashes and hard-landing CSS damage sounds look/sound right?
 No exact CSS parity or sustained-FPS claim. CS:GO knives/finish workshop remain
