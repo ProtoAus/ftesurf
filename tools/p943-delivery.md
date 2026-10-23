@@ -1,5 +1,9 @@
 # P943 gameplay delivery —23Oct2026
 
+Historical P943 serving receipt below. P946 subsequently completed the omitted
+Glock cosmetic kick; current CSQC and final fleet proof: p946-delivery.md.
+P943's unchanged server and all other features are retained.
+
 ## Exact source and limits
 
 Original isolated feature46b78ae4c447268bdff5df40f3ff4278c6bfb59d;

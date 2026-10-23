@@ -34,8 +34,8 @@ not depend on sound. Commands/camera diagnostics and complete logs retained:
   damping code unchanged. Human recoil strength/feel is pending lextest.md.
 
 Build3VM0warnings, QW/MENU exact943 bytes, ONLY CSQC changes. After commit, clean
-rebuild must reproduce exact candidate before promotion; final source/hash/fleet
-and cold served-code availability in p946-delivery.md. No new release/Build,
+rebuild reproduced exact candidate before guarded dual Windows/12lobby promotion;
+final source/hash/runtime and cold served-code proof in p946-delivery.md. No new release/Build,
 map/player data, owner process/config, native or backend deployment authorized.
 
 Owned actor weapons946 stopped normally after controls. Lighting remains the

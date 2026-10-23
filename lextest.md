@@ -1,7 +1,9 @@
 # lextest.md — things waiting on a human
 
 ## P946 — Glock cosmetic recoil coverage (23 Oct 2026)
-PENDING after matching delivery/reconnect: Glock single and each burst bullet now
+Delivered/hash-verified BOTH Windows10:58 and all12lobbies11:01UTC; cold actual
+served-code/drawn-board proof passed. PENDING human after reconnect:
+Glock single and each burst bullet now
 also give a modest scene-only upward kick, gentler per bullet than USP/Scout.
 Does that strength/recovery feel right alongside the other guns at your frame
 rate? Native single/burst/return and USP/knife controls acted, not human acceptance.
