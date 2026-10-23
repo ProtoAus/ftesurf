@@ -1,5 +1,20 @@
 # AGENT_NOTES.md
 
+## P948 — a listen render-layer pass is not an online pass (23 Oct 2026)
+
+- Native Kvas2/1/2 visibly cut/restored/recut the bonus4 crowns, and a listen
+  per-map config test applied1/restored2. The real dedicated socket still stayed2
+  and clipped: WorldLoaded had an empty server map key. Wrapper exit0 only
+  graded its generic end marker, not this feature; inspect readbacks AND PNGs.
+- CL_RenderMapFrame now waits for the server key to match the native mapname
+  global after stripping maps/ and .bsp. Reset the baseline at every WorldLoaded
+  even before identity is ready, then apply once per epoch. Do not use a stale
+  previous server key or assume the CSQC mapname global is always short.
+- Corrected dedicated CSQC actually applies1 and restores the crowns. Reentry
+  Kvas/other/Kvas/same-map reload reads1/2/1/1 with three application logs; an
+  unchanged value alone would not prove the same-map arm acted. No native/input/
+  evidence/body-read changes; the server can still require its sky mask.
+
 ## P947 — stale per-map dependency metadata / cold native controls (23 Oct 2026)
 
 - An existing VMT can reference a legitimate VTF in an installed but unmounted

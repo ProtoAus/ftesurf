@@ -67,21 +67,26 @@
   world geometry acted, then compare bounded world/material/lighting controls.
   A newer in-game owner check has been requested, not received. Fresh native939
   also draws the HUD over black; independent Phantasia/Autumnal worlds draw.
-  Readback-qualified lighting/PVS controls were menu-inert, so they do NOT rule
-  out those paths; the earlier images lacked post-set readback. Static inspection finds HDR-only lighting with matching HDR faces and
+  Initial lighting/PVS arms were menu-inert. The later explicit-manifest
+  startup recovered active gameplay; cheats enabled AFTER map load and post-set
+  fullbright/drawflat/novis readbacks1 still yield black at a stable body/view.
+  Sky auto1 and hud_mapfx0 also leave black. Unknown r_ignoreareas is NOT an
+  area control; no positive acting lighting branch or root cause is claimed.
+  Static inspection finds HDR-only lighting with matching HDR faces and
   non-solid BSP leaves at the captured body+22 test points in all three maps;
   that offset is an assumption, not native camera readback. No decoder/visibility
   change follows from it. The native VTF ABGR8 and ZIP-LZMA14 paths already exist.
 
-## Owner screenshots, 22 Oct 2026 — sky cuts world/props
+## Owner screenshots, 22 Oct 2026 — Boreas sky cut
 
-- Sites to investigate: engine sky depth/masking and hl2 3D-sky world/prop
-  composition. `surf_kvas_000.png` (bonus 4, save 1) cuts tree tops along a
-  horizontal sky boundary; `surf_boreas_010.png` (save 11) has a sky-colored
-  cutout through mountain geometry. Both screenshots have been opened.
+- Site: engine sky depth/masking and hl2 3D-sky world/prop composition.
+  `surf_boreas_010.png` (save11) has a sky-colored cutout through mountain
+  geometry. The separate Kvas bonus4 crown cut and dedicated per-map timing
+  repair are P948; the owner's exact Save1 confirmation belongs in lextest.md.
 - Falsifier: exact save/view and BSP control, then isolate sky depth versus world
-  and prop passes. Preserve legitimate sky occlusion and camera boundaries;
-  blindly disabling sky depth globally is not a demonstrated fix.
+  and prop passes. Preserve legitimate sky occlusion and camera boundaries.
+  Do not claim Boreas repaired from Kvas's acting2/1/2 result or the historical
+  P265 report; no global sky-depth change is justified by those alone.
 
 ## Historical full P603 lifecycle fixture versus current Players globals
 

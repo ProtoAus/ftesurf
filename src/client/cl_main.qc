@@ -127,11 +127,43 @@ void() Net_MatchTicrate =
 	              have, want, tick));
 };
 
+// P948: WorldLoaded can precede serverkey("map") on a real socket. Wait for
+// the identity of THIS native world, not a stale key from the previous map.
+float cl_rendermap_pending;
+void() CL_RenderMapFrame =
+{
+	local string rmap, rname, modelmap;
+	local float rf, n;
+
+	if (!cl_rendermap_pending) return;
+	rmap = serverkey("map");
+	if (rmap == "") return;
+	modelmap = mapname; // Native CSQC global is often maps/<name>.bsp, not short.
+	if (substring(modelmap, 0, 5) == "maps/")
+		modelmap = substring(modelmap, 5, -1);
+	n = strlen(modelmap);
+	if (n >= 4)
+		if (strtolower(substring(modelmap, n - 4, 4)) == ".bsp")
+			modelmap = substring(modelmap, 0, n - 4);
+	if (modelmap == "") return;
+	if (strcasecmp(rmap, modelmap)) return;
+
+	rname = sprintf("cfg/maps/render_%s.cfg", rmap);
+	rf = fopen(rname, FILE_READ);
+	if (rf >= 0)
+	{
+		fclose(rf);
+		localcmd(sprintf("exec cfg/maps/render_default.cfg\nexec %s\n", rname));
+		print(sprintf("render: per-map layer %s applied over cfg/maps/render_default.cfg\n",
+		              rname));
+	}
+	else
+		localcmd("exec cfg/maps/render_default.cfg\n");
+	cl_rendermap_pending = FALSE;
+};
+
 void() CSQC_WorldLoaded =
 {
-	// BUILD 61: the per-map render layer at the bottom of this function.
-	local string rmap, rname;
-	local float  rf;
 
 	// Patch 475: the trail's two slots may still hold the LAST map's run -- the
 	// arenas outlive a map change and only the CSQC globals are zeroed.
@@ -267,32 +299,12 @@ void() CSQC_WorldLoaded =
 	  message is the thing being avoided.
 
 	  LAST IN THE HOOK deliberately: everything above has finished loading the
-	  map's own data, so this layer can override any of it and nothing it sets
-	  can be clobbered by a later loader.
+	  map's own data. P948 restores the baseline even before serverinfo arrives,
+	  then applies the matching override here or once from UpdateView when ready.
 	*/
-	rmap = serverkey("map");
-	if (rmap != "")
-	{
-		rname = sprintf("cfg/maps/render_%s.cfg", rmap);	//P330: was cfg/render_%s.cfg
-		rf = fopen(rname, FILE_READ);
-		if (rf >= 0)
-		{
-			fclose(rf);
-			localcmd(sprintf("exec cfg/maps/render_default.cfg\nexec %s\n", rname));
-			print(sprintf("render: per-map layer %s applied over cfg/maps/render_default.cfg\n",
-			              rname));
-		}
-		else
-		{
-			/*
-			  No map file, but the BASELINE still has to run -- otherwise an
-			  override applied on the previous map is never undone, which is the
-			  stickiness this whole arrangement exists to prevent.  Silent: this
-			  is the case for essentially every map.
-			*/
-			localcmd("exec cfg/maps/render_default.cfg\n");
-		}
-	}
+	cl_rendermap_pending = TRUE;
+	localcmd("exec cfg/maps/render_default.cfg\n");
+	CL_RenderMapFrame();
 };
 
 void(float apilevel, string enginename, float engineversion) CSQC_Init =
@@ -1568,6 +1580,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	  once the lump has been read and its signature has settled.
 	*/
 	Portal_Poll();
+	CL_RenderMapFrame();            // P948: pending only; no file reads after apply
 
 	/*
 	  BUILD 24: advance the replay before the scene is built.

@@ -21,6 +21,9 @@
 
 ## next
 
+### P948 Kvas tree crowns
+- Kvas no longer cuts off the bonus 4 tree crowns at the sky brush. Per-map render settings now wait for the connected map to be ready, so they work online too; other maps retain the ordinary sky-depth setting.
+
 ### P947 Autumnal platform textures
 - Autumnal now requests its optional CS:GO Source 1 assets when loading, fixing checkerboard platform tops when that content is installed. No extra game pack is mounted on every startup.
 
