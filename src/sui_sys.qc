@@ -666,7 +666,7 @@ struct _input_t {
 	float scan;
 	float mods;     // Patch 655: SUI_MOD_* as they were when the event came
 #ifdef MENU
-	string paste;  // P938: an edit at this position, not a post-key buffer
+	string paste;  // P939: an edit at this position, not a post-key buffer
 #endif
 };
 const float MAX_INPUTS = 64;

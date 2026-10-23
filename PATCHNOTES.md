@@ -21,6 +21,12 @@
 
 ## next
 
+### P939 Paste without an extra question
+- Paste into text fields with Ctrl+V or Shift+Insert without an extra confirmation dialog. As with normal paste, only paste text you intend to share with the connected game's UI.
+
+### P938 Lighter recording checks
+- Less repeated work during recording and replay checks; movement and saved-run formats are unchanged.
+
 ### P931 Basic CS:S held weapons
 - Select a knife, USP, Scout or Glock without changing your save-key binds. Mounted models have idle/fire animations and sounds; supported map targets use the existing damage-policy gate. This is basic single-press firing, not full CS:S combat.
 
