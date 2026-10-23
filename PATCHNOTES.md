@@ -81,7 +81,7 @@
 - Pause and seek while watching a linked recording. Changing maps ends playback, and unrelated maps are still refused.
 - Linked recordings keep their real source-map name and imported/unverified status. Downloaded recordings can be watched again from cache without another download.
 
-### P931 Bring a knife—or a Glock
+### P931 Bring a knife - or a Glock
 - Add mounted CS:S knife, USP, Scout and Glock viewmodels with idle/fire animations and shot sounds. Select with surf_weapon knife, usp, scout or glock; existing save keys stay unchanged.
 - Basic attacks use supported map buttons/breakables, retaining the server's shared-damage gates and no PvP. cl_viewweapon hides the model; cl_viewweapon_left swaps hands.
 

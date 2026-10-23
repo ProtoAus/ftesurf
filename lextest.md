@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## Source-polish release acceptance (23 Oct 2026)
+Owner: "Close enough! can you push a new update release please" in response to
+the P943/P946 delivery and matched-lighting comparison. CONFIRMED human acceptance
+of the overall presentation as adequate for release, including the residual
+viewmodel lighting look. No shader repair or exact CSS parity is claimed.
+Individual weapon/sound cases below were not separately reported by the owner;
+keep their automated evidence distinct from this overall visual/feel acceptance.
+This does not accept unrelated map, Max Fog, performance or evidence checks.
+
 ## P948 — Kvas bonus4 tree crowns (23 Oct 2026)
 PENDING owner Save1 view; implementation/native controls pass and final code is
 DELIVERED to both Windows installs/all12lobbies23Oct13:35Z. Reconnect and load
@@ -11,7 +20,8 @@ by this check. No owner confirmation received yet.
 
 ## P946 — Glock cosmetic recoil coverage (23 Oct 2026)
 Delivered/hash-verified BOTH Windows10:58 and all12lobbies11:01UTC; cold actual
-served-code/drawn-board proof passed. PENDING human after reconnect:
+served-code/drawn-board proof passed. Overall release acceptance is recorded
+above; optional focused strength check, not separately reported:
 Glock single and each burst bullet now
 also give a modest scene-only upward kick, gentler per bullet than USP/Scout.
 Does that strength/recovery feel right alongside the other guns at your frame
@@ -22,8 +32,9 @@ tools/p946-glock-kick.md / tools/p946-delivery.md. No sustained1000FPS claim.
 ## P943 — Source weapons / varied footsteps (23 Oct 2026)
 BOTH Windows and all12Pi lobbies delivered/hash-verified23Oct2026; cold lobby
 client downloaded exact CSQC and drew the board. See tools/p943-delivery.md.
-Availability and native controls are NOT human ear/feel acceptance.
-PENDING after reconnect: bare `knife` then hold +attack / +attack2. Misses should
+Overall release acceptance is recorded above; native controls are not separate
+human acceptance of every case. Optional focused checks: bare `knife` then hold
++attack / +attack2. Misses should
 whoosh, not play a flesh stab; actual player taps can thud but must not hurt/push.
 `usp` starts without silencer; secondary completes attach/detach. `glock` secondary
 toggles single/three-round burst; `scout` should cock/bolt after shooting. Does
@@ -34,7 +45,7 @@ cue instead of a close double. Runtime controls cover Axiom/material selectors,
 not every map. Existing explicit FOV/bindings stay yours; new defaultFOV75.
 Owner heard the first draft's incorrect empty-stab impact during tests; that was
 valid rejection and is NOT a pass. Corrected miss/player-contact controls are
-recorded in tools/p943-source-weapons.md; ear/feel still needs confirmation.
+recorded in tools/p943-source-weapons.md; individual ear checks remain unreported.
 
 Source-polish checks below now have matching native/progs in both Windows
 installs and compatible progs on all12lobbies (22October2026 UTC). This is
@@ -88,11 +99,12 @@ until `give knife` (or usp/scout/glock). Walk/turn: motion should be much subtle
 with idle continuing after15seconds. `cmd respawn` should put the weapon away.
 With cl_game_sfx1, Axiom's authored-metal floor should play CSS metal footsteps;
 walk/crouch should remain quiet. Do the motion and sound now feel right?
-Lighting remains PENDING human look, not a claimed shader fix: P943 now compares
+Lighting accepted as "Close enough!" by owner23Oct for release; no shader fix
+or exact parity is claimed. Historical comparison: P943 compares
 that exact CSS BSP at a near-matched rendered camera and early idle pose. The
 hands are not uniformly darker there; residual colour/reflection differences
-remain. Please open the matched pair named in tools/p943-lighting.md: close
-enough, or which tint/shadow still stands out? Native namespace controls acted
+remain. The matched pair is named in tools/p943-lighting.md. Native namespace
+controls acted
 but did not explain hand darkness. No global brightness/native change; owned
 map fixtures removed and original priority restored.
 

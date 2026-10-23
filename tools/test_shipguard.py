@@ -72,6 +72,36 @@ class ShipGuardTests(unittest.TestCase):
             with self.subTest(literal=literal):
                 self.assertEqual(shipguard.classify(literal, 'fopen', set(), set(), ', FILE_READ);')[0], 'MISS')
 
+    def test_mounted_source_assets_are_exact_and_not_redistributed(self):
+        mounted = {
+            'scripts/game_sounds_manifest.txt', 'scripts/game_sounds_player.txt',
+            'scripts/game_sounds_physics.txt', 'scripts/surfaceproperties_manifest.txt',
+            'scripts/surfaceproperties.txt', 'scripts/surfaceproperties_cs.txt',
+            'scripts/game_sounds_weapons.txt', 'models/weapons/v_knife_t.mdl',
+            'models/weapons/v_pist_usp.mdl', 'models/weapons/v_snip_scout.mdl',
+            'models/weapons/v_pist_glock18.mdl',
+        }
+        # GM_LoadCSS also probes physics definitions; grade the actual loads,
+        # without relabelling search_begin as a read/redistribution demand.
+        hits = [row for row in self.rows if row[0] in mounted and row[1] != 'RUNTIME']
+        self.assertEqual({row[0] for row in hits}, mounted)
+        for literal, verdict, reason, path, line in hits:
+            self.assertEqual(verdict, 'DENIED', (path, line, reason))
+            self.assertIn('Steam', reason)
+            self.assertNotIn(literal, self.files)
+        with patch.dict(shipguard.DENY_EXACT, clear=False):
+            for literal in mounted:
+                del shipguard.DENY_EXACT[literal]
+            missing = {row[0] for row in scan(self.files, self.dirs) if row[1] == 'MISS'}
+            self.assertEqual(missing, mounted)
+
+    def test_mounted_source_exceptions_do_not_hide_owned_neighbors(self):
+        for literal in ('scripts/game_sounds_ftesurf.txt',
+                        'scripts/surfaceproperties_ftesurf.txt',
+                        'models/weapons/v_ftesurf.mdl', 'models/required.mdl'):
+            self.assertEqual(shipguard.classify(literal, 'fopen', set(), set(),
+                                               ', FILE_READ);')[0], 'MISS')
+
     def test_local_settings_subtree_only(self):
         for literal in ('maps/settings/local/', 'maps/settings/local/surf_fixture.cfg'):
             self.assertEqual(shipguard.classify(literal, 'strcat', set(), set())[0], 'DENIED')

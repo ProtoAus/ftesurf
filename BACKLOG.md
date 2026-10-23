@@ -1,26 +1,5 @@
 # BACKLOG.md
 
-## P941/P943 — residual CSS viewmodel colour/reflection comparison (23 Oct 2026)
-- Sites: engine/gl/gl_alias.c:R_CalcModelLighting and plugins/hl2/mat_vmt.c's
-  VertexLitGeneric path. Do not assume a global model-brightness defect.
-- P943 loaded the exact CSS BSP2e08b68b, matched rendered view near the supplied
-  cl_showpos(-2752,0,-31.97), FOV75, and a similar early idle pose. World landmarks
-  align; cl_showpos Z must NOT be blindly treated as feet plus another64units.
-  Hands are not uniformly darker in this control; some colour/blade differences
-  remain. This is visual exploration, NOT exact shader parity or owner acceptance.
-- Acting namespace control: original name loaded160cubes/0missing; renamed copy
- 160/160missing. Near-matched hand appearance did NOT change materially, so this
-  does not explain the reported hand darkness at this spot. No speculative cube,
-  gamma, brightness, native or live-map change followed. Fixture maps restored.
-- Saved CSS HDR0/gamma2.11 differ from FTE defaults, but screenshot-time runtime
-  overrides are unknown. Extra native LDR1/readback1 arm showed no clear hand
-  repair; small aim variance and12missing startup cubes limit that comparison.
-- Next falsifier: owner assesses the saved matched pair; if residual tint/shadow
-  remains objectionable, capture actual CSS runtime settings and align exact
-  idle/aim before isolating that shader case. Do not repair by regrading
-  the different-Momentum-BSP screenshot. Details: tools/p943-lighting.md;
-  pending human-only check in lextest.md.
-
 ## Primary local surf_fantasy override versus Momentum/Pi (22 Oct audit)
 
 - Site: C:/FTESurf/ftesurf/maps/surf_fantasy.bsp and maproster.resolve mount

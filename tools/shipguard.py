@@ -188,6 +188,30 @@ DENY_EXACT = {
                         "never ship, because shipping it pre-accepts the terms.",
     "data/b316_buffered.txt": "Build-316 test scaffolding in m_main.qc.",
     "data/b316_stream.txt": "Build-316 test scaffolding in m_main.qc.",
+    # P931/P940/P941 read licensed Source content from the player's Steam mounts.
+    # Exact names only: our own scripts/models still have to be in the ship set.
+    "scripts/game_sounds_manifest.txt": "Mounted Steam Source sound manifest; "
+                                          "not ours to redistribute (GM_LoadSounds).",
+    "scripts/game_sounds_player.txt": "Mounted Steam Source footstep definitions; "
+                                      "GM_LoadSounds fallback, not our asset.",
+    "scripts/game_sounds_physics.txt": "Mounted Steam Source material sounds; "
+                                       "GM_LoadSounds/GM_LoadCSS, not our asset.",
+    "scripts/surfaceproperties_manifest.txt": "Mounted Steam Source surface manifest; "
+                                               "GM_Load, not ours to redistribute.",
+    "scripts/surfaceproperties.txt": "Mounted Steam Source surface definitions; "
+                                     "GM_Load fallback, not our asset.",
+    "scripts/surfaceproperties_cs.txt": "Mounted Steam CSS surface definitions; "
+                                        "GM_Load fallback, not our asset.",
+    "scripts/game_sounds_weapons.txt": "Mounted Steam CSS weapon definitions; "
+                                       "WP_SoundPath also has mounted-WAV fallbacks.",
+    "models/weapons/v_knife_t.mdl": "Mounted Steam CSS knife; opt-in WP_Model, "
+                                    "not ours to redistribute.",
+    "models/weapons/v_pist_usp.mdl": "Mounted Steam CSS USP; opt-in WP_Model, "
+                                     "not ours to redistribute.",
+    "models/weapons/v_snip_scout.mdl": "Mounted Steam CSS Scout; opt-in WP_Model, "
+                                       "not ours to redistribute.",
+    "models/weapons/v_pist_glock18.mdl": "Mounted Steam CSS Glock; opt-in WP_Model, "
+                                         "not ours to redistribute.",
 }
 
 # The literal must START WITH the key.  Covers a strcat prefix (`scripts/
