@@ -1,5 +1,17 @@
 # BACKLOG.md
 
+## Tooling - shipguard optional source-census assertions (23 Oct 2026)
+- Sites: tools/test_shipguard.py:ShipGuardTests.test_runtime_paths_are_narrowly_explained
+  and test_curated_zone_cache_is_narrow_and_runtime_only. Existing fixed counts
+  expect6/3reader literals; current public source actually has8/4. The release's
+  policy/asset gate and narrow mounted-asset removal/neighbor controls pass.
+- Falsifier: run test_shipguard.py in a populated owned release checkout with a
+  fresh --work-root. Inspect the actual source-reader rows before updating the
+  census; preserve exact denial reasons, required-owned-neighbor misses and the
+  historical asset-omission mutation controls. These two failures were retained,
+  not called passes or worked around with release overrides. No product failure
+  or every-map/runtime claim follows from the stale optional census.
+
 ## Primary local surf_fantasy override versus Momentum/Pi (22 Oct audit)
 
 - Site: C:/FTESurf/ftesurf/maps/surf_fantasy.bsp and maproster.resolve mount
