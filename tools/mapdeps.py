@@ -56,14 +56,17 @@ Usage:
 """
 
 import argparse
+import hashlib
 import lzma
 import os
 import re
 import struct
 import sys
+import tempfile
 import time
 import zipfile
 from io import BytesIO
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from vbsp_env import Bsp                                    # noqa: E402
@@ -861,15 +864,85 @@ def specs_for(need, addons):
     return out
 
 
+def update_mapdeps(path, name, specs, expected_sha256=None):
+    """Replace only this map's generated rows; preserve all unrelated bytes.
+
+    Existing catalogues require their inspected digest. This is an atomic file
+    replacement, not a cross-process compare-and-swap or a hostile-path API.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_+\-]+", name):
+        raise ValueError("invalid map name")
+    if os.path.islink(path):
+        raise ValueError("refusing linked catalogue")
+    exists = os.path.exists(path)
+    before = Path(path).read_bytes() if exists else None
+    if exists:
+        if not expected_sha256 or hashlib.sha256(before).hexdigest() != expected_sha256:
+            raise ValueError("catalogue predecessor SHA256 mismatch or missing")
+        if before.splitlines()[:1] != [b"FTESURF-MAPDEPS 1"]:
+            raise ValueError("unsupported catalogue header")
+    elif expected_sha256:
+        raise ValueError("expected catalogue is missing")
+    lines = (before or b"FTESURF-MAPDEPS 1\n").splitlines(keepends=True)
+    kept, insert = [], None
+    key = name.lower().encode("ascii")
+    for line in lines:
+        fields = line.split(None, 2)
+        if len(fields) >= 2 and fields[0] == b"dep":
+            if fields[1].lower() == key:
+                if insert is None:
+                    insert = len(kept)
+                continue
+            if insert is None and fields[1].lower() > key:
+                insert = len(kept)
+        kept.append(line)
+    rows = []
+    for spec in sorted(set(specs)):
+        if not spec.startswith("steam:") or any(c in spec for c in "\r\n\x00"):
+            raise ValueError("invalid generated addon spec")
+        rows.append(("dep %s %s\n" % (name, spec)).encode("utf-8"))
+    insert = len(kept) if insert is None else insert
+    if rows and insert and not kept[insert - 1].endswith((b"\n", b"\r")):
+        kept[insert - 1] += b"\n"
+    after = b"".join(kept[:insert] + rows + kept[insert:])
+    if after == before:
+        return False
+    parent = os.path.dirname(os.path.abspath(path))
+    os.makedirs(parent, exist_ok=True)
+    temp = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=parent, prefix=".mapdeps-", delete=False) as f:
+            temp = f.name
+            f.write(after)
+        current = Path(path).read_bytes() if os.path.exists(path) else None
+        if current != before:
+            raise ValueError("catalogue changed during generation")
+        os.replace(temp, path)
+        temp = None
+    finally:
+        if temp is not None:
+            os.unlink(temp)
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry", action="store_true", help="scan but write nothing")
     ap.add_argument("--map", help="scan one map by name and say why")
+    ap.add_argument("--update-map", action="store_true",
+                    help="update only --map's rows; requires an explicit --output")
+    ap.add_argument("--output", help="generated catalogue destination")
+    ap.add_argument("--expected-sha256", help="required predecessor digest for an existing --update-map output")
     ap.add_argument("--audit", action="store_true",
                     help="classify every map's breakage instead of writing")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--no-models", action="store_true")
     a = ap.parse_args()
+    if a.update_map and (not a.map or not a.output or a.audit):
+        ap.error("--update-map requires --map and --output, without --audit")
+    if a.expected_sha256:
+        if not a.update_map or not re.fullmatch(r"[0-9a-f]{64}", a.expected_sha256):
+            ap.error("--expected-sha256 requires --update-map and 64 lowercase hex digits")
 
     t0 = time.time()
     print("indexing mounted packs...")
@@ -918,8 +991,15 @@ def main():
                 print("      %s" % p)
             if len(paths) > 40:
                 print("      ...and %d more" % (len(paths) - 40))
-        print("\n  dep lines: %s" %
-              (", ".join(s for _n, s in specs_for(need, addon_meta)) or "none"))
+        specs = [s for _n, s in specs_for(need, addon_meta)]
+        print("\n  dep lines: %s" % (", ".join(specs) or "none"))
+        if a.update_map and not a.dry:
+            try:
+                changed = update_mapdeps(a.output, a.map, specs, a.expected_sha256)
+            except (OSError, ValueError) as exc:
+                raise SystemExit("catalogue update refused: %s" % exc) from exc
+            print("%s %s (%d generated dependency line(s))" %
+                  ("updated" if changed else "unchanged", a.output, len(specs)))
         return
 
     print("\nscanning %d maps..." % len(bsps))
@@ -965,8 +1045,8 @@ def main():
     if a.dry:
         return
 
-    out = os.path.join(FTESURF, "data", "mapdeps.txt")
-    os.makedirs(os.path.dirname(out), exist_ok=True)
+    out = a.output or os.path.join(FTESURF, "data", "mapdeps.txt")
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     nlines = 0
     with open(out, "w", newline="\n") as f:
         f.write("FTESURF-MAPDEPS 1\n")

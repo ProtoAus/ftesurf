@@ -1,5 +1,23 @@
 # AGENT_NOTES.md
 
+## P947 — stale per-map dependency metadata / cold native controls (23 Oct 2026)
+
+- An existing VMT can reference a legitimate VTF in an installed but unmounted
+  optional pack. Autumnal's missing blacktop was a missing generated dependency
+  row, not a VTF decoder defect. A cold base-mount control renders checker tops;
+  one generated row makes fs_automount consume Source1 CS:GO and restores the
+  same surfaces. Use the generator's incremental/digest mode, not a global mount
+  or a hand-edited player-data file. Other catalogue bytes remain exact.
+- A mount-list preflight must ignore comment lines: a whole-file CS:GO regex
+  refused the ordinary three-base-mount fixture before any mutation. Correcting
+  that classification preserves the original mount bytes; it is not a new run
+  that bypasses a failed native transaction.
+- Reused thin render fixtures still need an explicit manifest and post-init
+  menu_restart/ui_close. The failed early startup drew only the builtin menu;
+  the corrected explicit-manifest/barrier invocation drew actual worlds. Two
+  changes recovered readiness, so this is not a single-variable attribution.
+  No owner config/keys/saves/terms copied; all owned actors/junctions retired.
+
 ## P944 - personal fog / one-shot launch controls (23 Oct 2026)
 
 - Native fog distances must be positive. Negative values changed console getters

@@ -42,8 +42,8 @@
 
 - Sites to investigate: hl2 plugin VBSP/VMT/VTF resolution and missing-asset
   reporting. `surf_phantasia_css_000.png` shows large magenta/black surfaces;
-  owner reports both variants. `bhop_autumnal_000.png` shows checkerboard ramp
-  tops. No material fix or diagnostic-report coverage is claimed yet.
+  owner reports both variants. No Phantasia material fix or diagnostic-report
+  coverage is claimed yet; the separate Autumnal metadata repair is P947.
 - Falsifier: load each exact map build in an owned rig with mounted owner content,
   reproduce the screenshot view, identify the requested material/texture and
   prove the asset resolution/fallback and missing report. Compare both Phantasia
@@ -51,12 +51,9 @@
 - 23Oct diagnostic: actual winning BSPs scanned through maproster.resolve, not
   merely mapdeps.py's mounted-directory inventory. Both Phantasia builds have
   material references and no dependency buckets; that does not prove the native
-  loader sampled the intended textures. Autumnal's concrete/blacktop_ext_01 VTF
-  resolves in the installed CS:GO Legacy pack, but installed mapdeps.txt has no
-  Autumnal row. Fresh native939 shows checker tops with the surrounding world
-  drawn. A fixture-only Legacy boot mount makes native diagnostics report that
-  texture loaded512x512 BC1_RGB. Its follow-up images show a menu, NOT gameplay:
-  no rendered repair is claimed; the small owner mount/restart check is pending.
+  loader sampled the intended textures. P947's separate cold Autumnal pair
+  now proves automatic optional-pack consumption and rendered blacktop repair;
+  it does not establish the Phantasia or missing-report path.
 - Reporting seam: plugins/hl2/mat_vmt.c:Shader_LoadVMT counts a missing VMT,
   not an existing VMT's missing base VTF. mod_vbsp.c:VBSP_MissingAdvice state0
   also assumes an absent dependency row proves no pack has the asset; that is

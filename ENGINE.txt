@@ -25,7 +25,9 @@ commit   9e73ae1c8ade050af424182b05ae259371a1eefc
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-945
-patch    946
+patch    947
+# Patch 947: on-demand Autumnal blacktop assets; incremental generated dependency repair.
+# Metadata/tooling only; native commit/tag, progs and player data stay unchanged.
 # Patch 946: include a modest per-bullet Glock pulse in render-only shot kick.
 # QC-only; existing native pin/tag, server/aim/input/evidence and bindings unchanged.
 # Patch 945: bind each verification to the complete native loaded recording buffer.

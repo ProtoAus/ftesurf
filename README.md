@@ -250,6 +250,14 @@ These need the Steam libraries mounted and take a while. Pre-built output is
 attached to the matching [GitHub Release](../../releases) — unzip it into
 `ftesurf/`.
 
+For a single newly installed/updated map, `mapdeps.py --map <name> --update-map
+--output <catalogue>` updates only that map's generated dependency rows. Existing
+outputs also require `--expected-sha256 <inspected-file-sha256>`; all unrelated
+rows/comments stay intact. Add `--dry` to preview without writing. Without
+`--update-map`, `--map` remains a read-only diagnostic. `--output` also redirects
+a full regeneration to an owned staging file. Never hand-edit player data to
+repair this generated asset catalogue.
+
 ### 4. Run
 
 ```

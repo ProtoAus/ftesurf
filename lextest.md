@@ -44,14 +44,14 @@ checks, not your acceptance or a hostile-renderer guarantee. Existing gold remai
 finish-only while the owner chooses whether to preserve legacy credit or require
 new whole-fog completion; no policy answer or medal conversion has been invented.
 
-## Map screenshot diagnostic — Autumnal (23 Oct 2026)
-PENDING owner, not a claimed fix: on this machine the installed Source1 CS:GO
-assets are in `csgo legacy/csgo`. If convenient, `fs_load "steam:csgo legacy/csgo"`,
-quit/restart, then load bhop_autumnal: do the checkerboard platform tops become
-textured? This command persists that pack in YOUR mount list and can increase
-startup work; `fs_unload "steam:csgo legacy/csgo"` removes it afterward if desired.
-Our probes changed only an owned fixture's mount list, not yours. They prove
-native loading of concrete/blacktop_ext_01, not the rendered-surface repair.
+## P947 — Autumnal platform textures (23 Oct 2026)
+PENDING owner visual confirmation; native cold control/subject now shows the
+checkerboard tops replaced by blacktop with one generated dependency row.
+After a fresh game start, load bhop_autumnal: are the platform tops now textured?
+Do NOT add a permanent fs_load mount for this check; on-demand mounting is the fix.
+Source1 CS:GO content must be installed; modern CS2 assets are not a substitute.
+Delivery status and hashes: tools/p947-autumnal.md. This is not Phantasia/Epiphany
+acceptance, nor a claim that every optional texture/map has been repaired.
 Epiphany black-world and the two sky cuts remain open; no visual pass invented.
 
 ## P923/P938 — ordinary recording/restart feel (23 Oct 2026)
