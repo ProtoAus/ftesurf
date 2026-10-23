@@ -25,7 +25,10 @@ commit   93a891fea47f3c5f64e44fc2da8ef5ab7ad6cd0b
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-953
-patch    953
+patch    956
+# Patch 956 keeps the consumed recording SHA with future accepted verifier
+# attempts. Existing results remain unbound; no raw collection, badge/ranking,
+# movement, native pin/tag, Build or release policy changes.
 # Patch 953: apply the existing trust boundary before native local file-writer work.
 # Trusted operator behaviour remains; no evidence, schema or movement change.
 # Patch 952: Epiphany's extensionless colour-correction LUT keeps its authored grade.

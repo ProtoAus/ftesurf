@@ -866,7 +866,8 @@ CREATE TABLE IF NOT EXISTS verdicts (
     engine     TEXT    NOT NULL,
     progs      TEXT    NOT NULL,
     at         INTEGER NOT NULL,
-    counts_metrics TEXT NOT NULL DEFAULT ''
+    counts_metrics TEXT NOT NULL DEFAULT '',
+    recording_sha256 TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS verdicts_replay ON verdicts (replay_id, id);
 """
@@ -1629,14 +1630,15 @@ def migrate():
 
 
 def verdict_metrics(conn):
-    """Additive per-attempt observer, never reconstruct historical measurements."""
+    """Additive per-attempt metadata; historical observations remain unknown."""
     cols = {r[1] for r in conn.execute('PRAGMA table_info(verdicts)')}
-    if cols and 'counts_metrics' not in cols:
-        try:
-            conn.execute("ALTER TABLE verdicts ADD COLUMN counts_metrics TEXT NOT NULL DEFAULT ''")
-        except sqlite3.OperationalError as exc:
-            if 'duplicate column' not in str(exc):
-                raise
+    for col in ('counts_metrics', 'recording_sha256'):
+        if cols and col not in cols:
+            try:
+                conn.execute("ALTER TABLE verdicts ADD COLUMN %s TEXT NOT NULL DEFAULT ''" % col)
+            except sqlite3.OperationalError as exc:
+                if 'duplicate column' not in str(exc):
+                    raise
 
 
 def get_db():

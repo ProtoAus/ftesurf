@@ -650,6 +650,15 @@ headless verifier per map on port 27698, with `nice 19`, idle IO and
 
     */5 * * * * cd /srv/nvme/surfd && flock -n /tmp/surfd-sweep.lock python3 sweep.py --limit 20 >> /srv/nvme/surfd/logs/sweep.log 2>&1
 
+Future accepted native/source-bound attempts also retain `recording_sha256` in
+that same verdict transaction. Empty means the attempt's consumed bytes were not
+established: historical rows, ERRORs and pre-verifier refusals are not bound by
+copying a filing hash or rereading today's file. Rechecks append their own
+identity without rewriting older attempts. The existing idempotent per-attempt
+metadata migration adds the unknown-default column, as for `counts_metrics`;
+user-version20 is unchanged. This is historical input identity, not present-file
+equality, authenticity, calibration or a new badge/ranking/public API rule.
+
 `python3 sweep.py --dry-run` lists what is pending and what the evidence step
 would index. `test_sweep.py` stubs out the engine (use a throwaway
 `SURFD_HOME`), and `cfg/test/p349verify.cfg` tests the verifier itself.

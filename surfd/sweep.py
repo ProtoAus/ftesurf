@@ -363,12 +363,14 @@ def run_verifier(map_dir, paths):
         return ["sweep: verifier failed: %s" % exc]
 
 
-def record(conn, rid, verdict, reason, ticks, engine, progs, t0, counts_metrics=None):
+def record(conn, rid, verdict, reason, ticks, engine, progs, t0, counts_metrics=None,
+           recording_sha256=""):
     conn.execute(
-        "INSERT INTO verdicts (replay_id, verdict, reason, ticks, engine, progs, at, counts_metrics)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO verdicts (replay_id, verdict, reason, ticks, engine, progs, at,"
+        " counts_metrics, recording_sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (rid, verdict, reason[:300], ticks, engine, progs, t0,
-         json.dumps(counts_metrics, sort_keys=True, separators=(",", ":")) if counts_metrics else ""))
+         json.dumps(counts_metrics, sort_keys=True, separators=(",", ":")) if counts_metrics else "",
+         recording_sha256))
     # A row resubmitted (exact tie) or re-checked after t0 stays pending.
     done = "" if verdict == "ERROR" else ", checked = 1"
     conn.execute("UPDATE replays SET seen = ?" + done + " WHERE id = ?"
@@ -436,10 +438,13 @@ def sweep(conn, limit, runner=None, now=None):
             if verifier_source_sha(row, path) != sha:
                 v, reason, ticks = "ERROR", "recording changed or became unavailable during verification", -1
                 measured = None
-            # Hashing and row checks run without a write transaction. Only the
-            # completed observation holds the writer lock.
+            # Only an accepted terminal with matching native input and both
+            # source fences can bind this attempt. Never copy a filing hash or
+            # reconstruct history; pre-verifier refusals/ERRORs stay unknown.
+            # Hashing/row checks stay outside the completed observation's lock.
             with conn:
-                record(conn, row["id"], v, reason, ticks, engine, progs, t0, measured)
+                record(conn, row["id"], v, reason, ticks, engine, progs, t0, measured,
+                       recording_sha256=sha if v != "ERROR" else "")
             counts[v] = counts.get(v, 0) + 1
     return counts
 
