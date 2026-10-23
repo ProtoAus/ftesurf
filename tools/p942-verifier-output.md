@@ -32,5 +32,23 @@ immutable engine-input binding or hostile-host change-and-restore protection.
 - Independent correctness and evidence reports identify no findings. The evidence
   child's final tool-profile status failed; its complete saved audit was recovered
   and reviewed, not represented as a clean workflow or independent test execution.
-- Publication: pending exact inspected commits. Deployment: pending a guarded
-  immutable-runtime handoff; replacing the unused canonical script is not delivery.
+- Published QC `f01d7283` / engine documentation `a1d0d8e0a`. Delivered
+  2026-10-23 06:40:24 UTC; verified 06:40:27 UTC through the existing guarded
+  immutable-runtime handoff. Of 80 runtime files, 79 stayed byte-identical;
+  only `sweep.py` changed. The fresh worker also witnesses that module's origin.
+- Old runtime CLOSED and drained; new runtime OPEN. All 12 lobbies healthy,
+  with the same game-process identities/native/readers; AI remains inactive.
+  Eight canonical bindings and four guarded cron routes match; the importer
+  has a fresh, observed process epoch and exact new admission descriptor.
+- Actual scheduled verifier route exits 0; predecessor CLOSED route refuses.
+  This is entrypoint reachability, not an invented extra parser-control pass.
+- Initial 512-page online backup restarted under live WAL writes and hit its
+  45-second deadline BEFORE staging, signalling, closing web or swapping files.
+  Failure retained. The existing shipper's whole-step API completed the SAME
+  owned target in 9.517 seconds within that bound; mode0600/schema20/quick_check
+  and exact-byte controls pass. Independently cleared phase continuation reused
+  that snapshot, without a second copy, restore, guard bypass or failed-live retry.
+- P941 landed separately while delivery was in progress; its source was not
+  implicitly shipped by P942. No Windows game artifacts were replaced by this
+  backend-only deployment. Future reader/native/progs changes must coordinate
+  the frozen worker witness, not silently invalidate its dependency pins.

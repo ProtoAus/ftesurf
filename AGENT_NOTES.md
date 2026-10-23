@@ -3100,6 +3100,36 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+**Verifier result attribution and guarded delivery (P942, 2026-10-23).**
+
+Duplicate recognized VERIFY results for one path must latch retryable ERROR,
+unknown ticks and unavailable counts; never choose the final terminal line.
+Identical duplicates are ambiguous too. Counts need the same permanent per-path
+latch; a clean interleaved companion and ordinary retry must still ACT. Seven
+new controls expose17baseline failing subcases;38focused tests pass Windows/ARM.
+This is output attribution, NOT immutable engine-input binding or historical
+badge revocation. Existing recheck/error budgets and owner review remain intact.
+
+For guarded source-only handoffs, drain the exact owned long-lived importer
+while web remains OPEN, then refresh source/actor/fleet/AI conditions immediately
+before closure. Its SIGTERM completes current transfers; do not replace that
+with forced termination. MainPID alone is not ownership: pin birth/cwd and unit
+invocation, and use pidfd for the recorded process. Type=simple start is not
+admission readiness; wait for stable new PID/birth/invocation, expected cwd and
+EXACT admission descriptor. Refuse replacement/reuse/exit, without restart loops.
+
+The known online-backup pitfall below recurred:512page batches on a busy1.26GB
+WAL DB restarted8times/2s and hit45s BEFORE live mutation. The existing shipper's
+whole-step backup API completed the SAME owned snapshot in9.517s, within45s;
+mode600/schema20/quick_check and byte/identity checks then ACT. Retain the failed
+preflight, repair the actual seam and review continuation from that completed
+phase; no duplicate copy, data restore, fresh attempt name or guard bypass.
+Do not extrapolate that timing into a universal backup bound. For a pinned read
+transaction, BEGIN alone remains insufficient: actually read a safe table first.
+Keep frozen worker dependency witnesses coordinated with later reader/native/
+progs swaps; an unrelated published patch is not automatically part of the cohort.
+
+
 - **Explicit respawns are not fresh connection spawns (Patch 858).** `kill`,
   `cmd respawn`, `cmd restart` and `goto_spawn` share `SV_PlayerRespawn`: void live
   evidence before `SV_TimerSpawn` resets its handle, then preserve a completed
