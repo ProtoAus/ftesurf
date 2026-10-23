@@ -40,9 +40,10 @@ gameplay cohort; at that transaction, read-only Windows/Pi hashes matched P940.
 The older compatibility programs were not restored over that qualified rollout.
 Later P944 personal Max Fog, P947 Autumnal metadata and P948 Kvas/map-ready render
 layer are delivered (their tools/pNNN receipts are authoritative, not the older
-P940 hashes). Current native945/P948 programs are preserved. P949 Boreas sky cut
-is implemented/native-verified; exact client-config delivery is tracked separately
-in tools/p949-boreas-sky.md. No owner visual confirmation is invented.
+P940 hashes). Current native945/P948 programs are preserved. P949 Boreas sky cut is now
+implemented/native-verified and its exact config delivered to BOTH Windows
+installs23Oct14:42Z; no needless Pi/program swap. Receipt: tools/p949-boreas-sky.md.
+No owner visual confirmation is invented.
 Download audit also complete: R2 uncapped (one2MiB range7.519MiB/s, not engine-
 speed acceptance), BSP identity encoded/original bytes; only Pi origin fallback
 is1MiB/s capped. No integrity/fallback guard was weakened.

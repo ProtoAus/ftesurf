@@ -52,15 +52,25 @@ Final existing runlines_smoke invocation returns0, no command/VM errors, actual
 1/full then2, native CRC equality; all owned actors stop/wait and links retire.
 No replacement wrapper chain, public/private player fixture or weakened check.
 
-## Pending delivery/manual acceptance
+## Delivered; manual acceptance remains pending
 
 Concurrent published release0.1.30/history, tooling and the owner's unrelated
 Source-polish acceptance are preserved; P949 stays under next, NOT retrospectively
-inside that published release. Exact config promotion to BOTH Windows installs
-remains next after clean merged-source qualification. Existing Pi-served67b40bdd CSQC is sufficient;
-unchanged programs must not trigger a gratuitous fleet restart. Other clients
-need the updated client config too; this is development delivery, not release.
+inside that published release. Final source d9050d841cde6b163bcfa4885e900a9220dec4fc
+is clean/inspected/published; clean merged three-VM build0warnings qualifies the
+unchanged QW/CSQC and two-byte release-version-only menu difference separately.
+The final documentation-only amendment changes no compiled/config input.
 
+BOTH Windows config targets independently hash-verified23Oct14:42:18.092Z:
+`3a5016c7b23f7422445e4cd628d91f077c343a8b3940a324085cf437d3216c40`.
+Exact bytes equal the native automatic-test file.36protected native/program/menu/
+owner-config files unchanged; only the two new render_surf_boreas.cfg files were
+promoted atomically. No BSP/mount/player-data edit or game process killed.
+Existing Pi-served67b40bdd is sufficient: NO programs/native/backend deployment,
+cache cleanup, Pi swap/restart, release or qcbuild action. Other clients need the
+updated client config too; this is development delivery, not a new release.
+
+Use the next Boreas load or fresh client launch, not a manual console workaround.
 Owner in-game Save11 confirmation is pending in lextest.md. The native saved-pose
 result does not invent that confirmation or acceptance of other graphics settings,
 alternate BSP builds, Phantasia's textures or Epiphany's black scene. Needed

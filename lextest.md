@@ -4,9 +4,10 @@
 PENDING owner in-game confirmation. Native current-Momentum2/1/2 cuts/restores/
 recuts the same mountain at a read-only saved-pose-derived DEMOTED fixture;
 automatic map override1/full and another map2 also pass, with matching native
-world CRC. That is NOT your manual confirmation. Delivery status is in
-tools/p949-boreas-sky.md. After delivery, reconnect/reload Boreas and load Save11:
-is the whole mountain there without a manual r_sky_forcedepth command? If doing
+world CRC. That is NOT your manual confirmation. BOTH Windows configs delivered
+23Oct14:42:18Z; programs/native/Pi unchanged. On a fresh launch or Boreas reload,
+load Save11: is the whole mountain there without a manual r_sky_forcedepth
+command? Full provenance/limits: tools/p949-boreas-sky.md. If doing
 the earlier2/1/2 diagnostic before delivery, leave it2 afterward. Other BSP
 builds/settings and Phantasia/Epiphany are not accepted by this check.
 
