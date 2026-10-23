@@ -40,10 +40,35 @@ This proves the tested native command contexts, not normal-client wire
 reachability. Private fixtures, credentials, actor details and raw logs are not
 published. No automatic player verdict or genuine-player collection follows.
 
-## Delivery state
+## Final qualification and development delivery — 2026-10-23 UTC
 
-Source/pin/notes publication is distinct from binary qualification and delivery.
-Exact-tag Windows/Linux builds, final-artifact checks and guarded deployment are
-pending at this source checkpoint. No deployment or owner manual pass is claimed.
-Ordinary development delivery must preserve predecessor bytes and player data,
-verify actual destination hashes and obey active-process/empty-lobby gates.
+- Clean tagged Windows `Full/NoDeploy`, using the existing serial packaging route:
+  three VMs0warnings, seven AMD64 images, two exact clean EXE stamps, five valid
+  plugin ZIP CRCs/metadata stamps,74 inherited native warnings and no new site.
+  A detached launcher that never reached the build is retained separately; only
+  the successful foreground build is credited.
+- Final-image refusal/trusted/native caller controls passed with normal quit0.
+  The actual installed dedicated also passed trusted file export/log open-close
+  and the version smoke. Ten native destinations across both Windows installs
+  match the qualified bytes;21 protected VM/menu/config files remain unchanged.
+  Independent private test processes were not stopped or overwritten.
+- ARM64 native pair built with16 unchanged warning sites. All60 named physics
+  rows over five matched-fixture maps agree with the installed Windows native.
+  Both documented legacy positives pass. The fixture deliberately holds its
+  retained VM and map rules constant; this is not a QC VM rollout or new-world
+  coverage claim.
+- All12 Pi lobbies were restarted only after fresh empty-unit checks. Actual
+  running EXE hashes and mapped HL2 identities match the qualified pair;
+  predecessor bytes/previous history, configs and28,612 existing protected files
+  were preserved.
+- The paired rollout encountered a backend-availability failure. That transaction
+  remains recorded as **failed**. Forward recovery restored the qualified backend
+  without a native downgrade or data restore. Final actual worker/importer checks,
+  health/board/API responses and the fresh12-lobby directory passed. Application
+  contents, schema and collection policy were not changed by this native patch.
+
+Source publication, binary qualification, destination hashes and live postflight
+are separate evidence. No release/Build bump, owner manual acceptance,
+normal-client wire reachability, human/device calibration or automatic player
+verdict is claimed. Private actors, recovery details, credentials and raw logs
+remain private.
