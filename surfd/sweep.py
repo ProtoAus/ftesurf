@@ -247,6 +247,9 @@ def parse(lines):
         if not m:
             continue
         path, verdict, reason = m.group(1), m.group(2), m.group(3).strip()
+        if path in out:
+            out[path] = ("ERROR", "ambiguous duplicate VERIFY lines", -1)
+            continue
         t = FINISH_RE.fullmatch(reason) if verdict == "PASS" else None
         ticks = surfd.strict_int(t[1], 0, surfd.MAX_TICKS) if t else None
         if t and surfd.strict_int(t[2], 0, surfd.MAX_TICKS) is None:
@@ -266,7 +269,8 @@ def parse_counts(lines):
             continue
         verdict = VERIFY_RE.match(line)
         if verdict:
-            out[verdict[1]] = observation if active == verdict[1] else None
+            path = verdict[1]
+            out[path] = observation if active == path and path not in out else None
             active, observation, seen = None, None, False
             continue
         if active is None or not line.startswith("counts "):

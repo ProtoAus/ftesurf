@@ -12,6 +12,7 @@
 //   chapter "Title" [unlock N]  N trophies by hand instead; chapters open in
 //                               order, and the first is always open
 //   level <map> [bonus N]       one level; `level soon` is an empty slot
+//     mode maxfog              Play enables personal fog, not a global map change
 //     bronze|silver|gold <challenge> ["text"]
 //     spot <name> <x> <y> <z> [radius]   a place on this map for `via`; stand
 //                               there and type `cmd viewpos` in game for x y z
@@ -34,6 +35,7 @@
 //   first              the first player to finish (inside the dates, if any)
 //   rank N             top N of the WOS players on it (inside the dates)
 //   improve N%         one run N% faster than your best before it
+//   maxfog             one fresh full lobby run with Max Fog on throughout
 // A level with no medal lines gets a bronze for finishing. Medals count WOS
 // runs only (lobby runs, no saves; never Momentum or KSF), and a level is worth
 // its best medal: bronze 1, silver 2, gold 3. The one-run challenges count runs
@@ -399,6 +401,8 @@ level surf_leidenfrost
 level surf_cyberwave
   gold   finish         "Beat surf_cyberwave"
 level surf_zoomathon
+  mode maxfog
+  // Keep existing gold credit until the owner chooses the legacy-credit policy.
   gold   finish         "Play it with max fog (for fun, not checked)"
 level surf_1998                 // no zones yet
   gold   finish         "Finish surf_1998"

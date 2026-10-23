@@ -1603,7 +1603,7 @@ def migrate():
         # of ours (steamsync.people).  Not a schema bump, for momusers' reason.
         conn.execute(BOARDPICS_DDL)
         # Patch 856: the Story ladder's per-finish log.  Not a bump, for momusers'.
-        conn.executescript(STORY_RUNS_DDL)
+        story_schema(conn)
         import mapmanifest
         conn.execute(mapmanifest.DDL)
         conn.commit()
@@ -3312,6 +3312,7 @@ def submit_run():
     # lobby counted of the run, and the key its connection proved.
     trusted = is_trusted(src, TRUSTED_SOURCES)
     sfacts = story_facts(request.form, trusted)
+    smaxfog = story_maxfog(request.form, trusted, sfacts)
     spub = request.form.get("pub") or ""
     if not trusted or not re.fullmatch(r"[0-9a-f]{64}", spub):
         spub = ""
@@ -3323,7 +3324,7 @@ def submit_run():
             return {}
         try:
             ev = story_finish(db, story_was, mapname, track, leg, player, spub, name, millis,
-                              prevms, now, runid, rid, sfacts, story_rec)
+                              prevms, now, runid, rid, sfacts, story_rec, smaxfog)
         except Exception:               # never the run's answer
             log.exception("story: logging a finish on %s failed", mapname)
             return {}
@@ -4816,7 +4817,7 @@ STORY_POINTS = {"b": 1, "s": 2, "g": 3}
 # A challenge and the words after it: t a time, n a count, p a percent, s a spot.
 STORY_ARGS = {"finish": "", "time": "t", "reach": "n", "stage": "nt", "nofail": "",
               "wonly": "", "nojump": "", "sw": "", "hsw": "", "speed": "n", "via": "s",
-              "first": "", "rank": "n", "improve": "p"}
+              "first": "", "rank": "n", "improve": "p", "maxfog": ""}
 STORY_KINDS = tuple(STORY_ARGS)
 STORY_NMAX = {"reach": MAX_LEG, "stage": MAX_LEG, "speed": 99999, "rank": 1000}
 # FSI_* (shared/sh_defs.qc), the lobby's smask, and SV_StoryFrame's STY_HSWBAD.
@@ -4844,6 +4845,7 @@ STORY_RUNS_DDL = (
     " runid TEXT NOT NULL DEFAULT '', replay_id INTEGER NOT NULL DEFAULT 0,"
     " fails INTEGER NOT NULL DEFAULT -1, inmask INTEGER NOT NULL DEFAULT -1,"
     " top INTEGER NOT NULL DEFAULT -1, spots TEXT NOT NULL DEFAULT '',"
+    " maxfog INTEGER NOT NULL DEFAULT -1,"
     " done INTEGER NOT NULL DEFAULT 1);"
     "CREATE INDEX IF NOT EXISTS story_runs_map ON story_runs (map, track, leg, at);"
     "CREATE INDEX IF NOT EXISTS story_runs_order ON story_runs (map, track, leg, id);"
@@ -4854,6 +4856,16 @@ STORY_RUNS_DDL = (
     # the board then (`first` cannot be known past one).  Written once, never moved.
     "CREATE TABLE IF NOT EXISTS story_tracks (map TEXT NOT NULL, track INTEGER NOT NULL,"
     " began INTEGER NOT NULL, prior INTEGER NOT NULL, PRIMARY KEY (map, track));")
+def story_schema(db):
+    """Additive Story schema; old finishes remain unknown, never Max Fog passes."""
+    db.executescript(STORY_RUNS_DDL)
+    # Cron and gunicorn both migrate on import. Serialize the check AND ALTER.
+    with db:
+        db.execute("BEGIN IMMEDIATE")
+        if "maxfog" not in {r[1] for r in db.execute("PRAGMA table_info(story_runs)")}:
+            db.execute("ALTER TABLE story_runs ADD COLUMN maxfog INTEGER NOT NULL DEFAULT -1")
+
+
 # story_tracks' `prior`: a WOS full-run board row on the track (map, track) whose
 # player the log has no row of -- a finish from before the log.  (%s: "".)
 _STORY_UNLOGGED_SQL = (
@@ -4930,7 +4942,7 @@ def story_text(ch, track):
         return "Beat your best by %d%%" % v
     return {"nofail": "First try every stage", "wonly": "W only", "nojump": "No jumping",
             "sw": "Sideways: W and S only", "hsw": "Half-sideways: two keys at once",
-            "first": "Be the first to finish"}[k]
+            "first": "Be the first to finish", "maxfog": "Finish with Max Fog for the whole run"}[k]
 
 
 def _story_arg(kind, code, word):
@@ -5040,6 +5052,13 @@ def story_parse(text):
                     continue
                 lvl = {"map": name, "track": track, "ch": [], "win": None}
             chap["levels"].append(lvl)
+        elif key == "mode":
+            if lvl is None or not lvl["map"]:
+                bad(n, "mode outside a level")
+            elif args != ["maxfog"]:
+                bad(n, "mode maxfog")
+            else:
+                lvl["mode"] = "maxfog"
         elif key == "spot":
             # spot <name> <x> <y> <z> [radius]: a place on this level's map that
             # `via <name>` asks a run to pass; `cmd viewpos` in game reads x y z.
@@ -5069,7 +5088,7 @@ def story_parse(text):
             vals = [_story_arg(kind, c, a) for c, a in zip(spec or "", args[1:need])]
             if spec is None or len(args) not in (need, need + 1) or None in vals:
                 bad(n, "%s: finish | time m:ss | reach N | stage N m:ss | nofail | wonly | "
-                       "nojump | sw | hsw | speed N | via <spot> | first | rank N | improve N%%"
+                       "nojump | sw | hsw | speed N | via <spot> | first | rank N | improve N%% | maxfog"
                     % key)
                 continue
             ch = {"m": m, "k": kind}
@@ -5156,16 +5175,16 @@ def _story_ident(db):
 # level's, or the run being answered), or every finish summed up by SQL
 # (an undated level's, _STORY_SUM_SQL).  ratio is the best millis/prevms.
 StorySum = collections.namedtuple(
-    "StorySum", "ms nofail wonly nojump sw hsw top ratio spots")
+    "StorySum", "ms nofail wonly nojump sw hsw top ratio spots maxfog", defaults=[False])
 
 
-def _story_sum(ms, prevms, fails, inmask, top, spots):
+def _story_sum(ms, prevms, fails, inmask, top, spots, maxfog=-1):
     """One finish's StorySum."""
     known = inmask >= 0
     return StorySum(ms, fails == 0, known and not inmask & STORY_FSI_NOTW,
                     known and not inmask & STORY_FSI_JUMP, known and not inmask & STORY_FSI_SIDE,
                     known and not inmask & STORY_FSI_HSWBAD, top,
-                    ms / prevms if prevms > 0 else None, spots)
+                    ms / prevms if prevms > 0 else None, spots, maxfog == 1)
 
 
 def _story_ok(ch, lv, who, v):
@@ -5183,7 +5202,7 @@ def _story_ok(ch, lv, who, v):
     if k == "stage":
         t = v["legms"].get(ch["v"])
         return t is not None and t < ch["w"]
-    if k in ("nofail", "wonly", "nojump", "sw", "hsw"):
+    if k in ("nofail", "wonly", "nojump", "sw", "hsw", "maxfog"):
         return any(getattr(s, k) for s in sums)
     if k == "speed":
         return any(s.top >= ch["v"] for s in sums)
@@ -5225,7 +5244,7 @@ _STORY_SUM_SQL = (
     " MAX(s.inmask >= 0 AND (s.inmask & %d) = 0), MAX(s.inmask >= 0 AND (s.inmask & %d) = 0),"
     " MAX(s.inmask >= 0 AND (s.inmask & %d) = 0), MAX(s.top),"
     " MIN(CASE WHEN s.prevms > 0 THEN CAST(s.millis AS REAL) / s.prevms END),"
-    " GROUP_CONCAT(NULLIF(s.spots, ''), ' ')"
+    " GROUP_CONCAT(NULLIF(s.spots, ''), ' '), MAX(s.maxfog = 1)"
     " FROM story_runs s WHERE s.map IN (%%s) AND s.leg = 0 AND s.done = 1 AND %s"
     " GROUP BY s.map, s.track, s.player, s.pub"
     % (STORY_FSI_NOTW, STORY_FSI_JUMP, STORY_FSI_SIDE, STORY_FSI_HSWBAD, _STORY_LIVE_SQL))
@@ -5354,14 +5373,14 @@ def _story_calc(db, lists, now):
         # the one the lobby says this run's connection proved (submit_run's `pub`,
         # trusted sources only): the same "whose key" rule as the receipt above.
         for (mapname, track, player, pub, name, ms, at, nofail, wonly, nojump, sw, hsw, top,
-             ratio, spots) in db.execute(_STORY_SUM_SQL % marks, part):
+             ratio, spots, maxfog) in db.execute(_STORY_SUM_SQL % marks, part):
             if (mapname, track) not in want:
                 continue
             who = owner(player, pub)        # MAX(name) is not the newest name
             if who is not None:
                 sums.setdefault((who, mapname, track), []).append(StorySum(
                     ms, bool(nofail), bool(wonly), bool(nojump), bool(sw), bool(hsw), top, ratio,
-                    spots or ""))
+                    spots or "", bool(maxfog)))
     # A dated level reads its own days' finishes one by one, stage times too:
     # each set of dates on each of its tracks (the window index's full prefix:
     # full runs, then the few stage rows), a row once however many cover it.
@@ -5370,9 +5389,9 @@ def _story_calc(db, lists, now):
         for (dmap, dtrack), legs_sql in ((t, l) for t in sorted(tracks)
                                          for l in ("s.leg = 0", "s.leg > 0")):
             for rid, mapname, track, leg, player, pub, name, ms, prevms, at, fails, inmask, top, \
-                    spots in db.execute(
+                    spots, maxfog in db.execute(
                         "SELECT s.id, s.map, s.track, s.leg, s.player, s.pub, s.name, s.millis,"
-                        " s.prevms, s.at, s.fails, s.inmask, s.top, s.spots"
+                        " s.prevms, s.at, s.fails, s.inmask, s.top, s.spots, s.maxfog"
                         " FROM story_runs s INDEXED BY story_runs_map"
                         " WHERE s.map = ? AND s.track = ? AND %s AND s.at >= ? AND s.at < ?"
                         " AND s.done = 1 AND %s" % (legs_sql, _STORY_LIVE_SQL),
@@ -5383,7 +5402,7 @@ def _story_calc(db, lists, now):
                 who = owner(player, pub, name, at)
                 if who is not None:
                     rows.setdefault((who, mapname, track), []).append(
-                        (leg, at, _story_sum(ms, prevms, fails, inmask, top, spots)))
+                        (leg, at, _story_sum(ms, prevms, fails, inmask, top, spots, maxfog)))
     bsp, zoned = map_index()
     people = {k[0] for k in best} | {k[0] for k in legs} | {k[0] for k in sums} | \
         {k[0] for k in rows}
@@ -5556,6 +5575,14 @@ def _story_current(db, now):
 
 # --- Patch 856: a lobby finish, logged and answered ------------------------
 
+def story_maxfog(form, trusted, facts):
+    """A full fresh lobby's explicit flag, not a client setting or missing fact."""
+    if not trusted or any(v < 0 for v in facts):
+        return -1
+    flag = strict_int(form.get("smaxfog", ""), 0, 1)
+    return flag if flag is not None else -1
+
+
 def story_facts(form, trusted):
     """(fails, inmask, top) from a lobby's post: -1 for each not sent.  Only a
     trusted source's, like `runid` and `pub`; Lobby_SubmitRun sends them for a
@@ -5696,7 +5723,7 @@ def _story_wanted(lists, mapname, track, leg, now):
 
 
 def story_finish(db, before, mapname, track, leg, who, pub, name, ms, prevms, now, runid, rid,
-                 facts, rec):
+                 facts, rec, maxfog=-1):
     """Log one clean lobby finish that story_before wanted, and work out the
     medals a full one just earned, for submit_run's answer: [{l, n, map, m, t,
     tot, ch}] -- list title, level number, map, medal, the challenge's text,
@@ -5705,6 +5732,8 @@ def story_finish(db, before, mapname, track, leg, who, pub, name, ms, prevms, no
     earns at the next refresh, untold; `rank` is never told."""
     calc, crev, recent = before
     fails, inmask, topspeed = facts if leg == 0 else (-1, -1, -1)
+    if leg != 0:
+        maxfog = -1
     rowid = None
     with db:
         # The run's reservation, completed: by its runid whatever post made it (a
@@ -5721,16 +5750,16 @@ def story_finish(db, before, mapname, track, leg, who, pub, name, ms, prevms, no
             return []
         if got is not None:
             db.execute("UPDATE story_runs SET pub = ?, name = ?, millis = ?, prevms = ?,"
-                       " replay_id = ?, fails = ?, inmask = ?, top = ?, done = 1 WHERE id = ?",
-                       (pub, name, ms, prevms, rid or 0, fails, inmask, topspeed, got[0]))
+                       " replay_id = ?, fails = ?, inmask = ?, top = ?, maxfog = ?, done = 1 WHERE id = ?",
+                       (pub, name, ms, prevms, rid or 0, fails, inmask, topspeed, maxfog, got[0]))
             rowid = got[0]
         else:
             cur = db.execute(
                 "INSERT OR IGNORE INTO story_runs (map, track, leg, player, pub, name, millis,"
-                " prevms, at, runid, replay_id, fails, inmask, top)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " prevms, at, runid, replay_id, fails, inmask, top, maxfog)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (mapname, track, leg, who, pub, name, ms, prevms, now, runid or "", rid or 0,
-                 fails, inmask, topspeed))
+                 fails, inmask, topspeed, maxfog))
             rowid = cur.lastrowid if cur.rowcount == 1 else None
     if rowid is None or leg:
         return []                       # a retried post of a run already logged, or a stage
@@ -5745,7 +5774,7 @@ def story_finish(db, before, mapname, track, leg, who, pub, name, ms, prevms, no
                     spots.update(lv["spots"])
     if spots and rec:
         _story_spot_queue(rowid, rec, spots)
-    run = _story_sum(ms, prevms, fails, inmask, topspeed, "")
+    run = _story_sum(ms, prevms, fails, inmask, topspeed, "", maxfog)
     firsts = {}                     # a level's dates -> whether this was the first finish
     for L in (calc or {}).get("lists", ()):
         for lv in L["levels"]:
@@ -5843,6 +5872,7 @@ def game_story(what, now):
             # day, and `in` the same from now (the menu cannot hold an epoch exactly).
             "levels": [dict({"map": lv["name"], "track": lv["track"], "chap": lv["chap"],
                         "timed": 1 if lv["timed"] else 0, "hold": h,
+                        "mode": lv.get("mode", ""),
                         "from": lv["win"][0] if lv["win"] else 0,
                         "to": lv["win"][1] if lv["win"] else 0,
                         "ch": [{"m": c["m"], "k": c["k"], "t": c["t"],
