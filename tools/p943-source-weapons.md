@@ -96,19 +96,24 @@ then acted. Timed waits are not readiness; later external-peer readiness used th
 same observed nonzero-position contract as conbridge.connect, bounded60s.
 All these failures remain in owned artifacts, not relabeled passes.
 
-## Lighting remains a separate in-scope continuation
+## Lighting follow-through — explored, no speculative shader change
 
-CSS screenshot cl_showpos: pos -2752,0,-31.97; angles .45,.08,0. Owner's new FTE
-view loads surf_axiom_css (CSS BSP under a different name), at a different spot.
-Converted TGA under owned artifacts only. Native cubemap loader currently builds
-materials/maps/<LOADED basename>/cX_Y_Z.vtf; a renamed BSP's authored namespace
-must be checked, in addition to matched map/camera/FOV/idle phase, before judging
-remaining shading. No global brightness hack or lighting-parity pass is claimed.
-Continue this after gameplay delivery; this is NOT permission to stop that work.
+The exact owner CSS BSP was compared under original and renamed names with
+near-matched rendered camera/FOV/early idle. Original160cubes/0missing, renamed
+160/160missing ACTED, but near-matched hands did not materially change: namespace
+loss does NOT explain hand darkness at that point. Matched CSS/FTE hands are not
+uniformly darker; residual tint/blade differences and human look remain open.
+
+Initial assumptions about cl_showpos being feet produced the WRONG raised camera.
+World landmark alignment and actual VF origin corrected this; blind late-map cfg
+also lost commands before spawn and is NOT a control. Same-actor observed late
+spawn, not another wrapper, yielded the final acting pair. Details, exact views,
+failed arms and restored map fixture in tools/p943-lighting.md. No brightness,
+gamma, native, canonical map or priority change; owner asked to judge the pair.
 
 ## Final source / delivery
 
 Final exact hashes/clean commit/dual Windows/Pi/cold-client provenance are in
-p943-delivery.md after verification. Native939 unchanged for this QC feature;
+p943-delivery.md. No native binary was rebuilt/deployed by this QC feature;
 no owner process/config/map/player data touched. Owned fixture actors stopped;
 failed history and needed immutable control files retained in the task root.

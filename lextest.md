@@ -1,7 +1,10 @@
 # lextest.md — things waiting on a human
 
 ## P943 — Source weapons / varied footsteps (23 Oct 2026)
-PENDING after delivery: bare `knife` then hold +attack / +attack2. Misses should
+BOTH Windows and all12Pi lobbies delivered/hash-verified23Oct2026; cold lobby
+client downloaded exact CSQC and drew the board. See tools/p943-delivery.md.
+Availability and native controls are NOT human ear/feel acceptance.
+PENDING after reconnect: bare `knife` then hold +attack / +attack2. Misses should
 whoosh, not play a flesh stab; actual player taps can thud but must not hurt/push.
 `usp` starts without silencer; secondary completes attach/detach. `glock` secondary
 toggles single/three-round burst; `scout` should cock/bolt after shooting. Does
@@ -65,10 +68,13 @@ until `give knife` (or usp/scout/glock). Walk/turn: motion should be much subtle
 with idle continuing after15seconds. `cmd respawn` should put the weapon away.
 With cl_game_sfx1, Axiom's authored-metal floor should play CSS metal footsteps;
 walk/crouch should remain quiet. Do the motion and sound now feel right?
-Lighting is NOT claimed fixed: native FTE uses Momentum's Axiom build, whereas
-CSS's BSP is different. Owner was asked for CSS `getpos` at the comparison spot
-so map/camera/pose can be matched before judging the residual shader difference.
-No global brightness or map-priority change was made. See tools/p941-source-polish.md.
+Lighting remains PENDING human look, not a claimed shader fix: P943 now compares
+that exact CSS BSP at a near-matched rendered camera and early idle pose. The
+hands are not uniformly darker there; residual colour/reflection differences
+remain. Please open the matched pair named in tools/p943-lighting.md: close
+enough, or which tint/shadow still stands out? Native namespace controls acted
+but did not explain hand darkness. No global brightness/native change; owned
+map fixtures removed and original priority restored.
 
 ## P940 — viewmodel motion and material footsteps (23 Oct 2026)
 BOTH Windows installs and all12Pi lobbies verified23Oct04:54UTC, including a

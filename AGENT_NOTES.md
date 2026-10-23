@@ -6270,6 +6270,15 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+P943 runtime readback,23Oct2026: systemd's configured WorkingDirectory is NOT
+necessarily the server's actual cwd. Here the unit reports
+`/srv/nvme/ftesurf-server`, but FTE chdirs to its explicit `-basedir`:
+`/proc/<MainPID>/cwd` resolves to `/srv/nvme/ftesurf-server/game`. Inspect both
+actual proc cwd and the selected basedir argument; do not reject a correct
+serving cohort merely because the configured parent differs. Initial post-deploy
+P943 readback used that wrong assertion and failed without modifying anything;
+corrected12unit readback and cold CSQC hash/drawn-board proof acted. No raw command line/credentials need printing.
+
 - **A version reply has a banner as well as a build line (P858 readback).** The
   first `FTE[^\r\n]*` match is only `FTE QW`, not the following `FTE git-...` stamp.
   Strip colour markup and select the exact expected build line; preserve the
