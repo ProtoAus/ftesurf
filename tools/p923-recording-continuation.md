@@ -16,7 +16,53 @@ boundaries and ordinary-seed comparison. An unsupported context stays unsupporte
 this is not general held-world coverage, device provenance or proof of human play.
 Old/future mover contexts are not silently promoted into this current-only profile.
 
-## Implementation checks (not deployment)
+## Final development rollout — 23 October 2026 UTC
+
+The approved recovery and recording-relative counter policies, plus the explicitly
+bounded native capability, are now implemented, verified, published and deployed.
+Final qualified sources: engine `3d20da0aa11aae78fa97b23407f2c2958ceca174`
+(`patch-938`), QC `fad5324f08deb06968a2d05ddfc06fbe3d52a295`. Final source/cold
+controls and independent reviews passed; the full physics fixture matched all60
+named outputs across5maps on Windows/ARM, and both legacy replay controls passed.
+Reader864checks and the same captured corpus added zero faults. The historical
+optional ARM reader-suite timeout below is still not an ARM864-check pass.
+
+At **03:39:37 UTC**, the qualified ARM native/plugin/qwprogs/csprogs were promoted
+with predecessor history retained. All12 empty lobbies restarted with fresh
+PID/birth epochs; process-image hashes, mapped HL2 identities and destination
+hashes matched. Of28,049pre-existing protected files, zero changed or disappeared
+(6new files); gameplay configs were unchanged. The canonical sweep lock was
+released. No occupied lobby was restarted.
+
+At **03:49:40 UTC**, BOTH Windows installs received only8qualified qw/cs DAT/LNO
+files under exclusive leases. A newer published P939 clipboard native/menu had
+arrived in the meantime: ancestry and its client-input-only delta were inspected,
+and those files were preserved, not downgraded. Source/config/player-data files
+were not overwritten and the owner's game was not stopped. Two actual fresh-cache
+clients (final P938, then installed P939 native/menu) downloaded the exact deployed
+CSQC, drew the board and logged zero QC errors. Live public status independently
+confirmed all12 Pi native versions; its response omits CSQC checksums, so actual
+serving proof is the SHA-checked client download, not a guessed status field.
+
+At **04:39:25 UTC**, a dependency-only sealed backend handoff refreshed the two
+native consumer bindings. A fresh worker of the old profile had refused the new
+native hashes. All80 runtime files, application source generation, schema20,
+collection profile and existing gameplay configuration stayed unchanged. Actual
+fresh-worker/schema/health acceptance preceded OPEN; canonical import stubs/run.sh,
+four guarded cron routes and momrequests moved together, then the old guard fully
+drained. Board HTML, explicit board API and12fresh directory rows returned200.
+No game epoch changed during backend recovery. The documented momrequests service
+restart occurred; no arbitrary/owner/peer game PID was signaled. No DB/cache/data
+restore, verifier rollback, pin weakening or admission reset was used. The initial
+master's exit cause is not inferred from the reproducible fresh-start refusal.
+
+These are development delivery and bounded software compatibility, not general
+held-world coverage, production performance, independently calibrated human/device
+provenance, a release or a Build-number decision. The collector remains opt-in and
+no collection/access/retention policy or classifier threshold was expanded.
+Human-only normal-run/feel acceptance remains explicitly pending in `lextest.md`.
+
+## Original P923 implementation checks (historical, not deployment)
 
 - Standard isolated `src/build.ps1 -Jobs 8 -Engine -Full -NoDeploy`: succeeds;
   no NEW warnings against the retained full-build baseline. Both Windows installs
@@ -41,7 +87,7 @@ Old/future mover contexts are not silently promoted into this current-only profi
   on Windows and ARM before the mover adjustment; those earlier receipts are
   not relabeled as final-artifact or current-mover ARM acceptance.
 
-## Delivery — 22 October 2026 UTC
+## Historical delivery — 22 October 2026 UTC
 
 Published engine `a14ad147c74e6828109f40b6be8fe169182010af`, tag `patch-923`;
 QC feature `9e168015b0d6a3259fb4e75a9ad05aa4aac89bea`, followed by published
@@ -83,7 +129,9 @@ The public board, directory and board API return200; all12 game units remained
 running and reported heartbeats. No database restore, schema change, collector
 activation or gameplay restart was part of this recovery.
 
-**P923 Pi native/progs delivery remains held, not deployed.** The build-resource
+**Historical 22 October state: P923 Pi native/progs delivery was held.** The
+23 October section above supersedes this delivery status; the refused controls
+and optional timeout retain their original meanings. The build-resource
 block was resolved with a genuinely smaller jobs1/hard512MiB ARM build from the
 exact published source, rather than weakening the same768MiB job's headroom gate.
 Matching new ARM server/plugin spawn and kernel checks, five-map Windows/ARM
