@@ -10427,7 +10427,7 @@ void(entity pl) SV_ShootFrame =
 		pl.vbsp_burstat = pl.vbsp_burstat + 0.06;
 	}
 	if (time < pl.vbsp_nextshot) return;
-	if (alternate && (pl.weapon == FS_WEAPON_USP || pl.weapon == FS_WEAPON_GLOCK))
+	if (alternate && (pl.weapon == FS_WEAPON_USP || pl.weapon == FS_WEAPON_GLOCK || pl.weapon == FS_WEAPON_SCOUT))
 	{
 		pl.vbsp_weaponmode = !pl.vbsp_weaponmode;
 		pl.vbsp_nextshot = time + ((pl.weapon == FS_WEAPON_USP) ? 3.108 : 0.3);

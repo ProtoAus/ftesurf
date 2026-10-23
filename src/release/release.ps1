@@ -260,6 +260,8 @@ $ShipGameFiles = @(
     'ftesurf/sound/ftesurf/board_bell.wav'
     # Shared SUI chrome: generated in-tree, not third-party artwork.
     'ftesurf/gfx/ui/roundmask.png'
+    # Reproducible original quad; texture comes only from the mounted CSS install.
+    'ftesurf/models/ftesurf/muzzle.md3'
 )
 $ShipGlobs = @(
     # cfg\ top level only -- test\ (663 per-patch fixtures) is a subdirectory

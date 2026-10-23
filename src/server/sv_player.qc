@@ -1139,6 +1139,13 @@ void(string cmd) SV_ParseClientCommand =
 		EventFog_Command(self, cmdargc, argv(1));
 		return;
 	}
+	if (!strcmp(c, "drop"))
+	{
+		// Presentation only: no physical item, damage or input/movement change.
+		self.weapon = self.weaponframe = 0;
+		self.vbsp_weaponmode = self.vbsp_burstleft = self.vbsp_burstat = 0;
+		return;
+	}
 	if (!strcmp(c, "weapon_info"))
 	{
 		sprint(self, PRINT_HIGH, sprintf("weapon/server: type %g mode/contact %g event %g projectiles %g pending %g\n",
@@ -1166,7 +1173,7 @@ void(string cmd) SV_ParseClientCommand =
 		    go == FS_WEAPON_SCOUT || go == FS_WEAPON_GLOCK))
 		{
 			if (strcmp(self.classname, "player") || !self.run_inserver ||
-			    self.run_pmhold || self.movetype != MOVETYPE_WALK) return;
+			    self.run_pmhold || (self.movetype != MOVETYPE_WALK && self.movetype != MOVETYPE_NOCLIP)) return;
 			if (self.weapon != go)
 			{
 				self.weapon = go;

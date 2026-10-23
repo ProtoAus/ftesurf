@@ -26,7 +26,8 @@ void() GA_Assets =
 	GM_Clear();
 	ga_footvariant = 0;
 	ga_css = GA_Exists("player/footsteps/concrete1.wav");
-	ga_fall = GA_Exists("player/pl_fallpain1.wav");
+	// CSS Player.FallDamage (game_sounds.txt), not HL2's pl_fallpain.
+	ga_fall = (GA_Exists("player/damage1.wav") && GA_Exists("player/damage2.wav") && GA_Exists("player/damage3.wav"));
 };
 
 void() GA_Register =
@@ -163,7 +164,7 @@ void() GA_Frame =
 	{
 		if (ga_vel_z < -580 && ga_fall)
 		{
-			if (GA_Play("player/pl_fallpain1.wav", 0.7)) ga_lands = ga_lands + 1;
+			if (GA_Play(sprintf("player/damage%g.wav", floor(random() * 3) + 1), 0.7)) ga_lands = ga_lands + 1;
 		}
 		else if (GA_Foot(feet, water, volume)) ga_lands = ga_lands + 1;
 		ga_stepat = time + 0.15;
@@ -202,7 +203,8 @@ float() GA_Command =
 	}
 	if (strcmp(argv(0), "gameaudio_info")) return FALSE;
 	if (!strcmp(argv(1), "refresh")) GA_Assets();
-	print(sprintf("gameaudio: css %g shared-fall %g calls %g steps %g land %g water %g swim %g\n",
+	if (!strcmp(argv(1), "fall")) GA_Play(sprintf("player/damage%g.wav", floor(random() * 3) + 1), 0.7);
+	print(sprintf("gameaudio: css %g css-fall %g calls %g steps %g land %g water %g swim %g\n",
 		ga_css, ga_fall, ga_calls, ga_steps, ga_lands, ga_splashes, ga_swims));
 	print(sprintf("gameaudio: last '%s' active %g ground %g depth %g\n", ga_last, ga_valid, ga_ground, ga_water));
 	print(sprintf("gameaudio: speed %g volume %g hop-cues %g contact-seq %g\n", ga_speed, ga_volume, ga_jumps, ga_jumpseq));

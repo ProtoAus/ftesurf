@@ -568,6 +568,9 @@ void() worldspawn =
 
 	// The engine needs modelindex 1 to exist; every map supplies it.
 	precache_model("");
+	// Original cosmetic geometry: normal model downloads supply it to cold clients.
+	// The CSS flash texture remains client-local mounted content, never shipped.
+	precache_model("models/ftesurf/muzzle.md3");
 
 	lightstyle(0, "m");
 
