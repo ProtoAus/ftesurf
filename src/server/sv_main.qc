@@ -510,6 +510,7 @@ void() SV_RegisterStats =
 
 void() worldspawn =
 {
+	SV_TimeScaleMapReset();
 	// P924: this progs declares input_cmd_later; clients may mirror sv_tickparts.
 	forceinfokey(world, "fs_tickparts", "1");
 	forceinfokey(world, "fs_sourcephase", "1");

@@ -275,7 +275,7 @@ void() ClientConnect =
 {
 	self.run_timescale = 1;
 	self.run_ts_next = 0;
-	self.run_ts_used = FALSE;
+	self.run_ts_used = SV_TimeScaleConnectTaint(self);
 	Archive_Reset(self);
 	EventFog_Reset(self);          // recycled slot/map must not inherit event fog
 	// Patch 371: a join line only for a new connection -- this runs again for
@@ -1120,6 +1120,9 @@ void() SV_SpawnGoto =
 	sprint(self, PRINT_HIGH, "^5goto_spawn:^7 back at the map's spawn\n");
 };
 
+// Existing #99 accepts a client argument; generated defs declare only its global form.
+float(string extname, entity client) SV_CheckClientExtension = #99;
+
 // P954: taint on the server before the stat can change any outgoing command.
 void(entity e, float argc, string arg) SV_TimeScaleCommand =
 {
@@ -1143,12 +1146,18 @@ void(entity e, float argc, string arg) SV_TimeScaleCommand =
 	}
 	if (value < 1)
 	{
+		if (SV_CheckClientExtension("FTE_VRINPUTS", e))
+		{
+			sprint(e, PRINT_HIGH, "host_timescale: slow practice is unavailable with timestamp inputs\n");
+			return;
+		}
 		if (e.run_movetickrate <= 0)
 		{
 			sprint(e, PRINT_HIGH, "host_timescale: a counted-clock engine is required\n");
 			return;
 		}
 		e.run_ts_used = TRUE;
+		SV_TimeScaleRemember(e);
 		SV_TimerCheat(e);
 	}
 	e.run_timescale = value;

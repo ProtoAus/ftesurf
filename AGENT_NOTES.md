@@ -9,10 +9,20 @@
 - Native not-yet-sent prediction bypasses CSQC even at extrapolate0 (low netfps
   or gaps). Slow practice uses existing cl_nopred1, with exact owned STRING
   snapshot/restore. Reconcile removed seats at UpdateView from numclientseats.
-  Pending slow requests must not release another seat's lock.
+  Lock only on OWN-player authority before shortening a command, not an unacked
+  request: silent rate rejection otherwise strands prediction. QW tracking stats
+  belong to the target; use LT_StatsAreMine, including the native join boundary.
+- Native cl_threadedphysics bypasses CSQC Input_Frame. Refuse entry when on and
+  continuously guard a later enable at render rate, with owned restoration.
+  FTE_VRINPUTS movement uses timestamps, not msec: refuse negotiated slow mode,
+  do not invent a second clock. Existing builtin99 accepts an optional client
+  argument even though generated sv_defs declares only its global form.
 - Scalar1 ack is NOT a server command-drain boundary. An accepted slow request
   keeps practice eligibility sticky until fresh map/reconnect; saved flags cannot
   erase the runtime latch. QW serverdata CL_ClearState wipes cl/pending commands.
+  Native observe/join calls ClientConnect after ED_Clear WITHOUT a reconnect;
+  preserve the taint using the existing native userid in VM-only slot state.
+  Reset that state explicitly at worldspawn and on a genuinely new userid.
 - Body samples per real packet become too dense per SIMULATED second: completed
   normal66.465/s faults0 vs half-speed133.234/s faults1. Space only slow visual
   samples by >=one tick; preserve all in/fzin/event rows and truthful timestamps.

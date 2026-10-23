@@ -1,7 +1,9 @@
 # P954 — per-player practice slow motion
 
-Status: R3 source corrections in progress; clean native/VM build, three-lens
-re-review and deployment pending. Prior local measurements below are r1/r2 only. This is ordinary development work, not a release or Build-number bump.
+Status: R4 client-boundary corrections in progress after three independent R3
+reviews. Final native decoder build/positive+negative checks passed; corrected
+VM build, runtime acceptance, re-review and deployment pending. Historical
+measurements below are r1/r2 only. This is ordinary development work, not a release or Build-number bump.
 
 ## Behaviour and boundaries
 
@@ -14,15 +16,23 @@ clears old client commands; queued slow inputs cannot enter a newly clean run.
 
 Slow practice uses existing `cl_nopred 1` (server-authoritative movement), since
 native partial prediction can run even at extrapolate0 with low netfps or gaps.
-A bare slow request selects it before forwarding; runtime keeps it while slow.
-Restore the exact previous cvar STRING after the last observed slow local seat
-returns to1, removed seats are reconciled, or VM shutdown, only while still owned.
-Unobserved pending/refused requests retain it until observed or shutdown. Direct
-low-level `cmd` users must also select this mode. Local-seat requests/queries
-preserve their `pN` owner and fractional carry.
+Only authoritative OWN-player stats select it, before the first shortened command;
+watching somebody else never acquires it. Refused/rate-limited requests hold no
+prediction override. Restore the exact previous cvar STRING after the last slow
+local seat returns to1, disappears, or VM shutdown, only while still owned.
+Local-seat requests/queries preserve their `pN` owner and fractional carry.
+
+Slow requests require `cl_threadedphysics 0`; the native input thread bypasses
+CSQC. Turning it on while slow is guarded at render rate, with exact owned
+restoration of that later preference when slow ends. Timestamp-input negotiation
+(`FTE_VRINPUTS`) is explicitly unsupported/refused on client and server using the
+existing capability check. No alternate timestamp clock is introduced. Native
+observe/join is NOT a fresh connection: an existing userid-keyed VM-only taint
+cache preserves practice across its entity clear; a new userid/map clears it.
 
 No new native input API/producer/counter, stored clock/evidence field, schema,
-grammar, detector/tolerance or collection change. Native pin/tag move to P954:
+on-disk syntax, detector/tolerance or collection change. The authoritative grammar
+now explicitly documents optional body samples and existing ordinal phase. Native pin/tag move to P954:
 legacy replay event order now uses existing packet ordinals rather than visual
 sample presence, and paired restarts inherit their relocation's phase. Slow visual/body
 samples are spaced by at least one physics tick of truthful simulated time;

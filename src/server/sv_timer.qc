@@ -709,6 +709,41 @@ float  run_t_cheatwatch;
 .float run_timescale;
 .float run_ts_next;
 .float run_ts_used;             // monotone until fresh map/connection; queued commands may still be slow
+float sv_ts_taint_uid[FS_MAXPLAYERS]; // existing native userid, VM-only; survives native join's ED_Clear
+
+void() SV_TimeScaleMapReset =
+{
+	local float i;
+	for (i = 0; i < FS_MAXPLAYERS; i = i + 1)
+		sv_ts_taint_uid[i] = 0;
+};
+
+void(entity e) SV_TimeScaleRemember =
+{
+	local float slot, uid;
+	slot = num_for_edict(e) - 1;
+	if (!(slot >= 0 && slot < FS_MAXPLAYERS))
+		return;
+	uid = stof(infokey(e, "*userid"));
+	sv_ts_taint_uid[slot] = uid > 0 ? uid : -1;
+};
+
+float(entity e) SV_TimeScaleConnectTaint =
+{
+	local float slot, uid;
+	slot = num_for_edict(e) - 1;
+	if (!(slot >= 0 && slot < FS_MAXPLAYERS))
+		return TRUE;
+	if (!sv_ts_taint_uid[slot])
+		return FALSE;
+	uid = stof(infokey(e, "*userid"));
+	if (uid > 0 && uid != sv_ts_taint_uid[slot])
+	{
+		sv_ts_taint_uid[slot] = 0;
+		return FALSE;
+	}
+	return TRUE;
+};
 
 float(entity e) SV_TimeScaleTainted =
 {
@@ -3222,10 +3257,13 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             changed is that it is now a function of the usercmd
                             stream, so two re-simulations of one run agree on it.
 
-                            ONE PER PACKET, not one per tick, and a reader must
-                            not assume otherwise.  This is sampled from
-                            PlayerPostThink, which the engine calls once per
-                            received move packet -- but a packet can carry up to
+                            AT MOST ONE PER PACKET, not one per tick. P954
+                            practice sampling omits samples less than one native
+                            tick after the previous sample; raw input/event rows
+                            remain complete. Restored prefixes skip/re-anchor the
+                            first sample rather than append a duplicate time.
+                            This is sampled from PlayerPostThink, which the engine
+                            calls once per received move packet, but one can carry up to
                             four usercmds after loss, and SV_RunCmd splits any
                             command over 50 ms into two simulated halves.  So a
                             sample can stand for several ticks, and measured
@@ -3252,7 +3290,8 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             was HANDED, where the sample above is where it ended
                             up.  These two record types are the whole body of a
                             v6 file and they interleave: the `in` rows of one
-                            packet, then that packet's sample.
+                            packet, then its sample IF emitted. A packet with no
+                            numeric sample still contains authoritative inputs.
 
                             IT IS PER SIMULATED MOVE AND NOT PER USERCMD, and
                             the difference is not pedantry.  SV_RunCmd drops a
@@ -3269,7 +3308,8 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             <pk> is the packet this move belonged to -- see
                             rec_rec_pk for why the grouping has to be in the
                             file at all.  Rows sharing a value are one packet;
-                            the value itself means nothing.
+                            the absolute value is not a clock. Its relative
+                            order locates between-packet v9+ events.
 
                             <mt> is cumulative run_movetick BEFORE this move and
                             <carry> is run_movecarry before it, in seconds.
@@ -3572,12 +3612,15 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             Not a `warp` -- nothing outside the mover wrote it.
     restart <seg> <ticks>   a stage was restarted mid-run.  The run clock is
                             untouched; the zone latches reset (SV_TimerRestartSeg).
-                            engine pm_verify applies it (Patch 369).  Like a
-                            `warp`, it belongs to the last `in` row before it --
-                            and a `warp` or `restart` written AFTER that row's
-                            packet sample came between packets (`!r`, whose zone
-                            warp follows its restart): it acts after that
-                            packet's zone scan, not inside its move
+                            engine pm_verify applies it (Patch 369). For v9+,
+                            a warp's pk greater than the preceding in.pk means
+                            after that packet's zone scan, even without a sample.
+                            Its paired restart inherits the following warp's row
+                            and phase (including existing session seed windows).
+                            An existing packet sample still constrains serialized
+                            order: contradictions REFUSE. Pre-v9 replay retains
+                            sample-based phase. Never infer phase from an omitted
+                            visual sample.
     cp <n> <ticks>          a checkpoint was crossed.  <n> IS THE ORDINAL, not a
                             segment: this block said <seg> until build 81 and the
                             writer has written the ordinal since build 19, whose

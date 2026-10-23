@@ -307,8 +307,8 @@ void() CSQC_WorldLoaded =
 	CL_RenderMapFrame();
 };
 
-float run_ts_pred_held;
-string run_ts_pred_saved;
+float run_ts_pred_held, run_ts_thread_held;
+string run_ts_pred_saved, run_ts_thread_saved;
 
 // Even extrapolate 0 can predict during packet gaps; slow mode uses server motion.
 void() TimeScale_PredictLock =
@@ -335,6 +335,30 @@ void() TimeScale_PredictRelease =
 		strunzone(run_ts_pred_saved);
 	run_ts_pred_saved = "";
 	run_ts_pred_held = FALSE;
+};
+
+void() TimeScale_ThreadGuard =
+{
+	if (!cvar("cl_threadedphysics"))
+		return;
+	if (run_ts_thread_saved)
+		strunzone(run_ts_thread_saved);
+	run_ts_thread_saved = strzone(cvar_string("cl_threadedphysics"));
+	run_ts_thread_held = TRUE;
+	cvar_set("cl_threadedphysics", "0");
+	print("host_timescale: cl_threadedphysics is off while slow practice is active\n");
+};
+
+void() TimeScale_ThreadRelease =
+{
+	if (!run_ts_thread_held)
+		return;
+	if (!strcmp(cvar_string("cl_threadedphysics"), "0"))
+		cvar_set("cl_threadedphysics", run_ts_thread_saved);
+	if (run_ts_thread_saved)
+		strunzone(run_ts_thread_saved);
+	run_ts_thread_saved = "";
+	run_ts_thread_held = FALSE;
 };
 
 void(float apilevel, string enginename, float engineversion) CSQC_Init =
@@ -884,7 +908,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	print("FTESurf CSQC loaded\n");
 };
 
-void() CSQC_Shutdown = { TimeScale_PredictRelease(); MA_Shutdown(); Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
+void() CSQC_Shutdown = { TimeScale_PredictRelease(); TimeScale_ThreadRelease(); MA_Shutdown(); Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
 
 /*
   Forced view angles from the server -- svc_setangle, its relative form, and
@@ -1020,44 +1044,24 @@ void() PreStrafe_InputFrame =
 
 #define RUN_TS_SEATS 4
 float run_ts_scale[RUN_TS_SEATS], run_ts_carry[RUN_TS_SEATS];
-float run_ts_pending[RUN_TS_SEATS]; // a bare slow request not yet observed in stats
 
-// P954: retain sub-ms duration per local seat; native fixed ticks stay unchanged.
-void() TimeScale_InputFrame =
+// Native QW tracking substitutes foreign stats, including across an in-place join.
+float() TimeScale_Observe =
 {
-	local float seat, scale, msecs, whole, was, i, active;
+	local float seat, scale;
 
 	seat = getproperty(VF_ACTIVESEAT);
 	if (!(seat >= 0 && seat < RUN_TS_SEATS))
-		return;
-	scale = getstatf(STAT_FS_TIMESCALE);
+		return 1;
+	scale = 1;
+	if (LT_StatsAreMine())
+		scale = getstatf(STAT_FS_TIMESCALE);
 	if (!(scale >= 0.1 && scale < 1))
-	{
-		was = (run_ts_scale[seat] > 0 && run_ts_scale[seat] < 1);
-		run_ts_scale[seat] = 1;
-		run_ts_carry[seat] = 0;
-		if (was)
-		{
-			active = FALSE;
-			for (i = 0; i < RUN_TS_SEATS; i = i + 1)
-				if ((run_ts_scale[i] > 0 && run_ts_scale[i] < 1) || run_ts_pending[i])
-					active = TRUE;
-			if (!active)
-				TimeScale_PredictRelease();
-		}
-		return;
-	}
-	TimeScale_PredictLock();
-	run_ts_pending[seat] = FALSE;
-	if (scale != run_ts_scale[seat])
+		scale = 1;
+	if (scale != run_ts_scale[seat] || scale == 1)
 		run_ts_carry[seat] = 0;
 	run_ts_scale[seat] = scale;
-	if (input_timelength <= 0)
-		return;
-	msecs = input_timelength * 1000 * scale + run_ts_carry[seat];
-	whole = floor(msecs);
-	run_ts_carry[seat] = msecs - whole;
-	input_timelength = whole * 0.001;
+	return scale;
 };
 
 // Native updates numclientseats before UpdateView; removed seats get no more input.
@@ -1065,6 +1069,7 @@ void() TimeScale_Seats =
 {
 	local float i, seats, active;
 
+	TimeScale_Observe();
 	seats = bound(1, numclientseats, RUN_TS_SEATS);
 	active = FALSE;
 	for (i = 0; i < RUN_TS_SEATS; i = i + 1)
@@ -1073,13 +1078,40 @@ void() TimeScale_Seats =
 		{
 			run_ts_scale[i] = 1;
 			run_ts_carry[i] = 0;
-			run_ts_pending[i] = FALSE;
 		}
-		if ((run_ts_scale[i] > 0 && run_ts_scale[i] < 1) || run_ts_pending[i])
+		if (run_ts_scale[i] > 0 && run_ts_scale[i] < 1)
 			active = TRUE;
 	}
-	if (!active)
+	if (active)
+	{
+		// Like spectate, continuously guard the input-thread bypass of CSQC.
+		TimeScale_ThreadGuard();
+		TimeScale_PredictLock();
+	}
+	else
+	{
 		TimeScale_PredictRelease();
+		TimeScale_ThreadRelease();
+	}
+};
+
+// P954: retain sub-ms duration per local seat; native fixed ticks stay unchanged.
+void() TimeScale_InputFrame =
+{
+	local float seat, scale, msecs, whole;
+
+	seat = getproperty(VF_ACTIVESEAT);
+	if (!(seat >= 0 && seat < RUN_TS_SEATS))
+		return;
+	scale = TimeScale_Observe();
+	TimeScale_Seats();
+	if (scale == 1 || input_timelength <= 0)
+		return;
+	// The own-player stat locks prediction BEFORE the first shortened command.
+	msecs = input_timelength * 1000 * scale + run_ts_carry[seat];
+	whole = floor(msecs);
+	run_ts_carry[seat] = msecs - whole;
+	input_timelength = whole * 0.001;
 };
 
 void() CSQC_Input_Frame =
@@ -2189,8 +2221,16 @@ float(string cmd) CSQC_ConsoleCommand =
 			tsvalue = stof(argv(1));
 			if (tsvalue >= 0.1 && tsvalue < 1)
 			{
-				run_ts_pending[tsseat] = TRUE;
-				TimeScale_PredictLock();
+				if (cvar("cl_threadedphysics"))
+				{
+					print("host_timescale: slow practice requires cl_threadedphysics 0\n");
+					return TRUE;
+				}
+				if (checkextension("FTE_VRINPUTS"))
+				{
+					print("host_timescale: slow practice is unavailable with timestamp inputs\n");
+					return TRUE;
+				}
 			}
 			localcmd(sprintf("p%g cmd host_timescale %.9g\n", tsseat + 1, tsvalue));
 		}
