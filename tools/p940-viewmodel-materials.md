@@ -84,11 +84,15 @@ FPS improvement, actual warp/replay presentation or long-session memory claim.
 No new recorder/reader/evidence semantics, so evidence/corpus suites are not a
 substitute acceptance gate and were not rerun for this cosmetic/audio-only diff.
 
-Implemented and locally verified; publication/deployment provenance is recorded
-separately. Preserve P939 native/MENU. The compatible REC13 build is a control,
+Implemented, published, locally verified and deployed to BOTH Windows installs
+and all12Pi lobbies. Exact source, hashes, UTC and cold-download proof:
+[tools/p940-delivery.md](p940-delivery.md). Preserve P939 native/MENU. The compatible REC13 build is a control,
 not the deployment candidate: both Windows CSQCs now match the newer Pi cohort.
 A clean8e897d9c control reproduced BOTH live Pi QW/CSQC hashes exactly, and its
 CSQC matches both Windows installs. The current source cohort is identified.
-P940 mainline QW remains byte-identical. LAN and loopback8084 directory reads
-refused; no force, lobby restart or Pi write was attempted. This blocks safe Pi
-deployment only, not Windows client-only delivery.
+P940 mainline QW remains byte-identical. LAN and loopback8084 initially refused;
+no force/restart/swap occurred during that block. The directory later recovered,
+all12were empty, and the standard guarded deployment/cold-download checks passed.
+The actual installed DAT additionally re-proved all four real-floor materials,
+quiet135.2u/s walking, metadata12/hits1->3, and real map-reload reset to0. Final
+idle/moving screenshots were inspected; owner visual/ear acceptance stays pending.

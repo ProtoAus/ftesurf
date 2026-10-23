@@ -6,6 +6,8 @@ availability, NOT human acceptance. Native client fixes require the updated
 Windows engine. Exact sources/readbacks/live proof: tools/p931-delivery.md.
 
 ## P940 — viewmodel motion and material footsteps (23 Oct 2026)
+BOTH Windows installs and all12Pi lobbies verified23Oct04:54UTC, including a
+real cold client downloading the exact new code (tools/p940-delivery.md).
 PENDING owner after the matching client update/reconnect: select a weapon with
 `give usp`, then walk and look left/right. Check that its rocking and turning
 sway feel natural, including while airborne; the camera/aim should not sway.
