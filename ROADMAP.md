@@ -19,24 +19,25 @@ Both Windows installs and12empty lobbies verified, fresh cold CSQC download and
 new audio diagnostics ACTED. REC13/lobby native preserved. Exact receipt/limits:
 tools/p936-p937-delivery.md. Real-account portraits and listening/feel remain
 owner-only acceptance, pending in lextest.md, not a further deployment blocker.
+Global Momentum/build/demo audit is complete (tools/momentum-preference-audit.md):
+Momentum is already the default, with deliberate explicit-CSS/disabled-build/
+loose-BSP exceptions; imported links are observational, not geometry equivalence.
+Primary surf_fantasy has a byte-distinct loose override versus installed Momentum
+and Pi's held/cached-published build; it was NOT replaced without the owner's
+choice. Secondary control install's standalone asset parity is not established.
+Download audit also complete: R2 uncapped (one2MiB range7.519MiB/s, not engine-
+speed acceptance), BSP identity encoded/original bytes; only Pi origin fallback
+is1MiB/s capped. No integrity/fallback guard was weakened.
 
 Remaining requested work (not silently folded into the completed items):
 - Game-running presence while disconnected, main-menu shared lobby/chat and DMs.
   Existing lobby-mediated friends/DM do not make a disconnected install online.
   Preserve account consent, mutual/blocked visibility and authenticated actions.
-- Native sorted `bindlist` is implemented as P934; controls and exact delivery
-  state are in tools/p934-bindlist.md, rather than assumed from publication.
 - Practice-only slow motion via host_timescale, preserving fixed movement ticks
   and slowing the timer correctly. It must never make ranked/evidence eligibility
   out of slowed input. Requires engine/movement/recorder contract controls.
 - Remove the extra clipboard-paste dialog while preserving a real user paste
   gesture, permissions and protection against server-driven clipboard reads.
-- Audit global Momentum preference and cross-source demo compatibility. Equivalent
-  builds can share playback; differing geometry cannot be fixed by name alone.
-- Download audit: the R2 path is already uncapped (observed 2MiB range at
-  7.519MiB/s, not an engine-speed acceptance test); the BSP response was identity
-  encoded and the mirror preserves original BSP bytes. The1MiB/s cap belongs
-  only to the Pi's origin fallback. No integrity/fallback guard was weakened.
 - Renderer/material/reporting bugs from the five screenshots are in BACKLOG.md.
 
 Story/event content gaps: fourteen selected entries lack timing zones; Voyager
