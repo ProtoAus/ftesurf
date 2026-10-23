@@ -5,6 +5,16 @@ installs and compatible progs on all12lobbies (22October2026 UTC). This is
 availability, NOT human acceptance. Native client fixes require the updated
 Windows engine. Exact sources/readbacks/live proof: tools/p931-delivery.md.
 
+## P923/P938 — ordinary recording/restart feel (23 Oct 2026)
+PENDING owner after restarting/reconnecting: finish one short ordinary run, then
+restart and begin another. Confirm the timer/save/restart still feel normal, with
+no new capture hitch or unexpected eligibility warning. Do not deliberately break
+a recording or enable the optional detailed collector for this check.
+Both Windows qw/cs sets and all12Pi native/plugin/progs are delivered; newer P939
+Windows native/menu were preserved. Automated source/cold/corpus checks, live
+version/hash readback and two fresh-cache client/board smokes passed. Those are
+not human feel, production-performance or device-authenticity acceptance.
+
 ## P940 — viewmodel motion and material footsteps (23 Oct 2026)
 BOTH Windows installs and all12Pi lobbies verified23Oct04:54UTC, including a
 real cold client downloading the exact new code (tools/p940-delivery.md).
