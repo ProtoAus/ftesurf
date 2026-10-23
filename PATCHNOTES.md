@@ -24,6 +24,9 @@
 - Restore Epiphany's world instead of a black screen, while keeping its intended colour grading.
 - Restore Phantasia's glass ramps in both CSS and Momentum versions instead of drawing a missing-texture checkerboard.
 - Make `hl2_missing` distinguish unsupported shader classes from missing material files, including later-loaded props.
+### P953 Trusted operator file tools
+- Local file-output tools now reject untrusted command requests while retaining trusted operator use.
+
 ### P949 Boreas mountain
 - Boreas no longer has the sky-colored cutout through the foreground mountain near Save 11. The correction is scoped to Boreas; other maps retain their own sky settings.
 
