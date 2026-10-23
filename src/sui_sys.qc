@@ -665,12 +665,18 @@ struct _input_t {
 	float char;
 	float scan;
 	float mods;     // Patch 655: SUI_MOD_* as they were when the event came
+#ifdef MENU
+	string paste;  // P938: an edit at this position, not a post-key buffer
+#endif
 };
 const float MAX_INPUTS = 64;
 
 _input_t _input_buffer[MAX_INPUTS];
 float _input_index;
 float _input_length;
+#ifdef MENU
+float _sui_paste_chars;
+#endif
 float sui_text_input_focused;  // TRUE when a text field has focus — suppresses WASD nav
 string sui_text_input_focused_id; // which one, so a panel going away can drop it
 string _sui_field_focus;        // the field the KEYBOARD claimed: sui_field_focus
@@ -783,8 +789,22 @@ string() sui_field_focused =
 // The keyboard has been somebody else's: a modifier's release may have gone to
 // them, and a selection is not the next visit's.  An owner calls it when its
 // panel opens and when it closes.
+#ifdef MENU
+void() _sui_paste_clear =
+{
+	local float i;
+	for (i = 0; i < _input_length; i++)
+		_input_buffer[i].paste = "";
+	_sui_paste_chars = 0;
+	_sui_paste = "";
+};
+#endif
+
 void() sui_keys_forget =
 {
+#ifdef MENU
+	_sui_paste_clear();
+#endif
 	_sui_paste = "";
 	_sui_mods = 0;
 	_sui_sel_anchor = -1;
@@ -812,10 +832,38 @@ void(float evtype, float scanx) _sui_mods_track =
 #define SUI_PASTE_MAX 256
 void(float c) sui_paste_char =
 {
+#ifdef MENU
+	local float at;
+	local string glyph;
+#endif
 	if (c < 32 || c > 126)
 		return;
+#ifdef MENU
+	if (_sui_paste_chars >= SUI_PASTE_MAX)
+		return;
+	glyph = chr2str(c);
+	if (_input_length > 0)
+	{
+		at = _input_length - 1;
+		if (strcmp(_input_buffer[at].paste, ""))
+		{
+			_input_buffer[at].paste = strcat(_input_buffer[at].paste, glyph);
+			_sui_paste_chars += 1;
+			return;
+		}
+	}
+	if (_input_length >= MAX_INPUTS)
+		return;
+	_input_buffer[_input_length].char = 0;
+	_input_buffer[_input_length].scan = 0;
+	_input_buffer[_input_length].mods = 0;
+	_input_buffer[_input_length].paste = glyph;
+	_input_length += 1;
+	_sui_paste_chars += 1;
+#else
 	if (strlen(_sui_paste) < SUI_PASTE_MAX)
 		_sui_paste = strcat(_sui_paste, chr2str(c));
+#endif
 };
 
 #ifndef MENU
@@ -854,6 +902,9 @@ float(__inout float char, __inout float scan) sui_get_input =
 	char = _input_buffer[_input_index].char;
 	scan = _input_buffer[_input_index].scan;
 	_sui_in_mods = _input_buffer[_input_index].mods;
+#ifdef MENU
+	_sui_paste = _input_buffer[_input_index].paste;
+#endif
 	_input_index++;
 	
 	return TRUE;
@@ -867,6 +918,9 @@ void() sui_reread_input =
 
 void() sui_clear_input =
 {
+#ifdef MENU
+	_sui_paste_clear();
+#endif
 	_input_length = 0;
 	_input_index = 0;
 	_sui_kb_move_dir = '0 0 0';
@@ -921,6 +975,9 @@ float(float char, float scan) _sui_add_input =
 	_input_buffer[_input_length].char = char;
 	_input_buffer[_input_length].scan = scan;
 	_input_buffer[_input_length].mods = _sui_mods;
+#ifdef MENU
+	_input_buffer[_input_length].paste = "";
+#endif
 	_input_length += 1;
 	return TRUE;
 };
@@ -1516,6 +1573,21 @@ float(string text, float x, vector fontsize) _sui_text_index =
 	return n;
 };
 
+#ifdef MENU
+void(__inout string text, __inout float cursor) _sui_text_paste =
+{
+	cursor = bound(0, cursor, strlen(text));
+	if (_sui_sel_anchor > strlen(text))
+		_sui_sel_anchor = -1;
+	_sui_sel_delete(text, cursor);
+	cursor = bound(0, cursor, strlen(text));
+	_sui_paste = substring(_sui_paste, 0, max(0, 128 - strlen(text)));
+	text = strcat(substring(text, 0, cursor), _sui_paste, substring(text, cursor, strlen(text)));
+	cursor = cursor + strlen(_sui_paste);
+	_sui_paste = "";
+};
+#endif
+
 void(string id, vector pos, vector size, __inout string text, __inout float cursor) sui_text_input =
 {
 	float focus, at, known;
@@ -1609,7 +1681,16 @@ void(string id, vector pos, vector size, __inout string text, __inout float curs
 		sui_text_input_focused_id = id;
 		float char = 0;
 		float scan = 0;
-		while(sui_get_input(char, scan)) sui_handle_text_input(char, scan, text, cursor);
+		while(sui_get_input(char, scan))
+		{
+#ifdef MENU
+			if (strcmp(_sui_paste, ""))
+				_sui_text_paste(text, cursor);
+			else
+#endif
+				sui_handle_text_input(char, scan, text, cursor);
+		}
+#ifndef MENU
 		if (_sui_paste != "")
 		{
 			// Patch 667: over the selection, and no longer than a field holds.
@@ -1624,6 +1705,7 @@ void(string id, vector pos, vector size, __inout string text, __inout float curs
 			cursor = cursor + strlen(_sui_paste);
 			_sui_paste = "";
 		}
+#endif
 	}
 };
 
