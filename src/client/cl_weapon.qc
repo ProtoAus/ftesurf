@@ -191,6 +191,7 @@ void(float w, float alternate) WP_Bullet =
 	else if (w == FS_WEAPON_SCOUT) snd = "weapons/scout/scout_fire-1.wav";
 	else snd = "weapons/glock/glock18-1.wav";
 	if (w == FS_WEAPON_USP || w == FS_WEAPON_SCOUT) wp_kickvel = wp_kickvel - 108.73127; // two-degree peak
+	else if (w == FS_WEAPON_GLOCK) wp_kickvel = wp_kickvel - 54.365635; // one degree per burst bullet too
 	GA_Emit(snd, cvar("cl_weapon_sfx") * 0.8);
 	if (w == FS_WEAPON_KNIFE && wp_mode)
 	{

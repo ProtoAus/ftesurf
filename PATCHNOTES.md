@@ -21,6 +21,7 @@
 
 ## next
 
+- Glock shots now also give a small, smooth cosmetic view kick, including each bullet of a burst; aim and movement stay unchanged.
 ### P943 Source weapon controls and varied footsteps
 - Hold primary attack for repeated knife slashes; secondary attack stabs. Knife misses whoosh, while harmless player contacts can make an impact sound without damage or pushing.
 - The USP starts unsilenced; secondary attack attaches or removes its silencer. Glock secondary switches between single fire and three-round bursts. Scout shots now include the authored bolt sound.

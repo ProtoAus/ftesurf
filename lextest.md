@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P946 — Glock cosmetic recoil coverage (23 Oct 2026)
+PENDING after matching delivery/reconnect: Glock single and each burst bullet now
+also give a modest scene-only upward kick, gentler per bullet than USP/Scout.
+Does that strength/recovery feel right alongside the other guns at your frame
+rate? Native single/burst/return and USP/knife controls acted, not human acceptance.
+Aim/body/input and all personal bindings stay unchanged. Details and availability:
+tools/p946-glock-kick.md / tools/p946-delivery.md. No sustained1000FPS claim.
+
 ## P943 — Source weapons / varied footsteps (23 Oct 2026)
 BOTH Windows and all12Pi lobbies delivered/hash-verified23Oct2026; cold lobby
 client downloaded exact CSQC and drew the board. See tools/p943-delivery.md.
