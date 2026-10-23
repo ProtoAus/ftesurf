@@ -6,6 +6,10 @@ float wp_scriptbytes, wp_scriptalias, wp_scripthits;
 string wp_model, wp_frame, wp_soundlast;
 float wp_motionvalid, wp_motiontime, wp_bobtime;
 float wp_mode, wp_burstleft, wp_burstat, wp_kick, wp_kickvel, wp_kickdt;
+float wp_zoom, wp_scopepending, wp_rezoomat, wp_drawstarts;
+entity wp_flashent;
+float wp_flashuntil, wp_flashroll, wp_flashes, wp_muzzletag, wp_flashshot;
+vector wp_muzzleorg;
 vector wp_facing, wp_motionbody, wp_motionorg, wp_motionang;
 // Existing DPEF_NOGUNBOB: replace Quake weapon-matrix bob for this entity only.
 #define WP_EF_NOGUNBOB 256i
@@ -18,11 +22,13 @@ void() WP_Register =
 	registercvar("cl_viewweapon_bob", "0.2", CVAR_ARCHIVE);
 	registercvar("cl_viewweapon_sway", "0.2", CVAR_ARCHIVE);
 	registercvar("cl_weapon_sfx", "1", CVAR_ARCHIVE);
+	registercvar("cl_weapon_muzzleflash", "1", CVAR_ARCHIVE);
 	// Existing independent projection, not a scale hack or a change to world FOV.
 	if (!strcmp(cvar_string("r_viewmodel_fov"), "")) cvar_set("r_viewmodel_fov", "75");
 	registercommand("surf_weapon");
 	registercommand("give"); // Native give may forward instead; SSQC handles the same aliases.
 	registercommand("weapon_info");
+	registercommand("drop");
 	registercommand("knife"); registercommand("usp");
 	registercommand("scout"); registercommand("glock");
 };
@@ -153,11 +159,88 @@ string(string name) WP_SoundPath =
 	return path;
 };
 
+// Attachment #1 is CSS's authored muzzle. Read its bone + local position;
+// adding a fake bone would change the mesh's pose stride. Never mutate the rig.
+void() WP_LoadMuzzle =
+{
+	local filestream f;
+	local int *header;
+	local int length, bones, offset;
+	local vector pos;
+	wp_muzzletag = 0; wp_muzzleorg = '0 0 0';
+	if (wp_weapon == FS_WEAPON_KNIFE) return;
+	f = fopen(wp_model, FILE_READ);
+	if (f < 0) return;
+	length = fsize(f);
+	header = (int*)memalloc(248i);
+	if (length >= 248i && length <= 16777216i)
+	if (fread(f, header, 248i) == 248i)
+	{
+		bones = header[39i]; offset = header[61i];
+		if (header[0i] == 0x54534449i && header[1i] >= 44i && header[1i] <= 49i && bones > 0i && bones <= 256i &&
+			header[60i] > 0i && header[60i] <= 64i && offset >= 248i && offset <= length - 92i)
+		{
+			fseek(f, offset);
+			if (fread(f, header, 92i) == 92i)
+			{
+				pos = [((float*)header)[6i], ((float*)header)[10i], ((float*)header)[14i]];
+				if (header[2i] >= 0i && header[2i] < bones && fabs(pos_x) <= 4096 && fabs(pos_y) <= 4096 && fabs(pos_z) <= 4096)
+				{
+					wp_muzzletag = (float)(header[2i] + 1i);
+					wp_muzzleorg = pos;
+				}
+			}
+		}
+	}
+	fclose(f);
+	memfree((void*)header);
+};
+
+void() WP_Muzzle =
+{
+	if (wp_muzzletag <= 0 || cvar("cl_weapon_muzzleflash") <= 0) return;
+	if (wp_weapon == FS_WEAPON_USP && wp_mode) return;
+	if (wp_flashshot == wp_shots) return;
+	wp_flashshot = wp_shots;
+	wp_flashuntil = cltime + 0.04;
+	wp_flashroll = random() * 360;
+	wp_flashes = wp_flashes + 1;
+};
+
+void() WP_FlashFrame =
+{
+	local vector pos, right, forward, up;
+	if (cltime >= wp_flashuntil || wp_muzzletag <= 0) return;
+	if (!wp_flashent)
+	{
+		wp_flashent = spawn();
+		precache_model("models/ftesurf/muzzle.md3");
+		setmodel(wp_flashent, "models/ftesurf/muzzle.md3");
+		wp_flashent.forceshader = shaderforname("ftesurf/muzzleflash", "{\nprogram default2d\nsort additive\ncull none\n{ map materials/effects/muzzleflash4.vtf\nblendfunc add\nrgbgen entity\nalphagen entity\n}\n}\n");
+	}
+	forward = v_forward; right = v_right; up = v_up;
+	makevectors(wp_ent.angles);
+	pos = v_right; // reflect about the animated entity's own side axis
+	wp_flashent.origin = gettaginfo(wp_ent, wp_muzzletag);
+	wp_flashent.origin = wp_flashent.origin + v_forward * wp_muzzleorg_x - v_right * wp_muzzleorg_y + v_up * wp_muzzleorg_z;
+	if ((int)wp_ent.renderflags & RF_XFLIP)
+		wp_flashent.origin = wp_flashent.origin - 2 * ((wp_flashent.origin - wp_ent.origin) * pos) * pos;
+	v_forward = forward; v_right = right; v_up = up;
+	wp_flashent.angles = [0, 0, wp_flashroll];
+	wp_flashent.renderflags = RF_VIEWMODEL | RF_DEPTHHACK | RF_NOSHADOW;
+	wp_flashent.effects = WP_EF_NOGUNBOB;
+	wp_flashent.scale = 1.75;
+	wp_flashent.alpha = bound(0, (wp_flashuntil - cltime) / 0.04, 1);
+	wp_flashent.colormod = '1 1 1';
+	addentity(wp_flashent);
+};
+
 void(float timestamp, int code, string data) WP_Event =
 {
 	local string path;
 
 	wp_callbacks = wp_callbacks + 1;
+	if (code == 5001i) { WP_Muzzle(); return; }
 	if (code != 5004i || !strcmp(data, "") || cvar("cl_weapon_sfx") <= 0) return;
 	path = WP_SoundPath(data);
 	if (!strcmp(path, "")) return;
@@ -186,12 +269,13 @@ void(float w, float alternate) WP_Bullet =
 	local vector src, fwd, right, up;
 	local float reach;
 	wp_shots = wp_shots + 1;
+	WP_Muzzle(); // CSS game code flashes on a confirmed bullet, not a clip event.
 	if (w == FS_WEAPON_KNIFE) snd = (random() < 0.5) ? "weapons/knife/knife_slash1.wav" : "weapons/knife/knife_slash2.wav";
 	else if (w == FS_WEAPON_USP) snd = wp_mode ? "weapons/usp/usp1.wav" : "weapons/usp/usp_unsil-1.wav";
 	else if (w == FS_WEAPON_SCOUT) snd = "weapons/scout/scout_fire-1.wav";
 	else snd = "weapons/glock/glock18-1.wav";
 	if (w == FS_WEAPON_USP || w == FS_WEAPON_SCOUT) wp_kickvel = wp_kickvel - 108.73127; // two-degree peak
-	else if (w == FS_WEAPON_GLOCK) wp_kickvel = wp_kickvel - 54.365635; // one degree per burst bullet too
+	else if (w == FS_WEAPON_GLOCK && wp_mode) wp_kickvel = wp_kickvel - 54.365635; // burst only; CSS single has no view punch
 	GA_Emit(snd, cvar("cl_weapon_sfx") * 0.8);
 	if (w == FS_WEAPON_KNIFE && wp_mode)
 	{
@@ -218,7 +302,13 @@ void(float w, float kind) WP_Shot =
 {
 	if (w == FS_WEAPON_KNIFE) WP_Animate((kind == FS_WEV_ALT) ? "stab_miss" : ((wp_shots % 2) ? "midslash2" : "midslash1"), TRUE);
 	else if (w == FS_WEAPON_USP) WP_Animate(wp_mode ? "shoot1" : "shoot1_unsil", TRUE);
-	else if (w == FS_WEAPON_SCOUT) WP_Animate("shoot", TRUE);
+	else if (w == FS_WEAPON_SCOUT)
+	{
+		WP_Animate("shoot", TRUE);
+		wp_scopepending = wp_zoom;
+		wp_zoom = 0;
+		wp_rezoomat = cltime + 1.25;
+	}
 	else WP_Animate((kind == FS_WEV_BURST) ? "glock_fireburst1" : "glock_firesingle", TRUE);
 	WP_Bullet(w, kind == FS_WEV_ALT);
 	if (kind == FS_WEV_BURST)
@@ -273,6 +363,47 @@ void() WP_Motion =
 	wp_ent.angles = wp_motionang;
 };
 
+float() WP_IsScoped =
+{
+	return (wp_zoom > 0 && wp_ready && wp_weapon == FS_WEAPON_SCOUT &&
+		getstatf(STAT_ACTIVEWEAPON) == FS_WEAPON_SCOUT && cvar("cl_viewweapon") > 0 &&
+		LT_StatsAreMine() && !getstatf(STAT_FS_SPEC) && !rec_gh_on && !rec_wt_on &&
+		!rw_on && getstatf(STAT_FS_MOVETYPE) == MOVETYPE_WALK);
+};
+
+void() WP_ScopeView =
+{
+	if (!WP_IsScoped()) return;
+	setproperty(VF_AFOV, (wp_zoom == 1) ? 40 : 15);
+	setproperty(VF_DRAWCROSSHAIR, FALSE);
+};
+
+void(vector scr) WP_ScopeDraw =
+{
+	local float radius, left, top, cx, cy;
+	if (!WP_IsScoped()) return;
+	radius = min(scr_x, scr_y) * 0.5;
+	cx = scr_x * 0.5; cy = scr_y * 0.5;
+	left = cx - radius; top = cy - radius;
+	if (left > 0)
+	{
+		drawfill('0 0 0', [left, scr_y, 0], '0 0 0', 1);
+		drawfill([cx + radius, 0, 0], [left, scr_y, 0], '0 0 0', 1);
+	}
+	if (top > 0)
+	{
+		drawfill('0 0 0', [scr_x, top, 0], '0 0 0', 1);
+		drawfill([0, cy + radius, 0], [scr_x, top, 0], '0 0 0', 1);
+	}
+	// CSS supplies one quadrant; mirrored UVs form its circular mask.
+	drawsubpic([left, top, 0], [radius, radius, 0], "sprites/scope_arc", '1 1 0', '-1 -1 0', '1 1 1', 1);
+	drawsubpic([cx, top, 0], [radius, radius, 0], "sprites/scope_arc", '0 1 0', '1 -1 0', '1 1 1', 1);
+	drawsubpic([left, cy, 0], [radius, radius, 0], "sprites/scope_arc", '1 0 0', '-1 1 0', '1 1 1', 1);
+	drawsubpic([cx, cy, 0], [radius, radius, 0], "sprites/scope_arc", '0 0 0', '1 1 0', '1 1 1', 1);
+	drawfill([cx, top, 0], [1, radius * 2, 0], '0 0 0', 1);
+	drawfill([left, cy, 0], [radius * 2, 1, 0], '0 0 0', 1);
+};
+
 void() WP_Frame =
 {
 	local float w, seq, kind;
@@ -283,18 +414,27 @@ void() WP_Frame =
 	seq = getstatf(STAT_WEAPONFRAME);
 	mdl = WP_Model(w);
 	if (!strcmp(mdl, "") || cvar("cl_viewweapon") <= 0 || !LT_StatsAreMine() || rec_gh_on || rec_wt_on ||
-	    getstatf(STAT_FS_SPEC) || rw_on || getstatf(STAT_FS_MOVETYPE) != MOVETYPE_WALK)
+	    getstatf(STAT_FS_SPEC) || rw_on)
 	{
 		wp_weapon = 0;
 		wp_ready = FALSE;
 		wp_drawing = FALSE;
 		wp_motionvalid = FALSE;
 		wp_kick = wp_kickvel = wp_burstleft = 0;
+		wp_zoom = wp_scopepending = 0;
+		wp_sequence = seq;
+		return;
+	}
+	if (getstatf(STAT_FS_MOVETYPE) != MOVETYPE_WALK && getstatf(STAT_FS_MOVETYPE) != MOVETYPE_NOCLIP)
+	{
+		// A save-load hold is temporary, not another equip. Preserve its model/clip.
+		wp_motionvalid = FALSE;
+		wp_kick = wp_kickvel = wp_burstleft = 0;
 		wp_sequence = seq;
 		return;
 	}
 	if (!wp_ent) wp_ent = spawn();
-	if (w != wp_weapon)
+	if (w != wp_weapon || strcmp(mdl, wp_model))
 	{
 		wp_weapon = w;
 		wp_motionvalid = FALSE;
@@ -305,9 +445,13 @@ void() WP_Frame =
 		if (strcmp(wp_model, "")) strunzone(wp_model);
 		wp_model = strzone(mdl);
 		setmodel(wp_ent, wp_model);
-		if (wp_ent.modelindex == 0) return; // CSQC's private model slots are NEGATIVE.
+		wp_flashuntil = 0;
+		if (wp_ent.modelindex == 0) return;
+		WP_LoadMuzzle(); // CSQC's private model slots are NEGATIVE.
 		wp_ready = WP_Animate((w == FS_WEAPON_GLOCK) ? "glock_draw" : ((w == FS_WEAPON_USP && !wp_mode) ? "draw_unsil" : "draw"), TRUE);
 		wp_drawing = wp_ready;
+		if (wp_ready) wp_drawstarts = wp_drawstarts + 1;
+		wp_zoom = wp_scopepending = 0;
 	}
 	if (!wp_ready) return;
 	WP_KickFrame();
@@ -319,6 +463,12 @@ void() WP_Frame =
 		if (kind == FS_WEV_MODE)
 		{
 			if (w == FS_WEAPON_USP) WP_Animate(wp_mode ? "add_silencer" : "detach_silencer", TRUE);
+			else if (w == FS_WEAPON_SCOUT)
+			{
+				wp_zoom = (wp_zoom + 1) % 3;
+				wp_scopepending = 0;
+				GA_Emit("weapons/zoom.wav", cvar("cl_weapon_sfx") * 0.8);
+			}
 			else print(wp_mode ? "Glock: burst fire\n" : "Glock: single fire\n");
 		}
 		else WP_Shot(w, kind);
@@ -333,7 +483,16 @@ void() WP_Frame =
 	if (wp_until > 0)
 	if (checkbuiltin(processmodelevents))
 		processmodelevents(wp_ent.modelindex, wp_ent.frame, wp_eventat, time - wp_animat, WP_Event);
-	if (wp_until > 0 && time >= wp_until) wp_ready = WP_Animate(WP_Idle(w), FALSE);
+	if (wp_until > 0 && time >= wp_until)
+	{
+		wp_ready = WP_Animate(WP_Idle(w), FALSE);
+		wp_drawing = FALSE;
+	}
+	if (wp_scopepending > 0 && cltime >= wp_rezoomat)
+	{
+		wp_zoom = wp_scopepending;
+		wp_scopepending = 0;
+	}
 	wp_ent.origin = '0 0 0';
 	wp_ent.angles = '0 0 0';
 	wp_ent.effects = WP_EF_NOGUNBOB;
@@ -353,7 +512,11 @@ void() WP_Frame =
 	if (wp_until <= 0 && wp_duration > 0)
 		wp_ent.frame1time = wp_ent.frame1time - floor(wp_ent.frame1time / wp_duration) * wp_duration;
 	wp_ent.frame2time = wp_ent.frame1time;
-	addentity(wp_ent);
+	if (!WP_IsScoped())
+	{
+		addentity(wp_ent);
+		WP_FlashFrame();
+	}
 };
 
 float() WP_Command =
@@ -364,6 +527,7 @@ float() WP_Command =
 	local int *header;
 
 	cmd = argv(0);
+	if (!strcmp(cmd, "drop")) { localcmd("cmd drop\n"); return TRUE; }
 	if (!strcmp(cmd, "weapon_info"))
 	{
 		if (!strcmp(argv(1), "refresh")) wp_weapon = 0;
@@ -372,10 +536,10 @@ float() WP_Command =
 			f = fopen(wp_model, FILE_READ);
 			if (f >= 0)
 			{
-				header = memalloc(196i);
+				header = (int*)memalloc(196i);
 				if (fread(f, header, 196) == 196)
 					print(sprintf("weapon: MDL version %g sequences %g offset %g bytes %g\n", (float)header[1i], (float)header[47i], (float)header[48i], (float)header[19i]));
-				memfree(header);
+				memfree((void*)header);
 				fclose(f);
 			}
 			print(sprintf("weapon: event API %g indexed API %g\n", checkbuiltin(processmodelevents), checkbuiltin(getmodeleventidx)));
@@ -399,6 +563,8 @@ float() WP_Command =
 		print(sprintf("weapon: enabled %g sfx %g fov %g event-sounds %g callbacks %g last '%s'\n", cvar("cl_viewweapon"), cvar("cl_weapon_sfx"), cvar("r_viewmodel_fov"), wp_events, wp_callbacks, wp_soundlast));
 		print(sprintf("weapon: motion valid %g offset %v angles %v\n", wp_motionvalid, wp_motionorg, wp_motionang));
 		print(sprintf("weapon: mode %g burst-pending %g kick %g velocity %g render-dt %g\n", wp_mode, wp_burstleft, wp_kick, wp_kickvel, wp_kickdt));
+		print(sprintf("weapon: muzzle attachment %g flashes %g\n", wp_muzzletag, wp_flashes));
+		print(sprintf("weapon: draw-starts %g zoom %g scoped %g rezoom %g movetype %g\n", wp_drawstarts, wp_zoom, WP_IsScoped(), wp_scopepending, getstatf(STAT_FS_MOVETYPE)));
 		print(sprintf("weapon: view %v render-angles %v input-angles %v\n", getproperty(VF_ORIGIN), getproperty(VF_ANGLES), getproperty(VF_CL_VIEWANGLES)));
 		return TRUE;
 	}

@@ -21,6 +21,13 @@
 
 ## next
 
+### P955 Source weapon touch-ups
+- Glock single fire no longer kicks the camera; three-round bursts retain their gentle kick.
+- Scout secondary attack cycles two zoom levels and back out, with the mounted CSS scope graphic and zoom sound. Firing temporarily unscopes for the bolt, then restores your zoom.
+- Saving/loading no longer re-equips your weapon, and noclip keeps it visible. Type drop to put it away.
+- Unsilenced guns show a brief mounted CSS muzzle flash at the model's muzzle. Disable it with cl_weapon_muzzleflash 0 if preferred.
+- Hard-landings use CSS's damage sounds rather than Half-Life 2's fall-pain sample.
+
 - Restore Epiphany's world instead of a black screen, while keeping its intended colour grading.
 - Restore Phantasia's glass ramps in both CSS and Momentum versions instead of drawing a missing-texture checkerboard.
 - Make `hl2_missing` distinguish unsupported shader classes from missing material files, including later-loaded props.

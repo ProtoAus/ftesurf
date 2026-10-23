@@ -3539,11 +3539,13 @@ string(float n) HUD_CrosshairPic =
 	return "";
 };
 
+float() WP_IsScoped; // cl_weapon.qc, after HUD in declaration order
 void(vector scr) HUD_DrawCrosshair =
 {
 	local float n, size, a;
 	local string pic;
 
+	if (WP_IsScoped()) return;
 	n = cvar("hud_crosshair");
 	if (n < 1)
 		return;                     // the engine's, or none; see the essay above

@@ -1716,6 +1716,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	Prox_Frame();                   // Patch 810: before addentities, which calls Prox_Delta
 	addentities(MASK_ENGINE | MASK_VIEWMODEL);
 	WP_Frame();                    // after the final camera, view-relative model
+	WP_ScopeView();                // camera-only zoom, never input/shot direction
 
 	// Zones go in BEFORE renderscene: R_BeginPolygon queues into the scene,
 	// and the default shader is depth-tested, so this is what makes a zone
@@ -1783,6 +1784,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	if (wp_kick != 0) setproperty(VF_ANGLES, wp_baseview + [wp_kick, 0, 0]);
 	renderscene();
 	if (wp_kick != 0) setproperty(VF_ANGLES, wp_baseview);
+	if (notmenu) WP_ScopeDraw(scr); // CSS mask under HUD/windows, no weapon crosshair
 
 	// Headless self-check (see menu/m_main.qc's ui_bootcheck).  Reports the
 	// two things that can silently blank the whole HUD: `notmenu` arriving

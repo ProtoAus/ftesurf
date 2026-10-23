@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P955 — CSS weapon follow-up (human check pending)
+
+Native controls prove single-fire zero cosmetic kick versus an acting burst,
+held save/load without a new draw, and a visible noclip weapon. Inspected native
+screenshots show the CSS scope at both zoom levels and muzzle flashes. That is
+not owner acceptance of their appearance/sound/feel. Once delivery is recorded
+in tools/p955-source-followup.md, reconnect and check: Glock single vs burst;
+Scout secondary40/15/off, shot/bolt/rezoom; hold/release a save, noclip and bare
+drop. Do the flashes and hard-landing CSS damage sounds look/sound right?
+No exact CSS parity or sustained-FPS claim. CS:GO knives/finish workshop remain
+an isolated prototype and are NOT included/accepted by this patch.
+
 ## P952 — Epiphany's world (delivered; human check pending)
 
 BOTH Windows delivered with95023Oct2026 17:03:39Z. Installed-image actor renders
@@ -52,9 +64,9 @@ by this check. No owner confirmation received yet.
 Delivered/hash-verified BOTH Windows10:58 and all12lobbies11:01UTC; cold actual
 served-code/drawn-board proof passed. Overall release acceptance is recorded
 above; optional focused strength check, not separately reported:
-Glock single and each burst bullet now
-also give a modest scene-only upward kick, gentler per bullet than USP/Scout.
-Does that strength/recovery feel right alongside the other guns at your frame
+The owner subsequently reported that CSS single fire should have NO visual
+kick. P955 supersedes that part: only burst bullets retain cosmetic kick.
+Does burst strength/recovery feel right alongside the other guns at your frame
 rate? Native single/burst/return and USP/knife controls acted, not human acceptance.
 Aim/body/input and all personal bindings stay unchanged. Details and availability:
 tools/p946-glock-kick.md / tools/p946-delivery.md. No sustained1000FPS claim.

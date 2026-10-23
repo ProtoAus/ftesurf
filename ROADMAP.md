@@ -1,5 +1,15 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
+## Mounted CS:GO Legacy knives / local finish workshop (24 Oct 2026)
+
+Owner requested Butterfly and M9, inspect animations and a small local
+finish/pattern/fade/wear selector. Isolated prototype exists but the imported
+hand poses/rendering still fail visual acceptance; NOT shipped by P955's CSS
+follow-up. Preserve the prototype and evidence, finish actual draw/idle/inspect
+and stable merged arms before presenting the workshop as ready. Installed
+licensed assets remain mounted locally, never redistributed. No exact inventory
+or paint-kit parity is claimed. This request remains active, not cancelled.
+
 ## Owner feature-list ledger (22 Oct 2026)
 
 Delivered: P929 stable Open Lobby #1..#12 names (live, no restarts); P930 updated
