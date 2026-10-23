@@ -15,6 +15,28 @@ Our probes changed only an owned fixture's mount list, not yours. They prove
 native loading of concrete/blacktop_ext_01, not the rendered-surface repair.
 Epiphany black-world and the two sky cuts remain open; no visual pass invented.
 
+## P923/P938 — ordinary recording/restart feel (23 Oct 2026)
+PENDING owner after restarting/reconnecting: finish one short ordinary run, then
+restart and begin another. Confirm the timer/save/restart still feel normal, with
+no new capture hitch or unexpected eligibility warning. Do not deliberately break
+a recording or enable the optional detailed collector for this check.
+Both Windows qw/cs sets and all12Pi native/plugin/progs are delivered; newer P939
+Windows native/menu were preserved. Automated source/cold/corpus checks, live
+version/hash readback and two fresh-cache client/board smokes passed. Those are
+not human feel, production-performance or device-authenticity acceptance.
+
+## P940 — viewmodel motion and material footsteps (23 Oct 2026)
+BOTH Windows installs and all12Pi lobbies verified23Oct04:54UTC, including a
+real cold client downloading the exact new code (tools/p940-delivery.md).
+PENDING owner after the matching client update/reconnect: select a weapon with
+`give usp`, then walk and look left/right. Check that its rocking and turning
+sway feel natural, including while airborne; the camera/aim should not sway.
+The default viewmodel FOV is now70, retaining existing personal values.
+With `cl_game_sfx 1`, run across wood, grating and glass, then walk/crouch:
+materials should sound different and quiet movement should stay silent.
+Native socket tests prove model offsets/settling/reset and material WAV
+selection, not visual/ear acceptance. Details: tools/p940-viewmodel-materials.md.
+
 ## P939 — paste without an approval question (23 Oct 2026)
 Native patch-939 and compatible local MENU source258210ea are installed in BOTH
 Windows sets, hashes verified23Oct03:33:58Z. Four QW/CSQC gameplay DATs stayed
@@ -52,7 +74,7 @@ availability/machine evidence, NOT owner acceptance. Restart/reconnect, then
 PENDING human — three small checks:
 - Enable cl_game_sfx 1: walk/crouch quietly and hold jump for repeated hop cues.
 - `give weapon_usp` or `give usp` (also scout/knife/glock): check draw/idle/shot
-  sound and model size/lighting. r_viewmodel_fov defaults54 independently of
+  sound and model size/lighting. r_viewmodel_fov now defaults70 (P940), independently of
   world FOV. Fresh model/Foley defaults0; existing personal choices untouched.
 - Load Goldsrc2 save2: confirm the old pause before count-in feels gone.
 Exact actually delivered-cohort cold control improved17.92s ->.56s, same body,

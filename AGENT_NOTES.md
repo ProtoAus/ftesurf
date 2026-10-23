@@ -1125,6 +1125,19 @@ renderer; source and build in `src/viewer/` (its README). The bundle
   imports through a stub and holds the old admission lock SHARED for good, so
   the old guard drains only after `systemctl --user restart momrequests`. A
   `/srv/nvme/surfd/*.py` hash matching neither generation is a stub, not drift.
+- Native deployments can invalidate the serving witness's native consumer pins
+  even when every Python/runtime source is unchanged. P938's new engine/plugin
+  matched their qualification receipts, but the old profile's fresh worker refused
+  with `canonical consumer binding changed`; its two reader pins still matched.
+  Prepare the dependency-only successor before the swap/short handoff interval.
+  Do not rewrite a serving witness, reset a guard or downgrade the verifier. The
+  measured recovery kept all80runtime files/source/schema20/profile unchanged,
+  refreshed ONLY the two qualified native hashes in a CLOSED successor, obtained
+  actual worker/health acceptance, then moved all five bindings and drained OLD.
+  Board HTML/API and12fresh directory rows passed; no game epoch changed. This
+  diagnoses startup refusal, not the original master's exit. Discover the current
+  canonical launcher/guard/manifest: obsolete surfd.service or a historical pidfile
+  is not live identity. Keep runtime-required agent-work roots after task cleanup.
 - A post-publish smoke failure is not necessarily a failed handoff. P861's old
   operator checks requested `/api/board` without its required map (400), then
   expected an empty `/api/hid` POST to return 400. The actual length guard returns
@@ -2293,6 +2306,13 @@ cannot be used, ask; do not silently scatter copies elsewhere.
   no forward references — add a prototype `void() Foo;` or reorder).
 
 ## Build
+
+- **P940: FILE_READNL does not mean line reads retaining newlines.** Native
+  PF_fgets returns the whole file without advancing that mode. A while/fgets
+  parser reread the same manifest to its byte/count caps (35 metadata opens
+  instead of11). Use FILE_READ for linewise loops. Native corrected control
+  keeps111profiles/67aliases and selects the same mounted WAVs; do not normalize
+  a surprising counter until checking the builtin's actual contract.
 
 **QC-only dual deployment (P814 delivery tooling).** The old build had no QC
 secondary-copy step: a successful default build changed the primary csprogs but
@@ -6333,6 +6353,13 @@ script rather than passing it as an argument, where `ps` would show it.
   `cp` to `.new` then `mv -f`, keeping `fteqw-svarm64.preNNN-<stamp>`. Running
   lobbies keep the old binary until restarted; the sweeper picks up the new one
   immediately.
+- A full platform-physics gate needs its qualified fixture closure, not a small
+  source-producer fixture substituted for it. P938's small fixture disagreed on
+  several map traces; the existing full-fixture route with the SAME final native/
+  progs artifacts matched all60named rows across5maps and both legacy controls.
+  No product physics defect or single offending input was isolated. Preserve the
+  map/override/model/mount/config/zone inputs and use the established full gate;
+  do not weaken the comparator or grow more wrappers around the small fixture.
 - **AN OVERLAY BASEDIR IS LINKS INTO THE LIVE GAME, AND A GUI DELETE FOLLOWS
   THEM.** 2026-10-05: an old overlay, /srv/nvme/p323base (126 links, 24 MB real,
   57 GB to anything that follows links), was deleted with a file manager and

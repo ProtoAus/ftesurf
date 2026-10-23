@@ -21,6 +21,10 @@
 
 ## next
 
+### P940 Source-style weapon motion and material footsteps
+- Viewmodels rock as you move and gently trail your turns, without moving the camera or aim. The default viewmodel FOV is 70; existing personal FOV choices stay unchanged.
+- Footsteps follow mounted material surface properties and left/right sound variants, with safe fallbacks for older maps or missing content. Quiet walking and crouching remain silent.
+
 ### P939 Paste without an extra question
 - Paste into text fields with Ctrl+V or Shift+Insert without an extra confirmation dialog. As with normal paste, only paste text you intend to share with the connected game's UI.
 
