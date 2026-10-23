@@ -21,6 +21,9 @@
 
 ## next
 
+### P938 Lighter recording checks
+- Less repeated work during recording and replay checks; movement and saved-run formats are unchanged.
+
 ### P937 Optional movement instrument
 - `cl_surf_tone 1` adds a sine tone whose pitch follows your height; `cl_surf_drums 1` adds a kick on A and a snare on D. Both are off by default and typing in chat does not play the drums.
 - `cl_surf_audio_volume` controls their shared volume (default 0.15); `motionaudio_info recenter` resets the reference height. Existing movement sounds and music are unchanged.
