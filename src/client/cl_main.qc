@@ -137,15 +137,15 @@ void() CL_RenderMapFrame =
 
 	if (!cl_rendermap_pending) return;
 	rmap = serverkey("map");
-	if (rmap == "") return;
+	if (!strcmp(rmap, "")) return;
 	modelmap = mapname; // Native CSQC global is often maps/<name>.bsp, not short.
-	if (substring(modelmap, 0, 5) == "maps/")
+	if (!strcmp(substring(modelmap, 0, 5), "maps/"))
 		modelmap = substring(modelmap, 5, -1);
 	n = strlen(modelmap);
 	if (n >= 4)
-		if (strtolower(substring(modelmap, n - 4, 4)) == ".bsp")
+		if (!strcmp(strtolower(substring(modelmap, n - 4, 4)), ".bsp"))
 			modelmap = substring(modelmap, 0, n - 4);
-	if (modelmap == "") return;
+	if (!strcmp(modelmap, "")) return;
 	if (strcasecmp(rmap, modelmap)) return;
 
 	rname = sprintf("cfg/maps/render_%s.cfg", rmap);
