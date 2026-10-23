@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P950 — Phantasia glass (staged; delivery and human check pending)
+
+Isolated native controls show the checker gone in BOTH CSS and Momentum at a new
+DEMOTED pose fixture derived read-only from Save1. Full/flat/dither modes and an
+acting unsupported-class/reset diagnostic are recorded in tools/p950-phantasia.md.
+No owner pass or installed delivery yet. AFTER verified delivery and a fresh
+client launch, load Phantasia Save1 in each version: does the ramp pane look like
+proper tinted glass, without the giant pink/black squares? This is visual manual
+acceptance only, not a performance, evidence or all-assets completeness claim.
+
 ## P949 — Boreas Save11 mountain (23 Oct 2026)
 PENDING owner in-game confirmation. Native current-Momentum2/1/2 cuts/restores/
 recuts the same mountain at a read-only saved-pose-derived DEMOTED fixture;

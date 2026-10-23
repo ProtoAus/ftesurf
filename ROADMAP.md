@@ -44,6 +44,11 @@ P940 hashes). Current native945/P948 programs are preserved. P949 Boreas sky cut
 implemented/native-verified and its exact config delivered to BOTH Windows
 installs23Oct14:42Z; no needless Pi/program swap. Receipt: tools/p949-boreas-sky.md.
 No owner visual confirmation is invented.
+P950 Phantasia glass now implemented/native-verified in BOTH CSS and Momentum:
+explicit Source Refract_DX90 alias, plus bounded unsupported-class reporting in
+hl2_missing. Clean tagged source/native artifacts qualified; installed delivery
+is held while the owner's Windows game is running. Human acceptance pending,
+not invented. Exact acting controls/failures/limits: tools/p950-phantasia.md.
 Download audit also complete: R2 uncapped (one2MiB range7.519MiB/s, not engine-
 speed acceptance), BSP identity encoded/original bytes; only Pi origin fallback
 is1MiB/s capped. No integrity/fallback guard was weakened.
@@ -55,9 +60,9 @@ Remaining requested work (not silently folded into the completed items):
 - Practice-only slow motion via host_timescale, preserving fixed movement ticks
   and slowing the timer correctly. It must never make ranked/evidence eligibility
   out of slowed input. Requires engine/movement/recorder contract controls.
-- Phantasia CS:S/Momentum texture resolution/reporting and Epiphany's black scene
-  remain in BACKLOG.md. Autumnal/Kvas and the separately verified Boreas correction
-  are not substitutes for those unresolved cases; human visuals stay in lextest.
+- Epiphany's black scene and complete existing-VMT/absent-image reporting remain
+  in BACKLOG.md. P950 fixes Phantasia's actual glass class, not every sampled-image
+  case. Autumnal/Kvas/Boreas are not substitutes; human visuals stay in lextest.
 
 Story/event content gaps: fourteen selected entries lack timing zones; Voyager
 alternate-route and Fiellu final-ramp targets need authored coordinates. P944 now

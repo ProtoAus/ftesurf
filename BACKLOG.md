@@ -29,22 +29,15 @@
   BSP automatically. The historical surf_dune shadow is now byte-identical to
   Momentum/Pi in the two-pair check. Scope/limits: tools/momentum-preference-audit.md.
 
-## Owner screenshots, 22 Oct 2026 — missing map materials / black Epiphany
+## Owner screenshots, 22 Oct 2026 — sampled-image report gaps / black Epiphany
 
-- Sites to investigate: hl2 plugin VBSP/VMT/VTF resolution and missing-asset
-  reporting. `surf_phantasia_css_000.png` shows large magenta/black surfaces;
-  owner reports both variants. No Phantasia material fix or diagnostic-report
-  coverage is claimed yet; the separate Autumnal metadata repair is P947.
-- Falsifier: load each exact map build in an owned rig with mounted owner content,
-  reproduce the screenshot view, identify the requested material/texture and
-  prove the asset resolution/fallback and missing report. Compare both Phantasia
-  builds; do not relabel a BSP or package Valve assets as a repair.
-- 23Oct diagnostic: actual winning BSPs scanned through maproster.resolve, not
-  merely mapdeps.py's mounted-directory inventory. Both Phantasia builds have
-  material references and no dependency buckets; that does not prove the native
-  loader sampled the intended textures. P947's separate cold Autumnal pair
-  now proves automatic optional-pack consumption and rendered blacktop repair;
-  it does not establish the Phantasia or missing-report path.
+- Phantasia's actual Refract_DX90 glass fallback and unsupported-class report
+  are fixed/native-verified in P950 (tools/p950-phantasia.md); that is not the
+  remaining generic image-census or Epiphany case below. No BSP rename or Valve
+  asset package is shipped. Human visual acceptance remains in lextest.md.
+- Static mapdeps inventory is not proof of actual sampled images. P947's
+  separate cold Autumnal pair proves optional-pack consumption/blacktop repair,
+  not complete runtime image reporting.
 - Reporting seam: plugins/hl2/mat_vmt.c:Shader_LoadVMT counts a missing VMT,
   not an existing VMT's missing base VTF. mod_vbsp.c:VBSP_MissingAdvice state0
   also assumes an absent dependency row proves no pack has the asset; that is
@@ -67,6 +60,16 @@
   non-solid BSP leaves at the captured body+22 test points in all three maps;
   that offset is an assumption, not native camera readback. No decoder/visibility
   change follows from it. The native VTF ABGR8 and ZIP-LZMA14 paths already exist.
+
+## Native shader-remap diagnostic can dereference an absent destination
+
+- Site: engine/gl/gl_shader.c:R_RemapShader, destination R_LoadShader result
+  followed by unchecked usageflags/remap assignment. An isolated P950 diagnostic
+  exited C0000005 after its completed graphics-mode arms, before report markers;
+  retained as a failed control, not blamed on the glass path or called a pass.
+- Falsifier: an unregistered/unavailable destination returns a bounded diagnostic
+  without dereferencing NULL; an already registered valid destination still acts.
+  Preserve caller ownership/cheat gating. No separate command repair is claimed.
 
 ## Historical full P603 lifecycle fixture versus current Players globals
 

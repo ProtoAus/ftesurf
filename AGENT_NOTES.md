@@ -1,5 +1,37 @@
 # AGENT_NOTES.md
 
+## P950 — Phantasia glass is a class alias, not an asset-pack miss (24 Oct 2026)
+
+Both actual Phantasia BSPs embed Refract_DX90 on the glass prop material. Source
+SDK refract.cpp aliases Refract to it. Our unlit fallback invented a nonexistent
+diffuse VTF; VMT lookup success/static mapdeps0 therefore missed the visible
+checker. Normalize this explicit alias before parsing too, so normal/tint and
+all existing full/flat/dithered modes remain coherent. Do not strip arbitrary
+DX suffixes. shader_here at Save1 hits an invisible collision plane before the
+visible model; that world-ray name alone is not the drawn material's identity.
+
+Matched native945/subject CFGs and CSS/Momentum PNGs ACTED. A new minimal DEMOTED
+pose fixture suffices; never copy the original owner's run/view/identity/clock
+state. For the report control, one owned BSP copy changes ONE embedded VMT class;
+multiple prop registrations list one unsupported pair, then changing world clears
+it. Use existing runlines --content ownedQC, not another wrapper. Remove only the
+hash-owned synthetic BSP before build/ship. No test BSP or Valve assets are shipped.
+The report is VMT/class scope, not a complete sampled-image census.
+
+A shader-remap diagnostic crashed AFTER full/flat screenshot arms, BEFORE its
+report markers; retain it as a failed control and track the separate nullable
+lookup in BACKLOG. Do not use that command to register a missing shader. Also,
+verbose texdiag/developer output made the first two-map diagnostic time out;
+targeted pass/body output with the same entrypoint completed the matched pair.
+
+Clean tagged Full build repeated P939's two parallel ZIP packaging failures.
+Retain full failure log/available box3d output; cod's failed output can already
+be absent, so do not require both files to exist before preserving either.
+Serial existing build completion regenerated exactly those missing targets.
+All7 fresh AMD64PEs/5valid resource ZIPs, clean tag950; native warning multiset74
+exactly matches P939, serial repeats3 inherited warnings,0new. This is NOT a
+reason to hide the failed Full result or grow new staging/build-name chains.
+
 ## P949 — a saved-pose graphics fixture need not copy a run (23 Oct 2026)
 
 Boreas2/1/2 at a read-only owner-requested Save11-derived pose visibly cuts/
