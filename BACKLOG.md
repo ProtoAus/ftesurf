@@ -68,17 +68,6 @@
   that offset is an assumption, not native camera readback. No decoder/visibility
   change follows from it. The native VTF ABGR8 and ZIP-LZMA14 paths already exist.
 
-## Owner screenshots, 22 Oct 2026 — Boreas sky cut
-
-- Site: engine sky depth/masking and hl2 3D-sky world/prop composition.
-  `surf_boreas_010.png` (save11) has a sky-colored cutout through mountain
-  geometry. The separate Kvas bonus4 crown cut and dedicated per-map timing
-  repair are P948; the owner's exact Save1 confirmation belongs in lextest.md.
-- Falsifier: exact save/view and BSP control, then isolate sky depth versus world
-  and prop passes. Preserve legitimate sky occlusion and camera boundaries.
-  Do not claim Boreas repaired from Kvas's acting2/1/2 result or the historical
-  P265 report; no global sky-depth change is justified by those alone.
-
 ## Historical full P603 lifecycle fixture versus current Players globals
 
 - Site: tools/fixtures/p603life_runtime.qc / tools/p603scores.py default full

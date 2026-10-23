@@ -36,8 +36,13 @@ real-device and full-widget acceptance remain pending in lextest.md. Main-menu S
 already selects ALL on double-click (P933), not only a word. Native console word/
 triple-click behavior is separate. No gameplay programs or backend were changed
 by the P939 transaction. Later published P938/P940 receipts identify the newer
-gameplay cohort; read-only hashes of both Windows installs and Pi match P940.
+gameplay cohort; at that transaction, read-only Windows/Pi hashes matched P940.
 The older compatibility programs were not restored over that qualified rollout.
+Later P944 personal Max Fog, P947 Autumnal metadata and P948 Kvas/map-ready render
+layer are delivered (their tools/pNNN receipts are authoritative, not the older
+P940 hashes). Current native945/P948 programs are preserved. P949 Boreas sky cut
+is implemented/native-verified; exact client-config delivery is tracked separately
+in tools/p949-boreas-sky.md. No owner visual confirmation is invented.
 Download audit also complete: R2 uncapped (one2MiB range7.519MiB/s, not engine-
 speed acceptance), BSP identity encoded/original bytes; only Pi origin fallback
 is1MiB/s capped. No integrity/fallback guard was weakened.
@@ -49,11 +54,16 @@ Remaining requested work (not silently folded into the completed items):
 - Practice-only slow motion via host_timescale, preserving fixed movement ticks
   and slowing the timer correctly. It must never make ranked/evidence eligibility
   out of slowed input. Requires engine/movement/recorder contract controls.
-- Renderer/material/reporting bugs from the five screenshots are in BACKLOG.md.
+- Phantasia CS:S/Momentum texture resolution/reporting and Epiphany's black scene
+  remain in BACKLOG.md. Autumnal/Kvas and the separately verified Boreas correction
+  are not substitutes for those unresolved cases; human visuals stay in lextest.
 
 Story/event content gaps: fourteen selected entries lack timing zones; Voyager
-alternate-route and Fiellu final-ramp targets need authored coordinates; max fog
-is not enforced. Story 59 needs Monkeys2 versus Whoknows3 clarification. Facility
+alternate-route and Fiellu final-ramp targets need authored coordinates. P944 now
+ENFORCES personal Max Fog with matched mode facts/backend and live proof; it is
+not still an unimplemented flag. Event27's older Gold==finish criterion was NOT
+silently redefined into an owner-approved challenge (tools/p944-maxfog.md).
+Story59 still needs Monkeys2 versus Whoknows3 clarification. Facility
 is treated as Story 43 to resolve the repeated 44; repeated Event Kvas B4 slots
 77/85 are both retained. Details and exact fallback maps: tools/p930-story-lists.md.
 

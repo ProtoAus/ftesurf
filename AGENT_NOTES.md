@@ -1,5 +1,25 @@
 # AGENT_NOTES.md
 
+## P949 — a saved-pose graphics fixture need not copy a run (23 Oct 2026)
+
+Boreas2/1/2 at a read-only owner-requested Save11-derived pose visibly cuts/
+restores/recuts the foreground mountain. Reuse the existing minimal DEMOTED save
+shape/--put/normal saveloc API in a fresh owned rig; never copy the original
+recording, identity, clocks or player directory. A new OWNED native sl_save
+positively writes the current world CRC, avoiding an inference from no mismatch
+print. Actual Momentum load/body pose, automatic layer1/full and other-map2
+qualified this config-only correction. SSQC/CSQC stay P948: don't restart a fleet
+merely to deliver a client render cfg. A concurrent0.1.30 release changed ONLY
+two menu-version bytes; exact0.1.29->0.1.30 normalization proved that dependency,
+not a new P949 menu feature. Preserve its release history/acceptance and existing
+installed menu; don't relabel949 as part of an already-published release.
+
+Harness mistakes retained: expected log_name/runlines marker must be explicit;
+scr_menus/sl_status are not interfaces. vbsp_skyroom is registered in CSQC_Init,
+not at engine startup: query/set AFTER map load (or it is unknown). Correct the
+same CFG seam, inspect actual PNGs/readbacks, and distinguish wrapper failure
+from native feature evidence. No ranked/input/prediction acceptance is implied.
+
 ## P948 — a listen render-layer pass is not an online pass (23 Oct 2026)
 
 - Native Kvas2/1/2 visibly cut/restored/recut the bonus4 crowns, and a listen

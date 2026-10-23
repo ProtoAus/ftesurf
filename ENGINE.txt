@@ -25,7 +25,9 @@ commit   9e73ae1c8ade050af424182b05ae259371a1eefc
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-945
-patch    948
+patch    949
+# Patch 949: Boreas foreground-mountain sky-depth override; client config only.
+# Native commit/tag, movement/evidence and server sky permission unchanged.
 # Patch 948: Kvas sky composition and deferred per-map render-layer identity.
 # CSQC/config only; native commit/tag, input/evidence and server sky permissions unchanged.
 # Patch 947: on-demand Autumnal blacktop assets; incremental generated dependency repair.

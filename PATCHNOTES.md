@@ -21,6 +21,9 @@
 
 ## next
 
+### P949 Boreas mountain
+- Boreas no longer has the sky-colored cutout through the foreground mountain near Save 11. The correction is scoped to Boreas; other maps retain their own sky settings.
+
 ## 0.1.30 2026-10-23
 
 ### P948 Kvas tree crowns

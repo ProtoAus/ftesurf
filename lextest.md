@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P949 — Boreas Save11 mountain (23 Oct 2026)
+PENDING owner in-game confirmation. Native current-Momentum2/1/2 cuts/restores/
+recuts the same mountain at a read-only saved-pose-derived DEMOTED fixture;
+automatic map override1/full and another map2 also pass, with matching native
+world CRC. That is NOT your manual confirmation. Delivery status is in
+tools/p949-boreas-sky.md. After delivery, reconnect/reload Boreas and load Save11:
+is the whole mountain there without a manual r_sky_forcedepth command? If doing
+the earlier2/1/2 diagnostic before delivery, leave it2 afterward. Other BSP
+builds/settings and Phantasia/Epiphany are not accepted by this check.
+
 ## Source-polish release acceptance (23 Oct 2026)
 Owner: "Close enough! can you push a new update release please" in response to
 the P943/P946 delivery and matched-lighting comparison. CONFIRMED human acceptance
