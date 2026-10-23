@@ -8503,6 +8503,21 @@ or a stale frame looks the same as a live one.
 
 ## Pitfalls discovered the hard way
 
+**Source footstep material identity (P941,23Oct2026).** Native collision names
+can be only16bytes: real Axiom reported `maps/surf_axiom`, surface-id0, while
+the render polygon retained its full cubemap-suffixed VMT name and declared
+metal. A synthetic short-name VMT is NOT a real-map lookup proof. Resolve the
+actual clipped contact polygon, reject distant faces, retain model-local
+transforms and restore makevectors globals. Certify a cached polygon at each
+new point; do not pin its material across an edge. Real same-face contacts kept
+1surface scan/14metadata reads while hits increased. Ordinary mounted script
+order also picked Momentum's different sample set; scoped active cstrike search
+handles produced CSS metal2/metal3 without mutating mount order. Quiet walking
+still produced0new calls. CSS/FTE screenshots used different Axiom BSPs; map,
+camera and idle phase must match before calling that a lighting shader defect.
+Native console timestamps here are local UTC+11, not provenance UTC.
+
+
 ### Native recovery journal publication boundary — P692, 2026-10-13
 
 A failed journal OPEN does not exercise publication. Native replay used to close

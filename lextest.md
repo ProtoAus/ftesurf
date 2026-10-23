@@ -29,7 +29,9 @@ not human feel, production-performance or device-authenticity acceptance.
 P940 owner feedback: bob and turning sway were much too strong; real Axiom did
 not sound like CSS, lighting differed, idle appeared absent, and spawn should be
 unarmed. This is feedback, NOT acceptance of P940's presentation.
-P941 implementation/socket controls pass; delivery and human acceptance pending.
+P941 BOTH Windows installs/all12Pi lobbies verified23Oct06:39UTC, including an
+exact fresh CSQC download and drawn board (tools/p941-delivery.md). Native/MENU
+and personal settings were preserved. Human look/ear acceptance remains PENDING.
 After the matching update/reconnect, with cl_viewweapon1 you should see NO weapon
 until `give knife` (or usp/scout/glock). Walk/turn: motion should be much subtler,
 with idle continuing after15seconds. `cmd respawn` should put the weapon away.

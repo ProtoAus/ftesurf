@@ -82,7 +82,7 @@ comparison and human look are explicit in BACKLOG.md/lextest.md.
 
 ## Final source/build/delivery
 
-Final candidate23Oct17:31–17:32UTC: all three VMs0warnings. Actual socket
+Final candidate23Oct06:31–06:32UTC (console timestamps are local UTC+11): all three VMs0warnings. Actual socket
 sequence with cl_viewweapon1: fresh0/ready0 -> give knife1/ready1 -> cmd respawn
 0/ready0/model empty -> give knife1/ready1. Unarmed screenshot inspected; no
 model drawn. After18.8297s idle, pose6.24638s and an authored changed pose were
@@ -92,6 +92,6 @@ CSS-samples1,14reads/1scan across repeated contacts. Native939 unchanged.
 Final QW SHA256:c37d568a9de6463838d57e1d0f56605d2118147dfb238da56227abe9485d6338
 Final CSQC SHA256:5b1500f1ca021514889998d8b1de6ee52640665c0bf40249be45c2a243d31242
 Exact clean source commits, destination/live readbacks and UTC delivery are
-recorded in tools/p941-delivery.md after promotion. No release/Build-number/
+recorded in tools/p941-delivery.md (BOTH Windows and all12lobbies verified). No release/Build-number/
 engine-pin change, recorder/evidence modification, collection activation or PvP
 feature is involved. All owned actors stopped; CSS map fixture remains absent.
