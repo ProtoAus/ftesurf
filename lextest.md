@@ -5,6 +5,16 @@ installs and compatible progs on all12lobbies (22October2026 UTC). This is
 availability, NOT human acceptance. Native client fixes require the updated
 Windows engine. Exact sources/readbacks/live proof: tools/p931-delivery.md.
 
+## P939 — paste without an approval question (23 Oct 2026)
+Native patch-939 and compatible local MENU source258210ea are installed in BOTH
+Windows sets, hashes verified23Oct03:33:58Z. Four QW/CSQC gameplay DATs stayed
+unchanged; no lobby/backend change in that transaction. Owner's running game was
+not stopped, so restart for the native fix. PENDING human: paste into a textbox,
+then type a suffix immediately; confirm no extra approval dialog and correct edit
+order. Double-click and replace the selected text. Native/actual selected-QC
+controls pass, but full widget, real device and OS clipboard acceptance is NOT
+claimed. No owner clipboard was read/written by the automated checks.
+
 ## P937 — optional movement instrument (22 Oct 2026)
 Matching delivery verified22Oct23:18UTC (tools/p936-p937-delivery.md).
 PENDING owner after restarting/reconnecting: while playing,
