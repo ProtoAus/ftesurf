@@ -21,6 +21,8 @@
 
 ## next
 
+## 0.1.30 2026-10-23
+
 ### P948 Kvas tree crowns
 - Kvas no longer cuts off the bonus 4 tree crowns at the sky brush. Per-map render settings now wait for the connected map to be ready, so they work online too; other maps retain the ordinary sky-depth setting.
 

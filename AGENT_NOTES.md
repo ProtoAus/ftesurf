@@ -7135,6 +7135,23 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 
 ## Release preflight and immutable candidate handoff (2026-10-16)
 
+0.1.30 measured23Oct2026: P931's non-ASCII patch title correctly refused before
+build. A feature-only worktree also needs the existing release's explicit ignored
+input set (particles/atlases/voice icons/local zones and generated snapshots),
+not a full install/player-data copy. The new material/weapon readers add11exact
+Steam-mounted Valve script/model loads: explain those names in shipguard's exact
+runtime-denial table, NEVER redistribute the assets or exempt all scripts/models.
+Removal and neighboring-owned-path controls act; the search_begin probe stays a
+probe. Existing optional test_shipguard census expects6/3readers but current public
+source has8/4; those unrelated assertions were preserved and not called passes.
+Actual release policy/asset gate passes. Peer-qualified Windows945cohort reused
+read-only with exact dual-install hashes/tag stamp; matching Linux pin passed10
+production gates. Use2Cargo jobs (Linux config under ignored target/cargo-home)
+and the documented WSL idle-stop hold. Exact one-preview sealed publication and
+full HTTPS Windows/Linux launcher acceptance pass; retain sealed graph/proof,
+unlink the shared Cargo registry link before retiring the owned build worktree,
+and delete only rehashed signed synthetic payloads, preserving all sentinels.
+
 See src/release/README.md for commands. This is release tooling, not a product
 patch, Build bump, new public version or extra gate for ordinary feature work.
 
