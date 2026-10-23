@@ -49,8 +49,9 @@ class Finish(unittest.TestCase):
         def runner(map_dir, paths):
             self.assertEqual(map_dir, 'bhop_eazy')
             acted.extend(paths)
-            return sum((controls.section(p, '7 record(s): what the input ring delivered is what the view read', result)
-                        for p in paths), [])
+            return suite.input_bound_stub(self.sw, paths,
+                    sum((controls.section(p, '7 record(s): what the input ring delivered is what the view read', result)
+                         for p in paths), []))
         counts = self.sw.sweep(self.c, 20, runner=runner, now=now)
         self.assertTrue(acted)  # not a silent admission failure
         return counts
@@ -146,7 +147,8 @@ class Finish(unittest.TestCase):
         acted = []
         def runner(map_dir, paths):
             acted.extend(paths)
-            return ['VERIFY %s HOLD %s' % (p, self.sw.NO_FINISH) for p in paths]
+            return suite.input_bound_stub(self.sw, paths,
+                    ['VERIFY %s HOLD %s' % (p, self.sw.NO_FINISH) for p in paths])
         self.assertEqual(self.sw.sweep(self.c, 20, runner=runner, now=9999999999), {'PASS': 1})
         self.assertEqual(len(acted), 1)
         row = suite.latest(self.c, rid)

@@ -3129,6 +3129,21 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+**Loaded recording attribution (P945, 2026-10-23).**
+
+Native input attribution must hash the complete FS_LoadFile buffer, not strlen
+or a second pathname read; CRLF and a NUL suffix are acting raw-byte controls.
+The subprocess report needs the invocation's fresh challenge and successful
+exit before normalization. Never trust a console-supplied normalized binding.
+One early unambiguous matching report per path is required; missing, malformed,
+late, repeated or mismatched reports are retryable ERROR, not player guilt.
+Keep P942's separate permanent result/counts ambiguity latches and clean companion.
+This does not persist per-verdict recording identity or retrofit historical badges.
+Use the SAME VM/content/profile for the native control: old p615 and current
+canonical zone overlays differ. All60rows matched the unchanged native reference
+in the same current rig; the retained older-fixture mismatch is not arithmetic
+regression evidence. Detailed scope and controls: tools/p945-verifier-bytes.md.
+
 **Verifier result attribution and guarded delivery (P942, 2026-10-23).**
 
 Duplicate recognized VERIFY results for one path must latch retryable ERROR,

@@ -23,7 +23,7 @@ class Identity(unittest.TestCase):
         def runner(map_dir, paths):
             self.assertEqual(map_dir, 'bhop_eazy')
             acted.extend(paths)
-            return output(paths)
+            return suite.input_bound_stub(self.sw, paths, output(paths))
         result = self.sw.sweep(self.c, 20, runner=runner, now=now)
         self.assertTrue(acted)
         return result
@@ -107,7 +107,8 @@ class Identity(unittest.TestCase):
         acted = []
         def runner(map_dir, paths):
             acted.extend(paths)
-            return ['VERIFY %s HOLD %s' % (paths[0], self.sw.NO_FINISH)]*2
+            return suite.input_bound_stub(self.sw, paths,
+                    ['VERIFY %s HOLD %s' % (paths[0], self.sw.NO_FINISH)]*2)
         self.assertEqual(self.sw.sweep(self.c, 20, runner=runner, now=100), {'ERROR': 1})
         self.assertEqual(len(acted), 1)
         row = self.c.execute('SELECT verdict,reason,ticks,counts_metrics FROM verdicts WHERE replay_id=?', (rid,)).fetchone()

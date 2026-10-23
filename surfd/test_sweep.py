@@ -12,6 +12,7 @@ Each case has a control that fails if nothing landed.
 import contextlib
 import importlib
 import io
+import hashlib
 import os
 import sqlite3
 import sys
@@ -44,6 +45,20 @@ def fresh():
         sys.modules.pop(m, None)
     sweep = importlib.import_module("sweep")    # imports surfd, as cron does
     return sys.modules["surfd"], sweep, runs
+
+
+def input_bound_stub(sweep, paths, lines):
+    """Explicit synthetic engine assumption for non-input-attribution suites.
+
+    Capture these fixture bytes at the simulated load point. This is NOT native
+    report-origin proof; test_verifier_input deliberately does not use it.
+    """
+    reports = []
+    for path in paths:
+        with open(os.path.join(sweep.GAME, 'ftesurf', path), 'rb') as fh:
+            digest = hashlib.sha256(fh.read()).hexdigest()
+        reports.append('VERIFY-SOURCE %s SHA256 %s' % (path, digest))
+    return reports+list(lines)
 
 
 def add_replay(conn, runs, map_dir, leaf, track=0, leg=0, make_file=True):
@@ -1303,8 +1318,8 @@ def case_receipt_step_never_takes_the_sweep_down():
     check("...and the watermark does not move (admin's unsigned pauses)",
           conn.execute("SELECT COUNT(*) FROM sweepmeta WHERE k = 'receipts_through'").fetchone()[0], 0)
     rid = add_replay(conn, runs, "bhop_eazy", "0000662_p-2c8f36b6_run.rec")
-    sweep.sweep(conn, 20, runner=lambda m, p:
-                ["VERIFY %s PASS ticks 662 rows 634" % q for q in p], now=99)
+    sweep.sweep(conn, 20, runner=lambda m, p: input_bound_stub(sweep, p,
+                ["VERIFY %s PASS ticks 662 rows 634" % q for q in p]), now=99)
     check("CONTROL: the verdict sweep is untouched", latest(conn, rid)[0], "PASS")
 
 
@@ -1338,7 +1353,8 @@ def case_pass_and_group():
 
     def runner(map_dir, paths):
         calls.append((map_dir, paths))
-        return ["VERIFY %s PASS ticks 662 rows 634" % p for p in paths]
+        return input_bound_stub(sweep, paths,
+                ["VERIFY %s PASS ticks 662 rows 634" % p for p in paths])
 
     counts = sweep.sweep(conn, 20, runner=runner, now=1234)
     check("one verifier process per map", sorted(m for m, _ in calls), ["Bhop_Mukiology", "bhop_eazy"])
@@ -1436,7 +1452,8 @@ def mid_run(event):
                 other.execute("UPDATE replays SET checked = 0, recheck_at = ?"
                               " WHERE id = ?", (int(time.time()), rid))
         other.close()
-        return ["VERIFY %s PASS ticks 662 rows 634" % p for p in paths]
+        return input_bound_stub(sweep, paths,
+                ["VERIFY %s PASS ticks 662 rows 634" % p for p in paths])
 
     sweep.sweep(conn, 20, runner=runner)
     return surfd, conn, rid, sweep
@@ -1473,6 +1490,7 @@ def case_command_line():
     seen = {}
 
     class R:
+        returncode = 0
         stdout = "VERIFY data/runs/m/main/x.rec PASS ticks 1 rows 1\n"
         stderr = ""
 
@@ -1564,7 +1582,7 @@ def case_evidence_verified():
                 out.append("VERIFY %s HOLD %s" % (p, sweep.NO_FINISH))
             else:
                 out.append("VERIFY %s PASS ticks 662 rows 1" % p)
-        return out
+        return input_bound_stub(sweep, paths, out)
 
     sweep.sweep(conn, 20, runner=runner)
     check("an abandoned file that reproduced to its abandon: PASS at the abandon tick",
@@ -1637,7 +1655,8 @@ def case_stage_binding():
             " VALUES ('surf_aser', 0, 2, 'ranked', 'clean', ?, 'n', ?, 66.666667,"
             " 6810, 0, 'p27510', ?, 1, 0)", ("p%d" % i, ticks, rid_))
     conn.commit()
-    runner = lambda m, paths: ["VERIFY %s HOLD %s" % (p, sweep.NO_FINISH) for p in paths]
+    runner = lambda m, paths: input_bound_stub(sweep, paths,
+            ["VERIFY %s HOLD %s" % (p, sweep.NO_FINISH) for p in paths])
     sweep.sweep(conn, 20, runner=runner)
     check("a stage row the recording posted: PASS", tuple(latest(conn, good))[0], "PASS")
     check("a stage row it did not post is NOTED; the verdict stays the recording's",
@@ -1675,8 +1694,8 @@ def case_row_check():
             fh.write("FTESURF-REC 9\nmap bhop_eazy\ntrack 0\nleg 0\nrunid %s\n"
                      "tickrate 0.01\nflags 0\nbegin\n" % hdr)
     conn.commit()
-    sweep.sweep(conn, 20, runner=lambda m, paths: [
-        "VERIFY %s PASS ticks 662 rows 1" % p for p in paths])
+    sweep.sweep(conn, 20, runner=lambda m, paths: input_bound_stub(sweep, paths, [
+        "VERIFY %s PASS ticks 662 rows 1" % p for p in paths]))
     check("a file that describes the row: PASS", tuple(latest(conn, ok))[0], "PASS")
     check("a file whose runid is another run's: HOLD, saying so",
           tuple(latest(conn, bad))[:2],
@@ -1705,8 +1724,8 @@ def case_main_evidence():
                  "abandon 8262\nend 8262 8519 256 0 8262 4 1 0 1 0\n" % EVR)
     os.utime(path, (1, 1))
     # The cron's verifier: the abandoned file reproduces to its abandon.
-    sweep.run_verifier = lambda m, paths: [
-        "VERIFY %s HOLD %s" % (p, sweep.NO_FINISH) for p in paths]
+    sweep.run_verifier = lambda m, paths: input_bound_stub(sweep, paths, [
+        "VERIFY %s HOLD %s" % (p, sweep.NO_FINISH) for p in paths])
 
     def cron(*argv):
         out = io.StringIO()
