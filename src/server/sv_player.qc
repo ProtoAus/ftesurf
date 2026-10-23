@@ -275,6 +275,7 @@ void() ClientConnect =
 {
 	self.run_timescale = 1;
 	self.run_ts_next = 0;
+	self.run_ts_used = FALSE;
 	Archive_Reset(self);
 	EventFog_Reset(self);          // recycled slot/map must not inherit event fog
 	// Patch 371: a join line only for a new connection -- this runs again for
@@ -729,7 +730,7 @@ void(entity e) SV_NoclipWatch =
 	local float nc, sc, nocliponly;
 
 	nc = (e.movetype == MOVETYPE_NOCLIP) ? TRUE : FALSE;
-	sc = (SV_CheatsOn() || SV_TimeScaleActive(e));
+	sc = (SV_CheatsOn() || SV_TimeScaleTainted(e));
 
 	// ---- LEVEL: every tick either is true, whatever fired when ----------
 	if (nc)
@@ -1147,11 +1148,12 @@ void(entity e, float argc, string arg) SV_TimeScaleCommand =
 			sprint(e, PRINT_HIGH, "host_timescale: a counted-clock engine is required\n");
 			return;
 		}
+		e.run_ts_used = TRUE;
 		SV_TimerCheat(e);
 	}
 	e.run_timescale = value;
 	sprint(e, PRINT_HIGH, sprintf("host_timescale: %g (%s)\n", value,
-		value < 1 ? "per-player practice; movement and timer" : "normal speed; attempt flags retained"));
+		value < 1 ? "per-player practice; movement and timer" : "normal speed; slow-practice latch remains until new map/reconnect"));
 };
 
 void(string cmd) SV_ParseClientCommand =

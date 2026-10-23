@@ -708,10 +708,11 @@ float  run_t_cheatwatch;
 // P954: session-only control, not saved clock/evidence state.
 .float run_timescale;
 .float run_ts_next;
+.float run_ts_used;             // monotone until fresh map/connection; queued commands may still be slow
 
-float(entity e) SV_TimeScaleActive =
+float(entity e) SV_TimeScaleTainted =
 {
-	return (e.run_timescale > 0 && e.run_timescale < 1);
+	return (e.run_ts_used || (e.run_timescale > 0 && e.run_timescale < 1));
 };
 
 float() SV_CheatsOn =
@@ -722,7 +723,7 @@ float() SV_CheatsOn =
 
 float(entity e) SV_CheatLevel =
 {
-	if (SV_TimeScaleActive(e))
+	if (SV_TimeScaleTainted(e))
 		return TRUE;
 	/*
 	  The NOCLIP half still carries the run_class gate, so at 0 noclip alone
@@ -4135,7 +4136,7 @@ void(entity e, float t, vector org, vector vel, vector mv,
 {
 	// Slow practice keeps full input/event rows, but samples stay <= tick rate.
 	// Include negative padding that %.4f would round to zero in the reader.
-	if (SV_TimeScaleActive(e))
+	if (SV_TimeScaleTainted(e))
 	if (t >= -0.00005)
 	{
 		if (e.rec_rec_samplet < 0 || t < e.rec_rec_samplet)

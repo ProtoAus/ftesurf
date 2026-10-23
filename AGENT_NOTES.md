@@ -6,15 +6,20 @@
   fractional milliseconds PER VF_ACTIVESEAT and retain pN when requeuing a bare
   command. Native MAX_SPLITS is4. Ghost still advances a body: scale after its
   camera consumes wall input, before its early return; real zero-time holds stay0.
-- Native cl_predict_extrapolate1 previews not-yet-sent input outside CSQC. Slow
-  practice is bounded to shipped mode0, selected before requesting slow speed;
-  restore only the owned setting after the last observed slow seat returns to1
-  or VM shutdown. Pending slow requests must not release another seat's lock.
+- Native not-yet-sent prediction bypasses CSQC even at extrapolate0 (low netfps
+  or gaps). Slow practice uses existing cl_nopred1, with exact owned STRING
+  snapshot/restore. Reconcile removed seats at UpdateView from numclientseats.
+  Pending slow requests must not release another seat's lock.
+- Scalar1 ack is NOT a server command-drain boundary. An accepted slow request
+  keeps practice eligibility sticky until fresh map/reconnect; saved flags cannot
+  erase the runtime latch. QW serverdata CL_ClearState wipes cl/pending commands.
 - Body samples per real packet become too dense per SIMULATED second: completed
   normal66.465/s faults0 vs half-speed133.234/s faults1. Space only slow visual
   samples by >=one tick; preserve all in/fzin/event rows and truthful timestamps.
-  Fresh/reset/stream-prefix/buffer-recount spacing state matters. %.4f can turn
-  slightly negative padding into zero. Do not relax reccheck's rate check.
+  Fresh/reset/stream-prefix/buffer-recount AND Multi-Session stream spacing state
+  matters. %.4f can turn slightly negative padding into zero. Do not relax the
+  rate check. Native legacy event phase must use existing packet ordinals, not
+  the presence of optional visual samples; restart pairs with its relocation.
 - A p2 command WRAPS to p1 when only one native seat exists. Dedicated server
   allow_splitscreen defaults off: enable it in the OWNED fixture BEFORE connect
   and prove a second player was admitted, not merely that p2 printed a reply.

@@ -894,6 +894,7 @@ void(entity e) SV_MsRecAttach =
 		e.rec_rec_serial = SV_RecNextSerial();
 		SV_RecGenBegin(e);              // new local attachment, actual copied schema
 		e.rec_rec_ver = e.rec_ms_ver;
+		e.rec_rec_samplet = -1;        // prefix history: wait a tick after restored clock
 		e.rec_rec_inmt = -1;            // no `in` row read back: a cold load before one writes no pause
 		e.rec_rec_infz = FALSE;
 		e.rec_rec_leg = e.run_t_track * 100 + FS_LegOf(e.run_t_startseg, e.run_t_stagerun) + 1;

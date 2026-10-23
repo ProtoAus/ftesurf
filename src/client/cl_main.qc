@@ -307,20 +307,21 @@ void() CSQC_WorldLoaded =
 	CL_RenderMapFrame();
 };
 
-float run_ts_pred_held, run_ts_pred_saved;
+float run_ts_pred_held;
+string run_ts_pred_saved;
 
-// Slow practice uses the shipped non-extrapolating prediction mode.
+// Even extrapolate 0 can predict during packet gaps; slow mode uses server motion.
 void() TimeScale_PredictLock =
 {
 	if (!run_ts_pred_held)
 	{
-		run_ts_pred_saved = cvar("cl_predict_extrapolate");
+		run_ts_pred_saved = strzone(cvar_string("cl_nopred"));
 		run_ts_pred_held = TRUE;
 	}
-	if (cvar("cl_predict_extrapolate") != 0)
+	if (strcmp(cvar_string("cl_nopred"), "1"))
 	{
-		cvar_set("cl_predict_extrapolate", "0");
-		print("host_timescale: slow practice requires cl_predict_extrapolate 0\n");
+		cvar_set("cl_nopred", "1");
+		print("host_timescale: slow practice uses server-authoritative movement (cl_nopred 1)\n");
 	}
 };
 
@@ -328,8 +329,11 @@ void() TimeScale_PredictRelease =
 {
 	if (!run_ts_pred_held)
 		return;
-	if (cvar("cl_predict_extrapolate") == 0)
-		cvar_set("cl_predict_extrapolate", sprintf("%g", run_ts_pred_saved));
+	if (!strcmp(cvar_string("cl_nopred"), "1"))
+		cvar_set("cl_nopred", run_ts_pred_saved);
+	if (run_ts_pred_saved)
+		strunzone(run_ts_pred_saved);
+	run_ts_pred_saved = "";
 	run_ts_pred_held = FALSE;
 };
 
@@ -1056,6 +1060,28 @@ void() TimeScale_InputFrame =
 	input_timelength = whole * 0.001;
 };
 
+// Native updates numclientseats before UpdateView; removed seats get no more input.
+void() TimeScale_Seats =
+{
+	local float i, seats, active;
+
+	seats = bound(1, numclientseats, RUN_TS_SEATS);
+	active = FALSE;
+	for (i = 0; i < RUN_TS_SEATS; i = i + 1)
+	{
+		if (i >= seats)
+		{
+			run_ts_scale[i] = 1;
+			run_ts_carry[i] = 0;
+			run_ts_pending[i] = FALSE;
+		}
+		if ((run_ts_scale[i] > 0 && run_ts_scale[i] < 1) || run_ts_pending[i])
+			active = TRUE;
+	}
+	if (!active)
+		TimeScale_PredictRelease();
+};
+
 void() CSQC_Input_Frame =
 {
 	GA_InputFrame();                // read-only walk intent for local Foley
@@ -1598,6 +1624,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	local vector scr, wp_baseview;
 	local float navfocus;
 
+	TimeScale_Seats();
 	scr = [vwidth, vheight];
 
 	// Build 13: the view lock, BEFORE the scene is set up.  Input frames run at
