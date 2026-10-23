@@ -1,5 +1,42 @@
 # AGENT_NOTES.md
 
+## P952 — Epiphany blackness was a LUT path, not HDR/PVS (24 Oct 2026)
+
+Actual winning Epiphany has corresponding valid HDR/LDR faces and HDR-only light;
+those static facts did not prove rendering. The acting native950 colour-correction
+1/0/bypass pair DID: world black with active generated ccorrect LUT0weight1, fully
+visible as soon as that pass was disabled. Shader body sampled materials/cc,
+while the pak contains materials/cc.raw98,304bytes. Same-content-root native pair,
+only entity filename changed to explicit.raw, restored the authored cyan/green
+grade. Original map hash stayed intact; only exact owned BSP fixture removed.
+
+Default.raw only for extensionless basenames in that entity context. Do not add
+raw to generic texture guesses, strip arbitrary extensions, relax img_ccraw's
+suffix+size gate, globally turn grading off, or rewrite the BSP. Corrected native
+on ORIGINAL map gives graded correction1 and distinct ungraded correction0,
+exit0; native body/cvar readback and PNGs inspected. Prior black fullbright/PVS,
+unknown commands and body+22camera assumptions are not causal evidence.
+
+An isolated source worktree's maproster.resolve can be EMPTY because it lacks the
+generated mount profile: resolve the actual canonical install, not the wrong root
+and not an assumed basename. Keep immutable qualified950 images before another
+build overwrites release/. Incremental serial is adequate for prototype behavior,
+NOT automatically exact-tag artifact provenance: successful clean-tag952 linking
+still embedded950 in BOTH EXEs because make did not invalidate cached objects
+for changed SVNREVISION compile flags. Fresh PE timestamps were insufficient.
+The exact-stamp check correctly refused; failure retained. Existing Full/NoDeploy
+Jobs1 rebuilt a coherent952 cohort:7freshPEs/5validZIPs/2exactcleanEXEstamps,
+3VM0warnings, EXACT74 inherited Full warning multiset,0new. Do not repeat known
+parallel ZIP failures or weaken stamps to make an incremental run look qualified.
+Standalone plugin clangd misses real build context; actual compiler wins.
+
+BOTH Windows14native images delivered23Oct2026 17:03:39Z, exact hash cohort,
+all33protected program/config/content/save bytes unchanged and backups retained.
+No kill/Pi/backend/data/menu/progs operation. Post installed-image actors on
+primary Epiphany and secondary CSS+Momentum Phantasia exit0, PNGs inspected,
+hashes rechecked. Human passes remain pending in lextest; native acceptance is
+not an owner check. Actual UTC is23Oct even though local screenshots say24Oct.
+
 ## P950 — Phantasia glass is a class alias, not an asset-pack miss (24 Oct 2026)
 
 Both actual Phantasia BSPs embed Refract_DX90 on the glass prop material. Source

@@ -1,14 +1,23 @@
 # lextest.md — things waiting on a human
 
-## P950 — Phantasia glass (staged; delivery and human check pending)
+## P952 — Epiphany's world (delivered; human check pending)
 
-Isolated native controls show the checker gone in BOTH CSS and Momentum at a new
-DEMOTED pose fixture derived read-only from Save1. Full/flat/dither modes and an
-acting unsupported-class/reset diagnostic are recorded in tools/p950-phantasia.md.
-No owner pass or installed delivery yet. AFTER verified delivery and a fresh
-client launch, load Phantasia Save1 in each version: does the ramp pane look like
-proper tinted glass, without the giant pink/black squares? This is visual manual
-acceptance only, not a performance, evidence or all-assets completeness claim.
+BOTH Windows delivered with95023Oct2026 17:03:39Z. Installed-image actor renders
+the ORIGINAL map's sky, trees and walls WITH authored grading, correction still
+on. Native controls prove an extensionless colour table lookup caused blackness,
+not invisible geometry. No owner pass yet. On a FRESH client launch load Epiphany:
+is the normal scene visible without a console workaround? Quick owner check
+requested after delivery. Provenance/limits: tools/p952-epiphany.md.
+
+## P950 — Phantasia glass (delivered with952; human check pending)
+
+BOTH Windows delivered with95223Oct2026 17:03:39Z. Isolated final/installed-image
+controls show the checker gone in BOTH CSS and Momentum at a DEMOTED fixture
+derived read-only from Save1. Full/flat/dither and acting unsupported-class/reset
+diagnostics: tools/p950-phantasia.md. No owner pass yet. On a FRESH client launch
+load Phantasia Save1 in each version: proper tinted glass, no giant pink/black
+squares? Quick owner check requested after delivery. This is visual manual
+acceptance only, not performance, evidence or all-assets completeness.
 
 ## P949 — Boreas Save11 mountain (23 Oct 2026)
 PENDING owner in-game confirmation. Native current-Momentum2/1/2 cuts/restores/

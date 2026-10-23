@@ -73,9 +73,11 @@ are the same74 baseline; serial repeats3 inherited warnings,0new. Three VMs0.
 No plugin Git stamp is invented; their provenance is clean source/Full compile,
 freshness and exact hashes.
 
-Installed delivery is held while the owner's primary Windows game is running;
-no process is killed and no swap transaction has begun. Existing native945,
-gameplay/menu programs and owner data are preserved. Owner check is in lextest.md.
-This client-renderer feature needs no Pi/server-runtime or backend change.
-Epiphany's black scene and all other original requests remain separate unfinished
-work, not acceptance criteria silently dropped by this fix.
+Delivery subsequently completed WITH P952, not an intermediate950 swap:
+BOTH Windows14native images23Oct2026 17:03:39Z, exact destination hashes. P952
+source/tag/stamp and final clean Full qualification: tools/p952-epiphany.md.
+Final source952 cohort and installed secondary-image CSS+Momentum controls exit0,
+PNGs inspected. All33protected program/config/content/save hashes unchanged;
+.prev/backups retained, no process killed/Pi/backend or data/menu/progs swap.
+Human visual acceptance stays pending in lextest.md. Epiphany's separate cause
+is now fixed by952; original practice-clock/social/content work remains open.

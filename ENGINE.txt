@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   9f85d87875fe3c1338988c41f9be2ae2559ff5a4
+commit   d982f43de1eb18a89c844c6be1d0733cc049d51b
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,10 @@ commit   9f85d87875fe3c1338988c41f9be2ae2559ff5a4
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-950
-patch    950
+tag      patch-952
+patch    952
+# Patch 952: Epiphany's extensionless colour-correction LUT keeps its authored grade.
+# Default .raw only in that entity context; decoder and evidence/physics unchanged.
 # Patch 950: Phantasia Refract_DX90 glass and unsupported-material diagnostics.
 # Native renderer source moves; no movement, recording or verifier semantics change.
 # Patch 949: Boreas foreground-mountain sky-depth override; client config only.

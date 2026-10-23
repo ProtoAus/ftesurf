@@ -29,11 +29,11 @@
   BSP automatically. The historical surf_dune shadow is now byte-identical to
   Momentum/Pi in the two-pair check. Scope/limits: tools/momentum-preference-audit.md.
 
-## Owner screenshots, 22 Oct 2026 — sampled-image report gaps / black Epiphany
+## Sampled-image report gaps beyond the P950/P952 screenshot fixes
 
 - Phantasia's actual Refract_DX90 glass fallback and unsupported-class report
   are fixed/native-verified in P950 (tools/p950-phantasia.md); that is not the
-  remaining generic image-census or Epiphany case below. No BSP rename or Valve
+  remaining generic image-census case below. No BSP rename or Valve
   asset package is shipped. Human visual acceptance remains in lextest.md.
 - Static mapdeps inventory is not proof of actual sampled images. P947's
   separate cold Autumnal pair proves optional-pack consumption/blacktop repair,
@@ -45,21 +45,10 @@
   texture must report the exact missing reference, then clear on a fresh launch
   with the legitimate asset mounted. Keep real-time/env-only/default materials
   as non-missing controls; do not force every non-VTF fallback into a warning.
-- Epiphany: `surf_epiphany_000.png` shows the whole world black while the HUD
-  draws. Site not isolated yet (world visibility, material/light or fog path).
-  Falsifier: reproduce on the actual installed binary at the saved view, prove
-  world geometry acted, then compare bounded world/material/lighting controls.
-  A newer in-game owner check has been requested, not received. Fresh native939
-  also draws the HUD over black; independent Phantasia/Autumnal worlds draw.
-  Initial lighting/PVS arms were menu-inert. The later explicit-manifest
-  startup recovered active gameplay; cheats enabled AFTER map load and post-set
-  fullbright/drawflat/novis readbacks1 still yield black at a stable body/view.
-  Sky auto1 and hud_mapfx0 also leave black. Unknown r_ignoreareas is NOT an
-  area control; no positive acting lighting branch or root cause is claimed.
-  Static inspection finds HDR-only lighting with matching HDR faces and
-  non-solid BSP leaves at the captured body+22 test points in all three maps;
-  that offset is an assumption, not native camera readback. No decoder/visibility
-  change follows from it. The native VTF ABGR8 and ZIP-LZMA14 paths already exist.
+- Epiphany's actual black-world cause is fixed/native-verified in P952
+  (tools/p952-epiphany.md): extensionless colour LUT, not HDR/PVS/geometry. Human
+  acceptance remains in lextest. Earlier black/unknown-command/camera-assumption
+  diagnostics are retained as historical failures, not used as acceptance.
 
 ## Native shader-remap diagnostic can dereference an absent destination
 

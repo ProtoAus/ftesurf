@@ -21,6 +21,7 @@
 
 ## next
 
+- Restore Epiphany's world instead of a black screen, while keeping its intended colour grading.
 - Restore Phantasia's glass ramps in both CSS and Momentum versions instead of drawing a missing-texture checkerboard.
 - Make `hl2_missing` distinguish unsupported shader classes from missing material files, including later-loaded props.
 ### P949 Boreas mountain
