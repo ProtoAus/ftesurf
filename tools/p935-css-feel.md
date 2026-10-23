@@ -34,7 +34,7 @@ jump/contact edges and visible authored draw/fire. Renderer controls need an
 actual overlapping sprite and drawn weapon, not an empty scene. Save latency
 requires actual load acknowledgement and unchanged body/clock guards.
 
-## Evidence so far (not deployed)
+## Implementation evidence (before final delivery)
 
 - New native Full and subsequent v44-loader build succeed; all three product
   VMs compile with0warnings. Existing ODE/COD/zlib/mathlib/VMT warnings remain;
@@ -116,34 +116,42 @@ Independent review findings and focused corrections:
   findings (read-only reviews, runtime evidence supplied by parent). No player
   data was changed.
 
-Status: implemented, independently reviewed and clean-source Full-built; not yet
-shared-target delivered. The pre-P937-integration clean cohort35345c00d /
-QCae9e483c restores the same clock/body and running shadow recorder; pure cold
-acknowledgment.62s including100ms query wait. A separate2.17s arm also ran native
-version/system-info first and is not called pure load latency. A three-word
-`give weapon usp` diagnostic is invalid syntax and correctly hits the old cheat
-gate; it is NOT a weapon-ready pass.
+## Final development delivery — verified22Oct2026 23:54Z
 
-Integrated clean3afdd0fa3 / QCdb701488 Full build: all3VM0/0/0, no compiler
-diagnostics in changed native units; clangdb regenerated. Requested TWO-word
-`give weapon_usp` ACTS with sv_cheats0/run_shoot0: hidden/default0 -> selected2,
-ready1, actual USP idle, FOV54, callback1/draw-sound1 at Weapon_USP.Slideback.
-Feet remain inactive0/steps0. This proves default opt-in and queued draw sound,
-not listening/visual feel. Source code blobs remain identical to reviews.
+The P936/P937 workstream finished its guarded backend-first rollout at23:18Z,
+before P935 publication. The initial b2f/P933-only preparation was superseded,
+NOT overlaid on that newer cohort. Compatible21c087d1 merges exact live50e7d8f3
+with only the seven reviewed P935 runtime files; all other runtime source is
+exact, including writer13, portraits64 and instrument. Native3afdd0fa3/tag935
+retains P937's EOF ownership fix. Highest applied937; P935 reserved earlier.
+Mainline db701488 writer14 was NOT shipped. Both clean builds compile0/0/0;
+changed native units add no warnings, clangdb regenerated.
 
-Published P937's native raw-buffer ownership fix is integrated without changing
-P935's native source hunks; its frame/key hooks are disjoint from the read-only
-walk-bit observer. Native/QC highest-applied patch is937; P935 was reserved
-before P936/P937. P936's frontend remains backend-first and unpromoted. Another
-workstream is preparing that combined deployment, so shared Windows/lobby swaps
-need one coordinated owner rather than racing independent frozen artifacts.
-No maintenance gate/process is active. Guarded dual Windows and recorder13
-compatible fleet progs, destination/live checks and final retention remain in
-scope. Human visual/aural feel remains in lextest.md. No full combat/ammo,
-qualifying-recording or NanoPi native-promotion claim is implied.
+Actual DELIVERED-cohort cold control: installed5fd6c6790 +50e7 ->3afdd0fa3 +21c,
+17.92s ->.56s to the SAME saved body acknowledgment, with100ms query wait in
+BOTH arms. Exact saved clock/checkpoints/running shadow recorder restored;
+all five originals and five intact private copies retain initial hashes.
+This is one local fixture, not universal latency or qualification evidence.
+The earlier353/ae9 cohort.62s and18.05/.23 profiling history remain separate.
+A2.17s arm ran native system-info first and is NOT pure load. Three-word
+`give weapon usp` is INVALID and correctly hits old cheat policy, not a pass.
 
-Published sources and checksum-pinned clean artifacts, including a recorder13
-backport on actual current P932/P933 baseline, are listed in p935-delivery.md.
-Both mainline and compatible clean builds are0/0/0. These are prepared inputs,
-NOT shared-target deployment evidence; one swap owner/backend-first readiness
-and destination/live checks are still required.
+Standard -Pi from clean21c compiled and hash-swapped both DATs, kept .prev and
+restarted all12 known/empty lobbies. Guarded dual Windows copied ALL26native/
+plugin/DAT/LNO destinations from that SAME clean tested source; source hashes
+match both installs and live Pi. Actual matching menu hash is unchanged from
+P936/P937. Protected configs unchanged; all546Pi configs and27932preexisting
+data entries retain metadata,6new entries; this is NOT full recording hashing.
+All12 actual native/HL2 cohorts unchanged. No native/producer13/14/15 promotion,
+collection/consent activation, release or Build bump.
+
+A fresh owned client used the actual installed native and an EMPTY generated
+CSQC namespace, downloaded exact deployed2d215d40..., then ACTED natural
+`give weapon_usp`: default hidden0 -> selected2/ready1, native USP idle/FOV54,
+callback1/draw-sound1 at Weapon_USP.Slideback, feet inactive0/steps0. Enable feet,
+prove ground1, one actual jump -> contact-seq1/hop-cues1. No account/link/rank
+action. Actor stopped and its exact parked fixture restored. This is emission,
+not human listening/visual acceptance. No full combat/ammo simulation claim.
+
+Exact sources/hashes/UTC and retention: p935-delivery.md. Human model lighting,
+FOV, sound balance and load feel remain explicitly pending in lextest.md.

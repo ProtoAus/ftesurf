@@ -26,18 +26,22 @@ quadrant screenshots and renderer restart pass, with 32px/no-picture controls.
 This is not real-account visual acceptance or a frame-time measurement.
 
 ## P935 - Source presentation and saved-run load (22 Oct 2026)
-Implemented and isolated runtime checks pass; delivery is still pending, not
-implied by this entry. After the matching update, check three small things:
+Matching native3afdd0fa3 / compatible21c087d1 is verified in BOTH Windows
+installs and all12lobbies (22Oct23:54Z); P936/P937 and REC13 retained. This is
+availability/machine evidence, NOT owner acceptance. Restart/reconnect, then
+PENDING human — three small checks:
 - Enable cl_game_sfx 1: walk/crouch quietly and hold jump for repeated hop cues.
-- Give usp/scout/knife/glock: check draw/idle/shot sound and model size/lighting;
-  r_viewmodel_fov defaults to 54 independently of world FOV. Fresh model/Foley
-  defaults are off; existing saved personal cvar choices are not overwritten.
-- Load Goldsrc2 save2: check that the old pause before the count-in is gone.
-The exact large-save cold test improved from 18.05s to .23s with the same body,
-clock and shadow recording; this is measured fixture evidence, not owner
-acceptance. Native edge/data preservation, sprites/depth, aliases, quiet-speed
-and held-jump controls pass. Source feel remains human-only. Details:
-tools/p935-css-feel.md. No full ammo/reload/secondary-fire simulation is claimed.
+- `give weapon_usp` or `give usp` (also scout/knife/glock): check draw/idle/shot
+  sound and model size/lighting. r_viewmodel_fov defaults54 independently of
+  world FOV. Fresh model/Foley defaults0; existing personal choices untouched.
+- Load Goldsrc2 save2: confirm the old pause before count-in feels gone.
+Exact actually delivered-cohort cold control improved17.92s ->.56s, same body,
+clock/checkpoints and shadow recorder. Original/copy hashes intact. The earlier
+18.05/.23 profiling fixture is separate. Fresh live CSQC download, natural give,
+one actual draw callback and server jump-contact/cue ACT; they are not ear/feel
+acceptance. Native edge/data preservation, sprite/depth, quiet-speed and held-hop
+controls pass. Details: tools/p935-delivery.md and tools/p935-css-feel.md.
+No full ammo/reload/secondary-fire simulation or human pass is claimed.
 
 ## P934 — bound keys (22 Oct 2026)
 PENDING owner: after the next game launch, type `bindlist` and confirm the local
