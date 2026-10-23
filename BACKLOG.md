@@ -27,11 +27,33 @@
   reproduce the screenshot view, identify the requested material/texture and
   prove the asset resolution/fallback and missing report. Compare both Phantasia
   builds; do not relabel a BSP or package Valve assets as a repair.
+- 23Oct diagnostic: actual winning BSPs scanned through maproster.resolve, not
+  merely mapdeps.py's mounted-directory inventory. Both Phantasia builds have
+  material references and no dependency buckets; that does not prove the native
+  loader sampled the intended textures. Autumnal's concrete/blacktop_ext_01 VTF
+  resolves in the installed CS:GO Legacy pack, but installed mapdeps.txt has no
+  Autumnal row. Fresh native939 shows checker tops with the surrounding world
+  drawn. A fixture-only Legacy boot mount makes native diagnostics report that
+  texture loaded512x512 BC1_RGB. Its follow-up images show a menu, NOT gameplay:
+  no rendered repair is claimed; the small owner mount/restart check is pending.
+- Reporting seam: plugins/hl2/mat_vmt.c:Shader_LoadVMT counts a missing VMT,
+  not an existing VMT's missing base VTF. mod_vbsp.c:VBSP_MissingAdvice state0
+  also assumes an absent dependency row proves no pack has the asset; that is
+  not sound for a stale/incomplete catalogue. Falsifier: existing VMT/absent base
+  texture must report the exact missing reference, then clear on a fresh launch
+  with the legitimate asset mounted. Keep real-time/env-only/default materials
+  as non-missing controls; do not force every non-VTF fallback into a warning.
 - Epiphany: `surf_epiphany_000.png` shows the whole world black while the HUD
   draws. Site not isolated yet (world visibility, material/light or fog path).
   Falsifier: reproduce on the actual installed binary at the saved view, prove
   world geometry acted, then compare bounded world/material/lighting controls.
-  A newer in-game owner check has been requested, not received.
+  A newer in-game owner check has been requested, not received. Fresh native939
+  also draws the HUD over black; independent Phantasia/Autumnal worlds draw.
+  Readback-qualified lighting/PVS controls were menu-inert, so they do NOT rule
+  out those paths; the earlier images lacked post-set readback. Static inspection finds HDR-only lighting with matching HDR faces and
+  non-solid BSP leaves at the captured body+22 test points in all three maps;
+  that offset is an assumption, not native camera readback. No decoder/visibility
+  change follows from it. The native VTF ABGR8 and ZIP-LZMA14 paths already exist.
 
 ## Owner screenshots, 22 Oct 2026 — sky cuts world/props
 

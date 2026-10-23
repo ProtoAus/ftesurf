@@ -13,8 +13,8 @@ Ordinary development update, not a release or Build bump. qcbuild47 retained.
 - Public QC integration48fffeae7ad8e7d818afed16212d96fbdc4ea903.
 - Actual local MENU from clean compatible258210ea182e75b07b9d57b9a39c20d27908c490,
   published `deploy/requests-20261022-p939-rec13`. No held mainline REC14 program
-  was deployed. Compatible runtime source differs from actual prior21c087 only
-  in SUI; it also restores the previously published P933 double-click code.
+  was deployed by this transaction. Compatible runtime source differs from actual
+  prior21c087 only in SUI; it also restores the previously published P933 double-click code.
   An earlier local backport title called that P929 incorrectly; P933 is correct.
 
 ## Verified and deployed
@@ -62,6 +62,26 @@ restart was attempted; do not downgrade an unidentified newer cohort. Identify
 its source/ownership before integrating or restoring the compatible CSQC. This
 blocks that rollout only, not the broader owner task. No backend PID/provenance
 claim is inferred from an absent service name.
+
+## Later readback — not a second deployment
+
+Current read-only check still matches all18P939 native/plugin/menu targets in
+both Windows installs. QW/CSQC files subsequently changed at03:49:40Z in both
+installs, after our03:33:58Z transaction; they now match the newer artifact pair
+observed on Pi disk. Initial readback did not identify the writer or loaded
+server-memory identity. Subsequently published P938 continuation3cf80573 records
+the03:49:40Z Windows promotion and qualified native/serving handoff; published
+P940 receipt a921ddea identifies its later CSQC aa961fdd update. A fresh read-only
+check matches the P940 QW/CSQC pair in both Windows installs and Pi. That source
+uncertainty is now resolved by the published receipts PLUS current hashes, not
+by hashes alone. This continuation has not uploaded, rolled back or restarted
+gameplay/backend programs. Preserve that newer qualified cohort; the original
+unchanged-progs receipt remains a fact about our original transaction.
+
+Main-menu map-search double-click means SELECT ALL, already demonstrated by
+P933's acted control/subject/replacement arm and both shared-SUI click branches.
+Native console word/triple-click behavior is separate; no new product patch was
+needed to change the already-correct map-search behavior.
 
 ## Retention
 

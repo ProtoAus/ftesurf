@@ -5,6 +5,16 @@ installs and compatible progs on all12lobbies (22October2026 UTC). This is
 availability, NOT human acceptance. Native client fixes require the updated
 Windows engine. Exact sources/readbacks/live proof: tools/p931-delivery.md.
 
+## Map screenshot diagnostic — Autumnal (23 Oct 2026)
+PENDING owner, not a claimed fix: on this machine the installed Source1 CS:GO
+assets are in `csgo legacy/csgo`. If convenient, `fs_load "steam:csgo legacy/csgo"`,
+quit/restart, then load bhop_autumnal: do the checkerboard platform tops become
+textured? This command persists that pack in YOUR mount list and can increase
+startup work; `fs_unload "steam:csgo legacy/csgo"` removes it afterward if desired.
+Our probes changed only an owned fixture's mount list, not yours. They prove
+native loading of concrete/blacktop_ext_01, not the rendered-surface repair.
+Epiphany black-world and the two sky cuts remain open; no visual pass invented.
+
 ## P939 — paste without an approval question (23 Oct 2026)
 Native patch-939 and compatible local MENU source258210ea are installed in BOTH
 Windows sets, hashes verified23Oct03:33:58Z. Four QW/CSQC gameplay DATs stayed
