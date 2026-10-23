@@ -19,12 +19,15 @@ Both Windows installs and12empty lobbies verified, fresh cold CSQC download and
 new audio diagnostics ACTED. REC13/lobby native preserved. Exact receipt/limits:
 tools/p936-p937-delivery.md. Real-account portraits and listening/feel remain
 owner-only acceptance, pending in lextest.md, not a further deployment blocker.
-Global Momentum/build/demo audit is complete (tools/momentum-preference-audit.md):
-Momentum is already the default, with deliberate explicit-CSS/disabled-build/
-loose-BSP exceptions; imported links are observational, not geometry equivalence.
-Primary surf_fantasy has a byte-distinct loose override versus installed Momentum
-and Pi's held/cached-published build; it was NOT replaced without the owner's
-choice. Secondary control install's standalone asset parity is not established.
+The Momentum/build/demo AUDIT is complete (tools/momentum-preference-audit.md),
+not the requested global Momentum end state. Momentum is already the default,
+but explicit-CSS/disabled-build/loose-BSP exceptions remain; imported links are
+observational, not geometry equivalence. Primary surf_fantasy has a byte-distinct
+loose override versus installed Momentum and Pi's held/cached-published build;
+retiring it with its bytes/build-bound history preserved still needs the narrow
+owner decision in BACKLOG.md. Saved choices were not erased. Secondary control
+install's standalone asset parity is unmeasured. These remain open in-scope work,
+not an audit-only substitution for the original map preference request.
 Download audit also complete: R2 uncapped (one2MiB range7.519MiB/s, not engine-
 speed acceptance), BSP identity encoded/original bytes; only Pi origin fallback
 is1MiB/s capped. No integrity/fallback guard was weakened.

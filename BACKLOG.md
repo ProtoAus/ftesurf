@@ -6,6 +6,9 @@
   priority. Primary loose SHA1f04171db504fe5b25e28f01a65110ba5f3173b64 differs
   from installed Momentum and Pi held/cached-published
   fd73ae1b0941b004ad032a45bc8a69b617b97e4c. No map/data/choice changed.
+- The global Momentum preference request remains OPEN: the read-only audit is
+  progress, not delivery of that end state. Other safe requested work continues
+  while this narrow preserve-versus-retire decision is pending.
 - Falsifier: an owned client's actual loaded BSP/checksum matches the intended
   build; preserve the old bytes and build-bound records if the owner chooses a
   switch. The metadata resolver predicts shadowing, not all-package/native trace.

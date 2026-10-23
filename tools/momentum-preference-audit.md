@@ -66,9 +66,13 @@ whether that local override should be preserved or retired with its bytes kept.
 - Boards keep native rows build-bound while configured imported-family rows can
   be displayed together. Source/style/tier attribution remains distinct.
 
-Conclusion: requested audit complete; no global-default code fix established.
-One primary local byte-distinct override needs an owner decision, and standalone
-secondary asset parity remains unmeasured. Different builds cannot be made
-compatible by renaming alone; no timer/evidence/data migration attempted.
+Conclusion: the audit is complete, NOT the owner's requested global Momentum
+end state. No global-default code defect was established, but remaining explicit
+choices/disabled-build/loose overrides cannot silently count as completed global
+canonicalization. One primary byte-distinct override needs the narrow owner
+preserve-versus-retire decision above; standalone secondary asset parity still
+needs tracing. Different builds cannot be made compatible by renaming alone;
+no timer/evidence/data migration was attempted. Continue safe independent work
+while that asset decision is pending; it is not a blocker for the whole task.
 Evidence: owned artifacts/momentum-audit.json and momentum-audit-secondary.json,
 source citations above, sanitized Pi cache/two-BSP measurement in session ledger.
