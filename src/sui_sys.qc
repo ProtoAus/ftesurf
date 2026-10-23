@@ -720,6 +720,22 @@ float  _sui_sel_known;          // ...and whether it said where its text is
 float  _sui_sel_seen;           // ...and the frame it last drew with the keyboard in
 float  _sui_cur_t, _sui_prev_t; // gettime(0) of the last two frames a bracket began in
 float  _sui_sel_drag;           // the mouse is held from a press in that field
+float  _sui_sel_allheld;        // double-click selection survives until release
+string _sui_click_field;
+float  _sui_click_time;
+vector _sui_click_point;
+
+float(string id, vector point) _sui_text_doubleclick =
+{
+	local float twice;
+	twice = (!strcmp(_sui_click_field, id) && _sui_cur_t >= _sui_click_time
+	         && _sui_cur_t - _sui_click_time <= 0.4 && vlen(point - _sui_click_point) <= 6);
+	if (_sui_click_field != "") strunzone(_sui_click_field);
+	_sui_click_field = strzone(id);
+	_sui_click_time = twice ? -1 : _sui_cur_t;
+	_sui_click_point = point;
+	return twice;
+};
 float  _sui_tm_on;              // the next sui_text_input knows where its text is
 float  _sui_tm_x;               // ...its origin, from the field's left edge
 vector _sui_tm_size;            // ...and the size it is drawn at
@@ -1623,14 +1639,21 @@ void(string id, vector pos, vector size, __inout string text, __inout float curs
 			if (!_sui_sel_drag)
 			{
 				_sui_sel_drag = TRUE;
-				_sui_sel_anchor = (_sui_mods & SUI_MOD_SHIFT)
+				_sui_sel_allheld = _sui_text_doubleclick(id, [_cursor_click_x, _cursor_click_y]);
+				if (_sui_sel_allheld)
+				{
+					_sui_sel_anchor = 0;
+					cursor = strlen(text);
+				}
+				else _sui_sel_anchor = (_sui_mods & SUI_MOD_SHIFT)
 					? ((_sui_sel_anchor < 0) ? cursor : _sui_sel_anchor) : at;
 			}
-			cursor = at;
+			if (!_sui_sel_allheld) cursor = at;
 		}
 		else if (_sui_sel_drag && _sui_sel_id == id)
 		{
 			_sui_sel_drag = FALSE;
+			_sui_sel_allheld = FALSE;
 			if (_sui_sel_anchor == cursor || !focus)
 				_sui_sel_anchor = -1;       // a click and not a drag, or let go off the field
 		}
@@ -1640,8 +1663,16 @@ void(string id, vector pos, vector size, __inout string text, __inout float curs
 			// caret goes where the press was.
 			o = pos;
 			sui_transform_box(o, size);
-			cursor = _sui_text_index(text, _cursor_click_x - o_x - _sui_tm_x, _sui_tm_size);
-			_sui_sel_anchor = -1;
+			if (_sui_text_doubleclick(id, [_cursor_click_x, _cursor_click_y]))
+			{
+				_sui_sel_anchor = 0;
+				cursor = strlen(text);
+			}
+			else
+			{
+				cursor = _sui_text_index(text, _cursor_click_x - o_x - _sui_tm_x, _sui_tm_size);
+				_sui_sel_anchor = -1;
+			}
 		}
 	}
 	if (focus)
