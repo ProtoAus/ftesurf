@@ -8,7 +8,10 @@
   camera consumes wall input, before its early return; real zero-time holds stay0.
 - Native not-yet-sent prediction bypasses CSQC even at extrapolate0 (low netfps
   or gaps). Slow practice uses existing cl_nopred1, with exact owned STRING
-  snapshot/restore. Reconcile removed seats at UpdateView from numclientseats.
+  snapshot/restore. At UpdateView refresh ALL actual seats, not just rendered
+  views (native UpdateView selects one seat), then restore the active seat.
+  Never switch seats from Input_Frame: native reloads its input globals.
+  Reconcile removed seats from numclientseats.
   Lock only on OWN-player authority before shortening a command, not an unacked
   request: silent rate rejection otherwise strands prediction. QW tracking stats
   belong to the target; use LT_StatsAreMine, including the native join boundary.
@@ -27,8 +30,12 @@
   normal66.465/s faults0 vs half-speed133.234/s faults1. Space only slow visual
   samples by >=one tick; preserve all in/fzin/event rows and truthful timestamps.
   Fresh/reset/stream-prefix/buffer-recount AND Multi-Session stream spacing state
-  matters. %.4f can turn slightly negative padding into zero. Do not relax the
-  rate check. Native legacy event phase must use existing packet ordinals, not
+  matters. %.4f can turn slightly negative padding into zero. Fresh-2 must emit
+  the first nonnegative pose; restored-1 only reanchors. Do not relax the rate
+  check. Sparse poses cannot disprove a brief board contact: the reader reports
+  unobserved ONLY for pinned counted practice/unfinished traces with a missing
+  non-frozen packet pose. Ranked/dense/no-trace contradictions and malformed
+  boards still fault; no physics/contact verdict is granted. Native legacy event phase must use existing packet ordinals, not
   the presence of optional visual samples; restart pairs with its relocation.
 - A p2 command WRAPS to p1 when only one native seat exists. Dedicated server
   allow_splitscreen defaults off: enable it in the OWNED fixture BEFORE connect

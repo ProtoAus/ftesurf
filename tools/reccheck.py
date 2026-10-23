@@ -1092,6 +1092,8 @@ def check_rec(path, verbose=False, *, data=None):
     in_pk = None            # last packet ordinal
     in_mt = None            # last cumulative mover tick
     in_packets = 0          # distinct packet ordinals
+    pose_packet = None      # (session, pk), constant-space pose coverage only
+    pose_real = pose_seen = pose_board = pose_sparse = False
     in_offgrid = 0          # angles that are not a multiple of the wire quantum
     in_offgrid_ln = None    # v9: first such row, for the fault
     in_badshape = 0         # rows this tool could not parse (reported once)
@@ -1227,6 +1229,8 @@ def check_rec(path, verbose=False, *, data=None):
                 r.fault("line %d: time goes backwards, %.4f after %.4f"
                         % (lineno + 1, t, samples[-1][0]))
             samples.append((t, vals))
+            if t >= 0 and pose_packet is not None:
+                pose_seen = True
             if open_pause is not None:
                 in_paused += 1
                 if in_paused == 1:
@@ -1328,6 +1332,11 @@ def check_rec(path, verbose=False, *, data=None):
                     ang_yaw.append(ang[1])
             if in_pk is None or pk != in_pk:
                 in_packets += 1
+            pose_key = (len(sessions), pk)
+            if pose_key != pose_packet:
+                pose_sparse |= pose_board and pose_real and not pose_seen
+                pose_packet, pose_real, pose_seen, pose_board = pose_key, False, False, False
+            pose_real |= not excluded
             spec_restates(r, lineno + 1, "the 'in' row", mt, carry, spec_pend)
 
             # MONOTONIC, BOTH OF THEM, and neither may go backwards for the same
@@ -1551,6 +1560,7 @@ def check_rec(path, verbose=False, *, data=None):
         elif kind == "board":
             # Build 24, v4.  `board <t> <n> <nx ny nz> <vx vy vz>`.
             boards.append((lineno + 1, tok[1:]))
+            pose_board = True
         elif kind == "ghost":
             # Build 30.  `ghost <0|1> <ticks>` -- the camera detached (1) or came
             # back (0).  Between a 1 and the next 0 the body was running with
@@ -2701,8 +2711,22 @@ def check_rec(path, verbose=False, *, data=None):
         rc = sum(1 for _, v in samples if int(v[9]) & FL_RAMP)
         r.info["ramp_samples"] = rc
         if rc == 0 and boards:
-            r.fault("%d board records but no sample has the ramp-contact bit -- "
-                    "flags bit 16 is not being written" % len(boards))
+            # Missing OPTIONAL poses do not prove absence of contact. This is
+            # only fail-unknown for unranked/unfinished pinned counted traces;
+            # no native replay/physics verdict or ranked admission is granted.
+            sparse = pose_sparse or (pose_board and pose_real and not pose_seen)
+            unranked = (is_int(head.get("flags", ""))
+                        and int(head["flags"]) & TF_PRACTICE)
+            trace = (ver >= 9 and pmpin is not None and inrows > 0
+                     and in_start is not None and not in_badshape
+                     and head.get("clock") == "counted"
+                     and (saw_end is None or in_end is not None))
+            if sparse and trace and (unranked or saw_end is None):
+                r.note("board contact is unobserved in sparse poses -- replay "
+                       "the full inputs; this is not verified contact")
+            else:
+                r.fault("%d board records but no sample has the ramp-contact bit -- "
+                        "flags bit 16 is not being written" % len(boards))
 
     if ver >= 4 and "flags" in head:
         try:

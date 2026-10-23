@@ -3328,8 +3328,63 @@ def case_sv_timer_viewclock_review():
     faults_with(lines, "projected angle tick", "v12 full angle projection is bounded, not OverflowError")
 
 
+def case_sparse_practice_board():
+    """Optional poses cannot disprove contact; they never certify physics."""
+    b = head(build(), "flags", 1)
+    b = edit(b, "sample", 9, 16, PAD + 10)
+    b = edit(b, "sample", 14, .8, PAD + 10)
+    b = edit(b, "sample", 16, .6, PAD + 10)
+    b = after_row(b, 10, "board 0.1 1 0.8 0 0.6 0 0 0")
+    ok_clean(b, "dense practice board has an observed contact pose (acting control)")
+
+    dense = edit(edit(edit(b, "sample", 9, 0, PAD + 10),
+                      "sample", 14, 0, PAD + 10), "sample", 16, 0, PAD + 10)
+    faults_with(dense, "no sample has the ramp-contact bit",
+                "complete practice poses still contradict a missing contact bit")
+    other = [i for i, line in enumerate(dense) if line.startswith("0.1100 ")][0]
+    unrelated = bump_end(dense[:other] + dense[other + 1:], "samples", -1)
+    faults_with(unrelated, "no sample has the ramp-contact bit",
+                "an unrelated packet omission cannot excuse an observed board packet")
+    ix = [i for i, line in enumerate(b) if line.startswith("0.1000 ")][0]
+    sparse = bump_end(b[:ix] + b[ix + 1:], "samples", -1)
+    f, n = run(sparse)
+    check(not f and any("unobserved in sparse poses" in x for x in n),
+          "missing packet pose makes practice contact unobserved, not absent")
+    check(any("not verified contact" in x for x in n),
+          "structural acceptance explicitly does not certify native contact")
+    faults_with(head(list(sparse), "flags", 0), "no sample has the ramp-contact bit",
+                "the same sparse contradiction still faults a finished ranked file")
+    faults_with(head(list(sparse), "pmpin", None), "no sample has the ramp-contact bit",
+                "sparse poses without a native pin never acquire the exception")
+    faults_with(edit(sparse, "board", 3, 2), "normal has length",
+                "unobserved pose never excuses a malformed board normal")
+    bad = after_row(sparse, 11, "board 0.11 0 0.8 0 0.6 0 0 0")
+    faults_with(bad, "board counter", "unobserved pose never excuses a backwards board counter")
+    prefix = head(drop_kinds(list(sparse), ("end", "inend")), "flags", 0)
+    f, n = run(prefix)
+    check(any("no 'end' record" in x for x in f)
+          and any("unobserved in sparse poses" in x for x in n),
+          "unfinished .rec stays faulted; provisional contact is only unobserved")
+    no_trace = head(build(inputs=False), "flags", 1)
+    no_trace = insert_before(no_trace, "end", "board 0.1 1 0.8 0 0.6 0 0 0")
+    faults_with(no_trace, "no sample has the ramp-contact bit",
+                "missing raw inputs never grant the sparse-pose exception")
+
+
+def case_sv_sample_fresh_cursor():
+    """Static source contract, NOT a substitute for native execution."""
+    p = os.path.join(HERE, "..", "src", "server", "sv_timer.qc")
+    with open(p, encoding="utf-8") as fh:
+        source = fh.read()
+    line = source.split("void(entity e, float t, vector org", 1)[1].split("void(", 1)[0]
+    check("if (e.rec_rec_samplet == -2)" in line,
+          "QC source distinguishes fresh cursor from restored prefix")
+    check("e.rec_rec_samplet = -2;" in source and "e.rec_rec_samplet = -1;" in source,
+          "QC source initializes fresh and restored paths with distinct sentinels")
+
+
 def main():
-    for fn in (case_sv_resume_parkclock, case_sv_timer_viewclock, case_sv_timer_viewclock_review, case_control,
+    for fn in (case_sparse_practice_board, case_sv_sample_fresh_cursor, case_sv_resume_parkclock, case_sv_timer_viewclock, case_sv_timer_viewclock_review, case_control,
                case_no_horizon, case_horizon_without_rows,
                case_trailer_width, case_trailer_count,
                case_row_width,

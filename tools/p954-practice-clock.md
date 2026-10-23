@@ -1,8 +1,8 @@
 # P954 — per-player practice slow motion
 
-Status: R4 client-boundary corrections in progress after three independent R3
-reviews. Final native decoder build/positive+negative checks passed; corrected
-VM build, runtime acceptance, re-review and deployment pending. Historical
+Status: R5 bounded sampling/view corrections in progress after independent R4
+review. Native decoder qualification and R4 runtime/boundary controls passed;
+changed-seam checks, fresh re-review and deployment pending. Historical
 measurements below are r1/r2 only. This is ordinary development work, not a release or Build-number bump.
 
 ## Behaviour and boundaries
@@ -21,6 +21,8 @@ watching somebody else never acquires it. Refused/rate-limited requests hold no
 prediction override. Restore the exact previous cvar STRING after the last slow
 local seat returns to1, disappears, or VM shutdown, only while still owned.
 Local-seat requests/queries preserve their `pN` owner and fractional carry.
+Render checks refresh every actual seat, not just the native-selected render
+seat, then restore the active native seat. Input-frame checks never switch contexts.
 
 Slow requests require `cl_threadedphysics 0`; the native input thread bypasses
 CSQC. Turning it on while slow is guarded at render rate, with exact owned
@@ -31,13 +33,18 @@ observe/join is NOT a fresh connection: an existing userid-keyed VM-only taint
 cache preserves practice across its entity clear; a new userid/map clears it.
 
 No new native input API/producer/counter, stored clock/evidence field, schema,
-on-disk syntax, detector/tolerance or collection change. The authoritative grammar
+on-disk syntax, native detector/tolerance or collection change. The authoritative grammar
 now explicitly documents optional body samples and existing ordinal phase. Native pin/tag move to P954:
 legacy replay event order now uses existing packet ordinals rather than visual
 sample presence, and paired restarts inherit their relocation's phase. Slow visual/body
 samples are spaced by at least one physics tick of truthful simulated time;
 full input/frozen-input/event rows remain intact. Restored prefix spacing is
-conservatively re-anchored without adding saved-state columns.
+conservatively re-anchored without adding saved-state columns. Fresh streams
+retain their first nonnegative pose even without pre-roll. A board contact in a
+demonstrably omitted pose is unobserved, not disproven: only pinned counted
+practice/unfinished traces receive that structural note. Ranked/dense/no-trace
+contradictions and malformed boards still fault. Incomplete files stay faulted.
+The note certifies no native physics/contact result or ranked admission.
 
 ## Prior r1/r2 local verification (R3 requires fresh acceptance)
 

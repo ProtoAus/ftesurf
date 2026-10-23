@@ -1069,7 +1069,6 @@ void() TimeScale_Seats =
 {
 	local float i, seats, active;
 
-	TimeScale_Observe();
 	seats = bound(1, numclientseats, RUN_TS_SEATS);
 	active = FALSE;
 	for (i = 0; i < RUN_TS_SEATS; i = i + 1)
@@ -1093,6 +1092,26 @@ void() TimeScale_Seats =
 		TimeScale_PredictRelease();
 		TimeScale_ThreadRelease();
 	}
+};
+
+// View-only: native view count may hide an active input seat. Never do this
+// inside Input_Frame: changing active seats reloads the native input globals.
+void() TimeScale_ViewSeats =
+{
+	local float seat, i, seats;
+
+	seat = getproperty(VF_ACTIVESEAT);
+	if (seat >= 0 && seat < RUN_TS_SEATS)
+	{
+		seats = bound(1, numclientseats, RUN_TS_SEATS);
+		for (i = 0; i < seats; i = i + 1)
+		{
+			setproperty(VF_ACTIVESEAT, i);
+			TimeScale_Observe();
+		}
+		setproperty(VF_ACTIVESEAT, seat);
+	}
+	TimeScale_Seats();
 };
 
 // P954: retain sub-ms duration per local seat; native fixed ticks stay unchanged.
@@ -1656,7 +1675,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	local vector scr, wp_baseview;
 	local float navfocus;
 
-	TimeScale_Seats();
+	TimeScale_ViewSeats();
 	scr = [vwidth, vheight];
 
 	// Build 13: the view lock, BEFORE the scene is set up.  Input frames run at

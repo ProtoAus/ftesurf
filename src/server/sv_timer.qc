@@ -2101,7 +2101,7 @@ void(entity e) SV_TimerMapTeleport =
 .float  rec_rec_lines;           // lines in it: the buf_writefile count
 .float  rec_rec_n;               // samples written since `begin`
 .float  rec_rec_padn;            // how many of them were padding
-.float  rec_rec_samplet;         // P954: runtime sample spacing; negative after prefix restore
+.float  rec_rec_samplet;         // P954: spacing cursor; -2 fresh, -1 restored prefix
 .float  rec_rec_cp;              // checkpoints crossed
 .float  rec_rec_full;            // said once that this run hit its line cap
 .float  rec_rec_lastbc;          // v4: last run_boardcount a `board` record covered
@@ -3711,8 +3711,13 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             the sample carries the post-clip velocity, which is
                             the whole point of build 19's fix.
 
+                            Sparse optional poses can omit the contact bit even
+                            though this record retains the arrival; absence in
+                            poses alone does not disprove that contact. It needs
+                            full-input simulation, not a guessed plane/flag.
+
                             ONE RECORD CAN STAND FOR SEVERAL BOARDS.  Samples are
-                            written per received PACKET and a packet can carry
+                            written at most per received PACKET; a packet can carry
                             four usercmds, so the counter may have moved by more
                             than one; <n> is written so a reader can see that it
                             did rather than assume it did not.  A run that boards
@@ -4182,14 +4187,23 @@ void(entity e, float t, vector org, vector vel, vector mv,
 	if (SV_TimeScaleTainted(e))
 	if (t >= -0.00005)
 	{
-		if (e.rec_rec_samplet < 0 || t < e.rec_rec_samplet)
+		if (e.rec_rec_samplet == -2)
 		{
-			// A restored prefix can end at this time: wait a tick, never duplicate it.
-			e.rec_rec_samplet = max(0, t);
-			return;
+			// Fresh open has no prior nonnegative pose, even with no padding.
+			if (t < 0)
+				return;
 		}
-		if (t - e.rec_rec_samplet < run_t_tick)
-			return;
+		else
+		{
+			if (e.rec_rec_samplet < 0 || t < e.rec_rec_samplet)
+			{
+				// Restored prefix may end here: reanchor, never duplicate it.
+				e.rec_rec_samplet = max(0, t);
+				return;
+			}
+			if (t - e.rec_rec_samplet < run_t_tick)
+				return;
+		}
 	}
 	// FOUR sprintfs: fteqcc silently drops varargs beyond eight.
 	SV_RecPut(e, strcat(sprintf("%.4f %.2f %.2f %.2f ", t, org_x, org_y, org_z),
@@ -5467,7 +5481,7 @@ void(entity e) SV_RecOpen =
 	e.rec_rec_stream = FALSE;
 	e.rec_rec_flagofs = -1;
 	e.rec_rec_lines = e.rec_rec_n = e.rec_rec_padn = e.rec_rec_cp = 0;
-	e.rec_rec_samplet = 0;
+	e.rec_rec_samplet = -2;
 	e.rec_rec_full = FALSE;
 	/*
 	  BUILD 82.  Both reset here and nowhere else, because this is the one place
@@ -7636,9 +7650,10 @@ float(entity e, string path, float mark, float serial,
 };
 
 /*
-  v4: emit a `board` record if the engine's counter moved since the last sample.
+  v4: emit a `board` record if the engine's counter moved since the last check.
 
-  CALLED BEFORE THE SAMPLE, not after, and the ordering is what a reader depends
+  CALLED BEFORE THE OPTIONAL SAMPLE, not after; sparse poses cannot drop this
+  arrival record. When a sample is retained, the ordering is what a reader depends
   on.  The board is the thing that happened DURING the move this sample reports
   the end of, so the pre-clip velocity it carries belongs with the state going in
   -- a reader walking the file in order must see the board before it sees the
