@@ -23,8 +23,8 @@ availability, NOT human acceptance. Native client fixes require the updated
 Windows engine. Exact sources/readbacks/live proof: tools/p931-delivery.md.
 
 ## P944 - personal Max Fog event (23 Oct 2026)
-PENDING owner; source/native fixtures verified, delivery is not yet claimed.
-After the matching delivery receipt/reconnect, play Event27 (Zoomathon Max Fog):
+PENDING owner; deployed and API-verified23Oct10:09Z (tools/p944-maxfog.md).
+After reconnect, click Play on Event27 (Zoomathon Max Fog):
 does dense grey fog make it the intended challenge? `cmd maxfog 0` should restore
 normal authored fog; `cmd maxfog status` reports the mode and whole-run eligibility.
 If a second client/friend is available, confirm their ordinary view stays clear.

@@ -17,6 +17,9 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
+import secrets
+import shlex
 import shutil
 import subprocess
 import sys
@@ -26,6 +29,24 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parent.parent
 REMOTE = "/srv/nvme/surfd/data/story.txt"
+
+
+def promotion_command(stage, want, expected=None):
+    """One guarded rename; never overwrite a catalogue changed since inspection."""
+    if not re.fullmatch(r"[0-9a-f]{64}", want) or (expected is not None and
+            not re.fullmatch(r"[0-9a-f]{64}", expected)):
+        raise ValueError("expected a full SHA256")
+    s, dst = shlex.quote(stage), shlex.quote(REMOTE)
+    check = f'test "$(sha256sum -- {s} | cut -d " " -f1)" = {shlex.quote(want)}'
+    cleanup = (f'if test -f {s}; then if {check}; then rm -- {s}; '
+               'else echo "owned Story stage changed; retained" >&2; fi; fi')
+    guard = ""
+    if expected is not None:
+        guard = (f'if test -L {dst} || ! test -f {dst} || '
+                 f'test "$(sha256sum -- {dst} | cut -d " " -f1)" != {shlex.quote(expected)}; '
+                 'then echo "Story predecessor changed; refusing promotion" >&2; exit 23; fi; ')
+    return (f'set -e; trap {shlex.quote(cleanup)} EXIT; test ! -L {s}; {check}; '
+            f'{guard}chmod 600 {s}; mv -f -- {s} {dst}; sha256sum -- {dst}')
 
 
 def parse(text):
@@ -74,9 +95,12 @@ def main():
     ap.add_argument("--file", default=str(ROOT / "surfd" / "story.txt"))
     ap.add_argument("--check", action="store_true", help="check only, copy nothing")
     ap.add_argument("--force", action="store_true", help="push maps the Pi does not serve yet")
+    ap.add_argument("--expected-live-sha256", help="refuse if the inspected live catalogue changed")
     ap.add_argument("--host", default="proto@192.168.1.102")
     ap.add_argument("--board", default="https://play.proto.bar")
     a = ap.parse_args()
+    if a.expected_live_sha256 is not None and not re.fullmatch(r"[0-9a-f]{64}", a.expected_live_sha256):
+        ap.error("--expected-live-sha256 requires a full lowercase SHA256")
 
     data = Path(a.file).read_bytes()
     lists, problems, unspotted = parse(data.decode("utf-8", "replace"))
@@ -113,10 +137,10 @@ def main():
     if a.check:
         print("checked, rev %s; not copied" % rev)
         return
-    tmp = REMOTE + ".push"
+    tmp = REMOTE + ".push-" + secrets.token_hex(8)
     subprocess.run(["scp", "-q", "-o", "BatchMode=yes", a.file, "%s:%s" % (a.host, tmp)], check=True)
     subprocess.run(["ssh", "-o", "BatchMode=yes", a.host,
-                    "chmod 600 %s && mv -f %s %s && sha256sum %s" % (tmp, tmp, REMOTE, REMOTE)], check=True)
+                    promotion_command(tmp, hashlib.sha256(data).hexdigest(), a.expected_live_sha256)], check=True)
     for _ in range(20):
         try:
             with urllib.request.urlopen("%s/api/board?story=list" % a.board, timeout=10) as r:
