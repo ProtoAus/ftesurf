@@ -84,7 +84,8 @@ class Counts(unittest.TestCase):
         observed=[]
         def runner(map_dir,paths):
             observed.extend(paths)
-            return (section(paths[0],'9 record(s): what the input ring delivered is what the view read', 'PASS ticks 662 rows 80')+
+            return suite.input_bound_stub(self.sw, paths,
+                    section(paths[0],'9 record(s): what the input ring delivered is what the view read', 'PASS ticks 662 rows 80')+
                     section(paths[1],None,'HOLD control')+['VERIFY '+paths[2]+' REFUSE early control']+
                     ['pm_recsim '+paths[3], 'counts    none -- the client predates Patch 376'])
         result=self.sw.sweep(self.c,50,runner=runner,now=9999999999)

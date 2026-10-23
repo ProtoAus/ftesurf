@@ -63,6 +63,7 @@ class Sources(unittest.TestCase):
             acted.extend(paths)
             output = sum((controls.section(p, '7 record(s): what the input ring delivered is what the view read',
                                   'PASS ticks 662 rows 634') for p in paths), [])
+            output = suite.input_bound_stub(self.sw, paths, output)
             if action:
                 action()
             return output

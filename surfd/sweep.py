@@ -40,6 +40,7 @@ import logging
 import math
 import os
 import re
+import secrets
 import subprocess
 import sys
 import time
@@ -258,6 +259,45 @@ def parse(lines):
     return out
 
 
+def parse_sources(lines):
+    """Trusted runner output -> one pre-verdict loaded-buffer SHA per path."""
+    out, finished = {}, set()
+    for raw in lines:
+        line = re.sub(r"\^(?:[0-9]|x[0-9a-fA-F]{3})", "", raw.strip())
+        verdict = VERIFY_RE.match(line)
+        if verdict:
+            finished.add(verdict[1])
+            continue
+        prefix = re.match(r"^VERIFY-SOURCE\s+(\S+)(?:\s|$)", line)
+        if not prefix:
+            continue
+        path = prefix[1]
+        full = re.fullmatch(r"VERIFY-SOURCE\s+\S+\s+SHA256\s+([0-9a-f]{64})", line)
+        out[path] = full[1] if full and path not in out and path not in finished else None
+    return out
+
+
+def authenticated_sources(lines, challenge):
+    """Only a fresh native INPUT report may create a normalized SOURCE line.
+
+    Console/map text cannot supply a normalized binding directly. The challenge
+    authenticates report origin within the trusted verifier process, not its OS.
+    """
+    out = []
+    for raw in lines:
+        line = re.sub(r"\^(?:[0-9]|x[0-9a-fA-F]{3})", "", raw.strip())
+        if line.startswith("VERIFY-SOURCE"):
+            continue
+        prefix = re.match(r"^VERIFY-INPUT\s+(\S+)(?:\s|$)", line)
+        if prefix:
+            full = re.fullmatch(r"VERIFY-INPUT\s+\S+\s+SHA256\s+([0-9a-f]{64})\s+CHALLENGE\s+(b[0-9a-f]{32})", line)
+            digest = full[1] if full and full[2] == challenge else "INVALID"
+            out.append("VERIFY-SOURCE %s SHA256 %s" % (prefix[1], digest))
+        else:
+            out.append(raw)
+    return out
+
+
 def parse_counts(lines):
     """Observe counts only within the engine's matching pm_recsim/VERIFY section."""
     out, active, observation, seen = {}, None, None, False
@@ -308,14 +348,17 @@ def run_verifier(map_dir, paths):
            "+set", "sv_public", "0", "+set", "sv_port", str(PORT),
            "+set", "rec_enable", "0", "+set", "lobby_master", "",
            "+map", map_dir, "+wait", "+wait", "+wait"]
+    challenge = "b" + secrets.token_hex(16)
     for p in paths:
-        cmd += ["+pm_verify", p]
+        cmd += ["+pm_verify", p, challenge]
     cmd += ["+quit"]
     try:
         res = subprocess.run(cmd, cwd=GAME, capture_output=True, text=True,
                              errors="replace", timeout=MAP_TIMEOUT,
                              preexec_fn=_oom_first)
-        return res.stdout.splitlines() + res.stderr.splitlines()
+        if res.returncode != 0:
+            return ["sweep: verifier exited unsuccessfully (%d)" % res.returncode]
+        return authenticated_sources(res.stdout.splitlines() + res.stderr.splitlines(), challenge)
     except (subprocess.TimeoutExpired, OSError) as exc:
         return ["sweep: verifier failed: %s" % exc]
 
@@ -369,10 +412,15 @@ def sweep(conn, limit, runner=None, now=None):
 
     for map_dir, items in sorted(bymap.items()):
         lines = list(runner(map_dir, [p for _, p, _ in items]))
-        verdicts, observations = parse(lines), parse_counts(lines)
+        verdicts, observations, inputs = parse(lines), parse_counts(lines), parse_sources(lines)
         for row, path, sha in items:
             v, reason, ticks = verdicts.get(path, ("ERROR", "no VERIFY line", -1))
             measured = observations.get(path)
+            if v != "ERROR":
+                if inputs.get(path) != sha:
+                    reason = ("verifier consumed bytes differ from admitted recording" if inputs.get(path)
+                              else "verifier has no unambiguous loaded-input binding")
+                    v, ticks, measured = "ERROR", -1, None
             # A trajectory PASS alone cannot badge a different indexed duration.
             # Evidence/abandon promotion has its own contract, not a board time.
             if row["kind"] == "run" and v == "PASS":
