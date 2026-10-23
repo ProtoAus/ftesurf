@@ -49,8 +49,9 @@
 - Double-click a textbox to select all its text. Normal clicks, dragging and slow separate clicks still work.
 
 ### P932 Watch KSF runs on linked Momentum maps
-- KSF recordings can play on their configured Momentum map versions, including surf_chateau. Original KSF files and downloaded recordings use the same map links; unrelated maps are still refused.
-- Linked recordings keep their actual source-map name and imported status. Downloaded recordings can be watched again from cache without fetching the same file twice.
+- KSF demos can play on linked Momentum map versions, including surf_chateau_fix recordings on surf_chateau. Original KSF files and downloaded recordings use the same configured links.
+- Pause and seek while watching a linked recording. Changing maps ends playback, and unrelated maps are still refused.
+- Linked recordings keep their real source-map name and imported/unverified status. Downloaded recordings can be watched again from cache without another download.
 
 ### P931 Bring a knife—or a Glock
 - Add mounted CS:S knife, USP, Scout and Glock viewmodels with idle/fire animations and shot sounds. Select with surf_weapon knife, usp, scout or glock; existing save keys stay unchanged.
