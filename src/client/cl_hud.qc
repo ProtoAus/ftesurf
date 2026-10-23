@@ -212,6 +212,7 @@ float  rec_sb_open;             // the leaderboard is up
 // 256 is UIC_ZONEEDIT, defined in cl_zoneedit.qc (Patch 669).
 #define UIC_KEYCFG   512        // cl_keycfg.qc    -- the key configuration panel (Patch 762)
 #define UIC_CHAT     1024       // cl_chat.qc      -- the open chat panel (Patch 821)
+#define UIC_WEAPON   2048       // cl_weaponui.qc  -- local knife workshop
 
 float ui_cursor_claims;         // bitmask of UIC_*; 0 means the game has the mouse
 

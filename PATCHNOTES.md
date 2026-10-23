@@ -21,6 +21,11 @@
 
 ## next
 
+### P957 Legacy knife workshop
+- Equip mounted CS:GO Legacy Butterfly or M9 knives with butterfly or m9, and play their inspect animation with inspect. Requires installed Legacy content and an updated client; CSS knife remains available with knife_css.
+- Type knife_menu for a small local Original/Fade/Web/Marble workshop with pattern seed, scale, rotation, fade amount and wear. These are local cosmetic previews, not Steam inventory or exact CS paint kits.
+- If Legacy content is not mounted, selection stays unchanged and the console explains the one-time trusted mount command. No Valve assets are downloaded or bundled.
+
 ### P955 Source weapon touch-ups
 - Glock single fire no longer kicks the camera; three-round bursts retain their gentle kick.
 - Scout secondary attack cycles two zoom levels and back out, with the mounted CSS scope graphic and zoom sound. Firing temporarily unscopes for the bolt, then restores your zoom.

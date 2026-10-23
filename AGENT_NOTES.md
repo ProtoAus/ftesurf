@@ -1,5 +1,27 @@
 # AGENT_NOTES.md
 
+## P957 — Legacy include poses, matrix stride and mount trust (24 Oct 2026)
+
+Butterfly/M9 v49 root MDLs refer to direct named-bone animation groups; root-only
+clip tables are empty. Bone order differs: map names, then use base poses for
+unanimated bones. quat64 and fixed48 differ from older compressed lanes. A
+numerically correct decoder still produced stretched hands: HL2WeaponFrame's
+void* parameter received a [256][12] array, and ptr+frame advanced by the WHOLE
+array, not one float[12] matrix. Use an explicit typed matrix pointer; the
+multi-frame control must read every frame, not just frame0/bone0. A native pose
+vs skel_build/copy absolute round-trip and actual pixels separated the storage
+fault from shader, bone-name mapping and arm binding. Temporary pose/rest/trace
+commands were removed. Final native controls use the actual shared helper.
+
+CSQC localcmd fs_load is correctly insecure and rejected. A mounted prototype
+concealed this until a cold-unmounted actor ACTED: loading message, explicit
+refusal, empty model. Do not waive the native trust check or claim auto-mount.
+Retain selection on absence, print the explicit trusted-console mount, and let
+reselection retry the model after an operator mounts it. Park/restore only the
+owned fixture's fs_addons.txt; the original bytes/hash were restored after quit.
+The workshop shader is shipped by the existing ftesurf/glsl allowlist; do not
+bundle the mounted Valve model/arms/paint/sound assets.
+
 ## P952 — Epiphany blackness was a LUT path, not HDR/PVS (24 Oct 2026)
 
 Actual winning Epiphany has corresponding valid HDR/LDR faces and HDR-only light;

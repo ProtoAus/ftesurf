@@ -360,6 +360,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	GA_Register();                 // local movement Foley from mounted CSS
 	MA_Register();                 // opt-in local altitude tone and A/D drums
 	WP_Register();                 // mounted viewmodels, no bind overrides
+	WPU_Register();
 	MapMsg_Init();                  // Patch 870, map text and screen effects
 	Ropes_RegisterCvars();          // Patch 874, env_sun and ropes
 	Trig_RegisterCvars();           // Patch 335, predicted triggers
@@ -1250,6 +1251,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Results_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
 
+	if (WPU_Input(evtype, scanx, chary, devid)) return TRUE;
 	if (av_open)
 		if (Av_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
@@ -1988,6 +1990,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  actually share a frame -- the ordering is the belt to that braces.
 		*/
 		Av_Draw(scr);
+		WPU_Draw(scr);
 		Friends_Finish();
 
 		// And the leaderboard over THAT: it is opened from inside a replay to
@@ -2074,6 +2077,7 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (GA_Command()) return TRUE;
 	if (MA_Command()) return TRUE;
 	if (WP_Command()) return TRUE;
+	if (WPU_Command()) return TRUE;
 	if (argv(0) == "milk_skyinfo")
 	{
 		MilkSky_Info();
