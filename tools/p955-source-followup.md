@@ -17,7 +17,11 @@ prototype. Its hand rendering still fails visual acceptance. It is retained,
 not declared complete or cancelled; see ROADMAP.md. No Valve data redistributed.
 No native, movement/input/evidence-format/schema/backend change.
 
-## Predictions and acting controls (24 Oct 2026 UTC)
+## Predictions and acting controls (23 Oct 2026 UTC)
+
+Clock clarification: engine logs/filenames use local UTC+11, hence their24Oct
+06:48..07:20 labels are23Oct19:48..20:20UTC. Earlier draft labels saying24Oct
+UTC were wrong. Original evidence names/timestamps are retained, NOT redated.
 
 Existing src/build.ps1 -Jobs8 -NoDeploy, pwsh7: all three VMs0warnings.
 The transport source build is p955-css-download-build.log. A final scope-off
@@ -70,10 +74,37 @@ the player's licensed, locally mounted CSS install. No licensed data copied to G
 
 ## Delivery state
 
-Verified source, not yet deployed at this commit. A subsequent receipt update
-must record clean committed rebuild, BOTH Windows destinations and the ordinary
-player-guarded Pi progs/asset promotion, hashes and live proof. Do not infer
-installed state from a build/commit. No new release requested or performed.
+DELIVERED product source c36d16f208908ff16db7f1544892038fde4e281d, clean
+committed worktree. Post-commit NoDeploy build (p955-committed-build.log) and
+normal build/Pi entrypoint both built three VMs0warnings. No native rebuild.
+
+BOTH Windows verified23Oct2026 20:33:03.983227UTC:14destination hashes
+(three DATs/three LNOs/original mesh per install),24protected native/config/
+identity hashes unchanged. Primary explicit copy kept .prev, secondary used
+existing build deployment. Config/data paths excluded from the copy whitelist;
+no owner game/process was closed or killed.
+
+Ordinary src/build.ps1 -Jobs8 -Pi -QuakeDir C:/FTEQuake: all12fresh directory
+rows0players, uploaded/verified both progs, swapped retaining .prev, restarted
+all12units. Mesh promoted separately BEFORE progs. Destination readback by
+23Oct2026 20:35:21UTC: both progs+mesh exact, both .prev match observed serving
+predecessors,548protected cfg/native hashes unchanged and12active units.
+One initial read-only snapshot trailer incorrectly used bin/* instead of the
+documented game/fteqw-svarm64 path; exit1 occurred BEFORE upload. Preserved the
+successful cfg/progs prefix, corrected only native snapshot path, then continued.
+No failed transaction bypass, forced player restart or native rollback.
+
+Source hashes: qwprogs ef46ba3b65056ead556ef1269b398a4b17b5ce88fdf28fd795973f82abb073b6;
+csprogs bd0595ea7215472c957dc28ffde7e2766eb920fda52373fd3be9840089b31788.
+Mesh hash above. Existing pi_lobby_smoke.py: actual lobby27520 client exit0,
+exact served CSQC hash, board cols9/type14, no QC error, screenshot captured and
+inspected. Zero smoke failures, own child exited normally. That smoke includes
+tracked models; the separate mesh-absent local-socket test supplies cold mesh
+transport proof. No consent settings simulated or bypassed in either test.
+
+Private local receipts: p955-windows-delivery.json; p955-pi-after.txt;
+p955-deploy-build.log; p955-pi-live.log. No new release requested/performed.
+Build89/release0.1.30/native953 remain unchanged.
 
 Owner-only sound/look/feel acceptance remains PENDING in lextest.md. There is
 no exact CSS parity, all-asset completeness or sustained-FPS claim.
