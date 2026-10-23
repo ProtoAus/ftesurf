@@ -162,6 +162,7 @@ void() CSQC_WorldLoaded =
 	// fog keys on worldspawn -- which is the only place the engine's own fog
 	// parser looks -- so until this ran, every fogged map drew flat.  cl_fog.qc.
 	Fog_LoadFromWorld();
+	Fog_EventWorld();
 
 	// Build 49.  The volumetric and emissive entities, out of the same lump and
 	// here for the same reason -- func_dustmotes alone is 4999 instances across

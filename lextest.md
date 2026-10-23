@@ -5,6 +5,18 @@ installs and compatible progs on all12lobbies (22October2026 UTC). This is
 availability, NOT human acceptance. Native client fixes require the updated
 Windows engine. Exact sources/readbacks/live proof: tools/p931-delivery.md.
 
+## P944 - personal Max Fog event (23 Oct 2026)
+PENDING owner; source/native fixtures verified, delivery is not yet claimed.
+After the matching delivery receipt/reconnect, play Event27 (Zoomathon Max Fog):
+does dense grey fog make it the intended challenge? `cmd maxfog 0` should restore
+normal authored fog; `cmd maxfog status` reports the mode and whole-run eligibility.
+If a second client/friend is available, confirm their ordinary view stays clear.
+Opening Zoomathon normally from the map browser must not start a new fog attempt.
+Native screenshots, direct-command locks and full-finish facts1/0/0 are automated
+checks, not your acceptance or a hostile-renderer guarantee. Existing gold remains
+finish-only while the owner chooses whether to preserve legacy credit or require
+new whole-fog completion; no policy answer or medal conversion has been invented.
+
 ## Map screenshot diagnostic — Autumnal (23 Oct 2026)
 PENDING owner, not a claimed fix: on this machine the installed Source1 CS:GO
 assets are in `csgo legacy/csgo`. If convenient, `fs_load "steam:csgo legacy/csgo"`,

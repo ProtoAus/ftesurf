@@ -13825,6 +13825,7 @@ void(entity e) SV_TimerStart =
 	e.run_momon = vbsp_momtrig;     // Patch 869: before SV_RecOpen writes `momtrig`
 	e.run_t_ticks = 0;
 	e.lobby_sty_fails = e.lobby_sty_mask = e.lobby_sty_top = 0;     // Patch 856
+	e.lobby_sty_maxfog = e.eventfog_on;   // not a finish-time client claim
 	e.lobby_sty_ok = TRUE;
 
 	/*
@@ -14521,6 +14522,7 @@ void(entity e) SV_StoryFrame =
 
 	if (e.run_t_state != TS_RUNNING)
 		return;
+	if (!e.eventfog_on) e.lobby_sty_maxfog = FALSE;
 	if (e.run_t_frzon)
 		return;
 	m = e.lobby_sty_mask;

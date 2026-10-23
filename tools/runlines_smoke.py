@@ -9,6 +9,7 @@ read through junctions; only junctions we created are removed, never targets.
 import argparse
 import hashlib
 import pathlib
+import re
 import shlex
 import shutil
 import socket
@@ -17,6 +18,16 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CONTENT_DIRS = ('maps', 'gfx', 'glsl', 'models', 'particles', 'scripts')
+
+
+def dedicated_cfg(text, mapname, port):
+    """Rewrite actual map commands, never a cvar's `_map <name>` suffix."""
+    name = re.escape(mapname)
+    pattern = r'(?m)^([ \t]*)map[ \t]+(?:"' + name + r'"|' + name + r')([ \t]*(?://[^\r\n]*)?)\r?$'
+    result, count = re.subn(pattern, lambda m: m[1] + f'connect 127.0.0.1:{port}' + m[2], text)
+    if not count:
+        raise ValueError(f'cfg has no "map {mapname}" line to turn into a connect')
+    return result
 
 
 def main():
@@ -128,9 +139,7 @@ def main():
                 raise ValueError('Use a dedicated lobby-range port')
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
                 probe.bind(('127.0.0.1', a.port))
-            if f'map {a.map}\n' not in text:
-                raise ValueError(f'cfg has no "map {a.map}" line to turn into a connect')
-            text = text.replace(f'map {a.map}\n', f'connect 127.0.0.1:{a.port}\n')
+            text = dedicated_cfg(text, a.map, a.port)
         target.write_text(text, encoding='utf-8')
         (gd / 'downloads/csprogsvers').mkdir(parents=True)
         subprocess.run(['python', str(ROOT / 'tools/seed_csprogs.py'), str(gd / 'csprogs.dat')],

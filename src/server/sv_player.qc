@@ -94,6 +94,7 @@ void() PutClientInServer =
 	// client's copy of the key arrives some frames after it draws (cl_story.qc).
 	if (infokey(self, "*story") != "")
 		forceinfokey(self, "*story", "");
+	EventFog_Emit(self, FALSE);    // respawn retains this player's actual mode
 
 	// Patch 382: `kill` while spectating -- before SV_TimerSpawn idles the recorder.
 	SV_SpecRelease(self, "respawn");
@@ -272,6 +273,7 @@ void() PutClientInServer =
 void() ClientConnect =
 {
 	Archive_Reset(self);
+	EventFog_Reset(self);          // recycled slot/map must not inherit event fog
 	// Patch 371: a join line only for a new connection -- this runs again for
 	// everyone on every changelevel (Lobby_AnnConnect).
 	Lobby_AnnConnect(self);
@@ -1130,6 +1132,11 @@ void(string cmd) SV_ParseClientCommand =
 	}
 	cmdargc = tokenize(cmd);
 	c = argv(0);
+	if (!strcmp(c, "maxfog"))
+	{
+		EventFog_Command(self, cmdargc, argv(1));
+		return;
+	}
 	if (!strcmp(c, "weapon") || !strcmp(c, "give"))
 	{
 		weaponarg = strtolower(argv(1));
