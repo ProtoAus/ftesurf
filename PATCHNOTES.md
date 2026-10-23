@@ -21,6 +21,12 @@
 
 ## next
 
+### P943 Source weapon controls and varied footsteps
+- Hold primary attack for repeated knife slashes; secondary attack stabs. Knife misses whoosh, while harmless player contacts can make an impact sound without damage or pushing.
+- The USP starts unsilenced; secondary attack attaches or removes its silencer. Glock secondary switches between single fire and three-round bursts. Scout shots now include the authored bolt sound.
+- Equip with `knife`, `usp`, `scout` or `glock`, as well as the existing give commands. USP/Scout shots have smooth, render-only upward camera kick and recovery; aim and movement remain unchanged.
+- Footstep samples vary within the material's left/right set, and closely adjacent jump/contact cues merge instead of double-stepping. Default viewmodel FOV is now75; explicit preferences and bindings are preserved.
+
 ### P941 Subtler weapons and authentic floor sounds
 - Weapon bob and turning sway are one-fifth as strong by default. Idle animations keep looping, and spawning starts unarmed even if weapon models are enabled; select a weapon when you want one.
 - Fix long material names on maps such as Axiom falling back to concrete. When CSS is mounted, its footstep samples take priority over Momentum's versions; quiet walking and crouching stay silent.

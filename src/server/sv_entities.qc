@@ -10362,56 +10362,102 @@ void(entity t, entity att, float dmg) SV_EntityDamage =
 */
 .float vbsp_lastshot;
 .float vbsp_nextshot;
+.float vbsp_lastalt, vbsp_weaponmode, vbsp_burstleft, vbsp_burstat, vbsp_shots;
 float  vbsp_shoot_ok;           // latched in StartFrame: run_shoot, and lobby_shoot on a lobby
+
+void(entity pl, float kind) SV_WeaponEvent =
+{
+	pl.weaponframe = ((floor(pl.weaponframe / 8) + 1) % 32) * 8 + pl.vbsp_weaponmode * 4 + kind;
+};
+
+float(entity pl, float reach, float damage) SV_WeaponRay =
+{
+	local vector src, fwd, right, up;
+	local int mask;
+	local float dimension;
+	pl.vbsp_shots = pl.vbsp_shots + 1;
+	// A knife may query harmless contact even when map damage is forbidden.
+	if (pl.weapon != FS_WEAPON_KNIFE)
+	if (!vbsp_shoot_ok || !vbsp_io_on) return 0;
+	fwd = v_forward; right = v_right; up = v_up;
+	makevectors(pl.v_angle);
+	src = pl.origin + pl.view_ofs;
+	// MONSTERCLIP includes Source grates; plain player clip stays transparent.
+	mask = pl.hitcontentsmaski;
+	dimension = pl.dimension_hit;
+	pl.hitcontentsmaski = CONTENTBITS_POINTSOLID | CONTENTBIT_MONSTERCLIP;
+	// Include the PLAYER dimension for this query ONLY; movement stays pass-through.
+	if (pl.weapon == FS_WEAPON_KNIFE) pl.dimension_hit = dimension | 2;
+	traceline(src, src + v_forward * reach, FALSE, pl);
+	pl.hitcontentsmaski = mask;
+	pl.dimension_hit = dimension;
+	v_forward = fwd; v_right = right; v_up = up;
+	if (SV_DevOn())
+		dprint(sprintf("shot: %s %s at %v\n", trace_ent.classname, trace_ent.model, trace_endpos));
+	if (trace_fraction >= 1) return 0;
+	if (trace_ent != world)
+	{
+		if (!strcmp(trace_ent.classname, "player")) return 2; // never damage/push a player
+		if (vbsp_shoot_ok && vbsp_io_on) SV_EntityDamage(trace_ent, pl, damage);
+	}
+	return 1;
+};
 
 void(entity pl) SV_ShootFrame =
 {
-	local vector src;
-	local int mask;
-	local float reach, damage, delay;
-
-	// No weapon/sequence mutation on a held, watched or detached body.
-	if (pl.movetype != MOVETYPE_WALK) return;
-	if (!pl.button0)
+	local float secondary, alternate, delay, reach, damage;
+	local int i;
+	if (pl.movetype != MOVETYPE_WALK || pl.run_pmhold)
 	{
-		pl.vbsp_lastshot = FALSE;
+		pl.vbsp_burstleft = 0;
 		return;
 	}
-	if (pl.vbsp_lastshot)
-		return;
-	pl.vbsp_lastshot = TRUE;
+	if (pl.weapon != FS_WEAPON_KNIFE && pl.weapon != FS_WEAPON_USP &&
+	    pl.weapon != FS_WEAPON_SCOUT && pl.weapon != FS_WEAPON_GLOCK) return;
+	secondary = pl.button3; // +attack2 == +button3, usercmd bit2 (not input_buttons).
+	alternate = (secondary && !pl.vbsp_lastalt);
+	pl.vbsp_lastalt = secondary;
+	if (!pl.button0) pl.vbsp_lastshot = FALSE;
+	// Scheduled follow-up bullets remain authoritative, even after releasing attack.
+	for (i = 0i; i < 2i && pl.vbsp_burstleft > 0; i += 1i)
+	{
+		if (time < pl.vbsp_burstat) break;
+		SV_WeaponRay(pl, 8192, cvar("run_shoot_damage"));
+		pl.vbsp_burstleft = pl.vbsp_burstleft - 1;
+		pl.vbsp_burstat = pl.vbsp_burstat + 0.06;
+	}
 	if (time < pl.vbsp_nextshot) return;
-	delay = 0.15;
-	reach = 8192;
-	damage = cvar("run_shoot_damage");
+	if (alternate && (pl.weapon == FS_WEAPON_USP || pl.weapon == FS_WEAPON_GLOCK))
+	{
+		pl.vbsp_weaponmode = !pl.vbsp_weaponmode;
+		pl.vbsp_nextshot = time + ((pl.weapon == FS_WEAPON_USP) ? 3.108 : 0.3);
+		SV_WeaponEvent(pl, FS_WEV_MODE);
+		return;
+	}
+	if (!pl.button0 && !(secondary && pl.weapon == FS_WEAPON_KNIFE)) return;
+	if (pl.weapon != FS_WEAPON_KNIFE)
+	if (!(pl.weapon == FS_WEAPON_GLOCK && pl.vbsp_weaponmode))
+	if (pl.vbsp_lastshot) return;
+	pl.vbsp_lastshot = TRUE;
+	delay = 0.15; reach = 8192; damage = cvar("run_shoot_damage");
 	if (pl.weapon == FS_WEAPON_KNIFE)
 	{
-		delay = 0.45;
-		reach = 80;
-		damage = min(damage, 25);
+		delay = secondary ? 1.1 : 0.4;
+		reach = secondary ? 64 : 80;
+		damage = min(damage, secondary ? 65 : 25);
 	}
 	if (pl.weapon == FS_WEAPON_SCOUT) delay = 1.25;
+	if (pl.weapon == FS_WEAPON_KNIFE) pl.vbsp_weaponmode = (SV_WeaponRay(pl, reach, damage) == 2);
+	if (pl.weapon == FS_WEAPON_GLOCK && pl.vbsp_weaponmode)
+	{
+		delay = 0.5;
+		pl.vbsp_burstleft = 2;
+		pl.vbsp_burstat = time + 0.06;
+		SV_WeaponEvent(pl, FS_WEV_BURST);
+	}
+	else SV_WeaponEvent(pl, (pl.weapon == FS_WEAPON_KNIFE && secondary) ? FS_WEV_ALT : FS_WEV_FIRE);
 	pl.vbsp_nextshot = time + delay;
-	pl.weaponframe = (pl.weaponframe + 1) % 256;
-	// Cosmetic firing is available without permitting shared map destruction.
-	if (!vbsp_shoot_ok || !vbsp_io_on)
-		return;
-
-	makevectors(pl.v_angle);
-	src = pl.origin + pl.view_ofs;
-	// CS:S bullets trace MASK_SOLID|DEBRIS, which hits grates; the plugin loads a
-	// grate as PLAYERCLIP|MONSTERCLIP (hl2_contents_remap), so MONSTERCLIP is the
-	// bit that finds them -- bhop_eazy_v2's shot target is one.  Plain player clip
-	// stays transparent to the shot, as it is to bullets.
-	mask = pl.hitcontentsmaski;
-	pl.hitcontentsmaski = CONTENTBITS_POINTSOLID | CONTENTBIT_MONSTERCLIP;
-	traceline(src, src + v_forward * reach, FALSE, pl);
-	pl.hitcontentsmaski = mask;
-	if (SV_DevOn())
-		dprint(sprintf("shot: %s %s at %v\n", trace_ent.classname, trace_ent.model, trace_endpos));
-	if (!trace_ent || trace_ent == world)
-		return;
-	SV_EntityDamage(trace_ent, pl, damage);
+	if (pl.weapon != FS_WEAPON_KNIFE) SV_WeaponRay(pl, reach, damage);
 };
 
 /*

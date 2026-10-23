@@ -4,7 +4,8 @@ float ga_steps, ga_lands, ga_splashes, ga_swims, ga_calls, ga_jumps;
 float ga_css, ga_fall, ga_jumpseq, ga_volume, ga_speed, ga_walking;
 vector ga_pos, ga_vel;
 string ga_last;
-float ga_footvariant;
+float ga_footvariant, ga_footat, ga_merged;
+int ga_pickhistory;
 void() GM_Clear;
 void() GM_Info;
 void(string texture) GM_Inspect;
@@ -80,10 +81,20 @@ float(vector feet) GA_Water =
 float(vector feet, float water, float volume) GA_Foot =
 {
 	local float emitted;
+	local int pick;
 	if (!ga_css || volume <= 0 || cvar("cl_game_sfx") <= 0) return FALSE;
-	if (water) return GA_Play(sprintf("player/footsteps/slosh%g.wav", ga_variant), volume);
-	emitted = GA_Play(GM_Sound(feet, ga_footvariant), volume);
-	if (emitted) ga_footvariant = (ga_footvariant + 1) % 4;
+	// Coalesce a step/landing followed immediately by the jump-contact edge.
+	if (time - ga_footat < 0.12) { ga_merged = ga_merged + 1; return FALSE; }
+	pick = (int)(ga_footvariant % 2);
+	if (random() < 0.5) pick += 2i;
+	if (water) emitted = GA_Play(sprintf("player/footsteps/slosh%g.wav", ga_variant), volume);
+	else emitted = GA_Play(GM_Sound(feet, (float)pick), volume);
+	if (emitted)
+	{
+		ga_footvariant = (ga_footvariant + 1) % 2;
+		ga_pickhistory = ((ga_pickhistory << 2i) | pick) & 65535i;
+		ga_footat = time;
+	}
 	return emitted;
 };
 
@@ -102,6 +113,7 @@ void() GA_Frame =
 	    getstatf(STAT_FS_SPEC) || rw_on || getstatf(STAT_FS_MOVETYPE) != MOVETYPE_WALK)
 	{
 		ga_valid = FALSE;
+		ga_footat = time - 1;
 		ga_next = time;
 		return;
 	}
@@ -118,6 +130,7 @@ void() GA_Frame =
 	{
 		ga_valid = TRUE;
 		ga_stride = 0;
+		ga_footat = time - 1;
 		ga_stepat = time;
 		ga_ground = grounded;
 		ga_water = water;
@@ -193,6 +206,7 @@ float() GA_Command =
 		ga_css, ga_fall, ga_calls, ga_steps, ga_lands, ga_splashes, ga_swims));
 	print(sprintf("gameaudio: last '%s' active %g ground %g depth %g\n", ga_last, ga_valid, ga_ground, ga_water));
 	print(sprintf("gameaudio: speed %g volume %g hop-cues %g contact-seq %g\n", ga_speed, ga_volume, ga_jumps, ga_jumpseq));
+	print(sprintf("gameaudio: merged %g picks(last8,2bits) %04lx\n", ga_merged, ga_pickhistory));
 	GM_Info();
 	return TRUE;
 };

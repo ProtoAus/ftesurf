@@ -86,6 +86,11 @@
 #define FS_WEAPON_USP   2
 #define FS_WEAPON_SCOUT 4
 #define FS_WEAPON_GLOCK 8
+// STAT_WEAPONFRAME byte: 5-bit serial, 1-bit weapon mode, 2-bit event kind.
+#define FS_WEV_FIRE 0
+#define FS_WEV_ALT 1
+#define FS_WEV_MODE 2
+#define FS_WEV_BURST 3
 
 // pmove_flags, set by the engine when pm_physicsmode is 1 (pmove.h).
 #define PMF_JUMP_HELD 1

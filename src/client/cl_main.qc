@@ -1511,7 +1511,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 
 void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 {
-	local vector scr;
+	local vector scr, wp_baseview;
 	local float navfocus;
 
 	scr = [vwidth, vheight];
@@ -1764,7 +1764,11 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// samples them; Milk_Tick puts VF_RT_DESTCOLOUR back to the screen.
 	MilkSky_Frame();
 
+	// Cosmetic shot punch lives ONLY in the main scene, never input/aim/sidecars.
+	wp_baseview = getproperty(VF_ANGLES);
+	if (wp_kick != 0) setproperty(VF_ANGLES, wp_baseview + [wp_kick, 0, 0]);
 	renderscene();
+	if (wp_kick != 0) setproperty(VF_ANGLES, wp_baseview);
 
 	// Headless self-check (see menu/m_main.qc's ui_bootcheck).  Reports the
 	// two things that can silently blank the whole HUD: `notmenu` arriving

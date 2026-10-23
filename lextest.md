@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P943 — Source weapons / varied footsteps (23 Oct 2026)
+PENDING after delivery: bare `knife` then hold +attack / +attack2. Misses should
+whoosh, not play a flesh stab; actual player taps can thud but must not hurt/push.
+`usp` starts without silencer; secondary completes attach/detach. `glock` secondary
+toggles single/three-round burst; `scout` should cock/bolt after shooting. Does
+USP/Scout upward camera kick and recovery feel natural at your high frame rate?
+Aim/input is unchanged; this is presentation, not Source accuracy/spread/ammo.
+With cl_game_sfx1, listen for less repetitive floor samples and one jump-contact
+cue instead of a close double. Runtime controls cover Axiom/material selectors,
+not every map. Existing explicit FOV/bindings stay yours; new defaultFOV75.
+Owner heard the first draft's incorrect empty-stab impact during tests; that was
+valid rejection and is NOT a pass. Corrected miss/player-contact controls are
+recorded in tools/p943-source-weapons.md; ear/feel still needs confirmation.
+
 Source-polish checks below now have matching native/progs in both Windows
 installs and compatible progs on all12lobbies (22October2026 UTC). This is
 availability, NOT human acceptance. Native client fixes require the updated
@@ -29,6 +43,8 @@ not human feel, production-performance or device-authenticity acceptance.
 P940 owner feedback: bob and turning sway were much too strong; real Axiom did
 not sound like CSS, lighting differed, idle appeared absent, and spawn should be
 unarmed. This is feedback, NOT acceptance of P940's presentation.
+Owner23Oct: "The bob and sway look a lot more accurate" — CONFIRMED human
+acceptance for P941's reduced motion only. Sound coverage/lighting not confirmed.
 P941 BOTH Windows installs/all12Pi lobbies verified23Oct06:39UTC, including an
 exact fresh CSQC download and drawn board (tools/p941-delivery.md). Native/MENU
 and personal settings were preserved. Human look/ear acceptance remains PENDING.

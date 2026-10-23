@@ -183,6 +183,7 @@ void() PutClientInServer =
 	self.weapon      = 0;           // Unarmed on spawn; explicit give/select opts in.
 	self.weaponframe = 0;
 	self.vbsp_lastshot = self.vbsp_nextshot = 0;
+	self.vbsp_lastalt = self.vbsp_weaponmode = self.vbsp_burstleft = self.vbsp_burstat = self.vbsp_shots = 0;
 	self.weaponmodel = "";          // models are mounted/rendered client-locally
 
 	/*
@@ -785,6 +786,7 @@ void() PlayerPostThink =
 	*/
 	if (self.run_pmhold)
 	{
+		self.vbsp_burstleft = 0;
 		if (self.run_t_state == TS_RUNNING) self.run_t_ticks = SV_TimerTicks(self);
 		self.run_bhop_launch_zone = self.run_bhop_launch_denied = 0;
 		self.run_t_tpin = FALSE;         // Patch 775: no frame reads it
@@ -1130,9 +1132,22 @@ void(string cmd) SV_ParseClientCommand =
 	}
 	cmdargc = tokenize(cmd);
 	c = argv(0);
-	if (!strcmp(c, "weapon") || !strcmp(c, "give"))
+	if (!strcmp(c, "weapon_info"))
+	{
+		sprint(self, PRINT_HIGH, sprintf("weapon/server: type %g mode/contact %g event %g projectiles %g pending %g\n",
+			self.weapon, self.vbsp_weaponmode, self.weaponframe, self.vbsp_shots, self.vbsp_burstleft));
+		sprint(self, PRINT_HIGH, sprintf("weapon/server: health %g dimensions %g/%g policy %g IO %g\n", self.health, self.dimension_solid, self.dimension_hit, vbsp_shoot_ok, vbsp_io_on));
+		return;
+	}
+	if (!strcmp(c, "weapon") || !strcmp(c, "give") || !strcmp(c, "knife") ||
+	    !strcmp(c, "usp") || !strcmp(c, "scout") || !strcmp(c, "glock"))
 	{
 		weaponarg = strtolower(argv(1));
+		if (strcmp(c, "weapon") && strcmp(c, "give"))
+		{
+			if (cmdargc != 1) return;
+			weaponarg = c; cmdargc = 2;
+		}
 		if (!strcmp(substring(weaponarg, 0, 7), "weapon_")) weaponarg = substring(weaponarg, 7, -1);
 		go = 0;
 		if (!strcmp(c, "weapon")) go = stof(weaponarg);
@@ -1150,10 +1165,12 @@ void(string cmd) SV_ParseClientCommand =
 				self.weapon = go;
 				self.weaponframe = 0;
 				self.vbsp_lastshot = self.button0;
-				self.vbsp_nextshot = time + 0.15;
+				self.vbsp_lastalt = self.button3;
+				self.vbsp_weaponmode = self.vbsp_burstleft = self.vbsp_burstat = 0;
+				self.vbsp_nextshot = time + 1.05;
 			}
 			// ONLY the player's explicit give command opts into presentation.
-			if (!strcmp(c, "give")) stuffcmd(self, "cl_viewweapon 1\n");
+			if (strcmp(c, "weapon")) stuffcmd(self, "cl_viewweapon 1\n");
 			sprint(self, PRINT_HIGH, sprintf("weapon: selected %g (map targets only; existing damage policy)\n", go));
 			return;
 		}
