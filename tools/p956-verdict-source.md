@@ -45,10 +45,20 @@ repairs remain private evidence, not credited feature passes.
 
 ## Delivery state
 
-Code/build/storage qualification is complete at this source checkpoint.
-Independent cutover review and guarded backend-only development deployment are
-pending; no live migration, deployment or owner manual acceptance is claimed.
-Current native images, lobbies, AI, configs and historical verdicts must remain
-untouched. Actual source/worker/importer/column and logical-history preservation
-checks are required before calling delivery complete. Private data, actor and
-recovery details are not published here.
+Deployed to the development backend on 2026-10-24 at 01:17 UTC after two
+independent read-only reviews: storage binding and guarded cutover/preservation.
+Exactly the two approved source files changed in the existing80-input runtime;
+the other78inputs, native dependencies, readers, configs and schema20 stayed
+unchanged. A fresh private mode0600 SQLite backup passed quick_check before the
+reviewed handoff; no restore, historical recheck or fabricated live row occurred.
+
+Actual loaded sources for both modules, the new column/default, predecessor drain,
+successor acceptance/admission, canonical bindings and importer lease/readiness
+passed. All244historical verdicts retain identical pre-existing fields and unknown
+recording bindings. All12lobbies and the stopped AI service remain unchanged.
+
+No natural future live verdict arrived during postflight. The real-native future
+write is therefore the isolated SQLite positive above, not a claimed live-cron
+observation. Existing source/build/corpus evidence remains valid; no owner manual
+acceptance, calibration or broader anti-cheat completeness is claimed. Private
+data, actors, snapshot paths and recovery details are not published here.
