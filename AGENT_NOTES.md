@@ -2785,6 +2785,13 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+- P967 texture collision control: compare actual native `fs_hash` with the
+  installed VPK reader, not remembered prefixes or a visual UV guess. Here the
+  ordinary knife_t lookup is CSS (87,528 bytes); the fixed private alias is
+  Legacy (1,398,360 bytes), with CSS unchanged after mounting. Test alias absence
+  and readonly readiness before mounting, then require the actual positive hash.
+  A lit diffuse preview is not a claim of pixel-exact Source phong rendering.
+
 - P966 viewmodel material control: Legacy `Character` hands/cloth can fall back
   unlit while the knife/default VertexLitGeneric arms respond. Inspect material
   class and actual diffuse before blaming poses. Scope the lit replacement to

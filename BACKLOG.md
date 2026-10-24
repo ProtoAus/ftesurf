@@ -1,18 +1,5 @@
 # BACKLOG.md
 
-## Original Legacy knife texture collision — 24 Oct 2026
-
-- Sites: installed Original/default-T diffuse resolution, native filesystem's
-  private low-priority Legacy mount and cl_weaponui.qc:WPU_Apply materials.
-- Owner surf_666_004.png/save22(slot022),3:50.220: Original texture looks flipped.
-  Installed CSS and Legacy have DIFFERENT bytes at the SAME knife_t diffuse path;
-  low-priority Legacy can therefore read CSS's incompatible UV layout. Do not
-  blanket-flip UVs, substitute a different blade or reorder all game mounts.
-- Falsifier: actual Original/default-T draw uses its own installed Legacy texture,
-  ordinary CSS texture resolution remains unchanged, no licensed redistribution.
-- Lighting/held-model reports are fixed separately by P966; human check pending.
-
-
 ## Tooling - shipguard optional source-census assertions (23 Oct 2026)
 - Sites: tools/test_shipguard.py:ShipGuardTests.test_runtime_paths_are_narrowly_explained
   and test_curated_zone_cache_is_narrow_and_runtime_only. Existing fixed counts

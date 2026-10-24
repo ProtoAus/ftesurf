@@ -79,10 +79,19 @@ void(float slot, float row) WPU_Part =
 
 void() WPU_Apply =
 {
-	local float kind, style, key;
-	local string pattern, name, data, rules;
+	local float kind, style, key, isolated;
+	local string pattern, name, data, rules, base;
 	kind = KCAT_Knife();
 	style = bound(0, floor(cvar("cl_knife_finish")), 3);
+	base = KCAT_Get(kind, KCAT_BASE);
+	isolated = FALSE;
+	if (!strcmp(base, "materials/models/weapons/v_models/knife_t/knife_t.vtf"))
+		if (cvar_type("fs_knife_texture"))
+			if (cvar("fs_knife_texture") > 0)
+			{
+				base = "materials/ftesurf/knife_legacy_t.vtf";
+				isolated = TRUE;
+			}
 	if (wp_weapon == FS_WEAPON_KNIFE && kind > 0)
 	{
 		WPU_SourcePose();
@@ -93,7 +102,7 @@ void() WPU_Apply =
 		}
 	}
 	else wp_ent.skeletonindex = 0;
-	key = wp_ent.modelindex * 512 + kind * 4 + style;
+	key = wp_ent.modelindex * 512 + kind * 4 + style + isolated * 256;
 	if (key == wpu_skinstate) return;
 	wpu_skinstate = key;
 	wp_ent.forceshader = 0;
@@ -110,7 +119,14 @@ void() WPU_Apply =
 		if (style == 2) pattern = "hydrographic/webs";
 		if (style == 3) pattern = "hydrographic/marbleized";
 		name = sprintf("ftesurf/knife_%g_%g", kind, style);
-		data = sprintf("{\nprogram knife_finish#STYLE=%g#FAMILY=%s\n{ map %s }\n{ map materials/models/weapons/customization/paints/%s.vtf }\n{ map %s }\n}\n", style, KCAT_Get(kind, KCAT_FAMILY), KCAT_Get(kind, KCAT_BASE), pattern, KCAT_Get(kind, KCAT_MASK));
+		if (isolated) name = strcat(name, "_legacy");
+		data = sprintf("{\nprogram knife_finish#STYLE=%g#FAMILY=%s\n{ map %s }\n{ map materials/models/weapons/customization/paints/%s.vtf }\n{ map %s }\n}\n", style, KCAT_Get(kind, KCAT_FAMILY), base, pattern, KCAT_Get(kind, KCAT_MASK));
+		wpu_painted = (shaderforname(name, data) > 0);
+	}
+	else if (isolated)
+	{
+		name = sprintf("ftesurf/knife_%g_original_legacy", kind);
+		data = sprintf("{\nprogram defaultskin\n{ map %s }\n}\n", base);
 		wpu_painted = (shaderforname(name, data) > 0);
 	}
 	data = KCAT_Rules(KCAT_Get(kind, KCAT_HIDE), "knife_hidden");

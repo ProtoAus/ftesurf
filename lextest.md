@@ -1,14 +1,26 @@
 # lextest.md — things waiting on a human
 
+## P967 — Original/default-T texture (native delivery/human check pending)
+
+Not owner-confirmed. Agent socket images show the installed Legacy diffuse on
+Original/default-T without the incompatible CSS stripes, including inspect;
+ordinary CSS lookup remains byte-identical. After updating/restarting the native
+client, select Original and default T at save22: does the blade texture now look
+correct, and do Original/Fade/Web/Marble and ordinary CSS still look right? This
+uses a lit preview material, not a claim of pixel-exact Source phong/inventory
+rendering. No licensed assets are bundled. Receipt: tools/p967-original-texture.md.
+Account persistence and spectator setup/fire/inspect mirroring remain in scope.
+
 ## P966 — Character-piece lighting and held viewmodel
 
 Actual socket-client control reproduces white Bare Hands/FBI Gray in surf_666's
 red room and a missing model while held. The subject shows red-lit skin/cloth,
 normal colour after leaving the red area, and a visible model while HUD says
 held, with draw-starts unchanged. Neutral Preview glove shader/style is unchanged.
-Owner check PENDING delivery: at save22, confirm skin/FBI Gray respond nicely;
+Windows client delivered 24 Oct at 11:37:58Z; Pi is blocked by closed admission.
+Owner check PENDING: at save22, confirm skin/FBI Gray respond nicely;
 hold/release without the model popping away, and Neutral Preview still looks nice.
-Original texture collision and account/spectator requests remain separate work.
+Original texture is handled separately by P967; account/spectator work continues.
 Technical receipt: tools/p966-viewmodel-lighting-hold.md. No human pass claimed.
 
 ## P964 — restored running-stage retry (Windows/Pi delivered; human check pending)
