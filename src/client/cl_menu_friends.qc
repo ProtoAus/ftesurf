@@ -27,11 +27,10 @@ void() Friends_MenuPublish =
 		if (i < fr_n)
 		{
 			at = i * FR_FIELDS;
-			row = strcat(sprintf("%s %s %s \"%s\" \"%s\" \"%s\" \"%s\"",
+			row = sprintf("%s %s %s \"%s\" \"%s\" \"%s\" \"%s\"",
 				bufstr_get(fr_buf, at), bufstr_get(fr_buf, at + 1), bufstr_get(fr_buf, at + 2),
 				uri_escape(bufstr_get(fr_buf, at + 3)), uri_escape(bufstr_get(fr_buf, at + 4)),
-				uri_escape(bufstr_get(fr_buf, at + 5)), uri_escape(bufstr_get(fr_buf, at + 6))),
-				" ", bufstr_get(fr_buf, at + 7));
+				uri_escape(bufstr_get(fr_buf, at + 5)), uri_escape(bufstr_get(fr_buf, at + 6)));
 		}
 		cvar_set(strcat("ui_friend_", ftos(i)), row);
 	}
