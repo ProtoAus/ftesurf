@@ -1,11 +1,12 @@
 # lextest.md — things waiting on a human
 
-## P967 — Original/default-T texture (native delivery/human check pending)
+## P967 — Original/default-T texture (Windows delivered; human check pending)
 
 Not owner-confirmed. Agent socket images show the installed Legacy diffuse on
 Original/default-T without the incompatible CSS stripes, including inspect;
-ordinary CSS lookup remains byte-identical. After updating/restarting the native
-client, select Original and default T at save22: does the blade texture now look
+ordinary CSS lookup remains byte-identical. Both Windows native/client sets were
+installed 24 Oct at 13:07Z; actual installed socket smoke passes. Restart the native
+client, then select Original and default T at save22: does the blade texture now look
 correct, and do Original/Fade/Web/Marble and ordinary CSS still look right? This
 uses a lit preview material, not a claim of pixel-exact Source phong/inventory
 rendering. No licensed assets are bundled. Receipt: tools/p967-original-texture.md.

@@ -47,14 +47,47 @@ images show coherent Original texture and lit skin/cloth under normal/red light.
 No QC/shader errors. Owned actors stopped. An initial 242-byte bridge command was
 refused by the documented 240-byte stdin limit before execution; it was shortened,
 not counted as renderer failure or pass. Final unchanged-root material names are
-preserved; final clean/pinned-artifact smoke remains a separate gate.
+preserved. Final clean/pinned artifact and installed smoke below also pass.
 
 ## Delivery and limits
 
-Native source pin/tag changes for this engine feature, while the overall patch
-counter retains concurrent P968. Final clean artifact/dual-Windows promotion is
-not implied by implementation/control success. Pi remains blocked by the current
-serving admission gate; no backend cutover or old transaction was bypassed.
-Owner appearance acceptance remains pending in lextest.md. Account persistence
-and spectator setup/fire/inspect mirroring remain requested follow-up work.
+Native source pin/tag bd7aa1760/patch-967 changes for this engine feature;
+main's overall counter retains concurrent P968. The build metadata now honors
+lightweight AND annotated tags: default describe wrongly labelled this clean
+source as P962+20; --tags and a Full rebuild correctly embed patch-967. The
+published tag was preserved. Clean compatible role9b2db0c1 keeps the exact
+seven-field Friends source; three VMs/zero warnings. Native74 existing/zero new
+warnings; seven clean PEs and all five embedded plugin ZIPs validate.
+
+Final actual socket control uses current installed QW/MENU in an owned fixture:
+Original/default-T inspect/styles, alias hash and tag967 act, no QC/shader errors.
+Actual seven-field producer publishes1/MENU draws1; acting empty yields0/0.
+This is not linked-account/backend acceptance. Final image inspected; actors stopped.
+
+BOTH Windows installs received the clean native set (both existing client aliases,
+dedicated executables/all five plugins) and CSQC/LNO/cache24Oct2026, all21swaps
+applied by13:07:11Z. Independent post-audit verifies every installed/hash/history/
+prior-prev and current.prev. Current QW/MENU match the separate before-swap fixture.
+An actual INSTALLED client/new dedicated pair also acts with tag967, Original
+ready1/private-texture readiness1 and no QC/shader errors; own actors stopped.
+
+- CSQC/cache1bcf7636:
+  c10b50a6be24441f3415ee57c0ef2de6386ed5e6c016ca20e8b8db1fb3b24231.
+- LNO:53bb58c772e9a7cc253f7accc54e8044a19265f735a1b5c5369b56d07716a30e.
+- Client PE:9dabc1da825d1e3d709ea6254cf62ffbf8c1bbd1d52224e27d911c3908edefdf.
+- Dedicated PE:e93338b8a84d106d1ce7f4c17addab8dcd1c37c9e01a51a1c8192fb81aa69d8a.
+- HL2:f33612104f2d525662d26a75dd93da751314ef0f1101ff47b371cd8156800369.
+
+IMPORTANT LIMIT: the tool's120s execution timeout interrupted the final broad
+14,247-file preservation rehash AFTER all21swaps. The full protected before-map
+was in memory and unavailable after termination. That guard is INTERRUPTED, not
+a hash-comparison pass, and the transaction was NOT repeated or relabelled complete.
+Source writes only declared managed artifacts/stages/prev, never config/player
+data; the independent audit proves managed predecessors and QW/MENU, not the lost
+full-data comparison. The promotion seam now persists its before-map before any
+future mutation; it does not invent/backfill this transaction's evidence.
+
+Pi remains blocked by the current serving admission gate; no backend cutover or
+old transaction was bypassed. Owner appearance acceptance remains pending in
+lextest.md. Account persistence and spectator setup/fire/inspect mirroring continue.
 No Build bump or public release.
