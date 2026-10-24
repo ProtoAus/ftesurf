@@ -6466,6 +6466,17 @@ corrected12unit readback and cold CSQC hash/drawn-board proof acted. No raw comm
   the short promotion flock, never hold a maintenance gate through backup/debugging.
   An incomplete copy can still contain credentials/player data: keep it private,
   mode 0600, explicitly NOT FOR RESTORE, until an authorized retention decision.
+- **Validating a completed WAL-mode snapshot (P956,24Oct2026):** the backup API
+  can preserve a WAL-mode header in a complete standalone image. Plain `mode=ro`
+  validation then creates empty WAL/SHM sidecars; that is not proof the copy was
+  incomplete. In the owned tiny acting control, a pinned snapshot kept row1 while
+  a writer committed row2; ordinary read-only validation created those sidecars.
+  For an already CLOSED, completed, privately owned image, FIRST refuse any
+  existing WAL/SHM/journal, then validate with `mode=ro&immutable=1`, and check
+  no sidecars plus unchanged stat/hash afterward. The same main bytes passed this
+  paired check without sidecars. Never use immutable on the live/changing DB or
+  ignore/delete journals to make a snapshot pass. Preserve the failed control;
+  do not recopy, restore or redate a valid snapshot to repair its reader.
 
 **Fleet catch-up — 2026-10-12.**
 
