@@ -81,6 +81,26 @@ class Ratings(unittest.TestCase):
         self.assertEqual(table["surf_test", 0, 0][:3], ["3", "rank", "6"])
         self.assertNotIn(("surf_unknown", 0, 0), table)
 
+    def test_maplist_fills_by_exact_name(self):
+        table = {}
+        mt.ksf_main(table, "Map name,Tier\nsurf_test,4\nsurf_old,6\n")
+        text = ("FTESURF-MAPDL 1\n# comment\n"
+                "dl surf_test_css surf k 1 300 2026-10-11 0 0 2 surf_test 1 1\n"
+                "dl surf_test surf km 1 300 2026-10-11 0 1 4 - 1 1\n"
+                "dl surf_old surf km 1 300 2026-10-11 0 1 7 - 1 1\n"
+                "dl surf_none surf m 1 300 2026-10-11 0 1 0 - 1 1\n"
+                "dl surf_port surf m 1 300 2026-10-11 0 0 3 - 1 1\n"
+                "dl ../bad surf k 1 300 2026-10-11 0 0 3 - 1 1\n")
+        filled, moved = mt.ksf_maplist(table, text)
+        self.assertEqual(filled, ["surf_test_css", "surf_port"])
+        self.assertEqual(table["surf_port", 0, 0], ["-", "-", "3", "-", "-"])
+        self.assertEqual(moved, ["surf_old 6->7"])
+        self.assertEqual(table["surf_test_css", 0, 0], ["-", "-", "2", "-", "-"])
+        self.assertEqual(table["surf_test", 0, 0][2], "4")
+        self.assertNotIn(("surf_none", 0, 0), table)
+        with self.assertRaises(ValueError):
+            mt.ksf_maplist({}, "not a map list\n")
+
     def test_first_ratings_share_note_rows(self):
         table = {}
         text = sheet(["", "", "", "tail b3", "G Tier"])

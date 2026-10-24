@@ -2,6 +2,14 @@
 
 **P978 — account Reload direction (pending delivery/backend cutover, not owner-confirmed):** After delivery, save different setups on two linked installs. On the stale install choose Reload: it must show the newer account setup, not replace it with the stale local one. Make a new edit during a pending load: keep that edit without an automatic cloud overwrite; explicit Save should deliberately save it. The loopback proof uses synthetic account authority, not real Steam acceptance.
 
+**P976 — KSF tier in the map info box (pending, not owner-confirmed):** Which map showed no KSF tier? Load it (or surf_axiom_css, surf_4am_css, surf_kraken) and check the top-right box reads "KSF tier N". Lobbies read the new list on their next map load. Agent rig showed surf_axiom_css going from "KSF tier ?" to "KSF tier 4".
+
+**P975 — Friends in a private game (pending, not owner-confirmed):** Start a private local game, press Esc, open Play: the friends panel on the right should load your list (online friends show their map, Join works). Agent rig shows the menu now asks the Friends service in a local game (it stopped at signing, the rig has no install key); your linked install is the real check.
+
+**P974 — Stage toast switch and map search (pending, not owner-confirmed):** hud_edit, Splits: turn Stage toast off and finish a stage in a full run; the pill top left should not appear. In the map picker, play a map, come back, double-click the old search: it should highlight, and typing should replace it. Agent controls cover the pane row and the search state, not your eye.
+
+**P973 — resume offer (pending, not owner-confirmed):** Pause a run by leaving mid-run, rejoin the map and look at the left-hand "Resume run" card: does it match the save menu, and does 1 resume? On a map where 1 used to do nothing, the card should no longer appear; chat says why (!discard drops the old slot). Agent dedicated-socket controls cover clean, refused and never-resumable slots, not a real lobby rejoin.
+
 P971/P972 server artifacts installed on BOTH Windows installs and all12Pi
 lobbies24Oct2026; source d994d0a5. Windows running sessions were not reloaded.
 Deployment checks do not turn the following human checks into passes.

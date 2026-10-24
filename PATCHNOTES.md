@@ -24,6 +24,21 @@
 ### P978 Reload account settings without overwriting them
 - Reload restores your account setup without saving stale local choices over it. New edits made while loading stay local; use Save when you deliberately want to replace the account setup.
 
+### P976 KSF tiers for CS:S builds and new KSF maps
+- The in-game map info box and scoreboard now show the KSF tier for CS:S builds of Momentum maps, for KSF maps added since the last list, and for Momentum maps KSF rates under another name. Four maps KSF re-tiered show their new tier.
+
+### P975 Friends in a private game
+- In a private local game the friends list now loads on the menu Play screen, as it does at the main menu; the in-game Friends tab points you there.
+
+### P974 Stage toast switch and a search you can double-click
+- hud_edit: the Splits pane has a Stage toast switch for the pill that shows each stage you finish, top left.
+- The map search no longer empties itself on the first click after you play a map: the old search is selected instead, so typing replaces it and a double-click selects it all.
+
+### P973 Resume offers that work
+- A paused run the game cannot resume (a practice, stage or bonus run) no longer shows the resume box; chat says it is kept and that !discard drops it.
+- When a resume is refused, the reason now shows in chat and the box comes back so you can press 1 again.
+- The resume box uses the same left-hand card as the save menu.
+
 ### P972 Keep earned re-arming across retry
 - Retry preserves a finish or reset's pending re-arm, so coming to rest afterward can clear the old hopped-start tag just as it would without retry. A genuine hopped start still needs its normal reset.
 

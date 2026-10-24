@@ -1,5 +1,17 @@
 # BACKLOG.md
 
+## Resume: a fresh run drops a keyed slot without the P629 key check (found in P973 review)
+
+- Site: src/server/sv_resume.qc SV_MsFrame's fresh-run grace drop calls
+  SV_MsDiscardOffer, which wipes the slot; SV_MsDiscardCmd (!discard) checks
+  SV_MsForeign first, this path does not. A connection on the player's guid but
+  without their proven key (acct_mode by account) can wipe their paused run just
+  by running past run_resume_grace. Older than P973; P973 only made the warning
+  visible (and words it apart for slots accept refuses).
+- Falsifier: dedicated socket, a slot parked under key A; connect as the same
+  guid without proving A, start a run past the grace: the slot must survive and
+  chat must say why. Control: the current build wipes it.
+
 ## Tooling - shipguard optional source-census assertions (23 Oct 2026)
 - Sites: tools/test_shipguard.py:ShipGuardTests.test_runtime_paths_are_narrowly_explained
   and test_curated_zone_cache_is_narrow_and_runtime_only. Existing fixed counts

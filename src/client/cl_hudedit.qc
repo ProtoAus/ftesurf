@@ -561,6 +561,8 @@ string(string id, float row) HE_OptDef =
 		                     "|The e figure at each checkpoint. Slides left when the speed column is off.";
 		if (row == 2) return "hud_splits_class|Class column|t||"
 		                     "|A ~ mark in the left gutter for practice stages: noclip or a loaded save.";
+		if (row == 3) return "hud_results_toast|Stage toast|t||"
+		                     "|The pill above the splits when you finish a stage in a full run: its time and rank.";
 		return "";
 	}
 
@@ -588,7 +590,7 @@ string(string id, float row) HE_OptDef =
 	if (id == "banner")
 	{
 		if (row == 0) return "hud_banner_stages|Stage banners|t||"
-		                     "|A strip for each stage you pass in a full run. Off shows the one-line toast.";
+		                     "|A strip for each stage you pass in a full run. Off shows the one-line toast (Splits: Stage toast).";
 		if (row == 1) return "hud_banner_hold|Hold|c|2 3.5 5|2s;3.5s;5s"
 		                     "|How long it stays up. Stage strips stay 70% as long.";
 		if (row == 2) return "hud_banner_sound|Sound|t||"

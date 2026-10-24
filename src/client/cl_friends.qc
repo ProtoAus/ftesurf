@@ -269,7 +269,12 @@ void(vector p, vector sz, float tsz, float hint) Friends_Draw =
 
 	if (getplayerkeyvalue(player_localnum, "*ahash") == "")
 	{
-		sui_text(p + [0, hint], [tsz, tsz], "Link Steam on an account-enabled lobby to use Friends", SUI_THEME_DIM, 1, 0);
+		// A private game has no account service: the menu's Play screen lists friends itself.
+		if (serverkey("board") == "local")
+			s = "Private game: your friends list is in the menu, under Play";
+		else
+			s = "Link Steam on an account-enabled lobby to use Friends";
+		sui_text(p + [0, hint], [tsz, tsz], s, SUI_THEME_DIM, 1, 0);
 		return;
 	}
 	sui_text(p, [hint, hint], "Steam friends on every linked install. Messages appear privately in chat.", SUI_THEME_MUTED, 1, 0);

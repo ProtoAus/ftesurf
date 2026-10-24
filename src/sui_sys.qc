@@ -725,6 +725,16 @@ string _sui_click_field;
 float  _sui_click_time;
 vector _sui_click_point;
 
+// Everything in a focused field is selected, so typing replaces it and a
+// double-click still has text to select.  Call after the field's draw.
+void(string id, string text, __inout float cursor) sui_text_select_all =
+{
+	_sui_sel_id = id;
+	_sui_sel_seen = _sui_cur_t;
+	cursor = strlen(text);
+	_sui_sel_anchor = (cursor > 0) ? 0 : -1;
+};
+
 float(string id, vector point) _sui_text_doubleclick =
 {
 	local float twice;

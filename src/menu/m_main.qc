@@ -153,6 +153,8 @@ void(vector screensize) MU_Hint;
 void(string what) MU_NotesCommand;
 float() MF_Count;
 float() MF_Fresh;
+float() MF_Direct;
+string() MF_ProbeNote;
 void() MF_Init;
 void(float visible) MF_Poll;
 void() MF_ResumeJoin;
@@ -326,7 +328,8 @@ string ms_applied_query;        // what ms_view was last built for
 
 /*
   A map has been launched since the query was last touched, so the next click
-  into the search field empties it.  Build 19.
+  into the search field selects it (Build 19 emptied it; P974 keeps it so a
+  double-click still selects all, and typing replaces it).
 
   The menu VM is NOT torn down by a map load -- m_shutdown is empty and
   MP_Shutdown is not on the `map` path -- so ms_query survives, and until this
@@ -3570,10 +3573,9 @@ void(string mapname) ui_playlocal_now =
 	localcmd("set sv_zones_curated 1\n");
 	localcmd(sprintf("map %S\n", mapname));
 
-	// The search that found this map has done its job.  Arm the field to empty
+	// The search that found this map has done its job.  Arm the field to select
 	// itself the next time it is clicked -- not now, because ms_selected stays
-	// and the box draws the selection right-aligned beside the query, so wiping
-	// it here would blank the field while you are still looking at it.
+	// and the box draws the selection right-aligned beside the query.
 	ms_query_stale = TRUE;
 
 	m_close();
@@ -7303,30 +7305,18 @@ void(vector screensize) screen_create =
 		mhd = sprintf("map  %s(%g of %g)", SUI_ESC_MUTED, ms_viewcount, ms_count - ms_nvar);
 	sui_text([16, y], SZ_LABEL, mhd, COL_DIM, 1, 0);
 
-	/*
-	  Consumed HERE, before the field is drawn, so the box comes up empty on the
-	  same frame rather than one frame later.
-
-	  sui_is_clicked is true for exactly one frame, on the mouse-UP that landed
-	  on this element, and it fires again on every re-click of an already-focused
-	  box (sui_sys.qc:264-267) -- which is precisely "the next time you click on
-	  the search".  It lives in m_main.qc and not in sui_sys.qc because that file
-	  is shared with csprogs and has no notion of maps.
-
-	  m_draw's ms_query != ms_applied_query test then refilters and scrolls to
-	  the top on the next frame for free; nothing else has to be called.
-	*/
-	if (ms_query_stale)
-		if (sui_is_clicked("cs_search"))
-		{
-			ms_query = "";
-			ms_query_cursor = 0;
-			ms_query_stale = FALSE;
-		}
-
 	float lbw = max(120, stringwidth("leaderboard", TRUE, SZ_LABEL) + 16);
 	ui_field_sel("cs_search", [16, y + 20], [inner - lbw - 8, 28],
 	             ms_query, ms_query_cursor, "search maps...", sel);
+	// The old search is selected, not wiped: typing replaces it and a
+	// double-click on it still selects all.  After the field, which would
+	// otherwise put the caret under the click.
+	if (ms_query_stale)
+		if (sui_is_clicked("cs_search"))
+		{
+			sui_text_select_all("cs_search", ms_query, ms_query_cursor);
+			ms_query_stale = FALSE;
+		}
 	ui_board_button([16 + inner - lbw, y + 20], [lbw, 28], sel);
 	y += 56;
 
@@ -8632,10 +8622,21 @@ float(string cmd) m_consolecommand =
 	}
 	if (strcmp(argv(0), "ui_menu_probe") == 0)
 	{
+		// `stale` arms the search as a launch from the picker does; `search` reads it.
+		if (argv(1) == "stale")
+			ms_query_stale = TRUE;
+		if (argv(1) == "stale" || argv(1) == "search")
+		{
+			print(sprintf("ui_menu_probe: search %S caret %g sel %g stale %g\n", ms_query,
+			              ms_query_cursor, strcmp(_sui_sel_id, "cs_search") ? -1 : _sui_sel_anchor,
+			              ms_query_stale));
+			return TRUE;
+		}
 		print(sprintf("ui_menu_probe: filters=%g large=%g friends=%g rows=%g maps=%g tier=%g scroll=%.1f\n",
 			cvar("ui_maps_filters"), cvar("ui_maps_large"), cvar("ui_maps_friends"), ui_cs_rows,
 			ms_viewcount, ms_tier, ms_scroll_y));
 		print(sprintf("ui_menu_probe: friends_count=%g client=%g screen=%g friends_draw=%g friends_fresh=%g\n", cvar("ui_friends_count"), clientstate(), menu_screen, MF_Count(), MF_Fresh()));
+		print(sprintf("ui_menu_probe: friends_direct=%g board=%S %s\n", MF_Direct(), serverkey("board"), MF_ProbeNote()));
 		return TRUE;
 	}
 	if (strcmp(argv(0), "ui_notes") == 0)
