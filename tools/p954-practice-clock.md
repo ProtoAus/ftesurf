@@ -1,17 +1,15 @@
 # P954 — per-player practice slow motion
 
 Status: R6 is implemented, independently reviewed and deployed to BOTH Windows
-installs. Three VMs build with zero warnings;924reader checks and the same-byte
-corpus show0newfaults. Actual old/new non-QW refusal and supportedQW recording
-controls pass. The coupled NanoPi native/program/reader cutover is NOT complete. The fleet
-became empty and a guarded attempt stopped before image replacement/restarts:
-a slow historical scan expired its directory lease. The unchanged predecessor
-backend/importer were restored and independently checked; no game server was
-restarted and no run data restored. A tooling-order fix and review are required.
-Historical measurements below are r1/r2 only. This is ordinary development work,
-not a release or Build-number bump.
+installs AND all12NanoPi lobbies. The coupled native/program/reader cutover was
+verified24Oct2026 09:52:46Z after the reviewed guarded handoff. Its original
+failed attempt/recovery remain below as history, not the current serving state.
+Three VMs build with zero warnings;924reader checks and the same-byte corpus
+show0newfaults. Actual old/new non-QW refusal and supportedQW recording controls
+pass. Historical measurements below are r1/r2 only. Owner gameplay/feel remains
+pending. This is ordinary development work, not a release or Build-number bump.
 
-## Verified Windows delivery / pending fleet delivery
+## Verified Windows and fleet delivery
 
 - Product source: QC7f0509b4382ca9c66302f542f6ec44c3b2f698ea and native
   dae472e7090d22b48807a267baa039f58c171bfc, retained in inspected8373dbe7.
@@ -41,8 +39,16 @@ not a release or Build-number bump.
 - The failed transaction and backup are retained, not retried or hidden by a new
   attempt name. Move expensive history measurement past the native activation
   boundary while all DB producers remain CLOSED, rather than relaxing freshness.
-  Independently reviewed, explicitly gated continuation is still required.
-  Final application/native/history/postflight and owner acceptance remain pending.
+  This was the historical recovery boundary; it is not the final rollout state.
+- 24Oct2026 09:52:46Z: the later reviewed guarded handoff and independent live
+  readback verified the qualified ARM native pair, paired program/reader set,
+  all12lobbies, the80-file runtime/canonical bindings and HTTP200. Every existing
+  historical column/value/binding and effective configuration was preserved;
+  no DB restore or AI action. Predecessors and the failed-phase evidence remain.
+  Later P964 program promotion and the schema22 Social-only service handoff are
+  separate transactions; the latter verified unchanged native/reader dependencies.
+  Do not reuse the completed native approval or relabel its original evidence.
+  Owner real-ramp/visual/feel acceptance remains pending.
 
 ## Behaviour and boundaries
 

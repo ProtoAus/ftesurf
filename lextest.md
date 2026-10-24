@@ -54,11 +54,11 @@ stage posting and this human check are not implied by those tests. Both Windows
 server pairs and all12Pi lobbies received P96424Oct2026; client/menu/native and
 player settings were preserved. Receipt: tools/p964-save-stage.md.
 
-## P963 — main-menu lobby chat and DMs (matching deployment/human check pending)
+## P963 — main-menu lobby chat and DMs (delivered; human check pending)
 
-Not owner-confirmed; do not try against an older service. Once matching client,
-menu and backend are deployed: two linked mutual friends with online features
-open lobby chat beside Play. Send one public line, then select the friend and
+Matching schema22 service and BOTH Windows menus verified24Oct2026; no owner
+or live two-person pass is claimed. With two linked mutual friends and online
+features enabled, open lobby chat beside Play. Send one public line, then select the friend and
 send a DM; a third account must see the public line but no DM. Check Enter/Send,
 new messages and scroll, literal caret/quote/Unicode text, and the layout on the
 3D and flat menus. Block a sender: no new room/DM visibility. Close/reopen: no
@@ -92,10 +92,11 @@ preserve that style. Account configuration persistence and watched-player setup/
 shoot/inspect mirroring requested, not yet implemented or human-confirmed.
 Exact delivery state/limits: tools/p962-knife-workshop.md.
 
-## P961 — game-running Friends presence (deployment pending; human check pending)
+## P961 — game-running Friends presence (lobby producer/human check pending)
 
-Do not treat these as owner-confirmed or try against an older backend. After
-matching client/menu/gameplay/backend delivery: use two linked mutual friends,
+Matching service and BOTH Windows menus are delivered24Oct2026. Lobby CSQC is
+still the legacy seven-field producer: do NOT count the connected-client check
+as ready until its eight-field upgrade/reload. After that, use two linked friends,
 one staying in a lobby, the other at the main menu with online features enabled.
 Does the menu friend show Main menu with no Join? Leave the status unchanged for
 more than35seconds: does it stay active while the game remains open? Join a lobby
