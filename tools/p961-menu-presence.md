@@ -10,10 +10,15 @@ target refusal and new/legacy menu rows; original old-refusal control is retaine
 Native source tag is patch-961; actual Makefile stamp is
 `git-7778-patch-954-3-g88a95f339` (HEAD-count+29, annotated-tag ancestry and exact
 clean source hash). The public lightweight source tag is NOT falsely substituted
-for that compiled stamp or rewritten. Development delivery remains pending:
-shipping the heartbeat menu alone to the old backend can consume its old shared
-budgets; deploy only with the matching Social backend. P954's frozen NanoPi
-cutover remains separate and unresolved; do not mix these source generations.
+for that compiled stamp or rewritten. Development delivery is PARTIAL:
+24Oct2026 15:03:35Z live readback verified the matching schema22 Social backend;
+15:21:41Z verified the qualified MENU/LNO in BOTH Windows installs. The service
+handoff preserves all80 runtime inputs except the two reviewed Social files,
+all historical values/bindings and the native/reader dependencies. It does not
+restart the game fleet. The installed lobby CSQC still has the legacy seven-field
+producer; its eight-field/menu-presence and matching-snapshot renewal upgrade
+remains pending. Do not claim full connected-client delivery or owner acceptance.
+P954's separate native cutover was verified earlier09:52:46Z, not reused here.
 Number961 claimed after fetching both repos and checking patch headings AND
 untracked pNNN/test_pNNN files in canonical/owned trees (max960). The unpublished
 P959 working label yielded to existing canonical peer959/960 claims before any
@@ -57,7 +62,8 @@ Falsifiers/control arms:
 
 Required owner acceptance: two linked friends, one at main menu and one in a lobby;
 confirm Main menu appears, no Join is offered, and closing/privacy-off expires it.
-Main-menu shared chat and DMs remain separate unfinished original requests.
+Main-menu shared chat and DMs are separately implemented/deployed under P963;
+real two-person/visual acceptance remains pending.
 
 ## Current verification / first-review fixes
 
@@ -83,4 +89,9 @@ Main-menu shared chat and DMs remain separate unfinished original requests.
   block interactive lists. Peer/account caps still refuse excess requests.
 - Retained first varargs warnings, wrong test-helper name and native-probe compiler
   path failure are not passes. No owner identity/data copied; only owned actors
-  stopped. Live deployment, clean-commit final build and owner visual check pending.
+  stopped. Final clean build/native proof passed as recorded above; service and
+  Windows MENU delivery are verified, but lobby CSQC promotion and owner checks
+  remain pending. Current published328ebfa1 QC builds all3VMs/0warnings without
+  deployment; its only client-source delta from installed P967 composition
+  9b2db0c1 is the two published Friends modules, retaining newer workshop code.
+  A lobby reload needs a fresh safe boundary and any occupied-lobby approval.

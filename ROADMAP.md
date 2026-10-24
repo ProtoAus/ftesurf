@@ -81,26 +81,23 @@ speed acceptance), BSP identity encoded/original bytes; only Pi origin fallback
 is1MiB/s capped. No integrity/fallback guard was weakened.
 
 Remaining requested work (not silently folded into the completed items):
-- P961 game-running presence while disconnected is implemented and independently
-  reviewed, with53backend tests and native proof/freshness controls. Source/native
-  tag published; clean Full build/final native proof now pass. Matching backend/
-  client/menu deployment and owner check remain pending; a heartbeat-only rollout
-  against the older backend is not safe. Receipt: tools/p961-menu-presence.md.
-  No claim that the live backend supports it yet.
-- P963 main-menu shared lobby chat and DMs are implemented; native/QC build,
-  actual native signing/MENU helper controls,60Social tests and account/board/
-  join/replay regressions pass. Matching backend/client deployment and small
-  two-person/visual acceptance remain pending; not claimed as live delivery.
-  Existing lobby-mediated DM is not disconnected transport. Consent, mutual/
-  blocked visibility, fixed-domain recipient/body binding and single-use sends
-  are retained. Receipt: tools/p963-menu-chat.md.
-- P954 practice-only `host_timescale` is implemented, independently reviewed and
-  deployed to BOTH Windows installs, including their reader tools. Fixed-tick,
-  forced-practice and reader controls pass; owner feel remains pending. The
-  coupled NanoPi cutover is not complete: a guarded empty-fleet attempt stopped
-  at a tooling lease check before image/game changes. The unchanged predecessor
-  backend/importer were restored and verified, historical data preserved; all
-  game images remain unchanged. Fix/review the ordering before continuation.
+- P961 game-running presence is implemented/reviewed. Matching schema22 Social
+  backend and BOTH Windows menus verified24Oct2026; all80-source/native/history
+  gates preserved. Lobby CSQC still uses the legacy seven-field snapshot, so
+  full connected-client presence/renewal delivery and the owner check are OPEN.
+  Current published producer builds3VMs/0warnings; needs safe lobby reload, not
+  another native binary swap. Receipt: tools/p961-menu-presence.md.
+- P963 main-menu shared lobby chat and DMs are implemented and matching backend/
+  BOTH Windows menus DELIVERED24Oct2026. Native/signing helpers,60Social tests
+  and account/board/join/replay regressions pass. Two-person/visual acceptance
+  remains pending; source/service health is not a human chat pass. Consent,
+  mutual/blocked visibility, recipient/body binding and single-use sends remain.
+  Receipt: tools/p963-menu-chat.md.
+- P954 practice-only `host_timescale` is implemented/reviewed and deployed to
+  BOTH Windows installs/readers AND all12NanoPi lobbies. Coupled native/program/
+  reader/runtime/history readback verified24Oct2026 09:52:46Z; earlier refused
+  attempt/recovery is retained as history. Fixed-tick, forced-practice and reader
+  controls pass; owner real-ramp/visual/feel acceptance remains pending.
   Exact source/UTC delivery and limits: tools/p954-practice-clock.md.
 - P950/P952 fix the actual Phantasia/Epiphany screenshot causes, not a complete
   existing-VMT/absent-image census. The remaining generic report seam stays in

@@ -70,7 +70,19 @@ No release or Build number is implied. The initial artifact check used the wrong
 DLL suffix; corrected to the documented x64/embedded-ZIP contract without
 rebuilding or changing the passing product.
 
-Status: source published and clean cohort qualified; matching deployment pending.
-Do NOT mix with the older NativeClock delivery cohort or reset its gates. The
-serving service must match schema22 and this Social implementation before the
-heartbeat/chat menu ships. Human-only checks: lextest.md. No Build/release bump.
+Status: matching schema22 Social service and BOTH Windows MENU/LNO copies
+DELIVERED24Oct2026. Live service readback verified15:03:35Z; both menu destinations
+verified15:21:41Z. The accepted80-file service closure changes only social.py and
+surfd.py, preserves all historical values/bindings and native/reader dependencies,
+and leaves all game processes unchanged. HTTP200, all12directory entries, actual
+worker/importer/canonical bindings and OPEN serving admission were verified.
+Both menu predecessors/prior-prev remain;13,011protected existing files compare
+unchanged. No native binary or owner game was replaced/stopped by this delivery.
+
+Earlier candidate/bootstrap refusals are retained as failures, not passes. The
+bounded approved bootstrap completed through the existing importer transition;
+no history restore or admission/freshness weakening. The old NativeClock handoff
+was not reused. These are deployment/source/history checks, NOT live two-person
+chat or owner visual acceptance. Lobby-side P961 still needs the eight-field
+CSQC producer reload; that does not prevent the disconnected P963 menu check.
+Human-only checks: lextest.md. No Build/release bump.
