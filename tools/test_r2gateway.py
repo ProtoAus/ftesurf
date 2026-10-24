@@ -157,6 +157,71 @@ class GatewayTests(unittest.TestCase):
         finally:
             self.app.probe_lock.release()
 
+    def test_inflight_head_after_success_keeps_r2(self):
+        self.assertEqual(self.call()[0], "302 Found")
+        self.app.probe_until = 0
+        self.app.probe_lock.acquire()
+        try:
+            self.assertEqual(self.call()[0], "302 Found", "a re-probe in flight must not send the rest to disk")
+        finally:
+            self.app.probe_lock.release()
+
+    def gzseed(self, state="verified", key=None):
+        gz = self.root / "gzip.sqlite"
+        sha = hashlib.sha256(b"map-body").hexdigest()
+        with contextlib.closing(sqlite3.connect(gz)) as db:
+            db.execute("CREATE TABLE IF NOT EXISTS gz(alias TEXT PRIMARY KEY,sha TEXT,bytes INTEGER,state TEXT,"
+                       "gz_key TEXT,gz_sha TEXT,gz_bytes INTEGER,verified_at TEXT,error TEXT)")
+            db.execute("INSERT OR REPLACE INTO gz VALUES(?,?,?,?,?,?,?,?,?)",
+                       ("ftesurf/maps/case_Map.bsp", sha, 8, state, key or "objects/maps/" + sha + ".bsp.gz",
+                        "0" * 64, 5, "", ""))
+            db.commit()
+        self.app = g.Gateway(dict(self.config, gzip_state=str(gz)), reachability=lambda key: True)
+        self.ua = "FTE QW"
+        return sha
+
+    def gzcall(self, accept, path="/ftesurf/maps/case_Map.bsp", rng=None):
+        got = []
+        env = {"REQUEST_METHOD": "GET", "PATH_INFO": path, "QUERY_STRING": "", "HTTP_ACCEPT_ENCODING": accept,
+               "HTTP_USER_AGENT": self.ua}
+        if rng:
+            env["HTTP_RANGE"] = rng
+        b"".join(self.app(env, lambda s, h: got.append((s, dict(h)))))
+        return got[0][0], got[0][1]
+
+    def test_gzip_companion_only_when_accepted(self):
+        sha = self.gzseed()
+        status, h = self.gzcall("gzip")
+        self.assertEqual(status, "302 Found")
+        self.assertIn("objects/maps/" + sha + ".bsp.gz", h["Location"])
+        self.assertEqual(h.get("X-R2-Encoding"), "gzip")
+        for accept in ("", "identity", "br", "gzip;q=0", "gzip;q=0.0", "gzip; q=0.000", "deflate, br",
+                       "x-gzip", "*"):
+            status, h = self.gzcall(accept)
+            self.assertEqual(status, "302 Found")
+            self.assertIn("objects/maps/" + sha + ".bsp?", h["Location"], accept)
+            self.assertNotIn("X-R2-Encoding", h)
+        self.assertIn(".bsp.gz", self.gzcall("gzip, deflate, br")[1]["Location"])
+        self.assertIn(".bsp.gz", self.gzcall("deflate, gzip;q=0.5")[1]["Location"])
+
+    def test_gzip_only_for_the_game_client(self):
+        self.gzseed()
+        self.assertIn(".bsp.gz", self.gzcall("gzip")[1]["Location"])
+        for ua in ("Mozilla/5.0 (Windows NT 10.0) Chrome/130", "curl/8.4", ""):
+            self.ua = ua
+            self.assertNotIn(".bsp.gz", self.gzcall("gzip, deflate, br")[1]["Location"], ua)
+
+    def test_gzip_refused_for_range_unverified_or_other_groups(self):
+        sha = self.gzseed()
+        self.assertNotIn(".bsp.gz", self.gzcall("gzip", rng="bytes=4-")[1]["Location"])
+        self.assertNotIn(".gz", self.gzcall("gzip", path="/ftesurf/maps/zones/local/case_Map.json")[1]["Location"])
+        for state, key in (("skip", None), ("error", None), ("verified", "objects/maps/other.bsp.gz")):
+            self.gzseed(state, key)
+            self.assertNotIn(".bsp.gz", self.gzcall("gzip")[1]["Location"], state)
+        self.gzseed()
+        (Path(self.sources["maps"]) / "case_Map.bsp").write_bytes(b"new-body")
+        self.assertEqual(self.gzcall("gzip")[0], "409 Conflict", "a replaced body is not served at all")
+
     def test_no_database_writes(self):
         before = self.state.read_bytes()
         for _ in range(10):

@@ -1958,6 +1958,69 @@ def case_no_frame_markers():
           "events with no 'f': a fault (%s)" % (r.faults[:1] or "none"))
 
 
+def case_leftisright_sign():
+    """leftisright (r_mirrorworld) negates yaw AFTER the 'v' tap: the view record
+    keeps +dx and the angle moves by -k*dx. Declared in the input table, or by a
+    mid-run 'c', it is exact; the same angles with the cvar at 0 are a fault."""
+    for declared in (True, False):
+        j = Journal(inputcvars=[("leftisright", "1" if declared else "0", "0")])
+        yaw = 0.0
+        for i in range(30):
+            j.frame(5000 + i)
+            j.mouse(4, 0)
+            yaw += -j.k * 4
+            j.view(4, 0, 10.0, yaw)
+        r = run(j.end())
+        if declared:
+            check(r.ok, "leftisright 1 declared: no fault (%s)" % (r.faults[:1] or "none"))
+        else:
+            check(has_fault(r, "YAW IDENTITY BROKEN"),
+                  "CONTROL, leftisright 0 with mirrored angles: identity fault (%s)"
+                  % (r.faults[:1] or "none"))
+    for follows in (True, False):
+        j = Journal(inputcvars=[("leftisright", "0", "0")])
+        yaw = 0.0
+        for i in range(40):
+            j.frame(6000 + i)
+            j.mouse(5, 0)
+            if i == 20 and follows:
+                j.cvarchange("leftisright", "1")
+            yaw += (-j.k if i >= 20 else j.k) * 5
+            j.view(5, 0, 10.0, yaw)
+        r = run(j.end())
+        if follows:
+            check(r.ok, "leftisright turned on mid-run, journalled: no fault (%s)"
+                  % (r.faults[:1] or "none"))
+        else:
+            check(has_fault(r, "YAW IDENTITY BROKEN on 20 of"),
+                  "CONTROL, angles flip with no 'c' record: the 20 frames fault (%s)"
+                  % (r.faults[:1] or "none"))
+
+
+def case_leftisright_engine_parse():
+    """The sign is leftisright's .ival (Q_atoi), so no value blinds the check
+    and none the engine reads as 0 flips it: "abc", "0.5" and " 1" are all 0."""
+    for val in ("abc", "", "0.5", " 1", "on"):
+        for mirrored in (False, True):
+            j = Journal(inputcvars=[("leftisright", val, "0")])
+            yaw = 0.0
+            for i in range(30):
+                j.frame(7000 + i)
+                j.mouse(3, 0)
+                yaw += (-j.k if mirrored else j.k) * 3
+                j.view(3, 0, 10.0, yaw)
+            r = run(j.end())
+            if mirrored:
+                check(has_fault(r, "YAW IDENTITY BROKEN"),
+                      "leftisright %r is 0 to the engine: mirrored angles fault, not blind" % val)
+            else:
+                check(r.ok and r.info.get("identity", "").startswith("exact"),
+                      "leftisright %r: plain angles judged exact (%s)" % (val, r.faults[:1] or "ok"))
+    check(hidcheck.q_atoi("1") == 1 and hidcheck.q_atoi("-1") != 0 and hidcheck.q_atoi("0x10") == 16
+          and hidcheck.q_atoi("2x") == 2 and hidcheck.q_atoi(" 1") == 0 and hidcheck.q_atoi("") == 0,
+          "q_atoi follows the engine's Q_atoi")
+
+
 def case_cvar_change_followed():
     """FINDING 2c: a mid-run `sensitivity` is journalled as a 'c' record above
     the first 'v' that used it, and the identity must follow it.  The control
@@ -2166,7 +2229,8 @@ def main():
                case_pitch_clamp_not_governed, case_pitch_no_m_pitch,
                case_pitch_pre305_silent, case_teleport_is_unresolved,
                case_teleport_at_the_clamp_is_unresolved, case_no_frame_markers,
-               case_cvar_change_followed):
+               case_cvar_change_followed, case_leftisright_sign,
+               case_leftisright_engine_parse):
         print("%s:" % fn.__name__)
         fn()
         print("")

@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   584b21bc49d5409b8c5d506f6de5e961d53b9572
+commit   1b22279728bdf517f29860ec5e6ae5dc59110b3b
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,11 @@ commit   584b21bc49d5409b8c5d506f6de5e961d53b9572
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-970
-patch    978
+tag      patch-983
+patch    984
+# Patch 983: frame-polled HTTP downloads drain what arrived (3.2 -> 9.6 MB/s at 100 fps).
+# Patch 977, 979, 982: movement cvars live under sv_cheats 1 (restores listed), bindlist
+# natural order and filter, r_mirrorworld (labels and gamepad follow the mirror).
 # Patch 978: accepted account Reload restores cloud without an implicit write.
 # Post-begin edits survive; explicit Save retains its separate fresh-revision CAS.
 # Patch 972: exact retry preserves an already-earned pending finish/reset re-arm.

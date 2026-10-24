@@ -44,6 +44,7 @@ void() SV_Shutdown =
 */
 float sv_mv_gravity, sv_mv_accelerate, sv_mv_airaccelerate;
 float sv_mv_friction, sv_mv_stopspeed;	// sv_mv_maxspeed is in sv_defs.qc
+float sv_mv_said;	// P977: these start at 0 each map, so a 0 was never published
 
 void() SV_UpdateMovementServerInfo =
 {
@@ -55,6 +56,13 @@ void() SV_UpdateMovementServerInfo =
 	f  = cvar("sv_friction");
 	ss = cvar("sv_stopspeed");
 	ms = cvar("sv_maxspeed");
+	if (!sv_mv_said)
+	{
+		// ...and the previous map's key stood: a remote client predicts from these.
+		sv_mv_said = TRUE;
+		sv_mv_gravity = sv_mv_accelerate = sv_mv_airaccelerate = -999999;
+		sv_mv_friction = sv_mv_stopspeed = sv_mv_maxspeed = -999999;
+	}
 
 	if (g  != sv_mv_gravity)       { sv_mv_gravity = g;        forceinfokey(world, "sv_gravity",       ftos(g));  }
 	if (a  != sv_mv_accelerate)    { sv_mv_accelerate = a;     forceinfokey(world, "sv_accelerate",    ftos(a));  }

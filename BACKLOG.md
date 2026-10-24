@@ -1,5 +1,52 @@
 # BACKLOG.md
 
+## Story/Event levels on non-Momentum builds: Beta maps mapwatch never installs (25 Oct)
+
+- Lex (25 Oct): "Make sure all Story mode maps are the Momentum Mod version ...
+  unless there is no such version". Six Story/Event levels are Momentum Beta
+  maps the Pi does not hold at Momentum's build: surf_stonework3,
+  surf_leet_xl_beta7z, surf_mdrn hold KSF's build under the plain name;
+  surf_vegetables, surf_mesa, surf_progress an older build. Pi-wide 74 Beta
+  names are off Momentum's build, 50 of them KSF's. mapwatch installs approved
+  maps only; Beta BSPs and zones need a signed-in Momentum request (401), and
+  ksffetch put KSF's bytes in the local Momentum library too.
+- Site: surfd/mapwatch.py (extra.tsv carries Beta hashes from Lex's install),
+  tools/ksffetch.py. A fix needs the Beta builds' bytes from an authenticated
+  source, installed with the KSF bytes kept as <name>_css, and zones that fit.
+- Falsifier: sha1 of the Pi's <level>.bsp equals extra.tsv's Momentum hash for
+  each Story level that has one; P980's ui_build "story plays" names it.
+
+## P984: the live mapwatch still refuses OWN-TIMER until the next surfd generation
+
+- Site: the cron's mapwatch runs from the sealed generation a849051e (transition
+  guard), whose surfd/zonefit.py still returns OWN-TIMER. P984's 31 builds were
+  given by hand (tools-side one-off under the mapwatch flock, receipt in the
+  P984 entry); a NEW CS:S/KSF build with its own triggers gets Momentum's zones
+  only once a generation built from main carries P984's zonefit.
+- Falsifier: after the next generation cutover, mapwatch prints "given to a
+  second build" for such a map; its nofit table no longer lists OWN-TIMER.
+
+## hidcheck: leftisright values the journal cannot carry exactly (P982 review 2)
+
+- Sites: engine client/in_generic.c journals cvar strings through COM_QuotedString
+  (header qval[64] cut at 61 chars, 'c' quoted[128] at 125); tools/hidcheck.py
+  _unquote_pair is not its inverse for values holding '"', CR/LF (escaped form)
+  or '\' (plain form), and the cut changes long values. hidcheck then takes a
+  different .ival than the engine: a player who sets such an absurd leftisright
+  is falsely flagged on every mouse frame. Never a pass or a blind.
+- Fix options: journal .ival beside the string (engine), or decode the escaped
+  form and widen the buffers. Falsifier: leftisright "1\"" and "0"*61+"1".
+
+## r_mirrorworld: HUD elements that draw world sides (P982)
+
+- Sites: src/client/cl_hud.qc HUD_WishDir (reads input_movevalues, already
+  flipped), the strafe bar's turn-side cues, src/client/cl_trainer.qc's
+  left/right bands, cl_mouse.qc's pad. With leftisright 1 the world, view and
+  inputs are mirrored, but these draw world-space left/right, so a "turn right"
+  cue points at the screen's left. Key lights read the keyboard and are right.
+- Falsifier: rig, leftisright 1, hold +moveright and turn right: every cue must
+  point screen-right; control is today's build.
+
 ## Resume: a fresh run drops a keyed slot without the P629 key check (found in P973 review)
 
 - Site: src/server/sv_resume.qc SV_MsFrame's fresh-run grace drop calls
@@ -23,23 +70,6 @@
   historical asset-omission mutation controls. These two failures were retained,
   not called passes or worked around with release overrides. No product failure
   or every-map/runtime claim follows from the stale optional census.
-
-## Primary local surf_fantasy override versus Momentum/Pi (22 Oct audit)
-
-- Site: C:/FTESurf/ftesurf/maps/surf_fantasy.bsp and maproster.resolve mount
-  priority. Primary loose SHA1f04171db504fe5b25e28f01a65110ba5f3173b64 differs
-  from installed Momentum and Pi held/cached-published
-  fd73ae1b0941b004ad032a45bc8a69b617b97e4c. No map/data/choice changed.
-- The global Momentum preference request remains OPEN: the read-only audit is
-  progress, not delivery of that end state. Other safe requested work continues
-  while this narrow preserve-versus-retire decision is pending.
-- Falsifier: an owned client's actual loaded BSP/checksum matches the intended
-  build; preserve the old bytes and build-bound records if the owner chooses a
-  switch. The metadata resolver predicts shadowing, not all-package/native trace.
-- Owner decision: is this loose build intentional, or should it be retired with
-  bytes retained? Do not clear two saved CSS choices or replace an unknown-owner
-  BSP automatically. The historical surf_dune shadow is now byte-identical to
-  Momentum/Pi in the two-pair check. Scope/limits: tools/momentum-preference-audit.md.
 
 ## Sampled-image report gaps beyond the P950/P952 screenshot fixes
 

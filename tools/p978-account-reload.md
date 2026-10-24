@@ -45,3 +45,24 @@ The account service needs a source-bound, independently reviewed22-to23 guarded
 handoff; no old review, consent, epoch or frozen witness may be relabelled.
 Actual role SHA, hashes, deployment and linked-install owner check are recorded
 separately after those steps. Real owner acceptance remains pending lextest.md.
+
+## Delivered progs, account-service gate still pending
+
+24 Oct2026: clean role `4c65fd99a2aa8a61a043ed7522b2df5462dfed26`
+combines the then-installed15f8d239 menu/client cohort with P978. Its Reload
+VM/test blobs equal component `a7c38aba6cf5a1a841ee5e8aafebe50bfda7dc1b`;
+all3VMs compile with zero warnings and its actual artifacts pass10 acted socket
+checks. Progs/lno plus matching cache installed on both Windows installs and all12
+Pi lobbies. Windows promotion preserves14,693 other files; no native, menu,
+shader, config or player-data replacement. Ordinary progs delivery restarts
+empty lobbies; it is separate from the proposed backend-only operation.
+
+This receipt is not a claim that a later fleet deployment still uses those
+bytes. Later main/menu/native work is preserved in the public integration,
+not silently attributed to this qualified role or redeployed from it.
+
+The account service remains at schema22. Three component/safety reviews passed,
+but subsequent shared-cron and serving-checker drift invalidated the execution
+preimage/dependency tuple. No live handoff, reader repin, database restore or
+real Steam-account pass is claimed. The separately qualified schema23 promotion
+and the small linked-install owner check remain pending.

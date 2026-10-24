@@ -19,7 +19,7 @@ No QC, engine, lobby config, board backend, recording or evidence changes.
   This is a selection-time stat check, not a lock against concurrent source
   replacement after selection. No content hash is computed per request.
 - A signed HEAD checks R2 reachability at most once per worker/15 seconds.
-  Failed checks retry after2s; concurrent cold checks use disk rather than wait.
+  Failed checks retry after2s. While a check is in flight the other requests take the last answer (P981: they used disk, so a game asking during the menu's mapshot burst got the 1 MB/s copy); only a gateway that has never checked uses disk. P981 also routes the game's gzip-accepting, non-Range map requests to verified <sha>.bsp.gz companions (r2gzip.py, gzip_state).
   R2 outages within the successful15s observation window can still fail an
   already-redirected request. This cannot recall a302 already sent. Connected
   engine netchan fallback remains available; retry after the window uses disk.

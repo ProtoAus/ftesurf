@@ -3,6 +3,10 @@
 
 Use behind r2gateway.nginx. HTTP409 requests a rate-limited local fallback.
 Only a current, verified content-addressed public asset receives a signed URL.
+P981: with "gzip_state" (r2gzip.py's database), a map request from the game
+(User-Agent FTE...) that accepts gzip and asks for no range goes to the verified
+<sha>.bsp.gz companion instead. Browsers always send gzip and the board's viewer
+sizes a build by Content-Length, so they keep the raw object.
 """
 import configparser
 import contextlib
@@ -72,6 +76,24 @@ def signed_url(endpoint, bucket, access, secret, key, method, now=None, expires=
     return endpoint.rstrip("/") + path + "?" + query + "&X-Amz-Signature=" + sig
 
 
+def accepts_gzip(header):
+    """An Accept-Encoding that names gzip with a nonzero qvalue (RFC 9110)."""
+    for item in header.split(","):
+        parts = [p.strip().lower() for p in item.split(";")]
+        if parts[0] != "gzip":
+            continue
+        q = 1.0
+        for p in parts[1:]:
+            if p.replace(" ", "").startswith("q="):
+                try:
+                    q = float(p.replace(" ", "")[2:])
+                except ValueError:
+                    q = 0.0
+        if q > 0:
+            return True
+    return False
+
+
 class Gateway:
     def __init__(self, config, reachability=None):
         self.state = directory(Path(config["state"]).parent) / Path(config["state"]).name
@@ -95,6 +117,9 @@ class Gateway:
         if not self.access or not self.secret:
             raise ValueError("Missing object credentials")
         self.reachability = reachability or self.head_probe
+        self.gzip_state = None
+        if config.get("gzip_state"):
+            self.gzip_state = directory(Path(config["gzip_state"]).parent) / Path(config["gzip_state"]).name
         self.probe_lock = threading.Lock()
         self.probe_until = 0.0
         self.probe_ok = False
@@ -111,9 +136,11 @@ class Gateway:
         now = time.monotonic()
         if now < self.probe_until:
             return self.probe_ok
-        # One bounded signed HEAD per worker/15s; other cold/stale callers use disk.
+        # One bounded signed HEAD per worker/15s. While it is in flight the others
+        # take the last answer (P981: they fell back to the Pi's 1 MB/s copy for a
+        # whole download); only a gateway that has never reached R2 uses disk.
         if not self.probe_lock.acquire(blocking=False):
-            return False
+            return self.probe_ok
         try:
             if now >= self.probe_until:
                 self.probe_ok = bool(self.reachability(key))
@@ -150,6 +177,31 @@ class Gateway:
             return None
         return expected
 
+    def gzip_key(self, resolved, key, environ):
+        """The verified gzip companion of `key`, if this request may have it."""
+        group, alias, _, _ = resolved
+        if group != "maps" or self.gzip_state is None or environ.get("HTTP_RANGE"):
+            return None
+        if not environ.get("HTTP_USER_AGENT", "").startswith("FTE"):
+            return None
+        if not accepts_gzip(environ.get("HTTP_ACCEPT_ENCODING", "")):
+            return None
+        sha = key[len("objects/maps/"):-len(".bsp")]
+        try:
+            if not regular(self.gzip_state):
+                return None
+            with contextlib.closing(sqlite3.connect(self.gzip_state.as_uri() + "?mode=ro", uri=True,
+                                                    timeout=0.25)) as db:
+                db.row_factory = sqlite3.Row
+                row = db.execute("SELECT * FROM gz WHERE alias=? AND sha=? AND state='verified'",
+                                 (alias, sha)).fetchone()
+        except (OSError, ValueError, sqlite3.Error):
+            return None
+        want = "objects/maps/" + sha + ".bsp.gz"
+        if not row or row["gz_key"] != want or not isinstance(row["gz_bytes"], int) or row["gz_bytes"] <= 0:
+            return None
+        return want
+
     def __call__(self, environ, start_response):
         method, path = environ.get("REQUEST_METHOD", ""), environ.get("PATH_INFO", "")
         headers = [("Cache-Control", "no-store"), ("Referrer-Policy", "no-referrer")]
@@ -169,9 +221,14 @@ class Gateway:
                 except (OSError, ValueError, sqlite3.Error):
                     key = None
                 if key and self.r2_available(key):
+                    gz = self.gzip_key(resolved, key, environ)
                     status = "302 Found"
-                    headers += [("Location", signed_url(self.endpoint, self.bucket, self.access, self.secret, key, method)),
+                    headers += [("Location", signed_url(self.endpoint, self.bucket, self.access, self.secret,
+                                                        gz or key, method)),
                                 ("X-R2-Route", "r2")]
+                    if gz:
+                        headers.append(("X-R2-Encoding", "gzip"))
+                    headers.append(("Vary", "Accept-Encoding, Range"))
                 else:
                     status = "409 Conflict"
                     headers.append(("X-R2-Route", "origin"))

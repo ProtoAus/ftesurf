@@ -4818,11 +4818,22 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	}
 	else if (rec_wt_map != "")
 	{
-		rec_wt_playmap = strzone(rec_wt_map);
-		if (strcmp(rec_wt_map, serverkey("map")))
-			print(sprintf("^3replay: this run is on %s and you are on %s -- "
-			              "the camera will fly through nothing\n",
+		// P980: the same observational rule the other way -- a Momentum (or
+		// native) run plays on a linked build of its map, e.g. its _css port.
+		if (strcmp(rec_wt_map, serverkey("map")) && MapPort_Match(rec_wt_map, serverkey("map")))
+		{
+			rec_wt_playmap = strzone(serverkey("map"));
+			print(sprintf("^3replay: %s on linked build %s -- geometry may differ\n",
 			              rec_wt_map, serverkey("map")));
+		}
+		else
+		{
+			rec_wt_playmap = strzone(rec_wt_map);
+			if (strcmp(rec_wt_map, serverkey("map")))
+				print(sprintf("^3replay: this run is on %s and you are on %s -- "
+				              "the camera will fly through nothing\n",
+				              rec_wt_map, serverkey("map")));
+		}
 	}
 
 	/*
@@ -5631,8 +5642,7 @@ void(vector scr) Watch_Info =
 	s = (rec_wt_map != "") ? rec_wt_map : "unknown";
 	if (rec_wt_map != "")
 	if (strcmp(rec_wt_map, serverkey("map")))
-		s = strcat(s, (!strcmp(rec_wt_source, "ksf") && !strcmp(rec_wt_playmap, serverkey("map")))
-		              ? " (linked build)" : " (elsewhere)");
+		s = strcat(s, !strcmp(rec_wt_playmap, serverkey("map")) ? " (linked build)" : " (elsewhere)");
 	Watch_InfoRow([p_x, y], w, sz, cw, "map", s);                           y = y + lh;
 
 	Watch_InfoRow([p_x, y], w, sz, cw, "tag", FS_TagName(rec_wt_tag));       y = y + lh;

@@ -21,8 +21,33 @@
 
 ## next
 
+### P984 Momentum zones on more CS:S builds
+- 31 CS:S and KSF builds that timed only a main start and end from their own triggers (surf_axiom_css among them) now use the Momentum map's zones, with its stages and bonuses.
+
+### P983 Faster map downloads in the game
+- The game reads everything that has arrived each frame instead of one piece, so a map download runs at your connection's speed (about 3x faster at 100 fps).
+
+### P981 Smaller, faster map downloads
+- Maps that are not already compressed are now sent gzipped from the map storage (40-60% smaller), and the game unpacks them; this works on every released version.
+- Map downloads no longer fall back to the slow 1 MB/s copy on the lobby server when several requests arrive at once.
+
+### P982 r_mirrorworld
+- r_mirrorworld 1 mirrors the world left to right and flips mouse, keyboard and gamepad turning and strafing to match, so you play the mirrored map normally. It is the same switch as leftisright.
+- Names and markers drawn over the world (ent_view, player names, run lines) now follow the mirrored view.
+
+### P980 Momentum builds for Story and demos
+- Story and Event levels always load the level's own (Momentum) build, even where you picked the CS:S build in the map list, so the medal counts.
+- A Momentum demo now plays on the CS:S build of its map (the way KSF demos play on Momentum builds), with a note that the geometry may differ.
+
+### P979 bindlist in key order, with a filter
+- bindlist lists F2 before F10 (numbers in key names sort as numbers), and bindlist <text> shows only the keys or commands containing that text.
+
 ### P978 Reload account settings without overwriting them
 - Reload restores your account setup without saving stale local choices over it. New edits made while loading stay local; use Save when you deliberately want to replace the account setup.
+
+### P977 Movement settings under sv_cheats 1 take effect at once
+- With sv_cheats 1, sv_accelerate, sv_airaccelerate, sv_friction and sv_stopspeed now change how you move straight away, like sv_gravity always did; before they only applied from the next map.
+- sv_cheats 0 lists each movement setting it puts back, with the value it had and the value it returns to.
 
 ### P976 KSF tiers for CS:S builds and new KSF maps
 - The in-game map info box and scoreboard now show the KSF tier for CS:S builds of Momentum maps, for KSF maps added since the last list, and for Momentum maps KSF rates under another name. Four maps KSF re-tiered show their new tier.

@@ -3255,12 +3255,19 @@ float(float row) ui_eff =
 	return row;
 };
 
+// Story sets this around its launch: a level is its exact map (medals count
+// only there), never the row's chosen or fallback CS:S build.
+float ui_plain_only;
+float ui_launch_plain;          // ...kept for a launch the name screen resumes
+
 string() ui_selected_name =
 {
+	local float row;
 	if (ms_selected < 0 || ms_selected >= ms_count)
 		return "";
-	if (bufstr_get(ms_enabled, ui_eff(ms_selected)) == "0") return "";
-	return bufstr_get(ms_name, ui_eff(ms_selected));
+	row = ui_plain_only ? ms_selected : ui_eff(ms_selected);
+	if (bufstr_get(ms_enabled, row) == "0") return "";
+	return bufstr_get(ms_name, row);
 };
 
 // Choose a row's build (css 1, Momentum's 0) and remember every choice.
@@ -3341,6 +3348,13 @@ void(string mp, string pick) ui_build_print =
 	print(sprintf(" pick %s; plays %s; lists %g\n",
 	              (ui_eff(row) != row) ? "css" : "mom",
 	              bufstr_get(ms_name, ui_eff(row)), stof(bufstr_get(ms_lst, row))));
+	// P980: what a Story launch of this row would play, through the same read.
+	j = ms_selected;
+	ms_selected = row;
+	ui_plain_only = TRUE;
+	print(sprintf("ui_build: story plays %s\n", ui_selected_name()));
+	ui_plain_only = FALSE;
+	ms_selected = j;
 };
 
 /*
@@ -3880,6 +3894,7 @@ void(float eventmax) ui_launch_mode =
 	if (ui_join_busy())
 		return;
 	ui_launch_maxfog = eventmax;
+	ui_launch_plain = ui_plain_only;
 
 	/*
 	  BUILD 22.  Belt and braces beside m_draw's screen override: this is the
@@ -6069,7 +6084,11 @@ void(vector screensize) screen_name =
 			// re-run their gates; the name gate now passes.
 			menu_screen = ui_name_back;
 			if (ui_name_resume == 1)
+			{
+				ui_plain_only = ui_launch_plain;
 				ui_launch_mode(ui_launch_maxfog);
+				ui_plain_only = FALSE;
+			}
 			else if (ui_name_resume == 2)
 				ui_connect(ui_name_arg);
 			else if (ui_name_resume == 3)
