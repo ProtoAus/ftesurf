@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P962 — expanded Legacy workshop (delivery/appearance check pending)
+
+The owner confirmed title dragging and the original dropdowns in the stopped
+session's isolated surf_axiom preview (orange terms banner): "works well".
+They then requested less-shiny Terrorist arms and all installed model choices.
+That acceptance does not cover this newly expanded roster/pagination/materials.
+After the recorded P962 delivery, reconnect/relaunch and open knife_menu. Try
+one knife from the last page, Terrorist complete arms, one neutral-preview glove
+with a different sleeve, then drag the title and close with Esc. Do the bare
+skin, glove/sleeve fit, idle/inspect/attack animations and sounds look/feel right?
+The native/socket/screenshot controls are not a substitute for this small check.
+Neutral previews are local template renderings, not purchased inventory skins.
+Exact delivery state/limits: tools/p962-knife-workshop.md.
+
 ## P961 — game-running Friends presence (deployment pending; human check pending)
 
 Do not treat these as owner-confirmed or try against an older backend. After
