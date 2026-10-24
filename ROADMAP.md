@@ -70,8 +70,10 @@ is1MiB/s capped. No integrity/fallback guard was weakened.
 Remaining requested work (not silently folded into the completed items):
 - P961 game-running presence while disconnected is implemented and independently
   reviewed, with53backend tests and native proof/freshness controls. Source/native
-  tag published; final clean build/deployment and owner check remain pending.
-  Receipt: tools/p961-menu-presence.md. No claim that the live backend supports it yet.
+  tag published; clean Full build/final native proof now pass. Matching backend/
+  client/menu deployment and owner check remain pending; a heartbeat-only rollout
+  against the older backend is not safe. Receipt: tools/p961-menu-presence.md.
+  No claim that the live backend supports it yet.
 - Main-menu shared lobby/chat and DMs remain unbuilt. Existing lobby-mediated DM
   is not disconnected transport. Preserve consent, mutual/blocked visibility and
   authenticated actions.
