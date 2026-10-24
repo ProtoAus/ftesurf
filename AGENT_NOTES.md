@@ -2791,6 +2791,9 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
   Legacy (1,398,360 bytes), with CSS unchanged after mounting. Test alias absence
   and readonly readiness before mounting, then require the actual positive hash.
   A lit diffuse preview is not a claim of pixel-exact Source phong rendering.
+  Native build metadata must use `git describe --tags`: default describe ignores
+  lightweight pins and stamped this clean P967 source as old patch-962+20. Keep
+  the published tag; honor both tag types and rebuild after changed make flags.
 
 - P966 viewmodel material control: Legacy `Character` hands/cloth can fall back
   unlit while the knife/default VertexLitGeneric arms respond. Inspect material

@@ -236,7 +236,7 @@ if ($Engine) {
     # otherwise call a clean CRLF checkout dirty; metadata must be make arguments.
     $count = & git -C $FteRoot rev-list --count HEAD
     if ($LASTEXITCODE) { throw 'cannot resolve native source count' }
-    $describe = & git -C $FteRoot describe --long --always --dirty
+    $describe = & git -C $FteRoot describe --tags --long --always --dirty
     if ($LASTEXITCODE) { throw 'cannot resolve native source revision' }
     $sourceDate = & git -C $FteRoot log -1 --format=%cs -- .
     if ($LASTEXITCODE -or $sourceDate -notmatch '^\d{4}-\d{2}-\d{2}$') { throw 'cannot resolve native source date' }
