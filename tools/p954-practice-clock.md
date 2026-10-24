@@ -1,11 +1,35 @@
 # P954 — per-player practice slow motion
 
-Status: R6 addresses the three concrete R5 review issues: authoritative transport
-qualification, complete board-number validation and moving-release coverage.
-Three VMs build with zero warnings;924reader checks and same-byte corpus0newfaults
-pass. Actual old/new non-QW refusal control and supportedQW recording pass.
-Fresh re-review and deployment pending. Historical
-measurements below are r1/r2 only. This is ordinary development work, not a release or Build-number bump.
+Status: R6 is implemented, independently reviewed and deployed to BOTH Windows
+installs. Three VMs build with zero warnings;924reader checks and the same-byte
+corpus show0newfaults. Actual old/new non-QW refusal and supportedQW recording
+controls pass. The coupled NanoPi native/program/reader cutover is NOT complete:
+one occupied lobby currently blocks its empty-fleet boundary. No cutover,
+consistent delivery backup, service signal or admission closure has occurred.
+Historical measurements below are r1/r2 only. This is ordinary development work,
+not a release or Build-number bump.
+
+## Verified Windows delivery / pending fleet delivery
+
+- Product source: QC7f0509b4382ca9c66302f542f6ec44c3b2f698ea and native
+  dae472e7090d22b48807a267baa039f58c171bfc, retained in inspected8373dbe7.
+  Paired Windows/native ARM qualification and final source reviews are complete;
+  this is not a live NanoPi application-acceptance claim.
+- 24Oct2026 01:52:07Z:26native/plugin/program/LNO targets promoted to BOTH Windows
+  installs with destination identities/hashes checked and predecessors retained.
+  Installed-image actors produced completed1/.5/.1 records, all reader-clean;
+  owner feel/visual acceptance remains pending. No owner game was killed.
+- 24Oct2026 03:24:41Z: BOTH installed `tools/reccheck.py` files upgraded to the
+  qualified reader SHA256
+  `f105c60e5d09715cefce47865d60d3590fca916a8ed267b9d85a0342fc1d878f`.
+  Each predecessor exactly matched published03ddc6a5, not unknown peer source;
+  `.prev` and prior history retained, no index/ref or unrelated file changes.
+  The actual CLI in each install parsed the retained normal/.5/.1 captures:
+  three files each, zero faults. This checks reader installation, not new physics.
+- Exact delivery-controller reviews pass. The old backend remains OPEN and its
+  candidate CLOSED; actual candidate/history acceptance and postflight remain
+  mandatory. The live blocker is one player on lobby1/27510. The earlier forced
+  restart was a separate completed rollout, not standing approval for this one.
 
 ## Behaviour and boundaries
 

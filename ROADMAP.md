@@ -71,9 +71,12 @@ Remaining requested work (not silently folded into the completed items):
 - Game-running presence while disconnected, main-menu shared lobby/chat and DMs.
   Existing lobby-mediated friends/DM do not make a disconnected install online.
   Preserve account consent, mutual/blocked visibility and authenticated actions.
-- Practice-only slow motion via host_timescale, preserving fixed movement ticks
-  and slowing the timer correctly. It must never make ranked/evidence eligibility
-  out of slowed input. Requires engine/movement/recorder contract controls.
+- P954 practice-only `host_timescale` is implemented, independently reviewed and
+  deployed to BOTH Windows installs, including their reader tools. Fixed-tick,
+  forced-practice and reader controls pass; owner feel remains pending. The
+  coupled NanoPi native/program/reader cutover is not complete: one occupied
+  lobby blocks its empty-fleet boundary. No live admission/service change has
+  been made. Exact source/UTC delivery and limits: tools/p954-practice-clock.md.
 - P950/P952 fix the actual Phantasia/Epiphany screenshot causes, not a complete
   existing-VMT/absent-image census. The remaining generic report seam stays in
   BACKLOG.md; human visuals stay in lextest, not inferred from implementation.
