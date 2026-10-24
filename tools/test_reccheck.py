@@ -3358,6 +3358,24 @@ def case_sparse_practice_board():
                 "sparse poses without a native pin never acquire the exception")
     faults_with(edit(sparse, "board", 3, 2), "normal has length",
                 "unobserved pose never excuses a malformed board normal")
+    for column in (6, 7, 8):
+        faults_with(edit(sparse, "board", column, "bad"), "non-numeric",
+                    "sparse board velocity column%d must be numeric" % column)
+    for value in ("nan", "inf", "-inf"):
+        for column in range(1, 9):
+            faults_with(edit(sparse, "board", column, value), "non-finite",
+                        "sparse board field%d rejects %s" % (column, value))
+    faults_with(edit(sparse, "board", 1, -.01), "negative time",
+                "sparse board timestamp cannot precede the run")
+    for value in (-1, 1.5):
+        faults_with(edit(sparse, "board", 2, value), "non-negative integer",
+                    "sparse board counter %s cannot be a malformed integer" % value)
+    multi = after_row(sparse, 11, "board 0.11 2 0.8 0 0.6 0 0 0")
+    ok_clean(multi, "multiple shaped board records retain the structural unknown control")
+    for which in (0, 1):
+        for value in ("nan", "inf", "-inf"):
+            faults_with(edit(multi, "board", 2, value, which=which), "non-finite",
+                        "multi-board counter%d %s faults without crashing diagnostics" % (which, value))
     bad = after_row(sparse, 11, "board 0.11 0 0.8 0 0.6 0 0 0")
     faults_with(bad, "board counter", "unobserved pose never excuses a backwards board counter")
     prefix = head(drop_kinds(list(sparse), ("end", "inend")), "flags", 0)
@@ -3369,6 +3387,35 @@ def case_sparse_practice_board():
     no_trace = insert_before(no_trace, "end", "board 0.1 1 0.8 0 0.6 0 0 0")
     faults_with(no_trace, "no sample has the ramp-contact bit",
                 "missing raw inputs never grant the sparse-pose exception")
+
+
+def case_sparse_release_board():
+    """v11 moving release grammar, not a native contact/physics pass."""
+    for packet in (10, PACKETS - 1):
+        b = head(v11_fixture(frozen=1), "flags", 1)
+        b = after_row(b, packet, "board %.4f 1 0.8 0 0.6 0 0 0"
+                      % ((packet - 1) * TICK))
+        b = edit(b, "in", 0, "fzin", which=packet)
+        b = edit(b, "sample", 9, 16, PAD + packet)
+        b = edit(b, "sample", 14, .8, PAD + packet)
+        b = edit(b, "sample", 16, .6, PAD + packet)
+        ok_clean(b, "v11 moving-release observed-contact control packet%d" % packet)
+        stamp = "%.4f " % (packet * TICK)
+        ix = next(i for i, line in enumerate(b) if line.startswith(stamp))
+        sparse = bump_end(b[:ix] + b[ix + 1:], "samples", -1)
+        f, n = run(sparse)
+        check(not f and any("unobserved in sparse poses" in x for x in n)
+              and any("not verified contact" in x for x in n),
+              "moving-release omitted board pose is unknown at packet%d (includes EOF)" % packet)
+        faults_with(head(list(sparse), "flags", 0), "no sample has the ramp-contact bit",
+                    "moving release does not exempt ranked contact contradiction")
+        faults_with(edit(sparse, "board", 6, "bad"), "non-numeric",
+                    "moving release does not excuse malformed board velocity")
+        prefix = head(drop_kinds(list(sparse), ("end", "inend", "clockend")), "flags", 0)
+        f, n = run(prefix)
+        check(any("no 'end' record" in x for x in f)
+              and any("unobserved in sparse poses" in x for x in n),
+              "moving-release unfinished file remains faulted without certifying contact")
 
 
 def case_sv_sample_fresh_cursor():
@@ -3384,7 +3431,7 @@ def case_sv_sample_fresh_cursor():
 
 
 def main():
-    for fn in (case_sparse_practice_board, case_sv_sample_fresh_cursor, case_sv_resume_parkclock, case_sv_timer_viewclock, case_sv_timer_viewclock_review, case_control,
+    for fn in (case_sparse_practice_board, case_sparse_release_board, case_sv_sample_fresh_cursor, case_sv_resume_parkclock, case_sv_timer_viewclock, case_sv_timer_viewclock_review, case_control,
                case_no_horizon, case_horizon_without_rows,
                case_trailer_width, case_trailer_count,
                case_row_width,

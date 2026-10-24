@@ -1093,7 +1093,7 @@ def check_rec(path, verbose=False, *, data=None):
     in_mt = None            # last cumulative mover tick
     in_packets = 0          # distinct packet ordinals
     pose_packet = None      # (session, pk), constant-space pose coverage only
-    pose_real = pose_seen = pose_board = pose_sparse = False
+    pose_input = pose_seen = pose_board = pose_sparse = False
     in_offgrid = 0          # angles that are not a multiple of the wire quantum
     in_offgrid_ln = None    # v9: first such row, for the fault
     in_badshape = 0         # rows this tool could not parse (reported once)
@@ -1334,9 +1334,11 @@ def check_rec(path, verbose=False, *, data=None):
                 in_packets += 1
             pose_key = (len(sessions), pk)
             if pose_key != pose_packet:
-                pose_sparse |= pose_board and pose_real and not pose_seen
-                pose_packet, pose_real, pose_seen, pose_board = pose_key, False, False, False
-            pose_real |= not excluded
+                pose_sparse |= pose_board and pose_input and not pose_seen
+                pose_packet, pose_input, pose_seen, pose_board = pose_key, False, False, False
+            # Both in and fzin moved: release is excluded only from clock joins.
+            # Physically pinned inputs have no row and cannot grant this state.
+            pose_input = True
             spec_restates(r, lineno + 1, "the 'in' row", mt, carry, spec_pend)
 
             # MONOTONIC, BOTH OF THEM, and neither may go backwards for the same
@@ -2628,10 +2630,20 @@ def check_rec(path, verbose=False, *, data=None):
                 r.fault("line %d: 'board' takes 8 fields, has %d" % (ln, len(a)))
                 continue
             try:
-                bt, bn = float(a[0]), float(a[1])
-                nrm = [float(x) for x in a[2:5]]
+                board_values = [float(x) for x in a]
+                bt, bn = board_values[:2]
+                nrm = board_values[2:5]
             except ValueError:
                 r.fault("line %d: 'board' has a non-numeric field" % ln)
+                continue
+            if not all(math.isfinite(x) for x in board_values):
+                r.fault("line %d: 'board' has a non-finite field" % ln)
+                continue
+            if bt < 0:
+                r.fault("line %d: 'board' has a negative time" % ln)
+                continue
+            if bn < 0 or not bn.is_integer():
+                r.fault("line %d: 'board' counter must be a non-negative integer" % ln)
                 continue
 
             # The plane is what everything downstream grades against: a
@@ -2714,7 +2726,7 @@ def check_rec(path, verbose=False, *, data=None):
             # Missing OPTIONAL poses do not prove absence of contact. This is
             # only fail-unknown for unranked/unfinished pinned counted traces;
             # no native replay/physics verdict or ranked admission is granted.
-            sparse = pose_sparse or (pose_board and pose_real and not pose_seen)
+            sparse = pose_sparse or (pose_board and pose_input and not pose_seen)
             unranked = (is_int(head.get("flags", ""))
                         and int(head["flags"]) & TF_PRACTICE)
             trace = (ver >= 9 and pmpin is not None and inrows > 0

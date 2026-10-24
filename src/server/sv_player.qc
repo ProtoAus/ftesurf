@@ -1127,6 +1127,7 @@ float(string extname, entity client) SV_CheckClientExtension = #99;
 void(entity e, float argc, string arg) SV_TimeScaleCommand =
 {
 	local float value;
+	local string protocol;
 
 	if (strcmp(e.classname, "player") || !e.run_inserver)
 		return;
@@ -1146,6 +1147,12 @@ void(entity e, float argc, string arg) SV_TimeScaleCommand =
 	}
 	if (value < 1)
 	{
+		protocol = infokey(e, "protocol");
+		if (strcmp(protocol, "quakeworld") && strcmp(protocol, "quakeworld+"))
+		{
+			sprint(e, PRINT_HIGH, "host_timescale: slow practice requires QuakeWorld duration inputs\n");
+			return;
+		}
 		if (SV_CheckClientExtension("FTE_VRINPUTS", e))
 		{
 			sprint(e, PRINT_HIGH, "host_timescale: slow practice is unavailable with timestamp inputs\n");

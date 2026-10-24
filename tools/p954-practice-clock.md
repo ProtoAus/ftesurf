@@ -1,8 +1,10 @@
 # P954 — per-player practice slow motion
 
-Status: R5 bounded sampling/view corrections in progress after independent R4
-review. Native decoder qualification and R4 runtime/boundary controls passed;
-changed-seam checks, fresh re-review and deployment pending. Historical
+Status: R6 addresses the three concrete R5 review issues: authoritative transport
+qualification, complete board-number validation and moving-release coverage.
+Three VMs build with zero warnings;924reader checks and same-byte corpus0newfaults
+pass. Actual old/new non-QW refusal control and supportedQW recording pass.
+Fresh re-review and deployment pending. Historical
 measurements below are r1/r2 only. This is ordinary development work, not a release or Build-number bump.
 
 ## Behaviour and boundaries
@@ -24,6 +26,12 @@ Local-seat requests/queries preserve their `pN` owner and fractional carry.
 Render checks refresh every actual seat, not just the native-selected render
 seat, then restore the active native seat. Input-frame checks never switch contexts.
 
+Slow requests require an authoritative negotiated QuakeWorld transport, not
+just a positive mover rate: independent NQ/DP timestamp paths are refused before
+taint/scalar mutation, even without VR inputs. Query/normal1 remain available.
+The server uses its existing trusted protocol info key, not spoofable userinfo
+or a client-requested protocol cvar.
+
 Slow requests require `cl_threadedphysics 0`; the native input thread bypasses
 CSQC. Turning it on while slow is guarded at render rate, with exact owned
 restoration of that later preference when slow ends. Timestamp-input negotiation
@@ -42,7 +50,10 @@ full input/frozen-input/event rows remain intact. Restored prefix spacing is
 conservatively re-anchored without adding saved-state columns. Fresh streams
 retain their first nonnegative pose even without pre-roll. A board contact in a
 demonstrably omitted pose is unobserved, not disproven: only pinned counted
-practice/unfinished traces receive that structural note. Ranked/dense/no-trace
+practice/unfinished traces receive that structural note. A moving fzin release
+counts for pose coverage but remains excluded from counted-angle joins. All8
+board fields must be numeric/finite, with nonnegative time and integral/nonnegative
+counter; missing poses cannot waive those checks. Ranked/dense/no-trace
 contradictions and malformed boards still fault. Incomplete files stay faulted.
 The note certifies no native physics/contact result or ranked admission.
 

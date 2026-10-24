@@ -20,6 +20,10 @@
   FTE_VRINPUTS movement uses timestamps, not msec: refuse negotiated slow mode,
   do not invent a second clock. Existing builtin99 accepts an optional client
   argument even though generated sv_defs declares only its global form.
+  Gate slow entry by authoritative infokey(client,"protocol"): only quakeworld
+  and quakeworld+ consume the scaled duration. NQ/DP independent input replaces
+  msec from timestamps even without VRINPUTS; positive mover rate alone is not
+  support. Refuse before taint/scalar changes; query/normal1 remain available.
 - Scalar1 ack is NOT a server command-drain boundary. An accepted slow request
   keeps practice eligibility sticky until fresh map/reconnect; saved flags cannot
   erase the runtime latch. QW serverdata CL_ClearState wipes cl/pending commands.
@@ -34,12 +38,20 @@
   the first nonnegative pose; restored-1 only reanchors. Do not relax the rate
   check. Sparse poses cannot disprove a brief board contact: the reader reports
   unobserved ONLY for pinned counted practice/unfinished traces with a missing
-  non-frozen packet pose. Ranked/dense/no-trace contradictions and malformed
-  boards still fault; no physics/contact verdict is granted. Native legacy event phase must use existing packet ordinals, not
+  actual-input packet pose. fzin is MOVING release, excluded only from clock/
+  angle joins; pinned input has no row. Keep those joins untouched. Validate ALL
+  eight board numbers as finite, time nonnegative, counter integral/nonnegative
+  before any unknown-contact note. Ranked/dense/no-trace contradictions and
+  malformed boards still fault; no physics/contact verdict is granted. Native legacy event phase must use existing packet ordinals, not
   the presence of optional visual samples; restart pairs with its relocation.
 - A p2 command WRAPS to p1 when only one native seat exists. Dedicated server
   allow_splitscreen defaults off: enable it in the OWNED fixture BEFORE connect
   and prove a second player was admitted, not merely that p2 printed a reply.
+- Existing scale RPC helper waits>0.2s between requests. Immediate query/normal1
+  after an ack/refusal can be silently rate-limited on ANY transport. Do not
+  invent a NQ query-dispatch bug from that timeout. Preserve actual actor state:
+  a valid clean recorder may be RUNNING, not the idle state an over-tight test
+  expected. Revalidate immutable captured state rather than rerunning good arms.
 - run_class0 leaves SV_TimerCheat's refined fields alone; grade forced
   TF_PRACTICE with an actually running clean control, not that call's cheat bits.
   run_t_tick is a cached GLOBAL, not an entity field. The tested fteqcc can AV
