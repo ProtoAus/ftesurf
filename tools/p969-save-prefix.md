@@ -67,5 +67,19 @@ plaintext-save authentication. The remaining pair/binding issue stays in
 BACKLOG.md. Old slots are not retroactively confirmed or rewritten. Stream-copy
 completeness and unrelated recorder-state bugs are outside this bounded fix.
 
-Source publication, Windows installation, live reload and Pi promotion are
-separate states. None is claimed by a fixture pass; deployment remains pending.
+Main source/review records are published. Clean compatible Windows source
+`7ea12fb6` is published and its server DAT/LNO are actually installed in BOTH
+Windows installs: four destination hashes, .prev/older-prev history and 21 fresh
+protected native/client/menu/plugin/config/tool hashes were verified unchanged.
+No process was signalled or existing owner session claimed reloaded. Normal
+save/warm-load/cold-load human acceptance is requested in lextest.md, pending.
+
+The Pi directory recovered with 12 rows/one player at the new read-only boundary;
+there was no stage, restart, phase or backend action. The cumulative compatible
+source builds without warnings, matches qualified main QW and has no client code
+change. Its client differs from the retained live file only in one compiler-banner
+local-date byte after midnight. The full client hash guard was retained; no banner
+was edited or clock changed. The owner was asked whether to allow the date-only
+refresh or retain exact current client bytes. Pi promotion remains pending that
+choice and fresh empty/ownership/pin gates. An earlier source composition being
+published does not mean it was applied. This is not a Build or release.

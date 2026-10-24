@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+**P969 — normal movement save/load after server restart (PENDING):** Server
+DAT/LNO are installed in both Windows installs, but no owner process was restarted.
+At the next normal server start, save during a run and load in the same attempt;
+then check a normal cold load. Does the ordinary timer/recording behavior remain
+right, without an unexpected cancellation or disk-copy warning? Do not change
+permissions or damage a real save to test failure. Native API controls cover the
+synthetic disk-failure contexts; this request is normal gameplay acceptance only.
+No owner confirmation has been received.
+
 ## P967 — Original/default-T texture (Windows delivered; human check pending)
 
 Not owner-confirmed. Agent socket images show the installed Legacy diffuse on
