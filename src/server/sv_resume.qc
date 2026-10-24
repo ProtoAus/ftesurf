@@ -905,6 +905,8 @@ void(entity e) SV_MsRecAttach =
 		// Cold (serial -1 matches nothing): SV_RecRecount re-arms the open pause.
 		oldroot = sl_root;
 		sl_root = SV_MsRoot(e);
+		// P969: Multi-Session has its own metadata; no plain-save confirmation claim.
+		rs_prefix_state = 0;
 		ok = SV_RecRewind(e, SL_RecPath(0), ms_lines, -1, ms_n, ms_padn, ms_cp);
 		sl_root = oldroot;
 		if (!ok)

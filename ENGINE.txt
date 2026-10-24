@@ -25,7 +25,10 @@ commit   dae472e7090d22b48807a267baa039f58c171bfc
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-954
-patch    968
+patch    969
+# P969 buffered save confirmation, separate from valid warm-memory marks.
+# Server-only3module delta; preserve installed client/menu/native/config cohort.
+# Native pin/tag unchanged. See tools/p969-windows-server-compatible.md.
 # P968 bounded visible-body finish forgiveness; P455 future bank remains open.
 # See tools/p968-windows-server-compatible.md; only server DAT/LNO promotion.
 # P965 older-save progress range guard; server-only compatibility composition.

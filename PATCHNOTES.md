@@ -21,6 +21,9 @@
 
 ## next
 
+### P969 Keep in-memory loads when a save copy fails
+- Saves check the movement copy on disk and warn if it cannot be confirmed. The current recording remains available for a matching in-memory load instead of being cancelled by that disk failure.
+
 ### P958 Saved-run check resilience
 - Saved-run checks report damaged numeric data without interrupting checks of other recordings.
 

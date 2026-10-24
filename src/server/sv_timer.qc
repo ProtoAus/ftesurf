@@ -2499,6 +2499,8 @@ void(string dst) SV_RecCopyDrop =
 };
 
 int   rec_snap_bytes;                   // SV_RecSnapshot -> SV_RecSaveKeys, one save
+float rec_prefix_ok;                   // P969: per-call output, initialized by SV_RecWritePrefix
+float rs_prefix_state;                 // P969: 0 legacy/stream, 1 confirmed, 2 failed; consumed like rs_bytes
 int   rs_bytes;                         // the save being loaded: 0 = no stream copy
 float rs_gen, rs_ver, rs_flagofs, rs_pend;
 float rs_views, rs_parks;
@@ -7007,8 +7009,10 @@ string(entity e) SV_RecKeptLeaf =
 */
 float(entity e, string path) SV_RecWritePrefix =
 {
-	local float fh;
+	local float fh, mark, readback, i, ok;
 
+	rec_prefix_ok = -1;
+	rec_snap_bytes = 0i;
 	/*
 	  BUILD 66: a streamed run has no prefix to write.  Returning 0 is the
 	  ordinary "nothing to keep" answer this function already documents, so the
@@ -7033,19 +7037,48 @@ float(entity e, string path) SV_RecWritePrefix =
 	if (e.rec_rec_buf < 1 || e.rec_rec_lines <= 0)
 		return 0;
 
+	// The live-memory mark survives a disk failure; confirmation travels separately.
+	mark = e.rec_rec_lines;
+	rec_prefix_ok = 0;
 	fh = fopen(path, FILE_WRITE);
 	if (fh < 0)
-	{
 		dprint(sprintf("timer: cannot write %s\n", path));
-		return 0;
+	else
+	{
+		// FOUR arguments: this is a prefix, not the whole buffer.
+		buf_writefile(fh, e.rec_rec_buf, 0, mark);
+		fclose(fh);
 	}
 
-	// FOUR arguments, always -- see SV_RecClose.  Here it is not merely
-	// defensive: a prefix is exactly the case where passing three would compute
-	// `used - start` and write the wrong length.
-	buf_writefile(fh, e.rec_rec_buf, 0, e.rec_rec_lines);
-	fclose(fh);
-	return e.rec_rec_lines;
+	// Buffered fclose cannot report a failed disk write. Check logical rows,
+	// not just existence/size; this is no byte seal or future-mutation promise.
+	ok = FALSE;
+	readback = buf_create_ex("string", 0);
+	if (readback >= 1)
+	{
+		ok = buf_loadfile(path, readback);
+		if (ok)
+		{
+			if (buf_getsize(readback) != mark)
+				ok = FALSE;
+			i = 0;
+			while (i < mark && ok)
+			{
+				if (strcmp(bufstr_get(readback, i), bufstr_get(e.rec_rec_buf, i)))
+					ok = FALSE;
+				i = i + 1;
+			}
+		}
+		buf_del(readback);
+	}
+	if (ok)
+		rec_prefix_ok = 1;
+	else
+	{
+		dprint(sprintf("timer: prefix write not confirmed (warm mark kept): %s\n", path));
+		sprint(e, PRINT_HIGH, "^3save: disk movement copy not confirmed; current recording kept^7\n");
+	}
+	return mark;
 };
 
 // Patch 368: the stream read back into a buffer, counters kept, part file gone.
@@ -7107,6 +7140,10 @@ float(entity e) SV_RecDestream =
 // Into a save's state.txt, after SV_RecWritePrefix.
 void(entity e, filestream f) SV_RecSaveKeys =
 {
+	// P969: an additive save key, not a recording-format or warm-lineage claim.
+	if (rec_prefix_ok >= 0)
+		fputs(f, sprintf("recprefixok %d\n", rec_prefix_ok));
+	rec_prefix_ok = -1;
 	fputs(f, sprintf("recgen %d\n", e.rec_rec_gen));
 	if (e.rec_rec_branch != "")
 		fputs(f, sprintf("recbranch %s\n", e.rec_rec_branch));
@@ -7134,6 +7171,7 @@ void(entity e, filestream f) SV_RecSaveKeys =
 
 void() SV_RecKeysReset =
 {
+	rs_prefix_state = 0;              // missing key: historical uncertainty, not new confirmation
 	rs_bytes = 0;
 	rs_gen = -1;                        // a save before Patch 375: no lineage, so cold
 	if (rs_rid != "")
@@ -7155,6 +7193,13 @@ void() SV_RecKeysReset =
 // One state.txt line, already tokenized; TRUE if it was ours.
 float(string k, float n) SV_RecKeyRead =
 {
+	if (!strcmp(k, "recprefixok") && n == 2)
+	{
+		rs_prefix_state = 2;
+		if (!strcmp(argv(1), "1"))
+			rs_prefix_state = 1;
+		return TRUE;
+	}
 	if (!strcmp(k, "recparks")) { rs_parks = stof(argv(1)); return TRUE; }
 	if (!strcmp(k, "recviews")) { rs_views = stof(argv(1)); return TRUE; }
 	if (!strcmp(k, "recmc") && n == 5)
@@ -7513,9 +7558,11 @@ void(entity e, string why, float ticks) SV_RecParkLine =
 float(entity e, string path, float mark, float serial,
       float samples, float padn, float cps) SV_RecRewind =
 {
-	local float buf;
+	local float buf, prefix_state;
 	local int sb;
 
+	prefix_state = rs_prefix_state;
+	rs_prefix_state = 0;
 	sb = rs_bytes;                      // Patch 375: consumed by whichever load asked
 	rs_bytes = 0;
 	rec_rewind_cold = FALSE;
@@ -7549,6 +7596,10 @@ float(entity e, string path, float mark, float serial,
 		return TRUE;
 	}
 
+	// P969: disk confirmation cannot revoke a valid same-attempt memory rewind.
+	// Other callers clear this metadata; missing save keys also reset to 0.
+	if (prefix_state == 2)
+		return FALSE;
 	if (!SV_RecEnabled())
 		return FALSE;
 
@@ -7568,9 +7619,15 @@ float(entity e, string path, float mark, float serial,
 		return FALSE;
 	}
 
-	// Whatever came back is the truth about the file; `mark` was only the
-	// writer's claim about it, and the two disagreeing means the file was
-	// touched underneath us.  Trust the buffer.
+	// P969: a newly confirmed buffered prefix stated this exact logical mark.
+	if (prefix_state == 1)
+	if (buf_getsize(buf) != mark)
+	{
+		buf_del(buf);
+		return FALSE;
+	}
+	// Older saves have no confirmation key: preserve their historical behavior,
+	// not a retrospective assertion that their file ever matched the mark.
 	if (e.rec_rec_buf >= 1)
 		buf_del(e.rec_rec_buf);
 
