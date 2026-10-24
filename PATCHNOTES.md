@@ -21,6 +21,9 @@
 
 ## next
 
+### P976 KSF tiers for CS:S builds and new KSF maps
+- The in-game map info box and scoreboard now show the KSF tier for CS:S builds of Momentum maps, for KSF maps added since the last list, and for Momentum maps KSF rates under another name. Four maps KSF re-tiered show their new tier.
+
 ### P975 Friends in a private game
 - In a private local game the friends list now loads on the menu Play screen, as it does at the main menu; the in-game Friends tab points you there.
 

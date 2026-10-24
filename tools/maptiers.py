@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Generate maps/tiers.txt: independent public MOM/KSF ratings by exact map/leg.
 
-    python tools/maptiers.py --ksf-roster C:/FTESurf/ftesurf/data/ksf_roster.csv
+    python tools/maptiers.py --ksf-roster C:/FTESurf/ftesurf/data/ksf_roster.csv \
+                             --maplist <FTESURF-MAPDL file, e.g. /api/board?maps=1>
 
 Momentum's public MSML caches supply ranked/suggested MAIN, STAGE and BONUS
 ratings (same gamemode/style selectors as mapmeta.py). Private testing and
 disabled maps are excluded. No main tier is inherited by a stage, and no map
-suffix is stripped. KSF's numeric main ratings come from maproster's roster.
+suffix is stripped. KSF's numeric main ratings come from maproster's roster,
+then from the directory's map list (--maplist), whose KSF column rates each row
+by its exact name -- the CS:S builds and maps KSF added after the roster, and
+the catalogue's newer value where KSF re-tiered one.
 The user's community bonus sheet uses LETTER tiers, not a numeric equivalent:
 Unit and Strafe columns are retained separately, including split bonuses. Its
 pending/to-add column has no actual tiers and is intentionally not imported.
@@ -108,6 +112,28 @@ def ksf_main(table, text):
             row[2] = value
 
 
+def ksf_maplist(table, text):
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "FTESURF-MAPDL 1":
+        raise ValueError("map list is not FTESURF-MAPDL 1")
+    filled, moved = [], []
+    for line in lines[1:]:
+        f = line.split()
+        # dl name type src dltier kb date - mom ksf ...; column 9 is KSF's tier
+        if len(f) < 10 or f[0] != "dl" or not f[9].isdigit() or not tier(int(f[9])):
+            continue
+        name = f[1].lower()
+        if not NAME.fullmatch(name):
+            continue
+        row = slot(table, name)
+        if row[2] == "-":
+            filled.append(name)
+        elif row[2] != f[9]:
+            moved.append("%s %s->%s" % (name, row[2], f[9]))
+        row[2] = f[9]
+    return filled, moved
+
+
 def ksf_bonus(table, text):
     rows = list(csv.reader(io.StringIO(text)))
     if not rows or rows[0][3:4] != ["Unit Bonuses"] or rows[0][7:8] != ["Strafe Bonuses"]:
@@ -167,6 +193,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--momentum", type=pathlib.Path, default=pathlib.Path(mapmeta.MOMENTUM))
     ap.add_argument("--ksf-roster", type=pathlib.Path, required=True)
+    ap.add_argument("--maplist", type=pathlib.Path, required=True)
     ap.add_argument("--bonus-csv", type=pathlib.Path)
     ap.add_argument("--out", type=pathlib.Path, default=ROOT / "ftesurf/maps/tiers.txt")
     a = ap.parse_args()
@@ -179,6 +206,9 @@ def main():
     for path in files:
         momentum(table, mapmeta.read_msml(path))
     ksf_main(table, a.ksf_roster.read_text(encoding="utf-8-sig"))
+    filled, moved = ksf_maplist(table, a.maplist.read_text(encoding="utf-8-sig"))
+    print("map list: %d KSF main tiers filled, %d re-tiered: %s" %
+          (len(filled), len(moved), ", ".join(moved) or "none"))
     if a.bonus_csv:
         text = a.bonus_csv.read_text(encoding="utf-8-sig")
     else:

@@ -1,5 +1,7 @@
 # lextest.md — things waiting on a human
 
+**P976 — KSF tier in the map info box (pending, not owner-confirmed):** Which map showed no KSF tier? Load it (or surf_axiom_css, surf_4am_css, surf_kraken) and check the top-right box reads "KSF tier N". Lobbies read the new list on their next map load. Agent rig showed surf_axiom_css going from "KSF tier ?" to "KSF tier 4".
+
 **P975 — Friends in a private game (pending, not owner-confirmed):** Start a private local game, press Esc, open Play: the friends panel on the right should load your list (online friends show their map, Join works). Agent rig shows the menu now asks the Friends service in a local game (it stopped at signing, the rig has no install key); your linked install is the real check.
 
 **P974 — Stage toast switch and map search (pending, not owner-confirmed):** hud_edit, Splits: turn Stage toast off and finish a stage in a full run; the pill top left should not appear. In the map picker, play a map, come back, double-click the old search: it should highlight, and typing should replace it. Agent controls cover the pane row and the search state, not your eye.

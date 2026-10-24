@@ -5867,7 +5867,9 @@ material behind it; not map completeness or native/prediction acceptance.
 ## Map/leg tier metadata (P723/P724)
 
 - `maps/tiers.txt` is public generated metadata, not player data. Rebuild with
-  `tools/maptiers.py`; ship the asset to both installs and the Pi separately from
+  `tools/maptiers.py --ksf-roster <data/ksf_roster.csv> --maplist <the live
+  /api/board?maps=1 list>` (P976: the roster alone missed 451 KSF tiers -- every
+  _css build, KSF maps newer than it, linked ports); ship the asset to both installs and the Pi separately from
   `build.ps1 -Pi`'s progs. Whole-map MOM/KSF numeric ratings and the owner's
   community KSF bonus-letter sheet are distinct. Unit/Strafe letters are NOT a
   numeric conversion. Do not donate main-map tiers to a stage or strip suffixes.
