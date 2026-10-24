@@ -55,23 +55,6 @@
   not called passes or worked around with release overrides. No product failure
   or every-map/runtime claim follows from the stale optional census.
 
-## Primary local surf_fantasy override versus Momentum/Pi (22 Oct audit)
-
-- Site: C:/FTESurf/ftesurf/maps/surf_fantasy.bsp and maproster.resolve mount
-  priority. Primary loose SHA1f04171db504fe5b25e28f01a65110ba5f3173b64 differs
-  from installed Momentum and Pi held/cached-published
-  fd73ae1b0941b004ad032a45bc8a69b617b97e4c. No map/data/choice changed.
-- The global Momentum preference request remains OPEN: the read-only audit is
-  progress, not delivery of that end state. Other safe requested work continues
-  while this narrow preserve-versus-retire decision is pending.
-- Falsifier: an owned client's actual loaded BSP/checksum matches the intended
-  build; preserve the old bytes and build-bound records if the owner chooses a
-  switch. The metadata resolver predicts shadowing, not all-package/native trace.
-- Owner decision: is this loose build intentional, or should it be retired with
-  bytes retained? Do not clear two saved CSS choices or replace an unknown-owner
-  BSP automatically. The historical surf_dune shadow is now byte-identical to
-  Momentum/Pi in the two-pair check. Scope/limits: tools/momentum-preference-audit.md.
-
 ## Sampled-image report gaps beyond the P950/P952 screenshot fixes
 
 - Phantasia's actual Refract_DX90 glass fallback and unsupported-class report
