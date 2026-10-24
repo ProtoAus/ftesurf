@@ -22,6 +22,7 @@ span = main[span_start:main.index('\n}', span_start) + 2]
 half_start = main.index('static float HalfToFloat(')
 half = main[half_start:main.index('static void Mod_HL2_ReadPose(', half_start)]
 codec = header[header.index('static qboolean HL2_WeaponQuat('):header.index('static qboolean HL2_WeaponPose(')]
+paths = header[header.index('static qboolean HL2_WeaponPath('):header.index('static qbyte *HL2_WeaponFile(')]
 prefix = r'''
 #include <assert.h>
 #include <math.h>
@@ -35,6 +36,7 @@ typedef float vec3_t[3], vec4_t[4];
 #define false 0
 #define max(a,b) ((a)>(b)?(a):(b))
 typedef struct { vec3_t pos; vec4_t quat; } hl2mdlbone_t;
+static void Q_strlcpy(char *dst, const char *src, size_t size) { snprintf(dst, size, "%s", src); }
 static void matrix(const float *p, const float *q, const float *s, float *out)
 { unsigned i; (void)s; for(i=0;i<12;i++)out[i]=0; memcpy(out,p,12); memcpy(out+3,q,16); }
 static struct { void (*GenMatrixPosQuat4Scale)(const float*,const float*,const float*,float*); } api={matrix}, *modfuncs=&api;
@@ -42,6 +44,14 @@ static struct { void (*GenMatrixPosQuat4Scale)(const float*,const float*,const f
 tests = r'''
 int main(void)
 {
+    char normalized[64];
+    assert(HL2_WeaponPath("models/weapons/v_knife.ani", normalized, sizeof(normalized), ".ani"));
+    assert(HL2_WeaponPath("models/weapons/v_knife_gg.ani", normalized, sizeof(normalized), ".ani"));
+    assert(HL2_WeaponPath("models/weapons/v_ct_knife_anim.mdl", normalized, sizeof(normalized), ".mdl"));
+    assert(!HL2_WeaponPath("models/props/example.ani", normalized, sizeof(normalized), ".ani"));
+    assert(!HL2_WeaponPath("x", normalized, sizeof(normalized), ".ani"));
+    assert(!HL2_WeaponPath("models/weapons/v_knife.ani", normalized, 8, ".ani"));
+    assert(!HL2_WeaponPath("models/weapons/v_knife.ani", normalized, sizeof(normalized), ".mdl"));
     unsigned char data[256]={0}; unsigned h[6]={28,40,12,0,0,0};
     float constant[3]={1,2,3}, varying[6]={4,5,6,7,8,9}, out[12];
     hl2mdlbone_t bone={{10,20,30},{0,0,0,1}};
@@ -75,13 +85,13 @@ int main(void)
     assert(HL2_WeaponFrame(data,40,0,&bone,1,0,out) && out[0]==1 && out[1]==2 && out[2]==3);
     memset(data,0,sizeof(data)); h[0]=16; memcpy(data,h,12); data[12]=32; memcpy(data+16,constant,12);
     assert(!HL2_WeaponFrame(data,28,0,&bone,1,0,out));
-    puts("PASS native frame/quaternion and multi-frame storage controls (opaque stride, non-overlap, Legacy format, bounds, finite, bind pose)");
+    puts("PASS native frame/quaternion, fixed animation paths and multi-frame storage controls (opaque stride, non-overlap, Legacy format, bounds, finite, bind pose)");
     return 0;
 }
 '''
 source = a.work_root / 'frame-codec.c'
 exe = a.work_root / 'frame-codec.exe'
-source.write_text(prefix + span + half + codec + tests, encoding='utf-8')
+source.write_text(prefix + span + half + paths + codec + tests, encoding='utf-8')
 env = os.environ.copy()
 env['PATH'] = str(Path(a.compiler).parent) + os.pathsep + env.get('PATH', '')
 build = subprocess.run([a.compiler, '-std=c99', '-Wall', '-Wextra', '-Werror', str(source), '-lm', '-o', str(exe)], env=env, capture_output=True, text=True)

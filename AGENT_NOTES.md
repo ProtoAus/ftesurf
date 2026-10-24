@@ -2775,6 +2775,21 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+- **Conbridge executable paths are not relative to `--root` (P962).** Pass
+  absolute `--client` and `--server` for a test overlay, and read back the actual
+  process ExecutablePath. Relative names resolved in the caller's canonical CWD
+  launched the installed engine despite the overlay's different binary hashes.
+  Stop/restart only the owned handles; this is a tooling-path failure, not a
+  mount/FOV product failure. Also `GA_Exists` prepends `sound/`: never use that
+  audio helper to test model availability. Model status and rendered pixels must
+  act before interpreting an absent model as missing installed content.
+- **Legacy roster checks need settled draws and real materials (P962).** Wait
+  through draw before screenshots; a ready model can still be off-screen mid-draw.
+  Inventory glove materials can intentionally name a placeholder diffuse; expose
+  an honest labelled neutral template preview, not a missing-texture checker.
+  An ANI load refusal can be a fixed-path validation failure, not an absent file:
+  compare the actual installed entry before excluding a model from the catalog.
+
 - **Cross-platform `pm_dettest` needs the same shipped map rules (22 Oct 2026).**
   `spec_chat_smoke.prepare` copies `cfg/default.cfg`, not `cfg/maps/`. Missing
   pantheon/axil overrides left Windows at maxvelocity 3500 while ARM used

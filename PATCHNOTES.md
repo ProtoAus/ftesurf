@@ -25,6 +25,11 @@
 - Open lobby chat beside Play to talk in the shared main-menu room or select a mutual friend for a private conversation. Requires a linked account, online features and matching updated client/service.
 - Messages are recent-only and expire after two minutes. Blocks apply, private messages are friend-only, and closing chat clears local drafts and held messages. DMs are not end-to-end encrypted.
 
+### P962 Installed Legacy knife, glove and sleeve workshop
+- The knife workshop lists installed Legacy knife shapes, hands/gloves and sleeves/watches, with paged selectors and a draggable shared-theme panel.
+- Selecting Legacy content can mount the installed game for this session without changing saved mounts. Missing content keeps your selection; no game assets are downloaded or bundled.
+- Legacy viewmodels default to 70-degree FOV without changing world or CSS weapon FOV. Bare arms use matte skin, and template gloves are labelled neutral local previews rather than inventory skins.
+
 ### P961 Main-menu Friends presence
 - With online features enabled, mutual friends can see that your game is running at the main menu. Joining becomes available after you enter a lobby, not while you are at the menu.
 - Healthy unchanged Friends polls keep the displayed presence current; unavailable updates still go stale. Background presence no longer consumes the interactive Friends request budget.

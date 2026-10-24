@@ -28,6 +28,9 @@ tag      patch-963
 patch    963
 # Patch 963: fixed-scope native MENU chat/send proofs bind recipient and text hash.
 # Matching Social schema22 service required; no movement/evidence/collector change.
+# Patch 962: installed Legacy knife/hands/sleeves catalog, matte/neutral previews,
+# draggable paged workshop, session-only fixed mount and Legacy-only FOV70.
+# Client delivery is separate from P954 producer and P961 menu/backend rollout.
 # Patch 961: proven game-running MENU presence for mutual friends, non-joinable.
 # Separate Friends-domain operation; no account/link, movement or recorder change.
 # Patch 958: bounded finite numeric parsing with structured recording-format faults.

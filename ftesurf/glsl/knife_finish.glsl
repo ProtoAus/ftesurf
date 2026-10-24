@@ -3,7 +3,6 @@
 !!permu SKELETAL
 !!permu FOG
 !!samps 3
-!!cvarf cl_knife_model
 !!cvarf cl_knife_seed
 !!cvarf cl_knife_scale
 !!cvarf cl_knife_rotation
@@ -11,7 +10,6 @@
 !!cvarf cl_knife_wear
 #include "sys/defs.h"
 
-uniform float cvar_cl_knife_model;
 varying vec2 knife_uv;
 varying vec3 knife_light;
 varying float knife_blade;
@@ -22,9 +20,15 @@ void main()
 	vec3 w, n, s, t;
 	gl_Position = skeletaltransform_wnst(w, n, s, t);
 	knife_uv = v_texcoord;
-	// Bind-space blade axes remain stable while the knife is inspected.
-	knife_blade = cvar_cl_knife_model < 1.5
-		? (-v_position.y - 0.5) / 8.0 : (v_position.z - 0.5) / 10.5;
+	// The original two previews keep their measured bind-space blade axes.
+	// Other installed shapes use their authored UVs, never a different knife's axis.
+#if FAMILY == 1
+	knife_blade = (-v_position.y - 0.5) / 8.0;
+#elif FAMILY == 2
+	knife_blade = (v_position.z - 0.5) / 10.5;
+#else
+	knife_blade = knife_uv.x;
+#endif
 	float incidence = max(0.0, dot(normalize(n), e_light_dir));
 	knife_light = clamp(e_light_ambient + (0.25 + 0.75 * incidence) * e_light_mul, vec3(0.55), vec3(1.25));
 }
