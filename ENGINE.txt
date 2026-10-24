@@ -31,6 +31,8 @@ patch    985
 # Patch 983: frame-polled HTTP downloads drain what arrived (3.2 -> 9.6 MB/s at 100 fps).
 # Patch 977, 979, 982: movement cvars live under sv_cheats 1 (restores listed), bindlist
 # natural order and filter, r_mirrorworld (labels and gamepad follow the mirror).
+# Patch 978: accepted account Reload restores cloud without an implicit write.
+# Post-begin edits survive; explicit Save retains its separate fresh-revision CAS.
 # Patch 972: exact retry preserves an already-earned pending finish/reset re-arm.
 # Missing/invalid/duplicate grant metadata adds no forgiveness; other load modes unchanged.
 # Patch 971: refuse retry when recording preparation fails; no restart or point write.

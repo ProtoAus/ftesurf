@@ -1,7 +1,7 @@
 /* P970: cosmetic replication and account settings. The social capability stays
    on this lobby; playerinfo contains only a bounded numeric presentation setup. */
 .float vm_req, vm_reqkind, vm_deadline, vm_generation, vm_revision;
-.float vm_ready, vm_waitack, vm_dirty, vm_quiet;
+.float vm_ready, vm_waitack, vm_dirty, vm_quiet, vm_reload;
 .string vm_setup, vm_cloud, vm_saving;
 .float vm_inspectevent, vm_inspectnext;
 .float vm_showweapon, vm_showevent, vm_showinspect, vm_showmode;
@@ -11,13 +11,14 @@ void(entity e, float code) VM_SVError =
 {
 	e.vm_ready = FALSE;
 	e.vm_waitack = FALSE;
+	e.vm_reload = FALSE;
 	stuffcmd(e, sprintf("vm_profile error %.0f %.0f\n", e.vm_generation, code));
 };
 void(entity e) VM_SVAccountReset =
 {
 	if (e.vm_generation) stuffcmd(e, sprintf("vm_profile error %.0f 403\n", e.vm_generation));
 	e.vm_req = 0;
-	e.vm_ready = e.vm_waitack = e.vm_dirty = FALSE;
+	e.vm_ready = e.vm_waitack = e.vm_dirty = e.vm_reload = FALSE;
 	e.vm_generation = 0;
 	e.vm_revision = 0;
 	if (strcmp(e.vm_cloud, "")) strunzone(e.vm_cloud);
@@ -71,14 +72,16 @@ void(entity e) VM_SVSave =
 	e.vm_saving = strzone(e.vm_setup);
 	VM_SVRequest(e, 1);
 };
-void(entity e) VM_SVBind =
+void(entity e, float reload) VM_SVLoad =
 {
 	VM_SVAccountReset(e);
 	if (e.acct_state != 2 || strlen(e.social_token) != 64) return;
 	e.vm_generation = Account_NextId();
-	stuffcmd(e, sprintf("vm_profile begin %.0f %s\n", e.vm_generation, infokey(e, "*ahash")));
+	e.vm_reload = reload;
+	stuffcmd(e, sprintf("vm_profile begin %.0f %s %.0f\n", e.vm_generation, infokey(e, "*ahash"), reload));
 	VM_SVRequest(e, 0);
 };
+void(entity e) VM_SVBind = { VM_SVLoad(e, FALSE); };
 
 float(float reqid, float code, string body) VM_SVReply =
 {
@@ -178,12 +181,16 @@ void(entity e, string command, float count) VM_SVCommand =
 		if (!strcmp(packed, "")) return;
 		VM_SVSetup(e, packed);
 		e.vm_waitack = FALSE;
-		e.vm_dirty = (strcmp(e.vm_setup, e.vm_cloud) != 0);
+		// Reload never writes the just-read account value back, even when an
+		// older client or a post-begin edit acknowledges different local data.
+		if (e.vm_reload) e.vm_dirty = FALSE;
+		else e.vm_dirty = (strcmp(e.vm_setup, e.vm_cloud) != 0);
+		e.vm_reload = FALSE;
 		return;
 	}
 	if (count != 2) return;
 	if (e.vm_req || e.vm_waitack) { sprint(e, PRINT_HIGH, "Account setup is busy; try shortly.\n"); return; }
-	if (!strcmp(action, "reload")) VM_SVBind(e);
+	if (!strcmp(action, "reload")) VM_SVLoad(e, TRUE);
 	else if (!strcmp(action, "save"))
 	{
 		if (!e.vm_generation) e.vm_generation = Account_NextId();

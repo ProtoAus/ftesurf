@@ -45,6 +45,9 @@
 ### P979 bindlist in key order, with a filter
 - bindlist lists F2 before F10 (numbers in key names sort as numbers), and bindlist <text> shows only the keys or commands containing that text.
 
+### P978 Reload account settings without overwriting them
+- Reload restores your account setup without saving stale local choices over it. New edits made while loading stay local; use Save when you deliberately want to replace the account setup.
+
 ### P977 Movement settings under sv_cheats 1 take effect at once
 - With sv_cheats 1, sv_accelerate, sv_airaccelerate, sv_friction and sv_stopspeed now change how you move straight away, like sv_gravity always did; before they only applied from the next map.
 - sv_cheats 0 lists each movement setting it puts back, with the value it had and the value it returns to.

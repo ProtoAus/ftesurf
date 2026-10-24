@@ -3253,6 +3253,13 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   empty correctly failed. The corrected existing fixture waits for that actual
   server acknowledgement, then proves ready/render/fire. Version/property output
   alone is not proof a selected weapon acted. Keep the first failure evidence.
+- **Match the server-advertised CSQC, not just the client's file (P978).** The
+  Reload fixture copied new code only to the client; its dedicated server still
+  advertised the old CRC, so the engine correctly loaded that old cached VM.
+  Unknown new globals were stale-code evidence, NOT proof of optimizer stripping.
+  Copy/seed the same qualified CSQC on both fixture roles and restart the owned
+  server. Public loading/own-state diagnostics plus actual ACK/write counters
+  suffice; do not add a native debug API to rescue a mismatched test.
 
 - OPEN BUGS AND FOLLOW-UPS LIVE IN `BACKLOG.md`. Add what you find and do not
   fix (with a file:function and a falsifier); delete it in the fixing commit.
