@@ -2588,6 +2588,14 @@ or identical unchanged qw/menu outputs. The corrected default syncs the three VM
 and available LNO companions to a present QuakeDir with .prev; NoDeploy skips that
 copy. Configs/tools remain separate ship items. Verify actual destination hashes.
 
+**Mutable QC outputs (P969).** `float x = -1;` at global scope is implicitly
+const in this qcc; a minimal native compiler control reports Q106 on mutation.
+Declare per-call output globals without an initializer and initialize them on
+entry before every use. Mutating an initialized output also triggered a silent
+SSQC compiler AV in the full P969 context; the mutable declaration restored
+zero-warning compilation. An eight-to-seven-argument falsifier still crashed,
+so that failure is NOT evidence of an unsupported eight-argument interface.
+
 **Near-limit numeric constants (P814).** The current fteqcc process exited with
 Windows access violation and no compiler text when a float32-range validator used
 a near-limit numeric literal. The otherwise identical loops compiled with the

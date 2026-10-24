@@ -25,7 +25,9 @@ commit   bd7aa1760a88a7d12a9ff08f6ee08fe938bc021e
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-967
-patch    968
+patch    969
+# Patch 969: confirm buffered save-prefix rows separately from the live-memory mark.
+# Failed disk confirmation blocks cold use, not a matching warm rewind; stream unchanged.
 # Patch 968: visible-body finish forgiveness uses live carrier/mover cap.
 # No held/rising grant; independent of settled start. Future-output bank remains open.
 # Patch 967: fixed private Legacy Original/default-T texture alias and readiness.

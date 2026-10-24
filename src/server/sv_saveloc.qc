@@ -1140,11 +1140,11 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	}
 
 	/*
-	  The recording's prefix goes out FIRST, so that `reclines` below describes a
-	  file that already exists.  If the write fails we record a mark of 0, which
-	  a load reads as "this save has no movement behind it" -- degraded, not
-	  wrong, and exactly what a save taken before the clock started looks like
-	  anyway.
+	  The recording's prefix goes out FIRST. Patch 969 keeps its live-memory
+	  `reclines` mark even if disk confirmation fails; additive `recprefixok`
+	  states that separate result. A matching warm rewind can still use memory,
+	  while a cold load refuses an explicitly unconfirmed buffered prefix.
+	  Older saves have no such key and keep their historical behavior.
 	*/
 	mark = SV_RecWritePrefix(e, SL_RecPath(id));
 
