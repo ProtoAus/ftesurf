@@ -3,9 +3,17 @@
 Status: implemented, isolated builds pass and independent follow-up is OK with
 notes. The initial P1 freshness/P2 budget findings are resolved. Native source
 88a95f339db14caef0c0fcfdae48ed96e0fae569 / patch-961 is published; QC source is
-recorded by the feature commit containing this receipt. Final clean-commit build
-and deployment are pending. P954's separately qualified NanoPi cutover remains
-pending; do not mix these source generations.
+recorded by feature6b9c90a6. Exact clean Full/NoDeploy Jobs1 passes:3VMs with
+zero warnings,7freshAMD64PEs/5valid resource ZIPs,74inherited/zero new native
+warnings. The final native actor verifies list/join/presence signatures, invalid
+target refusal and new/legacy menu rows; original old-refusal control is retained.
+Native source tag is patch-961; actual Makefile stamp is
+`git-7778-patch-954-3-g88a95f339` (HEAD-count+29, annotated-tag ancestry and exact
+clean source hash). The public lightweight source tag is NOT falsely substituted
+for that compiled stamp or rewritten. Development delivery remains pending:
+shipping the heartbeat menu alone to the old backend can consume its old shared
+budgets; deploy only with the matching Social backend. P954's frozen NanoPi
+cutover remains separate and unresolved; do not mix these source generations.
 Number961 claimed after fetching both repos and checking patch headings AND
 untracked pNNN/test_pNNN files in canonical/owned trees (max960). The unpublished
 P959 working label yielded to existing canonical peer959/960 claims before any

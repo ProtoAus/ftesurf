@@ -117,6 +117,19 @@ Jobs1 rebuilt a coherent952 cohort:7freshPEs/5validZIPs/2exactcleanEXEstamps,
 parallel ZIP failures or weaken stamps to make an incremental run look qualified.
 Standalone plugin clangd misses real build context; actual compiler wins.
 
+Native revision qualification must follow engine/Makefile, not an assumed tag
+spelling: SVN_VERSION is HEAD commit-count PLUS29, then git describe --long
+--always --dirty (ANNOTATED tags only, not --tags). P961's clean source88a95f339
+has lightweight source tag patch-961 but correctly compiles the exact stamp
+ git-7778-patch-954-3-g88a95f339. An initial private qualifier incorrectly used
+unoffset count7749/--tags; it refused before deployment. Checking the authoritative
+Make contract and actual compile macro fixed only that qualifier, without a
+rebuild, retag, relaxed source/freshness/hash gate or invented embedded961 stamp.
+Both EXEs must still contain the exact clean source-derived stamp, all7PEs be
+fresh and all5pluginZIPs valid. Database generation is the QC tool:
+python tools/clangdb.py --engine <owned-engine-root> from the QC tree, NOT an
+assumed tools/clangdb.py in the engine checkout;229m-rel units, no build/deploy.
+
 BOTH Windows14native images delivered23Oct2026 17:03:39Z, exact hash cohort,
 all33protected program/config/content/save bytes unchanged and backups retained.
 No kill/Pi/backend/data/menu/progs operation. Post installed-image actors on
