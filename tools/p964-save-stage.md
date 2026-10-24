@@ -39,7 +39,7 @@ of full-track runs retain normal packet-resolved arming.
   on a protected existing save prefix. Nothing was removed or called clean;
   save-prefix coverage is not claimed by the successful runs-only sweep.
 
-## Pending delivery gates
+## Review and delivery
 
 The initial two independent source reviews completed; the predicate review's
 arming blocker is implemented and natively reproduced/corrected. Both bounded
@@ -49,7 +49,27 @@ reviewers explicitly did not independently compute byte hashes. Reader checks
 are reused across the arming-only delta because neither reader code nor
 historical recording inputs were changed.
 
-No live deployment, owner acceptance, Build bump or public release is claimed.
-The native commit/tag pin is unchanged. The separate older-save compatibility
-array failure is tracked in BACKLOG.md, not silently included in this fix.
-The broader project plan is not marked complete by this individual patch.
+Delivered 2026-10-24 UTC: both Windows server DAT/LNO pairs at 10:36:43Z;
+Pi's twelve lobbies verified at 10:59:20Z. Distinct public compositions preserve
+the actual cohorts: Windows `b27a76f0` from pre-presence `c31ebc97`, Pi
+`adecccc5` from compatible `7ebaca8b`. Both controls reproduce their actual
+installed server predecessors byte-exactly; only the reviewed save module and
+metadata change. The Pi candidate server equals the reviewed main artifact,
+and its client remains byte-identical to the existing fleet.
+
+The existing build-Pi entrypoint ran from the clean Pi composition with an
+owned non-live Windows output sink and no force flag. All twelve actual UDP
+rosters and directory rows were empty at the boundary. Stage/destination hashes
+and ordinary .prev checks pass; earlier .prev history is retained. Twelve new
+active service PIDs, twelve actual status replies and twelve directory rows
+confirm fresh live bootstrap. The actual canonical serving native-clock witness,
+not the superseded P958 snapshot, retained all eight native/reader dependency
+hashes. No backend transaction was reused or changed. The Pi invocation did not
+change either real Windows install.
+
+Preserved: existing client/menu/native binaries, reader/backend, configuration,
+player data and native pin/tag. No Build bump or public release. Owner HUD/ghost
+acceptance and real cold/signed stage-posting acceptance remain unclaimed;
+lextest.md has the small manual check. The separate older-save compatibility
+array failure remains in BACKLOG.md. This patch does not complete the broader
+project plan.
