@@ -47,8 +47,12 @@ installs at2026-10-24T12:28:27Z. All4destination hashes and exact P965 preimages
 passed; .prev/prior history retained and11fresh native/client/menu/config hashes
 unchanged. No process signalled: not an already-running reload or owner pass.
 
-Pi P968 composition/promotion remains pending. New feature-boundary read-only
-check still finds directory unavailable, exact P964 QW/current CS unchanged,
+Combined P968/P965 Pi composition8223a1c8 is qualified/published:3VMs/0warnings,
+QW byte-identical to main P968 and CS byte-identical to actual fleet; timer equals
+native subject and save module retains P965. Source base0577d431 was NEVER APPLIED;
+actual predecessor stays P964, not P965. This does not rename/retry a failed apply.
+Promotion remains pending. New feature-boundary read-only check still finds
+directory unavailable, exact P964 QW/current CS unchanged,
 no .new or P965 phase. No staging/restart/backend transaction has been performed.
 Do not restart a peer backend or reuse an old transaction to bypass availability;
 recover actual ownership/directory then requalify the fresh canonical/pinned/empty
