@@ -3,8 +3,10 @@
 
 Use behind r2gateway.nginx. HTTP409 requests a rate-limited local fallback.
 Only a current, verified content-addressed public asset receives a signed URL.
-P981: with "gzip_state" (r2gzip.py's database), a map request that accepts gzip
-and asks for no range goes to the verified <sha>.bsp.gz companion instead.
+P981: with "gzip_state" (r2gzip.py's database), a map request from the game
+(User-Agent FTE...) that accepts gzip and asks for no range goes to the verified
+<sha>.bsp.gz companion instead. Browsers always send gzip and the board's viewer
+sizes a build by Content-Length, so they keep the raw object.
 """
 import configparser
 import contextlib
@@ -72,6 +74,24 @@ def signed_url(endpoint, bucket, access, secret, key, method, now=None, expires=
         signing = digest(signing, part)
     sig = hmac.new(signing, message.encode(), hashlib.sha256).hexdigest()
     return endpoint.rstrip("/") + path + "?" + query + "&X-Amz-Signature=" + sig
+
+
+def accepts_gzip(header):
+    """An Accept-Encoding that names gzip with a nonzero qvalue (RFC 9110)."""
+    for item in header.split(","):
+        parts = [p.strip().lower() for p in item.split(";")]
+        if parts[0] != "gzip":
+            continue
+        q = 1.0
+        for p in parts[1:]:
+            if p.replace(" ", "").startswith("q="):
+                try:
+                    q = float(p.replace(" ", "")[2:])
+                except ValueError:
+                    q = 0.0
+        if q > 0:
+            return True
+    return False
 
 
 class Gateway:
@@ -162,9 +182,9 @@ class Gateway:
         group, alias, _, _ = resolved
         if group != "maps" or self.gzip_state is None or environ.get("HTTP_RANGE"):
             return None
-        tokens = [t.strip().lower() for t in environ.get("HTTP_ACCEPT_ENCODING", "").split(",")]
-        if not any(t == "gzip" or (t.startswith("gzip;") and not t.replace(" ", "").endswith("q=0"))
-                   for t in tokens):
+        if not environ.get("HTTP_USER_AGENT", "").startswith("FTE"):
+            return None
+        if not accepts_gzip(environ.get("HTTP_ACCEPT_ENCODING", "")):
             return None
         sha = key[len("objects/maps/"):-len(".bsp")]
         try:

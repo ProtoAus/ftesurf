@@ -177,11 +177,13 @@ class GatewayTests(unittest.TestCase):
                         "0" * 64, 5, "", ""))
             db.commit()
         self.app = g.Gateway(dict(self.config, gzip_state=str(gz)), reachability=lambda key: True)
+        self.ua = "FTE QW"
         return sha
 
     def gzcall(self, accept, path="/ftesurf/maps/case_Map.bsp", rng=None):
         got = []
-        env = {"REQUEST_METHOD": "GET", "PATH_INFO": path, "QUERY_STRING": "", "HTTP_ACCEPT_ENCODING": accept}
+        env = {"REQUEST_METHOD": "GET", "PATH_INFO": path, "QUERY_STRING": "", "HTTP_ACCEPT_ENCODING": accept,
+               "HTTP_USER_AGENT": self.ua}
         if rng:
             env["HTTP_RANGE"] = rng
         b"".join(self.app(env, lambda s, h: got.append((s, dict(h)))))
@@ -193,13 +195,21 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(status, "302 Found")
         self.assertIn("objects/maps/" + sha + ".bsp.gz", h["Location"])
         self.assertEqual(h.get("X-R2-Encoding"), "gzip")
-        for accept in ("", "identity", "br", "gzip;q=0", "deflate, br"):
+        for accept in ("", "identity", "br", "gzip;q=0", "gzip;q=0.0", "gzip; q=0.000", "deflate, br",
+                       "x-gzip", "*"):
             status, h = self.gzcall(accept)
             self.assertEqual(status, "302 Found")
             self.assertIn("objects/maps/" + sha + ".bsp?", h["Location"], accept)
             self.assertNotIn("X-R2-Encoding", h)
         self.assertIn(".bsp.gz", self.gzcall("gzip, deflate, br")[1]["Location"])
         self.assertIn(".bsp.gz", self.gzcall("deflate, gzip;q=0.5")[1]["Location"])
+
+    def test_gzip_only_for_the_game_client(self):
+        self.gzseed()
+        self.assertIn(".bsp.gz", self.gzcall("gzip")[1]["Location"])
+        for ua in ("Mozilla/5.0 (Windows NT 10.0) Chrome/130", "curl/8.4", ""):
+            self.ua = ua
+            self.assertNotIn(".bsp.gz", self.gzcall("gzip, deflate, br")[1]["Location"], ua)
 
     def test_gzip_refused_for_range_unverified_or_other_groups(self):
         sha = self.gzseed()

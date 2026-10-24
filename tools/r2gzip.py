@@ -20,6 +20,7 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
+import time
 import zlib
 
 import r2mirror as m
@@ -34,7 +35,10 @@ def connect(path):
         alias TEXT PRIMARY KEY, sha TEXT NOT NULL, bytes INTEGER NOT NULL,
         state TEXT NOT NULL, gz_key TEXT NOT NULL DEFAULT '', gz_sha TEXT NOT NULL DEFAULT '',
         gz_bytes INTEGER NOT NULL DEFAULT 0, verified_at TEXT NOT NULL DEFAULT '',
-        error TEXT NOT NULL DEFAULT '')""")
+        error TEXT NOT NULL DEFAULT '', tried REAL NOT NULL DEFAULT 0)""")
+    cols = {r[1] for r in db.execute("PRAGMA table_info(gz)")}
+    if "tried" not in cols:
+        db.execute("ALTER TABLE gz ADD COLUMN tried REAL NOT NULL DEFAULT 0")
     db.commit()
     db.row_factory = sqlite3.Row
     return db
@@ -91,6 +95,7 @@ class Rclone(m.Rclone):
 
 
 SAMPLE = 4 * 1024 * 1024
+RETRY = 6 * 3600                # seconds a failed map waits before the next try
 
 
 def sample_saving(body):
@@ -106,10 +111,14 @@ def sample_saving(body):
 def compress(body, work):
     fd, name = tempfile.mkstemp(prefix="gz-", suffix=".part", dir=work)
     path = Path(name)
-    with os.fdopen(fd, "wb") as out, open(body, "rb") as inp:
-        # mtime 0 and no name: the same body always gives the same bytes.
-        with gzip.GzipFile(filename="", mode="wb", fileobj=out, compresslevel=9, mtime=0) as z:
-            shutil.copyfileobj(inp, z, 1024 * 1024)
+    try:
+        with os.fdopen(fd, "wb") as out, open(body, "rb") as inp:
+            # mtime 0 and no name: the same body always gives the same bytes.
+            with gzip.GzipFile(filename="", mode="wb", fileobj=out, compresslevel=9, mtime=0) as z:
+                shutil.copyfileobj(inp, z, 1024 * 1024)
+    except BaseException:
+        path.unlink(missing_ok=True)       # a full disk must not keep a partial each pass
+        raise
     sha = hashlib.sha256()
     with open(path, "rb") as f:
         for block in iter(lambda: f.read(1024 * 1024), b""):
@@ -166,18 +175,19 @@ def run(db, state, work, transport, min_saving, limit=None, only=None):
             break
         if only and row["alias"] != only:
             continue
-        before = db.execute("SELECT 1 FROM gz WHERE alias=? AND sha=? AND state IN ('verified','skip')",
+        before = db.execute("SELECT state, tried FROM gz WHERE alias=? AND sha=?",
                             (row["alias"], row["sha"])).fetchone()
-        if before:
-            continue
+        if before and (before["state"] in ("verified", "skip") or
+                       (before["state"] == "error" and time.time() - before["tried"] < RETRY)):
+            continue                    # a failure waits RETRY, so it cannot starve the pass
         attempted += 1
         try:
             one(db, row, work, transport, min_saving)
         except (OSError, m.TransferError, subprocess.SubprocessError) as exc:
             failed += 1
             with db:
-                db.execute("INSERT OR REPLACE INTO gz (alias,sha,bytes,state,error) VALUES (?,?,?,?,?)",
-                           (row["alias"], row["sha"], row["bytes"], "error", type(exc).__name__))
+                db.execute("INSERT OR REPLACE INTO gz (alias,sha,bytes,state,error,tried) VALUES (?,?,?,?,?,?)",
+                           (row["alias"], row["sha"], row["bytes"], "error", type(exc).__name__, time.time()))
         print(json.dumps({"utc": m.utc(), "event": "gzip", "alias": row["alias"],
                           "attempted": attempted, "failed": failed, **status(db)}), flush=True)
     return attempted, failed
@@ -203,9 +213,10 @@ def main():
             print(json.dumps({"utc": m.utc(), **status(db)}))
             return 0
         with m.writer_lock(work):
-            # A failed pass is retried next time: errors are not 'done'.
-            with db:
-                db.execute("DELETE FROM gz WHERE state='error'")
+            # Parts a killed pass left (SIGKILL, power): only this tool writes them here.
+            for part in list(work.glob("body-*.part")) + list(work.glob("gz-*.part")):
+                if time.time() - part.stat().st_mtime > 3600:
+                    part.unlink(missing_ok=True)
             _, failed = run(db, a.state, work, Rclone(config), a.min_saving, a.limit, a.only)
         print(json.dumps({"utc": m.utc(), "event": "pass", **status(db)}), flush=True)
         return int(bool(failed))

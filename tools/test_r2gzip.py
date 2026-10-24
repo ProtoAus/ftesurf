@@ -99,6 +99,21 @@ class GzipTests(unittest.TestCase):
         self.assertEqual(t.puts, 0)
         self.assertEqual(self.db.execute("SELECT state FROM gz WHERE alias LIKE '%surf_a.bsp'").fetchone()["state"], "error")
 
+    def test_failure_waits_instead_of_starving_the_pass(self):
+        self.seed("surf_a.bsp", b"\0" * 30000)
+
+        class Corrupt(Fake):
+            def put_gzip(self, source, key, sha):
+                super().put_gzip(source, key, sha)
+                self.objects[key] = gzip.compress(b"\2" * 30000)
+        t = Corrupt()
+        self.assertEqual(z.run(self.db, self.state, self.work, t, 0.10), (1, 1))
+        self.seed("surf_b.bsp", b"\1" * 40000)
+        self.assertEqual(z.run(self.db, self.state, self.work, Fake(), 0.10, limit=1), (1, 0),
+                         "the failed map is not retried at once and does not take the limit")
+        self.assertEqual(self.db.execute("SELECT state FROM gz WHERE alias LIKE '%surf_b.bsp'").fetchone()[0],
+                         "verified")
+
     def test_remote_mismatch_is_an_error(self):
         self.seed("surf_a.bsp", b"\0" * 30000)
 
