@@ -2779,6 +2779,9 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
   absolute `--client` and `--server` for a test overlay, and read back the actual
   process ExecutablePath. Relative names resolved in the caller's canonical CWD
   launched the installed engine despite the overlay's different binary hashes.
+  State isolation uses `CONBRIDGE_STATE`, NOT `CONBRIDGE_STATE_DIR` (the latter
+  is silently ignored and leaves uniquely named sessions in the tool's default
+  state directory). This does not change `--root` profile/data isolation.
   Stop/restart only the owned handles; this is a tooling-path failure, not a
   mount/FOV product failure. Also `GA_Exists` prepends `sound/`: never use that
   audio helper to test model availability. Model status and rendered pixels must
