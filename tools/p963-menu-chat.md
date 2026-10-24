@@ -83,6 +83,11 @@ Earlier candidate/bootstrap refusals are retained as failures, not passes. The
 bounded approved bootstrap completed through the existing importer transition;
 no history restore or admission/freshness weakening. The old NativeClock handoff
 was not reused. These are deployment/source/history checks, NOT live two-person
-chat or owner visual acceptance. Lobby-side P961 still needs the eight-field
-CSQC producer reload; that does not prevent the disconnected P963 menu check.
-Human-only checks: lextest.md. No Build/release bump.
+chat or owner visual acceptance. Lobby-side P961 producer delivery is now also
+verified24Oct2026: all12lobbies have the current eight-field cohort; both Windows
+retain their newer compatible published programs/native and the C3 menus. Actual
+fresh-cache network CSQC/load/board-render check passes for the current cohort,
+not a chat send/receive or live ranked-data query. Initial native/preimage refusal
+and stale expected-hash smoke remain explicit in tools/p961-menu-presence.md.
+Human-only checks: lextest.md. Run menu_restart before checking the new menu.
+No Build/release bump.

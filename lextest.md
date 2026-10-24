@@ -115,11 +115,11 @@ preserve that style. Account configuration persistence and watched-player setup/
 shoot/inspect mirroring requested, not yet implemented or human-confirmed.
 Exact delivery state/limits: tools/p962-knife-workshop.md.
 
-## P961 — game-running Friends presence (lobby producer/human check pending)
+## P961 — game-running Friends presence (delivered; human check pending)
 
-Matching service and BOTH Windows menus are delivered24Oct2026. Lobby CSQC is
-still the legacy seven-field producer: do NOT count the connected-client check
-as ready until its eight-field upgrade/reload. After that, use two linked friends,
+Matching service, BOTH Windows menus/compatible client cohort and all12lobby
+eight-field producer/renewal are verified24Oct2026. Deployment is ready for this
+check, NOT owner-confirmed. Run menu_restart and use two linked friends,
 one staying in a lobby, the other at the main menu with online features enabled.
 Does the menu friend show Main menu with no Join? Leave the status unchanged for
 more than35seconds: does it stay active while the game remains open? Join a lobby
