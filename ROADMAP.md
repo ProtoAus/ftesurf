@@ -74,9 +74,11 @@ Remaining requested work (not silently folded into the completed items):
 - P954 practice-only `host_timescale` is implemented, independently reviewed and
   deployed to BOTH Windows installs, including their reader tools. Fixed-tick,
   forced-practice and reader controls pass; owner feel remains pending. The
-  coupled NanoPi native/program/reader cutover is not complete: one occupied
-  lobby blocks its empty-fleet boundary. No live admission/service change has
-  been made. Exact source/UTC delivery and limits: tools/p954-practice-clock.md.
+  coupled NanoPi cutover is not complete: a guarded empty-fleet attempt stopped
+  at a tooling lease check before image/game changes. The unchanged predecessor
+  backend/importer were restored and verified, historical data preserved; all
+  game images remain unchanged. Fix/review the ordering before continuation.
+  Exact source/UTC delivery and limits: tools/p954-practice-clock.md.
 - P950/P952 fix the actual Phantasia/Epiphany screenshot causes, not a complete
   existing-VMT/absent-image census. The remaining generic report seam stays in
   BACKLOG.md; human visuals stay in lextest, not inferred from implementation.
