@@ -26,6 +26,9 @@
 - First-person spectating shows the followed player's knife, hands, sleeves, finish, weapon FOV, shooting and inspect animation without replacing your own preferences. A disabled target viewmodel stays hidden.
 - Matching updated native client, game code and account service are required. Installed game content is still needed; no game assets or inventory skins are downloaded or bundled.
 
+### P969 Keep in-memory loads when a save copy fails
+- Saves check the movement copy on disk and warn if it cannot be confirmed. The current recording remains available for a matching in-memory load instead of being cancelled by that disk failure.
+
 ### P968 Check the body before re-arming a hopped start
 - Pending finish forgiveness checks carried speed and your current movement cap, and is not granted while frozen or rising. It can still re-arm after the start has settled.
 

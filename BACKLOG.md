@@ -4980,34 +4980,14 @@ below is the collection side and the rules that still only note.
   Needs a stream -- a lobby, or `rec_stream 1` on a listen server, which is what
   would make it measurable. sv_saveloc.qc SV_RetryPoint, sv_timer.qc:5573.
   Patch 441 review, round 4.
-- **`reclines` IS NOT EVIDENCE THE PREFIX FILE EXISTS, and nothing that reads it
-  knows.** SV_RecWritePrefix returns its line count after `fopen`+`buf_writefile`+
-  `fclose`, and QC cannot see any of those fail: the engine's PF_fopen allocates a
-  MEMORY BUFFER for the write modes and the bytes leave at fclose, unchecked. Proved
-  by staging a DIRECTORY on the retry slot's `run.rec` path -- the log shows the
-  `fopen` succeeding, no `timer: cannot write` line, the directory still a directory
-  at exit, and `reclines` positive in the state file with no prefix anywhere
-  (`cfg/test/p441retryw.cfg`). So `SV_RecWritePrefix`'s `if (fh < 0)` branch is
-  effectively unreachable for a filesystem fault, and every reader that treats
-  `reclines > 0` as "there is a file" is trusting a count written before the bytes
-  left the process -- Patch 426's reasoning about mark-0 saves, a verifier pairing a
-  state file with a recording, and any future predicate tempted by `mark`. The fix
-  wants the writer to confirm the file (a `fsize` of the path after fclose, or a
-  `recbytes` it checks) before it reports a count. sv_timer.qc SV_RecWritePrefix,
-  engine PF_fopen. Patch 441 round 6.
-  **Patch 444 tried the `fsize` shape and is held back** (rebased as `p444rebase`,
-  990a6cc, on origin; review of 5 Oct, two reviewers). It returns 0 when a
-  FILE_READ re-open fails or reads empty, and: (1) SV_RecRewind refuses mark 0
-  before its in-memory restore, so a same-attempt load whose prefix did not land
-  now CANCELS a run it used to restore (buffered recorders: listen server,
-  offline); (2) a stale or short file passes -- COM_WriteFile's failed "wb" open
-  leaves the old file, reproduced with a read-only run.rec; (3) sv_saveloc.qc's
-  "the two spellings agree on every reachable retry path" becomes false and
-  round 5's `flg & TF_RECORDING` load-bearing. Its one ranked gain: an EMPTY
-  prefix plus `retry` was a clean, rankable run with no header, and 444 voids it.
-  Shape the reviewers suggest: keep `reclines` as the mark and write a separate
-  key with the byte size the writer meant, compared as SV_RecRewindStream already
-  does, which only the cold rewind refuses on.
+- **A save's state/prefix pair is not an atomic durable transaction.** P969
+  confirms a fresh buffered prefix separately from its warm mark; it does not
+  seal both files together or authenticate editable state metadata. Historical
+  slots have no confirmation key and remain unbound. SV_SaveWriteState / the
+  cold SV_RecRewind path. Falsifier: a failed update of one member must not cold
+  attach another prefix using older metadata, without fabricating confirmation
+  for old slots. Later same-count content changes also need a separate binding;
+  P969's logical readback is confirmation at write time, not that guarantee.
 - **TF_RECORDING can be left set with no recorder behind it.**
   SV_RecRewindStream's two cold-failure exits destroy the old recorder and return
   FALSE without clearing the bit, and SV_RecClose early-returns on `!SV_RecLive`

@@ -28,6 +28,8 @@ tag      patch-970
 patch    970
 # Patch 970: bounded linked-account viewmodel setup and separate watched render context.
 # Actual target model/finish/fire/inspect; scene-local weapon FOV, no movement/evidence change.
+# Patch 969: confirm buffered save-prefix rows separately from the live-memory mark.
+# Failed disk confirmation blocks cold use, not a matching warm rewind; stream unchanged.
 # Patch 968: visible-body finish forgiveness uses live carrier/mover cap.
 # No held/rising grant; independent of settled start. Future-output bank remains open.
 # Patch 967: fixed private Legacy Original/default-T texture alias and readiness.
