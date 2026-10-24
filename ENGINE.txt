@@ -25,7 +25,9 @@ commit   ce175aaa42d4f2763d8b414e2d09a7a022cbdebd
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-963
-patch    964
+patch    965
+# Patch 965: range-guard older-save progress lookup before zone-table reads.
+# Matching twin preference and existing leg fallback remain unchanged.
 # Patch 964: reopen the restored running stage after save/retry, after its marker.
 # Preserve load/retry taint; no format, native pin/tag, Build or release change.
 # Patch 963: fixed-scope native MENU chat/send proofs bind recipient and text hash.

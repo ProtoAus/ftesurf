@@ -21,6 +21,9 @@
 
 ## next
 
+### P965 Restore older saved progress safely
+- Older saved states can restore their stage progress without an invalid zone lookup stopping the server. Matching stage-region preferences are preserved.
+
 ### P964 Keep stage tracking after retry
 - Retrying a saved running attempt now reopens its current stage, including after reconnecting. Loading and retrying retain their existing clean/practice classification.
 

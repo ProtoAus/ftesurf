@@ -2019,10 +2019,12 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	// running save without one predates P869, when the triggers were inert.
 	if (mprog == "" && mzone < 0 && st == TS_RUNNING)
 	{
-		// The zone armed in when it is this leg's (nine maps have twin zones per leg).
-		if (am >= 0 && zone_track[am] == tr && zone_seg[am] == sg)
-			mzone = am;
-		else
+		// Patch 965: QC booleans do not short-circuit; bound the index first.
+		// Prefer this leg's armed twin, otherwise find its ordinary start zone.
+		if (am >= 0 && am < zone_count && am == floor(am))
+			if (zone_track[am] == tr && zone_seg[am] == sg)
+				mzone = am;
+		if (mzone < 0)
 			mzone = SV_ZoneFindLeg(tr, sg);
 		if (mzone < 0)
 			mzone = am;
