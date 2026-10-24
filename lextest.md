@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P968 — pending finish forgiveness, Windows server files installed 24 Oct
+
+At the next normal Windows server start: finish an attempt that has the hopped-start
+mark, then come to walking pace/stand still outside the start. Check that the re-arm
+message can appear there, and not while save-held or still being carried/upward.
+No process was restarted by the agent. Verdict PENDING; native explicit-state
+rule tests are not a driven push-map, future-output-bank or human acceptance pass.
+
 ## P966 — Character-piece lighting and held viewmodel
 
 Actual socket-client control reproduces white Bare Hands/FBI Gray in surf_666's
