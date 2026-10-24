@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P963 — main-menu lobby chat and DMs (matching deployment/human check pending)
+
+Not owner-confirmed; do not try against an older service. Once matching client,
+menu and backend are deployed: two linked mutual friends with online features
+open lobby chat beside Play. Send one public line, then select the friend and
+send a DM; a third account must see the public line but no DM. Check Enter/Send,
+new messages and scroll, literal caret/quote/Unicode text, and the layout on the
+3D and flat menus. Block a sender: no new room/DM visibility. Close/reopen: no
+held draft/message cache; recent server messages may return until two-minute
+expiry. Close the recipient or let presence expire: DM reports offline rather
+than falsely claiming delivery. Native proof/parser and Flask tests are not a
+full live/two-person or visual pass. Receipt: tools/p963-menu-chat.md.
+
 ## P961 — game-running Friends presence (deployment pending; human check pending)
 
 Do not treat these as owner-confirmed or try against an older backend. After

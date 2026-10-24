@@ -464,6 +464,8 @@ def finish_elsewhere(what):
         other.executescript(m.ksfprofile.SQL)
         other.executescript(m.KSF_UNBOUND_SQL)
         other.executescript(m.social.SQL)
+        other.executescript(m.social.MENU_PRESENCE_SQL)
+        other.executescript(m.social.MENU_CHAT_SQL)
         other.execute("PRAGMA user_version=%d" % m.SCHEMA_VERSION)
         other.commit()
         RACED[-1][1] = what
@@ -489,8 +491,7 @@ def racing_connect():
 
 
 outcomes = []
-for at in range(1, 20):                 # step12 four, 16-19 four, social six, links_now four,
-                                        # and the board index once more at every start
+for at in range(1, 25):                 # Old19 + three MENU presence + two message-proof CREATEs.
     conn = sqlite3.connect(m._test_db)
     conn.executescript("".join("DROP TABLE IF EXISTS %s;" % t for t in TABLES + ["links"])
                        + "DROP TABLE IF EXISTS ksfprofiles; DROP TABLE IF EXISTS ksf_unbound;"
@@ -506,14 +507,16 @@ for at in range(1, 20):                 # step12 four, 16-19 four, social six, l
     finally:
         m.connect = real_connect
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
-check("another process finishing the account steps at any of their nineteen statements breaks neither",
+check("another process finishing the account steps at any of their twenty-four statements breaks neither",
       (outcomes, sorted(names & set(TABLES)), "links" in names,
        rows(m, "PRAGMA user_version")[0][0]),
-      (["ok"] * 19, TABLES, False, m.SCHEMA_VERSION))
-check("...and those nineteen were the statements raced: each table, and each index by its table",
+      (["ok"] * 24, TABLES, False, m.SCHEMA_VERSION))
+check("...and those twenty-four were the statements raced: each table, and each index by its table",
       [r[1] for r in RACED],
       ["accounts", "linkcodes", "linkcodes", "linknonces", "runs", "ksftopup", "ksfprofiles", "ksf_unbound",
-       "social_friends", "social_friends", "social_sessions", "social_sessions", "social_messages", "social_messages", "keylinks", "keylinks",
+       "social_friends", "social_friends", "social_sessions", "social_sessions", "social_messages", "social_messages",
+       "social_menu_presence", "social_menu_presence(seen);", "social_menu_presence(steamid);",
+       "social_menu_messages", "social_menu_messages(until);", "keylinks", "keylinks",
        "installs", "runpins", "runs"])
 
 print("\n--- 2. off unless SURFD_BOARD_URL is set -------------------------")

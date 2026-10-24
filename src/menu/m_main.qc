@@ -133,6 +133,12 @@
 #define SCREEN_JOURNAL  8
 // Patch 854: Story and Event mode, in m_story.qc (compiled last).
 #define SCREEN_STORY    9
+#define SCREEN_CHAT    10
+void() MC_Init;
+void() MC_Open;
+void() MC_Send;
+void(float visible) MC_Poll;
+void(vector screensize) MC_Draw;
 void() Sty_Open;
 void() Sty_Esc;
 void() Sty_Prefetch;
@@ -8001,6 +8007,7 @@ void() m_init =
 	cvar_set("rec_terms", ftos(ms_consent));
 	MU_Init();
 	MF_Init();
+	MC_Init();
 	registercvar("ui_maps_filters", "0", 32);
 	registercvar("ui_maps_large", "1", 32);
 	registercvar("ui_maps_friends", "0", 32);
@@ -8202,6 +8209,7 @@ void(vector screensize) m_draw =
 	ui_prejoin_tick();
 
 	MF_Poll(menu_active && menu_screen == SCREEN_CREATE && cvar("ui_maps_friends"));
+	MC_Poll(menu_active && menu_screen == SCREEN_CHAT);
 	MP_Frame();                     // Patch 789: the menu's pictures
 	Mlb_Poll();
 	// Warm the catalogue on boot, even before the picker is opened. Mdl_Ask
@@ -8297,6 +8305,8 @@ void(vector screensize) m_draw =
 			Mlb_Draw(screensize);
 		}
 	}
+	else if (menu_screen == SCREEN_CHAT)
+		MC_Draw(screensize);
 	else if (menu_screen == SCREEN_STORY)
 	{
 		ui_backdrop(screensize);
@@ -8398,6 +8408,18 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 	{
 		sui_text_unfocus();
 		ui_f2_open("");
+		return TRUE;
+	}
+	if (evtype == IE_KEYDOWN && scanx == K_ENTER && menu_screen == SCREEN_CHAT)
+	if (sui_text_has_focus("mc_text"))
+	{
+		MC_Send();
+		return TRUE;
+	}
+	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_CHAT)
+	{
+		menu_screen = SCREEN_MAIN;
+		sui_text_unfocus();
 		return TRUE;
 	}
 	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_JOURNAL)
@@ -8590,6 +8612,11 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 float(string cmd) m_consolecommand =
 {
 	tokenize(cmd);
+	if (!strcmp(argv(0), "ui_chat"))
+	{
+		MC_Open();
+		return TRUE;
+	}
 
 	// P902: ui_journal [notes|updates|journal|terms]; ui_updates is the Updates page.
 	if (strcmp(argv(0), "ui_journal") == 0 || strcmp(argv(0), "ui_updates") == 0)

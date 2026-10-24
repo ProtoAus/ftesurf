@@ -1,8 +1,8 @@
 """Steam-account friendships and lobby-mediated presence/private chat.
 
 Lobby capabilities are minted only by accounts.register's VERIFIED proof path
-and stay on the lobby. Read-only menu requests use a separate signature domain,
-never mint capabilities or publish presence. Every use rechecks the
+and stay on the lobby. Menu proofs use a separate fixed signature domain;
+message proofs additionally bind recipient and exact UTF-8 body hash. Every use rechecks the
 key link and ban, and binds the capability to that lobby's node. Presence and
 join addresses are never supplied by clients. Messages are operator-readable,
 not E2E encrypted, and are bounded/expired (not logged).
@@ -29,6 +29,13 @@ MENU_SIG = re.compile(r"[0-9a-f]{128}\Z")
 MENU_EXP = re.compile(r"[0-9]{10}\Z")
 MENU_TTL = 30
 MENU_PRESENCE_TTL = 35
+MENU_CHAT_SQL = """
+CREATE TABLE IF NOT EXISTS social_menu_messages (
+ proof TEXT PRIMARY KEY, until INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS social_menu_messages_until ON social_menu_messages(until);
+"""
+CHAT_ROOM = "@menu"
+CHAT_TARGET = re.compile(r"(?:-|[0-9a-f]{8}):[0-9a-f]{64}\Z")
 MENU_PRESENCE_SQL = """
 CREATE TABLE IF NOT EXISTS social_menu_presence (
  pub TEXT PRIMARY KEY, steamid TEXT NOT NULL, seen INTEGER NOT NULL,
@@ -40,7 +47,9 @@ MENU_STATEMENT = "FTESURF-FRIENDS 1\nserver play.proto.bar:443\nnonce %s\nop %s\
 
 
 def menu_target(op, who):
-    return (op in ("list", "presence") and who == "-") or (op == "join" and len(who) == 8 and bool(MARK.fullmatch(who)))
+    return ((op in ("list", "presence", "chat") and who == "-")
+            or (op == "join" and len(who) == 8 and bool(MARK.fullmatch(who)))
+            or (op == "message" and bool(CHAT_TARGET.fullmatch(who))))
 SQL = """
 CREATE TABLE IF NOT EXISTS social_friends (
  lo TEXT NOT NULL, hi TEXT NOT NULL, asker TEXT NOT NULL,
@@ -218,6 +227,72 @@ def befriend(db, sid, other):
     return 1, "Friend added", 200
 
 
+def chat_snapshot(db, sid, now, lobby_ttl):
+    """Bounded recent text only; neither Steam IDs nor other people's inboxes."""
+    room, messages = [], []
+    rows = db.execute("SELECT m.*,a.name FROM social_messages m JOIN accounts a ON a.steamid=m.sender"
+                      " WHERE a.banned_at=0 AND m.sent>=?"
+                      " AND (m.recipient=? OR m.sender=? OR m.recipient=?)"
+                      " ORDER BY m.id DESC LIMIT 256", (now - MESSAGE_TTL, CHAT_ROOM, sid, sid))
+    for row in rows:
+        public = row["recipient"] == CHAT_ROOM
+        other = row["sender"] if row["recipient"] == sid else row["recipient"]
+        if public:
+            if len(room) >= 24 or relation(db, sid, row["sender"]) in (4, 5):
+                continue
+        elif len(messages) >= 32 or relation(db, sid, other) != 3:
+            continue
+        item = dict(id=str(row["id"]), who=accounts.who_of(row["sender"]),
+                    name=accounts.game_name(row["name"]), text=row["body"], sent=row["sent"])
+        if public:
+            room.append(item)
+        else:
+            item["peer"] = accounts.who_of(other)
+            messages.append(item)
+    return dict(ok=1, me=accounts.who_of(sid), room=list(reversed(room)),
+                messages=list(reversed(messages)),
+                friends=[r for r in friend_rows(db, sid, now, lobby_ttl) if r["relation"] == 3])
+
+
+def menu_message(db, sid, nonce, expires, target, text, now, lobby_ttl):
+    """Called under BEGIN IMMEDIATE: consume and insert atomically across workers."""
+    peer, _, body_sha = target.partition(":")
+    if not hmac.compare_digest(hashlib.sha256(text.encode("utf-8")).hexdigest(), body_sha):
+        return {"ok": 0, "error": "Message changed; send again"}, 400
+    text = text.strip()
+    if not text or len(text) > 160 or len(text.encode("utf-8")) > 320 or any(
+            ord(c) < 32 or ord(c) == 127 for c in text):
+        return {"ok": 0, "error": "Use 1-160 characters on one line"}, 400
+    other = CHAT_ROOM if peer == "-" else resolve(db, peer)
+    if other != CHAT_ROOM:
+        if not other or other == sid or relation(db, sid, other) != 3:
+            return {"ok": 0, "error": "Add each other as friends first"}, 403
+        live = presence(db, other, now, lobby_ttl)
+        if not live["online"] and not live["menu_online"]:
+            return {"ok": 0, "error": "Your friend is offline"}, 409
+    db.execute("DELETE FROM social_menu_messages WHERE until<?", (now,))
+    proof = digest(sid + "\n" + nonce)
+    if db.execute("SELECT 1 FROM social_menu_messages WHERE proof=?", (proof,)).fetchone():
+        return {"ok": 0, "error": "Message already sent"}, 409
+    db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
+    if other != CHAT_ROOM and db.execute("SELECT COUNT(*) FROM social_messages WHERE recipient=?",
+                                        (other,)).fetchone()[0] >= 32:
+        return {"ok": 0, "error": "Your friend's inbox is busy"}, 429
+    if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= 2048:
+        return {"ok": 0, "error": "Chat is busy"}, 429
+    serial = db.execute("SELECT seq FROM sqlite_sequence WHERE name='social_messages'").fetchone()
+    if serial and serial[0] >= 2147483647:
+        return {"ok": 0, "error": "Chat is busy"}, 429
+    db.execute("INSERT INTO social_menu_messages(proof,until) VALUES(?,?)", (proof, int(expires)))
+    row = db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                     (sid, other, text, now))
+    if other == CHAT_ROOM:
+        db.execute("DELETE FROM social_messages WHERE recipient=? AND id NOT IN"
+                   " (SELECT id FROM social_messages WHERE recipient=? ORDER BY id DESC LIMIT 128)",
+                   (CHAT_ROOM, CHAT_ROOM))
+    return {"ok": 1, "id": str(row.lastrowid), "note": "Message sent"}, 200
+
+
 def register(app, d):
     # The same verifier as account proofs, not a new Ed25519 implementation.
     try:
@@ -317,7 +392,7 @@ def register(app, d):
             db = d.get_db()
             # A menu heartbeat is not a lobby session/capability or join target.
             with db:
-                db.execute("BEGIN IMMEDIATE" if op == "presence" else "BEGIN")
+                db.execute("BEGIN IMMEDIATE" if op in ("presence", "message") else "BEGIN")
                 account = db.execute("SELECT k.steamid FROM keylinks k JOIN accounts a USING(steamid)"
                                      " WHERE k.pub=? AND a.banned_at=0", (pub,)).fetchone()
                 if not account:
@@ -340,6 +415,14 @@ def register(app, d):
                     # Menus before P770 refuse a list holding relation 4.
                     rows = [r for r in friend_rows(db, sid, now, d.lobby_ttl) if r["relation"] <= 3]
                     return reply({"ok": 1, "friends": rows})
+                if op == "chat":
+                    return reply(chat_snapshot(db, sid, now, d.lobby_ttl))
+                if op == "message":
+                    if not d.rate_ok(sid, now, 20, "social-action"):
+                        return reply({"ok": 0, "error": "Slow down; try again shortly"}, 429)
+                    body, status = menu_message(db, sid, nonce, expires, who,
+                                                f.get("text", ""), now, d.lobby_ttl)
+                    return reply(body, status)
                 other = resolve(db, who)
                 if not other or relation(db, sid, other) != 3:
                     return reply({"ok": 0, "error": "Add them as a friend first"}, 403)

@@ -1389,6 +1389,8 @@ void(vector pos) MM_Title =
 // The five entries, from `y` down at `pitch`.
 void(float x, float y, float pitch) MM_MainItems =
 {
+	if (ui_button("mm_chat", [x + 228, y + 14], '156 32 0', "lobby chat"))
+		MC_Open();
 	if (MM_Item(0, "mm_play", [x, y], "PLAY", 16, 0))
 	{
 		menu_screen = SCREEN_CREATE;
