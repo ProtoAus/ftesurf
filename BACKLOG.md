@@ -1,5 +1,17 @@
 # BACKLOG.md
 
+## Owner Legacy viewmodel lighting / Original UV / hold — 24 Oct 2026
+
+- Sites: cl_knife_catalog.qc:KCAT_SkinRules/KCAT_Get, cl_weaponui.qc:WPU_Part,
+  installed Original-root material/UV/bodygroup handling, cl_weapon.qc:WP_Frame.
+- Actual owner surf_666_004.png/save22(slot022),3:50.220: skin-bearing hands and
+  Sleeve FBI Grey stay bright under red light while default arms/knife respond;
+  Original CS:GO Knife texture looks flipped; +sl_hold hides/reveals model.
+- Falsifiers: matching-camera red-light parts respond with default-arm control;
+  keep liked Neutral Preview style. Compare Original's actual installed texture/
+  UV/bodygroup, not blanket-flip every model. Actual hold/release continuously
+  submits visible model without re-equip or movement/hold/evidence changes.
+
 ## Tooling - shipguard optional source-census assertions (23 Oct 2026)
 - Sites: tools/test_shipguard.py:ShipGuardTests.test_runtime_paths_are_narrowly_explained
   and test_curated_zone_cache_is_narrow_and_runtime_only. Existing fixed counts

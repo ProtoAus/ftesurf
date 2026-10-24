@@ -14,6 +14,16 @@ Exact source/build/delivery status: tools/p962-knife-workshop.md; human control,
 appearance/audio acceptance remains in lextest.md. P955's earlier CSS-only
 delivery did not include this; P957 introduced the original Butterfly/M9 UI.
 
+### Requested24Oct: account preferences and spectated viewmodels
+
+Persist the full workshop/viewmodel setup with the linked Steam account's existing
+hud_player settings. Spectators mirror the WATCHED player's enabled model/setup
+and shooting/inspect, not their own cosmetics (owner confirmed). Reuse existing
+authenticated cosmetic settings and authoritative action channels; do not overwrite
+the observer's preferences or bundle licensed assets. Pending implementation,
+roundtrip and two-player acting tests; not a delivered feature or human pass.
+Lighting/Original-texture/hold reports are tracked separately in BACKLOG.md.
+
 ## Owner feature-list ledger (22 Oct 2026)
 
 Delivered: P929 stable Open Lobby #1..#12 names (live, no restarts); P930 updated

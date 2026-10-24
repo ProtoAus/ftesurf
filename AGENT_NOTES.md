@@ -2785,6 +2785,14 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+- P962 live-client pitfall: conbridge send can exit0 while printing `cl has
+  exited, rc 0`; require the unique in-engine marker/status, not shell success.
+  Optional extended Pi sampling hit a local Momentum bhop_eazy map CRC mismatch;
+  retain the guard/failure, not an all-client/model pass. Proc CWD visibility
+  can transiently refuse during a legitimate service restart: bounded positive
+  resampling confirms the exact new PID/birth; never interpret refusal as empty
+  or restart an already-restarted unit to make a controller green.
+
 - **Conbridge executable paths are not relative to `--root` (P962).** Pass
   absolute `--client` and `--server` for a test overlay, and read back the actual
   process ExecutablePath. Relative names resolved in the caller's canonical CWD

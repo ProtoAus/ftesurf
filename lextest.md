@@ -13,23 +13,29 @@ expiry. Close the recipient or let presence expire: DM reports offline rather
 than falsely claiming delivery. Native proof/parser and Flask tests are not a
 full live/two-person or visual pass. Receipt: tools/p963-menu-chat.md.
 
-## P962 — expanded Legacy workshop (Windows delivered; appearance/Pi pending)
+## P962 — expanded Legacy workshop (Windows/Pi delivered; issues reported)
 
 The owner confirmed title dragging and the original dropdowns in the stopped
 session's isolated surf_axiom preview (orange terms banner): "works well".
 They then requested less-shiny Terrorist arms and all installed model choices.
 That acceptance does not cover this newly expanded roster/pagination/materials.
 Both Windows installs received native/shaders and the old-MENU-compatible P962
-CSQC24Oct2026; server/menu and owner settings were preserved. The pending P961
-Friends MENU/backend rollout is not enabled. The online Pi CSQC swap still needs
-exact coordination with another prepared progs cutover, so joining that unchanged
-fleet can load its older workshop. For now, relaunch into a local map/socket
-preview and open knife_menu. Try one knife from the last page, Terrorist complete
-arms, one neutral-preview glove with a different sleeve, then drag the title and
+CSQC24Oct2026; server/menu and owner settings were preserved. All12Pi lobbies
+received the matching clock-preserving client and shaders at10:33:49UTC; native/
+QW/backend/configs unchanged by this promotion. Cold network CSQC/HUD proof is not
+manual appearance acceptance. Local map/socket or online, open knife_menu. Try
+one knife from the last page, Terrorist complete arms, one neutral-preview glove with a different sleeve, then drag the title and
 close with Esc. Do the bare
 skin, glove/sleeve fit, idle/inspect/attack animations and sounds look/feel right?
 The native/socket/screenshot controls are not a substitute for this small check.
 Neutral previews are local template renderings, not purchased inventory skins.
+Owner feedback24Oct: surf_666 red light correctly colours the knife/default
+arms, but skin-bearing hands and Sleeve FBI Grey remain bright/unlit. Screenshot
+surf_666_004.png and save22(slot022),3:50.220 supplied. Original CS:GO Knife's
+texture looks flipped. +sl_hold hides/reveals the viewmodel. These are REPORTED
+FAILURES, not accepted appearance. Neutral Preview's subtler lighting was liked;
+preserve that style. Account configuration persistence and watched-player setup/
+shoot/inspect mirroring requested, not yet implemented or human-confirmed.
 Exact delivery state/limits: tools/p962-knife-workshop.md.
 
 ## P961 — game-running Friends presence (deployment pending; human check pending)

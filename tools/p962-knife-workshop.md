@@ -99,11 +99,11 @@ P962 model/input evidence remains applicable because those component bytes did
 not change. Do not use the older Pi/P957 client here and roll back approved
 Windows client work; do not merge either compatibility composition over main.
 
-**Pi client cohort:**9ddabec373cbe7d32cca67ba5d6aa76af5cb4b1e, public
-`deploy/p962-client-compatible`, keeps exact current Pi QW bytes; see its
-`tools/p962-compatible.md`. Its new CSQC/old Pi SSQC real socket control selects
-Talon, template gloves and a wrist/sleeve piece and executes inspect, with no
-QC/shader errors. It is qualified, NOT deployed on the Pi.
+**Historical old-Pi control:**9ddabec373cbe7d32cca67ba5d6aa76af5cb4b1e,
+public `deploy/p962-client-compatible`; see `tools/p962-compatible.md`. Its exact
+old Pi SSQC socket control selects Talon/gloves/layer/inspect without QC/shader
+errors. It was never deployed: an independent clock rollout changed the fleet
+before promotion. The final Pi client is7ebaca8b above, retaining that clock work.
 
 **Initial dual Windows promotion2026-10-24T07:41:54Z:**14targets across
 `C:/FTESurf` and `C:/FTEQuake`: client exe, HL2 DLL, CSQC/dat+lno, two shaders and
@@ -131,27 +131,40 @@ The current delivered hashes follow.
 | knife_finish.glsl | 133a204d960435fdc9651adf877d95a4982d7a29e91a7f6027fa4b65f6567fe2 |
 | knife_glove.glsl | ddd531d6cd0e0b5f6892402c00555cc211917c4e7c424c0a1a5ec2e7c08e59f7 |
 
-**Pi promotion pending exact-resource coordination.** At the final read-only
-boundary2026-10-24T08:49:14Z, all12lobby units were active. Old QW ef46ba3b65056ead556ef1269b398a4b17b5ce88fdf28fd795973f82abb073b6
-and CSQC fc14d12332969ed8edf68f89bce04f2a5586bf2cd8dc410bf1a76307f35b8b41
-were unchanged. The P954 owner has a prepared five-image cutover bound to that
-CSQC predecessor. No live handoff/gate change was performed here; prepared does
-not mean promoted or authorize overriding another owner's bound stage. A heads-up
-requested coordination of ONLY the short CSQC boundary, not a blanket prep pause.
-The ready client-only CSQC is4036a5c27a3b40e43e4a673edefa74a432555bd3b16999533845ee8eb466ccbc;
-its QW is EXACTLY the existing fleet ef46ba3b above. Native/backend/producer/config
-remain out of this cosmetic promotion; P961 MENU/backend is not activated either.
-No ordinary -Pi command was run (it would also swap/restart shared QW and invalidate
-the other owner's bound predecessor). Do not infer a fleet or public-release update.
-Joining the unchanged online fleet can still load its old workshop CSQC; a local
-map/socket preview uses the delivered expanded one. Human acceptance remains open.
+**Pi delivered2026-10-24T10:33:49Z:** owner requested promotion; the independent
+clock rollout had landed, so the actual OPEN serving/native/QW cohort was freshly
+inspected and the clock-preserving7ebaca8b client selected. Only CSQC552790cb and
+the two shaders in the table changed. The actual predecessor remains `.prev`;
+its earlier `.prev` history is independently retained.554protected native/QW/
+reader/backend/config/entrypoint hashes match that current preflight, not the
+obsolete old-Pi snapshot. No pending MENU/backend work or public release was
+activated by this promotion.
+
+All12positively identified empty lobbies restarted once; final direct statuses,
+current native/CWD identity, exact resulting process epochs and twelve fresh
+directory rows pass. The first controller stopped on transient startup proc/CWD
+visibility after the first legitimate restart. Its failure is preserved; bounded
+recovery confirmed that process and restarted only the remaining11, without
+recopying/repeating the swap or restarting the first twice. Short sweeper lock
+released; no maintenance gate or owned client remains active.
+
+Existing cold-lobby smoke passes with no local CSQC: actual network cache
+145a7654.dat has SHA552790cb above; HUD and scores screenshots are drawn. Extra
+full-serverinfo checks confirm that CRC on three lobbies. An optional fourth
+connection failed the map-integrity guard on a local Momentum bhop_eazy mismatch;
+that is retained, not a pass, all12client CRC proof or a reason to weaken the
+map check. Later commands to an already-exited owned client did not act and are
+not live Legacy-model evidence. The cold-client check plus all12positive process/
+status/hash/directory controls establishes deployment, not manual lighting,
+texture orientation, audio or feel. Owner-reported red-light/Original-texture/
+hold issues and the requested account/spectator extensions remain separate work.
 
 **Workspace disposition:** all owned actors are stopped.861verified disposable
 compiler-output/runtime-binary files,205366493bytes, were retired; qualified
 binaries/symbols/manifests, independent predecessor history, source branches and
-unique failure/corrected visual evidence remain retained privately for the pending
-Pi boundary and human check. No pre-existing player/fixture data or another
-session's stopped recovery root was deleted; this probe's synthetic menu-cache
+unique failure/corrected visual evidence remain retained privately for delivery
+provenance, the owner's follow-up fixes and human checks. No pre-existing player/
+fixture data or another session's stopped recovery root was deleted; this probe's synthetic menu-cache
 fixture was restored. The dependency cache was not copied or cleaned. Retirement paths/hashes and exact private root ownership are recorded
 locally rather than exporting raw private test output.
 
