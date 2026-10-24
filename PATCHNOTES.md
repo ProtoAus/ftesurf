@@ -21,6 +21,9 @@
 
 ## next
 
+### P975 Friends in a private game
+- In a private local game the friends list now loads on the menu Play screen, as it does at the main menu; the in-game Friends tab points you there.
+
 ### P974 Stage toast switch and a search you can double-click
 - hud_edit: the Splits pane has a Stage toast switch for the pill that shows each stage you finish, top left.
 - The map search no longer empties itself on the first click after you play a map: the old search is selected instead, so typing replaces it and a double-click selects it all.

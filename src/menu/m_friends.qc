@@ -76,12 +76,25 @@ void(string why) MF_Fail =
 };
 
 float() MF_Online = { return (cvar("rec_terms") >= FS_TERMS_ONLINE); };
+
+// The menu asks the Friends service itself: disconnected, or in a game with no
+// account service behind it (a private local game, board "local"), where CSQC
+// never gets a list to publish. MENU clientstate: 1 disconnected, 2 connected.
+float() MF_Direct =
+{
+	local float c;
+	c = clientstate();
+	if (c == 1) return TRUE;
+	return (c == 2 && serverkey("board") == "local");
+};
+
+string() MF_ProbeNote = { return sprintf("req=%g wire=%g note=%S", mf_req, mf_wire, mf_note); };
+
 float() MF_Active =
 {
 	if (!menu_active || menu_screen != SCREEN_CREATE) return FALSE;
 	if (!cvar("ui_maps_friends") || !MF_Online()) return FALSE;
-	// MENU clientstate follows NetQuake: 1 disconnected, 2 connected/trying.
-	return (clientstate() == 1);
+	return MF_Direct();
 };
 
 void(string op, string who) MF_Ask =
@@ -329,7 +342,7 @@ void(float visible) MF_Poll =
 		mf_mode = mode;
 		MF_Note("");
 	}
-	if (mode == 2)
+	if (mode == 2 && !MF_Direct())
 	{
 		epoch = cvar("ui_friends_epoch");
 		if (epoch != mf_epoch)
@@ -339,7 +352,7 @@ void(float visible) MF_Poll =
 		}
 		return;
 	}
-	if (mode != 1 || !MF_Online())
+	if (!MF_Direct() || !MF_Online())
 	{
 		MF_Cancel();
 		return;
@@ -379,7 +392,7 @@ void() MF_Open =
 	cvar_set("ui_maps_friends", "1");
 	mf_next = 0;
 	if (MF_Online())
-	if (clientstate() == 2)
+	if (!MF_Direct())
 	if (cvar("ui_friends_activity") > 0 && cvar("ui_friends_activity") == cvar("ui_friends_epoch"))
 		localcmd("cmd friend refresh -\n");
 };
@@ -423,7 +436,7 @@ float(float reqid, float code, string body) MF_Reply =
 	{
 		if (!MF_Active()) { MF_Cancel(); return TRUE; }
 	}
-	else if (!MF_Online() || clientstate() != 1) { MF_Cancel(); return TRUE; }
+	else if (!MF_Online() || !MF_Direct()) { MF_Cancel(); return TRUE; }
 	if (code || strlen(body) > 131072)
 	{
 		MF_Fail("Friends service unavailable. Your friends are not necessarily offline.");
@@ -627,13 +640,13 @@ void(vector pos, vector size) MF_Draw =
 				if (sui_is_released(id) && MF_WhoSafe(who))
 				if (!ui_join_busy())
 				{
-					if (clientstate() == 2) localcmd(sprintf("friends_menu_join %s\n", who));
+					if (!MF_Direct()) localcmd(sprintf("friends_menu_join %s\n", who));
 					else MF_Join(who);
 				}
 			}
 			else if (rel == 3 && flag == 2) status = strcat("Last seen: ", map);
 			sui_text(rp + '64 36 0', '12 12 0', ui_fit_text(status, room, '12 12 0'), (online || menuonline) ? SUI_THEME_GOOD : COL_DIM, alpha, 0);
-			if (rel == 2 && clientstate() == 2 && MF_WhoSafe(who))
+			if (rel == 2 && !MF_Direct() && MF_WhoSafe(who))
 			if (ui_button(strcat("mf_add", who), rp + [size_x - 126, 32], [78, 24], "Add back"))
 				localcmd(sprintf("friends_menu_add %s\n", who));
 		}

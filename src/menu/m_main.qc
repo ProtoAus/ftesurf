@@ -153,6 +153,8 @@ void(vector screensize) MU_Hint;
 void(string what) MU_NotesCommand;
 float() MF_Count;
 float() MF_Fresh;
+float() MF_Direct;
+string() MF_ProbeNote;
 void() MF_Init;
 void(float visible) MF_Poll;
 void() MF_ResumeJoin;
@@ -8633,6 +8635,7 @@ float(string cmd) m_consolecommand =
 			cvar("ui_maps_filters"), cvar("ui_maps_large"), cvar("ui_maps_friends"), ui_cs_rows,
 			ms_viewcount, ms_tier, ms_scroll_y));
 		print(sprintf("ui_menu_probe: friends_count=%g client=%g screen=%g friends_draw=%g friends_fresh=%g\n", cvar("ui_friends_count"), clientstate(), menu_screen, MF_Count(), MF_Fresh()));
+		print(sprintf("ui_menu_probe: friends_direct=%g board=%S %s\n", MF_Direct(), serverkey("board"), MF_ProbeNote()));
 		return TRUE;
 	}
 	if (strcmp(argv(0), "ui_notes") == 0)

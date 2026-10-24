@@ -25,7 +25,7 @@ commit   584b21bc49d5409b8c5d506f6de5e961d53b9572
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-970
-patch    974
+patch    975
 # Patch 972: exact retry preserves an already-earned pending finish/reset re-arm.
 # Missing/invalid/duplicate grant metadata adds no forgiveness; other load modes unchanged.
 # Patch 971: refuse retry when recording preparation fails; no restart or point write.
