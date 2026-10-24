@@ -485,6 +485,24 @@ void(vector scr) WP_ScopeDraw =
 	drawfill([left, cy, 0], [radius * 2, 1, 0], '0 0 0', 1);
 };
 
+float wp_texturewarned;
+float() WP_KnifeTexturePending =
+{
+	local float kind;
+	kind = KCAT_Knife();
+	if (kind <= 0) return FALSE;
+	if (strcmp(KCAT_Get(kind, KCAT_BASE), "materials/models/weapons/v_models/knife_t/knife_t.vtf")) return FALSE;
+	if (!cvar_type("fs_knife_texture"))
+	{
+		if (!wp_texturewarned) print("Original/default T textures need the updated native client.\n");
+		wp_texturewarned = TRUE;
+		return FALSE;
+	}
+	if (cvar("fs_knife_texture") > 0) return FALSE;
+	WP_MountKnifeContent(-1);
+	return TRUE;
+};
+
 void() WP_Frame =
 {
 	local float w, seq, kind, file;
@@ -506,6 +524,8 @@ void() WP_Frame =
 		wp_sequence = seq;
 		return;
 	}
+	if (w == FS_WEAPON_KNIFE)
+		if (WP_KnifeTexturePending()) return;
 	if (getstatf(STAT_FS_MOVETYPE) != MOVETYPE_WALK && getstatf(STAT_FS_MOVETYPE) != MOVETYPE_NOCLIP)
 	{
 		// Hold is temporary: suppress queued motion/fire, but still submit its retained model.

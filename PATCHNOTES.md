@@ -21,6 +21,9 @@
 
 ## next
 
+### P967 Match Original and default-T knife textures
+- Original and default-T knives now use their own installed Legacy texture instead of a same-named CSS texture. CSS weapons keep their existing materials; an updated native client is required.
+
 ### P962 Installed Legacy knife, glove and sleeve workshop
 - The knife workshop lists installed Legacy knife shapes, hands/gloves and sleeves/watches, with paged selectors and a draggable shared-theme panel.
 - Selecting Legacy content can mount the installed game for this session without changing saved mounts. Missing content keeps your selection; no game assets are downloaded or bundled.
