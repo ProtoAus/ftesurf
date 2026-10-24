@@ -1,14 +1,15 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
-## Mounted CS:GO Legacy knives / local finish workshop (24 Oct 2026)
+## Mounted CS:GO Legacy knives / local finish workshop — P957
 
-Owner requested Butterfly and M9, inspect animations and a small local
-finish/pattern/fade/wear selector. Isolated prototype exists but the imported
-hand poses/rendering still fail visual acceptance; NOT shipped by P955's CSS
-follow-up. Preserve the prototype and evidence, finish actual draw/idle/inspect
-and stable merged arms before presenting the workshop as ready. Installed
-licensed assets remain mounted locally, never redistributed. No exact inventory
-or paint-kit parity is claimed. This request remains active, not cancelled.
+Implemented with native-verified stable Butterfly/M9 draw/idle/inspect and
+matched mounted CT arms. The small local workshop exposes Original/Fade/Web/
+Marble, seed, scale, rotation, fade amount and wear. Exact source/build/delivery
+status: tools/p957-legacy-knives.md; human control/appearance/audio acceptance
+remains in lextest.md. P955's earlier CSS-only delivery did not include this.
+Installed licensed assets remain mounted locally, never redistributed. A missing
+mount requires an explicit trusted console action; CSQC does not bypass it.
+No exact inventory or paint-kit parity is claimed.
 
 ## Owner feature-list ledger (22 Oct 2026)
 

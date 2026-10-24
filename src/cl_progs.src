@@ -297,4 +297,5 @@ client/cl_gameaudio.qc
 client/cl_gamaterial.qc
 client/cl_motionaudio.qc
 client/cl_weapon.qc
+client/cl_weaponui.qc
 client/cl_main.qc

@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P957 — Butterfly/M9 and local knife workshop (delivered; human check pending)
+
+BOTH Windows28targets verified23Oct2026 23:49UTC, all12empty Pi lobbies on
+exact CSQC; fresh live-download/board smoke passed. Source253ad98d/native86228bf7c,
+patch-957. No new release/Build bump. Native isolated pixels show stable mounted arms and both knife families' clips,
+plus acting finish/fade/pattern/wear changes and the actual small panel. Cursor
+claims return to0 on close. This is not owner acceptance or real mouse/slider/
+audio feel. Delivery/launch prerequisites: tools/p957-legacy-knives.md.
+On an updated client, type butterfly then inspect, m9 then inspect, and open
+knife_menu. Try the model/finish buttons, drag the pattern/fade/wear sliders,
+click Inspect, close with X/Esc and confirm normal aiming returns. Do the hands,
+animations, sounds and finish controls look/feel right? CSS knife: knife_css.
+If content is not mounted, selection stays unchanged and the console gives the
+one-time fs_load command. No inventory/exact CS paint-kit or FPS parity claim.
+
 ## P955 — CSS weapon follow-up (delivered; human check pending)
 
 BOTH Windows verified23Oct2026 20:33UTC and all12empty Pi lobbies by20:35UTC.
@@ -10,8 +25,8 @@ screenshots show the CSS scope at both zoom levels and muzzle flashes. That is
 not owner acceptance of their appearance/sound/feel. Reconnect and check: Glock single vs burst;
 Scout secondary40/15/off, shot/bolt/rezoom; hold/release a save, noclip and bare
 drop. Do the flashes and hard-landing CSS damage sounds look/sound right?
-No exact CSS parity or sustained-FPS claim. CS:GO knives/finish workshop remain
-an isolated prototype and are NOT included/accepted by this patch.
+No exact CSS parity or sustained-FPS claim. CS:GO knives/workshop were excluded
+from P955; their implementation and separate acceptance are tracked under P957.
 
 ## P952 — Epiphany's world (delivered; human check pending)
 

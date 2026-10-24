@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   c808d0b6d558b0cdb551439ce31d10f0b3012cc2
+commit   dae472e7090d22b48807a267baa039f58c171bfc
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -25,13 +25,16 @@ commit   c808d0b6d558b0cdb551439ce31d10f0b3012cc2
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-954
-patch    956
+patch    957
+# Patch 957: bounded mounted Butterfly/M9 animations, matching arms and local finish workshop.
+# Explicit trusted content mount; no movement/evidence, Build or release change.
+# The combined P954 native pin retains those published plugin/header changes.
 # Patch 956 keeps the consumed recording SHA with future accepted verifier
 # attempts. Existing results remain unbound; no raw collection, badge/ranking,
 # movement, native pin/tag, Build or release policy changes.
 # Patch 954: per-player practice host_timescale; movement and counted timer slow together.
 # Native legacy event order uses existing packet ordinals; fixed ticks/formats stay unchanged.
-# Product max stays956 to retain already-published peer changes.
+# Product max stays957 to retain already-published peer changes.
 # Patch 953: apply the existing trust boundary before native local file-writer work.
 # Trusted operator behaviour remains; no evidence, schema or movement change.
 # Patch 952: Epiphany's extensionless colour-correction LUT keeps its authored grade.

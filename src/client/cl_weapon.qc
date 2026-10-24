@@ -1,5 +1,6 @@
 /* Opt-in mounted CSS presentation; server owns selection and map-target shots. */
 entity wp_ent;
+void() WPU_Apply; // cl_weaponui.qc, before the model is submitted
 float wp_weapon, wp_sequence, wp_until, wp_animat, wp_ready, wp_shots, wp_duration;
 float wp_eventat, wp_drawing, wp_events, wp_sndnext, wp_callbacks;
 float wp_scriptbytes, wp_scriptalias, wp_scripthits;
@@ -23,6 +24,8 @@ void() WP_Register =
 	registercvar("cl_viewweapon_sway", "0.2", CVAR_ARCHIVE);
 	registercvar("cl_weapon_sfx", "1", CVAR_ARCHIVE);
 	registercvar("cl_weapon_muzzleflash", "1", CVAR_ARCHIVE);
+	registercvar("cl_knife_model", "0", CVAR_ARCHIVE);
+	registercommand("butterfly"); registercommand("m9"); registercommand("knife_css"); registercommand("inspect");
 	// Existing independent projection, not a scale hack or a change to world FOV.
 	if (!strcmp(cvar_string("r_viewmodel_fov"), "")) cvar_set("r_viewmodel_fov", "75");
 	registercommand("surf_weapon");
@@ -35,7 +38,12 @@ void() WP_Register =
 
 string(float w) WP_Model =
 {
-	if (w == FS_WEAPON_KNIFE) return "models/weapons/v_knife_t.mdl";
+	if (w == FS_WEAPON_KNIFE)
+	{
+		if (cvar("cl_knife_model") == 1) return "models/weapons/v_knife_butterfly.mdl";
+		if (cvar("cl_knife_model") == 2) return "models/weapons/v_knife_m9_bay.mdl";
+		return "models/weapons/v_knife_t.mdl";
+	}
 	if (w == FS_WEAPON_USP) return "models/weapons/v_pist_usp.mdl";
 	if (w == FS_WEAPON_SCOUT) return "models/weapons/v_snip_scout.mdl";
 	if (w == FS_WEAPON_GLOCK) return "models/weapons/v_pist_glock18.mdl";
@@ -45,6 +53,7 @@ string(float w) WP_Model =
 string(float w) WP_Idle =
 {
 	if (w == FS_WEAPON_SCOUT) return "idle1";
+	if (w == FS_WEAPON_KNIFE && cvar("cl_knife_model") > 0) return "idle1";
 	if (w == FS_WEAPON_GLOCK) return "glock_idle";
 	if (w == FS_WEAPON_USP && !wp_mode) return "idle_unsil";
 	return "idle";
@@ -76,10 +85,58 @@ float(string name, float oneshot) WP_Animate =
 	return TRUE;
 };
 
+// Knife aliases come from the active CS:GO package, never by raising its VFS
+// priority above CSS's shared models/materials. Caller owns the zoned result.
+string() WP_WeaponScript =
+{
+	local float f, h, i, n;
+	local int bytes;
+	local void *buffer;
+	local string text, package;
+	f = -1;
+	if (wp_weapon == FS_WEAPON_KNIFE && cvar("cl_knife_model") > 0)
+	if (checkbuiltin(GM_SearchPackage))
+	if (checkbuiltin(GM_SearchOpen))
+	{
+		h = search_begin("scripts/game_sounds_weapons.txt", 6, TRUE);
+		if (h >= 0)
+		{
+			n = bound(0, search_getsize(h), 64);
+			for (i = 0; i < n; i = i + 1)
+			{
+				package = strtolower(GM_SearchPackage(h, i));
+				if (strstrofs(package, "csgo", 0) < 0) continue;
+				f = GM_SearchOpen(h, i);
+				if (f >= 0) break;
+			}
+			search_end(h);
+		}
+	}
+	if (f >= 0)
+	{
+		bytes = fsize(f);
+		text = "";
+		if (bytes > 0i && bytes <= 2097152i)
+		{
+			buffer = memalloc(bytes + 1i);
+			memfill8(buffer, 0i, bytes + 1i);
+			if (fread(f, buffer, bytes) == bytes) text = strzone((string)buffer);
+			memfree(buffer);
+		}
+		fclose(f);
+		return text;
+	}
+	f = fopen("scripts/game_sounds_weapons.txt", FILE_READNL);
+	if (f < 0) return "";
+	text = strzone(fgets(f));
+	fclose(f);
+	return text;
+};
+
 // Resolve mounted Source sound-script names. Cache successes AND missing names.
 string(string name) WP_SoundPath =
 {
-	local float i, f, count, k, depth, active, wave, p, n, comment;
+	local float i, count, k, depth, active, wave, p, n, comment;
 	local string text, line, token, path;
 
 	for (i = 0; i < 16; i = i + 1)
@@ -87,12 +144,9 @@ string(string name) WP_SoundPath =
 	path = "";
 	depth = 0;
 	active = wave = FALSE;
-	f = fopen("scripts/game_sounds_weapons.txt", FILE_READNL);
-	if (f >= 0)
+	text = WP_WeaponScript();
+	if (strcmp(text, ""))
 	{
-		// Same blank-line-safe reader contract as Snds_ParseFile: READNL once.
-		text = fgets(f);
-		fclose(f);
 		wp_scriptbytes = strlen(text);
 		wp_scriptalias = strstrofs(text, name, 0); // exact-case diagnostic; never casefold the whole file
 		wp_scripthits = 0;
@@ -123,7 +177,7 @@ string(string name) WP_SoundPath =
 				{
 					if (wave)
 					{
-						while (!strcmp(substring(token, 0, 1), "*") || !strcmp(substring(token, 0, 1), "#") || !strcmp(substring(token, 0, 1), "^"))
+						while (!strcmp(substring(token, 0, 1), "*") || !strcmp(substring(token, 0, 1), "#") || !strcmp(substring(token, 0, 1), "^") || !strcmp(substring(token, 0, 1), "~") || !strcmp(substring(token, 0, 1), ")"))
 							token = substring(token, 1, -1);
 						path = strzone(token);
 						break;
@@ -135,6 +189,7 @@ string(string name) WP_SoundPath =
 			p = n + 1;
 		}
 	}
+	if (strcmp(text, "")) strunzone(text);
 	// Content-only CSS packs can have the WAV/model but no legacy sound script
 	// (or a higher-priority game's script). Timing still comes from the MODEL.
 	if (!strcmp(path, ""))
@@ -300,7 +355,15 @@ void(float w, float alternate) WP_Bullet =
 
 void(float w, float kind) WP_Shot =
 {
-	if (w == FS_WEAPON_KNIFE) WP_Animate((kind == FS_WEV_ALT) ? "stab_miss" : ((wp_shots % 2) ? "midslash2" : "midslash1"), TRUE);
+	if (w == FS_WEAPON_KNIFE)
+	{
+		if (cvar("cl_knife_model") > 0)
+		{
+			if (kind == FS_WEV_ALT) WP_Animate(wp_mode ? "heavy_hit1" : "heavy_miss1", TRUE);
+			else WP_Animate(strcat(wp_mode ? "light_hit" : "light_miss", (wp_shots % 2) ? "2" : "1"), TRUE);
+		}
+		else WP_Animate((kind == FS_WEV_ALT) ? "stab_miss" : ((wp_shots % 2) ? "midslash2" : "midslash1"), TRUE);
+	}
 	else if (w == FS_WEAPON_USP) WP_Animate(wp_mode ? "shoot1" : "shoot1_unsil", TRUE);
 	else if (w == FS_WEAPON_SCOUT)
 	{
@@ -445,6 +508,7 @@ void() WP_Frame =
 		if (strcmp(wp_model, "")) strunzone(wp_model);
 		wp_model = strzone(mdl);
 		setmodel(wp_ent, wp_model);
+		wp_ent.skeletonindex = 0;
 		wp_flashuntil = 0;
 		if (wp_ent.modelindex == 0) return;
 		WP_LoadMuzzle(); // CSQC's private model slots are NEGATIVE.
@@ -512,11 +576,51 @@ void() WP_Frame =
 	if (wp_until <= 0 && wp_duration > 0)
 		wp_ent.frame1time = wp_ent.frame1time - floor(wp_ent.frame1time / wp_duration) * wp_duration;
 	wp_ent.frame2time = wp_ent.frame1time;
+	WPU_Apply();
 	if (!WP_IsScoped())
 	{
 		addentity(wp_ent);
 		WP_FlashFrame();
 	}
+};
+
+void() WP_Inspect =
+{
+	local string clip;
+	if (wp_weapon != FS_WEAPON_KNIFE || !wp_ready || cvar("cl_knife_model") <= 0)
+	{
+		print("inspect: select a mounted Butterfly or M9 knife first\n");
+		return;
+	}
+	clip = "lookat01";
+	if (cvar("cl_knife_model") == 1) clip = sprintf("lookat0%g", floor(random() * 3) + 1);
+	if (WP_Animate(clip, TRUE)) wp_until = time + bound(0.08, wp_duration, 20);
+};
+
+void(float kind) WP_ChooseKnife =
+{
+	local float f, previous;
+	previous = cvar("cl_knife_model");
+	kind = bound(0, floor(kind), 2);
+	cvar_set("cl_knife_model", ftos(kind));
+	if (kind > 0)
+	{
+		f = fopen(WP_Model(FS_WEAPON_KNIFE), FILE_READ);
+		if (f >= 0) fclose(f);
+		else
+		{
+			cvar_set("cl_knife_model", ftos(previous));
+			// Mounts are a trusted operator action, never a CSQC command.
+			print("Knife content is not mounted. In the console run:\nfs_load \"steam:Counter-Strike Global Offensive/csgo\"\nThen select Butterfly/M9 again. Requires installed CS:GO Legacy; no download.\n");
+			return;
+		}
+	}
+	// Retry a previously missing model after an explicit operator mount.
+	if (strcmp(wp_model, "")) strunzone(wp_model);
+	wp_model = "";
+	wp_ready = FALSE;
+	cvar_set("cl_viewweapon", "1");
+	localcmd("cmd weapon knife\n");
 };
 
 float() WP_Command =
@@ -527,6 +631,10 @@ float() WP_Command =
 	local int *header;
 
 	cmd = argv(0);
+	if (!strcmp(cmd, "inspect")) { WP_Inspect(); return TRUE; }
+	if (!strcmp(cmd, "butterfly")) { WP_ChooseKnife(1); return TRUE; }
+	if (!strcmp(cmd, "m9")) { WP_ChooseKnife(2); return TRUE; }
+	if (!strcmp(cmd, "knife_css")) { WP_ChooseKnife(0); return TRUE; }
 	if (!strcmp(cmd, "drop")) { localcmd("cmd drop\n"); return TRUE; }
 	if (!strcmp(cmd, "weapon_info"))
 	{
