@@ -25,7 +25,9 @@ commit   8557e89af39c8615714ad9cfa831056486f313a9
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-962
-patch    964
+patch    965
+# P965 older-save progress range guard; current compatible Pi client retained.
+# Native pin/tag unchanged. See tools/p965-pi-server-compatible.md.
 # P964 Pi server-only composition; client stays byte-identical to current fleet.
 # Preserve native pin/tag; see tools/p964-pi-server-compatible.md.
 # Patch 962: installed Legacy knife/hands/sleeves catalog, matte/neutral previews,
