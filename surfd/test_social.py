@@ -39,7 +39,7 @@ class Friends(unittest.TestCase):
             F.remember_activity("fixture-two", self.now, "Stage 2")
             F.remember_activity("fixture-three", self.now, "Bonus 3")
             self.assertEqual(set(F._activities), {"fixture-two", "fixture-three"})
-        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 20)
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], S.SCHEMA_VERSION)
         columns = {row[1] for row in self.db.execute("PRAGMA table_info(social_sessions)")}
         self.assertNotIn("activity", columns)
 
@@ -124,7 +124,7 @@ class Friends(unittest.TestCase):
         self.client = S.app.test_client()
         self.db = S.connect()
         self.addCleanup(self.db.close)
-        for table in ("social_messages", "social_friends", "social_sessions", "keylinks", "accounts", "lobbies"):
+        for table in ("social_menu_presence", "social_messages", "social_friends", "social_sessions", "keylinks", "accounts", "lobbies"):
             self.db.execute("DELETE FROM " + table)
         for sid, name in zip(IDS, ("Alice", "Bob", "Third")):
             self.db.execute("INSERT INTO accounts(steamid,name,created_at) VALUES(?,?,?)", (sid, name, self.now))
@@ -625,6 +625,132 @@ class Friends(unittest.TestCase):
                     get_db=lambda: self.db, game_json=S.game_json, clean_text=S.clean_text, lobby_ttl=S.LOBBY_TTL))
                 self.client = app.test_client()
                 self.assertEqual(self.menu_read(self.menu_form())["ok"], 1)
+
+    def test_menu_presence_acts_without_minting_a_lobby_capability(self):
+        self.befriend()
+        before = list(self.db.execute("SELECT * FROM social_sessions"))
+        self.assertEqual(self.menu_read(self.menu_form(1, op="presence"))["ok"], 1)
+        row = self.menu_read(self.menu_form())["friends"][0]
+        self.assertEqual((row["online"], row["menu_online"], row["addr"]), (0, 1, ""))
+        self.assertEqual(list(self.db.execute("SELECT * FROM social_sessions")), before)
+        join = self.menu_read(self.menu_form(op="join", who=A.who_of(IDS[1])))
+        self.assertEqual(join["status"], 409)
+        self.assertIn("main menu", join["error"])
+        self.poll()  # acted normal lobby presence wins over main-menu presence
+        row = F.presence(self.db, IDS[1], self.now, S.LOBBY_TTL)
+        self.assertEqual((row["online"], row["menu_online"]), (1, 0))
+
+    def test_menu_presence_replay_cannot_extend_lease_and_fresh_proof_can(self):
+        form = self.menu_form(1, op="presence")
+        self.assertEqual(self.menu_read(form)["ok"], 1)
+        seen = self.db.execute("SELECT seen FROM social_menu_presence").fetchone()[0]
+        self.now += 10
+        self.assertEqual(self.menu_read(form)["ok"], 1)
+        self.assertEqual(self.db.execute("SELECT seen FROM social_menu_presence").fetchone()[0], seen)
+        newer = self.menu_form(1, op="presence")
+        self.assertEqual(self.menu_read(newer)["ok"], 1)
+        self.assertEqual(self.db.execute("SELECT seen FROM social_menu_presence").fetchone()[0], self.now)
+        self.assertEqual(self.menu_read(form)["ok"], 1)
+        self.assertEqual(self.db.execute("SELECT seen FROM social_menu_presence").fetchone()[0], self.now)
+        self.now += F.MENU_PRESENCE_TTL
+        self.assertEqual(F.presence(self.db, IDS[1], self.now, S.LOBBY_TTL)["menu_online"], 0)
+        self.assertEqual(self.menu_read(newer)["status"], 403)
+
+    def test_menu_presence_shared_sql_and_revocation(self):
+        self.assertEqual(self.menu_read(self.menu_form(1, op="presence"))["ok"], 1)
+        other = S.connect()
+        self.addCleanup(other.close)
+        with other:
+            self.assertEqual(F.presence(other, IDS[1], self.now, S.LOBBY_TTL)["menu_online"], 1)
+        for statement, params in [
+                ("UPDATE accounts SET banned_at=1 WHERE steamid=?", (IDS[1],)),
+                ("UPDATE keylinks SET steamid=? WHERE pub=?", (IDS[2], PUBS[1])),
+                ("DELETE FROM keylinks WHERE pub=?", (PUBS[1],))]:
+            self.db.execute("SAVEPOINT revoke")
+            self.db.execute(statement, params)
+            self.assertEqual(F.presence(self.db, IDS[1], self.now, S.LOBBY_TTL)["menu_online"], 0)
+            self.db.execute("ROLLBACK TO revoke"); self.db.execute("RELEASE revoke")
+
+    def test_menu_presence_not_disclosed_to_one_way_or_blocked_add(self):
+        self.assertEqual(self.menu_read(self.menu_form(1, op="presence"))["ok"], 1)
+        self.assertEqual(self.action(0, "add").status_code, 200)
+        self.assertEqual(self.menu_read(self.menu_form())["friends"][0]["menu_online"], 0)
+        self.assertEqual(self.action(1, "add", 0).status_code, 200)
+        self.assertEqual(self.menu_read(self.menu_form())["friends"][0]["menu_online"], 1)
+        self.assertEqual(self.action(0, "block").status_code, 200)
+        self.assertEqual(F.friend_rows(self.db, IDS[0], self.now, S.LOBBY_TTL)[0]["menu_online"], 0)
+        self.assertEqual(self.menu_read(self.menu_form(1))["friends"], [])
+
+    def test_menu_presence_rejects_read_proof_substitution_without_acting(self):
+        form = self.menu_form(op="list")
+        self.assertEqual(self.menu_read(dict(form, op="presence"))["status"], 403)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM social_menu_presence").fetchone()[0], 0)
+        good = self.menu_form(op="presence")
+        self.assertEqual(self.menu_read(dict(good, sig="0" * 128))["status"], 403)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM social_menu_presence").fetchone()[0], 0)
+        self.assertEqual(self.menu_read(good)["ok"], 1)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM social_menu_presence").fetchone()[0], 1)
+
+    def test_menu_presence_migration20_is_additive_and_idempotent(self):
+        self.db.execute("DROP TABLE social_menu_presence")
+        self.db.execute("PRAGMA user_version=20")
+        self.db.commit()
+        tables = [r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+        before = {name: [tuple(r) for r in self.db.execute('SELECT * FROM "' + name + '"')] for name in tables}
+        S.migrate()
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 21)
+        after = {name: [tuple(r) for r in self.db.execute('SELECT * FROM "' + name + '"')] for name in tables}
+        self.assertEqual(before, after)
+        self.assertEqual(self.menu_read(self.menu_form(1, op="presence"))["ok"], 1)
+        menu = [tuple(r) for r in self.db.execute("SELECT * FROM social_menu_presence")]
+        S.migrate()
+        self.assertEqual([tuple(r) for r in self.db.execute("SELECT * FROM social_menu_presence")], menu)
+
+    def test_menu_presence_unchanged_successful_poll_hash_beyond35s(self):
+        self.befriend()
+        revision = ""
+        for step in range(11):
+            if step:
+                self.now += 5
+            self.heartbeat("p27510", 27510, "surf_test")
+            if step % 2 == 0:
+                self.assertEqual(self.menu_read(self.menu_form(1, op="presence"))["ok"], 1)
+            row = self.poll((0,), {0: revision})[0]
+            if not revision:
+                self.assertEqual(row["friends"][0]["menu_online"], 1)
+                revision = row["hash"]
+            else:
+                self.assertNotIn("friends", row)
+                self.assertEqual(row["hash"], revision)
+        self.now += F.MENU_PRESENCE_TTL
+        row = self.poll((0,), {0: revision})[0]
+        self.assertNotEqual(row["hash"], revision)
+        self.assertEqual(row["friends"][0]["menu_online"], 0)
+
+    def test_menu_presence_two_accounts_same_peer_fit_separate_bounded_budgets(self):
+        for step in range(12):
+            if step:
+                self.now += 5
+            for i in (0, 1):
+                self.assertEqual(self.menu_read(self.menu_form(i))["ok"], 1)
+                if step % 2 == 0:
+                    self.assertEqual(self.menu_read(self.menu_form(i, op="presence"))["ok"], 1)
+        #24interactive +12background requests fit; neither peer bucket is unbounded.
+        for _ in range(6):
+            self.assertEqual(self.client.get("/api/social/menu/challenge?op=list&who=-").get_json()["ok"], 1)
+        self.assertEqual(self.client.get("/api/social/menu/challenge?op=list&who=-").get_json()["status"], 429)
+        for _ in range(18):
+            self.assertEqual(self.client.get("/api/social/menu/challenge?op=presence&who=-").get_json()["ok"], 1)
+        self.assertEqual(self.client.get("/api/social/menu/challenge?op=presence&who=-").get_json()["status"], 429)
+
+    def test_menu_presence_account_cap_is_bounded_and_does_not_block_list(self):
+        for i in range(21):
+            form = self.menu_form(op="presence")
+            row = self.menu_read(form)
+            self.assertEqual(row["ok"], int(i < 20))
+            if i == 20:
+                self.assertEqual(row["status"], 429)
+        self.assertEqual(self.menu_read(self.menu_form())["ok"], 1)
 
     def test_menu_rate_caps_and_missing_service_secret(self):
         form = self.menu_form()

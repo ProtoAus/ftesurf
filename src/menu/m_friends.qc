@@ -1,10 +1,11 @@
-// Connected: CSQC's completed private snapshot. Disconnected: read-only proofs
+// Connected: CSQC's completed snapshot. Disconnected: Friends/presence proofs
 // to one fixed HTTPS service. No lobby capability, key seed or address in cvars.
 #define MF_SITE "https://play.proto.bar"
 string(string nonce, string op, string who) friends_sign = #0:friends_sign;
 float(string src, string dst) frename = #0:frename;
 float mf_epoch, mf_seen, mf_seenmode, mf_count, mf_mode, mf_rows, mf_boot;
 float mf_req, mf_wire, mf_phase, mf_at, mf_next, mf_siglen, mf_sigcrc;
+float mf_presence_req, mf_presence_wire, mf_presence_phase, mf_presence_at, mf_presence_next;
 string mf_op, mf_target, mf_note, mf_pick;
 vector mf_scroll;
 
@@ -185,7 +186,9 @@ void(float stage, float n) MF_Swap =
 				hash_add(was, argv(0), i + 1, HASH_REPLACE | EV_FLOAT);
 		for (i = 0; i < n; i = i + 1)
 		{
-			if (tokenize(bufstr_get(stage, i)) < 6) continue;
+			j = tokenize(bufstr_get(stage, i));
+			if (j < 6) continue;
+			if (j == 8 && stof(argv(7)) == 1) continue;
 			if (stof(argv(1)) != 3 || stof(argv(2)) != 0) continue;
 			j = hash_get(was, argv(0), 0, EV_FLOAT);
 			if (!j) continue;
@@ -219,7 +222,7 @@ void() MF_TakeCvars =
 	{
 		row = cvar_string(strcat("ui_friend_", ftos(i)));
 		fields = tokenize(row);
-		if (fields != 6 && fields != 7) continue;
+		if (fields != 6 && fields != 7 && fields != 8) continue;
 		if (!MF_WhoSafe(argv(0))) continue;
 		bufstr_set(stage, k, row);
 		k = k + 1;
@@ -227,9 +230,94 @@ void() MF_TakeCvars =
 	MF_Swap(stage, k);
 };
 
+// Independent of the visible Friends panel and its list/join request slot.
+void() MF_PresencePoll =
+{
+	if (clientstate() != 1 || !MF_Online())
+	{
+		mf_presence_req = mf_presence_phase = 0;
+		mf_presence_next = time + 10;
+		return;
+	}
+	if (!checkbuiltin(friends_sign)) return;
+	if (mf_presence_req)
+	{
+		if (time < mf_presence_at || time - mf_presence_at > 8)
+		{
+			mf_presence_req = mf_presence_phase = 0;
+			mf_presence_next = time + 30;
+		}
+		return;
+	}
+	if (mf_presence_wire || time < mf_presence_next) return;
+	mf_presence_req = Lob_NextReq();
+	mf_presence_wire = mf_presence_req;
+	mf_presence_phase = 1;
+	mf_presence_at = time;
+	mf_presence_next = time + 10;
+	if (!uri_get(strcat(MF_SITE, "/api/social/menu/challenge?op=presence&who=-"), mf_presence_req))
+	{
+		mf_presence_req = mf_presence_wire = mf_presence_phase = 0;
+		mf_presence_next = time + 30;
+	}
+};
+
+float(float reqid, float code, string body) MF_PresenceReply =
+{
+	local int root;
+	local float phase, i;
+	local string nonce, expires, ticket, proof, pub, sig, form;
+	if (!mf_presence_wire || reqid != mf_presence_wire) return FALSE;
+	mf_presence_wire = 0;
+	if (!mf_presence_req || reqid != mf_presence_req) return TRUE;
+	phase = mf_presence_phase;
+	mf_presence_req = mf_presence_phase = 0;
+	mf_presence_next = time + 30;
+	if (clientstate() != 1 || !MF_Online() || code || strlen(body) > 4096) return TRUE;
+	root = json_parse(body);
+	if (!root) return TRUE;
+	if (json_get_float(json_find_object_child(root, "ok")) != 1)
+	{
+		json_free(root);
+		return TRUE;
+	}
+	if (phase == 2)
+	{
+		mf_presence_next = time + 10;
+		json_free(root);
+		return TRUE;
+	}
+	nonce = json_get_string(json_find_object_child(root, "nonce"));
+	expires = json_get_string(json_find_object_child(root, "expires"));
+	ticket = json_get_string(json_find_object_child(root, "ticket"));
+	if (!MF_Hex(nonce, 32) || !MF_Hex(ticket, 64) || strlen(expires) != 10)
+	{
+		json_free(root);
+		return TRUE;
+	}
+	for (i = 0; i < 10; i = i + 1)
+		if (strstrofs("0123456789", substring(expires, i, 1), 0) < 0) break;
+	if (i != 10) { json_free(root); return TRUE; }
+	proof = "";
+	if (checkbuiltin(friends_sign)) proof = friends_sign(nonce, "presence", "-");
+	if (tokenize(proof) != 2) { json_free(root); return TRUE; }
+	pub = argv(0); sig = argv(1);
+	if (!MF_Hex(pub, 64) || !MF_Hex(sig, 128)) { json_free(root); return TRUE; }
+	form = sprintf("op=presence&who=-&nonce=%s&expires=%s&ticket=%s&pub=%s&sig=%s", nonce, expires, ticket, pub, sig);
+	mf_presence_req = Lob_NextReq();
+	mf_presence_wire = mf_presence_req;
+	mf_presence_phase = 2;
+	mf_presence_at = time;
+	if (!uri_get(strcat(MF_SITE, "/api/social/menu"), mf_presence_req, "application/x-www-form-urlencoded", form))
+		mf_presence_req = mf_presence_wire = mf_presence_phase = 0;
+	json_free(root);
+	return TRUE;
+};
+
 void(float visible) MF_Poll =
 {
 	local float mode, epoch;
+	MF_PresencePoll();
 	mode = clientstate();
 	if (mode != mf_mode)
 	{
@@ -324,6 +412,7 @@ float(float reqid, float code, string body) MF_Reply =
 	local int root, arr, o;
 	local float n, i, rel, online, stage;
 	local string nonce, expires, ticket, proof, pub, sig, form, who, addr, map, why;
+	if (MF_PresenceReply(reqid, code, body)) return TRUE;
 	if (MFP_Reply(reqid, code, body)) return TRUE;
 	if (!mf_wire || reqid != mf_wire) return FALSE;
 	mf_wire = 0;
@@ -431,11 +520,12 @@ float(float reqid, float code, string body) MF_Reply =
 		rel = json_get_float(json_find_object_child(o, "relation"));
 		if (!MF_WhoSafe(who) || rel < 1 || rel > 4 || rel != floor(rel)) break;
 		online = (rel == 3 && json_get_float(json_find_object_child(o, "online")) == 1);
-		bufstr_set(stage, i, sprintf("%s %g %g \"%s\" \"%s\" \"%s\" \"%s\"", who, rel, online,
+		bufstr_set(stage, i, strcat(sprintf("%s %g %g \"%s\" \"%s\" \"%s\" \"%s\"", who, rel, online,
 			uri_escape(substring(json_get_string(json_find_object_child(o, "name")), 0, 64)),
 			uri_escape(substring(json_get_string(json_find_object_child(o, "server")), 0, 128)),
 			uri_escape(substring(json_get_string(json_find_object_child(o, "map")), 0, 64)),
-			uri_escape(substring(json_get_string(json_find_object_child(o, "activity")), 0, 24))));
+			uri_escape(substring(json_get_string(json_find_object_child(o, "activity")), 0, 24))),
+			" ", ftos(rel == 3 && json_get_float(json_find_object_child(o, "menu_online")) == 1)));
 	}
 	if (i != n)
 	{
@@ -456,7 +546,7 @@ float(float reqid, float code, string body) MF_Reply =
 
 void(vector pos, vector size) MF_Draw =
 {
-	local float i, rel, online, at, fresh, alpha, flag, room;
+	local float i, rel, online, menuonline, at, fresh, alpha, flag, room;
 	local vector rp;
 	local string who, nm, server, map, status, id, ago, activity;
 	if (MFP_IsOpen()) { MFP_Draw(pos, size); return; }
@@ -500,16 +590,17 @@ void(vector pos, vector size) MF_Draw =
 		for (i = sui_list_item(rp); i > -1; i = sui_list_item(rp))
 		{
 			at = tokenize(bufstr_get(mf_rows, i));
-			if (at != 6 && at != 7) continue;
+			if (at != 6 && at != 7 && at != 8) continue;
 			who = argv(0);
 			rel = stof(argv(1));
 			flag = stof(argv(2));
 			online = (rel == 3 && flag == 1 && fresh);
+			menuonline = (rel == 3 && at == 8 && stof(argv(7)) == 1 && fresh);
 			nm = uri_unescape(argv(3));
 			server = uri_unescape(argv(4));
 			map = uri_unescape(argv(5));
-			activity = at == 7 ? uri_unescape(argv(6)) : "";
-			alpha = online ? 1 : 0.45;
+			activity = at >= 7 ? uri_unescape(argv(6)) : "";
+			alpha = (online || menuonline) ? 1 : 0.45;
 			room = size_x - 114;
 			sui_style_box(rp, [size_x - 38, 64], 8, SUI_THEME_WELL, SUI_THEME_EDGE, alpha);
 			if (MF_WhoSafe(who))
@@ -526,6 +617,7 @@ void(vector pos, vector size) MF_Draw =
 			if (rel == 1) status = "Added -- waiting for them";
 			if (rel == 2) status = "Added you";
 			if (rel == 4) status = "Blocked";
+			if (menuonline) status = "Main menu";
 			if (online)
 			{
 				status = strcat(ui_fit_text(map, max(16, room - stringwidth(activity, TRUE, '12 12 0') - 8), '12 12 0'), "  ", activity);
@@ -540,7 +632,7 @@ void(vector pos, vector size) MF_Draw =
 				}
 			}
 			else if (rel == 3 && flag == 2) status = strcat("Last seen: ", map);
-			sui_text(rp + '64 36 0', '12 12 0', ui_fit_text(status, room, '12 12 0'), online ? SUI_THEME_GOOD : COL_DIM, alpha, 0);
+			sui_text(rp + '64 36 0', '12 12 0', ui_fit_text(status, room, '12 12 0'), (online || menuonline) ? SUI_THEME_GOOD : COL_DIM, alpha, 0);
 			if (rel == 2 && clientstate() == 2 && MF_WhoSafe(who))
 			if (ui_button(strcat("mf_add", who), rp + [size_x - 126, 32], [78, 24], "Add back"))
 				localcmd(sprintf("friends_menu_add %s\n", who));

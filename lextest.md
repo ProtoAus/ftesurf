@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P961 — game-running Friends presence (deployment pending; human check pending)
+
+Do not treat these as owner-confirmed or try against an older backend. After
+matching client/menu/gameplay/backend delivery: use two linked mutual friends,
+one staying in a lobby, the other at the main menu with online features enabled.
+Does the menu friend show Main menu with no Join? Leave the status unchanged for
+more than35seconds: does it stay active while the game remains open? Join a lobby
+and confirm the proper location/Join returns. Then close the game or disable
+online features; presence must expire without becoming a join target. Also try
+blocked/one-way friendship: it must not expose menu presence. Unit/native proof
+and controlled-clock freshness tests are not human acceptance or full live UI
+transport proof. Delivery state and limits: tools/p961-menu-presence.md.
+
 ## P957 — Butterfly/M9 and local knife workshop (delivered; human check pending)
 
 BOTH Windows28targets verified23Oct2026 23:49UTC, all12empty Pi lobbies on

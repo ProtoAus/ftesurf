@@ -28,11 +28,19 @@ MENU_NONCE = re.compile(r"[0-9a-f]{32}\Z")
 MENU_SIG = re.compile(r"[0-9a-f]{128}\Z")
 MENU_EXP = re.compile(r"[0-9]{10}\Z")
 MENU_TTL = 30
+MENU_PRESENCE_TTL = 35
+MENU_PRESENCE_SQL = """
+CREATE TABLE IF NOT EXISTS social_menu_presence (
+ pub TEXT PRIMARY KEY, steamid TEXT NOT NULL, seen INTEGER NOT NULL,
+ challenge_until INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS social_menu_presence_seen ON social_menu_presence(seen);
+CREATE INDEX IF NOT EXISTS social_menu_presence_account ON social_menu_presence(steamid);
+"""
 MENU_STATEMENT = "FTESURF-FRIENDS 1\nserver play.proto.bar:443\nnonce %s\nop %s\nwho %s\n"
 
 
 def menu_target(op, who):
-    return (op == "list" and who == "-") or (op == "join" and len(who) == 8 and bool(MARK.fullmatch(who)))
+    return (op in ("list", "presence") and who == "-") or (op == "join" and len(who) == 8 and bool(MARK.fullmatch(who)))
 SQL = """
 CREATE TABLE IF NOT EXISTS social_friends (
  lo TEXT NOT NULL, hi TEXT NOT NULL, asker TEXT NOT NULL,
@@ -151,10 +159,16 @@ def presence(db, sid, now, lobby_ttl):
         " AND l.last_seen>? ORDER BY s.seen DESC,s.node LIMIT 1",
         (sid, now - PRESENCE_TTL, now - SESSION_TTL, now - lobby_ttl)).fetchone()
     if not row:
-        return {"online": 0, "addr": "", "server": "", "map": "", "activity": ""}
+        menu = db.execute(
+            "SELECT 1 FROM social_menu_presence m JOIN keylinks k ON k.pub=m.pub"
+            " JOIN accounts a ON a.steamid=k.steamid"
+            " WHERE m.steamid=? AND k.steamid=m.steamid AND a.banned_at=0"
+            " AND m.seen>? AND m.seen<=? LIMIT 1",
+            (sid, now - MENU_PRESENCE_TTL, now)).fetchone()
+        return {"online": 0, "menu_online": int(menu is not None), "addr": "", "server": "", "map": "", "activity": ""}
     sample = _activities.get(row["token"])
     activity = sample[2] if sample and sample[0] == row["seen"] and sample[1] == row["map"] else ""
-    return {"online": 1, "addr": row["addr"], "server": row["name"], "map": row["map"],
+    return {"online": 1, "menu_online": 0, "addr": row["addr"], "server": row["name"], "map": row["map"],
             "activity": activity}
 
 
@@ -173,7 +187,7 @@ def friend_rows(db, sid, now, lobby_ttl):
         # P788: presence is for friendships only -- an add I have not returned
         # must not let its author watch where I play.
         live = presence(db, other, now, lobby_ttl) if rel == 3 and available else {
-            "online": 0, "addr": "", "server": "", "map": "", "activity": ""}
+            "online": 0, "menu_online": 0, "addr": "", "server": "", "map": "", "activity": ""}
         rows.append(dict(who=accounts.who_of(other), name=accounts.game_name(account["name"]) if available else "Unavailable account",
                          relation=rel, **live))
     # Incoming adds last ("at the bottom", Lex). They take no slot, so the list
@@ -255,9 +269,10 @@ def register(app, d):
     def menu_challenge():
         now = int(d.clock())
         peer = d.rate_key()
-        if not d.rate_ok(peer, now, 30, "social-menu-challenge"):
-            return reply({"ok": 0, "error": "Friends: try again shortly"}, 429)
         op, who = request.args.get("op", ""), request.args.get("who", "")
+        budget = "social-menu-presence-challenge" if op == "presence" else "social-menu-challenge"
+        if not d.rate_ok(peer, now, 30, budget):
+            return reply({"ok": 0, "error": "Friends: try again shortly"}, 429)
         if not menu_target(op, who):
             return reply({"ok": 0, "error": "Bad Friends action"}, 400)
         nonce, expires = secrets.token_hex(16), str(now + MENU_TTL)
@@ -270,10 +285,11 @@ def register(app, d):
     def menu_read():
         now = int(d.clock())
         peer = d.rate_key()
-        if not d.rate_ok(peer, now, 30, "social-menu-read"):
-            return reply({"ok": 0, "error": "Friends: try again shortly"}, 429)
         f = request.form
         op, who = f.get("op", ""), f.get("who", "")
+        budget = "social-menu-presence-read" if op == "presence" else "social-menu-read"
+        if not d.rate_ok(peer, now, 30, budget):
+            return reply({"ok": 0, "error": "Friends: try again shortly"}, 429)
         nonce, expires, ticket = f.get("nonce", ""), f.get("expires", ""), f.get("ticket", "")
         pub, sig = f.get("pub", ""), f.get("sig", "")
         if not (menu_target(op, who) and MENU_NONCE.fullmatch(nonce) and
@@ -299,17 +315,27 @@ def register(app, d):
                 return reply({"ok": 0, "error": "Story unavailable"}, 503)
         try:
             db = d.get_db()
-            # A consistent read snapshot. Do not touch sessions/seen: somebody
-            # in the menu is not on a lobby and must not become joinable.
+            # A menu heartbeat is not a lobby session/capability or join target.
             with db:
-                db.execute("BEGIN")
+                db.execute("BEGIN IMMEDIATE" if op == "presence" else "BEGIN")
                 account = db.execute("SELECT k.steamid FROM keylinks k JOIN accounts a USING(steamid)"
                                      " WHERE k.pub=? AND a.banned_at=0", (pub,)).fetchone()
                 if not account:
                     return reply({"ok": 0, "error": "Link Steam on a lobby once to use Friends here"}, 403)
                 sid = account["steamid"]
-                if not d.rate_ok(sid, now, 20, "social-menu-account"):
+                budget = "social-menu-presence-account" if op == "presence" else "social-menu-account"
+                if not d.rate_ok(sid, now, 20, budget):
                     return reply({"ok": 0, "error": "Friends: try again shortly"}, 429)
+                if op == "presence":
+                    # SQL-backed across workers; an old/same challenge cannot renew.
+                    db.execute("DELETE FROM social_menu_presence WHERE seen<=?", (now - MENU_PRESENCE_TTL,))
+                    db.execute(
+                        "INSERT INTO social_menu_presence(pub,steamid,seen,challenge_until) VALUES(?,?,?,?)"
+                        " ON CONFLICT(pub) DO UPDATE SET steamid=excluded.steamid,seen=excluded.seen,"
+                        " challenge_until=excluded.challenge_until"
+                        " WHERE excluded.challenge_until>social_menu_presence.challenge_until",
+                        (pub, sid, now, int(expires)))
+                    return reply({"ok": 1})
                 if op == "list":
                     # Menus before P770 refuse a list holding relation 4.
                     rows = [r for r in friend_rows(db, sid, now, d.lobby_ttl) if r["relation"] <= 3]
@@ -319,7 +345,8 @@ def register(app, d):
                     return reply({"ok": 0, "error": "Add them as a friend first"}, 403)
                 live = presence(db, other, now, d.lobby_ttl)
                 if not live["online"]:
-                    return reply({"ok": 0, "error": "Your friend is offline"}, 409)
+                    why = "Your friend is at the main menu" if live["menu_online"] else "Your friend is offline"
+                    return reply({"ok": 0, "error": why}, 409)
                 return reply({"ok": 1, "addr": live["addr"], "map": live["map"]})
         except sqlite3.Error:
             return reply({"ok": 0, "error": "Friends unavailable"}, 503)
@@ -370,6 +397,7 @@ def register(app, d):
                 mapname = location[0] if location else ""
                 db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
                 db.execute("DELETE FROM social_sessions WHERE issued<?", (now - SESSION_TTL,))
+                db.execute("DELETE FROM social_menu_presence WHERE seen<=?", (now - MENU_PRESENCE_TTL,))
                 # Full-node snapshot. Tokens of disconnected slots cannot keep presence alive.
                 db.execute("UPDATE social_sessions SET seen=0 WHERE node=?", (node,))
                 for r in roster:
