@@ -1,8 +1,10 @@
 # lextest.md — things waiting on a human
 
-## P957 — Butterfly/M9 and local knife workshop (human check pending)
+## P957 — Butterfly/M9 and local knife workshop (delivered; human check pending)
 
-Native isolated pixels show stable mounted arms and both knife families' clips,
+BOTH Windows28targets verified23Oct2026 23:49UTC, all12empty Pi lobbies on
+exact CSQC; fresh live-download/board smoke passed. Source253ad98d/native86228bf7c,
+patch-957. No new release/Build bump. Native isolated pixels show stable mounted arms and both knife families' clips,
 plus acting finish/fade/pattern/wear changes and the actual small panel. Cursor
 claims return to0 on close. This is not owner acceptance or real mouse/slider/
 audio feel. Delivery/launch prerequisites: tools/p957-legacy-knives.md.

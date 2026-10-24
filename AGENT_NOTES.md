@@ -22,6 +22,14 @@ owned fixture's fs_addons.txt; the original bytes/hash were restored after quit.
 The workshop shader is shipped by the existing ftesurf/glsl allowlist; do not
 bundle the mounted Valve model/arms/paint/sound assets.
 
+P957 retirement: a missing-header compile left an EMPTY snd_dma.o.d.<pid> in
+its object dir; recognize the exact verified dependency temporary, not an
+arbitrary suffix whitelist. Windows relative names serialized to JSON contain
+backslashes: parse Path.parts, not startswith('native/'). Both cleanup validations
+stopped before deletion; a bounded component-based fix rehashed the SAME immutable
+cohort (no re-dating/new archive), then retired only known build objects/outputs
+and our cache link NAMES. Preserve source/receipts/player data and link targets.
+
 ## P952 — Epiphany blackness was a LUT path, not HDR/PVS (24 Oct 2026)
 
 Actual winning Epiphany has corresponding valid HDR/LDR faces and HDR-only light;
