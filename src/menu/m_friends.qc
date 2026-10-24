@@ -26,10 +26,14 @@ float(string s, float n) MF_Hex =
 float(string who) MF_WhoSafe = { return MF_Hex(who, FS_WHO_IDLEN); };
 float() MF_Count = { return mf_count; };
 
+// clientstate and the list's source together: a local game -> lobby connect keeps
+// clientstate 2 but changes who supplies the list (P975 review).
+float() MF_Mode = { return clientstate() * 2 + MF_Direct(); };
+
 // Rows held are this mode's and under 16 s old. P731: older is unavailable, not offline.
 float() MF_Fresh =
 {
-	if (mf_seen <= 0 || mf_seenmode != clientstate()) return FALSE;
+	if (mf_seen <= 0 || mf_seenmode != MF_Mode()) return FALSE;
 	return (time >= mf_seen && time - mf_seen <= 16);
 };
 
@@ -217,7 +221,7 @@ void(float stage, float n) MF_Swap =
 	mf_rows = stage;
 	mf_count = n;
 	mf_seen = time;
-	mf_seenmode = clientstate();
+	mf_seenmode = MF_Mode();
 	MF_Save();
 };
 
@@ -331,7 +335,7 @@ void(float visible) MF_Poll =
 {
 	local float mode, epoch;
 	MF_PresencePoll();
-	mode = clientstate();
+	mode = MF_Mode();
 	if (mode != mf_mode)
 	{
 		// Rows stay up across a connect or disconnect; MF_Fresh marks them stale.
@@ -342,7 +346,7 @@ void(float visible) MF_Poll =
 		mf_mode = mode;
 		MF_Note("");
 	}
-	if (mode == 2 && !MF_Direct())
+	if (clientstate() == 2 && !MF_Direct())
 	{
 		epoch = cvar("ui_friends_epoch");
 		if (epoch != mf_epoch)

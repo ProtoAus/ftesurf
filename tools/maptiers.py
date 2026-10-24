@@ -7,10 +7,12 @@
 Momentum's public MSML caches supply ranked/suggested MAIN, STAGE and BONUS
 ratings (same gamemode/style selectors as mapmeta.py). Private testing and
 disabled maps are excluded. No main tier is inherited by a stage, and no map
-suffix is stripped. KSF's numeric main ratings come from maproster's roster,
-then from the directory's map list (--maplist), whose KSF column rates each row
-by its exact name -- the CS:S builds and maps KSF added after the roster, and
-the catalogue's newer value where KSF re-tiered one.
+suffix is stripped here. KSF's numeric main ratings come from maproster's
+roster, then from the directory's map list (--maplist): its KSF column for each
+row, by that row's exact name -- the CS:S builds, maps KSF added after the
+roster, and the catalogue's newer value where KSF re-tiered one. A Momentum row
+carries the rating of the KSF port mapwatch linked to it (link_ports, one
+allowed port suffix), the value the map browser already shows for it.
 The user's community bonus sheet uses LETTER tiers, not a numeric equivalent:
 Unit and Strafe columns are retained separately, including split bonuses. Its
 pending/to-add column has no actual tiers and is intentionally not imported.

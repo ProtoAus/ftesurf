@@ -34,7 +34,7 @@ No runtime HTTP fetch occurs during HUD drawing. Refresh the shipped snapshot
 explicitly when the Momentum cache/roster/community sheet changes:
 
 ```powershell
-python tools/maptiers.py --ksf-roster C:/FTESurf/ftesurf/data/ksf_roster.csv
+python tools/maptiers.py --ksf-roster C:/FTESurf/ftesurf/data/ksf_roster.csv --maplist <the live /api/board?maps=1 list>
 python tools/test_maptiers.py
 ```
 

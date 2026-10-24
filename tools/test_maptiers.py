@@ -89,9 +89,11 @@ class Ratings(unittest.TestCase):
                 "dl surf_test surf km 1 300 2026-10-11 0 1 4 - 1 1\n"
                 "dl surf_old surf km 1 300 2026-10-11 0 1 7 - 1 1\n"
                 "dl surf_none surf m 1 300 2026-10-11 0 1 0 - 1 1\n"
+                "dl surf_port surf m 1 300 2026-10-11 0 0 3 - 1 1\n"
                 "dl ../bad surf k 1 300 2026-10-11 0 0 3 - 1 1\n")
         filled, moved = mt.ksf_maplist(table, text)
-        self.assertEqual(filled, ["surf_test_css"])
+        self.assertEqual(filled, ["surf_test_css", "surf_port"])
+        self.assertEqual(table["surf_port", 0, 0], ["-", "-", "3", "-", "-"])
         self.assertEqual(moved, ["surf_old 6->7"])
         self.assertEqual(table["surf_test_css", 0, 0], ["-", "-", "2", "-", "-"])
         self.assertEqual(table["surf_test", 0, 0][2], "4")
