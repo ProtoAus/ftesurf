@@ -4974,18 +4974,6 @@ below is the collection side and the rules that still only note.
   `!r` clears it -- the same scope every other taint has, but the comment claims
   more. `SV_SaveLocReplay` also lacks the `run_ms_phase` refusal SV_SaveLocLoad has
   (sv_saveloc.qc:2299), so it can taint a run mid-resume. Patch 441 review.
-- **`SV_RetryPoint` ignores `SV_RecDestream`'s return, so a failed destream writes a
-  retry point that claims nothing was being recorded.** SV_RecDestream reads a
-  streamed run's part file back into a buffer and returns FALSE -- after calling
-  SV_RecDiscard -- when it cannot. SV_RetryPoint discards that answer and writes
-  `state.txt` anyway, with TF_RECORDING clear and `reclines 0`, so none of Patch
-  441's three clauses can see that this run WAS recording: with `rec_enable 0` the
-  retry then carries a clean, rankable, RUNNING attempt across the restart with no
-  recording. The fix is at the call (refuse the retry, or void the run) or by carrying
-  "was recording" in the `rec_retry_armed` cvar the arming flag already travels in.
-  Needs a stream -- a lobby, or `rec_stream 1` on a listen server, which is what
-  would make it measurable. sv_saveloc.qc SV_RetryPoint, sv_timer.qc:5573.
-  Patch 441 review, round 4.
 - **`reclines` IS NOT EVIDENCE THE PREFIX FILE EXISTS, and nothing that reads it
   knows.** SV_RecWritePrefix returns its line count after `fopen`+`buf_writefile`+
   `fclose`, and QC cannot see any of those fail: the engine's PF_fopen allocates a

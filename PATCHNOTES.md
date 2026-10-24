@@ -21,6 +21,9 @@
 
 ## next
 
+### P971 Keep retry in place when recording preparation fails
+- Retry no longer restarts the map if its recording cannot be prepared. If that failure lost the current recording, the attempt is cancelled with an explanation; ordinary retry still works without recording.
+
 ### P969 Keep in-memory loads when a save copy fails
 - Saves check the movement copy on disk and warn if it cannot be confirmed. The current recording remains available for a matching in-memory load instead of being cancelled by that disk failure.
 

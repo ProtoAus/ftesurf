@@ -1,5 +1,7 @@
 # lextest.md — things waiting on a human
 
+**P971 — ordinary retry (pending, not owner-confirmed):** After walking out of a start and moving for a few seconds, use normal retry once. Confirm that it returns to the same point and the timer continues. Native synthetic-entity/file controls cover preparation refusal, not this real-client/map-restart observation.
+
 ## P957 — Butterfly/M9 and local knife workshop (delivered; human check pending)
 
 BOTH Windows28targets verified23Oct2026 23:49UTC, all12empty Pi lobbies on

@@ -25,7 +25,9 @@ commit   dae472e7090d22b48807a267baa039f58c171bfc
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-954
-patch    969
+patch    971
+# P971 retry-preparation failure refusal; reviewed server module from published main.
+# Existing Windows composition/client/native pin preserved; deploy server DAT/LNO only.
 # P969 buffered save confirmation, separate from valid warm-memory marks.
 # Server-only3module delta; preserve installed client/menu/native/config cohort.
 # Native pin/tag unchanged. See tools/p969-windows-server-compatible.md.

@@ -2525,14 +2525,10 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  server whose ranking is backed by recordings, a run with none does not file a
 		  time.  The absence trap is the other configuration -- a server that records
 		  nothing -- and there clause 1 is false and nothing is cancelled.
-		  With all three clear, nothing was lost and nothing was expected -- ALMOST, and
-		  the exception is in BACKLOG.md rather than here only because it is not this
-		  branch's to fix: SV_RetryPoint ignores SV_RecDestream's return, so a failed
-		  destream discards a live recording and then writes a retry point with the bit
-		  clear and `reclines 0`, which all three clauses read as innocence.  Otherwise the
-		  run was already unverifiable by the operator's own configuration before the load
-		  arrived, and cancelling THAT is the absence trap -- a check that cannot see
-		  answering "guilty".  Patch 434 did exactly that.
+		  With all three clear, nothing was lost and nothing was expected. Patch 971
+		  refuses a failed retry destream before writing away that expectation.
+		  Otherwise the run was already unverifiable by the operator's configuration;
+		  cancelling THAT is the absence trap Patch 434 put here.
 
 		  THREE WRONG PREDICATES CAME BEFORE THIS ONE.  Each is worth its lines because
 		  each looks right, and all three were caught by review rather than by me:
@@ -5922,7 +5918,22 @@ void(entity e) SV_RetryPoint =
 	SV_SaveRootFor(e);
 
 	// Patch 368: a lobby streams, and a stream has no prefix to carry across.
-	SV_RecDestream(e);
+	// Patch 971: preparation may discard a broken stream; never save that as
+	// an intentionally unrecorded retry. A live selected12 refusal stays live.
+	if (!SV_RecDestream(e))
+	{
+		if (e.run_t_state == TS_RUNNING)
+		if (!SV_RecLive(e))
+		{
+			SV_TimerVoid(e, "retry recording could not be prepared");
+			SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+			e.run_t_azone = zs_az;
+			e.run_t_evzone = zs_ez;
+			e.run_t_cpzone = zs_cp;
+		}
+		sprint(e, PRINT_HIGH, "^3retry: recording could not be prepared; map not restarted\n");
+		return;
+	}
 	SV_SaveWriteState(e, FS_RETRY_SLOT, 0);
 
 	rec_retry_sent = TRUE;
