@@ -25,7 +25,9 @@ commit   8557e89af39c8615714ad9cfa831056486f313a9
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-962
-patch    962
+patch    966
+# Patch 966: lit Character viewmodel pieces and continuous held model submission.
+# Client-only compatibility artifact; preserve clock work and seven-field Friends.
 # Patch 962: installed Legacy knife/hands/sleeves catalog, matte/neutral previews,
 # draggable paged workshop, session-only fixed mount and Legacy-only FOV70.
 # Client delivery is separate from P954 producer and P961 menu/backend rollout.

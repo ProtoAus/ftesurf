@@ -205,7 +205,7 @@ def generate(vpk):
         label = KNIFE_NAMES.get(stem.removeprefix('v_knife_') if stem != 'v_knife' else 'knife', friendly(path)) if kind == 'knife' else friendly(path)
         if path.endswith('/ct_arms.mdl'): label = 'Counter-Terrorist (complete)'
         if path.endswith('/t_arms.mdl'): label = 'Terrorist (complete)'
-        paint, hide, skin, neutral = [], [], [], []
+        paint, hide, skin, neutral, lit = [], [], [], [], []
         base, mask = '', ''
         if kind == 'knife':
             for surface, material in meshes:
@@ -232,10 +232,14 @@ def generate(vpk):
                         if candidate_mask in source.entries: mask = candidate_mask
         for surface, material in meshes:
             if material.endswith('/v_model_base_arms.vmt'): skin.append(surface)
-            if kind == 'hands':
-                _, params, _ = resolve_vmt(content, material)
-                diffuse = material_path(params.get('$basetexture', ''), '.vtf')
-                if diffuse not in source.entries:
+            if kind != 'knife':
+                material_type, params, _ = resolve_vmt(content, material)
+                diffuse_name = params.get('$basetexture', '')
+                diffuse = material_path(diffuse_name, '.vtf') if diffuse_name else ''
+                if diffuse in source.entries:
+                    if material_type == 'character':
+                        lit.extend((surface, diffuse))
+                elif kind == 'hands':
                     # Inventory gloves are paint-system templates, not baked skins.
                     # A local neutral AO preview is honest; a missing-texture check is not.
                     family = Path(material).parent.name
@@ -245,9 +249,12 @@ def generate(vpk):
                     if ao is None:
                         raise ResourceError('no neutral glove preview texture: ' + material)
                     neutral.extend((surface, ao))
+                elif material_type == 'character':
+                    raise ResourceError('missing Character diffuse: ' + material)
         if neutral: label += ' (neutral preview)'
         lines.append(f'\tKCAT_Row({row}i, {quote(label)}, {quote(path)});')
         if neutral: lines.append(f'\tKCAT_Set({row}i, KCAT_NEUTRAL, {quote("|".join(neutral))});')
+        if lit: lines.append(f'\tKCAT_Set({row}i, KCAT_LIT, {quote("|".join(lit))});')
         rules = ''.join('replace "%s" "%s"\n' % (surface, material.removeprefix('materials/'))
                         for surface, material in meshes if material in model.material_overrides
                         and not material.endswith('/v_model_base_arms.vmt'))

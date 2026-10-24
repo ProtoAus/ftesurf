@@ -508,11 +508,11 @@ void() WP_Frame =
 	}
 	if (getstatf(STAT_FS_MOVETYPE) != MOVETYPE_WALK && getstatf(STAT_FS_MOVETYPE) != MOVETYPE_NOCLIP)
 	{
-		// A save-load hold is temporary, not another equip. Preserve its model/clip.
+		// Hold is temporary: suppress queued motion/fire, but still submit its retained model.
 		wp_motionvalid = FALSE;
 		wp_kick = wp_kickvel = wp_burstleft = 0;
 		wp_sequence = seq;
-		return;
+		if (getstatf(STAT_FS_MOVETYPE) != MOVETYPE_NONE) return;
 	}
 	if (!wp_ent) wp_ent = spawn();
 	if (w != wp_weapon || strcmp(mdl, wp_model))
