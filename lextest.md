@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P966 — Character-piece lighting and held viewmodel
+
+Actual socket-client control reproduces white Bare Hands/FBI Gray in surf_666's
+red room and a missing model while held. The subject shows red-lit skin/cloth,
+normal colour after leaving the red area, and a visible model while HUD says
+held, with draw-starts unchanged. Neutral Preview glove shader/style is unchanged.
+Owner check PENDING delivery: at save22, confirm skin/FBI Gray respond nicely;
+hold/release without the model popping away, and Neutral Preview still looks nice.
+Original texture collision and account/spectator requests remain separate work.
+Technical receipt: tools/p966-viewmodel-lighting-hold.md. No human pass claimed.
+
 ## P964 — restored running-stage retry (Windows/Pi delivered; human check pending)
 
 Not owner-confirmed. Recover a running attempt by the usual retry after a

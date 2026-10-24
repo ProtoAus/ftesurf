@@ -21,6 +21,10 @@
 
 ## next
 
+### P966 Viewmodel lighting and save-load holds
+- Skin and cloth pieces, including FBI Gray sleeves, now respond to local lighting. Neutral Preview glove styling is unchanged.
+- Your viewmodel stays visible during save-load holds instead of disappearing until release.
+
 ### P965 Restore older saved progress safely
 - Older saved states can restore their stage progress without an invalid zone lookup stopping the server. Matching stage-region preferences are preserved.
 
