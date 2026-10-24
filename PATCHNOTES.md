@@ -21,6 +21,10 @@
 
 ## next
 
+### P974 Stage toast switch and a search you can double-click
+- hud_edit: the Splits pane has a Stage toast switch for the pill that shows each stage you finish, top left.
+- The map search no longer empties itself on the first click after you play a map: the old search is selected instead, so typing replaces it and a double-click selects it all.
+
 ### P973 Resume offers that work
 - A paused run the game cannot resume (a practice, stage or bonus run) no longer shows the resume box; chat says it is kept and that !discard drops it.
 - When a resume is refused, the reason now shows in chat and the box comes back so you can press 1 again.
