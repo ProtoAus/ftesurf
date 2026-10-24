@@ -1309,6 +1309,7 @@ def _check_rec(r, path, verbose=False, *, data=None):
                 carry = file_float(tok[3])
                 ang = [file_float(x) for x in tok[7:10]]
                 bt = int(tok[10])
+                mvx = max(abs(file_float(tok[4])), abs(file_float(tok[5])), abs(file_float(tok[6])))
                 if ver >= 9:
                     for x in tok[4:7]:
                         int(x)              # <fwd side up> are %d in v9
@@ -1327,7 +1328,6 @@ def _check_rec(r, path, verbose=False, *, data=None):
             # bound: `worst` is the number a bound gets chosen from, and reporting
             # it for an unbounded file is what makes an abstention visible rather
             # than silent.
-            mvx = max(abs(file_float(tok[4])), abs(file_float(tok[5])), abs(file_float(tok[6])))
             if mvx > in_movemax:
                 in_movemax = mvx
             if movebnd is not None and mvx > movebnd:
