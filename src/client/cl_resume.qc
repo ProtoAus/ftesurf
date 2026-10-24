@@ -3,7 +3,7 @@
 string ui_ms_key;
 float ui_ms_keyat;
 string ui_ms_dismissed;
-float ui_ms_answered;
+float ui_ms_answered, ui_ms_answerat, ui_ms_refused;
 float ui_ms_key1, ui_ms_key2, ui_ms_keyf2;
 float ui_ms_hold, ui_ms_holdseq, ui_ms_holdseen, ui_ms_ignorecount;
 vector ui_ms_holdang;
@@ -18,6 +18,7 @@ string() Timer_ResumeKey =
 		ui_ms_key = (k != "") ? strzone(k) : "";
 		ui_ms_keyat = cltime;
 		ui_ms_answered = FALSE;
+		ui_ms_refused = FALSE;
 		if (ui_ms_dismissed != "") strunzone(ui_ms_dismissed);
 		ui_ms_dismissed = "";
 	}
@@ -30,6 +31,13 @@ float() Timer_ResumeOffered =
 	k = Timer_ResumeKey();
 	if (Spec_Active() || rec_wt_on) return FALSE;
 	if (strcmp(substring(k, 0, 2), "O ")) return FALSE;
+	// Still offered 2.5 s after a Yes: the server refused (the reason is in
+	// chat), so the offer comes back for another try instead of vanishing.
+	if (ui_ms_answered && cltime - ui_ms_answerat > 2.5)
+	{
+		ui_ms_answered = FALSE;
+		ui_ms_refused = TRUE;
+	}
 	if (ui_ms_answered) return FALSE;
 	return strcmp(k, ui_ms_dismissed) != 0;
 };
@@ -59,6 +67,7 @@ float(float typ, float scan) Timer_ResumeInputKey =
 	if (yes)
 	{
 		ui_ms_answered = TRUE;
+		ui_ms_answerat = cltime;
 		localcmd("cmd ms_resume\n");
 	}
 	else
@@ -119,12 +128,14 @@ float() Timer_ResumeInputFrame =
 	return TRUE;                // leave msec alone so server count-in advances
 };
 
+// The left-hand digit-menu card (SaveLoc_Draw's pieces), beside the save menu
+// when that is open.
 void(vector scr) Timer_DrawResumeOffer =
 {
 	local string k, what, a, s, offermap;
 	local float n, ticks, seg, segs, sessions, track, left;
-	local float u, fs, small, px, spx, w, h, x, y, row;
-	local vector p, col;
+	local float sc, lsz, w, h, hh, y, total, mw;
+	local vector p;
 
 	if (rec_wt_on) return;
 	k = Timer_ResumeKey();
@@ -137,38 +148,56 @@ void(vector scr) Timer_DrawResumeOffer =
 		tokenize(k);
 		ticks = stof(argv(1)); seg = stof(argv(2)); segs = stof(argv(3));
 		track = stof(argv(4)); sessions = stof(argv(6)) + 1;
-		u = max(0.5, min(ui_cv_scale, scr_y / 320));
-		fs = 14 * u; small = 11 * u;
+
+		sc  = ui_cv_scale;
 		Font_Set(ui_font_ui);
-		px = Font_Px(fs); spx = Font_Px(small);
-		w = min(360 * u, scr_x - 32 * u); h = px * 14.5;
-		x = 16 * u; y = max(16 * u, (scr_y - h) * 0.35);
-		col = '0.45 0.85 1.00';
-		drawfill([x, y, 0], [w, h, 0], '0.025 0.035 0.05', 0.94, 0);
-		drawfill([x, y, 0], [3 * u, h, 0], col, 1, 0);
-		x = x + 14 * u; row = y + px;
-		HUD_Text([x, row, 0], "RESUME PAUSED RUN?", 18 * u, col, 1);
-		row = row + px * 1.8;
+		lsz = Font_Px(8 * sc);
+		h   = 14 * sc;
+		hh  = 15 * sc;
+		w   = 120 * sc;
+		total = 3 * sc + hh + 6 * h + 3 * sc;
+		if (ui_ms_refused) total = total + h;
+
+		p = [scr_x * cvar("hud_saveloc_x"), scr_y * cvar("hud_saveloc_y"), 0];
+		if (rec_sl_open) p_x = p_x + 102 * sc;
+		_sui_round_draw(p, [w, total, 0], 5 * sc, SUI_THEME_PANEL, 0.90);
+
+		y = p_y + 3 * sc;
+		HUD_Text([p_x + 6 * sc, y + (hh - 2 * sc - lsz) * 0.5], "Resume run", lsz, SUI_THEME_TEXT, 1);
+		if (seg >= 0 && segs > 0) s = sprintf("stage %g / %g", seg + 1, segs);
+		else s = "full run";
+		HUD_TextR([p_x + w - 6 * sc, y + (hh - 2 * sc - lsz) * 0.5], s, lsz, SUI_THEME_WARN, 1);
+		drawfill([p_x + 4 * sc, y + hh - 2 * sc, 0], [w - 8 * sc, 1, 0], SUI_THEME_EDGE_HI, 0.7, 0);
+		y = y + hh;
+
 		offermap = serverkey("map");
-		while (strlen(offermap) > 0 && stringwidth(offermap, FALSE, [spx, spx, 0]) > w - 28 * u)
+		mw = w - 18 * sc - stringwidth("map", TRUE, [lsz, lsz]);
+		while (strlen(offermap) > 0 && stringwidth(offermap, TRUE, [lsz, lsz]) > mw)
 			offermap = substring(offermap, 0, strlen(offermap) - 1);
-		HUD_Text([x, row, 0], offermap, small, '0.70 0.75 0.80', 1);
-		row = row + px * 1.8;
-		HUD_Text([x, row, 0], strcat("Time: ", Time_TickString(ticks, Timer_Tick())), fs, '1 1 1', 1);
-		row = row + px * 1.5;
-		if (seg >= 0 && segs > 0) s = sprintf("Stage: %g / %g", seg + 1, segs);
-		else s = "Run: full map";
-		HUD_Text([x, row, 0], s, fs, '0.85 0.88 0.92', 1);
-		row = row + px * 1.5;
-		if (track > 0) s = sprintf("Bonus %g", track);
-		else s = "Main track";
-		HUD_Text([x, row, 0], sprintf("%s  -  session %g", s, sessions), small, '0.70 0.75 0.80', 1);
-		row = row + px * 2;
-		HUD_Text([x, row, 0], "1. Yes", fs, '0.60 1.00 0.75', 1);
-		row = row + px * 1.7;
-		HUD_Text([x, row, 0], "2. No (not now)", fs, '0.85 0.88 0.92', 1);
-		row = row + px * 1.7;
-		HUD_Text([x, row, 0], "F2 also resumes.  !resume is available later.", small, '0.60 0.65 0.70', 1);
+		HUD_Text([p_x + 6 * sc, y + (h - sc - lsz) * 0.5], "map", lsz, SUI_THEME_MUTED, 1);
+		HUD_TextR([p_x + w - 6 * sc, y + (h - sc - lsz) * 0.5], offermap, lsz, SUI_THEME_DIM, 1);
+		y = y + h;
+		HUD_Text([p_x + 6 * sc, y + (h - sc - lsz) * 0.5], "paused at", lsz, SUI_THEME_MUTED, 1);
+		HUD_TextR([p_x + w - 6 * sc, y + (h - sc - lsz) * 0.5],
+		          Time_TickString(ticks, Timer_Tick()), lsz, SUI_THEME_ACCENT, 1);
+		y = y + h;
+		if (track > 0) s = sprintf("bonus %g", track);
+		else s = "main";
+		HUD_Text([p_x + 6 * sc, y + (h - sc - lsz) * 0.5], s, lsz, SUI_THEME_MUTED, 1);
+		HUD_TextR([p_x + w - 6 * sc, y + (h - sc - lsz) * 0.5], sprintf("session %g", sessions),
+		          lsz, SUI_THEME_DIM, 1);
+		y = y + h;
+		if (ui_ms_refused)
+		{
+			_sui_round_draw([p_x + 2 * sc, y, 0], [w - 4 * sc, h - sc, 0], 2.5 * sc, SUI_THEME_BAD_BG, 1);
+			HUD_Text([p_x + 6 * sc, y + (h - sc - lsz) * 0.5], "not resumed - see chat", lsz,
+			         SUI_THEME_BAD, 1);
+			y = y + h;
+		}
+		KeyMenu_Row([p_x, y], w, h, "1", "Resume", KM_HOT, lsz, sc);       y = y + h;
+		KeyMenu_Row([p_x, y], w, h, "2", "Not now", KM_NORMAL, lsz, sc);   y = y + h;
+		HUD_Text([p_x + 6 * sc, y + (h - sc - lsz) * 0.5], "F2 or !resume also work", lsz,
+		         SUI_THEME_MUTED, 1);
 		Font_Reset();
 		return;
 	}

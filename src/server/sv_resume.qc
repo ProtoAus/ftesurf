@@ -22,6 +22,7 @@
 .float  run_ms_want;    // connected since the last offer check
 .float  run_ms_offer;   // a paused run on this map is on offer
 .float  run_ms_warned;  // told a fresh run will drop it
+.float  run_ms_noteat;  // when to say a kept slot cannot resume (after CSQC can show chat)
 .float  run_ms_keyed;   // *resume carries something
 .float  run_ms_keyat;   // when a finished `A` key is cleared
 .float  run_ms_until;   // countdown end
@@ -421,7 +422,7 @@ float(string path) SV_MsSlotCleanMain =
 
 void(entity e) SV_MsRefuseClass =
 {
-	sprint(e, PRINT_HIGH, "^5resume:^7 only clean whole-main runs can resume automatically; "
+	sprint(e, PRINT_CHAT, "^5resume:^7 only clean whole-main runs can resume automatically; "
 	       "this slot is unchanged -- say ^5!discard^7 to drop it\n");
 };
 
@@ -558,13 +559,12 @@ void(entity e) SV_MsCheck =
 	SV_MsAdopt(e);
 	if (!SV_MsReadMeta(SV_MsPath(e, "ms.txt")))
 		return;
-	// Keep legacy ineligible slots, including stale ones, reachable by !discard.
+	// Keep legacy ineligible slots, including stale ones, reachable by !discard,
+	// but publish no offer: accept would refuse it, so 1 and F2 did nothing.
 	if (!SV_MsSlotCleanMain(SV_MsPath(e, "state.txt")))
 	{
 		e.run_ms_offer = TRUE;
-		SV_MsKeySet(e, sprintf("O %d %d %d %d %d %d", ms_ticks, ms_seg, ms_segs,
-		                       ms_track, ms_leg, ms_sess));
-		SV_MsRefuseClass(e);
+		e.run_ms_noteat = time + 2;
 		return;
 	}
 	why = SV_MsStale();
@@ -658,13 +658,13 @@ float(entity e) SV_MsForeign =
 	if (!strcmp(ms_key, Account_ProvenKey(e)))
 		return FALSE;
 	if (Account_ProvenKey(e) != "")
-		sprint(e, PRINT_HIGH, "^5resume:^7 that run was paused by a game with another key. "
+		sprint(e, PRINT_CHAT, "^5resume:^7 that run was paused by a game with another key. "
 		       "It stays where it is\n");
 	else if (!Account_UnprovenSettled(e))
-		sprint(e, PRINT_HIGH, "^5resume:^7 the leaderboard is still checking this game. "
+		sprint(e, PRINT_CHAT, "^5resume:^7 the leaderboard is still checking this game. "
 		       "Try again in a moment\n");
 	else
-		sprint(e, PRINT_HIGH, sprintf("^5resume:^7 %s. The paused run stays where it is\n",
+		sprint(e, PRINT_CHAT, sprintf("^5resume:^7 %s. The paused run stays where it is\n",
 		                              Account_UnprovenWhy(e)));
 	return TRUE;
 };
@@ -677,12 +677,12 @@ void(entity e) SV_MsAccept =
 		return;
 	if (!e.run_ms_offer)
 	{
-		sprint(e, PRINT_HIGH, "^5resume:^7 no paused run on this map\n");
+		sprint(e, PRINT_CHAT, "^5resume:^7 no paused run on this map\n");
 		return;
 	}
 	if (e.run_pmhold)                   // Patch 382: the restore owns the movetype
 	{
-		sprint(e, PRINT_HIGH, "^5resume:^7 stop spectating first\n");
+		sprint(e, PRINT_CHAT, "^5resume:^7 stop spectating first\n");
 		return;
 	}
 	// Patch 478: a retry's restart skips SV_MsAbort (SV_MsShutdown), so a claim
@@ -690,7 +690,7 @@ void(entity e) SV_MsAccept =
 	// next park wipes it -- with a run.rec that may back posted stages.
 	if (rec_retry_sent)
 	{
-		sprint(e, PRINT_HIGH, "^5resume:^7 the map is restarting for a retry\n");
+		sprint(e, PRINT_CHAT, "^5resume:^7 the map is restarting for a retry\n");
 		return;
 	}
 	SV_MsAdopt(e);
@@ -698,7 +698,7 @@ void(entity e) SV_MsAccept =
 	{
 		e.run_ms_offer = FALSE;
 		SV_MsKeySet(e, "");
-		sprint(e, PRINT_HIGH, "^5resume:^7 the paused run is gone (another server resumed it?)\n");
+		sprint(e, PRINT_CHAT, "^5resume:^7 the paused run is gone (another server resumed it?)\n");
 		return;
 	}
 	// Re-read at accept too: an old offer is not authority to consume the slot.
@@ -714,7 +714,7 @@ void(entity e) SV_MsAccept =
 		return;
 	if (!SV_MsGapValid())
 	{
-		sprint(e, PRINT_HIGH, "^3resume:^7 invalid or out-of-range parked clock; the slot stays where it is\n");
+		sprint(e, PRINT_CHAT, "^3resume:^7 invalid or out-of-range parked clock; the slot stays where it is\n");
 		return;
 	}
 	// The claim.  POSIX rename is atomic, so a second lobby's fails here.
@@ -724,7 +724,7 @@ void(entity e) SV_MsAccept =
 	{
 		e.run_ms_offer = FALSE;
 		SV_MsKeySet(e, "");
-		sprint(e, PRINT_HIGH, "^5resume:^7 another server took the paused run\n");
+		sprint(e, PRINT_CHAT, "^5resume:^7 another server took the paused run\n");
 		return;
 	}
 
@@ -760,7 +760,7 @@ void(entity e) SV_MsAccept =
 	{
 		e.run_ms_phase = MS_WAIT;
 		SV_MsKeySet(e, "R 0");
-		sprint(e, PRINT_HIGH, "^5resume:^7 restoring the recording\n");
+		sprint(e, PRINT_CHAT, "^5resume:^7 restoring the recording\n");
 		return;
 	}
 	SV_MsCountdown(e);
@@ -789,7 +789,7 @@ void(entity e) SV_MsCopyStep =
 			fremove(SV_RecPartPath(e));
 			rec_ms_owner = world;
 			e.run_ms_norec = TRUE;
-			sprint(e, PRINT_HIGH, "^3resume:^7 the recording could not be restored -- the run continues unrecorded\n");
+			sprint(e, PRINT_CHAT, "^3resume:^7 the recording could not be restored -- the run continues unrecorded\n");
 			SV_MsCountdown(e);
 			return;
 		}
@@ -990,7 +990,7 @@ void(entity e) SV_MsApply =
 	if (!SV_MsReadMeta(claim))
 	{
 		SV_MsAbortHere(e);
-		sprint(e, PRINT_HIGH, "^3resume:^7 the paused run's files are gone\n");
+		sprint(e, PRINT_CHAT, "^3resume:^7 the paused run's files are gone\n");
 		return;
 	}
 	why = SV_MsStale();
@@ -1012,7 +1012,7 @@ void(entity e) SV_MsApply =
 	if (!SV_MsGapValid())
 	{
 		SV_MsAbortHere(e);
-		sprint(e, PRINT_HIGH, "^3resume:^7 invalid or out-of-range parked clock; slot retained\n");
+		sprint(e, PRINT_CHAT, "^3resume:^7 invalid or out-of-range parked clock; slot retained\n");
 		return;
 	}
 
@@ -1025,14 +1025,14 @@ void(entity e) SV_MsApply =
 	if (!ok || e.run_t_state != TS_RUNNING)
 	{
 		SV_MsAbortHere(e);
-		sprint(e, PRINT_HIGH, "^3resume:^7 the paused run could not be applied\n");
+		sprint(e, PRINT_CHAT, "^3resume:^7 the paused run could not be applied\n");
 		return;
 	}
 
 	if (!SV_MsAppliedGapValid(e))
 	{
 		SV_MsAbortHere(e);
-		sprint(e, PRINT_HIGH, "^3resume:^7 restored clock is out of range; slot retained\n");
+		sprint(e, PRINT_CHAT, "^3resume:^7 restored clock is out of range; slot retained\n");
 		return;
 	}
 
@@ -1087,7 +1087,7 @@ void(entity e) SV_MsApply =
 	SV_MsWipeDir(sprintf("%s/save000/", SV_MsRoot(e)), SV_MsClaimLeaf());
 	e.run_ms_phase = MS_NONE;
 	e.run_ms_offer = FALSE;
-	sprint(e, PRINT_HIGH, sprintf("^5resume:^7 run resumed at %s -- session %g%s\n",
+	sprint(e, PRINT_CHAT, sprintf("^5resume:^7 run resumed at %s -- session %g%s\n",
 	       SV_TimerString(ms_ticks), e.run_ms_sessions + 1,
 	       e.run_ms_norec ? " (unrecorded)" : ""));
 };
@@ -1100,7 +1100,7 @@ float(entity e) SV_MsBusy =
 {
 	if (!e.run_ms_phase)
 		return FALSE;
-	sprint(e, PRINT_HIGH, "^3resume:^7 wait for the resume to finish\n");
+	sprint(e, PRINT_CHAT, "^3resume:^7 wait for the resume to finish\n");
 	return TRUE;
 };
 
@@ -1193,6 +1193,15 @@ void(entity e) SV_MsFrame =
 		return;
 	}
 
+	// Said late: a print at the spawn arrives before CSQC can draw chat.
+	if (e.run_ms_noteat && time >= e.run_ms_noteat)
+	{
+		e.run_ms_noteat = 0;
+		if (e.run_ms_offer)
+			sprint(e, PRINT_CHAT, "^5resume:^7 a paused practice, stage or bonus run is kept here "
+			       "but cannot resume -- say ^5!discard^7 to drop it\n");
+	}
+
 	// A fresh run with an offer standing: warned once, then it wins.
 	if (e.run_ms_offer)
 	{
@@ -1202,7 +1211,7 @@ void(entity e) SV_MsFrame =
 			if (!e.run_ms_warned)
 			{
 				e.run_ms_warned = TRUE;
-				sprint(e, PRINT_HIGH, sprintf("^3resume:^7 your paused run is dropped %g s "
+				sprint(e, PRINT_CHAT, sprintf("^3resume:^7 your paused run is dropped %g s "
 				       "into this one -- ^5!resume^7 goes back to it\n", grace));
 			}
 			if (SV_TimerElapsed(e) >= grace)
@@ -1226,6 +1235,7 @@ void(entity e) SV_MsConnect =
 	e.run_ms_want = TRUE;
 	e.run_ms_offer = FALSE;
 	e.run_ms_warned = FALSE;
+	e.run_ms_noteat = 0;
 	e.run_ms_phase = MS_NONE;
 	e.rec_ms_src = e.rec_ms_dst = -1;
 	SV_MsKeySet(e, "");
@@ -1267,7 +1277,7 @@ void(entity e) SV_MsDiscardCmd =
 		return;
 	if (!e.run_ms_offer)
 	{
-		sprint(e, PRINT_HIGH, "^5resume:^7 no paused run on this map\n");
+		sprint(e, PRINT_CHAT, "^5resume:^7 no paused run on this map\n");
 		return;
 	}
 	// Patch 629: nor dropped by a game that could not pick it up.

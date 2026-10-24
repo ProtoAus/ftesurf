@@ -21,6 +21,11 @@
 
 ## next
 
+### P973 Resume offers that work
+- A paused run the game cannot resume (a practice, stage or bonus run) no longer shows the resume box; chat says it is kept and that !discard drops it.
+- When a resume is refused, the reason now shows in chat and the box comes back so you can press 1 again.
+- The resume box uses the same left-hand card as the save menu.
+
 ### P972 Keep earned re-arming across retry
 - Retry preserves a finish or reset's pending re-arm, so coming to rest afterward can clear the old hopped-start tag just as it would without retry. A genuine hopped start still needs its normal reset.
 

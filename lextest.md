@@ -1,5 +1,7 @@
 # lextest.md — things waiting on a human
 
+**P973 — resume offer (pending, not owner-confirmed):** Pause a run by leaving mid-run, rejoin the map and look at the left-hand "Resume run" card: does it match the save menu, and does 1 resume? On a map where 1 used to do nothing, the card should no longer appear; chat says why (!discard drops the old slot). Agent dedicated-socket controls cover clean, refused and never-resumable slots, not a real lobby rejoin.
+
 P971/P972 server artifacts installed on BOTH Windows installs and all12Pi
 lobbies24Oct2026; source d994d0a5. Windows running sessions were not reloaded.
 Deployment checks do not turn the following human checks into passes.
