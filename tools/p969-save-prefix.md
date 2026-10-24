@@ -52,7 +52,10 @@ after compiler exit. No reader/resource guard was relaxed. A manifest-domain
 mismatch was corrected to the original recordings-plus-paired-views domain;
 orphan views, HID and PB files were not modified, deleted or called newly added.
 
-Independent source review is required before deployment and remains pending.
+Two fresh independent source reviews of candidate `0e172504d1a7` found no
+introduced issues: control-flow/compatibility verdict OK; storage/evidence and
+model-scope verdict OK with notes. These bounded recorder reviews do not close
+the broader anti-cheat rule8 audit or remove the limits below.
 
 ## Limits and delivery
 
