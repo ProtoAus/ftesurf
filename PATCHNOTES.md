@@ -21,6 +21,11 @@
 
 ## next
 
+### P970 Account-linked workshop and watched-player viewmodels
+- Knife workshop settings can sync with your linked Steam account on updated lobbies. Save and Reload controls cover the full cosmetic setup; a late load will not overwrite newer local edits.
+- First-person spectating shows the followed player's knife, hands, sleeves, finish, weapon FOV, shooting and inspect animation without replacing your own preferences. A disabled target viewmodel stays hidden.
+- Matching updated native client, game code and account service are required. Installed game content is still needed; no game assets or inventory skins are downloaded or bundled.
+
 ### P968 Check the body before re-arming a hopped start
 - Pending finish forgiveness checks carried speed and your current movement cap, and is not granted while frozen or rising. It can still re-arm after the start has settled.
 

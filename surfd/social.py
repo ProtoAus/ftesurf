@@ -17,6 +17,7 @@ import secrets
 import sqlite3
 from flask import Response, request
 import accounts
+import viewmodel
 
 MAX_FRIENDS = 128
 PRESENCE_TTL = 16
@@ -308,7 +309,7 @@ def register(app, d):
         # action therefore carries its status INSIDE the reply, like /api/account;
         # public/unkeyed callers and ordinary HTTP tests keep normal status codes.
         key = request.form.get("key", "")
-        if request.path == "/api/social/action" and request.form.get("game") == "1":
+        if request.path in ("/api/social/action", "/api/social/viewmodel") and request.form.get("game") == "1":
             if d.secret() and hmac.compare_digest(key, d.secret()):
                 payload = dict(payload, status=status)
                 status = 200
@@ -523,6 +524,40 @@ def register(app, d):
                 _activities.pop(token, None)
             return reply({"ok": 0, "error": "friends unavailable"}, 503)
         return reply({"ok": 1, "players": out})
+
+    @app.post("/api/social/viewmodel")
+    def viewmodel_settings():
+        now, node, early = auth()
+        if early is not None:
+            return early
+        op = request.form.get("op", "")
+        if op not in ("get", "set"):
+            return reply({"viewmodel": 1, "ok": 0, "error": "Bad setup action"}, 400)
+        token = request.form.get("token", "")
+        db = d.get_db()
+        try:
+            with db:
+                db.execute("BEGIN IMMEDIATE")
+                owner = session(db, token, node, now)
+                if owner is None:
+                    return reply({"viewmodel": 1, "ok": 0, "error": "Link Steam on this lobby first"}, 403)
+                if not d.rate_ok(owner["steamid"], now, 120, "viewmodel-settings"):
+                    return reply({"viewmodel": 1, "ok": 0, "error": "Setup is busy; try shortly"}, 429)
+                if op == "get":
+                    value = viewmodel.load(db, owner["steamid"])
+                else:
+                    revision = request.form.get("revision", "")
+                    if not re.fullmatch(r"[0-9]{1,10}", revision, re.ASCII):
+                        raise ValueError("Invalid setup revision")
+                    value = viewmodel.save(db, owner["steamid"], request.form.get("setup", ""),
+                                           int(revision), now)
+                    if value is None:
+                        return reply({"viewmodel": 1, "ok": 0, "error": "Setup changed on another connection; reload before saving"}, 409)
+        except ValueError as error:
+            return reply({"viewmodel": 1, "ok": 0, "error": str(error)}, 400)
+        except sqlite3.Error:
+            return reply({"viewmodel": 1, "ok": 0, "error": "Account setup unavailable"}, 503)
+        return reply(dict(viewmodel=1, ok=1, **value))
 
     @app.post("/api/social/action")
     def action():

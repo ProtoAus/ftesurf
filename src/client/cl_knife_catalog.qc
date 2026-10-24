@@ -1,4 +1,7 @@
 /* Installed Legacy metadata. No game assets or inventory are distributed. */
+float() VM_IsMirroring;
+float(float field) VM_ViewValue;
+
 #define KCAT_NAME 0i
 #define KCAT_MODEL 1i
 #define KCAT_BASE 2i
@@ -88,25 +91,41 @@ float(float base, float count, string choice, float fallback) KCAT_Find =
 		if (!strcmp(KCAT_Get(i, KCAT_MODEL), choice)) return i;
 	return fallback;
 };
-float() KCAT_Knife =
+float() KCAT_LocalKnife =
 {
 	local float legacy;
 	legacy = bound(0, floor(cvar("cl_knife_model")), 2);
 	if (legacy != 1) return legacy;
 	return KCAT_Find(0, kcat_knives, cvar_string("cl_knife_choice"), 1);
 };
-float() KCAT_Hands =
+float() KCAT_LocalHands =
 {
 	if (cvar("cl_knife_arm_model") == 1) return (float)KCAT_ARMS + 1;
 	return KCAT_Find((float)KCAT_ARMS, kcat_hands, cvar_string("cl_knife_arm_choice"), (float)KCAT_ARMS);
 };
-float() KCAT_Layer =
+float() KCAT_LocalLayer =
 {
 	local string value;
 	value = cvar_string("cl_knife_sleeve");
 	if (!strcmp(value, "none")) return (float)KCAT_LAYERS + 1;
 	return KCAT_Find((float)KCAT_LAYERS + 2, kcat_layers - 2, value, (float)KCAT_LAYERS);
 };
+float() KCAT_Knife =
+{
+	if (VM_IsMirroring()) return VM_ViewValue(VM_KNIFE);
+	return KCAT_LocalKnife();
+};
+float() KCAT_Hands =
+{
+	if (VM_IsMirroring()) return VM_ViewValue(VM_HANDS);
+	return KCAT_LocalHands();
+};
+float() KCAT_Layer =
+{
+	if (VM_IsMirroring()) return VM_ViewValue(VM_LAYER);
+	return KCAT_LocalLayer();
+};
+
 float() KCAT_ActiveLayer =
 {
 	local float row;

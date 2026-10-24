@@ -416,6 +416,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	MA_Register();                 // opt-in local altitude tone and A/D drums
 	WP_Register();                 // mounted viewmodels, no bind overrides
 	WPU_Register();
+	VM_Register();
 	MapMsg_Init();                  // Patch 870, map text and screen effects
 	Ropes_RegisterCvars();          // Patch 874, env_sun and ropes
 	Trig_RegisterCvars();           // Patch 335, predicted triggers
@@ -1866,6 +1867,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	RG_DrawBodies();                // Patch 746: the race ghosts, with the scene's other bodies
 	Prox_Frame();                   // Patch 810: before addentities, which calls Prox_Delta
 	addentities(MASK_ENGINE | MASK_VIEWMODEL);
+	VM_Frame();                    // effective watched setup, never observer preferences
 	WP_Frame();                    // after the final camera, view-relative model
 	WP_ScopeView();                // camera-only zoom, never input/shot direction
 
@@ -2227,6 +2229,7 @@ float(string cmd) CSQC_ConsoleCommand =
 	cmdargc = tokenize(cmd);
 	if (GA_Command()) return TRUE;
 	if (MA_Command()) return TRUE;
+	if (VM_ConsoleCommand()) return TRUE;
 	if (WP_Command()) return TRUE;
 	if (!strcmp(argv(0), "host_timescale"))
 	{

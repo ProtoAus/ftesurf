@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P970 — account setup and followed-player viewmodels (delivery pending)
+
+Not owner-confirmed and not a real linked-account/live-cloud acceptance yet.
+Agent dedicated-socket checks show a followed Butterfly setup and matching fire/
+inspect while the observer keeps their own M9 settings; target-disabled and third
+person hide the model, and returning restores the observer's setup. Agent images
+show the watched model and complete account-controls panel. API/proof-fixture and
+synthetic client-load tests are not a live Steam-account round trip.
+
+Once the matching client/lobby/account-service build is installed: with two
+players, first-person spectate while the followed player fires, inspects and
+switches their viewmodel off/on. Does it follow naturally and leave your own
+workshop setup unchanged? With a linked account, save a distinctive setup, then
+reload it on a second linked install; confirm it restores correctly. Keep missing
+content, native QW tracking and live account-switch checks explicit if not tried.
+No owner or fleet pass is claimed by this pending checklist.
+
 ## P967 — Original/default-T texture (Windows delivered; human check pending)
 
 Not owner-confirmed. Agent socket images show the installed Legacy diffuse on

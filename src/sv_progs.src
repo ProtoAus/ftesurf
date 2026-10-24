@@ -3,6 +3,7 @@
 defs/sv_defs.qc
 shared/sh_defs.qc
 shared/sh_time.qc
+shared/sh_viewmodel.qc
 shared/sh_json.qc
 shared/sh_zones.qc
 shared/sh_portal.qc
@@ -49,6 +50,7 @@ server/sv_pose.qc
 // sv_player.qc, which calls it from the command dispatch and ClientConnect.
 server/sv_social.qc
 server/sv_account.qc
+server/sv_viewmodel.qc
 // Patch 777: paint and saves between players; after sv_saveloc.qc (SV_SaveLocCreateAt, the
 // rows), before sv_player.qc and sv_main.qc, which call it.
 server/sv_share.qc

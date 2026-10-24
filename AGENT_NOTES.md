@@ -3203,6 +3203,14 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Conventions
 
+- **Quote CSV across QC console transport (P970, measured).** `tokenize(cmd)`
+  treats commas as punctuation: an unquoted21-field setup arrived as42 tokens,
+  was refused and published nothing. Quote the bounded payload in EVERY direction
+  (publish, action, load, saved, ACK), not only the first sender. Read lobby
+  capabilities with existing `serverkey()`, not `getplayerkeyvalue(-1, ...)`.
+  Positive socket controls must show the target/receiver acted; zero warnings and
+  quiet logs do not prove a transport. See `tools/p970-viewmodel-setup.md`.
+
 - OPEN BUGS AND FOLLOW-UPS LIVE IN `BACKLOG.md`. Add what you find and do not
   fix (with a file:function and a falsifier); delete it in the fixing commit.
 - QC style: `type() Name =\n{ … };`, `local` declarations first, tabs,

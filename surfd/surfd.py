@@ -42,6 +42,7 @@ from flask import Flask, Response, g, jsonify, request, send_file
 import hidupload        # signed, bounded raw journals; never a run verdict
 import accounts         # Steam accounts: schema 12 and its routes
 import social           # Steam friends; authenticated lobby-only capabilities
+import viewmodel        # bounded account setup; additive schema 23
 import zonefit          # bounded BSP entity/model reader for legacy timers
 import ksftopup         # bounded, board-scoped requests; no network in HTTP
 import ksfprofile       # resolved profile demand, paced by the same importer
@@ -454,7 +455,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 23
 KSF_UNBOUND_SQL = """
 CREATE TABLE IF NOT EXISTS ksf_unbound (
  map TEXT NOT NULL, track INTEGER NOT NULL, leg INTEGER NOT NULL,
@@ -1593,6 +1594,13 @@ def migrate():
             conn.execute("PRAGMA user_version=22")
             conn.commit()
             version = 22
+
+        if version < 23:
+            # P970: cosmetic setup only; no account, run or history rewrite.
+            conn.executescript(viewmodel.SQL)
+            conn.execute("PRAGMA user_version=23")
+            conn.commit()
+            version = 23
 
         verdict_metrics(conn)
         gone = accounts.links_now(conn)

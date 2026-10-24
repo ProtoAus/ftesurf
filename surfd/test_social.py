@@ -114,6 +114,73 @@ class Friends(unittest.TestCase):
                     {"token": self.tokens[0], "activity": activity}]))
                 self.assertEqual(r.status_code, 400)
 
+    VM_SETUP = "1,1,24,35,78,1,3,42,1.25,90,0.8,0.1,1,0.2,0.3,75,70,1,0.8,0.02,0.14"
+
+    def vm(self, index=0, op="get", **extra):
+        return self.post("/api/social/viewmodel", token=self.tokens[index], op=op, **extra)
+
+    def test_viewmodel_cross_install_account_and_revision(self):
+        self.assertEqual(self.vm().get_json()["revision"], 0)
+        saved = self.vm(op="set", setup=self.VM_SETUP, revision="0").get_json()
+        self.assertEqual((saved["ok"], saved["revision"], saved["setup"]), (1, 1, self.VM_SETUP))
+        self.assertEqual(self.vm(3).get_json()["setup"], self.VM_SETUP)
+        self.assertEqual(self.vm(1).get_json()["setup"], "")
+        stale = self.vm(3, "set", setup=self.VM_SETUP.replace(",42,", ",43,"), revision="0")
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(self.vm().get_json()["setup"], self.VM_SETUP)
+        # A caller account field is not authority; the capability's owner wins.
+        read = self.vm(1, steamid=IDS[0], pub=PUBS[0]).get_json()
+        self.assertEqual((read["setup"], read["revision"]), ("", 0))
+
+    def test_viewmodel_invalid_does_not_erase_prior(self):
+        self.vm(op="set", setup=self.VM_SETUP, revision="0")
+        bad = ["", self.VM_SETUP + ",1", "1; quit", self.VM_SETUP.replace(",35,", ",2,"),
+               self.VM_SETUP.replace(",78,", ",63,"), self.VM_SETUP.replace(",1.25,", ",NaN,"),
+               self.VM_SETUP.replace(",42,", ",1001,"), self.VM_SETUP.replace(",0.02,", ",.,"),
+               self.VM_SETUP.replace(",0.8,0.1,", ",1.1,0.1,"), "0" * 257]
+        for packed in bad:
+            with self.subTest(packed=packed[:24]):
+                self.assertEqual(self.vm(op="set", setup=packed, revision="1").status_code, 400)
+        self.assertEqual(self.vm(op="set", setup=self.VM_SETUP, revision="1e0").status_code, 400)
+        self.assertEqual(self.vm().get_json()["setup"], self.VM_SETUP)
+        self.assertEqual(self.vm().get_json()["revision"], 1)
+
+    def test_viewmodel_wrong_expired_unlinked_banned_capability(self):
+        for form in [dict(token="0"*64), dict(token=PUBS[0]), dict(token=self.tokens[0], node="p27511"),
+                     dict(token=self.tokens[0], key="wrong")]:
+            request = dict(key="testkey", node="p27510", op="get")
+            request.update(form)
+            self.assertEqual(self.client.post("/api/social/viewmodel", data=request).status_code, 403)
+        self.db.execute("UPDATE accounts SET banned_at=? WHERE steamid=?", (self.now, IDS[0]))
+        self.db.commit()
+        self.assertEqual(self.vm().status_code, 403)
+        self.db.execute("UPDATE accounts SET banned_at=0 WHERE steamid=?", (IDS[0],))
+        self.db.execute("DELETE FROM keylinks WHERE pub=?", (PUBS[0],))
+        self.db.commit()
+        self.assertEqual(self.vm().status_code, 403)
+        self.now += F.SESSION_TTL + 1
+        self.assertEqual(self.vm(3).status_code, 403)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM account_viewmodels").fetchone()[0], 0)
+
+    def test_viewmodel_revision_ceiling_preserves_row(self):
+        self.db.execute("INSERT INTO account_viewmodels VALUES(?,?,?,?)",
+                        (IDS[0], self.VM_SETUP, 16777215, self.now))
+        self.db.commit()
+        self.assertEqual(self.vm().get_json()["revision"], 16777215)
+        self.assertEqual(self.vm(op="set", setup=self.VM_SETUP, revision="16777215").status_code, 400)
+        self.assertEqual(self.vm().get_json()["revision"], 16777215)
+
+    def test_viewmodel_game_refusal_body_and_corrupt_row_preserved(self):
+        reply = self.vm(op="set", setup="invalid", revision="0", game="1")
+        self.assertEqual(reply.status_code, 200)
+        self.assertEqual((reply.get_json()["ok"], reply.get_json()["status"]), (0, 400))
+        self.db.execute("INSERT INTO account_viewmodels VALUES(?,?,?,?)", (IDS[0], "future-format", 7, self.now))
+        self.db.commit()
+        self.assertEqual(self.vm().status_code, 400)
+        self.assertEqual(self.vm(op="set", setup=self.VM_SETUP, revision="7").status_code, 400)
+        row = self.db.execute("SELECT setup,revision FROM account_viewmodels WHERE steamid=?", (IDS[0],)).fetchone()
+        self.assertEqual((row["setup"], row["revision"]), ("future-format", 7))
+
     def setUp(self):
         self.now = 1800000000
         self.clock = patch.object(S.time, "time", lambda: self.now)
@@ -124,7 +191,7 @@ class Friends(unittest.TestCase):
         self.client = S.app.test_client()
         self.db = S.connect()
         self.addCleanup(self.db.close)
-        for table in ("social_menu_messages", "social_menu_presence", "social_messages", "social_friends", "social_sessions", "keylinks", "accounts", "lobbies"):
+        for table in ("account_viewmodels", "social_menu_messages", "social_menu_presence", "social_messages", "social_friends", "social_sessions", "keylinks", "accounts", "lobbies"):
             self.db.execute("DELETE FROM " + table)
         for sid, name in zip(IDS, ("Alice", "Bob", "Third")):
             self.db.execute("INSERT INTO accounts(steamid,name,created_at) VALUES(?,?,?)", (sid, name, self.now))
@@ -585,7 +652,7 @@ class Friends(unittest.TestCase):
         tables = [r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
         before = {name: [tuple(r) for r in self.db.execute('SELECT * FROM "' + name + '"')] for name in tables}
         S.migrate()
-        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 22)
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 23)
         self.assertEqual(before, {name: [tuple(r) for r in self.db.execute('SELECT * FROM "' + name + '"')] for name in tables})
         self.assertEqual(self.chat_send()[0]["ok"], 1)
         used = [tuple(r) for r in self.db.execute("SELECT * FROM social_menu_messages")]

@@ -229,6 +229,7 @@ void() StartFrame =
 	*/
 	Lobby_Heartbeat();
 	Social_Frame();
+	VM_SVFrame();
 	Share_Frame();                  // Patch 777: offers nobody answered
 
 	/*
@@ -425,6 +426,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_STATOWNER,      EV_FLOAT, run_statowner);      // Patch 361
 	clientstat(STAT_FS_MSSESSION,      EV_FLOAT, run_ms_sessions);    // Multi-Session
 	clientstat(STAT_FS_SPEC,           EV_FLOAT, run_sp_stat);        // Patch 382
+	VM_SVRegister();
 	clientstat(STAT_FS_SLORG,          EV_VECTOR, rec_sl_curorg);     // Patch 430
 	clientstat(STAT_FS_SLANG,          EV_VECTOR, rec_sl_curang);
 	clientstat(STAT_FS_SLVEL,          EV_VECTOR, rec_sl_curvel);     // Patch 753

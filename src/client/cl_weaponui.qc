@@ -80,9 +80,9 @@ void(float slot, float row) WPU_Part =
 void() WPU_Apply =
 {
 	local float kind, style, key, isolated;
-	local string pattern, name, data, rules, base;
+	local string pattern, name, data, rules, base, program;
 	kind = KCAT_Knife();
-	style = bound(0, floor(cvar("cl_knife_finish")), 3);
+	style = bound(0, floor(VM_Cvar("cl_knife_finish")), 3);
 	base = KCAT_Get(kind, KCAT_BASE);
 	isolated = FALSE;
 	if (!strcmp(base, "materials/models/weapons/v_models/knife_t/knife_t.vtf"))
@@ -95,14 +95,14 @@ void() WPU_Apply =
 	if (wp_weapon == FS_WEAPON_KNIFE && kind > 0)
 	{
 		WPU_SourcePose();
-		if (cvar("cl_knife_arms"))
+		if (VM_Cvar("cl_knife_arms"))
 		{
 			WPU_Part(0, KCAT_Hands());
 			if (KCAT_ActiveLayer() >= (float)KCAT_LAYERS) WPU_Part(1, KCAT_ActiveLayer());
 		}
 	}
 	else wp_ent.skeletonindex = 0;
-	key = wp_ent.modelindex * 512 + kind * 4 + style + isolated * 256;
+	key = wp_ent.modelindex * 512 + kind * 4 + style + isolated * 256 + VM_IsMirroring() * 128;
 	if (key == wpu_skinstate) return;
 	wpu_skinstate = key;
 	wp_ent.forceshader = 0;
@@ -120,7 +120,13 @@ void() WPU_Apply =
 		if (style == 3) pattern = "hydrographic/marbleized";
 		name = sprintf("ftesurf/knife_%g_%g", kind, style);
 		if (isolated) name = strcat(name, "_legacy");
-		data = sprintf("{\nprogram knife_finish#STYLE=%g#FAMILY=%s\n{ map %s }\n{ map materials/models/weapons/customization/paints/%s.vtf }\n{ map %s }\n}\n", style, KCAT_Get(kind, KCAT_FAMILY), base, pattern, KCAT_Get(kind, KCAT_MASK));
+		program = sprintf("knife_finish#STYLE=%g#FAMILY=%s", style, KCAT_Get(kind, KCAT_FAMILY));
+		if (VM_IsMirroring())
+		{
+			name = strcat(name, "_watched");
+			program = strcat(program, "#WATCHED");
+		}
+		data = sprintf("{\nprogram %s\n{ map %s }\n{ map materials/models/weapons/customization/paints/%s.vtf }\n{ map %s }\n}\n", program, base, pattern, KCAT_Get(kind, KCAT_MASK));
 		wpu_painted = (shaderforname(name, data) > 0);
 	}
 	else if (isolated)
@@ -225,7 +231,7 @@ void(vector scr) WPU_Draw =
 	tsz = Font_Px(8 * sc); ttl = Font_Px(10 * sc); hint = Font_Px(6 * sc);
 	wpu_tsz = tsz;
 	pad = tsz; row = ceil(tsz * 1.8);
-	size = [min(scr_x - 8, tsz * 38), min(scr_y - 8, tsz * 36), 0];
+	size = [min(scr_x - 8, tsz * 38), min(scr_y - 8, tsz * 41), 0];
 	pos = [cvar("hud_knife_x") * scr_x, cvar("hud_knife_y") * scr_y, 0];
 	if (wpu_drag) pos = [wpu_mx, wpu_my, 0] - wpu_offset;
 	pos_x = bound(4, pos_x, max(4, scr_x - size_x - 4));
@@ -246,8 +252,8 @@ void(vector scr) WPU_Draw =
 	sui_tooltip_for("wpu_close", "Close (Esc). Drag the title bar to move this window.", sc);
 	at = pos + [pad, tsz * 4, 0];
 	width = size_x - pad * 2;
-	kind = KCAT_Knife();
-	arms = cvar("cl_knife_arms") ? KCAT_Hands() : -1;
+	kind = KCAT_LocalKnife();
+	arms = cvar("cl_knife_arms") ? KCAT_LocalHands() : -1;
 	style = bound(0, floor(cvar("cl_knife_finish")), 3);
 	sui_text(at + [0, (row - tsz) * 0.5, 0], [tsz, tsz], "Knife", SUI_THEME_DIM, 1, 0);
 	box = [width - tsz * 7, row, 0];
@@ -261,7 +267,7 @@ void(vector scr) WPU_Draw =
 	if (wpu_drop == 2) pop = at + [tsz * 7, row + 4, 0];
 	at_y = at_y + tsz * 2.7;
 	sui_text(at + [0, (row - tsz) * 0.5, 0], [tsz, tsz], "Sleeves", SUI_THEME_DIM, 1, 0);
-	if (WPU_ChoiceChip("wpu_sleeves", at + [tsz * 7, 0, 0], box, strcat(WPU_OptionLabel(KCAT_Layer()), "  v"), tsz, wpu_drop == 3))
+	if (WPU_ChoiceChip("wpu_sleeves", at + [tsz * 7, 0, 0], box, strcat(WPU_OptionLabel(KCAT_LocalLayer()), "  v"), tsz, wpu_drop == 3))
 		{ wpu_drop = (wpu_drop == 3) ? 0 : 3; wpu_page = 0; }
 	if (wpu_drop == 3) pop = at + [tsz * 7, row + 4, 0];
 	at_y = at_y + tsz * 3.1;
@@ -291,7 +297,12 @@ void(vector scr) WPU_Draw =
 	at_y = at_y + tsz * 2.7;
 	if (Profile_Chip("wpu_mount", at, [width, row, 0], "Mount installed CS:GO Legacy", tsz, FALSE)) WP_MountKnifeContent(-1);
 	sui_tooltip_for("wpu_mount", "Session-only installed assets; also requested automatically when selecting a Legacy knife. No download.", sc);
-	at_y = at_y + tsz * 2.6;
+	at_y = at_y + tsz * 2.7;
+	if (Profile_Chip("wpu_account_save", at, [(width - 6) / 2, row, 0], "Save to account", tsz, FALSE)) VM_ProfileAction("save");
+	if (Profile_Chip("wpu_account_reload", at + [(width + 6) / 2, 0, 0], [(width - 6) / 2, row, 0], "Reload account", tsz, FALSE)) VM_ProfileAction("reload");
+	at_y = at_y + tsz * 2.5;
+	sui_text(at, [hint, hint], VM_Status(), SUI_THEME_MUTED, 1, 0);
+	at_y = at_y + tsz * 1.6;
 	text = "Local previews, not inventory or exact CS paint kits.";
 	if (kind > 0 && style > 0 && !strcmp(KCAT_Get(kind, KCAT_MASK), "")) text = "No compatible paint mask: showing the original finish.";
 	sui_text(at, [hint, hint], text, SUI_THEME_MUTED, 1, 0);
@@ -308,7 +319,7 @@ void(vector scr) WPU_Draw =
 		sui_style_panel(pop, wpu_popup_size, pad * 0.5, 1);
 		selected = kind;
 		if (wpu_drop == 2) selected = arms;
-		if (wpu_drop == 3) selected = KCAT_Layer();
+		if (wpu_drop == 3) selected = KCAT_LocalLayer();
 		for (i = 0; i < min(9, count - start); i = i + 1)
 		{
 			option = WPU_ListRow(wpu_drop, start + i);

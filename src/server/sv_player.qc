@@ -340,6 +340,7 @@ void() ClientConnect =
 	Lobby_ClientConnect(self);
 	Vote_ClientConnect(self);           // Patch 372: every begin, map changes included
 	Account_Connect(self);              // Patch 615: edicts are recycled
+	VM_SVConnect(self);
 };
 
 void() ClientDisconnect =
@@ -356,6 +357,7 @@ void() ClientDisconnect =
 	Vote_ClientDisconnect(self);
 	Share_Disconnect(self);             // Patch 777: links, offers and streams to or from this slot
 	Account_Disconnect(self);           // Patch 615: an answer still out is nobody's now
+	VM_SVConnect(self);
 
 	// Patch 382: `spec 0 ... drop` before the park's `pause ... drop`.
 	SV_SpecRelease(self, "drop");
@@ -459,6 +461,7 @@ void() SpectatorDisconnect =
 {
 	SV_SourcePhaseClear(self);
 	Account_Disconnect(self);
+	VM_SVConnect(self);
 	SV_ViewEyeDetach(self);
 };
 
@@ -1650,6 +1653,12 @@ void(string cmd) SV_ParseClientCommand =
 		if (!Account_OldProof(argv(2)))
 			SV_RecRcpt(self, argv(1), argv(2), argv(3), argv(4), argv(5), argv(6),
 			           argv(7), argv(8));
+		return;
+	}
+
+	if (!strcmp(c, "vm_setup") || !strcmp(c, "vm_profile") || !strcmp(c, "vm_inspect"))
+	{
+		VM_SVCommand(self, c, cmdargc);
 		return;
 	}
 
