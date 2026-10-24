@@ -3,6 +3,7 @@
 defs/cl_defs.qc
 shared/sh_defs.qc
 shared/sh_time.qc
+shared/sh_viewmodel.qc
 shared/sh_boardstyle.qc
 shared/sh_font.qc
 shared/sh_nativeui.qc
@@ -298,6 +299,7 @@ client/cl_gamaterial.qc
 client/cl_motionaudio.qc
 client/cl_knife_catalog.qc
 client/cl_knife_catalog_data.qc
+client/cl_viewmodel.qc
 client/cl_weapon.qc
 client/cl_weaponui.qc
 client/cl_main.qc

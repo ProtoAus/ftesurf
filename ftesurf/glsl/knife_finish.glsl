@@ -8,6 +8,11 @@
 !!cvarf cl_knife_rotation
 !!cvarf cl_knife_fade
 !!cvarf cl_knife_wear
+!!cvarf cl_vm_seed
+!!cvarf cl_vm_scale
+!!cvarf cl_vm_rotation
+!!cvarf cl_vm_fade
+!!cvarf cl_vm_wear
 #include "sys/defs.h"
 
 varying vec2 knife_uv;
@@ -37,6 +42,15 @@ void main()
 #include "sys/fog.h"
 uniform float cvar_cl_knife_seed, cvar_cl_knife_scale, cvar_cl_knife_rotation;
 uniform float cvar_cl_knife_fade, cvar_cl_knife_wear;
+uniform float cvar_cl_vm_seed, cvar_cl_vm_scale, cvar_cl_vm_rotation;
+uniform float cvar_cl_vm_fade, cvar_cl_vm_wear;
+#ifdef WATCHED
+#define cvar_cl_knife_seed cvar_cl_vm_seed
+#define cvar_cl_knife_scale cvar_cl_vm_scale
+#define cvar_cl_knife_rotation cvar_cl_vm_rotation
+#define cvar_cl_knife_fade cvar_cl_vm_fade
+#define cvar_cl_knife_wear cvar_cl_vm_wear
+#endif
 float knife_noise(vec2 p)
 {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);

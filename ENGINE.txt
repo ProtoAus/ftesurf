@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   bd7aa1760a88a7d12a9ff08f6ee08fe938bc021e
+commit   584b21bc49d5409b8c5d506f6de5e961d53b9572
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,10 @@ commit   bd7aa1760a88a7d12a9ff08f6ee08fe938bc021e
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-967
-patch    967
+tag      patch-970
+patch    970
+# Patch 970: bounded account setup and watched-player model/finish/fire/inspect.
+# Client-only compatible role: retain BOTH seven-field readers; never ship role QW/menu/backend.
 # Patch 967: fixed private Legacy Original/default-T texture and readiness.
 # Preserve seven-field Friends; client-only role does not replace server/menu.
 # Patch 966: lit Character viewmodel pieces and continuous held model submission.
