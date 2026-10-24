@@ -64,6 +64,18 @@ saved and acknowledgement. `serverkey()` reads lobby capabilities;
 controls are required: a quiet log or zero-warning compile does not prove either
 transport acted.
 
+## Guarded schema23 preparation
+
+The transition guard explicitly supports schema23 only when `viewmodel.py` joins
+its exact dependency set. Older schema19/20/22 sets and the default19 are
+unchanged. Schema23 has nine base hashes, or ten with explicit `hid-v1`; missing,
+extra, altered or wrong-schema dependencies and receipts still refuse before
+application import. No generation/schema rebinding or approval shortcut is added.
+The POSIX transition and Linux candidate suites pass with actual synthetic
+candidates for19/20/22/23, collector/viewmodel tamper refusal, ordinary import
+controls, closure replay, forked lifetime and full drain. These are offline tests,
+not authorization, product migration acceptance or live data-preservation proof.
+
 ## Delivery / human acceptance
 
 The checks above establish implementation/component behavior, not the final

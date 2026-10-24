@@ -29,21 +29,24 @@ def candidate_args(f, grant):
 
 
 def schema_suite(out):
-    for target in (None, 19, 20):
+    for target in (None, 19, 20, 22, 23):
         f = Fixture(out / ("schema-legacy19" if target is None else "schema%d" % target),
                     target_schema=target)
         schema = 19 if target is None else target
+        deps = ("accounts.py", "social.py") if schema in (20, 22, 23) else ()
+        if schema == 23:
+            deps += ("viewmodel.py",)
         manifest_bytes = (f.state / "manifest.json").read_bytes()
         initial_state = (f.state / "state.json").read_bytes()
-        if schema == 20:
+        if deps:
             state = json.loads(initial_state)
             grant = f.root / "grant.json"
             save(grant, {"generation": GEN, "closure": state["closure"],
                          "route": "server", "authorized": True})
-            for name in ("accounts.py", "social.py"):
+            for name in deps:
                 path = f.home / name
                 original = path.read_bytes()
-                for changed in (None, b"# mismatched schema20 dependency\n"):
+                for changed in (None, b"# mismatched sealed dependency\n"):
                     path.unlink()
                     if changed is not None:
                         path.write_bytes(changed)
@@ -55,8 +58,9 @@ def schema_suite(out):
                         path.unlink()
                     path.write_bytes(original)
         p = f.candidate()  # Acted server marker and same-PID record required by Fixture.
-        for wrong in (20 if schema == 19 else 19, True, False, float(schema),
-                      str(schema), None, 18, 21):
+        other_schemas = tuple(s for s in (19, 20, 22, 23) if s != schema)
+        for wrong in (*other_schemas, True, False, float(schema),
+                      str(schema), None, 18, 21, 24):
             reopen(f, f.receipt(schema=wrong))
             check((f.state / "state.json").read_bytes() == initial_state,
                   "rejected schema receipt changed closure/state")
@@ -65,8 +69,8 @@ def schema_suite(out):
         reopen(f, receipt, ok=True)
         check(p.poll() is None, "schema acceptance killed live candidate")
         stop(p)
-        if schema == 20:
-            for name in ("accounts.py", "social.py"):
+        if deps:
+            for name in deps:
                 path = f.home / name
                 original = path.read_bytes()
                 for changed in (None, b"# mismatched launch dependency\n"):
@@ -90,8 +94,8 @@ def schema_suite(out):
         stale.write_bytes(accepted_bytes)
         stale.chmod(0o600)
         reopen(f, stale)
-        if schema == 20:
-            for name in ("accounts.py", "social.py"):
+        if deps:
+            for name in deps:
                 path = f.home / name
                 original = path.read_bytes()
                 path.write_text("# mismatched reopen dependency\n")
@@ -103,12 +107,12 @@ def schema_suite(out):
         check(not (f.state / "candidate.json").exists(), "close failed to retire candidate")
         check((f.state / "manifest.json").read_bytes() == manifest_bytes,
               "schema handling mutated immutable manifest")
-    print("PASS legacy19/explicit19/explicit20 acted acceptance, cross-schema refusal, hash gates and closure replay")
+    print("PASS legacy19/explicit19/20/22/23 acted acceptance, cross-schema refusal, hash gates and closure replay")
 
     f = Fixture(out / "invalid-manifests", target_schema=20)
     valid_state = f.state
     variants = []
-    for value in (True, False, 20.0, 19.0, "20", None, 18, 21, [], {}):
+    for value in (True, False, 20.0, 19.0, 22.0, 23.0, "20", "23", None, 18, 21, 24, [], {}):
         variants.append(dict(f.manifest, target_schema=value))
     for target in (None, 19, 20):
         base = copy.deepcopy(f.manifest)

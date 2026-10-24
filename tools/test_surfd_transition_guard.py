@@ -83,7 +83,9 @@ class Fixture:
             "import time\nfrom pathlib import Path\n"
             "Path('candidate-acted').write_text('SERVER ACTED')\n"
             "while True: time.sleep(.02)\n")
-        files = FILES + (("accounts.py", "social.py") if target_schema in (20, 22) else ())
+        files = FILES + (("accounts.py", "social.py") if target_schema in (20, 22, 23) else ())
+        if target_schema == 23:
+            files += ("viewmodel.py",)
         if runtime_profile == "hid-v1":
             files += ("hidupload.py",)
         for name in files[2:]:
@@ -416,23 +418,37 @@ def main():
     out.mkdir(mode=0o700)
     try:
         suite(out)
-        for schema in (20, 22):
+        for schema in (20, 22, 23):
             hid = Fixture(out / ("hid-profile-%d" % schema), target_schema=schema, runtime_profile="hid-v1")
-            hid.reopen()  # A real fixed candidate must act with all nine hashes checked.
+            hid.reopen()  # A real fixed candidate must act with the exact schema/profile hashes.
             body = (hid.home / "hidupload.py").read_bytes()
             (hid.home / "hidupload.py").write_bytes(body + b"# changed collector\n")
             refused = hid.run("launch", "--generation", GEN, "--route", "manual", ok=False)
             check("raw hash mismatch: hidupload.py" in refused.stderr, "collector was not sealed")
             check(not (hid.home / "imports").exists(), "changed collector allowed application import")
             (hid.home / "hidupload.py").write_bytes(body)
+            if schema == 23:
+                vm = hid.home / "viewmodel.py"
+                original = vm.read_bytes()
+                vm.write_bytes(original + b"# changed viewmodel dependency\n")
+                refused = hid.run("launch", "--generation", GEN, "--route", "manual", ok=False)
+                check("raw hash mismatch: viewmodel.py" in refused.stderr and
+                      not (hid.home / "imports").exists(), "viewmodel dependency was not sealed")
+                vm.write_bytes(original)
             (hid.home / "release").touch()
             hid.run("launch", "--generation", GEN, "--route", "manual")
             check((hid.home / "imports").read_text() == "IMPORT ACTED\n", "restored collector did not act")
-            for label, changes in (("missing-hid", {"hashes": {k: v for k, v in hid.hashes.items() if k != "hidupload.py"}}),
-                                   ("untagged-hid", {"runtime_profile": None}),
-                                   ("unknown-profile", {"runtime_profile": "unapproved"}),
-                                   ("unsupported-schema21", {"target_schema": 21}),
-                                   ("unsupported-schema23", {"target_schema": 23})):
+            variants = [("missing-hid", {"hashes": {k: v for k, v in hid.hashes.items() if k != "hidupload.py"}}),
+                        ("untagged-hid", {"runtime_profile": None}),
+                        ("unknown-profile", {"runtime_profile": "unapproved"}),
+                        ("unsupported-schema21", {"target_schema": 21}),
+                        ("unsupported-schema24", {"target_schema": 24})]
+            if schema == 23:
+                variants += [("missing-viewmodel", {"hashes": {k: v for k, v in hid.hashes.items() if k != "viewmodel.py"}}),
+                             ("schema22-extra-viewmodel", {"target_schema": 22})]
+            else:
+                variants += [("schema23-missing-viewmodel", {"target_schema": 23})]
+            for label, changes in variants:
                 manifest = dict(hid.manifest, **changes)
                 if label == "untagged-hid":
                     del manifest["runtime_profile"]
