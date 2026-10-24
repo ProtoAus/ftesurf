@@ -46,7 +46,7 @@ handoff; no old review, consent, epoch or frozen witness may be relabelled.
 Actual role SHA, hashes, deployment and linked-install owner check are recorded
 separately after those steps. Real owner acceptance remains pending lextest.md.
 
-## Delivered progs, account-service gate still pending
+## Initial progs delivery (historical role)
 
 24 Oct2026: clean role `4c65fd99a2aa8a61a043ed7522b2df5462dfed26`
 combines the then-installed15f8d239 menu/client cohort with P978. Its Reload
@@ -61,8 +61,32 @@ This receipt is not a claim that a later fleet deployment still uses those
 bytes. Later main/menu/native work is preserved in the public integration,
 not silently attributed to this qualified role or redeployed from it.
 
-The account service remains at schema22. Three component/safety reviews passed,
-but subsequent shared-cron and serving-checker drift invalidated the execution
-preimage/dependency tuple. No live handoff, reader repin, database restore or
-real Steam-account pass is claimed. The separately qualified schema23 promotion
-and the small linked-install owner check remain pending.
+## This workstream's progs and live account service
+
+24 Oct2026: role `aa1fdc5367986ca10b29ed6ff678b61a0ee00342` integrates P978
+with the published P973-P984 peer work. All three QC VMs build with zero warnings;
+ten acted socket checks pass using the current native and actual compiled VMs.
+Its menu equals the installed menu, which was preserved rather than promoted.
+Both Windows installs received the four QC/lno files and matching CSQC cache at
+20:27:59Z, preserving14,693 other files. All12Pi lobbies received the same progs
+and cache after a positive direct all-connection census, including spectators.
+Client SHA256 `7495db356d9d2187e6a5e47a8dac73824cb080c46a0609e6c8c9afc254d5e162`;
+cache `58b40ab3.dat`. Later peer P985 integration retains this Reload fix; it is
+not silently attributed to this artifact receipt or rolled back.
+
+The account service schema23 handoff completed20:59:24Z and verified20:59:50Z.
+Three fresh independent reviews approved the actual execution sources. The
+closed-stage full comparison preserves all33 existing persistent tables, old
+object definitions and typed values, except volatile lobby values; only the exact
+new setup table/index are added. No historical data restore or installed-reader/
+native replacement.
+The backend operation leaves all12 game PID/birth/native identities, installed
+configs and stopped AI unchanged; the earlier ordinary progs swap is separate.
+
+Live health, board/API, current service/importer identity and all12 fresh lobby
+entries verify. Public HTTPS health and lobby list return200, and the documented
+browser board `https://proto.bar/ftesurf/board/` and its nonempty browser map API
+return200. No Build bump or release was made.
+
+Real linked-Steam Save/Reload and the small owner visual check remain pending
+in lextest.md. Socket fixture authority is not a real Steam-account pass.

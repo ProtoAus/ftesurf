@@ -99,10 +99,21 @@ not changed. A fresh isolated client downloaded77cc3dcf.dat, byte-identical to t
 qualified client; board UI/log/screenshot checks pass without QC errors. That
 fixture has no online consent: its board frame is not online-times acceptance.
 
-Cloud saving is NOT live. The active account service is still its sealed schema22
-runtime; schema23 needs a separately reviewed additive migration/source-witness
-handoff, including the new module. The existing exact schema20-to22 operator and
-its historical review/consent seals cannot authorize or execute this new cutover.
-No live database, admission gate or frozen witness was changed for P970.
-`lextest.md` holds the pending small two-player check and, after backend delivery,
-the linked-install owner check. No Build bump or public release is part of P970.
+Cloud setup saving is now live: the separately qualified schema23 handoff
+completed24Oct2026 20:59:24Z and verified20:59:50Z. Three fresh independent
+reviews approve the actual execution sources; all33 existing persistent tables,
+old definitions and typed values are preserved, apart from volatile lobby values.
+No historical data restore or installed-reader/native replacement. The backend operation leaves all12 lobby
+game identities/configs and stopped AI unchanged. Public HTTPS health, lobby
+list and the documented browser board return200.
+
+This workstream's latest progs receipt is roleaa1fdc53, preserving P973-P984
+peer cohort and includes P978's read-only Reload fix. Its current-native ten
+socket controls pass, both Windows installs and all12Pi received matching progs,
+and existing menu/native files were preserved. See tools/p978-account-reload.md
+for current hashes and the later peer-integration distinction. The older native,
+progs and cold-download receipts above remain historical, not a rollback target.
+
+`lextest.md` holds the pending small two-player and linked-install owner checks.
+A live deployed service is not a real Steam-account round-trip pass or owner
+visual acceptance. No Build bump or public release is part of this delivery.

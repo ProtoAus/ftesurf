@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-**P978 — account Reload direction (backend cutover pending, not owner-confirmed):** Progs-only delivery to both Windows installs and all12Pi completed24Oct2026, role4c65fd99; later fleet deployments are separate from that receipt. AFTER the schema23 account-service cutover, save different setups on two linked installs. On the stale install choose Reload: it must show the newer account setup, not replace it with the stale local one. A post-begin edit must stay local without an automatic cloud overwrite; explicit Save deliberately saves it. The loopback proof is synthetic authority, NOT real Steam acceptance.
+**P978 — account Reload direction (delivered, not owner-confirmed):** Both Windows installs and all12Pi received the peer-cohort-compatible roleaa1fdc53; schema23 account service delivered24Oct2026 20:59Z and live verification passed. Later peer P985 integration retains Reload. With two installs linked to the same Steam account, save a distinctive setup on A, then choose Reload on B: B must show A's setup, not overwrite it with B's old choices. A post-begin edit must stay local without an automatic cloud overwrite; explicit Save deliberately saves it. Socket proof is synthetic authority, NOT real Steam acceptance.
 
 **Momentum builds in your install (25 Oct, no patch: a local file move):** three loose maps in ftesurf/maps were the KSF builds under the plain names (surf_fantasy, surf_kairo, surf_disneyland -- each identical to the Pi's _css build), so your game played KSF's build where the lobbies run Momentum's. They are in ftesurf/maps/.old-ksf-20261025/ with a README; your game now loads the Momentum builds. bhop_eazy, bhop_japan, surf_antagonist, surf_jumble and surf_seaside loose copies were kept: they ARE the current Momentum builds (they match the Pi; your Steam Momentum copy is older). Your data/mapbuild.txt still picks CS:S for surf_axiom and surf_kitsune (click MOM on those rows if unwanted; Story now ignores the picks, P980).
 
@@ -26,14 +26,14 @@ Deployment checks do not turn the following human checks into passes.
 
 **P972 — earned re-arm after retry (pending, not owner-confirmed):** With a hopped-start tag and a finish/reset waiting for you to stop, retry before stopping. Come to ordinary grounded rest, then start again: it should be a normal timed start, just as without retry. This native API check does not replace a real finish/reset and map-restart observation.
 
-**P971/P985 — ordinary retry (pending, not owner-confirmed):** After walking out of a start and moving for a few seconds, use normal retry once. Confirm that it returns to the same point and the timer continues. P985 is installed in both Windows installs (24Oct20:30Z); its Pi rollout is still pending backend/directory availability. Do not change permissions or damage a real save: native synthetic-entity/file controls cover disk/preparation refusal, not this real-client/map-restart observation.
+**P971/P985 — ordinary retry (pending, not owner-confirmed):** After walking out of a start and moving for a few seconds, use normal retry once. Confirm that it returns to the same point and the timer continues. P985 is installed in both Windows installs (24Oct20:30Z); its Pi rollout remains separate; backend/directory availability was restored24Oct20:59Z. Do not change permissions or damage a real save: native synthetic-entity/file controls cover disk/preparation refusal, not this real-client/map-restart observation.
 
-## P970 — followed-player viewmodels delivered; account backend pending
+## P970 — followed-player viewmodels and account backend delivered
 
 Both Windows clients/native sets and all12Pi lobbies delivered24Oct2026;
-role-compatible eight-field Friends menu preserved. Not owner-confirmed and not
-a real linked-account/live-cloud acceptance yet. Cloud saving is not live: the
-account service still needs its separately reviewed schema23 cutover.
+role-compatible eight-field Friends menu preserved. Current progs and live
+schema23 account service are recorded under P978 above. Not owner-confirmed
+and not a real linked-Steam account round-trip acceptance yet.
 Agent dedicated-socket checks show a followed Butterfly setup and matching fire/
 inspect while the observer keeps their own M9 settings; target-disabled and third
 person hide the model, and returning restores the observer's setup. Agent images
@@ -42,9 +42,9 @@ synthetic client-load tests are not a live Steam-account round trip.
 
 After reopening the updated client: with two players, first-person spectate while
 the followed player fires, inspects and switches their viewmodel off/on. Does it
-follow naturally and leave your own workshop setup unchanged? AFTER the account
-service cutover, with a linked account save a distinctive setup, then reload it
-on a second linked install; confirm it restores correctly. Keep missing
+follow naturally and leave your own workshop setup unchanged? With a linked
+account save a distinctive setup, then reload it on a second linked install;
+confirm it restores correctly. Keep missing
 content, native QW tracking and live account-switch checks explicit if not tried.
 No owner or fleet pass is claimed by this pending checklist.
 
