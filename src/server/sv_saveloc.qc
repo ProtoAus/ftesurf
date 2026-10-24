@@ -1125,10 +1125,90 @@ float(entity e, float quiet) SV_SaveLocBegin =
   was written before it existed.  A format you can read with `type` is the one
   that survives being written before its reader.
 */
-void(entity e, float id, float seq) SV_SaveWriteState =
+// Immediate reader-visible rows, not a byte seal or durable/atomic pairing.
+// Reject the native fgets boundary rather than compare its dropped-byte view.
+int(filestream f, float b) SL_StateRows =
+{
+	local int bytes, pos, next;
+	local float row;
+	local string line;
+
+	bytes = fsize(f);
+	if (bytes <= 0i)
+		return -1i;
+	fseek(f, 0i);
+	pos = fseek(f);
+	if (pos != 0i)
+		return -1i;
+	row = 0;
+	while (pos < bytes)
+	{
+		line = fgets(f);
+		next = fseek(f);
+		if (next <= pos || next > bytes || strlen(line) >= 4095)
+			return -1i;
+		bufstr_set(b, row, line);
+		row = row + 1;
+		pos = next;
+	}
+	if (buf_getsize(b) != row)
+		return -1i;
+	return bytes;
+};
+
+float(filestream f, string path) SL_StateCloseConfirmed =
+{
+	local filestream r;
+	local float expected, actual, ok, i;
+	local int oldpos, written, readback;
+
+	oldpos = fseek(f);
+	expected = buf_create_ex("string", 0);
+	actual = -1;
+	written = -1i;
+	if (expected >= 1 && oldpos >= 0i)
+		written = SL_StateRows(f, expected);
+	// Restore the producer's cursor even if the snapshot refused a long row.
+	if (oldpos >= 0i)
+		fseek(f, oldpos);
+	fclose(f);
+
+	ok = FALSE;
+	if (written > 0i)
+	{
+		r = fopen(path, FILE_READ);
+		if (r >= 0)
+		{
+			actual = buf_create_ex("string", 0);
+			if (actual >= 1)
+			{
+				readback = SL_StateRows(r, actual);
+				if (readback == written && buf_getsize(actual) == buf_getsize(expected))
+				{
+					ok = TRUE;
+					i = 0;
+					while (i < buf_getsize(expected) && ok)
+					{
+						if (strcmp(bufstr_get(actual, i), bufstr_get(expected, i)))
+							ok = FALSE;
+						i = i + 1;
+					}
+				}
+			}
+			fclose(r);
+		}
+	}
+	if (expected >= 1) buf_del(expected);
+	if (actual >= 1) buf_del(actual);
+	return ok;
+};
+
+// TRUE only for matching immediate state readback and no known buffered-prefix
+// failure. Other save callers retain their warm/legacy behavior; retry needs it.
+float(entity e, float id, float seq) SV_SaveWriteState =
 {
 	local filestream f;
-	local float i, mark;
+	local float i, mark, prefixok;
 	local string p;
 
 	p = SL_StatePath(id);
@@ -1136,7 +1216,7 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	if (f < 0)
 	{
 		sprint(e, PRINT_HIGH, sprintf("^1save: cannot write %s\n", p));
-		return;
+		return FALSE;
 	}
 
 	/*
@@ -1147,6 +1227,7 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  Older saves have no such key and keep their historical behavior.
 	*/
 	mark = SV_RecWritePrefix(e, SL_RecPath(id));
+	prefixok = rec_prefix_ok;       // SV_RecSaveKeys consumes/resets the global.
 
 	fputs(f, sprintf("FTESURF-SAVE %d\n", SL_STATE_VERSION));
 	fputs(f, sprintf("map %s\n", mapname));
@@ -1449,7 +1530,9 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	fputs(f, sprintf("recserial %d\n", e.rec_rec_serial));
 	SV_RecSaveKeys(e, f);           // Patch 375: the lineage, and a stream's counters
 
-	fclose(f);
+	if (!SL_StateCloseConfirmed(f, p))
+		return FALSE;
+	return (prefixok != 0);
 };
 
 /*
@@ -5963,7 +6046,11 @@ void(entity e) SV_RetryPoint =
 		sprint(e, PRINT_HIGH, "^3retry: recording could not be prepared; map not restarted\n");
 		return;
 	}
-	SV_SaveWriteState(e, FS_RETRY_SLOT, 0);
+	if (!SV_SaveWriteState(e, FS_RETRY_SLOT, 0))
+	{
+		sprint(e, PRINT_HIGH, "^3retry: save point not confirmed on disk; map not restarted\n");
+		return;
+	}
 
 	rec_retry_sent = TRUE;
 	cvar_set("rec_retry_armed", "1");

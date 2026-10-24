@@ -21,6 +21,9 @@
 
 ## next
 
+### P985 Keep retry in place if its saved point cannot be confirmed
+- Retry now checks its save point and movement copy before restarting. If either cannot be confirmed, it explains why and keeps the current run in place.
+
 ### P984 Momentum zones on more CS:S builds
 - 31 CS:S and KSF builds that timed only a main start and end from their own triggers (surf_axiom_css among them) now use the Momentum map's zones, with its stages and bonuses.
 

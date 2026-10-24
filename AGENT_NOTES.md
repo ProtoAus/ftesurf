@@ -5339,6 +5339,15 @@ See `tools/OFFRAMP_CONTACT.md`; private diagnostic builds NEVER ship.
 
 ## Rewind (Patch 477)
 
+P985 native IO falsifier: unprefixed `qctest/...` QC writes are rebased into
+`data/qctest/...`; a readonly lower-priority `qctest/...` file does NOT block
+that write. Confirm the actual native write target before claiming an IO arm
+ACTED. `SV_RecSaveKeys` consumes/resets `rec_prefix_ok`; retain a local verdict
+before that call, never infer confirmation from the postcall global. Immediate
+same-size/full-reader-row readback is not byte sealing, durability, atomic or
+authenticated state/prefix pairing. Native blank/4094allow/4095refusal and actual
+same-size stale-target controls qualify only that bounded helper.
+
 ### Save-lock map progress markers — P735
 
 Player `targetname` is map progress, not the visible nickname. Monolith B4 and

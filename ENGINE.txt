@@ -25,7 +25,9 @@ commit   903036bfc649cc350070ec85eecfa6ffe344fd5f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-983
-patch    984
+patch    985
+# Patch 985: retry requires immediate state readback and no known buffered-prefix failure.
+# Refusal keeps the current run/recording; no atomic, durable or authenticated pairing claim.
 # Patch 983: frame-polled HTTP downloads drain what arrived (3.2 -> 9.6 MB/s at 100 fps).
 # Patch 977, 979, 982: movement cvars live under sv_cheats 1 (restores listed), bindlist
 # natural order and filter, r_mirrorworld (labels and gamepad follow the mirror).
