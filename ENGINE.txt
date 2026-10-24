@@ -25,7 +25,9 @@ commit   ce175aaa42d4f2763d8b414e2d09a7a022cbdebd
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-963
-patch    966
+patch    968
+# Patch 968: visible-body finish forgiveness uses live carrier/mover cap.
+# No held/rising grant; independent of settled start. Future-output bank remains open.
 # Patch 966: light Character-class viewmodel pieces; retain held model submission.
 # Neutral glove previews unchanged; no native pin, movement or evidence change.
 # Patch 965: range-guard older-save progress lookup before zone-table reads.

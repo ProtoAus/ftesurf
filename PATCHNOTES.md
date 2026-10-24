@@ -21,6 +21,9 @@
 
 ## next
 
+### P968 Check the body before re-arming a hopped start
+- Pending finish forgiveness checks carried speed and your current movement cap, and is not granted while frozen or rising. It can still re-arm after the start has settled.
+
 ### P966 Viewmodel lighting and save-load holds
 - Skin and cloth pieces, including FBI Gray sleeves, now respond to local lighting. Neutral Preview glove styling is unchanged.
 - Your viewmodel stays visible during save-load holds instead of disappearing until release.

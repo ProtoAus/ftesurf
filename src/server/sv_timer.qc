@@ -11837,6 +11837,46 @@ float(entity e) SV_TimerHopInStart =
 	return FALSE;
 };
 
+// Patch 968: judge the visible body, not the engine's cleared transfer window.
+// This is NOT P455's unclosed dwell/future-output guarantee. New map commitments
+// can still arrive later; keep that separate residual explicit.
+void(entity e) SV_TimerFinishForgive =
+{
+	local vector hv;
+	local float cap;
+
+	if (!e.run_t_finfgv || !e.run_t_hopped)
+		return;
+	if (e.run_pmhold || e.rec_sl_hold || e.movetype == MOVETYPE_NONE)
+		return;
+	if (!(e.flags & FL_ONGROUND))
+		return;
+	// Separate terms: a fall must not cancel a pending upward carrier.
+	if (e.velocity_z > 0 || e.run_basevel_z > 0)
+		return;
+	hv = e.velocity + (1 + run_bv_tick * 0.5) * e.run_basevel;
+	hv_z = 0;
+	cap = e.maxspeed;
+	if (cap <= 0)
+		cap = cvar("sv_maxspeed");
+	if (cap <= 0)
+		cap = PM_RUN_SPEED;
+	if (vlen(hv) > cap)
+		return;
+	if (SV_DevOn())
+		dprint(sprintf("hop: %s's hopped-start taint cleared -- %s armed it, "
+		               "visible horizontal speed %.0f <= mover cap %.0f, "
+		               "no upward body/carrier\n",
+		               e.netname, (e.run_t_finfgv == 2) ? "a reset into the box" : "the finish",
+		               vlen(hv), cap));
+	sprint(e, PRINT_HIGH,
+	       "^2start re-armed^7 -- the hopped start died with that run\n");
+	e.run_t_hopped = FALSE;
+	e.run_t_jumps = 0;
+	e.run_t_finfgv = FALSE;
+	e.run_t_hopsaid = 0;
+};
+
 float(entity e) SV_TimerJumpWatch =
 {
 	local float ong, vz, jumped, dwell, want, settleok, launchz, bhopz;
@@ -12267,56 +12307,6 @@ float(entity e) SV_TimerJumpWatch =
 		  does in the hop test above: a hop the server never saw grounded reads a
 		  dwell of zero and re-arms nothing.
 		*/
-		/*
-		  PATCH 454: TAKE THE FORGIVENESS A FINISH ARMED, once there is no prespeed
-		  left to launder.
-
-		  Ground acceleration is capped at sv_maxspeed, so a grounded body at or below
-		  it reaches the start box no faster than one that walked there.  At that point
-		  the tag protects against nothing and clearing it cannot carry speed -- which
-		  is the discriminator every other clear in this design satisfies by zeroing
-		  the velocity, reached here by waiting instead, because a finish cannot zero
-		  it (players coast past the line).
-
-		  EFFECTIVE horizontal speed, not `.velocity`: this file's Patch 403 essay
-		  records that `.velocity` reads ZERO while a push carrier holds the speed,
-		  which is how run_stagecap came to miss 1809 u/s.  So the carrier is added in
-		  and the z component dropped -- falling does not carry you out of a box.
-
-		  No state test: the forgiveness belongs to a run that has ENDED, so it is
-		  taken wherever the player happens to be, including mid-course.  What bounds
-		  it is the speed, not the place.
-		*/
-		// Patch 477: never under a save-lock hold, whose body reads at rest while
-		// the release hands back the saved velocity.  A load's run_t_startok also
-		// keeps it out today (sv_saveloc.qc), which is not a guard anyone chose.
-		if (!e.rec_sl_hold)
-		if (e.run_t_finfgv && e.run_t_hopped && ong)
-		{
-			local vector hv;
-			local float  cap;
-			hv = e.velocity + e.run_basevelocity;
-			hv_z = 0;
-			cap = cvar("sv_maxspeed");
-			if (cap <= 0)
-				cap = PM_RUN_SPEED;     // the mover's own fallback, sh_defs.qc
-			if (vlen(hv) <= cap)
-			{
-				if (SV_DevOn())
-					dprint(sprintf("hop: %s's hopped-start taint cleared -- %s "
-					               "armed it and %.0f u/s is at or below sv_maxspeed "
-					               "%.0f, so there is no prespeed to launder\n",
-					               e.netname, (e.run_t_finfgv == 2) ? "a reset into the box" : "the finish",
-					               vlen(hv), cap));
-				sprint(e, PRINT_HIGH,
-				       "^2start re-armed^7 -- the hopped start died with that run\n");
-				e.run_t_hopped  = FALSE;
-				e.run_t_jumps   = 0;
-				e.run_t_finfgv  = FALSE;
-				e.run_t_hopsaid = 0;
-			}
-		}
-
 		if (run_t_rearmhop && e.run_t_hopped && e.run_t_state == TS_ARMED)
 			if (e.run_t_groundsec > 0 && (SV_ClockSec(e) - e.run_t_groundsec) >= want)
 			{
@@ -12339,6 +12329,10 @@ float(entity e) SV_TimerJumpWatch =
 				SV_TimerForgiveHop(e, "the ground dwell (run_rearmhop 1)");
 			}
 	}
+
+	// A finish/load's pending forgiveness is independent of start settlement.
+	// Run after fresh-hop tagging above, which cancels any older pending grant.
+	SV_TimerFinishForgive(e);
 
 	// The two phase clocks, written last so the dwell computed above is this
 	// tick's rather than next tick's.  Zero means "not in this phase", which is

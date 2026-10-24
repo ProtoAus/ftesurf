@@ -4293,25 +4293,19 @@ below is the collection side and the rules that still only note.
   before `sl_holdoff` -- a rewind countdown's release included, which a
   modified client times -- is cashed out on top of the handed-back speed. That
   path's fix is one SV_ClearCarrier in SV_SaveLocRelease, as SV_WatchRelease has.
-- **PATCH 455 IS NOT MERGED, AND AGENTS.md TALKS AS IF IT WERE.** Rebased onto
-  e7b6562 on 5 Oct as one commit, branch `p455rebase` (50affaa) on origin; the
-  ten rounds are tag `archive/p455fix-r10`. AGENTS.md's "LATENCY BOUND"
-  paragraph and the gate fixes it describes are not in the shipped Patch 454
-  block: the carrier term, the vertical carrier and the `.maxspeed` cap are all
-  still 454's, and 454's check sits inside `if (!e.run_t_startok)`, so it never
-  fires on bhop maps. NOT READY TO MERGE: 44b313b's own message ends "the dwell
-  does not close the bank it was built for, which is round 11", and no round 11
-  exists; the rebase's reading (not driven) is that a write made inside the
-  packet that grants the forgiveness has no wait at all. Lex's call: finish
-  round 11, or cut the patch to round 1's fixes (right field, the mover's cap,
-  the check out of the start block, refuse held or rising bodies) and review
-  that.
-- **Patch 454's carrier term reads `run_basevelocity`, which is always zero there.**
-  The finish forgiveness adds `e.run_basevelocity` to `.velocity` to judge "no
-  prespeed to launder", but the engine zeroes that field at the top of every move
-  (sv_user.c:8577-8581) -- the latched carrier is `run_basevel`. So a body riding
-  a push carrier at a low `.velocity` reads as walking. Found by Patch 477's
-  round-1 integrity review; not changed there (it needs its own arm on a push map).
+- **P455's future-output/dwell bank remains OPEN; P968 repairs only the visible
+  body.** Historical unmerged `p455rebase` (50affaa, based on e7b6562; ten rounds
+  at `archive/p455fix-r10`) is NOT READY: 44b313b's own message says the dwell
+  does not close its bank, and no round11 exists. A new commitment inside the
+  granting packet need not wait; arbitrary future mover/name-addressed writes
+  are not bounded by an already-observed streak. P968 takes the documented
+  bounded alternative: live `run_basevel`, the mover's cap, separate upward
+  body/carrier refusal, freeze guards and the check outside start settlement.
+  Fourteen actual native production-entrypoint control/subject contexts cover
+  those decisions, not actual push-volume/cashout physics or complete future
+  commitments. Falsifier for the remaining bank: act a new delayed commitment
+  inside the granting packet after its prior clear observations; don't import
+  the historical dwell or declare this leaf complete without that acting case.
 - **A thaw past an unrecorded freeze is still reachable**, and convicts a practice
   run's angles (the held-run fault): closing the replay viewer mid-run, `retry`
   or a Multi-Session park under it, and letting go of a save-lock hold. Patch
