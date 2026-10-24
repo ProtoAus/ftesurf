@@ -78,8 +78,31 @@ not authorization, product migration acceptance or live data-preservation proof.
 
 ## Delivery / human acceptance
 
-The checks above establish implementation/component behavior, not the final
-artifact's installation. Native tag/pin, clean role-compatible Windows builds,
-dual-install hashes, matching account service/lobby deployment and provenance
-must be recorded separately. `lextest.md` holds the pending small two-player and
-linked-install owner checks. No Build bump or public release is part of P970.
+Windows delivery verified24Oct2026 16:34:49Z: native source584b21bc / tag
+v1.00-p970 and client source0c129e18 installed in BOTH Windows installs. All27
+planned file swaps and rollback/history copies verify;14,659 protected existing
+entries verify unchanged. Current approved eight-field Friends menu a283fe2a is
+preserved, not replaced by an older seven-field menu. Client SHA256 ef252640c8ab,
+native client ff8e38e45cc9. The final paired artifact controls pass18 checks;
+an installed-primary-client/secondary-dedicated-server smoke passes four more.
+Its first probe correctly failed before weapon-selection acknowledgement; the
+corrected probe waits for actual selection before requiring ready/render/fire.
+
+Pi lobby delivery verified24Oct2026: standard build.ps1 -Pi from clean9b353d16
+(includes the published P971 retry safety fix) compiled all three VMs with zero
+warnings and shipped server2b0a8c940dcb / clientef252640c8ab plus the two committed
+knife shaders. Fresh positive UDP emptiness and exact predecessors were checked;
+all12 actual systemd processes restarted, with expected cwd/native hashes and
+positive QW sockets. Live/prev hashes and29,855 protected existing entries verify
+unchanged (config hashes plus config/data metadata); native/backend/menu were
+not changed. A fresh isolated client downloaded77cc3dcf.dat, byte-identical to the
+qualified client; board UI/log/screenshot checks pass without QC errors. That
+fixture has no online consent: its board frame is not online-times acceptance.
+
+Cloud saving is NOT live. The active account service is still its sealed schema22
+runtime; schema23 needs a separately reviewed additive migration/source-witness
+handoff, including the new module. The existing exact schema20-to22 operator and
+its historical review/consent seals cannot authorize or execute this new cutover.
+No live database, admission gate or frozen witness was changed for P970.
+`lextest.md` holds the pending small two-player check and, after backend delivery,
+the linked-install owner check. No Build bump or public release is part of P970.

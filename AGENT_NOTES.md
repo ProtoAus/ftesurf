@@ -3231,6 +3231,11 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   capabilities with existing `serverkey()`, not `getplayerkeyvalue(-1, ...)`.
   Positive socket controls must show the target/receiver acted; zero warnings and
   quiet logs do not prove a transport. See `tools/p970-viewmodel-setup.md`.
+- **Wait for selection, not a fixed cold-mount sleep (P970).** An installed-byte
+  probe queried after three seconds but before `weapon: selected 1`; ready0/model
+  empty correctly failed. The corrected existing fixture waits for that actual
+  server acknowledgement, then proves ready/render/fire. Version/property output
+  alone is not proof a selected weapon acted. Keep the first failure evidence.
 
 - OPEN BUGS AND FOLLOW-UPS LIVE IN `BACKLOG.md`. Add what you find and do not
   fix (with a file:function and a falsifier); delete it in the fixing commit.
