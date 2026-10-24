@@ -6,6 +6,7 @@ string ui_ms_dismissed;
 float ui_ms_answered, ui_ms_answerat, ui_ms_refused;
 float ui_ms_key1, ui_ms_key2, ui_ms_keyf2;
 float ui_ms_hold, ui_ms_holdseq, ui_ms_holdseen, ui_ms_ignorecount;
+float ui_gfx_open;              // cl_gfx.qc's (fteqcc merges a repeated global); its menu sits here too
 vector ui_ms_holdang;
 
 string() Timer_ResumeKey =
@@ -159,7 +160,7 @@ void(vector scr) Timer_DrawResumeOffer =
 		if (ui_ms_refused) total = total + h;
 
 		p = [scr_x * cvar("hud_saveloc_x"), scr_y * cvar("hud_saveloc_y"), 0];
-		if (rec_sl_open) p_x = p_x + 102 * sc;
+		if (rec_sl_open || ui_gfx_open) p_x = p_x + 102 * sc;
 		_sui_round_draw(p, [w, total, 0], 5 * sc, SUI_THEME_PANEL, 0.90);
 
 		y = p_y + 3 * sc;

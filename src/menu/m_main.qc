@@ -328,7 +328,8 @@ string ms_applied_query;        // what ms_view was last built for
 
 /*
   A map has been launched since the query was last touched, so the next click
-  into the search field empties it.  Build 19.
+  into the search field selects it (Build 19 emptied it; P974 keeps it so a
+  double-click still selects all, and typing replaces it).
 
   The menu VM is NOT torn down by a map load -- m_shutdown is empty and
   MP_Shutdown is not on the `map` path -- so ms_query survives, and until this

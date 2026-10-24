@@ -23,6 +23,7 @@
 .float  run_ms_offer;   // a paused run on this map is on offer
 .float  run_ms_warned;  // told a fresh run will drop it
 .float  run_ms_noteat;  // when to say a kept slot cannot resume (after CSQC can show chat)
+.float  run_ms_kept;    // the offer is a slot accept refuses: kept for !discard only
 .float  run_ms_keyed;   // *resume carries something
 .float  run_ms_keyat;   // when a finished `A` key is cleared
 .float  run_ms_until;   // countdown end
@@ -564,6 +565,7 @@ void(entity e) SV_MsCheck =
 	if (!SV_MsSlotCleanMain(SV_MsPath(e, "state.txt")))
 	{
 		e.run_ms_offer = TRUE;
+		e.run_ms_kept = TRUE;
 		e.run_ms_noteat = time + 2;
 		return;
 	}
@@ -575,6 +577,7 @@ void(entity e) SV_MsCheck =
 		return;
 	}
 	e.run_ms_offer = TRUE;
+	e.run_ms_kept = FALSE;
 	SV_MsKeySet(e, sprintf("O %d %d %d %d %d %d", ms_ticks, ms_seg, ms_segs,
 	                       ms_track, ms_leg, ms_sess));
 	sprint(e, PRINT_CHAT, sprintf("^5resume:^7 your run here is paused at %s -- say "
@@ -1199,7 +1202,7 @@ void(entity e) SV_MsFrame =
 		e.run_ms_noteat = 0;
 		if (e.run_ms_offer)
 			sprint(e, PRINT_CHAT, "^5resume:^7 a paused practice, stage or bonus run is kept here "
-			       "but cannot resume -- say ^5!discard^7 to drop it\n");
+			       "but cannot resume -- a new run drops it, or say ^5!discard^7\n");
 	}
 
 	// A fresh run with an offer standing: warned once, then it wins.
@@ -1211,8 +1214,12 @@ void(entity e) SV_MsFrame =
 			if (!e.run_ms_warned)
 			{
 				e.run_ms_warned = TRUE;
-				sprint(e, PRINT_CHAT, sprintf("^3resume:^7 your paused run is dropped %g s "
-				       "into this one -- ^5!resume^7 goes back to it\n", grace));
+				if (e.run_ms_kept)
+					sprint(e, PRINT_CHAT, sprintf("^3resume:^7 the paused run kept here is dropped "
+					       "%g s into this one\n", grace));
+				else
+					sprint(e, PRINT_CHAT, sprintf("^3resume:^7 your paused run is dropped %g s "
+					       "into this one -- ^5!resume^7 goes back to it\n", grace));
 			}
 			if (SV_TimerElapsed(e) >= grace)
 				SV_MsDiscardOffer(e, "a new run went on");
@@ -1236,6 +1243,7 @@ void(entity e) SV_MsConnect =
 	e.run_ms_offer = FALSE;
 	e.run_ms_warned = FALSE;
 	e.run_ms_noteat = 0;
+	e.run_ms_kept = FALSE;
 	e.run_ms_phase = MS_NONE;
 	e.rec_ms_src = e.rec_ms_dst = -1;
 	SV_MsKeySet(e, "");
