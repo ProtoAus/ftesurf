@@ -50,7 +50,27 @@ Predictions/falsifiers registered before implementation:
   updated explicit CREATE coverage and the SAME test passes. Neither initial
   failure is recorded as a pass.
 
-Status: verified in isolation; source commit/push and matching deployment pending.
+## Clean integrated source qualification
+
+Published P962 workshop prerequisites landed during validation and were merged,
+not overwritten. The merged HL2 header required the existing Full/NoDeploy build:
+Jobs1 (last working bounded-memory route),557.594s, clean QC source
+c3bc153e2d423325d0fe43de464fd554659b2be2 and native
+ce175aaa42d4f2763d8b414e2d09a7a022cbdebd. All3VMs have0warnings;
+7freshAMD64PEs and5embedded resource ZIPs validate. Native warnings match the
+existing74-line baseline exactly:0new. The final native SUBJECT executes again
+and verifies the same proofs/production MENU helpers; old refusal evidence is
+reused, not falsely claimed as rerun. No full extra regression campaign.
+
+Native source tag patch-963 pins ce175aaa4. The ACTUAL compiled Makefile stamp is
+`git-7789-patch-962-4-gce175aaa4`; a source tag is not substituted for that stamp.
+Both feature sources are published. Later merges into native9ccaa87f5/QCa1f82713
+contain peer documentation only, not new code or relabelled/redated build proof.
+No release or Build number is implied. The initial artifact check used the wrong
+DLL suffix; corrected to the documented x64/embedded-ZIP contract without
+rebuilding or changing the passing product.
+
+Status: source published and clean cohort qualified; matching deployment pending.
 Do NOT mix with the older NativeClock delivery cohort or reset its gates. The
 serving service must match schema22 and this Social implementation before the
 heartbeat/chat menu ships. Human-only checks: lextest.md. No Build/release bump.
