@@ -12,6 +12,16 @@
   UV/bodygroup, not blanket-flip every model. Actual hold/release continuously
   submits visible model without re-equip or movement/hold/evidence changes.
 
+## Older-save progress fallback array guard (24 Oct 2026)
+- Site: src/server/sv_saveloc.qc:SV_SaveApplyState, the legacy MOM-progress
+  fallback. An absent legacy arm-zone index reaches a zone-array expression
+  under QC's non-short-circuit boolean evaluation and stops the server VM.
+- Falsifier: load the retained older-state compatibility fixture on an owned
+  dedicated VM; require a graceful restore/refusal without an array-bound stop.
+  The input and actual native failure are retained privately. Guard/range-check
+  before indexing; do not repair a shared fixture or weaken the VM bound check.
+- Separate from P964's stage cursor/arming repair; not yet fixed or deployed.
+
 ## Tooling - shipguard optional source-census assertions (23 Oct 2026)
 - Sites: tools/test_shipguard.py:ShipGuardTests.test_runtime_paths_are_narrowly_explained
   and test_curated_zone_cache_is_narrow_and_runtime_only. Existing fixed counts
