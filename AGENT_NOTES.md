@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## Pending re-arm provenance on exact retry (P972, 2026-10-24)
+
+- `SV_SaveWriteState` carries existing `run_t_finfgv` in additive `finfgv` metadata.
+  Only exact retry1 restores1/2 when restoring a saved hopped bit. Ordinary load
+  and Multi-Session2 retain their own policies; missing/invalid/duplicate keys
+  grant nothing. Count bare keys too: skipping malformed singleton rows first
+  lets a later valid duplicate look unique. Literal1/2 only, no numeric coercion.
+  The legacy loop stops at blank lines: require nonnegative native read-position
+  and file-size values to match before accepting the optional grant, so an
+  unread tail cannot hide a second key within the supported save-state range.
+- Native actual writer/full apply/jump-watch/next-start controls (14 per arm)
+  show pending1/2 survived by subject only, with matching not-practice outcome
+  at explicit rest. Genuine hopped/no grant, old/bad/duplicate metadata, other
+  modes, saved unhopped and upward-body refusal stay unchanged. Synthetic field
+  initialization is not a real finish/reset/client/map restart or ranking proof.
+  No new rest threshold, recorder grammar, capture, native pin/tag or Build.
+
 ## Retry recorder preparation (P971, 2026-10-24)
 
 - `SV_RecDestream` may return FALSE after dropping a broken stream. Check before

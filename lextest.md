@@ -1,5 +1,7 @@
 # lextest.md — things waiting on a human
 
+**P972 — earned re-arm after retry (pending, not owner-confirmed):** With a hopped-start tag and a finish/reset waiting for you to stop, retry before stopping. Come to ordinary grounded rest, then start again: it should be a normal timed start, just as without retry. This native API check does not replace a real finish/reset and map-restart observation.
+
 **P971 — ordinary retry (pending, not owner-confirmed):** After walking out of a start and moving for a few seconds, use normal retry once. Confirm that it returns to the same point and the timer continues. Native synthetic-entity/file controls cover preparation refusal, not this real-client/map-restart observation.
 
 ## P970 — account setup and followed-player viewmodels (delivery pending)

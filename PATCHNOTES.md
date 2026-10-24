@@ -21,6 +21,9 @@
 
 ## next
 
+### P972 Keep earned re-arming across retry
+- Retry preserves a finish or reset's pending re-arm, so coming to rest afterward can clear the old hopped-start tag just as it would without retry. A genuine hopped start still needs its normal reset.
+
 ### P971 Keep retry in place when recording preparation fails
 - Retry no longer restarts the map if its recording cannot be prepared. If that failure lost the current recording, the attempt is cancelled with an explanation; ordinary retry still works without recording.
 

@@ -1375,6 +1375,8 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  bare hash is not a map name.
 	*/
 	fputs(f, sprintf("hopped %d\n", e.run_t_hopped));
+	// Patch 972: exact retry carries an existing finish/reset grant, not a new clear.
+	fputs(f, sprintf("finfgv %d\n", e.run_t_finfgv));
 	// Patch 840: the run's clock comparison so far (run_t_ckwall), so a resume
 	// continues it rather than starting it again.  Not `clock`: that key is the
 	// counted/sampled word above.
@@ -1717,6 +1719,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float cht;                // build 44, the cheat latch
 	local float hcy;                // Patch 478 r11, run_t_handcarry
 	local float hop;                // Patch 445, the hopped-start taint
+	local float fgv, fgvseen;        // Patch 972, exact retry's pending grant
+	local int fgvpos, fgvbytes;
 	local float ckwt, ckn, ckncr, ckcr, ckd, cktr, ckpk, ckup, cku, ckcb;   // Patch 840, `slowclk`
 	local float rwd;                // Patch 477, a rewind save (see REWIND)
 	local string fcrc;              // Patch 450, the file's *mapcrc ("" = absent)
@@ -1750,6 +1754,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	// than merely a safe value: before this key existed a retry always came back
 	// unhopped.  Explicit because fteqcc does not zero locals.
 	hop = 0;
+	fgv = fgvseen = 0;              // absent/invalid/duplicate never grants forgiveness
 	rwd = 0;
 	ckwt = ckn = ckncr = ckcr = ckd = cktr = ckpk = ckup = cku = 0;   // Patch 840
 	ckcb = RUN_CK_FREE;
@@ -1779,9 +1784,23 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	while ((k = fgets(f)) != "")
 	{
 		n = tokenize(k);
-		if (n < 2)
+		if (n < 1)
 			continue;
 		k = argv(0);
+		// Count even a bare key, so malformed duplicates cannot leave a grant.
+		if (!strcmp(k, "finfgv"))
+		{
+			fgv = 0;
+			fgvseen = fgvseen + 1;
+			if (n == 2 && fgvseen == 1)
+			{
+				if (!strcmp(argv(1), "1")) fgv = 1;
+				else if (!strcmp(argv(1), "2")) fgv = 2;
+			}
+			continue;
+		}
+		if (n < 2)
+			continue;
 
 		if (k == "state")      { st  = stof(argv(1)); continue; }
 		if (k == "track")      { tr  = stof(argv(1)); continue; }
@@ -1869,6 +1888,12 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 			continue;
 		}
 	}
+	// The legacy loop also stops at an empty line. An unread tail could hide
+	// another grant key; suppress this optional grant unless we reached EOF.
+	fgvpos = fseek(f);
+	fgvbytes = fsize(f);
+	if (fgvpos < 0i || fgvbytes < 0i || fgvpos != fgvbytes)
+		fgv = 0;
 	fclose(f);
 
 	if (viewseconds < 0 || viewseconds - viewseconds != 0)
@@ -2295,7 +2320,11 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (hop)
 		{
 			e.run_t_hopped = TRUE;
-			e.run_t_finfgv = FALSE;     // Patch 477 review round 10: `!r`'s, as restored
+			e.run_t_finfgv = FALSE;
+			// Patch 972: only exact retry transports its already-earned grant;
+			// Multi-Session2 retains the separate raise-only policy above.
+			if (retry == 1)
+				e.run_t_finfgv = fgv;
 		}
 	}
 	else
