@@ -21,6 +21,9 @@
 
 ## next
 
+### P958 Saved-run check resilience
+- Saved-run checks report damaged numeric data without interrupting checks of other recordings.
+
 ### P957 Legacy knife workshop
 - Equip mounted CS:GO Legacy Butterfly or M9 knives with butterfly or m9, and play their inspect animation with inspect. Requires installed Legacy content and an updated client; CSS knife remains available with knife_css.
 - Type knife_menu for a small local Original/Fade/Web/Marble workshop with pattern seed, scale, rotation, fade amount and wear. These are local cosmetic previews, not Steam inventory or exact CS paint kits.

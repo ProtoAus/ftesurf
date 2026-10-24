@@ -158,12 +158,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - **A run parked before the P893 deploy and resumed after it** writes fl 8 rows under a header with no
   `tickparts 1`; SV_MsStale does not compare tickparts. Today only a note (resumed files are outside the
   angle join); add tickparts to SV_MsStale before a reader joins across sessions.
-- **reccheck still raises on some hostile single tokens (pre-existing, review 7 of P893):** a sample
-  pitch/yaw of nan (angle_join's int(round())), an `in` angle of nan/inf or a float32-overflowing digit
-  string, a sample fl/keys of nan/inf, a header flags of inf, a non-numeric `end` field, a non-numeric
-  move in a v6-v8 `in` row. rcptcheck turns a raise into "not checked" notes; the CLI stops at the
-  file. No live path feeds a player's own file to these readers today. One hardening pass: every
-  float() of a file token through a finite-or-fault helper. Fuzz: rev893r7/fuzz.py (scratchpad).
 - **The exempt-row share is unbounded (P893):** a writer of the .rec alone can exempt 64 rows in 65 and
   keep the angle verdict OK, since exempt rows leave the coverage denominator; only split_rows and
   in_per_packet show it. A writer who also writes the .view beats the join anyway.

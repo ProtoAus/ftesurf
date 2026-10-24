@@ -520,17 +520,32 @@ def is_sample(tok):
     return tok[0].isdigit() or (tok[0] == "-" and len(tok) > 1 and tok[1].isdigit())
 
 
-def is_float(s):
-    """Does this token parse as a number at all?
+class NumericFieldError(ValueError):
+    """A parsed file number cannot be used by the recorder's float32 fields."""
 
-    Build 83.  Written because two checks now want to say "this field is not a
-    number" as a fault rather than raise ValueError out of the checker -- which
-    is what an unguarded float() does, and what ramp_report still does at its
-    own version read.  A checker that crashes on a malformed file reports
-    nothing about the file.
-    """
+
+_F32_MAX = float.fromhex("0x1.fffffep+127")
+
+
+def file_float(token):
+    value = float(token)
+    if not math.isfinite(value):
+        raise NumericFieldError("non-finite numeric field")
+    if abs(value) > _F32_MAX:
+        # A printed decimal just above the exact maximum can still round to
+        # that finite float32. Validate its conversion without rounding normal
+        # parsing or rejecting the recorder's own decimal spelling.
+        try:
+            qc_float(value)
+        except ValueError as exc:
+            raise NumericFieldError("numeric field outside float32 range") from exc
+    return value
+
+
+def is_float(s):
+    """Is this a finite, float32-representable file number?"""
     try:
-        float(s)
+        file_float(s)
         return True
     except ValueError:
         return False
@@ -668,7 +683,7 @@ def parse_spec(r, ln, tok):
                 "vz fl wall%s), has %d" % (ln, tok[1], want, "" if on else " why", len(a)))
         return on, None, None, None
     try:
-        v = [float(x) for x in a[:11]]
+        v = [file_float(x) for x in a[:11]]
     except ValueError:
         v = None
     if v is None or not all(math.isfinite(x) for x in v) or not is_int(a[1]) \
@@ -703,6 +718,14 @@ def read_lines(path, data=None):
 
 def check_rec(path, verbose=False, *, data=None):
     r = Report(path)
+    try:
+        return _check_rec(r, path, verbose, data=data)
+    except NumericFieldError as exc:
+        r.fault(str(exc))
+        return r
+
+
+def _check_rec(r, path, verbose=False, *, data=None):
     if data is None:
         with open(path, "rb") as stream:
             data = stream.read()
@@ -780,6 +803,15 @@ def check_rec(path, verbose=False, *, data=None):
         if k not in head:
             r.fault("header is missing %r" % k)
     r.info.update(head)
+    # These numeric header fields also need validation when the body has no
+    # checkpoint row that would otherwise consume them. Unknown legacy keys
+    # remain opaque, as before.
+    for key in ("leg", "startseg"):
+        if key in head and key in allowed:
+            try:
+                file_float(head[key])
+            except ValueError:
+                r.fault("header %r is not a number: %r" % (key, head[key]))
 
     # Patch 893 review 5: a rate the reader divides by (the exempt-chain cap) -- nan, inf or a
     # subnormal from a hostile writer raised there, and every fault of the file became "not checked".
@@ -983,7 +1015,7 @@ def check_rec(path, verbose=False, *, data=None):
         elif not all(is_float(x) for x in f):
             r.fault("startjit %r has a non-numeric field" % sj)
         else:
-            u, dx, dy, dz = (float(x) for x in f)
+            u, dx, dy, dz = (file_float(x) for x in f)
             if u < 0:
                 r.fault("startjit rule %g is negative" % u)
             # dz is structurally 0: the rule is horizontal, and the column is
@@ -1039,7 +1071,7 @@ def check_rec(path, verbose=False, *, data=None):
             r.info["movebnd"] = "not stated (no bound applied)"
         else:
             try:
-                movebnd = float(mb)
+                movebnd = file_float(mb)
             except ValueError:
                 r.fault("header 'movebnd' is not a number: %r" % mb)
             else:
@@ -1210,7 +1242,7 @@ def check_rec(path, verbose=False, *, data=None):
                             % (lineno + 1, len(tok), ver, want_cols))
                 continue
             try:
-                vals = [float(x) for x in tok]
+                vals = [file_float(x) for x in tok]
             except ValueError:
                 r.fault("line %d has a non-numeric column" % (lineno + 1))
                 continue
@@ -1274,8 +1306,8 @@ def check_rec(path, verbose=False, *, data=None):
                 continue
             try:
                 pk, mt = int(tok[1]), int(tok[2])
-                carry = float(tok[3])
-                ang = [float(x) for x in tok[7:10]]
+                carry = file_float(tok[3])
+                ang = [file_float(x) for x in tok[7:10]]
                 bt = int(tok[10])
                 if ver >= 9:
                     for x in tok[4:7]:
@@ -1295,7 +1327,7 @@ def check_rec(path, verbose=False, *, data=None):
             # bound: `worst` is the number a bound gets chosen from, and reporting
             # it for an unbounded file is what makes an abstention visible rather
             # than silent.
-            mvx = max(abs(float(tok[4])), abs(float(tok[5])), abs(float(tok[6])))
+            mvx = max(abs(file_float(tok[4])), abs(file_float(tok[5])), abs(file_float(tok[6])))
             if mvx > in_movemax:
                 in_movemax = mvx
             if movebnd is not None and mvx > movebnd:
@@ -1702,15 +1734,15 @@ def check_rec(path, verbose=False, *, data=None):
                 r.fault("line %d: 'pause' takes <mt> <carry> <ticks> <why>"
                         % (lineno + 1))
             else:
-                pmt, ptk, why = int(a[0]), float(a[2]), a[3]
+                pmt, ptk, why = int(a[0]), file_float(a[2]), a[3]
                 view_pause_valid = (view_pause_valid and pmt >= 0 and ptk >= 0
-                                    and 0 <= float(a[1]) < tickrate and why in PAUSE_WHY)
+                                    and 0 <= file_float(a[1]) < tickrate and why in PAUSE_WHY)
                 # Patch 382: a Multi-Session pause restates a `spec 0` before it;
                 # a retry/load pause states the last row's counter, so it ends
                 # the check unread.
                 if why in PAUSE_MS:
                     spec_restates(r, lineno + 1, "the '%s' pause" % why, pmt,
-                                  float(a[1]), spec_pend)
+                                  file_float(a[1]), spec_pend)
                 if why not in PAUSE_WHY:
                     r.note("line %d: pause reason %r is not one this tool knows (%s)"
                            % (lineno + 1, why, ", ".join(PAUSE_WHY)))
@@ -1729,7 +1761,7 @@ def check_rec(path, verbose=False, *, data=None):
                 r.fault("line %d: 'session' takes <n> <mt> <carry> <ticks>"
                         % (lineno + 1))
             else:
-                n, smt, stk = int(a[0]), int(a[1]), float(a[3])
+                n, smt, stk = int(a[0]), int(a[1]), file_float(a[3])
                 if open_pause is None:
                     r.fault("line %d: 'session %d' with no 'pause' before it"
                             % (lineno + 1, n))
@@ -1745,7 +1777,7 @@ def check_rec(path, verbose=False, *, data=None):
                     session_edges.append(lineno + 1)
                     if view_open is not None:
                         r.fault("line %d: viewclock open across session" % (lineno + 1))
-                    elif view_pause_valid and smt >= 0 and 0 <= float(a[2]) < tickrate:
+                    elif view_pause_valid and smt >= 0 and 0 <= file_float(a[2]) < tickrate:
                         view_lastwall = None
                 view_pause_valid = False
                 cur_horizon = smt
@@ -1804,7 +1836,7 @@ def check_rec(path, verbose=False, *, data=None):
             # <behind>, written once by the finish.  The debt may be negative
             # (surplus); nothing may be NaN.
             try:
-                v = [float(x) for x in tok[1:]]
+                v = [file_float(x) for x in tok[1:]]
             except ValueError:
                 v = None
             if (v is None or len(v) != 8 or any(not math.isfinite(x) for x in v)
@@ -2053,7 +2085,7 @@ def check_rec(path, verbose=False, *, data=None):
             e_mt = int(a[0])
             r.info["inend"] = a[0]
             if ver >= 8:
-                closing_carry = float(a[1])
+                closing_carry = file_float(a[1])
                 if closing_carry == 0:
                     # Binary64 can erase a nonzero sign. The exact coefficient
                     # distinguishes it from signed zero without exponent work.
@@ -2203,11 +2235,11 @@ def check_rec(path, verbose=False, *, data=None):
             if ver in (14, 15):
                 if not 0 <= int(a[6]) < 1048576:
                     r.fault("line %d: relative 'mc' rejects outside its 2^20 wrap" % ln)
-                if mc_index == 0 and any(float(x) != 0 for x in a[2:7]):
+                if mc_index == 0 and any(file_float(x) != 0 for x in a[2:7]):
                     r.fault("line %d: recording-relative 'mc' must start at zero" % ln)
-            if not all(0 <= float(x) < 1048576 for x in a[2:6]):
+            if not all(0 <= file_float(x) < 1048576 for x in a[2:6]):
                 r.fault("line %d: 'mc' count outside its 2^20 wrap" % ln)
-            elif (float(a[2]), float(a[3])) != (float(a[4]), float(a[5])):
+            elif (file_float(a[2]), file_float(a[3])) != (file_float(a[4]), file_float(a[5])):
                 r.note("line %d: 'mc' ring %s %s but read %s %s -- the view used "
                        "counts the device did not send" % (ln, a[2], a[3], a[4], a[5]))
         r.info["pms"] = len(pms)
@@ -2328,7 +2360,7 @@ def check_rec(path, verbose=False, *, data=None):
                 r.fault("line %d: 'ghost' takes 2 fields, has %d" % (ln, len(a)))
                 continue
             try:
-                on, tick = int(float(a[0])), float(a[1])
+                on, tick = int(file_float(a[0])), file_float(a[1])
             except ValueError:
                 r.fault("line %d: 'ghost' has a non-numeric field" % ln)
                 continue
@@ -2425,8 +2457,8 @@ def check_rec(path, verbose=False, *, data=None):
         # stagestart, or 0 for the run's own first stage); pending = a post
         # awaiting the boundary (or trailer) that closes its stage.
         try:
-            head_leg = int(float(r.info.get("leg", 0) or 0))
-            head_seg = int(float(r.info.get("startseg", 0) or 0))
+            head_leg = int(file_float(r.info.get("leg", 0) or 0))
+            head_seg = int(file_float(r.info.get("startseg", 0) or 0))
         except ValueError:
             head_leg, head_seg = 0, 0
         base = 0
@@ -2439,7 +2471,7 @@ def check_rec(path, verbose=False, *, data=None):
                     r.fault("line %d: 'stagepost' takes 3 fields, has %d" % (ln, len(a)))
                     continue
                 try:
-                    pseg, pdur, plaunch = (float(x) for x in a)
+                    pseg, pdur, plaunch = (file_float(x) for x in a)
                 except ValueError:
                     r.fault("line %d: 'stagepost' has a non-numeric field" % ln)
                     continue
@@ -2464,7 +2496,7 @@ def check_rec(path, verbose=False, *, data=None):
                 r.fault("line %d: %r takes 2 fields, has %d" % (ln, kind, len(a)))
                 continue
             try:
-                seg, tick = float(a[0]), float(a[1])
+                seg, tick = file_float(a[0]), file_float(a[1])
             except ValueError:
                 r.fault("line %d: %r has a non-numeric field" % (ln, kind))
                 continue
@@ -2530,7 +2562,7 @@ def check_rec(path, verbose=False, *, data=None):
         if pending is not None and saw_end is not None:
             pln, pseg, pdur, pbase = pending
             try:
-                eticks = float(saw_end[1][0])
+                eticks = file_float(saw_end[1][0])
                 if eticks - pbase != pdur:
                     r.fault("line %d: 'stagepost %d' says %g ticks, but its stage ran "
                             "%g to the finish" % (pln, pseg, pdur, eticks - pbase))
@@ -2553,7 +2585,7 @@ def check_rec(path, verbose=False, *, data=None):
             r.fault("line %d: a second 'abandon'" % abandons[1][0])
         aln, aa = abandons[0]
         try:
-            aticks = float(aa[0]) if len(aa) == 1 else None
+            aticks = file_float(aa[0]) if len(aa) == 1 else None
         except ValueError:
             aticks = None
         if aticks is None:
@@ -2565,7 +2597,7 @@ def check_rec(path, verbose=False, *, data=None):
                         "the clock it was written with had been rewound" % (aln, aticks, stage_last))
             if saw_end is not None:
                 try:
-                    if float(saw_end[1][0]) != aticks:
+                    if file_float(saw_end[1][0]) != aticks:
                         r.fault("line %d: 'abandon %g' but the trailer says %s ticks"
                                 % (aln, aticks, saw_end[1][0]))
                 except (ValueError, IndexError):
@@ -2581,7 +2613,7 @@ def check_rec(path, verbose=False, *, data=None):
                 r.fault("line %d: 'cp' takes 2 fields, has %d" % (ln, len(a)))
                 continue
             try:
-                rows.append((ln, float(a[0]), float(a[1])))
+                rows.append((ln, file_float(a[0]), file_float(a[1])))
             except ValueError:
                 r.fault("line %d: 'cp' has a non-numeric field" % ln)
 
@@ -2639,6 +2671,13 @@ def check_rec(path, verbose=False, *, data=None):
             if not all(math.isfinite(x) for x in board_values):
                 r.fault("line %d: 'board' has a non-finite field" % ln)
                 continue
+            if any(abs(x) > _F32_MAX for x in board_values):
+                try:
+                    for value in board_values:
+                        file_float(value)
+                except NumericFieldError as exc:
+                    r.fault("line %d: 'board': %s" % (ln, exc))
+                    continue
             if bt < 0:
                 r.fault("line %d: 'board' has a negative time" % ln)
                 continue
@@ -2669,7 +2708,7 @@ def check_rec(path, verbose=False, *, data=None):
         skipped = 0
         for i in range(1, len(boards)):
             try:
-                a, b = float(boards[i - 1][1][1]), float(boards[i][1][1])
+                a, b = file_float(boards[i - 1][1][1]), file_float(boards[i][1][1])
             except (ValueError, IndexError):
                 continue
             if b - a > 1:
@@ -2742,7 +2781,7 @@ def check_rec(path, verbose=False, *, data=None):
 
     if ver >= 4 and "flags" in head:
         try:
-            fv = int(float(head["flags"]))
+            fv = int(file_float(head["flags"]))
         except ValueError:
             r.fault("header 'flags' is not a number: %r" % head["flags"])
         else:
@@ -3039,16 +3078,16 @@ def check_rec(path, verbose=False, *, data=None):
                     r.fault("line %d: 'end' has extra fields after its v11 "
                             "clockend count (%d fields)" % (ln, len(args)))
                 independent_closing_faults += 1
-            e_ticks, e_n, e_pad, e_cp = (float(x) for x in args[:4])
+            e_ticks, e_n, e_pad, e_cp = (file_float(x) for x in args[:4])
             if want_end >= 12 and len(args) >= 12:
                 if not is_int(args[11]) or exact_finish_ticks(args[11]) != len(clockends):
                     r.fault("'end' clockend count is not the body's exact count %d"
                             % len(clockends))
                     independent_closing_faults += 1
             if want_end >= 11:
-                if int(float(args[10])) != len(sessions):
+                if int(file_float(args[10])) != len(sessions):
                     r.fault("'end' says %d sessions, the file has %d"
-                            % (int(float(args[10])), len(sessions)))
+                            % (int(file_float(args[10])), len(sessions)))
             if open_pause is not None:
                 r.fault("line %d: an 'end' trailer with the pause at line %d "
                         "unanswered -- a run does not finish while parked"
@@ -3056,11 +3095,11 @@ def check_rec(path, verbose=False, *, data=None):
             if want_end >= 10:
                 for nm, got, x in (("pm", pms, args[7]), ("pe", pes, args[8]),
                                    ("portal", portals, args[9])):
-                    if int(float(x)) != len(got):
+                    if int(file_float(x)) != len(got):
                         r.fault("'end' says %d %s records, the file has %d"
-                                % (int(float(x)), nm, len(got)))
+                                % (int(file_float(x)), nm, len(got)))
             if want_end >= 7:
-                e_ride = float(args[6])
+                e_ride = file_float(args[6])
                 # EXACT, and the loudest of the three for the reason above: a
                 # disagreement here means a reader is holding a carrier value the
                 # server never wrote, for an unbounded span.
@@ -3068,7 +3107,7 @@ def check_rec(path, verbose=False, *, data=None):
                     r.fault("'end' says %d ride records, the file has %d"
                             % (int(e_ride), len(rides)))
             if want_end >= 6:
-                e_warp = float(args[5])
+                e_warp = file_float(args[5])
                 # EXACT, LIKE <inputs> AND UNLIKE <samples>.  The writer counts
                 # only records that actually landed, so a disagreement means the
                 # file was truncated below the trailer or edited.
@@ -3082,7 +3121,7 @@ def check_rec(path, verbose=False, *, data=None):
                     r.fault("'end' says %d warp records, the file has %d"
                             % (int(e_warp), len(warps)))
             if want_end >= 5:
-                e_in = float(args[4])
+                e_in = file_float(args[4])
                 # COUNTED AGAINST THE BODY, like the three above it.  The writer
                 # increments only when a line actually landed, so a disagreement
                 # here means the file was truncated below the trailer or edited
@@ -3855,6 +3894,14 @@ def check_view(path, rec_report=None, *, data=None):
     makes its own checker complain teaches everyone to stop reading it.
     """
     r = Report(path)
+    try:
+        return _check_view(r, path, rec_report, data=data)
+    except NumericFieldError as exc:
+        r.fault(str(exc))
+        return r
+
+
+def _check_view(r, path, rec_report=None, *, data=None):
     lines = read_lines(path, data)
 
     if not lines or not lines[0].startswith("FTESURF-VIEW"):
@@ -3914,7 +3961,7 @@ def check_view(path, rec_report=None, *, data=None):
                 r.fault("line %d: .view 'ghost' takes 3 fields, has %d" % (lineno + 1, len(tok) - 1))
                 continue
             try:
-                gst, gct, gtk = int(tok[1]), float(tok[2]), float(tok[3])
+                gst, gct, gtk = int(tok[1]), file_float(tok[2]), file_float(tok[3])
             except ValueError:
                 r.fault("line %d: .view 'ghost' has a non-numeric field" % (lineno + 1))
                 continue
@@ -3953,6 +4000,15 @@ def check_view(path, rec_report=None, *, data=None):
                     "or inf in it, and being uncomparable is not a pass"
                     % (lineno + 1))
             continue
+        # Keep the per-row non-finite path above: later good frames must still
+        # be compared. A finite decimal outside float32 has the same boundary.
+        if any(abs(x) > _F32_MAX for x in row):
+            try:
+                for value in row:
+                    file_float(value)
+            except NumericFieldError as exc:
+                r.fault("line %d: %s" % (lineno + 1, exc))
+                continue
         frames.append(row)
 
     if not frames:
@@ -4034,11 +4090,17 @@ def tamper_view(path):
     rule's on a pre-v9 file or a client fast enough to leave no one-frame ticks.
     """
     rec = check_rec(path)
+    if not rec.ok:
+        emit(rec, True)
+        return 1
     view = os.path.splitext(path)[0] + ".view"
     if not os.path.exists(view):
         print("%s has no .view beside it" % path)
         return 1
     base = check_view(view, rec)
+    if not base.ok:
+        emit(base, True)
+        return 1
     if "angle_off" not in base.info:
         print("%s: nothing joined, so there is nothing to control" % view)
         return 1
@@ -4102,7 +4164,7 @@ def tamper_view(path):
         for i, ln in enumerate(body):
             tok = ln.split()
             if len(tok) == 6 and lo * n <= i < hi * n:
-                tok[4] = "%.2f" % (((float(tok[4]) + deg) + 180.0) % 360.0 - 180.0)
+                tok[4] = "%.2f" % (((file_float(tok[4]) + deg) + 180.0) % 360.0 - 180.0)
                 ln = " ".join(tok)
             out.append(ln)
         return out
@@ -4191,7 +4253,10 @@ def ramp_report(path):
     with open(path, "r", errors="replace") as f:
         first = f.readline().split()
         if len(first) >= 2 and first[0] == "FTESURF-REC":
-            ver = int(first[1])
+            try:
+                ver = int(first[1])
+            except ValueError as exc:
+                raise NumericFieldError("recording version is not a number") from exc
         inhead = True
         for line in f:
             tok = line.split()
@@ -4204,7 +4269,7 @@ def ramp_report(path):
                     head[tok[0]] = tok[1]
                 continue
             if is_sample(tok[0]) and len(tok) >= COLUMNS[4]:
-                samples.append([float(x) for x in tok])
+                samples.append([file_float(x) for x in tok])
 
     if ver < 4:
         print("%s: FTESURF-REC %d -- no ramp bit and no per-sample plane.  "
@@ -4212,7 +4277,7 @@ def ramp_report(path):
               % (os.path.basename(path), ver))
         return
 
-    tick = float(head.get("tickrate", 0.015)) or 0.015
+    tick = file_float(head.get("tickrate", 0.015)) or 0.015
     gapmax = max(1, int(round(GAPMAX_S / tick)))
     holdticks = HOLD_S / tick
 
@@ -4422,17 +4487,20 @@ def main():
                          "what the angle cross-check catches")
     a = ap.parse_args()
 
-    if a.tamper_view:
+    if a.tamper_view or a.ramps:
         if not a.files:
-            raise SystemExit("--tamper-view needs a .rec whose .view is beside it")
-        return max(tamper_view(p) for p in a.files)
-
-    if a.ramps:
-        if not a.files:
-            raise SystemExit("--ramps needs a .rec to look at")
+            raise SystemExit("--tamper-view/--ramps needs a .rec to look at")
+        bad = 0
         for p in a.files:
-            ramp_report(p)
-        return 0
+            try:
+                result = tamper_view(p) if a.tamper_view else ramp_report(p)
+                bad = max(bad, result or 0)
+            except NumericFieldError as exc:
+                r = Report(p)
+                r.fault(str(exc))
+                emit(r, a.verbose)
+                bad = 1
+        return bad
 
     files = a.files
     if not files:
