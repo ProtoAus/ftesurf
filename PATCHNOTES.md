@@ -21,6 +21,9 @@
 
 ## next
 
+### P984 Momentum zones on more CS:S builds
+- 31 CS:S and KSF builds that timed only a main start and end from their own triggers (surf_axiom_css among them) now use the Momentum map's zones, with its stages and bonuses.
+
 ### P983 Faster map downloads in the game
 - The game reads everything that has arrived each frame instead of one piece, so a map download runs at your connection's speed (about 3x faster at 100 fps).
 

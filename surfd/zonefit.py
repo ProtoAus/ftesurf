@@ -16,10 +16,14 @@ lump carries those names.  fit() -> (verdict, why):
               two worlds' mins more than FRAME units apart
   NO-DESTS    a teleDestTargetname the target does not have
   EMPTY       the file names no region: nothing to copy
-  OWN-TIMER   the target carries Momentum's own timer triggers in its BSP: it
-              is timed already, and a file would be a second rule on top
   UNREADABLE  a file that is not a VBSP this can read, or zones that are not
               the shape Momentum publishes
+
+A target with Momentum's own timer triggers in its BSP is still FIT (P984,
+Lex: every CS:S/KSF build gets the Momentum zones): the server reads a zone
+file first and builds zones from the triggers only when there is none
+(sv_zones.qc), so the file replaces that timing -- usually a main start and
+end -- with Momentum's stages and bonuses. It was the OWN-TIMER refusal.
 
 Only FIT is a yes.  Everything read here is bounded: these are files a
 stranger compiled.
@@ -202,8 +206,6 @@ def fit(zone_bytes, donor_bsp, target_bsp):
     if src is None or tgt is None:
         return "UNREADABLE", "%s is not a VBSP this reads" % ("the donor" if src is None
                                                              else "the target")
-    if tgt[3]:
-        return "OWN-TIMER", "the target has Momentum's timer triggers in its BSP"
     out = [tag for tag, box in boxes
            if box and tag.endswith(("start", "end", "stage"))
            and any(box[1][a] < tgt[0][a] - SLACK or box[0][a] > tgt[1][a] + SLACK
@@ -217,4 +219,5 @@ def fit(zone_bytes, donor_bsp, target_bsp):
     if missing:
         return "NO-DESTS", "%d of %d teleDestTargetname absent from the target (%s)" % (
             len(missing), len(want), missing[0][:40])
-    return "FIT", "%d regions, %d destinations all present" % (len(regs), len(want))
+    return "FIT", "%d regions, %d destinations all present%s" % (
+        len(regs), len(want), "; replaces its own timer triggers" if tgt[3] else "")

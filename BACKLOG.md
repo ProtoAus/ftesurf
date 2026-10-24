@@ -1,5 +1,15 @@
 # BACKLOG.md
 
+## P984: the live mapwatch still refuses OWN-TIMER until the next surfd generation
+
+- Site: the cron's mapwatch runs from the sealed generation a849051e (transition
+  guard), whose surfd/zonefit.py still returns OWN-TIMER. P984's 31 builds were
+  given by hand (tools-side one-off under the mapwatch flock, receipt in the
+  P984 entry); a NEW CS:S/KSF build with its own triggers gets Momentum's zones
+  only once a generation built from main carries P984's zonefit.
+- Falsifier: after the next generation cutover, mapwatch prints "given to a
+  second build" for such a map; its nofit table no longer lists OWN-TIMER.
+
 ## hidcheck: leftisright values the journal cannot carry exactly (P982 review 2)
 
 - Sites: engine client/in_generic.c journals cvar strings through COM_QuotedString

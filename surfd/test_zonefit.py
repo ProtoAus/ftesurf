@@ -114,10 +114,13 @@ def main():
         check(label, got[0], want)
         pairs.append((i, zb, want))
 
-    check("a target with Momentum's own timer triggers in its BSP is timed already",
-          Z.fit(zones(), donor, put("own.bsp", vbsp(W1[0], W1[1], ["start_dest"], extra=(
-              b'{\n"classname" "trigger_momentum_timer_start"\n"model" "*1"\n}\n'))))[0],
-          "OWN-TIMER")
+    own = Z.fit(zones(), donor, put("own.bsp", vbsp(W1[0], W1[1], ["start_dest"], extra=(
+        b'{\n"classname" "trigger_momentum_timer_start"\n"model" "*1"\n}\n'))))
+    check("a target with its own timer triggers takes a fitting file (P984): it replaces them",
+          (own[0], "own timer" in own[1]), ("FIT", True))
+    check("...and its own triggers do not excuse a shifted world",
+          Z.fit(zones(), donor, put("ownshift.bsp", vbsp((-3584, -4096, -512), W1[1], ["start_dest"], extra=(
+              b'{\n"classname" "trigger_momentum_timer_start"\n"model" "*1"\n}\n'))))[0], "SHIFTED")
     check("a number no float holds is zones of another shape, not an error",
           Z.fit(zones().replace(b'"bottom":0', b'"bottom":' + b"9" * 400, 1), donor, donor)[0],
           "UNREADABLE")

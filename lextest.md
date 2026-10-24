@@ -1,5 +1,7 @@
 # lextest.md — things waiting on a human
 
+**P984 — Momentum zones on CS:S builds (pending, not owner-confirmed):** Pick surf_axiom_css from the map list (so the game fetches the published zones): it should have surf_axiom's zones -- bonuses 1-4 and the main start/end where Momentum has them -- not the old main-only triggers. Agent rig: 4 zones from the triggers -> 21 from the file. surf_journeys_css and surf_ravine_css still do not fit (missing destinations / shifted world) and keep their own.
+
 **P981/P983 — map downloads (pending, not owner-confirmed):** Download a map you do not have from the map list (a _css build is a good test: they are the big ones). It should finish several times faster than before and load normally. Agent rig: surf_beginner_css 18.6 s -> 4.5 s on the released exe, 2.5 s with the P983 exe; surf_kitsune2 ~8.5 s -> 3.5 s.
 
 **P980 — Story builds and Momentum demos on CS:S builds (pending, not owner-confirmed):** Your map list has the CS:S build picked for surf_axiom and surf_kitsune (data/mapbuild.txt). Play the Story/Event surf_axiom bonus 4 level: it should load surf_axiom, not surf_axiom_css. On surf_axiom_css, watch a Momentum demo from the board: it should play. Click MOM on those two rows if you want Momentum there outside Story as well.
