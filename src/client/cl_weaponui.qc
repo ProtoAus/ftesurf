@@ -1,9 +1,12 @@
-/* Local mounted-knife presentation/editor. No inventory, networking or paint-kit
- * equivalence: the finish is an explicitly local shader preview. */
+/* Local mounted-knife presentation/editor. No inventory or paint-kit equivalence. */
 float wpu_open, wpu_frames, wpu_skinstate, wpu_painted;
-entity wpu_arms;
-float wpu_source, wpu_srcskel, wpu_srcabs, wpu_armcount;
+entity wpu_parts[2];
+float wpu_rows[2], wpu_counts[2], wpu_sources[2];
+float wpu_source, wpu_srcskel, wpu_srcabs;
 int *wpu_armmap;
+int *wpu_layermap;
+float wpu_drag, wpu_mx, wpu_my, wpu_drop, wpu_tsz, wpu_page;
+vector wpu_pos, wpu_size, wpu_offset, wpu_popup_pos, wpu_popup_size;
 
 void() WPU_SourcePose =
 {
@@ -11,116 +14,116 @@ void() WPU_SourcePose =
 	{
 		if (wpu_srcskel) skel_delete(wpu_srcskel);
 		if (wpu_srcabs) skel_delete(wpu_srcabs);
-		if (wpu_armmap) { memfree((void*)wpu_armmap); wpu_armmap = __NULL__; }
 		wpu_source = wp_ent.modelindex;
 		wpu_srcskel = skel_create(wp_ent.modelindex);
 		wpu_srcabs = skel_create(wp_ent.modelindex, TRUE);
 	}
-	// Sample animation, not our previously attached pose. Native conversion is
-	// the same model-space contract used for the separate merged arms.
 	wp_ent.skeletonindex = 0;
 	skel_build(wpu_srcskel, wp_ent, wp_ent.modelindex, 0, 0, 0, 1);
 	skel_copybones(wpu_srcabs, wpu_srcskel, 0, 0);
 	wp_ent.skeletonindex = wpu_srcabs;
 };
 
-void() WPU_Arms =
+void(float slot, float row) WPU_Part =
 {
+	local entity part;
 	local float i, sourcebone, skeleton;
-	local string name;
+	local int *mapping;
+	local string name, rules;
 	local vector org, forward, right, up;
+	if (row < (float)KCAT_ARMS || !KCAT_Available(row)) return;
 	forward = v_forward; right = v_right; up = v_up;
-	if (!wpu_armmap)
+	part = wpu_parts[(int)slot];
+	if (!part) { part = spawn(); wpu_parts[(int)slot] = part; }
+	if (slot == 0) mapping = wpu_armmap;
+	else mapping = wpu_layermap;
+	if (!mapping || row != wpu_rows[(int)slot] || wpu_sources[(int)slot] != wpu_source)
 	{
-		if (!wpu_arms)
+		if (part.skeletonindex) skel_delete(part.skeletonindex);
+		part.skeletonindex = 0;
+		if (mapping) memfree((void*)mapping);
+		name = KCAT_Get(row, KCAT_MODEL);
+		precache_model(name); setmodel(part, name);
+		part.frame = 0; part.lerpfrac = 0; part.scale = 1;
+		// Upper-arm parents differ: merge absolute model-space poses.
+		skeleton = skel_create(part.modelindex, TRUE);
+		wpu_counts[(int)slot] = bound(0, skel_get_numbones(skeleton), 256);
+		for (i = 1; i <= wpu_counts[(int)slot]; i = i + 1)
 		{
-			wpu_arms = spawn();
-			precache_model("models/weapons/ct_arms.mdl");
-			setmodel(wpu_arms, "models/weapons/ct_arms.mdl");
-			wpu_arms.frame = 0; wpu_arms.lerpfrac = 0; wpu_arms.scale = 1;
-			if (wpu_arms.modelindex)
-			{
-				// Weapon forearms are roots; arms have upper-arm parents. Merge
-				// ABSOLUTE model-space poses, not incompatible relative poses.
-				skeleton = skel_create(wpu_arms.modelindex, TRUE);
-				wpu_armcount = bound(0, skel_get_numbones(skeleton), 256);
-				for (i = 1; i <= wpu_armcount; i = i + 1)
-				{
-					org = gettaginfo(wpu_arms, i);
-					skel_set_bone(skeleton, i, org, v_forward, v_right, v_up);
-				}
-				wpu_arms.skeletonindex = skeleton;
-			}
+			org = gettaginfo(part, i);
+			skel_set_bone(skeleton, i, org, v_forward, v_right, v_up);
 		}
-		wpu_armcount = bound(0, skel_get_numbones(wpu_arms.skeletonindex), 256);
-		wpu_armmap = (int*)memalloc(((int)wpu_armcount + 1i) * 4i);
-		for (i = 1; i <= wpu_armcount; i = i + 1)
-		{
-			name = skel_get_bonename(wpu_arms.skeletonindex, i);
-			wpu_armmap[(int)i] = (int)skel_find_bone(wpu_srcabs, name);
-		}
+		part.skeletonindex = skeleton;
+		mapping = (int*)memalloc(((int)wpu_counts[(int)slot] + 1i) * 4i);
+		for (i = 1; i <= wpu_counts[(int)slot]; i = i + 1)
+			mapping[(int)i] = (int)skel_find_bone(wpu_srcabs, skel_get_bonename(skeleton, i));
+		rules = KCAT_SkinRules(row);
+		setcustomskin(part, "", rules);
+		if (strcmp(rules, "")) strunzone(rules);
+		wpu_rows[(int)slot] = row; wpu_sources[(int)slot] = wpu_source;
+		if (slot == 0) wpu_armmap = mapping;
+		else wpu_layermap = mapping;
 	}
-	if (!wpu_srcabs || !wpu_arms.skeletonindex)
+	for (i = 1; i <= wpu_counts[(int)slot]; i = i + 1)
 	{
-		v_forward = forward; v_right = right; v_up = up;
-		return;
-	}
-	for (i = 1; i <= wpu_armcount; i = i + 1)
-	{
-		sourcebone = (float)wpu_armmap[(int)i];
+		sourcebone = (float)mapping[(int)i];
 		if (sourcebone <= 0) continue;
 		org = skel_get_boneabs(wpu_srcabs, sourcebone);
-		skel_set_bone(wpu_arms.skeletonindex, i, org, v_forward, v_right, v_up);
+		skel_set_bone(part.skeletonindex, i, org, v_forward, v_right, v_up);
 	}
 	v_forward = forward; v_right = right; v_up = up;
-	setorigin(wpu_arms, wp_ent.origin);
-	wpu_arms.angles = wp_ent.angles;
-	wpu_arms.renderflags = wp_ent.renderflags;
-	wpu_arms.effects = wp_ent.effects;
-	addentity(wpu_arms);
+	setorigin(part, wp_ent.origin); part.angles = wp_ent.angles;
+	part.renderflags = wp_ent.renderflags; part.effects = wp_ent.effects;
+	addentity(part);
 };
 
 void() WPU_Apply =
 {
-	local float kind, style, key, shader;
-	local string model, pattern, name, data;
-	kind = bound(0, floor(cvar("cl_knife_model")), 2);
+	local float kind, style, key;
+	local string pattern, name, data, rules;
+	kind = KCAT_Knife();
 	style = bound(0, floor(cvar("cl_knife_finish")), 3);
 	if (wp_weapon == FS_WEAPON_KNIFE && kind > 0)
 	{
 		WPU_SourcePose();
-		if (cvar("cl_knife_arms")) WPU_Arms();
+		if (cvar("cl_knife_arms"))
+		{
+			WPU_Part(0, KCAT_Hands());
+			if (KCAT_ActiveLayer() >= (float)KCAT_LAYERS) WPU_Part(1, KCAT_ActiveLayer());
+		}
 	}
 	else wp_ent.skeletonindex = 0;
-	key = wp_ent.modelindex * 16 + kind * 4 + style;
-	if (key == wpu_skinstate)
-	{
-		if (kind <= 0 || style <= 0 || wp_ent.forceshader) return;
-	}
+	key = wp_ent.modelindex * 512 + kind * 4 + style;
+	if (key == wpu_skinstate) return;
 	wpu_skinstate = key;
-	if (wp_weapon != FS_WEAPON_KNIFE || kind == 0 || style == 0)
+	wp_ent.forceshader = 0;
+	wpu_painted = FALSE;
+	if (wp_weapon != FS_WEAPON_KNIFE || kind == 0)
 	{
-		wp_ent.forceshader = 0;
-		wpu_painted = FALSE;
+		setcustomskin(wp_ent, "", "");
 		return;
 	}
-	model = (kind == 1) ? "knife_butterfly" : "knife_m9_bay";
-	pattern = "anodized_air/fade";
-	if (style == 2) pattern = "hydrographic/webs";
-	if (style == 3) pattern = "hydrographic/marbleized";
-	name = sprintf("ftesurf/knife_%g_%g", kind, style);
-	data = sprintf("{\nprogram knife_finish#STYLE=%g\n{ map materials/models/weapons/v_models/%s/%s.vtf }\n{ map materials/models/weapons/customization/paints/%s.vtf }\n{ map materials/models/weapons/customization/%s/%s_masks.vtf }\n}\n",
-		style, model, model, pattern, model, model);
-	shader = shaderforname(name, data);
-	if (shader <= 0) return;
-	// These MDLs have one material; force only this knife's shader, not the hands.
-	wp_ent.forceshader = shader;
-	wpu_painted = TRUE;
+	name = "";
+	if (style > 0 && strcmp(KCAT_Get(kind, KCAT_MASK), ""))
+	{
+		pattern = "anodized_air/fade";
+		if (style == 2) pattern = "hydrographic/webs";
+		if (style == 3) pattern = "hydrographic/marbleized";
+		name = sprintf("ftesurf/knife_%g_%g", kind, style);
+		data = sprintf("{\nprogram knife_finish#STYLE=%g#FAMILY=%s\n{ map %s }\n{ map materials/models/weapons/customization/paints/%s.vtf }\n{ map %s }\n}\n", style, KCAT_Get(kind, KCAT_FAMILY), KCAT_Get(kind, KCAT_BASE), pattern, KCAT_Get(kind, KCAT_MASK));
+		wpu_painted = (shaderforname(name, data) > 0);
+	}
+	data = KCAT_Rules(KCAT_Get(kind, KCAT_HIDE), "knife_hidden");
+	rules = "";
+	if (wpu_painted) rules = KCAT_Rules(KCAT_Get(kind, KCAT_PAINT), name);
+	setcustomskin(wp_ent, "", strcat(data, rules));
+	if (strcmp(data, "")) strunzone(data);
+	if (strcmp(rules, "")) strunzone(rules);
 };
 
 void() WPU_Close =
 {
-	wpu_open = FALSE;
+	wpu_open = wpu_drag = wpu_drop = FALSE;
 	UI_CursorRelease(UIC_WEAPON);
 	sui_reset_actions();
 	sui_tooltip_reset();
@@ -134,21 +137,9 @@ void() WPU_Open =
 		return;
 	}
 	wpu_open = TRUE;
+	wpu_drag = wpu_drop = FALSE;
 	sui_reset_actions();
 	UI_CursorClaim(UIC_WEAPON);
-};
-
-float(string id, string label, vector pos, vector size, float selected, float sc) WPU_Button =
-{
-	local vector colour, glyph;
-	sui_action_element(pos, size, id, sui_noop);
-	colour = selected ? SUI_THEME_SELECTED : SUI_THEME_CHIP;
-	if (sui_is_hovered(id)) colour = SUI_THEME_HOVER;
-	if (sui_is_held(id)) colour = SUI_THEME_PRESSED;
-	sui_style_box(pos, size, 3 * sc, colour, selected ? SUI_THEME_ACCENT : SUI_THEME_EDGE, 1);
-	glyph = sui_native_text_size(8 * sc);
-	sui_native_text(pos + [8 * sc, (size_y - glyph_y) * 0.5, 0], label, 8 * sc, SUI_THEME_TEXT, 1);
-	return sui_is_released(id);
 };
 
 void(float value) WPU_Seed = { cvar_set("cl_knife_seed", ftos(floor(value))); };
@@ -157,59 +148,168 @@ void(float value) WPU_Rotation = { cvar_set("cl_knife_rotation", ftos(value)); }
 void(float value) WPU_Fade = { cvar_set("cl_knife_fade", ftos(value / 100)); };
 void(float value) WPU_Wear = { cvar_set("cl_knife_wear", ftos(value)); };
 
-void(string id, string label, vector pos, float width, float value, vector range, void(float) action, float sc) WPU_Slider =
+void(string id, string label, vector pos, float width, float value, vector range, void(float) action, float tsz) WPU_Slider =
 {
+	local float lw, tw, fraction, h, x;
 	local vector track;
-	local float fraction;
-	sui_native_text(pos, label, 8 * sc, SUI_THEME_DIM, 1);
-	sui_native_text(pos + [width - 56 * sc, 0, 0], sprintf("%g", value), 8 * sc, SUI_THEME_TEXT, 1);
-	track = pos + [100 * sc, 2 * sc, 0];
-	width = width - 165 * sc;
+	lw = tsz * 7; h = ceil(tsz * 1.8);
+	tw = width - lw - tsz * 3;
+	sui_text(pos + [0, (h - tsz) * 0.5, 0], [tsz, tsz], label, SUI_THEME_DIM, 1, 0);
+	sui_text(pos + [width - tsz * 2.8, (h - tsz) * 0.5, 0], [tsz, tsz], sprintf("%g", value), SUI_THEME_TEXT, 1, 0);
+	track = pos + [lw, floor(h * 0.5) - 2, 0];
 	fraction = bound(0, (value - range_x) / (range_y - range_x), 1);
-	sui_roundbox(track + [0, 5 * sc, 0], [width, 3 * sc, 0], sc, SUI_THEME_WELL, 1);
-	sui_roundbox(track + [fraction * width - 3 * sc, 1 * sc, 0], [6 * sc, 11 * sc, 0], 2 * sc, SUI_THEME_ACCENT, 1);
-	sui_slidercontrol(id, track - [0, 4 * sc, 0], [width, 22 * sc, 0], range, value, action);
+	sui_roundbox(track, [tw, 4, 0], 2, SUI_THEME_WELL, 1);
+	x = floor(tw * fraction);
+	if (x > 0) sui_roundbox(track, [x, 4, 0], 2, SUI_THEME_EDGE_HI, 1);
+	sui_roundbox(track + [x - 3, -3, 0], '6 10 0', 2, SUI_THEME_ACCENT, 1);
+	sui_slidercontrol(id, pos + [lw, 0, 0], [tw, h, 0], range, value, action);
+};
+
+float(float list) WPU_ListCount =
+{
+	if (list == 1) return kcat_knives;
+	if (list == 2) return kcat_hands + 1;
+	return kcat_layers;
+};
+
+float(float list, float index) WPU_ListRow =
+{
+	if (list == 1) return index;
+	if (list == 2) return (index < kcat_hands) ? (float)KCAT_ARMS + index : -1;
+	return (float)KCAT_LAYERS + index;
+};
+
+string(float row) WPU_OptionLabel =
+{
+	if (row == -1) return "Hidden";
+	return KCAT_Get(row, KCAT_NAME);
+};
+
+float(string id, vector pos, vector size, string label, float tsz, float selected) WPU_ChoiceChip =
+{
+	local float measured;
+	measured = stringwidth(label, TRUE, [tsz, tsz]);
+	if (measured > size_x - 12) tsz = tsz * (size_x - 12) / measured;
+	return Profile_Chip(id, pos, size, label, tsz, selected);
 };
 
 void(vector scr) WPU_Draw =
 {
-	local float sc, width, y, kind, style, oldfont;
-	local vector pos, size;
+	local float sc, tsz, ttl, hint, pad, row, width, kind, arms, style, oldfont, i, selected, count, option, start;
+	local vector pos, size, at, box, pop;
+	local string text;
 	if (!wpu_open) return;
 	if (UI_CursorHeld() != UIC_WEAPON || rec_sb_open) { WPU_Close(); return; }
 	wpu_frames = wpu_frames + 1;
-	sc = bound(0.65, ui_cv_scale * 0.5, min(1.2, min(scr_x / 420, scr_y / 440)));
-	width = 388 * sc;
-	pos = [20 * sc, max(16 * sc, (scr_y - 405 * sc) * 0.5), 0];
-	size = [width, 405 * sc, 0];
+	pop = '0 0 0';
+	sc = max(0.5, ui_cv_scale);
+	while (sc > 0.5 && (Font_Px(8 * sc) * 38 > scr_x - 12 || Font_Px(8 * sc) * 36 > scr_y - 12)) sc = sc - 0.5;
 	oldfont = drawfont;
 	Font_Set(ui_font_ui);
+	tsz = Font_Px(8 * sc); ttl = Font_Px(10 * sc); hint = Font_Px(6 * sc);
+	wpu_tsz = tsz;
+	pad = tsz; row = ceil(tsz * 1.8);
+	size = [min(scr_x - 8, tsz * 38), min(scr_y - 8, tsz * 36), 0];
+	pos = [cvar("hud_knife_x") * scr_x, cvar("hud_knife_y") * scr_y, 0];
+	if (wpu_drag) pos = [wpu_mx, wpu_my, 0] - wpu_offset;
+	pos_x = bound(4, pos_x, max(4, scr_x - size_x - 4));
+	pos_y = bound(4, pos_y, max(4, scr_y - size_y - 4));
+	if (wpu_drag)
+	{
+		cvar_set("hud_knife_x", ftos(pos_x / scr_x));
+		cvar_set("hud_knife_y", ftos(pos_y / scr_y));
+	}
+	wpu_pos = pos; wpu_size = size;
 	sui_begin(scr_x, scr_y);
-	sui_style_box(pos, size, 7 * sc, SUI_THEME_PANEL, SUI_THEME_EDGE_HI, 1);
-	sui_native_text(pos + [14 * sc, 12 * sc, 0], "Knife workshop", 11 * sc, SUI_THEME_TEXT, 1);
-	if (WPU_Button("wpu_close", "X", pos + [width - 40 * sc, 8 * sc, 0], [28 * sc, 24 * sc, 0], FALSE, sc)) WPU_Close();
-	pos = pos + [14 * sc, 48 * sc, 0];
-	width = width - 28 * sc;
-	kind = cvar("cl_knife_model"); style = cvar("cl_knife_finish");
-	if (WPU_Button("wpu_css", "CSS", pos, [90 * sc, 28 * sc, 0], kind == 0, sc)) WP_ChooseKnife(0);
-	if (WPU_Button("wpu_butterfly", "Butterfly", pos + [96 * sc, 0, 0], [132 * sc, 28 * sc, 0], kind == 1, sc)) WP_ChooseKnife(1);
-	if (WPU_Button("wpu_m9", "M9", pos + [234 * sc, 0, 0], [126 * sc, 28 * sc, 0], kind == 2, sc)) WP_ChooseKnife(2);
-	y = 40 * sc;
-	if (WPU_Button("wpu_original", "Original", pos + [0, y, 0], [90 * sc, 28 * sc, 0], style == 0, sc)) cvar_set("cl_knife_finish", "0");
-	if (WPU_Button("wpu_fade", "Fade", pos + [96 * sc, y, 0], [84 * sc, 28 * sc, 0], style == 1, sc)) cvar_set("cl_knife_finish", "1");
-	if (WPU_Button("wpu_web", "Web", pos + [186 * sc, y, 0], [78 * sc, 28 * sc, 0], style == 2, sc)) cvar_set("cl_knife_finish", "2");
-	if (WPU_Button("wpu_marble", "Marble", pos + [270 * sc, y, 0], [90 * sc, 28 * sc, 0], style == 3, sc)) cvar_set("cl_knife_finish", "3");
-	WPU_Slider("wpu_seed", "Pattern seed", pos + [0, 84 * sc, 0], width, floor(cvar("cl_knife_seed")), '0 1000 1000', WPU_Seed, sc);
-	WPU_Slider("wpu_scale", "Scale", pos + [0, 118 * sc, 0], width, cvar("cl_knife_scale"), '0.25 4 75', WPU_Scale, sc);
-	WPU_Slider("wpu_rotation", "Rotation", pos + [0, 152 * sc, 0], width, cvar("cl_knife_rotation"), '0 360 360', WPU_Rotation, sc);
-	WPU_Slider("wpu_fade_amount", "Fade %", pos + [0, 186 * sc, 0], width, cvar("cl_knife_fade") * 100, '0 100 100', WPU_Fade, sc);
-	WPU_Slider("wpu_wear", "Wear", pos + [0, 220 * sc, 0], width, cvar("cl_knife_wear"), '0 1 100', WPU_Wear, sc);
-	if (WPU_Button("wpu_inspect", "Inspect", pos + [0, 258 * sc, 0], [110 * sc, 28 * sc, 0], FALSE, sc)) WP_Inspect();
-	if (WPU_Button("wpu_random", "Random seed", pos + [116 * sc, 258 * sc, 0], [130 * sc, 28 * sc, 0], FALSE, sc)) WPU_Seed(floor(random() * 1001));
-	if (WPU_Button("wpu_drop", "Drop", pos + [252 * sc, 258 * sc, 0], [108 * sc, 28 * sc, 0], FALSE, sc)) localcmd("cmd drop\n");
-	sui_native_text(pos + [0, 302 * sc, 0], "Local preview - not exact CS paint kits or inventory.", 6 * sc, SUI_THEME_MUTED, 1);
-	sui_native_text(pos + [0, 320 * sc, 0], "Butterfly/M9 need installed CS:GO Legacy content.", 6 * sc, SUI_THEME_MUTED, 1);
-	sui_native_text(pos + [0, 338 * sc, 0], "Mount once: fs_load \"steam:Counter-Strike Global Offensive/csgo\"", 6 * sc, SUI_THEME_MUTED, 1);
+	sui_style_panel(pos, size, ceil(pad * 0.75), 0.98);
+	sui_text(pos + [pad, pad, 0], [ttl, ttl], "Knife workshop", SUI_THEME_TEXT, 1, 0);
+	if (Profile_Chip("wpu_close", pos + [size_x - pad - row, pad * 0.65, 0], [row, row, 0], "X", tsz, FALSE))
+	{
+		WPU_Close(); sui_end(); Font_Set(oldfont); return;
+	}
+	sui_tooltip_for("wpu_close", "Close (Esc). Drag the title bar to move this window.", sc);
+	at = pos + [pad, tsz * 4, 0];
+	width = size_x - pad * 2;
+	kind = KCAT_Knife();
+	arms = cvar("cl_knife_arms") ? KCAT_Hands() : -1;
+	style = bound(0, floor(cvar("cl_knife_finish")), 3);
+	sui_text(at + [0, (row - tsz) * 0.5, 0], [tsz, tsz], "Knife", SUI_THEME_DIM, 1, 0);
+	box = [width - tsz * 7, row, 0];
+	if (WPU_ChoiceChip("wpu_knife", at + [tsz * 7, 0, 0], box, strcat(WPU_OptionLabel(kind), "  v"), tsz, wpu_drop == 1))
+		{ wpu_drop = (wpu_drop == 1) ? 0 : 1; wpu_page = 0; }
+	if (wpu_drop == 1) pop = at + [tsz * 7, row + 4, 0];
+	at_y = at_y + tsz * 2.7;
+	sui_text(at + [0, (row - tsz) * 0.5, 0], [tsz, tsz], "Hands", SUI_THEME_DIM, 1, 0);
+	if (WPU_ChoiceChip("wpu_arms", at + [tsz * 7, 0, 0], box, strcat(WPU_OptionLabel(arms), "  v"), tsz, wpu_drop == 2))
+		{ wpu_drop = (wpu_drop == 2) ? 0 : 2; wpu_page = 0; }
+	if (wpu_drop == 2) pop = at + [tsz * 7, row + 4, 0];
+	at_y = at_y + tsz * 2.7;
+	sui_text(at + [0, (row - tsz) * 0.5, 0], [tsz, tsz], "Sleeves", SUI_THEME_DIM, 1, 0);
+	if (WPU_ChoiceChip("wpu_sleeves", at + [tsz * 7, 0, 0], box, strcat(WPU_OptionLabel(KCAT_Layer()), "  v"), tsz, wpu_drop == 3))
+		{ wpu_drop = (wpu_drop == 3) ? 0 : 3; wpu_page = 0; }
+	if (wpu_drop == 3) pop = at + [tsz * 7, row + 4, 0];
+	at_y = at_y + tsz * 3.1;
+	for (i = 0; i < 4; i = i + 1)
+	{
+		text = "Original";
+		if (i == 1) text = "Fade";
+		if (i == 2) text = "Web";
+		if (i == 3) text = "Marble";
+		if (Profile_Chip(sprintf("wpu_finish%g", i), at + [i * (width + 6) / 4, 0, 0], [(width - 18) / 4, row, 0], text, tsz, style == i))
+			cvar_set("cl_knife_finish", ftos(i));
+	}
+	at_y = at_y + tsz * 2.5;
+	WPU_Slider("wpu_seed", "Pattern seed", at, width, floor(cvar("cl_knife_seed")), '0 1000 1000', WPU_Seed, tsz);
+	at_y = at_y + tsz * 2.1;
+	WPU_Slider("wpu_scale", "Scale", at, width, cvar("cl_knife_scale"), '0.25 4 75', WPU_Scale, tsz);
+	at_y = at_y + tsz * 2.1;
+	WPU_Slider("wpu_rotation", "Rotation", at, width, cvar("cl_knife_rotation"), '0 360 360', WPU_Rotation, tsz);
+	at_y = at_y + tsz * 2.1;
+	WPU_Slider("wpu_fade_amount", "Fade %", at, width, cvar("cl_knife_fade") * 100, '0 100 100', WPU_Fade, tsz);
+	at_y = at_y + tsz * 2.1;
+	WPU_Slider("wpu_wear", "Wear", at, width, cvar("cl_knife_wear"), '0 1 100', WPU_Wear, tsz);
+	at_y = at_y + tsz * 2.7;
+	if (Profile_Chip("wpu_inspect", at, [(width - 12) / 3, row, 0], "Inspect", tsz, FALSE)) WP_Inspect();
+	if (Profile_Chip("wpu_random", at + [(width + 6) / 3, 0, 0], [(width - 12) / 3, row, 0], "Random seed", tsz, FALSE)) WPU_Seed(floor(random() * 1001));
+	if (Profile_Chip("wpu_drop", at + [(width + 6) * 2 / 3, 0, 0], [(width - 12) / 3, row, 0], "Drop", tsz, FALSE)) localcmd("cmd drop\n");
+	at_y = at_y + tsz * 2.7;
+	if (Profile_Chip("wpu_mount", at, [width, row, 0], "Mount installed CS:GO Legacy", tsz, FALSE)) WP_MountKnifeContent(-1);
+	sui_tooltip_for("wpu_mount", "Session-only installed assets; also requested automatically when selecting a Legacy knife. No download.", sc);
+	at_y = at_y + tsz * 2.6;
+	text = "Local previews, not inventory or exact CS paint kits.";
+	if (kind > 0 && style > 0 && !strcmp(KCAT_Get(kind, KCAT_MASK), "")) text = "No compatible paint mask: showing the original finish.";
+	sui_text(at, [hint, hint], text, SUI_THEME_MUTED, 1, 0);
+	sui_text(at + [0, hint * 1.4, 0], [hint, hint], "CSS has embedded arms. Legacy hands use matte textures.", SUI_THEME_MUTED, 1, 0);
+	// Last in this bracket: the open list owns hit-tests over covered controls.
+	if (wpu_drop)
+	{
+		count = WPU_ListCount(wpu_drop);
+		wpu_page = bound(0, wpu_page, floor((count - 1) / 9));
+		start = wpu_page * 9;
+		wpu_popup_size = [box_x, row * (min(9, count - start) + 1) + 8, 0];
+		pop_y = bound(4, pop_y, max(4, scr_y - wpu_popup_size_y - 4));
+		wpu_popup_pos = pop;
+		sui_style_panel(pop, wpu_popup_size, pad * 0.5, 1);
+		selected = kind;
+		if (wpu_drop == 2) selected = arms;
+		if (wpu_drop == 3) selected = KCAT_Layer();
+		for (i = 0; i < min(9, count - start); i = i + 1)
+		{
+			option = WPU_ListRow(wpu_drop, start + i);
+			text = WPU_OptionLabel(option);
+			if (WPU_ChoiceChip(sprintf("wpu_option%g_%g", wpu_drop, start + i), pop + [4, 4 + row * i, 0], [box_x - 8, row, 0], text, tsz, selected == option))
+			{
+				if (option == -1) cvar_set("cl_knife_arms", "0");
+				else WP_ChooseKnife(option);
+				wpu_drop = 0;
+				break;
+			}
+		}
+		at = pop + [4, wpu_popup_size_y - row - 4, 0];
+		if (Profile_Chip("wpu_prev", at, [row * 2, row, 0], "<", tsz, FALSE)) wpu_page = max(0, wpu_page - 1);
+		if (Profile_Chip("wpu_next", at + [box_x - row * 2 - 8, 0, 0], [row * 2, row, 0], ">", tsz, FALSE)) wpu_page = min(floor((count - 1) / 9), wpu_page + 1);
+		sui_text(at + [row * 2 + 4, (row - hint) * 0.5, 0], [hint, hint], sprintf("%g-%g / %g", start + 1, min(start + 9, count), count), SUI_THEME_DIM, 1, 0);
+	}
 	sui_end();
 	Font_Set(oldfont);
 };
@@ -217,8 +317,40 @@ void(vector scr) WPU_Draw =
 float(float evtype, float scanx, float chary, float devid) WPU_Input =
 {
 	if (!wpu_open) return FALSE;
-	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE) { WPU_Close(); return TRUE; }
-	if (evtype == IE_MOUSEABS || scanx == K_MOUSE1 || scanx == K_MOUSE2)
+	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE)
+	{
+		if (wpu_drop) wpu_drop = 0;
+		else WPU_Close();
+		return TRUE;
+	}
+	if (evtype == IE_MOUSEABS)
+	{
+		wpu_mx = scanx; wpu_my = chary;
+		sui_input_event(evtype, scanx, chary, devid);
+		return TRUE;
+	}
+	if (scanx == K_MOUSE1)
+	{
+		if (evtype == IE_KEYUP && wpu_drag) { wpu_drag = FALSE; return TRUE; }
+		if (evtype == IE_KEYDOWN)
+		if (wpu_mx >= wpu_pos_x && wpu_mx < wpu_pos_x + wpu_size_x - wpu_size_y * 0.11 &&
+		    wpu_my >= wpu_pos_y && wpu_my < wpu_pos_y + wpu_size_y * 0.105)
+		{
+			wpu_drag = TRUE; wpu_drop = 0;
+			wpu_offset = [wpu_mx, wpu_my, 0] - wpu_pos;
+			return TRUE;
+		}
+		if (evtype == IE_KEYDOWN && wpu_drop)
+		if (wpu_mx < wpu_popup_pos_x || wpu_mx >= wpu_popup_pos_x + wpu_popup_size_x ||
+		    wpu_my < wpu_popup_pos_y || wpu_my >= wpu_popup_pos_y + wpu_popup_size_y)
+		if (wpu_mx < wpu_pos_x + wpu_tsz * 8 || wpu_mx >= wpu_pos_x + wpu_size_x - wpu_tsz ||
+		    wpu_my < wpu_pos_y + wpu_tsz * 4 || wpu_my >= wpu_pos_y + wpu_tsz * 12)
+		{
+			wpu_drop = 0;
+			return TRUE;
+		}
+	}
+	if (scanx == K_MOUSE1 || scanx == K_MOUSE2)
 	{
 		if (evtype == IE_KEYDOWN) _sui_mouse_move(_cursor_position, FALSE);
 		sui_input_event(evtype, scanx, chary, devid);
@@ -229,12 +361,30 @@ float(float evtype, float scanx, float chary, float devid) WPU_Input =
 
 float() WPU_Command =
 {
+	local float i;
 	if (strcmp(argv(0), "knife_menu")) return FALSE;
+	if (!strcmp(argv(1), "select"))
+	{
+		if (!strcmp(argv(2), "") || strcmp(argv(3), "")) print("knife_menu select <catalog number>; knife_menu catalog lists choices\n");
+		else WP_ChooseKnife(stof(argv(2)));
+		return TRUE;
+	}
+	if (!strcmp(argv(1), "catalog"))
+	{
+		for (i = 0; i < 128; i = i + 1)
+			if (KCAT_Valid(i)) print(sprintf("knife catalog %g: %s\n", i, KCAT_Get(i, KCAT_NAME)));
+		return TRUE;
+	}
 	if (!strcmp(argv(1), "status"))
 	{
 		print(sprintf("knife_menu: open %g claims %g frames %g kind %g finish %g painted %g\n", wpu_open, UI_CursorHeld(), wpu_frames, cvar("cl_knife_model"), cvar("cl_knife_finish"), wpu_painted));
+		print(sprintf("knife_menu: pos %v size %v drag %g dropdown %g arm-model %g\n", wpu_pos, wpu_size, wpu_drag, wpu_drop, KCAT_Hands()));
+		print(sprintf("knife_menu: catalog knife %g hands %g layer %g active-layer %g page %g\n", KCAT_Knife(), KCAT_Hands(), KCAT_Layer(), KCAT_ActiveLayer(), wpu_page));
+		print(sprintf("knife_menu: part-models %g %g bones %g %g source %g\n", wpu_parts[0].modelindex, wpu_parts[1].modelindex, wpu_counts[0], wpu_counts[1], wpu_source));
 		return TRUE;
 	}
+	if (!strcmp(argv(1), "mount")) { WP_MountKnifeContent(-1); return TRUE; }
+	if (!strcmp(argv(1), "resetpos")) { cvar_set("hud_knife_x", "0.02"); cvar_set("hud_knife_y", "0.14"); return TRUE; }
 	if (!strcmp(argv(1), "close")) WPU_Close();
 	else if (!strcmp(argv(1), "open")) { if (!wpu_open) WPU_Open(); }
 	else if (wpu_open) WPU_Close();
@@ -245,8 +395,12 @@ float() WPU_Command =
 void() WPU_Register =
 {
 	wpu_skinstate = -1;
+	shaderforname("knife_hidden", "{\nsurfaceparm nodraw\n}\n");
 	registercommand("knife_menu");
 	registercvar("cl_knife_arms", "1", CVAR_ARCHIVE);
+	registercvar("cl_knife_arm_model", "0", CVAR_ARCHIVE);
+	registercvar("hud_knife_x", "0.02", CVAR_ARCHIVE);
+	registercvar("hud_knife_y", "0.14", CVAR_ARCHIVE);
 	registercvar("cl_knife_finish", "0", CVAR_ARCHIVE);
 	registercvar("cl_knife_seed", "0", CVAR_ARCHIVE);
 	registercvar("cl_knife_scale", "1", CVAR_ARCHIVE);

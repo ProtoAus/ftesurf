@@ -5,7 +5,7 @@ float wp_weapon, wp_sequence, wp_until, wp_animat, wp_ready, wp_shots, wp_durati
 float wp_eventat, wp_drawing, wp_events, wp_sndnext, wp_callbacks;
 float wp_scriptbytes, wp_scriptalias, wp_scripthits;
 string wp_model, wp_frame, wp_soundlast;
-float wp_motionvalid, wp_motiontime, wp_bobtime;
+float wp_motionvalid, wp_motiontime, wp_bobtime, wp_mountnext;
 float wp_mode, wp_burstleft, wp_burstat, wp_kick, wp_kickvel, wp_kickdt;
 float wp_zoom, wp_scopepending, wp_rezoomat, wp_drawstarts;
 entity wp_flashent;
@@ -16,8 +16,11 @@ vector wp_facing, wp_motionbody, wp_motionorg, wp_motionang;
 #define WP_EF_NOGUNBOB 256i
 string wp_sndname[16], wp_sndpath[16];
 
+void(float kind) WP_MountKnifeContent;
+
 void() WP_Register =
 {
+	KCAT_Register();
 	registercvar("cl_viewweapon", "0", CVAR_ARCHIVE);
 	registercvar("cl_viewweapon_left", "0", CVAR_ARCHIVE);
 	registercvar("cl_viewweapon_bob", "0.2", CVAR_ARCHIVE);
@@ -26,6 +29,7 @@ void() WP_Register =
 	registercvar("cl_weapon_muzzleflash", "1", CVAR_ARCHIVE);
 	registercvar("cl_knife_model", "0", CVAR_ARCHIVE);
 	registercommand("butterfly"); registercommand("m9"); registercommand("knife_css"); registercommand("inspect");
+	registercommand("knife_mount_done");
 	// Existing independent projection, not a scale hack or a change to world FOV.
 	if (!strcmp(cvar_string("r_viewmodel_fov"), "")) cvar_set("r_viewmodel_fov", "75");
 	registercommand("surf_weapon");
@@ -40,9 +44,7 @@ string(float w) WP_Model =
 {
 	if (w == FS_WEAPON_KNIFE)
 	{
-		if (cvar("cl_knife_model") == 1) return "models/weapons/v_knife_butterfly.mdl";
-		if (cvar("cl_knife_model") == 2) return "models/weapons/v_knife_m9_bay.mdl";
-		return "models/weapons/v_knife_t.mdl";
+		return KCAT_Get(KCAT_Knife(), KCAT_MODEL);
 	}
 	if (w == FS_WEAPON_USP) return "models/weapons/v_pist_usp.mdl";
 	if (w == FS_WEAPON_SCOUT) return "models/weapons/v_snip_scout.mdl";
@@ -53,7 +55,7 @@ string(float w) WP_Model =
 string(float w) WP_Idle =
 {
 	if (w == FS_WEAPON_SCOUT) return "idle1";
-	if (w == FS_WEAPON_KNIFE && cvar("cl_knife_model") > 0) return "idle1";
+	if (w == FS_WEAPON_KNIFE && KCAT_Knife() > 0) return KCAT_Get(KCAT_Knife(), KCAT_IDLE);
 	if (w == FS_WEAPON_GLOCK) return "glock_idle";
 	if (w == FS_WEAPON_USP && !wp_mode) return "idle_unsil";
 	return "idle";
@@ -62,9 +64,25 @@ string(float w) WP_Idle =
 float(string name, float oneshot) WP_Animate =
 {
 	local float f, duration;
+	local string candidate;
 
 	f = frameforname(wp_ent.modelindex, name);
 	if (f < 0) f = frameforname(wp_ent.modelindex, strcat("@", name));
+	if (f < 0 && wp_weapon == FS_WEAPON_KNIFE && KCAT_Knife() > 0)
+	{
+		candidate = "";
+		if (!strcmp(name, "draw")) candidate = KCAT_Get(KCAT_Knife(), KCAT_DRAW);
+		if (strstrofs(name, "light_miss", 0) == 0) candidate = KCAT_Get(KCAT_Knife(), KCAT_LIGHT);
+		if (strstrofs(name, "heavy_miss", 0) == 0) candidate = KCAT_Get(KCAT_Knife(), KCAT_HEAVY);
+		if (strstrofs(name, "light_hit", 0) == 0) candidate = KCAT_Get(KCAT_Knife(), KCAT_LIGHTHIT);
+		if (strstrofs(name, "heavy_hit", 0) == 0) candidate = KCAT_Get(KCAT_Knife(), KCAT_HEAVYHIT);
+		if (strcmp(candidate, ""))
+		{
+			name = candidate;
+			f = frameforname(wp_ent.modelindex, name);
+			if (f < 0) f = frameforname(wp_ent.modelindex, strcat("@", name));
+		}
+	}
 	if (f < 0)
 	{
 		wp_ready = FALSE;
@@ -94,7 +112,7 @@ string() WP_WeaponScript =
 	local void *buffer;
 	local string text, package;
 	f = -1;
-	if (wp_weapon == FS_WEAPON_KNIFE && cvar("cl_knife_model") > 0)
+	if (wp_weapon == FS_WEAPON_KNIFE && KCAT_Knife() > 0)
 	if (checkbuiltin(GM_SearchPackage))
 	if (checkbuiltin(GM_SearchOpen))
 	{
@@ -179,7 +197,7 @@ string(string name) WP_SoundPath =
 					{
 						while (!strcmp(substring(token, 0, 1), "*") || !strcmp(substring(token, 0, 1), "#") || !strcmp(substring(token, 0, 1), "^") || !strcmp(substring(token, 0, 1), "~") || !strcmp(substring(token, 0, 1), ")"))
 							token = substring(token, 1, -1);
-						path = strzone(token);
+						path = strzone(strreplace("\\", "/", token));
 						break;
 					}
 					wave = !strcmp(token, "wave");
@@ -357,7 +375,7 @@ void(float w, float kind) WP_Shot =
 {
 	if (w == FS_WEAPON_KNIFE)
 	{
-		if (cvar("cl_knife_model") > 0)
+		if (KCAT_Knife() > 0)
 		{
 			if (kind == FS_WEV_ALT) WP_Animate(wp_mode ? "heavy_hit1" : "heavy_miss1", TRUE);
 			else WP_Animate(strcat(wp_mode ? "light_hit" : "light_miss", (wp_shots % 2) ? "2" : "1"), TRUE);
@@ -469,7 +487,7 @@ void(vector scr) WP_ScopeDraw =
 
 void() WP_Frame =
 {
-	local float w, seq, kind;
+	local float w, seq, kind, file;
 	local string mdl;
 	local int i;
 
@@ -507,6 +525,12 @@ void() WP_Frame =
 		wp_ready = FALSE;
 		if (strcmp(wp_model, "")) strunzone(wp_model);
 		wp_model = strzone(mdl);
+		if (w == FS_WEAPON_KNIFE && KCAT_Knife() > 0)
+		{
+			file = fopen(wp_model, FILE_READ);
+			if (file < 0) { WP_MountKnifeContent(KCAT_Knife()); return; }
+			fclose(file);
+		}
 		setmodel(wp_ent, wp_model);
 		wp_ent.skeletonindex = 0;
 		wp_flashuntil = 0;
@@ -587,40 +611,88 @@ void() WP_Frame =
 void() WP_Inspect =
 {
 	local string clip;
-	if (wp_weapon != FS_WEAPON_KNIFE || !wp_ready || cvar("cl_knife_model") <= 0)
+	if (wp_weapon != FS_WEAPON_KNIFE || !wp_ready || KCAT_Knife() <= 0)
 	{
-		print("inspect: select a mounted Butterfly or M9 knife first\n");
+		print("inspect: select an installed Legacy knife first\n");
 		return;
 	}
-	clip = "lookat01";
-	if (cvar("cl_knife_model") == 1) clip = sprintf("lookat0%g", floor(random() * 3) + 1);
+	clip = KCAT_Get(KCAT_Knife(), KCAT_INSPECT);
+	if (!strcmp(clip, "")) { print("inspect: this model has no inspect animation\n"); return; }
+	if (KCAT_Knife() == 1) clip = sprintf("lookat0%g", floor(random() * 3) + 1);
 	if (WP_Animate(clip, TRUE)) wp_until = time + bound(0.08, wp_duration, 20);
 };
 
-void(float kind) WP_ChooseKnife =
+void(float kind) WP_MountKnifeContent =
 {
-	local float f, previous;
-	previous = cvar("cl_knife_model");
-	kind = bound(0, floor(kind), 2);
-	cvar_set("cl_knife_model", ftos(kind));
-	if (kind > 0)
+	// The native action accepts no path and never changes saved mounts.
+	if (time < wp_mountnext)
 	{
-		f = fopen(WP_Model(FS_WEAPON_KNIFE), FILE_READ);
-		if (f >= 0) fclose(f);
-		else
-		{
-			cvar_set("cl_knife_model", ftos(previous));
-			// Mounts are a trusted operator action, never a CSQC command.
-			print("Knife content is not mounted. In the console run:\nfs_load \"steam:Counter-Strike Global Offensive/csgo\"\nThen select Butterfly/M9 again. Requires installed CS:GO Legacy; no download.\n");
-			return;
-		}
+		// The first synchronous native mount is already ahead in this queue.
+		// Preserve later choices/order instead of silently swallowing a click.
+		localcmd(sprintf("knife_mount_done %g\n", kind));
+		return;
 	}
+	wp_mountnext = time + 5;
+	if (!cvar_type("r_viewmodel_fov_csgo"))
+	{
+		print("Knife workshop: update the client for automatic mounting. Manual console: fs_load \"steam:Counter-Strike Global Offensive/csgo\"\n");
+		return;
+	}
+	print("Knife workshop: requesting installed Legacy assets...\n");
+	localcmd(sprintf("fs_knife_mount\nknife_mount_done %g\n", kind));
+};
+
+void(float kind) WP_ChooseKnifeReady =
+{
+	local entity probe;
+	local float frame, skeleton;
+	local string model;
+	if (!KCAT_Valid(kind)) { print("Knife workshop: invalid catalog choice\n"); return; }
+	if (!KCAT_Available(kind))
+	{
+		print("Knife content unavailable. Install CS:GO Legacy and use the updated client; selection unchanged.\n");
+		return;
+	}
+	model = KCAT_Get(kind, KCAT_MODEL);
+	if (kind > 0 && strcmp(model, ""))
+	{
+		probe = spawn();
+		precache_model(model); setmodel(probe, model);
+		frame = -1;
+		if (probe.modelindex)
+		{
+			if (kind < kcat_knives)
+			{
+				frame = frameforname(probe.modelindex, KCAT_Get(kind, KCAT_DRAW));
+				if (frame < 0) frame = frameforname(probe.modelindex, strcat("@", KCAT_Get(kind, KCAT_DRAW)));
+			}
+			else
+			{
+				skeleton = skel_create(probe.modelindex, TRUE);
+				if (skeleton) { frame = skel_get_numbones(skeleton); skel_delete(skeleton); }
+				if (frame <= 0) frame = -1;
+			}
+		}
+		remove(probe);
+		if (frame < 0) { print("Knife workshop: model is unsupported by this client; selection unchanged\n"); return; }
+	}
+	KCAT_ApplyChoice(kind);
+	if (kind >= (float)KCAT_ARMS) return;
 	// Retry a previously missing model after an explicit operator mount.
 	if (strcmp(wp_model, "")) strunzone(wp_model);
 	wp_model = "";
 	wp_ready = FALSE;
 	cvar_set("cl_viewweapon", "1");
 	localcmd("cmd weapon knife\n");
+};
+
+void(float kind) WP_ChooseKnife =
+{
+	if (!KCAT_Valid(kind)) { print("Knife workshop: invalid catalog choice\n"); return; }
+	// Use the same command queue for warm and cold choices. A later CSS/hand
+	// choice must not be overwritten by an earlier queued mount completion.
+	if (KCAT_Available(kind)) localcmd(sprintf("knife_mount_done %g\n", kind));
+	else WP_MountKnifeContent(kind);
 };
 
 float() WP_Command =
@@ -631,6 +703,17 @@ float() WP_Command =
 	local int *header;
 
 	cmd = argv(0);
+	if (!strcmp(cmd, "knife_mount_done"))
+	{
+		if (stof(argv(1)) >= 0) WP_ChooseKnifeReady(stof(argv(1)));
+		else
+		{
+			f = fopen("models/weapons/v_knife_butterfly.mdl", FILE_READ);
+			if (f >= 0) { fclose(f); print("Knife workshop: installed Legacy assets ready for this session.\n"); }
+			else print("Knife workshop: Legacy content unavailable; install it and use the updated client.\n");
+		}
+		return TRUE;
+	}
 	if (!strcmp(cmd, "inspect")) { WP_Inspect(); return TRUE; }
 	if (!strcmp(cmd, "butterfly")) { WP_ChooseKnife(1); return TRUE; }
 	if (!strcmp(cmd, "m9")) { WP_ChooseKnife(2); return TRUE; }
