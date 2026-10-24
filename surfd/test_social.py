@@ -119,6 +119,85 @@ class Friends(unittest.TestCase):
     def vm(self, index=0, op="get", **extra):
         return self.post("/api/social/viewmodel", token=self.tokens[index], op=op, **extra)
 
+    def vm_legacy_snapshot(self):
+        objects = {r[1]: tuple(r) for r in self.db.execute(
+            "SELECT type,name,tbl_name,sql FROM sqlite_master")}
+        tables = [name for name, row in objects.items() if row[0] == "table"]
+        values = {name: [tuple(r) for r in self.db.execute(
+            'SELECT * FROM "' + name.replace('"', '""') + '"')] for name in tables}
+        return objects, values
+
+    def vm_start22(self):
+        self.db.execute("DROP TABLE account_viewmodels")
+        self.db.execute("PRAGMA user_version=22")
+        self.db.commit()
+        return self.vm_legacy_snapshot()
+
+    def vm_assert23(self, before):
+        objects, values = self.vm_legacy_snapshot()
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 23)
+        self.assertEqual(set(objects) - set(before[0]),
+                         {"account_viewmodels", "sqlite_autoindex_account_viewmodels_1"})
+        self.assertEqual({name: objects[name] for name in before[0]}, before[0])
+        self.assertEqual({name: values[name] for name in before[1]}, before[1])
+        self.assertEqual(values["account_viewmodels"], [])
+
+    def test_viewmodel_exact22_migration_and_repeat_preserve_old_values(self):
+        before = self.vm_start22()
+        self.assertNotIn("account_viewmodels", before[0])
+        self.assertTrue(before[1]["accounts"])
+        self.assertTrue(before[1]["keylinks"])
+        self.assertTrue(before[1]["social_sessions"])
+        S.migrate()
+        self.vm_assert23(before)
+        S.migrate()
+        self.vm_assert23(before)
+
+    def test_viewmodel_interrupted23_is_forward_recoverable(self):
+        connect = S.connect
+        for phase in ("before-stamp", "after-commit"):
+            with self.subTest(phase=phase):
+                before = self.vm_start22()
+                class Interrupted:
+                    stamped = False
+                    def __init__(inner, conn):
+                        inner.conn = conn
+                    def __getattr__(inner, name):
+                        return getattr(inner.conn, name)
+                    def __enter__(inner):
+                        inner.conn.__enter__()
+                        return inner
+                    def __exit__(inner, *args):
+                        return inner.conn.__exit__(*args)
+                    def execute(inner, sql, *args):
+                        if sql == "PRAGMA user_version=23":
+                            if phase == "before-stamp":
+                                raise sqlite3.OperationalError("fixture before stamp23")
+                            inner.stamped = True
+                        return inner.conn.execute(sql, *args)
+                    def commit(inner):
+                        inner.conn.commit()
+                        if inner.stamped and phase == "after-commit":
+                            raise sqlite3.OperationalError("fixture after commit23")
+                with patch.object(S, "connect", lambda: Interrupted(connect())):
+                    with self.assertRaisesRegex(sqlite3.OperationalError, "fixture"):
+                        S.migrate()
+                version = self.db.execute("PRAGMA user_version").fetchone()[0]
+                self.assertEqual(version, 22 if phase == "before-stamp" else 23)
+                self.assertIsNotNone(self.db.execute(
+                    "SELECT name FROM sqlite_master WHERE name='account_viewmodels'").fetchone())
+                S.migrate()  # Inspected identical-code forward retry, never a downgrade.
+                self.vm_assert23(before)
+
+    def test_viewmodel_stored_revision_constraints(self):
+        for value in (0, 16777216, 1.5):
+            with self.subTest(revision=value):
+                with self.assertRaises(sqlite3.IntegrityError):
+                    self.db.execute("INSERT INTO account_viewmodels VALUES(?,?,?,?)",
+                                    (IDS[0], self.VM_SETUP, value, self.now))
+                self.db.rollback()
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM account_viewmodels").fetchone()[0], 0)
+
     def test_viewmodel_cross_install_account_and_revision(self):
         self.assertEqual(self.vm().get_json()["revision"], 0)
         saved = self.vm(op="set", setup=self.VM_SETUP, revision="0").get_json()

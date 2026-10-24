@@ -7,7 +7,7 @@ float *vm_values;
 string vm_watchraw, vm_own, vm_sent, vm_notice;
 float vm_nextpoll, vm_publishat, vm_unsaved, vm_generation, vm_loading;
 string vm_before, vm_account;
-float vm_loadkeep, vm_inspect, vm_pendinginspect, vm_replaying;
+float vm_loadkeep, vm_loadreload, vm_inspect, vm_pendinginspect, vm_replaying;
 
 string(float field) VM_CvarName =
 {
@@ -184,7 +184,9 @@ float() VM_ConsoleCommand =
 		vm_account = strzone(who);
 		vm_generation = generation;
 		vm_loading = TRUE;
-		vm_loadkeep = vm_unsaved;
+		// Only an accepted server generation may turn Reload into a read.
+		vm_loadreload = (!strcmp(data, "1"));
+		vm_loadkeep = (vm_unsaved && !vm_loadreload);
 		if (strcmp(vm_before, "")) strunzone(vm_before);
 		vm_before = strzone(VM_OwnSetup());
 		return TRUE;
@@ -211,8 +213,10 @@ float() VM_ConsoleCommand =
 				VM_RememberOwn(current);
 				VM_Notice("Linked-account setup restored.");
 			}
+			else if (vm_loadreload) VM_Notice("New local edits kept; account setup not changed.");
 			else VM_Notice("New local edits kept; syncing those to your account.");
 		}
+		else if (vm_loadreload) VM_Notice("No account setup yet; local settings kept.");
 		else VM_Notice("No account setup yet; saving your current setup.");
 		vm_loading = FALSE;
 		localcmd(sprintf("cmd vm_profile ack %.0f \"%s\"\n", generation, current));

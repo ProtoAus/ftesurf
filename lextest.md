@@ -1,5 +1,7 @@
 # lextest.md — things waiting on a human
 
+**P978 — account Reload direction (pending delivery/backend cutover, not owner-confirmed):** After delivery, save different setups on two linked installs. On the stale install choose Reload: it must show the newer account setup, not replace it with the stale local one. Make a new edit during a pending load: keep that edit without an automatic cloud overwrite; explicit Save should deliberately save it. The loopback proof uses synthetic account authority, not real Steam acceptance.
+
 P971/P972 server artifacts installed on BOTH Windows installs and all12Pi
 lobbies24Oct2026; source d994d0a5. Windows running sessions were not reloaded.
 Deployment checks do not turn the following human checks into passes.

@@ -21,6 +21,9 @@
 
 ## next
 
+### P978 Reload account settings without overwriting them
+- Reload restores your account setup without saving stale local choices over it. New edits made while loading stay local; use Save when you deliberately want to replace the account setup.
+
 ### P972 Keep earned re-arming across retry
 - Retry preserves a finish or reset's pending re-arm, so coming to rest afterward can clear the old hopped-start tag just as it would without retry. A genuine hopped start still needs its normal reset.
 
