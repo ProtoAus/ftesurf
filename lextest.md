@@ -4,20 +4,23 @@
 
 **P971 — ordinary retry (pending, not owner-confirmed):** After walking out of a start and moving for a few seconds, use normal retry once. Confirm that it returns to the same point and the timer continues. Native synthetic-entity/file controls cover preparation refusal, not this real-client/map-restart observation.
 
-## P970 — account setup and followed-player viewmodels (delivery pending)
+## P970 — followed-player viewmodels delivered; account backend pending
 
-Not owner-confirmed and not a real linked-account/live-cloud acceptance yet.
+Both Windows clients/native sets and all12Pi lobbies delivered24Oct2026;
+role-compatible eight-field Friends menu preserved. Not owner-confirmed and not
+a real linked-account/live-cloud acceptance yet. Cloud saving is not live: the
+account service still needs its separately reviewed schema23 cutover.
 Agent dedicated-socket checks show a followed Butterfly setup and matching fire/
 inspect while the observer keeps their own M9 settings; target-disabled and third
 person hide the model, and returning restores the observer's setup. Agent images
 show the watched model and complete account-controls panel. API/proof-fixture and
 synthetic client-load tests are not a live Steam-account round trip.
 
-Once the matching client/lobby/account-service build is installed: with two
-players, first-person spectate while the followed player fires, inspects and
-switches their viewmodel off/on. Does it follow naturally and leave your own
-workshop setup unchanged? With a linked account, save a distinctive setup, then
-reload it on a second linked install; confirm it restores correctly. Keep missing
+After reopening the updated client: with two players, first-person spectate while
+the followed player fires, inspects and switches their viewmodel off/on. Does it
+follow naturally and leave your own workshop setup unchanged? AFTER the account
+service cutover, with a linked account save a distinctive setup, then reload it
+on a second linked install; confirm it restores correctly. Keep missing
 content, native QW tracking and live account-switch checks explicit if not tried.
 No owner or fleet pass is claimed by this pending checklist.
 
@@ -56,7 +59,8 @@ Actual socket-client control reproduces white Bare Hands/FBI Gray in surf_666's
 red room and a missing model while held. The subject shows red-lit skin/cloth,
 normal colour after leaving the red area, and a visible model while HUD says
 held, with draw-starts unchanged. Neutral Preview glove shader/style is unchanged.
-Windows client delivered 24 Oct at 11:37:58Z; Pi is blocked by closed admission.
+Windows client delivered24Oct11:37:58Z; the corrected shader/client also shipped
+to all12Pi lobbies with P97024Oct2026. Human acceptance remains pending.
 Owner check PENDING: at save22, confirm skin/FBI Gray respond nicely;
 hold/release without the model popping away, and Neutral Preview still looks nice.
 Original texture is handled separately by P967; account/spectator work continues.
@@ -113,11 +117,11 @@ preserve that style. Account configuration persistence and watched-player setup/
 shoot/inspect mirroring requested, not yet implemented or human-confirmed.
 Exact delivery state/limits: tools/p962-knife-workshop.md.
 
-## P961 — game-running Friends presence (lobby producer/human check pending)
+## P961 — game-running Friends presence (delivered; human check pending)
 
-Matching service and BOTH Windows menus are delivered24Oct2026. Lobby CSQC is
-still the legacy seven-field producer: do NOT count the connected-client check
-as ready until its eight-field upgrade/reload. After that, use two linked friends,
+Matching service, BOTH Windows menus/compatible client cohort and all12lobby
+eight-field producer/renewal are verified24Oct2026. Deployment is ready for this
+check, NOT owner-confirmed. Run menu_restart and use two linked friends,
 one staying in a lobby, the other at the main menu with online features enabled.
 Does the menu friend show Main menu with no Join? Leave the status unchanged for
 more than35seconds: does it stay active while the game remains open? Join a lobby

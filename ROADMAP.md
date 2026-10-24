@@ -83,10 +83,11 @@ is1MiB/s capped. No integrity/fallback guard was weakened.
 Remaining requested work (not silently folded into the completed items):
 - P961 game-running presence is implemented/reviewed. Matching schema22 Social
   backend and BOTH Windows menus verified24Oct2026; all80-source/native/history
-  gates preserved. Lobby CSQC still uses the legacy seven-field snapshot, so
-  full connected-client presence/renewal delivery and the owner check are OPEN.
-  Current published producer builds3VMs/0warnings; needs safe lobby reload, not
-  another native binary swap. Receipt: tools/p961-menu-presence.md.
+  gates preserved. Eight-field producer/renewal is now delivered to all12lobbies;
+  both Windows keep the newer compatible published native/program cohort. Actual
+  cold network CSQC/load/board-render and12socket/directory/hash checks verified,
+  existing data protected; two-person/main-menu presence acceptance remains OPEN.
+  No further native swap/reload needed. Receipt: tools/p961-menu-presence.md.
 - P963 main-menu shared lobby chat and DMs are implemented and matching backend/
   BOTH Windows menus DELIVERED24Oct2026. Native/signing helpers,60Social tests
   and account/board/join/replay regressions pass. Two-person/visual acceptance

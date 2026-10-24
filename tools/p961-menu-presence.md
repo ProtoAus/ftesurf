@@ -10,14 +10,22 @@ target refusal and new/legacy menu rows; original old-refusal control is retaine
 Native source tag is patch-961; actual Makefile stamp is
 `git-7778-patch-954-3-g88a95f339` (HEAD-count+29, annotated-tag ancestry and exact
 clean source hash). The public lightweight source tag is NOT falsely substituted
-for that compiled stamp or rewritten. Development delivery is PARTIAL:
+for that compiled stamp or rewritten. Development delivery is VERIFIED:
 24Oct2026 15:03:35Z live readback verified the matching schema22 Social backend;
 15:21:41Z verified the qualified MENU/LNO in BOTH Windows installs. The service
 handoff preserves all80 runtime inputs except the two reviewed Social files,
 all historical values/bindings and the native/reader dependencies. It does not
-restart the game fleet. The installed lobby CSQC still has the legacy seven-field
-producer; its eight-field/menu-presence and matching-snapshot renewal upgrade
-remains pending. Do not claim full connected-client delivery or owner acceptance.
+restart the game fleet. The separately approved ordinary QC rollout compiled
+all3VMs/0warnings and verified all12new epochs, hashes/predecessors and29,850
+unchanged existing files16:51:08Z. Native/reader dependencies and runtime80 stayed
+unchanged; no native/backend/AI action. A later independently published peer
+cohort superseded those program hashes; it is preserved, not rolled back.
+17:00:29Z current fleet readback and17:06:26Z source/cold-client review verify
+published9b353d16, the same intended eight-field Friends modules, all12fresh
+sockets/directory and matching actual network CSQC. Both Windows retain the newer
+published P970 native/program/shader/cache cohort and matching C3 menus, with
+14,618protected files unchanged. No downgrade or second restart by this task.
+Do not confuse deployed source/transport with real two-person/human acceptance.
 P954's separate native cutover was verified earlier09:52:46Z, not reused here.
 Number961 claimed after fetching both repos and checking patch headings AND
 untracked pNNN/test_pNNN files in canonical/owned trees (max960). The unpublished
@@ -90,8 +98,14 @@ real two-person/visual acceptance remains pending.
 - Retained first varargs warnings, wrong test-helper name and native-probe compiler
   path failure are not passes. No owner identity/data copied; only owned actors
   stopped. Final clean build/native proof passed as recorded above; service and
-  Windows MENU delivery are verified, but lobby CSQC promotion and owner checks
-  remain pending. Current published328ebfa1 QC builds all3VMs/0warnings without
-  deployment; its only client-source delta from installed P967 composition
-  9b2db0c1 is the two published Friends modules, retaining newer workshop code.
-  A lobby reload needs a fresh safe boundary and any occupied-lobby approval.
+  Windows MENU and full fleet producer delivery are verified; owner checks
+  remain pending. The328ebfa1/d76c82fe rollout changes only the two Friends modules
+  from P967 composition9b2db0c1 and preserves the newer save/rewind fixes.
+  Initial Windows promotion refused a real concurrent native upgrade before
+  any mutation; Pi-only used the existing supported entrypoint, then retained/
+  verified the newer Windows cohort rather than overwriting it. One fresh client
+  downloaded current CSQC, loaded and drew cols9/type14 with no QC error, exit0;
+  screenshot inspected. Its original old-hash smoke assertion remains a failure
+  caused by the later peer rollout, not relabelled as a pass or rerun. The same
+  actual download/render evidence matches the independently verified current
+  cohort. Terms were not accepted: no live ranked-board query or human chat pass.
