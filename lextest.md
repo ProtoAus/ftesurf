@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P964 — restored running-stage retry (Windows/Pi delivered; human check pending)
+
+Not owner-confirmed. Recover a running attempt by the usual retry after a
+reconnect/respawn. Check the opening leg and a stage-only attempt: timer/HUD
+must stay running rather than stick at armed, and a synchronized ghost must
+continue normally. Also check a later stage of a full-track attempt still arms
+and starts through its ordinary boundary exit. Existing clean/practice
+classification must stay unchanged. Native protocol flags/control flow and
+fresh fleet bootstrap are verified; visible HUD/ghost feel, real cold/signed
+stage posting and this human check are not implied by those tests. Both Windows
+server pairs and all12Pi lobbies received P96424Oct2026; client/menu/native and
+player settings were preserved. Receipt: tools/p964-save-stage.md.
+
 ## P963 — main-menu lobby chat and DMs (matching deployment/human check pending)
 
 Not owner-confirmed; do not try against an older service. Once matching client,
