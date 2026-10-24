@@ -25,7 +25,9 @@ commit   dae472e7090d22b48807a267baa039f58c171bfc
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-954
-patch    964
+patch    965
+# P965 older-save progress range guard; server-only compatibility composition.
+# See tools/p965-windows-server-compatible.md; native pin/tag remains unchanged.
 # P964 Windows server-only compatibility composition; installed native pin/tag
 # and client/menu cohort are preserved. See tools/p964-windows-server-compatible.md.
 # Patch 958: bounded finite numeric parsing with structured recording-format faults.
