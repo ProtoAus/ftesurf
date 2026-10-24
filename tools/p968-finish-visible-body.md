@@ -41,6 +41,15 @@ actual carrier cashout source, scalar fallback, separate vertical terms, hold
 polarity, fresh-hop cancellation before the moved call and unchanged four-latch
 grant. Native control/subject bind the identical native binary and frozen module.
 This is a direct review, not an independent reviewer or full old rule audit.
-Publication and compatible Windows/Pi delivery remain separate pending gates. Pi directory availability currently blocks
-ordinary promotion before any staging; no peer backend or old transaction may be
-restarted/reused to bypass it. P965 Windows delivery remains separately recorded.
+Published source100db5f7 and engine32c7d106. Qualified Windows composition53c54f97
+(3VMs/0warnings, whole timer byte-identical) installed server DAT/LNO in BOTH
+installs at2026-10-24T12:28:27Z. All4destination hashes and exact P965 preimages
+passed; .prev/prior history retained and11fresh native/client/menu/config hashes
+unchanged. No process signalled: not an already-running reload or owner pass.
+
+Pi P968 composition/promotion remains pending. New feature-boundary read-only
+check still finds directory unavailable, exact P964 QW/current CS unchanged,
+no .new or P965 phase. No staging/restart/backend transaction has been performed.
+Do not restart a peer backend or reuse an old transaction to bypass availability;
+recover actual ownership/directory then requalify the fresh canonical/pinned/empty
+boundary. P965 Windows delivery remains separately recorded.
