@@ -3,9 +3,11 @@
 Status: R6 is implemented, independently reviewed and deployed to BOTH Windows
 installs. Three VMs build with zero warnings;924reader checks and the same-byte
 corpus show0newfaults. Actual old/new non-QW refusal and supportedQW recording
-controls pass. The coupled NanoPi native/program/reader cutover is NOT complete:
-one occupied lobby currently blocks its empty-fleet boundary. No cutover,
-consistent delivery backup, service signal or admission closure has occurred.
+controls pass. The coupled NanoPi native/program/reader cutover is NOT complete. The fleet
+became empty and a guarded attempt stopped before image replacement/restarts:
+a slow historical scan expired its directory lease. The unchanged predecessor
+backend/importer were restored and independently checked; no game server was
+restarted and no run data restored. A tooling-order fix and review are required.
 Historical measurements below are r1/r2 only. This is ordinary development work,
 not a release or Build-number bump.
 
@@ -26,10 +28,21 @@ not a release or Build-number bump.
   `.prev` and prior history retained, no index/ref or unrelated file changes.
   The actual CLI in each install parsed the retained normal/.5/.1 captures:
   three files each, zero faults. This checks reader installation, not new physics.
-- Exact delivery-controller reviews pass. The old backend remains OPEN and its
-  candidate CLOSED; actual candidate/history acceptance and postflight remain
-  mandatory. The live blocker is one player on lobby1/27510. The earlier forced
-  restart was a separate completed rollout, not standing approval for this one.
+- 24Oct2026: the fleet became genuinely empty; a consistent mode0600 SQLite
+  backup passed schema20/quickcheck before the one guarded handoff. It stopped
+  before all five image writes, all game restarts and candidate/canonical swaps.
+  Retained timestamps show the closed historical scan completed29.9s after the
+  old web master exited, longer than the unchanged10s freshness lease.
+- 04:18:57Z: the same unchanged predecessor80-file backend and stopped importer
+  were restored through its guarded candidate/acceptance route. Board/API200,
+  twelve fresh directory entries, schema20 and every existing verdict column,
+  value and nonempty recording binding verified. All five installed predecessor
+  images/readers remain unchanged; no data restore, game restart or AI action.
+- The failed transaction and backup are retained, not retried or hidden by a new
+  attempt name. Move expensive history measurement past the native activation
+  boundary while all DB producers remain CLOSED, rather than relaxing freshness.
+  Independently reviewed, explicitly gated continuation is still required.
+  Final application/native/history/postflight and owner acceptance remain pending.
 
 ## Behaviour and boundaries
 
