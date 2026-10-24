@@ -1,5 +1,21 @@
 # BACKLOG.md
 
+## Story/Event levels on non-Momentum builds: Beta maps mapwatch never installs (25 Oct)
+
+- Lex (25 Oct): "Make sure all Story mode maps are the Momentum Mod version ...
+  unless there is no such version". Six Story/Event levels are Momentum Beta
+  maps the Pi does not hold at Momentum's build: surf_stonework3,
+  surf_leet_xl_beta7z, surf_mdrn hold KSF's build under the plain name;
+  surf_vegetables, surf_mesa, surf_progress an older build. Pi-wide 74 Beta
+  names are off Momentum's build, 50 of them KSF's. mapwatch installs approved
+  maps only; Beta BSPs and zones need a signed-in Momentum request (401), and
+  ksffetch put KSF's bytes in the local Momentum library too.
+- Site: surfd/mapwatch.py (extra.tsv carries Beta hashes from Lex's install),
+  tools/ksffetch.py. A fix needs the Beta builds' bytes from an authenticated
+  source, installed with the KSF bytes kept as <name>_css, and zones that fit.
+- Falsifier: sha1 of the Pi's <level>.bsp equals extra.tsv's Momentum hash for
+  each Story level that has one; P980's ui_build "story plays" names it.
+
 ## P984: the live mapwatch still refuses OWN-TIMER until the next surfd generation
 
 - Site: the cron's mapwatch runs from the sealed generation a849051e (transition
