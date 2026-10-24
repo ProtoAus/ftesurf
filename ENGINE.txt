@@ -25,7 +25,9 @@ commit   dae472e7090d22b48807a267baa039f58c171bfc
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-954
-patch    958
+patch    964
+# P964 Windows server-only compatibility composition; installed native pin/tag
+# and client/menu cohort are preserved. See tools/p964-windows-server-compatible.md.
 # Patch 958: bounded finite numeric parsing with structured recording-format faults.
 # Normal numeric arithmetic, evidence formats, native pin/tag and policy unchanged.
 # Patch 957: bounded mounted Butterfly/M9 animations, matching arms and local finish workshop.

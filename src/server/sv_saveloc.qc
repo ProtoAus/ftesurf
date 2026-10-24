@@ -2402,10 +2402,15 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		  land inside it and the stage times from when you leave, land outside and
 		  it disarms.  Correct either way.
 		*/
+		// Patch 964: reopen the restored leg, not the old slice: a retry's fresh edict
+		// has run_st_seg == -1 until THIS call opens it.
 		if (e.run_t_state == TS_RUNNING)
-		if (e.run_st_seg >= 0)
+		if (e.run_t_seg >= 0 && e.run_t_seg < e.run_t_segs)
 		{
 			SV_StageOpen(e, e.run_t_seg, ticks);
+			// Only later full-track legs use the packet stage-arm resolver.
+			if (e.run_t_seg == 0 || e.run_t_stagerun)
+				e.run_st_armed = FALSE;
 
 			/*
 			  AND PUT THE TAINT BACK, because SV_StageOpen reads it from the
