@@ -1,5 +1,7 @@
 # lextest.md — things waiting on a human
 
+**P981/P983 — map downloads (pending, not owner-confirmed):** Download a map you do not have from the map list (a _css build is a good test: they are the big ones). It should finish several times faster than before and load normally. Agent rig: surf_beginner_css 18.6 s -> 4.5 s on the released exe, 2.5 s with the P983 exe; surf_kitsune2 ~8.5 s -> 3.5 s.
+
 **P980 — Story builds and Momentum demos on CS:S builds (pending, not owner-confirmed):** Your map list has the CS:S build picked for surf_axiom and surf_kitsune (data/mapbuild.txt). Play the Story/Event surf_axiom bonus 4 level: it should load surf_axiom, not surf_axiom_css. On surf_axiom_css, watch a Momentum demo from the board: it should play. Click MOM on those two rows if you want Momentum there outside Story as well.
 
 **P977, P979, P982 — engine (pending, not owner-confirmed; needs the new ftesurf64.exe):** In a local game: `sv_cheats 1`, `sv_airaccelerate 1000` -- air strafing should change at once; `sv_cheats 0` should list each restored setting as old -> new. `r_mirrorworld 1`: the map mirrors, mouse/keys feel normal, HUD text stays readable (the strafe bar/trainer sides are not mirror-aware yet: say if that bothers you). `bindlist`: F2 before F10; `bindlist mouse` filters.

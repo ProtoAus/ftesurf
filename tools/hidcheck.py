@@ -315,8 +315,9 @@ def q_atof(s):
 def q_atoi(s):
     """The engine's Q_atoi (common.c), which sets a cvar's .ival -- what r_xflip
     (leftisright) is tested by.  No leading-space skip, '-', 0x hex, a quoted
-    character, else digits to the first other character; int32 wraparound.
-    It cannot fail, so no value can make a reader that uses it abstain."""
+    character, else digits to the first other character, kept as its low 32 bits
+    (so "-1" is 4294967295): only zero against non-zero is meaningful. It cannot
+    fail, so no value can make a reader that uses it abstain."""
     i, n, sign, val = 0, len(s), 1, 0
     if i < n and s[i] == "-":
         sign, i = -1, i + 1

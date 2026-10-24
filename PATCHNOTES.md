@@ -21,6 +21,13 @@
 
 ## next
 
+### P983 Faster map downloads in the game
+- The game reads everything that has arrived each frame instead of one piece, so a map download runs at your connection's speed (about 3x faster at 100 fps).
+
+### P981 Smaller, faster map downloads
+- Maps that are not already compressed are now sent gzipped from the map storage (40-60% smaller), and the game unpacks them; this works on every released version.
+- Map downloads no longer fall back to the slow 1 MB/s copy on the lobby server when several requests arrive at once.
+
 ### P982 r_mirrorworld
 - r_mirrorworld 1 mirrors the world left to right and flips mouse, keyboard and gamepad turning and strafing to match, so you play the mirrored map normally. It is the same switch as leftisright.
 - Names and markers drawn over the world (ent_view, player names, run lines) now follow the mirrored view.

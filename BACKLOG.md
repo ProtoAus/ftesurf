@@ -1,5 +1,16 @@
 # BACKLOG.md
 
+## hidcheck: leftisright values the journal cannot carry exactly (P982 review 2)
+
+- Sites: engine client/in_generic.c journals cvar strings through COM_QuotedString
+  (header qval[64] cut at 61 chars, 'c' quoted[128] at 125); tools/hidcheck.py
+  _unquote_pair is not its inverse for values holding '"', CR/LF (escaped form)
+  or '\' (plain form), and the cut changes long values. hidcheck then takes a
+  different .ival than the engine: a player who sets such an absurd leftisright
+  is falsely flagged on every mouse frame. Never a pass or a blind.
+- Fix options: journal .ival beside the string (engine), or decode the escaped
+  form and widen the buffers. Falsifier: leftisright "1\"" and "0"*61+"1".
+
 ## r_mirrorworld: HUD elements that draw world sides (P982)
 
 - Sites: src/client/cl_hud.qc HUD_WishDir (reads input_movevalues, already
