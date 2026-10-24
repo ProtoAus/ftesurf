@@ -2,11 +2,11 @@
    Separate staging store: a paced list update replaces the visible list only
    at friend_end. No installation-local friendship file or public HTTP reader. */
 #define FR_MAX 128
-#define FR_FIELDS 7
+#define FR_FIELDS 8
 float fr_buf, fr_stage, fr_ready, fr_n, fr_sn, fr_loading;
-float fr_activity_capable;
+float fr_activity_capable, fr_menu_at;
 vector fr_scroll;
-string fr_notice, fr_msgpick, fr_profpick;
+string fr_notice, fr_msgpick, fr_profpick, fr_snapshot_hash;
 float fr_joinuntil, fr_rowh, fr_wheel;
 // P788: the "added you" toast, once per account (fr_seen, data/friends_toasted.txt).
 string fr_seen, fr_tw, fr_tn;
@@ -263,7 +263,7 @@ float(float evtype, float scanx) Friends_Wheel =
 
 void(vector p, vector sz, float tsz, float hint) Friends_Draw =
 {
-	local float y, rowh, i, at, rel, online, x, bw, w;
+	local float y, rowh, i, at, rel, online, menuonline, x, bw, w;
 	local vector lp;
 	local string who, nm, s;
 
@@ -292,6 +292,7 @@ void(vector p, vector sz, float tsz, float hint) Friends_Draw =
 		who = bufstr_get(fr_buf, at);
 		rel = stof(bufstr_get(fr_buf, at + 1));
 		online = stof(bufstr_get(fr_buf, at + 2));
+		menuonline = (rel == 3 && stof(bufstr_get(fr_buf, at + 7)) == 1 && cltime >= fr_menu_at && cltime - fr_menu_at <= 16);
 		nm = bufstr_get(fr_buf, at + 3);
 		// P788: incoming adds, listed after friends, are drawn faded.
 		sui_roundbox(lp + '0 1 0', [w, rowh - 3], hint * 0.5, SUI_THEME_WELL, rel == 2 ? 0.35 : 0.8);
@@ -309,10 +310,11 @@ void(vector p, vector sz, float tsz, float hint) Friends_Draw =
 		if (rel == 1) s = "Added -- waiting for them to add you back";
 		if (rel == 2) s = "Added you -- add them back";
 		if (rel == 4) s = "Blocked: cannot add or message you";
+		if (rel == 3 && stof(bufstr_get(fr_buf, at + 7)) == 1) s = menuonline ? "Main menu" : "Presence unavailable";
 		if (rel == 3 && online)
 			s = strcat(bufstr_get(fr_buf, at + 5), "  /  ", bufstr_get(fr_buf, at + 6));
 		sui_text([x, lp_y + tsz * 1.65], [hint, hint], Chat_Fit(s, w - tsz * 3, hint),
-		         online ? SUI_THEME_GOOD : (rel == 2 ? SUI_THEME_DIM : SUI_THEME_MUTED), 1, 0);
+		         (online || menuonline) ? SUI_THEME_GOOD : (rel == 2 ? SUI_THEME_DIM : SUI_THEME_MUTED), 1, 0);
 		y = lp_y + tsz * 2.45;
 		if (rel == 3 && online)
 		{
@@ -373,6 +375,16 @@ void() Friends_Register =
 	registercommand("friends_menu_add");
 };
 
+// Only a successful unchanged poll for the completed snapshot renews it.
+float(string hash) Friends_SnapshotFresh =
+{
+	if (!fr_ready || fr_loading || strlen(hash) != 64) return FALSE;
+	if (strcmp(hash, fr_snapshot_hash)) return FALSE;
+	fr_menu_at = cltime;
+	Friends_MenuPublish();
+	return TRUE;
+};
+
 float(string cmd) Friends_ConsoleCommand =
 {
 	local string c, nm, s;
@@ -414,6 +426,7 @@ float(string cmd) Friends_ConsoleCommand =
 			bufstr_set(fr_stage, fr_sn * FR_FIELDS + 4, uri_unescape(argv(5)));
 			bufstr_set(fr_stage, fr_sn * FR_FIELDS + 5, uri_unescape(argv(6)));
 			bufstr_set(fr_stage, fr_sn * FR_FIELDS + 6, n >= 8 ? uri_unescape(argv(7)) : "");
+			bufstr_set(fr_stage, fr_sn * FR_FIELDS + 7, (n >= 9 && stof(argv(8)) == 1) ? "1" : "0");
 			fr_sn = fr_sn + 1;
 		}
 		return TRUE;
@@ -432,9 +445,14 @@ float(string cmd) Friends_ConsoleCommand =
 			}
 			tmp = fr_buf; fr_buf = fr_stage; fr_stage = tmp;
 			fr_n = fr_sn; fr_ready = TRUE; fr_loading = FALSE;
+			if (strlen(fr_snapshot_hash)) strunzone(fr_snapshot_hash);
+			fr_snapshot_hash = "";
+			if (n == 2 && strlen(argv(1)) == 64) fr_snapshot_hash = strzone(argv(1));
+			fr_menu_at = cltime;
 			Friends_MenuPublish();
 			Friends_ToastPick();
 		}
+		else if (n == 2) Friends_SnapshotFresh(argv(1));
 		return TRUE;
 	}
 	if (c == "friend_pm" && n >= 4)

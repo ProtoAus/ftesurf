@@ -454,7 +454,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 KSF_UNBOUND_SQL = """
 CREATE TABLE IF NOT EXISTS ksf_unbound (
  map TEXT NOT NULL, track INTEGER NOT NULL, leg INTEGER NOT NULL,
@@ -1579,6 +1579,13 @@ def migrate():
             conn.execute("PRAGMA user_version=20")
             conn.commit()
             version = 20
+
+        if version < 21:
+            # Additive, short-lived MENU presence; no lobby capability/run rewrite.
+            conn.executescript(social.MENU_PRESENCE_SQL)
+            conn.execute("PRAGMA user_version=21")
+            conn.commit()
+            version = 21
 
         verdict_metrics(conn)
         gone = accounts.links_now(conn)

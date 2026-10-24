@@ -21,6 +21,10 @@
 
 ## next
 
+### P961 Main-menu Friends presence
+- With online features enabled, mutual friends can see that your game is running at the main menu. Joining becomes available after you enter a lobby, not while you are at the menu.
+- Healthy unchanged Friends polls keep the displayed presence current; unavailable updates still go stale. Background presence no longer consumes the interactive Friends request budget.
+
 ### P958 Saved-run check resilience
 - Saved-run checks report damaged numeric data without interrupting checks of other recordings.
 

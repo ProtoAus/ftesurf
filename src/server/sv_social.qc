@@ -214,6 +214,7 @@ float(float reqid, float code, string body) Social_Reply =
 			stuffcmd(e, sprintf("friend_note %s\n", uri_escape("Refreshing Steam for Friends; retrying automatically")));
 			continue;
 		}
+		hash = json_get_string(json_find_object_child(row, "hash"));
 		friends = json_find_object_child(row, "friends");
 		if (friends)
 		{
@@ -226,18 +227,23 @@ float(float reqid, float code, string body) Social_Reply =
 			{
 				f = json_get_child_at_index(friends, j);
 				// All variable text is percent encoded; never an executable argument.
-				bufstr_add(e.social_buf, sprintf("friend_row %s %g %g \"%s\" \"%s\" \"%s\" \"%s\"\n",
+				bufstr_add(e.social_buf, strcat(sprintf("friend_row %s %g %g \"%s\" \"%s\" \"%s\" \"%s\"",
 				         json_get_string(json_find_object_child(f, "who")),
 				         json_get_float(json_find_object_child(f, "relation")),
 				         json_get_float(json_find_object_child(f, "online")),
 				         uri_escape(json_get_string(json_find_object_child(f, "name"))),
 				         uri_escape(substring(json_get_string(json_find_object_child(f, "server")), 0, 80)),
 				         uri_escape(substring(json_get_string(json_find_object_child(f, "map")), 0, 64)),
-				         uri_escape(substring(json_get_string(json_find_object_child(f, "activity")), 0, 24))), TRUE);
+				         uri_escape(substring(json_get_string(json_find_object_child(f, "activity")), 0, 24))),
+				         sprintf(" %g\n", json_get_float(json_find_object_child(f, "menu_online")) == 1)), TRUE);
 			}
-			bufstr_add(e.social_buf, "friend_end\n", TRUE);
+			bufstr_add(e.social_buf, sprintf("friend_end %s\n", hash), TRUE);
 		}
-		hash = json_get_string(json_find_object_child(row, "hash"));
+		else if (!e.social_buffered && strlen(hash) == 64)
+		{
+			// Successful unchanged poll: renew only this completed snapshot.
+			if (!strcmp(hash, e.social_hash)) stuffcmd(e, sprintf("friend_end %s\n", hash));
+		}
 		if (e.social_hash != "") strunzone(e.social_hash);
 		e.social_hash = strzone(hash);
 		messages = json_find_object_child(row, "messages");

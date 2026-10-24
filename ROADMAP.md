@@ -68,9 +68,13 @@ speed acceptance), BSP identity encoded/original bytes; only Pi origin fallback
 is1MiB/s capped. No integrity/fallback guard was weakened.
 
 Remaining requested work (not silently folded into the completed items):
-- Game-running presence while disconnected, main-menu shared lobby/chat and DMs.
-  Existing lobby-mediated friends/DM do not make a disconnected install online.
-  Preserve account consent, mutual/blocked visibility and authenticated actions.
+- P961 game-running presence while disconnected is implemented and independently
+  reviewed, with53backend tests and native proof/freshness controls. Source/native
+  tag published; final clean build/deployment and owner check remain pending.
+  Receipt: tools/p961-menu-presence.md. No claim that the live backend supports it yet.
+- Main-menu shared lobby/chat and DMs remain unbuilt. Existing lobby-mediated DM
+  is not disconnected transport. Preserve consent, mutual/blocked visibility and
+  authenticated actions.
 - P954 practice-only `host_timescale` is implemented, independently reviewed and
   deployed to BOTH Windows installs, including their reader tools. Fixed-tick,
   forced-practice and reader controls pass; owner feel remains pending. The
