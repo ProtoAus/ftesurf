@@ -124,7 +124,7 @@ class Friends(unittest.TestCase):
         self.client = S.app.test_client()
         self.db = S.connect()
         self.addCleanup(self.db.close)
-        for table in ("social_menu_presence", "social_messages", "social_friends", "social_sessions", "keylinks", "accounts", "lobbies"):
+        for table in ("social_menu_messages", "social_menu_presence", "social_messages", "social_friends", "social_sessions", "keylinks", "accounts", "lobbies"):
             self.db.execute("DELETE FROM " + table)
         for sid, name in zip(IDS, ("Alice", "Bob", "Third")):
             self.db.execute("INSERT INTO accounts(steamid,name,created_at) VALUES(?,?,?)", (sid, name, self.now))
@@ -488,6 +488,110 @@ class Friends(unittest.TestCase):
         for _ in range(20): self.action(0, "join")
         self.assertEqual(self.action(3, "join").status_code, 429) # second install shares budget
 
+    def chat_send(self, i=0, text="hello", peer="-"):
+        target = peer + ":" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+        form = self.menu_form(i, "message", target)
+        form["text"] = text
+        return self.menu_read(form), form
+
+    def test_menu_chat_room_is_linked_bounded_and_capability_free(self):
+        count = self.db.execute("SELECT COUNT(*) FROM social_sessions").fetchone()[0]
+        sent, _ = self.chat_send(text="Hello 🌊")
+        self.assertEqual(sent["ok"], 1)
+        for i in (0, 1, 2):
+            body = self.menu_read(self.menu_form(i, "chat"))
+            self.assertEqual(body["room"][0]["text"], "Hello 🌊")
+            self.assertEqual(body["messages"], [])
+            encoded = json.dumps(body)
+            for secret in [*IDS, *PUBS, *self.tokens, "testkey"]:
+                self.assertNotIn(secret, encoded)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM social_sessions").fetchone()[0], count)
+        self.now += F.MESSAGE_TTL + 1
+        self.assertEqual(self.menu_read(self.menu_form(2, "chat"))["room"], [])
+
+    def test_menu_chat_dm_accepts_menu_presence_and_stays_private(self):
+        self.befriend(); self.poll()
+        self.now += F.PRESENCE_TTL + 1
+        self.assertEqual(self.menu_read(self.menu_form(1, "presence"))["ok"], 1)
+        sent, _ = self.chat_send(text="Private hello", peer=A.who_of(IDS[1]))
+        self.assertEqual(sent["ok"], 1)
+        for i in (0, 1):
+            body = self.menu_read(self.menu_form(i, "chat"))
+            self.assertEqual([r["text"] for r in body["messages"]], ["Private hello"])
+            self.assertEqual(body["room"], [])
+        self.assertEqual(self.menu_read(self.menu_form(2, "chat"))["messages"], [])
+        self.now += F.MENU_PRESENCE_TTL + 1
+        self.assertEqual(self.chat_send(text="offline", peer=A.who_of(IDS[1]))[0]["status"], 409)
+
+    def test_menu_chat_body_target_and_proof_substitution_refuse(self):
+        target = "-:" + hashlib.sha256(b"original").hexdigest()
+        form = self.menu_form(op="message", who=target)
+        self.assertEqual(self.menu_read(dict(form, text="changed"))["status"], 400)
+        self.assertEqual(self.menu_read(dict(form, who=A.who_of(IDS[1])+target[1:], text="original"))["status"], 403)
+        self.assertEqual(self.menu_read(dict(form, op="chat", who="-"))["status"], 403)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0], 0)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM social_menu_messages").fetchone()[0], 0)
+        self.assertEqual(self.menu_read(dict(form, text="original"))["ok"], 1)
+
+    def test_menu_chat_replay_is_durable_across_connections_and_installations(self):
+        sent, form = self.chat_send()
+        self.assertEqual(sent["ok"], 1)
+        other = S.connect()
+        try:
+            with other:
+                other.execute("BEGIN IMMEDIATE")
+                body, status = F.menu_message(other, IDS[0], form["nonce"], int(form["expires"]),
+                                              form["who"], "hello", self.now, S.LOBBY_TTL)
+            self.assertEqual((body["ok"], status), (0, 409))
+        finally:
+            other.close()
+        # Another installation of the same account cannot repeat that nonce.
+        second = dict(form, pub=PUBS[3])
+        msg = (F.MENU_STATEMENT % (form["nonce"], "message", form["who"])).encode("ascii")
+        second["sig"] = ed25519.sign(bytes([4])*32, msg).hex()
+        self.assertEqual(self.menu_read(second)["status"], 409)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0], 1)
+
+    def test_menu_chat_mutuality_blocks_and_bans_are_rechecked(self):
+        self.assertEqual(self.chat_send(peer=A.who_of(IDS[1]))[0]["status"], 403)
+        self.befriend(); self.poll()
+        self.assertEqual(self.chat_send(1, "room line")[0]["ok"], 1)
+        self.assertEqual(self.chat_send(1, "private line", A.who_of(IDS[0]))[0]["ok"], 1)
+        self.action(0, "block", 1)
+        self.assertEqual(self.chat_send(1, "refused", A.who_of(IDS[0]))[0]["status"], 403)
+        body = self.menu_read(self.menu_form(0, "chat"))
+        self.assertEqual((body["room"], body["messages"]), ([], []))
+        self.assertEqual(len(self.menu_read(self.menu_form(2, "chat"))["room"]), 1)
+        self.db.execute("UPDATE accounts SET banned_at=? WHERE steamid=?", (self.now, IDS[1]));self.db.commit()
+        self.assertEqual(self.menu_read(self.menu_form(2, "chat"))["room"], [])
+        self.assertEqual(self.chat_send(1)[0]["status"], 403)
+
+    def test_menu_chat_text_and_room_bounds_preserve_private_rows(self):
+        for text in ("", " ", "x"*161, "x\ny", "界"*160):
+            self.assertEqual(self.chat_send(text=text)[0]["status"], 400)
+        self.db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                        (IDS[1], IDS[2], "unrelated private", self.now))
+        self.db.executemany("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                            [(IDS[1], F.CHAT_ROOM, "room", self.now)]*128)
+        self.db.commit()
+        self.assertEqual(self.chat_send()[0]["ok"], 1)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM social_messages WHERE recipient=?", (F.CHAT_ROOM,)).fetchone()[0], 128)
+        self.assertEqual(self.db.execute("SELECT body FROM social_messages WHERE recipient=?", (IDS[2],)).fetchone()[0], "unrelated private")
+        self.assertEqual(len(self.menu_read(self.menu_form(0, "chat"))["room"]), 24)
+
+    def test_menu_chat_migration21_is_additive_and_idempotent(self):
+        self.db.execute("DROP TABLE social_menu_messages")
+        self.db.execute("PRAGMA user_version=21");self.db.commit()
+        tables = [r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+        before = {name: [tuple(r) for r in self.db.execute('SELECT * FROM "' + name + '"')] for name in tables}
+        S.migrate()
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 22)
+        self.assertEqual(before, {name: [tuple(r) for r in self.db.execute('SELECT * FROM "' + name + '"')] for name in tables})
+        self.assertEqual(self.chat_send()[0]["ok"], 1)
+        used = [tuple(r) for r in self.db.execute("SELECT * FROM social_menu_messages")]
+        S.migrate()
+        self.assertEqual([tuple(r) for r in self.db.execute("SELECT * FROM social_menu_messages")], used)
+
     def menu_form(self, i=0, op="list", who="-", ip=None):
         args = {} if ip is None else {"environ_overrides": {"REMOTE_ADDR": ip}}
         challenge = self.client.get("/api/social/menu/challenge", query_string=dict(op=op, who=who), **args)
@@ -698,7 +802,7 @@ class Friends(unittest.TestCase):
         tables = [r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
         before = {name: [tuple(r) for r in self.db.execute('SELECT * FROM "' + name + '"')] for name in tables}
         S.migrate()
-        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 21)
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], S.SCHEMA_VERSION)
         after = {name: [tuple(r) for r in self.db.execute('SELECT * FROM "' + name + '"')] for name in tables}
         self.assertEqual(before, after)
         self.assertEqual(self.menu_read(self.menu_form(1, op="presence"))["ok"], 1)

@@ -21,6 +21,10 @@
 
 ## next
 
+### P963 Main-menu lobby chat and direct messages
+- Open lobby chat beside Play to talk in the shared main-menu room or select a mutual friend for a private conversation. Requires a linked account, online features and matching updated client/service.
+- Messages are recent-only and expire after two minutes. Blocks apply, private messages are friend-only, and closing chat clears local drafts and held messages. DMs are not end-to-end encrypted.
+
 ### P962 Installed Legacy knife, glove and sleeve workshop
 - The knife workshop lists installed Legacy knife shapes, hands/gloves and sleeves/watches, with paged selectors and a draggable shared-theme panel.
 - Selecting Legacy content can mount the installed game for this session without changing saved mounts. Missing content keeps your selection; no game assets are downloaded or bundled.

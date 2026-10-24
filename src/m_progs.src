@@ -30,6 +30,7 @@ menu/m_zonedl.qc
 menu/m_main.qc
 // Private CSQC snapshot view; uses the picker/UI helpers and forward MF_* declarations.
 menu/m_friends.qc
+menu/m_chat.qc             // P963: explicit MENU lobby/DM proofs, no chat disk cache
 menu/m_profile.qc          // P933: public profile preview, same read-only API as CSQC
 // Patch 467: AFTER m_main.qc -- it draws with ui_option/ui_chip/ui_button and
 // reads menu_screen/ms_consent, all defined there; m_main.qc reaches it
