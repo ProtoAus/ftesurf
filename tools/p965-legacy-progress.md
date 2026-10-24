@@ -28,12 +28,28 @@ new recording format, changed clean/practice eligibility or capture feature.
 - Existing reader regression evidence remains applicable: this patch changes
   neither Python reader code nor historical recordings or evidence grammar.
 
-## Pending
+## Verification and delivery
 
 The standard NoDeploy/Jobs8 build passes for all three VMs with zero warnings.
 Both independent source reviews report no blockers; the parent recomputed the
 frozen file's byte hash and accepted the match. Reviewers' hash attribution is
-explicitly supplied-witness only. Publication and isolated cohort promotion
-remain pending. P964 delivery is separate and retained; no live
-install or lobby has received P965 merely because its native fixture passed.
+explicitly supplied-witness only. Source8a86dc3d is published via inspected
+merge ebbb1aff; engine record2e6a5b1c via3befcd32. Concurrent P966 work and
+highest patch metadata were preserved, not included in the server promotions.
+
+Windows delivery at2026-10-24T11:39:26Z: qualified public composition26f20a55
+installed server DAT/LNO in BOTH installs, checking exact P964 predecessors.
+All11fresh current native/client/menu/config hashes remained unchanged; ordinary
+.prev and prior history retained. No Windows process was signalled; installation
+is not a claim that an already-running process reloaded or owner play passed.
+
+Pi public composition0577d431 qualifies3VMs/0warnings: server is byte-identical
+to reviewed main production output and client is byte-identical to the actual
+fleet. NOT DEPLOYED: real boundary directory connection was refused before any
+retention/staging/swap/restart. Actual progs remain P964, no .new exists, no P965
+remote phase was created. The intentionally dead systemd surfd unit is not its
+process authority; actual pidfile is absent and local directory unavailable.
+Do not restart a peer backend or reuse an old guarded transaction. Resume this
+ordinary promotion only after directory/ownership recovery and fresh canonical
+witness, paired hashes, native/reader pins and empty-socket/directory checks.
 No native pin/tag, Build or release change is claimed.
