@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+**P980 — Story builds and Momentum demos on CS:S builds (pending, not owner-confirmed):** Your map list has the CS:S build picked for surf_axiom and surf_kitsune (data/mapbuild.txt). Play the Story/Event surf_axiom bonus 4 level: it should load surf_axiom, not surf_axiom_css. On surf_axiom_css, watch a Momentum demo from the board: it should play. Click MOM on those two rows if you want Momentum there outside Story as well.
+
+**P977, P979, P982 — engine (pending, not owner-confirmed; needs the new ftesurf64.exe):** In a local game: `sv_cheats 1`, `sv_airaccelerate 1000` -- air strafing should change at once; `sv_cheats 0` should list each restored setting as old -> new. `r_mirrorworld 1`: the map mirrors, mouse/keys feel normal, HUD text stays readable (the strafe bar/trainer sides are not mirror-aware yet: say if that bothers you). `bindlist`: F2 before F10; `bindlist mouse` filters.
+
 **P976 — KSF tier in the map info box (pending, not owner-confirmed):** Which map showed no KSF tier? Load it (or surf_axiom_css, surf_4am_css, surf_kraken) and check the top-right box reads "KSF tier N". Lobbies read the new list on their next map load. Agent rig showed surf_axiom_css going from "KSF tier ?" to "KSF tier 4".
 
 **P975 — Friends in a private game (pending, not owner-confirmed):** Start a private local game, press Esc, open Play: the friends panel on the right should load your list (online friends show their map, Join works). Agent rig shows the menu now asks the Friends service in a local game (it stopped at signing, the rig has no install key); your linked install is the real check.

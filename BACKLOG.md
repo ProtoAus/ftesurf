@@ -1,5 +1,15 @@
 # BACKLOG.md
 
+## r_mirrorworld: HUD elements that draw world sides (P982)
+
+- Sites: src/client/cl_hud.qc HUD_WishDir (reads input_movevalues, already
+  flipped), the strafe bar's turn-side cues, src/client/cl_trainer.qc's
+  left/right bands, cl_mouse.qc's pad. With leftisright 1 the world, view and
+  inputs are mirrored, but these draw world-space left/right, so a "turn right"
+  cue points at the screen's left. Key lights read the keyboard and are right.
+- Falsifier: rig, leftisright 1, hold +moveright and turn right: every cue must
+  point screen-right; control is today's build.
+
 ## Resume: a fresh run drops a keyed slot without the P629 key check (found in P973 review)
 
 - Site: src/server/sv_resume.qc SV_MsFrame's fresh-run grace drop calls

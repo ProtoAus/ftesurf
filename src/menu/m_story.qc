@@ -1142,8 +1142,10 @@ void(float L, float i) Sty_Play =
 		return;
 	}
 	ms_selected = row;
+	ui_plain_only = TRUE;
 	if (ui_selected_name() == "")
 	{
+		ui_plain_only = FALSE;
 		Sty_Note(sprintf("%s is switched off on the server.", map));
 		return;
 	}
@@ -1153,7 +1155,8 @@ void(float L, float i) Sty_Play =
 	eventmax = FALSE;
 	if (tokenize(bufstr_get(sty_lvinfo[L], i)) >= 13)
 		eventmax = (stof(argv(12)) == 1);
-	ui_launch_mode(eventmax);
+	ui_launch_mode(eventmax);     // reads the name at once (ui_launch_mode's first line)
+	ui_plain_only = FALSE;
 };
 
 void(vector pos, vector size, float L) Sty_Side =

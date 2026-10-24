@@ -269,7 +269,10 @@ VF_STRAFE_Y = 2     # counts went to forwardmove, not pitch
 VF_FREE     = 4     # the cursor was free (menu/console); counts reached neither
 
 # The 'c'-tracked cvars (engine in_jrn_inputcvars) that check_identity reads.
-IDENTITY_CVARS = ("sensitivity", "m_yaw", "m_pitch", "m_filter", "m_accel")
+# leftisright (r_xflip, alias r_mirrorworld) negates yaw downstream of the 'v'
+# tap; the engine's own gate carries the same term (in_generic.c, the r_xflip
+# factor in IN_Journal_CheckIdentity's pred).
+IDENTITY_CVARS = ("sensitivity", "m_yaw", "m_pitch", "m_filter", "m_accel", "leftisright")
 
 
 def q_atof(s):
@@ -308,6 +311,30 @@ def q_atof(s):
         val /= 10
         total -= 1
     return val * sign
+
+def q_atoi(s):
+    """The engine's Q_atoi (common.c), which sets a cvar's .ival -- what r_xflip
+    (leftisright) is tested by.  No leading-space skip, '-', 0x hex, a quoted
+    character, else digits to the first other character; int32 wraparound.
+    It cannot fail, so no value can make a reader that uses it abstain."""
+    i, n, sign, val = 0, len(s), 1, 0
+    if i < n and s[i] == "-":
+        sign, i = -1, i + 1
+    if s[i:i + 2] in ("0x", "0X"):
+        i += 2
+        while i < n and s[i] in "0123456789abcdefABCDEF":
+            val = (val * 16 + int(s[i], 16)) & 0xFFFFFFFF
+            i += 1
+    elif s[i:i + 1] == "'":
+        val = ord(s[i + 1]) if i + 1 < n else 0
+    else:
+        while i < n and "0" <= s[i] <= "9":
+            val = (val * 10 + ord(s[i]) - 48) & 0xFFFFFFFF
+            i += 1
+    if val >= 0x80000000:
+        val -= 0x100000000
+    return (sign * val) & 0xFFFFFFFF
+
 
 # Kinds that are input events, i.e. what the trailer's `events` counts.  'f' is a
 # frame, '#' and '!' are annotations, and none of the three is an event.
@@ -1525,7 +1552,13 @@ def check_hid(path, verbose=False, *, data=None):
     # a +left/+right arm produces. Returning early here meant the whole Patch 305
     # falsifier reported nothing at all: the check that had to be tested was the
     # one being skipped, and its silence read as "nothing to say".
-    check_identity(r, head, views)
+    # The input table's leftisright is the identity's starting sign; 'c' records
+    # follow it from there. Absent ("-" or a pre-312 file) is the unflipped default.
+    idhead = head
+    lir = next((v for (n, v, d) in inputcvars if n == "leftisright"), None)
+    if lir not in (None, "-") and "leftisright" not in head:
+        idhead = dict(head, leftisright=lir)
+    check_identity(r, idhead, views)
     # Patch 312, and ABOVE the same bail-out for the same reason -- plus its own:
     # the join is the one check whose most interesting subject is a file with
     # counts that reached no view at all.
@@ -1839,7 +1872,11 @@ def check_identity(r, head, views):
             try:
                 s_ = num("sensitivity") * scale
                 mp = num("m_pitch")
-                cache[id(ov)] = (-num("m_yaw") * s_,
+                # .ival, as the engine tests it (Q_atoi), never a float: "abc"
+                # must not blind the check nor "0.5" flip it.
+                lir = ov["leftisright"] if "leftisright" in ov else head.get("leftisright", "0")
+                flip = -1.0 if q_atoi(lir) else 1.0
+                cache[id(ov)] = (-num("m_yaw") * s_ * flip,
                                  None if mp is None else mp * s_,
                                  bool(num("m_filter", "0") or num("m_accel", "0")))
             except (TypeError, ValueError):
