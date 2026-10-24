@@ -1,5 +1,18 @@
 # AGENT_NOTES.md
 
+## Retry recorder preparation (P971, 2026-10-24)
+
+- `SV_RecDestream` may return FALSE after dropping a broken stream. Check before
+  writing the retry point, arming or queueing restart; returning alone is not
+  sufficient if the current RUNNING attempt just lost its recorder. Cancel and
+  rescan occupancy with the current run hull, retaining armzone -1. A refusal
+  with a still-live selected12 stream must not be blindly discarded or voided.
+- Native production-QC control/subject covers 8 contexts each: real row-count
+  failure, successful conversion, buffered, intentionally unrecorded, idle and
+  synthetic selected12 refusal. Retry-module localcmd is intercepted; this is
+  not a real client/map restart, complete recording parser or ranking proof.
+  Normal owner retry remains a small pending check in lextest.md.
+
 ## Per-player slow practice and recording density (P954, 2026-10-23)
 
 - Scale command duration, not the Source tick or global sv_gamespeed. Preserve

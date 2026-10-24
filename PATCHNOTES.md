@@ -21,6 +21,9 @@
 
 ## next
 
+### P971 Keep retry in place when recording preparation fails
+- Retry no longer restarts the map if its recording cannot be prepared. If that failure lost the current recording, the attempt is cancelled with an explanation; ordinary retry still works without recording.
+
 ### P970 Account-linked workshop and watched-player viewmodels
 - Knife workshop settings can sync with your linked Steam account on updated lobbies. Save and Reload controls cover the full cosmetic setup; a late load will not overwrite newer local edits.
 - First-person spectating shows the followed player's knife, hands, sleeves, finish, weapon FOV, shooting and inspect animation without replacing your own preferences. A disabled target viewmodel stays hidden.
