@@ -2564,6 +2564,16 @@ cannot be used, ask; do not silently scatter copies elsewhere.
 
 ## Build
 
+- **Selective CSQC delivery still has MENU protocol dependencies (P962).** A
+  preserved MENU does not imply no pending feature was activated: P961's CSQC
+  Friends publisher adds an eighth field while old MF_TakeCvars admits only6/7.
+  Real main eight-field publication was dropped; the exact pre-P961 two-file
+  publisher/read state retains its seven-field row in the same actual old MENU.
+  Keep a clean explicit compatibility cohort, not a partial protocol pair. Do
+  not use old Pi/P957 CSQC on Windows and undo approved P954/P958 client work.
+  Native/model-only smokes do not qualify Friends transport. Source/delivery
+  cohorts and limits: tools/p962-knife-workshop.md.
+
 - **P940: FILE_READNL does not mean line reads retaining newlines.** Native
   PF_fgets returns the whole file without advancing that mode. A while/fgets
   parser reread the same manifest to its byte/count caps (35 metadata opens
@@ -2782,6 +2792,10 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
   State isolation uses `CONBRIDGE_STATE`, NOT `CONBRIDGE_STATE_DIR` (the latter
   is silently ignored and leaves uniquely named sessions in the tool's default
   state directory). This does not change `--root` profile/data isolation.
+  `menu_cmd` invokes optional MENU GameCommand, not m_consolecommand: send
+  `ui_menu_probe` directly. Native cvar echoes escape quotes and can append
+  `(default)`; decode their quoted prefix, not the whole display, and never call
+  an extra-quoted manual setter an acting producer control.
   Stop/restart only the owned handles; this is a tooling-path failure, not a
   mount/FOV product failure. Also `GA_Exists` prepends `sound/`: never use that
   audio helper to test model availability. Model status and rendered pixels must
