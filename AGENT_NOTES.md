@@ -6606,6 +6606,16 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+P972 readback,24Oct2026: native `SVC_Status` deliberately excludes mapname and
+oldstyle0 requests only serverinfo/players. Explicit mask7 also includes
+spectators. A2C_PRINT carries exactly one terminal NUL: strip/validate that
+protocol terminator before counting rows, not as a one-byte occupant. Keep
+PID/socket/native/process-root bindings and reject malformed frames; do not
+turn silence into empty. Current-PID journal0records is NOT a clean-startup
+proof. Standard Pi-only local isolation uses `-QuakeDir` equal to the OWN source
+repo root (supported same-path skip), after separately verifying BOTH actual
+Windows server installs; don't accidentally overwrite a protected menu role.
+
 P948 delivery,23Oct2026: a real positive QW status response had1021bytes of valid
 serverinfo but NO map key (bounded1024-byte info). Validate actual protocol/game
 fields and player records; don't require an optional map field or count silence
