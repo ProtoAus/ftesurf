@@ -1,16 +1,16 @@
 # BACKLOG.md
 
-## Owner Legacy viewmodel lighting / Original UV / hold — 24 Oct 2026
+## Original Legacy knife texture collision — 24 Oct 2026
 
-- Sites: cl_knife_catalog.qc:KCAT_SkinRules/KCAT_Get, cl_weaponui.qc:WPU_Part,
-  installed Original-root material/UV/bodygroup handling, cl_weapon.qc:WP_Frame.
-- Actual owner surf_666_004.png/save22(slot022),3:50.220: skin-bearing hands and
-  Sleeve FBI Grey stay bright under red light while default arms/knife respond;
-  Original CS:GO Knife texture looks flipped; +sl_hold hides/reveals model.
-- Falsifiers: matching-camera red-light parts respond with default-arm control;
-  keep liked Neutral Preview style. Compare Original's actual installed texture/
-  UV/bodygroup, not blanket-flip every model. Actual hold/release continuously
-  submits visible model without re-equip or movement/hold/evidence changes.
+- Sites: installed Original/default-T diffuse resolution, native filesystem's
+  private low-priority Legacy mount and cl_weaponui.qc:WPU_Apply materials.
+- Owner surf_666_004.png/save22(slot022),3:50.220: Original texture looks flipped.
+  Installed CSS and Legacy have DIFFERENT bytes at the SAME knife_t diffuse path;
+  low-priority Legacy can therefore read CSS's incompatible UV layout. Do not
+  blanket-flip UVs, substitute a different blade or reorder all game mounts.
+- Falsifier: actual Original/default-T draw uses its own installed Legacy texture,
+  ordinary CSS texture resolution remains unchanged, no licensed redistribution.
+- Lighting/held-model reports are fixed separately by P966; human check pending.
 
 ## Older-save progress fallback array guard (24 Oct 2026)
 - Site: src/server/sv_saveloc.qc:SV_SaveApplyState, the legacy MOM-progress

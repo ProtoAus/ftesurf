@@ -21,6 +21,10 @@
 
 ## next
 
+### P966 Viewmodel lighting and save-load holds
+- Skin and cloth pieces, including FBI Gray sleeves, now respond to local lighting. Neutral Preview glove styling is unchanged.
+- Your viewmodel stays visible during save-load holds instead of disappearing until release.
+
 ### P964 Keep stage tracking after retry
 - Retrying a saved running attempt now reopens its current stage, including after reconnecting. Loading and retrying retain their existing clean/practice classification.
 

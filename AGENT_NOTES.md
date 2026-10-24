@@ -2785,6 +2785,13 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+- P966 viewmodel material control: Legacy `Character` hands/cloth can fall back
+  unlit while the knife/default VertexLitGeneric arms respond. Inspect material
+  class and actual diffuse before blaming poses. Scope the lit replacement to
+  viewmodel pieces; existing neutral AO gloves are a separate, intentionally
+  subtle preview. CSS/Legacy also have DIFFERENT knife_t textures at the SAME
+  virtual path: low-priority mounts do not disambiguate their UV layouts.
+
 - P962 live-client pitfall: conbridge send can exit0 while printing `cl has
   exited, rc 0`; require the unique in-engine marker/status, not shell success.
   Optional extended Pi sampling hit a local Momentum bhop_eazy map CRC mismatch;

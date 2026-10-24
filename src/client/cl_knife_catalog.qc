@@ -16,7 +16,8 @@
 #define KCAT_REMAP 14i
 #define KCAT_FAMILY 15i
 #define KCAT_NEUTRAL 16i
-#define KCAT_FIELDS 17i
+#define KCAT_LIT 17i
+#define KCAT_FIELDS 18i
 #define KCAT_ARMS 32i
 #define KCAT_LAYERS 64i
 string *kcat_values;
@@ -156,11 +157,23 @@ string(string surfaces, string shader) KCAT_Rules =
 	}
 	return result;
 };
-string(float row) KCAT_NeutralRules =
+string(float row) KCAT_PieceRules =
 {
 	local float i, count;
 	local string result, previous, shader, surface, texture;
 	result = "";
+	// Character materials are not Valve inventory previews: keep their installed
+	// diffuse, but use model lighting instead of the unsupported-class unlit fallback.
+	count = min(128, tokenizebyseparator(KCAT_Get(row, KCAT_LIT), "|"));
+	for (i = 0; i + 1 < count; i = i + 2)
+	{
+		surface = argv(i); texture = argv(i + 1);
+		shader = strcat("ftesurf/knife_lit/", texture);
+		shaderforname(shader, sprintf("{\nprogram defaultskin\n{ map %s }\n}\n", texture));
+		previous = result;
+		result = strzone(strcat(result, sprintf("replace \"%s\" \"%s\"\n", surface, shader)));
+		if (strcmp(previous, "")) strunzone(previous);
+	}
 	count = min(128, tokenizebyseparator(KCAT_Get(row, KCAT_NEUTRAL), "|"));
 	for (i = 0; i + 1 < count; i = i + 2)
 	{
@@ -186,9 +199,9 @@ string(float row) KCAT_SkinRules =
 		shader = shaderforname("ftesurf/knife_bare_skin", "{\nprogram defaultskin\n{ map materials/models/weapons/v_models/arms/v_model_base_arms_color.vtf }\n}\n");
 		if (shader > 0) skin = KCAT_Rules(KCAT_Get(row, KCAT_SKIN), "ftesurf/knife_bare_skin");
 	}
-	neutral = KCAT_NeutralRules(row);
+	neutral = KCAT_PieceRules(row);
 	if (!strcmp(skin, "") && !strcmp(rules, "") && !strcmp(neutral, "")) return "";
-	result = strzone(strcat(skin, neutral, rules));
+	result = strzone(strcat(rules, skin, neutral));
 	if (strcmp(skin, "")) strunzone(skin);
 	if (strcmp(neutral, "")) strunzone(neutral);
 	return result;
