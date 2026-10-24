@@ -55,17 +55,18 @@ python3 -I /trusted/surfd_transition_guard.py --state-dir /owned/fence launch --
 
 The immutable manifest has the four required keys below and optionally
 `target_schema` and `runtime_profile`. Omitted `target_schema` means **schema19 only**, preserving the
-legacy six-file format. Explicit `target_schema` must be the JSON integer `19`
-or `20`; booleans, floats (including `20.0`), strings, null and unknown schemas
+legacy six-file format. Explicit `target_schema` must be the JSON integer `19`,
+`20` or `22`; booleans, floats (including `20.0`), strings, null and unknown schemas
 refuse. The target is never inferred from a receipt or the dependency set.
 
 - `generation`: one lowercase full 40-character SHA.
 - `source_home`: one existing canonical source directory, used as application cwd.
 - `hashes`: raw SHA256 digests for exactly `surfd.py`, `ksfimport.py`,
   `ksfgrab.py`, `ksfprofile.py`, `tools/ksfconvert.py`, `tools/ksfreplay_info.py`
-  for schema19 (legacy or explicit). Schema20 requires exactly those six **plus
-  `accounts.py` and `social.py`**. The only optional runtime profile is the literal
-  `"runtime_profile":"hid-v1"`, valid only with schema20; it requires exactly those
+  for schema19 (legacy or explicit). Schema20 and22 require exactly those six **plus
+  `accounts.py` and `social.py`**. Schema22 adds only MENU presence/proof tables;
+  it does not imply a new collection profile. The only optional runtime profile is
+  the literal `"runtime_profile":"hid-v1"`, valid only with schema20 or22; it requires exactly those
   eight files **plus `hidupload.py`**. Untagged nine-file sets, tagged missing-file
   sets, unknown profiles and arbitrary extra paths refuse. All hashes are
   checked for candidate, ordinary launch and reopen. This pins the coordinated
@@ -81,8 +82,8 @@ refuse. The target is never inferred from a receipt or the dependency set.
 
 There is one pinned generation per state directory, no generation-changing or
 manifest-update command. Schema selection is immutable too. This seam does not
-implement old18→new19 or schema19→20 rebinding; no existing guard may be relabeled
-or have its locks reset to select schema20. The
+implement generation/schema rebinding (including20→22); no existing guard may be
+relabeled or have its locks reset to select schema20 or22. The
 synthetic old writer means a cooperative writer admitted *before closure*, not a
 real schema18 application. Integration must separately review the generation
 handover and installation procedure; never create a second OPEN guard to bypass
@@ -192,8 +193,9 @@ It does not fabricate/read schema acceptance, probe health, or produce this rece
 procedure must measure the manifest's target schema, markers, ready/health, exact fresh accepting
 process/start configuration, old-generation retirement and recovery preservation,
 then write the receipt. The example's `schema:19` is valid only for a legacy or
-explicit19 manifest; explicit20 requires receipt `schema:20` and its exact eight hashes (nine with
-`hid-v1`). A20 receipt cannot reopen a19 guard or vice versa, even for the same
+explicit19 manifest; explicit20/22 requires receipt `schema:20`/`schema:22`, respectively,
+and its exact eight hashes (nine with `hid-v1`). A receipt cannot reopen a guard
+of another schema (including20 versus22), even for the same
 source home/generation. Schema18, missing/malformed/mismatched receipts and wrong
 hashes/generations refuse reopening. A new close invalidates old receipts via
 its closure ID. Receipts are not cryptographic attestations. Authorization to
@@ -220,8 +222,10 @@ candidate identity, live identity without lock, real live reopen, closure
 rotation, failed exec retention, full drain timeout, and a forked descendant
 retaining the candidate FD after master death. Existing admission tests now
 start a real synthetic candidate for acceptance, then stop it to isolate the
-ordinary admission lifetime controls. Schema controls additionally exercise legacy19 and explicit19/20 with real live
-synthetic candidates, opposite-schema/malformed receipts, exact dependency sets,
+ordinary admission lifetime controls. Schema controls additionally exercise legacy19,
+explicit19/20 and explicit20/22 HID profiles with real live synthetic candidates,
+altered/restored collector bytes, malformed profile sets/unsupported schemas,
+opposite-schema/malformed receipts and exact dependency sets,
 missing/mismatched accounts/social bytes at candidate and launch, mismatched
 reopen bytes, acted ordinary imports and stale-closure replay. The manifest stays
 byte-identical; no upgrade/rebind command is added. These are not real gunicorn controls;
@@ -305,7 +309,7 @@ module paths. Each wrapper verifies the dispatch helper bytes; the dispatcher
 verifies the guard bytes, acquires an ordinary shared admission lock through an
 O_RDONLY descriptor (compatible with a read-only source/service sandbox), checks
 OPEN, the fixed generation and all schema/profile-specific source hashes (six
-for19, eight for20 or nine for20/hid-v1), then executes the genuine
+for19, eight for20/22 or nine for20/22 with hid-v1), then executes the genuine
 immutable source in the original module namespace. Its real source origin and
 `sys.modules` identity are preserved. Already loaded local dependencies from
 outside that runtime are refused rather than silently evicted.

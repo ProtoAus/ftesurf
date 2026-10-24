@@ -15,7 +15,9 @@ import uuid
 
 FILES = frozenset({"surfd.py", "ksfimport.py", "ksfgrab.py", "ksfprofile.py",
                    "tools/ksfconvert.py", "tools/ksfreplay_info.py"})
-SCHEMA_FILES = {19: FILES, 20: FILES | {"accounts.py", "social.py"}}
+# Schema22 only adds MENU presence/proof tables; the sealed source set stays exact.
+SCHEMA_FILES = {19: FILES, 20: FILES | {"accounts.py", "social.py"},
+                22: FILES | {"accounts.py", "social.py"}}
 
 
 def target_schema(m):
@@ -63,7 +65,7 @@ def manifest_check(m):
     schema = target_schema(m)
     files = SCHEMA_FILES[schema]
     if "runtime_profile" in m:
-        require(schema == 20 and m["runtime_profile"] == "hid-v1", "unsupported runtime_profile")
+        require(schema in (20, 22) and m["runtime_profile"] == "hid-v1", "unsupported runtime_profile")
         files = files | {"hidupload.py"}
     require(type(m["generation"]) is str and
             re.fullmatch("[0-9a-f]{40}", m["generation"]), "full generation SHA required")
