@@ -1456,9 +1456,10 @@ float(float i, float seq) TG_FireSpeed =
 };
 
 /*
-  Chain-start seeding: on the chain's first command predmove_org0 IS the
-  acked position, so a zero-length probe there answers "was the enter edge
-  behind the chain" for every setspeed pad.  See the header essay.
+  Chain-start seeding: on the chain's first command predmove_org0 is the
+  acked position (after a warp op predicted at that command, its destination:
+  Patch 1025's `base`), so a zero-length probe there answers "was the enter
+  edge behind the chain" for every setspeed pad.  See the header essay.
 */
 void(float seq) TG_ChainStart =
 {
@@ -1477,7 +1478,7 @@ void(float seq) TG_ChainStart =
 	if (tg_baseseq == seq)
 		base = tg_baseorg;      // a warp op at seq has moved org0 already
 	trust = FALSE;
-	if (tg_endexact && tg_inring)
+	if (tg_endexact && tg_inring && tg_orgring)
 		trust = TG_RingTrusted(seq - 1, base);
 
 	for (i = 0; i < tg_n; i = i + 1)
@@ -1500,7 +1501,7 @@ void(float seq) TG_ChainStart =
 			// 0.05 s) survives too: in stays 1 and the persistent absolute
 			// stamp lets the sweep finish the grace.  A gated-off slot
 			// seeds fresh: the server's bits are empty for it as well, its
-			// touch returning at the gate.  Under exact ends the ring says.
+			// touch returning at the gate.  Under exact ends a trusted ring says.
 			tg_io_endf[i] = 0;
 			tg_io_seen[i] = seq - 1;
 			r = -1;
@@ -1680,7 +1681,7 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 				TG_IOFireEv(i, EV_JUMP, seq);
 
 	TG_IOEndSweep(seq);
-	if (tg_endexact && tg_inring)
+	if (tg_endexact && tg_inring && tg_orgring)
 	{
 		k = (seq - TG_RING * floor(seq / TG_RING)) * 4;
 		tg_orgring[k]     = predmove_org_x;
