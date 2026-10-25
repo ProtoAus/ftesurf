@@ -39,6 +39,39 @@
 - A particle that starts part-way through its colour change no longer ends past the colour it was fading to.
 - surf_boreas' end-room glow is a compact glow again instead of a bright dome.
 
+### P1011 The timer names your style
+- The timer says sideways, half-sideways or backwards while you run one of those styles, read from how you face against your travel and which keys you use. Forward says nothing. Runs are not filed by style yet.
+
+### P1010 Main-menu chat in a game
+- On a linked lobby, the main menu's public chat shows in your game's chat as [everyone], with records and bests as board lines.
+- The team-chat key opens a line to everyone, and TAB in a chat line switches between your lobby and everyone.
+- The menu's Lobby chat screen works in a game too (ESC); in a lobby you send from the game's chat.
+
+### P1009 Friends in private games
+- In a private game, or a lobby without Friends, the menu's Friends list loads again (ESC, then Play): the game would not vouch for you while you were in any game.
+- In a private game the profile's Friends tab points you there.
+
+### P1008 Armed
+- The timer says armed when leaving the start box will start a clean run, or not armed and what to do.
+- Bunnyhopping in a start box, or noclipping there with cheats then off, re-arms once you stand still on the box's floor below 290 u/s, instead of needing !r.
+
+### P1007 Rewind energy as you saw it
+- While rewinding, the energy readout is what your speedometer showed at that moment, not energy from the start of the line ("e line").
+
+### P1006 Rewind the whole run
+- On staged maps the rewind reaches back past stage starts to the start of the run; the line still shows only the current stage until you rewind.
+- Rewinding more than two minutes back now works, to the nearest second, up to about half an hour back.
+- The 3 second countdown after a rewind resume is back if your settings had kept the 0 an update set for a day.
+
+### P1005 Results card leaves F1 alone
+- F1 on the results card no longer takes the mouse; there is nothing to click on it.
+
+### P1004 Resume
+- While a resumed run counts in, the view is locked: the mouse no longer moves it for a frame before it snaps back.
+- F2 no longer answers the resume offer and the card drops its hint; 1, 2 and !resume still work.
+- If the leaderboard is still checking your game, the card says it is loading the resume and goes ahead when it can, instead of sending you to chat to retry.
+- If the server refuses a resume, the card says why. The countdown no longer says VIEW LOCKED.
+
 ### P1003 Authored no-fog materials
 - Materials a map marks as no-fog now stay clear on the plain GL rendering path too, including Source wireframe surfaces. An explicit no-fog value of 0 keeps ordinary fog.
 

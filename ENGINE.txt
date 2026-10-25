@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   f319b575f3925b1f5fcfeb5dcf4524d1754dfd3b
+commit   15d288cddc494f2d9c2e5be09177c44462842115
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -26,6 +26,9 @@ commit   f319b575f3925b1f5fcfeb5dcf4524d1754dfd3b
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1015
 patch    1015
+# Patch 1009 (engine half): CL_FriendsSign signs list/chat in any game, join/presence/message only
+# disconnected or on loopback. Installed exe git-7850-patch-1015-1-g96a77421f (96a77421f, P1009 on
+# patch-1015). P1004-P1008, P1010, P1011 are QC/surfd only (patch log 15d288cdd).
 # Patch 1015: client downloads -- web url no longer built over its own name (va()); map paks skipped.
 # Patch 1014: func_areaportalwindow panes fade (imposter alpha; fading brush entities keep no depth).
 # Patch 1013: Source $underwateroverlay (leaf water volumes -> r_underwateroverlay -> vmt/uwoverlay).

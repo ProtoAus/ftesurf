@@ -60,6 +60,39 @@
 - func_lod lump signature: bhop_space and surf_exogenesis both sign `0//0//17/*1` with different
   DisappearDist, so a stale lump across that pair keeps the wrong fade distances (cosmetic).
 
+## Lex's third list of 25 Oct (P1004-P1011): what is still open
+
+- **Styles on the boards and a TAS category.** P1011 only names the style on the timer. Filing
+  runs by style (flags bits, readers re-deriving it from the rows, board tabs) and a TAS board
+  verified by server re-simulation are planned in tools/plan-styles-tas.md; Lex decides majority
+  reading vs KSF-style per-tick enforcement, and whether W-only or low-gravity count.
+- **Friends in the in-game tab of a private game.** P1009 lists them in the menu only. A menu-to-
+  game bridge through cvars leaked the list to any server (review round 1) and the game's console
+  commands cannot reach the menu (Patch 667), so it needs an engine path gated to a loopback game.
+- **The main-menu room in a private game's chat.** P1010 relays it on linked lobbies only; a
+  private game shows it in the menu's Lobby chat screen (ESC).
+- **P1004 untested on the rig:** the 'W' loading wait and the refusal reasons on the card need an
+  account-enabled lobby; the mouse swallow needs a real mouse (keys proved the pin holds).
+- **P1006:** the raw trail stops at LN_CAP*4 samples (~66 min at 66 Hz), now that one line lasts a
+  whole run across stage fails: a very long session loses rewind of its recent past.
+- **P1007:** each sample stamps the HUD's current zero onto a frame up to a round trip old; a sample
+  just before a jump can carry the post-jump zero.
+- **Pre-existing, found in review:** SV_SaveApplyState has two late `return FALSE`s (the
+  viewseconds checks, sv_saveloc.qc ~1984/1989) after the body is placed and before the timer
+  state and run_t_startok are written; a late failure while armed clean could start a clean run
+  from the save's position and speed. Not built in practice. Make a late failure taint or void.
+- **Pre-existing, found in review:** ui_bootcheck is a plain menu cvar a server can stufftext; its
+  self-test quits or launches a local map after ~180 frames (no signature, no Friends).
+- **Pre-existing, found in review:** surfd's rate_ok counts per process and flushes under
+  pressure, so the social limits are softer than their numbers.
+- **Pre-existing, found in review round 3:** `startmark set` (SV_TimerMarkZone) accepts a dirty
+  armed attempt at any standable point in the box, and `!r` then arms clean there at zero speed --
+  noclip to a ledge high in a start, noclip off, startmark set, !r is a clean start from the ledge.
+  P1008's height rule does not add to it; refuse a mark while dirty (or on a spot above the
+  ground-snapped restart).
+- **P1008:** regions without a destination restart at zone_bottom + 2 unsnapped, so where that
+  bottom is under the floor the rest never re-arms a dirty attempt; the HUD offers !r.
+
 ## Lex's list of 25 Oct (second): what is still open (P986-P1001)
 
 - Glock single fire: no camera kick since P955 (live 23 Oct); what moves is the gun
