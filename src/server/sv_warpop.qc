@@ -92,6 +92,7 @@ void() SV_WarpOpCommand =
 		if (!SV_SaveLocRate(self))
 			return;
 		self.rec_sl_requesttag = 0;
+		self.rec_sl_auto = FALSE;       // Patch 1021: see the steps below
 		SV_SaveLocLoad(self, self.rec_sl_index);
 		SV_SaveLocHold(self, TRUE);
 		return;
@@ -102,6 +103,10 @@ void() SV_WarpOpCommand =
 		if (!SV_SaveLocRate(self))
 			return;
 		self.rec_sl_requesttag = 0;
+		// Patch 1021: the player's own command, as the sl_ stringcmds are (sv_player.qc).
+		// Left set, SV_SaveLocSync put the cursor back on the newest row after every step,
+		// so 3 and 4 loaded the rows either side of it and the menu read N/N on both.
+		self.rec_sl_auto = FALSE;
 		if (op == WOP_NEXT)
 			SV_SaveLocStep(self, 1);
 		else if (op == WOP_PREV)
