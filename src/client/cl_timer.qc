@@ -579,6 +579,17 @@ string(float word, __inout vector col) Timer_SplitsClass =
   comparison that means anything here -- a raw split tells you what the clock
   said, not whether that was good.
 */
+// P1011: the style the server reads the run as; forward says nothing.
+string() Timer_StyleWord =
+{
+	local float st;
+	st = getstatf(STAT_FS_STYLE);
+	if (st == RS_SW)  return "^5sideways^7";
+	if (st == RS_HSW) return "^5half-sideways^7";
+	if (st == RS_BW)  return "^5backwards^7";
+	return "";
+};
+
 // P1008: the armed state's word for the timer's sub-label (STAT_FS_ARMSTATE).
 string() Timer_ArmWord =
 {
@@ -1049,6 +1060,9 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	  as a clock that is about to keep going from there, which is exactly the
 	  wrong thing to suggest.  The time you are looking at is over; say so.
 	*/
+	if (state == TS_RUNNING || state == TS_FINISHED)
+	if (Timer_StyleWord() != "")
+		s = strcat(s, (s != "") ? "  " : "", Timer_StyleWord());
 	// P1008 (Lex): "armed" when leaving now starts a clean run, and why not when not.
 	if (flags & TF_STOPPED)
 		s = strcat(s, (s != "") ? "  " : "", "^9stopped^7");

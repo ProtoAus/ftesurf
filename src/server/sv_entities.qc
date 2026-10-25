@@ -1089,6 +1089,9 @@ float vbsp_conveyor_any, vbsp_conv_dist, vbsp_conv_stand, vbsp_conv_quads;
 .float  run_jumpcmd;
 .float  run_foleyjump;             // P935: latched local-audio cue, not movement
 .float  run_armstate;              // P1008: STAT_FS_ARMSTATE, display only
+.float  run_style;                 // P1011: STAT_FS_STYLE, display only
+.float  run_sty_f0, run_sty_f1, run_sty_f2, run_sty_f3;  // ...fast air ticks by facing quarter
+.float  run_sty_keys, run_sty_side;   // ...air ticks with a move; with a strafe key alone
 
 /*
   PATCH 411: the pad took the ground flag before PreThink could read it.

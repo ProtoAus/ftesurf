@@ -14092,6 +14092,9 @@ void(entity e) SV_TimerStart =
 	e.run_momon = vbsp_momtrig;     // Patch 869: before SV_RecOpen writes `momtrig`
 	e.run_t_ticks = 0;
 	e.lobby_sty_fails = e.lobby_sty_mask = e.lobby_sty_top = 0;     // Patch 856
+	e.run_sty_f0 = e.run_sty_f1 = e.run_sty_f2 = e.run_sty_f3 = 0;  // P1011
+	e.run_sty_keys = e.run_sty_side = 0;
+	e.run_style = RS_NONE;
 	e.lobby_sty_maxfog = e.eventfog_on;   // not a finish-time client claim
 	e.lobby_sty_ok = TRUE;
 
@@ -14779,6 +14782,57 @@ void(entity e) SV_MoveBoundFrame =
 		e.run_t_flags = e.run_t_flags | TF_MOVEOOR;
 };
 
+/*
+  P1011: which style the run is surfing, read as KSF's own replays show them --
+  measured 25 Oct over 45 imported KSF runs (tmp/ksfstyles.py in the task root),
+  airborne at 400+ u/s: the view against the direction of travel has a median of
+  ~1 deg forward, ~44 half-sideways, ~89.5 sideways, ~179 backwards, and sideways
+  and half-sideways never press a strafe key alone (0.0% in all 24).  So: the most
+  common quarter of that angle, and no lone strafe key (0.5% slack) for the two.
+  Backwards runs held it on 64-100% of their fast air, so a majority, not "always".
+  Display only (STAT_FS_STYLE): no run is filed by it yet.
+*/
+void(entity e) SV_StyleFrame =
+{
+	local float d, n, m, s;
+
+	if (e.flags & FL_ONGROUND)
+		return;
+	if (e.movement_x != 0 || e.movement_y != 0)
+	{
+		e.run_sty_keys = e.run_sty_keys + 1;
+		if (e.movement_x == 0)
+			e.run_sty_side = e.run_sty_side + 1;
+	}
+	if (vlen([e.velocity_x, e.velocity_y, 0]) > 400)
+	{
+		d = e.v_angle_y - vectoyaw(e.velocity);
+		d = fabs(d - 360 * floor((d + 180) / 360));
+		if (d < 22.5)        e.run_sty_f0 = e.run_sty_f0 + 1;
+		else if (d < 67.5)   e.run_sty_f1 = e.run_sty_f1 + 1;
+		else if (d < 112.5)  e.run_sty_f2 = e.run_sty_f2 + 1;
+		else                 e.run_sty_f3 = e.run_sty_f3 + 1;
+	}
+	n = e.run_sty_f0 + e.run_sty_f1 + e.run_sty_f2 + e.run_sty_f3;
+	if (n < 66)                     // about a second of fast air
+	{
+		e.run_style = RS_NONE;
+		return;
+	}
+	m = max(max(e.run_sty_f0, e.run_sty_f1), max(e.run_sty_f2, e.run_sty_f3));
+	if (m == e.run_sty_f3)
+		s = RS_BW;
+	else if (m == e.run_sty_f0)
+		s = RS_FW;
+	else if (e.run_sty_side * 200 > e.run_sty_keys)
+		s = RS_FW;                  // a lone strafe key: neither sideways style
+	else if (m == e.run_sty_f2)
+		s = RS_SW;
+	else
+		s = RS_HSW;
+	e.run_style = s;
+};
+
 // Patch 856: the Story ladder's per-run facts, from what the mover is handed
 // (W-only and no-jump read the moves, not a key report) and the speed it carries.
 // STY_HSWBAD: a move on one axis only, which KSF's half-sideways style refuses.
@@ -14809,6 +14863,7 @@ void(entity e) SV_StoryFrame =
 	v = vlen([e.velocity_x, e.velocity_y, 0]);
 	if (v > e.lobby_sty_top)
 		e.lobby_sty_top = floor(v);
+	SV_StyleFrame(e);
 };
 
 void(entity e) SV_TimerInFrame =
