@@ -57,3 +57,55 @@ Hashes are SHA-256 prefixes. Times UTC, 25 Oct 2026. Task root
 - BACKLOG.md "bhop_ceaseless (P990, P1002): what is left" has the rest, including surf_boreas'
   stale particle bake (left alone: Lex's boreas checks are pending) and the latent filter case.
 - None of it is owner-checked: lextest.md has the checks.
+
+# P1012-P1015 (Lex's lists 2 and 3 of 25 Oct, and his first list's leftovers): delivery record
+
+Task root `C:\FTESurf-worktrees\pcfcolour-20261025T0540Z` (shots under `artifacts/`).
+
+| Lex's item | Patch | State |
+|---|---|---|
+| Particle colour changes over life not translated | P1012 | Color Fade -> rgbdelta (+ engine pre-age cap); gatelight warm to blue, crystal green to pink |
+| Underwater overlay not drawn, engine warp instead | P1013 | water_cheap volumes draw effects/water_warp01; overlay-less water: no warp, fog kept |
+| surf_boreas bake has the image-path bug | P1012 | re-baked: tesla_glow draws its own image (the dome is a compact glow) |
+| Saves 14-15 missing particles | P1012 | startboost1 circles, butterfly dots drawn (Source's 100000 draw distance) |
+| Save 16 boost particles in a square | P1012 | spread along both rails (box placed by cl_emit.qc; Source's 100 emission rate) |
+| Save 17 particles behind the wall | -- | the blob is a gatelight emitter 325 units off, in view; Momentum sends every system (no PVS cut) |
+| Save 21 redrain bundles up | P1012 | spread across the wall |
+| Saves 19-20 tunnel particles / pop-in | P1012, P1014 | spiral's ring drawn; the tunnel pane fades from ~700 units |
+| Saves 23-24 portal pops in | P1014 | pane alpha honoured, no depth write while fading |
+| Save 28 drops at random angles | P1012 | rotationstart 45 + Source's angle: upright |
+| Download errors at map load | P1015 | no doubled url, no refused map pak; booster.wav is missing from the map itself |
+| Saves 25-27 water lines from far away | -- | measured (refraction offset at distance), not fixed: BACKLOG, a Momentum shot decides |
+| Save 13, saves 19-20 facets, save 18 | -- | BACKLOG |
+
+## Builds
+
+- Engine: ftequakers main `f319b575f`, annotated tag `patch-1015` (P1012's p_script.c cap, P1013,
+  P1014, P1015, two review rounds). Install exe from that commit with nothing held back: the
+  installed patch-1003 build already carried pi.dev's P987-P989/P995 (record 62cf29f9). Stamp
+  `git-7849-patch-1015-0-gf319b575f` (16 hits, one string). ftesurf64/fteqw64 `5b8e3de0`.
+- hl2 plugin `e9fba935` from the same tree (byte-equal to the rig-tested build).
+- QC: FTESurf main `ecca95fd`: csprogs `337a78e3` (P1012's cl_emit.qc), qwprogs `04466ec0` and
+  menu `2a0a3f80` unchanged. 0 warnings.
+- Bakes (tools/pcf.py at `ecca95fd`): particles/bhop_ceaseless.cfg `b9340414`, surf_boreas.cfg
+  `7ca03ba3`, data/mapparticles.txt `9b373966` (other maps' rows unchanged).
+
+## Deployed
+
+- 08:06:56Z both installs, no game running: C:\FTESurf\ftesurf64.exe and C:\FTEQuake\fteqw64.exe
+  `5b8e3de0` (.prev `57060bff`), fteplug_hl2_x64.dll `e9fba935` (.prev `0cc86b08`). fteqwsv64 and
+  the other plugins unchanged (no server or plugin code in the batch).
+- ~08:07Z Pi lobbies 1-12 (`build.ps1 -Pi`, nobody on any lobby, no -PiForce): csprogs `337a78e3`,
+  qwprogs `04466ec0` (same bytes). The same run synced C:\FTEQuake\ftesurf (csprogs .prev
+  `2e6801f9`); C:\FTESurf\ftesurf by hand, same hash and .prev. seed_csprogs: both installs
+  `5f138138`.
+- 08:08:47Z C:\FTESurf\ftesurf bakes (previous three kept in the task root,
+  `tmp/bake-installed-before-*`: `975b9a78`, `3985adcd`, `9a977983`). C:\FTEQuake has none.
+- 08:09Z lobby smoke (`tools/pi_lobby_smoke.py`, lobby 2 port 27520, C:\FTESurf's new exe): served
+  csprogs `337a78e3` = the deployed build, board drew (surf_beginner, screenshot looked at), no QC
+  error, 0 failures. Rig trimmed to logs/screenshot/downloads (6.7 MB).
+
+## Not done / limits
+
+- Not owner-checked: lextest.md's P1012-P1015 entry.
+- BACKLOG "bhop_ceaseless (P990, P1002, P1012-P1015)" holds the rest.
