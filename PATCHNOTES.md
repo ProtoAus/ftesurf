@@ -21,6 +21,9 @@
 
 ## next
 
+### P988 Keep the DBus file picker local
+- The DBus file picker now accepts only trusted local commands; remote game commands cannot open it.
+
 ### P987 Refuse download cache names that do not fit
 - Download cache names that are too long are now refused cleanly instead of being used by the package manager.
 
