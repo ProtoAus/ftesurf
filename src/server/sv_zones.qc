@@ -975,8 +975,20 @@ void() SV_EntInfo =
 		  and the server does not" is exactly what an unimplemented class looks
 		  like from here.
 		*/
-		sprint(self, PRINT_HIGH,
-		       sprintf("^3ent_info^7: '%s' is in the map but NOT on the server -- removed at spawn (unimplemented class)\n", cn));
+		// Patch 1016: three reasons, told apart. Two classes have no spawn function on purpose:
+		// cl_emit.qc draws the baked particle systems, the hl2 plugin reads color_correction.
+		if (cn == "info_particle_system")
+			sprint(self, PRINT_HIGH,
+			       sprintf("^5ent_info^7: '%s' is drawn by the client from its bake (data/mapparticles.txt, tools/pcf.py); the server keeps no entity\n", cn));
+		else if (cn == "color_correction")
+			sprint(self, PRINT_HIGH,
+			       sprintf("^5ent_info^7: '%s' is applied by the hl2 plugin from the entity lump (r_colourcorrection); the server keeps no entity\n", cn));
+		else if (isfunction(cn))
+			sprint(self, PRINT_HIGH,
+			       sprintf("^5ent_info^7: '%s' is in the map; its spawn function removes it (client-drawn or not needed on the server)\n", cn));
+		else
+			sprint(self, PRINT_HIGH,
+			       sprintf("^3ent_info^7: '%s' is in the map but NOT on the server -- removed at spawn (unimplemented class)\n", cn));
 		return;
 	}
 
