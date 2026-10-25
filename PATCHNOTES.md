@@ -21,6 +21,9 @@
 
 ## next
 
+### P989 Clean up failed desktop file-picker requests
+- Failed DBus file-picker requests now stop cleanly, validate replies, and release their resources instead of keeping a disconnected request alive.
+
 ### P988 Keep the DBus file picker local
 - The DBus file picker now accepts only trusted local commands; remote game commands cannot open it.
 
