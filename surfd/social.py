@@ -255,6 +255,40 @@ def chat_snapshot(db, sid, now, lobby_ttl):
                 friends=[r for r in friend_rows(db, sid, now, lobby_ttl) if r["relation"] == 3])
 
 
+# P996: a board line in the public room -- a world record or personal best, said
+# from the player's account (surfd's submit_run).  A typed message may not start so.
+ANNOUNCE = "* "
+ANNOUNCE_GAP = MESSAGE_TTL          # one personal-best line per player per room lifetime
+
+
+def announce(db, sid, body, now, always=False):
+    """Post `body` as sid's board line; `always` (a world record) skips the per-player
+    gap except for the same record line on the same board -- a record improved on
+    again inside it.  Never raises: the run it reports is already answered.  -> posted."""
+    try:
+        with db:
+            db.execute("BEGIN IMMEDIATE")
+            recent = [r[0] for r in db.execute(
+                "SELECT body FROM social_messages WHERE sender=? AND recipient=? AND sent>=?"
+                " AND substr(body,1,2)=?", (sid, CHAT_ROOM, now - ANNOUNCE_GAP, ANNOUNCE))]
+            what = (ANNOUNCE + body).split(" -- ")[0]
+            if recent and not always:
+                return False
+            if any(r.split(" -- ")[0] == what for r in recent):
+                return False
+            db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
+            if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= 2048:
+                return False
+            db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                       (sid, CHAT_ROOM, ANNOUNCE + body[:300], now))
+            db.execute("DELETE FROM social_messages WHERE recipient=? AND id NOT IN"
+                       " (SELECT id FROM social_messages WHERE recipient=? ORDER BY id DESC LIMIT 128)",
+                       (CHAT_ROOM, CHAT_ROOM))
+        return True
+    except sqlite3.Error:
+        return False
+
+
 def menu_message(db, sid, nonce, expires, target, text, now, lobby_ttl):
     """Called under BEGIN IMMEDIATE: consume and insert atomically across workers."""
     peer, _, body_sha = target.partition(":")
@@ -264,6 +298,8 @@ def menu_message(db, sid, nonce, expires, target, text, now, lobby_ttl):
     if not text or len(text) > 160 or len(text.encode("utf-8")) > 320 or any(
             ord(c) < 32 or ord(c) == 127 for c in text):
         return {"ok": 0, "error": "Use 1-160 characters on one line"}, 400
+    if text.startswith(ANNOUNCE):
+        return {"ok": 0, "error": "Lines starting with '* ' are the board's"}, 400
     other = CHAT_ROOM if peer == "-" else resolve(db, peer)
     if other != CHAT_ROOM:
         if not other or other == sid or relation(db, sid, other) != 3:

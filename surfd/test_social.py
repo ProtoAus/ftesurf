@@ -646,6 +646,30 @@ class Friends(unittest.TestCase):
         self.assertEqual(self.db.execute("SELECT body FROM social_messages WHERE recipient=?", (IDS[2],)).fetchone()[0], "unrelated private")
         self.assertEqual(len(self.menu_read(self.menu_form(0, "chat"))["room"]), 24)
 
+    def test_menu_board_lines_are_paced_and_cannot_be_typed(self):
+        self.assertEqual(self.chat_send(text="* set the world record on surf_x -- 0:01.000")[0]["status"], 400)
+        self.assertTrue(F.announce(self.db, IDS[1], "set a personal best on surf_x -- 1:00.000", self.now))
+        self.assertFalse(F.announce(self.db, IDS[1], "set a personal best on surf_x -- 0:59.000", self.now + 5))
+        self.assertTrue(F.announce(self.db, IDS[1], "set the world record on surf_x -- 0:30.000",
+                                   self.now + 6, always=True))
+        self.assertFalse(F.announce(self.db, IDS[1], "set the world record on surf_x -- 0:29.000",
+                                    self.now + 7, always=True), "the same record again inside the gap")
+        self.now += 6
+        room = self.menu_read(self.menu_form(0, "chat"))["room"]
+        self.assertEqual([(r["name"], r["text"]) for r in room],
+                         [("Bob", "* set a personal best on surf_x -- 1:00.000"),
+                          ("Bob", "* set the world record on surf_x -- 0:30.000")])
+        # The record line counts toward the gap; past it, the room has aged both out.
+        self.assertFalse(F.announce(self.db, IDS[1], "set a personal best on surf_y -- 2:01.000",
+                                    self.now + F.ANNOUNCE_GAP))
+        self.now += F.ANNOUNCE_GAP + 1
+        self.assertTrue(F.announce(self.db, IDS[1], "set a personal best on surf_y -- 2:00.000", self.now))
+        room = self.menu_read(self.menu_form(0, "chat"))["room"]
+        self.assertEqual([(r["name"], r["text"]) for r in room],
+                         [("Bob", "* set a personal best on surf_y -- 2:00.000")])
+        self.db.execute("UPDATE accounts SET banned_at=? WHERE steamid=?", (self.now, IDS[1]));self.db.commit()
+        self.assertEqual(self.menu_read(self.menu_form(0, "chat"))["room"], [])
+
     def test_menu_chat_migration21_is_additive_and_idempotent(self):
         self.db.execute("DROP TABLE social_menu_messages")
         self.db.execute("PRAGMA user_version=21");self.db.commit()

@@ -3854,6 +3854,8 @@ def submit_run():
     # allowed exactly one row per board and excluding by id would hide a
     # duplicate rather than reveal it.
     rank, of = rank_of(db, mapname, track, leg, tier, style, millis, now, player)
+    if tier == TIER_RANKED and style == STYLE_CLEAN and leg == 0 and RANKED_LINKED:
+        _menu_board_line(db, player, mapname, track, millis, rank, of, prev is None, now)
 
     log.info(
         "run map=%r track=%d leg=%d tier=%s style=%s player=%r ticks=%d (%dms) "
@@ -3865,6 +3867,31 @@ def submit_run():
                     "rank": rank, "of": of, "rep": rid, "tier": tier,
                     "prevms": prev["millis"] if prev is not None else 0,
                     "why": acct_why, **story(prev["millis"] if prev is not None else 0)})
+
+
+def _clock(ms):
+    """m:ss.mmm (h:mm:ss.mmm past an hour), the game's run clock."""
+    s, ms = divmod(int(ms), 1000)
+    m, s = divmod(s, 60)
+    if m >= 60:
+        return "%d:%02d:%02d.%03d" % (m // 60, m % 60, s, ms)
+    return "%d:%02d.%03d" % (m, s, ms)
+
+
+def _menu_board_line(db, player, mapname, track, millis, rank, of, first, now):
+    """P996: the main menu's public room hears what a lobby hears (Lobby_SayBoardPB):
+    a world record, a personal best or a first finish, full clean runs on the
+    ranked board.  social.announce paces all but a record."""
+    where = mapname if not track else "%s bonus %d" % (mapname, track)
+    t = _clock(millis)
+    pos = ", #%d of %d" % (rank, of) if rank > 0 else ""   # rank_of answers 0 on a storage fault
+    if rank == 1:
+        body = "set the world record on %s -- %s" % (where, t)
+    elif first:
+        body = "finished %s for the first time -- %s%s" % (where, t, pos)
+    else:
+        body = "set a personal best on %s -- %s%s" % (where, t, pos)
+    social.announce(db, player, body, now, always=(rank == 1))
 
 
 def _ban_late(db, player):
