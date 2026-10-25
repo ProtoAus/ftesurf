@@ -21,6 +21,27 @@
 
 ## next
 
+### P1028 Particle switches work
+- bhop_ceaseless's particle switch at the start, and any button or trigger that starts or stops a particle effect, now turns the map's particle effects off and on again. Effects that start switched off wait for their start.
+
+### P1027 Tilted models face the right way
+- Models a map tilts forward or back (bhop_ceaseless's hanging spider) now tilt the way they do in Momentum; they were tipped the other way. Only the drawing changed: you collide with them as before.
+
+### P1026 No error for a missing optional sound
+- A map sound that is not packed anywhere (bhop_ceaseless's booster sound) no longer prints download errors when you join. Files the game needs still report a failed download.
+
+### P1025 Boost pads match Momentum and stay smooth
+- Pads that launch you as you leave or jump off them (bhop_ceaseless) now fire on that tick, as in Momentum, push exactly their set amount and are predicted, so no snap back. A lag spike while standing on one no longer launches you.
+
+### P1023 Smooth reflections on curved walls
+- Curved walls built from flat faces (bhop_ceaseless's tunnel) now reflect smoothly, the way the mapper smoothed them, instead of facet by facet.
+
+### P1022 Faster map changes on servers
+- Changing maps on a server no longer re-reads every installed game's files twice: bhop_ceaseless to surf_666 took 21 s on the test PC and now takes 11.5 s, about 4.5 s of it the server's own load. scr_loadtimes 5 shows where a load's time goes.
+
+### P1021 Save menu on servers
+- On a server, going to the next or previous save right after joining now walks through your saves instead of bouncing between the two either side of the newest one, which both showed the same number.
+
 ### P1020 Screen-space water
 - New water setting, hl2_water 5: water refracts and reflects from what is already on screen instead of drawing the scene twice more, about halving the frame time near water on bhop_ceaseless. Reflections show only what is on screen.
 

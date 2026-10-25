@@ -10,12 +10,12 @@
   require a successful link, then separate desktop/file-picker acceptance. Do not
   turn real-header/helper compilation into a complete SDL platform pass.
 
-## bhop_ceaseless (P990, P1002, P1012-P1019): what is left
+## bhop_ceaseless (P990, P1002, P1012-P1028): what is left
 
 - pcf.py: Rotation Basic, Color Fade easing (drawn linear), a sphere's bias "in local system" (drawn
   in the world frame), Rotation Random's randomly_flip_direction and the spin sign of a non-zero
-  angle and of an orbit (P1017, from recollection of MatrixBuildRotationAboutAxis, not read);
-  info_particle_system Start/Stop (the map's particle toggle) not mirrored on the client.
+  angle and of an orbit (P1017, from recollection of MatrixBuildRotationAboutAxis, not read).
+  P1028's Stop lets live particles finish (DestroyImmediately cannot take them back).
 - Water colour (Lex is looking at it): at save 25 ours reads cyan (open water mean 6 125 231) where
   Momentum's is deep blue (11 45 197), with the refraction offset off too, so it is the fog/tint
   colour, not P1019's distortion. P1019's 512 falloff is fitted to that one Momentum shot.
@@ -27,9 +27,13 @@
   mean 57 165 200) over the start pool, and the pool's cluster is in the start room's PVS, so the
   water below shows through as Source's refraction would draw it. Lex sees "the ramp texture below";
   a Momentum shot looking straight down there is the falsifier.
-- Saves 19-20: the tunnel walls are models/plar/ramp3.mdl, base-less UnlitGeneric + $envmap
-  (colorenvmap3). Its .vvd normals are hard-edged (149 shared positions, median 21.8 degrees apart),
-  so the reflection facets; Momentum's shot is smooth. Unexplained: compare one frame side by side.
+- Saves 19-20: below the player the tube is brushes (graybase_cubemap), smoothed by P1023 (VRAD's
+  vertex normals). Above (z ~12500) it is models/plar/ramp3.mdl, base-less UnlitGeneric + $envmap,
+  whose .vvd normals are hard-edged (149 shared positions, median 21.8 degrees apart); a rig look
+  from inside it showed no facets, but no Momentum shot there to compare.
+- func_lod (Lex, save 30, "a line across the brush"): P1002 fades each whole by its box centre over
+  DisappearMin/MaxDist, exactly Source 2013's ComputeDistanceFade (cdll_util.cpp); r_blendsort makes
+  no difference; no line found in the rig. Momentum's Strata may differ: needs Lex's mid-fade shot.
 - Save 18: a spot where translucent layers sort wrong (Lex); not investigated yet. Lex suggested
   drawing the layers in loud colours to see the order.
 - Water reads brighter cyan than Momentum's at saves 6/9 ($reflecttint {0 255 255} at
