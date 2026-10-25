@@ -44,12 +44,14 @@ Hashes are SHA-256 prefixes. Times UTC, 25 Oct 2026. Task root
 - C:\FTESurf\ftesurf\particles\bhop_ceaseless.cfg `cae9cf22` (re-baked with pcf.py's materials/
   prefix; previous kept as `.pre1002b-20261025T0430Z`), data/mapparticles.txt carries its 23 lines
   (backup `mapparticles.txt.pre1002-20261025T025528Z`). C:\FTEQuake has no particle bakes (as before).
+- 05:35:10Z C:\FTESurf (Lex's game closed, his go-ahead): ftesurf64.exe `6d14fb17` (.prev
+  `495c188e`), fteplug_hl2_x64.dll `7205771c` (.prev `6a8995ec`). Both installs now match.
+- 05:35:38Z lobby smoke (`tools/pi_lobby_smoke.py`, lobby 2 port 27520, C:\FTESurf's new exe, fresh
+  client with no csprogs): served csprogs `2e6801f9` = the deployed build, board drew (surf_beginner,
+  screenshot looked at), no QC error, 0 failures. Rig trimmed to logs/screenshot/downloads.
 
 ## Not done / limits
 
-- C:\FTESurf's exe and plugin are still `495c188e` / `6a8995ec`: Lex's game was running from that
-  install (started 04:59Z), so they wait for it to close. The lobby smoke (pi_lobby_smoke.py) waits
-  for the same reason: no rig window while the owner plays.
 - C:\FTESurf (the checkout) sits at 28a442f2 with tracked edits, so it was not fast-forwarded; its
   tools/pcf.py predates the materials/ fix.
 - BACKLOG.md "bhop_ceaseless (P990, P1002): what is left" has the rest, including surf_boreas'
