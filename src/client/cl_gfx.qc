@@ -28,6 +28,7 @@ float ui_gfx_open;              // the menu is up
 float ui_gfx_page;              // 0-based; see the paging note below
 float ui_gfx_loadtime;          // cltime when this map's CSQC came up
 float ui_gfx_waterbudget;       // LOCAL native renderer + loaded plugin capability
+float ui_gfx_waterscreen;       // Patch 1020: hl2_water 5 (screen-space) on this native renderer + plugin
 
 /*
   WHY THIS PAGES, when ten rows fit on screen perfectly well.
@@ -52,6 +53,15 @@ float ui_gfx_waterbudget;       // LOCAL native renderer + loaded plugin capabil
 void() Gfx_WaterSupport =
 {
 	ui_gfx_waterbudget = checkextension("FTE_CSQC_HL2_WATER_BUDGET");
+	ui_gfx_waterscreen = checkextension("FTE_CSQC_HL2_WATER_SCREEN");
+	if (!ui_gfx_waterscreen)
+	if (cvar("hl2_water") == 5)
+	{
+		// Patch 1020: an archived 5 on an older client or plugin (which clamps it to 4).
+		cvar_set("hl2_water", "3");
+		localcmd("flushshaders\n");
+		print("Water: Screen-space needs an updated OpenGL client/plugin; using Dithered and rebuilding shaders.\n");
+	}
 	if (!ui_gfx_waterbudget)
 	if (cvar("hl2_water") == 4)
 	{
@@ -249,6 +259,8 @@ string(float row) Gfx_Def =
 	// with it (Water, dither; Patch 894 the rest). `e` marks a row live only on such an engine.
 	if (row == 1)
 	{
+		if (ui_gfx_waterscreen && ui_gfx_waterbudget)
+			return "hl2_water|Water|0 1 2 3 4 5|Flat sheet;Cheap reflect;Full reflect;Dithered;Budget (no captures);Screen-space|";
 		if (ui_gfx_waterbudget)
 			return "hl2_water|Water|0 1 2 3 4|Flat sheet;Cheap reflect;Full reflect;Dithered;Budget (no captures)|";
 		return "hl2_water|Water|0 1 2 3|Flat sheet;Cheap reflect;Full reflect;Dithered|*";
