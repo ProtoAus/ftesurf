@@ -27,7 +27,7 @@ Hashes are SHA-256 prefixes. Times UTC, 25 Oct 2026.
 
 - ~04:36Z Pi lobbies 1-12 (`build.ps1 -Pi` from main 28dfc228, nobody on any lobby, all 12
   restarted): qwprogs 02837107 / csprogs a7a2b239. Second install C:\FTEQuake by the same run,
-  menu 2a0a3f80 copied with .prev; C:\FTESurftesurf qwprogs/csprogs/menu copied with .prev
+  menu 2a0a3f80 copied with .prev; C:\FTESurf\ftesurf qwprogs/csprogs/menu copied with .prev
   (previous: qwprogs 2a9882a9, csprogs 7495db35, menu 2ccef27b). gfx/crosshairs/xhair4.png
   3d0426e3 in both installs (C:\FTESurf already had it; it is in the next release's archive).
 - Lobby smoke on 27520 with the installed exe: served csprogs = build, board drew, no QC error.
