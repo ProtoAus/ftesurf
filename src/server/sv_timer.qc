@@ -3020,10 +3020,12 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             no more of them in a row than ceil(0.5 / tickrate),
                             the rate floored at 1/128 s (a usercmd is at most
                             500 ms).  sv_tickparts is a locked movevar.
-    endedge 1               Patch 1025: OnEndTouch fired on the command after the
-                            first that did not touch (else a 0.06-0.09 s sweep),
-                            and an AddOutput basevelocity paid the authored
-                            amount (its bare `pay` is authored / (1 + tick/2)).
+    endedge <0|1>           Patch 1025.  Present: an AddOutput basevelocity paid
+                            the authored amount (its bare `pay` is authored /
+                            (1 + tick/2)).  1: OnEndTouch also came on the command
+                            or tick part after the first that did not touch, and
+                            neither a filter nor a stall of commands ended a touch;
+                            0 (vbsp_mp 0, a slot past 32): the 0.06-0.09 s sweep.
                             Absent = the rules before, a pad paying (1 + tick/2)
                             of its value.  Recorded rides replay the same either
                             way; it says which boards a run is comparable on.
@@ -3539,7 +3541,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                               pay v (bare)      AddOutput basevelocity (789
                                                 outputs / 139 zoned maps): never
                                                 armed, so never handed over --
-                                                no span to open; from `endedge 1`
+                                                no span to open; under `endedge`
                                                 v is authored / (1 + tick/2)
                               arm v ... arm 0   Z is spent inside the mover, so a
                                                 vertical carrier ends with no pay
@@ -5674,7 +5676,7 @@ void(entity e) SV_RecOpen =
 	SV_RecPut(e, sprintf("momtrig %g", e.run_momon));     // Patch 869, additive
 	SV_RecPut(e, strcat("entfile ", ftos(stof(serverkey("*entfile")))));     // Patch 890: "" = 0
 	SV_RecPut(e, strcat("tickparts ", ftos(cvar("sv_tickparts") >= 1)));     // Patch 893: as the engine's ival > 0
-	SV_RecPut(e, "endedge 1");     // Patch 1025, additive: see the grammar above
+	SV_RecPut(e, strcat("endedge ", (vbsp_mp && SV_TouchBit(e)) ? "1" : "0"));     // Patch 1025, additive
 	/*
 	  BUILD 76: WHICH OF THE TWO CLOCKS TIMED THIS RUN.  `counted` or `sampled`.
 

@@ -4734,7 +4734,7 @@ void(entity p) SV_TouchRelocate =
   landed six to nine ticks late, and the client, which cannot see the sweep's clock, could not
   predict it.  The sweep no longer ends a touch a real player's list holds: commands that stop
   coming are no evidence of leaving (a 60 ms stall on the pad ended the touch and paid the boost
-  standing).  It stays the backstop past eight, for bots, spent triggers and a disconnect.
+  standing).  It stays the backstop past eight, for bots and a disconnect.
 
   Per player, the triggers with outputs it touched (eight fields; a ninth is left to the sweep).
   A command the engine moved held (run_pmhold: no touches, sv_user.c) is no evidence of leaving,
@@ -4803,8 +4803,9 @@ entity(entity pl, .entity f, int bit) SV_TouchEndSlot =
 		pl.f = world;
 		return world;
 	}
-	// Spent (a trigger_once) or disabled: left to the sweep, as before (cl_triggers.qc likewise).
-	if (t.solid == SOLID_NOT)
+	// A spent trigger_once (SUB_Remove pending) fires no OnEndTouch, as before (cl_triggers.qc
+	// likewise); a disabled trigger is not touched, so it ends below on the next command.
+	if (t.think == SUB_Remove)
 	{
 		pl.f = world;
 		return world;
@@ -4958,6 +4959,24 @@ void(entity trig, entity act) SV_TriggerIOTouch =
 		trig.think = SV_TriggerEndThink;
 		trig.nextthink = time + 0.02;
 	}
+};
+
+// Patch 1025: a filter that rejects an overlap does not end a touch it let in. Source's touch
+// link ignores filters (they gate StartTouch's outputs), and the client mirror counts the overlap.
+float(entity trig, entity act) SV_TouchFilter =
+{
+	local int bit;
+
+	if (SV_PassesFilter(trig, act))
+		return TRUE;
+	bit = SV_TouchBit(act);
+	if (bit)
+	if ((trig.vbsp_touch_in | trig.vbsp_touch_seen) & bit)
+	{
+		trig.vbsp_touch_seen = trig.vbsp_touch_seen | bit;
+		trig.vbsp_touch_cmd  = trig.vbsp_touch_cmd  | bit;
+	}
+	return FALSE;
 };
 
 /*
@@ -6531,7 +6550,7 @@ void() trigger_teleport_touch =
 	*/
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
 		return;
-	if (!SV_PassesFilter(self, other))
+	if (!SV_TouchFilter(self, other))
 		return;
 	// Patch 786: past the returns that leave you untouched (SV_TrigStamp).
 	SV_TrigStamp(other);
@@ -6958,7 +6977,7 @@ void() trigger_teleport_relative_touch =
 		return;
 	// Source's Touch opens with PassesTriggerFilters, and StartTouch fires the
 	// outputs: surf_race's stage-5 lanes are two filtered boxes on one spot.
-	if (!SV_PassesFilter(self, other))
+	if (!SV_TouchFilter(self, other))
 		return;
 	// Patch 786: past the returns that leave you untouched (SV_TrigStamp).
 	SV_TrigStamp(other);
@@ -7413,7 +7432,7 @@ void() trigger_push_touch =
 	// nothing today; it is here because a filter is a property of the TRIGGER
 	// base class in Source, and applying it to one subclass and not another is
 	// how the next map's boosters end up firing for the wrong player.
-	if (!SV_PassesFilter(self, other))
+	if (!SV_TouchFilter(self, other))
 		return;
 	// Patch 786: past the returns that leave you untouched (SV_TrigStamp).
 	SV_TrigStamp(other);
@@ -7661,7 +7680,7 @@ void() trigger_setspeed_touch =
 		return;
 	if (!SV_TriggerTakesPlayers(self))
 		return;
-	if (!SV_PassesFilter(self, other))
+	if (!SV_TouchFilter(self, other))
 		return;
 	// Patch 786: past the returns that leave you untouched (SV_TrigStamp).
 	SV_TrigStamp(other);
@@ -7930,7 +7949,11 @@ float(entity trig, entity act) SV_TouchEntered =
 		entered = (trig.vbsp_touch_who != act);
 	SV_TriggerIOTouch(trig, act);
 	if (bit)
+	{
 		trig.vbsp_touch_seen = trig.vbsp_touch_seen | bit;
+		trig.vbsp_touch_cmd  = trig.vbsp_touch_cmd  | bit;     // Patch 1025: with no outputs too
+		SV_TouchList(act, trig);
+	}
 	else
 	{
 		trig.vbsp_touch_who = act;
@@ -7955,7 +7978,7 @@ float() SV_MomTrigGate =
 		return FALSE;
 	if (!SV_TriggerTakesPlayers(self))
 		return FALSE;
-	if (!SV_PassesFilter(self, other))
+	if (!SV_TouchFilter(self, other))
 		return FALSE;
 	if (!SV_MomTrackOK(self, other))
 		return FALSE;
@@ -11189,7 +11212,7 @@ void() trigger_multiple_touch =
 		return;
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
 		return;
-	if (!SV_PassesFilter(self, other))
+	if (!SV_TouchFilter(self, other))
 		return;
 
 	/*

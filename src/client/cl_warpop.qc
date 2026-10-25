@@ -654,9 +654,6 @@ void(float seat, float seq, float seconds, float offset) CSQC_PredictPlayerPreMo
 	if (predinput_pmtype == WOP_PM_NONE)
 	if (getstatf(STAT_FS_SPEC))
 		predinput_apply = predinput_apply | WOP_HOLD;
-	// Patch 1025: the ground this move starts from, for cl_triggers.qc's OnJump edge.
-	tg_pmseq = seq;
-	tg_pmground = predinput_onground;
 };
 
 // cl_triggers.qc's CSQC_PredictPlayerMove: a reset that turns the view registers

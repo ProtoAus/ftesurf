@@ -128,6 +128,7 @@ float  predmove_bvfired;        // a continuous push fired, even if the net
                                 // vector cancelled to zero (w)
 vector predmove_bvset;          // Patch 1025: an AddOutput basevelocity write, paid exactly (w)
 float  predmove_bvsetflag;      // ...nonzero when written (w)
+float  predmove_wasground;      // Patch 1025: on the ground as this move began (ro)
 vector predmove_mins;           // player hull (ro)
 vector predmove_maxs;           // (ro)
 vector predmove_anglesnap;      // absolute view angles for the snap (w)
@@ -489,7 +490,6 @@ vector *io_bv;                  // Patch 1025: an IOP_BVEL row's vector (memallo
 */
 float  tg_endexact;             // fs_endedge: the server ends touches on the next command
 float  tg_bvel_ok;              // this engine mirrors the carrier write
-float  tg_pmseq, tg_pmground;   // the pre-move hook's command and its ground (cl_warpop.qc)
 
 string tg_tname[TG_MAX];
 float  tg_sd[TG_MAX];           // the StartDisabled key, as authored
@@ -852,10 +852,10 @@ void(float seq) TG_IOEndSweep =
 		if (!tg_endexact || tg_ent[i].tg_seenoff == predmove_offset)
 			continue;	// Patch 1025: the server reads touches per tick part (P893)
 		if (tg_endexact)
-		if (tg_io_gated[i] && !TG_IOEff(i, seq))
+		if (tg_io_once[i] && tg_io_gated[i] && !TG_IOEff(i, seq))
 		{
-			// SV_TouchEndSlot drops a SOLID_NOT trigger (a spent trigger_once, a disabled
-			// one) without firing; the old sweep, if anything, ends it.
+			// A spent trigger_once ends silently, as SV_TouchEndSlot drops it; a disabled
+			// trigger ends here like any other.
 			tg_io_endf[i] = 1;
 			tg_io_in[i]   = 0;
 			continue;
@@ -1603,7 +1603,7 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 
 	// Patch 1025: OnJump, as SV_TriggerJumpEdge in the next PreThink: grounded before this move,
 	// not after it, rising; before the end sweep, so a trigger the jump just left still counts.
-	if (tg_bvel_ok && tg_endexact && tg_pmseq == seq && tg_pmground)
+	if (tg_bvel_ok && tg_endexact && predmove_wasground)
 	if (!predmove_onground && predmove_vel_z > 0)
 		for (i = 0; i < tg_n; i = i + 1)
 			if (tg_kind[i] && tg_io_own[i] && tg_io_in[i] && TG_IOEff(i, seq))
