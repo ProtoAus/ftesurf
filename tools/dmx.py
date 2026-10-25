@@ -75,6 +75,9 @@ class _Reader:
     def u16(self):
         v = struct.unpack_from("<H", self.d, self.p)[0]; self.p += 2; return v
 
+    def i16(self):
+        v = struct.unpack_from("<h", self.d, self.p)[0]; self.p += 2; return v
+
     def i32(self):
         v = struct.unpack_from("<i", self.d, self.p)[0]; self.p += 4; return v
 
@@ -106,14 +109,11 @@ def parse(data):
 
     if encoding != "binary":
         raise DmxError("encoding %r is not supported (only binary)" % encoding)
-    # 2 is what every pcf 1 file in the Momentum library uses.  3 moves element
-    # NAMES into the string table; 4/5 widen the table count to int and index
-    # strings by int.  Refuse rather than half-read one.
-    if enc_ver not in (2,):
-        raise DmxError(
-            "binary encoding version %d is not supported (only 2). "
-            "v3 puts element names in the string table and v4/v5 widen the "
-            "table -- both need real code, not a tweak." % enc_ver)
+    # Patch 1002: 2-5, laid out as srctools' Element.parse_bin reads them (bhop_ceaseless's
+    # pcf is 5).  2/3: int16 table count and indices.  4: int32 count, int16 indices, and
+    # element names and single string values become table indices.  5: int32 indices too.
+    if enc_ver not in (2, 3, 4, 5):
+        raise DmxError("binary encoding version %d is not supported (2-5)" % enc_ver)
 
     r = _Reader(data)
     r.p = data.index(b"\0", m.end()) + 1 if b"\0" in data[m.end():m.end() + 8] else m.end()
@@ -121,8 +121,11 @@ def parse(data):
     while r.p < len(data) and data[r.p - 1] not in (0,):
         r.p += 1
 
-    nstr = r.u16()
+    nstr = r.i32() if enc_ver >= 4 else r.u16()
+    if nstr < 0 or nstr > 1 << 20:
+        raise DmxError("implausible string count %d" % nstr)
     strings = [r.cstr() for _ in range(nstr)]
+    idx = r.i32 if enc_ver >= 5 else r.u16
 
     def s(i):
         if i < 0 or i >= len(strings):
@@ -135,14 +138,17 @@ def parse(data):
 
     elements = []
     for _ in range(nelem):
-        tn = s(r.u16())
-        name = r.cstr()            # binary 2: element names are INLINE
+        tn = s(idx())
+        name = s(idx()) if enc_ver >= 4 else r.cstr()
         guid = r.blob(16)
         elements.append(Element(tn, name, guid))
 
-    def value(t):
+    def value(t, inarray=False):
         if t == T_ELEMENT:
-            return r.i32()          # index into elements, -1 = null, -2 = extern
+            v = r.i32()             # index into elements, -1 = null, -2 = extern
+            if v == -2:
+                r.cstr()            # the extern's GUID, as text
+            return v
         if t == T_INT:
             return r.i32()
         if t == T_FLOAT:
@@ -150,7 +156,7 @@ def parse(data):
         if t == T_BOOL:
             return bool(r.u8())
         if t == T_STRING:
-            return r.cstr()
+            return s(idx()) if enc_ver >= 4 and not inarray else r.cstr()
         if t == T_VOID:
             return r.blob(r.i32())
         if t == T_TIME:
@@ -169,11 +175,11 @@ def parse(data):
 
     for e in elements:
         for _ in range(r.i32()):
-            an = s(r.u16())
+            an = s(idx())
             at = r.u8()
             if at > T_ARRAY_BASE:
                 base = at - T_ARRAY_BASE
-                e.attr[an] = [value(base) for _ in range(r.i32())]
+                e.attr[an] = [value(base, True) for _ in range(r.i32())]
             else:
                 e.attr[an] = value(at)
 

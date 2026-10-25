@@ -547,6 +547,8 @@ void(string key, string val) TG_IOParse =
 	else if (lk == "toggle")      inp = IN_STATE;
 	else if (lk == "kill")        inp = IN_STATE;
 	else if (lk == "modifyspeed") inp = IN_MODSPD;
+	else if (lk == "addspeed" || lk == "addhorizontalspeed" || lk == "addverticalspeed")
+		inp = IN_MODSPD;		// Patch 1002: moves the player, so its trigger stays server-only
 	else if (lk == "addoutput")
 	{
 		// The keys SV_IOAddOutput implements; anything else is a census line

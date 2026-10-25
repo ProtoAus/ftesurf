@@ -1884,6 +1884,26 @@ string(entity f, float i) SV_MultiSub =
 
 // Forward-declared for the recursion: 42 sub-filter references in the library
 // are themselves a filter_multi.
+/*
+  Patch 1002: a filter by name, the first filter_* entity so named. Source resolves a trigger's filter
+  at Activate, before any output renames a player; resolved here at first touch, a player already
+  renamed to the filter's own name (bhop_ceaseless's "meow", 110 library maps) was found first and,
+  being no filter, passed everyone for the rest of the map. Anything else so named is the fallback.
+*/
+entity(string nm) SV_FindFilter =
+{
+	local entity e;
+
+	for (e = find(world, targetname, nm); e; e = find(e, targetname, nm))
+		if (substring(e.classname, 0, 7) == "filter_")
+			return e;
+	for (e = nextent(world); e; e = nextent(e))
+		if (e.targetname != "" && !strcasecmp(e.targetname, nm))
+		if (substring(e.classname, 0, 7) == "filter_")
+			return e;
+	return SV_FindByName(nm, world);
+};
+
 float(entity f, entity act, float depth) SV_FilterPassesD;
 
 float(entity f, entity act, float depth) SV_FilterPassesD =
@@ -1926,7 +1946,7 @@ float(entity f, entity act, float depth) SV_FilterPassesD =
 			if (nm == "")
 				continue;
 			n = n + 1;
-			c = SV_FindByName(nm, world);
+			c = SV_FindFilter(nm);
 			sub = SV_FilterPassesD(c, act, depth + 1);
 			if (isor)
 			{
@@ -1987,7 +2007,7 @@ float(entity f, float depth) SV_FilterKnownD =
 		{
 			nm = SV_MultiSub(f, i);
 			if (nm != "")
-			if (!SV_FilterKnownD(SV_FindByName(nm, world), depth + 1))
+			if (!SV_FilterKnownD(SV_FindFilter(nm), depth + 1))
 				return FALSE;
 		}
 		return TRUE;
@@ -2017,7 +2037,7 @@ float(entity trig, entity act) SV_PassesFilter =
 	// lump does not exist yet -- futile's filters follow their triggers.
 	if (!trig.vbsp_filterdone)
 	{
-		trig.ui_filter = SV_FindByName(trig.filtername, world);
+		trig.ui_filter = SV_FindFilter(trig.filtername);
 		trig.vbsp_filterdone = TRUE;
 
 		// Build 51 adds filter_multi to the implemented set, so it must come out
@@ -2452,6 +2472,7 @@ float(entity to, float changed) SV_TrigStateSend =
 
 // P799: a func_areaportalwindow's target, which the client draws (SV_PortalWindowsActivate).
 .float vbsp_apwhide;
+.float vbsp_lodhide;		// Patch 1002: a func_lod, which the client draws (func_lod)
 
 #define EF_ADDITIVE 32
 .float vbsp_rmhide;             // P844: EF_NODRAW set by the rendermode, not by I/O
@@ -2482,7 +2503,7 @@ void(entity t) SV_BrushRenderState =
 {
 	local float hidden;
 
-	if (t.vbsp_apwhide)
+	if (t.vbsp_apwhide || t.vbsp_lodhide)
 		t.effects = t.effects | EF_NODRAW;	// Source's InputAlpha leaves EF_NODRAW alone
 	// P844: every brush class has a rendermode, not only func_brush (P683).  The
 	// others own their EF_NODRAW (I/O, toggles): the mode takes back only its own.
@@ -2500,13 +2521,13 @@ void(entity t) SV_BrushRenderState =
 		{
 			t.vbsp_rmhide = FALSE;
 			if (!SV_Key2(t.StartDisabled, t.startdisabled))
-			if (!t.vbsp_apwhide)
+			if (!t.vbsp_apwhide && !t.vbsp_lodhide)
 				t.effects = t.effects - (t.effects & EF_NODRAW);
 		}
 		return;
 	}
 	hidden = SV_BrushRenderMode(t);
-	hidden = (SV_Key2(t.StartDisabled, t.startdisabled) || hidden || t.vbsp_apwhide);
+	hidden = (SV_Key2(t.StartDisabled, t.startdisabled) || hidden || t.vbsp_apwhide || t.vbsp_lodhide);
 	if (hidden)
 		t.effects = t.effects | EF_NODRAW;
 	else
@@ -2732,6 +2753,40 @@ void(entity t, entity act, float v) SV_IOModifySpeed =
 	if (v <= 0)
 		v = 1;
 	p.run_speedmod = v;
+};
+
+/*
+  Patch 1002: Momentum 0.10's AddSpeed, AddHorizontalSpeed and AddVerticalSpeed player inputs --
+  "increase the player's speed in the direction they are moving" (0.10.0 changelog; the code is not
+  public). bhop_ceaseless (500) and bhop_peribox (3000) are the library's two users. Paid through the
+  basevelocity carrier like AddOutput basevelocity, so the recorder writes the ride and the verifier
+  replays it; the cash-out's (1 + tick/2) is divided out so the speed rises by exactly the amount.
+  No direction to add along (no speed, or none on that axis) adds nothing; a cut stops at zero.
+*/
+void(entity p, string in, float amt) SV_IOAddSpeed =
+{
+	local vector v;
+	local float len;
+
+	if (p.classname != "player")
+		return;
+	v = p.velocity;
+	if (in == "addhorizontalspeed")
+		v_z = 0;
+	else if (in == "addverticalspeed")
+	{
+		v_x = 0;
+		v_y = 0;
+	}
+	len = vlen(v);
+	if (run_bv_debug)
+		print(sprintf("basevel: %s %g along %s\n", in, amt, vtos(v)));
+	if (len <= 0)
+		return;
+	if (amt < -len)
+		amt = -len;
+	p.run_basevel = p.run_basevel + v * (amt / len / (1 + run_bv_tick * 0.5));
+	run_bv_set_n = run_bv_set_n + 1;
 };
 
 /*
@@ -3835,6 +3890,11 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	}
 	if (in == "command")        { SV_IOCommand(pm);                     return; }
 	if (in == "modifyspeed")    { SV_IOModifySpeed(t, act, stof(pm));   return; }
+	if (in == "addspeed" || in == "addhorizontalspeed" || in == "addverticalspeed")
+	{
+		SV_IOAddSpeed(t, in, stof(pm));	// Patch 1002
+		return;
+	}
 	if (in == "setdamagefilter"){ t.vbsp_dmgfilter = pm;                  return; }
 	if (in == "add")            { SV_IOCounter(t, t.count + stof(pm), TRUE);  return; }
 	/*
@@ -3921,7 +3981,7 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		t.vbsp_rmhide = FALSE;
 		if (t.classname != "func_brush")
 			SV_BrushRenderState(t);
-		else if (SV_BrushRenderMode(t) || t.vbsp_apwhide)
+		else if (SV_BrushRenderMode(t) || t.vbsp_apwhide || t.vbsp_lodhide)
 			t.effects = t.effects | EF_NODRAW;
 		return;
 	}
@@ -8935,7 +8995,8 @@ void() func_conveyor =
   you on.  surf_garden's "frogy" (*234, spawnflags 8) is one of them.
 
   func_lod is left alone deliberately: all 1960 in the library write
-  spawnflags 0, so there is nothing to read.  button_target is a button, not
+  spawnflags 0, so there is nothing to read (but see Patch 1002 at func_lod:
+  its "Solid" key is the not-solid bit).  button_target is a button, not
   a mover, and keeps func_wall's behaviour; momentary_rot_button is Patch 790's.
 ===========================================================================
 */
@@ -8989,7 +9050,29 @@ float(entity e) SV_SpRawSelfOnly =
 	return TRUE;
 };
 
-void() func_lod              = { func_wall(); };
+/*
+  Patch 1002: func_lod's "Solid" key -- nonzero adds FSOLID_NOT_SOLID (func_lod.cpp KeyValue); the
+  1960-instance note above read spawnflags, which are always 0. 2142 brushes on 44 library maps write 1
+  (bhop_ceaseless all 198). FStrEq is caseless: "Solid" parses into .Solid, "solid" into .solid,
+  which is read before func_wall sets SOLID_BSP.
+  Hidden here and drawn by csprogs with Source's distance fade (cl_portal.qc LOD_Predraw).
+*/
+void() func_lod =
+{
+	local float nonsolid;
+
+	nonsolid = (self.Solid != 0 || self.solid != 0);
+	func_wall();
+	if (wasfreed(self))
+		return;
+	if (nonsolid)
+	{
+		self.solid = SOLID_NOT;
+		setorigin(self, self.origin);
+	}
+	self.vbsp_lodhide = TRUE;
+	self.effects = self.effects | EF_NODRAW;
+};
 void() func_movelinear       =
 {
 	SV_SpawnPassableBrush(SF_MOVELINEAR_NOTSOLID);

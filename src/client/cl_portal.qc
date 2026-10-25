@@ -383,6 +383,76 @@ void() APW_Resolve =
 	}
 };
 
+/*
+  Patch 1002: func_lod, hidden on the server (func_lod) and drawn here with Source's fade --
+  ComputeDistanceFade (cdll_util.cpp), linear in squared distance from the eye to the box centre,
+  between DisappearMinDist and DisappearMaxDist (CS:GO/Strata keys) or else DisappearDist and
+  DisappearDist + lod_TransitionDist 800 (c_func_lod.cpp). A func_lod naming neither never fades.
+*/
+.float lod_min2, lod_max2;
+float  vbsp_lod_n;
+
+float() LOD_Predraw =
+{
+	local vector d;
+	local float d2;
+
+	d = getproperty(VF_ORIGIN) - (self.origin + (self.mins + self.maxs) * 0.5);
+	d2 = d * d;
+	if (self.lod_max2 < 0)
+		return PREDRAW_AUTOADD;
+	if (d2 >= self.lod_max2)
+		return PREDRAW_NEXT;
+	if (d2 <= self.lod_min2)
+		self.alpha = 1;
+	else
+		self.alpha = (self.lod_max2 - d2) / (self.lod_max2 - self.lod_min2);
+	return PREDRAW_AUTOADD;
+};
+
+void(string mdl, string sorg, string sdd, string smin, string smax) LOD_Spawn =
+{
+	local entity e;
+	local float mn, mx, t;
+
+	if (substring(mdl, 0, 1) != "*")
+		return;
+	if (smin != "" || smax != "")
+	{
+		mn = (smin != "") ? stof(smin) : 2000;	// the CS:GO FGD's defaults
+		mx = (smax != "") ? stof(smax) : 2200;
+	}
+	else if (sdd != "")
+	{
+		mn = stof(sdd);
+		mx = mn + 800;
+	}
+	else
+		mn = mx = 0;
+	if (mn > mx)
+	{
+		t = mn;
+		mn = mx;
+		mx = t;
+	}
+	if (mn < 0)
+		mn = max(0, mx - 400);
+	e = spawn();
+	e.classname = "vbsp_lod";
+	setmodel(e, mdl);
+	setorigin(e, stov(sorg));
+	if (mx <= 0)
+		e.lod_max2 = -1;		// both unset or non-positive: no fade (Source returns 255)
+	else
+	{
+		e.lod_min2 = mn * mn;
+		e.lod_max2 = mx * mx;
+	}
+	e.drawmask = MASK_ENGINE;
+	e.predraw = LOD_Predraw;
+	vbsp_lod_n = vbsp_lod_n + 1;
+};
+
 void() Portal_Clear =
 {
 	local entity e, n;
@@ -393,6 +463,14 @@ void() Portal_Clear =
 		remove(e);
 		e = n;
 	}
+	e = findchain(classname, "vbsp_lod");	// Patch 1002
+	while (e)
+	{
+		n = e.chain;
+		remove(e);
+		e = n;
+	}
+	vbsp_lod_n = 0;
 	e = findchain(classname, "vbsp_apwindow");
 	while (e)
 	{
@@ -425,6 +503,7 @@ void() Portal_LoadForMap =
 	local string tok, key;
 	local string cn, nm, pn, sorg, sang, sw, sh, ssa, sd;
 	local string st, sfs, sfd, stl, lk;
+	local string smdl, sdd, sdmin, sdmax;
 	local string sigfirst, sigwfirst;
 	local float sigcount, sigwin;
 	local entity e;
@@ -462,6 +541,7 @@ void() Portal_LoadForMap =
 
 		cn = nm = pn = sorg = sang = sw = sh = ssa = sd = "";
 		st = sfs = sfd = stl = "";
+		smdl = sdd = sdmin = sdmax = "";
 		while ((key = getentitytoken()) != "" && key != "}")
 		{
 			tok = getentitytoken();
@@ -479,6 +559,16 @@ void() Portal_LoadForMap =
 			else if (lk == "fadestartdist")  sfs  = tok;
 			else if (lk == "fadedist")       sfd  = tok;
 			else if (lk == "translucencylimit") stl = tok;
+			else if (key == "model")         smdl = tok;
+			else if (lk == "disappeardist")  sdd  = tok;
+			else if (lk == "disappearmindist") sdmin = tok;
+			else if (lk == "disappearmaxdist") sdmax = tok;
+		}
+
+		if (cn == "func_lod")
+		{
+			LOD_Spawn(smdl, sorg, sdd, sdmin, sdmax);
+			continue;
 		}
 
 		// P799: windows are resolved to their target brushes after the walk, by APW_Resolve.
@@ -607,6 +697,8 @@ void() Portal_LoadForMap =
 			vbsp_lpd_held = vbsp_lpd_held + 1;
 	if (findchain(classname, "vbsp_apwindow"))
 		APW_Resolve();
+	if (vbsp_lod_n)
+		print(sprintf("func_lod: %g drawn here with Source's distance fade\n", vbsp_lod_n));
 
 	/*
 	  SILENT when the map has none, which is 1290 of the library's 1308 maps.
