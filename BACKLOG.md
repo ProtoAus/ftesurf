@@ -47,6 +47,13 @@
   and clears the carrier but leaves the pad's touch bits, so the pad's OnEndTouch fires on the next
   edge and its `basevelocity` launches the player at the start (the old sweep did the same 60-90 ms
   later). Whether Momentum's restart pays it too is unchecked; SV_TouchRelocate would end it at once.
+- P1025's client in-state ring (cl_triggers.qc TG_ChainStart) is trusted only when the replay of the ack
+  ended within 1 u of the server's state. Left after review 8 (prediction only, no evidence): a
+  server-only teleport inside the touch pass rejects a correct ring, so that END is not predicted; an
+  error under 1 u across a trigger boundary is trusted (probe both origins per slot, or measure and
+  tighten); the fallback probes still use the post-warp org0, not `base` (a setspeed entered by a
+  predicted `!r` loses its entry); a chain after map load or a hookless stretch never calls
+  TG_ChainStart. The exact source is server-published touch bits, as the net-gate stream does.
 - A warp op on the command right after leaving an OnEndTouch pad (P1025 review): the server warps and
   clears the carrier first, then the end edge writes the boost, so it pays at the destination; the
   client's WOP_CLEARCARRIER drops the END's carrier (CSQC_PredictConsumeBaseVel, no restore), so that
