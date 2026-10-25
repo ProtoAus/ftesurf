@@ -340,8 +340,10 @@ void(vector screensize) MC_Draw =
 		{
 			if (tokenize(bufstr_get(mc_view, i)) != 4) continue;
 			who = argv(1); name = uri_unescape(argv(2)); text = uri_unescape(argv(3));
+			board = (argv(0) == "-");               // the public room, not a message
 			if (!strcmp(who, mc_me)) name = "You";
-			// P996: "* ..." is a board line surfd said for the player (social.announce).
+			// P996: "* ..." in the room is a board line surfd said for the player (social.announce).
+			if (board)
 			if (substring(text, 0, 2) == "* ")
 			{
 				sui_text(rp, SZ_LABEL, "board", COL_DIM, 1, 0);

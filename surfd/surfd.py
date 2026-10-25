@@ -3899,12 +3899,13 @@ def _menu_board_line(db, player, mapname, track, millis, rank, of, first, now):
     ranked board.  social.announce paces all but a record."""
     where = mapname if not track else "%s bonus %d" % (mapname, track)
     t = _clock(millis)
+    pos = ", #%d of %d" % (rank, of) if rank > 0 else ""   # rank_of answers 0 on a storage fault
     if rank == 1:
         body = "set the world record on %s -- %s" % (where, t)
     elif first:
-        body = "finished %s for the first time -- %s, #%d of %d" % (where, t, rank, of)
+        body = "finished %s for the first time -- %s%s" % (where, t, pos)
     else:
-        body = "set a personal best on %s -- %s, #%d of %d" % (where, t, rank, of)
+        body = "set a personal best on %s -- %s%s" % (where, t, pos)
     social.announce(db, player, body, now, always=(rank == 1))
 
 

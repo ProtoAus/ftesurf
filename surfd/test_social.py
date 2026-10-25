@@ -731,6 +731,8 @@ class Friends(unittest.TestCase):
         self.assertFalse(F.announce(self.db, IDS[1], "set a personal best on surf_x -- 0:59.000", self.now + 5))
         self.assertTrue(F.announce(self.db, IDS[1], "set the world record on surf_x -- 0:30.000",
                                    self.now + 6, always=True))
+        self.assertFalse(F.announce(self.db, IDS[1], "set the world record on surf_x -- 0:29.000",
+                                    self.now + 7, always=True), "the same record again inside the gap")
         self.now += 6
         room = self.menu_read(self.menu_form(0, "chat"))["room"]
         self.assertEqual([(r["name"], r["text"]) for r in room],

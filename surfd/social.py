@@ -262,15 +262,19 @@ ANNOUNCE_GAP = MESSAGE_TTL          # one personal-best line per player per room
 
 
 def announce(db, sid, body, now, always=False):
-    """Post `body` as sid's board line; `always` skips the per-player gap (a world
-    record).  Never raises: the run it reports is already answered.  -> posted."""
+    """Post `body` as sid's board line; `always` (a world record) skips the per-player
+    gap except for the same record line on the same board -- a record improved on
+    again inside it.  Never raises: the run it reports is already answered.  -> posted."""
     try:
         with db:
             db.execute("BEGIN IMMEDIATE")
-            if not always and db.execute(
-                    "SELECT 1 FROM social_messages WHERE sender=? AND recipient=? AND sent>=?"
-                    " AND substr(body,1,2)=?",
-                    (sid, CHAT_ROOM, now - ANNOUNCE_GAP, ANNOUNCE)).fetchone():
+            recent = [r[0] for r in db.execute(
+                "SELECT body FROM social_messages WHERE sender=? AND recipient=? AND sent>=?"
+                " AND substr(body,1,2)=?", (sid, CHAT_ROOM, now - ANNOUNCE_GAP, ANNOUNCE))]
+            what = (ANNOUNCE + body).split(" -- ")[0]
+            if recent and not always:
+                return False
+            if any(r.split(" -- ")[0] == what for r in recent):
                 return False
             db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
             if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= 2048:
