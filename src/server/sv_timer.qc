@@ -16472,6 +16472,12 @@ void(entity e) SV_TimerReport =
 	       sprintf("        class rules: run_class %g run_cheatwatch %g  (sv_cheats %g, noclip %g)\n",
 	               run_t_runclass, run_t_cheatwatch, cvar("sv_cheats"),
 	               (e.movetype == MOVETYPE_NOCLIP) ? 1 : 0));
+	// P1008/P1011: the two display states, and the counts the style is read from.
+	sprint(e, PRINT_HIGH, sprintf("        armstate %g  hopped %g dirty %g  rearmspeed %g\n",
+	                              e.run_armstate, e.run_t_hopped, e.run_t_dirty, run_t_rearmspeed));
+	sprint(e, PRINT_HIGH, sprintf("        style %g  facing %g/%g/%g/%g  keys %g side %g\n", e.run_style,
+	                              e.run_sty_f0, e.run_sty_f1, e.run_sty_f2, e.run_sty_f3,
+	                              e.run_sty_keys, e.run_sty_side));
 	/*
 	  BUILD 58: the raw input journal, as the SERVER sees it.
 
