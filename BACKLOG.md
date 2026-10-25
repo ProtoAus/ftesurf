@@ -34,6 +34,21 @@
 - func_lod (Lex, save 30, "a line across the brush"): P1002 fades each whole by its box centre over
   DisappearMin/MaxDist, exactly Source 2013's ComputeDistanceFade (cdll_util.cpp); r_blendsort makes
   no difference; no line found in the rig. Momentum's Strata may differ: needs Lex's mid-fade shot.
+- Pitched Source props (P1027 review): pmove collides them with Source's pitch, but the server's
+  coarse box (world.c:606) and QC traces still flip it once, and sv_user.c picks a player's physents
+  by that box (+-256 u). A large pitched prop off-centre on its origin could be skipped; not built.
+- P1025's touch list holds eight triggers per player, movement triggers included; a ninth overlapping
+  one falls back to the 0.06-0.09 s sweep (late pad pays, stall-ended touches). Not counted: census how
+  many overlap at once on the library before raising it.
+- trigger_momentum_multihop/onehop holds run on server `time`, so a lag spike counts toward the hold
+  (P1025 removed the stall that used to restart it); Source times them per command. Move them to the
+  run's counted clock (run_movetick).
+- OnJump chain (pre-P1025, P414): a freed OnJump trigger (a spent trigger_once or `wait -1`, a Kill)
+  stays on the chain with its bits set and fires again; a reused edict cuts the chain for every later
+  one. None of the library's 15,123 OnJump entities (432 maps) can be freed that way. Two pads written on one tick resolve in opposite order on server and client (P1025 review).
+- Downloads (P1026 review): a missing pure package, a redirect target and a `download` of a file
+  already queued as optional now fail at developer 1 (their flags drop REQUIRED); only the generic
+  "missing pure packages" line names the problem for the first.
 - Save 18: a spot where translucent layers sort wrong (Lex); not investigated yet. Lex suggested
   drawing the layers in loud colours to see the order.
 - Water reads brighter cyan than Momentum's at saves 6/9 ($reflecttint {0 255 255} at
@@ -312,7 +327,8 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   mode or per-map ruleset file may set it; then read it from `pmpin` into the cap.
 - **A run parked before the P893 deploy and resumed after it** writes fl 8 rows under a header with no
   `tickparts 1`; SV_MsStale does not compare tickparts. Today only a note (resumed files are outside the
-  angle join); add tickparts to SV_MsStale before a reader joins across sessions.
+  angle join); add tickparts to SV_MsStale before a reader joins across sessions. P1025's `endedge` is
+  the same: a run parked across the deploy keeps the old header over sessions under the new rules.
 - **The exempt-row share is unbounded (P893):** a writer of the .rec alone can exempt 64 rows in 65 and
   keep the angle verdict OK, since exempt rows leave the coverage denominator; only split_rows and
   in_per_packet show it. A writer who also writes the .view beats the join anyway.
