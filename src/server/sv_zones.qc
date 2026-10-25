@@ -1001,7 +1001,7 @@ void() SV_EntInfo =
 	if (best.classname == "info_particle_system")      // Patch 1028
 		sprint(self, PRINT_HIGH,
 		       sprintf("          drawn by the client from its bake (data/mapparticles.txt); Start/Stop: %s\n",
-		               best.vbsp_psys_on ? "on" : "stopped"));
+		               SV_PsysOn(best) ? "on" : "stopped"));
 
 	/*
 	  And what it DOES.  The output chain was parsed at map load and is sitting

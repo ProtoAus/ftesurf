@@ -3817,7 +3817,8 @@ float(entity t, string in, string pm, entity act) SV_MapMsgInput;   // Patch 870
   Patch 1028: info_particle_system answers Start and Stop (bhop_ceaseless's first button stops the
   97 systems it names info_particle_system).  cl_emit.qc draws every system from the entity lump;
   this edict holds one system's state and, from the first input that reaches it, sends it to every
-  client whatever its PVS (ENTWIRE_PSYSSTATE, matched there on origin and effect_name).
+  client whatever its PVS (ENTWIRE_PSYSSTATE, matched there on origin and effect_name).  Stashed and
+  re-created after the lump (SV_LateStash, Patch 865), so no later solid is renumbered.
 */
 .float  vbsp_psys_on;
 .string start_active;           // a string: absent is on, as cl_emit.qc's walk reads it
@@ -3835,11 +3836,14 @@ float(entity to, float changed) SV_PsysSend =
 	return TRUE;
 };
 
-void() info_particle_system =
+void() info_particle_system = { SV_LateStash("targetname origin effect_name start_active"); };
+
+// On until an input says otherwise unless it starts off; SV_LateSpawnAll runs no spawn function.
+float(entity t) SV_PsysOn =
 {
-	self.solid = SOLID_NOT;
-	self.vbsp_psys_on = (self.start_active == "" || stof(self.start_active) != 0);
-	setorigin(self, self.origin);
+	if (t.SendEntity)
+		return t.vbsp_psys_on;
+	return (t.start_active == "" || stof(t.start_active) != 0);
 };
 
 // Kill stops it and keeps the edict: removed, the client would fall back to the lump's state.
@@ -3854,7 +3858,7 @@ float(entity t, string in) SV_PsysInput =
 		on = FALSE;
 	else
 		return FALSE;
-	if (SV_DevOn())
+	if (cvar("developer") >= 2)     // one line per system: 97 a press on bhop_ceaseless
 		dprint(sprintf("psys %s at %v: %s, %s\n", t.effect_name, t.origin, in, on ? "on" : "off"));
 	if (t.SendEntity && on == t.vbsp_psys_on)
 		return TRUE;

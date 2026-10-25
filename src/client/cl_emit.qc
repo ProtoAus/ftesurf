@@ -3557,6 +3557,14 @@ void() Emit_LoadForMap =
 		}
 
 		j = Emit_Add(bmin, bmax, vel, jit, rate, burst, dist, eff, kind);
+		// Patch 1028: every emitter the system started, its children too when the parent was refused.
+		if (kind == EK_PSYS)
+			for (tj = psfirst; tj < em_n; tj = tj + 1)
+			{
+				em_psorg[tj] = org;
+				em_psidx[tj] = ps;
+				em_stop[tj] = disabled;
+			}
 		if (j >= 0)
 		{
 			if (ps >= 0)
@@ -3566,13 +3574,6 @@ void() Emit_LoadForMap =
 				Emit_TrailMark(j, rate, ps);
 			if (look >= 0)
 				em_life[j] = (lmin + lmax) * 0.5;
-			if (kind == EK_PSYS)
-				for (tj = psfirst; tj < em_n; tj = tj + 1)
-				{
-					em_psorg[tj] = org;
-					em_psidx[tj] = ps;
-					em_stop[tj] = disabled;
-				}
 			if (kind == EK_FIRE)
 			{
 				// 32 is No glow (fire.cpp:785).  This read 16, which is Don't
