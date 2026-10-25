@@ -851,7 +851,6 @@ void(float seq) TG_IOEndSweep =
 		if (tg_io_seen[i] == seq)
 		if (!tg_endexact || tg_ent[i].tg_seenoff == predmove_offset)
 			continue;	// Patch 1025: the server reads touches per tick part (P893)
-		if (tg_endexact)
 		if (tg_io_once[i] && tg_io_gated[i] && !TG_IOEff(i, seq))
 		{
 			// A spent trigger_once ends silently, as SV_TouchEndSlot drops it; a disabled
@@ -1464,6 +1463,13 @@ void(float seq) TG_ChainStart =
 			else if (probe && TG_IOEff(i, seq) &&
 			         tg_io_lastin[i] >= seq - 2)
 			{
+				tg_io_in[i]    = 1;
+				tg_io_stamp[i] = tg_io_tbase;
+			}
+			else if (tg_endexact && tg_io_lastin[i] == seq - 1)
+			{
+				// Patch 1025: touched at the ack and gated off since (a Disable in that command):
+				// the server ends it on this command's edge, so the sweep must see it inside.
 				tg_io_in[i]    = 1;
 				tg_io_stamp[i] = tg_io_tbase;
 			}
