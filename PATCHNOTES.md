@@ -21,6 +21,38 @@
 
 ## next
 
+### P1001 Ramp touchdown numbers from just before the ramp
+- The run line's touchdown label on a ramp now shows your speed and energy on the tick before you touched the ramp, not after the ramp's clip took its share.
+
+### P1000 Profiles in private games
+- Player profiles now load in a private game: yours from the account this install last linked, and a friend's from the account their game reports, marked as their own claim.
+
+### P999 Smoother launch
+- The map list loads about twice as fast when the game starts and when the map catalogue updates: checking maps you do not have no longer searches every folder, and the wrong-build check finishes over the next frames.
+
+### P998 No stutter when a stage completes
+- Finishing a stage no longer copies your whole run so far to cut that stage's recording; it is cut from memory. Cleaning up old stage recordings waits a moment, and your client finds the stage in its own recording at once.
+
+### P996 Records and bests in the main menu chat
+- The main menu's public chat now shows when someone sets a world record, a personal best or a first finish on the online board, with the time and place.
+
+### P994 No "F1 cursor" on the results card
+- The card shown when you finish a map, bonus or stage no longer shows the F1 cursor hint.
+
+### P993 Loading a save in a start zone stays clean
+- Loading a save you made standing in a map, bonus or stage start zone no longer marks the run segmented: it arms a clean attempt, as walking in does. A save made while moving still keeps its tag.
+
+### P992 Friends list in a lobby
+- The Play screen's Friends list now loads in an online lobby even when the lobby cannot relay it, by asking the Friends service directly.
+
+### P991 Play screen: one Esc, profile times, map links
+- In a game, one Esc on the Play screen returns you to the game; on a small window the first Esc still hides the Friends drawer.
+- A friend's profile now lists up to 12 times with clear text, where it showed one.
+- A friend's map is underlined when you point at it, to show it can be clicked.
+
+### P986 New crosshair 3
+- Crosshair 3 is now a 42 pixel Counter-Strike: Source style sight, centred on the same pixel as before.
+
 ### P997 Reuse the oldest-idle lobby first
 - New-map requests now reuse the least-recently-used empty lobby. Simultaneous requests reserve separate vacancies or share the same map without stealing each other's assignment.
 - Occupied lobbies are never moved; no server is stopped or player data removed.

@@ -1,5 +1,26 @@
 # BACKLOG.md
 
+## Lex's list of 25 Oct (second): what is still open (P986-P1001)
+
+- Glock single fire: no camera kick since P955 (live 23 Oct); what moves is the gun
+  model's own single-shot animation. Nothing changed; reopen if the camera kicks.
+- m_accel and controllers: neither is called cheating. m_accel != 0 sets TF_NOPROFILE
+  (unranked, "input mode") because the yaw identity cannot be checked through it;
+  ranking it needs per-frame frametime in the .hid and a model in the checker. A
+  controller's turns show as unexplained turns (a note, not a fault) and +speed on a
+  stick is counted by TF_MOVEOOR, not demoted. Lex's call whether to rank either.
+- The updater (qkupdate.c QKU_Apply) still hashes every manifest file on the main thread
+  when an update installs; P999 only took the map list's load out of the launch frame.
+- P1001 changed the run line's touchdown label only; the Boarding panel's "enter" was
+  already the arrival speed before the clip (the contact tick, not the tick before).
+- P1000: a player in a private game can claim any account's mark; pictures, the TAB PB
+  column and the race ghost follow the claim, only the profile says it is a claim.
+- P993: a trigger_gravity value carried into a stage box arms with that gravity (START
+  resets it, STAGE does not) -- also true of !s N and a walk-in; pre-existing.
+- P996: a run reply can wait up to the database's busy_timeout (5 s) for the menu chat
+  line's BEGIN IMMEDIATE when the database is busy; a stage write past 256 MB of
+  recording is still refused (P998 kept the old cap).
+
 ## Story/Event levels on non-Momentum builds: Beta maps mapwatch never installs (25 Oct)
 
 - Lex (25 Oct): "Make sure all Story mode maps are the Momentum Mod version ...

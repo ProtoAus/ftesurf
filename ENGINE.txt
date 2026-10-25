@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   431b1932b932ab267587a3de646b160145df46c0
+commit   03c395af6db81e4b384a37b1cbe25a44dd20ceeb
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -25,7 +25,10 @@ commit   431b1932b932ab267587a3de646b160145df46c0
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-995
-patch    997
+patch    1001
+# Patch 986, 991-994, 996, 998-1001 (QC/surfd only, no native change): xhair4, Play screen, Friends in a
+# lobby, start-box save arm, results hint, menu-chat records, stage-close cost, launch map list,
+# private-game profiles, ramp touchdown numbers. Native tag stays patch-995.
 # Patch 997: backend reuses the least-recently-used empty lobby and atomically reserves it.
 # Backend schema24 only; native commit/tag remain patch-995, no QC/Build/receipt change.
 # Patch 995: SDL3 file-picker entry checks existing local-command provenance.
