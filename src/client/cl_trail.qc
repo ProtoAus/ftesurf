@@ -83,6 +83,10 @@ float  tr_lastt;                // the run clock of the last sample, seconds
 vector tr_lastp;                // ...and where it was
 float  tr_settle;               // cltime a clock-back restart may still drop a stale head
 float  tr_gen;                  // Patch 477: lines opened, so a line is told from one two runs back
+// P1006: a stage teleport in a running run no longer opens a new line.  The next
+// sample breaks it, and the line is drawn from that sample's time on.
+float  tr_contbrk;              // the next sample starts a stage: break, and remember its time
+float  tr_stagefrom;            // run time the current stage's part of the line starts; 0 = all
 // Patch 477: the rewind cursor (cl_rewind.qc sets these).  While it is up the
 // live line is drawn bright to it and dim past it, and no sample is taken.
 float  tr_cur_on;
@@ -167,6 +171,8 @@ void() Trail_Open =
 	Trail_RawClear();
 	tr_settle = cltime + TR_SETTLE;     // Patch 477: a load can start a line from idle too
 	tr_gen    = tr_gen + 1;
+	tr_contbrk = FALSE;
+	tr_stagefrom = 0;
 	tr_on     = TRUE;
 	tr_stopped = FALSE;
 	tr_nsamp  = 0;
@@ -388,6 +394,12 @@ float(float f, float t, float riding) Trail_Take =
 			return FALSE; // never attach the reset destination to the rewind head
 		}
 	}
+	if (tr_contbrk)
+	{
+		brk = TRUE;
+		tr_contbrk = FALSE;
+		tr_stagefrom = t;
+	}
 	Line_Point(tr_live, o, v, fl, t, brk, tr_stitch, [yaw, nrm_z, wsh * nrm]);
 	Trail_Record(o, v, fl, t, brk, tr_stitch, [yaw, nrm_z, wsh * nrm]);
 	tr_stitch = FALSE;
@@ -535,9 +547,20 @@ void() Trail_Frame =
 			}
 		}
 	}
-	if (st == TS_RUNNING && (tr_state != TS_RUNNING ||
-	    (tr_stopped && !Trail_InBoundary(pmove_org))) && op != SLOP_LOADED)
+	if (st == TS_RUNNING && tr_state != TS_RUNNING && op != SLOP_LOADED)
 		Trail_Open();
+	else if (st == TS_RUNNING && tr_stopped && !Trail_InBoundary(pmove_org) && op != SLOP_LOADED)
+	{
+		// P1006: the same run left a stage box -- the line goes on, so rewind
+		// reaches back past the stage start.  Only an empty line starts afresh.
+		if (tr_on && ln_n[tr_live] >= 2)
+		{
+			tr_stopped = FALSE;
+			tr_contbrk = TRUE;
+		}
+		else
+			Trail_Open();
+	}
 	else if (st == TS_RUNNING && !tr_practice && tr_nsamp && getstatf(STAT_FS_TIMERTICKS) * tr_tick < tr_lastt)
 		Trail_Trim(getstatf(STAT_FS_TIMERTICKS) * tr_tick);
 	tr_state = st;
@@ -617,7 +640,16 @@ void() Trail_Draw =
 			else Line_Draw(tr_live, tr_cur_t, tr_cur_p, 0.35, 1);
 		}
 		else
+		{
+			// P1006: as before, the line shows the current stage only; rewinding shows it all.
+			if (tr_stagefrom > 0)
+			{
+				Line_Window(tr_stagefrom, 99999999);
+				ln_winka = ln_winkb = 1000;     // a hard edge, not a sixth of the span
+			}
 			Line_Draw(tr_live, 99999999, '0 0 0', 1, 1);
+			Line_WindowOff();
+		}
 	}
 };
 

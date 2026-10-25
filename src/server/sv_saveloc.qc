@@ -3425,6 +3425,11 @@ void(entity e) SV_SaveLocCreate =
 */
 #define RW_EVERY   2            // run ticks between samples: ~33 a second at 0.015
 #define RW_CAP     4000         // two minutes/player; physics + bounded save-state snapshots
+// P1006: the whole run, coarser.  The first dense row of each RW_SLOWEVERY-tick
+// bucket is copied to rows RW_CAP.. of the same block, so rw_statebase and every
+// reader of m[b+..] are unchanged; read only where the dense ring has nothing.
+#define RW_SLOWEVERY 64         // ~1 s at 0.015
+#define RW_SLOWCAP   1800       // ~29 minutes past the dense two; +0.85 MB a running player
 #define RW_STATEBASE 10
 #define RW_STATECOLS 60         // Patch 840: 55-64 the slow-clock state
 #define RW_SPLITBASE (RW_STATEBASE + RW_STATECOLS)
@@ -3433,7 +3438,8 @@ void(entity e) SV_SaveLocCreate =
 void(entity e, float b) SV_RewindStateSample;
 
 // 32 slots of RW_CAP with state columns is ~53 MiB, allocated lazily per
-// player (1.65 MiB). The original physics-only ring was 5 MiB. Measured on the Pi
+// player (1.65 MiB; P1006's slow rows make it 2.7 MiB, 8 GB Pi, 4.6 GB free).
+// The original physics-only ring was 5 MiB. Measured on the Pi
 // 2026-10-03 (`sv_meminfo` over rcon, all 12 lobbies): 6.8-9.6 MB used of 2 GB
 // reserved -- PR_ReadBytesString gives 64-bit Linux 2 GB for the default
 // pr_ssqc_memsize -1 (pr_bgcmd.c).  A failed memalloc is SV_Error.
@@ -3446,6 +3452,7 @@ float  *rw_slot[FS_MAXPLAYERS + 1];  // memalloc'd per slot on first use, kept
 .float rw_head;                 // next write
 .float rw_last;                 // ticks of the last sample
 .float rw_st;                   // run state at the last call
+.float rw_sn, rw_shead, rw_sbkt;    // P1006: the slow rows held, next write, last bucket
 vector rw_o, rw_v;              // SV_RewindFind's answer
 float  rw_pit, rw_yaw, rw_dk, rw_t;
 string sl_sharefrom;            // Patch 777: set around a create for another player's save
@@ -3455,6 +3462,8 @@ float  rw_statebase;
 void(entity e) SV_RewindReset =
 {
 	e.rw_n = e.rw_head = e.rw_last = e.rw_st = 0;
+	e.rw_sn = e.rw_shead = 0;
+	e.rw_sbkt = -1;
 	if (e.rw_names > 0)
 		buf_del(e.rw_names);
 	e.rw_names = 0;
@@ -3497,8 +3506,42 @@ void(entity e) SV_RewindRebase =
 		e.rw_head = p;
 		e.rw_n = e.rw_n - 1;
 	}
+	// P1006: the slow rows by the same rule, newest first.
+	if (m)
+	while (e.rw_sn > 0)
+	{
+		p = (e.rw_shead - 1 + RW_SLOWCAP) % RW_SLOWCAP;
+		b = (RW_CAP + p) * RW_STRIDE;
+		if (m[b] <= t && m[b+33] == e.rec_rec_serial)
+		if (SV_RecCutOK(e, m[b+34], m[b+29]))
+			break;
+		e.rw_shead = p;
+		e.rw_sn = e.rw_sn - 1;
+	}
+	e.rw_sbkt = -1;
+	if (m)
+	if (e.rw_sn > 0)
+		e.rw_sbkt = floor(m[(RW_CAP + (e.rw_shead - 1 + RW_SLOWCAP) % RW_SLOWCAP) * RW_STRIDE] / RW_SLOWEVERY);
 	e.rw_st = e.run_t_state;
 	e.rw_last = t;
+};
+
+// P1006: dense row i into the next slow row, with its name.
+void(entity e, float i) SV_RewindSlowCopy =
+{
+	local float *m;
+	local float j, k;
+
+	m = rw_slot[num_for_edict(e)];
+	j = (RW_CAP + e.rw_shead) * RW_STRIDE;
+	for (k = 0; k < RW_STRIDE; k = k + 1)
+		m[j + k] = m[i + k];
+	if (e.rw_names > 0)
+		bufstr_set(e.rw_names, RW_CAP + e.rw_shead, bufstr_get(e.rw_names, i / RW_STRIDE));
+	e.rw_shead = (e.rw_shead + 1) % RW_SLOWCAP;
+	if (e.rw_sn < RW_SLOWCAP)
+		e.rw_sn = e.rw_sn + 1;
+	e.rw_sbkt = floor(m[i] / RW_SLOWEVERY);
 };
 
 void(entity e) SV_RewindSample =
@@ -3524,7 +3567,7 @@ void(entity e) SV_RewindSample =
 	if (s < 1 || s > FS_MAXPLAYERS)
 		return;
 	if (!rw_slot[s])
-		rw_slot[s] = memalloc(sizeof(float) * RW_CAP * RW_STRIDE);
+		rw_slot[s] = memalloc(sizeof(float) * (RW_CAP + RW_SLOWCAP) * RW_STRIDE);
 	if (!rw_slot[s])                // PF_memalloc returns 0 under developer
 		return;
 	m = rw_slot[s];
@@ -3540,6 +3583,8 @@ void(entity e) SV_RewindSample =
 	m[i + 8] = e.v_angle_y;
 	m[i + 9] = (e.pmove_flags & PMF_DUCKED) ? 1 : 0;
 	SV_RewindStateSample(e, i);
+	if (!e.rw_sn || floor(t / RW_SLOWEVERY) != e.rw_sbkt)
+		SV_RewindSlowCopy(e, i);
 	e.rw_head = (e.rw_head + 1) % RW_CAP;
 	if (e.rw_n < RW_CAP)
 		e.rw_n = e.rw_n + 1;
@@ -3559,7 +3604,7 @@ void(entity e) SV_RewindSample =
 // No allocation, publication, I/O or metadata writes; Find owns rw_* below.
 float(entity e, float t, vector near, float usenear) SV_RewindSelectRead =
 {
-	local float s, k, i, best, d, bd, w;
+	local float s, k, i, best, d, bd, w, pass, n, cap, head, off;
 	local float *m;
 
 	if (e == world) return -2;
@@ -3573,13 +3618,31 @@ float(entity e, float t, vector near, float usenear) SV_RewindSelectRead =
 	if (e.rw_n == 0) return -1;
 	if (!(e.rw_head >= 0 && e.rw_head < RW_CAP && e.rw_head == floor(e.rw_head))) return -2;
 	if (!rw_slot[s]) return -1;
+	if (!(e.rw_sn >= 0 && e.rw_sn <= RW_SLOWCAP && e.rw_sn == floor(e.rw_sn))) return -2;
+	if (!(e.rw_shead >= 0 && e.rw_shead < RW_SLOWCAP && e.rw_shead == floor(e.rw_shead))) return -2;
 	m = rw_slot[s];
-	w = (run_t_tick > 0) ? RW_NEAR / run_t_tick : 33;
 	best = -1;
 	bd = 0;
-	for (k = 0; k < e.rw_n; k = k + 1)
+	n = cap = head = off = w = 0;
+	// P1006: the dense ring, then -- only if it has nothing -- the slow rows,
+	// whose window is a bucket either side.
+	for (pass = 0; pass < 2; pass = pass + 1)
 	{
-		i = ((e.rw_head - 1 - k + RW_CAP) % RW_CAP) * RW_STRIDE;
+	if (pass == 0)
+	{
+		n = e.rw_n; cap = RW_CAP; head = e.rw_head; off = 0;
+		w = (run_t_tick > 0) ? RW_NEAR / run_t_tick : 33;
+	}
+	else
+	{
+		if (best >= 0)
+			break;
+		n = e.rw_sn; cap = RW_SLOWCAP; head = e.rw_shead; off = RW_CAP;
+		w = RW_SLOWEVERY;
+	}
+	for (k = 0; k < n; k = k + 1)
+	{
+		i = (off + (head - 1 - k + cap) % cap) * RW_STRIDE;
 		if (!(m[i] >= 0 && m[i] < 16777216 && m[i] == floor(m[i]))) return -2;
 		if (usenear)
 		{
@@ -3600,6 +3663,7 @@ float(entity e, float t, vector near, float usenear) SV_RewindSelectRead =
 			else if (m[i] > m[best])
 				best = i;
 		}
+	}
 	}
 	return best;
 };
@@ -3774,8 +3838,8 @@ float(entity e, float t, vector near, float usenear, float go, float view) SV_Sa
 		rw_statebase = -1;           // client replay points never assert a timed prefix
 	else if (!SV_RewindFind(e, t, near, usenear))
 	{
-		sprint(e, PRINT_HIGH, "^3rewind: nothing kept at that time -- the last "
-		                      "two minutes of the last run are\n");
+		sprint(e, PRINT_HIGH, "^3rewind: nothing kept at that time -- the last two minutes "
+		                      "of the run are kept exactly, about half an hour before them to the second\n");
 		return FALSE;
 	}
 	// At the cap there is no row or id to write into until that row goes, so

@@ -30,6 +30,7 @@
 #define RW_ASK      2           // seconds a clean run's second press has
 #define RW_LOST     5           // seconds a go may go unanswered before the mode gives up
 #define RW_KEPT     7900        // run ticks back the server keeps: RW_CAP x RW_EVERY, less a margin
+#define RW_SLOWKEPT 120000      // P1006: ...and to the second before that: + RW_SLOWCAP x RW_SLOWEVERY
 #define RW_NAVN    16           // simultaneous physical strafe binds
 #define RW_KEYS   22           // six fixed keys plus RW_NAVN bind slots
 
@@ -313,16 +314,20 @@ void() Rewind_Present =
 	ui_rw_ref = ln_z0[tr_live] + ln_v20[tr_live] / (2 * gravity);
 };
 
-// The cursor is further back than the server's ring reaches, so a save or a
-// resume there will be refused.  The line keeps more than the ring does.
+// The cursor is further back than the server's ring reaches: 1 = past the exact
+// two minutes (P1006: a save lands on the nearest kept second), 2 = past that too,
+// refused.  The line keeps more than the ring does.
 float() Rewind_Old =
 {
-	local float n;
+	local float n, back;
 
 	n = ln_n[tr_live];
 	if (n < 1 || tr_tick <= 0)
 		return FALSE;
-	return ((ln_t[tr_live * LN_CAP + n - 1] - tr_cur_t) / tr_tick) > RW_KEPT;
+	back = (ln_t[tr_live * LN_CAP + n - 1] - tr_cur_t) / tr_tick;
+	if (back > RW_SLOWKEPT)
+		return 2;
+	return back > RW_KEPT;
 };
 
 float() Rewind_Open =
@@ -797,8 +802,10 @@ void(vector scr) Rewind_Draw =
 		          11 * ui_cv_scale, '0.8 0.8 0.8', 0.85);
 	if (rw_ack)
 		s = "...";
+	else if (Rewind_Old() == 2)
+		s = "arrows/strafe binds scrub   too far back: the server keeps about half an hour";
 	else if (Rewind_Old())
-		s = "arrows/strafe binds scrub   too far back: the server keeps the last two minutes";
+		s = "arrows/strafe binds scrub   ENTER resume   older than two minutes: lands on the nearest second";
 	else if (tr_practice)
 		s = "arrows/strafe binds scrub   ENTER resume sampled practice   S save sampled practice";
 	else

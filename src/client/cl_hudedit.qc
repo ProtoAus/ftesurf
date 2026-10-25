@@ -2359,6 +2359,16 @@ void() HE_MigrateDefaults =
 {
 	local float n;
 
+	// P1006: Patch 784 made the rewind count 0 for a day and Patch 808 put 3 back
+	// without moving saved configs, so a saved 0 is that day's default (Lex's was).
+	registercvar("hud_rewind_rev", "0", CVAR_ARCHIVE);
+	if (cvar("hud_rewind_rev") < 1006)
+	{
+		if (HE_MoveOne("hud_rewind_countdown", 0, "3"))
+			print("rewind: resuming counts down 3 s again (hud_rewind_countdown 3)\n");
+		localcmd("seta hud_rewind_rev 1006\n");
+	}
+
 	// Patch 661: one more, under a mark of its own so Patch 641's stays what its arm
 	// reads.  A label's energy zero went from the run's start (1) to the
 	// speedometer's (0); the name was console only, so a saved 1 is the old default.
