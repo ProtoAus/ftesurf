@@ -328,7 +328,16 @@ void(vector screensize) MC_Draw =
 		{
 			if (tokenize(bufstr_get(mc_view, i)) != 4) continue;
 			who = argv(1); name = uri_unescape(argv(2)); text = uri_unescape(argv(3));
-			sui_text(rp, SZ_LABEL, ui_fit_text(!strcmp(who, mc_me) ? "You" : MC_Plain(name), width - 20, SZ_LABEL), COL_ACCENT, 1, 0);
+			if (!strcmp(who, mc_me)) name = "You";
+			// P996: "* ..." is a board line surfd said for the player (social.announce).
+			if (substring(text, 0, 2) == "* ")
+			{
+				sui_text(rp, SZ_LABEL, "board", COL_DIM, 1, 0);
+				ui_para(rp + '0 22 0', width - 20, SZ_LABEL, 18,
+				        MC_Plain(strcat(name, " ", substring(text, 2, -1))), SUI_THEME_GOOD, TRUE);
+				continue;
+			}
+			sui_text(rp, SZ_LABEL, ui_fit_text(MC_Plain(name), width - 20, SZ_LABEL), COL_ACCENT, 1, 0);
 			ui_para(rp + '0 22 0', width - 20, SZ_LABEL, 18, MC_Plain(text), COL_TEXT, TRUE);
 		}
 		sui_list_view_end();

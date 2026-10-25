@@ -148,6 +148,42 @@ check("another account's run is another row, ranked behind it",
       (answer(r), board(m)),
       ((200, True, "ranked", "", 2), [("ranked", SID, 40000), ("ranked", SID2, 42000)]))
 
+print("\n--- P996. the main menu's public room hears records and bests")
+m = fresh()
+account(m, SID, "Lex")
+account(m, SID2, "Other")
+linked(m, PUB1, SID)
+linked(m, PUB2, SID2)
+
+
+def room(m):
+    return rows(m, "SELECT sender, body FROM social_messages WHERE recipient = '@menu' ORDER BY id")
+
+
+submit(m, GUID1, 5000, PUB1)
+check("a first run that tops the board is a world record line, from the account",
+      room(m), [(SID, "* set the world record on surf_test -- 0:50.000")])
+submit(m, GUID2, 5200, PUB2)
+check("another account's first finish says so, with its place",
+      room(m)[1:], [(SID2, "* finished surf_test for the first time -- 0:52.000, #2 of 2")])
+submit(m, GUID2, 5100, PUB2, runid="r5100b")
+check("...and its next best inside the gap is paced: no second line",
+      len(room(m)), 2)
+submit(m, GUID2, 4900, PUB2, runid="r4900b")
+check("taking the record is never paced",
+      room(m)[2:], [(SID2, "* set the world record on surf_test -- 0:49.000")])
+submit(m, GUID1, 4950, PUB1, runid="r4950b")
+check("...and Lex's next best inside the gap after his own record line is paced too",
+      len(room(m)), 3)
+before = len(room(m))
+submit(m, GUID1, 100, PUB1, leg=2, runid="r100s")
+submit(m, GUID2, 4000, PUB2, flags=128, runid="r4000g")
+submit(m, GUID1, 3000, None, runid="r3000u")
+submit(m, GUID1, 5000, PUB1, track=1, runid="r5000t")
+check("a stage, a segmented run and an unlinked (community) run say nothing; a bonus does",
+      room(m)[before:], [(SID, "* set the world record on surf_test bonus 1 -- 0:50.000")])
+check("the game's clock past an hour", m._clock(3723456), "1:02:03.456")
+
 print("\n--- 2. nobody's run")
 for label, pub, why in (("no key was proven on its connection", None, "unproven"),
                         ("its key is nobody's", PUB4, "unlinked"),
