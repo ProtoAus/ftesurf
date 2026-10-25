@@ -85,8 +85,12 @@ float() MF_Online = { return (cvar("rec_terms") >= FS_TERMS_ONLINE); };
 // account service behind it (a private local game, board "local"), where CSQC
 // never gets a list to publish. MENU clientstate: 1 disconnected, 2 connected.
 // Patch 992: and in an online lobby whose relay has published nothing (-1: not
-// Steam-linked there, no proof, master unreachable); the first snapshot takes over.
+// Steam-linked there, no proof, master unreachable) for MF_RELAY_WAIT -- a working
+// relay publishes in ~5 s, and every map change resets it to -1. The first snapshot
+// takes over, except under a direct join in flight, whose answer would be dropped.
 // The list op writes no presence (social.py menu_read), so friends still see the lobby.
+#define MF_RELAY_WAIT 8
+float mf_relaygone;     // when the relay's count was first seen at -1; 0 while it publishes
 float() MF_Direct =
 {
 	local float c;
@@ -94,7 +98,18 @@ float() MF_Direct =
 	if (c == 1) return TRUE;
 	if (c != 2) return FALSE;
 	if (serverkey("board") == "local") return TRUE;
-	return (cvar("ui_friends_count") < 0);
+	if (mf_req)
+	if (!strcmp(mf_op, "join"))
+	if (mf_mode == clientstate() * 2 + 1)
+		return TRUE;
+	if (cvar("ui_friends_count") >= 0)
+	{
+		mf_relaygone = 0;
+		return FALSE;
+	}
+	if (!mf_relaygone || time < mf_relaygone)
+		mf_relaygone = time;
+	return (time - mf_relaygone > MF_RELAY_WAIT);
 };
 
 string() MF_ProbeNote = { return sprintf("req=%g wire=%g note=%S", mf_req, mf_wire, mf_note); };
