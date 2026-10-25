@@ -93,9 +93,15 @@ class CoverageTests(unittest.TestCase):
         self.index.write_text('particles subject 2\n'+' '.join(fields)+'\n'+' '.join(child)+'\n')
         self.assertEqual(audit.baked_index(self.index)['subject'], {'parent'})
 
+    def test_shape_columns_are_read(self):
+        # Patch 1012: 26 columns, the parent tag still at 17
+        fields = ['psys', 'subject', 'shaped'] + ['0']*14 + ['-'] + ['1', '10', '20', '0', '0', '0', '0', '0']
+        self.index.write_text('particles subject 1\n' + ' '.join(fields) + '\n')
+        self.assertEqual(audit.baked_index(self.index)['subject'], {'shaped'})
+
     def test_old_index_is_explicit_error(self):
         self.index.write_text('psys subject effect 16 0 0 0 32 1 1024\n')
-        with self.assertRaisesRegex(ValueError, '18-column'):
+        with self.assertRaisesRegex(ValueError, '18- or 26-column'):
             audit.baked_index(self.index)
 
     def test_round_trip_detects_changed_cfg(self):

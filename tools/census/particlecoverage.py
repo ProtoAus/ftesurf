@@ -39,8 +39,8 @@ def baked_index(path):
             continue
         if fields[0] == 'trail':
             continue    # Patch 659: how cl_emit.qc places a rain system's drops, not a system
-        if len(fields) != 18 or fields[0] != 'psys':
-            raise ValueError('expected current 18-column psys index: ' + line)
+        if len(fields) not in (18, 26) or fields[0] != 'psys':     # Patch 1012 added 8 shape columns
+            raise ValueError('expected an 18- or 26-column psys index: ' + line)
         if fields[17] == '-':
             result[fields[1]].add(fields[2])
     return result

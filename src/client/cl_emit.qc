@@ -3625,8 +3625,8 @@ vector() Emit_RandDir =
 };
 
 // Patch 1012: a uniform direction scaled by a .pcf's distance_bias -- 0 on an axis flattens the
-// shell into a ring (bhop_ceaseless's spiral is 1 1 0); a negative component is pcf.py's mark for
-// distance_bias_absolute_value, that axis' positive half only (purpleboostcirclelong's half ring).
+// shell into a ring (bhop_ceaseless's spiral is 1 1 0); a component past 500 is pcf.py's mark for
+// distance_bias_absolute_value, |axis| times (bias - 1000): one half (purpleboostcirclelong's ring).
 vector(vector b) Emit_ShellDir =
 {
 	local vector d;
@@ -3636,13 +3636,13 @@ vector(vector b) Emit_ShellDir =
 		d = Emit_RandDir();
 		if (vlen(d) > 1 || vlen(d) < 0.05)
 			continue;
-		d_x = (b_x < 0) ? fabs(d_x) * -b_x : d_x * b_x;
-		d_y = (b_y < 0) ? fabs(d_y) * -b_y : d_y * b_y;
-		d_z = (b_z < 0) ? fabs(d_z) * -b_z : d_z * b_z;
+		d_x = (b_x > 500) ? fabs(d_x) * (b_x - 1000) : d_x * b_x;
+		d_y = (b_y > 500) ? fabs(d_y) * (b_y - 1000) : d_y * b_y;
+		d_z = (b_z > 500) ? fabs(d_z) * (b_z - 1000) : d_z * b_z;
 		if (vlen(d) > 0.001)
 			return normalize(d);
 	}
-	return normalize([fabs(b_x), fabs(b_y), fabs(b_z)] + '0 0 0.001');
+	return '0 0 1';
 };
 
 vector(float i) Emit_PointIn =

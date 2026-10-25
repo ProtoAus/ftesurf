@@ -685,10 +685,11 @@ def translate(d, e, unknown, mapname, content=None):
         shape = [1, box[0], box[1], box[2], 0.0, 0.0, 0.0, 0.0]
     elif ball and box[0] > 0.5:
         bias = [float(x) for x in (ps.get("distance_bias") or [1.0, 1.0, 1.0])]
-        # distance_bias_absolute_value keeps an axis' positive half (purpleboostcirclelong's half
-        # ring): written as a negative bias, cl_emit.qc Emit_ShellDir's mark.
+        # distance_bias_absolute_value takes |axis| before the bias multiplies it, so the bias' sign
+        # picks the half (purpleboostcirclelong's half ring): written as bias + 1000, cl_emit.qc
+        # Emit_ShellDir's mark.
         absv = ps.get("distance_bias_absolute_value") or [0.0, 0.0, 0.0]
-        bias = [-abs(b) if float(a) else b for b, a in zip(bias, absv)]
+        bias = [b + 1000.0 if float(a) else b for b, a in zip(bias, absv)]
         if ps.get("bias in local system"):
             unknown["(sphere bias in the local frame: drawn in the world frame)"] += 1
         shape = [2, float(ps.get("distance_min", 0.0) or 0.0), box[0], 0.0, bias[0], bias[1], bias[2], radial]
@@ -861,18 +862,22 @@ def translate(d, e, unknown, mapname, content=None):
         L.append("\trgbdeltatime %.4g" % rgbdelta[1])
     # Patch 1012: FTE starts a particle at a random angle unless told (p_script.c, rotationstartmin
     # -pi); Source at 0, or rotation_initial + Rotation Random's offset_min..offset_max (0..360).
-    # bhop_ceaseless's redbooster drops have no Rotation Random and fell at random angles.
+    # bhop_ceaseless's redbooster drops have no Rotation Random and fell at random angles. FTE's
+    # angle 0 is a diamond (quad corners on the axes; its effectinfo "rotate" adds 45 too), so
+    # Source's upright is 45 here.
+    # Without Rotation Random a particle takes the system's own "rotation" (default 0).
     rr = find(d, e, "initializers", "Rotation Random")
     if rr:
-        r0 = float(rr.get("rotation_initial", 0.0) or 0.0)
+        r0 = 45.0 + float(rr.get("rotation_initial", 0.0) or 0.0)
         rmax = rr.get("rotation_offset_max")
         L.append("\trotationstart %.4g %.4g" % (r0 + float(rr.get("rotation_offset_min", 0.0) or 0.0),
                                                 r0 + (360.0 if rmax is None else float(rmax))))
     else:
-        L.append("\trotationstart 0")
+        L.append("\trotationstart %.4g" % (45.0 + float(e.get("rotation", 0.0) or 0.0)))
     spin = find(d, e, "operators", "Rotation Spin Roll")
-    if spin and abs(float(spin.get("spin_rate_degrees", 0.0) or 0.0)) > 0.01:
-        L.append("\trotationspeed %.4g" % float(spin.get("spin_rate_degrees")))
+    spinrate = float(spin.get("spin_rate_degrees", 0.0) or 0.0) if spin else float(e.get("rotation_speed", 0.0) or 0.0)
+    if abs(spinrate) > 0.01:
+        L.append("\trotationspeed %.4g" % spinrate)
     L.append("\talpha %.3g" % alpha)
     if alpharand > 0.005:
         L.append("\talpharand %.3g" % alpharand)

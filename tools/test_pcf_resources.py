@@ -469,10 +469,10 @@ class ColourFadeTests(unittest.TestCase):
     def test_start_angle_is_sources_not_ftes_random(self):
         # bhop_ceaseless redbooster2: no Rotation Random, so upright; FTE's default start is random
         lines, _ = self.lines(self.system({'color_fade': (8, [255, 255, 255, 255])}))
-        self.assertIn('rotationstart 0', lines)
+        self.assertIn('rotationstart 45', lines)   # FTE's upright quad
         rot = {'functionName': (5, 'Rotation Random'), 'rotation_offset_min': (3, 10.0), 'rotation_offset_max': (3, 40.0)}
         lines, _ = self.lines(self.system({'color_fade': (8, [255, 255, 255, 255])}, [rot]))
-        self.assertIn('rotationstart 10 40', lines)
+        self.assertIn('rotationstart 55 85', lines)
 
     def test_a_later_start_starts_at_birth_and_ends_on_target(self):
         # drawn from birth, so spread over 0..fade_end_time: 255 over 3 s, not over the last 1.5
@@ -532,7 +532,7 @@ class ShapeTests(unittest.TestCase):
         sph = {'functionName': (5, 'Position Within Sphere Random'), 'distance_max': (3, 100.0),
                'distance_bias': (10, [0.0, 1.0, 0.0]), 'distance_bias_absolute_value': (10, [0.0, 1.0, 0.0])}
         rt, _ = self.index(self.system({'emission_rate': (3, 50.0)}, sph))
-        self.assertEqual(rt['shape'][4:7], [0.0, -1.0, 0.0])
+        self.assertEqual(rt['shape'][4:7], [0.0, 1001.0, 0.0])
 
     def test_index_line_carries_the_shape_columns(self):
         box = {'functionName': (5, 'Position Within Box Random'),
