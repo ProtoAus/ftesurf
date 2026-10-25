@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   3a7a48a833a45961b76a97895e18469d865942a0
+commit   b44dde08ec1892895b56723b02243c6d57f31206
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,12 @@ commit   3a7a48a833a45961b76a97895e18469d865942a0
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-990
-patch    1002
+tag      patch-1003
+patch    1003
+# Patch 1003: authored Source no-fog reaches plain GL passes and automatic-program fallback.
+# Numeric $nofog 0 keeps fog. Appended material policy; matching full engine/plugin rebuild.
+# Source also retains P990 and the published P987-P995 guards; deployment is recorded separately.
+# No movement/input/evidence/schema/Build change; desktop/render acceptance is not a C test.
 # Patch 1002: func_lod "Solid" + Source fade, Momentum AddSpeed inputs, filters found as Source does,
 # DMX 3-5 particle files (QC + tools). Physents digest moves on 44 func_lod maps (P884 class).
 # Patch 990: hl2 plugin + client: 6-face pre-7.5 cubes, unlit reflections, UnlitGeneric base+envmap,

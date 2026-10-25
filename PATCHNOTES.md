@@ -21,6 +21,9 @@
 
 ## next
 
+### P1003 Authored no-fog materials
+- Materials a map marks as no-fog now stay clear on the plain GL rendering path too, including Source wireframe surfaces. An explicit no-fog value of 0 keeps ordinary fog.
+
 ### P1002 bhop_ceaseless's speed tunnel, func_lod and particles
 - Momentum's AddSpeed, AddHorizontalSpeed and AddVerticalSpeed map inputs work: bhop_ceaseless's speed tunnel under the start pushes you along the way you are moving.
 - A trigger whose filter shares its name with a name the map gives players no longer lets everyone through once someone carrying that name touched it first.

@@ -1,5 +1,15 @@
 # BACKLOG.md
 
+## Windows SDL3 whole-client link: Alt-key helper
+
+- engine/client/keys.c:Key_Event references INS_AltHeld, supplied by the Win input
+  backend but not the Windows SDL3 target. With the official SDL3.2.10 SDK, the
+  actual sys_sdl.c translation unit compiles, but m-rel FTE_TARGET=win64_SDL3
+  reaches an unresolved INS_AltHeld at link. Normal win64 builds are unaffected.
+- Falsifier: build that whole SDL3 target with its SDK and native cache link paths;
+  require a successful link, then separate desktop/file-picker acceptance. Do not
+  turn real-header/helper compilation into a complete SDL platform pass.
+
 ## bhop_ceaseless (P990, P1002): what is left
 
 - The underwater overlay ($underwateroverlay effects/water_warp01, a Refract with a
