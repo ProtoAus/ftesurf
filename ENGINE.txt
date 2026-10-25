@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   03c395af6db81e4b384a37b1cbe25a44dd20ceeb
+commit   3a7a48a833a45961b76a97895e18469d865942a0
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -26,7 +26,7 @@ commit   03c395af6db81e4b384a37b1cbe25a44dd20ceeb
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-990
 patch    1002
-# Patch 1002: func_lod "Solid" + Source fade, Momentum AddSpeed inputs, filters found by class,
+# Patch 1002: func_lod "Solid" + Source fade, Momentum AddSpeed inputs, filters found as Source does,
 # DMX 3-5 particle files (QC + tools). Physents digest moves on 44 func_lod maps (P884 class).
 # Patch 990: hl2 plugin + client: 6-face pre-7.5 cubes, unlit reflections, UnlitGeneric base+envmap,
 # r_sky_forcedepth_scale, positive-only prop fade, detail mode 9, $flowmap water, Sine refract.
