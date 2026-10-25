@@ -29,12 +29,12 @@ def candidate_args(f, grant):
 
 
 def schema_suite(out):
-    for target in (None, 19, 20, 22, 23):
+    for target in (None, 19, 20, 22, 23, 24):
         f = Fixture(out / ("schema-legacy19" if target is None else "schema%d" % target),
                     target_schema=target)
         schema = 19 if target is None else target
-        deps = ("accounts.py", "social.py") if schema in (20, 22, 23) else ()
-        if schema == 23:
+        deps = ("accounts.py", "social.py") if schema in (20, 22, 23, 24) else ()
+        if schema in (23, 24):
             deps += ("viewmodel.py",)
         manifest_bytes = (f.state / "manifest.json").read_bytes()
         initial_state = (f.state / "state.json").read_bytes()
@@ -58,9 +58,9 @@ def schema_suite(out):
                         path.unlink()
                     path.write_bytes(original)
         p = f.candidate()  # Acted server marker and same-PID record required by Fixture.
-        other_schemas = tuple(s for s in (19, 20, 22, 23) if s != schema)
+        other_schemas = tuple(s for s in (19, 20, 22, 23, 24) if s != schema)
         for wrong in (*other_schemas, True, False, float(schema),
-                      str(schema), None, 18, 21, 24):
+                      str(schema), None, 18, 21, 25):
             reopen(f, f.receipt(schema=wrong))
             check((f.state / "state.json").read_bytes() == initial_state,
                   "rejected schema receipt changed closure/state")
@@ -107,12 +107,12 @@ def schema_suite(out):
         check(not (f.state / "candidate.json").exists(), "close failed to retire candidate")
         check((f.state / "manifest.json").read_bytes() == manifest_bytes,
               "schema handling mutated immutable manifest")
-    print("PASS legacy19/explicit19/20/22/23 acted acceptance, cross-schema refusal, hash gates and closure replay")
+    print("PASS legacy19/explicit19/20/22/23/24 acted acceptance, cross-schema refusal, hash gates and closure replay")
 
     f = Fixture(out / "invalid-manifests", target_schema=20)
     valid_state = f.state
     variants = []
-    for value in (True, False, 20.0, 19.0, 22.0, 23.0, "20", "23", None, 18, 21, 24, [], {}):
+    for value in (True, False, 20.0, 19.0, 22.0, 23.0, 24.0, "20", "23", "24", None, 18, 21, 24, 25, [], {}):
         variants.append(dict(f.manifest, target_schema=value))
     for target in (None, 19, 20):
         base = copy.deepcopy(f.manifest)

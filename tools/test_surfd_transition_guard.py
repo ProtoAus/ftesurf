@@ -83,8 +83,8 @@ class Fixture:
             "import time\nfrom pathlib import Path\n"
             "Path('candidate-acted').write_text('SERVER ACTED')\n"
             "while True: time.sleep(.02)\n")
-        files = FILES + (("accounts.py", "social.py") if target_schema in (20, 22, 23) else ())
-        if target_schema == 23:
+        files = FILES + (("accounts.py", "social.py") if target_schema in (20, 22, 23, 24) else ())
+        if target_schema in (23, 24):
             files += ("viewmodel.py",)
         if runtime_profile == "hid-v1":
             files += ("hidupload.py",)
@@ -418,8 +418,13 @@ def main():
     out.mkdir(mode=0o700)
     try:
         suite(out)
-        for schema in (20, 22, 23):
+        for schema in (20, 22, 23, 24):
             hid = Fixture(out / ("hid-profile-%d" % schema), target_schema=schema, runtime_profile="hid-v1")
+            if schema == 24:
+                refused = hid.run("reopen", "--generation", GEN, "--receipt",
+                                  str(hid.receipt(schema=23)), ok=False)
+                check("acceptance receipt mismatch" in refused.stderr,
+                      "schema24 accepted a schema23 receipt or missed its binding check")
             hid.reopen()  # A real fixed candidate must act with the exact schema/profile hashes.
             body = (hid.home / "hidupload.py").read_bytes()
             (hid.home / "hidupload.py").write_bytes(body + b"# changed collector\n")
@@ -427,7 +432,7 @@ def main():
             check("raw hash mismatch: hidupload.py" in refused.stderr, "collector was not sealed")
             check(not (hid.home / "imports").exists(), "changed collector allowed application import")
             (hid.home / "hidupload.py").write_bytes(body)
-            if schema == 23:
+            if schema in (23, 24):
                 vm = hid.home / "viewmodel.py"
                 original = vm.read_bytes()
                 vm.write_bytes(original + b"# changed viewmodel dependency\n")
@@ -442,8 +447,8 @@ def main():
                         ("untagged-hid", {"runtime_profile": None}),
                         ("unknown-profile", {"runtime_profile": "unapproved"}),
                         ("unsupported-schema21", {"target_schema": 21}),
-                        ("unsupported-schema24", {"target_schema": 24})]
-            if schema == 23:
+                        ("unsupported-schema25", {"target_schema": 25})]
+            if schema in (23, 24):
                 variants += [("missing-viewmodel", {"hashes": {k: v for k, v in hid.hashes.items() if k != "viewmodel.py"}}),
                              ("schema22-extra-viewmodel", {"target_schema": 22})]
             else:
