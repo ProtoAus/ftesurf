@@ -27,13 +27,6 @@
 - func_lod brushes the map marks not solid are walk-through, as in Momentum, and all func_lod detail fades out at its authored distance.
 - bhop_ceaseless's particle effects (boosters, stars, rain, smoke) are drawn; their colour changes over life are not yet.
 
-### P990 bhop_ceaseless's colours, roof, gates, rain and water
-- Cubemaps saved without the old sphere map load: bhop_ceaseless's glowing cracks, gradients, chains, dragon, tree, butterflies and roof crystals have their colour back.
-- Unlit signs and labels with a reflection draw it (the start room's text, logos and buttons).
-- A model that pokes through a sky brush is no longer cut off by the sky (the faceted roof over the start).
-- Props marked never-fade by newer compilers are drawn again (the bridge gates).
-- Scrolling rain is small and moving, flowing water animates, and the start room's glass floor shimmers gently instead of warping hard.
-
 ### P1001 Ramp touchdown numbers from just before the ramp
 - The run line's touchdown label on a ramp now shows your speed and energy on the tick before you touched the ramp, not after the ramp's clip took its share.
 
@@ -62,6 +55,13 @@
 - In a game, one Esc on the Play screen returns you to the game; on a small window the first Esc still hides the Friends drawer.
 - A friend's profile now lists up to 12 times with clear text, where it showed one.
 - A friend's map is underlined when you point at it, to show it can be clicked.
+
+### P990 bhop_ceaseless's colours, roof, gates, rain and water
+- Cubemaps saved without the old sphere map load: bhop_ceaseless's glowing cracks, gradients, chains, dragon, tree, butterflies and roof crystals have their colour back.
+- Unlit signs and labels with a reflection draw it (the start room's text, logos and buttons).
+- A model that pokes through a sky brush is no longer cut off by the sky (the faceted roof over the start).
+- Props marked never-fade by newer compilers are drawn again (the bridge gates).
+- Scrolling rain is small and moving, flowing water animates, the sword floor's ripples move, and the start room's glass floor shimmers gently instead of warping hard.
 
 ### P986 New crosshair 3
 - Crosshair 3 is now a 42 pixel Counter-Strike: Source style sight, centred on the same pixel as before.
