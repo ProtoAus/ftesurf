@@ -1088,6 +1088,10 @@ float() Rewind_Console =
 		print("rewind: selection ", Rewind_ResumeInfo(), "\n");
 		print(sprintf("rewind: HUD %g time %.6f speed %.3f e_line %.3f index %.6f dir %g sampled %g\n",
 		              ui_rw_on, ui_rw_time, ui_hl_speed, ui_hl_e, rw_i, rw_dir, ui_rw_velok));
+		// P1007: which zero that energy is from -- the HUD's own then (exact) or the line's start.
+		print(sprintf("rewind: zero exact %g ref %.3f  line start %.3f  run time %.3f\n", ui_rw_exact,
+		              ui_rw_ref, ln_z0[tr_live] + ln_v20[tr_live] / (2 * max(1, serverkeyfloat("sv_gravity"))),
+		              tr_cur_t));
 		cam = getproperty(VF_ORIGIN);
 		print(sprintf("rewind: camera height %.2f chase %g\n",
 		              cam_z - tr_cur_p_z, cvar("hud_rewind_chase")));
