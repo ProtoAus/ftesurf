@@ -2243,15 +2243,16 @@ void() ui_pool_load =
 };
 
 /*
-  Patch 999 (Lex: the game lags loading the update data at launch): an INSTALLED row's
-  wrong-build check (mapfilekb, ~0.2 ms a map through every mount) was 457 of the
-  load's 818 ms on the install's 2,324 maps, all in one frame -- and the load runs
-  again when the catalogue changes.  It now runs UI_DLKB_STEP rows a frame after the
-  load (ui_dlkb_step); an offered row's presence check stays here, so a Download
-  button never shows for a map you have.
+  Patch 999 (Lex: the game lags loading the update data at launch): mapfilekb was 457
+  of the load's 818 ms on the install's 2,324 maps, all in one frame -- mostly misses
+  through every mount for offered maps not on disk, now skipped when the boot search
+  never listed the name (ui_mapseen).  The installed rows' wrong-build checks run
+  UI_DLKB_STEP a frame after the load (ui_dlkb_step); a reader that acts on ms_have
+  at once -- a join, the probes -- drains the rest first (ui_dlkb_finish).
 */
 #define UI_DLKB_STEP 64
 var float ui_dlkb_q = -1;   // strbuf of "row kb name" still owed the check
+float ui_dlkb_bare;         // a bare entry turned out a wrong build: refilter when drained
 hashtable ui_mapseen;       // ui_load_maps' search, by lowercased name
 float ui_dlkb_i;
 
@@ -2266,6 +2267,7 @@ void() ui_dl_load =
 		buf_del(ui_dlkb_q);
 	ui_dlkb_q = buf_create();
 	ui_dlkb_i = 0;
+	ui_dlkb_bare = FALSE;
 
 	// Patch 652: the list fetched from the directory (m_lobby.qc Mdl_Reply,
 	// which wrote it row by row), else the one the release shipped.
@@ -2561,15 +2563,16 @@ void() ui_dl_load =
 };
 
 void() ui_refilter;
-// Patch 999: UI_DLKB_STEP of the installed rows' wrong-build checks a frame (m_draw).
-void() ui_dlkb_step =
+// Patch 999: `max` of the installed rows' wrong-build checks.  A wrong build of a bare
+// entry is hidden (ui_refilter), so the list is refiltered once, when drained, scroll kept.
+void(float max) ui_dlkb_run =
 {
-	local float end, row, lkb, changed;
+	local float end, row, lkb;
+	local vector keep;
 
 	if (ui_dlkb_q < 0)
 		return;
-	end = min(ui_dlkb_i + UI_DLKB_STEP, buf_getsize(ui_dlkb_q));
-	changed = FALSE;
+	end = min(ui_dlkb_i + max, buf_getsize(ui_dlkb_q));
 	while (ui_dlkb_i < end)
 	{
 		tokenize(bufstr_get(ui_dlkb_q, ui_dlkb_i));
@@ -2584,19 +2587,28 @@ void() ui_dlkb_step =
 			bufstr_set(ms_have, row, "2");
 			bufstr_set(ms_dlkb, row, argv(1));
 			ms_dlstale = ms_dlstale + 1;
-			changed = TRUE;
+			if (stof(bufstr_get(ms_dataq, row)) == DQ_BARE)
+				ui_dlkb_bare = TRUE;
 		}
 	}
-	if (changed)
-		ui_refilter();              // a wrong build of a bare entry is hidden (ui_refilter)
 	if (ui_dlkb_i < buf_getsize(ui_dlkb_q))
 		return;
 	buf_del(ui_dlkb_q);
 	ui_dlkb_q = -1;
+	if (ui_dlkb_bare)
+	{
+		keep = ms_scroll;
+		ui_refilter();
+		ms_scroll = keep;
+		ui_dlkb_bare = FALSE;
+	}
 	if (ms_dlstale > 0)
 		print(sprintf("WOS: %g installed map(s) are a DIFFERENT BUILD from the server's -- offering a re-get\n",
 		              ms_dlstale));
 };
+
+void() ui_dlkb_step = { ui_dlkb_run(UI_DLKB_STEP); };     // m_draw: a frame's share
+void() ui_dlkb_finish = { ui_dlkb_run(1000000); };        // before acting on ms_have now
 
 // Defined with the backdrop and the download block, far below.
 string(string uuid, float scrw) ui_bgpick;
@@ -3150,6 +3162,7 @@ void(string arg) ui_browse_print =
 	local float dqn[DQ_CLASSES];
 
 	ui_load_maps();
+	ui_dlkb_finish();
 
 	known = unk = ksf = wr = 0;
 	for (r = 0; r < DQ_CLASSES; r++)
@@ -3361,6 +3374,7 @@ void(string mp, string pick) ui_build_print =
 
 	if (ms_name < 0 || !ms_count)
 		ui_load_maps();             // only when nothing is loaded: a reload moves rows
+	ui_dlkb_finish();
 	row = -1;
 	for (i = 0; i < ms_count; i = i + 1)
 		if (strtolower(bufstr_get(ms_name, i)) == strtolower(mp))
@@ -6589,6 +6603,7 @@ float(string addr, string mapname) ui_prejoin =
 	if (row < 0)
 		return FALSE;           // not in the list, so nothing is known of it
 
+	ui_dlkb_finish();           // Patch 999 review: a wrong build must not just connect
 	have = bufstr_get(ms_have, row);
 	if (have == "1")
 		return FALSE;           // agrees with the Pi as far as a size can say
@@ -8927,6 +8942,7 @@ float(string cmd) m_consolecommand =
 			print(sprintf("ui_dlmap: %g%% at %g B/s, %g of %g bytes\n",
 			              dl_pct, dl_rate, dl_done, dl_total));
 			print(sprintf("ui_dlmap: dlstate %S\n", serverkey("dlstate")));
+			ui_dlkb_finish();
 			print(sprintf("ui_dlmap: offerable %g, wrongbuild %g, list %g\n",
 			              ms_dlcount, ms_dlstale, ms_count));
 		}
