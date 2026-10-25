@@ -858,8 +858,10 @@ def connect():
     try:
         if DB_PATH != ":memory:" and os.path.exists(DB_PATH):
             # An RW read/close can checkpoint an ahead WAL before refusal.
-            probe = sqlite3.connect(Path(DB_PATH).resolve().as_uri() + "?mode=ro",
-                                    uri=True, timeout=5.0)
+            uri = Path(DB_PATH).resolve().as_uri()
+            if not uri.startswith("file:///"):
+                uri = "file:////" + uri[len("file://"):]  # UNC, empty authority
+            probe = sqlite3.connect(uri + "?mode=ro", uri=True, timeout=5.0)
             probe.execute("BEGIN")
             _refuse_newer_schema(probe)
         conn = sqlite3.connect(DB_PATH, timeout=5.0)

@@ -406,6 +406,10 @@ pages and committed log payload. Keep failed stronger predictions; do not claim
 namespace immutability, or row loss from a data-preserving checkpoint. Use explicit
 connection closure in WAL fixtures: a Python connection context commits/rolls
 back but does not close, and a hidden surviving connection can mask checkpointing.
+Windows UNC Path.as_uri puts the server in the authority, which ordinary SQLite
+rejects: use an empty authority with the escaped //server/share path instead.
+A connection spy can exercise UNC/drive/POSIX construction without a real share;
+name its filename parameter differently from SQLite's uri=True keyword.
 
 ## Backend startup after reader promotion (2026-10-22)
 

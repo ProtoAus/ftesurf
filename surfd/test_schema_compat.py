@@ -27,7 +27,7 @@ assert any((p / 'OWNER.md').is_file() for p in [ROOT, *ROOT.parents]), 'owned te
 ROOT.mkdir(parents=True, exist_ok=True)
 
 CHILD = r'''
-import hashlib, importlib.util, os, pathlib, subprocess, sys
+import hashlib, importlib.util, os, pathlib, subprocess, sys, urllib.parse
 source=pathlib.Path(sys.argv[1]);mode=sys.argv[2]
 spec=importlib.util.spec_from_file_location('surfd',source)
 m=importlib.util.module_from_spec(spec);sys.modules['surfd']=m
@@ -39,7 +39,7 @@ def durable():
         result[suffix]=(hashlib.sha256(p.read_bytes()).hexdigest(),p.stat().st_mode&0o777) if p.is_file() else None
     return result
 try:
-    if mode in ['connect','connect-race']:
+    if mode in ['connect','connect-race','uri-paths']:
         text=source.read_text();anchor='\nmigrate()\n';assert text.count(anchor)==1
         exec(compile(text[:text.index(anchor)],str(source),'exec'),m.__dict__)
         if mode=='connect-race':
@@ -52,7 +52,34 @@ try:
                     raced.append(durable());assert raced[0]['-wal'] is not None
                 return original(path,*a,**kw)
             m.sqlite3.connect=opening
-        db=m.connect();db.close()
+        if mode=='uri-paths':
+            class UriObserved(Exception):pass
+            saved=(m.DB_PATH,m.Path,m.os.path.exists,m.sqlite3.connect)
+            cases=[(r'\\server.invalid\share\schema #%.db',pathlib.PureWindowsPath,'//server.invalid/share/schema #%.db'),
+                   (r'C:\data\schema #%.db',pathlib.PureWindowsPath,'/C:/data/schema #%.db'),
+                   ('/data/schema #%.db',pathlib.PurePosixPath,'/data/schema #%.db')]
+            observed=[]
+            try:
+                for filename,path_type,expected in cases:
+                    m.DB_PATH=filename
+                    m.Path=lambda p:m.types.SimpleNamespace(resolve=lambda:path_type(p))
+                    m.os.path.exists=lambda p:True
+                    def observe(filename_uri,*a,**kw):
+                        parts=urllib.parse.urlsplit(filename_uri)
+                        assert parts.scheme=='file' and parts.netloc=='',filename_uri
+                        assert urllib.parse.unquote(parts.path)==expected,filename_uri
+                        assert parts.query=='mode=ro' and kw=={'uri':True,'timeout':5.0},(filename_uri,kw)
+                        observed.append(filename)
+                        raise UriObserved()
+                    m.sqlite3.connect=observe
+                    try:m.connect()
+                    except UriObserved:pass
+                    else:raise AssertionError('RO URI probe was not reached')
+            finally:m.DB_PATH,m.Path,m.os.path.exists,m.sqlite3.connect=saved
+            assert len(observed)==3
+            print('ACTED escaped UNC/drive/POSIX URI probes; no share accessed',flush=True)
+        else:
+            db=m.connect();db.close()
     else:
         spec.loader.exec_module(m)
 except RuntimeError as e:
@@ -61,8 +88,8 @@ except RuntimeError as e:
         assert len(raced)==1 and durable()==raced[0],'RW recheck checkpointed ahead WAL'
     print('ACTED newer-schema refusal',flush=True)
 else:
-    assert mode=='normal','ahead database accepted'
-    print('ACTED supported startup',flush=True)
+    assert mode in ['normal','uri-paths'],'ahead database accepted'
+    if mode=='normal':print('ACTED supported startup',flush=True)
 '''
 
 
@@ -165,6 +192,9 @@ class SchemaCompatibility(unittest.TestCase):
         with closing(sqlite3.connect(self.db.as_uri() + '?mode=ro', uri=True)) as db:
             self.assertEqual(db.execute('SELECT count(*) FROM operator_fixture WHERE value=?',
                                        (b'between checks',)).fetchone()[0], 1)
+
+    def test_native_filenames_keep_sqlite_uri_authority_empty(self):
+        self.child('uri-paths')
 
     def test_current_version_still_starts(self):
         version = self.seed(False)
