@@ -10,12 +10,20 @@
   require a successful link, then separate desktop/file-picker acceptance. Do not
   turn real-header/helper compilation into a complete SDL platform pass.
 
-## bhop_ceaseless (P990, P1002): what is left
+## bhop_ceaseless (P990, P1002, P1012-P1014): what is left
 
-- The underwater overlay ($underwateroverlay effects/water_warp01, a Refract with a
-  $bumptransform scroll) not checked for animation.
-- pcf.py: Color Fade (20 operators on the map), rotate-around-axis (5), Rotation Basic/Speed;
+- pcf.py: Movement Rotate Particle Around Axis (spiral, butterfly orbit their axis; drawn straight),
+  Rotation Basic/Speed, a Color Fade starting after birth or easing (drawn linear from birth);
   info_particle_system Start/Stop (the map's particle toggle) not mirrored on the client.
+- Save 13: the start floor is Refract glass (plar/ceaseless/cyan glass, $refracttinttexture glass_b,
+  mean 57 165 200) over the start pool, and the pool's cluster is in the start room's PVS, so the
+  water below shows through as Source's refraction would draw it. Lex sees "the ramp texture below";
+  a Momentum shot looking straight down there is the falsifier.
+- Saves 19-20: the tunnel walls are models/plar/ramp3.mdl, base-less UnlitGeneric + $envmap
+  (colorenvmap3). Its .vvd normals are hard-edged (149 shared positions, median 21.8 degrees apart),
+  so the reflection facets; Momentum's shot is smooth. Unexplained: compare one frame side by side.
+- Save 18: a spot where translucent layers sort wrong (Lex); not investigated yet. Lex suggested
+  drawing the layers in loud colours to see the order.
 - Water reads brighter cyan than Momentum's at saves 6/9 ($reflecttint {0 255 255} at
   $reflectamount 0.05); not measured against Source.
 - The flowmap's texture mapping (base UVs x worlduvscale; normals and noise on world XY) is a
@@ -36,9 +44,6 @@
   are re-created by SV_LateSpawnAll after every map entity, so a same-named non-filter LATER in the
   lump shadows them here and not in Source (surf_rands' unreferenced ctfilter has the shape; no
   referenced name in the 1,925-map census). A fix needs each late filter's lump index.
-- surf_boreas' installed bake predates pcf.py's materials/ prefix: tendies_endparticle04's
-  effects/tesla_glow (no .vmt anywhere) draws FTE's built-in ball. Re-bake, then re-check the
-  "saturated dome" item, which blames linear-light adding.
 - func_lod lump signature: bhop_space and surf_exogenesis both sign `0//0//17/*1` with different
   DisappearDist, so a stale lump across that pair keeps the wrong fade distances (cosmetic).
 
@@ -1274,11 +1279,11 @@ Fixed items are removed; remaining reader contracts need acting controls.
   Refused rather than drawn wrong: a spawn box with spread (Source zigzags), a timed
   emitter, operators outside pcf.py ROPE_OPS. The fade follows C_OP_FadeAndKill as read
   (closed source); inverted or reordered fade windows are taken literally.
-- **Child systems stay off** (`vbsp_emit_psys_children 0`). With P787's bake the
-  end room's `tendies_endparticle04` (tesla_glow, radius 800, 64/s, alpha 0.8-1) draws
-  a saturated dome over the pit where Momentum shows a compact glow. Likely cause:
-  Source on PC adds in linear light, so 25 stacked layers of a glow's dim edge stay
-  dim; FTE adds gamma values and they saturate. Not measured beyond the one view.
+- **Child systems stay off** (`vbsp_emit_psys_children 0`). The saturated dome
+  `tendies_endparticle04` drew over the pit was FTE's built-in ball: its effects/tesla_glow
+  has no .vmt and the bake named it without materials/. P1012's re-bake draws the image, a
+  compact glow (task root pcfcolour-20261025T0540Z, artifacts/cmp_1012a.png); turning children
+  on by default is still open.
   The default also waits on surf_tensor2's budget (cl_emit.qc, the cvar's comment).
 - **Outputs aimed at a classname** (Source's fallback, cbase.cpp:944-958). Patch 790
   takes it for `momentary_rot_button` only. The rest, census of 1,349 maps (35 maps):

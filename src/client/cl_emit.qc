@@ -183,6 +183,10 @@ float  *em_lit;                 // fire only: may carry a dlight
 float  *em_ltacc;
 float  *em_drop;                // fire only: 1 = Source lights it on what is under it
 float  *em_trail;               // EK_PSYS only: 1 = a sprite trail, on the trails' own budget
+float  *em_shape;               // EK_PSYS only, Patch 1012: 1 box (em_mins/em_size), 2 shell (below)
+vector *em_sa;                  //   shell: distance min/max in _x/_y
+vector *em_sb;                  //   shell: the .pcf's distance_bias
+float  *em_srad;                //   shell: outward speed
 float  em_n;
 
 void() Emit_Alloc =
@@ -206,6 +210,10 @@ void() Emit_Alloc =
 	em_ltacc = memalloc(sizeof(float) * EM_MAX);
 	em_drop  = memalloc(sizeof(float) * EM_MAX);
 	em_trail = memalloc(sizeof(float) * EM_MAX);
+	em_shape = memalloc(sizeof(float) * EM_MAX);
+	em_sa    = memalloc(sizeof(vector) * EM_MAX);
+	em_sb    = memalloc(sizeof(vector) * EM_MAX);
+	em_srad  = memalloc(sizeof(float) * EM_MAX);
 };
 void() Emit_AllocLife;
 
@@ -379,6 +387,9 @@ vector ps_vel[PS_MAX];          // LOCAL frame: rotated by the entity's angles
 vector ps_ofs[PS_MAX];          // box centre, world, added to the entity origin
 vector ps_wvel[PS_MAX];         // WORLD frame: wind and terminal speed, unrotated
 float  ps_jit[PS_MAX];          // isotropic random_speed, for em_jit
+float  ps_shape[PS_MAX];        // Patch 1012: the spawn volume QC places (index columns 18-25)
+vector ps_sa[PS_MAX], ps_sb[PS_MAX];
+float  ps_srad[PS_MAX];
 string ps_parent[PS_MAX];       // "" on a stand-alone line; the parent's name on a child link
 float  ps_dist[PS_MAX];
 float  ps_trail[PS_MAX];        // a render_sprite_trail this file places drop by drop:
@@ -786,6 +797,16 @@ void(string mname) Emit_PsysLoad =
 			ps_ofs[ps_n]  = [stof(argv(10)), stof(argv(11)), stof(argv(12))];
 			ps_wvel[ps_n] = [stof(argv(13)), stof(argv(14)), stof(argv(15))];
 			ps_jit[ps_n]  = stof(argv(16));
+		}
+		// Patch 1012: `shape a0 a1 a2 b0 b1 b2 radial`; absent on an older bake, whose r_part
+		// block still carries the volume as spawnorg.
+		ps_shape[ps_n] = 0;
+		if (n >= 26)
+		{
+			ps_shape[ps_n] = stof(argv(18));
+			ps_sa[ps_n]    = [stof(argv(19)), stof(argv(20)), stof(argv(21))];
+			ps_sb[ps_n]    = [stof(argv(22)), stof(argv(23)), stof(argv(24))];
+			ps_srad[ps_n]  = stof(argv(25));
 		}
 		if (n >= 18 && argv(17) != "-")
 		{
@@ -1946,6 +1967,9 @@ void() Emit_RegisterCvars =
 	// children, so flip this once cfg/test/psboreas.cfg arms C/D have shown
 	// them.  Read once per map load in Emit_LoadForMap; not archived.
 	registercvar("vbsp_emit_psys_children", "0", 0);
+	// Patch 1012: an info_particle_system outside the eye's PVS does not emit -- Source only
+	// transmits the entity inside it. 0 emits by distance alone, as before.
+	registercvar("vbsp_emit_pvs", "1", CVAR_ARCHIVE);
 	// Patch 791: render_rope ribbons (Emit_RopeFrame), whatever the line above says.
 	registercvar("vbsp_emit_ropes", "1", 0);
 
@@ -2077,10 +2101,33 @@ float(vector bmin, vector bmax, vector vel, float jit, float rate, float burst,
 	em_ltacc[i] = random();
 	em_drop[i]  = 0;
 	em_trail[i] = 0;
+	em_shape[i] = 0;
 
 	em_n = em_n + 1;
 	em_live[kind] = em_live[kind] + 1;
 	return i;
+};
+
+// Patch 1012: a .pcf system's spawn volume, placed per particle in Emit_Frame. A box is world-aligned
+// (Source's default frame for Position Within Box Random) around the centre Emit_Add was given.
+void(float i, float ps) Emit_PsysShape =
+{
+	local vector a;
+	em_shape[i] = ps_shape[ps];
+	a = ps_sa[ps];
+	if (em_shape[i] == 1)
+	{
+		em_mins[i] = em_mid[i] - a;
+		em_size[i] = a * 2;
+		em_rad[i]  = vlen(a);
+	}
+	else if (em_shape[i] == 2)
+	{
+		em_sa[i]   = a;
+		em_sb[i]   = ps_sb[ps];
+		em_srad[i] = ps_srad[ps];
+		em_rad[i]  = a_y;
+	}
 };
 
 void(float i, float rate, float ps) Emit_TrailMark =
@@ -3462,6 +3509,8 @@ void() Emit_LoadForMap =
 				         ps_trail[j] ? ps_trate[j] : ps_rate[j], 1, ps_dist[j],
 				         particleeffectnum(strcat(mname, "_", ps_name[j])), kind);
 				if (tj >= 0)
+					Emit_PsysShape(tj, j);
+				if (tj >= 0)
 				if (ps_trail[j])
 				{
 					Emit_TrailHandles(j, mname);
@@ -3476,6 +3525,8 @@ void() Emit_LoadForMap =
 		j = Emit_Add(bmin, bmax, vel, jit, rate, burst, dist, eff, kind);
 		if (j >= 0)
 		{
+			if (ps >= 0)
+				Emit_PsysShape(j, ps);
 			if (ps >= 0)
 			if (ps_trail[ps])
 				Emit_TrailMark(j, rate, ps);
@@ -3576,6 +3627,47 @@ vector() Emit_RandDir =
 	return [random() * 2 - 1, random() * 2 - 1, random() * 2 - 1];
 };
 
+// Patch 1012: a uniform direction scaled by a .pcf's distance_bias -- 0 on an axis flattens the
+// shell into a ring (bhop_ceaseless's spiral is 1 1 0).
+vector(vector b) Emit_ShellDir =
+{
+	local vector d;
+	local float k;
+	for (k = 0; k < 8; k = k + 1)
+	{
+		d = Emit_RandDir();
+		if (vlen(d) > 1 || vlen(d) < 0.05)
+			continue;
+		d_x = d_x * b_x;
+		d_y = d_y * b_y;
+		d_z = d_z * b_z;
+		if (vlen(d) > 0.001)
+			return normalize(d);
+	}
+	return '1 0 0';
+};
+
+// Patch 1012: one probe entity, re-placed over each emitter's cull sphere for checkpvs.
+entity em_probe;
+float  em_pvsok, em_pvsasked;   // checkextension("FTE_QC_CHECKPVS"), asked once (an initialised global is a constant)
+float(float i, vector eye) Emit_InPVS =
+{
+	local vector r;
+	if (!em_pvsasked)
+	{
+		em_pvsasked = TRUE;
+		em_pvsok = checkextension("FTE_QC_CHECKPVS");
+	}
+	if (!em_pvsok)
+		return TRUE;
+	if (!em_probe)
+		em_probe = spawn();
+	r = '1 1 1' * max(em_rad[i], 1);
+	setorigin(em_probe, em_mid[i]);
+	setsize(em_probe, -r, r);
+	return checkpvs(eye, em_probe);
+};
+
 vector(float i) Emit_PointIn =
 {
 	local vector s;
@@ -3607,9 +3699,9 @@ vector(float i) Emit_PointIn =
 */
 void() Emit_Frame =
 {
-	local float i, n, ft, thr, budget, dscale, d, lights, lit, k, mdem, under;
+	local float i, n, ft, thr, budget, dscale, d, lights, lit, k, mdem, under, pvscull;
 	local float wdust, wember, wbubble, wfire, wspark, wsmoke, wstack, wpsys, wunder;
-	local vector eye, v;
+	local vector eye, v, o, sa;
 
 	em_fpsn = em_fpsn + 1;
 	if (!cvar("vbsp_emit"))
@@ -3726,6 +3818,7 @@ void() Emit_Frame =
 	eye = getproperty(VF_ORIGIN);
 	Emit_PrecipFrame(eye, ft);
 	dscale = cvar("vbsp_emit_dist");
+	pvscull = cvar("vbsp_emit_pvs");
 	budget = cvar("vbsp_emit_budget");
 	lights = cvar("vbsp_emit_lights");
 
@@ -3791,6 +3884,11 @@ void() Emit_Frame =
 				i = i + 1;
 				continue;
 			}
+		}
+		if (k == EK_PSYS && pvscull && !Emit_InPVS(i, eye))
+		{
+			i = i + 1;
+			continue;
 		}
 		em_want[i] = em_rate[i];
 		// A sheet fire reaches as far as Source's and thins on the way, so the
@@ -3887,15 +3985,25 @@ void() Emit_Frame =
 				// still hand over something.
 				if (vlen(v) < 0.01)
 					v = '0 0 1';
-				// EK_PSYS carries the handle itself, and its spawn volume is
-				// the r_part block's own `spawnorg` -- so the point handed over
-				// is the entity origin, which is the control point the .pcf's
-				// box is measured from.  Everything else indexes em_fx and
-				// picks a point inside the entity's brush.
+				// EK_PSYS carries the handle itself; its spawn volume is placed
+				// here from the index's shape (Patch 1012), else it is the r_part
+				// block's own `spawnorg` around the box centre.  Everything else
+				// indexes em_fx and picks a point inside the entity's brush.
 				if (em_trail[i])
 					Emit_TrailDrop(i);
 				else if (em_kind[i] == EK_PSYS)
-					pointparticles(em_eff[i], em_mid[i], v, 1);
+				{
+					if (em_shape[i] == 2)
+					{	// Patch 1012: on the shell, moving out at its radial speed
+						o = Emit_ShellDir(em_sb[i]);
+						sa = em_sa[i];
+						pointparticles(em_eff[i], em_mid[i] + o * (sa_x + random() * (sa_y - sa_x)), v + o * em_srad[i], 1);
+					}
+					else if (em_shape[i] == 1)
+						pointparticles(em_eff[i], Emit_PointIn(i), v, 1);
+					else
+						pointparticles(em_eff[i], em_mid[i], v, 1);
+				}
 				else if (em_eff[i] < 0)
 				{
 					// -1 to -4 are the size classes, -5 to -8 the same with smoke.

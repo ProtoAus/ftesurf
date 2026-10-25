@@ -147,7 +147,7 @@ KNOWN = {
     "Position Modify Offset Random",
     "Movement Basic", "Movement Max Velocity", "Lifespan Decay",
     "Alpha Fade Out Random", "Alpha Fade In Random", "Alpha Fade and Decay",
-    "Collision via traces",
+    "Color Fade", "Collision via traces",
     "render_sprite_trail", "render_animated_sprites", "render_rope",
 }
 
@@ -174,6 +174,19 @@ RENDERER_TYPE = {
     "render_animated_sprites": None,          # PT_NORMAL, the default
     "render_rope": None,
 }
+
+
+# Patch 1012: a DMX attribute equal to its default is not stored, and emit_continuously's
+# emission_rate defaults to 100 (bhop_ceaseless's purpleboost4 has an empty emitter; read as 0
+# it was refused as "not a continuous emitter" and its boost strip drew nothing).
+EMIT_DEFAULT = 100.0
+
+
+# Same rule for the system's "maximum draw distance" (100000 when absent). Read as 0, cl_emit.qc
+# culled the emitter at any distance: bhop_ceaseless's startboost1, butterfly and spiral never drew.
+def draw_distance(e):
+    v = e.get("maximum draw distance")
+    return 100000.0 if v is None else float(v)
 
 
 def ops(d, e, key):
@@ -226,7 +239,7 @@ def translate_rope(d, e, content):
             if o.get("functionName") not in ROPE_OPS:
                 raise Untranslated("render_rope with %s: not drawn" % o.get("functionName"))
     em = find(d, e, "emitters", "emit_continuously")
-    nominal = float(em.get("emission_rate", 0.0)) if em else 0.0
+    nominal = float(em.get("emission_rate", EMIT_DEFAULT)) if em else 0.0
     if em and float(em.get("emission_duration", 0) or 0) > 0:
         raise Untranslated("render_rope with a timed emitter: not drawn")
     lt = find(d, e, "initializers", "Lifetime Random")
@@ -275,7 +288,7 @@ def translate_rope(d, e, content):
                 width=ROPE_WIDTH * float(e.get("radius", 5.0)), rgb=[float(c) for c in col[:3]],
                 alpha=alpha, alpha0=alpha0, alpha1=alpha1, fade=fade)
     return None, dict(name=e.name, rate=rate, vel=[0.0, 0.0, 0.0], wvel=[0.0, 0.0, 0.0], ofs=ofs,
-                      jit=0.0, maxp=int(maxp), die=life, maxdist=float(e.get("maximum draw distance", 0.0) or 0.0),
+                      jit=0.0, maxp=int(maxp), die=life, maxdist=draw_distance(e),
                       nominal=nominal, children=children, trail=None, look=look, rope=rope)
 
 
@@ -463,6 +476,34 @@ def translate(d, e, unknown, mapname, content=None):
             rgbrand = [b - a for a, b in zip(c1, c2)]
     rgb = [max(0, min(255, int(c))) for c in col[:3]]
 
+    # Patch 1012: Color Fade lerps each particle from its starting colour to color_fade between
+    # fade_start_time and fade_end_time, fractions of its own life (0 and 1 when absent). FTE
+    # pre-ages a shorter-lived particle into the longest one's timeline (p_script.c: p->die =
+    # randdie*frandom(), later particletime + die - p->die, rgb += rgbchange*p->die), so one rate
+    # over die_hi ending at rgbdeltatime is the same curve for every particle -- alphadelta's
+    # convention above. The rate starts at birth and is linear: a later start and ease are not
+    # expressible. rgbdeltatime must be written: rgbdelta takes `die` only if it came first.
+    rgbdelta = None
+    cfs = [o for o in ops(d, e, "operators") if o.get("functionName") == "Color Fade"]
+    if cfs:
+        cf = cfs[0]
+        if int(cf.get("output field", 6) or 6) != 6:
+            unknown["(Color Fade on output field %s: not the colour, not drawn)" % cf.get("output field")] += 1
+        else:
+            tgt = [float(x) for x in (cf.get("color_fade") or [255, 255, 255, 255])[:3]]
+            t0 = float(cf.get("fade_start_time", 0.0) or 0.0)
+            t1 = cf.get("fade_end_time")
+            t1 = 1.0 if t1 is None else float(t1)
+            mean0 = [rgb[i] + (rgbrand[i] * 0.5 if rgbrand else 0.0) for i in range(3)]
+            span = max(t1 - t0, 0.01) * die_hi
+            delta = [(tgt[i] - mean0[i]) / span for i in range(3)]
+            if any(abs(v) * span >= 1.0 for v in delta):
+                rgbdelta = (delta, max(t1, 0.01) * die_hi)
+            if t0 > 0.005:
+                unknown["(Color Fade starting at %.2g of life: starts at birth)" % t0] += 1
+        if len(cfs) > 1:
+            unknown["(%d Color Fades in sequence: the first drawn)" % len(cfs)] += 1
+
     ar = find(d, e, "initializers", "Alpha Random")
     if ar:
         a_lo = float(ar.get("alpha_min", 255)) / 255.0
@@ -634,6 +675,17 @@ def translate(d, e, unknown, mapname, content=None):
             ball = True
             radial = (float(ps.get("speed_min", 0.0)) +
                       float(ps.get("speed_max", 0.0))) * 0.5
+    # Patch 1012: the volume is placed by cl_emit.qc, particle by particle -- `shape a0 a1 a2 b0 b1 b2
+    # radial` in the index. spawnorg is square in X and Y (a 256 x 5056 boost strip baked as a 1138
+    # square, bhop_ceaseless purpleboost5) and `spawnmode ball` cannot flatten distance_bias into a
+    # ring (its spiral). 1: a world-aligned box (Source's default frame), half extents. 2: a shell
+    # distance_min..distance_max with the bias scaling the direction, plus the outward speed.
+    shape = [0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    if pb and any(b > 0.5 for b in box):
+        shape = [1, box[0], box[1], box[2], 0.0, 0.0, 0.0, 0.0]
+    elif ball and box[0] > 0.5:
+        bias = [float(x) for x in (ps.get("distance_bias") or [1.0, 1.0, 1.0])]
+        shape = [2, float(ps.get("distance_min", 0.0) or 0.0), box[0], 0.0, bias[0], bias[1], bias[2], radial]
 
     # ---- horizontal acceleration becomes an initial velocity, because FTE's
     # `gravity` is a scalar down world Z and cannot express wind.
@@ -714,7 +766,7 @@ def translate(d, e, unknown, mapname, content=None):
 
     # ---- rate, capped by the particle ceiling (see the header)
     em = find(d, e, "emitters", "emit_continuously")
-    nominal = float(em.get("emission_rate", 0.0)) if em else 0.0
+    nominal = float(em.get("emission_rate", EMIT_DEFAULT)) if em else 0.0
     maxp = float(e.get("max_particles", 0) or 0)
     ceiling = maxp / die_hi if maxp > 0 else nominal
     rate = min(nominal, ceiling) if nominal > 0 else 0.0
@@ -732,7 +784,7 @@ def translate(d, e, unknown, mapname, content=None):
     coll = find(d, e, "constraints", "Collision via traces")
     kill = bool(coll and coll.get("kill particle on collision", False))
 
-    maxdist = float(e.get("maximum draw distance", 0.0) or 0.0)
+    maxdist = draw_distance(e)
 
     # A PREFIX, NOT A NAMESPACE, and that is the whole reason this reads
     # `<map>_<effect>`.  Asking for "surf_tensor2.spawn_rain01" makes
@@ -798,6 +850,9 @@ def translate(d, e, unknown, mapname, content=None):
         # per-channel jitter.  See the essay above.
         L.append("\trgbrand %d %d %d" % tuple(rgbrand))
         L.append("\trgbrandsync 1")
+    if rgbdelta:
+        L.append("\trgbdelta %.4g %.4g %.4g" % tuple(rgbdelta[0]))
+        L.append("\trgbdeltatime %.4g" % rgbdelta[1])
     L.append("\talpha %.3g" % alpha)
     if alpharand > 0.005:
         L.append("\talpharand %.3g" % alpharand)
@@ -808,7 +863,13 @@ def translate(d, e, unknown, mapname, content=None):
     else:
         L.append("\tdie %.3g" % die_hi)
     L.append("\tcount 1\t\t\t// QC passes a whole number; pcount = count*this")
-    if any(b > 0.5 for b in box):
+    qcshape = shape[0] and not (rend and rend[0].get("functionName") == "render_sprite_trail"
+                                and mat.lower() in TRAIL_BLENDED)
+    if not qcshape:
+        shape = [0] + [0.0] * 7      # a trail's drops are placed by its own index line
+    if qcshape:
+        L.append("\tspawnorg 0\t\t\t// cl_emit.qc places it: the index's shape columns")
+    elif any(b > 0.5 for b in box):
         # `spawnorg` TAKES TWO VALUES, NOT THREE (p_script.c:2113-2119):
         # horizontal spread then vertical, and a third argument is silently
         # ignored.  Writing the box as x y z therefore set the Y half-extent as
@@ -845,7 +906,7 @@ def translate(d, e, unknown, mapname, content=None):
     # A sphere's own radial speed wins the spawnvel slot, because with
     # `spawnmode ball` that slot IS the radial speed and a Velocity Random
     # spread would be describing something else in the same two numbers.
-    if ball and radial > 0.01:
+    if ball and radial > 0.01 and not qcshape:
         L.append("\tspawnvel %.6g %.6g" % (radial, radial))
     elif any(v > 0.5 for v in spawnvel):
         svh = (spawnvel[0] * spawnvel[1]) ** 0.5 if spawnvel[0] > 0 and spawnvel[1] > 0 \
@@ -877,7 +938,8 @@ def translate(d, e, unknown, mapname, content=None):
             unknown["(sprite trail: length follows speed, not clamped to max length)"] += 1
         # What the system's own block carries and these do not.
         for what, there in (("drag", drag > 0.001), ("an alpha fade", alphadelta < -0.001),
-                            ("a colour range", bool(rgbrand)), ("growth", abs(scaledelta) > 0.001)):
+                            ("a colour range", bool(rgbrand)), ("a colour fade", bool(rgbdelta)),
+                            ("growth", abs(scaledelta) > 0.001)):
             if there:
                 unknown["(sprite trail: %s is not carried into the drop blocks)" % what] += 1
         tq = (r_lo * s_birth * TRAIL_QUAD, r_hi * s_birth * TRAIL_QUAD)
@@ -917,7 +979,7 @@ def translate(d, e, unknown, mapname, content=None):
                 unknown["(child delay > 0; started immediately)"] += 1
 
     rt = dict(name=name, rate=rate, vel=basevel, wvel=worldvel, ofs=ofs,
-              jit=jit, maxp=int(maxp), die=die_hi, maxdist=maxdist,
+              jit=jit, maxp=int(maxp), die=die_hi, maxdist=maxdist, shape=shape,
               nominal=nominal, children=children, trail=trail, look=look)
     return "\n".join(L), rt
 
@@ -1032,12 +1094,15 @@ def main():
     # Stand-alone lines first, so Emit_PsysFind (first match by name) lands on
     # one with no parent tag.
     def psline(rt, parent):
-        return "psys %s %s %.4g %.6g %.6g %.6g %d %.4g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %s" % (
+        sh = rt.get("shape") or [0] + [0.0] * 7
+        return ("psys %s %s %.4g %.6g %.6g %.6g %d %.4g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %s"
+                " %d %.6g %.6g %.6g %.4g %.4g %.4g %.6g") % (
             mapname, rt["name"], rt["rate"],
             rt["vel"][0], rt["vel"][1], rt["vel"][2],
             rt["maxp"], rt["die"], rt["maxdist"],
             rt["ofs"][0], rt["ofs"][1], rt["ofs"][2],
-            rt["wvel"][0], rt["wvel"][1], rt["wvel"][2], rt["jit"], parent)
+            rt["wvel"][0], rt["wvel"][1], rt["wvel"][2], rt["jit"], parent,
+            sh[0], sh[1], sh[2], sh[3], sh[4], sh[5], sh[6], sh[7])
 
     byname = dict((rt["name"], rt) for rt in runtime)
     edges = []

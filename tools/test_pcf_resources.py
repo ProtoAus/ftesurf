@@ -43,6 +43,10 @@ def pcf_bytes(elements):
             return bytes([v])
         if type_ == 5:
             return v.encode() + b'\0'
+        if type_ == 8:
+            return bytes(v)
+        if type_ == 10:
+            return struct.pack('<3f', *v)
         if type_ == 15:
             return struct.pack('<i', len(v)) + b''.join(value(1, i) for i in v)
         raise AssertionError(type_)
@@ -423,6 +427,96 @@ class RopeTests(unittest.TestCase):
                                                          'emission_rate': (3, 8.0), 'emission_duration': (3, 2.0)})])
         blocks, runtime, skipped = pcf.bake(timed, 'm', collections.Counter())
         self.assertIn('timed emitter', skipped[0][1])
+
+
+class ColourFadeTests(unittest.TestCase):
+    # Patch 1012: Color Fade becomes rgbdelta over the longest life plus an explicit rgbdeltatime.
+    def system(self, fade, initializers=()):
+        ops_ = [('DmeParticleOperator', 'r', {'functionName': (5, 'render_animated_sprites')}),
+                ('DmeParticleOperator', 'e', {'functionName': (5, 'emit_continuously'), 'emission_rate': (3, 10.0)}),
+                ('DmeParticleOperator', 'l', {'functionName': (5, 'Lifetime Random'),
+                                              'lifetime_min': (3, 1.0), 'lifetime_max': (3, 3.0)}),
+                ('DmeParticleOperator', 'c', dict(fade, functionName=(5, 'Color Fade')))]
+        ops_ += [('DmeParticleOperator', 'i%d' % n, a) for n, a in enumerate(initializers)]
+        attrs = {'max_particles': (2, 100), 'material': (5, 'particle\\p.vmt'), 'color': (8, [255, 255, 255, 255]),
+                 'renderers': (15, [2]), 'emitters': (15, [3]), 'operators': (15, [5]),
+                 'initializers': (15, [4] + list(range(6, 6 + len(initializers))))}
+        return pcf_bytes([('DmElement', 'root', {'particleSystemDefinitions': (15, [1])}),
+                          ('DmeParticleSystemDefinition', 'spark', attrs)] + ops_)
+
+    def lines(self, data):
+        import collections, pcf
+        unknown = collections.Counter()
+        blocks, runtime, skipped = pcf.bake(data, 'm', unknown)
+        self.assertEqual(skipped, [])
+        return [l.strip() for l in blocks[0].splitlines()], unknown
+
+    def test_fade_is_a_rate_over_the_longest_life(self):
+        # white -> (100, 0, 255) by half of a 3 s life: 1.5 s, so -155/1.5 and -255/1.5 a second
+        lines, unknown = self.lines(self.system({'color_fade': (8, [100, 0, 255, 255]), 'fade_end_time': (3, 0.5)}))
+        self.assertIn('rgbdelta -103.3 -170 0', lines)
+        self.assertIn('rgbdeltatime 1.5', lines)
+        self.assertLess(lines.index('rgbdelta -103.3 -170 0'), lines.index('rgbdeltatime 1.5'))
+        self.assertFalse([k for k in unknown if 'Color Fade' in k], unknown)
+
+    def test_fade_starts_from_the_middle_of_a_colour_range(self):
+        rand = {'functionName': (5, 'Color Random'), 'color1': (8, [0, 0, 0, 255]), 'color2': (8, [200, 100, 50, 255])}
+        lines, _ = self.lines(self.system({'color_fade': (8, [100, 50, 25, 255])}, [rand]))
+        self.assertIn('rgbrand 200 100 50', lines)
+        # mean start (100, 50, 25) is the target: nothing changes, so no rgbdelta line
+        self.assertFalse([l for l in lines if l.startswith('rgbdelta')], lines)
+
+    def test_a_later_start_is_reported(self):
+        lines, unknown = self.lines(self.system({'color_fade': (8, [0, 0, 0, 255]), 'fade_start_time': (3, 0.5)}))
+        self.assertIn('rgbdeltatime 3', lines)
+        self.assertIn('rgbdelta -170 -170 -170', lines)
+        self.assertTrue([k for k in unknown if 'starts at birth' in k], unknown)
+
+
+class ShapeTests(unittest.TestCase):
+    # Patch 1012: defaults the DMX does not store, and the spawn volume handed to cl_emit.qc.
+    def system(self, emitter, initializer, extra=None):
+        ops_ = [('DmeParticleOperator', 'r', {'functionName': (5, 'render_animated_sprites')}),
+                ('DmeParticleOperator', 'e', dict(emitter, functionName=(5, 'emit_continuously'))),
+                ('DmeParticleOperator', 'l', {'functionName': (5, 'Lifetime Random'),
+                                              'lifetime_min': (3, 2.0), 'lifetime_max': (3, 2.0)}),
+                ('DmeParticleOperator', 'p', initializer)]
+        attrs = {'max_particles': (2, 10000), 'material': (5, 'particle\\p.vmt'),
+                 'renderers': (15, [2]), 'emitters': (15, [3]), 'initializers': (15, [4, 5])}
+        attrs.update(extra or {})
+        return pcf_bytes([('DmElement', 'root', {'particleSystemDefinitions': (15, [1])}),
+                          ('DmeParticleSystemDefinition', 's', attrs)] + ops_)
+
+    def index(self, data):
+        import collections, pcf
+        blocks, runtime, skipped = pcf.bake(data, 'm', collections.Counter())
+        self.assertEqual(skipped, [])
+        return runtime[0], [l.strip() for l in blocks[0].splitlines()]
+
+    def test_absent_rate_and_draw_distance_are_sources_defaults(self):
+        box = {'functionName': (5, 'Position Within Box Random')}
+        rt, _ = self.index(self.system({}, box))
+        self.assertEqual((rt['rate'], rt['maxdist']), (100.0, 100000.0))
+        rt, _ = self.index(self.system({'emission_rate': (3, 7.0)}, box, {'maximum draw distance': (3, 600.0)}))
+        self.assertEqual((rt['rate'], rt['maxdist']), (7.0, 600.0))
+
+    def test_a_long_box_goes_to_qc_whole(self):
+        # bhop_ceaseless purpleboost5: 256 x 5056, which spawnorg baked as a 1138 square
+        box = {'functionName': (5, 'Position Within Box Random'),
+               'min': (10, [-128.0, -2528.0, 0.0]), 'max': (10, [128.0, 2528.0, 0.0])}
+        rt, lines = self.index(self.system({'emission_rate': (3, 50.0)}, box))
+        self.assertEqual(rt['shape'][:4], [1, 128.0, 2528.0, 0.0])
+        self.assertIn('spawnorg 0\t\t\t// cl_emit.qc places it: the index\'s shape columns', lines)
+        self.assertFalse([l for l in lines if l.startswith('spawnmode')], lines)
+
+    def test_a_flattened_sphere_is_a_ring(self):
+        # bhop_ceaseless spiral: distance 350..375, bias 1 1 0
+        sph = {'functionName': (5, 'Position Within Sphere Random'), 'distance_min': (3, 350.0),
+               'distance_max': (3, 375.0), 'distance_bias': (10, [1.0, 1.0, 0.0]), 'speed_min': (3, 10.0),
+               'speed_max': (3, 30.0)}
+        rt, lines = self.index(self.system({'emission_rate': (3, 50.0)}, sph))
+        self.assertEqual(rt['shape'], [2, 350.0, 375.0, 0.0, 1.0, 1.0, 0.0, 20.0])
+        self.assertFalse([l for l in lines if l.startswith('spawnvel')], lines)
 
 
 class SheetTests(unittest.TestCase):
