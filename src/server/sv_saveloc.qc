@@ -257,7 +257,7 @@ float(float r) SL_RowSpeed =
   resets the row, so the bit is never stale.
 
   ONE GATE, TWO HULLS, and it is a note rather than a change: the line above this call
-  asks SV_ZoneStartAt, which uses PM_HULL_MAXS unconditionally at the shipped
+  asks SL_ArmBoxAt (SV_ZoneStartAt before Patch 993), which uses PM_HULL_MAXS unconditionally at the shipped
   `run_zone_hull_live 0`.  So the gate asks "is this row in a start box" with a 62-tall
   hull and "was it standing" with the row's own, which may be 45.  A ducked row up to
   17 u below a slab's bottom is inside it by the first question.  Changing the zone
@@ -4138,6 +4138,9 @@ void(entity e, float n) SV_SaveLocLoad =
 	  (armed from 0)` two seconds after the load, run still reading `segmented,
 	  stitch 1, practice 1`.
 
+	  [Patch 993: SL_BoxFloor now puts that body back on the bottom, and the gate
+	  takes STAGE boxes too; what follows is the history.]
+
 	  SO A START-BOX LOAD KEEPS A TAINT BUILD 47 SAYS IT SHOULD LOSE -- BUT ONLY
 	  WHERE THE ZONE'S BOTTOM IS THE FLOOR, AND THAT IS NOT MOST MAPS.  Measured
 	  over the 48 shipped start regions that carry an authored teleDestPos, the
@@ -5384,7 +5387,8 @@ void(entity e) SV_SaveLocHoldFrame =
 	  drifted, so the ordinary case sends nothing and cannot re-introduce the
 	  per-tick snapping this rewrite exists to remove.
 	*/
-	o = rec_sl_org[e.rec_sl_holdrow];
+	// Patch 993 review: against the point SV_SaveLocPlace puts it, lifted or not.
+	o = SL_BoxFloor(e, rec_sl_org[e.rec_sl_holdrow]);
 	if (e.origin != o)
 		SV_SaveLocPlace(e, e.rec_sl_holdrow);
 
@@ -5743,7 +5747,7 @@ void() SV_SaveLocFrame =
 
   THE ZONE IS THE LEG'S OWN, not "any start zone".  surf_prosurf has five bonus
   starts; `!r` on bonus 4 must not find the save you left in bonus 1.  Asking
-  SV_ZoneStartAt instead would also re-derive the leg and get it wrong where two
+  a start-box lookup instead would also re-derive the leg and get it wrong where two
   starts share geometry -- surf_aircontrol's bonus-2 start is byte-identical to
   its main one, which is why SV_ZoneMove latches an INDEX (see its essay).
 

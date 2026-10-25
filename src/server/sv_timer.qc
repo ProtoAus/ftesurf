@@ -927,37 +927,6 @@ vector(entity e) SV_RunHullMaxs =
 };
 
 /*
-  Which START zone is p standing in, or -1.  Build 47.
-
-  Asked by the save-lock loader, and asked through SV_ZoneOcc rather than with a
-  fresh point test of its own SO THAT IT CANNOT DRIFT from what SV_TimerFrame's
-  arm scan means by "standing in a start box".  There is no ZoneAtPoint helper
-  in this tree and the arm scan is inline; adding a second speller that answers
-  a slightly different question is the failure this file keeps writing essays
-  about, so this one is a thin wrapper over the same predicate and nothing else.
-
-  Deliberately does NOT reproduce the scan's START-outranks-STAGE priority: the
-  caller wants the yes/no, and a STAGE box is not a place you pick a start from.
-*/
-float(entity e, vector p) SV_ZoneStartAt =
-{
-	local float z;
-	local vector mn, mx;
-
-	mn = SV_RunHullMins(e);
-	mx = SV_RunHullMaxs(e);
-
-	for (z = 0; z < zone_count; z = z + 1)
-	{
-		if (zone_type[z] != ZONE_START)
-			continue;
-		if (SV_ZoneOcc(z, p, mn, mx))
-			return z;
-	}
-	return -1;
-};
-
-/*
   The personal best table, per map.
 
   [track * FS_MAXSPLITS + leg] is the best time for that LEG: leg 0 is the full
