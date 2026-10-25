@@ -2585,6 +2585,7 @@ float(entity e, string path) SV_RecSnapshot =
 */
 .float  run_st_seg;              // the 0-based segment, or -1 when no stage is open
 .float  run_st_line;             // buffer index where this stage's samples start
+.int    run_st_byte;             // P998: a streamed file's size at run_st_line, -1 unknown
 .float  run_st_tick;             // the run clock the stage began at
 .float  run_st_jump;             // it began with a jump: this one is recordable
 .float  run_st_ramp;             // a ramp has been touched since the boundary
@@ -8539,6 +8540,47 @@ float(entity e) SV_StageFlags =
 	return i;
 };
 
+/*
+  Lines [base, rec_rec_lines) of the streamed part file, copied from byte `from`, as a
+  buffer; -1 on any failure.  A live .part is not in the engine's search hash yet, and
+  the direct byte-range copier reads it without closing the active writer.
+*/
+float(entity e, int from, int bytes, float base) SV_StagePrefix =
+{
+	local float buf, probe;
+	local string prefix;
+
+	prefix = strcat(SV_RecPartPath(e), ".stage");
+	probe = fopen(prefix, FILE_WRITE);
+	if (probe < 0) return -1;
+	fclose(probe);
+	if (fcopyrange(SV_RecPartPath(e), from, bytes - from, prefix, FALSE) != bytes - from)
+	{
+		fremove(prefix);
+		return -1;
+	}
+	buf = buf_create_ex("string", 0);
+	if (buf < 1) { fremove(prefix); return -1; }
+	probe = buf_loadfile(prefix, buf);
+	fremove(prefix);
+	if (!probe)
+	{
+		dprint("stage: cannot read the streamed prefix\n");
+		buf_del(buf);
+		return -1;
+	}
+	if (buf_getsize(buf) != e.rec_rec_lines - base)
+	{
+		dprint(sprintf("stage: streamed prefix from line %g has %g lines, expected %g\n",
+		               base, buf_getsize(buf), e.rec_rec_lines - base));
+		buf_del(buf);
+		return -1;
+	}
+	if (SV_DevOn())
+		dprint(sprintf("stage: read %s bytes of %s from line %g\n", itos(bytes - from), itos(bytes), base));
+	return buf;
+};
+
 void(entity e, float seg, float dur, float tbase, float tickbase,
      float first, float last, float tag) SV_StageWrite =
 {
@@ -8546,12 +8588,12 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	local float gfirst;             // build 48: the slice's first ghost record, or -1
 	local float leg;                // build 57: the leg this slice is filed under
 	local string l, dst, who, owner;
-	local float sourcebuf, serial, probe;
+	local float sourcebuf, serial, probe, sbase;
 	local int bytes;
-	local string prefix;
 
 	// Reuse the sample-only slicer on a bounded readback, never a parallel writer.
 	sourcebuf = e.rec_rec_buf;
+	sbase = 0;                      // the run line sourcebuf's index 0 holds
 	if (e.rec_rec_stream)
 	{
 		// Patch375 fsize flushes without truncation; a live stdio prefix can
@@ -8563,33 +8605,25 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 			dprint("stage: invalid or oversized streamed prefix; main recording preserved\n");
 			return;
 		}
-		prefix = strcat(SV_RecPartPath(e), ".stage");
-		// A live .part is not in the engine's search hash yet. The existing
-		// direct byte-range copier reads it without closing the active writer.
-		probe = fopen(prefix, FILE_WRITE);
-		if (probe < 0) return;
-		fclose(probe);
-		if (fcopyrange(SV_RecPartPath(e), 0i, bytes, prefix, FALSE) != bytes)
+		/*
+		  Patch 998 (Lex: the game slows down when a stage completes): from the stage's
+		  own first line where SV_StageOpen saw it start, not the whole run so far -- a
+		  lobby (Lobby_NoPB) cut every clean stage this way, inside one server frame,
+		  at a cost that grew with the run.  The whole prefix stays the fallback.
+		*/
+		sourcebuf = -1;
+		if (first == e.run_st_line)
+		if (e.run_st_byte > 0i)
+		if (e.run_st_byte <= bytes)
 		{
-			fremove(prefix);
-			return;
+			sourcebuf = SV_StagePrefix(e, e.run_st_byte, bytes, first);
+			if (sourcebuf >= 1)
+				sbase = first;
 		}
-		sourcebuf = buf_create_ex("string", 0);
-		if (sourcebuf < 1) { fremove(prefix); return; }
-		probe = buf_loadfile(prefix, sourcebuf);
-		fremove(prefix);
-		if (!probe)
-		{
-			dprint("stage: cannot read the streamed prefix\n");
-			buf_del(sourcebuf);
+		if (sourcebuf < 1)
+			sourcebuf = SV_StagePrefix(e, 0i, bytes, 0);
+		if (sourcebuf < 1)
 			return;
-		}
-		if (buf_getsize(sourcebuf) != e.rec_rec_lines)
-		{
-			dprint(sprintf("stage: streamed prefix has %g lines, expected %g\n", buf_getsize(sourcebuf), e.rec_rec_lines));
-			buf_del(sourcebuf);
-			return;
-		}
 	}
 
 	buf = buf_create_ex("string", 0);
@@ -8739,7 +8773,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 		gfirst = -1;
 		for (i = first; i < last; i = i + 1)
 		{
-			l = bufstr_get(sourcebuf, i);
+			l = bufstr_get(sourcebuf, i - sbase);
 			if (substring(l, 0, 6) == "ghost ")
 			{
 				tokenize(l);
@@ -8780,7 +8814,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	*/
 	for (i = first; i < last; i = i + 1)
 	{
-		l = bufstr_get(sourcebuf, i);
+		l = bufstr_get(sourcebuf, i - sbase);
 		if (FS_IsSample(l))
 		{
 			cps = strstrofs(l, " ");        // reused as a scratch offset
@@ -8795,7 +8829,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	pad     = 0;
 	for (i = first; i < last; i = i + 1)
 	{
-		l = SV_StageLine(bufstr_get(sourcebuf, i), tbase, tickbase);
+		l = SV_StageLine(bufstr_get(sourcebuf, i - sbase), tbase, tickbase);
 		if (l == "")
 			continue;
 		if (FS_IsSample(l))
@@ -8968,11 +9002,24 @@ float(entity e) SV_StageZone =
   the NEXT boundary -- but "nothing reads it yet" is a claim about the whole file
   and reading the level here is a fact about this line.
 */
+// Patch 998: where run_st_line starts in a streamed file, so SV_StageWrite copies the
+// stage alone; fsize flushes the writer, as SV_StageWrite's own read does.  Beside
+// every write of run_st_line (SV_StageOpen, SV_StageStart).
+void(entity e) SV_StageByteMark =
+{
+	e.run_st_byte = -1i;
+	if (e.rec_rec_stream)
+	if (e.rec_rec_fh >= 0)
+	if (checkbuiltin(fsize))
+		e.run_st_byte = fsize(e.rec_rec_fh);
+};
+
 void(entity e, float seg, float ticks) SV_StageOpen =
 {
 	e.run_st_seg  = seg;
 	e.run_st_tick = ticks;
 	e.run_st_line = e.rec_rec_lines;
+	SV_StageByteMark(e);
 	e.run_st_jump = FALSE;
 	e.run_st_ramp = FALSE;
 	e.run_st_ms   = FALSE;               // SV_MsApply sets it after reopening
@@ -9350,6 +9397,7 @@ void(entity e, float ticks) SV_StageStart =
 
 	e.run_st_tick  = ticks;
 	e.run_st_line  = e.rec_rec_lines;
+	SV_StageByteMark(e);
 	e.run_st_ms    = FALSE;              // a box exit after a resume is a clean start
 	e.run_st_sp    = FALSE;
 
