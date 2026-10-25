@@ -847,6 +847,11 @@ def _harden_db_files():
 
 def connect():
     conn = sqlite3.connect(DB_PATH, timeout=5.0)
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version > SCHEMA_VERSION:
+        conn.close()
+        raise RuntimeError("database schema %d is newer than this surfd (%d)"
+                           % (version, SCHEMA_VERSION))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")

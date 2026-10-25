@@ -25,7 +25,8 @@ commit   d37aa2296bcb4eaa55b85aa9c2db7d250f4f2ecb
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1020
-patch    1020
+patch    1031
+# Patch 1031 is surfd only: reject a newer database schema before journal or permission changes.
 # Patch 1020: hl2_water 5, screen-space water ($currentdepth; FTE_CSQC_HL2_WATER_SCREEN for the menu row).
 # Patch 1019: water refraction offset falls off past hl2_waterrefractfalloff; GLSL cvar defaults in bounds.
 # Patch 1018: 3D sky room water shares the outer view's targets; r_watertargetsize caps captures (1024).
