@@ -21,6 +21,9 @@
 
 ## next
 
+### P995 Keep the SDL3 file picker local
+- SDL3 file-picker requests now require a trusted local command, matching the DBus picker restriction.
+
 ### P989 Clean up failed desktop file-picker requests
 - Failed DBus file-picker requests now stop cleanly, validate replies, and release their resources instead of keeping a disconnected request alive.
 
