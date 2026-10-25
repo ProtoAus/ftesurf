@@ -47,6 +47,10 @@
   and clears the carrier but leaves the pad's touch bits, so the pad's OnEndTouch fires on the next
   edge and its `basevelocity` launches the player at the start (the old sweep did the same 60-90 ms
   later). Whether Momentum's restart pays it too is unchecked; SV_TouchRelocate would end it at once.
+- A warp op on the command right after leaving an OnEndTouch pad (P1025 review): the server warps and
+  clears the carrier first, then the end edge writes the boost, so it pays at the destination; the
+  client's WOP_CLEARCARRIER drops the END's carrier (CSQC_PredictConsumeBaseVel, no restore), so that
+  boost is unpredicted.
 - OnJump chain (pre-P1025, P414): a freed OnJump trigger (a spent trigger_once or `wait -1`, a Kill)
   stays on the chain with its bits set and fires again; a reused edict cuts the chain for every later
   one. None of the library's 15,123 OnJump entities (432 maps) can be freed that way. Two pads written on one tick resolve in opposite order on server and client (P1025 review).
