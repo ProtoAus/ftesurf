@@ -43,6 +43,10 @@
 - trigger_momentum_multihop/onehop holds run on server `time`, so a lag spike counts toward the hold
   (P1025 removed the stall that used to restart it); Source times them per command. Move them to the
   run's counted clock (run_movetick).
+- `!r` (and the zone teleports) on an OnEndTouch boost pad (P1025 review): sv_zones.qc moves the player
+  and clears the carrier but leaves the pad's touch bits, so the pad's OnEndTouch fires on the next
+  edge and its `basevelocity` launches the player at the start (the old sweep did the same 60-90 ms
+  later). Whether Momentum's restart pays it too is unchecked; SV_TouchRelocate would end it at once.
 - OnJump chain (pre-P1025, P414): a freed OnJump trigger (a spent trigger_once or `wait -1`, a Kill)
   stays on the chain with its bits set and fires again; a reused edict cuts the chain for every later
   one. None of the library's 15,123 OnJump entities (432 maps) can be freed that way. Two pads written on one tick resolve in opposite order on server and client (P1025 review).
