@@ -645,6 +645,11 @@ void(vector pos, vector size) MF_Draw =
 				status = strcat(ui_fit_text(map, max(16, room - stringwidth(activity, TRUE, '12 12 0') - 8), '12 12 0'), "  ", activity);
 				id = strcat("mf_join", who);
 				sui_action_element(rp + '64 32 0', [room, 24], id, sui_noop);
+				// Patch 991: underline the map under the cursor, so it reads as a link.
+				if (sui_is_hovered(id))
+					sui_fill(rp + '64 49 0', [min(room, stringwidth(ui_fit_text(map,
+					         max(16, room - stringwidth(activity, TRUE, '12 12 0') - 8), '12 12 0'),
+					         TRUE, '12 12 0')), 1], SUI_THEME_GOOD, alpha, 0);
 				// The location is the join target, never the profile/name row.
 				if (sui_is_released(id) && MF_WhoSafe(who))
 				if (!ui_join_busy())

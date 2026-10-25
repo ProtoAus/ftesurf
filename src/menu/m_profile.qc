@@ -1,5 +1,6 @@
 // Public profile preview in the browser's side panel. No capabilities, signing
 // keys, arbitrary URLs or external-browser commands. Uses the existing game API.
+#define MFP_ROWS 12
 float mfp_open, mfp_req, mfp_at, mfp_rows, mfp_init, mfp_n, mfp_ready;
 float mfp_times, mfp_maps, mfp_first;
 string mfp_who, mfp_name, mfp_note;
@@ -27,7 +28,7 @@ void(string who, string name) MFP_Open =
 	mfp_note = "Loading public profile...";
 	mfp_req = Lob_NextReq();
 	mfp_at = time;
-	if (!uri_get(strcat(MF_SITE, "/api/board?player=", who, "&limit=6"), mfp_req))
+	if (!uri_get(strcat(MF_SITE, "/api/board?player=", who, "&limit=", ftos(MFP_ROWS)), mfp_req))
 	{
 		mfp_req = 0;
 		mfp_note = "Profile service unavailable.";
@@ -37,7 +38,7 @@ void(string who, string name) MFP_Open =
 float(float reqid, float code, string body) MFP_Reply =
 {
 	local int root, rows, row, ms;
-	local float i, track, leg;
+	local float i, n, track, leg;
 	local string label, name;
 	if (!mfp_req || reqid != mfp_req) return FALSE;
 	mfp_req = 0;
@@ -62,7 +63,10 @@ float(float reqid, float code, string body) MFP_Reply =
 	mfp_maps = json_get_float(json_find_object_child(root, "maps"));
 	mfp_first = json_get_float(json_find_object_child(root, "wr"));
 	rows = json_find_object_child(root, "rows");
-	for (i = 0; i < min(6, json_get_length(rows)); i = i + 1)
+	// Patch 991: through a float first.  min is float(float, ...), and an int in
+	// its untyped second slot arrived as a denormal: min(6, 3) read ~4e-45, one row.
+	n = json_get_length(rows);
+	for (i = 0; i < min(MFP_ROWS, n); i = i + 1)
 	{
 		row = json_get_child_at_index(rows, i);
 		label = json_get_string(json_find_object_child(row, "map"));
@@ -80,14 +84,23 @@ float(float reqid, float code, string body) MFP_Reply =
 	}
 	mfp_n = i;
 	mfp_ready = TRUE;
-	mfp_note = "Public times (first six)";
+	mfp_note = (mfp_times > i) ? sprintf("Best %g of %g public times", i, mfp_times) : "Public times";
 	json_free(root);
 	return TRUE;
 };
 
+void() MFP_Probe =
+{
+	print(sprintf("ui_profile_probe: open %g ready %g rows %g times %g req %g note %S\n",
+	              mfp_open, mfp_ready, mfp_n, mfp_times, mfp_req, mfp_note));
+};
+
+// Patch 991: baked sizes only (14 px was a scaled 16 atlas), one row per time,
+// times in the mono face right-aligned as on the leaderboard.
 void(vector pos, vector size) MFP_Draw =
 {
-	local float i, y;
+	local float i, y, tw;
+	local string t;
 	sui_style_panel(pos, size, 12, 1);
 	sui_push_frame(pos, size);
 	sui_text('16 12 0', SZ_HEAD, "profile", COL_ACCENT, 1, 0);
@@ -97,18 +110,25 @@ void(vector pos, vector size) MFP_Draw =
 	sui_text('92 76 0', SZ_ROW, ui_fit_text(mfp_name, size_x - 108, SZ_ROW), COL_TEXT, 1, 0);
 	if (mfp_ready)
 	{
-		sui_text('16 146 0', '14 14 0', sprintf("Public times: %g", mfp_times), COL_TEXT, 1, 0);
-		sui_text('16 170 0', '14 14 0', sprintf("Maps: %g", mfp_maps), COL_TEXT, 1, 0);
-		sui_text('16 194 0', '14 14 0', sprintf("First places: %g", mfp_first), COL_TEXT, 1, 0);
+		sui_text('16 140 0', SZ_LABEL, sprintf("Public times: %g", mfp_times), COL_TEXT, 1, 0);
+		sui_text('16 164 0', SZ_LABEL, sprintf("Maps: %g", mfp_maps), COL_TEXT, 1, 0);
+		sui_text('16 188 0', SZ_LABEL, sprintf("First places: %g", mfp_first), COL_TEXT, 1, 0);
 	}
 	if (mfp_req && time - mfp_at > 8) mfp_note = "Profile is taking longer than usual.";
-	sui_text('16 236 0', '12 12 0', ui_fit_text(mfp_note, size_x - 32, '12 12 0'), COL_DIM, 1, 0);
+	sui_text('16 222 0', '12 12 0', ui_fit_text(mfp_note, size_x - 32, '12 12 0'), COL_DIM, 1, 0);
 	for (i = 0; i < mfp_n; i = i + 1)
 	{
-		y = 268 + i * 48;
-		if (y + 36 > size_y - 16) break;
-		sui_text([16, y], '12 12 0', ui_fit_text(bufstr_get(mfp_rows, i * 2), size_x - 32, '12 12 0'), COL_TEXT, 1, 0);
-		sui_text([16, y + 18], '12 12 0', bufstr_get(mfp_rows, i * 2 + 1), SUI_THEME_GOOD, 1, 0);
+		y = 246 + i * 26;
+		if (y + 20 > size_y - 12) break;
+		if (i & 1)
+			sui_fill([12, y - 3], [size_x - 24, 26], COL_ROW, 0.6, 0);
+		t = bufstr_get(mfp_rows, i * 2 + 1);
+		Font_Set(ui_font_mono);
+		tw = stringwidth(t, TRUE, SZ_LABEL);
+		sui_text([size_x - 16 - tw, y], SZ_LABEL, t, SUI_THEME_GOOD, 1, 0);
+		Font_Set(ui_font_ui);
+		sui_text([16, y], SZ_LABEL, ui_fit_text(bufstr_get(mfp_rows, i * 2), size_x - 44 - tw, SZ_LABEL),
+		         COL_TEXT, 1, 0);
 	}
 	sui_pop_frame();
 };

@@ -165,6 +165,7 @@ float() MFP_IsOpen;
 void(string who, string name) MFP_Open;
 void(vector pos, vector size) MFP_Draw;
 float(float reqid, float code, string body) MFP_Reply;
+void() MFP_Probe;
 void() MM_Init;
 float() MM_Active;
 void(vector screensize) MM_Frame;
@@ -6940,7 +6941,9 @@ void(vector screensize) ui_status_toast =
 /*
   ESC on the create screen takes one step a press: the leaderboard panel
   (ROADMAP 9), then a join in flight, then the screen.  Menu_InputEvent and the
-  two test twins share it.  Returns the step: 1, 2 or 3.
+  two test twins share it.  Returns the step: 1, 2, 3 (back to main) or 4
+  (Patch 991: in a game the menu opens on this screen, so ESC returns to the
+  game; the Friends panel no longer takes a press of its own).
 */
 float() ui_create_esc =
 {
@@ -6951,6 +6954,11 @@ float() ui_create_esc =
 	}
 	if (ui_strip_cancel_join(FALSE))
 		return 2;
+	if (clientstate() == 2)
+	{
+		m_close();
+		return 4;
+	}
 	menu_screen = SCREEN_MAIN;
 	return 3;
 };
@@ -7018,6 +7026,8 @@ void(string what, string arg) ui_strip_test =
 				print("ui_strip_test: esc closed the leaderboard; still on the create screen\n");
 			else if (k == 2)
 				print("ui_strip_test: esc ended the join; still on the create screen\n");
+			else if (k == 4)
+				print("ui_strip_test: esc -- closed the menu\n");
 			else
 				print("ui_strip_test: esc -- back to main\n");
 		}
@@ -8082,6 +8092,7 @@ void() m_init =
 	registercommand("ui_update_probe");
 	registercommand("ui_notes");
 	registercommand("ui_menu_probe");
+	registercommand("ui_profile_probe");
 	registercommand("ui_maplist");
 	registercommand("ui_browse");
 	registercommand("ui_build");
@@ -8436,12 +8447,6 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 		menu_screen = SCREEN_MAIN;
 		return TRUE;
 	}
-	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_CREATE)
-	if (cvar("ui_maps_friends"))
-	{
-		cvar_set("ui_maps_friends", "0");
-		return TRUE;
-	}
 	// Patch 667: paste.  ASKED FOR UNDER THE KEY, where a field had the keyboard
 	// on the last frame: the engine is the judge of the chord, and the line
 	// comes as IE_PASTE events, at once with no server connected and after its
@@ -8655,7 +8660,19 @@ float(string cmd) m_consolecommand =
 			cvar("ui_maps_filters"), cvar("ui_maps_large"), cvar("ui_maps_friends"), ui_cs_rows,
 			ms_viewcount, ms_tier, ms_scroll_y));
 		print(sprintf("ui_menu_probe: friends_count=%g client=%g screen=%g friends_draw=%g friends_fresh=%g\n", cvar("ui_friends_count"), clientstate(), menu_screen, MF_Count(), MF_Fresh()));
-		print(sprintf("ui_menu_probe: friends_direct=%g board=%S %s\n", MF_Direct(), serverkey("board"), MF_ProbeNote()));
+		print(sprintf("ui_menu_probe: friends_direct=%g board=%S %s active=%g\n", MF_Direct(), serverkey("board"), MF_ProbeNote(), menu_active));
+		return TRUE;
+	}
+	if (strcmp(argv(0), "ui_profile_probe") == 0)
+	{
+		// <8hex> opens that profile in the Friends panel; bare, reports what it holds.
+		if (argv(1) != "")
+		{
+			menu_screen = SCREEN_CREATE;
+			cvar_set("ui_maps_friends", "1");
+			MFP_Open(argv(1), "probe");
+		}
+		MFP_Probe();
 		return TRUE;
 	}
 	if (strcmp(argv(0), "ui_notes") == 0)
