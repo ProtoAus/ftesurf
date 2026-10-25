@@ -84,12 +84,17 @@ float() MF_Online = { return (cvar("rec_terms") >= FS_TERMS_ONLINE); };
 // The menu asks the Friends service itself: disconnected, or in a game with no
 // account service behind it (a private local game, board "local"), where CSQC
 // never gets a list to publish. MENU clientstate: 1 disconnected, 2 connected.
+// Patch 992: and in an online lobby whose relay has published nothing (-1: not
+// Steam-linked there, no proof, master unreachable); the first snapshot takes over.
+// The list op writes no presence (social.py menu_read), so friends still see the lobby.
 float() MF_Direct =
 {
 	local float c;
 	c = clientstate();
 	if (c == 1) return TRUE;
-	return (c == 2 && serverkey("board") == "local");
+	if (c != 2) return FALSE;
+	if (serverkey("board") == "local") return TRUE;
+	return (cvar("ui_friends_count") < 0);
 };
 
 string() MF_ProbeNote = { return sprintf("req=%g wire=%g note=%S", mf_req, mf_wire, mf_note); };
