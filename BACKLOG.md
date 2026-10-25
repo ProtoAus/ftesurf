@@ -10,11 +10,24 @@
   require a successful link, then separate desktop/file-picker acceptance. Do not
   turn real-header/helper compilation into a complete SDL platform pass.
 
-## bhop_ceaseless (P990, P1002, P1012-P1014): what is left
+## bhop_ceaseless (P990, P1002, P1012-P1015): what is left
 
 - pcf.py: Movement Rotate Particle Around Axis (spiral, butterfly orbit their axis; drawn straight),
-  Rotation Basic/Speed, a Color Fade starting after birth or easing (drawn linear from birth);
-  info_particle_system Start/Stop (the map's particle toggle) not mirrored on the client.
+  Rotation Basic, Color Fade easing (drawn linear), a sphere's bias "in local system" (drawn in the
+  world frame), Rotation Random's randomly_flip_direction and the spin sign of a non-zero angle (not
+  checked against Source); info_particle_system Start/Stop (the map's particle toggle) not mirrored
+  on the client. ent_info calls info_particle_system an "unimplemented class" (no server spawn
+  function) although cl_emit.qc draws every baked one; a stub would make ent_census claim unbaked
+  maps are handled, so the wording is what should change.
+- Saves 25-27 (Lex: horizontal "moire" on the start-room water from far above): measured on the rig
+  at save 25 (1900 units over liquids/water_ocean_blue, $refractamount 1, $flow_bumpstrength 2):
+  the refraction offsets reach 16+ pixels of noise; samples landing on the walls and the platform
+  read as zero depth, so those pixels lose fog and reflection in thin horizontal runs (the depth
+  gradient runs up the screen at pitch 89). r_glsl_turbscale_refract 0 removes it (fine vertical
+  line energy 37.9 -> 8.5); 500 units up it is absent with the offset on. Not the depth decode,
+  ripple mesh, capture scale or r_waterviews (each toggled, no change). Source 2013's water_ps2x
+  uses the same screen-UV offset (refractamount x normal, no distance term), so the fix depends on
+  what Momentum (Strata's flow water) shows there: falsifier, a Momentum screenshot from save 25.
 - Save 13: the start floor is Refract glass (plar/ceaseless/cyan glass, $refracttinttexture glass_b,
   mean 57 165 200) over the start pool, and the pool's cluster is in the start room's PVS, so the
   water below shows through as Source's refraction would draw it. Lex sees "the ramp texture below";

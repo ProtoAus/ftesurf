@@ -21,17 +21,22 @@
 
 ## next
 
+### P1015 No download errors when a map loads
+- Loading a Source map no longer tries to download the map itself from a garbled address ("play.proto.bar/play.proto.bar/...") and then report that the server refused it.
+
 ### P1014 Window panes fade in
 - Fading window panes in Source maps now fade instead of staying solid and vanishing at the last moment, and what is behind them (particles included) shows through while they fade.
 
 ### P1013 Source underwater overlays
-- Under Source water you now see that water's own underwater overlay, a moving ripple over the whole view. Water that has none in Source shows no warp, as in Momentum.
+- Under Source water you now see that water's own underwater overlay, a moving ripple over the whole view. Water that has none in Source shows no warp, as in Momentum, and keeps its underwater fog.
 
 ### P1012 Particles: colours, spread and the missing ones
 - Map particles change colour over their life as the map's author set them.
 - Particles that never appeared on bhop_ceaseless (the start room's floating circles, the butterflies' dots, the tunnel's spiral) are drawn.
 - Particles spread over the whole area the map gives them instead of bunching into a square or a column, and the boost strips' particles cover the strips.
-- Particles in rooms you cannot see are no longer drawn through walls.
+- Particles start upright where the map gives them no rotation, so falling drops fall straight instead of at random angles.
+- Particle rings the map limits to half a circle are drawn as half rings.
+- A particle that starts part-way through its colour change no longer ends past the colour it was fading to.
 - surf_boreas' end-room glow is a compact glow again instead of a bright dome.
 
 ### P1003 Authored no-fog materials
