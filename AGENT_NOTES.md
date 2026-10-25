@@ -2596,6 +2596,19 @@ cannot be used, ask; do not silently scatter copies elsewhere.
 
 ## Build
 
+**P1003 observed plugin finalization failure (2026-10-25).** A final clean-source
+full native build compiled normally but cod's ZIP metadata reported resource busy
+and ImGui's reported permission denied; cod's DLL remained partial, ImGui's was
+already absent after failed make. Cause/holder was not established. Retain the
+failure, do not qualify a DLL by presence, and do not rebuild source under fresh
+attempt names to hide it. The bounded repair archived the owned partial file,
+removed only that target, and finished through the SAME build.ps1 -Engine
+-NoDeploy -Jobs1 (no Full). No new compiler warnings; both exe stamps and all five
+plugin metadata ZIPs checked afterward. The GLSL generator also changed only its
+tracked generated warning comment to an absolute source path: compare the actual
+program body before attribution; restore only proven OWN comment drift after the
+build, never suppress dirty checks or publish a private path in that comment.
+
 - **Selective CSQC delivery still has MENU protocol dependencies (P962).** A
   preserved MENU does not imply no pending feature was activated: P961's CSQC
   Friends publisher adds an eighth field while old MF_TakeCvars admits only6/7.
