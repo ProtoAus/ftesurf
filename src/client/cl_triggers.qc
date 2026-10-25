@@ -522,7 +522,8 @@ float  tg_c_event, tg_c_iodem, tg_c_sdok, tg_c_ioown, tg_c_iogated;
 .float tg_netgate, tg_netready, tg_neton;
 .float tg_sspartoffset;          // EveryTick's last applied part within tg_ssinseq
 .float tg_seenoff;               // Patch 1025: predmove_offset of the last touch (tick parts)
-.float tg_endseq;                // Patch 1025: the command this slot's last END ran in
+#define TG_RING     64          // Patch 1025: commands of tg_io_in kept per slot
+float  *tg_inring;              // [(slot * TG_RING + seq % TG_RING) * 2] = in after seq, [+1] = seq
 void() Body_TrigSeed;       // cl_body: retain snapshots across mirror reloads
 string tg_io_esc;
 
@@ -858,8 +859,6 @@ void(float seq) TG_IOEndSweep =
 			// A disabled trigger ends here like any other.
 			tg_io_endf[i] = 1;
 			tg_io_in[i]   = 0;
-			if (tg_ent[i])
-				tg_ent[i].tg_endseq = seq;
 			continue;
 		}
 		// ABSOLUTE command time, not chain-local: the chain restarts every
@@ -875,10 +874,28 @@ void(float seq) TG_IOEndSweep =
 			continue;
 		tg_io_endf[i] = 1;
 		tg_io_in[i]   = 0;
-		if (tg_ent[i])
-			tg_ent[i].tg_endseq = seq;
 		TG_IOFireEv(i, EV_END, seq);
 	}
+};
+
+float(float i, float s) TG_RingAt =
+{
+	return (i * TG_RING + (s - TG_RING * floor(s / TG_RING))) * 2;
+};
+
+// Patch 1025: slot i's tg_io_in after command s as the last replay of s left it, -1 if unknown.
+// A held command runs no hook, so the latest recorded command at or before s stands for it.
+float(float i, float s) TG_InAfter =
+{
+	local float d, k;
+
+	for (d = 0; d < TG_RING; d = d + 1)
+	{
+		k = TG_RingAt(i, s - d);
+		if (tg_inring[k + 1] == s - d)
+			return tg_inring[k];
+	}
+	return -1;
 };
 
 void(float s0) TG_IOCommit =
@@ -1420,7 +1437,7 @@ float(float i, float seq) TG_FireSpeed =
 */
 void(float seq) TG_ChainStart =
 {
-	local float i, probe;
+	local float i, probe, r;
 
 	// Acked IO events fold into the committed state; the speculative rest
 	// is dropped and the replay re-derives it.  See THE IO MIRROR.
@@ -1448,7 +1465,7 @@ void(float seq) TG_ChainStart =
 			// 0.05 s) survives too: in stays 1 and the persistent absolute
 			// stamp lets the sweep finish the grace.  A gated-off slot
 			// seeds fresh: the server's bits are empty for it as well, its
-			// touch returning at the gate -- except under exact ends, below.
+			// touch returning at the gate.  Under exact ends the ring says.
 			tg_io_endf[i] = 0;
 			tg_io_seen[i] = seq - 1;
 			other = tg_ent[i];
@@ -1460,7 +1477,17 @@ void(float seq) TG_ChainStart =
 				print(sprintf("trig: seed #%g seq %g probe %g eff %g lastin %g in %g\n",
 			              i, seq, probe, TG_IOEff(i, seq), tg_io_lastin[i],
 			              tg_io_in[i]));
-			if (tg_io_in[i] && !probe && TG_IOEff(i, seq) && !tg_endexact)
+			r = -1;
+			if (tg_endexact && tg_inring)
+				r = TG_InAfter(i, seq - 1);
+			if (r >= 0)
+			{
+				// Patch 1025: what the last replay of the ack left, as the server's touch bits
+				// do; a probe cannot see a teleport's or a warp's exit, nor a Disable since.
+				tg_io_in[i]    = r;
+				tg_io_stamp[i] = r ? tg_io_tbase : 0;
+			}
+			else if (tg_io_in[i] && !probe && TG_IOEff(i, seq) && !tg_endexact)
 			{
 				// pending END: keep in + stamp.  Patch 1025: an exact end at the ack has
 				// fired already (its carrier is in the engine's ring for that sequence).
@@ -1468,15 +1495,6 @@ void(float seq) TG_ChainStart =
 			else if (probe && TG_IOEff(i, seq) &&
 			         tg_io_lastin[i] >= seq - 2)
 			{
-				tg_io_in[i]    = 1;
-				tg_io_stamp[i] = tg_io_tbase;
-			}
-			else if (tg_endexact && probe && !TG_IOEff(i, seq) &&
-			         tg_io_lastin[i] == seq - 1 && tg_ent[i].tg_endseq != seq - 1)
-			{
-				// Patch 1025: still inside, touched at the ack and gated off in it with no END
-				// there: the server's edge ends it on this command, so the sweep must see it in.
-				// lastin alone is not enough (earlier parts, previews and dropped replays write it).
 				tg_io_in[i]    = 1;
 				tg_io_stamp[i] = tg_io_tbase;
 			}
@@ -1502,7 +1520,7 @@ void(float seat, float seq) WarpOp_PostMove;   // cl_warpop.qc, Patch 753
 
 void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 {
-	local float i, hit;
+	local float i, hit, k;
 	local vector smin, smax, org1, b0, b1;
 
 	WarpOp_PostMove(seat, seq);
@@ -1623,6 +1641,14 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 				TG_IOFireEv(i, EV_JUMP, seq);
 
 	TG_IOEndSweep(seq);
+	if (tg_endexact && tg_inring)
+		for (i = 0; i < tg_n; i = i + 1)
+			if (tg_io_own[i])
+			{
+				k = TG_RingAt(i, seq);
+				tg_inring[k]     = tg_io_in[i];
+				tg_inring[k + 1] = seq;
+			}
 };
 
 /*
@@ -2004,6 +2030,10 @@ void() Trig_LoadForMap =
 
 	TG_IOResolve();
 	Body_TrigSeed();
+	if (!tg_inring)
+		tg_inring = memalloc(sizeof(float) * TG_MAX * TG_RING * 2);
+	for (i = 0; i < tg_n * TG_RING; i = i + 1)
+		tg_inring[i * 2 + 1] = -1;     // Patch 1025: no command recorded on this map yet
 
 	tg_map = serverkey("map");
 	if (cv_n) print(sprintf("conveyor: %g static ground carriers loaded\n", cv_n));
