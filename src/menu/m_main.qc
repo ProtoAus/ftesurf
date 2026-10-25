@@ -156,6 +156,7 @@ float() MF_Fresh;
 float() MF_Direct;
 string() MF_ProbeNote;
 void() MF_Init;
+float(string c) MF_Command;     // P1009: the game's asks for the direct list and a join
 void(float visible) MF_Poll;
 void() MF_ResumeJoin;
 void(vector pos, vector size) MF_Draw;
@@ -8714,6 +8715,8 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 float(string cmd) m_consolecommand =
 {
 	tokenize(cmd);
+	if (MF_Command(argv(0)))
+		return TRUE;
 	if (!strcmp(argv(0), "ui_chat"))
 	{
 		MC_Open();
