@@ -13,7 +13,7 @@ Hashes are SHA-256 prefixes. Times UTC, 25 Oct 2026.
 | Friends list doesn't load in a lobby | P992 | built, tested (direct fallback after 8 s) |
 | Underline a friend's map on hover | P991 | built, tested (pixel diff) |
 | Announce connects / PBs / WRs in lobby chat | -- | already live (Patch 371: joins, leaves, others' online bests with time) |
-| ...and in the main menu lobby chat | P996 | surfd + menu built and tested; backend NOT deployed (guarded generation handoff) |
+| ...and in the main menu lobby chat | P996 | live: menu with the QC deploy, backend generation 806d1484 at 04:48:30Z |
 | Save-load in a start zone tags the run segmented | P993 | built, tested (stage boxes; origin rounding), integrity-reviewed twice |
 | Remove "F1 cursor" on the results card | P994 | built |
 | m_accel / controller cheating? | -- | answer only (BACKLOG) |
@@ -31,12 +31,13 @@ Hashes are SHA-256 prefixes. Times UTC, 25 Oct 2026.
   (previous: qwprogs 2a9882a9, csprogs 7495db35, menu 2ccef27b). gfx/crosshairs/xhair4.png
   3d0426e3 in both installs (C:\FTESurf already had it; it is in the next release's archive).
 - Lobby smoke on 27520 with the installed exe: served csprogs = build, board drew, no QC error.
-- NOT deployed: P996's surfd half (social.py/surfd.py) -- the live backend runs a pinned
-  generation behind the transition guard; a new generation needs its own approved handoff.
+- 04:48:30Z backend (Lex: "do it"): generation 806d1484 (branch backend-gen-p996 = live c35fd034 +
+  P996's surfd.py/social.py), root /srv/nvme/agent-work/p996-backend-20261025T0446Z, fence OPEN;
+  ~2 s downtime; P970 fence CLOSED and drained; stubs, run.sh, 4 cron lines rebound;
+  momrequests.service restarted onto it. Public health/lobbies/board 200, sweep route ran.
+  Procedure and traps: tools/surfd-generation-p996.md.
 
 ## Not done / limits
 
-- P996's backend half waits for the guarded surfd generation handoff (AGENT_NOTES: review
-  acceptance does not authorize replacing it); the menu renders the lines once surfd sends them.
 - See BACKLOG.md "Lex's list of 25 Oct (second): what is still open".
 - None of it is owner-checked: lextest.md has the checks.
