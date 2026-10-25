@@ -175,6 +175,8 @@ float  rec_sl_quiet;
   above both and below any prespeed worth carrying into a run.
 */
 #define SL_ARM_SPEED 1
+// Patch 993: what `origin %.4f` can take off a z (0.00005) with float32's error on top.
+#define SL_ORG_ROUND 0.0001
 
 // Patch 435: what a row carries, which is the speed its load hands back
 // (SV_SaveLocPlace writes rec_sl_vel[r] into the body, and a hold hands the same
@@ -3866,9 +3868,47 @@ void(entity e) SV_SaveLocHoldVel =
   calls it every tick and must not re-print, re-arm practice mode, touch the
   timer, or move the cursor while it does.
 */
+/*
+  Patch 993: the body back on the START or STAGE floor it was saved on.  state.txt
+  rounds the origin, so a body standing on a box whose bottom is its floor (37 of 48
+  authored starts, Patch 415) came back up to 0.00005 under it: outside the box, so
+  the at-rest arm in SV_SaveApplyState never fired and the load stayed segmented
+  until !r.  Here and not only at the arm: a hold re-places the row every tick.
+*/
+vector(entity e, vector p) SL_BoxFloor =
+{
+	local float z;
+	local vector q;
+
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		if (zone_type[z] != ZONE_START && zone_type[z] != ZONE_STAGE)
+			continue;
+		if (p_z >= zone_bottom[z] || p_z < zone_bottom[z] - SL_ORG_ROUND)
+			continue;
+		q = [p_x, p_y, zone_bottom[z]];
+		if (SV_ZoneOcc(z, q, SV_RunHullMins(e), SV_RunHullMaxs(e)))
+			return q;
+	}
+	return p;
+};
+
+// Patch 993: the box a load at rest arms -- a START as before, or a STAGE box, which
+// arms a stage run when walked into off the clock (SV_TimerTryArm) and so on a load too.
+float(entity e) SL_ArmBoxAt =
+{
+	local float z;
+
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE)
+		if (SV_ZoneOcc(z, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e)))
+			return z;
+	return -1;
+};
+
 void(entity e, float r) SV_SaveLocPlace =
 {
-	setorigin(e, rec_sl_org[r]);
+	setorigin(e, SL_BoxFloor(e, rec_sl_org[r]));
 	e.velocity = rec_sl_vel[r];
 	SV_ClearCarrier(e);     // Patch 400: Momentum's load passes a velocity to Teleport
 
@@ -4183,7 +4223,7 @@ void(entity e, float n) SV_SaveLocLoad =
 	e.run_t_cpzone = zs_cp;
 	if (!sl_voided)
 	if (e.run_t_state != TS_RUNNING)
-	if (SV_ZoneStartAt(e, e.origin) >= 0)
+	if (SL_ArmBoxAt(e) >= 0)
 	if (SL_RowSpeed(r) < SL_ARM_SPEED)
 	if (sl_mapsame)
 	if (SL_RowGrounded(e, r))
