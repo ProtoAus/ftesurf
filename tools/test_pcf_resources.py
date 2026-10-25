@@ -182,11 +182,14 @@ class ResourceTests(unittest.TestCase):
 
     def test_corrupt_or_unsupported_library_is_not_silent_success(self):
         self.put('particles/good.pcf', library('good'))
-        self.put('particles/bad.pcf', library('bad').replace(b'binary 2', b'binary 5'))
+        self.put('particles/bad.pcf', library('bad').replace(b'binary 2', b'binary 6'))
         report = plan(self.content(), ['good'])
         self.assertEqual(report['status'], 'incomplete')
         self.assertEqual(len(report['systems']), 1)
-        self.assertIn('version 5', report['errors'][0]['error'])
+        self.assertIn('version 6', report['errors'][0]['error'])
+        # Patch 1002 reads 2-5: a version-2 body labelled 5 is misread and must still refuse
+        self.put('particles/bad.pcf', library('bad').replace(b'binary 2', b'binary 5'))
+        self.assertEqual(plan(self.content(), ['good'])['status'], 'incomplete')
         self.put('particles/bad.pcf', library('bad')[:-1])
         self.assertEqual(plan(self.content(), ['good'])['status'], 'incomplete')
 

@@ -504,14 +504,14 @@ void() Portal_LoadForMap =
 	local string cn, nm, pn, sorg, sang, sw, sh, ssa, sd;
 	local string st, sfs, sfd, stl, lk;
 	local string smdl, sdd, sdmin, sdmax;
-	local string sigfirst, sigwfirst;
-	local float sigcount, sigwin;
+	local string sigfirst, sigwfirst, siglfirst;
+	local float sigcount, sigwin, siglod;
 	local entity e;
 
 	Portal_Clear();
 	FS_PortalRegisterCvars();
-	sigcount = sigwin = 0;
-	sigfirst = sigwfirst = "";
+	sigcount = sigwin = siglod = 0;
+	sigfirst = sigwfirst = siglfirst = "";
 	vbsp_lpd_map = serverkey("map");
 	if (vbsp_lpd_map == "")
 		return;
@@ -567,6 +567,9 @@ void() Portal_LoadForMap =
 
 		if (cn == "func_lod")
 		{
+			siglod = siglod + 1;
+			if (siglfirst == "")
+				siglfirst = smdl;
 			LOD_Spawn(smdl, sorg, sdd, sdmin, sdmax);
 			continue;
 		}
@@ -708,7 +711,7 @@ void() Portal_LoadForMap =
 	  Patch 205 shipped with; a count that is short by a few is a one-way
 	  destination.
 	*/
-	vbsp_lpd_sig = sprintf("%g/%s/%g/%s", sigcount, sigfirst, sigwin, sigwfirst);
+	vbsp_lpd_sig = sprintf("%g/%s/%g/%s/%g/%s", sigcount, sigfirst, sigwin, sigwfirst, siglod, siglfirst);
 
 	/*
 	  The dprint runs unconditionally and the print does not, because a load that
@@ -771,23 +774,24 @@ void() Portal_LoadForMap =
 
 string() Portal_Signature =
 {
-	local string tok, key, cn, sorg, first, st, wfirst;
-	local float n, nw;
+	local string tok, key, cn, sorg, first, st, wfirst, mdl, lfirst;
+	local float n, nw, nl;
 
-	n = nw = 0;
-	first = wfirst = "";
+	n = nw = nl = 0;
+	first = wfirst = lfirst = "";
 	getentitytoken(0);
 	while ((tok = getentitytoken()) != "")
 	{
 		if (tok != "{")
 			continue;
-		cn = sorg = st = "";
+		cn = sorg = st = mdl = "";
 		while ((key = getentitytoken()) != "" && key != "}")
 		{
 			tok = getentitytoken();
 			if      (key == "classname") cn   = tok;
 			else if (key == "origin")    sorg = tok;
 			else if (key == "target")    st   = tok;
+			else if (key == "model")     mdl  = tok;
 		}
 		if (cn == "func_areaportalwindow")
 		{
@@ -795,13 +799,19 @@ string() Portal_Signature =
 			if (wfirst == "")
 				wfirst = st;
 		}
+		if (cn == "func_lod")	// Patch 1002: else a door-less map's stale lump keeps the wrong set
+		{
+			nl = nl + 1;
+			if (lfirst == "")
+				lfirst = mdl;
+		}
 		if (cn != "linked_portal_door")
 			continue;
 		n = n + 1;
 		if (first == "")
 			first = sorg;
 	}
-	return sprintf("%g/%s/%g/%s", n, first, nw, wfirst);
+	return sprintf("%g/%s/%g/%s/%g/%s", n, first, nw, wfirst, nl, lfirst);
 };
 
 /*

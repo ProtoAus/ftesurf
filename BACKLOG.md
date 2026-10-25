@@ -14,6 +14,10 @@
 - The flowmap's texture mapping (base UVs x worlduvscale; normals and noise on world XY) is a
   reading of Valve's published flow description, not compared side by side with Momentum.
 - Falsifier for each: Lex's Momentum screenshots at saves 9 and 6 beside a rig shot.
+- AddSpeed rides the basevelocity carrier: a trigger_push touch or SV_ConveyorArm later in the same
+  command replaces it, SV_ClearCarrier drops it on a teleport, and on a carrier a push already armed it
+  is ridden one command instead of cashed (AddVerticalSpeed's Z then spent as gravity). No library user
+  is near a push or conveyor. The negative clamp reads .velocity, not a pending carrier (no map cuts).
 
 ## Lex's list of 25 Oct (second): what is still open (P986-P1001)
 
@@ -1269,6 +1273,9 @@ Fixed items are removed; remaining reader contracts need acting controls.
   older file reads "not comparable". Evidence-chain work: its own patch and review rounds.
   PATCH 884 IS THE SAME CLASS: 229 notsolid func_physboxes on 30 maps went SOLID_BSP -> SOLID_NOT
   (surf_flatliners 64, surf_arcade 30, bhop_inmomentum_gfl_final 25, surf_lovetunnel 11, ...).
+  SO IS PATCH 1002, the largest: 2,167 func_lods with a nonzero Solid/solid on 44 maps (bhop_speedcontrol
+  457, surf_voyager 453, bhop_hexag0n_cool 330, bhop_ceaseless 198, ...). A file whose body touched one
+  HOLDs as `state` (as P884's), one within 256 u as `physents`; older Verified rows are not re-swept.
 - **momentary_rot_button, what Patch 790 leaves out**: the 16 solid ones stay frozen walls
   (a rotating SOLID_BSP is the pusher question); a child orbits only a spinning yaw-axis
   momentary_rot_button parent (the 4 children of frozen func_tracktrains spin in place);

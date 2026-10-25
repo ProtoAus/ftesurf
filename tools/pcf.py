@@ -757,7 +757,10 @@ def translate(d, e, unknown, mapname, content=None):
         except (ValueError, OSError, struct.error) as ex:	# ResourceError: missing or unreadable .vmt
             look = "material %s: NOT RESOLVED (%s), drawn by its name" % (mat, ex)
     L = ["r_part %s_%s" % (mapname, name), "{"]
-    L.append('\ttexture "%s"' % image)
+    # Patch 1002: the loader probes `texture` as a bare image path (image.c tex_path[]), never under
+    # materials/; an image with no same-named .vmt (bhop_ceaseless's particle_purple ->
+    # particlepurplecircle) drew the default white particle.
+    L.append('\ttexture "%s"' % (image if image == mat else "materials/" + image))
     if rtype:
         L.append("\ttype %s" % rtype)
     L.append("\tblend %s" % blend)

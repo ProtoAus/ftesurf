@@ -2287,7 +2287,7 @@ void(entity t, string param) SV_IOAddOutput =
 	{
 		if (t.vbsp_toolshape == 3 && !vbsp_mapedit_ok)
 			return;
-		if (t.filtername != "" && !SV_FilterKnownD(SV_FindByName(t.filtername, world), 0))
+		if (t.filtername != "" && !SV_FilterKnownD(SV_FindFilter(t.filtername), 0))
 		{
 			if (t.vbsp_io_solid != SOLID_NOT)
 				dprint(sprintf("tooltrig %s '%s': filter '%s' is not one this game evaluates -- inert\n",
@@ -2758,7 +2758,7 @@ void(entity t, entity act, float v) SV_IOModifySpeed =
 /*
   Patch 1002: Momentum 0.10's AddSpeed, AddHorizontalSpeed and AddVerticalSpeed player inputs --
   "increase the player's speed in the direction they are moving" (0.10.0 changelog; the code is not
-  public). bhop_ceaseless (500) and bhop_peribox (3000) are the library's two users. Paid through the
+  public). bhop_ceaseless (500) and bhop_peribox (300) are the library's two users. Paid through the
   basevelocity carrier like AddOutput basevelocity, so the recorder writes the ride and the verifier
   replays it; the cash-out's (1 + tick/2) is divided out so the speed rises by exactly the amount.
   No direction to add along (no speed, or none on that axis) adds nothing; a cut stops at zero.
@@ -9052,8 +9052,8 @@ float(entity e) SV_SpRawSelfOnly =
 
 /*
   Patch 1002: func_lod's "Solid" key -- nonzero adds FSOLID_NOT_SOLID (func_lod.cpp KeyValue); the
-  1960-instance note above read spawnflags, which are always 0. 2142 brushes on 44 library maps write 1
-  (bhop_ceaseless all 198). FStrEq is caseless: "Solid" parses into .Solid, "solid" into .solid,
+  1960-instance note above read spawnflags, which are always 0. 2,167 brushes on 44 library maps
+  write a nonzero one (bhop_ceaseless all 198). FStrEq is caseless: "Solid" parses into .Solid, "solid" into .solid,
   which is read before func_wall sets SOLID_BSP.
   Hidden here and drawn by csprogs with Source's distance fade (cl_portal.qc LOD_Predraw).
 */
