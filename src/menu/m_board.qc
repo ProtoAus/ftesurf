@@ -1176,7 +1176,7 @@ void() Mlb_TestCommand =
 		}
 		k = ui_create_esc();
 		print(sprintf("^5board:^7 esc %s\n", (k == 1) ? "closed the leaderboard" :
-		              (k == 2) ? "ended a join" : (k == 4) ? "closed the menu" : "left the create screen"));
+		              (k == 2) ? "ended a join" : (k == 4) ? "closed the menu" : (k == 5) ? "hid the Friends drawer" : "left the create screen"));
 		return;
 	}
 	if (a == "ksfmore")

@@ -6945,6 +6945,7 @@ void(vector screensize) ui_status_toast =
   (Patch 991: in a game the menu opens on this screen, so ESC returns to the
   game; the Friends panel no longer takes a press of its own).
 */
+float ui_friends_drawer;   // P991 review: Friends is the narrow layout's modal drawer this frame
 float() ui_create_esc =
 {
 	if (Mlb_IsOpen())
@@ -6954,6 +6955,13 @@ float() ui_create_esc =
 	}
 	if (ui_strip_cancel_join(FALSE))
 		return 2;
+	// Under 1180 px the drawer covers the map list, so it still takes a press.
+	if (ui_friends_drawer)
+	if (cvar("ui_maps_friends"))
+	{
+		cvar_set("ui_maps_friends", "0");
+		return 5;
+	}
 	if (clientstate() == 2)
 	{
 		m_close();
@@ -7028,6 +7036,8 @@ void(string what, string arg) ui_strip_test =
 				print("ui_strip_test: esc ended the join; still on the create screen\n");
 			else if (k == 4)
 				print("ui_strip_test: esc -- closed the menu\n");
+			else if (k == 5)
+				print("ui_strip_test: esc hid the Friends drawer; still on the create screen\n");
 			else
 				print("ui_strip_test: esc -- back to main\n");
 		}
@@ -7127,6 +7137,7 @@ void(vector screensize) screen_create =
 	*/
 	float friends = cvar("ui_maps_friends");
 	float side = (friends && screensize_x >= 1180) ? 304 : 0;
+	ui_friends_drawer = (friends && !side);
 	float rh = cvar("ui_maps_large") ? 80 : ROW_H;
 	float tx = cvar("ui_maps_large") ? 140 : 90;
 	float nx = tx + 72;
