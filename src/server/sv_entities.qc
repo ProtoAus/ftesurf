@@ -673,7 +673,8 @@ entity  vbsp_onjump_head;
   So a bit must now be absent for TWO consecutive windows.  vbsp_touch_out is
   the intermediate state: seen-absent-once.  That puts the grace at 0.06-0.09 s
   against build 51's 0.05-0.07 s -- LONGER at both ends, deliberately, because
-  the two errors are not symmetric.  Ending a touch too late re-fires logic
+  the two errors are not symmetric.  (Patch 1025: a real player's end now comes from
+  SV_TriggerEndEdge, per command, as Source's untouch does; the sweep skips those (SV_TouchOwned).)  Ending a touch too late re-fires logic
   that is idempotent on these maps; ending it too early injects an end/start
   pair that is not.  vbsp_mp 0 still restores the timestamp path exactly.
 
@@ -1217,7 +1218,8 @@ void(entity pl) SV_BaseVelocityFrame =
 
 		// The one line that makes this patch checkable from a log: what was
 		// held, and what it was worth.  A pad authored `basevelocity 0 0 650`
-		// must print 650 here and move the speed by 654.9 -- if it prints 9.8
+		// prints 645.2 here (Patch 1025 stores 650 / (1 + tick/2), 15 ms tick)
+		// and moves the speed by exactly 650 -- if it prints 9.8
 		// the cash-out is not running and the carrier is being drained by
 		// StartGravity instead, which is precisely the bug this patch fixes.
 		// sprintf tops out at eight varargs, so this reports DELTAS rather than
@@ -1247,7 +1249,7 @@ void(entity pl) SV_BaseVelocityFrame =
 		// Patch 409.  The cash-out is horizontal for a trigger_push (run_basevel_z
 		// is zeroed at the foot of every call), but AddOutput basevelocity does
 		// not set `armed`, so it cashes out the NEXT command with its Z intact:
-		// `basevelocity 0 0 650` is +654.9 velocity_z in one tick and reads as a
+		// `basevelocity 0 0 650` is +650 velocity_z in one tick and reads as a
 		// jump.  That is the one carrier write that lands as a vertical impulse.
 		pl.run_pushed = TRUE;
 
@@ -4562,6 +4564,8 @@ void(entity src, string name, entity act) SV_FireOutput =
   that would need revisiting for real multiplayer.
 ===========================================================================
 */
+int(entity t, int m) SV_TouchOwned;
+
 void() SV_TriggerEndThink =
 {
 	local entity a;
@@ -4601,6 +4605,8 @@ void() SV_TriggerEndThink =
 		if (absent)
 			held = SV_TouchHeld(absent);
 		absent = absent & ~held;
+		if (absent)
+			absent = absent & ~SV_TouchOwned(self, absent);	// Patch 1025
 		gone   = absent & self.vbsp_touch_out;
 		self.vbsp_touch_out = (absent & ~gone) | (self.vbsp_touch_out & held);
 		a = world;
@@ -4726,19 +4732,44 @@ void(entity p) SV_TouchRelocate =
   boost pad's 4-unit trigger on one tick and the pad's `basevelocity 0 0 1250` is in the velocity
   the next (t 66.42 -> 66.43).  The sweep above ended the touch 0.06-0.09 s later, the boost
   landed six to nine ticks late, and the client, which cannot see the sweep's clock, could not
-  predict it.  The sweep stays as the backstop for a slot whose commands stop coming (and for a
-  trigger past the four a player's list holds).
+  predict it.  The sweep no longer ends a touch a real player's list holds: commands that stop
+  coming are no evidence of leaving (a 60 ms stall on the pad ended the touch and paid the boost
+  standing).  It stays the backstop past eight, for bots, spent triggers and a disconnect.
 
-  Per player, the triggers with outputs it touched (four fields; a fifth is left to the sweep).
+  Per player, the triggers with outputs it touched (eight fields; a ninth is left to the sweep).
   A command the engine moved held (run_pmhold: no touches, sv_user.c) is no evidence of leaving,
   so the edge is read only after a command that ran its touches (run_touchran, PlayerPreThink).
 */
-.entity run_tl1, run_tl2, run_tl3, run_tl4;
+.entity run_tl1, run_tl2, run_tl3, run_tl4, run_tl5, run_tl6, run_tl7, run_tl8;
 .float  run_touchran;
+
+// The bits of m whose real player's list holds t: SV_TriggerEndEdge ends those, not the sweep.
+int(entity t, int m) SV_TouchOwned =
+{
+	local int    r, bit;
+	local float  i;
+	local entity p;
+
+	r = 0;
+	for (i = 0; i < 32; i = i + 1)
+	{
+		bit = (int)1 << (int)i;
+		if (!(m & bit))
+			continue;
+		p = edict_num(i + 1);
+		if (clienttype(p) != CLIENTTYPE_REAL)
+			continue;
+		if (p.run_tl1 == t || p.run_tl2 == t || p.run_tl3 == t || p.run_tl4 == t ||
+		    p.run_tl5 == t || p.run_tl6 == t || p.run_tl7 == t || p.run_tl8 == t)
+			r = r | bit;
+	}
+	return r;
+};
 
 void(entity pl, entity trig) SV_TouchList =
 {
-	if (pl.run_tl1 == trig || pl.run_tl2 == trig || pl.run_tl3 == trig || pl.run_tl4 == trig)
+	if (pl.run_tl1 == trig || pl.run_tl2 == trig || pl.run_tl3 == trig || pl.run_tl4 == trig ||
+	    pl.run_tl5 == trig || pl.run_tl6 == trig || pl.run_tl7 == trig || pl.run_tl8 == trig)
 		return;
 	if (!pl.run_tl1)
 		pl.run_tl1 = trig;
@@ -4748,6 +4779,14 @@ void(entity pl, entity trig) SV_TouchList =
 		pl.run_tl3 = trig;
 	else if (!pl.run_tl4)
 		pl.run_tl4 = trig;
+	else if (!pl.run_tl5)
+		pl.run_tl5 = trig;
+	else if (!pl.run_tl6)
+		pl.run_tl6 = trig;
+	else if (!pl.run_tl7)
+		pl.run_tl7 = trig;
+	else if (!pl.run_tl8)
+		pl.run_tl8 = trig;
 };
 
 // One list slot: the trigger to end now, else world.  A slot another path already let go
@@ -4760,6 +4799,12 @@ entity(entity pl, .entity f, int bit) SV_TouchEndSlot =
 	if (!t)
 		return world;
 	if (wasfreed(t) || !((t.vbsp_touch_in | t.vbsp_touch_seen) & bit))
+	{
+		pl.f = world;
+		return world;
+	}
+	// Spent (a trigger_once) or disabled: left to the sweep, as before (cl_triggers.qc likewise).
+	if (t.solid == SOLID_NOT)
 	{
 		pl.f = world;
 		return world;
@@ -4786,13 +4831,13 @@ void(entity t, entity pl) SV_TouchEndFire =
 		SV_FireOutput(t, "OnEndTouchAll", pl);
 };
 
-// PlayerPreThink, ahead of the jump edge and SV_BaseVelocityFrame: a carrier an OnEndTouch
-// writes is cashed out on this command, the tick after the one that left.  The four ends
-// are taken before any fires, so an output that kills or moves things finds the lists done.
+// PlayerPreThink, after the jump edge and ahead of SV_BaseVelocityFrame: a carrier an
+// OnEndTouch writes is cashed out on this command, the tick after the one that left.  All
+// ends are taken before any fires, so an output that kills or moves things finds the lists done.
 void(entity pl) SV_TriggerEndEdge =
 {
 	local int bit;
-	local entity a, b, c, d;
+	local entity a, b, c, d, e, f, g, h;
 
 	bit = SV_TouchBit(pl);
 	if (!bit)
@@ -4801,15 +4846,23 @@ void(entity pl) SV_TriggerEndEdge =
 	b = SV_TouchEndSlot(pl, run_tl2, bit);
 	c = SV_TouchEndSlot(pl, run_tl3, bit);
 	d = SV_TouchEndSlot(pl, run_tl4, bit);
-	if (!(a || b || c || d))
+	e = SV_TouchEndSlot(pl, run_tl5, bit);
+	f = SV_TouchEndSlot(pl, run_tl6, bit);
+	g = SV_TouchEndSlot(pl, run_tl7, bit);
+	h = SV_TouchEndSlot(pl, run_tl8, bit);
+	if (!(a || b || c || d || e || f || g || h))
 		return;
 	if (SV_DevOn())
-		dprint(sprintf("touch end edge: %s %s %s %s at z %.2f vz %.2f\n", a.model, b.model, c.model, d.model,
+		dprint(sprintf("touch end edge: %s %s %s %s ... at z %.2f vz %.2f\n", a.model, b.model, c.model, d.model,
 		               pl.origin_z, pl.velocity_z));
 	SV_TouchEndFire(a, pl);
 	SV_TouchEndFire(b, pl);
 	SV_TouchEndFire(c, pl);
 	SV_TouchEndFire(d, pl);
+	SV_TouchEndFire(e, pl);
+	SV_TouchEndFire(f, pl);
+	SV_TouchEndFire(g, pl);
+	SV_TouchEndFire(h, pl);
 };
 
 void(entity trig, entity act) SV_TriggerIOTouch =

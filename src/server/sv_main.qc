@@ -527,7 +527,6 @@ void() worldspawn =
 	// P924: this progs declares input_cmd_later; clients may mirror sv_tickparts.
 	forceinfokey(world, "fs_tickparts", "1");
 	forceinfokey(world, "fs_sourcephase", "1");
-	forceinfokey(world, "fs_endedge", "1");    // Patch 1025: SV_TriggerEndEdge, exact basevelocity (cl_triggers.qc)
 	vbsp_conveyor_any = 0;
 	SV_MapTierInit();
 	// worldspawn is the first entity in the lump, so this zeroes the spawn
@@ -692,6 +691,8 @@ void() worldspawn =
 	*/
 	registercvar("vbsp_mp", "1");
 	vbsp_mp = cvar("vbsp_mp");
+	// Patch 1025: SV_TriggerEndEdge and exact basevelocity (cl_triggers.qc); the edge needs the masks.
+	forceinfokey(world, "fs_endedge", vbsp_mp ? "1" : "0");
 
 	/*
 	  Build 64.  vbsp_sound, registered and latched here for exactly the reasons

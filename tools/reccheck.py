@@ -303,7 +303,8 @@ HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock", "view
                      "inprof",      # Patch 840, additive
                      "momtrig",     # Patch 869, additive
                      "entfile",     # Patch 890, additive
-                     "tickparts"}   # Patch 893, additive
+                     "tickparts",   # Patch 893, additive
+                     "endedge"}     # Patch 1025, additive
 # v10 (Patch 364): no new header key.  A file is v10 exactly when it carries a
 # `pause`: the buffered writer rewrites line 0 when the first one lands.
 HEAD_V10 = HEAD_V9

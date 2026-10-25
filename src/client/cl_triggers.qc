@@ -458,6 +458,7 @@ float(string s) TT_Find =
 #define EV_START    1
 #define EV_END      2
 #define EV_MAPSPAWN 3
+#define EV_JUMP     4           // Patch 1025: OnJump, mirrored only for basevelocity rows
 
 #define IN_EN       1
 #define IN_DIS      2
@@ -488,6 +489,7 @@ vector *io_bv;                  // Patch 1025: an IOP_BVEL row's vector (memallo
 */
 float  tg_endexact;             // fs_endedge: the server ends touches on the next command
 float  tg_bvel_ok;              // this engine mirrors the carrier write
+float  tg_pmseq, tg_pmground;   // the pre-move hook's command and its ground (cl_warpop.qc)
 
 string tg_tname[TG_MAX];
 float  tg_sd[TG_MAX];           // the StartDisabled key, as authored
@@ -519,6 +521,7 @@ float  tg_iotime0;              // client time at load, for mapspawn delays
 float  tg_c_event, tg_c_iodem, tg_c_sdok, tg_c_ioown, tg_c_iogated;
 .float tg_netgate, tg_netready, tg_neton;
 .float tg_sspartoffset;          // EveryTick's last applied part within tg_ssinseq
+.float tg_seenoff;               // Patch 1025: predmove_offset of the last touch (tick parts)
 void() Body_TrigSeed;       // cl_body: retain snapshots across mirror reloads
 string tg_io_esc;
 
@@ -530,6 +533,7 @@ float(string lk) TG_IOEvOf =
 	if (lk == "onstarttouch") return EV_START;
 	if (lk == "onendtouch")   return EV_END;
 	if (lk == "onmapspawn")   return EV_MAPSPAWN;
+	if (lk == "onjump")       return EV_JUMP;
 	return EV_OTHER;
 };
 
@@ -673,7 +677,11 @@ float(float o) TG_IOBvelOK =
 {
 	if (!tg_bvel_ok || io_delay[o] != 0 || io_times[o] >= 0)
 		return FALSE;
-	return io_ev[o] == EV_START || io_ev[o] == EV_END;
+	if (io_src[o] < 0)
+		return FALSE;	// nested: QC's || does not short-circuit, and [-1] aborts the VM
+	if (tg_kind[io_src[o]] != TG_EVENT)
+		return FALSE;	// a push re-arms over it, a teleport clears the carrier after it
+	return io_ev[o] == EV_START || io_ev[o] == EV_END || io_ev[o] == EV_JUMP;
 };
 
 float(float s) TG_IOOwnerBad =
@@ -784,6 +792,8 @@ void(float i, float ev, float seq) TG_IOFireEv =
 	{
 		if (io_src[o] != i || io_ev[o] != ev)
 			continue;
+		if (ev == EV_JUMP && !(io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_BVEL))
+			continue;		// an OnJump state row demoted what it aims at
 		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_BVEL)
 		{
 			// TG_IOOwnerBad kept this slot only if every such row is TG_IOBvelOK, and its
@@ -796,7 +806,8 @@ void(float i, float ev, float seq) TG_IOFireEv =
 				predmove_bvsetflag = 1;
 				if (tg_cv_debug)
 					print(sprintf("^5trig^7: seq %g IO #%g %s -> basevelocity %v\n", seq, i,
-					              (ev == EV_START) ? "OnStartTouch" : "OnEndTouch", io_bv[o]));
+					              (ev == EV_START) ? "OnStartTouch" : (ev == EV_END) ? "OnEndTouch" : "OnJump",
+					              io_bv[o]));
 			}
 			continue;
 		}
@@ -819,6 +830,7 @@ void(float i, float ev, float seq) TG_IOFireEv =
 float(float i, float seq) TG_IOEdge =
 {
 	tg_io_seen[i]  = seq;
+	tg_ent[i].tg_seenoff = predmove_offset;
 	tg_io_stamp[i] = tg_io_tbase + tg_io_clock;
 	tg_io_lastin[i] = seq;
 	if (tg_io_in[i])
@@ -837,7 +849,17 @@ void(float seq) TG_IOEndSweep =
 		if (!tg_io_own[i] || !tg_io_in[i] || tg_io_endf[i])
 			continue;
 		if (tg_io_seen[i] == seq)
+		if (!tg_endexact || tg_ent[i].tg_seenoff == predmove_offset)
+			continue;	// Patch 1025: the server reads touches per tick part (P893)
+		if (tg_endexact)
+		if (tg_io_gated[i] && !TG_IOEff(i, seq))
+		{
+			// SV_TouchEndSlot drops a SOLID_NOT trigger (a spent trigger_once, a disabled
+			// one) without firing; the old sweep, if anything, ends it.
+			tg_io_endf[i] = 1;
+			tg_io_in[i]   = 0;
 			continue;
+		}
 		// ABSOLUTE command time, not chain-local: the chain restarts every
 		// rendered frame, and a minimized window renders slower than the
 		// command rate, so one chain can span MORE than the 0.05 s grace --
@@ -1578,6 +1600,14 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 			print(sprintf("^5trig^7: seq %g trig #%g kind %g fired (org %v vel %v)\n",
 			              seq, i, tg_kind[i], predmove_org, predmove_vel));
 	}
+
+	// Patch 1025: OnJump, as SV_TriggerJumpEdge in the next PreThink: grounded before this move,
+	// not after it, rising; before the end sweep, so a trigger the jump just left still counts.
+	if (tg_bvel_ok && tg_endexact && tg_pmseq == seq && tg_pmground)
+	if (!predmove_onground && predmove_vel_z > 0)
+		for (i = 0; i < tg_n; i = i + 1)
+			if (tg_kind[i] && tg_io_own[i] && tg_io_in[i] && TG_IOEff(i, seq))
+				TG_IOFireEv(i, EV_JUMP, seq);
 
 	TG_IOEndSweep(seq);
 };

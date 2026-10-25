@@ -2775,6 +2775,7 @@ void(entity e) Emit_PsysNet =
 		if (em_psidx[i] == ps)
 		if (vlen(em_psorg[i] - e.origin) < 0.1)
 			em_stop[i] = !e.em_npon;
+	if (cvar("developer") >= 2)      // one line per system: 97 a press on bhop_ceaseless
 	dprint(sprintf("emit: psys %s at %v %s by the server\n", e.em_npeff, e.origin,
 	               e.em_npon ? "started" : "stopped"));
 };

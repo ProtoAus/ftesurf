@@ -489,8 +489,7 @@ void() PlayerPreThink =
 		// sees the jump edge and the pad strip it would have seen without the hold
 		// (clearing them here swallowed OnJump and untagged a hop off a start pad).
 		self.run_basevelocity = '0 0 0';
-		self.run_touchran = FALSE;      // Patch 1025: no touches this command
-		return;
+		return;		// Patch 1025: run_touchran keeps the last moved command's answer
 	}
 
 	SV_GravityFrame(self);          // Patch 865: trigger_gravity persist 0
