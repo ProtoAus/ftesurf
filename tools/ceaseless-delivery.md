@@ -109,3 +109,39 @@ Task root `C:\FTESurf-worktrees\pcfcolour-20261025T0540Z` (shots under `artifact
 
 - Not owner-checked: lextest.md's P1012-P1015 entry.
 - BACKLOG "bhop_ceaseless (P990, P1002, P1012-P1015)" holds the rest.
+
+# P1016-P1020 (Lex's fourth list of 25 Oct: butterfly orbit, Momentum shot, water cost, ent_info): delivery record
+
+| Lex's item | Patch | State |
+|---|---|---|
+| Butterfly particle should spin around it | P1017 | orbit + spawnmode shell; butterfly, spiral, gatelight, stars turn (rig ring A/B) |
+| Save 25 water from far away (Momentum 0021) | P1019 | refraction offset falls off past 512 units: fine-line energy 19.5 -> 14.1 (Momentum 12.9) |
+| Refraction/reflection cost at renderscale 2; micro-audit | P1018, P1020 | sky room water shares targets (4.3 -> 3.3 ms over the start room), 1024 cap; hl2_water 5 screen-space (3.0 -> 1.4 ms in the start room) |
+| ent_info "unimplemented class" for info_particle_system | P1016 | says the client draws it (and the plugin applies color_correction) |
+
+## Builds
+
+- Engine: ftequakers main `d37aa2296`, annotated tag `patch-1020` (P1017-P1020 + review rounds on
+  7e's 15d288cdd). Stamp `git-7859-patch-1020-0-gd37aa2296` (16 hits, one string). ftesurf64/fteqw64
+  `5c5df1fc`; hl2 plugin `29e53471`. fteqwsv64 and the other plugins unchanged (no server code).
+- QC: FTESurf main `6b7d57b3` (on 7e's 1861831b): qwprogs `19e09cca` (P1016), csprogs `b3529a28`
+  (P1017 shape 3, P1020 menu row), menu `069ec469` unchanged. 0 warnings.
+- Bakes (pcf.py at 6b7d57b3): particles/bhop_ceaseless.cfg `b5ccdeea`, surf_boreas.cfg `7ca03ba3`
+  (unchanged), data/mapparticles.txt `c05555ae`; they need patch-1020's engine (orbit/shell).
+
+## Deployed
+
+- 11:05:40Z both installs, no game running, installed state as 7e's record: ftesurf64.exe/fteqw64.exe
+  `5c5df1fc` (.prev `c416c542`), fteplug_hl2_x64.dll `29e53471` (.prev `e9fba935`).
+- ~11:06Z Pi lobbies 1-12 (`build.ps1 -Pi`, nobody on any lobby, no -PiForce): qwprogs `19e09cca`,
+  csprogs `b3529a28`, .prev `117c0942` / `5c61096f`. Same run synced C:\FTEQuake\ftesurf; C:\FTESurf
+  by hand, same hashes and .prev; seed_csprogs `1c79fdae` in both.
+- 11:07:13Z C:\FTESurf\ftesurf bakes (previous kept in the task root tmp/bake-installed-before-*).
+- 11:07Z lobby smoke (lobby 2, port 27520, C:\FTESurf's new exe): served csprogs `b3529a28`, board
+  drew (surf_beginner, screenshot looked at), no QC error, 0 failures. Rig trimmed (6.7 MB).
+
+## Not done / limits
+
+- Not owner-checked: lextest.md's P1016-P1020 entry. hl2_water 5 is opt-in (Lex's cfg stays 2).
+- BACKLOG "bhop_ceaseless (P990, P1002, P1012-P1019)": water colour (cyan vs Momentum's blue), the
+  main view's reflection at hl2_water 2, mode 5's fog-colour reflection misses.
