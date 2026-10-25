@@ -24,8 +24,12 @@ commit   b44dde08ec1892895b56723b02243c6d57f31206
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-1003
-patch    1003
+tag      patch-1014
+patch    1014
+# Patch 1014: func_areaportalwindow panes fade (imposter alpha; fading brush entities keep no depth).
+# Patch 1013: Source $underwateroverlay (leaf water volumes -> r_underwateroverlay -> vmt/uwoverlay).
+# Patch 1012 (QC + tools): .pcf Color Fade, Source's rate/draw-distance defaults, spawn volumes
+# placed by cl_emit.qc (8 new index columns), PVS cull for info_particle_system.
 # Patch 1003: authored Source no-fog reaches plain GL passes and automatic-program fallback.
 # Numeric $nofog 0 keeps fog. Appended material policy; matching full engine/plugin rebuild.
 # Source also retains P990 and the published P987-P995 guards; deployment is recorded separately.

@@ -21,6 +21,19 @@
 
 ## next
 
+### P1014 Window panes fade in
+- Fading window panes in Source maps now fade instead of staying solid and vanishing at the last moment, and what is behind them (particles included) shows through while they fade.
+
+### P1013 Source underwater overlays
+- Under Source water you now see that water's own underwater overlay, a moving ripple over the whole view. Water that has none in Source shows no warp, as in Momentum.
+
+### P1012 Particles: colours, spread and the missing ones
+- Map particles change colour over their life as the map's author set them.
+- Particles that never appeared on bhop_ceaseless (the start room's floating circles, the butterflies' dots, the tunnel's spiral) are drawn.
+- Particles spread over the whole area the map gives them instead of bunching into a square or a column, and the boost strips' particles cover the strips.
+- Particles in rooms you cannot see are no longer drawn through walls.
+- surf_boreas' end-room glow is a compact glow again instead of a bright dome.
+
 ### P1003 Authored no-fog materials
 - Materials a map marks as no-fog now stay clear on the plain GL rendering path too, including Source wireframe surfaces. An explicit no-fog value of 0 keeps ordinary fog.
 
@@ -28,7 +41,7 @@
 - Momentum's AddSpeed, AddHorizontalSpeed and AddVerticalSpeed map inputs work: bhop_ceaseless's speed tunnel under the start pushes you along the way you are moving.
 - A trigger whose filter shares its name with a name the map gives players no longer lets everyone through once someone carrying that name touched it first.
 - func_lod brushes the map marks not solid are walk-through, as in Momentum, and all func_lod detail fades out at its authored distance.
-- bhop_ceaseless's particle effects (boosters, stars, rain, smoke) are drawn; their colour changes over life are not yet.
+- bhop_ceaseless's particle effects (boosters, stars, rain, smoke) are drawn.
 
 ### P1001 Ramp touchdown numbers from just before the ramp
 - The run line's touchdown label on a ramp now shows your speed and energy on the tick before you touched the ramp, not after the ramp's clip took its share.
