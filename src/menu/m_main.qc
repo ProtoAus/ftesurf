@@ -2242,12 +2242,30 @@ void() ui_pool_load =
 	hash_destroytab(zones);
 };
 
+/*
+  Patch 999 (Lex: the game lags loading the update data at launch): an INSTALLED row's
+  wrong-build check (mapfilekb, ~0.2 ms a map through every mount) was 457 of the
+  load's 818 ms on the install's 2,324 maps, all in one frame -- and the load runs
+  again when the catalogue changes.  It now runs UI_DLKB_STEP rows a frame after the
+  load (ui_dlkb_step); an offered row's presence check stays here, so a Download
+  button never shows for a map you have.
+*/
+#define UI_DLKB_STEP 64
+var float ui_dlkb_q = -1;   // strbuf of "row kb name" still owed the check
+hashtable ui_mapseen;       // ui_load_maps' search, by lowercased name
+float ui_dlkb_i;
+
 void() ui_dl_load =
 {
 	local filestream fh;
 	local hashtable byname;
 	local string ln, nm, key, of;
 	local float i, n, row, appended, badged, stale, network, older;
+
+	if (ui_dlkb_q >= 0)
+		buf_del(ui_dlkb_q);
+	ui_dlkb_q = buf_create();
+	ui_dlkb_i = 0;
 
 	// Patch 652: the list fetched from the directory (m_lobby.qc Mdl_Reply,
 	// which wrote it row by row), else the one the release shipped.
@@ -2323,16 +2341,8 @@ void() ui_dl_load =
 			  for a check whose action is a re-download.
 			*/
 			if (ui_dl_kb_ready())
-			{
-				local float lkb = mapfilekb(nm);
-				local float pkb = stof(argv(5));
-				if (lkb > 0 && pkb > 0 && lkb != pkb)
-				{
-					bufstr_set(ms_have, row, "2");
-					bufstr_set(ms_dlkb, row, argv(5));
-					stale = stale + 1;
-				}
-			}
+			if (stof(argv(5)) > 0)
+				bufstr_set(ui_dlkb_q, buf_getsize(ui_dlkb_q), sprintf("%g %s %s", row, argv(5), nm));
 			// The tier travels whether the map is here or not: an INSTALLED map
 			// Momentum has no record of has the same hole, and this file is the
 			// only place a tier for it exists.  ui_meta_load picks it up.
@@ -2446,8 +2456,14 @@ void() ui_dl_load =
 		  pre-466 engine, which can answer "is it there" but not "how big".
 		  Either way this is one lookup per OFFERED row -- 464 here, not 1833.
 		*/
-		local float hkb;
-		hkb = ui_dl_kb_ready() ? mapfilekb(nm) : 0;
+		local float hkb, listed;
+		// Patch 999: a name the boot search never listed is on no mount -- asking cost a
+		// miss through every one (~1 ms each, 377 rows here).  A listed one asks, exactly.
+		hkb = 0;
+		listed = hash_get(ui_mapseen, key, 0, EV_FLOAT);
+		if (ui_dl_kb_ready())
+		if (listed)
+			hkb = mapfilekb(nm);
 		// mapfilekb already reports absence. Only older engines need an open probe.
 		if (!ui_dl_kb_ready())
 			if (ui_file_exists(strcat("maps/", nm, ".bsp")))
@@ -2539,12 +2555,47 @@ void() ui_dl_load =
 		              ms_nvar));
 
 	ms_dlcount = appended;
-	ms_dlstale = stale;
+	ms_dlstale = stale;             // the offered rows'; ui_dlkb_step adds the installed ones
 	print(sprintf("WOS: mapdl offers %g map(s) not installed here, %g new\n",
 	              appended, badged));
-	if (stale > 0)
+};
+
+void() ui_refilter;
+// Patch 999: UI_DLKB_STEP of the installed rows' wrong-build checks a frame (m_draw).
+void() ui_dlkb_step =
+{
+	local float end, row, lkb, changed;
+
+	if (ui_dlkb_q < 0)
+		return;
+	end = min(ui_dlkb_i + UI_DLKB_STEP, buf_getsize(ui_dlkb_q));
+	changed = FALSE;
+	while (ui_dlkb_i < end)
+	{
+		tokenize(bufstr_get(ui_dlkb_q, ui_dlkb_i));
+		ui_dlkb_i = ui_dlkb_i + 1;
+		row = stof(argv(0));
+		if (row >= ms_count)
+			continue;
+		lkb = mapfilekb(argv(2));
+		if (lkb > 0)
+		if (lkb != stof(argv(1)))
+		{
+			bufstr_set(ms_have, row, "2");
+			bufstr_set(ms_dlkb, row, argv(1));
+			ms_dlstale = ms_dlstale + 1;
+			changed = TRUE;
+		}
+	}
+	if (changed)
+		ui_refilter();              // a wrong build of a bare entry is hidden (ui_refilter)
+	if (ui_dlkb_i < buf_getsize(ui_dlkb_q))
+		return;
+	buf_del(ui_dlkb_q);
+	ui_dlkb_q = -1;
+	if (ms_dlstale > 0)
 		print(sprintf("WOS: %g installed map(s) are a DIFFERENT BUILD from the server's -- offering a re-get\n",
-		              stale));
+		              ms_dlstale));
 };
 
 // Defined with the backdrop and the download block, far below.
@@ -2662,6 +2713,10 @@ void() ui_load_maps =
 	  dedup is case-insensitive and so should this be.
 	*/
 	hashtable seen = hash_createtab(1024, EV_FLOAT);
+	// Patch 999: every name on any mount, for ui_dl_load's offered rows.
+	if (ui_mapseen)
+		hash_destroytab(ui_mapseen);
+	ui_mapseen = hash_createtab(4096, EV_FLOAT);
 
 	float n = search_getsize(h);
 	for (float i = 0; i < n; i++)
@@ -2672,6 +2727,7 @@ void() ui_load_maps =
 
 		float bit = ui_classify(search_getpackagename(h, i));
 		string key = strtolower(nm);
+		hash_add(ui_mapseen, key, 1, HASH_REPLACE | EV_FLOAT);
 
 		// hash_get's default of -1 distinguishes "not seen" from row 0.
 		float row = hash_get(seen, key, -1, EV_FLOAT);
@@ -8253,6 +8309,7 @@ void(vector screensize) m_draw =
 	Mdl_Ask();
 	Mzd_Pump();
 	ui_boot_preload();
+	ui_dlkb_step();                 // Patch 999
 
 	// m_draw is called EVERY frame whether or not the menu has focus
 	// (menu.c:168-176), so the gate is ours to enforce.
