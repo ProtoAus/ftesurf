@@ -514,8 +514,10 @@ executable path and hash, not a similarly named maintained copy.
   131081 definitions/184046 scalar slots, cached DAT hash equal, local poll and
   Story/Players/HUD draws on the existing installed engine. Other compiler limits
   and actual VM formats stay unchanged.
-- Matching SSQC/CSQC/menu/backend deployment is required. Source/API/native/review
-  acceptance does not authorize replacing the guarded backend generation.
+- Matching SSQC/CSQC/menu/backend deployment is required. [Superseded 25 Oct 2026,
+  Lex: publishing the lobbies and the backend is pre-approved in beta -- people
+  reconnect. A backend generation swap is tested, keeps a rollback path and is
+  recorded; procedure: tools/surfd-generation-p996.md.]
 
 ## Roster probe and private test-log hygiene (2026-10-21)
 
@@ -6784,7 +6786,12 @@ corrected12unit readback and cold CSQC hash/drawn-board proof acted. No raw comm
   connected, scp's both .new files, hash-verifies on the Pi, swaps in ONE ssh
   command keeping `.prev`, restarts every active lobby); menu.dat stays local.
   `-PiForce` overrides the refusal — beta phase, and the connected player is
-  usually the reporter; say so when you use it.
+  usually the reporter; say so when you use it. Lex, 25 Oct 2026: publish to the
+  lobbies even with players on -- they can just reconnect.
+- Backend generations (P996, 25 Oct): a code-only swap is a new guard root beside
+  the live one, candidate -> receipt -> reopen, then close the old fence, rebind
+  stubs/run.sh/cron and restart momrequests.service. tools/surfd-generation-p996.md
+  has the scripts and traps (setgid parent dirs; the old witness's pinned readers).
   `-Pi` SHIPS THE WORKING TREE. When the tree carries other sessions'
   uncommitted QC, build from a clean `git worktree add <tmp> HEAD` instead, and
   remove the worktree afterwards. A clean HEAD still carries other sessions'

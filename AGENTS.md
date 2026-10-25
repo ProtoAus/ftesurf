@@ -201,6 +201,10 @@ Naming: `pi.dev` is the coding agent (`.pi/`, `Start-Pi.cmd`, the `pi` command).
    published history. Prove the commit alone in a clean worktree when peer source
    changes were present during your working-tree build.
 8. Development fleet: tested changes normally get deployed so the owner can test.
+   Lex, 25 Oct 2026: publishing to the lobbies AND the backend is pre-approved --
+   we're in beta and people can reconnect. Use `-PiForce` when players are on and
+   say so; a backend generation swap needs no separate approval (keep a rollback
+   path, record it: tools/surfd-generation-p996.md).
    Read the full Pi-operations section FIRST. `build.ps1 -Pi` ships qwprogs and
    csprogs from the TREE, not a commit; configs/tools need separate copying.
    Verify destination hashes and live behavior, then record UTC provenance.
