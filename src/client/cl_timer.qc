@@ -579,6 +579,18 @@ string(float word, __inout vector col) Timer_SplitsClass =
   comparison that means anything here -- a raw split tells you what the clock
   said, not whether that was good.
 */
+// P1008: the armed state's word for the timer's sub-label (STAT_FS_ARMSTATE).
+string() Timer_ArmWord =
+{
+	local float a;
+	a = getstatf(STAT_FS_ARMSTATE);
+	if (a == AS_HOPPED) return "^3not armed^7 - land below 290";
+	if (a == AS_NOCLIP) return "^3not armed^7 - noclip off, land below 290";
+	if (a == AS_CHEATS) return "^3not armed^7 - cheats or timescale on";
+	if (a == AS_ARMED)  return "^2armed^7";
+	return "ready";             // a server without the stat
+};
+
 void(vector scr, float tick) Timer_DrawSplits =
 {
 	local float i, sz, big, lh, a, spd, bt;
@@ -1037,10 +1049,11 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	  as a clock that is about to keep going from there, which is exactly the
 	  wrong thing to suggest.  The time you are looking at is over; say so.
 	*/
+	// P1008 (Lex): "armed" when leaving now starts a clean run, and why not when not.
 	if (flags & TF_STOPPED)
 		s = strcat(s, (s != "") ? "  " : "", "^9stopped^7");
 	else if (state == TS_ARMED)
-		s = strcat(s, (s != "") ? "  " : "", "ready");
+		s = strcat(s, (s != "") ? "  " : "", Timer_ArmWord());
 	/*
 	  ONE WORD FOR WHY THIS RUN IS NOT CLEAN, never two.
 

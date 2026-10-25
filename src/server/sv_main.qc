@@ -295,6 +295,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_PMFLAGS,     EV_FLOAT,  pmove_flags);
 	clientstat(STAT_FS_FOLEYJUMP,   EV_FLOAT,  run_foleyjump);
 	clientstat(STAT_FS_TIMESCALE,   EV_FLOAT,  run_timescale);
+	clientstat(STAT_FS_ARMSTATE,    EV_FLOAT,  run_armstate);
 
 	/*
 	  The timer and the save-lock list.

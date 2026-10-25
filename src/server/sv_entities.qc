@@ -1088,6 +1088,7 @@ float vbsp_conveyor_any, vbsp_conv_dist, vbsp_conv_stand, vbsp_conv_quads;
 */
 .float  run_jumpcmd;
 .float  run_foleyjump;             // P935: latched local-audio cue, not movement
+.float  run_armstate;              // P1008: STAT_FS_ARMSTATE, display only
 
 /*
   PATCH 411: the pad took the ground flag before PreThink could read it.

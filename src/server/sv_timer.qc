@@ -542,6 +542,15 @@ string(float bytes) SV_RandHex =
   0 is build 20 byte-for-byte.
 */
 float  run_t_rearmhop;
+/*
+  P1008 (Lex, 25 Oct): "when you return to the start zone, and stop moving, lower
+  to 289 ground speed, then it arms again".  A hopped or noclipped attempt that
+  then stands in its box -- grounded for the prestrafe dwell, below this speed,
+  not noclipping, cheats off -- is armed afresh.  It keeps its speed: Patch 445's
+  laundering was a forgiveness WITH the speed on, and below this cap that speed
+  is no more than a clean walk-out start's.  0 is Patch 445's rule (`!r` only).
+*/
+float  run_t_rearmspeed;
 
 /*
   Bhop starts on the initial jump, not at the edge of the start box.
@@ -12485,6 +12494,25 @@ float(entity e) SV_TimerJumpWatch =
 				SV_ClearCarrier(e);
 				SV_TimerForgiveHop(e, "the ground dwell (run_rearmhop 1)");
 			}
+		// P1008: the noclip/practice taint through SV_TimerArm, still its one
+		// clear site, then the hop.  The carrier goes, as with every forgiveness.
+		if (run_t_rearmspeed > 0 && e.run_t_state == TS_ARMED)
+		if (e.run_t_hopped || e.run_t_dirty)
+		if (e.movetype != MOVETYPE_NOCLIP && !SV_CheatLevel(e))
+		if (e.run_t_groundsec > 0 && (SV_ClockSec(e) - e.run_t_groundsec) >= want)
+		if (vlen([e.velocity_x, e.velocity_y, 0]) < run_t_rearmspeed)
+		{
+			SV_ClearCarrier(e);
+			if (e.run_t_dirty)
+			{
+				SV_TimerArm(e, e.run_t_armzone);
+				if (SV_DevOn())
+					dprint(sprintf("arm: %s re-armed clean at rest in the box\n", e.netname));
+				if (!e.run_t_hopped)
+					sprint(e, PRINT_HIGH, "^2start re-armed^7 -- this attempt is clean again\n");
+			}
+			SV_TimerForgiveHop(e, "coming to rest in the box (run_rearmspeed)");
+		}
 	}
 
 	// A finish/load's pending forgiveness is independent of start settlement.
@@ -15889,6 +15917,22 @@ void(entity e) SV_TimerFrame =
   now, and a map with no zone file still has a HUD.  One caller that always runs
   beats four that between them nearly always do.
 */
+// P1008: what leaving the start box would make of this attempt, for the HUD's
+// Armed / not armed.  Display only: SV_TimerStart still decides.
+void(entity e) SV_ArmStateStat =
+{
+	if (e.run_t_state != TS_ARMED)
+		e.run_armstate = AS_NONE;
+	else if (SV_CheatLevel(e))
+		e.run_armstate = AS_CHEATS;
+	else if (e.run_t_dirty || e.run_t_cheat || e.movetype == MOVETYPE_NOCLIP)
+		e.run_armstate = AS_NOCLIP;
+	else if (e.run_t_hopped)
+		e.run_armstate = AS_HOPPED;
+	else
+		e.run_armstate = AS_ARMED;
+};
+
 void(entity e) SV_StageStat =
 {
 	local float w;
@@ -16143,6 +16187,7 @@ void() SV_TimerMapInit =
 	// `!r` is the shipped clear now; this is the build-21 dwell forgiveness kept as
 	// an operator knob and as cfg/test/b21a.cfg's control arm.
 	registercvar("run_rearmhop", "0");           // build 21, and see the trap above
+	registercvar("run_rearmspeed", "290");       // P1008: re-arm at rest in the box below this
 	registercvar("rec_runs_keep", "25");         // build 23, and see the trap above
 	registercvar("rec_watch_pvs", "1");          // build 43, and see the trap above
 	registercvar("run_stagefail", "1");          // build 43, and see the trap above
@@ -16219,6 +16264,7 @@ void() SV_TimerMapInit =
 	run_t_rearmstops  = cvar("run_rearmstops");
 	run_t_tpreset     = cvar("run_tpreset");
 	run_t_rearmhop    = cvar("run_rearmhop");
+	run_t_rearmspeed  = cvar("run_rearmspeed");
 	run_t_stagefail   = cvar("run_stagefail");
 	run_t_stagearm    = cvar("run_stagearm");
 	run_t_stageclean  = cvar("run_stageclean");

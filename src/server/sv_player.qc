@@ -855,6 +855,7 @@ void() PlayerPostThink =
 	  those ticks.  See SV_StageStat.
 	*/
 	SV_StageStat(self);
+	SV_ArmStateStat(self);          // P1008: likewise past the timer's early returns
 
 	SV_RewindSample(self);          // Patch 477: the recent past a rewind saves from
 	SV_WatchFrame(self);            // ...and the replay/rewind pin holds no speed

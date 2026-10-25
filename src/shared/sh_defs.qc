@@ -135,6 +135,12 @@
 #define STAT_FS_PMFLAGS    48
 #define STAT_FS_FOLEYJUMP 180  // cosmetic contact edge; no body/recorder state
 #define STAT_FS_TIMESCALE 181  // P954: connection-local practice command duration
+#define STAT_FS_ARMSTATE 182   // P1008: what leaving the start box now would be (AS_*)
+#define AS_NONE    0           // not armed
+#define AS_ARMED   1           // a clean start
+#define AS_HOPPED  2           // a hopped start: land, below run_rearmspeed, to re-arm
+#define AS_NOCLIP  3           // noclip/practice: noclip off, land below it, to re-arm
+#define AS_CHEATS  4           // sv_cheats or timescale: nothing in the box clears it
 
 /*
   The plane the CURRENT tick clipped against (engine Patch 137).
