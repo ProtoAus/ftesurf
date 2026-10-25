@@ -522,6 +522,7 @@ float  tg_c_event, tg_c_iodem, tg_c_sdok, tg_c_ioown, tg_c_iogated;
 .float tg_netgate, tg_netready, tg_neton;
 .float tg_sspartoffset;          // EveryTick's last applied part within tg_ssinseq
 .float tg_seenoff;               // Patch 1025: predmove_offset of the last touch (tick parts)
+.float tg_endseq;                // Patch 1025: the command this slot's last END ran in
 void() Body_TrigSeed;       // cl_body: retain snapshots across mirror reloads
 string tg_io_esc;
 
@@ -853,10 +854,12 @@ void(float seq) TG_IOEndSweep =
 			continue;	// Patch 1025: the server reads touches per tick part (P893)
 		if (tg_io_once[i] && tg_io_gated[i] && !TG_IOEff(i, seq))
 		{
-			// A spent trigger_once ends silently, as SV_TouchEndSlot drops it; a disabled
-			// trigger ends here like any other.
+			// A spent once slot ends silently: the server's retired trigger fires no OnEndTouch.
+			// A disabled trigger ends here like any other.
 			tg_io_endf[i] = 1;
 			tg_io_in[i]   = 0;
+			if (tg_ent[i])
+				tg_ent[i].tg_endseq = seq;
 			continue;
 		}
 		// ABSOLUTE command time, not chain-local: the chain restarts every
@@ -872,6 +875,8 @@ void(float seq) TG_IOEndSweep =
 			continue;
 		tg_io_endf[i] = 1;
 		tg_io_in[i]   = 0;
+		if (tg_ent[i])
+			tg_ent[i].tg_endseq = seq;
 		TG_IOFireEv(i, EV_END, seq);
 	}
 };
@@ -1442,8 +1447,8 @@ void(float seq) TG_ChainStart =
 			// not yet elapsed -- on localhost the ack lands INSIDE the
 			// 0.05 s) survives too: in stays 1 and the persistent absolute
 			// stamp lets the sweep finish the grace.  A gated-off slot
-			// always seeds fresh: the server's bits are empty for it as
-			// well, its touch returning at the gate.
+			// seeds fresh: the server's bits are empty for it as well, its
+			// touch returning at the gate -- except under exact ends, below.
 			tg_io_endf[i] = 0;
 			tg_io_seen[i] = seq - 1;
 			other = tg_ent[i];
@@ -1466,10 +1471,12 @@ void(float seq) TG_ChainStart =
 				tg_io_in[i]    = 1;
 				tg_io_stamp[i] = tg_io_tbase;
 			}
-			else if (tg_endexact && tg_io_lastin[i] == seq - 1)
+			else if (tg_endexact && probe && !TG_IOEff(i, seq) &&
+			         tg_io_lastin[i] == seq - 1 && tg_ent[i].tg_endseq != seq - 1)
 			{
-				// Patch 1025: touched at the ack and gated off since (a Disable in that command):
-				// the server ends it on this command's edge, so the sweep must see it inside.
+				// Patch 1025: still inside, touched at the ack and gated off in it with no END
+				// there: the server's edge ends it on this command, so the sweep must see it in.
+				// lastin alone is not enough (earlier parts, previews and dropped replays write it).
 				tg_io_in[i]    = 1;
 				tg_io_stamp[i] = tg_io_tbase;
 			}
