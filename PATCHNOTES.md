@@ -21,6 +21,9 @@
 
 ## next
 
+### P987 Refuse download cache names that do not fit
+- Download cache names that are too long are now refused cleanly instead of being used by the package manager.
+
 ### P985 Keep retry in place if its saved point cannot be confirmed
 - Retry now checks its save point and movement copy before restarting. If either cannot be confirmed, it explains why and keeps the current run in place.
 
