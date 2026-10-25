@@ -21,6 +21,19 @@
 
 ## next
 
+### P1019 Calmer water from far away
+- Source water seen from a distance no longer breaks into speckle and thin horizontal lines; its ripple distortion stays the size it is up close, as in Momentum. hl2_waterrefractfalloff 0 restores the old look.
+
+### P1018 Faster water
+- Water in a map's distant 3D sky no longer renders its own reflection and refraction every frame; it uses the ones the main view already made, as in Source. On bhop_ceaseless this cut about a quarter of the frame time where that sky is in view.
+- Water reflections and refractions are rendered no larger than 1024 pixels a side, as in Source, which saves time at high render scales (r_watertargetsize).
+
+### P1017 Particles that circle
+- Map particles that circle around their emitter now do: bhop_ceaseless's butterflies, the tunnel spiral, the gate lights and the stars all turn as in Momentum.
+
+### P1016 Clearer ent_info
+- ent_info no longer calls map particle systems and colour correction "unimplemented": it says the client draws or applies them.
+
 ### P1015 No download errors when a map loads
 - Loading a Source map no longer tries to download the map itself from a garbled address ("play.proto.bar/play.proto.bar/...") and then report that the server refused it.
 

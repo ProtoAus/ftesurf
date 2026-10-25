@@ -10,24 +10,20 @@
   require a successful link, then separate desktop/file-picker acceptance. Do not
   turn real-header/helper compilation into a complete SDL platform pass.
 
-## bhop_ceaseless (P990, P1002, P1012-P1015): what is left
+## bhop_ceaseless (P990, P1002, P1012-P1019): what is left
 
-- pcf.py: Movement Rotate Particle Around Axis (spiral, butterfly orbit their axis; drawn straight),
-  Rotation Basic, Color Fade easing (drawn linear), a sphere's bias "in local system" (drawn in the
-  world frame), Rotation Random's randomly_flip_direction and the spin sign of a non-zero angle (not
-  checked against Source); info_particle_system Start/Stop (the map's particle toggle) not mirrored
-  on the client. ent_info calls info_particle_system an "unimplemented class" (no server spawn
-  function) although cl_emit.qc draws every baked one; a stub would make ent_census claim unbaked
-  maps are handled, so the wording is what should change.
-- Saves 25-27 (Lex: horizontal "moire" on the start-room water from far above): measured on the rig
-  at save 25 (1900 units over liquids/water_ocean_blue, $refractamount 1, $flow_bumpstrength 2):
-  the refraction offsets reach 16+ pixels of noise; samples landing on the walls and the platform
-  read as zero depth, so those pixels lose fog and reflection in thin horizontal runs (the depth
-  gradient runs up the screen at pitch 89). r_glsl_turbscale_refract 0 removes it (fine vertical
-  line energy 37.9 -> 8.5); 500 units up it is absent with the offset on. Not the depth decode,
-  ripple mesh, capture scale or r_waterviews (each toggled, no change). Source 2013's water_ps2x
-  uses the same screen-UV offset (refractamount x normal, no distance term), so the fix depends on
-  what Momentum (Strata's flow water) shows there: falsifier, a Momentum screenshot from save 25.
+- pcf.py: Rotation Basic, Color Fade easing (drawn linear), a sphere's bias "in local system" (drawn
+  in the world frame), Rotation Random's randomly_flip_direction and the spin sign of a non-zero
+  angle and of an orbit (P1017, from recollection of MatrixBuildRotationAboutAxis, not read);
+  info_particle_system Start/Stop (the map's particle toggle) not mirrored on the client.
+- Water colour (Lex is looking at it): at save 25 ours reads cyan (open water mean 6 125 231) where
+  Momentum's is deep blue (11 45 197), with the refraction offset off too, so it is the fog/tint
+  colour, not P1019's distortion. P1019's 512 falloff is fitted to that one Momentum shot.
+- Water cost (Lex asked 25 Oct; P1018 took the sky room and the target size): the main view's
+  reflection is the rest -- about 1.1-1.2 ms and ~265 draws on bhop_ceaseless's start room at
+  r_renderscale 2, CPU-bound; refraction 0.2-0.4 ms. Next: an hl2_water mode that builds refraction
+  from a copy of the main view (colour + depth, drawn after the opaque world) and reflects by a
+  screen-space march with the cubemap where it misses -- no extra scene renders.
 - Save 13: the start floor is Refract glass (plar/ceaseless/cyan glass, $refracttinttexture glass_b,
   mean 57 165 200) over the start pool, and the pool's cluster is in the start room's PVS, so the
   water below shows through as Source's refraction would draw it. Lex sees "the ramp texture below";
