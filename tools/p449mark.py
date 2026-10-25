@@ -184,7 +184,13 @@ def derive(path, breaks, bits=None, seed=None):
             stamped = False         # a contact mark sits on this very sample
             if not brk and pkind >= 0 and k != pkind:
                 stamped = True
-                if k in (GROUND, RAMP):
+                if k == RAMP and pkind == AIR and not stitch and prev is not None:
+                    # Patch 1001: a touchdown on a ramp from the air reads the sample
+                    # before it (the client's ln_pv); its time and ordinal stay this one's.
+                    pv = prev[2]
+                    rec(E_LAND, pkind * 4 + k, (t, n - 1, (pv[0] ** 2 + pv[1] ** 2) ** 0.5,
+                                                pv[0] ** 2 + pv[1] ** 2 + pv[2] ** 2, pv[2]))
+                elif k in (GROUND, RAMP):
                     rec(E_LAND, pkind * 4 + k)
                 elif pkind == RAMP:
                     if ride is not None:

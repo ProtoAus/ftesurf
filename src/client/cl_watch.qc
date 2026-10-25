@@ -6470,13 +6470,14 @@ float(string cmd) Watch_ConsoleCommand =
 		for (i = 0; i < ln_evn[sl]; i = i + 1)
 		{
 			ep = ln_ep[b + i];
-			// The edge's own clock goes LAST: older readers index the columns.
-			print(sprintf("lnm %g %g %g %.4f %s %.4f\n", i, ln_ek[b + i], ln_es[b + i],
+			// The edge's own clock goes LAST: older readers index the columns.  Patch
+			// 1001's energy height after it (a ramp touchdown's is the sample before's).
+			print(sprintf("lnm %g %g %g %.4f %s %.4f %.2f\n", i, ln_ek[b + i], ln_es[b + i],
 			              ln_et[b + i],
 			              sprintf("%g %.2f %.2f %.2f %.4f %.4f %.4f", ln_ei[b + i],
 			                      ep_x, ep_y, ep_z,
 			                      ln_evh[b + i], ln_e2[b + i], ln_ez[b + i]),
-			              ln_ec[b + i]));
+			              ln_ec[b + i], ln_eh[b + i]));
 			// Its numbers as the draw pass would write them (the last frame's
 			// switches): a camera shows a few marks, this is every one.
 			print(sprintf("lnml %g \"%s\"\n", i, Line_Label(sl, i)));

@@ -1706,16 +1706,17 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 	if (k != ln_pkind[s])
 	{
 		here = TRUE;
-		// Patch 1001 (Lex): a touchdown on a ramp keeps its mark where contact was seen
-		// and reads the sample before it -- the speed and energy before the clip.
-		if (k == SEG_RAMP)
+		// Patch 1001 (Lex): touching down on a ramp from the air keeps its mark where
+		// contact was seen and reads the sample before it -- the speed and energy before
+		// the clip.  Not across a stitch: the sample before is from before the load.
+		if (k == SEG_RAMP && ln_pkind[s] == SEG_AIR && !stitch)
 		{
 			ln_evpre = TRUE;
 			ln_evpre_z = ln_po[s] * '0 0 1';    // an array element is not swizzleable
 			Line_Ev(s, LN_E_LAND, ln_pkind[s] * 4 + k, t, o, ln_pv[s]);
 			ln_evpre = FALSE;                   // Line_EvAt can return before reading it
 		}
-		else if (k == SEG_NONE)
+		else if (k == SEG_NONE || k == SEG_RAMP)
 			Line_Ev(s, LN_E_LAND, ln_pkind[s] * 4 + k, t, o, v);
 		else if (ln_pkind[s] == SEG_RAMP)
 		{

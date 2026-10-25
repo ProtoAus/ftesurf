@@ -65,7 +65,9 @@ class Labels(unittest.TestCase):
         for m in re.finditer(r'lnm (\d+) ([^\r\n]+)', self.text):
             f = ['lnm', m[1], *m[2].split()]
             if len(f) >= 12:
-                marks.append(dict(kind=int(f[2]), t=float(f[4]), z=float(f[8]), speed=float(f[9]),
+                # Patch 1001: the energy's height is lnm's last column where printed.
+                marks.append(dict(kind=int(f[2]), t=float(f[4]),
+                                  z=float(f[13]) if len(f) > 13 else float(f[8]), speed=float(f[9]),
                                   v2=float(f[10]), vz=float(f[11])))
         self.assertGreater(len(marks), 8)
         zero = re.search(r'lnmz 0 ([\d.-]+) ([\d.-]+)', self.text)

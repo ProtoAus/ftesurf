@@ -64,7 +64,8 @@ def parse(path):
             # the mark table, dumped after the cuts: index by sample ordinal
             marks.append({"kind": int(float(f[2])), "t": float(f[4]),
                           "ord": int(float(f[5])),
-                          "z": float(f[8]), "spd": float(f[9]),
+                          # Patch 1001: the energy's height, lnm's last column where printed
+                          "z": float(f[13]) if len(f) > 13 else float(f[8]), "spd": float(f[9]),
                           "v2": float(f[10]), "vz": float(f[11])})
         if cur is None:
             continue
