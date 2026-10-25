@@ -187,6 +187,9 @@ float  *em_shape;               // EK_PSYS only, Patch 1012: 1 box (em_mins/em_s
 vector *em_sa;                  //   shell: distance min/max in _x/_y
 vector *em_sb;                  //   shell: the .pcf's distance_bias
 float  *em_srad;                //   shell: outward speed
+float  *em_stop;                // EK_PSYS only, Patch 1028: stopped (start_active 0, or the server's Stop)
+vector *em_psorg;               //   the system's entity origin, which the server's state names
+float  *em_psidx;               //   its .pcf system (ps_*), the parent's for a child; -1 = none
 float  em_n;
 
 void() Emit_Alloc =
@@ -214,6 +217,9 @@ void() Emit_Alloc =
 	em_sa    = memalloc(sizeof(vector) * EM_MAX);
 	em_sb    = memalloc(sizeof(vector) * EM_MAX);
 	em_srad  = memalloc(sizeof(float) * EM_MAX);
+	em_stop  = memalloc(sizeof(float) * EM_MAX);
+	em_psorg = memalloc(sizeof(vector) * EM_MAX);
+	em_psidx = memalloc(sizeof(float) * EM_MAX);
 };
 void() Emit_AllocLife;
 
@@ -2099,6 +2105,8 @@ float(vector bmin, vector bmax, vector vel, float jit, float rate, float burst,
 	em_drop[i]  = 0;
 	em_trail[i] = 0;
 	em_shape[i] = 0;
+	em_stop[i]  = 0;
+	em_psidx[i] = -1;
 
 	em_n = em_n + 1;
 	em_live[kind] = em_live[kind] + 1;
@@ -2749,6 +2757,28 @@ void() Emit_DropFires =
   form.  One strtolower per key is cheaper than forty comparisons and cannot be
   half-forgotten for one key the way a paired list can.
 */
+// Patch 1028: one system's Start/Stop from the server (SV_PsysSend, cl_body.qc), on every
+// emitter that system started.  Kept on the entity, so a walk after it arrives reapplies it.
+.string em_npeff;
+.float  em_npon;
+
+void(entity e) Emit_PsysNet =
+{
+	local float i, ps;
+
+	if (!em_mins)
+		return;
+	ps = Emit_PsysFind(e.em_npeff);
+	if (ps < 0)
+		return;
+	for (i = 0; i < em_n; i = i + 1)
+		if (em_psidx[i] == ps)
+		if (vlen(em_psorg[i] - e.origin) < 0.1)
+			em_stop[i] = !e.em_npon;
+	dprint(sprintf("emit: psys %s at %v %s by the server\n", e.em_npeff, e.origin,
+	               e.em_npon ? "started" : "stopped"));
+};
+
 void() Emit_LoadForMap =
 {
 	local string tok, key, cn, mdl, scol, mname;
@@ -2773,7 +2803,8 @@ void() Emit_LoadForMap =
 	local float  ssize, esize, jetlen, spread, initst;
 	local float  i, k, bucket, eff, kind, jit, burst;
 	local string effname;
-	local float  ps, j, pchild, opened, fcls, tj, ptype, ramt;
+	local float  ps, j, pchild, opened, fcls, tj, ptype, ramt, psfirst;
+	local entity net;
 
 	Emit_Alloc();
 	Emit_AllocLife();
@@ -2950,6 +2981,7 @@ void() Emit_LoadForMap =
 		smin = smax = lmin = lmax = fall = 0;
 		look = -1;
 		ps = -1;
+		psfirst = 0;
 		alpha = 255;
 		spawnflags = disabled = 0;
 		density = freq = current = 0;
@@ -3052,7 +3084,9 @@ void() Emit_LoadForMap =
 		*/
 		// A Frozen volume's motes are made when it is, whatever StartDisabled
 		// says (c_func_dust.cpp:167-173): one volume in the library.
+		// Patch 1028: a system that starts off is built stopped, for a Start to wake.
 		if (disabled)
+		if (kind != EK_PSYS)
 		if (!(frozen && kind == EK_DUST && dm_why == ""))
 		{
 			em_off[kind] = em_off[kind] + 1;
@@ -3459,6 +3493,7 @@ void() Emit_LoadForMap =
 				em_off[kind] = em_off[kind] + 1;
 				continue;
 			}
+			psfirst = em_n;
 			// BUILD 53: the box centre moves the origin (a rain sheet 1000
 			// above its entity on tensor2, a glow 456 below its on boreas),
 			// the entity's angles rotate the velocity -- see Emit_PsysVel --
@@ -3531,6 +3566,13 @@ void() Emit_LoadForMap =
 				Emit_TrailMark(j, rate, ps);
 			if (look >= 0)
 				em_life[j] = (lmin + lmax) * 0.5;
+			if (kind == EK_PSYS)
+				for (tj = psfirst; tj < em_n; tj = tj + 1)
+				{
+					em_psorg[tj] = org;
+					em_psidx[tj] = ps;
+					em_stop[tj] = disabled;
+				}
 			if (kind == EK_FIRE)
 			{
 				// 32 is No glow (fire.cpp:785).  This read 16, which is Don't
@@ -3576,6 +3618,8 @@ void() Emit_LoadForMap =
 		return;
 	}
 	vbsp_em_map = mname;
+	for (net = find(world, classname, "emit_psysnet"); net; net = find(net, classname, "emit_psysnet"))
+		Emit_PsysNet(net);
 
 	// The shared effect set.  The build 51b essay above says why it is exec'd
 	// from here and not from cfg/default.cfg.
@@ -3822,6 +3866,11 @@ void() Emit_Frame =
 	while (i < em_n)
 	{
 		em_want[i] = 0;
+		if (em_stop[i])
+		{
+			i = i + 1;
+			continue;
+		}
 
 		k = em_kind[i];
 		if      (k == EK_DUST || k == EK_CLOUD) d = wdust;

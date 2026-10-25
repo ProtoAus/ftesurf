@@ -327,6 +327,8 @@ void() CSQC_Ent_Remove =
 	}
 	if (self.pb_trigwire)
 		Trig_NetState(self.pb_trigmodel, 0, 0);
+	if (self.em_npeff)
+		strunzone(self.em_npeff);           // Patch 1028; the emitters go with the map
 	if (self.pb_head)
 		Body_Free(self);
 	remove(self);
@@ -663,6 +665,18 @@ void(float isnew) CSQC_Ent_Update =
 			self.pb_trigmodel = readshort();
 			self.pb_trigon = readbyte();
 			Trig_NetState(self.pb_trigmodel, 1, self.pb_trigon);
+		}
+		else if (f == ENTWIRE_PSYSSTATE)
+		{
+			self.classname = "emit_psysnet";
+			self.origin_x = readfloat();
+			self.origin_y = readfloat();
+			self.origin_z = readfloat();
+			if (self.em_npeff)
+				strunzone(self.em_npeff);
+			self.em_npeff = strzone(readstring());
+			self.em_npon = readbyte();
+			Emit_PsysNet(self);
 		}
 		else if (f == ENTWIRE_PORTALSTATE)
 		{

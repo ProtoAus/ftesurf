@@ -3813,6 +3813,58 @@ void(entity pl) SV_AmbientResend =
 float(entity t, string input, string param, entity act) SV_PortalInput;
 float(entity t, string in, string pm, entity act) SV_MapMsgInput;   // Patch 870
 
+/*
+  Patch 1028: info_particle_system answers Start and Stop (bhop_ceaseless's first button stops the
+  97 systems it names info_particle_system).  cl_emit.qc draws every system from the entity lump;
+  this edict holds one system's state and, from the first input that reaches it, sends it to every
+  client whatever its PVS (ENTWIRE_PSYSSTATE, matched there on origin and effect_name).
+*/
+.float  vbsp_psys_on;
+.string start_active;           // a string: absent is on, as cl_emit.qc's walk reads it
+.string effect_name;
+
+float(entity to, float changed) SV_PsysSend =
+{
+	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
+	WriteByte(MSG_ENTITY, ENTWIRE_PSYSSTATE);
+	WriteFloat(MSG_ENTITY, self.origin_x);
+	WriteFloat(MSG_ENTITY, self.origin_y);
+	WriteFloat(MSG_ENTITY, self.origin_z);
+	WriteString(MSG_ENTITY, self.effect_name);
+	WriteByte(MSG_ENTITY, self.vbsp_psys_on);
+	return TRUE;
+};
+
+void() info_particle_system =
+{
+	self.solid = SOLID_NOT;
+	self.vbsp_psys_on = (self.start_active == "" || stof(self.start_active) != 0);
+	setorigin(self, self.origin);
+};
+
+// Kill stops it and keeps the edict: removed, the client would fall back to the lump's state.
+// Stopped systems let their particles die out; DestroyImmediately cannot take them back here.
+float(entity t, string in) SV_PsysInput =
+{
+	local float on;
+
+	if (in == "start")
+		on = TRUE;
+	else if (in == "stop" || in == "stopplayendcap" || in == "destroyimmediately" || in == "kill")
+		on = FALSE;
+	else
+		return FALSE;
+	if (SV_DevOn())
+		dprint(sprintf("psys %s at %v: %s, %s\n", t.effect_name, t.origin, in, on ? "on" : "off"));
+	if (t.SendEntity && on == t.vbsp_psys_on)
+		return TRUE;
+	t.vbsp_psys_on = on;
+	t.SendEntity = SV_PsysSend;
+	t.pvsflags = PVSF_IGNOREPVS;
+	t.SendFlags = 1;
+	return TRUE;
+};
+
 void(entity t, entity o, entity act) SV_ApplyInput =
 {
 	local string in, pm;
@@ -3838,6 +3890,9 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		return;
 	if (SV_SpinInput(t, in, pm))
 		return;
+	if (t.classname == "info_particle_system")
+		if (SV_PsysInput(t, in))
+			return;
 
 	if (in == "addoutput")      { SV_IOAddOutput(t, pm);                return; }
 	if (in == "kill")           { remove(t);                            return; }

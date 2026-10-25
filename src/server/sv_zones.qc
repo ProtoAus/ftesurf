@@ -975,12 +975,9 @@ void() SV_EntInfo =
 		  and the server does not" is exactly what an unimplemented class looks
 		  like from here.
 		*/
-		// Patch 1016: three reasons, told apart. Two classes have no spawn function on purpose:
-		// cl_emit.qc draws the baked particle systems, the hl2 plugin reads color_correction.
-		if (cn == "info_particle_system")
-			sprint(self, PRINT_HIGH,
-			       sprintf("^5ent_info^7: '%s' is drawn by the client from its bake (data/mapparticles.txt, tools/pcf.py); the server keeps no entity\n", cn));
-		else if (cn == "color_correction")
+		// Patch 1016: three reasons, told apart. color_correction has no spawn function on
+		// purpose: the hl2 plugin reads it.
+		if (cn == "color_correction")
 			sprint(self, PRINT_HIGH,
 			       sprintf("^5ent_info^7: '%s' is applied by the hl2 plugin from the entity lump (r_colourcorrection); the server keeps no entity\n", cn));
 		else if (isfunction(cn))
@@ -1001,6 +998,10 @@ void() SV_EntInfo =
 	               best.targetname, best.target,
 	               best.touch ? "yes" : "no",
 	               best.think ? "yes" : "no", n));
+	if (best.classname == "info_particle_system")      // Patch 1028
+		sprint(self, PRINT_HIGH,
+		       sprintf("          drawn by the client from its bake (data/mapparticles.txt); Start/Stop: %s\n",
+		               best.vbsp_psys_on ? "on" : "stopped"));
 
 	/*
 	  And what it DOES.  The output chain was parsed at map load and is sitting
