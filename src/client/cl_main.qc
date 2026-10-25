@@ -390,6 +390,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	PTrail_RegisterCvars();
 	Players_RegisterCvars();
 	Friends_Register();
+	Timer_ResumeRegister();         // P1004: resume_why
 	PlayerLabels_Register();
 	Trn_RegisterCvars();            // Patch 462: the strafe trainer
 	HC_Register();                  // Patch 871: hud_fps
@@ -2227,6 +2228,7 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (MA_Command()) return TRUE;
 	if (VM_ConsoleCommand()) return TRUE;
 	if (WP_Command()) return TRUE;
+	if (Timer_ResumeCommand()) return TRUE;     // P1004
 	if (!strcmp(argv(0), "host_timescale"))
 	{
 		tsseat = getproperty(VF_ACTIVESEAT);

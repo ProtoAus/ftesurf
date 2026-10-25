@@ -3615,7 +3615,7 @@ float(entity e, float t, vector near, float usenear) SV_RewindSelectRead =
 	if (usenear)
 	if (!SV_SaveOriginSane(near)) return -2;
 	if (!(e.rw_n >= 0 && e.rw_n <= RW_CAP && e.rw_n == floor(e.rw_n))) return -2;
-	if (e.rw_n == 0) return -1;
+	if (e.rw_n == 0 && e.rw_sn == 0) return -1;     // P1006: a rebase can empty the dense rows alone
 	if (!(e.rw_head >= 0 && e.rw_head < RW_CAP && e.rw_head == floor(e.rw_head))) return -2;
 	if (!rw_slot[s]) return -1;
 	if (!(e.rw_sn >= 0 && e.rw_sn <= RW_SLOWCAP && e.rw_sn == floor(e.rw_sn))) return -2;

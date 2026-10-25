@@ -6,8 +6,11 @@ string ui_ms_dismissed;
 float ui_ms_answered, ui_ms_answerat, ui_ms_refused;
 float ui_ms_key1, ui_ms_key2;
 float ui_ms_hold, ui_ms_holdseq, ui_ms_holdseen, ui_ms_ignorecount;
+string ui_ms_why;               // P1004: the server's refusal (resume_why), until the next Yes
 float ui_gfx_open;              // cl_gfx.qc's (fteqcc merges a repeated global); its menu sits here too
 vector ui_ms_holdang;
+
+void() Timer_ResumeRegister = { registercommand("resume_why"); };
 
 string() Timer_ResumeKey =
 {
@@ -32,10 +35,10 @@ float() Timer_ResumeOffered =
 	k = Timer_ResumeKey();
 	if (Spec_Active() || rec_wt_on) return FALSE;
 	if (strcmp(substring(k, 0, 2), "O ")) return FALSE;
-	// Still offered after a Yes: the server refused (P1004: it says why in
-	// *resumewhy), so the offer comes back for another try instead of vanishing.
+	// Still offered after a Yes: the server refused, so the offer comes back for
+	// another try instead of vanishing.  P1004: a reason (resume_why) refuses at once.
 	if (ui_ms_answered)
-	if (getplayerkeyvalue(player_localnum, "*resumewhy") != "" || cltime - ui_ms_answerat > 2.5)
+	if (cltime - ui_ms_answerat > 2.5)
 	{
 		ui_ms_answered = FALSE;
 		ui_ms_refused = TRUE;
@@ -67,6 +70,8 @@ float(float typ, float scan) Timer_ResumeInputKey =
 	{
 		ui_ms_answered = TRUE;
 		ui_ms_answerat = cltime;
+		if (ui_ms_why != "") strunzone(ui_ms_why);
+		ui_ms_why = "";
 		localcmd("cmd ms_resume\n");
 	}
 	else
@@ -125,11 +130,25 @@ float() Timer_ResumeLockAngles =
 
 float() Timer_ResumeHolding = { return ui_ms_hold; };
 
+// The engine hands CSQC the absolute angle for both forms (cl_parse.c adds a delta first).
 void(vector newang, float isdelta) Timer_ResumeSetAngles =
 {
-	if (!ui_ms_hold) return;
-	if (isdelta) ui_ms_holdang = ui_ms_holdang + newang;
-	else ui_ms_holdang = newang;
+	if (ui_ms_hold) ui_ms_holdang = newang;
+};
+
+// P1004: `resume_why <reason>`, the server's private reason for refusing a Yes.
+float() Timer_ResumeCommand =
+{
+	if (argv(0) != "resume_why")
+		return FALSE;
+	if (ui_ms_why != "") strunzone(ui_ms_why);
+	ui_ms_why = (argv(1) != "") ? strzone(uri_unescape(argv(1))) : "";
+	if (ui_ms_why != "")
+	{
+		ui_ms_answered = FALSE;
+		ui_ms_refused = TRUE;
+	}
+	return TRUE;
 };
 
 float() Timer_ResumeInputFrame =
@@ -193,7 +212,7 @@ void(vector scr) Timer_DrawResumeOffer =
 		if (!Timer_ResumeOffered()) return;
 		why = "";
 		if (ui_ms_refused)
-			why = getplayerkeyvalue(player_localnum, "*resumewhy");
+			why = ui_ms_why;
 		tokenize(k);
 		ticks = stof(argv(1)); seg = stof(argv(2)); segs = stof(argv(3));
 		track = stof(argv(4)); sessions = stof(argv(6)) + 1;

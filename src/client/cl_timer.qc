@@ -593,11 +593,14 @@ string() Timer_StyleWord =
 // P1008: the armed state's word for the timer's sub-label (STAT_FS_ARMSTATE).
 string() Timer_ArmWord =
 {
-	local float a;
+	local float a, v;
 	a = getstatf(STAT_FS_ARMSTATE);
-	if (a == AS_HOPPED) return "^3not armed^7 - land below 290";
-	if (a == AS_NOCLIP) return "^3not armed^7 - noclip off, land below 290";
+	v = serverkeyfloat("run_rearmspeed");
+	if (v <= 0) v = 290;
+	if (a == AS_HOPPED) return sprintf("^3not armed^7 - stand below %g", v);
+	if (a == AS_NOCLIP) return sprintf("^3not armed^7 - noclip off, stand on the floor below %g", v);
 	if (a == AS_CHEATS) return "^3not armed^7 - cheats or timescale on";
+	if (a == AS_STUCK)  return "^3not armed^7 - !r to re-arm";
 	if (a == AS_ARMED)  return "^2armed^7";
 	return "ready";             // a server without the stat
 };

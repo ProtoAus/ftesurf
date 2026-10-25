@@ -547,7 +547,7 @@ class Friends(unittest.TestCase):
         self.assertEqual([r["room"] for r in rows], [[], [], []])
         start = rows[0]["rack"]
         r = self.post("/api/social/action", token=self.tokens[0], op="message", who="-", text="hi all; $x")
-        self.assertEqual(r.status_code, 200)
+        self.assertEqual((r.status_code, r.get_json()["note"]), (200, ""))
         self.assertEqual(self.action(2, "block", 0).status_code, 200)
         rows = self.room_poll(start)
         self.assertEqual(rows[0]["room"], [])                       # own line: echoed by the game

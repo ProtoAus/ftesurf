@@ -32,7 +32,8 @@
 .float  run_ms_pct;     // last published copy step (10%)
 .vector run_ms_org;     // parked here while R/C runs
 .float  run_ms_pendat;  // P1004: a Yes waiting on the account check (W key); 0 none
-.float  run_ms_whyset;  // *resumewhy carries a refusal
+.float  run_ms_pendsince;   // ...when that wait began, so it ends (MS_PENDMAX)
+#define MS_PENDMAX 30       // seconds a Yes waits on the account check before it is refused
 .float  rec_ms_src, rec_ms_dst, rec_ms_left, rec_ms_total, rec_ms_flagofs;
 .float  rec_ms_ver;              // actual copied header; v11 must not become v10
 entity  rec_ms_owner;   // one copy per lobby: the first fgets reads the whole file
@@ -373,19 +374,13 @@ void(entity e, string v) SV_MsKeySet =
 	forceinfokey(e, "*resume", v);
 	e.run_ms_keyed = (v != "");
 	e.run_ms_keyat = time + 3600;
-	if (e.run_ms_whyset)
-	if (substring(v, 0, 2) != "O ")
-	{
-		forceinfokey(e, "*resumewhy", "");
-		e.run_ms_whyset = FALSE;
-	}
 };
 
 // P1004: the refusal the offer card shows in its red row; chat gets the long form.
+// A private stuffcmd, not a userinfo key: an account reason is not the lobby's to read.
 void(entity e, string why) SV_MsWhy =
 {
-	forceinfokey(e, "*resumewhy", why);
-	e.run_ms_whyset = (why != "");
+	stuffcmd(e, sprintf("resume_why %s\n", uri_escape(why)));
 };
 
 /*
@@ -667,8 +662,10 @@ void(entity e) SV_MsCountdown =
 // or a lobby with no directory) lets a keyed slot go to anybody: "surfd has
 // not been heard yet this map" is "cannot tell", and a slot picked up then was
 // consumed and its posts refused (the last review).
-// P1004: 2 = cannot tell yet (the account check is out); nothing is said, the
-// caller waits.  1 = refused, and said.
+// P1004: 2 = cannot tell yet (the hello not yet issued, or its proof still in
+// flight -- Account_Busy, bounded by ACCT_RQLIFE); nothing is said, the caller
+// waits.  1 = refused, and said.
+float(entity e) Account_Busy;
 float(entity e) SV_MsForeign =
 {
 	if (ms_key == "")
@@ -680,7 +677,7 @@ float(entity e) SV_MsForeign =
 	if (!strcmp(ms_key, Account_ProvenKey(e)))
 		return FALSE;
 	if (Account_ProvenKey(e) == "")
-	if (!Account_UnprovenSettled(e))
+	if (!Account_UnprovenSettled(e) || Account_Busy(e))
 		return 2;
 	if (Account_ProvenKey(e) != "")
 	{
@@ -711,7 +708,6 @@ void(entity e) SV_MsAccept =
 		sprint(e, PRINT_CHAT, "^5resume:^7 no paused run on this map\n");
 		return;
 	}
-	SV_MsWhy(e, "");
 	if (e.run_pmhold)                   // Patch 382: the restore owns the movetype
 	{
 		sprint(e, PRINT_CHAT, "^5resume:^7 stop spectating first\n");
@@ -749,11 +745,22 @@ void(entity e) SV_MsAccept =
 	{
 		// P1004: the Yes stands until the check answers (SV_MsFrame), and the card
 		// says it is loading rather than sending the player to chat to retry.
+		if (!e.run_ms_pendsince)
+			e.run_ms_pendsince = time;
+		if (time - e.run_ms_pendsince > MS_PENDMAX)
+		{
+			e.run_ms_pendsince = 0;
+			sprint(e, PRINT_CHAT, "^5resume:^7 the leaderboard did not finish checking this game. "
+			       "Try again in a moment\n");
+			SV_MsWhy(e, "the leaderboard did not finish checking this game; try again");
+			return;
+		}
 		e.run_ms_pendat = time;
 		SV_MsKeySet(e, sprintf("W %d %d %d %d %d %d", ms_ticks, ms_seg, ms_segs,
 		                       ms_track, ms_leg, ms_sess));
 		return;
 	}
+	e.run_ms_pendsince = 0;
 	if (foreign)
 		return;
 	if (!SV_MsGapValid())
@@ -1241,7 +1248,8 @@ void(entity e) SV_MsFrame =
 	// P1004: a Yes held for the account check.  Settled is time-bounded
 	// (ACCT_SETTLE), so this always ends; the accept re-reads the slot.
 	if (e.run_ms_pendat)
-	if (Account_ProvenKey(e) != "" || Account_UnprovenSettled(e) || !e.run_ms_offer)
+	if (Account_ProvenKey(e) != "" || (Account_UnprovenSettled(e) && !Account_Busy(e))
+	    || !e.run_ms_offer || time - e.run_ms_pendsince > MS_PENDMAX)
 	{
 		e.run_ms_pendat = 0;
 		if (e.run_ms_offer)
@@ -1298,8 +1306,7 @@ void(entity e) SV_MsConnect =
 {
 	e.run_ms_want = TRUE;
 	e.run_ms_offer = FALSE;
-	e.run_ms_pendat = 0;
-	SV_MsWhy(e, "");
+	e.run_ms_pendat = e.run_ms_pendsince = 0;
 	e.run_ms_warned = FALSE;
 	e.run_ms_noteat = 0;
 	e.run_ms_kept = FALSE;

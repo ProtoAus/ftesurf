@@ -30,7 +30,7 @@
 #define RW_ASK      2           // seconds a clean run's second press has
 #define RW_LOST     5           // seconds a go may go unanswered before the mode gives up
 #define RW_KEPT     7900        // run ticks back the server keeps: RW_CAP x RW_EVERY, less a margin
-#define RW_SLOWKEPT 120000      // P1006: ...and to the second before that: + RW_SLOWCAP x RW_SLOWEVERY
+#define RW_SLOWKEPT 115000      // P1006: ...and to the second, RW_SLOWCAP x RW_SLOWEVERY (they overlap), less a margin
 #define RW_NAVN    16           // simultaneous physical strafe binds
 #define RW_KEYS   22           // six fixed keys plus RW_NAVN bind slots
 

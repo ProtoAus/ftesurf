@@ -8,7 +8,6 @@ float fr_activity_capable, fr_menu_at;
 vector fr_scroll;
 string fr_notice, fr_msgpick, fr_profpick, fr_snapshot_hash;
 float fr_joinuntil, fr_rowh, fr_wheel;
-float fr_priv, fr_mfr_ep, fr_mfr_askat, fr_mfr_since;   // P1009: a private game's list, from the menu
 // P788: the "added you" toast, once per account (fr_seen, data/friends_toasted.txt).
 string fr_seen, fr_tw, fr_tn;
 float fr_tend, fr_tsent, fr_tshown, fr_tlast;
@@ -262,78 +261,27 @@ float(float evtype, float scanx) Friends_Wheel =
 	return TRUE;
 };
 
-/*
-  P1009: a private game has no account relay, so the list is the menu's own
-  direct one (m_friends.qc MF_PublishGame), asked for every 10 s while drawn and
-  read into fr_buf in the relay's row shape.  Join hands over to the Play screen;
-  the menu has no add, remove or message for a game to borrow.
-*/
-void() Friends_TakeMenu =
-{
-	local float i, n, k, tmp;
-	local string row;
-
-	n = cvar("ui_mfr_count");
-	if (n < 0) return;
-	k = 0;
-	for (i = 0; i < min(n, FR_MAX); i = i + 1)
-	{
-		row = cvar_string(strcat("ui_mfr_", ftos(i)));
-		if (tokenize(row) < 7 || strlen(argv(0)) != FS_WHO_IDLEN) continue;
-		bufstr_set(fr_stage, k * FR_FIELDS, argv(0));
-		bufstr_set(fr_stage, k * FR_FIELDS + 1, argv(1));
-		bufstr_set(fr_stage, k * FR_FIELDS + 2, argv(2));
-		bufstr_set(fr_stage, k * FR_FIELDS + 3, uri_unescape(argv(3)));
-		bufstr_set(fr_stage, k * FR_FIELDS + 4, uri_unescape(argv(4)));
-		bufstr_set(fr_stage, k * FR_FIELDS + 5, uri_unescape(argv(5)));
-		bufstr_set(fr_stage, k * FR_FIELDS + 6, uri_unescape(argv(6)));
-		bufstr_set(fr_stage, k * FR_FIELDS + 7, (tokenize(row) >= 8 && stof(argv(7)) == 1) ? "1" : "0");
-		k = k + 1;
-	}
-	tmp = fr_buf; fr_buf = fr_stage; fr_stage = tmp;
-	fr_n = k;
-	fr_ready = TRUE;
-	fr_menu_at = cltime;
-};
-
 void(vector p, vector sz, float tsz, float hint) Friends_Draw =
 {
 	local float y, rowh, i, at, rel, online, menuonline, x, bw, w;
 	local vector lp;
 	local string who, nm, s;
 
-	fr_priv = FALSE;
 	if (getplayerkeyvalue(player_localnum, "*ahash") == "")
 	{
-		if (serverkey("board") != "local")
-		{
-			sui_text(p + [0, hint], [tsz, tsz], "Link Steam on an account-enabled lobby to use Friends",
-			         SUI_THEME_DIM, 1, 0);
-			return;
-		}
-		fr_priv = TRUE;
-		if (!fr_mfr_since) fr_mfr_since = cltime;
-		if (cltime >= fr_mfr_askat || cltime < fr_mfr_askat - 10)
-		{
-			localcmd("mfr_want\n");
-			fr_mfr_askat = cltime + 10;
-		}
-		if (cvar("ui_mfr_epoch") != fr_mfr_ep)
-		{
-			fr_mfr_ep = cvar("ui_mfr_epoch");
-			Friends_TakeMenu();
-		}
+		// A private game has no account service.  P1009: the menu lists them in a game
+		// now; a game cannot be handed the list, since a server could read it.
+		if (serverkey("board") == "local")
+			s = "Private game: press ESC, then Play -- your friends list loads there";
+		else
+			s = "Link Steam on an account-enabled lobby to use Friends";
+		sui_text(p + [0, hint], [tsz, tsz], s, SUI_THEME_DIM, 1, 0);
+		return;
 	}
-	if (fr_priv)
-		sui_text(p, [hint, hint], "Private game: your friends from the menu. Join opens Play; adding and messages need a linked lobby.",
-		         SUI_THEME_MUTED, 1, 0);
-	else
-		sui_text(p, [hint, hint], "Steam friends on every linked install. Messages appear privately in chat.", SUI_THEME_MUTED, 1, 0);
+	sui_text(p, [hint, hint], "Steam friends on every linked install. Messages appear privately in chat.", SUI_THEME_MUTED, 1, 0);
 	y = p_y + hint * 2;
 	s = fr_notice;
 	if (!fr_ready) s = "Loading friends...";
-	if (fr_priv && !fr_ready && cltime - fr_mfr_since > 12)
-		s = "Friends did not load -- open Play in the menu to see why";
 	if (s != "") sui_text([p_x, y], [hint, hint], Chat_Fit(s, sz_x, hint), SUI_THEME_ACCENT, 1, 0);
 	y = y + hint * 2;
 	if (fr_ready && !fr_n)
@@ -374,13 +322,6 @@ void(vector p, vector sz, float tsz, float hint) Friends_Draw =
 		sui_text([x, lp_y + tsz * 1.65], [hint, hint], Chat_Fit(s, w - tsz * 3, hint),
 		         (online || menuonline) ? SUI_THEME_GOOD : (rel == 2 ? SUI_THEME_DIM : SUI_THEME_MUTED), 1, 0);
 		y = lp_y + tsz * 2.45;
-		if (fr_priv)
-		{
-			if (rel == 3 && online)
-			if (Profile_Chip(strcat("fr_join", who), [x, y], [bw, hint * 1.9], "Join", hint, FALSE))
-				localcmd(sprintf("mfr_join %s\n", who));
-			continue;
-		}
 		if (rel == 3 && online)
 		{
 			if (Profile_Chip(strcat("fr_join", who), [x, y], [bw, hint * 1.9], "Join", hint, FALSE))

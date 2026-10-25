@@ -159,6 +159,8 @@ void(float t) Trail_Trim =
 	Line_Tick(tr_live, tr_tick);
 	tr_nsamp = 0;
 	tr_lastt = 0;
+	tr_stagefrom = 0;               // P1006: a rebuilt line is shown whole until its next stage
+	tr_contbrk = FALSE;
 	t = Trail_RawClock(t);
 	for (i = 0; i < n; i = i + 1)
 	{
@@ -245,6 +247,8 @@ float(float id, float ticks) Trail_Load =
 	Line_Tick(tr_live, tick);
 	tr_nsamp = 0;
 	tr_lastt = 0;
+	tr_stagefrom = 0;               // P1006
+	tr_contbrk = FALSE;
 	endt = timed ? ticks * tick : 99999999;
 	endt = Trail_RawClock(endt);
 	for (i = 0; i < LN_CAP * 4; i = i + 1)

@@ -27,8 +27,9 @@ void() MC_Open =
 	menu_screen = SCREEN_CHAT;
 };
 
-// P1010: in a game too.  Reading is a read anywhere; a send in a lobby goes
-// through the game's relay (MC_Send), since the engine signs none there.
+// P1010: in a game too.  Reading is a read anywhere; a send in a lobby is refused:
+// the engine signs none there, and handing the text to the connected server would
+// give it to whichever server that is (review: a server can fake the relay's cvar).
 float() MC_Active =
 {
 	return (menu_active && menu_screen == SCREEN_CHAT && clientstate() >= 1 && MF_Online());
@@ -116,16 +117,7 @@ void() MC_Send =
 	}
 	if (MC_Relayed())
 	{
-		if (cvar("ui_friends_count") < 0)
-		{
-			MC_Keep(mc_note, "Link Steam on this lobby to send from here, or send from the main menu.");
-			return;
-		}
-		localcmd(sprintf("cmd friend message %s %s\n", mc_peer, uri_escape(mc_draft)));
-		MC_Keep(mc_draft, "");
-		mc_cursor = 0;
-		MC_Keep(mc_note, "Sent through your lobby; it shows here with the next refresh.");
-		mc_next = time + 2;
+		MC_Keep(mc_note, "In a lobby, talk to everyone from the game's chat: the team-chat key, or TAB in a chat line.");
 		return;
 	}
 	MC_Keep(mc_sent, mc_draft);

@@ -809,6 +809,7 @@ void() PlayerPostThink =
 		if (self.rec_cp_q >= 1)         // Patch 375's save copy is not a record
 			SV_RecCopyStep(self, FS_RECCOPY_CHUNK);
 		SV_StageStat(self);
+		SV_ArmStateStat(self);      // P1008: NONE while held
 		SV_SaveLocSync(self);
 		SV_WarpOpPublish(self);         // Patch 753
 		Pose_Capture(self);             // Patch 383: the held flag and its keepalive

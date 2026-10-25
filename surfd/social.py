@@ -670,7 +670,7 @@ def register(app, d):
                     db.execute("DELETE FROM social_messages WHERE recipient=? AND id NOT IN"
                                " (SELECT id FROM social_messages WHERE recipient=? ORDER BY id DESC LIMIT 128)",
                                (CHAT_ROOM, CHAT_ROOM))
-                    return reply({"ok": 1, "note": "Sent to everyone"})
+                    return reply({"ok": 1, "note": ""})      # the line is its own receipt
                 other = resolve(db, request.form.get("who", ""), sid if op in ("remove", "unblock") else None)
                 if not other or other == sid:
                     return reply({"ok": 0, "error": "That Steam account is unavailable"}, 400)

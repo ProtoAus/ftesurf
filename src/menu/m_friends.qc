@@ -198,31 +198,9 @@ void() MF_Init =
 {
 	registercvar("ui_friends_count", "-1", 0);
 	registercvar("ui_friends_epoch", "0", 0);
-	registercvar("ui_mfr_count", "-1", 0);         // P1009: the direct list, for the game
-	registercvar("ui_mfr_epoch", "0", 0);
-	registercommand("mfr_want");
-	registercommand("mfr_join");
 	mf_count = mf_epoch = mf_mode = -1;
 	mf_rows = buf_create();
 	MF_LoadSaved();
-};
-
-/*
-  P1009: the direct list, published for the game's Friends tab in a private game
-  (cl_friends.qc), in the rows' own text -- the same that the game publishes the
-  other way (ui_friend_N).  Non-archived, no capability or address.
-*/
-#define MF_GAMEROWS 64
-void() MF_PublishGame =
-{
-	local float i;
-	for (i = 0; i < MF_GAMEROWS; i = i + 1)
-	{
-		registercvar(strcat("ui_mfr_", ftos(i)), "", 0);
-		cvar_set(strcat("ui_mfr_", ftos(i)), (i < mf_count) ? bufstr_get(mf_rows, i) : "");
-	}
-	cvar_set("ui_mfr_count", ftos(min(mf_count, MF_GAMEROWS)));
-	cvar_set("ui_mfr_epoch", ftos(cvar("ui_mfr_epoch") + 1));
 };
 
 /*
@@ -265,8 +243,6 @@ void(float stage, float n) MF_Swap =
 	mf_seen = time;
 	mf_seenmode = MF_Mode();
 	MF_Save();
-	if (MF_Direct())
-		MF_PublishGame();
 };
 
 // Connected: CSQC publishes a completed snapshot (~5 s); copy it so rows survive a disconnect.
@@ -443,36 +419,6 @@ void() MF_Open =
 	if (!MF_Direct())
 	if (cvar("ui_friends_activity") > 0 && cvar("ui_friends_activity") == cvar("ui_friends_epoch"))
 		localcmd("cmd friend refresh -\n");
-};
-
-/*
-  P1009: the game's private-game Friends tab asks for the list (it cannot sign,
-  and the menu draws nothing while closed) and hands Join to the Play screen.
-  Either may be typed by a server; the engine still signs no join outside a
-  private game, and the list is a read.
-*/
-void(string who) MF_Join;
-float(string c) MF_Command =
-{
-	local string who;
-	if (c == "mfr_want")
-	{
-		if (MF_Online() && MF_Direct() && checkbuiltin(friends_sign))
-		if (!mf_wire && !mf_req && time >= mf_next && !ui_join_busy())
-			MF_Ask("list", "-");
-		return TRUE;
-	}
-	if (c == "mfr_join")
-	{
-		who = argv(1);
-		if (!MF_WhoSafe(who) || !MF_Online()) return TRUE;
-		m_open();
-		menu_screen = SCREEN_CREATE;
-		cvar_set("ui_maps_friends", "1");
-		MF_Join(who);
-		return TRUE;
-	}
-	return FALSE;
 };
 
 void() MF_ResumeJoin =

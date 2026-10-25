@@ -190,8 +190,9 @@ float(float reqid, float code, string body) Social_Reply =
 		root = json_parse(body);
 		ok = json_get_float(json_find_object_child(root, "ok"));
 		note = json_get_string(json_find_object_child(root, ok ? "note" : "error"));
-		if (note == "") note = "Friends unavailable; try again";
-		stuffcmd(e, sprintf("friend_note %s\n", uri_escape(note)));
+		if (note == "" && !(ok && !code)) note = "Friends unavailable; try again";
+		if (note != "")                 // P1010: a room line's success is the line itself
+			stuffcmd(e, sprintf("friend_note %s\n", uri_escape(note)));
 		addr = json_get_string(json_find_object_child(root, "addr"));
 		if (!code && ok && addr != "")
 			stuffcmd(e, sprintf("friend_join %s\n", uri_escape(addr)));

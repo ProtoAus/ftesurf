@@ -141,6 +141,7 @@
 #define AS_HOPPED  2           // a hopped start: land, below run_rearmspeed, to re-arm
 #define AS_NOCLIP  3           // noclip/practice: noclip off, land below it, to re-arm
 #define AS_CHEATS  4           // sv_cheats or timescale: nothing in the box clears it
+#define AS_STUCK   5           // tainted, and standing will not clear it (a load, a freeze): !r
 #define STAT_FS_STYLE 183      // P1011: the style this run is surfing (RS_*); display only
 #define RS_NONE    0           // not enough fast air yet
 #define RS_FW      1           // forward (normal)

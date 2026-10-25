@@ -1764,6 +1764,10 @@ float() SV_RecEnabled =
   finish's argument.  A stage run's walk back re-arms only at a walk's or a jump's
   speed (SV_TimerBackInBox).  A START that is also the END is not finished by a
   teleport into it on a surf map: three tracks' fall-offs land in both (round 3).]
+  [P1008: six -- standing in the armed box (run_t_rearmspeed), which KEEPS the velocity:
+  this tick grounded, no hold, the visible speed with its carrier below the prestrafe
+  ceiling and nothing upward, as SV_TimerFinishForgive tests it.  A dirty attempt also
+  has to stand on the box's floor, so a noclipped ledge high in a tall start is not one.]
 
   AND ON A DEDICATED SERVER THE GESTURE IS UNFORGEABLE BY MAP DATA, which is the
   second half of why this shape works where the count did not.  SV_ZoneChatCommand is
@@ -12043,6 +12047,35 @@ void(entity e) SV_TimerFinishForgive =
 	e.run_t_hopsaid = 0;
 };
 
+/*
+  P1008: is this attempt standing in its box, as SV_TimerFinishForgive asks it --
+  this tick grounded, no hold, nothing upward, the visible horizontal speed WITH
+  its carrier below run_rearmspeed -- and, for a dirty attempt, on the box's floor
+  (feet within 2 u of zone_bottom), so a ledge reached by noclip high in a tall
+  start is not a place to come clean.
+*/
+float(entity e) SV_TimerRearmRest =
+{
+	local vector hv;
+
+	if (e.run_pmhold || e.rec_sl_hold || e.movetype != MOVETYPE_WALK)    // the replay pin is MOVETYPE_NONE
+		return FALSE;
+	if (SV_CheatLevel(e))
+		return FALSE;
+	if (!(e.flags & FL_ONGROUND))
+		return FALSE;
+	if (e.velocity_z > 0 || e.run_basevel_z > 0)
+		return FALSE;
+	hv = e.velocity + (1 + run_bv_tick * 0.5) * e.run_basevel;
+	hv_z = 0;
+	if (vlen(hv) >= run_t_rearmspeed)
+		return FALSE;
+	if (e.run_t_dirty)
+	if (e.run_t_armzone < 0 || fabs(e.origin_z + e.mins_z - zone_bottom[e.run_t_armzone]) > 2)
+		return FALSE;
+	return TRUE;
+};
+
 float(entity e) SV_TimerJumpWatch =
 {
 	local float ong, vz, jumped, dwell, want, settleok, launchz, bhopz;
@@ -12496,16 +12529,18 @@ float(entity e) SV_TimerJumpWatch =
 			}
 		// P1008: the noclip/practice taint through SV_TimerArm, still its one
 		// clear site, then the hop.  The carrier goes, as with every forgiveness.
+		// Inside !startok, which a load latches: under a save-lock hold the body is
+		// MOVETYPE_NONE yet reads grounded, and its release hands back the save's speed.
 		if (run_t_rearmspeed > 0 && e.run_t_state == TS_ARMED)
 		if (e.run_t_hopped || e.run_t_dirty)
-		if (e.movetype != MOVETYPE_NOCLIP && !SV_CheatLevel(e))
+		if (SV_TimerRearmRest(e))
 		if (e.run_t_groundsec > 0 && (SV_ClockSec(e) - e.run_t_groundsec) >= want)
-		if (vlen([e.velocity_x, e.velocity_y, 0]) < run_t_rearmspeed)
 		{
 			SV_ClearCarrier(e);
 			if (e.run_t_dirty)
 			{
 				SV_TimerArm(e, e.run_t_armzone);
+				e.run_t_boxrest = TRUE;     // what the dwell above found; SV_TimerArm cleared it
 				if (SV_DevOn())
 					dprint(sprintf("arm: %s re-armed clean at rest in the box\n", e.netname));
 				if (!e.run_t_hopped)
@@ -15976,16 +16011,19 @@ void(entity e) SV_TimerFrame =
 // Armed / not armed.  Display only: SV_TimerStart still decides.
 void(entity e) SV_ArmStateStat =
 {
-	if (e.run_t_state != TS_ARMED)
+	if (e.run_t_state != TS_ARMED || e.run_pmhold)
 		e.run_armstate = AS_NONE;
-	else if (SV_CheatLevel(e))
+	else if (SV_CheatsOn() || SV_TimeScaleTainted(e))
 		e.run_armstate = AS_CHEATS;
+	else if (!(e.run_t_dirty || e.run_t_cheat || e.run_t_hopped || e.run_t_freeze
+	           || e.movetype == MOVETYPE_NOCLIP))
+		e.run_armstate = AS_ARMED;
+	else if (e.run_t_startok || e.run_t_freeze || run_t_rearmspeed <= 0)
+		e.run_armstate = AS_STUCK;  // standing will not clear it (SV_TimerJumpWatch)
 	else if (e.run_t_dirty || e.run_t_cheat || e.movetype == MOVETYPE_NOCLIP)
 		e.run_armstate = AS_NOCLIP;
-	else if (e.run_t_hopped)
-		e.run_armstate = AS_HOPPED;
 	else
-		e.run_armstate = AS_ARMED;
+		e.run_armstate = AS_HOPPED;
 };
 
 void(entity e) SV_StageStat =
@@ -16320,6 +16358,7 @@ void() SV_TimerMapInit =
 	run_t_tpreset     = cvar("run_tpreset");
 	run_t_rearmhop    = cvar("run_rearmhop");
 	run_t_rearmspeed  = cvar("run_rearmspeed");
+	localcmd(sprintf("serverinfo run_rearmspeed %g\n", run_t_rearmspeed));   // P1008: the HUD's hint
 	run_t_stagefail   = cvar("run_stagefail");
 	run_t_stagearm    = cvar("run_stagearm");
 	run_t_stageclean  = cvar("run_stageclean");
