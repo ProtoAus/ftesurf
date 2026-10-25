@@ -535,6 +535,45 @@ class Friends(unittest.TestCase):
         mid = rows[1]["messages"][0]["id"]
         self.assertEqual(self.poll((1,), ack=mid)[0]["messages"], [])
 
+    # P1010: the main menu's room through a lobby's relay.
+    def room_poll(self, rack, indices=(0, 1, 2)):
+        roster = [dict(token=self.tokens[i], hash="", ack=0, rack=rack) for i in indices]
+        r = self.client.post("/api/social/poll", data=dict(key="testkey", node="p27510", roster=json.dumps(roster)))
+        self.assertEqual(r.status_code, 200)
+        return r.get_json()["players"]
+
+    def test_room_relay_cursor_own_lines_and_blocks(self):
+        rows = self.room_poll(-1)
+        self.assertEqual([r["room"] for r in rows], [[], [], []])
+        start = rows[0]["rack"]
+        r = self.post("/api/social/action", token=self.tokens[0], op="message", who="-", text="hi all; $x")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(self.action(2, "block", 0).status_code, 200)
+        rows = self.room_poll(start)
+        self.assertEqual(rows[0]["room"], [])                       # own line: echoed by the game
+        self.assertEqual([m["text"] for m in rows[1]["room"]], ["hi all; $x"])
+        self.assertEqual(rows[1]["room"][0]["who"], A.who_of(IDS[0]))
+        self.assertEqual(rows[2]["room"], [])                       # Third blocked Alice
+        self.assertEqual(self.room_poll(rows[1]["rack"])[1]["room"], [])
+        # A lobby that sends no cursor gets no room at all.
+        self.assertNotIn("room", self.poll()[1])
+
+    def test_room_post_controls(self):
+        for text in ("", "x" * 161, "x\nnewline", "* fake record"):
+            r = self.post("/api/social/action", token=self.tokens[0], op="message", who="-", text=text)
+            self.assertEqual(r.status_code, 400, text)
+        r = self.post("/api/social/action", token="0" * 64, op="message", who="-", text="hello")
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self.db.execute("SELECT count(*) FROM social_messages").fetchone()[0], 0)
+
+    def test_room_board_line_from_this_lobby_is_not_repeated(self):
+        start = self.room_poll(-1)[0]["rack"]
+        self.assertTrue(F.announce(self.db, IDS[0], "set a personal best on surf_x -- 1:00.000", self.now))
+        self.db.commit()
+        self.assertEqual(self.post("/api/social/action", token=self.tokens[0], op="message", who="-",
+                                   text="typed").status_code, 200)
+        self.assertEqual([m["text"] for m in self.room_poll(start)[1]["room"]], ["typed"])
+
     def test_message_friend_requirement_control_then_remove_purges(self):
         self.poll()
         self.assertEqual(self.action(0, "message", text="not friends").status_code, 403)

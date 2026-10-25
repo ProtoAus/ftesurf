@@ -433,6 +433,7 @@ void() Friends_Register =
 	registercommand("friend_row");
 	registercommand("friend_end");
 	registercommand("friend_pm");
+	registercommand("friend_room");
 	registercommand("friend_note");
 	registercommand("friend_join");
 	registercommand("friends_status");
@@ -534,6 +535,23 @@ float(string cmd) Friends_ConsoleCommand =
 			if (Friends_MarkSafe(argv(1))) chat_push_mark = argv(1);      // Patch 789
 			Chat_Push(s);
 			print(strcat(s, "\n")); // local only, never a server/public say
+		}
+		return TRUE;
+	}
+	// P1010: the main menu's public room, relayed by the lobby.  "* " is a board line.
+	if (c == "friend_room" && n >= 4)
+	{
+		nm = uri_unescape(argv(2));
+		s = uri_unescape(argv(3));
+		if (!Chat_Silenced(nm))
+		{
+			if (substring(s, 0, 2) == "* ")
+				s = strcat("^5[everyone]^2 board^7 ", nm, "^7 ", substring(s, 2, -1));
+			else
+				s = strcat("^5[everyone]^7 ", nm, "^7: ", s);
+			if (Friends_MarkSafe(argv(1))) chat_push_mark = argv(1);
+			Chat_Push(s);
+			print(strcat(s, "\n"));
 		}
 		return TRUE;
 	}

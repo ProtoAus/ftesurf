@@ -289,6 +289,30 @@ def announce(db, sid, body, now, always=False):
         return False
 
 
+def room_since(db, sid, rack, node, now):
+    """P1010: the public room's lines after `rack` for a player in lobby `node`, and the
+    new cursor (the lobby keeps it; nothing is stored).  -1 is a new connection: it
+    joins at the newest id, no backlog.  Own lines are echoed by the game, a board
+    line from someone in this lobby was already said there (Patch 371)."""
+    if rack < 0:
+        seq = db.execute("SELECT seq FROM sqlite_sequence WHERE name='social_messages'").fetchone()
+        return [], str(seq[0] if seq else 0)
+    room = []
+    for m in db.execute("SELECT m.id,m.sender,m.body,a.name FROM social_messages m JOIN accounts a"
+                        " ON a.steamid=m.sender WHERE m.recipient=? AND m.id>? AND a.banned_at=0"
+                        " ORDER BY m.id LIMIT 6", (CHAT_ROOM, rack)):
+        rack = m["id"]
+        if m["sender"] == sid or relation(db, sid, m["sender"]) in (4, 5):
+            continue
+        if m["body"].startswith(ANNOUNCE) and db.execute(
+                "SELECT 1 FROM social_sessions WHERE steamid=? AND node=? AND seen>?",
+                (m["sender"], node, now - PRESENCE_TTL)).fetchone():
+            continue
+        room.append(dict(id=str(m["id"]), who=accounts.who_of(m["sender"]),
+                         name=accounts.game_name(m["name"]), text=m["body"]))
+    return room, str(rack)
+
+
 def menu_message(db, sid, nonce, expires, target, text, now, lobby_ttl):
     """Called under BEGIN IMMEDIATE: consume and insert atomically across workers."""
     peer, _, body_sha = target.partition(":")
@@ -495,6 +519,15 @@ def register(app, d):
                 if type(ack) is not int or not 0 <= ack <= 2147483647:
                     raise ValueError()
                 r["ack"] = ack
+                if "rack" in r:             # P1010: the room cursor; a lobby without it gets no room
+                    rack = r["rack"]
+                    if isinstance(rack, str):
+                        if not re.fullmatch(r"-1|[0-9]{1,10}", rack):
+                            raise ValueError()
+                        rack = int(rack)
+                    if type(rack) is not int or not -1 <= rack <= 2147483647:
+                        raise ValueError()
+                    r["rack"] = rack
                 activity = r.get("activity", "")
                 if not isinstance(activity, str):
                     raise ValueError()
@@ -551,6 +584,8 @@ def register(app, d):
                             messages.append(dict(id=str(m["id"]), who=accounts.who_of(m["sender"]),
                                                  name=accounts.game_name(sender["name"]), text=m["body"]))
                     row = dict(token=r["token"], hash=revision, messages=messages)
+                    if "rack" in r:
+                        row["room"], row["rack"] = room_since(db, sid, r["rack"], node, now)
                     if r.get("hash", "") != revision:
                         row["friends"] = friends
                     out.append(row)
@@ -614,6 +649,28 @@ def register(app, d):
                 sid = s["steamid"]
                 if not d.rate_ok(sid, now, 20, "social-action"):
                     return reply({"ok": 0, "error": "Slow down; try again shortly"}, 429)
+                if op == "message" and request.form.get("who", "") == "-":
+                    # P1010: a line to the main menu's public room from a lobby's chat.
+                    text = request.form.get("text", "").strip()
+                    if not text or len(text) > 160 or len(text.encode("utf-8")) > 320 or any(
+                            ord(c) < 32 or ord(c) == 127 for c in text):
+                        return reply({"ok": 0, "error": "Use 1-160 characters on one line"}, 400)
+                    if text.startswith(ANNOUNCE):
+                        return reply({"ok": 0, "error": "Lines starting with '* ' are the board's"}, 400)
+                    if not d.rate_ok(sid, now, 12, "social-room"):
+                        return reply({"ok": 0, "error": "Slow down; try again shortly"}, 429)
+                    db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
+                    if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= 2048:
+                        return reply({"ok": 0, "error": "Chat is busy"}, 429)
+                    serial = db.execute("SELECT seq FROM sqlite_sequence WHERE name='social_messages'").fetchone()
+                    if serial and serial[0] >= 2147483647:
+                        return reply({"ok": 0, "error": "Chat is busy"}, 429)
+                    db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                               (sid, CHAT_ROOM, text, now))
+                    db.execute("DELETE FROM social_messages WHERE recipient=? AND id NOT IN"
+                               " (SELECT id FROM social_messages WHERE recipient=? ORDER BY id DESC LIMIT 128)",
+                               (CHAT_ROOM, CHAT_ROOM))
+                    return reply({"ok": 1, "note": "Sent to everyone"})
                 other = resolve(db, request.form.get("who", ""), sid if op in ("remove", "unblock") else None)
                 if not other or other == sid:
                     return reply({"ok": 0, "error": "That Steam account is unavailable"}, 400)

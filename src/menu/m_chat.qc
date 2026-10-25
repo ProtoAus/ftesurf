@@ -27,10 +27,14 @@ void() MC_Open =
 	menu_screen = SCREEN_CHAT;
 };
 
+// P1010: in a game too.  Reading is a read anywhere; a send in a lobby goes
+// through the game's relay (MC_Send), since the engine signs none there.
 float() MC_Active =
 {
-	return (menu_active && menu_screen == SCREEN_CHAT && clientstate() == 1 && MF_Online());
+	return (menu_active && menu_screen == SCREEN_CHAT && clientstate() >= 1 && MF_Online());
 };
+
+float() MC_Relayed = { return (clientstate() == 2 && serverkey("board") != "local"); };
 
 string(string text) MC_Plain = { return strreplace("^", "^^", text); };
 
@@ -108,6 +112,20 @@ void() MC_Send =
 	if (strlen(mc_draft) > 320)
 	{
 		MC_Keep(mc_note, "Use 1-160 characters on one line.");
+		return;
+	}
+	if (MC_Relayed())
+	{
+		if (cvar("ui_friends_count") < 0)
+		{
+			MC_Keep(mc_note, "Link Steam on this lobby to send from here, or send from the main menu.");
+			return;
+		}
+		localcmd(sprintf("cmd friend message %s %s\n", mc_peer, uri_escape(mc_draft)));
+		MC_Keep(mc_draft, "");
+		mc_cursor = 0;
+		MC_Keep(mc_note, "Sent through your lobby; it shows here with the next refresh.");
+		mc_next = time + 2;
 		return;
 	}
 	MC_Keep(mc_sent, mc_draft);
@@ -302,10 +320,9 @@ void(vector screensize) MC_Draw =
 		menu_screen = SCREEN_MAIN;
 		sui_text_unfocus();
 	}
-	if (!MF_Online() || clientstate() != 1)
+	if (!MF_Online())
 	{
 		text = "Accept online terms to use chat.";
-		if (clientstate() != 1) text = "This chat is for the main menu. In a game, use TAB > Players for private messages.";
 		ui_para('16 76 0', size_x - 32, SZ_LABEL, 20, text, COL_DIM, TRUE);
 		sui_pop_frame();
 		return;

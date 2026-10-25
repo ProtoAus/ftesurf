@@ -132,6 +132,8 @@ void(string cmd, string text) Chat_RunSafe;
 float(string text) WarpOp_Chat;  // cl_warpop.qc, Patch 753
 string chat_buf;
 string chat_private, chat_private_name;
+// P1010: the room goes through the lobby's relay, so it needs a linked lobby.
+float() Chat_RoomOK = { return getplayerkeyvalue(player_localnum, "*ahash") != ""; };
 void() Chat_PrivateClear =
 {
 	if (chat_private != "") strunzone(chat_private);
@@ -1972,7 +1974,13 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 		// they are bound to -- `bind enter messagemode` made its ENTER a draft.
 		if (Rewind_Owns(scanx))
 			return FALSE;
+		// P1010: team chat has no team here; its key talks to everyone (the main menu room).
 		Chat_Open("");
+		if (b == "messagemode2" && Chat_RoomOK())
+		{
+			chat_private = strzone("-");
+			chat_private_name = strzone("everyone");
+		}
 		return TRUE;
 	}
 
@@ -2014,14 +2022,32 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 	{
 		if (strtrim(chat_buf) != "")
 		{
-			if (chat_private == "")       // a private line never comes back to go public
+			if (chat_private == "" || chat_private == "-")       // a private line never comes back to go public
 				Chat_SentAdd(chat_buf);
-			if (chat_private != "")
+			if (chat_private == "-")
+			{
+				// P1010: the relay echoes nobody's own line back, so it is shown here.
+				localcmd(sprintf("cmd friend message - %s\n", uri_escape(chat_buf)));
+				Chat_Push(strcat("^5[everyone]^7 ", getplayerkeyvalue(player_localnum, "name"), "^7: ", chat_buf));
+			}
+			else if (chat_private != "")
 				localcmd(sprintf("cmd friend message %s %s\n", chat_private, uri_escape(chat_buf)));
 			else if (!WarpOp_Chat(chat_buf))
 				Chat_RunSafe("cmd say", chat_buf);
 		}
 		Chat_Close();
+		return TRUE;
+	}
+	// P1010: TAB swaps this lobby's chat and everyone's (the main menu room).
+	if (scanx == K_TAB)
+	{
+		if (chat_private == "-")
+			Chat_PrivateClear();
+		else if (chat_private == "" && Chat_RoomOK())
+		{
+			chat_private = strzone("-");
+			chat_private_name = strzone("everyone");
+		}
 		return TRUE;
 	}
 	if (scanx == K_ESCAPE)

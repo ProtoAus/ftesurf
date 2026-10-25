@@ -2,6 +2,7 @@
    Full-node presence snapshot every five seconds; reliable private stuffcmds.
    Compile before sv_account: it calls Set/Clear only after a proven reply. */
 .string social_token, social_hash, social_ack, social_retire;
+.string social_rack;            // P1010: the main menu room's cursor, kept here; "-1" joins now
 .float social_here, social_req, social_reqtime, social_last;
 .float social_buf, social_buffered, social_sendrow, social_sendtime;
 .float social_refresh, social_retry, social_delay;
@@ -19,6 +20,8 @@ void(entity e) Social_Clear =
 	if (e.social_token != "") strunzone(e.social_token);
 	if (e.social_hash != "") strunzone(e.social_hash);
 	if (e.social_ack != "") strunzone(e.social_ack);
+	if (e.social_rack != "") strunzone(e.social_rack);
+	e.social_rack = "";
 	if (e.social_retire != "") strunzone(e.social_retire);
 	e.social_retire = "";
 	e.social_refresh = FALSE;
@@ -39,6 +42,7 @@ void(entity e, string token, string who) Social_Set =
 	Social_Clear(e);
 	if (!SV_RecIsHex(token, 64) || !SV_RecIsHex(who, FS_WHO_IDLEN)) return;
 	e.social_token = strzone(token);
+	e.social_rack = strzone("-1");
 	e.social_here = TRUE;
 	forceinfokey(e, "*ahash", who);
 	stuffcmd(e, "friend_clear\n");
@@ -87,12 +91,12 @@ string(entity e) Social_Activity =
 	return sprintf("Stage %g", bound(1, e.run_t_seg + 1, 999));
 };
 
-string(string token, string hash, string ack, string activity) Social_RosterRow =
+string(string token, string hash, string ack, string activity, string rack) Social_RosterRow =
 {
 	// uri_escape has an 8192-byte output limit. Encode each bounded row,
 	// never the complete 64-player snapshot (which exceeds that limit).
-	return uri_escape(sprintf("{\"token\":\"%s\",\"hash\":\"%s\",\"ack\":%s,\"activity\":\"%s\"}",
-	                         token, hash, ack != "" ? ack : "0", activity));
+	return uri_escape(sprintf("{\"token\":\"%s\",\"hash\":\"%s\",\"ack\":%s,\"activity\":\"%s\",\"rack\":%s}",
+	                         token, hash, ack != "" ? ack : "0", activity, rack != "" ? rack : "-1"));
 };
 
 void() Social_Frame =
@@ -113,7 +117,7 @@ void() Social_Frame =
 	{
 		if (n < 64)
 		{
-			r = Social_RosterRow(e.social_token, e.social_hash, e.social_ack, Social_Activity(e));
+			r = Social_RosterRow(e.social_token, e.social_hash, e.social_ack, Social_Activity(e), e.social_rack);
 			roster = strcat(roster, n ? "%2C" : "", r);
 			n = n + 1;
 		}
@@ -153,7 +157,9 @@ void(entity e, string op, string who, string text) Social_Action =
 		social_next = 0;
 		return;
 	}
-	if (!SV_RecIsHex(who, FS_WHO_IDLEN) && !SV_RecIsHex(who, 12)) return;
+	// P1010: "-" is the main menu's public room, for a message only.
+	if (!SV_RecIsHex(who, FS_WHO_IDLEN) && !SV_RecIsHex(who, 12))
+	if (op != "message" || who != "-") return;
 	if (op != "add" && op != "accept" && op != "remove" && op != "message" && op != "join"
 	    && op != "block" && op != "unblock") return;
 	if (strlen(text) > 960) return; // percent-encoded UTF8, still bounded upstream
@@ -262,6 +268,22 @@ float(float reqid, float code, string body) Social_Reply =
 			         uri_escape(json_get_string(json_find_object_child(m, "text")))));
 			if (e.social_ack != "") strunzone(e.social_ack);
 			e.social_ack = strzone(note);
+		}
+		// P1010: the room's new lines, percent encoded like a PM's; the cursor moves on.
+		messages = json_find_object_child(row, "room");
+		for (j = 0; j < min(6, json_get_length(messages)); j = j + 1)
+		{
+			m = json_get_child_at_index(messages, j);
+			stuffcmd(e, sprintf("friend_room %s %s %s\n",
+			         json_get_string(json_find_object_child(m, "who")),
+			         uri_escape(json_get_string(json_find_object_child(m, "name"))),
+			         uri_escape(json_get_string(json_find_object_child(m, "text")))));
+		}
+		note = json_get_string(json_find_object_child(row, "rack"));
+		if (note != "" && strlen(note) <= 11)
+		{
+			if (e.social_rack != "") strunzone(e.social_rack);
+			e.social_rack = strzone(note);
 		}
 	}
 	json_free(root);
