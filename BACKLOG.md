@@ -22,6 +22,10 @@
   the name first. Library: surf_metalpipes' b1_pt2_tele alone (a name filter, UNKNOWN, so server-only).
   Falsifier: a lump census (first entity per targetname, lump order) finding a shadowed
   team/class/velocity filter.
+  Latent the other way: filter_activator_team/class, filter_velocity and filter_momentum_progress
+  are re-created by SV_LateSpawnAll after every map entity, so a same-named non-filter LATER in the
+  lump shadows them here and not in Source (surf_rands' unreferenced ctfilter has the shape; no
+  referenced name in the 1,925-map census). A fix needs each late filter's lump index.
 - surf_boreas' installed bake predates pcf.py's materials/ prefix: tendies_endparticle04's
   effects/tesla_glow (no .vmt anywhere) draws FTE's built-in ball. Re-bake, then re-check the
   "saturated dome" item, which blames linear-light adding.
