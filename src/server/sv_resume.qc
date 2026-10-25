@@ -31,6 +31,8 @@
 .float  run_ms_norec;   // the run continues unrecorded
 .float  run_ms_pct;     // last published copy step (10%)
 .vector run_ms_org;     // parked here while R/C runs
+.float  run_ms_pendat;  // P1004: a Yes waiting on the account check (W key); 0 none
+.float  run_ms_whyset;  // *resumewhy carries a refusal
 .float  rec_ms_src, rec_ms_dst, rec_ms_left, rec_ms_total, rec_ms_flagofs;
 .float  rec_ms_ver;              // actual copied header; v11 must not become v10
 entity  rec_ms_owner;   // one copy per lobby: the first fgets reads the whole file
@@ -362,6 +364,7 @@ void(entity e, string leaf) SV_MsWipe =
     O <ticks> <seg> <segs> <track> <leg> <sessions>   on offer
     R <pct>                                           restoring the recording
     C <secs>                                          counting down
+    W <ticks> <seg> <segs> <track> <leg> <sessions>   P1004: a Yes waits on the account check
     A <sessions> <omitted> [<seg> <ticks>]...         resumed: the splits back
 ===========================================================================
 */
@@ -370,6 +373,19 @@ void(entity e, string v) SV_MsKeySet =
 	forceinfokey(e, "*resume", v);
 	e.run_ms_keyed = (v != "");
 	e.run_ms_keyat = time + 3600;
+	if (e.run_ms_whyset)
+	if (substring(v, 0, 2) != "O ")
+	{
+		forceinfokey(e, "*resumewhy", "");
+		e.run_ms_whyset = FALSE;
+	}
+};
+
+// P1004: the refusal the offer card shows in its red row; chat gets the long form.
+void(entity e, string why) SV_MsWhy =
+{
+	forceinfokey(e, "*resumewhy", why);
+	e.run_ms_whyset = (why != "");
 };
 
 /*
@@ -425,6 +441,7 @@ void(entity e) SV_MsRefuseClass =
 {
 	sprint(e, PRINT_CHAT, "^5resume:^7 only clean whole-main runs can resume automatically; "
 	       "this slot is unchanged -- say ^5!discard^7 to drop it\n");
+	SV_MsWhy(e, "only clean full runs resume; !discard drops it");
 };
 
 float(entity e) SV_MsEligible =
@@ -561,7 +578,7 @@ void(entity e) SV_MsCheck =
 	if (!SV_MsReadMeta(SV_MsPath(e, "ms.txt")))
 		return;
 	// Keep legacy ineligible slots, including stale ones, reachable by !discard,
-	// but publish no offer: accept would refuse it, so 1 and F2 did nothing.
+	// but publish no offer: accept would refuse it, so 1 did nothing.
 	if (!SV_MsSlotCleanMain(SV_MsPath(e, "state.txt")))
 	{
 		e.run_ms_offer = TRUE;
@@ -581,7 +598,7 @@ void(entity e) SV_MsCheck =
 	SV_MsKeySet(e, sprintf("O %d %d %d %d %d %d", ms_ticks, ms_seg, ms_segs,
 	                       ms_track, ms_leg, ms_sess));
 	sprint(e, PRINT_CHAT, sprintf("^5resume:^7 your run here is paused at %s -- say "
-	       "^5!resume^7 (or F2) to continue it, ^5!discard^7 to drop it\n",
+	       "^5!resume^7 to continue it, ^5!discard^7 to drop it\n",
 	       SV_TimerString(ms_ticks)));
 };
 
@@ -650,6 +667,8 @@ void(entity e) SV_MsCountdown =
 // or a lobby with no directory) lets a keyed slot go to anybody: "surfd has
 // not been heard yet this map" is "cannot tell", and a slot picked up then was
 // consumed and its posts refused (the last review).
+// P1004: 2 = cannot tell yet (the account check is out); nothing is said, the
+// caller waits.  1 = refused, and said.
 float(entity e) SV_MsForeign =
 {
 	if (ms_key == "")
@@ -660,32 +679,43 @@ float(entity e) SV_MsForeign =
 		return FALSE;
 	if (!strcmp(ms_key, Account_ProvenKey(e)))
 		return FALSE;
+	if (Account_ProvenKey(e) == "")
+	if (!Account_UnprovenSettled(e))
+		return 2;
 	if (Account_ProvenKey(e) != "")
+	{
 		sprint(e, PRINT_CHAT, "^5resume:^7 that run was paused by a game with another key. "
 		       "It stays where it is\n");
-	else if (!Account_UnprovenSettled(e))
-		sprint(e, PRINT_CHAT, "^5resume:^7 the leaderboard is still checking this game. "
-		       "Try again in a moment\n");
+		SV_MsWhy(e, "paused by a game with another key");
+	}
 	else
+	{
 		sprint(e, PRINT_CHAT, sprintf("^5resume:^7 %s. The paused run stays where it is\n",
 		                              Account_UnprovenWhy(e)));
+		SV_MsWhy(e, Account_UnprovenWhy(e));
+	}
 	return TRUE;
 };
 
 void(entity e) SV_MsAccept =
 {
 	local string claim;
+	local float foreign;
 
 	if (e.run_ms_phase)
+		return;
+	if (e.run_ms_pendat)                // already waiting on the account check
 		return;
 	if (!e.run_ms_offer)
 	{
 		sprint(e, PRINT_CHAT, "^5resume:^7 no paused run on this map\n");
 		return;
 	}
+	SV_MsWhy(e, "");
 	if (e.run_pmhold)                   // Patch 382: the restore owns the movetype
 	{
 		sprint(e, PRINT_CHAT, "^5resume:^7 stop spectating first\n");
+		SV_MsWhy(e, "stop spectating first");
 		return;
 	}
 	// Patch 478: a retry's restart skips SV_MsAbort (SV_MsShutdown), so a claim
@@ -694,6 +724,7 @@ void(entity e) SV_MsAccept =
 	if (rec_retry_sent)
 	{
 		sprint(e, PRINT_CHAT, "^5resume:^7 the map is restarting for a retry\n");
+		SV_MsWhy(e, "the map is restarting for a retry");
 		return;
 	}
 	SV_MsAdopt(e);
@@ -713,11 +744,22 @@ void(entity e) SV_MsAccept =
 	// Patch 629: a paused run is offered on the guid, which is not a secret.
 	// While the board is by account, one parked under a key is picked up only
 	// by a connection that has proved that key; the slot stays as it is.
-	if (SV_MsForeign(e))
+	foreign = SV_MsForeign(e);
+	if (foreign == 2)
+	{
+		// P1004: the Yes stands until the check answers (SV_MsFrame), and the card
+		// says it is loading rather than sending the player to chat to retry.
+		e.run_ms_pendat = time;
+		SV_MsKeySet(e, sprintf("W %d %d %d %d %d %d", ms_ticks, ms_seg, ms_segs,
+		                       ms_track, ms_leg, ms_sess));
+		return;
+	}
+	if (foreign)
 		return;
 	if (!SV_MsGapValid())
 	{
 		sprint(e, PRINT_CHAT, "^3resume:^7 invalid or out-of-range parked clock; the slot stays where it is\n");
+		SV_MsWhy(e, "its paused clock is out of range");
 		return;
 	}
 	// The claim.  POSIX rename is atomic, so a second lobby's fails here.
@@ -1196,6 +1238,21 @@ void(entity e) SV_MsFrame =
 		return;
 	}
 
+	// P1004: a Yes held for the account check.  Settled is time-bounded
+	// (ACCT_SETTLE), so this always ends; the accept re-reads the slot.
+	if (e.run_ms_pendat)
+	if (Account_ProvenKey(e) != "" || Account_UnprovenSettled(e) || !e.run_ms_offer)
+	{
+		e.run_ms_pendat = 0;
+		if (e.run_ms_offer)
+		{
+			if (SV_MsReadMeta(SV_MsPath(e, "ms.txt")))
+				SV_MsKeySet(e, sprintf("O %d %d %d %d %d %d", ms_ticks, ms_seg, ms_segs,
+				                       ms_track, ms_leg, ms_sess));
+			SV_MsAccept(e);
+		}
+	}
+
 	// Said late: a print at the spawn arrives before CSQC can draw chat.
 	if (e.run_ms_noteat && time >= e.run_ms_noteat)
 	{
@@ -1241,6 +1298,8 @@ void(entity e) SV_MsConnect =
 {
 	e.run_ms_want = TRUE;
 	e.run_ms_offer = FALSE;
+	e.run_ms_pendat = 0;
+	SV_MsWhy(e, "");
 	e.run_ms_warned = FALSE;
 	e.run_ms_noteat = 0;
 	e.run_ms_kept = FALSE;
@@ -1281,6 +1340,8 @@ void() SV_MsShutdown =
 
 void(entity e) SV_MsDiscardCmd =
 {
+	local float foreign;
+
 	if (e.run_ms_phase)
 		return;
 	if (!e.run_ms_offer)
@@ -1289,8 +1350,13 @@ void(entity e) SV_MsDiscardCmd =
 		return;
 	}
 	// Patch 629: nor dropped by a game that could not pick it up.
+	foreign = 0;
 	if (SV_MsReadMeta(SV_MsPath(e, "ms.txt")))
-	if (SV_MsForeign(e))
+		foreign = SV_MsForeign(e);
+	if (foreign == 2)
+		sprint(e, PRINT_CHAT, "^5resume:^7 the leaderboard is still checking this game. "
+		       "Try again in a moment\n");
+	if (foreign)
 		return;
 	SV_MsDiscardOffer(e, "you dropped it");
 };

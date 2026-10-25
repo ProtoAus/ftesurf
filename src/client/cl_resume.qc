@@ -4,7 +4,7 @@ string ui_ms_key;
 float ui_ms_keyat;
 string ui_ms_dismissed;
 float ui_ms_answered, ui_ms_answerat, ui_ms_refused;
-float ui_ms_key1, ui_ms_key2, ui_ms_keyf2;
+float ui_ms_key1, ui_ms_key2;
 float ui_ms_hold, ui_ms_holdseq, ui_ms_holdseen, ui_ms_ignorecount;
 float ui_gfx_open;              // cl_gfx.qc's (fteqcc merges a repeated global); its menu sits here too
 vector ui_ms_holdang;
@@ -32,9 +32,10 @@ float() Timer_ResumeOffered =
 	k = Timer_ResumeKey();
 	if (Spec_Active() || rec_wt_on) return FALSE;
 	if (strcmp(substring(k, 0, 2), "O ")) return FALSE;
-	// Still offered 2.5 s after a Yes: the server refused (the reason is in
-	// chat), so the offer comes back for another try instead of vanishing.
-	if (ui_ms_answered && cltime - ui_ms_answerat > 2.5)
+	// Still offered after a Yes: the server refused (P1004: it says why in
+	// *resumewhy), so the offer comes back for another try instead of vanishing.
+	if (ui_ms_answered)
+	if (getplayerkeyvalue(player_localnum, "*resumewhy") != "" || cltime - ui_ms_answerat > 2.5)
 	{
 		ui_ms_answered = FALSE;
 		ui_ms_refused = TRUE;
@@ -52,19 +53,16 @@ float(float typ, float scan) Timer_ResumeInputKey =
 	{
 		if (scan == 49 && ui_ms_key1) { ui_ms_key1 = FALSE; return TRUE; }
 		if (scan == 50 && ui_ms_key2) { ui_ms_key2 = FALSE; return TRUE; }
-		if (scan == K_F2 && ui_ms_keyf2) { ui_ms_keyf2 = FALSE; return TRUE; }
 		return FALSE;
 	}
 	if (typ != IE_KEYDOWN) return FALSE;
 	if (scan == 49 && ui_ms_key1) return TRUE;
 	if (scan == 50 && ui_ms_key2) return TRUE;
-	if (scan == K_F2 && ui_ms_keyf2) return TRUE;
 	if (!Timer_ResumeOffered()) return FALSE;
-	if (scan != 49 && scan != 50 && scan != K_F2) return FALSE;
-	yes = (scan == 49 || scan == K_F2);
+	if (scan != 49 && scan != 50) return FALSE;
+	yes = (scan == 49);
 	if (scan == 49) ui_ms_key1 = TRUE;
 	if (scan == 50) ui_ms_key2 = TRUE;
-	if (scan == K_F2) ui_ms_keyf2 = TRUE;
 	if (yes)
 	{
 		ui_ms_answered = TRUE;
@@ -79,14 +77,18 @@ float(float typ, float scan) Timer_ResumeInputKey =
 	return TRUE;
 };
 
-void() Timer_ResumeBlur = { ui_ms_key1 = ui_ms_key2 = ui_ms_keyf2 = FALSE; };
+void() Timer_ResumeBlur = { ui_ms_key1 = ui_ms_key2 = FALSE; };
 
 // VF_ANGLES alone accumulates a hidden mouse turn and snaps at GO. As with the
 // save lock, restore VF_CL_VIEWANGLES at render rate AND outgoing input rate.
 // A resume event owns the newly restored angle even if the old C key lingers.
+// P1004: held through R as well as C; the mouse itself is swallowed while it
+// holds (CL_InputChain, as the save lock's BUILD 13b), and a server angle that
+// lands after the latch becomes the latch (Timer_ResumeSetAngles).
 float() Timer_ResumeLockAngles =
 {
 	local float seq, op, counting;
+	local string pre;
 	seq = getstatf(STAT_FS_SLSEQ);
 	if (!ui_ms_holdseen)
 	{
@@ -99,7 +101,8 @@ float() Timer_ResumeLockAngles =
 		op = FS_SlopOp(getstatf(STAT_FS_SLOP));
 		if (op == SLOP_RESUME) ui_ms_ignorecount = TRUE;
 	}
-	counting = !strcmp(substring(Timer_ResumeKey(), 0, 2), "C ");
+	pre = substring(Timer_ResumeKey(), 0, 2);
+	counting = (!strcmp(pre, "C ") || !strcmp(pre, "R "));
 	if (!counting)
 	{
 		ui_ms_hold = FALSE;
@@ -120,6 +123,15 @@ float() Timer_ResumeLockAngles =
 	return TRUE;
 };
 
+float() Timer_ResumeHolding = { return ui_ms_hold; };
+
+void(vector newang, float isdelta) Timer_ResumeSetAngles =
+{
+	if (!ui_ms_hold) return;
+	if (isdelta) ui_ms_holdang = ui_ms_holdang + newang;
+	else ui_ms_holdang = newang;
+};
+
 float() Timer_ResumeInputFrame =
 {
 	if (!Timer_ResumeLockAngles()) return FALSE;
@@ -129,12 +141,42 @@ float() Timer_ResumeInputFrame =
 	return TRUE;                // leave msec alone so server count-in advances
 };
 
+// P1004: word-wraps the refusal into the card, drawing when `draw`; the line count.
+float(string s, vector at, float maxw, float lsz, float lh, float draw) Timer_ResumeWrap =
+{
+	local float cnt, st, sp, best;
+
+	cnt = 0;
+	st = 0;
+	while (st < strlen(s) && cnt < 6)
+	{
+		best = strlen(s);
+		if (stringwidth(substring(s, st, best - st), TRUE, [lsz, lsz]) > maxw)
+		{
+			best = -1;
+			for (sp = strstrofs(s, " ", st); sp >= 0; sp = strstrofs(s, " ", sp + 1))
+			{
+				if (stringwidth(substring(s, st, sp - st), TRUE, [lsz, lsz]) > maxw)
+					break;
+				best = sp;
+			}
+			if (best < 0)               // one word wider than the card: its own line
+				best = (sp >= 0) ? sp : strlen(s);
+		}
+		if (draw)
+			HUD_Text(at + [0, cnt * lh, 0], substring(s, st, best - st), lsz, SUI_THEME_BAD, 1);
+		cnt = cnt + 1;
+		st = best + 1;
+	}
+	return cnt;
+};
+
 // The left-hand digit-menu card (SaveLoc_Draw's pieces), beside the save menu
 // when that is open.
 void(vector scr) Timer_DrawResumeOffer =
 {
-	local string k, what, a, s, offermap;
-	local float n, ticks, seg, segs, sessions, track, left;
+	local string k, what, a, s, offermap, why;
+	local float n, ticks, seg, segs, sessions, track, left, wait, wl;
 	local float sc, lsz, w, h, hh, y, total, mw;
 	local vector p;
 
@@ -143,9 +185,15 @@ void(vector scr) Timer_DrawResumeOffer =
 	if (k == "") return;
 	n = tokenize(k);
 	what = argv(0);
-	if (!strcmp(what, "O") && n >= 7)
+	wait = (!strcmp(what, "W") && n >= 7);
+	if ((!strcmp(what, "O") && n >= 7) || wait)
 	{
+		if (Spec_Active()) return;
+		if (!wait)
 		if (!Timer_ResumeOffered()) return;
+		why = "";
+		if (ui_ms_refused)
+			why = getplayerkeyvalue(player_localnum, "*resumewhy");
 		tokenize(k);
 		ticks = stof(argv(1)); seg = stof(argv(2)); segs = stof(argv(3));
 		track = stof(argv(4)); sessions = stof(argv(6)) + 1;
@@ -156,8 +204,13 @@ void(vector scr) Timer_DrawResumeOffer =
 		h   = 14 * sc;
 		hh  = 15 * sc;
 		w   = 120 * sc;
-		total = 3 * sc + hh + 6 * h + 3 * sc;
-		if (ui_ms_refused) total = total + h;
+		// P1004: the refusal in words, wrapped to the card; no reason = an old server.
+		if (why == "") why = "not resumed";
+		wl = 0;
+		if (ui_ms_refused && !wait)
+			wl = Timer_ResumeWrap(why, '0 0 0', w - 12 * sc, lsz, h - 3 * sc, FALSE);
+		if (wait) total = 3 * sc + hh + 5 * h + 3 * sc;
+		else total = 3 * sc + hh + 5 * h + 3 * sc + wl * (h - 3 * sc);
 
 		p = [scr_x * cvar("hud_saveloc_x"), scr_y * cvar("hud_saveloc_y"), 0];
 		if (rec_sl_open || ui_gfx_open) p_x = p_x + 102 * sc;
@@ -188,17 +241,25 @@ void(vector scr) Timer_DrawResumeOffer =
 		HUD_TextR([p_x + w - 6 * sc, y + (h - sc - lsz) * 0.5], sprintf("session %g", sessions),
 		          lsz, SUI_THEME_DIM, 1);
 		y = y + h;
-		if (ui_ms_refused)
+		if (wait)
 		{
-			_sui_round_draw([p_x + 2 * sc, y, 0], [w - 4 * sc, h - sc, 0], 2.5 * sc, SUI_THEME_BAD_BG, 1);
-			HUD_Text([p_x + 6 * sc, y + (h - sc - lsz) * 0.5], "not resumed - see chat", lsz,
-			         SUI_THEME_BAD, 1);
-			y = y + h;
+			s = substring("...", 0, 1 + floor(cltime * 3) % 3);
+			HUD_Text([p_x + 6 * sc, y + (h - sc - lsz) * 0.5], strcat("loading the resume", s), lsz,
+			         SUI_THEME_ACCENT, 1);
+			Font_Reset();
+			return;
+		}
+		if (wl)
+		{
+			_sui_round_draw([p_x + 2 * sc, y, 0], [w - 4 * sc, wl * (h - 3 * sc) + 2 * sc, 0], 2.5 * sc,
+			                SUI_THEME_BAD_BG, 1);
+			y = y + 1.5 * sc;
+			Timer_ResumeWrap(why, [p_x + 6 * sc, y + (h - 3 * sc - lsz) * 0.5, 0], w - 12 * sc, lsz,
+			                 h - 3 * sc, TRUE);
+			y = y + wl * (h - 3 * sc) + 0.5 * sc;
 		}
 		KeyMenu_Row([p_x, y], w, h, "1", "Resume", KM_HOT, lsz, sc);       y = y + h;
 		KeyMenu_Row([p_x, y], w, h, "2", "Not now", KM_NORMAL, lsz, sc);   y = y + h;
-		HUD_Text([p_x + 6 * sc, y + (h - sc - lsz) * 0.5], "F2 or !resume also work", lsz,
-		         SUI_THEME_MUTED, 1);
 		Font_Reset();
 		return;
 	}
@@ -208,7 +269,7 @@ void(vector scr) Timer_DrawResumeOffer =
 	else if (!strcmp(what, "C") && n >= 2)
 	{
 		left = ceil(stof(argv(1)) - (cltime - ui_ms_keyat));
-		a = sprintf("RESUMING IN %g  -  VIEW LOCKED", max(1, left));
+		a = sprintf("RESUMING IN %g", max(1, left));
 	}
 	if (a == "") return;
 	Font_Set(ui_font_ui);

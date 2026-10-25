@@ -926,6 +926,7 @@ void() CSQC_Shutdown = { TimeScale_PredictRelease(); TimeScale_ThreadRelease(); 
 */
 float(vector newang, float isdelta) CSQC_Parse_SetAngles =
 {
+	Timer_ResumeSetAngles(newang, isdelta);     // P1004: the restore's angle is the lock's
 	return Ghost_SetAngles(newang, isdelta);
 };
 
@@ -1426,7 +1427,6 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Share_Key(scanx))           // Patch 777: F3/F4 answer an offer while watching
 			return TRUE;
 		if (evtype == IE_KEYDOWN)
-		if (!Timer_ResumeOffered())     // that F2 comes first, as below
 		if (Friends_ToastKey(scanx))    // Patch 788: and F2 adds back
 			return TRUE;
 		if (rec_sl_open || (rec_sl_holding && rec_sl_holdkey && scanx == rec_sl_holdkey))
@@ -1472,10 +1472,6 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		// plus ESC to dismiss it.  Offered before the two menus below because it
 		// answers only F1 and ESC (Patch 904), and only while a card is actually up.
 		if (Results_PassiveKey(scanx))
-			return TRUE;
-		// P920: preserve the existing F2 shortcut before the friends toast.
-		if (scanx == K_F2)
-		if (Timer_ResumeInputKey(evtype, scanx))
 			return TRUE;
 		if (Friends_ToastKey(scanx))    // P788: F2 adds back, only while the toast is up
 			return TRUE;
@@ -1555,7 +1551,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	  configuration would be worse than a redundant write in all of them.
 	*/
 	if (evtype == IE_MOUSEDELTA || evtype == IE_MOUSEABS)
-		return rec_sl_holding && rec_sl_holdang_ok;
+		return (rec_sl_holding && rec_sl_holdang_ok) || Timer_ResumeHolding();   // P1004: the resume's too
 
 	return FALSE;
 };

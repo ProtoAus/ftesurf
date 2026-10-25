@@ -150,10 +150,10 @@ void() Friends_ToastClear =
 	fr_tw = fr_tn = "";
 };
 
-// Not over the board, the profile card or a resume offer (that F2 is theirs).
+// Not over the board or the profile card.
 float() Friends_ToastCovered =
 {
-	return (rec_sb_open || fr_tsheld || (UI_CursorHeld() & UIC_AVATAR) || Timer_ResumeOffered());
+	return (rec_sb_open || fr_tsheld || (UI_CursorHeld() & UIC_AVATAR));
 };
 
 float(float scanx) Friends_ToastKey =
