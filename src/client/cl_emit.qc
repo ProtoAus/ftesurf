@@ -1967,9 +1967,6 @@ void() Emit_RegisterCvars =
 	// children, so flip this once cfg/test/psboreas.cfg arms C/D have shown
 	// them.  Read once per map load in Emit_LoadForMap; not archived.
 	registercvar("vbsp_emit_psys_children", "0", 0);
-	// Patch 1012: an info_particle_system outside the eye's PVS does not emit -- Source only
-	// transmits the entity inside it. 0 emits by distance alone, as before.
-	registercvar("vbsp_emit_pvs", "1", CVAR_ARCHIVE);
 	// Patch 791: render_rope ribbons (Emit_RopeFrame), whatever the line above says.
 	registercvar("vbsp_emit_ropes", "1", 0);
 
@@ -3628,44 +3625,24 @@ vector() Emit_RandDir =
 };
 
 // Patch 1012: a uniform direction scaled by a .pcf's distance_bias -- 0 on an axis flattens the
-// shell into a ring (bhop_ceaseless's spiral is 1 1 0).
+// shell into a ring (bhop_ceaseless's spiral is 1 1 0); a negative component is pcf.py's mark for
+// distance_bias_absolute_value, that axis' positive half only (purpleboostcirclelong's half ring).
 vector(vector b) Emit_ShellDir =
 {
 	local vector d;
 	local float k;
-	for (k = 0; k < 8; k = k + 1)
+	for (k = 0; k < 16; k = k + 1)
 	{
 		d = Emit_RandDir();
 		if (vlen(d) > 1 || vlen(d) < 0.05)
 			continue;
-		d_x = d_x * b_x;
-		d_y = d_y * b_y;
-		d_z = d_z * b_z;
+		d_x = (b_x < 0) ? fabs(d_x) * -b_x : d_x * b_x;
+		d_y = (b_y < 0) ? fabs(d_y) * -b_y : d_y * b_y;
+		d_z = (b_z < 0) ? fabs(d_z) * -b_z : d_z * b_z;
 		if (vlen(d) > 0.001)
 			return normalize(d);
 	}
-	return '1 0 0';
-};
-
-// Patch 1012: one probe entity, re-placed over each emitter's cull sphere for checkpvs.
-entity em_probe;
-float  em_pvsok, em_pvsasked;   // checkextension("FTE_QC_CHECKPVS"), asked once (an initialised global is a constant)
-float(float i, vector eye) Emit_InPVS =
-{
-	local vector r;
-	if (!em_pvsasked)
-	{
-		em_pvsasked = TRUE;
-		em_pvsok = checkextension("FTE_QC_CHECKPVS");
-	}
-	if (!em_pvsok)
-		return TRUE;
-	if (!em_probe)
-		em_probe = spawn();
-	r = '1 1 1' * max(em_rad[i], 1);
-	setorigin(em_probe, em_mid[i]);
-	setsize(em_probe, -r, r);
-	return checkpvs(eye, em_probe);
+	return normalize([fabs(b_x), fabs(b_y), fabs(b_z)] + '0 0 0.001');
 };
 
 vector(float i) Emit_PointIn =
@@ -3699,7 +3676,7 @@ vector(float i) Emit_PointIn =
 */
 void() Emit_Frame =
 {
-	local float i, n, ft, thr, budget, dscale, d, lights, lit, k, mdem, under, pvscull;
+	local float i, n, ft, thr, budget, dscale, d, lights, lit, k, mdem, under;
 	local float wdust, wember, wbubble, wfire, wspark, wsmoke, wstack, wpsys, wunder;
 	local vector eye, v, o, sa;
 
@@ -3818,7 +3795,6 @@ void() Emit_Frame =
 	eye = getproperty(VF_ORIGIN);
 	Emit_PrecipFrame(eye, ft);
 	dscale = cvar("vbsp_emit_dist");
-	pvscull = cvar("vbsp_emit_pvs");
 	budget = cvar("vbsp_emit_budget");
 	lights = cvar("vbsp_emit_lights");
 
@@ -3884,11 +3860,6 @@ void() Emit_Frame =
 				i = i + 1;
 				continue;
 			}
-		}
-		if (k == EK_PSYS && pvscull && !Emit_InPVS(i, eye))
-		{
-			i = i + 1;
-			continue;
 		}
 		em_want[i] = em_rate[i];
 		// A sheet fire reaches as far as Source's and thins on the way, so the

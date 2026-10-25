@@ -495,7 +495,7 @@ def translate(d, e, unknown, mapname, content=None):
             t1 = cf.get("fade_end_time")
             t1 = 1.0 if t1 is None else float(t1)
             mean0 = [rgb[i] + (rgbrand[i] * 0.5 if rgbrand else 0.0) for i in range(3)]
-            span = max(t1 - t0, 0.01) * die_hi
+            span = max(t1, 0.01) * die_hi   # a later start is drawn from birth: spread over 0..t1, not t0..t1
             delta = [(tgt[i] - mean0[i]) / span for i in range(3)]
             if any(abs(v) * span >= 1.0 for v in delta):
                 rgbdelta = (delta, max(t1, 0.01) * die_hi)
@@ -685,6 +685,12 @@ def translate(d, e, unknown, mapname, content=None):
         shape = [1, box[0], box[1], box[2], 0.0, 0.0, 0.0, 0.0]
     elif ball and box[0] > 0.5:
         bias = [float(x) for x in (ps.get("distance_bias") or [1.0, 1.0, 1.0])]
+        # distance_bias_absolute_value keeps an axis' positive half (purpleboostcirclelong's half
+        # ring): written as a negative bias, cl_emit.qc Emit_ShellDir's mark.
+        absv = ps.get("distance_bias_absolute_value") or [0.0, 0.0, 0.0]
+        bias = [-abs(b) if float(a) else b for b, a in zip(bias, absv)]
+        if ps.get("bias in local system"):
+            unknown["(sphere bias in the local frame: drawn in the world frame)"] += 1
         shape = [2, float(ps.get("distance_min", 0.0) or 0.0), box[0], 0.0, bias[0], bias[1], bias[2], radial]
 
     # ---- horizontal acceleration becomes an initial velocity, because FTE's
@@ -853,6 +859,20 @@ def translate(d, e, unknown, mapname, content=None):
     if rgbdelta:
         L.append("\trgbdelta %.4g %.4g %.4g" % tuple(rgbdelta[0]))
         L.append("\trgbdeltatime %.4g" % rgbdelta[1])
+    # Patch 1012: FTE starts a particle at a random angle unless told (p_script.c, rotationstartmin
+    # -pi); Source at 0, or rotation_initial + Rotation Random's offset_min..offset_max (0..360).
+    # bhop_ceaseless's redbooster drops have no Rotation Random and fell at random angles.
+    rr = find(d, e, "initializers", "Rotation Random")
+    if rr:
+        r0 = float(rr.get("rotation_initial", 0.0) or 0.0)
+        rmax = rr.get("rotation_offset_max")
+        L.append("\trotationstart %.4g %.4g" % (r0 + float(rr.get("rotation_offset_min", 0.0) or 0.0),
+                                                r0 + (360.0 if rmax is None else float(rmax))))
+    else:
+        L.append("\trotationstart 0")
+    spin = find(d, e, "operators", "Rotation Spin Roll")
+    if spin and abs(float(spin.get("spin_rate_degrees", 0.0) or 0.0)) > 0.01:
+        L.append("\trotationspeed %.4g" % float(spin.get("spin_rate_degrees")))
     L.append("\talpha %.3g" % alpha)
     if alpharand > 0.005:
         L.append("\talpharand %.3g" % alpharand)
@@ -1025,8 +1045,8 @@ HEADER = """\
 // connected kills every effect without reloading.
 //
 // `veladd 1` everywhere: the vector cl_emit.qc passes as `dir` is the velocity
-// in units/sec.  The spawn BOX is baked here as `spawnorg`; the RATE and the
-// base velocity are in data/mapparticles.txt because they are QC's to pass.
+// in units/sec.  The RATE, the base velocity and (Patch 1012) the spawn volume
+// are in data/mapparticles.txt because they are QC's to pass.
 """
 
 
@@ -1085,7 +1105,8 @@ def main():
 
     # psys <map> <name> <rate> <lx> <ly> <lz> <maxp> <die> <maxdist>
     #      <ox> <oy> <oz> <wx> <wy> <wz> <jit> <parent|->
-    # Eighteen columns.  The first ten are what build 52 read; the local
+    #      <shape> <a0> <a1> <a2> <b0> <b1> <b2> <radial>
+    # Twenty-six columns (Patch 1012's shape: see translate).  The first ten are what build 52 read; the local
     # velocity is rotated by the entity's angles in QC, the centre offset is
     # added to the origin, the world velocity is added unrotated, jit is the
     # isotropic random_speed plus the random-force walk handed to em_jit, and a

@@ -466,10 +466,19 @@ class ColourFadeTests(unittest.TestCase):
         # mean start (100, 50, 25) is the target: nothing changes, so no rgbdelta line
         self.assertFalse([l for l in lines if l.startswith('rgbdelta')], lines)
 
-    def test_a_later_start_is_reported(self):
+    def test_start_angle_is_sources_not_ftes_random(self):
+        # bhop_ceaseless redbooster2: no Rotation Random, so upright; FTE's default start is random
+        lines, _ = self.lines(self.system({'color_fade': (8, [255, 255, 255, 255])}))
+        self.assertIn('rotationstart 0', lines)
+        rot = {'functionName': (5, 'Rotation Random'), 'rotation_offset_min': (3, 10.0), 'rotation_offset_max': (3, 40.0)}
+        lines, _ = self.lines(self.system({'color_fade': (8, [255, 255, 255, 255])}, [rot]))
+        self.assertIn('rotationstart 10 40', lines)
+
+    def test_a_later_start_starts_at_birth_and_ends_on_target(self):
+        # drawn from birth, so spread over 0..fade_end_time: 255 over 3 s, not over the last 1.5
         lines, unknown = self.lines(self.system({'color_fade': (8, [0, 0, 0, 255]), 'fade_start_time': (3, 0.5)}))
         self.assertIn('rgbdeltatime 3', lines)
-        self.assertIn('rgbdelta -170 -170 -170', lines)
+        self.assertIn('rgbdelta -85 -85 -85', lines)
         self.assertTrue([k for k in unknown if 'starts at birth' in k], unknown)
 
 
@@ -517,6 +526,30 @@ class ShapeTests(unittest.TestCase):
         rt, lines = self.index(self.system({'emission_rate': (3, 50.0)}, sph))
         self.assertEqual(rt['shape'], [2, 350.0, 375.0, 0.0, 1.0, 1.0, 0.0, 20.0])
         self.assertFalse([l for l in lines if l.startswith('spawnvel')], lines)
+
+    def test_an_absolute_bias_keeps_one_half(self):
+        # bhop_ceaseless purpleboostcirclelong: bias 0 1 0 with distance_bias_absolute_value 0 1 0
+        sph = {'functionName': (5, 'Position Within Sphere Random'), 'distance_max': (3, 100.0),
+               'distance_bias': (10, [0.0, 1.0, 0.0]), 'distance_bias_absolute_value': (10, [0.0, 1.0, 0.0])}
+        rt, _ = self.index(self.system({'emission_rate': (3, 50.0)}, sph))
+        self.assertEqual(rt['shape'][4:7], [0.0, -1.0, 0.0])
+
+    def test_index_line_carries_the_shape_columns(self):
+        box = {'functionName': (5, 'Position Within Box Random'),
+               'min': (10, [-10.0, -20.0, 0.0]), 'max': (10, [10.0, 20.0, 0.0])}
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / 'm.pcf'
+            src.write_bytes(self.system({'emission_rate': (3, 5.0)}, box))
+            game = Path(tmp) / 'game'
+            (game / 'data').mkdir(parents=True)
+            (game / 'particles').mkdir()
+            subprocess.run([sys.executable, '-B', str(Path(__file__).with_name('pcf.py')), '--pcf', str(src),
+                            '--map', 'm', '--gamedir', str(game)], check=True, capture_output=True)
+            rows = [l.split() for l in (game / 'data' / 'mapparticles.txt').read_text().splitlines()
+                    if l.startswith('psys ')]
+        self.assertEqual(len(rows[0]), 26)
+        # cl_emit.qc reads argv 18-25: shape, half extents, bias, radial
+        self.assertEqual(rows[0][18:22], ['1', '10', '20', '0'])
 
 
 class SheetTests(unittest.TestCase):
