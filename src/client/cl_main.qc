@@ -1468,9 +1468,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 			return TRUE;
 		Keys_Edge(scanx, TRUE);
 
-		// Build 48: the two gestures that ASK the passive card for the cursor,
-		// plus ESC to dismiss it.  Offered before the two menus below because it
-		// answers only F1 and ESC (Patch 904), and only while a card is actually up.
+		// ESC dismisses the passive card (P1005: F1 no longer takes its cursor),
+		// only while a card is actually up.
 		if (Results_PassiveKey(scanx))
 			return TRUE;
 		if (Friends_ToastKey(scanx))    // P788: F2 adds back, only while the toast is up

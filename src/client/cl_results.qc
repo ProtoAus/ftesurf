@@ -86,6 +86,7 @@ float  ui_bn_cardat;            // Patch 361: the card waits for the banner unti
 string ui_rs_map;               // the map the state below describes
 float  ui_rs_open;              // the card is up
 float  ui_rs_cursor;            // ...and it has asked for the mouse
+float  ui_bn_cardask;           // P1005: `results` asked for the card; the banner makes way
 float  ui_rs_at;                // cltime it appeared; 0 = not shown
 
 // What the card is about, latched at the finish so the re-arm cannot move it
@@ -574,6 +575,7 @@ void() Results_Close =
 		ui_rs_cursor = FALSE;
 		UI_CursorRelease(UIC_RESULTS);
 	}
+	ui_bn_cardask = FALSE;
 };
 
 void() Results_TakeCursor =
@@ -723,6 +725,7 @@ void() Results_Open =
 	ui_rs_open   = TRUE;
 	ui_rs_at     = cltime;
 	ui_rs_cursor = FALSE;
+	ui_bn_cardask = FALSE;
 	ui_rs_seen   = FALSE;
 };
 
@@ -1212,7 +1215,7 @@ void(vector scr) Results_Draw =
 	}
 
 	// ---- the keys.  Patch 994 (Lex): no "F1 cursor" -- the card has no targets;
-	// F1 still takes the cursor.
+	// P1005: and F1 no longer takes one.
 	y = p_y + hgt - pad - lsz;
 	x = p_x + pad;
 	Results_Hint(x, y, "ESC", "close", lsz, a * 0.9);
@@ -1255,10 +1258,8 @@ float(float evtype, float scanx, float chary, float devid) Results_InputEvent =
 };
 
 /*
-  The passive half: the two gestures that ASK for the cursor.
-
-  F1 only.  MOUSE3 asked too until Patch 904: with the default binds it paints,
-  and a card that took it would eat every paint press after a finish.
+  The passive half: ESC closes a drawn card.  P1005 (Lex): F1 no longer takes the
+  cursor -- the card has nothing to click (MOUSE3 stopped asking in Patch 904).
 
   Reached from the key path in cl_main.qc while the card is open and the cursor
   has NOT been taken.  Returns TRUE only when it consumed the press.
@@ -1277,13 +1278,6 @@ float(float scanx) Results_PassiveKey =
 	if (!ui_rs_open || !cvar("hud_results"))
 		return FALSE;
 
-	// F1 during the banner's hold skips to the card (the banner yields to a
-	// taken cursor); ESC then still reaches the menu.
-	if (scanx == K_F1)
-	{
-		Results_TakeCursor();
-		return TRUE;
-	}
 	if (scanx == K_ESCAPE)
 	{
 		if (!Results_Drawn())
@@ -1392,14 +1386,15 @@ float(string cmd) Results_ConsoleCommand =
 		return TRUE;
 	}
 
-	// A card held behind the banner is shown, not closed unseen (Patch 361).
+	// A card held behind the banner is shown, not closed unseen (Patch 361); the
+	// banner makes way for an asked-for card (ui_bn_cardask), not a cursor (P1005).
 	if (Results_Drawn())
 		Results_Close();
 	else
 	{
 		if (!ui_rs_open)
 			Results_Open();
-		Results_TakeCursor();
+		ui_bn_cardask = TRUE;
 	}
 	return TRUE;
 };

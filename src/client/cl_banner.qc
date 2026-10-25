@@ -939,8 +939,8 @@ void() Banner_Frame =
 		Bn_SoundFor(st);
 	}
 
-	// The card was asked for (F1 / `results`): the banner makes way.
-	if (ui_bn_kind == BN_FULL && ui_rs_cursor && ui_bn_outat <= 0)
+	// The card was asked for (`results`): the banner makes way.
+	if (ui_bn_kind == BN_FULL && (ui_rs_cursor || ui_bn_cardask) && ui_bn_outat <= 0)
 		ui_bn_outat = cltime;
 	Bn_Timeline(pend);
 
