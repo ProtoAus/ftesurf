@@ -153,6 +153,8 @@ vector *ln_ep;
 float  *ln_evh;                 // horizontal speed there, u/s
 float  *ln_e2;                  // v . v, 3D: the energy term, minus the height
 float  *ln_ez;                  // vz, signed
+float  *ln_eh;                  // P1001: the energy's height (ln_ep's z but for a ramp touchdown)
+float  ln_evpre, ln_evpre_z;    // P1001: the next mark's numbers are the previous sample's
 float  *ln_ei;                  // the sample it came from, counted by this slot
 float  *ln_ec;                  // the clock of the sample the classifier's edge fell on
 
@@ -696,6 +698,7 @@ void() Line_Alloc =
 	ln_evh  = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
 	ln_e2   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
 	ln_ez   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
+	ln_eh   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
 	// The ordinal is the mark's identity.  Two samples can share a `t` (a file
 	// records one per packet, and a held clock repeats it -- both bhop fixtures
 	// carry such a pair), so time does not identify a sample and a reader that
@@ -717,6 +720,7 @@ void() Line_Alloc =
 		memnostrings(ln_bk); memnostrings(ln_ek); memnostrings(ln_efd); memnostrings(ln_es);
 		memnostrings(ln_et); memnostrings(ln_ep); memnostrings(ln_evh); memnostrings(ln_e2);
 		memnostrings(ln_ez); memnostrings(ln_ei); memnostrings(ln_ec); memnostrings(ln_lfa);
+		memnostrings(ln_eh);
 		memnostrings(ln_lff);
 	}
 	if (checkbuiltin(lines_draw))
@@ -1222,6 +1226,7 @@ void(float i, float j) Line_EvSwap =
 	f = ln_evh[i];  ln_evh[i] = ln_evh[j];  ln_evh[j] = f;
 	f = ln_e2[i];   ln_e2[i]  = ln_e2[j];   ln_e2[j]  = f;
 	f = ln_ez[i];   ln_ez[i]  = ln_ez[j];   ln_ez[j]  = f;
+	f = ln_eh[i];   ln_eh[i]  = ln_eh[j];   ln_eh[j]  = f;
 	f = ln_ei[i];   ln_ei[i]  = ln_ei[j];   ln_ei[j]  = f;
 	f = ln_ec[i];   ln_ec[i]  = ln_ec[j];   ln_ec[j]  = f;
 };
@@ -1255,6 +1260,7 @@ void(float s, float k, float sub, float t, vector o, vector v, float si, float t
 					ln_evh[b + j] = ln_evh[b + i];
 					ln_e2[b + j]  = ln_e2[b + i];
 					ln_ez[b + j]  = ln_ez[b + i];
+					ln_eh[b + j]  = ln_eh[b + i];
 					j = j + 1;
 				}
 			ln_evn[s] = n = j;
@@ -1277,6 +1283,7 @@ void(float s, float k, float sub, float t, vector o, vector v, float si, float t
 	ln_evh[b + n] = vlen([v_x, v_y, 0]);
 	ln_e2[b + n]  = v * v;
 	ln_ez[b + n]  = v_z;
+	ln_eh[b + n]  = ln_evpre ? ln_evpre_z : o_z;
 	ln_ei[b + n]  = si;
 	ln_ec[b + n]  = tc;
 	ln_evn[s] = n + 1;
@@ -1699,7 +1706,16 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 	if (k != ln_pkind[s])
 	{
 		here = TRUE;
-		if (k == SEG_NONE || k == SEG_RAMP)
+		// Patch 1001 (Lex): a touchdown on a ramp keeps its mark where contact was seen
+		// and reads the sample before it -- the speed and energy before the clip.
+		if (k == SEG_RAMP)
+		{
+			ln_evpre = TRUE;
+			ln_evpre_z = ln_po[s] * '0 0 1';    // an array element is not swizzleable
+			Line_Ev(s, LN_E_LAND, ln_pkind[s] * 4 + k, t, o, ln_pv[s]);
+			ln_evpre = FALSE;                   // Line_EvAt can return before reading it
+		}
+		else if (k == SEG_NONE)
 			Line_Ev(s, LN_E_LAND, ln_pkind[s] * 4 + k, t, o, v);
 		else if (ln_pkind[s] == SEG_RAMP)
 		{
@@ -3447,7 +3463,6 @@ void(vector q, vector c, float al) Line_Bars =
 string(float s, float e, float colour) Line_LabelText =
 {
 	local float b, ev, en, ref, de;
-	local vector ep;                // an array element is not swizzleable
 	local string t, sep, f;
 
 	b = s * LN_EVCAP;
@@ -3455,8 +3470,7 @@ string(float s, float e, float colour) Line_LabelText =
 	sep = (ln_names ? "  " : " ");
 	ev = ln_evh[b + e];
 	// E = z + |v|^2 / 2g, Strafe_Energy evaluated from what the mark carries.
-	ep = ln_ep[b + e];
-	en = ep_z + ln_e2[b + e] / (2 * ln_grav);
+	en = ln_eh[b + e] + ln_e2[b + e] / (2 * ln_grav);
 	// Patch 661: at hud_lines_ref 0 the zero is the speedometer's in every state it
 	// has (HUD_DrawSpeed): a rewind's own, and where it prints "-- no start zone"
 	// there is none to share, so the run's own start stands in.
@@ -3498,8 +3512,7 @@ string(float s, float e, float colour) Line_LabelText =
 	if (ln_numdelta)
 	if (e > 0)
 	{
-		ep = ln_ep[b + e - 1];
-		de = en - (ep_z + ln_e2[b + e - 1] / (2 * ln_grav));
+		de = en - (ln_eh[b + e - 1] + ln_e2[b + e - 1] / (2 * ln_grav));
 		t = strcat(t, (t != "") ? sep : "",
 		           HUD_SeqDelTight(de, Strafe_EquivSpeed(de, ln_grav), ln_units, ln_names));
 	}
