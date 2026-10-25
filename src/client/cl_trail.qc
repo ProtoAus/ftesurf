@@ -401,6 +401,8 @@ float(float f, float t, float riding) Trail_Take =
 		tr_stagefrom = t;
 	}
 	Line_Point(tr_live, o, v, fl, t, brk, tr_stitch, [yaw, nrm_z, wsh * nrm]);
+	tr_erefok = HUD_ZeroKnown();            // P1007: what the speedometer measured from
+	tr_eref = HUD_EnergyRef();
 	Trail_Record(o, v, fl, t, brk, tr_stitch, [yaw, nrm_z, wsh * nrm]);
 	tr_stitch = FALSE;
 

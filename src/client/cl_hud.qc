@@ -21,6 +21,7 @@
 float  ui_cv_scale;
 // Rewind publishes a visual-only cursor frame; never fed to recorder/prediction.
 float ui_rw_on, ui_rw_was, ui_rw_time, ui_rw_tick, ui_rw_ref, ui_rw_refok, ui_rw_track, ui_rw_velok;
+float ui_rw_exact;      // P1007: ui_rw_ref is the zero this HUD used at that moment, not the line's start
 vector ui_rw_vel, ui_rw_org;
 float  ui_cv_speed, ui_cv_keys, ui_cv_debug, ui_cv_energy, ui_cv_energyref;
 float  ui_cv_speedshow;     // Patch 630: 0 speed, 1 both, 2 the energy alone
@@ -2387,10 +2388,10 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 		{
 			veq = Strafe_EquivSpeed(ui_hl_e, gravity);
 			// Build 66: no space before the unit, HUD-wide.
-			s   = sprintf(ui_rw_on ? "e line %du/s" : "e %du/s", rint(HUD_Round(veq)));
+			s   = sprintf((ui_rw_on && !ui_rw_exact) ? "e line %du/s" : "e %du/s", rint(HUD_Round(veq)));
 		}
 		else
-			s = sprintf(ui_rw_on ? "e line %d" : "e %d", rint(HUD_Round(ui_hl_e)));
+			s = sprintf((ui_rw_on && !ui_rw_exact) ? "e line %d" : "e %d", rint(HUD_Round(ui_hl_e)));
 
 		// Build 65: its own size, because it is a second readout inside one panel
 		// and "make the energy line bigger" is not "make the speedometer bigger".

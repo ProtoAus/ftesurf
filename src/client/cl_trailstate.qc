@@ -7,6 +7,9 @@ float tr_rep_raw, tr_rep_tick, tr_rep_end, tr_rep_ack, tr_rep_go, tr_saveack;
 float tr_req_wait;
 float tr_timedgo_ack, tr_go_visual_t, tr_rep_tracewant, tr_rep_tracegot, tr_ticket;
 float tr_practice, tr_practicebase, tr_practiceat;
+// P1007: the energy zero the HUD used for this sample, as a 15th field of the
+// raw line when known (a 14-field line is an older file or a replay prefix).
+float tr_eref, tr_erefok;
 
 void() Trail_RawClear =
 {
@@ -32,7 +35,12 @@ void(vector o, vector v, float fl, float t, float brk, float stitch, vector aux)
 		return;
 	if (buf_getsize(tr_raw) >= LN_CAP * 4)
 		return;
-	bufstr_set(tr_raw, buf_getsize(tr_raw), Trail_RawSample(o, v, fl, t, brk, stitch, aux, input_angles_x));
+	if (tr_erefok)
+		bufstr_set(tr_raw, buf_getsize(tr_raw),
+		           strcat(Trail_RawSample(o, v, fl, t, brk, stitch, aux, input_angles_x),
+		                  sprintf(" %.4f", tr_eref)));
+	else
+		bufstr_set(tr_raw, buf_getsize(tr_raw), Trail_RawSample(o, v, fl, t, brk, stitch, aux, input_angles_x));
 };
 
 // Raw clocks are six-decimal text. Compare cutoffs in that same representation.
@@ -44,9 +52,10 @@ float(float t) Trail_RawClock =
 // One raw sample into the line and its live predecessor state.
 float(string s, float endt) Trail_Refeed =
 {
-	local float t, fl, brk, stitch;
+	local float t, fl, brk, stitch, n;
 	local vector o, v, aux;
-	if (tokenize(s) != 14)
+	n = tokenize(s);
+	if (n != 14 && n != 15)
 		return FALSE;
 	t = stof(argv(0));
 	if (t > endt)
@@ -85,33 +94,42 @@ float(float t) Trail_RawIndex =
 // Authoritative practice-save posture/velocity remains the selected sample.
 void(float t) Trail_CursorState =
 {
-	local float i;
+	local float i, n;
 
 	tr_cur_flags = 0;
 	tr_cur_ang = '0 0 0';
 	i = Trail_RawIndex(t);
 	if (i < 0) return;
-	if (tokenize(bufstr_get(tr_raw, i)) != 14) return;
+	n = tokenize(bufstr_get(tr_raw, i));
+	if (n != 14 && n != 15) return;
 	tr_cur_flags = stof(argv(7));
 	tr_cur_ang = [stof(argv(13)), stof(argv(10)), 0];
 	tr_cur_vel = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
 };
 
-float tr_vis_ok, tr_vis_flags;
+float tr_vis_ok, tr_vis_flags, tr_vis_eref, tr_vis_erefok;
 vector tr_vis_vel, tr_vis_ang;
 // Visual interpolation has separate outputs; never used to serialize a save.
 void(float t) Trail_VisualState =
 {
-	local float i, t0, t1, f;
+	local float i, t0, t1, f, n;
 	local vector vel0, ang0;
 
 	tr_vis_ok = FALSE;
 	tr_vis_flags = 0;
+	tr_vis_erefok = FALSE;
 	tr_vis_vel = tr_vis_ang = '0 0 0';
 	i = Trail_RawIndex(t);
 	if (i < 0) return;
-	if (tokenize(bufstr_get(tr_raw, i)) != 14) return;
+	n = tokenize(bufstr_get(tr_raw, i));
+	if (n != 14 && n != 15) return;
 	tr_vis_ok = TRUE;
+	// P1007: the zero is a step (a jump or an anchor moves it), so the sample's own.
+	if (n == 15)
+	{
+		tr_vis_eref = stof(argv(14));
+		tr_vis_erefok = TRUE;
+	}
 	tr_vis_flags = stof(argv(7));
 	tr_vis_ang = [stof(argv(13)), stof(argv(10)), 0];
 	tr_vis_vel = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
@@ -119,7 +137,8 @@ void(float t) Trail_VisualState =
 	vel0 = tr_vis_vel;
 	ang0 = tr_vis_ang;
 	if (i + 1 >= buf_getsize(tr_raw)) return;
-	if (tokenize(bufstr_get(tr_raw, i + 1)) != 14) return;
+	n = tokenize(bufstr_get(tr_raw, i + 1));
+	if (n != 14 && n != 15) return;
 	t1 = stof(argv(0));
 	// Trails store breaks/stitches separately from legacy recording flags.
 	if (t1 <= t0 || (stof(argv(7)) & 0x4000000) || stof(argv(8)) || stof(argv(9))) return;

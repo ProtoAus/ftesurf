@@ -310,8 +310,19 @@ void() Rewind_Present =
 	ui_rw_vel = tr_vis_vel;
 	ui_rw_velok = tr_vis_ok;
 	ui_rw_track = getstatf(STAT_FS_TIMERTRACK);
-	ui_rw_refok = (ln_n[tr_live] > 0);
-	ui_rw_ref = ln_z0[tr_live] + ln_v20[tr_live] / (2 * gravity);
+	// P1007: the zero the speedometer had then; a sample without one (an older
+	// trail, a replay prefix) falls back to the line's own start, labelled "line".
+	ui_rw_exact = tr_vis_erefok;
+	if (ui_rw_exact)
+	{
+		ui_rw_refok = TRUE;
+		ui_rw_ref = tr_vis_eref;
+	}
+	else
+	{
+		ui_rw_refok = (ln_n[tr_live] > 0);
+		ui_rw_ref = ln_z0[tr_live] + ln_v20[tr_live] / (2 * gravity);
+	}
 };
 
 // The cursor is further back than the server's ring reaches: 1 = past the exact
