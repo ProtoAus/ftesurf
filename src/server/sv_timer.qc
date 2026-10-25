@@ -1767,7 +1767,8 @@ float() SV_RecEnabled =
   [P1008: six -- standing in the armed box (run_t_rearmspeed), which KEEPS the velocity:
   this tick grounded, no hold, the visible speed with its carrier below the prestrafe
   ceiling and nothing upward, as SV_TimerFinishForgive tests it.  A dirty attempt also
-  has to stand on the box's floor, so a noclipped ledge high in a tall start is not one.]
+  has to stand no higher than `!r` would put it (SV_ZoneDest, ground-snapped), so a
+  noclipped ledge high in a tall start is not one, and never one a hand-over carried.]
 
   AND ON A DEDICATED SERVER THE GESTURE IS UNFORGEABLE BY MAP DATA, which is the
   second half of why this shape works where the count did not.  SV_ZoneChatCommand is
@@ -12049,16 +12050,22 @@ void(entity e) SV_TimerFinishForgive =
 
 /*
   P1008: is this attempt standing in its box, as SV_TimerFinishForgive asks it --
-  this tick grounded, no hold, nothing upward, the visible horizontal speed WITH
-  its carrier below run_rearmspeed -- and, for a dirty attempt, on the box's floor
-  (feet within 2 u of zone_bottom), so a ledge reached by noclip high in a tall
-  start is not a place to come clean.
+  this tick grounded, no hold or ghost, nothing upward, the visible horizontal speed
+  WITH its carrier below run_rearmspeed -- and, for a dirty attempt, no higher than
+  the spot `!r` puts you on (SV_ZoneDest drops it to the ground; a zone's bottom is
+  often far below the floor, review round 2), so a ledge reached by noclip high in a
+  tall start is not a place to come clean.  A taint a stage hand-over carried is
+  not this rest's to clear (Patch 478 r11's carry): `!r`.
 */
 float(entity e) SV_TimerRearmRest =
 {
 	local vector hv;
+	local float yaw, haveyaw;
+	local entity os;
 
-	if (e.run_pmhold || e.rec_sl_hold || e.movetype != MOVETYPE_WALK)    // the replay pin is MOVETYPE_NONE
+	if (e.run_pmhold || e.rec_sl_hold || e.rec_gh_on || e.movetype != MOVETYPE_WALK)    // the replay pin is MOVETYPE_NONE
+		return FALSE;
+	if (e.run_t_carried)
 		return FALSE;
 	if (SV_CheatLevel(e))
 		return FALSE;
@@ -12071,8 +12078,20 @@ float(entity e) SV_TimerRearmRest =
 	if (vlen(hv) >= run_t_rearmspeed)
 		return FALSE;
 	if (e.run_t_dirty)
-	if (e.run_t_armzone < 0 || fabs(e.origin_z + e.mins_z - zone_bottom[e.run_t_armzone]) > 2)
-		return FALSE;
+	{
+		if (e.run_t_armzone < 0 || e.run_t_armzone >= zone_count)
+			return FALSE;
+		if (e.run_t_restzfor != e.run_t_armzone + 1)    // once per armed box: SV_ZoneDest traces
+		{
+			os = self;
+			self = e;
+			e.run_t_restz = SV_ZoneDest(e.run_t_armzone, yaw, haveyaw) * '0 0 1';
+			self = os;
+			e.run_t_restzfor = e.run_t_armzone + 1;
+		}
+		if (e.origin_z > e.run_t_restz + 2)
+			return FALSE;
+	}
 	return TRUE;
 };
 
@@ -12840,6 +12859,8 @@ void(entity e, float z) SV_TimerArm =
 	if (SV_ZoneSameBox(z, e.run_t_armzone))
 		attempts = e.run_st_fails;
 	e.run_t_handcarry = 0;          // Patch 478 r11: SV_TimerHandArm reads it first
+	e.run_t_carried = 0;            // P1008: ...and sets this after the arm
+	e.run_t_restzfor = 0;
 	// Patch 817: a run on the clock that re-arms (a fail into its box, a walk back)
 	// keeps its recording for the rewind until the next one opens -- through a `!r`
 	// in the box, as "until you leave the start" (Lex, 19 Oct).
@@ -14343,6 +14364,7 @@ void(entity e, float z) SV_TimerHandArm =
 
 	hc = e.run_t_handcarry;
 	SV_TimerArm(e, z);
+	e.run_t_carried = ((hc & (TF_CHEAT | TF_SEGMENT)) != 0);    // P1008: standing does not clear it
 	if (hc & TF_CHEAT)
 	{
 		e.run_t_cheat  = TRUE;
@@ -16018,7 +16040,8 @@ void(entity e) SV_ArmStateStat =
 	else if (!(e.run_t_dirty || e.run_t_cheat || e.run_t_hopped || e.run_t_freeze
 	           || e.movetype == MOVETYPE_NOCLIP))
 		e.run_armstate = AS_ARMED;
-	else if (e.run_t_startok || e.run_t_freeze || run_t_rearmspeed <= 0)
+	else if (e.run_t_startok || e.run_t_freeze || e.run_t_carried || run_t_rearmspeed <= 0
+	         || (e.run_t_cheat && !e.run_t_dirty))
 		e.run_armstate = AS_STUCK;  // standing will not clear it (SV_TimerJumpWatch)
 	else if (e.run_t_dirty || e.run_t_cheat || e.movetype == MOVETYPE_NOCLIP)
 		e.run_armstate = AS_NOCLIP;

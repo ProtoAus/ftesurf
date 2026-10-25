@@ -33,6 +33,7 @@
 .vector run_ms_org;     // parked here while R/C runs
 .float  run_ms_pendat;  // P1004: a Yes waiting on the account check (W key); 0 none
 .float  run_ms_pendsince;   // ...when that wait began, so it ends (MS_PENDMAX)
+.float  run_ms_retry;       // ...SV_MsFrame's retry of it, which keeps that clock
 #define MS_PENDMAX 30       // seconds a Yes waits on the account check before it is refused
 .float  rec_ms_src, rec_ms_dst, rec_ms_left, rec_ms_total, rec_ms_flagofs;
 .float  rec_ms_ver;              // actual copied header; v11 must not become v10
@@ -703,6 +704,8 @@ void(entity e) SV_MsAccept =
 		return;
 	if (e.run_ms_pendat)                // already waiting on the account check
 		return;
+	if (!e.run_ms_retry)                // a fresh Yes starts a fresh wait
+		e.run_ms_pendsince = 0;
 	if (!e.run_ms_offer)
 	{
 		sprint(e, PRINT_CHAT, "^5resume:^7 no paused run on this map\n");
@@ -1257,8 +1260,12 @@ void(entity e) SV_MsFrame =
 			if (SV_MsReadMeta(SV_MsPath(e, "ms.txt")))
 				SV_MsKeySet(e, sprintf("O %d %d %d %d %d %d", ms_ticks, ms_seg, ms_segs,
 				                       ms_track, ms_leg, ms_sess));
+			e.run_ms_retry = TRUE;
 			SV_MsAccept(e);
+			e.run_ms_retry = FALSE;
 		}
+		else
+			e.run_ms_pendsince = 0;
 	}
 
 	// Said late: a print at the spawn arrives before CSQC can draw chat.

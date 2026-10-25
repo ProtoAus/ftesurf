@@ -1089,6 +1089,8 @@ float vbsp_conveyor_any, vbsp_conv_dist, vbsp_conv_stand, vbsp_conv_quads;
 .float  run_jumpcmd;
 .float  run_foleyjump;             // P935: latched local-audio cue, not movement
 .float  run_armstate;              // P1008: STAT_FS_ARMSTATE, display only
+.float  run_t_carried;             // P1008: armed by a stage hand-over carrying a taint (SV_TimerHandArm)
+.float  run_t_restz, run_t_restzfor;   // P1008: !r's origin z for the armed box, and box+1 it is for
 .float  run_style;                 // P1011: STAT_FS_STYLE, display only
 .float  run_sty_f0, run_sty_f1, run_sty_f2, run_sty_f3;  // ...fast air ticks by facing quarter
 .float  run_sty_keys, run_sty_side;   // ...air ticks with a move; with a strafe key alone

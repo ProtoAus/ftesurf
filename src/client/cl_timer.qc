@@ -598,7 +598,7 @@ string() Timer_ArmWord =
 	v = serverkeyfloat("run_rearmspeed");
 	if (v <= 0) v = 290;
 	if (a == AS_HOPPED) return sprintf("^3not armed^7 - stand below %g", v);
-	if (a == AS_NOCLIP) return sprintf("^3not armed^7 - noclip off, stand on the floor below %g", v);
+	if (a == AS_NOCLIP) return sprintf("^3not armed^7 - noclip off, stand below %g or !r", v);
 	if (a == AS_CHEATS) return "^3not armed^7 - cheats or timescale on";
 	if (a == AS_STUCK)  return "^3not armed^7 - !r to re-arm";
 	if (a == AS_ARMED)  return "^2armed^7";
