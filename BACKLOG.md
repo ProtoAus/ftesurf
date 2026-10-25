@@ -2,9 +2,6 @@
 
 ## bhop_ceaseless (P990, P1002): what is left
 
-- Refract with an AnimatedTexture on $normalmap draws one frame (mamorex/water_ripple, the
-  sword floor: "static and z-fights with itself"); vmt/refract would need the 2D-array normal
-  path vmt/wateranim has (P867). Also its $decal overlap with swordcrack at z 11616 unexamined.
 - The underwater overlay ($underwateroverlay effects/water_warp01, a Refract with a
   $bumptransform scroll) not checked for animation.
 - pcf.py: Color Fade (20 operators on the map), rotate-around-axis (5), Rotation Basic/Speed;
@@ -18,6 +15,18 @@
   command replaces it, SV_ClearCarrier drops it on a teleport, and on a carrier a push already armed it
   is ridden one command instead of cashed (AddVerticalSpeed's Z then spent as gravity). No library user
   is near a push or conveyor. The negative clamp reads .velocity, not a pending carrier (no map cuts).
+- An additive UnlitGeneric with a $basetexture and an $envmap takes the vmt/unlit arm (mat_vmt.c,
+  before the #BASE arm) and draws no reflection; #ADDALPHA reaches only the base-less arm. Falsifier:
+  r_showshader on such a material shows vmt/unlit and no cube.
+- cl_triggers.qc TF_Find holds filters only; SV_FindFilter gives "no filter" when a non-filter holds
+  the name first. Library: surf_metalpipes' b1_pt2_tele alone (a name filter, UNKNOWN, so server-only).
+  Falsifier: a lump census (first entity per targetname, lump order) finding a shadowed
+  team/class/velocity filter.
+- surf_boreas' installed bake predates pcf.py's materials/ prefix: tendies_endparticle04's
+  effects/tesla_glow (no .vmt anywhere) draws FTE's built-in ball. Re-bake, then re-check the
+  "saturated dome" item, which blames linear-light adding.
+- func_lod lump signature: bhop_space and surf_exogenesis both sign `0//0//17/*1` with different
+  DisappearDist, so a stale lump across that pair keeps the wrong fade distances (cosmetic).
 
 ## Lex's list of 25 Oct (second): what is still open (P986-P1001)
 

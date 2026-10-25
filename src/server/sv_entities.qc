@@ -1885,23 +1885,27 @@ string(entity f, float i) SV_MultiSub =
 // Forward-declared for the recursion: 42 sub-filter references in the library
 // are themselves a filter_multi.
 /*
-  Patch 1002: a filter by name, the first filter_* entity so named. Source resolves a trigger's filter
-  at Activate, before any output renames a player; resolved here at first touch, a player already
-  renamed to the filter's own name (bhop_ceaseless's "meow", 110 library maps) was found first and,
-  being no filter, passed everyone for the rest of the map. Anything else so named is the fallback.
+  Patch 1002: a filter by name as Source's Activate finds it -- the first entity so named, and a
+  non-filter there means no filter (surf_metalpipes' b1_pt2_tele teleport names itself, the library's
+  one such case). Activate runs before any output renames a player; resolved here at first touch, so
+  clients are skipped: one renamed to the filter's own name (bhop_ceaseless's "meow", 110 library
+  maps) was found first and passed everyone for the rest of the map.
 */
 entity(string nm) SV_FindFilter =
 {
 	local entity e;
 
 	for (e = find(world, targetname, nm); e; e = find(e, targetname, nm))
-		if (substring(e.classname, 0, 7) == "filter_")
-			return e;
-	for (e = nextent(world); e; e = nextent(e))
-		if (e.targetname != "" && !strcasecmp(e.targetname, nm))
-		if (substring(e.classname, 0, 7) == "filter_")
-			return e;
-	return SV_FindByName(nm, world);
+		if (!(e.flags & FL_CLIENT))
+			break;
+	if (!e)
+		for (e = nextent(world); e; e = nextent(e))
+			if (e.targetname != "" && !strcasecmp(e.targetname, nm))
+			if (!(e.flags & FL_CLIENT))
+				break;
+	if (substring(e.classname, 0, 7) == "filter_")
+		return e;
+	return world;
 };
 
 float(entity f, entity act, float depth) SV_FilterPassesD;

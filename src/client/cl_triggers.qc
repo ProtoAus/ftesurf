@@ -256,6 +256,9 @@ float  tg_c_filtok;               // filtered but statically passing
 
 // SV_FindByName's two passes: exact first, case-insensitive fallback, both in
 // lump order (= edict order, so first match is find()'s answer).
+// SV_FindFilter also gives "no filter" when a non-filter holds the name first;
+// filters only here, so that one case reads the filter (surf_metalpipes, a name
+// filter = UNKNOWN, the only library map: BACKLOG).
 float(string want) TF_Find =
 {
 	local float i;
