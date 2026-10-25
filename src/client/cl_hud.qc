@@ -1594,9 +1594,9 @@ void(vector org) HUD_UpdateAnchor =
 
   START only, not START-or-STAGE like HUD_UpdateAnchor above: this answers
   "is this a fresh start" for the energy re-base, and a stage boundary is a
-  place you fly through rather than a place you pick a start from.  The server
-  asks the same question with SV_ZoneStartAt and gets the same answer, because
-  both VMs parse the same zone file with the same code.
+  place you fly through rather than a place you pick a start from.  (Until
+  Patch 993 the server's save-load arm asked the same START-only question; it
+  now takes a STAGE box too, SL_ArmBoxAt.)
 
   A point test, matching HUD_UpdateAnchor and matching the server's arm scan at
   run_zone_hull 1 -- occupancy is a point question.

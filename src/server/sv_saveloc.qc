@@ -3873,7 +3873,8 @@ void(entity e) SV_SaveLocHoldVel =
   rounds the origin, so a body standing on a box whose bottom is its floor (37 of 48
   authored starts, Patch 415) came back up to 0.00005 under it: outside the box, so
   the at-rest arm in SV_SaveApplyState never fired and the load stayed segmented
-  until !r.  Here and not only at the arm: a hold re-places the row every tick.
+  until !r.  In Place, and SV_SaveLocHoldFrame compares with the same point, so a
+  hold's re-place on drift lands where the hold expects the body.
 */
 vector(entity e, vector p) SL_BoxFloor =
 {
