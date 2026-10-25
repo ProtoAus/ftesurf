@@ -141,7 +141,7 @@ def pcfs_in_map(bsp):
 KNOWN = {
     "emit_continuously", "emit_instantaneously",
     "Lifetime Random", "Radius Random", "Alpha Random", "Color Random",
-    "Rotation Random", "Rotation Spin Roll", "Radius Scale",
+    "Rotation Random", "Rotation Spin Roll", "Radius Scale", "Movement Rotate Particle Around Axis",
     "Velocity Random", "Velocity Noise", "random force",
     "Position Within Box Random", "Position Within Sphere Random",
     "Position Modify Offset Random",
@@ -694,6 +694,23 @@ def translate(d, e, unknown, mapname, content=None):
             unknown["(sphere bias in the local frame: drawn in the world frame)"] += 1
         shape = [2, float(ps.get("distance_min", 0.0) or 0.0), box[0], 0.0, bias[0], bias[1], bias[2], radial]
 
+    # Patch 1017: Movement Rotate Particle Around Axis turns every particle about the control point
+    # (Source defaults: axis 0 0 1, 180 degrees a second). FTE's `orbit` turns about the effect's
+    # origin, so an orbiting system's volume is placed by the engine around that origin (`spawnmode
+    # shell` for a sphere), not by cl_emit.qc, which would hand over each particle's own point.
+    orbit = None
+    orb = find(d, e, "operators", "Movement Rotate Particle Around Axis")
+    if orb:
+        rate = orb.get("Rotation Rate")
+        axis = [float(x) for x in (orb.get("Rotation Axis") or [0.0, 0.0, 1.0])]
+        orbit = (180.0 if rate is None else float(rate), axis)
+        if abs(orbit[0]) <= 0.01:
+            orbit = None    # crystal stores a rate of 0: no orbit, cl_emit.qc keeps the volume
+        elif int(orb.get("Control Point", 0) or 0):
+            unknown["(orbit about control point %s: drawn about the emitter)" % orb.get("Control Point")] += 1
+        if orb.get("Use Local Space"):
+            unknown["(orbit axis in local space: drawn in the world frame)"] += 1
+
     # ---- horizontal acceleration becomes an initial velocity, because FTE's
     # `gravity` is a scalar down world Z and cannot express wind.
     #
@@ -878,6 +895,8 @@ def translate(d, e, unknown, mapname, content=None):
     spinrate = float(spin.get("spin_rate_degrees", 0.0) or 0.0) if spin else float(e.get("rotation_speed", 0.0) or 0.0)
     if abs(spinrate) > 0.01:
         L.append("\trotationspeed %.4g" % spinrate)
+    if orbit and abs(orbit[0]) > 0.01:
+        L.append("\torbit %.4g %.4g %.4g %.4g\t// Patch 1017: degrees a second about the axis" % ((orbit[0],) + tuple(orbit[1])))
     L.append("\talpha %.3g" % alpha)
     if alpharand > 0.005:
         L.append("\talpharand %.3g" % alpharand)
@@ -890,9 +909,24 @@ def translate(d, e, unknown, mapname, content=None):
     L.append("\tcount 1\t\t\t// QC passes a whole number; pcount = count*this")
     qcshape = shape[0] and not (rend and rend[0].get("functionName") == "render_sprite_trail"
                                 and mat.lower() in TRAIL_BLENDED)
+    eshell = None
+    if orbit and shape[0] == 2:
+        # Patch 1017: the engine's shell, world-aligned (p_script.c PScript_ShellOffset).
+        b = [v - 1000.0 if v > 500 else v for v in shape[4:7]]
+        if any(v > 500 for v in shape[4:7]):
+            unknown["(orbiting half shell: drawn whole)"] += 1
+        if shape[7] > 0.01:
+            unknown["(orbiting shell's outward speed: dropped)"] += 1
+        eshell = (shape[1], shape[2], b[0], b[1], b[2])
+        qcshape = False
+    elif orbit and shape[0] == 1:
+        unknown["(orbiting box: drawn as spawnorg's square)"] += 1
+        qcshape = False
     if not qcshape:
         shape = [0] + [0.0] * 7      # a trail's drops are placed by its own index line
-    if qcshape:
+    if eshell:
+        L.append("\tspawnmode shell %.6g %.6g %.4g %.4g %.4g\t// radius, bias x y z" % eshell)
+    elif qcshape:
         L.append("\tspawnorg 0\t\t\t// cl_emit.qc places it: the index's shape columns")
     elif any(b > 0.5 for b in box):
         # `spawnorg` TAKES TWO VALUES, NOT THREE (p_script.c:2113-2119):
@@ -931,7 +965,7 @@ def translate(d, e, unknown, mapname, content=None):
     # A sphere's own radial speed wins the spawnvel slot, because with
     # `spawnmode ball` that slot IS the radial speed and a Velocity Random
     # spread would be describing something else in the same two numbers.
-    if ball and radial > 0.01 and not qcshape:
+    if ball and radial > 0.01 and not qcshape and not eshell:
         L.append("\tspawnvel %.6g %.6g" % (radial, radial))
     elif any(v > 0.5 for v in spawnvel):
         svh = (spawnvel[0] * spawnvel[1]) ** 0.5 if spawnvel[0] > 0 and spawnvel[1] > 0 \

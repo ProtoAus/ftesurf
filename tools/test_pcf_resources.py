@@ -482,6 +482,59 @@ class ColourFadeTests(unittest.TestCase):
         self.assertTrue([k for k in unknown if 'starts at birth' in k], unknown)
 
 
+class OrbitTests(unittest.TestCase):
+    # Patch 1017: Movement Rotate Particle Around Axis -> orbit, the shell placed by the engine.
+    def system(self, orbit, sphere=True, velocity=None):
+        ops_ = [('DmeParticleOperator', 'r', {'functionName': (5, 'render_animated_sprites')}),
+                ('DmeParticleOperator', 'e', {'functionName': (5, 'emit_continuously'), 'emission_rate': (3, 15.0)}),
+                ('DmeParticleOperator', 'o', dict(orbit, functionName=(5, 'Movement Rotate Particle Around Axis'))),
+                ('DmeParticleOperator', 'l', {'functionName': (5, 'Lifetime Random'),
+                                              'lifetime_min': (3, 3.0), 'lifetime_max': (3, 3.0)})]
+        inits = [5]
+        if sphere:   # bhop_ceaseless butterfly: shell 60..256
+            ops_.append(('DmeParticleOperator', 'p', {'functionName': (5, 'Position Within Sphere Random'),
+                                                      'distance_min': (3, 60.0), 'distance_max': (3, 256.0)}))
+            inits.append(6)
+        if velocity:
+            ops_.append(('DmeParticleOperator', 'v', dict(velocity, functionName=(5, 'Velocity Random'))))
+            inits.append(len(ops_) + 1)
+        attrs = {'max_particles': (2, 100), 'material': (5, 'particle\\p.vmt'),
+                 'renderers': (15, [2]), 'emitters': (15, [3]), 'operators': (15, [4]),
+                 'initializers': (15, inits)}
+        return pcf_bytes([('DmElement', 'root', {'particleSystemDefinitions': (15, [1])}),
+                          ('DmeParticleSystemDefinition', 's', attrs)] + ops_)
+
+    def bake(self, data):
+        import collections, pcf
+        unknown = collections.Counter()
+        blocks, runtime, skipped = pcf.bake(data, 'm', unknown)
+        self.assertEqual(skipped, [])
+        return runtime[0], [l.strip() for l in blocks[0].splitlines()], unknown
+
+    def test_butterfly_orbits_a_shell_the_engine_places(self):
+        rt, lines, unknown = self.bake(self.system({'Rotation Rate': (3, 50.0)}))
+        self.assertIn('orbit 50 0 0 1\t// Patch 1017: degrees a second about the axis', lines)
+        self.assertIn('spawnmode shell 60 256 1 1 1\t// radius, bias x y z', lines)
+        self.assertEqual(rt['shape'], [0] + [0.0] * 7)    # cl_emit.qc hands over the emitter's origin
+        self.assertFalse([k for k in unknown if 'Rotate' in k], unknown)
+
+    def test_absent_rate_and_axis_are_sources_defaults(self):
+        _, lines, _ = self.bake(self.system({}))
+        self.assertIn('orbit 180 0 0 1\t// Patch 1017: degrees a second about the axis', lines)
+
+    def test_a_velocity_spread_keeps_spawnvel(self):
+        # the engine's shell randomises spawnvel per axis as box mode does
+        vel = {'speed_in_local_coordinate_system_min': (10, [-20.0, -20.0, -20.0]),
+               'speed_in_local_coordinate_system_max': (10, [20.0, 20.0, 20.0])}
+        _, lines, _ = self.bake(self.system({'Rotation Rate': (3, 50.0)}, velocity=vel))
+        self.assertIn('spawnvel 20 20', lines)
+
+    def test_a_zero_rate_is_no_orbit(self):
+        rt, lines, _ = self.bake(self.system({'Rotation Rate': (3, 0.0)}))
+        self.assertFalse([l for l in lines if l.startswith('orbit') or l.startswith('spawnmode')], lines)
+        self.assertEqual(rt['shape'][0], 2)
+
+
 class ShapeTests(unittest.TestCase):
     # Patch 1012: defaults the DMX does not store, and the spawn volume handed to cl_emit.qc.
     def system(self, emitter, initializer, extra=None):
