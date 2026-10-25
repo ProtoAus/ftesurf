@@ -150,7 +150,7 @@ void(string mark, float boot) MC_SelfMark =
 	if (!strcmp(mark, cvar_string("cl_self_mark")))
 		return;
 	cvar_set("cl_self_mark", mark);
-	localcmd(sprintf("setinfo smark %s\n", mark));
+	localcmd(sprintf("setinfo _smark %s\n", mark));
 };
 
 float(int root) MC_Snapshot =
@@ -289,7 +289,7 @@ float(float reqid, float code, string body) MC_Reply =
 void(vector screensize) MC_Draw =
 {
 	local vector pos, size, rp;
-	local float left, right, i, width;
+	local float left, right, i, width, board;
 	local string who, name, text, id;
 	ui_backdrop(screensize);
 	size = [min(1040, screensize_x - 32), min(680, screensize_y - 32)];

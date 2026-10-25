@@ -905,14 +905,29 @@ float av_selfnext;
 void() Av_SelfMark =
 {
 	local string m;
+	local float i, c;
 
 	if (cltime < av_selfnext) return;
 	av_selfnext = cltime + 5;
 	if (serverkey("board") != "ranked") return;
+	// Not linked here (cl_account.qc): this install claims no account in a private game.
+	if (acct_cl_is == 1)
+	if (cvar_string("cl_self_mark") != "")
+	{
+		cvar_set("cl_self_mark", "");
+		localcmd("setinfo _smark \"\"\n");
+		return;
+	}
 	m = getplayerkeyvalue(player_localnum, "*ahash");
 	if (strlen(m) != 8 || !strcmp(m, cvar_string("cl_self_mark"))) return;
+	for (i = 0; i < 8; i = i + 1)
+	{
+		c = str2chr(m, i);
+		if (!((c >= 48 && c <= 57) || (c >= 97 && c <= 102)))
+			return;                     // lowercase hex, as the server's check
+	}
 	cvar_set("cl_self_mark", m);
-	localcmd(sprintf("setinfo smark %s\n", m));
+	localcmd(sprintf("setinfo _smark %s\n", m));
 };
 
 void(vector scr) Av_Draw =

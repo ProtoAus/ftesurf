@@ -226,12 +226,13 @@ void() Account_SelfFrame =
 	local string want;
 
 	if (Account_On()) return;
+	if (acct_mode == 1) return;         // a master that went away mid-map: by account until the next
 	if (time < acct_selfnext) return;
 	acct_selfnext = time + 2;
 	p = findfloat(world, acct_here, TRUE);
 	while (p)
 	{
-		want = infokey(p, "smark");
+		want = infokey(p, "_smark");
 		if (!SV_RecIsHex(want, FS_WHO_IDLEN))
 			want = "";
 		if (want != "")
@@ -349,17 +350,17 @@ void(entity e, string who) Account_Mark =
 		byguid = TRUE;
 	/*
 	  Patch 1000 (Lex: profiles in private lobbies): with no master to prove accounts
-	  (a private game), a player's own word for their account mark -- userinfo `smark`,
+	  (a private game), a player's own word for their account mark -- userinfo `_smark` (kept from the other players),
 	  which their client learned from a proving lobby or the menu's signed chat -- so
 	  profiles and pictures load.  `*pself 1` says it is unproven; nothing ranks here.
 	*/
 	forceinfokey(e, "*pself", "");
 	if (byguid)
 	if (!Account_On())
-	if (SV_RecIsHex(infokey(e, "smark"), FS_WHO_IDLEN))
+	if (SV_RecIsHex(infokey(e, "_smark"), FS_WHO_IDLEN))
 		forceinfokey(e, "*pself", "1");
 	if (infokey(e, "*pself") != "")
-		forceinfokey(e, "*phash", infokey(e, "smark"));
+		forceinfokey(e, "*phash", infokey(e, "_smark"));
 	else if (byguid)
 		forceinfokey(e, "*phash", FS_GuidId(infokey(e, "guid")));
 	else if (acct_mode != 1)
@@ -1171,4 +1172,5 @@ void() SpectatorConnect =
 {
 	Account_Connect(self);
 	forceinfokey(self, "*phash", "");
+	forceinfokey(self, "*pself", "");
 };
