@@ -524,6 +524,9 @@ float  tg_c_event, tg_c_iodem, tg_c_sdok, tg_c_ioown, tg_c_iogated;
 .float tg_seenoff;               // Patch 1025: predmove_offset of the last touch (tick parts)
 #define TG_RING     64          // Patch 1025: commands of tg_io_in kept per slot
 float  *tg_inring;              // [(slot * TG_RING + seq % TG_RING) * 2] = in after seq, [+1] = seq
+float  *tg_orgring;             // [(seq % TG_RING) * 4] = predicted origin after seq, [+3] = seq
+float  tg_baseseq;              // the pre-move hook's command (cl_warpop.qc) and its origin
+vector tg_baseorg;              //   before any warp: the state a chain restarts from
 void() Body_TrigSeed;       // cl_body: retain snapshots across mirror reloads
 string tg_io_esc;
 
@@ -883,8 +886,30 @@ float(float i, float s) TG_RingAt =
 	return (i * TG_RING + (s - TG_RING * floor(s / TG_RING))) * 2;
 };
 
+// Patch 1025: TRUE when the last replay of command s (or the latest recorded command before it,
+// within TG_RING - 1) ended at org -- the client's replay is the server's history, so its ring is.
+float(float s, vector org) TG_RingTrusted =
+{
+	local float d, k;
+	local vector o;
+
+	for (d = 0; d < TG_RING; d = d + 1)
+	{
+		k = (s - d - TG_RING * floor((s - d) / TG_RING)) * 4;
+		if (tg_orgring[k + 3] == s - d)
+		{
+			o_x = tg_orgring[k];
+			o_y = tg_orgring[k + 1];
+			o_z = tg_orgring[k + 2];
+			return vlen(o - org) < 1;
+		}
+	}
+	return FALSE;
+};
+
 // Patch 1025: slot i's tg_io_in after command s as the last replay of s left it, -1 if unknown.
-// A held command runs no hook, so the latest recorded command at or before s stands for it.
+// A missing command ran no hook (held, or with exact ends or cl_triggers off), so the latest
+// recorded one at or before s, within TG_RING - 1, stands for it.
 float(float i, float s) TG_InAfter =
 {
 	local float d, k;
@@ -1437,13 +1462,23 @@ float(float i, float seq) TG_FireSpeed =
 */
 void(float seq) TG_ChainStart =
 {
-	local float i, probe, r;
+	local float i, probe, r, trust;
+	local vector base;
 
 	// Acked IO events fold into the committed state; the speculative rest
 	// is dropped and the replay re-derives it.  See THE IO MIRROR.
 	TG_IOCommit(seq);
 	tg_io_tbase = tg_io_tbase + tg_io_clock;
 	tg_io_clock = 0;
+
+	// Patch 1025: the in-state ring is the client's replay of the ack; trust it only where that
+	// replay ended where the server's state now starts (an unpredicted reset or teleport did not).
+	base = predmove_org0;
+	if (tg_baseseq == seq)
+		base = tg_baseorg;      // a warp op at seq has moved org0 already
+	trust = FALSE;
+	if (tg_endexact && tg_inring)
+		trust = TG_RingTrusted(seq - 1, base);
 
 	for (i = 0; i < tg_n; i = i + 1)
 	{
@@ -1468,18 +1503,22 @@ void(float seq) TG_ChainStart =
 			// touch returning at the gate.  Under exact ends the ring says.
 			tg_io_endf[i] = 0;
 			tg_io_seen[i] = seq - 1;
-			other = tg_ent[i];
-			tracebox(predmove_org0, predmove_mins, predmove_maxs,
-			         predmove_org0,
-			         MOVE_TRIGGERS | MOVE_OTHERONLY, TG_Probe());
-			probe = trace_startsolid || trace_allsolid || trace_fraction < 1;
-			if (tg_cv_debug >= 2)
-				print(sprintf("trig: seed #%g seq %g probe %g eff %g lastin %g in %g\n",
-			              i, seq, probe, TG_IOEff(i, seq), tg_io_lastin[i],
-			              tg_io_in[i]));
 			r = -1;
-			if (tg_endexact && tg_inring)
+			if (trust)
 				r = TG_InAfter(i, seq - 1);
+			probe = 0;
+			if (r < 0)
+			{
+				other = tg_ent[i];
+				tracebox(predmove_org0, predmove_mins, predmove_maxs,
+				         predmove_org0,
+				         MOVE_TRIGGERS | MOVE_OTHERONLY, TG_Probe());
+				probe = trace_startsolid || trace_allsolid || trace_fraction < 1;
+			}
+			if (tg_cv_debug >= 2)
+				print(sprintf("trig: seed #%g seq %g ring %g probe %g eff %g lastin %g in %g\n",
+			              i, seq, r, probe, TG_IOEff(i, seq), tg_io_lastin[i],
+			              tg_io_in[i]));
 			if (r >= 0)
 			{
 				// Patch 1025: what the last replay of the ack left, as the server's touch bits
@@ -1642,6 +1681,12 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 
 	TG_IOEndSweep(seq);
 	if (tg_endexact && tg_inring)
+	{
+		k = (seq - TG_RING * floor(seq / TG_RING)) * 4;
+		tg_orgring[k]     = predmove_org_x;
+		tg_orgring[k + 1] = predmove_org_y;
+		tg_orgring[k + 2] = predmove_org_z;
+		tg_orgring[k + 3] = seq;
 		for (i = 0; i < tg_n; i = i + 1)
 			if (tg_io_own[i])
 			{
@@ -1649,6 +1694,7 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 				tg_inring[k]     = tg_io_in[i];
 				tg_inring[k + 1] = seq;
 			}
+	}
 };
 
 /*
@@ -2031,9 +2077,19 @@ void() Trig_LoadForMap =
 	TG_IOResolve();
 	Body_TrigSeed();
 	if (!tg_inring)
-		tg_inring = memalloc(sizeof(float) * TG_MAX * TG_RING * 2);
-	for (i = 0; i < tg_n * TG_RING; i = i + 1)
-		tg_inring[i * 2 + 1] = -1;     // Patch 1025: no command recorded on this map yet
+	{
+		tg_inring  = memalloc(sizeof(float) * TG_MAX * TG_RING * 2);
+		tg_orgring = memalloc(sizeof(float) * TG_RING * 4);
+	}
+	if (tg_inring)
+	if (tg_orgring)
+	{
+		// Patch 1025: no command recorded on this map yet (-0.5 matches no sequence)
+		for (i = 0; i < tg_n * TG_RING; i = i + 1)
+			tg_inring[i * 2 + 1] = -0.5;
+		for (i = 0; i < TG_RING; i = i + 1)
+			tg_orgring[i * 4 + 3] = -0.5;
+	}
 
 	tg_map = serverkey("map");
 	if (cv_n) print(sprintf("conveyor: %g static ground carriers loaded\n", cv_n));

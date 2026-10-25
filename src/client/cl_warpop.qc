@@ -640,6 +640,8 @@ void(float seat, float seq, float seconds, float offset) CSQC_PredictPlayerPreMo
 	local float i;
 
 	wop_premove_t = cltime;
+	tg_baseseq = seq;                // Patch 1025: cl_triggers.qc's ring check, before any warp
+	tg_baseorg = predinput_origin;
 	if (!seat)
 	if (offset == 0)
 	if (wop_seq)
