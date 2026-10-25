@@ -1063,10 +1063,12 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	if (state == TS_RUNNING || state == TS_FINISHED)
 	if (Timer_StyleWord() != "")
 		s = strcat(s, (s != "") ? "  " : "", Timer_StyleWord());
-	// P1008 (Lex): "armed" when leaving now starts a clean run, and why not when not.
+	// P1008 (Lex): "armed" when leaving now starts a clean run, and why not when not --
+	// beside "stopped" too, since it is about the next attempt, not the number above.
 	if (flags & TF_STOPPED)
 		s = strcat(s, (s != "") ? "  " : "", "^9stopped^7");
-	else if (state == TS_ARMED)
+	if (state == TS_ARMED)
+	if (!(flags & TF_STOPPED) || getstatf(STAT_FS_ARMSTATE) != AS_NONE)
 		s = strcat(s, (s != "") ? "  " : "", Timer_ArmWord());
 	/*
 	  ONE WORD FOR WHY THIS RUN IS NOT CLEAN, never two.
