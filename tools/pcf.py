@@ -706,10 +706,11 @@ def translate(d, e, unknown, mapname, content=None):
         orbit = (180.0 if rate is None else float(rate), axis)
         if abs(orbit[0]) <= 0.01:
             orbit = None    # crystal stores a rate of 0: no orbit, cl_emit.qc keeps the volume
-        elif int(orb.get("Control Point", 0) or 0):
-            unknown["(orbit about control point %s: drawn about the emitter)" % orb.get("Control Point")] += 1
-        if orb.get("Use Local Space"):
-            unknown["(orbit axis in local space: drawn in the world frame)"] += 1
+        else:
+            if int(orb.get("Control Point", 0) or 0):
+                unknown["(orbit about control point %s: drawn about the emitter)" % orb.get("Control Point")] += 1
+            if orb.get("Use Local Space"):
+                unknown["(orbit axis in local space: drawn in the world frame)"] += 1
 
     # ---- horizontal acceleration becomes an initial velocity, because FTE's
     # `gravity` is a scalar down world Z and cannot express wind.
@@ -910,7 +911,11 @@ def translate(d, e, unknown, mapname, content=None):
     qcshape = shape[0] and not (rend and rend[0].get("functionName") == "render_sprite_trail"
                                 and mat.lower() in TRAIL_BLENDED)
     eshell = None
-    if orbit and shape[0] == 2:
+    orgbias = None
+    cullr = 0.0
+    if orbit and rend and rend[0].get("functionName") == "render_sprite_trail" and mat.lower() in TRAIL_BLENDED:
+        unknown["(sprite trail: an orbit is not carried into the drop blocks)"] += 1
+    elif orbit and shape[0] == 2:
         # Patch 1017: the engine's shell, world-aligned (p_script.c PScript_ShellOffset).
         b = [v - 1000.0 if v > 500 else v for v in shape[4:7]]
         if any(v > 500 for v in shape[4:7]):
@@ -918,12 +923,24 @@ def translate(d, e, unknown, mapname, content=None):
         if shape[7] > 0.01:
             unknown["(orbiting shell's outward speed: dropped)"] += 1
         eshell = (shape[1], shape[2], b[0], b[1], b[2])
+        cullr = shape[2]
         qcshape = False
     elif orbit and shape[0] == 1:
         unknown["(orbiting box: drawn as spawnorg's square)"] += 1
+        cullr = (box[0] ** 2 + box[1] ** 2 + box[2] ** 2) ** 0.5
         qcshape = False
+    if orbit and not qcshape and any(abs(v) > 0.01 for v in ofs):
+        # The box's centre is an offset from the control point the orbit turns about: orgbias moves the
+        # particle after the engine records that point (p_script.c), so the index adds no offset.
+        orgbias = list(ofs)
+        cullr += (ofs[0] ** 2 + ofs[1] ** 2 + ofs[2] ** 2) ** 0.5
+        ofs = [0.0, 0.0, 0.0]
     if not qcshape:
         shape = [0] + [0.0] * 7      # a trail's drops are placed by its own index line
+    if cullr > 0.5:
+        shape = [3, 0.0, cullr, 0.0, 0.0, 0.0, 0.0, 0.0]     # cl_emit.qc: the distance cull's radius, no placement
+    if orgbias:
+        L.append("\torgbias %.6g %.6g %.6g\t// the volume's centre off the control point the orbit turns about" % tuple(orgbias))
     if eshell:
         L.append("\tspawnmode shell %.6g %.6g %.4g %.4g %.4g\t// radius, bias x y z" % eshell)
     elif qcshape:

@@ -2125,6 +2125,8 @@ void(float i, float ps) Emit_PsysShape =
 		em_srad[i] = ps_srad[ps];
 		em_rad[i]  = a_y;
 	}
+	else if (em_shape[i] == 3)
+		em_rad[i] = a_y;	// Patch 1017: the engine places an orbiting volume; only its cull radius comes here
 };
 
 void(float i, float rate, float ps) Emit_TrailMark =

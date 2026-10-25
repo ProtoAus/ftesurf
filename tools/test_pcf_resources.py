@@ -515,7 +515,7 @@ class OrbitTests(unittest.TestCase):
         rt, lines, unknown = self.bake(self.system({'Rotation Rate': (3, 50.0)}))
         self.assertIn('orbit 50 0 0 1\t// Patch 1017: degrees a second about the axis', lines)
         self.assertIn('spawnmode shell 60 256 1 1 1\t// radius, bias x y z', lines)
-        self.assertEqual(rt['shape'], [0] + [0.0] * 7)    # cl_emit.qc hands over the emitter's origin
+        self.assertEqual(rt['shape'], [3, 0.0, 256.0] + [0.0] * 5)    # the engine places it; QC culls by 256
         self.assertFalse([k for k in unknown if 'Rotate' in k], unknown)
 
     def test_absent_rate_and_axis_are_sources_defaults(self):
@@ -528,6 +528,23 @@ class OrbitTests(unittest.TestCase):
                'speed_in_local_coordinate_system_max': (10, [20.0, 20.0, 20.0])}
         _, lines, _ = self.bake(self.system({'Rotation Rate': (3, 50.0)}, velocity=vel))
         self.assertIn('spawnvel 20 20', lines)
+
+    def test_an_orbiting_box_turns_about_the_control_point(self):
+        # bhop_collective portal: a box centred 256 above its control point, orbiting
+        box = {'functionName': (5, 'Position Within Box Random'),
+               'min': (10, [-320.0, -32.0, 224.0]), 'max': (10, [320.0, 32.0, 288.0])}
+        ops_ = [('DmeParticleOperator', 'r', {'functionName': (5, 'render_animated_sprites')}),
+                ('DmeParticleOperator', 'e', {'functionName': (5, 'emit_continuously'), 'emission_rate': (3, 15.0)}),
+                ('DmeParticleOperator', 'o', {'functionName': (5, 'Movement Rotate Particle Around Axis'),
+                                              'Rotation Rate': (3, 90.0), 'Rotation Axis': (10, [0.0, 1.0, 0.0])}),
+                ('DmeParticleOperator', 'p', box)]
+        attrs = {'max_particles': (2, 100), 'material': (5, 'particle\\p.vmt'), 'renderers': (15, [2]),
+                 'emitters': (15, [3]), 'operators': (15, [4]), 'initializers': (15, [5])}
+        rt, lines, _ = self.bake(pcf_bytes([('DmElement', 'root', {'particleSystemDefinitions': (15, [1])}),
+                                            ('DmeParticleSystemDefinition', 's', attrs)] + ops_))
+        self.assertEqual(rt['ofs'], [0.0, 0.0, 0.0])
+        self.assertIn("orgbias 0 0 256\t// the volume's centre off the control point the orbit turns about", lines)
+        self.assertEqual(rt['shape'][0], 3)
 
     def test_a_zero_rate_is_no_orbit(self):
         rt, lines, _ = self.bake(self.system({'Rotation Rate': (3, 0.0)}))

@@ -985,7 +985,7 @@ void() SV_EntInfo =
 			       sprintf("^5ent_info^7: '%s' is applied by the hl2 plugin from the entity lump (r_colourcorrection); the server keeps no entity\n", cn));
 		else if (isfunction(cn))
 			sprint(self, PRINT_HIGH,
-			       sprintf("^5ent_info^7: '%s' is in the map; its spawn function removes it (client-drawn or not needed on the server)\n", cn));
+			       sprintf("^5ent_info^7: '%s' is in the map but has no server entity now (its spawn function or the map removed it)\n", cn));
 		else
 			sprint(self, PRINT_HIGH,
 			       sprintf("^3ent_info^7: '%s' is in the map but NOT on the server -- removed at spawn (unimplemented class)\n", cn));
