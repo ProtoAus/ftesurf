@@ -202,7 +202,7 @@ if ($BuildEngine -or $Bump) { $Build = $true }
 #  NOT derived from `git ls-files`.  git's allowlist is an allowlist for
 #  SOURCE: every build output here is deliberately gitignored, so a git-derived
 #  archive would be missing ftesurf64.exe, all three .dat, particles\ (7 files),
-#  gfx\crosshairs\ (3, precached by name in the QC), gfx\mapthumbs\ (6 atlases,
+#  gfx\crosshairs\ (4, precached by name in the QC), gfx\mapthumbs\ (6 atlases,
 #  29.3 MB) and data\map*.txt -- it would boot with no crosshairs, no map
 #  thumbnails and no fs_automount dependency list -- while ADDING 624
 #  cfg\test\ fixtures, src\, tools\ and surfd\.

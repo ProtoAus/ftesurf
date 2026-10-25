@@ -791,8 +791,11 @@ void() HUD_ReadCvars =
 	ui_cv_strafepos_x = cvar("hud_strafe_x");  ui_cv_strafepos_y = cvar("hud_strafe_y");
 };
 
+float hud_xh4;                          // Patch 986: xhair4's width; 0 = not in this install
 void() HUD_RegisterCvars =
 {
+	local vector v;
+
 	ui_ehist_e = memalloc(sizeof(float) * EWIN);    // zeroed, as the arrays were
 	ui_ehist_t = memalloc(sizeof(float) * EWIN);
 	registercvar("hud_scale",   "2", CVAR_ARCHIVE);
@@ -1291,7 +1294,8 @@ void() HUD_RegisterCvars =
 	                             is build 65's 0, moved out of the way; it is not
 	                             in the chip's cycle and is reachable only here.
 	                         0 = OFF.  No crosshair at all, ours or the engine's.
-	                         1/2/3 = gfx/crosshairs/xhair1|2|3.png.
+	                         1/2/3 = gfx/crosshairs/xhair1|2|4.png (Patch 986: 4
+	                             replaced 3, which an older install keeps).
 	    hud_crosshair_size   pixels.  Pinned at 32 -- the files' native size, and
 	                         anything else is a real resample.  NOT multiplied by
 	                         hud_scale: a sight is not text.
@@ -1326,6 +1330,9 @@ void() HUD_RegisterCvars =
 	precache_pic("gfx/crosshairs/xhair1");
 	precache_pic("gfx/crosshairs/xhair2");
 	precache_pic("gfx/crosshairs/xhair3");
+	precache_pic("gfx/crosshairs/xhair4");
+	v = drawgetimagesize("gfx/crosshairs/xhair4");
+	hud_xh4 = v_x;
 };
 
 /*
@@ -3536,7 +3543,12 @@ string(float n) HUD_CrosshairPic =
 {
 	if (n == 1) return "gfx/crosshairs/xhair1";
 	if (n == 2) return "gfx/crosshairs/xhair2";
-	if (n == 3) return "gfx/crosshairs/xhair3";
+	if (n == 3)
+	{
+		if (hud_xh4 > 0)
+			return "gfx/crosshairs/xhair4";
+		return "gfx/crosshairs/xhair3";     // an install from before the release that ships 4
+	}
 	return "";
 };
 
@@ -3562,6 +3574,11 @@ void(vector scr) HUD_DrawCrosshair =
 	size = cvar("hud_crosshair_size");
 	if (size < 1)
 		size = 32;                  // the files' native size
+	// The cvar is sized for the 32 px files; xhair4 is 42 and keeps that ratio.
+	// Both put the sight's centre pixel at width/2 - 1, so they centre on the same pixel.
+	if (n == 3)
+	if (hud_xh4 > 0)
+		size = rint(size * hud_xh4 / 32);
 
 	a = cvar("hud_crosshair_alpha");
 	if (a <= 0 || a > 1)
