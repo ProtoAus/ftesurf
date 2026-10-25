@@ -2588,9 +2588,10 @@ float(entity e, string path) SV_RecSnapshot =
 .int    run_st_byte;             // P998: a streamed file's size at run_st_line, -1 unknown
 .float  rec_st_tail;             // P998: the open stage's lines while streaming (a strbuf); 0 none
 .float  rec_st_tbase;            // ...and the run line its index 0 holds
+.int    rec_st_tbytes;           // ...and the bytes those lines took in the part file
 .string rec_pr_glob;             // P998: a stage's prune, run on the next tick (zoned)
 .string rec_pr_keep;
-#define FS_STAGETAIL_MAX 65536   // lines kept in memory; a longer stage falls back to the file
+#define FS_STAGETAIL_MAX 16384   // lines (~3-4 min of one stage) kept; past it the file is read
 .float  run_st_tick;             // the run clock the stage began at
 .float  run_st_jump;             // it began with a jump: this one is recordable
 .float  run_st_ramp;             // a ramp has been touched since the boundary
@@ -4129,7 +4130,10 @@ void(entity e, string s) SV_RecPut =
 		{
 			if (e.rec_rec_lines - e.rec_st_tbase == buf_getsize(e.rec_st_tail)
 			    && buf_getsize(e.rec_st_tail) < FS_STAGETAIL_MAX)
+			{
 				bufstr_set(e.rec_st_tail, buf_getsize(e.rec_st_tail), s);
+				e.rec_st_tbytes = e.rec_st_tbytes + (int)strlen(s) + 1i;
+			}
 			else
 			{
 				buf_del(e.rec_st_tail);
@@ -8639,8 +8643,17 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	sourcebuf = e.rec_rec_buf;
 	sbase = 0;                      // the run line sourcebuf's index 0 holds
 	lent = FALSE;                   // sourcebuf is the stage tail: borrowed, not freed here
+	// Patch 998 review: the tail only where the part file grew by exactly what it holds
+	// since run_st_byte, within the copy cap -- the old whole-file read's own refusals.
+	bytes = 0i;
 	if (e.rec_rec_stream)
 	if (e.rec_st_tail >= 1)
+	if (e.run_st_byte >= 0i)
+	if (checkbuiltin(fsize))
+		bytes = fsize(e.rec_rec_fh);
+	if (bytes > 0i)
+	if (bytes <= FS_RECCOPY_MAX)
+	if (bytes - e.run_st_byte == e.rec_st_tbytes)
 	if (first == e.rec_st_tbase)
 	if (buf_getsize(e.rec_st_tail) == e.rec_rec_lines - first)
 	{
@@ -9080,6 +9093,7 @@ void(entity e) SV_StageByteMark =
 	if (e.rec_st_tail < 1)
 		e.rec_st_tail = 0;
 	e.rec_st_tbase = e.rec_rec_lines;
+	e.rec_st_tbytes = 0i;
 };
 
 
