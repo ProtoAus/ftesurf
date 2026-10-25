@@ -2141,6 +2141,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  actually share a frame -- the ordering is the belt to that braces.
 		*/
 		Av_Draw(scr);
+		Av_SelfMark();                  // Patch 1000
 		WPU_Draw(scr);
 		Friends_Finish();
 

@@ -886,6 +886,35 @@ void(vector pos, float w, float psw, float slh) Av_PaintPanel =
   under the cursor sui answers for the last, so the field and the chips on the
   strip win.  The type steps down until the card fits the window.
 */
+// Patch 1000: is `mark` a player's own word for it (*pself, a private game)?
+float(string mark) Av_SelfReported =
+{
+	local float i;
+
+	if (mark == "") return FALSE;
+	for (i = 0; i < 64; i = i + 1)
+		if (getplayerkeyvalue(i, "*pself") == "1")
+		if (getplayerkeyvalue(i, "*phash") == mark)
+			return TRUE;
+	return FALSE;
+};
+
+// Patch 1000: a proving lobby's word for this install's mark (*ahash), kept for the
+// next private game (cl_self_mark; userinfo smark, sv_account.qc's Account_Mark).
+float av_selfnext;
+void() Av_SelfMark =
+{
+	local string m;
+
+	if (cltime < av_selfnext) return;
+	av_selfnext = cltime + 5;
+	if (serverkey("board") != "ranked") return;
+	m = getplayerkeyvalue(player_localnum, "*ahash");
+	if (strlen(m) != 8 || !strcmp(m, cvar_string("cl_self_mark"))) return;
+	cvar_set("cl_self_mark", m);
+	localcmd(sprintf("setinfo smark %s\n", m));
+};
+
 void(vector scr) Av_Draw =
 {
 	local vector p, sz, tv, bv;
@@ -989,6 +1018,8 @@ void(vector scr) Av_Draw =
 	{
 		// What the lobby last said of this install (acct_is, cl_account.qc): words only.
 		s = "This server keeps no accounts";
+		if (getplayerkeyvalue(player_localnum, "*pself") == "1")
+			s = "Private game: the account this install last linked";    // Patch 1000
 		tv = SUI_THEME_MUTED;
 		if (acct_cl_is == 2) { s = "Steam account linked"; tv = SUI_THEME_GOOD; }
 		else if (acct_cl_is == 3) { s = "This Steam account is banned here"; tv = SUI_THEME_BAD; }
@@ -1002,9 +1033,11 @@ void(vector scr) Av_Draw =
 	else
 	{
 		s = "";
+		if (Av_SelfReported(av_other))
+			s = "private game: their own account claim   ";
 		if (pf_state == PFS_OK)
 		{
-			s = Profile_TierTag(pf_src);
+			s = strcat(s, Profile_TierTag(pf_src));
 			if (Profile_Age(pf_last) != "")
 				s = strcat(s, "   last time ", Profile_Age(pf_last), (Profile_Age(pf_last) == "today") ? "" : " ago");
 		}

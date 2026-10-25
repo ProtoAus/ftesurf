@@ -218,6 +218,33 @@ void(entity e) Account_Disconnect =
 	e.acct_here = FALSE;
 };
 
+// Patch 1000: a `smark` set or changed after the connect, re-read every 2 s.
+float acct_selfnext;
+void() Account_SelfFrame =
+{
+	local entity p;
+	local string want;
+
+	if (Account_On()) return;
+	if (time < acct_selfnext) return;
+	acct_selfnext = time + 2;
+	p = findfloat(world, acct_here, TRUE);
+	while (p)
+	{
+		want = infokey(p, "smark");
+		if (!SV_RecIsHex(want, FS_WHO_IDLEN))
+			want = "";
+		if (want != "")
+		{
+			if (infokey(p, "*phash") != want)
+				Account_Mark(p, p.acct_who);
+		}
+		else if (infokey(p, "*pself") != "")
+			Account_Mark(p, p.acct_who);
+		p = findfloat(p, acct_here, TRUE);
+	}
+};
+
 float(entity e) Account_Busy =
 {
 	if (!e.acct_rq)
@@ -320,7 +347,20 @@ void(entity e, string who) Account_Mark =
 	if (acct_mode == 0)
 	if (!Account_On())
 		byguid = TRUE;
+	/*
+	  Patch 1000 (Lex: profiles in private lobbies): with no master to prove accounts
+	  (a private game), a player's own word for their account mark -- userinfo `smark`,
+	  which their client learned from a proving lobby or the menu's signed chat -- so
+	  profiles and pictures load.  `*pself 1` says it is unproven; nothing ranks here.
+	*/
+	forceinfokey(e, "*pself", "");
 	if (byguid)
+	if (!Account_On())
+	if (SV_RecIsHex(infokey(e, "smark"), FS_WHO_IDLEN))
+		forceinfokey(e, "*pself", "1");
+	if (infokey(e, "*pself") != "")
+		forceinfokey(e, "*phash", infokey(e, "smark"));
+	else if (byguid)
 		forceinfokey(e, "*phash", FS_GuidId(infokey(e, "guid")));
 	else if (acct_mode != 1)
 		forceinfokey(e, "*phash", "");  // surfd not heard yet this map

@@ -142,6 +142,17 @@ void(float visible) MC_Poll =
 	MC_Request("chat", "-");
 };
 
+// Patch 1000: remember and send this install's mark (see m_init); a mark is 8 hex.
+void(string mark, float boot) MC_SelfMark =
+{
+	if (!MF_Hex(mark, 8)) return;
+	if (!boot)
+	if (!strcmp(mark, cvar_string("cl_self_mark")))
+		return;
+	cvar_set("cl_self_mark", mark);
+	localcmd(sprintf("setinfo smark %s\n", mark));
+};
+
 float(int root) MC_Snapshot =
 {
 	local int arr, row;
@@ -149,6 +160,7 @@ float(int root) MC_Snapshot =
 	local string who, peer, name, text, me;
 	me = json_get_string(json_find_object_child(root, "me"));
 	if (!MF_Hex(me, 8)) return FALSE;
+	MC_SelfMark(me, FALSE);
 	if (strcmp(me, mc_me))
 	{
 		MC_Clear();

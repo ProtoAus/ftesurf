@@ -161,6 +161,7 @@ void() MF_ResumeJoin;
 void(vector pos, vector size) MF_Draw;
 void() MF_Open;
 void() MFP_Close;
+void(string mark, float boot) MC_SelfMark;
 float() MFP_IsOpen;
 void(string who, string name) MFP_Open;
 void(vector pos, vector size) MFP_Draw;
@@ -8038,6 +8039,10 @@ void() m_init =
 	MU_Init();
 	MF_Init();
 	MC_Init();
+	// Patch 1000: this install's account mark, as a proving lobby or the menu's signed
+	// chat last said it; sent as userinfo `smark` so a private game can show profiles.
+	registercvar("cl_self_mark", "", 32);
+	MC_SelfMark(cvar_string("cl_self_mark"), TRUE);
 	registercvar("ui_maps_filters", "0", 32);
 	registercvar("ui_maps_large", "1", 32);
 	registercvar("ui_maps_friends", "0", 32);
