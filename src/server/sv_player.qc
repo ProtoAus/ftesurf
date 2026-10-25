@@ -345,6 +345,10 @@ void() ClientConnect =
 
 void() ClientDisconnect =
 {
+	SV_StagePruneDue(self);             // Patch 998: a stage's prune still queued
+	if (self.rec_st_tail >= 1)
+		buf_del(self.rec_st_tail);
+	self.rec_st_tail = 0;
 	SV_SourcePhaseClear(self);
 	Archive_Reset(self);
 	SV_StartMarkForget(self);

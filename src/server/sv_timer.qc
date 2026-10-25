@@ -2586,6 +2586,11 @@ float(entity e, string path) SV_RecSnapshot =
 .float  run_st_seg;              // the 0-based segment, or -1 when no stage is open
 .float  run_st_line;             // buffer index where this stage's samples start
 .int    run_st_byte;             // P998: a streamed file's size at run_st_line, -1 unknown
+.float  rec_st_tail;             // P998: the open stage's lines while streaming (a strbuf); 0 none
+.float  rec_st_tbase;            // ...and the run line its index 0 holds
+.string rec_pr_glob;             // P998: a stage's prune, run on the next tick (zoned)
+.string rec_pr_keep;
+#define FS_STAGETAIL_MAX 65536   // lines kept in memory; a longer stage falls back to the file
 .float  run_st_tick;             // the run clock the stage began at
 .float  run_st_jump;             // it began with a jump: this one is recordable
 .float  run_st_ramp;             // a ramp has been touched since the boundary
@@ -4119,6 +4124,18 @@ void(entity e, string s) SV_RecPut =
 	{
 		fputs(e.rec_rec_fh, s);
 		fputs(e.rec_rec_fh, "\n");
+		// Patch 998: and the open stage's copy, while it is in step with the file.
+		if (e.rec_st_tail >= 1)
+		{
+			if (e.rec_rec_lines - e.rec_st_tbase == buf_getsize(e.rec_st_tail)
+			    && buf_getsize(e.rec_st_tail) < FS_STAGETAIL_MAX)
+				bufstr_set(e.rec_st_tail, buf_getsize(e.rec_st_tail), s);
+			else
+			{
+				buf_del(e.rec_st_tail);
+				e.rec_st_tail = 0;
+			}
+		}
 		e.rec_rec_lines = e.rec_rec_lines + 1;
 		return;
 	}
@@ -6359,7 +6376,15 @@ void(entity e) SV_RecDiscard =
   is the same rule the single-player case has always had, applied to the unit
   that now exists.  An empty `who` reproduces the old pattern exactly.
 */
-void(entity e, float leg, string tag, string who, string keepme) SV_RecPrune =
+// Patch 998: the search SV_RecPrune runs, so a stage's prune can be run later.
+string(entity e, float leg, string tag, string who) SV_RecPruneGlob =
+{
+	if (who != "")
+		who = strcat(who, "_");
+	return sprintf("%s*_%s%s.rec", FS_RunDir(mapname, e.run_t_track, leg), who, tag);
+};
+
+void(string glob, string keepme) SV_RecPruneIn =
 {
 	local float h, n, i, keep, kl;
 	local string fn, stem;
@@ -6368,12 +6393,7 @@ void(entity e, float leg, string tag, string who, string keepme) SV_RecPrune =
 	if (keep < 1)
 		return;                 // 0 disables pruning entirely
 
-	if (who != "")
-		who = strcat(who, "_");
-
-	h = search_begin(sprintf("%s*_%s%s.rec",
-	                         FS_RunDir(mapname, e.run_t_track, leg),
-	                         who, tag), FS_NAMESORT, TRUE);
+	h = search_begin(glob, FS_NAMESORT, TRUE);
 	if (h < 0)
 		return;
 
@@ -6399,6 +6419,30 @@ void(entity e, float leg, string tag, string who, string keepme) SV_RecPrune =
 			dprint(sprintf("timer: pruned %s\n", fn));
 	}
 	search_end(h);
+};
+
+void(entity e, float leg, string tag, string who, string keepme) SV_RecPrune =
+{
+	SV_RecPruneIn(SV_RecPruneGlob(e, leg, tag, who), keepme);
+};
+
+// Patch 998: a stage's prune (a directory search, ~12 ms) runs on the player's next
+// tick rather than in the frame that wrote the stage.  A second queued first runs the first.
+void(entity e) SV_StagePruneDue =
+{
+	if (e.rec_pr_glob == "")
+		return;
+	SV_RecPruneIn(e.rec_pr_glob, e.rec_pr_keep);
+	strunzone(e.rec_pr_glob);
+	strunzone(e.rec_pr_keep);
+	e.rec_pr_glob = e.rec_pr_keep = "";
+};
+
+void(entity e, string glob, string keepme) SV_StagePruneLater =
+{
+	SV_StagePruneDue(e);
+	e.rec_pr_glob = strzone(glob);
+	e.rec_pr_keep = strzone(keepme);
 };
 
 /*
@@ -8588,13 +8632,24 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	local float gfirst;             // build 48: the slice's first ghost record, or -1
 	local float leg;                // build 57: the leg this slice is filed under
 	local string l, dst, who, owner;
-	local float sourcebuf, serial, probe, sbase;
+	local float sourcebuf, serial, probe, sbase, lent;
 	local int bytes;
 
 	// Reuse the sample-only slicer on a bounded readback, never a parallel writer.
 	sourcebuf = e.rec_rec_buf;
 	sbase = 0;                      // the run line sourcebuf's index 0 holds
+	lent = FALSE;                   // sourcebuf is the stage tail: borrowed, not freed here
 	if (e.rec_rec_stream)
+	if (e.rec_st_tail >= 1)
+	if (first == e.rec_st_tbase)
+	if (buf_getsize(e.rec_st_tail) == e.rec_rec_lines - first)
+	{
+		sourcebuf = e.rec_st_tail;
+		sbase = first;
+		lent = TRUE;
+	}
+	if (e.rec_rec_stream)
+	if (!lent)
 	{
 		// Patch375 fsize flushes without truncation; a live stdio prefix can
 		// otherwise still read as zero bytes. Keep the writer and EOF intact.
@@ -8630,7 +8685,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	if (buf < 1)
 	{
 		dprint("stage: buf_create failed; not writing this stage\n");
-		if (e.rec_rec_stream) buf_del(sourcebuf);
+		if (e.rec_rec_stream) if (!lent) buf_del(sourcebuf);
 		return;
 	}
 
@@ -8881,7 +8936,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 		if (serial >= 1024)
 		{
 			buf_del(buf);
-			if (e.rec_rec_stream) buf_del(sourcebuf);
+			if (e.rec_rec_stream) if (!lent) buf_del(sourcebuf);
 			return;
 		}
 	}
@@ -8900,13 +8955,14 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 			               dst, samples, first, last));
 
 		// Same pruner and the same rule as a full run: the archive grows one
-		// file per improvement and is capped per leg, per player.
-		SV_RecPrune(e, leg, FS_TagName(tag), (tag == RT_RUN) ? strcat(owner, "-*") : who,
-		            FS_RunLeaf(dur, who, FS_TagName(tag), "rec"));
+		// file per improvement and is capped per leg, per player.  Next tick (P998).
+		SV_StagePruneLater(e, SV_RecPruneGlob(e, leg, FS_TagName(tag),
+		                                      (tag == RT_RUN) ? strcat(owner, "-*") : who),
+		                   FS_RunLeaf(dur, who, FS_TagName(tag), "rec"));
 	}
 
 	buf_del(buf);
-	if (e.rec_rec_stream) buf_del(sourcebuf);
+	if (e.rec_rec_stream) if (!lent) buf_del(sourcebuf);
 };
 
 /*
@@ -9002,17 +9058,30 @@ float(entity e) SV_StageZone =
   the NEXT boundary -- but "nothing reads it yet" is a claim about the whole file
   and reading the level here is a fact about this line.
 */
-// Patch 998: where run_st_line starts in a streamed file, so SV_StageWrite copies the
-// stage alone; fsize flushes the writer, as SV_StageWrite's own read does.  Beside
-// every write of run_st_line (SV_StageOpen, SV_StageStart).
+/*
+  Patch 998 (Lex: the game slows down when a stage completes): beside every write of
+  run_st_line (SV_StageOpen, SV_StageStart), a streamed run starts keeping the stage's
+  lines in memory (SV_RecPut), so SV_StageWrite slices them without a file round trip
+  -- copying the part file to a temporary and loading it was ~15-24 ms of the ~45-58
+  a stage close took on Windows, whatever its size.  Where the tail could not keep up,
+  the stream's size here lets SV_StageWrite copy from this line rather than line 0.
+*/
 void(entity e) SV_StageByteMark =
 {
 	e.run_st_byte = -1i;
-	if (e.rec_rec_stream)
-	if (e.rec_rec_fh >= 0)
+	if (e.rec_st_tail >= 1)
+		buf_del(e.rec_st_tail);
+	e.rec_st_tail = 0;
+	if (!e.rec_rec_stream) return;
+	if (e.rec_rec_fh < 0) return;
 	if (checkbuiltin(fsize))
 		e.run_st_byte = fsize(e.rec_rec_fh);
+	e.rec_st_tail = buf_create_ex("string", 0);
+	if (e.rec_st_tail < 1)
+		e.rec_st_tail = 0;
+	e.rec_st_tbase = e.rec_rec_lines;
 };
+
 
 void(entity e, float seg, float ticks) SV_StageOpen =
 {
@@ -15147,6 +15216,7 @@ void(entity e) SV_TimerFrame =
 
 	if (e.rec_cp_q >= 1)            // Patch 375: a save's copy, a chunk a packet
 		SV_RecCopyStep(e, FS_RECCOPY_CHUNK);
+	SV_StagePruneDue(e);            // Patch 998
 
 	/*
 	  FIRST, and above the zone_count guard on purpose.

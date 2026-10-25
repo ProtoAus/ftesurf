@@ -1153,6 +1153,35 @@ void() Rec_ViewEnd =
 
 float rec_rp_stagerec;           // last STAT_FS_STAGEREC acted on; -1 = seeding
 
+/*
+  Patch 998: the first line a stage's frames can start at, by bisection over the
+  frames' tick column (they are in tick order: Rec_ViewStage's own `break` relies on
+  it), so a stage closing late in a long run no longer tokenizes the whole run on the
+  frame it closes -- 9 ms over 12,090 lines measured, growing with the run.
+*/
+float(float at) Rec_ViewFirstAt =
+{
+	local float lo, hi, mid, k;
+
+	lo = FS_VIEWHEAD;
+	hi = rec_rp_lines;
+	while (lo < hi)
+	{
+		mid = floor((lo + hi) / 2);
+		for (k = mid; k < hi; k = k + 1)
+			if (tokenize(bufstr_get(rec_rp_view, k)) >= 6)
+				break;
+		if (k < hi)
+		if (stof(argv(FS_VIEW_C_TICKS)) < at)
+		{
+			lo = k + 1;
+			continue;
+		}
+		hi = mid;
+	}
+	return lo;
+};
+
 void(float seg, float dur, float at) Rec_ViewStage =
 {
 	local float buf, i, n, t, frames, fh;
@@ -1178,7 +1207,7 @@ void(float seg, float dur, float at) Rec_ViewStage =
 	bufstr_set(buf, buf_getsize(buf), "begin");
 
 	frames = 0;
-	for (i = FS_VIEWHEAD; i < rec_rp_lines; i = i + 1)
+	for (i = Rec_ViewFirstAt(at); i < rec_rp_lines; i = i + 1)
 	{
 		l = bufstr_get(rec_rp_view, i);
 		n = tokenize(l);
