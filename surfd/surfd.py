@@ -36,6 +36,7 @@ import stat
 import threading
 import time
 import types
+from pathlib import Path
 
 from flask import Flask, Response, g, jsonify, request, send_file
 
@@ -845,19 +846,40 @@ def _harden_db_files():
                     log.error("cannot restrict %s to its owner: %s", DB_PATH, exc)
 
 
-def connect():
-    conn = sqlite3.connect(DB_PATH, timeout=5.0)
+def _refuse_newer_schema(conn):
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version > SCHEMA_VERSION:
-        conn.close()
         raise RuntimeError("database schema %d is newer than this surfd (%d)"
                            % (version, SCHEMA_VERSION))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    _harden_db_files()
-    return conn
+
+
+def connect():
+    probe = conn = None
+    try:
+        if DB_PATH != ":memory:" and os.path.exists(DB_PATH):
+            # An RW read/close can checkpoint an ahead WAL before refusal.
+            probe = sqlite3.connect(Path(DB_PATH).resolve().as_uri() + "?mode=ro",
+                                    uri=True, timeout=5.0)
+            probe.execute("BEGIN")
+            _refuse_newer_schema(probe)
+        conn = sqlite3.connect(DB_PATH, timeout=5.0)
+        _refuse_newer_schema(conn)
+        if probe is not None:
+            probe.close()  # release before a supported DELETE -> WAL switch
+            probe = None
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        _harden_db_files()
+        return conn
+    except BaseException:
+        if conn is not None:
+            conn.close()  # the RO reader must outlive a rejected RW handle
+        raise
+    finally:
+        if probe is not None:
+            probe.close()
 
 
 # One pm_verify verdict per sweep attempt (sweep.py writes it).  Also run by

@@ -391,6 +391,22 @@ from native feature evidence. No ranked/input/prediction acceptance is implied.
   plus format warned; seven substitutions plus format compiled without warning.
 
 
+## SQLite ahead-schema refusal and retained WAL (P1031, 2026-10-25)
+
+A normal SQLite RW connection can checkpoint on read/close: a user_version guard
+before application PRAGMAs does NOT by itself preserve an ahead retained WAL.
+Inspect through mode=ro (not immutable=1, which can miss committed WAL), retain
+that reader through the writable handle's compatibility recheck, and close a
+rejected RW handle before the RO probe. Release the probe before a supported
+DELETE-to-WAL mode switch or its read lock can block that switch. Test both a
+committed version stored only in WAL and an upgrade between the two checks.
+Read-only SQLite may still create an empty WAL/SHM or update SHM read marks on a
+cold WAL-mode database: distinguish this coordination metadata from database
+pages and committed log payload. Keep failed stronger predictions; do not claim
+namespace immutability, or row loss from a data-preserving checkpoint. Use explicit
+connection closure in WAL fixtures: a Python connection context commits/rolls
+back but does not close, and a hidden surviving connection can mask checkpointing.
+
 ## Backend startup after reader promotion (2026-10-22)
 
 A sealed backend generation can pin canonical readers and native consumers in

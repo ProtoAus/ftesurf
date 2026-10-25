@@ -5,6 +5,7 @@ Run with --work-root beneath an owned test root. --source selects an unchanged
 control application without checking out or editing a running install.
 """
 import argparse
+from contextlib import closing
 import hashlib
 import os
 from pathlib import Path
@@ -26,19 +27,38 @@ assert any((p / 'OWNER.md').is_file() for p in [ROOT, *ROOT.parents]), 'owned te
 ROOT.mkdir(parents=True, exist_ok=True)
 
 CHILD = r'''
-import importlib.util, os, pathlib, sys
+import hashlib, importlib.util, os, pathlib, subprocess, sys
 source=pathlib.Path(sys.argv[1]);mode=sys.argv[2]
 spec=importlib.util.spec_from_file_location('surfd',source)
 m=importlib.util.module_from_spec(spec);sys.modules['surfd']=m
+raced=[]
+def durable():
+    result={}
+    for suffix in ['', '-wal']:
+        p=pathlib.Path(m.DB_PATH+suffix)
+        result[suffix]=(hashlib.sha256(p.read_bytes()).hexdigest(),p.stat().st_mode&0o777) if p.is_file() else None
+    return result
 try:
-    if mode=='connect':
+    if mode in ['connect','connect-race']:
         text=source.read_text();anchor='\nmigrate()\n';assert text.count(anchor)==1
         exec(compile(text[:text.index(anchor)],str(source),'exec'),m.__dict__)
+        if mode=='connect-race':
+            original=m.sqlite3.connect
+            def opening(path,*a,**kw):
+                if str(path)==m.DB_PATH and not kw.get('uri') and not raced:
+                    creator="import sqlite3,os,sys;d=sqlite3.connect(sys.argv[1]);d.execute('PRAGMA wal_autocheckpoint=0');d.execute('INSERT INTO operator_fixture VALUES (?)',(b'between checks',));d.execute('PRAGMA user_version=%d'%int(sys.argv[2]));d.commit();os._exit(0)"
+                    r=subprocess.run([sys.executable,'-c',creator,m.DB_PATH,str(m.SCHEMA_VERSION+1)],capture_output=True,timeout=30)
+                    assert r.returncode==0,r.stderr
+                    raced.append(durable());assert raced[0]['-wal'] is not None
+                return original(path,*a,**kw)
+            m.sqlite3.connect=opening
         db=m.connect();db.close()
     else:
         spec.loader.exec_module(m)
 except RuntimeError as e:
     assert mode!='normal' and 'newer than this surfd' in str(e),str(e)
+    if mode=='connect-race':
+        assert len(raced)==1 and durable()==raced[0],'RW recheck checkpointed ahead WAL'
     print('ACTED newer-schema refusal',flush=True)
 else:
     assert mode=='normal','ahead database accepted'
@@ -69,7 +89,7 @@ class SchemaCompatibility(unittest.TestCase):
 
     def seed(self, ahead):
         self.child('normal')
-        with sqlite3.connect(self.db) as db:
+        with closing(sqlite3.connect(self.db)) as db:
             version = db.execute('PRAGMA user_version').fetchone()[0]
             db.execute('CREATE TABLE operator_fixture (value BLOB NOT NULL)')
             db.execute('INSERT INTO operator_fixture VALUES (?)', (b'preserve this value',))
@@ -88,7 +108,7 @@ class SchemaCompatibility(unittest.TestCase):
         before = self.fingerprint()
         self.child('ahead')
         self.assertEqual(self.fingerprint(), before)
-        with sqlite3.connect(self.db) as db:
+        with closing(sqlite3.connect(self.db)) as db:
             self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], version + 1)
             self.assertEqual(db.execute('SELECT value FROM operator_fixture').fetchone()[0], b'preserve this value')
 
@@ -98,16 +118,64 @@ class SchemaCompatibility(unittest.TestCase):
         self.child('connect')
         self.assertEqual(self.fingerprint(), before)
 
+    def durable_fingerprint(self):
+        result = {}
+        for suffix in ['', '-wal']:
+            path = Path(str(self.db) + suffix)
+            result[suffix] = (hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_mode & 0o777) if path.is_file() else None
+        return result
+
+    def test_ahead_committed_wal_is_not_checkpointed(self):
+        version = self.seed(False)
+        creator = "import sqlite3,os,sys;d=sqlite3.connect(sys.argv[1]);d.execute('PRAGMA journal_mode=WAL');d.execute('PRAGMA wal_autocheckpoint=0');d.execute('INSERT INTO operator_fixture VALUES (?)',(b'committed WAL',));d.execute('PRAGMA user_version=%d'%int(sys.argv[2]));d.commit();os._exit(0)"
+        r = subprocess.run([sys.executable, '-c', creator, str(self.db), str(version + 1)],
+                           env=self.env, capture_output=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(int.from_bytes(self.db.read_bytes()[60:64], 'big'), version)
+        before = self.durable_fingerprint()
+        self.assertIsNotNone(before['-wal'])
+        self.child('connect')
+        self.assertEqual(self.durable_fingerprint(), before)
+        # SHM read marks are coordination metadata, not durable pages/logs.
+        with closing(sqlite3.connect(self.db.as_uri() + '?mode=ro', uri=True)) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], version + 1)
+            self.assertEqual(db.execute('SELECT count(*) FROM operator_fixture WHERE value=?',
+                                       (b'committed WAL',)).fetchone()[0], 1)
+
+    def test_ahead_cold_wal_only_creates_empty_coordination_files(self):
+        version = self.seed(False)
+        with closing(sqlite3.connect(self.db)) as db:
+            db.execute('PRAGMA journal_mode=WAL')
+            db.execute('PRAGMA user_version=%d' % (version + 1))
+            db.commit()
+        wal = Path(str(self.db) + '-wal')
+        self.assertFalse(wal.exists())
+        before = self.fingerprint()
+        self.child('connect')
+        self.assertEqual(self.fingerprint(), before)
+        # SQLite mode=ro may create an empty WAL and its SHM coordination cache.
+        if wal.exists():
+            self.assertEqual(wal.stat().st_size, 0)
+
+    def test_upgrade_between_checks_keeps_committed_wal(self):
+        self.seed(False)
+        with closing(sqlite3.connect(self.db)) as db:
+            self.assertEqual(db.execute('PRAGMA journal_mode=WAL').fetchone()[0], 'wal')
+        self.child('connect-race')
+        with closing(sqlite3.connect(self.db.as_uri() + '?mode=ro', uri=True)) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM operator_fixture WHERE value=?',
+                                       (b'between checks',)).fetchone()[0], 1)
+
     def test_current_version_still_starts(self):
         version = self.seed(False)
         self.child('normal')
-        with sqlite3.connect(self.db) as db:
+        with closing(sqlite3.connect(self.db)) as db:
             self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], version)
             self.assertEqual(db.execute('SELECT value FROM operator_fixture').fetchone()[0], b'preserve this value')
 
     def test_fresh_database_still_initializes(self):
         self.child('normal')
-        with sqlite3.connect(self.db) as db:
+        with closing(sqlite3.connect(self.db)) as db:
             self.assertGreater(db.execute('PRAGMA user_version').fetchone()[0], 0)
             self.assertIn('last_used', [r[1] for r in db.execute('PRAGMA table_info(lobbies)')])
 
