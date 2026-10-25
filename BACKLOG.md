@@ -1,5 +1,20 @@
 # BACKLOG.md
 
+## bhop_ceaseless (P990, P1002): what is left
+
+- Refract with an AnimatedTexture on $normalmap draws one frame (mamorex/water_ripple, the
+  sword floor: "static and z-fights with itself"); vmt/refract would need the 2D-array normal
+  path vmt/wateranim has (P867). Also its $decal overlap with swordcrack at z 11616 unexamined.
+- The underwater overlay ($underwateroverlay effects/water_warp01, a Refract with a
+  $bumptransform scroll) not checked for animation.
+- pcf.py: Color Fade (20 operators on the map), rotate-around-axis (5), Rotation Basic/Speed;
+  info_particle_system Start/Stop (the map's particle toggle) not mirrored on the client.
+- Water reads brighter cyan than Momentum's at saves 6/9 ($reflecttint {0 255 255} at
+  $reflectamount 0.05); not measured against Source.
+- The flowmap's texture mapping (base UVs x worlduvscale; normals and noise on world XY) is a
+  reading of Valve's published flow description, not compared side by side with Momentum.
+- Falsifier for each: Lex's Momentum screenshots at saves 9 and 6 beside a rig shot.
+
 ## Lex's list of 25 Oct (second): what is still open (P986-P1001)
 
 - Glock single fire: no camera kick since P955 (live 23 Oct); what moves is the gun

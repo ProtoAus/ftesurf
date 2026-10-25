@@ -21,6 +21,19 @@
 
 ## next
 
+### P1002 bhop_ceaseless's speed tunnel, func_lod and particles
+- Momentum's AddSpeed, AddHorizontalSpeed and AddVerticalSpeed map inputs work: bhop_ceaseless's speed tunnel under the start pushes you along the way you are moving.
+- A trigger whose filter shares its name with a name the map gives players no longer lets everyone through once someone carrying that name touched it first.
+- func_lod brushes the map marks not solid are walk-through, as in Momentum, and all func_lod detail fades out at its authored distance.
+- bhop_ceaseless's particle effects (boosters, stars, rain, smoke) are drawn; their colour changes over life are not yet.
+
+### P990 bhop_ceaseless's colours, roof, gates, rain and water
+- Cubemaps saved without the old sphere map load: bhop_ceaseless's glowing cracks, gradients, chains, dragon, tree, butterflies and roof crystals have their colour back.
+- Unlit signs and labels with a reflection draw it (the start room's text, logos and buttons).
+- A model that pokes through a sky brush is no longer cut off by the sky (the faceted roof over the start).
+- Props marked never-fade by newer compilers are drawn again (the bridge gates).
+- Scrolling rain is small and moving, flowing water animates, and the start room's glass floor shimmers gently instead of warping hard.
+
 ### P1001 Ramp touchdown numbers from just before the ramp
 - The run line's touchdown label on a ramp now shows your speed and energy on the tick before you touched the ramp, not after the ramp's clip took its share.
 

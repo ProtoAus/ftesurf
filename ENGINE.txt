@@ -24,8 +24,12 @@ commit   03c395af6db81e4b384a37b1cbe25a44dd20ceeb
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-995
-patch    1001
+tag      patch-990
+patch    1002
+# Patch 1002: func_lod "Solid" + Source fade, Momentum AddSpeed inputs, filters found by class,
+# DMX 3-5 particle files (QC + tools). Physents digest moves on 44 func_lod maps (P884 class).
+# Patch 990: hl2 plugin + client: 6-face pre-7.5 cubes, unlit reflections, UnlitGeneric base+envmap,
+# r_sky_forcedepth_scale, positive-only prop fade, detail mode 9, $flowmap water, Sine refract.
 # Patch 986, 991-994, 996, 998-1001 (QC/surfd only, no native change): xhair4, Play screen, Friends in a
 # lobby, start-box save arm, results hint, menu-chat records, stage-close cost, launch map list,
 # private-game profiles, ramp touchdown numbers. Native tag stays patch-995.
