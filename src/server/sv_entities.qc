@@ -694,6 +694,7 @@ entity  vbsp_onjump_head;
 .int    vbsp_touch_in;
 .int    vbsp_touch_seen;
 .int    vbsp_touch_out;         // absent for one window, not yet ended
+.int    vbsp_touch_cmd;         // Patch 1025: touched during the slot's current command
 .int    vbsp_once_done;
 
 /*
@@ -827,6 +828,7 @@ void(entity p) SV_TouchForget =
 	{
 		e.vbsp_once_done    = e.vbsp_once_done    & keep;
 		e.vbsp_io_gate_seen = e.vbsp_io_gate_seen & keep;
+		e.vbsp_touch_cmd    = e.vbsp_touch_cmd    & keep;     // Patch 1025
 	}
 };
 
@@ -2422,7 +2424,10 @@ void(entity t, string param) SV_IOAddOutput =
 	  whole vector out into velocity at the top of the same tick, because this
 	  path does not set FL_BASEVELOCITY.  The full essay is at .run_basevel.
 
-	  So this is a LAUNCH, and `0 0 1140` means 1148.5 u/s.
+	  So this is a LAUNCH, and `0 0 1140` means 1148.5 u/s in Source 2013.  Momentum pays the
+	  authored number: its bhop_ceaseless replays rise by exactly 400, 550, 700, 800, 1000, 1050,
+	  1200 and 1250 (data/momentum/bhop_ceaseless/main, vz less 8 of gravity), so Patch 1025
+	  divides the cash-out's (1 + tick/2) out, as SV_IOAddSpeed does.
 
 	  IT IS A SET OF ALL THREE COMPONENTS, never an add: Source's
 	  UTIL_StringToVector (util_shared.cpp:916-946) parses up to three floats
@@ -2452,6 +2457,7 @@ void(entity t, string param) SV_IOAddOutput =
 			t.run_basevel = [stof(argv(0)), 0, 0];
 		else
 			return;
+		t.run_basevel = t.run_basevel * (1 / (1 + run_bv_tick * 0.5));     // Patch 1025, above
 
 		if (nv < 3)
 			if (SV_CensusAdd("AddOutput basevelocity (short)"))
@@ -4714,6 +4720,98 @@ void(entity p) SV_TouchRelocate =
 	}
 };
 
+/*
+  Patch 1025: OnEndTouch on the command after the first one that did not touch, which is when
+  Source's untouch check fires it.  Momentum replay 0009523 of bhop_ceaseless: the feet clear the
+  boost pad's 4-unit trigger on one tick and the pad's `basevelocity 0 0 1250` is in the velocity
+  the next (t 66.42 -> 66.43).  The sweep above ended the touch 0.06-0.09 s later, the boost
+  landed six to nine ticks late, and the client, which cannot see the sweep's clock, could not
+  predict it.  The sweep stays as the backstop for a slot whose commands stop coming (and for a
+  trigger past the four a player's list holds).
+
+  Per player, the triggers with outputs it touched (four fields; a fifth is left to the sweep).
+  A command the engine moved held (run_pmhold: no touches, sv_user.c) is no evidence of leaving,
+  so the edge is read only after a command that ran its touches (run_touchran, PlayerPreThink).
+*/
+.entity run_tl1, run_tl2, run_tl3, run_tl4;
+.float  run_touchran;
+
+void(entity pl, entity trig) SV_TouchList =
+{
+	if (pl.run_tl1 == trig || pl.run_tl2 == trig || pl.run_tl3 == trig || pl.run_tl4 == trig)
+		return;
+	if (!pl.run_tl1)
+		pl.run_tl1 = trig;
+	else if (!pl.run_tl2)
+		pl.run_tl2 = trig;
+	else if (!pl.run_tl3)
+		pl.run_tl3 = trig;
+	else if (!pl.run_tl4)
+		pl.run_tl4 = trig;
+};
+
+// One list slot: the trigger to end now, else world.  A slot another path already let go
+// (the sweep, a relocate, a freed edict) is dropped.
+entity(entity pl, .entity f, int bit) SV_TouchEndSlot =
+{
+	local entity t;
+
+	t = pl.f;
+	if (!t)
+		return world;
+	if (wasfreed(t) || !((t.vbsp_touch_in | t.vbsp_touch_seen) & bit))
+	{
+		pl.f = world;
+		return world;
+	}
+	if (t.vbsp_touch_cmd & bit)
+	{
+		t.vbsp_touch_cmd = t.vbsp_touch_cmd & ~bit;
+		return world;
+	}
+	pl.f = world;
+	t.vbsp_touch_in   = t.vbsp_touch_in   & ~bit;
+	t.vbsp_touch_seen = t.vbsp_touch_seen & ~bit;
+	t.vbsp_touch_out  = t.vbsp_touch_out  & ~bit;
+	return t;
+};
+
+void(entity t, entity pl) SV_TouchEndFire =
+{
+	if (!t || wasfreed(t))
+		return;
+	SV_FireOutput(t, "OnEndTouch", pl);
+	if (!wasfreed(t))
+	if (!(t.vbsp_touch_in | t.vbsp_touch_seen))
+		SV_FireOutput(t, "OnEndTouchAll", pl);
+};
+
+// PlayerPreThink, ahead of the jump edge and SV_BaseVelocityFrame: a carrier an OnEndTouch
+// writes is cashed out on this command, the tick after the one that left.  The four ends
+// are taken before any fires, so an output that kills or moves things finds the lists done.
+void(entity pl) SV_TriggerEndEdge =
+{
+	local int bit;
+	local entity a, b, c, d;
+
+	bit = SV_TouchBit(pl);
+	if (!bit)
+		return;
+	a = SV_TouchEndSlot(pl, run_tl1, bit);
+	b = SV_TouchEndSlot(pl, run_tl2, bit);
+	c = SV_TouchEndSlot(pl, run_tl3, bit);
+	d = SV_TouchEndSlot(pl, run_tl4, bit);
+	if (!(a || b || c || d))
+		return;
+	if (SV_DevOn())
+		dprint(sprintf("touch end edge: %s %s %s %s at z %.2f vz %.2f\n", a.model, b.model, c.model, d.model,
+		               pl.origin_z, pl.velocity_z));
+	SV_TouchEndFire(a, pl);
+	SV_TouchEndFire(b, pl);
+	SV_TouchEndFire(c, pl);
+	SV_TouchEndFire(d, pl);
+};
+
 void(entity trig, entity act) SV_TriggerIOTouch =
 {
 	local int bit;
@@ -4748,6 +4846,8 @@ void(entity trig, entity act) SV_TriggerIOTouch =
 				SV_FireOutput(trig, "OnStartTouchAll", act);
 		}
 		trig.vbsp_touch_seen = trig.vbsp_touch_seen | bit;
+		trig.vbsp_touch_cmd = trig.vbsp_touch_cmd | bit;
+		SV_TouchList(act, trig);
 	}
 	else
 	{

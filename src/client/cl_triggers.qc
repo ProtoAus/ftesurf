@@ -126,6 +126,8 @@ vector predmove_basevel;        // this command's net push write; the engine
                                 // holds it as .run_basevel's mirror (w)
 float  predmove_bvfired;        // a continuous push fired, even if the net
                                 // vector cancelled to zero (w)
+vector predmove_bvset;          // Patch 1025: an AddOutput basevelocity write, paid exactly (w)
+float  predmove_bvsetflag;      // ...nonzero when written (w)
 vector predmove_mins;           // player hull (ro)
 vector predmove_maxs;           // (ro)
 vector predmove_anglesnap;      // absolute view angles for the snap (w)
@@ -462,7 +464,8 @@ float(string s) TT_Find =
 #define IN_STATE    3           // toggle/kill: stateful, never mirrored
 #define IN_ADDOUT   4           // io_parm says which key
 #define IN_MODSPD   5
-#define IOP_PMOVE   1           // basevelocity/gravity: player movement
+#define IOP_PMOVE   1           // gravity/origin/angles: player movement
+#define IOP_BVEL    3           // Patch 1025: basevelocity, mirrored when tg_bvel_ok
 #define IOP_TNAME   2           // targetname: routing state
 
 float  io_n, io_over;
@@ -474,6 +477,17 @@ float  io_delay[TIO_MAX];
 float  io_times[TIO_MAX];
 float  io_fired[TIO_MAX];       // committed fires; mapspawn rows: 1 = done
 string io_tgt[TIO_MAX];
+vector *io_bv;                  // Patch 1025: an IOP_BVEL row's vector (memalloc: globals are full)
+
+/*
+  Patch 1025: OnEndTouch on the next command (SV_TriggerEndEdge) and AddOutput basevelocity paid
+  exactly, both published by the server as fs_endedge 1.  With an engine that takes predmove_bvset,
+  a trigger whose only movement writes are delay-0 basevelocity outputs at its activator from
+  OnStartTouch/OnEndTouch stays predicted; the write is paid, and the end exact, only while the
+  server says fs_endedge (read per frame: the serverinfo is not in yet when the lump is walked).
+*/
+float  tg_endexact;             // fs_endedge: the server ends touches on the next command
+float  tg_bvel_ok;              // this engine mirrors the carrier write
 
 string tg_tname[TG_MAX];
 float  tg_sd[TG_MAX];           // the StartDisabled key, as authored
@@ -563,7 +577,14 @@ void(string key, string val) TG_IOParse =
 		p0 = (nt > 2) ? strtolower(argv(2)) : "";
 		sp = strstrofs(p0, " ", 0);
 		w = (sp < 0) ? p0 : substring(p0, 0, sp);
-		if (w == "basevelocity" || w == "gravity" || w == "origin" || w == "angles")
+		if (w == "basevelocity")
+		{
+			parm = IOP_BVEL;
+			if (!io_bv)
+				io_bv = memalloc(sizeof(vector) * TIO_MAX);
+			io_bv[io_n] = (sp < 0) ? '0 0 0' : stov(substring(p0, sp + 1, -1));
+		}
+		else if (w == "gravity" || w == "origin" || w == "angles")
 			parm = IOP_PMOVE;
 		else if (w == "targetname")
 			parm = IOP_TNAME;
@@ -647,6 +668,14 @@ float(float o) TG_IOMirrorOK =
 	return tg_kind[io_src[o]] != 0;	// owner predicted (fixpoint updates this)
 };
 
+// Patch 1025: a basevelocity row this mirror can pay (TG_IOFireEv) rather than demoting its owner.
+float(float o) TG_IOBvelOK =
+{
+	if (!tg_bvel_ok || io_delay[o] != 0 || io_times[o] >= 0)
+		return FALSE;
+	return io_ev[o] == EV_START || io_ev[o] == EV_END;
+};
+
 float(float s) TG_IOOwnerBad =
 {
 	local float o;
@@ -662,6 +691,8 @@ float(float s) TG_IOOwnerBad =
 		if (io_inp[o] == IN_MODSPD)
 			return TRUE;
 		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_PMOVE)
+			return TRUE;
+		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_BVEL && !TG_IOBvelOK(o))
 			return TRUE;
 	}
 	return FALSE;
@@ -753,6 +784,22 @@ void(float i, float ev, float seq) TG_IOFireEv =
 	{
 		if (io_src[o] != i || io_ev[o] != ev)
 			continue;
+		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_BVEL)
+		{
+			// TG_IOOwnerBad kept this slot only if every such row is TG_IOBvelOK, and its
+			// targets are the activator (other targets are no carrier of ours).
+			if (tg_endexact && TG_IOBvelOK(o))
+			if (!strcmp(io_tgt[o], "!activator") || !strcmp(io_tgt[o], "!player") ||
+			    !strcmp(io_tgt[o], "!caller"))
+			{
+				predmove_bvset = io_bv[o];
+				predmove_bvsetflag = 1;
+				if (tg_cv_debug)
+					print(sprintf("^5trig^7: seq %g IO #%g %s -> basevelocity %v\n", seq, i,
+					              (ev == EV_START) ? "OnStartTouch" : "OnEndTouch", io_bv[o]));
+			}
+			continue;
+		}
 		if (io_inp[o] != IN_EN && io_inp[o] != IN_DIS)
 			continue;
 		if (io_delay[o] != 0)
@@ -799,6 +846,7 @@ void(float seq) TG_IOEndSweep =
 		// same value for a given command on every replay pass, because the
 		// base is the committed clock at the ack and the per-command msecs
 		// re-add identically.
+		if (!tg_endexact)
 		if (tg_io_tbase + tg_io_clock - tg_io_stamp[i] <= TG_IO_GRACE)
 			continue;
 		tg_io_endf[i] = 1;
@@ -1008,6 +1056,9 @@ void() TG_IOResolve =
 			    (io_ev[o] == EV_START || io_ev[o] == EV_END))
 				tg_io_own[s] = 1;
 		}
+		for (o = 0; o < io_n; o = o + 1)
+			if (io_src[o] == s && io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_BVEL && TG_IOBvelOK(o))
+				tg_io_own[s] = 1;   // Patch 1025
 		if (tg_io_own[s])
 			tg_c_ioown = tg_c_ioown + 1;
 		if (tg_io_gated[s])
@@ -1383,9 +1434,10 @@ void(float seq) TG_ChainStart =
 				print(sprintf("trig: seed #%g seq %g probe %g eff %g lastin %g in %g\n",
 			              i, seq, probe, TG_IOEff(i, seq), tg_io_lastin[i],
 			              tg_io_in[i]));
-			if (tg_io_in[i] && !probe && TG_IOEff(i, seq))
+			if (tg_io_in[i] && !probe && TG_IOEff(i, seq) && !tg_endexact)
 			{
-				// pending END: keep in + stamp
+				// pending END: keep in + stamp.  Patch 1025: an exact end at the ack has
+				// fired already (its carrier is in the engine's ring for that sequence).
 			}
 			else if (probe && TG_IOEff(i, seq) &&
 			         tg_io_lastin[i] >= seq - 2)
@@ -1584,6 +1636,7 @@ void() Trig_LoadForMap =
 	tg_io_clock = 0;
 	tg_io_tbase = 0;
 	tg_iotime0 = time;
+	tg_bvel_ok = checkextension("FTESURF_PREDICT_BVSET");
 	tg_io_esc = chr2str(27);
 	tg_c_event = tg_c_iodem = tg_c_sdok = tg_c_ioown = tg_c_iogated = 0;
 
@@ -1925,6 +1978,7 @@ void() Trig_LoadForMap =
 
 void() Trig_Frame =
 {
+	tg_endexact = (serverkey("fs_endedge") == "1");     // Patch 1025
 	Trig_IOMapSpawn();
 	if (!tg_needload)
 		return;

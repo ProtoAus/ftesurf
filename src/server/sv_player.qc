@@ -489,6 +489,7 @@ void() PlayerPreThink =
 		// sees the jump edge and the pad strip it would have seen without the hold
 		// (clearing them here swallowed OnJump and untagged a hop off a start pad).
 		self.run_basevelocity = '0 0 0';
+		self.run_touchran = FALSE;      // Patch 1025: no touches this command
 		return;
 	}
 
@@ -532,6 +533,9 @@ void() PlayerPreThink =
 	if (!(self.flags & FL_ONGROUND))
 	if (self.velocity_z > 0)
 		SV_TriggerJumpEdge(self);
+	// Patch 1025: the PREVIOUS command's end-touch edge, read the same way.
+	if (self.run_touchran)
+		SV_TriggerEndEdge(self);
 
 	/*
 	  The pre-move ground state, for OnLand (SV_TriggerIOTouch) and for the edge
@@ -651,6 +655,8 @@ void() PlayerPreThink =
 	*/
 	SV_MoveBoundFrame(self);
 	SV_StoryFrame(self);            // Patch 856: reads the same moves, writes nothing of them
+	// Patch 1025: what the engine reads after this hook (sv_user.c): this command touches.
+	self.run_touchran = !self.run_pmhold;
 	SV_TimerInFrame(self);
 };
 
