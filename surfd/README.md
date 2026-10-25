@@ -100,9 +100,26 @@ GET /api/join?map=<name>                                    -- schema 4
 
 "Where do I play this map?" -- the endpoint behind the map list's Start button.
 Three outcomes, in order: a live lobby is already on that map and is handed
-back (`state: "ready"`, nothing is written); one is already on its way there
+back (`state: "ready"`, no claim or map load); one is already on its way there
 (`state: "loading"`); or an idle one is claimed and told to move on its next
 heartbeat (`state: "loading"`, `why: "starting"`).
+
+**P997 / schema24: least-recently-used idle reuse.** New-map requests select the
+oldest-used live, unclaimed, zero-player lobby, with node as a stable tie-break.
+`lobbies.last_used` is an integer logical sequence, **not a timestamp or player
+history**. An occupied authenticated heartbeat or successful join selection
+advances it; an idle heartbeat does not. Legacy rows start at0/unknown, without
+inventing past use. The column/24 stamp migrate atomically; an existing additive
+column is retained on forward retry, and old lobby/application values survive.
+
+Validation/library scans stay outside the allocation lock. Directory selection,
+claim creation and recency update share one `BEGIN IMMEDIATE` transaction, so
+concurrent asks coalesce or take different vacancies instead of overwriting a
+standing claim. Storage failure rolls back both assignment and recency. Existing
+populated-first same-map preference, stale/claimed exclusions, rate limits and
+the zero-player check at BOTH ends remain. No unit is stopped/spawned, no lobby
+files are deleted and the public JSON/heartbeat command shapes are unchanged.
+`test_join.py` covers the ordering, concurrent asks and interrupted migration.
 
 `timed` is REPORTED, NEVER ENFORCED. Only 531 of the Pi's 1312 maps have a zone
 file; the rest load perfectly and can never be timed, because with no start,

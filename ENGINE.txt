@@ -25,7 +25,9 @@ commit   431b1932b932ab267587a3de646b160145df46c0
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-995
-patch    995
+patch    997
+# Patch 997: backend reuses the least-recently-used empty lobby and atomically reserves it.
+# Backend schema24 only; native commit/tag remain patch-995, no QC/Build/receipt change.
 # Patch 995: SDL3 file-picker entry checks existing local-command provenance.
 # Full SDL3 platform/desktop acceptance pending; normal Windows images exclude that branch.
 # Patch 989: validate DBus portal replies and balance request/poll ownership on errors.

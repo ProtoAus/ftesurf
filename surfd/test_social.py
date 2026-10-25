@@ -135,7 +135,7 @@ class Friends(unittest.TestCase):
 
     def vm_assert23(self, before):
         objects, values = self.vm_legacy_snapshot()
-        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 23)
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], S.SCHEMA_VERSION)
         self.assertEqual(set(objects) - set(before[0]),
                          {"account_viewmodels", "sqlite_autoindex_account_viewmodels_1"})
         self.assertEqual({name: objects[name] for name in before[0]}, before[0])
@@ -731,7 +731,7 @@ class Friends(unittest.TestCase):
         tables = [r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
         before = {name: [tuple(r) for r in self.db.execute('SELECT * FROM "' + name + '"')] for name in tables}
         S.migrate()
-        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 23)
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], S.SCHEMA_VERSION)
         self.assertEqual(before, {name: [tuple(r) for r in self.db.execute('SELECT * FROM "' + name + '"')] for name in tables})
         self.assertEqual(self.chat_send()[0]["ok"], 1)
         used = [tuple(r) for r in self.db.execute("SELECT * FROM social_menu_messages")]

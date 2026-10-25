@@ -43,6 +43,9 @@ import os
 import sqlite3
 import sys
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 
 FAILED = []
 
@@ -560,6 +563,193 @@ check("CONTROL: the old encoder escapes the lobby list's name",
       (NAME9.encode("utf-8") in lob, b"\\u2122" in lob), (False, True))
 check("CONTROL: ...and the join reply's", (NAME9.encode("utf-8") in joined,
       b"\\u2122" in joined), (False, True))
+
+
+# --------------------------------------------------------------------------
+print("\n--- 10. idle reuse follows actual use, not node number ------------")
+
+
+def usage(mod):
+    with sqlite3.connect(mod._test_db) as conn:
+        return dict(conn.execute("SELECT node,last_used FROM lobbies"))
+
+
+m = fresh()
+beat(m, "p27520", "surf_ace", players=1)
+beat(m, "p27520", "surf_ace", players=0)
+beat(m, "p27510", "surf_ace", players=1)
+beat(m, "p27510", "surf_ace", players=0)
+before = usage(m)
+check("occupied use is ordered even in the same second",
+      0 < before["p27520"] < before["p27510"], True)
+beat(m, "p27520", "surf_ace", players=0)
+check("idle heartbeat does not refresh use", usage(m), before)
+status, body = join(m, "surf_lux")
+check("CONTROL: request really creates a claim", (status, len(assignments(m))), (200, 1))
+check("oldest use wins, not lowest node", body["addr"].endswith(":27520"), True)
+check("successful claim becomes most recent", usage(m)["p27520"] > before["p27510"], True)
+beat(m, "p27520", "surf_lux")
+status, body = join(m, "bhop_mukiology")
+check("next unused map rotates to the other idle lobby",
+      (status, body["addr"].endswith(":27510")), (200, True))
+
+m = fresh()
+beat(m, "p27510", "surf_lux")
+beat(m, "p27520", "surf_ace", players=1)
+old = usage(m)["p27520"]
+status, body = join(m, "surf_lux")
+check("already-running reuse advances recency without claim",
+      (status, body["why"], len(assignments(m)), usage(m)["p27510"] > old),
+      (200, "already running", 0, True))
+old = usage(m)["p27520"]
+now = m.time.time()
+with patch.object(m.time, "time", return_value=now - 1):
+    beat(m, "p27520", "surf_ace", players=1)
+check("clock rollback does not reverse use order", usage(m)["p27520"] > old, True)
+
+
+print("\n--- 11. concurrent claims serialize without stealing --------------")
+
+
+def concurrent_asks(mod, maps):
+    start = threading.Barrier(len(maps))
+    original = mod.live_rows
+    transactional = []
+
+    def observed(now):
+        transactional.append(mod.get_db().in_transaction)
+        return original(now)
+
+    def ask(item):
+        start.wait(timeout=5)
+        i, mapname = item
+        return join(mod, mapname, src="203.0.113.%d" % (10 + i))
+
+    mod.live_rows = observed
+    try:
+        with ThreadPoolExecutor(max_workers=len(maps)) as pool:
+            answers = list(pool.map(ask, enumerate(maps)))
+    finally:
+        mod.live_rows = original
+    return answers, transactional
+
+
+m = fresh()
+beat(m, "p27510", "surf_ace")
+beat(m, "p27520", "surf_ace")
+answers, transactional = concurrent_asks(m, ["surf_lux", "surf_kitsune"])
+check("both distinct-map requests act", [a[0] for a in answers], [200, 200])
+check("each owns a different idle lobby", len({a[1]["addr"] for a in answers}), 2)
+check("both claims survive", sorted(a["map"] for a in assignments(m)),
+      ["surf_kitsune", "surf_lux"])
+check("selection ran inside the write transaction", transactional, [True, True])
+
+m = fresh()
+beat(m, "p27510", "surf_ace")
+answers, transactional = concurrent_asks(m, ["surf_lux", "surf_lux"])
+check("same-map requests coalesce", ([a[0] for a in answers],
+      len({a[1]["addr"] for a in answers}), len(assignments(m))), ([200, 200], 1, 1))
+
+m = fresh()
+beat(m, "p27510", "surf_ace")
+answers, transactional = concurrent_asks(m, ["surf_lux", "surf_kitsune"])
+check("one vacancy cannot be stolen by the second ask",
+      (sorted(a[0] for a in answers), len(assignments(m))), ([200, 503], 1))
+
+m = fresh()
+beat(m, "p27510", "surf_ace")
+original = m._lobby_touch
+forced = []
+
+
+def storage_failure(db, node):
+    forced.append(node)
+    raise sqlite3.OperationalError("forced recency failure")
+
+
+m._lobby_touch = storage_failure
+try:
+    status, body = join(m, "surf_lux")
+finally:
+    m._lobby_touch = original
+check("recency failure arm acted", forced, ["p27510"])
+check("claim and use roll back together", (status, assignments(m), usage(m)),
+      (500, [], {"p27510": 0}))
+
+
+print("\n--- 12. schema23 use metadata is additive and unknown --------------")
+m = fresh()
+beat(m, "p27510", "surf_ace", players=1)
+with sqlite3.connect(m._test_db) as conn:
+    conn.execute("ALTER TABLE lobbies DROP COLUMN last_used")
+    conn.execute("PRAGMA user_version=23")
+    conn.execute("CREATE TABLE preserve_lru(marker BLOB)")
+    conn.execute("INSERT INTO preserve_lru VALUES (?)", (b"unchanged marker",))
+    before = conn.execute("SELECT * FROM lobbies ORDER BY node").fetchall()
+m.migrate()
+with sqlite3.connect(m._test_db) as conn:
+    after = conn.execute("SELECT node,map,players,maxplayers,addr,name,last_seen"
+                         " FROM lobbies ORDER BY node").fetchall()
+    check("migration preserves all old lobby values", after, before)
+    check("old use remains unknown, not reconstructed", usage(m), {"p27510": 0})
+    check("unrelated application bytes survive", conn.execute(
+          "SELECT marker FROM preserve_lru").fetchall(), [(b"unchanged marker",)])
+    check("migration stamps actual new schema", conn.execute(
+          "PRAGMA user_version").fetchone()[0], 24)
+m.migrate()
+check("migration is repeatable without inventing use", usage(m), {"p27510": 0})
+try:
+    with sqlite3.connect(m._test_db) as conn:
+        conn.execute("UPDATE lobbies SET last_used=1.5")
+except sqlite3.IntegrityError:
+    rejected = True
+else:
+    rejected = False
+check("logical order cannot silently promote to fractional real", rejected, True)
+
+# Interruption between ALTER and the schema stamp must not strand schema23
+# with a new column that the next boot would try to add again.
+m = fresh()
+beat(m, "p27510", "surf_ace")
+with sqlite3.connect(m._test_db) as conn:
+    conn.execute("ALTER TABLE lobbies DROP COLUMN last_used")
+    conn.execute("PRAGMA user_version=23")
+original_connect = m.connect
+forced_stamp = []
+
+
+class StampFailure:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
+
+    def execute(self, sql, *args):
+        if sql == "PRAGMA user_version=24":
+            forced_stamp.append(1)
+            raise sqlite3.OperationalError("forced schema stamp failure")
+        return self.conn.execute(sql, *args)
+
+
+m.connect = lambda: StampFailure(original_connect())
+try:
+    m.migrate()
+except sqlite3.OperationalError:
+    interrupted = True
+else:
+    interrupted = False
+finally:
+    m.connect = original_connect
+check("schema interruption boundary acted", (interrupted, forced_stamp), (True, [1]))
+with sqlite3.connect(m._test_db) as conn:
+    check("failed migration preserves old schema stamp", conn.execute(
+          "PRAGMA user_version").fetchone()[0], 23)
+    check("failed migration rolls back its DDL", "last_used" in {
+          row[1] for row in conn.execute("PRAGMA table_info(lobbies)")}, False)
+m.migrate()
+check("same database upgrades after rollback", (user_version(m), usage(m)),
+      (24, {"p27510": 0}))
 
 
 # --------------------------------------------------------------------------

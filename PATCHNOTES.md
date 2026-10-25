@@ -21,6 +21,10 @@
 
 ## next
 
+### P997 Reuse the oldest-idle lobby first
+- New-map requests now reuse the least-recently-used empty lobby. Simultaneous requests reserve separate vacancies or share the same map without stealing each other's assignment.
+- Occupied lobbies are never moved; no server is stopped or player data removed.
+
 ### P995 Keep the SDL3 file picker local
 - SDL3 file-picker requests now require a trusted local command, matching the DBus picker restriction.
 

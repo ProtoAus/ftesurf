@@ -455,7 +455,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 23
+SCHEMA_VERSION = 24
 KSF_UNBOUND_SQL = """
 CREATE TABLE IF NOT EXISTS ksf_unbound (
  map TEXT NOT NULL, track INTEGER NOT NULL, leg INTEGER NOT NULL,
@@ -1602,6 +1602,20 @@ def migrate():
             conn.commit()
             version = 23
 
+        if version < 24:
+            # P997: current lobby-use order only, not player history or UTC.
+            # Existing rows stay unknown (0); never reconstruct past activity.
+            # DDL and its stamp must commit together, including interruption.
+            conn.execute("BEGIN IMMEDIATE")
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(lobbies)")}
+            if "last_used" not in columns:
+                conn.execute("ALTER TABLE lobbies ADD COLUMN last_used INTEGER"
+                             " NOT NULL DEFAULT 0 CHECK(typeof(last_used)='integer'"
+                             " AND last_used>=0)")
+            conn.execute("PRAGMA user_version=24")
+            conn.commit()
+            version = 24
+
         verdict_metrics(conn)
         gone = accounts.links_now(conn)
         conn.commit()
@@ -2239,6 +2253,8 @@ def heartbeat():
                 """,
                 (node, mapname, players, maxplayers, addr, name, now),
             )
+            if players > 0:
+                _lobby_touch(db, node)
     except sqlite3.Error as exc:
         log.exception("heartbeat db error from %s: %s", src, exc)
         return fail(500, "storage error")
@@ -2310,7 +2326,7 @@ def live_rows(now):
     db = get_db()
     return db.execute(
         """
-        SELECT node, map, players, maxplayers, addr, name, last_seen
+        SELECT node, map, players, maxplayers, addr, name, last_seen, last_used
           FROM lobbies
          WHERE last_seen > ?
          ORDER BY players DESC, map ASC
@@ -2439,19 +2455,32 @@ def join_map():
     db = get_db()
     try:
         with db:
-            db.execute("DELETE FROM assignments WHERE asked_at < ?",
-                       (now - ASSIGN_TTL,))
-        rows = live_rows(now)
-        claims = {r["node"]: r for r in db.execute(
-            "SELECT node, map, map_dir, asked_at FROM assignments").fetchall()}
+            # Only directory/claim decisions hold the lock, not library scans.
+            db.execute("BEGIN IMMEDIATE")
+            return _join_lobby(db, int(time.time()), src, mapname, map_dir, timed)
     except sqlite3.Error as exc:
         log.exception("join db error from %s: %s", src, exc)
         return _join_reply(500, {"error": "storage error"})
 
+
+def _lobby_touch(db, node):
+    # Logical order, not a timestamp: same-second use and clock rollback cannot
+    # reverse it. The bounded directory, not a player history, owns this value.
+    db.execute("UPDATE lobbies SET last_used=(SELECT COALESCE(MAX(last_used),0)+1"
+               " FROM lobbies) WHERE node=?", (node,))
+
+
+def _join_lobby(db, now, src, mapname, map_dir, timed):
+    """Read/select/claim under join_map's single write transaction."""
+    db.execute("DELETE FROM assignments WHERE asked_at < ?", (now - ASSIGN_TTL,))
+    rows = live_rows(now)
+    claims = {r["node"]: r for r in db.execute(
+        "SELECT node, map, map_dir, asked_at FROM assignments").fetchall()}
+
     # ---- 1. somebody is already there -------------------------------------
     #
-    # THE FIRST CHECK AND THE COMMON ONE, and it costs nothing: no claim, no map
-    # load, no state written anywhere.  It is also the whole social half of the
+    # THE FIRST CHECK AND THE COMMON ONE: no claim or map load, only recency.
+    # It is also the whole social half of the
     # feature -- "every map is a lobby" is worth nothing if two people asking
     # for the same map get two different servers -- so the tie-break is MOST
     # PLAYERS rather than least: people gather.
@@ -2475,6 +2504,7 @@ def join_map():
         if best is None or row["players"] > best["players"]:
             best = row
     if best is not None:
+        _lobby_touch(db, best["node"])
         return _join_reply(200, {
             "map": mapname, "timed": timed, "state": "ready", "wait": 0,
             "addr": best["addr"], "name": best["name"],
@@ -2490,6 +2520,7 @@ def join_map():
         row = live.get(node)
         if row is None:
             continue        # claimed a node that has since gone stale
+        _lobby_touch(db, node)
         return _join_reply(200, {
             "map": mapname, "timed": timed, "state": "loading",
             "wait": max(0, ASSIGN_TTL - (now - claim["asked_at"])),
@@ -2504,14 +2535,10 @@ def join_map():
     # policy that could be written above it: a server with a human on it is not
     # a candidate, full stop, so no request from anybody can interrupt a run.
     #
-    # LOWEST NODE WINS, and that is arbitrary-but-stable rather than clever --
-    # the same reasoning BOARD_ORDER gives for putting `player` in the sort.
-    # The right rule is least-recently-busy, which needs a column this schema
-    # does not have; until the pool is bigger than five that difference is not
-    # measurable, and an arbitrary rule that is the SAME on every request beats
-    # a smart one that reshuffles under concurrent asks.
-    free = sorted(r["node"] for r in rows
-                  if r["players"] == 0 and r["node"] not in claims)
+    # Least recently used first; node breaks unknown/equal history stably.
+    # Idle heartbeats do not refresh this order. A live claim is never stolen.
+    free = sorted((r for r in rows if r["players"] == 0 and r["node"] not in claims),
+                  key=lambda r: (r["last_used"], r["node"]))
     if not free:
         # WHAT IS RUNNING IS PART OF THE REFUSAL.  A bare 503 leaves the menu
         # with nothing to offer; the list lets it say "all servers are busy --
@@ -2525,23 +2552,11 @@ def join_map():
                         for r in rows],
         })
 
-    node = free[0]
-    row = live[node]
-    try:
-        with db:
-            db.execute(
-                """
-                INSERT INTO assignments (node, map, map_dir, asked_at, src)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(node) DO UPDATE SET
-                    map = excluded.map, map_dir = excluded.map_dir,
-                    asked_at = excluded.asked_at, src = excluded.src
-                """,
-                (node, mapname, map_dir, now, src),
-            )
-    except sqlite3.Error as exc:
-        log.exception("join claim failed for %s: %s", node, exc)
-        return _join_reply(500, {"error": "storage error"})
+    row = free[0]
+    node = row["node"]
+    db.execute("INSERT INTO assignments (node, map, map_dir, asked_at, src)"
+               " VALUES (?, ?, ?, ?, ?)", (node, mapname, map_dir, now, src))
+    _lobby_touch(db, node)
 
     log.info("join: %s asked for %r -- assigning %s (was %r)",
              src, map_dir, node, row["map"])
