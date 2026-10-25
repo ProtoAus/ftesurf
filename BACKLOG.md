@@ -19,11 +19,10 @@
 - Water colour (Lex is looking at it): at save 25 ours reads cyan (open water mean 6 125 231) where
   Momentum's is deep blue (11 45 197), with the refraction offset off too, so it is the fog/tint
   colour, not P1019's distortion. P1019's 512 falloff is fitted to that one Momentum shot.
-- Water cost (Lex asked 25 Oct; P1018 took the sky room and the target size): the main view's
-  reflection is the rest -- about 1.1-1.2 ms and ~265 draws on bhop_ceaseless's start room at
-  r_renderscale 2, CPU-bound; refraction 0.2-0.4 ms. Next: an hl2_water mode that builds refraction
-  from a copy of the main view (colour + depth, drawn after the opaque world) and reflects by a
-  screen-space march with the cubemap where it misses -- no extra scene renders.
+- Water cost (Lex asked 25 Oct): P1018 took the 3D sky room's captures and the target size, P1020
+  added hl2_water 5 (screen-space: start room 3.03 -> 1.42 ms). Left at hl2_water 2: the main view's
+  reflection, ~1.1-1.2 ms and ~265 draws, CPU-bound. hl2_water 5's reflection misses fall back to the
+  fog colour; the material's $envmap cube would be closer where one is authored.
 - Save 13: the start floor is Refract glass (plar/ceaseless/cyan glass, $refracttinttexture glass_b,
   mean 57 165 200) over the start pool, and the pool's cluster is in the start room's PVS, so the
   water below shows through as Source's refraction would draw it. Lex sees "the ramp texture below";

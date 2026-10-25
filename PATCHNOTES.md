@@ -21,6 +21,9 @@
 
 ## next
 
+### P1020 Screen-space water
+- New water setting, hl2_water 5: water refracts and reflects from what is already on screen instead of drawing the scene twice more, about halving the frame time near water on bhop_ceaseless. Reflections show only what is on screen.
+
 ### P1019 Calmer water from far away
 - Source water seen from a distance no longer breaks into speckle and thin horizontal lines; its ripple distortion stays the size it is up close, as in Momentum. hl2_waterrefractfalloff 0 restores the old look.
 
