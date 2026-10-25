@@ -1211,13 +1211,10 @@ void(vector scr) Results_Draw =
 		y = y + rowh;
 	}
 
-	// ---- the keys, because a panel that needs a gesture nobody guesses has none.
+	// ---- the keys.  Patch 994 (Lex): no "F1 cursor" -- the card has no targets;
+	// F1 still takes the cursor.
 	y = p_y + hgt - pad - lsz;
 	x = p_x + pad;
-	if (!ui_rs_cursor)
-	{
-		x = Results_Hint(x, y, "F1", "cursor", lsz, a * 0.9);
-	}
 	Results_Hint(x, y, "ESC", "close", lsz, a * 0.9);
 
 	Font_Reset();
