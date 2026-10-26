@@ -25,7 +25,9 @@ commit   c931d98ea5c5a04dc8115d23b51f3eb49d611145
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1047
-patch    1049
+patch    1051
+# Patch 1051 is QC only: goto_start goes to the track start from any timer state.
+# Patch 1050 is QC only: SetRemoteDestination, TriggerWithParameter/OnTriggerParameter, output value passthrough.
 # Patch 1049 is QC only: func_conveyor and func_illusionary ignore their angles too.
 # Patch 1048 is QC only: func_wall ignores its angles, as Source (bhop_goldsrc2's sparking panel).
 # Patch 1047 (GL client): skeletal Source props skin on the GPU and unbaked props instance (hourglass s3

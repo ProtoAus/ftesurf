@@ -7885,6 +7885,25 @@ hud_edit rows (3 since P798); their height estimate only errs high.
   clear it on world load. Diagnostic only; the gate reads whether the command exists, not the list.
 - Source's SF_SPRITE_ONCE (spawnflag 2, play once) is not honoured: a flipbook loops forever.
 
+## P1050 SetRemoteDestination per player: what is left (26 Oct)
+
+- The relay's refire lockout is map-wide (SV_IORelayFire, Source's single-player rule): a second player's
+  checkpoint TriggerWithParameter in the same frame is dropped (tealbox, greybox, peribox and greenbox route
+  checkpoints through one set_tp relay). A later reset repairs a missing entry (SV_TpDestReset relocates).
+- Saves, rewinds and resume do not carry vbsp_tpdest (contexts and targetname are carried): after a
+  resume or a load the first fail before a checkpoint goes nowhere.
+- greenbox re-arms its checkpoints and sets tele_spawn only for the first player into an empty start
+  (OnStartTouchAll), so a later entrant can have no entry and stay on a fail floor until a checkpoint.
+  Never a forward teleport.
+- A reset in tealbox's start briefly enables no_return_spawn (the start's OnEndTouch), as any step out of
+  the start already does.
+- The new destination is not case-repaired like Patch 191's load-time targets; a non-player activator
+  writes .target map-wide without the lobby map-edit hold. Neither occurs on the five maps.
+- Lex, 26 Oct: bhop_2shiny2shuckle has no zone file and is not in the picker. Momentum's cache lists it
+  (id 1703) and bhop_whitebox (2389) as submissions, not approved; bhop_tealbox (2103) and bhop_greenbox
+  (2153) are approved but have no zones in maps/zones/local either. The cache holds only zoneHash, so
+  their zones need a fetch from Momentum's API.
+
 ## P1036 response contexts: switch-on and the carries it shares with targetname (26 Oct)
 
 - Switched on by P1037 (registercvar default 1; `set vbsp_contexts 0` in a cfg is the kill switch).

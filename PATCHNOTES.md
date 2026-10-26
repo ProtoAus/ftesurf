@@ -21,6 +21,12 @@
 
 ## next
 
+### P1051 goto_start goes to the start
+- goto_start (M) now takes you to the start of the map, or of the bonus you are on, from anywhere: also after a run was voided or finished, where it often only restarted the stage you were in. Reset (R) still restarts your stage.
+
+### P1050 Fail floors send you back
+- On bhop_tealbox, bhop_whitebox, bhop_greenbox, bhop_greybox and bhop_peribox, falling onto a fail floor now sends you back to your last checkpoint instead of leaving you stuck there. Each player's checkpoint is their own on a lobby.
+
 ### P1049 Rotated conveyors and see-through pieces match Momentum
 - Conveyor belts and walk-through decorations that a mapper turned in the editor now sit and face the way Momentum shows them (deathrun_forest's conveyors, bhop_shust_extension's markers).
 
