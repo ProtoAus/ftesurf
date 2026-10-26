@@ -626,9 +626,9 @@ float(string stem) Sprite_ReadOrient =
 	return got;
 };
 
-float(string raw) Sprite_Material =
+float(string raw, float rate) Sprite_Material =
 {
-	local string stem;
+	local string stem, name;
 	local vector sz;
 	local float  i, o;
 
@@ -636,14 +636,23 @@ float(string raw) Sprite_Material =
 	if (stem == "")
 		return -1;
 
+	// Patch 1035: off Source's default 10 a flipbook is its own shader, cycled at the
+	// env_sprite's rate (mat_vmt.c Shader_LoadVMT).  Asked only of a plugin that REGISTERS
+	// hl2_sprite_framerate -- tested by its description, see mod_vbsp.c -- since an older
+	// one cannot resolve the name and the sprite vanishes.  Orientation reads the real VMT.
+	name = stem;
+	if (rate > 0 && rate != 10 && cvar("hl2_sprite_framerate") &&
+	    cvar_description("hl2_sprite_framerate") != "")
+		name = strcat("ftesurf/spranim/", ftos(rate), "/", stem);
+
 	for (i = 0; i < sprmat_n; i = i + 1)
-		if (sprmat_name[i] == stem)
+		if (sprmat_name[i] == name)
 			return (sprmat_w[i] > 0) ? i : -1;
 
 	if (sprmat_n >= SPRMAT_MAX)
 		return -1;
 
-	sz = drawgetimagesize(stem);
+	sz = drawgetimagesize(name);
 
 	/*
 	  THE MATERIAL IS ALWAYS READ, and vbsp_sprite_orient overrides at DRAW time
@@ -674,7 +683,7 @@ float(string raw) Sprite_Material =
 	}
 
 	i = sprmat_n;
-	sprmat_name[i] = strzone(stem);
+	sprmat_name[i] = strzone(name);
 	sprmat_w[i] = sz_x;
 	sprmat_h[i] = sz_y;
 	sprmat_orient[i] = o;
@@ -686,7 +695,7 @@ float(string raw) Sprite_Material =
 		// Named, because "some sprites are missing" is not actionable and
 		// "sprites/glow.vmt is missing" is.  Same contract as the plugin's
 		// hl2_unresolved list.
-		dprint(sprintf("sprites: no material for \"%s\"\n", stem));
+		dprint(sprintf("sprites: no material for \"%s\"\n", name));
 		return -1;
 	}
 	return i;
@@ -1623,7 +1632,7 @@ void() Sprite_LoadForMap =
 
 			if (model == "")
 				continue;
-			mat = Sprite_Material(model);
+			mat = Sprite_Material(model, framerate);
 			if (mat < 0)
 			{
 				vbsp_spr_nomat = vbsp_spr_nomat + 1;
