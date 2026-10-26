@@ -2041,6 +2041,20 @@ void(string cmd) SV_ParseClientCommand =
 	// Patch 845: refused, as `!m` is, while a paused run is being restored.
 	if (c == "zone_spawn") { if (!SV_MsBusy(self)) SV_SpawnGoto(); return; }
 	if (c == "zone_reset")   { was = self.origin; SV_ZoneChatCommand("!r", 0); SV_RewindWarped(self, was); return; }
+	// Patch 1051: goto_start's rule on this player's own leg, for a client that cannot predict it (spectating,
+	// replays): `!r` where the leg is its track's start (startmark, save in the box), else that track's start.
+	if (c == "zone_start")
+	{
+		was = self.origin;
+		if (self.run_leg_seg <= 0)
+			SV_ZoneChatCommand("!r", 0);
+		else if (self.run_leg_track > 0)
+			SV_ZoneChatCommand("!b", self.run_leg_track);
+		else
+			SV_ZoneChatCommand("!m", 0);
+		SV_RewindWarped(self, was);
+		return;
+	}
 	// Multi-Session.  Not `run_resume`: that is the cvar's name.
 	if (c == "ms_resume")    { SV_MsAccept(self);     return; }
 	if (c == "ms_discard")   { SV_MsDiscardCmd(self); return; }

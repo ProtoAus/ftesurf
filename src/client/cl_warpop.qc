@@ -757,9 +757,10 @@ float() WarpOp_Console =
 	}
 
 	// Patch 848: reset is `!r`, the start of the leg you are on (mid-run past the leg's first
-	// segment, a stage restart: SV_TimerWouldRestartSeg). goto_start is the start of the run:
-	// `!r` too, keeping its save in the box (P415) and its latched zone, except there, where it
-	// is the track's start, `!m` or `!b N`.
+	// segment, a stage restart: SV_TimerWouldRestartSeg).
+	// Patch 1051: goto_start is the start of the track `!r`'s latched leg is on: `!r` itself where that
+	// leg is the track's first segment (startmark, save in the box, P415), else `!m` or `!b N`.  It read
+	// the timer before, whose segment is 0 whenever it is idle, so it "only reset" to the latched stage.
 	if (argv(0) == "reset")
 	{
 		if (!WarpOp_Reset(WOP_RESET))
@@ -768,10 +769,14 @@ float() WarpOp_Console =
 	}
 	if (argv(0) == "goto_start")
 	{
-		if (getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING)
-		if (getstatf(STAT_FS_TIMERSEG) > getstatf(STAT_FS_TIMERSTARTSEG))
+		if (!WarpOp_Able())
 		{
-			n = getstatf(STAT_FS_TIMERTRACK);     // 0 main, N bonus N
+			localcmd("cmd zone_start\n");        // spectating, replays: the server decides on your own leg
+			return TRUE;
+		}
+		n = getstatf(STAT_FS_LEGTRACK);         // 0 main, N bonus N
+		if (getstatf(STAT_FS_LEGSEG) > 0)
+		{
 			if (n > 0)
 			{
 				if (n > WOP_BONUSES)

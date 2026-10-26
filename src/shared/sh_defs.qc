@@ -145,6 +145,8 @@
 #define AS_STUCK   5           // tainted, and standing will not clear it (a load, a freeze): !r
 #define STAT_FS_STYLE 183      // P1011: the style this run is surfing (RS_*); display only
 #define STAT_FS_CTX   184      // P1036: the player's response contexts, "key:value\n" entries (string)
+#define STAT_FS_LEGTRACK 185   // P1051: run_leg_track, the track of the leg `!r` returns to
+#define STAT_FS_LEGSEG 186     // P1051: run_leg_seg, that leg's segment (0 = the track's start)
 #define RS_NONE    0           // not enough fast air yet
 #define RS_FW      1           // forward (normal)
 #define RS_SW      2           // sideways
