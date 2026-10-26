@@ -7884,3 +7884,16 @@ hud_edit rows (3 since P798); their height estimate only errs high.
   map) adds duplicates and after 32 entries a new map's flipbooks stop appearing. Dedupe by name or
   clear it on world load. Diagnostic only; the gate reads whether the command exists, not the list.
 - Source's SF_SPRITE_ONCE (spawnflag 2, play once) is not honoured: a flipbook loops forever.
+
+## P1036 response contexts: switch-on and the carries it shares with targetname (26 Oct)
+
+- vbsp_contexts defaults to 0 (the fail-open that shipped). Switch it on (default.cfg + lobby cfgs)
+  once ftesurf-2c's P1037 client mirror is live. At 0, bhop_tealbox teleports a player every tick at
+  spawn (P1037's measurement) and bhop_2shiny2shuckle's stage-2 door opens without flint and iron.
+  80 maps / 10,069 triggers sit behind a context filter. Runs say which rule they ran under (`contexts`).
+- Progress carry, shared with targetname (Patch 735) and srcclass: nothing clears them at a run's arm,
+  and saves now carry contexts as they carry targetname, so a save taken in the start box after a
+  noclip trip through the pickups arms a clean run that holds them. Momentum's restart keeps targetname
+  too, but its practice mode restores the pre-practice state. Options: clear at the arm, or record the
+  list (and targetname) held at the arm in the .rec header so it is visible. Owner's call.
+- The rewind state carries targetname and (now) contexts but not srcclass (Patch 865's class marker).

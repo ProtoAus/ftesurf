@@ -1443,7 +1443,7 @@ string(string s, string parm) SV_CtxParse;
 
 void(entity e) SV_CtxInit =
 {
-	if (e.vbsp_ctx_init)
+	if (!e || e.vbsp_ctx_init)	// world is read-only: a TestActivator with no activator
 		return;
 	e.vbsp_ctx_init = TRUE;
 	// A stashed filter's comes back with getentityfieldstring's escapes; no library value has a quote,
@@ -1515,12 +1515,15 @@ string(string s, string parm) SV_CtxParse =
 	return s;
 };
 
-// Saves and rewinds carry contexts beside targetname, as map progress: a `contexts 1` marker (a save
-// without one predates them and leaves the player's alone) and one `context <key> <value>` per entry.
+// Saves and rewinds carry contexts beside targetname, as map progress: a `contexts 1` marker and one
+// `context <key> <value>` per entry.  Written only while contexts gate filters, so a save made with them
+// off reads as one that predates them and leaves the player's list alone.
 void(float f, string s) SV_CtxWrite =
 {
 	local float p, c, n;
 
+	if (!vbsp_ctx_on || !vbsp_io_on)
+		return;
 	fputs(f, "contexts 1\n");
 	for (p = 0; (n = strstrofs(s, "\n", p)) >= 0; p = n + 1)
 	{

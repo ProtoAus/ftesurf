@@ -3031,8 +3031,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             way; it says which boards a run is comparable on.
     contexts <0|1>          Patch 1036.  1: filter_activator_context gated triggers
                             on the player's AddContext state (vbsp_contexts and
-                            vbsp_entity_io, latched at map load); 0 or absent:
-                            every such filter passed.  Teleports and doors differ
+                            vbsp_entity_io, latched at map load); 0: every such
+                            filter passed; absent: not recorded (before Patch
+                            1036, or a Momentum import).  Teleports and doors differ
                             between the two (2shiny2shuckle's stage-2 door), so
                             it says which boards a run is comparable on.
     proprule <n>            which prop-geometry rule built this run's collision
