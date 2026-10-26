@@ -7877,8 +7877,10 @@ hud_edit rows (3 since P798); their height estimate only errs high.
 
 ## P1034 follow-up: per-entity sprite animation rate (26 Oct)
 
-- P1034 animates multi-frame env_sprites at Source's default 10fps. exit1 explicitly sets framerate 40,
-  so thread the env_sprite framerate from cl_sprites.qc into the synthesized AnimatedTexture rate (a
-  material-name encoding or a per-rate variant) so each sprite animates at its authored speed.
+- DONE by P1035 (26 Oct): each env_sprite cycles at its own framerate, 0 is a still frame.
 - VMT_VTFFrames LoadFile()s the whole VTF to read numframes (bytes 24-25); switch to a header/partial
   read if it ever shows in load times (reviewer nit -- fine for sprite-sized files for now).
+- P1035 review nit: `hl2_spranim`'s list is never reset, so a shader regenerate (vid_restart, a new
+  map) adds duplicates and after 32 entries a new map's flipbooks stop appearing. Dedupe by name or
+  clear it on world load. Diagnostic only; the gate reads whether the command exists, not the list.
+- Source's SF_SPRITE_ONCE (spawnflag 2, play once) is not honoured: a flipbook loops forever.
