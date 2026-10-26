@@ -386,8 +386,10 @@ void() APW_Resolve =
 /*
   Patch 1002: func_lod, hidden on the server (func_lod) and drawn here with Source's fade --
   ComputeDistanceFade (cdll_util.cpp), linear in squared distance from the eye to the box centre,
-  between DisappearMinDist and DisappearMaxDist (CS:GO/Strata keys) or else DisappearDist and
-  DisappearDist + lod_TransitionDist 800 (c_func_lod.cpp). A func_lod naming neither never fades.
+  between DisappearDist and DisappearDist + lod_TransitionDist 800 (c_func_lod.cpp, the only key
+  Momentum reads), else DisappearMinDist/MaxDist (CS:GO). Patch 1033: DisappearDist first --
+  bhop_ceaseless's 198 tune it (400-2000) and all carry the editor's 2000/2200 pair. A func_lod
+  naming neither never fades.
 */
 .float lod_min2, lod_max2;
 float  vbsp_lod_n;
@@ -417,15 +419,15 @@ void(string mdl, string sorg, string sdd, string smin, string smax) LOD_Spawn =
 
 	if (substring(mdl, 0, 1) != "*")
 		return;
-	if (smin != "" || smax != "")
+	if (sdd != "")
+	{
+		mn = stof(sdd);		// Patch 1033: Momentum reads only this (c_func_lod.cpp), editors add the pair below
+		mx = mn + 800;
+	}
+	else if (smin != "" || smax != "")
 	{
 		mn = (smin != "") ? stof(smin) : 2000;	// the CS:GO FGD's defaults
 		mx = (smax != "") ? stof(smax) : 2200;
-	}
-	else if (sdd != "")
-	{
-		mn = stof(sdd);
-		mx = mn + 800;
 	}
 	else
 		mn = mx = 0;
