@@ -115,3 +115,29 @@ Verified (rig, surf_hourglass at Lex's save 2, qwprogs swapped and restored): ne
 -> 261 on the shipping build (15,103 -> 273 on the first cut); the vortex draws without the square. One
 review round (control flow, consequences): no defect; nothing but drawing reads the state, collision is
 set before it. Leftovers in BACKLOG (missing renderamt key, a Disabled solid prop's collision, func_brush).
+
+## P1042-P1048 -- hourglass water and frame rate, goldsrc2 crates/spark/panel, orgrimmar smoke
+
+| | |
+|---|---|
+| Engine | ftequakers main `c7dc90bd3`, annotated tag `patch-1047` (P1045 plugin, P1047 GL client; log entries for P1042-P1048). Built from the tag: exe `e28907a1` (`git-7899-patch-1047-0-gc7dc90bd3`, 16 hits, one string), hl2 plugin `36cea9c8`. |
+| QC | FTESurf main `b39aa42a` (pin, notes, lextest). Built in the clean worktree, 0 warnings: qwprogs `53f0eddd` (P1048), csprogs `7bdd49b1` (P1044, P1046), menu `d0eb3e8a` unchanged. |
+| Installs | 07:52:15Z exe/plugin both (backups `*.pre1047-20261026T075215Z` = `9d009302` / `2bfd4b97`); 07:53:59Z qwprogs/csprogs both (.prev `6c7adb36` / `8b8731c4`), csprogs cache seeded (`f569cde9.dat`), `cfg/maps/entfix_bhop_goldsrc2.cfg` `8e2233e4` in both. `C:\FTESurf\ftesurf\data\mapdeps.txt` +29 lines through tools/mapdeps.py --update-map (25 maps; backup in the p1035deploy root). |
+| Lobbies | 07:54:10Z entfix on the Pi (game `cfg/maps`, under the sweeper's flock; no lobby on goldsrc2); then `build.ps1 -Pi -QuakeDir <absent>`: nobody on, all 12 restarted on `53f0eddd`/`7bdd49b1`. Smoke, lobby 2, the new exe and plugin: 0 failures. |
+
+Verified (rig; binaries or progs swapped and restored per arm):
+- P1047: hourglass s3 at Lex's r_renderscale 2: 80 -> 407 fps (frame 12.49 -> 2.45 ms, GPU 10.1 -> 1.1),
+  r_instancing 2 "cannot join" 81 -> 0; props pixel-identical CPU against GPU skinned and instancing on
+  against off; surf_imaginarium (153 animated props) 178 -> 191 fps, same picture; knife and USP identical.
+- P1045 + P1042: hourglass saves 1 and 4 at hl2_refract 1: without TF2 the old plugin streaks the screen edge
+  and ghosts the rocks, the new one is clean; with TF2 mounted (fs_automount_state 1) the water ripples.
+- P1046 + P1048: goldsrc2 at the spark: the panel is on the wall and sparks continuously; the deployed build
+  showed bare wall and a spark every few seconds.
+- P1044: orgrimmar save 3: grey smoke columns over the braziers (emit_list: 1 look, answering) where the
+  deployed build drew dots.
+- P1043: 39 func_physbox removed (engine applier on the real lump and in the rig), nothing else.
+- Reviews: P1043 one round (no route opens); P1044 two; P1045 four; P1046 two; P1047 three; P1048 none yet
+  (two maps, collision moves to where Source has it).
+
+Limits: SKELETAL|INSTANCED is only proven on this PC's RTX 2080 SUPER (a failure turns skinned runs off, not
+instancing); spark timing is a fixed beat; orgrimmar's smoke waits on a Momentum comparison. Not owner-checked.
