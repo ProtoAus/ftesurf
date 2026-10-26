@@ -21,6 +21,10 @@
 
 ## next
 
+### P1052 Explicit TAS practice sessions
+- tas on and tas speed 0.1..1 start assisted practice using the existing slow motion. tas off restores normal speed, not the run's eligibility. TAS saves retain their label; frame advance, editing and public TAS boards are still to come.
+- TAS saves stay local for now: sharing and automatic mirroring wait for a format that preserves their history.
+
 ## 0.1.31 2026-10-26
 
 ### P1051 goto_start goes to the start

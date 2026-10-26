@@ -347,7 +347,7 @@ void() SaveSync_PicFrame =
 // This install's list, as the local game's scan reads it (SV_SaveLocScanBlk).
 float(string fn, float id) SaveSync_ReadHere =
 {
-	local float fh, n, seq, rwd, have, mir;
+	local float fh, n, seq, rwd, have, mir, tas;
 	local string k, l;
 	local vector o, v, rv;
 	local float p, y, d;
@@ -361,7 +361,7 @@ float(string fn, float id) SaveSync_ReadHere =
 	if (fh < 0)
 		return FALSE;
 	seq = -1;
-	rwd = have = mir = FALSE;
+	rwd = have = mir = tas = FALSE;
 	o = v = rv = '0 0 0';
 	p = y = d = 0;
 	while ((l = fgets(fh)) != "")
@@ -374,12 +374,17 @@ float(string fn, float id) SaveSync_ReadHere =
 		if (k == "duck")     d = stof(argv(1));
 		if (k == "rewound")  rwd = stof(argv(1));
 		if (k == "synced")   mir = TRUE;
+		if (k == "flags")
+		if (stof(argv(1)) & TF_TAS) tas = TRUE;
 		if (k == "origin" && n >= 4)   { o = [stof(argv(1)), stof(argv(2)), stof(argv(3))]; have = TRUE; }
 		if (k == "velocity" && n >= 4) v = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
 		if (k == "rwvel" && n >= 4)    rv = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
 		if (k == "angles" && n >= 3)   { p = stof(argv(1)); y = stof(argv(2)); }
 	}
 	fclose(fh);
+	// P1052: preserve the file locally; ListHere's protected-row path also
+	// blocks deletion. Do not upload TAS through the old position-only format.
+	if (tas) return FALSE;
 	if (seq < 0 || !have || ss_cn >= SS_CMAX)
 		return FALSE;
 	ss_co[ss_cn] = o;

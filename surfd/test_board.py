@@ -256,6 +256,13 @@ check("TF_SHADOW is segmented too (pre-44 files)",
       m.style_of(TF_SHADOW), "segmented")
 check("TF_PRACTICE has no board", m.style_of(TF_PRACTICE), None)
 check("TF_CHEAT has no board", m.style_of(TF_CHEAT), None)
+TF_TAS = 4194304
+for flags in (TF_TAS, TF_TAS | TF_PRACTICE | TF_CHEAT,
+              TF_TAS | TF_SEGMENT, TF_TAS | TF_SHADOW):
+    check("TAS flags %d have no human/segmented board" % flags, m.style_of(flags), None)
+    check("TAS flags %d cannot certify" % flags, m.certifiable(flags), False)
+    check("TAS flags %d are refused on submission" % flags,
+          submit(m, flags=flags), "HTTP 204")
 check("cheat outranks segment, as FS_RunClass does",
       m.style_of(TF_CHEAT | TF_SEGMENT), None)
 check("segment outranks practice, as FS_RunClass does",

@@ -1,5 +1,12 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
+## TAS editor and signed collaborative saves — requested 26 Oct 2026
+
+Full staged plan and acceptance: [tools/plan-tas.md](tools/plan-tas.md). P1052 starts
+with explicit TAS practice sessions and retained ancestry using existing slow motion.
+Tick advance, editable input timelines, recalculated lines, optimizers, signed
+contributions and a separately verified TAS board remain planned, not delivered.
+
 ## Mounted CS:GO Legacy knives / local finish workshop — P957/P962
 
 P962 recovers and completes the interrupted follow-up: installed knife shapes,

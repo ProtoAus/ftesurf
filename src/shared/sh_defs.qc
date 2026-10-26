@@ -1726,6 +1726,10 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 */
 #define TF_SLOWCLOCK 524288
 
+// P1052: retained TAS ancestry, not the active controls. Always accompanied by
+// TF_CHEAT|TF_PRACTICE; no human/segmented admission. Bits20/21 reserved for styles.
+#define TF_TAS 4194304
+
 #define TF_UNCERT   (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP | TF_NOCLOCK \
                      | TF_NOCOUNTS | TF_SLOWCLOCK)
 
@@ -2204,7 +2208,7 @@ string(float why) FS_ProfileText =
 
 float(float flags) FS_RunClass =
 {
-	if (flags & TF_CHEAT)    return RC_CHEAT;
+	if (flags & (TF_CHEAT | TF_TAS)) return RC_CHEAT;
 	if (flags & TF_SEGMENT)  return RC_SEGMENT;
 	// Pre-build-44 files, and the implication in the one direction it holds.
 	if (flags & TF_SHADOW)   return RC_SEGMENT;
@@ -2234,6 +2238,7 @@ string(float c) FS_RunClassName =
 // wins -- the taint is the news.
 string(float flags) FS_RunKindName =
 {
+	if (flags & TF_TAS) return "TAS";
 	if (FS_RunClass(flags) == RC_CLEAN)
 	{
 		if (flags & TF_MULTISESSION)

@@ -46,6 +46,11 @@ violation drops the run to forward); whether W-only or low-gravity are styles to
 
 ## 3. A TAS category
 
+Updated 26 Oct: [the full TAS/project/contributor plan](plan-tas.md) supersedes the
+short outline below. P1052 starts explicit local TAS practice and inherited labeling;
+frame advance, input editing, signed contribution history and board admission remain
+separate stages. This first stage does not certify authorship or human input.
+
 What exists: per-player slow motion (host_timescale 0.1-1, marked cheat today), save states
 and rewind (segmented), and recordings that hold every move's inputs (fwd/side/up, angles,
 buttons) per tick. The mover is deterministic given those inputs: pm_verify (engine) and
@@ -71,8 +76,9 @@ of it), then 1, then 2.
 
 ## 4. Can segmented or TAS runs be passed off as regular?
 
-- Segmented: no. Save loads happen on the server, which sets TF_SEGMENT itself and records the
-  stitch in the .rec; a client cannot hide a load.
+- The official segmented path: save loads happen on the server, which sets TF_SEGMENT
+  and records the stitch. That preserves observed loads; it is not a universal proof
+  against modified clients, untrusted servers or hidden input automation.
 - Slow motion: host_timescale is the server's own setting (cheat, never ranked); a slowed client
   clock without it is measured (TF_SLOWCLOCK, Patch 840) and the run demoted.
 - Time: runs are already timed from the server's tick counter (the counted clock), not from

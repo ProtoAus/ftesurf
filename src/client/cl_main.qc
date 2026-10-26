@@ -400,6 +400,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Online_MigrateBegin();          // Patch 395: the flat replay cache, moved per frame
 	registercommand("timefmt");     // Patch 496: sh_time.qc's own harness handle
 	registercommand("host_timescale"); // P954: server-authorized, per-player practice
+	registercommand("tas");            // P1052: explicit assisted practice session
 	Ghost_RegisterCvars();
 	Results_RegisterCvars();        // build 48
 	Banner_RegisterCvars();         // Patch 361
@@ -2277,6 +2278,32 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (VM_ConsoleCommand()) return TRUE;
 	if (WP_Command()) return TRUE;
 	if (Timer_ResumeCommand()) return TRUE;     // P1004
+	if (!strcmp(argv(0), "tas"))
+	{
+		tsseat = getproperty(VF_ACTIVESEAT);
+		if (!(tsseat >= 0 && tsseat < RUN_TS_SEATS))
+		{
+			print("tas: unsupported local seat\n");
+			return TRUE;
+		}
+		if (cmdargc == 1)
+			localcmd(sprintf("p%g cmd tas status\n", tsseat + 1));
+		else if (cmdargc == 2 && (!strcmp(argv(1), "on") || !strcmp(argv(1), "off") || !strcmp(argv(1), "status")))
+			localcmd(sprintf("p%g cmd tas %s\n", tsseat + 1, argv(1)));
+		else if (cmdargc == 3 && !strcmp(argv(1), "speed"))
+		{
+			tsvalue = stof(argv(2));
+			if (!(tsvalue >= 0.1 && tsvalue <= 1))
+				print("tas: speed must be 0.1..1\n");
+			else if (tsvalue < 1 && (cvar("cl_threadedphysics") || checkextension("FTE_VRINPUTS")))
+				print("tas: slow practice requires cl_threadedphysics 0 and duration inputs\n");
+			else
+				localcmd(sprintf("p%g cmd tas speed %.9g\n", tsseat + 1, tsvalue));
+		}
+		else
+			print("tas: on | off | status | speed 0.1..1 (frame advance/editor not built yet)\n");
+		return TRUE;
+	}
 	if (!strcmp(argv(0), "host_timescale"))
 	{
 		tsseat = getproperty(VF_ACTIVESEAT);

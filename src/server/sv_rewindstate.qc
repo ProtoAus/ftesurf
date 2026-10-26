@@ -211,7 +211,7 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	// since the attempt began is in the prefix or in the box after it; either way
 	// the resume carries it (SV_ProfileBroken, SV_RulesetBroken).  A kept attempt
 	// never outlives the connection, so the counter is this client life's.
-	flags = m[b+18];
+	flags = m[b+18] | SV_TASFlags(e); // P1052: a pre-TAS cursor cannot erase retained assistance
 	if (fa)
 	{
 		if (e.rec_fa_pbad >= 0 && e.run_t_pev != 0 && e.run_t_pevbad != e.rec_fa_pbad)

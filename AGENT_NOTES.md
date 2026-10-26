@@ -1,5 +1,27 @@
 # AGENT_NOTES.md
 
+## Explicit TAS practice (P1052, 2026-10-26)
+
+- P954 host_timescale is the existing per-player pacing path. tas on/off/status/speed
+  adds explicit retained ancestry, not another clock or a tick-step implementation.
+  TF_TAS uses bit22, always with practice/cheat; bits20/21 remain reserved for styles.
+- Timer/ordinary save changes alone are insufficient: rewind's no-prefix placement,
+  sampled-state writer, demotion, selected-save gifts, lobby/offline mirrors and
+  replay/view save commands each have their own representation. Demotion retains the
+  saved file's ancestry, not the demoting player's. Both rewind writers overlay it.
+- Old gift/mirror protocols do not preserve TAS: refuse TAS/unknown selected gifts,
+  omit TAS/unknown outgoing mirror rows, protect local TAS files from upload/deletion.
+  Incomplete-list protection is intentionally conservative on affected sync lists.
+- New replay/view requests add a restriction-only ancestry value before the appended
+  trail ticket (argc12). Legacy argc10/11 still read as before. Playback must keep
+  TF_TAS in its presentation mask; stage banners inherit the timer's marker.
+  Watched saves use spc_htflags/Body_Run, NOT the spectator's own timer stat.
+  Pose exports overlay SV_TASFlags on timer flags so an armed target retains ancestry.
+- run_class0 does not add its optional segmented bit on rewind. The acting rewind
+  control is shadow/from-save plus retained TAS, not a demand for TF_SEGMENT there.
+  Offline retention is cheat.rec, not *_cheat.rec. See tools/p1052-tas.md and the
+  staged tools/plan-tas.md; signed project authorship is not implemented by this bit.
+
 ## Pending re-arm provenance on exact retry (P972, 2026-10-24)
 
 - `SV_SaveWriteState` carries existing `run_t_finfgv` in additive `finfgv` metadata.

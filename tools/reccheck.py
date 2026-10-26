@@ -349,11 +349,14 @@ TF_PRACTICE, TF_SHADOW = 1, 8
 # archive for predating the format, which is the one thing a format check must
 # never do.
 TF_SEGMENT, TF_CHEAT = 128, 256
+TF_TAS = 4194304
 
 # shared/sh_defs.qc's FS_RunClass, and the precedence is the point: a run that
 # both noclipped and loaded a save carries both bits, and reading segment first
 # would put the gentler word on the worse run.
 def run_class(fv):
+    if fv & TF_TAS:
+        return "TAS"
     if fv & TF_CHEAT:
         return "cheated"
     if fv & TF_SEGMENT:
@@ -2803,6 +2806,9 @@ def _check_rec(r, path, verbose=False, *, data=None):
                 r.fault("header flags %d says segment without practice" % fv)
             if (fv & TF_CHEAT) and not (fv & TF_PRACTICE):
                 r.fault("header flags %d says cheat without practice" % fv)
+            if fv & TF_TAS:
+                if (fv & (TF_PRACTICE | TF_CHEAT)) != (TF_PRACTICE | TF_CHEAT):
+                    r.fault("header flags %d says TAS without practice/cheat safety flags" % fv)
             r.info["class"] = run_class(fv)
 
             # Build 45.  The NAME and the flags have to agree about a cheated

@@ -175,6 +175,13 @@ void(entity e, float slot, float kind, float n) Share_Offer =
 			return;
 		}
 		row = SL_Base(blk) + e.rec_sl_index - 1;
+		// P1052: the old gift format cannot preserve ancestry. Refuse rather
+		// than strip it; signed project sharing is a later stage.
+		if (SV_SaveTransferFlags(e, row) != 0)
+		{
+			sprint(e, PRINT_HIGH, "^3share:^7 TAS or unreadable saves cannot be shared yet\n");
+			return;
+		}
 		t.sh_so = rec_sl_org[row];
 		t.sh_sv = rec_sl_vel[row];
 		t.sh_sp = rec_sl_pit[row];

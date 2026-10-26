@@ -34,6 +34,10 @@ void(entity e, float r, float tag) SV_SaveSyncRow =
 	local vector o, v;
 	local float fl;
 
+	// P1052: the old mirror format is position-only. Omit assisted/unknown
+	// rows; the existing incomplete-list guard then forbids deletion, too.
+	if (SV_SaveTransferFlags(e, r) != 0)
+		return;
 	o = rec_sl_org[r];
 	v = rec_sl_vel[r];
 	fl = rec_sl_duck[r] ? SSF_DUCK : 0;

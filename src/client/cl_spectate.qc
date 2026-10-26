@@ -126,16 +126,17 @@ void(float slot) Spec_Pose =
 // Like a replay cursor: only the transmitted pose, always a practice snapshot.
 string() Spec_SaveCommand =
 {
-	if (!spc_hud || !(spc_tbp & BP_VEL))
+	if (!spc_hud || !spc_hrun || !(spc_tbp & BP_VEL))
 	{
 		print("^3save:^7 the watched player's pose is unavailable\n");
 		return "sl_save";
 	}
-	return sprintf("sl_saveview %s %s %.6f %.6f %g",
+	return sprintf("sl_saveview %s %s %.6f %.6f %g %g",
 	               sprintf("%.6f %.6f %.6f", spc_tfeet_x, spc_tfeet_y, spc_tfeet_z),
 	               sprintf("%.6f %.6f %.6f", spc_hvel_x, spc_hvel_y, spc_hvel_z),
 	               Rewind_NormalAngle(spc_tang_x), Rewind_NormalAngle(spc_tang_y),
-	               (spc_tbp & BP_DUCKED) ? 1 : 0);
+	               (spc_tbp & BP_DUCKED) ? 1 : 0,
+	               (spc_htflags & TF_TAS) ? 1 : 0);
 };
 
 // Back to the server's steering (sv_saveloc.qc SV_SpecEyeSteer).

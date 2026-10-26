@@ -3430,8 +3430,18 @@ def case_sv_sample_fresh_cursor():
           "QC source initializes fresh and restored paths with distinct sentinels")
 
 
+def case_tas_ancestry():
+    tas, practice, cheat = 4194304, 1, 256
+    f, _, report = run(head(build(), "flags", tas | practice | cheat), report=True)
+    check(not f and "TAS" in report, "TAS practice envelope is accepted and labeled TAS")
+    for flags in (tas, tas | practice, tas | cheat, tas | 128):
+        faults_with(head(build(), "flags", flags), "TAS without practice/cheat",
+                    "TAS flags %d cannot omit the practice/cheat envelope" % flags)
+    ok_clean(build(), "unassisted control remains structurally valid")
+
+
 def main():
-    for fn in (case_sparse_practice_board, case_sparse_release_board, case_sv_sample_fresh_cursor, case_sv_resume_parkclock, case_sv_timer_viewclock, case_sv_timer_viewclock_review, case_control,
+    for fn in (case_tas_ancestry, case_sparse_practice_board, case_sparse_release_board, case_sv_sample_fresh_cursor, case_sv_resume_parkclock, case_sv_timer_viewclock, case_sv_timer_viewclock_review, case_control,
                case_no_horizon, case_horizon_without_rows,
                case_trailer_width, case_trailer_count,
                case_row_width,

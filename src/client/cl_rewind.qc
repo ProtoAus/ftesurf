@@ -1130,20 +1130,22 @@ string() SaveLoc_SaveCommand =
 		}
 		Trail_CursorState(tr_cur_t);
 		Trail_RewindPrefix();
-		return sprintf("sl_saveview %s %s %.6f %.6f %g",
+		return sprintf("sl_saveview %s %s %.6f %.6f %g %g",
 		               sprintf("%.6f %.6f %.6f", tr_cur_p_x, tr_cur_p_y, tr_cur_p_z),
 		               sprintf("%.6f %.6f %.6f", tr_cur_vel_x, tr_cur_vel_y, tr_cur_vel_z),
 		               Rewind_NormalAngle(tr_cur_ang_x), Rewind_NormalAngle(tr_cur_ang_y),
-		               (tr_cur_flags & WT_F_DUCKED) ? 1 : 0);
+		               (tr_cur_flags & WT_F_DUCKED) ? 1 : 0,
+		               (getstatf(STAT_FS_TIMERFLAGS) & TF_TAS) ? 1 : 0);
 	}
 	if (rec_wt_open)
 	{
 		Watch_Sample();
 		Trail_ReplayPrefix();
-		return sprintf("sl_saveview %s %s %.6f %.6f %g",
+		return sprintf("sl_saveview %s %s %.6f %.6f %g %g",
 		               sprintf("%.6f %.6f %.6f", rec_wt_org_x, rec_wt_org_y, rec_wt_org_z),
 		               sprintf("%.6f %.6f %.6f", rec_wt_vel_x, rec_wt_vel_y, rec_wt_vel_z),
-		               Rewind_NormalAngle(rec_wt_pitch), Rewind_NormalAngle(rec_wt_yaw), rec_wt_ducked);
+		               Rewind_NormalAngle(rec_wt_pitch), Rewind_NormalAngle(rec_wt_yaw), rec_wt_ducked,
+		               (rec_wt_flags & TF_TAS) ? 1 : 0);
 	}
 	if (Spec_Active())
 		return Spec_SaveCommand();

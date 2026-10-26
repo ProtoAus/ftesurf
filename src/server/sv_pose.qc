@@ -221,7 +221,8 @@ float(entity av, entity p, float held) Pose_Quant =
 	pose_nv = [bound(-32767, rint(p.velocity_x), 32767),
 	           bound(-32767, rint(p.velocity_y), 32767),
 	           bound(-32767, rint(p.velocity_z), 32767)];
-	pose_nr = [bound(0, p.run_t_state, 255), bound(0, p.run_t_track, 255), p.run_t_flags];
+	// P1052: the watched body's ancestry survives an armed/idle flag reset too.
+	pose_nr = [bound(0, p.run_t_state, 255), bound(0, p.run_t_track, 255), p.run_t_flags | SV_TASFlags(p)];
 	pose_nt = p.run_t_ticks;
 	pose_nf = [p.run_rampcontact ? PBR_RAMP : 0, Pose_QFine(p.velocity_x), Pose_QFine(p.velocity_y)];
 	pose_nfz = Pose_QFine(p.velocity_z);

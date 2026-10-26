@@ -1,5 +1,7 @@
 # lextest.md — things waiting on a human
 
+**P1052 -- TAS practice (pending, not owner-confirmed):** console `tas on`, `tas speed 0.25`, move/jump, then `tas off`. Does quarter-speed feel usable, and does off restore normal speed? Finish a short run: its label/replay should say TAS, never a normal/segmented board result. This is the first foundation only: frame advance/editor/optimizer/signatures/TAS boards are not built. TAS gifts and automatic mirroring are deliberately blocked until they can retain ancestry.
+
 **P1047 -- surf_hourglass frame rate (pending, not owner-confirmed):** your save 3, `setpos 11560.49 99.99 916.02 27.91 162.32 0`: about 400 fps here at r_renderscale 2 (was 80). Props, the knife and pistol should look exactly as before; animated props too (surf_imaginarium). If a prop ever shows in a frozen pose while it should animate, `r_instancing 0` is the quick test.
 
 **P1048 + P1046 -- bhop_goldsrc2 spark panel (pending, not owner-confirmed):** `setpos 3000 -5194 10030 8 180 0` (noclip): the green/red panel is back on the wall right of the door, with a steady shower of sparks.

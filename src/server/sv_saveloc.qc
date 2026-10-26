@@ -1389,7 +1389,8 @@ float(entity e, float id, float seq) SV_SaveWriteState =
 		SV_TimerRuleset(e, FALSE);
 	}
 	fputs(f, sprintf("flags %d\n",
-	                 e.run_t_flags - (e.run_t_flags & (TF_FROZEN | TF_STOPPED | TF_NONCE))));
+	                 (e.run_t_flags - (e.run_t_flags & (TF_FROZEN | TF_STOPPED | TF_NONCE)))
+	                 | SV_TASFlags(e)));
 	fputs(f, sprintf("pb %d\n", e.run_t_pb));
 	fputs(f, sprintf("dirty %d\n", e.run_t_dirty));
 	/*
@@ -2261,6 +2262,9 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	wasrec = e.run_t_flags & TF_RECORDING;
 	e.run_t_flags = (flg - (flg & (TF_RECORDING | TF_FROZEN | TF_STOPPED | TF_NONCE)))
 	                | (e.run_t_flags & TF_NONCE);
+	// P1052: raise ancestry before any recorder/header restoration; never lower it.
+	if (flg & TF_TAS)
+		SV_TASMark(e);
 
 	/*
 	  Prefer the unrounded clock; fall back to the rounded one for a save file
@@ -2714,6 +2718,9 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 
 	if (!retry)
 		SV_SaveLoadTag(e, hop, rwd);    // Patch 477: on the state the load ended in
+	// Retry/void/clean-save branches may replace latches, not retained TAS ancestry.
+	if (e.run_tas_used)
+		SV_TASMark(e);
 	return TRUE;
 };
 
@@ -3146,6 +3153,7 @@ float(float base, float cnt) SV_SaveFreeID =
 // demoted file) and origin, the columns SV_SaveReadLight filled the row from.
 float  sl_fseq, sl_fticks, sl_fgo;
 float  sl_fhasname;
+float  sl_ftas;                 // P1052: the saved file's ancestry, not the demoter's
 string sl_fname;
 string sl_fcls;                 // Patch 865
 string sl_fctx;                 // Patch 1036: the `contexts`/`context` lines, kept verbatim
@@ -3163,6 +3171,7 @@ float(float id) SV_SaveReadIdent =
 	sl_fseq = -1;
 	sl_fgo = 0;
 	sl_fhasname = FALSE;
+	sl_ftas = 0;
 	sl_fname = "";
 	sl_fcls = "";
 	sl_fctx = "";
@@ -3175,6 +3184,7 @@ float(float id) SV_SaveReadIdent =
 		if (n < 2)
 			continue;
 		k = argv(0);
+		if (k == "flags") { sl_ftas = (stof(argv(1)) & TF_TAS) ? (TF_TAS | TF_CHEAT | TF_PRACTICE) : 0; continue; }
 		if (k == "targetname") { sl_fname = argv(1); sl_fhasname = TRUE; continue; }
 		if (k == "srcclass")   { sl_fcls = argv(1); continue; }
 		if (k == "contexts")   { sl_fctx = strcat(sl_fctx, "contexts 1\n"); continue; }      // Patch 1036
@@ -3197,6 +3207,22 @@ float(float r) SV_SaveRowIs =
 	if (sl_fseq != rec_sl_seq[r] || sl_fticks != rec_sl_tick[r])
 		return FALSE;
 	return vlen(sl_forg - rec_sl_org[r]) <= 0.01;
+};
+
+// P1052: read the selected file, not the current player's assistance level.
+// Negative means unknown/stale: a transfer must not treat it as clean.
+float(entity e, float row) SV_SaveTransferFlags =
+{
+	local string root;
+	local float flags;
+	root = sl_root;
+	SV_SaveRootFor(e);
+	flags = -1;
+	if (SV_SaveReadIdent(rec_sl_id[row]))
+	if (SV_SaveRowIs(row))
+		flags = sl_ftas;
+	sl_root = root;
+	return flags;
 };
 
 void(float row) SV_SaveDemote =
@@ -3269,6 +3295,8 @@ void(float row) SV_SaveDemote =
 	}
 	if (sl_fctx != "")
 		fputs(f, sl_fctx);             // Patch 1036
+	if (sl_ftas)
+		fputs(f, sprintf("flags %d\n", sl_ftas));
 	fputs(f, "demoted 1\n");       // for the reader: everything else defaults to an idle timer
 	fclose(f);
 
@@ -3732,6 +3760,8 @@ float(entity e, float id, float seq, float go) SV_SaveWriteAt =
 	// with no server sample has no such knowledge; do not borrow today's name.
 	if (rw_statebase >= 0)
 		SV_RewindWriteName(e, f, rw_statebase);
+	if (SV_TASFlags(e))
+		fputs(f, sprintf("flags %d\n", SV_TASFlags(e)));
 	fputs(f, "demoted 1\n");
 	fputs(f, "rewound 1\n");
 	if (go)

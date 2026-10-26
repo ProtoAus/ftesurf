@@ -278,6 +278,8 @@ void() ClientConnect =
 	self.run_timescale = 1;
 	self.run_ts_next = 0;
 	self.run_ts_used = SV_TimeScaleConnectTaint(self);
+	self.run_tas_mode = self.run_tas_next = 0;
+	self.run_tas_used = SV_TASConnectTaint(self);
 	Archive_Reset(self);
 	EventFog_Reset(self);          // recycled slot/map must not inherit event fog
 	// Patch 371: a join line only for a new connection -- this runs again for
@@ -1140,26 +1142,26 @@ void() SV_SpawnGoto =
 float(string extname, entity client) SV_CheckClientExtension = #99;
 
 // P954: taint on the server before the stat can change any outgoing command.
-void(entity e, float argc, string arg) SV_TimeScaleCommand =
+float(entity e, float argc, string arg) SV_TimeScaleCommand =
 {
 	local float value;
 	local string protocol;
 
 	if (strcmp(e.classname, "player") || !e.run_inserver)
-		return;
+		return FALSE;
 	if (time < e.run_ts_next)
-		return;
+		return FALSE;
 	e.run_ts_next = time + 0.2;
 	if (argc == 1)
 	{
 		sprint(e, PRINT_HIGH, sprintf("host_timescale: %g (per-player; 0.1..1; slow values force practice)\n", e.run_timescale));
-		return;
+		return FALSE;
 	}
 	value = stof(arg);
 	if (argc != 2 || !(value >= 0.1 && value <= 1))
 	{
 		sprint(e, PRINT_HIGH, "host_timescale: use 0.1..1 (1 restores speed, not this attempt's flags)\n");
-		return;
+		return FALSE;
 	}
 	if (value < 1)
 	{
@@ -1167,17 +1169,17 @@ void(entity e, float argc, string arg) SV_TimeScaleCommand =
 		if (strcmp(protocol, "quakeworld") && strcmp(protocol, "quakeworld+"))
 		{
 			sprint(e, PRINT_HIGH, "host_timescale: slow practice requires QuakeWorld duration inputs\n");
-			return;
+			return FALSE;
 		}
 		if (SV_CheckClientExtension("FTE_VRINPUTS", e))
 		{
 			sprint(e, PRINT_HIGH, "host_timescale: slow practice is unavailable with timestamp inputs\n");
-			return;
+			return FALSE;
 		}
 		if (e.run_movetickrate <= 0)
 		{
 			sprint(e, PRINT_HIGH, "host_timescale: a counted-clock engine is required\n");
-			return;
+			return FALSE;
 		}
 		e.run_ts_used = TRUE;
 		SV_TimeScaleRemember(e);
@@ -1186,6 +1188,47 @@ void(entity e, float argc, string arg) SV_TimeScaleCommand =
 	e.run_timescale = value;
 	sprint(e, PRINT_HIGH, sprintf("host_timescale: %g (%s)\n", value,
 		value < 1 ? "per-player practice; movement and timer" : "normal speed; slow-practice latch remains until new map/reconnect"));
+	return TRUE;
+};
+
+// P1052: the control switch and retained ancestry deliberately have different lifetimes.
+void(entity e, float argc) SV_TASCommand =
+{
+	local string action;
+	if (strcmp(e.classname, "player") || !e.run_inserver) return;
+	if (time < e.run_tas_next) return;
+	e.run_tas_next = time + 0.2;
+	action = argv(1);
+	if (argc == 1 || (argc == 2 && !strcmp(action, "status")))
+	{
+		sprint(e, PRINT_HIGH, sprintf("tas: controls %s, ancestry %s, speed %g; local practice only\n",
+			e.run_tas_mode ? "on" : "off", e.run_tas_used ? "TAS" : "none", e.run_timescale));
+		return;
+	}
+	if (argc == 2 && !strcmp(action, "on"))
+	{
+		e.run_tas_mode = TRUE;
+		SV_TASMark(e);
+		sprint(e, PRINT_HIGH, "tas: on; TAS ancestry retained through saves; local practice only\n");
+		return;
+	}
+	if (argc == 2 && !strcmp(action, "off"))
+	{
+		e.run_tas_mode = FALSE;
+		e.run_timescale = 1;
+		sprint(e, PRINT_HIGH, "tas: controls off, normal speed; ancestry is not cleared\n");
+		return;
+	}
+	if (argc == 3 && !strcmp(action, "speed"))
+	{
+		if (SV_TimeScaleCommand(e, 2, argv(2)))
+		{
+			e.run_tas_mode = TRUE;
+			SV_TASMark(e);
+		}
+		return;
+	}
+	sprint(e, PRINT_HIGH, "tas: on | off | status | speed 0.1..1 (frame advance/editor not built yet)\n");
 };
 
 void(string cmd) SV_ParseClientCommand =
@@ -1205,6 +1248,11 @@ void(string cmd) SV_ParseClientCommand =
 	}
 	cmdargc = tokenize(cmd);
 	c = argv(0);
+	if (!strcmp(c, "tas"))
+	{
+		SV_TASCommand(self, cmdargc);
+		return;
+	}
 	if (!strcmp(c, "host_timescale"))
 	{
 		SV_TimeScaleCommand(self, cmdargc, argv(1));
@@ -1298,7 +1346,7 @@ void(string cmd) SV_ParseClientCommand =
 	if (c == "sl_save" && cmdargc >= 2)
 		self.rec_sl_requesttag = stof(argv(1));
 	if ((c == "sl_saveview" || c == "sl_goview") && cmdargc >= 11)
-		self.rec_sl_requesttag = stof(argv(10));
+		self.rec_sl_requesttag = stof(argv(cmdargc == 12 ? 11 : 10));
 	if (c == "sl_saveat")
 	{
 		if (cmdargc >= 7)
@@ -1513,7 +1561,7 @@ void(string cmd) SV_ParseClientCommand =
 		rw_yaw = stof(argv(8));
 		rw_dk = (stof(argv(9)) != 0);
 		rw_t = 0;
-		if ((cmdargc != 10 && cmdargc != 11) || !SV_SaveOriginSane(rw_o) || !SV_SaveOriginSane(rw_v) ||
+		if ((cmdargc != 10 && cmdargc != 11 && cmdargc != 12) || !SV_SaveOriginSane(rw_o) || !SV_SaveOriginSane(rw_v) ||
 		    !(vlen(rw_v) <= 32768) || !(fabs(rw_pit) <= 360) || !(fabs(rw_yaw) <= 360))
 		{
 			sprint(self, PRINT_HIGH, "^3save:^7 invalid replay body state\n");
@@ -1527,6 +1575,11 @@ void(string cmd) SV_ParseClientCommand =
 			if (!SV_SaveLocRate(self))
 				return;
 		}
+		// P1052: new replay/view requests carry ancestry before their trail ticket.
+		// This can only raise restrictions; it is not a trusted capture assertion.
+		if (cmdargc == 12)
+		if (stof(argv(10)) != 0)
+			SV_TASMark(self);
 		if (SV_SaveLocCreateAt(self, 0, '0 0 0', FALSE, go, TRUE))
 		if (go)
 			SV_SaveLocGo(self);

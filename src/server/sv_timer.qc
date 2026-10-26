@@ -720,11 +720,20 @@ float  run_t_cheatwatch;
 .float run_ts_used;             // monotone until fresh map/connection; queued commands may still be slow
 float sv_ts_taint_uid[FS_MAXPLAYERS]; // existing native userid, VM-only; survives native join's ED_Clear
 
+// P1052: controls are session-only; ancestry survives saves through TF_TAS.
+.float run_tas_mode;
+.float run_tas_used;
+.float run_tas_next;
+float sv_tas_taint_uid[FS_MAXPLAYERS];
+
 void() SV_TimeScaleMapReset =
 {
 	local float i;
 	for (i = 0; i < FS_MAXPLAYERS; i = i + 1)
+	{
 		sv_ts_taint_uid[i] = 0;
+		sv_tas_taint_uid[i] = 0;
+	}
 };
 
 void(entity e) SV_TimeScaleRemember =
@@ -754,9 +763,29 @@ float(entity e) SV_TimeScaleConnectTaint =
 	return TRUE;
 };
 
+float(entity e) SV_TASConnectTaint =
+{
+	local float slot, uid;
+	slot = num_for_edict(e) - 1;
+	if (!(slot >= 0 && slot < FS_MAXPLAYERS)) return TRUE;
+	if (!sv_tas_taint_uid[slot]) return FALSE;
+	uid = stof(infokey(e, "*userid"));
+	if (uid > 0 && uid != sv_tas_taint_uid[slot])
+	{
+		sv_tas_taint_uid[slot] = 0;
+		return FALSE;
+	}
+	return TRUE;
+};
+
+float(entity e) SV_TASFlags =
+{
+	return e.run_tas_used ? (TF_TAS | TF_CHEAT | TF_PRACTICE) : 0;
+};
+
 float(entity e) SV_TimeScaleTainted =
 {
-	return (e.run_ts_used || (e.run_timescale > 0 && e.run_timescale < 1));
+	return (e.run_ts_used || e.run_tas_used || (e.run_timescale > 0 && e.run_timescale < 1));
 };
 
 float() SV_CheatsOn =
@@ -3114,7 +3143,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             conclusion for a weaker reason.
                             This is the same sentence `warp` is about, one step
                             earlier in the run.
-    flags <n>               TF_* as they stood AT THE FINISH -- see below
+    flags <n>               TF_* as they stood AT THE FINISH -- see below.
+                            P1052: TF_TAS (bit22) retains assisted ancestry and
+                            requires TF_CHEAT|TF_PRACTICE; local practice only.
     pmpin <name=value ...>  v9, build 87, AFTER `flags` (the scoreboard reads a
                             bounded number of header lines -- 32 since Patch 493,
                             24 before it).  THE PHYSICS PIN: the 70 values the
@@ -8618,7 +8649,7 @@ float(entity e) SV_StageFlags =
 	if (e.run_st_ghost)  i = i | TF_GHOST;
 	if (e.run_st_stitch) i = i | TF_PRACTICE | TF_SEGMENT;
 	if (e.run_st_cheat)  i = i | TF_PRACTICE | TF_CHEAT;
-	return i;
+	return i | SV_TASFlags(e);
 };
 
 /*
@@ -11004,7 +11035,7 @@ void(entity e) SV_TimerClassSay =
 {
 	local float now;
 
-	now = FS_RunClass(e.run_t_flags);
+	now = (e.run_t_flags & TF_TAS) ? RC_CHEAT + 1 : FS_RunClass(e.run_t_flags);
 
 	if (e.run_t_state != TS_RUNNING)
 		return;
@@ -11014,7 +11045,7 @@ void(entity e) SV_TimerClassSay =
 	e.run_t_said = now;
 	sprint(e, PRINT_HIGH,
 	       sprintf("^3%s run^7 -- this run will not be saved\n",
-	               FS_RunClassName(now)));
+	               FS_RunKindName(e.run_t_flags)));
 };
 
 void(entity e) SV_TimerPractice =
@@ -11103,13 +11134,28 @@ void(entity e) SV_TimerStitched =
 */
 void(entity e) SV_TimerCheat =
 {
-	if (run_t_runclass)
+	// TAS exclusion is not optional under run_class 0.
+	e.run_t_flags = e.run_t_flags | SV_TASFlags(e);
+	if (run_t_runclass || e.run_tas_used)
 	{
 		e.run_t_cheat  = TRUE;
 		e.run_t_flags  = e.run_t_flags | TF_CHEAT;
 		e.run_st_cheat = TRUE;
 	}
 	SV_TimerPractice(e);
+};
+
+void(entity e) SV_TASMark =
+{
+	local float slot, uid;
+	e.run_tas_used = TRUE;
+	slot = num_for_edict(e) - 1;
+	if (slot >= 0 && slot < FS_MAXPLAYERS)
+	{
+		uid = stof(infokey(e, "*userid"));
+		sv_tas_taint_uid[slot] = uid > 0 ? uid : -1;
+	}
+	SV_TimerCheat(e);
 };
 
 /*
@@ -16544,7 +16590,7 @@ void(entity e) SV_TimerReport =
 	*/
 	sprint(e, PRINT_HIGH,
 	       sprintf("        class: %s (seg %g cheat %g cheatlatch %g)  cheats now %g\n",
-	               FS_RunClassName(FS_RunClass(e.run_t_flags)),
+	               FS_RunKindName(e.run_t_flags),
 	               (e.run_t_flags & TF_SEGMENT) ? 1 : 0,
 	               (e.run_t_flags & TF_CHEAT) ? 1 : 0,
 	               e.run_t_cheat ? 1 : 0,
@@ -16553,6 +16599,8 @@ void(entity e) SV_TimerReport =
 	       sprintf("        class rules: run_class %g run_cheatwatch %g  (sv_cheats %g, noclip %g)\n",
 	               run_t_runclass, run_t_cheatwatch, cvar("sv_cheats"),
 	               (e.movetype == MOVETYPE_NOCLIP) ? 1 : 0));
+	sprint(e, PRINT_HIGH, sprintf("        TAS controls %g  ancestry %g  speed %g (local practice only)\n",
+	                              e.run_tas_mode, e.run_tas_used, e.run_timescale));
 	// P1008/P1011: the two display states, and the counts the style is read from.
 	sprint(e, PRINT_HIGH, sprintf("        armstate %g  hopped %g dirty %g  rearmspeed %g\n",
 	                              e.run_armstate, e.run_t_hopped, e.run_t_dirty, run_t_rearmspeed));
