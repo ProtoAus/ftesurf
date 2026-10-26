@@ -1387,6 +1387,90 @@ void(entity t, entity act)             SV_MoverOnUseLocked;
 */
 .float  vbsp_gt_x, vbsp_gt_y, vbsp_gt_fx;   // Patch 870: game_text's x, y, effect (see SV_MapText)
 
+/*
+  Patch 1036: response contexts -- filter_activator_context and the AddContext / RemoveContext /
+  ClearContext inputs that feed it.  80 library maps put 10,069 triggers behind one, nearly all the
+  momentum_tools bhop port (`_mom_leftground`).  Read from Momentum's source (game-develop/mp/src):
+  baseentity.cpp AddContext/InputRemoveContext/HasContext/GetContextValue, AI_Criteria.cpp
+  SplitContext, filters.cpp CFilterContext.  HasContext ignores expiry, so none is kept.  Values match
+  with SV_NamesMatch: every filter value in the library is "*" or a literal, and `any` is never set.
+  Gated on vbsp_contexts (0 = the fail-open that shipped) until cl_triggers.qc predicts it too.
+*/
+.string vbsp_ctx;		// "key:value," entries, in insertion order
+.float  vbsp_ctx_any;		// filter_activator_context's "any" (ED_ParseUnknownEpair)
+float   vbsp_ctx_on;		// cvar vbsp_contexts, latched with vbsp_entity_io
+float   vbsp_ctx_found;		// SV_CtxValue's second answer
+float   vbsp_ctx_changes, vbsp_ctx_pass, vbsp_ctx_fail;	// ent_io's counts
+
+// e's value for `key` (FindContextByName: case-insensitive), or "" with vbsp_ctx_found FALSE.
+string(entity e, string key) SV_CtxValue =
+{
+	local float p, c, n;
+	local string s;
+
+	s = e.vbsp_ctx;
+	for (p = 0; (n = strstrofs(s, ",", p)) >= 0; p = n + 1)
+	{
+		c = strstrofs(s, ":", p);
+		if (!strcasecmp(substring(s, p, c - p), key))
+		{
+			vbsp_ctx_found = TRUE;
+			return substring(s, c + 1, n - c - 1);
+		}
+	}
+	vbsp_ctx_found = FALSE;
+	return "";
+};
+
+string(string s, string key) SV_CtxDrop =
+{
+	local float p, c, n;
+	local string out;
+
+	out = "";
+	for (p = 0; (n = strstrofs(s, ",", p)) >= 0; p = n + 1)
+	{
+		c = strstrofs(s, ":", p);
+		if (strcasecmp(substring(s, p, c - p), key))
+			out = strcat(out, substring(s, p, n + 1 - p));
+	}
+	return out;
+};
+
+// AddContext: "key:value[:duration],..." per SplitContext.  No colon ends the list, and the entry
+// it was parsing is still added, as key "" value "" (bhop_* "nofizzle" filter).  Neither a key nor a
+// value can hold ':' or ',', so the stored list needs no escaping.
+void(entity e, string parm) SV_CtxAdd =
+{
+	local float p, c, n;
+	local string k, v, s;
+
+	s = e.vbsp_ctx;
+	p = 0;
+	while (1)
+	{
+		c = strstrofs(parm, ":", p);
+		n = strstrofs(parm, ",", (c < 0) ? p : c + 1);
+		if (c < 0)
+			k = v = "";
+		else
+		{
+			k = substring(parm, p, c - p);
+			v = substring(parm, c + 1, ((n < 0) ? strlen(parm) : n) - c - 1);
+			if (strstrofs(v, ":", 0) >= 0)
+				v = substring(v, 0, strstrofs(v, ":", 0));	// the duration
+		}
+		SV_CtxValue(e, k);
+		if (vbsp_ctx_found)
+			s = SV_CtxDrop(s, k);	// Source updates in place; order is never read
+		s = strcat(s, k, ":", v, ",");
+		if (c < 0 || n < 0)
+			break;
+		p = n + 1;
+	}
+	e.vbsp_ctx = s;
+};
+
 void(string key, string value) ED_ParseUnknownEpair =
 {
 	if (value == "")
@@ -1415,6 +1499,10 @@ void(string key, string value) ED_ParseUnknownEpair =
 		self.vbsp_io_raw = strcat(self.vbsp_io_raw, key, "\t", value, "\n");
 		return;
 	}
+
+	// Patch 1036: Source reads ResponseContext at Activate; parsed here, any case.
+	if (!strcasecmp(key, "responsecontext")) { SV_CtxAdd(self, value); return; }
+	if (key == "any") { self.vbsp_ctx_any = stof(value); return; }
 
 	if (key == "x") { self.vbsp_gt_x = stof(value); return; }
 	if (key == "y") { self.vbsp_gt_y = stof(value); return; }
@@ -1581,6 +1669,36 @@ float(string q, string n) SV_NamesMatch =
 	if (p >= 0)
 		return !strcasecmp(substring(n, 0, p), substring(q, 0, p));
 	return !strcasecmp(q, n);
+};
+
+// CFilterContext::PassesFilterImpl over the filter's own list.
+float(entity f, entity act) SV_CtxFilter =
+{
+	local float p, c, n, pass;
+	local string s, have;
+
+	s = f.vbsp_ctx;
+	pass = FALSE;
+	for (p = 0; (n = strstrofs(s, ",", p)) >= 0; p = n + 1)
+	{
+		c = strstrofs(s, ":", p);
+		have = SV_CtxValue(act, substring(s, p, c - p));
+		if (!vbsp_ctx_found)
+		{
+			if (f.vbsp_ctx_any)
+				continue;
+			return FALSE;
+		}
+		if (SV_NamesMatch(substring(s, c + 1, n - c - 1), have))
+		{
+			pass = TRUE;
+			if (f.vbsp_ctx_any)
+				break;
+		}
+		else if (!f.vbsp_ctx_any)
+			return FALSE;
+	}
+	return pass;
 };
 
 string(entity act) SV_SrcClass =
@@ -1994,6 +2112,14 @@ float(entity f, entity act, float depth) SV_FilterPassesD =
 		pass = SV_VelocityFilter(f, act);
 	else if (f.classname == "filter_momentum_progress")
 		pass = (act.classname == "player" && act.run_prognum >= f.progress_check);	// Patch 869
+	else if (f.classname == "filter_activator_context" && vbsp_ctx_on)
+	{
+		pass = SV_CtxFilter(f, act);			// Patch 1036
+		if (pass)
+			vbsp_ctx_pass = vbsp_ctx_pass + 1;
+		else
+			vbsp_ctx_fail = vbsp_ctx_fail + 1;
+	}
 	else
 		return TRUE;						// censused by the caller -- fail open
 	if (SV_Key2(f.Negated, f.negated))
@@ -2028,7 +2154,8 @@ float(entity f, float depth) SV_FilterKnownD =
 	}
 	return (f.classname == "filter_activator_name" || f.classname == "filter_activator_team" ||
 	        f.classname == "filter_activator_class" || f.classname == "filter_velocity" ||
-	        f.classname == "filter_momentum_progress");
+	        f.classname == "filter_momentum_progress" ||
+	        (f.classname == "filter_activator_context" && vbsp_ctx_on));
 };
 
 float(entity trig, entity act) SV_PassesFilter =
@@ -2064,6 +2191,7 @@ float(entity trig, entity act) SV_PassesFilter =
 		if (trig.ui_filter.classname != "filter_activator_class")
 		if (trig.ui_filter.classname != "filter_velocity")
 		if (trig.ui_filter.classname != "filter_momentum_progress")
+		if (trig.ui_filter.classname != "filter_activator_context" || !vbsp_ctx_on)
 			if (SV_CensusAdd(strcat("filter ", trig.ui_filter.classname)))
 				dprint(sprintf("^3filter: %s is not implemented -- '%s' passes "
 				               "everything\n", trig.ui_filter.classname,
@@ -2089,6 +2217,14 @@ void() filter_activator_name =
   can only run if the entity is still there to be found by name.
 */
 void() filter_multi =
+{
+	self.solid = SOLID_NOT;
+	self.movetype = MOVETYPE_NONE;
+};
+
+// Patch 1036: kept so a filter_multi can find it.  Off (vbsp_contexts 0) it is an unimplemented
+// class and passes, which is what the removed entity did before.
+void() filter_activator_context =
 {
 	self.solid = SOLID_NOT;
 	self.movetype = MOVETYPE_NONE;
@@ -3907,6 +4043,18 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 			return;
 
 	if (in == "addoutput")      { SV_IOAddOutput(t, pm);                return; }
+	if (vbsp_ctx_on)	// Patch 1036
+	if (in == "addcontext" || in == "removecontext" || in == "clearcontext")
+	{
+		vbsp_ctx_changes = vbsp_ctx_changes + 1;
+		if (in == "addcontext")
+			SV_CtxAdd(t, pm);
+		else if (in == "removecontext")
+			t.vbsp_ctx = SV_CtxDrop(t.vbsp_ctx, pm);
+		else
+			t.vbsp_ctx = "";
+		return;
+	}
 	if (in == "kill")           { remove(t);                            return; }
 	if (in == "enable")         { SV_IOEnable(t, TRUE);                 return; }
 	if (in == "disable")        { SV_IOEnable(t, FALSE);                return; }
@@ -5224,6 +5372,7 @@ void() SV_EntityIOBuild =
 	// of every frame, and a cvar lookup there would be the only cost this layer
 	// imposes on the 1,300 maps that wire nothing.
 	vbsp_io_on = cvar("vbsp_entity_io");
+	vbsp_ctx_on = cvar("vbsp_contexts");	// Patch 1036
 	if (!vbsp_io_on)
 		return;
 
@@ -5983,6 +6132,10 @@ void() SV_IOReport =
 
 	if (!vbsp_io_depth_hit && !vbsp_io_over_ent && !vbsp_io_over_map && vbsp_io_n)
 		print("  no refusals\n");
+
+	// Patch 1036
+	print(sprintf("  contexts: vbsp_contexts %g; %g change(s), filters %g pass %g fail; yours \"%s\"\n",
+	              vbsp_ctx_on, vbsp_ctx_changes, vbsp_ctx_pass, vbsp_ctx_fail, self.vbsp_ctx));
 
 	/*
 	  Build 64.  The sound line, and it reports the SPLIT rather than a total,

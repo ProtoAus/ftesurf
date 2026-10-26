@@ -136,6 +136,7 @@ void() PutClientInServer =
 	*/
 	self.targetname   = "";
 	self.run_srcclass = "";           // Patch 865: AddOutput classname, same reasoning
+	self.vbsp_ctx     = "";           // Patch 1036: AddContext, same reasoning
 	self.run_speedmod  = 0;
 	self.vbsp_bhop_on   = world;
 	self.vbsp_bhop_since = 0;
