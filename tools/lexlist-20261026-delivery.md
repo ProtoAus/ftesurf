@@ -148,3 +148,5 @@ own. There, *149 now stands 16x192x96 on the tp28->tp29 line, as in Source. The 
 func_conveyor (18 rotated solid on 6 maps; direction comes from movedir) and func_illusionary (25 on 2 maps)
 drop their angles as Source's do, and ent_view's hull overlay draws those classes unrotated. The browser run
 viewer still applies map angles to every entity (BACKLOG).
+P1049 deployed 08:08:58Z both installs (qwprogs d6497c53, csprogs ad9f518c, .prev 53f0eddd/7bdd49b1, cache
+seeded), then all 12 lobbies (nobody on); smoke, lobby 2: 0 failures. Main 6b59573a.

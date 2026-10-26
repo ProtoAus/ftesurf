@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   c7dc90bd3fd4100ff03adb20e2dcd67f588aeab5
+commit   c931d98ea5c5a04dc8115d23b51f3eb49d611145
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -25,7 +25,8 @@ commit   c7dc90bd3fd4100ff03adb20e2dcd67f588aeab5
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1047
-patch    1048
+patch    1049
+# Patch 1049 is QC only: func_conveyor and func_illusionary ignore their angles too.
 # Patch 1048 is QC only: func_wall ignores its angles, as Source (bhop_goldsrc2's sparking panel).
 # Patch 1047 (GL client): skeletal Source props skin on the GPU and unbaked props instance (hourglass s3
 # 80 -> 407 fps). Installed exe git-7899-patch-1047-0-gc7dc90bd3.
