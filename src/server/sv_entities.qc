@@ -1392,15 +1392,65 @@ void(entity t, entity act)             SV_MoverOnUseLocked;
   ClearContext inputs that feed it.  80 library maps put 10,069 triggers behind one, nearly all the
   momentum_tools bhop port (`_mom_leftground`).  Read from Momentum's source (game-develop/mp/src):
   baseentity.cpp AddContext/InputRemoveContext/HasContext/GetContextValue, AI_Criteria.cpp
-  SplitContext, filters.cpp CFilterContext.  HasContext ignores expiry, so none is kept.  Values match
-  with SV_NamesMatch: every filter value in the library is "*" or a literal, and `any` is never set.
+  SplitContext, filters.cpp CFilterContext, shared/momentum/matchers.cpp.  HasContext ignores expiry,
+  so none is kept; matchers.cpp's "@/" regex is not (no library map uses one).
   Gated on vbsp_contexts (0 = the fail-open that shipped) until cl_triggers.qc predicts it too.
 */
-.string vbsp_ctx;		// "key:value," entries, in insertion order
+.string vbsp_ctx;		// "key:value\n" entries: a key may hold ',' (SplitContext), no keyvalue a newline
+.string vbsp_ctx_kv;		// the ResponseContext keyvalue, last one wins; parsed on first use (SV_CtxInit)
+.float  vbsp_ctx_init;
 .float  vbsp_ctx_any;		// filter_activator_context's "any" (ED_ParseUnknownEpair)
 float   vbsp_ctx_on;		// cvar vbsp_contexts, latched with vbsp_entity_io
 float   vbsp_ctx_found;		// SV_CtxValue's second answer
 float   vbsp_ctx_changes, vbsp_ctx_pass, vbsp_ctx_fail;	// ent_io's counts
+
+// matchers.cpp Matcher_RunCharCompare: case-folded, '*' anywhere, '?' any one character.
+float(string q, string v) SV_CtxMatch;
+float(string q, string v) SV_CtxMatch =
+{
+	local float i, n;
+	local string qc;
+
+	while (q != "" && v != "")
+	{
+		qc = substring(q, 0, 1);
+		if (strcasecmp(qc, substring(v, 0, 1)))
+		{
+			if (qc == "*")
+			{
+				if (strlen(q) == 1)
+					return TRUE;
+				q = substring(q, 1, -1);
+				n = strlen(v);
+				for (i = 0; i < n; i = i + 1)
+					if (SV_CtxMatch(q, substring(v, i, -1)))
+						return TRUE;
+				return FALSE;
+			}
+			if (qc != "?")
+				return FALSE;
+		}
+		q = substring(q, 1, -1);
+		v = substring(v, 1, -1);
+	}
+	return (q == "" && v == "") || substring(q, 0, 1) == "*";
+};
+
+// AddContext's parse onto list s: "key:value[:duration],..." as SplitContext reads it -- the key runs to
+// the first colon (commas included), the value to the next comma or colon.  No colon ends the parse and
+// still adds key "" value "" (a "nofizzle" filter); so does an empty or trailing-comma parameter.
+string(string s, string parm) SV_CtxParse;
+
+void(entity e) SV_CtxInit =
+{
+	if (e.vbsp_ctx_init)
+		return;
+	e.vbsp_ctx_init = TRUE;
+	// A stashed filter's comes back with getentityfieldstring's escapes; no library value has a quote,
+	// backslash or newline.
+	if (e.vbsp_ctx_kv != "")
+		e.vbsp_ctx = SV_CtxParse(e.vbsp_ctx, e.vbsp_ctx_kv);
+};
 
 // e's value for `key` (FindContextByName: case-insensitive), or "" with vbsp_ctx_found FALSE.
 string(entity e, string key) SV_CtxValue =
@@ -1408,8 +1458,9 @@ string(entity e, string key) SV_CtxValue =
 	local float p, c, n;
 	local string s;
 
+	SV_CtxInit(e);
 	s = e.vbsp_ctx;
-	for (p = 0; (n = strstrofs(s, ",", p)) >= 0; p = n + 1)
+	for (p = 0; (n = strstrofs(s, "\n", p)) >= 0; p = n + 1)
 	{
 		c = strstrofs(s, ":", p);
 		if (!strcasecmp(substring(s, p, c - p), key))
@@ -1428,7 +1479,7 @@ string(string s, string key) SV_CtxDrop =
 	local string out;
 
 	out = "";
-	for (p = 0; (n = strstrofs(s, ",", p)) >= 0; p = n + 1)
+	for (p = 0; (n = strstrofs(s, "\n", p)) >= 0; p = n + 1)
 	{
 		c = strstrofs(s, ":", p);
 		if (strcasecmp(substring(s, p, c - p), key))
@@ -1437,15 +1488,11 @@ string(string s, string key) SV_CtxDrop =
 	return out;
 };
 
-// AddContext: "key:value[:duration],..." per SplitContext.  No colon ends the list, and the entry
-// it was parsing is still added, as key "" value "" (bhop_* "nofizzle" filter).  Neither a key nor a
-// value can hold ':' or ',', so the stored list needs no escaping.
-void(entity e, string parm) SV_CtxAdd =
+string(string s, string parm) SV_CtxParse =
 {
 	local float p, c, n;
-	local string k, v, s;
+	local string k, v;
 
-	s = e.vbsp_ctx;
 	p = 0;
 	while (1)
 	{
@@ -1460,15 +1507,79 @@ void(entity e, string parm) SV_CtxAdd =
 			if (strstrofs(v, ":", 0) >= 0)
 				v = substring(v, 0, strstrofs(v, ":", 0));	// the duration
 		}
-		SV_CtxValue(e, k);
-		if (vbsp_ctx_found)
-			s = SV_CtxDrop(s, k);	// Source updates in place; order is never read
-		s = strcat(s, k, ":", v, ",");
+		s = strcat(SV_CtxDrop(s, k), k, ":", v, "\n");	// Source updates in place; order is never read
 		if (c < 0 || n < 0)
 			break;
 		p = n + 1;
 	}
-	e.vbsp_ctx = s;
+	return s;
+};
+
+// Saves and rewinds carry contexts beside targetname, as map progress: a `contexts 1` marker (a save
+// without one predates them and leaves the player's alone) and one `context <key> <value>` per entry.
+void(float f, string s) SV_CtxWrite =
+{
+	local float p, c, n;
+
+	fputs(f, "contexts 1\n");
+	for (p = 0; (n = strstrofs(s, "\n", p)) >= 0; p = n + 1)
+	{
+		c = strstrofs(s, ":", p);
+		fputs(f, sprintf("context %S %S\n", substring(s, p, c - p), substring(s, c + 1, n - c - 1)));
+	}
+};
+
+void(entity e, string parm) SV_CtxAdd =
+{
+	SV_CtxInit(e);
+	e.vbsp_ctx = SV_CtxParse(e.vbsp_ctx, parm);
+};
+
+void(entity e, string key) SV_CtxRemove =
+{
+	SV_CtxInit(e);
+	e.vbsp_ctx = SV_CtxDrop(e.vbsp_ctx, key);
+};
+
+// CFilterContext::PassesFilterImpl over the filter's own list.  HasContext matches the filter's key as a
+// pattern against the activator's names; the value is then GetContextValue's, by exact name.
+float(entity f, entity act) SV_CtxFilter =
+{
+	local float p, c, n, q, m, pass, has;
+	local string s, a, key;
+
+	SV_CtxInit(f);
+	SV_CtxInit(act);
+	s = f.vbsp_ctx;
+	a = act.vbsp_ctx;
+	pass = FALSE;
+	for (p = 0; (n = strstrofs(s, "\n", p)) >= 0; p = n + 1)
+	{
+		c = strstrofs(s, ":", p);
+		key = substring(s, p, c - p);
+		has = FALSE;
+		for (q = 0; (m = strstrofs(a, "\n", q)) >= 0; q = m + 1)
+			if (SV_CtxMatch(key, substring(a, q, strstrofs(a, ":", q) - q)))
+			{
+				has = TRUE;
+				break;
+			}
+		if (!has)
+		{
+			if (f.vbsp_ctx_any)
+				continue;
+			return FALSE;
+		}
+		if (SV_CtxMatch(substring(s, c + 1, n - c - 1), SV_CtxValue(act, key)))
+		{
+			pass = TRUE;
+			if (f.vbsp_ctx_any)
+				break;
+		}
+		else if (!f.vbsp_ctx_any)
+			return FALSE;
+	}
+	return pass;
 };
 
 void(string key, string value) ED_ParseUnknownEpair =
@@ -1500,9 +1611,9 @@ void(string key, string value) ED_ParseUnknownEpair =
 		return;
 	}
 
-	// Patch 1036: Source reads ResponseContext at Activate; parsed here, any case.
-	if (!strcasecmp(key, "responsecontext")) { SV_CtxAdd(self, value); return; }
-	if (key == "any") { self.vbsp_ctx_any = stof(value); return; }
+	// Patch 1036: Source keeps the last ResponseContext and adds it at Activate (SV_CtxInit).
+	if (!strcasecmp(key, "responsecontext")) { self.vbsp_ctx_kv = strcat(value); return; }
+	if (!strcasecmp(key, "any")) { self.vbsp_ctx_any = stof(value); return; }
 
 	if (key == "x") { self.vbsp_gt_x = stof(value); return; }
 	if (key == "y") { self.vbsp_gt_y = stof(value); return; }
@@ -1669,36 +1780,6 @@ float(string q, string n) SV_NamesMatch =
 	if (p >= 0)
 		return !strcasecmp(substring(n, 0, p), substring(q, 0, p));
 	return !strcasecmp(q, n);
-};
-
-// CFilterContext::PassesFilterImpl over the filter's own list.
-float(entity f, entity act) SV_CtxFilter =
-{
-	local float p, c, n, pass;
-	local string s, have;
-
-	s = f.vbsp_ctx;
-	pass = FALSE;
-	for (p = 0; (n = strstrofs(s, ",", p)) >= 0; p = n + 1)
-	{
-		c = strstrofs(s, ":", p);
-		have = SV_CtxValue(act, substring(s, p, c - p));
-		if (!vbsp_ctx_found)
-		{
-			if (f.vbsp_ctx_any)
-				continue;
-			return FALSE;
-		}
-		if (SV_NamesMatch(substring(s, c + 1, n - c - 1), have))
-		{
-			pass = TRUE;
-			if (f.vbsp_ctx_any)
-				break;
-		}
-		else if (!f.vbsp_ctx_any)
-			return FALSE;
-	}
-	return pass;
 };
 
 string(entity act) SV_SrcClass =
@@ -2113,17 +2194,18 @@ float(entity f, entity act, float depth) SV_FilterPassesD =
 	else if (f.classname == "filter_momentum_progress")
 		pass = (act.classname == "player" && act.run_prognum >= f.progress_check);	// Patch 869
 	else if (f.classname == "filter_activator_context" && vbsp_ctx_on)
-	{
 		pass = SV_CtxFilter(f, act);			// Patch 1036
+	else
+		return TRUE;						// censused by the caller -- fail open
+	if (SV_Key2(f.Negated, f.negated))
+		pass = !pass;
+	if (f.classname == "filter_activator_context")
+	{
 		if (pass)
 			vbsp_ctx_pass = vbsp_ctx_pass + 1;
 		else
 			vbsp_ctx_fail = vbsp_ctx_fail + 1;
 	}
-	else
-		return TRUE;						// censused by the caller -- fail open
-	if (SV_Key2(f.Negated, f.negated))
-		pass = !pass;
 	return pass;
 };
 
@@ -2222,13 +2304,9 @@ void() filter_multi =
 	self.movetype = MOVETYPE_NONE;
 };
 
-// Patch 1036: kept so a filter_multi can find it.  Off (vbsp_contexts 0) it is an unimplemented
-// class and passes, which is what the removed entity did before.
-void() filter_activator_context =
-{
-	self.solid = SOLID_NOT;
-	self.movetype = MOVETYPE_NONE;
-};
+// Patch 1036: re-created after the lump like its Patch 865 siblings, so no later edict renumbers.
+// Off (vbsp_contexts 0) it is an unimplemented class and passes, as the freed entity did.
+void() filter_activator_context = { SV_LateStash("targetname Negated negated vbsp_ctx_kv vbsp_ctx_any"); };
 
 /*
   INPUTS.
@@ -4050,9 +4128,12 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		if (in == "addcontext")
 			SV_CtxAdd(t, pm);
 		else if (in == "removecontext")
-			t.vbsp_ctx = SV_CtxDrop(t.vbsp_ctx, pm);
+			SV_CtxRemove(t, pm);
 		else
+		{
 			t.vbsp_ctx = "";
+			t.vbsp_ctx_init = TRUE;		// the keyvalue's contexts go too
+		}
 		return;
 	}
 	if (in == "kill")           { remove(t);                            return; }
@@ -5373,6 +5454,8 @@ void() SV_EntityIOBuild =
 	// imposes on the 1,300 maps that wire nothing.
 	vbsp_io_on = cvar("vbsp_entity_io");
 	vbsp_ctx_on = cvar("vbsp_contexts");	// Patch 1036
+	// ...and tells cl_triggers.qc whether contexts gate filters here (off with the I/O layer too).
+	forceinfokey(world, "fs_contexts", (vbsp_ctx_on && vbsp_io_on) ? "1" : "0");
 	if (!vbsp_io_on)
 		return;
 

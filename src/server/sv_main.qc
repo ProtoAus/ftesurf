@@ -468,6 +468,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_SOURCEPHASE,    EV_STRING, svpm_phase_stat);
 	clientstat(STAT_FS_SLACK,          EV_FLOAT, rec_sl_ack);
 	clientstat(STAT_FS_SLTRAILTAG,     EV_FLOAT, rec_sl_eventtag);
+	clientstat(STAT_FS_CTX,            EV_STRING, vbsp_ctx);          // Patch 1036: the mirror's seed
 	clientstat(STAT_FS_SLSAVEACK,      EV_FLOAT, rec_sl_answer_tag);
 	clientstat(STAT_FS_SLSAVEOP,       EV_FLOAT, rec_sl_answer_op);
 	clientstat(STAT_FS_SLSAVETICK,     EV_FLOAT, rec_sl_answer_tick);

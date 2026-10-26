@@ -1271,6 +1271,7 @@ float(entity e, float id, float seq) SV_SaveWriteState =
 	// Patch 735: the map's progress marker, including an explicitly empty name.
 	fputs(f, sprintf("targetname %S\n", e.targetname));
 	fputs(f, sprintf("srcclass %S\n", e.run_srcclass));   // Patch 865, additive
+	SV_CtxWrite(f, e.vbsp_ctx);                           // Patch 1036, additive
 	// Patch 869, additive: Momentum progress and the onehops landed on.
 	fputs(f, sprintf("momprog %S %g %g\n", e.run_progtrig ? e.run_progtrig.model : "",
 	                 e.run_prognum, e.run_progzone));
@@ -1816,9 +1817,9 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float hadrec;             // Patch 441 r3: ...and when the LOAD began
 	local string drid;              // Patch 426: the run the Patch 360 discard kept
 	local vector rorg, rvel;
-	local string savedname, savedcls, mprog, mohs;
+	local string savedname, savedcls, mprog, mohs, savedctx;
 	local float  mnum, mzone, mmon;
-	local float hasname;
+	local float hasname, hasctx;
 
 	sl_voided = FALSE;
 	// Patch 450: cleared on EVERY call and above the fopen, for the same reason
@@ -1851,6 +1852,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	mprog = mohs = "";              // Patch 869
 	mnum = mzone = mmon = -1;
 	hasname = FALSE;
+	savedctx = "";                  // Patch 1036
+	hasctx = FALSE;
 	srun = -1;                      // a pre-57 save file: derived from startseg below
 	sgs = 1;
 	az = ez = am = cz = -1;
@@ -1919,6 +1922,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (k == "mapcrc")     { fcrc = argv(1); continue; }
 		if (k == "targetname") { savedname = argv(1); hasname = TRUE; continue; }
 		if (k == "srcclass")   { savedcls = argv(1); continue; }   // Patch 865
+		if (k == "contexts")   { hasctx = TRUE; continue; }        // Patch 1036
+		if (k == "context")    { savedctx = strcat(savedctx, argv(1), ":", argv(2), "\n"); continue; }
 		if (k == "momprog")    { mprog = argv(1); mnum = stof(argv(2)); mzone = stof(argv(3)); continue; }
 		if (k == "onehops")    { mohs = argv(1); continue; }
 		if (k == "momon")      { mmon = stof(argv(1)); continue; }
@@ -1994,6 +1999,11 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		SV_TouchRelocate(e);
 		e.targetname = savedname;
 		e.run_srcclass = savedcls;     // Patch 865: the class filters' marker
+	}
+	if (hasctx)
+	{
+		e.vbsp_ctx = savedctx;         // Patch 1036
+		e.vbsp_ctx_init = TRUE;
 	}
 
 	/*
@@ -3138,6 +3148,7 @@ float  sl_fseq, sl_fticks, sl_fgo;
 float  sl_fhasname;
 string sl_fname;
 string sl_fcls;                 // Patch 865
+string sl_fctx;                 // Patch 1036: the `contexts`/`context` lines, kept verbatim
 vector sl_forg;
 
 float(float id) SV_SaveReadIdent =
@@ -3154,6 +3165,7 @@ float(float id) SV_SaveReadIdent =
 	sl_fhasname = FALSE;
 	sl_fname = "";
 	sl_fcls = "";
+	sl_fctx = "";
 	sl_fticks = 0;
 	sl_forg = '0 0 0';
 	dem = FALSE;
@@ -3165,6 +3177,8 @@ float(float id) SV_SaveReadIdent =
 		k = argv(0);
 		if (k == "targetname") { sl_fname = argv(1); sl_fhasname = TRUE; continue; }
 		if (k == "srcclass")   { sl_fcls = argv(1); continue; }
+		if (k == "contexts")   { sl_fctx = strcat(sl_fctx, "contexts 1\n"); continue; }      // Patch 1036
+		if (k == "context")    { sl_fctx = strcat(sl_fctx, sprintf("context %S %S\n", argv(1), argv(2))); continue; }
 		if (k == "seq")     { sl_fseq = stof(argv(1)); continue; }
 		if (k == "rewindgo") { sl_fgo = stof(argv(1)); continue; }
 		if (k == "ticks")   { sl_fticks = stof(argv(1)); continue; }
@@ -3253,6 +3267,8 @@ void(float row) SV_SaveDemote =
 		fputs(f, sprintf("targetname %S\n", sl_fname));
 		fputs(f, sprintf("srcclass %S\n", sl_fcls));
 	}
+	if (sl_fctx != "")
+		fputs(f, sl_fctx);             // Patch 1036
 	fputs(f, "demoted 1\n");       // for the reader: everything else defaults to an idle timer
 	fclose(f);
 

@@ -12,7 +12,7 @@ void(entity e, float b) SV_RewindStateSample =
 	if (e.rw_names < 1)
 		e.rw_names = buf_create_ex("string", 0);
 	if (e.rw_names > 0)
-		bufstr_set(e.rw_names, b / RW_STRIDE, strcat("n", e.targetname));
+		bufstr_set(e.rw_names, b / RW_STRIDE, strcat("n", e.targetname, "\n", e.vbsp_ctx));	// P1036: no name holds a newline
 	m[b+10] = e.run_t_track;
 	m[b+11] = e.run_t_startseg;
 	m[b+12] = e.run_t_stagerun;
@@ -87,11 +87,16 @@ void(entity e, float b) SV_RewindStateSample =
 void(entity e, float f, float b) SV_RewindWriteName =
 {
 	local string name;
+	local float nl;
 	if (e.rw_names < 1)
 		return;
 	name = bufstr_get(e.rw_names, b / RW_STRIDE);
 	if (name != "")
-		fputs(f, sprintf("targetname %S\n", substring(name, 1, -1)));
+	{
+		nl = strstrofs(name, "\n", 0);
+		fputs(f, sprintf("targetname %S\n", substring(name, 1, nl - 1)));
+		SV_CtxWrite(f, substring(name, nl + 1, -1));    // Patch 1036
+	}
 };
 
 // Patch 817: SV_RecCutOK's test against the kept failed attempt's generations.

@@ -3029,6 +3029,12 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             Absent = the rules before, a pad paying (1 + tick/2)
                             of its value.  Recorded rides replay the same either
                             way; it says which boards a run is comparable on.
+    contexts <0|1>          Patch 1036.  1: filter_activator_context gated triggers
+                            on the player's AddContext state (vbsp_contexts and
+                            vbsp_entity_io, latched at map load); 0 or absent:
+                            every such filter passed.  Teleports and doors differ
+                            between the two (2shiny2shuckle's stage-2 door), so
+                            it says which boards a run is comparable on.
     proprule <n>            which prop-geometry rule built this run's collision
                             world.  Absent or 0 = prop scale as the map wrote it;
                             1 = floored to the 1/16 the wire carries, so the
@@ -5677,6 +5683,7 @@ void(entity e) SV_RecOpen =
 	SV_RecPut(e, strcat("entfile ", ftos(stof(serverkey("*entfile")))));     // Patch 890: "" = 0
 	SV_RecPut(e, strcat("tickparts ", ftos(cvar("sv_tickparts") >= 1)));     // Patch 893: as the engine's ival > 0
 	SV_RecPut(e, strcat("endedge ", (vbsp_mp && SV_TouchBit(e)) ? "1" : "0"));     // Patch 1025, additive
+	SV_RecPut(e, strcat("contexts ", (vbsp_ctx_on && vbsp_io_on) ? "1" : "0"));     // Patch 1036, additive
 	/*
 	  BUILD 76: WHICH OF THE TWO CLOCKS TIMED THIS RUN.  `counted` or `sampled`.
 
