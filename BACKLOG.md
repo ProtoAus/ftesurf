@@ -7897,3 +7897,15 @@ hud_edit rows (3 since P798); their height estimate only errs high.
   too, but its practice mode restores the pre-practice state. Options: clear at the arm, or record the
   list (and targetname) held at the arm in the .rec header so it is visible. Owner's call.
 - The rewind state carries targetname and (now) contexts but not srcclass (Patch 865's class marker).
+
+## P1029 follow-up: prederr lines while changing noclip speed mid-flight (26 Oct, Lex)
+
+- Lex: Shift+wheel feels right, but changing speed WHILE MOVING still prints prederr lines. Cause: the
+  speed is the pm_noclipspeed movevar. The server simulates each command with the cvar as it is when
+  the command runs; the client predicts with the serverinfo copy, which arrives a round trip later, and
+  re-predicts EVERY unacked command with the current value -- so commands in flight across the change
+  disagree by (latency x speed delta). Steady flight agrees. Not fixable from QC alone.
+- Options (both engine, ship with an exe): (a) carry the noclip speed per command (a usercmd field the
+  server applies at that command and cl_pred.c replays per command); (b) cl_pred.c skips the cl_prederror
+  line when the predicted pm_type is PM_SPECTATOR/PM_OLD_SPECTATOR (noclip already voids the run, so
+  its disagreements are not evidence). (b) is three lines; (a) removes the snap as well as the line.
