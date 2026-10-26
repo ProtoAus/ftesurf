@@ -1518,6 +1518,7 @@ float  dm_thr;                  // and the scale that holds them to DM_POOL
 float  dm_fresh;                // Emit_MoteLook made a look in this call
 string dm_why;                  // "" = Source's motes; else why the orbs draw
 float *em_life;                 // [EM_MAX] a Source mote's mean life; 0 for anything else
+float *em_sph;                  // [EM_MAX] Patch 1044: a stack's look + 1 (sp_fx is re-asked on repair); 0 for anything else
 
 #define EM_BSPREAD 134217728    // 62 of the library's maps are larger, 46 of them with motes
 
@@ -1865,6 +1866,103 @@ void() Emit_AllocLife =
 {
 	if (!em_life)
 		em_life = memalloc(sizeof(float) * EM_MAX);
+	if (!em_sph)
+		em_sph = memalloc(sizeof(float) * EM_MAX);
+};
+
+/*
+  Patch 1044: env_smokestack smoke with its own numbers.  A growing stack in
+  particle/SmokeStack.vmt (651 of the library's 727 growing ones) gets one r_part
+  block per look on the map -- 60 looks in the library, 5 at most on one map --
+  instead of a colour bucket, which drew bhop_orgrimmar's grey 42 smoke as white
+  1.5 s dots.  From c_smokestack.cpp: life JetLength / Speed, size StartSize to
+  EndSize, alpha renderamt/255 times its cosine rise and squared fall (:409-414),
+  a ring of BaseSpread and +-SpreadSpeed sideways (:340-350), colour rendercolor
+  (env_particlelight would add to it: 8 in the library, not drawn).  The texture
+  is the material's DX7 fallback, grey at ~131 of 255, so the colour is scaled
+  up to land on rendercolor, the flat colour Source's DX8 ParticleSphere draws.
+*/
+#define STK_MAX  16
+string sp_look[STK_MAX];         // "ssize esize life r g b renderamt basespread spreadspeed", strzoned
+float *sp_fx;                   // [STK_MAX] handles
+float  sp_n;
+float  sp_over;                 // stacks whose look found the table full
+
+void(float i) Emit_StackDefine =
+{
+	local float ss, es, life, amt, k, t, a;
+	local string s, nm;
+
+	tokenize(sp_look[i]);
+	ss = stof(argv(0));
+	es = stof(argv(1));
+	life = stof(argv(2));
+	amt = stof(argv(6)) / 255;
+	nm = sprintf("ftesurf_sp%g", i);
+	// FTE's quad is a diamond of half-diagonal scale/4 (p_script.c GL_DrawTexturedParticle);
+	// turned 45 degrees it is Source's square, half-side scale/5.657.
+	s = sprintf("r_part %s\n{\ntexture \"materials/particle/smokestackfallback.vtf\"\ntype normal\nblend blendalpha\nscalefactor 1\nscale %g\nscaledelta %g\nrotationstart 45\n",
+	            nm, ss * 5.657, (es - ss) * 5.657 / life);
+	s = strcat(s, sprintf("rgb %g %g %g\nalpha 0\ndie %g\ncount 1\nspawnmode circle\nspawnorg %g 0\nveladd 1\nvelwrand %g %g 0\nrampmode lerp\n",
+	            min(255, stof(argv(3)) * 1.95), min(255, stof(argv(4)) * 1.95), min(255, stof(argv(5)) * 1.95),
+	            life, stof(argv(7)), stof(argv(8)), stof(argv(8))));
+	for (k = 0; k < 12; k = k + 1)
+	{
+		t = k / 12;
+		a = cos(t * 6.2831853 - 3.1415927) * 0.5 + 0.5;
+		if (t > 0.5)
+			a = a * a;
+		if (k == 11)
+			a = 0;      // the lerp holds its last entry to the end
+		s = strcat(s, sprintf("ramp %g %g %g %g\n", min(255, stof(argv(3)) * 1.95), min(255, stof(argv(4)) * 1.95),
+		                      min(255, stof(argv(5)) * 1.95), a * amt));
+	}
+	localcmd(strcat(s, "}\n"));
+	sp_fx[i] = particleeffectnum(nm);
+};
+
+// The look's index + 1, made on first sight; 0 when the table is full.
+float(string look) Emit_StackLook =
+{
+	local float i;
+
+	for (i = 0; i < sp_n; i = i + 1)
+		if (!strcmp(sp_look[i], look))
+			return i + 1;
+	if (sp_n >= STK_MAX)
+	{
+		sp_over = sp_over + 1;
+		return 0;
+	}
+	if (!sp_fx)
+		sp_fx = memalloc(sizeof(float) * STK_MAX);
+	sp_look[sp_n] = strzone(look);
+	Emit_StackDefine(sp_n);
+	dprint(sprintf("emit: smokestack look %g = %s\n", sp_n, look));
+	sp_n = sp_n + 1;
+	return sp_n;
+};
+
+void() Emit_StackFree =
+{
+	local float i;
+
+	for (i = 0; i < sp_n; i = i + 1)
+		strunzone(sp_look[i]);
+	sp_n = 0;
+	sp_over = 0;
+};
+
+// As Emit_MoteRepair.
+float() Emit_StackRepair =
+{
+	local float i;
+
+	if (!sp_n || particleeffectquery(sp_fx[0], 0) != "")
+		return FALSE;
+	for (i = 0; i < sp_n; i = i + 1)
+		Emit_StackDefine(i);
+	return TRUE;
 };
 
 // One axis of a mote's sideways speed: the constant speed that ends where
@@ -2101,6 +2199,7 @@ float(vector bmin, vector bmax, vector vel, float jit, float rate, float burst,
 	em_want[i]  = 0;                // on the same frame
 	em_lit[i]   = 0;
 	em_life[i]  = 0;
+	em_sph[i]   = 0;
 	em_ltacc[i] = random();
 	em_drop[i]  = 0;
 	em_trail[i] = 0;
@@ -2801,7 +2900,8 @@ void() Emit_LoadForMap =
 	local float  smin, smax, lmin, lmax, fall, look;
 	local float  spawnflags, disabled, density, freq, current;
 	local float  firesize, maxdelay, magnitude, traillen, mspeed;
-	local float  ssize, esize, jetlen, spread, initst;
+	local float  ssize, esize, jetlen, spread, initst, basesp, sph;
+	local string smat;
 	local float  i, k, bucket, eff, kind, jit, burst;
 	local string effname;
 	local float  ps, j, pchild, opened, fcls, tj, ptype, ramt, psfirst;
@@ -2833,6 +2933,7 @@ void() Emit_LoadForMap =
 	em_smwant = em_flsmoke = em_flglow = em_flunder = em_flover = 0;
 	em_fldropwant = em_fldrop = em_fldropsum = em_fldropmax = em_flnofloor = em_flinside = em_fldropover = 0;
 	Emit_MoteFree();
+	Emit_StackFree();
 	dm_why = Emit_MoteWhy();
 	i = 0;
 	while (i < EK_N)
@@ -2987,7 +3088,8 @@ void() Emit_LoadForMap =
 		spawnflags = disabled = 0;
 		density = freq = current = 0;
 		firesize = maxdelay = magnitude = traillen = mspeed = 0;
-		ssize = esize = jetlen = spread = 0;
+		ssize = esize = jetlen = spread = basesp = sph = 0;
+		smat = "";
 		initst = 1;             // env_smokestack's default is ON; 2378 of 2443
 		ptype = 0;
 		ramt = 255;
@@ -3050,6 +3152,8 @@ void() Emit_LoadForMap =
 			else if (key == "endsize")       esize  = stof(tok);
 			else if (key == "jetlength")     jetlen = stof(tok);
 			else if (key == "spreadspeed")   spread = stof(tok);
+			else if (key == "basespread")    basesp = stof(tok);     // Patch 1044
+			else if (key == "smokematerial") smat = strtolower(tok);
 			else if (key == "initialstate")  initst = stof(tok);
 			else if (key == "preciptype")    ptype = stof(tok);
 			else if (key == "renderamt")     ramt = stof(tok);
@@ -3462,6 +3566,16 @@ void() Emit_LoadForMap =
 				eff = FX_STACKPUFF + bucket;
 			else
 				eff = FX_STACKJET + bucket;
+			// Patch 1044: smoke in SmokeStack.vmt draws its own look (see Emit_StackDefine);
+			// the ring and the sideways spread are in the block, so no jitter here.
+			if (esize > ssize)
+			if (smat == "particle/smokestack.vmt" || smat == "particle/smokestack")
+			{
+				sph = Emit_StackLook(strcat(sprintf("%g %g %g %g %g %g ", ssize, esize, jetlen / spd,
+				      rint(col_x * 255), rint(col_y * 255), rint(col_z * 255)), sprintf("%g %g %g", ramt, basesp, spread)));
+				if (sph)
+					jit = 0;
+			}
 		}
 
 		/*
@@ -3575,6 +3689,7 @@ void() Emit_LoadForMap =
 				Emit_TrailMark(j, rate, ps);
 			if (look >= 0)
 				em_life[j] = (lmin + lmax) * 0.5;
+			em_sph[j] = sph;
 			if (kind == EK_FIRE)
 			{
 				// 32 is No glow (fire.cpp:785).  This read 16, which is Don't
@@ -3818,6 +3933,8 @@ void() Emit_Frame =
 		k = Emit_FlameRepair();
 		if (Emit_MoteRepair())
 			k = TRUE;
+		if (Emit_StackRepair())
+			k = TRUE;
 		if (Emit_PsysRepair())
 			k = TRUE;
 		if (Emit_PrecipRepair())
@@ -4044,6 +4161,8 @@ void() Emit_Frame =
 						v = '0 0 1';
 					pointparticles(dm_fx[em_eff[i]], Emit_PointIn(i), v, 1);
 				}
+				else if (em_sph[i])
+					pointparticles(sp_fx[em_sph[i] - 1], Emit_PointIn(i), v, 1);
 				else
 					pointparticles(em_fx[em_eff[i]], Emit_PointIn(i), v, 1);
 				n = n - 1;
@@ -4247,6 +4366,16 @@ void() Emit_List =
 			if (dm_over)
 				print(sprintf("  %g func_dustmotes past %g looks, drawn as orbs\n", dm_over, DM_MAX));
 		}
+	}
+	if (em_seen[EK_STACK])
+	{	// Patch 1044
+		tot = 0;
+		for (k = 0; k < sp_n; k = k + 1)
+			if (particleeffectquery(sp_fx[k], 0) != "")
+				tot = tot + 1;
+		print(sprintf("  env_smokestack: %g smoke looks of its own, %g answering, %g past the table\n", sp_n, tot, sp_over));
+		for (k = 0; k < sp_n; k = k + 1)
+			print(sprintf("    look %g: %s\n", k, sp_look[k]));
 	}
 
 	// What a class costs, as an A/B: cl_maxfps 0, emit_list, wait, emit_list.
