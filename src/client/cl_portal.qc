@@ -386,10 +386,11 @@ void() APW_Resolve =
 /*
   Patch 1002: func_lod, hidden on the server (func_lod) and drawn here with Source's fade --
   ComputeDistanceFade (cdll_util.cpp), linear in squared distance from the eye to the box centre,
-  between DisappearDist and DisappearDist + lod_TransitionDist 800 (c_func_lod.cpp, the only key
-  Momentum reads), else DisappearMinDist/MaxDist (CS:GO). Patch 1033: DisappearDist first --
-  bhop_ceaseless's 198 tune it (400-2000) and all carry the editor's 2000/2200 pair. A func_lod
-  naming neither never fades.
+  between DisappearDist and DisappearDist + 800, else DisappearMinDist/MaxDist (CS:GO). Patch 1033:
+  Momentum's CFunc_LOD::KeyValue writes DisappearDist into min/max (max = +800) and the pair into the
+  same fields, so the LAST key wins; all 234 library func_lods carrying both put DisappearDist last
+  (bhop_ceaseless's 198 tune it, 400-2000, beside the editor's 2000/2200). A func_lod naming neither
+  never fades.
 */
 .float lod_min2, lod_max2;
 float  vbsp_lod_n;
@@ -421,7 +422,7 @@ void(string mdl, string sorg, string sdd, string smin, string smax) LOD_Spawn =
 		return;
 	if (sdd != "")
 	{
-		mn = stof(sdd);		// Patch 1033: Momentum reads only this (c_func_lod.cpp), editors add the pair below
+		mn = stof(sdd);		// Patch 1033: last in every lump that has both, so it wins in Momentum
 		mx = mn + 800;
 	}
 	else if (smin != "" || smax != "")

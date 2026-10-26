@@ -21,8 +21,8 @@
 
 ## next
 
-### P1033 Fading map pieces appear whole
-- Map pieces that appear as you get closer (bhop_ceaseless's lattice) now fade in whole at the distance the mapper set, as in Momentum, with no line through them where the map's fake sky crossed them.
+### P1033 Fading map pieces use the mapper's distance
+- Map pieces that appear as you get closer (bhop_ceaseless's lattice) now fade in at the distance the mapper set, as in Momentum, instead of all at 2000 units.
 
 ### P1028 Particle switches work
 - bhop_ceaseless's particle switch at the start, and any button or trigger that starts or stops a particle effect, now turns the map's particle effects off and on again. Effects that start switched off wait for their start.
