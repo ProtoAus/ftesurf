@@ -145,3 +145,62 @@ Task root `C:\FTESurf-worktrees\pcfcolour-20261025T0540Z` (shots under `artifact
 - Not owner-checked: lextest.md's P1016-P1020 entry. hl2_water 5 is opt-in (Lex's cfg stays 2).
 - BACKLOG "bhop_ceaseless (P990, P1002, P1012-P1019)": water colour (cyan vs Momentum's blue), the
   main view's reflection at hl2_water 2, mode 5's fog-colour reflection misses.
+
+# P1021-P1028 (Lex's fifth list of 26 Oct: save menu, map changes, tunnel, func_lod, boost pads, booster.wav, spider, particle switch): delivery record
+
+Times UTC, 26 Oct 2026. Task root `C:\FTESurf-worktrees\ceaseless5-20261026T0450Z` (arms under `artifacts/`).
+
+| Lex's item | Patch | State |
+|---|---|---|
+| Save menu on a server reads 29/29 and bounces between two saves | P1021 | warp-op steps clear the newest-row pin: fixture lobby walks 2, 1, 2 (installed: 3, 3, 3) |
+| bhop_ceaseless -> surf_666 load is very long | P1022 | the client no longer rebuilds its search paths twice: 21.0 -> 11.4-12.0 s; `scr_loadtimes 5` |
+| Save 19 tunnel envmap not smoothed | P1023 | brush faces take VRAD's vertex normals (3,179 of 21,740 faces smoothed) |
+| func_lod draws "a line across the brush" | P1024 | no change: fades whole by its centre as Source 2013; needs Lex's mid-fade screenshot |
+| prederr on every boost pad | P1025 | end-touch on the tick you leave, exact pay, predicted: 0 prederr (installed 3 of 3, 12.6-37.7) |
+| "Download of sound/plar/booster.wav failed" | P1026 | optional downloads the server lacks are developer lines; required ones stay loud |
+| Spider rotated the wrong way | P1027 | Source models draw with Source's pitch; hangs from its thread |
+| Start button does not turn the particles off | P1028 | info_particle_system answers Start/Stop: the button stops all 97 |
+
+## Builds
+
+- Engine: ftequakers main `a1a1c7dd5`, annotated tag `patch-1028` (10 commits on pi.dev's P1031
+  patch-log tip, plus the patch log). Stamp `git-7873-patch-1028-0-ga1a1c7dd5` (16 hits, one string).
+  ftesurf64/fteqw64 `8815a19b`; hl2 plugin `73ddacae`. fteqwsv64 and the other plugins unchanged.
+- QC: FTESurf main `00556e37` (P1021-P1028 at `beffec65` + ftesurf-63's P1029/P1030), fteqcc
+  `c24ede65`, 0 warnings: qwprogs `4fd0fa49`, csprogs `ab22fc3f`, menu `d0eb3e8a`.
+
+## Deployed
+
+- 00:34:24Z Pi lobbies 1-12 (`build.ps1 -Pi` from the worktree, C:\FTEQuake sync off, nobody on, no
+  -PiForce): `beffec65`, qwprogs `4fd0fa49` / csprogs `b8ebb303`. Lobby smoke (27520) on the new exe and
+  on the 0.1.29 release exe `8109f66d`: served csprogs `b8ebb303`, board drew, no QC error.
+- 01:02:32Z both installs, no game running: ftesurf64.exe/fteqw64.exe `8815a19b` (.prev `5c5df1fc`),
+  fteplug_hl2_x64.dll `73ddacae` (.prev `29e53471`). Boot check: version reads the stamp, CSQC loads.
+- 01:05:25Z Pi lobbies 1-12 again (nobody on; all 12 restarted on the build): `00556e37`, qwprogs
+  `4fd0fa49` / csprogs `ab22fc3f`. Lobby smoke (27530) on both exes: 0 failures.
+- 01:06:16Z both installs by hand: qwprogs `4fd0fa49`, csprogs `ab22fc3f`, menu `d0eb3e8a`. The build
+  they replaced (ftesurf-63's 11:41 local, `2ec7e566`/`7b849b95`/`e86fe25a`) was compiled by `7ccb93d1`
+  (its progs name fteqcc git-6681), so it was not kept as .prev: C:\FTESurf .prev `117c0942`/`5c61096f`/
+  `2a0a3f80`, C:\FTEQuake .prev `ff7fee70`/`45e09dc1`/`c0dee262` (unchanged). seed_csprogs `d2d4975e`.
+
+## Verified (final build)
+
+- Save-31 pad: 0 prederr over 8 jumps at 250 fps and 8 at 50 fps; standing at cl_maxfps 10, 0 launches
+  (the sweep-only build: 4 of 4); walking off at cl_maxfps 25, 0 of 8 (per-command seen: 8 of 8).
+- OnJump pad *266: 0 of 5 on a dedicated server; on a listen server 0 of 5 (5 of 5 before
+  predmove_wasground).
+- p786trig v2 passes (and --countdown 0.5); p753warpop --more 32/8, the installed build's same 8;
+  the P1021 arm passes; test_reccheck 924 checks, 0 failed.
+- On the 0.1.29 exe: the new csprogs loads against the new server QC, no QC error; boost rows demote as
+  before (that exe lacks FTESURF_PREDICT_BVSET), so those players keep the unpredicted boost until the
+  next release.
+
+## Not done / limits
+
+- Not owner-checked: lextest.md's P1021-P1028 entry. P1024 needs a mid-fade screenshot of the line.
+- Lex, 26 Oct: beta, so old-rule pad runs share the boards and nothing reads `endedge` yet.
+- BACKLOG "bhop_ceaseless": P1025's in-state ring after unpredicted moves, the touch list's eight
+  slots, multihop holds on server time, a reset on a boost pad paying at the start, a warp right after
+  a pad, pitched props' server box, download flags lost on redirects.
+- Reviews: P1025 eight rounds, stopped on integrity (prediction quirks to BACKLOG); P1022/P1023/
+  P1026/P1027/P1028 two or three rounds each.
