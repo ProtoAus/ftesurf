@@ -21,6 +21,11 @@
 
 ## next
 
+### P1054 Your home, your records and your completion
+- Home puts lobbies above your WOS stats and progress, with friends and public lobby or friend-only chat on the right. Tabs give Maps its own space, alongside Story, Event Mode and Settings.
+- Jump to me finds your record in the selected leaderboard without changing its filters. Boards load smaller first pages and keep paging as you scroll.
+- Tier completion has WOS and Everything views in-game and on the website. Everything includes Momentum and KSF; both views use the same map totals.
+
 ## 0.1.31 2026-10-26
 
 ### P1051 goto_start goes to the start

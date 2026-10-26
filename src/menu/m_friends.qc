@@ -3,6 +3,8 @@
 #define MF_SITE "https://play.proto.bar"
 string(string nonce, string op, string who) friends_sign = #0:friends_sign;
 float(string src, string dst) frename = #0:frename;
+float mf_linkstate;
+void(string who, string name) MC_Select;
 float mf_epoch, mf_seen, mf_seenmode, mf_count, mf_mode, mf_rows, mf_boot;
 float mf_req, mf_wire, mf_phase, mf_at, mf_next, mf_siglen, mf_sigcrc;
 float mf_presence_req, mf_presence_wire, mf_presence_phase, mf_presence_at, mf_presence_next;
@@ -116,8 +118,10 @@ string() MF_ProbeNote = { return sprintf("req=%g wire=%g note=%S", mf_req, mf_wi
 
 float() MF_Active =
 {
-	if (!menu_active || menu_screen != SCREEN_CREATE) return FALSE;
-	if (!cvar("ui_maps_friends") || !MF_Online()) return FALSE;
+	if (!menu_active) return FALSE;
+	if (menu_screen != SCREEN_MAIN)
+	if (menu_screen != SCREEN_CREATE || !cvar("ui_maps_friends")) return FALSE;
+	if (!MF_Online()) return FALSE;
 	return MF_Direct();
 };
 
@@ -252,6 +256,7 @@ void() MF_TakeCvars =
 	local string row;
 	n = cvar("ui_friends_count");
 	if (n < 0) return;
+	mf_linkstate = 1;
 	n = min(n, 128);
 	stage = buf_create();
 	k = 0;
@@ -461,6 +466,16 @@ float(float reqid, float code, string body) MF_Reply =
 		if (!MF_Active()) { MF_Cancel(); return TRUE; }
 	}
 	else if (!MF_Online() || !MF_Direct()) { MF_Cancel(); return TRUE; }
+	if (code == 403 && mf_phase == 2 && !strcmp(mf_op, "list"))
+	{
+		root = json_parse(body);
+		if (root)
+		{
+			why = json_get_string(json_find_object_child(root, "error"));
+			if (!strcmp(why, "Link Steam on a lobby once to use Friends here")) mf_linkstate = -1;
+			json_free(root);
+		}
+	}
 	if (code || strlen(body) > 131072)
 	{
 		MF_Fail("Friends service unavailable. Your friends are not necessarily offline.");
@@ -547,6 +562,7 @@ float(float reqid, float code, string body) MF_Reply =
 		json_free(root);
 		return TRUE;
 	}
+	mf_linkstate = 1;
 	arr = json_find_object_child(root, "friends");
 	n = json_get_length(arr);
 	if (!arr || n < 0 || n > 128)
@@ -576,7 +592,8 @@ float(float reqid, float code, string body) MF_Reply =
 	else
 	{
 		MF_Swap(stage, n);
-		mf_next = time + 5;
+		// Home also polls chat; leave room in their shared account budget.
+		mf_next = time + (menu_screen == SCREEN_MAIN ? 10 : 5);
 		mf_boot = TRUE;
 		MF_Cancel();
 		MF_Note("");
@@ -594,6 +611,7 @@ void(vector pos, vector size) MF_Draw =
 	sui_style_panel(pos, size, 12, 1);
 	sui_push_frame(pos, size);
 	sui_text('16 12 0', SZ_HEAD, "friends", COL_ACCENT, 1, 0);
+	if (menu_screen != SCREEN_MAIN)
 	if (ui_button("mf_close", [size_x - 76, 12], [60, 28], "Hide"))
 	{
 		cvar_set("ui_maps_friends", "0");
@@ -652,7 +670,8 @@ void(vector pos, vector size) MF_Draw =
 			sui_text(rp + '64 12 0', SZ_ROW, ui_fit_text(nm, room, SZ_ROW), COL_TEXT, alpha, 0);
 			if (sui_is_released(id) && MF_WhoSafe(who))
 			{
-				MFP_Open(who, nm);
+				if (menu_screen == SCREEN_MAIN && rel == 3) MC_Select(who, nm);
+				else MFP_Open(who, nm);
 			}
 			status = fresh ? "Offline" : "Checking...";
 			if (rel == 1) status = "Added -- waiting for them";
