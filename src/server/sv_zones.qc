@@ -1620,6 +1620,7 @@ void(string word, float n) SV_ZoneChatCommand =
 			  Nested ifs, not `&&`: this file's rule, and the picker writes three
 			  __out parameters that must not be evaluated speculatively.
 			*/
+			SV_TpDestReset(self);	// Patch 1050: every path below moves
 			if (SV_TimerAtRunOrigin(self, self.run_leg_zone))
 			{
 				mark = SV_StartMarkFind(self, self.run_leg_zone);
@@ -1657,6 +1658,7 @@ void(string word, float n) SV_ZoneChatCommand =
 	// asking again is a no-op for it.
 	SV_TimerChatLeg(self, word, n);
 
+	SV_TpDestReset(self);		// Patch 1050: past the refusal, so a warp that does not move keeps it
 	SV_ZoneMove(z);
 	SV_ZoneSayWhere(word, what, z, "");
 };

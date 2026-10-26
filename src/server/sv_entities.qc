@@ -504,6 +504,18 @@ float  vbsp_io_over_map;	// refused by the map-wide ceiling
 .float  vbsp_io_delay;
 .float  vbsp_io_times;	// -1 unlimited, 0 exhausted
 
+// Patch 1050: COutputEvent::FireOutput's Value.  An output row with no parameter delivers the value it
+// was fired with (OnTriggerParameter); SV_FireOutput -> SV_IODeliver -> SV_ApplyInput hand it down and
+// SV_ApplyInput clears it, so nothing fired from inside an input inherits it.  A delayed row keeps it
+// in its timer's vbsp_io_param.
+string  vbsp_io_value;
+// Patch 1050: SetRemoteDestination from a player, per player: "<teleport name>\t<target>\n" entries
+// (or "#<edict>" for a nameless one), so one player's checkpoint does not move everyone's fail teleport.
+// Map state otherwise (.target).  SV_TpDestReset on respawn and on the !r/!m/!s/!b warps: an entry from
+// an earlier run must not send a fresh one forward (greenbox disables its checkpoints map-wide).
+.string vbsp_tpdest;
+float   vbsp_tpdest_map;		// a SetRemoteDestination has run on this map (progs reload per map)
+
 // Source keys this section reads.  `wait` and `count` are Quake field names
 // but neither is declared by the shipped SSQC defs, so both are ours.
 .float  wait;
@@ -3185,6 +3197,7 @@ float(string lk) SV_IOOutputKnown =
 	if (lk == "onstarttouch") return TRUE;	// SV_TriggerIOTouch (x2 paths)
 	if (lk == "onendtouch")   return TRUE;	// SV_TriggerEndThink (x3 paths)
 	if (lk == "ontrigger")    return TRUE;	// trigger_multiple_touch
+	if (lk == "ontriggerparameter") return TRUE;	// SV_IORelayFire -- Patch 1050
 	if (lk == "onpressed")    return TRUE;	// SV_UseFrame
 	if (lk == "onhitmax")     return TRUE;	// SV_IOCounter
 	if (lk == "onactivate")   return TRUE;	// SV_BhopTeleport
@@ -3288,7 +3301,9 @@ void() SV_RelayRefireThink =
 	self.nextthink = 0;
 };
 
-void(entity t, entity act) SV_IORelayTrigger =
+// Patch 1050: Trigger fires OnTrigger, TriggerWithParameter fires OnTriggerParameter with its value; the
+// gates and the refire wait are shared, and the wait is OnTrigger's in both (logicrelay.cpp:177).
+void(entity t, entity act, string out, string val) SV_IORelayFire =
 {
 	local entity o;
 	local float  maxdelay;
@@ -3353,7 +3368,57 @@ void(entity t, entity act) SV_IORelayTrigger =
 		t.nextthink = time + maxdelay + 0.001;
 	}
 
-	SV_FireOutput(t, "OnTrigger", act);
+	vbsp_io_value = val;
+	SV_FireOutput(t, out, act);
+};
+
+void(entity t, entity act) SV_IORelayTrigger =
+{
+	SV_IORelayFire(t, act, "OnTrigger", "");
+};
+
+// Patch 1050: trigger_teleport's SetRemoteDestination (Momentum's server.dll; CS:GO's input): the new
+// .target.  From a player it is that player's own (vbsp_tpdest), read by SV_TpDest at the touch.
+string(entity t) SV_TpDestKey =
+{
+	if (t.targetname != "")
+		return strcat(t.targetname, "\t");
+	return strcat("#", ftos(num_for_edict(t)), "\t");
+};
+
+void(entity t, entity act, string dest) SV_TpDestSet =
+{
+	local string s, key;
+	local float p, n;
+
+	vbsp_tpdest_map = TRUE;
+	if (!act || act.classname != "player")
+	{
+		t.target = dest;
+		return;
+	}
+	key = SV_TpDestKey(t);
+	s = "";
+	for (p = 0; (n = strstrofs(act.vbsp_tpdest, "\n", p)) >= 0; p = n + 1)
+		if (substring(act.vbsp_tpdest, p, strlen(key)) != key)
+			s = strcat(s, substring(act.vbsp_tpdest, p, n + 1 - p));
+	act.vbsp_tpdest = strcat(s, key, dest, "\n");
+	if (cvar("developer"))			// per touch: not SV_DevOn, which every lobby has on
+		dprint(sprintf("tpdest: %s's %s (#%g) -> '%s'\n", act.netname, t.targetname, num_for_edict(t), dest));
+};
+
+string(entity t, entity pl) SV_TpDest =
+{
+	local string key;
+	local float p, n;
+
+	if (pl.vbsp_tpdest == "")
+		return t.target;
+	key = SV_TpDestKey(t);
+	for (p = 0; (n = strstrofs(pl.vbsp_tpdest, "\n", p)) >= 0; p = n + 1)
+		if (substring(pl.vbsp_tpdest, p, strlen(key)) == key)
+			return substring(pl.vbsp_tpdest, p + strlen(key), n - p - strlen(key));
+	return t.target;
 };
 
 /*
@@ -4125,6 +4190,9 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 
 	in = o.vbsp_io_input;
 	pm = o.vbsp_io_param;
+	if (pm == "")
+		pm = vbsp_io_value;		// Patch 1050
+	vbsp_io_value = "";
 	vbsp_io_fired = vbsp_io_fired + 1;
 
 	/*
@@ -4323,6 +4391,16 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	// Build 63.  logic_relay -- 2,506 Trigger fires across 120 maps, the most
 	// common unimplemented input in the library that is not cosmetic.
 	if (in == "trigger")        { SV_IORelayTrigger(t, act);            return; }
+	if (in == "triggerwithparameter" && t.classname == "logic_relay")	// Patch 1050
+	{
+		SV_IORelayFire(t, act, "OnTriggerParameter", pm);
+		return;
+	}
+	if (in == "setremotedestination" && t.classname == "trigger_teleport")
+	{
+		SV_TpDestSet(t, act, pm);
+		return;
+	}
 	if (in == "cancelpending")  { SV_IOCancelPending(t);                return; }
 
 	// Build 63.  logic_case -- 6,258 OnCaseNN outputs across 112 maps, the
@@ -4635,20 +4713,28 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 void(entity o, entity act) SV_IODeliver =
 {
 	local entity t;
-	local string tn;
+	local string tn, val;
 
 	tn = o.vbsp_io_target;
+	val = vbsp_io_value;		// Patch 1050: re-armed before each SV_ApplyInput, which clears it
+	vbsp_io_value = "";
 
 	if (tn == "!activator" || tn == "!caller" || tn == "!player")
 	{
 		if (act)
+		{
+			vbsp_io_value = val;
 			SV_ApplyInput(act, o, act);
+		}
 		return;
 	}
 	if (tn == "!self")
 	{
 		if (o.owner)
+		{
+			vbsp_io_value = val;
 			SV_ApplyInput(o.owner, o, act);
+		}
 		return;
 	}
 	if (tn == "")
@@ -4664,7 +4750,11 @@ void(entity o, entity act) SV_IODeliver =
 	if (!t && strtolower(tn) == "momentary_rot_button")
 	{
 		for (t = find(world, classname, "momentary_rot_button"); t; t = find(t, classname, "momentary_rot_button"))
+		{
+			vbsp_io_value = val;
 			SV_ApplyInput(t, o, act);
+		}
+		vbsp_io_value = "";
 		return;
 	}
 	if (!t)
@@ -4684,9 +4774,11 @@ void(entity o, entity act) SV_IODeliver =
 	// Source fires an input at EVERY entity carrying the targetname.
 	while (t)
 	{
+		vbsp_io_value = val;
 		SV_ApplyInput(t, o, act);
 		t = SV_FindByName(tn, t);
 	}
+	vbsp_io_value = "";
 };
 
 // A delayed output.  Two entity references and a think; removed before it
@@ -4694,19 +4786,28 @@ void(entity o, entity act) SV_IODeliver =
 void() SV_IODelayThink =
 {
 	local entity o, a;
+	local string v;
 
 	o = self.owner;
 	a = self.enemy;
+	v = self.vbsp_io_param;		// Patch 1050: the value the row was fired with
 	remove(self);
 	if (o)
+	{
+		vbsp_io_value = v;
 		SV_IODeliver(o, a);
+	}
+	vbsp_io_value = "";
 };
 
 void(entity src, string name, entity act) SV_FireOutput =
 {
 	local entity o, nx, d;
+	local string val;
 
 	name = strtolower(name);	//Patch 256 -- see the fold note in the loop
+	val = vbsp_io_value;		// Patch 1050: "" unless SV_IORelayFire set it for this fire
+	vbsp_io_value = "";
 
 	/*
 	  Build 63.  The fuse.  See the essay beside VBSP_IO_MAXDEPTH for why a
@@ -4787,9 +4888,13 @@ void(entity src, string name, entity act) SV_FireOutput =
 			d.enemy = act;
 			d.think = SV_IODelayThink;
 			d.nextthink = time + o.vbsp_io_delay;
+			d.vbsp_io_param = val;
 		}
 		else
+		{
+			vbsp_io_value = val;
 			SV_IODeliver(o, act);
+		}
 	}
 
 	vbsp_io_depth = vbsp_io_depth - 1;
@@ -4987,6 +5092,19 @@ void(entity p) SV_TouchRelocate =
 				SV_FireOutput(e, "OnEndTouchAll", p);
 		}
 	}
+};
+
+// Patch 1050: a restart drops the player's SetRemoteDestination entries and ends their touches, so the
+// checkpoint they stand in (every start on the five maps) writes its entry again on the next touch;
+// left touching, its OnStartTouch would not fire and the next fail would go nowhere.  Gated on the
+// map, not on the player's entries: an entry a locked set_tp relay never wrote is repaired by the
+// next reset too.  No other map sees the relocation.
+void(entity p) SV_TpDestReset =
+{
+	if (!vbsp_tpdest_map)
+		return;
+	p.vbsp_tpdest = "";
+	SV_TouchRelocate(p);
 };
 
 /*
@@ -6789,6 +6907,7 @@ void() trigger_teleport_touch =
 	local entity dest, mark;
 	local vector newpos;
 	local float  vmode, uselm, snapv, snapang;
+	local string tgt;
 
 	if (other.classname != "player")
 		return;
@@ -6838,12 +6957,13 @@ void() trigger_teleport_touch =
 	SV_TriggerIOTouch(self, other);
 
 	dest = world;
-	if (self.target != "")          // Patch 881: find("") returns client slot 0, not world
-		dest = find(world, targetname, self.target);
+	tgt = SV_TpDest(self, other);	// Patch 1050: SetRemoteDestination, this player's or the map's
+	if (tgt != "")                  // Patch 881: find("") returns client slot 0, not world
+		dest = find(world, targetname, tgt);
 	if (!dest)
 	{
 		if (SV_DevOn())
-			dprint(sprintf("trigger_teleport: no destination '%s'\n", self.target));
+			dprint(sprintf("trigger_teleport: no destination '%s'\n", tgt));
 		return;
 	}
 

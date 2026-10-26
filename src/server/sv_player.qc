@@ -134,6 +134,7 @@ void() PutClientInServer =
 	  is findable by find(), so a stale one could answer a lookup meant for a
 	  map entity on the NEXT map.
 	*/
+	SV_TpDestReset(self);             // Patch 1050: first, so its OnEndTouch writes are cleared below
 	self.targetname   = "";
 	self.run_srcclass = "";           // Patch 865: AddOutput classname, same reasoning
 	self.vbsp_ctx     = "";           // Patch 1036: AddContext, same reasoning
