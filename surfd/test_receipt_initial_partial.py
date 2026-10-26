@@ -232,7 +232,7 @@ def case_explicit_reread():
     try:
         first_partial(sw, c, rp, now)
         sw.mark_receipts_stale(c)
-        check('operator explicitly supersedes automatic scheduling token', [v for _k, v in state(c)], [1])
+        check('operator retires automatic scheduling authority', state(c), [])
         check('operator full read retains existing verdict counting', sw.receipt_step(c, now=now + 60), (1, 1))
         check('operator still intentionally records its fresh key observation', keys(c)[0][3], now + 60)
     finally:
@@ -240,9 +240,63 @@ def case_explicit_reread():
         c.close()
 
 
+def case_explicit_repaired():
+    s, sw, c, rp, now, _old, rc, rec, _view, _hid = setup(fault='nonce')
+    try:
+        with interrupted(rp[:-5] + '.hid'):
+            got = sw.receipt_step(c, limit=1, now=now)
+        before = row(c)
+        check('explicit repair: independent initial fault ACTS', (got, before['verdict']), ((1, 1), 'FAULT'))
+        recpath = os.path.join(rc.GAME, 'data', 'evidence', 'bhop_eazy', os.path.basename(rp)[:-5] + '.rec')
+        put(recpath, rec)
+        control = sw.read_receipt(rp)
+        check('explicit repair CONTROL current full reader actually clears contradiction',
+              (control[0], control[3], control[6], control[9]), ('VALID', 'OK', 'OK', False))
+        sw.mark_receipts_stale(c)
+        check('explicit repair: only automatic token retired, row still awaits read',
+              (state(c), row(c)['verdict'], row(c)['stale']), ([], 'FAULT', 2))
+        with mock.patch.object(rc, 'join_angles', wraps=rc.join_angles) as angles:
+            got = sw.receipt_step(c, now=now + 60)
+        check('explicit repair: authorized replacement ACTS, not automatic preservation',
+              (got, angles.call_count, row(c)['verdict'], row(c)['reason']), ((1, 0), 1, 'VALID', control[4]))
+        check('explicit repair: normal observation refreshed, original signing/binding retained',
+              (row(c)['at'], row(c)['signed_at'], row(c)['identity'], row(c)['pub'], keys(c)[0][3]),
+              (now + 60, before['signed_at'], before['identity'], before['pub'], now + 60))
+    finally:
+        restore_game(rc)
+        c.close()
+
+
+def case_existing_operator_partial():
+    s, sw, c, rp, now, _old, rc, rec, _view, _hid = setup(fault='nonce')
+    try:
+        check('mode1 CONTROL complete initial fault ACTS', sw.receipt_step(c, now=now), (1, 1))
+        sw.mark_receipts_stale(c)
+        with interrupted(rp[:-5] + '.hid'):
+            got = sw.receipt_step(c, now=now + 60)
+        measured = row(c)
+        check('mode1 CONTROL actual operator partial read ACTS', (got, [v for _k, v in state(c)]), ((1, 0), [1]))
+        recpath = os.path.join(rc.GAME, 'data', 'evidence', 'bhop_eazy', os.path.basename(rp)[:-5] + '.rec')
+        put(recpath, rec)
+        check('mode1 CONTROL direct repaired full observation is valid', sw.read_receipt(rp)[0], 'VALID')
+        sw.mark_receipts_stale(c)
+        check('mode1: repeated explicit request does NOT supersede existing in-flight operator read',
+              [v for _k, v in state(c)], [1])
+        check('mode1: in-flight completion ACTS with existing fault merge', sw.receipt_step(c, now=now + 120), (1, 1))
+        check('mode1: old operator fault/reason retained; partial marker retired',
+              (row(c)['verdict'], row(c)['reason'], state(c)), ('FAULT', measured['reason'], []))
+        sw.mark_receipts_stale(c)
+        check('mode1: NEW explicit decision after completion ACTS', sw.receipt_step(c, now=now + 180), (1, 0))
+        check('mode1: completed old read does not block subsequent reevaluation', row(c)['verdict'], 'VALID')
+    finally:
+        restore_game(rc)
+        c.close()
+
+
 def main():
     for case in (case_completion, case_repeated_partial, case_identity_and_loss,
-                 case_absence_and_arrival, case_queue_and_pure_io, case_explicit_reread):
+                 case_absence_and_arrival, case_queue_and_pure_io, case_explicit_reread,
+                 case_explicit_repaired, case_existing_operator_partial):
         print(case.__name__ + ':')
         try:
             case()

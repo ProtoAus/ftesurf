@@ -997,9 +997,9 @@ def mark_receipts_stale(conn):
     with conn:
         conn.executescript(surfd.RECEIPTS_SQL)
         surfd.receipts_v8(conn)
-        # An explicit full reread supersedes captured initial-completion mode;
-        # retain the existing operator-partial merge, counts and key observation.
-        conn.execute("UPDATE sweepmeta SET v = 1 WHERE k GLOB 'receipt_partial:*' AND v = 2")
+        # A new explicit decision retires only automatic initial-completion
+        # authority. Existing mode-1 operator reads remain in flight as before.
+        conn.execute("DELETE FROM sweepmeta WHERE k GLOB 'receipt_partial:*' AND v = 2")
         # Separate explicit baseline permission from migration's stale=1.
         # This establishes CURRENT metadata only; it cannot recover history.
         conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
