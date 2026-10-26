@@ -637,12 +637,13 @@ float(string raw, float rate) Sprite_Material =
 		return -1;
 
 	// Patch 1035: off Source's default 10 a flipbook is its own shader, cycled at the
-	// env_sprite's rate (mat_vmt.c Shader_LoadVMT).  Asked only of a plugin that REGISTERS
-	// hl2_sprite_framerate -- tested by its description, see mod_vbsp.c -- since an older
-	// one cannot resolve the name and the sprite vanishes.  Orientation reads the real VMT.
+	// env_sprite's rate, 0 a still frame (mat_vmt.c Shader_LoadVMT).  Asked only of a plugin
+	// with the hl2_spranim command, see mod_vbsp.c: an older one cannot resolve the name and
+	// the sprite vanishes.  Nested so an older plugin never has the cvar created by a read.
+	// Orientation reads the real VMT.
 	name = stem;
-	if (rate > 0 && rate != 10 && cvar("hl2_sprite_framerate") &&
-	    cvar_description("hl2_sprite_framerate") != "")
+	if (rate >= 0 && rate != 10 && checkcommand("hl2_spranim") == 1)
+	if (cvar("hl2_sprite_framerate"))
 		name = strcat("ftesurf/spranim/", ftos(rate), "/", stem);
 
 	for (i = 0; i < sprmat_n; i = i + 1)
