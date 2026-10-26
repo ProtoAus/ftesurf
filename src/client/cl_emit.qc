@@ -469,6 +469,11 @@ void() Emit_PsysFree =
 
 float  em_trdemand;             // last frame: what the trails in range asked for
 float  em_trthrottle;
+// Patch 1046: sparks have their own budget -- a spark lives 0.3-0.6 s, and charged per spawn against the
+// shared one, one MaxDelay 0 spark of Magnitude 5 (surf_nightmare) asked 1950 of its 2000 a second.
+#define EM_SPARK_BUDGET 1500            // spark particles a second, all sparks in range
+float  em_spdemand;
+float  em_spthrottle;
 float  em_trn;                  // trail emitters on this map
 #define TRAIL_MATS 4
 string em_trmat[TRAIL_MATS];    // this map's trail materials, for Emit_PsysRepair
@@ -2152,9 +2157,9 @@ float(vector col) Emit_Bucket =
 
   `rate` is EMISSIONS per second and `burst` is particles per emission; for
   everything except env_spark burst is 1 and the two are the same number.  The
-  split exists because a spark is a burst of Magnitude particles every MaxDelay
-  seconds, and folding that into a rate would lose the burstiness that is the
-  entire visual.
+  split exists because a spark is a burst (3 M^2 + 24 M particles, Patch 1046) every
+  0.1 + MaxDelay/2 seconds, and folding that into a rate would lose the burstiness
+  that is the entire visual.
 */
 // A trail emitter keeps the rate the index gives it; vbsp_emit_ratemax is the dust's.
 void(float i, float rate, float ps) Emit_TrailMark;
@@ -3990,6 +3995,7 @@ void() Emit_Frame =
 	// ---- pass 1: cull, and total the demand
 	em_demand = 0;
 	em_trdemand = 0;
+	em_spdemand = 0;
 	dm_alive = 0;
 	mdem = 0;
 	em_flin = em_flthin = 0;
@@ -4064,6 +4070,8 @@ void() Emit_Frame =
 		}
 		else if (em_trail[i])
 			em_trdemand = em_trdemand + em_want[i];
+		else if (em_kind[i] == EK_SPARK)
+			em_spdemand = em_spdemand + em_want[i] * em_burst[i];
 		else
 			em_demand = em_demand + em_want[i] * em_burst[i];
 		i = i + 1;
@@ -4071,6 +4079,9 @@ void() Emit_Frame =
 	em_trthrottle = 1;
 	if (em_trdemand > EM_TRAIL_BUDGET)
 		em_trthrottle = EM_TRAIL_BUDGET / em_trdemand;
+	em_spthrottle = 1;
+	if (em_spdemand > EM_SPARK_BUDGET)
+		em_spthrottle = EM_SPARK_BUDGET / em_spdemand;
 
 	// Source's pool, as a scale on every mote volume: a full pool refuses each
 	// volume's spawns alike.  surf_psychedelia asks for 144,000 alive.  Before
@@ -4098,6 +4109,8 @@ void() Emit_Frame =
 
 		if (em_trail[i])
 			em_acc[i] = em_acc[i] + em_want[i] * em_trthrottle * ft;
+		else if (em_kind[i] == EK_SPARK)
+			em_acc[i] = em_acc[i] + em_want[i] * em_spthrottle * ft;
 		else
 			em_acc[i] = em_acc[i] + em_want[i] * thr * (em_life[i] ? dm_thr : 1) * ft;
 		if (em_acc[i] > (em_trail[i] ? EM_TRAIL_BURST : EM_BURST_MAX))
@@ -4107,10 +4120,9 @@ void() Emit_Frame =
 		if (n >= 1)
 		{
 			em_acc[i] = em_acc[i] - n;
-			// Emissions, not particles -- and a spark emission is up to 28 of
-			// them, so the accumulator's own EM_BURST_MAX is not a particle
-			// bound on its own.  Four emissions is already more than anything
-			// in the library asks for in one frame.
+			// Emissions, not particles -- a spark emission is 3 M^2 + 24 M of them
+			// (Patch 1046), so the accumulator's own EM_BURST_MAX is not a particle
+			// bound on its own.
 			// (A trail is 800 a second: 13 a frame at 60.)
 			if (n > 4)
 			if (!em_trail[i])
@@ -4304,6 +4316,9 @@ void() Emit_List =
 	if (em_trn)
 		print(sprintf("  sprite trails: %g emitters, those in range asking %g/sec of %g, throttle %.3f\n",
 		              em_trn, em_trdemand, EM_TRAIL_BUDGET, em_trthrottle));
+	if (em_seen[EK_SPARK])
+		print(sprintf("  env_spark: those in range asking %g particles/sec of %g, throttle %.3f\n",
+		              em_spdemand, EM_SPARK_BUDGET, em_spthrottle));
 	if (em_trmade + em_trsolid + em_trshort)
 		print(sprintf("  drops: %g made, mean life %.2f s, %g of them with nothing to land on in %g units; %g born inside something, %g too near the ground\n",
 		              em_trmade, em_trmade ? em_trlife / em_trmade : 0, em_trfar, TRAIL_REACH, em_trsolid, em_trshort));
