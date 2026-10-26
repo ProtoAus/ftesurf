@@ -92,7 +92,19 @@ class SiteRoutes(unittest.TestCase):
             'favicon.svg': (ROOT / 'src/release/site/favicon.svg').read_bytes(),
             'BebasNeueRegular.ttf': (ROOT / 'ftesurf/gfx/fonts/BebasNeueRegular.ttf').read_bytes(),
             'update.json': b'{"fixture":"not a signed feed","game":"ftesurf"}\n',
+            'version.json': b'{"version":"0.1.32","fixture":"rolling public receipt"}\n',
         }
+        cls.releases = cls.home / 'releases'
+        cls.receipts = {}
+        for version in ('0.1.30', '0.1.31'):
+            folder = cls.releases / version
+            folder.mkdir(parents=True)
+            data = json.dumps({'version': version, 'fixture': 'retained public metadata'}).encode()
+            cls.receipts[version] = data
+            (folder / 'version.json').write_bytes(data)
+            # Prove the route cannot expose neighbors that really exist.
+            (folder / 'index.html').write_bytes(b'RETAINED PAGE NOT A RECEIPT')
+            (folder / 'update-verified.json').write_bytes(b'PRIVATE PUBLICATION PROOF SENTINEL')
         for name, data in cls.files.items():
             (cls.static / name).write_bytes(data)
         cls.port = free_port()
@@ -100,6 +112,7 @@ class SiteRoutes(unittest.TestCase):
         # Only deployment addresses change. All location/method/cache policy is
         # the authored snippet, not a Python emulation or regenerated config.
         snippet = snippet.replace('/srv/nvme/ftesurf-site/static/', cls.static.as_posix() + '/')
+        snippet = snippet.replace('/srv/nvme/ftesurf-site/releases/', cls.releases.as_posix() + '/')
         snippet = snippet.replace('127.0.0.1:8084', '127.0.0.1:%d' % backend.server_port)
         (cls.home / 'site.conf').write_text(snippet, encoding='utf-8')
         # Deliberately omit ttf like the production host. Other types come from
@@ -203,7 +216,7 @@ http {
         types = {'index.html': 'text/html', 'anticheat.html': 'text/html',
                  'site.css': 'text/css', 'site.js': 'application/javascript',
                  'favicon.svg': 'image/svg+xml', 'BebasNeueRegular.ttf': 'font/ttf',
-                 'update.json': 'application/json'}
+                 'update.json': 'application/json', 'version.json': 'application/json'}
         for base in ('ftesurf', 'worldofsurf'):
             for name, expected in self.files.items():
                 with self.subTest(base=base, file=name):
@@ -218,6 +231,35 @@ http {
             status, headers, _ = self.request('/%s/absent.css' % base)
             self.assertEqual(status, 404)
             self.assertEqual(headers.get('x-ftesurf-site'), '1')
+
+    def test_version_pinned_public_receipts(self):
+        for base in ('ftesurf', 'worldofsurf'):
+            for version, expected in self.receipts.items():
+                path = '/%s/releases/%s/version.json' % (base, version)
+                status, headers, body = self.request(path)
+                self.assertEqual(status, 200)
+                self.assertEqual(body, expected)
+                self.assertNotEqual(body, self.files['version.json'])
+                self.assertEqual(headers.get('x-ftesurf-site'), '1')
+                self.assertEqual(headers.get('x-content-type-options'), 'nosniff')
+                self.assertEqual(headers.get('content-type'), 'application/json')
+                self.assertEqual(headers.get('cache-control'), 'public, max-age=31536000, immutable')
+                status, head, body = self.request(path, 'HEAD')
+                self.assertEqual(status, 200)
+                self.assertEqual(body, b'')
+                self.assertEqual(int(head['content-length']), len(expected))
+                before = len(self.seen)
+                for method in ('POST', 'PUT', 'DELETE'):
+                    self.assertEqual(self.request(path, method)[0], 403)
+                self.assertEqual(len(self.seen), before)
+                for name in ('index.html', 'update-verified.json'):
+                    self.assertTrue((self.releases / version / name).is_file())
+                    self.assertEqual(self.request('/%s/releases/%s/%s' % (base, version, name))[0], 404)
+            for suffix in ('0.1.99/version.json', '0.1.31/', '0.1.31/version.json/extra',
+                           'not-a-version/version.json', '0.1.31/update.json'):
+                status, headers, _ = self.request('/%s/releases/%s' % (base, suffix))
+                self.assertEqual(status, 404)
+                self.assertNotIn('immutable', headers.get('cache-control', ''))
 
     def test_slashes_preserve_queries(self):
         for base in ('ftesurf', 'worldofsurf'):

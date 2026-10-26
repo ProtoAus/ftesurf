@@ -69,6 +69,19 @@ location ^~ /ftesurf/ {
     # conf.d/globe-limits.conf.  Referencing another component's zone means that
     # the day globe is removed, nginx refuses to START -- taking proto.bar,
     # play.proto.bar, fastdl, momcdn and mom down with it.
+
+    # Only already-published public metadata, never local prepared receipts or
+    # arbitrary files from retained releases. Nested regex keeps the outer ^~
+    # protection against the host's filebrowser routes.
+    location ~ ^/ftesurf/releases/(?<ftesurf_receipt_version>[0-9]+\.[0-9]+\.[0-9]+)/version\.json$ {
+        alias /srv/nvme/ftesurf-site/releases/$ftesurf_receipt_version/version.json;
+        limit_except GET { deny all; }
+        default_type application/json;
+        add_header X-FTESurf-Site "1" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        # Do not cache a missing future version as an immutable 404.
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
 }
 
 # The wordmark font, served with a correct type.
@@ -160,6 +173,15 @@ location ^~ /worldofsurf/ {
     gzip_types text/plain text/css application/json;
     limit_rate_after 512k;
     limit_rate 2m;
+
+    location ~ ^/worldofsurf/releases/(?<worldofsurf_receipt_version>[0-9]+\.[0-9]+\.[0-9]+)/version\.json$ {
+        alias /srv/nvme/ftesurf-site/releases/$worldofsurf_receipt_version/version.json;
+        limit_except GET { deny all; }
+        default_type application/json;
+        add_header X-FTESurf-Site "1" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
 }
 
 location = /worldofsurf/BebasNeueRegular.ttf {

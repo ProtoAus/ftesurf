@@ -115,6 +115,28 @@ lists them; any added to `## next` since stay above it). The next preflight refu
 a missing heading. Promotion itself does not edit a possibly advanced working tree. Do not bump qcbuild without the owner's Build NN decision.
 Tooling-only maintenance is not a new product patch, version or public release.
 
+## Version-pinned public metadata
+
+The site snippet exposes retained, already-published metadata at:
+
+```text
+https://proto.bar/ftesurf/releases/<version>/version.json
+https://proto.bar/worldofsurf/releases/<version>/version.json
+```
+
+These GET/HEAD routes serve only `version.json` from the numeric version's
+retained site directory, not the rolling `static` link or neighboring files.
+Successful responses are immutable-cacheable; missing future versions are not.
+Signed-feed release directories are retained by `publish.sh`. Pruned legacy
+versions remain 404: this does not reconstruct missing history or establish
+signatures/source provenance that old metadata never carried.
+
+Only the sanitized public site metadata belongs here. Never copy local full
+release/prepared receipts into the public tree to backfill a missing version.
+Installing the snippet is separate from preparing/publishing a release and still
+requires the normal administrator config check/reload. Tooling source/tests do
+not prove that the public route has been installed.
+
 ## Maintenance acceptance — 2026-10-16
 
 - Actual local preparation compiled the selected 0.1.27 menu with zero QC warnings
