@@ -14,7 +14,9 @@
 - A Steam-link call to action appears only after the existing Friends service
   explicitly says the account is unlinked; transport failure is not treated as
   unlinked. A successful signed/relayed Friends snapshot removes it. Friend
-  clicks select a DM; the chat panel can return to Public lobby. Conversation
+  clicks on mutual friends select a DM; pending/non-mutual rows retain the
+  existing public-profile overlay on Home. The chat panel can return to Public
+  lobby. Conversation
   switches do not race an outstanding signed chat transaction. Home Friends
   polls every 10 s, leaving headroom alongside chat in their shared budget.
 - Home shows native WOS figures, separate WOS/Everything completion, every
