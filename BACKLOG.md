@@ -7940,3 +7940,10 @@ hud_edit rows (3 since P798); their height estimate only errs high.
   so ~16 draws per visible entity come from passes (main view, 3D sky, Refract copies), not meshes.
   P1041 already hides the 52 at renderamt 0 here. Next: per-pass draw counts for one rock entity, then
   either batching repeated models or not drawing these props in passes that cannot see them.
+
+## Run viewer: brush classes Source draws unrotated (P1048/P1049 review, 26 Oct)
+
+- src/viewer EntitySystem.ts applies the map's angles to every entity; func_wall, func_wall_toggle,
+  func_conveyor and func_illusionary drop theirs at spawn in Source and in the game since P1048/P1049
+  (9 + 18 + 25 entities on 9 maps). Old runs on those maps re-verify as a physents HOLD, not "not comparable"
+  (no rule key; beta).

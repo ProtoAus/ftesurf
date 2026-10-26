@@ -469,6 +469,9 @@ float() Ev_Build =
 		}
 
 		isbrush = (substring(mdl, 0, 1) == "*");
+		// P1048/P1049: these classes drop their angles at spawn, as Source's do, so the hull is drawn unrotated
+		if (cn == "func_wall" || cn == "func_wall_toggle" || cn == "func_conveyor" || cn == "func_illusionary")
+			ang = '0 0 0';
 		if (isbrush)
 			ev_brush_n = ev_brush_n + 1;
 		else

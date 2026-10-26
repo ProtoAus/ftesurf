@@ -21,6 +21,9 @@
 
 ## next
 
+### P1049 Rotated conveyors and see-through pieces match Momentum
+- Conveyor belts and walk-through decorations that a mapper turned in the editor now sit and face the way Momentum shows them (deathrun_forest's conveyors, bhop_shust_extension's markers).
+
 ### P1048 Rotated wall pieces stay where the mapper put them
 - Wall pieces the mapper turned in the editor now sit where Momentum draws them, instead of being drawn and solid somewhere else: bhop_goldsrc2's sparking panel is back on its wall.
 

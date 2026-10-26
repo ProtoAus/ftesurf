@@ -141,3 +141,10 @@ Verified (rig; binaries or progs swapped and restored per arm):
 
 Limits: SKELETAL|INSTANCED is only proven on this PC's RTX 2080 SUPER (a failure turns skinned runs off, not
 instancing); spark timing is a fixed beat; orgrimmar's smoke waits on a Momentum comparison. Not owner-checked.
+
+P1048 review (after deploy): nothing to roll back. Correction to the commit's wording: only goldsrc2's *80
+(no origin key) turned about the world origin; deathrun_forest's 8 have origin keys and turned about their
+own. There, *149 now stands 16x192x96 on the tp28->tp29 line, as in Source. The review's follow-ups are P1049:
+func_conveyor (18 rotated solid on 6 maps; direction comes from movedir) and func_illusionary (25 on 2 maps)
+drop their angles as Source's do, and ent_view's hull overlay draws those classes unrotated. The browser run
+viewer still applies map angles to every entity (BACKLOG).

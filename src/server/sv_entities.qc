@@ -9457,6 +9457,7 @@ void() func_conveyor =
 		remove(self);
 		return;
 	}
+	self.angles = '0 0 0';		// Patch 1049: CFuncWall::Spawn, its base's (direction comes from movedir)
 	setmodel(self, self.model);
 	self.movetype = MOVETYPE_PUSH;
 	self.solid = (self.spawnflags & SF_CONVEYOR_NOTSOLID) ? SOLID_NOT : SOLID_BSP;
@@ -12581,6 +12582,8 @@ void() SV_OnEntityNoSpawnFunction =
 			self.model = "";
 			self.modelindex = 0;
 		}
+		if (cn == "func_illusionary")
+			self.angles = '0 0 0';	// Patch 1049: CFuncIllusionary::Spawn (bmodels.cpp:308); non-solid, so drawing only
 		return;
 	}
 
