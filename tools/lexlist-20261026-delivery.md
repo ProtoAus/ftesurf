@@ -150,3 +150,27 @@ drop their angles as Source's do, and ent_view's hull overlay draws those classe
 viewer still applies map angles to every entity (BACKLOG).
 P1049 deployed 08:08:58Z both installs (qwprogs d6497c53, csprogs ad9f518c, .prev 53f0eddd/7bdd49b1, cache
 seeded), then all 12 lobbies (nobody on); smoke, lobby 2: 0 failures. Main 6b59573a.
+
+## P1050, P1051 -- fail teleports get their destination; goto_start goes to the start (ftesurf-2c)
+
+| | |
+|---|---|
+| QC | FTESurf main `6420106d` (P1050), `d1e1dcb4` (release tooling: shipguard), `f1afcd98` (P1051), `528c5ebe` (records); engine log `c2b79e898`. Built in the clean worktree at `528c5ebe`, fteqcc `c24ede65`, 0 warnings: qwprogs `fa93d213`, csprogs `9b926b67`; menu `d0eb3e8a` unchanged. |
+| Installs | ~11:00Z both, no game running: qwprogs `fa93d213` (.prev `d6497c53`), csprogs `9b926b67` (.prev `ad9f518c`); seeded `downloads/csprogsvers/a9cc54f0.dat`. |
+| Lobbies | `build.ps1 -Pi -QuakeDir <absent>` from the clean worktree: nobody on, all 12 restarted on the pair; all 12 still report `fs_contexts 1`. Smoke, lobby 1, exe `e28907a1`: served csprogs `9b926b67`, board drew, no QC error, 0 failures. |
+
+Lex, 26 Oct: bhop_tealbox's and bhop_whitebox's fail triggers did not teleport; players reported goto_start
+"just does reset". Verified (rig, exe `e28907a1`):
+- P1050: whitebox and tealbox (spawn, checkpoint 1, drop onto a fail floor): land at cp1 / tele_cp1, after a
+  respawn at the spawn, also when respawning while still standing in the start. The live qwprogs `d6497c53`
+  left the player on the floor (384 / 389 "no destination"). Four review rounds.
+- P1051: surf_kitsune, armed at stage 3: goto_start lands at the main start (0 u); live csprogs `ad9f518c`
+  stays at stage 3. From the main start it keeps `!r`'s spot, as the live client. Two review rounds.
+- Lex's 2shiny2shuckle question: it has no zone file because Momentum lists it as a submission (id 1703),
+  not an approved map; so is whitebox (2389). tealbox and greenbox are approved but also have no zones in
+  our library; their zones need a fetch from Momentum's API (BACKLOG). The "stage-2 door" in P1037's note
+  came from ftesurf-63's P1036 rig test (setpos to the door), not a zoned stage.
+
+Limits (BACKLOG): the set_tp relay's refire lockout is map-wide; saves and resume do not carry the fail
+destination; the client does not predict these teleports. A run begun at a later stage restarts from
+stage 1 on goto_start. Not owner-checked.
