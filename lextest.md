@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+**P1047 -- surf_hourglass frame rate (pending, not owner-confirmed):** your save 3, `setpos 11560.49 99.99 916.02 27.91 162.32 0`: about 400 fps here at r_renderscale 2 (was 80). Props, the knife and pistol should look exactly as before; animated props too (surf_imaginarium). If a prop ever shows in a frozen pose while it should animate, `r_instancing 0` is the quick test.
+
+**P1048 + P1046 -- bhop_goldsrc2 spark panel (pending, not owner-confirmed):** `setpos 3000 -5194 10030 8 180 0` (noclip): the green/red panel is back on the wall right of the door, with a steady shower of sparks.
+
+**P1045 + P1042 -- surf_hourglass water (pending, not owner-confirmed):** saves 1 and 4: rippled water with no smear at the screen edge (TF2's water normal map now mounts for this map).
+
+**P1044 -- bhop_orgrimmar smoke (pending, needs a Momentum comparison):** save 3: grey smoke columns over the braziers. A Momentum screenshot at the same spot would settle whether it matches.
+
+**P1043 -- bhop_goldsrc2 crates (pending, not owner-confirmed):** the 39 physics crates are gone (24 were in a closed pit under a teleport, 15 hung in the air over stage 8).
+
 **P1037 -- maps that remember what you did (pending, not owner-confirmed):** contexts are on (P1036's AddContext rules). bhop_tealbox: walk off the start pad -- it no longer holds you there. bhop_2shiny2shuckle: the stage-2 door stays shut until you have the flint and iron. bhop_whitebox: the double jump works as in Momentum, but your client does not predict it, so it lands a round trip late (a small snap on a lobby). Triggers behind these checks are the server's; say if any of them feels wrong. `set vbsp_contexts 0` in a cfg (then a map change) turns contexts off. Agent rig: tools/lexlist-20261026-delivery.md.
 
 **P1038 -- grass (pending, not owner-confirmed):** bhop_monster_jam, `setpos -1450 2300 3700 10 180 0`: grass tufts on the ground, fading out from about 800 to 1200 units as in Momentum. `detail_census` prints how many cells drew; `hl2_detail 0` hides them for comparison. Also worth a look: bhop_blacktop, surf_castle (279,380 objects, built in the first frame that shows them).

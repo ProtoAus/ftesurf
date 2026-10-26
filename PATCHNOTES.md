@@ -21,6 +21,24 @@
 
 ## next
 
+### P1048 Rotated wall pieces stay where the mapper put them
+- Wall pieces the mapper turned in the editor now sit where Momentum draws them, instead of being drawn and solid somewhere else: bhop_goldsrc2's sparking panel is back on its wall.
+
+### P1047 Much faster maps full of props
+- Animated and moveable map props are now drawn by the graphics card and in batches: surf_hourglass's main view went from about 80 to about 400 frames a second here, and other prop-heavy maps gain too.
+
+### P1046 Sparks spark as often as in Momentum
+- Sparking map pieces now throw a shower of sparks up to ten times a second, as in Momentum, instead of a few sparks every three seconds.
+
+### P1045 Water and glass with a missing ripple texture stay clear
+- Water and glass whose ripple texture is not installed now draw clear instead of smearing the edge of the screen into streaks. surf_hourglass's water also loads its ripples from Team Fortress 2 when you have it installed.
+
+### P1044 Smoke stacks look like Momentum's
+- Smoke rising from map smoke stacks now uses each stack's own size, colour, speed and lifetime: bhop_orgrimmar's braziers send up grey smoke columns instead of short white dots.
+
+### P1043 bhop_goldsrc2 crates removed for now
+- bhop_goldsrc2's 39 physics crates are removed until physics is supported; without it they hung frozen in mid-air instead of falling and being pushed around.
+
 ### P1041 Invisible map props stay invisible
 - Props the mapper made invisible or see-through now draw that way, and fade in when the map says so: surf_hourglass's vortex no longer sits on a white square.
 
