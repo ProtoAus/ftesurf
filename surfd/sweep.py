@@ -620,6 +620,8 @@ def receipt_step(conn, limit=200, now=None):
         # about how long a verdict is worth keeping that nobody has asked for.
         #
         # Source arrival is not permission to reinterpret an entire receipt.
+        # Only a captured interrupted initial full read gets automatic full
+        # completion; its placeholder BLIND is not a measured angle finding.
         # Journals have explicit ABSENT/PENDING observations; a successful full
         # read captures a missing view in scheduling metadata. Unknown historical
         # readiness is not inferred from today's files. --reread-receipts remains
@@ -791,6 +793,13 @@ def receipt_step(conn, limit=200, now=None):
                 retry += 1
                 continue
             prior = rows.get(runid)
+            partial_key = "receipt_partial:" + os.path.relpath(path, surfd.EVIDENCE_DIR)
+            partial_state = conn.execute("SELECT v FROM sweepmeta WHERE k = ?",
+                                         (partial_key,)).fetchone() if prior else None
+            # Value 2 belongs only to an interrupted INITIAL observation, not
+            # old operator-partial rows or a guess from today's source files.
+            automatic_partial = bool(prior and prior[0] in (1, 2) and
+                                     partial_state and partial_state[0] == 2)
             try:
                 got = read_receipt(path, journal_only=journal_only, view_only=view_only,
                                    rec_only=rec_only,
@@ -844,15 +853,18 @@ def receipt_step(conn, limit=200, now=None):
                 old = conn.execute("SELECT verdict FROM receipts WHERE runid = ?",
                                    (runid,)).fetchone()
                 with conn:
-                    conn.execute("UPDATE receipts SET verdict = 'FAULT', reason = ?, at = ?,"
-                                 " sig = CASE WHEN pub = ? THEN ? ELSE sig END,"
-                                 " identity = CASE WHEN identity = '' THEN ? ELSE identity END"
-                                 " WHERE runid = ?", (reason, t0, pub, sig, identity, runid))
-                    conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v) VALUES (?, 1)",
-                                 ("receipt_partial:" + os.path.relpath(path, surfd.EVIDENCE_DIR),))
+                    if not automatic_partial:
+                        conn.execute("UPDATE receipts SET verdict = 'FAULT', reason = ?, at = ?,"
+                                     " sig = CASE WHEN pub = ? THEN ? ELSE sig END,"
+                                     " identity = CASE WHEN identity = '' THEN ? ELSE identity END"
+                                     " WHERE runid = ?", (reason, t0, pub, sig, identity, runid))
+                    conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v) VALUES (?, ?)",
+                                 (partial_key, 2 if automatic_partial else 1))
                     if journal == "FAULT":  # a digest mismatch WAS measured
                         conn.execute("UPDATE receipts SET journal = ?, journal_reason = ?, journal_metrics = ?"
-                                     " WHERE runid = ?", (journal, jreason, jmetrics, runid))
+                                     " WHERE runid = ?" +
+                                     (" AND journal != 'FAULT'" if automatic_partial else ""),
+                                     (journal, jreason, jmetrics, runid))
                 n += 1
                 bad += old is not None and old[0] != "FAULT"
                 retry += 1
@@ -885,21 +897,23 @@ def receipt_step(conn, limit=200, now=None):
             if journal == "ABSENT" and owed and t0 - signed_at < surfd.JOURNAL_WAIT:
                 journal = "PENDING"
                 jreason = "the receipt signs a journal that has not arrived yet"
-            partial_key = "receipt_partial:" + os.path.relpath(path, surfd.EVIDENCE_DIR)
+            observed_at = t0
             recovering = conn.execute("SELECT v FROM sweepmeta WHERE k = ?", (partial_key,)).fetchone()
             if recovering:
                 # This is completion of a partial reread, not a new operator
                 # decision to reinterpret the old evidence. Missing sources
                 # must not erase faults measured before the I/O interruption.
-                old = conn.execute("SELECT verdict, reason, angles, journal, journal_reason, angles_reason, journal_metrics"
+                old = conn.execute("SELECT verdict, reason, angles, journal, journal_reason, angles_reason, journal_metrics, at, sig"
                                    " FROM receipts WHERE runid = ?", (runid,)).fetchone()
                 if old:
                     if old[0] == "FAULT":
                         verdict, reason = old[0], old[1]
-                    if old[2] == "FAULT" or not angles:
+                    if old[2] == "FAULT" or (not angles and not automatic_partial):
                         angles, areason = old[2], old[5]
                     if old[3] == "FAULT" or (old[3] == "OK" and journal in ("ABSENT", "PENDING", "BLIND")):
                         journal, jreason, jmetrics = old[3], old[4], old[6]
+                    if automatic_partial:
+                        observed_at, sig = old[7], old[8]
             # First signed_at is the file's mtime: the lobby writes it at the
             # run's end. Preserve that observation across known rereads; a
             # retimed copy is not a later signature. Resume runids start earlier.
@@ -908,12 +922,19 @@ def receipt_step(conn, limit=200, now=None):
                     "INSERT OR REPLACE INTO receipts"
                     " (runid, map, pub, verdict, angles, reason, at, sig, signed_at, stale,"
                     "  journal, journal_reason, identity, angles_reason, journal_metrics)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)",
-                    (runid, mapname, pub, verdict, angles, reason, t0, sig,
-                     signed_at, journal, jreason, prior[2] if prior and prior[2] else identity, areason, jmetrics))
-                bind_key(conn, runid, pub, t0)
-                conn.execute("DELETE FROM sweepmeta WHERE k = ?", (qkey(path),))
-                conn.execute("DELETE FROM sweepmeta WHERE k = ?", (partial_key,))
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (runid, mapname, pub, verdict, angles, reason, observed_at, sig,
+                     signed_at, 2 if partial else 0, journal, jreason,
+                     prior[2] if prior and prior[2] else identity, areason, jmetrics))
+                if not automatic_partial:
+                    bind_key(conn, runid, pub, t0)
+                if partial:
+                    # Keep the rotated queue slot and capture the unfinished
+                    # full observation; no new readiness or historical recheck.
+                    conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v) VALUES (?, 2)", (partial_key,))
+                else:
+                    conn.execute("DELETE FROM sweepmeta WHERE k = ?", (qkey(path),))
+                    conn.execute("DELETE FROM sweepmeta WHERE k = ?", (partial_key,))
                 conn.execute("DELETE FROM sweepmeta WHERE k = ?", ("receipt_baseline:" + runid,))
                 # Readiness is established only by a complete captured full read,
                 # never by a partial fault, a stat, or a journal-only observation.
@@ -928,7 +949,8 @@ def receipt_step(conn, limit=200, now=None):
                         conn.execute("DELETE FROM sweepmeta WHERE k = ?", (rkey(path),))
             unread.pop(path, None)
             n += 1
-            bad += verdict != "VALID"
+            bad += verdict != "VALID" and not automatic_partial
+            retry += partial
             jfault += journal == "FAULT"
         # A PENDING row whose receipt was reaped is never read again, and its
         # journal went with it: ABSENT once the wait is over.
@@ -975,6 +997,9 @@ def mark_receipts_stale(conn):
     with conn:
         conn.executescript(surfd.RECEIPTS_SQL)
         surfd.receipts_v8(conn)
+        # An explicit full reread supersedes captured initial-completion mode;
+        # retain the existing operator-partial merge, counts and key observation.
+        conn.execute("UPDATE sweepmeta SET v = 1 WHERE k GLOB 'receipt_partial:*' AND v = 2")
         # Separate explicit baseline permission from migration's stale=1.
         # This establishes CURRENT metadata only; it cannot recover history.
         conn.execute("INSERT OR REPLACE INTO sweepmeta (k, v)"
