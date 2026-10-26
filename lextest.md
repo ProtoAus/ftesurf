@@ -1,5 +1,7 @@
 # lextest.md — things waiting on a human
 
+**P1037 -- maps that remember what you did (pending, not owner-confirmed):** contexts are on (P1036's AddContext rules). bhop_tealbox: walk off the start pad -- it no longer holds you there. bhop_2shiny2shuckle: the stage-2 door stays shut until you have the flint and iron. bhop_whitebox: the double jump works as in Momentum, but your client does not predict it, so it lands a round trip late (a small snap on a lobby). Triggers behind these checks are the server's; say if any of them feels wrong. `set vbsp_contexts 0` in a cfg (then a map change) turns contexts off. Agent rig: tools/lexlist-20261026-delivery.md.
+
 **P1038 -- grass (pending, not owner-confirmed):** bhop_monster_jam, `setpos -1450 2300 3700 10 180 0`: grass tufts on the ground, fading out from about 800 to 1200 units as in Momentum. `detail_census` prints how many cells drew; `hl2_detail 0` hides them for comparison. Also worth a look: bhop_blacktop, surf_castle (279,380 objects, built in the first frame that shows them).
 
 **P1039 -- surf_bossfight frame (pending, not owner-confirmed):** your save 2, `setpos 13575.2 -10565.7 7300.4 -10.23 23.34 0`: the window frame, lamp and radiator should be flat white/grey/dark instead of the missing-texture checker.

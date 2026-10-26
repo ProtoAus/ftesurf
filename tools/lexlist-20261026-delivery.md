@@ -49,6 +49,38 @@ Verified (rig, bhop_2shiny2shuckle, qwprogs swapped and restored; the save the a
 
 Limits: contexts are not cleared at a run's arm (shared with targetname; BACKLOG); "@/" regex values.
 
+## P1037 -- contexts on by default; the client leaves context-filtered triggers to the server (ftesurf-2c)
+
+| | |
+|---|---|
+| QC | FTESurf main `7b3074f1` (engine log entry `3073ba6b0`; ENGINE.txt pin unchanged, comment line added). Built in a clean worktree at that commit, fteqcc `c24ede65`, 0 warnings: qwprogs `6c7adb36`, csprogs `8b8731c4`; menu `d0eb3e8a` unchanged. The commit message's `<shipping-build line>` placeholder is this table and the Verified list below. |
+| Installs | 07:02Z both, no game running: qwprogs `6c7adb36` (.prev `6e28eed6`), csprogs `8b8731c4` (.prev `0e222115`); C:\FTESurf by hand copy, C:\FTEQuake by build.ps1's sync; seeded `downloads/csprogsvers/d58fbc72.dat` in both. |
+| Lobbies | ~07:04Z `build.ps1 -Pi -QuakeDir <absent>` from the clean worktree: nobody on, all 12 restarted on the pair. All 12 report `fs_contexts 1` (rcon `serverinfo` on the Pi's localhost, 07:05:39Z; it read 0 on all 12 before). Smoke, lobby 1, exe `9d009302`: served csprogs `8b8731c4`, board drew, no QC error, 0 failures. |
+
+`vbsp_contexts` is registered with default 1 beside its one read; `set vbsp_contexts 0` in a cfg turns it
+off. A server process that ran P1036's progs holds the cvar as "" until restarted (its unregistered read
+created it), which is why the lobbies restart. The client judges each filter twice at load and skips a
+slot that passes only with contexts ignored while serverinfo `fs_contexts` is not "0" (read per frame:
+the key can land after CSQC's world load); a slot with rows of its own is demoted instead.
+
+Verified (rig, shipping build, exe `9d009302`, sv_minping 60, 3 reps each, server default unless noted):
+- Control, live csprogs `0e222115` with contexts on: tealbox (walking inside the spawn teleport) 24
+  prederr lines and 2516 client teleports the server refused; whitebox, 2 of 2 crossings from setspeed
+  *138 into *14 predicted a (0 260 300) launch the server did not give (vz 0.00 at the crossing).
+- tealbox: 0 prederr, 0 client teleports; trig summary "47 left to the server while it judges contexts".
+- whitebox *138 -> *14: `ent_io` reports `vbsp_contexts 1` (the default landed), 0 setspeed fires, 0 prederr.
+- Contexts 0: tealbox 0 prederr with 2712 client teleports (client and server both fail open); whitebox's
+  wall-walk prederr is the old client's too (4 lines each: setspeed re-fires neither client predicts).
+- A load-time read of `fs_contexts` (an earlier cut) failed exactly here: absent at world load while the
+  server had it on, 2628 refused client teleports. Hence the per-frame read.
+- Reviews: five rounds by an independent reviewer. A full client mirror of the contexts (ab8faa69) was
+  dropped on round 1's findings: unmirrorable writers, OnJump/OnEndTouch timing, TIO_MAX overflow on 24
+  maps. Then the minimal rule, its mid-map reload (removed), the per-frame gate (N1: the first replay
+  precedes Trig_Frame, fixed) and the rebase. Nothing open.
+
+Limits: those triggers act one round trip late; on servers older than P1036 (no key) the client leaves them
+to the server as well. BACKLOG's P1036 section keeps the mirror's checklist. Not owner-checked (lextest).
+
 ## P1038, P1039, P1040 -- grass, untextured materials white, noclip speed prederr (engine)
 
 | | |
