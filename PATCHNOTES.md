@@ -33,6 +33,9 @@
 ### P1038 Grass and other detail sprites
 - Maps with grass, flowers and other small detail sprites (bhop_monster_jam, bhop_blacktop, surf_castle and 63 more) now draw them, fading out with distance as in Momentum. hl2_detail 0 turns them off.
 
+### P1037 Maps remember what you did
+- Triggers that check what you have done on the map now work as in Momentum: bhop_tealbox no longer holds you on the start pad, and bhop_2shiny2shuckle's stage-2 door stays shut until you have found the flint and iron.
+
 ### P1035 Animated signs run at their own speed
 - Animated signs and sprites now play at the speed the mapper set, as in Momentum: bhop_goldsrc2's exit signs flicker at 40 frames a second instead of 10. A sprite set to speed 0 holds still.
 

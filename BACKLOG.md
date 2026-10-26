@@ -7887,10 +7887,14 @@ hud_edit rows (3 since P798); their height estimate only errs high.
 
 ## P1036 response contexts: switch-on and the carries it shares with targetname (26 Oct)
 
-- vbsp_contexts defaults to 0 (the fail-open that shipped). Switch it on (default.cfg + lobby cfgs)
-  once ftesurf-2c's P1037 client mirror is live. At 0, bhop_tealbox teleports a player every tick at
-  spawn (P1037's measurement) and bhop_2shiny2shuckle's stage-2 door opens without flint and iron.
-  80 maps / 10,069 triggers sit behind a context filter. Runs say which rule they ran under (`contexts`).
+- Switched on by P1037 (registercvar default 1; `set vbsp_contexts 0` in a cfg is the kill switch).
+  The client does not mirror contexts: with fs_contexts 1 a trigger behind filter_activator_context is
+  server-only, so it acts one round trip late. A mirror that predicts them was built and reviewed
+  (ab8faa69, not shipped). A second try must answer that review: most writers are delayed rows,
+  trigger_userinput, logic chains and save loads (whitebox's `dj` has no mirrorable writer); OnJump and
+  OnEndTouch rows land on the server's next command, so a seed from STAT_FS_CTX at the ack loses them;
+  storing every context row overflows TIO_MAX on 24 maps (rotebal2 loses 122 predicted teleports); a
+  setspeed whose filter flips while the player is inside is seeded as already entered.
 - Progress carry, shared with targetname (Patch 735) and srcclass: nothing clears them at a run's arm,
   and saves now carry contexts as they carry targetname, so a save taken in the start box after a
   noclip trip through the pickups arms a clean run that holds them. Momentum's restart keeps targetname

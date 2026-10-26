@@ -1394,7 +1394,8 @@ void(entity t, entity act)             SV_MoverOnUseLocked;
   baseentity.cpp AddContext/InputRemoveContext/HasContext/GetContextValue, AI_Criteria.cpp
   SplitContext, filters.cpp CFilterContext, shared/momentum/matchers.cpp.  HasContext ignores expiry,
   so none is kept; matchers.cpp's "@/" regex is not (no library map uses one).
-  Gated on vbsp_contexts (0 = the fail-open that shipped) until cl_triggers.qc predicts it too.
+  Gated on vbsp_contexts: 1 since Patch 1037 (cl_triggers.qc leaves context-filtered triggers to the
+  server); 0 is the old fail-open.
 */
 .string vbsp_ctx;		// "key:value\n" entries: a key may hold ',' (SplitContext), no keyvalue a newline
 .string vbsp_ctx_kv;		// the ResponseContext keyvalue, last one wins; parsed on first use (SV_CtxInit)
@@ -5486,6 +5487,9 @@ void() SV_EntityIOBuild =
 	// of every frame, and a cvar lookup there would be the only cost this layer
 	// imposes on the 1,300 maps that wire nothing.
 	vbsp_io_on = cvar("vbsp_entity_io");
+	// Patch 1037: on by default; the client leaves these triggers to the server while it is.  Nothing
+	// reads the name before this line, so the registercvar lands (see the vbsp_mp read in sv_main.qc).
+	registercvar("vbsp_contexts", "1");
 	vbsp_ctx_on = cvar("vbsp_contexts");	// Patch 1036
 	// ...and tells cl_triggers.qc whether contexts gate filters here (off with the I/O layer too).
 	forceinfokey(world, "fs_contexts", (vbsp_ctx_on && vbsp_io_on) ? "1" : "0");

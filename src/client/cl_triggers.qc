@@ -242,6 +242,8 @@ void(float why, string cls, string name) TG_Skip =
 #define TFR_PASS    2
 #define TFR_UNKNOWN 1
 #define TFR_FAIL    0
+float  tf_ctxmode;              // Patch 1037: TF_EvalD as if the server judges contexts (1) or not (0)
+float  tg_ctx_live;             // serverinfo fs_contexts is not "0", read each frame
 float  tf_n, tf_over;
 // P865: filter_activator_team/class.  The map's team is SV_LateSpawnAll's rule;
 // tf_clsdyn says an output renames the player's class, so class filters are UNKNOWN.
@@ -307,6 +309,11 @@ float(float r, float depth) TF_EvalD =
 			pass = !pass;
 		return pass ? TFR_PASS : TFR_FAIL;
 	}
+	// Patch 1037: when the server judges filter_activator_context (P1036) it reads contexts written by
+	// delayed rows, trigger_userinput, logic chains and save loads, none of which this file sees: the
+	// trigger is the server's.  When it does not, it fails open, and so does this.
+	if (tf_class[r] == "filter_activator_context")
+		return tf_ctxmode ? TFR_UNKNOWN : TFR_PASS;
 	if (tf_class[r] != "filter_multi")
 		return TFR_PASS;                // unimplemented class: fail open
 
@@ -518,10 +525,11 @@ float  ior_seq[IO_RING],  ior_out[IO_RING];
 float  tg_io_clock;             // chain-local seconds, for the end grace
 float  tg_io_tbase;             // PERSISTENT: clock value at the last ack
 float  tg_iotime0;              // client time at load, for mapspawn delays
-float  tg_c_event, tg_c_iodem, tg_c_sdok, tg_c_ioown, tg_c_iogated;
+float  tg_c_event, tg_c_iodem, tg_c_sdok, tg_c_ioown, tg_c_iogated, tg_c_fctx;
 .float tg_netgate, tg_netready, tg_neton;
 .float tg_sspartoffset;          // EveryTick's last applied part within tg_ssinseq
 .float tg_seenoff;               // Patch 1025: predmove_offset of the last touch (tick parts)
+.float tg_fctx;                  // Patch 1037: passes only while the server ignores contexts
 #define TG_RING     64          // Patch 1025: commands of tg_io_in kept per slot
 float  *tg_inring;              // [(slot * TG_RING + seq % TG_RING) * 2] = in after seq, [+1] = seq
 float  *tg_orgring;             // [(seq % TG_RING) * 4] = predicted origin after seq, [+3] = seq
@@ -634,6 +642,17 @@ void(string key, string val) TG_IOParse =
 	io_times[io_n] = (nt > 4) ? stof(argv(4)) : -1;
 	io_tgt[io_n]   = argv(0);
 	io_n = io_n + 1;
+};
+
+// Patch 1037: whether slot s fires rows of its own.
+float(float s) TG_IOSource =
+{
+	local float o;
+
+	for (o = 0; o < io_n; o = o + 1)
+		if (io_src[o] == s)
+			return TRUE;
+	return FALSE;
 };
 
 // Rule-2 matching: exact OR case-insensitive, deliberately broader than
@@ -1639,6 +1658,8 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 			continue;
 		if (!TG_Overlaps(tg_ent[i], predmove_org0, org1))
 			continue;
+		if (tg_ent[i].tg_fctx && tg_ctx_live)
+			continue;                   // Patch 1037: the server judges its filter on contexts
 
 		// The server's gate: a disabled trigger_teleport returns at its
 		// StartDisabled check before the IO touch, and a disabled push or
@@ -1738,6 +1759,8 @@ void() Trig_LoadForMap =
 	tg_c_tele = tg_c_push = tg_c_speed = 0;
 	tg_c_filt = tg_c_dis = tg_c_over = tg_c_nodest = 0;
 	tg_c_filtok = 0;
+	tg_c_fctx = 0;
+	tg_ctx_live = (serverkey("fs_contexts") != "0");    // Patch 1037: the first replay precedes Trig_Frame
 	tf_n = 0;
 	tf_over = 0;
 	tf_clsdyn = tf_ctspawn = tf_tspawn = 0;
@@ -2048,6 +2071,23 @@ void() Trig_LoadForMap =
 			r = TFR_UNKNOWN;            // Patch 906: the server's box is inert, or judged there
 		if (r == TFR_PASS)
 		{
+			// Patch 1037: a pass that needs contexts ignored is skipped per frame while the server judges
+			// them; a slot whose own rows the mirror replays is demoted instead (skipping would drop them).
+			tf_ctxmode = 1;
+			if (TF_EvalD(TF_Find(tg_filt[i]), 0) != TFR_PASS)
+			{
+				if (tg_kind[i] == TG_EVENT || TG_IOSource(i))
+					r = TFR_UNKNOWN;
+				else
+				{
+					tg_ent[i].tg_fctx = TRUE;
+					tg_c_fctx = tg_c_fctx + 1;
+				}
+			}
+			tf_ctxmode = 0;
+		}
+		if (r == TFR_PASS)
+		{
 			tg_c_filtok = tg_c_filtok + 1;
 			continue;
 		}
@@ -2097,8 +2137,9 @@ void() Trig_LoadForMap =
 	print(sprintf("trig: %s -- %g teleports, %g pushes, %g setspeeds predicted (%g zone-tool boxes)\n",
 	              tg_map, tg_c_tele, tg_c_push, tg_c_speed, tg_c_box));
 	print(sprintf("trig: skipped %g filtered, %g startdisabled, %g over cap; "
-	              "%g filtered resolved static; %g targetname rows, %g filters\n",
-	              tg_c_filt, tg_c_dis, tg_c_over, tg_c_filtok, tt_n, tf_n));
+	              "%g filtered resolved static (%g left to the server while it judges contexts); "
+	              "%g targetname rows, %g filters\n",
+	              tg_c_filt, tg_c_dis, tg_c_over, tg_c_filtok, tg_c_fctx, tt_n, tf_n));
 	print(sprintf("trig: IO %g rows%s, %g gated (%g startdisabled predicted, "
 	              "%g event sources), %g demoted, %g event multiples\n",
 	              io_n, io_over ? " (TABLE FULL -- named slots demoted)" : "",
@@ -2109,6 +2150,10 @@ void() Trig_LoadForMap =
 void() Trig_Frame =
 {
 	tg_endexact = (serverkey("fs_endedge") == "1");     // Patch 1025
+	// Patch 1037: per frame, not at load: the key is a fullserverinfo stufftext that can land after the
+	// world-load hook (measured on bhop_tealbox; Patch 285 measured the same race for *csprogs).  Not yet
+	// received counts as on, the side that predicts less.
+	tg_ctx_live = (serverkey("fs_contexts") != "0");
 	Trig_IOMapSpawn();
 	if (!tg_needload)
 		return;
