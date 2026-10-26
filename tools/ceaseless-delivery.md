@@ -204,3 +204,42 @@ Times UTC, 26 Oct 2026. Task root `C:\FTESurf-worktrees\ceaseless5-20261026T0450
   a pad, pitched props' server box, download flags lost on redirects.
 - Reviews: P1025 eight rounds, stopped on integrity (prediction quirks to BACKLOG); P1022/P1023/
   P1026/P1027/P1028 two or three rounds each.
+
+# P1033 + P1034 (Lex, 26 Oct: func_lod line at save 33; ftesurf-63's env_sprite flipbooks): delivery record
+
+Times UTC, 26 Oct 2026. Task root `C:\FTESurf-worktrees\ceaseless5-20261026T0450Z`.
+
+| Item | Patch | State |
+|---|---|---|
+| func_lod "line through the func_lod" (save 33) | P1033 | fade distances now plar's DisappearDist (+800), as Momentum's last-key-wins; the line is the WindowImposter fake sky (*443) crossing the lattice: `hl2_imposter 2` (opt-in) removes it, the default stays 1 because blended content behind fake skies would show through (55 maps; seen at tp5). Waits on Lex's Momentum shot at save 33 |
+| exit signs / smoke / screens frozen on frame 0 | P1034 (ftesurf-63) | multi-frame Sprite VTFs take the AnimatedTexture path at Source's env_sprite default rate 10 |
+
+## Builds
+
+- Engine: ftequakers main `1f1a1c29e`, annotated tag `patch-1034` (P1034 by ftesurf-63, then P1033 +
+  review + patch log). hl2 plugin `b52fb356`; exe unchanged (`8815a19b`, patch-1028).
+- QC: FTESurf main `9700abbb`, fteqcc `c24ede65`, 0 warnings: csprogs `9c249d01`; qwprogs `4fd0fa49`,
+  menu `d0eb3e8a` unchanged. default.cfg/defaultuser.cfg unchanged (hl2_imposter 1).
+
+## Deployed
+
+- 02:52:21Z both installs, no game running: fteplug_hl2_x64.dll `b52fb356` (.prev `73ddacae`), csprogs
+  `9c249d01` (.prev `ab22fc3f`), seed_csprogs `9174bc63`.
+- ~02:54Z Pi lobbies 1-12 (`build.ps1 -Pi` from the worktree, C:\FTEQuake sync off, nobody on, all 12
+  restarted on the build): csprogs `9c249d01`. Lobby smoke: lobby 3 on the new exe and lobby 2 on the
+  0.1.29 exe, 0 failures. Lobby 4 failed on content, not the build: this PC's bhop_eazy.bsp differs from
+  the Pi's ("Map model file does not match", disconnect).
+
+## Verified
+
+- Save 33 (rig, func_lods on DisappearDist): `hl2_imposter 1` cut, `2` none; approaching func_lod *27
+  at 2, its panels fade in whole. surf_monolith bonus 4 and nine bhop_ceaseless saves alike in both modes.
+  tp5: orange particles through areaportal1's pane at 2, hidden at 1 (why 2 is opt-in).
+- P1034: ftesurf-63's control on bhop_goldsrc2 (Xsmoke1 6.65 vs 0.00, exit1 1.39, flare1 0.00);
+  reviewed by ftesurf-2c. P1033 reviewed by an independent reviewer and by ftesurf-63.
+
+## Not done / limits
+
+- P1033's line: needs Lex's Momentum screenshot at save 33 (lextest). A func_lod at full opacity is cut
+  at mode 2 too.
+- bhop_eazy differs between this PC and the Pi (lobby 4 smoke).
