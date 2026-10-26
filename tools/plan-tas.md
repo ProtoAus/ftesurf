@@ -42,6 +42,9 @@ Valid physics, a server timestamp or a player signature cannot prove manual play
 
 ## Stage 1: explicit TAS practice sessions (P1052, first implementation)
 
+Implemented and installed locally; [verification and deployment status](p1052-tas.md).
+Public fleet/backend promotion remains blocked by its guarded runtime handoff.
+
 - Console tas on, tas off, tas status and tas speed 0.1..1, retaining the existing
   host_timescale interface and per-seat routing.
 - A dedicated TF_TAS ancestry marker, distinct from the active control switch.
