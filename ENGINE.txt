@@ -25,7 +25,8 @@ commit   a6b66bef364d946922aa0d6e2b8e5680ab4cbbd5
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1035
-patch    1035
+patch    1036
+# Patch 1036 is QC only: response contexts and filter_activator_context, behind vbsp_contexts (default 0).
 # Patch 1035 (hl2 plugin + csprogs): env_sprite flipbooks cycle at the entity's framerate, 0 = still; gate is the hl2_spranim command.
 # Patch 1034 (hl2 plugin): env_sprite flipbooks animate (a multi-frame Sprite VTF gets the AnimatedTexture path).
 # Patch 1033 (+ csprogs): func_lod fades on DisappearDist (+800) first; hl2_imposter 2 = blended WindowImposter (opt-in).
