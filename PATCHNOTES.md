@@ -21,6 +21,8 @@
 
 ## next
 
+## 0.1.31 2026-10-26
+
 ### P1051 goto_start goes to the start
 - goto_start (M) now takes you to the start of the map, or of the bonus you are on, from anywhere: also after a run was voided or finished, where it often only restarted the stage you were in. Reset (R) still restarts your stage.
 

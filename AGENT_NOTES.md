@@ -7511,6 +7511,13 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 
 ## Release preflight and immutable candidate handoff (2026-10-16)
 
+0.1.31 measured 26 Oct 2026: the knife catalog's CS:GO Legacy models (98 literals) needed shipguard
+DENY reasons before the preflight passed; the copied input set must be filtered to what the previous
+release shipped (C:\FTESurf holds *.pre* backups, zones/local/.old/ and thumbnail sources and
+scripts beside the 12 shipped thumbnails). Natives reused from the installs at the tag commit
+(ENGINE.txt may pin a later docs-only commit: a warning, not a gate). Run prepare, publish and smoke
+as detached processes with log files: the low-memory guard reaps background shells, not those.
+
 0.1.30 measured23Oct2026: P931's non-ASCII patch title correctly refused before
 build. A feature-only worktree also needs the existing release's explicit ignored
 input set (particles/atlases/voice icons/local zones and generated snapshots),
