@@ -21,8 +21,20 @@
 
 ## next
 
+### P1035 Animated signs run at their own speed
+- Animated signs and sprites now play at the speed the mapper set, as in Momentum: bhop_goldsrc2's exit signs flicker at 40 frames a second instead of 10. A sprite set to speed 0 holds still.
+
+### P1034 Exit signs, smoke and screens animate
+- Sprites made of several frames (exit signs, smoke puffs, sparks, screens) now cycle through them instead of showing only the first frame.
+
 ### P1033 Fading map pieces use the mapper's distance
 - Map pieces that appear as you get closer (bhop_ceaseless's lattice) now fade in at the distance the mapper set, as in Momentum, instead of all at 2000 units.
+
+### P1030 Glowing signs stay behind walls
+- Glowing signs and sprites (bhop_goldsrc2's exit signs) no longer show through the walls in front of them. Light glows and flares still shine through, as in Momentum.
+
+### P1029 Noclip speed on the mouse wheel
+- While noclipping, hold Shift and turn the mouse wheel to make noclip faster or slower, in small steps from a quarter of the normal speed to 16 times it.
 
 ### P1028 Particle switches work
 - bhop_ceaseless's particle switch at the start, and any button or trigger that starts or stops a particle effect, now turns the map's particle effects off and on again. Effects that start switched off wait for their start.
