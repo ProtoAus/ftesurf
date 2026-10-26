@@ -140,10 +140,12 @@ TEXKEYS = (
     "selfillummask", "dudvmap",
     "hdrbasetexture", "hdrcompressedtexture",
     "refracttinttexture",
+    "normalmap", "flowmap", "flow_noise_texture",  #Refract/Water (mat_vmt.c $normalmap, P990 flow)
 )
 #Of those, the ones whose absence is VISIBLE as an untextured surface rather than
 #a missing effect.  $envmap in particular is usually the literal "env_cubemap".
-VISIBLE_TEXKEYS = ("basetexture", "basetexture2", "texture2", "bumpmap", "bumpmap2")
+#A missing $normalmap distorts the refraction it drives (surf_hourglass's water, TF2's tfwater001).
+VISIBLE_TEXKEYS = ("basetexture", "basetexture2", "texture2", "bumpmap", "bumpmap2", "normalmap")
 
 #A value that names a runtime target rather than a file on disk.
 NOT_A_FILE = ("env_cubemap", "_rt_camera", "_rt_waterreflection",
