@@ -1297,6 +1297,49 @@ float(float scanx) CL_ButtonBit =
 	return 0;
 };
 
+/*
+  Patch 1029: Shift+mousewheel tunes the noclip fly speed.  pm_noclipspeed is
+  the engine's multiple of sv_maxspeed for a noclipping player (pm_source.c);
+  it is deliberately NOT run-locked (noclip already voids the run, so how fast
+  you fly while voided is a preference), so this sets nothing the server guards.
+  Gated three ways so the wheel is untouched everywhere else: a wheel event,
+  Shift held (ui_kmods, which Keys_ModEdge keeps current for every key), and the
+  server's own movetype stat saying the local player really is noclipping
+  (sv_main.qc mirrors .movetype into STAT_FS_MOVETYPE; cl_hud.qc reads the same).
+  Gentle geometric steps (x1.1): Lex's test showed a bigger step both overshoots
+  at the top and widens the one-frame gap between the speed the client predicts
+  with and the serverinfo the server simulates with, which prints as a noclip
+  prederr while you scroll (steady flight at a synced speed does not).  Clamped
+  0.25x (crawl for placement) to 16x.
+*/
+float(float scanx) Noclip_Wheel =
+{
+	local float ns, ms;
+
+	if (scanx != K_MWHEELUP && scanx != K_MWHEELDOWN)
+		return FALSE;
+	if (!(ui_kmods & 3))                        // either Shift
+		return FALSE;
+	if (getstatf(STAT_FS_MOVETYPE) != MOVETYPE_NOCLIP)
+		return FALSE;
+
+	ns = cvar("pm_noclipspeed");
+	if (ns <= 0)                                // the engine's own fallback
+		ns = 4;
+	if (scanx == K_MWHEELUP) ns = ns * 1.1;
+	else                     ns = ns / 1.1;
+	ns = bound(0.25, ns, 16);
+	ns = floor(ns * 100 + 0.5) / 100;           // keep the stored value tidy
+	cvar_set("pm_noclipspeed", ftos(ns));
+
+	ms = cvar("sv_maxspeed");
+	if (ms > 0)
+		print(sprintf("noclip speed %gx  (%g u/s)\n", ns, ns * ms));
+	else
+		print(sprintf("noclip speed %gx\n", ns));
+	return TRUE;
+};
+
 float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 {
 	if (evtype == IE_FOCUS)
@@ -1468,6 +1511,11 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Ev_PassiveMouse(scanx))
 			return TRUE;
 		Keys_Edge(scanx, TRUE);
+
+		// Patch 1029: Shift+wheel tunes noclip fly speed.  Returns FALSE (wheel
+		// untouched) unless you are actually noclipping with Shift held.
+		if (Noclip_Wheel(scanx))
+			return TRUE;
 
 		// ESC dismisses the passive card (P1005: F1 no longer takes its cursor),
 		// only while a card is actually up.

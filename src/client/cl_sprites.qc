@@ -2728,7 +2728,11 @@ void() Sprite_Draw =
 			  the behaviour it had -- see the essay above Sprite_Glare for why
 			  that distinction is not optional.
 			*/
-			useglare = (useglare_on && spr_add[i] && spr_kind[i] == SPRK_BILLBOARD);
+			// Patch 1030: only the GLOW-class additive sprites (env_lightglow,
+			// kRenderGlow/WorldGlow) glare over the world; a plain additive
+			// billboard (kRenderTransAdd / rendermode 5, e.g. an exit sign) is
+			// flat map art and must depth-test like geometry, not draw on top.
+			useglare = (useglare_on && spr_add[i] >= SPRA_GLOW && spr_kind[i] == SPRK_BILLBOARD);
 			if (useglare)
 			{
 				g_total = g_total + 1;
