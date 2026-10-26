@@ -64,10 +64,19 @@ owned task root `C:\FTESurf-worktrees\menu-20261026T1632Z`.
 - Live read-only network baseline on surf_beginner returned the first100 imported
   rows in approximately 0.08-0.13 s on this connection, not a general UI/frame
   measurement. No actual-client performance speedup is claimed.
-- Quiet-window game harness refused existing owner/peer client and server.
-  They were NOT terminated or altered. Actual-window layout/input/native-panel,
-  linked Steam round trip, real friend DM and owner loading feel remain pending
-  in lextest.md. An optional isolated headless Edge smoke yielded exit0 with no
+- The quiet-window gate initially refused owner/peer processes; none were
+  interrupted. Once they exited, an isolated offline control showed the old
+  Home -> Maps action, and the subject showed Home -> Maps -> Settings -> Home.
+  Screenshot readback is1920x1111 (the requested1280x720 launch flags were
+  superseded during startup); it is NOT a second-resolution pass. Screenshots
+  show the new dashboard, top tabs, full map list area without lobby/friends
+  strips, and Settings. Empty/offline state only: real populated lobbies/stats,
+  native panels, Steam link, friend DM, completion UI and loading feel remain
+  pending in lextest.md. The runtime falsifier caught Maps calling only the
+  preparation helper, which does not switch screens and also reveals Friends;
+  fixed by selecting SCREEN_CREATE first, preparing, then hiding Friends.
+  Home Enter-to-send and Settings Escape were wired to their existing handlers.
+  An optional isolated headless Edge smoke yielded exit0 with no
   DOM, screenshot or server request; it is retained as infrastructure failure,
   NOT a website pass. No further browser harness campaign was started.
 
@@ -79,7 +88,7 @@ release. No live artifacts or website/backend files were deployed: the live
 backend is currently owned by another guarded deployment cohort and must be
 promoted without bypassing that cohort's ownership/consent/provenance checks.
 The new API, website and client changes should be promoted together after that
-coordination and the small UI acceptance check. No player data was modified.
+coordination and the remaining populated/linked UI acceptance check. No player data was modified.
 
 ## Answers: existing content/time automation
 

@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## Tabbed Home: map preparation is not navigation (P1054, 26 Oct 2026)
+
+`ui_create_open()` prepares/rescans the picker; it does NOT set `menu_screen`.
+It calls `MF_Open()`, which reveals Friends. The first Home Maps tab registered
+and received its release but remained on screen0: measured release1/strcmp0,
+not an input-hit failure. Select SCREEN_CREATE, call the existing preparation
+helper, THEN hide Friends to give the map list its space. The isolated offline
+control's legacy Play->Maps acted; the corrected subject's Home->Maps->Settings
+->Home acted, with screenshots inspected at actual1920x1111. The startup config
+superseded requested1280x720 flags; never claim the requested size as observed.
+MENU `ui_hover @id` resolves a control; `ui_click` takes numeric x/y, NOT @id.
+Use hover then `ui_mouse down` / `up` for the existing held/release route. The
+`ui_hover` bracket is the tooltip ID, not necessarily the aimed control's ID.
+An early quiet-window refusal can clear while working offline: check it at the
+actual runtime boundary rather than retaining a stale blanket blocker. No owner
+processes were interrupted. Real linked/populated Home acceptance is separate.
+
 ## Explicit TAS practice (P1052, 2026-10-26)
 
 - P954 host_timescale is the existing per-player pacing path. tas on/off/status/speed

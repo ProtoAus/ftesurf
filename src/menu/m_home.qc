@@ -114,12 +114,13 @@ void(vector screensize) MH_Tabs =
 		on = (menu_screen == target);
 		if (i == 4 && menu_screen == SCREEN_VISUALS) on = TRUE;
 		if (i == 2 || i == 3) on = (menu_screen == SCREEN_STORY && sty_tab == i - 2);
-		id = sprintf("home_tab%g", i);
+		// Stable IDs for the shared navigation strip.
+		id = i == 0 ? "home_tab0" : (i == 1 ? "home_tab1" : (i == 2 ? "home_tab2" : (i == 3 ? "home_tab3" : (i == 4 ? "home_tab4" : "home_tab5"))));
 		x = x + ui_chip([x, 12], id, label, on) + CHIP_GAP;
 		if (sui_is_released(id))
 		{
 			sui_text_unfocus();
-			if (i == 1) { cvar_set("ui_maps_friends", "0"); ui_create_open(); }
+			if (i == 1) { menu_screen = target; ui_create_open(); cvar_set("ui_maps_friends", "0"); }
 			else if (i == 2 || i == 3) { Sty_Open(); sty_tab = i - 2; }
 			else if (i == 5) { menu_screen = target; MM_MusicScan(); }
 			else menu_screen = target;
@@ -156,7 +157,7 @@ void(vector p, vector size) MH_Lobbies =
 			li = i * cols + j;
 			if (li >= Lob_Count()) continue;
 			lp = rp + [j * (cw + 8), 0]; cell = [cw, 50];
-			id = sprintf("home_lob%g", li);
+			id = strcat("home_lob", ftos(li));
 			sui_action_element(lp, cell, id, sui_noop);
 			sui_roundbox(lp, cell, 8, sui_is_hovered(id) ? COL_ROW_HOVER : COL_ROW, 0.9);
 			row = Lob_Row(li);

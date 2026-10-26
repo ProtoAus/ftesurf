@@ -8545,7 +8545,7 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 		ui_f2_open("");
 		return TRUE;
 	}
-	if (evtype == IE_KEYDOWN && scanx == K_ENTER && menu_screen == SCREEN_CHAT)
+	if (evtype == IE_KEYDOWN && scanx == K_ENTER && (menu_screen == SCREEN_CHAT || menu_screen == SCREEN_MAIN))
 	if (sui_text_has_focus("mc_text"))
 	{
 		MC_Send();
@@ -8724,7 +8724,7 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 				Sty_Esc();
 				return TRUE;
 			}
-			if (menu_screen == SCREEN_VISUALS || menu_screen == SCREEN_MUSIC)
+			if (menu_screen == SCREEN_VISUALS || menu_screen == SCREEN_MUSIC || menu_screen == SCREEN_SETTINGS)
 				menu_screen = SCREEN_MAIN;
 			else if (clientstate() == 2)
 				m_close();          // in a game: ESC returns to it
