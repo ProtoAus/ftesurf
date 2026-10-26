@@ -2769,6 +2769,25 @@ void(entity t) SV_BrushRenderState =
 		t.effects = t.effects - (t.effects & EF_NODRAW);
 };
 
+// Patch 1041: a prop's rendermode and renderamt, as the brushes' above: modes 1, 2, 4 and 5 take their
+// alpha from renderamt and draw nothing at 0 (C_BaseEntity::ShouldDraw), so do the Alpha input's
+// changes (surf_hourglass's vortex backdrops start at 0 and a button fades them in).  278 props on 24
+// library maps carry one of those modes, 57 at 0.  Only the mode's own EF_NODRAW is taken back.
+void(entity t) SV_PropRenderState =
+{
+	if (SV_BrushRenderMode(t))
+	{
+		if (!(t.effects & EF_NODRAW))
+			t.vbsp_rmhide = TRUE;
+		t.effects = t.effects | EF_NODRAW;
+	}
+	else if (t.vbsp_rmhide)
+	{
+		t.vbsp_rmhide = FALSE;
+		t.effects = t.effects - (t.effects & EF_NODRAW);
+	}
+};
+
 // P844: the brush entities that did not spawn through SV_BrushRenderInit, once the
 // lump is built (StartFrame).
 void() SV_BrushRenderAll =
@@ -4586,6 +4605,12 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	{
 		t.renderamt = bound(0, stof(pm), 255);
 		SV_BrushRenderState(t);
+		return;
+	}
+	if (in == "alpha" && substring(t.classname, 0, 5) == "prop_")	// Patch 1041
+	{
+		t.renderamt = bound(0, stof(pm), 255);
+		SV_PropRenderState(t);
 		return;
 	}
 
@@ -6630,10 +6655,8 @@ void(float defsolid) SV_SpawnProp =
 	*/
 	setorigin(self, self.origin);
 
-	// "Don't Render".  Rare (9 instances library-wide) but free to honour, and
-	// a prop the mapper hid is usually hiding something.
-	if (self.rendermode == RENDERMODE_NONE)
-		self.effects = self.effects | EF_NODRAW;
+	// "Don't Render" and, Patch 1041, the translucent modes: see SV_PropRenderState.
+	SV_PropRenderState(self);
 
 	vbsp_prop_n = vbsp_prop_n + 1;
 	if (self.solid != SOLID_NOT)
