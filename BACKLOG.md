@@ -7867,3 +7867,18 @@ masks replaced the roundmask asset -- unmeasured. Site: the grader in
 quads while closed, then decide which checks still mean something.
 Also stale, harmless: `tools/p440font.py` / `cfg/test/p440font.cfg` count 5 fixed
 hud_edit rows (3 since P798); their height estimate only errs high.
+
+## C:\FTEQuake renders multi-frame sprite VTFs as checkers (26 Oct)
+
+- C:\FTEQuake shows multi-frame sprite VTFs (bhop_goldsrc2 materials/sprites/exit1.vtf 25-frame,
+  Xsmoke1.vtf 15-frame) as the purple missing-material checker, while C:\FTESurf loads the exact same
+  sprites fine with the SAME plugin. Single-frame flare1.vtf loads in both. So it is C:\FTEQuake's own
+  content mount/config, not the hl2 plugin. Found while verifying P1034 (animated sprites). Separate bug.
+
+## P1034 follow-up: per-entity sprite animation rate (26 Oct)
+
+- P1034 animates multi-frame env_sprites at Source's default 10fps. exit1 explicitly sets framerate 40,
+  so thread the env_sprite framerate from cl_sprites.qc into the synthesized AnimatedTexture rate (a
+  material-name encoding or a per-rate variant) so each sprite animates at its authored speed.
+- VMT_VTFFrames LoadFile()s the whole VTF to read numframes (bytes 24-25); switch to a header/partial
+  read if it ever shows in load times (reviewer nit -- fine for sprite-sized files for now).
