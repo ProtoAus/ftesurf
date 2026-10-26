@@ -7929,3 +7929,14 @@ hud_edit rows (3 since P798); their height estimate only errs high.
   SV_BrushRenderState ignores vbsp_rmhide (TurnOff then Alpha shows it).
 - simple_physics_prop spawns through SV_SpawnProp but fails the "prop_" test, so Alpha/TurnOn skip it
   (0 in the library).
+
+## surf_hourglass s3 frame rate: entity draw calls (26 Oct, Lex's list)
+
+- Lex's save 3 (origin 11560 100 916, looking at the hourglass) measured 78-81 fps on this PC at
+  r_renderscale 2, uncapped (r_budget_dump): CPU-bound, 10.8 ms of 12.4 in draw calls (opaque 10.3) for
+  3,095 draws / 0.44 M triangles; GPU 5.5 ms models, 4.1 ms 3D sky. r_drawentities 0 gives 522 fps;
+  hl2_detail, r_drawworld, hl2_water, r_portalrecursion change nothing. Only 1 static prop is drawn: the
+  cost is the map's 176 prop_dynamic (110 waterrock*, 54 tree_leaves*), whose models have 1-4 meshes each,
+  so ~16 draws per visible entity come from passes (main view, 3D sky, Refract copies), not meshes.
+  P1041 already hides the 52 at renderamt 0 here. Next: per-pass draw counts for one rock entity, then
+  either batching repeated models or not drawing these props in passes that cannot see them.
