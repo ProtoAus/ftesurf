@@ -78,6 +78,7 @@ float  pf_c_has, pf_c_done, pf_c_of;   // every map: the "maps finished" figure
 // each: of, done, untiered, tiers, then PF_TIERS each of tier, done, of.
 #define PF_CMF      (4 + PF_TIERS * 3)
 float *pf_cmt;
+float  pf_cs, pf_cs_has;    // 0 Everything, 1 WOS; second table available
 float  pf_cm;               // the kind on show
 float  pf_c_modes;          // the answer split them (a surfd before P853 does not)
 float  pf_rn;
@@ -128,11 +129,13 @@ void() Profile_Alloc =
 	pf_ct_bmap = buf_create();
 	pf_on_f = memalloc(sizeof(float) * PF_ONROWS * PF_RF);
 	pf_on_ms = memalloc(sizeof(int) * PF_ONROWS);
-	pf_cmt = memalloc(sizeof(float) * PF_CMF * 3);
+	pf_cmt = memalloc(sizeof(float) * PF_CMF * 6);
 	pf_s_sel = -1;
 };
 
 // The `&mode=` a tier's list is asked with, for the kind on show.
+string() Profile_CompletionArg = { return pf_cs ? "&completion_source=wos" : ""; };
+
 string() Profile_ModeArg =
 {
 	if (pf_cm == 1)
@@ -321,7 +324,7 @@ void() Profile_TierAsk =
 		return;
 	}
 	pf_ct_req = Profile_Get(sprintf("%s/api/board?player=%s&ct=%s%s&limit=%g", cvar_string("lobby_dir"),
-	                                pf_who, pf_ct, Profile_ModeArg(), PF_CTPAGE));
+	                                pf_who, pf_ct, strcat(Profile_ModeArg(), Profile_CompletionArg()), PF_CTPAGE));
 	pf_ct_state = pf_ct_req ? PFS_ASK : PFS_FAIL;
 	pf_ct_code = 0;
 	pf_ct_sent = cltime;
@@ -343,6 +346,14 @@ void(float t) Profile_TierShow =
 	pf_ct = s;
 	pf_ct_again = FALSE;
 	Profile_TierAsk();
+};
+
+void(float source) Profile_SourceShow =
+{
+	if (!pf_cs_has) return;
+	if (source == pf_cs) return;
+	pf_cs = source;
+	if (pf_ct != "") Profile_TierAsk();
 };
 
 // `k`: 0 every kind of map, 1 surf, 2 bhop (P853). A tier's list on show is asked again.
@@ -425,7 +436,7 @@ void() Profile_TierMore =
 	pf_ct_more_n = pf_ct_more_n + 1;
 	pf_ct_more_at = cltime + PF_MOREWAIT;
 	pf_ct_more_req = Profile_Get(sprintf("%s/api/board?player=%s&ct=%s%s&offset=%g&limit=%g",
-	                                     cvar_string("lobby_dir"), pf_who, pf_ct, Profile_ModeArg(), pf_ct_n,
+	                                     cvar_string("lobby_dir"), pf_who, pf_ct, strcat(Profile_ModeArg(), Profile_CompletionArg()), pf_ct_n,
 	                                     min(PF_CTPAGE, PF_CTROWS - pf_ct_n)));
 	pf_ct_more_sent = cltime;
 };
@@ -637,6 +648,13 @@ void(string bdy) Profile_Parse =
 	Profile_CompRead(json_find_object_child(c, "bhop"), 2);
 	if (!pf_c_modes)
 		pf_cm = 0;
+	c = json_find_object_child(root, "completion_wos");
+	pf_cs_has = (json_get_length(c) > 0);
+	Profile_CompRead(c, 3);
+	c = json_find_object_child(c, "modes");
+	Profile_CompRead(json_find_object_child(c, "surf"), 4);
+	Profile_CompRead(json_find_object_child(c, "bhop"), 5);
+	if (!pf_cs_has) pf_cs = 0;
 	pf_rn = 0;
 	Profile_Rows(root);
 	json_free(root);
@@ -1636,7 +1654,7 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	if (pf_c_has)
 	{
 		x = x + tw + hint;
-		Profile_Tile([x, y], [tw, th], sprintf("%g/%g", pf_c_done, pf_c_of), "", "maps finished", ttl, hint,
+		Profile_Tile([x, y], [tw, th], sprintf("%g/%g", pf_cmt[pf_cs * 3 * PF_CMF + 1], pf_cmt[pf_cs * 3 * PF_CMF]), "", "maps finished", ttl, hint,
 		             SUI_THEME_GOOD);
 	}
 	y = y + th + hint;
@@ -1658,6 +1676,13 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	// P853: All / Surf / Bhop above them, each with its figure; the bars and a
 	// tier's list are of the kind chosen.
 	f = pf_cmt;
+	if (pf_c_has && pf_cs_has)
+	{
+		ch = ceil(hint * 1.8);
+		if (Profile_Chip("pf_cs_wos", [p_x, y], [hint * 6, ch], "WOS", hint, pf_cs == 1)) Profile_SourceShow(1);
+		if (Profile_Chip("pf_cs_all", [p_x + hint * 6.5, y], [hint * 10, ch], "Everything", hint, pf_cs == 0)) Profile_SourceShow(0);
+		y = y + ch + hint * 0.6;
+	}
 	if (pf_c_has && pf_c_modes)
 	{
 		Font_Set(ui_font_ui);
@@ -1665,8 +1690,8 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 		x = p_x;
 		for (i = 0; i < 3; i = i + 1)
 		{
-			s = sprintf("%s %g/%g", (i == 1) ? "Surf" : ((i == 2) ? "Bhop" : "All"), f[i * PF_CMF + 1],
-			            f[i * PF_CMF]);
+			s = sprintf("%s %g/%g", (i == 1) ? "Surf" : ((i == 2) ? "Bhop" : "All"), f[(pf_cs * 3 + i) * PF_CMF + 1],
+			            f[(pf_cs * 3 + i) * PF_CMF]);
 			w = stringwidth(s, TRUE, [hint, hint]) + hint * 2;
 			if (Profile_Chip(sprintf("pf_cm%g", i), [x, y], [w, ch], s, hint, pf_cm == i))
 				Profile_ModeShow(i);
@@ -1674,7 +1699,7 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 		}
 		y = y + ch + hint * 0.6;
 	}
-	cb = pf_cm * PF_CMF;
+	cb = (pf_cs * 3 + pf_cm) * PF_CMF;
 	if (pf_c_has && f[cb] > 0)
 	{
 		cols = (sz_x > tsz * 34) ? 2 : 1;

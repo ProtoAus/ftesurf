@@ -3630,6 +3630,16 @@ void(vector scr) Scores_Draw =
 			Profile_OnClear();
 		}
 	}
+	if (online && pf_on_who == "" && rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
+	if (Scores_Chip("sb_jumpme", [x0 + w - pad - sb_szui * 9, yc], [sb_szui * 9, chiph], "Jump to me", FALSE))
+	{
+		Online_JumpToMe(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_TierOf(), Scores_StyleOf());
+	}
+	if (ob_jumped)
+	{
+		if (ob_mine >= 0) rec_sb_oscroll_y = max(0, (ob_mine - 2) * rec_sb_rowh);
+		ob_jumped = FALSE;
+	}
 	ytabs = ytabs + chiph + pad * 0.5;
 	sui_fill([x0 + pad, ytabs + tabh + pad * 0.5], [w - pad * 2, 1], SUI_THEME_EDGE, 1, 0);
 	yhead = ytabs + tabh + pad;
@@ -3749,7 +3759,7 @@ void(vector scr) Scores_Draw =
 	// is longer now ("... every game  (top 100 of 129 shown)") and ran under the
 	// keycaps on a small window (the review, 1024x576 and under).
 	Scores_Text([x0 + pad, yfoot], rec_sb_szhead,
-	            Chat_Fit((pf_on_who != "") ? "a time opens its leg's board" : Scores_FootLine(),
+	            Chat_Fit((pf_on_who != "") ? "a time opens its leg's board" : ((online && ob_jumpnote != "") ? ob_jumpnote : Scores_FootLine()),
 	                     x - (x0 + pad), Font_Px(rec_sb_szhead)), SUI_THEME_DIM, 1);
 
 	// Where a run set here goes. On EVERY tab, Local included: that is where

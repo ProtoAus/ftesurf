@@ -32,7 +32,7 @@ void() MC_Open =
 // give it to whichever server that is (review: a server can fake the relay's cvar).
 float() MC_Active =
 {
-	return (menu_active && menu_screen == SCREEN_CHAT && clientstate() >= 1 && MF_Online());
+	return (menu_active && (menu_screen == SCREEN_CHAT || menu_screen == SCREEN_MAIN) && clientstate() >= 1 && MF_Online());
 };
 
 float() MC_Relayed = { return (clientstate() == 2 && serverkey("board") != "local"); };
@@ -61,6 +61,7 @@ void() MC_Rebuild =
 
 void(string who, string name) MC_Select =
 {
+	if (mc_wire) return;
 	MC_Keep(mc_peer, who);
 	MC_Keep(mc_peer_name, name);
 	MC_Keep(mc_draft, "");
@@ -296,18 +297,21 @@ float(float reqid, float code, string body) MC_Reply =
 	return TRUE;
 };
 
-void(vector screensize) MC_Draw =
+void(vector pos, vector size, float embedded) MC_Panel =
 {
-	local vector pos, size, rp;
+	local vector rp;
 	local float left, right, i, width, board;
 	local string who, name, text, id;
-	ui_backdrop(screensize);
-	size = [min(1040, screensize_x - 32), min(680, screensize_y - 32)];
-	pos = [floor((screensize_x - size_x) * 0.5), floor((screensize_y - size_y) * 0.5)];
+	if (!embedded) ui_backdrop(size);
 	sui_style_panel(pos, size, 12, 1);
 	sui_push_frame(pos, size);
 	sui_text('16 18 0', SZ_HEAD, "lobby chat", COL_ACCENT, 1, 0);
-	if (ui_button("mc_back", [size_x - 98, 12], '82 30 0', "back"))
+	if (embedded)
+	{
+		if (ui_button("mc_public", [size_x - 116, 12], '100 30 0', "Public lobby"))
+			if (!mc_wire) MC_Select("-", "Public lobby");
+	}
+	else if (ui_button("mc_back", [size_x - 98, 12], '82 30 0', "back"))
 	{
 		menu_screen = SCREEN_MAIN;
 		sui_text_unfocus();
@@ -321,7 +325,10 @@ void(vector screensize) MC_Draw =
 	}
 	left = min(240, floor(size_x * 0.26));
 	right = left + 20;
+	if (embedded) right = 16;
 	width = size_x - right - 16;
+	if (!embedded)
+	{
 	if (ui_button("mc_room", '12 60 0', [left, 34], "Public lobby"))
 		if (!mc_wire) MC_Select("-", "Public lobby");
 	sui_text('16 104 0', SZ_LABEL, "Friends / direct messages", COL_DIM, 1, 0);
@@ -338,6 +345,7 @@ void(vector screensize) MC_Draw =
 				if (!mc_wire) MC_Select(who, name);
 		}
 		sui_list_view_end();
+	}
 	}
 	sui_text([right, 62], SZ_HEAD, ui_fit_text(MC_Plain(mc_peer_name), width, SZ_HEAD), COL_TEXT, 1, 0);
 	mc_height = max(36, size_y - 218);
@@ -370,6 +378,6 @@ void(vector screensize) MC_Draw =
 	ui_field("mc_text", [right, size_y - 110], [width - 88, 34], mc_draft, mc_cursor, "Write a message...");
 	if (ui_button("mc_send", [size_x - 96, size_y - 110], '80 34 0', mc_wire ? "wait..." : "send")) MC_Send();
 	sui_text([right, size_y - 66], '12 12 0', ui_fit_text(MC_Plain(mc_note), width, '12 12 0'), COL_DIM, 1, 0);
-	sui_text([16, size_y - 32], '12 12 0', "Public lobby is shared. DMs are friend-only, not end-to-end encrypted.", COL_DIM, 1, 0);
+	sui_text([16, size_y - 32], '12 12 0', ui_fit_text("Shared lobby / friend-only DMs; not end-to-end encrypted.", size_x - 32, '12 12 0'), COL_DIM, 1, 0);
 	sui_pop_frame();
 };

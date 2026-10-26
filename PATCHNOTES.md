@@ -21,6 +21,11 @@
 
 ## next
 
+### P1054 Your home, your records and your completion
+- Home puts lobbies above your WOS stats and progress, with friends and public lobby or friend-only chat on the right. Tabs give Maps its own space, alongside Story, Event Mode and Settings.
+- Jump to me finds your record in the selected leaderboard without changing its filters. Boards load smaller first pages and keep paging as you scroll.
+- Tier completion has WOS and Everything views in-game and on the website. Everything includes Momentum and KSF; both views use the same map totals.
+
 ### P1052 Explicit TAS practice sessions
 - tas on and tas speed 0.1..1 start assisted practice using the existing slow motion. tas off restores normal speed, not the run's eligibility. TAS saves retain their label; frame advance, editing and public TAS boards are still to come.
 - TAS saves stay local for now: sharing and automatic mirroring wait for a format that preserves their history.

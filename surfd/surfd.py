@@ -2893,6 +2893,33 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
     return rows
 
 
+def board_near(db, player, mapname, track, leg, tier, style, base=None, name=""):
+    """Offset of this player's row in the selected/filtered list, or None.
+
+    Prefer WOS on a merged board, then the fastest imported row. The position
+    is in the filtered list, not the displayed unfiltered rank. No profile-wide
+    ranks, downloads or walks through preceding pages are needed.
+    """
+    scope, sargs = _board_scope(mapname, base, "")
+    tiers = tuple(TIER_EXPAND.get(tier, (tier,)))
+    where = (scope + " AND track=? AND leg=? AND style=? AND tier IN ("
+             + ",".join("?" * len(tiers)) + ")")
+    args = sargs + (track, leg, style) + tiers
+    if name:
+        db.create_function("board_name_key", 1, _board_name_key, deterministic=True)
+        where += " AND instr(board_name_key(name), ?) > 0"
+        args += (name,)
+    mine = db.execute("SELECT millis, submitted, player, tier FROM runs WHERE " + where
+                      + " AND player=? ORDER BY tier <> ?, " + BOARD_ORDER + " LIMIT 1",
+                      args + (player, TIER_RANKED)).fetchone()
+    if mine is None:
+        return None
+    ms, at, who, own_tier = mine
+    ahead = db.execute("SELECT COUNT(*) FROM runs WHERE " + where + " AND " + BOARD_AHEAD,
+                       args + (ms, ms, at, ms, at, who)).fetchone()[0]
+    return {"offset": max(0, ahead - 5), "ms": ms, "tier": own_tier}
+
+
 _PREV_SQL = ("SELECT millis, submitted FROM runs WHERE map=? AND track=? AND leg=?"
              " AND tier=? AND style=? AND player=?")
 
@@ -4020,6 +4047,11 @@ def board():
     offset = clamp_int(request.args.get("offset"), 0, MAX_RUNS, 0)
     name_query = web_plain(clean_text(request.args.get("name"), 64)).strip()
     name = name_query.lower()
+    near = request.args.get("near")
+    if near is not None:
+        if not re.fullmatch(r"[0-9a-f]{8}|[0-9a-f]{%d}" % WEB_HANDLE_LEN, near):
+            return fail(400, "bad player")
+    found = False
 
     rows = []
     counts = {}
@@ -4028,6 +4060,16 @@ def board():
         # Both tiers' counts, so the client can say "no ranked times yet, 37
         # community" without mixing trust levels in one list.
         counts = board_counts(db, mapname, track, leg, style, base, name)
+        if near is not None:
+            _people_current(db, now)
+            handle = near
+            if len(near) == 8:
+                with _people_lock:
+                    handle = _people.get("by_mark", {}).get(near) if RANKED_LINKED else None
+            player = player_of(db, handle, now) if handle else None
+            position = board_near(db, player, mapname, track, leg, tier, style, base, name) if player else None
+            if position is not None:
+                offset, found = position["offset"], True
         rows = board_rows(db, mapname, track, leg, tier, style, limit, offset, base, name)
         # A short page of an imported board is a player at the end of what we
         # hold: queue the map for the KSF and Momentum top-ups (ksfimport.py
@@ -4075,6 +4117,9 @@ def board():
             **({"family": _ksf_playback_family(mapname, base)}
                if tier == TIER_KSF or TIER_KSF in TIER_EXPAND.get(tier, ()) else {}),
             **({"name": name_query} if name else {}),
+            **({"near": {"who": near, "found": found,
+                         **({"ms": position["ms"], "tier": position["tier"]} if found else {})}}
+               if near is not None else {}),
         }
     )
     return Response(body, status=200, mimetype="application/json")
@@ -6873,6 +6918,20 @@ def profile_forget():
         _prof.clear()
 
 
+def _completion_wos(ranked, main_maps):
+    """Native main-track finishes, against the SAME population as Everything."""
+    done = {r["map"] for r, _rk, _of in ranked
+            if r["track"] == 0 and r["leg"] == 0 and r["tier"] == TIER_RANKED}
+    return _completion(done, main_maps, map_tiers())
+
+
+def _wos_figures(ranked):
+    rows = [(r, rk, of) for r, rk, of in ranked if r["tier"] == TIER_RANKED]
+    return {"n": len(rows), "wr": sum(rk == 1 for r, rk, of in rows),
+            "wrc": sum(rk == 1 and of > 1 for r, rk, of in rows),
+            "maps": len({r["map"] for r, rk, of in rows})}
+
+
 def _profile_figures(ranked, main_maps):
     """(first places, contested ones, top tens, completion) of _profile_rows'
     rows: the site's page and the game's breakdown lead with the same four.
@@ -6956,6 +7015,9 @@ def game_player(raw, now):
     mode = request.args.get("mode", "")
     if mode not in ("", "surf", "bhop"):
         return fail(400, "bad mode")
+    source = request.args.get("completion_source", "all")
+    if source not in ("all", "wos"):
+        return fail(400, "bad completion source")
     on = None
     if ct is None and request.args.get("on") is not None:
         on = clean_map(request.args.get("on"))
@@ -6982,7 +7044,7 @@ def game_player(raw, now):
         log.exception("game player db error: %s", exc)
         return fail(500, "storage error")
     if ct is not None:
-        groups, rated = _tier_maps(ranked, main_maps, mode)
+        groups, rated = _tier_maps(ranked, main_maps, mode, source)
         maps = groups.get(None if ct == "u" else int(ct), {"maps": []})["maps"]
         maps = [m for m in maps if "ms" in m] + [m for m in maps if "ms" not in m]
         out = []
@@ -7021,12 +7083,13 @@ def game_player(raw, now):
          "wr": wr, "wrc": wrc, "top10": top10,
          "by_tier": {"ranked": me["ranked"], "momentum": me["mom"], "ksf": me["ksf"]},
          "av": 1 if player in have else 0, "completion": comp,
+         "completion_wos": _completion_wos(ranked, main_maps), "wos": _wos_figures(ranked),
          "ksf_sync": ksfprofile.status(db, player),
          "offset": offset, "total": len(ranked), "limit": limit, "rows": rows}),
         status=200, mimetype="application/json")
 
 
-def _tier_maps(ranked, main_maps, mode=""):
+def _tier_maps(ranked, main_maps, mode="", source="all"):
     """({tier or None: {"tier", "of", "done", "maps": [...]}}, rated) for one
     player's _profile_rows: every map the site holds a main board for, by
     difficulty tier (None is unrated), each with the player's fastest main
@@ -7035,7 +7098,7 @@ def _tier_maps(ranked, main_maps, mode=""):
     import mapmanifest
     best = {}                   # map -> [fastest main time, its game, {games}, its style]
     for r, _rk, _of in ranked:
-        if r["track"] or r["leg"]:
+        if r["track"] or r["leg"] or (source == "wos" and r["tier"] != TIER_RANKED):
             continue
         cur = best.setdefault(r["map"], [r["millis"], r["tier"], set(), r["style"]])
         if r["millis"] < cur[0]:
@@ -7084,7 +7147,10 @@ def web_player_maps(handle):
     except sqlite3.Error as exc:
         log.exception("web player maps db error: %s", exc)
         return fail(500, "storage error")
-    groups, rated = _tier_maps(ranked, main_maps, mode)
+    source = request.args.get("completion_source", "all")
+    if source not in ("all", "wos"):
+        return fail(400, "bad completion source")
+    groups, rated = _tier_maps(ranked, main_maps, mode, source)
     return _json({"v": 1, "t": now, "who": handle, "rated": rated, "mode": mode,
                   "tiers": [groups[k] for k in sorted(k for k in groups if k is not None)],
                   "unrated": groups.get(None)}, "max-age=30")
@@ -7147,7 +7213,8 @@ def web_player(handle):
                   "ext": ext, "ksfid": steam2(ext) if ext and me["ksf"] else None,
                   "momid": momid[0] if momid else None,
                   "av": 1 if player in pics else 0,
-                  "completion": comp, "ksf_sync": ksfprofile.status(db, player),
+                  "completion": comp, "completion_wos": _completion_wos(ranked, main_maps),
+                  "ksf_sync": ksfprofile.status(db, player),
                   "offset": offset, "total": len(ranked),
                   "limit": limit, "rows": out}, "max-age=30")
 

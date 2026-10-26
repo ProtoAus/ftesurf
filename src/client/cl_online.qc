@@ -63,8 +63,8 @@
 ===========================================================================
 */
 
-#define OB_PAGE    100     // rows one request asks for; surfd's own cap is 200
-#define OB_MAXROW  10000   // bounded row store; still fetched in 100-row pages
+#define OB_PAGE    40      // rows one request asks for; surfd's own cap is 200
+#define OB_MAXROW  10000   // bounded row store; fetched in OB_PAGE-row pages
 #define OB_MOREAHEAD 20    // ask for the next page this many rows before the end
 #define OB_TIER    "ranked"   // the one tier any board draws; community holds demoted runs
 
@@ -231,6 +231,8 @@ string ob_have_tier, ob_have_style;
 float  ob_have_zoned;
 
 float  ob_n;
+float ob_offset, ob_jumped;
+string ob_q_near, ob_jumpnote;
 float  *ob_rank;
 float  *ob_ticks;
 float  *ob_ms;
@@ -438,7 +440,7 @@ void(string mname, float track, float leg, string tier, string style) Online_Set
   unconfigured lobby_dir is the normal state of an offline install, and the
   board says so rather than reporting a failure nobody caused.
 */
-float(float track, float leg, string tier, string style) Online_Fetch =
+float(float track, float leg, string tier, string style, string near) Online_FetchAt =
 {
 	local string dir, url, mname;
 
@@ -493,6 +495,8 @@ float(float track, float leg, string tier, string style) Online_Fetch =
 		return FALSE;
 
 	Online_SetQuery(mname, track, leg, tier, style);
+	strunzone(ob_q_near); ob_q_near = strzone(near);
+	strunzone(ob_jumpnote); ob_jumpnote = "";
 	ob_owed = FALSE;
 
 	/*
@@ -506,6 +510,7 @@ float(float track, float leg, string tier, string style) Online_Fetch =
 	              dir, uri_escape(mname), track, leg,
 	              uri_escape(tier), uri_escape(style), OB_PAGE);
 	if (ob_name != "") url = strcat(url, "&name=", uri_escape(ob_name));
+	if (near != "") url = strcat(url, "&near=", uri_escape(near));
 	ob_more_req = 0;            // a new board supersedes any append in flight
 
 	/*
@@ -526,6 +531,29 @@ float(float track, float leg, string tier, string style) Online_Fetch =
 	ob_state = OBS_FETCH;
 	ob_sent  = cltime;          // the deadline Online_Need enforces
 	return TRUE;
+};
+
+float(float track, float leg, string tier, string style) Online_Fetch =
+{
+	return Online_FetchAt(track, leg, tier, style, "");
+};
+
+float(float track, float leg, string tier, string style) Online_Shows;
+void(float track, float leg, string tier, string style) Online_JumpToMe =
+{
+	local string who;
+	if (!Online_Shows(track, leg, tier, style))
+	{
+		strunzone(ob_jumpnote); ob_jumpnote = strzone("Wait for the current list to load, then jump to me.");
+		return;
+	}
+	who = getplayerkeyvalue(player_localnum, "*phash");
+	if (who == "")
+	{
+		strunzone(ob_jumpnote); ob_jumpnote = strzone("Your account identity is not available in this game.");
+		return;
+	}
+	Online_FetchAt(track, leg, tier, style, who);
 };
 
 // One /api/board row into slot i.  Both the first page and appended pages use it.
@@ -659,6 +687,26 @@ void(string body) Online_Parse =
 		print("leaderboard: name filter reply missing or stale; no matches shown\n");
 		return;
 	}
+	if (ob_q_near != "")
+	{
+		rows = json_find_object_child(root, "near");
+		if (strcmp(json_get_string(json_find_object_child(rows, "who")), ob_q_near))
+		{
+			strunzone(ob_jumpnote); ob_jumpnote = strzone("Jump to me is not available on this leaderboard yet.");
+			ob_state = OBS_OK;
+			json_free(root);
+			return;
+		}
+		if (!json_get_float(json_find_object_child(rows, "found")))
+		{
+			strunzone(ob_jumpnote); ob_jumpnote = strzone("No record of yours matches the current filters.");
+			ob_state = OBS_OK;
+			json_free(root);
+			return;
+		}
+	}
+	ob_jumped = (ob_q_near != "");
+	ob_offset = json_get_float(json_find_object_child(root, "offset"));
 	Online_Alloc();
 	if (!ob_bmap)
 		ob_bmap = buf_create();
@@ -772,7 +820,7 @@ float() Online_FetchMore =
 	url = strcat(sprintf("%s/api/board?map=%s&track=%g&leg=%g&tier=%s&style=%s",
 	                     dir, uri_escape(ob_have_map), ob_have_track, ob_have_leg,
 	                     uri_escape(ob_have_tier), uri_escape(ob_have_style)),
-	             sprintf("&limit=%g&offset=%g", ob_more_lim, ob_n));
+	             sprintf("&limit=%g&offset=%g", ob_more_lim, ob_offset + ob_n));
 	if (ob_have_name != "") url = strcat(url, "&name=", uri_escape(ob_have_name));
 	ob_more_req = Online_NextReq();
 	ob_more_epoch = ob_epoch;
@@ -814,7 +862,7 @@ void(float code, string body) Online_ParseMore =
 	}
 	rows = json_find_object_child(root, "rows");
 	n = json_get_length(rows);
-	if (json_get_float(json_find_object_child(root, "offset")) == ob_n)
+	if (json_get_float(json_find_object_child(root, "offset")) == ob_offset + ob_n)
 	{
 		ob_more = (n >= ob_more_lim && ob_n + n < OB_MAXROW);
 		if (n > ob_more_lim)
@@ -1028,6 +1076,7 @@ void() OBC_Load =
 void(float i, float track, float leg, string tier, string style) Online_FromCache =
 {
 	Online_SetQuery(serverkey("map"), track, leg, tier, style);
+	strunzone(ob_q_near); ob_q_near = "";
 	ob_req = 0;                     // a board still on the wire lands on nothing
 	Online_Parse(bufstr_get(obc_body, i));
 	ob_fromdisk = (obc_t[i] < 0);
@@ -1917,7 +1966,7 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 
 	Online_Parse(resourcebody);
 	if (ob_state == OBS_OK)
-	if (ob_have_name == "")
+	if (ob_have_name == "" && ob_q_near == "" && ob_offset == 0)
 	{
 		OBC_Put(OBC_Key(ob_have_track, ob_have_leg, ob_have_tier, ob_have_style),
 		        resourcebody, max(cltime, 0.001));

@@ -14,7 +14,7 @@
   Every request and reply prints a `board:` line; ui_board_test drives it.
 */
 
-#define MLB_PAGE      100     // rows a request asks for; surfd caps at 200
+#define MLB_PAGE      40     // rows a request asks for; surfd caps at 200
 #define MLB_MAXROW    1000    // rows held; the list stops there
 #define MLB_AHEAD     10      // ask for the next page this many rows before the end
 #define MLB_DEADLINE  10      // s; the engine's HTTP client has no timeout of its own
@@ -61,6 +61,8 @@ float  mlb_known, mlb_cksf, mlb_cmom, mlb_cours;   // `counts`, once a reply gav
 float  mlb_tzoff;             // s east of UTC when the panel opened
 vector mlb_scroll;
 float  mlb_going, mlb_goto;   // ui_board_test's scroll, held until the rows exist
+string mlb_near, mlb_jumpnote;
+string() MH_Me;
 float  mlb_offset;           // first held row's offset, including a profile seek
 string mlb_focuswho;
 int    mlb_focusms;          // exact milliseconds, never float32 display time
@@ -295,7 +297,7 @@ void(float id, float code, string body, float append) Mlb_Page;
 // The panel shows a plain first page: the cache may answer it.
 float() Mlb_CPlain =
 {
-	return (!mlb_offset && mlb_focuswho == "" && mlb_source == "");
+	return (!mlb_offset && mlb_focuswho == "" && mlb_source == "" && mlb_near == "");
 };
 
 // Empty the list.  The strbufs are bounded by mlb_n, not by their size.
@@ -306,6 +308,8 @@ void() Mlb_ClearRows =
 	Mlb_Abandon(mlb_kreq);
 	mlb_req = mlb_mreq = mlb_kreq = 0;
 	strunzone(mlb_kstate); mlb_kstate = "";
+	strunzone(mlb_near); mlb_near = "";
+	strunzone(mlb_jumpnote); mlb_jumpnote = "";
 	mlb_n = mlb_more = 0;
 	mlb_mfail = mlb_mcode = 0;
 	mlb_state = MLBS_IDLE;
@@ -376,6 +380,7 @@ float(float append) Mlb_Fetch =
 	url = strcat(sprintf("%s/api/board?map=%s&track=%g&leg=%g&tier=%s&style=%s",
 	              dir, uri_escape(mlb_map), mlb_track, mlb_leg, tier, uri_escape(mlb_style)),
 	              sprintf("&limit=%g&offset=%g", lim, off));
+	if (mlb_near != "") url = strcat(url, "&near=", uri_escape(mlb_near));
 	id = Lob_NextReq();
 	if (!uri_get(url, id))
 	{
@@ -411,6 +416,19 @@ float(float append) Mlb_Fetch =
 	print(sprintf("^5board:^7 asked id %g: %s %s offset %g limit %g\n",
 	              id, mlb_map, tier, off, lim));
 	return TRUE;
+};
+
+void() Mlb_JumpToMe =
+{
+	local string who;
+	who = MH_Me();
+	if (who == "")
+	{
+		strunzone(mlb_jumpnote); mlb_jumpnote = strzone("Your player identity is not available yet. Finish a WOS run or link Steam.");
+		return;
+	}
+	strunzone(mlb_near); mlb_near = strzone(who);
+	Mlb_Fetch(FALSE);
 };
 
 // The next page, once the list nears its end.  TRUE if one went out.
@@ -558,7 +576,7 @@ void(float i, int row) Mlb_Row =
 	bufstr_set(mlb_brank, i, ftos(json_get_float(json_find_object_child(row, "r"))));
 	if (mlb_focuswho != "")
 	if (!strcmp(substring(digest_hex("SHA256", json_get_string(json_find_object_child(row, "player"))), 0, strlen(mlb_focuswho)), mlb_focuswho))
-	if (json_get_integer(json_find_object_child(row, "ms")) == mlb_focusms)
+	if (mlb_focusms == 0i || json_get_integer(json_find_object_child(row, "ms")) == mlb_focusms)
 		mlb_focus = i;
 	s = json_get_string(json_find_object_child(row, "name"));
 	bufstr_set(mlb_bname, i, (s != "") ? s : "unknown");
@@ -633,6 +651,25 @@ void(float id, float code, string body, float append) Mlb_Page =
 	com = json_get_float(json_find_object_child(cnt, "community"));
 	mlb_known = TRUE;
 
+	if (!append)
+	if (mlb_near != "")
+	{
+		rows = json_find_object_child(root, "near");
+		if (strcmp(json_get_string(json_find_object_child(rows, "who")), mlb_near)
+		    || !json_get_float(json_find_object_child(rows, "found")))
+		{
+			strunzone(mlb_jumpnote);
+			mlb_jumpnote = strzone(rows ? "No record of yours matches these filters." : "Jump to me is not available on this leaderboard yet.");
+			strunzone(mlb_near); mlb_near = "";
+			mlb_state = MLBS_OK;
+			json_free(root);
+			return;
+		}
+		strunzone(mlb_focuswho); mlb_focuswho = strzone(mlb_near);
+		Mlb_ClearRows();
+		mlb_offset = json_get_float(json_find_object_child(root, "offset"));
+		mlb_focusms = json_get_integer(json_find_object_child(rows, "ms"));
+	}
 	tier = json_get_string(json_find_object_child(root, "tier"));
 	off  = json_get_float(json_find_object_child(root, "offset"));
 	rows = json_find_object_child(root, "rows");
@@ -964,10 +1001,11 @@ void(vector screensize) Mlb_Draw =
 
 	// Closed at the end: the rows below still read the buffers a close frees.
 	closeit = FALSE;
+	if (ui_button("mlb_jumpme", [w - 234, 12], [126, 30], "Jump to me")) Mlb_JumpToMe();
 	if (ui_button("mlb_close", [w - 100, 12], [84, 30], "close"))
 		closeit = TRUE;
 
-	sui_text([16, 14], SZ_HEAD, ui_fit_text(mlb_map, w - 132, SZ_HEAD), COL_ACCENT, 1, 0);
+	sui_text([16, 14], SZ_HEAD, ui_fit_text(mlb_map, w - 266, SZ_HEAD), COL_ACCENT, 1, 0);
 	s = sprintf("%s / %s / %s", !strcmp(mlb_source, "all") ? "All games" : Mlb_TabName(mlb_tab),
 	            mlb_track ? sprintf("bonus %g", mlb_track) : "main", FS_BoardStyleName(mlb_style));
 	if (mlb_leg) s = strcat(s, sprintf(" / stage %g", mlb_leg));
@@ -1083,7 +1121,7 @@ void(vector screensize) Mlb_Draw =
 		}
 	}
 
-	sui_text([16, h - 30], SZ_LABEL, ui_fit_text(Mlb_Source(), w - 160, SZ_LABEL),
+	sui_text([16, h - 30], SZ_LABEL, ui_fit_text(mlb_jumpnote != "" ? mlb_jumpnote : Mlb_Source(), w - 160, SZ_LABEL),
 	         COL_DIM, 1, 0);
 	if (mlb_state == MLBS_OK)
 	{

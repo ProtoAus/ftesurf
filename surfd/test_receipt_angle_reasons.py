@@ -181,10 +181,11 @@ def case_initial_partial_and_bound():
               ('BLIND', 'angle check deferred after signed sibling I/O; no angle measurement'))
         put(path, rec.encode())
         ctl = observed(rc, rp)
-        check('no history: automatic journal recovery ACTS', sw.receipt_step(c, now=now + 60), (1, 0))
-        check('no history: journal-only retry does not invent an angle measurement',
-              (row(c)['angles'], row(c).get('angles_reason'), row(c)['journal']),
-              ('BLIND', 'angle check deferred after signed sibling I/O; no angle measurement', 'OK'))
+        with mock.patch.object(rc, 'join_angles', wraps=rc.join_angles) as angles:
+            check('no history: captured initial full completion ACTS', sw.receipt_step(c, now=now + 60), (1, 0))
+        check('no history: actual angle measurement replaces only deferred placeholder',
+              (angles.call_count, row(c)['angles'], row(c).get('angles_reason'), row(c)['journal']),
+              (1, 'OK', ctl.angles_detail[:1000], 'OK'))
         sw.mark_receipts_stale(c)
         check('no history: explicit full reread ACTS', sw.receipt_step(c, now=now + 90), (1, 0))
         check('no history: completed full read replaces deferred pair together',

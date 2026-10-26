@@ -134,6 +134,7 @@
 // Patch 854: Story and Event mode, in m_story.qc (compiled last).
 #define SCREEN_STORY    9
 #define SCREEN_CHAT    10
+#define SCREEN_SETTINGS 11
 void() MC_Init;
 void() MC_Open;
 void() MC_Send;
@@ -6279,10 +6280,14 @@ void(vector screensize) screen_journal =
 	}
 };
 
+void(vector screensize) screen_home;
+void(vector screensize) MH_Tabs;
+void(vector screensize) MH_Settings;
+void() MH_Poll;
 void(vector screensize) screen_main =
 {
 	ui_backdrop(screensize);
-	MM_ScreenMain(screensize);
+	screen_home(screensize);
 };
 
 /*
@@ -7433,7 +7438,7 @@ void(vector screensize) screen_create =
 	y += 56;
 
 	/*
-	  ---- public lobbies (Patch 270) -------------------------------------
+	  ---- optional legacy lobby strip (off in the tabbed layout) -----------
 
 	  A FIXED section above the list, not rows inside it, and that is a
 	  correctness decision rather than a layout preference.  The list's row ids
@@ -7453,6 +7458,9 @@ void(vector screensize) screen_create =
 	  the screen they saw before.  Since lobby_dir now ships with a default,
 	  that is a deliberate opt-out rather than the out-of-the-box state.
 	*/
+	ui_cs_lcols = ui_cs_lshow = 0;
+	if (cvar("ui_maps_lobbies"))
+	{
 	if (Lob_Blocked())
 	{
 		/*
@@ -7628,6 +7636,7 @@ void(vector screensize) screen_create =
 		y += lrows * ROW_H + (lrows - 1) * lgap + 8;
 	}
 
+	}
 	// ---- the list ------------------------------------------------------
 	float by = size_y - 46;         // top of the start/back row
 	vector ls = [inner, by - y - 12];
@@ -8117,6 +8126,7 @@ void() m_init =
 	registercvar("ui_maps_filters", "0", 32);
 	registercvar("ui_maps_large", "1", 32);
 	registercvar("ui_maps_friends", "0", 32);
+	registercvar("ui_maps_lobbies", "0", 0);
 	registercvar("ui_friends_activity", "-1", 0);
 	// Repair P731's level30 ui_updates bind too; menu commands reject that level.
 	// P823: F2 opens the journal panel (ui_journal); ui_updates was its name before.
@@ -8294,6 +8304,7 @@ void() ui_boot_preload =
 // over physical pixel sizes instead (pr_menu.c:3391-3395).
 void(vector screensize) m_draw =
 {
+	local float shell;
 	// The bootcheck driver runs OUTSIDE the menu_active gate on purpose: past
 	// the launch step the menu is closed and in-game, and it still has to take
 	// the last screenshot and quit.
@@ -8315,8 +8326,9 @@ void(vector screensize) m_draw =
 	Dl_Tick();
 	ui_prejoin_tick();
 
-	MF_Poll(menu_active && menu_screen == SCREEN_CREATE && cvar("ui_maps_friends"));
-	MC_Poll(menu_active && menu_screen == SCREEN_CHAT);
+	MF_Poll(menu_active && (menu_screen == SCREEN_MAIN || (menu_screen == SCREEN_CREATE && cvar("ui_maps_friends"))));
+	MC_Poll(menu_active && (menu_screen == SCREEN_CHAT || menu_screen == SCREEN_MAIN));
+	MH_Poll();
 	MP_Frame();                     // Patch 789: the menu's pictures
 	Mlb_Poll();
 	// Warm the catalogue on boot, even before the picker is opened. Mdl_Ask
@@ -8380,6 +8392,13 @@ void(vector screensize) m_draw =
 		Mlb_Close("left the create screen");
 
 	MU_Poll();
+	shell = (menu_screen == SCREEN_MAIN || menu_screen == SCREEN_CREATE || menu_screen == SCREEN_STORY
+	         || menu_screen == SCREEN_VISUALS || menu_screen == SCREEN_MUSIC || menu_screen == SCREEN_CHAT || menu_screen == SCREEN_SETTINGS);
+	if (shell)
+	{
+		sui_push_frame('0 56 0', screensize - '0 56 0');
+		screensize_y = screensize_y - 56;
+	}
 	if (menu_screen == SCREEN_TERMS)
 		screen_terms(screensize);
 	else if (menu_screen == SCREEN_STEAM)
@@ -8415,6 +8434,8 @@ void(vector screensize) m_draw =
 	}
 	else if (menu_screen == SCREEN_CHAT)
 		MC_Draw(screensize);
+	else if (menu_screen == SCREEN_SETTINGS)
+		MH_Settings(screensize);
 	else if (menu_screen == SCREEN_STORY)
 	{
 		ui_backdrop(screensize);
@@ -8438,6 +8459,12 @@ void(vector screensize) m_draw =
 		ui_status_toast(screensize);
 	}
 
+	if (shell)
+	{
+		sui_pop_frame();
+		screensize_y = screensize_y + 56;
+		MH_Tabs(screensize);
+	}
 	MM_DrawFps(screensize);
 	sui_menu_nav();
 	Font_Reset();

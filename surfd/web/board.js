@@ -844,15 +844,17 @@
       add(body.top10, 'top tens', 'Top ten on a board with more than one time');
     }
     add(body.maps, 'maps');
-    var c = body.completion;
+    var c = body.completion, completionTile;
     if (c) {
       add(c.done + ' / ' + c.of, 'maps finished',
           'A map counts once the main track is finished');
+      completionTile = st.lastChild.firstChild;
     }
 
     var wrap = $('compwrap');
     $('pcomp').textContent = '';
     $('compmode').hidden = true;
+    $('compsource').hidden = true;
     if (!c) {
       // A MISSING CATALOGUE IS NOT 0%.  surfd sends completion: null when it has
       // no map difficulty data, and the page has to say that rather than draw
@@ -869,11 +871,12 @@
 
     var bt = body.by_tier || {};
     state.prof = { handle: body.who, shown: 0, total: 0, page: body.limit || 100, maps: {},
+                   completion: {all: c, wos: body.completion_wos}, source: 'all', completionTile: completionTile,
                    multi: ['ranked', 'momentum', 'ksf']
                      .filter(function (k) { return n0(bt[k]) > 0; }).length > 1 };
     if (c) {
       var want = readHash();
-      renderComp(body.who, c, c.modes && (want.cm === 'surf' || want.cm === 'bhop') ? want.cm : '', want.ct);
+      renderComp(body.who, c, c.modes && (want.cm === 'surf' || want.cm === 'bhop') ? want.cm : '', want.ct, want.cs);
     }
     profileRows(body, state.prof.page);
   }
@@ -883,14 +886,33 @@
   function compHash(handle, mode, tier) {
     if (history.replaceState) {
       history.replaceState(null, '', '#p=' + encodeURIComponent(handle) + (mode ? '&cm=' + mode : '') +
-        (tier === undefined ? '' : '&ct=' + (tier === null ? 'u' : tier)));
+        (tier === undefined ? '' : '&ct=' + (tier === null ? 'u' : tier)) +
+        (state.prof && state.prof.source === 'wos' ? '&cs=wos' : ''));
     }
   }
 
   // The bars of every kind of map, or of surf or bhop alone (P853). A surfd
   // before P853 sends no `modes`, and the switch stays hidden.
   var COMP_MODES = [['', 'All'], ['surf', 'Surf'], ['bhop', 'Bhop']];
-  function renderComp(handle, c, mode, open) {
+  function renderComp(handle, c, mode, open, source) {
+    var P = state.prof;
+    source = source === 'wos' && P.completion.wos ? 'wos' : 'all';
+    P.source = source;
+    c = P.completion[source];
+    var total = P.completionTile;
+    if (total) { total.textContent = c.done + ' / ' + c.of; }
+    var sources = $('compsource');
+    sources.textContent = '';
+    sources.hidden = !P.completion.wos;
+    if (P.completion.wos) {
+      [['wos', 'WOS'], ['all', 'Everything']].forEach(function (s) {
+        sources.appendChild(tabButton(s[1], '', s[0] === source, function () {
+          if (s[0] === source) { return; }
+          renderComp(handle, c, mode, null, s[0]);
+          compHash(handle, mode);
+        }));
+      });
+    }
     var comp = $('pcomp'), seg = $('compmode'), shown = mode ? c.modes[mode] : c;
     comp.textContent = '';
     seg.textContent = '';
@@ -901,7 +923,7 @@
         seg.appendChild(tabButton(m[1], t.done + ' / ' + t.of, m[0] === mode, function () {
           if (m[0] === mode) { return; }
           compHash(handle, m[0]);
-          renderComp(handle, c, m[0], null);
+          renderComp(handle, c, m[0], null, source);
         }));
       });
     }
@@ -943,10 +965,12 @@
   // first time a tier is opened, kept for the profile on screen.
   function tierMaps(handle, mode) {
     var P = state.prof;
-    if (!P.maps[mode]) {
-      P.maps[mode] = get('api/player/' + encodeURIComponent(handle) + '/maps' + (mode ? '?mode=' + mode : ''));
+    var key = P.source + ':' + mode;
+    if (!P.maps[key]) {
+      P.maps[key] = get('api/player/' + encodeURIComponent(handle) + '/maps?completion_source=' + P.source +
+        (mode ? '&mode=' + mode : ''));
     }
-    return P.maps[mode];
+    return P.maps[key];
   }
 
   function mapList(title, maps, done) {
@@ -978,9 +1002,9 @@
     compHash(handle, mode, open ? tier : undefined);
     if (!open || box.firstChild) { return; }
     box.appendChild(el('p', 'cwait', 'Loading…'));
-    var P = state.prof;
+    var P = state.prof, source = P.source;
     tierMaps(handle, mode).then(function (body) {
-      if (state.prof !== P) { return; }
+      if (state.prof !== P || P.source !== source) { return; }
       var g = tier === null ? body.unrated
         : (body.tiers || []).filter(function (t) { return t.tier === tier; })[0];
       box.textContent = '';
@@ -992,7 +1016,7 @@
       box.appendChild(mapList('Not yet', left, false));
     }, function (e) {
       if (state.prof !== P) { return; }
-      P.maps[mode] = null;
+      P.maps[source + ':' + mode] = null;
       box.textContent = '';
       box.appendChild(el('p', 'cwait', e.message));
     });
