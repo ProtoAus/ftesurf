@@ -9209,6 +9209,11 @@ void() func_wall =
 		remove(self);
 		return;
 	}
+	// Patch 1048: CFuncWall::Spawn sets its angles to zero (bmodels.cpp:49); kept, a brush model's
+	// absolute coordinates turn about the world origin (bhop_goldsrc2's panel *80 at 0 90 0).
+	// Not for the aliases that call this (func_lod and the button stand-ins).
+	if (self.classname == "func_wall")
+		self.angles = '0 0 0';
 	setmodel(self, self.model);
 	self.movetype = MOVETYPE_PUSH;
 	self.solid = SOLID_BSP;
@@ -11199,6 +11204,7 @@ void() func_wall_toggle =
 		remove(self);
 		return;
 	}
+	self.angles = '0 0 0';		// Patch 1048: CFuncWallToggle::Spawn is CFuncWall's first
 	setmodel(self, self.model);
 	self.movetype = MOVETYPE_PUSH;
 
