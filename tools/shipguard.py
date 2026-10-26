@@ -212,6 +212,14 @@ DENY_EXACT = {
                                        "not ours to redistribute.",
     "models/weapons/v_pist_glock18.mdl": "Mounted Steam CSS Glock; opt-in WP_Model, "
                                          "not ours to redistribute.",
+    # The knife catalog (cl_knife_catalog*.qc: "Installed Legacy metadata. No game assets or
+    # inventory are distributed") names models in the player's own CS:GO Legacy install.
+    "models/weapons/ct_arms.mdl": "Mounted Steam CS:GO Legacy arms for the knife catalog; "
+                                  "not ours to redistribute.",
+    "models/weapons/t_arms.mdl": "Mounted Steam CS:GO Legacy arms for the knife catalog; "
+                                 "not ours to redistribute.",
+    "particles/sec": "Not a path: the unit in cl_emit.qc's env_spark budget line "
+                     "(\"particles/sec\").",
 }
 
 # The literal must START WITH the key.  Covers a strcat prefix (`scripts/
@@ -237,6 +245,12 @@ DENY_PREFIX = {
     "sprites/": "Source-engine sprites. Come from the player's own Steam mount, "
                 "never from our archive.",
     "materials/": "As sprites/ -- mounted Source content.",
+    "models/weapons/v_knife": "Mounted Steam CS:GO Legacy / CSS knife viewmodels the knife "
+                              "catalog names (KCAT_Row); we ship nothing under "
+                              "models/weapons. Not ours to redistribute.",
+    "models/weapons/v_models/arms/": "Mounted Steam CS:GO Legacy sleeves and gloves for the "
+                                     "knife catalog (KCAT_Row/KCAT_Find); not ours to "
+                                     "redistribute.",
     "scripts/soundscapes_": "Read from INSIDE the map's BSP or a mounted Source "
                             "VPK, not from our gamedir; a loose copy here would "
                             "only be an override (cl_soundscape.qc's own header: "
