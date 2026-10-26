@@ -2734,6 +2734,25 @@ float(entity t) SV_BrushRenderMode =
 	return (m == RENDERMODE_NONE);
 };
 
+// Patch 1041: a prop's rendermode and renderamt, as the brushes' above: modes 1, 2, 4 and 5 take their
+// alpha from renderamt and draw nothing at 0 (C_BaseEntity::ShouldDraw), so do the Alpha input's
+// changes (surf_hourglass's vortex backdrops start at 0 and a button fades them in).  278 props on 24
+// library maps carry one of those modes, 57 at 0.  Only the mode's own EF_NODRAW is taken back.
+void(entity t) SV_PropRenderState =
+{
+	if (SV_BrushRenderMode(t))
+	{
+		if (!(t.effects & EF_NODRAW))
+			t.vbsp_rmhide = TRUE;
+		t.effects = t.effects | EF_NODRAW;
+	}
+	else if (t.vbsp_rmhide)
+	{
+		t.vbsp_rmhide = FALSE;
+		t.effects = t.effects - (t.effects & EF_NODRAW);
+	}
+};
+
 void(entity t) SV_BrushRenderState =
 {
 	local float hidden;
@@ -2745,7 +2764,11 @@ void(entity t) SV_BrushRenderState =
 	if (t.classname != "func_brush")
 	{
 		if (substring(t.model, 0, 1) != "*")
+		{
+			if (substring(t.classname, 0, 5) == "prop_")
+				SV_PropRenderState(t);	// Patch 1041: Enable/TurnOn land here too
 			return;
+		}
 		if (SV_BrushRenderMode(t))
 		{
 			if (!(t.effects & EF_NODRAW))
@@ -2767,25 +2790,6 @@ void(entity t) SV_BrushRenderState =
 		t.effects = t.effects | EF_NODRAW;
 	else
 		t.effects = t.effects - (t.effects & EF_NODRAW);
-};
-
-// Patch 1041: a prop's rendermode and renderamt, as the brushes' above: modes 1, 2, 4 and 5 take their
-// alpha from renderamt and draw nothing at 0 (C_BaseEntity::ShouldDraw), so do the Alpha input's
-// changes (surf_hourglass's vortex backdrops start at 0 and a button fades them in).  278 props on 24
-// library maps carry one of those modes, 57 at 0.  Only the mode's own EF_NODRAW is taken back.
-void(entity t) SV_PropRenderState =
-{
-	if (SV_BrushRenderMode(t))
-	{
-		if (!(t.effects & EF_NODRAW))
-			t.vbsp_rmhide = TRUE;
-		t.effects = t.effects | EF_NODRAW;
-	}
-	else if (t.vbsp_rmhide)
-	{
-		t.vbsp_rmhide = FALSE;
-		t.effects = t.effects - (t.effects & EF_NODRAW);
-	}
 };
 
 // P844: the brush entities that did not spawn through SV_BrushRenderInit, once the
@@ -2835,6 +2839,7 @@ void(entity t, float on) SV_IOEnable =
 			t.vbsp_io_solid = t.solid;
 		t.solid = SOLID_NOT;
 		t.effects = t.effects | EF_NODRAW;
+		t.vbsp_rmhide = FALSE;		// P1041: the I/O hide, which a later Alpha must not undo
 		// Patch 280: a non-solid slide must not wear the tag (see SKIN_SLIDE_BASE).
 		if (t.vbsp_slide_skin)
 			t.skin = 0;
@@ -4300,7 +4305,7 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		SV_IOCounter(t, t.count, TRUE);
 		return;
 	}
-	if (in == "turnoff")        { t.effects = t.effects | EF_NODRAW;    return; }
+	if (in == "turnoff")        { t.effects = t.effects | EF_NODRAW; t.vbsp_rmhide = FALSE; return; }	// P1041: I/O owns it now
 	// P844: and the rendermode may hide it again (None, renderamt 0), as may a window
 	// pane's; a func_brush's StartDisabled is not consulted, TurnOn being its enable.
 	if (in == "turnon")
