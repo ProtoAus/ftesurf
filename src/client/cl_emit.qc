@@ -1887,6 +1887,8 @@ string sp_look[STK_MAX];         // "ssize esize life r g b renderamt basespread
 float *sp_fx;                   // [STK_MAX] handles
 float  sp_n;
 float  sp_over;                 // stacks whose look found the table full
+float  sp_bs[STK_MAX];          // BaseSpread: the ring's radius
+float  sp_sv[STK_MAX];          // SpreadSpeed: +- along the jet's right and forward
 
 void(float i) Emit_StackDefine =
 {
@@ -1903,9 +1905,11 @@ void(float i) Emit_StackDefine =
 	// turned 45 degrees it is Source's square, half-side scale/5.657.
 	s = sprintf("r_part %s\n{\ntexture \"materials/particle/smokestackfallback.vtf\"\ntype normal\nblend blendalpha\nscalefactor 1\nscale %g\nscaledelta %g\nrotationstart 45\n",
 	            nm, ss * 5.657, (es - ss) * 5.657 / life);
-	s = strcat(s, sprintf("rgb %g %g %g\nalpha 0\ndie %g\ncount 1\nspawnmode circle\nspawnorg %g 0\nveladd 1\nvelwrand %g %g 0\nrampmode lerp\n",
-	            min(255, stof(argv(3)) * 1.95), min(255, stof(argv(4)) * 1.95), min(255, stof(argv(5)) * 1.95),
-	            life, stof(argv(7)), stof(argv(8)), stof(argv(8))));
+	// The ring and the spread are placed per particle in Emit_Frame, along the jet's own axes.
+	sp_bs[i] = stof(argv(7));
+	sp_sv[i] = stof(argv(8));
+	s = strcat(s, sprintf("rgb %g %g %g\nalpha 0\ndie %g\ncount 1\nspawnmode ball\nspawnorg 0\nveladd 1\nrampmode lerp\n",
+	            min(255, stof(argv(3)) * 1.95), min(255, stof(argv(4)) * 1.95), min(255, stof(argv(5)) * 1.95), life));
 	for (k = 0; k < 12; k = k + 1)
 	{
 		t = k / 12;
@@ -1914,8 +1918,9 @@ void(float i) Emit_StackDefine =
 			a = a * a;
 		if (k == 11)
 			a = 0;      // the lerp holds its last entry to the end
-		s = strcat(s, sprintf("ramp %g %g %g %g\n", min(255, stof(argv(3)) * 1.95), min(255, stof(argv(4)) * 1.95),
-		                      min(255, stof(argv(5)) * 1.95), a * amt));
+		// the fifth value is the size: a lerp ramp sets the particle's scale every frame (p_script.c RAMP_LERP)
+		s = strcat(s, sprintf("ramp %g %g %g %g %g\n", min(255, stof(argv(3)) * 1.95), min(255, stof(argv(4)) * 1.95),
+		                      min(255, stof(argv(5)) * 1.95), a * amt, (ss + (es - ss) * t) * 5.657));
 	}
 	localcmd(strcat(s, "}\n"));
 	sp_fx[i] = particleeffectnum(nm);
@@ -1958,7 +1963,9 @@ float() Emit_StackRepair =
 {
 	local float i;
 
-	if (!sp_n || particleeffectquery(sp_fx[0], 0) != "")
+	if (!sp_n)
+		return FALSE;
+	if (particleeffectquery(sp_fx[0], 0) != "")
 		return FALSE;
 	for (i = 0; i < sp_n; i = i + 1)
 		Emit_StackDefine(i);
@@ -3842,6 +3849,8 @@ void() Emit_Frame =
 	local float i, n, ft, thr, budget, dscale, d, lights, lit, k, mdem, under;
 	local float wdust, wember, wbubble, wfire, wspark, wsmoke, wstack, wpsys, wunder;
 	local vector eye, v, o, sa;
+	local vector jn, jr, jf;
+	local float ja, jl;
 
 	em_fpsn = em_fpsn + 1;
 	if (!cvar("vbsp_emit"))
@@ -4162,7 +4171,18 @@ void() Emit_Frame =
 					pointparticles(dm_fx[em_eff[i]], Emit_PointIn(i), v, 1);
 				}
 				else if (em_sph[i])
-					pointparticles(sp_fx[em_sph[i] - 1], Emit_PointIn(i), v, 1);
+				{	// Patch 1044: c_smokestack.cpp:340-350 -- a ring of BaseSpread, +-SpreadSpeed along right and forward
+					jl = em_sph[i] - 1;
+					jn = normalize(em_vel[i]);
+					if (fabs(jn_z) < 0.99)
+						jr = normalize([jn_y, -jn_x, 0]);
+					else
+						jr = '1 0 0';
+					jf = [jn_y * jr_z - jn_z * jr_y, jn_z * jr_x - jn_x * jr_z, jn_x * jr_y - jn_y * jr_x];
+					ja = random() * 6.2831853;
+					pointparticles(sp_fx[jl], Emit_PointIn(i) + (jr * cos(ja) + jf * sin(ja)) * sp_bs[jl],
+					               em_vel[i] + (jr * (random() * 2 - 1) + jf * (random() * 2 - 1)) * sp_sv[jl], 1);
+				}
 				else
 					pointparticles(em_fx[em_eff[i]], Emit_PointIn(i), v, 1);
 				n = n - 1;
