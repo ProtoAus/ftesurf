@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+**P1038 -- grass (pending, not owner-confirmed):** bhop_monster_jam, `setpos -1450 2300 3700 10 180 0`: grass tufts on the ground, fading out from about 800 to 1200 units as in Momentum. `detail_census` prints how many cells drew; `hl2_detail 0` hides them for comparison. Also worth a look: bhop_blacktop, surf_castle (279,380 objects, built in the first frame that shows them).
+
+**P1039 -- surf_bossfight frame (pending, not owner-confirmed):** your save 2, `setpos 13575.2 -10565.7 7300.4 -10.23 23.34 0`: the window frame, lamp and radiator should be flat white/grey/dark instead of the missing-texture checker.
+
+**P1040 -- noclip speed prederrs (pending, not owner-confirmed):** noclip, fly, and change speed with Shift+wheel while moving: no `prederr:` lines. Untested on a remote lobby.
+
+**P1041 -- surf_hourglass vortex square (pending, not owner-confirmed):** your save 2, `setpos 9916.2 -192.2 2921.2 -63.58 170.37 0`: the vortex with no white square behind it. The map's timeline buttons fade those backdrops in and out with Alpha; they should now follow.
+
 **P1035 -- exit signs at their own speed (pending, not owner-confirmed):** bhop_goldsrc2, `setpos 1921 -2850 9690 12 -90 0`: the exit sign should flicker fast (40 frames a second, as in Momentum) rather than the slower cycle of the last build. `hl2_spranim` in the console lists the sprites running at their own speed (sprites/exit1 at 40). `hl2_sprite_framerate 0` + a map reload puts every flipbook back at 10 for comparison. Needs `hl2_animated 1` (your default).
 
 **P1033 -- bhop_ceaseless func_lod line (pending, needs a Momentum shot):** The lattice pieces now fade in at plar's own distances (700-1500 units for most, was 2000-2200). The line itself is the map's fake sky (a WindowImposter func_brush around the area) crossing the pieces. `hl2_imposter 2` + a map reload draws that fake sky the way Source's shader does (blended, no depth): the line goes, but particles behind fake skies show through, on this map and others. Please take a Momentum screenshot at save 33 (`setpos 7934 803 4502`, looking 26 down, yaw 64) so we can see whether Momentum shows the line there too.

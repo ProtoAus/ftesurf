@@ -7909,3 +7909,19 @@ hud_edit rows (3 since P798); their height estimate only errs high.
   server applies at that command and cl_pred.c replays per command); (b) cl_pred.c skips the cl_prederror
   line when the predicted pm_type is PM_SPECTATOR/PM_OLD_SPECTATOR (noclip already voids the run, so
   its disagreements are not evidence). (b) is three lines; (a) removes the snap as well as the line.
+- DONE by P1040 (26 Oct): the line is skipped while noclipping within 0.3 s of a speed change (option
+  (b), narrowed in time). The prediction itself is unchanged, so the small snap stays; (a) would remove
+  it. Shift+wheel on a remote lobby is untested.
+
+## P1041 prop render state: what it leaves (26 Oct, review)
+
+- A missing renderamt key reads 0 here and 255 in Source, so a translucent-mode prop or brush without
+  the key spawns hidden. No library map omits it today (Hammer writes it); a map the watcher adds later
+  could. Fix needs the key's presence at spawn (a string field or the spawn epairs).
+- Predates P1041: SV_IOEnable(FALSE) makes a solid prop SOLID_NOT, and Enable restores solidity only for
+  `*` models and zone-tool boxes, so a Disabled solid prop stays non-solid for the rest of the map (the
+  reviewer recalls CDynamicProp's Enable/Disable as hide-only -- check props.cpp before changing; this
+  one moves players). func_brush's TurnOff does not take Source's solidity, and its branch of
+  SV_BrushRenderState ignores vbsp_rmhide (TurnOff then Alpha shows it).
+- simple_physics_prop spawns through SV_SpawnProp but fails the "prop_" test, so Alpha/TurnOn skip it
+  (0 in the library).

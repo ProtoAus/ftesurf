@@ -21,6 +21,18 @@
 
 ## next
 
+### P1041 Invisible map props stay invisible
+- Props the mapper made invisible or see-through now draw that way, and fade in when the map says so: surf_hourglass's vortex no longer sits on a white square.
+
+### P1040 No prediction warnings from noclip speed changes
+- Changing noclip speed with Shift and the mouse wheel while flying no longer prints prediction error lines in the console.
+
+### P1039 Untextured map pieces draw in their colour
+- Map pieces with no texture of their own now draw in their flat colour, as in Momentum, instead of a missing-texture checkerboard: surf_bossfight's window frame, lamp and radiator.
+
+### P1038 Grass and other detail sprites
+- Maps with grass, flowers and other small detail sprites (bhop_monster_jam, bhop_blacktop, surf_castle and 63 more) now draw them, fading out with distance as in Momentum. hl2_detail 0 turns them off.
+
 ### P1035 Animated signs run at their own speed
 - Animated signs and sprites now play at the speed the mapper set, as in Momentum: bhop_goldsrc2's exit signs flicker at 40 frames a second instead of 10. A sprite set to speed 0 holds still.
 
