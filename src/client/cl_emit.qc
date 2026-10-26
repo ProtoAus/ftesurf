@@ -3503,11 +3503,14 @@ void() Emit_LoadForMap =
 			}
 			if (magnitude <= 0) magnitude = 1;
 			if (traillen <= 0) traillen = 1;
-			if (maxdelay <= 0) maxdelay = 3;
+			if (maxdelay < 0) maxdelay = 0;
 
 			bmin = bmax = org;
-			rate = 1 / maxdelay;                    // bursts per second
-			burst = 4 + magnitude * 3;
+			// Patch 1046: CEnvSpark::SparkThink re-arms at 0.1 + random(0, MaxDelay) (EnvSpark.cpp:119),
+			// so MaxDelay 0 is ten a second; this read 0 as one burst every 3 s.  Each is FX_ElectricSpark's
+			// 2-4 x Magnitude^2 big sparks and 16-32 x Magnitude small ones (fx_sparks.cpp:332, 383).
+			rate = 1 / (0.1 + maxdelay * 0.5);      // bursts per second
+			burst = magnitude * magnitude * 3 + magnitude * 24;
 			dist = 1500;
 			// TrailLength (1..3) stretches the streak in Source; here it can
 			// only reach the streak through speed, since the particle's own
