@@ -75,3 +75,36 @@ in305faulted reports, no increase. Standard builds retain only existing warnings
 Source includes the already published P1064 audio and P1062 menu/API work; this
 feature does not change volume/mute, menu preferences, backend services, schemas,
 Build89 or release0.1.32. Human camera/input feel is still pending in lextest.md.
+
+## Installed Windows provenance
+
+Promoted2026-10-27T13:28:27Z from clean exact source QC
+`315dd8f05c6dab7599243962115de0065384669b` and native
+`55e2750521f33476467b35e22bd7fbdedfc608ba` / annotated `patch-1065`.
+Both executables and all five plugin metadata ZIPs carry the clean native tag.
+An incremental build retained old plugin metadata and was NOT promoted; the
+clean full rebuild hit known plugin ZIP finalization failures. Owned partial
+box3d/cod targets were preserved, then the same standard entrypoint completed
+with Jobs1, no Full, and every final stamp/hash was verified.
+
+Eighteen standard-role native/qw/csDAT+LNO payloads were installed across
+`C:\FTESurf` and `C:\FTEQuake`; folded CSQC cache `815c4615.dat` is seeded in
+both. Destination hashes and predecessors are verified, ordinary `.prev` files
+kept and older predecessor history privately archived. Existing MENU, owner/
+default configs, install lists and player data were not replaced. This includes
+the already published audio/menu baseline, not a downgrade to the earlier base.
+
+The clean committed cohort passes21 acting dedicated-socket checks, including
+an actual edited TAS finish and terminal unsupported-clock recovery; its REC is
+reader-clean (this operation produced no VIEW sidecar). The actual installed
+primary client and secondary dedicated server then pass14 socket checks against
+copied installed progs in an owned fixture: distinct inputs, unchanged replay
+under opposing live input and an acting yaw edit with untouched tail preservation.
+Owned test processes stopped and shared fixture locks released. No owner process
+was killed, and no owner feel confirmation is claimed.
+
+Source/tag are pushed. Public lobbies are **unchanged**: no ARM/runtime fleet
+admission or live guarded swap is claimed, and this task did not restart/change
+surfd, guards or lobbies. The earlier guarded-backend handoff remains separate;
+local-versus-lobby policy for the broader editor/project stage is still the
+owner's decision. No release, public-version or QC Build bump was performed.

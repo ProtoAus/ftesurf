@@ -10,6 +10,9 @@ real-socket input/body/retained-aim, direct-control, cancellation and reader arm
 pass; subjective aim/crouch/latency feel and all-map behavior are not confirmed.
 This is the bounded console editor, not the future timeline/project UI. No
 owner acceptance is inferred from earlier pause/advance or audio confirmation.
+Both Windows installs received the exact P1065 native/qw/cs cohort at
+2026-10-27T13:28:27Z;14 real-socket checks using the actual installed client/server
+pass. MENU/config/install-list hashes were preserved. Lobbies are unchanged.
 
 **P1064 -- Windows-output reactivity CONFIRMED by owner27Oct2026:** After both
 Windows native installs were updated11:13:10Z and the owner was asked to restart
