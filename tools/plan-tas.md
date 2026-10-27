@@ -74,8 +74,9 @@ This stage does not provide cryptographic authorship, stepping, editing or optim
 Implemented in P1055: `tas pause`, `tas play`, `tas step [1..128]` and actual
 native completion counters on the supported Source15ms movement driver. Exact
 commands, acting controls and static/shared-world limits are recorded in
-[p1055-tas-step.md](p1055-tas-step.md). Deployment and human acceptance remain
-separate from implementation. This does not complete the later editor stages.
+[p1055-tas-step.md](p1055-tas-step.md). Matching native/qw/cs payloads are installed
+and socket-tested in both Windows installs. Public guarded-fleet promotion and
+human acceptance remain pending. This does not complete the later editor stages.
 
 Provide pause, play, step-one and bounded step-N. Grant movement on the trusted mover,
 not by asking the client to send a chosen duration. Reuse fixed-tick Source movement and

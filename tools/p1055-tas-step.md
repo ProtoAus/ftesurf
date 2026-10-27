@@ -89,12 +89,31 @@ remain later stages in [plan-tas.md](plan-tas.md).
   all52stored packet poses exactly at the file's text precision; both verifiers
   retain HOLD for the same57physent-digest mismatches after the other player
   changed the shared world. No native PASS or dynamic-world parity is claimed.
-- Reader suite930checks, zero failed; canonical497RECs/167VIEWs retain the same
- 306historical faults. No corpus files changed. No VIEW was captured for the new
+- Reader suite930checks, zero failed; canonical497RECs/167pairedVIEWs retain the
+  same306historical faults. The final sweep also checks10unpairedVIEWs (177total),
+  with the same fault count and stable membership/bytes during the sweep. Initial
+  paired-count and final all-VIEW counts are distinct, not a hidden dropped check.
+  No VIEW was captured for the new
   timed fixture, so it supplies no paired-view/angle or human-input qualification.
 - Three independent final reviews closed the initial stat, ticket, clock, bypass
   and cancellation findings. Three bounded precision-follow-up source reviews
   also found no remaining source blocker; those reviews do not claim execution.
 
-Owner feel/aim/crouch acceptance remains in lextest.md. Committed, installed and
-public-fleet states are recorded separately; these checks are not deployment.
+## Installation status
+
+Clean QCabc62390 and native2e9260645 are installed in BOTH Windows installs:
+`C:\FTESurf\ftesurf64.exe` and `C:\FTEQuake\fteqw64.exe`, with the matching secondary
+dedicated server and normal native plugin ship set. Both qw/cs DAT/LNO payloads
+match the qualified clean artifacts. Each installed client/server pair passes
+8live socket checks (16total). Normal `.prev` slots remain; their older contents
+were retained before promotion. Existing menu/config/install-list files and
+player data were not replaced, nor were unrelated CSQC cache partials deleted.
+
+Native AArch64 server compilation and167actual-header checks also pass at the
+same engine pin. That is not full ARM gameplay/parity or public-fleet admission.
+The prepared native artifact is retained; live lobbies/backend were not changed.
+Guarded public-fleet promotion remains a coordinated handoff, not an ordinary
+progs-only swap. No release or BuildNN bump was performed.
+
+Owner feel/aim/crouch acceptance remains pending in lextest.md. The implemented
+movement controls do not complete the timeline/editor/optimizer/signature stages.
