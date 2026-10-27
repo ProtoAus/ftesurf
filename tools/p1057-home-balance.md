@@ -101,11 +101,27 @@ custom maps. Owner's actual normal-launch time remains manual acceptance.
 
 ## Installation / retention
 
-Menu-only promotion is from the inspected clean-source build, with actual UTC,
-both Windows destination hashes, predecessor identity/hash checks, unique adjacent
-rollback copies and unchanged protected binary/plugin/progs/config hashes in the
-task's receipt. Installation status is recorded after that boundary. Server/API,
+Installed BOTH Windows `ftesurf/menu.dat` files at **2026-10-27T04:35:51Z**, from
+inspected/pushed QC `16f5cca3c0a1e4a81a8281b3e71a1539ea85d516`; engine patch
+record pushed as `b1e3b1affc3919e1ff7a53163f0c3c5d21338e58`. The clean inspected
+rebuild was BYTE-IDENTICAL to all tested menu payloads; no repeated runtime was
+needed after a documentation/index-only commit. Both destination SHA256:
+`4536c2e52bca1f690985c7bc167c80066a126cdc328f5491965697e694e899dc`.
+Predecessor identity/hash checks acted at swap; unique adjacent rollback files:
+`menu.dat.pre-p1057-balance-20261027T043551Z`. All17 protected hashes stayed
+unchanged (the prior16 plus the now-authorized addons result). Secondary addons
+absence preserved. No owner/foreign process existed at the boundary or was
+stopped; the short canonical claim was released after verification.
+UTC receipt: `artifacts/menu-local-install/20261027T043551Z/receipt.json`;
+immutable manifest: `artifacts/p1057-manifest.json`. Server/API,
 CSQC/SSQC, native pins/binaries, qcbuild, website, saved configs and player data
 are not part of this menu swap. The explicit authorized addons preference above
-has its own separate receipt and rollback. Retain source/staging/runtime/failed controls and
-startup evidence; retire only verified disposable generated outputs/owned links.
+has its own separate receipt and rollback. Source/staging/runtime/failed controls
+and startup evidence are intentionally retained. Two generated build directories
+were archived and hash-verified before retirement; all current runtime junctions
+and owned processes are absent. Clean engine-doc worktree retired normally.
+`artifacts/p1057-retirement.json` records this cleanup; the clean QC source stays
+for owner acceptance and original coordinated backend work, not an active fixture.
+
+Restart the game normally for the launch setting to apply. `menu_restart` then
+`menu_main` can reload only the new layout; it is not a fresh-launch measurement.
