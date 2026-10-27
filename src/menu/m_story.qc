@@ -1297,7 +1297,7 @@ void(vector pos, vector size) Sty_Players =
 void(vector screensize) screen_story =
 {
 	local vector size, pos, ls, rp, rs;
-	local float L, side, y, by, idx, n, k, on, hot, x, w;
+	local float L, side, y, by, idx, n, k, on, hot, x;
 	local string rid, msg;
 
 	Lob_Poll();
@@ -1307,8 +1307,8 @@ void(vector screensize) screen_story =
 		sty_previewdrawgeneration = sty_previewgeneration;
 		Sty_Log(sprintf("story: preview draw generation %g at %g\n", sty_previewgeneration, gettime(0)));
 	}
-	size = [min(screensize_x - 32, 1100), min(screensize_y - 32, 808)];
-	pos = [floor((screensize_x - size_x) * 0.5), floor((screensize_y - size_y) * 0.5)];
+	size = screensize;
+	pos = '0 0 0';
 	sui_style_panel(pos, size, 12, 1);
 	sui_text([pos_x + 16, pos_y + 12], SZ_HEAD, "story", COL_ACCENT, 1, 0);
 	sui_push_frame(pos, size);
@@ -1336,18 +1336,16 @@ void(vector screensize) screen_story =
 	if (sty_who != "" && strcmp(sty_who, sty_me))
 	{
 		msg = strcat("viewing ^7", sty_whoname == "" ? "a player" : sty_whoname);
-		w = stringwidth(msg, TRUE, SZ_LABEL);
-		if (ui_button("sty_mine", [size_x - 16 - 120, 46], [120, 30], sty_me != "" ? "My story" : "Close"))
+		if (ui_button("sty_mine", [size_x - 16 - 120, 10], [120, 30], sty_me != "" ? "My story" : "Close"))
 			Sty_View(sty_me);
-		sui_text([size_x - 16 - 120 - 16 - w, 53], SZ_LABEL, msg, SUI_THEME_ACCENT2, 1, 0);
+		sui_text([16, 74], SZ_LABEL, ui_fit_text(msg, size_x - 32, SZ_LABEL), SUI_THEME_ACCENT2, 1, 0);
 	}
 	else if (sty_previewuntil > 0)
-		sui_text([size_x - 300, 53], SZ_LABEL, "Provisional progress - confirming...", SUI_THEME_WARN, 1, 0);
+		sui_text([16, 74], SZ_LABEL, ui_fit_text("Provisional progress - confirming...", size_x - 32, SZ_LABEL), SUI_THEME_WARN, 1, 0);
 	else if (sty_note != "" && time - sty_notet < 8)
-		sui_text([size_x - 16 - stringwidth(sty_note, TRUE, SZ_LABEL), 53], SZ_LABEL, sty_note, COL_DIM, 1, 0);
+		sui_text([16, 74], SZ_LABEL, ui_fit_text(sty_note, size_x - 32, SZ_LABEL), COL_DIM, 1, 0);
 	else if (sty_me == "" && sty_mphase == 0)
-		sui_text([size_x - 16 - stringwidth("Finish a run on a lobby and your medals start here.", TRUE, SZ_LABEL), 53],
-		         SZ_LABEL, "Finish a run on a lobby and your medals start here.", COL_DIM, 1, 0);
+		sui_text([16, 74], SZ_LABEL, ui_fit_text("Finish a run on a lobby and your medals start here.", size_x - 32, SZ_LABEL), COL_DIM, 1, 0);
 
 	y = 92;
 	by = size_y - 46;

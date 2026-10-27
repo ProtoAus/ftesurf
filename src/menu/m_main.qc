@@ -143,6 +143,7 @@
 void() MC_Init;
 void() MC_Open;
 void() MC_Send;
+void() MC_Probe;
 void(float visible) MC_Poll;
 void(vector screensize) MC_Draw;
 void() Sty_Open;
@@ -238,9 +239,14 @@ void() Mlb_Poll;
 
 float menu_active;
 float menu_screen;
+float() ui_browser_screen =
+{
+	return (menu_screen == SCREEN_MAIN || menu_screen == SCREEN_CREATE || menu_screen == SCREEN_STORY);
+};
 float ui_bootframe;             // ui_bootcheck 2 frame counter
 vector ui_cs_size;              // create-screen layout, mirrored for the bootcheck
 float  ui_cs_lcols, ui_cs_lshow, ui_cs_rows;
+float ui_cs_rowheight, ui_cs_list_top, ui_cs_list_bottom;
 
 // ---------------------------------------------------------------------------
 //  Builtins the MenuQC defs dump does not declare.
@@ -6290,6 +6296,8 @@ void(vector screensize) screen_home;
 void(vector screensize) MH_Tabs;
 vector(vector screensize) MH_ShellSize;
 vector(vector screensize) MH_ShellOrigin;
+vector(vector screensize) MH_ContentSize;
+void(vector size) MH_Sidebar;
 void(vector screensize) MH_Settings;
 void() MH_Poll;
 void() MH_Probe;
@@ -7031,7 +7039,6 @@ void(vector screensize) ui_status_toast =
   (Patch 991: in a game the menu opens on this screen, so ESC returns to the
   game; the Friends panel no longer takes a press of its own).
 */
-float ui_friends_drawer;   // P991 review: Friends is the narrow layout's modal drawer this frame
 float() ui_create_esc =
 {
 	if (Mlb_IsOpen())
@@ -7041,13 +7048,6 @@ float() ui_create_esc =
 	}
 	if (ui_strip_cancel_join(FALSE))
 		return 2;
-	// Under 1180 px the drawer covers the map list, so it still takes a press.
-	if (ui_friends_drawer)
-	if (cvar("ui_maps_friends"))
-	{
-		cvar_set("ui_maps_friends", "0");
-		return 5;
-	}
 	if (clientstate() == 2)
 	{
 		m_close();
@@ -7209,203 +7209,28 @@ void(vector pos, vector sz, string sel) ui_board_button =
 
 void(vector screensize) screen_create =
 {
+	local float rh, tx, nx, inner, y, compact, actiony;
+	local vector size, pos, namesize;
 	ui_backdrop(screensize);
 	ui_map_backdrop(screensize);
 
-	/*
-	  THE PANEL: up to 1100 x 808, clamped to the screen (sui_push_frame does not
-	  clip, so an unclamped panel hangs off the framebuffer silently).
-
-	  1100 wide: four lobby cells of 261 px (163 px of text); the tier +
-	  gametype strips share one row down to inner 796 (p350grid860).  808 tall: the third lobby
-	  row costs 56 px, and 808 gives it back so 1080p keeps 8 map rows; 720p is
-	  screen-clamped and shows 5.
-	*/
-	float friends = cvar("ui_maps_friends");
-	float side = (friends && screensize_x >= 1180) ? 304 : 0;
-	ui_friends_drawer = (friends && !side);
-	float rh = cvar("ui_maps_large") ? 80 : ROW_H;
-	float tx = cvar("ui_maps_large") ? 140 : 90;
-	float nx = tx + 72;
-	vector size = [min(screensize_x - 32 - side, 1100), 808];
-	if (size_y > screensize_y - 32) size_y = screensize_y - 32;
+	// The shared shell already reserved Friends/chat. Fill the remainder.
+	size = screensize; pos = '0 0 0';
+	inner = size_x - 32;
+	compact = (inner < 760);
+	rh = compact ? 112 : 80;
+	tx = 140; nx = compact ? tx : tx + 72;
+	actiony = compact ? 40 : 8;
+	namesize = '20 20 0';
 	ui_cs_size = size;
 	ui_cs_lcols = ui_cs_lshow = 0;
-
-	vector pos  = [floor((screensize_x - size_x - side) * 0.5),
-	               floor((screensize_y - size_y) * 0.5)];
-
-	float inner = size_x - 32;      // content width inside the 16px margins
-
 	sui_style_panel(pos, size, 12, 1);
-	sui_text([pos_x + 16, pos_y + 12], SZ_HEAD, "play", COL_ACCENT, 1, 0);
-
+	sui_text('16 12 0', SZ_HEAD, "Maps", COL_ACCENT, 1, 0);
 	sui_push_frame(pos, size);
+	y = 48;
 
-	float y = 86;
-	float fx, f;
-	if (ui_button("cs_filters", [16, 48], [130, 28], ms_tier ? sprintf("Filters T%g %s", ms_tier, cvar("ui_maps_filters") ? "[-]" : "[+]") : (cvar("ui_maps_filters") ? "Filters [-]" : "Filters [+]")))
-		cvar_set("ui_maps_filters", ftos(!cvar("ui_maps_filters")));
-	if (ui_button("cs_size", [154, 48], [150, 28], cvar("ui_maps_large") ? "Thumbs: large" : "Thumbs: compact"))
-	{
-		cvar_set("ui_maps_large", ftos(!cvar("ui_maps_large")));
-		ms_scroll_y = 0;
-	}
-	if (ui_button("cs_friends", [312, 48], [110, 28], friends ? "Friends [-]" : "Friends [+]"))
-	{
-		sui_text_unfocus();
-		cvar_set("ui_maps_friends", ftos(!friends));
-	}
-
-	if (cvar("ui_maps_filters"))
-	{
-
-	/*
-	  ---- tier and gametype filters -------------------------------------
-
-	  Two strips on one row: tier on the left, gametype to its right, both
-	  ANDed into ui_refilter along with the search text.  Twenty-one action
-	  elements against sui's MAX_ACTION_ELEMENTS 256 (sui_sys.qc:206); the
-	  create screen is nowhere near it.
-
-	  "To its right" is MEASURED, not assumed.  Every chip is sized from its own
-	  label, the panel clamps itself to the framebuffer, and sui_push_frame does
-	  not clip -- so a strip that overruns the panel does not wrap and does not
-	  get cut off, it draws straight over the border and off the screen with
-	  nothing to say it did.  (That exact failure ate the whole bottom of this
-	  panel once already, at 980x760 on a 720p framebuffer.)  So the gametype
-	  strip is measured first and drops to its own line when it will not fit,
-	  which is what happens in a narrow window or with a wider font.
-	*/
-	float mw = 0;
-	for (f = 0; f < FS_NMODES; f++)
-		mw += ui_chip_w(ui_mode_label(f)) + CHIP_GAP;
-
-	sui_text([16, y], SZ_LABEL, "tier", COL_DIM, 1, 0);
-	fx = 16;
-	for (f = 0; f <= 10; f++)
-	{
-		string tlabel = (f == 0) ? "any" : ftos(f);
-		string tid    = strcat("cs_tier", ftos(f));
-
-		fx += ui_chip([fx, y + 20], tid, tlabel, ms_tier == f) + CHIP_GAP;
-		// Built only for the chip under the cursor: one string a frame, not eleven.
-		if (sui_is_hovered(tid))
-			sui_tooltip_for(tid, (f == 0) ? "Maps of every tier, and the untiered ones."
-			                : sprintf("Maps with MOM or KSF tier %g. 1 is the easiest, 10 the hardest.", f), 2);
-
-		if (sui_is_released(tid))
-			ms_tier = f;
-	}
-
-	float mx   = fx + 18;           // a wider gap than CHIP_GAP: these are two
-	float mrow = y;                 // separate questions, not one long strip
-	if (mx + mw > inner + 16)
-	{
-		mx    = 16;
-		mrow  = y + STRIP_PITCH;
-		y    += STRIP_PITCH;
-	}
-
-	/*
-	  TOGGLES, build 57.  A chip is lit when its bit is in ms_modes, and "all"
-	  only when every bit is.  The click goes through ui_modes_click, which holds
-	  the rules (all sets everything; the last lit chip stays on), and a click
-	  that changed the set is saved at once, the way the HUD editor saves a drag.
-	  sui_is_released is true for one frame -- sui_end clears it -- which is
-	  what makes a toggle safe here where the old strip only ever assigned.
-	*/
-	sui_text([mx, mrow], SZ_LABEL, "gametype", COL_DIM, 1, 0);
-	for (f = 0; f < FS_NMODES; f++)
-	{
-		string mlbl = ui_mode_label(f);
-		string mcid = strcat("cs_mode", ftos(f));
-		float  mlit;
-
-		if (f == 0)
-			mlit = (ms_modes == FS_MODES_ALL);
-		else
-			mlit = (ms_modes & ui_cat_bit(ui_mode_id(f))) != 0;
-
-		mx += ui_chip([mx, mrow + 20], mcid, mlbl, mlit) + CHIP_GAP;
-		if (sui_is_hovered(mcid))
-			sui_tooltip_for(mcid, (f == 0) ? "Light every gametype."
-			                : "Show or hide this gametype. The last lit one stays on.", 2);
-
-		if (sui_is_released(mcid))
-		{
-			float mnew = ui_modes_click(ms_modes, f);
-			if (mnew != ms_modes)
-				ui_modes_set(mnew);
-		}
-	}
-
-	/*
-	  ---- the library switch ---------------------------------------------
-
-	  Momentum or Counter-Strike, or both.  Asked for as a switch "for map and
-	  download", and it is one control for both because the downloadable rows
-	  are rows in this same list -- ui_dl_load appends them, and fixing ms_lst
-	  for those rows is what makes them answer this at all.
-
-	  SINGLE-SELECT, unlike the gametype toggles beside it.  "Which library am I
-	  browsing" has three answers and one of them is both; a toggle set would add
-	  a fourth that shows nothing, and the strip next door already needs a rule
-	  forbidding exactly that state.
-
-	  Measured and wrapped the same way the gametype strip is, for the reason in
-	  its essay above: sui_push_frame does not clip, so a strip that overruns
-	  draws off the framebuffer with nothing to say it did.
-	*/
-	// The CHIPS only, exactly as mw above: the heading is drawn 20 px higher
-	// than the strip, so it costs the row no width.
-	float sw = 0;
-	for (f = 0; f < SRCF_NCHIPS; f++)
-		sw += ui_chip_w(ui_srcf_label(f)) + CHIP_GAP;
-
-	float sx   = mx + 18;
-	float srow = mrow;
-	if (sx + sw > inner + 16)
-	{
-		sx    = 16;
-		srow  = mrow + STRIP_PITCH;
-		y    += STRIP_PITCH;
-	}
-
-	sui_text([sx, srow], SZ_LABEL, "library", COL_DIM, 1, 0);
-	for (f = 0; f < SRCF_NCHIPS; f++)
-	{
-		string slbl = ui_srcf_label(f);
-		string scid = strcat("cs_srcf", ftos(f));
-		float  sbit = ui_srcf_bit(f);
-
-		sx += ui_chip([sx, srow + 20], scid, slbl, ms_srcf == sbit) + CHIP_GAP;
-		sui_tooltip_for(scid, "Which map library to list: Momentum Mod's, Counter-Strike: Source's, or both.", 2);
-
-		if (sui_is_released(scid))
-			ms_srcf = sbit;
-	}
-
-	// ROADMAP 10: the maps with neither a picture nor a tier, listed in an empty
-	// search only while this is lit.  Wrapped like the strips above, measured on
-	// its heading, which is wider than its chip.
-	string ahd  = "no picture or tier";
-	float  aw   = max(ui_chip_w("show all"), stringwidth(ahd, TRUE, SZ_LABEL));
-	float  ax   = sx + 18;
-	float  arow = srow;
-	if (ax + aw > inner + 16)
-	{
-		ax    = 16;
-		arow  = srow + STRIP_PITCH;
-		y    += STRIP_PITCH;
-	}
-	sui_text([ax, arow], SZ_LABEL, ahd, COL_DIM, 1, 0);
-	ui_chip([ax, arow + 20], "cs_showall", "show all", ms_showall);
-	sui_tooltip_for("cs_showall", "Also list the maps that have neither a picture nor a tier. A search always finds them.", 2);
-	if (sui_is_released("cs_showall"))
-		ui_showall_set(!ms_showall);
-	y += 56;
-	}
+	// Legacy filter presentation flags no longer consume browser space.
+	// Query/metadata, selected builds and launch/download gates stay unchanged.
 
 	/*
 	  ---- map picker: ONE box, and the list is always open ----------------
@@ -7425,7 +7250,7 @@ void(vector screensize) screen_create =
 
 	string mhd;
 	if (ms_nhidden > 0)
-		mhd = sprintf("map  %s(%g of %g -- %g more under show all)", SUI_ESC_MUTED,
+		mhd = sprintf("map  %s(%g of %g -- %g more searchable)", SUI_ESC_MUTED,
 		              ms_viewcount, ms_count - ms_nvar, ms_nhidden);
 	else
 		mhd = sprintf("map  %s(%g of %g)", SUI_ESC_MUTED, ms_viewcount, ms_count - ms_nvar);
@@ -7650,6 +7475,7 @@ void(vector screensize) screen_create =
 	float by = size_y - 46;         // top of the start/back row
 	vector ls = [inner, by - y - 12];
 	ui_cs_rows = floor((ls_y - 2) / rh);
+	ui_cs_rowheight = rh; ui_cs_list_top = y; ui_cs_list_bottom = y + ls_y;
 
 	{
 		sui_style_box([16, y], ls, 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
@@ -7732,9 +7558,8 @@ void(vector screensize) screen_create =
 				mtsrc = bufstr_get(ms_momtsrc, real);
 
 				// Keep metadata/actions centered while the thumbnail uses the full row.
-				ui_thumb([rp_x + 3, rp_y + (rh == ROW_H ? 2 : 4)],
-				         rh == ROW_H ? [78, 44] : [128, 72], mpage, mcell);
-				rp_y += (rh - ROW_H) * 0.5;
+				ui_thumb([rp_x + 3, rp_y + floor((rh - 72) * 0.5)], [128, 72], mpage, mcell);
+				rp_y = rp_y + (compact ? 0 : (rh - ROW_H) * 0.5);
 
 				mtier = bufstr_get(ms_momtier, real);
 				mktier = bufstr_get(ms_ksftier, real);
@@ -7744,10 +7569,15 @@ void(vector screensize) screen_create =
 					if (!strcmp(mtsrc, "sugg"))
 						sui_tooltip_for(rid, "MOM suggested tier: this map has not been ranked yet.", 2);
 				}
-				sui_text([rp_x + tx, rp_y + 6], '12 12 0',
-				         (stof(mtier) > 0) ? strcat("MOM T", mtier) : "MOM -", '0.25 0.55 1', 1, 0);
-				sui_text([rp_x + tx, rp_y + 28], '12 12 0',
-				         (stof(mktier) > 0) ? strcat("KSF T", mktier) : "KSF -", '1 1 1', 1, 0);
+				if (compact)
+					sui_text([rp_x + tx, rp_y + 50], '12 12 0', sprintf("MOM %s  |  KSF %s", stof(mtier) > 0 ? strcat("T", mtier) : "-", stof(mktier) > 0 ? strcat("T", mktier) : "-"), COL_DIM, 1, 0);
+				else
+				{
+					sui_text([rp_x + tx, rp_y + 6], '12 12 0',
+					         (stof(mtier) > 0) ? strcat("MOM T", mtier) : "MOM -", '0.25 0.55 1', 1, 0);
+					sui_text([rp_x + tx, rp_y + 28], '12 12 0',
+					         (stof(mktier) > 0) ? strcat("KSF T", mktier) : "KSF -", '1 1 1', 1, 0);
+				}
 
 				/*
 				  The best time anyone is known to have set, on the NAME's line and
@@ -7766,7 +7596,7 @@ void(vector screensize) screen_create =
 				  1-3 ms on most times past an hour (Patch 496).  See sh_time.qc.
 				*/
 				local string mwr, mnmf;
-				local float  wrw;
+				local float wrw, neww;
 
 				mwr = bufstr_get(ms_wr, real);
 				wrw = 0;
@@ -7776,11 +7606,12 @@ void(vector screensize) screen_create =
 					wrw = stringwidth(mwr, TRUE, SZ_ROW) + 16;
 				}
 
+				neww = bufstr_get(ms_new, real) == "1" ? stringwidth("NEW", TRUE, namesize) + 4 : 0;
 				mnmf = ui_fit_text(bufstr_get(ms_name, real),
-				                   rs_x - nx - 8 - ROW_RPAD - dlg - wrw, SZ_ROW);
+				                   rs_x - nx - 8 - ROW_RPAD - dlg - (compact ? 0 : wrw) - neww, namesize);
 				if (bufstr_get(ms_zoned, er) != "1")
 					mnmf = strcat(MAP_NOZONE_ESC, mnmf);
-				sui_text([rp_x + nx, rp_y + 4], SZ_ROW, mnmf,
+				sui_text([rp_x + nx, rp_y + 2], namesize, mnmf,
 				         (on || hot) ? COL_ACCENT : COL_TEXT, 1, 0);
 
 				// NEW means "a sweep saw this name appear", not "recently
@@ -7789,8 +7620,8 @@ void(vector screensize) screen_create =
 				// Measured off the FITTED name: against the full one it drew
 				// detached, past the end of a name that had been cut.
 				if (bufstr_get(ms_new, real) == "1")
-					sui_text([rp_x + nx + 4 + stringwidth(mnmf, TRUE, SZ_ROW),
-					          rp_y + 4], SZ_ROW, strcat(SUI_ESC_GOOD, "NEW"), COL_TEXT, 1, 0);
+					sui_text([rp_x + nx + 4 + stringwidth(mnmf, TRUE, namesize),
+					          rp_y + 2], namesize, strcat(SUI_ESC_GOOD, "NEW"), COL_TEXT, 1, 0);
 
 				// Second line: where it came from, what it is, then how it is
 				// laid out.  The gamemode is here rather than in a column of its
@@ -7888,7 +7719,7 @@ void(vector screensize) screen_create =
 					                mpop, SUI_ESC_MUTED);
 					mpopw = stringwidth(mpopt, TRUE, SZ_ROW) + 16;
 					sui_text([rp_x + rs_x - ROW_RPAD - dlg - mtw - mpopw,
-					          rp_y + 26], SZ_ROW, mpopt, COL_DIM, 1, 0);
+					          rp_y + (compact ? 88 : 26)], SZ_ROW, mpopt, COL_DIM, 1, 0);
 				}
 
 				/*
@@ -7904,7 +7735,7 @@ void(vector screensize) screen_create =
 				if (bufstr_get(ms_var, real) != "")
 					bsw = ui_build_switch([rp_x + nx, rp_y + 25], real, idx);
 				sui_text([rp_x + nx + bsw, rp_y + 26], SZ_ROW,
-				         ui_fit_text(sub, rs_x - nx - 8 - ROW_RPAD - dlg - mtw - mpopw - bsw,
+				         ui_fit_text(sub, rs_x - nx - 8 - ROW_RPAD - dlg - (compact ? 0 : mtw + mpopw) - bsw,
 				                     SZ_ROW),
 				         COL_DIM, 1, 0);
 
@@ -7920,14 +7751,14 @@ void(vector screensize) screen_create =
 				  and merely conservative.
 				*/
 				if (mwr != "")
-					sui_text([rp_x + rs_x - ROW_RPAD - dlg - wrw + 16, rp_y + 4],
+					sui_text([rp_x + rs_x - ROW_RPAD - dlg - wrw + 16, rp_y + (compact ? 68 : 4)],
 					         SZ_ROW, mwr, COL_DIM, 1, 0);
 
 				if (mpb != "")
-					sui_text([rp_x + rs_x - ROW_RPAD - dlg - mtw, rp_y + 26], SZ_ROW,
+					sui_text([rp_x + rs_x - ROW_RPAD - dlg - mtw, rp_y + (compact ? 88 : 26)], SZ_ROW,
 					         mtime, COL_TEXT, 1, 0);
 				else
-					sui_text([rp_x + rs_x - ROW_RPAD - dlg - mtw, rp_y + 26], SZ_ROW,
+					sui_text([rp_x + rs_x - ROW_RPAD - dlg - mtw, rp_y + (compact ? 88 : 26)], SZ_ROW,
 					         mtime, COL_DIM, 0.5, 0);
 
 				/*
@@ -7960,7 +7791,7 @@ void(vector screensize) screen_create =
 				*/
 				if (dlg > 0 && bufstr_get(ms_have, er) == "1")
 				{
-					vector pp = [rp_x + rs_x - 4 - dlg, rp_y + 8];
+					vector pp = [rp_x + rs_x - 4 - dlg, rp_y + actiony];
 					vector ps = [dlg - 4, ROW_H - 16];
 					string pid = strcat("cs_play", ftos(idx));
 					float  ph, pb;
@@ -7994,7 +7825,7 @@ void(vector screensize) screen_create =
 				}
 				else if (dlg > 0 && bufstr_get(ms_have, er) != "1")
 				{
-					vector gp = [rp_x + rs_x - 4 - dlg, rp_y + 8];
+					vector gp = [rp_x + rs_x - 4 - dlg, rp_y + actiony];
 					vector gs = [dlg - 4, ROW_H - 16];
 					string gid = strcat("cs_dl", ftos(idx));
 					string mnm = bufstr_get(ms_name, er);
@@ -8070,17 +7901,6 @@ void(vector screensize) screen_create =
 	}
 
 	sui_pop_frame();
-	if (friends)
-	{
-		if (side)
-			MF_Draw([pos_x + size_x + 12, pos_y], [292, size_y]);
-		else
-		{
-			// Narrow windows use a modal drawer, never overlapping live map targets.
-			_action_elements_index = 0;
-			MF_Draw([pos_x + size_x - min(360, size_x), pos_y], [min(360, size_x), size_y]);
-		}
-	}
 };
 
 // ---------------------------------------------------------------------------
@@ -8319,8 +8139,8 @@ void() ui_boot_preload =
 // over physical pixel sizes instead (pr_menu.c:3391-3395).
 void(vector screensize) m_draw =
 {
-	local float shell, bootstart;
-	local vector fullsize, shellsize, shellpos;
+	local float shell, shellhead, bootstart;
+	local vector fullsize, shellsize, shellpos, content;
 	fullsize = screensize;
 	bootstart = 0;
 	if (!ui_boot_measured) bootstart = gettime(1);
@@ -8345,8 +8165,8 @@ void(vector screensize) m_draw =
 	Dl_Tick();
 	ui_prejoin_tick();
 
-	MF_Poll(menu_active && (menu_screen == SCREEN_MAIN || (menu_screen == SCREEN_CREATE && cvar("ui_maps_friends"))));
-	MC_Poll(menu_active && (menu_screen == SCREEN_CHAT || menu_screen == SCREEN_MAIN));
+	MF_Poll(menu_active && ui_browser_screen());
+	MC_Poll(menu_active && (menu_screen == SCREEN_CHAT || ui_browser_screen()));
 	MH_Poll();
 	MP_Frame();                     // Patch 789: the menu's pictures
 	Mlb_Poll();
@@ -8418,8 +8238,9 @@ void(vector screensize) m_draw =
 	{
 		shellsize = MH_ShellSize(screensize);
 		shellpos = MH_ShellOrigin(screensize);
-		sui_push_frame(shellpos + '0 68 0', [shellsize_x, shellsize_y - 68]);
-		screensize = [shellsize_x, shellsize_y - 68];
+		shellhead = shellsize_x < 900 ? 32 : 40;
+		sui_push_frame(shellpos + [0, shellhead + 12], [shellsize_x, shellsize_y - shellhead - 12]);
+		screensize = [shellsize_x, shellsize_y - shellhead - 12];
 	}
 	if (menu_screen == SCREEN_TERMS)
 		screen_terms(screensize);
@@ -8443,7 +8264,8 @@ void(vector screensize) m_draw =
 		*/
 		Lob_Poll();
 		float acts = _action_elements_index;
-		screen_create(screensize);
+		content = MH_ContentSize(screensize);
+		screen_create(content);
 
 		// ROADMAP 9: under the panel the screen is drawn but struck from sui's
 		// hit list, or its rows would take hovers, clicks and the wheel (a
@@ -8451,7 +8273,7 @@ void(vector screensize) m_draw =
 		if (Mlb_IsOpen())
 		{
 			_action_elements_index = acts;
-			Mlb_Draw(screensize);
+			Mlb_Draw(content);
 		}
 	}
 	else if (menu_screen == SCREEN_CHAT)
@@ -8461,7 +8283,7 @@ void(vector screensize) m_draw =
 	else if (menu_screen == SCREEN_STORY)
 	{
 		ui_backdrop(screensize);
-		screen_story(screensize);
+		screen_story(MH_ContentSize(screensize));
 	}
 	else if (menu_screen == SCREEN_VISUALS)
 	{
@@ -8470,23 +8292,24 @@ void(vector screensize) m_draw =
 	}
 	else if (menu_screen == SCREEN_MUSIC)
 	{
-		ui_backdrop(screensize);
-		MM_ScreenMusic(screensize);
+		menu_screen = SCREEN_VISUALS;
+		MM_ScreenVisuals(screensize);
 	}
 	else
 	{
 		screen_main(screensize);
-		MU_Hint(screensize);
 		Sty_Prefetch();             // P905: the ladder before the first STORY click
 		ui_status_toast(screensize);
 	}
 
+	if (ui_browser_screen()) MH_Sidebar(screensize);
 	if (shell)
 	{
 		sui_pop_frame();
 		screensize = fullsize;
 		MH_Tabs(screensize);
 	}
+	MU_Hint(screensize);
 	MM_DrawFps(screensize);
 	sui_menu_nav();
 	Font_Reset();
@@ -8809,6 +8632,8 @@ float(string cmd) m_consolecommand =
 			              ms_query_stale));
 			return TRUE;
 		}
+		MC_Probe();
+		print(sprintf("browser_maps: selected %g frame %gx%g row %g list %g..%g name20 thumb128x72\n", ms_selected, ui_cs_size_x, ui_cs_size_y, ui_cs_rowheight, ui_cs_list_top, ui_cs_list_bottom));
 		print(sprintf("ui_menu_probe: filters=%g large=%g friends=%g rows=%g maps=%g tier=%g scroll=%.1f\n",
 			cvar("ui_maps_filters"), cvar("ui_maps_large"), cvar("ui_maps_friends"), ui_cs_rows,
 			ms_viewcount, ms_tier, ms_scroll_y));

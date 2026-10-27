@@ -1,4 +1,4 @@
-// Home owns the lobby overview; other tabs keep their whole content area.
+// Home and the browsers share one persistent Friends/chat column.
 float mh_req, mh_sent, mh_next, mh_state, mh_source, mh_stale;
 float mh_times, mh_wr, mh_wrc, mh_maps, mh_native;
 float mh_wos_done, mh_all_done, mh_total, mh_tiers_wos, mh_tiers_all, mh_buffers_ready;
@@ -8,6 +8,7 @@ float mh_thumb_width, mh_thumb_height, mh_friends_height, mh_chat_height;
 float mh_spdone, mh_sptotal, mh_spknown, mh_epdone, mh_eptotal, mh_epknown;
 vector mh_canvas, mh_lsize, mh_ssize;
 vector mh_header_pos, mh_header_size;
+vector mh_content_size, mh_sidebar_pos, mh_sidebar_size;
 string mh_who;
 
 string() MH_Me =
@@ -114,50 +115,57 @@ void() MH_Poll =
 
 vector(vector screensize) MH_ShellSize =
 {
-	return [min(1660, screensize_x - 24), min(988, screensize_y - 24)];
+	return [min(1660, screensize_x - 24), min(972, screensize_y - 56)];
 };
 
 vector(vector screensize) MH_ShellOrigin =
 {
 	local vector size;
 	size = MH_ShellSize(screensize);
-	return [floor((screensize_x - size_x) * 0.5), floor((screensize_y - size_y) * 0.5)];
+	return [floor((screensize_x - size_x) * 0.5), 44 + floor((screensize_y - 56 - size_y) * 0.5)];
 };
 
 void(vector screensize) MH_Tabs =
 {
-	local float x, i, target, on;
+	local float x, w, total, i, target, on;
 	local string id, label;
-	local vector pos;
+	local vector pos, textsize;
 	pos = MH_ShellOrigin(screensize);
 	screensize = MH_ShellSize(screensize);
-	mh_header_pos = pos; mh_header_size = [screensize_x, 56];
-	sui_style_panel(pos, [screensize_x, 56], 12, 1);
-	sui_push_frame(pos, [screensize_x, 56]);
-	sui_text('16 16 0', SZ_HEAD, screensize_x >= 1040 ? "WORLD OF SURF" : "WOS", COL_ACCENT, 1, 0);
-	x = screensize_x >= 1040 ? 208 : 80;
+	mh_header_pos = pos; mh_header_size = [screensize_x, screensize_x < 900 ? 32 : 40];
+	textsize = screensize_x < 900 ? '24 24 0' : '32 32 0';
+	Font_Set(ui_font_display);
+	total = -28;
 	for (i = 0; i < 6; i = i + 1)
 	{
-		label = i == 0 ? "Lobbies" : (i == 1 ? "Maps" : (i == 2 ? "Story Mode" : (i == 3 ? "Event Mode" : (i == 4 ? "Settings" : "Music"))));
-		target = i == 0 ? SCREEN_MAIN : (i == 1 ? SCREEN_CREATE : (i <= 3 ? SCREEN_STORY : (i == 4 ? SCREEN_SETTINGS : SCREEN_MUSIC)));
+		label = i == 0 ? "LOBBIES" : (i == 1 ? "MAPS" : (i == 2 ? "STORY" : (i == 3 ? "EVENT" : (i == 4 ? "SETTINGS" : "QUIT"))));
+		total = total + stringwidth(label, TRUE, textsize) + 28;
+	}
+	x = max(4, floor((screensize_x - total) * 0.5));
+	sui_push_frame(pos, mh_header_size);
+	for (i = 0; i < 6; i = i + 1)
+	{
+		label = i == 0 ? "LOBBIES" : (i == 1 ? "MAPS" : (i == 2 ? "STORY" : (i == 3 ? "EVENT" : (i == 4 ? "SETTINGS" : "QUIT"))));
+		target = i == 0 ? SCREEN_MAIN : (i == 1 ? SCREEN_CREATE : (i <= 3 ? SCREEN_STORY : SCREEN_SETTINGS));
 		on = (menu_screen == target);
 		if (i == 4 && menu_screen == SCREEN_VISUALS) on = TRUE;
 		if (i == 2 || i == 3) on = (menu_screen == SCREEN_STORY && sty_tab == i - 2);
-		id = i == 0 ? "home_tab0" : (i == 1 ? "home_tab1" : (i == 2 ? "home_tab2" : (i == 3 ? "home_tab3" : (i == 4 ? "home_tab4" : "home_tab5"))));
-		x = x + ui_chip([x, 12], id, label, on) + CHIP_GAP;
-		if (sui_is_released(id))
-		{
-			sui_text_unfocus();
-			if (i == 1) { menu_screen = target; ui_create_open(); cvar_set("ui_maps_friends", "0"); }
-			else if (i == 2 || i == 3) { Sty_Open(); sty_tab = i - 2; }
-			else if (i == 5) { menu_screen = target; MM_MusicScan(); }
-			else menu_screen = target;
-		}
+		if (i == 5) on = FALSE;
+		id = i == 5 ? "home_quit" : strcat("home_tab", ftos(i));
+		w = stringwidth(label, TRUE, textsize);
+		sui_action_element([x - 6, 0], [w + 12, mh_header_size_y], id, sui_noop);
+		sui_text([x, floor((mh_header_size_y - textsize_y) * 0.5)], textsize, label, '1 1 1', 1, 0);
+		if (on || sui_is_hovered(id)) sui_fill([x, mh_header_size_y - 2], [w, 2], '1 1 1', 1, 0);
+		x = x + w + 28;
+		if (!sui_is_released(id)) continue;
+		sui_text_unfocus();
+		if (i == 1) { menu_screen = target; ui_create_open(); }
+		else if (i == 2 || i == 3) { Sty_Open(); sty_tab = i - 2; }
+		else if (i == 5) { if (!ui_synth) localcmd("quit\n"); }
+		else menu_screen = target;
 	}
-	if (menu_screen == SCREEN_MAIN) MU_HomeHint([x + 8, 10], screensize_x - x - 100);
-	if (x + 66 < screensize_x)
-	if (ui_button("home_quit", [screensize_x - 74, 12], '58 30 0', "quit")) localcmd("quit\n");
 	sui_pop_frame();
+	Font_Set(ui_font_ui);
 };
 
 // Fit the complete directory, never a virtualized window into it.
@@ -395,23 +403,38 @@ void(vector screensize) MH_Settings =
 	sui_pop_frame();
 };
 
+vector(vector size) MH_ContentSize =
+{
+	return [size_x - min(400, max(260, floor(size_x * 0.28))) - 12, size_y];
+};
+
 void(vector screensize) screen_home =
 {
-	local vector size, p, grid;
-	local float right, left, lh, fh, sh, count;
+	local vector size, p, grid, content;
+	local float left, lh, sh, count;
 	size = screensize;
 	p = '0 0 0';
 	mh_canvas = size;
-	right = min(400, max(260, floor(size_x * 0.28))); left = size_x - right - 12;
+	content = MH_ContentSize(size); left = content_x;
 	count = Lob_Count(); if (count < 1) count = 12;
 	sh = min(252, max(210, floor(size_y * 0.27)));
 	lh = size_y - sh - 12;
 	grid = MH_LobbyGrid(left, lh, count);
 	mh_lcols = grid_x; mh_lrows = grid_y; mh_lheight = grid_z;
-	fh = floor((size_y - 12) * 0.58);
-	mh_friends_height = fh; mh_chat_height = size_y - fh - 12;
 	MH_Lobbies(p, [left, lh]);
 	MH_Stats(p + [0, lh + 12], [left, size_y - lh - 12]);
+};
+
+void(vector size) MH_Sidebar =
+{
+	local vector p, content;
+	local float left, right, fh;
+	p = '0 0 0'; content = MH_ContentSize(size);
+	left = content_x; right = size_x - left - 12;
+	fh = floor((size_y - 12) * 0.58);
+	mh_canvas = size; mh_content_size = content;
+	mh_sidebar_pos = [left + 12, 0]; mh_sidebar_size = [right, size_y];
+	mh_friends_height = fh; mh_chat_height = size_y - fh - 12;
 	if (mf_linkstate < 0)
 	{
 		sui_style_panel(p + [left + 12, 0], [right, fh], 12, 1);
@@ -438,7 +461,8 @@ void() MH_Probe =
 		if (bufstr_get(mh_tiers_all, i) != "") all = all + 1;
 	}
 	print(sprintf("home: tierdata wos %g all %g\n", wos, all));
-	print(sprintf("home: header %g,%g %gx%g body-top %g\n", mh_header_pos_x, mh_header_pos_y, mh_header_size_x, mh_header_size_y, mh_header_pos_y + 68));
+	print(sprintf("browser: screen %g content %gx%g side %g,%g %gx%g\n", menu_screen, mh_content_size_x, mh_content_size_y, mh_sidebar_pos_x, mh_sidebar_pos_y, mh_sidebar_size_x, mh_sidebar_size_y));
+	print(sprintf("home: header %g,%g %gx%g body-top %g\n", mh_header_pos_x, mh_header_pos_y, mh_header_size_x, mh_header_size_y, mh_header_pos_y + mh_header_size_y + 12));
 	print(sprintf("home: progress story %g/%g known %g event %g/%g known %g\n", mh_spdone, mh_sptotal, mh_spknown, mh_epdone, mh_eptotal, mh_epknown));
 	print(sprintf("home: canvas %gx%g lobby %g/%g cols %g rows %g cell %g\n", mh_canvas_x, mh_canvas_y, mh_lshown, Lob_Count(), mh_lcols, mh_lrows, mh_lheight));
 	print(sprintf("home: lobby bottom %g <= %g tiers %g cols %g rows %g bottom %g <= progress %g\n", mh_lbottom, mh_lsize_y, mh_tshown, mh_tcols, mh_trows, mh_tbottom, mh_progress_top));

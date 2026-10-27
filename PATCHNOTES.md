@@ -21,6 +21,12 @@
 
 ## next
 
+### P1059 Shared browser panels and simple navigation
+- Friends and lobby chat stay in place while Lobbies, Maps, Story and Event swap the main panel. Switching pages keeps your unsent chat text.
+- Navigation returns to bold white text without a backdrop. The compact update note stays at the screen's top-left.
+- Maps fills the remaining panel, with large thumbnails and larger native-size names. The old filter, thumbnail-size and Friends switches are removed.
+- The Music menu and automatic menu-track playback are removed; Windows-output visualization and its existing local source preference remain.
+
 ### P1058 Crisp Home text and a floating header
 - Home text uses the font's native baked sizes, with separated stat-card label/value rows.
 - The rounded navigation bar floats above the main panels with a clear gap and matching width.

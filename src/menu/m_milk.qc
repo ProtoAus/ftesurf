@@ -586,11 +586,6 @@ void() MM_WorldSwap =
 	mm_pw[mm_pslot] = mm_world;
 	mm_pon[mm_pslot] = 0;
 	mm_pdir[mm_pslot] = 1;
-	if (cvar_string("milk_menumusic") == "auto")
-	{
-		mm_autoplayed = FALSE;
-		MM_MusicAuto();
-	}
 };
 
 void(float now) MM_WorldCheck =
@@ -1156,8 +1151,7 @@ void(vector screensize) MM_Frame =
 	if (!MM_Active())
 		return;
 
-	if (clientstate() != 2)
-		MM_MusicAuto();
+	// Desktop output is the owner's music; do not auto-start a menu track.
 
 	now = gettime(0);
 	if (now > mm_last && now - mm_last < 0.5)
@@ -1401,12 +1395,7 @@ void(float x, float y, float pitch) MM_MainItems =
 		Sty_Open();
 	if (MM_Item(2, "mm_vis", [x, y + pitch * 2], "VISUALS", 0, 6))
 		menu_screen = SCREEN_VISUALS;
-	if (MM_Item(3, "mm_music", [x, y + pitch * 3], "MUSIC", -16, 0))
-	{
-		menu_screen = SCREEN_MUSIC;
-		MM_MusicScan();
-	}
-	if (MM_Item(4, "mm_quit", [x, y + pitch * 4], "QUIT", 0, -4))
+	if (MM_Item(4, "mm_quit", [x, y + pitch * 3], "QUIT", 0, -4))
 		localcmd("quit\n");
 	// P796: journal uploads moved to the first boot's terms box and the F2 panel.
 };

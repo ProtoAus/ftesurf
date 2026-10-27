@@ -119,8 +119,7 @@ string() MF_ProbeNote = { return sprintf("req=%g wire=%g note=%S", mf_req, mf_wi
 float() MF_Active =
 {
 	if (!menu_active) return FALSE;
-	if (menu_screen != SCREEN_MAIN)
-	if (menu_screen != SCREEN_CREATE || !cvar("ui_maps_friends")) return FALSE;
+	if (!ui_browser_screen()) return FALSE;
 	if (!MF_Online()) return FALSE;
 	return MF_Direct();
 };
@@ -417,8 +416,7 @@ void(float visible) MF_Poll =
 // Each map-browser opening reveals Friends and requests new presence.
 void() MF_Open =
 {
-	MFP_Close();
-	cvar_set("ui_maps_friends", "1");
+	// Page changes keep the shared profile/chat selection; refresh presence only.
 	mf_next = 0;
 	if (MF_Online())
 	if (!MF_Direct())
@@ -611,12 +609,6 @@ void(vector pos, vector size) MF_Draw =
 	sui_style_panel(pos, size, 12, 1);
 	sui_push_frame(pos, size);
 	sui_text('16 12 0', SZ_HEAD, "friends", COL_ACCENT, 1, 0);
-	if (menu_screen != SCREEN_MAIN)
-	if (ui_button("mf_close", [size_x - 76, 12], [60, 28], "Hide"))
-	{
-		cvar_set("ui_maps_friends", "0");
-		MF_Cancel();
-	}
 	fresh = MF_Fresh();
 	ago = (mf_seen > 0) ? MF_Ago(time - mf_seen) : "";
 	if (!MF_Online())
@@ -670,7 +662,7 @@ void(vector pos, vector size) MF_Draw =
 			sui_text(rp + '64 12 0', SZ_ROW, ui_fit_text(nm, room, SZ_ROW), COL_TEXT, alpha, 0);
 			if (sui_is_released(id) && MF_WhoSafe(who))
 			{
-				if (menu_screen == SCREEN_MAIN && rel == 3) MC_Select(who, nm);
+				if (ui_browser_screen() && rel == 3) MC_Select(who, nm);
 				else MFP_Open(who, nm);
 			}
 			status = fresh ? "Offline" : "Checking...";

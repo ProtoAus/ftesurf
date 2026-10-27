@@ -539,34 +539,8 @@ void(vector pos, float width) MU_HomeHint =
 
 void(vector screensize) MU_Hint =
 {
-	local string st, msg, current, latest;
-	local float w, cur;
-	if (menu_screen == SCREEN_MAIN) return; // Home keeps this in the tab strip.
-	if (ms_consent < FS_TERMS_VERSION)
-		return;
-	w = min(440, screensize_x - 32);
-	current = cvar_string("ui_release_version");
-	cur = MU_VerNum(current);
-	if (current == "") current = strcat(UI_MENU_VERSION, " (dev)");
-	latest = (cvar("update_consent") == 1) ? cvar_string("update_version") : "";  // never cleared by the engine
 	Font_Set(ui_font_ui);
-	MU_StatusLine(screensize_x - 16, 16, w, '12 12 0', strcat("Your version: ", current), COL_TEXT);
-	MU_StatusLine(screensize_x - 16, 34, w, '12 12 0', strcat("Latest: ", (latest == "") ? "unknown" : latest),
-	              (cur > 0 && MU_VerNum(latest) > cur) ? COL_ACCENT : COL_DIM);
-	MU_StatusLine(screensize_x - 16, 56, w, '12 12 0', "F2   patch notes, updates, input journal, terms", COL_DIM);
-	st = cvar_string("update_state");
-	msg = "";
-	if (cvar("update_consent") == 1)
-	{
-		if (!strcmp(st, "restart"))
-			msg = "Update ready -- restart the game (F2)";
-		else if (!strcmp(st, "launcher"))
-			msg = "Update ready -- restart through the launcher (F2)";
-		else if (!strcmp(st, "downloading") || !strcmp(st, "applying"))
-			msg = "Downloading an update";
-	}
-	if (msg != "")
-		MU_StatusLine(screensize_x - 16, 76, w, SZ_LABEL, msg, COL_ACCENT);
+	MU_HomeHint('12 12 0', min(320, screensize_x - 24));
 };
 
 // ui_notes status|open|close|scroll <px>|select <version>: F2's notes controls.

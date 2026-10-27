@@ -1,5 +1,35 @@
 # AGENT_NOTES.md
 
+## Shared browser / real desktop input interference (P1059,27Oct2026)
+
+Lobbies/Maps/Story/Event now share ONE persistent Friends/chat sidebar; both
+visibility predicates and polling scope must follow ui_browser_screen, not Home
+alone. Keep MFP/DM/draft state across page changes. Maps/Story receive only the
+remaining left canvas and must not subtract a second screen margin/sidebar.
+The global compact update note is outside translated frames at12,12; native24/32
+display-face white navigation has NO panel/chip backdrop. Reserve note space
+without shrinking compact Home into thumbnail-less4-column cells:32px nav at
+narrow widths,40 otherwise,12px gap; Body remains bounded and centered.
+
+Saved ui_maps_filters1 exposed the old strip even after removing its button.
+Retire the strip too, not owner config bytes. Large128x72 map images and20px
+names need separate compact metadata/time lines (112px row), otherwise wide80px.
+Search still finds entries without metadata; do not advertise a removed ShowAll
+button. Music menu/autoplay removal does not remove Windows-output capture.
+
+Real desktop motion can displace split ui_hover/down/up: final1920 return moved
+732,105 to439,1093 then431,1127; both button events took0. Retain this failed
+input arm, not product blame or a silent pass. Reuse the14 valid populated cases;
+only missed callback recovered with ATOMIC numeric ui_click x y from hover's
+reported coordinates. ui_click @id is NOT valid. Do not replay a passed campaign
+or disable real-input/consent guards. Owner snd_vis_status source/support/active/
+available1, packets27416,RMS0 proves active capture/analyser silence, not cause;
+actual audible music/default endpoint plus known-audio control still required.
+API maintenance admission remains CLOSED under its separate owner;12 native
+processes and public UDP27510 answer, but8084 absent/health502. Handoff requested,
+no gate/data/service mutation or all-gameplay claim. Raw fixture/session output
+stays local; Python Git text reads need encoding='utf-8', not Windows cp1252.
+
 ## Development MENU persistence and native-size Home (P1058, 27 Oct 2026)
 
 The reboot overwrite was the updater, not an established peer build: primary's

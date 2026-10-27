@@ -32,7 +32,7 @@ void() MC_Open =
 // give it to whichever server that is (review: a server can fake the relay's cvar).
 float() MC_Active =
 {
-	return (menu_active && (menu_screen == SCREEN_CHAT || menu_screen == SCREEN_MAIN) && clientstate() >= 1 && MF_Online());
+	return (menu_active && (menu_screen == SCREEN_CHAT || ui_browser_screen()) && clientstate() >= 1 && MF_Online());
 };
 
 float() MC_Relayed = { return (clientstate() == 2 && serverkey("board") != "local"); };
@@ -295,6 +295,11 @@ float(float reqid, float code, string body) MC_Reply =
 	}
 	json_free(root);
 	return TRUE;
+};
+
+void() MC_Probe =
+{
+	print(sprintf("browser_chat: active %g visible %g draft %g public %g\n", MC_Active(), mc_visible, strlen(mc_draft), !strcmp(mc_peer, "-")));
 };
 
 void(vector pos, vector size, float embedded) MC_Panel =

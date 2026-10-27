@@ -1,5 +1,36 @@
 # BACKLOG.md
 
+## Windows-output visualization regression (owner report, 27 Oct2026)
+
+- Sites: engine/client/snd_vis.c:SNDVIS_Update/SNDVIS_Status_f and
+  engine/client/snd_vis_loopback.h:VISLB_Open/VISLB_Poll. Both installed clients
+  expose loopback/source/status controls; saved snd_vis_source1, milk_react1 and
+  milk_menu1, no production cfg override found. Source review is not proof of
+  working capture, a native bug or its actor. Music menu removal preserves that
+  opt-in and native capture; no native change is justified yet. Owner's actual
+  status source1/support1/active1/available1/packets27416/RMS0 proves active capture
+  and analyser silence, not its cause. Audible-music/default endpoint pending.
+- Falsifier: with actual desktop music on the Windows default render endpoint,
+  obtain snd_vis_status source/support/active/available/packet/RMS values and
+  confirm visual response. Distinguish runtime source override, endpoint/open
+  refusal, no samples/silence and drawing/reactivity before changing code. Recheck
+  the observed failure after a focused fix. Human result pending in lextest.md;
+  no microphone, raw audio recording or owner-config rewrite.
+
+## Backend serving outage / guarded owner recovery (27 Oct2026)
+
+- Sites: deployed surfd/run.sh guarded server route and /health,/lobbies.json.
+  API8084 is not listening/public health502; selected maintenance generation's
+  admission explicitly CLOSED. All12 ftesurf@N processes run; lobby1's public
+  UDP27510 answered a status query. Do not conflate unavailable directory/board
+  with proof that native processes are down, or a response with full gameplay.
+- Falsifier: cohort OWNER supplies recovery handoff or completes the supported
+  guarded serving start; verify health, fresh12-lobby JSON and one real board/
+  completion request. Never bypass the fence, use an unguarded worker, mutate
+  another task's state or weaken ownership/consent/provenance to get green.
+  Non-lock handoff request remains in canonical tools/menu-backend-recovery-request.md;
+  this menu change does not claim backend/site recovery or promotion.
+
 ## Windows SDL3 whole-client link: Alt-key helper
 
 - engine/client/keys.c:Key_Event references INS_AltHeld, supplied by the Win input
