@@ -10,6 +10,10 @@ of sound. Direct old/new production-header test kept its own silent render at
 volume0/mute1: old66packets/RMS0; fresh capture GUID67/.006300. Independent capture
 is nonzero in both arms. VISLB_Open now creates its own GUID, never raises/mutes
 rendering volume. Source0 close and source1 reopen passed in the native client.
+Dual native/plugin swap11:13:10Z, all10 destinations/.prev verified. Actual
+installed primary renderer stays volume0/mute1 while capture RMS.016101 and
+reopen.008843; secondary capture/reopen also pass. Progs/menu/config hashes stay
+unchanged. See tools/p1064-loopback-session.md and the owned artifact receipt.
 `tools/test_snd_vis_session.c` needs external default-output playback; exit77 is
 NOT MEASURED, not a pass. It changes only its own test process's render session,
 records no raw audio/endpoint identities, and never adjusts other applications.

@@ -1,14 +1,16 @@
 # lextest.md — things waiting on a human
 
-**P1064 -- Windows-output reactivity (pending human acceptance):** After the
-native update, restart the game normally, leave a video/music playing on the
+**P1064 -- Windows-output reactivity (BOTH Windows native installs updated
+2026-10-27T11:13:10Z; human acceptance pending):** Restart the game normally,
+leave a video/music playing on the
 Windows default output and open the main menu. Does the backdrop respond to its
 audio while the game's existing Windows mute remains unchanged? `snd_vis_status`
 should show source1/support1/active1 and nonzero RMS during audible sections.
 Do not unmute the game just to make this check pass. Direct production-header
 old/new tests prove muted rendering silenced old capture and independent capture
-fixes it; render remained volume0/mute1. Real native capture and source-off/on
-also acted. Those are numeric controls, not confirmation of visual feel. No
+fixes it; render remained volume0/mute1. Actual installed primary client now
+reports RMS.016101/reopen.008843 while its render stays muted; secondary also
+passes capture and source-off/on. These are numeric controls, not visual feel. No
 microphone, raw audio recording, owner config or other-app volume changes.
 
 **P1062 -- glass/scenes, large map cards and Quit (pending owner acceptance):**

@@ -61,9 +61,23 @@ reported as a pass. The test's process exits after its capture/render cleanup.
 
 ## Delivery / limits
 
-Native/plugin-only dual Windows delivery is recorded in the owned root's UTC
-artifact receipt after a clean-commit build and post-swap readback. Existing
-menu/gameplay progs, owner ftesurf.cfg/data/consent and qcbuild stay unchanged.
-No surfd, backend gate, NanoPi, release or other session's processes are touched.
-Numeric capture/source lifecycle is verified; the owner's actual backdrop feel
-and scene reactivity remain a small pending human check in lextest.md.
+Native/plugin-only dual Windows delivery completed2026-10-27T11:13:10Z using
+the exact inspected build.ps1 Deploy function, without its QC phase. All10
+native/plugin destination hashes match the clean d561b7408 build; prior hashes
+match retained .prev files. Both client binaries SHA256
+17f7ec606877e8c19bedd75546f16faa2f9652b5eb332cf45a137ccbc7aa9e01.
+
+Post-swap own-PID checks completed11:14:27Z. Primary game rendering remained
+volume0/mute1 while its independent capture session was volume1/mute0:
+active349packets/RMS.016101; source0 closes/RMS0; source1 reopens/RMS.008843.
+This is an actual installed native muted-render pass, not just the C helper.
+Secondary unmuted rendering:355/.013662, source0/RMS0, reopen/.017234. Only owned
+test processes were stopped; original rendering mute/volume stayed unchanged.
+Receipt: artifacts/p1064-native/install-receipt.json; numbers/read-only session
+probes: artifacts/audio-loopback-control/native-postswap-result.json.
+
+Existing menu/gameplay progs, owner ftesurf.cfg/addon mounts and qcbuild stay
+unchanged (hash readback). No surfd, backend gate, NanoPi, release or other
+session's processes are touched. Numeric capture/source lifecycle is verified;
+the owner's actual backdrop feel and scene reactivity remain a small pending
+human check in lextest.md.
