@@ -75,11 +75,25 @@ published source for this contract, not that stale sibling branch.
 
 ## Delivery / retention
 
-The menu-only dual Windows swap is recorded separately after inspected clean
-source, hash-bound build/runtime and both destination checks. Live update consent,
-state/installed manifests, installed.lst, saved configs, player data and the
-approved CS:GO setting are preserved. No owner/peer process is terminated. Keep
-unique adjacent rollback copies and actual UTC receipts; source/staging and
-needed runtime evidence remain under the owned root, generated output directories
-and owned links/processes are retired only after verification. Owner font/header
-feel and a normal-launch confirmation are pending in lextest.md.
+INSTALLED BOTH Windows menus at2026-10-27T06:01:02.142067Z. Source feature4ae67a48,
+inspected clean published integrations7fef551c87157f12b9497a976d216e88be10fb27;
+engine-doceba5802aa. Final clean integrated build is BYTE-IDENTICAL to the tested
+UI/native-development candidate. SHA256:
+`6d52df34c02a9ec205ce8c294d318a374fc8e8a4b00af61003d8f511afde53f9`
+(582498 bytes), verified at BOTH destinations and in immutable staging.
+
+`artifacts/deploy-p1058-home-crisp.json` binds actual UTC, source, previous/new
+hashes and adjacent menu.dat.p1058-20261027T060102Z.prev rollbacks. All36 captured
+present/absent protected entries stayed unchanged: CURRENT native binaries,
+plugins, gameplay progs, updater consent/state/installed/cache/journal,
+installed.lst, saved configs and the approved CS:GO setting. Native changes that
+arrived separately during the wider session were preserved, not reverted.
+
+The first pre-swap guard rejected a mis-transcribed secondary hash before ANY
+write; expected values now come directly from immutable prior receipts. A foreign
+process gate then correctly blocked; those PIDs exited naturally before the
+fresh successful boundary. No process stopped and own short claim released in
+finally. No new API/site/server/native deployment is implied. Source/staging and
+needed evidence are retained under the owned root; verified disposable generated
+outputs/links and the clean engine-doc worktree are retired separately. Owner
+font/header feel and normal-launch confirmation remain pending in lextest.md.
