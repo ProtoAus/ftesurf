@@ -69,6 +69,26 @@ Commitments held outside the dispatch chain—including persistent map/button/
 timer/pad/body/carrier state—and a native same-command completion fence remain
 open. This patch must not be described as a complete bank or anti-cheat system.
 
-Final source-bound artifact and server-only deployment provenance will be
-recorded separately after publication. No menu/client/native/backend/config,
-owner/player data, Build or release payload is to be overwritten by this task.
+Source `fae8bd6dad65281acc4ab49d50e8db932bd5bd46` and engine ledger
+`04c4ebabc1eb4cb97866ac6908e1ead6c07c689a` were inspected and pushed exactly.
+The clean owned tree's final stock3VM0warnings output retains the same reviewed
+source and native-probe compiler. Initial binding wrapper wrongly expected only
+six files; NoDeploy intentionally copies three SRC manifests too. The guard was
+corrected against the SAME already-passed output, without rebuilding or replacing
+any evidence. Production QW contains no fixture functions/markers.
+
+At2026-10-27T20:04:05Z server-only delivery was verified: both real Windows
+installs have the qualified QW DAT/LNO with prior copies preserved. Windows
+owner processes were not controlled; they load it at their normal next VM load.
+Pi QW SHA256 is `f0943780b849aa942765b803af51e523228a0dab7cdb74fb47099d1a900fcd33`,
+previous QW `1fa6df95` retained. Stock -Pi would ship CS too, so the bounded
+ordinary QW-only hash/.prev/atomic-swap and literal bare-unit restart primitives
+were used, preserving installed CS `a043b93b` and peer UI. At the actual short
+shared-sweep-lock boundary the directory showed12 fresh zero-player lobbies;
+no busy-server force was used. All12 restarted once, each new PID/native-image
+identity and NEW application-log spawn positive passed with no selected QC
+errors. Every local heartbeat's lower-bound time is after the LAST restart;
+local/public health200 and directory12 pass, maximum local age3s. Lock released,
+stage consumed. No backend, native, menu/client, config, owner/player data, Build
+or release payload was changed. Normal real-client clean-run human acceptance
+remains pending in lextest.md, separate from native synthetic qualification.

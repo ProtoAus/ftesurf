@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+**P1072 -- normal clean admission (owner check pending):** On a fresh lobby
+join, outside replay/TAS/save holds, try normal `!r`, walk off the start and
+complete a clean run without practice tools. Does it stay clean rather than
+unexpectedly become practice? Native25-case synthetic control/subject, reader
+and source-bound server-only installation pass; a genuine client/run/rank pass
+is NOT inferred. Both Windows server DAT/LNO installed and all12 Pi lobbies
+restarted/healthy at2026-10-27T20:04:05Z; no owner client was stopped. The owner
+selected practice/unranked rather than cancellation for received old queued
+player effects; full persistent map-state/native-fence Rule-8 coverage remains
+open, not part of this normal-use human check.
+
 **P1070 -- lobby-card readability/photos (owner acceptance pending):** After
 `menu_restart` or relaunch, does Home show sharper photos without first visiting
 Maps, and are lobby title/map/player counts comfortably grouped and readable?
