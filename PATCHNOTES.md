@@ -21,6 +21,7 @@
 
 ## next
 
+- Loading a save with malformed recording confirmation now stops safely instead of treating it as an old save. Valid older saves and matching in-memory rewinds keep working.
 - TAS replay and tick rewind preserve camera pitch; replay also follows the mover's view through rotated portals.
 - TAS refuses unsupported REC14 streamed edits and tick rewind without cancelling or cutting the active recording.
 ### P1065 Edit TAS tick inputs and recalculate the affected line

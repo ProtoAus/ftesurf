@@ -7294,13 +7294,16 @@ void() SV_RecKeysReset =
 // One state.txt line, already tokenized; TRUE if it was ours.
 float(string k, float n) SV_RecKeyRead =
 {
-	if (!strcmp(k, "recprefixok") && n == 2)
+	if (!strcmp(k, "recprefixok"))
 	{
 		rs_prefix_state = 2;
+		if (n == 2)
 		if (!strcmp(argv(1), "1"))
 			rs_prefix_state = 1;
 		return TRUE;
 	}
+	if (n < 2)
+		return FALSE;
 	if (!strcmp(k, "recparks")) { rs_parks = stof(argv(1)); return TRUE; }
 	if (!strcmp(k, "recviews")) { rs_views = stof(argv(1)); return TRUE; }
 	if (!strcmp(k, "recmc") && n == 5)

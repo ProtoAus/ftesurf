@@ -1888,6 +1888,9 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 			}
 			continue;
 		}
+		// A present malformed confirmation key is not missing legacy metadata.
+		if (SV_RecKeyRead(k, n))
+			continue;
 		if (n < 2)
 			continue;
 
@@ -1960,7 +1963,6 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (k == "recpad")     { padn    = stof(argv(1)); continue; }
 		if (k == "reccp")      { cps     = stof(argv(1)); continue; }
 		if (k == "recserial")  { serial  = stof(argv(1)); continue; }
-		if (SV_RecKeyRead(k, n))  continue;   // Patch 375
 
 		if (k == "runsplit")
 		{
