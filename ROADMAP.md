@@ -9,6 +9,12 @@ adds exact retained-tick rewind and a tick-based paused cursor, with native carr
 movement state restored. These controls are verified and installed in both Windows
 installs; public guarded-lobby promotion and owner rewind feel are separate pending
 items. See [P1061 scope/delivery](tools/p1061-tas-rewind.md).
+REC14 historical stream rewind/edit support remains unbuilt: the warm snapshot
+writer must capture the historical mover-command state needed by stream restore,
+and preflight must prove that complete state before any transaction mutation.
+P1066 safely refuses streamed TAS editing/replay and tick-back; buffered warm
+history is supported. Do not substitute current-head metadata for a past tick.
+
 P1065 implements the bounded console input core: list captured ticks, edit a
 movement/aim/jump/duck/walk slice and recalculate the affected exact warm tail.
 It is not the whole project/timeline stage: persistent/branching TAS projects,

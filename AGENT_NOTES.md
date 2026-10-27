@@ -1,5 +1,38 @@
 # AGENT_NOTES.md
 
+## TAS camera and streamed warm-state pitfalls (P1066)
+
+P1065's final independent source reviews ran AFTER first Windows delivery and
+found real camera and recorder-preflight failures. The old executable controls
+reproduced them. An entity yaw/position-only check was insufficient: fixangle
+makes sv_send read model .angles, and also suppresses sv_user's mover-produced
+v_angle publication. Nonzero pitch and an ACTUAL rotated portal counter crossing
+are separate controls; merely appending a portal entity is not a crossing.
+
+Native rewind APPLY restores historical model angles, so even emitting the
+prefix fixangle later at tape ARM still sends model pitch. Own the notification
+at APPLY: clear only that restore's flag and use the ordinary reliable sender's
+full v_angle path; keep model angles intact. Overlay never invents early
+fixangle. Send replay view AFTER ordinary mover/portal publication, unless a
+genuine QC fixangle owns the correction. Do not erase guessed flags at admission.
+
+REC14 stream warm snapshots omit historical recmc/recmcv; current-format stream
+restore requires both. A byte/lineage-ready prefix alone is NOT replay-ready.
+P1066 refuses TAS stream edit/replay/back before request/pin/placement/cut;
+ordinary stream rewind remains a tracked gap. Do not use live-head MC values to
+make an older snapshot appear complete.
+
+Headless is an adequate real-socket simulation/client-view check, not rendered
+acceptance. Existing weapon_info's input-angles is VF_CL_VIEWANGLES. The native
+headless backend creates only an unshown tray-message window: use +set
+vid_renderer headless BEFORE startup and -nosound; no foreground rig reservation
+or owner's game shutdown is needed for these non-performance checks. Peer has an
+optional headless keyword; ordinary callers retain the windowed default. Source
+BSP entity lumps can be Valve LZMA: use census.bsplib._delump and preserve bytes.
+Keep portal exits OUTSIDE the start box, or the observed cancellation is the
+fixture, not the replay failure. At headless cadence wait for replay completion,
+not a guessed fixed sleep. Retain the original failed arms.
+
 ## Bounded TAS input recalculation (P1065)
 
 Native input metadata has two identities: immutable availability in a retained
@@ -23,9 +56,10 @@ cursor coordinates made all normal rows unavailable; the acting runtime caught
 it. Movement tapes omit those coordinates and clear live cursor/VR/weapon extras.
 Reject action buttons/impulses/weapons; retain jump1/duck2/walk4. Source duck is
 BUTTON_DUCK, not negative upmove: an edit must not mutate unrelated vertical input.
-Aim overlay must update entity/body view despite pending fixangle, and send each
-replayed aim including the final head to the camera. First retained/entity yaw
-and the one-row tail act in the real-socket controls; subjective feel is pending.
+P1065 initially overlaid body/view under pending fixangle and sent each replayed
+aim, including the final head. Its yaw-only controls missed model-pitch wire and
+portal-view suppression; that policy is superseded by P1066's ownership/order
+rules above. Subjective rendered feel remains pending.
 
 Runtime controls: distinct native input rows; unchanged replay despite opposing
 live input; side/jump/duck direct-input and yaw world-equivalent comparisons;

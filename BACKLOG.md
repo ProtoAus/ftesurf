@@ -1,5 +1,18 @@
 # BACKLOG.md
 
+## Historical REC14 streamed rewind state
+
+- Sites: `SV_RewindWriteState` / `SV_RecRewindStream`; ordinary non-TAS rewind
+  callers still need historical mover-command state in their streamed snapshots.
+  The snapshot omits `recmc`/`recmcv`, which current-format stream restore requires.
+- P1066 protects TAS edit/replay and tick-back by refusing before mutation; this
+  does not implement general historical stream restoration.
+- Falsifier: a current-format streamed running attempt rewinds to an exact warm
+  tick, restores that tick's complete recorder/mover-command state, keeps recording
+  and produces a valid TAS continuation; unavailable state refuses without
+  changing head, serial, byte extent, request, pin or recording status. Never fill
+  historical fields with values from the live head.
+
 ## Backend serving outage / guarded owner recovery (27 Oct2026)
 
 - Sites: deployed surfd/run.sh guarded server route and /health,/lobbies.json.

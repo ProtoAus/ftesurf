@@ -26,16 +26,17 @@ def sha(path):
 
 
 class Peer:
-    def __init__(self, exe, base, cfg, server=False):
+    def __init__(self, exe, base, cfg, server=False, *, headless=False):
         self.log = base / 'ftesurf/logs/probe.log'
         self.proc = subprocess.Popen(
             [str(exe), '-plugin', '-nohome', '-noreset', '-nobrowse',
              '-basedir', str(base), '-manifest', str(base / 'default.fmf'),
-             *([] if server else ['-window', '-width', '640', '-height', '480', '-nosound']),
+             *([] if server else (['+set', 'vid_renderer', 'headless', '-nosound'] if headless
+                                  else ['-window', '-width', '640', '-height', '480', '-nosound'])),
              '+set', 'cfg_save_auto', '0', '+exec', cfg],
             cwd='C:/FTESurf', stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW if server else 0)
+            creationflags=subprocess.CREATE_NO_WINDOW if server or headless else 0)
         (base / 'owned-pid.txt').write_text(str(self.proc.pid) + '\n')
 
     def text(self):

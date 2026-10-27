@@ -115,6 +115,12 @@ void(entity e, float first, float last, float field, float value, float ticket) 
 		return;
 	}
 	if (!SV_TASInputReady(e)) return;
+	if (e.rec_rec_stream)
+	if (e.rec_rec_ver >= 14)
+	{
+		sprint(e, PRINT_HIGH, "tas: REC14 stream editing is unsupported; no edit performed\n");
+		return;
+	}
 	SV_RewindTASHead(e);
 	head = SV_TimerTicks(e);
 	count = head - first + 1;

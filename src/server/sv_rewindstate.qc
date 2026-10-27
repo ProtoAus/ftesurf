@@ -140,6 +140,8 @@ float(entity e) SV_RewindWarmReady =
 		if (e.rec_rec_buf < 1) return FALSE;
 		return buf_getsize(e.rec_rec_buf) >= mark;
 	}
+	// Historical REC14 mover-command state is not captured by this snapshot writer.
+	if (e.rec_rec_ver >= 14 || m[b+35] >= 14) return FALSE;
 	if (e.rec_rec_fh < 0) return FALSE;
 	bytes = ((int)m[b+52] << 16i) | (int)m[b+53];
 	if (!(bytes > 0i && bytes <= FS_RECCOPY_MAX)) return FALSE;

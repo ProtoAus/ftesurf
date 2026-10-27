@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+**P1066 -- corrected TAS pitch/portal camera feel (pending):** On the matching
+local native/server/client, pause a recording, list its ticks, and edit a retained
+tick's pitch to30. Does the camera follow the actual new aim, stay paused, and
+keep that full pitch after a one-tick rewind to a captured nonzero-pitch tick?
+If a map has a rotated linked portal, does replay end facing the resulting travel
+view? Real-socket headless pitch/edit/back and actual portal-counter controls
+pass, but rendered transitions/feel are not confirmed. REC14 streamed TAS edits
+and tick-back intentionally refuse without altering recording; buffered warm
+history is supported. No owner confirmation or fleet installation is inferred.
+
 **P1065 -- input editor/camera feel (pending owner acceptance):** On the matching
 local native/server/client with `cl_threadedphysics 0`, walk off a start, `tas
 pause`, hold a direction and grant a few ticks. `tas inputs` shows their run-tick

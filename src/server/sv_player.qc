@@ -1293,6 +1293,12 @@ void(entity e, float count, float ticket) SV_TASBack =
 		return;
 	}
 	if (!SV_TASCanPause(e)) return;
+	if (e.rec_rec_stream)
+	if (e.rec_rec_ver >= 14)
+	{
+		sprint(e, PRINT_HIGH, "tas: REC14 stream rewind is unsupported; no movement\n");
+		return;
+	}
 	SV_RewindTASHead(e);
 	target = SV_TimerTicks(e) - count;
 	if (!SV_RewindFindTick(e, target))

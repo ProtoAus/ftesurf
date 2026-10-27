@@ -1,5 +1,11 @@
 # P1065: bounded TAS input edits and affected-tail recalculation
 
+P1066 corrects replay/rewind camera pitch and portal-produced aim, and refuses
+REC14 streamed edits/replay and tick-back before altering the recording. Current
+REC14 support is **buffered warm history only**. See
+[P1066 corrections and controls](p1066-tas-camera.md). P1065's Windows delivery
+below predates the final source review; it is not a source-review approval.
+
 This adds a console input editor to P1055 pause/step and P1061 exact tick rewind.
 It is **assisted practice**, not a human/segmented run or a public TAS board.
 
