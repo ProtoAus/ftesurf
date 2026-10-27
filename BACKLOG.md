@@ -4498,7 +4498,8 @@ below is the collection side and the rules that still only note.
   path's fix is one SV_ClearCarrier in SV_SaveLocRelease, as SV_WatchRelease has.
 - **P455's future-output/dwell bank remains OPEN; P968 repairs the visible
   body; P1072/P1073 add I/O and active-button-callback lineage; P1075 fences
-  automatic finish forgiveness past the native command.** P1072 carries
+  automatic finish forgiveness past the native command; P1076 carries scheduled
+  recurring-timer callback ownership.** P1072 carries
   the original player admission and practice state through ordinary/delayed/
   synchronously nested Source I/O; P1073 preserves the actual pending button
   Top/Return/Home cause, independently of mutable activator/refused input. The
@@ -4508,7 +4509,13 @@ below is the collection side and the rules that still only note.
   frame remain; the whole leaf is not closed. P1075 only consumes an eligible
   same-admission request at a later native EndFrame and rechecks the unchanged
   P968 body/hold predicates. Five acted dedicated-socket control/subject cases
-  cover that seam, not all future native callbacks or complete world retirement. Historical unmerged `p455rebase` (50affaa, based on e7b6562; ten rounds
+  cover that seam, not all future native callbacks or complete world retirement.
+  P1076 adds actual scheduled-timer callback lineage without replacing its public
+  think identity. Nine acted native controls/subjects cover unchanged-schedule
+  no-op, genuine deadline replacement, off/on retirement, current/world positives,
+  oscillator and existing input acceptance, and actual recipient vs source.
+  Persistent interval/phase/other state contributors across replacement, general
+  logical/world/body debt and complete P455/Rule8 remain OPEN. Historical unmerged `p455rebase` (50affaa, based on e7b6562; ten rounds
   at `archive/p455fix-r10`) is NOT READY: 44b313b's own message says the dwell
   does not close its bank, and no round11 exists. A new commitment inside the
   granting packet need not wait; arbitrary future mover/name-addressed writes

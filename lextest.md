@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+**P1076 -- ordinary recurring map timers (delivery/owner observation pending):**
+After the source-qualified update is installed, a familiar timed map effect should
+still fire/repeat normally; ordinary current-attempt/world timers and a normal
+clean run should stay clean. Nine synthetic-body native control/subject cases
+are not human, genuine input, natural clean-run or ranked-record acceptance.
+No full persistent interval/phase/world commitment coverage is claimed. Keep
+P1075's still-pending normal-use check below distinct from actual observation.
+
 **P1075 -- normal finish/reset re-arming (owner check pending):** Source4259c582
 installed server-only in BOTH Windows roots and all12 Pi lobbies2026-10-27T22:52:13Z;
 exact destination/PID-namespace readbacks and fresh startups/heartbeats pass. Join

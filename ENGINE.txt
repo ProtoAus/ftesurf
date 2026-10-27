@@ -25,7 +25,8 @@ commit   a27340010f0b45bcd71452805694692b33159b4e
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1074
-patch    1075
+patch    1076
+# Patch 1076: preserve admission lineage through recurring timer scheduled callbacks; normal timer inputs retain their think identity.
 # Patch 1075: consume eligible finish-forgiveness requests after the native command boundary; recheck same admission/body.
 # Patch 1074: local next-input workshop, directional observed-AIR help and deliberate paused mouse lock; protocol1071.
 # Patch 1073: active button callbacks keep their original source admission through completion and return.

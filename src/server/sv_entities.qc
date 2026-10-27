@@ -1350,6 +1350,7 @@ float(entity e, string lk) SV_SpinOutputKnown;
 .float UpperRandomBound;
 float(entity t) SV_TimerInterval;
 void() SV_TimerThink;
+void(entity t, float deadline, float renew) SV_TimerSchedule;
 
 /*
   Build 63.  The oscillator, SF_TIMER_UPDOWN (logicentities.cpp:195).
@@ -2848,6 +2849,8 @@ void(entity t) SV_BrushRenderInit =
 
 void(entity t, float on) SV_IOEnable =
 {
+	local float wasoff;
+	wasoff = SV_Key2(t.StartDisabled, t.startdisabled);
 	if (!on)
 	{
 		// Remember what it was before the first Disable, so Enable can restore
@@ -2890,7 +2893,7 @@ void(entity t, float on) SV_IOEnable =
 	  movers) and a blanket re-arm would trample them.
 	*/
 	if (on && t.classname == "logic_timer")
-		t.nextthink = time + SV_TimerInterval(t);
+		SV_TimerSchedule(t, time + SV_TimerInterval(t), wasoff);
 };
 
 /*
@@ -4538,19 +4541,19 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		if (!SV_Key2(t.StartDisabled, t.startdisabled))
 		{
 			SV_TimerFire(t);
-			t.nextthink = time + SV_TimerInterval(t);
+			SV_TimerSchedule(t, time + SV_TimerInterval(t), FALSE);
 		}
 		return;
 	}
 	if (in == "resettimer")
 	{
-		if (t.think == SV_TimerThink) t.nextthink = time + SV_TimerInterval(t);
+		if (t.think == SV_TimerThink) SV_TimerSchedule(t, time + SV_TimerInterval(t), FALSE);
 		return;
 	}
 	if (in == "refiretime")
 	{
 		t.RefireTime = stof(pm);
-		if (t.think == SV_TimerThink) t.nextthink = time + SV_TimerInterval(t);
+		if (t.think == SV_TimerThink) SV_TimerSchedule(t, time + SV_TimerInterval(t), FALSE);
 		return;
 	}
 
@@ -12517,6 +12520,24 @@ void() ambient_generic =
 */
 // Fields and prototypes are up beside SV_FireOutput -- SV_IOEnable and
 // SV_ApplyInput both need them and both are compiled first.
+// Scheduled callback ownership, not every contributor to persistent timer state.
+// An unchanged enabled schedule is not a fresh cause/admission boundary.
+void(entity t, float deadline, float renew) SV_TimerSchedule =
+{
+	if (renew || t.nextthink != deadline)
+	{
+		if (bank_ctx_depth)
+			SV_BankSnapshot(t);
+		else
+		{
+			t.bank_src_player = world;
+			t.bank_src_attempt = 0i;
+			t.bank_src_bad = FALSE;
+		}
+	}
+	t.nextthink = deadline;
+};
+
 float(entity t) SV_TimerInterval =
 {
 	local float lo, hi;
@@ -12535,7 +12556,7 @@ float(entity t) SV_TimerInterval =
 	return 1;								// CTimerEntity's own default
 };
 
-void() SV_TimerThink =
+void() SV_TimerTick =
 {
 	// SV_IOEnable's disabled marker is StartDisabled/startdisabled -- it writes
 	// BOTH spellings precisely so a later read through SV_Key2 sees it.  Stop
@@ -12547,6 +12568,13 @@ void() SV_TimerThink =
 	}
 	SV_TimerFire(self);
 	self.nextthink = time + SV_TimerInterval(self);
+};
+
+void() SV_TimerThink =
+{
+	// Keep this public think identity: existing timer inputs test it exactly.
+	self.bank_callback = SV_TimerTick;
+	SV_BankThink();
 };
 
 /*
@@ -12583,7 +12611,7 @@ void() logic_timer =
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
 		self.nextthink = 0;
 	else
-		self.nextthink = time + SV_TimerInterval(self);
+		SV_TimerSchedule(self, time + SV_TimerInterval(self), TRUE);
 };
 
 /*

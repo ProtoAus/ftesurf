@@ -3183,6 +3183,11 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+- Existing input handlers can use exact think-function identity as their capability
+  gate. Preserve that public identity when adding callback context; an unrelated
+  generic thunk can silently disable ordinary accepted inputs. Prove the actual
+  input, count, deferred callback and recurrence, not only a final marker.
+
 - A dedicated socket spawn/body delta is not ground evidence: gallery raw-map
   rooms can have no floor. For grounded tests use a small actual BSP and observe
   ground/rest, not a nonzero-Z assumption. A zero command phase can be native
