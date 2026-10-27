@@ -85,4 +85,36 @@ those attempts were failures, not passes. The corrected exact owned-TAS pin
 excludes replay-clock accounting while keeping unrelated viewer/hold/impulse
 behavior. Human aim/rewind/latency acceptance remains pending in `lextest.md`.
 
+## Delivery status — 27 October 2026
+
+Product QC `70077e58675ee2403056b5742f93283d1d4ed5fe`, native
+`de18f94596c517d6664ef11797d3125db69c28f8` / `patch-1061`, are committed and
+pushed. Clean full native qualification completed through the standard build
+entrypoint; its source stamp is `git-7918-patch-1061-0-gde18f9459`. Interrupted
+resource/packaging attempts were retained, not treated as successful bundles.
+
+At `2026-10-27T09:38:15Z`, the exact qualified native/qw/cs DAT/LNO cohort was
+installed in both Windows installs, caches seeded and18 destination hashes
+verified. Primary client SHA256 is
+`f585dddfb967052fe5401e2a1de1c20d754a848de1ef7b03c10604fd503d7dd2`;
+secondary dedicated server is
+`2ca32fa87062082c47d2f1b99ba862240d20161dc3c2351f3478e47f2c769038`.
+QW/CS hashes are respectively
+`9d308ecc47f5706a2d3af0722ea4bb99f77661413438cf9bc4798afa6fa856ae` /
+`a3879849e48f3dfa1f8f6491f30189afe9e58834ac1258699f8aba56227ade67`.
+Each actual installed client was then socket-tested against the installed
+secondary dedicated server:7 checks each, including logical/native step delta,
+back one, paused predecessor restoration and matching repeated forward endpoint.
+Predecessors remain in `.prev`, older predecessor history is archived. Peer MENU,
+configs, install lists and player data were not replaced. No QC Build bump or
+release/download publication was performed.
+
+**Public lobbies are not updated.** Read-only rediscovery found12 active lobby
+units but the required surfd health endpoint on8084 still refused connection.
+The existing guarded native-consumer transition needs coordinated recovery and
+fresh promotion gates; this task did not reset guards, change services, restart
+lobbies or perform a blind progs/native swap. No new ARM/Linux gameplay claim.
+Owner rewind/aim feel remains pending; the earlier stop/forward confirmation is
+not confirmation of this new rewind.
+
 The remaining staged feature plan is [plan-tas.md](plan-tas.md).

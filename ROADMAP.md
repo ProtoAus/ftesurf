@@ -4,8 +4,14 @@
 
 Full staged plan and acceptance: [tools/plan-tas.md](tools/plan-tas.md). P1052 starts
 with explicit TAS practice sessions and retained ancestry using existing slow motion.
-Tick advance, editable input timelines, recalculated lines, optimizers, signed
-contributions and a separately verified TAS board remain planned, not delivered.
+P1055 adds authoritative per-player pause and actual movement-tick advance. P1061
+adds exact retained-tick rewind and a tick-based paused cursor, with native carried
+movement state restored. These controls are verified and installed in both Windows
+installs; public guarded-lobby promotion and owner rewind feel are separate pending
+items. See [P1061 scope/delivery](tools/p1061-tas-rewind.md).
+Editable input timelines, downstream recalculated lines, persistent/branching TAS
+projects, optimizers, signed contributions and a separately verified TAS board
+remain planned, not delivered.
 
 ## Mounted CS:GO Legacy knives / local finish workshop — P957/P962
 
