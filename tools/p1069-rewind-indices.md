@@ -31,7 +31,23 @@ Standard isolated three-VM build passes with zero warnings; the recorder suite
 passes930/0. Every hash of the same503 REC/167 paired VIEW/10 unpaired VIEW domain
 and the reader source remains unchanged from P1067, reusing its exact independent
 control/subject reports:312 existing findings on311 reports, zero increase.
-Server-only deployment is recorded separately when completed.
+Server-only delivery from clean committed source
+`693544632b0ae163427dd4706a438357f0206f07` is verified at
+2026-10-27T17:45:07Z. Both Windows server DAT/LNO roles match the qualified output;
+predecessors are retained, and menu/client/native/owner-config roles were unchanged
+during that copy. Pi QW-only hash/previous-file checks and all12 ordinary restarts
+completed, with fresh active PIDs, positive application startup logs and no selected
+startup QC errors; directory12 and health pass. The existing CS cohort was retained.
+No menu, native, backend, Build or release payload was shipped.
+
+The first remote restart incorrectly included `.service`, which the literal sudo
+grant does not permit; it stopped no unit. The same verified handoff resumed with
+the standard bare unit spelling. All12 then restarted, but an immediate postcheck
+was not accepted as a pass; independent fresh readback established their active
+state/startup logs instead, without repeating restarts. Both failure records remain.
+
+Live/Windows qwprogs SHA256:
+`1fa6df95f566e5457ab0dbcbc525287642bdd409111600fdec342211ae58f73d`.
 
 ## Delivery scope
 
