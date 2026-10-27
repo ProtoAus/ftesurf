@@ -3601,6 +3601,20 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Conventions
 
+- **Put patch reservations in the real test namespace (P1074, measured).** Use
+  canonical `ftesurf/cfg/test/pNNN*.cfg`, not unused `src/cfg/test/*.claim` or a
+  tools markdown note. The latter reservation was missed by a concurrent task;
+  publication1073 collided before any push/install. Preserve that evidence,
+  move only your claim forward into the actual namespace and rebase on the
+  inspected published peer source. Do not overwrite peer work or retag published
+  history. A protocol capability number need not churn with publication labels.
+- **Pace TAS diagnostics at their actual boundary (P1074, measured).** `tas status`
+  and `tas inputs` share `run_tas_next` and silently refuse within0.2server seconds.
+  A one-tick grant or consecutive read-only status probes can finish too soon;
+  fresh installed-byte observers failed this way despite correct acting controls.
+  Wait beyond the budget before each diagnostic (the local rig uses0.25seconds),
+  retain failed logs and do not weaken the product gate or call silence a pass.
+
 - **Use the bounded actual-step ACK for paused packet work (P1055).** Native
   `run_movetick` is a cumulative counter published asfloat32; `+1` aliases at
   2^24. Pause entry/cancel/PostThink must consistently use `run_tas_done`/seen,

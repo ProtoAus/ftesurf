@@ -1,6 +1,8 @@
 # lextest.md — things waiting on a human
 
-**P1074 -- TAS workshop/constant-direction help (owner check pending):** With the
+**P1074 -- TAS workshop/constant-direction help (owner check pending):** Installed
+both Windows roles2026-10-27T21:54:07Z; each actual installed client/server passes
+7socket mouse/cursor/authoring/rewind checks, not rendered acceptance. With the
 matching local native/server/client, use `cl_threadedphysics 0`, walk out of the
 start and run `tas pause`, then `tas menu`. Is the panel readable at your usual
 window size? Try Manual + a small yaw, Advance1, then Auto left/right + Advance8;

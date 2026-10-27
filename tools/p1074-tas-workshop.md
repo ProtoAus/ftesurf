@@ -83,8 +83,40 @@ small pending owner check in lextest.md; no owner confirmation is inferred.
 
 ## Production qualification and delivery
 
-Implementation/source verification are complete. Final clean pinned/tagged build,
-installation UTC/hashes and installed-client smoke will be recorded here only after
-execution. No Build/release bump. Existing peer MENU, configs, install lists and
-player data are not selected payloads. Public native/backend/lobby promotion is not
-implied by a local Windows build.
+Published production source: QC `4494ac3c68af7af42fb7c1e2779d5f1b91b1629c`,
+native `a27340010f0b45bcd71452805694692b33159b4e`, tag `patch-1074`.
+The clean paired build's two executables and five selected plugins carry that
+exact non-dirty tag; all three progs compile with no new warnings. It includes
+published peer1073 callback lineage, not any other session's unfinished source.
+The reviewed native implementation differs only in publication comments.
+
+Installed BOTH `C:\FTESurf` and `C:\FTEQuake` at2026-10-27T21:54:07Z. Twenty-five
+selected native/progs/LNO/cache role files were hash-verified, predecessors kept
+as `.prev` and original bytes archived before mutation. CSQC's standard folded
+cache is `downloads/csprogsvers/f4de6f5b.dat`. Existing peer MENU, configs, install
+lists and player data were not selected; protected-file hashes stayed unchanged.
+No owner's process was stopped. The separate Desktop install was not selected.
+
+Fresh final production-socket arm18/18 passes. Actual installed primary client/
+server and secondary client/server each pass7/7: unlocked delta acts, locked delta
+and history cannot drift aim, the panel releases only its cursor claim, authored
+camera and warm rewind still act. All owned fixture processes stopped. At
+2026-10-27T22:01:25Z all25destination hashes and protected exclusions were rechecked.
+These are actual installed executables with isolated fixture gamedirs, not live
+player-data sessions or rendered acceptance. Initial over-fast diagnostic queries
+were retained as observer failures; pacing honors the unchanged0.2server budget.
+
+Selected SHA-256 prefixes (full role/destination receipts retained privately):
+
+| Artifact | SHA-256 prefix |
+|---|---|
+| client executable | `4e4a52629bce1dca` |
+| dedicated server | `de0099ac74ed4e08` |
+| matching HL2 plugin | `8330392055b4eb40` |
+| qwprogs | `ef1b9febd8924900` |
+| csprogs | `ccf788d5570bbe46` |
+
+No Build/release bump. Owner visual/feel confirmation remains pending in lextest.md.
+No Pi native/backend transition or public-lobby editing enablement was performed;
+that policy choice and guarded matching-cohort admission remain separate from this
+local authoring delivery. No surfd restart or modification was made.
