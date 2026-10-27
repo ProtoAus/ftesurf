@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+**P1065 -- input editor/camera feel (pending owner acceptance):** On the matching
+local native/server/client with `cl_threadedphysics 0`, walk off a start, `tas
+pause`, hold a direction and grant a few ticks. `tas inputs` shows their run-tick
+numbers. Use `tas edit FIRST yaw 30` on a captured tick: does the recalculated
+line and camera follow the edit, then stay paused? Try `jump 1` or `duck 1` on one
+tick; `tas play`/`tas off` must cancel without clearing the TAS label. Automated
+real-socket input/body/retained-aim, direct-control, cancellation and reader arms
+pass; subjective aim/crouch/latency feel and all-map behavior are not confirmed.
+This is the bounded console editor, not the future timeline/project UI. No
+owner acceptance is inferred from earlier pause/advance or audio confirmation.
+
 **P1064 -- Windows-output reactivity CONFIRMED by owner27Oct2026:** After both
 Windows native installs were updated11:13:10Z and the owner was asked to restart
 normally with video playing and check the menu backdrop, the owner replied

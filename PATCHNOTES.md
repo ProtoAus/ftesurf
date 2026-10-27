@@ -21,6 +21,10 @@
 
 ## next
 
+### P1065 Edit TAS tick inputs and recalculate the affected line
+- Paused TAS can list captured tick inputs and edit movement, aim, jump, duck or walk for a selected range. Replay recalculates the affected tail and stays paused; unavailable exact history refuses.
+- Replays use stored inputs rather than live movement. Play/off cancels safely, shared world time still runs, and the attempt keeps its TAS label. This is a bounded console editor, not a saved-project or timeline GUI.
+
 ## 0.1.32 2026-10-27
 
 ### P1064 Windows-output visuals work while game audio is muted

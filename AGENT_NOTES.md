@@ -1,5 +1,45 @@
 # AGENT_NOTES.md
 
+## Bounded TAS input recalculation (P1065)
+
+Native input metadata has two identities: immutable availability in a retained
+checkpoint and the live last-step association to CURRENT native counters. Native
+apply rebinds, never restores the old counter. Capture the supplied effective
+command before mover limits, but publish/consume only after PMSrc/state and the
+resulting native movement count. Ordinary stateful commands, including zero fixed
+ticks, invalidate live availability. State-only checkpoints must not invent input.
+The native queue owns advancement, not PlayerPostThink's packet ACK.
+
+Copy/validate the bounded tail in QC BEFORE exact prefix go, with NO native stage
+alive through restore. Full warm writer only, no demoted-placement fallback;
+post-go check serial/running/recording/tick/cut lineage and unchanged counters,
+THEN begin/fill/arm synchronously. Safe cancellation must not depend on the strict
+alive/clock capability reader. Terminal queues cannot rearm old handles. The
+existing SV_TASInvalidate clears ready/paused/pending, NOT DONE or the freshness
+key; the initial design review's contrary source claim was rejected on reread.
+
+FTE sends passive cursor traces during ordinary walking. Rejecting all nonzero
+cursor coordinates made all normal rows unavailable; the acting runtime caught
+it. Movement tapes omit those coordinates and clear live cursor/VR/weapon extras.
+Reject action buttons/impulses/weapons; retain jump1/duck2/walk4. Source duck is
+BUTTON_DUCK, not negative upmove: an edit must not mutate unrelated vertical input.
+Aim overlay must update entity/body view despite pending fixangle, and send each
+replayed aim including the final head to the camera. First retained/entity yaw
+and the one-row tail act in the real-socket controls; subjective feel is pending.
+
+Runtime controls: distinct native input rows; unchanged replay despite opposing
+live input; side/jump/duck direct-input and yaw world-equivalent comparisons;
+selected slice versus preserved tail; malformed/duplicate/missing-prefix refusal;
+play/off cancellation; exact counts at render/net30/20 and240/144. A locked cvar's
+echo is NOT an applied negative clock: both pm_ticrate and sv_gamespeed reverted.
+An owned disposable server's sv_cheats1 + sv_gamespeed0.5, explicit readback, then
+restoration provided the ACTING unsupported-clock control, AFTER the edited TAS
+attempt had already finished and passed the reader. Never use that developer arm
+as human evidence. Tiny test end zones trigger on BODY overlap, not origin:16
+filler ticks accidentally finished the run. Moving the end outside the reachable
+hall then prevented finish. Four ticks at low net rate test cancellation without
+changing zone geometry. Failed arms are retained, not relabelled product passes.
+
 ## Release0.1.32 frozen handoff (27Oct2026)
 
 Prepared QC e47d8e64, matching native d561b7408 (P1064), launcher646c8d1;

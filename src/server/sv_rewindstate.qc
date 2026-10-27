@@ -120,6 +120,32 @@ float(entity e, float gen, float mark) SV_RecFailCutOK =
 	return TRUE;
 };
 
+// P1065: read-only warm preflight. No placement/demotion is replay-ready state.
+float(entity e) SV_RewindWarmReady =
+{
+	local float *m;
+	local float b, mark;
+	local int bytes;
+
+	if (rw_statebase < 0 || e.run_t_state != TS_RUNNING || !e.run_t_clock) return FALSE;
+	m = rw_slot[num_for_edict(e)];
+	if (!m) return FALSE;
+	b = rw_statebase;
+	mark = m[b+29];
+	if (!(m[b+18] & TF_RECORDING) || !m[b+51] || m[b+33] != e.rec_rec_serial ||
+	    mark <= 0 || mark > e.rec_rec_lines) return FALSE;
+	if (!SV_RecCutOK(e, m[b+34], mark)) return FALSE;
+	if (!e.rec_rec_stream)
+	{
+		if (e.rec_rec_buf < 1) return FALSE;
+		return buf_getsize(e.rec_rec_buf) >= mark;
+	}
+	if (e.rec_rec_fh < 0) return FALSE;
+	bytes = ((int)m[b+52] << 16i) | (int)m[b+53];
+	if (!(bytes > 0i && bytes <= FS_RECCOPY_MAX)) return FALSE;
+	return fsize(e.rec_rec_fh) >= bytes;
+};
+
 float(entity e, float id, float seq, float go) SV_RewindWriteState =
 {
 	local float *m;

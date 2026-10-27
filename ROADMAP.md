@@ -9,9 +9,13 @@ adds exact retained-tick rewind and a tick-based paused cursor, with native carr
 movement state restored. These controls are verified and installed in both Windows
 installs; public guarded-lobby promotion and owner rewind feel are separate pending
 items. See [P1061 scope/delivery](tools/p1061-tas-rewind.md).
-Editable input timelines, downstream recalculated lines, persistent/branching TAS
-projects, optimizers, signed contributions and a separately verified TAS board
-remain planned, not delivered.
+P1065 implements the bounded console input core: list captured ticks, edit a
+movement/aim/jump/duck/walk slice and recalculate the affected exact warm tail.
+It is not the whole project/timeline stage: persistent/branching TAS projects,
+undo/redo and a visual timeline, comparison ghosts, optimizers, signed contributions
+and a separately verified TAS board remain planned. See
+[P1065 scope and checks](tools/p1065-tas-inputs.md); actual installation and owner
+camera/input feel have separate provenance, not implied by this roadmap entry.
 
 ## Mounted CS:GO Legacy knives / local finish workshop — P957/P962
 

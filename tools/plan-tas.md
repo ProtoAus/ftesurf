@@ -112,6 +112,23 @@ It does NOT edit inputs, preserve abandoned futures as undo/redo branches, repla
 arbitrary edited inputs, export a TAS movie or provide signed collaboration/boards.
 Actual installation and owner feel are separate from source/test implementation.
 
+## Stage 2c: bounded input editing and affected-tail recalculation (P1065)
+
+Implemented console core: `tas inputs [N]`, `tas replay FIRST`, and `tas edit FIRST
+[LAST] FIELD VALUE`. A paused running attempt can change movement, aim or
+jump/duck/walk buttons on an inclusive slice, then recalculate every affected
+stored input through the old head, at most128 ticks. Exact warm prefix/input and
+headroom checks happen before restore; native storage is armed only after the
+verified go. Native successful executions consume the queue, opposing live input
+cannot substitute, and terminal cancellation cannot resume old tape. Assistance
+stays TAS. [Scope and acting controls](p1065-tas-inputs.md).
+
+This supplies the execution/input-edit core, not all of Stage3. It intentionally
+has no persisted/imported project format, abandoned-future undo/redo branches,
+visual timeline, comparison overlay or arbitrary world-state editing. Current
+rules/shared world and missing-history refusal remain explicit. Source/runtime
+verification, Windows installation and human feel are separate states.
+
 ## Stage 3: project revisions and a basic input timeline
 
 Version a canonical project format. Store map/zone/ruleset identities, full checkpoints,

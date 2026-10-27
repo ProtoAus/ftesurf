@@ -142,6 +142,15 @@
 #define STAT_FS_TASDONE 189
 #define STAT_FS_TASREQUEST 190
 #define STAT_FS_TASREWIND 191   // P1061: server + native movement checkpoint support
+#define STAT_FS_TASREPLAY 192   // P1065: native EMPTY/STAGING/ACTIVE/DONE/CANCEL/FAULT
+#define STAT_FS_TASINPUT 193    // P1065: native movement input capture/replay support
+#define TAS_TAPE_MAX 128
+#define TAS_TAPE_STAGING 1
+#define TAS_TAPE_ACTIVE 2
+#define TAS_TAPE_DONE 3
+#define TAS_TAPE_CANCELLED 4
+#define TAS_TAPE_FAULT 5
+#include "sh_tasinput.qc"
 #define AS_NONE    0           // not armed
 #define AS_ARMED   1           // a clean start
 #define AS_HOPPED  2           // a hopped start: land, below run_rearmspeed, to re-arm

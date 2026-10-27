@@ -3885,7 +3885,7 @@ void(entity e) SV_RewindDropGo =
 // resume's row (SV_RewindDropGo), which the dispatcher marks once it holds.
 float(entity e, float t, vector near, float usenear, float go, float view, float exact) SV_SaveLocCreateAtMode =
 {
-	local float id, seq, row, blk, base, cnt, full;
+	local float id, seq, row, blk, base, cnt, full, written;
 
 	if (!SV_SaveLocBegin(e, FALSE))
 		return FALSE;
@@ -3943,6 +3943,12 @@ float(entity e, float t, vector near, float usenear, float go, float view, float
 		                      "of the run are kept exactly, about half an hour before them to the second\n");
 		return FALSE;
 	}
+	if (exact >= 2)
+	if (!SV_RewindWarmReady(e))
+	{
+		sprint(e, PRINT_HIGH, "tas: exact warm prefix unavailable; no input replay\n");
+		return FALSE;
+	}
 	// At the cap there is no row or id to write into until that row goes, so
 	// here, unlike below, a write that then fails has cost it (round 7).
 	if (full)
@@ -3965,7 +3971,9 @@ float(entity e, float t, vector near, float usenear, float go, float view, float
 	rec_sl_ns[blk] = rec_sl_ns[blk] + 1;
 
 	SV_SaveLocAlloc();
-	if (!SV_SaveWriteAt(e, id, seq, go))
+	if (exact >= 2) written = SV_RewindWriteState(e, id, seq, go);
+	else written = SV_SaveWriteAt(e, id, seq, go);
+	if (!written) // strict replay NEVER falls back to demoted placement
 	{
 		sprint(e, PRINT_HIGH, "^1rewind: cannot write the save\n");
 		return FALSE;

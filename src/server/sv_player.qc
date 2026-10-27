@@ -10,6 +10,7 @@
 */
 
 .float  ftesurf_lastspawn;
+void(entity e, float settled) SV_TASReplayFrame;
 
 /*
   THE BOARD TELEMETRY BLOCK USED TO LIVE HERE AND NOW LIVES IN sv_timer.qc.
@@ -285,6 +286,15 @@ void() ClientConnect =
 	self.run_tas_cmdkey = '0 0 0';
 	self.run_tas_rwpin = self.run_tas_rwcap = 0;
 	if (checkbuiltin(tas_rewind)) self.run_tas_rwcap = 1;
+	self.run_tas_incap = 0;
+	if (checkbuiltin(tas_input))
+	if (checkbuiltin(tas_tape))
+	{
+		tas_tape(self, 0, 0, 0, '0 0 0', '0 0 0', 0);
+		self.run_tas_incap = 1;
+	}
+	self.run_tas_replaystate = self.run_tas_replaycount = self.run_tas_replayat = 0;
+	self.run_tas_replayreq = self.run_tas_replaynotice = 0;
 	Archive_Reset(self);
 	EventFog_Reset(self);          // recycled slot/map must not inherit event fog
 	// Patch 371: a join line only for a new connection -- this runs again for
@@ -804,6 +814,7 @@ void() PlayerPostThink =
 	SV_NoclipWatch(self);
 	Account_Think(self);                // Patch 619: a started Steam link, waited on
 
+	SV_TASReplayFrame(self, FALSE); // terminal faults must be visible even without a new tick
 	// P1055: use the bounded actual-step ACK, not the general float counter
 	// (which loses unit precision at 2^24). A final blocked cmd must not hide
 	// completed steps from this packet's normal timer/recorder processing.
@@ -883,6 +894,7 @@ void() PlayerPostThink =
 	SV_ArmStateStat(self);          // P1008: likewise past the timer's early returns
 
 	SV_RewindSample(self);          // Patch 477: the recent past a rewind saves from
+	SV_TASReplayFrame(self, TRUE);  // completion only after clock/recorder/retained head settle
 	SV_WatchFrame(self);            // ...and the replay/rewind pin holds no speed
 
 	// Pinned at a save-lock while the load key is held.  After the timer, so the
@@ -1319,6 +1331,8 @@ void(entity e, float count, float ticket) SV_TASBack =
 	}
 };
 
+#include "sv_tasinput.qc"
+
 // The control switch and retained ancestry deliberately have different lifetimes.
 void(entity e, float argc) SV_TASCommand =
 {
@@ -1338,6 +1352,17 @@ void(entity e, float argc) SV_TASCommand =
 		}
 		else
 			sprint(e, PRINT_HIGH, "tas: playing; queued steps cancelled, TAS ancestry retained\n");
+		return;
+	}
+	if (!strcmp(action, "inputs")) { SV_TASInputs(e, argc); return; }
+	if (!strcmp(action, "edit") || !strcmp(action, "replay"))
+	{
+		SV_TASInputCommand(e, argc);
+		return;
+	}
+	if (e.run_tas_replaystate == TAS_TAPE_ACTIVE && argc > 1 && strcmp(action, "status"))
+	{
+		sprint(e, PRINT_HIGH, "tas: input replay active; wait, or tas play/off to cancel\n");
 		return;
 	}
 	if (!strcmp(action, "back") && argc >= 2 && argc <= 4)
@@ -1420,7 +1445,7 @@ void(entity e, float argc) SV_TASCommand =
 		}
 		return;
 	}
-	sprint(e, PRINT_HIGH, "tas: on | off | pause | play | step/back [1..128] | status | speed 0.1..1\n");
+	sprint(e, PRINT_HIGH, "tas: on/off | pause/play | step/back [1..128] | inputs [N] | replay first | edit first [last] field value | status | speed 0.1..1\n");
 };
 
 void(string cmd) SV_ParseClientCommand =

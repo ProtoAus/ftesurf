@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile/test P1055's actual native admission helper; not a mover/runtime proof.
+"""Test P1055/P1065 actual native admission/input/queue helpers, not mover/runtime proof.
 
 python tools/test_tas_step.py --engine <checkout> --out <owned-task-root>/header-check
 """
@@ -14,6 +14,7 @@ import subprocess
 SOURCE = r'''
 #include <stdio.h>
 #include "sv_tas.h"
+#include "sv_tas_input.h"
 static int checks;
 #define CHECK(x) do { ++checks; if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
 int main(void) {
@@ -74,7 +75,96 @@ int main(void) {
     CHECK(SV_TASPlan(1,1,1,1,1,1,0,128,15999999)==SV_TAS_BLOCK);
     for(i=1;i<=128;++i)
         CHECK(SV_TASPlan(1,1,1,1,1,1,0,(float)i,0)==SV_TAS_STEP);
-    printf("%d actual-C admission checks, 0 failed\n", checks);
+    {
+        float m[3] = {70, -32768, 32767}, a[3] = {-32768, 0, 32767};
+        sv_tas_input_t in;
+        sv_tas_tape_t t = {0};
+        int n, j;
+        for (j=0;j<8;++j) {
+            CHECK(SV_TASInputDecode(m,a,(float)j,&in));
+            CHECK(in.valid && in.buttons==j && in.move[0]==70 && in.move[1]==-32768 && in.move[2]==32767);
+            CHECK(in.angle[0]==-32768 && in.angle[2]==32767);
+        }
+        CHECK(!SV_TASInputDecode(m,a,8,&in) && !in.valid);
+        CHECK(!SV_TASInputDecode(m,a,.5f,&in));
+        CHECK(!SV_TASInputDecode(m,a,NAN,&in));
+        for (j=0;j<3;++j) {
+            float save=m[j];
+            m[j]=NAN; CHECK(!SV_TASInputDecode(m,a,0,&in));
+            m[j]=INFINITY; CHECK(!SV_TASInputDecode(m,a,0,&in));
+            m[j]=32768; CHECK(!SV_TASInputDecode(m,a,0,&in));
+            m[j]=-32769; CHECK(!SV_TASInputDecode(m,a,0,&in));
+            m[j]=.5f; CHECK(!SV_TASInputDecode(m,a,0,&in)); m[j]=save;
+            save=a[j];
+            a[j]=NAN; CHECK(!SV_TASInputDecode(m,a,0,&in));
+            a[j]=32768; CHECK(!SV_TASInputDecode(m,a,0,&in));
+            a[j]=.5f; CHECK(!SV_TASInputDecode(m,a,0,&in)); a[j]=save;
+        }
+        CHECK(SV_TASTapeHeadroom(15999871,15999872,128));
+        CHECK(!SV_TASTapeHeadroom(15999872,0,128));
+        CHECK(!SV_TASTapeHeadroom(0,15999873,128));
+        CHECK(!SV_TASTapeHeadroom(NAN,0,1));
+        CHECK(!SV_TASTapeHeadroom(0,NAN,1));
+        CHECK(!SV_TASTapeHeadroom(.5,0,1));
+        CHECK(!SV_TASTapeHeadroom(0,.5f,1));
+        CHECK(!SV_TASTapeHeadroom(0,0,129));
+        CHECK(!SV_TASTapeHeadroom(0,0,0));
+        for (n=1;n<=128;++n) {
+            unsigned token=(unsigned)n;
+            CHECK(SV_TASTapeBegin(&t,token,7,100,20,4,n));
+            CHECK(!SV_TASTapePut(&t,token+1,0,&in) && t.state==SV_TAPE_STAGING);
+            for (j=0;j<n;++j) {
+                m[0]=(float)j; a[1]=(float)(j*100);
+                CHECK(SV_TASInputDecode(m,a,(float)(j&7),&in));
+                CHECK(SV_TASTapePut(&t,token,j,&in));
+            }
+            CHECK(SV_TASTapeArm(&t,token,7,100,20,4));
+            CHECK(!SV_TASTapeBegin(&t,token+1000,7,100,20,4,n));
+            for (j=0;j<n;++j) {
+                CHECK(SV_TASTapeCoherent(&t,7,100+j,20+j,(float)(n-j),4));
+                CHECK(!SV_TASTapeCoherent(&t,8,100+j,20+j,(float)(n-j),4));
+                CHECK(!SV_TASTapeCoherent(&t,7,100+j,20+j,(float)(n-j),5));
+                CHECK(!SV_TASTapeCoherent(&t,7,101+j,20+j,(float)(n-j),4));
+                CHECK(!SV_TASTapeCoherent(&t,7,100+j,21+j,(float)(n-j),4));
+                CHECK(!SV_TASTapeCoherent(&t,7,100+j,20+j,(float)(n-j+1),4));
+                CHECK(t.row[t.at].move[0]==j && t.row[t.at].angle[1]==j*100 && t.row[t.at].buttons==(j&7));
+                CHECK(SV_TASTapeCommit(&t,1,101+j,21+j));
+            }
+            CHECK(t.state==SV_TAPE_DONE && t.at==n);
+            CHECK(!SV_TASTapeCommit(&t,1,100+n,20+n));
+            CHECK(!SV_TASTapeArm(&t,token,7,100,20,4));
+            CHECK(!SV_TASTapeBegin(&t,token,7,100,20,4,n));
+            for (j=0;j<128;++j) CHECK(!t.row[j].valid && !t.filled[j]);
+        }
+        CHECK(SV_TASTapeBegin(&t,200,7,100,20,4,2));
+        CHECK(!SV_TASTapeArm(&t,200,7,100,20,4) && t.state==SV_TAPE_FAULT);
+        CHECK(SV_TASTapeBegin(&t,201,7,100,20,4,1));
+        CHECK(SV_TASTapePut(&t,201,0,&in));
+        CHECK(!SV_TASTapeArm(&t,201,8,100,20,4) && t.state==SV_TAPE_FAULT);
+        CHECK(SV_TASTapeBegin(&t,202,7,100,20,4,1));
+        CHECK(SV_TASTapePut(&t,202,0,&in));
+        CHECK(SV_TASTapeArm(&t,202,7,100,20,4));
+        CHECK(!SV_TASTapeCommit(&t,0,100,20) && t.at==0 && t.state==SV_TAPE_FAULT);
+        CHECK(!SV_TASTapeArm(&t,202,7,100,20,4));
+        CHECK(SV_TASTapeBegin(&t,203,7,100,20,4,1));
+        CHECK(SV_TASTapePut(&t,203,0,&in));
+        CHECK(SV_TASTapeArm(&t,203,7,100,20,4));
+        CHECK(!SV_TASTapeCommit(&t,1,102,21) && t.at==0 && t.state==SV_TAPE_FAULT);
+        CHECK(SV_TASTapeBegin(&t,204,7,100,20,4,1));
+        CHECK(SV_TASTapePut(&t,204,0,&in));
+        CHECK(SV_TASTapeArm(&t,204,7,100,20,4));
+        SV_TASTapeEnd(&t,SV_TAPE_CANCELLED);
+        CHECK(t.at==0 && t.state==SV_TAPE_CANCELLED && !t.row[0].valid);
+        CHECK(!SV_TASTapeCoherent(&t,7,100,20,1,4));
+        CHECK(!SV_TASTapeArm(&t,204,7,100,20,4));
+        CHECK(SV_TASTapeBegin(&t,205,7,100,20,4,1));
+        CHECK(!SV_TASTapePut(&t,205,1,&in) && t.state==SV_TAPE_FAULT);
+        CHECK(!SV_TASTapeBegin(&t,206,0,100,20,4,1));
+        CHECK(!SV_TASTapeBegin(&t,206,16000001,100,20,4,1));
+        CHECK(!SV_TASTapeBegin(&t,206,7,100,20,0,1));
+        CHECK(!SV_TASTapeBegin(&t,206,7,100,20,NAN,1));
+    }
+    printf("%d actual-C admission/input/queue checks, 0 failed\n", checks);
     return 0;
 }
 '''
@@ -100,7 +190,7 @@ def main():
     # Reserve distinct numeric slots, including against existing string names.
     defs = (Path(__file__).resolve().parents[1] / 'src/shared/sh_defs.qc').read_text()
     stats = re.findall(r'^#define (STAT_\w+)\s+(\d+)\b', defs, re.M)
-    for name in ('TASPAUSE', 'TASPENDING', 'TASDONE', 'TASREQUEST', 'TASREWIND'):
+    for name in ('TASPAUSE', 'TASPENDING', 'TASDONE', 'TASREQUEST', 'TASREWIND', 'TASREPLAY', 'TASINPUT'):
         slot = [int(n) for s, n in stats if s == 'STAT_FS_' + name]
         assert len(slot) == 1 and 32 <= slot[0] <= 255
         assert [s for s, n in stats if int(n) == slot[0]] == ['STAT_FS_' + name], name

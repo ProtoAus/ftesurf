@@ -2270,6 +2270,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	}
 };
 
+#include "cl_tasinput.qc"
+
 float(string cmd) CSQC_ConsoleCommand =
 {
 	local float cmdargc, tsseat, tsvalue;
@@ -2291,6 +2293,7 @@ float(string cmd) CSQC_ConsoleCommand =
 			print("tas: unsupported local seat\n");
 			return TRUE;
 		}
+		if (CL_TASInputCommand(cmdargc, tsseat)) return TRUE;
 		if (cmdargc == 1)
 			localcmd(sprintf("p%g cmd tas status\n", tsseat + 1));
 		else if (cmdargc == 2 && (!strcmp(argv(1), "on") || !strcmp(argv(1), "off") ||
@@ -2329,7 +2332,7 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas speed %.9g\n", tsseat + 1, tsvalue));
 		}
 		else
-			print("tas: on | off | pause | play | step/back [1..128] | status | speed 0.1..1\n");
+			print("tas: on/off | pause/play | step/back [1..128] | inputs [N] | replay first | edit first [last] field value | status | speed 0.1..1\n");
 		return TRUE;
 	}
 	if (!strcmp(argv(0), "host_timescale"))
