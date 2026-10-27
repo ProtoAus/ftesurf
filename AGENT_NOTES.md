@@ -3399,6 +3399,13 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Conventions
 
+- **Use the bounded actual-step ACK for paused packet work (P1055).** Native
+  `run_movetick` is a cumulative counter published asfloat32; `+1` aliases at
+  2^24. Pause entry/cancel/PostThink must consistently use `run_tas_done`/seen,
+  whose native16million ceiling is exact. Also bound the ordinary clock plus
+  pending/new grants, before marking. A final blocked command must not suppress
+  earlier completed steps from that packet's normal timer/recorder flush. The
+  float32 regression is arithmetic/static proof, not a near2^24runtime test.
 - **Quote CSV across QC console transport (P970, measured).** `tokenize(cmd)`
   treats commas as punctuation: an unquoted21-field setup arrived as42 tokens,
   was refused and published nothing. Quote the bounded payload in EVERY direction

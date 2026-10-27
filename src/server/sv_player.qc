@@ -802,13 +802,14 @@ void() PlayerPostThink =
 	SV_NoclipWatch(self);
 	Account_Think(self);                // Patch 619: a started Steam link, waited on
 
-	// P1055: a packet with no moved tick is not gameplay time. A packet with
-	// completed steps still processes its full delta, even if its last cmd blocked.
+	// P1055: use the bounded actual-step ACK, not the general float counter
+	// (which loses unit precision at 2^24). A final blocked cmd must not hide
+	// completed steps from this packet's normal timer/recorder processing.
 	if (self.run_tas_paused)
 	{
-		if (self.run_movetick == self.run_tas_seen)
+		if (self.run_tas_done == self.run_tas_seen)
 			return;
-		self.run_tas_seen = self.run_movetick;
+		self.run_tas_seen = self.run_tas_done;
 	}
 
 	/*
@@ -1211,6 +1212,12 @@ float(entity e) SV_TASCanPause =
 		sprint(e, PRINT_HIGH, "tas: pause/step requires the P1055 engine, Source 15ms clock and QW duration inputs\n");
 		return FALSE;
 	}
+	// Keep both the general recorder clock and step ACK inside exact float32 integers.
+	if (!(e.run_movetick >= 0 && e.run_movetick < 16000000))
+	{
+		sprint(e, PRINT_HIGH, "tas: connection movement-clock limit reached; reconnect before stepping\n");
+		return FALSE;
+	}
 	if (e.movetype != MOVETYPE_WALK || e.health <= 0 || e.run_pmhold || e.rec_sl_hold ||
 	    e.rec_wt_hold || e.rec_gh_on || e.run_ms_phase || e.run_t_viewowner)
 	{
@@ -1261,7 +1268,8 @@ void(entity e, float argc) SV_TASCommand =
 			sprint(e, PRINT_HIGH, "tas: duplicate/stale step request ignored\n");
 			return;
 		}
-		if (e.run_tas_pending + count > 128 || e.run_tas_done + e.run_tas_pending + count > 16000000)
+		if (e.run_tas_pending + count > 128 || e.run_tas_done + e.run_tas_pending + count > 16000000 ||
+		    e.run_movetick + e.run_tas_pending + count > 16000000)
 		{
 			sprint(e, PRINT_HIGH, "tas: step queue/counter limit reached\n");
 			return;
@@ -1269,7 +1277,7 @@ void(entity e, float argc) SV_TASCommand =
 		if (!SV_TASCanPause(e)) return;
 		SV_TASMark(e);
 		e.run_tas_mode = TRUE;
-		if (!e.run_tas_paused) e.run_tas_seen = e.run_movetick;
+		if (!e.run_tas_paused) e.run_tas_seen = e.run_tas_done;
 		e.run_tas_paused = TRUE;
 		e.run_tas_req = ticket;
 		e.run_tas_pending = e.run_tas_pending + count;
@@ -1293,7 +1301,7 @@ void(entity e, float argc) SV_TASCommand =
 		if (!SV_TASCanPause(e)) return;
 		SV_TASMark(e);
 		e.run_tas_mode = TRUE;
-		if (!e.run_tas_paused) e.run_tas_seen = e.run_movetick;
+		if (!e.run_tas_paused) e.run_tas_seen = e.run_tas_done;
 		e.run_tas_paused = TRUE;
 		sprint(e, PRINT_HIGH, "tas: movement paused; tas step [1..128] or tas play; shared world continues\n");
 		return;
