@@ -253,7 +253,6 @@ JOIN_RATE_MAX = 30       # join requests per RATE_WINDOW per source
 ASSIGN_TTL = 90          # seconds
 
 LOBBY_TTL = 30           # seconds; a lobby older than this is not "live"
-REAP_AFTER = 3600        # seconds; rows older than this are deleted outright
 MAX_NODES = 200          # hard cap on distinct nodes stored
 MAX_FIELD_LEN = 64       # per the API contract
 MAX_BODY = 16 * 1024     # bytes; a heartbeat is a few hundred bytes at most
@@ -2251,18 +2250,14 @@ def heartbeat():
     db = get_db()
     try:
         with db:
-            db.execute("DELETE FROM lobbies WHERE last_seen < ?", (now - REAP_AFTER,))
+            # TTL hides stale rows; their persistent rotation history survives.
+            # Keep the old reaper's write lock across the capacity check/insert.
+            db.execute("BEGIN IMMEDIATE")
             known = db.execute(
                 "SELECT 1 FROM lobbies WHERE node = ?", (node,)
             ).fetchone()
             if known is None:
                 count = db.execute("SELECT COUNT(*) FROM lobbies").fetchone()[0]
-                if count >= MAX_NODES:
-                    # make room by dropping everything already dead
-                    db.execute(
-                        "DELETE FROM lobbies WHERE last_seen < ?", (now - LOBBY_TTL,)
-                    )
-                    count = db.execute("SELECT COUNT(*) FROM lobbies").fetchone()[0]
                 if count >= MAX_NODES:
                     log.warning(
                         "node cap %d reached, refusing new node %r from %s",

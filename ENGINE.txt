@@ -25,7 +25,8 @@ commit   2e9260645ac8ff439ce06cae545fab089811d622
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1055
-patch    1059
+patch    1060
+# Patch 1060: retain bounded lobby rotation history across stale heartbeats.
 # Patch 1059 is menu only: text navigation, compact top-left note, shared browser sidebar.
 # Patch 1058: crisp native-size Home text, floating header, development update guard.
 # Patch 1057 is menu only: bigger lobby thumbnails, compact stats, taller Friends.

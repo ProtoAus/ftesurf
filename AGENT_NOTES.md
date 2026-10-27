@@ -6819,6 +6819,15 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+P1060: lobby TTL controls visibility, not deletion of persisted rotation history.
+`surfd/p1060_lobby_retention.py` exercises first/all12 stale heartbeats, capacity
+refusal and concurrent admission; `--expect-bug` proves the old reaper ACTED.
+Removing a pruning DELETE also removes its implicit write transaction: retain
+an immediate write lock across the node count and insert, or concurrent new
+identities can cross the capacity bound. Run these Python tests with an owned
+TMPDIR and `-B`; the existing test_surfd.py needs its script directory on the
+module path and is not an `-I` entrypoint.
+
 P972 readback,24Oct2026: native `SVC_Status` deliberately excludes mapname and
 oldstyle0 requests only serverinfo/players. Explicit mask7 also includes
 spectators. A2C_PRINT carries exactly one terminal NUL: strip/validate that

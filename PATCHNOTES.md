@@ -21,6 +21,9 @@
 
 ## next
 
+### P1060 Lobby history survives downtime
+- Lobbies keep their rotation history across long heartbeat gaps; inactive lobbies still disappear from the live list.
+
 ### P1059 Shared browser panels and simple navigation
 - Friends and lobby chat stay in place while Lobbies, Maps, Story and Event swap the main panel. Switching pages keeps your unsent chat text.
 - Navigation returns to bold white text without a backdrop. The compact update note stays at the screen's top-left.
