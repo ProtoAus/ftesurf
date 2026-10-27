@@ -2303,11 +2303,11 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas pause\n", tsseat + 1));
 		}
-		else if ((cmdargc == 2 || cmdargc == 3) && !strcmp(argv(1), "step"))
+		else if ((cmdargc == 2 || cmdargc == 3) && (!strcmp(argv(1), "step") || !strcmp(argv(1), "back")))
 		{
 			tsvalue = cmdargc == 3 ? stof(argv(2)) : 1;
 			if (!(tsvalue >= 1 && tsvalue <= 128 && tsvalue == floor(tsvalue)))
-				print("tas: step count must be an integer 1..128\n");
+				print("tas: step/back count must be an integer 1..128\n");
 			else if (cvar("cl_threadedphysics") || checkextension("FTE_VRINPUTS"))
 				print("tas: pause/step requires cl_threadedphysics 0 and duration inputs\n");
 			else if (!LT_StatsAreMine())
@@ -2315,7 +2315,7 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 			{
 				run_tas_request[tsseat] = max(run_tas_request[tsseat], getstatf(STAT_FS_TASREQUEST)) + 1;
-				localcmd(sprintf("p%g cmd tas step %g %.0f\n", tsseat + 1, tsvalue, run_tas_request[tsseat]));
+				localcmd(sprintf("p%g cmd tas %s %g %.0f\n", tsseat + 1, argv(1), tsvalue, run_tas_request[tsseat]));
 			}
 		}
 		else if (cmdargc == 3 && !strcmp(argv(1), "speed"))
@@ -2329,7 +2329,7 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas speed %.9g\n", tsseat + 1, tsvalue));
 		}
 		else
-			print("tas: on | off | pause | play | step [1..128] | status | speed 0.1..1\n");
+			print("tas: on | off | pause | play | step/back [1..128] | status | speed 0.1..1\n");
 		return TRUE;
 	}
 	if (!strcmp(argv(0), "host_timescale"))

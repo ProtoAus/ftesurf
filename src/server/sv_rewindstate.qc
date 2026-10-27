@@ -57,6 +57,14 @@ void(entity e, float b) SV_RewindStateSample =
 	m[b+66] = SV_ViewSeconds(e);
 	m[b+67] = e.rec_rec_views;
 	m[b+68] = e.rec_rec_parks;
+	m[b+RW_NATIVEBASE] = m[b+RW_NATIVEBASE+1] = 0;
+	if (e.run_tas_mode && e.run_tas_rwcap)
+	if (b < RW_CAP * RW_STRIDE)
+	if (checkbuiltin(tas_rewind))
+	{
+		m[b+RW_NATIVEBASE+1] = b / RW_STRIDE;
+		m[b+RW_NATIVEBASE] = tas_rewind(e, b / RW_STRIDE, 0, 0);
+	}
 	m[b+50] = e.run_t_handcarry;
 	m[b+51] = e.run_t_clock;
 	m[b+54] = e.run_t_pendarm;

@@ -3478,7 +3478,8 @@ void(entity e) SV_SaveLocCreate =
 #define RW_SLOWCAP   1800       // ~29 minutes past the dense two; +0.85 MB a running player
 #define RW_STATEBASE 10
 #define RW_STATECOLS 60         // Patch 840: 55-64 the slow-clock state
-#define RW_SPLITBASE (RW_STATEBASE + RW_STATECOLS)
+#define RW_NATIVEBASE (RW_STATEBASE + RW_STATECOLS) // P1061: token, native dense slot
+#define RW_SPLITBASE (RW_NATIVEBASE + 2)
 #define RW_CPBASE    (RW_SPLITBASE + FS_MAXSPLITS)
 #define RW_STRIDE    (RW_CPBASE + FS_MAXCPS)
 void(entity e, float b) SV_RewindStateSample;
@@ -3607,7 +3608,7 @@ void(entity e) SV_RewindSample =
 		SV_RewindReset(e);
 		e.rw_st = st;               // or the next packet resets it again as a new run
 	}
-	if (e.rw_n && t - e.rw_last < RW_EVERY)
+	if (e.rw_n && t - e.rw_last < ((e.run_tas_mode && e.run_tas_rwcap) ? 1 : RW_EVERY))
 		return;
 	s = num_for_edict(e);
 	if (s < 1 || s > FS_MAXPLAYERS)
@@ -3733,6 +3734,50 @@ float(entity e, float t, vector near, float usenear) SV_RewindFind =
 
 #include "sv_rewindstate.qc"
 
+// P1061: stationary wall time must not add rows; refresh the current head's state.
+void(entity e) SV_RewindTASHead =
+{
+	local float *m;
+	local float b, t;
+
+	if (e.run_t_state != TS_RUNNING) return;
+	t = SV_TimerTicks(e);
+	m = rw_slot[num_for_edict(e)];
+	if (m && e.rw_n > 0)
+	{
+		b = ((e.rw_head + RW_CAP - 1) % RW_CAP) * RW_STRIDE;
+		if (m[b] == t && m[b+33] == e.rec_rec_serial)
+		{
+			SV_RewindStateSample(e, b);
+			return;
+		}
+	}
+	e.rw_last = min(e.rw_last, t - 1);
+	SV_RewindSample(e);
+};
+
+float rw_native_slot, rw_native_token;
+float(entity e, float t) SV_RewindFindTick =
+{
+	local float *m;
+	local float b;
+
+	rw_native_slot = rw_native_token = 0;
+	if (!(t >= 0 && t < 16000000 && floor(t) == t)) return FALSE;
+	b = SV_RewindSelectRead(e, t, '0 0 0', FALSE);
+	if (b < 0) return FALSE;
+	m = rw_slot[num_for_edict(e)];
+	if (m[b] != t || m[b+33] != e.rec_rec_serial || m[b+RW_NATIVEBASE] <= 0) return FALSE;
+	if (!checkbuiltin(tas_rewind)) return FALSE;
+	if (!tas_rewind(e, m[b+RW_NATIVEBASE+1], m[b+RW_NATIVEBASE], 1)) return FALSE;
+	rw_o = [m[b+1], m[b+2], m[b+3]];
+	rw_v = [m[b+4], m[b+5], m[b+6]];
+	rw_pit = m[b+7]; rw_yaw = m[b+8]; rw_dk = m[b+9];
+	rw_t = t; rw_statebase = b;
+	rw_native_slot = m[b+RW_NATIVEBASE+1]; rw_native_token = m[b+RW_NATIVEBASE];
+	return TRUE;
+};
+
 // Without a kept prefix retain the old practice-placement shape.
 float(entity e, float id, float seq, float go) SV_SaveWriteAt =
 {
@@ -3838,7 +3883,7 @@ void(entity e) SV_RewindDropGo =
 // `sl_saveat <ticks> [x y z]`: SV_SaveLocCreate's flow, with the ring for the body.
 // TRUE when the save was made and is the current row; `go` replaces the last
 // resume's row (SV_RewindDropGo), which the dispatcher marks once it holds.
-float(entity e, float t, vector near, float usenear, float go, float view) SV_SaveLocCreateAt =
+float(entity e, float t, vector near, float usenear, float go, float view, float exact) SV_SaveLocCreateAtMode =
 {
 	local float id, seq, row, blk, base, cnt, full;
 
@@ -3882,7 +3927,15 @@ float(entity e, float t, vector near, float usenear, float go, float view) SV_Sa
 		               SL_Cap(blk)));
 		return FALSE;
 	}
-	if (view)
+	if (exact)
+	{
+		if (!SV_RewindFindTick(e, t))
+		{
+			sprint(e, PRINT_HIGH, "tas: that exact tick has no retained native checkpoint\n");
+			return FALSE;
+		}
+	}
+	else if (view)
 		rw_statebase = -1;           // client replay points never assert a timed prefix
 	else if (!SV_RewindFind(e, t, near, usenear))
 	{
@@ -3949,6 +4002,12 @@ float(entity e, float t, vector near, float usenear, float go, float view) SV_Sa
 	                              (go && SV_RewindAlone(e))
 	                                ? " -- a resume point: the next resume replaces it, S keeps one" : ""));
 	return TRUE;
+};
+
+// Existing callers retain their normal spatial/coarse rewind policy.
+float(entity e, float t, vector near, float usenear, float go, float view) SV_SaveLocCreateAt =
+{
+	return SV_SaveLocCreateAtMode(e, t, near, usenear, go, view, FALSE);
 };
 
 /*
@@ -4841,7 +4900,9 @@ void(entity e, float on) SV_WatchHold =
 	if (e.run_pmhold)
 		SV_SpecRelease(e, "leave");  // existing evidence reason: leaving spectate for replay
 
-	SV_ViewWindow(e, 2);
+	// An owned paused TAS cursor is not elapsed replay viewing time.
+	if (!(e.run_tas_rwpin && e.run_tas_paused && e.run_tas_rwcap))
+		SV_ViewWindow(e, 2);
 	// Save the derivable prior mode before native PRE-pin observation.
 	e.rec_wt_holdmove = e.movetype;
 	SV_HeldEvent(e, "entry");

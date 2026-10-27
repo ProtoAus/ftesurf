@@ -41,6 +41,7 @@ float  rw_headi, rw_headt;      // the head when it opened: the leave's resume p
 vector rw_headp;
 float  rw_i;                    // fractional visual index; selection stays at floor
 float rw_visualt;
+float rw_tas, rw_tickpos, rw_tickhead, rw_tickfrac; // P1061: exact tick selection, separate from line density
 vector rw_visualp;
 float  rw_dir;                  // scrub key held: -1, +1 or 0
 float  rw_dirat;                // cltime it went down
@@ -274,11 +275,31 @@ void(float evtype, float scanx, float chary) Rewind_Track =
 	}
 };
 
+void(float delta) Rewind_Move =
+{
+	if (rw_tas) rw_tickpos = rw_tickpos + rint(delta);
+	else rw_i = rw_i + delta;
+};
+
 void() Rewind_Cursor =
 {
-	local float n, b, j, f;
+	local float n, b, j, f, t;
 
 	n = ln_n[tr_live];
+	if (rw_tas)
+	{
+		rw_tickpos = bound(0, rw_tickpos, rw_tickhead);
+		t = rw_tickpos * tr_tick;
+		rw_i = Line_Find(tr_live, t);
+		b = tr_live * LN_CAP + bound(0, floor(rw_i), n - 1);
+		j = min(tr_live * LN_CAP + n - 1, b + 1);
+		f = 0;
+		if (!ln_brk[j] && ln_t[j] > ln_t[b])
+			f = bound(0, (t - ln_t[b]) / (ln_t[j] - ln_t[b]), 1);
+		tr_cur_t = rw_visualt = t;
+		tr_cur_p = rw_visualp = ln_pos[b] + (ln_pos[j] - ln_pos[b]) * f;
+		return;
+	}
 	if (rw_i > n - 1)
 		rw_i = n - 1;
 	if (rw_i < 0)
@@ -336,6 +357,7 @@ float() Rewind_Old =
 	if (n < 1 || tr_tick <= 0)
 		return FALSE;
 	back = (ln_t[tr_live * LN_CAP + n - 1] - tr_cur_t) / tr_tick;
+	if (rw_tas) return (rw_tickhead - rw_tickpos > 3900) ? 2 : 0;
 	if (back > RW_SLOWKEPT)
 		return 2;
 	return back > RW_KEPT;
@@ -357,8 +379,15 @@ float() Rewind_Open =
 		print("^3rewind:^7 not while a replay, ghost, spectate or load is up\n");
 		return FALSE;
 	}
-	// A rewind is an explicit splice: confirm before tainting a running run.
-	if (getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING)
+	if (getstatf(STAT_FS_TASPAUSE) && getstatf(STAT_FS_TASPENDING))
+	{
+		print("tas: finish queued steps before opening rewind\n");
+		return TRUE;
+	}
+	rw_tas = (getstatf(STAT_FS_TASREWIND) == 1 && getstatf(STAT_FS_TASPAUSE) == 1 &&
+	          getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING && !tr_practice && LT_StatsAreMine());
+	// TAS is already assisted. Normal rewind still confirms before tainting.
+	if (!rw_tas && getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING)
 	if (!rw_askat || (cltime - rw_askat) >= RW_ASK || rw_askgen != tr_gen)
 	{
 		rw_askat = cltime;
@@ -395,6 +424,13 @@ float() Rewind_Open =
 	{
 		rw_i = rw_resi;
 		rw_atres = TRUE;
+	}
+	if (rw_tas)
+	{
+		rw_tickhead = getstatf(STAT_FS_TIMERTICKS);
+		rw_tickpos = rw_tickhead;
+		rw_tickfrac = 0;
+		rw_atres = FALSE;
 	}
 	tr_cur_on = TRUE;
 	Rewind_Cursor();
@@ -448,7 +484,7 @@ string() Rewind_At =
 {
 	local float tk;
 
-	tk = (tr_tick > 0) ? rint(tr_cur_t / tr_tick) : 0;
+	tk = rw_tas ? rw_tickpos : ((tr_tick > 0) ? rint(tr_cur_t / tr_tick) : 0);
 	return sprintf("%g %g %g %g", tk, tr_cur_p_x, tr_cur_p_y, tr_cur_p_z);
 };
 
@@ -499,6 +535,14 @@ void() Rewind_Leave =
 		Rewind_Close();
 		return;
 	}
+	if (rw_tas)
+	{
+		rw_tickpos = rw_tickhead;
+		Rewind_Cursor();
+		rw_leave = TRUE;
+		Rewind_Go();
+		return;
+	}
 	rw_i = rw_headi;
 	tr_cur_t = rw_headt;
 	tr_cur_p = rw_headp;
@@ -530,6 +574,17 @@ void() Rewind_Answer =
 			rw_leave = FALSE;
 			Rewind_Close();
 		}
+		return;
+	}
+	if (rw_tas)
+	{
+		// Server completed pin/load/native-restore/re-pause in one command.
+		// No normal rewind countdown and no client release to thaw the body.
+		if (getstatf(STAT_FS_TASREWIND) != 1)
+			print("tas: native restore failed; body remains paused\n");
+		rec_sl_holding = FALSE;
+		rw_on = rw_ack = rw_cd = rw_dir = rw_leave = 0;
+		tr_cur_on = FALSE;
 		return;
 	}
 	// Only the correlated save acknowledgement can label a native clock.
@@ -609,7 +664,7 @@ void() Rewind_HandOver =
 
 void(float navfocus) Rewind_Frame =
 {
-	local float dt, rate, k;
+	local float dt, rate, k, ticks;
 
 	// Round 17: a release an earlier handler swallowed (the chat draft's) still
 	// lets go, so a scrub stops and the key's next press is a press -- closed
@@ -693,8 +748,19 @@ void(float navfocus) Rewind_Frame =
 	Rewind_NavRefresh();
 	if (rw_dir)
 	{
-		rate = RW_RATE0 + (RW_RATEMAX - RW_RATE0) * min(1, (cltime - rw_dirat) / RW_ACCEL);
-		rw_i = rw_i + rw_dir * rate * dt;
+		if (rw_tas)
+		{
+			rate = 8 + 32 * min(1, (cltime - rw_dirat) / RW_ACCEL);
+			rw_tickfrac = rw_tickfrac + rw_dir * rate * dt;
+			ticks = rw_tickfrac < 0 ? ceil(rw_tickfrac) : floor(rw_tickfrac);
+			rw_tickfrac = rw_tickfrac - ticks;
+			Rewind_Move(ticks);
+		}
+		else
+		{
+			rate = RW_RATE0 + (RW_RATEMAX - RW_RATE0) * min(1, (cltime - rw_dirat) / RW_ACCEL);
+			rw_i = rw_i + rw_dir * rate * dt;
+		}
 	}
 	Rewind_Cursor();
 };
@@ -813,6 +879,8 @@ void(vector scr) Rewind_Draw =
 		          11 * ui_cv_scale, '0.8 0.8 0.8', 0.85);
 	if (rw_ack)
 		s = "...";
+	else if (rw_tas)
+		s = sprintf("TAS tick %.0f   arrows: one tick   ENTER: restore, stay paused   unavailable ticks refuse", rw_tickpos);
 	else if (Rewind_Old() == 2)
 		s = "arrows/strafe binds scrub   too far back: the server keeps about half an hour";
 	else if (Rewind_Old())
@@ -885,7 +953,7 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 	if (!rw_ack)
 	if (scanx == K_MWHEELDOWN || scanx == K_MWHEELUP)
 	{
-		rw_i = rw_i + ((scanx == K_MWHEELDOWN) ? -10 : 10);
+		Rewind_Move((scanx == K_MWHEELDOWN) ? -10 : 10);
 		Rewind_Cursor();
 		return TRUE;
 	}
@@ -937,7 +1005,7 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 	{
 		rw_kactive[k] = TRUE;
 		Rewind_NavRefresh();
-		rw_i = rw_i + rw_dir;
+		Rewind_Move(rw_dir);
 		Rewind_Cursor();
 		return TRUE;
 	}
@@ -1056,12 +1124,13 @@ float() Rewind_Console =
 		t = stof(argv(2));
 		if (t < 0)
 			t = ln_t[tr_live * LN_CAP + ln_n[tr_live] - 1] + t;
-		rw_i = Line_Find(tr_live, t);
+		if (rw_tas) rw_tickpos = tr_tick > 0 ? rint(t / tr_tick) : 0;
+		else rw_i = Line_Find(tr_live, t);
 		Rewind_Cursor();
 	}
 	else if (a == "step" && !busy)
 	{
-		rw_i = rw_i + stof(argv(2));
+		Rewind_Move(stof(argv(2)));
 		Rewind_Cursor();
 	}
 	else if (a == "key")

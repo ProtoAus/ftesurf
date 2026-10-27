@@ -300,6 +300,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_TASPENDING,  EV_FLOAT,  run_tas_pending);
 	clientstat(STAT_FS_TASDONE,     EV_FLOAT,  run_tas_done);
 	clientstat(STAT_FS_TASREQUEST,  EV_FLOAT,  run_tas_req);
+	clientstat(STAT_FS_TASREWIND,   EV_FLOAT,  run_tas_rwcap);
 	clientstat(STAT_FS_STYLE,       EV_FLOAT,  run_style);
 
 	/*

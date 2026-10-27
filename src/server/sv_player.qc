@@ -283,6 +283,8 @@ void() ClientConnect =
 	self.run_tas_paused = self.run_tas_pending = self.run_tas_done = self.run_tas_ready = 0;
 	self.run_tas_fault = self.run_tas_req = self.run_tas_seen = 0;
 	self.run_tas_cmdkey = '0 0 0';
+	self.run_tas_rwpin = self.run_tas_rwcap = 0;
+	if (checkbuiltin(tas_rewind)) self.run_tas_rwcap = 1;
 	Archive_Reset(self);
 	EventFog_Reset(self);          // recycled slot/map must not inherit event fog
 	// Patch 371: a join line only for a new connection -- this runs again for
@@ -1232,6 +1234,91 @@ float(entity e) SV_TASCanPause =
 	return TRUE;
 };
 
+// P1061: the established pin/load/cut path owns timer and recorder state.
+// Native restore adds private mover state, never rolls back connection counters.
+float(entity e, float slot, float token) SV_TASGo =
+{
+	SV_SaveLocGo(e);
+	if (FS_SlopOp(e.rec_sl_slop) != SLOP_LOADED || !e.rec_sl_hold) return FALSE;
+	SV_SaveLocRelease(e);
+	e.run_tas_paused = TRUE;
+	e.run_tas_pending = 0;
+	e.run_tas_seen = e.run_tas_done;
+	SV_TASMark(e);
+	if (!tas_rewind(e, slot, token, 2))
+	{
+		// An invariant failed after placement. Fail closed, never thaw or claim parity.
+		e.run_tas_rwcap = 0;
+		sprint(e, PRINT_HIGH, "tas: native restore failed; body remains paused, reconnect before rewinding\n");
+		return FALSE;
+	}
+	// Settle the release now: normal holds defer this until a simulated frame,
+	// which would wrongly exclude the first explicitly granted TAS tick.
+	SV_TimerFreezeFrame(e);
+	SV_RewindTASHead(e);
+	return TRUE;
+};
+
+void(entity e, float count, float ticket) SV_TASBack =
+{
+	local float target, slot, token, headslot, headtoken, b;
+	local float *m;
+
+	if (!(count >= 1 && count <= 128 && count == floor(count)) ||
+	    !(ticket >= 1 && ticket <= 16000000 && ticket == floor(ticket)))
+	{
+		sprint(e, PRINT_HIGH, "tas: back count must be an integer 1..128; invalid request\n");
+		return;
+	}
+	if (ticket <= e.run_tas_req)
+	{
+		sprint(e, PRINT_HIGH, "tas: duplicate/stale back request ignored\n");
+		return;
+	}
+	if (!e.run_tas_paused || e.run_tas_pending || !e.run_tas_rwcap || e.run_t_state != TS_RUNNING)
+	{
+		sprint(e, PRINT_HIGH, "tas: back needs a paused running attempt, no queued steps, and P1061 native checkpoints\n");
+		return;
+	}
+	if (!SV_TASCanPause(e)) return;
+	SV_RewindTASHead(e);
+	target = SV_TimerTicks(e) - count;
+	if (!SV_RewindFindTick(e, target))
+	{
+		sprint(e, PRINT_HIGH, "tas: that exact tick has no retained native checkpoint; no movement\n");
+		return;
+	}
+	slot = rw_native_slot; token = rw_native_token;
+	m = rw_slot[num_for_edict(e)];
+	b = ((e.rw_head + RW_CAP - 1) % RW_CAP) * RW_STRIDE;
+	headslot = m[b+RW_NATIVEBASE+1]; headtoken = m[b+RW_NATIVEBASE];
+	if (!tas_rewind(e, headslot, headtoken, 1)) return;
+	if (!SV_SaveLocRate(e)) return;  // create charges the other half of a go
+	e.run_tas_rwpin = TRUE;
+	SV_WatchHold(e, TRUE);
+	if (!e.rec_wt_hold)
+	{
+		e.run_tas_rwpin = FALSE;
+		return;
+	}
+	e.rw_pin = TRUE;
+	e.run_tas_req = ticket;
+	if (SV_SaveLocCreateAtMode(e, target, '0 0 0', FALSE, TRUE, FALSE, TRUE))
+	if (SV_TASGo(e, slot, token))
+	{
+		sprint(e, PRINT_HIGH, sprintf("tas: back %.0f to tick %.0f; paused, completed %.0f request %.0f\n",
+			count, SV_TimerTicks(e), e.run_tas_done, ticket));
+		return;
+	}
+	if (e.rec_wt_hold)
+	{
+		SV_WatchRelease(e);
+		e.run_tas_paused = TRUE;
+		if (!tas_rewind(e, headslot, headtoken, 2))
+			sprint(e, PRINT_HIGH, "tas: failed go; head restore failed, body remains paused\n");
+	}
+};
+
 // The control switch and retained ancestry deliberately have different lifetimes.
 void(entity e, float argc) SV_TASCommand =
 {
@@ -1251,6 +1338,13 @@ void(entity e, float argc) SV_TASCommand =
 		}
 		else
 			sprint(e, PRINT_HIGH, "tas: playing; queued steps cancelled, TAS ancestry retained\n");
+		return;
+	}
+	if (!strcmp(action, "back") && argc >= 2 && argc <= 4)
+	{
+		count = argc >= 3 ? stof(argv(2)) : 1;
+		ticket = argc == 4 ? stof(argv(3)) : e.run_tas_req + 1;
+		SV_TASBack(e, count, ticket);
 		return;
 	}
 	if (!strcmp(action, "step") && argc >= 2 && argc <= 4)
@@ -1279,6 +1373,7 @@ void(entity e, float argc) SV_TASCommand =
 		e.run_tas_mode = TRUE;
 		if (!e.run_tas_paused) e.run_tas_seen = e.run_tas_done;
 		e.run_tas_paused = TRUE;
+		SV_RewindTASHead(e);
 		e.run_tas_req = ticket;
 		e.run_tas_pending = e.run_tas_pending + count;
 		sprint(e, PRINT_HIGH, sprintf("tas: request %.0f queued %.0f; pending %.0f, completed %.0f\n",
@@ -1294,6 +1389,8 @@ void(entity e, float argc) SV_TASCommand =
 		sprint(e, PRINT_HIGH, sprintf("tas: paused %.0f pending %.0f completed %.0f request %.0f native %g fault %g\n",
 			e.run_tas_paused, e.run_tas_pending, e.run_tas_done, e.run_tas_req, e.run_tas_ready, e.run_tas_fault));
 		sprint(e, PRINT_HIGH, sprintf("tas: mover %.0f carry %.9g\n", e.run_movetick, e.run_movecarry));
+		sprint(e, PRINT_HIGH, sprintf("tas: timeline tick %.0f hull %.9g eye %.9g duck %.0f\n",
+			SV_TimerTicks(e), e.maxs_z - e.mins_z, e.view_ofs_z, (e.pmove_flags & PMF_DUCKED) ? 1 : 0));
 		return;
 	}
 	if (argc == 2 && !strcmp(action, "pause"))
@@ -1303,7 +1400,8 @@ void(entity e, float argc) SV_TASCommand =
 		e.run_tas_mode = TRUE;
 		if (!e.run_tas_paused) e.run_tas_seen = e.run_tas_done;
 		e.run_tas_paused = TRUE;
-		sprint(e, PRINT_HIGH, "tas: movement paused; tas step [1..128] or tas play; shared world continues\n");
+		SV_RewindTASHead(e);
+		sprint(e, PRINT_HIGH, "tas: movement paused; tas step/back [1..128] or tas play; shared world continues\n");
 		return;
 	}
 	if (argc == 2 && !strcmp(action, "on"))
@@ -1322,13 +1420,13 @@ void(entity e, float argc) SV_TASCommand =
 		}
 		return;
 	}
-	sprint(e, PRINT_HIGH, "tas: on | off | pause | play | step [1..128] | status | speed 0.1..1\n");
+	sprint(e, PRINT_HIGH, "tas: on | off | pause | play | step/back [1..128] | status | speed 0.1..1\n");
 };
 
 void(string cmd) SV_ParseClientCommand =
 {
 	local string c, weaponarg;
-	local float  cmdargc, go, won, wvoid, wrw, wser, wst0, wtk, wsq;
+	local float  cmdargc, go, won, wvoid, wrw, wser, wst0, wtk, wsq, tasgo, tasslot, tastoken;
 	local vector was;
 
 	// Patch 638: a linked player's name is their Steam account's.  A rename
@@ -1699,11 +1797,16 @@ void(string cmd) SV_ParseClientCommand =
 		if (go)
 		if (!SV_SaveLocRate(self))
 			return;
-		if (SV_SaveLocCreateAt(self, stof(argv(1)),
+		tasgo = self.run_tas_rwpin; // TAS saves also select the exact tick, never a nearby pose
+		if (SV_SaveLocCreateAtMode(self, stof(argv(1)),
 		                       [stof(argv(2)), stof(argv(3)), stof(argv(4))],
-		                       cmdargc >= 5, go, FALSE))
+		                       cmdargc >= 5, go, FALSE, tasgo))
 		if (go)
-			SV_SaveLocGo(self);
+		{
+			tasslot = rw_native_slot; tastoken = rw_native_token;
+			if (tasgo) SV_TASGo(self, tasslot, tastoken);
+			else SV_SaveLocGo(self);
+		}
 		return;
 	}
 	if (c == "sl_load")    { SV_SaveLocLoad(self, self.rec_sl_index);     return; }
@@ -1757,6 +1860,16 @@ void(string cmd) SV_ParseClientCommand =
 			sprint(self, PRINT_HIGH, "^3rewind:^7 the run changed since you asked -- open the rewind again\n");
 			return;
 		}
+		if (wrw && won && self.run_tas_paused && self.run_tas_pending)
+		{
+			sprint(self, PRINT_HIGH, "tas: finish queued steps before opening rewind\n");
+			return;
+		}
+		if (wrw && won)
+		{
+			self.run_tas_rwpin = (self.run_tas_paused && self.run_tas_rwcap);
+			if (self.run_tas_rwpin) SV_RewindTASHead(self);
+		}
 		SV_WatchHold(self, won);
 		if (wrw)
 		if (won)
@@ -1764,10 +1877,14 @@ void(string cmd) SV_ParseClientCommand =
 			if (self.rec_wt_hold)
 			{
 				self.rw_pin = TRUE;
+				self.run_tas_rwpin = (self.run_tas_paused && self.run_tas_rwcap);
 				self.rec_wt_pin = wser;
 			}
 			else
+			{
+				self.run_tas_rwpin = FALSE;
 				self.rec_wt_pin = -wser;    // SV_WatchHold refused it (round 15)
+			}
 		}
 		return;
 	}

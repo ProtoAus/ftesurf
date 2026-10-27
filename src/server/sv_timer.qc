@@ -262,6 +262,8 @@
 */
 float(string src, string dst) frename = #0:frename;
 float(string fname) fremove         = #0:fremove;
+// P1061: opaque, bounded, VM/map/connection-bound native movement state.
+float(entity player, float slot, float token, float op) tas_rewind = #0:tas_rewind;
 
 /*
   Patch 419 (engine): the OS entropy the master-server challenge code already
@@ -727,6 +729,7 @@ float sv_ts_taint_uid[FS_MAXPLAYERS]; // existing native userid, VM-only; surviv
 // P1055: native gate protocol. Controls/counters are never saved as run state.
 .float run_tas_paused, run_tas_pending, run_tas_done, run_tas_ready, run_tas_fault;
 .float run_tas_req, run_tas_seen; // seen is the bounded completed-step ACK
+.float run_tas_rwcap, run_tas_rwpin;
 .vector run_tas_cmdkey;          // native uint32 sequence as two exact 16-bit words + valid
 float sv_tas_taint_uid[FS_MAXPLAYERS];
 
@@ -789,7 +792,7 @@ float(entity e) SV_TASFlags =
 
 void(entity e) SV_TASCancel =
 {
-	e.run_tas_paused = e.run_tas_pending = e.run_tas_fault = 0;
+	e.run_tas_paused = e.run_tas_pending = e.run_tas_fault = e.run_tas_rwpin = 0;
 	e.run_tas_seen = e.run_tas_done;
 };
 

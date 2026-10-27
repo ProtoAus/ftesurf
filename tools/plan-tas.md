@@ -76,7 +76,9 @@ native completion counters on the supported Source15ms movement driver. Exact
 commands, acting controls and static/shared-world limits are recorded in
 [p1055-tas-step.md](p1055-tas-step.md). Matching native/qw/cs payloads are installed
 and socket-tested in both Windows installs. Public guarded-fleet promotion and
-human acceptance remain pending. This does not complete the later editor stages.
+broader human acceptance remain pending. Owner has confirmed the existing stop/forward
+functionality; this is not a measured precision or full jump/duck/latency acceptance.
+This does not complete the later editor stages.
 
 Provide pause, play, step-one and bounded step-N. Grant movement on the trusted mover,
 not by asking the client to send a chosen duration. Reuse fixed-tick Source movement and
@@ -92,6 +94,23 @@ advances exactly one mover tick and its expected state at several render/net rat
 Static-world support first if full independent world snapshots are not available; dynamic
 movers, delayed IO, physics props and shared effects need explicit limits, never false parity.
 Changes to recorder/mover semantics require the private evidence-contract review gates.
+
+## Stage 2b: exact retained-tick rewind (P1061)
+
+Implemented: `tas back [1..128]` restores an exact retained movement tick and stays
+paused. The paused TAS rewind cursor navigates integer ticks rather than line-sample
+indices. Native Source jump/duck/carry state is restored in addition to the existing
+body/timer/recorder-prefix path; transport/completion/request counters stay monotone.
+Each granted single-step and the pause head can be restored; unknown/missing ticks
+refuse, never fall back to a nearby pose. [Scope and checks](p1061-tas-rewind.md).
+
+This is bounded live-session movement history, not a saved project format. Live
+packets can cover intermediate ticks without QC prefixes, which remain unavailable.
+Moving-carrier capture is unsupported, the shared world/rules stay current, and no
+all-map or cross-rules parity is claimed. Recorded geometry is only a cursor preview.
+It does NOT edit inputs, preserve abandoned futures as undo/redo branches, replay
+arbitrary edited inputs, export a TAS movie or provide signed collaboration/boards.
+Actual installation and owner feel are separate from source/test implementation.
 
 ## Stage 3: project revisions and a basic input timeline
 

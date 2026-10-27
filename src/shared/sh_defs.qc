@@ -141,6 +141,7 @@
 #define STAT_FS_TASPENDING 188
 #define STAT_FS_TASDONE 189
 #define STAT_FS_TASREQUEST 190
+#define STAT_FS_TASREWIND 191   // P1061: server + native movement checkpoint support
 #define AS_NONE    0           // not armed
 #define AS_ARMED   1           // a clean start
 #define AS_HOPPED  2           // a hopped start: land, below run_rearmspeed, to re-arm

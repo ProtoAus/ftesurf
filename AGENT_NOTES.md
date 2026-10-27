@@ -1,5 +1,24 @@
 # AGENT_NOTES.md
 
+## Exact TAS rewind is not a replay-viewing window (P1061,27Oct2026)
+
+A normal WatchHold opens SV_ViewWindow(owner2), whose viewing clock includes
+elapsed time, and the native TAS gate cancels pause on unrelated holds. A TAS
+cursor must establish its explicitly owned pin BEFORE WatchHold and skip only
+that replay-clock window; native admission blocks this exact marked/alive pin
+without consuming movement budget. Other holds/viewers and warp-impulse escape
+retain their original policies. A native movement restore is not a counter rewind.
+
+Normal hold thaw excludes its first simulated frame. For an exact TAS go, settle
+SV_TimerFreezeFrame immediately after release/native restore, before the next
+grant, or the physical next tick acts while the logical clock loses one tick.
+A pose-only UI test missed that: require both native completed/mover delta AND
+logical timer delta. Duck tests need an acting eye/hull control, not an unchanged
+position. TAS status has a0.2s server rate limit; private diagnostics wait0.25s.
+Live packet boundaries can omit intermediate QC prefixes; refuse missing ticks,
+never manufacture an exact row from interpolated client geometry. Warm native
+handles are not serialized project checkpoints. See tools/p1061-tas-rewind.md.
+
 ## Shared browser / real desktop input interference (P1059,27Oct2026)
 
 Lobbies/Maps/Story/Event now share ONE persistent Friends/chat sidebar; both

@@ -31,6 +31,21 @@ int main(void) {
     CHECK(!SV_TASClockSupported(1, NAN, 1, 0));
     CHECK(!SV_TASClockSupported(1, .015f, 1, NAN));
     CHECK(!SV_TASClockSupported(1, .015f, 1, INFINITY));
+    CHECK(SV_TASRewindCount(0));
+    CHECK(SV_TASRewindCount(15999999));
+    CHECK(!SV_TASRewindCount(16000000));
+    CHECK(!SV_TASRewindCount(16777216));
+    CHECK(!SV_TASRewindCount(-1));
+    CHECK(!SV_TASRewindCount(.5));
+    CHECK(!SV_TASRewindCount(NAN));
+    CHECK(!SV_TASRewindCount(INFINITY));
+    CHECK(SV_TASRewindHold(1,1,1,1,1,0));
+    CHECK(!SV_TASRewindHold(0,1,1,1,1,0));
+    CHECK(!SV_TASRewindHold(1,0,1,1,1,0));
+    CHECK(!SV_TASRewindHold(1,1,0,1,1,0));
+    CHECK(!SV_TASRewindHold(1,1,1,0,1,0));
+    CHECK(!SV_TASRewindHold(1,1,1,1,0,0));
+    CHECK(!SV_TASRewindHold(1,1,1,1,1,7));
     CHECK(SV_TASFresh(5, 0, 0));
     CHECK(SV_TASFresh(6, 5, 1));
     CHECK(!SV_TASFresh(5, 5, 1));
@@ -85,7 +100,7 @@ def main():
     # Reserve distinct numeric slots, including against existing string names.
     defs = (Path(__file__).resolve().parents[1] / 'src/shared/sh_defs.qc').read_text()
     stats = re.findall(r'^#define (STAT_\w+)\s+(\d+)\b', defs, re.M)
-    for name in ('TASPAUSE', 'TASPENDING', 'TASDONE', 'TASREQUEST'):
+    for name in ('TASPAUSE', 'TASPENDING', 'TASDONE', 'TASREQUEST', 'TASREWIND'):
         slot = [int(n) for s, n in stats if s == 'STAT_FS_' + name]
         assert len(slot) == 1 and 32 <= slot[0] <= 255
         assert [s for s, n in stats if int(n) == slot[0]] == ['STAT_FS_' + name], name

@@ -21,6 +21,10 @@
 
 ## next
 
+### P1061 Rewind TAS one movement tick at a time
+- While paused, tas back restores the previous retained movement tick; tas back N goes back N ticks and stays paused. Repeating the same forward input follows the restored movement state.
+- The paused TAS rewind cursor now moves in individual ticks, not line samples. Unavailable checkpoints refuse instead of choosing a nearby point; shared world time is not rewound.
+
 ### P1060 Lobby history survives downtime
 - Lobbies keep their rotation history across long heartbeat gaps; inactive lobbies still disappear from the live list.
 
