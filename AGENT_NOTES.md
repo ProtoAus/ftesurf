@@ -1,5 +1,27 @@
 # AGENT_NOTES.md
 
+## Windows loopback is an audio session, too (P1064,27Oct2026)
+
+`AUDCLNT_STREAMFLAGS_LOOPBACK` with NULL AudioSessionGuid can join this process's
+muted/zero-volume rendering session. Packets/active/available remain positive but
+samples and RMS are0. A read-only own-PID volume probe plus normal versus nosound
+client and positive standalone output isolated this; active capture is not proof
+of sound. Direct old/new production-header test kept its own silent render at
+volume0/mute1: old66packets/RMS0; fresh capture GUID67/.006300. Independent capture
+is nonzero in both arms. VISLB_Open now creates its own GUID, never raises/mutes
+rendering volume. Source0 close and source1 reopen passed in the native client.
+`tools/test_snd_vis_session.c` needs external default-output playback; exit77 is
+NOT MEASURED, not a pass. It changes only its own test process's render session,
+records no raw audio/endpoint identities, and never adjusts other applications.
+Original control helper wrong-name compile and shell escaping failures retained
+under the owned task artifacts; no product diagnosis was drawn from them.
+clangd initially parsed the standalone header as C++/Windows SDK (`lpVtbl` errors);
+actual C header tests compile -Wall -Wextra -Werror and the full build passes.
+Do not confuse cached LSP mode errors, capture metrics and human visual response.
+Human acceptance remains in lextest.md. Backend restoration is explicitly another
+bot's scope; do not touch surfd to finish this client-only audio fix.
+
+
 ## Glass scenes / map-card scope and visible filters (P1062,27Oct2026)
 
 Supersedes P1059's broad strip retirement: only `cs_filters` collapsibility is

@@ -20,6 +20,10 @@
 -->
 
 ## next
+### P1064 Windows-output visuals work while game audio is muted
+- The menu's sound-reactive backdrop can hear desktop playback even when the game is muted in Windows. Your game volume, mute and visualization opt-in stay unchanged.
+
+### P1062 Glass scenes, visible filters and larger map cards
 - Menu windows now use tinted glass over the MilkDrop backdrop, with section-specific scenes and crisp text. Milk-off and in-game menus keep their readable fallback.
 - Map filters stay visible without a collapse button. Larger cards add a green completion fade and separate your WOS/overall times from WOS/overall world records (main track, clean style); unavailable records stay unknown.
 - Map cards request visible records in one small cached batch. Play/Download actions are larger, Quit calls its input guard correctly, and Music is no longer offered in Settings.

@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+**P1064 -- Windows-output reactivity (pending human acceptance):** After the
+native update, restart the game normally, leave a video/music playing on the
+Windows default output and open the main menu. Does the backdrop respond to its
+audio while the game's existing Windows mute remains unchanged? `snd_vis_status`
+should show source1/support1/active1 and nonzero RMS during audible sections.
+Do not unmute the game just to make this check pass. Direct production-header
+old/new tests prove muted rendering silenced old capture and independent capture
+fixes it; render remained volume0/mute1. Real native capture and source-off/on
+also acted. Those are numeric controls, not confirmation of visual feel. No
+microphone, raw audio recording, owner config or other-app volume changes.
+
 **P1062 -- glass/scenes, large map cards and Quit (pending owner acceptance):**
 After local menu installation/restart, click Lobbies/Maps/Story/Event/Settings:
 confirm the scene changes and glass is readable, with no font blur. Check one
@@ -8,9 +19,10 @@ still deliberately refused). Four live clean-main record fields need the guarded
 API recovery/admission; synthetic fields/completion/filtering and offline unknowns
 were tested, not claimed as your real times. Owner confirmed a video was playing
 during the desktop-audio investigation; this confirms intended input, NOT visual
-reactivity. Normal-sound game capture still reported0 while a paired standalone
-capture was nonzero; the test PID's Windows session was muted/volume0. No owner
-session was unmuted, no raw audio recorded; audio repair/visual acceptance pending.
+reactivity. The earlier normal-sound capture reported0 with a muted test session;
+P1064 now repairs its loopback session coupling. No owner session was unmuted and
+no raw audio was recorded. Actual visible audio response still needs the small
+P1064 check above.
 
 **P1055 -- owner stop/forward confirmation:** Owner reports "we can stop a run, and stop forward, pretty cool". This confirms observed pause/advance functionality only, not measured tick precision, all input edges, aim/crouch/latency feel or fleet-wide installation.
 
@@ -20,7 +32,7 @@ session was unmuted, no raw audio recorded; audio repair/visual acceptance pendi
 
 **P1059 -- layout acceptance pending:** Source changes put the compact note at12,12, white display-face nav without slab/chips, no Music menu/autoplay, and one Friends/chat column across Lobbies/Maps/Story/Event. Initial real client at1280x720/800x600/1920x1111 passed15 page swaps, unchanged sidebar bounds, selected map rows and kept an unsent draft; screenshots inspected. Final owner-saved Filters1 candidate passed all four populated pages at all three sizes; last1920 Home return was displaced by physical mouse motion, then only that callback was recovered with an atomic numeric click. Existing valid arms reused; install receipt separate. After installation check your usual window and that sidebar remains stable across tabs. This is not authenticated Friends/DM-send or live backend acceptance.
 
-**Windows audio regression -- owner diagnostic requested:** With desktop music playing, run snd_vis_status and send its one-line source/support/active/available/packets/RMS output. Both installed binaries contain the loopback/source/status controls; saved source1, milk_react1/menu1 are present and no production cfg override was found. Owner supplied source1/support1/active1/available1/packets27416/RMS0, then closed the game. Actual audible desktop music/default endpoint is not confirmed; a known-audio control remains. No native bug/recovery claimed from active-but-silent data; preserve local opt-in and do not record raw audio. See BACKLOG.md.
+**Windows audio regression -- earlier owner evidence:** Owner supplied source1/support1/active1/available1/packets27416/RMS0 and later confirmed a video playing. This established active-but-silent capture with intended input, not the cause. P1064 subsequently reproduced muted-session coupling with acting positive controls and fixed it without changing owner audio settings. Visual acceptance remains pending above; the original diagnostic is answered, not requested again.
 
 **P1057 -- owner feedback received:** "Epic"; font scaling, floating top bar and reboot persistence were then requested. This is observed layout feedback, not an owner stopwatch or blanket asset/linked-account acceptance.
 

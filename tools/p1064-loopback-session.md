@@ -1,0 +1,69 @@
+# P1064 — desktop visuals while Windows has muted the game
+
+## Problem / fix
+
+The owner reported source1/support1/active1/available1,27416packets,RMS0 while
+playing a video. Normal-sound installed client capture remained0 while the same
+binary with nosound and standalone output capture were nonzero. A read-only
+probe of the owned game PID found volume0/mute1. This narrowed the fault; those
+observations alone did not prove the fix.
+
+`VISLB_Open` passed NULL AudioSessionGuid, joining that process's muted rendering
+session. Create a fresh capture GUID for Initialize; failures use the existing
+close/retry. No render volume/mute override, source opt-in change, microphone,
+raw audio, endpoint identity output, evidence/schema change or backend action.
+Engine commit/tag: d561b74085c5ee72c9e228d45c8f3c9e9c8b0b31 / patch-1064.
+
+## Acted control and subject
+
+Owned task root C:/FTESurf-worktrees/menu-20261026T1632Z. Native base75abc46df;
+QC d3c27821. Predictions were recorded in PLAN-audio-loopback.md before editing.
+Existing helper's wrong PCM function name and one shell escaping syntax error
+are preserved as infrastructure failures, not product evidence.
+
+- Small Windows-only public test: engine/tools/test_snd_vis_session.c. It mutes
+  ONLY its own silent render session. External default-output playback supplies
+  positive input. Exit77 = NOT MEASURED when positive input is absent.
+- Same public test compiled -Wall -Wextra -Werror against the original production
+  header: baseline.005385, independent.009939, old capture67packets/RMS0, exit1.
+  Fixed production header: baseline.006796, independent.011199, new capture
+  67packets/RMS.006104, exit0. Rendering stays volume0/mute1 in both arms.
+- Earlier paired production-header control likewise old66/0 versus new67/.006300;
+  positive independent input and unchanged muted rendering were both observed.
+- Existing test_snd_vis_loopback.c: PCM/downmix/finite/reset/bounded-silent-ring,
+  analyzer/silence/spectrum, Windows capture+close/reset and non-Windows fallback
+  pass; both variants compile -Wall -Wextra -Werror.
+- Existing build.ps1 -Engine -Full -NoDeploy -Jobs8 with explicit owned FteRoot
+  passes client, dedicated and all matched plugins. The first log has79
+  warning-containing lines in untouched sources/QC; changed header/test compile
+  warning-free under Werror. No unrelated warning repairs. A generated shader
+  header differed only in its generator-path comment; restore ONLY that verified
+  owned comment change, not shader code or anyone else's files.
+- Real normal-sound candidate92882bae59cd: source1 active1 RMS.007916;
+  source0 active0 RMS0; source1 reopens active1 RMS.004507. Its two own-PID audio
+  sessions were unmuted, so the explicitly muted arm is the production-header
+  test, not that native client observation. No owner audio session was changed.
+- clangd's cached standalone-header C++/Windows SDK mode reports old lpVtbl errors;
+  public C test diagnostics are clean and actual GCC/full-build results above
+  are authoritative. No LSP-only build claim.
+
+## Reproduce the focused test
+
+From the engine checkout with the UCRT64 compiler on PATH:
+
+    gcc -std=c99 -O2 -Wall -Wextra -Werror tools/test_snd_vis_session.c -lole32 -luuid -lm -o <owned-output>/session-test.exe
+    <owned-output>/session-test.exe
+
+Play desktop audio on the default endpoint. Do not record raw audio or change
+other apps' volumes. PRODUCTION_HEADER may select the immutable old header for
+the failing control; keep its sibling snd_vis_pcm.h. No input/exit77 must not be
+reported as a pass. The test's process exits after its capture/render cleanup.
+
+## Delivery / limits
+
+Native/plugin-only dual Windows delivery is recorded in the owned root's UTC
+artifact receipt after a clean-commit build and post-swap readback. Existing
+menu/gameplay progs, owner ftesurf.cfg/data/consent and qcbuild stay unchanged.
+No surfd, backend gate, NanoPi, release or other session's processes are touched.
+Numeric capture/source lifecycle is verified; the owner's actual backdrop feel
+and scene reactivity remain a small pending human check in lextest.md.
