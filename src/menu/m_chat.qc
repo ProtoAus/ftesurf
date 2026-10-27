@@ -307,7 +307,6 @@ void(vector pos, vector size, float embedded) MC_Panel =
 	local vector rp;
 	local float left, right, i, width, board, compact, message_y, field_y, field_h;
 	local string who, name, text, id;
-	if (!embedded) ui_backdrop(size);
 	sui_style_panel(pos, size, 12, 1);
 	sui_push_frame(pos, size);
 	sui_text('16 18 0', SZ_HEAD, "lobby chat", COL_ACCENT, 1, 0);

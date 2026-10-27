@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+**P1068 -- consistent menu glass (owner acceptance pending):** Open Settings
+and Maps after loading a local map or joining a lobby. Does the large square
+behind Settings disappear, do the windows stay rounded/glassy on both tabs,
+and is the full perimeter visible? With the normal Milk backdrop, are panels
+now sufficiently less see-through while text remains readable? The owner's
+report establishes the old defects, not acceptance of this fix. Disconnected
+and hosted Settings/Maps controls and subject passed at the actual1920x1111
+viewport; eight native captures were inspected. The visual fixture had Milk
+and online services off; real default-Milk opacity feel and online use await
+this small check. No acceptance or performance measurement is inferred.
+
 **P1066 -- corrected TAS pitch/portal camera feel (pending):** On the matching
 local native/server/client, pause a recording, list its ticks, and edit a retained
 tick's pitch to30. Does the camera follow the actual new aim, stay paused, and

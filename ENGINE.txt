@@ -25,7 +25,8 @@ commit   b7eef87303dd8f734c5796661b1eb8dd366540a1
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1066
-patch    1067
+patch    1068
+# Patch 1068 is MENU/QC only: one full-screen backdrop and consistent rounded glass in game.
 # Patch 1067: malformed save confirmation refuses cold use; matching warm memory unchanged.
 # Patch 1066: full TAS view ownership through rewind/portal replay; safe REC14 stream refusal.
 # Patch 1065: bounded TAS input editing and exact warm affected-tail recalculation.

@@ -5234,9 +5234,9 @@ void() ui_bootcheck_tick =
 /*
   The backdrop.
 
-  m_draw runs after the world has been rendered, so a translucent fill lets
-  the map show through -- which is what you want when ESC is how you get back
-  to a run.  Disconnected there is nothing behind it, so it goes solid.
+  m_draw owns one full-screen pass before any shell frame. Screens must not
+  paint panel-sized backdrops: those leak square corners and compound opacity.
+  A live map remains behind the menu; Milk stays disconnected-only.
 */
 void(vector screensize) ui_backdrop =
 {
@@ -5437,7 +5437,8 @@ void(vector screensize) ui_map_backdrop =
 	local string uuid, want;
 	local vector ready;
 
-	// Milk is the shared scene; the map picture belongs in its card, not over it.
+	// Keep the live world behind every tab; photos are disconnected fallbacks.
+	if (clientstate() == 2) return;
 	if (MM_Active()) return;       // caller already drew the shared scene
 
 	if (ms_selected != ms_bgfor)
@@ -5828,7 +5829,6 @@ void(vector screensize) screen_terms =
 	local float w, colw, two, ha, hb, cards, ph, by, x, head, big, strip, jb, fh;
 	local string lab, lead, foot;
 
-	ui_backdrop(screensize);
 	if (!ui_tm_jtouched)
 	{
 		if (ms_consent < FS_TERMS_ONLINE)
@@ -6068,7 +6068,6 @@ void(vector screensize) screen_steam =
 	local float w, ph, y, pick, waited, card, noteh;
 	local string note;
 
-	ui_backdrop(screensize);
 	ui_tm_size(screensize_y >= 560);
 
 	// What happens on the press, said before it; or why there is no press.
@@ -6133,8 +6132,6 @@ void(vector screensize) screen_name =
 	local vector p;
 	local string err;
 	local float  ph, btn;
-
-	ui_backdrop(screensize);
 
 	ph  = 224;
 	btn = 168;
@@ -6221,7 +6218,6 @@ void(vector screensize) screen_journal =
 	local float w, h, lw, x, y, k, have, enabled;
 	local string body, note, label, terms, rid;
 
-	ui_backdrop(screensize);
 	w = min(760, screensize_x - 32);
 	h = min(560, screensize_y - 32);
 	p = [floor((screensize_x - w) * 0.5), floor((screensize_y - h) * 0.5)];
@@ -6311,7 +6307,6 @@ void() MH_Poll;
 void() MH_Probe;
 void(vector screensize) screen_main =
 {
-	ui_backdrop(screensize);
 	screen_home(screensize);
 };
 
@@ -7279,8 +7274,6 @@ void(vector screensize) screen_create =
 	local float rh, nx, inner, y, compact, actiony;
 	local vector size, pos, namesize;
 	MCard_Begin();
-	ui_backdrop(screensize);
-	ui_map_backdrop(screensize);
 
 	// The shared shell already reserved Friends/chat. Fill the remainder.
 	size = screensize; pos = '0 0 0';
@@ -8059,7 +8052,8 @@ void(vector screensize) m_draw =
 	if (cvar("milk_bootcheck"))
 		MM_BootTick();
 	MM_Frame(screensize);
-	sui_style_glass = MM_Active();
+	// MENU glass also belongs over a hosted/live world; HUD keeps its default.
+	sui_style_glass = TRUE;
 
 	sui_begin(screensize_x, screensize_y);
 
@@ -8093,6 +8087,9 @@ void(vector screensize) m_draw =
 		Mlb_Close("left the create screen");
 
 	MU_Poll();
+	// Root coordinates, exactly once; no panel may darken its own rectangle.
+	ui_backdrop(fullsize);
+	if (menu_screen == SCREEN_CREATE) ui_map_backdrop(fullsize);
 	shell = (menu_screen == SCREEN_MAIN || menu_screen == SCREEN_CREATE || menu_screen == SCREEN_STORY
 	         || menu_screen == SCREEN_VISUALS || menu_screen == SCREEN_MUSIC || menu_screen == SCREEN_CHAT || menu_screen == SCREEN_SETTINGS);
 	if (shell)
@@ -8142,15 +8139,9 @@ void(vector screensize) m_draw =
 	else if (menu_screen == SCREEN_SETTINGS)
 		MH_Settings(screensize);
 	else if (menu_screen == SCREEN_STORY)
-	{
-		ui_backdrop(screensize);
 		screen_story(MH_ContentSize(screensize));
-	}
 	else if (menu_screen == SCREEN_VISUALS)
-	{
-		ui_backdrop(screensize);
 		MM_ScreenVisuals(screensize);
-	}
 	else if (menu_screen == SCREEN_MUSIC)
 	{
 		menu_screen = SCREEN_VISUALS;

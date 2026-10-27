@@ -384,7 +384,6 @@ void(vector screensize) MH_Settings =
 	local float v;
 	size = [min(780, screensize_x - 32), min(440, screensize_y - 32)];
 	pos = [floor((screensize_x - size_x) * 0.5), floor((screensize_y - size_y) * 0.5)];
-	ui_backdrop(screensize);
 	sui_style_panel(pos, size, 12, 1);
 	sui_push_frame(pos, size);
 	sui_text('24 22 0', SZ_HEAD, "Settings", COL_ACCENT, 1, 0);

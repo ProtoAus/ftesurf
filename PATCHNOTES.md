@@ -21,6 +21,8 @@
 
 ## next
 
+- Menus keep their rounded glass in hosted and online games, with a clearer full border and less see-through panels.
+- Fixed panel-sized square backdrops and uneven darkening when switching menu tabs over a loaded map.
 - Loading a save with malformed recording confirmation now stops safely instead of treating it as an old save. Valid older saves and matching in-memory rewinds keep working.
 - TAS replay and tick rewind preserve camera pitch; replay also follows the mover's view through rotated portals.
 - TAS refuses unsupported REC14 streamed edits and tick rewind without cancelling or cutting the active recording.
