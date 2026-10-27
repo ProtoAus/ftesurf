@@ -21,6 +21,8 @@
 
 ## next
 
+- Lobby cards group larger lobby titles, map names and player counts together, with a compact layout for small windows.
+- Lobby photos can load at higher resolution as soon as the directory arrives, without waiting for the map catalogue. Offline and unavailable photos keep the local thumbnail fallback.
 - Corrupted recording generation or rewind indices now refuse safely rather than rejoining the wrong recording branch. Valid warm rewinds and confirmed cold copies keep working.
 - Menus keep their rounded glass in hosted and online games, with a clearer full border and less see-through panels.
 - Fixed panel-sized square backdrops and uneven darkening when switching menu tabs over a loaded map.

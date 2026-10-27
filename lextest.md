@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+**P1070 -- lobby-card readability/photos (owner acceptance pending):** After
+`menu_restart` or relaunch, does Home show sharper photos without first visiting
+Maps, and are lobby title/map/player counts comfortably grouped and readable?
+Please check your normal window size and Milk setting. A synthetic native12-card
+control/subject and missing-photo/offline gates pass at1920x1111; actual startup
+latency, live map-photo coverage and subjective feel are NOT inferred. The
+backend stats/times work is separate and remains pending.
+
 **P1068 -- consistent menu glass (owner acceptance pending):** Open Settings
 and Maps after loading a local map or joining a lobby. Does the large square
 behind Settings disappear, do the windows stay rounded/glassy on both tabs,

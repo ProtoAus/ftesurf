@@ -13358,6 +13358,26 @@ failed artifact, source proof and rerun; do not repair unrelated product code or
 claim that changing authentication/metrics changed the board. A deterministic
 clock-boundary falsifier is recorded in BACKLOG.md.
 
+### Menu web photos: real route, native transport and limit — P1070
+
+- The documented public photo is `https://proto.bar/ftesurf/board/shot/<map>`;
+  the working Kitsune control is JPEG960x540/32681bytes. Root `/board/shot` on
+  proto.bar returned SPA HTML200; play.proto.bar returned404. R2 name/UUID-bg
+  probes returned403. Status200 alone is not an image pass; verify decoded bytes.
+- Use a named default2d shader with a quoted URL image/diffuse map, then poll
+  `drawgetimagesize_async`. A URL used as a cachepic/material filename is not
+  that transport. Keep the atlas fallback until a real suitably sized image is
+  ready; invalid/missing replies must never draw the error texture.
+- Native `r_image_downloadsizelimit` defaults131072. A synthetic137719-byte JPEG
+  correctly remained unready; a quality72/82841-byte960x540 fixture passes. Do
+  NOT raise/disable the limit to make a fixture pass. Observe GET counts separately
+  from decode readiness so transport and decoder/refusal causes are not conflated.
+- Test routing needs full IPv4 and same-length FULL photo-prefix replacement;
+  shorthand127.1 made no image requests here. Keep raw runtime logs/screenshots
+  private; fixture handler strips account queries and public crops exclude the
+  Friends/account sidebar. Native fixture12/12photos uses6uniqueGETs; missing
+  photo/offline controls act. It is not a production startup/FPS/feel measurement.
+
 ### The public web surface (`/board/`) -- what may leave the process
 
 - **A PUBLISHED `runs.player` WOULD BE A PUBLISHED IDENTITY.** That column is

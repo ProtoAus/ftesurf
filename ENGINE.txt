@@ -25,7 +25,8 @@ commit   b7eef87303dd8f734c5796661b1eb8dd366540a1
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1066
-patch    1069
+patch    1070
+# Patch 1070 is MENU only: grouped lobby text and bounded sharp map photos from the directory.
 # Patch 1069: recorder generations and rewind row marks require whole indices.
 # Patch 1068 is MENU/QC only: one full-screen backdrop and consistent rounded glass in game.
 # Patch 1067: malformed save confirmation refuses cold use; matching warm memory unchanged.

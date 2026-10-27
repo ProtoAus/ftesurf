@@ -11,6 +11,13 @@ vector mh_header_pos, mh_header_size;
 vector mh_content_size, mh_sidebar_pos, mh_sidebar_size;
 string mh_who;
 
+// Bounded to the visible large cards; dense directories keep atlas thumbnails.
+#define MH_SHOT_MAX 16
+float mh_shots, mh_shot_keys, mh_shots_ready, mh_roster_rows;
+float mh_shot_seen[MH_SHOT_MAX], mh_shot_remotev[MH_SHOT_MAX];
+float mh_shot_ready, mh_shot_remote, mh_shot_local, mh_shot_pixels;
+float mh_shot_shaderid, mh_shot_decodew, mh_shot_decodeh;
+
 string() MH_Me =
 {
 	if (MF_Hex(sty_me, 12)) return sty_me;
@@ -183,13 +190,93 @@ vector(float width, float available, float count) MH_LobbyGrid =
 	return [cols, rows, h];
 };
 
+void(float slot) MH_ShotRelease =
+{
+	local float i, shared;
+	local string old;
+	old = strzone(bufstr_get(mh_shots, slot));
+	bufstr_set(mh_shots, slot, "");
+	bufstr_set(mh_shot_keys, slot, "");
+	mh_shot_remotev[slot] = FALSE;
+	shared = FALSE;
+	for (i = 0; i < MH_SHOT_MAX; i = i + 1)
+		if (!strcmp(bufstr_get(mh_shots, i), old)) shared = TRUE;
+	if (strlen(old) && !shared) free_pic(old);
+	strunzone(old);
+};
+
+// Native async pictures start from the directory's map name, not a later catalogue.
+// Never draw an unready URL: drawpic's missing-texture substitution is visible.
+float(float slot, string mapname, float row, vector pos, vector size) MH_Shot =
+{
+	local string uuid, want, key, frozen, texture;
+	local vector ready;
+	if (slot >= MH_SHOT_MAX || slot < 0) return FALSE;
+	if (!checkbuiltin(drawgetimagesize_async)) return FALSE;
+	if (!mh_shots_ready)
+	{
+		mh_shots = buf_create(); mh_shot_keys = buf_create();
+		mh_shots_ready = TRUE;
+	}
+	mh_shot_seen[slot] = time;
+	key = sprintf("%s:%g:%g", mapname, row, ms_consent >= FS_TERMS_ONLINE);
+	if (strcmp(bufstr_get(mh_shot_keys, slot), key))
+	{
+		// Filesystem probes belong on a map/consent change, never each frame.
+		key = strzone(key); frozen = strzone(mapname);
+		MH_ShotRelease(slot);
+		bufstr_set(mh_shot_keys, slot, key);
+		strunzone(key);
+		want = "";
+		if (row >= 0)
+		if (tokenize(bufstr_get(ms_meta, row)) > MT_UUID)
+		{
+			uuid = argv(MT_UUID);
+			if (ui_bguuid(uuid))
+			{
+				want = ui_bgprobe(uuid, "small");
+				if (!strlen(want)) want = ui_bgpick(uuid, 384);
+			}
+		}
+		if (!strlen(want))
+		if (ms_consent >= FS_TERMS_ONLINE)
+		if (Mdl_Made(frozen, MDL_NAMECH, 64))
+		{
+			texture = strcat("https://proto.bar/ftesurf/board/shot/", strtolower(frozen));
+			want = strcat("menulobby/", digest_hex("SHA256", texture));
+			// HTTP is an image-map ident, not a cachepic/material filename.
+			mh_shot_shaderid = shaderforname(want, sprintf("{\naffine\nnomipmaps\ndiffusemap \"%s\"\nprogram default2d\n{\nmap $diffuse\nblendfunc blend\n}\nsort additive\n}\n", texture));
+			mh_shot_remotev[slot] = TRUE;
+		}
+		bufstr_set(mh_shots, slot, want);
+		strunzone(frozen);
+	}
+	want = bufstr_get(mh_shots, slot);
+	if (!strlen(want)) return FALSE;
+	ready = drawgetimagesize_async(want);
+	mh_shot_decodew = ready_x; mh_shot_decodeh = ready_y;
+	if (ready_x < max(256, size_x) || ready_y < max(144, size_y)) return FALSE;
+	sui_pic(pos, size, want, '1 1 1', 1, 0);
+	mh_shot_ready = mh_shot_ready + 1;
+	if (mh_shot_remotev[slot]) mh_shot_remote = mh_shot_remote + 1;
+	else mh_shot_local = mh_shot_local + 1;
+	if (mh_shot_pixels <= 0 || ready_x < mh_shot_pixels) mh_shot_pixels = ready_x;
+	return TRUE;
+};
+
 void(vector p, vector size) MH_Lobbies =
 {
-	local vector lp, cell, picture;
-	local float li, cw, row, page, tile, gr, gc, tx, thumb, countw;
+	local vector lp, cell, picture, titlefont, mapfont;
+	local float li, cw, row, page, tile, gr, gc, tx, thumb, countw, texty, grouped;
 	local string id, s;
 	mh_lsize = size; mh_lshown = mh_lbottom = 0;
 	mh_thumb_width = mh_thumb_height = 0;
+	mh_shot_ready = mh_shot_remote = mh_shot_local = mh_shot_pixels = 0;
+	if (mh_roster_rows != ms_count)
+	{
+		for (li = 0; li < Lob_Count(); li = li + 1) Lob_SetRow(li, -2);
+		mh_roster_rows = ms_count;
+	}
 	sui_style_panel(p, size, 12, 1);
 	sui_push_frame(p, size);
 	sui_text('16 12 0', SZ_HEAD, sprintf("Public lobbies  %g", Lob_Count()), COL_ACCENT, 1, 0);
@@ -225,17 +312,29 @@ void(vector p, vector size) MH_Lobbies =
 				picture = '0 0 0';
 				picture_y = min(mh_lheight - 12, floor(min(192, cw * 0.46) * 9 / 16));
 				picture_x = floor(picture_y * 16 / 9);
-				ui_thumb(lp + [6, floor((mh_lheight - picture_y) * 0.5)], picture, page, tile);
+				if (!MH_Shot(li, Lob_Map(li), row, lp + [6, floor((mh_lheight - picture_y) * 0.5)], picture))
+					ui_thumb(lp + [6, floor((mh_lheight - picture_y) * 0.5)], picture, page, tile);
 				tx = picture_x + 16;
 				mh_thumb_width = picture_x; mh_thumb_height = picture_y;
 			}
 			s = sprintf("%g/%g", Lob_Players(li), Lob_Max(li));
 			countw = min(cw - 16, stringwidth(s, TRUE, '12 12 0'));
 			if (cw < 90) { s = ""; countw = 0; }
-			if (thumb)
+			grouped = (thumb && mh_lheight >= 74);
+			if (grouped)
 			{
-				sui_text(lp + [tx, 24], '12 12 0', s, Lob_Players(li) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
-				sui_text(lp + [tx, 6], '12 12 0', ui_fit_text(Lob_Title(li), cw - tx - 8, '12 12 0'), COL_TEXT, 1, 0);
+				texty = max(6, floor((mh_lheight - 54) * 0.5));
+				titlefont = '16 16 0'; mapfont = '16 16 0';
+				sui_text(lp + [tx, texty], titlefont, ui_fit_text(Lob_Title(li), cw - tx - 8, titlefont), COL_ACCENT, 1, 0);
+				sui_text(lp + [tx, texty + 20], mapfont, ui_fit_text(Lob_Map(li), cw - tx - 8, mapfont), COL_TEXT, 1, 0);
+				sui_text(lp + [tx, texty + 40], '14 14 0', ui_fit_text(strcat(s, " players"), cw - tx - 8, '14 14 0'), Lob_Players(li) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
+			}
+			else if (thumb)
+			{
+				texty = max(4, floor((mh_lheight - 30) * 0.5));
+				sui_text(lp + [tx, texty], '14 14 0', ui_fit_text(Lob_Title(li), cw - tx - countw - 14, '14 14 0'), COL_TEXT, 1, 0);
+				sui_text(lp + [cw - countw - 7, texty], '12 12 0', s, Lob_Players(li) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
+				sui_text(lp + [tx, texty + 17], '12 12 0', ui_fit_text(Lob_Map(li), cw - tx - 8, '12 12 0'), COL_DIM, 1, 0);
 			}
 			else
 			{
@@ -243,13 +342,17 @@ void(vector p, vector size) MH_Lobbies =
 				s = (cw < 150 || mh_lheight < 28) ? sprintf("#%g", li + 1) : Lob_Title(li);
 				sui_text(lp + [tx, mh_lheight < 34 ? 2 : 5], '12 12 0', ui_fit_text(s, cw - tx - countw - 6, '12 12 0'), COL_TEXT, 1, 0);
 			}
-			if (mh_lheight >= 28 && cw >= 90)
-				sui_text(lp + [tx, mh_lheight - (thumb ? 16 : 14)], '12 12 0', ui_fit_text(Lob_Map(li), cw - tx - 8, '12 12 0'), COL_DIM, 1, 0);
+			if (!thumb && mh_lheight >= 28 && cw >= 90)
+				sui_text(lp + [tx, mh_lheight - 14], '12 12 0', ui_fit_text(Lob_Map(li), cw - tx - 8, '12 12 0'), COL_DIM, 1, 0);
 			mh_lshown = mh_lshown + 1;
 			mh_lbottom = max(mh_lbottom, lp_y + cell_y);
 			if (sui_is_released(id)) ui_connect(li);
 		}
 	}
+	if (mh_shots_ready)
+	for (li = 0; li < MH_SHOT_MAX; li = li + 1)
+		if (time - mh_shot_seen[li] > 3)
+		if (strlen(bufstr_get(mh_shots, li))) MH_ShotRelease(li);
 	sui_pop_frame();
 };
 
@@ -466,4 +569,6 @@ void() MH_Probe =
 	print(sprintf("home: lobby bottom %g <= %g tiers %g cols %g rows %g bottom %g <= progress %g\n", mh_lbottom, mh_lsize_y, mh_tshown, mh_tcols, mh_trows, mh_tbottom, mh_progress_top));
 	print(sprintf("home: stats %gx%g state %g source %g native %g stale %g\n", mh_ssize_x, mh_ssize_y, mh_state, mh_source, mh_native, mh_stale));
 	print(sprintf("home: thumb %gx%g friends %g chat %g lobby height %g\n", mh_thumb_width, mh_thumb_height, mh_friends_height, mh_chat_height, mh_lsize_y));
+	print(sprintf("home: photos ready %g local %g remote %g min-width %g limit %g\n", mh_shot_ready, mh_shot_local, mh_shot_remote, mh_shot_pixels, MH_SHOT_MAX));
+	print(sprintf("home: photo gate %g terms %g builtin %g shader %g decoded %gx%g\n", ms_consent, cvar("rec_terms"), checkbuiltin(drawgetimagesize_async), mh_shot_shaderid, mh_shot_decodew, mh_shot_decodeh));
 };
