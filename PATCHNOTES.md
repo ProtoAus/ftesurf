@@ -21,6 +21,10 @@
 
 ## next
 
+### P1057 More room for lobbies and Friends
+- Lobbies get most of Home, with substantially larger map thumbnails; stats stay visible in a compact panel below.
+- Friends gets more vertical space than chat. Compact chat keeps its message field and status rows separate.
+
 ### P1056 Home fits your lobbies and stats
 - All lobbies fit in a responsive grid without scrolling. Every tier, summary card and Story/Event progress card stays visible below it.
 - The Home layout adapts down to 800x600, with compact lobby cards and tier bars. Version/update information lives in the tab strip instead of overlapping Friends.

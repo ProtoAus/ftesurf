@@ -25,8 +25,8 @@ commit   c931d98ea5c5a04dc8115d23b51f3eb49d611145
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1047
-patch    1056
-# Patch 1056 is menu only: fit all lobbies and tier/stat cards without scrolling.
+patch    1057
+# Patch 1057 is menu only: bigger lobby thumbnails, compact stats, taller Friends.
 # Patch 1054 is menu/QC/web only: tabbed Home, filtered jump-to-me, WOS/Everything completion.
 # Patch 1053 is sweeper only: complete captured initial partial receipt reads without losing history.
 # Patch 1052: explicit local TAS practice sessions; inherited TAS save/replay label.
