@@ -4497,14 +4497,18 @@ below is the collection side and the rules that still only note.
   modified client times -- is cashed out on top of the handed-back speed. That
   path's fix is one SV_ClearCarrier in SV_SaveLocRelease, as SV_WatchRelease has.
 - **P455's future-output/dwell bank remains OPEN; P968 repairs the visible
-  body; P1072/P1073 add I/O and active-button-callback lineage.** P1072 carries
+  body; P1072/P1073 add I/O and active-button-callback lineage; P1075 fences
+  automatic finish forgiveness past the native command.** P1072 carries
   the original player admission and practice state through ordinary/delayed/
   synchronously nested Source I/O; P1073 preserves the actual pending button
   Top/Return/Home cause, independently of mutable activator/refused input. The
   actual later physics recipient becomes practice without cancelling the effect.
   Commitments retained outside I/O/active callbacks, persistent logical/button/
-  world state, inherited physical state, and native command completion remain;
-  the whole leaf is not closed. Historical unmerged `p455rebase` (50affaa, based on e7b6562; ten rounds
+  world state, inherited physical state and obligations beyond the current native
+  frame remain; the whole leaf is not closed. P1075 only consumes an eligible
+  same-admission request at a later native EndFrame and rechecks the unchanged
+  P968 body/hold predicates. Five acted dedicated-socket control/subject cases
+  cover that seam, not all future native callbacks or complete world retirement. Historical unmerged `p455rebase` (50affaa, based on e7b6562; ten rounds
   at `archive/p455fix-r10`) is NOT READY: 44b313b's own message says the dwell
   does not close its bank, and no round11 exists. A new commitment inside the
   granting packet need not wait; arbitrary future mover/name-addressed writes

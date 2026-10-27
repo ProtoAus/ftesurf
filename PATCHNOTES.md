@@ -21,6 +21,9 @@
 
 ## next
 
+### P1075 Complete the server update before finish re-arming
+- Finish and reset re-arming now waits for the current server update to complete; normal map effects keep working.
+
 ### P1074 Choose upcoming TAS inputs in a workshop
 - tas menu opens a next-input window with manual aim, movement, jump/duck/walk and single or multi-tick advance. Auto left/right chooses a fresh observed-air strafe yaw each tick; this is not route search.
 - Paused physical mouse look is locked by default. Toggle Mouse free to aim deliberately, then Use view; authored steps and rewind still update the camera. Shared world time keeps running and attempts remain TAS practice.

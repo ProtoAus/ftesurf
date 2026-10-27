@@ -2066,6 +2066,11 @@ float() SV_RecEnabled =
 */
 .float  run_t_finfgv;
 
+// Eligible PostThink request, consumed at a later native EndFrame only.
+.float run_t_finreq;
+.int run_t_finattempt;
+float run_finreq_work;
+
 // Patch 775: a map teleport placed this player since the last SV_TimerFrame
 // (SV_TimerMapTeleport), and that frame's copy, which SV_TimerTryArm reads; per
 // packet, not per arrival.  run_t_tpfin: this packet also crosses the run's finish.
@@ -12107,23 +12112,22 @@ float(entity e) SV_TimerHopInStart =
 	return FALSE;
 };
 
-// Patch 968: judge the visible body, not the engine's cleared transfer window.
-// This is NOT P455's unclosed dwell/future-output guarantee. New map commitments
-// can still arrive later; keep that separate residual explicit.
-void(entity e) SV_TimerFinishForgive =
+// Patch 968's unchanged visible-body predicates. Future map commitments remain
+// separate: this is neither a dwell bound nor a claim that their bank is closed.
+float(entity e) SV_TimerFinishReady =
 {
 	local vector hv;
 	local float cap;
 
 	if (!e.run_t_finfgv || !e.run_t_hopped)
-		return;
+		return FALSE;
 	if (e.run_pmhold || e.rec_sl_hold || e.movetype == MOVETYPE_NONE)
-		return;
+		return FALSE;
 	if (!(e.flags & FL_ONGROUND))
-		return;
+		return FALSE;
 	// Separate terms: a fall must not cancel a pending upward carrier.
 	if (e.velocity_z > 0 || e.run_basevel_z > 0)
-		return;
+		return FALSE;
 	hv = e.velocity + (1 + run_bv_tick * 0.5) * e.run_basevel;
 	hv_z = 0;
 	cap = e.maxspeed;
@@ -12132,20 +12136,56 @@ void(entity e) SV_TimerFinishForgive =
 	if (cap <= 0)
 		cap = PM_RUN_SPEED;
 	if (vlen(hv) > cap)
-		return;
-	if (SV_DevOn())
-		dprint(sprintf("hop: %s's hopped-start taint cleared -- %s armed it, "
-		               "visible horizontal speed %.0f <= mover cap %.0f, "
-		               "no upward body/carrier\n",
-		               e.netname, (e.run_t_finfgv == 2) ? "a reset into the box" : "the finish",
-		               vlen(hv), cap));
-	sprint(e, PRINT_HIGH,
-	       "^2start re-armed^7 -- the hopped start died with that run\n");
-	SV_BankAdvance(e);
-	e.run_t_hopped = FALSE;
-	e.run_t_jumps = 0;
-	e.run_t_finfgv = FALSE;
-	e.run_t_hopsaid = 0;
+		return FALSE;
+	return TRUE;
+};
+
+void(entity e) SV_TimerFinishForgive =
+{
+	if (!SV_TimerFinishReady(e)) return;
+	if (e.bank_attempt <= 0i) return;
+	// PostThink precedes the native newmis tail; it can request, never grant.
+	e.run_t_finattempt = e.bank_attempt;
+	e.run_t_finreq = TRUE;
+	run_finreq_work = TRUE;
+};
+
+void() SV_TimerFinishFrame =
+{
+	local entity e;
+	local vector hv;
+	local float cap;
+
+	if (!run_finreq_work) return;
+	run_finreq_work = FALSE;
+	e = world;
+	while ((e = find(e, classname, "player")))
+	{
+		if (!e.run_t_finreq) continue;
+		e.run_t_finreq = FALSE;
+		if (e.bank_attempt <= 0i || e.bank_attempt != e.run_t_finattempt) continue;
+		if (!SV_TimerFinishReady(e)) continue;
+		if (SV_DevOn())
+		{
+			hv = e.velocity + (1 + run_bv_tick * 0.5) * e.run_basevel;
+			hv_z = 0;
+			cap = e.maxspeed;
+			if (cap <= 0) cap = cvar("sv_maxspeed");
+			if (cap <= 0) cap = PM_RUN_SPEED;
+			dprint(sprintf("hop: %s's hopped-start taint cleared -- %s armed it, "
+			               "visible horizontal speed %.0f <= mover cap %.0f, "
+			               "no upward body/carrier\n",
+			               e.netname, (e.run_t_finfgv == 2) ? "a reset into the box" : "the finish",
+			               vlen(hv), cap));
+		}
+		sprint(e, PRINT_HIGH,
+		       "^2start re-armed^7 -- the hopped start died with that run\n");
+		SV_BankAdvance(e);
+		e.run_t_hopped = FALSE;
+		e.run_t_jumps = 0;
+		e.run_t_finfgv = FALSE;
+		e.run_t_hopsaid = 0;
+	}
 };
 
 /*

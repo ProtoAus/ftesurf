@@ -150,6 +150,13 @@ void() SV_UpdateMovementServerInfo =
 	vbsp_retrigger = cvar("lobby_enable") && cvar("lobby_retrigger");
 };
 
+// Native EndFrame cannot interrupt a synchronous player command. Requests made
+// after this callback wait for the next one; no past frame stamp grants a clear.
+void() EndFrame =
+{
+	SV_TimerFinishFrame();
+};
+
 void() StartFrame =
 {
 	SV_ClockServerFrame();          // Patch 840: the server's own frame gap

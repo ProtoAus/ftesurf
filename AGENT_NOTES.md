@@ -3183,6 +3183,12 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+- A dedicated socket spawn/body delta is not ground evidence: gallery raw-map
+  rooms can have no floor. For grounded tests use a small actual BSP and observe
+  ground/rest, not a nonzero-Z assumption. A zero command phase can be native
+  gap-fill; do not label it wire-observed. Even nonzero phase plus actual socket
+  commands is not physical-human hardware provenance.
+
 - P967 texture collision control: compare actual native `fs_hash` with the
   installed VPK reader, not remembered prefixes or a visual UV guess. Here the
   ordinary knife_t lookup is CSS (87,528 bytes); the fixed private alias is

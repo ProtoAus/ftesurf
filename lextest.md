@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+**P1075 -- normal finish/reset re-arming (owner check pending):** After the
+source-qualified server update is installed, join fresh without replay/TAS/save
+holds, use normal `!r`, walk off the start and complete a clean run. Does it stay
+clean, and does normal finish/coast/reset re-arming still feel right? No owner
+confirmation or genuine ranked-run acceptance is inferred from the instrumented
+native five-case control/subject checks. No new speed/dwell threshold; full
+future-state commitment coverage remains open. Delivery is recorded separately.
+
 **P1074 -- TAS workshop/constant-direction help (owner check pending):** Installed
 both Windows roles2026-10-27T21:54:07Z; each actual installed client/server passes
 7socket mouse/cursor/authoring/rewind checks, not rendered acceptance. With the
@@ -23,7 +31,7 @@ corrected native control/subject cases,3source reviews and accepted evidence
 correction. Both Windows server DAT/LNO installed and all12 Pi lobbies
 restarted/healthy at2026-10-27T21:10:37Z; no owner client was stopped. The owner
 selected practice/unranked rather than cancellation for received old queued
-player effects; full persistent map-state/native-fence Rule-8 coverage remains
+player effects; full persistent map-state/beyond-frame Rule-8 coverage remains
 open, not part of this normal-use human check.
 
 **P1070 -- lobby-card readability/photos (owner acceptance pending):** After
