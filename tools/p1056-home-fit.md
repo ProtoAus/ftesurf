@@ -83,9 +83,10 @@ directories were archived, hash-verified and retired; source/staging/runtime
 screenshots/logs are intentionally retained for acceptance and coordinated API
 promotion. Restart MENU with `menu_restart`, then `menu_main`.
 
-A peer's stale canonical build replaced only FTESurf's P1054 menu at02:46:18Z
-while FTEQuake retained it. The P1056 claim identifies only the exact conflicting
-menu destinations/short swap boundary; no broad build pause or process kill was
-used. Do not infer a missing feature from that overwrite or repair unrelated
-peer source. Use clean inspected builds and preserve the verified menu when
-performing independent native/TAS promotion.
+The primary menu reverted to an older payload at02:46:18Z while the secondary
+retained P1054. The earlier attribution to a peer/stale build was NOT established
+and is withdrawn. P1058 later verified the current04:42 overwrite against the
+signed release and native updater timestamps: MENU auto-install was replacing
+the development menu. That does not retroactively identify every earlier actor.
+See tools/p1058-home-crisp-persistence.md. No peer source/process should be
+"repaired" merely because an old release payload reappears.

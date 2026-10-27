@@ -395,11 +395,16 @@ void() MU_Poll =
 	if (strcmp(st, "available") != 0) mu_apply_sent = FALSE;
 	// Never swap code during a run, join or local listen session.
 	if (strcmp(st, "available") == 0 && clientstate() == 1 && !mu_apply_sent)
-	if (menu_screen == SCREEN_MAIN)
+	if (menu_screen == SCREEN_MAIN && !UI_MENU_DEVELOPMENT)
 	{
 		mu_apply_sent = TRUE;
 		MU_Action(2);
 	}
+};
+
+void() MU_Probe =
+{
+	print(sprintf("update-ui: development %g auto-apply %g apply-sent %g\n", UI_MENU_DEVELOPMENT, !UI_MENU_DEVELOPMENT, mu_apply_sent));
 };
 
 void(float right, float y, float width, vector size, string text, vector color) MU_StatusLine =
@@ -424,7 +429,7 @@ float(vector pos, float w) MU_StatusAt =
 	else if (strcmp(st, "checking") == 0) label = "Checking for updates";
 	else if (strcmp(st, "uptodate") == 0) label = "Up to date";
 	else if (strcmp(st, "downloading") == 0 || strcmp(st, "applying") == 0) label = "Updating...";
-	else if (strcmp(st, "available") == 0) label = "Update available";
+	else if (strcmp(st, "available") == 0) label = UI_MENU_DEVELOPMENT ? "Release available - development menu kept" : "Update available";
 	else if (strcmp(st, "restart") == 0) label = "Update ready";
 	else if (strcmp(st, "launcher") == 0) label = "Update needs the launcher";
 	else if (strcmp(st, "error") == 0) label = "Update check unavailable";
@@ -440,7 +445,8 @@ float(vector pos, float w) MU_StatusAt =
 	if (strlen(err))
 		y = y + ui_para([pos_x, y], w, SZ_LABEL, 20, err, SUI_THEME_WARN, TRUE) + 8;
 	if (consent == 1)
-		say = "The game checks for updates at the title screen and installs one between games; restart when it says one is ready.";
+		say = UI_MENU_DEVELOPMENT ? "This development menu checks signed releases, but never replaces itself automatically. Install release below explicitly switches back to the published version."
+			: "The game checks for updates at the title screen and installs one between games; restart when it says one is ready.";
 	else if (ms_consent >= FS_TERMS_ONLINE)
 		say = "Updates are off: the game does not check for or install new versions.";
 	else
@@ -472,6 +478,18 @@ float(vector pos, float w) MU_StatusAt =
 		return y;
 	if (consent != 1)
 		return y + 28;
+	if (UI_MENU_DEVELOPMENT && !strcmp(st, "available") && clientstate() == 1)
+	{
+		word = "Install release (replace dev)";
+		bw = stringwidth(word, TRUE, SZ_LABEL) + 28;
+		if (x + bw > pos_x + w) { x = pos_x; y = y + 36; }
+		if (ui_button("mu_install_release", [x, y], [min(bw, w), 28], word))
+		{
+			mu_apply_sent = TRUE;
+			MU_Action(2);
+		}
+		return y + 28;
+	}
 	word = "";
 	if (clientstate() == 1)
 	if (strcmp(st, "restart") == 0 || strcmp(st, "launcher") == 0)
@@ -506,7 +524,7 @@ void(vector pos, float width) MU_HomeHint =
 	msg = "F2  updates / privacy";
 	if (width >= 230)
 	{
-		sui_text(pos, '11 11 0', ui_fit_text(strcat(current, "  |  latest ", latest == "" ? "unknown" : latest), width, '11 11 0'), COL_DIM, 1, 0);
+		sui_text(pos, '12 12 0', ui_fit_text(strcat(current, "  |  latest ", latest == "" ? "unknown" : latest), width, '12 12 0'), COL_DIM, 1, 0);
 		pos_y = pos_y + 18;
 	}
 	state = cvar_string("update_state");
@@ -516,7 +534,7 @@ void(vector pos, float width) MU_HomeHint =
 		else if (!strcmp(state, "restart")) { msg = "F2: update ready - restart"; notice = TRUE; }
 		else if (!strcmp(state, "downloading") || !strcmp(state, "applying")) { msg = "F2: downloading update"; notice = TRUE; }
 	}
-	sui_text(pos, '11 11 0', ui_fit_text(msg, width, '11 11 0'), notice ? COL_ACCENT : COL_DIM, 1, 0);
+	sui_text(pos, '12 12 0', ui_fit_text(msg, width, '12 12 0'), notice ? COL_ACCENT : COL_DIM, 1, 0);
 };
 
 void(vector screensize) MU_Hint =

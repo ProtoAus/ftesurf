@@ -383,6 +383,6 @@ void(vector pos, vector size, float embedded) MC_Panel =
 	ui_field("mc_text", [right, field_y], [width - 88, field_h], mc_draft, mc_cursor, "Write a message...");
 	if (ui_button("mc_send", [size_x - 96, field_y], [80, field_h], mc_wire ? "wait..." : "send")) MC_Send();
 	sui_text([right, size_y - (compact ? 40 : 66)], '12 12 0', ui_fit_text(MC_Plain(mc_note), width, '12 12 0'), COL_DIM, 1, 0);
-	sui_text([16, size_y - (compact ? 20 : 32)], '11 11 0', ui_fit_text("Lobby / DMs: not end-to-end encrypted.", size_x - 32, '11 11 0'), COL_DIM, 1, 0);
+	sui_text([16, size_y - (compact ? 20 : 32)], '12 12 0', ui_fit_text("Lobby / DMs: not end-to-end encrypted.", size_x - 32, '12 12 0'), COL_DIM, 1, 0);
 	sui_pop_frame();
 };

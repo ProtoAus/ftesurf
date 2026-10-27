@@ -209,6 +209,10 @@ try {
             $menuVersion = if ($ReleaseVersion) { $ReleaseVersion } else { (Get-Content -LiteralPath (Join-Path $SurfDir 'VERSION') -Raw).Trim() }
             if ($menuVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid menu source VERSION' }
             $qcArgs += "-DUI_MENU_VERSION=`"$menuVersion`""
+            # A local feature menu must not auto-repair itself back to a release.
+            # release.ps1 supplies -ReleaseVersion; published menus retain auto-install.
+            $menuDevelopment = if ($ReleaseVersion) { 0 } else { 1 }
+            $qcArgs += "-DUI_MENU_DEVELOPMENT=$menuDevelopment"
         }
         try { $out = & $Fteqcc @qcArgs 2>&1 }
         finally { if ($controlSrc) { Remove-Item -LiteralPath $controlSrc } }

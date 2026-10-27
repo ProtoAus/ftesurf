@@ -21,6 +21,11 @@
 
 ## next
 
+### P1058 Crisp Home text and a floating header
+- Home text uses the font's native baked sizes, with separated stat-card label/value rows.
+- The rounded navigation bar floats above the main panels with a clear gap and matching width.
+- Development menus keep signed release checks but no longer replace themselves automatically on startup. F2 offers an explicit switch to the published release; release builds retain automatic installation.
+
 ### P1057 More room for lobbies and Friends
 - Lobbies get most of Home, with substantially larger map thumbnails; stats stay visible in a compact panel below.
 - Friends gets more vertical space than chat. Compact chat keeps its message field and status rows separate.

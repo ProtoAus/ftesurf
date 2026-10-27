@@ -7,6 +7,7 @@ float mh_lbottom, mh_tbottom, mh_progress_top;
 float mh_thumb_width, mh_thumb_height, mh_friends_height, mh_chat_height;
 float mh_spdone, mh_sptotal, mh_spknown, mh_epdone, mh_eptotal, mh_epknown;
 vector mh_canvas, mh_lsize, mh_ssize;
+vector mh_header_pos, mh_header_size;
 string mh_who;
 
 string() MH_Me =
@@ -111,13 +112,30 @@ void() MH_Poll =
 	if (!mh_req) { MH_Failed(); mh_next = time + 30; }
 };
 
+vector(vector screensize) MH_ShellSize =
+{
+	return [min(1660, screensize_x - 24), min(988, screensize_y - 24)];
+};
+
+vector(vector screensize) MH_ShellOrigin =
+{
+	local vector size;
+	size = MH_ShellSize(screensize);
+	return [floor((screensize_x - size_x) * 0.5), floor((screensize_y - size_y) * 0.5)];
+};
+
 void(vector screensize) MH_Tabs =
 {
 	local float x, i, target, on;
 	local string id, label;
-	sui_fill('0 0 0', [screensize_x, 56], SUI_THEME_PANEL, 0.98, 0);
-	sui_text('20 20 0', SZ_HEAD, screensize_x >= 1040 ? "WORLD OF SURF" : "WOS", COL_ACCENT, 1, 0);
-	x = screensize_x >= 1040 ? 220 : 84;
+	local vector pos;
+	pos = MH_ShellOrigin(screensize);
+	screensize = MH_ShellSize(screensize);
+	mh_header_pos = pos; mh_header_size = [screensize_x, 56];
+	sui_style_panel(pos, [screensize_x, 56], 12, 1);
+	sui_push_frame(pos, [screensize_x, 56]);
+	sui_text('16 16 0', SZ_HEAD, screensize_x >= 1040 ? "WORLD OF SURF" : "WOS", COL_ACCENT, 1, 0);
+	x = screensize_x >= 1040 ? 208 : 80;
 	for (i = 0; i < 6; i = i + 1)
 	{
 		label = i == 0 ? "Lobbies" : (i == 1 ? "Maps" : (i == 2 ? "Story Mode" : (i == 3 ? "Event Mode" : (i == 4 ? "Settings" : "Music"))));
@@ -139,6 +157,7 @@ void(vector screensize) MH_Tabs =
 	if (menu_screen == SCREEN_MAIN) MU_HomeHint([x + 8, 10], screensize_x - x - 100);
 	if (x + 66 < screensize_x)
 	if (ui_button("home_quit", [screensize_x - 74, 12], '58 30 0', "quit")) localcmd("quit\n");
+	sui_pop_frame();
 };
 
 // Fit the complete directory, never a virtualized window into it.
@@ -229,10 +248,10 @@ void(vector p, vector size) MH_Lobbies =
 void(vector p, vector size, string label, string value) MH_Figure =
 {
 	local vector textsize;
-	textsize = size_y < 44 ? '16 16 0' : '22 22 0';
+	textsize = size_y < 44 ? '16 16 0' : '24 24 0';
 	sui_roundbox(p, size, 8, SUI_THEME_WELL, 0.85);
-	sui_text(p + '8 5 0', '11 11 0', ui_fit_text(label, size_x - 16, '11 11 0'), COL_DIM, 1, 0);
-	sui_text(p + [8, size_y - textsize_y - 4], textsize, ui_fit_text(value, size_x - 16, textsize), COL_TEXT, 1, 0);
+	sui_text(p + '8 3 0', '12 12 0', ui_fit_text(label, size_x - 16, '12 12 0'), COL_DIM, 1, 0);
+	sui_text(p + [8, size_y - textsize_y - 3], textsize, ui_fit_text(value, size_x - 16, textsize), COL_TEXT, 1, 0);
 };
 
 void(vector p, vector size, float L) MH_Progress =
@@ -275,14 +294,14 @@ void(vector p, vector size) MH_Stats =
 	mh_progress_top = size_y - ph - 10;
 	sui_style_panel(p, size, 12, 1);
 	sui_push_frame(p, size);
-	sui_text('16 10 0', compact ? '18 18 0' : SZ_HEAD, "Your stats", COL_ACCENT, 1, 0);
+	sui_text('16 10 0', compact ? '20 20 0' : SZ_HEAD, "Your stats", COL_ACCENT, 1, 0);
 	note = "";
 	if (!MF_Online()) note = "Online stats off";
 	else if (mh_stale) note = mh_state == 2 ? "Refresh failed - previous values" : "Stats unavailable";
 	else if (mh_state == 1 || mh_req) note = "Updating...";
 	else if (MH_Me() == "") note = "Link or finish a WOS run";
 	else if (!mh_native) note = "WOS service update pending";
-	sui_text([180, 14], '11 11 0', ui_fit_text(note, size_x - 196, '11 11 0'), COL_DIM, 1, 0);
+	sui_text([180, 14], '12 12 0', ui_fit_text(note, size_x - 196, '12 12 0'), COL_DIM, 1, 0);
 	cw = floor((size_x - 32 - 18) / 4);
 	for (i = 0; i < 4; i = i + 1)
 	{
@@ -334,9 +353,9 @@ void(vector p, vector size) MH_Stats =
 		}
 		else
 		{
-			sui_text(rp + '0 2 0', '11 11 0', label, COL_DIM, 1, 0);
-			countw = stringwidth(s, TRUE, '11 11 0');
-			sui_text(rp + [cw - countw, 2], '11 11 0', s, COL_TEXT, 1, 0);
+			sui_text(rp + '0 2 0', '12 12 0', label, COL_DIM, 1, 0);
+			countw = stringwidth(s, TRUE, '12 12 0');
+			sui_text(rp + [cw - countw, 2], '12 12 0', s, COL_TEXT, 1, 0);
 			rp = rp + '54 6 0'; barw = max(8, cw - countw - 64);
 		}
 		sui_roundbox(rp, [barw, 4], 2, SUI_THEME_PANEL, 1);
@@ -380,8 +399,8 @@ void(vector screensize) screen_home =
 {
 	local vector size, p, grid;
 	local float right, left, lh, fh, sh, count;
-	size = [min(1660, screensize_x - 24), min(920, screensize_y - 24)];
-	p = [floor((screensize_x - size_x) * 0.5), floor((screensize_y - size_y) * 0.5)];
+	size = screensize;
+	p = '0 0 0';
 	mh_canvas = size;
 	right = min(400, max(260, floor(size_x * 0.28))); left = size_x - right - 12;
 	count = Lob_Count(); if (count < 1) count = 12;
@@ -419,6 +438,7 @@ void() MH_Probe =
 		if (bufstr_get(mh_tiers_all, i) != "") all = all + 1;
 	}
 	print(sprintf("home: tierdata wos %g all %g\n", wos, all));
+	print(sprintf("home: header %g,%g %gx%g body-top %g\n", mh_header_pos_x, mh_header_pos_y, mh_header_size_x, mh_header_size_y, mh_header_pos_y + 68));
 	print(sprintf("home: progress story %g/%g known %g event %g/%g known %g\n", mh_spdone, mh_sptotal, mh_spknown, mh_epdone, mh_eptotal, mh_epknown));
 	print(sprintf("home: canvas %gx%g lobby %g/%g cols %g rows %g cell %g\n", mh_canvas_x, mh_canvas_y, mh_lshown, Lob_Count(), mh_lcols, mh_lrows, mh_lheight));
 	print(sprintf("home: lobby bottom %g <= %g tiers %g cols %g rows %g bottom %g <= progress %g\n", mh_lbottom, mh_lsize_y, mh_tshown, mh_tcols, mh_trows, mh_tbottom, mh_progress_top));

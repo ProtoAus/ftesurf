@@ -1,5 +1,40 @@
 # AGENT_NOTES.md
 
+## Development MENU persistence and native-size Home (P1058, 27 Oct 2026)
+
+The reboot overwrite was the updater, not an established peer build: primary's
+557482-byte MENU matches the signed0.1.31 BLAKE2b-256 hash, with native manifest/
+state timestamps at the overwrite. Prior peer attribution was unsupported and
+is withdrawn; do not retroactively identify all old actors. MU_Poll automatically
+called gameupdate(2) on an available release, overwriting unreleased feature MENU.
+
+Default/manual source builds now compile UI_MENU_DEVELOPMENT1; explicit
+build.ps1 -ReleaseVersion compiles0 (release.ps1 already supplies it). Dev keeps
+signed checks/consent/native safety but requires an explicit F2 Install release
+choice. Released MENU retains automatic installation. No consent, ledger or
+installed.lst editing is a valid workaround. Source/current-mode probe is
+ui_update_probe. A real signed fixture proved normal-release auto-repair ACTED,
+dev kept an available same-version delta across two fresh processes with0 object
+requests/unchanged ledgers and consent, then explicit GUI install worked.
+
+Use INSPECTED engine source, not the stale dirty canonical branch: b1e3b1aff's
+QKU FTESurf path deliberately skips the non-FTESurf same-version fast path. A
+fresh native fixture correctly refuses without launcher state; use the actual
+launcher --dir OWNED --no-launch adoption, not a fabricated ledger or looser
+protection. Resume valid signed fixture preparation at its original loopback
+port, checking signature/objects; don't redate immutable mirrors. MENU clicks
+are ui_hover @id then ui_mouse down/up; ui_click takes numeric x/y, not @id.
+The failed manual driver clicked0,0 and normalized ONLY the fixture's enabled
+consent LF->CRLF; retain it as a failed manual arm, not an automatic change.
+Passed automatic arms were reused; corrected manual phase was bound to current
+exact metadata bytes. Signed fixtures/keys/raw local logs are never published.
+
+Home's11/18/22 were off the UI face's baked8/12/16/20/24/28/32 ladder. Use12/20/24
+and separate compact figure labels/values; no filtering/owner font changes.
+The floating shell is one centered group: width<=1660,height<=988, header56,
+gap12, remaining body. Home uses that frame directly: do not subtract a second
+24px gutter. Exact three-size real screenshots keep all12 targets and all stats.
+
 ## Home proportions and actual startup controls (P1057, 27 Oct 2026)
 
 Owner accepted P1056, then requested bigger lobbies/images, smaller stats and

@@ -96,6 +96,11 @@
 // defined long before the download block.
 #define DL_PAD          6
 
+// Explicit -ReleaseVersion builds retain automatic release installation.
+#ifndef UI_MENU_DEVELOPMENT
+#define UI_MENU_DEVELOPMENT 1
+#endif
+
 #define SCREEN_MAIN     0
 #define SCREEN_CREATE   1
 /*
@@ -147,6 +152,7 @@ void(vector screensize) screen_story;
 void(string what, string arg) Sty_Command;
 void() MU_Init;
 void() MU_Poll;
+void() MU_Probe;
 void(float on) MU_Consent;
 float(vector pos, float w) MU_StatusAt;
 void(vector pos, vector size) MU_NotesAt;
@@ -6282,6 +6288,8 @@ void(vector screensize) screen_journal =
 
 void(vector screensize) screen_home;
 void(vector screensize) MH_Tabs;
+vector(vector screensize) MH_ShellSize;
+vector(vector screensize) MH_ShellOrigin;
 void(vector screensize) MH_Settings;
 void() MH_Poll;
 void() MH_Probe;
@@ -8312,6 +8320,8 @@ void() ui_boot_preload =
 void(vector screensize) m_draw =
 {
 	local float shell, bootstart;
+	local vector fullsize, shellsize, shellpos;
+	fullsize = screensize;
 	bootstart = 0;
 	if (!ui_boot_measured) bootstart = gettime(1);
 	// The bootcheck driver runs OUTSIDE the menu_active gate on purpose: past
@@ -8406,8 +8416,10 @@ void(vector screensize) m_draw =
 	         || menu_screen == SCREEN_VISUALS || menu_screen == SCREEN_MUSIC || menu_screen == SCREEN_CHAT || menu_screen == SCREEN_SETTINGS);
 	if (shell)
 	{
-		sui_push_frame('0 56 0', screensize - '0 56 0');
-		screensize_y = screensize_y - 56;
+		shellsize = MH_ShellSize(screensize);
+		shellpos = MH_ShellOrigin(screensize);
+		sui_push_frame(shellpos + '0 68 0', [shellsize_x, shellsize_y - 68]);
+		screensize = [shellsize_x, shellsize_y - 68];
 	}
 	if (menu_screen == SCREEN_TERMS)
 		screen_terms(screensize);
@@ -8472,7 +8484,7 @@ void(vector screensize) m_draw =
 	if (shell)
 	{
 		sui_pop_frame();
-		screensize_y = screensize_y + 56;
+		screensize = fullsize;
 		MH_Tabs(screensize);
 	}
 	MM_DrawFps(screensize);
@@ -8824,6 +8836,7 @@ float(string cmd) m_consolecommand =
 	if (strcmp(argv(0), "ui_update_probe") == 0)
 	{
 		print(sprintf("ui_update_probe: consent=%g state=%s screen=%g client=%g\n", cvar("update_consent"), cvar_string("update_state"), menu_screen, clientstate()));
+		MU_Probe();
 		return TRUE;
 	}
 	if (argv(0) == "ui_maplist")
