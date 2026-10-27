@@ -6284,6 +6284,7 @@ void(vector screensize) screen_home;
 void(vector screensize) MH_Tabs;
 void(vector screensize) MH_Settings;
 void() MH_Poll;
+void() MH_Probe;
 void(vector screensize) screen_main =
 {
 	ui_backdrop(screensize);
@@ -8189,6 +8190,7 @@ void() m_init =
 	registercommand("ui_update_probe");
 	registercommand("ui_notes");
 	registercommand("ui_menu_probe");
+	registercommand("ui_home_probe");
 	registercommand("ui_profile_probe");
 	registercommand("ui_maplist");
 	registercommand("ui_browse");
@@ -8757,6 +8759,11 @@ float(string cmd) m_consolecommand =
 	if (strcmp(argv(0), "ui_story") == 0)
 	{
 		Sty_Command(argv(1), argv(2));
+		return TRUE;
+	}
+	if (!strcmp(argv(0), "ui_home_probe"))
+	{
+		MH_Probe();
 		return TRUE;
 	}
 	if (strcmp(argv(0), "ui_menu_probe") == 0)

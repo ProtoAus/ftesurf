@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## Fit-to-screen Home and MENU min's integer tail (P1056, 27 Oct 2026)
+
+MENU declares `min(float, ...)`, unlike CSQC's two typed float arguments. Putting
+`json_get_length(tiers)` (int) in the second/variadic slot preserves integer bits:
+`min(16, length)` decoded only Tier1 in the populated Home, while the separately
+read Unrated was correct. Assign length to a float local, then clamp that float.
+The final populated UI showed all9 WOS and Everything rows, not merely9 empty
+labels. Do not change generated defs to hide the call-site error.
+
+For a genuinely exact window-size falsifier set `vid_winmaximize 0` in the owned
+fixture before `vid_restart`; the engine default2 otherwise maximizes even when
+it logs "Setting windowed mode1280*720". P1056 checked PNG dimensions1280x720,
+1920x1111 and800x600, all12 lobbies and all stats visible without scroll. Stress64
+used numbered-only compact cells, not full map/player metadata at800x600. The
+Story fixture must use the real `story=player` route, not story=progress. Runtime
+layout/control evidence and actual production linked data are separate claims.
+
 ## Tabbed Home: map preparation is not navigation (P1054, 26 Oct 2026)
 
 `ui_create_open()` prepares/rescans the picker; it does NOT set `menu_screen`.

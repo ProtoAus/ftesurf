@@ -494,10 +494,36 @@ float(vector pos, float w) MU_StatusAt =
 // P902: all the title screen keeps of the updater, as text: the two versions (Lex kept
 // those from P823's corner), a line naming F2, and one more while an update downloads or
 // waits for a restart.
+void(vector pos, float width) MU_HomeHint =
+{
+	local string current, latest, msg, state;
+	local float notice;
+	notice = FALSE;
+	if (width < 30 || ms_consent < FS_TERMS_VERSION) return;
+	current = cvar_string("ui_release_version");
+	if (current == "") current = strcat(UI_MENU_VERSION, " (dev)");
+	latest = cvar("update_consent") == 1 ? cvar_string("update_version") : "";
+	msg = "F2  updates / privacy";
+	if (width >= 230)
+	{
+		sui_text(pos, '11 11 0', ui_fit_text(strcat(current, "  |  latest ", latest == "" ? "unknown" : latest), width, '11 11 0'), COL_DIM, 1, 0);
+		pos_y = pos_y + 18;
+	}
+	state = cvar_string("update_state");
+	if (cvar("update_consent") == 1)
+	{
+		if (!strcmp(state, "launcher")) { msg = "F2: update through launcher"; notice = TRUE; }
+		else if (!strcmp(state, "restart")) { msg = "F2: update ready - restart"; notice = TRUE; }
+		else if (!strcmp(state, "downloading") || !strcmp(state, "applying")) { msg = "F2: downloading update"; notice = TRUE; }
+	}
+	sui_text(pos, '11 11 0', ui_fit_text(msg, width, '11 11 0'), notice ? COL_ACCENT : COL_DIM, 1, 0);
+};
+
 void(vector screensize) MU_Hint =
 {
 	local string st, msg, current, latest;
 	local float w, cur;
+	if (menu_screen == SCREEN_MAIN) return; // Home keeps this in the tab strip.
 	if (ms_consent < FS_TERMS_VERSION)
 		return;
 	w = min(440, screensize_x - 32);

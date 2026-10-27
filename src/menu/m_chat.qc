@@ -374,7 +374,7 @@ void(vector pos, vector size, float embedded) MC_Panel =
 		sui_list_view_end();
 		if (!mc_count) sui_text([right, 104], SZ_LABEL, "No recent messages.", COL_DIM, 1, 0);
 	}
-	else sui_text([right, 104], SZ_LABEL, "Waiting for a fresh chat snapshot...", COL_DIM, 1, 0);
+	else ui_para([right, 104], width, SZ_LABEL, 18, "Waiting for a fresh chat snapshot...", COL_DIM, TRUE);
 	ui_field("mc_text", [right, size_y - 110], [width - 88, 34], mc_draft, mc_cursor, "Write a message...");
 	if (ui_button("mc_send", [size_x - 96, size_y - 110], '80 34 0', mc_wire ? "wait..." : "send")) MC_Send();
 	sui_text([right, size_y - 66], '12 12 0', ui_fit_text(MC_Plain(mc_note), width, '12 12 0'), COL_DIM, 1, 0);

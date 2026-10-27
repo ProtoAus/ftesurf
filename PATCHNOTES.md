@@ -21,6 +21,11 @@
 
 ## next
 
+### P1056 Home fits your lobbies and stats
+- All lobbies fit in a responsive grid without scrolling. Every tier, summary card and Story/Event progress card stays visible below it.
+- The Home layout adapts down to 800x600, with compact lobby cards and tier bars. Version/update information lives in the tab strip instead of overlapping Friends.
+- Completion now loads values for every tier; unavailable values stay clearly marked, and an ordinary refresh no longer blanks previously loaded stats.
+
 ### P1054 Your home, your records and your completion
 - Home puts lobbies above your WOS stats and progress, with friends and public lobby or friend-only chat on the right. Tabs give Maps its own space, alongside Story, Event Mode and Settings.
 - Jump to me finds your record in the selected leaderboard without changing its filters. Boards load smaller first pages and keep paging as you scroll.
