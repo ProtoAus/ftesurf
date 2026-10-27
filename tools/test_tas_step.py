@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import struct
 import subprocess
 
 SOURCE = r'''
@@ -72,6 +73,15 @@ def main():
     a = p.parse_args()
     if not any((x / 'OWNER.md').is_file() for x in [a.out.resolve(), *a.out.resolve().parents]):
         p.error('--out needs an owned task-root ancestor')
+    # A general float32 movement counter loses +1 at 2^24. The paused QC
+    # packet gate must use the bounded native completed-step ACK instead.
+    f32 = lambda n: struct.unpack('<f', struct.pack('<f', n))[0]
+    assert f32(16777216) == f32(16777217)
+    assert 16000000 < 2**24
+    root = Path(__file__).resolve().parents[1]
+    player = (root / 'src/server/sv_player.qc').read_text()
+    assert 'if (self.run_tas_done == self.run_tas_seen)' in player
+    assert 'run_tas_seen = e.run_movetick' not in player
     # Reserve distinct numeric slots, including against existing string names.
     defs = (Path(__file__).resolve().parents[1] / 'src/shared/sh_defs.qc').read_text()
     stats = re.findall(r'^#define (STAT_\w+)\s+(\d+)\b', defs, re.M)

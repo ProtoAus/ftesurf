@@ -22,7 +22,10 @@ actual movement, not command receipt. Reliable request tickets and decoded input
 freshness prevent a repeated request/backfill from consuming a second grant.
 `tas status` shows pause, pending, completed, native support/fault and mover
 counter/carry. A native fault clears queued grants rather than claiming success;
-`tas play` escapes before another pause attempt.
+`tas play` escapes before another pause attempt. Paused packet bookkeeping uses
+that bounded actual-step acknowledgement, not a rounded cumulative counter.
+Both the connection movement clock and completed/queued grants stay within
+16million exact integer ticks; reconnect if the connection-clock limit is reached.
 
 While paused, change movement/buttons/view normally; each granted tick takes the
 next fresh input sample. Client command duration does not authorize movement.
@@ -75,6 +78,12 @@ remain later stages in [plan-tas.md](plan-tas.md).
   refusal, direct-zone cancellation, restoration and queued128/off cancellation.
   The earlier locked-ruleset fixture failed to change the clock; that failed
   attempt is retained and is not counted as acting clock coverage.
+- Final precision follow-up passes all39live socket checks in one complete run,
+  including recorder flushing and the acting unsupported-clock/warp transitions.
+  The float32/static wiring guard demonstrates the2^24alias; it is not a
+  near-limit runtime test. The produced REC has zero reader faults and no VIEW.
+- Portable Linux x86_64 client/server/HL2 build at native2e9260645 passes allten
+  platform gates, including ELF, symbol-version, soname, plugin and revision checks.
 - Completed TAS REC passes the existing reader. Native old/new static-map
   regression matches all11bhop_eazy digests. Both open-loop replays reproduce
   all52stored packet poses exactly at the file's text precision; both verifiers
@@ -84,7 +93,8 @@ remain later stages in [plan-tas.md](plan-tas.md).
  306historical faults. No corpus files changed. No VIEW was captured for the new
   timed fixture, so it supplies no paired-view/angle or human-input qualification.
 - Three independent final reviews closed the initial stat, ticket, clock, bypass
-  and cancellation findings with no remaining source blocker.
+  and cancellation findings. Three bounded precision-follow-up source reviews
+  also found no remaining source blocker; those reviews do not claim execution.
 
 Owner feel/aim/crouch acceptance remains in lextest.md. Committed, installed and
 public-fleet states are recorded separately; these checks are not deployment.
