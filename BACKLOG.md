@@ -4496,8 +4496,13 @@ below is the collection side and the rules that still only note.
   before `sl_holdoff` -- a rewind countdown's release included, which a
   modified client times -- is cashed out on top of the handed-back speed. That
   path's fix is one SV_ClearCarrier in SV_SaveLocRelease, as SV_WatchRelease has.
-- **P455's future-output/dwell bank remains OPEN; P968 repairs only the visible
-  body.** Historical unmerged `p455rebase` (50affaa, based on e7b6562; ten rounds
+- **P455's future-output/dwell bank remains OPEN; P968 repairs the visible
+  body and P1072 adds bounded queued-I/O lineage.** P1072 carries the original
+  player admission and practice state through ordinary/delayed/synchronously
+  nested Source I/O, marking the actual later physics recipient as practice
+  without cancelling the effect. It does not cover commitments retained outside
+  that dispatch chain, inherited physical state, or native command completion;
+  the whole leaf is not closed. Historical unmerged `p455rebase` (50affaa, based on e7b6562; ten rounds
   at `archive/p455fix-r10`) is NOT READY: 44b313b's own message says the dwell
   does not close its bank, and no round11 exists. A new commitment inside the
   granting packet need not wait; arbitrary future mover/name-addressed writes

@@ -2008,6 +2008,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		e.vbsp_ctx = savedctx;         // Patch 1036
 		e.vbsp_ctx_init = TRUE;
 	}
+	// Validation succeeded; old exit cleanup above still belongs to the old admission.
+	SV_BankNewAttempt(e);
 
 	/*
 	  PATCH 450: THE MAP COMPARISON, made here because the whole file has been read and

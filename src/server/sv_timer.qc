@@ -10652,6 +10652,7 @@ void(entity e, float ticks) SV_TimerStopAt =
 
 void(entity e) SV_TimerIdle =
 {
+	SV_BankNewAttempt(e);
 	// Patch 382: every funnel that ends a run releases a spectate first.
 	if (e.run_sp_open)
 		if (SV_DevOn())
@@ -10833,6 +10834,7 @@ void(entity e, string why) SV_TimerVoid =
 */
 void(entity e, string why) SV_TimerForgiveHop =
 {
+	SV_BankAdvance(e);
 	e.run_t_finfgv = FALSE;         // Patch 477 review round 10: it was this tag's
 	if (!e.run_t_hopped)
 		return;
@@ -11070,6 +11072,12 @@ void(entity e) SV_TimerClassSay =
 	sprint(e, PRINT_HIGH,
 	       sprintf("^3%s run^7 -- this run will not be saved\n",
 	               FS_RunKindName(e.run_t_flags)));
+};
+
+float(entity e) SV_BankSourceTaint =
+{
+	return (e.bank_practice || e.run_t_dirty || e.run_t_hopped || e.run_t_cheat
+		|| e.movetype == MOVETYPE_NOCLIP || (e.run_t_flags & TF_PRACTICE));
 };
 
 void(entity e) SV_TimerPractice =
@@ -12131,6 +12139,7 @@ void(entity e) SV_TimerFinishForgive =
 		               vlen(hv), cap));
 	sprint(e, PRINT_HIGH,
 	       "^2start re-armed^7 -- the hopped start died with that run\n");
+	SV_BankAdvance(e);
 	e.run_t_hopped = FALSE;
 	e.run_t_jumps = 0;
 	e.run_t_finfgv = FALSE;
@@ -12647,6 +12656,7 @@ float(entity e) SV_TimerJumpWatch =
 			SV_ClearCarrier(e);
 			if (e.run_t_dirty)
 			{
+				SV_BankNewAttempt(e); // this rest, unlike an occupancy scan, admits anew
 				SV_TimerArm(e, e.run_t_armzone);
 				e.run_t_boxrest = TRUE;     // what the dwell above found; SV_TimerArm cleared it
 				if (SV_DevOn())
@@ -12943,6 +12953,9 @@ float(entity e, string word, float n) SV_TimerChatLeg =
 void(entity e, float z) SV_TimerArm =
 {
 	local float attempts;
+	// Same-box occupancy reconciliation is not a new admission.
+	if (e.bank_attempt == 0i || e.run_t_state != TS_ARMED || e.run_t_armzone != z)
+		SV_BankNewAttempt(e);
 	attempts = 0;
 	if (e.run_t_state == TS_ARMED)
 	if (SV_ZoneSameBox(z, e.run_t_armzone))
@@ -13208,6 +13221,7 @@ void(entity e, float z) SV_TimerArm =
 	e.run_t_pb = SV_PBGet(e.run_t_track, FS_LegOf(e.run_t_startseg, e.run_t_stagerun));
 	if (e.run_t_pb > 0)
 		e.run_t_flags = e.run_t_flags | TF_HAVEPB;
+	SV_BankWatch(e);
 };
 
 /*
@@ -15457,6 +15471,7 @@ void(entity e) SV_TimerFrame =
 	local vector p, lastp;
 	local vector mn, mx;            // build 47: the hull the ruleset tests with
 
+	SV_BankWatch(e);
 	if (e.rec_cp_q >= 1)            // Patch 375: a save's copy, a chunk a packet
 		SV_RecCopyStep(e, FS_RECCOPY_CHUNK);
 	SV_StagePruneDue(e);            // Patch 998

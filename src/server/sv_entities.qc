@@ -2398,6 +2398,7 @@ void(entity t, string who, entity act) SV_PointTeleport =
 		return;
 	if (SV_DevOn())
 		dprint(sprintf("point_teleport %s: %s to %v\n", t.targetname, p.netname, t.origin));
+	SV_BankAffect(p);
 	SV_PlacePlayer(p, t.origin);
 	// Absent is Source's own point_teleport (pointteleport.cpp:143 Teleport with the
 	// entity's angles); the Momentum FGD's key, when written, decides.
@@ -2579,6 +2580,7 @@ void(entity t, string param) SV_IOAddOutput =
 	{
 		if (!SV_MapMoveHeld(t))
 		{
+			SV_BankAffect(t);
 			SV_PlacePlayer(t, stov(v));
 			SV_RecWarp(t, "tele");
 			SV_TimerMapTeleport(t);
@@ -2631,6 +2633,7 @@ void(entity t, string param) SV_IOAddOutput =
 	*/
 	if (k == "gravity")
 	{
+		SV_BankAffect(t);
 		t.gravity = stof(v);
 		return;
 	}
@@ -2689,6 +2692,7 @@ void(entity t, string param) SV_IOAddOutput =
 			t.run_basevel = [stof(argv(0)), 0, 0];
 		else
 			return;
+		SV_BankAffect(t);
 		t.run_basevel = t.run_basevel * (1 / (1 + run_bv_tick * 0.5));     // Patch 1025, above
 
 		if (nv < 3)
@@ -3024,6 +3028,7 @@ void(entity t, entity act, float v) SV_IOModifySpeed =
 		return;
 	if (v <= 0)
 		v = 1;
+	SV_BankAffect(p);
 	p.run_speedmod = v;
 };
 
@@ -3057,6 +3062,7 @@ void(entity p, string in, float amt) SV_IOAddSpeed =
 		return;
 	if (amt < -len)
 		amt = -len;
+	SV_BankAffect(p);
 	p.run_basevel = p.run_basevel + v * (amt / len / (1 + run_bv_tick * 0.5));
 	run_bv_set_n = run_bv_set_n + 1;
 };
@@ -4785,9 +4791,19 @@ void(entity o, entity act) SV_IODeliver =
 // delivers, so a delivery that removes things cannot leave this behind.
 void() SV_IODelayThink =
 {
-	local entity o, a;
+	local entity o, a, bp;
+	local int ba;
+	local float bb, bd;
 	local string v;
 
+	bp = bank_ctx_player;
+	ba = bank_ctx_attempt;
+	bb = bank_ctx_bad;
+	bd = bank_ctx_depth;
+	bank_ctx_player = self.bank_src_player;
+	bank_ctx_attempt = self.bank_src_attempt;
+	bank_ctx_bad = self.bank_src_bad;
+	bank_ctx_depth = 1;
 	o = self.owner;
 	a = self.enemy;
 	v = self.vbsp_io_param;		// Patch 1050: the value the row was fired with
@@ -4798,9 +4814,13 @@ void() SV_IODelayThink =
 		SV_IODeliver(o, a);
 	}
 	vbsp_io_value = "";
+	bank_ctx_player = bp;
+	bank_ctx_attempt = ba;
+	bank_ctx_bad = bb;
+	bank_ctx_depth = bd;
 };
 
-void(entity src, string name, entity act) SV_FireOutput =
+void(entity src, string name, entity act) SV_FireOutputBody =
 {
 	local entity o, nx, d;
 	local string val;
@@ -4886,6 +4906,7 @@ void(entity src, string name, entity act) SV_FireOutput =
 			d.classname = "vbsp_iodelay";
 			d.owner = o;
 			d.enemy = act;
+			SV_BankSnapshot(d);
 			d.think = SV_IODelayThink;
 			d.nextthink = time + o.vbsp_io_delay;
 			d.vbsp_io_param = val;
@@ -4898,6 +4919,26 @@ void(entity src, string name, entity act) SV_FireOutput =
 	}
 
 	vbsp_io_depth = vbsp_io_depth - 1;
+};
+
+void(entity src, string name, entity act) SV_FireOutput =
+{
+	local entity bp;
+	local int ba;
+	local float bb, bd;
+
+	bp = bank_ctx_player;
+	ba = bank_ctx_attempt;
+	bb = bank_ctx_bad;
+	bd = bank_ctx_depth;
+	if (!bd)
+		SV_BankBegin(act);
+	bank_ctx_depth = bd + 1;
+	SV_FireOutputBody(src, name, act);
+	bank_ctx_player = bp;
+	bank_ctx_attempt = ba;
+	bank_ctx_bad = bb;
+	bank_ctx_depth = bd;
 };
 
 /*

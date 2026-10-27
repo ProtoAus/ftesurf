@@ -1185,7 +1185,10 @@ void(float n, vector at, float atyaw, float atpit, float haveat, float havepit)
 	*/
 	if (!samestage)
 	if (zone_type[n] == ZONE_START || zone_type[n] == ZONE_STAGE)
+	{
+		SV_BankNewAttempt(self); // explicit placement, even into the same armed box
 		SV_TimerArm(self, n);
+	}
 };
 
 // Fail triggers use the same reset lifecycle, but never borrow a later stage's mark.

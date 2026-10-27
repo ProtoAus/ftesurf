@@ -276,6 +276,7 @@ void() PutClientInServer =
 */
 void() ClientConnect =
 {
+	SV_BankNewAttempt(self);
 	self.run_timescale = 1;
 	self.run_ts_next = 0;
 	self.run_ts_used = SV_TimeScaleConnectTaint(self);
@@ -364,6 +365,7 @@ void() ClientConnect =
 
 void() ClientDisconnect =
 {
+	self.bank_attempt = 0i;
 	SV_StagePruneDue(self);             // Patch 998: a stage's prune still queued
 	if (self.rec_st_tail >= 1)
 		buf_del(self.rec_st_tail);
