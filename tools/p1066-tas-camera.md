@@ -45,6 +45,27 @@ a production command or shipped. Client `weapon_info` already reports the actual
   body/velocity, step request and pin stay unchanged. The P1065 replay control
   instead enters restore and cancels recording.
 
+## Committed-source qualification and Windows delivery
+
+Product QC `3dcca2870bea4439fcd9e838c0239a35aa109a6b` pins native
+`b7eef87303dd8f734c5796661b1eb8dd366540a1` / `patch-1066`. A clean full native
+and QC build passed with zero new warnings; both executables and all five plugin
+ZIP metadata stamps match the clean native tag. The930 recorder checks pass.
+The current corpus has503 REC,167 paired VIEW and10 unpaired VIEW; both the
+unchanged P1065 reader control and current reader report311 existing findings on
+that SAME corpus (zero increase). The earlier497/306 corpus is not silently
+compared to a later larger corpus as though the input set were unchanged.
+
+At2026-10-27T15:38:26Z the qualified cohort was installed to `C:\FTESurf` and
+`C:\FTEQuake`:14 native/progs destinations match qualification hashes, with
+predecessors preserved. CS caches were seeded without deleting other downloads.
+MENU, configs and install lists were unchanged. All14 real-socket edit/replay
+checks then passed using the actual installed primary client and secondary
+server. The first installed smoke legitimately reached the fixture's short END
+before listing input; retained as a failed arm, then corrected by extending only
+the test END and rerunning from a real recording start. No product guard was
+weakened. No other running game or Desktop install was changed.
+
 No rendering/feel, performance or arbitrary-world deterministic claim follows from
 these headless checks. Normal rendered camera feel is still a human acceptance
 item in `lextest.md`. Existing bounded warm-history/unsupported-context restrictions

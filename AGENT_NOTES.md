@@ -31,7 +31,10 @@ optional headless keyword; ordinary callers retain the windowed default. Source
 BSP entity lumps can be Valve LZMA: use census.bsplib._delump and preserve bytes.
 Keep portal exits OUTSIDE the start box, or the observed cancellation is the
 fixture, not the replay failure. At headless cadence wait for replay completion,
-not a guessed fixed sleep. Retain the original failed arms.
+not a guessed fixed sleep. A short END can legitimately finish during the
+installed editor smoke, causing the correct not-running refusal: extend only
+that fixture END, not product guards. Preserve a separate finish/cancel fixture.
+Retain the original failed arms.
 
 ## Bounded TAS input recalculation (P1065)
 

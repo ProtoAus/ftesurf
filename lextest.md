@@ -8,7 +8,11 @@ If a map has a rotated linked portal, does replay end facing the resulting trave
 view? Real-socket headless pitch/edit/back and actual portal-counter controls
 pass, but rendered transitions/feel are not confirmed. REC14 streamed TAS edits
 and tick-back intentionally refuse without altering recording; buffered warm
-history is supported. No owner confirmation or fleet installation is inferred.
+history is supported. Both Windows installs received the qualified P1066 cohort
+at2026-10-27T15:38:26Z;14 real-socket checks using the actual installed primary
+client and secondary server pass. MENU/config/install-list hashes were protected.
+The separate Desktop install and the owner's running game were not touched.
+No owner confirmation, rendered feel or fleet installation is inferred.
 
 **P1065 -- input editor/camera feel (pending owner acceptance):** On the matching
 local native/server/client with `cl_threadedphysics 0`, walk off a start, `tas
