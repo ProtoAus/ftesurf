@@ -5,6 +5,7 @@
 .entity bank_src_player;
 .int bank_src_attempt;
 .float bank_src_bad;
+.void() bank_callback;
 
 int bank_serial;
 entity bank_ctx_player;
@@ -58,6 +59,29 @@ void(entity pending) SV_BankSnapshot =
 	pending.bank_src_player = bank_ctx_player;
 	pending.bank_src_attempt = bank_ctx_attempt;
 	pending.bank_src_bad = bank_ctx_bad;
+};
+
+void() SV_BankThink =
+{
+	local entity bp;
+	local int ba;
+	local float bb, bd;
+	local void() fn;
+
+	bp = bank_ctx_player;
+	ba = bank_ctx_attempt;
+	bb = bank_ctx_bad;
+	bd = bank_ctx_depth;
+	fn = self.bank_callback;
+	bank_ctx_player = self.bank_src_player;
+	bank_ctx_attempt = self.bank_src_attempt;
+	bank_ctx_bad = self.bank_src_bad;
+	bank_ctx_depth = 1;
+	fn();
+	bank_ctx_player = bp;
+	bank_ctx_attempt = ba;
+	bank_ctx_bad = bb;
+	bank_ctx_depth = bd;
 };
 
 void(entity body) SV_BankAffect =

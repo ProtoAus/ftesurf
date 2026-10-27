@@ -10893,7 +10893,9 @@ void() func_slide =
 */
 void(entity t, void() fn, float dt) SV_MoverArm =
 {
-	t.think = fn;
+	SV_BankSnapshot(t);
+	t.bank_callback = fn;
+	t.think = SV_BankThink;
 	t.nextthink = t.ltime + dt;		// ltime.  NEVER time.  See above.
 };
 
@@ -11004,7 +11006,27 @@ void(entity t) SV_ButtonReturn1 =
   Press input at a locked button says nothing and a +use at one does.  Getting
   that backwards reads exactly like a typo, which is why it is spelled out.
 */
+void(entity t, entity act, float code) SV_ButtonPressInner;
 void(entity t, entity act, float code) SV_ButtonPress =
+{
+	local entity bp;
+	local int ba;
+	local float bb, bd;
+
+	bp = bank_ctx_player;
+	ba = bank_ctx_attempt;
+	bb = bank_ctx_bad;
+	bd = bank_ctx_depth;
+	if (!bd) SV_BankBegin(act);
+	bank_ctx_depth = bd + 1;
+	SV_ButtonPressInner(t, act, code);
+	bank_ctx_player = bp;
+	bank_ctx_attempt = ba;
+	bank_ctx_bad = bb;
+	bank_ctx_depth = bd;
+};
+
+void(entity t, entity act, float code) SV_ButtonPressInner =
 {
 	if (t.vbsp_mv_kind != MVK_BUTTON)
 		return;
@@ -11035,7 +11057,27 @@ void(entity t, entity act, float code) SV_ButtonPress =
   CBaseButton::ButtonUse, buttons.cpp:506-551 -- what +use does, as opposed to
   what the Press input does.
 */
+void(entity t, entity act) SV_ButtonUseInner;
 void(entity t, entity act) SV_ButtonUse =
+{
+	local entity bp;
+	local int ba;
+	local float bb, bd;
+
+	bp = bank_ctx_player;
+	ba = bank_ctx_attempt;
+	bb = bank_ctx_bad;
+	bd = bank_ctx_depth;
+	if (!bd) SV_BankBegin(act);
+	bank_ctx_depth = bd + 1;
+	SV_ButtonUseInner(t, act);
+	bank_ctx_player = bp;
+	bank_ctx_attempt = ba;
+	bank_ctx_bad = bb;
+	bank_ctx_depth = bd;
+};
+
+void(entity t, entity act) SV_ButtonUseInner =
 {
 	if (t.vbsp_mv_state == TS_GOING_UP || t.vbsp_mv_state == TS_GOING_DOWN)
 		return;						// :510-511, ignore while in motion
@@ -11069,7 +11111,27 @@ void(entity t, entity act) SV_ButtonUse =
   breaks at 0 (func_break.cpp:818).  711 damage-activated buttons on 90 maps,
   575 of them wired to OnDamaged (bhop_badges' shot boosts).
 */
+void(entity t, entity att, float dmg) SV_EntityDamageInner;
 void(entity t, entity att, float dmg) SV_EntityDamage =
+{
+	local entity bp;
+	local int ba;
+	local float bb, bd;
+
+	bp = bank_ctx_player;
+	ba = bank_ctx_attempt;
+	bb = bank_ctx_bad;
+	bd = bank_ctx_depth;
+	if (!bd) SV_BankBegin(att);
+	bank_ctx_depth = bd + 1;
+	SV_EntityDamageInner(t, att, dmg);
+	bank_ctx_player = bp;
+	bank_ctx_attempt = ba;
+	bank_ctx_bad = bb;
+	bank_ctx_depth = bd;
+};
+
+void(entity t, entity att, float dmg) SV_EntityDamageInner =
 {
 	local float code;
 
