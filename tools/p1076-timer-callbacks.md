@@ -7,8 +7,10 @@ of the scheduling operation. Their original native think body runs in that scope
 including recurrence and oscillator outputs. A genuinely changed deadline or an
 actual disabled-to-enabled transition replaces the scheduled obligation; an
 unchanged already-enabled schedule does not retarget it. Ordinary world/current
-sources remain clean. The existing actual-body write checks mark affected later
-attempts practice/unranked, not cancellation.
+sources remain clean. Existing actual-body write checks latch the recipient's
+existing practice flag/state, not cancellation. An otherwise clean, nonsegmented,
+nonshadow attempt becomes unranked practice. Pre-existing segmented/shadow class
+precedence is unchanged; this does NOT force every existing tier unranked.
 
 The public TimerThink function identity is preserved: existing FireTimer,
 ResetTimer and RefireTime input gates compare it exactly. The original disabled
@@ -22,7 +24,7 @@ interval/phase or other logical state across replacements. It does not retire
 those contributors or inherited body/world value. Full P455/Rule8 remains OPEN;
 no historical dwell proof or pending-output/global timer ban is revived.
 
-## Qualification before independent review
+## Qualification
 
 Published baseline632f2b58 (P1075 product4259c582), candidate only
 src/server/sv_entities.qc. Nine ACTED native control/subject cases on the existing
@@ -40,8 +42,17 @@ separately marked. Failed pre-runtime API/compile fixtures are retained privatel
 not passed evidence or new rig names. Raw source/program/image/compiler/input
 bindings remain private; no working reproducer or raw player data is exported.
 
-Full stock build3VM0warnings/c24, raw reader930/0 with actual exit0. Final corpus,
-three independent frozen reviews, publication and delivery are separate pending
-gates. Native fixture prior program restored/own handles stopped; cfg/log/cache
-retention is explicit, not a whole-pristine claim. Human ordinary-map acceptance
-is not inferred. No deployment is claimed by this qualification checkpoint.
+Full stock build3VM0warnings/c24, raw reader930/0 with actual exit0. Three fresh
+frozen-source reviews SOURCE OK, no product issues, with the existing segmented/
+shadow precedence limit above. Fresh complete503REC/167pairedVIEW/10unpairedVIEW,
+identical680-file domain/reader and unchanged through sweep:312 findings311faulted,
+increase0 versus retained independent published control, not fault-free data.
+A bounded actual-source pure-classifier probe confirms that existing segmented/
+shadow flags are unchanged by another practice OR; it is not an HTTP/submission/
+receipt or ranking acceptance test. No tier/flag/receipt/capture change is authorized
+or implemented here. BACKLOG retains that broader cross-tier contract follow-up.
+
+Publication and delivery remain pending separate gates. Native fixture prior
+program restored/own handles stopped; cfg/log/cache retention is explicit, not a
+whole-pristine claim. Human ordinary-map acceptance is not inferred. No deployment
+is claimed by this qualification checkpoint.

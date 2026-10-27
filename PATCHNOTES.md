@@ -22,7 +22,7 @@
 ## next
 
 ### P1076 Preserve attempt ownership through recurring timer callbacks
-- Recurring timer effects scheduled by an earlier attempt now make the affected attempt practice without stopping the map effect. Normal current-attempt and world timers keep working.
+- Recurring timers retain attempt ownership without stopping map effects. Affected clean runs become practice; normal current/world timers and existing segmented/shadow tier rules are unchanged.
 
 ### P1075 Complete the server update before finish re-arming
 - Finish and reset re-arming now waits for the current server update to complete; normal map effects keep working.
