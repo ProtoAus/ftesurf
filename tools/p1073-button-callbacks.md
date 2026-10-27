@@ -79,6 +79,25 @@ input hashes unchanged during compilation and no fixture symbols/markers in the
 production QW. QW SHA256 is
 `da35b1ec855134a8b9dd66150627b1fb0bd25013eea443fda3cecd17b431a676`;
 LNO `a75ae4cc`. This is separate from the instrumented native fixture build.
-Correction-review disposition and exact source publication/server-only delivery
-are recorded separately. No native, client/menu, backend/config/data, owner
-process, Build or release shipment is part of this change.
+The independent correction review accepted the held-body evidence with no
+remaining issue; all three original product-source reviews remain valid because
+every reviewed source byte is unchanged. Original incorrect coverage stays
+archived alongside the corrected evidence.
+
+Source `b0f404fc7f794ff9370eaf7b51a4290b9629b43a` (including reviewed954de018)
+and engine ledger `21a0d573bca3b033aa4c3589ecc206e443110a1e` were inspected and
+pushed exactly. At2026-10-27T21:10:37Z BOTH real Windows installs have qualified
+server DAT/LNO, previous P1072 DAT/LNO retained. No owner process was controlled;
+Windows loads at the normal next server-VM load.
+
+Pi QW `da35b1ec`/previous`f0943780` verified after ordinary QW-only atomic swap.
+The actual short shared-sweep-lock boundary showed12fresh zero-player lobbies;
+all12 restarted ONCE using existing literal bare-unit commands, no busy force.
+Every new PID/native-image identity and NEW application spawn log passed with no
+selected QC errors. EVERY local heartbeat lower-bound is after the LAST restart;
+local/public health200 and directory12 pass, max local age3s. Stage consumed and
+lock released. Protected CS`a043b93b`, peer menu, native binaries, backend/config/
+owner/player data unchanged. Native lobby processes were normally restarted for
+the QC swap; no backend service or owner client was signaled. No Build/release.
+Human normal-clean-run acceptance remains pending in lextest.md; the remaining
+persistent-state/native-fence scope is still open.
