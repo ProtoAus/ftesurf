@@ -21,6 +21,9 @@
 
 ## next
 
+### P1074 Choose upcoming TAS inputs in a workshop
+- tas menu opens a next-input window with manual aim, movement, jump/duck/walk and single or multi-tick advance. Auto left/right chooses a fresh observed-air strafe yaw each tick; this is not route search.
+- Paused physical mouse look is locked by default. Toggle Mouse free to aim deliberately, then Use view; authored steps and rewind still update the camera. Shared world time keeps running and attempts remain TAS practice.
 - Button completion and return effects from an earlier attempt now make the affected attempt practice without interrupting play. Current-attempt and world-origin button effects keep working.
 - Receiving a queued effect from an earlier attempt marks the affected attempt as practice without stopping play. Current-attempt and world-origin effects keep working.
 - Lobby cards group larger lobby titles, map names and player counts together, with a compact layout for small windows.

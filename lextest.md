@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+**P1074 -- TAS workshop/constant-direction help (owner check pending):** With the
+matching local native/server/client, use `cl_threadedphysics 0`, walk out of the
+start and run `tas pause`, then `tas menu`. Is the panel readable at your usual
+window size? Try Manual + a small yaw, Advance1, then Auto left/right + Advance8;
+confirm camera/line and button/slider feel. Move the physical mouse while paused:
+aim should stay fixed. Toggle Mouse free, Esc, aim, reopen and Use view; then
+restore the lock. Esc only closes the panel; Play cancels the plan. These small
+rendered/feel checks are NOT confirmed by the headless native/model/callback/UI-
+transaction checks. Exact final installation and installed-smoke provenance are
+recorded in tools/p1074-tas-workshop.md; no all-map/global-optimizer claim.
+
 **P1072/P1073 -- normal clean admission (owner check pending):** On a fresh lobby
 join, outside replay/TAS/save holds, try normal `!r`, walk off the start and
 complete a clean run without practice tools. Does it stay clean rather than

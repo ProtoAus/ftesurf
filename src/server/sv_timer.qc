@@ -733,6 +733,8 @@ float sv_ts_taint_uid[FS_MAXPLAYERS]; // existing native userid, VM-only; surviv
 .float run_tas_req, run_tas_seen; // seen is the bounded completed-step ACK
 .float run_tas_rwcap, run_tas_rwpin;
 .float run_tas_incap, run_tas_replaystate, run_tas_replaycount, run_tas_replayat;
+.float run_tas_plancap, run_tas_planmode, run_tas_planair;
+.float run_tas_planforward, run_tas_planside, run_tas_planpitch, run_tas_planyaw, run_tas_planbits;
 .float run_tas_replayreq, run_tas_replaynotice, run_tas_replayhead, run_tas_replayfirst;
 .float run_tas_replaybase, run_tas_replayserial;
 .vector run_tas_cmdkey;          // native uint32 sequence as two exact 16-bit words + valid

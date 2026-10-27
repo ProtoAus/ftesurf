@@ -288,11 +288,14 @@ void() ClientConnect =
 	self.run_tas_rwpin = self.run_tas_rwcap = 0;
 	if (checkbuiltin(tas_rewind)) self.run_tas_rwcap = 1;
 	self.run_tas_incap = 0;
+	self.run_tas_plancap = self.run_tas_planmode = self.run_tas_planair = 0;
+	self.run_tas_planforward = self.run_tas_planside = self.run_tas_planpitch = self.run_tas_planyaw = self.run_tas_planbits = 0;
 	if (checkbuiltin(tas_input))
 	if (checkbuiltin(tas_tape))
 	{
 		tas_tape(self, 0, 0, 0, '0 0 0', '0 0 0', 0);
 		self.run_tas_incap = 1;
+		self.run_tas_plancap = tas_tape(self, TAS_OP_PLANCAP, 0, 0, '0 0 0', '0 0 0', 0);
 	}
 	self.run_tas_replaystate = self.run_tas_replaycount = self.run_tas_replayat = 0;
 	self.run_tas_replayreq = self.run_tas_replaynotice = 0;
@@ -1339,7 +1342,45 @@ void(entity e, float count, float ticket) SV_TASBack =
 	}
 };
 
+// Shared validation and queueing for live stepping and atomic authored steps.
+float(entity e, float count, float ticket) SV_TASStepReady =
+{
+	if (!(count >= 1 && count <= 128 && count == floor(count)) ||
+	    !(ticket >= 1 && ticket <= 16000000 && ticket == floor(ticket)))
+	{
+		sprint(e, PRINT_HIGH, "tas: step count must be an integer 1..128; invalid request\n");
+		return FALSE;
+	}
+	if (ticket <= e.run_tas_req)
+	{
+		sprint(e, PRINT_HIGH, "tas: duplicate/stale step request ignored\n");
+		return FALSE;
+	}
+	if (e.run_tas_pending + count > 128 || e.run_tas_done + e.run_tas_pending + count > 16000000 ||
+	    e.run_movetick + e.run_tas_pending + count > 16000000)
+	{
+		sprint(e, PRINT_HIGH, "tas: step queue/counter limit reached\n");
+		return FALSE;
+	}
+	return SV_TASCanPause(e);
+};
+
+// Call only immediately after successful validation in this same VM transaction.
+void(entity e, float count, float ticket) SV_TASQueueSteps =
+{
+	SV_TASMark(e);
+	e.run_tas_mode = TRUE;
+	if (!e.run_tas_paused) e.run_tas_seen = e.run_tas_done;
+	e.run_tas_paused = TRUE;
+	SV_RewindTASHead(e);
+	e.run_tas_req = ticket;
+	e.run_tas_pending = e.run_tas_pending + count;
+	sprint(e, PRINT_HIGH, sprintf("tas: request %.0f queued %.0f; pending %.0f, completed %.0f\n",
+		ticket, count, e.run_tas_pending, e.run_tas_done));
+};
+
 #include "sv_tasinput.qc"
+#include "sv_tasplan.qc"
 
 // The control switch and retained ancestry deliberately have different lifetimes.
 void(entity e, float argc) SV_TASCommand =
@@ -1373,6 +1414,11 @@ void(entity e, float argc) SV_TASCommand =
 		sprint(e, PRINT_HIGH, "tas: input replay active; wait, or tas play/off to cancel\n");
 		return;
 	}
+	if (!strcmp(action, "plan") || !strcmp(action, "next"))
+	{
+		SV_TASPlanCommand(e, argc);
+		return;
+	}
 	if (!strcmp(action, "back") && argc >= 2 && argc <= 4)
 	{
 		count = argc >= 3 ? stof(argv(2)) : 1;
@@ -1384,33 +1430,7 @@ void(entity e, float argc) SV_TASCommand =
 	{
 		count = argc >= 3 ? stof(argv(2)) : 1;
 		ticket = argc == 4 ? stof(argv(3)) : e.run_tas_req + 1;
-		if (!(count >= 1 && count <= 128 && count == floor(count)) ||
-		    !(ticket >= 1 && ticket <= 16000000 && ticket == floor(ticket)))
-		{
-			sprint(e, PRINT_HIGH, "tas: step count must be an integer 1..128; invalid request\n");
-			return;
-		}
-		if (ticket <= e.run_tas_req)
-		{
-			sprint(e, PRINT_HIGH, "tas: duplicate/stale step request ignored\n");
-			return;
-		}
-		if (e.run_tas_pending + count > 128 || e.run_tas_done + e.run_tas_pending + count > 16000000 ||
-		    e.run_movetick + e.run_tas_pending + count > 16000000)
-		{
-			sprint(e, PRINT_HIGH, "tas: step queue/counter limit reached\n");
-			return;
-		}
-		if (!SV_TASCanPause(e)) return;
-		SV_TASMark(e);
-		e.run_tas_mode = TRUE;
-		if (!e.run_tas_paused) e.run_tas_seen = e.run_tas_done;
-		e.run_tas_paused = TRUE;
-		SV_RewindTASHead(e);
-		e.run_tas_req = ticket;
-		e.run_tas_pending = e.run_tas_pending + count;
-		sprint(e, PRINT_HIGH, sprintf("tas: request %.0f queued %.0f; pending %.0f, completed %.0f\n",
-			ticket, count, e.run_tas_pending, e.run_tas_done));
+		if (SV_TASStepReady(e, count, ticket)) SV_TASQueueSteps(e, count, ticket);
 		return;
 	}
 	if (argc == 1 || (argc == 2 && !strcmp(action, "status")))
@@ -1422,6 +1442,9 @@ void(entity e, float argc) SV_TASCommand =
 		sprint(e, PRINT_HIGH, sprintf("tas: paused %.0f pending %.0f completed %.0f request %.0f native %g fault %g\n",
 			e.run_tas_paused, e.run_tas_pending, e.run_tas_done, e.run_tas_req, e.run_tas_ready, e.run_tas_fault));
 		sprint(e, PRINT_HIGH, sprintf("tas: mover %.0f carry %.9g\n", e.run_movetick, e.run_movecarry));
+		sprint(e, PRINT_HIGH, sprintf("tas: next %s f%g s%g pitch%g yaw%g bits%g air%g\n",
+			FS_TASPlanName(e.run_tas_planmode), e.run_tas_planforward, e.run_tas_planside,
+			e.run_tas_planpitch, e.run_tas_planyaw, e.run_tas_planbits, e.run_tas_planair));
 		sprint(e, PRINT_HIGH, sprintf("tas: timeline tick %.0f hull %.9g eye %.9g duck %.0f\n",
 			SV_TimerTicks(e), e.maxs_z - e.mins_z, e.view_ofs_z, (e.pmove_flags & PMF_DUCKED) ? 1 : 0));
 		return;
@@ -1453,7 +1476,7 @@ void(entity e, float argc) SV_TASCommand =
 		}
 		return;
 	}
-	sprint(e, PRINT_HIGH, "tas: on/off | pause/play | step/back [1..128] | inputs [N] | replay first | edit first [last] field value | status | speed 0.1..1\n");
+	sprint(e, PRINT_HIGH, "tas: menu (client) | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | status | speed 0.1..1\n");
 };
 
 void(string cmd) SV_ParseClientCommand =

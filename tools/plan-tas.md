@@ -129,6 +129,26 @@ visual timeline, comparison overlay or arbitrary world-state editing. Current
 rules/shared world and missing-history refusal remain explicit. Source/runtime
 verification, Windows installation and human feel are separate states.
 
+## Stage 2d: next-input workshop and directional AIR help (P1074)
+
+Implemented local authoring core: `tas menu` chooses manual upcoming movement,
+view and held jump/duck/walk, then advances1 or up to128 actual movement ticks.
+Auto left/right recomputes a direction-constrained, quantized observed-air yaw
+per granted tick; unsupported/contact/near-cap/custom divergent-cap states use
+the configured preset. It is not a collision-aware or global route optimizer.
+Paused physical mouse look locks by default with deliberate unlock/Use view.
+The complete GUI draft is bound on every Advance, with native authoritative
+idempotence preserving unchanged assist carry across acknowledgements. Executed
+heads settle after remaining packet callbacks, including bhop teleport.
+[Commands, domain, checks and actual delivery state](p1074-tas-workshop.md).
+
+This is a next-command window, not a visual editor for retained tick ranges or
+Stage3 project revisions. Shared world/time, current rules and unavailable warm
+history remain limits. Project persistence, comparison/interval optimization,
+cryptographic contribution and TAS-board admission remain planned. Public lobby
+editing policy and guarded backend/native promotion are not implied by local
+implementation; owner rendered/feel acceptance is in lextest.md.
+
 ## Stage 3: project revisions and a basic input timeline
 
 Version a canonical project format. Store map/zone/ruleset identities, full checkpoints,
@@ -145,6 +165,9 @@ Control: unedited replay reproduces its source. One changed input demonstrably c
 the trajectory; reverting reproduces the original. Changed maps/rules/world invalidate caches.
 
 ## Stage 4: line comparison and optimization
+
+P1074 supplies the bounded directional observed-air starting point above, not
+this stage's route/time/interval optimization or comparison workflow.
 
 Overlay original/edited ghosts and trajectories; show speed, time delta, collisions and
 invalid sections. A requested path is a solver target, not permission to set body state.

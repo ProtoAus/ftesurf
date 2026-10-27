@@ -18,10 +18,18 @@ history is supported. Do not substitute current-head metadata for a past tick.
 P1065 implements the bounded console input core: list captured ticks, edit a
 movement/aim/jump/duck/walk slice and recalculate the affected exact warm tail.
 It is not the whole project/timeline stage: persistent/branching TAS projects,
-undo/redo and a visual timeline, comparison ghosts, optimizers, signed contributions
-and a separately verified TAS board remain planned. See
+undo/redo and a visual timeline, comparison ghosts, route/interval optimizers,
+signed contributions and a separately verified TAS board remain planned. See
 [P1065 scope and checks](tools/p1065-tas-inputs.md); actual installation and owner
 camera/input feel have separate provenance, not implied by this roadmap entry.
+
+P1074 adds the local next-input workshop, deliberate paused mouse lock and
+persistent directional observed-air strafe selection. Manual/preset and Auto
+left/right advance actual native ticks through the existing checked channel;
+this is not a persisted timeline or route optimizer. Shared world/time, current
+rules, unsupported-history refusal and TAS classification remain. Exact source,
+qualification/deployment state and owner-only acceptance are separate in
+[the workshop notes](tools/p1074-tas-workshop.md).
 
 ## Mounted CS:GO Legacy knives / local finish workshop — P957/P962
 

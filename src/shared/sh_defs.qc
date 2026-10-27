@@ -144,6 +144,21 @@
 #define STAT_FS_TASREWIND 191   // P1061: server + native movement checkpoint support
 #define STAT_FS_TASREPLAY 192   // P1065: native EMPTY/STAGING/ACTIVE/DONE/CANCEL/FAULT
 #define STAT_FS_TASINPUT 193    // P1065: native movement input capture/replay support
+#define STAT_FS_TASPLANCAP 194 // P1074: native next-command authoring (protocol1071)
+#define STAT_FS_TASPLANMODE 195
+#define STAT_FS_TASPLANFORWARD 196
+#define STAT_FS_TASPLANSIDE 197
+#define STAT_FS_TASPLANPITCH 198
+#define STAT_FS_TASPLANYAW 199
+#define STAT_FS_TASPLANBITS 200
+#define STAT_FS_TASPLANAIR 201 // last granted command actually used the air selector
+#define TAS_PLAN_LIVE 0
+#define TAS_PLAN_MANUAL 1
+#define TAS_PLAN_LEFT 2
+#define TAS_PLAN_RIGHT 3
+#define TAS_PLAN_CAP 1071
+#define TAS_OP_PLANCAP 8
+#define TAS_OP_PLANSET 9
 #define TAS_TAPE_MAX 128
 #define TAS_TAPE_STAGING 1
 #define TAS_TAPE_ACTIVE 2
@@ -151,6 +166,7 @@
 #define TAS_TAPE_CANCELLED 4
 #define TAS_TAPE_FAULT 5
 #include "sh_tasinput.qc"
+#include "sh_tasplan.qc"
 #define AS_NONE    0           // not armed
 #define AS_ARMED   1           // a clean start
 #define AS_HOPPED  2           // a hopped start: land, below run_rearmspeed, to re-arm

@@ -164,6 +164,7 @@ void() CL_RenderMapFrame =
 
 void() CSQC_WorldLoaded =
 {
+	TASUI_Close();
 
 	// Patch 475: the trail's two slots may still hold the LAST map's run -- the
 	// arenas outlive a map change and only the CSQC globals are zeroed.
@@ -912,7 +913,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	print("FTESurf CSQC loaded\n");
 };
 
-void() CSQC_Shutdown = { TimeScale_PredictRelease(); TimeScale_ThreadRelease(); MA_Shutdown(); Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
+void() CSQC_Shutdown = { TASUI_Close(); TimeScale_PredictRelease(); TimeScale_ThreadRelease(); MA_Shutdown(); Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
 
 /*
   Forced view angles from the server -- svc_setangle, its relative form, and
@@ -1451,6 +1452,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Results_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
 
+	if (TASUI_Input(evtype, scanx, chary, devid)) return TRUE;
 	if (WPU_Input(evtype, scanx, chary, devid)) return TRUE;
 	if (av_open)
 		if (Av_InputEvent(evtype, scanx, chary, devid))
@@ -2193,6 +2195,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Av_Draw(scr);
 		Av_SelfMark();                  // Patch 1000
 		WPU_Draw(scr);
+		TASUI_Draw(scr);
 		Friends_Finish();
 
 		// And the leaderboard over THAT: it is opened from inside a replay to
@@ -2271,6 +2274,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 };
 
 #include "cl_tasinput.qc"
+#include "cl_tasplan.qc"
 
 float(string cmd) CSQC_ConsoleCommand =
 {
@@ -2293,6 +2297,7 @@ float(string cmd) CSQC_ConsoleCommand =
 			print("tas: unsupported local seat\n");
 			return TRUE;
 		}
+		if (CL_TASPlanCommand(cmdargc, tsseat)) return TRUE;
 		if (CL_TASInputCommand(cmdargc, tsseat)) return TRUE;
 		if (cmdargc == 1)
 			localcmd(sprintf("p%g cmd tas status\n", tsseat + 1));
@@ -2332,7 +2337,7 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas speed %.9g\n", tsseat + 1, tsvalue));
 		}
 		else
-			print("tas: on/off | pause/play | step/back [1..128] | inputs [N] | replay first | edit first [last] field value | status | speed 0.1..1\n");
+			print("tas: menu | mouse [on/off] | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | status | speed 0.1..1\n");
 		return TRUE;
 	}
 	if (!strcmp(argv(0), "host_timescale"))

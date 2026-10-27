@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   b7eef87303dd8f734c5796661b1eb8dd366540a1
+commit   a27340010f0b45bcd71452805694692b33159b4e
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,9 @@ commit   b7eef87303dd8f734c5796661b1eb8dd366540a1
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-1066
-patch    1073
+tag      patch-1074
+patch    1074
+# Patch 1074: local next-input workshop, directional observed-AIR help and deliberate paused mouse lock; protocol1071.
 # Patch 1073: active button callbacks keep their original source admission through completion and return.
 # Patch 1072: queued player-origin I/O keeps its admission and taints the actual later recipient; play continues.
 # Patch 1070 is MENU only: grouped lobby text and bounded sharp map photos from the directory.

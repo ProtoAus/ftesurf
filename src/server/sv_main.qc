@@ -303,6 +303,14 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_TASREWIND,   EV_FLOAT,  run_tas_rwcap);
 	clientstat(STAT_FS_TASREPLAY,   EV_FLOAT,  run_tas_replaystate);
 	clientstat(STAT_FS_TASINPUT,    EV_FLOAT,  run_tas_incap);
+	clientstat(STAT_FS_TASPLANCAP,  EV_FLOAT,  run_tas_plancap);
+	clientstat(STAT_FS_TASPLANMODE, EV_FLOAT,  run_tas_planmode);
+	clientstat(STAT_FS_TASPLANFORWARD, EV_FLOAT, run_tas_planforward);
+	clientstat(STAT_FS_TASPLANSIDE, EV_FLOAT, run_tas_planside);
+	clientstat(STAT_FS_TASPLANPITCH, EV_FLOAT, run_tas_planpitch);
+	clientstat(STAT_FS_TASPLANYAW, EV_FLOAT, run_tas_planyaw);
+	clientstat(STAT_FS_TASPLANBITS, EV_FLOAT, run_tas_planbits);
+	clientstat(STAT_FS_TASPLANAIR,  EV_FLOAT,  run_tas_planair);
 	clientstat(STAT_FS_STYLE,       EV_FLOAT,  run_style);
 
 	/*
