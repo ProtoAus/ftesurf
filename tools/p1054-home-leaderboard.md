@@ -86,11 +86,29 @@ owned task root `C:\FTESurf-worktrees\menu-20261026T1632Z`.
 
 Source is isolated from the shared dirty checkouts. Engine binary/API is
 unchanged; engine commit/tag pins and qcbuild are unchanged. This is not a
-release. No live artifacts or website/backend files were deployed: the live
-backend is currently owned by another guarded deployment cohort and must be
-promoted without bypassing that cohort's ownership/consent/provenance checks.
-The new API, website and client changes should be promoted together after that
-coordination and the remaining populated/linked UI acceptance check. No player data was modified.
+release.
+
+**Local menu installed, 2026-10-27T02:19:20Z:** the previously runtime-tested
+`menu.dat` from inspected clean source `e0e9b62ab08d8ecf099c391fb18f853841306528`
+is now in BOTH `C:\FTESurf\ftesurf` and `C:\FTEQuake\ftesurf`, destination SHA256
+`8ca79ea6e247945d8b6205ffb0c8370fcb65c34fc40831cee3649218bf912a00`.
+Each predecessor was preserved as `menu.dat.pre-p1054-home-20261027T021920Z`
+beside its destination; expected predecessor hashes were checked again at the
+swap boundary. All16 checked engine/plugin/CSQC/SSQC/config hashes remained
+unchanged. No player data was modified and no running game was interrupted.
+This menu-only scope is independent of the guarded backend. The initial full-set
+promotion blocker must NOT prevent the owner testing the already-qualified menu.
+
+Launch the game normally from either install. If already open, use console
+`menu_restart`, then `menu_main`. Check the new Home, Maps, Story/Event and
+Settings tabs. Populated/linked acceptance remains pending in lextest.md.
+
+The API, website and CSQC/SSQC changes are NOT deployed by this menu-only swap.
+The live backend remains owned by another guarded deployment cohort: coordinate
+its promotion without bypassing ownership/consent/provenance checks. WOS-only
+Home figures and jump-to-me can report unavailable until that API is promoted;
+the in-game TAB/profile completion selector and website update are still pending.
+Existing linked Friends/chat and Story/Event services are reused by the menu.
 
 ## Answers: existing content/time automation
 
