@@ -40,6 +40,7 @@
 #define MS_PLAY     1
 #define MS_VIS      2
 #define MS_MUSIC    3
+#define MS_SETTINGS 4
 
 #define MW_LATTICE  0
 #define MW_MONOLITH 1
@@ -138,8 +139,11 @@ vector() MM_Mouse =
 // The vessel's and the fractal's stations are separate places, one shader
 // variant each (see glsl/milk_vessel.glsl): a shader holding all four ran at
 // half the speed.
+float(float st) MM_BaseStation = { return st == MS_SETTINGS ? MS_MAIN : st; };
+
 string(float w, float st) MM_WorldProg =
 {
+	st = MM_BaseStation(st);       // Settings is a profile, not a nonexistent #S4
 	if (w == MW_MONOLITH) return "milk_monolith";
 	if (w == MW_VESSEL)   return strcat("milk_vessel#S", ftos(st));
 	if (w == MW_FRACTAL)  return strcat("milk_fractal#S", ftos(st));
@@ -187,7 +191,7 @@ void(float st) MM_Rect =
 // Resting camera, look and anchor for one station of world w.  The anchor is
 // the landmark the feedback trails radiate from.  Mirrored by the ST_* defines
 // in the world's shader.
-void(float w, float st) MM_PoseW =
+void(float w, float st) MM_PoseBase =
 {
 	MM_Rect(st);
 	if (w == MW_MONOLITH)
@@ -295,13 +299,27 @@ void(float w, float st) MM_PoseW =
 	}
 };
 
+void(float w, float st) MM_PoseW =
+{
+	MM_PoseBase(w, MM_BaseStation(st));
+	if (st == MS_SETTINGS)
+	{
+		mm_phue = 0.47;
+		mm_pliq = 0.24;
+		mm_ptgt_x = mm_ptgt_x + 4;
+		MM_Rect(st);
+	}
+};
+
 void(float st) MM_Pose = { MM_PoseW(mm_world, st); };
+float() Sty_IsEvent;               // later menu story module, no duplicated state
 
 float() MM_StationFor =
 {
 	if (mm_art >= 0)                   return mm_art;
 	if (menu_screen == SCREEN_CREATE)  return MS_PLAY;
-	if (menu_screen == SCREEN_STORY)   return MS_PLAY;
+	if (menu_screen == SCREEN_STORY)   return Sty_IsEvent() ? MS_MUSIC : MS_VIS;
+	if (menu_screen == SCREEN_SETTINGS) return MS_SETTINGS;
 	if (menu_screen == SCREEN_VISUALS) return MS_VIS;
 	if (menu_screen == SCREEN_MUSIC)   return MS_MUSIC;
 	return MS_MAIN;

@@ -7,14 +7,21 @@
   expose loopback/source/status controls; saved snd_vis_source1, milk_react1 and
   milk_menu1, no production cfg override found. Source review is not proof of
   working capture, a native bug or its actor. Music menu removal preserves that
-  opt-in and native capture; no native change is justified yet. Owner's actual
-  status source1/support1/active1/available1/packets27416/RMS0 proves active capture
-  and analyser silence, not its cause. Audible-music/default endpoint pending.
+  opt-in and native capture. Owner's actual source1/support1/active1/available1/
+  packets27416/RMS0 proves activity and analyser silence, not its cause.
+  P1062 investigation: owner confirms video playing; paired standalone default-
+  output capture is nonzero while normal-sound game reports0. Contemporary
+  nosound control on the same installed binary is nonzero. Read-only inspection
+  of the OWNED test PID found one Windows audio session, volume0/mute1; no owner
+  session/settings were changed. VISLB_Open's NULL session may couple capture to
+  muted game rendering; this is a candidate cause, not yet a proved fix.
 - Falsifier: with actual desktop music on the Windows default render endpoint,
   obtain snd_vis_status source/support/active/available/packet/RMS values and
   confirm visual response. Distinguish runtime source override, endpoint/open
   refusal, no samples/silence and drawing/reactivity before changing code. Recheck
-  the observed failure after a focused fix. Human result pending in lextest.md;
+  the observed failure after a focused fix. Next bounded control: own muted
+  render stream + default-session capture vs independent capture session, with
+  positive desktop input and unchanged render mute. Human result pending in lextest.md;
   no microphone, raw audio recording or owner-config rewrite.
 
 ## Backend serving outage / guarded owner recovery (27 Oct2026)

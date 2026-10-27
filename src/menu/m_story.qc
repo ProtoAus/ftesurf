@@ -55,6 +55,8 @@ float sty_ackseen, sty_ackscope;
 string sty_previewwho, sty_revision, sty_prevision;
 float sty_previewdrawgeneration;
 
+float() Sty_IsEvent = { return sty_tab == 1; };
+
 void() Sty_ClearPreview =
 {
 	local float L;

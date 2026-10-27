@@ -198,6 +198,11 @@ void(vector screensize) Mlb_Draw;
 void() Mlb_TestCommand;
 void() Mlb_Command;
 void() Mlb_Poll;
+void() MCard_Begin;
+void() MCard_End;
+void(vector pos, float width, float compact, string name, string id) MCard_Draw;
+void() MCard_Probe;
+void(string what) MM_BcPanel;
 
 /*
   Map source, derived from the searchpath a BSP came out of.
@@ -5432,6 +5437,9 @@ void(vector screensize) ui_map_backdrop =
 	local string uuid, want;
 	local vector ready;
 
+	// Milk is the shared scene; the map picture belongs in its card, not over it.
+	if (MM_Active()) return;       // caller already drew the shared scene
+
 	if (ms_selected != ms_bgfor)
 	{
 		if (ms_bgpic != "")
@@ -7207,10 +7215,70 @@ void(vector pos, vector sz, string sel) ui_board_button =
 		Mlb_Open(sel, -1);
 };
 
+float(string label) ui_filter_chip_w =
+{
+	return stringwidth(label, TRUE, '12 12 0') + 12;
+};
+
+float(vector pos, string id, string label, float on) ui_filter_chip =
+{
+	local float w, hot;
+	w = ui_filter_chip_w(label);
+	sui_action_element(pos, [w, 24], id, sui_noop);
+	hot = sui_is_hovered(id);
+	sui_roundbox(pos, [w, 24], 7, on ? COL_ROW_SEL : COL_ROW, 1);
+	if (hot) sui_style_box(pos, [w, 24], 7, COL_ROW_SEL, SUI_THEME_EDGE_HI, 1);
+	sui_text(pos + '6 6 0', '12 12 0', label, on ? COL_ACCENT : COL_TEXT, 1, 0);
+	return w;
+};
+
+float(float width, float y) ui_map_filters =
+{
+	local float group, f, n, x, gw, cw, on, bit, next;
+	local string heading, label, id;
+	x = 16;
+	for (group = 0; group < 4; group = group + 1)
+	{
+		heading = group == 0 ? "Tier" : (group == 1 ? "Mode" : (group == 2 ? "Library" : "Extra"));
+		n = group == 0 ? 11 : (group == 1 ? FS_NMODES : (group == 2 ? SRCF_NCHIPS : 1));
+		gw = stringwidth(heading, TRUE, '12 12 0') + 8;
+		for (f = 0; f < n; f = f + 1)
+		{
+			label = group == 0 ? (f == 0 ? "any" : ftos(f)) : (group == 1 ? ui_mode_label(f) : (group == 2 ? ui_srcf_label(f) : "show all"));
+			gw = gw + ui_filter_chip_w(label) + 4;
+		}
+		if (x > 16 && x + gw > width + 16) { x = 16; y = y + 30; }
+		sui_text([x, y + 6], '12 12 0', heading, COL_DIM, 1, 0);
+		x = x + stringwidth(heading, TRUE, '12 12 0') + 8;
+		for (f = 0; f < n; f = f + 1)
+		{
+			label = group == 0 ? (f == 0 ? "any" : ftos(f)) : (group == 1 ? ui_mode_label(f) : (group == 2 ? ui_srcf_label(f) : "show all"));
+			id = group == 0 ? strcat("cs_tier", ftos(f)) : (group == 1 ? strcat("cs_mode", ftos(f)) : (group == 2 ? strcat("cs_srcf", ftos(f)) : "cs_showall"));
+			bit = group == 1 ? ui_cat_bit(ui_mode_id(f)) : (group == 2 ? ui_srcf_bit(f) : 0);
+			on = group == 0 ? (ms_tier == f) : (group == 1 ? (f == 0 ? ms_modes == FS_MODES_ALL : (ms_modes & bit) != 0) : (group == 2 ? ms_srcf == bit : ms_showall));
+			cw = ui_filter_chip_w(label);
+			if (x + cw > width + 16) { x = 16; y = y + 30; }
+			x = x + ui_filter_chip([x, y], id, label, on) + 4;
+			if (group == 0) sui_tooltip_for(id, f == 0 ? "Every tier, including untiered maps." : sprintf("MOM or KSF tier %g.", f), 2);
+			if (group == 1) sui_tooltip_for(id, "Show/hide this gametype. The last selected type stays on.", 2);
+			if (group == 2) sui_tooltip_for(id, "Map library for installed and downloadable maps.", 2);
+			if (group == 3) sui_tooltip_for(id, "Also show maps without a picture or tier. Search always finds them.", 2);
+			if (!sui_is_released(id)) continue;
+			if (group == 0) ms_tier = f;
+			else if (group == 1) { next = ui_modes_click(ms_modes, f); if (next != ms_modes) ui_modes_set(next); }
+			else if (group == 2) ms_srcf = bit;
+			else ui_showall_set(!ms_showall);
+		}
+		x = x + 12;
+	}
+	return y + 34;
+};
+
 void(vector screensize) screen_create =
 {
-	local float rh, tx, nx, inner, y, compact, actiony;
+	local float rh, nx, inner, y, compact, actiony;
 	local vector size, pos, namesize;
+	MCard_Begin();
 	ui_backdrop(screensize);
 	ui_map_backdrop(screensize);
 
@@ -7218,19 +7286,17 @@ void(vector screensize) screen_create =
 	size = screensize; pos = '0 0 0';
 	inner = size_x - 32;
 	compact = (inner < 760);
-	rh = compact ? 112 : 80;
-	tx = 140; nx = compact ? tx : tx + 72;
-	actiony = compact ? 40 : 8;
+	rh = compact ? 160 : 128;
+	nx = compact ? 140 : 176;
+	actiony = compact ? 108 : 28;
 	namesize = '20 20 0';
 	ui_cs_size = size;
 	ui_cs_lcols = ui_cs_lshow = 0;
 	sui_style_panel(pos, size, 12, 1);
 	sui_text('16 12 0', SZ_HEAD, "Maps", COL_ACCENT, 1, 0);
 	sui_push_frame(pos, size);
-	y = 48;
-
-	// Legacy filter presentation flags no longer consume browser space.
-	// Query/metadata, selected builds and launch/download gates stay unchanged.
+	// Always visible: only the old collapse button is retired.
+	y = ui_map_filters(inner, 48);
 
 	/*
 	  ---- map picker: ONE box, and the list is always open ----------------
@@ -7490,32 +7556,15 @@ void(vector screensize) screen_create =
 			sui_list_view_begin("cs_list", [17, y + 1], [ls_x - 2, ls_y - 2],
 			                    [ls_x - 14, rh], ms_viewcount, ms_scroll, [0, 10]);
 
-			/*
-			  The download gutter is reserved for the WHOLE list or for none of
-			  it, and only when there is something to download -- an install with
-			  no data/mapdl.txt draws exactly the rows it drew before.  Reserving
-			  it per-row instead would move the time column up and down the list
-			  depending on which maps happen to be missing, and the placeholder
-			  time above exists precisely so those widths hold still.
-			*/
-			/*
-			  ALWAYS RESERVED, since build 89.  It used to appear only when
-			  data/mapdl.txt offered something, because a download button was the
-			  only thing that ever went in it; now every row has an action -- Play
-			  where the map is here, Download or Wrong build where it is not -- so
-			  the column is part of the layout rather than a conditional one.
-
-			  The width is still asked of the font: it has to hold the longest
-			  re-get line, which is far wider than "> Play".
-			*/
-			float dlg = ui_dl_gutter();
+			// One fixed action block per card: beside its times when wide,
+			// below its thumbnail when compact. Downloading never means Play.
+			float dlg = compact ? 132 : 148;
 
 			vector rp = '0 0 0';
 			for (float idx = sui_list_item(rp); idx > -1; idx = sui_list_item(rp))
 			{
 				float real = stof(bufstr_get(ms_view, idx));
 				float er = ui_eff(real);           // Patch 652: the build this row plays
-				float bsw = 0;                     // width its build switch takes
 				string rid = strcat("cs_row", ftos(idx));
 				vector rs  = [ls_x - 14, rh];
 
@@ -7526,240 +7575,49 @@ void(vector screensize) screen_create =
 				if (on || hot)
 					sui_roundbox(rp + '1 1 0', rs - '2 2 0', 7, on ? COL_ROW_SEL : COL_ROW_HOVER, 1);
 
-				/*
-				  Two lines per row, not one.
-
-				  ROW_H is 48 to hold a 16:9 thumbnail, which leaves room for the
-				  name on one line and everything qualifying it on a second --
-				  source, layout, counts.  Putting all of that on one line was
-				  tried first and needed six columns across 900 px, which reads
-				  as a spreadsheet; the map name is the thing being looked for
-				  and it should be the only thing at full brightness.
-
-				  Tokenizing ms_meta HERE is affordable precisely because
-				  sui_list_item only emits visible rows -- about a dozen -- so
-				  this is a dozen tokenize calls a frame, not 2200.
-				*/
-				local float mn, mpage, mcell, mstages, mbonus, mlinear;
-				local string mtier, mpb, mtsrc, mtime, mktier;
-
-				mn = tokenize(bufstr_get(ms_meta, real));
-				mpage = mcell = -1;
-				mstages = mbonus = mlinear = -1;
-				mtsrc = mktier = "";
-				if (mn > MT_UUID)
+				// Metadata is parsed only for visible cards. Keep times source-separated.
 				{
-					mlinear = (argv(MT_LINEAR) == "-") ? -1 : stof(argv(MT_LINEAR));
-					mstages = (argv(MT_STAGES) == "-") ? -1 : stof(argv(MT_STAGES));
-					mbonus  = (argv(MT_BONUS)  == "-") ? -1 : stof(argv(MT_BONUS));
-					mpage   = (argv(MT_PAGE)   == "-") ? -1 : stof(argv(MT_PAGE));
-					mcell   = (argv(MT_CELL)   == "-") ? -1 : stof(argv(MT_CELL));
+					local float mn, mpage, mcell, mstages, mbonus, mlinear, cw, neww, pop;
+					local string mtier, mktier, mnmf, sub, mode, dep;
+					mn = tokenize(bufstr_get(ms_meta, real));
+					mpage = mcell = -1; mstages = mbonus = mlinear = -1;
+					if (mn > MT_UUID)
+					{
+						mlinear = strcmp(argv(MT_LINEAR), "-") ? stof(argv(MT_LINEAR)) : -1;
+						mstages = strcmp(argv(MT_STAGES), "-") ? stof(argv(MT_STAGES)) : -1;
+						mbonus = strcmp(argv(MT_BONUS), "-") ? stof(argv(MT_BONUS)) : -1;
+						mpage = strcmp(argv(MT_PAGE), "-") ? stof(argv(MT_PAGE)) : -1;
+						mcell = strcmp(argv(MT_CELL), "-") ? stof(argv(MT_CELL)) : -1;
+					}
+					ui_thumb([rp_x + 4, rp_y + 8], compact ? '128 72 0' : '160 90 0', mpage, mcell);
+					cw = rs_x - nx - (compact ? 8 : 164);
+					neww = !strcmp(bufstr_get(ms_new, real), "1") ? stringwidth("NEW", TRUE, namesize) + 4 : 0;
+					mnmf = ui_fit_text(bufstr_get(ms_name, real), cw - neww, namesize);
+					if (strcmp(bufstr_get(ms_zoned, er), "1")) mnmf = strcat(MAP_NOZONE_ESC, mnmf);
+					sui_text([rp_x + nx, rp_y + 8], namesize, mnmf, (on || hot) ? COL_ACCENT : COL_TEXT, 1, 0);
+					// NEW still means a sweep saw this name appear, not a recent release.
+					if (neww)
+						sui_text([rp_x + nx + 4 + stringwidth(mnmf, TRUE, namesize), rp_y + 8], namesize,
+						         strcat(SUI_ESC_GOOD, "NEW"), COL_TEXT, 1, 0);
+					mtier = bufstr_get(ms_momtier, real); mktier = bufstr_get(ms_ksftier, real);
+					sub = sprintf("MOM %s | KSF %s", stof(mtier) > 0 ? strcat("T", mtier) : "-", stof(mktier) > 0 ? strcat("T", mktier) : "-");
+					if (!strcmp(bufstr_get(ms_var, real), ""))
+						sub = strcat(ui_srcname(stof(bufstr_get(ms_src, real))), " | ", sub);
+					mode = ui_mode_name(stof(bufstr_get(ms_modev, real)));
+					if (strcmp(mode, "")) sub = strcat(sub, " | ", mode);
+					if (mstages > 0) sub = sprintf("%s | %g stages", sub, mstages);
+					else if (mlinear == 1) sub = strcat(sub, " | linear");
+					if (mbonus > 0) sub = sprintf("%s, %g bonus", sub, mbonus);
+					pop = ui_map_players(er);
+					if (pop >= 0) sub = sprintf("%s | %g playing", sub, pop);
+					dep = ui_deps_text(real);
+					if (strcmp(dep, "")) sub = strcat(sub, " | needs ", dep);
+					if (strcmp(bufstr_get(ms_zoned, er), "1")) sub = strcat(MAP_NOZONE_ESC, "zones not listed^7 | ", sub);
+					sui_text([rp_x + nx, rp_y + 50], '12 12 0', ui_fit_text(sub, cw, '12 12 0'), COL_DIM, 1, 0);
+					if (strcmp(bufstr_get(ms_var, real), ""))
+						ui_build_switch(compact ? rp + '4 84 0' : [rp_x + rs_x - 130, rp_y + 88], real, idx);
+					MCard_Draw([rp_x + nx, rp_y + 32], cw, compact, bufstr_get(ms_name, er), rid);
 				}
-				mtsrc = bufstr_get(ms_momtsrc, real);
-
-				// Keep metadata/actions centered while the thumbnail uses the full row.
-				ui_thumb([rp_x + 3, rp_y + floor((rh - 72) * 0.5)], [128, 72], mpage, mcell);
-				rp_y = rp_y + (compact ? 0 : (rh - ROW_H) * 0.5);
-
-				mtier = bufstr_get(ms_momtier, real);
-				mktier = bufstr_get(ms_ksftier, real);
-				if (hot)
-				if (stof(mtier) > 0)
-				{
-					if (!strcmp(mtsrc, "sugg"))
-						sui_tooltip_for(rid, "MOM suggested tier: this map has not been ranked yet.", 2);
-				}
-				if (compact)
-					sui_text([rp_x + tx, rp_y + 50], '12 12 0', sprintf("MOM %s  |  KSF %s", stof(mtier) > 0 ? strcat("T", mtier) : "-", stof(mktier) > 0 ? strcat("T", mktier) : "-"), COL_DIM, 1, 0);
-				else
-				{
-					sui_text([rp_x + tx, rp_y + 6], '12 12 0',
-					         (stof(mtier) > 0) ? strcat("MOM T", mtier) : "MOM -", '0.25 0.55 1', 1, 0);
-					sui_text([rp_x + tx, rp_y + 28], '12 12 0',
-					         (stof(mktier) > 0) ? strcat("KSF T", mktier) : "KSF -", '1 1 1', 1, 0);
-				}
-
-				/*
-				  The best time anyone is known to have set, on the NAME's line and
-				  above the player's own below it.  Build 89.
-				
-				  BUILT BEFORE THE NAME IS DRAWN, because this line had nothing to
-				  its right until now: the name was drawn unbounded, and the moment
-				  something shares the line a long one runs straight under it.
-				
-				  ms_wr is in milliseconds, so it goes to Time_MsString -- the
-				  one formatter every other time in the game goes through, entered
-				  in the unit the column already holds.  It used to go through
-				  Time_TickString(ms, 0.001) on the argument that a millisecond IS
-				  a tick of 0.001 s, and that was true of the units and false of
-				  the arithmetic: 0.001 is not a float32, so the product drifted
-				  1-3 ms on most times past an hour (Patch 496).  See sh_time.qc.
-				*/
-				local string mwr, mnmf;
-				local float wrw, neww;
-
-				mwr = bufstr_get(ms_wr, real);
-				wrw = 0;
-				if (mwr != "")
-				{
-					mwr = strcat(SUI_ESC_MUTED, "best  ^7", Time_MsString((int)stof(mwr)));
-					wrw = stringwidth(mwr, TRUE, SZ_ROW) + 16;
-				}
-
-				neww = bufstr_get(ms_new, real) == "1" ? stringwidth("NEW", TRUE, namesize) + 4 : 0;
-				mnmf = ui_fit_text(bufstr_get(ms_name, real),
-				                   rs_x - nx - 8 - ROW_RPAD - dlg - (compact ? 0 : wrw) - neww, namesize);
-				if (bufstr_get(ms_zoned, er) != "1")
-					mnmf = strcat(MAP_NOZONE_ESC, mnmf);
-				sui_text([rp_x + nx, rp_y + 2], namesize, mnmf,
-				         (on || hot) ? COL_ACCENT : COL_TEXT, 1, 0);
-
-				// NEW means "a sweep saw this name appear", not "recently
-				// released" and not "we only just noticed it" -- mapscan.py
-				// writes bootstrap rows so the first ever sweep badges nothing.
-				// Measured off the FITTED name: against the full one it drew
-				// detached, past the end of a name that had been cut.
-				if (bufstr_get(ms_new, real) == "1")
-					sui_text([rp_x + nx + 4 + stringwidth(mnmf, TRUE, namesize),
-					          rp_y + 2], namesize, strcat(SUI_ESC_GOOD, "NEW"), COL_TEXT, 1, 0);
-
-				// Second line: where it came from, what it is, then how it is
-				// laid out.  The gamemode is here rather than in a column of its
-				// own because it is the same word the filter chip above says, so
-				// once a mode is picked it is redundant -- and a column that is
-				// usually redundant still costs width on every row.
-				local string sub, smode, mdep;
-				// Two builds: the switch says where it comes from (drawn below).
-				sub = (bufstr_get(ms_var, real) != "") ? "" : ui_srcname(stof(bufstr_get(ms_src, real)));
-				if (bufstr_get(ms_zoned, er) != "1")
-					sub = strcat(MAP_NOZONE_ESC, "zones not listed^7  ", sub);
-				smode = ui_mode_name(stof(bufstr_get(ms_modev, real)));
-				if (smode != "")
-					sub = sprintf("%s  %s|^7  %s", sub, SUI_ESC_MUTED, smode);
-				if (mstages > 0)
-					sub = sprintf("%s  %s|^7  %g stages", sub, SUI_ESC_MUTED, mstages);
-				else if (mlinear == 1)
-					sub = strcat(sub, "  ", SUI_ESC_MUTED, "|^7  linear");
-				if (mbonus > 0)
-					sub = sprintf("%s, %g bonus", sub, mbonus);
-				// ROADMAP 6: the games it needs, red where this PC lacks one.
-				// Last, so the fit cuts it before the source word.  (It tokenizes:
-				// nothing below reads ms_meta's argv.)
-				mdep = ui_deps_text(real);
-				if (mdep != "")
-					sub = strcat(sub, "  ", SUI_ESC_MUTED, "|^7  needs ", mdep);
-
-				/*
-				  The time, right-aligned against the row's own right edge.
-				  sui_text measures and offsets, so the anchor is the text end.
-
-				  A LOBBY time says so in a word and not a colour alone -- the
-				  rule the tier chip above follows, for the same readers.  It is
-				  the one shown only when it beats this PC's own time; see
-				  run_pb_load.
-
-				  THE MAP'S OWN TICK, not PM_TICK: a bhop map's ticks were
-				  counted at 100 Hz, and 0.015 draws them half again as long.
-				  See ui_map_tick, which is why this is a call and not a
-				  constant.
-
-				  BUILT BEFORE IT IS DRAWN, since build 66, because the headcount
-				  below sits immediately to its left and the sub line has to be
-				  fitted around both.  The placeholder is a string on the same
-				  footing as a real time rather than a second draw call, so its
-				  width is available to the same arithmetic -- a row with no time
-				  reserves exactly as much room as one with a time, which is what
-				  stops the headcount jumping sideways as you scroll.
-				*/
-				local float mtw, mpop, mpopw;
-				local string mpopt;
-
-				mpb = bufstr_get(ms_pbv, er);
-				if (mpb != "")
-				{
-					mtime = Time_TickString(stof(mpb), ui_map_tick(real));
-					if (bufstr_get(ms_pblob, er) != "")
-						mtime = strcat(SUI_ESC_MUTED, "lobby  ^7", mtime);
-				}
-				else
-					mtime = "--:--.---";
-				mtw = stringwidth(mtime, TRUE, SZ_ROW);
-
-				/*
-				  The live headcount, from the lobby directory this screen is
-				  already polling.
-
-				  NOTHING IS DRAWN WHEN NOBODY HAS SAID ANYTHING ABOUT THIS MAP,
-				  and that is the whole of the honesty here -- see the essay over
-				  ui_map_players for why -1 and 0 are different facts.  On a
-				  library of 2200 maps and five lobbies this is silent on all but
-				  a handful of rows, which is correct and is also why it costs
-				  nothing to read.
-
-				  The colour carries the difference between "people are here" and
-				  "a server is here and it is empty" while the WORDS stay the
-				  same, so the eye parses one shape down the list and the number
-				  is the thing that changes.  Unlike the suggested tier's tooltip,
-				  here the two states are a measured count and
-				  another measured count, so a punctuation mark would be
-				  inventing a distinction the data does not have.
-
-				  IT IS LEFT OF THE TIME, ON THE TIME'S OWN LINE, not right-
-				  aligned on the sub line.  The sub line sits at +26 and the time
-				  at +14; at SZ_ROW those two bands overlap, so a second
-				  right-aligned item on the lower line would draw through the
-				  time on exactly the rows that have both.
-				*/
-				mpop  = ui_map_players(er);
-				mpopt = "";
-				mpopw = 0;
-				if (mpop >= 0)
-				{
-					mpopt = sprintf("%s%g%s playing", (mpop > 0) ? SUI_ESC_GOOD : SUI_ESC_MUTED,
-					                mpop, SUI_ESC_MUTED);
-					mpopw = stringwidth(mpopt, TRUE, SZ_ROW) + 16;
-					sui_text([rp_x + rs_x - ROW_RPAD - dlg - mtw - mpopw,
-					          rp_y + (compact ? 88 : 26)], SZ_ROW, mpopt, COL_DIM, 1, 0);
-				}
-
-				/*
-				  Second line, fitted into what the right-hand column actually
-				  leaves -- which it was not before build 66.  `sub` was drawn
-				  unbounded, so a long "COUNTER-STRIKE | surf | 12 stages, 3
-				  bonus" already ran under the time on a narrow window; adding a
-				  headcount would have made that the common case rather than the
-				  rare one.  ui_fit_text cuts from the end, so the source word --
-				  the half that answers "why is this map here at all" -- is the
-				  half that survives.
-				*/
-				if (bufstr_get(ms_var, real) != "")
-					bsw = ui_build_switch([rp_x + nx, rp_y + 25], real, idx);
-				sui_text([rp_x + nx + bsw, rp_y + 26], SZ_ROW,
-				         ui_fit_text(sub, rs_x - nx - 8 - ROW_RPAD - dlg - (compact ? 0 : mtw + mpopw) - bsw,
-				                     SZ_ROW),
-				         COL_DIM, 1, 0);
-
-				/*
-				  The two times, right-aligned on the row's own two lines: the best
-				  known above, this PC's below, so the pair reads as one comparison
-				  rather than as two unrelated columns.
-				
-				  The player's moved from +14 to +26 to make room.  It used to sit
-				  BETWEEN the lines precisely so the sub line could pass under it;
-				  now it shares that line, which is why the fit above subtracts the
-				  same widths it always did -- that arithmetic was already correct
-				  and merely conservative.
-				*/
-				if (mwr != "")
-					sui_text([rp_x + rs_x - ROW_RPAD - dlg - wrw + 16, rp_y + (compact ? 68 : 4)],
-					         SZ_ROW, mwr, COL_DIM, 1, 0);
-
-				if (mpb != "")
-					sui_text([rp_x + rs_x - ROW_RPAD - dlg - mtw, rp_y + (compact ? 88 : 26)], SZ_ROW,
-					         mtime, COL_TEXT, 1, 0);
-				else
-					sui_text([rp_x + rs_x - ROW_RPAD - dlg - mtw, rp_y + (compact ? 88 : 26)], SZ_ROW,
-					         mtime, COL_DIM, 0.5, 0);
 
 				/*
 				  The download gutter.
@@ -7791,8 +7649,8 @@ void(vector screensize) screen_create =
 				*/
 				if (dlg > 0 && bufstr_get(ms_have, er) == "1")
 				{
-					vector pp = [rp_x + rs_x - 4 - dlg, rp_y + actiony];
-					vector ps = [dlg - 4, ROW_H - 16];
+					vector pp = [rp_x + (compact ? 4 : rs_x - 4 - dlg), rp_y + actiony];
+					vector ps = [dlg - 4, compact ? 40 : 48];
 					string pid = strcat("cs_play", ftos(idx));
 					float  ph, pb;
 
@@ -7806,8 +7664,8 @@ void(vector screensize) screen_create =
 					// A pill, filled under the cursor. One centred word, not two lines:
 					// there is no second fact to say about a map you already have.
 					sui_roundbox(pp, ps, ps_y * 0.5, ph ? COL_PLAY : COL_PLAY_HOT, pb ? 0.3 : 1);
-					sui_text([pp_x + (ps_x - stringwidth("Play", TRUE, SZ_ROW)) * 0.5, pp_y + 8],
-					         SZ_ROW, "Play", ph ? SUI_THEME_WELL : COL_PLAY, pb ? 0.3 : 1, 0);
+					sui_text([pp_x + (ps_x - stringwidth("Play", TRUE, namesize)) * 0.5, pp_y + floor((ps_y - 20) * 0.5)],
+					         namesize, "Play", ph ? SUI_THEME_WELL : COL_PLAY, pb ? 0.3 : 1, 0);
 
 					/*
 					  THROUGH ui_launch, not around it.  Selecting first and then
@@ -7825,8 +7683,8 @@ void(vector screensize) screen_create =
 				}
 				else if (dlg > 0 && bufstr_get(ms_have, er) != "1")
 				{
-					vector gp = [rp_x + rs_x - 4 - dlg, rp_y + actiony];
-					vector gs = [dlg - 4, ROW_H - 16];
+					vector gp = [rp_x + (compact ? 4 : rs_x - 4 - dlg), rp_y + actiony];
+					vector gs = [dlg - 4, compact ? 40 : 48];
 					string gid = strcat("cs_dl", ftos(idx));
 					string mnm = bufstr_get(ms_name, er);
 					float  mine = (dl_name == mnm);
@@ -7865,7 +7723,7 @@ void(vector screensize) screen_create =
 						sui_text([gp_x + DL_PAD, gp_y + 2], SZ_ROW,
 						         wrong ? "Wrong build" : "Download",
 						         gh ? COL_TEXT : COL_ACCENT, 1, 0);
-						sui_text([gp_x + DL_PAD, gp_y + 18], SZ_ROW,
+						sui_text([gp_x + DL_PAD, gp_y + 23], '12 12 0',
 						         wrong ? strcat(SUI_ESC_WARN, "re-get ",
 						                        ui_dl_size(stof(bufstr_get(ms_dlkb, er))))
 						               : ui_dl_size(stof(bufstr_get(ms_dlkb, er))),
@@ -7881,6 +7739,8 @@ void(vector screensize) screen_create =
 			sui_list_view_end();
 		}
 	}
+
+	MCard_End();
 
 	// ---- start / status / back ----------------------------------------
 	float  busy  = ui_join_busy();
@@ -8199,6 +8059,7 @@ void(vector screensize) m_draw =
 	if (cvar("milk_bootcheck"))
 		MM_BootTick();
 	MM_Frame(screensize);
+	sui_style_glass = MM_Active();
 
 	sui_begin(screensize_x, screensize_y);
 
@@ -8632,8 +8493,9 @@ float(string cmd) m_consolecommand =
 			              ms_query_stale));
 			return TRUE;
 		}
-		MC_Probe();
-		print(sprintf("browser_maps: selected %g frame %gx%g row %g list %g..%g name20 thumb128x72\n", ms_selected, ui_cs_size_x, ui_cs_size_y, ui_cs_rowheight, ui_cs_list_top, ui_cs_list_bottom));
+		MC_Probe(); MCard_Probe(); MM_BcPanel("menu");
+		print(sprintf("ui_menu_probe: glass %g\n", sui_style_glass));
+		print(sprintf("browser_maps: selected %g frame %gx%g row %g list %g..%g name20 cards\n", ms_selected, ui_cs_size_x, ui_cs_size_y, ui_cs_rowheight, ui_cs_list_top, ui_cs_list_bottom));
 		print(sprintf("ui_menu_probe: filters=%g large=%g friends=%g rows=%g maps=%g tier=%g scroll=%.1f\n",
 			cvar("ui_maps_filters"), cvar("ui_maps_large"), cvar("ui_maps_friends"), ui_cs_rows,
 			ms_viewcount, ms_tier, ms_scroll_y));

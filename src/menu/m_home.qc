@@ -161,7 +161,7 @@ void(vector screensize) MH_Tabs =
 		sui_text_unfocus();
 		if (i == 1) { menu_screen = target; ui_create_open(); }
 		else if (i == 2 || i == 3) { Sty_Open(); sty_tab = i - 2; }
-		else if (i == 5) { if (!ui_synth) localcmd("quit\n"); }
+		else if (i == 5) { if (!ui_synth()) localcmd("quit\n"); }
 		else menu_screen = target;
 	}
 	sui_pop_frame();
@@ -389,8 +389,7 @@ void(vector screensize) MH_Settings =
 	sui_push_frame(pos, size);
 	sui_text('24 22 0', SZ_HEAD, "Settings", COL_ACCENT, 1, 0);
 	if (ui_button("home_visuals", '24 66 0', '184 36 0', "Visuals & display")) menu_screen = SCREEN_VISUALS;
-	if (ui_button("home_music", '224 66 0', '150 36 0', "Music")) { menu_screen = SCREEN_MUSIC; MM_MusicScan(); }
-	if (ui_button("home_privacy", '390 66 0', '250 36 0', "Privacy & online terms")) menu_screen = SCREEN_TERMS;
+	if (ui_button("home_privacy", '224 66 0', '250 36 0', "Privacy & online terms")) menu_screen = SCREEN_TERMS;
 	v = cvar("sensitivity");
 	sui_text('24 134 0', SZ_LABEL, sprintf("Mouse sensitivity: %.2f", v), COL_TEXT, 1, 0);
 	if (ui_button("home_sens_down", '320 124 0', '48 32 0', "-")) cvar_set("sensitivity", ftos(max(0.1, v - 0.1)));

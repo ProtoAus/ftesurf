@@ -20,6 +20,9 @@
 -->
 
 ## next
+- Menu windows now use tinted glass over the MilkDrop backdrop, with section-specific scenes and crisp text. Milk-off and in-game menus keep their readable fallback.
+- Map filters stay visible without a collapse button. Larger cards add a green completion fade and separate your WOS/overall times from WOS/overall world records (main track, clean style); unavailable records stay unknown.
+- Map cards request visible records in one small cached batch. Play/Download actions are larger, Quit calls its input guard correctly, and Music is no longer offered in Settings.
 
 ### P1061 Rewind TAS one movement tick at a time
 - While paused, tas back restores the previous retained movement tick; tas back N goes back N ticks and stays paused. Repeating the same forward input follows the restored movement state.

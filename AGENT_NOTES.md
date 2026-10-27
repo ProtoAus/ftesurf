@@ -1,5 +1,32 @@
 # AGENT_NOTES.md
 
+## Glass scenes / map-card scope and visible filters (P1062,27Oct2026)
+
+Supersedes P1059's broad strip retirement: only `cs_filters` collapsibility is
+removed. Always render native12 Tier/Mode/Library/Extra chips, measured/wrapped;
+keep their old IDs and filtering semantics. A compact160px card must still fit
+fully at800x600. Local best.pb/lobby.pb is NOT an official WOS PB; legacy mapwr
+includes community and is NOT automatically the requested WOS/MOM/KSF minimum.
+Use the bounded `cards=` board branch and integer JSON getter/itos, clean main
+track0/leg0, ranked vs ranked+momentum+ksf, with native-build/import-base scopes.
+Unknown completion is not false; keep old snapshots explicitly cached after
+expiry/failure, never refresh their timestamp on errors. Only visible rows queue,
+16/request, one in flight,60s refresh/30s failure wait,12s deadline. Native URI
+success is0, not200. The same existing transport/online gate and public identity
+apply; no raw IDs, per-row network, disk-cache writes or evidence authority.
+
+Glass must blend BOTH border and inner quads: an opaque full border quad under
+a transparent fill is still opaque. MENU sets `sui_style_glass` only over active
+Milk, leaving text opaque and CSQC/HUD at their default0. Maps must not paint
+its selected-map JPEG over the shared Milk scene. Settings profile4 maps to
+existing shader0 with its own pose/hue; never compile a nonexistent #S4. Scene
+IDs0/1/2/3/4 and glass1, Milk-off glass0, completion fields, real tier refilter,
+and wanted-but-unsent offline rows all acted in a three-size real-client matrix.
+Avoid overlapping fade strips: +1px per strip created visible double-alpha bars;
+64 integer-edged non-overlapping strips removed them. Music's Settings entry was
+also removed; its hidden legacy rendering code is not an autoplay instruction.
+
+
 ## Exact TAS rewind is not a replay-viewing window (P1061,27Oct2026)
 
 A normal WatchHold opens SV_ViewWindow(owner2), whose viewing clock includes

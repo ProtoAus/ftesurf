@@ -4013,6 +4013,8 @@ def board():
         return game_maplist()
     if request.args.get("players") is not None:     # Patch 662: see game_players
         return game_players(request.args.get("players"), now)
+    if request.args.get("cards") is not None:      # P1062: visible map-card batch
+        return game_mapcards(request.args.get("cards"), request.args.get("player"), now)
     if request.args.get("player") is not None:      # ...and game_player
         return game_player(request.args.get("player"), now)
     if request.args.get("story") is not None:       # Patch 854: see game_story
@@ -6977,6 +6979,66 @@ def game_players(raw, now):
         out.append(row)
     return Response(game_json({"v": 1, "t": now, "q": q, "players": out}),
                     status=200, mimetype="application/json")
+
+
+def game_mapcards(raw, who, now):
+    """At most 16 visible maps' clean-main times, in the board's rate bucket.
+
+    Native rows belong to the requested build; imports belong to its base, as
+    board(). Local PB files and community/held runs are not ranked records.
+    No ranks/profile rows are counted or materialised for this small batch.
+    """
+    if not raw or len(raw) > 16 * 65:
+        return fail(400, "bad cards")
+    names = raw.split(",")
+    if len(names) > 16 or any(not clean_map(n) for n in names):
+        return fail(400, "bad cards")
+    names = list(dict.fromkeys(clean_map(n) for n in names))
+    who = who or ""
+    if who and not re.fullmatch(r"[0-9a-f]{8}|[0-9a-f]{%d}" % WEB_HANDLE_LEN, who):
+        return fail(400, "bad player")
+    try:
+        db = get_db()
+        handle, player = who, None
+        if who:
+            _by_handle, _people_list, _main_maps, at = _people_current(db, now)
+            if len(who) == 8:
+                handle = None
+                if RANKED_LINKED:
+                    with _people_lock:
+                        handle = _people.get("by_mark", {}).get(who)
+                    if handle is None and not _within(at, now, WEB_PEOPLE_FLOOR):
+                        _people_kick(now)
+            player = player_of(db, handle, now) if handle else None
+        bases = {n: variant_base(n) or n for n in names}
+        keys = sorted(set(names) | set(bases.values()))
+        marks = ",".join("?" for _ in keys)
+        rows = db.execute(
+            "SELECT map,tier,MIN(millis) AS wr,"
+            " MIN(CASE WHEN player=? THEN millis END) AS mine FROM runs"
+            " WHERE track=0 AND leg=0 AND style='clean' AND millis>0"
+            " AND tier IN (?,?,?) AND map IN (" + marks + ") GROUP BY map,tier",
+            [player, TIER_RANKED, TIER_MOMENTUM, TIER_KSF] + keys).fetchall()
+        times = {(r["map"], r["tier"]): (r["wr"], r["mine"]) for r in rows}
+    except sqlite3.Error as exc:
+        log.exception("game map cards db error: %s", exc)
+        return fail(500, "storage error")
+    cards = []
+    for name in names:
+        wos = times.get((name, TIER_RANKED), (None, None))
+        all_times = [wos] + [times.get((bases[name], t), (None, None))
+                             for t in (TIER_MOMENTUM, TIER_KSF)]
+        world = [r[0] for r in all_times if r[0] is not None]
+        mine = [r[1] for r in all_times if r[1] is not None]
+        cards.append({"map": name, "mine_wos": wos[1],
+                      "mine_all": min(mine) if mine else None,
+                      "wr_wos": wos[0], "wr_all": min(world) if world else None,
+                      "complete": bool(mine) if player is not None else None})
+    return Response(game_json(
+        {"v": 1, "t": now, "requested_player": who,
+         "who": handle if player is not None else "", "player_known": player is not None,
+         "track": 0, "leg": 0, "style": "clean", "cards": cards}),
+        status=200, mimetype="application/json")
 
 
 def game_player(raw, now):

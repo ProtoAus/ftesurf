@@ -44,3 +44,4 @@ menu/m_board.qc
 // Patch 854: last, it draws with everything above (ui_*, MF_* proof, MP_Draw).
 menu/m_story.qc
 menu/m_home.qc             // tabbed home, after shared friends/chat/story
+menu/m_mapcards.qc         // P1062: shared board transport + public identity + integer times

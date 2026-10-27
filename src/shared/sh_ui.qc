@@ -38,6 +38,7 @@
 #define SUI_TIP_LINES 24
 
 float sui_style_focused, sui_style_mouse_focus, sui_style_key_focus;
+float sui_style_glass;             // MENU opts in over Milk; HUD stays opaque
 float sui_round_checked, sui_round_available;
 float sui_round_calls;
 float sui_style_frames, sui_style_quads;
@@ -368,6 +369,11 @@ void(vector pos, vector size, float radius, vector color, float alpha) _sui_roun
 
 void(vector pos, vector size, float radius, vector color, float alpha) sui_roundbox =
 {
+	// Backgrounds only: text, accent actions and progress keep their opacity.
+	if (sui_style_glass)
+	if (color == SUI_THEME_WELL || color == SUI_THEME_PANEL || color == SUI_THEME_CHIP
+	    || color == SUI_THEME_HOVER || color == SUI_THEME_PRESSED || color == SUI_THEME_SELECTED)
+		alpha = alpha * 0.3;
 	sui_transform_box(pos, size);
 	_sui_round_draw(pos, size, radius, color, alpha);
 };
@@ -375,20 +381,27 @@ void(vector pos, vector size, float radius, vector color, float alpha) sui_round
 void(vector pos, vector size, float radius, vector fill, vector border, float alpha) sui_style_box =
 {
 	sui_transform_box(pos, size);
-	_sui_round_draw(pos, size, radius, border, alpha);
-	_sui_round_draw(pos + '1 1 0', size - '2 2 0', max(0, radius - 1), fill, alpha);
+	// Both quads blend: an opaque border quad would hide the scene inside.
+	_sui_round_draw(pos, size, radius, border, alpha * (sui_style_glass ? 0.12 : 1));
+	_sui_round_draw(pos + '1 1 0', size - '2 2 0', max(0, radius - 1), fill,
+	                alpha * (sui_style_glass ? 0.26 : 1));
 };
 
-// A modal panel: a stepped drop shadow, a hairline and the fill. The mask has
-// hard straight edges, so the shadow is three widening translucent boxes.
+// MENU glass is tinted with a quiet highlight; opaque HUD/modal fallback is unchanged.
 void(vector pos, vector size, float radius, float alpha) sui_style_panel =
 {
 	sui_transform_box(pos, size);
-	_sui_round_draw(pos + '-7 -4 0', size + '14 16 0', radius + 7, '0 0 0', 0.07 * alpha);
-	_sui_round_draw(pos + '-4 -2 0', size + '8 9 0', radius + 4, '0 0 0', 0.12 * alpha);
-	_sui_round_draw(pos + '-2 -1 0', size + '4 4 0', radius + 2, '0 0 0', 0.18 * alpha);
-	_sui_round_draw(pos, size, radius, SUI_THEME_EDGE, alpha);
-	_sui_round_draw(pos + '1 1 0', size - '2 2 0', max(0, radius - 1), SUI_THEME_PANEL, alpha);
+	if (!sui_style_glass)
+	{
+		_sui_round_draw(pos + '-7 -4 0', size + '14 16 0', radius + 7, '0 0 0', 0.07 * alpha);
+		_sui_round_draw(pos + '-4 -2 0', size + '8 9 0', radius + 4, '0 0 0', 0.12 * alpha);
+		_sui_round_draw(pos + '-2 -1 0', size + '4 4 0', radius + 2, '0 0 0', 0.18 * alpha);
+	}
+	_sui_round_draw(pos, size, radius, SUI_THEME_EDGE, alpha * (sui_style_glass ? 0.18 : 1));
+	_sui_round_draw(pos + '1 1 0', size - '2 2 0', max(0, radius - 1), SUI_THEME_PANEL,
+	                alpha * (sui_style_glass ? 0.56 : 1));
+	if (sui_style_glass && size_x > radius * 2 + 4)
+		_sui_round_draw(pos + [radius + 2, 1], [size_x - radius * 2 - 4, 1], 0, '0.8 0.88 1', alpha * 0.16);
 };
 
 // The scroll thumb: half the gutter, rounded, with a three-line grip where it is

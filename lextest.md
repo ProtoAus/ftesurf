@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+**P1062 -- glass/scenes, large map cards and Quit (pending owner acceptance):**
+After local menu installation/restart, click Lobbies/Maps/Story/Event/Settings:
+confirm the scene changes and glass is readable, with no font blur. Check one
+installed map's larger Play action and click Quit normally (synthetic input is
+still deliberately refused). Four live clean-main record fields need the guarded
+API recovery/admission; synthetic fields/completion/filtering and offline unknowns
+were tested, not claimed as your real times. Owner confirmed a video was playing
+during the desktop-audio investigation; this confirms intended input, NOT visual
+reactivity. Normal-sound game capture still reported0 while a paired standalone
+capture was nonzero; the test PID's Windows session was muted/volume0. No owner
+session was unmuted, no raw audio recorded; audio repair/visual acceptance pending.
+
 **P1055 -- owner stop/forward confirmation:** Owner reports "we can stop a run, and stop forward, pretty cool". This confirms observed pause/advance functionality only, not measured tick precision, all input edges, aim/crouch/latency feel or fleet-wide installation.
 
 **P1061 -- per-tick rewind feel (pending):** With matching native/server/client and `cl_threadedphysics 0`, walk off a start, `tas pause`, hold a movement input, `tas step 7`, `tas back 7`, then `tas step 7`. Does back return to the earlier spot, stay paused, and forward follow the same line? Open rewind while paused: a tap of left/right selects one tick; ENTER restores it without a countdown and remains paused. Try a jump/duck edge. Missing/older uncaptured ticks must refuse; shared world and other players intentionally keep running. Dedicated-socket/native-counter/eye/hull/reader controls pass; owner feel is not confirmed. Deployment receipt is separate; tools/p1061-tas-rewind.md lists limits.

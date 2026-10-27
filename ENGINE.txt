@@ -25,7 +25,8 @@ commit   de18f94596c517d6664ef11797d3125db69c28f8
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1061
-patch    1061
+patch    1062
+# Patch 1062 is MENU/API only: glass Milk scenes, visible filters, source-separated map cards and Quit call.
 # Patch 1061: exact retained-tick TAS rewind, native carried state, paused tick cursor.
 # Patch 1060: retain bounded lobby rotation history across stale heartbeats.
 # Patch 1059 is menu only: text navigation, compact top-left note, shared browser sidebar.
