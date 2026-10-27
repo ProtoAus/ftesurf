@@ -137,6 +137,10 @@
 #define STAT_FS_FOLEYJUMP 180  // cosmetic contact edge; no body/recorder state
 #define STAT_FS_TIMESCALE 181  // P954: connection-local practice command duration
 #define STAT_FS_ARMSTATE 182   // P1008: what leaving the start box now would be (AS_*)
+#define STAT_FS_TASPAUSE 187   // P1055: authoritative movement-only pause
+#define STAT_FS_TASPENDING 188
+#define STAT_FS_TASDONE 189
+#define STAT_FS_TASREQUEST 190
 #define AS_NONE    0           // not armed
 #define AS_ARMED   1           // a clean start
 #define AS_HOPPED  2           // a hopped start: land, below run_rearmspeed, to re-arm

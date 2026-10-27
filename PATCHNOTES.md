@@ -35,6 +35,10 @@
 - The Home layout adapts down to 800x600, with compact lobby cards and tier bars. Version/update information lives in the tab strip instead of overlapping Friends.
 - Completion now loads values for every tier; unavailable values stay clearly marked, and an ordinary refresh no longer blanks previously loaded stats.
 
+### P1055 Pause TAS practice and advance one tick at a time
+- tas pause freezes your movement; tas step advances one movement tick, or tas step N queues up to 128. tas play resumes your chosen practice speed and tas off returns to normal speed without clearing TAS history.
+- Stepping is server-authoritative on the normal Source movement clock. Other players and the shared world keep running; timeline editing, optimization and public TAS boards are still to come.
+
 ### P1054 Your home, your records and your completion
 - Home puts lobbies above your WOS stats and progress, with friends and public lobby or friend-only chat on the right. Tabs give Maps its own space, alongside Story, Event Mode and Settings.
 - Jump to me finds your record in the selected leaderboard without changing its filters. Boards load smaller first pages and keep paging as you scroll.

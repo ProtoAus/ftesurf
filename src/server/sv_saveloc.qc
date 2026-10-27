@@ -2262,6 +2262,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	wasrec = e.run_t_flags & TF_RECORDING;
 	e.run_t_flags = (flg - (flg & (TF_RECORDING | TF_FROZEN | TF_STOPPED | TF_NONCE)))
 	                | (e.run_t_flags & TF_NONCE);
+	// P1055: restored movement state does not inherit a queued live-control grant.
+	SV_TASCancel(e);
 	// P1052: raise ancestry before any recorder/header restoration; never lower it.
 	if (flg & TF_TAS)
 		SV_TASMark(e);
@@ -4978,6 +4980,7 @@ void(entity e, float on) SV_GhostSet =
 		return;
 	}
 
+	SV_TASCancel(e); // P1055: ghost/view control and movement stepping are exclusive
 	e.rec_gh_on = TRUE;
 
 	/*

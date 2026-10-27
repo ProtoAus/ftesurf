@@ -1049,6 +1049,7 @@ void() PreStrafe_InputFrame =
 
 #define RUN_TS_SEATS 4
 float run_ts_scale[RUN_TS_SEATS], run_ts_carry[RUN_TS_SEATS];
+float run_ts_paused[RUN_TS_SEATS], run_tas_request[RUN_TS_SEATS];
 
 // Native QW tracking substitutes foreign stats, including across an in-place join.
 float() TimeScale_Observe =
@@ -1059,11 +1060,15 @@ float() TimeScale_Observe =
 	if (!(seat >= 0 && seat < RUN_TS_SEATS))
 		return 1;
 	scale = 1;
+	run_ts_paused[seat] = 0;
 	if (LT_StatsAreMine())
+	{
 		scale = getstatf(STAT_FS_TIMESCALE);
+		run_ts_paused[seat] = (getstatf(STAT_FS_TASPAUSE) == 1);
+	}
 	if (!(scale >= 0.1 && scale < 1))
 		scale = 1;
-	if (scale != run_ts_scale[seat] || scale == 1)
+	if (scale != run_ts_scale[seat] || scale == 1 || run_ts_paused[seat])
 		run_ts_carry[seat] = 0;
 	run_ts_scale[seat] = scale;
 	return scale;
@@ -1081,9 +1086,9 @@ void() TimeScale_Seats =
 		if (i >= seats)
 		{
 			run_ts_scale[i] = 1;
-			run_ts_carry[i] = 0;
+			run_ts_carry[i] = run_ts_paused[i] = 0;
 		}
-		if (run_ts_scale[i] > 0 && run_ts_scale[i] < 1)
+		if ((run_ts_scale[i] > 0 && run_ts_scale[i] < 1) || run_ts_paused[i])
 			active = TRUE;
 	}
 	if (active)
@@ -1129,7 +1134,7 @@ void() TimeScale_InputFrame =
 		return;
 	scale = TimeScale_Observe();
 	TimeScale_Seats();
-	if (scale == 1 || input_timelength <= 0)
+	if (scale == 1 || run_ts_paused[seat] || input_timelength <= 0)
 		return;
 	// The own-player stat locks prediction BEFORE the first shortened command.
 	msecs = input_timelength * 1000 * scale + run_ts_carry[seat];
@@ -2288,8 +2293,31 @@ float(string cmd) CSQC_ConsoleCommand =
 		}
 		if (cmdargc == 1)
 			localcmd(sprintf("p%g cmd tas status\n", tsseat + 1));
-		else if (cmdargc == 2 && (!strcmp(argv(1), "on") || !strcmp(argv(1), "off") || !strcmp(argv(1), "status")))
+		else if (cmdargc == 2 && (!strcmp(argv(1), "on") || !strcmp(argv(1), "off") ||
+		         !strcmp(argv(1), "status") || !strcmp(argv(1), "play")))
 			localcmd(sprintf("p%g cmd tas %s\n", tsseat + 1, argv(1)));
+		else if (cmdargc == 2 && !strcmp(argv(1), "pause"))
+		{
+			if (cvar("cl_threadedphysics") || checkextension("FTE_VRINPUTS"))
+				print("tas: pause/step requires cl_threadedphysics 0 and duration inputs\n");
+			else
+				localcmd(sprintf("p%g cmd tas pause\n", tsseat + 1));
+		}
+		else if ((cmdargc == 2 || cmdargc == 3) && !strcmp(argv(1), "step"))
+		{
+			tsvalue = cmdargc == 3 ? stof(argv(2)) : 1;
+			if (!(tsvalue >= 1 && tsvalue <= 128 && tsvalue == floor(tsvalue)))
+				print("tas: step count must be an integer 1..128\n");
+			else if (cvar("cl_threadedphysics") || checkextension("FTE_VRINPUTS"))
+				print("tas: pause/step requires cl_threadedphysics 0 and duration inputs\n");
+			else if (!LT_StatsAreMine())
+				print("tas: return to your own body before stepping\n");
+			else
+			{
+				run_tas_request[tsseat] = max(run_tas_request[tsseat], getstatf(STAT_FS_TASREQUEST)) + 1;
+				localcmd(sprintf("p%g cmd tas step %g %.0f\n", tsseat + 1, tsvalue, run_tas_request[tsseat]));
+			}
+		}
 		else if (cmdargc == 3 && !strcmp(argv(1), "speed"))
 		{
 			tsvalue = stof(argv(2));
@@ -2301,7 +2329,7 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas speed %.9g\n", tsseat + 1, tsvalue));
 		}
 		else
-			print("tas: on | off | status | speed 0.1..1 (frame advance/editor not built yet)\n");
+			print("tas: on | off | pause | play | step [1..128] | status | speed 0.1..1\n");
 		return TRUE;
 	}
 	if (!strcmp(argv(0), "host_timescale"))
