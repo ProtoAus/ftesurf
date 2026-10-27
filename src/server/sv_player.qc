@@ -280,6 +280,9 @@ void() ClientConnect =
 	self.run_ts_used = SV_TimeScaleConnectTaint(self);
 	self.run_tas_mode = self.run_tas_next = 0;
 	self.run_tas_used = SV_TASConnectTaint(self);
+	self.run_tas_paused = self.run_tas_pending = self.run_tas_done = self.run_tas_ready = 0;
+	self.run_tas_fault = self.run_tas_req = self.run_tas_seen = 0;
+	self.run_tas_cmdkey = '0 0 0';
 	Archive_Reset(self);
 	EventFog_Reset(self);          // recycled slot/map must not inherit event fog
 	// Patch 371: a join line only for a new connection -- this runs again for
@@ -799,6 +802,15 @@ void() PlayerPostThink =
 	SV_NoclipWatch(self);
 	Account_Think(self);                // Patch 619: a started Steam link, waited on
 
+	// P1055: a packet with no moved tick is not gameplay time. A packet with
+	// completed steps still processes its full delta, even if its last cmd blocked.
+	if (self.run_tas_paused)
+	{
+		if (self.run_movetick == self.run_tas_seen)
+			return;
+		self.run_tas_seen = self.run_movetick;
+	}
+
 	/*
 	  Patch 382: HELD (spectate).  No bhop dwell, +use, sample, zone scan or clock:
 	  SV_TimerFrame does not run, so rec_rec_pk does not advance and nothing is
@@ -1191,18 +1203,99 @@ float(entity e, float argc, string arg) SV_TimeScaleCommand =
 	return TRUE;
 };
 
-// P1052: the control switch and retained ancestry deliberately have different lifetimes.
+// P1055: support is reported by the native mover, not an unlocked cvar.
+float(entity e) SV_TASCanPause =
+{
+	if (e.run_tas_ready != 1)
+	{
+		sprint(e, PRINT_HIGH, "tas: pause/step requires the P1055 engine, Source 15ms clock and QW duration inputs\n");
+		return FALSE;
+	}
+	if (e.movetype != MOVETYPE_WALK || e.health <= 0 || e.run_pmhold || e.rec_sl_hold ||
+	    e.rec_wt_hold || e.rec_gh_on || e.run_ms_phase || e.run_t_viewowner)
+	{
+		sprint(e, PRINT_HIGH, "tas: return to a living, unheld body before pause/step\n");
+		return FALSE;
+	}
+	if (e.run_tas_fault)
+	{
+		sprint(e, PRINT_HIGH, "tas: native step fault; use tas play before another pause\n");
+		return FALSE;
+	}
+	return TRUE;
+};
+
+// The control switch and retained ancestry deliberately have different lifetimes.
 void(entity e, float argc) SV_TASCommand =
 {
 	local string action;
+	local float count, ticket;
 	if (strcmp(e.classname, "player") || !e.run_inserver) return;
-	if (time < e.run_tas_next) return;
-	e.run_tas_next = time + 0.2;
 	action = argv(1);
+	// Escape controls are never stranded behind the diagnostic rate limit.
+	if (argc == 2 && (!strcmp(action, "off") || !strcmp(action, "play")))
+	{
+		SV_TASCancel(e);
+		if (!strcmp(action, "off"))
+		{
+			e.run_tas_mode = FALSE;
+			e.run_timescale = 1;
+			sprint(e, PRINT_HIGH, "tas: controls off, normal speed; ancestry is not cleared\n");
+		}
+		else
+			sprint(e, PRINT_HIGH, "tas: playing; queued steps cancelled, TAS ancestry retained\n");
+		return;
+	}
+	if (!strcmp(action, "step") && argc >= 2 && argc <= 4)
+	{
+		count = argc >= 3 ? stof(argv(2)) : 1;
+		ticket = argc == 4 ? stof(argv(3)) : e.run_tas_req + 1;
+		if (!(count >= 1 && count <= 128 && count == floor(count)) ||
+		    !(ticket >= 1 && ticket <= 16000000 && ticket == floor(ticket)))
+		{
+			sprint(e, PRINT_HIGH, "tas: step count must be an integer 1..128; invalid request\n");
+			return;
+		}
+		if (ticket <= e.run_tas_req)
+		{
+			sprint(e, PRINT_HIGH, "tas: duplicate/stale step request ignored\n");
+			return;
+		}
+		if (e.run_tas_pending + count > 128 || e.run_tas_done + e.run_tas_pending + count > 16000000)
+		{
+			sprint(e, PRINT_HIGH, "tas: step queue/counter limit reached\n");
+			return;
+		}
+		if (!SV_TASCanPause(e)) return;
+		SV_TASMark(e);
+		e.run_tas_mode = TRUE;
+		if (!e.run_tas_paused) e.run_tas_seen = e.run_movetick;
+		e.run_tas_paused = TRUE;
+		e.run_tas_req = ticket;
+		e.run_tas_pending = e.run_tas_pending + count;
+		sprint(e, PRINT_HIGH, sprintf("tas: request %.0f queued %.0f; pending %.0f, completed %.0f\n",
+			ticket, count, e.run_tas_pending, e.run_tas_done));
+		return;
+	}
 	if (argc == 1 || (argc == 2 && !strcmp(action, "status")))
 	{
+		if (time < e.run_tas_next) return;
+		e.run_tas_next = time + 0.2;
 		sprint(e, PRINT_HIGH, sprintf("tas: controls %s, ancestry %s, speed %g; local practice only\n",
 			e.run_tas_mode ? "on" : "off", e.run_tas_used ? "TAS" : "none", e.run_timescale));
+		sprint(e, PRINT_HIGH, sprintf("tas: paused %.0f pending %.0f completed %.0f request %.0f native %g fault %g\n",
+			e.run_tas_paused, e.run_tas_pending, e.run_tas_done, e.run_tas_req, e.run_tas_ready, e.run_tas_fault));
+		sprint(e, PRINT_HIGH, sprintf("tas: mover %.0f carry %.9g\n", e.run_movetick, e.run_movecarry));
+		return;
+	}
+	if (argc == 2 && !strcmp(action, "pause"))
+	{
+		if (!SV_TASCanPause(e)) return;
+		SV_TASMark(e);
+		e.run_tas_mode = TRUE;
+		if (!e.run_tas_paused) e.run_tas_seen = e.run_movetick;
+		e.run_tas_paused = TRUE;
+		sprint(e, PRINT_HIGH, "tas: movement paused; tas step [1..128] or tas play; shared world continues\n");
 		return;
 	}
 	if (argc == 2 && !strcmp(action, "on"))
@@ -1210,13 +1303,6 @@ void(entity e, float argc) SV_TASCommand =
 		e.run_tas_mode = TRUE;
 		SV_TASMark(e);
 		sprint(e, PRINT_HIGH, "tas: on; TAS ancestry retained through saves; local practice only\n");
-		return;
-	}
-	if (argc == 2 && !strcmp(action, "off"))
-	{
-		e.run_tas_mode = FALSE;
-		e.run_timescale = 1;
-		sprint(e, PRINT_HIGH, "tas: controls off, normal speed; ancestry is not cleared\n");
 		return;
 	}
 	if (argc == 3 && !strcmp(action, "speed"))
@@ -1228,7 +1314,7 @@ void(entity e, float argc) SV_TASCommand =
 		}
 		return;
 	}
-	sprint(e, PRINT_HIGH, "tas: on | off | status | speed 0.1..1 (frame advance/editor not built yet)\n");
+	sprint(e, PRINT_HIGH, "tas: on | off | pause | play | step [1..128] | status | speed 0.1..1\n");
 };
 
 void(string cmd) SV_ParseClientCommand =

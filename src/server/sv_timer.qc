@@ -724,6 +724,10 @@ float sv_ts_taint_uid[FS_MAXPLAYERS]; // existing native userid, VM-only; surviv
 .float run_tas_mode;
 .float run_tas_used;
 .float run_tas_next;
+// P1055: native gate protocol. Controls/counters are never saved as run state.
+.float run_tas_paused, run_tas_pending, run_tas_done, run_tas_ready, run_tas_fault;
+.float run_tas_req, run_tas_seen;
+.vector run_tas_cmdkey;          // native uint32 sequence as two exact 16-bit words + valid
 float sv_tas_taint_uid[FS_MAXPLAYERS];
 
 void() SV_TimeScaleMapReset =
@@ -781,6 +785,12 @@ float(entity e) SV_TASConnectTaint =
 float(entity e) SV_TASFlags =
 {
 	return e.run_tas_used ? (TF_TAS | TF_CHEAT | TF_PRACTICE) : 0;
+};
+
+void(entity e) SV_TASCancel =
+{
+	e.run_tas_paused = e.run_tas_pending = e.run_tas_fault = 0;
+	e.run_tas_seen = e.run_movetick;
 };
 
 float(entity e) SV_TimeScaleTainted =
@@ -16601,6 +16611,8 @@ void(entity e) SV_TimerReport =
 	               (e.movetype == MOVETYPE_NOCLIP) ? 1 : 0));
 	sprint(e, PRINT_HIGH, sprintf("        TAS controls %g  ancestry %g  speed %g (local practice only)\n",
 	                              e.run_tas_mode, e.run_tas_used, e.run_timescale));
+	sprint(e, PRINT_HIGH, sprintf("        TAS pause %g  pending %g  done %g  request %g  native %g  fault %g\n",
+		e.run_tas_paused, e.run_tas_pending, e.run_tas_done, e.run_tas_req, e.run_tas_ready, e.run_tas_fault));
 	// P1008/P1011: the two display states, and the counts the style is read from.
 	sprint(e, PRINT_HIGH, sprintf("        armstate %g  hopped %g dirty %g  rearmspeed %g\n",
 	                              e.run_armstate, e.run_t_hopped, e.run_t_dirty, run_t_rearmspeed));

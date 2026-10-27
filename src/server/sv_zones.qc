@@ -151,6 +151,7 @@ void(entity e, string why) SV_TimerVoid;
 void() SV_TimerMapInit;
 void(entity e, float z) SV_TimerArm;
 void(entity e) SV_TimerWarped;
+void(entity e) SV_TASCancel; // P1055: explicit placement cannot retain live grants
 float(entity e, float z) SV_TimerAtRunOrigin;
 float(entity e) SV_TimerMarkZone;
 float(float a, float b) SV_ZoneSameBox;
@@ -1089,6 +1090,7 @@ void(float n, vector at, float atyaw, float atpit, float haveat, float havepit)
 	  function has to know: arming a zone we just restarted into would throw the
 	  surviving run away by the back door.
 	*/
+	SV_TASCancel(self);
 	samestage = SV_TimerTeleported(self, n);
 
 	setorigin(self, dest);
