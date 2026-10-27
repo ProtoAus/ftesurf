@@ -79,5 +79,6 @@ probes: artifacts/audio-loopback-control/native-postswap-result.json.
 Existing menu/gameplay progs, owner ftesurf.cfg/addon mounts and qcbuild stay
 unchanged (hash readback). No surfd, backend gate, NanoPi, release or other
 session's processes are touched. Numeric capture/source lifecycle is verified;
-the owner's actual backdrop feel and scene reactivity remain a small pending
-human check in lextest.md.
+the owner subsequently replied "it works!" to the actual backdrop/audio check.
+That human confirmation is recorded in lextest.md, not broadened to unrelated
+UI/API cases. P1064 was then included in release0.1.32 (tools/release032.md).

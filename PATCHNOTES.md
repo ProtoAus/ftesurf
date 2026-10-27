@@ -20,6 +20,9 @@
 -->
 
 ## next
+
+## 0.1.32 2026-10-27
+
 ### P1064 Windows-output visuals work while game audio is muted
 - The menu's sound-reactive backdrop can hear desktop playback even when the game is muted in Windows. Your game volume, mute and visualization opt-in stay unchanged.
 

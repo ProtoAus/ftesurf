@@ -1,5 +1,26 @@
 # AGENT_NOTES.md
 
+## Release0.1.32 frozen handoff (27Oct2026)
+
+Prepared QC e47d8e64, matching native d561b7408 (P1064), launcher646c8d1;
+publication and default-HTTPS real launcher acceptance pass for both platforms.
+Build89 unchanged; tools/release032.md records immutable receipt/hash provenance.
+`-Linux` takes the drop path: it is NOT a switch followed by `-LinuxDrop`.
+That malformed form bound a positional prepared input and was refused before
+preparation with a misleading mixed-arguments error. Corrected supported args
+created the sole sealed candidate; no new version/name/waived gate. Detached
+Popen pwsh returned a PID but left no live process/log, not native progress;
+the direct supported Linux invocation passed. Preserve both failed observations.
+A worktree needs only the current allowlist intersecting signed predecessor
+assets, not an install copy. Existing record snapshots were preserved without
+redating or surfd access; -NoLobbyCheck plus an explicit1M publication cap avoided
+backend polling. Static site promotion does not authorize surfd or game restarts.
+Post-release VERSION/PATCHNOTES documentation must not relabel the frozen source
+or move its tag to that later record commit. Retain sealed graph/trusted hash;
+unlink the own Linux Cargo registry link BEFORE retiring its target directory,
+and remove only rehashed signed synthetic payloads, preserving smoke sentinels.
+
+
 ## Windows loopback is an audio session, too (P1064,27Oct2026)
 
 `AUDCLNT_STREAMFLAGS_LOOPBACK` with NULL AudioSessionGuid can join this process's
@@ -22,8 +43,10 @@ under the owned task artifacts; no product diagnosis was drawn from them.
 clangd initially parsed the standalone header as C++/Windows SDK (`lpVtbl` errors);
 actual C header tests compile -Wall -Wextra -Werror and the full build passes.
 Do not confuse cached LSP mode errors, capture metrics and human visual response.
-Human acceptance remains in lextest.md. Backend restoration is explicitly another
-bot's scope; do not touch surfd to finish this client-only audio fix.
+Owner subsequently replied "it works!" to the actual audio-response check;
+lextest.md records that human confirmation, not blanket UI acceptance. Backend
+restoration is explicitly another bot's scope; do not touch surfd to finish this
+client-only audio fix.
 
 
 ## Glass scenes / map-card scope and visible filters (P1062,27Oct2026)
