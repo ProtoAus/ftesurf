@@ -51,7 +51,9 @@ profile/directory/story data was seeded, never live identity/player files.
   overflow. Legacy service omitting new WOS fields: native cards unknown, real
   Everything values remain, all9 tier labels visible. Offline: every card/tier
   label remains visible with unknown values. Screenshots inspected for all cases.
-- Final subject: `artifacts/home-fit/subject-b07cfcbbd6`. Initial requested-size
+- Qualified subject: `artifacts/home-fit/subject-b07cfcbbd6`; final exact-commit
+  `051ac299` rebuild repeated the same cases as `subject-d225830031` and passed.
+  Its byte-identical tested menu is the installed payload. Initial requested-size
   failure, incomplete-tier screenshot and fixture routing correction are retained
   as failures/diagnostics, not passed coverage. They do not describe the final
   corrected subject. The original fixture incorrectly used story=progress rather
@@ -63,12 +65,23 @@ profile/directory/story data was seeded, never live identity/player files.
 
 ## Installation / retention
 
-Menu-only installation is made from the inspected source and runtime-tested menu,
-with hashes, predecessor compare-at-swap checks, unique adjacent backups, both
-Windows targets, unchanged protected-file hashes and UTC receipts under the task
-root. The source/commit and actual receipt are recorded after installation in
-OWNER.md. No native/plugin, CSQC, SSQC, website, API, config or player-data changes
-are part of this swap. No owner/peer process was terminated.
+Installed BOTH `C:\FTESurf\ftesurf\menu.dat` and
+`C:\FTEQuake\ftesurf\menu.dat` at **2026-10-27T03:35:51Z**, from inspected/pushed
+QC `051ac299c880c4701176ca1ff611bdd3fe2f6d8a`. Both destinations and the tested
+runtime menu SHA256:
+`178c518cb9ed502c0fc3dbf3db9c8fee48469ee9735c43ceb3c4b3e8d96b8ee6`.
+Predecessor hash/identity checks acted at swap; both unique adjacent rollback files
+are `menu.dat.pre-p1056-home-20261027T033551Z`. All16 protected binary/plugin/
+progs/config hashes stayed unchanged. No game process existed at the boundary;
+none was terminated. No native/plugin, CSQC, SSQC, website, API, config or player
+data changes were part of this swap. UTC receipt:
+`artifacts/menu-local-install/20261027T033551Z/receipt.json`; immutable source/
+artifact manifest: `artifacts/p1056-manifest.json`. The short canonical menu claim
+was released after both hashes verified. Engine docs are pushed as `5f33b8166`;
+the clean engine documentation worktree was retired. Five owned generated build
+directories were archived, hash-verified and retired; source/staging/runtime
+screenshots/logs are intentionally retained for acceptance and coordinated API
+promotion. Restart MENU with `menu_restart`, then `menu_main`.
 
 A peer's stale canonical build replaced only FTESurf's P1054 menu at02:46:18Z
 while FTEQuake retained it. The P1056 claim identifies only the exact conflicting
