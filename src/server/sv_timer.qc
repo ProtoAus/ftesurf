@@ -2545,7 +2545,9 @@ float(entity e, float gen, float mark) SV_RecCutOK =
 {
 	local float g;
 
-	if (gen < 0 || gen > e.rec_rec_gen)
+	if (!(gen >= 0 && gen <= e.rec_rec_gen))
+		return FALSE;
+	if (gen != floor(gen))
 		return FALSE;
 	for (g = gen + 1; g <= e.rec_rec_gen; g = g + 1)
 		if (e.rec_rec_genbuf < 1 || stof(bufstr_get(e.rec_rec_genbuf, g)) < mark)
@@ -7670,7 +7672,7 @@ float(entity e, string path, float mark, float serial,
 	sb = rs_bytes;                      // Patch 375: consumed by whichever load asked
 	rs_bytes = 0;
 	rec_rewind_cold = FALSE;
-	if (mark <= 0)
+	if (mark <= 0 || mark != floor(mark))
 		return FALSE;
 	if (sb > 0)                         // a save with a stream copy
 		return SV_RecRewindStream(e, path, mark, serial, samples, padn, cps, sb);

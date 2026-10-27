@@ -21,6 +21,7 @@
 
 ## next
 
+- Corrupted recording generation or rewind indices now refuse safely rather than rejoining the wrong recording branch. Valid warm rewinds and confirmed cold copies keep working.
 - Menus keep their rounded glass in hosted and online games, with a clearer full border and less see-through panels.
 - Fixed panel-sized square backdrops and uneven darkening when switching menu tabs over a loaded map.
 - Loading a save with malformed recording confirmation now stops safely instead of treating it as an old save. Valid older saves and matching in-memory rewinds keep working.
