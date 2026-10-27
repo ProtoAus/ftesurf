@@ -4497,11 +4497,13 @@ below is the collection side and the rules that still only note.
   modified client times -- is cashed out on top of the handed-back speed. That
   path's fix is one SV_ClearCarrier in SV_SaveLocRelease, as SV_WatchRelease has.
 - **P455's future-output/dwell bank remains OPEN; P968 repairs the visible
-  body and P1072 adds bounded queued-I/O lineage.** P1072 carries the original
-  player admission and practice state through ordinary/delayed/synchronously
-  nested Source I/O, marking the actual later physics recipient as practice
-  without cancelling the effect. It does not cover commitments retained outside
-  that dispatch chain, inherited physical state, or native command completion;
+  body; P1072/P1073 add I/O and active-button-callback lineage.** P1072 carries
+  the original player admission and practice state through ordinary/delayed/
+  synchronously nested Source I/O; P1073 preserves the actual pending button
+  Top/Return/Home cause, independently of mutable activator/refused input. The
+  actual later physics recipient becomes practice without cancelling the effect.
+  Commitments retained outside I/O/active callbacks, persistent logical/button/
+  world state, inherited physical state, and native command completion remain;
   the whole leaf is not closed. Historical unmerged `p455rebase` (50affaa, based on e7b6562; ten rounds
   at `archive/p455fix-r10`) is NOT READY: 44b313b's own message says the dwell
   does not close its bank, and no round11 exists. A new commitment inside the

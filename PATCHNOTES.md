@@ -21,6 +21,7 @@
 
 ## next
 
+- Button completion and return effects from an earlier attempt now make the affected attempt practice without interrupting play. Current-attempt and world-origin button effects keep working.
 - Receiving a queued effect from an earlier attempt marks the affected attempt as practice without stopping play. Current-attempt and world-origin effects keep working.
 - Lobby cards group larger lobby titles, map names and player counts together, with a compact layout for small windows.
 - Lobby photos can load at higher resolution as soon as the directory arrives, without waiting for the map catalogue. Offline and unavailable photos keep the local thumbnail fallback.
