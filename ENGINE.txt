@@ -25,7 +25,8 @@ commit   2e9260645ac8ff439ce06cae545fab089811d622
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1055
-patch    1056
+patch    1057
+# Patch 1057 is menu only: bigger lobby thumbnails, compact stats, taller Friends.
 # Patch 1056 is menu only: fit all lobbies and tier/stat cards without scrolling.
 # Patch 1055: native authoritative Source15ms TAS pause, tick grants and completion.
 # Movement-only/static-world starting point; no world snapshot or human-proof expansion.

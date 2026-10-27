@@ -300,7 +300,7 @@ float(float reqid, float code, string body) MC_Reply =
 void(vector pos, vector size, float embedded) MC_Panel =
 {
 	local vector rp;
-	local float left, right, i, width, board;
+	local float left, right, i, width, board, compact, message_y, field_y, field_h;
 	local string who, name, text, id;
 	if (!embedded) ui_backdrop(size);
 	sui_style_panel(pos, size, 12, 1);
@@ -347,11 +347,16 @@ void(vector pos, vector size, float embedded) MC_Panel =
 		sui_list_view_end();
 	}
 	}
-	sui_text([right, 62], SZ_HEAD, ui_fit_text(MC_Plain(mc_peer_name), width, SZ_HEAD), COL_TEXT, 1, 0);
-	mc_height = max(36, size_y - 218);
+	compact = (embedded && size_y < 300);
+	message_y = compact ? 72 : 96;
+	field_y = size_y - (compact ? 84 : 110);
+	field_h = compact ? 30 : 34;
+	sui_text([right, compact ? 48 : 62], compact ? SZ_LABEL : SZ_HEAD,
+		ui_fit_text(MC_Plain(mc_peer_name), width, compact ? SZ_LABEL : SZ_HEAD), COL_TEXT, 1, 0);
+	mc_height = max(24, field_y - message_y - 12);
 	if (mc_view >= 0 && mc_seen > 0 && time >= mc_seen && time - mc_seen <= 24)
 	{
-		sui_list_view_begin("mc_messages", [right, 96], [width, mc_height], [width - 14, MC_MSG_H], mc_count, mc_scroll, [0, 6]);
+		sui_list_view_begin("mc_messages", [right, message_y], [width, mc_height], [width - 14, MC_MSG_H], mc_count, mc_scroll, [0, 6]);
 		rp = '0 0 0';
 		for (i = sui_list_item(rp); i > -1; i = sui_list_item(rp))
 		{
@@ -372,12 +377,12 @@ void(vector pos, vector size, float embedded) MC_Panel =
 			ui_para(rp + '0 22 0', width - 20, SZ_LABEL, 18, MC_Plain(text), COL_TEXT, TRUE);
 		}
 		sui_list_view_end();
-		if (!mc_count) sui_text([right, 104], SZ_LABEL, "No recent messages.", COL_DIM, 1, 0);
+		if (!mc_count) sui_text([right, message_y + 8], SZ_LABEL, "No recent messages.", COL_DIM, 1, 0);
 	}
-	else ui_para([right, 104], width, SZ_LABEL, 18, "Waiting for a fresh chat snapshot...", COL_DIM, TRUE);
-	ui_field("mc_text", [right, size_y - 110], [width - 88, 34], mc_draft, mc_cursor, "Write a message...");
-	if (ui_button("mc_send", [size_x - 96, size_y - 110], '80 34 0', mc_wire ? "wait..." : "send")) MC_Send();
-	sui_text([right, size_y - 66], '12 12 0', ui_fit_text(MC_Plain(mc_note), width, '12 12 0'), COL_DIM, 1, 0);
-	sui_text([16, size_y - 32], '12 12 0', ui_fit_text("Shared lobby / friend-only DMs; not end-to-end encrypted.", size_x - 32, '12 12 0'), COL_DIM, 1, 0);
+	else ui_para([right, message_y + 8], width, SZ_LABEL, 18, "Waiting for a fresh chat snapshot...", COL_DIM, TRUE);
+	ui_field("mc_text", [right, field_y], [width - 88, field_h], mc_draft, mc_cursor, "Write a message...");
+	if (ui_button("mc_send", [size_x - 96, field_y], [80, field_h], mc_wire ? "wait..." : "send")) MC_Send();
+	sui_text([right, size_y - (compact ? 40 : 66)], '12 12 0', ui_fit_text(MC_Plain(mc_note), width, '12 12 0'), COL_DIM, 1, 0);
+	sui_text([16, size_y - (compact ? 20 : 32)], '11 11 0', ui_fit_text("Lobby / DMs: not end-to-end encrypted.", size_x - 32, '11 11 0'), COL_DIM, 1, 0);
 	sui_pop_frame();
 };

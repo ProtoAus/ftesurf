@@ -1,5 +1,37 @@
 # AGENT_NOTES.md
 
+## Home proportions and actual startup controls (P1057, 27 Oct 2026)
+
+Owner accepted P1056, then requested bigger lobbies/images, smaller stats and
+more Friends height. P1057 reserves210..252px stats, grows thumbnails adaptively
+and gives Friends58% of right height. At800x600 three lobby columns retain images
+and all12 cells; embedded chat needs compact room/list/input/footer coordinates,
+not merely a smaller outer box. Real screenshots confirmed separation.
+
+Do not explain a real launch delay with the empty navigation overlay: its
+fs_addons.default.txt is NOT an active fs_addons.txt, so boot had0 maps/35ms.
+A populated startup control must seed the actual active addons and public map
+catalogue inputs, keep binary/plugin/menu/config equal, and prove the intended
+entry resolved natively (`fs_steamlibs`), not just that a file was written. Do not
+assume cfg/maps_index.txt is automatically produced in this route: that incorrect
+falsifier stopped the first populated comparison after a valid MENU probe.
+Reuse Runtime(client, gd, fixture, out, deadline) and its binary stdin contract;
+there are no PipeCollector/stop_process helpers in test_ui_maps_runtime.py.
+
+Same installed engine/plugin/menu, fs_lazyaddons1,2326 maps: primary's extra
+CS:GO entry ON9.469s/OFF4.437s/ON again9.406s to first populated probe. Qualified
+MENU init273..278ms, first draw77..114ms, catalogue322..339ms. This is a matched
+A/B/A configuration finding, not a cold-cache/first-pixel/all-install promise.
+The template's old9s comment and fs_lazyaddons name alone are not measurement.
+Do not silently remove a deliberate owner's mount: ask first. Owner approved
+IF on-demand worked; a real surf_cavediver fixture proved full CS:GO absent before,
+state4->1/spec CS:GO, new pack searchpaths and an inspected textured world. Only
+then removed the single live primary CS:GO line, with unique adjacent rollback,
+all16 other protected hashes unchanged and secondary absence preserved. Saved
+ftesurf.cfg/player data never changed. One declared map is not every custom map. `ui_menu_probe boot` reports
+MENU init, post-init wait, first draw and catalogue elapsed ms only; native
+initialization before MENU and GPU presentation are outside those phase counters.
+
 ## Fit-to-screen Home and MENU min's integer tail (P1056, 27 Oct 2026)
 
 MENU declares `min(float, ...)`, unlike CSQC's two typed float arguments. Putting

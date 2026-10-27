@@ -4,6 +4,7 @@ float mh_times, mh_wr, mh_wrc, mh_maps, mh_native;
 float mh_wos_done, mh_all_done, mh_total, mh_tiers_wos, mh_tiers_all, mh_buffers_ready;
 float mh_lcols, mh_lrows, mh_lheight, mh_lshown, mh_tcols, mh_trows, mh_tshown;
 float mh_lbottom, mh_tbottom, mh_progress_top;
+float mh_thumb_width, mh_thumb_height, mh_friends_height, mh_chat_height;
 float mh_spdone, mh_sptotal, mh_spknown, mh_epdone, mh_eptotal, mh_epknown;
 vector mh_canvas, mh_lsize, mh_ssize;
 string mh_who;
@@ -143,23 +144,25 @@ void(vector screensize) MH_Tabs =
 // Fit the complete directory, never a virtualized window into it.
 vector(float width, float available, float count) MH_LobbyGrid =
 {
-	local float cols, rows, h;
+	local float cols, rows, h, minimum;
 	count = max(1, count);
-	cols = min(count, max(1, min(4, floor((width - 26) / (width < 720 ? 190 : 230)))));
+	minimum = count <= 16 ? 54 : 34;
+	cols = min(count, max(1, min(3, floor((width - 26) / (width < 720 ? 190 : 230)))));
 	rows = ceil(count / cols);
-	if (rows * 34 > available - 56)
-		cols = min(count, max(cols, ceil(count / max(1, floor((available - 56) / 34)))));
+	if (rows * minimum > available - 56)
+		cols = min(count, max(cols, ceil(count / max(1, floor((available - 56) / minimum)))));
 	rows = ceil(count / cols);
-	h = min(50, max(18, floor((available - 50) / rows) - 6));
+	h = max(18, floor((available - 50) / rows) - 6);
 	return [cols, rows, h];
 };
 
 void(vector p, vector size) MH_Lobbies =
 {
-	local vector lp, cell;
+	local vector lp, cell, picture;
 	local float li, cw, row, page, tile, gr, gc, tx, thumb, countw;
 	local string id, s;
 	mh_lsize = size; mh_lshown = mh_lbottom = 0;
+	mh_thumb_width = mh_thumb_height = 0;
 	sui_style_panel(p, size, 12, 1);
 	sui_push_frame(p, size);
 	sui_text('16 12 0', SZ_HEAD, sprintf("Public lobbies  %g", Lob_Count()), COL_ACCENT, 1, 0);
@@ -180,7 +183,7 @@ void(vector p, vector size) MH_Lobbies =
 			sui_action_element(lp, cell, id, sui_noop);
 			sui_roundbox(lp, cell, 7, sui_is_hovered(id) ? COL_ROW_HOVER : COL_ROW, 0.95);
 			tx = 8;
-			thumb = (mh_lheight >= 42 && cw >= 230);
+			thumb = (mh_lheight >= 42 && cw >= 140);
 			if (thumb)
 			{
 				row = Lob_Row(li);
@@ -192,17 +195,29 @@ void(vector p, vector size) MH_Lobbies =
 					if (argv(MT_PAGE) != "-") page = stof(argv(MT_PAGE));
 					if (argv(MT_CELL) != "-") tile = stof(argv(MT_CELL));
 				}
-				ui_thumb(lp + [3, floor((mh_lheight - 36) * 0.5)], '64 36 0', page, tile);
-				tx = 76;
+				picture = '0 0 0';
+				picture_y = min(mh_lheight - 12, floor(min(192, cw * 0.46) * 9 / 16));
+				picture_x = floor(picture_y * 16 / 9);
+				ui_thumb(lp + [6, floor((mh_lheight - picture_y) * 0.5)], picture, page, tile);
+				tx = picture_x + 16;
+				mh_thumb_width = picture_x; mh_thumb_height = picture_y;
 			}
 			s = sprintf("%g/%g", Lob_Players(li), Lob_Max(li));
 			countw = min(cw - 16, stringwidth(s, TRUE, '12 12 0'));
 			if (cw < 90) { s = ""; countw = 0; }
-			sui_text(lp + [cw - countw - 7, mh_lheight < 34 ? 2 : 5], '12 12 0', s, Lob_Players(li) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
-			s = (cw < 150 || mh_lheight < 28) ? sprintf("#%g", li + 1) : Lob_Title(li);
-			sui_text(lp + [tx, mh_lheight < 34 ? 2 : 5], '12 12 0', ui_fit_text(s, cw - tx - countw - 6, '12 12 0'), COL_TEXT, 1, 0);
+			if (thumb)
+			{
+				sui_text(lp + [tx, 24], '12 12 0', s, Lob_Players(li) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
+				sui_text(lp + [tx, 6], '12 12 0', ui_fit_text(Lob_Title(li), cw - tx - 8, '12 12 0'), COL_TEXT, 1, 0);
+			}
+			else
+			{
+				sui_text(lp + [cw - countw - 7, mh_lheight < 34 ? 2 : 5], '12 12 0', s, Lob_Players(li) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
+				s = (cw < 150 || mh_lheight < 28) ? sprintf("#%g", li + 1) : Lob_Title(li);
+				sui_text(lp + [tx, mh_lheight < 34 ? 2 : 5], '12 12 0', ui_fit_text(s, cw - tx - countw - 6, '12 12 0'), COL_TEXT, 1, 0);
+			}
 			if (mh_lheight >= 28 && cw >= 90)
-				sui_text(lp + [tx, mh_lheight - 14], '12 12 0', ui_fit_text(Lob_Map(li), cw - tx - 8, '12 12 0'), COL_DIM, 1, 0);
+				sui_text(lp + [tx, mh_lheight - (thumb ? 16 : 14)], '12 12 0', ui_fit_text(Lob_Map(li), cw - tx - 8, '12 12 0'), COL_DIM, 1, 0);
 			mh_lshown = mh_lshown + 1;
 			mh_lbottom = max(mh_lbottom, lp_y + cell_y);
 			if (sui_is_released(id)) ui_connect(li);
@@ -364,16 +379,18 @@ void(vector screensize) MH_Settings =
 void(vector screensize) screen_home =
 {
 	local vector size, p, grid;
-	local float right, left, lh, fh, count;
+	local float right, left, lh, fh, sh, count;
 	size = [min(1660, screensize_x - 24), min(920, screensize_y - 24)];
 	p = [floor((screensize_x - size_x) * 0.5), floor((screensize_y - size_y) * 0.5)];
 	mh_canvas = size;
 	right = min(400, max(260, floor(size_x * 0.28))); left = size_x - right - 12;
 	count = Lob_Count(); if (count < 1) count = 12;
-	grid = MH_LobbyGrid(left, size_y - (size_y < 600 ? 246 : 318) - 12, count);
+	sh = min(252, max(210, floor(size_y * 0.27)));
+	lh = size_y - sh - 12;
+	grid = MH_LobbyGrid(left, lh, count);
 	mh_lcols = grid_x; mh_lrows = grid_y; mh_lheight = grid_z;
-	lh = 50 + mh_lrows * (mh_lheight + 6) - 6;
-	fh = min(260, max(160, floor(size_y * 0.32)));
+	fh = floor((size_y - 12) * 0.58);
+	mh_friends_height = fh; mh_chat_height = size_y - fh - 12;
 	MH_Lobbies(p, [left, lh]);
 	MH_Stats(p + [0, lh + 12], [left, size_y - lh - 12]);
 	if (mf_linkstate < 0)
@@ -406,4 +423,5 @@ void() MH_Probe =
 	print(sprintf("home: canvas %gx%g lobby %g/%g cols %g rows %g cell %g\n", mh_canvas_x, mh_canvas_y, mh_lshown, Lob_Count(), mh_lcols, mh_lrows, mh_lheight));
 	print(sprintf("home: lobby bottom %g <= %g tiers %g cols %g rows %g bottom %g <= progress %g\n", mh_lbottom, mh_lsize_y, mh_tshown, mh_tcols, mh_trows, mh_tbottom, mh_progress_top));
 	print(sprintf("home: stats %gx%g state %g source %g native %g stale %g\n", mh_ssize_x, mh_ssize_y, mh_state, mh_source, mh_native, mh_stale));
+	print(sprintf("home: thumb %gx%g friends %g chat %g lobby height %g\n", mh_thumb_width, mh_thumb_height, mh_friends_height, mh_chat_height, mh_lsize_y));
 };

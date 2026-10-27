@@ -8081,8 +8081,12 @@ void(vector screensize) screen_create =
 //  m_display / m_hide / m_newmap do NOT exist in FTE -- they are DarkPlaces
 //  only.  The set the engine actually looks up is at pr_menu.c:3386-3403.
 // ---------------------------------------------------------------------------
+float ui_boot_at, ui_boot_done, ui_boot_begin, ui_boot_init_ms;
+float ui_boot_measured, ui_boot_first_ms, ui_boot_wait_ms, ui_boot_catalogue_ms;
+
 void() m_init =
 {
+	ui_boot_begin = gettime(1);
 	/*
 	  BUILD 46: FIRST, AND THE ORDER IS THE WHOLE OF WHY IT WORKS.  m_init is the
 	  earliest QC of any kind on a launch, so a value the player saved under an
@@ -8264,6 +8268,7 @@ void() m_init =
 		else
 			m_open();
 	}
+	ui_boot_init_ms = rint((gettime(1) - ui_boot_begin) * 1000);
 };
 
 /*
@@ -8272,7 +8277,6 @@ void() m_init =
   the first PLAY, so the picker opens loaded.  Not while in a game with the
   menu shut: there the load would be a hitch mid-run, and PLAY still loads it.
 */
-float ui_boot_at, ui_boot_done;
 void() ui_boot_preload =
 {
 	local float t;
@@ -8297,7 +8301,8 @@ void() ui_boot_preload =
 	ui_boot_done = TRUE;
 	t = gettime(1);
 	ui_create_open();
-	print(sprintf("^5maplist:^7 %g maps loaded at boot in %g ms\n", ms_count, rint((gettime(1) - t) * 1000)));
+	ui_boot_catalogue_ms = rint((gettime(1) - t) * 1000);
+	print(sprintf("^5maplist:^7 %g maps loaded at boot in %g ms\n", ms_count, ui_boot_catalogue_ms));
 };
 
 // screensize is the VIRTUAL screen -- equal to the framebuffer at
@@ -8306,7 +8311,9 @@ void() ui_boot_preload =
 // over physical pixel sizes instead (pr_menu.c:3391-3395).
 void(vector screensize) m_draw =
 {
-	local float shell;
+	local float shell, bootstart;
+	bootstart = 0;
+	if (!ui_boot_measured) bootstart = gettime(1);
 	// The bootcheck driver runs OUTSIDE the menu_active gate on purpose: past
 	// the launch step the menu is closed and in-game, and it still has to take
 	// the last screenshot and quit.
@@ -8344,6 +8351,7 @@ void(vector screensize) m_draw =
 	// (menu.c:168-176), so the gate is ours to enforce.
 	if (!menu_active)
 		return;
+	if (!ui_boot_measured) ui_boot_wait_ms = max(0, rint((bootstart - ui_boot_begin) * 1000) - ui_boot_init_ms);
 
 	// Re-filter only on an actual change.  ms_query is mutated by
 	// sui_text_input during the previous frame's draw, so comparing against
@@ -8474,6 +8482,11 @@ void(vector screensize) m_draw =
 	// Queued releases are now consumed; a held synthetic click may release later.
 	if (!sui_click_held())
 		ui_synth_pending = FALSE;
+	if (!ui_boot_measured)
+	{
+		ui_boot_first_ms = rint((gettime(1) - bootstart) * 1000);
+		ui_boot_measured = TRUE;
+	}
 };
 
 void() m_open =
@@ -8768,6 +8781,12 @@ float(string cmd) m_consolecommand =
 	}
 	if (strcmp(argv(0), "ui_menu_probe") == 0)
 	{
+		if (argv(1) == "boot")
+		{
+			print(sprintf("boot: MENU init %g ms; post-init wait %g ms; first draw %g ms; catalogue %g ms; maps %g\n",
+				ui_boot_init_ms, ui_boot_wait_ms, ui_boot_first_ms, ui_boot_catalogue_ms, ms_count));
+			return TRUE;
+		}
 		// `stale` arms the search as a launch from the picker does; `search` reads it.
 		if (argv(1) == "stale")
 			ms_query_stale = TRUE;
