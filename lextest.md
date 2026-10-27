@@ -1,12 +1,13 @@
 # lextest.md — things waiting on a human
 
-**P1075 -- normal finish/reset re-arming (owner check pending):** After the
-source-qualified server update is installed, join fresh without replay/TAS/save
-holds, use normal `!r`, walk off the start and complete a clean run. Does it stay
+**P1075 -- normal finish/reset re-arming (owner check pending):** Source4259c582
+installed server-only in BOTH Windows roots and all12 Pi lobbies2026-10-27T22:52:13Z;
+exact destination/PID-namespace readbacks and fresh startups/heartbeats pass. Join
+fresh without replay/TAS/save holds, use normal `!r`, walk off the start and complete a clean run. Does it stay
 clean, and does normal finish/coast/reset re-arming still feel right? No owner
 confirmation or genuine ranked-run acceptance is inferred from the instrumented
 native five-case control/subject checks. No new speed/dwell threshold; full
-future-state commitment coverage remains open. Delivery is recorded separately.
+future-state commitment coverage remains open. tools/p1075-command-fence.md records delivery.
 
 **P1074 -- TAS workshop/constant-direction help (owner check pending):** Installed
 both Windows roles2026-10-27T21:54:07Z; each actual installed client/server passes

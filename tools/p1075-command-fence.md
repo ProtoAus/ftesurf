@@ -14,7 +14,7 @@ cancelled. No captured field, REC/VIEW format, native ABI, engine pin/tag, qcbui
 Build or release changes. P1074's published workshop and native requirements are
 preserved. Only ENGINE.txt's product patch moves to1075.
 
-## Qualification before independent review
+## Qualification
 
 - Published P1074 baseline fe9ebe1e; isolated source, no peer uncommitted inputs.
 - Five native dedicated-socket control and subject cases ACTED: physical late
@@ -30,8 +30,28 @@ preserved. Only ENGINE.txt's product patch moves to1075.
   results are retained privately, not exported as a public reproducer.
 - Reader suite: raw output and actual exit0 retained, 930 checks/0 failures.
   The first post-processing log-encoding failure is retained and not credited.
-- Independent source/evidence review, final corpus check, delivery and human
-  clean-run acceptance are separate gates; no delivery is claimed here.
+- Three fresh independent reviews of QC4259c582/ledgered7de7d0: SOURCE OK, no
+  product issues. A lens1 request-field-clearing description was corrected:
+  direct forgiveness invalidates by admission/flag, not explicit field clearing.
+- Fresh complete corpus503REC/167pairedVIEW/10unpairedVIEW, identical680-file
+  domain and reader to its retained independent control and unchanged throughout:
+  312 findings/311 faulted reports, increase0. Not a fault-free-corpus claim.
+
+## Delivered 2026-10-27
+
+Reviewed source4259c582, server-only stock QW
+`f75f3b4150f61f53e6e12f3884ee046695e3ff40aa21651da5ddc7f6143b10fd`.
+BOTH Windows server DAT/LNO pairs read back exactly, with immediate `.prev`;
+existing native/client/menu/owner config were preserved and no owner process was
+stopped. All12 Pi lobbies were fresh-empty, including actual status7 spectators,
+at the short swap boundary. One ordinary restart each; new PID/fresh application
+spawn and post-restart heartbeats positive, selected QC startup errors absent.
+All12 actual PID namespace QW hashes match; local/public health200 and directory12.
+The short sweep lock was released; no backend/config/native/client/UI deployment,
+Build/release bump or forced busy restart. A preapply quoting/syntax failure did
+not swap/start/restart anything; the same staged artifact was validated and used.
+Human natural finish/reset/clean-run acceptance is still pending in lextest.md.
+These are delivery/readiness observations, not a new ranked-recording verdict.
 
 ## Still open
 
