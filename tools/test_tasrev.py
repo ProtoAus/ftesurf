@@ -68,6 +68,13 @@ def mutations(data):
         zw = lines[zero[0]].split(' '); zi = zw.index('0', 1); zw[zi] = '-0'
         out.append(('negzero', put(at(zero[0], ' '.join(zw))), 'refused'))
     out.append(('exponent', put(at(c, ' '.join(cw[:4] + ['9.99999975e-06'] + cw[5:]))), 'different'))
+    # Review 3: the hashed assist line is required; identity values only in the game's form.
+    asl = next(n for n, l in enumerate(lines) if l == 'assist tas')
+    out.append(('noassist', put(lines[:asl] + lines[asl + 1:]), 'refused'))
+    mc = next(n for n, l in enumerate(lines) if l.startswith('mapcrc '))
+    out.append(('shortcrc', put(at(mc, 'mapcrc 0')), 'refused'))
+    pp = next(n for n, l in enumerate(lines) if l.startswith('pmpin '))
+    out.append(('pinjunk', put(at(pp, 'pmpin x')), 'refused'))
     # The twin is stricter than the game here (the game stops at an empty line, drops a CR).
     out.append(('trailing', data.rstrip(b'\n') + b'\n\n\x00 junk end 99\n', 'refused'))
     out.append(('nofinalnl', data.rstrip(b'\n'), 'refused'))

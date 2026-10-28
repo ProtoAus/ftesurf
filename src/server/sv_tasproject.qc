@@ -272,7 +272,7 @@ float(string l, string k, float argc) SV_TASPLineCanon =
 	tpr_rank = r;
 	if (k == "assist") return (l == "assist tas");
 	if (k == "origin") return (l == "origin local");
-	if (k == "mapcrc" || k == "zonecrc") return (argc == 2 && SV_TASPHex(argv(1), 0));
+	if (k == "mapcrc" || k == "zonecrc") return (argc == 2 && SV_TASPHex(argv(1), 8));
 	if (k == "parentsha" || k == "revsha") return (argc == 2 && SV_TASPHex(argv(1), 64));
 	if (k == "base") return (argc == 4 && SV_TASPCanonNum(argv(1), TRUE) && SV_TASPHex(argv(2), 64) && SV_TASPCanonNum(argv(3), TRUE));
 	if (k == "saved")               // tokenize splits at ':', so the raw text: "saved " + 19
@@ -312,8 +312,9 @@ float(string l, string k, float argc) SV_TASPLineCanon =
 
 // Parse a project into tpr_*. Untrusted: every value is bounded; FALSE leaves tpr_why.
 // `identity` also requires and compares the map, zone and movement-rule lines.
-// P1089: tpr_h is the revision hash over the canonical lines (SV_TASPCanon).
-string tpr_h;
+// P1089: tpr_h is the revision hash over the canonical lines (SV_TASPCanon); tpr_pathover
+// reads another path (the writer's .new file) in place of the project's.
+string tpr_h, tpr_pathover;
 float(entity e, string name, float identity) SV_TASPRead =
 {
 	local filestream f;
@@ -322,7 +323,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 
 	SV_TASPReadFree();
 	tpr_rev = tpr_base = tpr_baseid = tpr_parentrev = 0; tpr_why = "";
-	f = fopen(SV_TASPPath(name), FILE_READ);
+	f = fopen((tpr_pathover != "") ? tpr_pathover : SV_TASPPath(name), FILE_READ);
 	if (f < 0) { tpr_why = "no such project on this map"; return FALSE; }
 	tpr_cp = (float*)memalloc(TASP_CPMAX * TASP_CPSTRIDE * 4);
 	if (!tpr_cp) { fclose(f); tpr_why = "out of memory"; return FALSE; }
@@ -379,6 +380,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 			tpr_ncp = tpr_ncp + 1;
 			continue;
 		}
+		if (k == "assist") { have = have | 256; continue; }   // hashed, so required (P1089 review 3)
 		if (k == "tasproject") { if (argc != 2 || argv(1) != ftos(TASP_VERSION)) { tpr_why = "unknown project version"; break; } have = have | 1; continue; }
 		if (k == "map") { if (argc != 2 || argv(1) != mapname) { tpr_why = "made on another map"; break; } have = have | 2; continue; }
 		if (k == "mapcrc")
@@ -451,7 +453,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 	}
 	fclose(f);
 	if (tpr_why == "" && !ended) tpr_why = "incomplete file (no end line)";
-	if (tpr_why == "" && (have & 31) != 31) tpr_why = "missing header lines";
+	if (tpr_why == "" && ((have & 31) != 31 || !(have & 256))) tpr_why = "missing header lines";
 	if (tpr_why == "" && identity && (have & 224) != 224) tpr_why = "missing map, zone or movement-rule line";
 	if (tpr_why == "" && tpr_ncp > 0)
 	if (tpr_cp[0] <= tpr_base || tpr_cp[(tpr_ncp - 1) * TASP_CPSTRIDE] > tpr_base + n)
@@ -819,20 +821,10 @@ void(entity e, float s, float head) SV_TASPCheckpoints =
   revision, origin, parent, revsha) and `base` loses its local save id. tools/tasrev.py is
   the twin surfd uses; keep the two in step.
 */
-float(entity e, float s, string name, string parent) SV_TASPWrite =
+// P1089: every line of a revision but its revsha, as the reader requires them.
+void(filestream f, entity e, float s, string parent) SV_TASPEmit =
 {
-	local filestream f;
 	local float i, b, nm;
-	local string h;
-	// P1089 review 2: an empty identity value would end its line in a space the reader
-	// refuses, after FILE_WRITE had replaced the last revision: refuse before opening.
-	if (infokey(world, "*mapcrc") == "" || zone_crc == "" || SV_RecPinText(e, "*pmpin") == "")
-	{
-		sprint(e, PRINT_HIGH, "tas project: this map has no checksum, zones or movement pin to bind a project to\n");
-		return FALSE;
-	}
-	f = fopen(SV_TASPPath(name), FILE_WRITE);
-	if (f < 0) return FALSE;
 	fputs(f, sprintf("tasproject %.0f\n", TASP_VERSION));
 	fputs(f, sprintf("map %s\n", mapname));
 	fputs(f, sprintf("mapcrc %s\n", infokey(world, "*mapcrc")));
@@ -866,18 +858,46 @@ float(entity e, float s, string name, string parent) SV_TASPWrite =
 		fputs(f, sprintf("%.0f %.0f %.0f\n", SV_TASPZ(tasp_buf[s][b+4]), SV_TASPZ(tasp_buf[s][b+5]), SV_TASPZ(tasp_buf[s][b+6])));
 	}
 	fputs(f, sprintf("end %.0f\n", e.tasp_n));
+};
+
+float(entity e, float s, string name, string parent) SV_TASPWrite =
+{
+	local filestream f;
+	local string h, tmp;
+	// P1089 review 2: an empty identity value would end its line in a space the reader
+	// refuses: say so plainly.
+	if (infokey(world, "*mapcrc") == "" || zone_crc == "" || SV_RecPinText(e, "*pmpin") == "")
+	{
+		sprint(e, PRINT_HIGH, "tas project: this map has no checksum, zones or movement pin to bind a project to\n");
+		return FALSE;
+	}
+	// P1089 review 3: emit into <path>.new and read that back with the identity lines first;
+	// a file the reader would refuse (a map name, a row, a revision out of its bounds) then
+	// never replaces the last revision. The real file is written whole, revsha included.
+	tmp = strzone(strcat(SV_TASPPath(name), ".new"));
+	f = fopen(tmp, FILE_WRITE);
+	if (f < 0) { strunzone(tmp); return FALSE; }
+	SV_TASPEmit(f, e, s, parent);
 	fclose(f);
-	// P1089: the file as written must pass the strict reader; its hash then names it and
-	// is the next save's parent.
-	if (!SV_TASPRead(e, name, TRUE)) { SV_TASPReadFree(); return FALSE; }
-	h = tpr_h;
+	tpr_pathover = tmp;
+	if (!SV_TASPRead(e, name, TRUE))
+	{
+		tpr_pathover = "";
+		sprint(e, PRINT_HIGH, sprintf("tas project: the new revision would not load (%s); the last one is kept\n", tpr_why));
+		SV_TASPReadFree(); fremove(tmp); strunzone(tmp);
+		return FALSE;
+	}
+	tpr_pathover = "";
+	h = strzone(tpr_h);
 	SV_TASPReadFree();
-	f = fopen(SV_TASPPath(name), FILE_APPEND);
-	if (f < 0) return FALSE;
+	fremove(tmp); strunzone(tmp);
+	f = fopen(SV_TASPPath(name), FILE_WRITE);
+	if (f < 0) { strunzone(h); return FALSE; }
+	SV_TASPEmit(f, e, s, parent);   // the same lines but `saved`, which the hash leaves out
 	fputs(f, sprintf("revsha %s\n", h));
 	fclose(f);
 	if (tasp_revsha[s]) strunzone(tasp_revsha[s]);
-	tasp_revsha[s] = strzone(h);
+	tasp_revsha[s] = h;
 	return TRUE;
 };
 

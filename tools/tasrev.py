@@ -27,6 +27,8 @@ BAD = set('"\'/()[]{},;\\')
 HEX = re.compile(r'[0-9a-f]+\Z')
 NAME = re.compile(r'[a-z0-9_-]{1,32}\Z')   # SV_TASPNameOK
 SAVED = re.compile(r'saved \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\Z')
+MAPNAME = re.compile(r'[A-Za-z0-9_.+-]+\Z')       # stricter than the game: names it can write
+PINTOK = re.compile(r'[A-Za-z0-9_.+-]+=[A-Za-z0-9_.+-]*\Z')
 
 
 class Refused(Exception):
@@ -71,7 +73,7 @@ def check_form(line, rank):
     ok = True
     if k == 'assist': ok = line == 'assist tas'
     elif k == 'origin': ok = line == 'origin local'
-    elif k in ('mapcrc', 'zonecrc'): ok = len(a) == 1 and bool(HEX.match(a[0]))
+    elif k in ('mapcrc', 'zonecrc'): ok = len(a) == 1 and len(a[0]) == 8 and bool(HEX.match(a[0]))   # %08x
     elif k in ('parentsha', 'revsha'): ok = len(a) == 1 and len(a[0]) == 64 and bool(HEX.match(a[0]))
     elif k == 'base': ok = len(a) == 3 and canon_num(a[0], True) and len(a[1]) == 64 and bool(HEX.match(a[1])) and canon_num(a[2], True)
     elif k == 'saved': ok = bool(SAVED.match(line))
@@ -112,9 +114,10 @@ def revhash(data):
             if k == 'tasproject':
                 if a != [str(VERSION)]: raise Refused('unknown project version')
             elif k == 'map':
-                if len(a) != 1: raise Refused('map line')
+                if len(a) != 1 or not MAPNAME.match(a[0]): raise Refused('map line')
             elif k == 'pmpin':
-                if not a: raise Refused('empty movement pin')
+                # SV_RecPinText: name=value tokens in SV_RecSafeText's characters
+                if not a or not all(PINTOK.match(x) for x in a): raise Refused('movement pin')
             elif k == 'revision':
                 if len(a) != 1: raise Refused('bad revision')
                 num(a[0], 1, 16000000)
@@ -155,7 +158,7 @@ def revhash(data):
         raise Refused('a value the game cannot read')
     if not ended:
         raise Refused('incomplete file (no end line)')
-    if not {'tasproject', 'map', 'base', 'head', 'baseat'} <= have:
+    if not {'tasproject', 'map', 'base', 'head', 'baseat', 'assist'} <= have:   # assist is hashed
         raise Refused('missing header lines')
     if not {'mapcrc', 'zonecrc', 'pmpin'} <= have:
         raise Refused('missing map, zone or movement-rule line')
