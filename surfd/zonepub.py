@@ -359,6 +359,14 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                 except (TypeError, KeyError, RecursionError, UnicodeDecodeError):
                     return fail('Invalid or incomplete zone geometry', 400)
                 rid = None
+                if publish_dirs and force:
+                    # P1081 round 3: "Reload now" is for a change. Bytes already live reload nobody
+                    # (an operator re-arms a reload with `zonepub.py reload`).
+                    cur = pub.state(db, grant['map'])
+                    try: on_disk = pub.read_file(pub.zone_path(publish_dirs[0], grant['map'], valid_name), MAX_ZONE_BYTES)
+                    except (OSError, ValueError): on_disk = None
+                    if (cur is not None and cur['sha'] == grant['sha']) or pub.sha(on_disk) == grant['sha']:
+                        return fail('These zones are already live; Reload now is for a change', 409)
                 if publish_dirs:
                     rid = pub.queue(db, grant['map'], raw, sid, now, force)
                     if rid is None: return fail('Too many publishes this hour; try again later', 429)
@@ -478,6 +486,8 @@ def main():
     serve.add_argument('--publish-dir', type=Path, action='append', default=[])
     serve.add_argument('--port', type=int, default=8087)
     args = ap.parse_args()
+    if args.command in ('apply', 'rollback', 'reload') and hasattr(os, 'geteuid') and os.geteuid() == 0:
+        ap.error('run as the service user (proto), not root: the publish directories are proto-writable')
     if args.command == 'reload':
         print('Re-armed publish %d of %s; the next tick reloads its lobbies'
               % (pub.rearm(connect, args.store, args.map), args.map))
@@ -490,8 +500,6 @@ def main():
                     r['id'], r['kind'], ' (reload now)' if r['force'] else '', r['at'], r['live'],
                     r['sha'][:12], r['hold'] or '-', r['partial'] or '-', r['reload'] or ''))
         return
-    if args.command in ('apply', 'rollback', 'reload') and hasattr(os, 'geteuid') and os.geteuid() == 0:
-        ap.error('run as the service user (proto), not root: the publish directories are proto-writable')
     if args.command == 'init': initialize(args.store); return
     if args.command in ('apply', 'rollback'):
         lobbies = lambda: pub.lobby_state(args.accounts, args.sweep_log, time.time())

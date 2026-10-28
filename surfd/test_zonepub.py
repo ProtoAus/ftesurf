@@ -534,12 +534,70 @@ class PublishNow(Publish):
     def test_a_sweep_must_start_after_the_grace(self):
         self.grant(); self.maps={'surf_fixture'}; self.stalled=True
         self.upload(self.challenge_now()[1])
-        self.assertEqual(self.wait(1200),{})                                  # no sweep completes
-        self.stalled=False; self.assertEqual(self.wait(60),{})               # one: it may have started earlier
+        self.assertEqual(self.wait(1200),{})                                  # no sweep line: no base, not ready
+        self.assertIn('no completion line', self.row()['hold'])
+        self.stalled=False; self.assertEqual(self.wait(60),{})               # the first stamp becomes the base
+        self.assertEqual(self.wait(60),{})                                    # one newer: may have started earlier
         n=len(self.words('say'))
-        self.assertEqual(self.wait(60),{})                                    # two: ready, but warned 20 min ago:
-        self.assertEqual(len(self.words('say')),n+2)                          #   warned again first
+        self.assertEqual(self.wait(60),{})                                    # two: ready, but warned 22 min ago:
+        self.assertEqual(len(self.words('say')),n+2)                          #   each lobby told again first
         self.assertEqual(self.wait(60),{'surf_fixture':'live'})
+    def test_each_lobby_is_warned_again_on_its_own_clock(self):
+        self.grant(); self.maps={'surf_fixture'}; self.ports={'surf_fixture':[27510]}; self.owed={'surf_fixture'}
+        self.upload(self.challenge_now()[1]); self.wait(120)                  # 27510 told at the upload
+        self.ports={'surf_fixture':[27510,27530]}; self.owed=set(); self.wait(60)   # ready: newcomer 27530 told
+        self.assertEqual(self.words('say'),[27510,27530]); self.owed={'surf_fixture'}
+        self.wait(180); self.owed=set(); self.wait(60)                        # 27510's warning is 7 min old
+        self.assertEqual(self.words('say'),[27510,27530,27510])               # only it is told again
+        self.assertEqual(self.wait(60),{'surf_fixture':'live'})
+    def test_every_target_answers_just_before_the_write(self):
+        self.grant(); self.maps={'surf_fixture'}; self.upload(self.challenge_now()[1]); self.wait(120)
+        self.silent={27530}; self.assertEqual(self.wait(60),{})               # ready, but 27530 went quiet
+        self.assertIn('no answer just before the write from 27530', self.row()['hold'])
+        self.assertEqual(self.files(),[self.OLD,None]); self.assertEqual(self.words('changelevel'),[])
+        self.silent=set(); self.assertEqual(self.wait(60),{'surf_fixture':'live'})
+    def test_the_write_time_is_rounded_up(self):
+        self.grant(); self.maps={'surf_fixture'}; self.upload(self.challenge_now()[1]); self.wait(120)
+        z.pub.CLOCK = lambda: self.now + 0.25
+        self.wait(60); self.assertEqual(self.row()['live'], self.now + 1)
+    def test_a_lobby_silent_after_the_write_is_an_alarm_within_minutes(self):
+        self.grant(); self.maps={'surf_fixture'}
+        self.upload(self.challenge_now()[1]); self.wait(180)                  # written, both answered and reloaded
+        self.fleet[27530]=('surf_fixture', self.now - 100); self.silent={27530}   # back on the old load, then quiet
+        self.wait(60 * (z.pub.SILENT_ROUNDS + 2))
+        row=self.row(); self.assertEqual((row['kind'],row['partial']),('live-partial','[27530]'))
+        self.assertEqual(self.words('changelevel').count(27530), 1)           # silence spent no try
+    def test_silent_rounds_spend_no_changelevel_tries(self):
+        self.grant(); self.maps={'surf_fixture'}; self.stuck={27530}
+        self.upload(self.challenge_now()[1]); self.wait(180)                  # written: changelevel 1 to 27530
+        self.silent={27530}; self.wait(60 * (z.pub.SILENT_ROUNDS - 1))        # quiet, but not long enough to alarm
+        self.silent=set(); self.wait(60 * (z.pub.RELOAD_TRIES + 2))           # answers again, still stuck
+        self.assertEqual(self.words('changelevel').count(27530), z.pub.RELOAD_TRIES)   # all its tries were left
+        self.assertEqual(self.row()['partial'], '[27530]')
+    def test_a_lobby_whose_heartbeat_comes_after_the_write_is_reloaded(self):
+        self.grant(); self.maps={'surf_fixture'}; self.ports={'surf_fixture':[27510]}
+        self.upload(self.challenge_now()[1]); self.wait(180)                  # written; 27530 not in the table yet
+        self.wait(60)                                                         # 27510 confirmed: todo is empty
+        self.ports={'surf_fixture':[27510,27530]}
+        self.fleet[27530]=('surf_fixture', self.row()['live'] - 10)           # it loaded just before the write
+        self.wait(60); self.assertIn(27530, self.words('changelevel'))        # still watched: found and reloaded
+        self.wait(120); self.assertIsNotNone(self.row()['done_at']); self.assertEqual(self.row()['kind'],'live')
+    def test_a_rearm_long_after_the_write_runs_on_its_own_clock(self):
+        self.grant(); self.maps={'surf_fixture'}
+        self.upload(self.challenge_now()[1]); self.wait(360)                  # written, reloaded, watched, done
+        self.assertIsNotNone(self.row()['done_at'])
+        self.wait(z.pub.RELOAD_EXPIRE + 600)
+        self.fleet[27530]=('surf_fixture', self.row()['live'] - 5)            # an operator finds it never reloaded
+        n=self.words('changelevel').count(27530)
+        z.pub.rearm(z.connect, self.store, 'surf_fixture'); self.wait(60)
+        self.assertEqual(self.words('changelevel').count(27530), n + 1)
+        self.assertNotIn('GAVE UP', self.row()['reload'])
+    def test_reload_refuses_root_before_touching_the_store(self):
+        import sys as _s
+        with patch.object(z.os, 'geteuid', create=True, return_value=0), \
+             patch.object(z.pub, 'rearm', side_effect=AssertionError('ran as root')), \
+             patch.object(_s, 'argv', ['zonepub.py', '--store', str(self.store), 'reload', '--map', 'surf_fixture']):
+            with self.assertRaises(SystemExit): z.main()
     def test_a_lobby_moving_onto_the_map_is_warned_before_the_write(self):
         self.grant(); self.maps={'surf_fixture'}; self.ports={'surf_fixture':[27510]}
         self.upload(self.challenge_now()[1]); self.wait(120)
@@ -564,14 +622,6 @@ class PublishNow(Publish):
         self.assertEqual(self.words('changelevel').count(27530), z.pub.RELOAD_TRIES + 1)
         self.maps=set(); self.wait(660); self.rollback()                      # live-partial rolls back too
         self.assertEqual(self.files(),[self.OLD,None])
-    def test_silent_rounds_spend_no_tries_and_end_at_the_expiry(self):
-        self.grant(); self.maps={'surf_fixture'}
-        self.upload(self.challenge_now()[1]); self.wait(120)
-        self.silent={27530}; self.wait(60)                                    # written; 27530 stops answering
-        self.wait(600); self.assertEqual(self.row()['kind'],'live')           # silent: still waiting, no try spent
-        self.assertNotIn(27530, self.words('changelevel'))
-        self.wait(z.pub.RELOAD_EXPIRE)
-        row=self.row(); self.assertEqual((row['kind'],row['partial']),('live-partial','[27530]'))
     def test_a_reload_lost_after_the_write_is_started_again(self):
         self.grant(); self.maps={'surf_fixture'}; self.stuck={27510,27530}
         self.upload(self.challenge_now()[1]); self.wait(180)                  # written; the reload went nowhere
@@ -590,14 +640,12 @@ class PublishNow(Publish):
         self.now += 10 ** 5                                                   # recovered a day later: still reloads
         self.apply()
         self.assertEqual(self.row()['kind'],'live'); self.assertEqual(self.words('changelevel'),[27510,27530])
-    def test_reload_now_of_live_bytes_reloads_only_lobbies_that_loaded_before_them(self):
+    def test_reload_now_of_live_bytes_is_refused(self):
         self.grant(); self.ports={}; self.upload(self.challenge())            # quiet: live at once
-        written=self.now
-        self.ports={'surf_fixture':[27510,27530]}; self.maps={'surf_fixture'}
-        self.fleet[27510]=('surf_fixture', written + 30)                      # loaded these zones
-        self.fleet[27530]=('surf_fixture', written - 30)                      # loaded before them
-        self.now += 60; self.upload(self.challenge_now()[1]); self.wait(240)
-        self.assertEqual(self.row()['kind'],'noop'); self.assertEqual(self.words('changelevel'),[27530])
+        self.ports={'surf_fixture':[27510,27530]}; self.maps={'surf_fixture'}; self.now += 60
+        r=self.upload(self.challenge_now()[1])
+        self.assertEqual(r.status_code,409); self.assertIn('already live', r.json['error'])
+        self.wait(600); self.assertEqual(self.sent,[])                        # nobody warned, nobody reloaded
     def test_reload_now_with_nobody_on_the_map_reloads_nothing(self):
         self.grant(); self.ports={'surf_other':[27520]}; self.upload(self.challenge_now()[1])
         self.assertEqual(self.wait(180),{'surf_fixture':'live'}); self.assertEqual(self.words('changelevel'),[])

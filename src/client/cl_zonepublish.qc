@@ -19,6 +19,7 @@ string zp_nonce_now;                // P1081: the service's second nonce, "reloa
 vector zp_go_p, zp_go_s, zp_no_p, zp_no_s;   // the dialog's buttons as last drawn; a zero size is no button
 vector zp_now_p, zp_now_s;
 vector zp_geo_go, zp_geo_size, zp_geo_now, zp_geo_no;  // P1081: the buttons as last drawn, to see them move
+float zp_out_go, zp_out_now;        // P1081 round 3: the device pointer was outside that button since arming
 
 void() ZonePub_Cancel =
 {
@@ -276,7 +277,7 @@ void() ZonePub_Back =
 float(float scan) ZonePub_Key =
 {
 	local vector at;
-	local float seen;
+	local float seen, entered;
 	ZonePub_Pump();
 	if (!zp_state) return FALSE;
 	if (ui_ze_state != ZE_PANEL || !ze_cursor) return FALSE;   // not on screen: the editor's keys
@@ -297,8 +298,9 @@ float(float scan) ZonePub_Key =
 		at = cl_input_real ? cl_ptr_real : ze_mouse;
 		seen = cl_input_real ? cl_ptr_real_ok : ze_mouse_seen;
 		if (cl_input_real && zp_state == ZP_CONFIRM && (zp_armed <= 0 || cl_ptr_real_t < zp_armed)) seen = FALSE;
-		if (seen && is_2dpoint_in_bbox(at, zp_go_p, zp_go_s)) ZonePub_Go(FALSE);
-		else if (seen && is_2dpoint_in_bbox(at, zp_now_p, zp_now_s)) ZonePub_Go(TRUE);
+		entered = !(cl_input_real && zp_state == ZP_CONFIRM);          // an entry is asked of real presses
+		if (seen && is_2dpoint_in_bbox(at, zp_go_p, zp_go_s)) { if (entered || zp_out_go) ZonePub_Go(FALSE); }
+		else if (seen && is_2dpoint_in_bbox(at, zp_now_p, zp_now_s)) { if (entered || zp_out_now) ZonePub_Go(TRUE); }
 		else if (seen && is_2dpoint_in_bbox(at, zp_no_p, zp_no_s)) ZonePub_Back();
 		return TRUE;
 	}
@@ -437,18 +439,32 @@ void(vector scr) ZonePub_Draw =
 	// P1081 review: buttons that moved (hud_scale, a resize) under a resting pointer arm again.
 	if (zp_state == ZP_CONFIRM && zp_shown == zp_state)
 	if (zp_go_p != zp_geo_go || zp_go_s != zp_geo_size || zp_now_p != zp_geo_now || zp_no_p != zp_geo_no)
+	{
 		zp_armed = gettime(0) + 0.6;
+		zp_out_go = zp_out_now = FALSE;
+	}
 	zp_geo_go = zp_go_p; zp_geo_size = zp_go_s; zp_geo_now = zp_now_p; zp_geo_no = zp_no_p;
 
 	// Where it is, once a page: an arm clicks by these (developer 1).
 	if (zp_shown != zp_state)
 	{
-		if (zp_state == ZP_CONFIRM) zp_armed = gettime(0) + 0.6;   // P1081: no press carried in from before
+		if (zp_state == ZP_CONFIRM)
+		{
+			zp_armed = gettime(0) + 0.6;    // P1081: no press carried in from before
+			zp_out_go = zp_out_now = FALSE;
+		}
 		dprint(sprintf("zone_edit: publish dialog page %g, screen %v, go %v %v, cancel %v %v",
 		               zp_state, scr, zp_go_p, zp_go_s, zp_no_p, zp_no_s));
 		dprint(sprintf(", now %v %v\n", zp_now_p, zp_now_s));
 	}
 	zp_shown = zp_state;
+	// P1081 round 3: Publish or Reload now counts a press only once the device pointer has been
+	// outside it since arming -- a delta queued at a resting pointer (in_journal_synth) is no entry.
+	if (zp_state == ZP_CONFIRM && cl_ptr_real_ok)
+	{
+		if (!is_2dpoint_in_bbox(cl_ptr_real, zp_go_p, zp_go_s)) zp_out_go = TRUE;
+		if (!is_2dpoint_in_bbox(cl_ptr_real, zp_now_p, zp_now_s)) zp_out_now = TRUE;
+	}
 
 	// `zone_edit press zp_go|zp_now|zp_no` for arms: Back works, Go reaches Send, which refuses a command.
 	if (ZoneEdit_Clicked("zp_no")) ZonePub_Back();

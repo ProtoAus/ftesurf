@@ -76,9 +76,12 @@ packages and commands could stand in for the admin's table, so:
   A load from files clears the taint.
 - A real press counts where the device put the pointer (`cl_ptr_real`, recorded in
   CSQC_InputEvent before any panel takes the move; lost focus, a new editor cursor and
-  mouse-look forget it), never where a synthetic event moved it, and on a confirm page only
-  after a real move once the page armed. A page is unarmed until drawn; buttons that move
-  under a resting pointer (hud_scale) arm again.
+  mouse-look forget it), never where a synthetic event moved it. On a confirm page Publish
+  and Reload now take a press only after the device pointer has been OUTSIDE that button
+  since the page armed (a delta queued at a resting pointer is no entry); a page is unarmed
+  until drawn; buttons that move under a resting pointer (hud_scale) arm again. In the
+  editor a real press whose aim (ze_mouse) is behind the device pointer -- a chat took the
+  moves -- resyncs and does nothing.
 - A command may OPEN the dialog (`zone_edit publish`) but never saves: the saved file must
   already be the table, read back over it and compared as Save checks its `.part`. A
   dialog a command opened takes a click only; every confirm arms 0.6 s after its page
@@ -100,15 +103,19 @@ the steps. In short:
   counts only when no lobby is on the map.
 - Warn (`say`, acked by a `status` reply -- weak: the lobby answered, not that a player read
   it; all must answer or it retries; unanswered for 15 min: `expired`, nothing installed).
-- After 60 s, two sweep completions newer than the stamp at the grace's end (sweeps cannot
-  overlap, so the second started after it) and nothing owed; re-warn if over 5 minutes old;
-  a lobby that arrived since is warned and waited for; pending an hour: `expired`.
-- Write (or find the bytes live), stamped after `put()`, then one round per tick:
-  `changelevel` each target until its `status` shows a load after the write. A try is spent
-  only on a changelevel sent; 5 tries or 30 minutes leave `live-partial` (`noop-partial`)
-  with the ports in `partial` -- rollback treats it as live, and `zonepub.py reload --map M`
-  re-arms it (`status --map M` shows the newest rows). A crash between the write and the
-  reload recovers as live and the reload still runs.
+- After 60 s, two sweep completions newer than the stamp at the grace's end (no readable
+  stamp: not ready; sweeps cannot overlap, so the second started after it) and nothing owed;
+  a lobby whose own warning is over 5 minutes old is told again; a lobby that arrived since
+  is warned and waited for; every target must answer `status` just before the write;
+  pending an hour: `expired`.
+- Write, stamped (rounded up) after `put()`, then one round per tick: `changelevel` each
+  target, and any lobby the table later shows on the map, until its `status` shows a load
+  after the write. A try is spent only on a changelevel sent; 5 tries, 4 silent rounds or 30
+  minutes leave the lobby in `partial`; the row is watched 2 minutes and ends `live-partial`
+  if any was left -- rollback treats it as live, and `zonepub.py reload --map M` re-arms it
+  with its own clock (`status --map M` shows the newest rows). Bytes already live are
+  refused ("Reload now is for a change"). A crash between the write and the reload recovers
+  as live and the reload still runs.
 - rcon goes through rcon.py (its socket now connected, so only the lobby can answer) and a
   budget shared by zonepub's processes (`rcon-budget.json`, 3 packets per port per 30 s,
   stamped inside its lock; admin.py keeps 8; the engine blocks for 24 h past 15). rcon also
