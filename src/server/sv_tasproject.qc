@@ -80,6 +80,7 @@ void(entity e) SV_TASProjectReset =
 	e.tasp_on = e.tasp_load = e.tasp_n = e.tasp_cap = e.tasp_ncp = e.tasp_ccount = 0;
 	e.tasp_result = e.tasp_dev = e.tasp_devtick = 0;
 	e.tasp_line = e.tasp_linemt = -1;
+	e.tasp_cut = 16000001; e.tasp_gen = e.tasp_parentrev = 0;
 	if (!s) return;
 	if (tasp_buf[s]) memfree(tasp_buf[s]);
 	if (tasp_cp[s]) memfree(tasp_cp[s]);
@@ -644,8 +645,10 @@ void(entity e, float s, float head) SV_TASPCheckpoints =
 		found = FALSE;
 		if (SV_RewindFindTick(e, t)) found = TRUE;
 		else if (t <= e.tasp_cut)
-		if (SV_TASPOldState(s, oldn, t)) found = TRUE;
-		else if (t == head) { rw_o = e.origin; rw_v = e.velocity; found = TRUE; }
+		{
+			if (SV_TASPOldState(s, oldn, t)) found = TRUE;
+		}
+		if (!found && t == head) { rw_o = e.origin; rw_v = e.velocity; found = TRUE; }
 		if (found)
 		{
 			b = n * TASP_CPSTRIDE;
@@ -748,7 +751,7 @@ float(entity e, float head) SV_TASPOldestBase =
 // `name` is a zoned copy owned by the caller ("" = the attached project's).
 void(entity e, string name, float force) SV_TASProjectSave =
 {
-	local float s, head, attached, B, id, t, exists, oldidx, row;
+	local float s, head, attached, B, id, t, exists, oldidx, row, fork, prev;
 	local float *m;
 	local string hash, parent;
 	local vector bo, bv;
@@ -806,8 +809,9 @@ void(entity e, string name, float force) SV_TASProjectSave =
 		bo = [m[rw_statebase+1], m[rw_statebase+2], m[rw_statebase+3]];
 		bv = [m[rw_statebase+4], m[rw_statebase+5], m[rw_statebase+6]];
 		// Every input first: a refusal must not leave a base save behind.
-		parent = strzone((e.tasp_on && name != tasp_name[s]) ? tasp_name[s] : tasp_parent[s]);
-		if (e.tasp_on && name != tasp_name[s]) e.tasp_parentrev = e.tasp_rev;
+		fork = (e.tasp_on && name != tasp_name[s]);
+		prev = e.tasp_rev;
+		parent = strzone(fork ? tasp_name[s] : tasp_parent[s]);
 		if (tasp_buf[s]) memfree(tasp_buf[s]);
 		if (tasp_cp[s]) memfree(tasp_cp[s]);
 		tasp_buf[s] = 0; tasp_cp[s] = 0;
@@ -833,6 +837,7 @@ void(entity e, string name, float force) SV_TASProjectSave =
 			strunzone(name); strunzone(parent); return;
 		}
 		e.tasp_baseid = id; e.tasp_bo = bo; e.tasp_bv = bv;
+		if (fork) e.tasp_parentrev = prev;   // only once the new project exists
 		if (tasp_hash[s]) strunzone(tasp_hash[s]);
 		tasp_hash[s] = strzone(hash);
 		e.tasp_serial = e.rec_rec_serial;
@@ -965,7 +970,8 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 	e.tasp_on = 1; e.tasp_load = 1; e.tasp_stop = stop; e.tasp_cpi = 0;
 	e.tasp_serial = e.rec_rec_serial; e.tasp_synced = tpr_base; e.tasp_lasthead = tpr_base;
 	e.tasp_filehead = tpr_base + tpr_n;
-	e.tasp_cut = 16000001; e.tasp_gen = e.rec_rec_gen; e.tasp_parentrev = tpr_parentrev;
+	e.tasp_cut = stop;   // ticks after a checkpoint stop belong to the file's line, not this one
+	e.tasp_gen = e.rec_rec_gen; e.tasp_parentrev = tpr_parentrev;
 	SV_TASPReadFree();
 	// A body that was not in TAS mode could not have the rows checked before the load.
 	bad = SV_TASPValidate(e, tasp_buf[s], e.tasp_n);
