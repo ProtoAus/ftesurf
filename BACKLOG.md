@@ -193,10 +193,12 @@ exe as control.
 ## TAS optimizer (P1088, P1092): what is left
 
 Lex's goals of 28 Oct, beyond P1088's constant turn for exit speed ("do what you can"):
-- Total time, P1097 (`time`): within one tape (up to 128 ticks), segments reached past the
-  start's, then the tick the last one opened (run_st_tick), then exit speed. Beyond one tape (a
-  target further away, a whole run) is not searched; a candidate that finishes ends the run and
-  the search; the panel has no `time` chip.
+- Total time, P1097 (`time`): within one tape (up to 128 ticks), stages reached past the
+  start's (run_t_seg), then the tick of the last crossing (run_t_split), then exit speed. Not
+  searched: a target beyond one tape, checkpoints (a TAS back does not restore run_t_cpn), and a
+  stage run's or the last stage's end (the finish). A candidate that finishes ends the run at
+  that candidate and strands the session (no back after TS_RUNNING; true of the speed search
+  too). No `time` chip in the panel.
 - Boarding angle and end-of-ramp flick are P1092 (`board`, `flick [k]`): coordinate search, one
   number at a time (rate, board, rate, flick), not a joint optimum. The board is a yaw offset on
   the first tick of the tape, so the tape must start at the boarding tick; nothing finds that

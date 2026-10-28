@@ -13,9 +13,10 @@
   the others at the best found so far (rate, board, rate again; then flick), so the result is
   never below P1088's own search, which runs first and unchanged.
 
-  P1097 (`time`): the score is how many segments past the start's the run reached, then how early
-  the last one opened (run_st_tick, set by SV_StageOpen), then exit speed. A candidate that
-  finishes ends the run, and the search with it.
+  P1097 (`time`): the score is how many stages past the start's the run reached (run_t_seg), then
+  how early it crossed the last (run_t_split; both set by SV_TimerSplit and restored by a back --
+  run_st_tick moves when the box is left), then exit speed. Checkpoints are not scored: a back
+  does not restore run_t_cpn. A candidate that finishes ends the run, and the search with it.
 */
 
 #define TOPT_GRID  9            // grid points over a search's range
@@ -35,7 +36,7 @@
 .float topt_fk;                 // P1092: flick length in ticks (0 without flick)
 .float topt_besty, topt_bestf;  // P1092: the best's boarding offset and flick rate (-1: no flick)
 .float topt_srch;               // P1092: which 1-D search of SV_TASOptParam's list is running
-.float topt_obj, topt_seg0;     // P1097: 1 = time; the segment open at the start
+.float topt_obj, topt_seg0;     // P1097: 1 = time; run_t_seg at the start
 
 // P1092: the numbers searched, in order: 1 rate, 2 boarding offset, 3 flick rate; 0 = done.
 float(entity e, float i) SV_TASOptParam =
@@ -52,8 +53,8 @@ float(entity e, float p) SV_TASOptHi = { if (p == 2) return TOPT_YMAX; if (p == 
 // speed / 10: one segment scores below 2^19, where float32 still tells 0.3 u/s apart.
 float(entity e) SV_TASOptSegs =
 {
-	if (e.run_st_seg < 0 || e.run_st_seg <= e.topt_seg0) return 0;
-	return e.run_st_seg - e.topt_seg0;
+	if (e.run_t_seg <= e.topt_seg0) return 0;
+	return e.run_t_seg - e.topt_seg0;
 };
 float(entity e) SV_TASOptScore =
 {
@@ -63,15 +64,15 @@ float(entity e) SV_TASOptScore =
 	segs = SV_TASOptSegs(e);
 	spd = min(9990, spd) / 10;
 	if (!segs) return spd;
-	return segs * 200000 + bound(0, e.topt_head + e.topt_n - e.run_st_tick, 128) * 1000 + spd;
+	return segs * 200000 + bound(0, e.topt_head + e.topt_n - e.run_t_split, 128) * 1000 + spd;
 };
 string(entity e, float v) SV_TASOptDesc =
 {
 	local float spd;
 	spd = vlen([e.velocity_x, e.velocity_y, 0]);
 	if (!e.topt_obj) return sprintf("%.1f u/s", v);
-	if (!SV_TASOptSegs(e)) return sprintf("no new segment, %.1f u/s", spd);
-	return sprintf("segment +%.0f at tick %.0f, %.1f u/s", SV_TASOptSegs(e), e.run_st_tick, spd);
+	if (!SV_TASOptSegs(e)) return sprintf("no new stage, %.1f u/s", spd);
+	return sprintf("stage +%.0f at tick %.0f, %.1f u/s", SV_TASOptSegs(e), e.run_t_split, spd);
 };
 
 string(entity e) SV_TASOptExtra =
@@ -91,9 +92,11 @@ void(entity e, string why) SV_TASOptStop =
 		tas_tape(e, 0, 0, 0, '0 0 0', '0 0 0', 0);
 	e.topt_on = 0;
 	sprint(e, PRINT_HIGH, sprintf("tas optimize: stopped after %.0f candidates: %s\n", e.topt_evals, why));
-	if (e.topt_bestv >= 0)
-		sprint(e, PRINT_HIGH, sprintf("tas optimize: best so far turn %.3f deg/tick%s, %s %.1f (not applied)\n", e.topt_bestr,
-			SV_TASOptExtra(e), e.topt_obj ? "score" : "u/s", e.topt_bestv));
+	if (e.topt_bestv >= 0 && e.topt_obj)
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: best so far turn %.3f deg/tick%s (not applied)\n", e.topt_bestr, SV_TASOptExtra(e)));
+	else if (e.topt_bestv >= 0)
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: best so far turn %.3f deg/tick%s, %.1f u/s (not applied)\n", e.topt_bestr,
+			SV_TASOptExtra(e), e.topt_bestv));
 };
 
 // The candidate's inputs onto the native tape: yaw0 + board, then turning r a tick, and over the
@@ -178,9 +181,10 @@ void(entity e, float v) SV_TASOptResult =
 				(e.topt_dir > 0) ? "left" : "right", e.topt_bestr, e.topt_n, v, e.topt_evals, SV_TimerTicks(e)));
 		if (e.topt_mode)
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: with%s\n", substring(SV_TASOptExtra(e), 1, -1)));
-		if (fabs(v - e.topt_bestv) > 0.05)  // a moving world can differ between two plays
-			sprint(e, PRINT_HIGH, sprintf("tas optimize: replayed %.1f %s, searched %.1f: the world moved between them\n", v,
-				e.topt_obj ? "score" : "u/s", e.topt_bestv));
+		if (e.topt_obj && fabs(v - e.topt_bestv) > 0.35)   // the score's speed step at one stage is 0.31 u/s
+			sprint(e, PRINT_HIGH, "tas optimize: the replay differs from the search: the world moved between them\n");
+		else if (!e.topt_obj && fabs(v - e.topt_bestv) > 0.05)  // a moving world can differ between two plays
+			sprint(e, PRINT_HIGH, sprintf("tas optimize: replayed %.1f u/s, searched %.1f: the world moved between them\n", v, e.topt_bestv));
 		if (e.topt_bestr >= e.topt_rmax - 0.01)
 			sprint(e, PRINT_HIGH, "tas optimize: that is the top of the range searched; a sharper turn may be faster\n");
 		if ((e.topt_mode & 1) && fabs(e.topt_besty) >= TOPT_YMAX - 0.01)
@@ -312,7 +316,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_evals = e.topt_iter = 0; e.topt_bestr = 0; e.topt_bestv = -1; e.topt_next = 0;
 	e.topt_backed = e.topt_wait = 0;
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0;
-	e.topt_obj = obj; e.topt_seg0 = e.run_st_seg;
+	e.topt_obj = obj; e.topt_seg0 = e.run_t_seg;
 	// Source's air wish speed cap is 30: the speed-holding turn is asin(30 / v) a tick.
 	e.topt_rmax = bound(1, 2 * asin(min(1, 30 / max(30, vlen([e.velocity_x, e.velocity_y, 0])))) * 180 / M_PI, 45);
 	e.topt_bestf = -1;                  // no flick until its search finds a faster one
@@ -323,5 +327,5 @@ void(entity e, float argc) SV_TASOptCommand =
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: %s%s%s\n", (mode & 1) ? "board -30..30 deg" : "", (mode == 3) ? "; " : "",
 			(mode & 2) ? sprintf("flick over the last %.0f ticks, 0..%.0f deg/tick", fk, TOPT_FMAX) : ""));
 	if (obj)
-		sprint(e, PRINT_HIGH, sprintf("tas optimize: scoring segments past %.0f reached, then how soon, then speed\n", e.topt_seg0));
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: scoring stages reached after stage %.0f, then how soon, then speed\n", e.topt_seg0 + 1));
 };
