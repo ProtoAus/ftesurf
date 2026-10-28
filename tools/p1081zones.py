@@ -72,12 +72,23 @@ def main():
         if a.arm == 'control':
             say('zone_edit upload', r'zone_edit[^\n]*: [^\n]*publish[^\n]*')
         else:
+            # Each way a server can type input for the editor taints the table; Reload clears it.
             cl.send('zone_edit sel 0')               # a selection only: no visible change, but a command
             say('zone_edit status', r'zone_edit: track \d+ sel 0[^\n]*')
             say('zone_edit publish', r'zone_edit[^\n]*console command changed these zones[^\n]*')
             say('zone_edit press ze_rl', r'zone_edit[^\n]*reloaded: [^\n]*')
             time.sleep(1)
+            say('chat_mouse 300 300', r'chat_mouse: 300 300[^\n]*')        # a synthetic pointer move
+            say('zone_edit publish', r'zone_edit[^\n]*console command changed these zones[^\n]*')
+            say('zone_edit press ze_rl', r'zone_edit[^\n]*reloaded: [^\n]*')
+            time.sleep(1)
+            say('hud_edit key 32 down', r'hud_edit[^\n]*key 32[^\n]*')       # a synthetic key
+            cl.send('hud_edit key 32 up')
+            say('zone_edit publish', r'zone_edit[^\n]*console command changed these zones[^\n]*')
+            say('zone_edit press ze_rl', r'zone_edit[^\n]*reloaded: [^\n]*')
+            time.sleep(1)
             say('zone_edit publish', r'zone_edit: publish dialog open for surf_dune[^\n]*')
+            report['saved_at'] = cl.wait(r'zone_edit: saved file at [^\n]*', 0, 10).group(0)
             report['steps'].append(cl.wait(r'zone_edit: (publish dialog waiting|upload answered)[^\n]*',
                                            0, 30).group(0))
             time.sleep(1.5)                          # past the page's 0.6 s arming

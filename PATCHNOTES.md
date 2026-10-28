@@ -56,9 +56,9 @@
 - Name checkpoints, load up to one, fork a project under a new name and compare two projects tick by tick. Local games only for now.
 - A TAS run's last stage on the results banner now always reads TAS, never segmented or a clean time.
 
-### P1081 Publish zones from any lobby, and reload now
-- Zone admins can publish their saved zones while connected to a lobby, not only from a game they host. zone_edit publish opens the same confirmation; a click on its button still sends.
-- A new Reload now button warns the players on that map, then reloads its lobbies with the new zones once their runs are verified, usually within a few minutes. Publish alone still waits until the map is quiet.
+### P1081 Publish zones from our lobbies, and reload now
+- Zone admins can publish their saved zones while on one of our lobbies, not only from a game they host. zone_edit publish opens the same confirmation; a click on its button still sends.
+- A new Reload now button warns the players on that map, then reloads its lobbies with the new zones once their runs are verified, usually within 10 minutes. Publish alone still waits until the map is quiet.
 
 ### P1080 Sort maps by completion
 - The Maps list has a Sort row: tier order, incomplete first or completed first, using your clean main finishes (WOS, Momentum Mod or KSF). Tier order is kept within each group. Without a linked account online it says so and keeps tier order.

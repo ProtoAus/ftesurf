@@ -1,5 +1,15 @@
 # BACKLOG.md
 
+## zonepub holds every lobby's rcon password (P1081 review)
+
+- Sites: `surfd/zonepub_publish.py` `rcon_password`/`lobby_rcon`. "Reload now" reads
+  `SURFD_RCON_PASSWORD` from surfd.env, so a zonepub compromise is full rcon on all lobbies,
+  not only zone writes. rcon.py's argument check and the shared budget bound what it sends.
+- Fix direction: a narrow local helper (its own unit/user) that accepts only `say <fixed
+  text>`, `status` and `changelevel <map>` for a lobby port, and zonepub calls that.
+- Falsifier: zonepub's process cannot read surfd.env, and a request for any other command
+  (e.g. `quit`) through the helper is refused while say/status/changelevel work.
+
 ## Server text and server code reaching local commands (left open by P1086)
 
 P1086's review rounds (28 Oct) closed the routes listed in ENGINE.txt's P1086 line. Every

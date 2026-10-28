@@ -83,12 +83,29 @@ string() ZonePub_Saved = { return Zone_ReadFile(strcat("data/maps/zones/local/",
  * resolve loose, ours, not from a package. The signer's csprogs is checked by the service. */
 string() ZonePub_Offhost =
 {
+	local string path;
 	if (isdemo()) return "publish from a game, not a demo";
 	if (ZoneEdit_Hosting()) return "";
 	if (zone_cmd_taint) return "a console command changed these zones on this server: Reload, edit with the panel, save";
-	if (whichpack(strcat("data/maps/zones/local/", ze_map, ".json"), 0) != "")
-		return "a package on this server stands in for your saved file";
+	if (zone_base_untrusted) return "these zones came from this server's map or packages: publish them from a game you host";
+	path = strcat("data/maps/zones/local/", ze_map, ".json");
+	dprint(sprintf("zone_edit: saved file at %s\n", whichpack(path, 2)));
+	if (!Zone_LooseOwn(path)) return "your saved file is not a loose file of this game's own";
 	return "";
+};
+
+// P1081: the server's address as this client's netchan has it, kept to address characters
+// (it goes into hand-built JSON); anything else is "unknown", which the service refuses.
+string() ZonePub_Where =
+{
+	local string ip;
+	local float i;
+	ip = serverkey("ip");
+	if (strlen(ip) < 3 || strlen(ip) > 64) return "unknown";
+	for (i = 0; i < strlen(ip); i = i + 1)
+		if (strstrofs("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.:[]-_",
+		              substring(ip, i, 1), 0) < 0) return "unknown";
+	return ip;
 };
 
 // P1081: the saved file, loaded over the table, gives back the same count, crc and speed cap.
@@ -120,7 +137,10 @@ void(float real) ZonePub_Begin =
 	if (zp_state) { ZoneEdit_Note("a zone upload is already pending"); return; }
 	if (ui_ze_state != ZE_PANEL || ze_settings) { ZoneEdit_Note("finish placing first"); return; }
 	if (zp_next >= 6199998) { ZoneEdit_Note("restart the game before another upload"); return; }
-	if (isdemo() || (zone_cmd_taint && !ZoneEdit_Hosting())) { ZoneEdit_Note(ZonePub_Offhost()); return; }
+	if (isdemo() || ((zone_cmd_taint || zone_base_untrusted) && !ZoneEdit_Hosting()))
+	{
+		ZoneEdit_Note(ZonePub_Offhost()); return;
+	}
 	if (!ZoneFile_Map(ze_map) || strcmp(ze_map, zone_mapname) != 0)
 	{
 		ZoneEdit_Note("open this map's editor and use its Publish saved button"); return;
@@ -132,8 +152,9 @@ void(float real) ZonePub_Begin =
 		ZoneEdit_Note("enable online features from the main menu before uploading"); return;
 	}
 	// What goes out is what is on screen: the table written once more and read back by
-	// ZoneEdit_Save, then the file in place, which must be those very bytes.
-	if (ZoneEdit_MayWrite())
+	// ZoneEdit_Save, then the file in place, which must be those very bytes. Only the
+	// button's own click writes: a command-opened publish never saves (P1081 review).
+	if (real && ZoneEdit_MayWrite())
 	{
 		ZoneEdit_Save(TRUE);
 		if (!ze_saved_ok) { ZoneEdit_Note("NOT published: the zones did not save"); return; }
@@ -146,9 +167,9 @@ void(float real) ZonePub_Begin =
 	}
 	else
 	{
-		// P1081: a command on a server may not write, so the saved file must already be the
-		// table on screen: read it back into the table, as Save checks its .part.
-		if (ze_dirty || !zone_own) { ZoneEdit_Note("Save zones with the panel first; a command cannot save on a server"); return; }
+		// P1081: no write allowed (a command, or off-host without a click), so the saved file must
+		// already be the table on screen: read it back into the table, as Save checks its .part.
+		if (ze_dirty || !zone_own) { ZoneEdit_Note("Save zones with the panel first; a command does not save"); return; }
 		body = ZonePub_Saved();
 		if (strlen(body) < 16 || strlen(body) > 262144 || !ZonePub_Matches())
 		{
@@ -167,8 +188,11 @@ void(float real) ZonePub_Begin =
 	if (zp_next < 6100000) zp_next = 6100000 + floor(random() * 80000);
 	zp_next = zp_next + 1; zp_req = id = zp_next;
 	print(sprintf("zone_edit: publish dialog open for %s (%g zones, crc %s, speed cap %g)\n", zp_map, zp_count, zp_crc, zp_cap));
+	// P1081: where this client is, as its own netchan says (a server cannot set it); the
+	// service accepts off-host publishing only from its own lobbies.
 	if (!uri_post(strcat(ZP_BASE, "challenge"), id, "application/json",
-	              sprintf("{\"map\":\"%s\",\"sha\":\"%s\"}", zp_map, zp_sha)))
+	              sprintf("{\"map\":\"%s\",\"sha\":\"%s\",\"server\":\"%s\"}", zp_map, zp_sha,
+	                      ZoneEdit_Hosting() ? "host" : ZonePub_Where())))
 		ZonePub_Answer("The zone upload service could not be reached. Nothing was sent.", TRUE, FALSE);
 };
 
@@ -229,6 +253,8 @@ void() ZonePub_Back =
 // The click acts on the press, the only moment the engine will sign.
 float(float scan) ZonePub_Key =
 {
+	local vector at;
+	local float seen;
 	ZonePub_Pump();
 	if (!zp_state) return FALSE;
 	if (ui_ze_state != ZE_PANEL || !ze_cursor) return FALSE;   // not on screen: the editor's keys
@@ -242,9 +268,13 @@ float(float scan) ZonePub_Key =
 	}
 	if (scan == K_MOUSE1)
 	{
-		if (ze_mouse_seen && is_2dpoint_in_bbox(ze_mouse, zp_go_p, zp_go_s)) ZonePub_Go(FALSE);
-		else if (ze_mouse_seen && is_2dpoint_in_bbox(ze_mouse, zp_now_p, zp_now_s)) ZonePub_Go(TRUE);
-		else if (ze_mouse_seen && is_2dpoint_in_bbox(ze_mouse, zp_no_p, zp_no_s)) ZonePub_Back();
+		// P1081 review: a real press lands where the DEVICE put the pointer; chat_mouse and
+		// hud_edit move ze_mouse with no device. A synthetic press can only cancel (Send refuses it).
+		at = cl_input_real ? ze_mouse_real : ze_mouse;
+		seen = cl_input_real ? ze_mouse_real_seen : ze_mouse_seen;
+		if (seen && is_2dpoint_in_bbox(at, zp_go_p, zp_go_s)) ZonePub_Go(FALSE);
+		else if (seen && is_2dpoint_in_bbox(at, zp_now_p, zp_now_s)) ZonePub_Go(TRUE);
+		else if (seen && is_2dpoint_in_bbox(at, zp_no_p, zp_no_s)) ZonePub_Back();
 		return TRUE;
 	}
 	return (scan == K_MOUSE2 || scan == K_MOUSE3);
@@ -280,16 +310,19 @@ float(vector at, float w, float sz, string s, vector col, float draw) ZonePub_Wr
 };
 
 // One button; hovered from SUI (registered above the blocker), clicked in ZonePub_Key.
+// primary: 1 the default action, 2 the disruptive one (P1081 Reload now, warning colours).
 void(vector p, vector s, string id, string word, float sz, float primary, float live) ZonePub_Button =
 {
 	local float w;
 	local vector col;
 	if (live) sui_action_element(p, s, id, sui_noop);
 	if (!live) sui_style_box(p, s, 4, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
+	else if (primary == 2)
+		sui_style_box(p, s, 4, sui_is_hovered(id) ? SUI_THEME_HOVER : SUI_THEME_WELL, SUI_THEME_WARN, 1);
 	else if (primary)
 		sui_style_box(p, s, 4, sui_is_hovered(id) ? SUI_THEME_PRESSED : SUI_THEME_SELECTED, SUI_THEME_EDGE_HI, 1);
 	else sui_style_box(p, s, 4, sui_is_hovered(id) ? SUI_THEME_HOVER : SUI_THEME_CHIP, SUI_THEME_EDGE, 1);
-	col = !live ? SUI_THEME_MUTED : (primary ? SUI_THEME_ACCENT : SUI_THEME_TEXT);
+	col = !live ? SUI_THEME_MUTED : (primary == 2 ? SUI_THEME_WARN : (primary ? SUI_THEME_ACCENT : SUI_THEME_TEXT));
 	w = stringwidth(word, TRUE, [sz, sz]);
 	sui_text(p + [(s_x - w) * 0.5, (s_y - sz) * 0.5], [sz, sz], word, col, 1, 0);
 };
@@ -333,7 +366,7 @@ void(vector scr) ZonePub_Draw =
 		                    zp_cap > 0 ? sprintf("Speed cap %g goes with it.", zp_cap) : "It sets no speed cap.");
 		if (zp_state == ZP_CONFIRM && strlen(zp_nonce_now))
 			body = strcat(body, " Reload now: Lobbies on it are warned, then reload with these zones once its runs "
-			              "are verified, usually within 7 minutes; runs in progress there end.");
+			              "are verified, usually within 10 minutes; runs in progress there end.");
 	}
 
 	// Measure, then draw: the box fits what it says.
@@ -360,19 +393,19 @@ void(vector scr) ZonePub_Draw =
 	np = gp - [bs_x + 8 * ui_cv_scale, 0, 0];
 	ZonePub_Button(gp, bs, "zp_go", go, rsz, TRUE, zp_state == ZP_CONFIRM || zp_state == ZP_DONE);
 	if (zp_state == ZP_CONFIRM || zp_state == ZP_DONE) { zp_go_p = gp; zp_go_s = bs; }
-	if (zp_state == ZP_CONFIRM && strlen(zp_nonce_now))
-	{
-		// P1081: the disruptive choice is its own button, a click only (ZonePub_Key).
-		ZonePub_Button(np, bs, "zp_now", "Reload now", rsz, FALSE, TRUE);
-		zp_now_p = np; zp_now_s = bs;
-		np = np - [bs_x + 8 * ui_cv_scale, 0, 0];
-	}
 	if (zp_state == ZP_CHALLENGE || zp_state == ZP_CONFIRM)
 	{
-		ZonePub_Button(np, bs, "zp_no", "Cancel", rsz, FALSE, TRUE);
+		ZonePub_Button(np, bs, "zp_no", "Cancel", rsz, FALSE, TRUE);     // P815's place, unchanged
 		zp_no_p = np; zp_no_s = bs;
 	}
-	if (zp_state == ZP_CONFIRM)
+	if (zp_state == ZP_CONFIRM && strlen(zp_nonce_now))
+	{
+		// P1081: the disruptive choice at the far left, away from Cancel, a click only (ZonePub_Key).
+		tp = [p_x + pad, gp_y, 0];
+		ZonePub_Button(tp, bs, "zp_now", "Reload now", rsz, 2, TRUE);
+		zp_now_p = tp; zp_now_s = bs;
+	}
+	else if (zp_state == ZP_CONFIRM)
 		sui_text([p_x + pad, gp_y + (bh - rsz) * 0.5], [rsz, rsz], zp_bycmd ? "click to confirm" : "Enter / Esc",
 		         SUI_THEME_MUTED, 1, 0);
 

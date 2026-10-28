@@ -82,6 +82,8 @@ float  ze_grid;                     // snap, units
 float  ze_snap;                     // 1 the grid, 0 the surface as hit
 float  ze_mouse_seen;
 vector ze_mouse;
+float  ze_mouse_real_seen;          // P1081: the pointer as the DEVICE last put it (cl_input_real)
+vector ze_mouse_real;
 vector ze_panel_p, ze_panel_s;
 float  ze_scroll;
 
@@ -617,6 +619,7 @@ float() ZoneEdit_MayWrite =
 {
 	if (ZoneEdit_Hosting())
 		return TRUE;
+	if (zone_cmd_taint) return FALSE;  // P1081: a steered real click must not write or remove a file
 	if (ze_real_t > 0)
 	if (cltime - ze_real_t < 1)
 		return TRUE;
@@ -648,15 +651,18 @@ void(float force) ZoneEdit_Save =
 		ZoneEdit_Note("nothing to save: there are no zones (an empty file would be ignored)");
 		return;
 	}
+	// P1081: no file on disk may come from edits a server could have typed for us, or from a
+	// table that came from this server's map or packages (zone_base_untrusted).
+	if ((zone_cmd_taint || zone_base_untrusted) && !ZoneEdit_Hosting())
+	{
+		ZoneEdit_Note(zone_cmd_taint
+		              ? "NOT SAVED: a command or synthetic input changed these zones on this server; Reload, then edit with the panel"
+		              : "NOT SAVED: these zones came from this server's map or packages; edit them in a game you host");
+		return;
+	}
 	if (!ZoneEdit_MayWrite())
 	{
 		ZoneEdit_Note("on someone else's server, save with a click on the panel's save button");
-		return;
-	}
-	// P1081: no file on disk may come from edits a server could have typed for us.
-	if (zone_cmd_taint && !ZoneEdit_Hosting())
-	{
-		ZoneEdit_Note("NOT SAVED: a console command changed these zones on this server; Reload, then edit with the panel");
 		return;
 	}
 	if (!ze_dirty)
@@ -1580,6 +1586,12 @@ float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 	valid = (scanx >= 0 && scanx < ZE_KEYCOUNT);
 	owned = 0;
 	if (ze_field_keys && valid) owned = ze_field_keys[scanx];
+	// P1081: chat_mouse, hud_edit key/click/type and zone_edit pointer reach here with no device
+	// behind them, and a server can type those commands: the table is no longer the admin's alone.
+	if (!cl_input_real)
+	if (ui_ze_state || owned)
+	if (!ZoneEdit_Hosting())
+		zone_cmd_taint = TRUE;
 	if (evtype == IE_KEYUP)
 	{
 		if (!owned) return FALSE;
@@ -1587,7 +1599,7 @@ float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 		if (owned == 4) ZoneEdit_FieldKey(evtype, scanx, chary);
 		if (scanx == K_MOUSE1)
 		{
-			onpanel = (ze_mouse_seen && is_2dpoint_in_bbox(ze_mouse, ze_panel_p, ze_panel_s));
+			onpanel = (ze_mouse_real_seen && is_2dpoint_in_bbox(ze_mouse_real, ze_panel_p, ze_panel_s));
 			if (owned == 1 && ui_ze_state && ze_cursor && !ze_drag)
 			{
 				if (cl_input_real && onpanel) ze_real_t = cltime;
@@ -1601,6 +1613,7 @@ float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 	if (evtype == IE_MOUSEABS && ze_cursor)
 	{
 		ze_mouse = [scanx, chary]; ze_mouse_seen = TRUE;
+		if (cl_input_real) { ze_mouse_real = ze_mouse; ze_mouse_real_seen = TRUE; }
 		sui_input_event(evtype, scanx, chary, devid);
 		return TRUE;
 	}

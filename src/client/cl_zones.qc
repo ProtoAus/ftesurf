@@ -296,10 +296,27 @@ float() Zone_LoadFromBsp =
 float zone_own;            // P815: the table is this install's own saved edit
 float zone_sync_wait;      // P815: the server's table is wanted, deferred until no run is in progress
 float zone_cmd_taint;      // P1081: a `zone_edit` command changed it off-host; a file load clears it
+float zone_base_untrusted; // P1081: it came from the map's BSP or a package (the server's, off-host)
+
+// P1081: whichpack with WP_FULLPATH (2) names the folder ("ftesurf") for a loose file and
+// "folder/package" for a packed one; a file it cannot find is null. Asked in fopen's order
+// (QC_FixFileName: data/ first, then the plain path). Packed or not found is not ours.
+float(string path) Zone_FromPackage =
+{
+	local string where;
+	where = "";
+	if (strcmp(substring(path, 0, 5), "data/") != 0) where = whichpack(strcat("data/", path), 2);
+	if (!strlen(where)) where = whichpack(path, 2);
+	return (!strlen(where) || strstrofs(where, "/", 0) >= 0);
+};
+
+// P1081: a loose file in this game's own folder (a data/ path, as written); null fails closed.
+float(string path) Zone_LooseOwn = { return (strcmp(whichpack(path, 2), "ftesurf") == 0); };
 
 float(string map) Zone_LoadOrdinary =
 {
-	zone_own = zone_cmd_taint = FALSE;
+	local string path;
+	zone_own = zone_cmd_taint = zone_base_untrusted = FALSE;
 	// local BEFORE online: dropping a file in ftesurf/maps/zones/local/ has to
 	// override Momentum's shipped copy, which is the whole point of the
 	// directory.  (surf_drift is the test: local says 10 regions, online 12.)
@@ -310,22 +327,30 @@ float(string map) Zone_LoadOrdinary =
 	// rather than a preference: it holds what cl_zonedl.qc fetched from our
 	// mirror, and a fetched file must never beat one that shipped or one you
 	// edited -- unless the server names it as its own (Zone_SyncServer).
+	path = "";
 	if (Zone_LoadJson(strcat("data/maps/zones/local/", map, ".json"), ZSRC_LOCAL))
-		zone_own = (whichpack(strcat("data/maps/zones/local/", map, ".json"), 0) == "");   // not a map's pack
+	{
+		path = strcat("data/maps/zones/local/", map, ".json");
+		zone_own = (whichpack(path, 0) == "");   // not a map's pack
+	}
 	else if (Zone_LoadJson(strcat("maps/zones/curated/", map, ".json"), ZSRC_ONLINE))
-		;
+		path = strcat("maps/zones/curated/", map, ".json");
 	else if (Zone_LoadJson(strcat("maps/zones/local/",  map, ".json"), ZSRC_LOCAL))
-		;
+		path = strcat("maps/zones/local/", map, ".json");
 	else if (Zone_LoadJson(strcat("maps/zones/online/", map, ".json"), ZSRC_ONLINE))
-		;
+		path = strcat("maps/zones/online/", map, ".json");
 	else if (Zone_LoadJson(strcat("maps/zones/dl/", map, ".json"), ZSRC_DL))
-		;
+		path = strcat("maps/zones/dl/", map, ".json");
 	else if (!Zone_LoadFromBsp())
 	{
 		// No file and no brushes.  Either this map genuinely has no zones --
 		// the common case, 1,156 of the 1,743 we hand out -- or it was zoned
 		// after the release this install came from.  One request settles it.
 	}
+	else
+		zone_base_untrusted = TRUE;     // P1081: the map's own triggers
+	if (strlen(path))
+		zone_base_untrusted = Zone_FromPackage(path);
 	Zone_Hash();
 	return zone_count;
 };
@@ -343,8 +368,10 @@ float(string path, float src, string want) Zone_TryFile =
 {
 	Zone_Clear();
 	zone_cmd_taint = FALSE;
+	zone_base_untrusted = TRUE;
 	if (!Zone_LoadJson(path, src))
 		return FALSE;
+	zone_base_untrusted = Zone_FromPackage(path);
 	Zone_Hash();
 	return (strcmp(zone_crc, want) == 0);
 };
@@ -390,7 +417,7 @@ void() Zone_LoadForMap =
 	map = serverkey("map");
 	zone_mapname = map;
 	Zone_Clear();
-	zone_own = zone_sync_wait = zone_cmd_taint = FALSE;
+	zone_own = zone_sync_wait = zone_cmd_taint = zone_base_untrusted = FALSE;
 
 	if (map == "")
 		return;

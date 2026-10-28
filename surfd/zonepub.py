@@ -17,6 +17,7 @@ import math
 from pathlib import Path
 import re
 import secrets
+import socket
 import sqlite3
 import sys
 import time
@@ -31,6 +32,7 @@ PUBLISH_MARKER = b'a command cannot start a publish'
 # P1081: only a client that offers "reload now" may ask for it (cl_zonepublish.qc's dialog text).
 NOW_MARKER = b'Lobbies on it are warned, then reload'
 SITE = 'play.proto.bar:443'
+PUBLIC_HOSTS = ('play.proto.bar',)      # P1081: the name players reach the lobbies by
 KIND = -6
 NAME = re.compile(r'[a-z0-9_-]{1,64}')
 HEX64 = re.compile(r'[0-9a-f]{64}')
@@ -60,6 +62,23 @@ def connect(path, readonly=False):
             yield db
     finally:
         db.close()
+
+
+def resolve_public():
+    return {a[4][0] for h in PUBLIC_HOSTS for a in socket.getaddrinfo(h, None)}
+
+
+def official(server, st, local=pub.is_local, resolve=resolve_public):
+    """P1081: the server a client says it is on (its own netchan address, which the server it
+    is on cannot set) is one of our lobbies: a lobby port of this machine, at an address of this
+    machine or of the public name. A hostile server's map, packages and commands stay out."""
+    if st is None or not isinstance(server, str): return False
+    host, _, port = server.rpartition(':')
+    host = host.strip('[]').lower()
+    if not port.isdigit() or int(port) not in st.get('all_ports', ()) or not host: return False
+    if host in PUBLIC_HOSTS or local(host): return True
+    try: return host in resolve()
+    except OSError: return False
 
 
 def migrate(db):
@@ -182,7 +201,7 @@ SWEEP_LOG = '/srv/nvme/surfd/logs/sweep.log'
 
 
 def create_app(store, account_db, game_files, clock=time.time, verify=None, publish_dirs=(),
-               maps_fn=None, sweep_log=SWEEP_LOG, rcon_fn=pub.lobby_rcon):
+               maps_fn=None, sweep_log=SWEEP_LOG, rcon_fn=pub.lobby_rcon, official_fn=None):
     app = Flask(__name__)
     app.config['MAX_CONTENT_LENGTH'] = MAX_ZONE_BYTES + 1024
     store, account_db = Path(store), Path(account_db)
@@ -190,6 +209,8 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
         with connect(store) as db: migrate(db)
     if maps_fn is None:     # account_db is surfd.db: its lobbies and replays tables too
         maps_fn = lambda: pub.lobby_state(account_db, sweep_log, clock())
+    if official_fn is None:
+        official_fn = lambda server: official(server, maps_fn())
     games = tuple(Path(p) for p in game_files)
     publish_dirs = tuple(Path(p) for p in publish_dirs)
     peer_salt = secrets.token_bytes(32)
@@ -246,6 +267,12 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
         name, sha = data.get('map', ''), data.get('sha', '')
         if not isinstance(name, str) or not NAME.fullmatch(name) or not isinstance(sha, str) or not HEX64.fullmatch(sha):
             return fail('Invalid map or saved-file hash', 400)
+        # P1081: "host" (the P815 client says nothing: it publishes only from a game it hosts),
+        # or the lobby it is on, which must be ours (official()).
+        server = data.get('server', 'host')
+        if not isinstance(server, str) or len(server) > 80: return fail('Invalid server', 400)
+        if server != 'host' and publish_dirs and not official_fn(server):
+            return fail('Publish from one of our lobbies or from a game you host', 403)
         now = int(clock())
         peer = hashlib.sha256(peer_salt + (request.remote_addr or '').encode()).hexdigest()
         try:
@@ -340,8 +367,8 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                 return fail('Accepted, but the zone files could not be written; an operator must look', 500)
             if force:
                 return jsonify(ok=1, draft=ident, published=0, now=1,
-                               note='Accepted: lobbies on %s are warned and reload with these zones once its '
-                                    'runs are verified, usually within %d minutes' % (name, (pub.FORCE_NOTICE + 360) // 60))
+                               note='Accepted: lobbies on %s are warned, then reload with these zones once its '
+                                    'runs are verified, usually within 10 minutes' % name)
             return jsonify(ok=1, draft=ident, published=0,
                            note='Accepted: live once no lobby has had %s loaded for %d minutes and its runs are '
                                 'verified' % (name, pub.QUIET // 60))
