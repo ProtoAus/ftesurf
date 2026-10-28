@@ -45,20 +45,6 @@ From the two independent reviews of 28 Oct. Every case stays TAS-flagged; none r
   changing head, serial, byte extent, request, pin or recording status. Never fill
   historical fields with values from the live head.
 
-## Backend serving outage / guarded owner recovery (27 Oct2026)
-
-- Sites: deployed surfd/run.sh guarded server route and /health,/lobbies.json.
-  API8084 is not listening/public health502; selected maintenance generation's
-  admission explicitly CLOSED. All12 ftesurf@N processes run; lobby1's public
-  UDP27510 answered a status query. Do not conflate unavailable directory/board
-  with proof that native processes are down, or a response with full gameplay.
-- Falsifier: cohort OWNER supplies recovery handoff or completes the supported
-  guarded serving start; verify health, fresh12-lobby JSON and one real board/
-  completion request. Never bypass the fence, use an unguarded worker, mutate
-  another task's state or weaken ownership/consent/provenance to get green.
-  Non-lock handoff request remains in canonical tools/menu-backend-recovery-request.md;
-  this menu change does not claim backend/site recovery or promotion.
-
 ## Windows SDL3 whole-client link: Alt-key helper
 
 - engine/client/keys.c:Key_Event references INS_AltHeld, supplied by the Win input
@@ -227,6 +213,8 @@ From the two independent reviews of 28 Oct. Every case stays TAS-flagged; none r
   only once a generation built from main carries P984's zonefit.
 - Falsifier: after the next generation cutover, mapwatch prints "given to a
   second build" for such a map; its nofit table no longer lists OWN-TIMER.
+- 28 Oct: generation 74e060d7 carries P984's zonefit (live 06:32Z); remove this
+  once a mapwatch run (cron 23 */6) shows the falsifier above.
 
 ## hidcheck: leftisright values the journal cannot carry exactly (P982 review 2)
 

@@ -1745,6 +1745,10 @@ renderer; source and build in `src/viewer/` (its README). The bundle
 
 ## surfd successor generation, code only (P770, 2026-10-18)
 
+- Since 27 Oct surfd is a root systemd unit whose sandbox drop-in allows writes only to the live
+  generation's state/control; proto's sudo is start/stop surfd.service + daemon-reload, so a new
+  generation root needs Lex to install a new drop-in. Stubs are SEVEN (momgrab.py too); a missed
+  one holds the old fence open. Worked example and traps: tools/surfd-generation-p1080.md.
 - The Pi's surfd is a sealed guarded generation; `surfd-deploy.ps1` refuses it
   (P727). `tools/surfd_successor/` promotes a code-only successor (same schema):
   `build_gen.py ROOT SHA OLD` (stage = `git archive` of a pushed commit + the

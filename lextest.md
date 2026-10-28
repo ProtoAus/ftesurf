@@ -1,11 +1,14 @@
 # lextest.md — things waiting on a human
 
-**P1080 -- completed sort on the Maps list (owner check pending):** the menu
-half works against a synthetic board; the live half needs the backend generation
-that carries `/api/board?completed=`. Once that is live, open Maps and pick Sort
-"incomplete first": are maps you have finished (clean main track) below the
-ones you have not, and "completed first" the reverse? Cards' Complete line and
-the sort should agree on every row you look at.
+**P1080 + live board data (owner checks pending):** menu ee999eab in both Windows
+installs 06:34Z; surfd generation 74e060d7 live 06:32Z (P1054 WOS figures, P1062
+map cards, P1080 completed list -- postswap_check passed all five against the
+public API); lobby natives B7/patch-1066 06:37Z. With Steam linked, online:
+(1) Home's bottom stats -- does the WOS / Everything switch now change the
+numbers? (2) Maps cards -- do Your WOS / Your overall / WOS WR / Overall WR show
+times, and Complete on maps you have finished? (3) Sort "incomplete first" /
+"completed first" -- finished maps (clean main track) below / above the rest,
+agreeing with each card's Complete line? (4) On a lobby, TAS timeline/undo work.
 
 **P1079 -- ordinary segmented/shadow map interactions (owner check pending):**
 Server progs live on both Windows installs and all 12 lobbies 2026-10-28T04:57Z
