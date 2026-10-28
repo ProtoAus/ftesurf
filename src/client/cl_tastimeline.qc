@@ -3,11 +3,55 @@ float tast_tag, tast_serial, tast_head, tast_request, tast_first, tast_n, tast_s
 float tast_undo, tast_redo, tast_selected, tast_from, tast_to, tast_field, tast_value;
 float tast_next;
 float tast_rows[TAS_PAGE_ROWS * 7]; // present, forward, side, up, pitch word, yaw word, buttons
+// P1082 project status, from the server's event 51.
+string tasp_cl_name;
+float tasp_cl_rev, tasp_cl_base, tasp_cl_head, tasp_cl_load, tasp_cl_stop, tasp_cl_result;
+float tasp_cl_dev, tasp_cl_devtick, tasp_cl_ncp, tasp_cl_next, tasp_cl_asked;
+
+void(float first) TASTimeline_Request;
+void() TASProject_Event =
+{
+	local string n;
+	local float was;
+	n = readstring();
+	if (tasp_cl_name) strunzone(tasp_cl_name);
+	tasp_cl_name = strzone(n);
+	tasp_cl_rev = readlong(); tasp_cl_base = readlong(); tasp_cl_head = readlong();
+	was = tasp_cl_load;
+	tasp_cl_load = readbyte(); tasp_cl_stop = readlong(); tasp_cl_result = readbyte();
+	tasp_cl_dev = readfloat(); tasp_cl_devtick = readlong(); tasp_cl_ncp = readbyte();
+	if (was && !tasp_cl_load && tasu_open && tasu_tab) TASTimeline_Request(0);  // show the loaded head
+};
+
+// tas project ... / tas cp ...: forwarded word for word; names are a-z 0-9 _ -.
+float(float argc, float seat) TASProject_ConsoleCommand =
+{
+	local float i, j, c;
+	local string line, w;
+	line = sprintf("p%g cmd tas", seat + 1);
+	for (i = 1; i < argc; i = i + 1)
+	{
+		w = argv(i);
+		for (j = 0; j < strlen(w); j = j + 1)
+		{
+			c = str2chr(w, j);
+			if (!((c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95 || c == 45))
+			{
+				print("tas project: save [name] [force] | load name [checkpoint] | list | diff a b | status | close; tas cp add/del name | list\n");
+				return TRUE;
+			}
+		}
+		line = strcat(line, " ", w);
+	}
+	localcmd(strcat(line, "\n"));
+	return TRUE;
+};
 
 void() TASTimeline_Reset =
 {
 	tast_tag = tast_tag + 1; // invalidate an in-flight page, including close/map change
 	tast_n = tast_undo = tast_redo = 0;
+	tasp_cl_asked = FALSE;  // ask for project status on the next open
 };
 
 float() TASTimeline_Current =
@@ -181,8 +225,38 @@ void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw 
 	if (Profile_Chip("tast_undo",at+[(width+6)/3,0,0],chip,sprintf("Undo (%.0f)",tast_undo),tsz,current && tast_undo>0)) TASTimeline_History(FALSE);
 	if (Profile_Chip("tast_redo",at+[(width+6)*2/3,0,0],chip,sprintf("Redo (%.0f)",tast_redo),tsz,current && tast_redo>0)) TASTimeline_History(TRUE);
 	at_y = at_y + row + hint;
-	sui_text(at,[hint,hint],current ? "Warm input history only; shared world is NOT rewound." :
-		"Refresh after execution. Eight revisions; not a saved project.",SUI_THEME_MUTED,1,0);
+	// P1082: the project row. The server answers each button in the console too.
+	if (!tasp_cl_asked) { tasp_cl_asked = TRUE; localcmd("p1 cmd tas project event\n"); }
+	if (tasp_cl_name == "") label = "Project: none. Save project keeps these inputs and a base save on disk.";
+	else
+	{
+		label = sprintf("Project %s rev %.0f | ticks %.0f..%.0f | %.0f checkpoints | ", tasp_cl_name, tasp_cl_rev,
+			tasp_cl_base, tasp_cl_head, tasp_cl_ncp);
+		if (tasp_cl_load) label = strcat(label, sprintf("loading to %.0f", tasp_cl_stop));
+		else if (tasp_cl_result == 1) label = strcat(label, "reproduced exactly");
+		else if (tasp_cl_result == 2) label = strcat(label, sprintf("DIVERGED at %.0f", tasp_cl_devtick));
+		else if (tasp_cl_result == 3) label = strcat(label, "load stopped");
+		else label = strcat(label, "saved");
+	}
+	sui_text(at,[hint,hint],label,tasp_cl_result == 2 ? SUI_THEME_ACCENT : SUI_THEME_DIM,1,0);
+	at_y = at_y + hint*1.6;
+	if (Profile_Chip("tasp_save",at,chip,"Save project",tsz,FALSE) && cltime >= tasp_cl_next)
+	{
+		tasp_cl_next = cltime + 0.5; localcmd("p1 cmd tas project save\n");
+	}
+	if (Profile_Chip("tasp_load",at+[(width+6)/3,0,0],chip,"Reload project",tsz,FALSE) && cltime >= tasp_cl_next)
+	if (tasp_cl_name != "")
+	{
+		tasp_cl_next = cltime + 0.5; localcmd(sprintf("p1 cmd tas project load %s\n", tasp_cl_name));
+	}
+	if (Profile_Chip("tasp_cp",at+[(width+6)*2/3,0,0],chip,"Checkpoint",tsz,FALSE) && cltime >= tasp_cl_next)
+	if (current)
+	{
+		tasp_cl_next = cltime + 0.5; localcmd(sprintf("p1 cmd tas cp add cp%.0f\n", tast_head));
+	}
+	at_y = at_y + row + hint;
+	sui_text(at,[hint,hint],current ? "Warm input history; the shared world is NOT rewound." :
+		"Refresh after execution. Undo keeps eight edits; a project keeps them on disk.",SUI_THEME_MUTED,1,0);
 };
 
 // Console accessibility also drives the actual table actions in socket checks.

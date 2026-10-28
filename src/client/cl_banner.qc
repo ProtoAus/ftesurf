@@ -393,7 +393,7 @@ void(float tail) Bn_Place =
 
 	flags = ui_bn_flags;
 	if (tail)
-		flags = LT_StageFlags(ui_bn_tailword) | (ui_bn_flags & TF_BANKTAINT);
+		flags = LT_StageFlags(ui_bn_tailword) | (ui_bn_flags & (TF_UNCERT | TF_TAS | TF_BANKTAINT));
 	if (FS_RunClass(flags) == RC_SEGMENT)
 	if (!(flags & TF_SHADOW))
 		ui_bn_pl2 = strcat("SEGMENTED  ", ui_bn_pl2);
@@ -416,7 +416,7 @@ void(float tail) Bn_Delta =
 		ticks = ui_bn_tailticks;
 		pb    = ui_bn_tailpb;
 		word  = ui_bn_tailword;
-		flags = LT_StageFlags(word) | (ui_bn_flags & TF_BANKTAINT);
+		flags = LT_StageFlags(word) | (ui_bn_flags & (TF_UNCERT | TF_TAS | TF_BANKTAINT));  // as Bn_PlaceRaw's tail
 		src   = ui_bn_tailpbsrc;
 		kept  = ui_bn_tailkept;
 	}

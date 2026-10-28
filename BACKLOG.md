@@ -11,6 +11,18 @@
   `maprating_0_0` on a lobby within one refresh cycle, with no hand step, and an
   unchanged list leaves the asset byte-identical (no churn to the signed asset).
 
+## TAS projects (P1082): what is left
+
+- Exact cold resume: the engine keeps the live connection's `pmsrc.msec_carry` into a
+  replay and QC cannot set it. Measured: 3 of 5 cold loads of a duck-then-jump line on
+  bhop_eazy ended 0.7225 off from tick 277 (stage6 p1082-arm9). Sketch: a `tas_tape` op that
+  sets a paused body's carry, the base's carry stored in the project (ring row [49]), and
+  the load setting it before the first chunk; falsifier = the same five loads all exact.
+- A `reconnect` leaves the old connection's body solid for 40 s or more (`cmd stuck`:
+  hit 'player'); a project line through that spot stops on it.
+- Panel: list and load other projects, rename, delete; today that is the console.
+- Projects on lobbies (refused now: Lobby_Active): needs a per-player data root and quota.
+
 ## TAS timeline (P1077): review findings left open
 
 From the two independent reviews of 28 Oct. Every case stays TAS-flagged; none ranks.

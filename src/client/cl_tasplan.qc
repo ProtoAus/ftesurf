@@ -4,6 +4,7 @@ float(float argc, float seat) CL_TASPlanCommand =
 	local float count, ticket, next;
 	local string line;
 	if (!strcmp(argv(1), "timeline")) return TASTimeline_ConsoleCommand(argc,seat);
+	if (!strcmp(argv(1), "project") || !strcmp(argv(1), "cp")) return TASProject_ConsoleCommand(argc,seat);
 	if (!strcmp(argv(1), "menu"))
 	{
 		if (argc == 2) TASUI_Toggle(seat);

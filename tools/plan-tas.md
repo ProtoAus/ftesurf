@@ -151,6 +151,10 @@ implementation; owner rendered/feel acceptance is in lextest.md.
 
 ## Stage 3: project revisions and a basic input timeline
 
+Status 28 Oct: P1077 (timeline, undo/redo) and P1082 (projects: tools/p1082-tas-projects.md)
+deliver the local part. Not yet: a portable format without a base save, branch browser UI,
+and exact cold resume, which needs an engine op to set the mover's sub-tick carry.
+
 Version a canonical project format. Store map/zone/ruleset identities, full checkpoints,
 immutable input chunks, parent revisions, assistance metadata and explicit origin trust.
 Keep project assets separate from player data and ordinary run receipts. Bound untrusted

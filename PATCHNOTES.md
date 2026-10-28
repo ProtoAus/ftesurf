@@ -21,6 +21,11 @@
 
 ## next
 
+### P1082 Save TAS projects and reopen them later
+- The TAS timeline can save your line as a project and reload it after leaving the map or restarting: it replays every input from a TAS save and says whether it reproduced exactly.
+- Name checkpoints, load up to one, fork a project under a new name and compare two projects tick by tick. Local games only for now.
+- A TAS run's last stage on the results banner now always reads TAS, never segmented or a clean time.
+
 ### P1080 Sort maps by completion
 - The Maps list has a Sort row: tier order, incomplete first or completed first, using your clean main finishes (WOS, Momentum Mod or KSF). Tier order is kept within each group. Without a linked account online it says so and keeps tier order.
 
