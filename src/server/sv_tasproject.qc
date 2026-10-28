@@ -860,23 +860,42 @@ void(filestream f, entity e, float s, string parent) SV_TASPEmit =
 	fputs(f, sprintf("end %.0f\n", e.tasp_n));
 };
 
-float(entity e, float s, string name, string parent) SV_TASPWrite =
+// P1089 review 2: an empty identity value would end its line in a space the reader refuses.
+float(entity e) SV_TASPIdentityOK =
 {
-	local filestream f;
-	local string h, tmp;
-	// P1089 review 2: an empty identity value would end its line in a space the reader
-	// refuses: say so plainly.
 	if (infokey(world, "*mapcrc") == "" || zone_crc == "" || SV_RecPinText(e, "*pmpin") == "")
 	{
 		sprint(e, PRINT_HIGH, "tas project: this map has no checksum, zones or movement pin to bind a project to\n");
 		return FALSE;
 	}
-	// P1089 review 3: emit into <path>.new and read that back with the identity lines first;
-	// a file the reader would refuse (a map name, a row, a revision out of its bounds) then
-	// never replaces the last revision. The real file is written whole, revsha included.
-	tmp = strzone(strcat(SV_TASPPath(name), ".new"));
+	return TRUE;
+};
+
+/*
+  P1089 reviews 3-4: the real file is never written in place. FILE_WRITE buffers in memory and
+  replaces the file at fclose, so an abort with the buffer open (the runaway counter) would
+  leave a truncated revision. The revision goes to <path>.new (removed first and checked gone,
+  so a stale one is never validated), is read back with the identity lines, gets its revsha,
+  and only then replaces the real file: remove, then rename (Windows will not rename over a
+  file). A failed rename keeps the complete .new and says so.
+*/
+float(entity e, float s, string name, string parent) SV_TASPWrite =
+{
+	local filestream f;
+	local string h, tmp, real;
+	if (!SV_TASPIdentityOK(e)) return FALSE;
+	real = strzone(SV_TASPPath(name));
+	tmp = strzone(strcat(real, ".new"));
+	fremove(tmp);
+	f = fopen(tmp, FILE_READ);
+	if (f >= 0)
+	{
+		fclose(f);
+		sprint(e, PRINT_HIGH, sprintf("tas project: cannot clear %s; the last revision is kept\n", tmp));
+		strunzone(tmp); strunzone(real); return FALSE;
+	}
 	f = fopen(tmp, FILE_WRITE);
-	if (f < 0) { strunzone(tmp); return FALSE; }
+	if (f < 0) { strunzone(tmp); strunzone(real); return FALSE; }
 	SV_TASPEmit(f, e, s, parent);
 	fclose(f);
 	tpr_pathover = tmp;
@@ -884,18 +903,24 @@ float(entity e, float s, string name, string parent) SV_TASPWrite =
 	{
 		tpr_pathover = "";
 		sprint(e, PRINT_HIGH, sprintf("tas project: the new revision would not load (%s); the last one is kept\n", tpr_why));
-		SV_TASPReadFree(); fremove(tmp); strunzone(tmp);
+		SV_TASPReadFree(); fremove(tmp); strunzone(tmp); strunzone(real);
 		return FALSE;
 	}
 	tpr_pathover = "";
 	h = strzone(tpr_h);
 	SV_TASPReadFree();
-	fremove(tmp); strunzone(tmp);
-	f = fopen(SV_TASPPath(name), FILE_WRITE);
-	if (f < 0) { strunzone(h); return FALSE; }
-	SV_TASPEmit(f, e, s, parent);   // the same lines but `saved`, which the hash leaves out
+	f = fopen(tmp, FILE_APPEND);
+	if (f < 0) { fremove(tmp); strunzone(tmp); strunzone(real); strunzone(h); return FALSE; }
 	fputs(f, sprintf("revsha %s\n", h));
 	fclose(f);
+	fremove(real);
+	if (frename(tmp, real) != 0)
+	{
+		sprint(e, PRINT_HIGH, sprintf("tas project: could not move %s into place; the revision is in that file\n", tmp));
+		strunzone(tmp); strunzone(real); strunzone(h);
+		return FALSE;
+	}
+	strunzone(tmp); strunzone(real);
 	if (tasp_revsha[s]) strunzone(tasp_revsha[s]);
 	tasp_revsha[s] = h;
 	return TRUE;
@@ -988,6 +1013,7 @@ void(entity e, string name, float force) SV_TASProjectSave =
 		sprint(e, PRINT_HIGH, sprintf("tas project: %.0f projects on this map is the limit\n", TASP_FILES));
 		return;
 	}
+	if (!SV_TASPIdentityOK(e)) return;   // before a base save exists (P1089 review 4)
 	if (!SV_SaveLocRate(e)) return;
 	name = strzone(name);
 	if (!attached)
