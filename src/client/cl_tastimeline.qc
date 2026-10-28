@@ -282,6 +282,16 @@ void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw 
 		sui_text(at,[hint,hint],label,(tasc_ok && tasc_dt > 0) ? SUI_THEME_ACCENT : SUI_THEME_DIM,1,0);
 		at_y = at_y + hint*1.6;
 	}
+	// P1088: the server searches a constant turn for exit speed over the next 32 ticks.
+	if (Profile_Chip("topt_left",at,chip,"Best turn left (32)",tsz,FALSE) && cltime >= tasp_cl_next && current)
+	{
+		tasp_cl_next = cltime + 0.5; localcmd("p1 cmd tas optimize 32 left\n");
+	}
+	if (Profile_Chip("topt_right",at+[(width+6)/3,0,0],chip,"Best turn right (32)",tsz,FALSE) && cltime >= tasp_cl_next && current)
+	{
+		tasp_cl_next = cltime + 0.5; localcmd("p1 cmd tas optimize 32 right\n");
+	}
+	at_y = at_y + row + hint;
 	sui_text(at,[hint,hint],current ? "Warm input history; the shared world is NOT rewound." :
 		"Refresh after execution. Undo keeps eight edits; a project keeps them on disk.",SUI_THEME_MUTED,1,0);
 };

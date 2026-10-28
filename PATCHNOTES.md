@@ -21,6 +21,10 @@
 
 ## next
 
+### P1088 TAS: find the best turn for exit speed
+- TAS can now search for you: Best turn left/right in the TAS panel, or `tas optimize <ticks> <left|right>`, tries turn rates from your current view while strafing that way and keeps the one with the most speed at the end. It plays that one and stays paused there.
+- Every try is the real movement on the real map, and the console lists each rate and speed. The search covers one constant turn, not every possible line.
+
 ### P1087 TAS: compare against the line you just changed
 - When TAS steps back, or the timeline recalculates or undoes, the part of your line it replaced stays on screen as a pink line. A pink ghost runs it on your clock.
 - The TAS panel shows how far ahead or behind you are at the same place on that line, and your speed difference there.
