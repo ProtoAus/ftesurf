@@ -121,12 +121,7 @@ def initialize(path):
     os.chmod(path, 0o600)
 
 
-def same_zones(a, b):
-    """The same zone JSON, whitespace and key order aside; False when either cannot be read."""
-    canon = lambda body: json.dumps(json.loads(body), sort_keys=True, separators=(',', ':'))
-    if a is None or b is None: return False
-    try: return canon(a) == canon(b)
-    except (ValueError, UnicodeDecodeError, RecursionError): return False
+same_zones = pub.same_zones      # the upload's "already live" test is the write's no-op test
 
 
 def validate(body):

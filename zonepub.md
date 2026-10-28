@@ -109,24 +109,32 @@ fail. An upload signed with `nonce_now` (csprogs carrying `NOW_MARKER`, a crc st
   stamp: not ready) and nothing owed; a lobby whose own warning is over 5 minutes old is told
   again; a lobby that arrived since is warned and waited for; every target must answer
   `serverinfo` just before the write (its zonecrc then is kept); pending an hour: `expired`.
-- Write, stamped (rounded up) after `put()`, then one round per 55 s over the targets and any
-  lobby the table later shows on the map. A lobby is done when its serverinfo `zonecrc` is the
-  stated crc and -- unless its crc before the write showed the old table -- it also loaded after
-  the write: a lobby found later, re-armed or recovered, or one whose crc cannot tell old from
-  new (an edit that hashes the same: teleport destinations, speed cap), needs both (no crc
-  stated, legacy: the load time alone). One that loaded after the write and still runs another
-  table (a file that shadows the published one, a crc that never matches) is left as `partial`
+- Write, then one round per 55 s over the targets and any lobby the table later shows on the
+  map. A lobby is done when its serverinfo `zonecrc` is the stated crc and -- unless its read
+  just before the write showed THIS map with another, non-empty crc (the old table) -- it also
+  loaded after the write: a lobby found later, re-armed or recovered, on another map or with no
+  crc at that read, or whose crc cannot tell old from new (an edit that hashes the same:
+  teleport destinations, speed cap), needs both (no crc stated, legacy: the load time alone).
+  "Loaded after the write" is the lobby's `status` uptime against a monotonic stamp taken after
+  `put()` plus a second (uptime is whole seconds), kept with its boot id; a recovery stamps
+  afresh (later than the write: a load in between is reloaded once more). In another boot the
+  load time cannot be measured: a lobby whose crc showed the old table goes by the crc alone,
+  any other is held, "cannot tell after restart", in `partial`, without a changelevel, until
+  `zonepub.py reload` stamps again. One that loaded after the write and still runs another table
+  (a file that shadows the published one, a crc that never matches) is left as `partial`
   ("loaded another table") and never changelevelled again. Otherwise `changelevel`; a lobby not
   warned for this reload is told first and given a minute. A try is spent only on a changelevel
   sent; 5 tries, 4 silent rounds or 30 minutes leave it in `partial` too. Left lobbies are still
   read each round and cleared if they later run the table; a lobby keeps its state across moves
   off the map and back. The row ends only in a round whose lobby table was read (lobby cfgs
   included), after two such rounds, with every lobby done, moved off or left (`live-partial` --
-  rollback treats it as live); `zonepub.py reload --map M` re-arms it with its own clock
-  (`status --map M` shows rows). A rollback, or any newer write of the map, ends a watch with a
-  note and nothing said to the lobbies; re-arming past it is refused. Zones already live in every
-  publish directory (the same JSON, whitespace and key order aside) are refused ("Reload now is
-  for a change") unless they cancel a force still waiting; not by crc, which leaves out teleport
+  rollback treats it as live); `zonepub.py reload --map M` re-arms it with its own clock,
+  keeping the write's stamp within the same boot (`status --map M` shows rows). A rollback, or
+  any newer write of the map (a partial one too), ends a watch with a note and nothing said to
+  the lobbies; re-arming past it is refused. Zones already live in every publish directory (the
+  same JSON: whitespace, key order and number spelling aside) are refused ("Reload now is for a
+  change") unless they cancel a force still waiting, and the write's own "already live" test is
+  the same rule, so such a cancel writes nothing; not by crc, which leaves out teleport
   destinations and the speed cap. A crash between the write and the reload recovers as live and
   the reload still runs. A rollback row states the crc of the bytes it restored, as stated by a
   row that wrote them live.
@@ -135,10 +143,10 @@ fail. An upload signed with `nonce_now` (csprogs carrying `NOW_MARKER`, a crc st
   inside its lock; admin.py keeps 8; the engine blocks for 24 h past 15). rcon also shares the
   engine's 20 packets/s connectionless budget with public status queries, so a flood can
   delay the warning -- which then expires cleanly rather than writing.
-- Clocks: the rcon budget and the 55 s between rounds use the monotonic clock, so a wall-clock
-  step neither frees packets nor stalls rounds. The load-time check (a lobby's uptime against
-  the write's stamp), the warning minute and the expiries still use the wall clock: a step of
-  minutes can shorten or stretch them.
+- Clocks: the rcon budget, the 55 s between rounds and the load-time test use the monotonic
+  clock (its stamps good only within their boot), so a wall-clock step neither frees packets,
+  stalls rounds nor moves a verdict. The warning minute and the expiries still use the wall
+  clock: a step of minutes can shorten or stretch them.
 Password and public name: `SURFD_RCON_PASSWORD`, `SURFD_PUBLIC_HOST` in
 /srv/nvme/surfd/surfd.env; ports: /srv/nvme/ftesurf-server/game/ftesurf/cfg/lobby. Never past
 an owed verdict; evidence posted after the warning and not yet indexed meets the new zones.

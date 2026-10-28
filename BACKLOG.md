@@ -32,6 +32,27 @@ From the round-5 review of P1081; none lets a publish past an owed verdict.
   `server/sv_main.c` rcon accounting). Falsifier: a count of every local rcon sender, or a
   shared budget they all take from.
 
+## zonepub: review 6 leftovers (P1081)
+
+From the round-6 review of P1081; none lets a publish past an owed verdict.
+- Kind after an ended watch: a watch ended by a newer write keeps `kind` `live` even when
+  `partial` lists lobbies (`_force_reload`, the newer-write exit). Falsifier: `status --map M`
+  shows such a row as ended with lobbies left, not as a clean `live`.
+- Recovered force rows: after a crash between the write and the reload, lobbies the row had
+  already warned are changelevelled on their old warning, however long ago (`_recover`, the
+  told check in `_force_reload`). Falsifier: every changelevel after a recovery follows a
+  warning given after it.
+- Backward clock step: a large backward wall-clock step delays the warning expiry and the
+  reload expiry by that much (`_force_pending`, `RELOAD_EXPIRE` in `_force_reload`). Falsifier:
+  with the wall clock stepped back an hour, a warning nobody answers still expires in 15 minutes.
+- After `rollback --anyway` mid-watch: lobbies still on the rolled-back table cannot be reloaded
+  (re-arm is refused past the rollback, Reload now of the live zones is a 409). Falsifier: an
+  operator command that warns and reloads a map's lobbies to the zones on disk.
+- Disk files zonepub did not write: duplicate keys, escaped keys or UTF-16 in a publish
+  directory's file can make `same_zones` call a real fix "already live" (Python's JSON reads
+  them, last key wins). Falsifier: a fix uploaded over such a file is accepted, or refused with
+  a reason naming the file.
+
 ## Server text and server code reaching local commands (left open by P1086)
 
 P1086's review rounds (28 Oct) closed the routes listed in ENGINE.txt's P1086 line. Every
