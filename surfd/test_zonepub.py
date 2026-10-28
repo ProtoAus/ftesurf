@@ -200,6 +200,9 @@ class Publish(Upload):
         super().setUp()
         self.game.write_bytes(b'synthetic P815 game: ' + z.PUBLISH_MARKER)      # the P815 upload flow
         self.code = hashlib.sha256(self.game.read_bytes()).hexdigest()
+        clock = z.pub.CLOCK                     # P1081: the write's and the budget's moment
+        z.pub.CLOCK = lambda: self.now
+        self.addCleanup(setattr, z.pub, 'CLOCK', clock)
         self.dirs = [self.root/'game_zones', self.root/'site_zones']
         for d in self.dirs: d.mkdir()
         self.dirs[0].joinpath('surf_fixture.json').write_bytes(self.OLD)
@@ -222,7 +225,7 @@ class Publish(Upload):
         ports = getattr(self, 'ports', {})
         return {'maps': self.maps, 'owed': self.owed, 'swept': self.swept, 'posted': getattr(self, 'posted', {}),
                 'ports': ports, 'stamps': list(getattr(self, 'stamps', [])),
-                'all_ports': sorted({p for v in ports.values() for p in v})}
+                'unresolved': dict(getattr(self, 'unresolved', {}))}
     def apply(self): return self.app.config['ZONEPUB_APPLY'](self.now)
     def wait(self, seconds):
         # The service hears the lobbies every 60 s; a longer gap restarts the watch.
@@ -300,16 +303,21 @@ class Publish(Upload):
                         "CREATE TABLE verdicts(replay_id INTEGER, verdict TEXT, at INTEGER);")
         log=self.root/'sweep.log'; log.write_text('x\n2026-10-28T05:40:05 sweep: nothing to verify\nevidence y\n'
                                                    '2026-10-28T05:45:04 sweep: nothing to verify\n')
-        state=lambda: z.pub.lobby_state(db,log,self.now,local=lambda h: h.startswith('192.168.1.'))
+        # P1081: surfd writes our lobbies as SURFD_PUBLIC_HOST:port (surfd.py PUBLIC_HOST); the
+        # lobby cfgs name the ports; only a literal address of this machine counts otherwise.
+        ours = {27510, 27520, 27530, 27540}
+        state=lambda: z.pub.lobby_state(db,log,self.now,local=lambda h: h == '127.0.0.1',
+                                        ours=ours, public='play.proto.bar')
         self.assertIsNone(state())                      # no lobby heard yet
-        c.executemany('INSERT INTO lobbies VALUES(?,?,?,?)',[('1','Surf_A',self.now-5,'192.168.1.102:27510'),
-                                                              ('2','surf_b',self.now-20,'192.168.1.102:27520'),
+        c.executemany('INSERT INTO lobbies VALUES(?,?,?,?)',[('1','Surf_A',self.now-5,'play.proto.bar:27510'),
+                                                              ('2','surf_b',self.now-20,'127.0.0.1:27520'),
                                                               ('3','surf_b',self.now-2,'bad'),
                                                               ('4','surf_b',self.now-2,'203.0.113.9:27530'),   # elsewhere
-                                                              ('5','surf_b',self.now-2,'192.168.1.102:28000')]); c.commit()
+                                                              ('5','surf_b',self.now-2,'play.proto.bar:28000'),
+                                                              ('6','surf_b',self.now-2,'evil.example:27540')]); c.commit()
         st=state(); self.assertEqual(st['maps'],{'surf_a','surf_b'}); self.assertEqual(st['owed'],set())
-        # P1081: only this machine's lobby ports; a remote lobby's port is never one of ours
         self.assertEqual(st['ports'],{'surf_a':[27510],'surf_b':[27520]})
+        self.assertEqual(st['unresolved'],{'surf_b':4})   # bad, elsewhere, a port not ours, a name not ours
         self.assertEqual(st['stamps'],['2026-10-28T05:40:05','2026-10-28T05:45:04'])
         c.executemany('INSERT INTO replays VALUES(?,?,?,?,?,?)',[(1,'surf_a','run',0,1,0),(2,'surf_b','momentum',0,1,0),(3,'surf_c','evidence',1,1,0),(4,'surf_d','run',0,1,0)])
         c.executemany('INSERT INTO verdicts VALUES(?,?,?)',[(4,'ERROR',5)]*3); c.commit()
@@ -438,7 +446,7 @@ class PublishNow(Publish):
                       27520: ('surf_other', self.now - 500)}
         self.app = z.create_app(self.store,self.main,[self.game],clock=lambda:self.now,verify=ed25519,
                                 publish_dirs=self.dirs,maps_fn=self.lobbies,rcon_fn=self.rcon,
-                                official_fn=lambda server: server == '192.168.1.102:27510')
+                                official_fn=lambda server: server == 'play.proto.bar:27510')
         self.c = Coded(self.app.test_client())
     def rcon(self, port, argv, reply=False):
         self.sent.append((port,) + tuple(argv))
@@ -473,30 +481,55 @@ class PublishNow(Publish):
         self.assertEqual(self.wait(60),{'surf_fixture':'live'})              # the second sweep: ready
         self.assertEqual(self.files(),[self.raw,self.raw])
         self.assertEqual(self.words('changelevel'),[27510,27530])            # surf_other's lobby: never
+        self.assertEqual(self.row()['live'], self.now)                       # the write's own moment
         self.wait(60)
-        row=self.row(); self.assertEqual((row['kind'],row['force'],row['todo']),('live',1,'[]'))
+        row=self.row(); self.assertEqual((row['kind'],row['force'],row['todo']),('live',1,'{}'))
         self.assertIn('warn 27510:ok 27530:ok', row['reload'])
         self.assertIn('reload 27510:changelevel 27530:changelevel', row['reload'])
         self.assertIn('reload 27510:done 27530:done', row['reload'])
         self.assertEqual(self.words('changelevel'),[27510,27530])            # confirmed: not sent again
         self.maps=set(); self.wait(660); self.rollback()                     # prior bytes kept
         self.assertEqual(self.files(),[self.OLD,None])
+    def test_the_write_is_stamped_after_put_not_at_the_tick(self):
+        self.grant(); self.maps={'surf_fixture'}; self.upload(self.challenge_now()[1]); self.wait(120)
+        late = [0]; real_put = z.pub.put
+        def slow(paths, bodies, limit): real_put(paths, bodies, limit); late[0] = 9
+        z.pub.CLOCK = lambda: self.now + late[0]
+        with patch.object(z.pub, 'put', slow): self.wait(60)
+        self.assertEqual(self.row()['live'], self.now + 9)
+    def test_production_addresses_and_an_unknown_lobby_hold_it(self):
+        self.grant(); self.maps={'surf_fixture'}; self.unresolved={'surf_fixture': 1}
+        self.upload(self.challenge_now()[1])
+        self.assertEqual(self.wait(600),{}); self.assertEqual(self.sent,[])  # nobody told, nothing written
+        self.assertIn('not ours by address and port', self.row()['hold'])
+        self.assertEqual(self.files(),[self.OLD,None])
+        self.unresolved={}; self.wait(60); self.assertEqual(self.words('say'),[27510,27530])
+        self.assertEqual(self.wait(180),{'surf_fixture':'live'})
+    def test_lobbies_on_the_map_with_no_port_of_ours_never_count_as_told(self):
+        self.grant(); self.maps={'surf_fixture'}; self.ports={}                # on it, none resolved
+        self.upload(self.challenge_now()[1]); self.assertEqual(self.wait(900),{})
+        self.assertIsNone(self.row()['notice']); self.assertEqual(self.files(),[self.OLD,None])
     def test_an_unanswered_warning_is_retried_and_holds_the_write(self):
         self.grant(); self.maps={'surf_fixture'}; self.silent={27530}
         self.upload(self.challenge_now()[1])
-        self.assertEqual(self.wait(900),{}); self.assertEqual(self.files(),[self.OLD,None])
-        self.assertIsNone(self.row()['notice']); self.assertIn('27530:no', self.row()['reload'])
+        self.assertEqual(self.wait(600),{}); self.assertEqual(self.files(),[self.OLD,None])
+        self.assertIsNone(self.row()['notice']); self.assertIn('27530', self.row()['hold'])
         self.assertEqual(self.words('changelevel'),[])
         self.silent=set(); self.wait(60); self.assertIsNotNone(self.row()['notice'])
         self.assertEqual(self.wait(180),{'surf_fixture':'live'})
+    def test_a_warning_nobody_answers_expires_with_nothing_installed(self):
+        self.grant(); self.maps={'surf_fixture'}; self.silent={27510,27530}
+        self.upload(self.challenge_now()[1]); self.wait(z.pub.WARN_EXPIRE + 120)
+        row=self.row(); self.assertEqual(row['kind'],'expired'); self.assertIn('nothing installed', row['reload'])
+        self.silent=set(); self.wait(600)
+        self.assertEqual(self.files(),[self.OLD,None]); self.assertEqual(self.words('changelevel'),[])
     def test_reload_now_never_passes_an_owed_verdict(self):
         self.grant(); self.maps={'surf_fixture'}; self.owed={'surf_fixture'}
         self.upload(self.challenge_now()[1])
         self.assertEqual(self.wait(1800),{}); self.assertEqual(self.files(),[self.OLD,None])
-        self.assertEqual(self.words('changelevel'),[])
+        self.assertEqual(self.words('changelevel'),[]); self.assertIn('owed', self.row()['hold'])
         self.owed=set(); self.assertEqual(self.wait(60),{})                   # a stale warning is given again
-        self.assertEqual(self.words('say'),[27510,27530]*(len(self.words('say'))//2))
-        self.assertGreater(len(self.words('say')),2)
+        self.assertEqual(len(self.words('say')),4)
         self.assertEqual(self.wait(60),{'surf_fixture':'live'})               # a minute after the new one
     def test_a_sweep_must_start_after_the_grace(self):
         self.grant(); self.maps={'surf_fixture'}; self.stalled=True
@@ -507,20 +540,45 @@ class PublishNow(Publish):
         self.assertEqual(self.wait(60),{})                                    # two: ready, but warned 20 min ago:
         self.assertEqual(len(self.words('say')),n+2)                          #   warned again first
         self.assertEqual(self.wait(60),{'surf_fixture':'live'})
-    def test_a_lobby_that_does_not_reload_is_retried_then_given_up(self):
+    def test_a_lobby_moving_onto_the_map_is_warned_before_the_write(self):
+        self.grant(); self.maps={'surf_fixture'}; self.ports={'surf_fixture':[27510]}
+        self.upload(self.challenge_now()[1]); self.wait(120)
+        self.ports={'surf_fixture':[27510,27530]}                             # moved on after the warning
+        self.assertEqual(self.wait(60),{})                                    # ready, but 27530 was never told
+        self.assertEqual(self.words('say'),[27510,27530]); self.assertEqual(self.words('changelevel'),[])
+        self.assertEqual(self.wait(60),{'surf_fixture':'live'})               # a minute after its warning
+        self.assertEqual(self.words('changelevel'),[27510,27530])
+    def test_a_lobby_that_does_not_reload_ends_live_partial_and_can_be_rearmed(self):
         self.grant(); self.maps={'surf_fixture'}; self.stuck={27530}
-        self.upload(self.challenge_now()[1]); self.wait(240)
-        self.wait(60 * (z.pub.RELOAD_TRIES + 1))
+        self.upload(self.challenge_now()[1]); self.wait(180)                  # written, round 1
+        n = len(self.sent)
+        for _ in range(4): self.apply()                                       # every upload calls apply() too:
+        self.assertEqual(len(self.sent), n)                                   #   no extra round in one tick
+        self.wait(60 * z.pub.RELOAD_TRIES)
         self.assertEqual(self.words('changelevel').count(27530), z.pub.RELOAD_TRIES)
         self.assertEqual(self.words('changelevel').count(27510), 1)
-        row=self.row(); self.assertEqual(row['todo'],'[]'); self.assertIn('27530:GAVE UP', row['reload'])
+        row=self.row(); self.assertEqual((row['kind'],row['todo'],row['partial']),('live-partial','{}','[27530]'))
+        self.assertIn('27530:GAVE UP', row['reload'])
+        self.stuck=set(); z.pub.rearm(z.connect, self.store, 'surf_fixture'); self.wait(120)
+        row=self.row(); self.assertEqual((row['kind'],row['todo']),('live','{}'))
+        self.assertEqual(self.words('changelevel').count(27530), z.pub.RELOAD_TRIES + 1)
+        self.maps=set(); self.wait(660); self.rollback()                      # live-partial rolls back too
+        self.assertEqual(self.files(),[self.OLD,None])
+    def test_silent_rounds_spend_no_tries_and_end_at_the_expiry(self):
+        self.grant(); self.maps={'surf_fixture'}
+        self.upload(self.challenge_now()[1]); self.wait(120)
+        self.silent={27530}; self.wait(60)                                    # written; 27530 stops answering
+        self.wait(600); self.assertEqual(self.row()['kind'],'live')           # silent: still waiting, no try spent
+        self.assertNotIn(27530, self.words('changelevel'))
+        self.wait(z.pub.RELOAD_EXPIRE)
+        row=self.row(); self.assertEqual((row['kind'],row['partial']),('live-partial','[27530]'))
     def test_a_reload_lost_after_the_write_is_started_again(self):
         self.grant(); self.maps={'surf_fixture'}; self.stuck={27510,27530}
-        self.upload(self.challenge_now()[1]); self.wait(240)                  # written; the reload went nowhere
-        with z.connect(self.store) as db: db.execute("UPDATE publications SET todo=NULL, tries=0")   # as a crash leaves it
+        self.upload(self.challenge_now()[1]); self.wait(180)                  # written; the reload went nowhere
+        with z.connect(self.store) as db: db.execute("UPDATE publications SET todo=NULL, round=NULL")   # as a crash
         self.stuck=set(); n=len(self.words('changelevel')); self.wait(60)
         self.assertEqual(self.words('changelevel')[n:],[27510,27530])
-        self.wait(60); self.assertEqual(self.row()['todo'],'[]')
+        self.wait(60); self.assertEqual(self.row()['todo'],'{}')
     def test_a_crash_while_writing_recovers_and_reloads(self):
         self.grant(); self.maps={'surf_fixture'}
         self.upload(self.challenge_now()[1]); self.wait(120)
@@ -529,7 +587,8 @@ class PublishNow(Publish):
         with patch.object(z.pub, 'put', crash):
             with self.assertRaises(SystemExit): self.wait(60)
         self.assertEqual(self.row()['kind'],'applying'); self.assertEqual(self.words('changelevel'),[])
-        self.wait(60)                                                         # _recover: live, then the reload
+        self.now += 10 ** 5                                                   # recovered a day later: still reloads
+        self.apply()
         self.assertEqual(self.row()['kind'],'live'); self.assertEqual(self.words('changelevel'),[27510,27530])
     def test_reload_now_of_live_bytes_reloads_only_lobbies_that_loaded_before_them(self):
         self.grant(); self.ports={}; self.upload(self.challenge())            # quiet: live at once
@@ -542,7 +601,7 @@ class PublishNow(Publish):
     def test_reload_now_with_nobody_on_the_map_reloads_nothing(self):
         self.grant(); self.ports={'surf_other':[27520]}; self.upload(self.challenge_now()[1])
         self.assertEqual(self.wait(180),{'surf_fixture':'live'}); self.assertEqual(self.words('changelevel'),[])
-        self.assertEqual(self.words('say'),[]); self.assertIn('reload no lobby on it', self.row()['reload'])
+        self.assertEqual(self.words('say'),[]); self.assertIn('warn nobody on it', self.row()['reload'])
     def test_quiet_nonce_never_forces(self):
         self.grant(); self.maps={'surf_fixture'}
         self.assertEqual(self.upload(self.challenge_now()[0]).json['published'],0)
@@ -567,38 +626,56 @@ class PublishNow(Publish):
         self.assertEqual(self.files(),[self.OLD,None])
     def test_off_host_publishing_only_from_our_lobbies(self):
         self.grant()
-        self.challenge_now(server='192.168.1.102:27510')                      # official_fn says ours
+        self.challenge_now(server='play.proto.bar:27510')                     # official_fn says ours
         for where in ('203.0.113.9:27510', 'unknown', 'x' * 81):
             r=self.c.post('/api/zones/challenge',json=dict(map='surf_fixture',server=where,
                                                            sha=hashlib.sha256(self.raw).hexdigest()))
             self.assertIn(r.status_code,(400,403),where)
         self.challenge_now(server='host'); self.challenge_now()                # hosted, and the P815 client
-    def test_official_is_a_local_lobby_port_at_our_address(self):
-        st={'all_ports':[27510,27520]}
-        local=lambda h: h in ('192.168.1.102','127.0.0.1')
-        resolve=lambda: {'198.51.100.7'}
-        off=lambda s: z.official(s, st, local, resolve)
-        self.assertTrue(off('192.168.1.102:27510')); self.assertTrue(off('198.51.100.7:27520'))
-        self.assertTrue(off('play.proto.bar:27510'))
-        self.assertFalse(off('192.168.1.102:27530'))       # not a lobby port of ours
-        self.assertFalse(off('203.0.113.9:27510'))         # somebody else's server
-        self.assertFalse(off('27510')); self.assertFalse(off('host')); self.assertFalse(z.official('a:1', None))
+    def test_the_rate_limit_comes_before_the_lobby_check(self):
+        seen=[]
+        self.app = z.create_app(self.store,self.main,[self.game],clock=lambda:self.now,verify=ed25519,
+                                publish_dirs=self.dirs,maps_fn=self.lobbies,rcon_fn=self.rcon,
+                                official_fn=lambda server: seen.append(server) or False)
+        c = Coded(self.app.test_client())
+        body = dict(map='surf_fixture',server='203.0.113.9:27510',sha=hashlib.sha256(self.raw).hexdigest())
+        with z.connect(self.store) as db:                                     # the service is at its limit
+            for i in range(256): db.execute("INSERT INTO challenges(nonce,map,sha,peer,created) VALUES(?,?,?,?,?)",
+                                            ('n%d' % i,'m','s','p%d' % (i % 64),self.now))
+        r = c.post('/api/zones/challenge',json=body)
+        self.assertEqual(r.status_code,429); self.assertEqual(seen,[])        # refused before any lobby check
+    def test_official_is_a_lobby_port_at_our_public_name(self):
+        ours={27510,27520}; names=('play.proto.bar',); resolve=lambda: {'93.184.216.34'}
+        off=lambda s: z.official(s, ours, names, resolve)
+        self.assertTrue(off('play.proto.bar:27510')); self.assertTrue(off('93.184.216.34:27520'))
+        for bad in ('127.0.0.1:27510', '[::1]:27510', '0.0.0.0:27510', '[::]:27510',   # the client's own machine
+                    '192.168.1.102:27510', '10.0.0.5:27510', '169.254.1.1:27510',      # nobody's network but its
+                    '93.184.216.34:27530', 'play.proto.bar:27530',                      # not a lobby port of ours
+                    '203.0.113.9:27510', '27510', 'host', 'unknown'):
+            self.assertFalse(off(bad), bad)
         def deaf(): raise OSError('no DNS')
-        self.assertFalse(z.official('198.51.100.7:27510', st, local, deaf))
+        self.assertFalse(z.official('93.184.216.34:27510', ours, names, deaf))
+        # split-horizon DNS may give our name a LAN address: still nobody's lobby to a remote client
+        self.assertFalse(z.official('192.168.1.102:27510', ours, names, lambda: {'192.168.1.102'}))
+        with patch.object(z.socket, 'getaddrinfo', side_effect=AssertionError('looked up a client name')):
+            self.assertFalse(z.official('evil.example:27510', ours, names, z.resolve_public))
     def test_notice_fits_rcon_for_any_map_name(self):
-        for n in ('surf_a', 'surf_' + 'x' * 59):
-            self.assertLessEqual(len(z.pub.notice_text(n)), 128)
         import rcon
-        rcon.check_arg(z.pub.notice_text('surf_' + 'x' * 59)); rcon.check_arg(z.pub.notice_text('surf_a'))
-    def test_rcon_budget_is_shared_and_bounded(self):
-        t = 5000
-        self.assertEqual([z.pub.budget_take(self.store, 27510, t) for _ in range(4)], [True]*3 + [False])
-        self.assertTrue(z.pub.budget_take(self.store, 27520, t))
-        self.assertTrue(z.pub.budget_take(self.store, 27510, t + 31))
+        for n in ('surf_a', 'surf_' + 'x' * 59):
+            self.assertLessEqual(len(z.pub.notice_text(n)), 128); rcon.check_arg(z.pub.notice_text(n))
+    def test_rcon_budget_is_shared_bounded_and_keeps_newer_entries(self):
+        t = [5000]
+        z.pub.CLOCK = lambda: t[0]
+        self.assertEqual([z.pub.budget_take(self.store, 27510) for _ in range(4)], [True]*3 + [False])
+        self.assertTrue(z.pub.budget_take(self.store, 27520))
+        t[0] = 5031; self.assertTrue(z.pub.budget_take(self.store, 27510))
+        t[0] = 6010; self.assertTrue(z.pub.budget_take(self.store, 27530))    # another process, a later moment
+        t[0] = 6000                                                           # this one's moment is older
+        self.assertEqual([z.pub.budget_take(self.store, 27530) for _ in range(3)], [True, True, False])
     def test_a_p815_store_is_migrated_and_old_inserts_still_work(self):
+        import re
         old=self.root/'old.db'; c=sqlite3.connect(old)
-        c.executescript(z.SQL.replace(',\n nonce_now TEXT','').replace(
-            ', force INTEGER, notice INTEGER, warned INTEGER,\n sweepbase TEXT, todo TEXT, tries INTEGER, reload TEXT',''))
+        c.executescript(re.sub(r', force INTEGER.*?reload TEXT', '', z.SQL.replace(',\n nonce_now TEXT',''), flags=re.S))
         self.assertNotIn('force',{r[1] for r in c.execute('PRAGMA table_info(publications)')}); c.close()
         z.create_app(old,self.main,[self.game],publish_dirs=self.dirs,maps_fn=self.lobbies)
         c=sqlite3.connect(old)
@@ -606,6 +683,25 @@ class PublishNow(Publish):
         self.assertTrue({c for c, _ in z.pub.COLUMNS} <= {r[1] for r in c.execute('PRAGMA table_info(publications)')})
         c.execute("INSERT INTO publications(map,sha,steamid,at,kind,body) VALUES('m','s','x',1,'pending',x'00')")
         c.execute("INSERT INTO challenges(nonce,map,sha,peer,created) VALUES('n','m','s','p',1)"); c.commit(); c.close()
+
+
+class RconReplies(unittest.TestCase):
+    """P1081 review: rcon.py's socket is connected, so only the lobby's own address can answer."""
+    def test_a_reply_from_another_local_socket_is_ignored(self):
+        import socket, threading, time as _t
+        import rcon
+        rcon.budget_reset()
+        lobby = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); lobby.bind(('127.0.0.1', 0))
+        spoof = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); spoof.bind(('127.0.0.1', 0))
+        self.addCleanup(lobby.close); self.addCleanup(spoof.close)
+        def serve():
+            _, addr = lobby.recvfrom(4096)
+            spoof.sendto(b'\xff\xff\xff\xffnforged\x00', addr)               # somebody else answers first
+            _t.sleep(0.05)
+            lobby.sendto(b'\xff\xff\xff\xffngenuine\x00', addr)
+        t = threading.Thread(target=serve); t.start()
+        reply = rcon.Rcon('127.0.0.1', lobby.getsockname()[1], 'pw', timeout=1.0, collect_for=0.2).execute(['status'])
+        t.join(); self.assertEqual(reply, 'genuine')
 
 
 if __name__ == '__main__': unittest.main()

@@ -209,7 +209,7 @@ void() ZoneEdit_ToggleMouse =
 	sui_reset_actions();
 	if (ze_cursor)
 	{
-		ze_mouse_seen = FALSE;
+		ze_mouse_seen = cl_ptr_real_ok = FALSE;  // P1081: a new cursor; the old place is stale
 		activate_mouse_cursor();
 		UI_CursorClaim(UIC_ZONEEDIT);
 		if (ze_field >= 0) sui_field_focus("ze_value");

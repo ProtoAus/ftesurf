@@ -9,26 +9,34 @@ then. mapwatch.py holds Momentum's zones on the first condition alone.
 
 Kinds: pending, applying (files being written; recovered at the next tick), live,
 noop (already live), superseded, failed (files put back), partial (put back failed:
-an operator's rollback), rollback. `result` is each directory's sha after a live or
-rollback row, which is what the files must still be for a later rollback.
+an operator's rollback), rollback; P1081 adds expired, live-partial and noop-partial.
+`result` is each directory's sha after a live or rollback row, which is what the files
+must still be for a later rollback.
 
 P1081 `force` (the admin chose "reload now"), pending:
-  1. warn every local lobby on or assigned to the map (`say`, then `status` as the ack: say
-     prints nothing to rcon); all must answer or the round is retried next tick.
+  0. every lobby on or assigned to the map must be one of ours (lobby_port: a cfg sv_port at
+     SURFD_PUBLIC_HOST or a literal address of this machine); otherwise it holds (`hold` says
+     why). An empty target set counts only when no lobby is on the map at all.
+  1. warn each target (`say`, then `status` as the ack: say prints nothing to rcon). The ack is
+     weak -- it shows the lobby answered, not that a player read the line. All must answer or
+     the round is retried; unanswered for WARN_EXPIRE, the row is `expired` (nothing installed).
   2. after FORCE_NOTICE, record the newest sweep completion stamp (`sweepbase`); ready once two
      newer completions are in the log (sweeps cannot overlap, flock -n, so the second STARTED
      after the grace) and nothing of the map is owed a verdict. A warning older than REWARN is
      given again first.
-  3. targets read again, files written (or already live: noop), `todo` = those lobbies.
-Then, live or noop: each tick asks each lobby in `todo` for `status`; gone from the map or
-loaded after the current files were written is done, otherwise `changelevel` again, up to
-RELOAD_TRIES rounds (then left for an operator in `reload`). A crash between the write and
-the reload recovers as live with `todo` empty, which starts the reload. Never past an owed
-verdict; evidence posted after the warning and not yet indexed is checked against the new zones.
+  3. at the write the targets are read again; a lobby not yet warned is warned and waited for.
+     Pending past FORCE_EXPIRE: `expired`.
+Then, live or noop: one round per tick asks each lobby in `todo` for `status`; gone from the map
+or loaded after the files were written is done, otherwise `changelevel` again. A try is spent
+only on a changelevel actually sent; RELOAD_TRIES or RELOAD_EXPIRE leaves the row `live-partial`
+(`noop-partial`) with the ports in `partial`, which `zonepub.py reload` re-arms. A crash between
+the write and the reload recovers as live with no `todo`, which starts the reload. Never past an
+owed verdict; evidence posted after the warning and not yet indexed meets the new zones.
 """
 from contextlib import contextmanager
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -38,6 +46,7 @@ import stat
 import sys
 import sqlite3
 import threading
+import time
 try:
     import fcntl
 except ImportError:             # Windows test runs: one process, the thread lock is enough
@@ -52,26 +61,33 @@ KEEP_PER_MAP = 32
 KEEP_TOTAL = 1024
 FORCE_NOTICE = 60   # P1081: from the lobbies' warning to the earliest reload
 REWARN = 300        # a warning older than this is given again before the reload
-RELOAD_TRIES = 5    # changelevel rounds per lobby before it is left for an operator
+WARN_EXPIRE = 900   # a first warning nobody could be given by then: expired, nothing installed
+FORCE_EXPIRE = 3600 # a force publish still pending by then: expired
+ROUND_GAP = 55      # one reload round per row per tick, however often apply() is called
+RELOAD_TRIES = 5    # changelevels sent to one lobby before it is left for an operator
+RELOAD_EXPIRE = 1800
 ZP_BUDGET = 3       # zonepub's rcon packets per port per 30 s, all its processes; admin.py keeps
                     # 8 (rcon.py), and the engine blocks for 24 h past 15
-LOBBY_PORTS = range(27510, 27621)   # AGENT_NOTES: 27510, 27520..27620 (never 27698)
-RCON_ENV = '/srv/nvme/surfd/surfd.env'      # SURFD_RCON_PASSWORD, as admin.py reads it
+LOBBY_CFG_DIR = '/srv/nvme/ftesurf-server/game/ftesurf/cfg/lobby'   # admin.py's, sv_port per lobby
+RCON_ENV = '/srv/nvme/surfd/surfd.env'      # SURFD_RCON_PASSWORD and SURFD_PUBLIC_HOST
 NOTICE = 'Zone update for %s: this map reloads in a few minutes, finish your run'
 NOTICE_SHORT = 'Zone update: this map reloads in a few minutes, finish your run'
+CLOCK = time.time   # the write's and the budget's own moment (tests set it)
 NOFOLLOW = getattr(os, 'O_NOFOLLOW', 0)
 BINARY = getattr(os, 'O_BINARY', 0)
 SQL = '''
 CREATE TABLE IF NOT EXISTS publications(id INTEGER PRIMARY KEY AUTOINCREMENT, map TEXT NOT NULL,
  sha TEXT NOT NULL, steamid TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL,
  body BLOB, prev TEXT, result TEXT, live INTEGER, force INTEGER, notice INTEGER, warned INTEGER,
- sweepbase TEXT, todo TEXT, tries INTEGER, reload TEXT);
+ warned_ports TEXT, sweepbase TEXT, todo TEXT, round INTEGER, partial TEXT, hold TEXT, reload TEXT);
 CREATE TABLE IF NOT EXISTS mapseen(map TEXT PRIMARY KEY, at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v INTEGER NOT NULL);
 '''
 # Added to a store made before P1081 (zonepub.py `init`); every older INSERT names its columns.
-COLUMNS = (('force', 'INTEGER'), ('notice', 'INTEGER'), ('warned', 'INTEGER'), ('sweepbase', 'TEXT'),
-           ('todo', 'TEXT'), ('tries', 'INTEGER'), ('reload', 'TEXT'))
+COLUMNS = (('force', 'INTEGER'), ('notice', 'INTEGER'), ('warned', 'INTEGER'), ('warned_ports', 'TEXT'),
+           ('sweepbase', 'TEXT'), ('todo', 'TEXT'), ('round', 'INTEGER'), ('partial', 'TEXT'),
+           ('hold', 'TEXT'), ('reload', 'TEXT'))
+LIVE_KINDS = ('live', 'live-partial', 'rollback')      # rows whose files are the map's current ones
 BUDGET_LOCK = threading.Lock()
 # One publish or rollback touches the files at a time: gunicorn's two threads, and
 # the `apply`/`rollback` command lines, which are other processes (a flock beside the store).
@@ -179,29 +195,80 @@ OWED_SQL = """SELECT DISTINCT r.map FROM replays r
         AND v.at >= MAX(r.submitted, r.recheck_at)) < ?"""
 
 
-_LOCAL = {}
+def env_value(name, path=RCON_ENV):
+    """One NAME=value of surfd's env file, as admin.py's _from_env_file reads it ("" if absent)."""
+    try:
+        with open(path, encoding='utf-8') as fh:
+            for line in fh:
+                k, _, v = line.strip().partition('=')
+                if k.strip() == name: return v.strip().strip('\'"')
+    except OSError: pass
+    return ''
 
 
-def is_local(host):
-    """An address of this machine: binding to it works only here (cached)."""
-    host = host.strip('[]')
-    if host in ('127.0.0.1', '::1', 'localhost'): return True
-    if host not in _LOCAL:
+def rcon_password(path=RCON_ENV): return env_value('SURFD_RCON_PASSWORD', path)
+
+
+def public_host(path=RCON_ENV):
+    """The name surfd writes into a trusted lobby's address (surfd.py PUBLIC_HOST)."""
+    return env_value('SURFD_PUBLIC_HOST', path).lower()
+
+
+_PORTS = {}
+
+
+def our_ports(cfgdir=LOBBY_CFG_DIR, ttl=60):
+    """Every lobby's sv_port from its lobby<N>.cfg (admin.py discover_lobbies), cached a minute."""
+    hit = _PORTS.get(cfgdir)
+    if hit and time.monotonic() - hit[0] < ttl: return hit[1]
+    found = set()
+    try: names = os.listdir(cfgdir)
+    except OSError: names = []
+    for n in names:
+        if not re.fullmatch(r'lobby\d+\.cfg', n): continue
         try:
-            with socket.socket(socket.AF_INET6 if ':' in host else socket.AF_INET, socket.SOCK_DGRAM) as s:
-                s.bind((host, 0))
-            _LOCAL[host] = True
-        except (OSError, ValueError): _LOCAL[host] = False
-    return _LOCAL[host]
+            with open(os.path.join(cfgdir, n), encoding='utf-8', errors='replace') as fh:
+                for line in fh:
+                    m = re.match(r'\s*set\s+sv_port\s+"?(\d+)', line)
+                    if m: found.add(int(m.group(1))); break
+        except OSError: continue
+    _PORTS[cfgdir] = (time.monotonic(), frozenset(found))
+    return _PORTS[cfgdir][1]
 
 
-def lobby_port(addr, local):
-    """The rcon port of a heartbeat address, if it is a lobby on this machine; else None.
-    surfd stores the heartbeat's source host with the lobby's port, so a lobby elsewhere has
-    the same port numbers as ours and must never be sent a command on 127.0.0.1."""
+def literal_ip(host):
+    """The address a host string spells literally, or None: names are never looked up here."""
+    try: return ipaddress.ip_address(str(host).strip('[]'))
+    except ValueError: return None
+
+
+_SELF = {}
+
+
+def is_self(host):
+    """A literal address of this machine (binding to it works only here); cached, bounded."""
+    ip = literal_ip(host)
+    if ip is None: return False
+    if ip.is_loopback: return True
+    k = str(ip)
+    if k not in _SELF:
+        if len(_SELF) >= 64: _SELF.clear()
+        try:
+            with socket.socket(socket.AF_INET6 if ip.version == 6 else socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.bind((k, 0))
+            _SELF[k] = True
+        except OSError: _SELF[k] = False
+    return _SELF[k]
+
+
+def lobby_port(addr, ours, public, local=is_self):
+    """The rcon port of a heartbeat address if it is one of our lobbies, else None. surfd writes
+    a trusted lobby as SURFD_PUBLIC_HOST:port and anything else with its source host, so a lobby
+    elsewhere can share our port numbers and must never be sent a command on 127.0.0.1."""
     host, _, port = str(addr or '').rpartition(':')
-    if not port.isdigit() or int(port) not in LOBBY_PORTS or not host or not local(host): return None
-    return int(port)
+    if not port.isdigit() or int(port) not in ours or not host: return None
+    if (public and host.lower() == public) or local(host): return int(port)
+    return None
 
 
 def sweep_stamps(path, limit=65536):
@@ -214,7 +281,7 @@ def sweep_stamps(path, limit=65536):
     return re.findall(r'^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d) sweep: ', tail, re.M)
 
 
-def lobby_state(surfd_db, sweep_log, now, max_errors=3, local=is_local):
+def lobby_state(surfd_db, sweep_log, now, max_errors=3, local=is_self, ours=None, public=None):
     """What the lobbies have loaded, the maps the sweeper owes a verdict, and when it last
     wrote its log; None when the lobbies cannot all be heard. surfd's lobbies table, not
     /lobbies.json, which leaves out a silent lobby: any row older than two minutes means
@@ -238,15 +305,17 @@ def lobby_state(surfd_db, sweep_log, now, max_errors=3, local=is_local):
     if not rows or any((r[1] or 0) < now - LOBBY_SILENT for r in rows): return None
     try: swept = os.stat(sweep_log).st_mtime
     except (OSError, TypeError): swept = None
-    # P1081: this machine's lobbies on (or told to move to) each map, by their rcon port.
-    ports = {}
+    # P1081: our lobbies on (or told to move to) each map by rcon port, and how many there are not.
+    ours = our_ports() if ours is None else ours
+    public = public_host() if public is None else public
+    ports, unresolved = {}, {}
     for m, addr in [(r[0], r[2]) for r in rows] + asked:
-        port = lobby_port(addr, local)
-        if port is not None and port not in ports.setdefault(str(m).lower(), []):
-            ports[str(m).lower()].append(port)
+        m = str(m).lower()
+        port = lobby_port(addr, ours, public, local)
+        if port is None: unresolved[m] = unresolved.get(m, 0) + 1
+        elif port not in ports.setdefault(m, []): ports[m].append(port)
     return {'maps': {str(r[0]).lower() for r in rows} | sent, 'owed': owed, 'swept': swept, 'posted': posted,
-            'ports': ports, 'stamps': sweep_stamps(sweep_log),
-            'all_ports': sorted({p for v in ports.values() for p in v})}
+            'ports': ports, 'unresolved': unresolved, 'stamps': sweep_stamps(sweep_log)}
 
 
 def _meta(db, k):
@@ -279,8 +348,8 @@ def quiet(db, name, st, now):
 
 def state(db, name):
     """The newest row that changed the files of `name`: what they must still be."""
-    return db.execute("SELECT * FROM publications WHERE map=? AND kind IN ('live','rollback') "
-                      "ORDER BY id DESC LIMIT 1", (name,)).fetchone()
+    return db.execute("SELECT * FROM publications WHERE map=? AND kind IN %s ORDER BY id DESC LIMIT 1"
+                      % (LIVE_KINDS,), (name,)).fetchone()
 
 
 def queue(db, name, body, steamid, now, force=False):
@@ -314,16 +383,6 @@ def force_ready(row, st, now):
     return len({s for s in st.get('stamps', []) if s > row['sweepbase']}) >= 2
 
 
-def rcon_password(path=RCON_ENV):
-    try:
-        with open(path, encoding='utf-8') as fh:
-            for line in fh:
-                k, _, v = line.strip().partition('=')
-                if k.strip() == 'SURFD_RCON_PASSWORD': return v.strip().strip('\'"')
-    except OSError: pass
-    return ''
-
-
 def lobby_rcon(port, argv, reply=False):
     """One command to the lobby on 127.0.0.1:port through rcon.py's argument check and budget;
     its printed reply when asked for ("" when none came)."""
@@ -331,17 +390,19 @@ def lobby_rcon(port, argv, reply=False):
     return rcon.Rcon('127.0.0.1', port, rcon_password()).execute(argv, expect_reply=reply)
 
 
-def budget_take(store, port, now):
+def budget_take(store, port):
     """One of ZP_BUDGET packets per port per 30 s, shared by every zonepub process (the service
-    and the apply/rollback command lines) through a locked file beside the store."""
+    and the apply/rollback command lines) through a locked file beside the store. The moment is
+    taken inside the lock, and an entry newer than it (another process's) is never dropped."""
     path = Path(store).with_name('rcon-budget.json')
     with BUDGET_LOCK, open(path, 'a+') as f:
         if fcntl: fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         try:
+            now = CLOCK()
             f.seek(0)
             try: book = json.loads(f.read() or '{}')
             except ValueError: book = {}
-            sent = [t for t in book.get(str(port), []) if isinstance(t, (int, float)) and 0 <= now - t < 30]
+            sent = [t for t in book.get(str(port), []) if isinstance(t, (int, float)) and t > now - 30]
             if len(sent) >= ZP_BUDGET: return False
             book[str(port)] = sent + [now]
             f.seek(0); f.truncate(); f.write(json.dumps(book)); f.flush()
@@ -361,10 +422,10 @@ def lobby_status(text):
     return m.group(1).lower(), sum(int(n) * {'d': 86400, 'h': 3600, 'm': 60}.get(k, 1) for n, k in units)
 
 
-def sender(store, rcon_fn, now):
+def sender(store, rcon_fn):
     """send(port, argv, reply) -> the reply text, or None when refused (budget) or failed."""
     def send(port, argv, reply=False):
-        if not budget_take(store, port, now):
+        if not budget_take(store, port):
             log('rcon budget', port, argv[0]); return None
         try: return rcon_fn(port, argv, reply) or ''
         except Exception as e:
@@ -373,12 +434,13 @@ def sender(store, rcon_fn, now):
 
 
 def warn(send, ports, name):
-    """`say` to each port, then `status` as the ack. ({port: answered}, all answered)."""
+    """`say` to each port, then `status` as the ack. ({port: answered}, all answered); an empty
+    set is not an answer -- the caller decides whether nobody being on the map is fine."""
     said = {}
     for port in sorted(set(ports)):
         ok = send(port, ['say', notice_text(name)]) is not None
         said[port] = ok and lobby_status(send(port, ['status'], True)) is not None
-    return said, all(said.values())
+    return said, bool(said) and all(said.values())
 
 
 def _recover(db, dirs, paths_of, limit, now=None):
@@ -412,14 +474,20 @@ def _recover(db, dirs, paths_of, limit, now=None):
 
 def prune(db):
     keep = set(r[0] for r in db.execute(
-        "SELECT MAX(id) FROM publications WHERE kind IN ('live','rollback','pending','applying','rollingback','partial') "
-        "GROUP BY map, kind"))
+        "SELECT MAX(id) FROM publications WHERE kind IN ('live','live-partial','rollback','pending','applying',"
+        "'rollingback','partial') GROUP BY map, kind"))
     rows = db.execute('SELECT id, map FROM publications ORDER BY id DESC').fetchall()
     seen, drop = {}, []
     for i, (rid, m) in enumerate(rows):
         seen[m] = seen.get(m, 0) + 1
         if rid not in keep and (seen[m] > KEEP_PER_MAP or i >= KEEP_TOTAL): drop.append(rid)
     db.executemany('DELETE FROM publications WHERE id=?', [(r,) for r in drop])
+
+
+def _set(connect, store, rid, **cols):
+    with connect(store) as db:
+        db.execute('UPDATE publications SET %s WHERE id=?' % ', '.join('%s=?' % c for c in cols),
+                   tuple(cols.values()) + (rid,))
 
 
 def _note(connect, store, rid, text):
@@ -429,60 +497,120 @@ def _note(connect, store, rid, text):
         db.execute('UPDATE publications SET reload=? WHERE id=?', ((((was + '; ') if was else '') + text)[-2000:], rid))
 
 
+def _hold(connect, store, row, why):
+    """Why a pending force row waits, said once per change of reason."""
+    with connect(store) as db:
+        was = db.execute('SELECT hold FROM publications WHERE id=?', (row['id'],)).fetchone()[0]
+        if was != why:
+            db.execute('UPDATE publications SET hold=? WHERE id=?', (why, row['id']))
+            log('holding', row['map'], row['sha'][:12], why)
+
+
+def _unreachable(st, name):
+    """Why the map's lobbies cannot all be told and reloaded, or ''. Nobody on it is fine."""
+    if st is None: return 'the lobbies cannot all be heard'
+    if name not in st['maps']: return ''
+    n = st.get('unresolved', {}).get(name, 0)
+    if n or not st['ports'].get(name):
+        return '%d lobby(s) on or sent to %s are not ours by address and port' % (max(n, 1), name)
+    return ''
+
+
+def _warn_round(connect, store, row, send, ports, name, now, merge=()):
+    said, ok = warn(send, ports, name)
+    _note(connect, store, row['id'], 'warn ' + ' '.join('%d:%s' % (p, 'ok' if a else 'no')
+                                                        for p, a in sorted(said.items())))
+    if ok:
+        _set(connect, store, row['id'], warned=now, hold=None,
+             warned_ports=json.dumps(sorted(set(merge) | set(ports))))
+        log('warned', name, row['sha'][:12], sorted(ports))
+    else:
+        _hold(connect, store, row, 'not every lobby on %s answered the warning: %s'
+              % (name, ' '.join(str(p) for p, a in sorted(said.items()) if not a)))
+    return ok
+
+
 def _force_pending(connect, store, row, maps, send, now):
     """One step of a pending force publish; True when it may be written now."""
     name = row['map']
     with connect(store) as db:
-        cur = db.execute('SELECT kind, notice, warned, sweepbase FROM publications WHERE id=?', (row['id'],)).fetchone()
-    if cur is None or cur['kind'] != 'pending' or maps is None: return False
-    r = dict(cur); r['map'] = name
-    stale = r['warned'] is not None and now - r['warned'] > REWARN
-    if r['notice'] is None or (stale and force_ready(r, maps, now)):
-        said, ok = warn(send, maps['ports'].get(name, []), name)
-        text = 'warn ' + (' '.join('%d:%s' % (p, 'ok' if a else 'no') for p, a in sorted(said.items())) or '-')
-        _note(connect, store, row['id'], text)
-        if ok:
-            with connect(store) as db:
-                db.execute('UPDATE publications SET notice=COALESCE(notice, ?), warned=? WHERE id=?', (now, now, row['id']))
-            log('warned', name, row['sha'][:12], text)
-        else: log('warning not delivered', name, row['sha'][:12], text)
+        cur = db.execute('SELECT * FROM publications WHERE id=?', (row['id'],)).fetchone()
+    if cur is None or cur['kind'] != 'pending': return False
+    expired = (now - cur['at'] > FORCE_EXPIRE or (cur['notice'] is None and now - cur['at'] > WARN_EXPIRE))
+    if expired:
+        _set(connect, store, row['id'], kind='expired')
+        _note(connect, store, row['id'], 'expired, nothing installed: ' + (cur['hold'] or 'not ready in time'))
+        log('expired', name, row['sha'][:12], cur['hold'] or '')
         return False
+    why = _unreachable(maps, name)
+    if why: _hold(connect, store, row, why); return False
+    targets = maps['ports'].get(name, [])
+    if cur['notice'] is None:
+        if not targets:                         # nobody on the map: nobody to tell
+            _set(connect, store, row['id'], notice=now, warned=now, warned_ports='[]', hold=None)
+            _note(connect, store, row['id'], 'warn nobody on it')
+        elif _warn_round(connect, store, row, send, targets, name, now):
+            _set(connect, store, row['id'], notice=now)
+        return False
+    r = dict(cur)
     if r['sweepbase'] is None:
         if now >= r['notice'] + FORCE_NOTICE:
-            with connect(store) as db:
-                db.execute('UPDATE publications SET sweepbase=? WHERE id=?', (max(maps.get('stamps') or ['']), row['id']))
+            _set(connect, store, row['id'], sweepbase=max(maps.get('stamps') or ['']))
         return False
-    return force_ready(r, maps, now)
+    if not force_ready(r, maps, now):
+        _hold(connect, store, row, 'a verdict on %s is owed' % name if name in maps['owed']
+              else 'waiting for the warning minute and two sweeps')
+        return False
+    if targets and now - (r['warned'] or 0) > REWARN:
+        _warn_round(connect, store, row, send, targets, name, now)     # stale: told again, then a minute
+        return False
+    return True
 
 
 def _force_reload(connect, store, rid, send, now, st):
-    """One round of a live force publish's reload: done, or changelevel again (RELOAD_TRIES)."""
+    """One round of a live (or noop) force publish's reload, at most one per tick."""
     with connect(store) as db:
         row = db.execute('SELECT * FROM publications WHERE id=?', (rid,)).fetchone()
         cur = state(db, row['map']) if row is not None else None
-    if row is None: return
+    if row is None or (row['round'] is not None and now - row['round'] < ROUND_GAP): return
     name = row['map']
     written = cur['live'] if cur is not None and cur['live'] else row['live']   # when these files went in
-    if row['todo'] is None:         # just written, or recovered after a crash: whoever is on it now
+    if row['todo'] is None:         # recovered after a crash: whoever is on it now
         if st is None: return
-        todo = sorted(st['ports'].get(name, []))
+        todo = {str(p): 0 for p in st['ports'].get(name, [])}
     else: todo = json.loads(row['todo'])
-    tries = row['tries'] or 0
-    left, words = [], []
-    for port in todo:
-        s = lobby_status(send(port, ['status'], True))
-        if s is not None and (s[0] != name or s[1] < now - written):
-            words.append('%d:done' % port); continue        # moved off, or loaded since the write
-        if tries >= RELOAD_TRIES:
-            words.append('%d:GAVE UP' % port); log('reload given up', name, port); continue
-        if s is None: words.append('%d:silent' % port)
-        else: words.append('%d:changelevel%s' % (port, '' if send(port, ['changelevel', name]) is not None else '-failed'))
-        left.append(port)
-    with connect(store) as db:
-        db.execute('UPDATE publications SET todo=?, tries=? WHERE id=?',
-                   (json.dumps(left), tries + (1 if left else 0), rid))
+    gave = json.loads(row['partial'] or '[]')
+    expired = now - (row['live'] or now) > RELOAD_EXPIRE
+    left, words = {}, []
+    for port, tries in sorted(todo.items(), key=lambda kv: int(kv[0])):
+        p = int(port)
+        s = lobby_status(send(p, ['status'], True))
+        if s is not None and (s[0] != name or s[1] < CLOCK() - written):
+            words.append('%d:done' % p); continue           # moved off, or loaded since the write
+        if tries >= RELOAD_TRIES or expired:
+            gave.append(p); words.append('%d:GAVE UP' % p); log('reload given up', name, p); continue
+        if s is None: words.append('%d:silent' % p); left[port] = tries     # nothing sent: no try spent
+        elif send(p, ['changelevel', name]) is not None: words.append('%d:changelevel' % p); left[port] = tries + 1
+        else: words.append('%d:changelevel-failed' % p); left[port] = tries
+    cols = dict(todo=json.dumps(left), round=now, partial=json.dumps(gave) if gave else None)
+    if not left and gave:
+        cols['kind'] = 'live-partial' if row['kind'] == 'live' else 'noop-partial'
+    _set(connect, store, rid, **cols)
     _note(connect, store, rid, 'reload ' + (' '.join(words) or 'no lobby on it'))
     log('reload', name, row['sha'][:12], ' '.join(words) or 'no lobby on it')
+
+
+def rearm(connect, store, name):
+    """`zonepub.py reload`: the map's newest force publish reloads its lobbies again."""
+    with locked(store), connect(store) as db:
+        row = db.execute("SELECT * FROM publications WHERE map=? AND force=1 AND kind IN "
+                         "('live','live-partial','noop','noop-partial') ORDER BY id DESC LIMIT 1", (name,)).fetchone()
+        if row is None: raise ValueError('No reload-now publish of %s to re-arm' % name)
+        kind = 'live' if row['kind'].startswith('live') else 'noop'
+        db.execute('UPDATE publications SET kind=?, todo=NULL, round=NULL, partial=NULL, live=? WHERE id=?',
+                   (kind, row['live'], row['id']))
+    log('re-armed', name, row['sha'][:12])
+    return row['id']
 
 
 def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit, rcon_fn=lobby_rcon):
@@ -491,7 +619,7 @@ def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit, rcon_fn=l
     done = {}
     if not dirs: return done        # no publish directories: nothing may be marked live
     maps = maps_fn()                # outside the transaction
-    send = sender(store, rcon_fn, now)
+    send = sender(store, rcon_fn)
     with locked(store):
         with connect(store) as db:
             db.execute('BEGIN IMMEDIATE')
@@ -504,14 +632,23 @@ def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit, rcon_fn=l
             prune(db)
             reloads = [r['id'] for r in db.execute(
                 "SELECT id FROM publications WHERE force=1 AND kind IN ('live','noop') "
-                "AND (todo IS NULL OR todo != '[]') AND live > ? ORDER BY id", (now - 86400,))]
+                "AND (todo IS NULL OR todo != '{}') ORDER BY id")]
         for row in todo:
             name = row['map']
             fresh = None
             if row['force']:
                 if not _force_pending(connect, store, row, maps, send, now): continue
                 fresh = maps_fn()           # who is on the map at the write, not at the tick's start
-                if fresh is None or name in fresh['owed']: continue
+                why = _unreachable(fresh, name)
+                if why: _hold(connect, store, row, why); continue
+                if name in fresh['owed']: continue
+                with connect(store) as db:
+                    told = set(json.loads(db.execute('SELECT warned_ports FROM publications WHERE id=?',
+                                                     (row['id'],)).fetchone()[0] or '[]'))
+                new = sorted(set(fresh['ports'].get(name, [])) - told)
+                if new:                     # moved onto the map since the warning: told, then a minute
+                    _warn_round(connect, store, row, send, new, name, now, told)
+                    continue
             with connect(store) as db:
                 db.execute('BEGIN IMMEDIATE')
                 again = db.execute('SELECT kind FROM publications WHERE id=?', (row['id'],)).fetchone()
@@ -525,7 +662,8 @@ def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit, rcon_fn=l
                     db.execute("UPDATE publications SET kind='failed' WHERE id=?", (row['id'],))
                     log('failed', name, row['sha'][:12], e); done[name] = 'failed'; continue
                 if all(p == body for p in prev):
-                    db.execute("UPDATE publications SET kind='noop', live=? WHERE id=?", (now, row['id']))
+                    db.execute("UPDATE publications SET kind='noop', live=?, hold=NULL WHERE id=?",
+                               (int(CLOCK()), row['id']))
                     done[name] = kind = 'noop'
                 else:
                     db.execute("UPDATE publications SET kind='applying', prev=?, result=? WHERE id=?",
@@ -541,14 +679,14 @@ def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit, rcon_fn=l
                     kind = 'partial'; log('partial', name, row['sha'][:12], e)
                 except (OSError, ValueError) as e:
                     kind = 'failed'; log('failed', name, row['sha'][:12], e)
-                with connect(store) as db:
-                    db.execute('UPDATE publications SET kind=?, live=? WHERE id=?', (kind, now, row['id']))
+                with connect(store) as db:  # the write's own moment, after put(): "loaded since"
+                    db.execute('UPDATE publications SET kind=?, live=?, hold=NULL WHERE id=?',
+                               (kind, int(CLOCK()), row['id']))
                     if kind == 'live': log('live', name, row['sha'][:12], 'by', who(db, row['steamid']))
                 done[name] = kind
             if row['force'] and kind in ('live', 'noop'):
-                with connect(store) as db:
-                    db.execute('UPDATE publications SET todo=?, tries=0 WHERE id=?',
-                               (json.dumps(sorted(fresh['ports'].get(name, []))), row['id']))
+                _set(connect, store, row['id'], round=None,
+                     todo=json.dumps({str(p): 0 for p in sorted(fresh['ports'].get(name, []))}))
                 _force_reload(connect, store, row['id'], send, now, fresh)
         for rid in reloads:
             _force_reload(connect, store, rid, send, now, maps)
@@ -568,10 +706,10 @@ def rollback(connect, store, dirs, name, valid_name, maps_fn, now, limit, to_id=
                              'sweeper cannot be heard; try later or pass --anyway' % name)
         cur_state = state(db, name)
         if to_id is None:
-            target = cur_state if cur_state is not None and cur_state['kind'] == 'live' else None
+            target = cur_state if cur_state is not None and cur_state['kind'] in ('live', 'live-partial') else None
         else:
-            target = db.execute("SELECT * FROM publications WHERE id=? AND map=? AND kind IN ('live','partial')",
-                                (to_id, name)).fetchone()
+            target = db.execute("SELECT * FROM publications WHERE id=? AND map=? AND kind IN "
+                                "('live','live-partial','partial')", (to_id, name)).fetchone()
             if target is not None and target['kind'] == 'partial' and not anyway:
                 raise ValueError('publish %d is partial: repair it with --anyway' % to_id)
         if target is None: raise ValueError('No live publish of this map to roll back')

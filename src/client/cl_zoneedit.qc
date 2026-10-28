@@ -82,8 +82,6 @@ float  ze_grid;                     // snap, units
 float  ze_snap;                     // 1 the grid, 0 the surface as hit
 float  ze_mouse_seen;
 vector ze_mouse;
-float  ze_mouse_real_seen;          // P1081: the pointer as the DEVICE last put it (cl_input_real)
-vector ze_mouse_real;
 vector ze_panel_p, ze_panel_s;
 float  ze_scroll;
 
@@ -852,7 +850,7 @@ void() ZoneEdit_ToPanel =
 		              ze_dirty ? " (your unsaved zones are still on screen)" : ""));
 		return;
 	}
-	ze_mouse_seen = FALSE;
+	ze_mouse_seen = cl_ptr_real_ok = FALSE;     // P1081: a new cursor; the old place is stale
 	sui_reset_actions();
 	activate_mouse_cursor();
 	UI_CursorClaim(UIC_ZONEEDIT);
@@ -1599,7 +1597,7 @@ float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 		if (owned == 4) ZoneEdit_FieldKey(evtype, scanx, chary);
 		if (scanx == K_MOUSE1)
 		{
-			onpanel = (ze_mouse_real_seen && is_2dpoint_in_bbox(ze_mouse_real, ze_panel_p, ze_panel_s));
+			onpanel = (cl_ptr_real_ok && is_2dpoint_in_bbox(cl_ptr_real, ze_panel_p, ze_panel_s));
 			if (owned == 1 && ui_ze_state && ze_cursor && !ze_drag)
 			{
 				if (cl_input_real && onpanel) ze_real_t = cltime;
@@ -1613,7 +1611,6 @@ float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 	if (evtype == IE_MOUSEABS && ze_cursor)
 	{
 		ze_mouse = [scanx, chary]; ze_mouse_seen = TRUE;
-		if (cl_input_real) { ze_mouse_real = ze_mouse; ze_mouse_real_seen = TRUE; }
 		sui_input_event(evtype, scanx, chary, devid);
 		return TRUE;
 	}

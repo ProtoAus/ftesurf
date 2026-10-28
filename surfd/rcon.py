@@ -365,7 +365,10 @@ class Rcon:
         try:
             sock.settimeout(self.timeout)
             try:
-                sock.sendto(packet, (self.host, self.port))
+                # Connected (P1081 review): the kernel then delivers only datagrams from the
+                # lobby's own address, so nothing else on this machine can answer for it.
+                sock.connect((self.host, self.port))
+                sock.send(packet)
             except OSError as exc:
                 raise RconError("cannot reach %s:%d (%s)"
                                 % (self.host, self.port, exc)) from exc
@@ -388,9 +391,9 @@ class Rcon:
         deadline = None
         while True:
             try:
-                data, _ = sock.recvfrom(8192)
-            except socket.timeout:
-                break
+                data = sock.recv(8192)
+            except (socket.timeout, ConnectionRefusedError):
+                break       # a closed port answers a connected socket with ICMP: as no reply, as before
             except OSError as exc:
                 raise RconError("receive failed (%s)" % exc) from exc
             chunks.append(self._decode(data))

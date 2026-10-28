@@ -18,6 +18,7 @@ string zp_map, zp_body, zp_sha, zp_nonce, zp_crc, zp_said;
 string zp_nonce_now;                // P1081: the service's second nonce, "reload now"
 vector zp_go_p, zp_go_s, zp_no_p, zp_no_s;   // the dialog's buttons as last drawn; a zero size is no button
 vector zp_now_p, zp_now_s;
+vector zp_geo_go, zp_geo_size, zp_geo_now, zp_geo_no;  // P1081: the buttons as last drawn, to see them move
 
 void() ZonePub_Cancel =
 {
@@ -30,6 +31,7 @@ void() ZonePub_Cancel =
 	if (strlen(zp_said)) strunzone(zp_said);
 	zp_map = zp_body = zp_sha = zp_nonce = zp_nonce_now = zp_crc = zp_said = "";
 	zp_state = zp_req = zp_count = zp_bad = zp_live = zp_cap = zp_bycmd = zp_armed = 0;
+	zp_shown = -1;                  // P1081 review: no page counts as drawn until it is drawn again
 	zp_go_s = zp_no_s = zp_now_s = '0 0 0';
 };
 
@@ -95,16 +97,34 @@ string() ZonePub_Offhost =
 };
 
 // P1081: the server's address as this client's netchan has it, kept to address characters
-// (it goes into hand-built JSON); anything else is "unknown", which the service refuses.
+// (it goes into hand-built JSON). Loopback, unspecified, link-local and private addresses are
+// this client's own network -- a local server or relay on a lobby port -- never one of our
+// lobbies, so they go as "unknown", which the service refuses (as it refuses them itself).
 string() ZonePub_Where =
 {
-	local string ip;
-	local float i;
+	local string ip, host;
+	local float i, second, first, next;
 	ip = serverkey("ip");
 	if (strlen(ip) < 3 || strlen(ip) > 64) return "unknown";
 	for (i = 0; i < strlen(ip); i = i + 1)
 		if (strstrofs("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.:[]-_",
 		              substring(ip, i, 1), 0) < 0) return "unknown";
+	host = strtolower(ip);
+	first = strstrofs(host, ":", 0);
+	next = (first >= 0) ? strstrofs(host, ":", first + 1) : -1;
+	if (strcmp(substring(host, 0, 1), "[") == 0)
+		host = substring(host, 1, max(0, strstrofs(host, "]", 0) - 1));    // [v6]:port
+	else if (first >= 0 && next < 0)
+		host = substring(host, 0, first);                                   // v4:port or name:port
+	second = stof(substring(host, 4, 3));                                   // 172.<second>.
+	if (strcmp(substring(host, 0, 4), "127.") == 0 || strcmp(substring(host, 0, 2), "0.") == 0
+	 || strcmp(substring(host, 0, 3), "10.") == 0 || strcmp(substring(host, 0, 8), "192.168.") == 0
+	 || strcmp(substring(host, 0, 8), "169.254.") == 0
+	 || (strcmp(substring(host, 0, 4), "172.") == 0 && second >= 16 && second <= 31)
+	 || strcmp(host, "::1") == 0 || strcmp(host, "::") == 0 || strcmp(host, "localhost") == 0
+	 || strcmp(substring(host, 0, 2), "fc") == 0 || strcmp(substring(host, 0, 2), "fd") == 0
+	 || strcmp(substring(host, 0, 4), "fe80") == 0 || strstrofs(host, "qloopback", 0) >= 0)
+		return "unknown";
 	return ip;
 };
 
@@ -170,6 +190,8 @@ void(float real) ZonePub_Begin =
 		// P1081: no write allowed (a command, or off-host without a click), so the saved file must
 		// already be the table on screen: read it back into the table, as Save checks its .part.
 		if (ze_dirty || !zone_own) { ZoneEdit_Note("Save zones with the panel first; a command does not save"); return; }
+		why = ZonePub_Offhost();        // provenance before the file is loaded over the table
+		if (strlen(why)) { ZoneEdit_Note(strcat("NOT published: ", why)); return; }
 		body = ZonePub_Saved();
 		if (strlen(body) < 16 || strlen(body) > 262144 || !ZonePub_Matches())
 		{
@@ -177,7 +199,7 @@ void(float real) ZonePub_Begin =
 		}
 	}
 	why = ZonePub_Offhost();
-	if (why != "") { ZoneEdit_Note(strcat("NOT published: ", why)); return; }
+	if (strlen(why)) { ZoneEdit_Note(strcat("NOT published: ", why)); return; }
 	zp_bycmd = !real;
 	zp_crc = strzone(zone_crc); zp_count = zone_count; zp_cap = zone_maxvel;
 	zp_map = strzone(ze_map); zp_body = strzone(body);
@@ -207,7 +229,7 @@ void(float now) ZonePub_Send =
 	if (now && strlen(zp_nonce_now) != 32) return;
 	// Still the file and the game the dialog was made from.
 	why = ZonePub_Offhost();
-	if (why != "") { ZonePub_Answer(strcat(why, ". Nothing was sent."), TRUE, FALSE); return; }
+	if (strlen(why)) { ZonePub_Answer(strcat(why, ". Nothing was sent."), TRUE, FALSE); return; }
 	if (strcmp(strtolower(digest_hex("SHA256", ZonePub_Saved())), zp_sha) != 0)
 	{
 		ZonePub_Answer("The saved file changed. Nothing was sent.", TRUE, FALSE); return;
@@ -235,7 +257,7 @@ void(float now) ZonePub_Send =
 void(float now) ZonePub_Go =
 {
 	if (zp_shown != zp_state) return;     // a reply lands between frames: act on the page drawn
-	if (zp_state == ZP_CONFIRM) { if (gettime(0) >= zp_armed) ZonePub_Send(now); }
+	if (zp_state == ZP_CONFIRM) { if (zp_armed > 0 && gettime(0) >= zp_armed) ZonePub_Send(now); }
 	else if (zp_state == ZP_DONE && !now) ZonePub_Cancel();
 };
 
@@ -268,10 +290,13 @@ float(float scan) ZonePub_Key =
 	}
 	if (scan == K_MOUSE1)
 	{
-		// P1081 review: a real press lands where the DEVICE put the pointer; chat_mouse and
-		// hud_edit move ze_mouse with no device. A synthetic press can only cancel (Send refuses it).
-		at = cl_input_real ? ze_mouse_real : ze_mouse;
-		seen = cl_input_real ? ze_mouse_real_seen : ze_mouse_seen;
+		// P1081 review: a real press lands where the DEVICE put the pointer (cl_main.qc records it
+		// before any panel takes the move), and on a confirm page only after it moved there once the
+		// page armed. chat_mouse and hud_edit move ze_mouse with no device; such a press can only
+		// cancel, as Send refuses it.
+		at = cl_input_real ? cl_ptr_real : ze_mouse;
+		seen = cl_input_real ? cl_ptr_real_ok : ze_mouse_seen;
+		if (cl_input_real && zp_state == ZP_CONFIRM && (zp_armed <= 0 || cl_ptr_real_t < zp_armed)) seen = FALSE;
 		if (seen && is_2dpoint_in_bbox(at, zp_go_p, zp_go_s)) ZonePub_Go(FALSE);
 		else if (seen && is_2dpoint_in_bbox(at, zp_now_p, zp_now_s)) ZonePub_Go(TRUE);
 		else if (seen && is_2dpoint_in_bbox(at, zp_no_p, zp_no_s)) ZonePub_Back();
@@ -335,7 +360,7 @@ void(vector scr) ZonePub_Draw =
 	local string title, head, body, go;
 
 	ZonePub_Pump();
-	zp_go_s = zp_no_s = '0 0 0';
+	zp_go_s = zp_no_s = zp_now_s = '0 0 0';
 	if (!zp_state && zp_shown) print("zone_edit: publish dialog closed\n");
 	if (!zp_state)
 	{
@@ -408,6 +433,12 @@ void(vector scr) ZonePub_Draw =
 	else if (zp_state == ZP_CONFIRM)
 		sui_text([p_x + pad, gp_y + (bh - rsz) * 0.5], [rsz, rsz], zp_bycmd ? "click to confirm" : "Enter / Esc",
 		         SUI_THEME_MUTED, 1, 0);
+
+	// P1081 review: buttons that moved (hud_scale, a resize) under a resting pointer arm again.
+	if (zp_state == ZP_CONFIRM && zp_shown == zp_state)
+	if (zp_go_p != zp_geo_go || zp_go_s != zp_geo_size || zp_now_p != zp_geo_now || zp_no_p != zp_geo_no)
+		zp_armed = gettime(0) + 0.6;
+	zp_geo_go = zp_go_p; zp_geo_size = zp_go_s; zp_geo_now = zp_now_p; zp_geo_no = zp_no_p;
 
 	// Where it is, once a page: an arm clicks by these (developer 1).
 	if (zp_shown != zp_state)

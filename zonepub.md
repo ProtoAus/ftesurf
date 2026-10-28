@@ -61,8 +61,12 @@ P1081: publishing also works from one of OUR lobbies (not any server). A server'
 packages and commands could stand in for the admin's table, so:
 - The service decides "ours": the challenge carries the client's own netchan address
   (`serverkey("ip")`, which the server cannot set) or `host`; zonepub.py `official()`
-  accepts only a lobby port of this machine at one of its addresses or the public name's.
-  Only our csprogs signs, and only a nonce it asked for, so a third party cannot borrow it.
+  accepts only a lobby cfg's `sv_port` at our public name (`SURFD_PUBLIC_HOST`) or one of
+  its global addresses. Loopback, private, link-local and unspecified addresses are the
+  client's own network and are refused (the client already sends them as "unknown"); a name
+  a client sends is never looked up, only our own, cached five minutes; the rate limit runs
+  first. Only our csprogs signs, and only a nonce it asked for, so a third party cannot
+  borrow it.
 - Off-host the client (`ZonePub_Offhost`) refuses a table any input without a device
   touched (`zone_cmd_taint`: every `zone_edit` word but publish/upload/edgeprobe/status,
   and every `!cl_input_real` event reaching the editor -- chat_mouse, hud_edit key/click/
@@ -70,8 +74,11 @@ packages and commands could stand in for the admin's table, so:
   a saved file that is not loose in our own folder (`whichpack(path, 2) == "ftesurf"`;
   not found fails closed). Such a table cannot be saved, or its file removed, off-host.
   A load from files clears the taint.
-- A real press counts where the device put the pointer (`ze_mouse_real`), never where a
-  synthetic event moved it.
+- A real press counts where the device put the pointer (`cl_ptr_real`, recorded in
+  CSQC_InputEvent before any panel takes the move; lost focus, a new editor cursor and
+  mouse-look forget it), never where a synthetic event moved it, and on a confirm page only
+  after a real move once the page armed. A page is unarmed until drawn; buttons that move
+  under a resting pointer (hud_scale) arm again.
 - A command may OPEN the dialog (`zone_edit publish`) but never saves: the saved file must
   already be the table, read back over it and compared as Save checks its `.part`. A
   dialog a command opened takes a click only; every confirm arms 0.6 s after its page
@@ -86,19 +93,30 @@ installer takes `--game` as `csprogs.dat` files only, never a `.prev`.
 **Reload now (P1081).** The challenge also returns `nonce_now`, bound to the same map and
 bytes; one challenge is one publish whichever nonce is signed. An upload signed with it
 (and a csprogs carrying `NOW_MARKER`) queues `force`; zonepub_publish.py's docstring has
-the steps. In short: warn every local lobby on or assigned to the map (`say`, acked by a
-`status` reply because say prints nothing to rcon; all must answer or it retries); after
-60 s, wait for two sweep completions newer than the stamp at the grace's end (sweeps cannot
-overlap, so the second started after it) and nothing owed; re-warn if the warning is over
-5 minutes old; read the targets again, write (or find the bytes live), then `changelevel`
-each target until its `status` shows the map loaded after the write, five rounds at most
-(`GAVE UP` in `publications.reload` for an operator). A crash between the write and the
-reload recovers as live and the reload still runs. Targets are only this machine's lobby
-ports (surfd stores a heartbeat's source host with its port). rcon goes through rcon.py and
-a budget shared by zonepub's processes (`rcon-budget.json` beside the store, 3 packets per
-port per 30 s; admin.py keeps 8; the engine blocks for 24 h past 15). Password:
-`SURFD_RCON_PASSWORD` in /srv/nvme/surfd/surfd.env. Never past an owed verdict; evidence
-posted after the warning and not yet indexed is checked against the new zones.
+the steps. In short:
+- Targets are our lobbies on or assigned to the map: a lobby cfg `sv_port` at
+  `SURFD_PUBLIC_HOST` (how surfd writes a trusted lobby) or a literal address of this
+  machine. If any lobby there is not ours, it holds (`hold` says why); an empty target set
+  counts only when no lobby is on the map.
+- Warn (`say`, acked by a `status` reply -- weak: the lobby answered, not that a player read
+  it; all must answer or it retries; unanswered for 15 min: `expired`, nothing installed).
+- After 60 s, two sweep completions newer than the stamp at the grace's end (sweeps cannot
+  overlap, so the second started after it) and nothing owed; re-warn if over 5 minutes old;
+  a lobby that arrived since is warned and waited for; pending an hour: `expired`.
+- Write (or find the bytes live), stamped after `put()`, then one round per tick:
+  `changelevel` each target until its `status` shows a load after the write. A try is spent
+  only on a changelevel sent; 5 tries or 30 minutes leave `live-partial` (`noop-partial`)
+  with the ports in `partial` -- rollback treats it as live, and `zonepub.py reload --map M`
+  re-arms it (`status --map M` shows the newest rows). A crash between the write and the
+  reload recovers as live and the reload still runs.
+- rcon goes through rcon.py (its socket now connected, so only the lobby can answer) and a
+  budget shared by zonepub's processes (`rcon-budget.json`, 3 packets per port per 30 s,
+  stamped inside its lock; admin.py keeps 8; the engine blocks for 24 h past 15). rcon also
+  shares the engine's 20 packets/s connectionless budget with public status queries, so a
+  flood can delay the warning -- which then expires cleanly rather than writing.
+Password and public name: `SURFD_RCON_PASSWORD`, `SURFD_PUBLIC_HOST` in
+/srv/nvme/surfd/surfd.env; ports: /srv/nvme/ftesurf-server/game/ftesurf/cfg/lobby. Never past
+an owed verdict; evidence posted after the warning and not yet indexed meets the new zones.
 `init` adds the P1081 columns to an older store; the P815 release still runs on it.
 
 Installed 2026-10-19T04:05Z by the owner, release d9bf33b4

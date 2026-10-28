@@ -108,6 +108,9 @@ float  acct_cl_got;         // the server answered one
 float  acct_cl_taken;       // `link` or `acct_hello` was somebody's cvar when this VM loaded
 
 float  cl_input_real;       // TRUE only inside the engine's own CSQC_InputEvent call (cl_main.qc)
+vector cl_ptr_real;         // P1081: the pointer as the DEVICE last put it, recorded before any panel
+float  cl_ptr_real_t;       //   ...when (gettime), and whether it is still known (focus lost: not)
+float  cl_ptr_real_ok;
 float  acct_ui;             // ACCT_UI_*
 float  acct_ui_t;           // cltime it got there
 float  acct_ui_bad;         // cltime Enter last found the code short

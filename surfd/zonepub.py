@@ -64,20 +64,40 @@ def connect(path, readonly=False):
         db.close()
 
 
-def resolve_public():
-    return {a[4][0] for h in PUBLIC_HOSTS for a in socket.getaddrinfo(h, None)}
+_RESOLVED = {}
 
 
-def official(server, st, local=pub.is_local, resolve=resolve_public):
-    """P1081: the server a client says it is on (its own netchan address, which the server it
-    is on cannot set) is one of our lobbies: a lobby port of this machine, at an address of this
-    machine or of the public name. A hostile server's map, packages and commands stay out."""
-    if st is None or not isinstance(server, str): return False
+def public_names():
+    return tuple({pub.public_host() or PUBLIC_HOSTS[0]} | set(PUBLIC_HOSTS))
+
+
+def resolve_public(ttl=300):
+    """Our own public name's addresses, looked up at most every five minutes. Only our names
+    are ever resolved: a host a client sends is compared as text, never looked up."""
+    out = set()
+    for h in public_names():
+        hit = _RESOLVED.get(h)
+        if hit is None or time.monotonic() - hit[0] >= ttl:
+            try: addrs = {str(pub.literal_ip(a[4][0])) for a in socket.getaddrinfo(h, None)}
+            except OSError: addrs = hit[1] if hit else set()
+            hit = _RESOLVED[h] = (time.monotonic(), addrs)
+        out |= hit[1]
+    return out
+
+
+def official(server, ours, names, resolve=resolve_public):
+    """P1081: the server a client says it is on (its own netchan address, which the server it is
+    on cannot set) is one of our lobbies: a lobby cfg's sv_port, at our public name or one of its
+    global addresses. Loopback, private, link-local and unspecified addresses are the CLIENT's
+    own network, never ours, and a name we do not own is refused without a lookup."""
+    if not isinstance(server, str): return False
     host, _, port = server.rpartition(':')
     host = host.strip('[]').lower()
-    if not port.isdigit() or int(port) not in st.get('all_ports', ()) or not host: return False
-    if host in PUBLIC_HOSTS or local(host): return True
-    try: return host in resolve()
+    if not host or not port.isdigit() or int(port) not in ours: return False
+    if host in names: return True
+    ip = pub.literal_ip(host)
+    if ip is None or not ip.is_global: return False
+    try: return str(ip) in resolve()
     except OSError: return False
 
 
@@ -210,7 +230,7 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
     if maps_fn is None:     # account_db is surfd.db: its lobbies and replays tables too
         maps_fn = lambda: pub.lobby_state(account_db, sweep_log, clock())
     if official_fn is None:
-        official_fn = lambda server: official(server, maps_fn())
+        official_fn = lambda server: official(server, pub.our_ports(), public_names())
     games = tuple(Path(p) for p in game_files)
     publish_dirs = tuple(Path(p) for p in publish_dirs)
     peer_salt = secrets.token_bytes(32)
@@ -271,17 +291,22 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
         # or the lobby it is on, which must be ours (official()).
         server = data.get('server', 'host')
         if not isinstance(server, str) or len(server) > 80: return fail('Invalid server', 400)
-        if server != 'host' and publish_dirs and not official_fn(server):
-            return fail('Publish from one of our lobbies or from a game you host', 403)
         now = int(clock())
         peer = hashlib.sha256(peer_salt + (request.remote_addr or '').encode()).hexdigest()
+        busy = lambda db: (db.execute('SELECT COUNT(*) FROM challenges').fetchone()[0] >= 256 or db.execute(
+            'SELECT COUNT(*) FROM challenges WHERE peer=?', (peer,)).fetchone()[0] >= 8)
+        try:
+            with connect(store) as db:      # the rate limit first, before any other work
+                db.execute('BEGIN IMMEDIATE')
+                db.execute('DELETE FROM challenges WHERE created<?', (now-180,))
+                if busy(db): return fail('Upload service busy; try later', 429)
+        except sqlite3.Error: return fail('Zone uploads unavailable', 503)
+        if server != 'host' and publish_dirs and not official_fn(server):
+            return fail('Publish from one of our lobbies or from a game you host', 403)
         try:
             with connect(store) as db:
                 db.execute('BEGIN IMMEDIATE')
-                db.execute('DELETE FROM challenges WHERE created<?', (now-180,))
-                if db.execute('SELECT COUNT(*) FROM challenges').fetchone()[0] >= 256 or db.execute(
-                        'SELECT COUNT(*) FROM challenges WHERE peer=?', (peer,)).fetchone()[0] >= 8:
-                    return fail('Upload service busy; try later', 429)
+                if busy(db): return fail('Upload service busy; try later', 429)
                 nonce = secrets.token_hex(16)
                 # P1081: a second nonce for the same map and bytes; signing it asks for "reload now".
                 now_nonce = secrets.token_hex(16) if publish_dirs else None
@@ -444,13 +469,28 @@ def main():
     rb.add_argument('--map', required=True)
     rb.add_argument('--id', type=int, help='that publish rather than the newest live one')
     rb.add_argument('--anyway', action='store_true', help='even while a lobby has the map loaded')
+    # P1081: a reload-now publish that ended live-partial (or noop-partial) reloads again.
+    sub.add_parser('reload', help="re-arm a map's newest reload-now publish").add_argument('--map', required=True)
+    sub.add_parser('status', help="a map's newest publishes").add_argument('--map', required=True)
     serve = sub.add_parser('serve')
     serve.add_argument('--accounts', type=Path, required=True)
     serve.add_argument('--game', type=Path, action='append', required=True)
     serve.add_argument('--publish-dir', type=Path, action='append', default=[])
     serve.add_argument('--port', type=int, default=8087)
     args = ap.parse_args()
-    if args.command in ('apply', 'rollback') and hasattr(os, 'geteuid') and os.geteuid() == 0:
+    if args.command == 'reload':
+        print('Re-armed publish %d of %s; the next tick reloads its lobbies'
+              % (pub.rearm(connect, args.store, args.map), args.map))
+        return
+    if args.command == 'status':
+        with connect(args.store, readonly=True) as db:
+            for r in db.execute('SELECT id, kind, force, at, live, sha, hold, partial, reload FROM publications '
+                                'WHERE map=? ORDER BY id DESC LIMIT 5', (args.map,)):
+                print('%d %s%s at %s live %s %s hold=%s partial=%s\n   %s' % (
+                    r['id'], r['kind'], ' (reload now)' if r['force'] else '', r['at'], r['live'],
+                    r['sha'][:12], r['hold'] or '-', r['partial'] or '-', r['reload'] or ''))
+        return
+    if args.command in ('apply', 'rollback', 'reload') and hasattr(os, 'geteuid') and os.geteuid() == 0:
         ap.error('run as the service user (proto), not root: the publish directories are proto-writable')
     if args.command == 'init': initialize(args.store); return
     if args.command in ('apply', 'rollback'):

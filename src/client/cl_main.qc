@@ -1731,6 +1731,10 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 	MA_Release(evtype, scanx);         // clear held latches even when a UI takes keyup
 	Paint_InputEvent(evtype, scanx);    // Patch 773: watches only
 	Share_Track(evtype, scanx);         // Patch 777: the same
+	// P1081 review: where the device put the pointer, whoever takes the event (the chat draft,
+	// hud_edit and the menus come first); lost focus forgets it.
+	if (evtype == IE_MOUSEABS) { cl_ptr_real = [scanx, chary]; cl_ptr_real_t = gettime(0); cl_ptr_real_ok = TRUE; }
+	else if (evtype == IE_FOCUS && (scanx == 0 || chary == 0)) cl_ptr_real_ok = FALSE;
 	cl_input_real = TRUE;
 	took = CL_InputEvent(evtype, scanx, chary, devid);
 	cl_input_real = FALSE;
