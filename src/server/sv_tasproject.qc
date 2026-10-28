@@ -1459,11 +1459,43 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 	SV_TASProjectDrive(e);   // first chunk now: the release above settled the frame
 };
 
+// A project's row count from its header (`base` and `head` come within the first lines), or
+// TASP_MAX when it cannot tell: an upper bound for budgeting strict reads.
+float(string n) SV_TASPHeadRows =
+{
+	local filestream f;
+	local string l;
+	local float k, base, rows;
+	f = fopen(SV_TASPPath(n), FILE_READ);
+	if (f < 0) return 0;
+	base = -1; rows = TASP_MAX;
+	for (k = 0; k < 64; k = k + 1)
+	{
+		l = fgets(f);
+		if (l == "") break;
+		if (tokenize(l) == 4 && argv(0) == "base") base = stof(argv(3));
+		else if (argv(0) == "head")
+		{
+			if (base >= 0 && stof(argv(1)) > base) rows = min(TASP_MAX, stof(argv(1)) - base);
+			break;
+		}
+	}
+	fclose(f);
+	return rows;
+};
+
 void(entity e, string a, string b) SV_TASProjectDiff =
 {
 	local float *ab;
 	local float an, abase, aid, j, first, diff, lo, hi, t;
 
+	// P1090 review 5: two strict reads in one call cost about 570 counted ops a row each, and
+	// past the runaway limit (100M) the server stops: about 87k rows each, any client's command.
+	if (SV_TASPHeadRows(a) + SV_TASPHeadRows(b) > 120000)
+	{
+		sprint(e, PRINT_HIGH, "tas project diff: these two are too long to compare in one step\n");
+		return;
+	}
 	if (!SV_TASPRead(e, a, FALSE)) { sprint(e, PRINT_HIGH, sprintf("tas project: %s: %s\n", a, tpr_why)); return; }
 	ab = tpr_buf; tpr_buf = 0; an = tpr_n; abase = tpr_base; aid = tpr_baseid;
 	SV_TASPReadFree();
