@@ -37,7 +37,7 @@ NGINX = '''location ^~ /api/tasrev/ {
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $remote_addr;
     proxy_connect_timeout 2s;
-    proxy_read_timeout 30s;
+    proxy_read_timeout 120s;      # a 96000-row upload parses for tens of seconds on the Pi
     proxy_send_timeout 30s;
     access_log off;
 }

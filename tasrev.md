@@ -18,9 +18,11 @@ change, the game's own reader and verifier (tools/tasrev.py).
 Refusals answer 200 with `ok: 0` (the game's HTTP client keeps no body otherwise); 503 means
 "cannot tell right now, try again" (the account list or the released-code list unreadable, or
 the store busy), never a verdict. Budgets, counted before any work (a refused attempt counts):
-a peer 200 uploads and 64 MB a day, everyone 5000 and 1 GB; a peer 60 reads a minute; 2 GB of
-revisions, 200000 statements, 32 a revision, 4 a key a revision. The unit runs with
-MemoryMax=384M, CPUQuota=50%, Nice=10.
+a peer 200 uploads and 64 MB a day, everyone 5000 and 1 GB; a peer 60 reads a minute (a large
+credit counts one more for each 32 KB it sends); 2 GB of revisions, 200000 statements, 32 a
+revision from unlinked keys, 4 a key a revision. Two uploads parse, and two credits resolve, at
+once; resolved credit is cached as text within 16 MB. The unit runs with MemoryMax=384M,
+CPUQuota=50%, Nice=10.
 
 ## Credit
 

@@ -314,6 +314,37 @@ class Service(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(self.credit(hb), [(21, 30, SID_A), (31, 35, 'unsigned'), (36, 40, SID_A)])
 
+    def test_large_credits_are_cached_by_bytes_and_cost_reads(self):
+        # Review 3 (attacker): a 96000-range credit read many times cannot grow the cache past its bytes.
+        rows = [row(t) for t in range(21, 20021)]
+        a, ha = revision(20, rows); self.put_st(statement(ALICE, ha, None, 21, 20020)); self.put_rev(a)
+        shas = []
+        for k in range(6):
+            alt = [row(t, 7 + k) if t % 2 else r for t, r in zip(range(21, 20021), rows)]
+            b, hb = revision(20, alt, parent=ha, supply=(21, 20019)); self.put_st(statement(BOB, hb, ha, 21, 20019)); self.put_rev(b)
+            shas.append(hb)
+        self.drain()
+        app = self.c.application
+        for i, h in enumerate(shas):
+            self.now[0] += 60
+            self.assertEqual(len(self.c.get('/api/tasrev/rev/%s' % h).get_json()['credit']), 20000)
+            self.assertLessEqual(app.tasrevd_cache_bytes(), svc.CACHE_BYTES)
+        # One 20000-range read costs about 15 of the minute's 60.
+        self.now[0] += 60
+        codes = [self.c.get('/api/tasrev/rev/%s' % shas[0]).get_json().get('status', 200) for _ in range(6)]
+        self.assertEqual(codes[:3], [200, 200, 200]); self.assertEqual(codes[-1], 429)
+
+    def test_a_flood_of_unlinked_statements_cannot_block_a_linked_signer(self):
+        # Review 3 (attacker): 32 junk statements from free keys fill the unlinked cap only.
+        (a, ha), _, _ = self.chain()
+        for k in range(8):
+            for c in range(4):
+                self.assertEqual(self.put_st(statement(bytes([90 + k]) * 32, ha, None, 21, 40, code=('%02x' % c) * 32))['ok'], 1)
+        self.assertEqual(self.put_st(statement(CAROL, ha, None, 21, 40))['ok'], 0)      # unlinked: the cap
+        self.assertEqual(self.put_st(statement(ALICE, ha, None, 21, 40))['ok'], 1)      # linked: still takes
+        self.put_rev(a)
+        self.assertEqual(self.credit(ha), [(21, 40, SID_A)])
+
     def test_reads_are_limited_per_peer(self):
         codes = [self.c.get('/api/tasrev/map/bhop_eazy').get_json().get('status', 200) for _ in range(svc.PEER_READS + 1)]
         self.assertEqual((codes[0], codes[-1]), (200, 429))

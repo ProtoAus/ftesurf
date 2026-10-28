@@ -57,7 +57,9 @@ WALK_MAX, WORK_MAX = 4096, 1000000  # ancestors visited, rows compared, per cred
 DRAIN_SECONDS = 0.5                 # queue work per POST
 PEER_ITEMS, PEER_BYTES = 200, 64 * 1024 ** 2          # a peer's day of uploads
 DAY_ITEMS, DAY_BYTES = 5000, 1024 ** 3                 # everyone's day
-PEER_READS = 60                     # a peer's reads a minute
+PEER_READS = 60                     # a peer's reads a minute; a large credit costs one more a 32 KB
+CACHE_BYTES, CACHE_ONE = 16 * 1024 ** 2, 4 * 1024 ** 2   # resolved credit kept as JSON text
+HEAVY = 2                           # parses and credit resolutions at once (each tens of MB at 96000 rows)
 STORE_CAP, STATEMENT_CAP, PER_REVISION, PER_KEY = 2 * 1024 ** 3, 200000, 32, 4
 SQL = '''
 CREATE TABLE IF NOT EXISTS revisions(sha TEXT PRIMARY KEY, seq INTEGER NOT NULL UNIQUE, map TEXT NOT NULL,
@@ -328,7 +330,12 @@ def create_app(store, account_db, codes_file, clock=time.time):
         db.execute('PRAGMA journal_mode=WAL')
         salt = bytes.fromhex(db.execute("SELECT v FROM meta WHERE k = 'salt'").fetchone()['v'])
     reads, reads_lock = {}, threading.Lock()
-    shown, shown_lock = OrderedDict(), threading.Lock()   # (sha, credit, codes) -> answer
+    shown, shown_lock = OrderedDict(), threading.Lock()   # (sha, credit, codes) -> credit JSON text
+    heavy = threading.BoundedSemaphore(HEAVY)
+    def charge(extra):
+        p, minute = peer(), int(clock() // 60)
+        with reads_lock: reads[(p, minute)] = reads.get((p, minute), 0) + extra
+    app.tasrevd_cache_bytes = lambda: sum(len(v) for v in shown.values())
     # A refusal answers 200 with ok=0: the game's HTTP client keeps no body for other statuses.
     def fail(message, status): return jsonify(ok=0, error=message, status=status), 200
     def peer():
@@ -392,7 +399,9 @@ def create_app(store, account_db, codes_file, clock=time.time):
             if db.execute('SELECT 1 FROM statements WHERE id = ?', (sid,)).fetchone() is None:
                 if db.execute('SELECT COUNT(*) FROM statements').fetchone()[0] >= STATEMENT_CAP:
                     return fail('The statement store is full', 507)
-                if db.execute('SELECT COUNT(*) FROM statements WHERE sha = ?', (w[2],)).fetchone()[0] >= PER_REVISION:
+                # Unlinked keys are free to make, so they share a cap a flood cannot take from a linked signer.
+                if state != accounts.RANK_LINKED and db.execute("SELECT COUNT(*) FROM statements WHERE sha = ? AND state != 'linked'",
+                                                                (w[2],)).fetchone()[0] >= PER_REVISION:
                     return fail('Too many statements about this revision', 429)
                 # A key may sign one revision again (a released build after a dev one), a few times.
                 if db.execute('SELECT COUNT(*) FROM statements WHERE sha = ? AND pub = ?', (w[2], pub)).fetchone()[0] >= PER_KEY:
@@ -412,8 +421,9 @@ def create_app(store, account_db, codes_file, clock=time.time):
         with connect(store) as db, writing(db):
             if not spend(db, request.content_length, now): return fail('Too many uploads today', 429)
         body = request.get_data(cache=False)
-        try: info = tr.parse(body)
-        except tr.Refused as e: return fail('Revision refused: %s' % e, 400)
+        with heavy:
+            try: info = tr.parse(body)
+            except tr.Refused as e: return fail('Revision refused: %s' % e, 400)
         if info['stated'] != info['h']: return fail('Revision refused: its revsha is not its hash', 400)
         mp = body.split(b'\n', 2)[1].decode('ascii').split(' ')[1]
         if not NAME.fullmatch(mp): return fail('Invalid map', 400)
@@ -496,12 +506,15 @@ def create_app(store, account_db, codes_file, clock=time.time):
             key = (sha, hashlib.sha256(rev['credit'].encode()).hexdigest(), hash(codes))
             with shown_lock: credit = shown.get(key)
             if credit is None:
-                credit = resolve(db, json.loads(rev['credit']), codes)
-                with shown_lock:
-                    shown[key] = credit
-                    while len(shown) > 64: shown.popitem(last=False)
+                with heavy: credit = json.dumps(resolve(db, json.loads(rev['credit']), codes), separators=(',', ':'))
+                if len(credit) <= CACHE_ONE:
+                    with shown_lock:
+                        shown[key] = credit
+                        while sum(len(v) for v in shown.values()) > CACHE_BYTES: shown.popitem(last=False)
+        charge(len(credit) // 32768)
         rv = dict(rev); rv.pop('credit')
-        return jsonify(ok=1, revision=rv, statements=sts, credit=credit, pending=pending)
+        return Response('{"ok":1,"revision":%s,"statements":%s,"credit":%s,"pending":%s}\n'
+                        % (json.dumps(rv), json.dumps(sts), credit, 'true' if pending else 'false'), mimetype='application/json')
     @app.get('/api/tasrev/rev/<sha>/file')
     def file(sha):
         if not HEX64.fullmatch(sha): return fail('Invalid hash', 400)
