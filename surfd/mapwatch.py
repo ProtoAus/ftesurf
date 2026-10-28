@@ -15,7 +15,7 @@ WHAT IT READS, each anonymous:
   KSF        https://ksf.surf/maps -- the page embeds the whole list (952 on
              11 Oct, where the Drive sheet stops at 929) with a tier and
              /files/<map>.zip, one bare .bsp.
-  extra.tsv  <state>/extra.tsv, `name sha1 url` a line: Momentum's Beta maps,
+  extra.tsv  <state>/extra.tsv, `name sha1 url id zoneHash` a line: Momentum's Beta maps,
              from the game's own cache on a PC that has it (tools/mapscan.py
              pushes it).  Without that PC the Beta list stays as it was.
 
@@ -587,8 +587,11 @@ def ksf_list(pacer):
 
 
 def extra_list(path):
-    """<state>/extra.tsv: `name sha1 url`, Momentum maps the public list does
-    not carry.  A line that is not exactly that is dropped and counted."""
+    """<state>/extra.tsv: `name sha1 url [id zoneHash]`, Momentum maps the
+    public list does not carry; zoneHash is `-` for a map with no zones.  A
+    line that is not exactly that is dropped and counted.  P1093: only a line
+    with an id can have zones or replace a build, and only once the map's own
+    API reply names that build (zone_fetch): the PC's cache can be stale."""
     out, bad = {}, 0
     try:
         fh = io.open(path, encoding="utf-8", errors="replace")
@@ -599,14 +602,18 @@ def extra_list(path):
             f = ln.split()
             if not f or f[0].startswith("#"):
                 continue
-            if (len(f) != 3 or not okname(f[0]) or not HEX40.fullmatch(f[1].lower())
-                    or not okcdn(f[2])):
+            if (len(f) not in (3, 5) or not okname(f[0]) or not HEX40.fullmatch(f[1].lower())
+                    or not okcdn(f[2])
+                    or (len(f) == 5 and (not re.fullmatch(r"[1-9][0-9]{0,8}", f[3])
+                                         or not (f[4] == "-" or HEX40.fullmatch(f[4].lower()))))):
                 bad += 1
                 continue
+            mid = int(f[3]) if len(f) == 5 else None
+            zh = f[4].lower() if len(f) == 5 and f[4] != "-" else None
             out.setdefault(f[0].lower(), {
-                "name": f[0], "id": None, "sha": f[1].lower(), "url": f[2],
+                "name": f[0], "id": mid, "sha": f[1].lower(), "url": f[2],
                 "mode": "surf" if f[0].lower().startswith("surf_") else "bhop",
-                "zh": None, "tier": None, "ranked": None, "src": "beta"})
+                "zh": zh, "tier": None, "ranked": None, "src": "beta"})
     return out, bad
 
 
@@ -949,6 +956,12 @@ def zone_fetch(pacer, r):
     cv = doc.get("currentVersion") if isinstance(doc, dict) else None
     if not isinstance(cv, dict) or not isinstance(cv.get("zones"), dict):
         raise Refused("a reply with no zones in it")
+    # P1093: a Beta row is a line from a PC's cache, maybe days old.  Its zones
+    # (and a build swap waiting on them) are taken only while the map's own
+    # reply still names that build; otherwise the line is stale, not the map.
+    if r["src"] == "beta" and (doc.get("id") != r["id"]
+                               or str(cv.get("bspHash")).lower() != r["sha"]):
+        return None, False, "zoneversion"
     got = zone_bytes(text, doc, r["zh"])
     if got is None:
         return None, False, "zoneshape"
@@ -1294,7 +1307,10 @@ def run(a):
              len(diff), nolink,
              "; %d held file(s) could not be read" % (unread + len(odd)) if unread or odd else ""))
 
-    todo = new + ([r for r in diff if r["src"] == "mom"] if a.updates else [])
+    # A Beta build is replaced only through its zones' request, which checks the
+    # line against the map's own reply (zone_fetch): no id or zoneHash, no swap.
+    todo = new + ([r for r in diff if r["src"] == "mom" or (r["src"] == "beta" and r["id"] and r["zh"])]
+                  if a.updates else [])
     todo = [r for r in todo if not waiting(skey(r))]
     todo.sort(key=lambda r: back.get(skey(r), 0))      # stable: a refused file goes last
     if not a.go:
@@ -1554,7 +1570,7 @@ def run(a):
             continue
         raw = None
         if stem is not None:
-            if not a.updates or r["src"] != "mom" or key in fresh:
+            if not a.updates or r["src"] not in ("mom", "beta") or key in fresh:
                 continue
             if key in KEEP_BUILD:
                 count("kept at the build held, by name (KEEP_BUILD)")
@@ -1631,7 +1647,7 @@ def run(a):
             # Its zones at once: it can be hosted from this second.  Not over a
             # zone file already here under that name (the zone loop reports
             # it), and under the same two looks as any first zone file.
-            if (r["src"] == "mom" and r["zh"] and key not in zidx and "api" not in dead
+            if (r["src"] in ("mom", "beta") and r["zh"] and r["id"] and key not in zidx and "api" not in dead
                     and not waiting(zkey) and unplayed(key) and quiet(key)):
                 raw = zone_ask(key, r, zkey)
                 if (raw is not None and zone_fits(key, raw, final, zkey)
@@ -1709,13 +1725,16 @@ def run(a):
                 count("the name was taken meanwhile: left")
             _save(sp, st)
 
-    # Zones for approved maps already held at the published build: absent, or
+    # Zones for approved and Beta maps already held at the published build: absent, or
     # (with --updates) not the published file.
     zw, zasked, zdiff, zwait = {}, 0, 0, 0
     atbuild = set()                         # zone stems of maps held at the published build
     zidx.update(stems(zdir, ".json"))       # what arrived while the maps were coming
-    for k in sorted(mom, key=lambda k: (back.get("z:%s:%s" % (k, (mom[k]["zh"] or "")[:12]), 0), k)):
-        r = mom[k]
+    # P1093: Beta maps too, by the id and zoneHash their extra.tsv line carries.
+    zsrc = dict(mom)
+    zsrc.update((k, r) for k, r in extra.items() if r["id"] and r["zh"] and k not in zsrc)
+    for k in sorted(zsrc, key=lambda k: (back.get("z:%s:%s" % (k, (zsrc[k]["zh"] or "")[:12]), 0), k)):
+        r = zsrc[k]
         if k not in inv or not r["zh"] or k in ztried:
             continue
         zkey = "z:%s:%s" % (k, r["zh"][:12])

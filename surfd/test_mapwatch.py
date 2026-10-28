@@ -2283,6 +2283,87 @@ def case_extra_and_lock():
     first.close()
 
 
+def case_beta_zones():
+    """P1093: a Beta line with an id and zoneHash gets the map's zones, and with
+    --updates its build, but only while the map's own reply names that build."""
+    def lines(st, *rows):
+        os.makedirs(st, exist_ok=True)
+        with io.open(os.path.join(st, "extra.tsv"), "w", newline="\n") as fh:
+            fh.write("# name sha1 url id zoneHash\n")
+            for r in rows:
+                fh.write(r + "\n")
+
+    def line(w, n, seed, zh=True):
+        m = w.mom[n]
+        z = sha(ztext(m["zones"]).encode()) if zh and m.get("zones") else "-"
+        return "%s %s %s%s.bsp %d %s" % (n, sha(bsp(seed)), W.MOM_CDN, uuid_of(n), w.ids[n], z)
+
+    # Held at the line's build, which the reply names: its zones are written.
+    w, maps, state = setup({"surf_bz": M("bz")}, {}, held=[("surf_bz", bsp("bz"))])
+    w.hidden = {"surf_bz"}
+    lines(state, line(w, "surf_bz", "bz"))
+    tick(maps, state, "--go")
+    check("a held Beta map at its line's build gets the zones its own reply hashes to",
+          (sha(zfile(maps, "surf_bz") or b""), w.files()),
+          (sha(ztext(w.mom["surf_bz"]["zones"]).encode()), []))
+
+    # The line names the held build, the reply a newer one: the line is stale.
+    w, maps, state = setup({"surf_bs": M("bs new")}, {}, held=[("surf_bs", bsp("bs old"))])
+    w.hidden = {"surf_bs"}
+    lines(state, "surf_bs %s %s%s.bsp %d %s" % (sha(bsp("bs old")), W.MOM_CDN, uuid_of("surf_bs"),
+                                                 w.ids["surf_bs"], "5" * 40))
+    tick(maps, state, "--go", "--updates")
+    check("...a stale line (the reply names another build) writes no zones and swaps nothing",
+          (zlist(maps), sha(read(os.path.join(maps, "surf_bs.bsp"))), w.files(), strikes(state)),
+          ([], sha(bsp("bs old")), [], []))
+
+    # Held on an older build; the line and the reply both name the new one.
+    w, maps, state = setup({"surf_bu": M("bu new")}, {}, held=[("surf_bu", bsp("bu old"))])
+    w.hidden = {"surf_bu"}
+    lines(state, line(w, "surf_bu", "bu new"))
+    tick(maps, state, "--go")
+    check("control: without --updates a held Beta build is left",
+          (sha(read(os.path.join(maps, "surf_bu.bsp"))), w.files()), (sha(bsp("bu old")), []))
+    tick(maps, state, "--go", "--updates")
+    check("...with --updates it is replaced, with its zones, and the old build kept aside",
+          (sha(read(os.path.join(maps, "surf_bu.bsp"))), sha(zfile(maps, "surf_bu") or b""),
+           sorted(os.listdir(os.path.join(maps, ".old")))),
+          (sha(bsp("bu new")), sha(ztext(w.mom["surf_bu"]["zones"]).encode()),
+           ["surf_bu.%s.bsp" % sha(bsp("bu old"))[:12]]))
+
+    # The line names a build the reply does not (newer than held, older than published).
+    w, maps, state = setup({"surf_bm": M("bm now")}, {}, held=[("surf_bm", bsp("bm old"))])
+    w.hidden = {"surf_bm"}
+    lines(state, "surf_bm %s %s%s.bsp %d %s" % (sha(bsp("bm mid")), W.MOM_CDN, uuid_of("surf_bm"),
+                                                 w.ids["surf_bm"],
+                                                 sha(ztext(w.mom["surf_bm"]["zones"]).encode())))
+    tick(maps, state, "--go", "--updates")
+    check("...and not when the reply names another build than the line, zones hashing or not",
+          (sha(read(os.path.join(maps, "surf_bm.bsp"))), w.files(), zlist(maps)),
+          (sha(bsp("bm old")), [], []))
+
+    # A new Beta name with an id is installed with its zones at once.
+    w, maps, state = setup({"surf_bn": M("bn")}, {})
+    w.hidden = {"surf_bn"}
+    lines(state, line(w, "surf_bn", "bn"))
+    tick(maps, state, "--go")
+    check("a new Beta name with an id is installed with its zones",
+          (lib(maps), sha(zfile(maps, "surf_bn") or b"")),
+          (["surf_bn.bsp", "zones"], sha(ztext(w.mom["surf_bn"]["zones"]).encode())))
+
+    st = os.path.join(tempfile.mkdtemp(prefix="extra-", dir=HOME))
+    lines(st, "surf_ok %s %s%s.bsp 12 -" % ("a" * 40, W.MOM_CDN, uuid_of("surf_ok")),
+          "surf_old %s %s%s.bsp" % ("b" * 40, W.MOM_CDN, uuid_of("surf_old")),
+          "surf_id0 %s %s%s.bsp 0 %s" % ("c" * 40, W.MOM_CDN, uuid_of("surf_id0"), "d" * 40),
+          "surf_idx %s %s%s.bsp 1e3 %s" % ("c" * 40, W.MOM_CDN, uuid_of("surf_idx"), "d" * 40),
+          "surf_zh %s %s%s.bsp 9 %s" % ("c" * 40, W.MOM_CDN, uuid_of("surf_zh"), "d" * 39),
+          "surf_four %s %s%s.bsp 9" % ("c" * 40, W.MOM_CDN, uuid_of("surf_four")))
+    got, bad = W.extra_list(os.path.join(st, "extra.tsv"))
+    check("extra.tsv: 3 or 5 fields; an id is a positive integer, a zoneHash 40 hex or -",
+          (sorted(got), got["surf_ok"]["id"], got["surf_ok"]["zh"], got["surf_old"]["id"], bad),
+          (["surf_ok", "surf_old"], 12, None, None, 4))
+
+
 def case_mapscan():
     tools = os.path.join(os.path.dirname(HERE), "tools")
     if not os.path.exists(os.path.join(tools, "mapscan.py")):
@@ -2331,7 +2412,7 @@ def main():
                  case_unhashed_zones,
                  case_bad_names_and_shapes, case_hosts,
                  case_held_builds, case_first_zones, case_variants, case_zones_and_limits,
-                 case_extra_and_lock, case_mapscan):
+                 case_extra_and_lock, case_beta_zones, case_mapscan):
         print("\n%s:" % case.__name__)
         case()
     print()

@@ -250,15 +250,20 @@ def push_beta(host):
                 and n.lower().startswith(("surf_", "bhop_")) and n.lower() not in done
                 and isinstance(cv.get("bspHash"), str) and isinstance(cv.get("downloadURL"), str)
                 and not any(c.isspace() for c in cv["bspHash"] + cv["downloadURL"])):
-            rows.setdefault(n.lower(), (n, cv["bspHash"], cv["downloadURL"]))
+            # P1093: the id lets the Pi ask the map's own reply for its zones and
+            # whether this line's build is still current; `-` = no zones published.
+            mid, zh = r.get("id"), cv.get("zoneHash")
+            mid = str(mid) if type(mid) is int and 0 < mid < 10 ** 9 else None
+            zh = zh.lower() if isinstance(zh, str) and re.fullmatch(r"[0-9a-fA-F]{40}", zh) else "-"
+            rows.setdefault(n.lower(), (n, cv["bspHash"], cv["downloadURL"]) + ((mid, zh) if mid else ()))
     rows = sorted(rows.values())
     if not rows:
         return None
     local = os.path.join(DATA, "mapbeta.tsv")
     with open(local, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("# written by tools/mapscan.py %s -- name sha1 url\n" % today())
-        for n, h, u in rows:
-            fh.write("%s %s %s\n" % (n, h, u))
+        fh.write("# written by tools/mapscan.py %s -- name sha1 url id zoneHash\n" % today())
+        for row in rows:
+            fh.write(" ".join(row) + "\n")
     rc, out = quick(["ssh", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes", host,
                      "mkdir -p %s" % PI_WATCH])
     if rc == 0:
