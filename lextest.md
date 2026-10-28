@@ -1,6 +1,8 @@
 # lextest.md — things waiting on a human
 
-**P1081 -- publish zones from a lobby, Reload now (NOT deployed; owner check after deploy):**
+**P1081 -- publish zones from a lobby, Reload now (owner check pending):** live 29 Oct: cs ad56be4a /
+qw e6740dbb in both installs and all 12 lobbies (~13:22Z; smokes on 27520 and 27540 passed), zone
+service 66ed6677 since 13:39:55Z. Offline arms also proved the client crc equals the lobby's zonecrc.
 On one of our lobbies (not a hosted game), open `zone_edit`, edit with the panel, Save,
 then Publish saved (or type `zone_edit publish` after saving). Does the dialog open, and
 does a click on Publish send it? With the new zone service a "Reload now" button appears at
