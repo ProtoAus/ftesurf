@@ -219,7 +219,8 @@ class Publish(Upload):
             return db.execute(q,(kind,) if kind else ()).fetchall()
     def lobbies(self):
         if self.maps is None: return None
-        return {'maps': self.maps, 'owed': self.owed, 'swept': self.swept, 'posted': getattr(self, 'posted', {})}
+        return {'maps': self.maps, 'owed': self.owed, 'swept': self.swept, 'posted': getattr(self, 'posted', {}),
+                'ports': getattr(self, 'ports', {})}
     def apply(self): return self.app.config['ZONEPUB_APPLY'](self.now)
     def wait(self, seconds):
         # The service hears the lobbies every 60 s; a longer gap restarts the watch.
@@ -288,7 +289,7 @@ class Publish(Upload):
         self.assertEqual(self.files(),[self.raw,self.raw])
     def test_lobby_state_reads_surfd_like_mapwatch(self):
         db=self.root/'surfd.db'; c=sqlite3.connect(db)
-        c.executescript("CREATE TABLE lobbies(node TEXT, map TEXT, last_seen INTEGER);"
+        c.executescript("CREATE TABLE lobbies(node TEXT, map TEXT, last_seen INTEGER, addr TEXT);"
                         "CREATE TABLE assignments(node TEXT, map TEXT, asked_at INTEGER);"
                         "CREATE TABLE runs(map TEXT, leg INTEGER, submitted INTEGER);"
                         "CREATE TABLE replays(id INTEGER PRIMARY KEY, map TEXT, kind TEXT, checked INTEGER, submitted INTEGER, recheck_at INTEGER);"
@@ -296,8 +297,11 @@ class Publish(Upload):
         log=self.root/'sweep.log'; log.write_text('x')
         state=lambda: z.pub.lobby_state(db,log,self.now)
         self.assertIsNone(state())                      # no lobby heard yet
-        c.executemany('INSERT INTO lobbies VALUES(?,?,?)',[('1','Surf_A',self.now-5),('2','surf_b',self.now-20)]); c.commit()
+        c.executemany('INSERT INTO lobbies VALUES(?,?,?,?)',[('1','Surf_A',self.now-5,'192.168.1.102:27510'),
+                                                              ('2','surf_b',self.now-20,'192.168.1.102:27520'),
+                                                              ('3','surf_b',self.now-2,'bad')]); c.commit()
         st=state(); self.assertEqual(st['maps'],{'surf_a','surf_b'}); self.assertEqual(st['owed'],set())
+        self.assertEqual(st['ports'],{'surf_a':[27510],'surf_b':[27520]})     # P1081: an unparsable addr is no port
         c.executemany('INSERT INTO replays VALUES(?,?,?,?,?,?)',[(1,'surf_a','run',0,1,0),(2,'surf_b','momentum',0,1,0),(3,'surf_c','evidence',1,1,0),(4,'surf_d','run',0,1,0)])
         c.executemany('INSERT INTO verdicts VALUES(?,?,?)',[(4,'ERROR',5)]*3); c.commit()
         self.assertEqual(state()['owed'],{'surf_a'})    # imported kinds, checked and spent rows are not owed
@@ -407,6 +411,94 @@ class Publish(Upload):
         for body in bad:
             raw=body.encode(); self.assertEqual(self.upload(self.challenge(raw),raw=raw).status_code,400,body[:80])
         self.assertEqual(self.files(),[self.OLD,None])
+
+
+class PublishNow(Publish):
+    """P1081: the admin's "reload now": warn the map's lobbies, write once its runs are
+    verified, then changelevel only the lobbies on it. Every Publish test runs here too."""
+    def setUp(self):
+        super().setUp()
+        self.game.write_bytes(b'synthetic P1081 game: ' + z.PUBLISH_MARKER + b' ' + z.NOW_MARKER)
+        self.code = hashlib.sha256(self.game.read_bytes()).hexdigest()
+        self.sent = []
+        self.ports = {'surf_fixture': [27530, 27510], 'surf_other': [27520]}
+        self.app = z.create_app(self.store,self.main,[self.game],clock=lambda:self.now,verify=ed25519,
+                                publish_dirs=self.dirs,maps_fn=self.lobbies,
+                                rcon_fn=lambda port, argv: self.sent.append((port, argv[0], argv[1])))
+        self.c = Coded(self.app.test_client())
+    def challenge_now(self, raw=None, name='surf_fixture'):
+        r = self.c.post('/api/zones/challenge',json=dict(map=name,sha=hashlib.sha256(raw or self.raw).hexdigest()))
+        self.assertEqual(r.status_code,200,r.data)
+        return r.json['nonce'], r.json['nonce_now']
+    def test_now_marker_is_the_client_source_s(self):
+        src = (Path(__file__).resolve().parent.parent / 'src/client/cl_zonepublish.qc').read_bytes()
+        self.assertEqual(src.count(z.NOW_MARKER), 1)
+    def test_reload_now_warns_then_writes_and_reloads_only_that_maps_lobbies(self):
+        self.grant(); self.maps={'surf_fixture','surf_other'}
+        quiet, now = self.challenge_now(); self.assertNotEqual(quiet, now); self.assertEqual(len(now), 32)
+        r=self.upload(now); self.assertEqual(r.status_code,200,r.data)
+        self.assertEqual((r.json['published'], r.json['now']), (0, 1)); self.assertIn('warned', r.json['note'])
+        say=z.pub.NOTICE % 'surf_fixture'
+        self.assertEqual(self.sent,[(27510,'say',say),(27530,'say',say)])          # surf_other's lobby is not told
+        self.assertEqual(self.files(),[self.OLD,None])                               # warned, not written
+        self.stalled=True; self.assertEqual(self.wait(600),{})                       # no sweep since the warning
+        self.assertEqual(self.files(),[self.OLD,None])
+        self.stalled=False; self.assertEqual(self.wait(60),{'surf_fixture':'live'})  # a lobby still on it
+        self.assertEqual(self.files(),[self.raw,self.raw])
+        self.assertEqual(self.sent[2:],[(27510,'changelevel','surf_fixture'),(27530,'changelevel','surf_fixture')])
+        row=self.rows('live')[0]; self.assertEqual(row['force'],1)
+        self.assertEqual(row['reload'],'warned 27510:ok 27530:ok; reloaded 27510:ok 27530:ok')
+        self.maps=set(); self.wait(660); self.rollback()                             # prior bytes kept
+        self.assertEqual(self.files(),[self.OLD,None])
+    def test_reload_now_never_passes_an_owed_verdict(self):
+        self.grant(); self.maps={'surf_fixture'}; self.owed={'surf_fixture'}
+        self.upload(self.challenge_now()[1])
+        self.assertEqual(self.wait(1800),{}); self.assertEqual(self.files(),[self.OLD,None])
+        self.assertEqual([s[1] for s in self.sent],['say','say'])                    # warned once, never reloaded
+        self.owed=set(); self.assertEqual(self.wait(60),{'surf_fixture':'live'})
+    def test_reload_now_waits_for_the_warning_and_for_heard_lobbies(self):
+        self.grant(); self.maps=None
+        self.upload(self.challenge_now()[1]); self.assertEqual(self.sent,[])
+        self.now+=30; self.apply(); self.assertEqual(self.sent,[])                   # still unheard: nobody warned
+        self.maps={'surf_fixture'}; self.apply(); self.assertEqual(len(self.sent),2)
+        self.now+=30; self.swept=self.now; self.assertEqual(self.apply(),{})         # 30 s is not the minute
+        self.assertEqual(self.wait(60),{'surf_fixture':'live'})
+    def test_reload_now_with_nobody_on_the_map_reloads_nothing(self):
+        self.grant(); self.ports={'surf_other':[27520]}; self.upload(self.challenge_now()[1])
+        self.assertEqual(self.wait(60),{'surf_fixture':'live'}); self.assertEqual(self.sent,[])
+        self.assertEqual(self.rows('live')[0]['reload'],'warned -; reloaded -')
+    def test_quiet_nonce_never_forces(self):
+        self.grant(); self.maps={'surf_fixture'}
+        self.assertEqual(self.upload(self.challenge_now()[0]).json['published'],0)
+        self.assertEqual(self.wait(1200),{}); self.assertEqual(self.sent,[])
+        self.assertEqual(self.rows('pending')[0]['force'],0)
+    def test_reload_now_needs_the_p1081_client(self):
+        self.grant(); self.game.write_bytes(b'synthetic P815 game: ' + z.PUBLISH_MARKER)
+        self.code = hashlib.sha256(self.game.read_bytes()).hexdigest()
+        quiet, now = self.challenge_now()
+        self.assertEqual(self.upload(now).status_code,403); self.assertFalse(self.rows())
+        self.assertEqual(self.upload(quiet).status_code,200)                         # its own path still works
+    def test_one_challenge_is_one_publish_whichever_nonce(self):
+        self.grant(); self.maps={'surf_fixture'}; quiet, now = self.challenge_now()
+        self.assertEqual(self.upload(now).status_code,200); self.assertEqual(self.upload(quiet).status_code,409)
+        self.assertEqual(len(self.rows()),1)
+    def test_reload_now_refuses_a_nonadmin_and_changed_bytes(self):
+        self.maps={'surf_fixture'}
+        self.assertEqual(self.upload(self.challenge_now()[1]).status_code,403)        # no role
+        self.grant(); b=self.raw2(77)
+        self.assertEqual(self.upload(self.challenge_now()[1],raw=b).status_code,409)  # nonce names other bytes
+        self.wait(600); self.assertEqual(self.sent,[]); self.assertFalse(self.rows())
+        self.assertEqual(self.files(),[self.OLD,None])
+    def test_a_p815_store_is_migrated_and_old_inserts_still_work(self):
+        old=self.root/'old.db'; c=sqlite3.connect(old)
+        c.executescript(z.SQL.replace(',\n nonce_now TEXT','').replace(', force INTEGER, notice INTEGER, reload TEXT',''))
+        self.assertNotIn('force',{r[1] for r in c.execute('PRAGMA table_info(publications)')}); c.close()
+        z.create_app(old,self.main,[self.game],publish_dirs=self.dirs,maps_fn=self.lobbies)
+        c=sqlite3.connect(old)
+        self.assertIn('nonce_now',{r[1] for r in c.execute('PRAGMA table_info(challenges)')})
+        self.assertTrue({'force','notice','reload'} <= {r[1] for r in c.execute('PRAGMA table_info(publications)')})
+        c.execute("INSERT INTO publications(map,sha,steamid,at,kind,body) VALUES('m','s','x',1,'pending',x'00')")
+        c.execute("INSERT INTO challenges(nonce,map,sha,peer,created) VALUES('n','m','s','p',1)"); c.commit(); c.close()
 
 
 if __name__ == '__main__': unittest.main()

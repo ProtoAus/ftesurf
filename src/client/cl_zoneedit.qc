@@ -653,6 +653,12 @@ void(float force) ZoneEdit_Save =
 		ZoneEdit_Note("on someone else's server, save with a click on the panel's save button");
 		return;
 	}
+	// P1081: no file on disk may come from edits a server could have typed for us.
+	if (zone_cmd_taint && !ZoneEdit_Hosting())
+	{
+		ZoneEdit_Note("NOT SAVED: a console command changed these zones on this server; Reload, then edit with the panel");
+		return;
+	}
 	if (!ze_dirty)
 	if (!force)
 	{
@@ -1757,6 +1763,7 @@ void() ZoneEdit_Status =
 /*
   zone_edit                 open or close
   zone_edit save [force] | forget | status      force: write an unchanged table too
+  zone_edit publish         P1081: open the publish dialog (its buttons need a real click)
   zone_edit add <start|end|stage|checkpoint> <track> <x1> <y1> <x2> <y2> <bottom> <height>
   zone_edit del <n> | sel <n> | track <n>
   zone_edit place <start|end|stage|checkpoint>     as the panel's + buttons
@@ -1797,6 +1804,10 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 		print("^3zone_edit^7: open it first (zone_edit)\n");
 		return TRUE;
 	}
+	// P1081: on a server, any word here may be the server's (see WHO MAY WRITE A FILE).
+	if (a != "publish" && a != "upload" && a != "edgeprobe")
+	if (!ZoneEdit_Hosting())
+		zone_cmd_taint = TRUE;
 	t = -1;
 	if (argv(2) == "start")           t = ZONE_START;
 	else if (argv(2) == "end")        t = ZONE_END;
@@ -1810,8 +1821,8 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 	}
 	if (a == "save")
 		ZoneEdit_Save(argv(2) == "force");
-	else if (a == "upload")
-		ZonePub_Begin(FALSE);
+	else if (a == "publish" || a == "upload")
+		ZonePub_Begin(FALSE);           // P1081: opens the dialog; only a real press sends
 	else if (a == "forget")
 		ZoneEdit_Forget();
 	else if (a == "track")
@@ -1913,7 +1924,7 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 		}
 	}
 	else
-		print("zone_edit [save [force]|forget|status|track n|sel n|del n|place type|click|back|press id|"
+		print("zone_edit [save [force]|publish|forget|status|track n|sel n|del n|place type|click|back|press id|"
 		      "add type track x1 y1 x2 y2 bottom height]\n");
 	return TRUE;
 };

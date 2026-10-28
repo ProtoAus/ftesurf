@@ -2,8 +2,8 @@
 
 ## What is implemented (P729, P815)
 
-The editor's **Publish saved** button (its own device click; `zone_edit upload`
-and any other command are refused) reads this install's OWN saved JSON whole
+The editor's **Publish saved** button (its own device click; since P1081
+`zone_edit publish` may open the same dialog, but only a click on its button sends) reads this install's OWN saved JSON whole
 (`data/maps/zones/local/`, not the loose shipped copy), refuses unless those
 bytes hash to the table on screen, and opens a dialog with map, zone count and
 crc (P822). Its Publish -- the mouse press itself, or Enter -- submits them with
@@ -57,13 +57,32 @@ between the two on 19 Oct; the curated copy is what the site serves). Not
 closed: `maps/zones/local/<map>.json` resolves `data/` first through every mount
 (QC_FixFileName), a map's own pack included, on lobbies as before P815 (BACKLOG).
 
-Publish is refused unless this client hosts the game (`isserver()`, no demo,
-"ip" beginning QLoopBack): on another server its packages can stand in for the
-saved file and its commands for the editor. A proof names the csprogs that
-signed it; in publishing mode the service accepts only a deployed `csprogs.dat`
-that also carries P815's upload flow (zonepub.py `PUBLISH_MARKER`), because the
-P729 client signs the same kind and posts the same body from any server. The
+P1081: publishing also works on a server this client does not host (a lobby), where
+its packages could stand in for the saved file and its commands for the editor. So
+off-host (cl_zonepublish.qc `ZonePub_Offhost`): no table a `zone_edit` command changed
+on that server (`zone_cmd_taint`, set by every word but publish/upload/edgeprobe/status,
+cleared only by a load from files; such a table cannot be saved there either), and the
+saved file must resolve loose (`whichpack` ""). A command may OPEN the dialog
+(`zone_edit publish`); a dialog it opened takes only a click on a button, every confirm
+waits 0.6 s after its page appears, and a command reaching Send is refused, as before.
+Off-host with no write allowed (a command), the saved file must already be the table:
+it is read back over the table and compared, as Save checks its `.part`.
+
+A proof names the csprogs that signed it; in publishing mode the service accepts only a
+deployed `csprogs.dat` that also carries P815's upload flow (zonepub.py `PUBLISH_MARKER`),
+because the P729 client signs the same kind and posts the same body from any server. The
 installer takes `--game` as `csprogs.dat` files only, never a `.prev`.
+
+**Reload now (P1081).** The challenge also returns `nonce_now`, bound to the same map and
+bytes; one challenge is one publish whichever nonce is signed. An upload signed with it
+(and a csprogs carrying `NOW_MARKER`) queues `force`: the next tick sends `say` to each
+lobby on the map (rcon.py, 127.0.0.1:<port> from surfd's `lobbies.addr`, password from
+`SURFD_RCON_PASSWORD` in /srv/nvme/surfd/surfd.env), and the files are written once 60 s
+have passed, nothing of the map is owed a verdict and the sweep log has been written since
+the warning ended; then `changelevel <map>` to each lobby still on it. `publications.reload`
+records each port's result. It never writes past an owed verdict; evidence posted after the
+warning and not yet indexed is checked against the new zones (the admin's choice of "now").
+`init` adds the P1081 columns to an older store; the P815 release still runs on it.
 
 Installed 2026-10-19T04:05Z by the owner, release d9bf33b4
 (`/srv/nvme/ftesurf-ops/zonepub/<commit>`, state `/srv/nvme/ftesurf-ops/zonepub-state`); the

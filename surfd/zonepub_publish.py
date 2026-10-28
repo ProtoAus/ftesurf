@@ -11,6 +11,12 @@ Kinds: pending, applying (files being written; recovered at the next tick), live
 noop (already live), superseded, failed (files put back), partial (put back failed:
 an operator's rollback), rollback. `result` is each directory's sha after a live or
 rollback row, which is what the files must still be for a later rollback.
+
+P1081 `force` (the admin chose "reload now"): the lobbies on the map are warned, and the
+files are written once FORCE_NOTICE has passed, nothing of the map is owed a verdict and
+the sweeper has written its log since the warning ended; then each lobby still on the map
+gets `changelevel <map>`. It never goes past an owed verdict. Evidence posted after the
+warning and not yet indexed is checked against the new zones: the cost of "now".
 """
 from contextlib import contextmanager
 import hashlib
@@ -34,15 +40,20 @@ SWEPT_AFTER = 360   # the sweep log must be newer than the map's last sighting b
 RATE = 20           # publishes per account per hour
 KEEP_PER_MAP = 32
 KEEP_TOTAL = 1024
+FORCE_NOTICE = 60   # P1081: from the lobbies' warning to the earliest reload
+RCON_ENV = '/srv/nvme/surfd/surfd.env'      # SURFD_RCON_PASSWORD, as admin.py reads it
 NOFOLLOW = getattr(os, 'O_NOFOLLOW', 0)
 BINARY = getattr(os, 'O_BINARY', 0)
 SQL = '''
 CREATE TABLE IF NOT EXISTS publications(id INTEGER PRIMARY KEY AUTOINCREMENT, map TEXT NOT NULL,
  sha TEXT NOT NULL, steamid TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL,
- body BLOB, prev TEXT, result TEXT, live INTEGER);
+ body BLOB, prev TEXT, result TEXT, live INTEGER, force INTEGER, notice INTEGER, reload TEXT);
 CREATE TABLE IF NOT EXISTS mapseen(map TEXT PRIMARY KEY, at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v INTEGER NOT NULL);
 '''
+# Added to a store made before P1081 (zonepub.py `init`); every older INSERT names its columns.
+COLUMNS = (('publications', 'force', 'INTEGER'), ('publications', 'notice', 'INTEGER'),
+           ('publications', 'reload', 'TEXT'))
 # One publish or rollback touches the files at a time: gunicorn's two threads, and
 # the `apply`/`rollback` command lines, which are other processes (a flock beside the store).
 LOCK = threading.Lock()
@@ -157,7 +168,7 @@ def lobby_state(surfd_db, sweep_log, now, max_errors=3):
     try:
         c = sqlite3.connect(Path(surfd_db).resolve().as_uri() + '?mode=ro', uri=True, timeout=1)
         try:
-            rows = c.execute('SELECT map, last_seen FROM lobbies').fetchall()
+            rows = c.execute('SELECT map, last_seen, addr FROM lobbies').fetchall()
             owed = {str(r[0]).lower() for r in c.execute(OWED_SQL, (max_errors,))}
             # A lobby told to move to a map is on it already (it may load the old file next).
             sent = {str(r[0]).lower() for r in c.execute('SELECT map FROM assignments WHERE asked_at > ?',
@@ -172,7 +183,14 @@ def lobby_state(surfd_db, sweep_log, now, max_errors=3):
     if not rows or any((r[1] or 0) < now - LOBBY_SILENT for r in rows): return None
     try: swept = os.stat(sweep_log).st_mtime
     except (OSError, TypeError): swept = None
-    return {'maps': {str(r[0]).lower() for r in rows} | sent, 'owed': owed, 'swept': swept, 'posted': posted}
+    # P1081: the lobbies on each map, by the port in their heartbeat address (all on this host).
+    ports = {}
+    for r in rows:
+        port = str(r[2] or '').rpartition(':')[2]
+        if port.isdigit() and 1024 <= int(port) <= 65535:
+            ports.setdefault(str(r[0]).lower(), []).append(int(port))
+    return {'maps': {str(r[0]).lower() for r in rows} | sent, 'owed': owed, 'swept': swept, 'posted': posted,
+            'ports': ports}
 
 
 def _meta(db, k):
@@ -209,14 +227,52 @@ def state(db, name):
                       "ORDER BY id DESC LIMIT 1", (name,)).fetchone()
 
 
-def queue(db, name, body, steamid, now):
+def queue(db, name, body, steamid, now, force=False):
     """In the upload's transaction: the pending row's id, or None over the account's hourly rate."""
     n = db.execute("SELECT COUNT(*) FROM publications WHERE steamid=? AND at>? AND kind!='rollback'",
                    (steamid, now - 3600)).fetchone()[0]
     if n >= RATE: return None
     db.execute("UPDATE publications SET kind='superseded' WHERE map=? AND kind='pending'", (name,))
-    return db.execute("INSERT INTO publications(map,sha,steamid,at,kind,body) VALUES(?,?,?,?,'pending',?)",
-                      (name, sha(body), steamid, now, body)).lastrowid
+    return db.execute("INSERT INTO publications(map,sha,steamid,at,kind,body,force) VALUES(?,?,?,?,'pending',?,?)",
+                      (name, sha(body), steamid, now, body, 1 if force else 0)).lastrowid
+
+
+def migrate(db):
+    for table, column, decl in COLUMNS:
+        if column not in {r[1] for r in db.execute('PRAGMA table_info(%s)' % table)}:
+            db.execute('ALTER TABLE %s ADD COLUMN %s %s' % (table, column, decl))
+
+
+def force_ready(row, st, now):
+    """P1081: warned long enough, nothing owed, and a sweep has run since the warning ended."""
+    if st is None or row['notice'] is None or row['map'] in st['owed']: return False
+    ready = row['notice'] + FORCE_NOTICE
+    return now >= ready and st['swept'] is not None and st['swept'] >= ready
+
+
+def rcon_password(path=RCON_ENV):
+    try:
+        with open(path, encoding='utf-8') as fh:
+            for line in fh:
+                k, _, v = line.strip().partition('=')
+                if k.strip() == 'SURFD_RCON_PASSWORD': return v.strip().strip('\'"')
+    except OSError: pass
+    return ''
+
+
+def lobby_rcon(port, argv):
+    """One command to the lobby on 127.0.0.1:port, through rcon.py's argument check and budget."""
+    import rcon
+    rcon.Rcon('127.0.0.1', port, rcon_password()).execute(argv, expect_reply=False)
+
+
+def tell(rcon_fn, ports, argv):
+    """`argv` to each port; '<port>:ok' or '<port>:<error>' for the row's record."""
+    said = []
+    for port in sorted(set(ports)):
+        try: rcon_fn(port, argv); said.append('%d:ok' % port)
+        except Exception as e: said.append('%d:%s' % (port, type(e).__name__)); log('rcon', port, argv[0], e)
+    return ' '.join(said)
 
 
 def _recover(db, dirs, paths_of, limit):
@@ -257,12 +313,16 @@ def prune(db):
     db.executemany('DELETE FROM publications WHERE id=?', [(r,) for r in drop])
 
 
-def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit):
+NOTICE = 'Zone update for %s: this map reloads in a few minutes, finish your run'
+
+
+def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit, rcon_fn=lobby_rcon):
     """Put every pending publish whose map is quiet into the directories. Returns {map: kind}."""
     paths_of = lambda m: [zone_path(d, m, valid_name) for d in dirs]
     done = {}
     if not dirs: return done        # no publish directories: nothing may be marked live
     maps = maps_fn()                # outside the transaction
+    ports = (maps or {}).get('ports', {})
     with locked(store):
         with connect(store) as db:
             db.execute('BEGIN IMMEDIATE')
@@ -275,10 +335,28 @@ def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit):
             prune(db)
         for row in todo:
             name = row['map']
+            warn = False
+            with connect(store) as db:
+                db.execute('BEGIN IMMEDIATE')
+                again = db.execute('SELECT kind, notice FROM publications WHERE id=?', (row['id'],)).fetchone()
+                if again is None or again['kind'] != 'pending': continue
+                if row['force']:
+                    if again['notice'] is None:
+                        if maps is None: continue       # who is on the map is not known yet
+                        db.execute('UPDATE publications SET notice=? WHERE id=?', (now, row['id']))
+                        warn = True
+                    elif not force_ready({'map': name, 'notice': again['notice']}, maps, now): continue
+                elif not quiet(db, name, maps, now): continue
+            if warn:
+                said = tell(rcon_fn, ports.get(name, []), ['say', NOTICE % name])
+                with connect(store) as db:
+                    db.execute('UPDATE publications SET reload=? WHERE id=?', ('warned ' + (said or '-'), row['id']))
+                log('warned', name, row['sha'][:12], said or 'no lobby on it')
+                continue
             with connect(store) as db:
                 db.execute('BEGIN IMMEDIATE')
                 again = db.execute('SELECT kind FROM publications WHERE id=?', (row['id'],)).fetchone()
-                if again is None or again['kind'] != 'pending' or not quiet(db, name, maps, now): continue
+                if again is None or again['kind'] != 'pending': continue
                 body = bytes(row['body'])
                 try:
                     paths = paths_of(name)
@@ -303,6 +381,13 @@ def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit):
             with connect(store) as db:
                 db.execute('UPDATE publications SET kind=?, live=? WHERE id=?', (kind, now, row['id']))
                 if kind == 'live': log('live', name, row['sha'][:12], 'by', who(db, row['steamid']))
+            if kind == 'live' and row['force']:
+                said = tell(rcon_fn, ports.get(name, []), ['changelevel', name])
+                with connect(store) as db:
+                    was = db.execute('SELECT reload FROM publications WHERE id=?', (row['id'],)).fetchone()[0]
+                    db.execute('UPDATE publications SET reload=? WHERE id=?',
+                               ('%s; reloaded %s' % (was or 'warned -', said or '-'), row['id']))
+                log('reloaded', name, row['sha'][:12], said or 'no lobby on it')
             done[name] = kind
     return done
 

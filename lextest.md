@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+**P1081 -- publish zones from a lobby, Reload now (NOT deployed; owner check after deploy):**
+On a lobby (not a hosted game), open `zone_edit`, edit with the panel, Save, then Publish
+saved (or type `zone_edit publish`). Does the dialog open, and does a click on Publish send
+it? With the new zone service, a second button "Reload now" appears: does the lobby warn
+in chat and changelevel within a few minutes, with the new zones? A command-made edit on
+the lobby must refuse ("a console command changed these zones"). Not yet tested by a human
+or against the new service; a fixture arm proved the client refusals and dialog only.
+
 **P1084 -- stats page and lobby fonts (owner check pending):** live 07:19Z, menu
 587d416c / cs 7ae351cf / qw 8134b64f in both installs and all 12 lobbies (lobby
 smoke on 27520: served cs loaded, board drew, no QC error). On the Lobbies

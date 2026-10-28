@@ -49,6 +49,7 @@ NGINX = '''location ^~ /api/zones/ {
 FILES = {'surfd/zonepub.py':'zonepub.py', 'surfd/zonepub_wsgi.py':'zonepub_wsgi.py',
          'surfd/zonepub_publish.py':'zonepub_publish.py',
          'surfd/accounts.py':'accounts.py', 'surfd/steam.py':'steam.py',   # accounts imports steam
+         'surfd/rcon.py':'rcon.py',                                        # P1081: reload now
          'tools/ed25519.py':'tools/ed25519.py'}
 
 

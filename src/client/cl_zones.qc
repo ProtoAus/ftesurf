@@ -295,10 +295,11 @@ float() Zone_LoadFromBsp =
 
 float zone_own;            // P815: the table is this install's own saved edit
 float zone_sync_wait;      // P815: the server's table is wanted, deferred until no run is in progress
+float zone_cmd_taint;      // P1081: a `zone_edit` command changed it off-host; a file load clears it
 
 float(string map) Zone_LoadOrdinary =
 {
-	zone_own = FALSE;
+	zone_own = zone_cmd_taint = FALSE;
 	// local BEFORE online: dropping a file in ftesurf/maps/zones/local/ has to
 	// override Momentum's shipped copy, which is the whole point of the
 	// directory.  (surf_drift is the test: local says 10 regions, online 12.)
@@ -341,6 +342,7 @@ float() Zone_WantsServer =
 float(string path, float src, string want) Zone_TryFile =
 {
 	Zone_Clear();
+	zone_cmd_taint = FALSE;
 	if (!Zone_LoadJson(path, src))
 		return FALSE;
 	Zone_Hash();
@@ -388,7 +390,7 @@ void() Zone_LoadForMap =
 	map = serverkey("map");
 	zone_mapname = map;
 	Zone_Clear();
-	zone_own = zone_sync_wait = FALSE;
+	zone_own = zone_sync_wait = zone_cmd_taint = FALSE;
 
 	if (map == "")
 		return;

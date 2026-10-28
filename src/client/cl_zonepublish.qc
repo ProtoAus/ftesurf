@@ -2,7 +2,9 @@
  * existing account key signs a distinct purpose only under a real press (P822:
  * the dialog's Publish click, or Enter, inside the engine's own key event).
  * No lobby secret, SteamID or role claim here; surfd/zonepub.py decides and,
- * for an admin, publishes (P815: lobbies time with it from their next map load). */
+ * for an admin, publishes (P815: lobbies time with it from their next map load).
+ * P1081: also from a lobby (ZonePub_Offhost), opened by `zone_edit publish`, and
+ * "Reload now" signs a second nonce that has the service reload the map's lobbies. */
 #define ZP_CHALLENGE 1
 #define ZP_CONFIRM   2
 #define ZP_UPLOAD    3
@@ -10,8 +12,12 @@
 #define ZP_BASE "https://play.proto.bar/api/zones/"
 float zp_state, zp_req, zp_next, zp_until, zp_count, zp_bad, zp_live, zp_shown;
 float zp_cap;                       // P841: the saved file's maxVelocity, 0 = not set
+float zp_bycmd;                     // P1081: a command opened it: only a click on a button sends
+float zp_armed;                     // P1081: presses before this (the page's first 0.6 s) are ignored
 string zp_map, zp_body, zp_sha, zp_nonce, zp_crc, zp_said;
+string zp_nonce_now;                // P1081: the service's second nonce, "reload now"
 vector zp_go_p, zp_go_s, zp_no_p, zp_no_s;   // the dialog's buttons as last drawn; a zero size is no button
+vector zp_now_p, zp_now_s;
 
 void() ZonePub_Cancel =
 {
@@ -19,11 +25,12 @@ void() ZonePub_Cancel =
 	if (strlen(zp_body)) strunzone(zp_body);
 	if (strlen(zp_sha)) strunzone(zp_sha);
 	if (strlen(zp_nonce)) strunzone(zp_nonce);
+	if (strlen(zp_nonce_now)) strunzone(zp_nonce_now);
 	if (strlen(zp_crc)) strunzone(zp_crc);
 	if (strlen(zp_said)) strunzone(zp_said);
-	zp_map = zp_body = zp_sha = zp_nonce = zp_crc = zp_said = "";
-	zp_state = zp_req = zp_count = zp_bad = zp_live = zp_cap = 0;
-	zp_go_s = zp_no_s = '0 0 0';
+	zp_map = zp_body = zp_sha = zp_nonce = zp_nonce_now = zp_crc = zp_said = "";
+	zp_state = zp_req = zp_count = zp_bad = zp_live = zp_cap = zp_bycmd = zp_armed = 0;
+	zp_go_s = zp_no_s = zp_now_s = '0 0 0';
 };
 
 // The dialog's last page: what the service said (or why nothing went).
@@ -70,22 +77,50 @@ void() ZonePub_Pump =
 // every 4095), by its data/ path.
 string() ZonePub_Saved = { return Zone_ReadFile(strcat("data/maps/zones/local/", ze_map, ".json")); };
 
-// real: the Publish saved button's own device click (ze_real_t); a command never is.
-// Only in a game this client hosts: on another server its packages can stand in for the
-// saved file and its commands for the editor.
+/* P1081: publishing on a server this client does not host. Its packages could stand in for
+ * the saved file and its commands for the editor, so: no table a `zone_edit` command changed
+ * here (zone_cmd_taint; such a table cannot be saved here either), and the saved file must
+ * resolve loose, ours, not from a package. The signer's csprogs is checked by the service. */
+string() ZonePub_Offhost =
+{
+	if (isdemo()) return "publish from a game, not a demo";
+	if (ZoneEdit_Hosting()) return "";
+	if (zone_cmd_taint) return "a console command changed these zones on this server: Reload, edit with the panel, save";
+	if (whichpack(strcat("data/maps/zones/local/", ze_map, ".json"), 0) != "")
+		return "a package on this server stands in for your saved file";
+	return "";
+};
+
+// P1081: the saved file, loaded over the table, gives back the same count, crc and speed cap.
+float() ZonePub_Matches =
+{
+	local string was;
+	local float n, mv, ok, same;
+	was = strzone(zone_crc); n = zone_count; mv = zone_maxvel;
+	ok = Zone_LoadJson(strcat("data/maps/zones/local/", ze_map, ".json"), ZSRC_LOCAL);
+	if (ok) Zone_Hash();
+	same = (ok && zone_count == n && strcmp(zone_crc, was) == 0 && zone_maxvel == mv);
+	strunzone(was);
+	if (!ok)
+	{
+		zone_mapname = "";           // the loader may have emptied the table: read the map again
+		Zone_LoadForMap();
+		ze_sel = -1;
+	}
+	return same;
+};
+
+// real: the Publish saved button's own device click (ze_real_t). `zone_edit publish` opens
+// the same dialog (P1081), and then only a click on one of its buttons sends.
 void(float real) ZonePub_Begin =
 {
 	local float id;
-	local string body;
+	local string body, why;
 	ZonePub_Pump();
 	if (zp_state) { ZoneEdit_Note("a zone upload is already pending"); return; }
 	if (ui_ze_state != ZE_PANEL || ze_settings) { ZoneEdit_Note("finish placing first"); return; }
 	if (zp_next >= 6199998) { ZoneEdit_Note("restart the game before another upload"); return; }
-	if (!real) { ZoneEdit_Note("click Publish saved: a command cannot start a publish"); return; }
-	if (!ZoneEdit_Hosting())
-	{
-		ZoneEdit_Note("publish from a game you host (Play the map from the map list), not on a server"); return;
-	}
+	if (isdemo() || (zone_cmd_taint && !ZoneEdit_Hosting())) { ZoneEdit_Note(ZonePub_Offhost()); return; }
 	if (!ZoneFile_Map(ze_map) || strcmp(ze_map, zone_mapname) != 0)
 	{
 		ZoneEdit_Note("open this map's editor and use its Publish saved button"); return;
@@ -98,14 +133,31 @@ void(float real) ZonePub_Begin =
 	}
 	// What goes out is what is on screen: the table written once more and read back by
 	// ZoneEdit_Save, then the file in place, which must be those very bytes.
-	ZoneEdit_Save(TRUE);
-	if (!ze_saved_ok) { ZoneEdit_Note("NOT published: the zones did not save"); return; }
-	body = ZonePub_Saved();
-	if (strlen(body) < 16 || strlen(body) > 262144
-	 || strcmp(strtolower(digest_hex("SHA256", body)), ze_saved_sha) != 0)
+	if (ZoneEdit_MayWrite())
 	{
-		ZoneEdit_Note("NOT published: the saved file does not read back as what was saved"); return;
+		ZoneEdit_Save(TRUE);
+		if (!ze_saved_ok) { ZoneEdit_Note("NOT published: the zones did not save"); return; }
+		body = ZonePub_Saved();
+		if (strlen(body) < 16 || strlen(body) > 262144
+		 || strcmp(strtolower(digest_hex("SHA256", body)), ze_saved_sha) != 0)
+		{
+			ZoneEdit_Note("NOT published: the saved file does not read back as what was saved"); return;
+		}
 	}
+	else
+	{
+		// P1081: a command on a server may not write, so the saved file must already be the
+		// table on screen: read it back into the table, as Save checks its .part.
+		if (ze_dirty || !zone_own) { ZoneEdit_Note("Save zones with the panel first; a command cannot save on a server"); return; }
+		body = ZonePub_Saved();
+		if (strlen(body) < 16 || strlen(body) > 262144 || !ZonePub_Matches())
+		{
+			ZoneEdit_Note("NOT published: the saved file is not the zones on screen"); return;
+		}
+	}
+	why = ZonePub_Offhost();
+	if (why != "") { ZoneEdit_Note(strcat("NOT published: ", why)); return; }
+	zp_bycmd = !real;
 	zp_crc = strzone(zone_crc); zp_count = zone_count; zp_cap = zone_maxvel;
 	zp_map = strzone(ze_map); zp_body = strzone(body);
 	zp_sha = strzone(strtolower(digest_hex("SHA256", body)));
@@ -122,17 +174,21 @@ void(float real) ZonePub_Begin =
 
 // Publish's press, Enter's or the click's. The engine signs only while a device's key
 // event is being delivered (CSQC_RealKey), so a command or a frame never gets here signed.
-void() ZonePub_Send =
+// now: the "Reload now" button, which signs the service's second nonce (P1081).
+void(float now) ZonePub_Send =
 {
-	local string p, envelope;
+	local string p, envelope, why;
 	if (zp_state != ZP_CONFIRM) return;
-	if (!cl_input_real) { ZoneEdit_Note("click Publish or press Enter: a command cannot publish"); return; }
+	if (!cl_input_real) { ZoneEdit_Note("click Publish: a command cannot start a publish"); return; }
+	if (now && strlen(zp_nonce_now) != 32) return;
 	// Still the file and the game the dialog was made from.
-	if (!ZoneEdit_Hosting() || strcmp(strtolower(digest_hex("SHA256", ZonePub_Saved())), zp_sha) != 0)
+	why = ZonePub_Offhost();
+	if (why != "") { ZonePub_Answer(strcat(why, ". Nothing was sent."), TRUE, FALSE); return; }
+	if (strcmp(strtolower(digest_hex("SHA256", ZonePub_Saved())), zp_sha) != 0)
 	{
 		ZonePub_Answer("The saved file changed. Nothing was sent.", TRUE, FALSE); return;
 	}
-	p = acct_sign(zp_nonce, -6);
+	p = acct_sign(now ? zp_nonce_now : zp_nonce, -6);
 	if (!strlen(p))
 	{
 		ZonePub_Answer("The game would not sign the upload: it needs a linked Steam account, "
@@ -143,7 +199,7 @@ void() ZonePub_Send =
 	// Raw JSON preserves the exact frozen bytes whose SHA256 the nonce names.
 	// No uri_escape/sprintf of the large file (both have small output bounds).
 	envelope = sprintf("{\"nonce\":\"%s\",\"pub\":\"%s\",\"sig\":\"%s\",\"game\":\"%s\",\"zones\":",
-	                   zp_nonce, argv(0), argv(2), argv(4));
+	                   now ? zp_nonce_now : zp_nonce, argv(0), argv(2), argv(4));
 	envelope = strcat(envelope, zp_body, "}");
 	zp_state = ZP_UPLOAD; zp_until = gettime(0) + 120;
 	zp_next = zp_next + 1; zp_req = zp_next;
@@ -152,11 +208,11 @@ void() ZonePub_Send =
 	else print("zone_edit: upload sent, signed under a real press\n");
 };
 
-void() ZonePub_Go =
+void(float now) ZonePub_Go =
 {
 	if (zp_shown != zp_state) return;     // a reply lands between frames: act on the page drawn
-	if (zp_state == ZP_CONFIRM) ZonePub_Send();
-	else if (zp_state == ZP_DONE) ZonePub_Cancel();
+	if (zp_state == ZP_CONFIRM) { if (gettime(0) >= zp_armed) ZonePub_Send(now); }
+	else if (zp_state == ZP_DONE && !now) ZonePub_Cancel();
 };
 
 // An upload in flight is not withdrawn: the service may already have it.
@@ -177,10 +233,17 @@ float(float scan) ZonePub_Key =
 	if (!zp_state) return FALSE;
 	if (ui_ze_state != ZE_PANEL || !ze_cursor) return FALSE;   // not on screen: the editor's keys
 	if (scan == K_ESCAPE) { ZonePub_Back(); return TRUE; }
-	if (scan == K_ENTER || scan == K_KP_ENTER) { ZonePub_Go(); return TRUE; }
+	if (scan == K_ENTER || scan == K_KP_ENTER)
+	{
+		// P1081: a dialog a command opened is confirmed by a click on its button, never Enter.
+		if (zp_bycmd && zp_state == ZP_CONFIRM) ZoneEdit_Note("click Publish or Reload now: Enter does not confirm here");
+		else ZonePub_Go(FALSE);
+		return TRUE;
+	}
 	if (scan == K_MOUSE1)
 	{
-		if (ze_mouse_seen && is_2dpoint_in_bbox(ze_mouse, zp_go_p, zp_go_s)) ZonePub_Go();
+		if (ze_mouse_seen && is_2dpoint_in_bbox(ze_mouse, zp_go_p, zp_go_s)) ZonePub_Go(FALSE);
+		else if (ze_mouse_seen && is_2dpoint_in_bbox(ze_mouse, zp_now_p, zp_now_s)) ZonePub_Go(TRUE);
 		else if (ze_mouse_seen && is_2dpoint_in_bbox(ze_mouse, zp_no_p, zp_no_s)) ZonePub_Back();
 		return TRUE;
 	}
@@ -251,7 +314,7 @@ void(vector scr) ZonePub_Draw =
 	tsz = Font_Px(11 * ui_cv_scale);
 	rsz = Font_Px(8 * ui_cv_scale);
 	bh = rsz + 12 * ui_cv_scale;
-	w = min(scr_x - 32, 380 * ui_cv_scale);
+	w = min(scr_x - 32, (strlen(zp_nonce_now) ? 460 : 380) * ui_cv_scale);
 
 	head = sprintf("%s  /  %g zones  /  crc %s", zp_map, zp_count, zp_crc);
 	go = "Publish";
@@ -268,6 +331,9 @@ void(vector scr) ZonePub_Draw =
 		else body = sprintf("Your saved file goes to every lobby. They switch to it once none of them has "
 		                    "had %s loaded for 10 minutes and its runs are verified. Existing times stay. %s", zp_map,
 		                    zp_cap > 0 ? sprintf("Speed cap %g goes with it.", zp_cap) : "It sets no speed cap.");
+		if (zp_state == ZP_CONFIRM && strlen(zp_nonce_now))
+			body = strcat(body, " Reload now: Lobbies on it are warned, then reload with these zones once its runs "
+			              "are verified, usually within 7 minutes; runs in progress there end.");
 	}
 
 	// Measure, then draw: the box fits what it says.
@@ -294,23 +360,36 @@ void(vector scr) ZonePub_Draw =
 	np = gp - [bs_x + 8 * ui_cv_scale, 0, 0];
 	ZonePub_Button(gp, bs, "zp_go", go, rsz, TRUE, zp_state == ZP_CONFIRM || zp_state == ZP_DONE);
 	if (zp_state == ZP_CONFIRM || zp_state == ZP_DONE) { zp_go_p = gp; zp_go_s = bs; }
+	if (zp_state == ZP_CONFIRM && strlen(zp_nonce_now))
+	{
+		// P1081: the disruptive choice is its own button, a click only (ZonePub_Key).
+		ZonePub_Button(np, bs, "zp_now", "Reload now", rsz, FALSE, TRUE);
+		zp_now_p = np; zp_now_s = bs;
+		np = np - [bs_x + 8 * ui_cv_scale, 0, 0];
+	}
 	if (zp_state == ZP_CHALLENGE || zp_state == ZP_CONFIRM)
 	{
 		ZonePub_Button(np, bs, "zp_no", "Cancel", rsz, FALSE, TRUE);
 		zp_no_p = np; zp_no_s = bs;
 	}
 	if (zp_state == ZP_CONFIRM)
-		sui_text([p_x + pad, gp_y + (bh - rsz) * 0.5], [rsz, rsz], "Enter / Esc", SUI_THEME_MUTED, 1, 0);
+		sui_text([p_x + pad, gp_y + (bh - rsz) * 0.5], [rsz, rsz], zp_bycmd ? "click to confirm" : "Enter / Esc",
+		         SUI_THEME_MUTED, 1, 0);
 
 	// Where it is, once a page: an arm clicks by these (developer 1).
 	if (zp_shown != zp_state)
-		dprint(sprintf("zone_edit: publish dialog page %g, screen %v, go %v %v, cancel %v %v\n",
+	{
+		if (zp_state == ZP_CONFIRM) zp_armed = gettime(0) + 0.6;   // P1081: no press carried in from before
+		dprint(sprintf("zone_edit: publish dialog page %g, screen %v, go %v %v, cancel %v %v",
 		               zp_state, scr, zp_go_p, zp_go_s, zp_no_p, zp_no_s));
+		dprint(sprintf(", now %v %v\n", zp_now_p, zp_now_s));
+	}
 	zp_shown = zp_state;
 
-	// `zone_edit press zp_go|zp_no` for arms: Back works, Go reaches Send, which refuses a command.
+	// `zone_edit press zp_go|zp_now|zp_no` for arms: Back works, Go reaches Send, which refuses a command.
 	if (ZoneEdit_Clicked("zp_no")) ZonePub_Back();
-	else if (ZoneEdit_Clicked("zp_go")) ZonePub_Go();
+	else if (ZoneEdit_Clicked("zp_go")) ZonePub_Go(FALSE);
+	else if (ZoneEdit_Clicked("zp_now")) ZonePub_Go(TRUE);
 };
 
 // A non-200 reply reaches QC with no body (httpclient.c keeps no file), so zonepub.py answers
@@ -353,7 +432,10 @@ float(float id, float code, string body) ZonePub_Reply =
 		 && strcmp(json_get_string(json_find_object_child(root, "sha")), zp_sha) == 0)
 		{
 			zp_nonce = strzone(nonce); zp_state = ZP_CONFIRM;
-			print("zone_edit: publish dialog waiting for Publish or Cancel\n");
+			nonce = json_get_string(json_find_object_child(root, "nonce_now"));
+			if (strlen(nonce) == 32 && strcmp(nonce, zp_nonce) != 0) zp_nonce_now = strzone(nonce);
+			print(sprintf("zone_edit: publish dialog waiting for Publish%s or Cancel%s\n",
+			              strlen(zp_nonce_now) ? ", Reload now" : "", zp_bycmd ? " (opened by command)" : ""));
 		}
 		else ZonePub_Answer("The zone service's confirmation did not match this file. Nothing was sent.", TRUE, FALSE);
 	}

@@ -28,6 +28,8 @@ MAX_ZONE_BYTES = 262144
 # A string only P815's cl_zonepublish.qc carries: the P729 client signs the same kind and
 # posts the same body, from any server and any click.
 PUBLISH_MARKER = b'a command cannot start a publish'
+# P1081: only a client that offers "reload now" may ask for it (cl_zonepublish.qc's dialog text).
+NOW_MARKER = b'Lobbies on it are warned, then reload'
 SITE = 'play.proto.bar:443'
 KIND = -6
 NAME = re.compile(r'[a-z0-9_-]{1,64}')
@@ -36,7 +38,8 @@ PREFIX = re.compile(rb'^\{"nonce":"([0-9a-f]{32})","pub":"([0-9a-f]{64})","sig":
 SQL = '''
 CREATE TABLE IF NOT EXISTS roles(steamid TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS challenges(nonce TEXT PRIMARY KEY, map TEXT NOT NULL,
- sha TEXT NOT NULL, peer TEXT NOT NULL, created INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0);
+ sha TEXT NOT NULL, peer TEXT NOT NULL, created INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+ nonce_now TEXT);
 CREATE TABLE IF NOT EXISTS drafts(id TEXT PRIMARY KEY, map TEXT NOT NULL,
  sha TEXT NOT NULL, steamid TEXT NOT NULL, pub TEXT NOT NULL, created INTEGER NOT NULL,
  body BLOB NOT NULL, UNIQUE(map,sha));
@@ -59,12 +62,21 @@ def connect(path, readonly=False):
         db.close()
 
 
+def migrate(db):
+    # P1081 columns on a store made before them; CREATE IF NOT EXISTS leaves old tables alone.
+    if 'nonce_now' not in {r[1] for r in db.execute('PRAGMA table_info(challenges)')}:
+        db.execute('ALTER TABLE challenges ADD COLUMN nonce_now TEXT')
+    pub.migrate(db)
+
+
 def initialize(path):
     path = Path(path)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     db = sqlite3.connect(path)
     try:
-        with db: db.executescript(SQL)
+        with db:
+            db.executescript(SQL)
+            migrate(db)
     finally: db.close()
     os.chmod(path, 0o600)
 
@@ -170,10 +182,12 @@ SWEEP_LOG = '/srv/nvme/surfd/logs/sweep.log'
 
 
 def create_app(store, account_db, game_files, clock=time.time, verify=None, publish_dirs=(),
-               maps_fn=None, sweep_log=SWEEP_LOG):
+               maps_fn=None, sweep_log=SWEEP_LOG, rcon_fn=pub.lobby_rcon):
     app = Flask(__name__)
     app.config['MAX_CONTENT_LENGTH'] = MAX_ZONE_BYTES + 1024
     store, account_db = Path(store), Path(account_db)
+    if store.exists():
+        with connect(store) as db: migrate(db)
     if maps_fn is None:     # account_db is surfd.db: its lobbies and replays tables too
         maps_fn = lambda: pub.lobby_state(account_db, sweep_log, clock())
     games = tuple(Path(p) for p in game_files)
@@ -190,7 +204,7 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
             size = request.content_length
             if size is None or size <= 0: return fail('Request length required', 411)
             if size > app.config['MAX_CONTENT_LENGTH']: return fail('Upload too large', 413)
-    def known_game(code):
+    def known_game(code, now_mode=False):
         for path in games:
             try:
                 # No links or request-selected paths; one bounded read for hash and marker.
@@ -204,6 +218,7 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                 if identity(before) != identity(after) or identity(after) != identity(current): continue
                 # Publishing: only a csprogs carrying P815's upload flow, whatever is deployed.
                 if publish_dirs and PUBLISH_MARKER not in data: continue
+                if now_mode and NOW_MARKER not in data: continue
                 if secrets.compare_digest(hashlib.sha256(data).hexdigest(), code): return True
             except OSError: continue
         return False
@@ -217,7 +232,7 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
             except ImportError: return None
         return bool(ed.verify(bytes.fromhex(pub_key), message, bytes.fromhex(sig)))
     def apply(now):
-        return pub.apply_ready(connect, store, publish_dirs, valid_name, maps_fn, now, MAX_ZONE_BYTES)
+        return pub.apply_ready(connect, store, publish_dirs, valid_name, maps_fn, now, MAX_ZONE_BYTES, rcon_fn)
     app.config['ZONEPUB_APPLY'] = apply     # zonepub_wsgi.py's minute tick
     @app.after_request
     def private(response):
@@ -241,7 +256,12 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                         'SELECT COUNT(*) FROM challenges WHERE peer=?', (peer,)).fetchone()[0] >= 8:
                     return fail('Upload service busy; try later', 429)
                 nonce = secrets.token_hex(16)
-                db.execute('INSERT INTO challenges(nonce,map,sha,peer,created) VALUES(?,?,?,?,?)', (hashlib.sha256(nonce.encode()).hexdigest(),name,sha,peer,now))
+                # P1081: a second nonce for the same map and bytes; signing it asks for "reload now".
+                now_nonce = secrets.token_hex(16) if publish_dirs else None
+                h = lambda n: hashlib.sha256(n.encode()).hexdigest() if n else None
+                db.execute('INSERT INTO challenges(nonce,map,sha,peer,created,nonce_now) VALUES(?,?,?,?,?,?)',
+                           (h(nonce),name,sha,peer,now,h(now_nonce)))
+            if now_nonce: return jsonify(ok=1, nonce=nonce, nonce_now=now_nonce, map=name, sha=sha)
             return jsonify(ok=1, nonce=nonce, map=name, sha=sha)
         except sqlite3.Error: return fail('Zone uploads unavailable', 503)
     @app.post('/api/zones/draft')
@@ -256,11 +276,13 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
         try:
             with connect(store) as db:
                 db.execute('BEGIN IMMEDIATE')
-                row = db.execute('SELECT 1 FROM challenges WHERE nonce=? AND created>=? AND attempts<3', (key,now-180)).fetchone()
+                row = db.execute('SELECT nonce, nonce_now FROM challenges WHERE (nonce=? OR nonce_now=?) '
+                                 'AND created>=? AND attempts<3', (key,key,now-180)).fetchone()
                 if row is None: return fail('Upload confirmation expired or already used', 409)
-                db.execute('UPDATE challenges SET attempts=attempts+1 WHERE nonce=?', (key,))
+                slot, force = row['nonce'], row['nonce_now'] == key    # one challenge, either nonce, once
+                db.execute('UPDATE challenges SET attempts=attempts+1 WHERE nonce=?', (slot,))
         except sqlite3.Error: return fail('Zone uploads unavailable', 503)
-        if not known_game(code): return fail('Update your game before uploading', 403)
+        if not known_game(code, force): return fail('Update your game before uploading', 403)
         ok = signature(pub_key, nonce, code, sig)
         if ok is None: return fail('Signature verifier unavailable', 503)
         if not ok: return fail('Invalid upload proof', 403)
@@ -274,7 +296,7 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                 db.execute('BEGIN IMMEDIATE')
                 if db.execute('SELECT 1 FROM roles WHERE steamid=?', (sid,)).fetchone() is None:
                     return fail('This Steam account is not a zone admin', 403)
-                grant = db.execute('SELECT * FROM challenges WHERE nonce=? AND created>=?', (key, now-180)).fetchone()
+                grant = db.execute('SELECT * FROM challenges WHERE nonce=? AND created>=?', (slot, now-180)).fetchone()
                 if grant is None: return fail('Upload confirmation expired or already used', 409)
                 if not secrets.compare_digest(hashlib.sha256(raw).hexdigest(), grant['sha']):
                     return fail('Saved zone file changed; start the upload again', 409)
@@ -286,9 +308,9 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                     return fail('Invalid or incomplete zone geometry', 400)
                 rid = None
                 if publish_dirs:
-                    rid = pub.queue(db, grant['map'], raw, sid, now)
+                    rid = pub.queue(db, grant['map'], raw, sid, now, force)
                     if rid is None: return fail('Too many publishes this hour; try again later', 429)
-                    pub.log('queued', grant['map'], grant['sha'][:12], 'by', pub.who(db, sid))
+                    pub.log('queued', grant['map'], grant['sha'][:12], 'by', pub.who(db, sid), 'now' if force else '')
                 prior = db.execute('SELECT id FROM drafts WHERE map=? AND sha=?', (grant['map'],grant['sha'])).fetchone()
                 if prior is None:
                     count = db.execute('SELECT COUNT(*) FROM drafts').fetchone()[0]
@@ -299,7 +321,7 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                     ident = secrets.token_hex(12)
                     db.execute('INSERT INTO drafts VALUES(?,?,?,?,?,?,?)', (ident,grant['map'],grant['sha'],sid,pub_key,now,raw))
                 else: ident = prior['id']
-                db.execute('DELETE FROM challenges WHERE nonce=?', (key,))
+                db.execute('DELETE FROM challenges WHERE nonce=?', (slot,))
             if not publish_dirs:
                 return jsonify(ok=1, draft=ident, note='Saved as an admin draft; review and activation are still required')
             name = grant['map']
@@ -316,6 +338,10 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                                'their next map load' if done == 'live' else 'These zones are already live')
             if done in ('failed', 'partial'):
                 return fail('Accepted, but the zone files could not be written; an operator must look', 500)
+            if force:
+                return jsonify(ok=1, draft=ident, published=0, now=1,
+                               note='Accepted: lobbies on %s are warned and reload with these zones once its '
+                                    'runs are verified, usually within %d minutes' % (name, (pub.FORCE_NOTICE + 360) // 60))
             return jsonify(ok=1, draft=ident, published=0,
                            note='Accepted: live once no lobby has had %s loaded for %d minutes and its runs are '
                                 'verified' % (name, pub.QUIET // 60))
