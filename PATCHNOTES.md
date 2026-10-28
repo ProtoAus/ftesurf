@@ -21,6 +21,10 @@
 
 ## next
 
+### P1085 Bhop blocks time your stay in ticks
+- A bhop block now sends you back after a fixed number of ticks on it (7 at 66 tick, 10 at 100 tick) instead of after a tenth of a second of server time, which could vary by a tick with the network.
+- Reloading a TAS project on a bhop map now reproduces it exactly. Pausing TAS while standing on a block no longer sends you back on your next step.
+
 ### P1084 Stats page in the main menu
 - Click Your stats on the Lobbies page to open the same Stats page as the in-game player panel: your figures, tier bars, best runs and player search.
 - Stats now show World of Surf by default (the switch was labelled WOS), on the Lobbies page and in the player panel.

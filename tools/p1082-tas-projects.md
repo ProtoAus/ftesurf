@@ -26,11 +26,10 @@ From a paused TAS attempt (see `tools/p1077-tas-timeline.md`):
   ring samples once per packet and has gaps), spot-checked against the engine's capture.
 - The base's exact position and velocity are kept in the project; the save file rounds them
   to 4 decimals, so a load restores the exact floats (only within that rounding).
-- The engine carries a sub-tick millisecond remainder between ticks that neither a save nor
-  QC can set, and a replay keeps whatever the connection had. Measured on bhop_eazy with a
-  duck-then-jump line: 3 of 5 cold loads ended 0.7225 units off from tick 277 of 281, the
-  rest exact; a line without the duck reproduced on every load. The load reports this as
-  "DIVERGED at tick T (max D)" rather than hiding it; fixing it needs an engine op.
+- Some cold loads of a bhop_eazy line ended 0.7225 units off from tick 277 and were reported
+  "DIVERGED at tick T (max D)". This was first blamed on the engine's sub-tick carry, and that
+  was wrong. Per-tick dumps showed func_bhop counting its 0.1 s on server time, so the block
+  teleported a tick apart. P1085 counts ticks, and every load now reproduces exactly.
 - The shared world is not rewound: moving platforms and triggers that depend on time are
   not part of a project. A `reconnect` also leaves your previous body in the world for a
   while; a line that runs into it stops there.

@@ -13,11 +13,12 @@
 
 ## TAS projects (P1082): what is left
 
-- Exact cold resume: the engine keeps the live connection's `pmsrc.msec_carry` into a
-  replay and QC cannot set it. Measured: 3 of 5 cold loads of a duck-then-jump line on
-  bhop_eazy ended 0.7225 off from tick 277 (stage6 p1082-arm9). Sketch: a `tas_tape` op that
-  sets a paused body's carry, the base's carry stored in the project (ring row [49]), and
-  the load setting it before the first chunk; falsifier = the same five loads all exact.
+- Closed by P1085: the cold-load drift (0.7225 at tick 277) was func_bhop's dwell on server
+  `time`, not the sub-tick carry (arm12: the same carry before an exact and a diverged load).
+- Other world logic on server `time` is the same hazard for TAS replays (trigger waits, door
+  phases): a stepped tick and a played one see different `time`. Not audited.
+- `tas back` from a head grounded on an entity (a func_bhop, a door) returns without a word:
+  SV_TASBack's head probe needs a native row, which carriers never get.
 - A `reconnect` leaves the old connection's body solid for 40 s or more (`cmd stuck`:
   hit 'player'); a project line through that spot stops on it.
 - Panel: list and load other projects, rename, delete; today that is the console.
