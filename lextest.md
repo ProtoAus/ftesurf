@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+**P1078 -- surf_midnight tier in game (owner check pending):** tiers.txt
+ea774409 installed in both Windows installs and the Pi lobbies' game dir
+2026-10-28T04:21:38Z; a lobby reads it when it next loads a map. On
+surf_midnight (a lobby that changed onto it after that, or a local game), does
+the map info box read "MOM tier 4 (suggested) | KSF tier 4"? A server-only arm
+proved the published keys; nobody has looked at the box yet.
+
 **P1076 -- ordinary recurring map timers (owner observation pending):**
 Installed server-only BOTH Windows + all12 Pi lobbies2026-10-27T23:59:23Z;
 exact destination/PID-namespace/startup/heartbeat readbacks pass. A familiar timed map effect should
