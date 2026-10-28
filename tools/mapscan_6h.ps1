@@ -24,21 +24,26 @@ $ErrorActionPreference = 'Stop'
 $Repo = Split-Path -Parent $PSScriptRoot
 $Log  = Join-Path $Repo 'ftesurf\data\mapscan.log'
 
+# The task's powershell.exe is 5.1, where 'Stop' makes a native command's first
+# stderr line a terminating error: one from the sweep skipped everything after it
+# (P1098 review 1).  Each line is logged as text and the exit code kept instead.
+function Invoke-Logged([string[]]$argv) {
+    $ErrorActionPreference = 'Continue'
+    & python @argv 2>&1 | ForEach-Object { "$_" } | Out-File -FilePath $Log -Encoding utf8 -Append
+    $LASTEXITCODE
+}
+
 # --no-fetch is NOT passed: the network refresh is the entire point of a sweep.
 # maproster's own hash cache is keyed on (size, mtime), so the expensive part
 # only re-reads maps that actually changed.
 try {
     Set-Location $Repo
     "=== $(Get-Date -Format o) ===" | Out-File -FilePath $Log -Encoding utf8
-    & python (Join-Path $Repo 'tools\mapscan.py') --go *>&1 |
-        Out-File -FilePath $Log -Encoding utf8 -Append
-    $scan = $LASTEXITCODE
+    $scan = Invoke-Logged @((Join-Path $Repo 'tools\mapscan.py'), '--go')
     "=== exit $scan ===" | Out-File -FilePath $Log -Encoding utf8 -Append
     # P1098: tiers, thumbnails and the mount table, here and in C:\FTEQuake.  Run
     # even when the sweep failed: they read other sources.
-    & python -I (Join-Path $Repo 'tools\mapmedia_refresh.py') *>&1 |
-        Out-File -FilePath $Log -Encoding utf8 -Append
-    $media = $LASTEXITCODE
+    $media = Invoke-Logged @('-I', (Join-Path $Repo 'tools\mapmedia_refresh.py'))
     "=== mapmedia exit $media ===" | Out-File -FilePath $Log -Encoding utf8 -Append
     if ($scan -ne 0) { exit $scan }
     exit $media

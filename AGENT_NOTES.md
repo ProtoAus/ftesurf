@@ -9,9 +9,17 @@
 - **A zone file makes a row, and a row blocks the alias and KSF passes** (they only
   fill gaps). The first run seeded the Pi's 1,493 zone files: 348 zone-only port
   rows, 78 alias and 13 KSF tiers lost. The view takes Momentum's own zones only.
-- **A table losing more than 10 rows, variant pairs, tiers or cells is not
-  installed** (`data/mapmedia/refused.txt`, exit 2). It would have stopped that run
-  (91 tiers, 78 cells) and an emptied Momentum folder (428 variant pairs).
+- **Both tables are gated**: one losing more than max(25, 2%) of its rows, variant
+  pairs, dep lines, tiers or cells is not installed (`data/mapmedia/refused-<table>`,
+  exit 2) -- that run lost 91 tiers and 78 cells, an emptied Momentum folder 428
+  pairs. A refusal repeats every run until someone reads the names in
+  `data/mapscan.log` and runs `--accept`. Never delete mapmeta.txt to get past it:
+  a table from nothing keeps no atlas cells and breaks mode ties (exit 4 now).
+- Exit 3: another refresh holds `data/mapmedia/lock` (stale after 3 h). The task's
+  powershell.exe is 5.1: under `Stop` a native's stderr line is a terminating
+  error, which is why mapscan_6h.ps1 runs both through Invoke-Logged.
+- `# stamp YYYYMMDDHHMMSS` (UTC) moves only when a table's content does. mapdeps
+  rescans everything when an add-on's `*_dir.vpk` set changes (state v2).
 - **Gamemode ties went by list order**, and the API lists leaderboards in another
   order than Momentum's cache: bhop_forevertranslucent flipped mode 3 tier 5 to
   mode 2 tier 2 on identical data. `vote()` keeps the previous table's mode, then
