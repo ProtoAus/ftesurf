@@ -23,6 +23,13 @@
   283 lines (mostly CS:GO) and drops 66 (55 `Momentum Mod Playtest/mount`
   stand-ins). Each CS:GO mount costs launch seconds: a decision, not a refresh.
   Only surf_hellenic was updated (--update-map), in both dev installs.
+- **P1096 leftovers (review 1):** the `[texdiag] PROPLIGHT` one-shot still averages
+  bakes that later drop (it runs before prop models load). And a stock model
+  present in two mounted packs with different checksums (surf_garden's
+  tree_poplar_01 in cstrike_pak and hl2_misc; surf_fantasy's largebush04/05)
+  keeps or drops its bake by which pack resolves first -- not measured against
+  Momentum's own mount order. 47 maps / 5,259 props have stale bakes (census
+  of map-packed models; artifacts/vhvcensus.tsv in the lexmaps root).
 - **prederr on loading surf_aura saves** did not reproduce with the load key on
   Momentum's build (0 lines, saves 1/3/4); Lex's were on 0.1.32 with the CS:S
   build loaded. Ask him again on the current build.

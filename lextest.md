@@ -1,7 +1,7 @@
 # lextest.md — things waiting on a human
 
-**P1096 -- prop lighting from stale bakes (owner check pending):** hl2 plugin f5344080 in
-C:\FTESurf (and C:\FTEQuake once reviewed). On surf_pantheon saves 8, 9 and 10: are the
+**P1096 -- prop lighting from stale bakes (owner check pending):** hl2 plugin 3405f88b in both
+installs (.prev 83303920), ftequakers main 61007504d. On surf_pantheon saves 8, 9 and 10: are the
 columns even marble now, and do they look like Momentum's? `prop_census` says how many
 bakes it dropped ("made for another model"). Other maps should look unchanged.
 
