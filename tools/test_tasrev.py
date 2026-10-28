@@ -87,6 +87,7 @@ def mutations(data):
         out.append(('v1supply', put(at(0, 'tasproject 1')), 'refused'))
         out.append(('supplytwo', put(lines[:sp] + [lines[sp]] + lines[sp:]), 'refused'))
         out.append(('supplyzero', put(at(sp, 'supply 0 %d' % head)), 'refused'))
+        out.append(('supplynan', put(at(sp, 'supply nan nan')), 'refused'))
         out.append(('supplypast', put(at(sp, 'supply %d %d' % (base + 1, head + 1))), 'refused'))
         out.append(('supplybefore', put(at(sp, 'supply %d %d' % (base, head))), 'refused'))
         if head > base + 1:

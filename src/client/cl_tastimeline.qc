@@ -40,8 +40,8 @@ void() TASProject_SignPress =
 	if (cltime < tasp_cl_next) { print("tas project: one request at a time; click again\n"); return; }
 	if (tasp_cl_supa <= 0)
 	{
-		print(tasp_cl_supa < 0 ? "tas project: saved before signing existed; save a new revision to sign\n"
-			: "tas project: this revision changes no inputs; nothing to sign\n");
+		print(tasp_cl_supa < 0 ? "tas project: this revision predates signing; edit and save to sign your changes\n"
+			: "tas project: this revision changes no inputs of its parent; nothing to sign\n");
 		return;
 	}
 	if (!checkbuiltin(tasrev_sign)) { print("tas project: this game cannot sign revisions (needs the P1090 engine)\n"); return; }

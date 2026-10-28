@@ -15,14 +15,14 @@ without its local save id. Keep this file and the QuakeC in step.
 
 P1090: version 2 adds `supply none|<first> <last>`, the first and last tick whose input row
 differs from the parent's (or that the parent lacks); a root supplies every tick. The game
-keeps each revision as rev/<sha>.tasp and its author statement as rev/<sha>.tasrev:
+keeps each revision as rev/<sha>.tasp and its author statements in rev/<sha>.tasrev, one per line:
 `tasrev 1 sha parent|- mapcrc first last code pub sig`, an Ed25519 signature (the player's
 fskey, engine cl_receipt.c) over statement()'s text. `ticks` is what the signer claims: a
 span, so credit is the rows that differ from the parent (changed_ticks), never the span.
 
   tasrev.py FILE.tasp                  print the hash, or why the file is refused
   tasrev.py --check FILE.tasp          exit 1 unless accepted and its revsha line matches
-  tasrev.py --sig FILE.tasrev [TASP]   verify the statement, and that it is that revision's
+  tasrev.py --sig FILE.tasrev [TASP]   verify each statement, and that it is that revision's
   tasrev.py --supply CHILD PARENT      the child names the parent and its supply is exact
 """
 import hashlib, os, re, struct, sys
@@ -142,8 +142,7 @@ def parse(data):
             elif k == 'supply':
                 if version != '2': raise Refused('a supply line in a version 1 file')
                 if a != ['none']:
-                    supply = (f32(a[0]), f32(a[1]))
-                    if supply[0] < 1: raise Refused('bad supply')
+                    supply = (num(a[0], 1, 16000000 + TASP_MAX), num(a[1], 1, 16000000 + TASP_MAX))
             elif k == 'map':
                 if len(a) != 1 or not MAPNAME.match(a[0]): raise Refused('map line')
             elif k == 'pmpin':
@@ -275,17 +274,22 @@ def main(argv):
         with open(argv[2], 'rb') as f:
             raw = f.read()
         try:
-            if b'\r' in raw or not raw.endswith(b'\n') or raw.count(b'\n') != 1:
-                raise Refused('not one newline-ended line')
+            if b'\r' in raw or not raw.endswith(b'\n') or b'\n\n' in raw:
+                raise Refused('not newline-ended lines')
             info = None
             if len(argv) == 4:
                 with open(argv[3], 'rb') as f:
                     info = parse(f.read())
-            pub = check_sig(raw[:-1].decode('ascii'), info)
+            text = raw[:-1].decode('ascii')
         except (Refused, UnicodeDecodeError) as e:
             print('refused: %s' % e); return 1
-        print('signed by %s%s' % (pub, ' for this revision' if info else ''))
-        return 0
+        bad = 0
+        for line in text.split('\n'):
+            try:
+                print('signed by %s%s' % (check_sig(line, info), ' for this revision' if info else ''))
+            except Refused as e:
+                print('refused: %s' % e); bad += 1
+        return 1 if bad else 0
     check = '--check' in argv
     paths = [a for a in argv[1:] if a != '--check']
     if len(paths) != 1:
