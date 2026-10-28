@@ -213,9 +213,12 @@ void(float real) ZonePub_Begin =
 	print(sprintf("zone_edit: publish dialog open for %s (%g zones, crc %s, speed cap %g)\n", zp_map, zp_count, zp_crc, zp_cap));
 	// P1081: where this client is, as its own netchan says (a server cannot set it); the
 	// service accepts off-host publishing only from its own lobbies.
+	// The table's zonecrc (shared Zone_Hash, as a lobby running these bytes states it): the
+	// service confirms each lobby's reload by it. Bound to the nonce like the hash of the bytes.
 	if (!uri_post(strcat(ZP_BASE, "challenge"), id, "application/json",
-	              sprintf("{\"map\":\"%s\",\"sha\":\"%s\",\"server\":\"%s\"}", zp_map, zp_sha,
-	                      ZoneEdit_Hosting() ? "host" : ZonePub_Where())))
+	              sprintf("{\"map\":\"%s\",\"sha\":\"%s\",\"server\":\"%s\"%s}", zp_map, zp_sha,
+	                      ZoneEdit_Hosting() ? "host" : ZonePub_Where(),
+	                      strlen(zp_crc) == 8 ? sprintf(",\"crc\":\"%s\"", zp_crc) : "")))
 		ZonePub_Answer("The zone upload service could not be reached. Nothing was sent.", TRUE, FALSE);
 };
 

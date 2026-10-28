@@ -5,10 +5,13 @@ On one of our lobbies (not a hosted game), open `zone_edit`, edit with the panel
 then Publish saved (or type `zone_edit publish` after saving). Does the dialog open, and
 does a click on Publish send it? With the new zone service a "Reload now" button appears at
 the far left: does the lobby warn in chat, then changelevel within about 10 minutes, with
-the new zones? A command-made edit on the lobby must refuse ("a console command changed
-these zones"); another server is refused by the service. Not tested by a human or against
-the new service; a fixture arm proved the client refusals (zone_edit, chat_mouse, hud_edit)
-and the command-opened dialog only.
+the new zones? (The service counts a lobby reloaded only when its serverinfo `zonecrc`
+matches the crc your game sent; `zonepub.py status --map M` on the Pi shows it per lobby.)
+After alt-tabbing back, the first editor click may say "click again: the pointer's place was
+not known" once; the next click must work. A command-made edit on the lobby must refuse ("a
+console command changed these zones"); another server is refused by the service. Not tested
+by a human or against the new service; a fixture arm proved the client refusals (zone_edit,
+chat_mouse, hud_edit) and the command-opened dialog only.
 
 **P1084 -- stats page and lobby fonts (owner check pending):** live 07:19Z, menu
 587d416c / cs 7ae351cf / qw 8134b64f in both installs and all 12 lobbies (lobby

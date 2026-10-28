@@ -82,6 +82,7 @@ float  ze_grid;                     // snap, units
 float  ze_snap;                     // 1 the grid, 0 the surface as hit
 float  ze_mouse_seen;
 vector ze_mouse;
+float  ze_ptr_noted;                // P1081: "place not known" said once; the next press is accepted
 vector ze_panel_p, ze_panel_s;
 float  ze_scroll;
 
@@ -1661,14 +1662,26 @@ float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 	if (ze_cursor)
 	{
 		// P1081 review: a real press is aimed where the device pointer is. A panel that took the
-		// moves (an open chat) leaves ze_mouse behind: resync, and this press does nothing.
+		// moves (an open chat) leaves ze_mouse behind: resync, and this press does nothing. A place
+		// not known at all (focus regained, a new cursor) is said once and the next press accepted;
+		// the publish dialog's own buttons still need a known one (ZonePub_Key).
 		if (cl_input_real && scanx == K_MOUSE1)
-		if (!cl_ptr_real_ok || vlen(cl_ptr_real - ze_mouse) > 1)
 		{
-			if (cl_ptr_real_ok) { ze_mouse = cl_ptr_real; ze_mouse_seen = TRUE; _sui_mouse_move(ze_mouse, FALSE); }
-			ze_field_keys[scanx] = 3;   // its release is swallowed too
-			ZoneEdit_Note("click again: the pointer had moved behind another panel");
-			return TRUE;
+			if (cl_ptr_real_ok) ze_ptr_noted = FALSE;
+			if (cl_ptr_real_ok && vlen(cl_ptr_real - ze_mouse) > 1)
+			{
+				ze_mouse = cl_ptr_real; ze_mouse_seen = TRUE; _sui_mouse_move(ze_mouse, FALSE);
+				ze_field_keys[scanx] = 3;   // its release is swallowed too
+				ZoneEdit_Note("click again: the pointer had moved behind another panel");
+				return TRUE;
+			}
+			if (!cl_ptr_real_ok && !ze_ptr_noted)
+			{
+				ze_ptr_noted = TRUE;
+				ze_field_keys[scanx] = 3;
+				ZoneEdit_Note("click again: the pointer's place was not known after a focus change");
+				return TRUE;
+			}
 		}
 		onpanel = (ze_mouse_seen && is_2dpoint_in_bbox(ze_mouse, ze_panel_p, ze_panel_s));
 		if (!onpanel) return FALSE;

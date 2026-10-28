@@ -41,7 +41,7 @@ SQL = '''
 CREATE TABLE IF NOT EXISTS roles(steamid TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS challenges(nonce TEXT PRIMARY KEY, map TEXT NOT NULL,
  sha TEXT NOT NULL, peer TEXT NOT NULL, created INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
- nonce_now TEXT);
+ nonce_now TEXT, crc TEXT);
 CREATE TABLE IF NOT EXISTS drafts(id TEXT PRIMARY KEY, map TEXT NOT NULL,
  sha TEXT NOT NULL, steamid TEXT NOT NULL, pub TEXT NOT NULL, created INTEGER NOT NULL,
  body BLOB NOT NULL, UNIQUE(map,sha));
@@ -103,8 +103,9 @@ def official(server, ours, names, resolve=resolve_public):
 
 def migrate(db):
     # P1081 columns on a store made before them; CREATE IF NOT EXISTS leaves old tables alone.
-    if 'nonce_now' not in {r[1] for r in db.execute('PRAGMA table_info(challenges)')}:
-        db.execute('ALTER TABLE challenges ADD COLUMN nonce_now TEXT')
+    have = {r[1] for r in db.execute('PRAGMA table_info(challenges)')}
+    for column in ('nonce_now', 'crc'):
+        if column not in have: db.execute('ALTER TABLE challenges ADD COLUMN %s TEXT' % column)
     pub.migrate(db)
 
 
@@ -291,6 +292,11 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
         # or the lobby it is on, which must be ours (official()).
         server = data.get('server', 'host')
         if not isinstance(server, str) or len(server) > 80: return fail('Invalid server', 400)
+        # P1081 round 4: the zonecrc of the table these bytes parse to (shared Zone_Hash), which a
+        # lobby running them states; bound to the nonce. A wrong one only makes confirmation fail.
+        crc = data.get('crc')
+        if crc is not None and (not isinstance(crc, str) or not re.fullmatch(r'[0-9a-f]{8}', crc)):
+            return fail('Invalid zone crc', 400)
         now = int(clock())
         peer = hashlib.sha256(peer_salt + (request.remote_addr or '').encode()).hexdigest()
         busy = lambda db: (db.execute('SELECT COUNT(*) FROM challenges').fetchone()[0] >= 256 or db.execute(
@@ -311,8 +317,8 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                 # P1081: a second nonce for the same map and bytes; signing it asks for "reload now".
                 now_nonce = secrets.token_hex(16) if publish_dirs else None
                 h = lambda n: hashlib.sha256(n.encode()).hexdigest() if n else None
-                db.execute('INSERT INTO challenges(nonce,map,sha,peer,created,nonce_now) VALUES(?,?,?,?,?,?)',
-                           (h(nonce),name,sha,peer,now,h(now_nonce)))
+                db.execute('INSERT INTO challenges(nonce,map,sha,peer,created,nonce_now,crc) VALUES(?,?,?,?,?,?,?)',
+                           (h(nonce),name,sha,peer,now,h(now_nonce),crc))
             if now_nonce: return jsonify(ok=1, nonce=nonce, nonce_now=now_nonce, map=name, sha=sha)
             return jsonify(ok=1, nonce=nonce, map=name, sha=sha)
         except sqlite3.Error: return fail('Zone uploads unavailable', 503)
@@ -360,15 +366,19 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                     return fail('Invalid or incomplete zone geometry', 400)
                 rid = None
                 if publish_dirs and force:
-                    # P1081 round 3: "Reload now" is for a change. Bytes already live reload nobody
-                    # (an operator re-arms a reload with `zonepub.py reload`).
-                    cur = pub.state(db, grant['map'])
-                    try: on_disk = pub.read_file(pub.zone_path(publish_dirs[0], grant['map'], valid_name), MAX_ZONE_BYTES)
-                    except (OSError, ValueError): on_disk = None
-                    if (cur is not None and cur['sha'] == grant['sha']) or pub.sha(on_disk) == grant['sha']:
+                    # "Reload now" confirms each lobby by the crc the client stated for these bytes.
+                    if not grant['crc']: return fail('Update your game before using Reload now', 400)
+                    # It is for a change: bytes live in every publish directory reload nobody, unless
+                    # this revert cancels a force still waiting (an operator re-arms: `zonepub.py reload`).
+                    try: disk = [pub.read_file(pub.zone_path(d, grant['map'], valid_name), MAX_ZONE_BYTES)
+                                 for d in publish_dirs]
+                    except (OSError, ValueError): disk = [None]
+                    waiting = db.execute("SELECT 1 FROM publications WHERE map=? AND kind='pending'",
+                                         (grant['map'],)).fetchone()
+                    if all(b == raw for b in disk) and not waiting:
                         return fail('These zones are already live; Reload now is for a change', 409)
                 if publish_dirs:
-                    rid = pub.queue(db, grant['map'], raw, sid, now, force)
+                    rid = pub.queue(db, grant['map'], raw, sid, now, force, grant['crc'])
                     if rid is None: return fail('Too many publishes this hour; try again later', 429)
                     pub.log('queued', grant['map'], grant['sha'][:12], 'by', pub.who(db, sid), 'now' if force else '')
                 prior = db.execute('SELECT id FROM drafts WHERE map=? AND sha=?', (grant['map'],grant['sha'])).fetchone()

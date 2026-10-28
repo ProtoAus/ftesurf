@@ -34,7 +34,7 @@ patch    1089
 # Patch 1084: lobby cards on native font sizes; World of Surf is the stats default; hud_player's Stats page opens from the main menu.
 # Patch 1083: ranked runs need the standard move size (largest axis <= 450, server-measured); cl_netfps stays matched to the tick every frame.
 # Patch 1082: TAS projects: an input line + base TAS save on disk, cold reload with checkpoint verdicts, fork/diff; local only.
-# Patch 1081: zone_edit publish from our lobbies (cfg port at SURFD_PUBLIC_HOST; device pointer that entered the button; no command/synthetic edits), Reload now (acked per-lobby warning, status before write, confirmed changelevel, live-partial).
+# Patch 1081: zone_edit publish from our lobbies (cfg port at SURFD_PUBLIC_HOST; device pointer gates), Reload now confirmed by each lobby's serverinfo zonecrc = the client-stated crc (acked warnings, live-partial).
 # Patch 1080: Maps list completed sort from /api/board?completed=; unknown stays in tier order, never "incomplete".
 # Patch 1079: declare inherited-effect tier exclusion with one derived flag; ordinary current segmented play stays eligible.
 # Patch 1078: tiers.txt regenerated from the live map list; surf_midnight and six newer maps get in-game tiers (data only).
