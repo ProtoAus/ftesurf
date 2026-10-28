@@ -1,5 +1,16 @@
 # BACKLOG.md
 
+## maps/tiers.txt goes stale when mapwatch adds a map (P1078)
+
+- Sites: `tools/maptiers.py` (PC only: it reads the local Momentum install's
+  `_cache/{approved,submission}_*.dat`); `surfd/mapwatch.py` adds maps every 6 h.
+  A new map has a tier in `/api/board?maps=1` but none in `SV_MapTierInit`'s
+  file, so the in-game info box and scoreboard read "tier ?" until a manual
+  regenerate + ship to both installs and the Pi. P1078 did it by hand.
+- Falsifier: a map that enters the live list with a nonzero tier column gets a
+  `maprating_0_0` on a lobby within one refresh cycle, with no hand step, and an
+  unchanged list leaves the asset byte-identical (no churn to the signed asset).
+
 ## Historical REC14 streamed rewind state
 
 - Sites: `SV_RewindWriteState` / `SV_RecRewindStream`; ordinary non-TAS rewind

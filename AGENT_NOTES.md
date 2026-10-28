@@ -6287,6 +6287,11 @@ material behind it; not map completeness or native/prediction acceptance.
   Owner approved a one-time new-launcher download for this alpha rollout. Keep
   that notice/direct verified launcher links visible; never omit the tier asset,
   wildcard all maps or relax player-data protection merely to pass signing.
+- Nothing regenerates it when mapwatch adds a map: until someone does, that map
+  reads "MOM tier ? | KSF tier ?" in game while the menu's directory row shows
+  its tier (P1078: surf_midnight, six others, asset 4 days old). MOM ratings
+  are name-keyed, so a Momentum Beta port of a KSF map rates the KSF build
+  (midnight: same mapper, same 4 bonuses -- check `b_count` before trusting).
 - Public Momentum caches currently have bonus ratings but no non-null stage
   tiers. Synthetic stage controls prove support, not real upstream stage data.
   Skip private testing/disabled maps when generating a public asset.
