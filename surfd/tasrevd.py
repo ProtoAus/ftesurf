@@ -284,6 +284,17 @@ def compute(db, r):
     return out, changed
 
 
+DESCENDANTS = (
+    'WITH RECURSIVE d(sha, n) AS (SELECT sha, 1 FROM revisions WHERE parentsha = ?'
+    ' UNION SELECT r.sha, d.n + 1 FROM revisions r JOIN d ON r.parentsha = d.sha WHERE d.n < ?)'
+    ' SELECT sha FROM d GROUP BY sha ORDER BY MIN(n) LIMIT 20000')
+
+
+def queue_descendants(db, sha):
+    """Every descendant reads its ancestors' rows, changes and credit, not just its parent's."""
+    db.executemany('INSERT OR IGNORE INTO stale(sha) VALUES (?)', db.execute(DESCENDANTS, (sha, WALK_MAX)).fetchall())
+
+
 def recompute(db, sha):
     r = db.execute('SELECT sha, seq, base, rows, parentsha, inputs, credit, changed FROM revisions WHERE sha = ?',
                    (sha,)).fetchone()
@@ -292,8 +303,7 @@ def recompute(db, sha):
     crj, chj = json.dumps(cr), (json.dumps(ch) if ch is not None else None)
     if crj != r['credit'] or chj != r['changed']:
         db.execute('UPDATE revisions SET credit = ?, changed = ? WHERE sha = ?', (crj, chj, sha))
-        db.executemany('INSERT OR IGNORE INTO stale(sha) VALUES (?)',
-                       db.execute('SELECT sha FROM revisions WHERE parentsha = ?', (sha,)).fetchall())
+        queue_descendants(db, sha)
     if db.execute('SELECT 1 FROM revisions WHERE inputs = ? AND seq < ?', (r['inputs'], r['seq'])).fetchone() is None:
         # The earliest of its inputs: the later copies read its credit and its chain.
         db.executemany('INSERT OR IGNORE INTO stale(sha) VALUES (?)',
@@ -432,8 +442,7 @@ def create_app(store, account_db, codes_file, clock=time.time):
                        (r['sha'], r['seq'], mp, info['mapcrc'], parent, info['version'], info['base'],
                         info['base'] + len(info['rows']), supply[0], supply[1], now, len(body), inputs, rows,
                         json.dumps(ch) if ch is not None else None, json.dumps(cr), body))
-            db.executemany('INSERT OR IGNORE INTO stale(sha) VALUES (?)',
-                           db.execute('SELECT sha FROM revisions WHERE parentsha = ?', (r['sha'],)).fetchall())
+            queue_descendants(db, r['sha'])
             drain(db, DRAIN_SECONDS)
         return jsonify(ok=1, sha=r['sha'], seq=r['seq'], first_seen=now, parent=parent, parent_known=parent is None or prow is not None)
     def qualifying(db, rev, codes):
@@ -510,7 +519,7 @@ def create_app(store, account_db, codes_file, clock=time.time):
             rows = [dict(r) for r in db.execute('SELECT sha, seq, parentsha, mapcrc, base, head, supply_a, supply_b, first_seen FROM revisions'
                                                 ' WHERE map = ? AND seq < ? ORDER BY seq DESC LIMIT 100', (mp, before))]
             for r in rows:
-                r['signed'] = len({acc for a, z, acc in qualifying(db, r, codes) if acc != 'unattributed'})
+                r['signers'] = len({acc for a, z, acc in qualifying(db, r, codes) if acc != 'unattributed'})
         return jsonify(ok=1, map=mp, revisions=rows)
     return app
 
@@ -519,13 +528,15 @@ def main():
     import argparse
     ap = argparse.ArgumentParser(description='P1091 TAS revision service store')
     ap.add_argument('--store', required=True)
-    ap.add_argument('command', choices=['init', 'recompute'])
+    ap.add_argument('command', choices=['init', 'recompute', 'rebuild'])
     a = ap.parse_args()
     if a.command == 'init':
         initialize(a.store)
         print('tasrevd store ready: %s' % a.store)
         return
     with connect(a.store) as db:
+        if a.command == 'rebuild':      # repairs a store: every revision recomputed, oldest first
+            with writing(db): db.execute('INSERT OR IGNORE INTO stale(sha) SELECT sha FROM revisions ORDER BY seq')
         n = 0
         while True:
             with writing(db):

@@ -13,7 +13,7 @@ change, the game's own reader and verifier (tools/tasrev.py).
 | `POST /api/tasrev/revision` | a .tasp exactly as the game wrote it, `Content-Type: text/x-tasrev` (a cross-site form cannot send it); its revsha must be its hash, and a child's supply must be exact against a known parent. Kept once by hash with its first-seen time. |
 | `GET /api/tasrev/rev/<sha>` | the revision, its statements (no keys: the account, ticks, times, released code or not, arrived before the revision or not), its credit as `[first, last, who]` ranges, and `pending` while its credit waits in the queue. |
 | `GET /api/tasrev/rev/<sha>/file` | the body, for a client to open. Lines outside the hash (saved, revision, origin, parent name) are the first uploader's. |
-| `GET /api/tasrev/map/<map>?before=<seq>` | the map's revisions, newest first by arrival, 100 a page, with how many linked accounts credit each. |
+| `GET /api/tasrev/map/<map>?before=<seq>` | the map's revisions, newest first by arrival, 100 a page, with `signers`: how many linked accounts have a qualifying statement about it (the first one is credited). |
 
 Refusals answer 200 with `ok: 0` (the game's HTTP client keeps no body otherwise); 503 means
 "cannot tell right now, try again" (the account list or the released-code list unreadable, or
@@ -33,9 +33,11 @@ search visits only ancestors that changed that tick (up to 4096 ancestors, 1M ro
 none holds it the tick is this revision's own, except at or before the parent's base (never a
 child's). A revision with the same map, base and rows as an earlier one takes that one's credit
 unless the earlier one descends from it. Where the service cannot see -- an unseen parent or
-ancestor, a cut search, an earlier copy whose chain has a gap -- the answer is `unknown-ancestry`,
-and an arrival that may change it queues the waiting revisions; each POST works through the
-queue for half a second (`tasrevd.py --store ... recompute` empties it).
+ancestor, a cut search, an earlier copy whose chain has a gap -- or the credit would be circular
+(a copy of a revision derived from it), the answer is `unknown-ancestry`. An arrival queues every
+descendant, and a revision whose credit changes queues its descendants and later copies; each
+POST works through the queue for half a second (`tasrevd.py --store ... recompute` empties it,
+`rebuild` recomputes every revision).
 
 A supplier revision's ticks go to the first statement about it that names its fields, spans the
 tick, names a released csprogs and ARRIVED BEFORE THE REVISION ITSELF; others are skipped. The
@@ -44,7 +46,8 @@ account is the one its key was linked to when the statement arrived (unlinked or
 client registers its statement before it shares the revision. Answers: a steamid, `unsigned`,
 `unattributed`, or `unknown-ancestry`.
 
-Open (BACKLOG): rows shifted to other ticks are not recognised as the same work; a revision
+Open (BACKLOG): rows shifted to other ticks, and a near copy (one row changed, saved as a new
+root), are not recognised as the same work -- the copy rule catches exact copies only; a revision
 shared privately before its statement is registered can be raced; a child uploaded before its
 parent is not supply-checked (only its own signer can lose ticks by a wrong supply).
 

@@ -289,6 +289,31 @@ class Service(unittest.TestCase):
         self.assertEqual(first['credit'], again['credit'])
         self.assertLess(t1 - t0, 1.5); self.assertLess(t2 - t1, (t1 - t0) / 2 + 0.05)
 
+    def test_a_late_ancestor_reaches_every_descendant(self):
+        # Review 3 (F1): P -> M -> N -> C -> D; C restores P's rows (the copy rule), D edits tick 25.
+        # M arrives last: C's credit does not change, but D read M's gap and must be recomputed.
+        p_rows = [row(t) for t in range(21, 41)]
+        p, hp = revision(20, p_rows)
+        m_rows = [row(t, 1) if 31 <= t <= 35 else r for t, r in zip(range(21, 41), p_rows)]
+        m, hm = revision(20, m_rows, parent=hp, supply=(31, 35))
+        n_rows = [row(t, 2) if 36 <= t <= 40 else r for t, r in zip(range(21, 41), m_rows)]
+        n, hn = revision(20, n_rows, parent=hm, supply=(36, 40))
+        c, hc = revision(20, list(p_rows), parent=hn, supply=(31, 40))
+        d_rows = [row(t, 3) if t == 25 else r for t, r in zip(range(21, 41), p_rows)]
+        d, hd = revision(20, d_rows, parent=hc, supply=(25, 25))
+        self.put_st(statement(ALICE, hp, None, 21, 40)); self.put_st(statement(BOB, hd, hc, 25, 25))
+        for body in (p, n, c, d, m): self.put_rev(body)
+        self.assertEqual(self.credit(hd), [(21, 24, SID_A), (25, 25, SID_B), (26, 40, SID_A)])
+
+    def test_rebuild_repairs_a_store(self):
+        (a, ha), (b, hb), _ = self.chain()
+        self.put_st(statement(ALICE, ha, None, 21, 40)); self.put_rev(a); self.put_rev(b)
+        with svc.connect(self.store) as db: db.execute("UPDATE revisions SET credit = '[]' WHERE sha = ?", (hb,))
+        import subprocess
+        out = subprocess.run([sys.executable, '-B', svc.__file__, '--store', str(self.store), 'rebuild'], capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(self.credit(hb), [(21, 30, SID_A), (31, 35, 'unsigned'), (36, 40, SID_A)])
+
     def test_reads_are_limited_per_peer(self):
         codes = [self.c.get('/api/tasrev/map/bhop_eazy').get_json().get('status', 200) for _ in range(svc.PEER_READS + 1)]
         self.assertEqual((codes[0], codes[-1]), (200, 429))
@@ -299,7 +324,7 @@ class Service(unittest.TestCase):
         (a, ha), _, _ = self.chain()
         self.put_st(statement(ALICE, ha, None, 21, 40)); self.put_rev(a)
         listed = self.c.get('/api/tasrev/map/bhop_eazy').get_json()['revisions']
-        self.assertEqual([(r['sha'], r['signed']) for r in listed], [(ha, 1)])
+        self.assertEqual([(r['sha'], r['signers']) for r in listed], [(ha, 1)])
         self.assertNotIn('pub', str(self.c.get('/api/tasrev/rev/%s' % ha).get_json()))
 
 
