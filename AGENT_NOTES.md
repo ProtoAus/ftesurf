@@ -9,6 +9,13 @@
   `steam:` specs without ".." from the menu's copy.
 - **`tokenize` makes `steam:X` three tokens**: the first cut read 0 mount lines. Cut a line
   with substring, as ui_deps_load does.
+- **The map tables in `data/` are not CSQC's**: the engine refuses CSQC every launcher-managed
+  `data/map*` table and the menu's copies (QC_MenuTable, pr_bgcmd.c), refuses them as downloads
+  (CL_EnqueDownload; downloads/ is a search path), and mounts only five fixed Steam folders from
+  either table (FS_MapDepsNetSpec). Detail in the private tree, p1099-maptables-csqc-20261029.md. `DATA/...` from CSQC is not a bypass: the case-sensitive `data/`
+  test makes it data/DATA/. Keep a new data/ table CSQC must not touch in QC_MenuTable's list.
+- Each table ends `# end N` (meta or dep lines): an aborted download still answers 200.
+  Consent is ms_consent, the terms file -- rec_terms is a plain cvar.
 - A row whose atlas page is missing, or listed at another size in the chosen table's
   `# atlas P bytes`, draws `media/thumbs/<uuid>.jpg` through the engine's URL image loader
   (r_image_downloadsizelimit 128 KB; the small JPEGs are <= 53 KB). Only with consent:
