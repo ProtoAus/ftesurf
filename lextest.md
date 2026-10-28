@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+**P1096 -- prop lighting from stale bakes (owner check pending):** hl2 plugin f5344080 in
+C:\FTESurf (and C:\FTEQuake once reviewed). On surf_pantheon saves 8, 9 and 10: are the
+columns even marble now, and do they look like Momentum's? `prop_census` says how many
+bakes it dropped ("made for another model"). Other maps should look unchanged.
+
+**P1094 -- Download during a local game (owner check pending):** menu 934a6033 in both
+installs. Start any map yourself, open the map list, press Download on a map you lack:
+the row says "after this game"; leave the game and it downloads by itself. Joining a lobby
+on a map you lack from a local game should download it and then join.
+
+**surf_hellenic black rock (owner check pending):** data/mapdeps.txt now mounts TF2 for
+surf_hellenic in both dev installs (its displacement textures are TF2's). Lobby save 1: is
+the rock textured? The Desktop release install keeps the old table until the next release.
+
 **P1081 -- publish zones from a lobby, Reload now (owner check pending):** live 29 Oct: cs ad56be4a /
 qw e6740dbb in both installs and all 12 lobbies (~13:22Z; smokes on 27520 and 27540 passed), zone
 service 66ed6677 since 13:39:55Z. Offline arms also proved the client crc equals the lobby's zonecrc.

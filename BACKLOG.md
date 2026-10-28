@@ -1,5 +1,32 @@
 # BACKLOG.md
 
+## Lex's 29 Oct map list: diagnosed, not fixed (shots in lexmaps-20261029T0440Z/artifacts/shots)
+
+- **surf_demise save 28, the black slab in the sky:** the 3D-sky pass draws it.
+  `vbsp_skyroom 0` removes it; `r_ignoreentpvs 0` does not. The sky camera is at
+  z -14848, scale 4; the view ray from its scaled eye passes func_brush *19, a
+  main-level brush entity, so the pass draws networked main-level entities
+  from the sky camera. Source draws the sky camera's own PVS/area only
+  (R_DrawSkyroom's comment says the same). Needs the entity filter in that pass.
+- **Zones drawn "outside the PVS" (surf_aura save 4, demise's green line):**
+  zones have no PVS cull at all (cl_zones.qc, build 40: CSQC checkpvs culled
+  every zone on Source maps). Momentum's zones are PVS-culled trigger entities.
+  Chase PF_checkpvs on VBSP from CSQC (area walk / pvsinfo), then cull zones.
+- **Sky brushes cutting geometry (surf_aura save 1, as kvas):** r_sky_forcedepth
+  2 cuts trees past a sky brush; 1 (kvas's per-map override) keeps them but
+  then every zone and some PVS-visible world shows through the sky. The kvas
+  fix was per-map; a general default needs the zone cull above first.
+- **surf_aura save 3/4 ramp top (Momentum build):** loading save 3 with the
+  key, sideways speed went 1766 -> 0 within ~0.15 s near (4560, -3088, -2760),
+  then a fail teleport. Not diagnosed (prop hull vs brush vs Source behaviour).
+- **mapdeps.txt is stale for the restored library:** a full regeneration adds
+  283 lines (mostly CS:GO) and drops 66 (55 `Momentum Mod Playtest/mount`
+  stand-ins). Each CS:GO mount costs launch seconds: a decision, not a refresh.
+  Only surf_hellenic was updated (--update-map), in both dev installs.
+- **prederr on loading surf_aura saves** did not reproduce with the load key on
+  Momentum's build (0 lines, saves 1/3/4); Lex's were on 0.1.32 with the CS:S
+  build loaded. Ask him again on the current build.
+
 ## P1093 waits for a surfd generation (29 Oct)
 
 - Committed and tested on main; NOT live. The watcher runs from the sealed

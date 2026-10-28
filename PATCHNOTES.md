@@ -21,6 +21,12 @@
 
 ## next
 
+### P1096 Prop lighting on maps with out-of-date bakes
+- Props whose baked lighting was made for a different model (the map changed after it was lit) now light like unbaked props, as Source does. surf_pantheon's columns are even marble again instead of striped brown, grey and black.
+
+### P1094 Downloading a map during a local game
+- Pressing Download while you are playing a map yourself no longer fails: the map downloads as soon as you leave that game, and the row says "after this game".
+
 ### P1092 TAS: best boarding angle and launch flick
 - `tas optimize <ticks> <left|right> board` also finds the best heading to start the turn from (up to 30 degrees either way), for the angle you board a ramp at.
 - `flick [ticks]` adds a faster turn over the last ticks (4 unless you give 1..32), for the launch off the end of a ramp. Use both with `board flick`.
