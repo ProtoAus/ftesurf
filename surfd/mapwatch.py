@@ -978,7 +978,8 @@ def zone_fetch(pacer, r):
     # reply still names that build; otherwise the line is stale, not the map --
     # asked before the refusal below, which would end the API for the run.
     if (r["src"] == "beta" and isinstance(cv, dict)
-            and (doc.get("id") != r["id"] or str(cv.get("bspHash")).lower() != r["sha"])):
+            and (doc.get("id") != r["id"] or str(cv.get("bspHash")).lower() != r["sha"]
+                 or not isinstance(cv.get("zones"), dict))):
         return None, False, "zoneversion"
     if not isinstance(cv, dict) or not isinstance(cv.get("zones"), dict):
         raise Refused("a reply with no zones in it")
@@ -1332,12 +1333,12 @@ def run(a):
     # line against the map's own reply (zone_fetch): no id or zoneHash, no swap.
     # P1093: and not on a run whose list Momentum refused (that ends its host),
     # nor within a day of the reply naming another build than the line.
-    stale = table("stale")
-    for k in [k for k, t in stale.items() if not isinstance(t, (int, float)) or now - t > 86400]:
-        del stale[k]
+    stale_lines = table("stale")
+    for k in [k for k, t in stale_lines.items() if not isinstance(t, (int, float)) or now - t > 86400]:
+        del stale_lines[k]
     todo = new + ([r for r in diff if r["src"] == "mom"
                    or (r["src"] == "beta" and r["id"] and r["zh"] and "mom" in read
-                       and skey(r) not in stale)]
+                       and skey(r) not in stale_lines)]
                   if a.updates else [])
     todo = [r for r in todo if not waiting(skey(r))]
     todo.sort(key=lambda r: back.get(skey(r), 0))      # stable: a refused file goes last
@@ -1452,12 +1453,18 @@ def run(a):
         except Refused as e:
             if e.code == 404:
                 again(zkey, "HTTP 404")
+            elif r["src"] == "beta" and e.code in (401, 403):
+                back[zkey] = now        # P1093: one Beta map refused, the API answers the rest
+                stale_lines[skey(r)] = now
+                print("  %s: refused (%s): this Beta map waits a day" % (zkey, e))
             else:
                 refused("api", zkey, e)
             return None
         except Exception as e:          # see take()
             print("  %s: %s: %s" % (zkey, type(e).__name__, e))
             raw, hashed, why = None, False, "zoneshape"
+        if raw is None and why == "zoneversion" and r["src"] == "beta":
+            stale_lines[skey(r)] = now        # the line is behind the map: a day, until the PC rescans
         if raw is None and why == "zoneversion":
             # The list and this reply name different versions: the host's
             # moment, not this map's.  No strike; it goes to the back.
@@ -1617,8 +1624,6 @@ def run(a):
             if r["zh"]:
                 raw = zone_ask(key, r, zkey)
                 if raw is None:
-                    if r["src"] == "beta" and back.get(zkey) == now and "api" not in dead:
-                        stale[skey(r)] = now        # "zoneversion": the line is behind
                     count("its zones cannot be had: build left")
                     _save(sp, st)
                     continue
@@ -1678,6 +1683,7 @@ def run(a):
             # zone file already here under that name (the zone loop reports
             # it), and under the same two looks as any first zone file.
             if (r["src"] in ("mom", "beta") and r["zh"] and r["id"] and key not in zidx and "api" not in dead
+                    and (r["src"] == "mom" or "mom" in read)
                     and not waiting(zkey) and unplayed(key) and quiet(key)):
                 raw = zone_ask(key, r, zkey)
                 if (raw is not None and zone_fits(key, raw, final, zkey)
@@ -1763,7 +1769,8 @@ def run(a):
     # P1093: Beta maps too, by the id and zoneHash their extra.tsv line carries.
     zsrc = dict(mom)
     if "mom" in read:
-        zsrc.update((k, r) for k, r in extra.items() if r["id"] and r["zh"] and k not in zsrc)
+        zsrc.update((k, r) for k, r in extra.items()
+                    if r["id"] and r["zh"] and k not in zsrc and skey(r) not in stale_lines)
     for k in sorted(zsrc, key=lambda k: (back.get("z:%s:%s" % (k, (zsrc[k]["zh"] or "")[:12]), 0), k)):
         r = zsrc[k]
         if k not in inv or not r["zh"] or k in ztried:

@@ -2398,6 +2398,44 @@ def case_beta_zones():
     check("with Momentum's list refused, no Beta map's zones are asked of it",
           (w.zone_asks(), zfile(maps, "surf_bz")), ([], None))
 
+    # ...nor on the install path: a new Beta name goes in, its zones are not asked (review 2).
+    w, maps, state = setup({"surf_app": M("app"), "surf_bn": M("bn")}, {"surf_k": Z("surf_k", "k")},
+                           held=[("surf_app", bsp("app"))])
+    w.hidden = {"surf_bn"}
+    tick(maps, state, "--go", "--max", "0")             # Momentum's names on record
+    lines(state, line(w, "surf_bn", "bn"))
+    w.down, w.asked = {"mom"}, []
+    tick(maps, state, "--go")
+    check("...and a new Beta name installed on such a run is given no zones from the API",
+          ("surf_bn.bsp" in lib(maps), w.zone_asks(), zfile(maps, "surf_bn")), (True, [], None))
+
+    # Held at the line's build while Momentum has moved on: the zone loop asks once a day.
+    w, maps, state = setup({"surf_bh": M("bh new")}, {}, held=[("surf_bh", bsp("bh old"))])
+    w.hidden = {"surf_bh"}
+    lines(state, "surf_bh %s %s%s.bsp %d %s" % (sha(bsp("bh old")), W.MOM_CDN, uuid_of("surf_bh"),
+                                                 w.ids["surf_bh"], "7" * 40))
+    asks = []
+    for i in range(3):
+        tick(maps, state, "--go")
+        asks.append(len(w.zone_asks()))
+    check("a Beta line behind its map is asked once a day by the zone loop too",
+          (asks, zfile(maps, "surf_bh"), strikes(state)), ([1, 1, 1], None, []))
+
+    # One Beta map refused (401): it waits a day, and the API answers the others.
+    w, maps, state = setup({"surf_bq": M("bq new"), "surf_az": M("az")}, {},
+                           held=[("surf_bq", bsp("bq old")), ("surf_az", bsp("az"))])
+    w.hidden = {"surf_bq"}
+    w.zonecode = {"surf_bq": 401}
+    lines(state, line(w, "surf_bq", "bq new"))
+    tick(maps, state, "--go", "--updates")
+    first = [u for u in w.zone_asks() if "/%d?" % w.ids["surf_bq"] in u]
+    check("one Beta map's 401 holds that line and the approved map still gets its zones",
+          (len(first), sha(zfile(maps, "surf_az") or b""), sha(read(os.path.join(maps, "surf_bq.bsp")))),
+          (1, sha(ztext(w.mom["surf_az"]["zones"]).encode()), sha(bsp("bq old"))))
+    w.asked = []
+    tick(maps, state, "--go", "--updates")
+    check("...and is not asked again the next run", w.zone_asks(), [])
+
     # A held Beta zone file that is not the published one gives a port nothing
     # unless held_extra_donors measured it on the donor's build (F1).
     WORLD = ((-4096, -4096, -4096), (4096, 4096, 4096))
