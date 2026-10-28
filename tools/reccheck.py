@@ -407,7 +407,7 @@ TF_MOVEOOR = 262144
 # loaded save carries the bit without either verdict seeing it.
 TF_NOPROFILE = 2048
 PROF_WORDS = ("ok", "rawinput", "m_filter", "m_accel", "rawmice", "silent",
-              "platform", "changed")
+              "platform", "changed", "move")   # P1083: move above the standard 450
 # Patch 840.  The game clock fell behind server time (slow motion).  The
 # finish's `clk` record states its own bound and the measure judged against it,
 # so the bit is judged from the file alone, outside CLK_EPS of the boundary (the

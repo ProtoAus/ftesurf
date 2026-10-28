@@ -1599,6 +1599,13 @@ def case_profile_verdict():
                     "flags", str(2048)),
                "loaded save",
                "the bit with every verdict ok is a note, not a fault")
+    # P1083: the server-measured move verdict is a known word, judged like the rest.
+    b = insert_before(insert_before(build(), "begin", "inprof ok 15 1 0 0 1"),
+                      "inend", "prof move")
+    faults_with(b, "does not say TF_NOPROFILE",
+                "a move finish verdict with the bit clear is a fault")
+    ok_clean(head(b, "flags", str(2048)),
+             "...and with the bit set passes clean, with no unknown-word note")
     notes_with(insert_before(build(), "begin", "inprof bogus 15 1 0 0 1"),
                "not one this tool knows", "an unknown start verdict is a note")
     notes_with(insert_before(build(), "inend", "prof bogus"),

@@ -21,6 +21,10 @@
 
 ## next
 
+### P1083 Ranked runs use the standard move settings
+- A run is no longer ranked if a move input goes above the standard 450 (for example a raised cl_forwardspeed or cl_sidespeed); the finish says why.
+- cl_netfps now stays matched to the map's tick for the whole map, not only when it loads.
+
 ### P1082 Save TAS projects and reopen them later
 - The TAS timeline can save your line as a project and reload it after leaving the map or restarting: it replays every input from a TAS save and says whether it reproduced exactly.
 - Name checkpoints, load up to one, fork a project under a new name and compare two projects tick by tick. Local games only for now.

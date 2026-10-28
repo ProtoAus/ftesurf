@@ -1745,6 +1745,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// whether or not `notmenu` -- a run does not stop while the console is up,
 	// and a gap in the sidecar would read as a camera that teleported.
 	Rec_ViewFrame();
+	Net_MatchTicrate();             // P1083: every frame, not only at map load
 	Account_Frame();                // Patch 615: here, not with the HUD, which a menu skips
 	StoryToast_Poll();               // medal mailbox advances even while a menu hides the HUD
 	SteamPic_Frame();               // Patch 640

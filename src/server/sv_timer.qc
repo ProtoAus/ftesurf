@@ -11606,6 +11606,10 @@ float(entity e) SV_ProfileWhy =
 	                  e.run_t_pevfilt, e.run_t_pevacc, e.run_t_pevgrant);
 	if (w != PW_OK)
 		return w;
+	// P1083: the attempt's largest move axis, read by SV_MoveBoundFrame from the
+	// usercmds themselves -- nothing the client reports. 0 until the run starts.
+	if (e.run_t_movebig > RUN_MOVE_STD)
+		return PW_MOVE;
 
 	/*
 	  ...and the span the snapshot above cannot see.  run_t_pbad is latched at

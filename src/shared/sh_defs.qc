@@ -1747,6 +1747,8 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   484 shipped and Patch 486 had to fix.
 */
 #define TF_MOVEOOR 262144
+// P1083: the owner pinned the move size at 450 -- above it is now PW_MOVE (unranked).
+// This marker keeps its own wider bound as the evidence column above describes.
 
 /*
   Patch 840: the game clock fell behind real time while packets kept arriving --
@@ -2158,7 +2160,7 @@ float(float ver) FS_ProfileFields =
   A CVAR THE WRITER DOES NOT HAVE IS NEVER A FAULT.  See TF_NOPROFILE.
 */
 // Patch 840: WHICH test failed, so a demotion can name it.  PW_OK is 0.  The
-// first four are the reported profile (FS_ProfileWhy); the last three are the
+// first four are the reported profile (FS_ProfileWhy); the rest are the
 // server's (SV_ProfileWhy).  Words are FS_ProfileWord's, also the .rec's.
 #define PW_OK        0
 #define PW_RAWOFF    1
@@ -2168,6 +2170,10 @@ float(float ver) FS_ProfileFields =
 #define PW_SILENT    5
 #define PW_PLATFORM  6
 #define PW_CHANGED   7
+#define PW_MOVE      8   // P1083: a move axis above the standard size, server-measured
+// P1083 (owner, 28 Oct): ranked runs use the standard move size -- cl_forwardspeed,
+// cl_sidespeed and cl_upspeed 450, cl_movespeedkey 1. Fleet maximum measured 450.
+#define RUN_MOVE_STD 450
 
 float(float have, float raw, float filt, float acc, float grant) FS_ProfileWhy =
 {
@@ -2206,6 +2212,7 @@ string(float why) FS_ProfileWord =
 	if (why == PW_SILENT)   return "silent";
 	if (why == PW_PLATFORM) return "platform";
 	if (why == PW_CHANGED)  return "changed";
+	if (why == PW_MOVE)     return "move";
 	return "unknown";
 };
 
@@ -2219,6 +2226,7 @@ string(float why) FS_ProfileText =
 	if (why == PW_SILENT)   return "the game never reported its input settings";
 	if (why == PW_PLATFORM) return "only the Windows game ranks";
 	if (why == PW_CHANGED)  return "an input setting changed during the run";
+	if (why == PW_MOVE)     return "a move input went above the standard 450";
 	return "";
 };
 

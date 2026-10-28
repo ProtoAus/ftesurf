@@ -4343,36 +4343,13 @@ below is the collection side and the rules that still only note.
     Anything aimed at that class has to use the hard evidence — the `.hid` angle
     identity (built, Patches 484/486) or the move columns (next item).
 
-- **THE MOVE COLUMNS ARE PINNED TO NO CONFIG, and Patch 493's bound is a constant
-  for want of one.** `run_movebound 2000` is a judgement over a corpus, not over a
-  rule: the four cvars that produce a move value (`cl_forwardspeed`,
-  `cl_sidespeed`, `cl_upspeed` and the `cl_movespeedkey` multiplier) are ordinary
-  ARCHIVED client cvars, so a player may set them and nothing in the run says what
-  they were.  The ranked input profile is the mechanism that already solves this
-  shape of problem -- `cl_replay.qc`'s `Rec_InputCvar` reads a named cvar and
-  refuses the run when its value is not the recorded one, and `IPH_*` is
-  RAW|FILTER|ACCEL|GRANT over four of them (`in_rawinput`, `m_filter`, `m_accel`,
-  `in_rawmice`).  Adding the four move cvars would need a fifth bit, a fifth
-  column in the `inprof` header key and the client-side refusal, and then a move
-  value could be judged against the config the client itself reported instead of
-  against 2000.
-  **WHY IT IS NOT DONE, and the reason is a measurement rather than a preference:**
-  over 1,342,728 axis values in 63 fleet runs the maximum is EXACTLY 450 with zero
-  exceptions, so the fleet is uniform today and a profile pin would refuse nobody --
-  which is also why nobody can say what a refusal would cost.  Patch 493's marker
-  is the instrument that answers it: if `moveoor` counts stay 0 while `worst` starts
-  appearing above 450 in `cmd timer` readings or in the header cross-check's
-  `worst` column, that is an honest population the constant is wrong about, and the
-  pin is what fixes it.
-  **ONE ROUTE IS UNBOUNDED AND NO CENSUS HAS SEEN IT.** A gamepad with `+speed`
-  held reaches `450 * 360 * cl_movespeedkey` before the wire bound stops it at
-  32767, because `in_generic.c`'s IN_MoveJoystick scales jstrafe by
-  `360 * cl_movespeedkey` and then multiplies by `cl_forwardspeed` without
-  re-normalising.  No joystick player appears in the fleet corpus, and "none in 63
-  files from four identities" is not "none" -- it is the specific case a profile
-  pin would settle, since a pin turns that route into a stated config rather than an
-  accusation.  Falsifier: a player on a gamepad with `+speed` whose run reads
-  `over > 0` and `moveoor 1` while being entirely honest.
+- **Move input size: P1083 pins it by observation, not by profile.** Owner rule (28 Oct):
+  a ranked run uses the standard 450 move size, so a run whose largest move axis
+  exceeds 450 gets TF_NOPROFILE/`prof move` (SV_ProfileWhy, from SV_MoveBoundFrame).
+  Residuals: smaller settings are not detected (no gain, and indistinguishable from a
+  half-pushed stick); a gamepad holding walk/`+speed` scales by 360 in the engine and is
+  demoted; the per-map `run_movebound 0` off switch also stops the tracker.
+  Falsifier: an honest keyboard run reading `prof move` (fleet maximum was exactly 450).
 
 ## Ranking integrity
 
