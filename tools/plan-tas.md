@@ -180,7 +180,8 @@ the first optimizer: one constant turn rate for exit speed over up to 128 ticks 
 were total time, exit speed, immediate speed, and per ramp: constant strafe rate, boarding
 angle, end-of-ramp flick). P1092 (29 Oct) adds the boarding angle (`board`, a start-yaw
 offset) and the flick (`flick [k]`, a faster rate over the last k ticks) as further 1-D
-searches after P1088's. BACKLOG "TAS optimizer (P1088, P1092)" holds the rest.
+searches after P1088's. P1097 adds `time`: the next segment soonest within the tape, then
+speed. BACKLOG "TAS optimizer (P1088, P1092)" holds the rest.
 
 Overlay original/edited ghosts and trajectories; show speed, time delta, collisions and
 invalid sections. A requested path is a solver target, not permission to set body state.

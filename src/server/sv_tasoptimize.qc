@@ -12,6 +12,10 @@
   rate over the last k ticks (default 4) for the launch. One 1-D search per number, each holding
   the others at the best found so far (rate, board, rate again; then flick), so the result is
   never below P1088's own search, which runs first and unchanged.
+
+  P1097 (`time`): the score is how many segments past the start's the run reached, then how early
+  the last one opened (run_st_tick, set by SV_StageOpen), then exit speed. A candidate that
+  finishes ends the run, and the search with it.
 */
 
 #define TOPT_GRID  9            // grid points over a search's range
@@ -31,6 +35,7 @@
 .float topt_fk;                 // P1092: flick length in ticks (0 without flick)
 .float topt_besty, topt_bestf;  // P1092: the best's boarding offset and flick rate (-1: no flick)
 .float topt_srch;               // P1092: which 1-D search of SV_TASOptParam's list is running
+.float topt_obj, topt_seg0;     // P1097: 1 = time; the segment open at the start
 
 // P1092: the numbers searched, in order: 1 rate, 2 boarding offset, 3 flick rate; 0 = done.
 float(entity e, float i) SV_TASOptParam =
@@ -42,6 +47,32 @@ float(entity e, float i) SV_TASOptParam =
 };
 float(entity e, float p) SV_TASOptLo = { return (p == 2) ? -TOPT_YMAX : 0; };
 float(entity e, float p) SV_TASOptHi = { if (p == 2) return TOPT_YMAX; if (p == 3) return TOPT_FMAX; return e.topt_rmax; };
+
+// P1097: what is scored. Speed, or with `time` segments reached, the tick the last one opened and
+// speed / 10: one segment scores below 2^19, where float32 still tells 0.3 u/s apart.
+float(entity e) SV_TASOptSegs =
+{
+	if (e.run_st_seg < 0 || e.run_st_seg <= e.topt_seg0) return 0;
+	return e.run_st_seg - e.topt_seg0;
+};
+float(entity e) SV_TASOptScore =
+{
+	local float spd, segs;
+	spd = vlen([e.velocity_x, e.velocity_y, 0]);
+	if (!e.topt_obj) return spd;
+	segs = SV_TASOptSegs(e);
+	spd = min(9990, spd) / 10;
+	if (!segs) return spd;
+	return segs * 200000 + bound(0, e.topt_head + e.topt_n - e.run_st_tick, 128) * 1000 + spd;
+};
+string(entity e, float v) SV_TASOptDesc =
+{
+	local float spd;
+	spd = vlen([e.velocity_x, e.velocity_y, 0]);
+	if (!e.topt_obj) return sprintf("%.1f u/s", v);
+	if (!SV_TASOptSegs(e)) return sprintf("no new segment, %.1f u/s", spd);
+	return sprintf("segment +%.0f at tick %.0f, %.1f u/s", SV_TASOptSegs(e), e.run_st_tick, spd);
+};
 
 string(entity e) SV_TASOptExtra =
 {
@@ -61,8 +92,8 @@ void(entity e, string why) SV_TASOptStop =
 	e.topt_on = 0;
 	sprint(e, PRINT_HIGH, sprintf("tas optimize: stopped after %.0f candidates: %s\n", e.topt_evals, why));
 	if (e.topt_bestv >= 0)
-		sprint(e, PRINT_HIGH, sprintf("tas optimize: best so far turn %.3f deg/tick%s, %.1f u/s (not applied)\n", e.topt_bestr,
-			SV_TASOptExtra(e), e.topt_bestv));
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: best so far turn %.3f deg/tick%s, %s %.1f (not applied)\n", e.topt_bestr,
+			SV_TASOptExtra(e), e.topt_obj ? "score" : "u/s", e.topt_bestv));
 };
 
 // The candidate's inputs onto the native tape: yaw0 + board, then turning r a tick, and over the
@@ -139,12 +170,17 @@ void(entity e, float v) SV_TASOptResult =
 	if (e.topt_phase == 3)
 	{
 		e.topt_on = 0;
-		sprint(e, PRINT_HIGH, sprintf("tas optimize: best %s turn %.3f deg/tick over %.0f ticks: exit %.1f u/s (%.0f candidates); paused at %.0f\n",
-			(e.topt_dir > 0) ? "left" : "right", e.topt_bestr, e.topt_n, v, e.topt_evals, SV_TimerTicks(e)));
+		if (e.topt_obj)
+			sprint(e, PRINT_HIGH, sprintf("tas optimize: best %s turn %.3f deg/tick over %.0f ticks: %s (%.0f candidates); paused at %.0f\n",
+				(e.topt_dir > 0) ? "left" : "right", e.topt_bestr, e.topt_n, SV_TASOptDesc(e, v), e.topt_evals, SV_TimerTicks(e)));
+		else
+			sprint(e, PRINT_HIGH, sprintf("tas optimize: best %s turn %.3f deg/tick over %.0f ticks: exit %.1f u/s (%.0f candidates); paused at %.0f\n",
+				(e.topt_dir > 0) ? "left" : "right", e.topt_bestr, e.topt_n, v, e.topt_evals, SV_TimerTicks(e)));
 		if (e.topt_mode)
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: with%s\n", substring(SV_TASOptExtra(e), 1, -1)));
 		if (fabs(v - e.topt_bestv) > 0.05)  // a moving world can differ between two plays
-			sprint(e, PRINT_HIGH, sprintf("tas optimize: replayed %.1f u/s, searched %.1f: the world moved between them\n", v, e.topt_bestv));
+			sprint(e, PRINT_HIGH, sprintf("tas optimize: replayed %.1f %s, searched %.1f: the world moved between them\n", v,
+				e.topt_obj ? "score" : "u/s", e.topt_bestv));
 		if (e.topt_bestr >= e.topt_rmax - 0.01)
 			sprint(e, PRINT_HIGH, "tas optimize: that is the top of the range searched; a sharper turn may be faster\n");
 		if ((e.topt_mode & 1) && fabs(e.topt_besty) >= TOPT_YMAX - 0.01)
@@ -154,8 +190,8 @@ void(entity e, float v) SV_TASOptResult =
 		return;
 	}
 	p = SV_TASOptParam(e, e.topt_srch);
-	if (e.topt_mode) sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f  %s %.3f -> %.1f u/s\n", e.topt_evals,
-		(p == 2) ? "board" : ((p == 3) ? "flick" : "turn"), e.topt_cand, v));
+	if (e.topt_mode || e.topt_obj) sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f  %s %.3f -> %s\n", e.topt_evals,
+		(p == 2) ? "board" : ((p == 3) ? "flick" : "turn"), e.topt_cand, SV_TASOptDesc(e, v)));
 	else sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f  turn %.3f deg/tick -> %.1f u/s\n", e.topt_evals, e.topt_cand, v));
 	if (v > e.topt_bestv)
 	{
@@ -198,7 +234,7 @@ void(entity e) SV_TASOptFrame =
 			return;
 		}
 		e.topt_stage = 1;
-		SV_TASOptResult(e, vlen([e.velocity_x, e.velocity_y, 0]));
+		SV_TASOptResult(e, SV_TASOptScore(e));
 		return;
 	}
 	if (time < e.topt_next) return;
@@ -228,30 +264,31 @@ void(entity e) SV_TASOptReset =
 	e.topt_on = 0;
 };
 
-// tas optimize <ticks> <left|right> [board] [flick [k]]
+// tas optimize <ticks> <left|right> [board] [flick [k]] [time]
 void(entity e, float argc) SV_TASOptCommand =
 {
-	local float n, dir, i, mode, fk, searches;
+	local float n, dir, i, mode, fk, searches, obj;
 	local string w;
 	n = stof(argv(2));
 	dir = !strcmp(argv(3), "left") ? 1 : (!strcmp(argv(3), "right") ? -1 : 0);
-	mode = 0; fk = 0;
+	mode = 0; fk = 0; obj = 0;
 	for (i = 4; i < argc; i = i + 1)
 	{
 		w = argv(i);
-		if (w == "board" && !(mode & 1)) mode = mode | 1;
+		if (w == "time" && !obj && mode >= 0) obj = 1;
+		else if (w == "board" && !(mode & 1)) mode = mode | 1;
 		else if (w == "flick" && !(mode & 2)) { mode = mode | 2; fk = 4; }
 		else if ((mode & 2) && fk == 4 && argv(i - 1) == "flick" && stof(w) >= 1 && stof(w) <= 32 && stof(w) == floor(stof(w)) && w == ftos(stof(w))) fk = stof(w);
 		else { mode = -1; break; }
 	}
-	if (argc >= 4 && argc <= 7 && n >= 4 && n <= TAS_TAPE_MAX && n == floor(n) && dir && mode >= 0 && fk >= n)
+	if (argc >= 4 && argc <= 8 && n >= 4 && n <= TAS_TAPE_MAX && n == floor(n) && dir && mode >= 0 && fk >= n)
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: the flick (%.0f ticks) must be shorter than the run (%.0f ticks)\n", fk, n));
 		return;
 	}
-	if (argc < 4 || argc > 7 || !(n >= 4 && n <= TAS_TAPE_MAX && n == floor(n)) || !dir || mode < 0)
+	if (argc < 4 || argc > 8 || !(n >= 4 && n <= TAS_TAPE_MAX && n == floor(n)) || !dir || mode < 0)
 	{
-		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128> <left|right> [board] [flick [ticks 1..32]]: best turn for exit speed\n");
+		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128> <left|right> [board] [flick [ticks 1..32]] [time]: best turn for exit speed, or with time the next segment soonest\n");
 		return;
 	}
 	if (!e.run_tas_rwcap || !SV_TASInputReady(e) || !SV_TASCanPause(e)) return;
@@ -275,6 +312,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_evals = e.topt_iter = 0; e.topt_bestr = 0; e.topt_bestv = -1; e.topt_next = 0;
 	e.topt_backed = e.topt_wait = 0;
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0;
+	e.topt_obj = obj; e.topt_seg0 = e.run_st_seg;
 	// Source's air wish speed cap is 30: the speed-holding turn is asin(30 / v) a tick.
 	e.topt_rmax = bound(1, 2 * asin(min(1, 30 / max(30, vlen([e.velocity_x, e.velocity_y, 0])))) * 180 / M_PI, 45);
 	e.topt_bestf = -1;                  // no flick until its search finds a faster one
@@ -284,4 +322,6 @@ void(entity e, float argc) SV_TASOptCommand =
 	if (mode)
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: %s%s%s\n", (mode & 1) ? "board -30..30 deg" : "", (mode == 3) ? "; " : "",
 			(mode & 2) ? sprintf("flick over the last %.0f ticks, 0..%.0f deg/tick", fk, TOPT_FMAX) : ""));
+	if (obj)
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: scoring segments past %.0f reached, then how soon, then speed\n", e.topt_seg0));
 };

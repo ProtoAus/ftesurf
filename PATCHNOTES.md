@@ -21,6 +21,11 @@
 
 ## next
 
+### P1097 TAS: search for the soonest next checkpoint
+- Add `time` to `tas optimize` (with or without `board` and `flick`) to search for the turn that reaches the next stage or checkpoint soonest instead of the one with the most exit speed. If no try reaches it within the ticks given, the fastest try wins.
+- The console shows each try's result: the tick it reached the next part of the run, or that it did not.
+- A try that reaches the end zone finishes the run, and that ends the search.
+
 ### P1096 Prop lighting on maps with out-of-date bakes
 - Props whose baked lighting was made for a different model (the map changed after it was lit) now light like unbaked props, as Source does. surf_pantheon's columns are even marble again instead of striped brown, grey and black.
 
