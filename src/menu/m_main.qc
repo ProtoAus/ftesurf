@@ -140,6 +140,7 @@
 #define SCREEN_STORY    9
 #define SCREEN_CHAT    10
 #define SCREEN_SETTINGS 11
+#define SCREEN_STATS   12       // P1084: hud_player's Stats page (m_stats.qc)
 void() MC_Init;
 void() MC_Open;
 void() MC_Send;
@@ -204,6 +205,11 @@ float mcd_ver;                  // m_mapcards.qc bumps it when the completed lis
 void() MCard_DoneWant;
 void() MCard_DoneRefresh;
 float(string name) MCard_Done;
+float cltime;                   // P1084: client/cl_profile.qc's clock, set in m_draw
+void() MStats_Open;
+void() MStats_Close;
+void(vector size) MStats_Draw;
+void() MStats_Probe;
 string() MCard_DoneNote;
 void(vector pos, float width, float compact, string name, string id) MCard_Draw;
 void() MCard_Probe;
@@ -251,7 +257,8 @@ float menu_active;
 float menu_screen;
 float() ui_browser_screen =
 {
-	return (menu_screen == SCREEN_MAIN || menu_screen == SCREEN_CREATE || menu_screen == SCREEN_STORY);
+	return (menu_screen == SCREEN_MAIN || menu_screen == SCREEN_CREATE || menu_screen == SCREEN_STORY
+	        || menu_screen == SCREEN_STATS);
 };
 float ui_bootframe;             // ui_bootcheck 2 frame counter
 vector ui_cs_size;              // create-screen layout, mirrored for the bootcheck
@@ -7962,6 +7969,7 @@ void() m_init =
 	registercommand("ui_maplist");
 	registercommand("ui_browse");
 	registercommand("ui_compsort");
+	registercommand("ui_stats");
 	registercommand("ui_build");
 	registercommand("ui_mapnet");
 	registercommand("ui_find");
@@ -8078,6 +8086,7 @@ void(vector screensize) m_draw =
 	local float shell, shellhead, bootstart;
 	local vector fullsize, shellsize, shellpos, content;
 	fullsize = screensize;
+	cltime = gettime(0);            // P1084: client/cl_profile.qc's clock
 	bootstart = 0;
 	if (!ui_boot_measured) bootstart = gettime(1);
 	// The bootcheck driver runs OUTSIDE the menu_active gate on purpose: past
@@ -8182,7 +8191,8 @@ void(vector screensize) m_draw =
 	ui_backdrop(fullsize);
 	if (menu_screen == SCREEN_CREATE) ui_map_backdrop(fullsize);
 	shell = (menu_screen == SCREEN_MAIN || menu_screen == SCREEN_CREATE || menu_screen == SCREEN_STORY
-	         || menu_screen == SCREEN_VISUALS || menu_screen == SCREEN_MUSIC || menu_screen == SCREEN_CHAT || menu_screen == SCREEN_SETTINGS);
+	         || menu_screen == SCREEN_VISUALS || menu_screen == SCREEN_MUSIC || menu_screen == SCREEN_CHAT || menu_screen == SCREEN_SETTINGS
+	         || menu_screen == SCREEN_STATS);
 	if (shell)
 	{
 		shellsize = MH_ShellSize(screensize);
@@ -8231,6 +8241,8 @@ void(vector screensize) m_draw =
 		MH_Settings(screensize);
 	else if (menu_screen == SCREEN_STORY)
 		screen_story(MH_ContentSize(screensize));
+	else if (menu_screen == SCREEN_STATS)
+		MStats_Draw(MH_ContentSize(screensize));
 	else if (menu_screen == SCREEN_VISUALS)
 		MM_ScreenVisuals(screensize);
 	else if (menu_screen == SCREEN_MUSIC)
@@ -8353,6 +8365,11 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_JOURNAL)
 	{
 		menu_screen = SCREEN_MAIN;
+		return TRUE;
+	}
+	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_STATS)
+	{
+		MStats_Close();
 		return TRUE;
 	}
 	// Patch 667: paste.  ASKED FOR UNDER THE KEY, where a field had the keyboard
@@ -8624,6 +8641,14 @@ float(string cmd) m_consolecommand =
 	{
 		if (argv(1) == "refresh") MCard_DoneRefresh();
 		ui_compsort_print();
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_stats")
+	{
+		if (argv(1) == "open") MStats_Open();
+		else if (argv(1) == "close") MStats_Close();
+		MStats_Probe();
 		return TRUE;
 	}
 

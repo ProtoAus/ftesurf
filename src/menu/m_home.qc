@@ -1,5 +1,6 @@
 // Home and the browsers share one persistent Friends/chat column.
 float mh_req, mh_sent, mh_next, mh_state, mh_source, mh_stale;
+float mh_source_picked;         // P1084: the player chose a source this session
 float mh_times, mh_wr, mh_wrc, mh_maps, mh_native;
 float mh_wos_done, mh_all_done, mh_total, mh_tiers_wos, mh_tiers_all, mh_buffers_ready;
 float mh_lcols, mh_lrows, mh_lheight, mh_lshown, mh_tcols, mh_trows, mh_tshown;
@@ -83,7 +84,10 @@ float(float reqid, float code, string body) MH_Reply =
 	MH_ReadTiers(c, mh_tiers_all);
 	c = json_find_object_child(root, "completion_wos");
 	mh_native = (json_get_length(c) > 0);
+	// P1084: World of Surf unless the player picked Everything; a reply without
+	// WOS figures (an older service) can only show Everything.
 	if (!mh_native) mh_source = 1;
+	else if (!mh_source_picked) mh_source = 0;
 	mh_wos_done = json_get_float(json_find_object_child(c, "done"));
 	MH_ReadTiers(c, mh_tiers_wos);
 	wos = json_find_object_child(root, "wos");
@@ -156,6 +160,7 @@ void(vector screensize) MH_Tabs =
 		target = i == 0 ? SCREEN_MAIN : (i == 1 ? SCREEN_CREATE : (i <= 3 ? SCREEN_STORY : SCREEN_SETTINGS));
 		on = (menu_screen == target);
 		if (i == 4 && menu_screen == SCREEN_VISUALS) on = TRUE;
+		if (i == 0 && menu_screen == SCREEN_STATS) on = TRUE;       // P1084: opened from the Lobbies home
 		if (i == 2 || i == 3) on = (menu_screen == SCREEN_STORY && sty_tab == i - 2);
 		if (i == 5) on = FALSE;
 		id = i == 5 ? "home_quit" : strcat("home_tab", ftos(i));
@@ -323,18 +328,19 @@ void(vector p, vector size) MH_Lobbies =
 			grouped = (thumb && mh_lheight >= 74);
 			if (grouped)
 			{
-				texty = max(6, floor((mh_lheight - 54) * 0.5));
+				// P1084: baked UI rungs only (sh_font.qc FONT_UI_SIZES); 14 px was resampled.
+				texty = max(6, floor((mh_lheight - 56) * 0.5));
 				titlefont = '16 16 0'; mapfont = '16 16 0';
 				sui_text(lp + [tx, texty], titlefont, ui_fit_text(Lob_Title(li), cw - tx - 8, titlefont), COL_ACCENT, 1, 0);
 				sui_text(lp + [tx, texty + 20], mapfont, ui_fit_text(Lob_Map(li), cw - tx - 8, mapfont), COL_TEXT, 1, 0);
-				sui_text(lp + [tx, texty + 40], '14 14 0', ui_fit_text(strcat(s, " players"), cw - tx - 8, '14 14 0'), Lob_Players(li) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
+				sui_text(lp + [tx, texty + 40], '16 16 0', ui_fit_text(strcat(s, " players"), cw - tx - 8, '16 16 0'), Lob_Players(li) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
 			}
 			else if (thumb)
 			{
-				texty = max(4, floor((mh_lheight - 30) * 0.5));
-				sui_text(lp + [tx, texty], '14 14 0', ui_fit_text(Lob_Title(li), cw - tx - countw - 14, '14 14 0'), COL_TEXT, 1, 0);
-				sui_text(lp + [cw - countw - 7, texty], '12 12 0', s, Lob_Players(li) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
-				sui_text(lp + [tx, texty + 17], '12 12 0', ui_fit_text(Lob_Map(li), cw - tx - 8, '12 12 0'), COL_DIM, 1, 0);
+				texty = max(4, floor((mh_lheight - 32) * 0.5));
+				sui_text(lp + [tx, texty], '16 16 0', ui_fit_text(Lob_Title(li), cw - tx - countw - 14, '16 16 0'), COL_TEXT, 1, 0);
+				sui_text(lp + [cw - countw - 7, texty + 2], '12 12 0', s, Lob_Players(li) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
+				sui_text(lp + [tx, texty + 20], '12 12 0', ui_fit_text(Lob_Map(li), cw - tx - 8, '12 12 0'), COL_DIM, 1, 0);
 			}
 			else
 			{
@@ -393,7 +399,7 @@ void(vector p, vector size, float L) MH_Progress =
 
 void(vector p, vector size) MH_Stats =
 {
-	local float target, i, tier, done, total, known, n, rows, cols, cw, th, gy, compact, fy, fh, cy, ph, gr, gc, countw, barw;
+	local float target, i, tier, done, total, known, n, rows, cols, cw, th, gy, compact, fy, fh, cy, ph, gr, gc, countw, barw, x;
 	local vector rp, ts;
 	local string s, label, value, note;
 	mh_ssize = size; mh_tshown = mh_tbottom = 0;
@@ -405,6 +411,11 @@ void(vector p, vector size) MH_Stats =
 	mh_progress_top = size_y - ph - 10;
 	sui_style_panel(p, size, 12, 1);
 	sui_push_frame(p, size);
+	// P1084: the whole panel opens hud_player's Stats page; the switch drawn later wins its clicks.
+	sui_action_element('0 0 0', size, "home_stats_open", sui_noop);
+	s = "Full stats";
+	sui_text([size_x - 16 - stringwidth(s, TRUE, '12 12 0'), 14], '12 12 0', s,
+	         sui_is_hovered("home_stats_open") ? COL_ACCENT : COL_DIM, 1, 0);
 	sui_text('16 10 0', compact ? '20 20 0' : SZ_HEAD, "Your stats", COL_ACCENT, 1, 0);
 	note = "";
 	if (!MF_Online()) note = "Online stats off";
@@ -412,7 +423,7 @@ void(vector p, vector size) MH_Stats =
 	else if (mh_state == 1 || mh_req) note = "Updating...";
 	else if (MH_Me() == "") note = "Link or finish a WOS run";
 	else if (!mh_native) note = "WOS service update pending";
-	sui_text([180, 14], '12 12 0', ui_fit_text(note, size_x - 196, '12 12 0'), COL_DIM, 1, 0);
+	sui_text([180, 14], '12 12 0', ui_fit_text(note, size_x - 196 - stringwidth("Full stats", TRUE, '12 12 0') - 12, '12 12 0'), COL_DIM, 1, 0);
 	cw = floor((size_x - 32 - 18) / 4);
 	for (i = 0; i < 4; i = i + 1)
 	{
@@ -425,12 +436,16 @@ void(vector p, vector size) MH_Stats =
 		}
 		MH_Figure([16 + i * (cw + 6), fy], [cw, fh], label, value);
 	}
+	label = mh_source ? "World of Surf" : "[World of Surf]";
+	x = 16 + stringwidth("[World of Surf]", TRUE, SZ_LABEL) + 16 + 6;
 	if (mh_native)
-	if (ui_button("home_stats_wos", [16, cy], [64, compact ? 22 : 28], mh_source ? "WOS" : "[WOS]")) mh_source = 0;
-	if (ui_button("home_stats_all", [86, cy], [116, compact ? 22 : 28], mh_source ? "[Everything]" : "Everything"))
-		if (mh_state == 2) mh_source = 1;
+	if (ui_button("home_stats_wos", [16, cy], [64, compact ? 22 : 28], label)) { mh_source = 0; mh_source_picked = TRUE; }
+	label = mh_source ? "[Everything]" : "Everything";
+	if (ui_button("home_stats_all", [x, cy], [116, compact ? 22 : 28], label))
+		if (mh_state == 2) { mh_source = 1; mh_source_picked = TRUE; }
+	x = x + max(116, stringwidth("[Everything]", TRUE, SZ_LABEL) + 16) + 10;
 	s = mh_state == 2 ? sprintf("%g / %g maps", mh_source ? mh_all_done : mh_wos_done, mh_total) : "-- / -- maps";
-	sui_text([212, cy + 6], '12 12 0', ui_fit_text(s, size_x - 228, '12 12 0'), COL_DIM, 1, 0);
+	sui_text([x, cy + 6], '12 12 0', ui_fit_text(s, size_x - x - 16, '12 12 0'), COL_DIM, 1, 0);
 	target = mh_source ? mh_tiers_all : mh_tiers_wos;
 	n = 9;
 	if (mh_buffers_ready) n = max(n, min(17, buf_getsize(target)));
@@ -479,6 +494,7 @@ void(vector p, vector size) MH_Stats =
 	MH_Progress([16, mh_progress_top], [cw, ph], 0);
 	MH_Progress([24 + cw, mh_progress_top], [cw, ph], 1);
 	sui_pop_frame();
+	if (sui_is_released("home_stats_open")) MStats_Open();
 };
 
 void(vector screensize) MH_Settings =

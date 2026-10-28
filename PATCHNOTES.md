@@ -21,6 +21,11 @@
 
 ## next
 
+### P1084 Stats page in the main menu
+- Click Your stats on the Lobbies page to open the same Stats page as the in-game player panel: your figures, tier bars, best runs and player search.
+- Stats now show World of Surf by default (the switch was labelled WOS), on the Lobbies page and in the player panel.
+- Lobby cards draw their text at the font's own sizes, so the player count is sharp.
+
 ### P1083 Ranked runs use the standard move settings
 - Move inputs are capped at the standard 450: a raised cl_forwardspeed or cl_sidespeed, or a gamepad stick on top of a held key, no longer goes past it. A run whose moves still exceed it is not ranked, and the finish says why.
 - cl_netfps now stays matched to the map's tick for the whole map, not only when it loads.

@@ -79,6 +79,7 @@ float  pf_c_has, pf_c_done, pf_c_of;   // every map: the "maps finished" figure
 #define PF_CMF      (4 + PF_TIERS * 3)
 float *pf_cmt;
 float  pf_cs, pf_cs_has;    // 0 Everything, 1 WOS; second table available
+float  pf_cs_picked;        // P1084: the player chose a source; else World of Surf when there is one
 float  pf_cm;               // the kind on show
 float  pf_c_modes;          // the answer split them (a surfd before P853 does not)
 float  pf_rn;
@@ -351,6 +352,7 @@ void(float t) Profile_TierShow =
 void(float source) Profile_SourceShow =
 {
 	if (!pf_cs_has) return;
+	pf_cs_picked = TRUE;
 	if (source == pf_cs) return;
 	pf_cs = source;
 	if (pf_ct != "") Profile_TierAsk();
@@ -655,6 +657,7 @@ void(string bdy) Profile_Parse =
 	Profile_CompRead(json_find_object_child(c, "surf"), 4);
 	Profile_CompRead(json_find_object_child(c, "bhop"), 5);
 	if (!pf_cs_has) pf_cs = 0;
+	else if (!pf_cs_picked) pf_cs = 1;
 	pf_rn = 0;
 	Profile_Rows(root);
 	json_free(root);
@@ -1679,8 +1682,8 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	if (pf_c_has && pf_cs_has)
 	{
 		ch = ceil(hint * 1.8);
-		if (Profile_Chip("pf_cs_wos", [p_x, y], [hint * 6, ch], "WOS", hint, pf_cs == 1)) Profile_SourceShow(1);
-		if (Profile_Chip("pf_cs_all", [p_x + hint * 6.5, y], [hint * 10, ch], "Everything", hint, pf_cs == 0)) Profile_SourceShow(0);
+		if (Profile_Chip("pf_cs_wos", [p_x, y], [hint * 9, ch], "World of Surf", hint, pf_cs == 1)) Profile_SourceShow(1);
+		if (Profile_Chip("pf_cs_all", [p_x + hint * 9.5, y], [hint * 10, ch], "Everything", hint, pf_cs == 0)) Profile_SourceShow(0);
 		y = y + ch + hint * 0.6;
 	}
 	if (pf_c_has && pf_c_modes)

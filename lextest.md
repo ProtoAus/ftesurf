@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+**P1084 -- stats page and lobby fonts (owner check pending):** on the Lobbies
+page, is the player count on each card sharp now? Does Your stats open on
+"[World of Surf]"? Click the panel: does the Stats page match the in-game player
+panel (figures, tier bars, runs, search a name and pick it, Back to me, ESC)?
+
 **P1083 -- move input feel (owner check pending):** live 2026-10-28T07:14Z. Keyboard
 strafing and walking should feel unchanged. If you have a gamepad, walking with it
 (holding SHIFT) should go in the stick's direction, not snap to 8 ways. Typing

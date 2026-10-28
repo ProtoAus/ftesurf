@@ -45,3 +45,8 @@ menu/m_board.qc
 menu/m_story.qc
 menu/m_home.qc             // tabbed home, after shared friends/chat/story
 menu/m_mapcards.qc         // P1062: shared board transport + public identity + integer times
+// P1084: hud_player's Stats page. The shim gives client/cl_profile.qc the six CSQC
+// names it reads from menu pieces; m_stats.qc hosts it as cl_avatar.qc does.
+menu/m_statshim.qc
+client/cl_profile.qc
+menu/m_stats.qc

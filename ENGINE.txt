@@ -25,7 +25,8 @@ commit   a27340010f0b45bcd71452805694692b33159b4e
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1074
-patch    1083
+patch    1084
+# Patch 1084: lobby cards on native font sizes; World of Surf is the stats default; hud_player's Stats page opens from the main menu.
 # Patch 1083: ranked runs need the standard move size (largest axis <= 450, server-measured); cl_netfps stays matched to the tick every frame.
 # Patch 1082: TAS projects: an input line + base TAS save on disk, cold reload with checkpoint verdicts, fork/diff; local only.
 # Patch 1080: Maps list completed sort from /api/board?completed=; unknown stays in tier order, never "incomplete".
