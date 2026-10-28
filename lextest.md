@@ -1,7 +1,10 @@
 # lextest.md — things waiting on a human
 
-**P1084 -- stats page and lobby fonts (owner check pending):** on the Lobbies
-page, is the player count on each card sharp now? Does Your stats open on
+**P1084 -- stats page and lobby fonts (owner check pending):** live 07:19Z, menu
+587d416c / cs 7ae351cf / qw 8134b64f in both installs and all 12 lobbies (lobby
+smoke on 27520: served cs loaded, board drew, no QC error). On the Lobbies
+page, is the player count on each card sharp now? In game, does hud_player's
+Stats tab also open on "World of Surf"? Does Your stats open on
 "[World of Surf]"? Click the panel: does the Stats page match the in-game player
 panel (figures, tier bars, runs, search a name and pick it, Back to me, ESC)?
 

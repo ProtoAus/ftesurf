@@ -39,4 +39,5 @@ the old generation back through systemd (run.sh restored first where it moved).
 - `lobby_dir x; menu_main` in a harness sets the cvar to the whole remainder (unrelated to the Pi,
   same day: it cost the P1080 arm two runs).
 - Readers: game/tools/reccheck.py was behind main (P1079); swapped right after the generation under
-  the sweep lock, proved with a known-PASS .rec through rcptcheck's import path.
+  the sweep lock, proved with a known-PASS .rec through rcptcheck's import path. Refreshed again
+  07:21Z to main 2702665d (26cb3f89, P1083's `move` word), same proof.
