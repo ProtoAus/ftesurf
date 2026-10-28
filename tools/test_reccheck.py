@@ -3430,6 +3430,24 @@ def case_sv_sample_fresh_cursor():
           "QC source initializes fresh and restored paths with distinct sentinels")
 
 
+def case_bank_taint():
+    bank, practice, segment, shadow = 8388608, 1, 128, 8
+    for style in (0, segment, shadow, segment | shadow):
+        flags = bank | practice | style
+        f, _, report = run(head(build(), "flags", flags), report=True)
+        check(not f and "practice" in report and "declared" in report,
+              "bank-tainted style %d remains valid unranked practice" % style)
+    faults_with(head(build(), "flags", bank), "bank taint without practice",
+                "bank signal requires its practice envelope")
+    for style in (segment, shadow):
+        f, _, report = run(head(build(), "flags", practice | style), report=True)
+        check(not f and "segmented" in report and "not declared" in report,
+              "ordinary/legacy style %d is not retroactively bank-tainted" % style)
+    for ancestry, label in ((256, "cheated"), (4194304 | 256, "TAS")):
+        f, _, report = run(head(build(), "flags", bank | practice | ancestry), report=True)
+        check(not f and label in report, "bank signal preserves " + label + " ancestry")
+
+
 def case_tas_ancestry():
     tas, practice, cheat = 4194304, 1, 256
     f, _, report = run(head(build(), "flags", tas | practice | cheat), report=True)
@@ -3441,7 +3459,7 @@ def case_tas_ancestry():
 
 
 def main():
-    for fn in (case_tas_ancestry, case_sparse_practice_board, case_sparse_release_board, case_sv_sample_fresh_cursor, case_sv_resume_parkclock, case_sv_timer_viewclock, case_sv_timer_viewclock_review, case_control,
+    for fn in (case_bank_taint, case_tas_ancestry, case_sparse_practice_board, case_sparse_release_board, case_sv_sample_fresh_cursor, case_sv_resume_parkclock, case_sv_timer_viewclock, case_sv_timer_viewclock_review, case_control,
                case_no_horizon, case_horizon_without_rows,
                case_trailer_width, case_trailer_count,
                case_row_width,

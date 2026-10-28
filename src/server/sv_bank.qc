@@ -1,5 +1,8 @@
 // Player-origin I/O keeps its admission identity until the actual body write.
-// VM-local only: not a recording field, native fence or persistent-map ledger.
+// Source metadata stays VM-local; only TF_BANKTAINT declares tier exclusion.
+// Low reason preserves legacy practice; high reason excludes every style.
+#define BANK_PRACTICE 1
+#define BANK_UNRANKED 2
 .int bank_attempt;
 .float bank_practice;
 .entity bank_src_player;
@@ -33,11 +36,7 @@ void(entity e) SV_BankNewAttempt =
 	e.bank_practice = FALSE;
 };
 
-void(entity e) SV_BankWatch =
-{
-	if (e.bank_practice)
-		SV_TimerPractice(e);
-};
+void(entity e) SV_BankWatch;
 
 void(entity act) SV_BankBegin =
 {
@@ -86,17 +85,21 @@ void() SV_BankThink =
 
 void(entity body) SV_BankAffect =
 {
+	local float current;
+
 	if (body.classname != "player")
 		return;
 	if (!bank_ctx_depth || bank_ctx_attempt == 0i)
 		return;
-	if (!bank_ctx_bad && bank_ctx_attempt > 0i)
-	if (bank_ctx_player.classname == "player")
-	if (bank_ctx_player.bank_attempt == bank_ctx_attempt)
+	current = (bank_ctx_attempt > 0i && bank_ctx_player.classname == "player"
+		&& bank_ctx_player.bank_attempt == bank_ctx_attempt);
+	if (!bank_ctx_bad && current)
 		return;
 
 	if (!body.bank_practice)
 		sprint(body, PRINT_HIGH, "^3practice^7 -- inherited player-origin map effect\n");
-	body.bank_practice = TRUE;
+	body.bank_practice = body.bank_practice | BANK_PRACTICE;
+	if (!current || (bank_ctx_bad & BANK_UNRANKED))
+		body.bank_practice = body.bank_practice | BANK_UNRANKED;
 	SV_TimerPractice(body);
 };

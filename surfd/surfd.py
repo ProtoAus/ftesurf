@@ -449,6 +449,7 @@ TF_NOCLOCK = 8192       # QC build 76 / engine Patch 325; sh_defs.qc holds the e
 TF_NOCOUNTS = 65536     # Patch 406: cursor data instead of mouse counts (cl_prydoncursor)
 TF_SLOWCLOCK = 524288   # Patch 840: the game clock fell behind real time (slow motion)
 TF_TAS = 4194304        # Patch 1052: assisted ancestry; local practice, no board yet
+TF_BANKTAINT = 8388608  # inherited-effect exclusion, including segmented/shadow
 # Multi-Session (sv_resume.qc): resumed across a drop or a map change.  Display
 # and evidence only -- style_of and certifiable deliberately never read it.
 TF_MULTISESSION = 16384
@@ -2098,7 +2099,7 @@ def style_of(flags):
     They are not ranked anywhere in this game and a board nobody reads is a
     place for them to accumulate.
     """
-    if flags & (TF_CHEAT | TF_TAS):
+    if flags & (TF_CHEAT | TF_TAS | TF_BANKTAINT):
         return None
     if flags & (TF_SEGMENT | TF_SHADOW):
         return STYLE_SEGMENTED
@@ -2175,7 +2176,8 @@ def certifiable(flags):
     The time itself is honest game time, which is why nothing else caught it.
     """
     return not (flags & (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP
-                         | TF_NOCLOCK | TF_NOCOUNTS | TF_SLOWCLOCK | TF_TAS))
+                         | TF_NOCLOCK | TF_NOCOUNTS | TF_SLOWCLOCK | TF_TAS
+                         | TF_BANKTAINT))
 
 
 # --------------------------------------------------------------------------

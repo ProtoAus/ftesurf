@@ -21,6 +21,9 @@
 
 ## next
 
+### P1079 Keep inherited map effects unranked across run styles
+- Inherited effects that make a run unranked now stay practice in segmented and shadow styles too. Normal current-attempt segmented play and map effects keep working.
+
 ### P1078 Tiers for newer maps
 - surf_midnight and six other maps added since 24 Oct now show their MOM and KSF tiers in game, not just in the map list. Four Momentum maps that left Beta now show their ranked tier instead of a suggestion.
 

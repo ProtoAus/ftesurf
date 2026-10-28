@@ -3174,6 +3174,10 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
     flags <n>               TF_* as they stood AT THE FINISH -- see below.
                             P1052: TF_TAS (bit22) retains assisted ancestry and
                             requires TF_CHEAT|TF_PRACTICE; local practice only.
+                            TF_BANKTAINT (bit23): declared inherited-effect tier
+                            exclusion, implies TF_PRACTICE; overrides segment/
+                            shadow eligibility, not cheat/TAS ancestry. Absent
+                            on legacy files is NOT proof of no inherited effect.
     pmpin <name=value ...>  v9, build 87, AFTER `flags` (the scoreboard reads a
                             bounded number of header lines -- 32 since Patch 493,
                             24 before it).  THE PHYSICS PIN: the 70 values the
@@ -8680,6 +8684,8 @@ float(entity e) SV_StageFlags =
 	if (e.run_st_ghost)  i = i | TF_GHOST;
 	if (e.run_st_stitch) i = i | TF_PRACTICE | TF_SEGMENT;
 	if (e.run_st_cheat)  i = i | TF_PRACTICE | TF_CHEAT;
+	if ((e.bank_practice & BANK_UNRANKED) || (e.run_t_flags & TF_BANKTAINT))
+		i = i | TF_PRACTICE | TF_BANKTAINT;
 	return i | SV_TASFlags(e);
 };
 
@@ -11069,6 +11075,9 @@ void(entity e) SV_TimerClassSay =
 	local float now;
 
 	now = (e.run_t_flags & TF_TAS) ? RC_CHEAT + 1 : FS_RunClass(e.run_t_flags);
+	// Notification severity only: bank practice outranks segmented, not cheat.
+	if (e.run_t_flags & TF_BANKTAINT)
+		if (now < RC_CHEAT) now = RC_SEGMENT + 0.5;
 
 	if (e.run_t_state != TS_RUNNING)
 		return;
@@ -11083,12 +11092,32 @@ void(entity e) SV_TimerClassSay =
 
 float(entity e) SV_BankSourceTaint =
 {
-	return (e.bank_practice || e.run_t_dirty || e.run_t_hopped || e.run_t_cheat
-		|| e.movetype == MOVETYPE_NOCLIP || (e.run_t_flags & TF_PRACTICE));
+	if (!(e.bank_practice || e.run_t_dirty || e.run_t_hopped || e.run_t_cheat
+		|| e.movetype == MOVETYPE_NOCLIP
+		|| (e.run_t_flags & (TF_PRACTICE | TF_BANKTAINT))))
+		return 0;
+	if ((e.bank_practice & BANK_UNRANKED) || (e.run_t_flags & TF_BANKTAINT)
+		|| e.run_t_cheat || e.movetype == MOVETYPE_NOCLIP)
+		return BANK_PRACTICE | BANK_UNRANKED;
+	// Current eligible segmented play keeps its tier. Expired admissions are
+	// still excluded at the actual body write, regardless of this reason.
+	if (FS_RunClass(e.run_t_flags) == RC_SEGMENT)
+		return BANK_PRACTICE;
+	return BANK_PRACTICE | BANK_UNRANKED;
+};
+
+void(entity e) SV_BankWatch =
+{
+	if (e.run_t_flags & TF_BANKTAINT)
+		e.bank_practice = BANK_PRACTICE | BANK_UNRANKED;
+	if (e.bank_practice)
+		SV_TimerPractice(e);
 };
 
 void(entity e) SV_TimerPractice =
 {
+	if (e.bank_practice & BANK_UNRANKED)
+		e.run_t_flags = e.run_t_flags | TF_BANKTAINT;
 	e.run_t_dirty = TRUE;
 
 	/*

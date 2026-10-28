@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+**P1079 -- ordinary segmented/shadow map interactions (delivery/owner check pending):**
+After deployment (game server first; the board backend follows in its own swap),
+a normal segmented/shadow attempt using familiar
+map effects should retain its usual style, not become generic practice merely
+for being segmented. Previously unranked inherited effects should remain practice
+in those styles, with no stopped/missing map effect. Synthetic native/HTTP tests
+are not owner observation; no natural finish/rank or genuine-input pass claimed.
+
 **P1078 -- surf_midnight tier in game (owner check pending):** tiers.txt
 ea774409 installed in both Windows installs and the Pi lobbies' game dir
 2026-10-28T04:21:38Z; a lobby reads it when it next loads a map. On

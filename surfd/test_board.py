@@ -263,6 +263,17 @@ for flags in (TF_TAS, TF_TAS | TF_PRACTICE | TF_CHEAT,
     check("TAS flags %d cannot certify" % flags, m.certifiable(flags), False)
     check("TAS flags %d are refused on submission" % flags,
           submit(m, flags=flags), "HTTP 204")
+TF_BANKTAINT = 8388608
+for flags in (TF_BANKTAINT, TF_BANKTAINT | TF_PRACTICE,
+              TF_BANKTAINT | TF_PRACTICE | TF_SEGMENT,
+              TF_BANKTAINT | TF_PRACTICE | TF_SHADOW):
+    check("bank-tainted flags %d have no board" % flags, m.style_of(flags), None)
+    check("bank-tainted flags %d cannot certify" % flags, m.certifiable(flags), False)
+    check("bank-tainted flags %d are refused on submission" % flags,
+          submit(m, flags=flags), "HTTP 204")
+check("bank-tainted submissions stored no clean rows", names(board(m)), [])
+check("bank-tainted submissions stored no segmented rows",
+      names(board(m, style="segmented")), [])
 check("cheat outranks segment, as FS_RunClass does",
       m.style_of(TF_CHEAT | TF_SEGMENT), None)
 check("segment outranks practice, as FS_RunClass does",
@@ -594,7 +605,8 @@ else:
     # silently loses the guarantee for exactly the newest value.
     for const in ("TF_PRACTICE", "TF_SHADOW", "TF_SEGMENT", "TF_CHEAT",
                   "TF_NOJOURNAL", "TF_NORULESET", "TF_NOPROFILE", "TF_NOMAP",
-                  "TF_NOCLOCK", "TF_MULTISESSION", "TF_SPEC"):
+                  "TF_NOCLOCK", "TF_MULTISESSION", "TF_SPEC", "TF_TAS",
+                  "TF_BANKTAINT"):
         check("%s matches sh_defs.qc" % const,
               getattr(m, const), found.get(const))
 

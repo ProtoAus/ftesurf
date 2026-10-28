@@ -350,6 +350,7 @@ TF_PRACTICE, TF_SHADOW = 1, 8
 # never do.
 TF_SEGMENT, TF_CHEAT = 128, 256
 TF_TAS = 4194304
+TF_BANKTAINT = 8388608
 
 # shared/sh_defs.qc's FS_RunClass, and the precedence is the point: a run that
 # both noclipped and loaded a save carries both bits, and reading segment first
@@ -359,6 +360,8 @@ def run_class(fv):
         return "TAS"
     if fv & TF_CHEAT:
         return "cheated"
+    if fv & TF_BANKTAINT:
+        return "practice"
     if fv & TF_SEGMENT:
         return "segmented"
     if fv & TF_SHADOW:
@@ -2795,7 +2798,10 @@ def _check_rec(r, path, verbose=False, *, data=None):
             # the leaderboard's filter.
             if (fv & TF_SHADOW) and not (fv & TF_PRACTICE):
                 r.fault("header flags %d says shadow without practice" % fv)
-            r.info["clean"] = "no" if (fv & TF_PRACTICE) else "yes"
+            r.info["clean"] = "no" if (fv & (TF_PRACTICE | TF_BANKTAINT)) else "yes"
+            r.info["bank_taint"] = "declared" if (fv & TF_BANKTAINT) else "not declared"
+            if (fv & TF_BANKTAINT) and not (fv & TF_PRACTICE):
+                r.fault("header flags %d says bank taint without practice" % fv)
 
             # Build 44.  The same implication, twice more, and it is the whole
             # of what makes the split free downstream: SV_TimerFinish and
@@ -4394,7 +4400,7 @@ def emit(r, verbose):
                   # Build 44.  `class` is `clean`'s successor and both are
                   # printed: the first is what every reader before this build
                   # filtered on, the second is why.
-                  "boards", "ramp_samples", "clean", "class",
+                  "boards", "ramp_samples", "clean", "class", "bank_taint",
                   # Build 62.  These three were being COMPUTED AND DISCARDED --
                   # each is assigned into r.info above and none was in this
                   # tuple, so a reader could not see them at any verbosity.

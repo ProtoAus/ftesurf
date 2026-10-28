@@ -1762,6 +1762,11 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 // TF_CHEAT|TF_PRACTICE; no human/segmented admission. Bits20/21 reserved for styles.
 #define TF_TAS 4194304
 
+// Derived inherited-effect exclusion, including segmented/shadow attempts.
+// Bits20/21 stay reserved. Bit23 is the LAST exact float32 flag bit: do not
+// allocate bit24 without migrating every flags transport to an integer.
+#define TF_BANKTAINT 8388608
+
 #define TF_UNCERT   (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP | TF_NOCLOCK \
                      | TF_NOCOUNTS | TF_SLOWCLOCK)
 
@@ -2241,6 +2246,7 @@ string(float why) FS_ProfileText =
 float(float flags) FS_RunClass =
 {
 	if (flags & (TF_CHEAT | TF_TAS)) return RC_CHEAT;
+	if (flags & TF_BANKTAINT) return RC_PRACTICE;
 	if (flags & TF_SEGMENT)  return RC_SEGMENT;
 	// Pre-build-44 files, and the implication in the one direction it holds.
 	if (flags & TF_SHADOW)   return RC_SEGMENT;

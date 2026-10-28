@@ -4548,14 +4548,10 @@ below is the collection side and the rules that still only note.
   oscillator and existing input acceptance, and actual recipient vs source.
   Persistent interval/phase/other state contributors across replacement, general
   logical/world/body debt and complete P455/Rule8 remain OPEN.
-  **Existing cross-tier eligibility limit:** SV_TimerPractice's existing marking
-  does not override already segmented/shadow classification in FS_RunClass or
-  surfd.style_of/certifiable. P1072/P1073/P1076 lineage fixes do not newly force
-  those separate tiers unranked. Falsifier: compare the same practice marking on
-  otherwise eligible ordinary/segmented/shadow flags and final board eligibility;
-  the pure-classifier control distinguishes their outcomes. A distinct bank-taint
-  eligibility signal/contract must be resolved before any all-tier claim. No new
-  captured semantics, tier/receipt policy or destructive regrade is approved here. Historical unmerged `p455rebase` (50affaa, based on e7b6562; ten rounds
+  P1079 adds one declared inherited-effect exclusion signal across tiers, while
+  current otherwise eligible segmented/shadow authors retain their ordinary tier.
+  That classification fix does NOT implement the persistent contributor ledger
+  above or reconstruct missing signals in legacy files; full Rule8 remains OPEN. Historical unmerged `p455rebase` (50affaa, based on e7b6562; ten rounds
   at `archive/p455fix-r10`) is NOT READY: 44b313b's own message says the dwell
   does not close its bank, and no round11 exists. A new commitment inside the
   granting packet need not wait; arbitrary future mover/name-addressed writes
