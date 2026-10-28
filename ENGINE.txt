@@ -27,6 +27,7 @@ commit   a27340010f0b45bcd71452805694692b33159b4e
 tag      patch-1074
 patch    1078
 # Patch 1078: tiers.txt regenerated from the live map list; surf_midnight and six newer maps get in-game tiers (data only).
+# Patch 1077: TAS retained-input timeline with eight undo/redo revisions; the workshop window draws (was a 64-bit __variant compare); page event 50.
 # Patch 1076: preserve admission lineage through recurring timer scheduled callbacks; normal timer inputs retain their think identity.
 # Patch 1075: consume eligible finish-forgiveness requests after the native command boundary; recheck same admission/body.
 # Patch 1074: local next-input workshop, directional observed-AIR help and deliberate paused mouse lock; protocol1071.

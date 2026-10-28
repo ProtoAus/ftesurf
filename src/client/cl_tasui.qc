@@ -102,11 +102,14 @@ void(float bit) TASUI_Bit =
 
 void(vector scr) TASUI_Draw =
 {
-	local float sc, tsz, hint, row, pad, width, oldfont, i, paused;
+	local float sc, tsz, hint, row, pad, width, oldfont, i, paused, seat;
 	local vector pos, size, at, chip;
 	local string label;
 	if (!tasu_open) return;
-	if (getproperty(VF_ACTIVESEAT) != 0) return;
+	// fteqcc compares a bare __variant as a 64-bit pair (OP_NE_I64 against 0 and
+	// the next constant), which returned here every frame; read it as a float.
+	seat = getproperty(VF_ACTIVESEAT);
+	if (seat != 0) return;
 	if (numclientseats > 1 || UI_CursorHeld() != UIC_TAS || rec_sb_open || !LT_StatsAreMine())
 	{
 		TASUI_Close(); return;

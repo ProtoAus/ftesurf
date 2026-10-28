@@ -9410,6 +9410,16 @@ or a stale frame looks the same as a live one.
 
 ## Pitfalls discovered the hard way
 
+**`!=` on a bare `__variant` is a 64-bit compare (P1077, 28 Oct 2026).**
+`if (getproperty(VF_ACTIVESEAT) != 0) return;` compiled, in both fteqcc 7ccb93d1 and
+c24ede65, to `OP_NE_I64 OFS_RETURN, <const 0>` -- two slots, so the second slot of the
+return (stale) met the NEXT constant (1.0). True every frame: P1074's TAS workshop never
+drew from its first build, while the console paths and headless arms all passed. `<` is
+not affected: `getproperty(VF_RT_COVERAGE) < 0` in HC_Frame is a plain `OP_LT_F`.
+Assign a `__variant` builtin's result to a typed local first, as `cl_main.qc` does with
+`seat = getproperty(...)`. Sweep for it on the built .dat: no function should execute an
+`*_I64` opcode (the P1077 sweep found TASUI_Draw alone in all three progs).
+
 **Source footstep material identity (P941,23Oct2026).** Native collision names
 can be only16bytes: real Axiom reported `maps/surf_axiom`, surface-id0, while
 the render polygon retained its full cubemap-suffixed VMT name and declared

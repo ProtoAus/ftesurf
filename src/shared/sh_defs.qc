@@ -160,7 +160,7 @@
 #define TAS_OP_PLANCAP 8
 #define TAS_OP_PLANSET 9
 #define TAS_TAPE_MAX 128
-#define TAS_EV_PAGE 40         // own retained-input page, cl_tastimeline/sv_tastimeline
+#define TAS_EV_PAGE 50         // own retained-input page; 40-42 are sv_archive's AR_EV_*
 #define TAS_PAGE_ROWS 8
 #define TAS_TAPE_STAGING 1
 #define TAS_TAPE_ACTIVE 2

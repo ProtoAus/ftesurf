@@ -44,7 +44,16 @@ Console `tas edit` edits also enter the revision stack. This is not route search
 
 ## Qualification
 
-Source implementation and initial production-socket acting controls are present.
-Final frozen-source reviews, full socket qualification, isolated committed build,
-dual-Windows installation hashes and owner rendered/feel acceptance are pending.
-Do not infer those states from the existence of this document.
+- Rendered production-socket arm on the shipped progs (qwprogs 4b303813, csprogs
+  a4d7cf8a), 175 checks, 0 failed: distinct rows, field-only range edit, undo/redo to
+  exact inputs and endpoint, LIFO, redo discarded by a new edit, stale-view refusal,
+  step detaches history, 8-deep cap and eviction; the workshop drew 6010 frames and
+  the screenshot shows the table. The unfixed build failed the draw check (0 frames).
+- Two fixes from that work: the workshop never drew before (P1074 included), because
+  `getproperty(VF_ACTIVESEAT) != 0` compiled to a 64-bit compare; and the page event
+  was 40, which is the archive listing's `AR_EV_ROW` (every archive row would have been
+  parsed as a TAS page). Now 50.
+- Two independent read-only reviews (control flow and abuse; evidence and cheater
+  gain) found the event collision and no path that loses the TAS marker; a third
+  read the fixes and found none. Open low items are in BACKLOG.md.
+- Owner feel is not yet confirmed.

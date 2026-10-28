@@ -11,6 +11,27 @@
   `maprating_0_0` on a lobby within one refresh cycle, with no hand step, and an
   unchanged list leaves the asset byte-identical (no churn to the signed asset).
 
+## TAS timeline (P1077): review findings left open
+
+From the two independent reviews of 28 Oct. Every case stays TAS-flagged; none ranks.
+- `tas page` calls `SV_RewindTASHead` without `SV_TASCanPause`'s hold/fault/body
+  conditions (`sv_tastimeline.qc` page gate). Neither reviewer could make the extra
+  head sample differ from what pause/go already write. Sketch: add those conditions,
+  silently, to the page's `status = 1` test; needs an arm that holds (fault or save-lock).
+- History stays attached across `tas play`, an ordinary rewind and live input that
+  land exactly back on the edited head: undo then replays pre-branch tails. Sketch:
+  store `run_movetick` at completion and require it in `SV_TASHistoryAttached`,
+  after checking rewind does not restore that counter.
+- A refusal after `run_tas_req` is bumped (watch hold, go failure, restore contract)
+  strands the whole undo stack; it is lost, not misapplied.
+- UI: "8 >" on the newest page requests head+1 and shows one row; a page request the
+  server rate-limits (0.25 s) answers nothing while the client already cleared its rows.
+- CSQC event ids are scattered (`AR_EV_*` live in sv_archive.qc/cl_scores.qc); P1077's
+  first cut reused 40. One table in sh_defs.qc would stop the next collision.
+- Since P1074, `TASUI_Input` swallows MOUSE1/MOUSE2 releases whose press it never saw:
+  open the workshop from a key while holding MOUSE2 (`+jump`) and the jump stays held,
+  feeding a Live-keys Advance. Pass releases through unless the press was ours.
+
 ## Historical REC14 streamed rewind state
 
 - Sites: `SV_RewindWriteState` / `SV_RecRewindStream`; ordinary non-TAS rewind

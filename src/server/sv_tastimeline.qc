@@ -30,6 +30,7 @@ float(entity e) SV_TASHistoryAttached =
 {
 	local float s;
 	s = num_for_edict(e);
+	if (s < 1 || s > FS_MAXPLAYERS) return FALSE; // Command and Page index only after this
 	return (e.run_tas_historyready && tas_history_n[s] > 0 && tas_history_req[s] == e.run_tas_req &&
 		tas_history_serial[s] == e.rec_rec_serial && tas_history_head[s] == SV_TimerTicks(e) &&
 		!strcmp(tas_history_branch[s], e.rec_rec_branch));
@@ -41,6 +42,7 @@ void(entity e, float first, float count, float field, float attached, float *bef
 	local float s, i, b, n;
 	local float *h;
 	s = num_for_edict(e);
+	if (s < 1 || s > FS_MAXPLAYERS) return;
 	if (!tas_history_op)
 	{
 		if (!attached || !field) tas_history_n[s] = tas_history_cursor[s] = 0;
