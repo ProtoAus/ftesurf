@@ -155,6 +155,30 @@ Lex's goals of 28 Oct, beyond P1088's constant turn for exit speed ("do what you
 - Each candidate prints ~3 console lines; with a second client on a non-lobby server each
   back's save row stays (as plain `tas back`), so one search adds ~22 rows.
 
+## TAS statements (P1090): what is left
+
+From five review rounds (28 Oct). None ranks a run or writes a false statement.
+- Only the current revision can be signed from the panel; earlier revisions made here are kept
+  (rev/<sha>.tasp) but unsigned. Signing the unsigned chain belongs with sharing (plan 5.5).
+- A tick at or before the parent's base is never supply (review 3), so ticks a player
+  re-records below the base of the revision they continue cannot be claimed.
+- "Signed" means a statement file for the revision is on file, not that it verifies (QC has no
+  Ed25519); tools/tasrev.py --sig is the check.
+- rev/ grows by one kept copy per save (about 2.5 MB at 96000 rows) and is never pruned; a prune
+  must keep every revision a statement or a kept child names.
+- Guests on a non-lobby game share the host's project folder (since P1082): they can list, load
+  and overwrite working copies. P1090 keeps the made marker and statements host-only. Downloaded
+  files can also reach the server's reads of that folder (the server-text class of P1086;
+  specifics private).
+- A Sign press whose kept-copy check fails for a reason other than its content (out of memory,
+  no input pool) replaces it from a hand-edited working copy that still states the hash; every
+  later press then refuses. Rare; a fix keeps the old copy aside until a check passes.
+- After a failed project write, tasp_name/tasp_parent already name the unwritten project, so the
+  next default save's local `parent` line (outside the hash) names it.
+- The full-length (96000-row) save is estimated (about 63-69M of the 100M runaway budget; rows
+  over 40 characters about 80M), not run. A diff over 120000 rows in total is refused.
+- Splitscreen: seat 2's project events overwrite seat 1's panel fields (as P1082's).
+
 ## TAS timeline (P1077): review findings left open
 
 From the two independent reviews of 28 Oct. Every case stays TAS-flagged; none ranks.

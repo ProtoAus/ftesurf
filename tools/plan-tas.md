@@ -261,9 +261,24 @@ stricter, never looser; tools/test_tasrev.py's 31 mutations agree with the game)
 is lineage and part of identity; the real file is never written in place. Four review rounds.
 Open for 5.3: an inputs-only digest (base sha + rows) so a copy re-saved as a new root is
 seen as the same work; the base covers state.txt only, not run.rec's prefix (6.1 removes it).
-5.2 `FTESURF-TASREV 1` (engine client): audience surfd; lines sha, parent shas, map crc, the
-input range this signer supplied, key; fskey under a real key press (as ACCT -3..-6). Portable:
-the statement carries the hash, so it checks offline.
+5.2 `FTESURF-TASREV 1` (engine client): audience surfd; lines sha, parent, mapcrc, ticks (the
+revision's `supply`), code (the CSQC's sha256); fskey under a real key press, loopback games
+only, the VM the very csprogs the map served. DONE as P1090 (28 Oct): .tasp version 2 adds a
+hashed `supply` (exact diff against the parent's own rows; a root supplies every tick; never a
+tick at or before the parent's base); every revision saved or loaded is kept as rev/<sha>.tasp,
+statements are write-once rev/<sha>.<id>.tasrev, and only revisions the host saved
+(rev/<sha>.made) are signable; CSQC is denied data/tasproj/. tools/tasrev.py: changed_ticks,
+--supply, --sig. Five review rounds.
+For 5.3/5.4, from those reviews: credit is per row, each tick to the nearest ancestor in a
+verified chain whose row matches it (against the parent alone, a truncated parent re-credits a
+grandparent's rows and reverts launder credit); priority by the rows themselves, tolerant of a
+shift to other ticks (a checkpoint line alone changes the sha); an early commitment only the
+signer could make (content + pub, not the bare sha), ideally statement-only registration at
+signing time; `code` checked against an append-only list of every released csprogs sha256
+(statements are signed offline and uploaded later); the key->account binding from the signer's
+own upload or the statement's earliest evidence, not whoever uploads it; the CRC32 map identity
+is forgeable (credit only; boards re-simulate); `saved` is not a time and `origin` stays out of
+the hash until it has a second value; `.made` is the host's word, not evidence.
 5.3 surfd `/api/tasrev`: upload revision + statement; verify the signature and the key's link
 AT RECEIPT; store revisions immutable by sha with first-seen time; an append-only key-binding
 history (keylinks today is overwritten on relink, deleted on unlink); unknown parents are

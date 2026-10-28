@@ -21,6 +21,12 @@
 
 ## next
 
+### P1090 TAS: sign the inputs you supplied
+- Each saved TAS project revision now records which ticks it changed from the revision it came from. A first save covers all of its ticks; a save that changes nothing records none.
+- Sign in the TAS panel signs the current revision with your key, saying you supplied those ticks. It signs only on a real click, in a game you host, for a revision you saved; the panel shows the revision, its parent and the ticks first.
+- Every revision you save or load is kept under its fingerprint, so a later save never loses an earlier one or its signature.
+- Servers you visit can no longer read, list or change your TAS projects.
+
 ### P1089 TAS projects get a fingerprint
 - Every saved TAS project revision now records a fingerprint of its inputs, and names the revision it came from by that fingerprint. `tas project hash <name>` shows it. This is the groundwork for sharing projects with credit.
 - Project files must be exactly as the game wrote them: a hand-edited file is refused, and loading one that was changed after saving warns you.
