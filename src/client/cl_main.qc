@@ -1147,6 +1147,11 @@ void() TimeScale_InputFrame =
 void() CSQC_Input_Frame =
 {
 	GA_InputFrame();                // read-only walk intent for local Foley
+	// P1083: cap at the standard move size the server ranks on. The engine sums a
+	// pad's stick onto held keys and scales it x360 while walking (in_generic.c).
+	input_movevalues_x = bound(-RUN_MOVE_STD, input_movevalues_x, RUN_MOVE_STD);
+	input_movevalues_y = bound(-RUN_MOVE_STD, input_movevalues_y, RUN_MOVE_STD);
+	input_movevalues_z = bound(-RUN_MOVE_STD, input_movevalues_z, RUN_MOVE_STD);
 	// Patch 385: the spectate window, countdown included, ahead of the replay so
 	// its time is zeroed whatever else is open.  The stat, not spc_stat: this can
 	// run before the frame that latches it.

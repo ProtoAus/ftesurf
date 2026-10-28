@@ -22,7 +22,7 @@
 ## next
 
 ### P1083 Ranked runs use the standard move settings
-- A run is no longer ranked if a move input goes above the standard 450 (for example a raised cl_forwardspeed or cl_sidespeed); the finish says why.
+- Move inputs are capped at the standard 450: a raised cl_forwardspeed or cl_sidespeed, or a gamepad stick on top of a held key, no longer goes past it. A run whose moves still exceed it is not ranked, and the finish says why.
 - cl_netfps now stays matched to the map's tick for the whole map, not only when it loads.
 
 ### P1082 Save TAS projects and reopen them later

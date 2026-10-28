@@ -4343,13 +4343,15 @@ below is the collection side and the rules that still only note.
     Anything aimed at that class has to use the hard evidence — the `.hid` angle
     identity (built, Patches 484/486) or the move columns (next item).
 
-- **Move input size: P1083 pins it by observation, not by profile.** Owner rule (28 Oct):
-  a ranked run uses the standard 450 move size, so a run whose largest move axis
-  exceeds 450 gets TF_NOPROFILE/`prof move` (SV_ProfileWhy, from SV_MoveBoundFrame).
-  Residuals: smaller settings are not detected (no gain, and indistinguishable from a
-  half-pushed stick); a gamepad holding walk/`+speed` scales by 360 in the engine and is
-  demoted; the per-map `run_movebound 0` off switch also stops the tracker.
-  Falsifier: an honest keyboard run reading `prof move` (fleet maximum was exactly 450).
+- **Move input size: P1083 caps it on the client and judges it on the server.** Owner
+  rule (28 Oct): ranked runs use the standard 450 move size. CSQC_Input_Frame caps each
+  axis at 450, so raised settings and the engine's pad-on-key sum / x360 walk scaling
+  are inert; SV_MoveBoundFrame latches TF_NOPROFILE/`prof move` on any axis above 450.
+  Residuals: smaller settings are not detected (no gain; indistinguishable from a
+  half-pushed stick). `cl_threadedphysics 1` sends without CSQC_Input_Frame, so it skips
+  the cap AND the mod's other input gates (replay/rewind zeroing, resume count-in) --
+  pre-existing; the server rule still catches its moves. Falsifier: an honest run
+  reading `prof move` on an unmodified client with cl_threadedphysics 0.
 
 ## Ranking integrity
 

@@ -2171,8 +2171,8 @@ float(float ver) FS_ProfileFields =
 #define PW_PLATFORM  6
 #define PW_CHANGED   7
 #define PW_MOVE      8   // P1083: a move axis above the standard size, server-measured
-// P1083 (owner, 28 Oct): ranked runs use the standard move size -- cl_forwardspeed,
-// cl_sidespeed and cl_upspeed 450, cl_movespeedkey 1. Fleet maximum measured 450.
+// P1083 (owner, 28 Oct): ranked runs use the standard move size, 450 per axis
+// (cl_forwardspeed/backspeed/sidespeed/upspeed, cl_movespeedkey 1). CSQC caps there.
 #define RUN_MOVE_STD 450
 
 float(float have, float raw, float filt, float acc, float grant) FS_ProfileWhy =

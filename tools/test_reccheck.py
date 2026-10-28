@@ -1536,6 +1536,15 @@ def case_movebnd():
     ok_clean(head(b, "flags", str(262144)),
              "...and the same file with TF_MOVEOOR set passes clean")
 
+    # P1083: a row above the standard 450 with TF_NOPROFILE clear is a note.
+    notes_with(over_bound(build(), 451), "above the standard 450",
+               "a row above the standard move size, bit clear, is a note")
+    f, n = run(head(over_bound(build(), 451), "flags", str(2048)))
+    check(not f and not any("above the standard" in x for x in n),
+          "...and with TF_NOPROFILE set it is not")
+    f, n = run(over_bound(build(), 450))
+    check(not any("above the standard" in x for x in n), "exactly 450 draws no note")
+
     # The row over the bound is not judged at all when the file states no bound.
     f, n = run(over_bound(build()))
     check(not f, "an over-bound row in a file with no movebnd key is not judged")

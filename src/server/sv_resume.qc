@@ -1101,6 +1101,7 @@ void(entity e) SV_MsApply =
 	// profile flip inside this session is caught at the finish.
 	e.run_t_rbreach = -1;
 	e.run_t_pbad = -1;
+	e.run_t_movebig = 0;     // P1083: the park latched the parked run's own moves
 	SV_TimerJournal(e);
 	SV_TimerRuleset(e, TRUE);
 	SV_TimerProfile(e, TRUE);

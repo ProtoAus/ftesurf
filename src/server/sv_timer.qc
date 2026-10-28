@@ -3214,7 +3214,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             Patch 840, additive (v9+).  The input profile the START
                             was judged on: SV_ProfileWhy's word (FS_ProfileWord: ok
                             rawinput m_filter m_accel rawmice silent platform
-                            changed), then CSQC's report as the server held it (all
+                            changed move), then CSQC's report as the server held it (all
                             0 when it never spoke, which `silent` already says).
                             Not ok means TF_NOPROFILE was set in the same packet.
     begin                   header ends here; everything after is a record
@@ -14990,9 +14990,6 @@ void(entity e) SV_MoveBoundFrame =
 
 	if (e.run_t_state != TS_RUNNING)
 		return;
-	b = run_t_movebnd;
-	if (b <= 0)
-		return;                     // 0 is the off switch: no key, no mark
 
 	m = fabs(e.movement_x);
 	if (fabs(e.movement_y) > m)
@@ -15011,6 +15008,18 @@ void(entity e) SV_MoveBoundFrame =
 	if (m > e.run_t_movebig)
 		e.run_t_movebig = m;
 
+	// P1083: the ranked rule latches where it is seen, so any save, retry or
+	// rewind written later carries it, and the marker's off switch cannot stop it.
+	if (m > RUN_MOVE_STD)
+	{
+		if (e.run_t_pwhy == PW_OK)
+			e.run_t_pwhy = PW_MOVE;
+		e.run_t_flags = e.run_t_flags | TF_NOPROFILE;
+	}
+
+	b = run_t_movebnd;
+	if (b <= 0)
+		return;                     // 0 is the marker's off switch: no key, no mark
 	if (m <= b)
 		return;
 

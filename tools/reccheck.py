@@ -406,6 +406,7 @@ TF_MOVEOOR = 262144
 # `ok` with the bit clear is a fault after `end`.  The converse is a note: a
 # loaded save carries the bit without either verdict seeing it.
 TF_NOPROFILE = 2048
+RUN_MOVE_STD = 450   # P1083: sh_defs.qc; a larger axis is unranked (TF_NOPROFILE)
 PROF_WORDS = ("ok", "rawinput", "m_filter", "m_accel", "rawmice", "silent",
               "platform", "changed", "move")   # P1083: move above the standard 450
 # Patch 840.  The game clock fell behind server time (slow motion).  The
@@ -2896,6 +2897,11 @@ def _check_rec(r, path, verbose=False, *, data=None):
                            "or a pause epoch can produce this honestly" % (
                                fv, movebnd, in_movemax))
                 r.info["moveoor_bit"] = "yes" if (fv & TF_MOVEOOR) else "no"
+            # P1083: a note, not a fault -- files before it and harness rows exceed it.
+            if saw_end is not None and inrows and in_movemax > RUN_MOVE_STD \
+                    and not (fv & TF_NOPROFILE):
+                r.note("'in' rows reach %g, above the standard %d, and header flags %d "
+                       "does not say TF_NOPROFILE" % (in_movemax, RUN_MOVE_STD, fv))
 
             # Patch 840: the profile verdicts and the clock record against the bits.
             if saw_end is not None:
