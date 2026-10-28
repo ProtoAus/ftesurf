@@ -6451,6 +6451,10 @@ float  dl_done;
 float  dl_total;
 float  dl_until;
 float  dl_t0;           // when it started (time), for the status strip
+// P1094: 1 (2 = force) while a download waits for this client's local game to
+// end -- the engine refuses every download while it hosts one (sv.state in
+// CL_CheckOrEnqueDownloadFile) -- and Dl_Tick asks for it once the game is gone.
+float  dl_afterlocal;
 
 /*
   THE MAP MIRROR, AND WHY THIS FUNCTION HAS TO EXIST.
@@ -6576,6 +6580,16 @@ void(string name, optional float force) ui_dl_start =
 	if (dl_state == DL_ACTIVE)
 		return;                 // the engine does one at a time; so do we
 
+	if (isserver())
+	{
+		dl_name  = name;
+		dl_state = DL_ACTIVE;
+		dl_pct = dl_rate = dl_done = dl_total = 0;
+		dl_t0 = time;
+		dl_afterlocal = force ? 2 : 1;
+		ui_st_result(sprintf("%s downloads when you leave this game", name), 0);
+		return;
+	}
 	float r = downloadmap(name, force);
 	if (r == 1)
 	{
@@ -6624,6 +6638,17 @@ void() Dl_Tick =
 
 	if (dl_state != DL_ACTIVE)
 		return;
+
+	if (dl_afterlocal)
+	{
+		if (isserver())
+			return;
+		float f = dl_afterlocal - 1;
+		dl_afterlocal = 0;
+		dl_state = DL_IDLE;     // ui_dl_start refuses while one is active
+		ui_dl_start(dl_name, f);
+		return;
+	}
 
 	string s = serverkey("dlstate");
 	if (s == "")
@@ -6697,6 +6722,9 @@ float(string addr, string mapname) ui_prejoin =
 		return FALSE;           // agrees with the Pi as far as a size can say
 
 	ui_dl_start(mapname, have == "2");
+	// P1094: the join ends a local game anyway; ending it first lets the download start.
+	if (dl_afterlocal && dl_name == mapname)
+		localcmd("disconnect\n");
 
 	// ui_dl_start is quiet about declining: it refuses while another transfer
 	// is in flight, and reloads the list when the file turns out to be there
@@ -6817,6 +6845,14 @@ string(float pct, float done, float total, float rate) ui_dl_figs =
 // dlstate it leaves behind is not read as a failure.  TRUE if it stopped.
 float() ui_dl_cancel =
 {
+	if (dl_afterlocal)
+	{
+		dl_afterlocal = 0;      // never asked of the engine: nothing to stop there
+		ui_st_result(sprintf("Download of %s cancelled", dl_name), 0);
+		dl_state = DL_IDLE;
+		dl_name = "";
+		return TRUE;
+	}
 	if (!ui_dl_cancel_ready())
 		return FALSE;
 	if (!downloadcancel())
@@ -7771,7 +7807,9 @@ void(vector screensize) screen_create =
 					float  mine = (dl_name == mnm);
 					float  wrong = (bufstr_get(ms_have, er) == "2");
 
-					if (mine && dl_state == DL_ACTIVE)
+					if (mine && dl_afterlocal)
+						sui_text([gp_x, gp_y + 4], SZ_ROW, strcat(SUI_ESC_MUTED, "after this game"), COL_DIM, 1, 0);
+					else if (mine && dl_state == DL_ACTIVE)
 					{
 						// Track, then fill -- the scrubber idiom from
 						// cl_watch.qc:3867.  The percentage is the engine's, and
@@ -8806,8 +8844,8 @@ float(string cmd) m_consolecommand =
 			              (dl_state == DL_ACTIVE) ? "active" :
 			              (dl_state == DL_OK)     ? "ok" : "failed",
 			              dl_name));
-			print(sprintf("ui_dlmap: %g%% at %g B/s, %g of %g bytes\n",
-			              dl_pct, dl_rate, dl_done, dl_total));
+			print(sprintf("ui_dlmap: %g%% at %g B/s, %g of %g bytes, after local %g\n",
+			              dl_pct, dl_rate, dl_done, dl_total, dl_afterlocal));
 			print(sprintf("ui_dlmap: dlstate %S\n", serverkey("dlstate")));
 			ui_dlkb_finish();
 			print(sprintf("ui_dlmap: offerable %g, wrongbuild %g, list %g\n",
