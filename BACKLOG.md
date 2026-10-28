@@ -28,6 +28,20 @@
 - Panel: list and load other projects, rename, delete; today that is the console.
 - Projects on lobbies (refused now: Lobby_Active): needs a per-player data root and quota.
 
+## TAS optimizer (P1088): what is left
+
+Lex's goals of 28 Oct, beyond P1088's constant turn for exit speed ("do what you can"):
+- Total time: needs a target to reach (the next zone, a plane, a checkpoint); each candidate
+  then runs until it crosses it, beyond one 128-tick tape.
+- Boarding angle: a search over the yaw (and strafe side) on the tick a ramp is boarded, for
+  the least speed lost to the ramp's normal; the start yaw is a second dimension of P1088.
+- End-of-ramp flick: a short fast turn in the last ticks before leaving a ramp; a two-rate
+  profile (rate, then a flick over k ticks) is a 2-3 parameter search.
+- Immediate speed exists: P1074's directional AIR help is per-tick greedy.
+- Panel: the tick count is fixed at 32 there (the console takes 4..128); no progress bar.
+- Each candidate prints ~3 console lines; with a second client on a non-lobby server each
+  back's save row stays (as plain `tas back`), so one search adds ~22 rows.
+
 ## TAS timeline (P1077): review findings left open
 
 From the two independent reviews of 28 Oct. Every case stays TAS-flagged; none ranks.

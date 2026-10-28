@@ -174,6 +174,12 @@ the trajectory; reverting reproduces the original. Changed maps/rules/world inva
 P1074 supplies the bounded directional observed-air starting point above, not
 this stage's route/time/interval optimization or comparison workflow.
 
+Status 28 Oct: P1087 keeps the line a TAS go cut off as a pink comparison line with a ghost
+on your clock and a time/speed delta at your place (Lex chose ghost + deltas first). P1088 is
+the first optimizer: one constant turn rate for exit speed over up to 128 ticks (Lex's goals
+were total time, exit speed, immediate speed, and per ramp: constant strafe rate, boarding
+angle, end-of-ramp flick). BACKLOG "TAS optimizer (P1088)" holds the rest.
+
 Overlay original/edited ghosts and trajectories; show speed, time delta, collisions and
 invalid sections. A requested path is a solver target, not permission to set body state.
 Arbitrary position/velocity/world edits belong to sandbox and cannot become valid TAS.
