@@ -10,6 +10,28 @@
 - Falsifier: zonepub's process cannot read surfd.env, and a request for any other command
   (e.g. `quit`) through the helper is refused while say/status/changelevel work.
 
+## zonepub: review 5 leftovers (P1081)
+
+From the round-5 review of P1081; none lets a publish past an owed verdict.
+- Challenge table: `/api/zones/challenge` needs no sign-in, so challenge slots (8 per address,
+  256 in all, 180 s each; `surfd/zonepub.py` challenge route) can be held by someone who never
+  uploads. Falsifier: a zone admin's challenge still succeeds while the table is held full by
+  another source.
+- Reload now under steady finishes: a player finishing runs on the map keeps a verdict owed, so
+  a force row can wait until it expires (fails safe: nothing installed). Sites: `force_ready`
+  and the write step's owed check in `zonepub_publish.py`. Falsifier: a force publish on a map
+  with a run finished every minute is written within its hour.
+- Map name case: the service accepts lowercase names only (`zonepub.py` `valid_name`) while the
+  client allows uppercase (`src/shared/sh_zonefile.qc` `ZoneFile_Map`). Falsifier: publishing on a
+  map whose name has a capital either works or is refused in the dialog with a reason.
+- Needless reloads: a Reload now whose game-dir copy is already live but whose site copy
+  differs reloads the map's lobbies anyway. Falsifier: with only the site copy behind, the
+  lobbies get no changelevel and the site copy is still written.
+- Budget assumption: zonepub's 4 + admin.py's 8 rcon packets per port per 30 s stay under the
+  engine's 15 only if nothing else on the Pi sends lobbies rcon from 127.0.0.1 (engine
+  `server/sv_main.c` rcon accounting). Falsifier: a count of every local rcon sender, or a
+  shared budget they all take from.
+
 ## Server text and server code reaching local commands (left open by P1086)
 
 P1086's review rounds (28 Oct) closed the routes listed in ENGINE.txt's P1086 line. Every

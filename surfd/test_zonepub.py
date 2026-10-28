@@ -200,9 +200,9 @@ class Publish(Upload):
         super().setUp()
         self.game.write_bytes(b'synthetic P815 game: ' + z.PUBLISH_MARKER)      # the P815 upload flow
         self.code = hashlib.sha256(self.game.read_bytes()).hexdigest()
-        clock = z.pub.CLOCK                     # P1081: the write's and the budget's moment
-        z.pub.CLOCK = lambda: self.now
-        self.addCleanup(setattr, z.pub, 'CLOCK', clock)
+        clock, mono = z.pub.CLOCK, z.pub.MONO   # P1081: the write's moment; the budget's and rounds'
+        z.pub.CLOCK = z.pub.MONO = lambda: self.now
+        self.addCleanup(setattr, z.pub, 'CLOCK', clock); self.addCleanup(setattr, z.pub, 'MONO', mono)
         self.dirs = [self.root/'game_zones', self.root/'site_zones']
         for d in self.dirs: d.mkdir()
         self.dirs[0].joinpath('surf_fixture.json').write_bytes(self.OLD)
@@ -448,8 +448,8 @@ class PublishNow(Publish):
                                 publish_dirs=self.dirs,maps_fn=self.lobbies,rcon_fn=self.rcon,
                                 official_fn=lambda server: server == 'play.proto.bar:27510')
         self.c = Coded(self.app.test_client())
-    @staticmethod
-    def crc_of(b): return hashlib.sha256(b or b'').hexdigest()[:8]      # stands in for Zone_Hash
+    def crc_of(self, b):                                                  # stands in for Zone_Hash
+        return getattr(self, 'same_crc', {}).get(b) or hashlib.sha256(b or b'').hexdigest()[:8]
     def rcon(self, port, argv, reply=False):
         self.sent.append((port,) + tuple(argv))
         if port in self.silent: return ''
@@ -461,6 +461,7 @@ class PublishNow(Publish):
             on_disk = self.files()[0] or self.OLD
             self.fleet[port] = (argv[1], self.now + 1,
                                 crc if port in getattr(self, 'stale_crc', ()) else self.crc_of(on_disk))
+        if argv[0] == 'status' and port in getattr(self, 'no_status', ()): return ''
         if argv[0] == 'status':
             return 'current map      : %s ^7(x)\nmap uptime       : %ds\n' % (m, max(0, self.now - at))
         if argv[0] == 'serverinfo':
@@ -468,12 +469,15 @@ class PublishNow(Publish):
         return ''
     def challenge_now(self, raw=None, name='surf_fixture', server=None, crc=True):
         body = dict(map=name,sha=hashlib.sha256(raw or self.raw).hexdigest())
-        if crc: body['crc'] = self.crc_of(raw or self.raw)
+        if crc: body['crc'] = crc if isinstance(crc, str) else self.crc_of(raw or self.raw)
         if server: body['server'] = server
         r = self.c.post('/api/zones/challenge',json=body)
         self.assertEqual(r.status_code,200,r.data)
         return r.json['nonce'], r.json['nonce_now']
     def words(self, verb): return [s[0] for s in self.sent if s[1] == verb]
+    def open_ports(self, row=None):
+        todo = json.loads((row or self.row())['todo'] or '{}')
+        return sorted(int(p) for p, e in todo.items() if not e[3] and not e[4])
     def row(self):
         with z.connect(self.store) as db: return db.execute('SELECT * FROM publications ORDER BY id DESC').fetchone()
     def test_now_marker_is_the_client_source_s(self):
@@ -493,7 +497,7 @@ class PublishNow(Publish):
         self.assertEqual(self.words('changelevel'),[27510,27530])            # surf_other's lobby: never
         self.assertEqual(self.row()['live'], self.now)                       # the write's own moment
         self.wait(60)
-        row=self.row(); self.assertEqual((row['kind'],row['force'],row['todo']),('live',1,'{}'))
+        row=self.row(); self.assertEqual((row['kind'],row['force'],self.open_ports(row)),('live',1,[]))
         self.assertIsNotNone(row['done_at'])
         self.assertIn('warn 27510:ok 27530:ok', row['reload'])
         self.assertIn('reload 27510:changelevel 27530:changelevel', row['reload'])
@@ -615,15 +619,15 @@ class PublishNow(Publish):
     def test_a_lobby_counts_as_reloaded_only_by_its_zonecrc(self):
         self.grant(); self.maps={'surf_fixture'}; self.stale_crc={27530}       # reloads, keeps the old table
         self.upload(self.challenge_now()[1]); self.wait(180 + 60 * (z.pub.RELOAD_TRIES + 2))
-        self.assertEqual(self.words('changelevel').count(27530), z.pub.RELOAD_TRIES)   # never confirmed
+        self.assertEqual(self.words('changelevel').count(27530), 1)          # loaded since: never again
         row=self.row(); self.assertEqual((row['kind'],row['partial']),('live-partial','[27530]'))
-        self.assertNotIn('27530:done', row['reload'])
+        self.assertNotIn('27530:done', row['reload']); self.assertIn('27530:loaded another table', row['reload'])
     def test_a_lobby_already_on_a_same_hash_table_is_checked_by_load_time(self):
         self.grant(); self.maps={'surf_fixture'}
         self.fleet[27530]=('surf_fixture', self.now - 500, self.crc_of(self.raw))   # the crc cannot tell
         self.upload(self.challenge_now()[1]); self.wait(300)
         self.assertEqual(self.words('changelevel'),[27510,27530])            # its old load still reloaded
-        self.assertIn('27530:done (load time)', self.row()['reload'])
+        self.assertIn('27530:done (crc and load time)', self.row()['reload'])
     def test_rounds_with_an_unread_table_do_not_end_a_reload(self):
         self.grant(); self.maps={'surf_fixture'}; self.upload(self.challenge_now()[1]); self.wait(180)
         self.maps=None; self.wait(600)                                        # both lobbies confirmed meanwhile
@@ -683,6 +687,103 @@ class PublishNow(Publish):
         with z.connect(self.store) as db:
             rb=db.execute("SELECT * FROM publications WHERE kind='rollback' ORDER BY id DESC").fetchone()
         self.assertEqual((rb['crc'], rb['live']), (self.crc_of(self.raw), self.now + 1))
+    def test_a_rearm_needs_a_load_after_the_write_even_when_the_crc_matches(self):
+        # T0 -> F1 (new geometry) -> F2 (T0's geometry, a teleport change: T0's crc); 27530 stuck on T0
+        self.grant(); self.maps={'surf_fixture'}; self.stuck={27530}
+        f1=self.raw2(77); self.upload(self.challenge_now(f1)[1],raw=f1); self.wait(180 + 60 * (z.pub.RELOAD_TRIES + 2))
+        f2=self.raw2(78); self.same_crc={f2: self.crc_of(self.OLD)}
+        self.upload(self.challenge_now(f2)[1],raw=f2); self.wait(180 + 60 * (z.pub.RELOAD_TRIES + 2))
+        self.assertEqual(self.files()[0], f2); self.assertEqual(self.row()['partial'], '[27530]')
+        z.pub.rearm(z.connect, self.store, 'surf_fixture'); n=len(self.sent); self.wait(60 * (z.pub.RELOAD_TRIES + 4))
+        after=self.row(); self.assertEqual((after['kind'], after['partial']), ('live-partial', '[27530]'))
+        self.assertNotIn('27530:done', after['reload'].rsplit('re-armed', 1)[-1])
+        self.assertIn((27530,'say',z.pub.notice_text('surf_fixture')), self.sent[n:])
+        self.assertIn((27530,'changelevel','surf_fixture'), self.sent[n:])
+    def test_a_rollback_takes_its_crc_only_from_a_row_that_went_live(self):
+        self.grant(); self.ports={}
+        self.upload(self.challenge_now()[0])                                  # raw live, its true crc
+        b=self.raw2(92); self.upload(self.challenge_now(b)[0],raw=b)          # b live
+        self.maps={'surf_fixture'}                                            # not quiet: the next one waits
+        self.assertEqual(self.upload(self.challenge_now(crc='deadbeef')[0]).status_code,200)
+        self.assertEqual(self.row()['kind'],'pending')
+        self.rollback(anyway=True)                                            # raw back; the pending row superseded
+        with z.connect(self.store) as db:
+            rb=db.execute("SELECT * FROM publications WHERE kind='rollback'").fetchone()
+        self.assertEqual(rb['crc'], self.crc_of(self.raw))
+    def test_a_lobby_that_loaded_another_table_keeps_its_state_across_moves(self):
+        self.grant(); self.maps={'surf_fixture'}; self.stuck={27510}; self.stale_crc={27530}
+        self.upload(self.challenge_now()[1]); self.wait(240)
+        self.assertIn('27530:loaded another table', self.row()['reload'])
+        self.fleet[27530]=('surf_other', self.now, self.crc_of(self.OLD))   # off the map (the row still open)
+        self.ports={'surf_fixture':[27510], 'surf_other':[27520, 27530]}; self.wait(60)
+        self.assertIn('27530:moved off', self.row()['reload'])
+        self.fleet[27530]=('surf_fixture', self.now, self.crc_of(self.OLD)) # back, the other table again,
+        self.no_status={27530}                                                #   and its load time unknown:
+        self.ports={'surf_fixture':[27510, 27530]}; self.wait(60 * (z.pub.RELOAD_TRIES + 3))   # its verdict decides
+        self.assertEqual(self.words('changelevel').count(27530), 1)          # no fresh tries
+        row=self.row(); self.assertEqual((row['kind'], row['partial']), ('live-partial', '[27510, 27530]'))
+    def test_a_rollback_during_the_watch_ends_it_without_another_word(self):
+        self.grant(); self.maps={'surf_fixture'}; self.stuck={27530}
+        self.upload(self.challenge_now()[1]); self.wait(240)
+        self.assertIn('27510:done', self.row()['reload']); force_id=self.row()['id']
+        self.rollback(anyway=True); n=len(self.sent); self.wait(300)
+        self.assertEqual(self.sent[n:], [])                                   # no changelevel, no say, nothing
+        with z.connect(self.store) as db:
+            f=db.execute('SELECT * FROM publications WHERE id=?', (force_id,)).fetchone()
+        self.assertIsNotNone(f['done_at']); self.assertIn('reload ended: rollback', f['reload'])
+        with self.assertRaises(ValueError): z.pub.rearm(z.connect, self.store, 'surf_fixture')
+    def test_reload_now_compares_zones_not_bytes_and_not_the_crc(self):
+        self.grant(); self.ports={}; self.upload(self.challenge_now()[0])     # raw live
+        spaced=json.dumps(json.loads(self.raw), indent=3, sort_keys=True).encode()
+        self.assertNotEqual(spaced, self.raw)
+        r=self.upload(self.challenge_now(spaced)[1],raw=spaced); self.assertEqual(r.status_code,409)
+        b=self.raw2(93)                                                       # a real change, same stated crc
+        self.assertEqual(self.upload(self.challenge_now(b, crc=self.crc_of(self.raw))[1],raw=b).status_code,200)
+    def test_the_budget_and_rounds_run_on_the_monotonic_clock(self):
+        m=[5000]; z.pub.MONO=lambda: m[0]; z.pub.CLOCK=lambda: 5000
+        n=z.pub.ZP_BUDGET
+        self.assertEqual([z.pub.budget_take(self.store, 27510) for _ in range(n)], [True]*n)
+        z.pub.CLOCK=lambda: 5040; self.assertFalse(z.pub.budget_take(self.store, 27510))   # a wall step frees nothing
+        m[0]=40; self.assertTrue(z.pub.budget_take(self.store, 27510))         # after a reboot: old entries gone
+    def test_a_wall_clock_step_neither_stalls_nor_hurries_reload_rounds(self):
+        self.grant(); self.maps={'surf_fixture'}; self.stuck={27510, 27530}
+        self.upload(self.challenge_now()[1]); self.wait(180)
+        m=[self.now]; z.pub.MONO=lambda: m[0]
+        stamp=lambda: self.row()['round']                                     # the round's own stamp
+        r=stamp(); self.now += 100; m[0] += 10; self.apply()
+        self.assertEqual(stamp(), r)                                          # 10 s by the monotonic clock
+        self.now -= 700; m[0] += 60; self.apply()
+        self.assertEqual(stamp(), m[0])                                       # a backward step does not stall
+        self.now += 60; m[0] = 30; self.apply()
+        self.assertEqual(stamp(), 30)                                         # nor a reboot (the clock restarts)
+    def test_a_recovered_rollback_is_stamped_after_its_files(self):
+        self.grant(); self.ports={}; self.upload(self.challenge_now()[0])
+        real_put = z.pub.put
+        def crash(paths, bodies, limit): real_put(paths, bodies, limit); raise SystemExit('power cut')
+        with patch.object(z.pub, 'put', crash):
+            with self.assertRaises(SystemExit): self.rollback(anyway=True)
+        self.assertEqual(self.files(), [self.OLD, None])
+        self.now += 500; z.pub.CLOCK = lambda: self.now + 0.4; self.apply()
+        with z.connect(self.store) as db:
+            rb=db.execute("SELECT * FROM publications ORDER BY id DESC").fetchone()
+        self.assertEqual((rb['kind'], rb['live']), ('rollback', self.now + 1))
+    def test_lobby_cfgs_that_cannot_be_read_make_the_round_unreadable(self):
+        missing=self.root/'no_cfgs'
+        self.assertIsNone(z.pub.our_ports(str(missing)))
+        missing.mkdir(); (missing/'lobby1.cfg').write_text('set sv_port 27510\n')
+        self.assertEqual(z.pub.our_ports(str(missing)), {27510})              # the failure was not cached
+        bad=self.root/'bad_cfgs'; bad.mkdir(); (bad/'lobby1.cfg').write_text('set sv_port 27510\n')
+        (bad/'lobby2.cfg').mkdir()                                            # a cfg that cannot be opened
+        self.assertIsNone(z.pub.our_ports(str(bad)))
+        db=self.root/'surfd.db'; c=sqlite3.connect(db)
+        c.executescript("CREATE TABLE lobbies(node TEXT, map TEXT, last_seen INTEGER, addr TEXT);"
+                        "CREATE TABLE assignments(node TEXT, map TEXT, asked_at INTEGER);"
+                        "CREATE TABLE runs(map TEXT, leg INTEGER, submitted INTEGER);"
+                        "CREATE TABLE replays(id INTEGER PRIMARY KEY, map TEXT, kind TEXT, checked INTEGER, submitted INTEGER, recheck_at INTEGER);"
+                        "CREATE TABLE verdicts(replay_id INTEGER, verdict TEXT, at INTEGER);")
+        c.execute("INSERT INTO lobbies VALUES('1','surf_a',?,'play.proto.bar:27510')", (self.now,)); c.commit(); c.close()
+        with patch.object(z.pub, 'our_ports', lambda: None):
+            self.assertIsNone(z.pub.lobby_state(db, self.root/'sweep.log', self.now, public='play.proto.bar'))
     def test_reload_refuses_root_before_touching_the_store(self):
         import sys as _s
         with patch.object(z.os, 'geteuid', create=True, return_value=0), \
@@ -712,7 +813,7 @@ class PublishNow(Publish):
         self.assertIn((27530,'say',z.pub.notice_text('surf_fixture')), self.sent[n:])   # re-armed: told first
         self.assertEqual(self.words('changelevel').count(27530), z.pub.RELOAD_TRIES)
         self.wait(120)                                                        # a minute later reloaded, then confirmed
-        row=self.row(); self.assertEqual((row['kind'],row['todo']),('live','{}'))
+        row=self.row(); self.assertEqual((row['kind'],self.open_ports(row)),('live',[]))
         self.assertEqual(self.words('changelevel').count(27530), z.pub.RELOAD_TRIES + 1)
         self.maps=set(); self.wait(660); self.rollback()                      # live-partial rolls back too
         self.assertEqual(self.files(),[self.OLD,None])
@@ -722,7 +823,7 @@ class PublishNow(Publish):
         with z.connect(self.store) as db: db.execute("UPDATE publications SET todo=NULL, round=NULL")   # as a crash
         self.stuck=set(); n=len(self.words('changelevel')); self.wait(60)
         self.assertEqual(self.words('changelevel')[n:],[27510,27530])
-        self.wait(60); self.assertEqual(self.row()['todo'],'{}')
+        self.wait(60); self.assertEqual(self.open_ports(),[])
     def test_a_crash_while_writing_recovers_and_reloads(self):
         self.grant(); self.maps={'surf_fixture'}
         self.upload(self.challenge_now()[1]); self.wait(120)
@@ -807,7 +908,7 @@ class PublishNow(Publish):
             self.assertLessEqual(len(z.pub.notice_text(n)), 128); rcon.check_arg(z.pub.notice_text(n))
     def test_rcon_budget_is_shared_bounded_and_keeps_newer_entries(self):
         t = [5000]
-        z.pub.CLOCK = lambda: t[0]
+        z.pub.MONO = lambda: t[0]
         n = z.pub.ZP_BUDGET
         self.assertEqual([z.pub.budget_take(self.store, 27510) for _ in range(n + 1)], [True]*n + [False])
         self.assertTrue(z.pub.budget_take(self.store, 27520))

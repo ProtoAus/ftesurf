@@ -121,6 +121,14 @@ def initialize(path):
     os.chmod(path, 0o600)
 
 
+def same_zones(a, b):
+    """The same zone JSON, whitespace and key order aside; False when either cannot be read."""
+    canon = lambda body: json.dumps(json.loads(body), sort_keys=True, separators=(',', ':'))
+    if a is None or b is None: return False
+    try: return canon(a) == canon(b)
+    except (ValueError, UnicodeDecodeError, RecursionError): return False
+
+
 def validate(body):
     """Only what the game reads, read the same way: sh_zonefile.qc's limits, and no
     construct the engine's JSON parser reads differently from Python's."""
@@ -231,7 +239,7 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
     if maps_fn is None:     # account_db is surfd.db: its lobbies and replays tables too
         maps_fn = lambda: pub.lobby_state(account_db, sweep_log, clock())
     if official_fn is None:
-        official_fn = lambda server: official(server, pub.our_ports(), public_names())
+        official_fn = lambda server: official(server, pub.our_ports() or frozenset(), public_names())
     games = tuple(Path(p) for p in game_files)
     publish_dirs = tuple(Path(p) for p in publish_dirs)
     peer_salt = secrets.token_bytes(32)
@@ -368,14 +376,16 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                 if publish_dirs and force:
                     # "Reload now" confirms each lobby by the crc the client stated for these bytes.
                     if not grant['crc']: return fail('Update your game before using Reload now', 400)
-                    # It is for a change: bytes live in every publish directory reload nobody, unless
-                    # this revert cancels a force still waiting (an operator re-arms: `zonepub.py reload`).
+                    # It is for a change: zones already live in every publish directory reload nobody
+                    # (same JSON, whitespace and key order aside), unless this revert cancels a force
+                    # still waiting (an operator re-arms: `zonepub.py reload`). Not by crc: it leaves
+                    # out teleport destinations and the speed cap, which are changes.
                     try: disk = [pub.read_file(pub.zone_path(d, grant['map'], valid_name), MAX_ZONE_BYTES)
                                  for d in publish_dirs]
                     except (OSError, ValueError): disk = [None]
                     waiting = db.execute("SELECT 1 FROM publications WHERE map=? AND kind='pending'",
                                          (grant['map'],)).fetchone()
-                    if all(b == raw for b in disk) and not waiting:
+                    if all(same_zones(b, raw) for b in disk) and not waiting:
                         return fail('These zones are already live; Reload now is for a change', 409)
                 if publish_dirs:
                     rid = pub.queue(db, grant['map'], raw, sid, now, force, grant['crc'])
