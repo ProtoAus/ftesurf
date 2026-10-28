@@ -553,7 +553,8 @@ float(float c, vector col) RG_Add =
 };
 
 // P1087: the TAS comparison line on your own run clock (same run: no anchor, no offset),
-// alone, and the Comparison window's line. No body before its cut or RG_HOLD past its end.
+// alone. Not the Comparison window's line: it is freed when the clock stops, before a finish
+// row reads it; the TAS panel matches it itself. No body before its cut or RG_HOLD past its end.
 void() RG_AddTAS =
 {
 	local float c;
@@ -561,8 +562,6 @@ void() RG_AddTAS =
 	c = LN_S_TASREF;
 	if (!ln_on[c] || ln_ib[c] <= ln_ia[c])
 		return;
-	rg_cmpslot = c;
-	rg_cmpanc = rg_cmpam = 0;
 	RG_At(c, rg_now);
 	if (rg_gend < 0)
 		return;

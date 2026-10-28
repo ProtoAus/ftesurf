@@ -43,6 +43,8 @@ float(float argc, float seat) TASProject_ConsoleCommand =
 		}
 		line = strcat(line, " ", w);
 	}
+	if (argv(1) == "project" && argv(2) == "load")
+		tr_tasload_at = cltime;     // P1087: its load is another run's line (Trail_TASGo)
 	localcmd(strcat(line, "\n"));
 	return TRUE;
 };
@@ -177,9 +179,9 @@ string() TASCompare_Text =
 {
 	local vector ss;
 	tasc_ok = FALSE;
-	if (!tr_tasref)
+	if (!tr_tasref || Cmp_Off())    // a rewind cursor's clock is not your body's
 		return "";
-	if (rg_cmpslot != LN_S_TASREF || !Cmp_Match(LN_S_TASREF, 0, HUD_Feet()))
+	if (!Cmp_Match(LN_S_TASREF, 0, HUD_Feet()))
 		return "Before the edit (pink): not near its route here.";
 	ss = HUD_SplitSample();
 	tasc_dt = rg_now - cmp_mt;
@@ -266,7 +268,7 @@ void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw 
 	if (Profile_Chip("tasp_load",at+[(width+6)/3,0,0],chip,"Reload project",tsz,FALSE) && cltime >= tasp_cl_next)
 	if (tasp_cl_name != "")
 	{
-		tasp_cl_next = cltime + 0.5; localcmd(sprintf("p1 cmd tas project load %s\n", tasp_cl_name));
+		tasp_cl_next = tr_tasload_at = cltime + 0.5; localcmd(sprintf("p1 cmd tas project load %s\n", tasp_cl_name));
 	}
 	if (Profile_Chip("tasp_cp",at+[(width+6)*2/3,0,0],chip,"Checkpoint",tsz,FALSE) && cltime >= tasp_cl_next)
 	if (current)

@@ -510,13 +510,15 @@ void() Trail_Frame =
 			// Patch 611: the server moved the body; its state is drawn from the
 			// next frame on (the engine applies a snapshot a frame after its stats).
 			tr_kfrom = clientcommandframe + 1;
+			// P1087: only a TAS go restores this run's own line. Every other load cancels TAS
+			// (SV_TASCancel); a project load pauses again, so this client's stamp tells it.
+			if (!Trail_TASGo(st))
+				Trail_TASDrop();
 			// An implicit go may reuse its previous id. It is a new prefix,
 			// never whatever picture a remote client's old file held there.
 			if (tr_timedgo_ack > 0)
 			if (getstatf(STAT_FS_SLTRAILTAG) == tr_timedgo_ack)
 			{
-				if (getstatf(STAT_FS_TASPAUSE) == 1 && saved >= 0)
-					Trail_TASKeep(saved * tr_tick);     // P1087: a rewind-window TAS go
 				Trail_Trim((saved >= 0) ? saved * tr_tick : tr_go_visual_t);
 				Trail_Save(id, saved);
 			}
@@ -547,7 +549,7 @@ void() Trail_Frame =
 				// trail file (STAT_FS_SAVETICKS is the cursor's, not that tick): the clock-back
 				// trim below keeps the line to the restored tick, where it was emptied here.
 				if (!Trail_Load(id, saved))
-				if (getstatf(STAT_FS_TASPAUSE) != 1 || st != TS_RUNNING || tr_raw < 1)
+				if (!Trail_TASGo(st) || tr_raw < 1)
 					Trail_Trim(-1); // never substitute another run's picture
 				tr_on = TRUE;
 				tr_stopped = FALSE;
@@ -573,7 +575,7 @@ void() Trail_Frame =
 	}
 	else if (st == TS_RUNNING && !tr_practice && tr_nsamp && getstatf(STAT_FS_TIMERTICKS) * tr_tick < tr_lastt)
 	{
-		if (getstatf(STAT_FS_TASPAUSE) == 1)
+		if (Trail_TASGo(st))
 			Trail_TASKeep(getstatf(STAT_FS_TIMERTICKS) * tr_tick);     // P1087: the cut branch
 		Trail_Trim(getstatf(STAT_FS_TIMERTICKS) * tr_tick);
 	}
@@ -649,7 +651,11 @@ void() Trail_Draw =
 			Line_Draw(tr_prev, 99999999, '0 0 0', 1, a * 0.85);
 	}
 	if (tr_tasref)
-		Line_Draw(LN_S_TASREF, 99999999, '0 0 0', 1, 0.85);    // P1087, under the live line
+	{
+		ln_nomk = TRUE;             // P1087: no board marks or labels; under the live line
+		Line_Draw(LN_S_TASREF, 99999999, '0 0 0', 1, 0.85);
+		ln_nomk = FALSE;
+	}
 	if (tr_on)
 	{
 		if (tr_cur_on)

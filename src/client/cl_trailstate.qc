@@ -183,6 +183,11 @@ void(float t) Trail_Trim =
 // P1087: what a TAS go (back, edit, undo) cut off at t, kept as the comparison line; the
 // sample at/before t starts it so it joins the kept prefix. Nothing past t: the old one stays.
 float tr_tasref;
+float tr_tasload_at;            // cltime this client sent `tas project load` (cl_tastimeline.qc)
+float(float st) Trail_TASGo =
+{
+	return (getstatf(STAT_FS_TASPAUSE) == 1 && st == TS_RUNNING && cltime - tr_tasload_at > 3);
+};
 void() Trail_TASDrop =
 {
 	if (tr_tasref) Line_Clear(LN_S_TASREF);
@@ -195,7 +200,7 @@ void(float t) Trail_TASKeep =
 	a = Trail_RawIndex(Trail_RawClock(t));
 	if (a < 0 || a + 1 >= n)
 		return;
-	ln_want = n - a;
+	ln_want = min(n - a, LN_CAP2);  // the arena grew by LN_CAP2 for it; longer is halved
 	Line_Begin(LN_S_TASREF);
 	Line_Tick(LN_S_TASREF, tr_tick);
 	for (i = a; i < n; i = i + 1)

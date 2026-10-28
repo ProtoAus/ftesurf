@@ -17,6 +17,10 @@
   `time`, not the sub-tick carry (arm12: the same carry before an exact and a diverged load).
 - Other world logic on server `time` is the same hazard for TAS replays (trigger waits, door
   phases): a stepped tick and a played one see different `time`. Not audited.
+- A rewind-window TAS go (sl_saveat ... go with a ticket) trims the live trail at
+  STAT_FS_SAVETICKS * tick, and that stat is the save cursor's tick (P1087 measured 0 at a
+  `tas back`'s load edge). Unmeasured on this path; if it reads 0 here the trail empties and
+  Trail_Save(id, 0) writes that save's trail file empty. P1087 makes no comparison line here.
 - `tas back` from a head grounded on an entity (a func_bhop, a door) returns without a word:
   SV_TASBack's head probe needs a native row, which carriers never get.
 - A `reconnect` leaves the old connection's body solid for 40 s or more (`cmd stuck`:
