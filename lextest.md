@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+**P1083 -- move input feel (owner check pending):** live 2026-10-28T07:14Z. Keyboard
+strafing and walking should feel unchanged. If you have a gamepad, walking with it
+(holding SHIFT) should go in the stick's direction, not snap to 8 ways. Typing
+`cl_netfps 30` should be put straight back to the map's tick.
+
 **P1080 + live board data (owner checks pending):** menu ee999eab in both Windows
 installs 06:34Z; surfd generation 74e060d7 live 06:32Z (P1054 WOS figures, P1062
 map cards, P1080 completed list -- postswap_check passed all five against the
