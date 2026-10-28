@@ -27,6 +27,8 @@ void(entity e, string why) SV_TASOptStop =
 		tas_tape(e, 0, 0, 0, '0 0 0', '0 0 0', 0);
 	e.topt_on = 0;
 	sprint(e, PRINT_HIGH, sprintf("tas optimize: stopped after %.0f candidates: %s\n", e.topt_evals, why));
+	if (e.topt_bestv >= 0)
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: best so far turn %.3f deg/tick, %.1f u/s (not applied)\n", e.topt_bestr, e.topt_bestv));
 };
 
 // The candidate's inputs onto the native tape: the yaw turns rate*dir each tick.
@@ -86,6 +88,8 @@ void(entity e, float v) SV_TASOptResult =
 		e.topt_on = 0;
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: best %s turn %.3f deg/tick over %.0f ticks: exit %.1f u/s (%.0f candidates); paused at %.0f\n",
 			(e.topt_dir > 0) ? "left" : "right", e.topt_bestr, e.topt_n, v, e.topt_evals, SV_TimerTicks(e)));
+		if (fabs(v - e.topt_bestv) > 0.05)  // a moving world can differ between two plays
+			sprint(e, PRINT_HIGH, sprintf("tas optimize: replayed %.1f u/s, searched %.1f: the world moved between them\n", v, e.topt_bestv));
 		if (e.topt_bestr >= e.topt_rmax - 0.01)
 			sprint(e, PRINT_HIGH, "tas optimize: that is the top of the range searched; a sharper turn may be faster\n");
 		return;
@@ -151,10 +155,14 @@ void(entity e) SV_TASOptFrame =
 	e.topt_stage = 2;
 };
 
+void(entity e) SV_TASOptReset =
+{
+	e.topt_on = 0;
+};
+
 void(entity e, float argc) SV_TASOptCommand =
 {
 	local float n, dir;
-	if (e.topt_on) { sprint(e, PRINT_HIGH, "tas optimize: already running; tas play or tas off stops it\n"); return; }
 	n = stof(argv(2));
 	dir = !strcmp(argv(3), "left") ? 1 : (!strcmp(argv(3), "right") ? -1 : 0);
 	if (argc != 4 || !(n >= 4 && n <= TAS_TAPE_MAX && n == floor(n)) || !dir)
@@ -162,18 +170,21 @@ void(entity e, float argc) SV_TASOptCommand =
 		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128> <left|right>: best constant turn for exit speed\n");
 		return;
 	}
-	if (!e.run_tas_paused || e.run_tas_pending || !e.run_tas_rwcap || e.run_t_state != TS_RUNNING ||
-		e.run_tas_replaystate == TAS_TAPE_ACTIVE)
-	{
-		sprint(e, PRINT_HIGH, "tas optimize: needs a paused running attempt, no queued steps, and native checkpoints\n");
-		return;
-	}
+	if (!e.run_tas_rwcap || !SV_TASInputReady(e) || !SV_TASCanPause(e)) return;
 	if (e.rec_rec_stream)
 	if (e.rec_rec_ver >= 14)
 	{
 		sprint(e, PRINT_HIGH, "tas optimize: REC14 stream rewind is unsupported here\n");
 		return;
 	}
+	// Every candidate after the first goes back here: refuse now, not one candidate in.
+	SV_RewindTASHead(e);
+	if (!SV_RewindFindTick(e, SV_TimerTicks(e)))
+	{
+		sprint(e, PRINT_HIGH, "tas optimize: this tick has no native checkpoint (standing on a moving or brush entity?)\n");
+		return;
+	}
+	if (e.run_tas_req < 16000000) e.run_tas_req = e.run_tas_req + 1;   // a tape's request must be >= 1
 	e.topt_on = 1; e.topt_head = SV_TimerTicks(e); e.topt_n = n; e.topt_dir = dir;
 	e.topt_yaw0 = e.v_angle_y; e.topt_pitch0 = e.v_angle_x;
 	e.topt_stage = 1; e.topt_phase = 1; e.topt_k = 0; e.topt_cand = 0; e.topt_which = 0;

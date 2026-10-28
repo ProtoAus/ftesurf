@@ -15,6 +15,8 @@ void(entity e) SV_TASHistoryReset;
 void(entity e) SV_TASProjectReset;
 void(entity e) SV_TASProjectFrame;
 void(entity e) SV_TASOptFrame;
+void(entity e) SV_TASOptReset;
+void(entity e, string why) SV_TASOptStop;
 void(entity e) SV_TASProjectTouch;
 
 /*
@@ -287,6 +289,7 @@ void() ClientConnect =
 	self.run_ts_used = SV_TimeScaleConnectTaint(self);
 	SV_TASHistoryReset(self);
 	SV_TASProjectReset(self);
+	SV_TASOptReset(self);
 	self.run_tas_mode = self.run_tas_next = 0;
 	self.run_tas_used = SV_TASConnectTaint(self);
 	self.run_tas_paused = self.run_tas_pending = self.run_tas_done = self.run_tas_ready = 0;
@@ -1411,6 +1414,7 @@ void(entity e, float argc) SV_TASCommand =
 	// Escape controls are never stranded behind the diagnostic rate limit.
 	if (argc == 2 && (!strcmp(action, "off") || !strcmp(action, "play")))
 	{
+		SV_TASOptStop(e, "TAS play/off");  // here too: a spectate hold skips its frame
 		SV_TASCancel(e);
 		if (!strcmp(action, "off"))
 		{
