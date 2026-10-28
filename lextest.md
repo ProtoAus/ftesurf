@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+**P1080 -- completed sort on the Maps list (owner check pending):** the menu
+half works against a synthetic board; the live half needs the backend generation
+that carries `/api/board?completed=`. Once that is live, open Maps and pick Sort
+"incomplete first": are maps you have finished (clean main track) below the
+ones you have not, and "completed first" the reverse? Cards' Complete line and
+the sort should agree on every row you look at.
+
 **P1079 -- ordinary segmented/shadow map interactions (owner check pending):**
 Server progs live on both Windows installs and all 12 lobbies 2026-10-28T04:57Z
 (QW 3e14e81f); the board backend and lobby csprogs follow separately. After that,

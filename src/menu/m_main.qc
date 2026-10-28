@@ -200,6 +200,11 @@ void() Mlb_Command;
 void() Mlb_Poll;
 void() MCard_Begin;
 void() MCard_End;
+float mcd_ver;                  // m_mapcards.qc bumps it when the completed list changes
+void() MCard_DoneWant;
+void() MCard_DoneRefresh;
+float(string name) MCard_Done;
+string() MCard_DoneNote;
 void(vector pos, float width, float compact, string name, string id) MCard_Draw;
 void() MCard_Probe;
 void(string what) MM_BcPanel;
@@ -533,6 +538,8 @@ float  ms_applied_srcf;
 strbuf ms_dataq;
 float  ms_showall;
 float  ms_applied_showall;
+// P1080: 0 tier order, 1 incomplete first, 2 completed first (ui_maps_compsort).
+float  ms_compsort, ms_applied_compsort, ms_applied_donever;
 float  ms_nhidden;              // BARE rows the last ui_refilter hid
 
 // The background pic currently held open, so it can be freed when the selection
@@ -3014,6 +3021,20 @@ float(float row) ui_view_rank =
 	       + ui_tier_rank(row);
 };
 
+// P1080: completion outside the view rank; unknown is its own last bucket.
+// Keyed on the effective build, the name the row's card asks about.
+#define SORT_BUCKETS  132       // 3 * VIEW_BUCKETS
+float(float row) ui_eff;
+
+float(float row) ui_sort_rank =
+{
+	local float d;
+	if (!ms_compsort) return ui_view_rank(row);
+	d = MCard_Done(bufstr_get(ms_name, ui_eff(row)));
+	d = d < 0 ? 2 : (ms_compsort == 1 ? d : 1 - d);
+	return d * VIEW_BUCKETS + ui_view_rank(row);
+};
+
 void() ui_refilter =
 {
 	if (ms_view >= 0) buf_del(ms_view);
@@ -3119,27 +3140,27 @@ void() ui_refilter =
 	{
 		local strbuf flt;
 		local float k, r, idx;
-		local float tcnt[VIEW_BUCKETS], toff[VIEW_BUCKETS];
+		local float tcnt[SORT_BUCKETS], toff[SORT_BUCKETS];
 
 		flt = buf_create();
 		if (flt >= 0)
 		{
 			buf_copy(ms_view, flt);
 
-			for (k = 0; k < VIEW_BUCKETS; k++)
+			for (k = 0; k < SORT_BUCKETS; k++)
 				tcnt[k] = 0;
 			for (k = 0; k < ms_viewcount; k++)
-				tcnt[ui_view_rank(stof(bufstr_get(flt, k)))] += 1;
+				tcnt[ui_sort_rank(stof(bufstr_get(flt, k)))] += 1;
 
 			// Running total: rank r starts where every earlier rank ended.
 			toff[0] = 0;
-			for (k = 1; k < VIEW_BUCKETS; k++)
+			for (k = 1; k < SORT_BUCKETS; k++)
 				toff[k] = toff[k - 1] + tcnt[k - 1];
 
 			for (k = 0; k < ms_viewcount; k++)
 			{
 				idx = stof(bufstr_get(flt, k));
-				r   = ui_view_rank(idx);
+				r   = ui_sort_rank(idx);
 				bufstr_set(ms_view, toff[r], ftos(idx));
 				toff[r] += 1;
 			}
@@ -3152,6 +3173,8 @@ void() ui_refilter =
 	ms_applied_modes = ms_modes;
 	ms_applied_srcf  = ms_srcf;
 	ms_applied_showall = ms_showall;
+	ms_applied_compsort = ms_compsort;
+	ms_applied_donever = mcd_ver;
 	ms_scroll = '0 0 0';
 };
 
@@ -3232,7 +3255,7 @@ void(string arg) ui_browse_print =
 	bad  = -1;
 	for (i = 0; i < ms_viewcount; i++)
 	{
-		r = ui_view_rank(stof(bufstr_get(ms_view, i)));
+		r = ui_sort_rank(stof(bufstr_get(ms_view, i)));      // = ui_view_rank with P1080's sort off
 		if (r < prev && bad < 0)
 			bad = i;
 		prev = r;
@@ -3372,6 +3395,7 @@ void(float row, float css) ui_pick_set =
 	if (bufstr_get(ms_enabled, css ? stof(bufstr_get(ms_var, row)) : row) == "0")
 		return;
 	bufstr_set(ms_pick, row, css ? "1" : "");
+	if (ms_compsort) mcd_ver = mcd_ver + 1;     // P1080 sorts by the effective build
 	fh = fopen("data/mapbuild.txt", FILE_WRITE);
 	if (fh >= 0)
 	{
@@ -3582,6 +3606,36 @@ void(float on) ui_showall_set =
 	localcmd(sprintf("seta ui_maps_showall %g\n", on));
 };
 
+// P1080: the completed sort, saved the same way.
+void(float mode) ui_compsort_set =
+{
+	ms_compsort = mode;
+	localcmd(sprintf("seta ui_maps_compsort %g\n", mode));
+};
+
+// `ui_compsort`: the view as sorted. The counts say whether "ascending" had
+// more than one bucket to order.
+void() ui_compsort_print =
+{
+	local float i, r, row, prev, bad, d, nc, ni, nu;
+	prev = -1; bad = -1; nc = ni = nu = 0;
+	for (i = 0; i < ms_viewcount; i++)
+	{
+		row = stof(bufstr_get(ms_view, i));
+		r = ui_sort_rank(row);
+		if (r < prev && bad < 0) bad = i;
+		prev = r;
+		d = MCard_Done(bufstr_get(ms_name, ui_eff(row)));
+		if (d > 0) nc++; else if (d == 0) ni++; else nu++;
+	}
+	row = ms_viewcount ? stof(bufstr_get(ms_view, 0)) : -1;
+	print(sprintf("ui_compsort: mode %g view %g order %s complete %g incomplete %g unknown %g\n",
+	              ms_compsort, ms_viewcount, (bad < 0) ? "ascending" : sprintf("BROKEN at %g", bad),
+	              nc, ni, nu));
+	print(sprintf("ui_compsort: first %s done %g scroll %g\n", (row >= 0) ? bufstr_get(ms_name, row) : "-",
+	              (row >= 0) ? MCard_Done(bufstr_get(ms_name, ui_eff(row))) : -2, ms_scroll_y));
+};
+
 /*
   Everything that has to happen when the create screen comes up.  Build 57.
 
@@ -3612,6 +3666,8 @@ void() ui_create_open =
 	ms_modes = ui_modes_sane(cvar("ui_maps_modes"));
 	registercvar("ui_maps_showall", "0", 32);       // ROADMAP 10, same rules
 	ms_showall = (cvar("ui_maps_showall") != 0);
+	registercvar("ui_maps_compsort", "0", 32);      // P1080, same rules
+	ms_compsort = bound(0, rint(cvar("ui_maps_compsort")), 2);
 
 	if (ms_count == 0)
 	{
@@ -7227,30 +7283,47 @@ float(vector pos, string id, string label, float on) ui_filter_chip =
 	return w;
 };
 
+string(float group, float f) ui_filter_label =
+{
+	if (group == 0) return f == 0 ? "any" : ftos(f);
+	if (group == 1) return ui_mode_label(f);
+	if (group == 2) return ui_srcf_label(f);
+	if (group == 3) return "show all";
+	return f == 0 ? "tier" : (f == 1 ? "incomplete first" : "completed first");
+};
+
+string(float group, float f) ui_filter_id =
+{
+	if (group == 0) return strcat("cs_tier", ftos(f));
+	if (group == 1) return strcat("cs_mode", ftos(f));
+	if (group == 2) return strcat("cs_srcf", ftos(f));
+	if (group == 3) return "cs_showall";
+	return strcat("cs_sort", ftos(f));
+};
+
 float(float width, float y) ui_map_filters =
 {
 	local float group, f, n, x, gw, cw, on, bit, next;
-	local string heading, label, id;
+	local string heading, label, id, note;
 	x = 16;
-	for (group = 0; group < 4; group = group + 1)
+	note = ms_compsort ? MCard_DoneNote() : "";
+	for (group = 0; group < 5; group = group + 1)
 	{
-		heading = group == 0 ? "Tier" : (group == 1 ? "Mode" : (group == 2 ? "Library" : "Extra"));
-		n = group == 0 ? 11 : (group == 1 ? FS_NMODES : (group == 2 ? SRCF_NCHIPS : 1));
+		heading = group == 0 ? "Tier" : (group == 1 ? "Mode" : (group == 2 ? "Library" : (group == 3 ? "Extra" : "Sort")));
+		n = group == 0 ? 11 : (group == 1 ? FS_NMODES : (group == 2 ? SRCF_NCHIPS : (group == 3 ? 1 : 3)));
 		gw = stringwidth(heading, TRUE, '12 12 0') + 8;
 		for (f = 0; f < n; f = f + 1)
-		{
-			label = group == 0 ? (f == 0 ? "any" : ftos(f)) : (group == 1 ? ui_mode_label(f) : (group == 2 ? ui_srcf_label(f) : "show all"));
-			gw = gw + ui_filter_chip_w(label) + 4;
-		}
+			gw = gw + ui_filter_chip_w(ui_filter_label(group, f)) + 4;
+		if (group == 4 && note != "") gw = gw + stringwidth(note, TRUE, '12 12 0') + 6;
 		if (x > 16 && x + gw > width + 16) { x = 16; y = y + 30; }
 		sui_text([x, y + 6], '12 12 0', heading, COL_DIM, 1, 0);
 		x = x + stringwidth(heading, TRUE, '12 12 0') + 8;
 		for (f = 0; f < n; f = f + 1)
 		{
-			label = group == 0 ? (f == 0 ? "any" : ftos(f)) : (group == 1 ? ui_mode_label(f) : (group == 2 ? ui_srcf_label(f) : "show all"));
-			id = group == 0 ? strcat("cs_tier", ftos(f)) : (group == 1 ? strcat("cs_mode", ftos(f)) : (group == 2 ? strcat("cs_srcf", ftos(f)) : "cs_showall"));
+			label = ui_filter_label(group, f);
+			id = ui_filter_id(group, f);
 			bit = group == 1 ? ui_cat_bit(ui_mode_id(f)) : (group == 2 ? ui_srcf_bit(f) : 0);
-			on = group == 0 ? (ms_tier == f) : (group == 1 ? (f == 0 ? ms_modes == FS_MODES_ALL : (ms_modes & bit) != 0) : (group == 2 ? ms_srcf == bit : ms_showall));
+			on = group == 0 ? (ms_tier == f) : (group == 1 ? (f == 0 ? ms_modes == FS_MODES_ALL : (ms_modes & bit) != 0) : (group == 2 ? ms_srcf == bit : (group == 3 ? ms_showall : ms_compsort == f)));
 			cw = ui_filter_chip_w(label);
 			if (x + cw > width + 16) { x = 16; y = y + 30; }
 			x = x + ui_filter_chip([x, y], id, label, on) + 4;
@@ -7258,11 +7331,18 @@ float(float width, float y) ui_map_filters =
 			if (group == 1) sui_tooltip_for(id, "Show/hide this gametype. The last selected type stays on.", 2);
 			if (group == 2) sui_tooltip_for(id, "Map library for installed and downloadable maps.", 2);
 			if (group == 3) sui_tooltip_for(id, "Also show maps without a picture or tier. Search always finds them.", 2);
+			if (group == 4) sui_tooltip_for(id, "Your clean main finishes (WOS, Momentum Mod or KSF), tier order within each. Needs a linked account online; while unknown the list stays in tier order.", 2);
 			if (!sui_is_released(id)) continue;
 			if (group == 0) ms_tier = f;
 			else if (group == 1) { next = ui_modes_click(ms_modes, f); if (next != ms_modes) ui_modes_set(next); }
 			else if (group == 2) ms_srcf = bit;
-			else ui_showall_set(!ms_showall);
+			else if (group == 3) ui_showall_set(!ms_showall);
+			else ui_compsort_set(f);
+		}
+		if (group == 4 && note != "")
+		{
+			sui_text([x + 2, y + 6], '12 12 0', note, COL_DIM, 1, 0);
+			x = x + stringwidth(note, TRUE, '12 12 0') + 6;
 		}
 		x = x + 12;
 	}
@@ -7274,6 +7354,7 @@ void(vector screensize) screen_create =
 	local float rh, nx, inner, y, compact, actiony;
 	local vector size, pos, namesize;
 	MCard_Begin();
+	if (ms_compsort) MCard_DoneWant();
 
 	// The shared shell already reserved Friends/chat. Fill the remainder.
 	size = screensize; pos = '0 0 0';
@@ -7839,6 +7920,7 @@ void() m_init =
 	ms_bswrow = -1;
 	// The saved value is read in ui_create_open, beside its registercvar.
 	ms_showall = ms_applied_showall = 0;
+	ms_compsort = ms_applied_compsort = 0;
 	ms_selected = -1;
 	ms_tier = ms_applied_tier = 0;
 	// Both libraries, which is the state that lists everything.  Not saved, like
@@ -7879,6 +7961,7 @@ void() m_init =
 	registercommand("ui_profile_probe");
 	registercommand("ui_maplist");
 	registercommand("ui_browse");
+	registercommand("ui_compsort");
 	registercommand("ui_build");
 	registercommand("ui_mapnet");
 	registercommand("ui_find");
@@ -8041,8 +8124,16 @@ void(vector screensize) m_draw =
 	// the applied copy here is the cheapest place to notice.
 	if (ms_query != ms_applied_query || ms_tier != ms_applied_tier
 	    || ms_modes != ms_applied_modes || ms_srcf != ms_applied_srcf
-	    || ms_showall != ms_applied_showall)
+	    || ms_showall != ms_applied_showall || ms_compsort != ms_applied_compsort)
 		ui_refilter();
+	else if (ms_compsort && mcd_ver != ms_applied_donever)
+	{
+		// New completion data or a build switch re-sorts in place, like ui_dlkb_step.
+		local vector keepscroll;
+		keepscroll = ms_scroll;
+		ui_refilter();
+		ms_scroll = keepscroll;
+	}
 
 	// ROADMAP 1: the strip's line, and the charge MM_Frame's camera reads.
 	ui_status_update();
@@ -8526,6 +8617,13 @@ float(string cmd) m_consolecommand =
 	if (argv(0) == "ui_browse")
 	{
 		ui_browse_print(argv(1));
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_compsort")
+	{
+		if (argv(1) == "refresh") MCard_DoneRefresh();
+		ui_compsort_print();
 		return TRUE;
 	}
 

@@ -94,6 +94,37 @@ def main():
                   {'cards':','.join('surf_'+str(i) for i in range(17))},
                   {'cards':'surf_a','player':'not-a-public-handle'}):
         check('invalid/oversized identifiers refused', c.get('/api/board', query_string=query).status_code, 400)
+
+    # P1080: the completed list is the cards' `complete`, for every map at once.
+    db = S.connect()
+    row('surf_e', 'community', me, 30000)    # community/held/TAS/bonus only: not complete
+    row('surf_e', 'ranked', me, 30000, style='tas')
+    row('surf_e', 'momentum', me, 30000, track=2)
+    db.commit(); db.close()
+    import time
+    S._variants.update(at=time.monotonic(), ports={},
+                       of={'surf_a_css': 'surf_a', 'surf_b_css': 'surf_b', 'surf_a': 'surf_a', 'surf_b': 'surf_b'})
+
+    def completed(token):
+        response = c.get('/api/board', query_string={'completed': token})
+        return response.status_code, response.get_json()
+
+    code, data = completed(who)
+    check('completed route acts before the profile dispatch, own identity only',
+          (code, data['v'], data['player_known'], data['who'], data['style'], me in str(data)),
+          (200, 1, True, who, 'clean', False))
+    check('native, import-only and a variant complete through its base KSF run; no other player',
+          data['maps'], ['surf_a', 'surf_a_css', 'surf_b', 'surf_b_css', 'surf_d'])
+    names = 'surf_a,surf_a_css,surf_b,surf_b_css,surf_c,surf_d,surf_e,surf_missing'
+    cards = {r['map']: r['complete'] for r in get(names)['cards']}
+    check('completed list equals each card\'s complete flag',
+          {n: n in data['maps'] for n in names.split(',')}, cards)
+    for token in ('', 'f'*12, '1234abcd'):
+        code, data = completed(token)
+        check('unknown player is unknown, not "nothing completed": '+repr(token),
+              (code, data['player_known'], data['who'], data['maps']), (200, False, '', []))
+    check('malformed completed token refused',
+          c.get('/api/board', query_string={'completed': 'bad/one'}).status_code, 400)
     print('PASS map cards:', checks, 'checks; synthetic DB only')
 
 

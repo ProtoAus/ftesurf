@@ -167,9 +167,117 @@ void(vector pos, float width, float compact, string name, string id) MCard_Draw 
 	}
 };
 
+// P1080: the player's completed main maps (the cards' `complete`, all at once)
+// for the Maps list's sort. State 1 known, 2 player unknown, 3 unavailable, 0 not yet.
+float mcd_req, mcd_sent, mcd_next, mcd_at, mcd_state, mcd_count, mcd_zoned;
+hashtable mcd_set;
+string mcd_who;
+
+void(float state) MCard_DoneState =
+{
+	if (state == mcd_state) return;
+	mcd_state = state;
+	mcd_ver = mcd_ver + 1;
+};
+
+void() MCard_DoneWant =
+{
+	if (!mcr_ready) return;
+	if (!mcd_zoned || strcmp(mcd_who, mcr_who))
+	{
+		if (mcd_set) hash_destroytab(mcd_set);
+		mcd_set = 0; mcd_req = 0; mcd_at = 0; mcd_next = 0; mcd_count = 0;
+		if (mcd_zoned) strunzone(mcd_who);
+		mcd_who = strzone(mcr_who); mcd_zoned = TRUE;
+		mcd_state = -1; MCard_DoneState(0);
+	}
+	if (mcd_req)
+	if (gettime(0) - mcd_sent > 12)
+	{
+		mcd_req = 0; mcd_next = gettime(0) + 30;
+		if (mcd_state != 1) MCard_DoneState(3);
+	}
+	if (mcd_req || gettime(0) < mcd_next) return;
+	if (!MF_Online()) { if (mcd_state != 1) MCard_DoneState(3); return; }
+	if (!strcmp(mcd_who, "")) { MCard_DoneState(2); return; }
+	if (mcd_at)
+	if (gettime(0) - mcd_at < 60) return;
+	mcd_req = Sty_Get(strcat("completed=", uri_escape(mcd_who)));
+	mcd_sent = gettime(0);
+	if (!mcd_req) { mcd_next = gettime(0) + 30; if (mcd_state != 1) MCard_DoneState(3); }
+};
+
+float(float reqid, float code, string body) MCard_DoneReply =
+{
+	local int root, maps;
+	local float i, n, known, same, hit;
+	local hashtable fresh;
+	local string name;
+	if (!mcd_req || reqid != mcd_req) return FALSE;
+	mcd_req = 0; mcd_next = gettime(0) + 30;
+	// A failed refresh keeps a known list (stale beats unknown); otherwise unavailable.
+	if (code || strlen(body) > 262144) { if (mcd_state != 1) MCard_DoneState(3); return TRUE; }
+	root = json_parse(body);
+	if (!root) { if (mcd_state != 1) MCard_DoneState(3); return TRUE; }
+	maps = json_find_object_child(root, "maps");
+	n = json_get_length(maps);
+	if (json_get_float(json_find_object_child(root, "v")) != 1
+	    || strcmp(json_get_string(json_find_object_child(root, "requested_player")), mcd_who)
+	    || strcmp(json_get_string(json_find_object_child(root, "style")), "clean")
+	    || json_get_float(json_find_object_child(root, "track")) != 0
+	    || json_get_float(json_find_object_child(root, "leg")) != 0
+	    || !maps || n > 16384)
+	{ json_free(root); if (mcd_state != 1) MCard_DoneState(3); return TRUE; }
+	// Refreshes that change nothing must not bump mcd_ver: it re-sorts the list.
+	known = json_get_float(json_find_object_child(root, "player_known")) ? 1 : 2;
+	same = (known == mcd_state && n == mcd_count);
+	fresh = hash_createtab(4096, EV_FLOAT);
+	for (i = 0; i < n; i = i + 1)
+	{
+		name = strtolower(json_get_string(json_get_child_at_index(maps, (int)i)));
+		hash_add(fresh, name, 1, HASH_REPLACE | EV_FLOAT);
+		if (same)
+		{
+			hit = hash_get(mcd_set, name, 0, EV_FLOAT);
+			if (!hit) same = FALSE;
+		}
+	}
+	if (mcd_set) hash_destroytab(mcd_set);
+	mcd_set = fresh;
+	mcd_count = n;
+	mcd_at = gettime(0); mcd_next = 0;
+	if (!same) { mcd_state = known; mcd_ver = mcd_ver + 1; }
+	json_free(root);
+	return TRUE;
+};
+
+// `ui_compsort refresh`: expire the list now instead of after 60 s.
+void() MCard_DoneRefresh =
+{
+	mcd_at = 0; mcd_next = 0;
+};
+
+// 1 complete, 0 known incomplete, -1 unknown (never folded into incomplete).
+float(string name) MCard_Done =
+{
+	local float hit;
+	if (mcd_state != 1) return -1;
+	hit = hash_get(mcd_set, strtolower(name), 0, EV_FLOAT);
+	return hit ? 1 : 0;
+};
+
+string() MCard_DoneNote =
+{
+	if (mcd_state == 1) return "";
+	if (mcd_state == 2) return "link Steam to sort";
+	if (mcd_state == 3) return "records unavailable";
+	return "loading...";
+};
+
 void() MCard_Probe =
 {
 	local float i, row;
+	print(sprintf("mapdone: state %g count %g pending %g ver %g\n", mcd_state, mcd_count, mcd_req != 0, mcd_ver));
 	print(sprintf("mapcards: ready %g keys %g requested %g pending %g failed %g queued %g\n",
 		mcr_ready, mcr_count, mcr_reqn, mcr_req != 0, mcr_failed, mcr_qn));
 	if (!mcr_ready) return;

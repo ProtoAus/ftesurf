@@ -21,6 +21,9 @@
 
 ## next
 
+### P1080 Sort maps by completion
+- The Maps list has a Sort row: tier order, incomplete first or completed first, using your clean main finishes (WOS, Momentum Mod or KSF). Tier order is kept within each group. Without a linked account online it says so and keeps tier order.
+
 ### P1079 Keep inherited map effects unranked across run styles
 - Inherited effects that make a run unranked now stay practice in segmented and shadow styles too. Normal current-attempt segmented play and map effects keep working.
 

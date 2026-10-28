@@ -4017,6 +4017,8 @@ def board():
         return game_players(request.args.get("players"), now)
     if request.args.get("cards") is not None:      # P1062: visible map-card batch
         return game_mapcards(request.args.get("cards"), request.args.get("player"), now)
+    if request.args.get("completed") is not None:  # P1080: the Maps list's completed sort
+        return game_completed(request.args.get("completed"), now)
     if request.args.get("player") is not None:      # ...and game_player
         return game_player(request.args.get("player"), now)
     if request.args.get("story") is not None:       # Patch 854: see game_story
@@ -6983,6 +6985,56 @@ def game_players(raw, now):
                     status=200, mimetype="application/json")
 
 
+def _game_player(db, who, now):
+    """(handle, player) for a game request's public token; player None if unknown.
+    A mark only while the board is by account (game_player's rule)."""
+    handle, player = who, None
+    if who:
+        _by_handle, _people_list, _main_maps, at = _people_current(db, now)
+        if len(who) == 8:
+            handle = None
+            if RANKED_LINKED:
+                with _people_lock:
+                    handle = _people.get("by_mark", {}).get(who)
+                if handle is None and not _within(at, now, WEB_PEOPLE_FLOOR):
+                    _people_kick(now)
+        player = player_of(db, handle, now) if handle else None
+    return handle, player
+
+
+def game_completed(who, now):
+    """P1080: every map name the player has a clean main finish on, for the
+    game's completed sort. game_mapcards' `complete`: a ranked run on the build
+    itself, or a Momentum/KSF run on its base map. Unknown player = empty list
+    with player_known false, never "nothing completed"."""
+    who = who or ""
+    if who and not re.fullmatch(r"[0-9a-f]{8}|[0-9a-f]{%d}" % WEB_HANDLE_LEN, who):
+        return fail(400, "bad player")
+    native, imported = set(), set()
+    try:
+        db = get_db()
+        handle, player = _game_player(db, who, now)
+        if player is not None:
+            for r in db.execute(
+                    "SELECT DISTINCT map,tier FROM runs WHERE player=? AND track=0 AND leg=0"
+                    " AND style='clean' AND millis>0 AND tier IN (?,?,?)",
+                    (player, TIER_RANKED, TIER_MOMENTUM, TIER_KSF)):
+                (native if r["tier"] == TIER_RANKED else imported).add(r["map"])
+    except sqlite3.Error as exc:
+        log.exception("game completed db error: %s", exc)
+        return fail(500, "storage error")
+    variant_base("")                    # refresh the catalogue cache
+    with _maps_lock:
+        of = dict(_variants["of"])
+    done = native | {m for m in imported if of.get(m, m) == m}
+    done |= {k for k, b in of.items() if b in imported}
+    return Response(game_json(
+        {"v": 1, "t": now, "requested_player": who,
+         "who": handle if player is not None else "", "player_known": player is not None,
+         "track": 0, "leg": 0, "style": "clean", "maps": sorted(done)}),
+        status=200, mimetype="application/json")
+
+
 def game_mapcards(raw, who, now):
     """At most 16 visible maps' clean-main times, in the board's rate bucket.
 
@@ -7001,17 +7053,7 @@ def game_mapcards(raw, who, now):
         return fail(400, "bad player")
     try:
         db = get_db()
-        handle, player = who, None
-        if who:
-            _by_handle, _people_list, _main_maps, at = _people_current(db, now)
-            if len(who) == 8:
-                handle = None
-                if RANKED_LINKED:
-                    with _people_lock:
-                        handle = _people.get("by_mark", {}).get(who)
-                    if handle is None and not _within(at, now, WEB_PEOPLE_FLOOR):
-                        _people_kick(now)
-            player = player_of(db, handle, now) if handle else None
+        handle, player = _game_player(db, who, now)
         bases = {n: variant_base(n) or n for n in names}
         keys = sorted(set(names) | set(bases.values()))
         marks = ",".join("?" for _ in keys)
