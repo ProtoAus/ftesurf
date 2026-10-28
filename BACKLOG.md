@@ -4350,7 +4350,10 @@ below is the collection side and the rules that still only note.
   Residuals: smaller settings are not detected (no gain; indistinguishable from a
   half-pushed stick). `cl_threadedphysics 1` sends without CSQC_Input_Frame, so it skips
   the cap AND the mod's other input gates (replay/rewind zeroing, resume count-in) --
-  pre-existing; the server rule still catches its moves. Falsifier: an honest run
+  pre-existing; the server rule still catches its moves. The client SCALES all axes
+  (direction kept for a walking pad), so a deliberately raised cl_forwardspeed shrinks
+  the strafe axis while forward is held. A warm rewind keeps the abandoned branch's
+  run_t_movebig (strict: only reachable past the cap). Falsifier: an honest run
   reading `prof move` on an unmodified client with cl_threadedphysics 0.
 
 ## Ranking integrity
