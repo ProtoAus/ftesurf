@@ -135,6 +135,7 @@ void() Trail_Reset =
 	Trail_Init();
 	Line_Clear(tr_live);
 	Line_Clear(tr_prev);
+	Trail_TASDrop();
 	tr_on = tr_prevon = tr_stopped = FALSE;
 	tr_nsamp = tr_builds = tr_since = 0;
 	tr_state = 0;
@@ -155,6 +156,7 @@ void() Trail_Open =
 	local float t;
 
 	Trail_Init();
+	Trail_TASDrop();
 	t = tr_live;
 	tr_live = tr_prev;
 	tr_prev = t;
@@ -513,6 +515,8 @@ void() Trail_Frame =
 			if (tr_timedgo_ack > 0)
 			if (getstatf(STAT_FS_SLTRAILTAG) == tr_timedgo_ack)
 			{
+				if (getstatf(STAT_FS_TASPAUSE) == 1 && saved >= 0)
+					Trail_TASKeep(saved * tr_tick);     // P1087: a rewind-window TAS go
 				Trail_Trim((saved >= 0) ? saved * tr_tick : tr_go_visual_t);
 				Trail_Save(id, saved);
 			}
@@ -539,7 +543,11 @@ void() Trail_Frame =
 			}
 			else
 			{
+				// P1087: a TAS go restores a tick of this run's own line and its save has no
+				// trail file (STAT_FS_SAVETICKS is the cursor's, not that tick): the clock-back
+				// trim below keeps the line to the restored tick, where it was emptied here.
 				if (!Trail_Load(id, saved))
+				if (getstatf(STAT_FS_TASPAUSE) != 1 || st != TS_RUNNING || tr_raw < 1)
 					Trail_Trim(-1); // never substitute another run's picture
 				tr_on = TRUE;
 				tr_stopped = FALSE;
@@ -564,7 +572,13 @@ void() Trail_Frame =
 			Trail_Open();
 	}
 	else if (st == TS_RUNNING && !tr_practice && tr_nsamp && getstatf(STAT_FS_TIMERTICKS) * tr_tick < tr_lastt)
+	{
+		if (getstatf(STAT_FS_TASPAUSE) == 1)
+			Trail_TASKeep(getstatf(STAT_FS_TIMERTICKS) * tr_tick);     // P1087: the cut branch
 		Trail_Trim(getstatf(STAT_FS_TIMERTICKS) * tr_tick);
+	}
+	if (st != TS_RUNNING)
+		Trail_TASDrop();            // P1087: its ghost runs on this run's clock
 	tr_state = st;
 
 	// The fade, and the clear at the end of it.  Run on its own clock rather
@@ -634,6 +648,8 @@ void() Trail_Draw =
 		if (a > 0)
 			Line_Draw(tr_prev, 99999999, '0 0 0', 1, a * 0.85);
 	}
+	if (tr_tasref)
+		Line_Draw(LN_S_TASREF, 99999999, '0 0 0', 1, 0.85);    // P1087, under the live line
 	if (tr_on)
 	{
 		if (tr_cur_on)

@@ -180,6 +180,36 @@ void(float t) Trail_Trim =
 	tr_stitch = TRUE;
 };
 
+// P1087: what a TAS go (back, edit, undo) cut off at t, kept as the comparison line; the
+// sample at/before t starts it so it joins the kept prefix. Nothing past t: the old one stays.
+float tr_tasref;
+void() Trail_TASDrop =
+{
+	if (tr_tasref) Line_Clear(LN_S_TASREF);
+	tr_tasref = FALSE;
+};
+void(float t) Trail_TASKeep =
+{
+	local float i, n, a;
+	n = (tr_raw >= 1) ? buf_getsize(tr_raw) : 0;
+	a = Trail_RawIndex(Trail_RawClock(t));
+	if (a < 0 || a + 1 >= n)
+		return;
+	ln_want = n - a;
+	Line_Begin(LN_S_TASREF);
+	Line_Tick(LN_S_TASREF, tr_tick);
+	for (i = a; i < n; i = i + 1)
+	{
+		if (tokenize(bufstr_get(tr_raw, i)) < 14)
+			continue;
+		Line_Point(LN_S_TASREF, [stof(argv(1)), stof(argv(2)), stof(argv(3))],
+			[stof(argv(4)), stof(argv(5)), stof(argv(6))], stof(argv(7)), stof(argv(0)),
+			stof(argv(8)), stof(argv(9)), [stof(argv(10)), stof(argv(11)), stof(argv(12))]);
+	}
+	Line_End(LN_S_TASREF);
+	tr_tasref = (ln_n[LN_S_TASREF] >= 2);
+};
+
 string(float id) Trail_SavePath =
 {
 	local string p;

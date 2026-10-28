@@ -27,7 +27,7 @@
 // 0 the replay, 1..8 the board's, 9 and 10 the live trail's pair (cl_trail.qc,
 // Patch 475 -- two so a finished run can fade while the next one builds over it).
 // 3.25 MiB a slot at LN_CAP, counted off Line_Alloc's own arenas.
-#define LN_SLOTS   69           // 0 the replay, 1..8 board lines, 9 and 10 the live run, 11..66 more, 67 68 the ghost's
+#define LN_SLOTS   70           // 0 the replay, 1..8 board lines, 9 and 10 the live run, 11..66 more, 67 68 the ghost's, 69 TAS
 #define LN_S_BOARD 1            // the first board slot and the first trail slot,
 #define LN_S_TRAIL 9            // which pick a slot's width (Line_SlotPx)
 #define LN_S_MORE  11           // Patch 649: the first of the fifty-six further board slots
@@ -37,7 +37,8 @@
 // LN_CAP2 and a whole run's at LN_CAP, last, so LN_B holds for both.
 #define LN_S_GHOST 67
 #define LN_S_GHR   68
-#define LN_TOTAL   (LN_S_MORE * LN_CAP + (LN_S_GHR - LN_S_MORE) * LN_CAP2 + LN_CAP)
+#define LN_S_TASREF 69          // P1087: the branch a TAS go cut off (Trail_TASKeep), pooled
+#define LN_TOTAL   (LN_S_MORE * LN_CAP + (LN_S_GHR - LN_S_MORE) * LN_CAP2 + LN_CAP2 + LN_CAP)
 // A slot's first sample in the arenas, its capacity, and whether it is the live run's.
 // Patch 760: the replay's, the live run's and the race ghost's whole-run PB are fixed
 // where they always were; every other slot is given what its run needs from the rest
@@ -373,6 +374,7 @@ float  ln_cmown, ln_cmoth;
 #define LN_CM_PLAIN 5
 #define LN_OWNCOL  '0.30 0.65 1.00'
 #define LN_GHOSTCOL '1.00 0.80 0.30'   // Patch 746: the ghost's PB slots, always plain
+#define LN_TASREFCOL '1.00 0.42 0.62'  // P1087: the TAS comparison line, plain
 vector *ln_rk;          // an other line's colour by time, this frame
 float  *ln_rkin;    // it is ranked; its place, 0 the fastest
 float  *ln_rkpos;
@@ -2803,6 +2805,7 @@ void(float s, float m, float from) Line_Paint =
 	if (m >= LN_CM_PLAIN)
 	{
 		c = (LN_TRAIL(s)) ? LN_OWNCOL : ((s >= LN_S_GHOST) ? LN_GHOSTCOL : ln_rk[s]);
+		if (s == LN_S_TASREF) c = LN_TASREFCOL;
 		for (i = b + from; i < b + ln_n[s]; i = i + 1)
 			ln_col[i] = c;
 		return;
@@ -2925,6 +2928,7 @@ void() Line_ViewFrame =
 		{
 			m = Line_Mode(s);
 			c = (LN_TRAIL(s)) ? LN_OWNCOL : ((s >= LN_S_GHOST) ? LN_GHOSTCOL : ln_rk[s]);
+			if (s == LN_S_TASREF) c = LN_TASREFCOL;
 			if (m < LN_CM_PLAIN)
 				c = '0 0 0';
 			if (dirty || ln_sgen[s] != ln_scgen[s] || (rd && m == 0) || c != ln_plain[s])

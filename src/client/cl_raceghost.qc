@@ -552,6 +552,34 @@ float(float c, vector col) RG_Add =
 	return TRUE;
 };
 
+// P1087: the TAS comparison line on your own run clock (same run: no anchor, no offset),
+// alone, and the Comparison window's line. No body before its cut or RG_HOLD past its end.
+void() RG_AddTAS =
+{
+	local float c;
+
+	c = LN_S_TASREF;
+	if (!ln_on[c] || ln_ib[c] <= ln_ia[c])
+		return;
+	rg_cmpslot = c;
+	rg_cmpanc = rg_cmpam = 0;
+	RG_At(c, rg_now);
+	if (rg_gend < 0)
+		return;
+	if (rg_gend > 0)
+	if (rg_now - ln_t[LN_B(c) + ln_ib[c]] > RG_HOLD)
+		return;
+	rg_slot[0] = c;
+	rg_t[0] = rg_now;
+	rg_pos[0] = rg_gp;
+	rg_yaw[0] = rg_gyaw;
+	rg_duck[0] = rg_gduck;
+	rg_end[0] = rg_gend;
+	rg_anc[0] = 0;
+	rg_col[0] = LN_TASREFCOL;
+	rg_n = 1;
+};
+
 // Before clearscene, after Trail_Frame (whose kept frames RG_Clock reads).
 void() RG_Frame =
 {
@@ -567,6 +595,17 @@ void() RG_Frame =
 		if (rg_laststate == TS_RUNNING)
 			rg_rescan = TRUE;       // a run ended: its PB may be new
 		rg_laststate = st;
+	}
+	if (tr_tasref)
+	{
+		rg_now = RG_Clock();
+		if (rg_now < 0 || rec_wt_on || Spec_Active())
+			return;
+		if (getstatf(STAT_FS_TASPAUSE) == 1 && !ui_rw_on)
+			rg_now = getstatf(STAT_FS_TIMERTICKS) * Timer_Tick();  // paused: no prediction lead
+		rg_cv = rg_cv | 1;          // its body whatever hud_ghost says: TAS asked for it
+		RG_AddTAS();
+		return;
 	}
 	// Patch 779: the Comparison window reads this frame's choice with the ghost off;
 	// with rg_cv 0 nothing below draws a body, a highlight or a tag.
@@ -769,6 +808,8 @@ string(float s) RG_SlotName =
 	local string nm;
 
 	rg_who = "";
+	if (s == LN_S_TASREF)
+		return "Before the edit";
 	if (s >= LN_S_GHOST)
 	{
 		rg_who = getplayerkeyvalue(player_localnum, "*ahash");

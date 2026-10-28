@@ -170,6 +170,25 @@ void(float value) TASTimeline_Value =
 	if (FS_TASEditValue(tast_field,value)) tast_value = value;
 };
 
+// P1087: you against the line the last TAS go cut off (LN_S_TASREF), where you are now:
+// time is yours minus its to get here (+ behind), speed yours minus its here.
+float tasc_ok, tasc_dt, tasc_ds;
+string() TASCompare_Text =
+{
+	local vector ss;
+	tasc_ok = FALSE;
+	if (!tr_tasref)
+		return "";
+	if (rg_cmpslot != LN_S_TASREF || !Cmp_Match(LN_S_TASREF, 0, HUD_Feet()))
+		return "Before the edit (pink): not near its route here.";
+	ss = HUD_SplitSample();
+	tasc_dt = rg_now - cmp_mt;
+	tasc_ds = ss_x - cmp_ms;
+	tasc_ok = TRUE;
+	return sprintf("Before the edit (pink): %s%.3f s here, %s%.0f u/s",
+		(tasc_dt >= 0) ? "+" : "", tasc_dt, (tasc_ds >= 0) ? "+" : "", tasc_ds);
+};
+
 void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw =
 {
 	local float i, b, tick, current;
@@ -255,6 +274,12 @@ void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw 
 		tasp_cl_next = cltime + 0.5; localcmd(sprintf("p1 cmd tas cp add cp%.0f\n", tast_head));
 	}
 	at_y = at_y + row + hint;
+	label = TASCompare_Text();
+	if (label != "")
+	{
+		sui_text(at,[hint,hint],label,(tasc_ok && tasc_dt > 0) ? SUI_THEME_ACCENT : SUI_THEME_DIM,1,0);
+		at_y = at_y + hint*1.6;
+	}
 	sui_text(at,[hint,hint],current ? "Warm input history; the shared world is NOT rewound." :
 		"Refresh after execution. Undo keeps eight edits; a project keeps them on disk.",SUI_THEME_MUTED,1,0);
 };
@@ -295,6 +320,18 @@ float(float argc, float seat) TASTimeline_ConsoleCommand =
 		if (!strcmp(action,"single")) { tast_from = tast_to = tast_selected; return TRUE; }
 		if (!strcmp(action,"from")) { tast_from = min(tast_selected,tast_to); return TRUE; }
 		if (!strcmp(action,"to")) { tast_to = max(tast_selected,tast_from); return TRUE; }
+		if (!strcmp(action,"compare"))  // P1087, for arms: the line, its ghost and the deltas
+		{
+			b = LN_B(LN_S_TASREF);
+			TASCompare_Text();
+			print(sprintf("tas timeline compare: line %g samples %g t %.4f..%.4f now %.4f ", tr_tasref,
+				ln_n[LN_S_TASREF], tr_tasref ? ln_t[b + ln_ia[LN_S_TASREF]] : 0, tr_tasref ? ln_t[b + ln_ib[LN_S_TASREF]] : 0, rg_now));
+			print(sprintf("ghost %g at %v ok %g dt %.4f ds %.2f ", (rg_n > 0 && rg_slot[0] == LN_S_TASREF),
+				rg_pos[0], tasc_ok, tasc_dt, tasc_ds));
+			print(sprintf("body %g model %g screen %v\n", rg_ent[0] != world, rg_ent[0] ? rg_ent[0].modelindex : 0,
+				project(rg_pos[0] + '0 0 36')));
+			return TRUE;
+		}
 	}
 	if (argc == 4 && !strcmp(action,"select"))
 	{
