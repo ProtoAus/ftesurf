@@ -49,7 +49,8 @@ void() TASProject_SignPress =
 	p = tasrev_sign(tasp_cl_sha, (tasp_cl_parsha != "") ? tasp_cl_parsha : "-", tasp_cl_mapcrc, tasp_cl_supa, tasp_cl_supb);
 	if (tokenize(p) != 3) { print("tas project: the game would not sign this revision\n"); return; }
 	tasp_cl_next = cltime + 0.5;
-	localcmd(sprintf("p1 cmd tas project signed %s %s %s %s\n", tasp_cl_sha, argv(2), argv(0), argv(1)));
+	localcmd(sprintf("p1 cmd tas project signed %s %s %.0f %.0f %s %s %s\n", tasp_cl_sha,
+		(tasp_cl_parsha != "") ? tasp_cl_parsha : "-", tasp_cl_supa, tasp_cl_supb, argv(2), argv(0), argv(1)));
 };
 
 // tas project ... / tas cp ...: forwarded word for word; names are a-z 0-9 _ -.

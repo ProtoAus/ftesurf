@@ -19,7 +19,9 @@ tick, and a tick at or before the parent's base is never supply. The game keeps 
 as rev/<sha>.tasp and each author statement in its own rev/<sha>.<id>.tasrev, one line:
 `tasrev 1 sha parent|- mapcrc first last code pub sig`, an Ed25519 signature (the player's
 fskey, engine cl_receipt.c) over statement()'s text. `ticks` is what the signer claims: a
-span, so credit is the rows that differ from the parent (changed_ticks), never the span.
+span, true over the parent. Credit is per row, never the span: each tick goes to the nearest
+ancestor in a verified chain whose row matches it (changed_ticks against the parent alone
+re-credits a grandparent's rows past a truncated parent).
 
   tasrev.py FILE.tasp                  print the hash, or why the file is refused
   tasrev.py --check FILE.tasp          exit 1 unless accepted and its revsha line matches
