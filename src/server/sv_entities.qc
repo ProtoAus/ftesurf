@@ -851,6 +851,8 @@ void(entity p) SV_TouchForget =
 .float  run_speedmod;
 .entity vbsp_bhop_on;
 .float  vbsp_bhop_since;
+.float  vbsp_bhop_sincemt;	// P1085: run_movetick at the landing
+.float  run_movetick;		// the native mover counter, first declared here for the dwell
 // Ground state as it stood BEFORE this command's move, stamped by PlayerPreThink
 // and read by SV_TriggerIOTouch after it -- which is how OnJump can tell a jump
 // from walking off a ledge on the exact command it happens.
@@ -12138,7 +12140,7 @@ void(entity b, entity pl) SV_BhopTeleport =
 void(entity pl) SV_BhopFrame =
 {
 	local entity b;
-	local float  lim;
+	local float  lim, dwell;
 
 	b = world;
 	if (pl.flags & FL_ONGROUND)
@@ -12168,6 +12170,7 @@ void(entity pl) SV_BhopFrame =
 		// "not just touching from above".
 		pl.vbsp_bhop_on = b;
 		pl.vbsp_bhop_since = time;
+		pl.vbsp_bhop_sincemt = pl.run_movetick;
 		b.count = b.count + 1;
 
 		/*
@@ -12213,7 +12216,14 @@ void(entity pl) SV_BhopFrame =
 	if (lim <= 0)
 		lim = 0.1;						// the FGD's number, if nothing set it
 
-	if (time - pl.vbsp_bhop_since >= lim)
+	// P1085: mover ticks, as Source's per-tick curtime. On server time a TAS reload teleported
+	// one tick apart on frame alignment (0.0999 vs 0.110 after 7 ticks), and a pause kept counting.
+	// The 1e-4 lets 10 ticks of float 0.01 reach 0.1.
+	if (pl.run_movetickrate > 0)
+		dwell = (pl.run_movetick - pl.vbsp_bhop_sincemt) * pl.run_movetickrate + 0.0001;
+	else
+		dwell = time - pl.vbsp_bhop_since;
+	if (dwell >= lim)
 	{
 		SV_BhopTeleport(b, pl);
 		return;

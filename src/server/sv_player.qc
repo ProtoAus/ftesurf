@@ -1262,6 +1262,8 @@ float(entity e) SV_TASCanPause =
 // Native restore adds private mover state, never rolls back connection counters.
 float(entity e, float slot, float token) SV_TASGo =
 {
+	local float oldhead, d;
+	oldhead = SV_TimerTicks(e);
 	SV_SaveLocGo(e);
 	if (FS_SlopOp(e.rec_sl_slop) != SLOP_LOADED || !e.rec_sl_hold) return FALSE;
 	SV_SaveLocRelease(e);
@@ -1280,6 +1282,15 @@ float(entity e, float slot, float token) SV_TASGo =
 	// which would wrongly exclude the first explicitly granted TAS tick.
 	SV_TimerFreezeFrame(e);
 	SV_RewindTASHead(e);
+	// P1085: run_movetick is never rewound. Every caller restores a tick of this branch at or
+	// before the head, so a func_bhop latch keeps the dwell it had there, or ends before it.
+	if (e.vbsp_bhop_on)
+	{
+		d = oldhead - SV_TimerTicks(e);
+		if (d >= 0) d = e.run_movetick - e.vbsp_bhop_sincemt - d;
+		if (d >= 0) e.vbsp_bhop_sincemt = e.run_movetick - d;
+		else { e.vbsp_bhop_on = world; e.vbsp_bhop_since = 0; }
+	}
 	SV_TASProjectTouch(e);  // P1082: ticks after this head are replaced
 	return TRUE;
 };

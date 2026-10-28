@@ -952,6 +952,8 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 	// state.txt keeps 4 decimals; restore the exact floats (only a rounding-sized correction).
 	setorigin(e, tpr_bo);
 	e.velocity = tpr_bv;
+	// P1085: a save holds no func_bhop dwell; start every load at none, not at the last one.
+	e.vbsp_bhop_on = world; e.vbsp_bhop_since = 0;
 	SV_TASHistoryReset(e);
 	SV_TASProjectReset(e);
 	SV_TASMark(e);
