@@ -32,7 +32,7 @@ UNIT = Path('/etc/systemd/system/ftesurf-tasrevd.service')
 PORT = 8089
 NGINX = '''location ^~ /api/tasrev/ {
     limit_except GET POST { deny all; }
-    client_max_body_size 4100k;
+    client_max_body_size 4800k;
     proxy_pass http://127.0.0.1:%d;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $remote_addr;
@@ -95,6 +95,9 @@ UMask=0077
 WorkingDirectory=%s
 ExecStart=/usr/bin/python3 -m gunicorn --bind 127.0.0.1:%d --workers 1 --threads 4 --timeout 30 --access-logfile /dev/null tasrevd_wsgi:app
 %sRestart=on-failure
+MemoryMax=384M
+CPUQuota=50%%
+Nice=10
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
