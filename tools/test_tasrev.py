@@ -89,7 +89,8 @@ def mutations(data):
         out.append(('supplyzero', put(at(sp, 'supply 0 %d' % head)), 'refused'))
         out.append(('supplypast', put(at(sp, 'supply %d %d' % (base + 1, head + 1))), 'refused'))
         out.append(('supplybefore', put(at(sp, 'supply %d %d' % (base, head))), 'refused'))
-        out.append(('supplyback', put(at(sp, 'supply %d %d' % (head, base + 1))), 'refused' if head > base + 1 else 'same'))
+        if head > base + 1:
+            out.append(('supplyback', put(at(sp, 'supply %d %d' % (head, base + 1))), 'refused'))
         out.append(('supplynone', put(at(sp, 'supply none')), 'same' if sw[1] == 'none' else ('refused' if root else 'different')))
         if not root:
             full = sw[1:] == [str(base + 1), str(head)]

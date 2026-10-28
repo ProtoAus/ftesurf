@@ -11,7 +11,7 @@ float tasp_cl_dev, tasp_cl_devtick, tasp_cl_ncp, tasp_cl_next, tasp_cl_asked;
 string tasp_cl_sha, tasp_cl_parsha, tasp_cl_mapcrc;
 float tasp_cl_supa, tasp_cl_supb, tasp_cl_signed, tasp_cl_signdrawn;
 vector tasp_cl_signat, tasp_cl_signsz;
-// P1090 engine (cl_receipt.c): `<pub> <sig>` over FTESURF-TASREV 1, or "".
+// P1090 engine (cl_receipt.c): `<pub> <sig> <code>` over FTESURF-TASREV 1, or "".
 string(string sha, string parent, string mapcrc, float from, float to) tasrev_sign = #0:tasrev_sign;
 
 void(float first) TASTimeline_Request;
@@ -35,7 +35,9 @@ void() TASProject_Event =
 void() TASProject_SignPress =
 {
 	local string p;
-	if (!cl_input_real || tasp_cl_sha == "" || tasp_cl_signed) return;
+	if (!cl_input_real || tasp_cl_sha == "") return;
+	if (!isserver()) { print("tas project: signing needs a game you host\n"); return; }
+	if (cltime < tasp_cl_next) { print("tas project: one request at a time; click again\n"); return; }
 	if (tasp_cl_supa <= 0)
 	{
 		print(tasp_cl_supa < 0 ? "tas project: saved before signing existed; save a new revision to sign\n"
@@ -44,8 +46,9 @@ void() TASProject_SignPress =
 	}
 	if (!checkbuiltin(tasrev_sign)) { print("tas project: this game cannot sign revisions (needs the P1090 engine)\n"); return; }
 	p = tasrev_sign(tasp_cl_sha, (tasp_cl_parsha != "") ? tasp_cl_parsha : "-", tasp_cl_mapcrc, tasp_cl_supa, tasp_cl_supb);
-	if (tokenize(p) != 2) { print("tas project: the game would not sign this revision\n"); return; }
-	localcmd(sprintf("p1 cmd tas project signed %s %s %s\n", tasp_cl_sha, argv(0), argv(1)));
+	if (tokenize(p) != 3) { print("tas project: the game would not sign this revision\n"); return; }
+	tasp_cl_next = cltime + 0.5;
+	localcmd(sprintf("p1 cmd tas project signed %s %s %s %s\n", tasp_cl_sha, argv(2), argv(0), argv(1)));
 };
 
 // tas project ... / tas cp ...: forwarded word for word; names are a-z 0-9 _ -.
@@ -319,15 +322,20 @@ void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw 
 	// P1090: acts on the press (TASProject_SignPress); the chip only draws.
 	if (tasp_cl_sha != "")
 	{
-		if (tasp_cl_signed) label = "Signed";
-		else if (tasp_cl_supa > 0) label = sprintf("Sign %.0f..%.0f", tasp_cl_supa, tasp_cl_supb);
-		else label = "Nothing to sign";
+		if (!isserver()) label = "Sign: host the game";
+		else if (tasp_cl_supa <= 0) label = "Nothing to sign";
+		else label = sprintf("%s %.0f..%.0f", tasp_cl_signed ? "Signed" : "Sign", tasp_cl_supa, tasp_cl_supb);
 		Profile_Chip("tasp_sign",at+[(width+6)*2/3,0,0],chip,label,tsz,tasp_cl_signed);
 		tasp_cl_signat = at+[(width+6)*2/3,0,0]; tasp_cl_signsz = chip; tasp_cl_signdrawn = cltime;
 	}
 	at_y = at_y + row + hint;
-	sui_text(at,[hint,hint],current ? "Warm input history; the shared world is NOT rewound." :
-		"Refresh after execution. Undo keeps eight edits; a project keeps them on disk.",SUI_THEME_MUTED,1,0);
+	// P1090: what a Sign press attests, parent included, in place of the hint.
+	if (tasp_cl_sha != "" && tasp_cl_supa > 0)
+		label = sprintf("Sign attests revision %s %s, ticks %.0f..%.0f", substring(tasp_cl_sha, 0, 8),
+			(tasp_cl_parsha != "") ? strcat("over ", substring(tasp_cl_parsha, 0, 8)) : "(a new line)", tasp_cl_supa, tasp_cl_supb);
+	else label = current ? "Warm input history; the shared world is NOT rewound." :
+		"Refresh after execution. Undo keeps eight edits; a project keeps them on disk.";
+	sui_text(at,[hint,hint],label,SUI_THEME_MUTED,1,0);
 };
 
 // Console accessibility also drives the actual table actions in socket checks.

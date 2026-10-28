@@ -13,14 +13,17 @@ The hash is a chain: h0 = sha256("FTESURF-TASREV-CANON 1"), h = sha256(h + "\\n"
 over the canonical lines -- saved, revision, origin, parent and revsha left out, and `base`
 without its local save id. Keep this file and the QuakeC in step.
 
-P1090: version 2 adds `supply none|<first> <last>`, the ticks the revision supplies over its
-parent (a root: every tick), and a project's .tasrev file holds its author statement:
-`tasrev 1 sha parent|- mapcrc first last pub sig`, an Ed25519 signature (the player's fskey,
-engine cl_receipt.c) over statement()'s text.
+P1090: version 2 adds `supply none|<first> <last>`, the first and last tick whose input row
+differs from the parent's (or that the parent lacks); a root supplies every tick. The game
+keeps each revision as rev/<sha>.tasp and its author statement as rev/<sha>.tasrev:
+`tasrev 1 sha parent|- mapcrc first last code pub sig`, an Ed25519 signature (the player's
+fskey, engine cl_receipt.c) over statement()'s text. `ticks` is what the signer claims: a
+span, so credit is the rows that differ from the parent (changed_ticks), never the span.
 
   tasrev.py FILE.tasp                  print the hash, or why the file is refused
   tasrev.py --check FILE.tasp          exit 1 unless accepted and its revsha line matches
   tasrev.py --sig FILE.tasrev [TASP]   verify the statement, and that it is that revision's
+  tasrev.py --supply CHILD PARENT      the child names the parent and its supply is exact
 """
 import hashlib, os, re, struct, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -123,7 +126,7 @@ def parse(data):
     h = hashlib.sha256(b'FTESURF-TASREV-CANON 1').hexdigest()
     stated, rank, ended = None, -1, False
     have, base, size, n, cps, names = set(), None, None, 0, [], set()
-    version, parentsha, mapcrc, supply = None, None, None, None
+    version, parentsha, mapcrc, supply, rows = None, None, None, None, []
     try:
         for line in text[:-1].split('\n'):
             rank, k, a = check_form(line, rank)
@@ -162,6 +165,7 @@ def parse(data):
                 if size is None or len(a) != 7 or n >= size: raise Refused('bad input row')
                 v = [num(x, -32768, 32767) for x in a]
                 if not 0 <= v[6] <= 7: raise Refused('bad input row %d' % (n + 1))
+                rows.append(tuple(v))
                 n += 1
             elif k == 'cp':
                 if len(cps) >= TASP_CPMAX: raise Refused('too many checkpoints')
@@ -202,24 +206,48 @@ def parse(data):
         supply = 'v1'
     elif supply:
         supply = (int(supply[0]), int(supply[1]))
-    return dict(h=h, stated=stated, version=version, parentsha=parentsha, mapcrc=mapcrc, supply=supply)
+    return dict(h=h, stated=stated, version=version, parentsha=parentsha, mapcrc=mapcrc, supply=supply,
+                base=int(base), rows=rows)
 
 
-def statement(sha, parent, mapcrc, first, last):
+def changed_ticks(child, parent):
+    """The ticks whose row in `child` differs from `parent`'s, or that `parent` has no row for
+    (both parse() results); rows are aligned by tick, so the two bases may differ."""
+    pb, pr = parent['base'], parent['rows']
+    out = []
+    for i, row in enumerate(child['rows']):
+        t = child['base'] + 1 + i
+        if not (pb < t <= pb + len(pr)) or pr[t - pb - 1] != row:
+            out.append(t)
+    return out
+
+
+def check_supply(child, parent):
+    """Refused unless `child` names `parent` and its supply is exactly the changed span."""
+    if child['parentsha'] != parent['h']:
+        raise Refused('the child does not name this parent')
+    ch = changed_ticks(child, parent)
+    want = (ch[0], ch[-1]) if ch else None
+    if child['supply'] != want:
+        raise Refused('supply %s, but the rows differ over %s' % (child['supply'], want))
+    return ch
+
+
+def statement(sha, parent, mapcrc, first, last, code):
     """The exact text the engine signs (CL_Receipt_TasRevSign)."""
-    return ('FTESURF-TASREV 1\nserver play.proto.bar:443\nsha %s\nparent %s\nmapcrc %s\nticks %d %d\n'
-            % (sha, parent, mapcrc, first, last)).encode('ascii')
+    return ('FTESURF-TASREV 1\nserver play.proto.bar:443\nsha %s\nparent %s\nmapcrc %s\nticks %d %d\ncode %s\n'
+            % (sha, parent, mapcrc, first, last, code)).encode('ascii')
 
 
 def check_sig(line, info=None):
     """A .tasrev line -> its public key (hex); raises Refused unless the signature verifies and,
     given parse() of the project, every field is that revision's."""
     w = line.split(' ')
-    if len(w) != 9 or w[:2] != ['tasrev', '1']:
+    if len(w) != 10 or w[:2] != ['tasrev', '1']:
         raise Refused('not a tasrev 1 line')
-    sha, parent, mapcrc, first, last, pub, sig = w[2:]
+    sha, parent, mapcrc, first, last, code, pub, sig = w[2:]
     if not (len(sha) == 64 and HEX.match(sha) and len(mapcrc) == 8 and HEX.match(mapcrc)
-            and (parent == '-' or (len(parent) == 64 and HEX.match(parent)))
+            and (parent == '-' or (len(parent) == 64 and HEX.match(parent))) and len(code) == 64 and HEX.match(code)
             and len(pub) == 64 and HEX.match(pub) and len(sig) == 128 and HEX.match(sig)):
         raise Refused("a field not in the signer's form")
     if not (canon_num(first, True) and canon_num(last, True)):
@@ -227,7 +255,7 @@ def check_sig(line, info=None):
     a, b = int(first), int(last)
     if not 1 <= a <= b <= MAXTICK:
         raise Refused('ticks out of range')
-    if not ed25519.verify(bytes.fromhex(pub), statement(sha, parent, mapcrc, a, b), bytes.fromhex(sig)):
+    if not ed25519.verify(bytes.fromhex(pub), statement(sha, parent, mapcrc, a, b, code), bytes.fromhex(sig)):
         raise Refused('the signature does not verify')
     if info is not None and (sha != info['h'] or parent != (info['parentsha'] or '-')
                              or mapcrc != info['mapcrc'] or (a, b) != info['supply']):
@@ -236,6 +264,13 @@ def check_sig(line, info=None):
 
 
 def main(argv):
+    if len(argv) == 4 and argv[1] == '--supply':
+        try:
+            ch = check_supply(*(parse(open(f, 'rb').read()) for f in argv[2:4]))
+        except Refused as e:
+            print('refused: %s' % e); return 1
+        print('supply exact: %d changed ticks%s' % (len(ch), ' %d..%d' % (ch[0], ch[-1]) if ch else ''))
+        return 0
     if len(argv) in (3, 4) and argv[1] == '--sig':
         with open(argv[2], 'rb') as f:
             raw = f.read()

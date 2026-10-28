@@ -14,6 +14,7 @@ string tasp_name[FS_MAXPLAYERS + 1], tasp_hash[FS_MAXPLAYERS + 1];
 string tasp_parent[FS_MAXPLAYERS + 1], tasp_cpnames[FS_MAXPLAYERS + 1];
 string tasp_revsha[FS_MAXPLAYERS + 1];   // P1089: this lineage's last saved/loaded revision hash
 string tasp_parsha[FS_MAXPLAYERS + 1];   // P1090: that revision's parentsha, "" for a root
+float *tasp_pbuf[FS_MAXPLAYERS + 1];     // P1090: that revision's own rows (tasp_pbase, tasp_pn)
 .float tasp_on, tasp_n, tasp_cap, tasp_base, tasp_baseid, tasp_rev, tasp_serial, tasp_synced;
 .float tasp_lasthead, tasp_filehead, tasp_ncp, tasp_load, tasp_stop, tasp_chead, tasp_cbase;
 .float tasp_ccount, tasp_cpi, tasp_dev, tasp_devtick, tasp_result, tasp_next;
@@ -23,10 +24,10 @@ string tasp_parsha[FS_MAXPLAYERS + 1];   // P1090: that revision's parentsha, ""
 .float tasp_cut;               // lowest tick a TAS go replaced since the last save/load
 .float tasp_gen;               // rec_rec_gen as this project last saw it
 .float tasp_parentrev;         // the parent project's revision when this one forked
-// P1090: the ticks the current revision supplies over its parent (0 none, -1 a version 1 file),
-// and the span of input rows changed since it (0 none) -- a bound, so a failed save that
-// rewrote rows only widens it.
-.float tasp_supa, tasp_supb, tasp_da, tasp_db, tasp_signed;
+// P1090: the ticks the current revision supplies over its parent (0 none, -1 a version 1 file).
+// The next save's supply is an exact diff against tasp_pbuf, whatever the working buffer went
+// through; tasp_lineserial is the attempt that revision belongs to.
+.float tasp_supa, tasp_supb, tasp_signed, tasp_pbase, tasp_pn, tasp_lineserial;
 
 // One file read into temporaries; a load installs them only after every check passed.
 float *tpr_buf;
@@ -90,11 +91,12 @@ void(entity e) SV_TASProjectReset =
 	e.tasp_result = e.tasp_dev = e.tasp_devtick = 0;
 	e.tasp_line = e.tasp_linemt = -1;
 	e.tasp_cut = 16000001; e.tasp_gen = e.tasp_parentrev = 0;
-	e.tasp_supa = e.tasp_supb = e.tasp_da = e.tasp_db = e.tasp_signed = 0;
+	e.tasp_supa = e.tasp_supb = e.tasp_signed = e.tasp_pn = e.tasp_lineserial = 0;
 	if (!s) return;
 	if (tasp_buf[s]) memfree(tasp_buf[s]);
 	if (tasp_cp[s]) memfree(tasp_cp[s]);
-	tasp_buf[s] = 0; tasp_cp[s] = 0;
+	if (tasp_pbuf[s]) memfree(tasp_pbuf[s]);
+	tasp_buf[s] = 0; tasp_cp[s] = 0; tasp_pbuf[s] = 0;
 	if (tasp_name[s]) strunzone(tasp_name[s]);
 	if (tasp_hash[s]) strunzone(tasp_hash[s]);
 	if (tasp_parent[s]) strunzone(tasp_parent[s]);
@@ -595,9 +597,9 @@ void(entity e, float line, float branch) SV_TASPAnchorLine =
 // last are also checked against the engine's own capture where the ring kept a row.
 float(entity e, float s, float last) SV_TASPHarvest =
 {
-	local float t, i, n, b, argc, w, mt, oldest, nb;
+	local float t, i, n, b, argc, w, mt, oldest;
 	local string l;
-	local vector meta, mv, an, bits, nm, na;
+	local vector meta, mv, an, bits;
 
 	tasp_why = "";
 	if (last <= e.tasp_synced) return TRUE;
@@ -631,19 +633,11 @@ float(entity e, float s, float last) SV_TASPHarvest =
 		if (mt >= 0 && stof(argv(2)) != mt + 1) { tasp_why = sprintf("the recorded moves do not line up at tick %.0f", t + 1); return FALSE; }
 		mt = stof(argv(2));
 		b = (t - e.tasp_base) * TAS_INPUT_STRIDE;
-		nm = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
-		na = [SV_TASPWord(stof(argv(7))), SV_TASPWord(stof(argv(8))), SV_TASPWord(stof(argv(9)))];
-		nb = stof(argv(10));
-		// P1090: a row past the old end, or unlike the one it replaces, widens the changed span.
-		if (t - e.tasp_base >= e.tasp_n || nm != [tasp_buf[s][b], tasp_buf[s][b+1], tasp_buf[s][b+2]] ||
-			na != [tasp_buf[s][b+3], tasp_buf[s][b+4], tasp_buf[s][b+5]] || nb != tasp_buf[s][b+6])
-		{
-			if (!e.tasp_da || t + 1 < e.tasp_da) e.tasp_da = t + 1;
-			if (t + 1 > e.tasp_db) e.tasp_db = t + 1;
-		}
-		tasp_buf[s][b] = nm_x; tasp_buf[s][b+1] = nm_y; tasp_buf[s][b+2] = nm_z;
-		tasp_buf[s][b+3] = na_x; tasp_buf[s][b+4] = na_y; tasp_buf[s][b+5] = na_z;
-		tasp_buf[s][b+6] = nb;
+		tasp_buf[s][b] = stof(argv(4)); tasp_buf[s][b+1] = stof(argv(5)); tasp_buf[s][b+2] = stof(argv(6));
+		tasp_buf[s][b+3] = SV_TASPWord(stof(argv(7)));
+		tasp_buf[s][b+4] = SV_TASPWord(stof(argv(8)));
+		tasp_buf[s][b+5] = SV_TASPWord(stof(argv(9)));
+		tasp_buf[s][b+6] = stof(argv(10));
 		t = t + 1; i = i + 1;
 		if ((t - e.tasp_base) % 16 == 0 || t == last)
 		if (t >= oldest)
@@ -1024,21 +1018,84 @@ float(entity e, float head) SV_TASPOldestBase =
 
 /*
   P1090: the author statement (TAS plan 5.2). The client's tasrev_sign (engine, cl_receipt.c)
-  signs FTESURF-TASREV 1 over sha, parent, mapcrc and `ticks <supply>`; the answer is kept
-  beside the project as one line, `tasrev 1 sha parent|- mapcrc first last pub sig`, which is
-  every field of the statement. tools/tasrev.py rebuilds and checks it.
+  signs FTESURF-TASREV 1 over sha, parent, mapcrc, `ticks <supply>` and the game code's
+  sha256. Every revision saved or loaded is kept as rev/<sha>.tasp, and its statement as
+  rev/<sha>.tasrev, one line `tasrev 1 sha parent|- mapcrc first last code pub sig`: every
+  field of the statement. The named <name>.tasp is only the working copy. tools/tasrev.py
+  rebuilds and checks a statement, and a child's supply against its kept parent.
 */
-string(string n) SV_TASPSigPath = { return sprintf("data/tasproj/%s/%s.tasrev", mapname, n); };
+string(string sha, string ext) SV_TASPRevPath = { return sprintf("data/tasproj/%s/rev/%s.%s", mapname, sha, ext); };
 
-float(string n, string sha) SV_TASPSignedFor =
+// A line copy of a file the strict reader accepted, unless one is kept already.
+float(string src, string sha) SV_TASPKeep =
+{
+	local filestream f, o;
+	local string l, dst, tmp;
+	local float ok;
+	if (sha == "") return FALSE;
+	f = fopen(SV_TASPRevPath(sha, "tasp"), FILE_READ);
+	if (f >= 0) { fclose(f); return TRUE; }
+	f = fopen(src, FILE_READ);
+	if (f < 0) return FALSE;
+	dst = strzone(SV_TASPRevPath(sha, "tasp")); tmp = strzone(strcat(dst, ".new"));
+	o = fopen(tmp, FILE_WRITE);
+	ok = (o >= 0);
+	if (ok)
+	{
+		while ((l = fgets(f)) != "") fputs(o, strcat(l, "\n"));
+		fclose(o);
+		ok = (frename(tmp, dst) == 0);
+		if (!ok) fremove(tmp);
+	}
+	fclose(f);
+	strunzone(dst); strunzone(tmp);
+	return ok;
+};
+
+float(string sha) SV_TASPSignedFor =
 {
 	local filestream f;
 	local string l;
-	f = fopen(SV_TASPSigPath(n), FILE_READ);
+	f = fopen(SV_TASPRevPath(sha, "tasrev"), FILE_READ);
 	if (f < 0) return FALSE;
 	l = fgets(f);
 	fclose(f);
-	return (tokenize(l) == 9 && argv(0) == "tasrev" && argv(1) == "1" && argv(2) == sha);
+	return (tokenize(l) == 10 && argv(0) == "tasrev" && argv(1) == "1" && argv(2) == sha);
+};
+
+// The slot's buffer becomes the current revision's own rows.
+void(entity e, float s) SV_TASPParentKeep =
+{
+	local float i, n;
+	if (tasp_pbuf[s]) memfree(tasp_pbuf[s]);
+	n = e.tasp_n * TAS_INPUT_STRIDE;
+	tasp_pbuf[s] = (float*)memalloc(max(1, n) * 4);
+	e.tasp_pn = 0;
+	if (!tasp_pbuf[s]) return;
+	for (i = 0; i < n; i = i + 1) tasp_pbuf[s][i] = tasp_buf[s][i];
+	e.tasp_pbase = e.tasp_base; e.tasp_pn = e.tasp_n; e.tasp_lineserial = e.rec_rec_serial;
+};
+
+// What the revision being saved supplies: from the first to the last tick whose row differs
+// from the parent's own (or that the parent has no row for); a root supplies every tick.
+void(entity e, float s, float head) SV_TASPSupply =
+{
+	local float t, b, pb, k, d, a, z;
+	if (tasp_revsha[s] == "") { e.tasp_supa = e.tasp_base + 1; e.tasp_supb = head; return; }
+	a = z = 0;
+	for (t = e.tasp_base + 1; t <= head; t = t + 1)
+	{
+		b = (t - e.tasp_base - 1) * TAS_INPUT_STRIDE;
+		d = TRUE;
+		if (t > e.tasp_pbase && t <= e.tasp_pbase + e.tasp_pn)
+		{
+			pb = (t - e.tasp_pbase - 1) * TAS_INPUT_STRIDE;
+			d = FALSE;
+			for (k = 0; k < 7; k = k + 1) if (tasp_buf[s][b + k] != tasp_pbuf[s][pb + k]) d = TRUE;
+		}
+		if (d) { if (!a) a = t; z = t; }
+	}
+	e.tasp_supa = a; e.tasp_supb = z;
 };
 
 void(entity e) SV_TASPSupplyNote =
@@ -1119,7 +1176,6 @@ void(entity e, string name, float force) SV_TASProjectSave =
 		if (tasp_cp[s]) memfree(tasp_cp[s]);
 		tasp_buf[s] = 0; tasp_cp[s] = 0;
 		e.tasp_n = e.tasp_cap = e.tasp_ncp = 0;
-		e.tasp_da = e.tasp_db = 0;      // a root: every harvested row is new
 		if (tasp_cpnames[s]) strunzone(tasp_cpnames[s]);
 		tasp_cpnames[s] = "";
 		e.tasp_on = 0;
@@ -1163,20 +1219,25 @@ void(entity e, string name, float force) SV_TASProjectSave =
 	tasp_name[s] = name;
 	if (tasp_parent[s]) strunzone(tasp_parent[s]);
 	tasp_parent[s] = parent;
-	// P1089 review 1: only a save still on the project's line names it as parent.
-	if (!attached && tasp_revsha[s] != "") { strunzone(tasp_revsha[s]); tasp_revsha[s] = ""; }
-	// P1090: what this revision supplies over its parent -- the changed span, up to the head.
-	if (e.tasp_da && e.tasp_da <= head) { e.tasp_supa = e.tasp_da; e.tasp_supb = min(e.tasp_db, head); }
-	else e.tasp_supa = e.tasp_supb = 0;
+	// P1090 review 1: the last revision stays the parent through a detach in its own attempt
+	// (P1089 review 1 cleared it on any detach, which made a stopped load's rows a root's).
+	if (!(tasp_pbuf[s] && e.tasp_lineserial == e.rec_rec_serial) && tasp_revsha[s] != "")
+	{
+		strunzone(tasp_revsha[s]); tasp_revsha[s] = "";
+	}
+	SV_TASPSupply(e, s, head);
 	if (!SV_TASPWrite(e, s, name, parent))
 	{
 		sprint(e, PRINT_HIGH, "tas project: cannot write the project file\n");
-		e.tasp_on = 0; return;
+		e.tasp_on = 0; SV_TASProjectEvent(e); return;
 	}
 	e.tasp_on = 1; e.tasp_synced = head; e.tasp_lasthead = head; e.tasp_filehead = head;
 	e.tasp_result = 0; e.tasp_dev = e.tasp_devtick = 0;
 	e.tasp_cut = 16000001; e.tasp_gen = e.rec_rec_gen;
-	e.tasp_da = e.tasp_db = e.tasp_signed = 0;
+	e.tasp_signed = 0;
+	SV_TASPParentKeep(e, s);
+	if (!SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s]))
+		sprint(e, PRINT_HIGH, "tas project: could not keep this revision under its hash; it cannot be signed\n");
 	sprint(e, PRINT_HIGH, sprintf("tas project: saved %s rev %.0f: base save #%.0f at tick %.0f, inputs to tick %.0f, %.0f checkpoints\n",
 		name, e.tasp_rev, e.tasp_baseid, e.tasp_base, head, e.tasp_ncp));
 	SV_TASPSupplyNote(e);
@@ -1284,7 +1345,8 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 		sprint(e, PRINT_HIGH, "tas project: this file was changed after it was saved (its revsha does not match)\n");
 	tasp_parsha[s] = tpr_parsha; tpr_parsha = "";   // P1090
 	e.tasp_supa = tpr_supa; e.tasp_supb = tpr_supb;
-	e.tasp_signed = SV_TASPSignedFor(name, tasp_revsha[s]);
+	e.tasp_signed = SV_TASPSignedFor(tasp_revsha[s]);
+	named = (tpr_revsha == tasp_revsha[s]);        // a file that states its own hash is kept by it
 	e.tasp_n = tpr_n; e.tasp_cap = tpr_size; e.tasp_ncp = tpr_ncp; e.tasp_rev = tpr_rev;
 	e.tasp_base = tpr_base; e.tasp_baseid = tpr_baseid; e.tasp_bo = tpr_bo; e.tasp_bv = tpr_bv;
 	e.tasp_on = 1; e.tasp_load = 1; e.tasp_stop = stop; e.tasp_cpi = 0;
@@ -1293,6 +1355,8 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 	e.tasp_cut = stop;   // ticks after a checkpoint stop belong to the file's line, not this one
 	e.tasp_gen = e.rec_rec_gen; e.tasp_parentrev = tpr_parentrev;
 	SV_TASPReadFree();
+	SV_TASPParentKeep(e, s);
+	if (named) SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s]);
 	// A body that was not in TAS mode could not have the rows checked before the load.
 	bad = SV_TASPValidate(e, tasp_buf[s], e.tasp_n);
 	if (bad) { SV_TASPAbort(e, sprintf("input row %.0f refused by the engine", bad)); return; }
@@ -1423,25 +1487,36 @@ void(entity e, string sub, string a1, string a2, float argc) SV_TASCheckpointCom
 	sprint(e, PRINT_HIGH, sprintf("tas cp: %s at tick %.0f (written with the next project save)\n", a1, tasp_cp[s][k]));
 };
 
-// P1090: the client's signature over the current revision. Not checked here (QC has no
-// Ed25519); kept only for this revision, with the statement's other fields from the server.
-void(entity e, string sha, string pub, string sig) SV_TASProjectSigned =
+// P1090: the host's own client's signature over the current revision. Not checked here (QC
+// has no Ed25519; tools/tasrev.py does); the statement's other fields are the server's.
+void(entity e, string sha, string code, string pub, string sig) SV_TASProjectSigned =
 {
 	local float s;
 	local filestream f;
 	s = SV_TASPSlot(e);
 	if (!s || !SV_TASPLocalOnly(e)) return;
+	if (strstrofs(infokey(e, "ip"), "LoopBack", 0) < 0)
+	{
+		sprint(e, PRINT_HIGH, "tas project: only the host's own client keeps signatures here\n");
+		return;
+	}
 	if (!e.tasp_on || sha != tasp_revsha[s] || e.tasp_supa <= 0)
 	{
 		sprint(e, PRINT_HIGH, "tas project: that is not the current revision, or it supplies nothing; nothing kept\n");
 		return;
 	}
-	if (!SV_TASPHex(pub, 64) || !SV_TASPHex(sig, 128)) { sprint(e, PRINT_HIGH, "tas project: not a signature; nothing kept\n"); return; }
-	f = fopen(SV_TASPSigPath(tasp_name[s]), FILE_WRITE);
+	if (!SV_TASPHex(code, 64) || !SV_TASPHex(pub, 64) || !SV_TASPHex(sig, 128))
+	{
+		sprint(e, PRINT_HIGH, "tas project: not a signature; nothing kept\n"); return;
+	}
+	f = fopen(SV_TASPRevPath(sha, "tasp"), FILE_READ);
+	if (f < 0) { sprint(e, PRINT_HIGH, "tas project: this revision is not kept under its hash; save it again to sign\n"); return; }
+	fclose(f);
+	f = fopen(SV_TASPRevPath(sha, "tasrev"), FILE_WRITE);
 	if (f < 0) { sprint(e, PRINT_HIGH, "tas project: cannot write the signature file\n"); return; }
-	fputs(f, sprintf("tasrev 1 %s %s %s %.0f %.0f %s ", sha, (tasp_parsha[s] != "") ? tasp_parsha[s] : "-",
-		infokey(world, "*mapcrc"), e.tasp_supa, e.tasp_supb, pub));
-	fputs(f, strcat(sig, "\n"));
+	fputs(f, sprintf("tasrev 1 %s %s %s %.0f %.0f ", sha, (tasp_parsha[s] != "") ? tasp_parsha[s] : "-",
+		infokey(world, "*mapcrc"), e.tasp_supa, e.tasp_supb));
+	fputs(f, sprintf("%s %s %s\n", code, pub, sig));
 	fclose(f);
 	e.tasp_signed = 1;
 	sprint(e, PRINT_HIGH, sprintf("tas project: signed %s rev %.0f, ticks %.0f..%.0f, key %s\n", tasp_name[s], e.tasp_rev,
@@ -1449,7 +1524,7 @@ void(entity e, string sha, string pub, string sig) SV_TASProjectSigned =
 	SV_TASProjectEvent(e);
 };
 
-void(entity e, float argc, string action, string sub, string a1, string a2, string a3) SV_TASProjectArgs =
+void(entity e, float argc, string action, string sub, string a1, string a2, string a3, string a4) SV_TASProjectArgs =
 {
 	if (action == "cp") { SV_TASCheckpointCommand(e, sub, a1, a2, argc); return; }
 	if (sub == "save" && argc >= 3 && argc <= 5)
@@ -1473,14 +1548,14 @@ void(entity e, float argc, string action, string sub, string a1, string a2, stri
 		{
 			sprint(e, PRINT_HIGH, sprintf("tas project hash %s: %s\n", a1, tpr_h));
 			if (tpr_supa > 0) sprint(e, PRINT_HIGH, sprintf("tas project supply %s: ticks %.0f..%.0f, %s\n", a1, tpr_supa, tpr_supb,
-				SV_TASPSignedFor(a1, tpr_h) ? "signed" : "unsigned"));
+				SV_TASPSignedFor(tpr_h) ? "signed" : "unsigned"));
 			else sprint(e, PRINT_HIGH, sprintf("tas project supply %s: %s\n", a1, tpr_supa ? "not recorded (version 1)" : "none"));
 		}
 		else sprint(e, PRINT_HIGH, sprintf("tas project hash %s: refused: %s\n", a1, tpr_why));
 		SV_TASPReadFree();
 		return;
 	}
-	if (sub == "signed" && argc == 6) { SV_TASProjectSigned(e, a1, a2, a3); return; }   // P1090, from the panel
+	if (sub == "signed" && argc == 7) { SV_TASProjectSigned(e, a1, a2, a3, a4); return; }   // P1090, from the panel
 	if (sub == "event" && argc == 3) { SV_TASProjectEvent(e); return; }  // the panel's quiet status
 	if (sub == "close" && argc == 3 && !e.tasp_load)
 	{
@@ -1509,7 +1584,7 @@ void(entity e, float argc, string action, string sub, string a1, string a2, stri
 // tas project ... | tas cp ...: arguments are zoned first; saves and project files tokenize.
 void(entity e, float argc) SV_TASProjectCommand =
 {
-	local string action, sub, a1, a2, a3;
+	local string action, sub, a1, a2, a3, a4;
 	if (!SV_TASPSlot(e)) return;
 	if (time < e.tasp_next)
 	{
@@ -1517,7 +1592,8 @@ void(entity e, float argc) SV_TASProjectCommand =
 		return;
 	}
 	e.tasp_next = time + 0.25;
-	action = strzone(argv(1)); sub = strzone(argv(2)); a1 = strzone(argv(3)); a2 = strzone(argv(4)); a3 = strzone(argv(5));
-	SV_TASProjectArgs(e, argc, action, sub, a1, a2, a3);
-	strunzone(action); strunzone(sub); strunzone(a1); strunzone(a2); strunzone(a3);
+	action = strzone(argv(1)); sub = strzone(argv(2)); a1 = strzone(argv(3)); a2 = strzone(argv(4));
+	a3 = strzone(argv(5)); a4 = strzone(argv(6));
+	SV_TASProjectArgs(e, argc, action, sub, a1, a2, a3, a4);
+	strunzone(action); strunzone(sub); strunzone(a1); strunzone(a2); strunzone(a3); strunzone(a4);
 };
