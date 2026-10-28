@@ -30,6 +30,9 @@
 - The TAS panel shows how far ahead or behind you are at the same place on that line, and your speed difference there.
 - Stepping back in TAS no longer erases your whole trail; it keeps the line up to the tick you went back to.
 
+### P1086 Servers can no longer run commands in your game
+- Several old engine paths let a server you join run console commands in your game as if you had typed them, or change files your game loads at startup. They are closed: test input, config files, demo names, saved games and a few settings now ignore what a server sends. Normal play is unchanged.
+
 ### P1085 Bhop blocks time your stay in ticks
 - A bhop block now sends you back after a fixed number of ticks on it (7 at 66 tick, 10 at 100 tick) instead of after a tenth of a second of server time, which could vary by a tick with the network.
 - Reloading a TAS project on a bhop map now reproduces it exactly. Pausing TAS while standing on a block no longer sends you back on your next step.

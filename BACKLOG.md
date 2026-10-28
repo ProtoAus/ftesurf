@@ -1,5 +1,35 @@
 # BACKLOG.md
 
+## Server text and server code reaching local commands (left open by P1086)
+
+P1086's review rounds (28 Oct) closed the routes listed in ENGINE.txt's P1086 line. Every
+round found more, so the class is not closed; details in the private tree's
+SECURITY-input-journal-stufftext.md. Falsifier for any item: the subject prints its
+refusal, or the local-only canary `in_journal_synth` does not run, with the pre-P1086
+exe as control.
+- Unconfirmed lead: the particle-set loader (`p_script.c` P_LoadParticleSet) picks
+  RESTRICT_LOCAL unless Cmd_FromGamecode(), which is false for CSQC.
+- Windows device names: FS_GetCleanPath blocks con/prn/nul/COMn/LPTn but not aux or
+  the superscript-digit forms.
+- Click-to-run: console links (`keys.c` ~1578-1796), the scoreboard kick/ban menu and
+  the server browser (`m_master.c`) put server text into local commands unquoted when
+  the player clicks them.
+- CSQC `cvar_set` outlives the server for unprotected cvars, e.g. `rec_hid` (QC) and
+  `in_journal_maxkb`; stufftext-set ones are restored on disconnect. A CSQC-set
+  `tp_autostatus` is also expanded at local level in `say_team`, so `$` cvars can be
+  sent to the server.
+- csprogs can write anything under `data/` (the QC sandbox), including archived
+  journals and `.view` sidecars; nothing execs from there.
+- `menu_cmd` has no level check (inert: our menu QC defines no GameCommand);
+  `skel_generateragdoll` can write `cfg/<model>.doll` (nothing execs `.doll`).
+- On a server's own runs, stuffed `in_journal_begin`/`end`/`note` can drop, discard or
+  annotate the open journal; receipts are bound to the issuing server.
+- Savegame loader quirks (round 8): an over-long first line of a non-save file now ends
+  the game via SV_Error instead of "Unable to load" (savegame.c, the version read); the
+  player loop's SV_Error leaks the file handle like the existing error sites.
+- Build: the plugin step's zip packaging failed on four of nine `-Engine -Full` builds
+  ("zip I/O error: Device or resource busy", `-Jobs 8` and `4`); exes always built.
+
 ## maps/tiers.txt goes stale when mapwatch adds a map (P1078)
 
 - Sites: `tools/maptiers.py` (PC only: it reads the local Momentum install's
