@@ -21,6 +21,11 @@
 
 ## next
 
+### P1092 TAS: best boarding angle and launch flick
+- `tas optimize <ticks> <left|right> board` also finds the best heading to start the turn from (up to 30 degrees either way), for the angle you board a ramp at.
+- `flick [ticks]` adds a faster turn over the last ticks (4 unless you give 1..32), for the launch off the end of a ramp. Use both with `board flick`.
+- Each search starts with the plain best turn, so its result is never slower than that; the console says which angle and flick it chose.
+
 ### P1090 TAS: sign the inputs you supplied
 - Each saved TAS project revision now records which ticks it changed from the revision it came from. A first save covers all of its ticks; a save that changes nothing records none.
 - Sign in the TAS panel signs the current revision with your key, saying you supplied those ticks. It signs only on a real click, in a game you host, for a revision you saved; the panel shows the revision, its parent and the ticks first.

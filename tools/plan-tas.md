@@ -178,7 +178,9 @@ Status 28 Oct: P1087 keeps the line a TAS go cut off as a pink comparison line w
 on your clock and a time/speed delta at your place (Lex chose ghost + deltas first). P1088 is
 the first optimizer: one constant turn rate for exit speed over up to 128 ticks (Lex's goals
 were total time, exit speed, immediate speed, and per ramp: constant strafe rate, boarding
-angle, end-of-ramp flick). BACKLOG "TAS optimizer (P1088)" holds the rest.
+angle, end-of-ramp flick). P1092 (29 Oct) adds the boarding angle (`board`, a start-yaw
+offset) and the flick (`flick [k]`, a faster rate over the last k ticks) as further 1-D
+searches after P1088's. BACKLOG "TAS optimizer (P1088, P1092)" holds the rest.
 
 Overlay original/edited ghosts and trajectories; show speed, time delta, collisions and
 invalid sections. A requested path is a solver target, not permission to set body state.

@@ -2296,7 +2296,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 
 float(string cmd) CSQC_ConsoleCommand =
 {
-	local float cmdargc, tsseat, tsvalue;
+	local float cmdargc, tsseat, tsvalue, tsi;
+	local string tsline;
 
 	// Patch 617: a QC error inside CL_InputEvent would leave this set, and the
 	// next thing to run is very likely a command.  Nothing real is nested here.
@@ -2345,14 +2346,20 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas %s %g %.0f\n", tsseat + 1, argv(1), tsvalue, run_tas_request[tsseat]));
 			}
 		}
-		else if (cmdargc == 4 && !strcmp(argv(1), "optimize"))     // P1088
+		else if (cmdargc >= 4 && cmdargc <= 7 && !strcmp(argv(1), "optimize"))     // P1088; P1092 board/flick
 		{
 			tsvalue = stof(argv(2));
+			tsline = "";
+			for (tsi = 4; tsi < cmdargc; tsi = tsi + 1)    // the server checks their order; only known words pass
+				if (argv(tsi) == "board" || argv(tsi) == "flick" || (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= 32
+				    && argv(tsi) == ftos(stof(argv(tsi)))))
+					tsline = strcat(tsline, " ", argv(tsi));
+				else tsline = "!";
 			if (!(tsvalue >= 4 && tsvalue <= 128 && tsvalue == floor(tsvalue)) ||
-			    (strcmp(argv(3), "left") && strcmp(argv(3), "right")))
-				print("tas optimize <ticks 4..128> <left|right>\n");
+			    (strcmp(argv(3), "left") && strcmp(argv(3), "right")) || substring(tsline, 0, 1) == "!")
+				print("tas optimize <ticks 4..128> <left|right> [board] [flick [ticks 1..32]]\n");
 			else
-				localcmd(sprintf("p%g cmd tas optimize %g %s\n", tsseat + 1, tsvalue, argv(3)));
+				localcmd(sprintf("p%g cmd tas optimize %g %s%s\n", tsseat + 1, tsvalue, argv(3), tsline));
 		}
 		else if (cmdargc == 3 && !strcmp(argv(1), "speed"))
 		{
@@ -2365,7 +2372,7 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas speed %.9g\n", tsseat + 1, tsvalue));
 		}
 		else
-			print("tas: menu | timeline | undo/redo | mouse [on/off] | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | optimize ticks left/right | status | speed 0.1..1\n");
+			print("tas: menu | timeline | undo/redo | mouse [on/off] | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | optimize ticks left/right [board] [flick [k]] | status | speed 0.1..1\n");
 		return TRUE;
 	}
 	if (!strcmp(argv(0), "host_timescale"))
