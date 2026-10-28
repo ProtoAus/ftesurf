@@ -17,10 +17,12 @@ change, the game's own reader and verifier (tools/tasrev.py).
 
 Refusals answer 200 with `ok: 0` (the game's HTTP client keeps no body otherwise); 503 means
 "cannot tell right now, try again" (the account list or the released-code list unreadable, or
-the store busy), never a verdict. Budgets, counted before any work (a refused attempt counts):
-a peer 200 uploads and 64 MB a day, everyone 5000 and 1 GB; a peer 60 reads a minute (a large
-credit counts one more for each 32 KB it sends); 2 GB of revisions, 200000 statements, 32 a
-revision from unlinked keys, 4 a key a revision. Two uploads parse, and two credits resolve, at
+the store busy), never a verdict. Budgets, counted before any work (an attempt of the right size
+and type counts even when refused): a peer 200 uploads and 64 MB a day -- the bytes a revision
+keeps (its rows and credit too) count, not just what was sent -- and everyone 50000 and 1 GB; a
+peer 60 reads a minute (a large credit counts one more for each 32 KB it sends); 2 GB stored, 200000
+statements from unlinked keys, 32 a revision from unlinked keys, 4 a key a revision. A statement
+whose revision has not arrived within 7 days is dropped. Two uploads parse, and two credits resolve, at
 once; resolved credit is cached as text within 16 MB. The unit runs with MemoryMax=384M,
 CPUQuota=50%, Nice=10.
 
@@ -33,13 +35,14 @@ row equals the parent's takes the parent's supplier. A changed tick takes the su
 nearest ancestor holding the same row there (a revert credits whoever first supplied it); the
 search visits only ancestors that changed that tick (up to 4096 ancestors, 1M rows compared). If
 none holds it the tick is this revision's own, except at or before the parent's base (never a
-child's). A revision with the same map, base and rows as an earlier one takes that one's credit
-unless the earlier one descends from it. Where the service cannot see -- an unseen parent or
+child's). A revision with the same map, base and rows as an earlier one takes the earliest such
+one's credit unless that one descends from it. Where the service cannot see -- an unseen parent or
 ancestor, a cut search, an earlier copy whose chain has a gap -- or the credit would be circular
-(a copy of a revision derived from it), the answer is `unknown-ancestry`. An arrival queues every
-descendant, and a revision whose credit changes queues its descendants and later copies; each
-POST works through the queue for half a second (`tasrevd.py --store ... recompute` empties it,
-`rebuild` recomputes every revision).
+(a copy of a revision derived from it), the answer is `unknown-ancestry`. An arrival, and a
+revision whose credit or changes move, queue every revision that may read it -- descendants, the
+later copies of each, and those copies' descendants, at most 20000 -- and nothing else does, so the
+queue settles; each POST works through it for half a second, and a waiting revision reads
+`pending` (`tasrevd.py --store ... recompute` empties it, `rebuild` recomputes every revision).
 
 A supplier revision's ticks go to the first statement about it that names its fields, spans the
 tick, names a released csprogs and ARRIVED BEFORE THE REVISION ITSELF; others are skipped. The

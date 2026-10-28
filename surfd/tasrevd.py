@@ -56,16 +56,17 @@ UNKNOWN = 'unknown-ancestry'
 WALK_MAX, WORK_MAX = 4096, 1000000  # ancestors visited, rows compared, per credit computation (Pi: ~1 s)
 DRAIN_SECONDS = 0.5                 # queue work per POST
 PEER_ITEMS, PEER_BYTES = 200, 64 * 1024 ** 2          # a peer's day of uploads
-DAY_ITEMS, DAY_BYTES = 5000, 1024 ** 3                 # everyone's day
+DAY_ITEMS, DAY_BYTES = 50000, 1024 ** 3                # everyone's day (bytes bound the work; items the spam)
 PEER_READS = 60                     # a peer's reads a minute; a large credit costs one more a 32 KB
 CACHE_BYTES, CACHE_ONE = 16 * 1024 ** 2, 4 * 1024 ** 2   # resolved credit kept as JSON text
 HEAVY = 2                           # parses and credit resolutions at once (each tens of MB at 96000 rows)
-STORE_CAP, STATEMENT_CAP, PER_REVISION, PER_KEY = 2 * 1024 ** 3, 200000, 32, 4
+STORE_CAP, STATEMENT_CAP, PER_REVISION, PER_KEY = 2 * 1024 ** 3, 200000, 32, 4   # bytes stored; unlinked statements
+ORPHAN_DAYS = 7                     # a statement whose revision never arrives is dropped after this
 SQL = '''
 CREATE TABLE IF NOT EXISTS revisions(sha TEXT PRIMARY KEY, seq INTEGER NOT NULL UNIQUE, map TEXT NOT NULL,
  mapcrc TEXT NOT NULL, parentsha TEXT, version TEXT NOT NULL, base INTEGER NOT NULL, head INTEGER NOT NULL,
  supply_a INTEGER, supply_b INTEGER, first_seen INTEGER NOT NULL, size INTEGER NOT NULL, inputs TEXT NOT NULL,
- rows BLOB NOT NULL, changed TEXT, credit TEXT NOT NULL, body BLOB NOT NULL);
+ rows BLOB NOT NULL, changed TEXT, credit TEXT NOT NULL, body BLOB NOT NULL, stored INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS revisions_map ON revisions(map, seq);
 CREATE INDEX IF NOT EXISTS revisions_parent ON revisions(parentsha);
 CREATE INDEX IF NOT EXISTS revisions_inputs ON revisions(inputs, seq);
@@ -95,7 +96,7 @@ def load_tasrev():
 @contextmanager
 def connect(path, readonly=False):
     uri = Path(path).resolve().as_uri() + ('?mode=ro' if readonly else '?mode=rw')
-    db = sqlite3.connect(uri, uri=True, timeout=5.0, isolation_level=None)
+    db = sqlite3.connect(uri, uri=True, timeout=15.0, isolation_level=None)
     db.row_factory = sqlite3.Row
     try:
         yield db
@@ -135,6 +136,14 @@ def released_codes(path):
     except (OSError, UnicodeDecodeError): return None
     codes = frozenset(w.lower() for w in text.split() if HEX64.fullmatch(w.lower()))
     return codes or None
+
+
+def jdump(x):
+    return json.dumps(x, separators=(',', ':')) if x is not None else None
+
+
+def stored_bytes(body, rows, credit, changed):
+    return len(body) + len(rows) + len(credit) + len(changed or '')
 
 
 def next_seq(db):
@@ -177,17 +186,38 @@ def intersect(x, y):
     return out
 
 
+def subtract(x, y):
+    """Sorted, disjoint range lists: the ticks of x not in y."""
+    out, j = [], 0
+    for a, z in x:
+        cur = a
+        while j < len(y) and y[j][1] < cur: j += 1
+        k = j
+        while k < len(y) and y[k][0] <= z and cur <= z:
+            if y[k][0] > cur: out.append([cur, y[k][0] - 1])
+            cur = max(cur, y[k][1] + 1)
+            k += 1
+        if cur <= z: out.append([cur, z])
+    return out
+
+
 def diff_ranges(blob, base, pblob, pbase):
-    """Ticks where the two revisions' rows differ, one holding a row and the other not included."""
-    lo = min(base, pbase) + 1
-    hi = max(base + len(blob) // 14, pbase + len(pblob) // 14)
-    changed, t = [], lo
-    while t <= hi:
-        e = min(hi, t + 63)
-        a, b = span(blob, base, t, e), span(pblob, pbase, t, e)
-        if a is None or a != b:
-            changed += [x for x in range(t, e + 1) if row_at(blob, base, x) != row_at(pblob, pbase, x)]
-        t = e + 1
+    """Ticks where the two revisions' rows differ, one holding a row and the other not included.
+    Only the held spans are walked: a tick neither holds is the same in both."""
+    held = []
+    for a, z in sorted([[base + 1, base + len(blob) // 14], [pbase + 1, pbase + len(pblob) // 14]]):
+        if a > z: continue
+        if held and a <= held[-1][1] + 1: held[-1][1] = max(held[-1][1], z)
+        else: held.append([a, z])
+    changed = []
+    for lo, hi in held:
+        t = lo
+        while t <= hi:
+            e = min(hi, t + 63)
+            a, b = span(blob, base, t, e), span(pblob, pbase, t, e)
+            if a is None or a != b:
+                changed += [x for x in range(t, e + 1) if row_at(blob, base, x) != row_at(pblob, pbase, x)]
+            t = e + 1
     return to_ranges(changed)
 
 
@@ -260,8 +290,9 @@ def compute(db, r):
                     if brows[i:i + 14] == blob[j:j + 14]:
                         who[t] = bwho(t); found.append(t)
             if found:
-                gone = set(found)
-                pending = to_ranges([t for a, z in pending for t in range(a, z + 1) if t not in gone])
+                gone = to_ranges(found)
+                work += len(pending) + len(gone)
+                pending = subtract(pending, gone)
         prev, cur = b['changed'], b['parentsha']
     for a, z in pending:
         for t in range(a, z + 1):
@@ -292,24 +323,46 @@ DESCENDANTS = (
     ' SELECT sha FROM d GROUP BY sha ORDER BY MIN(n) LIMIT 20000')
 
 
-def queue_descendants(db, sha):
-    """Every descendant reads its ancestors' rows, changes and credit, not just its parent's."""
-    db.executemany('INSERT OR IGNORE INTO stale(sha) VALUES (?)', db.execute(DESCENDANTS, (sha, WALK_MAX)).fetchall())
+def queue_readers(db, sha, cap=20000):
+    """Queues every revision whose credit may read `sha`'s: its descendants (they read their
+    ancestors' rows, changes and credit), the later copies of each of those and of `sha` (they read
+    the earliest's credit and chain), and the copies' descendants. Called when `sha` arrives or its
+    credit or changes move -- never otherwise, so the queue settles."""
+    seen, roots, out = {sha}, [sha], []
+    while roots and len(out) < cap:
+        s = roots.pop()
+        for d in [s] + [d for (d,) in db.execute(DESCENDANTS, (s, WALK_MAX))]:
+            if d not in seen: seen.add(d); out.append(d)
+            for (cp,) in db.execute('SELECT c.sha FROM revisions c JOIN revisions o ON c.inputs = o.inputs AND c.seq > o.seq'
+                                    ' WHERE o.sha = ?', (d,)):
+                if cp not in seen: seen.add(cp); out.append(cp); roots.append(cp)
+    db.executemany('INSERT OR IGNORE INTO stale(sha) VALUES (?)', [(x,) for x in out[:cap]])
 
 
 def recompute(db, sha):
-    r = db.execute('SELECT sha, seq, base, rows, parentsha, inputs, credit, changed FROM revisions WHERE sha = ?',
+    r = db.execute('SELECT sha, seq, base, rows, parentsha, inputs, credit, changed, size FROM revisions WHERE sha = ?',
                    (sha,)).fetchone()
     if r is None: return
     cr, ch = compute(db, r)
-    crj, chj = json.dumps(cr), (json.dumps(ch) if ch is not None else None)
+    crj, chj = jdump(cr), jdump(ch)
     if crj != r['credit'] or chj != r['changed']:
-        db.execute('UPDATE revisions SET credit = ?, changed = ? WHERE sha = ?', (crj, chj, sha))
-        queue_descendants(db, sha)
-    if db.execute('SELECT 1 FROM revisions WHERE inputs = ? AND seq < ?', (r['inputs'], r['seq'])).fetchone() is None:
-        # The earliest of its inputs: the later copies read its credit and its chain.
-        db.executemany('INSERT OR IGNORE INTO stale(sha) VALUES (?)',
-                       db.execute('SELECT sha FROM revisions WHERE inputs = ? AND seq > ?', (r['inputs'], r['seq'])).fetchall())
+        db.execute('UPDATE revisions SET credit = ?, changed = ?, stored = ? WHERE sha = ?',
+                   (crj, chj, r['size'] + len(r['rows']) + len(crj) + len(chj or ''), sha))
+        queue_readers(db, sha)
+
+
+def prune(db, now, rows=500):
+    """A slice of the statements whose revision never arrived within ORPHAN_DAYS, removed; a cursor
+    in meta walks the table a slice at a time so no POST scans it whole."""
+    start = int((db.execute("SELECT v FROM meta WHERE k = 'prune'").fetchone() or ['0'])[0])
+    batch = db.execute('SELECT seq, id, sha, first_seen FROM statements WHERE seq > ? ORDER BY seq LIMIT ?', (start, rows)).fetchall()
+    cutoff = now - ORPHAN_DAYS * 86400
+    gone = [(s['id'],) for s in batch if s['first_seen'] < cutoff
+            and db.execute('SELECT 1 FROM revisions WHERE sha = ?', (s['sha'],)).fetchone() is None]
+    db.executemany('DELETE FROM statements WHERE id = ?', gone)
+    nxt = batch[-1]['seq'] if len(batch) == rows else 0
+    db.execute("INSERT INTO meta(k, v) VALUES ('prune', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", (str(nxt),))
+    return len(gone)
 
 
 def drain(db, seconds):
@@ -396,8 +449,11 @@ def create_app(store, account_db, codes_file, clock=time.time):
         sid = hashlib.sha256(line.encode('ascii')).hexdigest()
         state, steamid = binding(pub)
         with connect(store) as db, writing(db):
+            prune(db, now)
             if db.execute('SELECT 1 FROM statements WHERE id = ?', (sid,)).fetchone() is None:
-                if db.execute('SELECT COUNT(*) FROM statements').fetchone()[0] >= STATEMENT_CAP:
+                # Free keys share the cap; a linked signer is bounded by accounts and budgets instead.
+                if state != accounts.RANK_LINKED and db.execute(
+                        "SELECT COUNT(*) FROM statements WHERE state != 'linked'").fetchone()[0] >= STATEMENT_CAP:
                     return fail('The statement store is full', 507)
                 # Unlinked keys are free to make, so they share a cap a flood cannot take from a linked signer.
                 if state != accounts.RANK_LINKED and db.execute("SELECT COUNT(*) FROM statements WHERE sha = ? AND state != 'linked'",
@@ -433,7 +489,8 @@ def create_app(store, account_db, codes_file, clock=time.time):
         with connect(store) as db, writing(db):
             known = db.execute('SELECT seq, first_seen, parentsha FROM revisions WHERE sha = ?', (info['h'],)).fetchone()
             if known is not None:
-                return jsonify(ok=1, sha=info['h'], seq=known['seq'], first_seen=known['first_seen'], parent=known['parentsha'])
+                pk = known['parentsha'] is None or db.execute('SELECT 1 FROM revisions WHERE sha = ?', (known['parentsha'],)).fetchone() is not None
+                return jsonify(ok=1, sha=info['h'], seq=known['seq'], first_seen=known['first_seen'], parent=known['parentsha'], parent_known=pk)
             prow = db.execute('SELECT base, rows FROM revisions WHERE sha = ?', (parent,)).fetchone() if parent else None
             if prow is not None and info['version'] == '2':
                 # tools/tasrev.py check_supply over the stored rows: the changed ticks after the parent's base.
@@ -443,16 +500,22 @@ def create_app(store, account_db, codes_file, clock=time.time):
                 want = (ch[0], ch[-1]) if ch else None
                 if info['supply'] != want:
                     return fail('Revision refused: supply %s, but the rows differ over %s' % (info['supply'], want), 400)
-            if db.execute('SELECT COALESCE(SUM(size), 0) FROM revisions').fetchone()[0] + len(body) > STORE_CAP:
-                return fail('The revision store is full', 507)
             r = dict(sha=info['h'], seq=next_seq(db), base=info['base'], rows=rows, parentsha=parent, inputs=inputs)
             cr, ch = compute(db, r)
+            crj, chj = jdump(cr), jdump(ch)
+            stored = stored_bytes(body, rows, crj, chj)
+            # Everything a revision keeps counts: a fragmented credit can be several times its body.
+            if db.execute('SELECT COALESCE(SUM(stored), 0) FROM revisions').fetchone()[0] + stored > STORE_CAP:
+                return fail('The revision store is full', 507)
             db.execute('INSERT INTO revisions(sha, seq, map, mapcrc, parentsha, version, base, head, supply_a, supply_b,'
-                       ' first_seen, size, inputs, rows, changed, credit, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                       ' first_seen, size, inputs, rows, changed, credit, body, stored)'
+                       ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                        (r['sha'], r['seq'], mp, info['mapcrc'], parent, info['version'], info['base'],
                         info['base'] + len(info['rows']), supply[0], supply[1], now, len(body), inputs, rows,
-                        json.dumps(ch) if ch is not None else None, json.dumps(cr), body))
-            queue_descendants(db, r['sha'])
+                        chj, crj, body, stored))
+            # The peer's day pays for what was kept beyond the body it sent.
+            db.execute('UPDATE uploads SET bytes = bytes + ? WHERE peer = ? AND day = ?', (stored - len(body), peer(), int(now // 86400)))
+            queue_readers(db, r['sha'])
             drain(db, DRAIN_SECONDS)
         return jsonify(ok=1, sha=r['sha'], seq=r['seq'], first_seen=now, parent=parent, parent_known=parent is None or prow is not None)
     def qualifying(db, rev, codes):
@@ -492,6 +555,7 @@ def create_app(store, account_db, codes_file, clock=time.time):
         if not HEX64.fullmatch(sha): return fail('Invalid hash', 400)
         codes = codes_now()
         with connect(store, readonly=True) as db:
+            db.execute('BEGIN')         # one snapshot: the credit and its pending flag agree
             rev = db.execute('SELECT sha, seq, map, mapcrc, parentsha, version, base, head, supply_a, supply_b, first_seen, credit'
                              ' FROM revisions WHERE sha = ?', (sha,)).fetchone()
             sts = [dict(id=s['id'], ticks=[s['first'], s['last']], first_seen=s['first_seen'], released_code=s['code'] in codes,
@@ -527,7 +591,7 @@ def create_app(store, account_db, codes_file, clock=time.time):
         if not NAME.fullmatch(mp): return fail('Invalid map', 400)
         codes = codes_now()
         before = request.args.get('before', '')
-        before = int(before) if before.isdigit() and len(before) < 16 else 2 ** 62
+        before = int(before) if re.fullmatch('[0-9]{1,15}', before) else 2 ** 62
         with connect(store, readonly=True) as db:
             rows = [dict(r) for r in db.execute('SELECT sha, seq, parentsha, mapcrc, base, head, supply_a, supply_b, first_seen FROM revisions'
                                                 ' WHERE map = ? AND seq < ? ORDER BY seq DESC LIMIT 100', (mp, before))]

@@ -345,6 +345,55 @@ class Service(unittest.TestCase):
         self.put_rev(a)
         self.assertEqual(self.credit(ha), [(21, 40, SID_A)])
 
+    def test_stored_bytes_count_against_the_store_and_the_day(self):
+        # Review 4 (attacker): a fragmented credit is several times its body; both caps see it.
+        rows = [row(t) for t in range(21, 4021)]
+        a, ha = revision(20, rows); self.put_rev(a)
+        alt = [row(t, 7) if t % 2 else r for t, r in zip(range(21, 4021), rows)]
+        b, hb = revision(20, alt, parent=ha, supply=(21, 4019)); self.put_st(statement(BOB, hb, ha, 21, 4019)); self.put_rev(b)
+        with svc.connect(self.store) as db:
+            st = db.execute('SELECT size, stored FROM revisions WHERE sha = ?', (hb,)).fetchone()
+            day = db.execute('SELECT SUM(bytes) FROM uploads').fetchone()[0]
+        self.assertGreater(st['stored'], 2 * st['size'])
+        self.assertGreaterEqual(day, st['stored'])
+        old = svc.STORE_CAP; svc.STORE_CAP = st['stored'] + len(a) + 100
+        try:
+            c, hc = revision(20, [row(t, 8) if t % 2 else r for t, r in zip(range(21, 4021), rows)], parent=ha, supply=(21, 4019))
+            self.assertEqual(self.put_rev(c)['status'], 507)
+        finally: svc.STORE_CAP = old
+
+    def test_statements_whose_revision_never_arrives_are_dropped(self):
+        # Review 4 (attacker): invented shas cannot fill the statement store for good.
+        (a, ha), _, _ = self.chain()
+        for k in range(5): self.put_st(statement(bytes([60 + k]) * 32, 'ab' * 32, None, 21, 40))
+        self.put_st(statement(ALICE, ha, None, 21, 40))
+        self.now[0] += svc.ORPHAN_DAYS * 86400 + 10
+        self.put_rev(a)
+        self.put_st(statement(CAROL, 'cd' * 32, None, 21, 40))       # any POST prunes a slice
+        with svc.connect(self.store) as db:
+            left = db.execute('SELECT sha FROM statements ORDER BY seq').fetchall()
+        self.assertEqual([r['sha'] for r in left], [ha, 'cd' * 32])
+        self.assertEqual(self.credit(ha), [(21, 40, SID_A)])
+
+    def test_far_apart_bases_cost_only_the_rows_held(self):
+        # Review 4 (flow): the row diff walked every tick between two bases.
+        p, hp = revision(15999990, [row(t) for t in range(15999991, 15999993)])
+        c, hc = revision(0, [row(1)], parent=hp, supply=None)
+        self.put_rev(p)
+        t0 = time.monotonic(); r = self.put_rev(c); dt = time.monotonic() - t0
+        self.assertEqual(r['ok'], 1, r); self.assertLess(dt, 1.0)
+
+    def test_subtract_matches_a_set(self):
+        import random
+        rnd = random.Random(5)
+        for _ in range(500):
+            xs = sorted(rnd.sample(range(60), rnd.randint(0, 40))); ys = sorted(rnd.sample(range(60), rnd.randint(0, 40)))
+            got = [t for a, z in svc.subtract(svc.to_ranges(xs), svc.to_ranges(ys)) for t in range(a, z + 1)]
+            self.assertEqual(got, sorted(set(xs) - set(ys)))
+
+    def test_odd_digits_in_before_are_ignored(self):
+        self.assertEqual(self.c.get('/api/tasrev/map/bhop_eazy?before=\u00b2').get_json()['ok'], 1)
+
     def test_reads_are_limited_per_peer(self):
         codes = [self.c.get('/api/tasrev/map/bhop_eazy').get_json().get('status', 200) for _ in range(svc.PEER_READS + 1)]
         self.assertEqual((codes[0], codes[-1]), (200, 429))
