@@ -21,6 +21,9 @@
 
 ## next
 
+### P1098 Map tiers and pictures stay current
+- The tiers, thumbnails and extra game content each release ships for its maps are refreshed from Momentum every six hours instead of by hand, so new maps arrive with their tier and picture.
+
 ### P1097 TAS: search for the soonest next stage
 - Add `time` to `tas optimize` (with or without `board` and `flick`) to search for the turn that reaches the next stage soonest instead of the one with the most exit speed. If no try reaches it within the ticks given, the fastest try wins. Checkpoints are not counted.
 - The console shows each try's result: the tick it reached the next stage, or that it did not.

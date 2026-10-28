@@ -27,6 +27,11 @@ write `VERSION`, probe R2 or contact the server. It is not build acceptance.
 `PATCHNOTES.md` needs a `## next` section: the preflight refuses without one, and the
 render names it this version in the page's `patchnotes.json` (P876).
 
+Map media next (P1098): `python tools/mapmedia_refresh.py --atlas --export <release worktree>`
+packs thumbnails fetched since the last release into a new atlas page and copies
+`data/mapmeta.txt`, `data/mapdeps.txt` and `gfx/mapthumbs/` into the worktree, which the
+ship set reads them from. Exit 2 means the table was refused: read the log first.
+
 Use the existing Linux builder for the engine pin when needed:
 
 ```powershell

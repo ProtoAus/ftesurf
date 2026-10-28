@@ -1,5 +1,24 @@
 # AGENT_NOTES.md
 
+## Map media refresh (P1098, 29 Oct 2026)
+
+- `tools/mapmedia_refresh.py` runs after mapscan.py in the six-hourly task: the
+  API's approved list into a Momentum-layout view (`data/mapmedia/view/`),
+  mapfetch's small thumbnails, `mapmeta.py --momentum <view> --mounted <Momentum>`,
+  mapdeps for BSPs new or changed since the last run, then the second install.
+- **A zone file makes a row, and a row blocks the alias and KSF passes** (they only
+  fill gaps). The first run seeded the Pi's 1,493 zone files: 348 zone-only port
+  rows, 78 alias and 13 KSF tiers lost. The view takes Momentum's own zones only.
+- **A table losing more than 10 rows, variant pairs, tiers or cells is not
+  installed** (`data/mapmedia/refused.txt`, exit 2). It would have stopped that run
+  (91 tiers, 78 cells) and an emptied Momentum folder (428 variant pairs).
+- **Gamemode ties went by list order**, and the API lists leaderboards in another
+  order than Momentum's cache: bhop_forevertranslucent flipped mode 3 tier 5 to
+  mode 2 tier 2 on identical data. `vote()` keeps the previous table's mode, then
+  the prefix's, then the lowest id. See BACKLOG for the conc_ question.
+- New thumbnails get atlas cells only with `--atlas`, a release step (README):
+  a shipped page must not change. No QC reads the `variant` lines (grep, 29 Oct).
+
 ## Momentum Beta zones and builds (P1093, 29 Oct 2026)
 
 - **Beta zones are anonymous; only the Beta LIST needs a sign-in.**

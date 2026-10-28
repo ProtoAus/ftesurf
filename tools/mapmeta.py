@@ -350,6 +350,29 @@ def main_rows(lbs, style, gm=None):
             and (gm is None or l.get("gamemode") == gm)]
 
 
+PREV_MODE = {}      # name -> the mode the table being replaced holds (main())
+
+
+def vote(modes, name):
+    """The most common mode.  A tie keeps the previous table's mode, else takes the
+    name prefix's, else the lowest id.  Not most_common(1), which breaks a tie by
+    list order: the API and Momentum's cache list leaderboards in different
+    orders, and that flipped bhop_forevertranslucent between mode 3 tier 5 and
+    mode 2 tier 2 (P1098).  Prefix-first for every row would change 166 modes and
+    ~100 tiers, mostly conc_ maps tied between sj and conc: a ranking decision,
+    in BACKLOG, not a side effect of a refresh."""
+    count = Counter(modes)
+    top = max(count.values())
+    tied = sorted(gm for gm, n in count.items() if n == top)
+    low = name.lower()
+    if PREV_MODE.get(low) in tied:
+        return PREV_MODE[low]
+    for pfx, gm in PREFIX_MODE.items():
+        if low.startswith(pfx) and gm in tied:
+            return gm
+    return tied[0]
+
+
 def pick_gamemode(m, lbs, name):
     """The map's native gamemode.
 
@@ -371,13 +394,13 @@ def pick_gamemode(m, lbs, name):
         tiered = [l["gamemode"] for l in main_rows(lbs, style)
                   if l.get("tier") is not None]
         if tiered:
-            return Counter(tiered).most_common(1)[0][0]
+            return vote(tiered, name)
 
     sugg = [s["gamemode"] for s in suggestions(m)
             if s.get("trackType") == 0 and s.get("tier") is not None
             and s.get("gamemode") is not None]
     if sugg:
-        return Counter(sugg).most_common(1)[0][0]
+        return vote(sugg, name)
 
     low = name.lower()
     for pfx, gm in PREFIX_MODE.items():
@@ -385,7 +408,7 @@ def pick_gamemode(m, lbs, name):
             return gm
 
     if lbs:
-        return Counter(l["gamemode"] for l in lbs).most_common(1)[0][0]
+        return vote([l["gamemode"] for l in lbs], name)
     return None
 
 
@@ -1019,6 +1042,8 @@ def check_one(momentum, name, ksf):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--momentum", default=MOMENTUM, help="Momentum Mod game dir")
+    ap.add_argument("--mounted", help="the Momentum dir whose maps/ the engine mounts, for "
+                    "variant rows (--momentum); mapmedia_refresh.py's view has no BSPs")
     ap.add_argument("--gamedir", default=GAMEDIR,
                     help="the ftesurf/ dir: default home of the three files below, "
                          "and its maps/ and maps/zones/local/ are read")
@@ -1037,6 +1062,11 @@ def main():
     out = a.out or os.path.join(data, "mapmeta.txt")
     override = a.override or os.path.join(data, "mapmeta_override.txt")
     ksf = a.ksf or os.path.join(data, "ksf_roster.csv")
+    if os.path.exists(out):
+        for raw in open(out, encoding="utf-8", errors="replace"):
+            t = raw.split()
+            if len(t) > 9 and t[0] == "meta" and t[9].isdigit():
+                PREV_MODE[t[1].lower()] = int(t[9])
 
     if not os.path.isdir(a.momentum):
         raise SystemExit("Momentum dir not found: %s" % a.momentum)
@@ -1055,7 +1085,7 @@ def main():
         print("\n--report: nothing written.  Run without it to write %s" % out)
         return
 
-    n = write(metas, out, a.momentum)
+    n = write(metas, out, a.mounted or a.momentum)
     print("\nwrote %s  (%d maps)" % (out, n))
 
 

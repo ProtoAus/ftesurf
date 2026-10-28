@@ -32,8 +32,16 @@ try {
     "=== $(Get-Date -Format o) ===" | Out-File -FilePath $Log -Encoding utf8
     & python (Join-Path $Repo 'tools\mapscan.py') --go *>&1 |
         Out-File -FilePath $Log -Encoding utf8 -Append
-    "=== exit $LASTEXITCODE ===" | Out-File -FilePath $Log -Encoding utf8 -Append
-    exit $LASTEXITCODE
+    $scan = $LASTEXITCODE
+    "=== exit $scan ===" | Out-File -FilePath $Log -Encoding utf8 -Append
+    # P1098: tiers, thumbnails and the mount table, here and in C:\FTEQuake.  Run
+    # even when the sweep failed: they read other sources.
+    & python -I (Join-Path $Repo 'tools\mapmedia_refresh.py') *>&1 |
+        Out-File -FilePath $Log -Encoding utf8 -Append
+    $media = $LASTEXITCODE
+    "=== mapmedia exit $media ===" | Out-File -FilePath $Log -Encoding utf8 -Append
+    if ($scan -ne 0) { exit $scan }
+    exit $media
 }
 catch {
     "=== FAILED: $_ ===" | Out-File -FilePath $Log -Encoding utf8 -Append
