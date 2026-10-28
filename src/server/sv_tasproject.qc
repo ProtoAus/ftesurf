@@ -12,6 +12,7 @@ float *tasp_buf[FS_MAXPLAYERS + 1];      // inputs for ticks base+1.., TAS_INPUT
 float *tasp_cp[FS_MAXPLAYERS + 1];
 string tasp_name[FS_MAXPLAYERS + 1], tasp_hash[FS_MAXPLAYERS + 1];
 string tasp_parent[FS_MAXPLAYERS + 1], tasp_cpnames[FS_MAXPLAYERS + 1];
+string tasp_revsha[FS_MAXPLAYERS + 1];   // P1089: this lineage's last saved/loaded revision hash
 .float tasp_on, tasp_n, tasp_cap, tasp_base, tasp_baseid, tasp_rev, tasp_serial, tasp_synced;
 .float tasp_lasthead, tasp_filehead, tasp_ncp, tasp_load, tasp_stop, tasp_chead, tasp_cbase;
 .float tasp_ccount, tasp_cpi, tasp_dev, tasp_devtick, tasp_result, tasp_next;
@@ -27,6 +28,7 @@ float *tpr_buf;
 float *tpr_cp;
 float tpr_n, tpr_size, tpr_base, tpr_baseid, tpr_rev, tpr_ncp, tpr_parentrev;
 vector tpr_bo, tpr_bv;
+string tpr_revsha;              // P1089: the hash the file states for itself, "" if none
 string tpr_hash, tpr_parent, tpr_cpnames, tpr_why;
 float tasp_hflags;
 string tasp_why;
@@ -89,7 +91,8 @@ void(entity e) SV_TASProjectReset =
 	if (tasp_hash[s]) strunzone(tasp_hash[s]);
 	if (tasp_parent[s]) strunzone(tasp_parent[s]);
 	if (tasp_cpnames[s]) strunzone(tasp_cpnames[s]);
-	tasp_name[s] = tasp_hash[s] = tasp_parent[s] = tasp_cpnames[s] = "";
+	if (tasp_revsha[s]) strunzone(tasp_revsha[s]);
+	tasp_name[s] = tasp_hash[s] = tasp_parent[s] = tasp_cpnames[s] = tasp_revsha[s] = "";
 };
 
 void() SV_TASPReadFree =
@@ -101,7 +104,8 @@ void() SV_TASPReadFree =
 	if (tpr_hash) strunzone(tpr_hash);
 	if (tpr_parent) strunzone(tpr_parent);
 	if (tpr_cpnames) strunzone(tpr_cpnames);
-	tpr_hash = tpr_parent = tpr_cpnames = "";
+	if (tpr_revsha) strunzone(tpr_revsha);
+	tpr_hash = tpr_parent = tpr_cpnames = tpr_revsha = "";
 };
 
 // sha256 over state.txt's exact lines; also reads its `flags`.
@@ -205,7 +209,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 		argc = tokenize(l);
 		if (argc < 1) continue;
 		k = argv(0);
-		if (ended) { tpr_why = "data after end"; break; }
+		if (ended && (k != "revsha" || tpr_revsha != "")) { tpr_why = "data after end"; break; }  // P1089: one revsha may follow
 		if (k == "i")
 		{
 			if (argc != 8 || !tpr_buf || n >= tpr_size) { tpr_why = "bad input row"; break; }
@@ -291,6 +295,11 @@ float(entity e, string name, float identity) SV_TASPRead =
 			continue;
 		}
 		if (k == "revision") { if (argc != 2 || !SV_TASPNum(argv(1), 1, 16000000, TRUE)) { tpr_why = "bad revision"; break; } tpr_rev = fs_tas_number; continue; }
+		if (k == "revsha")
+		{
+			if (argc == 2 && strlen(argv(1)) == 64 && tpr_revsha == "") tpr_revsha = strzone(argv(1));
+			continue;
+		}
 		if (k == "parent")
 		{
 			if (argc == 3 && SV_TASPNameOK(argv(1)) && SV_TASPNum(argv(2), 0, 16000000, TRUE))
@@ -668,10 +677,46 @@ void(entity e, float s, float head) SV_TASPCheckpoints =
 	tasp_cpnames[s] = strzone(names);
 };
 
+/*
+  P1089: a revision's identity (TAS plan 5.1). A hash chain over the file's canonical lines,
+  so a long project needs no one huge string: h0 = sha256("FTESURF-TASREV-CANON 1"), then
+  h = sha256(h + "\n" + line) per line, lowercase hex. Local-only lines are left out (saved,
+  revision, origin, parent, revsha) and `base` loses its local save id. tools/tasrev.py is
+  the twin surfd uses; keep the two in step.
+*/
+string(string line) SV_TASPCanon =
+{
+	local string k;
+	tokenize(line);
+	k = argv(0);
+	if (k == "saved" || k == "revision" || k == "origin" || k == "parent" || k == "revsha" || k == "")
+		return "";
+	if (k == "base")
+		return sprintf("base %s %s", argv(2), argv(3));
+	return line;
+};
+
+string(string path) SV_TASPRevHash =
+{
+	local filestream f;
+	local string l, c, h;
+	f = fopen(path, FILE_READ);
+	if (f < 0) return "";
+	h = strtolower(digest_hex("SHA256", "FTESURF-TASREV-CANON 1"));
+	while ((l = fgets(f)) != "")
+	{
+		c = SV_TASPCanon(l);
+		if (c != "") h = strtolower(digest_hex("SHA256", strcat(h, "\n", c)));
+	}
+	fclose(f);
+	return h;
+};
+
 float(entity e, float s, string name, string parent) SV_TASPWrite =
 {
 	local filestream f;
 	local float i, b, nm;
+	local string h;
 	f = fopen(SV_TASPPath(name), FILE_WRITE);
 	if (f < 0) return FALSE;
 	fputs(f, sprintf("tasproject %.0f\n", TASP_VERSION));
@@ -683,6 +728,7 @@ float(entity e, float s, string name, string parent) SV_TASPWrite =
 	fputs(f, sprintf("saved %s\n", strftime(FALSE, "%Y-%m-%dT%H:%M:%S")));
 	fputs(f, sprintf("revision %.0f\n", e.tasp_rev));
 	if (parent != "") fputs(f, sprintf("parent %s %.0f\n", parent, e.tasp_parentrev));
+	if (tasp_revsha[s] != "") fputs(f, sprintf("parentsha %s\n", tasp_revsha[s]));   // P1089
 	fputs(f, sprintf("base %.0f %s %.0f\n", e.tasp_baseid, tasp_hash[s], e.tasp_base));
 	fputs(f, sprintf("baseat %.9g %.9g %.9g ", e.tasp_bo_x, e.tasp_bo_y, e.tasp_bo_z));
 	fputs(f, sprintf("%.9g %.9g %.9g\n", e.tasp_bv_x, e.tasp_bv_y, e.tasp_bv_z));
@@ -705,6 +751,15 @@ float(entity e, float s, string name, string parent) SV_TASPWrite =
 	}
 	fputs(f, sprintf("end %.0f\n", e.tasp_n));
 	fclose(f);
+	// P1089: the revision hash, from the file as written, then kept as the next save's parent.
+	h = SV_TASPRevHash(SV_TASPPath(name));
+	if (h == "") return FALSE;
+	f = fopen(SV_TASPPath(name), FILE_APPEND);
+	if (f < 0) return FALSE;
+	fputs(f, sprintf("revsha %s\n", h));
+	fclose(f);
+	if (tasp_revsha[s]) strunzone(tasp_revsha[s]);
+	tasp_revsha[s] = strzone(h);
 	return TRUE;
 };
 
@@ -967,6 +1022,10 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 	tasp_name[s] = strzone(name);
 	tasp_hash[s] = tpr_hash; tasp_parent[s] = tpr_parent; tasp_cpnames[s] = tpr_cpnames;
 	tpr_hash = tpr_parent = tpr_cpnames = "";
+	// P1089: the lineage continues from the content's own hash; the stated one only warns.
+	tasp_revsha[s] = strzone(SV_TASPRevHash(SV_TASPPath(name)));
+	if (tpr_revsha != "" && tpr_revsha != tasp_revsha[s])
+		sprint(e, PRINT_HIGH, "tas project: this file was changed after it was saved (its revsha does not match)\n");
 	e.tasp_n = tpr_n; e.tasp_cap = tpr_size; e.tasp_ncp = tpr_ncp; e.tasp_rev = tpr_rev;
 	e.tasp_base = tpr_base; e.tasp_baseid = tpr_baseid; e.tasp_bo = tpr_bo; e.tasp_bv = tpr_bv;
 	e.tasp_on = 1; e.tasp_load = 1; e.tasp_stop = stop; e.tasp_cpi = 0;
@@ -1123,6 +1182,11 @@ void(entity e, float argc, string action, string sub, string a1, string a2) SV_T
 	}
 	if (sub == "diff" && argc == 5 && SV_TASPNameOK(a1) && SV_TASPNameOK(a2)) { SV_TASProjectDiff(e, a1, a2); return; }
 	if (sub == "list" && argc == 3) { SV_TASProjectList(e); return; }
+	if (sub == "hash" && argc == 4 && SV_TASPNameOK(a1))    // P1089
+	{
+		sprint(e, PRINT_HIGH, sprintf("tas project hash %s: %s\n", a1, SV_TASPRevHash(SV_TASPPath(a1))));
+		return;
+	}
 	if (sub == "event" && argc == 3) { SV_TASProjectEvent(e); return; }  // the panel's quiet status
 	if (sub == "close" && argc == 3 && !e.tasp_load)
 	{
