@@ -1,7 +1,8 @@
 # lextest.md — things waiting on a human
 
-**P1079 -- ordinary segmented/shadow map interactions (delivery/owner check pending):**
-After deployment (game server first; the board backend follows in its own swap),
+**P1079 -- ordinary segmented/shadow map interactions (owner check pending):**
+Server progs live on both Windows installs and all 12 lobbies 2026-10-28T04:57Z
+(QW 3e14e81f); the board backend and lobby csprogs follow separately. After that,
 a normal segmented/shadow attempt using familiar
 map effects should retain its usual style, not become generic practice merely
 for being segmented. Previously unranked inherited effects should remain practice
