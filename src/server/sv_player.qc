@@ -14,6 +14,7 @@ void(entity e, float settled) SV_TASReplayFrame;
 void(entity e) SV_TASHistoryReset;
 void(entity e) SV_TASProjectReset;
 void(entity e) SV_TASProjectFrame;
+void(entity e) SV_TASOptFrame;
 void(entity e) SV_TASProjectTouch;
 
 /*
@@ -832,7 +833,10 @@ void() PlayerPostThink =
 	if (self.run_tas_paused)
 	{
 		if (self.run_tas_done == self.run_tas_seen)
+		{
+			SV_TASOptFrame(self);   // P1088: its backs and tapes start on idle paused frames
 			return;
+		}
 		self.run_tas_seen = self.run_tas_done;
 	}
 
@@ -907,6 +911,7 @@ void() PlayerPostThink =
 	SV_RewindSample(self);          // Patch 477: the recent past a rewind saves from
 	SV_TASReplayFrame(self, TRUE);  // completion only after clock/recorder/retained head settle
 	SV_TASProjectFrame(self);       // P1082: the next load chunk; a non-TAS rewind detaches
+	SV_TASOptFrame(self);           // P1088: the optimizer's next candidate
 	SV_WatchFrame(self);            // ...and the replay/rewind pin holds no speed
 
 	// Pinned at a save-lock while the load key is held.  After the timer, so the
@@ -1394,6 +1399,7 @@ void(entity e, float count, float ticket) SV_TASQueueSteps =
 #include "sv_tasinput.qc"
 #include "sv_tasplan.qc"
 #include "sv_tasproject.qc"
+#include "sv_tasoptimize.qc"
 
 // The control switch and retained ancestry deliberately have different lifetimes.
 void(entity e, float argc) SV_TASCommand =
@@ -1421,6 +1427,12 @@ void(entity e, float argc) SV_TASCommand =
 		sprint(e, PRINT_HIGH, "tas: a project load is running; wait, or tas play/off to stop it\n");
 		return;
 	}
+	if (e.topt_on && strcmp(action, "status"))
+	{
+		sprint(e, PRINT_HIGH, "tas: the optimizer is running; tas play or tas off stops it\n");
+		return;
+	}
+	if (!strcmp(action, "optimize")) { SV_TASOptCommand(e, argc); return; }
 	if (!strcmp(action, "project") || !strcmp(action, "cp")) { SV_TASProjectCommand(e, argc); return; }
 	if (!strcmp(action, "inputs")) { SV_TASInputs(e, argc); return; }
 	if (!strcmp(action, "page")) { SV_TASTimelinePage(e, argc); return; }
