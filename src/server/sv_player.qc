@@ -11,6 +11,7 @@
 
 .float  ftesurf_lastspawn;
 void(entity e, float settled) SV_TASReplayFrame;
+void(entity e) SV_TASHistoryReset;
 
 /*
   THE BOARD TELEMETRY BLOCK USED TO LIVE HERE AND NOW LIVES IN sv_timer.qc.
@@ -280,6 +281,7 @@ void() ClientConnect =
 	self.run_timescale = 1;
 	self.run_ts_next = 0;
 	self.run_ts_used = SV_TimeScaleConnectTaint(self);
+	SV_TASHistoryReset(self);
 	self.run_tas_mode = self.run_tas_next = 0;
 	self.run_tas_used = SV_TASConnectTaint(self);
 	self.run_tas_paused = self.run_tas_pending = self.run_tas_done = self.run_tas_ready = 0;
@@ -1404,6 +1406,13 @@ void(entity e, float argc) SV_TASCommand =
 		return;
 	}
 	if (!strcmp(action, "inputs")) { SV_TASInputs(e, argc); return; }
+	if (!strcmp(action, "page")) { SV_TASTimelinePage(e, argc); return; }
+	if (!strcmp(action, "slice")) { SV_TASTimelineSlice(e, argc); return; }
+	if (!strcmp(action, "undo") || !strcmp(action, "redo"))
+	{
+		SV_TASHistoryCommand(e, argc, !strcmp(action, "redo"));
+		return;
+	}
 	if (!strcmp(action, "edit") || !strcmp(action, "replay"))
 	{
 		SV_TASInputCommand(e, argc);
@@ -1476,7 +1485,7 @@ void(entity e, float argc) SV_TASCommand =
 		}
 		return;
 	}
-	sprint(e, PRINT_HIGH, "tas: menu (client) | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | status | speed 0.1..1\n");
+	sprint(e, PRINT_HIGH, "tas: menu (client) | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | undo/redo | status | speed 0.1..1\n");
 };
 
 void(string cmd) SV_ParseClientCommand =

@@ -1,11 +1,16 @@
 // TAS workshop: local draft -> existing validated command/ticket channel.
 float tasu_open, tasu_mode, tasu_forward, tasu_side, tasu_pitch, tasu_yaw, tasu_bits, tasu_count;
-float tasu_nextclick, tasu_frames;
+float tasu_nextclick, tasu_frames, tasu_tab;
+void() TASTimeline_Reset;
+void(float first) TASTimeline_Request;
+void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw;
 
 void() TASUI_Close =
 {
 	if (!tasu_open) return;
 	tasu_open = FALSE;
+	tasu_tab = 0;
+	TASTimeline_Reset();
 	UI_CursorRelease(UIC_TAS);
 	sui_reset_actions();
 	sui_tooltip_reset();
@@ -121,6 +126,12 @@ void(vector scr) TASUI_Draw =
 	{
 		TASUI_Close(); sui_end(); Font_Set(oldfont); return;
 	}
+	if (Profile_Chip("tasu_tab", pos + [size_x - pad - row - tsz*9, pad*0.6, 0], [tsz*8,row,0],
+		tasu_tab ? "Next input" : "Timeline", hint, tasu_tab))
+	{
+		tasu_tab = !tasu_tab;
+		if (tasu_tab) TASTimeline_Request(0);
+	}
 	at = pos + [pad, tsz * 3, 0];
 	sui_text(at, [hint, hint], "ASSISTED / PRACTICE - never a human ranked run", SUI_THEME_ACCENT, 1, 0);
 	at_y = at_y + tsz * 1.7;
@@ -135,6 +146,11 @@ void(vector scr) TASUI_Draw =
 	if (Profile_Chip("tasu_off", at + [(width + 6) * 2 / 3, 0, 0], chip, "Controls off", tsz, FALSE))
 		{ localcmd("tas off\n"); TASUI_Close(); sui_end(); Font_Set(oldfont); return; }
 	at_y = at_y + tsz * 2.7;
+	if (tasu_tab)
+	{
+		TASTimeline_Draw(at,width,tsz,hint,row);
+		sui_end(); Font_Set(oldfont); return;
+	}
 	sui_text(at, [hint, hint], "Choose the NEXT command; nothing moves until Advance.", SUI_THEME_DIM, 1, 0);
 	at_y = at_y + tsz * 1.6;
 	for (i = 0; i < 4; i = i + 1)

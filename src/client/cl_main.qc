@@ -2302,7 +2302,8 @@ float(string cmd) CSQC_ConsoleCommand =
 		if (cmdargc == 1)
 			localcmd(sprintf("p%g cmd tas status\n", tsseat + 1));
 		else if (cmdargc == 2 && (!strcmp(argv(1), "on") || !strcmp(argv(1), "off") ||
-		         !strcmp(argv(1), "status") || !strcmp(argv(1), "play")))
+		         !strcmp(argv(1), "status") || !strcmp(argv(1), "play") ||
+		         !strcmp(argv(1), "undo") || !strcmp(argv(1), "redo")))
 			localcmd(sprintf("p%g cmd tas %s\n", tsseat + 1, argv(1)));
 		else if (cmdargc == 2 && !strcmp(argv(1), "pause"))
 		{
@@ -2337,7 +2338,7 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas speed %.9g\n", tsseat + 1, tsvalue));
 		}
 		else
-			print("tas: menu | mouse [on/off] | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | status | speed 0.1..1\n");
+			print("tas: menu | timeline | undo/redo | mouse [on/off] | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | status | speed 0.1..1\n");
 		return TRUE;
 	}
 	if (!strcmp(argv(0), "host_timescale"))

@@ -273,6 +273,8 @@ void(float slot, float on) Share_SetLinked =
 	}
 };
 
+void() TASTimeline_Event;
+
 void() CSQC_Parse_Event =
 {
 	local float t, from, cnt;
@@ -280,6 +282,7 @@ void() CSQC_Parse_Event =
 	local float size, alpha;
 
 	t = readbyte();
+	if (t == TAS_EV_PAGE) { TASTimeline_Event(); return; }
 	if (t >= AR_EV_ROW && t <= AR_EV_DATA)
 	{
 		Archive_ClientEvent(t);

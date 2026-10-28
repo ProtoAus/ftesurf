@@ -24,6 +24,10 @@
 ### P1078 Tiers for newer maps
 - surf_midnight and six other maps added since 24 Oct now show their MOM and KSF tiers in game, not just in the map list. Four Momentum maps that left Beta now show their ranked tier instead of a suggestion.
 
+### P1077 Edit retained TAS ticks in a timeline
+- The TAS workshop has a tick-table tab: select a retained tick or range, change movement, aim or a held button, then recalculate its suffix. Refresh after completion to inspect the result.
+- Undo and redo keep up to eight local input edits at the paused head. New execution or expired exact history can detach revisions; this is not a saved project or a rewind of shared world time.
+
 ### P1076 Preserve attempt ownership through recurring timer callbacks
 - Recurring timers retain attempt ownership without stopping map effects. Affected clean runs become practice; normal current/world timers and existing segmented/shadow tier rules are unchanged.
 

@@ -101,14 +101,19 @@ void(entity e, float slot, float token) SV_TASInputUnpin =
 	SV_TimerFreezeFrame(e);
 };
 
-void(entity e, float first, float last, float field, float value, float ticket) SV_TASRecalculate =
+#include "sv_tastimeline.qc"
+
+void(entity e, float first, float last, float field, float value, float ticket, float *source) SV_TASRecalculate =
 {
-	local float head, count, i, b, serial, done, moves, prefix, pslot, ptoken;
-	local float hslot, htoken, pmark, pgen, tx, ok;
+	local float head, count, i, j, b, serial, done, moves, prefix, pslot, ptoken;
+	local float hslot, htoken, pmark, pgen, tx, ok, attached;
 	local float *data;
+	local float *original;
 	local float *m;
 	local vector move, angle;
 
+	tas_replay_armed = FALSE;
+	if (!(ticket >= 1 && ticket <= 16000000 && ticket == floor(ticket))) return;
 	if (ticket <= e.run_tas_req)
 	{
 		sprint(e, PRINT_HIGH, "tas: duplicate/stale replay request ignored\n");
@@ -151,13 +156,20 @@ void(entity e, float first, float last, float field, float value, float ticket) 
 	m = rw_slot[num_for_edict(e)];
 	pmark = m[rw_statebase+29]; pgen = m[rw_statebase+34];
 	serial = e.rec_rec_serial; done = e.run_tas_done; moves = e.run_movetick;
-	data = (float*)memalloc(count * TAS_INPUT_STRIDE * 4);
+	attached = SV_TASHistoryAttached(e);
+	data = (float*)memalloc(count * TAS_INPUT_STRIDE * 4 * 2);
 	if (!data) return;
+	original = data + count * TAS_INPUT_STRIDE;
 	ok = TRUE;
 	for (i = 0; i < count; i = i + 1)
 	{
-		if (!SV_TASInputRead(e, first + i, data, i)) { ok = FALSE; break; }
 		b = i * TAS_INPUT_STRIDE;
+		if (source)
+		{
+			for (j = 0; j < TAS_INPUT_STRIDE; j = j + 1) data[b+j] = source[b+j];
+		}
+		else if (!SV_TASInputRead(e, first + i, data, i)) { ok = FALSE; break; }
+		for (j = 0; j < TAS_INPUT_STRIDE; j = j + 1) original[b+j] = data[b+j];
 		if (field && first + i <= last) SV_TASInputChange(data, b, field, value);
 		move = [data[b], data[b+1], data[b+2]];
 		angle = [data[b+3], data[b+4], data[b+5]];
@@ -205,10 +217,10 @@ void(entity e, float first, float last, float field, float value, float ticket) 
 		angle = [data[b+3], data[b+4], data[b+5]];
 		ok = tas_tape(e, 4, tx, i, move, angle, data[b+6]);
 	}
-	memfree(data);
 	if (ok) ok = tas_tape(e, 5, tx, 0, '0 0 0', '0 0 0', 0);
 	if (!ok)
 	{
+		memfree(data);
 		tas_tape(e, 0, 0, 0, '0 0 0', '0 0 0', 0);
 		e.run_tas_fault = 1;
 		sprint(e, PRINT_HIGH, "tas: replay staging/arm failed; remains paused\n");
@@ -217,6 +229,10 @@ void(entity e, float first, float last, float field, float value, float ticket) 
 	e.run_tas_replayreq = ticket; e.run_tas_replayhead = head;
 	e.run_tas_replayfirst = first; e.run_tas_replaybase = done;
 	e.run_tas_replayserial = serial;
+	tas_replay_armed = TRUE;
+	SV_TASHistoryCommit(e, first, count, field, attached, original, data);
+	e.run_tas_historyready = FALSE;
+	memfree(data);
 	sprint(e, PRINT_HIGH, sprintf("tas: replay request %.0f queued %.0f ticks (%.0f..%.0f), %s %.0f..%.0f\n",
 		ticket, count, first, head, FS_TASEditName(field), first, last));
 };
@@ -252,7 +268,7 @@ void(entity e, float argc) SV_TASInputCommand =
 	}
 	if (!(first >= 1 && first < 16000000 && floor(first) == first &&
 	      last >= first && last < 16000000 && floor(last) == last)) goto bad;
-	SV_TASRecalculate(e, first, last, field, value, ticket);
+	SV_TASRecalculate(e, first, last, field, value, ticket, 0);
 	return;
 :bad
 	sprint(e, PRINT_HIGH, "tas: replay first | edit first [last] forward/side/up/pitch/yaw/jump/duck/walk value; plain decimal values only\n");
@@ -262,6 +278,7 @@ void(entity e, float settled) SV_TASReplayFrame =
 {
 	local float state, good;
 
+	good = FALSE;
 	state = e.run_tas_replaystate;
 	if (state == TAS_TAPE_ACTIVE && (e.run_t_state != TS_RUNNING ||
 	    !(e.run_t_flags & TF_RECORDING) || e.rec_rec_serial != e.run_tas_replayserial))
@@ -287,5 +304,6 @@ void(entity e, float settled) SV_TASReplayFrame =
 		sprint(e, PRINT_HIGH, sprintf("tas: replay request %.0f stopped %.0f/%.0f (state %.0f); no tail completion\n",
 			e.run_tas_replayreq, e.run_tas_replayat, e.run_tas_replaycount, state));
 	else return;
+	e.run_tas_historyready = good;
 	e.run_tas_replaynotice = e.run_tas_replayreq;
 };

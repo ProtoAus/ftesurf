@@ -305,4 +305,5 @@ client/cl_weapon.qc
 client/cl_weaponui.qc
 // TAS panel reuses the workshop slider and precedes cl_main's draw/input hooks.
 client/cl_tasui.qc
+client/cl_tastimeline.qc
 client/cl_main.qc
