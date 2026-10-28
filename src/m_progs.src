@@ -27,6 +27,7 @@ milk_sys.qc
 menu/m_lobby.qc
 menu/m_pics.qc              // Patch 789: after m_lobby (Lob_NextReq), before its users
 menu/m_zonedl.qc
+menu/m_mapmedia.qc          // P1099: tiers, mounts and thumbnails from the Pi
 menu/m_main.qc
 // Private CSQC snapshot view; uses the picker/UI helpers and forward MF_* declarations.
 menu/m_friends.qc

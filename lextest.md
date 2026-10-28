@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+**P1099 -- map tables and pictures between releases (needs your nginx sudo first):** once
+`sudo sh /srv/nvme/agent-work/lexmaps-media1099/install_media_nginx.sh` has run on the Pi, start
+the game online: the console says "mapmedia: N map rows from the Pi" and "M mount lines from the
+Pi". On a release install, a map added since that release shows its tier and picture in the list,
+and loads with its textures (TF2/CS:GO/Portal ones too). Players get this with the next release.
+
 **P1096 -- prop lighting from stale bakes (owner check pending):** hl2 plugin 3405f88b in both
 installs (.prev 83303920), ftequakers main 61007504d. On surf_pantheon saves 8, 9 and 10: are the
 columns even marble now, and do they look like Momentum's? `prop_census` says how many

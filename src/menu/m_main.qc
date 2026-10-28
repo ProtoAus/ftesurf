@@ -1501,7 +1501,8 @@ void() ui_meta_load =
 	local filestream fh;
 	local hashtable byname;
 	local string ln, key;
-	local float i, n, row, hit, maxpage;
+	local float i, n, row, hit, maxpage, vp;
+	local string pth, pg, cl;
 
 	if (ms_tierv >= 0) buf_del(ms_tierv);
 	if (ms_modev >= 0) buf_del(ms_modev);
@@ -1517,7 +1518,10 @@ void() ui_meta_load =
 		bufstr_add(ms_meta, "", TRUE);
 	}
 
-	fh = fopen("data/mapmeta.txt", FILE_READ);
+	pth = Mmm_MetaPath();       // P1099: the Pi's copy when it is the newer
+	Mmm_Pages(pth);
+	Mmm_UrlReset();
+	fh = fopen(pth, FILE_READ);
 	if (fh < 0)
 	{
 		print("^3WOS: data/mapmeta.txt missing -- run tools\\mapmeta.py then "
@@ -1587,15 +1591,32 @@ void() ui_meta_load =
 		// past the end anyway, so this is belt and braces, but the belt is the
 		// documented contract and worth writing down.
 		// strcat for the tail: a builtin takes 8 parameters, and sprintf drops a 9th.
+		// P1099: a cell on a page this install lacks (or has another build of) is the
+		// row's own small JPEG from the Pi instead, on a virtual page.
+		pg = argv(6);
+		cl = argv(7);
+		if (pg != "-")
+		if (!Mmm_PageOK(stof(pg)))
+			pg = "-";
+		if (pg == "-")
+		{
+			vp = Mmm_UrlPage(argv(8));
+			if (vp >= 0)
+			{
+				pg = ftos(vp);
+				cl = "0";
+			}
+		}
 		bufstr_set(ms_meta, row, strcat(sprintf("%s %s %s %s %s %s ",
 		                                        argv(3), argv(4), argv(5),
-		                                        argv(6), argv(7), argv(8)),
+		                                        pg, cl, argv(8)),
 		                                (n >= 11) ? argv(10) : "-", " ",
 		                                (n >= 12) ? argv(11) : "-"));
 
-		if (argv(6) != "-")
-			if (stof(argv(6)) > maxpage)
-				maxpage = stof(argv(6));
+		if (pg != "-")
+			if (stof(pg) < MMM_VPAGE)
+			if (stof(pg) > maxpage)
+				maxpage = stof(pg);
 
 		hit = hit + 1;
 	}
@@ -1661,9 +1682,9 @@ void() ui_meta_load =
 	for (i = 0; i <= maxpage; i = i + 1)
 		precache_pic(strcat("gfx/mapthumbs/atlas", ftos(i)));
 
-	print(sprintf("WOS: mapmeta matched %g of %g maps, %g thumbnail page(s)"
-	              ", %g tier(s) from KSF's roster\n",
-	              hit, ms_count, maxpage + 1, fb));
+	print(sprintf("WOS: %s matched %g of %g maps, %g thumbnail page(s)"
+	              ", %g picture(s) from the Pi, %g tier(s) from KSF's roster\n",
+	              pth, hit, ms_count, maxpage + 1, Mmm_UrlCount(), fb));
 
 	/*
 	  One probe against a file we know we wrote, so that a later "no backdrop"
@@ -2107,7 +2128,7 @@ void() ui_deps_load =
 	dep_n = 0;
 	ms_depcount = 0;
 
-	fh = fopen("data/mapdeps.txt", FILE_READ);
+	fh = fopen(Mmm_DepsPath(), FILE_READ);  // P1099
 	if (fh < 0)
 		return;
 
@@ -2192,6 +2213,12 @@ void(vector pos, vector size, float page, float cell) ui_thumb =
 	{
 		sui_fill(pos, size, '0.05 0.05 0.07', 1, 0);
 		sui_border_box(pos, size, 1, '0.14 0.14 0.18', 1, 0);
+		return;
+	}
+	if (page >= MMM_VPAGE)
+	{
+		sui_fill(pos, size, '0.05 0.05 0.07', 1, 0);    // until the download lands
+		sui_subpic(pos, size, Mmm_UrlFor(page), '0 0 0', '1 1 0', '1 1 1', 1, 0);
 		return;
 	}
 
@@ -5431,6 +5458,7 @@ void(vector screensize, float page, float cell) ui_bgatlas =
 {
 	local vector sp, ss, base, sz;
 	local float col, row, d, i, gx, gy, w, acc, scale;
+	local string pic;
 
 	if (page < 0 || cell < 0)
 		return;
@@ -5444,6 +5472,13 @@ void(vector screensize, float page, float cell) ui_bgatlas =
 	// side of the screen.
 	sp = [(col * THUMB_W + 0.5) / ATLAS_PX, (row * THUMB_H + 0.5) / ATLAS_PX, 0];
 	ss = [(THUMB_W - 1) / ATLAS_PX, (THUMB_H - 1) / ATLAS_PX, 0];
+	pic = strcat("gfx/mapthumbs/atlas", ftos(page));
+	if (page >= MMM_VPAGE)
+	{
+		sp = '0 0 0';
+		ss = '1 1 0';
+		pic = Mmm_UrlFor(page);
+	}
 
 	// Cover, not fit -- the same rule and the same reason as the full-size path
 	// below -- then grow by the blur offset so no shifted tap can pull an empty
@@ -5473,7 +5508,7 @@ void(vector screensize, float page, float cell) ui_bgatlas =
 		// compete with panel text the way a sharp photograph can, so the
 		// dimming the sharp path needs is dimming this one only pays for.
 		sui_subpic([base_x + gx * d, base_y + gy * d], sz,
-		           strcat("gfx/mapthumbs/atlas", ftos(page)),
+		           pic,
 		           sp, ss, '1 1 1', w / acc, 0);
 	}
 };
@@ -8166,6 +8201,17 @@ void(vector screensize) m_draw =
 	// Warm the catalogue on boot, even before the picker is opened. Mdl_Ask
 	// owns consent, in-flight and one-minute refresh guards.
 	Mdl_Ask();
+	Mmm_Ask();                      // P1099
+	if (mmm_fresh)
+	if (menu_active)
+	{
+		mmm_fresh = FALSE;
+		if (ms_count > 0)
+		{
+			ui_load_maps();
+			ui_refilter();
+		}
+	}
 	Mzd_Pump();
 	ui_boot_preload();
 	ui_dlkb_step();                 // Patch 999

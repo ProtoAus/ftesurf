@@ -46,6 +46,8 @@ server {
     # Map downloads. A named location list, like everything else here -- the
     # regex inside matches only <map>.bsp, so this cannot become a catch-all.
     include snippets/ftesurf-maps.conf;
+    # P1099: the menu's map tables and thumbnails (media.nginx, install_media_nginx.sh).
+    include snippets/ftesurf-media.conf;
 
     # Anything not named above does not exist. This is what keeps
     # /api/heartbeat off the internet.

@@ -45,8 +45,13 @@ try {
     # even when the sweep failed: they read other sources.
     $media = Invoke-Logged @('-I', (Join-Path $Repo 'tools\mapmedia_refresh.py'))
     "=== mapmedia exit $media ===" | Out-File -FilePath $Log -Encoding utf8 -Append
+    # P1099: and to the Pi, where the menu fetches them between releases.  What is
+    # installed is sent even after a refusal: it is still the last good table.
+    $pub = Invoke-Logged @('-I', (Join-Path $Repo 'tools\mapmedia_publish.py'))
+    "=== publish exit $pub ===" | Out-File -FilePath $Log -Encoding utf8 -Append
     if ($scan -ne 0) { exit $scan }
-    exit $media
+    if ($media -ne 0) { exit $media }
+    exit $pub
 }
 catch {
     "=== FAILED: $_ ===" | Out-File -FilePath $Log -Encoding utf8 -Append

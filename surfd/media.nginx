@@ -1,0 +1,22 @@
+# P1099: map media between releases, from /srv/nvme/ftesurf-site/media/, which the PC's
+# tools/mapmedia_refresh.py --publish writes. The menu fetches the two tables once a
+# session and a map's small thumbnail when no shipped atlas page holds it.
+location = /ftesurf/media/mapmeta.txt {
+    alias /srv/nvme/ftesurf-site/media/mapmeta.txt;
+    default_type text/plain;
+    add_header Cache-Control "public, max-age=300";
+}
+location = /ftesurf/media/mapdeps.txt {
+    alias /srv/nvme/ftesurf-site/media/mapdeps.txt;
+    default_type text/plain;
+    add_header Cache-Control "public, max-age=300";
+}
+location ~ "^/ftesurf/media/thumbs/(?<ftethumb>[0-9a-f-]{36})\.jpg$" {
+    root /srv/nvme/ftesurf-site/media/thumbs;
+    try_files /$ftethumb.jpg =404;
+    default_type image/jpeg;
+    add_header Cache-Control "public, max-age=86400";
+    autoindex off;
+    disable_symlinks if_not_owner;
+}
+location /ftesurf/media/ { return 404; }     # plain prefix: ^~ would hide the regex above

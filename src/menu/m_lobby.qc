@@ -1221,6 +1221,7 @@ float(float reqid, float code, string bdy) Profile_Reply;     // client/cl_profi
 float(float reqid, float code, string bdy) MP_Reply;          // m_pics.qc, Patch 789
 float(float reqid, float code, string body) Sty_Reply;        // m_story.qc, Patch 854
 float(float reqid, float code, string body) MU_NotesReply;    // m_update.qc, Patch 876
+float(float reqid, float code, string body) Mmm_Reply;        // m_mapmedia.qc, P1099
 
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
@@ -1263,6 +1264,8 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 	if (Sty_Reply(reqid, responsecode, resourcebody))
 		return;
 	if (MU_NotesReply(reqid, responsecode, resourcebody))
+		return;
+	if (Mmm_Reply(reqid, responsecode, resourcebody))
 		return;
 
 	if (reqid != lb_req)

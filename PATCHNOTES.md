@@ -21,6 +21,10 @@
 
 ## next
 
+### P1099 New maps between updates
+- The map list fetches the latest tiers and the list of maps that use other games' content once a session, so maps added since the last update show their tier and load with their textures.
+- A map whose picture is not in this update's thumbnails shows it from the server instead of a blank tile.
+
 ### P1098 Map tiers and pictures stay current
 - The tiers, thumbnails and extra game content each release ships for its maps are refreshed from Momentum every six hours instead of by hand, so new maps arrive with their tier and picture.
 

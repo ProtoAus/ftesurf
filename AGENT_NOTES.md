@@ -1,5 +1,24 @@
 # AGENT_NOTES.md
 
+## Map media between releases (P1099, 29 Oct 2026)
+
+- The menu (m_mapmedia.qc) fetches play.proto.bar/ftesurf/media/{mapmeta,mapdeps}.txt once a
+  session at rec_terms >= 8 and writes `data/*.net.txt`, never the shipped files: the launcher
+  hashes managed files at launch and re-fetches an edited one. The greater `# stamp` wins --
+  in the menu for tiers and badges, in fs.c (FS_AutoMountForMap) for mounts, which takes only
+  `steam:` specs without ".." from the menu's copy.
+- **`tokenize` makes `steam:X` three tokens**: the first cut read 0 mount lines. Cut a line
+  with substring, as ui_deps_load does.
+- A row whose atlas page is missing, or listed at another size in the chosen table's
+  `# atlas P bytes`, draws `media/thumbs/<uuid>.jpg` through the engine's URL image loader
+  (r_image_downloadsizelimit 128 KB; the small JPEGs are <= 53 KB). Only with consent:
+  drawing one is a request. The hl2 plugin skips shader names with ':' -- they arrive as
+  `http:/...` (double slash collapsed) and probing them printed an ADS error.
+- tools/mapmedia_publish.py runs after the refresh: thumbnails, then tables by rename.
+  nginx: surfd/media.nginx, installed by surfd/install_media_nginx.sh (Lex's sudo); `^~` on
+  the catch-all hid the thumbs regex, and nginx needs the `{36}` regex quoted.
+- Arm: lexmaps root's rig1099 (copied content, test menu with MMM_BASE on 127.0.0.1:18471).
+
 ## Map media refresh (P1098, 29 Oct 2026)
 
 - `tools/mapmedia_refresh.py` runs after mapscan.py in the six-hourly task: the
