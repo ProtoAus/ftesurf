@@ -43,6 +43,16 @@ float(entity e, float i) SV_TASOptParam =
 float(entity e, float p) SV_TASOptLo = { return (p == 2) ? -TOPT_YMAX : 0; };
 float(entity e, float p) SV_TASOptHi = { if (p == 2) return TOPT_YMAX; if (p == 3) return TOPT_FMAX; return e.topt_rmax; };
 
+string(entity e) SV_TASOptExtra =
+{
+	local string s;
+	s = "";
+	if (e.topt_mode & 1) s = sprintf(", board %.2f deg", e.topt_besty);
+	if (e.topt_mode & 2) s = strcat(s, (e.topt_bestf < 0) ? ", no flick"
+		: sprintf(", flick %.3f deg/tick over the last %.0f ticks", e.topt_bestf, e.topt_fk));
+	return s;
+};
+
 void(entity e, string why) SV_TASOptStop =
 {
 	if (!e.topt_on) return;
@@ -51,7 +61,8 @@ void(entity e, string why) SV_TASOptStop =
 	e.topt_on = 0;
 	sprint(e, PRINT_HIGH, sprintf("tas optimize: stopped after %.0f candidates: %s\n", e.topt_evals, why));
 	if (e.topt_bestv >= 0)
-		sprint(e, PRINT_HIGH, sprintf("tas optimize: best so far turn %.3f deg/tick, %.1f u/s (not applied)\n", e.topt_bestr, e.topt_bestv));
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: best so far turn %.3f deg/tick%s, %.1f u/s (not applied)\n", e.topt_bestr,
+			SV_TASOptExtra(e), e.topt_bestv));
 };
 
 // The candidate's inputs onto the native tape: yaw0 + board, then turning r a tick, and over the
@@ -65,7 +76,7 @@ float(entity e, float r, float y, float f) SV_TASOptTape =
 	m = e.topt_n - e.topt_fk;
 	for (i = 0; i < e.topt_n && ok; i = i + 1)
 	{
-		if (i < m) yaw = e.topt_yaw0 + e.topt_dir * (y + r * (i + 1));
+		if (i < m || f == r) yaw = e.topt_yaw0 + e.topt_dir * (y + r * (i + 1));
 		else yaw = e.topt_yaw0 + e.topt_dir * (y + r * m + f * (i + 1 - m));
 		yaw = yaw - 360 * floor((yaw + 180) / 360);     // SV_TASPWord unwraps only one turn
 		ok = tas_tape(e, 4, tx, i, [0, -450 * e.topt_dir, 0],
@@ -131,12 +142,15 @@ void(entity e, float v) SV_TASOptResult =
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: best %s turn %.3f deg/tick over %.0f ticks: exit %.1f u/s (%.0f candidates); paused at %.0f\n",
 			(e.topt_dir > 0) ? "left" : "right", e.topt_bestr, e.topt_n, v, e.topt_evals, SV_TimerTicks(e)));
 		if (e.topt_mode)
-			sprint(e, PRINT_HIGH, sprintf("tas optimize: with board %.2f deg and %s\n", e.topt_besty, (e.topt_bestf < 0) ? "no flick"
-				: sprintf("flick %.3f deg/tick over the last %.0f ticks", e.topt_bestf, e.topt_fk)));
+			sprint(e, PRINT_HIGH, sprintf("tas optimize: with%s\n", substring(SV_TASOptExtra(e), 1, -1)));
 		if (fabs(v - e.topt_bestv) > 0.05)  // a moving world can differ between two plays
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: replayed %.1f u/s, searched %.1f: the world moved between them\n", v, e.topt_bestv));
 		if (e.topt_bestr >= e.topt_rmax - 0.01)
 			sprint(e, PRINT_HIGH, "tas optimize: that is the top of the range searched; a sharper turn may be faster\n");
+		if ((e.topt_mode & 1) && fabs(e.topt_besty) >= TOPT_YMAX - 0.01)
+			sprint(e, PRINT_HIGH, "tas optimize: the board is at the end of its range; a wider one may be faster\n");
+		if ((e.topt_mode & 2) && e.topt_bestf >= TOPT_FMAX - 0.01)
+			sprint(e, PRINT_HIGH, "tas optimize: the flick is at the top of its range\n");
 		return;
 	}
 	p = SV_TASOptParam(e, e.topt_srch);
@@ -155,7 +169,7 @@ void(entity e, float v) SV_TASOptResult =
 		step = (hi - lo) / (TOPT_GRID - 1);
 		if (e.topt_k < TOPT_GRID) { e.topt_cand = lo + e.topt_k * step; return; }
 		e.topt_phase = 2;
-		best = max(lo, (p == 2) ? e.topt_besty : ((p == 3) ? e.topt_bestf : e.topt_bestr));
+		best = max(lo, (p == 2) ? e.topt_besty : ((p == 3) ? SV_TASOptValue(e, 3) : e.topt_bestr));
 		e.topt_lo = max(lo, best - step); e.topt_hi = min(hi, best + step);
 		e.topt_a = e.topt_hi - TOPT_G * (e.topt_hi - e.topt_lo);
 		e.topt_b = e.topt_lo + TOPT_G * (e.topt_hi - e.topt_lo);
@@ -227,10 +241,15 @@ void(entity e, float argc) SV_TASOptCommand =
 		w = argv(i);
 		if (w == "board" && !(mode & 1)) mode = mode | 1;
 		else if (w == "flick" && !(mode & 2)) { mode = mode | 2; fk = 4; }
-		else if ((mode & 2) && fk == 4 && i == argc - 1 && stof(w) >= 1 && stof(w) <= 32 && stof(w) == floor(stof(w)) && w == ftos(stof(w))) fk = stof(w);
+		else if ((mode & 2) && fk == 4 && argv(i - 1) == "flick" && stof(w) >= 1 && stof(w) <= 32 && stof(w) == floor(stof(w)) && w == ftos(stof(w))) fk = stof(w);
 		else { mode = -1; break; }
 	}
-	if (argc < 4 || argc > 7 || !(n >= 4 && n <= TAS_TAPE_MAX && n == floor(n)) || !dir || mode < 0 || fk >= n)
+	if (argc >= 4 && argc <= 7 && n >= 4 && n <= TAS_TAPE_MAX && n == floor(n) && dir && mode >= 0 && fk >= n)
+	{
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: the flick (%.0f ticks) must be shorter than the run (%.0f ticks)\n", fk, n));
+		return;
+	}
+	if (argc < 4 || argc > 7 || !(n >= 4 && n <= TAS_TAPE_MAX && n == floor(n)) || !dir || mode < 0)
 	{
 		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128> <left|right> [board] [flick [ticks 1..32]]: best turn for exit speed\n");
 		return;
@@ -263,6 +282,6 @@ void(entity e, float argc) SV_TASOptCommand =
 	sprint(e, PRINT_HIGH, sprintf("tas optimize: from tick %.0f, %.0f ticks turning %s, 0..%.2f deg/tick, %.0f candidates\n",
 		e.topt_head, n, argv(3), e.topt_rmax, searches * (TOPT_GRID + TOPT_GOLD + 2) + 1));
 	if (mode)
-		sprint(e, PRINT_HIGH, sprintf("tas optimize: %s%s\n", (mode & 1) ? "board -30..30 deg; " : "",
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: %s%s%s\n", (mode & 1) ? "board -30..30 deg" : "", (mode == 3) ? "; " : "",
 			(mode & 2) ? sprintf("flick over the last %.0f ticks, 0..%.0f deg/tick", fk, TOPT_FMAX) : ""));
 };
