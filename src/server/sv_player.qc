@@ -906,7 +906,7 @@ void() PlayerPostThink =
 
 	SV_RewindSample(self);          // Patch 477: the recent past a rewind saves from
 	SV_TASReplayFrame(self, TRUE);  // completion only after clock/recorder/retained head settle
-	SV_TASProjectFrame(self);       // P1082: the next load chunk, or the input harvest
+	SV_TASProjectFrame(self);       // P1082: the next load chunk; a non-TAS rewind detaches
 	SV_WatchFrame(self);            // ...and the replay/rewind pin holds no speed
 
 	// Pinned at a save-lock while the load key is held.  After the timer, so the

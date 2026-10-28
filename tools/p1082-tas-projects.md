@@ -34,14 +34,14 @@ From a paused TAS attempt (see `tools/p1077-tas-timeline.md`):
 - The shared world is not rewound: moving platforms and triggers that depend on time are
   not part of a project. A `reconnect` also leaves your previous body in the world for a
   while; a line that runs into it stops there.
-- The shared world is not rewound: moving platforms and triggers that depend on time are
-  not part of a project.
 - The base save is a normal TAS save. Deleting it, or changing the map file, zones or
   movement rules, makes the project refuse to load rather than approximate.
 - Projects stay TAS: the base is a TAS save and every load marks the attempt TAS.
 
 ## Limits
 
-About 24 minutes of ticks per project and 48 checkpoints. Exact history is kept for the
-last 4000 ticks; ticks older than that are copied into the project as you go, and a save
-refuses (naming the tick) if any tick since the last save was not retained.
+About 24 minutes of ticks per project, 48 checkpoints, 64 projects per map. Inputs come from
+the attempt's recording, so a save covers everything since the base. A first save starts at
+the oldest exactly-kept tick (about the last 60 s). Saving an existing name needs `force`
+unless it is the project you are on; going back before the base, or rewinding outside the
+TAS controls, leaves the project's line (save under a new name). Needs `rec_stream 0`.

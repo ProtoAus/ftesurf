@@ -1,12 +1,12 @@
 // P1082: TAS projects. A project = one ordinary TAS save (its base) + every input after it.
-// Loading re-simulates from that save, so a project is only as exact as a cold save load:
-// the FIRST load of a warm session may diverge (state.txt rounds, carried mover state resets),
-// and checkpoint states say where. Save/load cycles after that start from the same base.
+// Loading re-simulates from that save; checkpoint states say whether it reproduced. The engine
+// keeps the connection's sub-tick ms carry into a replay, which QC cannot set (BACKLOG).
 #define TASP_VERSION 1
 #define TASP_MAX 96000          // ticks after the base, about 24 minutes at 15 ms
 #define TASP_CPMAX 48           // checkpoints kept: auto, the head, named
 #define TASP_CPEVERY 256        // auto spacing, doubled until about 32 fit
 #define TASP_CPSTRIDE 8         // tick, named, origin xyz, velocity xyz
+#define TASP_FILES 64           // projects per map
 
 float *tasp_buf[FS_MAXPLAYERS + 1];      // inputs for ticks base+1.., TAS_INPUT_STRIDE each
 float *tasp_cp[FS_MAXPLAYERS + 1];
@@ -17,6 +17,7 @@ string tasp_parent[FS_MAXPLAYERS + 1], tasp_cpnames[FS_MAXPLAYERS + 1];
 .float tasp_ccount, tasp_cpi, tasp_dev, tasp_devtick, tasp_result, tasp_next;
 .vector tasp_bo, tasp_bv;      // the base tick's exact origin and velocity (state.txt rounds)
 .float tasp_line;              // recorder line after tick tasp_synced's `in` row, -1 unknown
+.float tasp_linemt;            // that row's move counter, -1 when the next row starts a branch
 
 // One file read into temporaries; a load installs them only after every check passed.
 float *tpr_buf;
@@ -25,6 +26,7 @@ float tpr_n, tpr_size, tpr_base, tpr_baseid, tpr_rev, tpr_ncp;
 vector tpr_bo, tpr_bv;
 string tpr_hash, tpr_parent, tpr_cpnames, tpr_why;
 float tasp_hflags;
+string tasp_why;
 
 float(entity e) SV_TASPSlot =
 {
@@ -57,13 +59,24 @@ float(string n) SV_TASPExists =
 	return TRUE;
 };
 
+float() SV_TASPCount =
+{
+	local searchhandle h;
+	local float n;
+	h = search_begin(sprintf("data/tasproj/%s/*.tasp", mapname), 0, TRUE);
+	if (h < 0) return 0;
+	n = search_getsize(h);
+	search_end(h);
+	return n;
+};
+
 void(entity e) SV_TASProjectReset =
 {
 	local float s;
 	s = SV_TASPSlot(e);
 	e.tasp_on = e.tasp_load = e.tasp_n = e.tasp_cap = e.tasp_ncp = e.tasp_ccount = 0;
 	e.tasp_result = e.tasp_dev = e.tasp_devtick = 0;
-	e.tasp_line = -1;
+	e.tasp_line = e.tasp_linemt = -1;
 	if (!s) return;
 	if (tasp_buf[s]) memfree(tasp_buf[s]);
 	if (tasp_cp[s]) memfree(tasp_cp[s]);
@@ -167,10 +180,11 @@ float(entity e, float *buf, float n) SV_TASPValidate =
 };
 
 // Parse a project into tpr_*. Untrusted: every value is bounded; FALSE leaves tpr_why.
+// `identity` also requires and compares the map, zone and movement-rule lines.
 float(entity e, string name, float identity) SV_TASPRead =
 {
 	local filestream f;
-	local string l, k, pin, hash, parent, names;
+	local string l, k, pin, hash, parent, names, z;
 	local float argc, n, i, b, have, ended, named;
 
 	SV_TASPReadFree();
@@ -224,13 +238,26 @@ float(entity e, string name, float identity) SV_TASPRead =
 		}
 		if (k == "tasproject") { if (argc != 2 || argv(1) != ftos(TASP_VERSION)) { tpr_why = "unknown project version"; break; } have = have | 1; continue; }
 		if (k == "map") { if (argc != 2 || argv(1) != mapname) { tpr_why = "made on another map"; break; } have = have | 2; continue; }
-		if (k == "mapcrc") { if (identity && (argc != 2 || argv(1) != infokey(world, "*mapcrc"))) { tpr_why = "the map file changed"; break; } continue; }
-		if (k == "zonecrc") { if (identity && (argc != 2 || zone_crc == "" || argv(1) != zone_crc)) { tpr_why = "the zones changed"; break; } continue; }
-		if (k == "pmpin") { if (identity && (pin == "" || substring(l, 6, -1) != pin)) { tpr_why = "the movement rules changed"; break; } continue; }
+		if (k == "mapcrc")
+		{
+			if (identity && (argc != 2 || argv(1) != infokey(world, "*mapcrc"))) { tpr_why = "the map file changed"; break; }
+			have = have | 32; continue;
+		}
+		if (k == "zonecrc")
+		{
+			z = (argc >= 2) ? argv(1) : "";
+			if (identity && (argc > 2 || z != zone_crc)) { tpr_why = "the zones changed"; break; }
+			have = have | 64; continue;
+		}
+		if (k == "pmpin")
+		{
+			if (identity && (pin == "" || substring(l, 6, -1) != pin)) { tpr_why = "the movement rules changed"; break; }
+			have = have | 128; continue;
+		}
 		if (k == "base")
 		{
 			// base <save folder id> <state.txt sha256> <tick>
-			if (argc != 4 || !SV_TASPNum(argv(1), 1, 99999, TRUE)) { tpr_why = "bad base"; break; }
+			if (argc != 4 || (have & 4) || !SV_TASPNum(argv(1), 1, 99999, TRUE)) { tpr_why = "bad base"; break; }
 			tpr_baseid = fs_tas_number;
 			if (strlen(argv(2)) != 64) { tpr_why = "bad base hash"; break; }
 			hash = argv(2);
@@ -251,7 +278,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 		}
 		if (k == "baseat")
 		{
-			if (argc != 7) { tpr_why = "bad base state"; break; }
+			if (argc != 7 || (have & 16)) { tpr_why = "bad base state"; break; }
 			for (i = 0; i < 6; i = i + 1) if (!SV_TASPNum(argv(i + 1), -1000000, 1000000, FALSE)) break;
 			if (i < 6) { tpr_why = "bad base state"; break; }
 			tpr_bo = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
@@ -272,6 +299,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 	fclose(f);
 	if (tpr_why == "" && !ended) tpr_why = "incomplete file (no end line)";
 	if (tpr_why == "" && (have & 31) != 31) tpr_why = "missing header lines";
+	if (tpr_why == "" && identity && (have & 224) != 224) tpr_why = "missing map, zone or movement-rule line";
 	if (tpr_why == "" && tpr_ncp > 0)
 	if (tpr_cp[0] <= tpr_base || tpr_cp[(tpr_ncp - 1) * TASP_CPSTRIDE] > tpr_base + n)
 		tpr_why = "checkpoint outside the project";
@@ -338,12 +366,34 @@ float(float deg) SV_TASPWord =
 	return w;
 };
 
-// Inputs come from the recorder's `in` rows, one per simulated tick. The ring samples once
-// per packet, so it has gaps; its native rows only align and spot-check the recorder here.
-string tasp_why;
+// Anchor the harvest at recorder line `line`: the last `in` row before it is tick synced's.
+// `branch`: that row's move counter does not continue into the next (a go or load between).
+void(entity e, float line, float branch) SV_TASPAnchorLine =
+{
+	local float i, lo;
+	local string l;
+	line = min(line, e.rec_rec_lines);
+	e.tasp_line = line; e.tasp_linemt = -1;
+	if (branch || e.rec_rec_buf < 1) return;
+	lo = max(0, line - 4096);
+	for (i = line - 1; i >= lo; i = i - 1)
+	{
+		l = bufstr_get(e.rec_rec_buf, i);
+		if (substring(l, 0, 3) == "in ")
+		{
+			tokenize(l);
+			e.tasp_linemt = stof(argv(2));
+			return;
+		}
+	}
+};
+
+// Inputs come from the recorder's `in` rows, one per simulated tick; the ring samples once per
+// packet and has gaps. Each row's move counter must follow the last; every 16th tick and the
+// last are also checked against the engine's own capture where the ring kept a row.
 float(entity e, float s, float last) SV_TASPHarvest =
 {
-	local float t, i, n, b, argc, w;
+	local float t, i, n, b, argc, w, mt;
 	local string l;
 	local vector meta, mv, an, bits;
 
@@ -354,11 +404,11 @@ float(entity e, float s, float last) SV_TASPHarvest =
 	if (e.tasp_line < 0)
 	{
 		if (!SV_RewindFindTick(e, e.tasp_synced)) { tasp_why = sprintf("no exact row at tick %.0f to align with", e.tasp_synced); return FALSE; }
-		e.tasp_line = rw_slot[s][rw_statebase + 29];
+		SV_TASPAnchorLine(e, rw_slot[s][rw_statebase + 29], FALSE);
 	}
 	if (!SV_TASPEnsure(e, s, last - e.tasp_base)) { tasp_why = "out of memory"; return FALSE; }
-	n = buf_getsize(e.rec_rec_buf);
-	i = e.tasp_line; t = e.tasp_synced;
+	n = min(buf_getsize(e.rec_rec_buf), e.rec_rec_lines);
+	i = e.tasp_line; t = e.tasp_synced; mt = e.tasp_linemt;
 	while (t < last)
 	{
 		l = "";
@@ -366,10 +416,15 @@ float(entity e, float s, float last) SV_TASPHarvest =
 		{
 			l = bufstr_get(e.rec_rec_buf, i);
 			if (substring(l, 0, 3) == "in ") break;
+			// A go or a load writes one of these at its cut; the counter does not continue.
+			if (substring(l, 0, 7) == "resume " || substring(l, 0, 8) == "session " || substring(l, 0, 6) == "pause ")
+				mt = -1;
 		}
 		if (i >= n) { tasp_why = sprintf("the recording has no input for tick %.0f", t + 1); return FALSE; }
 		argc = tokenize(l);
 		if (argc != 12 || (stof(argv(11)) & 8)) { tasp_why = sprintf("tick %.0f is not one whole recorded move", t + 1); return FALSE; }
+		if (mt >= 0 && stof(argv(2)) != mt + 1) { tasp_why = sprintf("the recorded moves do not line up at tick %.0f", t + 1); return FALSE; }
+		mt = stof(argv(2));
 		b = (t - e.tasp_base) * TAS_INPUT_STRIDE;
 		tasp_buf[s][b] = stof(argv(4)); tasp_buf[s][b+1] = stof(argv(5)); tasp_buf[s][b+2] = stof(argv(6));
 		tasp_buf[s][b+3] = SV_TASPWord(stof(argv(7)));
@@ -391,32 +446,40 @@ float(entity e, float s, float last) SV_TASPHarvest =
 				if (!w) { tasp_why = sprintf("the recording and the engine disagree about tick %.0f", t); return FALSE; }
 			}
 		}
-		e.tasp_synced = t; e.tasp_line = i;
+		e.tasp_synced = t; e.tasp_line = i; e.tasp_linemt = mt;
 		if (t - e.tasp_base > e.tasp_n) e.tasp_n = t - e.tasp_base;
 	}
 	return TRUE;
 };
 
-// The new head after a TAS go (back, edit, undo, redo) or any rewind: later ticks are replaced.
-void(entity e, float h) SV_TASPSyncTo =
+// This attempt left the project's line: later saves need a new name or force.
+void(entity e, string why) SV_TASPDetach =
 {
-	if (h >= e.tasp_synced) return;
-	e.tasp_synced = max(e.tasp_base, h);
-	e.tasp_line = -1;   // re-aligned from that tick's ring row at the next harvest
+	if (e.tasp_serial == -1) return;
+	e.tasp_serial = -1;
+	sprint(e, PRINT_HIGH, sprintf("tas project: %s left %s's line (%s); save under a new name, or with force\n",
+		"this attempt", tasp_name[SV_TASPSlot(e)], why));
 };
 
+// Called from SV_TASGo after its restore: every tick after the new head is replaced.
 void(entity e) SV_TASProjectTouch =
 {
-	if (!e.tasp_on || e.tasp_load) return;
-	SV_TASPSyncTo(e, SV_TimerTicks(e));
+	local float h;
+	if (!e.tasp_on || e.tasp_load || e.tasp_serial != e.rec_rec_serial) return;
+	h = SV_TimerTicks(e);
+	e.tasp_lasthead = h;
+	if (h < e.tasp_base) { SV_TASPDetach(e, "went back before its base"); return; }
+	if (h >= e.tasp_synced) return;
+	e.tasp_synced = h;
+	SV_TASPAnchorLine(e, e.rec_rec_lines, TRUE);   // the replayed ticks' counter continues on
 };
 
 void(entity e, string why) SV_TASPAbort =
 {
 	if (e.run_tas_replaystate == TAS_TAPE_ACTIVE) tas_tape(e, 0, 0, 0, '0 0 0', '0 0 0', 0);
 	e.tasp_load = 0; e.tasp_ccount = 0; e.tasp_result = 3;
-	e.tasp_on = 0;
-	sprint(e, PRINT_HIGH, sprintf("tas project: load stopped at tick %.0f: %s; project detached (load it again)\n",
+	e.tasp_serial = -1;
+	sprint(e, PRINT_HIGH, sprintf("tas project: load stopped at tick %.0f: %s; load it again to continue\n",
 		SV_TimerTicks(e), why));
 	SV_TASProjectEvent(e);
 };
@@ -445,7 +508,8 @@ void(entity e) SV_TASProjectDrive =
 		e.tasp_ccount = 0;
 	}
 	head = SV_TimerTicks(e);
-	e.tasp_synced = head; e.tasp_lasthead = head; e.tasp_line = -1;
+	e.tasp_synced = head; e.tasp_lasthead = head;
+	SV_TASPAnchorLine(e, e.rec_rec_lines, FALSE);
 	// Checkpoints at this head: exact float compare against the stored state.
 	while (e.tasp_cpi < e.tasp_ncp)
 	{
@@ -458,7 +522,7 @@ void(entity e) SV_TASProjectDrive =
 			d = max(vlen(e.origin - o), vlen(e.velocity - v));
 			if (d > 0 && !e.tasp_devtick) e.tasp_devtick = head;
 			e.tasp_dev = max(e.tasp_dev, d);
-			// From here on the stored state describes THIS base's trajectory.
+			// From here on the stored state describes THIS load's trajectory.
 			tasp_cp[s][b+2] = e.origin_x; tasp_cp[s][b+3] = e.origin_y; tasp_cp[s][b+4] = e.origin_z;
 			tasp_cp[s][b+5] = e.velocity_x; tasp_cp[s][b+6] = e.velocity_y; tasp_cp[s][b+7] = e.velocity_z;
 		}
@@ -503,74 +567,81 @@ void(entity e) SV_TASProjectDrive =
 	e.tasp_chead = head + count; e.tasp_cbase = e.run_tas_done; e.tasp_ccount = count;
 };
 
+// The settled hook: the next load chunk, and a rewind outside a TAS go detaches.
 void(entity e) SV_TASProjectFrame =
 {
-	local float s, head;
-	if (!e.tasp_on) return;
-	s = SV_TASPSlot(e);
-	if (!s) return;
+	local float head;
+	if (!e.tasp_on || !SV_TASPSlot(e)) return;
 	if (e.tasp_load) { SV_TASProjectDrive(e); return; }
 	if (e.run_t_state != TS_RUNNING || e.rec_rec_serial != e.tasp_serial) return;
 	head = SV_TimerTicks(e);
-	if (head < e.tasp_lasthead) SV_TASPSyncTo(e, head);  // a rewind outside the TAS go
+	if (head < e.tasp_lasthead) { SV_TASPDetach(e, "rewound outside the TAS controls"); return; }
 	e.tasp_lasthead = head;
 };
 
-// Rebuild checkpoints for (base, head]: auto, the head, named ones. States come from the
-// ring where retained, else from this slot's previous list; a state found nowhere drops.
+// The stored state of tick t in the slot's checkpoint list, into rw_o/rw_v; FALSE if absent.
+float(float s, float n, float t) SV_TASPOldState =
+{
+	local float k, b;
+	if (!tasp_cp[s]) return FALSE;
+	for (k = 0; k < n; k = k + 1)
+	{
+		b = k * TASP_CPSTRIDE;
+		if (tasp_cp[s][b] == t)
+		{
+			rw_o = [tasp_cp[s][b+2], tasp_cp[s][b+3], tasp_cp[s][b+4]];
+			rw_v = [tasp_cp[s][b+5], tasp_cp[s][b+6], tasp_cp[s][b+7]];
+			return TRUE;
+		}
+	}
+	return FALSE;
+};
+
+// Rebuild checkpoints for (base, head]: auto every `every`, the named ones, the head. Only those
+// ticks are visited. States come from the ring, else the old list; a state found nowhere drops.
 void(entity e, float s, float head) SV_TASPCheckpoints =
 {
 	local float *nc;
-	local float n, t, k, b, ob, named, found, i, every, room;
-	local string names, nm;
+	local float n, t, j, b, at, nt, named, oldn, nk, every, found;
+	local string names;
 
 	nc = (float*)memalloc(TASP_CPMAX * TASP_CPSTRIDE * 4);
 	if (!nc) return;
 	every = TASP_CPEVERY;
 	while ((head - e.tasp_base) / every > 32) every = every * 2;
-	n = 0; names = "";
-	for (t = e.tasp_base + 1; t <= head; t = t + 1)
+	oldn = tasp_cp[s] ? e.tasp_ncp : 0;
+	n = 0; names = ""; j = 0; nk = 0;
+	at = e.tasp_base + every;
+	while (n < TASP_CPMAX)
 	{
-		named = -1;
-		if (tasp_cp[s])
-		for (k = 0; k < e.tasp_ncp; k = k + 1)
-			if (tasp_cp[s][k * TASP_CPSTRIDE] == t && tasp_cp[s][k * TASP_CPSTRIDE + 1]) { named = k; break; }
-		if (named < 0 && t != head && (t - e.tasp_base) % every) continue;
-		room = TASP_CPMAX - n;
-		if (room <= 0) break;
-		if (room == 1 && t != head) continue;  // the last slot is the head's
-		b = n * TASP_CPSTRIDE;
-		found = FALSE;
-		if (SV_RewindFindTick(e, t))
+		// The next named row of the old list that still lies in (base, head].
+		nt = 16000001;
+		for (; j < oldn; j = j + 1)
 		{
+			b = j * TASP_CPSTRIDE;
+			if (!tasp_cp[s][b+1]) continue;
+			if (tasp_cp[s][b] > e.tasp_base && tasp_cp[s][b] <= head) { nt = tasp_cp[s][b]; break; }
+			nk = nk + 1;   // a named row dropped here still owns a name slot
+		}
+		t = min(min(nt, at < head ? at : 16000001), head);
+		named = (t == nt);
+		if (n == TASP_CPMAX - 1 && t != head) t = head;   // the last slot is the head's
+		found = FALSE;
+		if (SV_RewindFindTick(e, t)) found = TRUE;
+		else if (SV_TASPOldState(s, oldn, t)) found = TRUE;
+		else if (t == head) { rw_o = e.origin; rw_v = e.velocity; found = TRUE; }
+		if (found)
+		{
+			b = n * TASP_CPSTRIDE;
+			nc[b] = t; nc[b+1] = named && t == nt;
 			nc[b+2] = rw_o_x; nc[b+3] = rw_o_y; nc[b+4] = rw_o_z;
 			nc[b+5] = rw_v_x; nc[b+6] = rw_v_y; nc[b+7] = rw_v_z;
-			found = TRUE;
+			if (nc[b+1]) names = strcat(names, SV_TASPNameAt(tasp_cpnames[s], nk), ";");
+			n = n + 1;
 		}
-		else if (tasp_cp[s])
-		for (k = 0; k < e.tasp_ncp; k = k + 1)
-			if (tasp_cp[s][k * TASP_CPSTRIDE] == t)
-			{
-				ob = k * TASP_CPSTRIDE;
-				for (i = 2; i < TASP_CPSTRIDE; i = i + 1) nc[b+i] = tasp_cp[s][ob+i];
-				found = TRUE; break;
-			}
-		if (t == head && !found)
-		{
-			nc[b+2] = e.origin_x; nc[b+3] = e.origin_y; nc[b+4] = e.origin_z;
-			nc[b+5] = e.velocity_x; nc[b+6] = e.velocity_y; nc[b+7] = e.velocity_z;
-			found = TRUE;
-		}
-		if (!found) continue;
-		nc[b] = t; nc[b+1] = (named >= 0);
-		if (named >= 0)
-		{
-			found = 0;  // its position among the old list's named rows
-			for (k = 0; k < named; k = k + 1) if (tasp_cp[s][k * TASP_CPSTRIDE + 1]) found = found + 1;
-			nm = SV_TASPNameAt(tasp_cpnames[s], found);
-			names = strcat(names, nm, ";");
-		}
-		n = n + 1;
+		if (t == head) break;
+		if (t == nt) { j = j + 1; nk = nk + 1; }
+		if (t == at) at = at + every;
 	}
 	if (tasp_cp[s]) memfree(tasp_cp[s]);
 	tasp_cp[s] = nc; e.tasp_ncp = n;
@@ -626,28 +697,58 @@ float(entity e) SV_TASPLocalOnly =
 		return FALSE;
 	}
 	if (e.rec_rec_stream)
-	if (e.rec_rec_ver >= 14)
 	{
-		sprint(e, PRINT_HIGH, "tas project: REC14 streamed recording is unsupported\n");
+		sprint(e, PRINT_HIGH, "tas project: needs a buffered recording (rec_stream 0)\n");
 		return FALSE;
 	}
 	return TRUE;
 };
 
-// `name` is a zoned copy ("" = the attached project's); ownership passes here.
+// The oldest dense ring row this attempt captured natively, that is warm and reachable over
+// short packet gaps -- one pass over the ring (SV_RewindFindTick per tick would search it).
+// Returns its tick, -1 for none; leaves its row base in rw_statebase.
+float(entity e, float head) SV_TASPOldestBase =
+{
+	local float *m;
+	local float k, idx, b, t, prev, best, bestb;
+	m = rw_slot[num_for_edict(e)];
+	if (!m) return -1;
+	best = -1; bestb = -1; prev = head + 1;
+	for (k = 0; k < e.rw_n; k = k + 1)
+	{
+		idx = (e.rw_head - 1 - k + RW_CAP * 2) % RW_CAP;
+		b = idx * RW_STRIDE;
+		t = m[b];
+		if (t >= prev || prev - t > 9 || head - t >= TASP_MAX) break;
+		if (m[b+33] != e.rec_rec_serial || m[b+RW_NATIVEBASE] <= 0) break;
+		rw_statebase = b;
+		if (!SV_RewindWarmReady(e)) break;
+		best = t; bestb = b; prev = t;
+	}
+	rw_statebase = bestb;
+	return best;
+};
+
+// `name` is a zoned copy owned by the caller ("" = the attached project's).
 void(entity e, string name, float force) SV_TASProjectSave =
 {
-	local float s, head, attached, B, id, t, fork, miss;
-	local vector bo, bv;
+	local float s, head, attached, B, id, t, exists, oldidx, row;
+	local float *m;
 	local string hash, parent;
+	local vector bo, bv;
 
 	s = SV_TASPSlot(e);
 	if (!s || !SV_TASPLocalOnly(e) || !SV_TASInputReady(e)) return;
 	if (e.tasp_load) { sprint(e, PRINT_HIGH, "tas project: a load is still running\n"); return; }
 	SV_RewindTASHead(e);
 	head = SV_TimerTicks(e);
-	attached = (e.tasp_on && e.tasp_serial == e.rec_rec_serial && e.tasp_base < head &&
-		SV_TASPRow(e, e.tasp_baseid) && SV_TASPStateHash(e.tasp_baseid) == tasp_hash[s]);
+	attached = (e.tasp_on && e.tasp_serial == e.rec_rec_serial && e.tasp_base < head);
+	if (attached)
+	{
+		row = SV_TASPRow(e, e.tasp_baseid);
+		if (!row) attached = FALSE;
+		else if (SV_TASPStateHash(e.tasp_baseid) != tasp_hash[s]) attached = FALSE;
+	}
 	if (name == "")
 	{
 		if (e.tasp_on) name = tasp_name[s];
@@ -657,73 +758,77 @@ void(entity e, string name, float force) SV_TASProjectSave =
 			if (!SV_TASPExists(name)) break;
 		}
 	}
-	fork = (e.tasp_on && name != tasp_name[s]);
-	if (e.tasp_on && !fork && !force)
+	exists = SV_TASPExists(name);
+	if (exists && !force && !(attached && name == tasp_name[s]))
 	{
-		if (!attached)
-		{
-			sprint(e, PRINT_HIGH, sprintf("tas project: this attempt is no longer %s's line (reloaded, restarted or its base save changed); save under a new name, or tas project save %s force\n",
-				name, name));
-			return;
-		}
-		if (head < e.tasp_filehead)
-		{
-			sprint(e, PRINT_HIGH, sprintf("tas project: %s has ticks to %.0f and you are at %.0f; saving would cut them. Save under a new name, or tas project save %s force\n",
-				name, e.tasp_filehead, head, name));
-			return;
-		}
+		sprint(e, PRINT_HIGH, sprintf("tas project: %s already exists; tas project load %s, or save under a new name, or tas project save %s force\n",
+			name, name, name));
+		return;
 	}
+	if (attached && name == tasp_name[s] && head < e.tasp_filehead && !force)
+	{
+		sprint(e, PRINT_HIGH, sprintf("tas project: %s has ticks to %.0f and you are at %.0f; saving would cut them. Save under a new name, or tas project save %s force\n",
+			name, e.tasp_filehead, head, name));
+		return;
+	}
+	if (!exists && SV_TASPCount() >= TASP_FILES)
+	{
+		sprint(e, PRINT_HIGH, sprintf("tas project: %.0f projects on this map is the limit\n", TASP_FILES));
+		return;
+	}
+	if (!SV_SaveLocRate(e)) return;
 	name = strzone(name);
 	if (!attached)
 	{
-		// The oldest TAS-captured warm row, across the short gaps multi-move packets leave.
-		B = head; miss = 0;
-		for (t = head - 1; t >= 0 && head - t < TASP_MAX && miss <= 8; t = t - 1)
-		{
-			if (SV_RewindFindTick(e, t))
-			if (SV_RewindWarmReady(e)) { B = t; miss = 0; continue; }
-			miss = miss + 1;
-		}
-		if (B >= head)
+		B = SV_TASPOldestBase(e, head);
+		if (B < 0 || B >= head)
 		{
 			sprint(e, PRINT_HIGH, "tas project: no retained exact tick to start a project from\n");
 			strunzone(name); return;
 		}
-		if (!SV_SaveLocRate(e)) { strunzone(name); return; }
-		if (!SV_RewindFindTick(e, B)) { strunzone(name); return; }
-		bo = rw_o; bv = rw_v;
-		if (!SV_SaveLocCreateAtMode(e, B, '0 0 0', FALSE, FALSE, FALSE, 2)) { strunzone(name); return; }
-		id = rec_sl_id[SL_Base(SL_Blk(e)) + e.rec_sl_index - 1];
-		hash = SV_TASPStateHash(id);
-		if (hash == "" || !(tasp_hflags & TF_TAS))
-		{
-			sprint(e, PRINT_HIGH, "tas project: the base save did not read back as a TAS save; nothing written\n");
-			strunzone(name); return;
-		}
-		parent = strzone(e.tasp_on ? tasp_name[s] : "");
-		fork = (parent != "");
+		m = rw_slot[s];
+		bo = [m[rw_statebase+1], m[rw_statebase+2], m[rw_statebase+3]];
+		bv = [m[rw_statebase+4], m[rw_statebase+5], m[rw_statebase+6]];
+		// Every input first: a refusal must not leave a base save behind.
+		parent = strzone((e.tasp_on && name != tasp_name[s]) ? tasp_name[s] : tasp_parent[s]);
 		if (tasp_buf[s]) memfree(tasp_buf[s]);
 		if (tasp_cp[s]) memfree(tasp_cp[s]);
 		tasp_buf[s] = 0; tasp_cp[s] = 0;
 		e.tasp_n = e.tasp_cap = e.tasp_ncp = 0;
 		if (tasp_cpnames[s]) strunzone(tasp_cpnames[s]);
 		tasp_cpnames[s] = "";
-		e.tasp_base = B; e.tasp_baseid = id; e.tasp_synced = B; e.tasp_line = -1; e.tasp_rev = 0;
-		e.tasp_bo = bo; e.tasp_bv = bv;
+		e.tasp_on = 0;
+		e.tasp_base = B; e.tasp_synced = B; e.tasp_rev = 0;
+		SV_TASPAnchorLine(e, m[rw_statebase + 29], FALSE);
+		if (!SV_TASPHarvest(e, s, head))
+		{
+			sprint(e, PRINT_HIGH, sprintf("tas project: cannot save: %s; nothing written\n", tasp_why));
+			strunzone(name); strunzone(parent); return;
+		}
+		oldidx = e.rec_sl_index;
+		if (!SV_SaveLocCreateAtMode(e, B, '0 0 0', FALSE, FALSE, FALSE, 2)) { strunzone(name); strunzone(parent); return; }
+		id = rec_sl_id[SL_Base(SL_Blk(e)) + e.rec_sl_index - 1];
+		if (oldidx >= 1) e.rec_sl_index = oldidx;   // keep the player's own cursor
+		hash = SV_TASPStateHash(id);
+		if (hash == "" || !(tasp_hflags & TF_TAS))
+		{
+			sprint(e, PRINT_HIGH, sprintf("tas project: save #%.0f did not read back as a TAS save; project not written\n", id));
+			strunzone(name); strunzone(parent); return;
+		}
+		e.tasp_baseid = id; e.tasp_bo = bo; e.tasp_bv = bv;
 		if (tasp_hash[s]) strunzone(tasp_hash[s]);
 		tasp_hash[s] = strzone(hash);
 		e.tasp_serial = e.rec_rec_serial;
 	}
 	else
 	{
-		parent = strzone(fork ? tasp_name[s] : tasp_parent[s]);
-		if (fork) e.tasp_rev = 0;
-	}
-	if (!SV_TASPHarvest(e, s, head))
-	{
-		sprint(e, PRINT_HIGH, sprintf("tas project: cannot save: %s; nothing written\n", tasp_why));
-		e.tasp_on = 0;
-		strunzone(name); strunzone(parent); return;
+		parent = strzone(name != tasp_name[s] ? tasp_name[s] : tasp_parent[s]);
+		if (name != tasp_name[s]) e.tasp_rev = 0;
+		if (!SV_TASPHarvest(e, s, head))
+		{
+			sprint(e, PRINT_HIGH, sprintf("tas project: cannot save: %s; nothing written\n", tasp_why));
+			strunzone(name); strunzone(parent); return;
+		}
 	}
 	e.tasp_n = head - e.tasp_base;
 	SV_TASPCheckpoints(e, s, head);
@@ -732,7 +837,7 @@ void(entity e, string name, float force) SV_TASProjectSave =
 	tasp_name[s] = name;
 	if (tasp_parent[s]) strunzone(tasp_parent[s]);
 	tasp_parent[s] = parent;
-	if (!SV_TASPWrite(e, s, name, fork ? parent : ""))
+	if (!SV_TASPWrite(e, s, name, parent))
 	{
 		sprint(e, PRINT_HIGH, "tas project: cannot write the project file\n");
 		e.tasp_on = 0; return;
@@ -747,7 +852,7 @@ void(entity e, string name, float force) SV_TASProjectSave =
 // Names are zoned copies owned by the caller.
 void(entity e, string name, string cpname) SV_TASProjectLoad =
 {
-	local float s, row, stop, k, named, bad;
+	local float s, row, r, stop, k, named, bad;
 	local vector d, dv;
 
 	s = SV_TASPSlot(e);
@@ -785,9 +890,20 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 			SV_TASPReadFree(); return;
 		}
 	}
+	// Every check the save row allows before anything moves: present, unchanged, TAS, the
+	// base's tick and (within state.txt's rounding) its position and velocity.
 	if (!SV_SaveLocBegin(e, TRUE)) { SV_TASPReadFree(); return; }
 	row = SV_TASPRow(e, tpr_baseid);
-	if (!row || SV_TASPStateHash(tpr_baseid) != tpr_hash || !(tasp_hflags & TF_TAS))
+	r = SL_Base(SL_Blk(e)) + row - 1;
+	bad = (!row);
+	if (!bad) bad = (SV_TASPStateHash(tpr_baseid) != tpr_hash || !(tasp_hflags & TF_TAS) || rec_sl_tick[r] != tpr_base);
+	if (!bad)
+	{
+		d = rec_sl_org[r] - tpr_bo; dv = rec_sl_vel[r] - tpr_bv;
+		bad = (fabs(d_x) > 0.0002 || fabs(d_y) > 0.0002 || fabs(d_z) > 0.0002 ||
+			fabs(dv_x) > 0.0002 || fabs(dv_y) > 0.0002 || fabs(dv_z) > 0.0002);
+	}
+	if (bad)
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas project: the base save #%.0f of %s is missing or changed; nothing changed\n", tpr_baseid, name));
 		SV_TASPReadFree(); return;
@@ -802,20 +918,15 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 		SV_TASPReadFree(); return;
 	}
 	SV_SaveLocRelease(e);
-	if (SV_TimerTicks(e) != tpr_base || e.run_t_state != TS_RUNNING || !(e.run_t_flags & TF_RECORDING))
-	{
-		sprint(e, PRINT_HIGH, "tas project: the base did not load as a running, recorded attempt at its tick; not replaying\n");
-		SV_TASPReadFree(); return;
-	}
-	// state.txt keeps 4 decimals: a body resting on a floor can come back 5e-5 inside it,
-	// and the mover then never moves it. Only a rounding-sized correction is allowed.
 	d = e.origin - tpr_bo; dv = e.velocity - tpr_bv;
-	if (fabs(d_x) > 0.0002 || fabs(d_y) > 0.0002 || fabs(d_z) > 0.0002 ||
-	    fabs(dv_x) > 0.0002 || fabs(dv_y) > 0.0002 || fabs(dv_z) > 0.0002)
+	if (SV_TimerTicks(e) != tpr_base || e.run_t_state != TS_RUNNING || !(e.run_t_flags & TF_RECORDING) ||
+		fabs(d_x) > 0.0002 || fabs(d_y) > 0.0002 || fabs(d_z) > 0.0002 ||
+		fabs(dv_x) > 0.0002 || fabs(dv_y) > 0.0002 || fabs(dv_z) > 0.0002)
 	{
-		sprint(e, PRINT_HIGH, "tas project: the base save placed the body away from the project's base state; not replaying\n");
+		sprint(e, PRINT_HIGH, "tas project: the base did not load as a running, recorded attempt at its state; not replaying\n");
 		SV_TASPReadFree(); return;
 	}
+	// state.txt keeps 4 decimals; restore the exact floats (only a rounding-sized correction).
 	setorigin(e, tpr_bo);
 	e.velocity = tpr_bv;
 	SV_TASHistoryReset(e);
@@ -834,7 +945,7 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 	e.tasp_n = tpr_n; e.tasp_cap = tpr_size; e.tasp_ncp = tpr_ncp; e.tasp_rev = tpr_rev;
 	e.tasp_base = tpr_base; e.tasp_baseid = tpr_baseid; e.tasp_bo = tpr_bo; e.tasp_bv = tpr_bv;
 	e.tasp_on = 1; e.tasp_load = 1; e.tasp_stop = stop; e.tasp_cpi = 0;
-	e.tasp_serial = e.rec_rec_serial; e.tasp_synced = tpr_base; e.tasp_lasthead = tpr_base; e.tasp_line = -1;
+	e.tasp_serial = e.rec_rec_serial; e.tasp_synced = tpr_base; e.tasp_lasthead = tpr_base;
 	e.tasp_filehead = tpr_base + tpr_n;
 	SV_TASPReadFree();
 	// A body that was not in TAS mode could not have the rows checked before the load.
@@ -879,15 +990,11 @@ void(entity e) SV_TASProjectList =
 {
 	local searchhandle h;
 	local float i, n;
-	local string f;
 	h = search_begin(sprintf("data/tasproj/%s/*.tasp", mapname), SL_NAMESORT, TRUE);
 	n = (h < 0) ? 0 : search_getsize(h);
 	sprint(e, PRINT_HIGH, sprintf("tas project: %.0f on %s\n", n, mapname));
 	for (i = 0; i < n; i = i + 1)
-	{
-		f = search_getfilename(h, i);
-		sprint(e, PRINT_HIGH, sprintf("  %s\n", f));
-	}
+		sprint(e, PRINT_HIGH, sprintf("  %s\n", search_getfilename(h, i)));
 	if (h >= 0) search_end(h);
 };
 
@@ -943,9 +1050,10 @@ void(entity e, string sub, string a1, string a2, float argc) SV_TASCheckpointCom
 	if (!tasp_cp[s]) tasp_cp[s] = (float*)memalloc(TASP_CPMAX * TASP_CPSTRIDE * 4);
 	if (!tasp_cp[s] || e.tasp_ncp >= TASP_CPMAX - 1) { sprint(e, PRINT_HIGH, "tas cp: checkpoint list full\n"); return; }
 	for (i = 0; i < e.tasp_ncp; i = i + 1) if (tasp_cp[s][i * TASP_CPSTRIDE] >= b) break;
-	if (i < e.tasp_ncp && tasp_cp[s][i * TASP_CPSTRIDE] == b && tasp_cp[s][i * TASP_CPSTRIDE + 1])
+	if (i < e.tasp_ncp)
+	if (tasp_cp[s][i * TASP_CPSTRIDE] == b && tasp_cp[s][i * TASP_CPSTRIDE + 1])
 	{ sprint(e, PRINT_HIGH, "tas cp: this tick already has a named checkpoint\n"); return; }
-	if (!(i < e.tasp_ncp && tasp_cp[s][i * TASP_CPSTRIDE] == b))
+	if (i >= e.tasp_ncp || tasp_cp[s][min(i, TASP_CPMAX - 1) * TASP_CPSTRIDE] != b)
 	{
 		for (k = e.tasp_ncp * TASP_CPSTRIDE - 1; k >= i * TASP_CPSTRIDE; k = k - 1)
 			tasp_cp[s][k + TASP_CPSTRIDE] = tasp_cp[s][k];
