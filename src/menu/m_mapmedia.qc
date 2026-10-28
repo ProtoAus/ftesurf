@@ -7,7 +7,9 @@
   Both land in .net.txt files: the shipped ones are launcher-managed, and a launch
   would "repair" an edited one.  The engine reads mapdeps.net.txt itself (fs.c).
   `# stamp YYYYMMDDHHMMSS` (UTC) picks the newer copy: a string, as a Unix time
-  in a QC float resolves to 128 s.
+  in a QC float resolves to 128 s.  `# end N` closes each table: a dropped
+  connection still answers 200 with what arrived (httpclient.c).  Consent is
+  ms_consent, the menu's own, not rec_terms, which a server can set.
 */
 #define MMM_BASE      "https://play.proto.bar/ftesurf/media/"
 #define MMM_META      "data/mapmeta.net.txt"
@@ -24,6 +26,7 @@ float mmm_fresh;                // a table was taken: the map list reloads once 
 float mmm_urls, mmm_urlsok;     // strbuf, rebuilt by every ui_meta_load
 float mmm_pagesz[MMM_MAXPAGES]; // the chosen table's "# atlas P bytes"; 0 = not listed
 float mmm_pagehave[MMM_MAXPAGES];
+float ms_consent;               // m_main.qc's: the terms version on disk
 
 // A table's "# stamp" (14 digits), or "" for no file or none: "" sorts first.
 string(string path) Mmm_Stamp =
@@ -45,6 +48,9 @@ string(string path) Mmm_Stamp =
 			st = substring(ln, 8, 14);
 			if (!Mdl_Made(st, MDL_DIGITS, 14) || strlen(st) != 14)
 				st = "";
+			else if (MP_Day(substring(st, 0, 8)) < 0
+			         || MP_Day(substring(st, 0, 8)) > MP_Day(strftime(FALSE, "%Y%m%d")) + 1)
+				st = "";          // no date, or ahead of this clock: none, as fs.c reads it
 			break;
 		}
 	}
@@ -129,7 +135,7 @@ float(string uuid) Mmm_UrlPage =
 {
 	if (strlen(uuid) != 36 || !Mdl_Made(uuid, "0123456789abcdef-", 36))
 		return -1;
-	if (cvar("rec_terms") < FS_TERMS_ONLINE)
+	if (ms_consent < FS_TERMS_ONLINE)
 		return -1;                  // drawing it is a request to the Pi
 	if (!mmm_urlsok)
 	{
@@ -177,12 +183,17 @@ void() Mmm_Ask =
 		if (time - mmm_sent > 20)
 		{
 			mmm_req = 0;                // no answer: what was taken stands
-			mmm_done = TRUE;
-			mmm_fresh = mmm_took;
+			if (mmm_kind == 1)
+				Mmm_Get(2);
+			if (!mmm_req)
+			{
+				mmm_done = TRUE;
+				mmm_fresh = mmm_took;
+			}
 		}
 		return;
 	}
-	if (cvar("rec_terms") < FS_TERMS_ONLINE)
+	if (ms_consent < FS_TERMS_ONLINE)
 		return;
 	Mmm_Get(1);
 	if (!mmm_req)
@@ -198,6 +209,14 @@ string(float a, float n) Mmm_Join =
 	for (i = a + 1; i < n; i = i + 1)
 		s = strcat(s, " ", argv(i));
 	return s;
+};
+
+// "# end <rows>": the table's last line, the count of its meta or dep lines.
+float(float n) Mmm_EndLine =
+{
+	if (n != 3 || argv(0) != "#" || argv(1) != "end" || !Mdl_Made(argv(2), MDL_DIGITS, 6))
+		return -1;
+	return stof(argv(2));
 };
 
 // "# stamp <14 digits>", tokenized into n tokens.
@@ -235,19 +254,24 @@ float(string body) Mmm_TakeMeta =
 {
 	local filestream in, out;
 	local string ln;
-	local float n, i, rows, lines, ok, st;
+	local float n, i, rows, lines, ok, st, seen, endn;
 	local strbuf keep;
 	in = Mmm_Spool(body, "FTESURF-MAPMETA 1");
 	if (in < 0)
 		return FALSE;
 	keep = buf_create();
-	rows = lines = st = 0;
+	rows = lines = st = seen = 0;
+	endn = -1;
 	fgets(in);
 	for (ln = fgets(in); ln != "" && lines < MMM_MAXLINES; ln = fgets(in))
 	{
 		lines = lines + 1;
 		n = tokenize(ln);
-		if (Mmm_StampLine(n))
+		if (n >= 1 && argv(0) == "meta")
+			seen = seen + 1;
+		if (Mmm_EndLine(n) >= 0)
+			endn = Mmm_EndLine(n);
+		else if (Mmm_StampLine(n))
 		{
 			if (!st)
 				bufstr_add(keep, strcat("# stamp ", argv(2)), TRUE);
@@ -271,10 +295,11 @@ float(string body) Mmm_TakeMeta =
 	}
 	fclose(in);
 	Mmm_Unspool();
-	if (rows < 100 || !st)
+	if (rows < 100 || !st || endn != seen)
 	{
 		buf_del(keep);
-		print(sprintf("^5mapmedia:^7 a table of %g rows is not one -- the installed tiers stand\n", rows));
+		print(sprintf("^5mapmedia:^7 a table of %g rows (%g of %g at its end line) is not one -- the installed tiers stand\n",
+		              rows, seen, endn));
 		return FALSE;
 	}
 	out = fopen(MMM_META, FILE_WRITE);
@@ -304,18 +329,24 @@ float(string body) Mmm_TakeDeps =
 {
 	local filestream in, out;
 	local string ln, spec, nm;
-	local float n, i, rows, lines, st, p;
+	local float n, i, rows, lines, st, p, seen, endn;
 	local strbuf keep;
 	in = Mmm_Spool(body, "FTESURF-MAPDEPS 1");
 	if (in < 0)
 		return FALSE;
 	keep = buf_create();
-	rows = lines = st = 0;
+	rows = lines = st = seen = 0;
+	endn = -1;
 	fgets(in);
 	for (ln = fgets(in); ln != "" && lines < MMM_MAXLINES; ln = fgets(in))
 	{
 		lines = lines + 1;
 		n = tokenize(ln);
+		if (Mmm_EndLine(n) >= 0)
+		{
+			endn = Mmm_EndLine(n);
+			continue;
+		}
 		if (Mmm_StampLine(n))
 		{
 			if (!st)
@@ -326,6 +357,7 @@ float(string body) Mmm_TakeDeps =
 		// Cut, not tokenized: tokenize makes "steam:X" three tokens (ui_deps_load reads it so too).
 		if (substring(ln, 0, 4) != "dep ")
 			continue;
+		seen = seen + 1;
 		p = strstrofs(ln, " ", 4);
 		if (p < 0)
 			continue;
@@ -342,10 +374,11 @@ float(string body) Mmm_TakeDeps =
 	}
 	fclose(in);
 	Mmm_Unspool();
-	if (rows < 50 || !st)
+	if (rows < 50 || !st || endn != seen)
 	{
 		buf_del(keep);
-		print(sprintf("^5mapmedia:^7 a mount table of %g lines is not one -- the installed one stands\n", rows));
+		print(sprintf("^5mapmedia:^7 a mount table of %g lines (%g of %g at its end line) is not one -- the installed one stands\n",
+		              rows, seen, endn));
 		return FALSE;
 	}
 	out = fopen(MMM_DEPS, FILE_WRITE);

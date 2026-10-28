@@ -100,8 +100,11 @@ def main():
             if there and there[0] == hashlib.sha256(data).hexdigest():
                 say("  publish: %s already the Pi's" % name)
                 continue
-            pi("set -e; cat > %s/.%s.new; chmod 644 %s/.%s.new; mv -f %s/.%s.new %s/%s"
-               % (MEDIA, name, MEDIA, name, MEDIA, name, MEDIA, name), data)
+            # Hash checked before the rename: a send cut short still ends cat with 0 (review 1).
+            new = "%s/.%s.new" % (MEDIA, name)
+            pi("set -e; cat > %s; [ \"$(sha256sum < %s | cut -c1-64)\" = %s ] || { rm -f %s; exit 3; }; "
+               "chmod 644 %s; mv -f %s %s/%s"
+               % (new, new, hashlib.sha256(data).hexdigest(), new, new, new, MEDIA, name), data)
             say("  publish: %s sent (%d bytes)" % (name, len(data)))
     except (OSError, subprocess.TimeoutExpired) as e:
         say("  publish: the Pi did not take it (%s)" % e)

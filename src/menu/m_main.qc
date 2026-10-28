@@ -8206,11 +8206,7 @@ void(vector screensize) m_draw =
 	if (menu_active)
 	{
 		mmm_fresh = FALSE;
-		if (ms_count > 0)
-		{
-			ui_load_maps();
-			ui_refilter();
-		}
+		ui_maplist_changed();       // keeps the selection, resets the backdrop
 	}
 	Mzd_Pump();
 	ui_boot_preload();

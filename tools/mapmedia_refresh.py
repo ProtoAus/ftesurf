@@ -217,14 +217,14 @@ def gate(label, live, cand, state, accept):
 
 
 def read_stamped(path):
-    """(stamp, lines without stamp/atlas lines); ("", []) for no file."""
+    """(stamp, lines without stamp/atlas/end lines); ("", []) for no file."""
     if not os.path.exists(path):
         return "", []
     st, body = "", []
     for l in open(path, encoding="utf-8", errors="replace").read().splitlines():
         if l.startswith("# stamp "):
             st = l[8:].strip()
-        elif not l.startswith("# atlas "):
+        elif not l.startswith(("# atlas ", "# end ")):
             body.append(l)
     return st, body
 
@@ -245,7 +245,10 @@ def stamp(path, gamedir, prev, atlas):
             if n.isdigit():
                 add.append("# atlas %s %d" % (n, os.path.getsize(p)))
     at = 1 if body and body[0].startswith("FTESURF-") else 0
-    write_atomic(path, ("\n".join(body[:at] + add + body[at:]) + "\n").encode("utf-8"))
+    # `# end N`, last: a download cut short still answers 200, and the menu refuses a
+    # table whose meta/dep line count is not this (P1099 review 1).
+    end = "# end %d" % sum(1 for l in body if l.startswith(("meta ", "dep ")))
+    write_atomic(path, ("\n".join(body[:at] + add + body[at:] + [end]) + "\n").encode("utf-8"))
 
 
 # ------------------------------------------------------------------ mapdeps --
