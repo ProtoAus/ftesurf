@@ -237,3 +237,48 @@ the immutable project format rather than signing today's mutable save directory.
 Owner decisions before later stages: private-only versus lobby TAS editing; which dynamic
 maps are supported initially; preferred optimizer goals; account/key recovery UX; public
 credit visibility; offline TAS admission policy. None is needed to mark local TAS practice.
+
+Lex decided 28 Oct: optimizer goals total time, exit speed, immediate speed and per-ramp
+(constant rate, boarding angle, end flick) -- P1088 first; signing through the Steam-linked
+account (recovery = relink; unlinked players share but stay unattributed); credits public;
+TAS boards admit only runs the server re-simulates from the legal start (no offline TAS).
+
+## Stages 5-6: the patch sequence (28 Oct)
+
+What exists (code map 28 Oct): fskey Ed25519 (engine/client/cl_receipt.c) with `FTESURF-<KIND> n`
+statements naming their audience in a `server` line; account links `keylinks(pub -> steamid)`
+and bans in surfd/accounts.py; zone drafts as the challenge-plus-sha precedent
+(surfd/zonepub.py); TF_TAS refused by /api/run; style/tier plumbing; a headless arm64
+`pm_verify` that checks a recorded trace (teleports from the file's own rows) -- not a
+re-simulation from inputs.
+
+5.1 Canonical revision hash (QC, tools): a project revision's identity is the sha256 of a
+canonical form (identity lines, inputs, checkpoints; not the save time or local save id), and
+a parent is named by that hash, not name/rev. `tas project hash`; a Python twin for surfd.
+5.2 `FTESURF-TASREV 1` (engine client): audience surfd; lines sha, parent shas, map crc, the
+input range this signer supplied, key; fskey under a real key press (as ACCT -3..-6). Portable:
+the statement carries the hash, so it checks offline.
+5.3 surfd `/api/tasrev`: upload revision + statement; verify the signature and the key's link
+AT RECEIPT; store revisions immutable by sha with first-seen time; an append-only key-binding
+history (keylinks today is overwritten on relink, deleted on unlink); unknown parents are
+stored as "ancestry unknown" and earn no credit for what they would have supplied.
+5.4 Public credits: per revision, who supplied which ticks along the signed chain (Alice
+0..500, Bob 501..900, Charlie optimizer revision); unsigned or unlinked = unattributed.
+5.5 Client: share, browse, open a downloaded revision as a project.
+
+6.1 A project from the legal start (no base save): the run's start zone and spawn, so a
+verifier has nothing to trust but the map, the rules and the inputs.
+6.2 Headless re-simulation WITH the map's own world: a dedicated server drives the tape on a
+bot client (tas_tape needs a connected client today), triggers and teleports run live, not
+copied from rows; output `VERIFY-TAS PASS ticks N finish` or HOLD/REFUSE with why. Pinned
+binary/progs/map; only the Pi's result counts (Windows/Pi physents have differed).
+6.3 surfd `/api/tas/submit` (a signed revision whose re-simulation finishes) -> queue with
+per-submission tick caps -> Pi verifier -> a `tas` style written only by the verifier, as
+importers write momentum/ksf; /api/run keeps refusing TF_TAS.
+6.4 The TAS board tab and contributor credits on it.
+
+Risks to design against: trusting any file row that sets state (warp/ride/state) lets a
+forger set teleports or times; server-time world logic makes replays differ (P1085 fixed
+func_bhop; others are unaudited); a copied fskey signs as its account until unlinked; anyone
+can re-sign someone else's inputs, so credit follows the parent chain and first-seen time;
+a verified TAS stream played live is still a human-board cheat that re-simulation cannot see.
