@@ -9,7 +9,7 @@ float tasp_cl_rev, tasp_cl_base, tasp_cl_head, tasp_cl_load, tasp_cl_stop, tasp_
 float tasp_cl_dev, tasp_cl_devtick, tasp_cl_ncp, tasp_cl_next, tasp_cl_asked;
 // P1090: the current revision's statement fields, and whether it is signed.
 string tasp_cl_sha, tasp_cl_parsha, tasp_cl_mapcrc;
-float tasp_cl_supa, tasp_cl_supb, tasp_cl_signed, tasp_cl_signdrawn;
+float tasp_cl_supa, tasp_cl_supb, tasp_cl_signed, tasp_cl_made, tasp_cl_signdrawn;
 vector tasp_cl_signat, tasp_cl_signsz;
 // P1090 engine (cl_receipt.c): `<pub> <sig> <code>` over FTESURF-TASREV 1, or "".
 string(string sha, string parent, string mapcrc, float from, float to) tasrev_sign = #0:tasrev_sign;
@@ -26,7 +26,7 @@ void() TASProject_Event =
 	tasp_cl_dev = readfloat(); tasp_cl_devtick = readlong(); tasp_cl_ncp = readbyte();
 	tasp_cl_sha = TASProject_Keep(tasp_cl_sha); tasp_cl_parsha = TASProject_Keep(tasp_cl_parsha);
 	tasp_cl_mapcrc = TASProject_Keep(tasp_cl_mapcrc);
-	tasp_cl_supa = readlong(); tasp_cl_supb = readlong(); tasp_cl_signed = readbyte();
+	tasp_cl_supa = readlong(); tasp_cl_supb = readlong(); tasp_cl_signed = readbyte(); tasp_cl_made = readbyte();
 	if (was && !tasp_cl_load && tasu_open && tasu_tab) TASTimeline_Request(0);  // show the loaded head
 };
 
@@ -38,6 +38,7 @@ void() TASProject_SignPress =
 	if (!cl_input_real || tasp_cl_sha == "") return;
 	if (!isserver()) { print("tas project: signing needs a game you host\n"); return; }
 	if (cltime < tasp_cl_next) { print("tas project: one request at a time; click again\n"); return; }
+	if (!tasp_cl_made) { print("tas project: this revision was loaded, not saved here; edit and save to sign your changes\n"); return; }
 	if (tasp_cl_supa <= 0)
 	{
 		print(tasp_cl_supa < 0 ? "tas project: this revision predates signing; edit and save to sign your changes\n"
@@ -323,6 +324,7 @@ void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw 
 	if (tasp_cl_sha != "")
 	{
 		if (!isserver()) label = "Sign: host the game";
+		else if (!tasp_cl_made) label = "Loaded, not yours";
 		else if (tasp_cl_supa <= 0) label = "Nothing to sign";
 		else label = sprintf("%s %.0f..%.0f", tasp_cl_signed ? "Signed" : "Sign", tasp_cl_supa, tasp_cl_supb);
 		Profile_Chip("tasp_sign",at+[(width+6)*2/3,0,0],chip,label,tsz,tasp_cl_signed);
@@ -330,7 +332,7 @@ void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw 
 	}
 	at_y = at_y + row + hint;
 	// P1090: what a Sign press attests, parent included, in place of the hint.
-	if (tasp_cl_sha != "" && tasp_cl_supa > 0)
+	if (tasp_cl_sha != "" && tasp_cl_supa > 0 && tasp_cl_made)
 		label = sprintf("Sign attests revision %s %s, ticks %.0f..%.0f", substring(tasp_cl_sha, 0, 8),
 			(tasp_cl_parsha != "") ? strcat("over ", substring(tasp_cl_parsha, 0, 8)) : "(a new line)", tasp_cl_supa, tasp_cl_supb);
 	else label = current ? "Warm input history; the shared world is NOT rewound." :
@@ -371,8 +373,8 @@ float(float argc, float seat) TASTimeline_ConsoleCommand =
 				(tasp_cl_parsha != "") ? tasp_cl_parsha : "-", tasp_cl_mapcrc, tasp_cl_supa, tasp_cl_supb)));
 		print(sprintf("tas timeline sign: chip %v size %v drawn %.2f ago cursor %v hover %g ",
 			tasp_cl_signat, tasp_cl_signsz, cltime - tasp_cl_signdrawn, _cursor_position, sui_is_hovered("tasp_sign")));
-		print(sprintf("sha %s supply %.0f..%.0f signed %g engine %g\n", substring(tasp_cl_sha, 0, 8),
-			tasp_cl_supa, tasp_cl_supb, tasp_cl_signed, checkbuiltin(tasrev_sign)));
+		print(sprintf("sha %s supply %.0f..%.0f signed %g engine %g made %g\n", substring(tasp_cl_sha, 0, 8),
+			tasp_cl_supa, tasp_cl_supb, tasp_cl_signed, checkbuiltin(tasrev_sign), tasp_cl_made));
 		return TRUE;
 	}
 	if (argc == 3)

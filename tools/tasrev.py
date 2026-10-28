@@ -13,9 +13,10 @@ The hash is a chain: h0 = sha256("FTESURF-TASREV-CANON 1"), h = sha256(h + "\\n"
 over the canonical lines -- saved, revision, origin, parent and revsha left out, and `base`
 without its local save id. Keep this file and the QuakeC in step.
 
-P1090: version 2 adds `supply none|<first> <last>`, the first and last tick whose input row
-differs from the parent's (or that the parent lacks); a root supplies every tick. The game
-keeps each revision as rev/<sha>.tasp and its author statements in rev/<sha>.tasrev, one per line:
+P1090: version 2 adds `supply none|<first> <last>`, the first and last tick after the parent's
+base whose input row differs from the parent's (or is past its head); a root supplies every
+tick, and a tick at or before the parent's base is never supply. The game keeps each revision
+as rev/<sha>.tasp and each author statement in its own rev/<sha>.<id>.tasrev, one line:
 `tasrev 1 sha parent|- mapcrc first last code pub sig`, an Ed25519 signature (the player's
 fskey, engine cl_receipt.c) over statement()'s text. `ticks` is what the signer claims: a
 span, so credit is the rows that differ from the parent (changed_ticks), never the span.
@@ -210,13 +211,14 @@ def parse(data):
 
 
 def changed_ticks(child, parent):
-    """The ticks whose row in `child` differs from `parent`'s, or that `parent` has no row for
-    (both parse() results); rows are aligned by tick, so the two bases may differ."""
+    """The ticks after `parent`'s base whose row in `child` differs from `parent`'s, or that are
+    past its head (both parse() results). Rows are aligned by tick, so the bases may differ; a
+    tick at or before the parent's base is an older ancestor's or unknown, never the child's."""
     pb, pr = parent['base'], parent['rows']
     out = []
     for i, row in enumerate(child['rows']):
         t = child['base'] + 1 + i
-        if not (pb < t <= pb + len(pr)) or pr[t - pb - 1] != row:
+        if t > pb and (t > pb + len(pr) or pr[t - pb - 1] != row):
             out.append(t)
     return out
 

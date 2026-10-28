@@ -28,6 +28,7 @@ float *tasp_pbuf[FS_MAXPLAYERS + 1];     // P1090: that revision's own rows (tas
 // The next save's supply is an exact diff against tasp_pbuf, whatever the working buffer went
 // through; tasp_lineserial is the attempt that revision belongs to.
 .float tasp_supa, tasp_supb, tasp_signed, tasp_pbase, tasp_pn, tasp_lineserial;
+.float tasp_made;              // P1090 review 3: the current revision was saved here, not only loaded
 
 // One file read into temporaries; a load installs them only after every check passed.
 float *tpr_buf;
@@ -91,7 +92,7 @@ void(entity e) SV_TASProjectReset =
 	e.tasp_result = e.tasp_dev = e.tasp_devtick = 0;
 	e.tasp_line = e.tasp_linemt = -1;
 	e.tasp_cut = 16000001; e.tasp_gen = e.tasp_parentrev = 0;
-	e.tasp_supa = e.tasp_supb = e.tasp_signed = e.tasp_pn = e.tasp_lineserial = 0;
+	e.tasp_supa = e.tasp_supb = e.tasp_signed = e.tasp_pn = e.tasp_lineserial = e.tasp_made = 0;
 	if (!s) return;
 	if (tasp_buf[s]) memfree(tasp_buf[s]);
 	if (tasp_cp[s]) memfree(tasp_cp[s]);
@@ -535,6 +536,7 @@ void(entity e) SV_TASProjectEvent =
 	WriteLong(MSG_MULTICAST, e.tasp_on ? e.tasp_supa : 0);
 	WriteLong(MSG_MULTICAST, e.tasp_supb);
 	WriteByte(MSG_MULTICAST, e.tasp_signed);
+	WriteByte(MSG_MULTICAST, e.tasp_made);
 	msg_entity = e;
 	multicast('0 0 0', SH_MC_ONE);
 };
@@ -929,11 +931,37 @@ float(entity e) SV_TASPIdentityOK =
   so a stale one is never validated), is read back with the identity lines, gets its revsha,
   and only then replaces the real file: remove, then rename (Windows will not rename over a
   file). A failed rename keeps the complete .new and says so.
+  P1090 review 3: the revsha goes on in a copy (<path>.new2); FILE_APPEND reloads the whole
+  file and rewrites it at fclose, so a failed reload would leave only the appended line.
 */
+// `src`'s lines but any revsha, then `revsha <sha>`, into a fresh `dst`. `stated`: refuse unless
+// src's own revsha line is `sha` (it is that revision). FALSE leaves no dst behind.
+float(string src, string dst, string sha, float stated) SV_TASPCopy =
+{
+	local filestream f, o;
+	local string l;
+	local float ok;
+	fremove(dst);
+	f = fopen(src, FILE_READ);
+	if (f < 0) return FALSE;
+	o = fopen(dst, FILE_WRITE);
+	if (o < 0) { fclose(f); return FALSE; }
+	ok = !stated;
+	while ((l = fgets(f)) != "")
+	{
+		if (substring(l, 0, 7) != "revsha ") fputs(o, strcat(l, "\n"));
+		else if (l == strcat("revsha ", sha)) ok = TRUE;
+	}
+	fputs(o, sprintf("revsha %s\n", sha));
+	fclose(o); fclose(f);
+	if (!ok) fremove(dst);
+	return ok;
+};
+
 float(entity e, float s, string name, string parent) SV_TASPWrite =
 {
 	local filestream f;
-	local string h, tmp, real;
+	local string h, tmp, tmp2, real;
 	if (!SV_TASPIdentityOK(e)) return FALSE;
 	real = strzone(SV_TASPPath(name));
 	tmp = strzone(strcat(real, ".new"));
@@ -960,18 +988,20 @@ float(entity e, float s, string name, string parent) SV_TASPWrite =
 	tpr_pathover = "";
 	h = strzone(tpr_h);
 	SV_TASPReadFree();
-	f = fopen(tmp, FILE_APPEND);
-	if (f < 0) { fremove(tmp); strunzone(tmp); strunzone(real); strunzone(h); return FALSE; }
-	fputs(f, sprintf("revsha %s\n", h));
-	fclose(f);
-	fremove(real);
-	if (frename(tmp, real) != 0)
+	tmp2 = strzone(strcat(real, ".new2"));
+	if (!SV_TASPCopy(tmp, tmp2, h, FALSE))
 	{
-		sprint(e, PRINT_HIGH, sprintf("tas project: could not move %s into place; the revision is in that file\n", tmp));
-		strunzone(tmp); strunzone(real); strunzone(h);
+		fremove(tmp); strunzone(tmp); strunzone(tmp2); strunzone(real); strunzone(h); return FALSE;
+	}
+	fremove(tmp);
+	fremove(real);
+	if (frename(tmp2, real) != 0)
+	{
+		sprint(e, PRINT_HIGH, sprintf("tas project: could not move %s into place; the revision is in that file\n", tmp2));
+		strunzone(tmp); strunzone(tmp2); strunzone(real); strunzone(h);
 		return FALSE;
 	}
-	strunzone(tmp); strunzone(real);
+	strunzone(tmp); strunzone(tmp2); strunzone(real);
 	if (tasp_parsha[s]) strunzone(tasp_parsha[s]);
 	tasp_parsha[s] = tasp_revsha[s];   // the parent this revision names, or ""
 	tasp_revsha[s] = h;
@@ -1021,55 +1051,54 @@ float(entity e, float head) SV_TASPOldestBase =
 /*
   P1090: the author statement (TAS plan 5.2). The client's tasrev_sign (engine, cl_receipt.c)
   signs FTESURF-TASREV 1 over sha, parent, mapcrc, `ticks <supply>` and the game code's
-  sha256. Every revision saved or loaded is kept as rev/<sha>.tasp, and its statement as
-  rev/<sha>.tasrev, one line `tasrev 1 sha parent|- mapcrc first last code pub sig`: every
-  field of the statement. The named <name>.tasp is only the working copy. tools/tasrev.py
-  rebuilds and checks a statement, and a child's supply against its kept parent.
+  sha256. Every revision saved or loaded is kept as rev/<sha>.tasp (rev/<sha>.made if it was
+  saved here: only those are signed), and each statement as its own rev/<sha>.<id>.tasrev,
+  one line `tasrev 1 sha parent|- mapcrc first last code pub sig`: every field of the
+  statement. The named <name>.tasp is only the working copy. tools/tasrev.py rebuilds and
+  checks a statement, and a child's supply against its kept parent.
 */
 string(string sha, string ext) SV_TASPRevPath = { return sprintf("data/tasproj/%s/rev/%s.%s", mapname, sha, ext); };
 
+float(string path) SV_TASPFileIs =
+{
+	local filestream f;
+	f = fopen(path, FILE_READ);
+	if (f < 0) return FALSE;
+	fclose(f);
+	return TRUE;
+};
+
 // A copy of a revision the strict reader accepted, its revsha line (outside the hash) set to
 // the computed hash. A copy already there is trusted here and checked when it is signed.
-float(string src, string sha) SV_TASPKeep =
+float(string src, string sha, float stated) SV_TASPKeep =
 {
-	local filestream f, o;
-	local string l, dst, tmp;
+	local string dst, tmp;
 	local float ok;
 	if (sha == "") return FALSE;
-	f = fopen(SV_TASPRevPath(sha, "tasp"), FILE_READ);
-	if (f >= 0) { fclose(f); return TRUE; }
-	f = fopen(src, FILE_READ);
-	if (f < 0) return FALSE;
+	if (SV_TASPFileIs(SV_TASPRevPath(sha, "tasp"))) return TRUE;
 	dst = strzone(SV_TASPRevPath(sha, "tasp")); tmp = strzone(strcat(dst, ".new"));
-	o = fopen(tmp, FILE_WRITE);
-	ok = (o >= 0);
-	if (ok)
-	{
-		while ((l = fgets(f)) != "")
-			if (substring(l, 0, 7) != "revsha ") fputs(o, strcat(l, "\n"));
-		fputs(o, sprintf("revsha %s\n", sha));
-		fclose(o);
-		ok = (frename(tmp, dst) == 0);
-		if (!ok) fremove(tmp);
-	}
-	fclose(f);
+	ok = SV_TASPCopy(src, tmp, sha, stated);
+	if (ok) ok = (frename(tmp, dst) == 0);
+	if (!ok) fremove(tmp);
 	strunzone(dst); strunzone(tmp);
 	return ok;
 };
 
-// A statement line about this revision is on file (not verified: QC has no Ed25519).
+// Statements: one write-once file each, rev/<sha>.<16 hex of the line's sha256>.tasrev, so no
+// write ever rewrites another. On file is not verified (QC has no Ed25519; tasrev.py does).
+string(string sha, string line) SV_TASPStmtPath =
+{
+	return sprintf("data/tasproj/%s/rev/%s.%s.tasrev", mapname, sha, substring(strtolower(digest_hex("SHA256", line)), 0, 16));
+};
 float(string sha) SV_TASPSignedFor =
 {
-	local filestream f;
-	local string l;
-	local float on;
-	f = fopen(SV_TASPRevPath(sha, "tasrev"), FILE_READ);
-	if (f < 0) return FALSE;
-	on = FALSE;
-	while ((l = fgets(f)) != "")
-		if (tokenize(l) == 10 && argv(0) == "tasrev" && argv(1) == "1" && argv(2) == sha) on = TRUE;
-	fclose(f);
-	return on;
+	local searchhandle h;
+	local float n;
+	h = search_begin(sprintf("data/tasproj/%s/rev/%s.*.tasrev", mapname, sha), TRUE, TRUE);
+	if (h < 0) return FALSE;
+	n = search_getsize(h);
+	search_end(h);
+	return (n > 0);
 };
 
 // The kept copy reads back strictly as this revision.
@@ -1084,25 +1113,30 @@ float(entity e, string sha) SV_TASPKeptOK =
 	return ok;
 };
 
-// The slot's buffer becomes the current revision's own rows.
+// The slot's buffer becomes the current revision's own rows. The copy is installed only once
+// complete, so an abort part-way leaves no rows (claim nothing), never short ones.
 void(entity e, float s) SV_TASPParentKeep =
 {
 	local float i, n;
+	local float *nb;
 	if (tasp_pbuf[s]) memfree(tasp_pbuf[s]);
-	n = e.tasp_n * TAS_INPUT_STRIDE;
-	tasp_pbuf[s] = (float*)memalloc(max(1, n) * 4);
+	tasp_pbuf[s] = 0;
 	e.tasp_pn = 0; e.tasp_lineserial = e.rec_rec_serial;   // the lineage holds without the rows
-	if (!tasp_pbuf[s])
+	n = e.tasp_n * TAS_INPUT_STRIDE;
+	nb = (float*)memalloc(max(1, n) * 4);
+	if (!nb)
 	{
 		sprint(e, PRINT_HIGH, "tas project: out of memory for this revision's rows; the next save will claim no ticks\n");
 		return;
 	}
-	for (i = 0; i < n; i = i + 1) tasp_pbuf[s][i] = tasp_buf[s][i];
-	e.tasp_pbase = e.tasp_base; e.tasp_pn = e.tasp_n;
+	for (i = 0; i < n; i = i + 1) nb[i] = tasp_buf[s][i];
+	tasp_pbuf[s] = nb; e.tasp_pbase = e.tasp_base; e.tasp_pn = e.tasp_n;
 };
 
-// What the revision being saved supplies: from the first to the last tick whose row differs
-// from the parent's own (or that the parent has no row for); a root supplies every tick.
+// What the revision being saved supplies: from the first to the last tick after the parent's
+// base whose row differs from the parent's own (or that is past the parent's head); a root
+// supplies every tick. A tick at or before the parent's base is an older ancestor's or
+// unknown, and is never claimed (P1090 review 3).
 void(entity e, float s, float head) SV_TASPSupply =
 {
 	local float t, b, pb, k, d, a, z;
@@ -1110,11 +1144,11 @@ void(entity e, float s, float head) SV_TASPSupply =
 	e.tasp_supa = e.tasp_supb = 0;
 	if (!tasp_pbuf[s]) return;   // a parent without its rows: claim nothing rather than everything
 	a = z = 0;
-	for (t = e.tasp_base + 1; t <= head; t = t + 1)
+	for (t = max(e.tasp_base, e.tasp_pbase) + 1; t <= head; t = t + 1)
 	{
 		b = (t - e.tasp_base - 1) * TAS_INPUT_STRIDE;
 		d = TRUE;
-		if (t > e.tasp_pbase && t <= e.tasp_pbase + e.tasp_pn)
+		if (t <= e.tasp_pbase + e.tasp_pn)
 		{
 			pb = (t - e.tasp_pbase - 1) * TAS_INPUT_STRIDE;
 			d = FALSE;
@@ -1138,6 +1172,7 @@ void(entity e) SV_TASPSupplyNote =
 void(entity e, string name, float force) SV_TASProjectSave =
 {
 	local float s, head, attached, B, id, t, exists, oldidx, row, fork, prev;
+	local filestream f;
 	local float *m;
 	local string hash, parent;
 	local vector bo, bv;
@@ -1211,17 +1246,20 @@ void(entity e, string name, float force) SV_TASProjectSave =
 		if (!SV_TASPHarvest(e, s, head))
 		{
 			sprint(e, PRINT_HIGH, sprintf("tas project: cannot save: %s; nothing written\n", tasp_why));
-			strunzone(name); strunzone(parent); SV_TASProjectEvent(e); return;
+			e.tasp_rev = prev; strunzone(name); strunzone(parent); SV_TASProjectEvent(e); return;
 		}
 		oldidx = e.rec_sl_index;
-		if (!SV_SaveLocCreateAtMode(e, B, '0 0 0', FALSE, FALSE, FALSE, 2)) { strunzone(name); strunzone(parent); return; }
+		if (!SV_SaveLocCreateAtMode(e, B, '0 0 0', FALSE, FALSE, FALSE, 2))
+		{
+			e.tasp_rev = prev; strunzone(name); strunzone(parent); SV_TASProjectEvent(e); return;
+		}
 		id = rec_sl_id[SL_Base(SL_Blk(e)) + e.rec_sl_index - 1];
 		if (oldidx >= 1) e.rec_sl_index = oldidx;   // keep the player's own cursor
 		hash = SV_TASPStateHash(id);
 		if (hash == "" || !(tasp_hflags & TF_TAS))
 		{
 			sprint(e, PRINT_HIGH, sprintf("tas project: save #%.0f did not read back as a TAS save; project not written\n", id));
-			strunzone(name); strunzone(parent); return;
+			e.tasp_rev = prev; strunzone(name); strunzone(parent); SV_TASProjectEvent(e); return;
 		}
 		e.tasp_baseid = id; e.tasp_bo = bo; e.tasp_bv = bv;
 		if (fork) e.tasp_parentrev = prev;   // only once the new project exists
@@ -1262,8 +1300,14 @@ void(entity e, string name, float force) SV_TASProjectSave =
 	e.tasp_result = 0; e.tasp_dev = e.tasp_devtick = 0;
 	e.tasp_cut = 16000001; e.tasp_gen = e.rec_rec_gen;
 	SV_TASPParentKeep(e, s);
-	if (!SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s]))
-		sprint(e, PRINT_HIGH, "tas project: could not keep this revision under its hash; it cannot be signed\n");
+	if (!SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE))
+		sprint(e, PRINT_HIGH, "tas project: could not keep this revision under its hash; Sign will try again\n");
+	if (!SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s], "made")))
+	{
+		f = fopen(SV_TASPRevPath(tasp_revsha[s], "made"), FILE_WRITE);
+		if (f >= 0) { fputs(f, "saved here\n"); fclose(f); }
+	}
+	e.tasp_made = SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s], "made"));
 	e.tasp_signed = SV_TASPSignedFor(tasp_revsha[s]);
 	sprint(e, PRINT_HIGH, sprintf("tas project: saved %s rev %.0f: base save #%.0f at tick %.0f, inputs to tick %.0f, %.0f checkpoints\n",
 		name, e.tasp_rev, e.tasp_baseid, e.tasp_base, head, e.tasp_ncp));
@@ -1373,6 +1417,7 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 	tasp_parsha[s] = tpr_parsha; tpr_parsha = "";   // P1090
 	e.tasp_supa = tpr_supa; e.tasp_supb = tpr_supb;
 	e.tasp_signed = SV_TASPSignedFor(tasp_revsha[s]);
+	e.tasp_made = SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s], "made"));
 	e.tasp_n = tpr_n; e.tasp_cap = tpr_size; e.tasp_ncp = tpr_ncp; e.tasp_rev = tpr_rev;
 	e.tasp_base = tpr_base; e.tasp_baseid = tpr_baseid; e.tasp_bo = tpr_bo; e.tasp_bv = tpr_bv;
 	e.tasp_on = 1; e.tasp_load = 1; e.tasp_stop = stop; e.tasp_cpi = 0;
@@ -1382,7 +1427,7 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 	e.tasp_gen = e.rec_rec_gen; e.tasp_parentrev = tpr_parentrev;
 	SV_TASPReadFree();
 	SV_TASPParentKeep(e, s);
-	SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s]);
+	SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE);
 	// A body that was not in TAS mode could not have the rows checked before the load.
 	bad = SV_TASPValidate(e, tasp_buf[s], e.tasp_n);
 	if (bad) { SV_TASPAbort(e, sprintf("input row %.0f refused by the engine", bad)); return; }
@@ -1517,9 +1562,9 @@ void(entity e, string sub, string a1, string a2, float argc) SV_TASCheckpointCom
 // has no Ed25519; tools/tasrev.py does); the statement's other fields are the server's.
 void(entity e, string sha, string code, string pub, string sig) SV_TASProjectSigned =
 {
-	local float s, dup;
+	local float s;
 	local filestream f;
-	local string line, l;
+	local string line, path;
 	s = SV_TASPSlot(e);
 	if (!s || !SV_TASPLocalOnly(e)) return;
 	if (strstrofs(infokey(e, "ip"), "LoopBack", 0) < 0)
@@ -1536,29 +1581,31 @@ void(entity e, string sha, string code, string pub, string sig) SV_TASProjectSig
 	{
 		sprint(e, PRINT_HIGH, "tas project: not a signature; nothing kept\n"); return;
 	}
-	if (!SV_TASPKeptOK(e, sha))
+	if (!e.tasp_made)
 	{
-		fremove(SV_TASPRevPath(sha, "tasp"));
-		SV_TASPKeep(SV_TASPPath(tasp_name[s]), sha);
-		if (!SV_TASPKeptOK(e, sha))
-		{
-			sprint(e, PRINT_HIGH, "tas project: this revision's kept copy does not read back as it; nothing kept\n"); return;
-		}
+		sprint(e, PRINT_HIGH, "tas project: this revision was loaded, not saved here; edit and save to sign your changes\n"); return;
 	}
-	// Statements are appended: another key's (or another build's) never replaces one on file.
 	line = strzone(strcat(sprintf("tasrev 1 %s %s %s %.0f %.0f ", sha, (tasp_parsha[s] != "") ? tasp_parsha[s] : "-",
 		infokey(world, "*mapcrc"), e.tasp_supa, e.tasp_supb), sprintf("%s %s %s", code, pub, sig)));
-	dup = FALSE;
-	f = fopen(SV_TASPRevPath(sha, "tasrev"), FILE_READ);
-	if (f >= 0) { while ((l = fgets(f)) != "") if (l == line) dup = TRUE; fclose(f); }
-	if (!dup)
+	path = strzone(SV_TASPStmtPath(sha, line));
+	if (!SV_TASPFileIs(path))
 	{
-		f = fopen(SV_TASPRevPath(sha, "tasrev"), FILE_APPEND);
-		if (f < 0) { strunzone(line); sprint(e, PRINT_HIGH, "tas project: cannot write the signature file\n"); return; }
+		// One strict read per press at most (two can pass the runaway limit near 87k rows): a
+		// kept copy that does not read back is replaced from the working copy, if that file
+		// states this hash, and the next press checks it.
+		if (!SV_TASPKeptOK(e, sha))
+		{
+			fremove(SV_TASPRevPath(sha, "tasp"));
+			SV_TASPKeep(SV_TASPPath(tasp_name[s]), sha, TRUE);
+			sprint(e, PRINT_HIGH, "tas project: this revision's kept copy did not read back; it was kept again, press Sign again\n");
+			strunzone(line); strunzone(path); return;
+		}
+		f = fopen(path, FILE_WRITE);
+		if (f < 0) { strunzone(line); strunzone(path); sprint(e, PRINT_HIGH, "tas project: cannot write the signature file\n"); return; }
 		fputs(f, strcat(line, "\n"));
 		fclose(f);
 	}
-	strunzone(line);
+	strunzone(line); strunzone(path);
 	e.tasp_signed = 1;
 	sprint(e, PRINT_HIGH, sprintf("tas project: signed %s rev %.0f, ticks %.0f..%.0f, key %s\n", tasp_name[s], e.tasp_rev,
 		e.tasp_supa, e.tasp_supb, substring(pub, 0, 8)));

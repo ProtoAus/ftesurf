@@ -108,7 +108,22 @@ def mutations(data):
 TWIN_STRICTER = {'crinside', 'trailing', 'nofinalnl'}   # the game may hash these as the original
 
 
+def chain_selftest():
+    """P1090 review 3: R (base 21) -> Q (base 131, no changes) -> Z (base 21: R's rows for 22..100,
+    then 10 ticks of its own). Z must not be credited with R's rows below Q's base."""
+    row = lambda t, k=0: (t % 7, k, 0, 0, 0, 0, 0)
+    R = dict(base=21, rows=[row(t) for t in range(22, 122)])
+    Q = dict(base=131, rows=[row(t) for t in range(132, 160)])
+    Z = dict(base=21, rows=[row(t) for t in range(22, 101)] + [row(t, 9) for t in range(101, 111)])
+    got = tasrev.changed_ticks(Z, Q)
+    ok = got == [] and tasrev.changed_ticks(dict(base=131, rows=Q['rows'] + [row(160, 9)]), Q) == [160]
+    print('%-4s chain        below the parent base is never supply (got %s)' % ('ok' if ok else 'FAIL', got[:3]))
+    return ok
+
+
 def main(argv):
+    if not chain_selftest():
+        return 1
     data = Path(argv[1]).read_bytes()
     h, stated = tasrev.revhash(data)
     fails = 0
