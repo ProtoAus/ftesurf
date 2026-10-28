@@ -2287,11 +2287,18 @@ def case_beta_zones():
     """P1093: a Beta line with an id and zoneHash gets the map's zones, and with
     --updates its build, but only while the map's own reply names that build."""
     def lines(st, *rows):
+        """`name sha1 url [id zoneHash]`: the first three to extra.tsv, as the PC
+        sends it, and a 5-field row's id and zoneHash to betaids.tsv."""
         os.makedirs(st, exist_ok=True)
-        with io.open(os.path.join(st, "extra.tsv"), "w", newline="\n") as fh:
-            fh.write("# name sha1 url id zoneHash\n")
+        with io.open(os.path.join(st, "extra.tsv"), "w", newline="\n") as fh, \
+                io.open(os.path.join(st, "betaids.tsv"), "w", newline="\n") as ids:
+            fh.write("# name sha1 url\n")
+            ids.write("# name sha1 id zoneHash\n")
             for r in rows:
-                fh.write(r + "\n")
+                f = r.split()
+                fh.write(" ".join(f[:3]) + "\n")
+                if len(f) == 5:
+                    ids.write("%s %s %s %s\n" % (f[0], f[1], f[3], f[4]))
 
     def line(w, n, seed, zh=True):
         m = w.mom[n]
@@ -2351,17 +2358,88 @@ def case_beta_zones():
           (lib(maps), sha(zfile(maps, "surf_bn") or b"")),
           (["surf_bn.bsp", "zones"], sha(ztext(w.mom["surf_bn"]["zones"]).encode())))
 
+    # A stale line is asked once and then not again for a day (review 1, F3).
+    w, maps, state = setup({"surf_bs": M("bs new")}, {}, held=[("surf_bs", bsp("bs old"))])
+    w.hidden = {"surf_bs"}
+    lines(state, "surf_bs %s %s%s.bsp %d %s" % (sha(bsp("bs mid")), W.MOM_CDN, uuid_of("surf_bs"),
+                                                 w.ids["surf_bs"], "5" * 40))
+    tick(maps, state, "--go", "--updates")
+    first = len(w.zone_asks())
+    tick(maps, state, "--go", "--updates")
+    check("a stale Beta line is asked once, then waits a day, with no strike",
+          (first, len(w.zone_asks()), strikes(state)), (1, 1, []))
+
+    # A stale line whose map's current version has no zones: that line's, not the API's (F4).
+    w, maps, state = setup({"surf_bx": M("bx new"), "surf_by": M("by")}, {},
+                           held=[("surf_bx", bsp("bx old")), ("surf_by", bsp("by"))])
+    w.hidden = {"surf_bx", "surf_by"}
+    w.nozones = {"surf_bx"}
+    lines(state, "surf_bx %s %s%s.bsp %d %s" % (sha(bsp("bx old")), W.MOM_CDN, uuid_of("surf_bx"),
+                                                 w.ids["surf_bx"], "6" * 40),
+          line(w, "surf_by", "by"))
+    tick(maps, state, "--go")
+    check("...one whose reply has no zones at all does not end the API for the others",
+          (zfile(maps, "surf_bx"), sha(zfile(maps, "surf_by") or b"")),
+          (None, sha(ztext(w.mom["surf_by"]["zones"]).encode())))
+
+    # Momentum's list refused: no Beta map is asked of the same host (F2).  Run 1
+    # puts Momentum's names on record and has the Beta zone request refused.
+    w, maps, state = setup({"surf_app": M("app"), "surf_bz": M("bz")}, {"surf_k": Z("surf_k", "k")},
+                           held=[("surf_app", bsp("app")), ("surf_bz", bsp("bz"))])
+    w.hidden = {"surf_bz"}
+    lines(state, line(w, "surf_bz", "bz"))
+    w.zonecode = {"surf_bz": 503}
+    tick(maps, state, "--go", "--updates")
+    check("control: run 1 asked the Beta map's zones and was refused",
+          (len([u for u in w.zone_asks() if "/%d?" % w.ids["surf_bz"] in u]), zfile(maps, "surf_bz")),
+          (1, None))
+    w.zonecode, w.down, w.asked = {}, {"mom"}, []
+    tick(maps, state, "--go", "--updates")
+    check("with Momentum's list refused, no Beta map's zones are asked of it",
+          (w.zone_asks(), zfile(maps, "surf_bz")), ([], None))
+
+    # A held Beta zone file that is not the published one gives a port nothing
+    # unless held_extra_donors measured it on the donor's build (F1).
+    WORLD = ((-4096, -4096, -4096), (4096, 4096, 4096))
+    donor = TZ.vbsp(WORLD[0], WORLD[1], ())             # lacks the file's start_dest
+    port = TZ.vbsp(WORLD[0], WORLD[1], ("start_dest",))
+    momz = {"formatVersion": 1, "tracks": {}, "other": "momentum's"}
+    for five in (False, True):
+        w, maps, state = setup({"surf_bd": {"bsp": donor, "zones": momz, "tier": None}},
+                               {"surf_bd_ksf": Z("surf_bd_ksf", "port")},
+                               held=[("surf_bd", donor), ("surf_bd_ksf", port)])
+        w.hidden = {"surf_bd"}
+        ln = "surf_bd %s %s%s.bsp" % (sha(donor), W.MOM_CDN, uuid_of("surf_bd"))
+        lines(state, ln + (" %d %s" % (w.ids["surf_bd"], sha(ztext(momz).encode())) if five else ""))
+        os.makedirs(zdir_of(maps))
+        with open(os.path.join(zdir_of(maps), "surf_bd.json"), "wb") as fh:
+            fh.write(TZ.zones())
+        tick(maps, state, "--go")
+        check("a Beta zone file that fails on its own build donates nothing (%s)"
+              % ("with its id" if five else "control: no id"), zfile(maps, "surf_bd_ksf"), None)
+
     st = os.path.join(tempfile.mkdtemp(prefix="extra-", dir=HOME))
-    lines(st, "surf_ok %s %s%s.bsp 12 -" % ("a" * 40, W.MOM_CDN, uuid_of("surf_ok")),
-          "surf_old %s %s%s.bsp" % ("b" * 40, W.MOM_CDN, uuid_of("surf_old")),
-          "surf_id0 %s %s%s.bsp 0 %s" % ("c" * 40, W.MOM_CDN, uuid_of("surf_id0"), "d" * 40),
-          "surf_idx %s %s%s.bsp 1e3 %s" % ("c" * 40, W.MOM_CDN, uuid_of("surf_idx"), "d" * 40),
-          "surf_zh %s %s%s.bsp 9 %s" % ("c" * 40, W.MOM_CDN, uuid_of("surf_zh"), "d" * 39),
-          "surf_four %s %s%s.bsp 9" % ("c" * 40, W.MOM_CDN, uuid_of("surf_four")))
-    got, bad = W.extra_list(os.path.join(st, "extra.tsv"))
-    check("extra.tsv: 3 or 5 fields; an id is a positive integer, a zoneHash 40 hex or -",
-          (sorted(got), got["surf_ok"]["id"], got["surf_ok"]["zh"], got["surf_old"]["id"], bad),
-          (["surf_ok", "surf_old"], 12, None, None, 4))
+    os.makedirs(st, exist_ok=True)
+    with io.open(os.path.join(st, "extra.tsv"), "w", newline="\n") as fh:
+        for n, h in (("surf_ok", "a"), ("surf_old", "b"), ("surf_id0", "c"), ("surf_idx", "c"),
+                     ("surf_zh", "c"), ("Surf_Case", "e"), ("surf_sha", "f")):
+            fh.write("%s %s %s%s.bsp\n" % (n, h * 40, W.MOM_CDN, uuid_of(n)))
+        fh.write("surf_five %s %s%s.bsp 9 %s\n" % ("c" * 40, W.MOM_CDN, uuid_of("surf_five"), "d" * 40))
+    with io.open(os.path.join(st, "betaids.tsv"), "w", newline="\n") as fh:
+        fh.write("surf_ok %s 12 -\n" % ("a" * 40))
+        fh.write("surf_id0 %s 0 %s\n" % ("c" * 40, "d" * 40))
+        fh.write("surf_idx %s 1e3 %s\n" % ("c" * 40, "d" * 40))
+        fh.write("surf_zh %s 9 %s\n" % ("c" * 40, "d" * 39))
+        fh.write("surf_case %s 9 %s\n" % ("e" * 40, "d" * 40))       # another spelling
+        fh.write("surf_sha %s 9 %s\n" % ("9" * 40, "d" * 40))        # another build
+        fh.write("surf_gone %s 9 %s\n" % ("9" * 40, "d" * 40))       # no such line
+    got, bad = W.extra_list(os.path.join(st, "extra.tsv"), os.path.join(st, "betaids.tsv"))
+    check("extra.tsv stays 3 fields; betaids.tsv gives an id only to a line of that name and "
+          "build, a positive integer, with a zoneHash of 40 hex or -",
+          (sorted(got), got["surf_ok"]["id"], got["surf_ok"]["zh"],
+           [k for k in sorted(got) if got[k]["id"] is not None], bad),
+          (["surf_case", "surf_id0", "surf_idx", "surf_ok", "surf_old", "surf_sha", "surf_zh"],
+           12, None, ["surf_ok"], 1))
 
 
 def case_mapscan():

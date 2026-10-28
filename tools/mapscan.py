@@ -255,23 +255,35 @@ def push_beta(host):
             mid, zh = r.get("id"), cv.get("zoneHash")
             mid = str(mid) if type(mid) is int and 0 < mid < 10 ** 9 else None
             zh = zh.lower() if isinstance(zh, str) and re.fullmatch(r"[0-9a-fA-F]{40}", zh) else "-"
-            rows.setdefault(n.lower(), (n, cv["bspHash"], cv["downloadURL"]) + ((mid, zh) if mid else ()))
+            rows.setdefault(n.lower(), (n, cv["bspHash"], cv["downloadURL"], mid, zh))
     rows = sorted(rows.values())
     if not rows:
         return None
     local = os.path.join(DATA, "mapbeta.tsv")
     with open(local, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("# written by tools/mapscan.py %s -- name sha1 url id zoneHash\n" % today())
-        for row in rows:
-            fh.write(" ".join(row) + "\n")
+        fh.write("# written by tools/mapscan.py %s -- name sha1 url\n" % today())
+        for n, h, u, _, _ in rows:
+            fh.write("%s %s %s\n" % (n, h, u))
+    # A file of its own: a watcher older than P1093 counts a 5-field extra.tsv line as bad.
+    ids = os.path.join(DATA, "mapbetaids.tsv")
+    with open(ids, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# written by tools/mapscan.py %s -- name sha1 id zoneHash\n" % today())
+        for n, h, _, mid, zh in rows:
+            if mid:
+                fh.write("%s %s %s %s\n" % (n, h, mid, zh))
     rc, out = quick(["ssh", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes", host,
                      "mkdir -p %s" % PI_WATCH])
     if rc == 0:
         rc, out = quick(["scp", "-q", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes",
                          "mapbeta.tsv", "%s:%s/extra.tsv.new" % (host, PI_WATCH)], cwd=DATA)
     if rc == 0:
+        rc, out = quick(["scp", "-q", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes",
+                         "mapbetaids.tsv", "%s:%s/betaids.tsv.new" % (host, PI_WATCH)], cwd=DATA)
+    if rc == 0:
+        # Either order is safe: an id is taken only for a line of the same sha1.
         rc, out = quick(["ssh", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes", host,
-                         "mv -f %s/extra.tsv.new %s/extra.tsv" % (PI_WATCH, PI_WATCH)])
+                         "mv -f %s/extra.tsv.new %s/extra.tsv && mv -f %s/betaids.tsv.new %s/betaids.tsv"
+                         % (PI_WATCH, PI_WATCH, PI_WATCH, PI_WATCH)])
     if rc != 0:
         print("  could not send the Beta list to %s: %s" % (host, out.strip()[:300]))
         return None

@@ -15,9 +15,12 @@ WHAT IT READS, each anonymous:
   KSF        https://ksf.surf/maps -- the page embeds the whole list (952 on
              11 Oct, where the Drive sheet stops at 929) with a tier and
              /files/<map>.zip, one bare .bsp.
-  extra.tsv  <state>/extra.tsv, `name sha1 url id zoneHash` a line: Momentum's Beta maps,
+  extra.tsv  <state>/extra.tsv, `name sha1 url` a line: Momentum's Beta maps,
              from the game's own cache on a PC that has it (tools/mapscan.py
              pushes it).  Without that PC the Beta list stays as it was.
+             <state>/betaids.tsv (P1093), `name sha1 id zoneHash`, gives a line
+             of the same name and sha1 its map id: a separate file because a
+             watcher older than P1093 reads any other extra.tsv line as bad.
 
 WHAT IT INSTALLS: a map whose NAME the library does not hold.  A Momentum file
 is kept only when its SHA1 is the one its row publishes -- the row and the hash
@@ -94,8 +97,8 @@ offered without a release.
 
 A BUILD OR A ZONE FILE THAT DIFFERS from the published one is REPORTED and left
 alone without --updates: the runs on that map's board were set on what it
-replaces, and nothing reads the old build back.  With it (approved maps only,
-never from extra.tsv) the old build is linked to <maps>/.old/<name>.<sha1
+replaces, and nothing reads the old build back.  With it (approved maps, and a
+Beta map whose own API reply names its betaids.tsv line's build) the old build is linked to <maps>/.old/<name>.<sha1
 12>.bsp, the new one goes in with its zones or not at all, and a map some
 lobby is on -- or might be: a lobby silent, the table empty or unreadable --
 waits, asked before the download and again before the swap.  The two renames
@@ -586,12 +589,14 @@ def ksf_list(pacer):
     return out
 
 
-def extra_list(path):
-    """<state>/extra.tsv: `name sha1 url [id zoneHash]`, Momentum maps the
-    public list does not carry; zoneHash is `-` for a map with no zones.  A
-    line that is not exactly that is dropped and counted.  P1093: only a line
-    with an id can have zones or replace a build, and only once the map's own
-    API reply names that build (zone_fetch): the PC's cache can be stale."""
+def extra_list(path, ids_path=None):
+    """<state>/extra.tsv: `name sha1 url`, Momentum maps the public list does
+    not carry.  A line that is not exactly that is dropped and counted.
+
+    P1093: <state>/betaids.tsv, `name sha1 id zoneHash` (`-` = no zones), gives
+    a line its map id and zoneHash when name and sha1 both match it.  Only a
+    row with an id can have zones or replace a build, and only once the map's
+    own API reply names that build (zone_fetch): the PC's cache can be stale."""
     out, bad = {}, 0
     try:
         fh = io.open(path, encoding="utf-8", errors="replace")
@@ -602,18 +607,32 @@ def extra_list(path):
             f = ln.split()
             if not f or f[0].startswith("#"):
                 continue
-            if (len(f) not in (3, 5) or not okname(f[0]) or not HEX40.fullmatch(f[1].lower())
-                    or not okcdn(f[2])
-                    or (len(f) == 5 and (not re.fullmatch(r"[1-9][0-9]{0,8}", f[3])
-                                         or not (f[4] == "-" or HEX40.fullmatch(f[4].lower()))))):
+            if (len(f) != 3 or not okname(f[0]) or not HEX40.fullmatch(f[1].lower())
+                    or not okcdn(f[2])):
                 bad += 1
                 continue
-            mid = int(f[3]) if len(f) == 5 else None
-            zh = f[4].lower() if len(f) == 5 and f[4] != "-" else None
             out.setdefault(f[0].lower(), {
-                "name": f[0], "id": mid, "sha": f[1].lower(), "url": f[2],
+                "name": f[0], "id": None, "sha": f[1].lower(), "url": f[2],
                 "mode": "surf" if f[0].lower().startswith("surf_") else "bhop",
-                "zh": zh, "tier": None, "ranked": None, "src": "beta"})
+                "zh": None, "tier": None, "ranked": None, "src": "beta"})
+    try:
+        fh = io.open(ids_path, encoding="utf-8", errors="replace") if ids_path else None
+    except OSError:
+        fh = None
+    if fh is None:
+        return out, bad
+    with fh:
+        for ln in fh:
+            f = ln.split()
+            if not f or f[0].startswith("#"):
+                continue
+            r = out.get(f[0].lower()) if len(f) == 4 else None
+            if (r is None or r["name"] != f[0] or r["sha"] != f[1].lower()
+                    or not re.fullmatch(r"[1-9][0-9]{0,8}", f[2])
+                    or not (f[3] == "-" or HEX40.fullmatch(f[3].lower()))):
+                continue            # no line of that name and build: nothing to give an id to
+            r["id"] = int(f[2])
+            r["zh"] = f[3].lower() if f[3] != "-" else None
     return out, bad
 
 
@@ -954,14 +973,15 @@ def zone_fetch(pacer, r):
     except (ValueError, RecursionError):
         doc = None
     cv = doc.get("currentVersion") if isinstance(doc, dict) else None
-    if not isinstance(cv, dict) or not isinstance(cv.get("zones"), dict):
-        raise Refused("a reply with no zones in it")
     # P1093: a Beta row is a line from a PC's cache, maybe days old.  Its zones
     # (and a build swap waiting on them) are taken only while the map's own
-    # reply still names that build; otherwise the line is stale, not the map.
-    if r["src"] == "beta" and (doc.get("id") != r["id"]
-                               or str(cv.get("bspHash")).lower() != r["sha"]):
+    # reply still names that build; otherwise the line is stale, not the map --
+    # asked before the refusal below, which would end the API for the run.
+    if (r["src"] == "beta" and isinstance(cv, dict)
+            and (doc.get("id") != r["id"] or str(cv.get("bspHash")).lower() != r["sha"])):
         return None, False, "zoneversion"
+    if not isinstance(cv, dict) or not isinstance(cv.get("zones"), dict):
+        raise Refused("a reply with no zones in it")
     got = zone_bytes(text, doc, r["zh"])
     if got is None:
         return None, False, "zoneshape"
@@ -1257,7 +1277,8 @@ def run(a):
         read.add("ksf")
     except Refused as e:
         said.append("ksf: NOT READ (%s)" % e)
-    extra, bad = extra_list(os.path.join(a.state, "extra.tsv"))
+    extra, bad = extra_list(os.path.join(a.state, "extra.tsv"),
+                            os.path.join(a.state, "betaids.tsv"))
     # Which names are Momentum's decides whose build a new name gets, and
     # whether a Beta line is stale.  Unread, the last reading stands in; with
     # none, KSF's new maps and the Beta list wait.
@@ -1309,7 +1330,14 @@ def run(a):
 
     # A Beta build is replaced only through its zones' request, which checks the
     # line against the map's own reply (zone_fetch): no id or zoneHash, no swap.
-    todo = new + ([r for r in diff if r["src"] == "mom" or (r["src"] == "beta" and r["id"] and r["zh"])]
+    # P1093: and not on a run whose list Momentum refused (that ends its host),
+    # nor within a day of the reply naming another build than the line.
+    stale = table("stale")
+    for k in [k for k, t in stale.items() if not isinstance(t, (int, float)) or now - t > 86400]:
+        del stale[k]
+    todo = new + ([r for r in diff if r["src"] == "mom"
+                   or (r["src"] == "beta" and r["id"] and r["zh"] and "mom" in read
+                       and skey(r) not in stale)]
                   if a.updates else [])
     todo = [r for r in todo if not waiting(skey(r))]
     todo.sort(key=lambda r: back.get(skey(r), 0))      # stable: a refused file goes last
@@ -1589,6 +1617,8 @@ def run(a):
             if r["zh"]:
                 raw = zone_ask(key, r, zkey)
                 if raw is None:
+                    if r["src"] == "beta" and back.get(zkey) == now and "api" not in dead:
+                        stale[skey(r)] = now        # "zoneversion": the line is behind
                     count("its zones cannot be had: build left")
                     _save(sp, st)
                     continue
@@ -1732,7 +1762,8 @@ def run(a):
     zidx.update(stems(zdir, ".json"))       # what arrived while the maps were coming
     # P1093: Beta maps too, by the id and zoneHash their extra.tsv line carries.
     zsrc = dict(mom)
-    zsrc.update((k, r) for k, r in extra.items() if r["id"] and r["zh"] and k not in zsrc)
+    if "mom" in read:
+        zsrc.update((k, r) for k, r in extra.items() if r["id"] and r["zh"] and k not in zsrc)
     for k in sorted(zsrc, key=lambda k: (back.get("z:%s:%s" % (k, (zsrc[k]["zh"] or "")[:12]), 0), k)):
         r = zsrc[k]
         if k not in inv or not r["zh"] or k in ztried:
@@ -1744,7 +1775,8 @@ def run(a):
             cur = zsha(k)
             if cur is None:
                 continue
-            atbuild.add(zidx[k])
+            if r["src"] == "mom":
+                atbuild.add(zidx[k])    # Beta: held_extra_donors measures it on the build
             # The published file: by its hash, or -- taken without one -- as it
             # was last sent for this zoneHash and measured on this build, until
             # a run that may replace it is due to ask again.
