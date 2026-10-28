@@ -1544,6 +1544,10 @@ def case_movebnd():
           "...and with TF_NOPROFILE set it is not")
     f, n = run(over_bound(build(), 450))
     check(not any("above the standard" in x for x in n), "exactly 450 draws no note")
+    b = [l for l in over_bound(build(), 451) if not l.startswith("end ")]
+    f, n = run(b, name="run.rec")
+    check(not any("above the standard" in x for x in n),
+          "an unclosed file (park, prefix) draws no move note -- its flags are 0")
 
     # The row over the bound is not judged at all when the file states no bound.
     f, n = run(over_bound(build()))

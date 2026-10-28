@@ -1144,14 +1144,22 @@ void() TimeScale_InputFrame =
 	input_timelength = whole * 0.001;
 };
 
+void() CL_MoveToStandard =
+{
+	local float m;
+
+	m = max(fabs(input_movevalues_x), max(fabs(input_movevalues_y), fabs(input_movevalues_z)));
+	if (m > RUN_MOVE_STD)
+		input_movevalues = input_movevalues * (RUN_MOVE_STD / m);
+};
+
 void() CSQC_Input_Frame =
 {
 	GA_InputFrame();                // read-only walk intent for local Foley
-	// P1083: cap at the standard move size the server ranks on. The engine sums a
-	// pad's stick onto held keys and scales it x360 while walking (in_generic.c).
-	input_movevalues_x = bound(-RUN_MOVE_STD, input_movevalues_x, RUN_MOVE_STD);
-	input_movevalues_y = bound(-RUN_MOVE_STD, input_movevalues_y, RUN_MOVE_STD);
-	input_movevalues_z = bound(-RUN_MOVE_STD, input_movevalues_z, RUN_MOVE_STD);
+	// P1083: scale to the standard move size the server ranks on, keeping the
+	// direction. The engine sums a pad's stick onto held keys and scales it x360
+	// while walking (in_generic.c); a per-axis clamp would skew a walking stick.
+	CL_MoveToStandard();
 	// Patch 385: the spectate window, countdown included, ahead of the replay so
 	// its time is zeroed whatever else is open.  The stat, not spc_stat: this can
 	// run before the frame that latches it.

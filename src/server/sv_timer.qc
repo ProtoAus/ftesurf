@@ -14368,6 +14368,7 @@ void(entity e) SV_TimerStart =
 	e.run_t_startwall = time;       // report only -- see the field
 	SV_ClockReset(e);
 	e.run_t_pwhy = PW_OK;           // Patch 840: a loaded ARMED save is not armed again
+	e.run_t_movebig = 0;            // P1083: likewise, not the previous attempt's moves
 
 	// Leaving the start zone is the reset you asked for: the stopped time from
 	// the last attempt comes off the screen here and not before, so it is still

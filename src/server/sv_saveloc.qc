@@ -1782,6 +1782,7 @@ float sl_mapsame;
 void(entity e) SV_SaveLoadLatch =
 {
 	e.run_t_rbreach = -1;
+	e.run_t_movebig = 0;     // P1083: another attempt's moves; the file carries its own bit
 	SV_TimerRuleset(e, TRUE);
 	if (e.run_t_pev != 0)
 	{
