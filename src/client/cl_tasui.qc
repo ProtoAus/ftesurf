@@ -4,6 +4,7 @@ float tasu_nextclick, tasu_frames, tasu_tab;
 void() TASTimeline_Reset;
 void(float first) TASTimeline_Request;
 void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw;
+void() TASProject_SignPress;
 
 void() TASUI_Close =
 {
@@ -232,6 +233,7 @@ float(float evtype, float scanx, float chary, float devid) TASUI_Input =
 	if (scanx == K_MOUSE1 || scanx == K_MOUSE2)
 	{
 		if (evtype == IE_KEYDOWN) _sui_mouse_move(_cursor_position, FALSE);
+		if (evtype == IE_KEYDOWN && scanx == K_MOUSE1 && tasu_tab && sui_is_hovered("tasp_sign")) TASProject_SignPress();
 		sui_input_event(evtype, scanx, chary, devid);
 		return TRUE;
 	}

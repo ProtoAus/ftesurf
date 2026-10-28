@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""P1089: tools/tasrev.py against mutations of a game-written project.
+"""P1089/P1090: tools/tasrev.py against mutations of a game-written project.
 
   test_tasrev.py FILE.tasp     every mutation that changes what the game would load or hash
                                must be refused; a new save time must keep the hash.
@@ -41,14 +41,15 @@ def mutations(data):
     m = next(n for n, l in enumerate(lines) if l.startswith('mapcrc '))
     out.append(('reordered', put(lines[:m - 1] + [lines[m], lines[m - 1]] + lines[m + 1:]), 'refused'))
     b = next(n for n, l in enumerate(lines) if l.startswith('base '))
+    sb = next(n for n, l in enumerate(lines) if l.startswith('supply ') or l.startswith('base '))
     ps = 'parentsha ' + '0' * 64
-    out.append(('twoparents', put(lines[:b] + [ps, ps] + lines[b:]), 'refused'))
-    out.append(('upperhex', put(lines[:b] + ['parentsha ' + 'A' * 64] + lines[b:]), 'refused'))
+    out.append(('twoparents', put(lines[:sb] + [ps, ps] + lines[sb:]), 'refused'))
+    out.append(('upperhex', put(lines[:sb] + ['parentsha ' + 'A' * 64] + lines[sb:]), 'refused'))
     out.append(('colon', put(at(k, lines[k] + ' 1:2')), 'refused'))
     out.append(('afterrevsha', put(lines + ['revsha ' + '0' * 64, 'i 0 0 0 0 0 0 0']), 'refused'))
     # Review 2: the twin must also hold the reader's meaning, not just its form.
     out.append(('justend', b'end 1\n', 'refused'))
-    out.append(('version2', put(at(0, 'tasproject 2')), 'refused'))
+    out.append(('version3', put(at(0, 'tasproject 3')), 'refused'))
     mp = next(n for n, l in enumerate(lines) if l.startswith('map '))
     out.append(('maptwo', put(at(mp, lines[mp] + ' extra')), 'refused'))
     out.append(('shortrow', put(at(k, 'i 1 2 3')), 'refused'))
@@ -75,6 +76,27 @@ def mutations(data):
     out.append(('shortcrc', put(at(mc, 'mapcrc 0')), 'refused'))
     pp = next(n for n, l in enumerate(lines) if l.startswith('pmpin '))
     out.append(('pinjunk', put(at(pp, 'pmpin x')), 'refused'))
+    # P1090: the supply line -- required in version 2, inside the project, all of a root's ticks.
+    sp = [n for n, l in enumerate(lines) if l.startswith('supply ')]
+    if sp:
+        sp = sp[0]
+        base = int(lines[b].split(' ')[3]); head = int(next(l for l in lines if l.startswith('head ')).split(' ')[1])
+        root = not any(l.startswith('parentsha ') for l in lines)
+        sw = lines[sp].split(' ')
+        out.append(('nosupply', put(lines[:sp] + lines[sp + 1:]), 'refused'))
+        out.append(('v1supply', put(at(0, 'tasproject 1')), 'refused'))
+        out.append(('supplytwo', put(lines[:sp] + [lines[sp]] + lines[sp:]), 'refused'))
+        out.append(('supplyzero', put(at(sp, 'supply 0 %d' % head)), 'refused'))
+        out.append(('supplypast', put(at(sp, 'supply %d %d' % (base + 1, head + 1))), 'refused'))
+        out.append(('supplybefore', put(at(sp, 'supply %d %d' % (base, head))), 'refused'))
+        out.append(('supplyback', put(at(sp, 'supply %d %d' % (head, base + 1))), 'refused' if head > base + 1 else 'same'))
+        out.append(('supplynone', put(at(sp, 'supply none')), 'same' if sw[1] == 'none' else ('refused' if root else 'different')))
+        if not root:
+            full = sw[1:] == [str(base + 1), str(head)]
+            ps = next(n for n, l in enumerate(lines) if l.startswith('parentsha '))
+            out.append(('rootsupply', put(lines[:ps] + lines[ps + 1:]), 'different' if full else 'refused'))
+    else:
+        out.append(('version2', put(at(0, 'tasproject 2')), 'refused'))
     # The twin is stricter than the game here (the game stops at an empty line, drops a CR).
     out.append(('trailing', data.rstrip(b'\n') + b'\n\n\x00 junk end 99\n', 'refused'))
     out.append(('nofinalnl', data.rstrip(b'\n'), 'refused'))

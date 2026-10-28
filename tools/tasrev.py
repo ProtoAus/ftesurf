@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""P1089: a TAS project revision's hash -- the twin of SV_TASPRead (src/server/sv_tasproject.qc).
+"""P1089/P1090: a TAS project revision's hash -- the twin of SV_TASPRead (src/server/sv_tasproject.qc).
 
 A file counts only if it is exactly what the game writes and its reader would load with the
 identity lines present: SV_TASPLineCanon's form (the writer's key order, only cp and i repeat;
@@ -13,14 +13,23 @@ The hash is a chain: h0 = sha256("FTESURF-TASREV-CANON 1"), h = sha256(h + "\\n"
 over the canonical lines -- saved, revision, origin, parent and revsha left out, and `base`
 without its local save id. Keep this file and the QuakeC in step.
 
-  tasrev.py FILE.tasp            print the hash, or why the file is refused
-  tasrev.py --check FILE.tasp    exit 1 unless accepted and its revsha line matches
-"""
-import hashlib, re, struct, sys
+P1090: version 2 adds `supply none|<first> <last>`, the ticks the revision supplies over its
+parent (a root: every tick), and a project's .tasrev file holds its author statement:
+`tasrev 1 sha parent|- mapcrc first last pub sig`, an Ed25519 signature (the player's fskey,
+engine cl_receipt.c) over statement()'s text.
 
-VERSION, TASP_MAX, TASP_CPMAX = 1, 96000, 48
+  tasrev.py FILE.tasp                  print the hash, or why the file is refused
+  tasrev.py --check FILE.tasp          exit 1 unless accepted and its revsha line matches
+  tasrev.py --sig FILE.tasrev [TASP]   verify the statement, and that it is that revision's
+"""
+import hashlib, os, re, struct, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ed25519
+
+VERSIONS, TASP_MAX, TASP_CPMAX = ('1', '2'), 96000, 48
+MAXTICK = 16777215                # the engine signs ticks a QC float holds exactly
 RANK = {k: i for i, k in enumerate(['tasproject', 'map', 'mapcrc', 'zonecrc', 'pmpin', 'assist', 'origin',
-                                    'saved', 'revision', 'parent', 'parentsha', 'base', 'baseat', 'head',
+                                    'saved', 'revision', 'parent', 'parentsha', 'supply', 'base', 'baseat', 'head',
                                     'cp', 'i', 'end', 'revsha'])}
 DROP = {'saved', 'revision', 'origin', 'parent', 'revsha'}
 BAD = set('"\'/()[]{},;\\')
@@ -75,6 +84,7 @@ def check_form(line, rank):
     elif k == 'origin': ok = line == 'origin local'
     elif k in ('mapcrc', 'zonecrc'): ok = len(a) == 1 and len(a[0]) == 8 and bool(HEX.match(a[0]))   # %08x
     elif k in ('parentsha', 'revsha'): ok = len(a) == 1 and len(a[0]) == 64 and bool(HEX.match(a[0]))
+    elif k == 'supply': ok = line == 'supply none' or (len(a) == 2 and all(canon_num(x, True) for x in a))
     elif k == 'base': ok = len(a) == 3 and canon_num(a[0], True) and len(a[1]) == 64 and bool(HEX.match(a[1])) and canon_num(a[2], True)
     elif k == 'saved': ok = bool(SAVED.match(line))
     elif k == 'parent': ok = len(a) == 2 and bool(NAME.match(a[0])) and canon_num(a[1], True)
@@ -97,6 +107,13 @@ def canon(line):
 
 def revhash(data):
     """(hash, stated revsha or None) for the bytes of a .tasp; raises Refused."""
+    r = parse(data)
+    return r['h'], r['stated']
+
+
+def parse(data):
+    """dict h, stated, version, parentsha (or None), mapcrc, supply ((first, last), None for
+    `supply none`, 'v1' for a version 1 file) for the bytes of a .tasp; raises Refused."""
     if b'\r' in data or not data.endswith(b'\n') or b'\n\n' in data:
         raise Refused('not one newline-ended line after another (CR, empty line or no final newline)')
     try:
@@ -106,13 +123,24 @@ def revhash(data):
     h = hashlib.sha256(b'FTESURF-TASREV-CANON 1').hexdigest()
     stated, rank, ended = None, -1, False
     have, base, size, n, cps, names = set(), None, None, 0, [], set()
+    version, parentsha, mapcrc, supply = None, None, None, None
     try:
         for line in text[:-1].split('\n'):
             rank, k, a = check_form(line, rank)
             if ended and k != 'revsha':
                 raise Refused('data after end')
             if k == 'tasproject':
-                if a != [str(VERSION)]: raise Refused('unknown project version')
+                if len(a) != 1 or a[0] not in VERSIONS: raise Refused('unknown project version')
+                version = a[0]
+            elif k == 'mapcrc':
+                mapcrc = a[0]
+            elif k == 'parentsha':
+                parentsha = a[0]
+            elif k == 'supply':
+                if version != '2': raise Refused('a supply line in a version 1 file')
+                if a != ['none']:
+                    supply = (f32(a[0]), f32(a[1]))
+                    if supply[0] < 1: raise Refused('bad supply')
             elif k == 'map':
                 if len(a) != 1 or not MAPNAME.match(a[0]): raise Refused('map line')
             elif k == 'pmpin':
@@ -162,12 +190,67 @@ def revhash(data):
         raise Refused('missing header lines')
     if not {'mapcrc', 'zonecrc', 'pmpin'} <= have:
         raise Refused('missing map, zone or movement-rule line')
+    if version == '2' and 'supply' not in have:
+        raise Refused('missing supply line')
+    if supply and (supply[0] < base + 1 or supply[1] < supply[0] or supply[1] > base + n):
+        raise Refused('supply outside the project')
+    if version == '2' and parentsha is None and supply != (base + 1, base + n):
+        raise Refused("a root's supply is not all of its ticks")
     if cps and (cps[0] <= base or cps[-1] > base + n):
         raise Refused('checkpoint outside the project')
-    return h, stated
+    if version == '1':
+        supply = 'v1'
+    elif supply:
+        supply = (int(supply[0]), int(supply[1]))
+    return dict(h=h, stated=stated, version=version, parentsha=parentsha, mapcrc=mapcrc, supply=supply)
+
+
+def statement(sha, parent, mapcrc, first, last):
+    """The exact text the engine signs (CL_Receipt_TasRevSign)."""
+    return ('FTESURF-TASREV 1\nserver play.proto.bar:443\nsha %s\nparent %s\nmapcrc %s\nticks %d %d\n'
+            % (sha, parent, mapcrc, first, last)).encode('ascii')
+
+
+def check_sig(line, info=None):
+    """A .tasrev line -> its public key (hex); raises Refused unless the signature verifies and,
+    given parse() of the project, every field is that revision's."""
+    w = line.split(' ')
+    if len(w) != 9 or w[:2] != ['tasrev', '1']:
+        raise Refused('not a tasrev 1 line')
+    sha, parent, mapcrc, first, last, pub, sig = w[2:]
+    if not (len(sha) == 64 and HEX.match(sha) and len(mapcrc) == 8 and HEX.match(mapcrc)
+            and (parent == '-' or (len(parent) == 64 and HEX.match(parent)))
+            and len(pub) == 64 and HEX.match(pub) and len(sig) == 128 and HEX.match(sig)):
+        raise Refused("a field not in the signer's form")
+    if not (canon_num(first, True) and canon_num(last, True)):
+        raise Refused("ticks not in the signer's form")
+    a, b = int(first), int(last)
+    if not 1 <= a <= b <= MAXTICK:
+        raise Refused('ticks out of range')
+    if not ed25519.verify(bytes.fromhex(pub), statement(sha, parent, mapcrc, a, b), bytes.fromhex(sig)):
+        raise Refused('the signature does not verify')
+    if info is not None and (sha != info['h'] or parent != (info['parentsha'] or '-')
+                             or mapcrc != info['mapcrc'] or (a, b) != info['supply']):
+        raise Refused('a valid statement, but not about this revision')
+    return pub
 
 
 def main(argv):
+    if len(argv) in (3, 4) and argv[1] == '--sig':
+        with open(argv[2], 'rb') as f:
+            raw = f.read()
+        try:
+            if b'\r' in raw or not raw.endswith(b'\n') or raw.count(b'\n') != 1:
+                raise Refused('not one newline-ended line')
+            info = None
+            if len(argv) == 4:
+                with open(argv[3], 'rb') as f:
+                    info = parse(f.read())
+            pub = check_sig(raw[:-1].decode('ascii'), info)
+        except (Refused, UnicodeDecodeError) as e:
+            print('refused: %s' % e); return 1
+        print('signed by %s%s' % (pub, ' for this revision' if info else ''))
+        return 0
     check = '--check' in argv
     paths = [a for a in argv[1:] if a != '--check']
     if len(paths) != 1:

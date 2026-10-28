@@ -7,20 +7,45 @@ float tast_rows[TAS_PAGE_ROWS * 7]; // present, forward, side, up, pitch word, y
 string tasp_cl_name;
 float tasp_cl_rev, tasp_cl_base, tasp_cl_head, tasp_cl_load, tasp_cl_stop, tasp_cl_result;
 float tasp_cl_dev, tasp_cl_devtick, tasp_cl_ncp, tasp_cl_next, tasp_cl_asked;
+// P1090: the current revision's statement fields, and whether it is signed.
+string tasp_cl_sha, tasp_cl_parsha, tasp_cl_mapcrc;
+float tasp_cl_supa, tasp_cl_supb, tasp_cl_signed, tasp_cl_signdrawn;
+vector tasp_cl_signat, tasp_cl_signsz;
+// P1090 engine (cl_receipt.c): `<pub> <sig>` over FTESURF-TASREV 1, or "".
+string(string sha, string parent, string mapcrc, float from, float to) tasrev_sign = #0:tasrev_sign;
 
 void(float first) TASTimeline_Request;
+string(string old) TASProject_Keep = { if (old) strunzone(old); return strzone(readstring()); };
 void() TASProject_Event =
 {
-	local string n;
 	local float was;
-	n = readstring();
-	if (tasp_cl_name) strunzone(tasp_cl_name);
-	tasp_cl_name = strzone(n);
+	tasp_cl_name = TASProject_Keep(tasp_cl_name);
 	tasp_cl_rev = readlong(); tasp_cl_base = readlong(); tasp_cl_head = readlong();
 	was = tasp_cl_load;
 	tasp_cl_load = readbyte(); tasp_cl_stop = readlong(); tasp_cl_result = readbyte();
 	tasp_cl_dev = readfloat(); tasp_cl_devtick = readlong(); tasp_cl_ncp = readbyte();
+	tasp_cl_sha = TASProject_Keep(tasp_cl_sha); tasp_cl_parsha = TASProject_Keep(tasp_cl_parsha);
+	tasp_cl_mapcrc = TASProject_Keep(tasp_cl_mapcrc);
+	tasp_cl_supa = readlong(); tasp_cl_supb = readlong(); tasp_cl_signed = readbyte();
 	if (was && !tasp_cl_load && tasu_open && tasu_tab) TASTimeline_Request(0);  // show the loaded head
+};
+
+// P1090: called on the press itself (TASUI_Input): the engine signs only while a device's key
+// event is being delivered, so a chip's release, a command or a frame cannot sign.
+void() TASProject_SignPress =
+{
+	local string p;
+	if (!cl_input_real || tasp_cl_sha == "" || tasp_cl_signed) return;
+	if (tasp_cl_supa <= 0)
+	{
+		print(tasp_cl_supa < 0 ? "tas project: saved before signing existed; save a new revision to sign\n"
+			: "tas project: this revision changes no inputs; nothing to sign\n");
+		return;
+	}
+	if (!checkbuiltin(tasrev_sign)) { print("tas project: this game cannot sign revisions (needs the P1090 engine)\n"); return; }
+	p = tasrev_sign(tasp_cl_sha, (tasp_cl_parsha != "") ? tasp_cl_parsha : "-", tasp_cl_mapcrc, tasp_cl_supa, tasp_cl_supb);
+	if (tokenize(p) != 2) { print("tas project: the game would not sign this revision\n"); return; }
+	localcmd(sprintf("p1 cmd tas project signed %s %s %s\n", tasp_cl_sha, argv(0), argv(1)));
 };
 
 // tas project ... / tas cp ...: forwarded word for word; names are a-z 0-9 _ -.
@@ -291,6 +316,15 @@ void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw 
 	{
 		tasp_cl_next = cltime + 0.5; localcmd("p1 cmd tas optimize 32 right\n");
 	}
+	// P1090: acts on the press (TASProject_SignPress); the chip only draws.
+	if (tasp_cl_sha != "")
+	{
+		if (tasp_cl_signed) label = "Signed";
+		else if (tasp_cl_supa > 0) label = sprintf("Sign %.0f..%.0f", tasp_cl_supa, tasp_cl_supb);
+		else label = "Nothing to sign";
+		Profile_Chip("tasp_sign",at+[(width+6)*2/3,0,0],chip,label,tsz,tasp_cl_signed);
+		tasp_cl_signat = at+[(width+6)*2/3,0,0]; tasp_cl_signsz = chip; tasp_cl_signdrawn = cltime;
+	}
 	at_y = at_y + row + hint;
 	sui_text(at,[hint,hint],current ? "Warm input history; the shared world is NOT rewound." :
 		"Refresh after execution. Undo keeps eight edits; a project keeps them on disk.",SUI_THEME_MUTED,1,0);
@@ -320,6 +354,17 @@ float(float argc, float seat) TASTimeline_ConsoleCommand =
 				tast_first+i,tast_rows[b+1],tast_rows[b+2],tast_rows[b+3],tast_rows[b+4],tast_rows[b+5],tast_rows[b+6]));
 			else print(sprintf("tas timeline row %.0f: unavailable\n",tast_first+i));
 		}
+		return TRUE;
+	}
+	if ((argc == 3 || argc == 4) && !strcmp(action,"sign"))   // P1090, for arms: where a real click must land
+	{
+		if (argv(3) == "probe" && checkbuiltin(tasrev_sign))   // a command is no press: the engine must refuse
+			print(sprintf("tas timeline sign probe: [%s]\n", tasrev_sign(tasp_cl_sha,
+				(tasp_cl_parsha != "") ? tasp_cl_parsha : "-", tasp_cl_mapcrc, tasp_cl_supa, tasp_cl_supb)));
+		print(sprintf("tas timeline sign: chip %v size %v drawn %.2f ago cursor %v hover %g ",
+			tasp_cl_signat, tasp_cl_signsz, cltime - tasp_cl_signdrawn, _cursor_position, sui_is_hovered("tasp_sign")));
+		print(sprintf("sha %s supply %.0f..%.0f signed %g engine %g\n", substring(tasp_cl_sha, 0, 8),
+			tasp_cl_supa, tasp_cl_supb, tasp_cl_signed, checkbuiltin(tasrev_sign)));
 		return TRUE;
 	}
 	if (argc == 3)
