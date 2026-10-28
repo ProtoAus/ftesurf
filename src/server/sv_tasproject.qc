@@ -219,9 +219,22 @@ float(string k) SV_TASPKeyRank =
 	return -1;
 };
 
+// "-0" is refused: the writer writes zero for negative zero (SV_TASPZ), so it has one form.
 float(string t, float whole) SV_TASPCanonNum =
 {
-	return (t != "" && t == sprintf(whole ? "%.0f" : "%.9g", stof(t)));
+	return (t != "" && t != "-0" && t == sprintf(whole ? "%.0f" : "%.9g", stof(t)));
+};
+
+float(float x) SV_TASPZ = { if (x == 0) return 0; return x; };
+
+// A float already in %.9g form (which may have an exponent FS_TASNumber cannot read).
+float(string t, float lo, float hi) SV_TASPFloat =
+{
+	local float x;
+	x = stof(t);
+	if (!(x >= lo && x <= hi)) return FALSE;
+	fs_tas_number = x;
+	return TRUE;
 };
 
 float(string t, float len) SV_TASPHex =
@@ -359,7 +372,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 			if (named) names = strcat(names, argv(3), ";");
 			for (i = 0; i < 6; i = i + 1)
 			{
-				if (!SV_TASPNum(argv(i + 4), -1000000, 1000000, FALSE)) break;
+				if (!SV_TASPFloat(argv(i + 4), -1000000, 1000000)) break;
 				tpr_cp[b + 2 + i] = fs_tas_number;
 			}
 			if (i < 6) { tpr_why = "bad checkpoint state"; break; }
@@ -409,7 +422,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 		if (k == "baseat")
 		{
 			if (argc != 7 || (have & 16)) { tpr_why = "bad base state"; break; }
-			for (i = 0; i < 6; i = i + 1) if (!SV_TASPNum(argv(i + 1), -1000000, 1000000, FALSE)) break;
+			for (i = 0; i < 6; i = i + 1) if (!SV_TASPFloat(argv(i + 1), -1000000, 1000000)) break;
 			if (i < 6) { tpr_why = "bad base state"; break; }
 			tpr_bo = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
 			tpr_bv = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
@@ -811,6 +824,13 @@ float(entity e, float s, string name, string parent) SV_TASPWrite =
 	local filestream f;
 	local float i, b, nm;
 	local string h;
+	// P1089 review 2: an empty identity value would end its line in a space the reader
+	// refuses, after FILE_WRITE had replaced the last revision: refuse before opening.
+	if (infokey(world, "*mapcrc") == "" || zone_crc == "" || SV_RecPinText(e, "*pmpin") == "")
+	{
+		sprint(e, PRINT_HIGH, "tas project: this map has no checksum, zones or movement pin to bind a project to\n");
+		return FALSE;
+	}
 	f = fopen(SV_TASPPath(name), FILE_WRITE);
 	if (f < 0) return FALSE;
 	fputs(f, sprintf("tasproject %.0f\n", TASP_VERSION));
@@ -823,31 +843,33 @@ float(entity e, float s, string name, string parent) SV_TASPWrite =
 	fputs(f, sprintf("revision %.0f\n", e.tasp_rev));
 	if (parent != "") fputs(f, sprintf("parent %s %.0f\n", parent, e.tasp_parentrev));
 	if (tasp_revsha[s] != "") fputs(f, sprintf("parentsha %s\n", tasp_revsha[s]));   // P1089
-	fputs(f, sprintf("base %.0f %s %.0f\n", e.tasp_baseid, tasp_hash[s], e.tasp_base));
-	fputs(f, sprintf("baseat %.9g %.9g %.9g ", e.tasp_bo_x, e.tasp_bo_y, e.tasp_bo_z));
-	fputs(f, sprintf("%.9g %.9g %.9g\n", e.tasp_bv_x, e.tasp_bv_y, e.tasp_bv_z));
+	fputs(f, sprintf("base %.0f %s %.0f\n", e.tasp_baseid, tasp_hash[s], SV_TASPZ(e.tasp_base)));
+	fputs(f, sprintf("baseat %.9g %.9g %.9g ", SV_TASPZ(e.tasp_bo_x), SV_TASPZ(e.tasp_bo_y), SV_TASPZ(e.tasp_bo_z)));
+	fputs(f, sprintf("%.9g %.9g %.9g\n", SV_TASPZ(e.tasp_bv_x), SV_TASPZ(e.tasp_bv_y), SV_TASPZ(e.tasp_bv_z)));
 	fputs(f, sprintf("head %.0f\n", e.tasp_base + e.tasp_n));
 	nm = 0;
 	for (i = 0; i < e.tasp_ncp; i = i + 1)
 	{
 		b = i * TASP_CPSTRIDE;
-		fputs(f, sprintf("cp %.0f %.0f %s ", tasp_cp[s][b], tasp_cp[s][b+1],
+		fputs(f, sprintf("cp %.0f %.0f %s ", SV_TASPZ(tasp_cp[s][b]), tasp_cp[s][b+1],
 			tasp_cp[s][b+1] ? SV_TASPNameAt(tasp_cpnames[s], nm) : "-"));
 		fputs(f, sprintf("%.9g %.9g %.9g %.9g %.9g %.9g\n",
-			tasp_cp[s][b+2], tasp_cp[s][b+3], tasp_cp[s][b+4], tasp_cp[s][b+5], tasp_cp[s][b+6], tasp_cp[s][b+7]));
+			SV_TASPZ(tasp_cp[s][b+2]), SV_TASPZ(tasp_cp[s][b+3]), SV_TASPZ(tasp_cp[s][b+4]),
+			SV_TASPZ(tasp_cp[s][b+5]), SV_TASPZ(tasp_cp[s][b+6]), SV_TASPZ(tasp_cp[s][b+7])));
 		if (tasp_cp[s][b+1]) nm = nm + 1;
 	}
 	for (i = 0; i < e.tasp_n; i = i + 1)
 	{
 		b = i * TAS_INPUT_STRIDE;
-		fputs(f, sprintf("i %.0f %.0f %.0f %.0f %.0f %.0f %.0f\n", tasp_buf[s][b], tasp_buf[s][b+1], tasp_buf[s][b+2],
-			tasp_buf[s][b+3], tasp_buf[s][b+4], tasp_buf[s][b+5], tasp_buf[s][b+6]));
+		fputs(f, sprintf("i %.0f %.0f %.0f %.0f ", SV_TASPZ(tasp_buf[s][b]), SV_TASPZ(tasp_buf[s][b+1]),
+			SV_TASPZ(tasp_buf[s][b+2]), SV_TASPZ(tasp_buf[s][b+3])));
+		fputs(f, sprintf("%.0f %.0f %.0f\n", SV_TASPZ(tasp_buf[s][b+4]), SV_TASPZ(tasp_buf[s][b+5]), SV_TASPZ(tasp_buf[s][b+6])));
 	}
 	fputs(f, sprintf("end %.0f\n", e.tasp_n));
 	fclose(f);
 	// P1089: the file as written must pass the strict reader; its hash then names it and
 	// is the next save's parent.
-	if (!SV_TASPRead(e, name, FALSE)) { SV_TASPReadFree(); return FALSE; }
+	if (!SV_TASPRead(e, name, TRUE)) { SV_TASPReadFree(); return FALSE; }
 	h = tpr_h;
 	SV_TASPReadFree();
 	f = fopen(SV_TASPPath(name), FILE_APPEND);
@@ -1282,7 +1304,7 @@ void(entity e, float argc, string action, string sub, string a1, string a2) SV_T
 	if (sub == "list" && argc == 3) { SV_TASProjectList(e); return; }
 	if (sub == "hash" && argc == 4 && SV_TASPNameOK(a1))    // P1089: only a file the reader accepts
 	{
-		if (SV_TASPRead(e, a1, FALSE)) sprint(e, PRINT_HIGH, sprintf("tas project hash %s: %s\n", a1, tpr_h));
+		if (SV_TASPRead(e, a1, TRUE)) sprint(e, PRINT_HIGH, sprintf("tas project hash %s: %s\n", a1, tpr_h));
 		else sprint(e, PRINT_HIGH, sprintf("tas project hash %s: refused: %s\n", a1, tpr_why));
 		SV_TASPReadFree();
 		return;

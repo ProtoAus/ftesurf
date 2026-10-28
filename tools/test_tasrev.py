@@ -46,7 +46,35 @@ def mutations(data):
     out.append(('upperhex', put(lines[:b] + ['parentsha ' + 'A' * 64] + lines[b:]), 'refused'))
     out.append(('colon', put(at(k, lines[k] + ' 1:2')), 'refused'))
     out.append(('afterrevsha', put(lines + ['revsha ' + '0' * 64, 'i 0 0 0 0 0 0 0']), 'refused'))
+    # Review 2: the twin must also hold the reader's meaning, not just its form.
+    out.append(('justend', b'end 1\n', 'refused'))
+    out.append(('version2', put(at(0, 'tasproject 2')), 'refused'))
+    mp = next(n for n, l in enumerate(lines) if l.startswith('map '))
+    out.append(('maptwo', put(at(mp, lines[mp] + ' extra')), 'refused'))
+    out.append(('shortrow', put(at(k, 'i 1 2 3')), 'refused'))
+    out.append(('rowrange', put(at(k, 'i 99999 0 0 0 0 0 99')), 'refused'))
+    e = next(n for n, l in enumerate(lines) if l.startswith('end '))
+    out.append(('endcount', put(at(e, 'end 7')), 'refused'))
+    c = next(n for n, l in enumerate(lines) if l.startswith('cp '))
+    cw = lines[c].split(' ')
+    out.append(('cpfar', put(at(c, ' '.join(cw[:4] + ['5000000'] + cw[5:]))), 'refused'))
+    named = [n for n, l in enumerate(lines) if l.startswith('cp ') and l.split(' ')[2] == '1']
+    if named:
+        nw = lines[named[0]].split(' ')
+        dup = ' '.join(['cp', str(int(nw[1]) + 1)] + nw[2:])
+        out.append(('dupname', put(lines[:named[0] + 1] + [dup] + lines[named[0] + 1:]), 'refused'))
+    zero = [n for n, l in enumerate(lines) if l.startswith('i ') and ' 0' in l]
+    if zero:
+        zw = lines[zero[0]].split(' '); zi = zw.index('0', 1); zw[zi] = '-0'
+        out.append(('negzero', put(at(zero[0], ' '.join(zw))), 'refused'))
+    out.append(('exponent', put(at(c, ' '.join(cw[:4] + ['9.99999975e-06'] + cw[5:]))), 'different'))
+    # The twin is stricter than the game here (the game stops at an empty line, drops a CR).
+    out.append(('trailing', data.rstrip(b'\n') + b'\n\n\x00 junk end 99\n', 'refused'))
+    out.append(('nofinalnl', data.rstrip(b'\n'), 'refused'))
     return out
+
+
+TWIN_STRICTER = {'crinside', 'trailing', 'nofinalnl'}   # the game may hash these as the original
 
 
 def main(argv):
@@ -57,7 +85,7 @@ def main(argv):
     for name, mut, expect in mutations(data):
         try:
             got = tasrev.revhash(mut)[0]
-            res = 'same' if got == h else 'different hash'
+            res = 'same' if got == h else 'different'
         except tasrev.Refused as e:
             res = 'refused'
         ok = res == expect
