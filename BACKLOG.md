@@ -4555,9 +4555,12 @@ below is the collection side and the rules that still only note.
   **P1079 reach (fails harsh, not flattering):** an unranked or expired source now
   costs segmented/shadow recipients their tier too, so a recurring timer whose last
   enabler restarted taints every body it later moves (SV_TimerTick never re-snapshots)
-  and a named-target effect reaches every holder of that name. Falsifier: census the
-  library for player-enabled recurring timers / name-addressed body writes and count
-  maps where one honest restart taints others. Loading a pre-effect save clears the
+  and a named-target effect reaches every holder of that name. Measured 28 Oct with
+  `tools/census/bankreach.py` over the Pi's 2199 maps (static I/O graph): NO
+  player-drivable timer synchronously writes a reachable body (3 world-owned ones do,
+  attempt 0, skipped), and NO body write targets a player-given name (904 maps name
+  players, 5 have named-target body writes, so both halves can fire). VScript/filters
+  are outside it; rerun after library growth. Loading a pre-effect save clears the
   bit (body restored; world state the source changed is the open ledger above). Historical unmerged `p455rebase` (50affaa, based on e7b6562; ten rounds
   at `archive/p455fix-r10`) is NOT READY: 44b313b's own message says the dwell
   does not close its bank, and no round11 exists. A new commitment inside the
