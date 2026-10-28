@@ -13783,8 +13783,6 @@ void(entity e, float ticks) SV_TimerFinish =
 		tag = RT_PB;
 	else if (e.run_t_flags & TF_CHEAT)
 		tag = RT_CHEAT;
-	else if (e.run_t_flags & TF_BANKTAINT)
-		tag = RT_LAST;   // P1079: FS_RunClass practice, not an archived shadow
 	else if (e.run_t_flags & TF_SHADOW)
 		tag = RT_SHADOW;
 	/*

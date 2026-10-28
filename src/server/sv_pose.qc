@@ -196,7 +196,7 @@ float(entity av, entity p) Pose_KQuant =
 // Quantize p into pose_n*; TRUE when the drawn pose differs from the published one.
 float(entity av, entity p, float held) Pose_Quant =
 {
-	local float t, pf, k;
+	local float t, pf, k, fl;
 
 	t = p.run_movetick - 65536 * floor(p.run_movetick / 65536);
 	if (t >= 32768)
@@ -223,8 +223,11 @@ float(entity av, entity p, float held) Pose_Quant =
 	           bound(-32767, rint(p.velocity_z), 32767)];
 	// P1052: the watched body's ancestry survives an armed/idle flag reset too.
 	// P1079: Pose_W24 is signed; bit23 would clamp to 0x7FFFFF (TAS/CHEAT set).
-	pose_nr = [bound(0, p.run_t_state, 255), bound(0, p.run_t_track, 255),
-	           (p.run_t_flags | SV_TASFlags(p)) & (TF_BANKTAINT - 1)];
+	// Without it a bank-tainted body must still read as practice, not a style.
+	fl = p.run_t_flags | SV_TASFlags(p);
+	if (fl & TF_BANKTAINT)
+		fl = fl - (fl & (TF_BANKTAINT | TF_SEGMENT | TF_SHADOW));
+	pose_nr = [bound(0, p.run_t_state, 255), bound(0, p.run_t_track, 255), fl];
 	pose_nt = p.run_t_ticks;
 	pose_nf = [p.run_rampcontact ? PBR_RAMP : 0, Pose_QFine(p.velocity_x), Pose_QFine(p.velocity_y)];
 	pose_nfz = Pose_QFine(p.velocity_z);

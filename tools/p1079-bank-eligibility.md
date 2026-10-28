@@ -20,7 +20,9 @@ without changing physics, clock, timer input acceptance or callback ownership.
 Bits20/21 remain reserved for styles. Bit23 is the LAST exact float32 flag bit:
 all24 bits total16777215 are exact; no bit24 addition without integer migration.
 The existing fixed-width flags header is unchanged. The spectator pose stream is a
-signed 24-bit field (Pose_W24), so it carries flags below bit23 only. Readers report `declared` or
+signed 24-bit field (Pose_W24), so it carries flags below bit23 only and a
+bank-tainted body reads there as practice (segment/shadow cleared). Finish tags
+and file retention are unchanged: readers classify from flags. Readers report `declared` or
 `not declared`; legacy absence is NOT evidence of no inherited effect. Malformed
 bank-without-practice metadata faults as malformed, not a cheating verdict.
 
