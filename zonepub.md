@@ -165,6 +165,10 @@ directory holds only FILES, which must import alone (accounts.py imports steam),
 `sites-enabled/play.proto.bar.conf`, a regular file on the Pi (it carries the R2 gateway's
 include), not a link to sites-available. A failed run leaves the unit and snippet (root) and the
 state directory: a rerun refuses until they are removed.
+P1081 release 66ed6677 upgraded 2026-10-28T13:39:55Z by the owner (`--upgrade --apply` from a
+clean checkout under `/srv/nvme/agent-work/`; 17c03829 kept on disk). The store gained
+`challenges.crc` and `publications.crc/watch/since_mono/since_boot`. The public route takes POST
+only (nginx `limit_except POST`), so a bare GET probe reads 403 from nginx, not the service.
 
 Refusals answer 200 with `ok:0`, `error` and `status` (P826): the game's HTTP client keeps no
 body for any other status, so a 403's reason never reached the player. A new release goes in
