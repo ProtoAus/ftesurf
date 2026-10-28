@@ -10,23 +10,30 @@ accounts (key links), no surfd schema change. tools/tasrev.py is the one reader 
   POST /api/tasrev/revision    a .tasp body as the game wrote it, Content-Type text/x-tasrev.
   GET  /api/tasrev/rev/<sha>   the revision, its statements and its credit.
   GET  /api/tasrev/rev/<sha>/file   the body, for a client to open as a project.
-  GET  /api/tasrev/map/<map>[?before=<first_seen>]   revisions on a map, newest first.
+  GET  /api/tasrev/map/<map>[?before=<seq>]   revisions on a map, newest first.
 
-CREDIT is computed once, when a revision arrives, and stored as tick ranges naming the revision
-that supplied each row: the nearest ancestor (within CHAIN_DEPTH) holding the same row at that
-tick passes on ITS supplier, so a revert credits whoever first supplied the row; a revision whose
-parent this service has not seen supplies nothing yet ("unknown-ancestry") and is recomputed
-when the parent arrives; a revision whose rows (and base) equal an earlier one's takes that
-one's suppliers (a copy re-saved as a new root). A child's supply must be exact against a known
-parent, or the upload is refused.
+Every arrival (revision or statement) takes the next number of one sequence; "before" and
+"earliest" below mean by that number, never by a clock.
 
-A supplier revision's ticks go to the first statement about it that verifies against it,
-spans the tick, names a released csprogs (codes.txt) and was registered no later than the
-revision itself; statements that fail any of these are skipped, never blocking. Its account
-is the one its key was linked to WHEN THE STATEMENT ARRIVED (unlinked or banned then: nobody);
-later links and relinks never move it. So a player links before signing, and the client
-registers a statement before it shares the revision.
+CREDIT is stored per revision as tick ranges naming the revision that supplied each row. A tick
+whose row equals the parent's takes the parent's supplier. A changed tick takes the supplier of
+the nearest ancestor holding the same row there (a revert credits whoever first supplied it),
+found by visiting only the ancestors that changed that tick; if none holds it, it is this
+revision's own -- unless it is at or before the parent's base (never a child's: tools/tasrev.py),
+or the search could not see the whole chain (an unseen ancestor, a cut), which is
+"unknown-ancestry": cannot tell. A revision with the same map, base and rows as an earlier one
+takes that one's credit, unless the earlier one descends from it; if that cannot be told (a gap
+in the earlier one's chain), "unknown-ancestry". Arrivals queue the revisions whose credit may
+change; every POST works through the queue for a moment, and a waiting revision reads `pending`.
+
+A supplier revision's ticks go to the first statement about it that names its fields, spans the
+tick, names a released csprogs (codes.txt) and arrived before the revision itself; others are
+skipped, never blocking. Its account is the one its key was linked to WHEN THE STATEMENT ARRIVED
+(unlinked or banned then: nobody); later links and relinks never move it. So a player links
+before signing, and the client registers a statement before it shares the revision.
 """
+from bisect import bisect_right
+from collections import OrderedDict
 from contextlib import contextmanager
 import hashlib
 import json
@@ -37,6 +44,7 @@ import secrets
 import sqlite3
 import struct
 import sys
+import threading
 import time
 from flask import Flask, Response, jsonify, request
 import accounts
@@ -44,25 +52,27 @@ import accounts
 MAX_BODY = 4700 * 1024              # 96000 rows of the widest canonical form (46 bytes) fit
 NAME = re.compile(r'[A-Za-z0-9_.+-]{1,64}')
 HEX64 = re.compile(r'[0-9a-f]{64}')
-TAIL = re.compile(rb'\nrevsha ([0-9a-f]{64})\n\Z')
-CHAIN_DEPTH = 32                    # ancestors searched for a reverted row
-PEER_ITEMS, PEER_BYTES = 200, 64 * 1024 ** 2          # a peer's day
+UNKNOWN = 'unknown-ancestry'
+WALK_MAX, WORK_MAX = 4096, 1000000  # ancestors visited, rows compared, per credit computation (Pi: ~1 s)
+DRAIN_SECONDS = 0.5                 # queue work per POST
+PEER_ITEMS, PEER_BYTES = 200, 64 * 1024 ** 2          # a peer's day of uploads
 DAY_ITEMS, DAY_BYTES = 5000, 1024 ** 3                 # everyone's day
+PEER_READS = 60                     # a peer's reads a minute
 STORE_CAP, STATEMENT_CAP, PER_REVISION, PER_KEY = 2 * 1024 ** 3, 200000, 32, 4
-CASCADE = 64                        # revisions recomputed when a parent arrives
 SQL = '''
-CREATE TABLE IF NOT EXISTS revisions(sha TEXT PRIMARY KEY, map TEXT NOT NULL, mapcrc TEXT NOT NULL,
- parentsha TEXT, version TEXT NOT NULL, base INTEGER NOT NULL, head INTEGER NOT NULL,
- supply_a INTEGER, supply_b INTEGER, first_seen INTEGER NOT NULL, size INTEGER NOT NULL,
- inputs TEXT NOT NULL, rows BLOB NOT NULL, credit TEXT NOT NULL, body BLOB NOT NULL);
-CREATE INDEX IF NOT EXISTS revisions_map ON revisions(map, first_seen);
+CREATE TABLE IF NOT EXISTS revisions(sha TEXT PRIMARY KEY, seq INTEGER NOT NULL UNIQUE, map TEXT NOT NULL,
+ mapcrc TEXT NOT NULL, parentsha TEXT, version TEXT NOT NULL, base INTEGER NOT NULL, head INTEGER NOT NULL,
+ supply_a INTEGER, supply_b INTEGER, first_seen INTEGER NOT NULL, size INTEGER NOT NULL, inputs TEXT NOT NULL,
+ rows BLOB NOT NULL, changed TEXT, credit TEXT NOT NULL, body BLOB NOT NULL);
+CREATE INDEX IF NOT EXISTS revisions_map ON revisions(map, seq);
 CREATE INDEX IF NOT EXISTS revisions_parent ON revisions(parentsha);
-CREATE INDEX IF NOT EXISTS revisions_inputs ON revisions(inputs, first_seen);
-CREATE TABLE IF NOT EXISTS statements(id TEXT PRIMARY KEY, sha TEXT NOT NULL, line TEXT NOT NULL,
- pub TEXT NOT NULL, code TEXT NOT NULL, first_seen INTEGER NOT NULL,
- steamid TEXT NOT NULL, state TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS statements_sha ON statements(sha, first_seen);
+CREATE INDEX IF NOT EXISTS revisions_inputs ON revisions(inputs, seq);
+CREATE TABLE IF NOT EXISTS statements(id TEXT PRIMARY KEY, seq INTEGER NOT NULL UNIQUE, sha TEXT NOT NULL,
+ parent TEXT NOT NULL, mapcrc TEXT NOT NULL, first INTEGER NOT NULL, last INTEGER NOT NULL, code TEXT NOT NULL,
+ pub TEXT NOT NULL, line TEXT NOT NULL, first_seen INTEGER NOT NULL, steamid TEXT NOT NULL, state TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS statements_sha ON statements(sha, seq);
 CREATE INDEX IF NOT EXISTS statements_key ON statements(sha, pub);
+CREATE TABLE IF NOT EXISTS stale(id INTEGER PRIMARY KEY AUTOINCREMENT, sha TEXT NOT NULL UNIQUE);
 CREATE TABLE IF NOT EXISTS uploads(peer TEXT NOT NULL, day INTEGER NOT NULL, n INTEGER NOT NULL,
  bytes INTEGER NOT NULL, PRIMARY KEY(peer, day));
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT NOT NULL);
@@ -109,7 +119,9 @@ def initialize(path):
     try:
         db.execute('PRAGMA journal_mode=WAL')
         with db: db.executescript(SQL)
-        with db: db.execute('INSERT OR IGNORE INTO meta(k, v) VALUES (?, ?)', ('salt', secrets.token_hex(32)))
+        with db:
+            db.execute('INSERT OR IGNORE INTO meta(k, v) VALUES (?, ?)', ('salt', secrets.token_hex(32)))
+            db.execute("INSERT OR IGNORE INTO meta(k, v) VALUES ('seq', '0')")
     finally: db.close()
     os.chmod(path, 0o600)
 
@@ -123,6 +135,12 @@ def released_codes(path):
     return codes or None
 
 
+def next_seq(db):
+    db.execute("UPDATE meta SET v = CAST(v AS INTEGER) + 1 WHERE k = 'seq'")
+    return int(db.execute("SELECT v FROM meta WHERE k = 'seq'").fetchone()[0])
+
+
+# Rows are 7 int16 (tools/tasrev.py bounds every i value to -32768..32767), 14 bytes a tick.
 def pack_rows(rows):
     return b''.join(struct.pack('<7h', *(int(v) for v in r)) for r in rows)
 
@@ -133,58 +151,162 @@ def row_at(blob, base, t):
     return blob[i * 14:(i + 1) * 14]
 
 
-def credit_of(db, sha, base, rows_blob, parentsha):
-    """[[first, last, supplier]] for a revision whose rows are rows_blob: supplier is a revision
-    sha or 'unknown-ancestry'. Reads only stored packed rows and stored credit."""
-    n = len(rows_blob) // 14
-    ticks = range(base + 1, base + n + 1)
-    for same in db.execute('SELECT sha, credit FROM revisions WHERE inputs = ? AND sha != ? ORDER BY first_seen LIMIT 8',
-                           (inputs_digest(base, rows_blob), sha)).fetchall():
-        # A copy of an earlier revision takes its suppliers -- unless that one descends from this
-        # one (a child that restored these rows exactly, uploaded first).
-        if not descends(db, same['sha'], sha):
-            return json.loads(same['credit'])
-    if parentsha is None:
-        return [[base + 1, base + n, sha]]
-    chain, cur, missing = [], parentsha, False
-    while cur and len(chain) < CHAIN_DEPTH:
-        row = db.execute('SELECT sha, base, rows, credit, parentsha FROM revisions WHERE sha = ?', (cur,)).fetchone()
-        if row is None: missing = True; break
-        chain.append(row); cur = row['parentsha']
-    if not chain:
-        return [[base + 1, base + n, 'unknown-ancestry']]
-    # A row no known ancestor holds is this revision's, unless the chain broke at an unseen
-    # parent, which may hold it (a truncated revision restored by its child).
-    fresh = 'unknown-ancestry' if missing else sha
-    supplied = [dict() for _ in chain]      # per ancestor, its credit as a lookup by tick (lazy)
-    def supplier(k, t):
-        if t not in supplied[k]:
-            for a, b, w in json.loads(chain[k]['credit']):
-                for x in range(a, b + 1): supplied[k][x] = w
-        return supplied[k].get(t, 'unknown-ancestry')
+def span(blob, base, a, b):
+    """Rows a..b as one slice, or None unless the blob holds all of them."""
+    if a <= base or (b - base) * 14 > len(blob): return None
+    return blob[(a - base - 1) * 14:(b - base) * 14]
+
+
+def to_ranges(ticks):
     out = []
     for t in ticks:
-        mine = row_at(rows_blob, base, t)
-        w = fresh
-        for k, anc in enumerate(chain):
-            if row_at(anc['rows'], anc['base'], t) == mine:
-                w = supplier(k, t); break
-        if out and out[-1][2] == w and out[-1][1] == t - 1: out[-1][1] = t
-        else: out.append([t, t, w])
+        if out and out[-1][1] == t - 1: out[-1][1] = t
+        else: out.append([t, t])
     return out
 
 
+def intersect(x, y):
+    out, i, j = [], 0, 0
+    while i < len(x) and j < len(y):
+        a, b = max(x[i][0], y[j][0]), min(x[i][1], y[j][1])
+        if a <= b: out.append([a, b])
+        if x[i][1] < y[j][1]: i += 1
+        else: j += 1
+    return out
+
+
+def diff_ranges(blob, base, pblob, pbase):
+    """Ticks where the two revisions' rows differ, one holding a row and the other not included."""
+    lo = min(base, pbase) + 1
+    hi = max(base + len(blob) // 14, pbase + len(pblob) // 14)
+    changed, t = [], lo
+    while t <= hi:
+        e = min(hi, t + 63)
+        a, b = span(blob, base, t, e), span(pblob, pbase, t, e)
+        if a is None or a != b:
+            changed += [x for x in range(t, e + 1) if row_at(blob, base, x) != row_at(pblob, pbase, x)]
+        t = e + 1
+    return to_ranges(changed)
+
+
+class Lookup:
+    def __init__(self, ranges):
+        self.r = ranges; self.starts = [r[0] for r in ranges]
+    def __call__(self, t):
+        i = bisect_right(self.starts, t) - 1
+        return self.r[i][2] if i >= 0 and t <= self.r[i][1] else UNKNOWN
+
+
+def inputs_digest(mp, mapcrc, base, rows_blob):
+    return hashlib.sha256(('%s %s %d\n' % (mp, mapcrc, base)).encode() + rows_blob).hexdigest()
+
+
 def descends(db, child, ancestor):
-    cur, k = child, 0
-    while cur and k < 4 * CHAIN_DEPTH:
-        if cur == ancestor: return True
+    """True if `ancestor` is in `child`'s chain, False if the chain reaches a root without it,
+    None if a link is unseen or the walk is cut: cannot tell."""
+    cur = child
+    for _ in range(WALK_MAX):
         row = db.execute('SELECT parentsha FROM revisions WHERE sha = ?', (cur,)).fetchone()
-        cur = row['parentsha'] if row else None; k += 1
-    return False
+        if row is None: return None
+        cur = row['parentsha']
+        if cur is None: return False
+        if cur == ancestor: return True
+    return None
 
 
-def inputs_digest(base, rows_blob):
-    return hashlib.sha256(struct.pack('<i', base) + rows_blob).hexdigest()
+def compute(db, r):
+    """(credit, changed) for revision row-like `r` (sha, seq, base, rows, parentsha, inputs)."""
+    sha, base, blob = r['sha'], r['base'], bytes(r['rows'])
+    n = len(blob) // 14
+    lo, hi = base + 1, base + n
+    whole = lambda w: [[lo, hi, w]] if n else []
+    par = db.execute('SELECT sha, base, rows, credit, changed, parentsha FROM revisions WHERE sha = ?',
+                     (r['parentsha'],)).fetchone() if r['parentsha'] else None
+    if r['parentsha'] is None: changed = [[lo, hi]] if n else []
+    else: changed = diff_ranges(blob, base, bytes(par['rows']), par['base']) if par is not None else None
+    same = db.execute('SELECT sha, credit FROM revisions WHERE inputs = ? AND seq < ? ORDER BY seq LIMIT 1',
+                      (r['inputs'], r['seq'])).fetchone()
+    if same is not None:
+        d = descends(db, same['sha'], sha)
+        if d is None: return whole(UNKNOWN), changed
+        if d is False: return json.loads(same['credit']), changed
+    if r['parentsha'] is None: return whole(sha), changed
+    if par is None: return whole(UNKNOWN), changed
+    mine = intersect(changed, [[lo, hi]])
+    who = {}
+    pending, prev, cur = mine, par['changed'], par['parentsha']
+    steps = work = 0
+    cut = False
+    while pending and cur is not None:
+        # The row at a tick changes along the chain only at an ancestor that changed it: compare
+        # this revision's rows with B (= cur) where B's child (prev) changed them.
+        if prev is None: cut = True; break
+        steps += 1
+        b = db.execute('SELECT sha, base, credit, changed, parentsha FROM revisions WHERE sha = ?', (cur,)).fetchone()
+        prev_r = json.loads(prev)
+        work += len(prev_r) + len(pending)
+        if b is None or steps > WALK_MAX or work > WORK_MAX: cut = True; break
+        both = intersect(pending, prev_r)
+        if both:
+            brows = bytes(db.execute('SELECT rows FROM revisions WHERE sha = ?', (cur,)).fetchone()[0])
+            bwho = Lookup(json.loads(b['credit']))
+            found, bb, bn = [], b['base'] + 1, len(brows) // 14
+            for a, z in both:
+                work += z - a + 1
+                for t in range(max(a, bb), min(z, bb + bn - 1) + 1):
+                    i, j = (t - bb) * 14, (t - lo) * 14
+                    if brows[i:i + 14] == blob[j:j + 14]:
+                        who[t] = bwho(t); found.append(t)
+            if found:
+                gone = set(found)
+                pending = to_ranges([t for a, z in pending for t in range(a, z + 1) if t not in gone])
+        prev, cur = b['changed'], b['parentsha']
+    for a, z in pending:
+        for t in range(a, z + 1):
+            who[t] = UNKNOWN if cut or t <= par['base'] else sha
+    # Unchanged stretches take the parent's ranges whole; changed ticks one by one.
+    out, pr = [], json.loads(par['credit'])
+    pstarts = [p[0] for p in pr]
+    def add(a, z, w):
+        if out and out[-1][2] == w and out[-1][1] == a - 1: out[-1][1] = z
+        else: out.append([a, z, w])
+    edges = sorted(set([lo, hi + 1] + [a for a, z in mine] + [z + 1 for a, z in mine]))
+    inmine = Lookup([[a, z, 1] for a, z in mine])
+    for a, z in zip(edges, edges[1:]):
+        z -= 1
+        if inmine(a) == 1:
+            for t in range(a, z + 1): add(t, t, who[t])
+            continue
+        for x, y, w in pr[max(0, bisect_right(pstarts, a) - 1):]:
+            if x > z: break
+            x, y = max(x, a), min(y, z)
+            if x <= y: add(x, y, w)
+    return out, changed
+
+
+def recompute(db, sha):
+    r = db.execute('SELECT sha, seq, base, rows, parentsha, inputs, credit, changed FROM revisions WHERE sha = ?',
+                   (sha,)).fetchone()
+    if r is None: return
+    cr, ch = compute(db, r)
+    crj, chj = json.dumps(cr), (json.dumps(ch) if ch is not None else None)
+    if crj != r['credit'] or chj != r['changed']:
+        db.execute('UPDATE revisions SET credit = ?, changed = ? WHERE sha = ?', (crj, chj, sha))
+        db.executemany('INSERT OR IGNORE INTO stale(sha) VALUES (?)',
+                       db.execute('SELECT sha FROM revisions WHERE parentsha = ?', (sha,)).fetchall())
+    if db.execute('SELECT 1 FROM revisions WHERE inputs = ? AND seq < ?', (r['inputs'], r['seq'])).fetchone() is None:
+        # The earliest of its inputs: the later copies read its credit and its chain.
+        db.executemany('INSERT OR IGNORE INTO stale(sha) VALUES (?)',
+                       db.execute('SELECT sha FROM revisions WHERE inputs = ? AND seq > ?', (r['inputs'], r['seq'])).fetchall())
+
+
+def drain(db, seconds):
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        row = db.execute('SELECT id, sha FROM stale ORDER BY id LIMIT 1').fetchone()
+        if row is None: return
+        db.execute('DELETE FROM stale WHERE id = ?', (row['id'],))
+        recompute(db, row['sha'])
 
 
 def create_app(store, account_db, codes_file, clock=time.time):
@@ -195,6 +317,8 @@ def create_app(store, account_db, codes_file, clock=time.time):
     with connect(store) as db:
         db.execute('PRAGMA journal_mode=WAL')
         salt = bytes.fromhex(db.execute("SELECT v FROM meta WHERE k = 'salt'").fetchone()['v'])
+    reads, reads_lock = {}, threading.Lock()
+    shown, shown_lock = OrderedDict(), threading.Lock()   # (sha, credit, codes) -> answer
     # A refusal answers 200 with ok=0: the game's HTTP client keeps no body for other statuses.
     def fail(message, status): return jsonify(ok=0, error=message, status=status), 200
     def peer():
@@ -215,16 +339,26 @@ def create_app(store, account_db, codes_file, clock=time.time):
         try:
             with connect(account_db, readonly=True) as adb: return accounts.ranked_as(adb, pub)
         except sqlite3.Error as e: raise Unavailable('the account list cannot be read (%s)' % e)
+    def codes_now():
+        codes = released_codes(codes_file)
+        if codes is None: raise Unavailable('the released-code list cannot be read')
+        return codes
     @app.errorhandler(sqlite3.Error)
     def busy(e): return fail('The TAS service is busy; try again', 503)
     @app.errorhandler(Unavailable)
     def unavailable(e): return fail('The TAS service cannot tell right now: %s; try again' % e, 503)
     @app.before_request
-    def body_budget():
+    def budgets():
         if request.method == 'POST':
             size = request.content_length
             if size is None or size <= 0: return fail('Request length required', 411)
             if size > MAX_BODY: return fail('Upload too large', 413)
+        else:
+            p, minute = peer(), int(clock() // 60)
+            with reads_lock:
+                if len(reads) > 50000: reads.clear()
+                k = (p, minute); reads[k] = reads.get(k, 0) + 1
+                if reads[k] > PEER_READS: return fail('Too many requests; try again in a minute', 429)
     @app.after_request
     def headers(response):
         response.headers['Cache-Control'] = 'no-store'
@@ -241,24 +375,26 @@ def create_app(store, account_db, codes_file, clock=time.time):
         if not isinstance(line, str) or len(line) > 600: return fail('Invalid statement', 400)
         try: pub = tr.check_sig(line)
         except tr.Refused as e: return fail('Statement refused: %s' % e, 400)
-        w = line.split(' '); sha, code = w[2], w[7]
+        w = line.split(' ')
         sid = hashlib.sha256(line.encode('ascii')).hexdigest()
         state, steamid = binding(pub)
         with connect(store) as db, writing(db):
-            if db.execute('SELECT COUNT(*) FROM statements').fetchone()[0] >= STATEMENT_CAP:
-                return fail('The statement store is full', 507)
             if db.execute('SELECT 1 FROM statements WHERE id = ?', (sid,)).fetchone() is None:
-                if db.execute('SELECT COUNT(*) FROM statements WHERE sha = ?', (sha,)).fetchone()[0] >= PER_REVISION:
+                if db.execute('SELECT COUNT(*) FROM statements').fetchone()[0] >= STATEMENT_CAP:
+                    return fail('The statement store is full', 507)
+                if db.execute('SELECT COUNT(*) FROM statements WHERE sha = ?', (w[2],)).fetchone()[0] >= PER_REVISION:
                     return fail('Too many statements about this revision', 429)
                 # A key may sign one revision again (a released build after a dev one), a few times.
-                if db.execute('SELECT COUNT(*) FROM statements WHERE sha = ? AND pub = ?', (sha, pub)).fetchone()[0] >= PER_KEY:
+                if db.execute('SELECT COUNT(*) FROM statements WHERE sha = ? AND pub = ?', (w[2], pub)).fetchone()[0] >= PER_KEY:
                     return fail('Too many statements by this key about this revision', 429)
-            db.execute('INSERT OR IGNORE INTO statements(id, sha, line, pub, code, first_seen, steamid, state)'
-                       ' VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (sid, sha, line, pub, code, now, steamid, state))
-            row = db.execute('SELECT id, first_seen, state FROM statements WHERE id = ?', (sid,)).fetchone()
-            have = db.execute('SELECT first_seen FROM revisions WHERE sha = ?', (sha,)).fetchone()
+                db.execute('INSERT INTO statements(id, seq, sha, parent, mapcrc, first, last, code, pub, line, first_seen, steamid,'
+                           ' state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                           (sid, next_seq(db), w[2], w[3], w[4], int(w[5]), int(w[6]), w[7], pub, line, now, steamid, state))
+            row = db.execute('SELECT id, seq, first_seen, state FROM statements WHERE id = ?', (sid,)).fetchone()
+            have = db.execute('SELECT seq FROM revisions WHERE sha = ?', (w[2],)).fetchone()
+            drain(db, DRAIN_SECONDS)
         return jsonify(ok=1, id=row['id'], first_seen=row['first_seen'], linked=row['state'] == accounts.RANK_LINKED,
-                       revision=have is not None, before_revision=have is None or row['first_seen'] <= have['first_seen'])
+                       revision=have is not None, before_revision=have is None or row['seq'] < have['seq'])
     @app.post('/api/tasrev/revision')
     def revision():
         if request.mimetype != 'text/x-tasrev': return fail('Expected text/x-tasrev', 415)
@@ -266,85 +402,97 @@ def create_app(store, account_db, codes_file, clock=time.time):
         with connect(store) as db, writing(db):
             if not spend(db, request.content_length, now): return fail('Too many uploads today', 429)
         body = request.get_data(cache=False)
-        m = TAIL.search(body)
-        if not m: return fail('Revision refused: it does not end in its revsha line', 400)
-        stated = m.group(1).decode()
-        with connect(store) as db:
-            known = db.execute('SELECT first_seen, parentsha FROM revisions WHERE sha = ?', (stated,)).fetchone()
-        if known is not None:
-            return jsonify(ok=1, sha=stated, first_seen=known['first_seen'], parent=known['parentsha'])
         try: info = tr.parse(body)
         except tr.Refused as e: return fail('Revision refused: %s' % e, 400)
         if info['stated'] != info['h']: return fail('Revision refused: its revsha is not its hash', 400)
         mp = body.split(b'\n', 2)[1].decode('ascii').split(' ')[1]
         if not NAME.fullmatch(mp): return fail('Invalid map', 400)
-        rows = pack_rows(info['rows'])
-        parent = info['parentsha']
-        with connect(store, readonly=True) as db:
-            prow = db.execute('SELECT body FROM revisions WHERE sha = ?', (parent,)).fetchone() if parent else None
-        if prow is not None and info['version'] == '2':
-            try: tr.check_supply(info, tr.parse(bytes(prow['body'])))
-            except tr.Refused as e: return fail('Revision refused: %s' % e, 400)
+        rows, parent = pack_rows(info['rows']), info['parentsha']
         supply = info['supply'] if isinstance(info['supply'], tuple) else (None, None)
+        inputs = inputs_digest(mp, info['mapcrc'], info['base'], rows)
         with connect(store) as db, writing(db):
-            total = db.execute('SELECT COALESCE(SUM(size), 0) FROM revisions').fetchone()[0]
-            if total + len(body) > STORE_CAP: return fail('The revision store is full', 507)
-            cr = credit_of(db, info['h'], info['base'], rows, parent)
-            db.execute('INSERT OR IGNORE INTO revisions(sha, map, mapcrc, parentsha, version, base, head, supply_a, supply_b,'
-                       ' first_seen, size, inputs, rows, credit, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                       (info['h'], mp, info['mapcrc'], parent, info['version'], info['base'], info['base'] + len(info['rows']),
-                        supply[0], supply[1], now, len(body), inputs_digest(info['base'], rows), rows, json.dumps(cr), body))
-            # Revisions that were waiting for this one as their parent (and theirs), recomputed now.
-            todo, done = [info['h']], 0
-            while todo and done < CASCADE:
-                for ch in db.execute('SELECT sha, base, rows, parentsha FROM revisions WHERE parentsha = ?', (todo.pop(0),)).fetchall():
-                    db.execute('UPDATE revisions SET credit = ? WHERE sha = ?',
-                               (json.dumps(credit_of(db, ch['sha'], ch['base'], ch['rows'], ch['parentsha'])), ch['sha']))
-                    todo.append(ch['sha']); done += 1
-            first = db.execute('SELECT first_seen FROM revisions WHERE sha = ?', (info['h'],)).fetchone()['first_seen']
-        return jsonify(ok=1, sha=info['h'], first_seen=first, parent=parent, parent_known=parent is None or prow is not None)
+            known = db.execute('SELECT seq, first_seen, parentsha FROM revisions WHERE sha = ?', (info['h'],)).fetchone()
+            if known is not None:
+                return jsonify(ok=1, sha=info['h'], seq=known['seq'], first_seen=known['first_seen'], parent=known['parentsha'])
+            prow = db.execute('SELECT base, rows FROM revisions WHERE sha = ?', (parent,)).fetchone() if parent else None
+            if prow is not None and info['version'] == '2':
+                # tools/tasrev.py check_supply over the stored rows: the changed ticks after the parent's base.
+                ch = [t for a, z in intersect(diff_ranges(rows, info['base'], bytes(prow['rows']), prow['base']),
+                                              [[max(prow['base'], info['base']) + 1, info['base'] + len(info['rows'])]])
+                      for t in (a, z)]
+                want = (ch[0], ch[-1]) if ch else None
+                if info['supply'] != want:
+                    return fail('Revision refused: supply %s, but the rows differ over %s' % (info['supply'], want), 400)
+            if db.execute('SELECT COALESCE(SUM(size), 0) FROM revisions').fetchone()[0] + len(body) > STORE_CAP:
+                return fail('The revision store is full', 507)
+            r = dict(sha=info['h'], seq=next_seq(db), base=info['base'], rows=rows, parentsha=parent, inputs=inputs)
+            cr, ch = compute(db, r)
+            db.execute('INSERT INTO revisions(sha, seq, map, mapcrc, parentsha, version, base, head, supply_a, supply_b,'
+                       ' first_seen, size, inputs, rows, changed, credit, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                       (r['sha'], r['seq'], mp, info['mapcrc'], parent, info['version'], info['base'],
+                        info['base'] + len(info['rows']), supply[0], supply[1], now, len(body), inputs, rows,
+                        json.dumps(ch) if ch is not None else None, json.dumps(cr), body))
+            db.executemany('INSERT OR IGNORE INTO stale(sha) VALUES (?)',
+                           db.execute('SELECT sha FROM revisions WHERE parentsha = ?', (r['sha'],)).fetchall())
+            drain(db, DRAIN_SECONDS)
+        return jsonify(ok=1, sha=r['sha'], seq=r['seq'], first_seen=now, parent=parent, parent_known=parent is None or prow is not None)
     def qualifying(db, rev, codes):
-        """[(first, last, account)] from the statements that credit this revision, oldest first. The
-        signature was verified when the statement arrived; here its fields must be the revision's."""
-        if rev['supply_a'] is None: return []          # version 1, or a revision that supplies nothing
-        fields = [rev['sha'], rev['parentsha'] or '-', rev['mapcrc'], str(rev['supply_a']), str(rev['supply_b'])]
+        """[(first, last, account)] from the statements that credit this revision, earliest first."""
+        if rev['supply_a'] is None: return []           # version 1, or a revision that supplies nothing
         out = []
-        for st in db.execute('SELECT line, code, first_seen, steamid, state FROM statements WHERE sha = ?'
-                             ' ORDER BY first_seen, id', (rev['sha'],)):
-            w = st['line'].split(' ')
-            if st['first_seen'] > rev['first_seen'] or st['code'] not in codes or w[2:7] != fields: continue
-            out.append((int(w[5]), int(w[6]), st['steamid'] if st['state'] == accounts.RANK_LINKED else 'unattributed'))
+        for st in db.execute('SELECT first, last, code, steamid, state FROM statements WHERE sha = ? AND seq < ? AND parent = ?'
+                             ' AND mapcrc = ? AND first = ? AND last = ? ORDER BY seq',
+                             (rev['sha'], rev['seq'], rev['parentsha'] or '-', rev['mapcrc'], rev['supply_a'], rev['supply_b'])):
+            if st['code'] in codes:
+                out.append((st['first'], st['last'], st['steamid'] if st['state'] == accounts.RANK_LINKED else 'unattributed'))
+        return out
+    def resolve(db, credit, codes):
+        """Supplier ranges -> account ranges, range by range (never per tick)."""
+        cache, out = {}, []
+        def add(a, z, w):
+            if out and out[-1][2] == w and out[-1][1] == a - 1: out[-1][1] = z
+            else: out.append([a, z, w])
+        for a, z, sup in credit:
+            if sup not in cache:
+                srow = db.execute('SELECT sha, seq, parentsha, mapcrc, supply_a, supply_b FROM revisions WHERE sha = ?',
+                                  (sup,)).fetchone() if HEX64.fullmatch(sup) else None
+                cache[sup] = qualifying(db, srow, codes) if srow is not None else None
+            spans = cache[sup]
+            if spans is None: add(a, z, UNKNOWN); continue
+            t = a
+            while t <= z:
+                hit = next(((x, y, acc) for x, y, acc in spans if x <= t <= y), None)
+                if hit is None:
+                    nxt = min([x for x, y, acc in spans if x > t] + [z + 1])
+                    add(t, min(z, nxt - 1), 'unsigned'); t = min(z, nxt - 1) + 1
+                else:
+                    add(t, min(z, hit[1]), hit[2]); t = min(z, hit[1]) + 1
         return out
     @app.get('/api/tasrev/rev/<sha>')
     def show(sha):
         if not HEX64.fullmatch(sha): return fail('Invalid hash', 400)
-        codes = released_codes(codes_file)
-        if codes is None: raise Unavailable('the released-code list cannot be read')
+        codes = codes_now()
         with connect(store, readonly=True) as db:
-            rev = db.execute('SELECT sha, map, mapcrc, parentsha, version, base, head, supply_a, supply_b, first_seen, credit'
+            rev = db.execute('SELECT sha, seq, map, mapcrc, parentsha, version, base, head, supply_a, supply_b, first_seen, credit'
                              ' FROM revisions WHERE sha = ?', (sha,)).fetchone()
-            sts = [dict(id=s['id'], ticks=[int(s['line'].split(' ')[5]), int(s['line'].split(' ')[6])], first_seen=s['first_seen'],
-                        released_code=s['code'] in codes, account=s['steamid'] if s['state'] == accounts.RANK_LINKED else '',
-                        before_revision=rev is None or s['first_seen'] <= rev['first_seen'])
-                   for s in db.execute('SELECT id, line, code, first_seen, steamid, state FROM statements WHERE sha = ?'
-                                       ' ORDER BY first_seen, id', (sha,))]
+            sts = [dict(id=s['id'], ticks=[s['first'], s['last']], first_seen=s['first_seen'], released_code=s['code'] in codes,
+                        account=s['steamid'] if s['state'] == accounts.RANK_LINKED else '',
+                        before_revision=rev is None or s['seq'] < rev['seq'])
+                   for s in db.execute('SELECT id, seq, first, last, code, first_seen, steamid, state FROM statements'
+                                       ' WHERE sha = ? ORDER BY seq', (sha,))]
             if rev is None:
                 if not sts: return fail('Unknown revision', 404)
-                return jsonify(ok=1, revision=None, statements=sts, credit=[])
-            cache, credit = {}, []
-            for a, b, sup in json.loads(rev['credit']):
-                if sup not in cache:
-                    srow = db.execute('SELECT sha, parentsha, mapcrc, supply_a, supply_b, first_seen FROM revisions WHERE sha = ?',
-                                      (sup,)).fetchone() if HEX64.fullmatch(sup) else None
-                    cache[sup] = qualifying(db, srow, codes) if srow is not None else None
-                spans = cache[sup]
-                for t in range(a, b + 1):
-                    if spans is None: who = sup if not HEX64.fullmatch(sup) else 'unknown-ancestry'
-                    else: who = next((acc for x, y, acc in spans if x <= t <= y), 'unsigned')
-                    if credit and credit[-1][2] == who and credit[-1][1] == t - 1: credit[-1][1] = t
-                    else: credit.append([t, t, who])
+                return jsonify(ok=1, revision=None, statements=sts, credit=[], pending=False)
+            pending = db.execute('SELECT 1 FROM stale WHERE sha = ?', (sha,)).fetchone() is not None
+            key = (sha, hashlib.sha256(rev['credit'].encode()).hexdigest(), hash(codes))
+            with shown_lock: credit = shown.get(key)
+            if credit is None:
+                credit = resolve(db, json.loads(rev['credit']), codes)
+                with shown_lock:
+                    shown[key] = credit
+                    while len(shown) > 64: shown.popitem(last=False)
         rv = dict(rev); rv.pop('credit')
-        return jsonify(ok=1, revision=rv, statements=sts, credit=[dict(first=a, last=b, who=w) for a, b, w in credit])
+        return jsonify(ok=1, revision=rv, statements=sts, credit=credit, pending=pending)
     @app.get('/api/tasrev/rev/<sha>/file')
     def file(sha):
         if not HEX64.fullmatch(sha): return fail('Invalid hash', 400)
@@ -355,15 +503,15 @@ def create_app(store, account_db, codes_file, clock=time.time):
     @app.get('/api/tasrev/map/<mp>')
     def by_map(mp):
         if not NAME.fullmatch(mp): return fail('Invalid map', 400)
+        codes = codes_now()
         before = request.args.get('before', '')
-        before = int(before) if before.isdigit() else 2 ** 62
+        before = int(before) if before.isdigit() and len(before) < 16 else 2 ** 62
         with connect(store, readonly=True) as db:
-            rows = db.execute('SELECT r.sha, r.parentsha, r.base, r.head, r.supply_a, r.supply_b, r.first_seen,'
-                              ' (SELECT COUNT(*) FROM statements s WHERE s.sha = r.sha AND s.first_seen <= r.first_seen'
-                              "  AND s.state = 'linked') AS signed"
-                              ' FROM revisions r WHERE r.map = ? AND r.first_seen < ? ORDER BY r.first_seen DESC LIMIT 100',
-                              (mp, before)).fetchall()
-        return jsonify(ok=1, map=mp, revisions=[dict(r) for r in rows])
+            rows = [dict(r) for r in db.execute('SELECT sha, seq, parentsha, mapcrc, base, head, supply_a, supply_b, first_seen FROM revisions'
+                                                ' WHERE map = ? AND seq < ? ORDER BY seq DESC LIMIT 100', (mp, before))]
+            for r in rows:
+                r['signed'] = len({acc for a, z, acc in qualifying(db, r, codes) if acc != 'unattributed'})
+        return jsonify(ok=1, map=mp, revisions=rows)
     return app
 
 
@@ -371,10 +519,20 @@ def main():
     import argparse
     ap = argparse.ArgumentParser(description='P1091 TAS revision service store')
     ap.add_argument('--store', required=True)
-    ap.add_argument('command', choices=['init'])
+    ap.add_argument('command', choices=['init', 'recompute'])
     a = ap.parse_args()
-    initialize(a.store)
-    print('tasrevd store ready: %s' % a.store)
+    if a.command == 'init':
+        initialize(a.store)
+        print('tasrevd store ready: %s' % a.store)
+        return
+    with connect(a.store) as db:
+        n = 0
+        while True:
+            with writing(db):
+                left = db.execute('SELECT COUNT(*) FROM stale').fetchone()[0]
+                if not left: break
+                drain(db, 2.0); n += 1
+        print('tasrevd: queue empty after %d passes' % n)
 
 
 if __name__ == '__main__':
