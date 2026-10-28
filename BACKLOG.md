@@ -23,6 +23,11 @@
   so a server may be able to set it, and every menu online feature except P1099's gates on it.
   Those gates should read ms_consent, as m_mapmedia.qc does now (private tree:
   checkpoints/p1099-maptables-csqc-20261029.md).
+- **P1099: map tables through other search paths (final review round, open, Lex's call):** a
+  copy of data/mapdeps.net.txt, mapmeta.net.txt or mapdl.net.txt can still come from a server's
+  package or download rather than the menu. fs.c bounds a mount table to its five Steam folders,
+  so the reach is missing textures and wrong browser text. Answer: read those tables only from the
+  gamedir's own loose files. Private tree: checkpoints/p1099-maptables-csqc-20261029.md, item 5.
 - **P1099 leftovers (review 1, low):** a row whose JPEG is not on the Pi requests a 404 once a
   session (6 rows on 29 Oct) and ui_data_load counts it as pictured; the URL loader decodes any
   format the Pi serves (a compromised Pi could send a small file that decodes huge).

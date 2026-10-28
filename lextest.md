@@ -1,6 +1,8 @@
 # lextest.md — things waiting on a human
 
-**P1099 -- map tables and pictures between releases (needs your nginx sudo first):** once
+**P1099 -- map tables and pictures between releases (needs your nginx sudo first):** live in
+both installs (exe git-7978-patch-1090-8-ga92e23fa9, menu 8e486a2f); until nginx serves the media
+the console says "mapmedia: the Pi answered 404 -- the installed tables stand", which is harmless. Once
 `sudo sh /srv/nvme/agent-work/lexmaps-media1099/install_media_nginx.sh` has run on the Pi, start
 the game online: the console says "mapmedia: N map rows from the Pi" and "M mount lines from the
 Pi". On a release install, a map added since that release shows its tier and picture in the list,
