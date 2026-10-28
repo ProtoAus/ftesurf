@@ -6585,7 +6585,7 @@ void(string name, optional float force) ui_dl_start =
 		dl_name  = name;
 		dl_state = DL_ACTIVE;
 		dl_pct = dl_rate = dl_done = dl_total = 0;
-		dl_t0 = time;
+		dl_t0 = 0;              // set at the real start; until then the strip shows the message
 		dl_afterlocal = force ? 2 : 1;
 		ui_st_result(sprintf("%s downloads when you leave this game", name), 0);
 		return;
@@ -6641,12 +6641,20 @@ void() Dl_Tick =
 
 	if (dl_afterlocal)
 	{
-		if (isserver())
+		// Not during a connect either: `connect` ends the local game, and a download
+		// started in its handshake holds that join's signon until it finishes
+		// (CL_RequestNextDownload waits on cls.download).
+		if (isserver() || serverkey("transferring") != "" || serverkey("constate") == "connecting")
 			return;
 		float f = dl_afterlocal - 1;
 		dl_afterlocal = 0;
 		dl_state = DL_IDLE;     // ui_dl_start refuses while one is active
 		ui_dl_start(dl_name, f);
+		if (dl_state == DL_IDLE)
+		{
+			dl_state = DL_OK;   // on disk after all (2): a held join reads that as done
+			dl_until = time + DL_HOLD;
+		}
 		return;
 	}
 
@@ -6723,7 +6731,7 @@ float(string addr, string mapname) ui_prejoin =
 
 	ui_dl_start(mapname, have == "2");
 	// P1094: the join ends a local game anyway; ending it first lets the download start.
-	if (dl_afterlocal && dl_name == mapname)
+	if (dl_afterlocal && dl_name == mapname && isserver())
 		localcmd("disconnect\n");
 
 	// ui_dl_start is quiet about declining: it refuses while another transfer
@@ -7026,14 +7034,16 @@ void() ui_status_update =
 	{
 		if (kind == ST_HELD)
 			ui_st_text = sprintf("Downloading %s before joining", map);
+		else if (dl_afterlocal)
+			ui_st_text = sprintf("%s downloads when you leave this game", map);
 		else
 			ui_st_text = sprintf("Downloading %s", map);
-		ui_st_figs = strcat(" -- ", ui_dl_figs(pct, done, total, rate));
+		ui_st_figs = dl_afterlocal ? "" : strcat(" -- ", ui_dl_figs(pct, done, total, rate));
 		if (total > 0)
 			ui_st_frac = ui_charge;
 		ui_st_cancel = (kind == ST_HELD);
 		if (kind == ST_DL)
-		if (ui_dl_cancel_ready())
+		if (dl_afterlocal || ui_dl_cancel_ready())
 			ui_st_cancel = TRUE;
 	}
 	else if (ui_st_msg)
