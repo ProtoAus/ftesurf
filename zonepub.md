@@ -150,7 +150,9 @@ fail. An upload signed with `nonce_now` (csprogs carrying `NOW_MARKER`, a crc st
 Password and public name: `SURFD_RCON_PASSWORD`, `SURFD_PUBLIC_HOST` in
 /srv/nvme/surfd/surfd.env; ports: /srv/nvme/ftesurf-server/game/ftesurf/cfg/lobby. Never past
 an owed verdict; evidence posted after the warning and not yet indexed meets the new zones.
-`init` adds the P1081 columns to an older store; the P815 release still runs on it.
+`init` adds the P1081 columns to an older store; the P815 release still runs on it. The
+command-line `apply`, `rollback` and `reload` do not migrate: on a store `init` has not seen
+they fail on the missing columns and change nothing.
 
 Not closed (engine side, outside P1081): synthetic pointer input can reach the same cursor, so
 the client's real-pointer checks are defense in depth, not a boundary against a compromised

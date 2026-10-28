@@ -53,6 +53,36 @@ From the round-6 review of P1081; none lets a publish past an owed verdict.
   them, last key wins). Falsifier: a fix uploaded over such a file is accepted, or refused with
   a reason naming the file.
 
+## zonepub: review 7 leftovers (P1081)
+
+From the round-7 review of P1081 (no integrity defect found); none lets a publish past an owed
+verdict or confirms a lobby that runs the old table.
+- After a reboot, a mode-0 lobby on a table that never matches gets RELOAD_TRIES changelevels,
+  then GAVE UP: with no load time it cannot be called "loaded another table"
+  (`surfd/zonepub_publish.py` `_force_reload`, the unmeasured branch; by design in
+  `test_after_a_reboot_mode_0_goes_by_the_crc_alone`). Falsifier: such a lobby is left after
+  its first reload without a load-time stamp.
+- An unreadable boot id (one failed open() in `_boot_id`) reads as a new boot, so mode-1 lobbies
+  go "cannot tell after restart" and the row ends live-partial. A read failure should fall back
+  to the monotonic check alone. Falsifier: with the boot id file briefly unreadable mid-watch,
+  the row still ends `live` with every lobby confirmed.
+- After a reboot every lobby restarted, so each demonstrably loaded after the (fsynced, same-host)
+  write, yet mode-1 lobbies are held and the operator's re-arm changelevels all of them once
+  more, mode-0-confirmed ones included (`rearm` stamps afresh in another boot). Falsifier: a
+  re-arm after a reboot reloads only lobbies whose load is before the boot or unknown.
+- Unreadable uptime: a mode-1 lobby whose `status` cannot be read but that already runs the new
+  table gets 5 changelevels, then GAVE UP (older than review 6). Falsifier: such a lobby is held
+  as "cannot tell" without being changelevelled.
+- `same_zones` is not the engine's JSON reader: a BOM or UTF-16, duplicate keys (the engine keeps
+  the first, Python the last), escaped keys, numbers over 63 characters (cut by the engine's
+  JSON_ReadFloat) and -0 against 0 can make its answer differ from the game's. It needs a disk
+  file zonepub did not write. Falsifier: for each of those, the "already live" answer is what a
+  lobby loading both files would say.
+- The load-time margin is about 0.9 s in practice: `status` uptime is whole seconds of
+  physicstime, lags up to 1 s on an idle lobby, and the rcon reply takes up to 0.35 s; a lobby
+  with sv_gamespeed below 1 would erase it. Falsifier: a lobby loaded in the second before put()
+  never reads as loaded after it, idle or with sv_gamespeed 0.5.
+
 ## Server text and server code reaching local commands (left open by P1086)
 
 P1086's review rounds (28 Oct) closed the routes listed in ENGINE.txt's P1086 line. Every
