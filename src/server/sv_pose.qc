@@ -222,7 +222,9 @@ float(entity av, entity p, float held) Pose_Quant =
 	           bound(-32767, rint(p.velocity_y), 32767),
 	           bound(-32767, rint(p.velocity_z), 32767)];
 	// P1052: the watched body's ancestry survives an armed/idle flag reset too.
-	pose_nr = [bound(0, p.run_t_state, 255), bound(0, p.run_t_track, 255), p.run_t_flags | SV_TASFlags(p)];
+	// P1079: Pose_W24 is signed; bit23 would clamp to 0x7FFFFF (TAS/CHEAT set).
+	pose_nr = [bound(0, p.run_t_state, 255), bound(0, p.run_t_track, 255),
+	           (p.run_t_flags | SV_TASFlags(p)) & (TF_BANKTAINT - 1)];
 	pose_nt = p.run_t_ticks;
 	pose_nf = [p.run_rampcontact ? PBR_RAMP : 0, Pose_QFine(p.velocity_x), Pose_QFine(p.velocity_y)];
 	pose_nfz = Pose_QFine(p.velocity_z);

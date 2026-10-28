@@ -149,7 +149,8 @@ const SPEED_LINES = ["cp", "stage", "stagestart", "split", "resume", "retry", "r
 // sh_defs.qc FS_CertWhy, worst first (Patch 840): why a run is not ranked.
 const CERT_WORDS = [[524288, "slow clock"], [512, "no journal"], [1024, "no ruleset"],
   [2048, "input mode"], [4096, "other map"], [8192, "old clock"], [65536, "input counts"]];
-const FLAG_WORDS = [[16384, "multi-session"], [32768, "spectated"]].concat(CERT_WORDS);
+const FLAG_WORDS = [[16384, "multi-session"], [32768, "spectated"],
+  [8388608, "inherited effect"]].concat(CERT_WORDS);
 let RUN = null, PLOT = null;
 
 function el(tag, cls, text) {

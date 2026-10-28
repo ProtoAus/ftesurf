@@ -22,6 +22,7 @@ and is removed, so no synthetic file can be mistaken for a run somebody made.
 """
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -3435,13 +3436,15 @@ def case_bank_taint():
     for style in (0, segment, shadow, segment | shadow):
         flags = bank | practice | style
         f, _, report = run(head(build(), "flags", flags), report=True)
-        check(not f and "practice" in report and "declared" in report,
+        check(not f and "practice" in report
+              and re.search(r"\bbank_taint\s+declared\b", report),
               "bank-tainted style %d remains valid unranked practice" % style)
     faults_with(head(build(), "flags", bank), "bank taint without practice",
                 "bank signal requires its practice envelope")
     for style in (segment, shadow):
         f, _, report = run(head(build(), "flags", practice | style), report=True)
-        check(not f and "segmented" in report and "not declared" in report,
+        check(not f and "segmented" in report
+              and re.search(r"\bbank_taint\s+not declared\b", report),
               "ordinary/legacy style %d is not retroactively bank-tainted" % style)
     for ancestry, label in ((256, "cheated"), (4194304 | 256, "TAS")):
         f, _, report = run(head(build(), "flags", bank | practice | ancestry), report=True)

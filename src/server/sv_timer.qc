@@ -11075,9 +11075,11 @@ void(entity e) SV_TimerClassSay =
 	local float now;
 
 	now = (e.run_t_flags & TF_TAS) ? RC_CHEAT + 1 : FS_RunClass(e.run_t_flags);
-	// Notification severity only: bank practice outranks segmented, not cheat.
+	// Notification severity only: bank practice is news after a segmented say,
+	// not a repeat of an earlier practice one, and never outranks cheat.
 	if (e.run_t_flags & TF_BANKTAINT)
-		if (now < RC_CHEAT) now = RC_SEGMENT + 0.5;
+	if (now < RC_CHEAT && e.run_t_said >= RC_SEGMENT)
+		now = RC_SEGMENT + 0.5;
 
 	if (e.run_t_state != TS_RUNNING)
 		return;
@@ -13781,6 +13783,8 @@ void(entity e, float ticks) SV_TimerFinish =
 		tag = RT_PB;
 	else if (e.run_t_flags & TF_CHEAT)
 		tag = RT_CHEAT;
+	else if (e.run_t_flags & TF_BANKTAINT)
+		tag = RT_LAST;   // P1079: FS_RunClass practice, not an archived shadow
 	else if (e.run_t_flags & TF_SHADOW)
 		tag = RT_SHADOW;
 	/*

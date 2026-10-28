@@ -4551,7 +4551,14 @@ below is the collection side and the rules that still only note.
   P1079 adds one declared inherited-effect exclusion signal across tiers, while
   current otherwise eligible segmented/shadow authors retain their ordinary tier.
   That classification fix does NOT implement the persistent contributor ledger
-  above or reconstruct missing signals in legacy files; full Rule8 remains OPEN. Historical unmerged `p455rebase` (50affaa, based on e7b6562; ten rounds
+  above or reconstruct missing signals in legacy files; full Rule8 remains OPEN.
+  **P1079 reach (fails harsh, not flattering):** an unranked or expired source now
+  costs segmented/shadow recipients their tier too, so a recurring timer whose last
+  enabler restarted taints every body it later moves (SV_TimerTick never re-snapshots)
+  and a named-target effect reaches every holder of that name. Falsifier: census the
+  library for player-enabled recurring timers / name-addressed body writes and count
+  maps where one honest restart taints others. Loading a pre-effect save clears the
+  bit (body restored; world state the source changed is the open ledger above). Historical unmerged `p455rebase` (50affaa, based on e7b6562; ten rounds
   at `archive/p455fix-r10`) is NOT READY: 44b313b's own message says the dwell
   does not close its bank, and no round11 exists. A new commitment inside the
   granting packet need not wait; arbitrary future mover/name-addressed writes

@@ -4287,7 +4287,7 @@ void() Watch_Sample =
 	// here would silently demote a cheated replay to `stitched`.
 	if (rec_wt_recflags >= 0)
 		rec_wt_flags = rec_wt_recflags &
-		              (TF_PRACTICE | TF_SHADOW | TF_SEGMENT | TF_CHEAT | TF_TAS);
+		              (TF_PRACTICE | TF_SHADOW | TF_SEGMENT | TF_CHEAT | TF_TAS | TF_BANKTAINT);
 	else if (rec_wt_tag == RT_SHADOW)
 		rec_wt_flags = TF_PRACTICE | TF_SHADOW;
 	else if (rec_wt_tag == RT_CHEAT)

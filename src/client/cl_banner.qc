@@ -251,7 +251,7 @@ void(float tail) Bn_PlaceRaw =
 
 	if (tail)
 	{
-		flags = LT_StageFlags(ui_bn_tailword) | (ui_bn_flags & (TF_UNCERT | TF_TAS));
+		flags = LT_StageFlags(ui_bn_tailword) | (ui_bn_flags & (TF_UNCERT | TF_TAS | TF_BANKTAINT));
 		sub   = (ui_bn_tailword & SF_POSTED) != 0;
 		lr    = ui_bn_taillrank;
 		lo    = ui_bn_taillof;
@@ -273,7 +273,7 @@ void(float tail) Bn_PlaceRaw =
 		ui_bn_placc = TC_PRACTICE;
 		return;
 	}
-	if (flags & TF_SHADOW)
+	if ((flags & TF_SHADOW) && !(flags & TF_BANKTAINT))
 	{
 		ui_bn_pl1 = "SHADOW";
 		ui_bn_pl2 = "from a save";
@@ -744,7 +744,7 @@ void(float kept) Bn_LatchTail =
 	ui_bn_tailkept  = kept;
 	uncert = (ui_bn_flags & TF_UNCERT) != 0;
 	ui_bn_tailpb = Bn_PBOf(ui_bn_track, ui_bn_tailleg,
-	                       LT_StageFlags(ui_bn_tailword) | (ui_bn_flags & (TF_UNCERT | TF_TAS)),
+	                       LT_StageFlags(ui_bn_tailword) | (ui_bn_flags & (TF_UNCERT | TF_TAS | TF_BANKTAINT)),
 	                       getstatf(STAT_FS_STAGEENDPBWAS));
 	ui_bn_tailpbsrc = ui_bn_pbsrcnow;
 	ui_bn_taillrank = ui_bn_taillof = 0;
@@ -770,7 +770,7 @@ void(float kept) Bn_RaiseStage =
 	ui_bn_leg   = FS_LegOf(seg, TRUE);
 	ui_bn_ticks = ticks;
 	ui_bn_word  = getstatf(STAT_FS_STAGEENDST);
-	ui_bn_flags = LT_StageFlags(ui_bn_word) | (getstatf(STAT_FS_TIMERFLAGS) & (TF_UNCERT | TF_TAS));
+	ui_bn_flags = LT_StageFlags(ui_bn_word) | (getstatf(STAT_FS_TIMERFLAGS) & (TF_UNCERT | TF_TAS | TF_BANKTAINT));
 	ui_bn_kept  = kept;
 	Bn_Subject();
 	uncert = (ui_bn_flags & TF_UNCERT) != 0;

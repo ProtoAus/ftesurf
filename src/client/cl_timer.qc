@@ -517,6 +517,7 @@ vector(float state, float ticks, float pb, float flags, float pace) Timer_Color 
 	if (state == TS_FINISHED)
 	{
 		if (flags & TF_CHEAT)                 return TC_CHEAT;
+		if (flags & TF_BANKTAINT)             return TC_PRACTICE;
 		if (flags & TF_SHADOW)                return TC_SHADOW;
 		if (flags & TF_PRACTICE)              return TC_PRACTICE;
 		if (!(flags & TF_HAVEPB) || ticks <= pb) return TC_AHEAD;
@@ -524,6 +525,7 @@ vector(float state, float ticks, float pb, float flags, float pace) Timer_Color 
 	}
 	if (state == TS_ARMED)                    return '0.70 0.75 0.80';
 	if (flags & TF_CHEAT)                     return TC_CHEAT;
+	if (flags & TF_BANKTAINT)                 return TC_PRACTICE;
 	if (flags & TF_SHADOW)                    return TC_SHADOW;
 	if (flags & TF_PRACTICE)                  return TC_PRACTICE;
 	if (state == TS_RUNNING)
@@ -1097,7 +1099,7 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	  used for it since build 17 and which `armed`, `held` and `ghost` share --
 	  cyan is a mode on this line, amber is a verdict.
 	*/
-	if (flags & TF_CHEAT)
+	if (flags & (TF_CHEAT | TF_BANKTAINT))   // P1079: bank taint is practice
 		s = strcat(s, (s != "") ? "  " : "", "^3practice^7");
 	else if (flags & TF_SHADOW)
 		s = strcat(s, (s != "") ? "  " : "", "^5shadow^7");
