@@ -1,5 +1,33 @@
 # AGENT_NOTES.md
 
+## Momentum Beta zones and builds (P1093, 29 Oct 2026)
+
+- **Beta zones are anonymous; only the Beta LIST needs a sign-in.**
+  `/v1/maps/<id>?expand=currentVersionWithZones` answers 200 for a status-3 map
+  (bhop_ceaseless, id 2381; its zones hash to the cache's zoneHash) while
+  `/v1/maps/submissions` is 401. The watcher lacked the id: extra.tsv was
+  `name sha1 url`. On 28 Oct 189 Beta surf/bhop maps had published zones the Pi
+  did not hold and 73 were held on an older build than Lex's cache named.
+- **The id travels in `betaids.tsv` (`name sha1 id zoneHash`), not in extra.tsv.**
+  The deployed watcher counts any non-3-field extra.tsv line as bad, so a
+  5-field extra.tsv reaching the Pi first would have emptied the Beta list. An
+  id is taken only for a line of the same name AND sha1, so two files from
+  different scans pair nothing.
+- **A Beta line is a cache reading, maybe days old.** zone_fetch takes its zones,
+  and a build swap waiting on them, only while the map's own reply names the
+  line's build; otherwise "zoneversion" (no strike) and the line waits a day
+  (`stale` in state.json). A held Beta zone file donates to ports only as the
+  published file or through held_extra_donors' on-build check (review F1).
+- Momentum's own tabs are Ranked / Unranked / Beta (momentum_english.txt). The
+  submission cache also holds status 4 (6 surf/bhop maps on 28 Oct, e.g.
+  bhop_monster_jam): the per-map API answers those anonymously too.
+- surf_beyond is not a Momentum map at all (API search: only rj_beyond); the Pi
+  has KSF's build and no zones exist to fetch.
+- **Deploy needs a new surfd generation**: cron runs mapwatch from the sealed
+  runtime of `/srv/nvme/agent-work/menu-gen1080-20261028` (manifest hashes
+  include mapwatch.py), so copying the file into /srv/nvme/surfd does nothing
+  and editing the runtime breaks the fence. tools/surfd-generation-p1080.md.
+
 ## TAS camera and streamed warm-state pitfalls (P1066)
 
 P1065's final independent source reviews ran AFTER first Windows delivery and

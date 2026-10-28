@@ -1,5 +1,20 @@
 # BACKLOG.md
 
+## P1093 waits for a surfd generation (29 Oct)
+
+- Committed and tested on main; NOT live. The watcher runs from the sealed
+  generation 74e060d7 (P1080). Cut a generation that carries P1093's
+  mapwatch.py (tools/surfd-generation-p1080.md; the drop-in needs Lex's sudo),
+  then the next PC scan sends betaids.tsv and the Beta zones and builds follow.
+- Expect the first runs to write many first zone files under existing Beta runs
+  and swap up to 40 Beta builds a run (the approved-map rule at Beta scale).
+
+## test_mapwatch: 4 failures in case_given_zones on main (seen 29 Oct)
+
+- `_fixed` is a port suffix in PORTS (since P651), and link_ports gives
+  surf_p_fixed zones, while the case expects it not to. Seen at 988f9407 before
+  P1093 and unchanged by it. Either the case or PORTS is stale; not decided.
+
 ## zonepub holds every lobby's rcon password (P1081 review)
 
 - Sites: `surfd/zonepub_publish.py` `rcon_password`/`lobby_rcon`. "Reload now" reads
