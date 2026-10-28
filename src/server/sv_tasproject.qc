@@ -187,8 +187,120 @@ float(entity e, float *buf, float n) SV_TASPValidate =
 	return 0;
 };
 
+/*
+  P1089 review 1: a revision's hash is evidence, so a project file must be EXACTLY what
+  SV_TASPWrite writes: the writer's key order (only cp and i repeat), printable ASCII under
+  3000 bytes a line (fgets splits a 4095-byte line in two), single spaces, and every value in
+  the writer's own text -- %.0f integers, %.9g float32 values, lowercase hex, fixed words. A
+  file that differs in any byte the game would ignore is refused, so one behaviour has one
+  hash, and tools/tasrev.py can check the same bytes. Returns the key's rank, or -1.
+*/
+string(string line) SV_TASPCanon =
+{
+	local string k;
+	tokenize(line);
+	k = argv(0);
+	if (k == "saved" || k == "revision" || k == "origin" || k == "parent" || k == "revsha" || k == "")
+		return "";
+	if (k == "base")
+		return sprintf("base %s %s", argv(2), argv(3));
+	return line;
+};
+
+float tpr_rank;
+float(string k) SV_TASPKeyRank =
+{
+	if (k == "tasproject") return 0; if (k == "map") return 1; if (k == "mapcrc") return 2;
+	if (k == "zonecrc") return 3; if (k == "pmpin") return 4; if (k == "assist") return 5;
+	if (k == "origin") return 6; if (k == "saved") return 7; if (k == "revision") return 8;
+	if (k == "parent") return 9; if (k == "parentsha") return 10; if (k == "base") return 11;
+	if (k == "baseat") return 12; if (k == "head") return 13; if (k == "cp") return 14;
+	if (k == "i") return 15; if (k == "end") return 16; if (k == "revsha") return 17;
+	return -1;
+};
+
+float(string t, float whole) SV_TASPCanonNum =
+{
+	return (t != "" && t == sprintf(whole ? "%.0f" : "%.9g", stof(t)));
+};
+
+float(string t, float len) SV_TASPHex =
+{
+	local float i, c;
+	if (strlen(t) < 1 || (len && strlen(t) != len)) return FALSE;
+	for (i = 0; i < strlen(t); i = i + 1)
+	{
+		c = str2chr(t, i);
+		if (!((c >= 48 && c <= 57) || (c >= 97 && c <= 102))) return FALSE;
+	}
+	return TRUE;
+};
+
+// The line as the writer would have written it, or FALSE. argv holds its tokens.
+float(string l, string k, float argc) SV_TASPLineCanon =
+{
+	local float i, c, p, r, whole;
+	// The raw bytes: printable, single spaces, none of tokenize's punctuation ("'/()[]{},;\)
+	// and ':' only in `saved` -- so splitting on spaces is all tokenize did to this line.
+	if (strlen(l) >= 3000 || strlen(l) < 1) return FALSE;
+	p = 32;
+	for (i = 0; i < strlen(l); i = i + 1)
+	{
+		c = str2chr(l, i);
+		if (c < 32 || c > 126 || c == 34 || c == 39 || c == 47 || c == 40 || c == 41 || c == 91 ||
+			c == 93 || c == 123 || c == 125 || c == 44 || c == 59 || c == 92) return FALSE;
+		if (c == 58 && k != "saved") return FALSE;
+		if (c == 32 && p == 32) return FALSE;   // a leading or a double space
+		p = c;
+	}
+	if (p == 32) return FALSE;
+	r = SV_TASPKeyRank(k);
+	if (r < 0 || r < tpr_rank || (r == tpr_rank && r != 14 && r != 15)) return FALSE;
+	tpr_rank = r;
+	if (k == "assist") return (l == "assist tas");
+	if (k == "origin") return (l == "origin local");
+	if (k == "mapcrc" || k == "zonecrc") return (argc == 2 && SV_TASPHex(argv(1), 0));
+	if (k == "parentsha" || k == "revsha") return (argc == 2 && SV_TASPHex(argv(1), 64));
+	if (k == "base") return (argc == 4 && SV_TASPCanonNum(argv(1), TRUE) && SV_TASPHex(argv(2), 64) && SV_TASPCanonNum(argv(3), TRUE));
+	if (k == "saved")               // tokenize splits at ':', so the raw text: "saved " + 19
+	{
+		if (strlen(l) != 25 || substring(l, 0, 6) != "saved ") return FALSE;
+		for (i = 0; i < 19; i = i + 1)
+		{
+			c = str2chr(l, 6 + i);
+			if (i == 4 || i == 7) { if (c != 45) return FALSE; }
+			else if (i == 10) { if (c != 84) return FALSE; }
+			else if (i == 13 || i == 16) { if (c != 58) return FALSE; }
+			else if (c < 48 || c > 57) return FALSE;
+		}
+		return TRUE;
+	}
+	if (k == "parent") return (argc == 3 && SV_TASPNameOK(argv(1)) && SV_TASPCanonNum(argv(2), TRUE));
+	if (k == "cp")
+	{
+		if (argc != 10 || !SV_TASPCanonNum(argv(1), TRUE) || (argv(2) != "0" && argv(2) != "1")) return FALSE;
+		if (argv(2) == "0" && argv(3) != "-") return FALSE;
+		for (i = 4; i < 10; i = i + 1) if (!SV_TASPCanonNum(argv(i), FALSE)) return FALSE;
+		return TRUE;
+	}
+	if (k == "baseat")
+	{
+		for (i = 1; i < argc; i = i + 1) if (!SV_TASPCanonNum(argv(i), FALSE)) return FALSE;
+		return (argc == 7);
+	}
+	whole = (k == "tasproject" || k == "revision" || k == "head" || k == "i" || k == "end");
+	if (whole)
+	{
+		for (i = 1; i < argc; i = i + 1) if (!SV_TASPCanonNum(argv(i), TRUE)) return FALSE;
+		return (argc >= 2);
+	}
+	return TRUE;                    // map, pmpin: compared with this server's below
+};
+
 // Parse a project into tpr_*. Untrusted: every value is bounded; FALSE leaves tpr_why.
 // `identity` also requires and compares the map, zone and movement-rule lines.
+// P1089: tpr_h is the revision hash over the canonical lines (SV_TASPCanon).
+string tpr_h;
 float(entity e, string name, float identity) SV_TASPRead =
 {
 	local filestream f;
@@ -204,12 +316,22 @@ float(entity e, string name, float identity) SV_TASPRead =
 	have = ended = n = 0;
 	hash = parent = names = "";
 	pin = SV_RecPinText(e, "*pmpin");
+	tpr_rank = -1;
+	if (tpr_h) strunzone(tpr_h);
+	tpr_h = strzone(strtolower(digest_hex("SHA256", "FTESURF-TASREV-CANON 1")));
 	while ((l = fgets(f)) != "")
 	{
 		argc = tokenize(l);
-		if (argc < 1) continue;
 		k = argv(0);
-		if (ended && (k != "revsha" || tpr_revsha != "")) { tpr_why = "data after end"; break; }  // P1089: one revsha may follow
+		if (argc < 1 || !SV_TASPLineCanon(l, k, argc)) { tpr_why = "not a file the game wrote (P1089 canonical form)"; break; }
+		if (ended && k != "revsha") { tpr_why = "data after end"; break; }
+		z = SV_TASPCanon(l);
+		if (z != "")
+		{
+			z = strzone(strtolower(digest_hex("SHA256", strcat(tpr_h, "\n", z))));
+			strunzone(tpr_h); tpr_h = z;
+		}
+		argc = tokenize(l);         // SV_TASPCanon tokenized its own copy
 		if (k == "i")
 		{
 			if (argc != 8 || !tpr_buf || n >= tpr_size) { tpr_why = "bad input row"; break; }
@@ -684,34 +806,6 @@ void(entity e, float s, float head) SV_TASPCheckpoints =
   revision, origin, parent, revsha) and `base` loses its local save id. tools/tasrev.py is
   the twin surfd uses; keep the two in step.
 */
-string(string line) SV_TASPCanon =
-{
-	local string k;
-	tokenize(line);
-	k = argv(0);
-	if (k == "saved" || k == "revision" || k == "origin" || k == "parent" || k == "revsha" || k == "")
-		return "";
-	if (k == "base")
-		return sprintf("base %s %s", argv(2), argv(3));
-	return line;
-};
-
-string(string path) SV_TASPRevHash =
-{
-	local filestream f;
-	local string l, c, h;
-	f = fopen(path, FILE_READ);
-	if (f < 0) return "";
-	h = strtolower(digest_hex("SHA256", "FTESURF-TASREV-CANON 1"));
-	while ((l = fgets(f)) != "")
-	{
-		c = SV_TASPCanon(l);
-		if (c != "") h = strtolower(digest_hex("SHA256", strcat(h, "\n", c)));
-	}
-	fclose(f);
-	return h;
-};
-
 float(entity e, float s, string name, string parent) SV_TASPWrite =
 {
 	local filestream f;
@@ -751,9 +845,11 @@ float(entity e, float s, string name, string parent) SV_TASPWrite =
 	}
 	fputs(f, sprintf("end %.0f\n", e.tasp_n));
 	fclose(f);
-	// P1089: the revision hash, from the file as written, then kept as the next save's parent.
-	h = SV_TASPRevHash(SV_TASPPath(name));
-	if (h == "") return FALSE;
+	// P1089: the file as written must pass the strict reader; its hash then names it and
+	// is the next save's parent.
+	if (!SV_TASPRead(e, name, FALSE)) { SV_TASPReadFree(); return FALSE; }
+	h = tpr_h;
+	SV_TASPReadFree();
 	f = fopen(SV_TASPPath(name), FILE_APPEND);
 	if (f < 0) return FALSE;
 	fputs(f, sprintf("revsha %s\n", h));
@@ -914,6 +1010,8 @@ void(entity e, string name, float force) SV_TASProjectSave =
 	tasp_name[s] = name;
 	if (tasp_parent[s]) strunzone(tasp_parent[s]);
 	tasp_parent[s] = parent;
+	// P1089 review 1: only a save still on the project's line names it as parent.
+	if (!attached && tasp_revsha[s] != "") { strunzone(tasp_revsha[s]); tasp_revsha[s] = ""; }
 	if (!SV_TASPWrite(e, s, name, parent))
 	{
 		sprint(e, PRINT_HIGH, "tas project: cannot write the project file\n");
@@ -1023,7 +1121,7 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 	tasp_hash[s] = tpr_hash; tasp_parent[s] = tpr_parent; tasp_cpnames[s] = tpr_cpnames;
 	tpr_hash = tpr_parent = tpr_cpnames = "";
 	// P1089: the lineage continues from the content's own hash; the stated one only warns.
-	tasp_revsha[s] = strzone(SV_TASPRevHash(SV_TASPPath(name)));
+	tasp_revsha[s] = strzone(tpr_h);
 	if (tpr_revsha != "" && tpr_revsha != tasp_revsha[s])
 		sprint(e, PRINT_HIGH, "tas project: this file was changed after it was saved (its revsha does not match)\n");
 	e.tasp_n = tpr_n; e.tasp_cap = tpr_size; e.tasp_ncp = tpr_ncp; e.tasp_rev = tpr_rev;
@@ -1182,9 +1280,11 @@ void(entity e, float argc, string action, string sub, string a1, string a2) SV_T
 	}
 	if (sub == "diff" && argc == 5 && SV_TASPNameOK(a1) && SV_TASPNameOK(a2)) { SV_TASProjectDiff(e, a1, a2); return; }
 	if (sub == "list" && argc == 3) { SV_TASProjectList(e); return; }
-	if (sub == "hash" && argc == 4 && SV_TASPNameOK(a1))    // P1089
+	if (sub == "hash" && argc == 4 && SV_TASPNameOK(a1))    // P1089: only a file the reader accepts
 	{
-		sprint(e, PRINT_HIGH, sprintf("tas project hash %s: %s\n", a1, SV_TASPRevHash(SV_TASPPath(a1))));
+		if (SV_TASPRead(e, a1, FALSE)) sprint(e, PRINT_HIGH, sprintf("tas project hash %s: %s\n", a1, tpr_h));
+		else sprint(e, PRINT_HIGH, sprintf("tas project hash %s: refused: %s\n", a1, tpr_why));
+		SV_TASPReadFree();
 		return;
 	}
 	if (sub == "event" && argc == 3) { SV_TASProjectEvent(e); return; }  // the panel's quiet status
