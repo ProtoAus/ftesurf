@@ -255,6 +255,12 @@ re-simulation from inputs.
 5.1 Canonical revision hash (QC, tools): a project revision's identity is the sha256 of a
 canonical form (identity lines, inputs, checkpoints; not the save time or local save id), and
 a parent is named by that hash, not name/rev. `tas project hash`; a Python twin for surfd.
+DONE as P1089 (28 Oct): a hash chain over the canonical lines; a file counts only if it is
+exactly what the writer writes (SV_TASPLineCanon, mirrored by tools/tasrev.py, which may be
+stricter, never looser; tools/test_tasrev.py's 31 mutations agree with the game); parentsha
+is lineage and part of identity; the real file is never written in place. Four review rounds.
+Open for 5.3: an inputs-only digest (base sha + rows) so a copy re-saved as a new root is
+seen as the same work; the base covers state.txt only, not run.rec's prefix (6.1 removes it).
 5.2 `FTESURF-TASREV 1` (engine client): audience surfd; lines sha, parent shas, map crc, the
 input range this signer supplied, key; fskey under a real key press (as ACCT -3..-6). Portable:
 the statement carries the hash, so it checks offline.

@@ -21,6 +21,11 @@
 
 ## next
 
+### P1089 TAS projects get a fingerprint
+- Every saved TAS project revision now records a fingerprint of its inputs, and names the revision it came from by that fingerprint. `tas project hash <name>` shows it. This is the groundwork for sharing projects with credit.
+- Project files must be exactly as the game wrote them: a hand-edited file is refused, and loading one that was changed after saving warns you.
+- A save that could not be read back no longer replaces your last revision.
+
 ### P1088 TAS: find the best turn for exit speed
 - TAS can now search for you: Best turn left/right in the TAS panel, or `tas optimize <ticks> <left|right>`, tries turn rates from your current view while strafing that way and keeps the one with the most speed at the end. It plays that one and stays paused there.
 - Every try is the real movement on the real map, and the console lists each rate and speed. The search covers one constant turn, not every possible line.
