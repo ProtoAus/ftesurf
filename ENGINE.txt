@@ -25,8 +25,11 @@ commit   e7e2df7423ebb9695a2532a858e59768b1d4668a
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1086
-patch    1086
+patch    1088
+# Patch 1088: `tas optimize <ticks> <left|right>` and TAS-panel chips: a constant turn searched for exit speed (QC, TAS-only).
+# Patch 1087: TAS comparison line (pink), its ghost and time/speed deltas; a TAS back keeps the trail (csprogs).
 # Patch 1086 (client exe): server stufftext, settable cvars, map name and CSQC kept from local-only commands and cfg/ -- journal synth/end, CSQC cfg/ writes, auto-record name, demo loop, tp_autostatus, bindmap saves, load and the savegame cvar block, dpcompat_console, pkg:map. Installed exe git-7962-patch-1086-0-ge7e2df742 (4546724b), 28 Oct 09:50Z.
+# Patch 1085: func_bhop TimeLimit counts mover ticks, not server time (exact TAS reloads; 7 ticks at 66 tick, 10 at 100) (QC).
 # Patch 1084: lobby cards on native font sizes; World of Surf is the stats default; hud_player's Stats page opens from the main menu.
 # Patch 1083: ranked runs need the standard move size (largest axis <= 450, server-measured); cl_netfps stays matched to the tick every frame.
 # Patch 1082: TAS projects: an input line + base TAS save on disk, cold reload with checkpoint verdicts, fork/diff; local only.
