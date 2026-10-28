@@ -36,8 +36,9 @@ packs new thumbnails into a NEW atlas page: a release step, because a page a
 release has shipped must never change.  --export DIR copies the media into a
 release worktree, which otherwise carries the previous release's forward.
 
-Exit: 0 done, 2 a table refused, 3 another refresh holds the lock, 4 no table to
-refresh (build data/mapmeta.txt by hand first: tools/mapmeta.py, tools/mapthumbs.py).
+Exit: 0 done, 2 a table not installed (refused, or a game mapdeps reads is missing
+here), 3 another refresh holds the lock, 4 no table to refresh (missing, or under
+MIN_ROWS rows: build it by hand first with tools/mapmeta.py, tools/mapthumbs.py).
 
 Usage:
     python tools/mapmedia_refresh.py               # the six-hourly refresh
@@ -68,6 +69,7 @@ SECOND = r"C:\FTEQuake\ftesurf"
 API = "https://api.momentum-mod.org/v1/maps"
 PAGE = 100
 MIN_APPROVED = 500               # an approved list shorter than this is not one (1212 on 28 Oct)
+MIN_ROWS = 500                   # a live mapmeta.txt shorter than this is no table to gate against (2811)
 LOSS_FLOOR = 25
 LOSS_FRACTION = 0.02             # the first run's bad table lost 3.4% of tiers and 2.8% of cells
 LOCK_STALE = 3 * 3600            # the task's own limit is 2 h
@@ -159,27 +161,28 @@ def build_view(view, online):
 
 
 # ------------------------------------------------------------- the gate --
+KINDS = ("meta", "variant", "dep")
+
+
 def keys(path):
-    """A table's entries for the gate: name -> (tier, page, cell) for mapmeta rows,
-    "variant a b" and "dep map spec" lines as keys of their own."""
+    """A table's entries for the gate: (kind, name) -> (tier, page, cell), where a
+    variant or dep line is its own name and has neither tier nor cell."""
     out = {}
     if os.path.exists(path):
         for l in open(path, encoding="utf-8", errors="replace"):
             t = l.split()
             if len(t) > 7 and t[0] == "meta":
-                out[t[1].lower()] = (t[2], t[6], t[7])
-            elif len(t) == 3 and t[0] == "variant":
-                out[" ".join(t).lower()] = ("-", "-", "-")
-            elif len(t) >= 3 and t[0] == "dep":
-                out[" ".join(t).lower()] = ("-", "-", "-")
+                out[("meta", t[1].lower())] = (t[2], t[6], t[7])
+            elif (len(t) == 3 and t[0] == "variant") or (len(t) >= 3 and t[0] == "dep"):
+                out[(t[0], " ".join(t[1:]).lower())] = ("-", "-", "-")
     return out
 
 
 def losses(old, new):
-    """What `new` drops of `old`: entries, tiers and atlas cells, as name lists."""
-    gone = [n for n in old if n not in new]
-    tiers = [n for n, v in old.items() if v[0] != "-" and new.get(n, ("-",))[0] == "-"]
-    cells = [n for n, v in old.items() if v[1] != "-" and new.get(n, ("", "-"))[1] == "-"]
+    """What `new` drops of `old`: {kind: names gone}, tiers and atlas cells lost."""
+    gone = {k: [n for (kk, n) in old if kk == k and (kk, n) not in new] for k in KINDS}
+    tiers = [n for (k, n), v in old.items() if v[0] != "-" and new.get((k, n), ("-",))[0] == "-"]
+    cells = [n for (k, n), v in old.items() if v[1] != "-" and new.get((k, n), ("", "-"))[1] == "-"]
     return gone, tiers, cells
 
 
@@ -191,9 +194,10 @@ def gate(label, live, cand, state, accept):
     """True to install `cand` over `live`.  A refusal keeps the candidate."""
     old, new = keys(live), keys(cand)
     gone, tiers, cells = losses(old, new)
+    ngone = sum(len(v) for v in gone.values())
     say("  %s: %d entries (was %d): %d added, %d gone, %d tiers lost, %d cells lost"
-        % (label, len(new), len(old), len(set(new) - set(old)), len(gone), len(tiers), len(cells)))
-    over = (len(gone) > limit(len(old))
+        % (label, len(new), len(old), len(set(new) - set(old)), ngone, len(tiers), len(cells)))
+    over = (any(len(gone[k]) > limit(sum(1 for kk, _ in old if kk == k)) for k in KINDS)
             or len(tiers) > limit(sum(1 for v in old.values() if v[0] != "-"))
             or len(cells) > limit(sum(1 for v in old.values() if v[1] != "-")))
     refused = os.path.join(state, "refused-" + os.path.basename(live))
@@ -203,9 +207,9 @@ def gate(label, live, cand, state, accept):
         if os.path.exists(refused):
             os.remove(refused)
         return True
-    for what, names in (("gone", gone), ("tier lost", tiers), ("cell lost", cells)):
+    for what, names in [(k + " gone", gone[k]) for k in KINDS] + [("tier lost", tiers), ("cell lost", cells)]:
         if names:
-            say("    %s: %s" % (what, " ".join(sorted(names)[:8])))
+            say("    %d %s: %s%s" % (len(names), what, " ".join(sorted(names)[:8]), " ..." if len(names) > 8 else ""))
     shutil.copy2(cand, refused)
     say("  %s: NOT INSTALLED, it loses too much (kept as %s). If those losses are right,"
         " run tools/mapmedia_refresh.py --accept" % (label, refused))
@@ -232,7 +236,8 @@ def stamp(path, gamedir, prev, atlas):
     listed (P1099)."""
     _, body = read_stamped(path)
     pst, pbody = prev
-    st = pst if pbody == body and len(pst) == 14 else time.strftime("%Y%m%d%H%M%S", time.gmtime())
+    # Order-blind: mapthumbs puts the variant lines above the rows and mapmeta.py below.
+    st = pst if sorted(pbody) == sorted(body) and len(pst) == 14 else time.strftime("%Y%m%d%H%M%S", time.gmtime())
     add = ["# stamp " + st]
     if atlas:
         for p in sorted(glob.glob(os.path.join(gamedir, "gfx", "mapthumbs", "atlas*.png"))):
@@ -285,6 +290,14 @@ def build_mapdeps(live, cand, state_path):
     pmaps = prev.get("maps", {})
     changed = sorted(n for n in now if pmaps.get(n) != now[n])
     fp = addons()
+    # A game missing on this PC is not maps that stopped needing it: a rescan would
+    # drop every line for it (Portal's 20 are under the gate's floor).  Review 2.
+    import mapdeps
+    need = [(r, False) for _n, r in mapdeps.MOUNTED] + [(a[1], True) for a in mapdeps.ADDONS]
+    gaps = [str(r) for (r, packs_needed), (_r, isdir, packs) in zip(need, fp) if not isdir or (packs_needed and not packs)]
+    if gaps:
+        say("  mapdeps: NOT REBUILT -- not installed here: %s" % "; ".join(gaps))
+        return None
     py = [sys.executable, "-I", os.path.join(TOOLS, "mapdeps.py")]
     if (not prev or prev.get("addons") != fp or len(changed) > FULL_MAPDEPS_OVER
             or not os.path.exists(live)):
@@ -332,26 +345,32 @@ def copy_media(gamedir, dest, label):
 
 
 def take_lock(path):
-    """False when a live refresh holds it; one older than LOCK_STALE is taken over."""
+    """Our token, or None when a live refresh holds it; one older than LOCK_STALE is
+    taken over."""
+    token = "%d %s\n" % (os.getpid(), time.strftime("%Y-%m-%dT%H:%M:%S"))
     for _ in range(2):
         try:
             fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, ("%d %s\n" % (os.getpid(), time.strftime("%Y-%m-%dT%H:%M:%S"))).encode())
+            os.write(fd, token.encode())
             os.close(fd)
-            return True
+            return token
         except FileExistsError:
-            if time.time() - os.path.getmtime(path) < LOCK_STALE:
-                return False
-            os.remove(path)
-    return False
+            try:
+                if time.time() - os.path.getmtime(path) < LOCK_STALE:
+                    return None
+                os.remove(path)
+            except FileNotFoundError:
+                pass                # its holder finished between the two calls: try again
+    return None
 
 
 def refresh(a, g, state, view):
     rc = 0
     meta = os.path.join(g, "data", "mapmeta.txt")
-    if not os.path.exists(meta):
-        say("  mapmeta: no %s to refresh -- build it by hand first (tools/mapmeta.py, then "
-            "tools/mapthumbs.py); a table from nothing loses every atlas cell" % meta)
+    rows = sum(1 for (k, _n) in keys(meta) if k == "meta")
+    if rows < MIN_ROWS:
+        say("  mapmeta: %s has %d rows -- build it by hand first (tools/mapmeta.py, then "
+            "tools/mapthumbs.py); a table from nothing loses every atlas cell" % (meta, rows))
         return 4
 
     build_view(view, not a.offline)
@@ -380,7 +399,9 @@ def refresh(a, g, state, view):
     dtmp = deps + ".new-%d" % os.getpid()
     try:
         keep = build_mapdeps(deps, dtmp, os.path.join(state, "mapdeps_state.json"))
-        if gate("mapdeps", deps, dtmp, state, a.accept):
+        if keep is None:
+            rc = 2
+        elif gate("mapdeps", deps, dtmp, state, a.accept):
             stamp(dtmp, g, read_stamped(deps), False)
             os.replace(dtmp, deps)
             write_atomic(os.path.join(state, "mapdeps_state.json"), json.dumps(keep, sort_keys=True).encode())
@@ -398,9 +419,14 @@ def refresh(a, g, state, view):
         if pages:
             cmd += ["--start-page", str(max(pages) + 1)]    # never into a page a release shipped
         before = read_stamped(meta)
+        had = set(glob.glob(os.path.join(g, "gfx", "mapthumbs", "atlas*.png")))
         r = subprocess.run(cmd, capture_output=True, text=True)
         say("  atlas: " + (r.stdout.strip().splitlines() or ["?"])[-1])
         if r.returncode != 0:
+            # It saves the page before it raises; no row points into it (review 2).
+            for p in set(glob.glob(os.path.join(g, "gfx", "mapthumbs", "atlas*.png"))) - had:
+                os.remove(p)
+                say("  atlas: removed %s, written by the failed run" % p)
             raise SystemExit("mapthumbs failed: %s" % (r.stderr or r.stdout)[-400:])
         stamp(meta, g, before, True)    # the new page's size; a new stamp if cells were added
     return rc
@@ -423,20 +449,27 @@ def main():
     say("mapmedia refresh %s" % time.strftime("%Y-%m-%dT%H:%M:%S"))
 
     lock = os.path.join(state, "lock")
-    if not take_lock(lock):
+    token = take_lock(lock)
+    if not token:
         say("  another refresh holds %s -- nothing done" % lock)
         return 3
     try:
         rc = refresh(a, g, state, view)
-        if not a.no_second and os.path.isdir(SECOND) and os.path.abspath(SECOND) != g:
+        # Only from the default gamedir: a scratch --gamedir must not reach an install.
+        if (not a.no_second and os.path.isdir(SECOND) and os.path.abspath(SECOND) != g
+                and g == os.path.abspath(os.path.join(SURFDIR, "ftesurf"))):
             copy_media(g, SECOND, SECOND)
         if a.export:
             copy_media(g, os.path.join(os.path.abspath(a.export), "ftesurf"), "export " + a.export)
     finally:
-        if os.path.exists(lock):
+        try:
+            mine = open(lock, encoding="utf-8").read() == token
+        except FileNotFoundError:
+            mine = False
+        if mine:
             os.remove(lock)
         else:
-            say("  the lock was already gone (taken over as stale?)")
+            say("  the lock is no longer this run's (taken over as stale?) -- left alone")
     say("done in %.0fs, exit %d" % (time.time() - t0, rc))
     return rc
 

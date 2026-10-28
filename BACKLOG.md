@@ -19,6 +19,10 @@
 - **surf_aura save 3/4 ramp top (Momentum build):** loading save 3 with the
   key, sideways speed went 1766 -> 0 within ~0.15 s near (4560, -3088, -2760),
   then a fail teleport. Not diagnosed (prop hull vs brush vs Source behaviour).
+- **P1098 leftovers (review 2, low):** `--accept` rebuilds both tables rather than installing the
+  refused file that was read; a per-map `mapdeps --map` failure only logs "rc 1" and the run exits 0
+  (fy_bloodgroundz.5 fails update_mapdeps' name check, so it is retried every run); `--update-map`
+  sorts a map's specs while a full scan writes ADDONS order (mount order, for two-pack maps).
 - **Gamemode ties (P1098):** 166 maps' modes are a tie that list order used to break;
   P1098 keeps whatever the table held. A prefix-first rule would change ~100 tiers,
   mostly conc_ maps ranked in both sj (8) and conc (10). Lex to decide which is native.
