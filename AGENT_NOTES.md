@@ -4055,6 +4055,11 @@ basevel/multiplier aliases. This one cause is NOT the full phase/body/world bank
 P732 standalone fixture uses its OWN unit as self (it removes self); running it
 as world prints60PASS then errors at cleanup, NOT a pass. Logs have timestamp
 prefixes; parse like the existing readers and reject QC/cleanup errors too.
+The shared-build census can match its own PowerShell query text containing
+build.ps1: exclude the actual census PID, not arbitrary real build processes.
+P1123 promotion was empty/nonforce, all16347/142Windows and35043Pi old protected
+bytes unchanged, six new Pi runtime paths retained. Keep the older corpus-domain
+churn interval separate; never imply that it was this clean promotion's loss.
 
 P1121: ModifySpeed explicitly replaces one stored multiplier from its new input;
 there is NO no-op method guard. Even an equal world-authored scalar assignment

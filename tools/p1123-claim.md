@@ -17,7 +17,7 @@ multiplier slot alias, global context swap/join or movement-arithmetic change.
 Existing direct P732 fixture calls explicitly pass a world cause through a local
 test-only adapter; this fixture is never in production manifests.
 
-## Verified locally; independent reviews and deployment pending
+## Verified locally; BOTH independent reviews clear; ordinary deployment verified
 
 23 paired unchanged-source/corrected-source native-QC units, SAME qualified
 native/compiler/fixture/runner/other inputs. Actual public I/O, set-speed writer,
@@ -63,3 +63,40 @@ own-entry/phase/multi-source accounting. No new captured data/format/flag/tier,
 native source/pin, backend, Build or release change. General native/compiler/
 file-writer audit remains outside this change. Human checks are in lextest.md.
 Private exact inputs/raw reports/failures stay private.
+
+## Ordinary deployment — 2026-10-29
+
+BOTH fresh independent reviews report PASS/no issues on clean QC904572cfefc1 and
+engine documentation3152a272c77f; those exact SHAs published before promotion.
+Supported normal build again SS/menu0warnings/2oldCSF333/zeroNEW. Preflight12
+healthy/empty incl spectators, no other active build/release; used normal `-Pi`,
+NOTforce. Both actual Windows installs six exact DAT/LNO and immediate `.prev`
+verified; Pi exactQW/CS plus actual old pair `.prev`,12freshsame-native actors,
+healthy12/empty, 2026-10-29 17:52:46.953918UTC readback. Native/config/backend
+files+unit and AI state unchanged; no native/backend/config/Build/release action.
+
+Actual shipped SHA256:
+- QW `ace36faca814fd53f31e2863197f34ef9d0af09a29caaf2af593147cb14d7de7`
+- CS `fa9bb6d396342b24cbce496898bb7d056dca996b0805bd1f2583358d6efde8a1`
+- MENU `7cb11cb1d5c0db4a7ab015c222ff837ed5be49642b7d8fce27c8fa9849f4d43e`
+
+This promotion's strict data guard PASSED: all16347primary/142secondary and35043
+Pi pre-existing protected paths retain bytes, none missing. Six new Pi runtime
+paths preserved; no restore/delete to manufacture equality. The older504-to527
+corpus lifetime uncertainty above is a DIFFERENT earlier interval, not a failed
+current promotion or proof of its deletion writer.
+
+CS/MENU/native bytes still identical to the inspected P1120/P1121 live draw chain,
+client/menu/shared source unchanged: reuse valid served-CS/board/draw evidence,
+not another GUI run merely for the patch number. Status7 supplies no new CS hash
+advertisement; no fresh wire/cashout/geometry/finish/rank/feel claim. Human pending.
+
+Original predecessors/frozen6bundle retained for rollback.75owned files ZIP+hash
+verified; only9files/oneNoDeploy root retired,66fileminimalrig retained+archived,
+zeroownedgameprocesses/linksfollowed/gatesheld. Exact canonical owned reservation
+CFG retired after its originalhash and public number/commit verification, original
+preserved; it is NOT the same artifact as the public Markdown claim. No peer/index
+cleanup. A preboundary process census initially matched its own query; excluding
+its actual PID fixed the seam without any process action. All failed controls
+remain historical failures, not relabelled. Delivery-only prose does not rebuild
+or change the reviewed runtime artifacts.
