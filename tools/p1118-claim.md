@@ -47,5 +47,28 @@ not claimed complete.
 
 ## Delivery
 
-Pending the inspected feature commit and ordinary dual-Windows/Pi progs promotion.
-No native/backend/schema/threshold, Build or release action is part of this patch.
+Inspected runtime QC f6bfdb9bc98f2512ace00b9d3ac97cc1b8002c07 and engine
+product-log e54355342eb4234a243ca1bec9d51adc0a0ae2bd pushed by exact SHA.
+The clean runtime commit's normal build/deploy completed29Oct2026; dual Windows
+three-VM/LNO copies and each immediate predecessor were hash-verified. Pi QW/CS
+pair and .prev match; all12 once-restarted actors are fresh with unchanged native
+images, positive empty status7 readback and healthy directory12 at11:28:10Z.
+No PiForce. All16198/142 Windows and34737 Pi existing protected data/config/native
+files retain their captured bytes; backend launchers/unit unchanged.
+
+At11:31:51Z an isolated fresh client downloaded the actual served CSQC hash,
+drew a9-column/type14 board and exited0 without QC error. Screenshot inspected:
+board/map/tabs visible, but no zone/time rows; terms remain unaccepted. This is
+served-code/drawn-frame acceptance, not ranked-finish, zone-content, load-feel,
+HID/consent or world-visual acceptance. No owner client was signalled.
+
+| VM | SHA256 |
+|---|---|
+| qwprogs.dat | c537e5e5ec2b0d82737613e8a1e63b48d268363cbef6272440512388d7f38078 |
+| csprogs.dat | 3cca1ed606389ebc6703dde5c5d79fe3aa0ea8181299c1ea82cbde0a35d98a81 |
+| menu.dat | f764f803e6ddbf97ba0fdec14774a32bfd5b86200afadc0ffa508ee9b4e78b39 |
+
+Rollback: immediate canonical .prev for each copied artifact; immutable copies
+of predecessors/prior-prev, exact source/artifacts/proof remain privately retained.
+This documentation does not rebuild or redate the qualified runtime. No native,
+backend, schema, threshold, Build or release deployment is part of this patch.
