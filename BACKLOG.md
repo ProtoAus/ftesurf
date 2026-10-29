@@ -268,6 +268,11 @@ Steps 1-2 of TAS plan 6.1 (P1100) and step 3, version 3 projects (P1110).
 - Every v3 base is 0 at a fixed placement, so short trivial roots are identical between players and
   the copy rule gives them to the first uploader; a run re-encoded as a base save from its start
   is not caught (tasrev.md).
+- After a failed v3 save the project is detached (as after a failed base-save save): a default name
+  forks, the same name needs force (and then skips the "would cut" warning). A base-save save that
+  drops a v3 line and then fails (harvest, base save, write) has lost that line; reload the file.
+- During a v3 load's start-box replay the panel shows a load with no name and `tas project status`
+  says none attached.
 - tools/tasrev.py accepts a v3 file whose start box (`startat`, or all rows before the clock) is
   over 4096 ticks; the game reads it too but refuses to load it. No session can save one.
 - Two TAS steps in one packet: the clock starts at the packet's end, so the start's tick depends

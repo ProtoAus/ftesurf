@@ -286,7 +286,7 @@ void(entity e) SV_TASLegalFrame =
 */
 void(entity e, string name, float force) SV_TASProjectSaveLegal =
 {
-	local float s, ls, head, pre, running, t, j, run, child, attached, same, prev, prevparent;
+	local float s, ls, head, pre, running, t, j, run, child, attached, same, prev, prevparent, supa, supb;
 	local filestream f;
 	local string parent, oname, oparent;
 	s = SV_TASPSlot(e); ls = num_for_edict(e);
@@ -382,16 +382,18 @@ void(entity e, string name, float force) SV_TASProjectSaveLegal =
 	e.tasp_legal = 1; e.tasp_lzone = e.taslg_zone; e.tasp_lstartat = running ? e.taslg_startat : 0; e.tasp_lo = e.taslg_o0;
 	e.tasp_parentrev = same ? prevparent : (parent != "" ? prev : 0);
 	e.tasp_rev = same ? prev + 1 : 1;
+	supa = e.tasp_supa; supb = e.tasp_supb;
 	SV_TASPSupply(e, s, head);   // against the parent's rows (base 0 too), or all of a root's
 	oname = tasp_name[s]; oparent = tasp_parent[s];
 	tasp_name[s] = name; tasp_parent[s] = parent;
 	if (!SV_TASPWrite(e, s, name, parent))
 	{
-		// The line stays the last revision's: a retry is still its child.
+		// The line stays the last revision's (a retry is its child); the project is detached, as after a
+		// failed base-save save: a default name forks, the same name needs force.
 		sprint(e, PRINT_HIGH, "tas project: cannot write the project file\n");
 		strunzone(name); strunzone(parent);
 		tasp_name[s] = oname; tasp_parent[s] = oparent;
-		e.tasp_rev = prev; e.tasp_parentrev = prevparent;
+		e.tasp_rev = prev; e.tasp_parentrev = prevparent; e.tasp_supa = supa; e.tasp_supb = supb;
 		SV_TASProjectEvent(e); return;
 	}
 	if (oname) strunzone(oname);
@@ -454,7 +456,8 @@ void(entity e, string name, string cpname) SV_TASLegalLoad =
 		sprint(e, PRINT_HIGH, "tas project: its start box is longer than a session holds; nothing changed\n");
 		SV_TASPReadFree(); return;
 	}
-	if (!SV_TASCanPause(e) || !SV_SaveLocRate(e)) { SV_TASPReadFree(); return; }
+	if (!SV_TASCanPause(e)) { SV_TASPReadFree(); return; }
+	if (!SV_SaveLocRate(e)) { SV_TASPReadFree(); return; }
 	if (!taslg_buf[ls]) taslg_buf[ls] = (float*)memalloc(TASLG_MAX * TASLG_STRIDE * 4);
 	if (!taslg_buf[ls]) { sprint(e, PRINT_HIGH, "tas project: out of memory\n"); SV_TASPReadFree(); return; }
 	SV_TASHistoryReset(e);

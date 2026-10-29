@@ -1247,6 +1247,11 @@ void(entity e, string name, float force) SV_TASProjectSave =
 	if (!s || !SV_TASPLocalOnly(e) || !SV_TASInputReady(e)) return;
 	if (e.tasp_load) { sprint(e, PRINT_HIGH, "tas project: a load is still running\n"); return; }
 	legalline = e.tasp_legal;   // P1110: a v3 line counts ticks from a placement; never a base save's parent
+	if (legalline && e.taslg_serial > 0 && e.taslg_serial == e.rec_rec_serial)
+	{
+		sprint(e, PRINT_HIGH, "tas project: this run began at a legal start; it saves only in its session (tas project load, or tas start)\n");
+		return;
+	}
 	oldrev = e.tasp_rev;
 	SV_RewindTASHead(e);
 	head = SV_TimerTicks(e);
