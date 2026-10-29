@@ -88,6 +88,13 @@ float *pf_rf;               // PF_ROWS * PF_RF
 int   *pf_rms;              // exact milliseconds for profile-time focus
 vector pf_scroll;
 float  pf_said;             // the answer's own line was printed (once an answer)
+// P1104: the rows' own filter (World of Surf alone, first places, top tens) and its figures
+float  pf_ro;               // the rows shown: 0 every time, 1 first places, 2 top tens
+float  pf_rf_ok;            // the server filters rows (it echoes rows_source)
+float  pf_rf_cs, pf_rf_ro;  // the filter the rows held were asked with
+float  pf_rows_wait;        // a filter changed: its first page is on the way
+float  pf_wos_has, pf_wos_n, pf_wos_wr, pf_wos_wrc, pf_wos_maps, pf_wos_top10;
+float  pf_sw_slide;         // the source switch's knob, 0 Everything .. 1 World of Surf
 
 // ---- one tier's maps, of whoever the breakdown is of
 #define PF_CTROWS   1000    // maps held of one tier (the unrated are eight hundred)
@@ -136,6 +143,10 @@ void() Profile_Alloc =
 
 // The `&mode=` a tier's list is asked with, for the kind on show.
 string() Profile_CompletionArg = { return pf_cs ? "&completion_source=wos" : ""; };
+string(float cs, float ro) Profile_RowsArg =
+{
+	return strcat(cs ? "&source=wos" : "", (ro == 1) ? "&only=wr" : ((ro == 2) ? "&only=top10" : ""));
+};
 
 string() Profile_ModeArg =
 {
@@ -251,8 +262,11 @@ void() Profile_Ask =
 		pf_state = g;
 		return;
 	}
-	pf_req = Profile_Get(sprintf("%s/api/board?player=%s&limit=%g", cvar_string("lobby_dir"),
-	                             pf_who, PF_PAGE));
+	// P1104: World of Surf unless the player picked Everything, as Profile_Parse defaults it.
+	pf_rf_cs = pf_cs_picked ? pf_cs : 1;
+	pf_rf_ro = pf_ro;
+	pf_req = Profile_Get(sprintf("%s/api/board?player=%s&limit=%g%s", cvar_string("lobby_dir"),
+	                             pf_who, PF_PAGE, Profile_RowsArg(pf_rf_cs, pf_rf_ro)));
 	pf_state = pf_req ? PFS_ASK : PFS_FAIL;
 	pf_code = 0;
 	pf_sent = cltime;
@@ -349,6 +363,24 @@ void(float t) Profile_TierShow =
 	Profile_TierAsk();
 };
 
+void() Profile_More;
+// P1104: the rows again from the top, of the filter now chosen; the figures stay up.
+void() Profile_RowsAsk =
+{
+	if (!pf_rf_ok || pf_state != PFS_OK)
+		return;
+	pf_rf_cs = pf_cs;
+	pf_rf_ro = pf_ro;
+	pf_rn = 0;
+	pf_total = 1;                    // unknown until the page says
+	pf_scroll = '0 0 0';
+	pf_more_req = 0;
+	pf_more_n = 0;
+	pf_more_at = 0;
+	pf_rows_wait = TRUE;
+	Profile_More();
+};
+
 void(float source) Profile_SourceShow =
 {
 	if (!pf_cs_has) return;
@@ -356,6 +388,19 @@ void(float source) Profile_SourceShow =
 	if (source == pf_cs) return;
 	pf_cs = source;
 	if (pf_ct != "") Profile_TierAsk();
+	Profile_RowsAsk();               // P1104: the records follow the switch
+};
+
+// P1104: a figure's list -- 1 first places, 2 top tens; the same figure again, every time.
+void(float ro) Profile_OnlyShow =
+{
+	pf_ro = (ro == pf_ro) ? 0 : ro;
+	if (pf_ct != "")
+	{
+		pf_ct = "";                  // the results take the tier list's place again
+		Profile_TierAsk();
+	}
+	Profile_RowsAsk();
 };
 
 // `k`: 0 every kind of map, 1 surf, 2 bhop (P853). A tier's list on show is asked again.
@@ -510,9 +555,10 @@ void() Profile_More =
 		return;
 	pf_more_n = pf_more_n + 1;
 	pf_more_at = cltime + PF_MOREWAIT;
-	pf_more_req = Profile_Get(sprintf("%s/api/board?player=%s&offset=%g&limit=%g",
+	pf_more_req = Profile_Get(sprintf("%s/api/board?player=%s&offset=%g&limit=%g%s",
 	                                  cvar_string("lobby_dir"), pf_handle,
-	                                  pf_rn, min(PF_PAGE, PF_ROWS - pf_rn)));
+	                                  pf_rn, min(PF_PAGE, PF_ROWS - pf_rn),
+	                                  pf_rf_ok ? Profile_RowsArg(pf_rf_cs, pf_rf_ro) : ""));
 	pf_more_sent = cltime;
 };
 
@@ -585,7 +631,10 @@ void(int c, float k) Profile_CompRead =
 	f = pf_cmt;
 	at = k * PF_CMF;
 	tiers = json_find_object_child(c, "tiers");
-	n = min(PF_TIERS, json_get_length(tiers));
+	// Converted first (P1104): MENU's min is float(float, ...), and the int read raw in its
+	// tail is ~1e-44 -- one tier was all the menu's Stats page ever drew.
+	n = json_get_length(tiers);
+	n = min(PF_TIERS, n);
 	f[at]     = json_get_float(json_find_object_child(c, "of"));
 	f[at + 1] = json_get_float(json_find_object_child(c, "done"));
 	f[at + 2] = json_get_float(json_find_object_child(c, "untiered"));
@@ -625,6 +674,15 @@ void(string bdy) Profile_Parse =
 	pf_wr     = json_get_float(json_find_object_child(root, "wr"));
 	pf_wrc    = json_get_float(json_find_object_child(root, "wrc"));
 	pf_top10  = json_get_float(json_find_object_child(root, "top10"));
+	c = json_find_object_child(root, "wos");
+	pf_wos_has   = (c != 0);
+	pf_wos_n     = json_get_float(json_find_object_child(c, "n"));
+	pf_wos_wr    = json_get_float(json_find_object_child(c, "wr"));
+	pf_wos_wrc   = json_get_float(json_find_object_child(c, "wrc"));
+	pf_wos_maps  = json_get_float(json_find_object_child(c, "maps"));
+	// A surfd before P1104 has no WOS top tens: -1 draws as "--".
+	pf_wos_top10 = json_find_object_child(c, "top10") ? json_get_float(json_find_object_child(c, "top10")) : -1;
+	pf_rf_ok     = (json_find_object_child(root, "rows_source") != 0);
 	pf_av     = json_get_float(json_find_object_child(root, "av"));
 	pf_total  = json_get_float(json_find_object_child(root, "total"));
 	c = json_find_object_child(root, "by_tier");
@@ -659,11 +717,16 @@ void(string bdy) Profile_Parse =
 	if (!pf_cs_has) pf_cs = 0;
 	else if (!pf_cs_picked) pf_cs = 1;
 	pf_rn = 0;
+	pf_rows_wait = FALSE;
 	Profile_Rows(root);
 	json_free(root);
 	if (pf_total < pf_rn)
 		pf_total = pf_rn;
 	pf_state = PFS_OK;
+	// The rows came with the filter asked; the source may have defaulted otherwise here.
+	if (pf_rf_ok)
+	if (pf_rf_cs != pf_cs || pf_rf_ro != pf_ro)
+		Profile_RowsAsk();
 	pf_got = cltime;
 	if (!pf_said)
 	{
@@ -803,10 +866,15 @@ void(string bdy) Profile_ParseMore =
 	root = json_parse(bdy);
 	if (!root)
 		return;
-	// Only the page that follows what is held, of the player it is held for.
+	// Only the page that follows what is held, of the player it is held for, and (P1104)
+	// of the filter the rows held were asked with: a page of the last one is not.
 	if (json_get_string(json_find_object_child(root, "who")) == pf_handle)
 	if (json_get_float(json_find_object_child(root, "offset")) == pf_rn)
+	if (!pf_rf_ok || json_get_string(json_find_object_child(root, "rows_source")) == (pf_rf_cs ? "wos" : "all"))
+	if (!pf_rf_ok || json_get_string(json_find_object_child(root, "rows_only"))
+	                 == ((pf_rf_ro == 1) ? "wr" : ((pf_rf_ro == 2) ? "top10" : "")))
 	{
+		pf_rows_wait = FALSE;
 		// What is there NOW; and a page of nothing was the end, whatever it says.
 		pf_total = json_get_float(json_find_object_child(root, "total"));
 		if (Profile_Rows(root) > 0)
@@ -1056,6 +1124,29 @@ float(string id, vector pos, vector sz, string label, float tsz, float on) Profi
 	tw = stringwidth(label, TRUE, [tsz, tsz]);
 	sui_text([pos_x + (sz_x - tw) * 0.5, pos_y + (sz_y - tsz) * 0.5], [tsz, tsz], label,
 	         on ? SUI_THEME_ACCENT : (hot ? SUI_THEME_TEXT : SUI_THEME_DIM), 1, 0);
+	return sui_is_released(id);
+};
+
+// P1104: a two-way switch: one pill, the chosen side's knob sliding under its label, and a
+// click anywhere on it flips it.  `slide` eases toward `right`.  -> clicked.
+float(string id, vector pos, vector sz, string left, string right, float onright, float tsz, float *slide) Profile_Switch =
+{
+	local float hot, half, tw;
+	local vector kp;
+
+	sui_action_element(pos, sz, id, sui_noop);
+	hot = sui_is_hovered(id);
+	*slide = *slide + (onright - *slide) * 0.25;     // per frame: the menu VM has no frametime
+	sui_style_box(pos, sz, sz_y * 0.5, SUI_THEME_WELL, hot ? SUI_THEME_EDGE_HI : SUI_THEME_EDGE, 1);
+	half = floor(sz_x * 0.5);
+	kp = pos + [2 + *slide * (sz_x - half), 2];
+	sui_roundbox(kp, [half - 4, sz_y - 4], (sz_y - 4) * 0.5, SUI_THEME_SELECTED, 1);
+	tw = stringwidth(left, TRUE, [tsz, tsz]);
+	sui_text([pos_x + (half - tw) * 0.5, pos_y + (sz_y - tsz) * 0.5], [tsz, tsz], left,
+	         onright ? (hot ? SUI_THEME_TEXT : SUI_THEME_DIM) : SUI_THEME_ACCENT, 1, 0);
+	tw = stringwidth(right, TRUE, [tsz, tsz]);
+	sui_text([pos_x + half + (sz_x - half - tw) * 0.5, pos_y + (sz_y - tsz) * 0.5], [tsz, tsz], right,
+	         onright ? SUI_THEME_ACCENT : (hot ? SUI_THEME_TEXT : SUI_THEME_DIM), 1, 0);
 	return sui_is_released(id);
 };
 
@@ -1369,6 +1460,19 @@ void(vector p, vector sz, string big, string note, string small, float tsz, floa
 	sui_text([p_x + hint, p_y + sz_y - hint - ceil(hint * 0.6)], [hint, hint], small, SUI_THEME_MUTED, 1, 0);
 };
 
+// P1104: Profile_Tile that opens its figure's list: lit while that list is on show.  -> clicked.
+float(string id, vector p, vector sz, string big, string note, string small, float tsz, float hint, vector col,
+      float on) Profile_TileButton =
+{
+	local float hot;
+	sui_action_element(p, sz, id, sui_noop);
+	hot = sui_is_hovered(id);
+	Profile_Tile(p, sz, big, note, small, tsz, hint, col);
+	if (on || hot)
+		sui_border_box(p, sz, 1, on ? SUI_THEME_ACCENT : SUI_THEME_EDGE_HI, 1, 0);
+	return sui_is_released(id);
+};
+
 // An ask's state where its answer would be drawn.  -> "Try again" was pressed.
 float(vector p, float tsz, float hint, float state, float code, float again, string none, string id) Profile_Waiting =
 {
@@ -1602,7 +1706,7 @@ float(vector p, vector sz, float tsz, float hint) Profile_DrawOn =
 void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 {
 	local float i, x, y, w, tw, th, n, cols, rowh, lh, c0, c1, c2, c3, bw, at, r, retry;
-	local float tier, td, tof, rest, on, hot, cb, ch;
+	local float tier, td, tof, rest, on, hot, cb, ch, wos, fn, fwr, fwrc, ft10, fmaps;
 	local float *f;
 	local string s, rid;
 	local vector lp, col, bo, bs;
@@ -1642,18 +1746,28 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	tw = floor((sz_x - (n - 1) * hint) / n);
 	x = p_x;
 	y = p_y;
-	Profile_Tile([x, y], [tw, th], ftos(pf_n), "", (pf_n == 1) ? "time" : "times", ttl, hint, SUI_THEME_TEXT);
+	// P1104: World of Surf's own figures under its switch; times, first places and top tens
+	// open as lists where the server filters rows.
+	wos = (pf_cs && pf_wos_has);
+	fn = wos ? pf_wos_n : pf_n; fwr = wos ? pf_wos_wr : pf_wr; fwrc = wos ? pf_wos_wrc : pf_wrc;
+	ft10 = wos ? pf_wos_top10 : pf_top10; fmaps = wos ? pf_wos_maps : pf_maps;
+	if (Profile_TileButton("pf_fig_n", [x, y], [tw, th], ftos(fn), "", (fn == 1) ? "time" : "times", ttl, hint,
+	                       SUI_THEME_TEXT, pf_rf_ok && pf_ro == 0))
+		if (pf_rf_ok) Profile_OnlyShow(0);
 	x = x + tw + hint;
 	// A first place on a board of one is not a record: the site leads with the same note.
 	s = "";
-	if (pf_wr > 0)
-		s = (pf_wrc == pf_wr) ? "all contested" : sprintf("%g contested", pf_wrc);
-	Profile_Tile([x, y], [tw, th], ftos(pf_wr), s, (pf_wr == 1) ? "first place" : "first places", ttl, hint,
-	             (pf_wrc > 0) ? SUI_THEME_WARN : SUI_THEME_TEXT);
+	if (fwr > 0)
+		s = (fwrc == fwr) ? "all contested" : sprintf("%g contested", fwrc);
+	if (Profile_TileButton("pf_fig_wr", [x, y], [tw, th], ftos(fwr), s, (fwr == 1) ? "first place" : "first places",
+	                       ttl, hint, (fwrc > 0) ? SUI_THEME_WARN : SUI_THEME_TEXT, pf_rf_ok && pf_ro == 1))
+		if (pf_rf_ok) Profile_OnlyShow(1);
 	x = x + tw + hint;
-	Profile_Tile([x, y], [tw, th], ftos(pf_top10), "", "top tens", ttl, hint, SUI_THEME_TEXT);
+	if (Profile_TileButton("pf_fig_t10", [x, y], [tw, th], (ft10 < 0) ? "--" : ftos(ft10), "", "top tens", ttl, hint,
+	                       SUI_THEME_TEXT, pf_rf_ok && pf_ro == 2))
+		if (pf_rf_ok) Profile_OnlyShow(2);
 	x = x + tw + hint;
-	Profile_Tile([x, y], [tw, th], ftos(pf_maps), "", (pf_maps == 1) ? "map" : "maps", ttl, hint, SUI_THEME_TEXT);
+	Profile_Tile([x, y], [tw, th], ftos(fmaps), "", (fmaps == 1) ? "map" : "maps", ttl, hint, SUI_THEME_TEXT);
 	if (pf_c_has)
 	{
 		x = x + tw + hint;
@@ -1682,8 +1796,9 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	if (pf_c_has && pf_cs_has)
 	{
 		ch = ceil(hint * 1.8);
-		if (Profile_Chip("pf_cs_wos", [p_x, y], [hint * 9, ch], "World of Surf", hint, pf_cs == 1)) Profile_SourceShow(1);
-		if (Profile_Chip("pf_cs_all", [p_x + hint * 9.5, y], [hint * 10, ch], "Everything", hint, pf_cs == 0)) Profile_SourceShow(0);
+		if (Profile_Switch("pf_cs_sw", [p_x, y], [hint * 18, ch], "World of Surf", "Everything", pf_cs == 0, hint,
+		                   &pf_sw_slide))
+			Profile_SourceShow(pf_cs ? 0 : 1);
 		y = y + ch + hint * 0.6;
 	}
 	if (pf_c_has && pf_c_modes)
@@ -1778,9 +1893,10 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	Font_Set(ui_font_ui);
 	c1 = sz_x - c0 - c2 - c3 - tsz * 2;                     // map and leg
 	sui_text([p_x, y], [hint, hint], "PLACE", SUI_THEME_MUTED, 1, 0);
-	sui_text([p_x + c0, y], [hint, hint],
-	         (pf_rn >= PF_ROWS && pf_total > pf_rn) ? sprintf("MAP   the first %g of %g", pf_rn, pf_total) : "MAP",
-	         SUI_THEME_MUTED, 1, 0);
+	s = (pf_ro == 1) ? "MAP   first places" : ((pf_ro == 2) ? "MAP   top tens" : "MAP");
+	if (pf_rf_ok && pf_rf_cs) s = strcat(s, (pf_ro ? ", World of Surf" : "   World of Surf"));
+	if (pf_rn >= PF_ROWS && pf_total > pf_rn) s = sprintf("%s   the first %g of %g", s, pf_rn, pf_total);
+	sui_text([p_x + c0, y], [hint, hint], s, SUI_THEME_MUTED, 1, 0);
 	sui_text([p_x + c0 + c1 + c2 - stringwidth("TIME", TRUE, [hint, hint]), y], [hint, hint], "TIME", SUI_THEME_MUTED, 1, 0);
 	sui_text([p_x + sz_x - tsz - stringwidth("AGO", TRUE, [hint, hint]), y], [hint, hint], "AGO", SUI_THEME_MUTED, 1, 0);
 	y = y + hint + ceil(hint * 0.5);
@@ -1788,7 +1904,9 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	y = y + 2;
 	if (pf_rn <= 0)
 	{
-		sui_text([p_x, y + hint], [tsz, tsz], "No times yet", SUI_THEME_DIM, 1, 0);
+		s = pf_rows_wait ? "Asking the leaderboard..." : ((pf_ro == 1) ? "No first places here yet"
+		    : ((pf_ro == 2) ? "No top tens here yet" : "No times yet"));
+		sui_text([p_x, y + hint], [tsz, tsz], s, SUI_THEME_DIM, 1, 0);
 		return;
 	}
 	sui_list_view_begin("pf_rows", [p_x, y], [sz_x, p_y + sz_y - y], [sz_x - tsz, rowh], pf_rn, pf_scroll,

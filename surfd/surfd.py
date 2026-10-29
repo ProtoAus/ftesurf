@@ -6930,6 +6930,7 @@ def _wos_figures(ranked):
     rows = [(r, rk, of) for r, rk, of in ranked if r["tier"] == TIER_RANKED]
     return {"n": len(rows), "wr": sum(rk == 1 for r, rk, of in rows),
             "wrc": sum(rk == 1 and of > 1 for r, rk, of in rows),
+            "top10": sum(1 <= rk <= 10 and of > 1 for r, rk, of in rows),     # P1104, as top10
             "maps": len({r["map"] for r, rk, of in rows})}
 
 
@@ -7119,6 +7120,12 @@ def game_player(raw, now):
     source = request.args.get("completion_source", "all")
     if source not in ("all", "wos"):
         return fail(400, "bad completion source")
+    # P1104: the rows' own filters (the game's World of Surf switch and its figure lists):
+    # `source=wos` keeps ranked rows, `only=wr` first places, `only=top10` what top10 counts.
+    rows_source = request.args.get("source", "all")
+    rows_only = request.args.get("only", "")
+    if rows_source not in ("all", "wos") or rows_only not in ("", "wr", "top10"):
+        return fail(400, "bad row filter")
     on = None
     if ct is None and request.args.get("on") is not None:
         on = clean_map(request.args.get("on"))
@@ -7174,10 +7181,14 @@ def game_player(raw, now):
                       for r, rk, of in mine[:GAME_PROFILE_MAX]]}),
             status=200, mimetype="application/json")
     wr, wrc, top10, comp = _profile_figures(ranked, main_maps)
+    picked = [(r, rk, of) for r, rk, of in ranked
+              if (rows_source == "all" or r["tier"] == TIER_RANKED)
+              and (rows_only != "wr" or rk == 1)
+              and (rows_only != "top10" or (1 <= rk <= 10 and of > 1))]
     rows = [{"map": bsp.get(r["map"], r["map"]), "track": r["track"], "leg": r["leg"],
              "tr": r["tier"], "style": r["style"], "ms": r["millis"],
              "when": r["submitted"], "r": rk, "of": of}
-            for r, rk, of in ranked[offset:offset + limit]]
+            for r, rk, of in picked[offset:offset + limit]]
     return Response(game_json(
         {"v": 1, "t": now, "who": handle, "name": me["name"], "src": me["src"],
          "n": me["n"], "maps": me["maps"], "last": me["last"],
@@ -7186,7 +7197,8 @@ def game_player(raw, now):
          "av": 1 if player in have else 0, "completion": comp,
          "completion_wos": _completion_wos(ranked, main_maps), "wos": _wos_figures(ranked),
          "ksf_sync": ksfprofile.status(db, player),
-         "offset": offset, "total": len(ranked), "limit": limit, "rows": rows}),
+         "rows_source": rows_source, "rows_only": rows_only,
+         "offset": offset, "total": len(picked), "limit": limit, "rows": rows}),
         status=200, mimetype="application/json")
 
 

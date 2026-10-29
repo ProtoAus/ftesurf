@@ -397,6 +397,10 @@ void(vector p, vector size, float L) MH_Progress =
 	}
 };
 
+// P1104: client/cl_profile.qc's switch, compiled later.
+float(string id, vector pos, vector sz, string left, string right, float onright, float tsz, float *slide) Profile_Switch;
+float mh_sw_slide;
+
 void(vector p, vector size) MH_Stats =
 {
 	local float target, i, tier, done, total, known, n, rows, cols, cw, th, gy, compact, fy, fh, cy, ph, gr, gc, countw, barw, x;
@@ -436,24 +440,29 @@ void(vector p, vector size) MH_Stats =
 		}
 		MH_Figure([16 + i * (cw + 6), fy], [cw, fh], label, value);
 	}
-	label = mh_source ? "World of Surf" : "[World of Surf]";
-	x = 16 + stringwidth("[World of Surf]", TRUE, SZ_LABEL) + 16 + 6;
-	if (mh_native)
-	if (ui_button("home_stats_wos", [16, cy], [64, compact ? 22 : 28], label)) { mh_source = 0; mh_source_picked = TRUE; }
-	label = mh_source ? "[Everything]" : "Everything";
-	if (ui_button("home_stats_all", [x, cy], [116, compact ? 22 : 28], label))
-		if (mh_state == 2) { mh_source = 1; mh_source_picked = TRUE; }
-	x = x + max(116, stringwidth("[Everything]", TRUE, SZ_LABEL) + 16) + 10;
+	// P1104: one switch (it was two bracketed buttons). World of Surf needs the native figures,
+	// Everything an answer.
+	x = 16 + 220;
+	if (Profile_Switch("home_stats_src", [16, cy], [220, compact ? 22 : 26], "World of Surf", "Everything",
+	                   mh_source, 12, &mh_sw_slide))
+	{
+		if (mh_source && mh_native) { mh_source = 0; mh_source_picked = TRUE; }
+		else if (!mh_source && mh_state == 2) { mh_source = 1; mh_source_picked = TRUE; }
+	}
+	x = x + 12;
 	s = mh_state == 2 ? sprintf("%g / %g maps", mh_source ? mh_all_done : mh_wos_done, mh_total) : "-- / -- maps";
 	sui_text([x, cy + 6], '12 12 0', ui_fit_text(s, size_x - x - 16, '12 12 0'), COL_DIM, 1, 0);
 	target = mh_source ? mh_tiers_all : mh_tiers_wos;
 	n = 9;
 	if (mh_buffers_ready) n = max(n, min(17, buf_getsize(target)));
+	// P1104: as many columns (up to 4) as it takes for the rows to clear the progress boxes;
+	// Tier 9 and 10 were drawn under Story Mode with three.
 	cols = 2;
-	if (ceil(n / cols) * 18 > mh_progress_top - gy - 6) cols = 3;
+	while (cols < 4 && ceil(n / cols) * 15 > mh_progress_top - gy - 4)
+		cols = cols + 1;
 	rows = ceil(n / cols);
 	cw = floor((size_x - 32 - 8 * (cols - 1)) / cols);
-	th = min(72, max(16, floor((mh_progress_top - gy - 6) / rows)));
+	th = min(72, max(15, floor((mh_progress_top - gy - 4) / rows)));
 	mh_tcols = cols; mh_trows = rows;
 	for (i = 0; i < n; i = i + 1)
 	{

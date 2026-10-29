@@ -21,6 +21,14 @@
 
 ## next
 
+### P1105 Completed maps stand out
+- A map you have finished now fills its whole card with green from the right, with a large Complete! scrolling across it behind the Play button.
+
+### P1104 Stats: every tier, and World of Surf or Everything
+- The Stats page shows every tier again (it only drew Tier 1); click one for its maps.
+- World of Surf and Everything is now a switch, on the home page and the Stats page, and the times, first places, top tens and maps follow it.
+- Click times, first places or top tens on the Stats page for that list of your records.
+
 ### P1102 Map lists come only from the game's own files
 - The map tiers, map list and the list of maps that use other games' content are read only from the game's own folder, never from something a server sent.
 

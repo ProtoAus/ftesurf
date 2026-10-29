@@ -19,6 +19,9 @@
 - **surf_aura save 3/4 ramp top (Momentum build):** loading save 3 with the
   key, sideways speed went 1766 -> 0 within ~0.15 s near (4560, -3088, -2760),
   then a fail teleport. Not diagnosed (prop hull vs brush vs Source behaviour).
+- **test_ksfprofile.py: 3 migration tests fail on main (seen 29 Oct, P1104):**
+  test_migrate18_to20_*, test_migrate20_idempotent_*, test_pre18_legacy_rows_* fail with and without
+  P1104's surfd change (measured on a HEAD copy). Not diagnosed.
 - **P1102 leftover (review 1, latent):** buf_loadfile, fcopy's source, FILE_APPEND's preload,
   search_begin/search_fopen and -unsafefopen bare names still read through the whole search path.
   Nothing reads a map table those ways today; a new reader must use fopen FILE_READ (P1102's path).

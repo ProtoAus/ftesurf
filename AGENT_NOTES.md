@@ -1,5 +1,19 @@
 # AGENT_NOTES.md
 
+## Stats page and completed cards (P1104/P1105, 29 Oct 2026)
+
+- **MENU's `min` is `float(float, ...)`**: an int in its varargs tail (json_get_length) reads raw,
+  ~1e-44. client/cl_profile.qc is compiled into the menu too, and its `min(PF_TIERS,
+  json_get_length(...))` drew one tier on the menu's Stats page for that reason (CSQC's `min` names
+  its second parameter and was fine). Assign the int to a float first, as m_home.qc already did.
+- /api/board?player= filters rows with `source=wos` and `only=wr|top10` (the lists the figures
+  count) and echoes `rows_source`/`rows_only`; the page sends them only where the echo came back,
+  and a page of another filter is dropped. `wos.top10` is new; a surfd without it draws "--".
+- Profile_Switch (cl_profile.qc) is the two-way switch; it flips on any click, so a synthetic
+  test must click it once (two `ui_click`s flip it back). `ui_stats open <handle>` opens a profile.
+- MCard_Backdrop (m_mapcards.qc) draws under the whole card; it clips to the card inside the
+  list's clip and puts the list's back (drawsetcliparea replaces, it does not narrow).
+
 ## Map media between releases (P1099, 29 Oct 2026)
 
 - The menu (m_mapmedia.qc) fetches play.proto.bar/ftesurf/media/{mapmeta,mapdeps}.txt once a

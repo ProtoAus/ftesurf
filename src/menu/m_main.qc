@@ -208,10 +208,12 @@ float(string name) MCard_Done;
 float cltime;                   // P1084: client/cl_profile.qc's clock, set in m_draw
 void() MStats_Open;
 void() MStats_Close;
+void(string who) MStats_SetOther;
 void(vector size) MStats_Draw;
 void() MStats_Probe;
 string() MCard_DoneNote;
 void(vector pos, float width, float compact, string name, string id) MCard_Draw;
+void(vector pos, vector size, string name) MCard_Backdrop;     // P1105
 void() MCard_Probe;
 void(string what) MM_BcPanel;
 
@@ -7748,6 +7750,7 @@ void(vector screensize) screen_create =
 				float hot = sui_is_hovered(rid);
 				if (on || hot)
 					sui_roundbox(rp + '1 1 0', rs - '2 2 0', 7, on ? COL_ROW_SEL : COL_ROW_HOVER, 1);
+				MCard_Backdrop(rp, rs, bufstr_get(ms_name, er));     // P1105: behind all of the card
 
 				// Metadata is parsed only for visible cards. Keep times source-separated.
 				{
@@ -8748,7 +8751,11 @@ float(string cmd) m_consolecommand =
 
 	if (argv(0) == "ui_stats")
 	{
-		if (argv(1) == "open") MStats_Open();
+		if (argv(1) == "open")
+		{
+			MStats_Open();
+			if (argv(2) != "") MStats_SetOther(argv(2));    // P1104: `open <handle>`, as the search picks one
+		}
 		else if (argv(1) == "close") MStats_Close();
 		MStats_Probe();
 		return TRUE;

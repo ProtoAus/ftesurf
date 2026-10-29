@@ -120,9 +120,61 @@ float(float reqid, float code, string body) MCard_Reply =
 	return TRUE;
 };
 
+// P1105: the player has a clean main finish of `name` (MCard_Draw's `done`), held now.
+float(string name) MCard_Complete =
+{
+	local float row;
+	row = MCard_Index(name);
+	if (!strcmp(bufstr_get(mcr_data, row), "")) return FALSE;
+	tokenize(bufstr_get(mcr_data, row));
+	return stof(argv(5)) && stof(argv(4)) && Mlb_Stoi(argv(1)) > 0i;
+};
+
+/*
+  P1105 (Lex, 29 Oct): a completed map's whole card, behind everything on it -- green fading
+  in from the right, and a large Complete! crossing it right to left under the Play button.
+  The text is clipped to the card within the list's own clip, which drawsetcliparea replaces
+  rather than narrows, so the list's is put back after.
+*/
+void(vector pos, vector size, string name) MCard_Backdrop =
+{
+	local float i, n, x, edge, tsz, tw, period, off, was;
+	local vector ap, cmin, cmax, omin, omax;
+	if (!MCard_Complete(name)) return;
+	n = 48;
+	for (i = 0; i < n; i = i + 1)
+	{
+		x = floor(size_x * i / n); edge = floor(size_x * (i + 1) / n);
+		sui_fill(pos + [x, 1], [edge - x, size_y - 2], '0.18 0.65 0.34', 0.30 * pow(i / (n - 1), 1.4), 0);
+	}
+	tsz = floor(size_y * 0.46);
+	Font_Set(ui_font_display);
+	tw = stringwidth("Complete!", TRUE, [tsz, tsz]);
+	period = tw + size_x * 0.35;
+	off = time * 42 - floor(time * 42 / period) * period;
+	ap = pos;
+	sui_transform_box(ap, size);
+	was = sui_is_clipping(); omin = _sui_clip_area_mins; omax = _sui_clip_area_maxs;
+	cmin = ap; cmax = ap + size;
+	if (was)
+	{
+		cmin = [max(cmin_x, omin_x), max(cmin_y, omin_y)];
+		cmax = [min(cmax_x, omax_x), min(cmax_y, omax_y)];
+	}
+	if (cmax_x > cmin_x && cmax_y > cmin_y)
+	{
+		drawsetcliparea(cmin_x, cmin_y, cmax_x - cmin_x, cmax_y - cmin_y);
+		for (x = size_x - off; x > -tw; x = x - period)
+			sui_text(pos + [x, size_y - tsz - floor(size_y * 0.06)], [tsz, tsz], "Complete!", '0.42 0.95 0.58', 0.20, 0);
+		if (was) drawsetcliparea(omin_x, omin_y, omax_x - omin_x, omax_y - omin_y);
+		else drawresetcliparea();
+	}
+	Font_Set(ui_font_ui);
+};
+
 void(vector pos, float width, float compact, string name, string id) MCard_Draw =
 {
-	local float row, have, done, known, stale, i, x, y, cw, alpha, edge;
+	local float row, have, done, known, stale, i, x, y, cw;
 	local int wos, alltime, wrwos, wrall, ms;
 	local string label, status, value;
 	row = MCard_Index(name); MCard_Want(row);
@@ -138,16 +190,7 @@ void(vector pos, float width, float compact, string name, string id) MCard_Draw 
 	done = (known && done && alltime > 0i);
 	stale = (have && (gettime(0) - stof(bufstr_get(mcr_seen, row)) >= 60 || !MF_Online()));
 	if (done)
-	{
-		// Small batched strips, clipped by SUI like the rest of this row.
-		for (i = 0; i < 64; i = i + 1)
-		{
-			x = floor(width * i / 64); edge = floor(width * (i + 1) / 64);
-			alpha = (1 - i / 64) * 0.24;
-			sui_fill(pos + [x, -4], [edge - x, 21], '0.18 0.65 0.34', alpha, 0);
-		}
-		status = stale ? "Complete  (cached)" : "Complete";
-	}
+		status = stale ? "(cached)" : "";       // P1105: the card's backdrop says Complete!
 	else if (!MF_Online()) status = have ? "Cached records" : "Records offline";
 	else if (!strcmp(mcr_who, "") || (have && !known)) status = "Link Steam for your times";
 	else if (have) status = stale ? "No clean main finish  (cached)" : "No clean main finish";
