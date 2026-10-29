@@ -19,6 +19,7 @@ import shutil
 import sys
 import tempfile
 import time
+import types
 from unittest.mock import patch
 
 FAILED = []
@@ -38,6 +39,19 @@ os.environ.update(SURFD_HOME=HOME, SURFD_DB=os.path.join(HOME, "test.db"))
 import surfd as S          # noqa: E402
 import momwatch as MW      # noqa: E402
 import momfetch as MF      # noqa: E402
+
+# P1117 review 4: no case reaches the network; a fake missed is an error, not a request.
+import socket as _socket    # noqa: E402
+_create = _socket.create_connection
+
+
+def _local_only(addr, *a, **k):
+    if addr[0] not in ("127.0.0.1", "localhost"):
+        raise OSError("test: no network to %s:%s" % addr[:2])
+    return _create(addr, *a, **k)
+
+
+_socket.create_connection = _local_only
 
 # map -> (mapid, [(gamemode, trackType, trackNum)]); the gm-2 rows of surf_a are
 # boards momfetch must never ask for (gm_of says surf).
@@ -377,7 +391,8 @@ def case_p1117r2_momfetch_replies():
     for label, reply in (("over MAX_BYTES", Reply(b"x" * (MF.MAX_BYTES + 5))),
                          ("cut short", Reply(fail=http.client.IncompleteRead(b"p", 9))),
                          ("a read timing out", Reply(fail=TimeoutError("read timed out")))):
-        with patch.object(urllib.request, "urlopen", lambda req, timeout=None, r=reply: r):
+        with patch.object(urllib.request, "build_opener",
+                          lambda *h, r=reply: types.SimpleNamespace(open=lambda req, timeout=None: r)):
             try:
                 MF.get("https://api.momentum-mod.org/v1/x")
                 got.append((label, "returned"))
@@ -425,7 +440,8 @@ def case_p1117r2_momfetch_replies():
                          ("a body short of its Content-Length", Chunked([b"[1,"], length=10)),
                          ("a whole one", Chunked([b"[1,", b"2]"], length=5))):
         Chunked.now = 0.0
-        with patch.object(urllib.request, "urlopen", lambda req, timeout=None, r=reply: r), \
+        with patch.object(urllib.request, "build_opener",
+                          lambda *h, r=reply: types.SimpleNamespace(open=lambda req, timeout=None: r)), \
                 patch.object(MF.time, "monotonic", lambda: Chunked.now):
             try:
                 got.append(MF.get("https://api.momentum-mod.org/v1/x"))
@@ -433,6 +449,90 @@ def case_p1117r2_momfetch_replies():
                 got.append(("refused", e.code))
     check("P1117r3: momfetch reads a whole reply in its deadline, and slow or short is no answer",
           got, [("refused", 0), ("refused", 0), b"[1,2]"])
+
+
+def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2):
+    """A local server sending `reply` a byte every `gap` s.  -> (port, stop)."""
+    import socket
+    import threading
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(8)
+    stop = []
+
+    def drip(c):
+        try:
+            c.recv(65536)
+            for b in reply:
+                if stop:
+                    break
+                c.sendall(bytes([b]))
+                time.sleep(gap)
+        except OSError:
+            pass
+        finally:
+            c.close()
+
+    def serve():
+        while not stop:
+            try:
+                c, _ = srv.accept()
+            except OSError:
+                return
+            threading.Thread(target=drip, args=(c,), daemon=True).start()
+    threading.Thread(target=serve, daemon=True).start()
+
+    def close():
+        stop.append(1)
+        srv.close()
+    return srv.getsockname()[1], close
+
+
+def case_p1117r4_momfetch_bounds():
+    port, close = drip_server()
+    t0 = time.time()
+    try:
+        with patch.object(MF, "DEADLINE", 1):
+            MF.get("http://127.0.0.1:%d/v1/x" % port)
+        got = "returned"
+    except MF.Refused as e:
+        got = ("refused", e.code)
+    finally:
+        close()
+    check("P1117r4: momfetch: a reply dripped from its status line on is no answer at the deadline",
+          (got, time.time() - t0 < 5), (("refused", 0), True))
+    tsv, boards = home("cap")
+    for name, (mid, bl) in CAT.items():
+        for gm, tt, tn in bl:
+            write_board(boards, mid, gm, tt, tn, [1], 100000)
+    write_board(boards, 1, 1, 0, 1, [1, 5], 100000)       # holed: its re-walk is capped too
+    out = io.StringIO()
+    with patch.object(sys, "argv", ["momfetch.py", "--tracks", tsv, "--out", boards, "--take", "100",
+                                    "--depth", "-1", "--max", "3", "--rewalk"]), \
+            contextlib.redirect_stdout(out):
+        MF.main()
+    n = int(re.search(r"pages to ask for\s+(\d+)", out.getvalue()).group(1))
+    check("P1117r4: a board plans no more pages than a run may ask (6 boards and a re-walk, --max 3)",
+          n, 6 * 3 + 3)
+    tsv, boards = home("strike")
+    for name, (mid, bl) in CAT.items():
+        for gm, tt, tn in bl:
+            write_board(boards, mid, gm, tt, tn, range(1, 11), 10)
+    write_board(boards, 1, 1, 0, 1, [1, 2, 3, 6, 7, 9, 10], 10)
+    set_walk(boards, walking={"1_g1_t01": 4})
+
+    def busy(url):
+        if "maps/1/" in url and url.endswith("skip=4"):
+            raise MF.Refused("HTTP 429", 429)
+        return FakeMomentum()(url)
+    args = ["--tracks", tsv, "--out", boards, "--take", "2", "--depth", "-1", "--delay", "0",
+            "--max", "10", "--rewalk", "--go"]
+    states = []
+    for _ in range(MF.REWALK_STRIKES):
+        fetch(busy, args)
+        states.append(walk_state(boards, "1_g1_t01")[0])
+    check("P1117r4: a re-walk refused by the host on one page ends after REWALK_STRIKES",
+          states, [4] * (MF.REWALK_STRIKES - 1) + [None])
 
 
 def case_404s():
@@ -471,7 +571,7 @@ def main():
         for case in (case_tail_past_the_deepest_rank, case_rewalk, case_board_selector,
                      case_stalest_boards, case_tick_budget, case_player_walk_refused_carries_on,
                      case_404s, case_p1117r2_walk_errors_carry_on, case_p1117r2_old_momfetch,
-                     case_p1117r2_momfetch_replies):
+                     case_p1117r2_momfetch_replies, case_p1117r4_momfetch_bounds):
             print("\n%s:" % case.__name__)
             case()
     finally:

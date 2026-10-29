@@ -50,6 +50,43 @@ def raw(**updates):
     return r
 
 
+def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2):
+    """A local server sending `reply` a byte every `gap` s.  -> (port, stop)."""
+    import socket
+    import threading
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(8)
+    stop = []
+
+    def drip(c):
+        try:
+            c.recv(65536)
+            for b in reply:
+                if stop:
+                    break
+                c.sendall(bytes([b]))
+                time.sleep(gap)
+        except OSError:
+            pass
+        finally:
+            c.close()
+
+    def serve():
+        while not stop:
+            try:
+                c, _ = srv.accept()
+            except OSError:
+                return
+            threading.Thread(target=drip, args=(c,), daemon=True).start()
+    threading.Thread(target=serve, daemon=True).start()
+
+    def close():
+        stop.append(1)
+        srv.close()
+    return srv.getsockname()[1], close
+
+
 class Tests(unittest.TestCase):
     def setUp(self):
         self.cache = str(a.out / self._testMethodName)
@@ -353,6 +390,17 @@ class Tests(unittest.TestCase):
             self.assertEqual(G.tick(self.cache, download=slow), (1, 0))
         park = K._load(os.path.join(self.cache, G.PARK))
         self.assertEqual((park['n'], park['until'] - park['at']), (1, K.QUIET_COOLDOWN))
+
+    def test_p1117r4_no_headers_by_the_deadline_is_no_answer(self):
+        port, close = drip_server()
+        t0 = time.time()
+        try:
+            with patch.object(K, 'KSF_BASE', 'http://127.0.0.1:%d' % port), patch.object(G, 'EXCHANGE', 1):
+                with self.assertRaises(TimeoutError):
+                    G.fetch(self.r['file'])
+        finally:
+            close()
+        self.assertLess(time.time() - t0, 5)
 
     def test_p1117r1_a_body_past_its_deadline_is_the_files_failure(self):
         class Body:

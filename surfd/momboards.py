@@ -45,6 +45,7 @@ import glob
 import io
 import json
 import logging
+import math
 import os
 import re
 import sys
@@ -331,7 +332,9 @@ def main():
         for r in data:
             sid = r.get("steamid") or ""
             t = r.get("time")
-            if not sid.isdigit() or not isinstance(t, (int, float)) or t <= 0:
+            # P1117 review 4: bounded, or one 1e300 crashes every --index before its mark.
+            if (not sid.isdigit() or type(t) not in (int, float) or not math.isfinite(t)
+                    or not 0 < t < 1e6):
                 continue
             ms = int(round(t * 1000.0))
             when = created_epoch(r.get("created"))

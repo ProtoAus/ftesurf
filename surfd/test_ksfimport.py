@@ -21,6 +21,8 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import time
+import types
 import urllib.parse
 
 FAILED = []
@@ -41,6 +43,19 @@ import surfd as S        # noqa: E402
 import ksfimport as K    # noqa: E402
 
 REAL_FETCH = K.fetch     # the cases below swap in FakeKSF
+
+# P1117 review 4: no case reaches the network; a fake missed is an error, not a request.
+import socket as _socket    # noqa: E402
+_create = _socket.create_connection
+
+
+def _local_only(addr, *a, **k):
+    if addr[0] not in ("127.0.0.1", "localhost"):
+        raise OSError("test: no network to %s:%s" % addr[:2])
+    return _create(addr, *a, **k)
+
+
+_socket.create_connection = _local_only
 
 
 @atexit.register
@@ -316,10 +331,15 @@ def case_refusal():
           os.path.exists(os.path.join(cache, "maps", "surf_r.json")), False)
 
 
+def fake_open(fn):
+    """urllib.request.build_opener's stand-in: every open() is fn(req, timeout)."""
+    return lambda *handlers: types.SimpleNamespace(open=fn)
+
+
 def case_no_answer():
     """The real fetch, with urlopen failing the ways 2026-10-03's run saw."""
     import urllib.request
-    real = urllib.request.urlopen
+    real = urllib.request.build_opener
     for label, exc in (("a read that timed out", TimeoutError("The read operation timed out")),
                        ("a connection dropped mid-reply",
                         http.client.RemoteDisconnected("Remote end closed connection")),
@@ -330,7 +350,7 @@ def case_no_answer():
             calls.append(req.full_url)
             raise exc
 
-        urllib.request.urlopen = fail
+        urllib.request.build_opener = fake_open(fail)
         try:
             REAL_FETCH(K.KSF_BASE + "/api/maps/search/surf_x")
             got = "returned"
@@ -339,21 +359,21 @@ def case_no_answer():
         except Exception as e:      # the crash this case exists for
             got = type(e).__name__
         finally:
-            urllib.request.urlopen = real
+            urllib.request.build_opener = real
         check("%s stops as a refusal, a transient one (P1117)" % label, got, "refused")
         check("...after one attempt", len(calls), 1)
     import urllib.error
 
     def refuse(req, timeout=None):
         raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {}, io.BytesIO())
-    urllib.request.urlopen = refuse
+    urllib.request.build_opener = fake_open(refuse)
     try:
         REAL_FETCH(K.KSF_BASE + "/api/maps/search/surf_x")
         got = None
     except K.Refused as e:
         got = (e.code, e.transient)
     finally:
-        urllib.request.urlopen = real
+        urllib.request.build_opener = real
     check("P1117: an HTTP 429 is a refusal, not transient", got, (429, False))
 
 
@@ -408,7 +428,7 @@ def case_p1117r1_record_identity():
 def case_p1117r2_caps():
     """A reply over KSF_MAX_BYTES is that request's refusal; nesting is a bad reply."""
     import urllib.request
-    real = urllib.request.urlopen
+    real = urllib.request.build_opener
 
     class Big(object):
         status = 200
@@ -417,14 +437,14 @@ def case_p1117r2_caps():
         def read(self, n=-1):
             Big.asked = n
             return b"[" + b" " * (n - 1)
-    urllib.request.urlopen = lambda req, timeout=None: Big()
+    urllib.request.build_opener = fake_open(lambda req, timeout=None: Big())
     try:
         REAL_FETCH(K.KSF_BASE + "/api/maps/new?offset=0")
         got = "returned"
     except K.Refused as e:
         got = (e.board, Big.asked)
     finally:
-        urllib.request.urlopen = real
+        urllib.request.build_opener = real
     check("P1117r2: a reply over KSF_MAX_BYTES is refused as the request's, read no further",
           (got[0], got[1] <= 64 << 10), (True, True))
     K.fetch = lambda url: "[" * 200000
@@ -461,20 +481,20 @@ class Reply(object):
 def case_p1117r3_whole_reply():
     """The whole reply inside its deadline, and as long as its Content-Length."""
     import urllib.request
-    real, mono = urllib.request.urlopen, K.time.monotonic
+    real, mono = urllib.request.build_opener, K.time.monotonic
     out = []
     for label, reply in (("a trickle past the deadline", Reply([b"x"] * 100, clock=1.0)),
                          ("a body short of its Content-Length", Reply([b"[1,"], length=10)),
                          ("a whole one", Reply([b"[1,", b"2]"], length=5))):
         Reply.now = 0.0
-        urllib.request.urlopen = lambda req, timeout=None, r=reply: r
+        urllib.request.build_opener = fake_open(lambda req, timeout=None, r=reply: r)
         K.time.monotonic = lambda: Reply.now
         try:
             out.append((label, REAL_FETCH(K.KSF_BASE + "/api/maps/new?offset=0")))
         except K.Refused as e:
             out.append((label, ("refused", e.transient)))
         finally:
-            urllib.request.urlopen, K.time.monotonic = real, mono
+            urllib.request.build_opener, K.time.monotonic = real, mono
     check("P1117r3: slow or short is no answer (transient), a whole reply reads",
           [o[1] for o in out], [("refused", True), ("refused", True), "[1,2]"])
 
@@ -510,6 +530,61 @@ def case_p1117r3_same_record_improves():
     check("P1117r3: the same record under a millisecond faster keeps the bound row", held(), (6000, 66))
     K.write_rows([row("cache", 5.9, when + 86400)])
     check("...and 100 ms faster replaces it, unlinked from the old time's demo", held(), (5900, 0))
+
+
+def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2):
+    """A local server sending `reply` a byte every `gap` s.  -> (port, stop)."""
+    import socket
+    import threading
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(8)
+    stop = []
+
+    def drip(c):
+        try:
+            c.recv(65536)
+            for b in reply:
+                if stop:
+                    break
+                c.sendall(bytes([b]))
+                time.sleep(gap)
+        except OSError:
+            pass
+        finally:
+            c.close()
+
+    def serve():
+        while not stop:
+            try:
+                c, _ = srv.accept()
+            except OSError:
+                return
+            threading.Thread(target=drip, args=(c,), daemon=True).start()
+    threading.Thread(target=serve, daemon=True).start()
+
+    def close():
+        stop.append(1)
+        srv.close()
+    return srv.getsockname()[1], close
+
+
+def case_p1117r4_watchdog():
+    """A status line dripped a byte at a time: no answer at the deadline, not 8 s on."""
+    port, close = drip_server()
+    old = K.KSF_DEADLINE
+    K.KSF_DEADLINE = 1
+    t0 = time.time()
+    try:
+        REAL_FETCH("http://127.0.0.1:%d/api/maps/new?offset=0" % port)
+        got = "returned"
+    except K.Refused as e:
+        got = ("refused", e.transient)
+    finally:
+        K.KSF_DEADLINE = old
+        close()
+    check("P1117r4: a reply dripped from its status line on is no answer at the deadline",
+          (got, time.time() - t0 < 5), (("refused", True), True))
 
 
 def case_p1117_quiet_park():
@@ -965,7 +1040,7 @@ def main():
                  case_write_and_filter, case_refusal, case_no_answer,
                  case_modes, case_merge_and_refresh, case_watch,
                  case_watch_refusal_parks, case_p1117_quiet_park, case_p1117r1_record_identity, case_p1117r2_caps,
-                 case_p1117r3_whole_reply, case_p1117r3_same_record_improves,
+                 case_p1117r3_whole_reply, case_p1117r3_same_record_improves, case_p1117r4_watchdog,
                  case_watch_dry_and_owed,
                  case_review_findings, case_review_round2,
                  case_board_reads_ksf_styles):

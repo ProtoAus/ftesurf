@@ -97,6 +97,8 @@ class Profiles(unittest.TestCase):
         for _ in range(3): self.step()
         self.assertEqual(P.status(self.db, PLAYER)['state'], 'complete')
     def test_walk_beyond1000(self):
+        # A signed-in account's walk: a profile view's stops at VIEW_PAGES (P1117 review 4).
+        self.db.execute("INSERT INTO accounts (steamid, created_at) VALUES (?, 1)", (PLAYER,)); self.db.commit()
         self.src.n = 1005; self.queue()
         for i in range(210): self.step(now=1001+i)
         self.assertEqual(self.count(), 1005)
@@ -123,7 +125,7 @@ class Profiles(unittest.TestCase):
         with patch.object(K, 'fetch', return_value=json.dumps({'records': [], 'pagination': {'offset': 0, 'limit': 5}})):
             self.step()
         self.assertEqual((P.status(self.db, PLAYER)['state'], P.status(self.db, PLAYER)['next']),
-                         ('limited', 6))
+                         ('refused', 6))
         self.assertEqual((self.count(), self.parks()), (5, []))
 
     def parks(self):
@@ -148,7 +150,50 @@ class Profiles(unittest.TestCase):
         with patch.object(K, 'fetch', side_effect=AssertionError('the saved page is used')):
             self.step(now=5001)
         self.assertEqual((os.path.exists(fn), P.status(self.db, PLAYER)['state'], self.parks()),
-                         (False, 'unknown', []))
+                         (False, 'refused', []))
+
+    def test_p1117r4_an_out_of_range_date_is_a_bad_record(self):
+        page = ('{"records": [{"mapName": "surf_profile1", "record_id": null, "time": 11.0, "date": 1e400,'
+                ' "stage_id": null, "zone_id": null}, {"mapName": "surf_profile2", "record_id": null,'
+                ' "time": 11.0, "date": 100000000000000000000, "stage_id": null, "zone_id": null},'
+                ' {"mapName": "surf_profile3", "record_id": null, "time": 12.0, "date": 1790000003,'
+                ' "stage_id": null, "zone_id": null}], "pagination": {"offset": 0, "limit": 5}}')
+        self.queue()
+        with patch.object(K, 'fetch', return_value=page):
+            self.step()
+        self.assertEqual((self.count(), P.status(self.db, PLAYER)['unavailable']), (1, 2))
+        # A saved page holding one heals on replay: skipped, never raised.
+        self.db.execute('DELETE FROM ksfprofiles'); self.db.commit(); self.queue(now=5000)
+        leaf = hashlib.sha256(PLAYER.encode('ascii')).hexdigest()
+        K._save(os.path.join(self.cache, 'profiles', leaf, '0-1.json'),
+                {'asked': 5000, 'body': {'records': [{'mapName': 'surf_profile4', 'time': 9.0, 'date': 10 ** 20,
+                                                      'stage_id': None, 'zone_id': None}],
+                                         'pagination': {'offset': 0, 'limit': 5}}})
+        with patch.object(K, 'fetch', side_effect=AssertionError('the saved page is used')):
+            self.step(now=5001)
+        self.assertEqual(P.status(self.db, PLAYER)['unavailable'], 1)
+
+    def test_p1117r4_a_walk_error_never_stops_the_crawl(self):
+        self.queue()
+        calls = []
+
+        def fetch(url):
+            calls.append(url)
+            if '/api/maps/new' in url:
+                return '[]'
+            raise AssertionError(url)
+        with patch.object(P, 'step', side_effect=OverflowError('int too large')), \
+                patch.object(K, 'fetch', side_effect=fetch):
+            K.watch_mode(SimpleNamespace(delay=0, max=10, go=True), self.have, self.cache)
+        self.assertEqual((bool(calls), self.parks()), (True, [P.PARK]))
+
+    def test_p1117r4_a_view_walk_is_capped(self):
+        self.src.n = 100; self.queue()
+        with patch.object(P, 'VIEW_PAGES', 3):
+            for i in range(6):
+                self.step(now=1001 + i)
+        st = P.status(self.db, PLAYER)
+        self.assertEqual((st['state'], st['pages'], self.count()), ('limited', 3, 15))
 
     def test_p1117r3_a_walks_403_ends_it_and_never_lifts_a_park(self):
         self.queue()
@@ -156,7 +201,7 @@ class Profiles(unittest.TestCase):
         p = K.Pacer(0, 10)
         with patch.object(K, 'fetch', side_effect=K.Refused('HTTP 403', 403)):
             P.step(K, self.cache, p, self.have, 1001, 3)
-        self.assertEqual((P.status(self.db, PLAYER)['state'], p.made, p.unanswered), ('unknown', 1, 1))
+        self.assertEqual((P.status(self.db, PLAYER)['state'], p.made, p.unanswered), ('refused', 1, 1))
         self.assertEqual(K._load(os.path.join(self.cache, P.PARK))['n'], 3)
 
     def test_p1117r3_a_view_walks_main_records_only(self):

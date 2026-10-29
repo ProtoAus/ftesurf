@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS ksfprofiles (
 TTL = 86400
 MAX_ACTIVE = 32             # P1117 review: live walks of signed-in accounts...
 MAX_VIEWED = 24             # ...and, apart, of anyone else's profile views
+VIEW_PAGES = 20             # pages a profile view's walk asks before it is 'limited'
 PAGE = 5                    # observed pagination.limit, not a request limit
 MAX_POSITION = 10001         # safety bound; 'limited' is NOT complete
 # P1117: after the four main walks, modes 4..7 walk style mode-4's stage and
@@ -68,6 +69,14 @@ def is_account(K, player):
     db = K.S.connect()
     try:
         return db.execute(ACCOUNT % "?", (player,)).fetchone() is not None
+    finally:
+        db.close()
+
+
+def status_pages(K, player):
+    db = K.S.connect()
+    try:
+        return status(db, player).get('pages', 0)
     finally:
         db.close()
 
@@ -170,6 +179,11 @@ def step(K, cache, pacer, have, now, budget=3):
             continue
         if spent >= budget:
             continue
+        if not is_account(K, player) and status_pages(K, player) >= VIEW_PAGES:
+            # P1117 review 4: a profile view's walk is capped, so views cannot hold
+            # their slots for days with heavy players.
+            advance(K, player, mode, start, asked, now, mode, start, 'limited', 0)
+            continue
         leaf = hashlib.sha256(player.encode('ascii')).hexdigest()
         fn = os.path.join(cache, 'profiles', leaf, '%d-%d.json' % (mode, start))
         saved = K._load(fn)
@@ -188,14 +202,14 @@ def step(K, cache, pacer, have, now, budget=3):
                     return spent
                 # 500 is KSF's "not a player of mine"; 401/403/404 or a page that
                 # will not parse are this walk's: it ends, one walk a tick.
-                retire(K, player, mode, start, asked, now)
+                retire(K, player, mode, start, asked, now, refused=e.code != 500)
                 return spent
             # Invalid pages must not get a cursor, even if they are empty.
             try:
                 recs = validate(K, doc, start)
             except K.Refused:
                 pacer.unanswered += 1
-                retire(K, player, mode, start, asked, now)
+                retire(K, player, mode, start, asked, now, refused=True)
                 return spent + 1
             answered(K, cache)
             saved = {'asked': asked, 'body': {'records': kept(recs, MAIN_FIELDS),
@@ -205,7 +219,7 @@ def step(K, cache, pacer, have, now, budget=3):
             recs = validate(K, saved.get('body'), start)
         except K.Refused:
             forget(fn)              # a saved page that no longer reads is not replayed
-            retire(K, player, mode, start, asked, now)
+            retire(K, player, mode, start, asked, now, refused=True)
             continue
         rows, skipped = [], 0
         seen = set()
@@ -397,16 +411,18 @@ def map_records(doc, sid):
     return recs
 
 
-def retire(K, player, mode, start, asked, now):
-    """End a walk KSF answered 500 for: `unknown` before any page, else `limited`.
-    A later profile view re-queues it after TTL, as for any finished walk."""
+def retire(K, player, mode, start, asked, now, refused=False):
+    """End a walk KSF answered 500 for: `unknown` before any page, else `limited`;
+    one a refusal or a bad page ended is `refused` (P1117 review 4: steamsync gives
+    a found-nobody walk a week, a refused one a day).  A later profile view
+    re-queues it after TTL, as for any finished walk."""
     db = K.S.connect()
     try:
         db.execute('PRAGMA synchronous=FULL')
         with db:
-            db.execute("UPDATE ksfprofiles SET state=CASE WHEN pages=0 THEN 'unknown' ELSE 'limited' END,"
-                       " updated=? WHERE player=? AND mode=? AND cursor=? AND asked=?"
-                       " AND state IN ('queued','partial')", (now, player, mode, start, asked))
+            db.execute("UPDATE ksfprofiles SET state=CASE WHEN ? THEN 'refused' WHEN pages=0 THEN 'unknown'"
+                       " ELSE 'limited' END, updated=? WHERE player=? AND mode=? AND cursor=? AND asked=?"
+                       " AND state IN ('queued','partial')", (refused, now, player, mode, start, asked))
     finally:
         db.close()
 

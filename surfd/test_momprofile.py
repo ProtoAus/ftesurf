@@ -180,7 +180,7 @@ def case_round_robin_refusal_and_shape():
     with patch.object(P, "TAKE", 4):
         P.step(c, TRACKED, 1, lambda url: b"<html>not json</html>", delay=0, now=NOW + 30)
     check("a reply of the wrong shape ends that walk as unknown, nothing raised",
-          P.status(c, A)["state"], "unknown")
+          P.status(c, A)["state"], "refused")
     c.close()
 
 
@@ -211,10 +211,12 @@ def case_p1117r1_hostile_rows():
         c.commit()
         P.enqueue(c, B, NOW)
         P.step(c, TRACKED, 1, lambda url: body, delay=0, now=NOW)
+        # P1117 review 4: a reply it cannot read is 'refused' (a day); no usable id is
+        # Momentum knowing nobody, 'unknown' (a week).
         check("P1117r1: %s ends the walk, nothing raised" % label,
               (P.status(c, B)["state"],
                c.execute("SELECT COUNT(*) FROM momusers WHERE steamid=?", (B,)).fetchone()[0]),
-              ("unknown", 0))
+              ("unknown" if "2**53" in label else "refused", 0))
     c.close()
 
 
@@ -241,7 +243,7 @@ def case_p1117r2_strikes():
             c.execute("UPDATE momprofiles SET state='queued', updated=? WHERE player=?", (NOW + 2, B))
             c.commit()
     check("P1117r2: the refused walk gives the next turn to the other, then ends after STRIKES",
-          (asked, P.status(c, A)["state"]), (["1", "2", "1", "1"], "unknown"))
+          (asked, P.status(c, A)["state"]), (["1", "2", "1", "1"], "refused"))
     c.close()
 
 
@@ -369,6 +371,20 @@ def case_p1117r3_lookup_resets_strikes():
     c.close()
 
 
+def case_p1117r4_refused_waits_a_day():
+    c = db()
+    c.execute("INSERT INTO accounts (steamid, name, created_at, seen_at) VALUES (?, 'x', 1, ?)", (A, NOW))
+    c.execute("INSERT INTO momprofiles (player, momid, cursor, state, asked, updated)"
+              " VALUES (?, 1, 0, 'refused', 1, ?)", (A, NOW))
+    c.execute("INSERT INTO ksfprofiles (player, mode, cursor, state, asked, updated)"
+              " VALUES (?, 0, 1, 'unknown', 1, ?)", (A, NOW))
+    c.commit()
+    check("P1117r4: a refused walk waits a day, a found-nobody one a week",
+          (steamsync.requeue(c, NOW + 86400, False), steamsync.requeue(c, NOW + steamsync.DONE_TTL, False)),
+          (1, 2))
+    c.close()
+
+
 def case_momwatch_budget():
     c = db()
     c.execute("INSERT INTO momusers (steamid, momid) VALUES (?, 177)", (A,))
@@ -416,6 +432,7 @@ def main():
                      case_p1117r2_strikes, case_p1117r2_requeue_order,
                      case_p1117r3_recent_accounts_only, case_p1117r3_requeue_survives_an_error,
                      case_p1117r3_old_table_gains_strikes, case_p1117r3_lookup_resets_strikes,
+                     case_p1117r4_refused_waits_a_day,
                      case_steamsync_requeue, case_momwatch_budget):
             print("\n%s:" % case.__name__)
             case()

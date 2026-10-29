@@ -283,12 +283,36 @@ def case_already_linked_untouched():
         conn.close()
 
 
+def case_bounded_times():
+    """P1117 review 4: one absurd time skips its row; it never crashes the index."""
+    import json
+    d = tempfile.mkdtemp(prefix="boards-", dir=HOME)
+    rows = [{"steamid": "765611980000005%02d" % i, "time": t, "alias": "x", "rank": i + 1,
+             "created": "2026-10-01T00:00:00.000Z", "hash": "%040x" % (i + 1)}
+            for i, t in enumerate((44.0, 1e300, float("inf"), True, 2e6))]
+    with open(os.path.join(d, "7777_g1_t01.json"), "w") as fh:
+        json.dump({"map": "surf_bound", "mapid": 7777, "gamemode": 1, "trackType": 0,
+                   "trackNum": 1, "total": 5, "fetched": 1, "rows": rows}, fh)
+    old = sys.argv
+    sys.argv = ["momboards.py", "--boards", d, "--go"]
+    try:
+        rc = MB.main()
+    finally:
+        sys.argv = old
+    conn = S.connect()
+    try:
+        got = [r[0] for r in conn.execute("SELECT millis FROM runs WHERE map='surf_bound'")]
+    finally:
+        conn.close()
+    check("P1117r4: only the bounded time is filed, and the index finishes", (rc, got), (0, [44000]))
+
+
 def main():
     S.migrate()
     for case in (case_exact_and_slack, case_superseded_not_linked,
                  case_impossible_not_linked, case_picks_matching_over_superseded,
                  case_already_linked_untouched, case_flush_drops_a_stale_link,
-                 case_stale_links_repaired):
+                 case_stale_links_repaired, case_bounded_times):
         print("\n%s:" % case.__name__)
         case()
     print("\n%d checks, %d failed" % (CHECKS[0], len(FAILED)))

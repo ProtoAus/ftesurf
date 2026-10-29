@@ -30,7 +30,9 @@ MAX_ACTIVE = 32
 TAKE = 100                  # the API's own cap
 MAX_PAGES = 200             # 20,000 PBs; past it the walk is 'limited', not complete
 ACTIVE = ("queued", "partial")
-STRIKES = 3                 # refusals in a row before a walk is 'unknown' (P1117 review 2)
+STRIKES = 3                 # refusals in a row before a walk is 'refused' (P1117 review 2)
+# 'unknown' is Momentum knowing nobody of that SteamID: steamsync gives it a week;
+# 'refused' (strikes, an unreadable reply) a day (P1117 review 4).
 
 
 def status(db, player):
@@ -143,7 +145,7 @@ def step(db, tracked, budget, get, delay=1.5, now=None):
                 try:
                     with db:
                         db.execute("UPDATE momprofiles SET updated = ?, strikes = strikes + 1,"
-                                   " state = CASE WHEN strikes + 1 >= ? THEN 'unknown' ELSE state END"
+                                   " state = CASE WHEN strikes + 1 >= ? THEN 'refused' ELSE state END"
                                    + where[0], (now, STRIKES) + where[1])
                 except sqlite3.Error:
                     pass
@@ -182,7 +184,7 @@ def step(db, tracked, budget, get, delay=1.5, now=None):
                 # queues it again after TTL.
                 try:
                     with db:
-                        db.execute("UPDATE momprofiles SET state = 'unknown', updated = ?"
+                        db.execute("UPDATE momprofiles SET state = 'refused', updated = ?"
                                    + where[0], (now,) + where[1])
                 except sqlite3.Error:
                     return spent

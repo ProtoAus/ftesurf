@@ -100,8 +100,10 @@ import json
 import logging
 import os
 import re
+import socket
 import sqlite3
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -141,6 +143,7 @@ KSF_MAX_DEFAULT = 50       # players per invocation unless --max says otherwise
 # unknown, scattered) never produces a run this long.
 SKIP_STREAK = 25
 KSF_TIMEOUT = 30
+KSF_DEADLINE = 60          # s for a whole exchange (Deadline)
 KSF_MAX_BYTES = 1 << 20    # a reply; a 20-row page is ~6 KB, a player's map ~4.7 KB
 UA = "FTESurf/0.1 ksfimport (+https://proto.bar/ftesurf)"
 
@@ -296,11 +299,71 @@ class NoSuchPlayer(Exception):
     """
 
 
+class Deadline(object):
+    """P1117 review 4: the WHOLE exchange -- connect, TLS, status line, headers and a
+    body chunked or not -- inside `seconds`.  KSF_TIMEOUT is per read, so a server
+    sending a byte a second held a fetch as long as it liked; at the deadline a timer
+    shuts every socket the opener made, the blocked read raises, and `fired` says
+    the caller has no answer.  Portable: shutdown() wakes a blocked recv on Linux
+    and Windows alike."""
+
+    def __init__(self, seconds):
+        self.seconds, self.conns, self.fired = seconds, [], False
+        self.timer = threading.Timer(seconds, self.fire)
+        self.timer.daemon = True
+
+    def __enter__(self):
+        self.timer.start()
+        return self
+
+    def __exit__(self, *a):
+        self.timer.cancel()
+
+    def fire(self):
+        self.fired = True
+        for c in list(self.conns):
+            sock = getattr(c, "sock", None)
+            if sock is not None:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+    def handlers(self):
+        """HTTP(S) handlers that record each connection they make, for fire()."""
+        dl = self
+
+        def watched(base):
+            class Watched(base):
+                def do_open(self, http_class, req, **kw):
+                    def make(host, **a):
+                        c = http_class(host, **a)
+                        dl.conns.append(c)
+                        return c
+                    return base.do_open(self, make, req, **kw)
+            return Watched
+        return [watched(urllib.request.HTTPHandler)(), watched(urllib.request.HTTPSHandler)()]
+
+
 def fetch(url):
+    dl = Deadline(KSF_DEADLINE)
+    try:
+        with dl:
+            body = _fetch(url, dl)
+    except Refused:
+        if dl.fired:
+            raise Refused("no answer: the exchange took over %d s" % KSF_DEADLINE, transient=True)
+        raise
+    if dl.fired:            # a body without Content-Length just ends when its socket shuts
+        raise Refused("no answer: the exchange took over %d s" % KSF_DEADLINE, transient=True)
+    return body
+
+
+def _fetch(url, dl):
     req = urllib.request.Request(url, headers={"User-Agent": UA,
                                                "Accept": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=KSF_TIMEOUT) as r:
+        with urllib.request.build_opener(*dl.handlers()).open(req, timeout=KSF_TIMEOUT) as r:
             if r.status < 200 or r.status >= 300:
                 raise Refused("HTTP %d" % r.status, r.status)
             return read_reply(r).decode("utf-8", "replace")
@@ -698,10 +761,13 @@ def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
 
 
 def _when(rec):
+    """The record's date in epoch seconds, or 0 when it is none: bounded, since
+    SQLite takes 64 bits and inf takes none (P1117 review 4: one date wedged a tick)."""
     try:
-        return int(rec.get("date") or 0)
-    except (TypeError, ValueError):
+        v = int(rec.get("date") or 0)
+    except (TypeError, ValueError, OverflowError):
         return 0
+    return v if 0 < v < 2 ** 32 else 0
 
 
 def record_key(rec):
@@ -1075,8 +1141,16 @@ def watch_mode(args, have, cache):
     else:
         try:
             if getattr(args, 'go', False):
-                KP.step(sys.modules[__name__], cache, pacer, have, now,
-                        budget=min(3, max(1, args.max // 3)))
+                # P1117 review 4: nothing a player walk raises stops the crawl.
+                try:
+                    KP.step(sys.modules[__name__], cache, pacer, have, now,
+                            budget=min(3, max(1, args.max // 3)))
+                except sqlite3.Error as e:
+                    print("player walks deferred: %s" % type(e).__name__)
+                except Exception as e:
+                    print("player walks failed (%s: %s): parked, the crawl goes on"
+                          % (type(e).__name__, str(e)[:120]))
+                    KP.park_walks(sys.modules[__name__], cache, now, e)
             cat = catalog_step(cache, pacer, now)
             names = set(cat["names"])
             try:

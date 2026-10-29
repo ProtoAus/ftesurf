@@ -32,6 +32,7 @@ import ksfconvert as C
 FILE = re.compile(r'(?=.{1,255}\Z)replay_css_[0-9]+_([0-3])_([0-9]+)_([0-9]+)\.rec\Z')
 BOARD = re.compile(r'([a-z0-9_]{1,64})/z([0-9]+)(?:m([1-3]))?\.json\Z')
 MAX_BYTES = 16 << 20
+EXCHANGE = 60               # s for one whole download (P1117 review 4)
 PARK = '.refused-demos'    # P1117: downloads' own park, beside the crawler's .refused
 MAX_QUEUE = 256
 MAX_RECOVER = 2
@@ -296,7 +297,28 @@ def fetch(file):
 
     req = urllib.request.Request(K.KSF_BASE + '/api/replays/' + file + '?game=66t',
                                  headers={'User-Agent': K.UA})
-    with urllib.request.build_opener(NoRedirect).open(req, timeout=30) as r:
+    # P1117 review 4: the whole exchange inside EXCHANGE s (ksfimport.Deadline); past
+    # it, no answer before the headers, the file's failure after them.
+    dl, got = K.Deadline(EXCHANGE), []
+    try:
+        with dl:
+            data = _download(req, dl, got, NoRedirect)
+    except urllib.error.HTTPError:
+        raise
+    except (OSError, http.client.HTTPException):
+        if not dl.fired:
+            raise
+        data = None
+    if dl.fired:
+        if got:
+            raise BodyBroken('a body past the %d s exchange deadline' % EXCHANGE)
+        raise TimeoutError('no answer within %d s' % EXCHANGE)
+    return data
+
+
+def _download(req, dl, got, NoRedirect):
+    with urllib.request.build_opener(NoRedirect, *dl.handlers()).open(req, timeout=30) as r:
+        got.append(True)
         claimed = getattr(r, 'headers', {}).get('Content-Length')
         expected = None
         if claimed is not None:

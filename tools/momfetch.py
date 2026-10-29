@@ -83,7 +83,9 @@ import http.client
 import io
 import json
 import os
+import socket
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -105,7 +107,9 @@ API = "https://api.momentum-mod.org/v1"
 UA = "FTESurf/0.1 momfetch (+https://proto.bar/ftesurf)"
 TIMEOUT = 30
 TAKE_MAX = 100        # the API's own cap: take=101 is a 400
-TOTAL_MAX = 1000000   # a totalCount past this is not a board
+TOTAL_MAX = 100000    # a totalCount past this is not a board (the deepest, 27,022)
+DEADLINE = 60         # s for a whole exchange (Deadline)
+REWALK_STRIKES = 3    # host refusals of one re-walk page before that re-walk ends
 MAX_BYTES = 1 << 20   # a reply; a 100-row page is ~13.5 KB
 
 # Consecutive 404s before the sweep stops.  See NoSuchBoard: a 404 is about
@@ -147,11 +151,68 @@ class NoSuchBoard(Exception):
     """
 
 
+class Deadline(object):
+    """P1117 review 4: the WHOLE exchange (connect, status line, headers, chunked or
+    not) inside `seconds`: a timer shuts every socket the opener made, the blocked
+    read raises, `fired` says there was no answer.  surfd/ksfimport.py has its twin;
+    this file runs beside momwatch with nothing of surfd's."""
+
+    def __init__(self, seconds):
+        self.seconds, self.conns, self.fired = seconds, [], False
+        self.timer = threading.Timer(seconds, self.fire)
+        self.timer.daemon = True
+
+    def __enter__(self):
+        self.timer.start()
+        return self
+
+    def __exit__(self, *a):
+        self.timer.cancel()
+
+    def fire(self):
+        self.fired = True
+        for c in list(self.conns):
+            sock = getattr(c, "sock", None)
+            if sock is not None:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+    def handlers(self):
+        dl = self
+
+        def watched(base):
+            class Watched(base):
+                def do_open(self, http_class, req, **kw):
+                    def make(host, **a):
+                        c = http_class(host, **a)
+                        dl.conns.append(c)
+                        return c
+                    return base.do_open(self, make, req, **kw)
+            return Watched
+        return [watched(urllib.request.HTTPHandler)(), watched(urllib.request.HTTPSHandler)()]
+
+
 def get(url):
+    dl = Deadline(DEADLINE)
+    try:
+        with dl:
+            body = _get(url, dl)
+    except Refused:
+        if dl.fired:
+            raise Refused("no answer: the exchange took over %d s" % DEADLINE)
+        raise
+    if dl.fired:
+        raise Refused("no answer: the exchange took over %d s" % DEADLINE)
+    return body
+
+
+def _get(url, dl):
     req = urllib.request.Request(url, headers={"User-Agent": UA,
                                                "Accept": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        with urllib.request.build_opener(*dl.handlers()).open(req, timeout=TIMEOUT) as r:
             if r.status < 200 or r.status >= 300:
                 raise Refused("HTTP %d" % r.status, r.status)
             return read_reply(r)
@@ -287,13 +348,14 @@ def rewalk_state(out):
     except (OSError, ValueError):
         d = None
     d = d if isinstance(d, dict) else {}
-    return {k: d[k] if isinstance(d.get(k), dict) else {} for k in ("walking", "walked")}
+    return {k: d[k] if isinstance(d.get(k), dict) else {} for k in ("walking", "walked", "strikes")}
 
 
 def end_rewalk(out, state, walking, p):
     """A re-walk ends: done, or refused by that board (not by the host)."""
     key = os.path.basename(p)[:-len(".json")]
     state["walking"].pop(key, None)
+    state["strikes"].pop(key, None)
     state["walked"][key] = int(time.time())
     walking.pop(p, None)
     write_board(os.path.join(out, REWALK), state)
@@ -449,7 +511,9 @@ def main():
         # returns ranks 26-125.  P1117: the tail starts past the deepest rank
         # held, not at len(rows): surf_believe held ranks to 861 in 661 rows and
         # re-asked 662-861 for nothing every tick.
-        skips = set(range(max(have, deepest(cur["rows"])), want, take))
+        # P1117 review 4: no more of a board planned than a run may ask (--max).
+        lo = max(have, deepest(cur["rows"]))
+        skips = set(range(lo, min(want, lo + a.max * take), take))
         if a.refresh:
             skips.add(0)
         for s in sorted(skips):
@@ -471,7 +535,7 @@ def main():
     planned = set(todo)
     for path, (start, (name, mid, gm, tt, tn, total)) in sorted(walking.items()):
         print("re-walk           %s from skip %d of %d" % (os.path.basename(path), start, total))
-        for s in range(start, max(total, start + 1), take):
+        for s in range(start, min(max(total, start + 1), start + a.max * take), take):
             if (s, name, mid, gm, tt, tn) not in planned:
                 todo.append((s, name, mid, gm, tt, tn))
     walking = {p: s for p, (s, _job) in walking.items()}
@@ -540,8 +604,16 @@ def main():
             refused = "%s (%s g%d t%d%d): %s" % (name, mid, gm, tt, tn, e)
             # P1117 review 3: the board's own refusal ends its re-walk; the host's keeps it.
             p = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
-            if walking.get(p) == skip and e.code not in HOST_CODES:
-                end_rewalk(a.out, rw, walking, p)
+            if walking.get(p) == skip:
+                # P1117 review 4: ...and REWALK_STRIKES of them on one page end it too.
+                key = board_key(mid, gm, tt, tn)
+                at = rw["strikes"].get(key)
+                n = at[1] + 1 if isinstance(at, list) and len(at) == 2 and at[0] == skip else 1
+                if e.code not in HOST_CODES or n >= REWALK_STRIKES:
+                    end_rewalk(a.out, rw, walking, p)
+                else:
+                    rw["strikes"][key] = [skip, n]
+                    write_board(os.path.join(a.out, REWALK), rw)
             break
         streak = 0
         asked += 1
@@ -592,6 +664,7 @@ def main():
                 end_rewalk(a.out, rw, walking, p)
             else:
                 walking[p] = rw["walking"][os.path.basename(p)[:-len(".json")]] = nxt
+                rw["strikes"].pop(os.path.basename(p)[:-len(".json")], None)
                 write_board(os.path.join(a.out, REWALK), rw)
         if (i + 1) % 100 == 0:
             el = time.time() - t0
