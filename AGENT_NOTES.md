@@ -4063,7 +4063,11 @@ FullNoDeploy0NEW/2oldCSF333/reader949-0/exact527REC167VIEW bytes+diagnostics,
 328faultyREC7faultyVIEW/zero introduced NOTfaultfree. Storedfuturecallbacks
 explicitly invoked BEFOREdeadline, NOTelapsedclock/scheduler/nativeMove/rank/
 human/fullbank proof; no newVM/capture/policy/physics/format/flag/tier/native/Build.
-Reviews/deployment pending; human-only checks in lextest.md.
+Bothfreshindependent reviews clear; bothWindows6+prev/Pipair+prev/rollback/
+12freshsame-nativehealthyempty verified2026-10-29 21:46UTC, normal0NEW. Allold
+protectedbytes16347/142Windows+35189Pi unchanged, none missing;2newREC5 existing
+momentum namespace preserved/narrowheaderstatdomaincheck/writerUNATTRIBUTED
+(35191after), not a general writer audit. Human-only checks in lextest.md.
 
 P1127: immediate I/O gravity compares effective0=1 but preserves the raw stored
 field; AddOutput carrier compares AFTER original multiply-by-reciprocal scaling;
