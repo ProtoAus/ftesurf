@@ -193,7 +193,11 @@ def main():
     rig, gd, junctions = L.build_rig(a)
     print("rig", rig)
     (gd / "data").mkdir(exist_ok=True)
-    (gd / "data" / "consent.txt").write_text("FTESURF-CONSENT 1\nversion 4\naccepted 20261012-000000\n")
+    # The online tier the game asks for now: at 4, what this was written with, every ask
+    # says "accept the terms".
+    online = re.search(r"#define FS_TERMS_ONLINE (\d+)",
+                       (pathlib.Path(__file__).resolve().parents[1] / "src/shared/sh_defs.qc").read_text()).group(1)
+    (gd / "data" / "consent.txt").write_text("FTESURF-CONSENT 1\nversion %s\naccepted 20261012-000000\n" % online)
     server = client = web = mouse = None
     try:
         gport = None

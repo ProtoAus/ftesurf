@@ -7,8 +7,11 @@
   json_get_length(...))` drew one tier on the menu's Stats page for that reason (CSQC's `min` names
   its second parameter and was fine). Assign the int to a float first, as m_home.qc already did.
 - /api/board?player= filters rows with `source=wos` and `only=wr|top10` (the lists the figures
-  count) and echoes `rows_source`/`rows_only`; the page sends them only where the echo came back,
+  count) and echoes `rows_source`/`rows_only`. The page always sends them, but the switch moves the
+  figures and the tiles are buttons only where the echo came back (an older surfd ignores them),
   and a page of another filter is dropped. `wos.top10` is new; a surfd without it draws "--".
+  The first ask sends `source=auto` (wos when the player has a ranked row, else all; echoed), so a
+  player with no WOS times opens on Everything in one ask, unless the viewer picked a side.
 - Profile_Switch (cl_profile.qc) is the two-way switch; it flips on any click, so a synthetic
   test must click it once (two `ui_click`s flip it back). `ui_stats open <handle>` opens a profile.
 - MCard_Backdrop (m_mapcards.qc) draws under the whole card; it clips to the card inside the

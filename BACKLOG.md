@@ -19,6 +19,11 @@
 - **surf_aura save 3/4 ramp top (Momentum build):** loading save 3 with the
   key, sideways speed went 1766 -> 0 within ~0.15 s near (4560, -3088, -2760),
   then a fail teleport. Not diagnosed (prop hull vs brush vs Source behaviour).
+- **tools/p663profile.py is stale (measured 29 Oct, P1104 review 1):** with its consent fixed it still
+  fails 17 checks on the pre-P1104 progs (5d77fbd8/50245b39), among them V, M and G (the profile's
+  paging) and the pointer clicks (X, E, P, T, U); that control run also died at line 637 on a None
+  status. On the P1104 progs ESC leaves the main menu over the board and B/H/Y/R follow from it.
+  It cannot grade the profile page until it is brought up to the current UI.
 - **test_ksfprofile.py: 3 migration tests fail on main (seen 29 Oct, P1104):**
   test_migrate18_to20_*, test_migrate20_idempotent_*, test_pre18_legacy_rows_* fail with and without
   P1104's surfd change (measured on a HEAD copy). Not diagnosed.

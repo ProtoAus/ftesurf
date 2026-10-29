@@ -91,7 +91,7 @@ float  pf_said;             // the answer's own line was printed (once an answer
 // P1104: the rows' own filter (World of Surf alone, first places, top tens) and its figures
 float  pf_ro;               // the rows shown: 0 every time, 1 first places, 2 top tens
 float  pf_rf_ok;            // the server filters rows (it echoes rows_source)
-float  pf_rf_cs, pf_rf_ro;  // the filter the rows held were asked with
+float  pf_rf_cs, pf_rf_ro;  // the filter the rows held were asked with (cs -1: surfd's choice)
 float  pf_rows_wait;        // a filter changed: its first page is on the way
 float  pf_wos_has, pf_wos_n, pf_wos_wr, pf_wos_wrc, pf_wos_maps, pf_wos_top10;
 float  pf_sw_slide;         // the source switch's knob, 0 Everything .. 1 World of Surf
@@ -145,7 +145,7 @@ void() Profile_Alloc =
 string() Profile_CompletionArg = { return pf_cs ? "&completion_source=wos" : ""; };
 string(float cs, float ro) Profile_RowsArg =
 {
-	return strcat(cs ? "&source=wos" : "", (ro == 1) ? "&only=wr" : ((ro == 2) ? "&only=top10" : ""));
+	return strcat((cs < 0) ? "&source=auto" : (cs ? "&source=wos" : ""), (ro == 1) ? "&only=wr" : ((ro == 2) ? "&only=top10" : ""));
 };
 
 string() Profile_ModeArg =
@@ -262,8 +262,9 @@ void() Profile_Ask =
 		pf_state = g;
 		return;
 	}
-	// P1104: World of Surf unless the player picked Everything, as Profile_Parse defaults it.
-	pf_rf_cs = pf_cs_picked ? pf_cs : 1;
+	// P1104: the viewer's side, else surfd's (World of Surf when the player has a time there),
+	// which is Profile_Parse's default too: one ask either way.
+	pf_rf_cs = pf_cs_picked ? pf_cs : -1;
 	pf_rf_ro = pf_ro;
 	pf_req = Profile_Get(sprintf("%s/api/board?player=%s&limit=%g%s", cvar_string("lobby_dir"),
 	                             pf_who, PF_PAGE, Profile_RowsArg(pf_rf_cs, pf_rf_ro)));
@@ -394,7 +395,10 @@ void(float source) Profile_SourceShow =
 // P1104: a figure's list -- 1 first places, 2 top tens; the same figure again, every time.
 void(float ro) Profile_OnlyShow =
 {
-	pf_ro = (ro == pf_ro) ? 0 : ro;
+	ro = (ro == pf_ro) ? 0 : ro;
+	if (ro == pf_ro && pf_ct == "")
+		return;
+	pf_ro = ro;
 	if (pf_ct != "")
 	{
 		pf_ct = "";                  // the results take the tier list's place again
@@ -683,6 +687,7 @@ void(string bdy) Profile_Parse =
 	// A surfd before P1104 has no WOS top tens: -1 draws as "--".
 	pf_wos_top10 = json_find_object_child(c, "top10") ? json_get_float(json_find_object_child(c, "top10")) : -1;
 	pf_rf_ok     = (json_find_object_child(root, "rows_source") != 0);
+	pf_rf_cs     = pf_rf_ok ? (json_get_string(json_find_object_child(root, "rows_source")) == "wos") : 0;
 	pf_av     = json_get_float(json_find_object_child(root, "av"));
 	pf_total  = json_get_float(json_find_object_child(root, "total"));
 	c = json_find_object_child(root, "by_tier");
@@ -715,7 +720,7 @@ void(string bdy) Profile_Parse =
 	Profile_CompRead(json_find_object_child(c, "surf"), 4);
 	Profile_CompRead(json_find_object_child(c, "bhop"), 5);
 	if (!pf_cs_has) pf_cs = 0;
-	else if (!pf_cs_picked) pf_cs = 1;
+	else if (!pf_cs_picked) pf_cs = !(pf_wos_has && pf_wos_n <= 0);    // none of theirs: Everything
 	pf_rn = 0;
 	pf_rows_wait = FALSE;
 	Profile_Rows(root);
@@ -1465,6 +1470,11 @@ float(string id, vector p, vector sz, string big, string note, string small, flo
       float on) Profile_TileButton =
 {
 	local float hot;
+	if (!pf_rf_ok)       // a surfd that does not filter rows: the figures are a plain tile
+	{
+		Profile_Tile(p, sz, big, note, small, tsz, hint, col);
+		return FALSE;
+	}
 	sui_action_element(p, sz, id, sui_noop);
 	hot = sui_is_hovered(id);
 	Profile_Tile(p, sz, big, note, small, tsz, hint, col);
@@ -1748,24 +1758,24 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	y = p_y;
 	// P1104: World of Surf's own figures under its switch; times, first places and top tens
 	// open as lists where the server filters rows.
-	wos = (pf_cs && pf_wos_has);
+	wos = (pf_cs && pf_wos_has && pf_rf_ok);     // only where the rows follow too
 	fn = wos ? pf_wos_n : pf_n; fwr = wos ? pf_wos_wr : pf_wr; fwrc = wos ? pf_wos_wrc : pf_wrc;
 	ft10 = wos ? pf_wos_top10 : pf_top10; fmaps = wos ? pf_wos_maps : pf_maps;
 	if (Profile_TileButton("pf_fig_n", [x, y], [tw, th], ftos(fn), "", (fn == 1) ? "time" : "times", ttl, hint,
-	                       SUI_THEME_TEXT, pf_rf_ok && pf_ro == 0))
-		if (pf_rf_ok) Profile_OnlyShow(0);
+	                       SUI_THEME_TEXT, pf_ro == 0))
+		Profile_OnlyShow(0);
 	x = x + tw + hint;
 	// A first place on a board of one is not a record: the site leads with the same note.
 	s = "";
 	if (fwr > 0)
 		s = (fwrc == fwr) ? "all contested" : sprintf("%g contested", fwrc);
 	if (Profile_TileButton("pf_fig_wr", [x, y], [tw, th], ftos(fwr), s, (fwr == 1) ? "first place" : "first places",
-	                       ttl, hint, (fwrc > 0) ? SUI_THEME_WARN : SUI_THEME_TEXT, pf_rf_ok && pf_ro == 1))
-		if (pf_rf_ok) Profile_OnlyShow(1);
+	                       ttl, hint, (fwrc > 0) ? SUI_THEME_WARN : SUI_THEME_TEXT, pf_ro == 1))
+		Profile_OnlyShow(1);
 	x = x + tw + hint;
 	if (Profile_TileButton("pf_fig_t10", [x, y], [tw, th], (ft10 < 0) ? "--" : ftos(ft10), "", "top tens", ttl, hint,
-	                       SUI_THEME_TEXT, pf_rf_ok && pf_ro == 2))
-		if (pf_rf_ok) Profile_OnlyShow(2);
+	                       SUI_THEME_TEXT, pf_ro == 2))
+		Profile_OnlyShow(2);
 	x = x + tw + hint;
 	Profile_Tile([x, y], [tw, th], ftos(fmaps), "", (fmaps == 1) ? "map" : "maps", ttl, hint, SUI_THEME_TEXT);
 	if (pf_c_has)
@@ -1904,8 +1914,20 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	y = y + 2;
 	if (pf_rn <= 0)
 	{
+		// The list loop below is what asks for pages, and it is not reached with no rows.
+		if (pf_rows_wait)
+		{
+			Profile_More();
+			if (pf_more_n >= PF_MORETRIES && !pf_more_req)
+			{
+				if (Profile_Waiting([p_x, y], tsz, hint, PFS_FAIL, 0, TRUE, "", "pf_rows_retry"))
+					Profile_RowsAsk();
+				return;
+			}
+		}
 		s = pf_rows_wait ? "Asking the leaderboard..." : ((pf_ro == 1) ? "No first places here yet"
 		    : ((pf_ro == 2) ? "No top tens here yet" : "No times yet"));
+		if (!pf_rows_wait && pf_rf_ok && pf_rf_cs) s = strcat(s, " on World of Surf");
 		sui_text([p_x, y + hint], [tsz, tsz], s, SUI_THEME_DIM, 1, 0);
 		return;
 	}

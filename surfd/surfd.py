@@ -7122,9 +7122,10 @@ def game_player(raw, now):
         return fail(400, "bad completion source")
     # P1104: the rows' own filters (the game's World of Surf switch and its figure lists):
     # `source=wos` keeps ranked rows, `only=wr` first places, `only=top10` what top10 counts.
+    # `source=auto` is wos when the player has a ranked row, else all (the echo says which).
     rows_source = request.args.get("source", "all")
     rows_only = request.args.get("only", "")
-    if rows_source not in ("all", "wos") or rows_only not in ("", "wr", "top10"):
+    if rows_source not in ("all", "wos", "auto") or rows_only not in ("", "wr", "top10"):
         return fail(400, "bad row filter")
     on = None
     if ct is None and request.args.get("on") is not None:
@@ -7181,6 +7182,8 @@ def game_player(raw, now):
                       for r, rk, of in mine[:GAME_PROFILE_MAX]]}),
             status=200, mimetype="application/json")
     wr, wrc, top10, comp = _profile_figures(ranked, main_maps)
+    if rows_source == "auto":
+        rows_source = "wos" if any(r["tier"] == TIER_RANKED for r, _rk, _of in ranked) else "all"
     picked = [(r, rk, of) for r, rk, of in ranked
               if (rows_source == "all" or r["tier"] == TIER_RANKED)
               and (rows_only != "wr" or rk == 1)
