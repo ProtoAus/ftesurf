@@ -2860,7 +2860,9 @@ void(entity t, float on) SV_IOEnable =
 	if (!strcmp(t.classname, "trigger_push") || !strcmp(t.classname, "trigger_setspeed")
 		|| !strcmp(t.classname, "trigger_momentum_setspeed") || !strcmp(t.classname, "func_conveyor")
 		|| !strcmp(t.classname, "trigger_teleport") || !strcmp(t.classname, "trigger_momentum_teleport")
-		|| !strcmp(t.classname, "trigger_teleport_relative") || !strcmp(t.classname, "trigger_gravity"))
+		|| !strcmp(t.classname, "trigger_teleport_relative") || !strcmp(t.classname, "trigger_gravity")
+		|| !strcmp(t.classname, "trigger_momentum_reversespeed") || !strcmp(t.classname, "trigger_reversespeed")
+		|| !strcmp(t.classname, "trigger_catapult") || !strcmp(t.classname, "trigger_momentum_catapult"))
 	if (on && wasoff)
 	{
 		if (bank_ctx_depth) SV_BankSnapshot(t);
@@ -8550,14 +8552,23 @@ float() SV_MomTrigSpawn =
 	return TRUE;
 };
 
-void(entity p, vector vel, string kind) SV_MomSetVelocity =
+void(entity p, vector vel, string kind, entity bp, int ba, float bb) SV_MomSetVelocity =
 {
+	local vector oldv, oldbc;
+	local float oldg;
+
+	// P1126: admission is caller-local; recipient values follow touch outputs.
+	oldv = p.velocity;
+	oldg = (p.flags & FL_ONGROUND);
+	oldbc = p.run_basevel;
 	if (vel_z > PM_NONJUMP_VEL)
 	if (vel_z > p.velocity_z)
 		p.run_pushed = TRUE;
 	p.velocity = vel;
 	p.flags = p.flags - (p.flags & FL_ONGROUND);
 	SV_ClearCarrier(p);
+	if (p.velocity != oldv || (p.flags & FL_ONGROUND) != oldg || p.run_basevel != oldbc)
+		SV_BankCauseAffect(p, bp, ba, bb);
 	SV_RecWarp(p, kind);
 };
 
@@ -8904,12 +8915,17 @@ void() trigger_momentum_teleport_progress = { if (SV_MomTrigSpawn()) self.touch 
 void() trigger_momentum_reversespeed_touch =
 {
 	local vector v;
-	local float entered;
+	local entity bp;
+	local int ba;
+	local float entered, bb;
 
 	if (!SV_MomOn(other))
 		return;
 	if (!SV_MomTrigGate())
 		return;
+	bp = self.bank_src_player;
+	ba = self.bank_src_attempt;
+	bb = self.bank_src_bad;
 	entered = SV_TouchEntered(self, other);
 	if (!entered)
 	{
@@ -8924,7 +8940,7 @@ void() trigger_momentum_reversespeed_touch =
 		v_z = -v_z;
 	if (SV_DevOn())
 		dprint(sprintf("momtrigger reversespeed %s: %v -> %v\n", self.model, other.velocity, v));
-	SV_MomSetVelocity(other, v, "reverse");
+	SV_MomSetVelocity(other, v, "reverse", bp, ba, bb);
 };
 void() trigger_momentum_reversespeed = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_reversespeed_touch; };
 void() trigger_reversespeed = { trigger_momentum_reversespeed(); };
@@ -9173,12 +9189,16 @@ vector(entity t, entity p, entity tgt, float spd) SV_CatapultAim =
 
 void() trigger_catapult_touch =
 {
-	local float spd, lo, hi, ok, ang;
-	local entity tgt;
+	local float spd, lo, hi, ok, ang, bb;
+	local entity tgt, bp;
+	local int ba;
 	local vector dir, v;
 
 	if (!SV_MomTrigGate())
 		return;
+	bp = self.bank_src_player;
+	ba = self.bank_src_attempt;
+	bb = self.bank_src_bad;
 	if (!SV_TouchEntered(self, other))
 	{
 		if (!SV_Key2(self.EveryTick, self.everytick))
@@ -9225,7 +9245,7 @@ void() trigger_catapult_touch =
 		v = dir * spd;
 	if (SV_DevOn())
 		dprint(sprintf("catapult %s: %v\n", self.model, v));
-	SV_MomSetVelocity(other, v, "catapult");
+	SV_MomSetVelocity(other, v, "catapult", bp, ba, bb);
 	SV_FireOutput(self, "OnCatapulted", other);
 };
 void() trigger_catapult = { if (SV_MomTrigSpawn()) self.touch = trigger_catapult_touch; };

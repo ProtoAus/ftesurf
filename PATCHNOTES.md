@@ -21,6 +21,9 @@
 
 ## next
 
+### P1126 Momentum pad carry status
+- Reversal and catapult pads keep the right run status when enabled by an earlier attempt. Their speed, aim and timing are unchanged.
+
 ### P1125 Gravity carry status
 - Gravity zones keep the right run status through a delayed return to normal gravity. Gravity values and movement are unchanged.
 

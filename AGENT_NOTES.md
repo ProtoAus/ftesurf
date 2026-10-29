@@ -4044,6 +4044,17 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+P1126: reversal/catapult share SV_MomSetVelocity's only two callers. Freeze
+admitting cause BEFORE SV_TouchEntered (it runs reentrant outputs), pass tuple to
+the helper; compare its own velocity/ground/rawcarrier writes AFTER outputs,
+before RecWarp. Preserve threshold/onlyCheck/output-only and repeat gates; a
+controlled stored deadline is not elapsed-clock acceptance. vbsp_io_fired counts
+DELIVERY, not setter effect: AddOutput velocity is NOT implemented. The original
+fixture's no-value prediction failed correctly; candidate unchanged. Use supported
+basevelocity-clear vs no-clear counterparts to prove post-output value ownership,
+not a guessed setter or a new input implementation. One activation cause, not
+full body/config/logical/multisource closure; no captured fields/flags/tier changes.
+
 P1125: trigger_gravity activation and persist0's owed exit reset have separate
 lifetimes. Freeze admitting source before reentrant I/O, compare recipient's
 effective gravity AFTER outputs; native0 means1, so raw0/1 changes alone have no

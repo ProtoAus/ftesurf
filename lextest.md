@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1126 reversal/catapult status (pending deployment and human check)
+
+Paired direct-QC value/IO controls and full build pass; independent reviews and
+deployment remain pending. If a map with reversal/catapult pads is available,
+confirm direction/speed, repeat timing and current-run status feel normal. No
+actual BSP/native mover/prediction/elapsed-clock/finished-ranking or owner feel
+acceptance is established by the synthetic field/deadline-controlled units.
+
 ## P1125 gravity zones/status (pending human check)
 
 Both independent reviews clear; deployed both Windows installs/all12Pi lobbies,
