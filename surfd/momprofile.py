@@ -21,7 +21,8 @@ SQL = """
 CREATE TABLE IF NOT EXISTS momprofiles (
  player TEXT PRIMARY KEY, momid INTEGER NOT NULL DEFAULT 0, cursor INTEGER NOT NULL,
  state TEXT NOT NULL, asked INTEGER NOT NULL, updated INTEGER NOT NULL,
- pages INTEGER NOT NULL DEFAULT 0, filed INTEGER NOT NULL DEFAULT 0
+ pages INTEGER NOT NULL DEFAULT 0, filed INTEGER NOT NULL DEFAULT 0,
+ strikes INTEGER NOT NULL DEFAULT 0
 );
 """
 TTL = 86400
@@ -29,6 +30,7 @@ MAX_ACTIVE = 32
 TAKE = 100                  # the API's own cap
 MAX_PAGES = 200             # 20,000 PBs; past it the walk is 'limited', not complete
 ACTIVE = ("queued", "partial")
+STRIKES = 3                 # refusals in a row before a walk is 'unknown' (P1117 review 2)
 
 
 def status(db, player):
@@ -62,7 +64,7 @@ def enqueue(db, player, now):
                        " VALUES (?, ?, 0, 'queued', ?, ?) ON CONFLICT (player) DO UPDATE SET"
                        " momid = excluded.momid, cursor = 0, state = 'queued',"
                        " asked = excluded.asked, updated = excluded.updated,"
-                       " pages = 0, filed = 0", (player, mid[0] if mid else 0, now, now))
+                       " pages = 0, filed = 0, strikes = 0", (player, mid[0] if mid else 0, now, now))
         return status(db, player)
     except sqlite3.OperationalError as e:
         if "locked" not in str(e).lower() and "busy" not in str(e).lower():
@@ -72,8 +74,11 @@ def enqueue(db, player, now):
         db.execute("PRAGMA busy_timeout=%d" % wait)
 
 
-def _json(get, url):
-    doc = json.loads(get(url).decode("utf-8", "replace"))
+def _json(body):
+    try:
+        doc = json.loads(body.decode("utf-8", "replace"))
+    except RecursionError:
+        raise ValueError("a Momentum reply nested too deep")
     if (not isinstance(doc, dict) or type(doc.get("totalCount")) is not int
             or not isinstance(doc.get("data"), list) or len(doc["data"]) > TAKE):
         raise ValueError("a Momentum reply of the wrong shape")
@@ -99,6 +104,8 @@ def rows_of(data, player, alias, tracked, now, momid):
             continue
         track, leg = momboards.track_leg(key[2], key[3])
         ms = int(round(t * 1000.0))
+        if ms < 1:                  # 0.0005 s rounds to 0 ms (half to even)
+            continue
         when = momboards.created_epoch(e.get("createdAt")) or now
         out.append((name, track, leg, player, alias, int(round(ms / 1000.0 / tick)),
                     1.0 / tick, ms, when, ""))
@@ -126,10 +133,23 @@ def step(db, tracked, budget, get, delay=1.5, now=None):
             spent += 1
             where = (" WHERE player = ? AND cursor = ? AND asked = ? AND state IN (?, ?)",
                      (player, cursor, asked) + ACTIVE)
+            url = ("%s/users?steamID=%s" % (API, player) if not momid else
+                   "%s/runs?userID=%d&isPB=true&take=%d&skip=%d" % (API, momid, TAKE, cursor))
             try:
-                doc = _json(get, "%s/users?steamID=%s" % (API, player) if not momid else
-                            "%s/runs?userID=%d&isPB=true&take=%d&skip=%d"
-                            % (API, momid, TAKE, cursor))
+                body = get(url)
+            except Exception:
+                # P1117 review 2: a refused walk gives up its turn, and after STRIKES
+                # in a row ends; the caller rests the walks and goes on.
+                try:
+                    with db:
+                        db.execute("UPDATE momprofiles SET updated = ?, strikes = strikes + 1,"
+                                   " state = CASE WHEN strikes + 1 >= ? THEN 'unknown' ELSE state END"
+                                   + where[0], (now, STRIKES) + where[1])
+                except sqlite3.Error:
+                    pass
+                raise
+            try:
+                doc = _json(body)
                 if not momid:
                     ids = [u.get("id") for u in doc["data"]
                            if isinstance(u, dict) and u.get("steamID") == player]
@@ -155,7 +175,7 @@ def step(db, tracked, budget, get, delay=1.5, now=None):
                          else "limited" if pages + 1 >= MAX_PAGES else "partial")
                 with db:
                     db.execute("UPDATE momprofiles SET cursor = ?, state = ?, updated = ?,"
-                               " pages = pages + 1, filed = filed + ?" + where[0],
+                               " pages = pages + 1, filed = filed + ?, strikes = 0" + where[0],
                                (nxt, state, now, filed) + where[1])
             except (ValueError, TypeError, OverflowError):
                 # Not a refusal: a reply this walk cannot read ends it, and steamsync

@@ -79,6 +79,7 @@ each played map's board back to one page of rows on every tick.
 """
 import argparse
 import collections
+import http.client
 import io
 import json
 import os
@@ -105,6 +106,7 @@ UA = "FTESurf/0.1 momfetch (+https://proto.bar/ftesurf)"
 TIMEOUT = 30
 TAKE_MAX = 100        # the API's own cap: take=101 is a 400
 TOTAL_MAX = 1000000   # a totalCount past this is not a board
+MAX_BYTES = 1 << 20   # a reply; a 100-row page is ~13.5 KB
 
 # Consecutive 404s before the sweep stops.  See NoSuchBoard: a 404 is about
 # one board, but a host that began refusing everything would answer 404 to
@@ -143,13 +145,19 @@ def get(url):
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             if r.status < 200 or r.status >= 300:
                 raise Refused("HTTP %d" % r.status)
-            return r.read()
+            body = r.read(MAX_BYTES + 1)
+            if len(body) > MAX_BYTES:
+                raise Refused("a reply over %d bytes" % MAX_BYTES)
+            return body
     except urllib.error.HTTPError as e:
         if e.code == 404:
             raise NoSuchBoard("HTTP 404")
         raise Refused("HTTP %d" % e.code)
     except urllib.error.URLError as e:
         raise Refused(str(e.reason))
+    # P1117 review 2: a body cut short or a read timing out is no answer, not a crash.
+    except (OSError, http.client.HTTPException) as e:
+        raise Refused("no answer: %s" % (str(e) or type(e).__name__))
 
 
 def read_tracks(path):
@@ -235,6 +243,20 @@ def holed(cur):
     page after it was fetched.  No tail page reaches them; a re-walk does.
     Measured 29 Oct: 1,454 boards, at least 63,509 places."""
     return not cur.get("absent") and deepest(cur["rows"]) > len(cur["rows"])
+
+
+def end_rewalk(out, key, walking, skip):
+    """P1117 review 2: a re-walk refused at its cursor ends there, so the next run
+    walks another board rather than asking the same page for ever."""
+    p = os.path.join(out, key + ".json")
+    if walking.get(p) != skip:
+        return
+    cur = load_board(p)
+    if cur is not None:
+        cur.pop("rewalk", None)
+        cur["walked"] = int(time.time())
+        write_board(p, cur)
+    walking.pop(p, None)
 
 
 def gm_of(name):
@@ -474,13 +496,15 @@ def main():
             continue
         except Refused as e:
             refused = "%s (%s g%d t%d%d): %s" % (name, mid, gm, tt, tn, e)
+            end_rewalk(a.out, board_key(mid, gm, tt, tn), walking, skip)
             break
         streak = 0
         asked += 1
         try:
             doc = json.loads(body.decode("utf-8", "replace"))
-        except ValueError:
+        except (ValueError, RecursionError):
             refused = "%s: reply did not parse" % name
+            end_rewalk(a.out, board_key(mid, gm, tt, tn), walking, skip)
             break
         total, data = parse_board(doc)
         if not data:

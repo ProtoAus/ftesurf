@@ -428,8 +428,13 @@ def requeue(conn, now, go):
     their last walk is a day old (each enqueue keeps its own TTL and cap).
     -> walks queued (a dry run: walks due)."""
     n = 0
-    for (sid,) in conn.execute("SELECT steamid FROM accounts WHERE banned_at = 0"
-                               " ORDER BY steamid").fetchall():
+    # Longest unwalked first (P1117 review 2), so a full queue turns everyone over.
+    for (sid,) in conn.execute(
+            "SELECT a.steamid FROM accounts a"
+            " LEFT JOIN ksfprofiles k ON k.player = a.steamid"
+            " LEFT JOIN momprofiles m ON m.player = a.steamid"
+            " WHERE a.banned_at = 0"
+            " ORDER BY min(coalesce(k.updated, 0), coalesce(m.updated, 0)), a.steamid").fetchall():
         for walk in (ksfprofile, momprofile):
             st = walk.status(conn, sid)
             due = (st["state"] not in ("queued", "partial")

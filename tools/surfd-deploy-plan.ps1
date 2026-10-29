@@ -26,7 +26,9 @@ function Get-SurfdDeployPlan {
         $_ -notmatch '/__pycache__/'
     })
     $codecs = @('tools/ksfconvert.py', 'tools/ksfreplay_info.py')
-    $allowed = @($suite) + @($codecs | Where-Object { $all -contains $_ })
+    # P1117 review 2: momwatch's fetcher, installed flat beside it as on the Pi.
+    $flat = @{ 'tools/momfetch.py' = 'momfetch.py' }
+    $allowed = @($suite) + @(@($codecs) + @($flat.Keys) | Where-Object { $all -contains $_ })
     $files = @($suite)
     if ($Only) {
         foreach ($file in $Only) {
@@ -56,7 +58,7 @@ function Get-SurfdDeployPlan {
     $hidEntries = @('surfd/surfd.py', 'surfd/hidupload.py')
     # P1117: momprofile's importers ship with it; surfd's migrate makes its table.
     $momEntries = @('surfd/surfd.py', 'surfd/accounts.py', 'surfd/steamsync.py',
-                    'surfd/momwatch.py', 'surfd/momprofile.py')
+                    'surfd/momwatch.py', 'surfd/momprofile.py', 'tools/momfetch.py')
     do {
         $before = $files.Count
         if ($all -contains 'surfd/momprofile.py' -and
@@ -116,7 +118,7 @@ function Get-SurfdDeployPlan {
         Commit = "$commit"
         Files = $files
         Modes = $modes
-        Destinations = @($files | ForEach-Object { $_ -replace '^surfd/', '' })
+        Destinations = @($files | ForEach-Object { if ($flat.ContainsKey($_)) { $flat[$_] } else { $_ -replace '^surfd/', '' } })
         AddedDependencies = $added
         StageFiles = $staged
     }

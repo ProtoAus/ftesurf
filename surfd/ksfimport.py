@@ -141,6 +141,7 @@ KSF_MAX_DEFAULT = 50       # players per invocation unless --max says otherwise
 # unknown, scattered) never produces a run this long.
 SKIP_STREAK = 25
 KSF_TIMEOUT = 30
+KSF_MAX_BYTES = 1 << 20    # a reply; a 20-row page is ~6 KB, a player's map ~4.7 KB
 UA = "FTESurf/0.1 ksfimport (+https://proto.bar/ftesurf)"
 
 # CS:S surf runs at 66.67 ticks a second.  The TIME is the fact here -- KSF
@@ -302,7 +303,11 @@ def fetch(url):
         with urllib.request.urlopen(req, timeout=KSF_TIMEOUT) as r:
             if r.status < 200 or r.status >= 300:
                 raise Refused("HTTP %d" % r.status, r.status)
-            return r.read().decode("utf-8", "replace")
+            body = r.read(KSF_MAX_BYTES + 1)
+            if len(body) > KSF_MAX_BYTES:
+                # P1117 review 2: no page of theirs is near this; it is that request's.
+                raise Refused("a reply over %d bytes" % KSF_MAX_BYTES, board=True)
+            return body.decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         # 500 is this host's answer for an id it does not know; anything else
         # (403, 429, 503) is about US and stops the run.  If that reading is
@@ -332,7 +337,7 @@ def records(sid, cache_dir, paced):
                  % (KSF_BASE, sid, KSF_TAKE))
     try:
         doc = json.loads(body)
-    except ValueError:
+    except (ValueError, RecursionError):
         raise Refused("ksf.surf's reply did not parse -- their format has "
                       "probably changed")
     os.makedirs(cache_dir, exist_ok=True)
@@ -385,7 +390,7 @@ class Pacer:
             raise Refused(str(e), 500)
         try:
             return json.loads(body)
-        except ValueError:
+        except (ValueError, RecursionError):     # P1117 review 2: nesting is a bad reply too
             raise Refused("ksf.surf's reply did not parse -- their format has "
                           "probably changed")
 

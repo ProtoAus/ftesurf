@@ -405,6 +405,39 @@ def case_p1117r1_record_identity():
           held()[0], board["runid"])
 
 
+def case_p1117r2_caps():
+    """A reply over KSF_MAX_BYTES is that request's refusal; nesting is a bad reply."""
+    import urllib.request
+    real = urllib.request.urlopen
+
+    class Big(object):
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self, n=-1):
+            Big.asked = n
+            return b"[" + b" " * (n - 1)
+    urllib.request.urlopen = lambda req, timeout=None: Big()
+    try:
+        REAL_FETCH(K.KSF_BASE + "/api/maps/new?offset=0")
+        got = "returned"
+    except K.Refused as e:
+        got = (e.board, Big.asked)
+    finally:
+        urllib.request.urlopen = real
+    check("P1117r2: a reply over KSF_MAX_BYTES is read to cap+1 and refused as the request's",
+          got, (True, K.KSF_MAX_BYTES + 1))
+    K.fetch = lambda url: "[" * 200000
+    try:
+        K.Pacer(0, 1).get("/api/maps/new?offset=0")
+        got = "returned"
+    except K.Refused:
+        got = "refused"
+    except RecursionError:
+        got = "RecursionError"
+    check("P1117r2: deeply nested JSON is a reply that did not parse, not a crash", got, "refused")
+
+
 def case_p1117_quiet_park():
     """No answer parks the crawl QUIET_COOLDOWN, doubling; case_watch_refusal_parks
     holds an HTTP refusal to COOLDOWN."""
@@ -857,7 +890,7 @@ def main():
                  case_linear_asks_no_stages,
                  case_write_and_filter, case_refusal, case_no_answer,
                  case_modes, case_merge_and_refresh, case_watch,
-                 case_watch_refusal_parks, case_p1117_quiet_park, case_p1117r1_record_identity,
+                 case_watch_refusal_parks, case_p1117_quiet_park, case_p1117r1_record_identity, case_p1117r2_caps,
                  case_watch_dry_and_owed,
                  case_review_findings, case_review_round2,
                  case_board_reads_ksf_styles):

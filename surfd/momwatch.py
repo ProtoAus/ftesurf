@@ -125,6 +125,17 @@ def resting(boards, now=None):
     return str(d.get("why") or "a refusal") if type(until) is int and now < until else ""
 
 
+def has_extras(path):
+    """Does the momfetch this runs know --board and --rewalk?  A deploy that ships
+    momwatch without it would otherwise exit 2 at every rotation."""
+    try:
+        with io.open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        return False
+    return '"--board"' in text and '"--rewalk"' in text
+
+
 def profile_get(url):
     """momfetch.get, where a 404 is an answer: no such player, no PBs."""
     try:
@@ -325,7 +336,7 @@ def main():
         print("\nDRY RUN -- nothing fetched.  Pass --go.")
         return 0
 
-    fetched = False
+    fetched, failed = False, 0
 
     if maps:
         cmd = [sys.executable, _momfetch_path(),
@@ -354,7 +365,7 @@ def main():
             print("momfetch stopped (%d) -- see above; nothing is retried here"
                   % rc)
             rest(a.boards, "live refused")
-            return rc
+            failed = rc
 
     # THE BACKFILL, and it is deliberately the same tool with no --map and no
     # --refresh.  momfetch already sorts its pages by depth, so this asks for the
@@ -363,11 +374,17 @@ def main():
     # rather than 0.
     # P1117: the rotation, the player walks and the backfill share at most
     # EXTRA_MAX of --backfill; for QUIET after any refusal only the backfill runs.
-    left = min(a.backfill, EXTRA_MAX)
+    # P1117 review 2: whatever refuses moves to the back, and the backfill and the
+    # index run all the same; a refused live fetch still ends the asking.
+    left = min(a.backfill, EXTRA_MAX) if not failed else 0
     quiet = resting(a.boards)
     if quiet:
         print("rotation, re-walk and player walks rest after a refusal: %s" % quiet)
-    rot = stalest_boards(cat, a.boards, cut, min(ROTATE, left)) if left > 0 and not quiet else []
+    new = has_extras(_momfetch_path())
+    if not new:
+        print("momfetch.py there predates P1117 (no --board/--rewalk): no rotation, no re-walk")
+    rot = (stalest_boards(cat, a.boards, cut, min(ROTATE, left))
+           if left > 0 and not quiet and new else [])
     if rot:
         print("\n--- rotation: page 1 of %d board(s), stalest map first ---" % len(rot))
         cmd = [sys.executable, _momfetch_path(),
@@ -383,9 +400,16 @@ def main():
         fetched = True
         left -= len(rot)
         if rc != 0:
-            print("rotation stopped (%d) -- nothing is retried here" % rc)
-            rest(a.boards, "rotation refused")
-            return rc
+            print("rotation stopped (%d) -- its unasked boards go to the back" % rc)
+            for k in rot:
+                bp = os.path.join(a.boards, k + ".json")
+                try:
+                    if os.path.getmtime(bp) < cut:
+                        os.utime(bp, None)
+                except OSError:
+                    pass
+            quiet = rest(a.boards, "rotation refused")
+            failed = failed or rc
 
     if left > 0 and not quiet:
         tracked = {}
@@ -398,10 +422,10 @@ def main():
         conn = S.connect()
         try:
             spent = momprofile.step(conn, tracked, min(PROFILE_MAX, left), profile_get, a.delay)
-        except (momfetch.Refused, OSError, ValueError) as e:
+        except Exception as e:
             # The walks rest; the backfill and the index still run (P1117 review).
-            print("player walk REFUSED, nothing retried: %s" % e)
-            quiet = rest(a.boards, "player walk: %s" % e)
+            print("player walk REFUSED, nothing retried: %s: %s" % (type(e).__name__, e))
+            quiet = rest(a.boards, "player walk: %s" % type(e).__name__)
             spent, fetched = PROFILE_MAX, True
         finally:
             conn.close()
@@ -418,7 +442,7 @@ def main():
                "--take", str(a.take),
                "--depth", str(a.depth if a.depth else -1),
                "--delay", str(a.delay), "--max", str(left), "--go"]
-        if not quiet:
+        if not quiet and new:
             cmd.append("--rewalk")
         if fetched:
             time.sleep(a.delay)
@@ -428,15 +452,14 @@ def main():
         if rc != 0:
             print("backfill stopped (%d) -- nothing is retried here" % rc)
             rest(a.boards, "backfill refused")
-            return rc
+            failed = failed or rc
 
     if a.index and fetched:
         sys.stdout.flush()
         rc = subprocess.call([sys.executable, os.path.join(HERE, "momboards.py"),
                               "--boards", a.boards, "--link", "--go"])
-        if rc != 0:
-            return rc
-    return 0
+        failed = failed or rc
+    return failed
 
 
 if __name__ == "__main__":

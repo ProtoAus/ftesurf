@@ -268,7 +268,7 @@ class Profiles(unittest.TestCase):
 
     def test_p1117r1_a_maps_failure_skips_it_and_never_parks(self):
         stages = lambda: (P.status(self.db, PLAYER)['mode'], P.status(self.db, PLAYER)['next'])
-        for fail in (K.Refused('HTTP 404', 404), K.Refused('HTTP 403', 403),
+        for fail in (K.Refused('HTTP 404', 404),
                      K.Refused("ksf.surf's reply did not parse"),
                      {'records': [], 'basicInfo': None}, {'records': 'x', 'basicInfo': {}},
                      {'records': [{}] * (P.STAGE_RECORDS_MAX + 1),
@@ -286,17 +286,64 @@ class Profiles(unittest.TestCase):
                 self.assertEqual(len(self.zones()), 1)
 
     def test_p1117r1_host_refusals_park_and_no_answer_moves_on(self):
+        # P1117 review 2: a host code parks too, but past the map and after the others.
+        other = '76561198000000077'
+        for n, fail in enumerate((K.Refused('HTTP 429', 429), K.Refused('HTTP 502', 502),
+                                  K.Refused('no answer: timed out', transient=True))):
+            with self.subTest(fail=str(fail)):
+                self.db.execute('DELETE FROM ksfprofiles'); self.db.execute('DELETE FROM runs')
+                self.db.commit()
+                shutil.rmtree(self.cache); self.cache = tempfile.mkdtemp(dir=HOME)
+                self.at_stage(now=3000 + 10 * n)
+                self.queue(other, now=3005 + 10 * n)
+                self.src.fail = {'surf_profile0': fail}
+                with self.assertRaises(K.Refused):
+                    P.step(K, self.cache, K.Pacer(0, 10), self.have, 3009 + 10 * n, 1)
+                st = P.status(self.db, PLAYER)
+                self.assertEqual((st['mode'], st['next'], P.pending(self.db)[0][0]),
+                                 (P.STAGE_MODE, 1, other))
+                self.src.fail = {}
+
+    def test_p1117r2_a_blocked_route_ends_the_stage_phase(self):
+        for code in (401, 403):
+            with self.subTest(code=code):
+                self.db.execute('DELETE FROM ksfprofiles'); self.db.execute('DELETE FROM runs')
+                self.db.commit()
+                shutil.rmtree(self.cache); self.cache = tempfile.mkdtemp(dir=HOME)
+                self.at_stage()
+                self.src.fail = {'surf_profile0': K.Refused('HTTP %d' % code, code)}
+                p = K.Pacer(0, 10)
+                P.step(K, self.cache, p, self.have, 3001, 3)
+                self.assertEqual((p.made, P.status(self.db, PLAYER)['state'], len(self.zones())),
+                                 (1, 'limited', 1))
+                self.src.fail = {}
+
+    def test_p1117r2_a_saved_page_is_only_what_is_filed(self):
         self.at_stage()
-        self.src.fail = {'surf_profile0': K.Refused('HTTP 429', 429)}
-        with self.assertRaises(K.Refused):
-            P.step(K, self.cache, K.Pacer(0, 10), self.have, 3001, 1)
-        self.assertEqual((P.status(self.db, PLAYER)['mode'], P.status(self.db, PLAYER)['next']),
-                         (P.STAGE_MODE, 0))
-        self.src.fail = {'surf_profile0': K.Refused('no answer: timed out', transient=True)}
-        with self.assertRaises(K.Refused):
-            P.step(K, self.cache, K.Pacer(0, 10), self.have, 3002, 1)
-        self.assertEqual((P.status(self.db, PLAYER)['mode'], P.status(self.db, PLAYER)['next']),
-                         (P.STAGE_MODE, 1))
+        junk = 'x' * 100000
+        recs = [{'zoneId': 1, 'record_id': 8001, 'surfTime': 6.5, 'date_set_at': '2026-10-01T00:00:01Z',
+                 'junk': junk, 'rank': {'nested': junk}}]
+        self.src.fail = {'surf_profile0': {'records': recs, 'junk': junk,
+                                           'basicInfo': {'steamID': K.S.steam2(PLAYER), 'junk': junk}}}
+        P.step(K, self.cache, K.Pacer(0, 10), self.have, 3001, 1)
+        saved = [p for p in Path(self.cache, 'profiles').rglob('*surf_profile0.json')]
+        self.assertEqual(len(saved), 1)
+        body = json.loads(saved[0].read_text())['body']
+        self.assertEqual(body, {'basicInfo': {'steamID': K.S.steam2(PLAYER)},
+                                'records': [{'zoneId': 1, 'record_id': 8001, 'surfTime': 6.5,
+                                             'date_set_at': '2026-10-01T00:00:01Z'}]})
+        self.assertEqual(len(self.zones()), 2)
+        main = [p for p in Path(self.cache, 'profiles').rglob('0-1.json')]
+        self.assertEqual(set(json.loads(main[0].read_text())['body']), {'records', 'pagination'})
+
+    def test_p1117r2_accounts_walks_come_first(self):
+        view, mine = '76561198000000201', '76561198000000202'
+        self.queue(view, now=100)
+        self.db.execute("INSERT INTO accounts (steamid, created_at) VALUES (?, 1)", (mine,))
+        self.db.commit()
+        self.queue(mine, now=200)
+        self.assertEqual([r[0] for r in P.pending(self.db)], [mine, view])
+        self.db.execute('DELETE FROM accounts'); self.db.commit()
 
     def test_p1117r1_views_cannot_fill_an_accounts_slots(self):
         for i in range(P.MAX_VIEWED):

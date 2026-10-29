@@ -238,10 +238,19 @@ def case_tick_budget():
         check("...and the extras share EXTRA_MAX of --backfill: 2 + 4, never 15",
               (opt(rot, "--max"), opt(back, "--max")), (["2"], [str(MW.EXTRA_MAX - 2)]))
         check("the backfill re-walks holed boards", "--rewalk" in back, True)
-    # A refused rotation stops the tick, as a refused backfill always did, and rests.
+    # P1117 review 2: a refused rotation rests the extras and moves its boards to the
+    # back; the backfill and the index still run.
     calls[:] = []
-    rc = run_tick(argv, lambda cmd: calls.append(cmd) or 1)
-    check("a refused rotation stops the tick before the backfill", (rc, len(calls)), (1, 1))
+    argv_i = argv + ["--index"]
+    rc = run_tick(argv_i, lambda cmd: calls.append(cmd) or (1 if "--board" in cmd else 0))
+    check("P1117r2: a refused rotation still runs a plain backfill and the index",
+          (rc, [("--board" in c, "--rewalk" in c, "momboards.py" in c[1]) for c in calls]),
+          (1, [(True, False, False), (False, False, False), (False, False, True)]))
+    check("...and its boards go to the back of the rotation",
+          all(os.path.getmtime(os.path.join(boards, k + ".json")) > time.time() - 60
+              for k in ("2_g1_t01", "2_g1_t21")), True)
+    for k in ("2_g1_t01", "2_g1_t21"):
+        os.utime(os.path.join(boards, k + ".json"), (now - 10 * 86400, now - 10 * 86400))
     fake = FakeMomentum()
     if calls:
         fetch(fake, calls[0][2:])
@@ -257,6 +266,12 @@ def case_tick_budget():
         calls[:] = []
         run_tick(argv, lambda cmd: calls.append(cmd) or 0)
     check("...and after QUIET the extras are back", len(calls), 2)
+    with patch.object(MW.time, "time", return_value=later + 2 * MW.QUIET):
+        calls[:] = []
+        rc = run_tick(argv_i, lambda cmd: calls.append(cmd) or
+                      (1 if "--board" not in cmd and "momboards.py" not in cmd[1] else 0))
+    check("P1117r2: a refused backfill still runs the index, and the tick says so",
+          (rc, "momboards.py" in calls[-1][1]), (1, True))
 
 
 def case_player_walk_refused_carries_on():
@@ -273,6 +288,94 @@ def case_player_walk_refused_carries_on():
     check("P1117r1: a refused player walk rests the extras, the backfill and the index still run",
           (rc, [("--rewalk" in c, "momboards.py" in c[1]) for c in calls[1:]], bool(MW.resting(boards))),
           (0, [(False, False), (False, True)], True))
+
+
+def case_p1117r2_walk_errors_carry_on():
+    import http.client
+    tsv, boards, now = stale_home("walkerr")
+    S.migrate()
+    calls = []
+    argv = ["momwatch.py", "--tracks", tsv, "--boards", boards, "--delay", "0", "--depth", "-1",
+            "--backfill", "15", "--index", "--go"]
+
+    def broken(*a, **k):
+        raise http.client.IncompleteRead(b"part", 10)
+    with patch.object(MW.momprofile, "step", broken):
+        rc = run_tick(argv, lambda cmd: calls.append(cmd) or 0)
+    check("P1117r2: any error in the player walks rests them; backfill and index run",
+          (rc, ["momboards.py" in c[1] for c in calls[1:]], bool(MW.resting(boards))),
+          (0, [False, True], True))
+
+
+def case_p1117r2_old_momfetch():
+    tsv, boards, now = stale_home("oldfetch")
+    S.migrate()
+    calls, out = [], io.StringIO()
+    argv = ["momwatch.py", "--tracks", tsv, "--boards", boards, "--delay", "0", "--depth", "-1",
+            "--backfill", "15", "--go"]
+    with patch.object(MW, "has_extras", lambda path: False), \
+            patch.object(MW.subprocess, "call", lambda cmd: calls.append(cmd) or 0), \
+            patch.object(sys, "argv", argv), contextlib.redirect_stdout(out):
+        rc = MW.main()
+    check("P1117r2: an older momfetch gets no --board and no --rewalk, and it is said",
+          (rc, [("--board" in c, "--rewalk" in c) for c in calls], "predates P1117" in out.getvalue()),
+          (0, [(False, False)], True))
+    check("...and the shipped one is recognised", MW.has_extras(MW._momfetch_path()), True)
+
+
+def case_p1117r2_momfetch_replies():
+    import http.client
+    import urllib.request
+
+    class Reply(object):
+        status = 200
+        def __init__(self, body=b"", fail=None): self.body, self.fail = body, fail
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self, n=-1):
+            Reply.asked = n
+            if self.fail:
+                raise self.fail
+            return self.body[:n] if n >= 0 else self.body
+    got = []
+    for label, reply in (("over MAX_BYTES", Reply(b"x" * (MF.MAX_BYTES + 5))),
+                         ("cut short", Reply(fail=http.client.IncompleteRead(b"p", 9))),
+                         ("a read timing out", Reply(fail=TimeoutError("read timed out")))):
+        with patch.object(urllib.request, "urlopen", lambda req, timeout=None, r=reply: r):
+            try:
+                MF.get("https://api.momentum-mod.org/v1/x")
+                got.append((label, "returned"))
+            except MF.Refused:
+                got.append((label, "refused"))
+            except Exception as e:
+                got.append((label, type(e).__name__))
+    check("P1117r2: momfetch.get refuses an oversized, cut or timed-out reply, never crashes",
+          [g[1] for g in got], ["refused"] * 3)
+    tsv, boards = home("deep")
+    write_board(boards, 1, 1, 0, 1, range(1, 11), 20)
+    rc = fetch(lambda url: b"[" * 200000, ["--tracks", tsv, "--out", boards, "--take", "2",
+                                           "--depth", "-1", "--delay", "0", "--max", "1",
+                                           "--board", "1_g1_t01", "--go"])
+    check("P1117r2: a reply nested past recursion is 'did not parse' (exit 1), not a crash", rc, 1)
+    for name, (mid, bl) in CAT.items():
+        for gm, tt, tn in bl:
+            write_board(boards, mid, gm, tt, tn, range(1, 11), 10)
+    write_board(boards, 1, 1, 0, 1, [1, 2, 3, 6, 7, 9, 10], 10, rewalk=4)
+    write_board(boards, 2, 1, 0, 1, [1, 5, 10], 10)
+
+    def refuse4(url):
+        if "maps/1/" in url and url.endswith("skip=4"):
+            raise MF.Refused("HTTP 500")
+        return FakeMomentum()(url)
+    fetch(refuse4, ["--tracks", tsv, "--out", boards, "--take", "2", "--depth", "-1", "--delay", "0",
+                    "--max", "10", "--rewalk", "--go"])
+    b = board(boards, 1, 1, 0, 1)
+    fake = FakeMomentum()
+    fetch(fake, ["--tracks", tsv, "--out", boards, "--take", "2", "--depth", "-1", "--delay", "0",
+                 "--max", "10", "--rewalk", "--go"])
+    check("P1117r2: a re-walk refused at its cursor ends, and the next run walks another board",
+          ("rewalk" in b, b.get("walked", 0) > 0, sorted({m for m, _, _, _ in fake.asked})),
+          (False, True, [2]))
 
 
 def case_404s():
@@ -310,7 +413,8 @@ def main():
     try:
         for case in (case_tail_past_the_deepest_rank, case_rewalk, case_board_selector,
                      case_stalest_boards, case_tick_budget, case_player_walk_refused_carries_on,
-                     case_404s):
+                     case_404s, case_p1117r2_walk_errors_carry_on, case_p1117r2_old_momfetch,
+                     case_p1117r2_momfetch_replies):
             print("\n%s:" % case.__name__)
             case()
     finally:

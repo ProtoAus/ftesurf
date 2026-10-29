@@ -191,7 +191,8 @@ def case_p1117r1_hostile_rows():
     P.enqueue(c, A, NOW)
     bad = [pb(20, 1, 1, 1, 5.0, uid=178),                  # another user's PB
            pb(20, 1, 1, 1, float("nan")), pb(20, 1, 1, 1, float("inf")),
-           pb(20, 1, 1, 1, 0.0001), pb(20, 1, 1, 1, -3.0), pb(20, 1, 1, 1, 2e6),
+           pb(20, 1, 1, 1, 0.0001), pb(20, 1, 1, 1, 0.0005), pb(20, 1, 1, 1, -3.0),
+           pb(20, 1, 1, 1, 2e6),
            pb(20, 1, 1, 1, True), pb(20, 1, 1, 1, 5.1, style=False),
            pb("20", 1, 1, 1, 5.2), pb(20, True, 1, 1, 5.3), pb(20, 1, 1.0, 1, 5.4),
            dict(pb(20, 1, 1, 1, 5.5), isPB=1)]
@@ -201,6 +202,7 @@ def case_p1117r1_hostile_rows():
           [tuple(r)[:4] for r in momrows(c, A)], [("surf_utopia", 0, 1, 7250)])
     for label, body in (("not JSON", b"<html>"), ("a list", b"[]"),
                         ("a bool total", b'{"totalCount": true, "data": []}'),
+                        ("JSON nested past recursion", b"[" * 200000),
                         ("an id past 2**53", json.dumps({"totalCount": 1, "data": [
                             {"id": 2 ** 53, "steamID": B}]}).encode())):
         c.execute("DELETE FROM momprofiles")
@@ -212,6 +214,33 @@ def case_p1117r1_hostile_rows():
               (P.status(c, B)["state"],
                c.execute("SELECT COUNT(*) FROM momusers WHERE steamid=?", (B,)).fetchone()[0]),
               ("unknown", 0))
+    c.close()
+
+
+def case_p1117r2_strikes():
+    """A refused walk gives up its turn, and after STRIKES in a row ends."""
+    c = db()
+    c.execute("INSERT INTO momusers (steamid, momid) VALUES (?, 1), (?, 2)", (A, B))
+    c.commit()
+    P.enqueue(c, A, NOW)
+    P.enqueue(c, B, NOW + 1)
+    asked = []
+
+    def get(url):
+        asked.append(url.split("userID=")[1].split("&")[0])
+        if "userID=1&" in url:
+            raise RuntimeError("HTTP 403")
+        return json.dumps({"totalCount": 0, "data": []}).encode()
+    for tick in range(P.STRIKES + 1):
+        try:
+            P.step(c, TRACKED, 1, get, delay=0, now=NOW + 10 + tick)
+        except RuntimeError:
+            pass
+        if tick == 0:
+            c.execute("UPDATE momprofiles SET state='queued', updated=? WHERE player=?", (NOW + 2, B))
+            c.commit()
+    check("P1117r2: the refused walk gives the next turn to the other, then ends after STRIKES",
+          (asked, P.status(c, A)["state"]), (["1", "2", "1", "1"], "unknown"))
     c.close()
 
 
@@ -244,6 +273,28 @@ def case_steamsync_requeue():
         steamsync.requeue(c, NOW + 2 * 86400, True)
     check("P1117r1: a walk refused as busy is said, not dropped silently",
           "momprofile busy: %s not queued again" % A in out.getvalue(), True)
+    c.close()
+
+
+def case_p1117r2_requeue_order():
+    """steamsync re-queues the account walked longest ago first: a full queue turns over."""
+    c = db()
+    old, recent = "76561198000000302", "76561198000000301"     # SteamID order would favour `recent`
+    for sid in (old, recent):
+        c.execute("INSERT INTO accounts (steamid, name, created_at) VALUES (?, 'x', 1)", (sid,))
+    for sid, upd in ((old, NOW - 5 * 86400), (recent, NOW - 2 * 86400)):
+        c.execute("INSERT INTO momprofiles (player, momid, cursor, state, asked, updated)"
+                  " VALUES (?, 0, 0, 'complete', 1, ?)", (sid, upd))
+        c.execute("INSERT INTO ksfprofiles (player, mode, cursor, state, asked, updated)"
+                  " VALUES (?, 0, 1, 'complete', 1, ?)", (sid, upd))
+    c.commit()
+    with patch.object(P, "MAX_ACTIVE", 1), patch.object(KP, "MAX_ACTIVE", 1), \
+            contextlib.redirect_stdout(io.StringIO()):
+        steamsync.requeue(c, NOW, True)
+    check("P1117r2: with one slot, the account walked longest ago gets it",
+          ([tuple(r) for r in c.execute("SELECT player FROM momprofiles WHERE state='queued'")],
+           [tuple(r) for r in c.execute("SELECT player FROM ksfprofiles WHERE state='queued'")]),
+          ([(old,)], [(old,)]))
     c.close()
 
 
@@ -291,6 +342,7 @@ def profile_404():
 def main():
     try:
         for case in (case_enqueue, case_walk, case_round_robin_refusal_and_shape, case_p1117r1_hostile_rows,
+                     case_p1117r2_strikes, case_p1117r2_requeue_order,
                      case_steamsync_requeue, case_momwatch_budget):
             print("\n%s:" % case.__name__)
             case()

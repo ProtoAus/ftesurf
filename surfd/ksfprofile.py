@@ -30,6 +30,8 @@ STAGE_MODE = 4
 # A stage request's failure is that map's unless it is one of these (or no answer).
 HOST_CODES = (429, 502, 503, 504, 520, 521, 522, 523, 524)
 STAGE_RECORDS_MAX = 200     # zones a map reply may carry; more is not a map's
+MAIN_FIELDS = ('mapName', 'stage_id', 'zone_id', 'time', 'date', 'record_id', 'name')
+STAGE_FIELDS = ('zoneId', 'record_id', 'surfTime', 'date_set_at')
 ACCOUNT = "SELECT 1 FROM accounts a WHERE a.steamid = %s AND a.banned_at = 0"
 
 
@@ -74,7 +76,16 @@ def enqueue(db, player, now):
 
 
 def pending(db):
-    return db.execute("SELECT player,mode,cursor,asked FROM ksfprofiles WHERE state IN ('queued','partial') ORDER BY updated,asked,player LIMIT 3").fetchall()
+    # P1117 review 2: signed-in accounts' walks first, then by turn.
+    return db.execute("SELECT player,mode,cursor,asked FROM ksfprofiles p WHERE state IN ('queued','partial')"
+                      " ORDER BY NOT EXISTS (%s),updated,asked,player LIMIT 3" % (ACCOUNT % "p.player")).fetchall()
+
+
+def kept(recs, fields):
+    """The fields filed from each record, scalars only: a saved page is never a reply's junk."""
+    return [{k: r[k] for k in fields if k in r and (r[k] is None or type(r[k]) in (int, float, bool)
+                                                    or (type(r[k]) is str and len(r[k]) <= 256))}
+            for r in recs]
 
 
 def step(K, cache, pacer, have, now, budget=3):
@@ -121,9 +132,10 @@ def step(K, cache, pacer, have, now, budget=3):
                 pacer.unanswered += 1   # never lifts a park (watch_mode)
                 retire(K, player, mode, start, asked, now)
                 return spent + 1
-            saved = {'asked': asked, 'body': doc}
             # Invalid pages must not get a cursor, even if they are empty.
-            validate(K, doc, start)
+            recs = validate(K, doc, start)
+            saved = {'asked': asked, 'body': {'records': kept(recs, MAIN_FIELDS),
+                                              'pagination': {'offset': start - 1, 'limit': PAGE}}}
             durable(K, fn, saved)
         doc = saved.get('body')
         recs = validate(K, doc, start)
@@ -248,19 +260,25 @@ def stage_step(K, cache, pacer, have, now, player, sid, mode, start, asked, can_
                 doc = pacer.get('/api/players/%s/records/map/%s?game=css&mode=%d'
                                 % (sid, urllib.parse.quote(mp), style))
             except K.Refused as e:
-                # P1117 review: only the host's refusals park, and no answer parks
-                # with the cursor past this map, so one map cannot hold the walk.
-                if e.code in HOST_CODES:
-                    raise
-                if getattr(e, 'transient', False):
+                # P1117 review: a host refusal (or no answer) parks with the cursor past
+                # this map and the walk's turn given up, so one map cannot hold KSF;
+                # 401/403 on this route ends the stage phase; the rest are the map's.
+                if e.code in (401, 403):
+                    last = 2 * STAGE_MODE - 1
+                    advance(K, player, mode, start, asked, now, last, start, 'limited', 1)
+                    return 1, 'limited', last, start
+                if e.code in HOST_CODES or getattr(e, 'transient', False):
                     advance(K, player, mode, start, asked, now, mode, start + 1, 'partial', 1)
                     raise
                 pacer.unanswered += 1   # this map's answer (404, 500, bad page): never lifts a park
             else:
-                if map_records(doc, sid) is None:
+                recs = map_records(doc, sid)
+                if recs is None:
                     pacer.unanswered += 1
                 else:
-                    saved = {'asked': asked, 'body': doc}
+                    # Only what is filed is kept: never a reply's other bytes.
+                    saved = {'asked': asked, 'body': {'basicInfo': {'steamID': sid},
+                                                      'records': kept(recs, STAGE_FIELDS)}}
                     durable(K, fn, saved)
         rows = []
         for r in (map_records(saved['body'], sid) or []) if saved else []:
