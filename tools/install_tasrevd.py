@@ -5,6 +5,11 @@ Modelled on install_zonepub.py: a clean inspected source commit, an exact nginx 
 hash and --apply. Never changes or restarts surfd, its DB, zonepub or a lobby. Refuses existing
 destination files rather than taking over a peer's. The released-code list (codes.txt) is
 seeded from --code (sha256 of each released or deployed csprogs.dat) and only ever appended to.
+
+P1119 --upgrade-from <installed commit>: a new release directory beside that one, and the unit
+pointed at it. Only when the unit is byte for byte what this installer wrote for that release and
+the nginx snippet is unchanged; state, codes and nginx are not touched. The old unit is put back
+and restarted if the new release does not serve its own source.
 """
 import argparse
 import contextlib
@@ -83,6 +88,69 @@ def probe_app(commit, url='http://127.0.0.1:%d/api/tasrev/map/tasrevd_install_pr
     if body.get('ok') != 1 or body.get('revisions') != []: raise RuntimeError('New service map control did not act')
 
 
+def service_env(release, account_db, commit):
+    return dict(TASREVD_STORE=str(STATE / 'tasrev.sqlite3'), TASREVD_ACCOUNTS=str(account_db),
+                TASREVD_CODES=str(STATE / 'codes.txt'), SURFD_TOOLS=str(release / 'tools'), TASREVD_SOURCE=commit)
+
+
+def write_release(release, commit, blobs):
+    release.mkdir(parents=True, mode=0o755)
+    for dest, body in blobs.items():
+        p = release / dest; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(body); p.chmod(0o644)
+    (release / 'SOURCE.json').write_text(json.dumps(dict(commit=commit, files={k: sha(v) for k, v in blobs.items()}), indent=2) + '\n')
+
+
+def await_probe(commit, url=None, tries=20, pause=.25):
+    for attempt in range(tries):
+        try: probe_app(commit, url) if url else probe_app(commit); return
+        except (OSError, ValueError, RuntimeError):
+            if attempt == tries - 1: raise
+            time.sleep(pause)
+
+
+def replace_unit(text):
+    tmp = UNIT.with_name(UNIT.name + '.p1119-new')
+    tmp.write_text(text); tmp.chmod(0o644); os.replace(tmp, UNIT)
+
+
+def upgrade(a, blobs):
+    """P1119: the installed release `a.upgrade_from` -> `a.commit`; see the module doc."""
+    old, new = ROOT / a.upgrade_from, ROOT / a.commit
+    if a.upgrade_from == a.commit: raise RuntimeError('Upgrade to the installed commit')
+    if new.exists() or new.is_symlink(): raise RuntimeError('The new release directory already exists')
+    if json.loads((old / 'SOURCE.json').read_text()).get('commit') != a.upgrade_from:
+        raise RuntimeError('The old release directory is not that commit')
+    oldunit = unit_text(old, service_env(old, a.account_db, a.upgrade_from))
+    if UNIT.read_text() != oldunit: raise RuntimeError('The unit is not the one this installer wrote for that release; owner inspection')
+    if SNIPPET.read_text() != NGINX: raise RuntimeError('The nginx snippet changed; owner inspection')
+    if not (STATE / 'tasrev.sqlite3').is_file() or not (STATE / 'codes.txt').is_file(): raise RuntimeError('Service state missing')
+    if run('/usr/bin/systemctl', 'show', '--value', '--property=ActiveState', 'ftesurf-tasrevd.service').stdout.decode().strip() != 'active':
+        raise RuntimeError('The service is not running; owner inspection')
+    probe_app(a.upgrade_from)   # what serves now is the old release
+    check_accounts(a.account_db)
+    check_imports(blobs)
+    print('Preflight (upgrade): clean source, the unit and snippet this installer wrote for %s, state present, serving it' % a.upgrade_from[:12])
+    if not a.apply:
+        print('DRY RUN: no changes; owner may rerun under sudo with --apply')
+        return
+    if os.geteuid() != 0: raise RuntimeError('Owner sudo/root is required for --apply')
+    write_release(new, a.commit, blobs)
+    newunit = unit_text(new, service_env(new, a.account_db, a.commit))
+    replace_unit(newunit)
+    try:
+        run('/usr/bin/systemctl', 'daemon-reload')
+        run('/usr/bin/systemctl', 'restart', 'ftesurf-tasrevd.service')
+        await_probe(a.commit)
+        await_probe(a.commit, 'https://play.proto.bar/api/tasrev/map/tasrevd_install_probe', pause=.5)
+    except Exception:
+        if UNIT.read_text() == newunit:
+            replace_unit(oldunit)
+            run('/usr/bin/systemctl', 'daemon-reload')
+            run('/usr/bin/systemctl', 'restart', 'ftesurf-tasrevd.service')
+        raise   # the new release directory stays for inspection
+    print('Upgraded the TAS revision service to %s (the old release stays at %s)' % (a.commit, old))
+
+
 def unit_text(release, env):
     entries = ''.join('Environment="%s=%s"\n' % (k, v.replace('\\', '\\\\').replace('"', '\\"')) for k, v in env.items())
     return """[Unit]
@@ -112,18 +180,26 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--source', type=Path, required=True)
     ap.add_argument('--commit', required=True)
-    ap.add_argument('--expected-nginx-sha256', required=True)
+    ap.add_argument('--expected-nginx-sha256')
+    ap.add_argument('--upgrade-from', help='P1119: the installed release commit to replace')
     ap.add_argument('--account-db', type=Path, default=Path('/srv/nvme/surfd/data/surfd.db'))
     ap.add_argument('--code', action='append', default=[], help='sha256 of a released or deployed csprogs.dat; repeatable')
     ap.add_argument('--apply', action='store_true')
     a = ap.parse_args()
     if not re.fullmatch('[0-9a-f]{40}', a.commit): ap.error('Expected full inspected source SHA')
-    if not re.fullmatch('[0-9a-f]{64}', a.expected_nginx_sha256): ap.error('Expected exact predecessor nginx SHA256')
-    if not a.code or not all(HEX64.fullmatch(c) for c in a.code): ap.error('At least one --code (64 lowercase hex)')
+    if a.upgrade_from is not None:
+        if not re.fullmatch('[0-9a-f]{40}', a.upgrade_from): ap.error('--upgrade-from: the installed commit, 40 lowercase hex')
+        if a.expected_nginx_sha256 or a.code: ap.error('An upgrade changes neither nginx nor codes.txt')
+    else:
+        if not re.fullmatch('[0-9a-f]{64}', a.expected_nginx_sha256 or ''): ap.error('Expected exact predecessor nginx SHA256')
+        if not a.code or not all(HEX64.fullmatch(c) for c in a.code): ap.error('At least one --code (64 lowercase hex)')
     for p in (a.source, a.account_db): safe_path(p)
     if run('git', '-C', str(a.source), 'rev-parse', 'HEAD').stdout.decode().strip() != a.commit: raise RuntimeError('Source ref differs')
     if run('git', '-C', str(a.source), 'status', '--porcelain', '--', *FILES).stdout: raise RuntimeError('Service source is not clean at the inspected commit')
     blobs = {dest: (a.source / src).read_bytes() for src, dest in FILES.items()}
+    if a.upgrade_from is not None:
+        upgrade(a, blobs)
+        return
     before = SITE.read_bytes()
     if sha(before) != a.expected_nginx_sha256: raise RuntimeError('nginx changed; inspect again')
     anchor = b'include snippets/surfd.conf;'
@@ -145,16 +221,11 @@ def main():
         return
     if os.geteuid() != 0: raise RuntimeError('Owner sudo/root is required for --apply')
     release = ROOT / a.commit
-    release.mkdir(parents=True, mode=0o755)
-    for dest, body in blobs.items():
-        p = release / dest; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(body); p.chmod(0o644)
-    (release / 'SOURCE.json').write_text(json.dumps(dict(commit=a.commit, files={k: sha(v) for k, v in blobs.items()}), indent=2) + '\n')
+    write_release(release, a.commit, blobs)
     owner = pwd.getpwnam('proto'); STATE.mkdir(mode=0o700); os.chown(STATE, owner.pw_uid, owner.pw_gid)
     run('/usr/sbin/runuser', '-u', 'proto', '--', '/usr/bin/python3', str(release / 'tasrevd.py'), '--store', str(STATE / 'tasrev.sqlite3'), 'init')
     codes = STATE / 'codes.txt'; codes.write_text(''.join(c + '\n' for c in a.code)); os.chown(codes, owner.pw_uid, owner.pw_gid); codes.chmod(0o600)
-    env = dict(TASREVD_STORE=str(STATE / 'tasrev.sqlite3'), TASREVD_ACCOUNTS=str(a.account_db), TASREVD_CODES=str(codes),
-               SURFD_TOOLS=str(release / 'tools'), TASREVD_SOURCE=a.commit)
-    unit = unit_text(release, env)
+    unit = unit_text(release, service_env(release, a.account_db, a.commit))
     wanted = before.replace(anchor, anchor + b'\n    include snippets/ftesurf-tasrevd.conf;')
     backup.write_bytes(before); backup.chmod(0o600)
     written = unit_written = False
