@@ -451,7 +451,7 @@ def case_p1117r2_momfetch_replies():
           got, [("refused", 0), ("refused", 0), b"[1,2]"])
 
 
-def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2):
+def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2, head=b""):
     """A local server sending `reply` a byte every `gap` s.  -> (port, stop)."""
     import socket
     import threading
@@ -463,6 +463,8 @@ def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2
     def drip(c):
         try:
             c.recv(65536)
+            if head:
+                c.sendall(head)
             for b in reply:
                 if stop:
                     break
@@ -479,12 +481,14 @@ def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2
                 c, _ = srv.accept()
             except OSError:
                 return
+            hits.append(1)
             threading.Thread(target=drip, args=(c,), daemon=True).start()
     threading.Thread(target=serve, daemon=True).start()
 
     def close():
         stop.append(1)
         srv.close()
+    hits = close.hits = []
     return srv.getsockname()[1], close
 
 
@@ -535,6 +539,103 @@ def case_p1117r4_momfetch_bounds():
           states, [4] * (MF.REWALK_STRIKES - 1) + [None])
 
 
+def case_p1117r5_momfetch():
+    def timed(url):
+        t0 = time.time()
+        try:
+            with patch.object(MF, "DEADLINE", 1):
+                MF.get(url)
+            got = "returned"
+        except MF.Refused as e:
+            got = ("refused", e.code)
+        return got, time.time() - t0 < 5
+    import socket as so
+    out = []
+    port, close = drip_server(b"[" + b" " * 199, 0.2, b"HTTP/1.1 200 OK\r\nContent-Length: 200\r\n\r\n")
+    out.append(timed("http://127.0.0.1:%d/v1/x" % port))
+    close()
+    port, close = drip_server(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", 0.3)       # 12 s, once connected
+    real = so.create_connection
+    so.create_connection = lambda *a, **k: (time.sleep(1.5), real(*a, **k))[1]
+    try:
+        out.append(timed("http://127.0.0.1:%d/v1/x" % port))
+    finally:
+        so.create_connection = real
+        close()
+    port, close = drip_server(b"\x00" * 60, 0.25, b"\x16\x03\x03\x40\x00")
+    out.append(timed("https://127.0.0.1:%d/v1/x" % port))
+    close()
+    target, tclose = drip_server(b"", 0, b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]")
+    port, close = drip_server(b"", 0, b"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:%d/x"
+                              b"\r\nContent-Length: 0\r\n\r\n" % target)
+    out.append(timed("http://127.0.0.1:%d/v1/x" % port))
+    close()
+    tclose()
+    check("P1117r5: momfetch cuts a dripped body and a late connect, and follows no redirect",
+          (out, tclose.hits), ([(("refused", 0), True)] * 3 + [(("refused", 302), True)], []))
+    tsv, boards = home("grow")
+    write_board(boards, 1, 1, 0, 1, range(1, 101), 100)
+    for n in range(6):
+        def page(url, n=n):
+            data = [{"rank": r, "time": 1.0 + n + r / 1000.0,
+                     "replayHash": "%040x" % (10 ** 6 * (n + 1) + r), "createdAt": "c" * 100,
+                     "downloadURL": "u" * 600,
+                     "user": {"id": r, "steamID": str(76561198100000000 + 1000 * n + r), "alias": "a" * 9000}}
+                    for r in range(1, 101)]
+            return json.dumps({"totalCount": 100, "data": data}).encode()
+        fetch(page, ["--tracks", tsv, "--out", boards, "--take", "100", "--depth", "0", "--delay", "0",
+                     "--max", "1", "--refresh", "--go", "--board", "1_g1_t01"])
+    rows = board(boards, 1, 1, 0, 1)["rows"]
+    check("P1117r5: six pages of new hashes leave at most max(total, take) rows, every string bounded",
+          (len(rows), max(len(r["alias"]) for r in rows), max(len(r["created"]) for r in rows),
+           max(len(r["url"]) for r in rows), os.path.getsize(os.path.join(boards, "1_g1_t01.json")) < 60000),
+          (100, 64, 0, 0, True))
+    tsv, boards = home("deep")
+    p = write_board(boards, 1, 1, 0, 1, range(1, 301), 300)
+    held = board(boards, 1, 1, 0, 1)["rows"]
+    sid, fast = held[150]["steamid"], dict(held[150], time=0.5, hash="%040x" % 7)
+    reset = held[200]           # a faster run, older: reset upstream, then re-run slower
+    doc = dict(board(boards, 1, 1, 0, 1), rows=held + [dict(
+        reset, time=0.4, hash="%040x" % 8, created="2025-01-01T00:00:00.000Z")])
+    with io.open(p, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh)
+
+    def low(url):
+        return json.dumps({"totalCount": 5, "data": [{
+            "rank": 1, "time": 0.5, "replayHash": fast["hash"], "createdAt": "2026-10-29T00:00:00.000Z",
+            "user": {"id": 151, "steamID": sid, "alias": "x"}}]}).encode()
+    fetch(low, ["--tracks", tsv, "--out", boards, "--take", "100", "--depth", "0", "--delay", "0",
+                "--max", "1", "--refresh", "--go", "--board", "1_g1_t01"])
+    rows = board(boards, 1, 1, 0, 1)["rows"]
+    check("P1117r5: a page with a low totalCount keeps the depth held; a player keeps one row, the newest",
+          (len(rows), [r["hash"] for r in rows if r["steamid"] == sid],
+           [r["hash"] for r in rows if r["steamid"] == reset["steamid"]]), (300, [fast["hash"]], [reset["hash"]]))
+    got = MF.parse_board({"totalCount": 5, "data": [
+        {"replayHash": "%040x" % 1, "time": 10 ** 400, "user": {}},
+        {"replayHash": "%040x" % 2, "time": True},
+        {"replayHash": "zz", "time": 1.0},
+        {"replayHash": "%040x" % 3, "time": 1.0, "user": [1]},
+        {"replayHash": "%040x" % 4, "time": 2.0, "user": {"alias": ["x"], "steamID": "7656"}}]})
+    check("P1117r5: parse_board skips what it cannot take, never raises",
+          [(r["hash"][-1], r["alias"], r["steamid"]) for r in got[1]], [("3", "?", ""), ("4", "?", "7656")])
+    tsv, boards = home("badstate")
+    for name, (mid, bl) in CAT.items():
+        for gm, tt, tn in bl:
+            write_board(boards, mid, gm, tt, tn, range(1, 11), 10)
+    write_board(boards, 1, 1, 0, 1, [1, 2, 3, 6, 7, 9, 10], 10)
+    MF.write_board(os.path.join(boards, MF.REWALK), {"walking": {"1_g1_t01": 4},
+                                                     "strikes": {"1_g1_t01": [4, "x"]}, "walked": []})
+
+    def busy(url):
+        if "maps/1/" in url and url.endswith("skip=4"):
+            raise MF.Refused("HTTP 429", 429)
+        return FakeMomentum()(url)
+    fetch(busy, ["--tracks", tsv, "--out", boards, "--take", "2", "--depth", "-1", "--delay", "0",
+                 "--max", "10", "--rewalk", "--go"])
+    check("P1117r5: a malformed .rewalk entry is reset, not a TypeError",
+          MF.rewalk_state(boards)["strikes"].get("1_g1_t01"), [4, 1])
+
+
 def case_404s():
     tsv, boards = home("gone")
     for name, (mid, bl) in CAT.items():
@@ -571,7 +672,8 @@ def main():
         for case in (case_tail_past_the_deepest_rank, case_rewalk, case_board_selector,
                      case_stalest_boards, case_tick_budget, case_player_walk_refused_carries_on,
                      case_404s, case_p1117r2_walk_errors_carry_on, case_p1117r2_old_momfetch,
-                     case_p1117r2_momfetch_replies, case_p1117r4_momfetch_bounds):
+                     case_p1117r2_momfetch_replies, case_p1117r4_momfetch_bounds,
+                     case_p1117r5_momfetch):
             print("\n%s:" % case.__name__)
             case()
     finally:

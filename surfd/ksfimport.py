@@ -98,6 +98,7 @@ import http.client
 import io
 import json
 import logging
+import math
 import os
 import re
 import socket
@@ -155,6 +156,7 @@ KSF_TICK = 0.015
 
 KSF_PAGE = 20              # rows in a records page; a shorter one ends the board
 KSF_STAGES = 30            # zones 1..30 are stages; 30+n is bonus n
+KSF_BONUSES = 69           # ...to zone 99
 KSF_DEPTH_DEFAULT = 100    # rows per board for --from-maps; -1 is the whole board
 KSF_REQ_DEFAULT = 300      # requests per --from-maps invocation
 
@@ -308,7 +310,7 @@ class Deadline(object):
     and Windows alike."""
 
     def __init__(self, seconds):
-        self.seconds, self.conns, self.fired = seconds, [], False
+        self.seconds, self.socks, self.fired = seconds, [], False
         self.timer = threading.Timer(seconds, self.fire)
         self.timer.daemon = True
 
@@ -321,28 +323,65 @@ class Deadline(object):
 
     def fire(self):
         self.fired = True
-        for c in list(self.conns):
-            sock = getattr(c, "sock", None)
-            if sock is not None:
-                try:
-                    sock.shutdown(socket.SHUT_RDWR)
-                except OSError:
-                    pass
+        for sock in list(self.socks):
+            self.shut(sock)
+
+    def watch(self, sock):
+        if sock not in self.socks:
+            self.socks.append(sock)
+        if self.fired:
+            self.shut(sock)
+
+    @staticmethod
+    def shut(sock):
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
 
     def handlers(self):
-        """HTTP(S) handlers that record each connection they make, for fire()."""
+        """HTTP(S) handlers whose connections hand their socket over AS THEY CONNECT,
+        an HTTPS one before its handshake (P1117 review 5: urllib drops h.sock once
+        the headers are in, so the body was never shut; a connect still pending at
+        the deadline was never seen; a handshake trickled a byte at a time held a
+        1 s deadline 15 s), and no redirect followed (to 127.0.0.1:* or ftp://)."""
         dl = self
+
+        class Handshake(object):
+            def __init__(self, ctx):
+                self.ctx = ctx
+
+            def __getattr__(self, k):
+                return getattr(self.ctx, k)
+
+            def wrap_socket(self, sock, **kw):
+                kw["do_handshake_on_connect"] = False
+                s = self.ctx.wrap_socket(sock, **kw)
+                dl.watch(s)
+                s.do_handshake()
+                return s
 
         def watched(base):
             class Watched(base):
                 def do_open(self, http_class, req, **kw):
-                    def make(host, **a):
-                        c = http_class(host, **a)
-                        dl.conns.append(c)
-                        return c
-                    return base.do_open(self, make, req, **kw)
+                    class Conn(http_class):
+                        def __init__(self, *a, **k):
+                            super().__init__(*a, **k)
+                            if getattr(self, "_context", None) is not None:
+                                self._context = Handshake(self._context)
+
+                        def connect(self):
+                            super().connect()
+                            dl.watch(self.sock)
+                    return base.do_open(self, Conn, req, **kw)
             return Watched
-        return [watched(urllib.request.HTTPHandler)(), watched(urllib.request.HTTPSHandler)()]
+        return [watched(urllib.request.HTTPHandler)(), watched(urllib.request.HTTPSHandler)(),
+                NoRedirect()]
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args):
+        return None
 
 
 def fetch(url):
@@ -443,10 +482,14 @@ def zone_track_leg(zone):
 
 
 def zones_of(info):
-    """Main, the stages of a staged map, then the bonuses."""
-    stages = int(info.get("cp_count") or 0) if info.get("isLinear") is False else 0
-    bonuses = int(info.get("b_count") or 0)
-    return ([0] + list(range(1, min(stages, KSF_STAGES) + 1))
+    """Main, the stages of a staged map, then the bonuses.  The counts are KSF's
+    reply, cached for good: an int in range or none (P1117 review 5: "x", 1e400 or
+    2,000,000 stopped or stalled every tick), as ksfgrab.stages_of reads them."""
+    def count(v, top):
+        return v if type(v) is int and 1 <= v <= top else 0
+    stages = count(info.get("cp_count"), KSF_STAGES) if info.get("isLinear") is False else 0
+    bonuses = count(info.get("b_count"), KSF_BONUSES)
+    return ([0] + list(range(1, stages + 1))
             + [KSF_STAGES + n for n in range(1, bonuses + 1)])
 
 
@@ -763,9 +806,10 @@ def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
 def _when(rec):
     """The record's date in epoch seconds, or 0 when it is none: bounded, since
     SQLite takes 64 bits and inf takes none (P1117 review 4: one date wedged a tick)."""
-    try:
-        v = int(rec.get("date") or 0)
-    except (TypeError, ValueError, OverflowError):
+    v = rec.get("date")
+    if type(v) is float and math.isfinite(v):
+        v = int(v)
+    elif type(v) is not int:            # a bool is no date (P1117 review 5)
         return 0
     return v if 0 < v < 2 ** 32 else 0
 

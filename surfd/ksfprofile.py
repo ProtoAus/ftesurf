@@ -147,6 +147,18 @@ def step(K, cache, pacer, have, now, budget=3):
     without refetching and daily refreshes cannot reuse yesterday's snapshot.
     Never raises a refusal: see the module docstring.
     """
+    at = []
+    try:
+        return _step(K, cache, pacer, have, now, budget, at)
+    except Exception:
+        # P1117 review 5: a walk that raises every time must not stay first in
+        # pending() with the others behind it: it gives up its turn.
+        if at:
+            touch(K, at[0], at[1], now)
+        raise
+
+
+def _step(K, cache, pacer, have, now, budget, at):
     park = parked(K, cache, now)
     if park:
         print('KSF player walks parked (%s) until %s' % (
@@ -159,6 +171,7 @@ def step(K, cache, pacer, have, now, budget=3):
         db.close()
     spent = 0
     for player, mode, start, asked in work:
+        at[:] = [player, asked]
         sid = K.S.steam2(player)
         if not sid:
             continue
@@ -272,6 +285,20 @@ def step(K, cache, pacer, have, now, budget=3):
         if state == 'partial':
             work.append((player, nextmode, nxt, asked))
     return spent
+
+
+def touch(K, player, asked, now):
+    """A walk gives up its turn: its `updated` moves, nothing else."""
+    try:
+        db = K.S.connect()
+        try:
+            with db:
+                db.execute("UPDATE ksfprofiles SET updated=? WHERE player=? AND asked=?"
+                           " AND state IN ('queued','partial')", (now, player, asked))
+        finally:
+            db.close()
+    except sqlite3.Error:
+        pass
 
 
 def durable(K, fn, saved):

@@ -337,6 +337,8 @@ def main():
                     or not 0 < t < 1e6):
                 continue
             ms = int(round(t * 1000.0))
+            if ms < 1:                      # under 0.5 ms rounds to an unbeatable 0 (review 5)
+                continue
             when = created_epoch(r.get("created"))
             if when is None:
                 nodate += 1

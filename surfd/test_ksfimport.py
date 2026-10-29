@@ -532,7 +532,7 @@ def case_p1117r3_same_record_improves():
     check("...and 100 ms faster replaces it, unlinked from the old time's demo", held(), (5900, 0))
 
 
-def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2):
+def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2, head=b""):
     """A local server sending `reply` a byte every `gap` s.  -> (port, stop)."""
     import socket
     import threading
@@ -544,6 +544,8 @@ def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2
     def drip(c):
         try:
             c.recv(65536)
+            if head:
+                c.sendall(head)
             for b in reply:
                 if stop:
                     break
@@ -560,12 +562,14 @@ def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2
                 c, _ = srv.accept()
             except OSError:
                 return
+            hits.append(1)
             threading.Thread(target=drip, args=(c,), daemon=True).start()
     threading.Thread(target=serve, daemon=True).start()
 
     def close():
         stop.append(1)
         srv.close()
+    hits = close.hits = []
     return srv.getsockname()[1], close
 
 
@@ -585,6 +589,73 @@ def case_p1117r4_watchdog():
         close()
     check("P1117r4: a reply dripped from its status line on is no answer at the deadline",
           (got, time.time() - t0 < 5), (("refused", True), True))
+
+
+def timed_fetch(url, deadline=1):
+    old, t0 = K.KSF_DEADLINE, time.time()
+    K.KSF_DEADLINE = deadline
+    try:
+        REAL_FETCH(url)
+        got = "returned"
+    except K.Refused as e:
+        got = ("refused", e.transient, e.code)
+    finally:
+        K.KSF_DEADLINE = old
+    return got, time.time() - t0 < 5
+
+
+def slow_connect(seconds):
+    """socket.create_connection, `seconds` late: a connect still pending at the deadline."""
+    import socket as so
+    real = so.create_connection
+
+    def slow(*a, **k):
+        time.sleep(seconds)
+        return real(*a, **k)
+    so.create_connection = slow
+    return lambda: setattr(so, "create_connection", real)
+
+
+def case_p1117r5_watchdog():
+    """Through urllib's own do_open: a body, a chunk-size line and a pending connect."""
+    out = []
+    for head, reply in ((b"HTTP/1.1 200 OK\r\nContent-Length: 200\r\n\r\n", b"[" + b" " * 199), (b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n", b"1" * 200)):
+        port, close = drip_server(reply, 0.2, head)
+        out.append(timed_fetch("http://127.0.0.1:%d/x" % port))
+        close()
+    port, close = drip_server(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", 0.3)       # 12 s, once connected
+    undo = slow_connect(1.5)
+    try:
+        out.append(timed_fetch("http://127.0.0.1:%d/x" % port))
+    finally:
+        undo()
+        close()
+    port, close = drip_server(b"\x00" * 60, 0.25, b"\x16\x03\x03\x40\x00")   # one TLS record, a byte at a time
+    out.append(timed_fetch("https://127.0.0.1:%d/x" % port))
+    close()
+    check("P1117r5: a dripped body, chunk-size line, late connect, TLS handshake: no answer at the deadline",
+          out, [(("refused", True, 0), True)] * 4)
+    target, tclose = drip_server(b"", 0, b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]")
+    for loc in (b"http://127.0.0.1:%d/x" % target, b"ftp://127.0.0.1/x"):
+        port, close = drip_server(b"", 0, b"HTTP/1.1 302 Found\r\nLocation: " + loc
+                                  + b"\r\nContent-Length: 0\r\n\r\n")
+        out = timed_fetch("http://127.0.0.1:%d/x" % port)
+        close()
+        check("P1117r5: a redirect to %s is refused, never followed" % loc.decode()[:20],
+              (out[0][0], out[0][2], tclose.hits), ("refused", 302, []))
+    tclose()
+
+
+def case_p1117r5_bounds():
+    check("P1117r5: zones_of takes a count only as an int in range",
+          [K.zones_of(i) for i in ({"isLinear": False, "cp_count": "x", "b_count": 1e400},
+                                   {"isLinear": False, "cp_count": 2000000, "b_count": True},
+                                   {"isLinear": False, "cp_count": 1e300, "b_count": -2},
+                                   {"isLinear": False, "cp_count": 2, "b_count": 1})],
+          [[0], [0], [0], [0, 1, 2, 31]])
+    check("P1117r5: _when takes an int or a finite float, never a bool or a string",
+          [K._when({"date": v}) for v in (True, 1790000000.0, "1790000000", float("nan"), 1790000000)],
+          [0, 1790000000, 0, 0, 1790000000])
 
 
 def case_p1117_quiet_park():
@@ -1041,6 +1112,7 @@ def main():
                  case_modes, case_merge_and_refresh, case_watch,
                  case_watch_refusal_parks, case_p1117_quiet_park, case_p1117r1_record_identity, case_p1117r2_caps,
                  case_p1117r3_whole_reply, case_p1117r3_same_record_improves, case_p1117r4_watchdog,
+                 case_p1117r5_watchdog, case_p1117r5_bounds,
                  case_watch_dry_and_owed,
                  case_review_findings, case_review_round2,
                  case_board_reads_ksf_styles):

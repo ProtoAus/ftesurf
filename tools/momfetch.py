@@ -70,6 +70,9 @@ duplicate the boundary row and dropping blind would lose it; identity by hash is
 immune to the shift.  The `rank` field the API sends is kept but is ADVISORY --
 nothing reads it (checked: momboards.py never mentions it, and surfd derives
 rank at query time from BOARD_ORDER), which is what makes a stale one harmless.
+A player keeps one row, their newest (P1117 review 5: Momentum holds a player's
+current run only, and the union kept every superseded one), and a board no more
+rows than its totalCount, its page or what it held already.
 WHAT THIS CANNOT SEE is a run DELETED upstream.  A union never shrinks, and
 --refresh merges too rather than replacing, so nothing in this tool purges a row
 the API has stopped serving -- deleting the board's json is the only way, which
@@ -83,6 +86,7 @@ import http.client
 import io
 import json
 import os
+import re
 import socket
 import sys
 import threading
@@ -108,6 +112,7 @@ UA = "FTESurf/0.1 momfetch (+https://proto.bar/ftesurf)"
 TIMEOUT = 30
 TAKE_MAX = 100        # the API's own cap: take=101 is a 400
 TOTAL_MAX = 100000    # a totalCount past this is not a board (the deepest, 27,022)
+HEX40 = re.compile(r"[0-9a-f]{40}")
 DEADLINE = 60         # s for a whole exchange (Deadline)
 REWALK_STRIKES = 3    # host refusals of one re-walk page before that re-walk ends
 MAX_BYTES = 1 << 20   # a reply; a 100-row page is ~13.5 KB
@@ -158,7 +163,7 @@ class Deadline(object):
     this file runs beside momwatch with nothing of surfd's."""
 
     def __init__(self, seconds):
-        self.seconds, self.conns, self.fired = seconds, [], False
+        self.seconds, self.socks, self.fired = seconds, [], False
         self.timer = threading.Timer(seconds, self.fire)
         self.timer.daemon = True
 
@@ -171,27 +176,65 @@ class Deadline(object):
 
     def fire(self):
         self.fired = True
-        for c in list(self.conns):
-            sock = getattr(c, "sock", None)
-            if sock is not None:
-                try:
-                    sock.shutdown(socket.SHUT_RDWR)
-                except OSError:
-                    pass
+        for sock in list(self.socks):
+            self.shut(sock)
+
+    def watch(self, sock):
+        if sock not in self.socks:
+            self.socks.append(sock)
+        if self.fired:
+            self.shut(sock)
+
+    @staticmethod
+    def shut(sock):
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
 
     def handlers(self):
+        """HTTP(S) handlers whose connections hand their socket over AS THEY CONNECT,
+        an HTTPS one before its handshake (P1117 review 5: urllib drops h.sock once
+        the headers are in, so the body was never shut; a connect still pending at
+        the deadline was never seen; a handshake trickled a byte at a time held a
+        1 s deadline 15 s), and no redirect followed (to 127.0.0.1:* or ftp://)."""
         dl = self
+
+        class Handshake(object):
+            def __init__(self, ctx):
+                self.ctx = ctx
+
+            def __getattr__(self, k):
+                return getattr(self.ctx, k)
+
+            def wrap_socket(self, sock, **kw):
+                kw["do_handshake_on_connect"] = False
+                s = self.ctx.wrap_socket(sock, **kw)
+                dl.watch(s)
+                s.do_handshake()
+                return s
 
         def watched(base):
             class Watched(base):
                 def do_open(self, http_class, req, **kw):
-                    def make(host, **a):
-                        c = http_class(host, **a)
-                        dl.conns.append(c)
-                        return c
-                    return base.do_open(self, make, req, **kw)
+                    class Conn(http_class):
+                        def __init__(self, *a, **k):
+                            super().__init__(*a, **k)
+                            if getattr(self, "_context", None) is not None:
+                                self._context = Handshake(self._context)
+
+                        def connect(self):
+                            super().connect()
+                            dl.watch(self.sock)
+                    return base.do_open(self, Conn, req, **kw)
             return Watched
-        return [watched(urllib.request.HTTPHandler)(), watched(urllib.request.HTTPSHandler)()]
+        return [watched(urllib.request.HTTPHandler)(), watched(urllib.request.HTTPSHandler)(),
+                NoRedirect()]
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args):
+        return None
 
 
 def get(url):
@@ -308,7 +351,7 @@ def write_board(path, rec):
     os.replace(part, path)
 
 
-def merge_rows(old, new):
+def merge_rows(old, new, cap=0):
     """Union by replayHash, ordered by time.
 
     See the docstring's ROWS MERGE paragraph for why identity is the hash and
@@ -321,9 +364,22 @@ def merge_rows(old, new):
         h = r.get("hash")
         if h:
             by[h] = r
-    out = list(by.values())
-    out.sort(key=lambda r: (r.get("time", 0.0), r.get("rank") or 0))
-    return out
+    # P1117 review 5: one row a player, their newest (Momentum holds a player's current
+    # run only; 29 Oct, 2,115 superseded rows on 625 boards, 162 of them faster than
+    # the run that replaced them after a reset), and at most `cap` rows, fastest first:
+    # six page-1 answers of new hashes grew one file 0.87 -> 5.23 MB.
+    order = lambda r: (r.get("time", 0.0), r.get("rank") or 0)
+    newest = lambda r: (r.get("created") if isinstance(r.get("created"), str) else "", -r.get("time", 0.0))
+    best, out = {}, []
+    for r in by.values():
+        sid = r.get("steamid")
+        if not sid:
+            out.append(r)
+        elif sid not in best or newest(r) > newest(best[sid]):
+            best[sid] = r
+    out += best.values()
+    out.sort(key=order)
+    return out[:cap] if cap else out
 
 
 def deepest(rows):
@@ -348,7 +404,12 @@ def rewalk_state(out):
     except (OSError, ValueError):
         d = None
     d = d if isinstance(d, dict) else {}
-    return {k: d[k] if isinstance(d.get(k), dict) else {} for k in ("walking", "walked", "strikes")}
+    part = lambda k: d[k].items() if isinstance(d.get(k), dict) else ()
+    # P1117 review 5: a malformed entry is dropped, never a TypeError at its use.
+    return {"walking": {k: v for k, v in part("walking") if type(v) is int and v >= 0},
+            "walked": {k: v for k, v in part("walked") if type(v) is int and v >= 0},
+            "strikes": {k: v for k, v in part("strikes")
+                        if isinstance(v, list) and len(v) == 2 and all(type(x) is int for x in v)}}
 
 
 def end_rewalk(out, state, walking, p):
@@ -385,31 +446,40 @@ def parse_board(doc):
     # P1117 review: clamped, since the planner pages up to it (27,022 was the deepest, 29 Oct).
     total = min(total, TOTAL_MAX) if type(total) is int and total > 0 else 0
     out = []
-    for e in (doc.get("data") or []):
+    data = doc.get("data")
+    for e in data if isinstance(data, list) else []:
         if not isinstance(e, dict):
             continue
-        h = e.get("replayHash")
-        t = e.get("time")
-        if not isinstance(h, str) or not h or not isinstance(t, (int, float)):
+        h, t = e.get("replayHash"), e.get("time")
+        h = h.lower() if isinstance(h, str) else ""
+        # P1117 review 5: every field bounded (a board file keeps them for good), a
+        # time in (0, 1e6) s compared before float() -- a 400-digit int overflows it,
+        # and a bool is no time -- and a row it cannot take skipped, never raised.
+        if not HEX40.fullmatch(h) or type(t) not in (int, float) or not 0 < t < 1e6:
             continue
-        u = e.get("user") or {}
+        u = e.get("user") if isinstance(e.get("user"), dict) else {}
         # steamID is a STRING on purpose: a SteamID64 does not survive a JSON
         # number, which is a double and loses the low digits above 2^53.
         sid = u.get("steamID")
         # Momentum's own user number: its dashboard addresses a profile by it
         # (/profile/<id>) and by nothing else, a SteamID there is a 404.
-        uid = u.get("id")
+        uid, rank, alias = u.get("id"), e.get("rank"), u.get("alias")
+        alias = alias.replace("\t", " ").strip()[:64] if isinstance(alias, str) else ""
         out.append({
-            "uid": uid if isinstance(uid, int) and not isinstance(uid, bool) and uid > 0 else 0,
-            "rank": e.get("rank") if isinstance(e.get("rank"), int) else 0,
+            "uid": uid if type(uid) is int and 0 < uid < 2 ** 53 else 0,
+            "rank": rank if type(rank) is int and 0 < rank <= TOTAL_MAX else 0,
             "time": float(t),
             "hash": h,
-            "steamid": sid if isinstance(sid, str) else "",
-            "alias": (u.get("alias") or "?").replace("\t", " ").strip() or "?",
-            "created": e.get("createdAt") or "",
-            "url": e.get("downloadURL") or "",
+            "steamid": sid if isinstance(sid, str) and sid.isdigit() and len(sid) <= 20 else "",
+            "alias": alias or "?",
+            "created": _text(e.get("createdAt"), 40),
+            "url": _text(e.get("downloadURL"), 512),
         })
     return total, out
+
+
+def _text(v, n):
+    return v if isinstance(v, str) and len(v) <= n else ""
 
 
 def main():
@@ -642,7 +712,9 @@ def main():
         # --refresh on every 7-minute tick, so that would have quietly cut every
         # played map's board back to `take` rows.
         cur = load_board(p)
-        merged = merge_rows(cur["rows"], data) if cur else data
+        held = cur["rows"] if cur else []
+        # Never under the rows held: one page with a low totalCount would cut a deep board.
+        merged = merge_rows(held, data, cap=max(total, take, len(held)))
         got += len(merged) - (len(cur["rows"]) if cur else 0)
 
         # A SHORT LATER PAGE MEANS THE BOARD ENDED, so believe the page over the

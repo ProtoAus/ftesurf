@@ -50,7 +50,7 @@ def raw(**updates):
     return r
 
 
-def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2):
+def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2, head=b""):
     """A local server sending `reply` a byte every `gap` s.  -> (port, stop)."""
     import socket
     import threading
@@ -62,6 +62,8 @@ def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2
     def drip(c):
         try:
             c.recv(65536)
+            if head:
+                c.sendall(head)
             for b in reply:
                 if stop:
                     break
@@ -78,12 +80,14 @@ def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2
                 c, _ = srv.accept()
             except OSError:
                 return
+            hits.append(1)
             threading.Thread(target=drip, args=(c,), daemon=True).start()
     threading.Thread(target=serve, daemon=True).start()
 
     def close():
         stop.append(1)
         srv.close()
+    hits = close.hits = []
     return srv.getsockname()[1], close
 
 
@@ -401,6 +405,16 @@ class Tests(unittest.TestCase):
         finally:
             close()
         self.assertLess(time.time() - t0, 5)
+
+    def test_p1117r5_the_watchdog_firing_is_no_answer_whatever_the_read_did(self):
+        # Headers at once, then a trickle: past EXCHANGE it is no answer, not the file's.
+        port, close = drip_server(b"x" * 200, 0.2, b"HTTP/1.1 200 OK\r\nContent-Length: 200\r\n\r\n")
+        try:
+            with patch.object(K, 'KSF_BASE', 'http://127.0.0.1:%d' % port), patch.object(G, 'EXCHANGE', 1):
+                with self.assertRaises(TimeoutError):
+                    G.fetch(self.r['file'])
+        finally:
+            close()
 
     def test_p1117r1_a_body_past_its_deadline_is_the_files_failure(self):
         class Body:

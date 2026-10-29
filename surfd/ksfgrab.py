@@ -291,18 +291,15 @@ def fetch(file):
     if not FILE.fullmatch(file):
         raise ValueError('invalid replay filename')
 
-    class NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, *args):
-            return None
-
     req = urllib.request.Request(K.KSF_BASE + '/api/replays/' + file + '?game=66t',
                                  headers={'User-Agent': K.UA})
     # P1117 review 4: the whole exchange inside EXCHANGE s (ksfimport.Deadline); past
-    # it, no answer before the headers, the file's failure after them.
+    # it, no answer -- whatever the read did when its socket shut (review 5: on Linux
+    # a header trickle ends in EOF after `got`).  A slow BODY is the loop's deadline.
     dl, got = K.Deadline(EXCHANGE), []
     try:
         with dl:
-            data = _download(req, dl, got, NoRedirect)
+            data = _download(req, dl, got)
     except urllib.error.HTTPError:
         raise
     except (OSError, http.client.HTTPException):
@@ -310,14 +307,12 @@ def fetch(file):
             raise
         data = None
     if dl.fired:
-        if got:
-            raise BodyBroken('a body past the %d s exchange deadline' % EXCHANGE)
         raise TimeoutError('no answer within %d s' % EXCHANGE)
     return data
 
 
-def _download(req, dl, got, NoRedirect):
-    with urllib.request.build_opener(NoRedirect, *dl.handlers()).open(req, timeout=30) as r:
+def _download(req, dl, got):
+    with urllib.request.build_opener(*dl.handlers()).open(req, timeout=30) as r:  # no redirects
         got.append(True)
         claimed = getattr(r, 'headers', {}).get('Content-Length')
         expected = None

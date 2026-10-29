@@ -187,6 +187,20 @@ class Profiles(unittest.TestCase):
             K.watch_mode(SimpleNamespace(delay=0, max=10, go=True), self.have, self.cache)
         self.assertEqual((bool(calls), self.parks()), (True, [P.PARK]))
 
+    def test_p1117r5_a_walk_that_raises_gives_up_its_turn(self):
+        other = '76561198000000099'
+        self.queue(now=100); self.queue(other, now=200)
+        real = K.rec_row
+
+        def broken(mp, zone, mode, rec):
+            if rec.get('steamID') == PLAYER:
+                raise ValueError('a value nothing expected')
+            return real(mp, zone, mode, rec)
+        with patch.object(K, 'rec_row', broken):
+            with self.assertRaises(ValueError):
+                self.step(now=1001)
+        self.assertEqual(P.pending(self.db)[0][0], other)
+
     def test_p1117r4_a_view_walk_is_capped(self):
         self.src.n = 100; self.queue()
         with patch.object(P, 'VIEW_PAGES', 3):
