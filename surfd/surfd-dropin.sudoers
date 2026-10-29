@@ -1,0 +1,4 @@
+# P1115: proto may start the drop-in installer unit, and nothing else, without a password.
+# The unit (surfd-dropin-install.service) runs /usr/local/sbin/surfd-dropin-install as root in
+# its own cgroup. Installed as /etc/sudoers.d/surfd-dropin, mode 0440 root:root, after `visudo -cf`.
+proto ALL=(root) NOPASSWD: /usr/bin/systemctl start surfd-dropin-install.service
