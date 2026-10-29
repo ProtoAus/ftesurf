@@ -2,6 +2,8 @@
 
 ## P1120 boost carry feel/status (pending)
 
+Deployed to both Windows installs and all12Pi lobbies, 2026-10-29. Two clear
+source reviews, acting VM controls and live CS/board draw are not owner acceptance.
 On a usual push pad, confirm normal boost feel is unchanged. If testing a
 manually enabled pad across attempts, confirm the later run becomes unranked
 without stopping play. Not owner-confirmed, a numerical speed measurement or

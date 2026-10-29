@@ -4056,6 +4056,14 @@ source exemption even for a different recipient. This is the direct enabled-push
 edge, NOT all speed/config/timing contributors or transitive logical outputs.
 No global-context swap/join, new captured field/format, flag or tier policy.
 
+P1120 preflight pitfall: a read-only fleet census can time out AFTER creating
+OWN scratch predecessor copies but BEFORE any live mutation. Preserve that
+failure; diagnose the actual actor/query, not a new deployment namespace. Reuse
+only explicitly owner-bound copies whose hashes STILL equal all current live
+predecessors. Then take the full fresh status7/directory/health census; no stale
+emptiness, skipped guard, healthy restart or archive overwrite is a recovery.
+A later passing census does not explain or relabel the original timeout.
+
 **Loaded recording attribution (P945, 2026-10-23).**
 
 Native input attribution must hash the complete FS_LoadFile buffer, not strlen

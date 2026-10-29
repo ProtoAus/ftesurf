@@ -50,5 +50,39 @@ this direct enabled-state edge does NOT close those broader frontiers.
 Redesigned full isolated build: server/menu0warnings, two unchanged upstream
 clientF333 property227 warnings, zeroNEW. Reader949/0; byte-identical504recordings/
 167paired views retain the same faults (not a fault-free historical corpus).
-Clean-commit independent RE-REVIEWS and ordinary dual-Windows/Pi promotion pending. No native/backend/schema/threshold, Build or
-release action is part of this patch. Exact fixture/raw results remain private.
+Both clean-commit independent RE-REVIEWS cleared the corrected direct-delivery
+scope with no issues. Reviewed/published QC `ed58d60f9ea2`, engine documentation
+`2173f1f280a8`; the later delivery documentation does not change those code bytes.
+The 15-case subject ran before that commit existed: its frozen source diff and
+hashes bind the corrected bytes; it is not relabelled as originally launched at
+the eventual commit. Full clean-commit and deployment builds are separate checks.
+
+Ordinary deployment verified 2026-10-29 13:49:02 UTC: all six DAT/LNO files match
+in BOTH Windows installs; the Pi has the exact QW/CS pair and twelve fresh actors
+using unchanged native images. Each destination's `.prev` matches its actual
+predecessor; immutable original predecessors and the shipped bundle are retained.
+Zero players/spectators were positively observed at the mutation boundary;
+`-PiForce` was not used. Existing protected files unchanged: Windows16198/142,
+Pi34807, including configuration/data/native and backend launchers/unit checks.
+No backend/schema/threshold, native, Build or release action was performed.
+
+Shipped SHA256:
+- QW `a1c3ff72934a3c6d4f5f2691a64a74d1b44ac64ebd889782f0ba29da695c6344`
+- CS `fa9bb6d396342b24cbce496898bb7d056dca996b0805bd1f2583358d6efde8a1`
+- MENU `7cb11cb1d5c0db4a7ab015c222ff837ed5be49642b7d8fce27c8fa9849f4d43e`
+
+The supported deployment build again has SS/menu0warnings and the same two old
+CSF333 warnings/zeroNEW. Since the native client and committed upstream menu had
+changed since P1118, the existing isolated lobby smoke checked this new cohort:
+2026-10-29 13:52:32 UTC, exit0, exact served CS, positive board9cols/type14, noQCerror,
+and screenshot inspected. It explicitly shows unaccepted terms and no local zone
+file/times. This proves live delivery/draw, not boost contact, ranked finish,
+world visuals or human feel. Those manual checks remain pending in lextest.md.
+
+A read-only preflight's UDP status7 timeout occurred after OWN scratch predecessor
+copies, before any live mutation. Original failure retained. One bounded per-actor
+query then positively found all12empty. Explicit owner/hash-bound resumption
+reused only those exact predecessors after checking all4 still equal live bytes;
+full fresh census/directory/health checks then passed. No healthy actor was
+restarted to fix the preflight; the ordinary build later requested each restart.
+No freshness/ownership/data guard was waived. Exact fixture/raw results stay private.
