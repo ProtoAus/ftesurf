@@ -303,11 +303,7 @@ def fetch(url):
         with urllib.request.urlopen(req, timeout=KSF_TIMEOUT) as r:
             if r.status < 200 or r.status >= 300:
                 raise Refused("HTTP %d" % r.status, r.status)
-            body = r.read(KSF_MAX_BYTES + 1)
-            if len(body) > KSF_MAX_BYTES:
-                # P1117 review 2: no page of theirs is near this; it is that request's.
-                raise Refused("a reply over %d bytes" % KSF_MAX_BYTES, board=True)
-            return body.decode("utf-8", "replace")
+            return read_reply(r).decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         # 500 is this host's answer for an id it does not know; anything else
         # (403, 429, 503) is about US and stops the run.  If that reading is
@@ -323,6 +319,34 @@ def fetch(url):
     # traceback after 171 map lookups.
     except (OSError, http.client.HTTPException) as e:
         raise Refused("no answer: %s" % (str(e) or type(e).__name__), transient=True)
+
+
+def read_reply(r, cap=None, deadline=KSF_TIMEOUT):
+    """P1117 review 3: the whole body inside `deadline` s (the timeout is per read,
+    so a trickle held the crawl's lock), at most `cap`, and all its Content-Length.
+    Slow or short is no answer; too big is that request's (no page is near it)."""
+    cap = KSF_MAX_BYTES if cap is None else cap
+    try:
+        want = int(r.headers.get("Content-Length"))
+    except (AttributeError, TypeError, ValueError):
+        want = None
+    if want is not None and want > cap:
+        raise Refused("a reply over %d bytes" % cap, board=True)
+    end, parts, size = time.monotonic() + deadline, [], 0
+    read = r.read1 if hasattr(r, "read1") else r.read
+    while True:
+        if time.monotonic() > end:
+            raise Refused("no answer: the reply took over %d s" % deadline, transient=True)
+        chunk = read(min(64 << 10, cap + 1 - size))
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > cap:
+            raise Refused("a reply over %d bytes" % cap, board=True)
+        parts.append(chunk)
+    if want is not None and size != want:
+        raise Refused("no answer: %d of %d bytes" % (size, want), transient=True)
+    return b"".join(parts)
 
 
 def records(sid, cache_dir, paced):
@@ -1474,13 +1498,15 @@ def write_rows(rows):
                             continue
                     # P1117 review: identity is the RECORD, not a float or a date.  A
                     # walk ('cache') row never rebinds a row naming a record unless it
-                    # is a faster run of another one; a board row always takes over
-                    # its own record from a walk-filed row.
+                    # is faster by a whole millisecond -- KSF updates a record_id in
+                    # place when its player improves (review 3: surf_kitsune2 b2), and
+                    # the demo was the old time's; a board row always takes over its
+                    # own record from a walk-filed row.
                     takeover = False
                     if previous and previous["runid"] and r.get("runid"):
                         rid = record_of(r["runid"])
                         same = rid != "" and rid == record_of(previous["runid"])
-                        if r.get("binding") == "cache" and (same or r["millis"] >= previous["millis"]):
+                        if r.get("binding") == "cache" and r["millis"] >= previous["millis"]:
                             continue
                         takeover = same and r.get("binding") == "board"
                     if previous and previous["millis"] == r["millis"] and not takeover:

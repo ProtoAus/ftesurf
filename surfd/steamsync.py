@@ -423,27 +423,40 @@ def sync(conn, key, http, go, limit, out=print):
     return asked, renamed, rows
 
 
+RECENT_DAYS = 30         # P1117 review 3: accounts signed in or played this recently...
+DONE_TTL = 7 * 86400     # ...and a walk that finished, or found nobody, waits this long
+
+
 def requeue(conn, now, go):
-    """P1117: every unbanned account's KSF and Momentum walks, queued again once
-    their last walk is a day old (each enqueue keeps its own TTL and cap).
-    -> walks queued (a dry run: walks due)."""
+    """P1117: recent unbanned accounts' KSF and Momentum walks, queued again once
+    their last walk is a day old (a week once complete/unknown); each enqueue keeps
+    its own TTL and cap.  -> walks queued (a dry run: walks due)."""
     n = 0
+    cut = now - RECENT_DAYS * 86400
     # Longest unwalked first (P1117 review 2), so a full queue turns everyone over.
     for (sid,) in conn.execute(
             "SELECT a.steamid FROM accounts a"
             " LEFT JOIN ksfprofiles k ON k.player = a.steamid"
             " LEFT JOIN momprofiles m ON m.player = a.steamid"
-            " WHERE a.banned_at = 0"
-            " ORDER BY min(coalesce(k.updated, 0), coalesce(m.updated, 0)), a.steamid").fetchall():
+            " WHERE a.banned_at = 0 AND (a.seen_at >= ? OR EXISTS ("
+            "   SELECT 1 FROM installs i WHERE i.steamid = a.steamid AND i.last_at >= ?))"
+            " ORDER BY min(coalesce(k.updated, 0), coalesce(m.updated, 0)), a.steamid",
+            (cut, cut)).fetchall():
         for walk in (ksfprofile, momprofile):
-            st = walk.status(conn, sid)
-            due = (st["state"] not in ("queued", "partial")
-                   and now - st.get("updated", 0) >= walk.TTL)
-            if due and go:
-                state = walk.enqueue(conn, sid, now).get("state")
-                if state == "busy":
-                    print("%s busy: %s not queued again" % (walk.__name__, sid))
-                due = state == "queued"
+            try:
+                st = walk.status(conn, sid)
+                ttl = DONE_TTL if st["state"] in ("complete", "unknown") else walk.TTL
+                due = (st["state"] not in ("queued", "partial")
+                       and now - st.get("updated", 0) >= ttl)
+                if due and go:
+                    state = walk.enqueue(conn, sid, now).get("state")
+                    if state == "busy":
+                        print("%s busy: %s not queued again" % (walk.__name__, sid))
+                    due = state == "queued"
+            except sqlite3.Error as e:
+                # One account's walk table cannot stop the others' (review 3).
+                print("%s: %s not queued again (%s)" % (walk.__name__, sid, e))
+                due = False
             n += due
     return n
 

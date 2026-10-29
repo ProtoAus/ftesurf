@@ -115,7 +115,16 @@ SKIP_STREAK = 40
 
 
 class Refused(Exception):
-    """The host said no TO US.  Reported, never retried, stops the sweep."""
+    """The host said no TO US.  Reported, never retried, stops the sweep.
+    `code` is the HTTP status, 0 for no answer, -1 for a reply refused here."""
+
+    def __init__(self, msg, code=0):
+        Exception.__init__(self, msg)
+        self.code = code
+
+
+# A refusal about the host, not one board: a re-walk keeps its cursor through these.
+HOST_CODES = (0, 429, 502, 503, 504, 520, 521, 522, 523, 524)
 
 
 class NoSuchBoard(Exception):
@@ -144,20 +153,43 @@ def get(url):
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             if r.status < 200 or r.status >= 300:
-                raise Refused("HTTP %d" % r.status)
-            body = r.read(MAX_BYTES + 1)
-            if len(body) > MAX_BYTES:
-                raise Refused("a reply over %d bytes" % MAX_BYTES)
-            return body
+                raise Refused("HTTP %d" % r.status, r.status)
+            return read_reply(r)
     except urllib.error.HTTPError as e:
         if e.code == 404:
             raise NoSuchBoard("HTTP 404")
-        raise Refused("HTTP %d" % e.code)
+        raise Refused("HTTP %d" % e.code, e.code)
     except urllib.error.URLError as e:
         raise Refused(str(e.reason))
     # P1117 review 2: a body cut short or a read timing out is no answer, not a crash.
     except (OSError, http.client.HTTPException) as e:
         raise Refused("no answer: %s" % (str(e) or type(e).__name__))
+
+
+def read_reply(r, cap=MAX_BYTES, deadline=TIMEOUT):
+    """P1117 review 3: the whole body inside `deadline` s (TIMEOUT is per read, so a
+    trickle held the cron slot), at most `cap` bytes, and all Content-Length said."""
+    try:
+        want = int(r.headers.get("Content-Length"))
+    except (AttributeError, TypeError, ValueError):
+        want = None
+    if want is not None and want > cap:
+        raise Refused("a reply over %d bytes" % cap, -1)
+    end, parts, size = time.monotonic() + deadline, [], 0
+    read = r.read1 if hasattr(r, "read1") else r.read
+    while True:
+        if time.monotonic() > end:
+            raise Refused("no answer: the reply took over %d s" % deadline)
+        chunk = read(min(64 << 10, cap + 1 - size))
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > cap:
+            raise Refused("a reply over %d bytes" % cap, -1)
+        parts.append(chunk)
+    if want is not None and size != want:
+        raise Refused("no answer: %d of %d bytes" % (size, want))
+    return b"".join(parts)
 
 
 def read_tracks(path):
@@ -245,18 +277,26 @@ def holed(cur):
     return not cur.get("absent") and deepest(cur["rows"]) > len(cur["rows"])
 
 
-def end_rewalk(out, key, walking, skip):
-    """P1117 review 2: a re-walk refused at its cursor ends there, so the next run
-    walks another board rather than asking the same page for ever."""
-    p = os.path.join(out, key + ".json")
-    if walking.get(p) != skip:
-        return
-    cur = load_board(p)
-    if cur is not None:
-        cur.pop("rewalk", None)
-        cur["walked"] = int(time.time())
-        write_board(p, cur)
+REWALK = ".rewalk"         # P1117 review 3: re-walk state, out of the boards' mtime (no .json: momgrab lists those)
+
+
+def rewalk_state(out):
+    try:
+        with io.open(os.path.join(out, REWALK), encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        d = None
+    d = d if isinstance(d, dict) else {}
+    return {k: d[k] if isinstance(d.get(k), dict) else {} for k in ("walking", "walked")}
+
+
+def end_rewalk(out, state, walking, p):
+    """A re-walk ends: done, or refused by that board (not by the host)."""
+    key = os.path.basename(p)[:-len(".json")]
+    state["walking"].pop(key, None)
+    state["walked"][key] = int(time.time())
     walking.pop(p, None)
+    write_board(os.path.join(out, REWALK), state)
 
 
 def gm_of(name):
@@ -382,6 +422,7 @@ def main():
     todo = []
     held = wanted = fresh_boards = 0
     walking, holes = {}, []     # path -> re-walk cursor; re-walk candidates
+    rw = rewalk_state(a.out)
     for (name, mid, gm, tt, tn) in jobs:
         path = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
         cur = load_board(path)
@@ -414,16 +455,19 @@ def main():
         for s in sorted(skips):
             todo.append((s, name, mid, gm, tt, tn))
         if a.rewalk:
-            job = (name, mid, gm, tt, tn, total)
-            if isinstance(cur.get("rewalk"), int):
-                walking[path] = (cur["rewalk"], job)
+            job, key = (name, mid, gm, tt, tn, total), board_key(mid, gm, tt, tn)
+            at = rw["walking"].get(key)
+            if type(at) is int and at >= 0:
+                walking[path] = (at, job)
             elif holed(cur):
-                holes.append((int(cur.get("walked") or 0), int(cur.get("fetched") or 0),
-                              path, job))
+                walked = rw["walked"].get(key)
+                holes.append((walked if type(walked) is int else 0,
+                              int(cur.get("fetched") or 0), path, job))
     # One board at a time, the one walked longest ago (KSF's rewalk_step).
     if a.rewalk and not walking and holes:
         _w, _f, path, job = min(holes)
         walking[path] = (0, job)
+        rw["walking"][os.path.basename(path)[:-len(".json")]] = 0
     planned = set(todo)
     for path, (start, (name, mid, gm, tt, tn, total)) in sorted(walking.items()):
         print("re-walk           %s from skip %d of %d" % (os.path.basename(path), start, total))
@@ -483,11 +527,9 @@ def main():
                     rec["total"] = min(cur.get("total") or 0, skip)
                 else:
                     rec["missing"] = rec["fetched"]
-                if walking.get(p) == skip or (not skip and p in walking):
-                    rec.pop("rewalk", None)
-                    rec["walked"] = rec["fetched"]
-                    walking.pop(p, None)
                 write_board(p, rec)
+                if walking.get(p) == skip or (not skip and p in walking):
+                    end_rewalk(a.out, rw, walking, p)
                 continue
             rec = {"map": name, "mapid": mid, "gamemode": gm, "trackType": tt,
                    "trackNum": tn, "total": 0, "fetched": int(time.time()),
@@ -496,7 +538,10 @@ def main():
             continue
         except Refused as e:
             refused = "%s (%s g%d t%d%d): %s" % (name, mid, gm, tt, tn, e)
-            end_rewalk(a.out, board_key(mid, gm, tt, tn), walking, skip)
+            # P1117 review 3: the board's own refusal ends its re-walk; the host's keeps it.
+            p = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
+            if walking.get(p) == skip and e.code not in HOST_CODES:
+                end_rewalk(a.out, rw, walking, p)
             break
         streak = 0
         asked += 1
@@ -504,7 +549,9 @@ def main():
             doc = json.loads(body.decode("utf-8", "replace"))
         except (ValueError, RecursionError):
             refused = "%s: reply did not parse" % name
-            end_rewalk(a.out, board_key(mid, gm, tt, tn), walking, skip)
+            p = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
+            if walking.get(p) == skip:
+                end_rewalk(a.out, rw, walking, p)
             break
         total, data = parse_board(doc)
         if not data:
@@ -537,19 +584,15 @@ def main():
         rec = {"map": name, "mapid": mid, "gamemode": gm, "trackType": tt,
                "trackNum": tn, "total": total, "fetched": int(time.time()),
                "rows": merged}
-        for k in ("rewalk", "walked"):
-            if cur and k in cur:
-                rec[k] = cur[k]
+        write_board(p, rec)
         if walking.get(p) == skip:
             # The re-walk's cursor moves only over pages answered in order.
             nxt = skip + take
             if len(data) < take or nxt >= total:
-                rec.pop("rewalk", None)
-                rec["walked"] = int(time.time())
-                del walking[p]
+                end_rewalk(a.out, rw, walking, p)
             else:
-                rec["rewalk"] = walking[p] = nxt
-        write_board(p, rec)
+                walking[p] = rw["walking"][os.path.basename(p)[:-len(".json")]] = nxt
+                write_board(os.path.join(a.out, REWALK), rw)
         if (i + 1) % 100 == 0:
             el = time.time() - t0
             print("  %5d/%d  %6.1f min  %6d new rows  %4d empty  (%s skip %d)"

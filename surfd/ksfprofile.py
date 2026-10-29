@@ -1,7 +1,11 @@
 """Paced, resumable KSF main-map completion walks, demanded by profile views.
-HTTP queues only resolved Steam identities; ksfimport's shared lock/pacer and
-host-wide refusal park own the network. Page durability precedes DB filing,
-which precedes cursor acknowledgement. No replay/evidence authority is added.
+HTTP queues only resolved Steam identities; ksfimport's shared lock and pacer own
+the network. Page durability precedes DB filing, which precedes cursor
+acknowledgement. No replay/evidence authority is added.
+
+P1117 review 3: a walk never parks the host.  Its refusals park only the walks
+(PARK, beside the crawl's .refused), it always moves its cursor or ends, and a bad
+record is skipped and counted rather than refused.
 """
 import calendar
 import hashlib
@@ -33,6 +37,46 @@ STAGE_RECORDS_MAX = 200     # zones a map reply may carry; more is not a map's
 MAIN_FIELDS = ('mapName', 'stage_id', 'zone_id', 'time', 'date', 'record_id', 'name')
 STAGE_FIELDS = ('zoneId', 'record_id', 'surfTime', 'date_set_at')
 ACCOUNT = "SELECT 1 FROM accounts a WHERE a.steamid = %s AND a.banned_at = 0"
+PARK = '.refused-profiles'
+
+
+def parked(K, cache, now):
+    park = K._load(os.path.join(cache, PARK))
+    return park if isinstance(park, dict) and now < int(park.get('until') or 0) else None
+
+
+def park_walks(K, cache, now, e):
+    """The walks rest, never the host: QUIET_COOLDOWN after no answer, else COOLDOWN,
+    doubling while refusals follow; only an answered request lifts it (answered)."""
+    old = K._load(os.path.join(cache, PARK))
+    old = old if isinstance(old, dict) else {}
+    n = int(old.get('n') or 0) + 1
+    base = K.QUIET_COOLDOWN if getattr(e, 'transient', False) else K.COOLDOWN
+    wait = min(base * 2 ** min(n - 1, 8), K.COOLDOWN_MAX)
+    K._save(os.path.join(cache, PARK), dict(at=now, until=now + wait, n=n, why=str(e)[:120]))
+    print('KSF player walks refused (%s): parked %d min, the crawl is not' % (e, wait // 60))
+
+
+def answered(K, cache):
+    try:
+        os.remove(os.path.join(cache, PARK))
+    except FileNotFoundError:
+        pass
+
+
+def is_account(K, player):
+    db = K.S.connect()
+    try:
+        return db.execute(ACCOUNT % "?", (player,)).fetchone() is not None
+    finally:
+        db.close()
+
+
+def forget(fn):
+    try:
+        os.remove(fn)
+    except FileNotFoundError:
+        pass
 
 
 def status(db, player):
@@ -92,7 +136,13 @@ def step(K, cache, pacer, have, now, budget=3):
     """Round-robin the selected players, at most budget pages, before the crawl.
     A page cache is retained even after import, so an interrupted write resumes
     without refetching and daily refreshes cannot reuse yesterday's snapshot.
+    Never raises a refusal: see the module docstring.
     """
+    park = parked(K, cache, now)
+    if park:
+        print('KSF player walks parked (%s) until %s' % (
+            park.get('why'), time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(park['until']))))
+        return 0
     db = K.S.connect()
     try:
         work = list(pending(db))
@@ -104,9 +154,15 @@ def step(K, cache, pacer, have, now, budget=3):
         if not sid:
             continue
         if mode >= STAGE_MODE:
+            if not is_account(K, player):
+                # P1117 review 3: a profile view walks main records only.
+                advance(K, player, mode, start, asked, now, 2 * STAGE_MODE - 1, start, 'complete', 0)
+                continue
             # A style with nothing to ask advances without spending a request.
             got = stage_step(K, cache, pacer, have, now, player, sid, mode, start, asked,
                              spent < budget)
+            if got == 'parked':
+                return spent + 1
             if got:
                 spent += got[0]
                 if got[1] == 'partial':
@@ -123,41 +179,53 @@ def step(K, cache, pacer, have, now, budget=3):
             try:
                 doc = pacer.get('/api/players/%s/bestrecords/%d?game=css&mode=%d' % (sid, start, mode))
             except K.Refused as e:
-                # This route's 500 is KSF's "not a player of mine" (ksfimport.NoSuchPlayer).
-                # Parking the host on it stalled every crawl and demo from 2026-10-15 to
-                # 10-17. At most one per tick; the crawl's next request still parks a
-                # host that answers 500 to everything.
-                if e.code != 500:
-                    raise
-                pacer.unanswered += 1   # never lifts a park (watch_mode)
+                pacer.unanswered += 1   # a walk's refusal never lifts the crawl's park
+                spent += 1
+                if e.code in HOST_CODES or getattr(e, 'transient', False):
+                    # Past this page (the next walk refills it), and the walks rest.
+                    advance(K, player, mode, start, asked, now, mode, start + PAGE, 'partial', 1)
+                    park_walks(K, cache, now, e)
+                    return spent
+                # 500 is KSF's "not a player of mine"; 401/403/404 or a page that
+                # will not parse are this walk's: it ends, one walk a tick.
+                retire(K, player, mode, start, asked, now)
+                return spent
+            # Invalid pages must not get a cursor, even if they are empty.
+            try:
+                recs = validate(K, doc, start)
+            except K.Refused:
+                pacer.unanswered += 1
                 retire(K, player, mode, start, asked, now)
                 return spent + 1
-            # Invalid pages must not get a cursor, even if they are empty.
-            recs = validate(K, doc, start)
+            answered(K, cache)
             saved = {'asked': asked, 'body': {'records': kept(recs, MAIN_FIELDS),
                                               'pagination': {'offset': start - 1, 'limit': PAGE}}}
             durable(K, fn, saved)
-        doc = saved.get('body')
-        recs = validate(K, doc, start)
+        try:
+            recs = validate(K, saved.get('body'), start)
+        except K.Refused:
+            forget(fn)              # a saved page that no longer reads is not replayed
+            retire(K, player, mode, start, asked, now)
+            continue
         rows, skipped = [], 0
         seen = set()
         for rec in recs:
-            mp = K.S.clean_map(rec.get('mapName', ''))
+            name = rec.get('mapName')
+            mp = K.S.clean_map(name) if isinstance(name, str) else None
             # This endpoint is MAIN records; never guess stage/bonus semantics.
-            if rec.get('stage_id') is not None or rec.get('zone_id') is not None:
-                raise K.Refused('profile contains non-main records')
             # bestrecords currently sends record_id:null, even for valid rows.
             # Completion identity is this player's MAIN map/style; null IDs
             # must NEVER acquire board/demo authority or fabricate a run ID.
-            if not mp or mp in seen or K._when(rec) <= 0:
-                raise K.Refused('profile map/date identity')
-            seen.add(mp)
-            if mp not in have:
+            # A record failing any of it is skipped and counted (P1117 review 3).
+            row = None
+            if (rec.get('stage_id') is None and rec.get('zone_id') is None and mp
+                    and mp not in seen and K._when(rec) > 0 and mp in have):
+                row = K.rec_row(mp, 0, mode, dict(rec, steamID=player))
+            if mp:
+                seen.add(mp)
+            if row is None:
                 skipped += 1
                 continue
-            row = K.rec_row(mp, 0, mode, dict(rec, steamID=player))
-            if row is None:
-                raise K.Refused('profile record time')
             row['style'] = K.KSF_MODES[mode]
             row['binding'] = 'cache'  # never fresh board/demo authority
             rows.append(row)
@@ -238,7 +306,8 @@ def _iso(raw):
 
 def stage_step(K, cache, pacer, have, now, player, sid, mode, start, asked, can_ask):
     """One map's stage/bonus PBs, or an advance past a style with none left.
-    -> (requests, state, mode, cursor), or None when it would have to ask and may not.
+    -> (requests, state, mode, cursor), None when it would have to ask and may not,
+    or 'parked' when a refusal parked the walks.
     Rows are 'cache' bindings, as main completions are: never demo authority."""
     style = mode - STAGE_MODE
     maps = stage_maps(K, cache, player, style, have)
@@ -260,22 +329,24 @@ def stage_step(K, cache, pacer, have, now, player, sid, mode, start, asked, can_
                 doc = pacer.get('/api/players/%s/records/map/%s?game=css&mode=%d'
                                 % (sid, urllib.parse.quote(mp), style))
             except K.Refused as e:
-                # P1117 review: a host refusal (or no answer) parks with the cursor past
-                # this map and the walk's turn given up, so one map cannot hold KSF;
-                # 401/403 on this route ends the stage phase; the rest are the map's.
+                # P1117 review: a host refusal (or no answer) parks the walks, with the
+                # cursor past this map and the turn given up; 401/403 on this route
+                # ends the stage phase; the rest are the map's.  None lifts a park.
+                pacer.unanswered += 1
                 if e.code in (401, 403):
                     last = 2 * STAGE_MODE - 1
                     advance(K, player, mode, start, asked, now, last, start, 'limited', 1)
                     return 1, 'limited', last, start
                 if e.code in HOST_CODES or getattr(e, 'transient', False):
                     advance(K, player, mode, start, asked, now, mode, start + 1, 'partial', 1)
-                    raise
-                pacer.unanswered += 1   # this map's answer (404, 500, bad page): never lifts a park
+                    park_walks(K, cache, now, e)
+                    return 'parked'
             else:
                 recs = map_records(doc, sid)
                 if recs is None:
                     pacer.unanswered += 1
                 else:
+                    answered(K, cache)
                     # Only what is filed is kept: never a reply's other bytes.
                     saved = {'asked': asked, 'body': {'basicInfo': {'steamID': sid},
                                                       'records': kept(recs, STAGE_FIELDS)}}

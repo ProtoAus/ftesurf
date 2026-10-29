@@ -1672,6 +1672,8 @@ def migrate():
                      "steamid TEXT PRIMARY KEY, momid INTEGER NOT NULL)")
         # P1117: walks of a signed-in player's Momentum PBs.  Not a bump, for momusers'.
         conn.execute(momprofile.SQL)
+        if "strikes" not in {r[1] for r in conn.execute("PRAGMA table_info(momprofiles)")}:
+            conn.execute("ALTER TABLE momprofiles ADD COLUMN strikes INTEGER NOT NULL DEFAULT 0")
         # Patch 660: Steam's picture for a board row's player who is no account
         # of ours (steamsync.people).  Not a schema bump, for momusers' reason.
         conn.execute(BOARDPICS_DDL)

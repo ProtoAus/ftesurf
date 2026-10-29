@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """KSF profile-demand controls: real migrated DB, fake paced source, no network."""
+import hashlib
 import json
 import logging
 import os
@@ -55,7 +56,7 @@ class Profiles(unittest.TestCase):
     def setUp(self):
         self.cache = tempfile.mkdtemp(dir=HOME)
         self.db = S.connect()
-        self.db.execute('DELETE FROM ksf_unbound'); self.db.execute('DELETE FROM ksfprofiles'); self.db.execute('DELETE FROM runs'); self.db.commit()
+        self.db.execute('DELETE FROM ksf_unbound'); self.db.execute('DELETE FROM ksfprofiles'); self.db.execute('DELETE FROM runs'); self.db.execute('DELETE FROM accounts'); self.db.commit()
         self.src = Source(); self.have = {'surf_profile%d' % i for i in range(1100)}
         self.network = patch.object(K, 'fetch', self.src); self.network.start()
     def tearDown(self):
@@ -108,17 +109,62 @@ class Profiles(unittest.TestCase):
         self.assertEqual(self.db.execute('SELECT count(*) FROM ksf_unbound').fetchone()[0], 5)
 
     def test_refusal_keeps_cursor(self):
+        # P1117 review 3: a host refusal parks the walks (never the host), past that page.
         self.queue()
         with patch.object(K, 'fetch', side_effect=K.Refused('HTTP 429', 429)):
-            with self.assertRaises(K.Refused): self.step()
-        self.assertEqual(P.status(self.db, PLAYER)['next'], 1)
-        self.assertEqual(self.count(), 0)
+            self.step()
+        self.assertEqual((P.status(self.db, PLAYER)['next'], self.count()), (6, 0))
+        self.assertEqual(self.parks(), [P.PARK])
+        with patch.object(K, 'fetch', side_effect=AssertionError('asked while parked')):
+            self.assertEqual(self.step(now=1002), 0)
     def test_wrong_offset_never_exhausts_or_imports(self):
+        # P1117 review 3: a bad page ends the walk ('limited', never complete), no park.
         self.queue(); self.step()
         with patch.object(K, 'fetch', return_value=json.dumps({'records': [], 'pagination': {'offset': 0, 'limit': 5}})):
-            with self.assertRaises(K.Refused): self.step()
-        self.assertEqual(P.status(self.db, PLAYER)['state'], 'partial')
-        self.assertEqual(P.status(self.db, PLAYER)['next'], 6)
+            self.step()
+        self.assertEqual((P.status(self.db, PLAYER)['state'], P.status(self.db, PLAYER)['next']),
+                         ('limited', 6))
+        self.assertEqual((self.count(), self.parks()), (5, []))
+
+    def parks(self):
+        return [n for n in ('.refused', P.PARK) if os.path.exists(os.path.join(self.cache, n))]
+
+    def test_p1117r3_a_bad_record_is_skipped_never_parks_or_replays(self):
+        good = {'mapName': 'surf_profile1', 'record_id': None, 'time': 11.0, 'date': 1790000001,
+                'stage_id': None, 'zone_id': None}
+        bad = [dict(good, mapName='surf_profile2', date=None), dict(good, mapName='surf_profile3', time=0),
+               dict(good, mapName='../../etc'), dict(good, mapName='surf_profile4', stage_id=9)]
+        page = json.dumps({'records': [good] + bad, 'pagination': {'offset': 0, 'limit': 5}})
+        self.queue()
+        with patch.object(K, 'fetch', return_value=page):
+            self.assertEqual(self.step(), 1)
+        st = P.status(self.db, PLAYER)
+        self.assertEqual((self.count(), st['unavailable'], st['next'], self.parks()), (1, 4, 6, []))
+        # A saved page that no longer reads is deleted and ends its walk; never replayed.
+        self.db.execute('DELETE FROM ksfprofiles'); self.db.commit(); self.queue(now=5000)
+        leaf = hashlib.sha256(PLAYER.encode('ascii')).hexdigest()
+        fn = os.path.join(self.cache, 'profiles', leaf, '0-1.json')
+        K._save(fn, {'asked': 5000, 'body': {'records': 'x'}})
+        with patch.object(K, 'fetch', side_effect=AssertionError('the saved page is used')):
+            self.step(now=5001)
+        self.assertEqual((os.path.exists(fn), P.status(self.db, PLAYER)['state'], self.parks()),
+                         (False, 'unknown', []))
+
+    def test_p1117r3_a_walks_403_ends_it_and_never_lifts_a_park(self):
+        self.queue()
+        K._save(os.path.join(self.cache, P.PARK), {'at': 1, 'until': 2, 'n': 3, 'why': 'old'})
+        p = K.Pacer(0, 10)
+        with patch.object(K, 'fetch', side_effect=K.Refused('HTTP 403', 403)):
+            P.step(K, self.cache, p, self.have, 1001, 3)
+        self.assertEqual((P.status(self.db, PLAYER)['state'], p.made, p.unanswered), ('unknown', 1, 1))
+        self.assertEqual(K._load(os.path.join(self.cache, P.PARK))['n'], 3)
+
+    def test_p1117r3_a_view_walks_main_records_only(self):
+        self.stage_world()
+        self.db.execute('DELETE FROM accounts'); self.db.commit()
+        self.assertEqual(self.step(budget=10), 4)
+        self.assertEqual(([c for c in self.src.calls if '/records/map/' in c],
+                          P.status(self.db, PLAYER)['state']), ([], 'complete'))
     def test_crash_after_durable_import_replays_cache_without_network(self):
         self.queue(); real = K.write_rows
         def crash(rows):
@@ -221,6 +267,9 @@ class Profiles(unittest.TestCase):
         for mp, info in (('surf_profile0', {'isLinear': False, 'cp_count': 2, 'b_count': 1}),
                          ('surf_profile1', {'isLinear': True, 'cp_count': 4, 'b_count': 0})):
             (maps / (mp + '.json')).write_text(json.dumps([dict(info, name=mp)]))
+        # P1117 review 3: only a signed-in account's walk has a stage phase.
+        self.db.execute("INSERT OR IGNORE INTO accounts (steamid, created_at) VALUES (?, 1)", (PLAYER,))
+        self.db.commit()
         self.queue()
 
     def zones(self, mp='surf_profile0'):
@@ -286,7 +335,8 @@ class Profiles(unittest.TestCase):
                 self.assertEqual(len(self.zones()), 1)
 
     def test_p1117r1_host_refusals_park_and_no_answer_moves_on(self):
-        # P1117 review 2: a host code parks too, but past the map and after the others.
+        # P1117 review 3: a host code parks the WALKS (never the host), returns rather
+        # than raising, past the map and after the others.
         other = '76561198000000077'
         for n, fail in enumerate((K.Refused('HTTP 429', 429), K.Refused('HTTP 502', 502),
                                   K.Refused('no answer: timed out', transient=True))):
@@ -295,13 +345,15 @@ class Profiles(unittest.TestCase):
                 self.db.commit()
                 shutil.rmtree(self.cache); self.cache = tempfile.mkdtemp(dir=HOME)
                 self.at_stage(now=3000 + 10 * n)
+                self.db.execute("INSERT OR IGNORE INTO accounts (steamid, created_at) VALUES (?, 1)", (other,))
+                self.db.commit()
                 self.queue(other, now=3005 + 10 * n)
                 self.src.fail = {'surf_profile0': fail}
-                with self.assertRaises(K.Refused):
-                    P.step(K, self.cache, K.Pacer(0, 10), self.have, 3009 + 10 * n, 1)
+                p = K.Pacer(0, 10)
+                P.step(K, self.cache, p, self.have, 3009 + 10 * n, 1)
                 st = P.status(self.db, PLAYER)
-                self.assertEqual((st['mode'], st['next'], P.pending(self.db)[0][0]),
-                                 (P.STAGE_MODE, 1, other))
+                self.assertEqual((st['mode'], st['next'], P.pending(self.db)[0][0], self.parks(),
+                                  p.made == p.unanswered), (P.STAGE_MODE, 1, other, [P.PARK], True))
                 self.src.fail = {}
 
     def test_p1117r2_a_blocked_route_ends_the_stage_phase(self):
@@ -313,9 +365,12 @@ class Profiles(unittest.TestCase):
                 self.at_stage()
                 self.src.fail = {'surf_profile0': K.Refused('HTTP %d' % code, code)}
                 p = K.Pacer(0, 10)
+                K._save(os.path.join(self.cache, P.PARK), {'at': 1, 'until': 2, 'n': 4})
                 P.step(K, self.cache, p, self.have, 3001, 3)
                 self.assertEqual((p.made, P.status(self.db, PLAYER)['state'], len(self.zones())),
                                  (1, 'limited', 1))
+                # P1117 review 3: a refusal never counts as an answer, nor resets a backoff.
+                self.assertEqual((p.unanswered, K._load(os.path.join(self.cache, P.PARK))['n']), (1, 4))
                 self.src.fail = {}
 
     def test_p1117r2_a_saved_page_is_only_what_is_filed(self):

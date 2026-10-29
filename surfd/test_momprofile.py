@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import shutil
+import sqlite3
 import sys
 import tempfile
 import time
@@ -246,8 +247,9 @@ def case_p1117r2_strikes():
 
 def case_steamsync_requeue():
     c = db()
-    c.execute("INSERT INTO accounts (steamid, name, created_at) VALUES (?, 'Proto', 1)", (A,))
-    c.execute("INSERT INTO accounts (steamid, name, created_at, banned_at) VALUES (?, 'x', 1, 5)", (B,))
+    c.execute("INSERT INTO accounts (steamid, name, created_at, seen_at) VALUES (?, 'Proto', 1, ?)", (A, NOW))
+    c.execute("INSERT INTO accounts (steamid, name, created_at, banned_at, seen_at) VALUES (?, 'x', 1, 5, ?)",
+              (B, NOW))
     c.commit()
     check("steamsync: a dry run counts the walks due and queues none",
           (steamsync.requeue(c, NOW, False),
@@ -262,7 +264,13 @@ def case_steamsync_requeue():
     c.execute("UPDATE ksfprofiles SET state='complete', updated=?", (NOW,))
     c.commit()
     check("...not again within the day", steamsync.requeue(c, NOW + 86399, True), 0)
-    check("...and again once the last walk is a day old", steamsync.requeue(c, NOW + 86400, True), 2)
+    check("P1117r3: ...nor within the week, for a finished walk",
+          steamsync.requeue(c, NOW + steamsync.DONE_TTL - 1, True), 0)
+    check("...and again once the last walk is a week old", steamsync.requeue(c, NOW + steamsync.DONE_TTL, True), 2)
+    c.execute("UPDATE momprofiles SET state='limited', updated=?", (NOW,))
+    c.execute("UPDATE ksfprofiles SET state='limited', updated=?", (NOW,))
+    c.commit()
+    check("P1117r3: a walk that stopped short waits only the day", steamsync.requeue(c, NOW + 86400, True), 2)
     c.execute("UPDATE momprofiles SET state='complete', updated=0")
     for i in range(P.MAX_ACTIVE):
         c.execute("INSERT INTO momprofiles (player, momid, cursor, state, asked, updated)"
@@ -281,12 +289,12 @@ def case_p1117r2_requeue_order():
     c = db()
     old, recent = "76561198000000302", "76561198000000301"     # SteamID order would favour `recent`
     for sid in (old, recent):
-        c.execute("INSERT INTO accounts (steamid, name, created_at) VALUES (?, 'x', 1)", (sid,))
+        c.execute("INSERT INTO accounts (steamid, name, created_at, seen_at) VALUES (?, 'x', 1, ?)", (sid, NOW))
     for sid, upd in ((old, NOW - 5 * 86400), (recent, NOW - 2 * 86400)):
         c.execute("INSERT INTO momprofiles (player, momid, cursor, state, asked, updated)"
-                  " VALUES (?, 0, 0, 'complete', 1, ?)", (sid, upd))
+                  " VALUES (?, 0, 0, 'limited', 1, ?)", (sid, upd))
         c.execute("INSERT INTO ksfprofiles (player, mode, cursor, state, asked, updated)"
-                  " VALUES (?, 0, 1, 'complete', 1, ?)", (sid, upd))
+                  " VALUES (?, 0, 1, 'limited', 1, ?)", (sid, upd))
     c.commit()
     with patch.object(P, "MAX_ACTIVE", 1), patch.object(KP, "MAX_ACTIVE", 1), \
             contextlib.redirect_stdout(io.StringIO()):
@@ -295,6 +303,69 @@ def case_p1117r2_requeue_order():
           ([tuple(r) for r in c.execute("SELECT player FROM momprofiles WHERE state='queued'")],
            [tuple(r) for r in c.execute("SELECT player FROM ksfprofiles WHERE state='queued'")]),
           ([(old,)], [(old,)]))
+    c.close()
+
+
+def case_p1117r3_recent_accounts_only():
+    c = db()
+    c.execute("DELETE FROM installs")
+    gone, plays = "76561198000000401", "76561198000000402"
+    for sid in (gone, plays):
+        c.execute("INSERT INTO accounts (steamid, name, created_at, seen_at) VALUES (?, 'x', 1, ?)",
+                  (sid, NOW - 40 * 86400))
+    c.execute("INSERT INTO installs (steamid, install, pub, first_at, last_at) VALUES (?, 'i', 'k', 1, ?)",
+              (plays, NOW - 86400))
+    c.commit()
+    with contextlib.redirect_stdout(io.StringIO()):
+        steamsync.requeue(c, NOW, True)
+    check("P1117r3: only accounts signed in or played lately are queued again",
+          [tuple(r) for r in c.execute("SELECT player FROM ksfprofiles")], [(plays,)])
+    c.execute("DELETE FROM installs")
+    c.commit()
+    c.close()
+
+
+def case_p1117r3_requeue_survives_an_error():
+    c = db()
+    for sid in (A, B):
+        c.execute("INSERT INTO accounts (steamid, name, created_at, seen_at) VALUES (?, 'x', 1, ?)", (sid, NOW))
+    c.commit()
+
+    def broken(*a, **k):
+        raise sqlite3.OperationalError("no such column: strikes")
+    out = io.StringIO()
+    with patch.object(P, "enqueue", broken), contextlib.redirect_stdout(out):
+        steamsync.requeue(c, NOW, True)
+    check("P1117r3: one account's Momentum error does not stop the other accounts' KSF walks",
+          (sorted(tuple(r) for r in c.execute("SELECT player FROM ksfprofiles")),
+           "no such column" in out.getvalue()), ([(A,), (B,)], True))
+    c.close()
+
+
+def case_p1117r3_old_table_gains_strikes():
+    c = db()
+    c.execute("DROP TABLE momprofiles")
+    c.execute("CREATE TABLE momprofiles (player TEXT PRIMARY KEY, momid INTEGER NOT NULL DEFAULT 0,"
+              " cursor INTEGER NOT NULL, state TEXT NOT NULL, asked INTEGER NOT NULL,"
+              " updated INTEGER NOT NULL, pages INTEGER NOT NULL DEFAULT 0, filed INTEGER NOT NULL DEFAULT 0)")
+    c.commit()
+    c.close()
+    S.migrate()
+    c = S.connect()
+    check("P1117r3: a momprofiles table from a round-1 build gains strikes, and enqueue works",
+          ("strikes" in {r[1] for r in c.execute("PRAGMA table_info(momprofiles)")},
+           P.enqueue(c, A, NOW)["state"]), (True, "queued"))
+    c.close()
+
+
+def case_p1117r3_lookup_resets_strikes():
+    c = db()
+    P.enqueue(c, A, NOW)
+    c.execute("UPDATE momprofiles SET strikes=2")
+    c.commit()
+    P.step(c, TRACKED, 1, FakeMomentum({A: 177}, {}), delay=0, now=NOW + 1)
+    check("P1117r3: an answered id lookup clears the strikes",
+          tuple(c.execute("SELECT momid, strikes FROM momprofiles WHERE player=?", (A,)).fetchone()), (177, 0))
     c.close()
 
 
@@ -343,6 +414,8 @@ def main():
     try:
         for case in (case_enqueue, case_walk, case_round_robin_refusal_and_shape, case_p1117r1_hostile_rows,
                      case_p1117r2_strikes, case_p1117r2_requeue_order,
+                     case_p1117r3_recent_accounts_only, case_p1117r3_requeue_survives_an_error,
+                     case_p1117r3_old_table_gains_strikes, case_p1117r3_lookup_resets_strikes,
                      case_steamsync_requeue, case_momwatch_budget):
             print("\n%s:" % case.__name__)
             case()

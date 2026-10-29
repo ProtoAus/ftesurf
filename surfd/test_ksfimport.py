@@ -425,8 +425,8 @@ def case_p1117r2_caps():
         got = (e.board, Big.asked)
     finally:
         urllib.request.urlopen = real
-    check("P1117r2: a reply over KSF_MAX_BYTES is read to cap+1 and refused as the request's",
-          got, (True, K.KSF_MAX_BYTES + 1))
+    check("P1117r2: a reply over KSF_MAX_BYTES is refused as the request's, read no further",
+          (got[0], got[1] <= 64 << 10), (True, True))
     K.fetch = lambda url: "[" * 200000
     try:
         K.Pacer(0, 1).get("/api/maps/new?offset=0")
@@ -436,6 +436,80 @@ def case_p1117r2_caps():
     except RecursionError:
         got = "RecursionError"
     check("P1117r2: deeply nested JSON is a reply that did not parse, not a crash", got, "refused")
+
+
+class Reply(object):
+    """A urlopen reply: `chunks` a read1 each, `length` its Content-Length, `clock`
+    the monotonic seconds each read takes."""
+    status = 200
+
+    def __init__(self, chunks, length=None, clock=0.0):
+        self.chunks, self.clock = list(chunks), clock
+        self.headers = {"Content-Length": str(length)} if length is not None else {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read1(self, n):
+        Reply.now += self.clock
+        return self.chunks.pop(0) if self.chunks else b""
+
+
+def case_p1117r3_whole_reply():
+    """The whole reply inside its deadline, and as long as its Content-Length."""
+    import urllib.request
+    real, mono = urllib.request.urlopen, K.time.monotonic
+    out = []
+    for label, reply in (("a trickle past the deadline", Reply([b"x"] * 100, clock=1.0)),
+                         ("a body short of its Content-Length", Reply([b"[1,"], length=10)),
+                         ("a whole one", Reply([b"[1,", b"2]"], length=5))):
+        Reply.now = 0.0
+        urllib.request.urlopen = lambda req, timeout=None, r=reply: r
+        K.time.monotonic = lambda: Reply.now
+        try:
+            out.append((label, REAL_FETCH(K.KSF_BASE + "/api/maps/new?offset=0")))
+        except K.Refused as e:
+            out.append((label, ("refused", e.transient)))
+        finally:
+            urllib.request.urlopen, K.time.monotonic = real, mono
+    check("P1117r3: slow or short is no answer (transient), a whole reply reads",
+          [o[1] for o in out], [("refused", True), ("refused", True), "[1,2]"])
+
+
+def case_p1117r3_same_record_improves():
+    """KSF updates a record_id in place when its player improves: a walk row of the
+    same record faster by >= 1 ms replaces (and unlinks); a hair faster does not."""
+    S.migrate()
+    sid, mp, when = "STEAM_0:0:778", "surf_slot", 1790000000
+
+    def row(binding, t, date, file=None):
+        r = K.rec_row(mp, 31, 0, {"steamID": sid, "time": t, "date": date, "record_id": 4705204,
+                                  "file": file})
+        return dict(r, name="p", binding=binding)
+
+    def held():
+        db = sqlite3.connect(os.environ["SURFD_DB"])
+        try:
+            return db.execute("SELECT millis, replay_id FROM runs WHERE tier='ksf' AND map=?",
+                              (mp,)).fetchone()
+        finally:
+            db.close()
+    db = sqlite3.connect(os.environ["SURFD_DB"])
+    db.execute("DELETE FROM runs WHERE map=?", (mp,))
+    db.commit()
+    db.close()
+    K.write_rows([row("board", 6.0, when, "replay_css_5_0_9_%d.rec" % when)])
+    db = sqlite3.connect(os.environ["SURFD_DB"])
+    db.execute("UPDATE runs SET replay_id=66 WHERE map=?", (mp,))
+    db.commit()
+    db.close()
+    K.write_rows([row("cache", 6.0 - 4e-4, when + 86400)])
+    check("P1117r3: the same record under a millisecond faster keeps the bound row", held(), (6000, 66))
+    K.write_rows([row("cache", 5.9, when + 86400)])
+    check("...and 100 ms faster replaces it, unlinked from the old time's demo", held(), (5900, 0))
 
 
 def case_p1117_quiet_park():
@@ -891,6 +965,7 @@ def main():
                  case_write_and_filter, case_refusal, case_no_answer,
                  case_modes, case_merge_and_refresh, case_watch,
                  case_watch_refusal_parks, case_p1117_quiet_park, case_p1117r1_record_identity, case_p1117r2_caps,
+                 case_p1117r3_whole_reply, case_p1117r3_same_record_improves,
                  case_watch_dry_and_owed,
                  case_review_findings, case_review_round2,
                  case_board_reads_ksf_styles):

@@ -159,7 +159,7 @@ def step(db, tracked, budget, get, delay=1.5, now=None):
                             db.execute("INSERT INTO momusers (steamid, momid) VALUES (?, ?)"
                                        " ON CONFLICT (steamid) DO UPDATE SET momid = excluded.momid",
                                        (player, ids[0]))
-                        db.execute("UPDATE momprofiles SET momid = ?, state = ?, updated = ?"
+                        db.execute("UPDATE momprofiles SET momid = ?, state = ?, updated = ?, strikes = 0"
                                    + where[0], (ids[0] if ok else 0, "queued" if ok else "unknown",
                                                 now) + where[1])
                     continue

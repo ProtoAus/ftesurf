@@ -103,6 +103,18 @@ PROFILE_MAX = 1          # requests a tick for signed-in players' own PBs (mompr
 QUIET = 3600
 
 
+ROTATION = ".rotation"   # P1117 review 3: board key -> when the rotation last asked it
+
+
+def rotation_state(boards):
+    try:
+        with io.open(os.path.join(boards, ROTATION), encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
 def rest(boards, why, now=None):
     """Rest the rotation, re-walk and player walks for QUIET.  -> why."""
     now = int(time.time()) if now is None else now
@@ -147,7 +159,9 @@ def profile_get(url):
 def stalest_boards(cat, boards, cut, n):
     """Up to `n` board keys fetched before `cut`: whole maps, the map whose oldest
     board is oldest first; a map with more than `n` goes `n` at a time, stalest
-    first.  A board never fetched is the backfill's (it asks those at skip 0)."""
+    first.  A board never fetched is the backfill's (it asks those at skip 0).
+    A board's turn is the later of its file's mtime and its last ask in ROTATION."""
+    asked = rotation_state(boards)
     maps = []
     for name, m in cat.items():
         gm = momfetch.gm_of(name)
@@ -162,6 +176,8 @@ def stalest_boards(cat, boards, cut, n):
                 mt = os.path.getmtime(os.path.join(boards, key + ".json"))
             except OSError:
                 continue
+            at = asked.get(key)
+            mt = max(mt, at) if type(at) in (int, float) else mt
             if mt < cut:
                 old.append((mt, key))
         if old:
@@ -401,13 +417,19 @@ def main():
         left -= len(rot)
         if rc != 0:
             print("rotation stopped (%d) -- its unasked boards go to the back" % rc)
+            # P1117 review 3: in ROTATION, not the files' mtime, which the live
+            # refresh reads as fresh.
+            asked = rotation_state(a.boards)
             for k in rot:
-                bp = os.path.join(a.boards, k + ".json")
                 try:
-                    if os.path.getmtime(bp) < cut:
-                        os.utime(bp, None)
+                    if os.path.getmtime(os.path.join(a.boards, k + ".json")) < cut:
+                        asked[k] = int(time.time())
                 except OSError:
                     pass
+            try:
+                momfetch.write_board(os.path.join(a.boards, ROTATION), asked)
+            except OSError as e:
+                print("could not record the rotation (%s)" % e)
             quiet = rest(a.boards, "rotation refused")
             failed = failed or rc
 

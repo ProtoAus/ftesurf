@@ -109,6 +109,16 @@ def fetch(fake, argv):
         return MF.main()
 
 
+def walk_state(boards, key):
+    """(re-walk cursor or None, when last walked) from momfetch's state file."""
+    st = MF.rewalk_state(boards)
+    return st["walking"].get(key), st["walked"].get(key, 0)
+
+
+def set_walk(boards, walking=None, walked=None):
+    MF.write_board(os.path.join(boards, MF.REWALK), {"walking": walking or {}, "walked": walked or {}})
+
+
 def board(boards, mid, gm, tt, tn):
     return MF.load_board(os.path.join(boards, MF.board_key(mid, gm, tt, tn) + ".json"))
 
@@ -139,23 +149,26 @@ def case_rewalk():
         for gm, tt, tn in bl:
             write_board(boards, mid, gm, tt, tn, range(1, 11), 10)
     # two holed boards; surf_b main was walked longer ago, so it goes first
-    write_board(boards, 1, 1, 0, 1, [1, 2, 3, 6, 7, 9, 10], 10, walked=now - 100)
-    write_board(boards, 2, 1, 0, 1, [1, 5, 10], 10, walked=now - 1000)
+    write_board(boards, 1, 1, 0, 1, [1, 2, 3, 6, 7, 9, 10], 10)
+    write_board(boards, 2, 1, 0, 1, [1, 5, 10], 10)
+    set_walk(boards, walked={"1_g1_t01": now - 100, "2_g1_t01": now - 1000})
     args = ["--tracks", tsv, "--out", boards, "--take", "2", "--depth", "-1",
             "--delay", "0", "--rewalk", "--go"]
     fake = FakeMomentum()
     fetch(fake, args + ["--max", "2"])
     check("--rewalk walks the holed board walked longest ago, from rank 1",
           fake.asked, [(2, 0, 1, 0), (2, 0, 1, 2)])
-    check("...and keeps its cursor in the board file", board(boards, 2, 1, 0, 1).get("rewalk"), 4)
+    check("...and keeps its cursor in its own state, not the board file (P1117r3)",
+          (walk_state(boards, "2_g1_t01")[0], "rewalk" in board(boards, 2, 1, 0, 1)), (4, False))
     fake.asked = []
     fetch(fake, args + ["--max", "10"])
     check("the next run resumes the same board where it stopped",
           fake.asked, [(2, 0, 1, 4), (2, 0, 1, 6), (2, 0, 1, 8)])
     b = board(boards, 2, 1, 0, 1)
+    w = walk_state(boards, "2_g1_t01")
     check("...which then holds every place, walked and no longer under re-walk",
-          (sorted(r["rank"] for r in b["rows"]), "rewalk" in b, b.get("walked", 0) >= now),
-          (list(range(1, 11)), False, True))
+          (sorted(r["rank"] for r in b["rows"]), w[0], w[1] >= now),
+          (list(range(1, 11)), None, True))
     fake.asked = []
     fetch(fake, args + ["--max", "10"])
     check("then the other holed board", [s for _, _, _, s in fake.asked], [0, 2, 4, 6, 8])
@@ -246,11 +259,14 @@ def case_tick_budget():
     check("P1117r2: a refused rotation still runs a plain backfill and the index",
           (rc, [("--board" in c, "--rewalk" in c, "momboards.py" in c[1]) for c in calls]),
           (1, [(True, False, False), (False, False, False), (False, False, True)]))
-    check("...and its boards go to the back of the rotation",
-          all(os.path.getmtime(os.path.join(boards, k + ".json")) > time.time() - 60
-              for k in ("2_g1_t01", "2_g1_t21")), True)
-    for k in ("2_g1_t01", "2_g1_t21"):
-        os.utime(os.path.join(boards, k + ".json"), (now - 10 * 86400, now - 10 * 86400))
+    asked = MW.rotation_state(boards)
+    check("...and its boards go to the back of the rotation, their files left as fetched (P1117r3)",
+          (sorted(k for k in asked if asked[k] > time.time() - 60),
+           all(os.path.getmtime(os.path.join(boards, k + ".json")) < now - 86400
+               for k in ("2_g1_t01", "2_g1_t21")),
+           MW.stalest_boards(MF.read_tracks(tsv), boards, time.time() - 86400, 3)),
+          (["2_g1_t01", "2_g1_t21"], True, ["1_g1_t01", "1_g1_t12", "1_g1_t11"]))
+    os.remove(os.path.join(boards, MW.ROTATION))
     fake = FakeMomentum()
     if calls:
         fetch(fake, calls[0][2:])
@@ -323,6 +339,26 @@ def case_p1117r2_old_momfetch():
     check("...and the shipped one is recognised", MW.has_extras(MW._momfetch_path()), True)
 
 
+class Chunked(object):
+    """A urlopen reply: `chunks` a read1 each, `length` its Content-Length, `clock`
+    the monotonic seconds each read takes."""
+    status = 200
+
+    def __init__(self, chunks, length=None, clock=0.0):
+        self.chunks, self.clock = list(chunks), clock
+        self.headers = {"Content-Length": str(length)} if length is not None else {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read1(self, n):
+        Chunked.now += self.clock
+        return self.chunks.pop(0) if self.chunks else b""
+
+
 def case_p1117r2_momfetch_replies():
     import http.client
     import urllib.request
@@ -360,22 +396,43 @@ def case_p1117r2_momfetch_replies():
     for name, (mid, bl) in CAT.items():
         for gm, tt, tn in bl:
             write_board(boards, mid, gm, tt, tn, range(1, 11), 10)
-    write_board(boards, 1, 1, 0, 1, [1, 2, 3, 6, 7, 9, 10], 10, rewalk=4)
+    write_board(boards, 1, 1, 0, 1, [1, 2, 3, 6, 7, 9, 10], 10)
     write_board(boards, 2, 1, 0, 1, [1, 5, 10], 10)
+    old = time.time() - 5 * 86400
+    os.utime(os.path.join(boards, "1_g1_t01.json"), (old, old))
+    args = ["--tracks", tsv, "--out", boards, "--take", "2", "--depth", "-1", "--delay", "0",
+            "--max", "10", "--rewalk", "--go"]
 
-    def refuse4(url):
-        if "maps/1/" in url and url.endswith("skip=4"):
-            raise MF.Refused("HTTP 500")
-        return FakeMomentum()(url)
-    fetch(refuse4, ["--tracks", tsv, "--out", boards, "--take", "2", "--depth", "-1", "--delay", "0",
-                    "--max", "10", "--rewalk", "--go"])
-    b = board(boards, 1, 1, 0, 1)
+    def refuse4(code):
+        def get(url):
+            if "maps/1/" in url and url.endswith("skip=4"):
+                raise MF.Refused("HTTP %d" % code, code)
+            return FakeMomentum()(url)
+        return get
+    set_walk(boards, walking={"1_g1_t01": 4})
+    fetch(refuse4(429), args)
+    check("P1117r3: a host-wide 429 keeps the re-walk's cursor", walk_state(boards, "1_g1_t01")[0], 4)
+    fetch(refuse4(500), args)
     fake = FakeMomentum()
-    fetch(fake, ["--tracks", tsv, "--out", boards, "--take", "2", "--depth", "-1", "--delay", "0",
-                 "--max", "10", "--rewalk", "--go"])
-    check("P1117r2: a re-walk refused at its cursor ends, and the next run walks another board",
-          ("rewalk" in b, b.get("walked", 0) > 0, sorted({m for m, _, _, _ in fake.asked})),
-          (False, True, [2]))
+    fetch(fake, args)
+    w = walk_state(boards, "1_g1_t01")
+    check("P1117r2: a re-walk refused by its board ends, and the next run walks another board",
+          (w[0], w[1] > 0, sorted({m for m, _, _, _ in fake.asked})), (None, True, [2]))
+    check("P1117r3: ...without touching that board's file, which the live refresh reads",
+          os.path.getmtime(os.path.join(boards, "1_g1_t01.json")) < time.time() - 86400, True)
+    got = []
+    for label, reply in (("a trickle past the deadline", Chunked([b"x"] * 100, clock=1.0)),
+                         ("a body short of its Content-Length", Chunked([b"[1,"], length=10)),
+                         ("a whole one", Chunked([b"[1,", b"2]"], length=5))):
+        Chunked.now = 0.0
+        with patch.object(urllib.request, "urlopen", lambda req, timeout=None, r=reply: r), \
+                patch.object(MF.time, "monotonic", lambda: Chunked.now):
+            try:
+                got.append(MF.get("https://api.momentum-mod.org/v1/x"))
+            except MF.Refused as e:
+                got.append(("refused", e.code))
+    check("P1117r3: momfetch reads a whole reply in its deadline, and slow or short is no answer",
+          got, [("refused", 0), ("refused", 0), b"[1,2]"])
 
 
 def case_404s():
@@ -390,9 +447,9 @@ def case_404s():
     args = ["--tracks", tsv, "--out", boards, "--take", "2", "--depth", "-1", "--delay", "0",
             "--rewalk", "--go"]
     fetch(fake, args + ["--max", "10"])
-    b = board(boards, 1, 1, 0, 1)
-    check("P1117r1: a 404 past page 1 ends the re-walk there", ("rewalk" in b, b.get("walked", 0) > 0,
-          b["total"]), (False, True, 4))
+    b, w = board(boards, 1, 1, 0, 1), walk_state(boards, "1_g1_t01")
+    check("P1117r1: a 404 past page 1 ends the re-walk there", (w[0], w[1] > 0, b["total"]),
+          (None, True, 4))
     fake.asked = []
     fetch(fake, args + ["--max", "10"])
     check("...and the next run re-walks another board", sorted({(m, s) for m, _, _, s in fake.asked}),
