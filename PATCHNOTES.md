@@ -21,6 +21,11 @@
 
 ## next
 
+### P1110 TAS projects from the start zone
+- `tas project save` in a `tas start` session saves a project that begins standing at the start zone, before the timer: everything from the first step is in it.
+- `tas project load` of one puts you at that start zone and plays it back exactly, through the timer's start. Saving again after a load, or after more steps, makes the next revision of the same project; a new `tas start` begins a new one.
+- Named checkpoints are not available on these projects yet.
+
 ### P1114 Map downloads no longer stutter the game
 - Downloading a map runs in the background: before, looking up and connecting to the map host could hold up a frame (one measured download held one for 62 ms).
 

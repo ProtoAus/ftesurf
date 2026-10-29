@@ -251,12 +251,18 @@ Lex's goals of 28 Oct, beyond P1088's constant turn for exit speed ("do what you
 
 ## TAS legal start (P1100): what is left
 
-Steps 1-2 of TAS plan 6.1; two review rounds (29 Oct).
-- Step 3 is not built: a project saved from a legal start (v3: `start <zone>`, `startat`) and its
-  load (P1100-DESIGN.md in the task root has the spec). Rows from the start-box log must be
-  replayed (or otherwise checked) before they are saved: world-driven moves in the box
-  (point_teleport, AddOutput origin, a door pushing a paused body) are not counted as placements,
-  and only a replay catches them (DIVERGED).
+Steps 1-2 of TAS plan 6.1 (P1100) and step 3, version 3 projects (P1110).
+- Start-box rows are saved as logged; world-driven moves in the box (point_teleport, AddOutput
+  origin, a door pushing a paused body) are not counted as placements. A back's replay catches
+  them row by row (DIVERGED); a load only by a different start tick or at its head checkpoint. A
+  save does not replay first.
+- `tas cp` (named checkpoints) is refused on a legal project, and a v3 save keeps one checkpoint,
+  its head's state.
+- The TAS panel gets a legal project's base and head in two frames (base 0 or -startat in run
+  ticks, head in ticks from the placement); display only.
+- A `tas back` after the start uses the 60 s rewind ring; a session holds every row, so a back
+  past the ring could replay from the placement instead.
+- tasrevd accepts version 3 only from a release with this tools/tasrev.py (Lex's sudo).
 - Two TAS steps in one packet: the clock starts at the packet's end, so the start's tick depends
   on how steps were grouped; a replay that starts it early ends the session. The Pi's verifier
   must control packet grouping or check `startat` on replay.

@@ -300,7 +300,10 @@ verifier has nothing to trust but the map, the rules and the inputs.
 P1100 (29 Oct): steps 1-2 -- TAS starts take no start nudge (`startjit 0 0 0 0`); `tas start
 <zone>` opens a legal-start session at the zone's own destination; TAS steps and `tas back` in the
 start box and back across the start, by replay from the canonical placement (measured exact). Step
-3 (v3 projects saved and loaded from the legal start) is next; BACKLOG "TAS legal start".
+3 is P1110: version 3 projects (`start <zone>`, `baseat` standing still, `startat`, ticks from the
+placement), saved from a session and loaded by placing and replaying (the clock must start on
+`startat`); a session's saves are one revision line; tasrevd supply-checks a v3 child and never
+joins a v3 line to a base save's. BACKLOG "TAS legal start".
 6.2 Headless re-simulation WITH the map's own world: a dedicated server drives the tape on a
 bot client (tas_tape needs a connected client today), triggers and teleports run live, not
 copied from rows; output `VERIFY-TAS PASS ticks N finish` or HOLD/REFUSE with why. Pinned
