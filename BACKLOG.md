@@ -1,5 +1,28 @@
 # BACKLOG.md
 
+## P1116 leftovers (29 Oct)
+
+- cl_threadedphysics appends to the input journal from its own thread with no lock against
+  the main thread's appends (pre-existing). P1116 hashes such a journal whole at close; a
+  journal mutex would close the race itself.
+- Cancelling an in-flight journal upload (map load, disconnect, `rec_hid_upload 0`) waits for
+  the download thread's current poll: up to 100 ms, or a whole DNS lookup.
+- Two upload follow-ups are in the private tree (checkpoints/p1116-journal-upload-followups.md).
+- Menu: if Mmm_Spool's read-back fopen fails the reply stays in data/mapmedia.tmp
+  (pre-existing); the map-table job advances only while the menu draws (a minimised window
+  waits).
+- Other one-frame costs measured on the way: the map-list save ("maplist: saved N map(s)")
+  ~65 ms at boot; the boot map-list load 81-97 ms; the finish frame's own CSQC ~16 ms, spread
+  over HUD drawing (Rec_ViewEnd ~3.5 ms, LT_Keep ~6 ms).
+- csprogs on first join after a build: the client asks sv_dlURL/ftesurf/csprogs.dat first
+  (404), then takes 6.5 MB over the game channel. Served there gzipped (1.4 MB) it would come
+  over HTTPS; needs nginx and a deploy step that keeps it in step with the lobbies.
+- A journal that never reached in_journal_maxkb can end in `truncated` instead of `end`: the end
+  path sets in_jrn_max = in_jrn_cap, lowering the cap to the current allocation (in_generic.c,
+  pre-existing; about 0.1% of journals under 64 KB). The receipt still matches the file.
+- Journal compression: 25-32% of size, 13-140 ms of CPU; the collector would have to verify
+  the hash of the decompressed bytes. Not the stutter (threading was), so not done.
+
 ## Lex's 29 Oct map list: diagnosed, not fixed (shots in lexmaps-20261029T0440Z/artifacts/shots)
 
 - **surf_demise save 28, the black slab in the sky:** the 3D-sky pass draws it.

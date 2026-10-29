@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## Finish costs and harness traps (P1116, 29 Oct 2026)
+
+- tools/p1116finish.py measures a lobby finish with a real-sized journal (`in_journal_synth`
+  batches) and checks each receipt's signed hid digest against sha256 of the staged file and
+  of the bytes its local receiver got. Judge frame costs with `--quiet`: with developer 1 every
+  printed line costs 4-6 ms here, because log_enable opens, appends to and closes the log per
+  line (common/log.c). One failed open turns logging off for the session, silently (its own
+  warning cannot reach the log).
+- A `-plugin` client's stdin reader holds 255 bytes (sys_win.c Sys_SendKeyEvents): a longer
+  line never finds its newline and every later command is lost. The client keeps running.
+- A headless client draws no frame, so the recorder (driven from the draw path) never starts
+  a journal. Use the 640x480 window p840clock uses.
+- `set rec_hid_testurl http://...` unquoted sets `http:`: `//` starts a console comment.
+- Boot frames to blame correctly: an [engine-spike] line is printed at the END of the frame it
+  measures, after that frame's prints. The 55-70 ms boot frame seen first was the map-list
+  save, not the map-table read (P1116 measured each with the old and new menu).
+
 ## Maps screen, strays, tiers, downloads, drop-in installer (P1111-P1115, 29 Oct 2026)
 
 - A menu-only arm root needs ftesurf/fs_addons.txt (and .default.txt) for installed maps;

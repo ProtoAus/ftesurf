@@ -72,3 +72,15 @@ Rollback: immediate canonical .prev for each copied artifact; immutable copies
 of predecessors/prior-prev, exact source/artifacts/proof remain privately retained.
 This documentation does not rebuild or redate the qualified runtime. No native,
 backend, schema, threshold, Build or release deployment is part of this patch.
+
+## Rebuilt with the 0-warning compiler (ftesurf-aa, 29 Oct 2026 12:33Z)
+
+The 11:25Z install and lobby delivery was compiled by fteqcc git-6681-5662b3a23 (sha256
+7ccb93d1, the main checkout's src/fteqcc64.exe). The two F333 property227 warnings above are that
+compiler miscompiling cl_viewmodel.qc's setproperty(227), not upstream noise; the 0-warning
+compiler is c24ede65 (C:\FTESurf-private\worktrees\knife-resume-01a16c7f\engine\engine\release\fteqcc64.exe).
+The same main (e58f0a14) built with c24ede65 gives qwprogs df27e329 (this patch's server change
+included) and csprogs 5fecc570 (no client QC change; already in tasrevd's codes.txt, which
+3cca1ed6 was not, so its statements were skipped for credit). Now live on all 12 lobbies
+(nobody on, restarted, lobby smoke 0 failures, 0 QC errors) and in both installs (qw + cs;
+.prev = c537e5e5 / 3cca1ed6).
