@@ -4044,6 +4044,27 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+P1128: ModifySpeed's immediate status check compares old effective finite scalar
+(default/nonpositive means1) to the existing normalized input. ALWAYS snapshot
+the new property's source and write its scalar, even if equal; never turn this
+into an early return or clear existing body debt. P1121 actual changed-cap gate
+and float operation order stay unchanged. Full caller+callee matter: ModifySpeed
+uses PLAYER ACTIVATOR else target, unlike AddSpeed's resolved target. Distinct
+nonplayer/player targets retaining factor4 while actor gains2 prove that routing;
+world/nonplayer rejects with an accepted activator counterpart.16paired scheduled
+public inputs/fullPreThink preserve factor/cap/source/target/IO, only7immediate/
+6final no-value status removals; equal2x still prices its OLD source at real520cap
+use, equal2x atbase0 does not. Sticky repeat stays marked. Existing speed10 equal
+world replacement and P1127input26/5cashouts regressions pass. Initial fixture
+compile refused nineTOTALsprintfarguments: eight payloads PLUS format is too
+many; actual compiler limit8TOTALincludingformat. Move telemetry to another row,
+retain failure, don't waive warnings. First nativebaseline/subject pass unchanged.
+FullNoDeploy0NEW/2oldCSF333/reader949-0/exact527REC167VIEW bytes+diagnostics,
+328faultyREC7faultyVIEW/zero introduced NOTfaultfree. Storedfuturecallbacks
+explicitly invoked BEFOREdeadline, NOTelapsedclock/scheduler/nativeMove/rank/
+human/fullbank proof; no newVM/capture/policy/physics/format/flag/tier/native/Build.
+Reviews/deployment pending; human-only checks in lextest.md.
+
 P1127: immediate I/O gravity compares effective0=1 but preserves the raw stored
 field; AddOutput carrier compares AFTER original multiply-by-reciprocal scaling;
 additive speed compares AFTER its original sum. Never replace those operations

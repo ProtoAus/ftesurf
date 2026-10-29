@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1128 neutral map speed inputs/status (pending deployment and human check)
+
+Paired actual-QC inputs/full PreThink, source-replacement regression and build
+pass; independent reviews/deployment pending. If a map with a speed-modifier
+area is available, confirm ordinary speed/current-run status remain normal;
+neutral inputs should not create an unranked status on their own. Native feel,
+authored contact, finished ranking and human acceptance are not established by
+the synthetic scalar/cap units; nothing here is human-confirmed.
+
 ## P1127 unchanged map effects/status (pending human check)
 
 Both independent final addenda clear; deployed both Windows/all12Pi lobbies,

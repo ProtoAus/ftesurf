@@ -21,6 +21,9 @@
 
 ## next
 
+### P1128 Neutral map speed inputs
+- Neutral map speed inputs no longer make a clean run unranked. Real speed effects keep their existing run status and movement.
+
 ### P1127 Unchanged map effects keep their status
 - Repeated map inputs that leave gravity or a pending boost unchanged no longer make a clean run unranked. Gravity and boost amounts are unchanged.
 

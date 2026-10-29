@@ -3053,6 +3053,7 @@ void(string cmd) SV_IOCommand =
 void(entity t, entity act, float v) SV_IOModifySpeed =
 {
 	local entity p;
+	local float beforemod;
 
 	// Source applies this to the ACTIVATOR (CPlayerSpeedMod sets the touching
 	// player's lagged-movement value), not to the player_speedmod itself.
@@ -3061,7 +3062,11 @@ void(entity t, entity act, float v) SV_IOModifySpeed =
 		return;
 	if (v <= 0)
 		v = 1;
-	SV_BankAffect(p);
+	beforemod = p.run_speedmod;
+	if (beforemod <= 0)
+		beforemod = 1;
+	if (v != beforemod)
+		SV_BankAffect(p);
 	SV_BankSpeedSnapshot(p);
 	p.run_speedmod = v;
 };
