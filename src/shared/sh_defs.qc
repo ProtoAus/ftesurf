@@ -3288,7 +3288,8 @@ void() FS_CvarsMoved =
 	FS_CvarMoved("fs_record",           "rec_enable");
 	FS_CvarMoved("fs_hid",              "rec_hid");
 	FS_CvarMoved("fs_runs_keep",        "rec_runs_keep");
-	FS_CvarMoved("fs_terms",            "rec_terms");
+	// fs_terms is not carried to rec_terms: that is read from data/consent.txt every boot and
+	// is the engine's since P1101, which cvar_set cannot write.
 	FS_CvarMoved("fs_watch_pvs",        "rec_watch_pvs");
 	FS_CvarMoved("fs_savelock",         "rec_savelock");
 	FS_CvarMoved("fs_retry",            "rec_retry");

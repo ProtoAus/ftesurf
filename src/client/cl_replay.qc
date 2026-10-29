@@ -403,8 +403,10 @@ void() Rec_TermsReport =
 
 	v = rec_rp_consent;
 	// A registered menu answer is current, including an explicit downgrade.
-	// Only the headless/no-menu case falls back to the answer read at init.
+	// Only the headless/no-menu case falls back to the answer read at init:
+	// since P1101 the engine owns rec_terms and holds -1 until the menu sets it.
 	if (cvar_type("rec_terms") & CVAR_TYPEFLAG_EXISTS)
+	if (cvar("rec_terms") >= 0)
 		v = cvar("rec_terms");
 	v = v >= FS_TERMS_ONLINE ? FS_TERMS_ONLINE : 0;
 	if (!cvar("rec_upload"))

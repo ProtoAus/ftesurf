@@ -883,13 +883,14 @@ float() ui_consent_read =
   Both buttons are now always drawn, and the lower one is a real answer rather
   than a dismissal.  See screen_terms.
 */
-// P1101: rec_terms is the engine's CVAR_NOTFROMSERVER cvar now (a server's `seta` set an
-// override cvar() read), which cvar_set refuses; localcmd_local runs at local level.
-// Queued, so it lands before the next frame; nothing reads it inside m_init.
+// P1101: rec_terms is the engine's CVAR_NOTFROMSERVER cvar now, which cvar_set refuses;
+// localcmd_local runs at local level. Queued, so it lands before the next frame (nothing
+// reads it inside m_init). `set`, not the bare name: a server alias can shadow a cvar name
+// but not `set`. The rec_hid_upload writes below go the same way.
 void(float tier) ui_terms_publish =
 {
 	if (checkbuiltin(localcmd_local))
-		localcmd_local(sprintf("rec_terms %g\n", tier));
+		localcmd_local(sprintf("set rec_terms %g\n", tier));
 	else
 		cvar_set("rec_terms", ftos(tier));      // an engine before P1101: a plain cvar
 };
@@ -5923,9 +5924,9 @@ float(float tier) ui_tm_answer =
 	if (ui_tm_jcan())
 	{
 		if (tier >= FS_TERMS_ONLINE && ui_tm_jbox)
-			localcmd_local("rec_hid_upload 1\n");
+			localcmd_local("set rec_hid_upload 1\n");
 		else
-			localcmd_local("rec_hid_upload 0\n");
+			localcmd_local("set rec_hid_upload 0\n");
 	}
 	ui_tm_jtouched = FALSE;
 	ui_tm_full = FALSE;
@@ -6372,7 +6373,7 @@ void(vector screensize) screen_journal =
 				{
 					ui_tm_jbox = FALSE;
 					ui_tm_jtouched = TRUE;
-					localcmd_local("rec_hid_upload 0\n");
+					localcmd_local("set rec_hid_upload 0\n");
 				}
 				else if (ui_synth())
 					print("menu: journal upload consent takes a real click or key, not ui_key/ui_click\n");
@@ -6380,7 +6381,7 @@ void(vector screensize) screen_journal =
 				{
 					ui_tm_jbox = TRUE;
 					ui_tm_jtouched = TRUE;
-					localcmd_local("rec_hid_upload 1\n");
+					localcmd_local("set rec_hid_upload 1\n");
 				}
 			}
 		}
