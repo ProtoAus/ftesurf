@@ -47,6 +47,7 @@ import viewmodel        # bounded account setup; additive schema 23
 import zonefit          # bounded BSP entity/model reader for legacy timers
 import ksftopup         # bounded, board-scoped requests; no network in HTTP
 import ksfprofile       # resolved profile demand, paced by the same importer
+import momprofile       # P1117: a signed-in player's Momentum PBs, paced by momwatch
 import recplot          # .rec -> plot data; stdlib only, never raises
 import steam            # the only module that asks Steam anything
 
@@ -1669,6 +1670,8 @@ def migrate():
         # importer keeps beside the SteamID (momboards.py).
         conn.execute("CREATE TABLE IF NOT EXISTS momusers ("
                      "steamid TEXT PRIMARY KEY, momid INTEGER NOT NULL)")
+        # P1117: walks of a signed-in player's Momentum PBs.  Not a bump, for momusers'.
+        conn.execute(momprofile.SQL)
         # Patch 660: Steam's picture for a board row's player who is no account
         # of ours (steamsync.people).  Not a schema bump, for momusers' reason.
         conn.execute(BOARDPICS_DDL)

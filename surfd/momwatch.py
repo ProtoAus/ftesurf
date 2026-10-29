@@ -88,12 +88,22 @@ if not logging.getLogger("surfd").handlers:
 
 import surfd as S       # noqa: E402
 import momfetch         # noqa: E402
+import momprofile       # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 LOBBY_FRESH = 300        # s; a lobby row older than this is not a live lobby
 ROTATE = 8               # P1117: page-1 refreshes a tick, taken from --backfill
+PROFILE_MAX = 2          # P1117: requests a tick for signed-in players' own PBs (momprofile)
+
+
+def profile_get(url):
+    """momfetch.get, where a 404 is an answer: no such player, no PBs."""
+    try:
+        return momfetch.get(url)
+    except momfetch.NoSuchBoard:
+        return b'{"totalCount": 0, "data": []}'
 
 
 def stalest_boards(cat, boards, cut, n):
@@ -344,6 +354,26 @@ def main():
         if rc != 0:
             print("rotation stopped (%d) -- nothing is retried here" % rc)
             return rc
+
+    if left > 0:
+        tracked = {}
+        for name, m in cat.items():
+            gm, mp = momfetch.gm_of(name), S.clean_map(name)
+            for bgm, tt, tn in m["boards"]:
+                if gm is not None and bgm == gm and mp:
+                    tracked[(m["id"], bgm, tt, tn)] = mp
+        conn = S.connect()
+        try:
+            spent = momprofile.step(conn, tracked, min(PROFILE_MAX, left), profile_get, a.delay)
+        except (momfetch.Refused, OSError) as e:
+            print("player walk REFUSED, nothing retried: %s" % e)
+            return 1
+        finally:
+            conn.close()
+        if spent:
+            print("player walks         %d request(s)" % spent)
+            fetched = True
+            left -= spent
 
     if left > 0:
         print("\n--- backfill: up to %d page(s) into the shallowest boards ---"

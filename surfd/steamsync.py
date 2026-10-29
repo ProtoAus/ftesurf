@@ -43,6 +43,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import accounts          # noqa: E402
+import ksfprofile        # noqa: E402
+import momprofile        # noqa: E402
 import steam             # noqa: E402
 import surfd as S        # noqa: E402  -- import-safe: app.run is __main__-guarded
 
@@ -421,6 +423,23 @@ def sync(conn, key, http, go, limit, out=print):
     return asked, renamed, rows
 
 
+def requeue(conn, now, go):
+    """P1117: every unbanned account's KSF and Momentum walks, queued again once
+    their last walk is a day old (each enqueue keeps its own TTL and cap).
+    -> walks queued (a dry run: walks due)."""
+    n = 0
+    for (sid,) in conn.execute("SELECT steamid FROM accounts WHERE banned_at = 0"
+                               " ORDER BY steamid").fetchall():
+        for walk in (ksfprofile, momprofile):
+            st = walk.status(conn, sid)
+            due = (st["state"] not in ("queued", "partial")
+                   and now - st.get("updated", 0) >= walk.TTL)
+            if due and go:
+                due = walk.enqueue(conn, sid, now).get("state") == "queued"
+            n += due
+    return n
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawTextHelpFormatter)
@@ -430,6 +449,14 @@ def main():
                     help="players of imported rows asked about a run (0: none)")
     ap.add_argument("--pictures", type=int, default=1500, help="pictures fetched a run")
     a = ap.parse_args()
+    conn = S.connect()
+    try:
+        print("%d account walk(s) queued again (KSF, Momentum)" % requeue(
+            conn, int(time.time()), a.go))
+    except sqlite3.Error as exc:
+        print("account walks not queued this run: the database said %s" % exc)
+    finally:
+        conn.close()
     key = (S.setting("SURFD_STEAM_KEY") or "").strip()
     if not key:
         print("no SURFD_STEAM_KEY: names are not refreshed")
