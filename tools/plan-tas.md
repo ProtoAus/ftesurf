@@ -306,6 +306,17 @@ per-submission tick caps -> Pi verifier -> a `tas` style written only by the ver
 importers write momentum/ksf; /api/run keeps refusing TF_TAS.
 6.4 The TAS board tab and contributor credits on it.
 
+Lex's Stage 6 decisions (29 Oct): no start nudge for TAS starts; a legal-start project starts
+standing still at its track's or stage's own start-zone destination -- where `!r` puts a player
+(SV_ZoneDest: teleDestPos/yaw, else info_teleport_destination, else the zone floor, then the
+ground snap), never the map's player spawn -- with its inputs covering the approach in the start
+box and the timer starting the normal way; TAS stepping in the start box for those projects, and
+a rewind across the start re-arms; one `tas` style per map, track/stage and tick rate, with
+tasrevd's contributor credits; the Pi verifies one at a time, at most 96000 ticks a submission,
+3 submissions an account a day, and over 2x the tick count in wall time is HELD; Steam-linked
+submitters. 6.2 measured (P1095): a headless client replays a project exactly, and a project
+saved on Windows reproduced every saved state exactly on the Pi.
+
 Risks to design against: trusting any file row that sets state (warp/ride/state) lets a
 forger set teleports or times; server-time world logic makes replays differ (P1085 fixed
 func_bhop; others are unaudited); a copied fskey signs as its account until unlinked; anyone
