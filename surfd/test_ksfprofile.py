@@ -27,6 +27,16 @@ class Source:
         self.n, self.calls = n, []
     def __call__(self, url):
         self.calls.append(url)
+        m = re.search(r'/players/([^/]+)/records/map/([^?]+)\?game=css&mode=(\d)$', url)
+        if m:
+            sid, mp, mode = m.group(1), m.group(2), int(m.group(3))
+            if mp in getattr(self, 'missing', ()):
+                raise K.NoSuchPlayer('HTTP 500')
+            recs = [{'zoneId': z, 'record_id': 7000 + z, 'surfTime': 5.0 + z,
+                     'date_set_at': '2026-10-01T00:00:%02dZ' % z, 'rank': 1}
+                    for z in (0, 1, 2, 3, 31, 32)] if mode == 0 else []
+            return json.dumps({'detail': 'pr', 'records': recs,
+                               'basicInfo': {'steamID': getattr(self, 'who', sid)}})
         m = re.search(r'/bestrecords/(\d+)\?game=css&mode=(\d)$', url)
         start, mode = map(int, m.groups())
         n = self.n if mode == 0 else 0
@@ -197,6 +207,54 @@ class Profiles(unittest.TestCase):
             K.watch_mode(SimpleNamespace(delay=0, max=10, go=True), self.have, self.cache)
             self.assertEqual(f.call_count, 1)
         self.assertEqual(K._load(os.path.join(self.cache, '.refused')), park)
+    def stage_world(self):
+        """P1117: three main completions; profile0 is staged (2 stages, 1 bonus),
+        profile1 linear with no bonus, profile2's map info is not cached."""
+        self.src.n = 3
+        maps = Path(self.cache) / 'maps'
+        maps.mkdir()
+        for mp, info in (('surf_profile0', {'isLinear': False, 'cp_count': 2, 'b_count': 1}),
+                         ('surf_profile1', {'isLinear': True, 'cp_count': 4, 'b_count': 0})):
+            (maps / (mp + '.json')).write_text(json.dumps([dict(info, name=mp)]))
+        self.queue()
+
+    def zones(self, mp='surf_profile0'):
+        return self.db.execute("SELECT track, leg, millis, runid != '', replay_id FROM runs"
+                               " WHERE tier='ksf' AND map=? ORDER BY track, leg", (mp,)).fetchall()
+
+    def test_p1117_stage_phase_files_only_the_zones_the_map_has(self):
+        self.stage_world()
+        # A board-bound stage PB (its demo file named): the walk's equal time must keep it.
+        when = P._iso('2026-10-01T00:00:01Z')
+        board = dict(K.rec_row('surf_profile0', 1, 0, {
+            'steamID': K.S.steam2(PLAYER), 'time': 6.0, 'date': when, 'record_id': 7001,
+            'file': 'replay_css_5_0_9_%d.rec' % when}), name='p')
+        K.write_rows([board])
+        self.assertEqual(self.step(budget=10), 5)
+        self.assertEqual(self.db.execute("SELECT runid FROM runs WHERE map='surf_profile0' AND leg=1")
+                         .fetchone()[0], board['runid'])
+        asked = [c for c in self.src.calls if '/records/map/' in c]
+        self.assertEqual([c.split('/records/map/')[1] for c in asked], ['surf_profile0?game=css&mode=0'])
+        self.assertEqual([tuple(r) for r in self.zones()],
+                         [(0, 0, 10010, 0, 0), (0, 1, 6000, 1, 0), (0, 2, 7000, 1, 0), (1, 0, 36000, 1, 0)])
+        self.assertEqual(P.status(self.db, PLAYER)['state'], 'complete')
+
+    def test_p1117_stage_phase_budget_500_and_identity(self):
+        self.stage_world()
+        p = K.Pacer(0, 10)          # the crawl's pacer has room; the walk's budget does not
+        P.step(K, self.cache, p, self.have, 1001, 4)
+        self.assertEqual((p.made, P.status(self.db, PLAYER)['mode']), (4, P.STAGE_MODE))
+        self.src.missing = {'surf_profile0'}
+        p = K.Pacer(0, 10)
+        P.step(K, self.cache, p, self.have, 1002, 4)
+        self.assertEqual((p.made, p.unanswered, len(self.zones())), (1, 1, 1))
+        self.assertEqual(P.status(self.db, PLAYER)['state'], 'complete')
+        self.db.execute('DELETE FROM ksfprofiles'); self.db.commit(); self.queue(now=5000)
+        self.src.missing, self.src.who = set(), 'STEAM_0:0:1'
+        with self.assertRaises(K.Refused):
+            P.step(K, self.cache, K.Pacer(0, 10), self.have, 5001, 10)
+        self.assertEqual(len(self.zones()), 1)
+
     def test_migrate18_to20_adds_scoped_marker_without_rewriting_runs(self):
         self.queue(); self.step()
         row = list(self.db.execute('SELECT * FROM runs ORDER BY map LIMIT 1').fetchone())

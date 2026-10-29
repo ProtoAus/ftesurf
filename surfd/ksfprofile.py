@@ -3,9 +3,12 @@ HTTP queues only resolved Steam identities; ksfimport's shared lock/pacer and
 host-wide refusal park own the network. Page durability precedes DB filing,
 which precedes cursor acknowledgement. No replay/evidence authority is added.
 """
+import calendar
 import hashlib
 import os
 import sqlite3
+import time
+import urllib.parse
 
 SQL = """
 CREATE TABLE IF NOT EXISTS ksfprofiles (
@@ -18,6 +21,11 @@ TTL = 86400
 MAX_ACTIVE = 32
 PAGE = 5                    # observed pagination.limit, not a request limit
 MAX_POSITION = 10001         # safety bound; 'limited' is NOT complete
+# P1117: after the four main walks, modes 4..7 walk style mode-4's stage and
+# bonus PBs, one map a request: GET /api/players/<id>/records/map/<map>, the
+# route ksf.surf's own player page uses (probed 29 Oct).  `cursor` indexes
+# stage_maps(); the state stays 'partial' until mode 8.
+STAGE_MODE = 4
 
 
 def status(db, player):
@@ -72,10 +80,19 @@ def step(K, cache, pacer, have, now, budget=3):
         db.close()
     spent = 0
     for player, mode, start, asked in work:
-        if spent >= budget:
-            break
         sid = K.S.steam2(player)
         if not sid:
+            continue
+        if mode >= STAGE_MODE:
+            # A style with nothing to ask advances without spending a request.
+            got = stage_step(K, cache, pacer, have, now, player, sid, mode, start, asked,
+                             spent < budget)
+            if got:
+                spent += got[0]
+                if got[1] == 'partial':
+                    work.append((player, got[2], got[3], asked))
+            continue
+        if spent >= budget:
             continue
         leaf = hashlib.sha256(player.encode('ascii')).hexdigest()
         fn = os.path.join(cache, 'profiles', leaf, '%d-%d.json' % (mode, start))
@@ -98,15 +115,7 @@ def step(K, cache, pacer, have, now, budget=3):
             saved = {'asked': asked, 'body': doc}
             # Invalid pages must not get a cursor, even if they are empty.
             validate(K, doc, start)
-            K._save(fn, saved)
-            with open(fn, 'r+b') as f:
-                os.fsync(f.fileno())
-            if os.name != 'nt':
-                fd = os.open(os.path.dirname(fn), os.O_RDONLY | os.O_DIRECTORY)
-                try:
-                    os.fsync(fd)
-                finally:
-                    os.close(fd)
+            durable(K, fn, saved)
         doc = saved.get('body')
         recs = validate(K, doc, start)
         rows, skipped = [], 0
@@ -143,8 +152,8 @@ def step(K, cache, pacer, have, now, budget=3):
         nextmode, nxt, state = mode, start + len(recs), 'partial'
         if len(recs) < PAGE:
             nextmode, nxt = mode + 1, 1
-            if nextmode == 4:
-                state, nextmode = 'complete', 3
+            if nextmode == STAGE_MODE:
+                nxt = 0             # P1117: on to the stage/bonus phase
         elif nxt >= MAX_POSITION:
             state = 'limited'
         db = K.S.connect()
@@ -160,6 +169,122 @@ def step(K, cache, pacer, have, now, budget=3):
         if state == 'partial':
             work.append((player, nextmode, nxt, asked))
     return spent
+
+
+def durable(K, fn, saved):
+    K._save(fn, saved)
+    with open(fn, 'r+b') as f:
+        os.fsync(f.fileno())
+    if os.name != 'nt':
+        fd = os.open(os.path.dirname(fn), os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+
+def stage_maps(K, cache, player, style, have):
+    """[(map, zones)]: the player's KSF main rows in `style` on installed maps
+    whose cached map info names stages or bonuses (zones_of).  Never asks."""
+    db = K.S.connect()
+    try:
+        maps = [r[0] for r in db.execute(
+            "SELECT DISTINCT map FROM runs WHERE tier = ? AND player = ? AND style = ?"
+            " AND track = 0 AND leg = 0 ORDER BY map",
+            (K.S.TIER_KSF, player, K.KSF_MODES[style]))]
+    finally:
+        db.close()
+    out = []
+    for mp in maps:
+        if mp not in have:
+            continue
+        try:
+            info = K.map_info(mp, cache, K.Pacer(0, 0))
+        except K.OverBudget:
+            continue
+        zones = set(K.zones_of(info)) - {0} if info else set()
+        if zones:
+            out.append((mp, zones))
+    return out
+
+
+def _iso(raw):
+    try:
+        return calendar.timegm(time.strptime(raw, '%Y-%m-%dT%H:%M:%SZ'))
+    except (TypeError, ValueError):
+        return 0
+
+
+def stage_step(K, cache, pacer, have, now, player, sid, mode, start, asked, can_ask):
+    """One map's stage/bonus PBs, or an advance past a style with none left.
+    -> (requests, state, mode, cursor), or None when it would have to ask and may not.
+    Rows are 'cache' bindings, as main completions are: never demo authority."""
+    style = mode - STAGE_MODE
+    maps = stage_maps(K, cache, player, style, have)
+    made, state, nextmode, nxt = 0, 'partial', mode, start + 1
+    if start >= len(maps):
+        nextmode, nxt = mode + 1, 0
+        if nextmode == 2 * STAGE_MODE:
+            state, nextmode = 'complete', 2 * STAGE_MODE - 1
+    else:
+        mp, zones = maps[start]
+        leaf = hashlib.sha256(player.encode('ascii')).hexdigest()
+        fn = os.path.join(cache, 'profiles', leaf, '%d-%d-%s.json' % (mode, start, mp))
+        saved = K._load(fn)
+        if not isinstance(saved, dict) or saved.get('asked') != asked:
+            if not can_ask or pacer.left() <= 0:
+                return None
+            made, saved = 1, None
+            try:
+                doc = pacer.get('/api/players/%s/records/map/%s?game=css&mode=%d'
+                                % (sid, urllib.parse.quote(mp), style))
+            except K.Refused as e:
+                if e.code != 500:
+                    raise
+                pacer.unanswered += 1   # nothing there: the next map; never lifts a park
+            else:
+                saved = {'asked': asked, 'body': doc}
+                validate_map(K, doc, sid)
+                durable(K, fn, saved)
+        rows = []
+        for r in validate_map(K, saved['body'], sid) if saved else []:
+            zone, when = r.get('zoneId'), _iso(r.get('date_set_at'))
+            if type(zone) is not int or zone not in zones or when <= 0:
+                continue
+            row = K.rec_row(mp, zone, style, {'steamID': sid, 'time': r.get('surfTime'),
+                                              'date': when, 'record_id': r.get('record_id')})
+            if row:
+                row['binding'] = 'cache'
+                rows.append(row)
+        if rows:
+            db = K.S.connect()
+            try:
+                named = db.execute("SELECT name FROM runs WHERE player=? ORDER BY submitted DESC"
+                                   " LIMIT 1", (player,)).fetchone()
+            finally:
+                db.close()
+            for row in rows:
+                row['name'] = named[0] if named else 'KSF player'
+            K.write_rows(rows)
+    db = K.S.connect()
+    try:
+        db.execute('PRAGMA synchronous=FULL')
+        with db:
+            db.execute('UPDATE ksfprofiles SET mode=?,cursor=?,state=?,updated=?,pages=pages+?'
+                       " WHERE player=? AND mode=? AND cursor=? AND asked=? AND state IN ('queued','partial')",
+                       (nextmode, nxt, state, now, made, player, mode, start, asked))
+    finally:
+        db.close()
+    return made, state, nextmode, nxt
+
+
+def validate_map(K, doc, sid):
+    info = doc.get('basicInfo') if isinstance(doc, dict) else None
+    if (not isinstance(info, dict) or info.get('steamID') != sid
+            or not isinstance(doc.get('records'), list)
+            or not all(isinstance(r, dict) for r in doc['records'])):
+        raise K.Refused('profile map records shape')
+    return doc['records']
 
 
 def retire(K, player, mode, start, asked, now):
