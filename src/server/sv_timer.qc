@@ -742,6 +742,7 @@ float sv_ts_taint_uid[FS_MAXPLAYERS]; // existing native userid, VM-only; surviv
 .float taslg_on, taslg_zone, taslg_n, taslg_len, taslg_startat, taslg_target, taslg_serial;
 .float taslg_placing, taslg_moved, taslg_mark, taslg_wait, taslg_verify;
 .vector taslg_o0;               // where the placement put the body (a v3 project's baseat)
+.float taslg_line0;             // P1100: the recorder's line count when the clock started (a save's anchor)
 .float taslg_loading;           // P1100: a v3 load's start-box replay (rows from a file: states are observed, not checked)
 float sv_tas_taint_uid[FS_MAXPLAYERS];
 

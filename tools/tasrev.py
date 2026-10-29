@@ -246,6 +246,8 @@ def check_supply(child, parent):
     """Refused unless `child` names `parent` and its supply is exactly the changed span."""
     if child['parentsha'] != parent['h']:
         raise Refused('the child does not name this parent')
+    if (child['version'] == '3') != (parent['version'] == '3'):
+        raise Refused('a legal start and a base save count ticks from different places')
     ch = changed_ticks(child, parent)
     want = (ch[0], ch[-1]) if ch else None
     if child['supply'] != want:

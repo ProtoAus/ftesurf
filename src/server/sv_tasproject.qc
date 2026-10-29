@@ -31,6 +31,7 @@ float *tasp_pbuf[FS_MAXPLAYERS + 1];     // P1090: that revision's own rows (tas
 .float tasp_supa, tasp_supb, tasp_signed, tasp_pbase, tasp_pn, tasp_lineserial;
 .float tasp_made;              // P1090 review 3: the current revision was saved here, not only loaded
 .float tasp_legal, tasp_lzone, tasp_lstartat;  // P1100: this revision is a legal start (version 3)
+.float tasp_lhead;              // its file's head, in ticks from the placement
 .vector tasp_lo;                // its placement
 float(entity e) SV_TASLegalValid;
 void(entity e, string name, float force) SV_TASProjectSaveLegal;
@@ -775,6 +776,7 @@ void(entity e) SV_TASProjectDrive =
 	if (head >= e.tasp_stop)
 	{
 		e.tasp_load = 0;
+		if (e.tasp_legal) e.tasp_serial = -1;   // its line is the session's (SV_TASProjectSaveLegal), not this attempt's
 		e.tasp_result = e.tasp_devtick ? 2 : 1;
 		if (e.tasp_devtick)
 			sprint(e, PRINT_HIGH, sprintf("tas project: loaded %s to tick %.0f; DIVERGED from its saved states at tick %.0f (max %.4f); paused\n",
@@ -1242,7 +1244,12 @@ void(entity e, string name, float force) SV_TASProjectSave =
 	s = SV_TASPSlot(e);
 	if (!s || !SV_TASPLocalOnly(e) || !SV_TASInputReady(e)) return;
 	if (e.tasp_load) { sprint(e, PRINT_HIGH, "tas project: a load is still running\n"); return; }
-	e.tasp_legal = 0;   // P1100: a base-save project is version 2
+	if (e.tasp_legal)
+	{
+		// P1100: a version 3 line counts ticks from a placement, so it is never a base save's parent.
+		e.tasp_on = 0; e.tasp_serial = -1; e.tasp_legal = 0;
+		if (tasp_revsha[s] != "") { strunzone(tasp_revsha[s]); tasp_revsha[s] = ""; }
+	}
 	oldrev = e.tasp_rev;
 	SV_RewindTASHead(e);
 	head = SV_TimerTicks(e);
@@ -1585,6 +1592,7 @@ void(entity e, string sub, string a1, string a2, float argc) SV_TASCheckpointCom
 
 	s = SV_TASPSlot(e);
 	if (!e.tasp_on || e.tasp_load) { sprint(e, PRINT_HIGH, "tas cp: save or load a project first\n"); return; }
+	if (e.tasp_legal) { sprint(e, PRINT_HIGH, "tas cp: named checkpoints on a legal start are not built yet\n"); return; }
 	if (sub == "list" && argc == 3)
 	{
 		named = 0;
@@ -1795,7 +1803,13 @@ void(entity e, float argc, string action, string sub, string a1, string a2, stri
 	}
 	if (sub == "status" && argc == 3)
 	{
-		if (e.tasp_on)
+		if (e.tasp_on && e.tasp_legal)
+		{
+			sprint(e, PRINT_HIGH, sprintf("tas project: %s rev %.0f legal start zone %.0f, clock on tick %.0f, file to tick %.0f, ",
+				tasp_name[SV_TASPSlot(e)], e.tasp_rev, e.tasp_lzone, e.tasp_lstartat, e.tasp_lhead));
+			sprint(e, PRINT_HIGH, sprintf("loading %.0f, result %.0f dev %.6f\n", e.tasp_load, e.tasp_result, e.tasp_dev));
+		}
+		else if (e.tasp_on)
 		{
 			sprint(e, PRINT_HIGH, sprintf("tas project: %s rev %.0f base save #%.0f tick %.0f, file to %.0f, synced %.0f, ",
 				tasp_name[SV_TASPSlot(e)], e.tasp_rev, e.tasp_baseid, e.tasp_base, e.tasp_filehead, e.tasp_synced));

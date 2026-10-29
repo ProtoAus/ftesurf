@@ -38,6 +38,22 @@ def revision(base, rows, parent=None, supply=None, mp='bhop_eazy', baseat='0 0 6
     return body + ('revsha %s\n' % h).encode(), h
 
 
+def legal_revision(rows, parent=None, supply=None, startat=3):
+    """P1100: canonical version 3 bytes and their hash; rows are ticks 1.. from the placement."""
+    head = len(rows)
+    lines = ['tasproject 3', 'map bhop_eazy', 'mapcrc 7f53da5d', 'zonecrc b305f211', 'pmpin %s' % PIN, 'assist tas',
+             'origin local', 'saved 2026-10-29T00:00:00', 'revision 1']
+    if parent: lines.append('parentsha %s' % parent)
+    if parent is None: supply = (1, head)
+    lines.append('supply none' if supply is None else 'supply %d %d' % supply)
+    lines += ['start 0', 'baseat -416 -352 64.03125 0 0 0', 'startat %d' % startat, 'head %d' % head]
+    lines += ['i %s' % ' '.join(str(v) for v in r) for r in rows]
+    lines.append('end %d' % len(rows))
+    body = ('\n'.join(lines) + '\n').encode()
+    h = tr.revhash(body)[0]
+    return body + ('revsha %s\n' % h).encode(), h
+
+
 def statement(seed, sha, parent, first, last, code=CODE):
     msg = tr.statement(sha, parent or '-', '7f53da5d', first, last, code)
     return 'tasrev 1 %s %s 7f53da5d %d %d %s %s %s' % (sha, parent or '-', first, last, code, pub(seed), ed25519.sign(seed, msg).hex())
@@ -112,6 +128,30 @@ class Service(unittest.TestCase):
         self.put_st(statement(BOB, hb, ha, 31, 35)); self.put_rev(b)
         self.put_st(statement(CAROL, hc, hb, 33, 33)); self.put_rev(c)   # Carol's key is not linked
         self.assertEqual(self.credit(hc), [(21, 30, SID_A), (31, 32, SID_B), (33, 33, SID_A), (34, 35, SID_B), (36, 40, SID_A)])
+
+    def test_a_legal_start_child_is_supply_checked_and_credited(self):
+        a, ha = legal_revision([row(t) for t in range(1, 21)])
+        b_rows = [row(t, 9) if 11 <= t <= 15 else row(t) for t in range(1, 21)]
+        bad, _ = legal_revision(b_rows, parent=ha, supply=(1, 20))
+        b, hb = legal_revision(b_rows, parent=ha, supply=(11, 15))
+        self.assertEqual(self.put_rev(a)['ok'], 1)
+        self.assertEqual(self.put_rev(bad)['ok'], 0)             # claims ticks it did not change
+        self.put_st(statement(BOB, hb, ha, 11, 15)); self.assertEqual(self.put_rev(b)['ok'], 1)
+        self.assertEqual(self.credit(hb), [(1, 10, 'unsigned'), (11, 15, SID_B), (16, 20, 'unsigned')])
+
+    def test_a_legal_start_and_a_base_save_are_not_one_line(self):
+        rows = [row(t) for t in range(1, 21)]
+        v2, h2 = revision(0, rows)                              # base 0: the same ticks by number
+        same = [row(t, 9) if t == 5 else row(t) for t in range(1, 21)]
+        child, hc = legal_revision(same, parent=h2, supply=(5, 5))
+        self.put_rev(v2)
+        self.assertEqual(self.put_rev(child)['ok'], 0)
+        # The other order: the child first, its base-save parent later -- still cannot tell.
+        v2b, h2b = revision(0, [row(t, 3) for t in range(1, 21)])
+        child2, hc2 = legal_revision([row(t, 3) if t != 7 else row(t, 4) for t in range(1, 21)], parent=h2b, supply=(7, 7))
+        self.put_st(statement(BOB, hc2, h2b, 7, 7)); self.put_rev(child2)
+        self.put_st(statement(ALICE, h2b, None, 1, 20)); self.put_rev(v2b)
+        self.assertEqual(self.credit(hc2), [(1, 20, 'unknown-ancestry')])
 
     def test_unknown_ancestry_until_the_parent_arrives(self):
         (a, ha), (b, hb), _ = self.chain()

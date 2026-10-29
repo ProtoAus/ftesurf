@@ -10,7 +10,7 @@ change, the game's own reader and verifier (tools/tasrev.py).
 | Route | Body / answer |
 |---|---|
 | `POST /api/tasrev/statement` | JSON `{"line": "tasrev 1 sha parent mapcrc first last code pub sig"}` (a rev/<sha>.<id>.tasrev line). Verified on arrival; the key's account is read THEN and kept with it. |
-| `POST /api/tasrev/revision` | a .tasp exactly as the game wrote it, `Content-Type: text/x-tasrev` (a cross-site form cannot send it); its revsha must be its hash, and a child's supply must be exact against a known parent. Kept once by hash with its first-seen time. |
+| `POST /api/tasrev/revision` | a .tasp exactly as the game wrote it, `Content-Type: text/x-tasrev` (a cross-site form cannot send it); its revsha must be its hash, and a child's supply must be exact against a known parent of its kind (P1110: a legal start, version 3, counts ticks from its start-zone placement, versions 1-2 from a base save; one never names the other). Kept once by hash with its first-seen time. |
 | `GET /api/tasrev/rev/<sha>` | the revision, its statements (no keys: the account, ticks, times, released code or not, arrived before the revision or not), its credit as `[first, last, who]` ranges, and `pending` while its credit waits in the queue. |
 | `GET /api/tasrev/rev/<sha>/file` | the body, for a client to open. Lines outside the hash (saved, revision, origin, parent name) are the first uploader's. |
 | `GET /api/tasrev/map/<map>?before=<seq>` | the map's revisions, newest first by arrival, 100 a page, with `signers`: how many linked accounts have a qualifying statement about it (the first one is credited). |
@@ -37,8 +37,10 @@ search visits only ancestors that changed that tick (up to 4096 ancestors, 1M ro
 none holds it the tick is this revision's own, except at or before the parent's base (never a
 child's). A revision with the same map, base and rows as an earlier one takes the earliest such
 one's credit unless that one descends from it. Where the service cannot see -- an unseen parent or
-ancestor, a cut search, an earlier copy whose chain has a gap -- or the credit would be circular
-(a copy of a revision derived from it), the answer is `unknown-ancestry`. An arrival, and a
+ancestor, a cut search, an earlier copy whose chain has a gap, a parent or ancestor of the other
+kind (it arrived after its child) -- or the credit would be circular (a copy of a revision derived
+from it), the answer is `unknown-ancestry`. The copy rule does not look at the kind: the same rows
+from base 0 as a legal start and as a base save take the earlier one's credit. An arrival, and a
 revision whose credit or changes move, queue every revision that may read it -- descendants, the
 later copies of each, and those copies' descendants, at most 20000 -- and nothing else does, so the
 queue settles; each POST works through it for half a second, and a waiting revision reads

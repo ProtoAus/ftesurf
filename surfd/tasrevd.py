@@ -246,14 +246,22 @@ def descends(db, child, ancestor):
     return None
 
 
+def legal(version):
+    """P1100: version 3 counts ticks from a start-zone placement, 1 and 2 from a base save: rows of
+    the two are never compared tick for tick."""
+    return version == '3'
+
+
 def compute(db, r):
-    """(credit, changed) for revision row-like `r` (sha, seq, base, rows, parentsha, inputs)."""
+    """(credit, changed) for revision row-like `r` (sha, seq, base, rows, parentsha, inputs, version)."""
     sha, base, blob = r['sha'], r['base'], bytes(r['rows'])
     n = len(blob) // 14
     lo, hi = base + 1, base + n
     whole = lambda w: [[lo, hi, w]] if n else []
-    par = db.execute('SELECT sha, base, rows, credit, changed, parentsha FROM revisions WHERE sha = ?',
+    par = db.execute('SELECT sha, base, rows, credit, changed, parentsha, version FROM revisions WHERE sha = ?',
                      (r['parentsha'],)).fetchone() if r['parentsha'] else None
+    if par is not None and legal(par['version']) != legal(r['version']):
+        return whole(UNKNOWN), None     # the intake refuses this pair; a parent that came later cannot tell
     if r['parentsha'] is None: changed = [[lo, hi]] if n else []
     else: changed = diff_ranges(blob, base, bytes(par['rows']), par['base']) if par is not None else None
     same = db.execute('SELECT sha, credit FROM revisions WHERE inputs = ? AND seq < ? ORDER BY seq LIMIT 1',
@@ -274,10 +282,10 @@ def compute(db, r):
         # this revision's rows with B (= cur) where B's child (prev) changed them.
         if prev is None: cut = True; break
         steps += 1
-        b = db.execute('SELECT sha, base, credit, changed, parentsha FROM revisions WHERE sha = ?', (cur,)).fetchone()
+        b = db.execute('SELECT sha, base, credit, changed, parentsha, version FROM revisions WHERE sha = ?', (cur,)).fetchone()
         prev_r = json.loads(prev)
         work += len(prev_r) + len(pending)
-        if b is None or steps > WALK_MAX or work > WORK_MAX: cut = True; break
+        if b is None or steps > WALK_MAX or work > WORK_MAX or legal(b['version']) != legal(r['version']): cut = True; break
         both = intersect(pending, prev_r)
         if both:
             brows = bytes(db.execute('SELECT rows FROM revisions WHERE sha = ?', (cur,)).fetchone()[0])
@@ -340,7 +348,7 @@ def queue_readers(db, sha, cap=20000):
 
 
 def recompute(db, sha):
-    r = db.execute('SELECT sha, seq, base, rows, parentsha, inputs, credit, changed, size FROM revisions WHERE sha = ?',
+    r = db.execute('SELECT sha, seq, base, rows, parentsha, inputs, credit, changed, size, version FROM revisions WHERE sha = ?',
                    (sha,)).fetchone()
     if r is None: return
     cr, ch = compute(db, r)
@@ -491,8 +499,10 @@ def create_app(store, account_db, codes_file, clock=time.time):
             if known is not None:
                 pk = known['parentsha'] is None or db.execute('SELECT 1 FROM revisions WHERE sha = ?', (known['parentsha'],)).fetchone() is not None
                 return jsonify(ok=1, sha=info['h'], seq=known['seq'], first_seen=known['first_seen'], parent=known['parentsha'], parent_known=pk)
-            prow = db.execute('SELECT base, rows FROM revisions WHERE sha = ?', (parent,)).fetchone() if parent else None
-            if prow is not None and info['version'] == '2':
+            prow = db.execute('SELECT base, rows, version FROM revisions WHERE sha = ?', (parent,)).fetchone() if parent else None
+            if prow is not None and legal(prow['version']) != legal(info['version']):
+                return fail('Revision refused: a legal start and a base save count ticks from different places', 400)
+            if prow is not None and info['version'] in ('2', '3'):
                 # tools/tasrev.py check_supply over the stored rows: the changed ticks after the parent's base.
                 ch = [t for a, z in intersect(diff_ranges(rows, info['base'], bytes(prow['rows']), prow['base']),
                                               [[max(prow['base'], info['base']) + 1, info['base'] + len(info['rows'])]])
@@ -500,7 +510,8 @@ def create_app(store, account_db, codes_file, clock=time.time):
                 want = (ch[0], ch[-1]) if ch else None
                 if info['supply'] != want:
                     return fail('Revision refused: supply %s, but the rows differ over %s' % (info['supply'], want), 400)
-            r = dict(sha=info['h'], seq=next_seq(db), base=info['base'], rows=rows, parentsha=parent, inputs=inputs)
+            r = dict(sha=info['h'], seq=next_seq(db), base=info['base'], rows=rows, parentsha=parent, inputs=inputs,
+                     version=info['version'])
             cr, ch = compute(db, r)
             crj, chj = jdump(cr), jdump(ch)
             stored = stored_bytes(body, rows, crj, chj)

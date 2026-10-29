@@ -157,7 +157,23 @@ def v3_selftest():
             got = 'refused'
         print('%-4s %-17s expect refused got %s' % ('ok' if got == 'refused' else 'FAIL', name, got))
         ok = ok and got == 'refused'
-    return ok
+    # A v3 child's supply against a v3 parent; never against a base save's (ticks from elsewhere).
+    p3 = tasrev.parse(good)
+    child = tasrev.parse(build(head[:9] + ['parentsha ' + p3['h'], 'supply 31 40'],
+                               rs=rows[:30] + ['i 9 0 0 0 0 0 0'] * 10))
+    try:
+        fine = tasrev.check_supply(child, p3) == list(range(31, 41))
+    except tasrev.Refused as e:
+        fine = False
+    print('%-4s v3 child supply    %s' % ('ok' if fine else 'FAIL', ''))
+    ok = ok and fine
+    v2 = dict(p3, version='2', base=0)
+    try:
+        tasrev.check_supply(dict(child, parentsha=v2['h']), v2); got = 'accepted'
+    except tasrev.Refused:
+        got = 'refused'
+    print('%-4s v3 child, v2 parent expect refused got %s' % ('ok' if got == 'refused' else 'FAIL', got))
+    return ok and got == 'refused'
 
 
 def chain_selftest():
