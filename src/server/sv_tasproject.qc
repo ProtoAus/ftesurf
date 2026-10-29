@@ -36,6 +36,7 @@ float *tasp_pbuf[FS_MAXPLAYERS + 1];     // P1090: that revision's own rows (tas
 float(entity e) SV_TASLegalValid;
 void(entity e, string name, float force) SV_TASProjectSaveLegal;
 void(entity e, string name, string cpname) SV_TASLegalLoad;
+void(entity e, string why) SV_TASLegalEnd;
 
 // One file read into temporaries; a load installs them only after every check passed.
 float *tpr_buf;
@@ -101,6 +102,7 @@ void(entity e) SV_TASProjectReset =
 	e.tasp_line = e.tasp_linemt = -1;
 	e.tasp_cut = 16000001; e.tasp_gen = e.tasp_parentrev = 0;
 	e.tasp_supa = e.tasp_supb = e.tasp_signed = e.tasp_pn = e.tasp_lineserial = e.tasp_made = 0;
+	e.tasp_legal = e.tasp_lzone = e.tasp_lstartat = e.tasp_lhead = e.taslg_loading = 0;   // P1110
 	if (!s) return;
 	if (tasp_buf[s]) memfree(tasp_buf[s]);
 	if (tasp_cp[s]) memfree(tasp_cp[s]);
@@ -533,7 +535,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 	if (tpr_why == "" && tpr_ncp > 0)
 	if (tpr_cp[0] <= tpr_base || tpr_cp[(tpr_ncp - 1) * TASP_CPSTRIDE] > tpr_base + n)
 		tpr_why = "checkpoint outside the project";
-	if (tpr_why == "" && e.run_tas_mode == 1 && e.run_tas_used == 1)
+	if (tpr_why == "" && e.run_tas_mode == 1 && e.run_tas_used == 1 && ver != TASP_LEGAL)
 	{
 		i = SV_TASPValidate(e, tpr_buf, n);
 		if (i) tpr_why = sprintf("input row %.0f refused by the engine", i);
@@ -725,7 +727,7 @@ void(entity e, string why) SV_TASPAbort =
 	e.tasp_load = 0; e.tasp_ccount = 0; e.tasp_result = 3;
 	e.tasp_serial = -1;
 	sprint(e, PRINT_HIGH, sprintf("tas project: load stopped at tick %.0f: %s; load it again to continue\n",
-		SV_TimerTicks(e), why));
+		SV_TimerTicks(e) + (e.tasp_legal ? e.tasp_lstartat : 0), why));
 	SV_TASProjectEvent(e);
 };
 
@@ -1235,7 +1237,7 @@ void(entity e) SV_TASPSupplyNote =
 // `name` is a zoned copy owned by the caller ("" = the attached project's).
 void(entity e, string name, float force) SV_TASProjectSave =
 {
-	local float s, head, attached, B, id, t, exists, oldidx, row, fork, prev, oldrev;
+	local float s, head, attached, B, id, t, exists, oldidx, row, fork, prev, oldrev, legalline;
 	local filestream f;
 	local float *m;
 	local string hash, parent;
@@ -1244,16 +1246,11 @@ void(entity e, string name, float force) SV_TASProjectSave =
 	s = SV_TASPSlot(e);
 	if (!s || !SV_TASPLocalOnly(e) || !SV_TASInputReady(e)) return;
 	if (e.tasp_load) { sprint(e, PRINT_HIGH, "tas project: a load is still running\n"); return; }
-	if (e.tasp_legal)
-	{
-		// P1100: a version 3 line counts ticks from a placement, so it is never a base save's parent.
-		e.tasp_on = 0; e.tasp_serial = -1; e.tasp_legal = 0;
-		if (tasp_revsha[s] != "") { strunzone(tasp_revsha[s]); tasp_revsha[s] = ""; }
-	}
+	legalline = e.tasp_legal;   // P1110: a v3 line counts ticks from a placement; never a base save's parent
 	oldrev = e.tasp_rev;
 	SV_RewindTASHead(e);
 	head = SV_TimerTicks(e);
-	attached = (e.tasp_on && e.tasp_serial == e.rec_rec_serial && e.tasp_base < head);
+	attached = (!legalline && e.tasp_on && e.tasp_serial == e.rec_rec_serial && e.tasp_base < head);
 	if (attached)
 	{
 		row = SV_TASPRow(e, e.tasp_baseid);
@@ -1262,7 +1259,7 @@ void(entity e, string name, float force) SV_TASProjectSave =
 	}
 	if (name == "")
 	{
-		if (e.tasp_on) name = tasp_name[s];
+		if (e.tasp_on && !legalline) name = tasp_name[s];
 		else for (t = 1; t < 1000; t = t + 1)
 		{
 			name = sprintf("tas%.0f", t);
@@ -1301,6 +1298,7 @@ void(entity e, string name, float force) SV_TASProjectSave =
 		m = rw_slot[s];
 		bo = [m[rw_statebase+1], m[rw_statebase+2], m[rw_statebase+3]];
 		bv = [m[rw_statebase+4], m[rw_statebase+5], m[rw_statebase+6]];
+		if (legalline) SV_TASProjectReset(e);   // past every refusal: the v3 project and its line go whole
 		// Every input first: a refusal must not leave a base save behind.
 		fork = (tasp_name[s] != "" && name != tasp_name[s]);   // tasp_on is down after a failed try
 		prev = e.tasp_rev;
@@ -1412,7 +1410,6 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 	}
 	// P1100: a legal start has no base save; it never takes the base-save path below.
 	if (tpr_ver == TASP_LEGAL) { SV_TASLegalLoad(e, name, cpname); return; }
-	e.tasp_legal = 0;
 	stop = tpr_base + tpr_n;
 	if (cpname != "")
 	{
@@ -1450,6 +1447,8 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 		SV_TASPReadFree(); return;
 	}
 	if (!SV_SaveLocRate(e)) { SV_TASPReadFree(); return; }
+	// P1110: ended before this load's tape exists (the session's end cancels a tape, and a v3 load's frees its project).
+	if (e.taslg_on) SV_TASLegalEnd(e, "a base-save project was loaded");
 	SV_TASCancel(e);
 	e.rec_sl_index = row;
 	SV_SaveLocGo(e);
@@ -1526,6 +1525,7 @@ float(string n) SV_TASPHeadRows =
 		l = fgets(f);
 		if (l == "") break;
 		if (tokenize(l) == 4 && argv(0) == "base") base = stof(argv(3));
+		else if (argv(0) == "start") base = 0;   // P1110: version 3 counts from its placement
 		else if (argv(0) == "head")
 		{
 			if (base >= 0 && stof(argv(1)) > base) rows = min(TASP_MAX, stof(argv(1)) - base);
@@ -1743,16 +1743,16 @@ void(entity e, string sha, string par, string a, string b, string code, string p
 // this attempt, so a save after it is that revision's child, not a root claiming its rows.
 void(entity e) SV_TASProjectClose =
 {
-	local float s, pb, pn, ls;
+	local float s, pb, pn, ls, lg;
 	local float *rows;
 	local string sha;
 	s = SV_TASPSlot(e);
 	sha = tasp_revsha[s]; rows = tasp_pbuf[s];
-	pb = e.tasp_pbase; pn = e.tasp_pn; ls = e.tasp_lineserial;
+	pb = e.tasp_pbase; pn = e.tasp_pn; ls = e.tasp_lineserial; lg = e.tasp_legal;
 	tasp_revsha[s] = ""; tasp_pbuf[s] = 0;
 	SV_TASProjectReset(e);
 	tasp_revsha[s] = sha; tasp_pbuf[s] = rows;
-	e.tasp_pbase = pb; e.tasp_pn = pn; e.tasp_lineserial = ls;
+	e.tasp_pbase = pb; e.tasp_pn = pn; e.tasp_lineserial = ls; e.tasp_legal = lg;   // P1110: the line's kind too
 };
 
 void(entity e, float argc, string action, string sub, string a1, string a2, string a3, string a4) SV_TASProjectArgs =

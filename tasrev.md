@@ -39,8 +39,9 @@ child's). A revision with the same map, base and rows as an earlier one takes th
 one's credit unless that one descends from it. Where the service cannot see -- an unseen parent or
 ancestor, a cut search, an earlier copy whose chain has a gap, a parent or ancestor of the other
 kind (it arrived after its child) -- or the credit would be circular (a copy of a revision derived
-from it), the answer is `unknown-ancestry`. The copy rule does not look at the kind: the same rows
-from base 0 as a legal start and as a base save take the earlier one's credit. An arrival, and a
+from it), the answer is `unknown-ancestry`. The copy rule does not look at the kind or the start
+zone, and it is exact: only the same block of rows at the same ticks matches, so a legal start's
+run re-encoded as a base save from its start (rows shifted by `startat`) is not caught (BACKLOG). An arrival, and a
 revision whose credit or changes move, queue every revision that may read it -- descendants, the
 later copies of each, and those copies' descendants, at most 20000 -- and nothing else does, so the
 queue settles; each POST works through it for half a second, and a waiting revision reads

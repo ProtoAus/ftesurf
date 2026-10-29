@@ -40,6 +40,7 @@ void(entity e, string why) SV_TASLegalEnd =
 float(entity e) SV_TASLegalPlace =
 {
 	local entity was;
+	e.run_t_wantstage1 = FALSE;     // as the zone_goto arm: a standing `!s 1` does not survive a placement
 	e.taslg_placing = 1;
 	SV_TpDestReset(e);      // as `!r` (Patch 1050): no SetRemoteDestination entry survives the placement
 	was = self; self = e;
@@ -60,6 +61,7 @@ float(entity e) SV_TASLegalPlace =
 	if (e.rec_rec_serial <= 0) e.rec_rec_serial = SV_RecNextSerial();
 	e.taslg_mark = e.taslg_moved;
 	e.taslg_n = 0; e.taslg_startat = 0; e.taslg_serial = 0; e.taslg_wait = 0; e.taslg_verify = 0;
+	e.taslg_loading = 0;    // a back or a start during a load's box replay leaves it a plain session
 	return TRUE;
 };
 
@@ -85,8 +87,8 @@ void(entity e, float z) SV_TASLegalStart =
 	if (s < 1 || s > FS_MAXPLAYERS) { sprint(e, PRINT_HIGH, "tas: no legal start in this player slot\n"); return; }
 	if (!taslg_buf[s]) taslg_buf[s] = (float*)memalloc(TASLG_MAX * TASLG_STRIDE * 4);
 	if (!taslg_buf[s]) { sprint(e, PRINT_HIGH, "tas: out of memory for a legal start\n"); return; }
-	e.run_t_wantstage1 = FALSE;     // as the zone_goto arm: a standing `!s 1` does not survive a placement
 	SV_TASProjectReset(e);          // a session's first save is a root; its later saves continue that line
+	SV_TASProjectEvent(e);
 	e.taslg_on = 1; e.taslg_zone = z; e.taslg_len = 0; e.taslg_target = -1;
 	if (!SV_TASLegalPlace(e))
 	{
@@ -193,9 +195,14 @@ void(entity e) SV_TASLegalFrame =
 	// A v3 load's start box ends where the file says the clock started (or, never started, at its head).
 	if (e.taslg_loading && e.taslg_target >= 0 && e.taslg_n == e.taslg_target)
 	{
+		if (e.taslg_moved != e.taslg_mark)
+		{
+			SV_TASLegalEnd(e, "the player was moved during the load");
+			return;
+		}
 		if (e.tasp_lstartat > 0)
 		{
-			if (e.run_t_state != TS_RUNNING || e.taslg_moved != e.taslg_mark)
+			if (e.run_t_state != TS_RUNNING)
 			{
 				SV_TASLegalEnd(e, sprintf("the load did not start the clock on tick %.0f as saved", e.tasp_lstartat));
 				return;
@@ -213,7 +220,8 @@ void(entity e) SV_TASLegalFrame =
 	}
 	if (e.taslg_loading && e.taslg_target >= 0 && e.run_t_state == TS_RUNNING)
 	{
-		SV_TASLegalEnd(e, sprintf("the load started the clock on tick %.0f, before the saved %.0f", e.taslg_n, e.tasp_lstartat));
+		if (!e.tasp_lstartat) SV_TASLegalEnd(e, "the load started the clock, which the saved project never did");
+		else SV_TASLegalEnd(e, sprintf("the load started the clock on tick %.0f, before the saved %.0f", e.taslg_n, e.tasp_lstartat));
 		return;
 	}
 	// Two steps in one packet: the clock starts at the packet's end, so a replay that stops between
@@ -278,13 +286,15 @@ void(entity e) SV_TASLegalFrame =
 */
 void(entity e, string name, float force) SV_TASProjectSaveLegal =
 {
-	local float s, ls, head, pre, running, t, j, run, child, prev;
+	local float s, ls, head, pre, running, t, j, run, child, attached, same, prev, prevparent;
 	local filestream f;
-	local string parent;
+	local string parent, oname, oparent;
 	s = SV_TASPSlot(e); ls = num_for_edict(e);
 	if (!s || !SV_TASPLocalOnly(e)) return;
-	// The project this session loaded or saved: the next revision of its line.
-	child = (e.tasp_on && e.tasp_legal && tasp_revsha[s] != "" && tasp_name[s] != "");
+	// The session's line (its load, or its last save): kept through a close or a failed save, as a
+	// base-save project's is (P1090); only `tas start`, a load or a base-save save end it.
+	child = (e.tasp_legal && tasp_revsha[s] != "");
+	attached = (child && e.tasp_on && tasp_name[s] != "");
 	if (e.tasp_load) { sprint(e, PRINT_HIGH, "tas project: a load is still running\n"); return; }
 	if (!e.run_tas_paused || e.run_tas_pending || e.taslg_target >= 0)
 	{
@@ -292,6 +302,7 @@ void(entity e, string name, float force) SV_TASProjectSaveLegal =
 		return;
 	}
 	running = (e.run_t_state == TS_RUNNING);
+	if (running) SV_RewindTASHead(e);   // the harvest checks the last tick against this ring row
 	if (running && SV_ViewTicks(e))
 	{
 		sprint(e, PRINT_HIGH, "tas project: this run opened a viewing window; a legal start saves none\n");
@@ -302,19 +313,19 @@ void(entity e, string name, float force) SV_TASProjectSaveLegal =
 	head = pre + run;
 	if (head < 1) { sprint(e, PRINT_HIGH, "tas project: take a step before saving\n"); return; }
 	if (head > TASP_MAX) { sprint(e, PRINT_HIGH, "tas project: longer than a project holds\n"); return; }
-	if (name == "" && child) name = tasp_name[s];
+	if (name == "" && attached) name = tasp_name[s];
 	if (name == "")
 		for (t = 1; t < 1000; t = t + 1)
 		{
 			name = sprintf("tas%.0f", t);
 			if (!SV_TASPExists(name)) break;
 		}
-	if (SV_TASPExists(name) && !force && !(child && name == tasp_name[s]))
+	if (SV_TASPExists(name) && !force && !(attached && name == tasp_name[s]))
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas project: %s already exists; save under a new name, or tas project save %s force\n", name, name));
 		return;
 	}
-	if (child && name == tasp_name[s] && head < e.tasp_lhead && !force)
+	if (attached && name == tasp_name[s] && head < e.tasp_lhead && !force)
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas project: %s has ticks to %.0f and you are at %.0f; saving would cut them. Save under a new name, or tas project save %s force\n",
 			name, e.tasp_lhead, head, name));
@@ -328,10 +339,13 @@ void(entity e, string name, float force) SV_TASProjectSaveLegal =
 	if (!SV_TASPIdentityOK(e)) return;
 	if (!SV_SaveLocRate(e)) return;
 	name = strzone(name);
-	// The rows are rebuilt whole; only the line (revsha, and the parent's rows for the supply) carries over.
-	prev = e.tasp_rev;
-	if (!child) parent = strzone("");
-	else parent = strzone(name != tasp_name[s] ? tasp_name[s] : tasp_parent[s]);
+	// The rows are rebuilt whole; only the line (revsha, and the parent's rows for the supply) carries
+	// over. Same name: the next revision; another name: a fork naming it; a closed line: rev 1 of it.
+	same = (child && tasp_name[s] != "" && name == tasp_name[s]);
+	prev = e.tasp_rev; prevparent = e.tasp_parentrev;
+	if (child && tasp_name[s] != "" && !same) parent = strzone(tasp_name[s]);
+	else if (same) parent = strzone(tasp_parent[s]);
+	else parent = strzone("");
 	if (tasp_buf[s]) memfree(tasp_buf[s]);
 	if (tasp_cp[s]) memfree(tasp_cp[s]);
 	tasp_buf[s] = 0; tasp_cp[s] = 0;
@@ -339,8 +353,8 @@ void(entity e, string name, float force) SV_TASProjectSaveLegal =
 	if (tasp_cpnames[s]) strunzone(tasp_cpnames[s]);
 	tasp_cpnames[s] = "";
 	if (!child && tasp_revsha[s] != "") { strunzone(tasp_revsha[s]); tasp_revsha[s] = ""; }
-	e.tasp_on = 0; e.tasp_rev = 0; e.tasp_baseid = 0;
-	if (!SV_TASPEnsure(e, s, head)) { sprint(e, PRINT_HIGH, "tas project: out of memory\n"); strunzone(name); strunzone(parent); return; }
+	e.tasp_on = 0; e.tasp_baseid = 0;   // detached until the write lands (the rows are this save's now)
+	if (!SV_TASPEnsure(e, s, head)) { sprint(e, PRINT_HIGH, "tas project: out of memory\n"); strunzone(name); strunzone(parent); SV_TASProjectEvent(e); return; }
 	for (t = 0; t < pre; t = t + 1)
 		for (j = 0; j < TAS_INPUT_STRIDE; j = j + 1)
 			tasp_buf[s][t * TAS_INPUT_STRIDE + j] = taslg_buf[ls][t * TASLG_STRIDE + j];
@@ -353,11 +367,11 @@ void(entity e, string name, float force) SV_TASProjectSaveLegal =
 		if (!SV_TASPHarvest(e, s, run))
 		{
 			sprint(e, PRINT_HIGH, sprintf("tas project: cannot save: %s; nothing written\n", tasp_why));
-			strunzone(name); strunzone(parent); e.tasp_n = 0; return;
+			strunzone(name); strunzone(parent); e.tasp_n = 0; e.tasp_base = 0; SV_TASProjectEvent(e); return;
 		}
 	}
 	e.tasp_base = 0; e.tasp_n = head;
-	tasp_cp[s] = (float*)memalloc(TASP_CPSTRIDE * 4);
+	tasp_cp[s] = (float*)memalloc(TASP_CPMAX * TASP_CPSTRIDE * 4);   // the size `tas cp` assumes
 	if (tasp_cp[s])
 	{
 		tasp_cp[s][0] = head; tasp_cp[s][1] = 0;
@@ -366,18 +380,22 @@ void(entity e, string name, float force) SV_TASProjectSaveLegal =
 		e.tasp_ncp = 1;
 	}
 	e.tasp_legal = 1; e.tasp_lzone = e.taslg_zone; e.tasp_lstartat = running ? e.taslg_startat : 0; e.tasp_lo = e.taslg_o0;
-	if (child && name != tasp_name[s]) e.tasp_parentrev = prev;
-	e.tasp_rev = (child && name == tasp_name[s]) ? prev + 1 : 1;
+	e.tasp_parentrev = same ? prevparent : (parent != "" ? prev : 0);
+	e.tasp_rev = same ? prev + 1 : 1;
 	SV_TASPSupply(e, s, head);   // against the parent's rows (base 0 too), or all of a root's
-	if (tasp_name[s]) strunzone(tasp_name[s]);
-	tasp_name[s] = name;
-	if (tasp_parent[s]) strunzone(tasp_parent[s]);
-	tasp_parent[s] = parent;
+	oname = tasp_name[s]; oparent = tasp_parent[s];
+	tasp_name[s] = name; tasp_parent[s] = parent;
 	if (!SV_TASPWrite(e, s, name, parent))
 	{
+		// The line stays the last revision's: a retry is still its child.
 		sprint(e, PRINT_HIGH, "tas project: cannot write the project file\n");
-		e.tasp_legal = 0; SV_TASProjectEvent(e); return;
+		strunzone(name); strunzone(parent);
+		tasp_name[s] = oname; tasp_parent[s] = oparent;
+		e.tasp_rev = prev; e.tasp_parentrev = prevparent;
+		SV_TASProjectEvent(e); return;
 	}
+	if (oname) strunzone(oname);
+	if (oparent) strunzone(oparent);
 	SV_TASPParentKeep(e, s);
 	// Attached for the next save and the panel; the base-save hooks never follow it (tasp_serial).
 	e.tasp_on = 1; e.tasp_load = 0; e.tasp_serial = -1; e.tasp_lhead = head;
@@ -391,8 +409,12 @@ void(entity e, string name, float force) SV_TASProjectSaveLegal =
 	}
 	e.tasp_made = SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s], "made"));
 	e.tasp_signed = SV_TASPSignedFor(tasp_revsha[s]);
-	sprint(e, PRINT_HIGH, sprintf("tas project: saved %s rev %.0f: a legal start at zone %.0f, inputs to tick %.0f, the clock started on tick %.0f\n",
-		name, e.tasp_rev, e.tasp_lzone, head, e.tasp_lstartat));
+	if (e.tasp_lstartat)
+		sprint(e, PRINT_HIGH, sprintf("tas project: saved %s rev %.0f: a legal start at zone %.0f, inputs to tick %.0f, the clock started on tick %.0f\n",
+			name, e.tasp_rev, e.tasp_lzone, head, e.tasp_lstartat));
+	else
+		sprint(e, PRINT_HIGH, sprintf("tas project: saved %s rev %.0f: a legal start at zone %.0f, inputs to tick %.0f, before the clock\n",
+			name, e.tasp_rev, e.tasp_lzone, head));
 	SV_TASPSupplyNote(e);
 	SV_TASProjectEvent(e);
 };
@@ -432,7 +454,7 @@ void(entity e, string name, string cpname) SV_TASLegalLoad =
 		sprint(e, PRINT_HIGH, "tas project: its start box is longer than a session holds; nothing changed\n");
 		SV_TASPReadFree(); return;
 	}
-	if (!SV_TASCanPause(e)) { SV_TASPReadFree(); return; }
+	if (!SV_TASCanPause(e) || !SV_SaveLocRate(e)) { SV_TASPReadFree(); return; }
 	if (!taslg_buf[ls]) taslg_buf[ls] = (float*)memalloc(TASLG_MAX * TASLG_STRIDE * 4);
 	if (!taslg_buf[ls]) { sprint(e, PRINT_HIGH, "tas project: out of memory\n"); SV_TASPReadFree(); return; }
 	SV_TASHistoryReset(e);
@@ -479,6 +501,7 @@ void(entity e, string name, string cpname) SV_TASLegalLoad =
 	SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE, FALSE);
 	if (e.run_tas_req < 16000000) e.run_tas_req = e.run_tas_req + 1;  // stale timeline pages refuse
 	e.taslg_loading = 1; e.taslg_target = pre;
+	e.tasp_load = 1; e.tasp_stop = pre; e.tasp_filehead = tpr_n;
 	sprint(e, PRINT_HIGH, sprintf("tas project: loading %s rev %.0f: placed at zone %.0f, replaying the start box to tick %.0f\n",
 		name, e.tasp_rev, z, pre));
 	SV_TASProjectEvent(e);
@@ -487,14 +510,30 @@ void(entity e, string name, string cpname) SV_TASLegalLoad =
 // The start box is replayed: finish, or hand the run part to the project driver.
 void(entity e) SV_TASLegalLoadRun =
 {
-	local float s, k, b;
+	local float s, k, b, d;
 	s = SV_TASPSlot(e);
 	if (!s) return;
 	if (!e.tasp_lstartat || e.tasp_n <= e.tasp_lstartat)
 	{
-		e.tasp_on = 1; e.tasp_serial = -1; e.tasp_result = 1;
-		sprint(e, PRINT_HIGH, sprintf("tas project: loaded %s to tick %.0f (the start box, before the clock); paused\n",
-			tasp_name[s], e.taslg_n));
+		// Nothing ran after the box: the saved state at its head is the one check.
+		d = -1;
+		for (k = 0; k < e.tasp_ncp; k = k + 1)
+		{
+			b = k * TASP_CPSTRIDE;
+			if (tasp_cp[s][b] == e.taslg_n)
+				d = max(vlen(e.origin - [tasp_cp[s][b+2], tasp_cp[s][b+3], tasp_cp[s][b+4]]),
+					vlen(e.velocity - [tasp_cp[s][b+5], tasp_cp[s][b+6], tasp_cp[s][b+7]]));
+		}
+		e.tasp_on = 1; e.tasp_load = 0; e.tasp_serial = -1; e.tasp_filehead = e.tasp_n;
+		e.tasp_dev = max(d, 0); e.tasp_devtick = (d > 0) ? e.taslg_n : 0;
+		e.tasp_result = (d < 0) ? 0 : ((d > 0) ? 2 : 1);
+		if (d > 0)
+			sprint(e, PRINT_HIGH, sprintf("tas project: loaded %s to tick %.0f (%s); DIVERGED from its saved state (%.4f); paused\n",
+				tasp_name[s], e.taslg_n, e.tasp_lstartat ? "the clock started on its last tick" : "the start box, before the clock", d));
+		else
+			sprint(e, PRINT_HIGH, sprintf("tas project: loaded %s to tick %.0f (%s); %s; paused\n",
+				tasp_name[s], e.taslg_n, e.tasp_lstartat ? "the clock started on its last tick" : "the start box, before the clock",
+				d < 0 ? "no saved state to compare" : "reproduced its saved state exactly"));
 		SV_TASProjectEvent(e);
 		return;
 	}

@@ -263,6 +263,13 @@ Steps 1-2 of TAS plan 6.1 (P1100) and step 3, version 3 projects (P1110).
 - A `tas back` after the start uses the 60 s rewind ring; a session holds every row, so a back
   past the ring could replay from the placement instead.
 - tasrevd accepts version 3 only from a release with this tools/tasrev.py (Lex's sudo).
+- A v3 file is only as legal as its `zonecrc`: a locally edited zone moves a start destination
+  anywhere, so the 6.2 verifier must check `zonecrc` against the official zones.
+- Every v3 base is 0 at a fixed placement, so short trivial roots are identical between players and
+  the copy rule gives them to the first uploader; a run re-encoded as a base save from its start
+  is not caught (tasrev.md).
+- tools/tasrev.py accepts a v3 file whose start box (`startat`, or all rows before the clock) is
+  over 4096 ticks; the game reads it too but refuses to load it. No session can save one.
 - Two TAS steps in one packet: the clock starts at the packet's end, so the start's tick depends
   on how steps were grouped; a replay that starts it early ends the session. The Pi's verifier
   must control packet grouping or check `startat` on replay.
