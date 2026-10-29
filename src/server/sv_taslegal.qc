@@ -85,7 +85,7 @@ void(entity e, float z) SV_TASLegalStart =
 	// The stage you are on in a running run is a stage restart (the run goes on), not a start.
 	if (SV_TimerWouldRestartSeg(e, z))
 	{
-		sprint(e, PRINT_HIGH, "tas start: that zone restarts the stage you are on, it does not arm a run; !r first\n");
+		sprint(e, PRINT_HIGH, "tas start: that zone restarts the stage you are on, it does not arm a run; restart the run from its own start first\n");
 		return;
 	}
 	if (!SV_TASCanPause(e)) return;
@@ -191,7 +191,6 @@ void(entity e, float target) SV_TASLegalBack =
 };
 
 void(entity e) SV_TASLegalLoadRun;
-float(entity e, float n) SV_TimerWouldRestartSeg;
 
 // Settled and idle paused frames: the start's tick, and the next replay chunk.
 void(entity e) SV_TASLegalFrame =
@@ -459,7 +458,7 @@ void(entity e, string name, string cpname) SV_TASLegalLoad =
 	}
 	if (SV_TimerWouldRestartSeg(e, z))
 	{
-		sprint(e, PRINT_HIGH, sprintf("tas project: %s starts at zone %.0f, the stage you are on in this run; !r first; nothing changed\n", name, z));
+		sprint(e, PRINT_HIGH, sprintf("tas project: %s starts at zone %.0f, the stage you are on in this run; restart the run from its own start first; nothing changed\n", name, z));
 		SV_TASPReadFree(); return;
 	}
 	pre = tpr_startat ? tpr_startat : tpr_n;
