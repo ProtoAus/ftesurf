@@ -227,6 +227,25 @@ Lex's goals of 28 Oct, beyond P1088's constant turn for exit speed ("do what you
 - Each candidate prints ~3 console lines; with a second client on a non-lobby server each
   back's save row stays (as plain `tas back`), so one search adds ~22 rows.
 
+## TAS legal start (P1100): what is left
+
+Steps 1-2 of TAS plan 6.1; two review rounds (29 Oct).
+- Step 3 is not built: a project saved from a legal start (v3: `start <zone>`, `startat`) and its
+  load (P1100-DESIGN.md in the task root has the spec). Rows from the start-box log must be
+  replayed (or otherwise checked) before they are saved: world-driven moves in the box
+  (point_teleport, AddOutput origin, a door pushing a paused body) are not counted as placements,
+  and only a replay catches them (DIVERGED).
+- Two TAS steps in one packet: the clock starts at the packet's end, so the start's tick depends
+  on how steps were grouped; a replay that starts it early ends the session. The Pi's verifier
+  must control packet grouping or check `startat` on replay.
+- Input editing, `tas inputs` and the optimizer do not work in the start box yet (they need a
+  running run).
+- The engine's recording verifier (sv_ccmds.c ~6195) labels `startjit 0 0 0 0` "(blocked)";
+  display only.
+- `tas start <a stage zone>` in the middle of a run is a stage restart that does not arm: it moves
+  the player like `zone_goto` (which has the same gap) and says no legal start.
+- Placement measured canonical on bhop_eazy only (p1100-canon1).
+
 ## TAS revision service (P1091): what is left
 
 tasrevd (tasrev.md is the contract). From four review rounds (28 Oct); none moves credit to a

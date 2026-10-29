@@ -28,7 +28,9 @@ float(entity e) SV_TASLegalValid =
 void(entity e, string why) SV_TASLegalEnd =
 {
 	if (!e.taslg_on) return;
-	e.taslg_on = 0; e.taslg_target = -1;
+	// A replay in flight stops here, not a packet later from wherever the player now is.
+	if (e.taslg_target >= 0 && checkbuiltin(tas_tape)) tas_tape(e, 0, 0, 0, '0 0 0', '0 0 0', 0);
+	e.taslg_on = 0; e.taslg_target = -1; e.taslg_verify = 0;
 	sprint(e, PRINT_HIGH, sprintf("tas: legal start session ended: %s\n", why));
 };
 
@@ -37,6 +39,7 @@ float(entity e) SV_TASLegalPlace =
 {
 	local entity was;
 	e.taslg_placing = 1;
+	SV_TpDestReset(e);      // as `!r` (Patch 1050): no SetRemoteDestination entry survives the placement
 	was = self; self = e;
 	SV_ZoneMove(e.taslg_zone);
 	self = was;
@@ -49,7 +52,7 @@ float(entity e) SV_TASLegalPlace =
 	// A tape is bound to a recording serial above 0; a connection that never recorded has 0.
 	if (e.rec_rec_serial <= 0) e.rec_rec_serial = SV_RecNextSerial();
 	e.taslg_mark = e.taslg_moved;
-	e.taslg_n = 0; e.taslg_startat = 0; e.taslg_serial = 0; e.taslg_wait = 0;
+	e.taslg_n = 0; e.taslg_startat = 0; e.taslg_serial = 0; e.taslg_wait = 0; e.taslg_verify = 0;
 	return TRUE;
 };
 
@@ -67,11 +70,12 @@ void(entity e, float z) SV_TASLegalStart =
 	if (ok) ok = (zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE);
 	if (!ok)
 	{
-		sprint(e, PRINT_HIGH, "tas start <zone>: the number of a start or stage zone (zone_list names them)\n");
+		sprint(e, PRINT_HIGH, "tas start <zone>: the number of a start or stage zone (cmd zone_dests lists them)\n");
 		return;
 	}
 	if (!SV_TASCanPause(e)) return;
 	s = num_for_edict(e);
+	if (s < 1 || s > FS_MAXPLAYERS) { sprint(e, PRINT_HIGH, "tas: no legal start in this player slot\n"); return; }
 	if (!taslg_buf[s]) taslg_buf[s] = (float*)memalloc(TASLG_MAX * TASLG_STRIDE * 4);
 	if (!taslg_buf[s]) { sprint(e, PRINT_HIGH, "tas: out of memory for a legal start\n"); return; }
 	e.run_t_wantstage1 = FALSE;     // as the zone_goto arm: a standing `!s 1` does not survive a placement
@@ -79,7 +83,7 @@ void(entity e, float z) SV_TASLegalStart =
 	if (!SV_TASLegalPlace(e))
 	{
 		e.taslg_on = 0;
-		sprint(e, PRINT_HIGH, "tas: that zone did not arm a run; no legal start\n");
+		sprint(e, PRINT_HIGH, "tas: moved to that zone, but it did not arm a run (a restart in the middle of one?); no legal start\n");
 		return;
 	}
 	sprint(e, PRINT_HIGH, sprintf("tas: legal start at zone %.0f (track %.0f): tick 0, standing at its start; paused\n",
@@ -97,6 +101,17 @@ void(entity e) SV_TASLegalLog =
 	if (e.taslg_n >= TASLG_MAX) { SV_TASLegalEnd(e, "longer than a start box holds (61 s)"); return; }
 	s = num_for_edict(e);
 	b = e.taslg_n * TASLG_STRIDE;
+	// After a back, the first step's PreThink sees the replay's end state where the log saw it.
+	if (e.taslg_verify)
+	{
+		e.taslg_verify = 0;
+		if (taslg_buf[s][b+7] != e.origin_x || taslg_buf[s][b+8] != e.origin_y || taslg_buf[s][b+9] != e.origin_z ||
+		    taslg_buf[s][b+10] != e.velocity_x || taslg_buf[s][b+11] != e.velocity_y || taslg_buf[s][b+12] != e.velocity_z)
+		{
+			SV_TASLegalEnd(e, sprintf("the replay DIVERGED at tick %.0f (something in the start box moved)", e.taslg_n));
+			return;
+		}
+	}
 	bt = 0;
 	if (e.button2) bt = bt + 1;
 	if (e.button4) bt = bt + 2;
@@ -167,21 +182,17 @@ void(entity e) SV_TASLegalFrame =
 	}
 	if (!SV_TASLegalValid(e))
 	{
-		SV_TASLegalEnd(e, e.run_t_state == TS_ARMED ? "the player was moved in the start box" : "the run is no longer the one this start began");
+		SV_TASLegalEnd(e, e.run_t_state == TS_ARMED ? "the player was moved, or TAS played or turned off, in the start box"
+			: "the run is no longer the one this start began");
 		return;
 	}
 	if (e.taslg_target < 0) return;
 	if (e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_replaystate == TAS_TAPE_STAGING || e.run_tas_pending) return;
 	if (e.taslg_n == e.taslg_target)
 	{
-		// The body after the last replayed step is the state logged before the next one.
-		s = num_for_edict(e); b = e.taslg_n * TASLG_STRIDE;
-		if (taslg_buf[s][b+7] != e.origin_x || taslg_buf[s][b+8] != e.origin_y || taslg_buf[s][b+9] != e.origin_z ||
-		    taslg_buf[s][b+10] != e.velocity_x || taslg_buf[s][b+11] != e.velocity_y || taslg_buf[s][b+12] != e.velocity_z)
-		{
-			SV_TASLegalEnd(e, sprintf("the replay DIVERGED at tick %.0f (something in the start box moved)", e.taslg_n));
-			return;
-		}
+		// The end state is checked at the next step's PreThink, where the log read it (a push's
+		// velocity lands between PostThink and PreThink).
+		e.taslg_verify = 1;
 		e.taslg_target = -1;
 		sprint(e, PRINT_HIGH, sprintf("tas: back to tick %.0f of the legal start (before the clock); paused\n", e.taslg_n));
 		return;

@@ -740,7 +740,7 @@ float sv_ts_taint_uid[FS_MAXPLAYERS]; // existing native userid, VM-only; surviv
 .vector run_tas_cmdkey;          // native uint32 sequence as two exact 16-bit words + valid
 // P1100: a legal-start session (sv_taslegal.qc); taslg_moved counts placements it did not make.
 .float taslg_on, taslg_zone, taslg_n, taslg_len, taslg_startat, taslg_target, taslg_serial;
-.float taslg_placing, taslg_moved, taslg_mark, taslg_wait;
+.float taslg_placing, taslg_moved, taslg_mark, taslg_wait, taslg_verify;
 float sv_tas_taint_uid[FS_MAXPLAYERS];
 
 void() SV_TimeScaleMapReset =
@@ -3154,7 +3154,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 
                             FOUR STATES AND THEY ARE ALL DIFFERENT.  The key
                             ABSENT means the rule was off or the file predates
-                            build 83.  `startjit <u> 0 0 0` means the rule ran
+                            build 83.  `startjit <u> 0 0 0` (u > 0) means the rule ran
                             and every candidate was blocked -- embedded in
                             geometry, or back inside the start box -- so nothing
                             moved.  Anything else is a displacement that

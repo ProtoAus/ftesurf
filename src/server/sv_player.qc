@@ -1478,11 +1478,11 @@ void(entity e, float argc) SV_TASCommand =
 		// P1100: in the start box, or back across the start, a legal session replays from the start.
 		if (SV_TASLegalValid(e) && e.run_tas_paused && !e.run_tas_pending && count >= 1 && count <= 128 && count == floor(count)
 		    && ticket > e.run_tas_req && ticket <= 16000000 && ticket == floor(ticket))
-		if (e.run_t_state == TS_ARMED || SV_TimerTicks(e) - count < 0)
+		if (e.run_t_state == TS_ARMED || SV_TimerTicks(e) - SV_ViewTicks(e) - count < 0)    // mover ticks, not viewing
 		if (SV_TASCanPause(e))          // holds, viewing, ghost, faults: what SV_TASBack refuses
 		{
 			e.run_tas_req = ticket;
-			SV_TASLegalBack(e, (e.run_t_state == TS_ARMED ? e.taslg_n : e.taslg_startat + SV_TimerTicks(e)) - count);
+			SV_TASLegalBack(e, (e.run_t_state == TS_ARMED ? e.taslg_n : e.taslg_startat + SV_TimerTicks(e) - SV_ViewTicks(e)) - count);
 			return;
 		}
 		SV_TASBack(e, count, ticket);

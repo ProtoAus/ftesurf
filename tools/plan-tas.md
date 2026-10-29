@@ -297,6 +297,10 @@ contract, 300 statement/cache trials). LIVE 29 Oct 00:48Z at https://play.proto.
 
 6.1 A project from the legal start (no base save): the run's start zone and spawn, so a
 verifier has nothing to trust but the map, the rules and the inputs.
+P1100 (29 Oct): steps 1-2 -- TAS starts take no start nudge (`startjit 0 0 0 0`); `tas start
+<zone>` opens a legal-start session at the zone's own destination; TAS steps and `tas back` in the
+start box and back across the start, by replay from the canonical placement (measured exact). Step
+3 (v3 projects saved and loaded from the legal start) is next; BACKLOG "TAS legal start".
 6.2 Headless re-simulation WITH the map's own world: a dedicated server drives the tape on a
 bot client (tas_tape needs a connected client today), triggers and teleports run live, not
 copied from rows; output `VERIFY-TAS PASS ticks N finish` or HOLD/REFUSE with why. Pinned

@@ -21,6 +21,11 @@
 
 ## next
 
+### P1100 TAS: start from the start zone
+- `tas start <zone>` puts you standing at a start or stage zone's own start point (where `!r` puts you) and pauses TAS. `cmd zone_dests` lists the zones and their numbers.
+- From there, TAS steps work in the start box, and `tas back` works there too, even back across the start: it replays your inputs from the start point. If something in the start box moved since (a door, another player), it says DIVERGED and ends the session instead of putting you somewhere new.
+- A run you start under TAS no longer gets the random start nudge: TAS lines are planned to the unit. TAS runs still never count on the normal boards.
+
 ### P1105 Completed maps stand out
 - A map you have finished now fills its whole card with green from the right, with a large Complete! scrolling across it behind the Play button.
 
