@@ -3152,7 +3152,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             horizontal, see SV_RunStartJitter -- and the column
                             is written anyway so a reader never has to know it.
 
-                            THREE STATES AND THEY ARE ALL DIFFERENT.  The key
+                            FOUR STATES AND THEY ARE ALL DIFFERENT.  The key
                             ABSENT means the rule was off or the file predates
                             build 83.  `startjit <u> 0 0 0` means the rule ran
                             and every candidate was blocked -- embedded in
@@ -5916,11 +5916,12 @@ void(entity e) SV_RecOpen =
 	  happens exactly at the start, and the header already says when that was.
 
 	  WRITTEN WHENEVER THE RULE WAS IN FORCE, including when it applied nothing.
-	  Three distinguishable states, and they have to stay distinguishable:
+	  Four distinguishable states, and they have to stay distinguishable:
 
 	    absent           the rule was off, or the file predates build 83
 	    startjit 2 0 0 0 the rule ran and every candidate was blocked
 	    startjit 2 ...   the rule ran and moved the player
+	    startjit 0 0 0 0 P1100: a TAS start, which takes no nudge (its flags carry TF_TAS)
 
 	  Folding the middle one into absence is the sv_mapcheck shape exactly -- two
 	  sides that are both zero, agreeing, for as long as nobody looks.
@@ -16622,6 +16623,7 @@ void() SV_TimerMapInit =
 	run_t_runclass    = cvar("run_class");
 	run_t_cheatwatch  = cvar("run_cheatwatch");
 	run_t_startjit    = SV_MapCfgFloat("run_startjitter", cvar("run_startjitter"));   // build 83; a hands-off map turns it off
+	if (run_t_startjit < 0.0001) run_t_startjit = 0;    // P1100: a rule %.4f prints as 0 is off; 0 means a TAS start
 	dprint(sprintf("timer: startjit rule %g on %s\n", run_t_startjit, mapname));
 	run_t_osrand      = -1;      // Patch 419: "not yet determined", which the
 	run_t_osrsaid     = FALSE;   // declaration promises and nothing else assigned

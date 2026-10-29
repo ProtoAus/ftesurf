@@ -99,6 +99,8 @@ void() PutClientInServer =
 {
 	local entity spot;
 
+	self.taslg_moved = self.taslg_moved + 1;   // P1100: a respawn is a placement a legal start did not make
+
 	self.run_statowner = num_for_edict(self);
 	// Patch 856: a medal told on the last map is not news on this one.  The
 	// client's copy of the key arrives some frames after it draws (cl_story.qc).
@@ -1010,6 +1012,7 @@ void(entity e) SV_SaveLocGo =
 // branch in SV_ParseClientCommand.
 void(vector org, float haveang, vector ang) SV_SetPosSelf =
 {
+	self.taslg_moved = self.taslg_moved + 1;   // P1100: a placement a legal start did not make
 	local vector was;
 
 	SV_SpecRelease(self, "setpos");     // Patch 382
@@ -1476,6 +1479,7 @@ void(entity e, float argc) SV_TASCommand =
 		if (SV_TASLegalValid(e) && e.run_tas_paused && !e.run_tas_pending && count >= 1 && count <= 128 && count == floor(count)
 		    && ticket > e.run_tas_req && ticket <= 16000000 && ticket == floor(ticket))
 		if (e.run_t_state == TS_ARMED || SV_TimerTicks(e) - count < 0)
+		if (SV_TASCanPause(e))          // holds, viewing, ghost, faults: what SV_TASBack refuses
 		{
 			e.run_tas_req = ticket;
 			SV_TASLegalBack(e, (e.run_t_state == TS_ARMED ? e.taslg_n : e.taslg_startat + SV_TimerTicks(e)) - count);

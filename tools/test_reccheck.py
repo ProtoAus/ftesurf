@@ -787,12 +787,14 @@ def case_startjit_blocked_is_a_note_not_a_fault():
     check(any("applied nothing" in x for x in n),
           "a startjit that applied nothing is reported as a note")
     # P1100: a TAS start's rule is 0 -- not a blocked roll, and not a fault.
-    f, n = run(build(startjit=(0, 0, 0, 0)))
+    f, n = run(head(build(startjit=(0, 0, 0, 0)), "flags", str(4194304 | 256 | 1)))
     check(not f, "a TAS start's startjit 0 0 0 0 is not a fault")
     check(any("TAS start" in x for x in n) and not any("blocked" in x for x in n),
           "a TAS start's startjit reads as a TAS start, not a blocked roll")
-    f, n = run(build(startjit=(0, 0.5, 0, 0)))
+    f, n = run(head(build(startjit=(0, 0.5, 0, 0)), "flags", str(4194304 | 256 | 1)))
     check(f, "a rule of 0 with an offset is a fault")
+    f, n = run(build(startjit=(0, 0, 0, 0)))
+    check(any("only a TAS start" in x for x in f), "a rule of 0 on a non-TAS file is a fault")
 
 
 # ---------------------------------------------------------------------------

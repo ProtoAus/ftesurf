@@ -253,7 +253,7 @@ HEAD_V6 = HEAD_V5 | {"instart"}
 #           the rule is horizontal on purpose -- and is written anyway so a reader
 #           never has to know that.
 #
-#           THREE STATES, AND A CHECKER MUST NOT COLLAPSE THEM.  Absent means the
+#           FOUR STATES, AND A CHECKER MUST NOT COLLAPSE THEM.  Absent means the
 #           rule was off or the file predates build 83.  `startjit <u> 0 0 0`
 #           means the rule ran and every candidate was blocked (embedded in
 #           geometry, or back inside the start box), so nothing moved.  Anything
@@ -1040,8 +1040,20 @@ def _check_rec(r, path, verbose=False, *, data=None):
                     r.fault("startjit %s is %g, outside the rule of %g it "
                             "states" % (nm, v, u))
             if u == 0:
-                r.note("startjit: the rule for this start was 0 u (a TAS start "
-                       "takes no nudge)")
+                # P1100: only a TAS start writes 0; the server's flags must say TAS.
+                try:
+                    tas = int(file_float(head.get("flags", "0"))) & TF_TAS
+                except ValueError:
+                    tas = 0
+                if dx != 0 or dy != 0:
+                    r.fault("startjit rule 0 with an offset (%g %g) -- a TAS start "
+                            "applies nothing" % (dx, dy))
+                elif tas:
+                    r.note("startjit: the rule for this start was 0 u (a TAS start "
+                           "takes no nudge)")
+                else:
+                    r.fault("startjit rule 0 on a file whose flags are not TAS -- only "
+                            "a TAS start takes no nudge")
             elif dx == 0 and dy == 0:
                 r.note("startjit: the rule was in force at %g u and applied "
                        "nothing -- every candidate was blocked" % u)
