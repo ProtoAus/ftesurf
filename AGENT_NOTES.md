@@ -4050,8 +4050,9 @@ additive speed compares AFTER its original sum. Never replace those operations
 with mathematically equivalent division: float32 bits can differ. Equal nonzero
 carrier control is primed by the actual world setter, not fixture arithmetic.
 Public delayed callback cases use captured source identity0i for WORLD (negative
-is unidentified PLAYER), and AddSpeed applies to the PLAYER ACTIVATOR, not a
-separate target body. Source-read fixture mistakes initially broke identity/raw0/
+is unidentified PLAYER). AddSpeed receives the RESOLVED TARGET player; these
+units deliberately alias that recipient with the actor, not a routing discriminator.
+Source-read fixture mistakes initially broke identity/raw0/
 scaled-value expectations: retain both original failures, then exact26paired
 inputs yield same values/IDs/IO/counters/5QCcashouts, only10 no-value status
 removals. First actual subject passed unchanged. Positive rounding-away input,

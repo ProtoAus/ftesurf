@@ -29,8 +29,9 @@ identical actual gravity/carrier/IDs/IO/counters and5actualQCcashouts. Only10
 intended no-value ancestry/status removals. Positive change/removal/cancellation,
 positive amount rounded away, sticky repeats, currentforeign/world and zero-speed
 early return all ACT. Exact callback source identity/function and context restore
-are checked, not merely input counts. AddSpeed acts on its PLAYER ACTIVATOR;
-its units measure that receiver, not an unrelated target entity.
+are checked, not merely input counts. AddSpeed acts on the resolved player
+recipient. These units deliberately use the actor as that target/receiver;
+they do not discriminate target selection. The unchanged dispatcher passes t.
 
 Two initial baseline fixture failures are retained, not product failures: WORLD
 snapshot identity is0i, and raw gravity0 stays0 while meaning effective1. Initial
