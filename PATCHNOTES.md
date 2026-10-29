@@ -48,8 +48,8 @@
 - World of Surf and Everything is now a switch, on the home page and the Stats page, and the times, first places, top tens and maps follow it.
 - Click times, first places or top tens on the Stats page for that list of your records.
 
-### P1103 Clearer run-check explanations
-- Run checks distinguish recordings that cannot yet be checked from incomplete recordings. Which runs can be checked is unchanged.
+### P1103 Clearer native run-check explanations
+- The native run-check console distinguishes unsupported recordings from incomplete ones. Eligible runs and board decisions are unchanged.
 
 ### P1102 Map lists come only from the game's own files
 - The map tiers, map list and the list of maps that use other games' content are read only from the game's own folder, never from something a server sent.

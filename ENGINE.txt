@@ -26,7 +26,9 @@ commit   85b1d383896b6ef205c9665f983422fdd093de01
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1103
 patch    1103
-# Patch 1103: native closing-clock refusal diagnostics distinguish unsupported modes from incomplete clocks; eligibility unchanged. Dedicated Windows verifier qualified; full client build/deployment pending missing Opus/Speex development headers.
+# Patch 1103: native closing-clock refusal diagnostics distinguish unsupported modes from incomplete clocks; eligibility unchanged.
+#   Full Windows build and both-install native-only deployment verified 2026-10-29T07:21:39Z; 58 installed-path controls pass, progs/configs untouched.
+#   ARM dedicated/HL2 builds and 58 clock + 60 full-fixture platform rows pass; ARM lobby/backend promotion held on inherited legacy-fixture compatibility gate. See tools/p1103-claim.md.
 # Patch 1090: tasrev_sign (FTESURF-TASREV 1, real press, loopback, the served CSQC); CSQC kept out of data/tasproj; .tasp v2 supply, rev/ store (engine client, QC, tools).
 # Patch 1089: TAS project revision hash (a canonical hash chain; parentsha/revsha lines; tools/tasrev.py twin) (QC, tools).
 # Patch 1088: `tas optimize <ticks> <left|right>` and TAS-panel chips: a constant turn searched for exit speed (QC, TAS-only).
