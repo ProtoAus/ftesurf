@@ -14,8 +14,13 @@ WHAT IT REFRESHES, IN ORDER:
   1. maps a lobby is on RIGHT NOW whose boards are missing or older than --stale
   2. maps somebody opened on the WEBSITE, newest interest first (--want).  The
      queue is surfd's `mapwant` table, written by /board/api/map.
-  3. with whatever --backfill allows, the shallowest boards anywhere (--depth).
-  4. nothing else.  A full deliberate sweep is still tools/momfetch.py.
+  3. from --backfill, page 1 of up to ROTATE boards older than --stale, the map
+     whose oldest board was fetched longest ago first (P1117), so no board goes
+     unasked for longer than one rotation however nobody plays its map.
+  4. with what --backfill has left, the shallowest boards anywhere (--depth),
+     and one board with places missing inside its depth walked again
+     (momfetch --rewalk).
+  5. nothing else.  A full deliberate sweep is still tools/momfetch.py.
 
 THE WEB QUEUE IS A QUEUE AND NOT A FETCH, and that is the point of it.  A public
 unauthenticated GET must never turn into an outbound request to somebody else's
@@ -88,6 +93,40 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 LOBBY_FRESH = 300        # s; a lobby row older than this is not a live lobby
+ROTATE = 8               # P1117: page-1 refreshes a tick, taken from --backfill
+
+
+def stalest_boards(cat, boards, cut, n):
+    """Up to `n` board keys fetched before `cut`: whole maps, the map whose oldest
+    board is oldest first; a map with more than `n` goes `n` at a time, stalest
+    first.  A board never fetched is the backfill's (it asks those at skip 0)."""
+    maps = []
+    for name, m in cat.items():
+        gm = momfetch.gm_of(name)
+        if gm is None:
+            continue
+        old = []
+        for bgm, tt, tn in m["boards"]:
+            if bgm != gm:
+                continue
+            key = momfetch.board_key(m["id"], bgm, tt, tn)
+            try:
+                mt = os.path.getmtime(os.path.join(boards, key + ".json"))
+            except OSError:
+                continue
+            if mt < cut:
+                old.append((mt, key))
+        if old:
+            old.sort()
+            maps.append((old[0][0], name, [k for _, k in old]))
+    out = []
+    for _, _, keys in sorted(maps):
+        if out and len(out) + len(keys) > n:
+            break
+        out += keys[:n - len(out)]
+        if len(out) >= n:
+            break
+    return out
 
 
 def live_maps(conn, fresh=LOBBY_FRESH):
@@ -284,14 +323,38 @@ def main():
     # shallowest boards in the whole library and nothing else; --depth must be a
     # real depth or there is nothing to crawl towards, hence the -1 default here
     # rather than 0.
-    if a.backfill > 0:
+    # P1117: the rotation and the backfill share --backfill, so a tick asks no
+    # more than it did before either existed.
+    left = a.backfill
+    rot = stalest_boards(cat, a.boards, cut, min(ROTATE, left)) if left > 0 else []
+    if rot:
+        print("\n--- rotation: page 1 of %d board(s), stalest map first ---" % len(rot))
+        cmd = [sys.executable, _momfetch_path(),
+               "--tracks", a.tracks, "--out", a.boards, "--take", str(a.take),
+               "--depth", "0", "--delay", str(a.delay), "--max", str(len(rot)),
+               "--refresh", "--go"]
+        for k in rot:
+            cmd += ["--board", k]
+        if fetched:
+            time.sleep(a.delay)
+        sys.stdout.flush()
+        rc = subprocess.call(cmd)
+        fetched = True
+        left -= len(rot)
+        if rc != 0:
+            print("rotation stopped (%d) -- nothing is retried here" % rc)
+            return rc
+
+    if left > 0:
         print("\n--- backfill: up to %d page(s) into the shallowest boards ---"
-              % a.backfill)
+              % left)
         cmd = [sys.executable, _momfetch_path(),
                "--tracks", a.tracks, "--out", a.boards,
                "--take", str(a.take),
                "--depth", str(a.depth if a.depth else -1),
-               "--delay", str(a.delay), "--max", str(a.backfill), "--go"]
+               "--delay", str(a.delay), "--max", str(left), "--rewalk", "--go"]
+        if fetched:
+            time.sleep(a.delay)
         sys.stdout.flush()
         rc = subprocess.call(cmd)
         fetched = True

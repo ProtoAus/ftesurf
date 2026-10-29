@@ -224,6 +224,18 @@ def merge_rows(old, new):
     return out
 
 
+def deepest(rows):
+    """The deepest rank a cached board holds, by the ranks its pages carried."""
+    return max((r["rank"] for r in rows if type(r.get("rank")) is int), default=0)
+
+
+def holed(cur):
+    """P1117: places missing inside the held depth -- runs that entered above a
+    page after it was fetched.  No tail page reaches them; a re-walk does.
+    Measured 29 Oct: 1,454 boards, at least 63,509 places."""
+    return not cur.get("absent") and deepest(cur["rows"]) > len(cur["rows"])
+
+
 def gm_of(name):
     """A map's own gamemode by the community naming, or None.
 
@@ -293,12 +305,18 @@ def main():
     ap.add_argument("--main-only", action="store_true", help="skip stages and bonuses")
     ap.add_argument("--refresh", action="store_true", help="re-ask for cached boards")
     ap.add_argument("--map", action="append", default=[], help="only these map names")
+    ap.add_argument("--board", action="append", default=[],
+                    help="only these boards, by cache key (e.g. 1007_g1_t01)")
+    ap.add_argument("--rewalk", action="store_true",
+                    help="also walk one board with places missing inside its\n"
+                         "held depth again from rank 1 (see holed)")
     ap.add_argument("--go", action="store_true", help="actually make requests")
     a = ap.parse_args()
 
     take = max(1, min(a.take, TAKE_MAX))
     want_gm = set(a.gamemode) or {msml.GM_SURF, msml.GM_BHOP}
     only = {m.lower() for m in a.map}
+    picked = set(a.board)
 
     if a.tracks:
         cat = read_tracks(a.tracks)
@@ -329,6 +347,8 @@ def main():
                 continue
             if a.main_only and tt != msml.TRACK_MAIN:
                 continue
+            if picked and board_key(m["id"], bgm, tt, tn) not in picked:
+                continue
             jobs.append((name, m["id"], gm, tt, tn))
 
     os.makedirs(a.out, exist_ok=True)
@@ -337,6 +357,7 @@ def main():
     # off the cached rows, so this list is a plan against what is already held.
     todo = []
     held = wanted = fresh_boards = 0
+    walking, holes = {}, []     # path -> re-walk cursor; re-walk candidates
     for (name, mid, gm, tt, tn) in jobs:
         path = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
         cur = load_board(path)
@@ -359,12 +380,31 @@ def main():
         # A set, so --refresh's page 1 and a tail that also starts at 0 are one
         # request rather than two.  A non-aligned skip is fine and is the normal
         # case here: the 2,914 boards stopped at 25 resume at skip=25, which
-        # returns ranks 26-125.
-        skips = set(range(have, want, take))
+        # returns ranks 26-125.  P1117: the tail starts past the deepest rank
+        # held, not at len(rows): surf_believe held ranks to 861 in 661 rows and
+        # re-asked 662-861 for nothing every tick.
+        skips = set(range(max(have, deepest(cur["rows"])), want, take))
         if a.refresh:
             skips.add(0)
         for s in sorted(skips):
             todo.append((s, name, mid, gm, tt, tn))
+        if a.rewalk:
+            job = (name, mid, gm, tt, tn, total)
+            if isinstance(cur.get("rewalk"), int):
+                walking[path] = (cur["rewalk"], job)
+            elif holed(cur):
+                holes.append((int(cur.get("walked") or 0), int(cur.get("fetched") or 0),
+                              path, job))
+    # One board at a time, the one walked longest ago (KSF's rewalk_step).
+    if a.rewalk and not walking and holes:
+        _w, _f, path, job = min(holes)
+        walking[path] = (0, job)
+    for path, (start, (name, mid, gm, tt, tn, total)) in sorted(walking.items()):
+        print("re-walk           %s from skip %d of %d" % (os.path.basename(path), start, total))
+        for s in range(start, max(total, start + 1), take):
+            if (s, name, mid, gm, tt, tn) not in todo:
+                todo.append((s, name, mid, gm, tt, tn))
+    walking = {p: s for p, (s, _job) in walking.items()}
 
     print("boards in scope   %d" % len(jobs))
     print("boards cached     %d" % fresh_boards)
@@ -454,6 +494,18 @@ def main():
         rec = {"map": name, "mapid": mid, "gamemode": gm, "trackType": tt,
                "trackNum": tn, "total": total, "fetched": int(time.time()),
                "rows": merged}
+        for k in ("rewalk", "walked"):
+            if cur and k in cur:
+                rec[k] = cur[k]
+        if walking.get(p) == skip:
+            # The re-walk's cursor moves only over pages answered in order.
+            nxt = skip + take
+            if len(data) < take or nxt >= total:
+                rec.pop("rewalk", None)
+                rec["walked"] = int(time.time())
+                del walking[p]
+            else:
+                rec["rewalk"] = walking[p] = nxt
         write_board(p, rec)
         if (i + 1) % 100 == 0:
             el = time.time() - t0
