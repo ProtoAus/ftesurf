@@ -4044,6 +4044,27 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+P1127: immediate I/O gravity compares effective0=1 but preserves the raw stored
+field; AddOutput carrier compares AFTER original multiply-by-reciprocal scaling;
+additive speed compares AFTER its original sum. Never replace those operations
+with mathematically equivalent division: float32 bits can differ. Equal nonzero
+carrier control is primed by the actual world setter, not fixture arithmetic.
+Public delayed callback cases use captured source identity0i for WORLD (negative
+is unidentified PLAYER), and AddSpeed applies to the PLAYER ACTIVATOR, not a
+separate target body. Source-read fixture mistakes initially broke identity/raw0/
+scaled-value expectations: retain both original failures, then exact26paired
+inputs yield same values/IDs/IO/counters/5QCcashouts, only10 no-value status
+removals. First actual subject passed unchanged. Positive rounding-away input,
+real removal/cancellation and sticky-repeat controls ACT; currentforeign/world/
+zero-direction gates remain. Stored callbacks deliberately invoked before future
+deadline, NOTelapsed-clock scheduler proof; gravity0=1 from existing native source,
+not measured movement. FullNoDeploy0NEW/2oldCSF333, gravity14/mom23/reader949-0,
+same527REC167VIEW entire paths/bytes/diagnostics328faultyREC7faultyVIEW/zero new,
+notfaultfree. No newVMfields/policy/math/capture/format/flag/tier/native/Build.
+This is three immediate writer decisions, NOT persistent logical/body/config/
+multisource closure. Same-pose placement still has phase effects; do not extend
+this gate there by analogy. Human checks pending lextest.md; reviews/deploy pending.
+
 P1126: reversal/catapult share SV_MomSetVelocity's only two callers. Freeze
 admitting cause BEFORE SV_TouchEntered (it runs reentrant outputs), pass tuple to
 the helper; compare its own velocity/ground/rawcarrier writes AFTER outputs,

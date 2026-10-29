@@ -2638,8 +2638,12 @@ void(entity t, string param) SV_IOAddOutput =
 	*/
 	if (k == "gravity")
 	{
-		SV_BankAffect(t);
+		local float beforegrav, aftergrav;
+		beforegrav = t.gravity ? t.gravity : 1;
 		t.gravity = stof(v);
+		aftergrav = t.gravity ? t.gravity : 1;
+		if (aftergrav != beforegrav)
+			SV_BankAffect(t);
 		return;
 	}
 
@@ -2688,6 +2692,8 @@ void(entity t, string param) SV_IOAddOutput =
 		// tokenised at BUILD time into fields (SV_EntityIOBuild) and nothing
 		// upstream of this call is holding argv at fire time.
 		local float nv;
+		local vector beforevel;
+		beforevel = t.run_basevel;
 		nv = tokenize(v);
 		if (nv >= 3)
 			t.run_basevel = [stof(argv(0)), stof(argv(1)), stof(argv(2))];
@@ -2697,8 +2703,10 @@ void(entity t, string param) SV_IOAddOutput =
 			t.run_basevel = [stof(argv(0)), 0, 0];
 		else
 			return;
-		SV_BankAffect(t);
 		t.run_basevel = t.run_basevel * (1 / (1 + run_bv_tick * 0.5));     // Patch 1025, above
+		// Price the final stored value, not the authored pre-scale vector.
+		if (t.run_basevel != beforevel)
+			SV_BankAffect(t);
 
 		if (nv < 3)
 			if (SV_CensusAdd("AddOutput basevelocity (short)"))
@@ -3068,7 +3076,7 @@ void(entity t, entity act, float v) SV_IOModifySpeed =
 */
 void(entity p, string in, float amt) SV_IOAddSpeed =
 {
-	local vector v;
+	local vector v, beforevel;
 	local float len;
 
 	if (p.classname != "player")
@@ -3088,8 +3096,10 @@ void(entity p, string in, float amt) SV_IOAddSpeed =
 		return;
 	if (amt < -len)
 		amt = -len;
-	SV_BankAffect(p);
+	beforevel = p.run_basevel;
 	p.run_basevel = p.run_basevel + v * (amt / len / (1 + run_bv_tick * 0.5));
+	if (p.run_basevel != beforevel)
+		SV_BankAffect(p);
 	run_bv_set_n = run_bv_set_n + 1;
 };
 

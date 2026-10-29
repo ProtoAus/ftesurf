@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1127 unchanged map effects/status (pending deployment and human check)
+
+Paired direct-QC public-input values/flags/cashouts, full build and gravity/pad
+regressions pass; independent reviews/deployment remain pending. When available,
+try a familiar map gravity effect and a launch pad: gravity/boost should feel
+unchanged, and normal world/current-run effects should keep their normal status.
+No authored BSP/native trajectory/prediction/elapsed-clock/finished-ranking or
+human acceptance is established by the synthetic callback/value controls.
+
 ## P1126 reversal/catapult status (pending human check)
 
 Both independent reviews clear; deployed both Windows installs/all12Pi lobbies,

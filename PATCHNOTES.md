@@ -21,6 +21,9 @@
 
 ## next
 
+### P1127 Unchanged map effects keep their status
+- Repeated map inputs that leave gravity or a pending boost unchanged no longer make a clean run unranked. Gravity and boost amounts are unchanged.
+
 ### P1126 Momentum pad carry status
 - Reversal and catapult pads keep the right run status when enabled by an earlier attempt. Their speed, aim and timing are unchanged.
 
