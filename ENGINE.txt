@@ -25,10 +25,10 @@ commit   85b1d383896b6ef205c9665f983422fdd093de01
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1103
-patch    1103
+patch    1118
+# Patch 1118: selected saved-state identity/validation/application share one buffered snapshot before placement; valid KEEP speed unchanged. QC-only, no new state/capture format or native source.
 # Patch 1103: native closing-clock refusal diagnostics distinguish unsupported modes from incomplete clocks; eligibility unchanged.
-#   Full Windows build and both-install native-only deployment verified 2026-10-29T07:21:39Z; 58 installed-path controls pass, progs/configs untouched.
-#   ARM dedicated/HL2 builds and 58 clock + 60 full-fixture platform rows pass; ARM lobby/backend promotion held on inherited legacy-fixture compatibility gate. See tools/p1103-claim.md.
+#   Full Windows native-only delivery verified2026-10-29T07:21:39Z; all12Pi native/plugin actors09:05:36Z/live readback09:13:16Z after historical legacy-world qualification. No old QW shipment; see tools/p1103-claim.md.
 # Patch 1090: tasrev_sign (FTESURF-TASREV 1, real press, loopback, the served CSQC); CSQC kept out of data/tasproj; .tasp v2 supply, rev/ store (engine client, QC, tools).
 # Patch 1089: TAS project revision hash (a canonical hash chain; parentsha/revsha lines; tools/tasrev.py twin) (QC, tools).
 # Patch 1088: `tas optimize <ticks> <left|right>` and TAS-panel chips: a constant turn searched for exit speed (QC, TAS-only).

@@ -5896,6 +5896,18 @@ See `tools/OFFRAMP_CONTACT.md`; private diagnostic builds NEVER ship.
 
 ## Rewind (Patch 477)
 
+P1118: normal loading must bind selected-row identity, existing view-clock
+validation and application to ONE byte/row-confirmed buffered state before
+Spec/Watch/recorder/body changes. A precheck followed by reopening the file is
+not that contract. Shared retry/resume API keeps its three arguments and valid
+behavior; prepared commit consumes caller-owned rows, including the old empty-
+line boundary and unread-tail finfgv suppression. This is state-snapshot binding,
+NOT atomic/authenticated state+recording pairing or a general writer audit.
+The old P972 grant fixture predates P1079: JumpWatch now REQUESTS forgiveness,
+then the actual FinishFrame helper handles it. Observe the positive pre-tail
+request and run that helper for unit coverage; don't call this actual native
+newmis drainage or change the verdict because a pre-tail grant is still pending.
+
 P985 native IO falsifier: unprefixed `qctest/...` QC writes are rebased into
 `data/qctest/...`; a readonly lower-priority `qctest/...` file does NOT block
 that write. Confirm the actual native write target before claiming an IO arm

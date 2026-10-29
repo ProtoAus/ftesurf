@@ -1796,11 +1796,69 @@ void(entity e) SV_SaveLoadLatch =
 		               e.run_t_pev ? "" : " (no report since serverdata)"));
 };
 
-float(entity e, float id, float retry) SV_SaveApplyState =
+float(float st, float viewseconds, float elapsed, float haveelapsed) SL_ViewClockValid =
+{
+	if (viewseconds < 0 || viewseconds - viewseconds != 0)
+		return FALSE;
+	if (st == TS_RUNNING)
+	if (haveelapsed)
+	if (viewseconds > elapsed)
+		return FALSE;
+	return TRUE;
+};
+
+// Read-only admission check over the same rows the restore will consume.
+float(float rows) SL_StateViewValid =
+{
+	local float row, n, st, viewseconds, elapsed, haveelapsed;
+	local string k;
+
+	st = TS_IDLE;
+	viewseconds = elapsed = haveelapsed = 0;
+	for (row = 0; row < buf_getsize(rows); row = row + 1)
+	{
+		k = bufstr_get(rows, row);
+		if (!strcmp(k, "")) break; // preserve the legacy reader's empty-line boundary
+		n = tokenize(k);
+		if (n < 2) continue;
+		k = argv(0);
+		if (!strcmp(k, "state")) { st = stof(argv(1)); continue; }
+		if (!strcmp(k, "viewseconds")) { viewseconds = stof(argv(1)); continue; }
+		if (!strcmp(k, "elapsed")) { elapsed = stof(argv(1)); haveelapsed = TRUE; }
+	}
+	return SL_ViewClockValid(st, viewseconds, elapsed, haveelapsed);
+};
+
+// Native byte/row confirmation is shared with the writer, not a second open.
+float(float id) SL_StateSnapshot =
 {
 	local filestream f;
+	local float rows;
+	local int bytes;
+
+	f = fopen(SL_StatePath(id), FILE_READ);
+	if (f < 0) return -1;
+	rows = buf_create_ex("string", 0);
+	if (rows < 1)
+	{
+		fclose(f);
+		return -1;
+	}
+	bytes = SL_StateRows(f, rows);
+	fclose(f);
+	if (bytes <= 0i)
+	{
+		buf_del(rows);
+		return -1;
+	}
+	return rows;
+};
+
+// Commit only prepared, view-valid rows. Callers retain ownership of the buffer.
+void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
+{
 	local string k;
-	local float n;
+	local float n, row;
 	local float viewseconds;
 	local float ticks, elapsed, haveelapsed, mark, samples, padn, cps, serial;
 	local float st, tr, ss, sg, sgs, spl, dlt, flg, pbv, dty, rfrom;
@@ -1808,7 +1866,6 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float hcy;                // Patch 478 r11, run_t_handcarry
 	local float hop;                // Patch 445, the hopped-start taint
 	local float fgv, fgvseen;        // Patch 972, exact retry's pending grant
-	local int fgvpos, fgvbytes;
 	local float ckwt, ckn, ckncr, ckcr, ckd, cktr, ckpk, ckup, cku, ckcb;   // Patch 840, `slowclk`
 	local float rwd;                // Patch 477, a rewind save (see REWIND)
 	local string fcrc;              // Patch 450, the file's *mapcrc ("" = absent)
@@ -1827,9 +1884,6 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	// Patch 450: cleared on EVERY call and above the fopen, for the same reason
 	// sl_voided is -- a failed read must not leave a stale TRUE that grants an arm.
 	sl_mapsame = FALSE;
-	f = fopen(SL_StatePath(id), FILE_READ);
-	if (f < 0)
-		return FALSE;
 
 	// Defaults are "what an idle timer looks like", so a save file missing a key
 	// restores a sane state rather than an undefined one.
@@ -1871,8 +1925,12 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	// leftovers of the one it is replacing.
 	SV_TimerClearSplits(e);
 
-	while ((k = fgets(f)) != "")
+	row = 0;
+	while (row < buf_getsize(rows))
 	{
+		k = bufstr_get(rows, row);
+		row = row + 1;
+		if (!strcmp(k, "")) break;
 		n = tokenize(k);
 		if (n < 1)
 			continue;
@@ -1982,20 +2040,10 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 			continue;
 		}
 	}
-	// The legacy loop also stops at an empty line. An unread tail could hide
-	// another grant key; suppress this optional grant unless we reached EOF.
-	fgvpos = fseek(f);
-	fgvbytes = fsize(f);
-	if (fgvpos < 0i || fgvbytes < 0i || fgvpos != fgvbytes)
+	// Snapshot capture confirmed EOF. A legacy empty-line stop can still hide
+	// another grant key, so keep the same unread-tail suppression.
+	if (row != buf_getsize(rows))
 		fgv = 0;
-	fclose(f);
-
-	if (viewseconds < 0 || viewseconds - viewseconds != 0)
-		return FALSE;
-	if (st == TS_RUNNING)
-	if (haveelapsed)
-	if (viewseconds > elapsed)
-		return FALSE;
 	// Patch 735: finish old exit cleanup, then replace its abandoned progress.
 	// Legacy saves have no marker: retain their old behavior, never guess one.
 	if (hasname)
@@ -2484,7 +2532,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	// Multi-Session (retry 2): SV_MsApply attaches the recorder and reopens the
 	// stage itself -- the slot's counters are in ms.txt, not in this file.
 	if (retry == 2)
-		return TRUE;
+		return;
 	if (SV_RecRewind(e, SL_RecPath(id), mark, serial, samples, padn, cps))
 	{
 		// Patch 426: a kept abandon THIS load held (the Patch 360 discard above)
@@ -2728,6 +2776,22 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	// Retry/void/clean-save branches may replace latches, not retained TAS ancestry.
 	if (e.run_tas_used)
 		SV_TASMark(e);
+};
+
+float(entity e, float id, float retry) SV_SaveApplyState =
+{
+	local float rows;
+
+	sl_voided = sl_mapsame = FALSE;
+	rows = SL_StateSnapshot(id);
+	if (rows < 1) return FALSE;
+	if (!SL_StateViewValid(rows))
+	{
+		buf_del(rows);
+		return FALSE;
+	}
+	SV_SaveApplyStateRows(e, id, retry, rows);
+	buf_del(rows);
 	return TRUE;
 };
 
@@ -3166,15 +3230,18 @@ string sl_fcls;                 // Patch 865
 string sl_fctx;                 // Patch 1036: the `contexts`/`context` lines, kept verbatim
 vector sl_forg;
 
-float(float id) SV_SaveReadIdent =
+float(float id, float rows) SV_SaveReadIdentRows =
 {
 	local filestream f;
 	local string k;
-	local float n, dem;
+	local float n, dem, row;
 
-	f = fopen(SL_StatePath(id), FILE_READ);
-	if (f < 0)
-		return FALSE;
+	f = -1;
+	if (rows < 1)
+	{
+		f = fopen(SL_StatePath(id), FILE_READ);
+		if (f < 0) return FALSE;
+	}
 	sl_fseq = -1;
 	sl_fgo = 0;
 	sl_fhasname = FALSE;
@@ -3185,8 +3252,19 @@ float(float id) SV_SaveReadIdent =
 	sl_fticks = 0;
 	sl_forg = '0 0 0';
 	dem = FALSE;
-	while ((k = fgets(f)) != "")
+	row = 0;
+	k = "";
+	while (TRUE)
 	{
+		if (rows >= 1)
+		{
+			if (row >= buf_getsize(rows)) break;
+			k = bufstr_get(rows, row);
+			row = row + 1;
+		}
+		else
+			k = fgets(f);
+		if (!strcmp(k, "")) break;
 		n = tokenize(k);
 		if (n < 2)
 			continue;
@@ -3202,10 +3280,15 @@ float(float id) SV_SaveReadIdent =
 		if (k == "demoted") { dem = TRUE; continue; }
 		if (k == "origin")  { if (n >= 4) sl_forg = [stof(argv(1)), stof(argv(2)), stof(argv(3))]; continue; }
 	}
-	fclose(f);
+	if (f >= 0) fclose(f);
 	if (dem)
 		sl_fticks = SL_DEMOTED;
 	return TRUE;
+};
+
+float(float id) SV_SaveReadIdent =
+{
+	return SV_SaveReadIdentRows(id, -1);
 };
 
 // ...and whether that is still row r.
@@ -4127,7 +4210,7 @@ void(entity e, float r) SV_SaveLocPlace =
 
 void(entity e, float n) SV_SaveLocLoad =
 {
-	local float r, id, blk, base, cnt, dem, oldserial;
+	local float r, id, blk, base, cnt, dem, oldserial, rows;
 
 	oldserial = e.rec_rec_serial;
 	/*
@@ -4179,25 +4262,26 @@ void(entity e, float n) SV_SaveLocLoad =
 		return;
 	}
 
-	/*
-	  Patch 428 r1: REFUSED BEFORE THE PLACEMENT.  SV_SaveApplyState's only failure
-	  is this fopen, and it ran after SV_SaveLocPlace: a teleport that marked
-	  nothing -- reachable with two connections on one guid, one deleting the
-	  files under the other's list.
-	  Round 2: and the file must still BE the row.  The placement is the row, the
-	  run state is the file; the other connection saving into this folder number
-	  paired one save's position with another's clock.  Refused, not rescanned: a
-	  rescan on every refusal would be a stall a player can order at 20/s.
-	*/
-	if (!SV_SaveReadIdent(id))
+	// P1118: identity, full validation and apply share one confirmed snapshot.
+	// Refuse before mode/recorder/body changes, not after a partial placement.
+	rows = SL_StateSnapshot(id);
+	if (rows < 1)
 	{
 		sprint(e, PRINT_HIGH, "^3save: the state file could not be read\n");
 		return;
 	}
+	SV_SaveReadIdentRows(id, rows);
 	if (!SV_SaveRowIs(r))
 	{
+		buf_del(rows);
 		// Not "rejoin": a rejoin on the same guid keeps the list (SL_Fresh).
 		sprint(e, PRINT_HIGH, "^3save: that save changed on disk -- the list rereads at the next map\n");
+		return;
+	}
+	if (!SL_StateViewValid(rows))
+	{
+		buf_del(rows);
+		sprint(e, PRINT_HIGH, "^3save: the state file is invalid\n");
 		return;
 	}
 	dem = (sl_fticks == SL_DEMOTED);
@@ -4248,8 +4332,8 @@ void(entity e, float n) SV_SaveLocLoad =
 	  were standing in does not fire again, and the recorder rewinds to the
 	  movement you had done by then.
 	*/
-	if (!SV_SaveApplyState(e, id, FALSE))
-		sprint(e, PRINT_HIGH, "^3save: the state file could not be read\n");
+	SV_SaveApplyStateRows(e, id, FALSE, rows);
+	buf_del(rows);
 
 	/*
 	  Loading WHILE PARKED re-targets the hold rather than fighting it.

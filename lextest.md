@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1118 save-load feel (pending)
+
+Save and load while moving, then from rest. Confirm valid loads still keep the
+saved speed, and normal retry/hold release feels unchanged. Automated coverage
+checks the rejection/snapshot/classification seam; this in-game feel check is
+not confirmed and is not a new timing, native-phase or ranked-finish claim.
+
 **P1099 -- map tables and pictures between releases (needs your nginx sudo first):** live in
 both installs (exe git-7978-patch-1090-8-ga92e23fa9, menu 8e486a2f); until nginx serves the media
 the console says "mapmedia: the Pi answered 404 -- the installed tables stand", which is harmless. Once

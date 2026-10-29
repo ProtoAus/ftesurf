@@ -21,6 +21,9 @@
 
 ## next
 
+### P1118 Reliable save loading
+- A refused save load leaves your current position and speed alone. Valid loads still keep their saved speed.
+
 ### P1110 TAS projects from the start zone
 - `tas project save` in a `tas start` session saves a project that begins standing at the start zone, before the timer: everything from the first step is in it.
 - `tas project load` of one puts you at that start zone and plays it back exactly, through the timer's start. Saving again after a load, or after more steps, makes the next revision of the same project; a new `tas start` begins a new one.

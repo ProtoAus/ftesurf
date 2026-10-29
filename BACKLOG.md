@@ -468,10 +468,6 @@ From the two independent reviews of 28 Oct. Every case stays TAS-flagged; none r
   whole run across stage fails: a very long session loses rewind of its recent past.
 - **P1007:** each sample stamps the HUD's current zero onto a frame up to a round trip old; a sample
   just before a jump can carry the post-jump zero.
-- **Pre-existing, found in review:** SV_SaveApplyState has two late `return FALSE`s (the
-  viewseconds checks, sv_saveloc.qc ~1984/1989) after the body is placed and before the timer
-  state and run_t_startok are written; a late failure while armed clean could start a clean run
-  from the save's position and speed. Not built in practice. Make a late failure taint or void.
 - **Pre-existing, found in review:** ui_bootcheck is a plain menu cvar a server can stufftext; its
   self-test quits or launches a local map after ~180 frames (no signature, no Friends).
 - **Pre-existing, found in review:** surfd's rate_ok counts per process and flushes under
