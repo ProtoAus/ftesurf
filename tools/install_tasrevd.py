@@ -2,12 +2,13 @@
 """P1091: owner/root installation of the NEW isolated TAS revision service; default dry run.
 
 Modelled on install_zonepub.py: a clean inspected source commit, an exact nginx predecessor
-hash and --apply. Never changes or restarts surfd, its DB, zonepub or a lobby. Refuses existing
+hash and --apply (the files are the commit's git objects). Never changes or restarts surfd, its DB, zonepub or a lobby. Refuses existing
 destination files rather than taking over a peer's. The released-code list (codes.txt) is
 seeded from --code (sha256 of each released or deployed csprogs.dat) and only ever appended to.
 
-P1119 --upgrade-from <installed commit>: a new release directory beside that one, and the unit
-pointed at it. Only when the unit is byte for byte what this installer wrote for that release and
+P1119 --upgrade-from <installed commit>: a new release under RELEASES (every directory above it
+root's alone), and the unit pointed at it. Root runs nothing a proto-owned tree controls: git and
+the import check run as the checkout's owner and as proto. Only when the unit is byte for byte what this installer wrote for that release and
 the nginx snippet is unchanged; state, codes and nginx are not touched. The old unit is put back
 and restarted if the new release does not serve its own source.
 """
@@ -30,6 +31,7 @@ import time
 import urllib.request
 
 ROOT = Path('/srv/nvme/ftesurf-ops/tasrevd')
+RELEASES = Path('/opt/ftesurf-tasrevd')   # P1119: upgrades; /srv/nvme/ftesurf-ops above ROOT is proto's
 STATE = Path('/srv/nvme/ftesurf-ops/tasrevd-state')
 ENABLED = Path('/etc/nginx/sites-enabled/play.proto.bar.conf')
 SITE = ENABLED.resolve() if ENABLED.is_symlink() else ENABLED
@@ -56,7 +58,10 @@ HEX64 = re.compile('[0-9a-f]{64}')
 
 
 def sha(body): return hashlib.sha256(body).hexdigest()
-def run(*args, timeout=30): return subprocess.run(args, check=True, capture_output=True, timeout=timeout)
+def run(*args, timeout=30, **kw): return subprocess.run(args, check=True, capture_output=True, timeout=timeout, **kw)
+def as_user(name, *args):
+    # P1119: as root, a command over a proto-owned tree runs as its owner (repo config, release code).
+    return (('/usr/sbin/runuser', '-u', name, '--') + args) if os.geteuid() == 0 else args
 def safe_path(p):
     if not re.fullmatch(r'/[a-zA-Z0-9_./-]+', str(p)) or '..' in Path(p).parts: raise ValueError('Unsafe configured path')
 
@@ -72,15 +77,16 @@ def check_port():
 
 
 def check_imports(blobs):
-    # The release directory holds only FILES: they must import with nothing else beside them.
+    # The release directory holds only FILES: they must import with nothing else beside them, as proto.
     with tempfile.TemporaryDirectory() as d:
+        os.chmod(d, 0o755)
         for dest, body in blobs.items():
-            p = Path(d) / dest; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(body)
+            p = Path(d) / dest; p.parent.mkdir(parents=True, exist_ok=True); p.parent.chmod(0o755); p.write_bytes(body); p.chmod(0o644)
         env = {k: v for k, v in os.environ.items() if k != 'PYTHONPATH'}
         env['SURFD_TOOLS'] = str(Path(d) / 'tools')
-        r = subprocess.run([sys.executable, '-c', 'import tasrevd, accounts; tasrevd.load_tasrev()'],
-                           cwd=d, env=env, capture_output=True, timeout=30)
-    if r.returncode: raise RuntimeError('Service files do not import on their own: ' + r.stderr.decode(errors='replace')[-400:])
+        try: run(*as_user('proto', sys.executable, '-c', 'import tasrevd, accounts; tasrevd.load_tasrev()'), cwd=d, env=env)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError('Service files do not import on their own: ' + (e.stderr or b'').decode(errors='replace')[-400:])
 
 
 def probe_app(commit, url='http://127.0.0.1:%d/api/tasrev/map/tasrevd_install_probe' % PORT):
@@ -106,9 +112,14 @@ def write_release(release, commit, blobs):
     src.write_text(json.dumps(dict(commit=commit, files={k: sha(v) for k, v in blobs.items()}), indent=2) + '\n'); src.chmod(0o644)
 
 
+def source_owner(source): return pwd.getpwuid(os.stat(source).st_uid).pw_name
+
+
 def commit_blobs(source, commit):
     # The commit's own bytes, not the working tree's (skip-worktree hides edits from status).
-    return {dest: run('git', '-C', str(source), '-c', 'core.fsmonitor=false', 'cat-file', 'blob', '%s:%s' % (commit, src)).stdout
+    owner = source_owner(source)
+    return {dest: run(*as_user(owner, 'git', '-C', str(source), '-c', 'core.fsmonitor=false', 'cat-file', 'blob',
+                               '%s:%s' % (commit, src))).stdout
             for src, dest in FILES.items()}
 
 
@@ -129,20 +140,22 @@ def unit_property(name):
     return run('/usr/bin/systemctl', 'show', '--value', '--property=' + name, 'ftesurf-tasrevd.service').stdout.decode().strip()
 
 
-def check_root():
-    # Root writes the release here: a symlinked, foreign or group/other-writable root is refused.
-    st = os.lstat(ROOT)
-    if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode) or st.st_uid != 0 or st.st_mode & 0o022:
-        raise RuntimeError('The release root is not a directory only root can write')
+def check_chain(path):
+    # Root writes the release here: the directory and all above it must be root's, unlinked, unshared.
+    for p in [path] + list(path.parents):
+        st = os.lstat(p)
+        if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode) or st.st_uid != 0 or st.st_mode & 0o022:
+            raise RuntimeError('%s is not a directory only root can write' % p)
 
 
 def rollback(oldunit, newunit, oldcommit, why):
     """Puts the old unit back and proves it serves; returns what happened, for the error."""
-    if UNIT.read_bytes() != newunit:
-        return 'upgrade failed (%r) and the unit changed meanwhile: left as it is; owner inspection' % why
-    replace_unit(oldunit)
     try:
-        subprocess.run(['/usr/bin/systemctl', 'reset-failed', 'ftesurf-tasrevd.service'], capture_output=True, timeout=30)
+        if UNIT.read_bytes() != newunit:
+            return 'upgrade failed (%r) and the unit changed meanwhile: left as it is; owner inspection' % why
+        replace_unit(oldunit)
+        try: run('/usr/bin/systemctl', 'reset-failed', 'ftesurf-tasrevd.service')
+        except subprocess.CalledProcessError: pass   # not failed: nothing to reset
         run('/usr/bin/systemctl', 'daemon-reload')
         run('/usr/bin/systemctl', 'restart', 'ftesurf-tasrevd.service', timeout=120)
         await_probe(oldcommit)
@@ -154,9 +167,10 @@ def rollback(oldunit, newunit, oldcommit, why):
 
 def upgrade(a, blobs):
     """P1119: the installed release `a.upgrade_from` -> `a.commit`; see the module doc."""
-    old, new = ROOT / a.upgrade_from, ROOT / a.commit
+    old = RELEASES / a.upgrade_from if (RELEASES / a.upgrade_from).is_dir() else ROOT / a.upgrade_from
+    new = RELEASES / a.commit
     if a.upgrade_from == a.commit: raise RuntimeError('Upgrade to the installed commit')
-    if new.exists() or new.is_symlink(): raise RuntimeError('The new release directory already exists')
+    if any(p.exists() or p.is_symlink() for p in (new, ROOT / a.commit)): raise RuntimeError('The new release directory already exists')
     if json.loads((old / 'SOURCE.json').read_text()).get('commit') != a.upgrade_from:
         raise RuntimeError('The old release directory is not that commit')
     oldunit = unit_text(old, service_env(old, a.account_db, a.upgrade_from)).encode()
@@ -166,7 +180,7 @@ def upgrade(a, blobs):
     if unit_property('ActiveState') != 'active': raise RuntimeError('The service is not running; owner inspection')
     if unit_property('DropInPaths') or unit_property('NeedDaemonReload') != 'no' or unit_property('FragmentPath') != str(UNIT):
         raise RuntimeError('The unit has drop-ins, a pending reload or another unit file; owner inspection')
-    check_root()
+    check_chain(RELEASES if RELEASES.exists() or RELEASES.is_symlink() else RELEASES.parent)
     probe_app(a.upgrade_from)   # what serves now is the old release
     check_accounts(a.account_db)
     check_imports(blobs)
@@ -176,6 +190,8 @@ def upgrade(a, blobs):
         print('DRY RUN: no changes; owner may rerun under sudo with --apply')
         return
     if os.geteuid() != 0: raise RuntimeError('Owner sudo/root is required for --apply')
+    RELEASES.mkdir(mode=0o755, exist_ok=True); RELEASES.chmod(0o755)
+    check_chain(RELEASES)
     write_release(new, a.commit, blobs)
     newunit = unit_text(new, service_env(new, a.account_db, a.commit)).encode()
     if UNIT.read_bytes() != oldunit: raise RuntimeError('The unit changed during the upgrade; nothing switched (the new release directory stays)')
@@ -189,10 +205,14 @@ def upgrade(a, blobs):
             await_probe(a.commit)
             await_probe(a.commit, 'https://play.proto.bar/api/tasrev/map/tasrevd_install_probe', pause=.5)
         except BaseException as e:
-            raise RuntimeError(rollback(oldunit, newunit, a.upgrade_from, e)) from e
+            outcome = rollback(oldunit, newunit, a.upgrade_from, e)
+            (new / 'UPGRADE.txt').write_text(outcome + '\n')   # for an owner whose session dropped
+            raise RuntimeError(outcome) from e
     finally:
         for n, h in held.items(): signal.signal(n, h)
-    print('Upgraded the TAS revision service to %s (the old release stays at %s)' % (a.commit, old))
+    outcome = 'Upgraded the TAS revision service to %s (the old release stays at %s)' % (a.commit, old)
+    (new / 'UPGRADE.txt').write_text(outcome + '\n')
+    print(outcome)
 
 
 def unit_text(release, env):
@@ -238,7 +258,8 @@ def main():
         if not re.fullmatch('[0-9a-f]{64}', a.expected_nginx_sha256 or ''): ap.error('Expected exact predecessor nginx SHA256')
         if not a.code or not all(HEX64.fullmatch(c) for c in a.code): ap.error('At least one --code (64 lowercase hex)')
     for p in (a.source, a.account_db): safe_path(p)
-    if run('git', '-C', str(a.source), 'rev-parse', 'HEAD').stdout.decode().strip() != a.commit: raise RuntimeError('Source ref differs')
+    if run(*as_user(source_owner(a.source), 'git', '-C', str(a.source), 'rev-parse', 'HEAD')).stdout.decode().strip() != a.commit:
+        raise RuntimeError('Source ref differs')
     blobs = commit_blobs(a.source, a.commit)
     if a.upgrade_from is not None:
         upgrade(a, blobs)
@@ -258,7 +279,7 @@ def main():
     backup = BACKUPS / (SITE.name + '.pre-tasrevd-' + a.commit[:12])
     if backup.exists(): raise RuntimeError('nginx backup collision; nothing overwritten')
     run('/usr/bin/python3', '-c', 'import flask,gunicorn')
-    print('Preflight: clean source, exact nginx predecessor, separate new service/state, %d released codes' % len(a.code))
+    print('Preflight: the files of that commit, exact nginx predecessor, separate new service/state, %d released codes' % len(a.code))
     if not a.apply:
         print('DRY RUN: no changes; owner may rerun under sudo with --apply')
         return
