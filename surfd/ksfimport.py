@@ -306,8 +306,9 @@ class Deadline(object):
     body chunked or not -- inside `seconds`.  KSF_TIMEOUT is per read, so a server
     sending a byte a second held a fetch as long as it liked; at the deadline a timer
     shuts every socket the opener made, the blocked read raises, and `fired` says
-    the caller has no answer.  Portable: shutdown() wakes a blocked recv on Linux
-    and Windows alike."""
+    the caller has no answer.  shutdown() wakes a blocked recv on Linux and Windows
+    alike, but for a TLS handshake under way on Windows, which waits out its socket
+    timeout (KSF_TIMEOUT); the Pi is Linux."""
 
     def __init__(self, seconds):
         self.seconds, self.socks, self.fired = seconds, [], False
@@ -334,8 +335,10 @@ class Deadline(object):
 
     @staticmethod
     def shut(sock):
+        # socket's own shutdown, not SSLSocket's: that one clears _sslobj, and the
+        # handshake or read that follows raises AttributeError (P1117 review 6).
         try:
-            sock.shutdown(socket.SHUT_RDWR)
+            socket.socket.shutdown(sock, socket.SHUT_RDWR)
         except OSError:
             pass
 
@@ -347,20 +350,6 @@ class Deadline(object):
         1 s deadline 15 s), and no redirect followed (to 127.0.0.1:* or ftp://)."""
         dl = self
 
-        class Handshake(object):
-            def __init__(self, ctx):
-                self.ctx = ctx
-
-            def __getattr__(self, k):
-                return getattr(self.ctx, k)
-
-            def wrap_socket(self, sock, **kw):
-                kw["do_handshake_on_connect"] = False
-                s = self.ctx.wrap_socket(sock, **kw)
-                dl.watch(s)
-                s.do_handshake()
-                return s
-
         def watched(base):
             class Watched(base):
                 def do_open(self, http_class, req, **kw):
@@ -368,7 +357,7 @@ class Deadline(object):
                         def __init__(self, *a, **k):
                             super().__init__(*a, **k)
                             if getattr(self, "_context", None) is not None:
-                                self._context = Handshake(self._context)
+                                self._context = Handshake(self._context, dl)
 
                         def connect(self):
                             super().connect()
@@ -384,12 +373,33 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+class Handshake(object):
+    """An HTTPS context whose sockets the Deadline holds before their handshake."""
+
+    def __init__(self, ctx, dl):
+        self.ctx, self.dl = ctx, dl
+
+    def __getattr__(self, k):
+        return getattr(self.ctx, k)
+
+    def wrap_socket(self, sock, **kw):
+        kw["do_handshake_on_connect"] = False
+        s = self.ctx.wrap_socket(sock, **kw)
+        self.dl.watch(s)
+        if self.dl.fired:               # a connect that finished past the deadline
+            raise TimeoutError("connected after the exchange deadline")
+        s.do_handshake()
+        return s
+
+
 def fetch(url):
     dl = Deadline(KSF_DEADLINE)
     try:
         with dl:
             body = _fetch(url, dl)
-    except Refused:
+    except (Refused, AttributeError, ValueError):
+        # Past the deadline any of these is the watchdog's doing (review 6: an SSL
+        # object shut under its handshake raised AttributeError, uncaught).
         if dl.fired:
             raise Refused("no answer: the exchange took over %d s" % KSF_DEADLINE, transient=True)
         raise

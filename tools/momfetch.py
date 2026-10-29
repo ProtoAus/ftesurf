@@ -71,8 +71,8 @@ immune to the shift.  The `rank` field the API sends is kept but is ADVISORY --
 nothing reads it (checked: momboards.py never mentions it, and surfd derives
 rank at query time from BOARD_ORDER), which is what makes a stale one harmless.
 A player keeps one row, their newest (P1117 review 5: Momentum holds a player's
-current run only, and the union kept every superseded one), and a board no more
-rows than its totalCount, its page or what it held already.
+current run only, and the union kept every superseded one), and a board file at
+most TOTAL_MAX rows, held rows the page did not serve going first (review 6).
 WHAT THIS CANNOT SEE is a run DELETED upstream.  A union never shrinks, and
 --refresh merges too rather than replacing, so nothing in this tool purges a row
 the API has stopped serving -- deleting the board's json is the only way, which
@@ -81,6 +81,7 @@ it passes --refresh every 7 minutes, and a first page that REPLACED would cut
 each played map's board back to one page of rows on every tick.
 """
 import argparse
+import calendar
 import collections
 import http.client
 import io
@@ -111,8 +112,12 @@ API = "https://api.momentum-mod.org/v1"
 UA = "FTESurf/0.1 momfetch (+https://proto.bar/ftesurf)"
 TIMEOUT = 30
 TAKE_MAX = 100        # the API's own cap: take=101 is a 400
-TOTAL_MAX = 100000    # a totalCount past this is not a board (the deepest, 27,022)
+TOTAL_MAX = 60000     # a totalCount past this is not a board (the deepest, 27,022), and
+                      # no board file holds more rows (P1117 review 6)
 HEX40 = re.compile(r"[0-9a-f]{40}")
+CREATED = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z")
+ALIAS_BYTES = 256     # an alias once JSON-escaped (an astral character is 12 bytes)
+STEAM64 = 76561197960265728   # an individual account's SteamID64 is this + its 32-bit id
 DEADLINE = 60         # s for a whole exchange (Deadline)
 REWALK_STRIKES = 3    # host refusals of one re-walk page before that re-walk ends
 MAX_BYTES = 1 << 20   # a reply; a 100-row page is ~13.5 KB
@@ -187,8 +192,10 @@ class Deadline(object):
 
     @staticmethod
     def shut(sock):
+        # socket's own shutdown, not SSLSocket's: that one clears _sslobj, and the
+        # handshake or read that follows raises AttributeError (P1117 review 6).
         try:
-            sock.shutdown(socket.SHUT_RDWR)
+            socket.socket.shutdown(sock, socket.SHUT_RDWR)
         except OSError:
             pass
 
@@ -200,20 +207,6 @@ class Deadline(object):
         1 s deadline 15 s), and no redirect followed (to 127.0.0.1:* or ftp://)."""
         dl = self
 
-        class Handshake(object):
-            def __init__(self, ctx):
-                self.ctx = ctx
-
-            def __getattr__(self, k):
-                return getattr(self.ctx, k)
-
-            def wrap_socket(self, sock, **kw):
-                kw["do_handshake_on_connect"] = False
-                s = self.ctx.wrap_socket(sock, **kw)
-                dl.watch(s)
-                s.do_handshake()
-                return s
-
         def watched(base):
             class Watched(base):
                 def do_open(self, http_class, req, **kw):
@@ -221,7 +214,7 @@ class Deadline(object):
                         def __init__(self, *a, **k):
                             super().__init__(*a, **k)
                             if getattr(self, "_context", None) is not None:
-                                self._context = Handshake(self._context)
+                                self._context = Handshake(self._context, dl)
 
                         def connect(self):
                             super().connect()
@@ -237,12 +230,32 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+class Handshake(object):
+    """An HTTPS context whose sockets the Deadline holds before their handshake."""
+
+    def __init__(self, ctx, dl):
+        self.ctx, self.dl = ctx, dl
+
+    def __getattr__(self, k):
+        return getattr(self.ctx, k)
+
+    def wrap_socket(self, sock, **kw):
+        kw["do_handshake_on_connect"] = False
+        s = self.ctx.wrap_socket(sock, **kw)
+        self.dl.watch(s)
+        if self.dl.fired:               # a connect that finished past the deadline
+            raise TimeoutError("connected after the exchange deadline")
+        s.do_handshake()
+        return s
+
+
 def get(url):
     dl = Deadline(DEADLINE)
     try:
         with dl:
             body = _get(url, dl)
-    except Refused:
+    except (Refused, AttributeError, ValueError):
+        # Past the deadline any of these is the watchdog's doing (review 6).
         if dl.fired:
             raise Refused("no answer: the exchange took over %d s" % DEADLINE)
         raise
@@ -351,7 +364,7 @@ def write_board(path, rec):
     os.replace(part, path)
 
 
-def merge_rows(old, new, cap=0):
+def merge_rows(old, new, cap=None):
     """Union by replayHash, ordered by time.
 
     See the docstring's ROWS MERGE paragraph for why identity is the hash and
@@ -359,27 +372,59 @@ def merge_rows(old, new, cap=0):
     -- parse_board already refuses those on the way in, and this is the second
     reader that would otherwise have to guess.
     """
+    cap = TOTAL_MAX if cap is None else cap
+    fresh = {r.get("hash") for r in new}
     by = {}
     for r in list(old) + list(new):        # new wins: its rank is the fresher one
         h = r.get("hash")
         if h:
             by[h] = r
-    # P1117 review 5: one row a player, their newest (Momentum holds a player's current
-    # run only; 29 Oct, 2,115 superseded rows on 625 boards, 162 of them faster than
-    # the run that replaced them after a reset), and at most `cap` rows, fastest first:
-    # six page-1 answers of new hashes grew one file 0.87 -> 5.23 MB.
-    order = lambda r: (r.get("time", 0.0), r.get("rank") or 0)
-    newest = lambda r: (r.get("created") if isinstance(r.get("created"), str) else "", -r.get("time", 0.0))
+            if "url" in r:                 # nothing reads it: momgrab asks the CDN by hash
+                by[h] = dict(r)
+                del by[h]["url"]
     best, out = {}, []
     for r in by.values():
         sid = r.get("steamid")
         if not sid:
             out.append(r)
-        elif sid not in best or newest(r) > newest(best[sid]):
+        elif sid not in best or replaces(r, best[sid], fresh):
             best[sid] = r
     out += best.values()
+    order = lambda r: (r.get("time", 0.0), r.get("rank") or 0)
     out.sort(key=order)
-    return out[:cap] if cap else out
+    if len(out) > cap:
+        # P1117 review 6: a row this page served is never dropped; held ones go
+        # first, slowest first.
+        mine = [r for r in out if r["hash"] in fresh]
+        rest = [r for r in out if r["hash"] not in fresh][:max(cap - len(mine), 0)]
+        out = sorted(mine + rest, key=order)
+    return out
+
+
+def replaces(r, b, fresh):
+    """Whether r takes over from b as a player's one row: the newer `created` (P1117
+    review 5: of the players held twice on 30 Oct, 98 had an older run strictly
+    faster than their newest and 70 an equal one), the page's own row where either
+    has no date or they tie (review 6), else the faster."""
+    rc, bc = created_at(r.get("created")), created_at(b.get("created"))
+    rp = r.get("hash") in fresh
+    if rp != (b.get("hash") in fresh) and (not rc or not bc or rc == bc):
+        return rp
+    if rc != bc:
+        return rc > bc
+    return r.get("time", 0.0) < b.get("time", 0.0)
+
+
+def created_at(v, now=None):
+    """createdAt as epoch seconds, or 0: the API's ISO form only, at most a day ahead
+    (P1117 review 6: compared as text, one row dated 2999 beat every later one)."""
+    if not isinstance(v, str) or not CREATED.fullmatch(v):
+        return 0
+    try:
+        t = calendar.timegm(time.strptime(v[:19], "%Y-%m-%dT%H:%M:%S")) + float("0" + v[19:-1])
+    except (ValueError, OverflowError):
+        return 0
+    return t if 0 < t <= (time.time() if now is None else now) + 86400 else 0
 
 
 def deepest(rows):
@@ -463,23 +508,31 @@ def parse_board(doc):
         sid = u.get("steamID")
         # Momentum's own user number: its dashboard addresses a profile by it
         # (/profile/<id>) and by nothing else, a SteamID there is a 404.
-        uid, rank, alias = u.get("id"), e.get("rank"), u.get("alias")
-        alias = alias.replace("\t", " ").strip()[:64] if isinstance(alias, str) else ""
+        uid, rank, created = u.get("id"), e.get("rank"), e.get("createdAt")
         out.append({
             "uid": uid if type(uid) is int and 0 < uid < 2 ** 53 else 0,
             "rank": rank if type(rank) is int and 0 < rank <= TOTAL_MAX else 0,
             "time": float(t),
             "hash": h,
-            "steamid": sid if isinstance(sid, str) and sid.isdigit() and len(sid) <= 20 else "",
-            "alias": alias or "?",
-            "created": _text(e.get("createdAt"), 40),
-            "url": _text(e.get("downloadURL"), 512),
+            "steamid": sid if steam64(sid) else "",
+            "alias": _alias(u.get("alias")),
+            "created": created if created_at(created) else "",
         })
     return total, out
 
 
-def _text(v, n):
-    return v if isinstance(v, str) and len(v) <= n else ""
+def steam64(v):
+    """An individual account's SteamID64, in ASCII digits (review 6: isdigit takes U+0667)."""
+    return (isinstance(v, str) and len(v) == 17 and v.isascii() and v.isdigit()
+            and STEAM64 < int(v) < STEAM64 + 2 ** 32)
+
+
+def _alias(v):
+    """At most 64 characters and ALIAS_BYTES once JSON-escaped, as write_board writes it."""
+    v = v.replace("\t", " ").strip()[:64] if isinstance(v, str) else ""
+    while len(json.dumps(v)) > ALIAS_BYTES + 2:
+        v = v[:-1]
+    return v or "?"
 
 
 def main():
@@ -713,9 +766,9 @@ def main():
         # played map's board back to `take` rows.
         cur = load_board(p)
         held = cur["rows"] if cur else []
-        # Never under the rows held: one page with a low totalCount would cut a deep board.
-        merged = merge_rows(held, data, cap=max(total, take, len(held)))
-        got += len(merged) - (len(cur["rows"]) if cur else 0)
+        merged = merge_rows(held, data)
+        had = set(r.get("hash") for r in held)
+        got += sum(1 for r in data if r["hash"] not in had)     # review 6: was len(merged) - len(held)
 
         # A SHORT LATER PAGE MEANS THE BOARD ENDED, so believe the page over the
         # board's own totalCount.  Without this an off-by-a-few totalCount is an

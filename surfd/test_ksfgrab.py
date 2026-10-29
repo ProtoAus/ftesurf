@@ -406,6 +406,35 @@ class Tests(unittest.TestCase):
             close()
         self.assertLess(time.time() - t0, 5)
 
+    def test_p1117r6_past_the_deadline_any_breakage_is_no_answer(self):
+        import socket
+        port, close = drip_server(b"", 0)
+        real = socket.create_connection
+
+        def slow(*a, **k):          # a connect that finishes past the deadline
+            time.sleep(1.5)
+            return real(*a, **k)
+        try:
+            with patch.object(K, 'KSF_BASE', 'https://127.0.0.1:%d' % port), patch.object(G, 'EXCHANGE', 1), \
+                    patch.object(socket, 'create_connection', slow):
+                with self.assertRaises(TimeoutError):
+                    G.fetch(self.r['file'])
+        finally:
+            close()
+
+        def late(req, dl, got):
+            dl.fire()
+            raise AttributeError("'NoneType' object has no attribute 'do_handshake'")
+
+        def bug(req, dl, got):
+            raise ValueError('a bug of ours')
+        with patch.object(G, '_download', late):
+            with self.assertRaises(TimeoutError):
+                G.fetch(self.r['file'])
+        with patch.object(G, '_download', bug):
+            with self.assertRaises(ValueError):
+                G.fetch(self.r['file'])
+
     def test_p1117r5_the_watchdog_firing_is_no_answer_whatever_the_read_did(self):
         # Headers at once, then a trickle: past EXCHANGE it is no answer, not the file's.
         port, close = drip_server(b"x" * 200, 0.2, b"HTTP/1.1 200 OK\r\nContent-Length: 200\r\n\r\n")

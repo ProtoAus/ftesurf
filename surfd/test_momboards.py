@@ -290,6 +290,10 @@ def case_bounded_times():
     rows = [{"steamid": "765611980000005%02d" % i, "time": t, "alias": "x", "rank": i + 1,
              "created": "2026-10-01T00:00:00.000Z", "hash": "%040x" % (i + 1)}
             for i, t in enumerate((44.0, 1e300, float("inf"), True, 2e6, 0.0004))]
+    # P1117 review 6: a SteamID64 in ASCII digits and in range, or the row is skipped.
+    arabic = "".join(chr(0x660 + int(c)) for c in "76561198000000601")
+    rows += [dict(rows[0], steamid=s, hash="%040x" % (60 + i), time=45.0 + i)
+             for i, s in enumerate((arabic, "\u00b2" * 17, "10000000000000000"))]
     with open(os.path.join(d, "7777_g1_t01.json"), "w") as fh:
         json.dump({"map": "surf_bound", "mapid": 7777, "gamemode": 1, "trackType": 0,
                    "trackNum": 1, "total": 5, "fetched": 1, "rows": rows}, fh)

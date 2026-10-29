@@ -658,6 +658,65 @@ def case_p1117r5_bounds():
           [0, 1790000000, 0, 0, 1790000000])
 
 
+def tls_parts(M):
+    """(an SSL socket keeps its SSL object through Deadline.shut, what a Handshake
+    raises for a connect finished past the deadline) -- socket pairs, no network."""
+    import ssl
+    ctx = ssl.create_default_context()
+    a, b = _socket.socketpair()
+    s = ctx.wrap_socket(a, server_hostname="x", do_handshake_on_connect=False)
+    try:
+        M.Deadline.shut(s)
+        kept = s._sslobj is not None
+    finally:
+        s.close()
+        b.close()
+    dl = M.Deadline(60)
+    dl.fired = True
+    c, d = _socket.socketpair()
+    try:
+        M.Handshake(ctx, dl).wrap_socket(c, server_hostname="x")
+        raised = None
+    except Exception as e:
+        raised = type(e).__name__
+    finally:
+        for x in dl.socks + [c, d]:
+            x.close()
+    return kept, raised
+
+
+def case_p1117r6_watchdog():
+    port, close = drip_server(b"", 0)
+    undo = slow_connect(1.5)
+    try:
+        out = timed_fetch("https://127.0.0.1:%d/x" % port)
+    finally:
+        undo()
+        close()
+    check("P1117r6: a TLS connect finishing past the deadline is no answer, not AttributeError",
+          out, (("refused", True, 0), True))
+    check("P1117r6: shut() keeps the SSL object; a connect past the deadline skips its handshake",
+          tls_parts(K), (True, "TimeoutError"))
+    got, real = [], K._fetch
+    for fired, exc in ((True, AttributeError), (True, ValueError), (False, ValueError)):
+        def broken(url, dl, fired=fired, exc=exc):
+            if fired:
+                dl.fire()
+            raise exc("an SSL object shut under it")
+        K._fetch = broken
+        try:
+            REAL_FETCH("http://127.0.0.1:1/x")
+            got.append("returned")
+        except K.Refused as e:
+            got.append(("no answer", e.transient))
+        except (AttributeError, ValueError) as e:
+            got.append(type(e).__name__)
+        finally:
+            K._fetch = real
+    check("P1117r6: past the deadline AttributeError/ValueError is no answer; before it, a bug",
+          got, [("no answer", True), ("no answer", True), "ValueError"])
+
+
 def case_p1117_quiet_park():
     """No answer parks the crawl QUIET_COOLDOWN, doubling; case_watch_refusal_parks
     holds an HTTP refusal to COOLDOWN."""
@@ -1112,7 +1171,7 @@ def main():
                  case_modes, case_merge_and_refresh, case_watch,
                  case_watch_refusal_parks, case_p1117_quiet_park, case_p1117r1_record_identity, case_p1117r2_caps,
                  case_p1117r3_whole_reply, case_p1117r3_same_record_improves, case_p1117r4_watchdog,
-                 case_p1117r5_watchdog, case_p1117r5_bounds,
+                 case_p1117r5_watchdog, case_p1117r5_bounds, case_p1117r6_watchdog,
                  case_watch_dry_and_owed,
                  case_review_findings, case_review_round2,
                  case_board_reads_ksf_styles):

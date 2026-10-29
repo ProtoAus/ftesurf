@@ -63,6 +63,8 @@ if not logging.getLogger("surfd").handlers:
 
 import surfd as S       # noqa: E402  -- import-safe: app.run is __main__-guarded
 
+STEAM64 = 76561197960265728     # an individual account's SteamID64 is this + its 32-bit id
+
 # Player aliases are free Unicode from another game's API, and Windows'
 # default stdout is cp1252 -- so merely PRINTING a name can kill the tool
 # after the work is done.  This has now bitten once on a file write and once
@@ -333,8 +335,10 @@ def main():
             sid = r.get("steamid") or ""
             t = r.get("time")
             # P1117 review 4: bounded, or one 1e300 crashes every --index before its mark.
-            if (not sid.isdigit() or type(t) not in (int, float) or not math.isfinite(t)
-                    or not 0 < t < 1e6):
+            # review 6: an individual SteamID64 in ASCII digits (isdigit takes U+0667).
+            if (not (isinstance(sid, str) and len(sid) == 17 and sid.isascii() and sid.isdigit()
+                     and STEAM64 < int(sid) < STEAM64 + 2 ** 32)
+                    or type(t) not in (int, float) or not math.isfinite(t) or not 0 < t < 1e6):
                 continue
             ms = int(round(t * 1000.0))
             if ms < 1:                      # under 0.5 ms rounds to an unbeatable 0 (review 5)

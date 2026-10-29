@@ -573,23 +573,6 @@ def case_p1117r5_momfetch():
     tclose()
     check("P1117r5: momfetch cuts a dripped body and a late connect, and follows no redirect",
           (out, tclose.hits), ([(("refused", 0), True)] * 3 + [(("refused", 302), True)], []))
-    tsv, boards = home("grow")
-    write_board(boards, 1, 1, 0, 1, range(1, 101), 100)
-    for n in range(6):
-        def page(url, n=n):
-            data = [{"rank": r, "time": 1.0 + n + r / 1000.0,
-                     "replayHash": "%040x" % (10 ** 6 * (n + 1) + r), "createdAt": "c" * 100,
-                     "downloadURL": "u" * 600,
-                     "user": {"id": r, "steamID": str(76561198100000000 + 1000 * n + r), "alias": "a" * 9000}}
-                    for r in range(1, 101)]
-            return json.dumps({"totalCount": 100, "data": data}).encode()
-        fetch(page, ["--tracks", tsv, "--out", boards, "--take", "100", "--depth", "0", "--delay", "0",
-                     "--max", "1", "--refresh", "--go", "--board", "1_g1_t01"])
-    rows = board(boards, 1, 1, 0, 1)["rows"]
-    check("P1117r5: six pages of new hashes leave at most max(total, take) rows, every string bounded",
-          (len(rows), max(len(r["alias"]) for r in rows), max(len(r["created"]) for r in rows),
-           max(len(r["url"]) for r in rows), os.path.getsize(os.path.join(boards, "1_g1_t01.json")) < 60000),
-          (100, 64, 0, 0, True))
     tsv, boards = home("deep")
     p = write_board(boards, 1, 1, 0, 1, range(1, 301), 300)
     held = board(boards, 1, 1, 0, 1)["rows"]
@@ -617,7 +600,7 @@ def case_p1117r5_momfetch():
         {"replayHash": "%040x" % 3, "time": 1.0, "user": [1]},
         {"replayHash": "%040x" % 4, "time": 2.0, "user": {"alias": ["x"], "steamID": "7656"}}]})
     check("P1117r5: parse_board skips what it cannot take, never raises",
-          [(r["hash"][-1], r["alias"], r["steamid"]) for r in got[1]], [("3", "?", ""), ("4", "?", "7656")])
+          [(r["hash"][-1], r["alias"], r["steamid"]) for r in got[1]], [("3", "?", ""), ("4", "?", "")])
     tsv, boards = home("badstate")
     for name, (mid, bl) in CAT.items():
         for gm, tt, tn in bl:
@@ -634,6 +617,174 @@ def case_p1117r5_momfetch():
                  "--max", "10", "--rewalk", "--go"])
     check("P1117r5: a malformed .rewalk entry is reset, not a TypeError",
           MF.rewalk_state(boards)["strikes"].get("1_g1_t01"), [4, 1])
+
+
+def tls_parts(M):
+    """(an SSL socket keeps its SSL object through Deadline.shut, what a Handshake
+    raises for a connect finished past the deadline) -- socket pairs, no network."""
+    import ssl
+    ctx = ssl.create_default_context()
+    a, b = _socket.socketpair()
+    s = ctx.wrap_socket(a, server_hostname="x", do_handshake_on_connect=False)
+    try:
+        M.Deadline.shut(s)
+        kept = s._sslobj is not None
+    finally:
+        s.close()
+        b.close()
+    dl = M.Deadline(60)
+    dl.fired = True
+    c, d = _socket.socketpair()
+    try:
+        M.Handshake(ctx, dl).wrap_socket(c, server_hostname="x")
+        raised = None
+    except Exception as e:
+        raised = type(e).__name__
+    finally:
+        for x in dl.socks + [c, d]:
+            x.close()
+    return kept, raised
+
+
+def case_p1117r6_momfetch():
+    import socket as so
+
+    def timed(url):
+        t0 = time.time()
+        try:
+            with patch.object(MF, "DEADLINE", 1):
+                MF.get(url)
+            got = "returned"
+        except MF.Refused as e:
+            got = ("refused", e.code)
+        return got, time.time() - t0 < 5
+    port, close = drip_server(b"", 0)
+    real = so.create_connection
+    so.create_connection = lambda *a, **k: (time.sleep(1.5), real(*a, **k))[1]
+    try:
+        out = timed("https://127.0.0.1:%d/v1/x" % port)
+    finally:
+        so.create_connection = real
+        close()
+    check("P1117r6: momfetch: a TLS connect finishing past the deadline is no answer, not AttributeError",
+          out, (("refused", 0), True))
+    check("P1117r6: momfetch: shut() keeps the SSL object; a connect past the deadline skips its handshake",
+          tls_parts(MF), (True, "TimeoutError"))
+    got = []
+    for fired, exc in ((True, AttributeError), (True, ValueError), (False, ValueError)):
+        def broken(url, dl, fired=fired, exc=exc):
+            if fired:
+                dl.fire()
+            raise exc("an SSL object shut under it")
+        try:
+            with patch.object(MF, "_get", broken):
+                MF.get("http://127.0.0.1:1/v1/x")
+            got.append("returned")
+        except MF.Refused:
+            got.append("no answer")
+        except (AttributeError, ValueError) as e:
+            got.append(type(e).__name__)
+    check("P1117r6: momfetch: past the deadline AttributeError/ValueError is no answer; before it, a bug",
+          got, ["no answer", "no answer", "ValueError"])
+
+    now = time.time()
+    iso = lambda t: time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(t))
+
+    def one(rows, total):
+        return lambda url: json.dumps({"totalCount": total, "data": rows}).encode()
+
+    def ask(boards, tsv, reply):
+        fetch(reply, ["--tracks", tsv, "--out", boards, "--take", "100", "--depth", "0", "--delay", "0",
+                      "--max", "1", "--refresh", "--go", "--board", "1_g1_t01"])
+        return board(boards, 1, 1, 0, 1)["rows"]
+
+    def entry(row, t, h, created):
+        return {"rank": row["rank"], "time": t, "replayHash": "%040x" % h, "createdAt": created,
+                "user": {"id": row["rank"], "steamID": row["steamid"], "alias": row["alias"]}}
+
+    def times(rows, row):
+        return [r["time"] for r in rows if r["steamid"] == row["steamid"]]
+    tsv, boards = home("pin")
+    write_board(boards, 1, 1, 0, 1, range(1, 11), 10)
+    v = board(boards, 1, 1, 0, 1)["rows"][4]
+    ask(boards, tsv, one([entry(v, 70.0, 901, "2999-12-31T00:00:00.000Z")], 10))
+    pinned = times(ask(boards, tsv, one([entry(v, 9.0, 902, iso(now - 3600))], 10)), v)
+    tsv, boards = home("pinheld")
+    p = write_board(boards, 1, 1, 0, 1, range(1, 11), 10)
+    doc = board(boards, 1, 1, 0, 1)
+    doc["rows"][4] = dict(v, time=70.0, created="2999-12-31T00:00:00.000Z")    # written before the bound
+    MF.write_board(p, doc)
+    held = times(ask(boards, tsv, one([entry(v, 9.0, 902, iso(now - 3600))], 10)), v)
+    check("P1117r6: a far-future createdAt, served or held, does not hold a player's row against an improvement",
+          (pinned, held), ([9.0], [9.0]))
+    tsv, boards = home("nodate")
+    write_board(boards, 1, 1, 0, 1, range(1, 11), 10)
+    v, w = board(boards, 1, 1, 0, 1)["rows"][4], board(boards, 1, 1, 0, 1)["rows"][6]
+    rows = ask(boards, tsv, one([entry(v, 9.0, 903, iso(now - 3600) + "x" * 30),
+                                 entry(w, 11.0, 904, w["created"])], 10))
+    check("P1117r6: the page's own row wins over a held one where it has no date or they tie",
+          (times(rows, v), times(rows, w)), ([9.0], [11.0]))
+
+    tsv, boards = home("over")
+    write_board(boards, 1, 1, 0, 1, range(1, 301), 100)          # more rows held than its totalCount
+    slow = {"rank": 100, "time": 1000.0, "replayHash": "%040x" % 905, "createdAt": iso(now - 60),
+            "user": {"id": 905, "steamID": "76561198100000905", "alias": "slow"}}
+    rows = ask(boards, tsv, one([slow], 100))
+    check("P1117r6: a run the page served is kept on a board holding more rows than its totalCount; no url",
+          (len(rows), rows[-1]["hash"][-3:], any("url" in r for r in rows)), (301, "389", False))
+    forged = [{"rank": 100000, "time": 1.0 + k / 100.0, "replayHash": "%040x" % (10 ** 6 + k),
+               "createdAt": iso(now - 60),
+               "user": {"id": 5000 + k, "steamID": str(76561198200000000 + k), "alias": "f"}} for k in range(100)]
+    real = lambda rows: [r for r in rows if r["steamid"].startswith("765611980")]
+    tsv, boards = home("forged")
+    write_board(boards, 1, 1, 0, 1, range(1, 301), 300)
+    rows = ask(boards, tsv, one(forged, 1))
+    first = (len(rows), len(real(rows)))
+    tsv, boards = home("ceiling")
+    write_board(boards, 1, 1, 0, 1, range(1, 301), 300)
+    with patch.object(MF, "TOTAL_MAX", 350):
+        rows = ask(boards, tsv, one(forged, 1))
+    check("P1117r6: a hostile page cannot push real rows out; past the ceiling held rows go, slowest first",
+          (first, len(rows), len(real(rows)), max(r["time"] for r in real(rows))),
+          ((400, 300), 350, 250, 10.0 + 250 * 0.1))
+
+    worst = {"rank": MF.TOTAL_MAX, "time": 1.2345678901234567e-05, "replayHash": "f" * 40,
+             "createdAt": iso(now - 60)[:-5] + ".123456789Z",
+             "user": {"id": 2 ** 53 - 1, "steamID": str(MF.STEAM64 + 2 ** 32 - 1), "alias": "\U0001F600" * 9000}}
+    r = MF.parse_board({"totalCount": 1, "data": [worst]})[1][0]
+    n = len(json.dumps(r, separators=(",", ":")))
+    check("P1117r6: a row is at most 460 bytes as written (this one %d), its alias %d escaped"
+          % (n, len(json.dumps(r["alias"])) - 2),
+          (n <= 460, len(json.dumps(r["alias"])) - 2 <= MF.ALIAS_BYTES, len(r["created"])), (True, True, 30))
+
+    tsv, boards = home("newcount")
+    p = write_board(boards, 1, 1, 0, 1, range(1, 11), 10)
+    doc = board(boards, 1, 1, 0, 1)
+    page = [entry(r, r["time"], int(r["hash"], 16), r["created"]) for r in doc["rows"]]
+    doc["rows"] += [dict(doc["rows"][k], hash="%040x" % (906 + k), time=50.0 + k,
+                         created="2025-01-01T00:00:00.000Z") for k in (3, 4)]
+    MF.write_board(p, doc)
+    buf = io.StringIO()
+    with patch.object(MF, "get", one(page, 10)), contextlib.redirect_stdout(buf), \
+            patch.object(sys, "argv", ["momfetch.py", "--tracks", tsv, "--out", boards, "--take", "100",
+                                       "--depth", "0", "--delay", "0", "--max", "1", "--refresh", "--go",
+                                       "--board", "1_g1_t01"]):
+        MF.main()
+    new = re.search(r"rows NEW to cache\s+(-?\d+)", buf.getvalue())
+    check("P1117r6: 'rows NEW to cache' counts the page's new rows, never negative after a dedupe",
+          new and int(new.group(1)), 0)
+
+    arabic = "".join(chr(0x660 + int(c)) for c in "76561198000000001")
+    rows = MF.parse_board({"totalCount": 4, "data": [
+        {"replayHash": "%040x" % (20 + k), "time": 1.0 + k, "createdAt": c, "user": {"steamID": s}}
+        for k, (s, c) in enumerate((
+            ("76561198000000001", "2026-10-01T00:00:00e3Z"),
+            (arabic, "2026-10-01T00:00:00.000Z"),
+            ("10000000000000000", "2026-10-01T00:00:00Z "),
+            ("76561198000000002", "2026-10-01T00:00:00.5Z")))]})[1]
+    check("P1117r6: only an ASCII SteamID64 in range and an ISO createdAt are kept",
+          [(r["steamid"][-1:], r["created"]) for r in rows],
+          [("1", ""), ("", "2026-10-01T00:00:00.000Z"), ("", ""), ("2", "2026-10-01T00:00:00.5Z")])
 
 
 def case_404s():
@@ -673,7 +824,7 @@ def main():
                      case_stalest_boards, case_tick_budget, case_player_walk_refused_carries_on,
                      case_404s, case_p1117r2_walk_errors_carry_on, case_p1117r2_old_momfetch,
                      case_p1117r2_momfetch_replies, case_p1117r4_momfetch_bounds,
-                     case_p1117r5_momfetch):
+                     case_p1117r5_momfetch, case_p1117r6_momfetch):
             print("\n%s:" % case.__name__)
             case()
     finally:

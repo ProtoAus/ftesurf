@@ -302,8 +302,8 @@ def fetch(file):
             data = _download(req, dl, got)
     except urllib.error.HTTPError:
         raise
-    except (OSError, http.client.HTTPException):
-        if not dl.fired:
+    except (OSError, http.client.HTTPException, AttributeError, ValueError):
+        if not dl.fired:            # past it, the watchdog's doing (P1117 review 6)
             raise
         data = None
     if dl.fired:
