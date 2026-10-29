@@ -505,9 +505,9 @@ float  ms_applied_tier;
   be a single category with 0 for any.  Lex asked for two at once, surf and
   bhop by default, and a single-select strip cannot say that.
 
-  NEVER 0.  The chips refuse to turn off the last lit one, and ui_modes_sane
-  puts the default back over a saved 0 -- a set that lists nothing draws an
-  empty list with no chip lit to explain why, which reads as a broken mount.
+  0 ONLY ON SCREEN (P1111, Lex): "all" again, or the last lit chip, leaves none,
+  and the empty list says to pick one. ui_modes_sane puts the default back over
+  a saved 0 at load.
 
   Saved as ui_maps_modes: ui_create_open reads it, ui_modes_set writes it.
 */
@@ -2447,6 +2447,9 @@ void() ui_dl_load =
 			  ui_isgamemode gates it for the same reason the passes above do: a
 			  catalogue letter must not pull de_dust2 out of Other.
 			*/
+			// P1111 (Lex): the CATALOGUE, replacing the folder, wherever there is one. Since the
+			// 27 Oct restore the Momentum folder holds KSF's CS:S builds too, and OR-ing the folder
+			// in listed all ~500 of them under Momentum. A map in neither keeps its folder's.
 			if (ui_isgamemode(nm))
 			{
 				local float cbit;
@@ -2454,8 +2457,7 @@ void() ui_dl_load =
 				if (strstrofs(argv(3), "k") >= 0) cbit = cbit | SRC_BIT_CSS;
 				if (strstrofs(argv(3), "m") >= 0) cbit = cbit | SRC_BIT_MOM;
 				if (cbit)
-					bufstr_set(ms_lst, row,
-					           ftos(stof(bufstr_get(ms_lst, row)) | cbit));
+					bufstr_set(ms_lst, row, ftos(cbit));
 			}
 			continue;
 		}
@@ -3134,22 +3136,15 @@ void() ui_refilter =
 		if (ms_srcf != 0 && !(stof(bufstr_get(ms_lst, i)) & ms_srcf))
 			continue;
 
-		// Installed surf/bhop maps remain playable without metadata. Other bare
-		// rows wait behind show all/search; the intentional filters above still apply.
+		// P1111 (Lex): with show all off, a map without zones or without a picture waits
+		// behind it (it hid only maps with neither a picture nor a tier, which is nearly
+		// none). A search still finds them.
 		if (q == "")
 		if (!ms_showall)
-		if (stof(bufstr_get(ms_dataq, i)) == DQ_BARE)
+		if (bufstr_get(ms_zoned, ui_eff(i)) != "1" || stof(bufstr_get(ms_dataq, i)) >= DQ_TIER)
 		{
-			local string movementname;
-			movementname = strtolower(bufstr_get(ms_name, i));
-			if (!(bufstr_get(ms_have, i) == "1"
-			      && (stof(bufstr_get(ms_src, i)) & (SRC_BIT_MOM | SRC_BIT_CSS))
-			      && (substring(movementname, 0, 5) == "surf_"
-			          || substring(movementname, 0, 5) == "bhop_")))
-			{
-				ms_nhidden++;
-				continue;
-			}
+			ms_nhidden++;
+			continue;
 		}
 
 		bufstr_add(ms_view, ftos(i), TRUE);
@@ -3603,7 +3598,7 @@ void() ui_maplist_changed =
 // empty set -- see ms_modes for why that is not a state worth drawing.
 float(float m) ui_modes_sane =
 {
-	m = m & FS_MODES_ALL;
+	m = m & FS_MODES_ALL;           // 0 only at load: the chips may leave none lit
 	if (!m)
 		m = FS_MODES_DEFAULT;
 	return m;
@@ -3614,22 +3609,21 @@ float(float m) ui_modes_sane =
   saves -- so the bootcheck driver can put the chips' own rule through its paces
   without writing the player's config.
 
-  "all" sets every bit, and is not a toggle, because "all off" is the empty set.
-  Any other chip flips its own bit, EXCEPT the last lit one, which stays on:
-  with nothing lit the list would be empty and no chip would say why.
+  "all" sets every bit, or clears them when every one is lit (P1111); any other
+  chip flips its own bit.
 */
 float(float mask, float slot) ui_modes_click =
 {
 	local float b;
 
+	// P1111 (Lex): "all" again clears every mode, so one can be picked alone; a list with
+	// none says so (screen_create), and a saved 0 opens on the default (ui_modes_sane).
 	if (slot == 0)
-		return FS_MODES_ALL;
+		return (mask == FS_MODES_ALL) ? 0 : FS_MODES_ALL;
 
 	b = ui_cat_bit(ui_mode_id(slot));
 	if (!(mask & b))
 		return mask | b;
-	if (mask == b)
-		return mask;                // the last lit chip will not switch off
 	return mask - b;
 };
 
@@ -5068,10 +5062,11 @@ void() ui_bootcheck_tick =
 		*/
 		ms_modes = ui_modes_click(FS_MODES_DEFAULT, ui_mode_slot(GC_BHOP));
 		float bcl = ui_modes_click(ms_modes, ui_mode_slot(GC_SURF));
+		float bca = ui_modes_click(ui_modes_click(FS_MODES_DEFAULT, 0), 0);    // P1111: all, all again
 		print(sprintf("bootcheck: bhop off leaves %g (want %g), the last lit "
-		              "chip off leaves %g (want %g) -- %s\n",
-		              ms_modes, ui_cat_bit(GC_SURF), bcl, ui_cat_bit(GC_SURF),
-		              (ms_modes == ui_cat_bit(GC_SURF) && bcl == ms_modes)
+		              "chip off leaves %g (want 0), all twice leaves %g (want 0) -- %s\n",
+		              ms_modes, ui_cat_bit(GC_SURF), bcl, bca,
+		              (ms_modes == ui_cat_bit(GC_SURF) && bcl == 0 && bca == 0)
 		                  ? "^2ok^7" : "^1FAILED^7"));
 
 		/*
@@ -7413,13 +7408,18 @@ float(float width, float y) ui_map_filters =
 	{
 		heading = group == 0 ? "Tier" : (group == 1 ? "Mode" : (group == 2 ? "Library" : (group == 3 ? "Extra" : "Sort")));
 		n = group == 0 ? 11 : (group == 1 ? FS_NMODES : (group == 2 ? SRCF_NCHIPS : (group == 3 ? 1 : 3)));
-		gw = stringwidth(heading, TRUE, '12 12 0') + 8;
+		Font_Set(ui_font_display);
+		gw = stringwidth(heading, TRUE, '15 15 0') + 8;
+		Font_Set(ui_font_ui);
 		for (f = 0; f < n; f = f + 1)
 			gw = gw + ui_filter_chip_w(ui_filter_label(group, f)) + 4;
 		if (group == 4 && note != "") gw = gw + stringwidth(note, TRUE, '12 12 0') + 6;
 		if (x > 16 && x + gw > width + 16) { x = 16; y = y + 30; }
-		sui_text([x, y + 6], '12 12 0', heading, COL_DIM, 1, 0);
-		x = x + stringwidth(heading, TRUE, '12 12 0') + 8;
+		// P1111 (Lex): the headings in the display face, not faded.
+		Font_Set(ui_font_display);
+		sui_text([x, y + 5], '15 15 0', heading, COL_TEXT, 1, 0);
+		x = x + stringwidth(heading, TRUE, '15 15 0') + 8;
+		Font_Set(ui_font_ui);
 		for (f = 0; f < n; f = f + 1)
 		{
 			label = ui_filter_label(group, f);
@@ -7430,9 +7430,9 @@ float(float width, float y) ui_map_filters =
 			if (x + cw > width + 16) { x = 16; y = y + 30; }
 			x = x + ui_filter_chip([x, y], id, label, on) + 4;
 			if (group == 0) sui_tooltip_for(id, f == 0 ? "Every tier, including untiered maps." : sprintf("MOM or KSF tier %g.", f), 2);
-			if (group == 1) sui_tooltip_for(id, "Show/hide this gametype. The last selected type stays on.", 2);
-			if (group == 2) sui_tooltip_for(id, "Map library for installed and downloadable maps.", 2);
-			if (group == 3) sui_tooltip_for(id, "Also show maps without a picture or tier. Search always finds them.", 2);
+			if (group == 1) sui_tooltip_for(id, f ? "Show/hide this gametype." : "Every gametype; again for none, to pick one alone.", 2);
+			if (group == 2) sui_tooltip_for(id, "Momentum Mod's maps, or KSF's (CS:S) maps: by catalogue, not by folder.", 2);
+			if (group == 3) sui_tooltip_for(id, "Also show maps without zones or a picture. Search always finds them.", 2);
 			if (group == 4) sui_tooltip_for(id, "Your clean main finishes (WOS, Momentum Mod or KSF), tier order within each. Needs a linked account online; while unknown the list stays in tier order.", 2);
 			if (!sui_is_released(id)) continue;
 			if (group == 0) ms_tier = f;
@@ -7723,7 +7723,7 @@ void(vector screensize) screen_create =
 		sui_style_box([16, y], ls, 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 
 		if (ms_viewcount == 0)
-			sui_text([24, y + 10], SZ_ROW, "no matches", COL_DIM, 1, 0);
+			sui_text([24, y + 10], SZ_ROW, ms_modes ? "no matches" : "no mode picked: pick one above, or all", COL_DIM, 1, 0);
 		else
 		{
 			// sui_list_view only emits rows inside the visible window, so this
