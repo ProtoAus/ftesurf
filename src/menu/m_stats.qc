@@ -19,6 +19,13 @@ void() MStats_Open =
 	sui_text_unfocus();
 	MStats_SetOther("");
 	Profile_Reset();
+	pf_cm = mh_mode;                // P1122: the kind the home panel showed
+	pf_cm_slide = Profile_KindPlace(pf_cm);
+	if (mh_source_picked)
+	{
+		pf_cs = !mh_source;         // home's 0 is World of Surf, the page's 1
+		pf_cs_picked = TRUE;
+	}
 	Profile_Stale(60);
 	Profile_TierShow(-2);           // opens on the results, as hud_player does
 	menu_screen = SCREEN_STATS;

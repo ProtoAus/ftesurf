@@ -3,6 +3,11 @@ float mh_req, mh_sent, mh_next, mh_state, mh_source, mh_stale;
 float mh_source_picked;         // P1084: the player chose a source this session
 float mh_times, mh_wr, mh_wrc, mh_maps, mh_native;
 float mh_wos_done, mh_all_done, mh_total, mh_tiers_wos, mh_tiers_all, mh_buffers_ready;
+// P1122: per kind (0 all, 1 surf, 2 bhop, as cl_profile's pf_cm); the tier tables hold MH_TSLOTS
+// slots a kind. mh_mode is the kind on show; mh_modes_has, the reply carried the kinds.
+#define MH_TSLOTS 17
+float mh_mode, mh_modes_has, mh_mode_slide;
+float mh_kwos[3], mh_kall[3], mh_kof[3], mh_ktimes[3], mh_kwr[3], mh_kwrc[3];
 float mh_lcols, mh_lrows, mh_lheight, mh_lshown, mh_tcols, mh_trows, mh_tshown;
 float mh_lbottom, mh_tbottom, mh_progress_top;
 float mh_thumb_width, mh_thumb_height, mh_friends_height, mh_chat_height;
@@ -33,12 +38,12 @@ void(vector screensize) MC_Draw =
 	MC_Panel(pos, size, FALSE);
 };
 
-void(int node, float target) MH_ReadTiers =
+void(int node, float target, float base) MH_ReadTiers =
 {
 	local int tiers, row;
-	local float i, n, tier, slot;
-	// Stable slots: tiers1..8, Unrated, then any higher catalogue tiers.
-	bufstr_set(target, 8, "");
+	local float i, n, tier, slot, rest;
+	// Stable slots: tiers1..8, Unrated, then any higher catalogue tiers; `base` is the kind's first.
+	bufstr_set(target, base + 8, "");
 	tiers = json_find_object_child(node, "tiers");
 	// MENU min's tail is varargs: convert the integer JSON length first.
 	n = json_get_length(tiers);
@@ -49,11 +54,72 @@ void(int node, float target) MH_ReadTiers =
 		tier = json_get_float(json_find_object_child(row, "tier"));
 		if (tier < 1 || tier > 16) continue;
 		slot = tier <= 8 ? tier - 1 : tier;
-		bufstr_set(target, slot, sprintf("%g %g %g", tier,
+		bufstr_set(target, base + slot, sprintf("%g %g %g", tier,
 			json_get_float(json_find_object_child(row, "done")), json_get_float(json_find_object_child(row, "of"))));
 	}
+	// P1122: the service sends `untiered` (a count), not an object: finished = done - the tiers'
+	// done, as cl_profile's page reads it. It was "-- / --" here.
+	if (json_find_object_child(node, "untiered"))
+	{
+		rest = json_get_float(json_find_object_child(node, "done"));
+		for (i = 0; i < n; i = i + 1)
+			rest = rest - json_get_float(json_find_object_child(json_get_child_at_index(tiers, i), "done"));
+		bufstr_set(target, base + 8, sprintf("0 %g %g", max(0, rest),
+			json_get_float(json_find_object_child(node, "untiered"))));
+	}
 	row = json_find_object_child(node, "unrated");
-	if (row) bufstr_set(target, 8, sprintf("0 %g %g", json_get_float(json_find_object_child(row, "done")), json_get_float(json_find_object_child(row, "of"))));
+	if (row) bufstr_set(target, base + 8, sprintf("0 %g %g", json_get_float(json_find_object_child(row, "done")), json_get_float(json_find_object_child(row, "of"))));
+};
+
+// P1122: a completion object's surf and bhop tables into kinds 1 and 2, and every kind's
+// done (and, from Everything's, of) figures; kind 0 is the object itself.
+void(int c, float target, float isall) MH_ReadKinds =
+{
+	local int modes, m;
+	local float k;
+	if (isall) mh_kall[0] = json_get_float(json_find_object_child(c, "done"));
+	else mh_kwos[0] = json_get_float(json_find_object_child(c, "done"));
+	if (isall) mh_kof[0] = json_get_float(json_find_object_child(c, "of"));
+	modes = json_find_object_child(c, "modes");
+	if (isall) mh_modes_has = (json_get_length(modes) > 0);
+	for (k = 1; k < 3; k = k + 1)
+	{
+		m = json_find_object_child(modes, (k == 1) ? "surf" : "bhop");
+		MH_ReadTiers(m, target, k * MH_TSLOTS);
+		if (isall) mh_kall[k] = json_get_float(json_find_object_child(m, "done"));
+		else mh_kwos[k] = json_get_float(json_find_object_child(m, "done"));
+		if (isall) mh_kof[k] = json_get_float(json_find_object_child(m, "of"));
+	}
+};
+
+// P1122: figs.wos by kind (any, surf, bhop); without them kind 0 keeps the top-level `wos`.
+void(int f) MH_ReadFigs =
+{
+	local int k;
+	local float i;
+	mh_ktimes[0] = mh_times; mh_kwr[0] = mh_wr; mh_kwrc[0] = mh_wrc;
+	mh_ktimes[1] = mh_ktimes[2] = mh_kwr[1] = mh_kwr[2] = mh_kwrc[1] = mh_kwrc[2] = 0;
+	if (!f) return;
+	for (i = 0; i < 3; i = i + 1)
+	{
+		k = json_find_object_child(f, (i == 0) ? "any" : ((i == 1) ? "surf" : "bhop"));
+		if (!k) continue;
+		mh_ktimes[i] = json_get_float(json_find_object_child(k, "n"));
+		mh_kwr[i] = json_get_float(json_find_object_child(k, "wr"));
+		mh_kwrc[i] = json_get_float(json_find_object_child(k, "wrc"));
+	}
+};
+
+// P1122: a kind's tier slots in use (at least the nine fixed ones), from `target`.
+float(float target, float k) MH_TierCount =
+{
+	local float i, n;
+	n = 9;
+	if (!mh_buffers_ready) return n;
+	for (i = 9; i < MH_TSLOTS; i = i + 1)
+		if (bufstr_get(target, k * MH_TSLOTS + i) != "")
+			n = i + 1;
+	return n;
 };
 
 void() MH_Failed =
@@ -81,7 +147,8 @@ float(float reqid, float code, string body) MH_Reply =
 	c = json_find_object_child(root, "completion");
 	mh_all_done = json_get_float(json_find_object_child(c, "done"));
 	mh_total = json_get_float(json_find_object_child(c, "of"));
-	MH_ReadTiers(c, mh_tiers_all);
+	MH_ReadTiers(c, mh_tiers_all, 0);
+	MH_ReadKinds(c, mh_tiers_all, TRUE);
 	c = json_find_object_child(root, "completion_wos");
 	mh_native = (json_get_length(c) > 0);
 	// P1084: World of Surf unless the player picked Everything; a reply without
@@ -89,12 +156,15 @@ float(float reqid, float code, string body) MH_Reply =
 	if (!mh_native) mh_source = 1;
 	else if (!mh_source_picked) mh_source = 0;
 	mh_wos_done = json_get_float(json_find_object_child(c, "done"));
-	MH_ReadTiers(c, mh_tiers_wos);
+	MH_ReadTiers(c, mh_tiers_wos, 0);
+	MH_ReadKinds(c, mh_tiers_wos, FALSE);
 	wos = json_find_object_child(root, "wos");
 	mh_times = json_get_float(json_find_object_child(wos, "n"));
 	mh_maps = json_get_float(json_find_object_child(wos, "maps"));
 	mh_wr = json_get_float(json_find_object_child(wos, "wr"));
 	mh_wrc = json_get_float(json_find_object_child(wos, "wrc"));
+	MH_ReadFigs(json_find_object_child(json_find_object_child(root, "figs"), "wos"));
+	if (!mh_modes_has) mh_mode = 0;
 	mh_state = 2; mh_stale = FALSE;
 	json_free(root);
 	return TRUE;
@@ -399,6 +469,9 @@ void(vector p, vector size, float L) MH_Progress =
 
 // P1104: client/cl_profile.qc's switch, compiled later.
 float(string id, vector pos, vector sz, string left, string right, float onright, float tsz, float *slide) Profile_Switch;
+float(string id, vector pos, vector sz, string a, string b, string c, float on, float tsz, float *slide) Profile_Switch3;
+float(float kind) Profile_KindPlace;
+float(float place) Profile_PlaceKind;
 float mh_sw_slide;
 
 void(vector p, vector size) MH_Stats =
@@ -435,8 +508,8 @@ void(vector p, vector size) MH_Stats =
 		value = "--";
 		if (mh_state == 2)
 		{
-			if (i == 2 && mh_source) value = ftos(mh_all_done);
-			else if (mh_native) value = ftos(i == 0 ? mh_times : (i == 1 ? mh_wr : (i == 2 ? mh_wos_done : mh_wrc)));
+			if (i == 2 && mh_source) value = ftos(mh_kall[mh_mode]);
+			else if (mh_native) value = ftos(i == 0 ? mh_ktimes[mh_mode] : (i == 1 ? mh_kwr[mh_mode] : (i == 2 ? mh_kwos[mh_mode] : mh_kwrc[mh_mode])));
 		}
 		MH_Figure([16 + i * (cw + 6), fy], [cw, fh], label, value);
 	}
@@ -449,12 +522,21 @@ void(vector p, vector size) MH_Stats =
 		if (mh_source && mh_native) { mh_source = 0; mh_source_picked = TRUE; }
 		else if (!mh_source && mh_state == 2) { mh_source = 1; mh_source_picked = TRUE; }
 	}
-	x = x + 12;
-	s = mh_state == 2 ? sprintf("%g / %g maps", mh_source ? mh_all_done : mh_wos_done, mh_total) : "-- / -- maps";
+	x = x + 8;
+	// P1122 (Lex): Surf / Bhop / All, for every figure and tier row below.
+	if (mh_modes_has)
+	{
+		i = Profile_Switch3("home_stats_kind", [x, cy], [168, compact ? 22 : 26], "Surf", "Bhop", "All",
+		                    Profile_KindPlace(mh_mode), 12, &mh_mode_slide);
+		if (i >= 0) mh_mode = Profile_PlaceKind(i);
+		x = x + 168 + 12;
+	}
+	else
+		x = x + 4;
+	s = mh_state == 2 ? sprintf("%g / %g maps", mh_source ? mh_kall[mh_mode] : mh_kwos[mh_mode], mh_kof[mh_mode]) : "-- / -- maps";
 	sui_text([x, cy + 6], '12 12 0', ui_fit_text(s, size_x - x - 16, '12 12 0'), COL_DIM, 1, 0);
 	target = mh_source ? mh_tiers_all : mh_tiers_wos;
-	n = 9;
-	if (mh_buffers_ready) n = max(n, min(17, buf_getsize(target)));
+	n = MH_TierCount(target, mh_mode);
 	// P1104: as many columns (up to 4) as it takes for the rows to clear the progress boxes;
 	// Tier 9 and 10 were drawn under Story Mode with three.
 	cols = 2;
@@ -471,8 +553,7 @@ void(vector p, vector size) MH_Stats =
 		tier = i < 8 ? i + 1 : (i == 8 ? 0 : i);
 		known = FALSE; done = total = 0;
 		if (mh_state == 2 && mh_buffers_ready)
-		if (i < buf_getsize(target))
-		if (tokenize(bufstr_get(target, i)) == 3)
+		if (tokenize(bufstr_get(target, mh_mode * MH_TSLOTS + i)) == 3)
 		{
 			tier = stof(argv(0)); done = stof(argv(1)); total = stof(argv(2)); known = TRUE;
 		}
@@ -583,10 +664,18 @@ void() MH_Probe =
 	if (mh_buffers_ready)
 	for (i = 0; i < 9; i = i + 1)
 	{
-		if (bufstr_get(mh_tiers_wos, i) != "") wos = wos + 1;
-		if (bufstr_get(mh_tiers_all, i) != "") all = all + 1;
+		if (bufstr_get(mh_tiers_wos, mh_mode * MH_TSLOTS + i) != "") wos = wos + 1;
+		if (bufstr_get(mh_tiers_all, mh_mode * MH_TSLOTS + i) != "") all = all + 1;
 	}
-	print(sprintf("home: tierdata wos %g all %g\n", wos, all));
+	print(sprintf("home: tierdata wos %g all %g kind %g kinds %g\n", wos, all, mh_mode, mh_modes_has));
+	if (mh_buffers_ready)
+	for (i = 0; i < 3; i = i + 1)
+	{
+		print(sprintf("home: kind %g tier1 wos %s all %s", i,
+		              bufstr_get(mh_tiers_wos, i * MH_TSLOTS), bufstr_get(mh_tiers_all, i * MH_TSLOTS)));
+		print(sprintf(" maps wos %g all %g of %g times %g wr %g\n", mh_kwos[i], mh_kall[i], mh_kof[i],
+		              mh_ktimes[i], mh_kwr[i]));
+	}
 	print(sprintf("browser: screen %g content %gx%g side %g,%g %gx%g\n", menu_screen, mh_content_size_x, mh_content_size_y, mh_sidebar_pos_x, mh_sidebar_pos_y, mh_sidebar_size_x, mh_sidebar_size_y));
 	print(sprintf("home: header %g,%g %gx%g body-top %g\n", mh_header_pos_x, mh_header_pos_y, mh_header_size_x, mh_header_size_y, mh_header_pos_y + mh_header_size_y + 12));
 	print(sprintf("home: progress story %g/%g known %g event %g/%g known %g\n", mh_spdone, mh_sptotal, mh_spknown, mh_epdone, mh_eptotal, mh_epknown));

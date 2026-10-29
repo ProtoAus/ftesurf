@@ -42,6 +42,12 @@
 ### P1123 Speed-pad and conveyor carry
 - Speed pads, conveyors and the Monolith booster keep the right run status when an earlier attempt enabled them. Their movement and normal current-run behavior are unchanged.
 
+### P1122 Stats by kind of map
+- The stats on the main menu have a Surf / Bhop / All switch; every figure and tier row follows it, and Full stats opens on the same choice.
+- On the full stats page the All / Surf / Bhop buttons are one Surf / Bhop / All switch.
+- The Unrated row on the main menu counts your finished unrated maps (it showed -- / --).
+- The Maps screen's "show all" starts off every time you launch.
+
 ### P1121 Speed-effect carry
 - Player-origin speed effects carried between attempts keep the right run status. Normal map-authored speeds and movement are unchanged.
 

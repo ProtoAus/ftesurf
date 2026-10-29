@@ -3644,8 +3644,7 @@ void(float mask) ui_modes_set =
 // ROADMAP 10: the "show all" chip, applied and saved the same way.
 void(float on) ui_showall_set =
 {
-	ms_showall = on;
-	localcmd(sprintf("seta ui_maps_showall %g\n", on));
+	ms_showall = on;                // P1122 (Lex): this session only; every launch starts with it off
 };
 
 // P1080: the completed sort, saved the same way.
@@ -3706,8 +3705,7 @@ void() ui_create_open =
 	MF_Open();
 	registercvar("ui_maps_modes", ftos(FS_MODES_DEFAULT), 32);
 	ms_modes = ui_modes_sane(cvar("ui_maps_modes"));
-	registercvar("ui_maps_showall", "0", 32);       // ROADMAP 10, same rules
-	ms_showall = (cvar("ui_maps_showall") != 0);
+	ms_showall = FALSE;             // P1122: off at every launch (it was saved as ui_maps_showall)
 	registercvar("ui_maps_compsort", "0", 32);      // P1080, same rules
 	ms_compsort = bound(0, rint(cvar("ui_maps_compsort")), 2);
 
@@ -6412,6 +6410,8 @@ void(vector size) MH_Sidebar;
 void(vector screensize) MH_Settings;
 void() MH_Poll;
 void() MH_Probe;
+float mh_mode, mh_modes_has;           // P1122: m_home.qc's, for ui_home_kind
+float pf_cm, pf_cs;                     // cl_profile.qc's, for ui_stats_open's line
 void(vector screensize) screen_main =
 {
 	screen_home(screensize);
@@ -8066,6 +8066,8 @@ void() m_init =
 	registercommand("ui_notes");
 	registercommand("ui_menu_probe");
 	registercommand("ui_home_probe");
+	registercommand("ui_home_kind");        // P1122: what the Surf / Bhop / All switch sets, for arms
+	registercommand("ui_stats_open");
 	registercommand("ui_profile_probe");
 	registercommand("ui_maplist");
 	registercommand("ui_browse");
@@ -8680,6 +8682,18 @@ float(string cmd) m_consolecommand =
 	if (!strcmp(argv(0), "ui_home_probe"))
 	{
 		MH_Probe();
+		return TRUE;
+	}
+	if (!strcmp(argv(0), "ui_home_kind"))
+	{
+		mh_mode = mh_modes_has ? bound(0, floor(stof(argv(1))), 2) : 0;
+		print(sprintf("home: kind %g (kinds %g)\n", mh_mode, mh_modes_has));
+		return TRUE;
+	}
+	if (!strcmp(argv(0), "ui_stats_open"))
+	{
+		MStats_Open();
+		print(sprintf("stats: opened, kind %g source %g\n", pf_cm, pf_cs));
 		return TRUE;
 	}
 	if (strcmp(argv(0), "ui_menu_probe") == 0)

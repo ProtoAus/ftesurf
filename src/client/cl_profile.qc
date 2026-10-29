@@ -81,6 +81,7 @@ float *pf_cmt;
 float  pf_cs, pf_cs_has;    // 0 Everything, 1 WOS; second table available
 float  pf_cs_picked;        // P1084: the player chose a source; else World of Surf when there is one
 float  pf_cm;               // the kind on show
+float  pf_cm_slide;         // P1122: its switch's knob
 float  pf_c_modes;          // the answer split them (a surfd before P853 does not)
 float  pf_rn;
 float  pf_bmap;             // strbuf: a row's map
@@ -1202,6 +1203,43 @@ float(string id, vector pos, vector sz, string left, string right, float onright
 	return sui_is_released(id);
 };
 
+// P1122: Profile_Switch with three places, the knob under the chosen third; a click picks
+// its third.  `slide` eases toward `on` (0..2).  -> the third clicked, or -1.
+float(string id, vector pos, vector sz, string a, string b, string c, float on, float tsz, float *slide) Profile_Switch3 =
+{
+	local float i, third, tw, hot, got;
+	local string s, sid;
+
+	third = floor(sz_x / 3);
+	hot = FALSE;
+	for (i = 0; i < 3; i = i + 1)
+	{
+		sid = sprintf("%s%g", id, i);
+		sui_action_element(pos + [i * third, 0], [(i == 2) ? sz_x - third * 2 : third, sz_y], sid, sui_noop);
+		if (sui_is_hovered(sid))
+			hot = TRUE;
+	}
+	*slide = *slide + (on - *slide) * 0.25;
+	sui_style_box(pos, sz, sz_y * 0.5, SUI_THEME_WELL, hot ? SUI_THEME_EDGE_HI : SUI_THEME_EDGE, 1);
+	sui_roundbox(pos + [2 + *slide * third, 2], [third - 4, sz_y - 4], (sz_y - 4) * 0.5, SUI_THEME_SELECTED, 1);
+	got = -1;
+	for (i = 0; i < 3; i = i + 1)
+	{
+		s = (i == 0) ? a : ((i == 1) ? b : c);
+		sid = sprintf("%s%g", id, i);
+		tw = stringwidth(s, TRUE, [tsz, tsz]);
+		sui_text([pos_x + i * third + (third - tw) * 0.5, pos_y + (sz_y - tsz) * 0.5], [tsz, tsz], s,
+		         (i == on) ? SUI_THEME_ACCENT : (sui_is_hovered(sid) ? SUI_THEME_TEXT : SUI_THEME_DIM), 1, 0);
+		if (sui_is_released(sid))
+			got = i;
+	}
+	return got;
+};
+
+// The kinds in switch order (Surf, Bhop, All, as Lex named them) and pf_cm's (0 all, 1 surf, 2 bhop).
+float(float kind) Profile_KindPlace = { return (kind == 1) ? 0 : ((kind == 2) ? 1 : 2); };
+float(float place) Profile_PlaceKind = { return (place == 0) ? 1 : ((place == 1) ? 2 : 0); };
+
 // A text field's box, selection, text and caret, after its sui_text_input.
 // `inset` is where its text starts (what sui_text_metrics was told).
 void(string id, vector p, vector sz, float tsz, string text, float caret, string ghost, float focus,
@@ -1911,16 +1949,13 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	{
 		Font_Set(ui_font_ui);
 		ch = ceil(hint * 1.8);
-		x = p_x;
-		for (i = 0; i < 3; i = i + 1)
-		{
-			s = sprintf("%s %g/%g", (i == 1) ? "Surf" : ((i == 2) ? "Bhop" : "All"), f[(pf_cs * 3 + i) * PF_CMF + 1],
-			            f[(pf_cs * 3 + i) * PF_CMF]);
-			w = stringwidth(s, TRUE, [hint, hint]) + hint * 2;
-			if (Profile_Chip(sprintf("pf_cm%g", i), [x, y], [w, ch], s, hint, pf_cm == i))
-				Profile_ModeShow(i);
-			x = x + w + hint * 0.5;
-		}
+		w = hint * 15;          // P1122 (Lex): one 3-way switch, where three chips were
+		i = Profile_Switch3("pf_cm_sw", [p_x, y], [w, ch], "Surf", "Bhop", "All", Profile_KindPlace(pf_cm), hint,
+		                    &pf_cm_slide);
+		if (i >= 0)
+			Profile_ModeShow(Profile_PlaceKind(i));
+		s = sprintf("%g / %g maps", f[(pf_cs * 3 + pf_cm) * PF_CMF + 1], f[(pf_cs * 3 + pf_cm) * PF_CMF]);
+		sui_text([p_x + w + hint, y + (ch - hint) * 0.5], [hint, hint], s, SUI_THEME_DIM, 1, 0);
 		y = y + ch + hint * 0.6;
 	}
 	cb = (pf_cs * 3 + pf_cm) * PF_CMF;
