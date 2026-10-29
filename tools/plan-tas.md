@@ -291,7 +291,8 @@ stored as "ancestry unknown" and earn no credit for what they would have supplie
 5.3 + 5.4 BUILT as P1091 (28 Oct): surfd/tasrevd.py, an isolated service (tasrev.md is its
 contract; tools/install_tasrevd.py installs it, root). Four review rounds; the last fixes passed
 the round-4 reviewer's fuzzers (800 arrival-order trials against a brute-force reading of the
-contract, 300 statement/cache trials). Live once Lex runs the install.
+contract, 300 statement/cache trials). LIVE 29 Oct 00:48Z at https://play.proto.bar/api/tasrev/
+(unit ftesurf-tasrevd, source 5352dbae); no game client uses it yet (5.5).
 5.5 Client: share, browse, open a downloaded revision as a project.
 
 6.1 A project from the legal start (no base save): the run's start zone and spawn, so a
