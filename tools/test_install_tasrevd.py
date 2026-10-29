@@ -11,7 +11,6 @@ import io
 import json
 import os
 from pathlib import Path
-import pwd
 import signal
 import stat
 import sys
@@ -25,7 +24,6 @@ import install_tasrevd as t
 OLD, NEW = 'a' * 40, 'b' * 40
 PUBLIC = 'https://play.proto.bar/api/tasrev/map/tasrevd_install_probe'
 REAL_EUID = os.geteuid()
-ME = pwd.getpwuid(os.getuid()).pw_name   # who made the temporary checkout, independent of the code
 
 
 class Upgrade(unittest.TestCase):
@@ -37,6 +35,7 @@ class Upgrade(unittest.TestCase):
         t.UNIT, t.SNIPPET = d / 'ftesurf-tasrevd.service', d / 'ftesurf-tasrevd.conf'
         (d / 'opt').mkdir()
         self.src = d / 'src'; (self.src / '.git').mkdir(parents=True)
+        self.fail_reload_after_switch = False
         for rel in t.FILES:   # the working tree differs from the commit
             (self.src / rel).parent.mkdir(parents=True, exist_ok=True); (self.src / rel).write_bytes(b'# edited, not committed\n')
         self.install_old(t.ROOT)
@@ -80,7 +79,9 @@ class Upgrade(unittest.TestCase):
             prop = [x for x in args if x.startswith('--property=')][0].split('=', 1)[1]
             out = {'ActiveState': self.active, 'DropInPaths': self.dropins, 'NeedDaemonReload': 'no',
                    'FragmentPath': str(t.UNIT)}[prop].encode() + b'\n'
-        elif args[:2] == ('/usr/bin/systemctl', 'daemon-reload'): self.loaded = self.source_of_unit()
+        elif args[:2] == ('/usr/bin/systemctl', 'daemon-reload'):
+            if self.fail_reload_after_switch and self.serving == NEW: raise OSError('systemd busy')
+            self.loaded = self.source_of_unit()
         elif args[:2] == ('/usr/bin/systemctl', 'restart'):
             self.held.append(signal.getsignal(signal.SIGINT) is signal.SIG_IGN and signal.getsignal(signal.SIGHUP) is signal.SIG_IGN)
             self.serving = self.loaded
@@ -136,20 +137,10 @@ class Upgrade(unittest.TestCase):
         os.environ['SUDO_UID'] = '1000'   # git would trust a .git owned by that uid
         self.main()
         git = [c for c in self.calls if c[1:2] == ('git',)]
-        self.assertTrue(git and all(c[0] == ME for c in git))
+        self.assertTrue(git and all(c[0] == 'proto' and c[2:4] == ('-c', 'safe.directory=' + str(self.src)) for c in git))
         self.assertTrue(self.envs and all(not any(k.startswith('SUDO_') for k in e) for e in self.envs))
         self.assertEqual([c[0] for c in self.calls if c[1:2] == (sys.executable,)], ['proto'])
         self.assertEqual(self.imports, [[0o755, 0o755, 0o644, 0o644]])   # readable by proto under any umask
-
-    def test_a_checkout_whose_git_has_another_owner_is_refused(self):
-        real = os.stat
-        def stat_(p, *a, **k):
-            r = real(p, *a, **k)
-            return os.stat_result((r.st_mode, r.st_ino, r.st_dev, r.st_nlink, r.st_uid + 1) + tuple(r)[5:10]) if str(p).endswith('.git') else r
-        t.os.stat = stat_
-        try:
-            with self.assertRaisesRegex(RuntimeError, 'different owners'): self.main()
-        finally: t.os.stat = real
 
     def test_a_foreign_unit_is_refused(self):
         t.UNIT.write_text(t.UNIT.read_text().replace('MemoryMax=384M', 'MemoryMax=1G'))
@@ -193,6 +184,13 @@ class Upgrade(unittest.TestCase):
         self.assertIn((None, '/usr/bin/systemctl', 'reset-failed', 'ftesurf-tasrevd.service'), self.calls)
         self.assertIn('rolled back', (t.RELEASES / NEW / 'UPGRADE.txt').read_text())
 
+    def test_a_rollback_whose_reload_fails_says_systemd_may_run_the_new_release(self):
+        self.fail_new = self.fail_reload_after_switch = True
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaisesRegex(RuntimeError, 'may still run the new release'):
+            self.main('--apply')
+        self.assertIn('may still run the new release', out.getvalue())   # printed too, not only raised
+
     def test_a_rollback_that_does_not_serve_says_so(self):
         self.fail_new = self.fail_old_after = True
         with self.assertRaisesRegex(RuntimeError, 'restarted but did not serve'): self.main('--apply')
@@ -213,6 +211,15 @@ class Upgrade(unittest.TestCase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out): self.main('--apply')
         self.assertIn('Upgraded', out.getvalue()); self.assertIn('could not write', out.getvalue())
+
+    def test_the_outcome_file_is_written_even_when_the_terminal_is_gone(self):
+        test = self
+        class Gone(io.StringIO):   # the session drops during the switch (the restart)
+            def write(self, s):
+                if any(c[1:3] == ('/usr/bin/systemctl', 'restart') for c in test.calls): raise OSError(5, 'Input/output error')
+                return super().write(s)
+        with contextlib.redirect_stdout(Gone()): self.main('--apply')
+        self.assertIn('Upgraded', (t.RELEASES / NEW / 'UPGRADE.txt').read_text())
 
     def test_an_upgrade_takes_no_nginx_hash_or_codes(self):
         with self.assertRaises(SystemExit): self.main('--code', 'c' * 64)

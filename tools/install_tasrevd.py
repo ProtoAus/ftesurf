@@ -7,8 +7,8 @@ destination files rather than taking over a peer's. The released-code list (code
 seeded from --code (sha256 of each released or deployed csprogs.dat) and only ever appended to.
 
 P1119 --upgrade-from <installed commit>: a new release under RELEASES (every directory above it
-root's alone), and the unit pointed at it. Root runs no code a proto-owned tree controls: git and
-the import check run as the checkout's owner and as proto (root still reads proto's data). Only when the unit is byte for byte what this installer wrote for that release and
+root's alone), and the unit pointed at it. Root runs no code a checkout or a release controls: git
+and the import check run as proto (root still reads proto's data). Only when the unit is byte for byte what this installer wrote for that release and
 the nginx snippet is unchanged; state, codes and nginx are not touched. The old unit is put back
 and restarted if the new release does not serve its own source.
 """
@@ -111,16 +111,12 @@ def write_release(release, commit, blobs):
     src.write_text(json.dumps(dict(commit=commit, files={k: sha(v) for k, v in blobs.items()}), indent=2) + '\n'); src.chmod(0o644)
 
 
-def source_owner(source):
-    # git trusts the owner of .git (and sudo's SUDO_UID): a checkout and its .git must agree.
-    uid = os.stat(source).st_uid
-    if os.stat(Path(source) / '.git').st_uid != uid: raise RuntimeError('The checkout and its .git have different owners')
-    return pwd.getpwuid(uid).pw_name
-
-
 def git(source, *args):
+    # As proto whoever owns the checkout: a repository's config then acts as proto at worst. The
+    # command-line safe.directory lets proto read a root-owned checkout; SUDO_* is not passed on.
     env = {k: v for k, v in os.environ.items() if not k.startswith('SUDO_')}
-    return run(*as_user(source_owner(source), 'git', '-C', str(source), '-c', 'core.fsmonitor=false', *args), env=env).stdout
+    return run(*as_user('proto', 'git', '-c', 'safe.directory=' + str(source), '-C', str(source), '-c', 'core.fsmonitor=false',
+                        *args), env=env).stdout
 
 
 def commit_blobs(source, commit):
@@ -172,10 +168,15 @@ def rollback(oldunit, newunit, oldcommit, why):
     return 'upgrade failed (%r); rolled back, %s serves again (the new release directory stays)' % (why, oldcommit[:12])
 
 
+def say(line):
+    try: print(line, flush=True)
+    except OSError: pass   # a dropped session's terminal; UPGRADE.txt has it
+
+
 def record(release, outcome):
-    # For an owner whose session dropped; the terminal already has it.
+    # First, for an owner whose session dropped (a print to its closed terminal can fail).
     try: (release / 'UPGRADE.txt').write_text(outcome + '\n')
-    except OSError as e: print('(could not write %s: %s)' % (release / 'UPGRADE.txt', e))
+    except OSError as e: say('(could not write %s: %s)' % (release / 'UPGRADE.txt', e))
 
 
 def upgrade(a, blobs):
@@ -219,12 +220,12 @@ def upgrade(a, blobs):
             await_probe(a.commit, 'https://play.proto.bar/api/tasrev/map/tasrevd_install_probe', pause=.5)
         except BaseException as e:
             outcome = rollback(oldunit, newunit, a.upgrade_from, e)
-            print(outcome); record(new, outcome)
+            record(new, outcome); say(outcome)
             raise RuntimeError(outcome) from e
     finally:
         for n, h in held.items(): signal.signal(n, h)
     outcome = 'Upgraded the TAS revision service to %s (the old release stays at %s)' % (a.commit, old)
-    print(outcome); record(new, outcome)
+    record(new, outcome); say(outcome)
 
 
 def unit_text(release, env):
