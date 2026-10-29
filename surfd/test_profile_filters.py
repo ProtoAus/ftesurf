@@ -9,7 +9,9 @@ import unittest
 from unittest.mock import patch
 
 HOME = tempfile.mkdtemp(prefix='profilefilters-')
-os.environ.update(SURFD_HOME=HOME, SURFD_DB=os.path.join(HOME, 'test.db'))
+os.environ.update(SURFD_HOME=HOME, SURFD_DB=os.path.join(HOME, 'test.db'),
+                  SURFD_MAPS=os.path.join(HOME, 'maps'))     # not the host's library (the Pi's has 2,239)
+os.makedirs(os.path.join(HOME, 'maps'))
 import surfd as S
 import ksfimport as K
 

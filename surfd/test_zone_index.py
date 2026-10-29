@@ -11,7 +11,8 @@ HOME = tempfile.mkdtemp(prefix='zoneindex-')
 DIRS = {k: os.path.join(HOME, k) for k in ('online', 'local', 'momlocal')}
 for d in DIRS.values():
     os.makedirs(d)
-os.environ.update(SURFD_HOME=HOME, SURFD_DB=os.path.join(HOME, 'test.db'), SURFD_ZONES=DIRS['online'],
+os.environ.update(SURFD_HOME=HOME, SURFD_DB=os.path.join(HOME, 'test.db'), SURFD_MAPS=os.path.join(HOME, 'maps'),
+                  SURFD_ZONES=DIRS['online'],
                   SURFD_ZONES_LOCAL=DIRS['local'], SURFD_ZONES_MOMLOCAL=DIRS['momlocal'])
 import surfd as S
 
