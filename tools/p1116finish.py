@@ -169,7 +169,7 @@ def main():
                     cl.send("-forward")
                     break
                 time.sleep(0.1)
-            time.sleep(a.pre)    # past 16 KB, a synth mark lands in hashed bytes (full-hash fallback)
+            time.sleep(a.pre)    # standing adds little journal: only a small-HASHSTEP build marks hashed bytes
             t1 = time.monotonic()
             while time.monotonic() - t1 < a.synth:    # batches under the 3072-event ring
                 cl.send("in_journal_synth 1000")

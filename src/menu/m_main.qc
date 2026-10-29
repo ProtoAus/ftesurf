@@ -9353,4 +9353,9 @@ void(float wantmode) m_toggle =
 
 void() m_shutdown =
 {
+	if (mmm_job)
+	{	// P1116: a reply mid-check is not left on disk (Mmm_Unspool's rule)
+		fclose(mmm_in);
+		Mmm_Unspool();
+	}
 };
