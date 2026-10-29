@@ -9,6 +9,9 @@
 .int bank_src_attempt;
 .float bank_src_bad;
 .void() bank_callback;
+.entity bank_speed_player;
+.int bank_speed_attempt;
+.float bank_speed_bad;
 
 int bank_serial;
 entity bank_ctx_player;
@@ -58,6 +61,20 @@ void(entity pending) SV_BankSnapshot =
 	pending.bank_src_player = bank_ctx_player;
 	pending.bank_src_attempt = bank_ctx_attempt;
 	pending.bank_src_bad = bank_ctx_bad;
+};
+
+// Explicit scalar assignment replaces this property's source, not body debt.
+void(entity body) SV_BankSpeedSnapshot =
+{
+	body.bank_speed_player = world;
+	body.bank_speed_attempt = 0i;
+	body.bank_speed_bad = FALSE;
+	if (bank_ctx_depth)
+	{
+		body.bank_speed_player = bank_ctx_player;
+		body.bank_speed_attempt = bank_ctx_attempt;
+		body.bank_speed_bad = bank_ctx_bad;
+	}
 };
 
 void() SV_BankThink =

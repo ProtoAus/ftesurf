@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1121 persistent speed effect/status (pending)
+
+On a map that changes player movement speed, check normal world-authored changes
+and current-run changes still feel the same. A retained player-authored effect
+from an older attempt should show unranked when it actually affects the new run.
+Automated VM cap/flag controls are not owner movement or ranked-finish acceptance.
+
 ## P1120 boost carry feel/status (pending)
 
 Deployed to both Windows installs and all12Pi lobbies, 2026-10-29. Two clear

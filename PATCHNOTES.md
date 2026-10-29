@@ -21,6 +21,9 @@
 
 ## next
 
+### P1121 Speed-effect carry
+- Player-origin speed effects carried between attempts keep the right run status. Normal map-authored speeds and movement are unchanged.
+
 ### P1120 Boost activation carry
 - Using a boost enabled by an earlier attempt marks the new run unranked. Normal map-start and current-run boosts keep their behavior and speed.
 

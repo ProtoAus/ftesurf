@@ -4044,6 +4044,17 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+P1121: ModifySpeed explicitly replaces one stored multiplier from its new input;
+there is NO no-op method guard. Even an equal world-authored scalar assignment
+independently replaces that PROPERTY's cause, unlike P1120 no-op Enable; it does
+not erase body debt already earned. Dedicated VM-local source slots avoid active
+callback aliases. Preserve the existing immediate setter mark, snapshot at its
+actual assignment, and recheck the SAME bank policy when PlayerPreThink actually
+changes maxspeed. Compute cap first: factor2 against base0 changes nothing and
+must not newly mark. Neutral/zero/negative inputs retain their original arithmetic
+and normalization. Spawn resets both multiplier and these transient slots. No
+new captured field/format/flag/tier policy; full body/world/config/phase bank OPEN.
+
 P1120: an effective off->on push Enable retains its existing single source token
 in non-callback push cause slots; a repeated same-value Enable does not reauthor
 it. Snapshot before reentrant touch outputs, check the source admission only at

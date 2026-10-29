@@ -25,7 +25,8 @@ commit   85b1d383896b6ef205c9665f983422fdd093de01
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1103
-patch    1120
+patch    1121
+# Patch 1121: persistent player speed multipliers retain their source until actual changed cap application; existing bank policy, immediate input behavior and movement arithmetic unchanged. QC-only, no new capture/format/native/Build.
 # Patch 1120: effective push-enable lineage is checked at its actual later body/carrier write, using the existing bank mark/policy. QC-only; no native/capture/format/Build change.
 # Patch 1118: selected saved-state identity/validation/application share one buffered snapshot before placement; valid KEEP speed unchanged. QC-only, no new state/capture format or native source.
 # Patch 1103: native closing-clock refusal diagnostics distinguish unsupported modes from incomplete clocks; eligibility unchanged.

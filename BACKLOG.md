@@ -4807,7 +4807,14 @@ below is the collection side and the rules that still only note.
   gravity -- on maps that restore gravity with a separate exit trigger rather
   than the same trigger's OnEndTouch (which still fires after a teleport). Fix:
   reset `.gravity` (and `run_speedmod`) in SV_ZoneMoveAt and SV_SaveLocPlace, or
-  make any start with a gravity multiplier other than 1 practice.
+  make any start with a gravity multiplier other than 1 practice. This is the
+  historical proposed remedy, NOT approval to destroy valid KEEP-speed state.
+  P1121 now retains only the explicit `run_speedmod` scalar's source through real
+  changed-cap use with the existing bank policy, without clearing speed. Acting
+  native I/O/full-PreThink cases cover current/expired/world, independent equal
+  replacement, neutral values and zero-cap non-use; not actual warp/gravity,
+  native acceleration, held/save restore or the complete contributor bank.
+  Gravity and broader inherited physical/configuration state remain OPEN.
 - **A RUNNING, ARMED or FINISHED load's speed is policed only by its file's
   `hopped`, and a start box re-entered from it can arm clean** (Patch 436's "load,
   step out, run"; predates 477, and 477 makes no such save). Patch 477 round 3

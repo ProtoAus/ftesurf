@@ -151,6 +151,9 @@ void() PutClientInServer =
 	self.run_srcclass = "";           // Patch 865: AddOutput classname, same reasoning
 	self.vbsp_ctx     = "";           // Patch 1036: AddContext, same reasoning
 	self.run_speedmod  = 0;
+	self.bank_speed_player = world;
+	self.bank_speed_attempt = 0i;
+	self.bank_speed_bad = FALSE;
 	self.vbsp_bhop_on   = world;
 	self.vbsp_bhop_since = 0;
 	// Patch 270, Stage 2.  The per-player landing count, cleared with the rest
@@ -511,6 +514,8 @@ void() SpectatorThink = { Account_Think(self); };
 
 void() PlayerPreThink =
 {
+	local float speedmod, speedcap;
+
 	SV_HeldCheck(self);
 	self.svpm_phase_lo = input_cmd_sequence_lo;
 	self.svpm_phase_hi = input_cmd_sequence_hi;
@@ -658,8 +663,15 @@ void() PlayerPreThink =
 	  written for.  That is the honest outcome and not a failure -- the map
 	  toggles a "no bhop" zone whose speed factor happens to be unity.
 	*/
-	if (self.run_speedmod > 0 && self.run_speedmod != 1)
-		self.maxspeed = self.maxspeed * self.run_speedmod;
+	speedmod = self.run_speedmod;
+	if (speedmod > 0 && speedmod != 1)
+	{
+		speedcap = self.maxspeed * speedmod;
+		if (speedcap != self.maxspeed)
+			SV_BankCauseAffect(self, self.bank_speed_player,
+				self.bank_speed_attempt, self.bank_speed_bad);
+		self.maxspeed = speedcap;
+	}
 
 	/*
 	  BUILD 82 -- THE INPUT TRACE, and it is the LAST thing PreThink does.

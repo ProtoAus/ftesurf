@@ -3038,6 +3038,7 @@ void(entity t, entity act, float v) SV_IOModifySpeed =
 	if (v <= 0)
 		v = 1;
 	SV_BankAffect(p);
+	SV_BankSpeedSnapshot(p);
 	p.run_speedmod = v;
 };
 
