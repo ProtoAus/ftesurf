@@ -83,23 +83,30 @@ void() SV_BankThink =
 	bank_ctx_depth = bd;
 };
 
-void(entity body) SV_BankAffect =
+// Stored causes and active I/O share the same delivery-time policy.
+void(entity body, entity cause_player, int cause_attempt, float cause_bad) SV_BankCauseAffect =
 {
 	local float current;
 
 	if (body.classname != "player")
 		return;
-	if (!bank_ctx_depth || bank_ctx_attempt == 0i)
+	if (cause_attempt == 0i)
 		return;
-	current = (bank_ctx_attempt > 0i && bank_ctx_player.classname == "player"
-		&& bank_ctx_player.bank_attempt == bank_ctx_attempt);
-	if (!bank_ctx_bad && current)
+	current = (cause_attempt > 0i && cause_player.classname == "player"
+		&& cause_player.bank_attempt == cause_attempt);
+	if (!cause_bad && current)
 		return;
 
 	if (!body.bank_practice)
 		sprint(body, PRINT_HIGH, "^3practice^7 -- inherited player-origin map effect\n");
 	body.bank_practice = body.bank_practice | BANK_PRACTICE;
-	if (!current || (bank_ctx_bad & BANK_UNRANKED))
+	if (!current || (cause_bad & BANK_UNRANKED))
 		body.bank_practice = body.bank_practice | BANK_UNRANKED;
 	SV_TimerPractice(body);
+};
+
+void(entity body) SV_BankAffect =
+{
+	if (bank_ctx_depth)
+		SV_BankCauseAffect(body, bank_ctx_player, bank_ctx_attempt, bank_ctx_bad);
 };

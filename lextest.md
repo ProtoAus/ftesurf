@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1120 boost carry feel/status (pending)
+
+On a usual push pad, confirm normal boost feel is unchanged. If testing a
+manually enabled pad across attempts, confirm the later run becomes unranked
+without stopping play. Not owner-confirmed, a numerical speed measurement or
+full native-contact/finished-rank acceptance; automated coverage is scoped to
+actual production entrypoints in explicit native-QC units.
+
 ## P1118 save-load feel (pending)
 
 Save and load while moving, then from rest. Confirm valid loads still keep the

@@ -3787,6 +3787,11 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Conventions
 
+- P1120 exact flags observation: `%g` rounds large flag words and can print an
+  exponent; a digits-only regex then accepts just its mantissa. Print float-exact
+  flag words with `%.0f` and validate the complete field. Retain the old raw/grader
+  failure; rounded presentation is not evidence of a wrong product flag.
+
 - **Put patch reservations in the real test namespace (P1074, measured).** Use
   canonical `ftesurf/cfg/test/pNNN*.cfg`, not unused `src/cfg/test/*.claim` or a
   tools markdown note. The latter reservation was missed by a concurrent task;
@@ -4038,6 +4043,18 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   re-derives its tables, `--compare` replays the frames through a Python model).
 
 ## Anti-cheat and run evidence
+
+P1120: an effective off->on push Enable retains its existing single source token
+in non-callback push cause slots; a repeated same-value Enable does not reauthor
+it. Snapshot before reentrant touch outputs, check the source admission only at
+actual body/carrier delivery. For a one-shot, price a real ground clear or an
+EFFECTIVE clamped nonzero impulse, not touch/spending/poison bookkeeping alone.
+Do not gate on final velocity: an actual impulse can cancel old velocity. One-
+shot strips ground but does NOT lift origin, unlike the continuous branch.
+Reuse the original bank policy, including CURRENT
+source exemption even for a different recipient. This is the direct enabled-push
+edge, NOT all speed/config/timing contributors or transitive logical outputs.
+No global-context swap/join, new captured field/format, flag or tier policy.
 
 **Loaded recording attribution (P945, 2026-10-23).**
 

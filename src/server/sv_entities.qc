@@ -2853,6 +2853,10 @@ void(entity t, float on) SV_IOEnable =
 {
 	local float wasoff;
 	wasoff = SV_Key2(t.StartDisabled, t.startdisabled);
+	// Effective push enable state, not a repeated same-value input.
+	if (t.classname == "trigger_push")
+	if (on && wasoff)
+		SV_BankSnapshot(t);
 	if (!on)
 	{
 		// Remember what it was before the first Disable, so Enable can restore
@@ -7854,7 +7858,9 @@ float(entity trig) SV_TriggerTakesPlayers =
 void() trigger_push_touch =
 {
 	local vector dir, push;
-	local float  spd;
+	local entity bp;
+	local int ba;
+	local float spd, bb;
 
 	if (other.classname != "player")
 		return;
@@ -7871,6 +7877,10 @@ void() trigger_push_touch =
 	// how the next map's boosters end up firing for the wrong player.
 	if (!SV_TouchFilter(self, other))
 		return;
+	// Bind the accepted enabled state before reentrant touch outputs.
+	bp = self.bank_src_player;
+	ba = self.bank_src_attempt;
+	bb = self.bank_src_bad;
 	// Patch 786: past the returns that leave you untouched (SV_TrigStamp).
 	SV_TrigStamp(other);
 
@@ -7906,11 +7916,17 @@ void() trigger_push_touch =
 		*/
 		if (dir_z > 0)
 		{
+			if (other.flags & FL_ONGROUND)
+				SV_BankCauseAffect(other, bp, ba, bb);
 			other.flags = other.flags - (other.flags & FL_ONGROUND);
 			other.run_pushlift = TRUE;  // Patch 411: the SECOND strip, same poison
 		}
 
-		other.velocity = other.velocity + SV_ClampImpulse(dir * spd);
+		push = SV_ClampImpulse(dir * spd);
+		// A discarded impulse delivers no boost. A real one may end at zero velocity.
+		if (push != '0 0 0')
+			SV_BankCauseAffect(other, bp, ba, bb);
+		other.velocity = other.velocity + push;
 		other.run_pushed = TRUE;   // Patch 409; this arm never touches the carrier
 
 		/*
@@ -7956,6 +7972,8 @@ void() trigger_push_touch =
 	if (other.run_basevel_armed)
 		push = push + other.run_basevel;
 
+	// Resolve the source at the body/carrier effect, after nested touch outputs.
+	SV_BankCauseAffect(other, bp, ba, bb);
 	// Tested AFTER the accumulate, on the net push, and it does two things:
 	// clears the ground flag and lifts you one unit.  Without the lift the
 	// ground check re-grounds you on the very command the push is applied.

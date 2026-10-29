@@ -21,12 +21,15 @@
 
 ## next
 
-### P1116 Finishing a run no longer stutters
-- When a lobby asks for your run's input journal, it is now checked as you play and sent in the background. Before, finishing held up two frames (20 ms and 17 ms measured with a 3 MB journal, more on long runs), and connecting to the server held up another.
-- The map tables the menu fetches from the Pi at startup load over several frames instead of one (68 ms measured).
+### P1120 Boost activation carry
+- Using a boost enabled by an earlier attempt marks the new run unranked. Normal map-start and current-run boosts keep their behavior and speed.
 
 ### P1118 Reliable save loading
 - A refused save load leaves your current position and speed alone. Valid loads still keep their saved speed.
+
+### P1116 Finishing a run no longer stutters
+- When a lobby asks for your run's input journal, it is now checked as you play and sent in the background. Before, finishing held up two frames (20 ms and 17 ms measured with a 3 MB journal, more on long runs), and connecting to the server held up another.
+- The map tables the menu fetches from the Pi at startup load over several frames instead of one (68 ms measured).
 
 ### P1110 TAS projects from the start zone
 - `tas project save` in a `tas start` session saves a project that begins standing at the start zone, before the timer: everything from the first step is in it.
