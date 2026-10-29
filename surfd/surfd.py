@@ -6444,6 +6444,9 @@ WEB_RUN_TIERS = (TIER_RANKED,) + TIERS_IMPORTED
 MOMTRACKS_PATH = os.environ.get("SURFD_MOMTRACKS",
                                 os.path.join(DATA_DIR, "momtracks.tsv"))
 MOMTRACKS_TTL = 900
+# P1113: mapwatch's catalogue (refreshed by its run), for the tiers momtracks.tsv lacks.
+MAPWATCH_CATALOGUE = os.environ.get("SURFD_MAPWATCH_CATALOGUE",
+                                    os.path.join(DATA_DIR, "mapwatch", "catalogue.json"))
 
 _people_lock = threading.Lock()
 _people = {"at": -1e9, "by_handle": {}, "list": []}
@@ -6480,9 +6483,32 @@ def web_ext(tier, player):
     return None
 
 
+def _catalogue_tiers():
+    """{map: (Momentum tier or None, KSF tier or None)} from mapwatch's catalogue; {} without one."""
+    try:
+        with open(MAPWATCH_CATALOGUE, "r", encoding="utf-8") as fh:
+            maps = json.load(fh).get("maps") or {}
+    except (OSError, ValueError, AttributeError) as exc:
+        log.info("no mapwatch catalogue at %s (%s)", MAPWATCH_CATALOGUE, exc)
+        return {}
+    out = {}
+    for raw, m in maps.items() if isinstance(maps, dict) else ():
+        name = clean_map(raw)
+        if not name or not isinstance(m, dict):
+            continue
+        t = [v if isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 20 else None
+             for v in (m.get("mtier"), m.get("ktier"))]
+        if t[0] or t[1]:
+            out[name] = tuple(t)
+    return out
+
+
 def map_tiers(now=None):
-    """map name -> Momentum's difficulty tier (1-10), or None when the
-    catalogue is not on this box.
+    """map name -> difficulty tier (1-10), or None when no catalogue is on this box.
+
+    P1113: Momentum's tier from mapwatch's catalogue, else momtracks.tsv's, else KSF's.
+    momtracks.tsv alone (28 Sep) left Beta maps and every KSF-only map unrated --
+    surf_anubis among them, KSF tier 8 -- and lacked 371 of the 780 approved maps.
 
     NONE IS NOT AN EMPTY DICT.  A missing TSV means the tier of every map is
     unknown, and a caller that cannot tell those two apart reports "0 of 64
@@ -6514,6 +6540,13 @@ def map_tiers(now=None):
                     tier[name] = t
     except OSError as exc:
         log.info("no map difficulty catalogue at %s (%s)", MOMTRACKS_PATH, exc)
+    cat = _catalogue_tiers()
+    if cat:
+        tier = dict(tier or {})
+        for name, (mt, kt) in cat.items():
+            t = mt or tier.get(name) or kt
+            if t:
+                tier[name] = t
     with _mt_lock:
         _mt["at"], _mt["tier"] = now, tier
     return tier
