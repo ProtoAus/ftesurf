@@ -2,8 +2,9 @@
 
 ## P1124 teleport movement/status (pending)
 
-Implementation and paired native-QC controls complete; independent reviews and
-ordinary deployment still pending. On a normal map teleport, confirm destination,
+Deployed to both Windows installs and all12Pi lobbies, 2026-10-29; two clear
+reviews, paired value controls and unchanged-client draw reuse are not owner
+acceptance. On a normal map teleport, confirm destination,
 facing, preserved/changed speed and clean current-run status remain normal. If
 available, check a relative or landmark teleport too. Synthetic value/flag units
 are not actual map-contact, native prediction, finished-ranking or owner feel

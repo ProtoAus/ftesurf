@@ -11,7 +11,7 @@ No movement arithmetic, input/filter/destination/phase/record ordering changes.
 One activation cause, not complete logical/config/phase/world/multisource bank.
 No new capture/format/flag/tier/native pin, backend, Build or release action.
 
-## Local qualification; independent reviews and ordinary deployment pending
+## Verified; two independent reviews clear; ordinary deployment verified
 
 22 paired native-QC units on the SAME qualified native/compiler/fixture/runner
 and other source inputs, only server entity source differs. Actual public I/O,
@@ -36,3 +36,34 @@ implementation: final22 baseline and subject correctly treat it as real value.
 Read-only pair aggregation needed Windows-path normalization after both arms
 passed; no runtime rerun or evidence rebinding for that correction. Exact raw
 inputs/logs/failures stay private. Human-only checks are pending in lextest.md.
+
+## Ordinary deployment — 2026-10-29
+
+Both fresh independent read-only reviews report no issues on frozen runtime
+QC065b254e17c04fd145f6857aa3e874de9f0524b1 and engine documentation
+e0c175247647bd8036c60d2994632b5ad62c4aed, exact published before promotion.
+Reviewers independently read source/refs/watchdog; exact Git committed-range and
+sibling status artifacts were parent-produced, explicitly not child Git execution.
+Supported normal build again SS/menu0warnings,2oldCSF333/zeroNEW. Fresh actual
+status7 included spectators and was empty; normal nonforce Pi deployment,
+exactly one ordinary restart of each of12 lobbies.
+
+Both actual Windows installs six DAT/LNO plus actual previous copies verified.
+Pi pair/current previous and12fresh same-native actors/healthy12/empty verified
+2026-10-29 18:46:13.502096UTC. All16347/142Windows and35076Pi pre-existing protected
+paths retained bytes; none missing, zero new Pi paths. Native/config/backend
+files+unit/AI unchanged. Original/preprev rollback and immutable six-artifact
+bundle retained. No native/backend/config/Build/release action.
+
+Shipped SHA256: QW9403daf4f595469b612267b21be9b5741916845a0b20a708f1d71be7eb3a0cf1;
+CSfa9bb6d396342b24cbce496898bb7d056dca996b0805bd1f2583358d6efde8a1;
+MENU7cb11cb1d5c0db4a7ab015c222ff837ed5be49642b7d8fce27c8fa9849f4d43e.
+CS/MENU/native/client source match the prior accepted served-CS/drawn-board chain;
+reuse that scoped evidence, not new GUI/wire/geometry/finished-ranking/feel proof.
+
+85owned files preserved in a verified ZIP; only9files/oneNoDeployroot retired,
+76fileminimalrig retained and archived. Zero owned game processes/links/gates.
+Exact owned canonical reservation retired after original-hash/published-number
+proof, original preserved; not assumed equal to the public Markdown claim.
+Peer/index/player data untouched. Delivery-only prose does not rebuild or change
+reviewed runtime. Broader logical/config/phase/world/multisource bank stays open.
