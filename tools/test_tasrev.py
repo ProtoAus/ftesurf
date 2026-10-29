@@ -108,6 +108,44 @@ def mutations(data):
 TWIN_STRICTER = {'crinside', 'trailing', 'nofinalnl'}   # the game may hash these as the original
 
 
+def v3_selftest():
+    """P1100: a legal-start (version 3) project and the shapes the twin must refuse."""
+    rows = ['i %d 0 0 0 0 0 0' % (t % 5) for t in range(1, 41)]
+    head = ['tasproject 3', 'map bhop_eazy', 'mapcrc 7f53da5d', 'zonecrc b305f211', 'pmpin pmsrcver=11 physmode=1',
+            'assist tas', 'origin local', 'saved 2026-10-29T00:00:00', 'revision 1', 'supply 1 40']
+    def build(h, start='start 0', at='baseat -416 -352 64.03125 0 0 0', st='startat 32', hd='head 40', rs=rows, end='end 40'):
+        ls = h + [x for x in (start, at, st, hd) if x] + rs + [end]
+        b = ('\n'.join(ls) + '\n').encode('ascii')
+        try: sha = tasrev.revhash(b)[0]
+        except tasrev.Refused: sha = '0' * 64      # refused before its hash is read
+        return b + ('revsha %s\n' % sha).encode('ascii')
+    ok = True
+    good = build(head)
+    try:
+        r = tasrev.parse(good)
+        fine = (r['version'], r['base'], r['zone'], r['startat'], r['supply'], len(r['rows'])) == ('3', 0, 0, 32, (1, 40), 40)
+    except tasrev.Refused as e:
+        fine, r = False, str(e)
+    print('%-4s v3 accepted       %s' % ('ok' if fine else 'FAIL', r if not fine else ''))
+    ok = ok and fine
+    bad = [('v3 + base', build(head, start='base 1 %s 0' % ('ab' * 32))),
+           ('v3 no startat', build(head, st=None)),
+           ('v3 no start', build(head, start=None)),
+           ('startat > head', build(head, st='startat 41')),
+           ('start in v2', build(['tasproject 2'] + head[1:])),
+           ('startat after head', build(head, st=None, hd='head 40\nstartat 3')),
+           ('start before supply', build(head[:9] + ['start 0', 'supply 1 40'], start=None)),
+           ('zone 256', build(head, start='start 256'))]
+    for name, data in bad:
+        try:
+            tasrev.parse(data); got = 'accepted'
+        except tasrev.Refused:
+            got = 'refused'
+        print('%-4s %-17s expect refused got %s' % ('ok' if got == 'refused' else 'FAIL', name, got))
+        ok = ok and got == 'refused'
+    return ok
+
+
 def chain_selftest():
     """P1090 review 3: R (base 21) -> Q (base 131, no changes) -> Z (base 21: R's rows for 22..100,
     then 10 ticks of its own). Z must not be credited with R's rows below Q's base."""
@@ -122,7 +160,7 @@ def chain_selftest():
 
 
 def main(argv):
-    if not chain_selftest():
+    if not chain_selftest() or not v3_selftest():
         return 1
     data = Path(argv[1]).read_bytes()
     h, stated = tasrev.revhash(data)

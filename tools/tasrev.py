@@ -32,11 +32,12 @@ import hashlib, os, re, struct, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ed25519
 
-VERSIONS, TASP_MAX, TASP_CPMAX = ('1', '2'), 96000, 48
+VERSIONS, TASP_MAX, TASP_CPMAX = ('1', '2', '3'), 96000, 48
 MAXTICK = 16777215                # the engine signs ticks a QC float holds exactly
 RANK = {k: i for i, k in enumerate(['tasproject', 'map', 'mapcrc', 'zonecrc', 'pmpin', 'assist', 'origin',
-                                    'saved', 'revision', 'parent', 'parentsha', 'supply', 'base', 'baseat', 'head',
-                                    'cp', 'i', 'end', 'revsha'])}
+                                    'saved', 'revision', 'parent', 'parentsha', 'supply', 'base', 'baseat', 'startat',
+                                    'head', 'cp', 'i', 'end', 'revsha'])}
+RANK['start'] = RANK['base']        # P1100 v3: a legal start in base's place, never both
 DROP = {'saved', 'revision', 'origin', 'parent', 'revsha'}
 BAD = set('"\'/()[]{},;\\')
 HEX = re.compile(r'[0-9a-f]+\Z')
@@ -98,6 +99,7 @@ def check_form(line, rank):
         ok = (len(a) == 9 and canon_num(a[0], True) and a[1] in ('0', '1') and (bool(NAME.match(a[2])) if a[1] == '1' else a[2] == '-')
               and all(canon_num(x, False) for x in a[3:]))
     elif k == 'baseat': ok = len(a) == 6 and all(canon_num(x, False) for x in a)
+    elif k in ('start', 'startat'): ok = len(a) == 1 and canon_num(a[0], True)
     elif k in ('tasproject', 'revision', 'head', 'i', 'end'): ok = len(a) >= 1 and all(canon_num(x, True) for x in a)
     if not ok:
         raise Refused('%s line not in the writer\'s form' % k)
@@ -130,6 +132,7 @@ def parse(data):
     stated, rank, ended = None, -1, False
     have, base, size, n, cps, names = set(), None, None, 0, [], set()
     version, parentsha, mapcrc, supply, rows = None, None, None, None, []
+    zone, startat = None, None
     try:
         for line in text[:-1].split('\n'):
             rank, k, a = check_form(line, rank)
@@ -143,7 +146,7 @@ def parse(data):
             elif k == 'parentsha':
                 parentsha = a[0]
             elif k == 'supply':
-                if version != '2': raise Refused('a supply line in a version 1 file')
+                if version == '1': raise Refused('a supply line in a version 1 file')
                 if a != ['none']:
                     supply = (num(a[0], 1, 16000000 + TASP_MAX), num(a[1], 1, 16000000 + TASP_MAX))
             elif k == 'map':
@@ -157,7 +160,15 @@ def parse(data):
             elif k == 'parent':
                 num(a[1], 0, 16000000)
             elif k == 'base':
+                if version == '3': raise Refused('a base save in a legal-start (version 3) file')
                 num(a[0], 1, 99999); base = num(a[2], 0, 16000000)
+            elif k == 'start':
+                # P1100: placed at start zone <zone>'s destination; ticks count from the placement.
+                if version != '3': raise Refused('a legal start in a version %s file' % version)
+                zone = num(a[0], 0, 255); base = 0
+            elif k == 'startat':
+                if version != '3': raise Refused('a start tick in a version %s file' % version)
+                startat = num(a[0], 0, TASP_MAX)
             elif k == 'baseat':
                 for x in a: num(x, -1000000, 1000000)
             elif k == 'head':
@@ -192,15 +203,18 @@ def parse(data):
         raise Refused('a value the game cannot read')
     if not ended:
         raise Refused('incomplete file (no end line)')
-    if not {'tasproject', 'map', 'base', 'head', 'baseat', 'assist'} <= have:   # assist is hashed
+    first = {'start', 'startat'} if version == '3' else {'base'}
+    if not {'tasproject', 'map', 'head', 'baseat', 'assist'} | first <= have:   # assist is hashed
         raise Refused('missing header lines')
+    if version == '3' and startat > n:
+        raise Refused('the start tick is past the head')
     if not {'mapcrc', 'zonecrc', 'pmpin'} <= have:
         raise Refused('missing map, zone or movement-rule line')
-    if version == '2' and 'supply' not in have:
+    if version in ('2', '3') and 'supply' not in have:
         raise Refused('missing supply line')
     if supply and (supply[0] < base + 1 or supply[1] < supply[0] or supply[1] > base + n):
         raise Refused('supply outside the project')
-    if version == '2' and parentsha is None and supply != (base + 1, base + n):
+    if version in ('2', '3') and parentsha is None and supply != (base + 1, base + n):
         raise Refused("a root's supply is not all of its ticks")
     if cps and (cps[0] <= base or cps[-1] > base + n):
         raise Refused('checkpoint outside the project')
@@ -209,7 +223,8 @@ def parse(data):
     elif supply:
         supply = (int(supply[0]), int(supply[1]))
     return dict(h=h, stated=stated, version=version, parentsha=parentsha, mapcrc=mapcrc, supply=supply,
-                base=int(base), rows=rows)
+                base=int(base), rows=rows, zone=None if zone is None else int(zone),
+                startat=None if startat is None else int(startat))
 
 
 def changed_ticks(child, parent):

@@ -2,6 +2,7 @@
 // Loading re-simulates from that save; checkpoint states say whether it reproduced. The engine
 // keeps the connection's sub-tick ms carry into a replay, which QC cannot set (BACKLOG).
 #define TASP_VERSION 2          // P1090: 2 adds `supply`; 1 still loads
+#define TASP_LEGAL 3            // P1100: a legal start (`start`, `startat`) in place of a base save
 #define TASP_MAX 96000          // ticks after the base, about 24 minutes at 15 ms
 #define TASP_CPMAX 48           // checkpoints kept: auto, the head, named
 #define TASP_CPEVERY 256        // auto spacing, doubled until about 32 fit
@@ -38,6 +39,7 @@ vector tpr_bo, tpr_bv;
 string tpr_revsha;              // P1089: the hash the file states for itself, "" if none
 string tpr_parsha;              // P1090: its parentsha, "" for a root
 float tpr_supa, tpr_supb;       // P1090: its supply line (tasp_supa's values)
+float tpr_ver, tpr_zone, tpr_startat;   // P1100: version; a v3 file's start zone and start tick
 string tpr_hash, tpr_parent, tpr_cpnames, tpr_why;
 float tasp_hflags;
 string tasp_why;
@@ -222,17 +224,19 @@ string(string line) SV_TASPCanon =
 };
 
 float tpr_rank;
-#define TASP_RANKCP 15          // the two keys that repeat
-#define TASP_RANKI 16
+#define TASP_RANKCP 16          // the two keys that repeat
+#define TASP_RANKI 17
 float(string k) SV_TASPKeyRank =
 {
 	if (k == "tasproject") return 0; if (k == "map") return 1; if (k == "mapcrc") return 2;
 	if (k == "zonecrc") return 3; if (k == "pmpin") return 4; if (k == "assist") return 5;
 	if (k == "origin") return 6; if (k == "saved") return 7; if (k == "revision") return 8;
 	if (k == "parent") return 9; if (k == "parentsha") return 10; if (k == "supply") return 11;
-	if (k == "base") return 12; if (k == "baseat") return 13; if (k == "head") return 14;
-	if (k == "cp") return TASP_RANKCP; if (k == "i") return TASP_RANKI; if (k == "end") return 17;
-	if (k == "revsha") return 18;
+	// P1100: `start` takes base's rank (a file has one or the other); `startat` sits before head.
+	if (k == "base" || k == "start") return 12; if (k == "baseat") return 13; if (k == "startat") return 14;
+	if (k == "head") return 15;
+	if (k == "cp") return TASP_RANKCP; if (k == "i") return TASP_RANKI; if (k == "end") return 18;
+	if (k == "revsha") return 19;
 	return -1;
 };
 
@@ -293,6 +297,7 @@ float(string l, string k, float argc) SV_TASPLineCanon =
 	if (k == "parentsha" || k == "revsha") return (argc == 2 && SV_TASPHex(argv(1), 64));
 	if (k == "supply") return (l == "supply none" || (argc == 3 && SV_TASPCanonNum(argv(1), TRUE) && SV_TASPCanonNum(argv(2), TRUE)));
 	if (k == "base") return (argc == 4 && SV_TASPCanonNum(argv(1), TRUE) && SV_TASPHex(argv(2), 64) && SV_TASPCanonNum(argv(3), TRUE));
+	if (k == "start" || k == "startat") return (argc == 2 && SV_TASPCanonNum(argv(1), TRUE));
 	if (k == "saved")               // tokenize splits at ':', so the raw text: "saved " + 19
 	{
 		if (strlen(l) != 25 || substring(l, 0, 6) != "saved ") return FALSE;
@@ -346,6 +351,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 	tpr_cp = (float*)memalloc(TASP_CPMAX * TASP_CPSTRIDE * 4);
 	if (!tpr_cp) { fclose(f); tpr_why = "out of memory"; return FALSE; }
 	have = ended = n = ver = 0;
+	tpr_zone = tpr_startat = tpr_ver = 0;
 	hash = parent = names = "";
 	pin = SV_RecPinText(e, "*pmpin");
 	tpr_rank = -1;
@@ -401,14 +407,14 @@ float(entity e, string name, float identity) SV_TASPRead =
 		if (k == "assist") { have = have | 256; continue; }   // hashed, so required (P1089 review 3)
 		if (k == "tasproject")
 		{
-			if (argc != 2 || (argv(1) != "1" && argv(1) != ftos(TASP_VERSION))) { tpr_why = "unknown project version"; break; }
+			if (argc != 2 || (argv(1) != "1" && argv(1) != ftos(TASP_VERSION) && argv(1) != ftos(TASP_LEGAL))) { tpr_why = "unknown project version"; break; }
 			ver = stof(argv(1)); have = have | 1; continue;
 		}
 		if (k == "parentsha") { tpr_parsha = strzone(argv(1)); continue; }
 		if (k == "supply")
 		{
 			// supply none | supply <first> <last>: checked against base and head below
-			if (ver != 2) { tpr_why = "a supply line in a version 1 file"; break; }
+			if (ver == 1) { tpr_why = "a supply line in a version 1 file"; break; }
 			if (argc == 3)
 			{
 				if (!SV_TASPNum(argv(1), 1, 16000000 + TASP_MAX, TRUE)) { tpr_why = "bad supply"; break; }
@@ -435,9 +441,25 @@ float(entity e, string name, float identity) SV_TASPRead =
 			if (identity && (pin == "" || substring(l, 6, -1) != pin)) { tpr_why = "the movement rules changed"; break; }
 			have = have | 128; continue;
 		}
+		if (k == "start")
+		{
+			// P1100: start <zone> -- placed at that start zone's destination; ticks count from it.
+			if (ver != TASP_LEGAL || argc != 2 || (have & 4) || !SV_TASPNum(argv(1), 0, 255, TRUE)) { tpr_why = "bad legal start"; break; }
+			tpr_zone = fs_tas_number; tpr_base = 0;
+			have = have | 4;
+			continue;
+		}
+		if (k == "startat")
+		{
+			if (ver != TASP_LEGAL || argc != 2 || (have & 1024) || !SV_TASPNum(argv(1), 0, TASP_MAX, TRUE)) { tpr_why = "bad start tick"; break; }
+			tpr_startat = fs_tas_number;
+			have = have | 1024;
+			continue;
+		}
 		if (k == "base")
 		{
 			// base <save folder id> <state.txt sha256> <tick>
+			if (ver == TASP_LEGAL) { tpr_why = "a base save in a legal-start file"; break; }
 			if (argc != 4 || (have & 4) || !SV_TASPNum(argv(1), 1, 99999, TRUE)) { tpr_why = "bad base"; break; }
 			tpr_baseid = fs_tas_number;
 			if (strlen(argv(2)) != 64) { tpr_why = "bad base hash"; break; }
@@ -492,12 +514,15 @@ float(entity e, string name, float identity) SV_TASPRead =
 	if (tpr_why == "" && ((have & 31) != 31 || !(have & 256))) tpr_why = "missing header lines";
 	if (tpr_why == "" && identity && (have & 224) != 224) tpr_why = "missing map, zone or movement-rule line";
 	// P1090: what the writer writes -- a root supplies every tick, a child a span inside it.
-	if (tpr_why == "" && ver == 2 && !(have & 512)) tpr_why = "missing supply line";
+	if (tpr_why == "" && ver >= 2 && !(have & 512)) tpr_why = "missing supply line";
 	if (tpr_why == "" && tpr_supa > 0)
 	if (tpr_supa < tpr_base + 1 || tpr_supb < tpr_supa || tpr_supb > tpr_base + n) tpr_why = "supply outside the project";
-	if (tpr_why == "" && ver == 2 && tpr_parsha == "")
+	if (tpr_why == "" && ver >= 2 && tpr_parsha == "")
 	if (tpr_supa != tpr_base + 1 || tpr_supb != tpr_base + n) tpr_why = "a root's supply is not all of its ticks";
 	if (ver == 1) tpr_supa = -1;
+	if (tpr_why == "" && ver == TASP_LEGAL && !(have & 1024)) tpr_why = "missing start tick";
+	if (tpr_why == "" && ver == TASP_LEGAL && tpr_startat > n) tpr_why = "the start tick is past the head";
+	tpr_ver = ver;
 	if (tpr_why == "" && tpr_ncp > 0)
 	if (tpr_cp[0] <= tpr_base || tpr_cp[(tpr_ncp - 1) * TASP_CPSTRIDE] > tpr_base + n)
 		tpr_why = "checkpoint outside the project";
