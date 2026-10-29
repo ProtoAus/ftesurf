@@ -103,6 +103,7 @@ def main():
     ap.add_argument("--runs", type=int, default=2)
     ap.add_argument("--pre", type=float, default=1.5, help="seconds in the run before the synthetic input")
     ap.add_argument("--profwin", action="store_true", help="profile the walk and finish frame only")
+    ap.add_argument("--threaded", type=int, default=0, help="cl_threadedphysics: 1 takes the whole-buffer hash")
     ap.add_argument("--quiet", action="store_true", help="developer 0: what a player pays (no timing lines)")
     a = ap.parse_args()
     P.owned(a.out)
@@ -144,7 +145,7 @@ def main():
             *([] if a.quiet else ["developer 1", "log_developer 1"]), "cl_debug_spikes 1", "cl_debug_spike_ms 8",
             "set rec_upload 1", "set rec_hid_upload 1", "set rec_hid 1", "set sensitivity 0",
             f'set rec_hid_testurl "http://127.0.0.1:{a.hport}/api/hid"',   # quoted: // is a comment
-            "cl_threadedphysics 0", 'name "p1116"', f"connect 127.0.0.1:{a.port}"]) + "\n")
+            "cl_threadedphysics %d" % a.threaded, 'name "p1116"', f"connect 127.0.0.1:{a.port}"]) + "\n")
         cl = Peer(base / "client.exe", base, "probe.cfg")    # windowed: headless draws no frame, so no journal
         cl.wait("FTESurf CSQC loaded", timeout=120)
         time.sleep(3)
