@@ -1,5 +1,12 @@
 // ISOLATED TEST-ONLY FIXTURE. Never add to production manifests or live lobbies.
 // Test-only fixtures. Never included in production .src.
+// These direct profile calls have a world-authored cause. The real touch caller
+// freezes its explicit activation tuple before reentrant outputs (P1123).
+float(entity pad, entity e) P732_Touch =
+{
+	return SV_MonolithB4Touch(pad, e, world, 0i, FALSE);
+};
+#define SV_MonolithB4Touch P732_Touch
 float p732_pass, p732_fail;
 void(string label, float yes) P732_Check =
 {
@@ -235,3 +242,4 @@ void() p732_packet_probe =
 	self.think = P732_PacketThink;
 	self.nextthink = time + 0.1;
 };
+#undef SV_MonolithB4Touch

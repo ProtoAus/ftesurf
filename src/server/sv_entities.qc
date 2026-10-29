@@ -1215,6 +1215,8 @@ void(entity pl) SV_ConveyorArm =
 	}
 	carrier = ground.vbsp_conveyorvel;
 	if (carrier == '0 0 0') return;
+	// Price the contribution even when it cancels an already armed carrier.
+	SV_BankCauseAffect(pl, ground.bank_src_player, ground.bank_src_attempt, ground.bank_src_bad);
 	if (pl.run_basevel_armed) carrier = carrier + pl.run_basevel;
 	pl.run_basevel = carrier;
 	pl.run_basevel_armed = TRUE;
@@ -2853,10 +2855,20 @@ void(entity t, float on) SV_IOEnable =
 {
 	local float wasoff;
 	wasoff = SV_Key2(t.StartDisabled, t.startdisabled);
-	// Effective push enable state, not a repeated same-value input.
-	if (t.classname == "trigger_push")
+	// These activation slots are not callback state. A no-op Enable does not
+	// reauthor them; an independent off->on without active I/O is world-owned.
+	if (!strcmp(t.classname, "trigger_push") || !strcmp(t.classname, "trigger_setspeed")
+		|| !strcmp(t.classname, "trigger_momentum_setspeed") || !strcmp(t.classname, "func_conveyor"))
 	if (on && wasoff)
-		SV_BankSnapshot(t);
+	{
+		if (bank_ctx_depth) SV_BankSnapshot(t);
+		else
+		{
+			t.bank_src_player = world;
+			t.bank_src_attempt = 0i;
+			t.bank_src_bad = FALSE;
+		}
+	}
 	if (!on)
 	{
 		// Remember what it was before the first Disable, so Enable can restore
@@ -8123,12 +8135,14 @@ void() trigger_push =
 #define SS_IGNORE    4
 
 // P732's scoped compatibility profile is defined just after this module.
-float(entity pad, entity e) SV_MonolithB4Touch;
+float(entity pad, entity e, entity bp, int ba, float bb) SV_MonolithB4Touch;
 
 void() trigger_setspeed_touch =
 {
-	local float  hmode, vmode, hspeed, vspeed, cur, iv, old;
+	local float  hmode, vmode, hspeed, vspeed, cur, iv, old, bb;
 	local vector ang, dir, vel;
+	local entity bp;
+	local int ba;
 
 	if (other.classname != "player")
 		return;
@@ -8138,11 +8152,15 @@ void() trigger_setspeed_touch =
 		return;
 	if (!SV_TouchFilter(self, other))
 		return;
+	// Freeze the admitted activation before touch outputs can re-enable us.
+	bp = self.bank_src_player;
+	ba = self.bank_src_attempt;
+	bb = self.bank_src_bad;
 	// Patch 786: past the returns that leave you untouched (SV_TrigStamp).
 	SV_TrigStamp(other);
 
 	SV_TriggerIOTouch(self, other);
-	if (SV_MonolithB4Touch(self, other)) return;
+	if (SV_MonolithB4Touch(self, other, bp, ba, bb)) return;
 
 	/*
 	  WHEN it applies.  Momentum's default is the ENTER edge only; OnThink
@@ -8316,6 +8334,8 @@ void() trigger_setspeed_touch =
 	if (vel_z > other.velocity_z)
 		other.run_pushed = TRUE;
 
+	if (vel != other.velocity)
+		SV_BankCauseAffect(other, bp, ba, bb);
 	other.velocity = vel;
 
 	/*

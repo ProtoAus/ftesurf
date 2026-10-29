@@ -13,6 +13,10 @@
 .float run_mono_cmdtick;
 .float run_mono_jumpbefore;
 .vector run_mono_preorg;
+// One retained pad-activation cause, not a complete body/phase contributor bank.
+.entity bank_mono_player;
+.int bank_mono_attempt;
+.float bank_mono_bad;
 
 void(entity e) SV_MonolithB4Frame;
 
@@ -20,6 +24,9 @@ void(entity e) SV_MonolithB4Reset =
 {
 	e.run_mono_pad = world;
 	e.run_mono_phase = e.run_mono_deadline = 0;
+	e.bank_mono_player = world;
+	e.bank_mono_attempt = 0i;
+	e.bank_mono_bad = FALSE;
 	e.run_mono_tick = -1;
 	e.run_mono_cmdtick = e.run_movetick;
 	e.run_mono_jumpbefore = e.run_jumpcmd;
@@ -78,7 +85,7 @@ void(entity e) SV_MonolithB4Command =
 	}
 };
 
-float(entity pad, entity e) SV_MonolithB4Touch =
+float(entity pad, entity e, entity bp, int ba, float bb) SV_MonolithB4Touch =
 {
 	local vector vel;
 	if (!SV_MonolithB4Pad(pad)) return FALSE;
@@ -94,6 +101,9 @@ float(entity pad, entity e) SV_MonolithB4Touch =
 		e.run_mono_phase = 1;
 		e.run_mono_deadline = time + 0.5;
 		e.run_mono_tick = e.run_movetick;
+		e.bank_mono_player = bp;
+		e.bank_mono_attempt = ba;
+		e.bank_mono_bad = bb;
 		vel = '-1662 0 0';
 	}
 	else
@@ -120,6 +130,8 @@ float(entity pad, entity e) SV_MonolithB4Touch =
 	// never clear any earlier hopped/dirty taint to make this profile eligible.
 	e.run_pushed = TRUE;
 	e.run_pushlift = TRUE;
+	if (vel != e.velocity)
+		SV_BankCauseAffect(e, e.bank_mono_player, e.bank_mono_attempt, e.bank_mono_bad);
 	e.velocity = vel;
 	SV_RecWarp(e, "speed");
 	return TRUE;
@@ -150,6 +162,8 @@ void(entity e) SV_MonolithB4Frame =
 		vel = e.velocity;
 		vel_x = -1662;
 		vel_y = 0;
+		if (vel != e.velocity)
+			SV_BankCauseAffect(e, e.bank_mono_player, e.bank_mono_attempt, e.bank_mono_bad);
 		e.velocity = vel;
 		SV_RecWarp(e, "speed");
 		SV_MonolithB4Reset(e);

@@ -4044,6 +4044,18 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+P1123: set-speed/alias/conveyor activation uses the same off/on/no-op rule as
+pushes, with inactive context explicitly world0. Freeze the tuple BEFORE touch
+outputs. Price changed velocity, or a NONZERO conveyor contribution even when
+its sum cancels an existing carrier. Ordinary interval/filter/no-value paths do
+not newly mark. Monolith entry/reapplication/exit share a retained BODY-phase
+activation tuple: independently replacing the PAD cause must not rewrite that
+older phase. Dedicated slots clear with the existing phase reset, not callback/
+basevel/multiplier aliases. This one cause is NOT the full phase/body/world bank.
+P732 standalone fixture uses its OWN unit as self (it removes self); running it
+as world prints60PASS then errors at cleanup, NOT a pass. Logs have timestamp
+prefixes; parse like the existing readers and reject QC/cleanup errors too.
+
 P1121: ModifySpeed explicitly replaces one stored multiplier from its new input;
 there is NO no-op method guard. Even an equal world-authored scalar assignment
 independently replaces that PROPERTY's cause, unlike P1120 no-op Enable; it does

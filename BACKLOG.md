@@ -1,5 +1,18 @@
 # BACKLOG.md
 
+## Windows run-corpus lifetime attribution (P1123 observation)
+
+- Site: `ftesurf/data/runs` import/cache lifecycle; actual writer is unknown.
+  Between prior/current inventories five faulty unpaired legacy REC paths became
+  absent and 28 legacy REC5 paths appeared (all additions predate P1123 probes).
+  The 499 shared records/all paired views retain exact bytes and diagnostics.
+  This is not a product-regression or deletion-ownership finding; no player data
+  was restored/deleted to force a snapshot. Falsifier: correlate actual writer/
+  import retirement events with those exact path/hash cohorts and account for
+  each removal/addition, or identify an unauthorized completed-path deletion.
+  Raw identifiers/metadata remain private; do not restore blindly. Fresh full527
+  published/current identical-reader controls agree with zero introduced faults.
+
 ## P1116 leftovers (29 Oct)
 
 - cl_threadedphysics appends to the input journal from its own thread with no lock against

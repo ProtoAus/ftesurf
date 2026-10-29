@@ -21,6 +21,9 @@
 
 ## next
 
+### P1123 Speed-pad and conveyor carry
+- Speed pads, conveyors and the Monolith booster keep the right run status when an earlier attempt enabled them. Their movement and normal current-run behavior are unchanged.
+
 ### P1121 Speed-effect carry
 - Player-origin speed effects carried between attempts keep the right run status. Normal map-authored speeds and movement are unchanged.
 

@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1123 speed-pad/conveyor/Monolith status (pending)
+
+After deployment: on a normal world-enabled speed pad/conveyor, confirm ordinary
+speed and clean current-run status. On Monolith B4, confirm the normal launch,
+next-contact boost and downstream exit feel unchanged. Synthetic VM controls
+are not owner geometry/feel/finish/ranking acceptance; none is confirmed here.
+
 ## P1121 persistent speed effect/status (pending)
 
 Deployed to both Windows installs and all12Pi lobbies, 2026-10-29. Two source
