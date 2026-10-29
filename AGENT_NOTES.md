@@ -4055,6 +4055,20 @@ must not newly mark. Neutral/zero/negative inputs retain their original arithmet
 and normalization. Spawn resets both multiplier and these transient slots. No
 new captured field/format/flag/tier policy; full body/world/config/phase bank OPEN.
 
+P1121 active-play audit: preflight2clients meant runtime data was NOT immutable.
+Keep strict snapshot failures; never restore owner config/cache or redate evidence
+until hashes agree. A part can disappear between enumeration and open. Separate
+exact generated-artifact/.prev/native/config/backend/actor readback from the
+qualified runtime-data delta; collect missing-read errors instead of claiming
+skipped files unchanged. Here primary16cache/friends/config changes were preserved,
+Pi2temporary paths disappeared and1REC changed BEFORE Pi upload. No completed
+path missing; exact temp finalization/config writer unproved. The diagnostic did
+not turn either strict all-data guard into PASS or require another restart.
+Use stdin source transport for SSH diagnostics: inline -c shell layers stripped
+a backslash delimiter and failed before execution; chr(92)/stdin fixed that seam,
+not a new attempt namespace. CS/MENU/native bytes matched the prior live draw;
+do not repeat a passed GUI check merely for the next patch number.
+
 P1120: an effective off->on push Enable retains its existing single source token
 in non-callback push cause slots; a repeated same-value Enable does not reauthor
 it. Snapshot before reentrant touch outputs, check the source admission only at

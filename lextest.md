@@ -2,6 +2,9 @@
 
 ## P1121 persistent speed effect/status (pending)
 
+Deployed to both Windows installs and all12Pi lobbies, 2026-10-29. Two source
+reviews/acting VM controls and reused unchanged-client draw proof are not owner
+movement or ranking confirmation.
 On a map that changes player movement speed, check normal world-authored changes
 and current-run changes still feel the same. A retained player-authored effect
 from an older attempt should show unranked when it actually affects the new run.

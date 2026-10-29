@@ -43,6 +43,47 @@ accounting. Broad Rule8 remains OPEN. Human-only acceptance is in lextest.md.
 Full three-program NoDeploy build passes: server/menu0warnings, same two old
 clientF333/zeroNEW. Unchanged reader949checks/0failed; fresh full corpus504REC/
 167pairedVIEW, all input bytes unchanged and the same305faultyREC/7faultyVIEW.
-This historical corpus is not fault-free. Clean-commit independent reviews and
-ordinary dual-Windows/Pi promotion are pending. Exact private inputs/raw logs and
-scope-qualified reports are retained; no private evidence is embedded here.
+This historical corpus is not fault-free. BOTH independent clean-source reviews
+cleared this bounded scalar change with no issues. Published runtime QC1c48565df323
+and engine documentation013a435f64d2; later delivery prose changes no code/artifacts.
+
+## Ordinary deployment and qualified live-data audit
+
+Normal supported deployment build again passes SS/menu0warnings and the same two
+old CSF333/zeroNEW. BOTH Windows installs have all six exact DAT/LNO artifacts and
+actual predecessor `.prev` copies. Pi exact QW/CS and actual prior pair verified;
+2026-10-29 15:34:19UTC read-only core audit found12fresh same-native actors,
+healthy12, unchanged Pi config/native/backend launchers+unit. The preflight found
+two connected clients (including spectators): standing beta approval used
+`-PiForce`, announced beforehand. No additional repair swaps/restarts occurred.
+
+Shipped SHA256:
+- QW `172a66da8aa12dab027881a5b6dfc833ce37fc48ca995d554134a81f259301d7`
+- CS `fa9bb6d396342b24cbce496898bb7d056dca996b0805bd1f2583358d6efde8a1`
+- MENU `7cb11cb1d5c0db4a7ab015c222ff837ed5be49642b7d8fce27c8fa9849f4d43e`
+
+CS/MENU bytes and native client are IDENTICAL to the inspected P1120 live draw
+cohort, and client/menu/shared source is unchanged. Reuse that valid served-CS/
+board acceptance, not another GUI run merely for a patch number. Destination
+bytes/live actors were still checked. Status7 exposes no CS-advertisement field;
+no new wire-advertisement or P1121 movement/ranking/human claim is made.
+
+Do NOT call the active-play data snapshots an unchanged-data pass. The strict
+Windows guard retained16primary runtime/cache/config differences (14cache,
+friends-menu file and owner config); secondary142protected files and all native
+images stayed unchanged. No owner config contents were printed, reverted or
+deployed; only hashes/metadata were inspected.
+The strict Pi scan stopped when an in-flight recorder slot disappeared. A bounded
+read-only diagnostic, not a repeated deployment, retained all deltas: two former
+temporary paths absent and one final REC changed; NO pre-existing completed path
+missing. That final REC mtime15:22:42.703UTC precedes completion of the three-program
+compile phase and therefore Pi upload; it is not a P1121-program mutation. Exact
+temporary finalization and the primary config writer are not proved by hashes.
+No player data was restored/deleted, no healthy actor restarted to satisfy a
+snapshot, and no strict guard was relabelled PASS. The copy transaction targets
+only generated progs; simultaneous runtime writes remain explicitly qualified.
+
+Immutable shipped/original predecessor bundles retained. All59owned files
+ZIP+hash verified; only the one9file disposable NoDeploy root retired, reusable50file
+rig retained (also archived), zero owned game processes/links. Exact private
+inputs/raw results/failures and scope-qualified receipts remain private.
