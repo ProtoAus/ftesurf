@@ -32,6 +32,11 @@ class Source:
             sid, mp, mode = m.group(1), m.group(2), int(m.group(3))
             if mp in getattr(self, 'missing', ()):
                 raise K.NoSuchPlayer('HTTP 500')
+            fail = getattr(self, 'fail', {}).get(mp)
+            if isinstance(fail, Exception):
+                raise fail
+            if fail is not None:
+                return json.dumps(fail)         # a reply of some other shape
             recs = [{'zoneId': z, 'record_id': 7000 + z, 'surfTime': 5.0 + z,
                      'date_set_at': '2026-10-01T00:00:%02dZ' % z, 'rank': 1}
                     for z in (0, 1, 2, 3, 31, 32)] if mode == 0 else []
@@ -251,9 +256,56 @@ class Profiles(unittest.TestCase):
         self.assertEqual(P.status(self.db, PLAYER)['state'], 'complete')
         self.db.execute('DELETE FROM ksfprofiles'); self.db.commit(); self.queue(now=5000)
         self.src.missing, self.src.who = set(), 'STEAM_0:0:1'
+        P.step(K, self.cache, K.Pacer(0, 10), self.have, 5001, 10)    # P1117 review: skipped, not refused
+        self.assertEqual((len(self.zones()), P.status(self.db, PLAYER)['state']), (1, 'complete'))
+
+    def at_stage(self, now=3000):
+        """The walk at its first stage map (profile0), the main pages done."""
+        self.stage_world()
+        P.step(K, self.cache, K.Pacer(0, 10), self.have, now - 1, 4)
+        self.assertEqual((P.status(self.db, PLAYER)['mode'], P.status(self.db, PLAYER)['next']),
+                         (P.STAGE_MODE, 0))
+
+    def test_p1117r1_a_maps_failure_skips_it_and_never_parks(self):
+        stages = lambda: (P.status(self.db, PLAYER)['mode'], P.status(self.db, PLAYER)['next'])
+        for fail in (K.Refused('HTTP 404', 404), K.Refused('HTTP 403', 403),
+                     K.Refused("ksf.surf's reply did not parse"),
+                     {'records': [], 'basicInfo': None}, {'records': 'x', 'basicInfo': {}},
+                     {'records': [{}] * (P.STAGE_RECORDS_MAX + 1),
+                      'basicInfo': {'steamID': K.S.steam2(PLAYER)}}):
+            with self.subTest(fail=str(fail)[:40]):
+                self.db.execute('DELETE FROM ksfprofiles'); self.db.execute('DELETE FROM runs')
+                self.db.commit()
+                shutil.rmtree(self.cache); self.cache = tempfile.mkdtemp(dir=HOME)
+                self.at_stage()
+                self.src.fail = {'surf_profile0': fail}
+                p = K.Pacer(0, 10)
+                P.step(K, self.cache, p, self.have, 3001, 1)
+                self.assertEqual((p.made, p.unanswered, P.status(self.db, PLAYER)['state']),
+                                 (1, 1, 'complete'))
+                self.assertEqual(len(self.zones()), 1)
+
+    def test_p1117r1_host_refusals_park_and_no_answer_moves_on(self):
+        self.at_stage()
+        self.src.fail = {'surf_profile0': K.Refused('HTTP 429', 429)}
         with self.assertRaises(K.Refused):
-            P.step(K, self.cache, K.Pacer(0, 10), self.have, 5001, 10)
-        self.assertEqual(len(self.zones()), 1)
+            P.step(K, self.cache, K.Pacer(0, 10), self.have, 3001, 1)
+        self.assertEqual((P.status(self.db, PLAYER)['mode'], P.status(self.db, PLAYER)['next']),
+                         (P.STAGE_MODE, 0))
+        self.src.fail = {'surf_profile0': K.Refused('no answer: timed out', transient=True)}
+        with self.assertRaises(K.Refused):
+            P.step(K, self.cache, K.Pacer(0, 10), self.have, 3002, 1)
+        self.assertEqual((P.status(self.db, PLAYER)['mode'], P.status(self.db, PLAYER)['next']),
+                         (P.STAGE_MODE, 1))
+
+    def test_p1117r1_views_cannot_fill_an_accounts_slots(self):
+        for i in range(P.MAX_VIEWED):
+            self.assertEqual(self.queue('765611980000%05d' % (100 + i))['state'], 'queued')
+        self.assertEqual(self.queue('76561198000099999')['state'], 'busy')
+        self.db.execute("INSERT INTO accounts (steamid, created_at) VALUES (?, 1)", (PLAYER,))
+        self.db.commit()
+        self.assertEqual(self.queue()['state'], 'queued')
+        self.db.execute('DELETE FROM accounts'); self.db.commit()
 
     def test_migrate18_to20_adds_scoped_marker_without_rewriting_runs(self):
         self.queue(); self.step()

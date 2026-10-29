@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS ksfprofiles (
 );
 """
 TTL = 86400
-MAX_ACTIVE = 32
+MAX_ACTIVE = 32             # P1117 review: live walks of signed-in accounts...
+MAX_VIEWED = 24             # ...and, apart, of anyone else's profile views
 PAGE = 5                    # observed pagination.limit, not a request limit
 MAX_POSITION = 10001         # safety bound; 'limited' is NOT complete
 # P1117: after the four main walks, modes 4..7 walk style mode-4's stage and
@@ -26,6 +27,10 @@ MAX_POSITION = 10001         # safety bound; 'limited' is NOT complete
 # route ksf.surf's own player page uses (probed 29 Oct).  `cursor` indexes
 # stage_maps(); the state stays 'partial' until mode 8.
 STAGE_MODE = 4
+# A stage request's failure is that map's unless it is one of these (or no answer).
+HOST_CODES = (429, 502, 503, 504, 520, 521, 522, 523, 524)
+STAGE_RECORDS_MAX = 200     # zones a map reply may carry; more is not a map's
+ACCOUNT = "SELECT 1 FROM accounts a WHERE a.steamid = %s AND a.banned_at = 0"
 
 
 def status(db, player):
@@ -50,8 +55,12 @@ def enqueue(db, player, now):
             old = db.execute('SELECT state,updated FROM ksfprofiles WHERE player=?', (player,)).fetchone()
             if old and (old[0] in ('queued', 'partial') or now - old[1] < TTL):
                 return status(db, player)
-            n = db.execute("SELECT count(*) FROM ksfprofiles WHERE state IN ('queued','partial')").fetchone()[0]
-            if n >= MAX_ACTIVE:
+            # Views of other profiles cannot fill an account's slots (P1117 review).
+            mine = db.execute(ACCOUNT % "?", (player,)).fetchone() is not None
+            n = db.execute("SELECT count(*) FROM ksfprofiles p WHERE state IN ('queued','partial')"
+                           " AND %sEXISTS (%s)" % ("" if mine else "NOT ", ACCOUNT % "p.player")
+                           ).fetchone()[0]
+            if n >= (MAX_ACTIVE if mine else MAX_VIEWED):
                 return {'state': 'busy'}
             db.execute("INSERT INTO ksfprofiles(player,mode,cursor,state,asked,updated) VALUES (?,0,1,'queued',?,?) "
                        "ON CONFLICT(player) DO UPDATE SET mode=0,cursor=1,state='queued',asked=excluded.asked,updated=excluded.updated,pages=0,skipped=0", (player, now, now))
@@ -239,15 +248,22 @@ def stage_step(K, cache, pacer, have, now, player, sid, mode, start, asked, can_
                 doc = pacer.get('/api/players/%s/records/map/%s?game=css&mode=%d'
                                 % (sid, urllib.parse.quote(mp), style))
             except K.Refused as e:
-                if e.code != 500:
+                # P1117 review: only the host's refusals park, and no answer parks
+                # with the cursor past this map, so one map cannot hold the walk.
+                if e.code in HOST_CODES:
                     raise
-                pacer.unanswered += 1   # nothing there: the next map; never lifts a park
+                if getattr(e, 'transient', False):
+                    advance(K, player, mode, start, asked, now, mode, start + 1, 'partial', 1)
+                    raise
+                pacer.unanswered += 1   # this map's answer (404, 500, bad page): never lifts a park
             else:
-                saved = {'asked': asked, 'body': doc}
-                validate_map(K, doc, sid)
-                durable(K, fn, saved)
+                if map_records(doc, sid) is None:
+                    pacer.unanswered += 1
+                else:
+                    saved = {'asked': asked, 'body': doc}
+                    durable(K, fn, saved)
         rows = []
-        for r in validate_map(K, saved['body'], sid) if saved else []:
+        for r in (map_records(saved['body'], sid) or []) if saved else []:
             zone, when = r.get('zoneId'), _iso(r.get('date_set_at'))
             if type(zone) is not int or zone not in zones or when <= 0:
                 continue
@@ -266,6 +282,11 @@ def stage_step(K, cache, pacer, have, now, player, sid, mode, start, asked, can_
             for row in rows:
                 row['name'] = named[0] if named else 'KSF player'
             K.write_rows(rows)
+    advance(K, player, mode, start, asked, now, nextmode, nxt, state, made)
+    return made, state, nextmode, nxt
+
+
+def advance(K, player, mode, start, asked, now, nextmode, nxt, state, made):
     db = K.S.connect()
     try:
         db.execute('PRAGMA synchronous=FULL')
@@ -275,16 +296,16 @@ def stage_step(K, cache, pacer, have, now, player, sid, mode, start, asked, can_
                        (nextmode, nxt, state, now, made, player, mode, start, asked))
     finally:
         db.close()
-    return made, state, nextmode, nxt
 
 
-def validate_map(K, doc, sid):
+def map_records(doc, sid):
+    """The reply's records, or None when it is not this player's map reply."""
     info = doc.get('basicInfo') if isinstance(doc, dict) else None
-    if (not isinstance(info, dict) or info.get('steamID') != sid
-            or not isinstance(doc.get('records'), list)
-            or not all(isinstance(r, dict) for r in doc['records'])):
-        raise K.Refused('profile map records shape')
-    return doc['records']
+    recs = doc.get('records') if isinstance(info, dict) else None
+    if (not isinstance(info, dict) or info.get('steamID') != sid or not isinstance(recs, list)
+            or len(recs) > STAGE_RECORDS_MAX or not all(isinstance(r, dict) for r in recs)):
+        return None
+    return recs
 
 
 def retire(K, player, mode, start, asked, now):

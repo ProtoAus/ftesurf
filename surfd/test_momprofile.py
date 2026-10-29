@@ -57,9 +57,10 @@ def db():
     return c
 
 
-def pb(mid, gm, tt, tn, t, style=0, pb=True, when="2026-10-23T09:38:15.836Z"):
+def pb(mid, gm, tt, tn, t, style=0, pb=True, when="2026-10-23T09:38:15.836Z", uid=None):
+    """uid None: the asked user's own (FakeMomentum fills it in)."""
     return {"id": 1, "gamemode": gm, "trackType": tt, "trackNum": tn, "style": style,
-            "time": t, "flags": [], "isPB": pb, "userID": 0, "mapID": mid, "createdAt": when}
+            "time": t, "flags": [], "isPB": pb, "userID": uid, "mapID": mid, "createdAt": when}
 
 
 class FakeMomentum(object):
@@ -79,7 +80,8 @@ class FakeMomentum(object):
             data = [{"id": uid, "steamID": m.group(1), "alias": "x"}] if uid else []
             return json.dumps({"totalCount": len(data), "data": data}).encode()
         m = re.match(r".*/runs\?userID=(\d+)&isPB=true&take=(\d+)&skip=(\d+)$", url)
-        rows = self.runs.get(int(m.group(1)), [])
+        uid = int(m.group(1))
+        rows = [dict(r, userID=uid) if r["userID"] is None else r for r in self.runs.get(uid, [])]
         take, skip = int(m.group(2)), int(m.group(3))
         return json.dumps({"totalCount": len(rows), "data": rows[skip:skip + take]}).encode()
 
@@ -181,6 +183,38 @@ def case_round_robin_refusal_and_shape():
     c.close()
 
 
+def case_p1117r1_hostile_rows():
+    """Every field is somebody else's: types, ranges, and the user it is for."""
+    c = db()
+    c.execute("INSERT INTO momusers (steamid, momid) VALUES (?, 177)", (A,))
+    c.commit()
+    P.enqueue(c, A, NOW)
+    bad = [pb(20, 1, 1, 1, 5.0, uid=178),                  # another user's PB
+           pb(20, 1, 1, 1, float("nan")), pb(20, 1, 1, 1, float("inf")),
+           pb(20, 1, 1, 1, 0.0001), pb(20, 1, 1, 1, -3.0), pb(20, 1, 1, 1, 2e6),
+           pb(20, 1, 1, 1, True), pb(20, 1, 1, 1, 5.1, style=False),
+           pb("20", 1, 1, 1, 5.2), pb(20, True, 1, 1, 5.3), pb(20, 1, 1.0, 1, 5.4),
+           dict(pb(20, 1, 1, 1, 5.5), isPB=1)]
+    fake = FakeMomentum({}, {177: bad + [pb(20, 1, 1, 1, 7.25)]})
+    P.step(c, TRACKED, 1, fake, delay=0, now=NOW)
+    check("P1117r1: only the asked user's well-formed PB is filed",
+          [tuple(r)[:4] for r in momrows(c, A)], [("surf_utopia", 0, 1, 7250)])
+    for label, body in (("not JSON", b"<html>"), ("a list", b"[]"),
+                        ("a bool total", b'{"totalCount": true, "data": []}'),
+                        ("an id past 2**53", json.dumps({"totalCount": 1, "data": [
+                            {"id": 2 ** 53, "steamID": B}]}).encode())):
+        c.execute("DELETE FROM momprofiles")
+        c.execute("DELETE FROM momusers WHERE steamid=?", (B,))
+        c.commit()
+        P.enqueue(c, B, NOW)
+        P.step(c, TRACKED, 1, lambda url: body, delay=0, now=NOW)
+        check("P1117r1: %s ends the walk, nothing raised" % label,
+              (P.status(c, B)["state"],
+               c.execute("SELECT COUNT(*) FROM momusers WHERE steamid=?", (B,)).fetchone()[0]),
+              ("unknown", 0))
+    c.close()
+
+
 def case_steamsync_requeue():
     c = db()
     c.execute("INSERT INTO accounts (steamid, name, created_at) VALUES (?, 'Proto', 1)", (A,))
@@ -200,6 +234,16 @@ def case_steamsync_requeue():
     c.commit()
     check("...not again within the day", steamsync.requeue(c, NOW + 86399, True), 0)
     check("...and again once the last walk is a day old", steamsync.requeue(c, NOW + 86400, True), 2)
+    c.execute("UPDATE momprofiles SET state='complete', updated=0")
+    for i in range(P.MAX_ACTIVE):
+        c.execute("INSERT INTO momprofiles (player, momid, cursor, state, asked, updated)"
+                  " VALUES (?, 1, 0, 'queued', ?, ?)", ("x%d" % i, NOW, NOW))
+    c.commit()
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        steamsync.requeue(c, NOW + 2 * 86400, True)
+    check("P1117r1: a walk refused as busy is said, not dropped silently",
+          "momprofile busy: %s not queued again" % A in out.getvalue(), True)
     c.close()
 
 
@@ -227,8 +271,8 @@ def case_momwatch_budget():
             patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()):
         MW.main()
     back = [cmd[cmd.index("--max") + 1] for cmd in calls if "--rewalk" in cmd]
-    check("momwatch: a queued walk gets PROFILE_MAX requests of --backfill, the backfill the rest",
-          (len(fake.asked), back), (MW.PROFILE_MAX, [str(15 - MW.PROFILE_MAX)]))
+    check("momwatch: a queued walk gets PROFILE_MAX requests of EXTRA_MAX, the backfill the rest",
+          (len(fake.asked), back), (MW.PROFILE_MAX, [str(MW.EXTRA_MAX - MW.PROFILE_MAX)]))
     c = S.connect()
     check("...and its rows land on the board, never a surf map's bhop board", [tuple(r)[:4] for r in momrows(c, A)],
           [("surf_utopia", 0, 1, 5500)])
@@ -246,7 +290,7 @@ def profile_404():
 
 def main():
     try:
-        for case in (case_enqueue, case_walk, case_round_robin_refusal_and_shape,
+        for case in (case_enqueue, case_walk, case_round_robin_refusal_and_shape, case_p1117r1_hostile_rows,
                      case_steamsync_requeue, case_momwatch_budget):
             print("\n%s:" % case.__name__)
             case()

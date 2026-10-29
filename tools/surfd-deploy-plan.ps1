@@ -54,8 +54,18 @@ function Get-SurfdDeployPlan {
     $mapEntries = @('surfd/surfd.py', 'surfd/admin.py', 'surfd/mapmanifest.py',
                     'surfd/templates/admin_maps.html')
     $hidEntries = @('surfd/surfd.py', 'surfd/hidupload.py')
+    # P1117: momprofile's importers ship with it; surfd's migrate makes its table.
+    $momEntries = @('surfd/surfd.py', 'surfd/accounts.py', 'surfd/steamsync.py',
+                    'surfd/momwatch.py', 'surfd/momprofile.py')
     do {
         $before = $files.Count
+        if ($all -contains 'surfd/momprofile.py' -and
+            (@($files | Where-Object { $_ -in $momEntries }).Count -gt 0)) {
+            foreach ($file in $momEntries) {
+                if ($all -notcontains $file) { throw "momprofile runtime dependency '$file' is absent at $commit" }
+                if ($files -notcontains $file) { $added += $file; $files += $file }
+            }
+        }
         if ($all -contains 'surfd/hidupload.py' -and
             (@($files | Where-Object { $_ -in $hidEntries }).Count -gt 0)) {
             foreach ($file in $hidEntries) {

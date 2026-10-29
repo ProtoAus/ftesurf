@@ -91,6 +91,8 @@ class FakeMomentum(object):
                      r"&trackNum=(\d+)&take=(\d+)&skip=(\d+)$", url)
         mid, gm, tt, tn, take, skip = (int(x) for x in m.groups())
         self.asked.append((mid, tt, tn, skip))
+        if (mid, tt, tn, skip) in getattr(self, "gone", ()) or                 (mid, tt, tn) in getattr(self, "ends", {}) and skip >= self.ends[(mid, tt, tn)]:
+            raise MF.NoSuchBoard("HTTP 404")
         n = self.size.get((mid, tt, tn), 10)
         data = []
         for r in range(skip + 1, min(n, skip + take) + 1):
@@ -209,50 +211,106 @@ def case_stalest_boards():
           MW.stalest_boards(cat, boards, cut, 8), ["2_g1_t21", "1_g1_t01", "1_g1_t12", "1_g1_t11"])
 
 
+def run_tick(argv, call):
+    with patch.object(MW.subprocess, "call", call), patch.object(sys, "argv", argv), \
+            contextlib.redirect_stdout(io.StringIO()):
+        return MW.main()
+
+
+def opt(cmd, name):
+    return [cmd[i + 1] for i, c in enumerate(cmd) if c == name]
+
+
 def case_tick_budget():
     tsv, boards, now = stale_home("tick")
     S.migrate()
     calls = []
-
-    def call(cmd):
-        calls.append(cmd)
-        return 0
     argv = ["momwatch.py", "--tracks", tsv, "--boards", boards, "--stale", "24",
             "--max", "40", "--delay", "0", "--depth", "-1", "--want", "25",
             "--backfill", "15", "--go"]
-    with patch.object(MW.subprocess, "call", call), patch.object(sys, "argv", argv), \
-            contextlib.redirect_stdout(io.StringIO()):
-        rc = MW.main()
-
-    def opt(cmd, name):
-        return [cmd[i + 1] for i, c in enumerate(cmd) if c == name]
+    rc = run_tick(argv, lambda cmd: calls.append(cmd) or 0)
     check("an idle tick runs the rotation, then the backfill", (rc, len(calls)), (0, 2))
     if len(calls) == 2:
         rot, back = calls
-        check("the rotation re-asks page 1 of the stalest boards",
+        check("the rotation re-asks page 1 of the stalest whole map that fits ROTATE",
               (opt(rot, "--board"), "--refresh" in rot, opt(rot, "--depth")),
-              (["2_g1_t01", "2_g1_t21", "1_g1_t01", "1_g1_t12", "1_g1_t11"], True, ["0"]))
-        check("...and the two share --backfill: 5 + 10, never more than 15",
-              (opt(rot, "--max"), opt(back, "--max")), (["5"], ["10"]))
+              (["2_g1_t01", "2_g1_t21"], True, ["0"]))
+        check("...and the extras share EXTRA_MAX of --backfill: 2 + 4, never 15",
+              (opt(rot, "--max"), opt(back, "--max")), (["2"], [str(MW.EXTRA_MAX - 2)]))
         check("the backfill re-walks holed boards", "--rewalk" in back, True)
-    # A refused rotation stops the tick, as a refused backfill always did.
+    # A refused rotation stops the tick, as a refused backfill always did, and rests.
     calls[:] = []
-    with patch.object(MW.subprocess, "call", lambda cmd: calls.append(cmd) or 1), \
-            patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()):
-        rc = MW.main()
+    rc = run_tick(argv, lambda cmd: calls.append(cmd) or 1)
     check("a refused rotation stops the tick before the backfill", (rc, len(calls)), (1, 1))
-    # The rotation's argv against the fake: exactly those boards' first pages.
     fake = FakeMomentum()
     if calls:
         fetch(fake, calls[0][2:])
-    check("run for real, the rotation asks exactly those five first pages",
-          sorted(fake.asked), [(1, 0, 1, 0), (1, 1, 1, 0), (1, 1, 2, 0), (2, 0, 1, 0), (2, 2, 1, 0)])
+    check("run for real, the rotation asks exactly those two first pages",
+          sorted(fake.asked), [(2, 0, 1, 0), (2, 2, 1, 0)])
+    calls[:] = []
+    rc = run_tick(argv, lambda cmd: calls.append(cmd) or 0)
+    check("P1117r1: after a refusal the next tick rests: no rotation, a plain backfill",
+          (rc, len(calls), calls and "--board" in calls[0], calls and "--rewalk" in calls[0]),
+          (0, 1, False, False))
+    later = int(time.time()) + MW.QUIET + 1
+    with patch.object(MW.time, "time", return_value=later):
+        calls[:] = []
+        run_tick(argv, lambda cmd: calls.append(cmd) or 0)
+    check("...and after QUIET the extras are back", len(calls), 2)
+
+
+def case_player_walk_refused_carries_on():
+    tsv, boards, now = stale_home("walk")
+    S.migrate()
+    calls = []
+    argv = ["momwatch.py", "--tracks", tsv, "--boards", boards, "--delay", "0", "--depth", "-1",
+            "--backfill", "15", "--index", "--go"]
+
+    def refused(*a, **k):
+        raise MW.momfetch.Refused("HTTP 429")
+    with patch.object(MW.momprofile, "step", refused):
+        rc = run_tick(argv, lambda cmd: calls.append(cmd) or 0)
+    check("P1117r1: a refused player walk rests the extras, the backfill and the index still run",
+          (rc, [("--rewalk" in c, "momboards.py" in c[1]) for c in calls[1:]], bool(MW.resting(boards))),
+          (0, [(False, False), (False, True)], True))
+
+
+def case_404s():
+    tsv, boards = home("gone")
+    for name, (mid, bl) in CAT.items():
+        for gm, tt, tn in bl:
+            write_board(boards, mid, gm, tt, tn, range(1, 11), 10)
+    write_board(boards, 1, 1, 0, 1, [1, 2, 3, 6, 7, 9, 10], 10)          # holed
+    write_board(boards, 2, 1, 0, 1, [1, 5, 10], 10)                      # holed, walked later
+    fake = FakeMomentum()
+    fake.ends = {(1, 0, 1): 4}         # surf_a main 404s from skip 4 on: it ends there
+    args = ["--tracks", tsv, "--out", boards, "--take", "2", "--depth", "-1", "--delay", "0",
+            "--rewalk", "--go"]
+    fetch(fake, args + ["--max", "10"])
+    b = board(boards, 1, 1, 0, 1)
+    check("P1117r1: a 404 past page 1 ends the re-walk there", ("rewalk" in b, b.get("walked", 0) > 0,
+          b["total"]), (False, True, 4))
+    fake.asked = []
+    fetch(fake, args + ["--max", "10"])
+    check("...and the next run re-walks another board", sorted({(m, s) for m, _, _, s in fake.asked}),
+          [(2, 0), (2, 2), (2, 4), (2, 6), (2, 8)])
+    fake.ends, fake.gone, fake.asked = {}, {(1, 1, 1, 0)}, []
+    fetch(fake, ["--tracks", tsv, "--out", boards, "--take", "2", "--depth", "0", "--delay", "0",
+                 "--max", "1", "--refresh", "--go", "--board", "1_g1_t11"])
+    b = board(boards, 1, 1, 1, 1)
+    check("P1117r1: a page-1 404 on a board we hold rows of keeps them and records it",
+          (fake.asked, len(b["rows"]), b.get("absent"), b.get("missing", 0) > 0),
+          ([(1, 1, 1, 0)], 10, None, True))
+    check("a totalCount past TOTAL_MAX is clamped, a bool is no count",
+          (MF.parse_board({"totalCount": 10 ** 12, "data": []})[0],
+           MF.parse_board({"totalCount": True, "data": []})[0]), (MF.TOTAL_MAX, 0))
 
 
 def main():
     try:
         for case in (case_tail_past_the_deepest_rank, case_rewalk, case_board_selector,
-                     case_stalest_boards, case_tick_budget):
+                     case_stalest_boards, case_tick_budget, case_player_walk_refused_carries_on,
+                     case_404s):
             print("\n%s:" % case.__name__)
             case()
     finally:

@@ -375,6 +375,20 @@ def case_p1117_momtracks():
           1000000000)
 
 
+def case_p1117r1_tracks_guards():
+    old = ["surf_a\t101\t2\t1\t0\t1\n", "surf_a\t101\t2\t1\t1\t1\n", "surf_a\t101\t2\t1\t1\t2\n",
+           "surf_a\t101\t2\t2\t0\t1\n"]
+    inv = {"surf_a": "surf_a"}
+    row = lambda boards: {"surf_a": {"id": 101, "tier": 2, "boards": boards}}
+    check("P1117r1: a reply listing under half the map's own boards keeps the lines held",
+          W.tracks_rows(row([(1, 0, 1)]), inv, old), old)
+    check("...and so does one claiming more than TRACKS_BOARDS_MAX",
+          W.tracks_rows(row([(1, 0, n) for n in range(W.TRACKS_BOARDS_MAX + 1)]), inv, old), old)
+    check("...while one that keeps two of three replaces them",
+          W.tracks_rows(row([(1, 0, 1), (1, 1, 1)]), inv, old),
+          ["surf_a\t101\t2\t1\t0\t1\n", "surf_a\t101\t2\t1\t1\t1\n"])
+
+
 def case_plan_and_install():
     w, maps, state = setup(MOM, KSF)
     io.open(os.path.join(maps, ".mapwatch.surf_dead.part"), "w").close()
@@ -2567,7 +2581,8 @@ def main():
                  case_unhashed_zones,
                  case_bad_names_and_shapes, case_hosts,
                  case_held_builds, case_first_zones, case_variants, case_zones_and_limits,
-                 case_extra_and_lock, case_beta_zones, case_mapscan, case_p1117_momtracks):
+                 case_extra_and_lock, case_beta_zones, case_mapscan, case_p1117_momtracks,
+                 case_p1117r1_tracks_guards):
         print("\n%s:" % case.__name__)
         case()
     print()

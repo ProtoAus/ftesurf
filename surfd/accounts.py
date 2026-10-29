@@ -1665,7 +1665,8 @@ def register(app, d):
             # fetch them on their own schedule.  A sign-in never waits on this.
             for walk in (ksfprofile, momprofile):
                 try:
-                    walk.enqueue(db, steamid, now)
+                    if walk.enqueue(db, steamid, now).get("state") == "busy":
+                        log.warning("link: %s busy, not queued for %s", walk.__name__, steamid)
                 except sqlite3.Error as exc:
                     log.warning("link: %s not queued for %s (%s)", walk.__name__, steamid, exc)
 

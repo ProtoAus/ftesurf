@@ -60,6 +60,9 @@ class Tests(unittest.TestCase):
             cls.ksf_set.update({'surfd/admin.py', 'surfd/mapmanifest.py', 'surfd/templates/admin_maps.html'})
         if run(['git', '-C', str(REPO), 'cat-file', '-e', cls.ref+':surfd/hidupload.py'], check=False).returncode == 0:
             cls.ksf_set.add('surfd/hidupload.py')
+        if run(['git', '-C', str(REPO), 'cat-file', '-e', cls.ref+':surfd/momprofile.py'], check=False).returncode == 0:
+            cls.ksf_set.update({'surfd/accounts.py', 'surfd/steamsync.py', 'surfd/momwatch.py',
+                                'surfd/momprofile.py'})
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix=self._testMethodName+'-', dir=args.out)
@@ -249,6 +252,17 @@ function scp { Set-Content $env:DEPLOY_TEST_MARKER scp; throw 'network forbidden
         for only in ('surfd/surfd.py', 'surfd/ksfimport.py', 'surfd/ksfprofile.py'):
             self.assertEqual(set(self.plan(repo, 'HEAD', [only])['Files']), KSF_SET|{'surfd/ksfprofile.py'})
         self.assertEqual(self.plan(repo, complete, ['surfd/surfd.py'])['Files'], ['surfd/surfd.py'])
+
+    def test_p1117_momprofile_ships_with_its_importers(self):
+        repo, _, _ = self.fixture_repo()
+        mom = {'surfd/accounts.py', 'surfd/steamsync.py', 'surfd/momwatch.py', 'surfd/momprofile.py'}
+        for name in sorted(mom):
+            (repo/name).write_text('pass\n')
+            git(repo, 'add', '--', name)
+        git(repo, '-c', 'user.name=Offline fixture', '-c', 'user.email=fixture@example.invalid',
+            '-c', 'commit.gpgsign=false', 'commit', '-qm', 'momprofile generation')
+        for entry in sorted(mom | {'surfd/surfd.py'}):
+            self.assertEqual(set(self.plan(repo, 'HEAD', [entry])['Files']), mom | {'surfd/surfd.py'})
 
     def test_social_schema_app_accounts_and_ksf_close_both_dependency_groups(self):
         repo, _, _ = self.fixture_repo()

@@ -12,6 +12,7 @@ key and a slower time never replaces a faster.  Only boards momtracks.tsv names
 are filed: the map's own gamemode, style 0.  HTTP only queues; no handler asks.
 """
 import json
+import math
 import sqlite3
 import time
 
@@ -79,17 +80,22 @@ def _json(get, url):
     return doc
 
 
-def rows_of(data, player, alias, tracked, now):
-    """momboards.flush tuples for the PBs on boards we track."""
+def rows_of(data, player, alias, tracked, now, momid):
+    """momboards.flush tuples for this user's PBs on boards we track.  Every field
+    is checked for type and range: the reply is somebody else's data."""
     import momboards        # imports surfd: not at accounts' import time
     out = []
     for e in data:
-        if not isinstance(e, dict) or e.get("style") != 0 or e.get("isPB") is not True:
+        if not isinstance(e, dict) or e.get("isPB") is not True:
             continue
-        key = (e.get("mapID"), e.get("gamemode"), e.get("trackType"), e.get("trackNum"))
+        key = tuple(e.get(k) for k in ("mapID", "gamemode", "trackType", "trackNum"))
+        if (not all(type(x) is int for x in key) or type(e.get("style")) is not int
+                or e["style"] != 0 or type(e.get("userID")) is not int or e["userID"] != momid):
+            continue
         name, t = tracked.get(key), e.get("time")
-        tick = momboards.TICK.get(e.get("gamemode"))
-        if name is None or tick is None or not isinstance(t, (int, float)) or t <= 0:
+        tick = momboards.TICK.get(key[1])
+        if (name is None or tick is None or type(t) not in (int, float)
+                or not math.isfinite(t) or not 0.0005 <= t < 1e6):
             continue
         track, leg = momboards.track_leg(key[2], key[3])
         ms = int(round(t * 1000.0))
@@ -124,36 +130,42 @@ def step(db, tracked, budget, get, delay=1.5, now=None):
                 doc = _json(get, "%s/users?steamID=%s" % (API, player) if not momid else
                             "%s/runs?userID=%d&isPB=true&take=%d&skip=%d"
                             % (API, momid, TAKE, cursor))
-            except ValueError:
-                # Not a refusal: this walk ends, and steamsync queues it again after TTL.
+                if not momid:
+                    ids = [u.get("id") for u in doc["data"]
+                           if isinstance(u, dict) and u.get("steamID") == player]
+                    ok = len(ids) == 1 and type(ids[0]) is int and 0 < ids[0] < 2 ** 53
+                    with db:
+                        if ok:
+                            db.execute("INSERT INTO momusers (steamid, momid) VALUES (?, ?)"
+                                       " ON CONFLICT (steamid) DO UPDATE SET momid = excluded.momid",
+                                       (player, ids[0]))
+                        db.execute("UPDATE momprofiles SET momid = ?, state = ?, updated = ?"
+                                   + where[0], (ids[0] if ok else 0, "queued" if ok else "unknown",
+                                                now) + where[1])
+                    continue
+                named = db.execute("SELECT name FROM runs WHERE player = ? AND tier = 'momentum'"
+                                   " ORDER BY submitted DESC LIMIT 1", (player,)).fetchone() or \
+                    db.execute("SELECT name FROM accounts WHERE steamid = ? AND name != ''",
+                               (player,)).fetchone()
+                rows = rows_of(doc["data"], player, named[0] if named else "?", tracked, now,
+                               momid)
+                filed = momboards.flush(db, rows)
+                nxt = cursor + len(doc["data"])
+                state = ("complete" if len(doc["data"]) < TAKE or nxt >= doc["totalCount"]
+                         else "limited" if pages + 1 >= MAX_PAGES else "partial")
                 with db:
-                    db.execute("UPDATE momprofiles SET state = 'unknown', updated = ?"
-                               + where[0], (now,) + where[1])
-                continue
-            if not momid:
-                ids = [u.get("id") for u in doc["data"]
-                       if isinstance(u, dict) and u.get("steamID") == player]
-                ok = len(ids) == 1 and type(ids[0]) is int and ids[0] > 0
-                with db:
-                    if ok:
-                        db.execute("INSERT INTO momusers (steamid, momid) VALUES (?, ?)"
-                                   " ON CONFLICT (steamid) DO UPDATE SET momid = excluded.momid",
-                                   (player, ids[0]))
-                    db.execute("UPDATE momprofiles SET momid = ?, state = ?, updated = ?"
-                               + where[0], (ids[0] if ok else 0, "queued" if ok else "unknown",
-                                            now) + where[1])
-                continue
-            named = db.execute("SELECT name FROM runs WHERE player = ? AND tier = 'momentum'"
-                               " ORDER BY submitted DESC LIMIT 1", (player,)).fetchone() or \
-                db.execute("SELECT name FROM accounts WHERE steamid = ? AND name != ''",
-                           (player,)).fetchone()
-            rows = rows_of(doc["data"], player, named[0] if named else "?", tracked, now)
-            filed = momboards.flush(db, rows)
-            nxt = cursor + len(doc["data"])
-            state = ("complete" if len(doc["data"]) < TAKE or nxt >= doc["totalCount"]
-                     else "limited" if pages + 1 >= MAX_PAGES else "partial")
-            with db:
-                db.execute("UPDATE momprofiles SET cursor = ?, state = ?, updated = ?,"
-                           " pages = pages + 1, filed = filed + ?" + where[0],
-                           (nxt, state, now, filed) + where[1])
+                    db.execute("UPDATE momprofiles SET cursor = ?, state = ?, updated = ?,"
+                               " pages = pages + 1, filed = filed + ?" + where[0],
+                               (nxt, state, now, filed) + where[1])
+            except (ValueError, TypeError, OverflowError):
+                # Not a refusal: a reply this walk cannot read ends it, and steamsync
+                # queues it again after TTL.
+                try:
+                    with db:
+                        db.execute("UPDATE momprofiles SET state = 'unknown', updated = ?"
+                                   + where[0], (now,) + where[1])
+                except sqlite3.Error:
+                    return spent
+            except sqlite3.Error:
+                return spent        # the cursor stays; the next tick asks again
     return spent

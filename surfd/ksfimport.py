@@ -687,6 +687,12 @@ def record_key(rec):
     return ""
 
 
+def record_of(key):
+    """The upstream record id a record_key names ('' for none)."""
+    parts = key.split("-")
+    return parts[1] if len(parts) == 5 and parts[0] == "ksf" and parts[1].isdigit() else ""
+
+
 def record_seconds(key):
     try:
         return struct.unpack('>d', bytes.fromhex(key.split('-')[3]))[0]
@@ -1461,7 +1467,18 @@ def write_rows(rows):
                                 or not 0 < incoming_seconds < 1e6
                                 or int(round(incoming_seconds * 1000)) != r["millis"]):
                             continue
-                    if previous and previous["millis"] == r["millis"]:
+                    # P1117 review: identity is the RECORD, not a float or a date.  A
+                    # walk ('cache') row never rebinds a row naming a record unless it
+                    # is a faster run of another one; a board row always takes over
+                    # its own record from a walk-filed row.
+                    takeover = False
+                    if previous and previous["runid"] and r.get("runid"):
+                        rid = record_of(r["runid"])
+                        same = rid != "" and rid == record_of(previous["runid"])
+                        if r.get("binding") == "cache" and (same or r["millis"] >= previous["millis"]):
+                            continue
+                        takeover = same and r.get("binding") == "board"
+                    if previous and previous["millis"] == r["millis"] and not takeover:
                         oldseconds = (marker["seconds"] or 0.0) if marker else record_seconds(previous["runid"])
                         newseconds = r.get("seconds", r["millis"] / 1000.0)
                         if oldseconds and "seconds" not in r:

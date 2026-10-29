@@ -435,7 +435,10 @@ def requeue(conn, now, go):
             due = (st["state"] not in ("queued", "partial")
                    and now - st.get("updated", 0) >= walk.TTL)
             if due and go:
-                due = walk.enqueue(conn, sid, now).get("state") == "queued"
+                state = walk.enqueue(conn, sid, now).get("state")
+                if state == "busy":
+                    print("%s busy: %s not queued again" % (walk.__name__, sid))
+                due = state == "queued"
             n += due
     return n
 

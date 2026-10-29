@@ -326,8 +326,8 @@ def fetch(file):
                 parts.append(chunk)
             if expected is not None and size != expected:
                 raise http.client.IncompleteRead(b'', expected - size)
-        except TimeoutError:
-            raise                       # a trickle is the host's
+        # P1117 review: a body past its deadline was answered: the file's failure
+        # (FILESTREAK of them is the host's), not "no answer".
         except (OSError, http.client.HTTPException) as exc:
             raise BodyBroken('%s after the headers' % type(exc).__name__) from exc
     return b''.join(parts)
@@ -610,13 +610,22 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                     for k in held:
                         state['failed'].pop(k, None)
                 state['filestreak'] = {}
-                n = int(dpark.get('n') or 0) + 1
+                # A park long over does not double the next (P1117 review).
+                old = int(dpark.get('until') or 0)
+                n = (int(dpark.get('n') or 0) if now - old < K.COOLDOWN_MAX else 0) + 1
                 base = K.QUIET_COOLDOWN if code == 0 and not own else K.COOLDOWN
                 wait = min(base * 2 ** min(n - 1, 8), K.COOLDOWN_MAX)
                 K._save(os.path.join(cache, PARK),
                         dict(at=now, until=now + wait, n=n, why='demo network %d' % code))
+                if code:
+                    # An HTTP refusal is the host's: the crawl parks too, as before P1117.
+                    cn = int(park.get('n') or 0) + 1
+                    cwait = min(K.COOLDOWN * 2 ** min(cn - 1, 8), K.COOLDOWN_MAX)
+                    K._save(os.path.join(cache, '.refused'),
+                            dict(at=now, until=now + cwait, n=cn, why='demo network %d' % code))
                 job['retry'] = now + wait
-                print('KSF demos refused: network %d; demos parked %d min' % (code, wait // 60))
+                print('KSF demos refused: network %d; demos parked %d min%s'
+                      % (code, wait // 60, ', the crawl too' if code else ''))
                 break
             except (OSError, ValueError) as e:
                 job['retry'] = now + 86400

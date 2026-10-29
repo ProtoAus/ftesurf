@@ -318,14 +318,14 @@ class Tests(unittest.TestCase):
             sleep.assert_called_once_with(3.0)
             self.assertEqual(G.tick(self.cache, download=refused), (0, 0))
         self.assertEqual(len(calls), 1)
-        self.assertEqual(self.parks(), [G.PARK])
+        self.assertEqual(self.parks(), ['.refused', G.PARK])   # P1117 review: an HTTP refusal parks the crawl too
         with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=time.time()+K.COOLDOWN+1):
             self.assertEqual(G.tick(self.cache, download=lambda f: binary()), (1, 1))
-            self.assertEqual(self.parks(), [])
+            self.assertEqual(self.parks(), ['.refused'])         # the crawl's own answer lifts its park
             self.assertEqual(G.tick(self.cache, download=lambda f: self.fail('warm download')), (0, 0))
 
     def test_p1117_a_download_parks_only_downloads(self):
-        # No answer parks QUIET_COOLDOWN, doubling; an HTTP refusal COOLDOWN. Never .refused.
+        # No answer parks only downloads, QUIET_COOLDOWN doubling; an HTTP refusal COOLDOWN, and the crawl.
         self.board([self.r])
         base = int(time.time())
         def slow(file): raise TimeoutError('slow')
@@ -342,7 +342,29 @@ class Tests(unittest.TestCase):
             self.assertEqual(G.tick(self.cache, download=refused), (1, 0))
         park = K._load(os.path.join(self.cache, G.PARK))
         self.assertEqual(park['until'] - park['at'], K.COOLDOWN)
-        self.assertEqual(self.parks(), [G.PARK])
+        self.assertEqual(self.parks(), ['.refused', G.PARK])
+
+    def test_p1117r1_an_old_demo_park_does_not_double_the_next(self):
+        self.board([self.r])
+        base = int(time.time())
+        K._save(os.path.join(self.cache, G.PARK), dict(at=base - 9 * 86400, until=base - 8 * 86400, n=5))
+        def slow(file): raise TimeoutError('slow')
+        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=base):
+            self.assertEqual(G.tick(self.cache, download=slow), (1, 0))
+        park = K._load(os.path.join(self.cache, G.PARK))
+        self.assertEqual((park['n'], park['until'] - park['at']), (1, K.QUIET_COOLDOWN))
+
+    def test_p1117r1_a_body_past_its_deadline_is_the_files_failure(self):
+        class Body:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read1(self, count): return b'x'
+        with patch.object(G.urllib.request, 'build_opener') as build:
+            build.return_value.open.return_value = Body()
+            with patch.object(G.time, 'monotonic', side_effect=[0, 0, 31]):
+                with self.assertRaises(urllib.error.URLError) as cm:
+                    G.transport(G.fetch, self.r['file'])
+        self.assertIsInstance(cm.exception.reason, G.BodyBroken)
 
     def test_fixed_origin_ua_and_body_failures_set_their_file_aside(self):
         # Patch 896: a body broken after the headers is the file's -- set aside, no park.

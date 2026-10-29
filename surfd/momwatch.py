@@ -57,6 +57,7 @@ remember where it got to, because the board cache is the cursor.
 """
 import argparse
 import io
+import json
 import logging
 import os
 import subprocess
@@ -94,8 +95,34 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 LOBBY_FRESH = 300        # s; a lobby row older than this is not a live lobby
-ROTATE = 8               # P1117: page-1 refreshes a tick, taken from --backfill
-PROFILE_MAX = 2          # P1117: requests a tick for signed-in players' own PBs (momprofile)
+# P1117 review: the extras take at most EXTRA_MAX of --backfill a tick (the backfill
+# alone used ~2), and rest for QUIET after any refusal; 78 429s in ~1,650 ticks.
+EXTRA_MAX = 6
+ROTATE = 3               # page-1 refreshes a tick
+PROFILE_MAX = 1          # requests a tick for signed-in players' own PBs (momprofile)
+QUIET = 3600
+
+
+def rest(boards, why, now=None):
+    """Rest the rotation, re-walk and player walks for QUIET.  -> why."""
+    now = int(time.time()) if now is None else now
+    try:
+        momfetch.write_board(os.path.join(boards, ".quiet"), {"until": now + QUIET, "why": why})
+    except OSError as e:
+        print("could not record the rest (%s)" % e)
+    return why
+
+
+def resting(boards, now=None):
+    """-> why the extras rest now, or ""."""
+    now = int(time.time()) if now is None else now
+    try:
+        with io.open(os.path.join(boards, ".quiet"), encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        return ""
+    until = d.get("until") if isinstance(d, dict) else None
+    return str(d.get("why") or "a refusal") if type(until) is int and now < until else ""
 
 
 def profile_get(url):
@@ -326,6 +353,7 @@ def main():
         if rc != 0:
             print("momfetch stopped (%d) -- see above; nothing is retried here"
                   % rc)
+            rest(a.boards, "live refused")
             return rc
 
     # THE BACKFILL, and it is deliberately the same tool with no --map and no
@@ -333,10 +361,13 @@ def main():
     # shallowest boards in the whole library and nothing else; --depth must be a
     # real depth or there is nothing to crawl towards, hence the -1 default here
     # rather than 0.
-    # P1117: the rotation and the backfill share --backfill, so a tick asks no
-    # more than it did before either existed.
-    left = a.backfill
-    rot = stalest_boards(cat, a.boards, cut, min(ROTATE, left)) if left > 0 else []
+    # P1117: the rotation, the player walks and the backfill share at most
+    # EXTRA_MAX of --backfill; for QUIET after any refusal only the backfill runs.
+    left = min(a.backfill, EXTRA_MAX)
+    quiet = resting(a.boards)
+    if quiet:
+        print("rotation, re-walk and player walks rest after a refusal: %s" % quiet)
+    rot = stalest_boards(cat, a.boards, cut, min(ROTATE, left)) if left > 0 and not quiet else []
     if rot:
         print("\n--- rotation: page 1 of %d board(s), stalest map first ---" % len(rot))
         cmd = [sys.executable, _momfetch_path(),
@@ -353,21 +384,25 @@ def main():
         left -= len(rot)
         if rc != 0:
             print("rotation stopped (%d) -- nothing is retried here" % rc)
+            rest(a.boards, "rotation refused")
             return rc
 
-    if left > 0:
+    if left > 0 and not quiet:
         tracked = {}
         for name, m in cat.items():
             gm, mp = momfetch.gm_of(name), S.clean_map(name)
             for bgm, tt, tn in m["boards"]:
                 if gm is not None and bgm == gm and mp:
                     tracked[(m["id"], bgm, tt, tn)] = mp
+        spent = 0
         conn = S.connect()
         try:
             spent = momprofile.step(conn, tracked, min(PROFILE_MAX, left), profile_get, a.delay)
-        except (momfetch.Refused, OSError) as e:
+        except (momfetch.Refused, OSError, ValueError) as e:
+            # The walks rest; the backfill and the index still run (P1117 review).
             print("player walk REFUSED, nothing retried: %s" % e)
-            return 1
+            quiet = rest(a.boards, "player walk: %s" % e)
+            spent, fetched = PROFILE_MAX, True
         finally:
             conn.close()
         if spent:
@@ -382,7 +417,9 @@ def main():
                "--tracks", a.tracks, "--out", a.boards,
                "--take", str(a.take),
                "--depth", str(a.depth if a.depth else -1),
-               "--delay", str(a.delay), "--max", str(left), "--rewalk", "--go"]
+               "--delay", str(a.delay), "--max", str(left), "--go"]
+        if not quiet:
+            cmd.append("--rewalk")
         if fetched:
             time.sleep(a.delay)
         sys.stdout.flush()
@@ -390,6 +427,7 @@ def main():
         fetched = True
         if rc != 0:
             print("backfill stopped (%d) -- nothing is retried here" % rc)
+            rest(a.boards, "backfill refused")
             return rc
 
     if a.index and fetched:

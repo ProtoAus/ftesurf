@@ -104,6 +104,7 @@ API = "https://api.momentum-mod.org/v1"
 UA = "FTESurf/0.1 momfetch (+https://proto.bar/ftesurf)"
 TIMEOUT = 30
 TAKE_MAX = 100        # the API's own cap: take=101 is a 400
+TOTAL_MAX = 1000000   # a totalCount past this is not a board
 
 # Consecutive 404s before the sweep stops.  See NoSuchBoard: a 404 is about
 # one board, but a host that began refusing everything would answer 404 to
@@ -257,7 +258,8 @@ def parse_board(doc):
     if not isinstance(doc, dict):
         return 0, []
     total = doc.get("totalCount")
-    total = total if isinstance(total, int) else 0
+    # P1117 review: clamped, since the planner pages up to it (27,022 was the deepest, 29 Oct).
+    total = min(total, TOTAL_MAX) if type(total) is int and total > 0 else 0
     out = []
     for e in (doc.get("data") or []):
         if not isinstance(e, dict):
@@ -373,7 +375,8 @@ def main():
             if a.refresh:
                 todo.append((0, name, mid, gm, tt, tn))
             continue
-        total = cur.get("total") or 0
+        total = cur.get("total")
+        total = min(total, TOTAL_MAX) if type(total) is int and total > 0 else 0
         want = total if a.depth < 0 else (min(total, a.depth) if a.depth else
                                          min(total, take))
         wanted += want
@@ -399,10 +402,11 @@ def main():
     if a.rewalk and not walking and holes:
         _w, _f, path, job = min(holes)
         walking[path] = (0, job)
+    planned = set(todo)
     for path, (start, (name, mid, gm, tt, tn, total)) in sorted(walking.items()):
         print("re-walk           %s from skip %d of %d" % (os.path.basename(path), start, total))
         for s in range(start, max(total, start + 1), take):
-            if (s, name, mid, gm, tt, tn) not in todo:
+            if (s, name, mid, gm, tt, tn) not in planned:
                 todo.append((s, name, mid, gm, tt, tn))
     walking = {p: s for p, (s, _job) in walking.items()}
 
@@ -445,13 +449,28 @@ def main():
             # the FIRST page: a 404 at skip=900 is the board ending, not the
             # board being absent, and writing absent:True there would throw away
             # 900 good rows.
-            if skip:
+            p = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
+            cur = load_board(p)
+            if skip or (cur and cur["rows"]):
+                # P1117 review: the board ends there, and a re-walk that reached it is
+                # done; a page-1 404 (the rotation asks every board) keeps the rows.
+                if cur is None:
+                    continue
+                rec = dict(cur, fetched=int(time.time()))
+                if skip:
+                    rec["total"] = min(cur.get("total") or 0, skip)
+                else:
+                    rec["missing"] = rec["fetched"]
+                if walking.get(p) == skip or (not skip and p in walking):
+                    rec.pop("rewalk", None)
+                    rec["walked"] = rec["fetched"]
+                    walking.pop(p, None)
+                write_board(p, rec)
                 continue
             rec = {"map": name, "mapid": mid, "gamemode": gm, "trackType": tt,
                    "trackNum": tn, "total": 0, "fetched": int(time.time()),
                    "absent": True, "rows": []}
-            write_board(os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json"),
-                        rec)
+            write_board(p, rec)
             continue
         except Refused as e:
             refused = "%s (%s g%d t%d%d): %s" % (name, mid, gm, tt, tn, e)

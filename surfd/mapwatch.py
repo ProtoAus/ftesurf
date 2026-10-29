@@ -501,6 +501,7 @@ def mom_row(m):
 
 
 TRACKS_HEAD = "# map\tmapid\ttier\tgamemode\ttrackType\ttrackNum\n"
+TRACKS_BOARDS_MAX = 512     # boards a map may claim; surf_kitsune has 81
 
 
 def tracks_rows(mom, inv, old_lines):
@@ -516,9 +517,15 @@ def tracks_rows(mom, inv, old_lines):
         old.setdefault(f[0], []).append(ln if ln.endswith("\n") else ln + "\n")
     out = dict(old)
     for key, r in mom.items():
-        if key not in inv or not r.get("boards"):
+        if key not in inv or not r.get("boards") or len(r["boards"]) > TRACKS_BOARDS_MAX:
             continue
         lines = old.get(key, [])
+        # P1117 review: a reply listing under half the map's own-gamemode boards
+        # held is not trusted to drop the rest.
+        gm = "1" if key.startswith("surf_") else "2"
+        held = sum(1 for ln in lines if ln.split("\t")[3] == gm)
+        if held and 2 * sum(1 for b in r["boards"] if str(b[0]) == gm) < held:
+            continue
         f = lines[0].split("\t") if lines else []
         tier = r["tier"] if type(r.get("tier")) is int else (
             int(f[2]) if len(f) > 2 and f[2].isdigit() else 0)

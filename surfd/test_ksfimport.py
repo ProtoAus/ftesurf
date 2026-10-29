@@ -357,6 +357,54 @@ def case_no_answer():
     check("P1117: an HTTP 429 is a refusal, not transient", got, (429, False))
 
 
+def case_p1117r1_record_identity():
+    """A walk ('cache') row never rebinds a row naming a record; a board row
+    always takes over its own record from a walk-filed one (review round 1)."""
+    S.migrate()
+    sid, mp, when = "STEAM_0:0:777", "surf_ident", 1790000000
+
+    def row(binding, t, date, rid, file=None):
+        r = K.rec_row(mp, 1, 0, {"steamID": sid, "time": t, "date": date, "record_id": rid,
+                                 "file": file})
+        return dict(r, name="p", binding=binding)
+
+    def held():
+        db = sqlite3.connect(os.environ["SURFD_DB"])
+        try:
+            return db.execute("SELECT runid, replay_id, millis FROM runs WHERE tier='ksf' AND map=?",
+                              (mp,)).fetchone()
+        finally:
+            db.close()
+
+    def reset(*rows, demo=0):
+        db = sqlite3.connect(os.environ["SURFD_DB"])
+        db.execute("DELETE FROM runs WHERE map=?", (mp,))
+        db.commit()
+        db.close()
+        K.write_rows(list(rows))
+        if demo:
+            db = sqlite3.connect(os.environ["SURFD_DB"])
+            db.execute("UPDATE runs SET replay_id=? WHERE map=?", (demo, mp))
+            db.commit()
+            db.close()
+    board = row("board", 6.0, when, 7001, "replay_css_5_0_9_%d.rec" % when)
+    for label, walk in (("the same record a hair faster", row("cache", 6.0 - 1e-7, when, 7001)),
+                        ("the same record dated an hour later", row("cache", 6.0, when + 3600, 7001)),
+                        ("another record at the same millis", row("cache", 6.0002, when + 60, 7002))):
+        reset(board, demo=55)
+        K.write_rows([walk])
+        check("P1117r1: a walk row of %s keeps the board's runid and demo" % label,
+              held()[:2], (board["runid"], 55))
+    reset(board, demo=55)
+    K.write_rows([row("cache", 5.0, when + 60, 7003)])
+    check("...a faster run of another record still lands, unlinked",
+          (held()[1:], held()[0] == board["runid"]), ((0, 5000), False))
+    reset(row("cache", 6.0, when + 3600, 7001))
+    K.write_rows([board])
+    check("a board row takes over its own record from a walk-filed one dated later",
+          held()[0], board["runid"])
+
+
 def case_p1117_quiet_park():
     """No answer parks the crawl QUIET_COOLDOWN, doubling; case_watch_refusal_parks
     holds an HTTP refusal to COOLDOWN."""
@@ -809,7 +857,8 @@ def main():
                  case_linear_asks_no_stages,
                  case_write_and_filter, case_refusal, case_no_answer,
                  case_modes, case_merge_and_refresh, case_watch,
-                 case_watch_refusal_parks, case_p1117_quiet_park, case_watch_dry_and_owed,
+                 case_watch_refusal_parks, case_p1117_quiet_park, case_p1117r1_record_identity,
+                 case_watch_dry_and_owed,
                  case_review_findings, case_review_round2,
                  case_board_reads_ksf_styles):
         print("\n%s:" % case.__name__)
