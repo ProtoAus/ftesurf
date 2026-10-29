@@ -336,6 +336,45 @@ MOM = {"surf_a": M("a", tier=2), "surf_b": M("b", tier=5), "surf_c": M("c", zone
 KSF = {"surf_k": dict(Z("surf_k", "k"), tier=4), "surf_a": Z("surf_a", "ksf-a")}
 
 
+def case_p1117_momtracks():
+    """momtracks.tsv from Momentum's list: installed maps get their boards; lines the
+    list agrees with or does not carry stay byte for byte."""
+    lb = [{"gamemode": 1, "trackType": tt, "trackNum": tn, "style": st, "tier": 2, "type": 0}
+          for tt, tn, st in ((0, 1, 0), (1, 1, 0), (1, 2, 0), (2, 1, 1))]
+    mom = dict(MOM, surf_a=dict(MOM["surf_a"], leaderboards=lb),
+               surf_c=M("c", zones=False, tier=None), surf_e=M("e"))
+    w, maps, state = setup(mom, {})
+    w.cdn["surf_e"] = 404           # approved, never installed: no boards for it
+    tracks = os.path.join(os.path.dirname(maps), "momtracks.tsv")
+    old = ("# map\tmapid\ttier\tgamemode\ttrackType\ttrackNum\n"
+           "surf_a\t101\t2\t1\t1\t2\nsurf_a\t101\t2\t1\t0\t1\nsurf_a\t101\t2\t1\t1\t1\n"
+           "surf_b\t999\t5\t1\t0\t1\nsurf_c\t999\t4\t1\t0\t1\nbhop_beta\t7\t3\t2\t0\t1\n")
+    with io.open(tracks, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(old)
+    tick(maps, state, "--tracks", tracks)
+    check("P1117: a dry run leaves momtracks.tsv alone", read(tracks), old.encode())
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        tick(maps, state, "--go", "--tracks", tracks)
+    check("...a run with the list rewrites it: new maps, changed ids, the rest untouched",
+          read(tracks).decode(),
+          "# map\tmapid\ttier\tgamemode\ttrackType\ttrackNum\n"
+          "bhop_beta\t7\t3\t2\t0\t1\nbhop_d\t100\t3\t2\t0\t1\n"
+          "surf_a\t101\t2\t1\t1\t2\nsurf_a\t101\t2\t1\t0\t1\nsurf_a\t101\t2\t1\t1\t1\n"
+          "surf_b\t102\t5\t1\t0\t1\nsurf_c\t103\t4\t1\t0\t1\n")
+    check("...and says what it did",
+          [l.strip() for l in out.getvalue().splitlines() if "momtracks:" in l],
+          ["momtracks: 5 map(s), 3 new or changed"])
+    os.utime(tracks, (1000000000, 1000000000))
+    tick(maps, state, "--go", "--tracks", tracks)
+    check("...a run with nothing new does not write it", os.stat(tracks).st_mtime, 1000000000)
+    w.down.add("mom")
+    os.remove(os.path.join(maps, "surf_b.bsp"))
+    tick(maps, state, "--go", "--tracks", tracks)
+    check("...nor does a run that could not read Momentum's list", os.stat(tracks).st_mtime,
+          1000000000)
+
+
 def case_plan_and_install():
     w, maps, state = setup(MOM, KSF)
     io.open(os.path.join(maps, ".mapwatch.surf_dead.part"), "w").close()
@@ -2528,7 +2567,7 @@ def main():
                  case_unhashed_zones,
                  case_bad_names_and_shapes, case_hosts,
                  case_held_builds, case_first_zones, case_variants, case_zones_and_limits,
-                 case_extra_and_lock, case_beta_zones, case_mapscan):
+                 case_extra_and_lock, case_beta_zones, case_mapscan, case_p1117_momtracks):
         print("\n%s:" % case.__name__)
         case()
     print()
