@@ -883,6 +883,17 @@ float() ui_consent_read =
   Both buttons are now always drawn, and the lower one is a real answer rather
   than a dismissal.  See screen_terms.
 */
+// P1101: rec_terms is the engine's CVAR_NOTFROMSERVER cvar now (a server's `seta` set an
+// override cvar() read), which cvar_set refuses; localcmd_local runs at local level.
+// Queued, so it lands before the next frame; nothing reads it inside m_init.
+void(float tier) ui_terms_publish =
+{
+	if (checkbuiltin(localcmd_local))
+		localcmd_local(sprintf("rec_terms %g\n", tier));
+	else
+		cvar_set("rec_terms", ftos(tier));      // an engine before P1101: a plain cvar
+};
+
 float(float tier) ui_consent_write =
 {
 	local filestream fh;
@@ -936,7 +947,7 @@ float(float tier) ui_consent_write =
 	  Not archived: it is derived from the file every boot in m_init, and an
 	  archived copy would be a second answer that could disagree with the first.
 	*/
-	cvar_set("rec_terms", ftos(tier));
+	ui_terms_publish(tier);
 	return TRUE;
 };
 
@@ -7972,7 +7983,7 @@ void() m_init =
 	registercvar("rec_terms", "0", 0);
 	registercvar("rec_hid_upload", "0", 0);
 	ms_consent = ui_consent_read();
-	cvar_set("rec_terms", ftos(ms_consent));
+	ui_terms_publish(ms_consent);
 	MU_Init();
 	MF_Init();
 	MC_Init();

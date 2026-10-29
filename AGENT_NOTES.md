@@ -14,6 +14,14 @@
   (CL_EnqueDownload; downloads/ is a search path), and mounts only five fixed Steam folders from
   either table (FS_MapDepsNetSpec). Detail in the private tree, p1099-maptables-csqc-20261029.md. `DATA/...` from CSQC is not a bypass: the case-sensitive `data/`
   test makes it data/DATA/. Keep a new data/ table CSQC must not touch in QC_MenuTable's list.
+- **P1102: every VM reads those tables only from the gamedir's own loose files** (FS_OpenTableVFS:
+  the write gamedir, then the install's), and only as FILE_READ; no download goes into data/.
+  A package in downloads/ holding a table is ignored -- measure that with consent off, since the
+  menu's real fetch from the Pi otherwise writes loose copies over an arm's fixtures.
+- **P1101: rec_terms is an engine CVAR_NOTFROMSERVER cvar** (cl_receipt.c, beside rec_upload and
+  rec_hid_upload). cvar_set cannot write it: the menu uses ui_terms_publish (localcmd_local). A test
+  cfg's `set rec_terms N` still works (local). When checking a cvar a server may have touched, read
+  both lines a query prints: `is "X"`, then `Effective value is "Y"` -- cvar() reads Y.
 - Each table ends `# end N` (meta or dep lines): an aborted download still answers 200.
   Consent is ms_consent, the terms file -- rec_terms is a plain cvar.
 - A row whose atlas page is missing, or listed at another size in the chosen table's

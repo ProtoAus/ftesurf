@@ -21,6 +21,12 @@
 
 ## next
 
+### P1102 Map lists come only from the game's own files
+- The map tiers, map list and the list of maps that use other games' content are read only from the game's own folder, never from something a server sent.
+
+### P1101 Online consent stays yours
+- A server can no longer change whether you have agreed to play online.
+
 ### P1099 New maps between updates
 - The map list fetches the latest tiers and the list of maps that use other games' content once a session, so maps added since the last update show their tier and load with their textures.
 - A map whose picture is not in this update's thumbnails shows it from the server instead of a blank tile.

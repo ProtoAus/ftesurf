@@ -38,7 +38,7 @@ string(string path) Mmm_Stamp =
 	if (fh < 0)
 		return "";
 	st = "";
-	for (i = 0; i < 80; i = i + 1)
+	for (i = 0; i < 40; i = i + 1)  // fs.c FS_MapDepsStamp's 40, so badges and mounts agree
 	{
 		ln = fgets(fh);
 		if (ln == "")
@@ -51,6 +51,9 @@ string(string path) Mmm_Stamp =
 			else if (MP_Day(substring(st, 0, 8)) < 0
 			         || MP_Day(substring(st, 0, 8)) > MP_Day(strftime(FALSE, "%Y%m%d")) + 1)
 				st = "";          // no date, or ahead of this clock: none, as fs.c reads it
+			else if (stof(substring(st, 8, 2)) > 23 || stof(substring(st, 10, 2)) > 59
+			         || stof(substring(st, 12, 2)) > 59)
+				st = "";
 			break;
 		}
 	}
