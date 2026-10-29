@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """P1119: install_tasrevd.py --upgrade-from, against a temporary tree (Linux: the installer needs pwd).
 
-systemctl, nginx and the HTTP probe are faked: a restart serves whatever TASREVD_SOURCE the unit
-file names, so the probe sees the unit actually swapped. Run: python3 tools/test_install_tasrevd.py
+systemctl is modelled as systemd behaves: the unit file is read at daemon-reload, and a restart
+serves what was loaded then. Probes record their URL; git serves the commit's bytes (the working
+tree differs). Run: python3 tools/test_install_tasrevd.py
 """
 import json
 import os
 from pathlib import Path
-import subprocess
+import signal
+import stat
 import sys
 import tempfile
 import types
@@ -17,44 +19,61 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import install_tasrevd as t
 
 OLD, NEW = 'a' * 40, 'b' * 40
+PUBLIC = 'https://play.proto.bar/api/tasrev/map/tasrevd_install_probe'
 
 
 class Upgrade(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); d = Path(self.tmp.name)
-        self.saved = {k: getattr(t, k) for k in ('ROOT', 'STATE', 'UNIT', 'SNIPPET', 'run', 'probe_app', 'check_imports', 'check_accounts')}
+        self.saved = {k: getattr(t, k) for k in ('ROOT', 'STATE', 'UNIT', 'SNIPPET', 'run', 'probe_app', 'check_imports',
+                                                 'check_accounts', 'check_root', 'write_release')}
         t.ROOT, t.STATE = d / 'tasrevd', d / 'tasrevd-state'
         t.UNIT, t.SNIPPET = d / 'ftesurf-tasrevd.service', d / 'ftesurf-tasrevd.conf'
         self.src = d / 'src'
-        for rel in t.FILES: (self.src / rel).parent.mkdir(parents=True, exist_ok=True); (self.src / rel).write_bytes(b'# ' + rel.encode() + b'\n')
+        for rel in t.FILES:   # the working tree differs from the commit
+            (self.src / rel).parent.mkdir(parents=True, exist_ok=True); (self.src / rel).write_bytes(b'# edited, not committed\n')
         old = t.ROOT / OLD; old.mkdir(parents=True)
         (old / 'SOURCE.json').write_text(json.dumps(dict(commit=OLD, files={})))
         t.STATE.mkdir(); (t.STATE / 'tasrev.sqlite3').write_bytes(b'db'); (t.STATE / 'codes.txt').write_text('c' * 64 + '\n')
         self.accounts = Path('/srv/nvme/surfd/data/surfd.db')
         t.UNIT.write_text(t.unit_text(old, t.service_env(old, self.accounts, OLD)))
         t.SNIPPET.write_text(t.NGINX)
-        self.calls, self.active, self.serving, self.fail_new = [], 'active', OLD, False
+        self.calls, self.probes = [], []
+        self.active, self.dropins, self.loaded, self.serving = 'active', '', OLD, OLD
+        self.fail_new = self.fail_old_after = False
         t.run = self.fake_run; t.probe_app = self.fake_probe
-        t.check_imports = lambda blobs: None; t.check_accounts = lambda path: None
+        t.check_imports = lambda blobs: None; t.check_accounts = lambda path: None; t.check_root = lambda: None
         self.euid = os.geteuid; os.geteuid = lambda: 0
+        self.umask = os.umask(0o022); os.umask(self.umask)
 
     def tearDown(self):
         for k, v in self.saved.items(): setattr(t, k, v)
-        os.geteuid = self.euid
+        os.geteuid = self.euid; os.umask(self.umask)
         self.tmp.cleanup()
 
-    def fake_run(self, *args):
+    def source_of_unit(self):
+        line = [l for l in t.UNIT.read_text().splitlines() if 'TASREVD_SOURCE=' in l][0]
+        return line.split('TASREVD_SOURCE=')[1].rstrip('"')
+
+    def fake_run(self, *args, timeout=30):
         self.calls.append(args)
         out = b''
-        if args[:2] == ('git', '-C'): out = (NEW + '\n').encode() if 'rev-parse' in args else b''
-        elif args[-2:] == ('--property=ActiveState', 'ftesurf-tasrevd.service'): out = self.active.encode() + b'\n'
-        elif args[:2] == ('/usr/bin/systemctl', 'restart'):
-            src = [l for l in t.UNIT.read_text().splitlines() if 'TASREVD_SOURCE=' in l][0]
-            self.serving = src.split('TASREVD_SOURCE=')[1].rstrip('"')
+        if args[:2] == ('git', '-C'):
+            if 'rev-parse' in args: out = (NEW + '\n').encode()
+            elif 'cat-file' in args: out = b'# committed ' + args[-1].encode() + b'\n'
+        elif args[:2] == ('/usr/bin/systemctl', 'show'):
+            prop = [x for x in args if x.startswith('--property=')][0].split('=', 1)[1]
+            out = {'ActiveState': self.active, 'DropInPaths': self.dropins, 'NeedDaemonReload': 'no',
+                   'FragmentPath': str(t.UNIT)}[prop].encode() + b'\n'
+        elif args[:2] == ('/usr/bin/systemctl', 'daemon-reload'): self.loaded = self.source_of_unit()
+        elif args[:2] == ('/usr/bin/systemctl', 'restart'): self.serving = self.loaded
         return types.SimpleNamespace(stdout=out)
 
     def fake_probe(self, commit, url=None):
+        self.probes.append((commit, url))
         if self.fail_new and self.serving == NEW: raise RuntimeError('new release did not serve')
+        if self.fail_old_after and self.serving == OLD and any(c[1] == 'restart' for c in self.calls if len(c) > 1):
+            raise RuntimeError('old release did not serve either')
         if self.serving != commit: raise RuntimeError('Unexpected serving source')
 
     def main(self, *extra):
@@ -64,27 +83,41 @@ class Upgrade(unittest.TestCase):
         finally: sys.argv = old
 
     def test_dry_run_changes_nothing(self):
-        unit = t.UNIT.read_text()
+        unit = t.UNIT.read_bytes()
         self.main()
-        self.assertEqual(t.UNIT.read_text(), unit)
+        self.assertEqual(t.UNIT.read_bytes(), unit)
         self.assertFalse((t.ROOT / NEW).exists())
         self.assertFalse(any(c[:2] == ('/usr/bin/systemctl', 'restart') for c in self.calls))
 
-    def test_apply_upgrades_and_serves_the_new_release(self):
+    def test_apply_installs_the_commit_and_proves_it_publicly(self):
+        os.umask(0o077)   # an owner's tight umask must not lock proto out
         self.main('--apply')
         new = t.ROOT / NEW
         self.assertEqual(t.UNIT.read_text(), t.unit_text(new, t.service_env(new, self.accounts, NEW)))
-        self.assertEqual(json.loads((new / 'SOURCE.json').read_text())['commit'], NEW)
-        self.assertTrue(all((new / dest).is_file() for dest in t.FILES.values()))
+        for src, dest in t.FILES.items():
+            self.assertEqual((new / dest).read_bytes(), b'# committed ' + ('%s:%s' % (NEW, src)).encode() + b'\n')
+            self.assertEqual(stat.S_IMODE((new / dest).stat().st_mode), 0o644)
+        for d in (new, new / 'tools'): self.assertEqual(stat.S_IMODE(d.stat().st_mode), 0o755)
+        self.assertEqual(stat.S_IMODE((new / 'SOURCE.json').stat().st_mode), 0o644)
         self.assertEqual(self.serving, NEW)
-        self.assertTrue((t.ROOT / OLD).is_dir())                       # the old release stays
+        self.assertIn((NEW, PUBLIC), self.probes)
+        self.assertTrue((t.ROOT / OLD).is_dir())
         self.assertEqual((t.STATE / 'codes.txt').read_text(), 'c' * 64 + '\n')
         self.assertEqual(t.SNIPPET.read_text(), t.NGINX)
+        self.assertEqual(signal.getsignal(signal.SIGINT), signal.default_int_handler)
 
     def test_a_foreign_unit_is_refused(self):
         t.UNIT.write_text(t.UNIT.read_text().replace('MemoryMax=384M', 'MemoryMax=1G'))
         with self.assertRaisesRegex(RuntimeError, 'not the one this installer wrote'): self.main('--apply')
         self.assertFalse((t.ROOT / NEW).exists())
+
+    def test_a_crlf_unit_is_refused(self):
+        t.UNIT.write_bytes(t.UNIT.read_bytes().replace(b'\n', b'\r\n'))
+        with self.assertRaisesRegex(RuntimeError, 'not the one this installer wrote'): self.main('--apply')
+
+    def test_drop_ins_are_refused(self):
+        self.dropins = '/etc/systemd/system/ftesurf-tasrevd.service.d/override.conf'
+        with self.assertRaisesRegex(RuntimeError, 'drop-ins'): self.main('--apply')
 
     def test_a_changed_snippet_is_refused(self):
         t.SNIPPET.write_text(t.NGINX + '# edited\n')
@@ -98,15 +131,30 @@ class Upgrade(unittest.TestCase):
         self.active = 'failed'
         with self.assertRaisesRegex(RuntimeError, 'not running'): self.main('--apply')
 
-    def test_a_release_that_does_not_serve_puts_the_old_unit_back(self):
-        oldunit = t.UNIT.read_text(); self.fail_new = True
-        with self.assertRaises(RuntimeError): self.main('--apply')
-        self.assertEqual(t.UNIT.read_text(), oldunit)
-        self.assertEqual(self.serving, OLD)                             # restarted on the old release
-        self.assertTrue((t.ROOT / NEW).is_dir())                        # kept for inspection
+    def test_a_unit_changed_during_the_upgrade_is_not_switched(self):
+        def write_then_edit(release, commit, blobs):
+            self.saved['write_release'](release, commit, blobs); t.UNIT.write_text(t.UNIT.read_text() + '# owner\n')
+        t.write_release = write_then_edit
+        with self.assertRaisesRegex(RuntimeError, 'changed during the upgrade'): self.main('--apply')
+        self.assertEqual(self.serving, OLD)
+
+    def test_a_release_that_does_not_serve_is_rolled_back_and_proved(self):
+        oldunit = t.UNIT.read_bytes(); self.fail_new = True
+        with self.assertRaisesRegex(RuntimeError, 'rolled back, aaaaaaaaaaaa serves again'): self.main('--apply')
+        self.assertEqual(t.UNIT.read_bytes(), oldunit)
+        self.assertEqual(self.serving, OLD)                 # needs the rollback's daemon-reload, not only the file
+        self.assertTrue((t.ROOT / NEW).is_dir())
+
+    def test_a_rollback_that_does_not_serve_says_so(self):
+        self.fail_new = self.fail_old_after = True
+        with self.assertRaisesRegex(RuntimeError, 'old unit is back but did not serve'): self.main('--apply')
 
     def test_an_upgrade_takes_no_nginx_hash_or_codes(self):
         with self.assertRaises(SystemExit): self.main('--code', 'c' * 64)
+
+    def test_check_root_refuses_a_root_not_owned_by_root(self):
+        t.check_root = self.saved['check_root']
+        with self.assertRaisesRegex(RuntimeError, 'only root can write'): t.check_root()
 
 
 if __name__ == '__main__':

@@ -69,11 +69,17 @@ It never touches surfd, zonepub or a lobby, and refuses to overwrite anything al
 Each release or lobby deploy appends its csprogs sha256 to tasrevd-state/codes.txt (as proto,
 no root): statements name the code that signed them and arrive later.
 
-An upgrade (P1119): `--source <clean checkout> --commit <sha> --upgrade-from <installed sha>` is a
-dry run; under sudo with `--apply` it writes /srv/nvme/ftesurf-ops/tasrevd/<sha> beside the old
-release, points the unit at it and restarts. It refuses unless the unit and the nginx snippet are
-byte for byte what this installer wrote for the installed release, and puts the old unit back if
-the new release does not serve its source. State, codes.txt and nginx are not touched. Tests:
+An upgrade (P1119): `--source <checkout> --commit <sha> --upgrade-from <installed sha>` is a dry
+run; under sudo with `--apply` it writes the commit's own files (git objects, not the working
+tree) to /srv/nvme/ftesurf-ops/tasrevd/<sha> beside the old release, points the unit at it and
+restarts, with Ctrl-C and hangup ignored until the new source answers locally and publicly. It
+refuses unless the unit and the nginx snippet are byte for byte what this installer wrote for the
+installed release, with no drop-ins or pending reload. If the new release does not serve, the old
+unit is put back, restarted and probed, and the error says whether the old release serves again.
+State, codes.txt and nginx are not touched. Limits: rows the new code wrote before a rollback stay;
+an upgrade runs no schema change (a release that needs one needs its own step); a failed upgrade
+keeps its directory, which must be removed before a retry; a downgrade or a change of unit settings
+is not an upgrade. /srv/nvme/ftesurf-ops itself is proto's; the release root is root's. Tests:
 `python3 tools/test_install_tasrevd.py` (Linux).
 
 Tests: `python surfd/test_tasrevd.py`.

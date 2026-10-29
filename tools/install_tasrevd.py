@@ -19,8 +19,10 @@ import os
 from pathlib import Path
 import pwd
 import re
+import signal
 import socket
 import sqlite3
+import stat
 import subprocess
 import sys
 import tempfile
@@ -54,7 +56,7 @@ HEX64 = re.compile('[0-9a-f]{64}')
 
 
 def sha(body): return hashlib.sha256(body).hexdigest()
-def run(*args): return subprocess.run(args, check=True, capture_output=True, timeout=30)
+def run(*args, timeout=30): return subprocess.run(args, check=True, capture_output=True, timeout=timeout)
 def safe_path(p):
     if not re.fullmatch(r'/[a-zA-Z0-9_./-]+', str(p)) or '..' in Path(p).parts: raise ValueError('Unsafe configured path')
 
@@ -94,10 +96,20 @@ def service_env(release, account_db, commit):
 
 
 def write_release(release, commit, blobs):
-    release.mkdir(parents=True, mode=0o755)
+    # Modes set outright: an owner's umask 077 would leave proto unable to enter the release.
+    release.mkdir(parents=True, mode=0o755); release.chmod(0o755)
     for dest, body in blobs.items():
-        p = release / dest; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(body); p.chmod(0o644)
-    (release / 'SOURCE.json').write_text(json.dumps(dict(commit=commit, files={k: sha(v) for k, v in blobs.items()}), indent=2) + '\n')
+        p = release / dest
+        if p.parent != release: p.parent.mkdir(exist_ok=True); p.parent.chmod(0o755)
+        p.write_bytes(body); p.chmod(0o644)
+    src = release / 'SOURCE.json'
+    src.write_text(json.dumps(dict(commit=commit, files={k: sha(v) for k, v in blobs.items()}), indent=2) + '\n'); src.chmod(0o644)
+
+
+def commit_blobs(source, commit):
+    # The commit's own bytes, not the working tree's (skip-worktree hides edits from status).
+    return {dest: run('git', '-C', str(source), '-c', 'core.fsmonitor=false', 'cat-file', 'blob', '%s:%s' % (commit, src)).stdout
+            for src, dest in FILES.items()}
 
 
 def await_probe(commit, url=None, tries=20, pause=.25):
@@ -108,9 +120,36 @@ def await_probe(commit, url=None, tries=20, pause=.25):
             time.sleep(pause)
 
 
-def replace_unit(text):
+def replace_unit(body):
     tmp = UNIT.with_name(UNIT.name + '.p1119-new')
-    tmp.write_text(text); tmp.chmod(0o644); os.replace(tmp, UNIT)
+    tmp.write_bytes(body); tmp.chmod(0o644); os.replace(tmp, UNIT)
+
+
+def unit_property(name):
+    return run('/usr/bin/systemctl', 'show', '--value', '--property=' + name, 'ftesurf-tasrevd.service').stdout.decode().strip()
+
+
+def check_root():
+    # Root writes the release here: a symlinked, foreign or group/other-writable root is refused.
+    st = os.lstat(ROOT)
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode) or st.st_uid != 0 or st.st_mode & 0o022:
+        raise RuntimeError('The release root is not a directory only root can write')
+
+
+def rollback(oldunit, newunit, oldcommit, why):
+    """Puts the old unit back and proves it serves; returns what happened, for the error."""
+    if UNIT.read_bytes() != newunit:
+        return 'upgrade failed (%r) and the unit changed meanwhile: left as it is; owner inspection' % why
+    replace_unit(oldunit)
+    try:
+        subprocess.run(['/usr/bin/systemctl', 'reset-failed', 'ftesurf-tasrevd.service'], capture_output=True, timeout=30)
+        run('/usr/bin/systemctl', 'daemon-reload')
+        run('/usr/bin/systemctl', 'restart', 'ftesurf-tasrevd.service', timeout=120)
+        await_probe(oldcommit)
+    except BaseException as e:
+        return ('upgrade failed (%r); the old unit is back but did not serve (%r): systemctl status ftesurf-tasrevd'
+                % (why, e))
+    return 'upgrade failed (%r); rolled back, %s serves again (the new release directory stays)' % (why, oldcommit[:12])
 
 
 def upgrade(a, blobs):
@@ -120,34 +159,39 @@ def upgrade(a, blobs):
     if new.exists() or new.is_symlink(): raise RuntimeError('The new release directory already exists')
     if json.loads((old / 'SOURCE.json').read_text()).get('commit') != a.upgrade_from:
         raise RuntimeError('The old release directory is not that commit')
-    oldunit = unit_text(old, service_env(old, a.account_db, a.upgrade_from))
-    if UNIT.read_text() != oldunit: raise RuntimeError('The unit is not the one this installer wrote for that release; owner inspection')
-    if SNIPPET.read_text() != NGINX: raise RuntimeError('The nginx snippet changed; owner inspection')
+    oldunit = unit_text(old, service_env(old, a.account_db, a.upgrade_from)).encode()
+    if UNIT.read_bytes() != oldunit: raise RuntimeError('The unit is not the one this installer wrote for that release; owner inspection')
+    if SNIPPET.read_bytes() != NGINX.encode(): raise RuntimeError('The nginx snippet changed; owner inspection')
     if not (STATE / 'tasrev.sqlite3').is_file() or not (STATE / 'codes.txt').is_file(): raise RuntimeError('Service state missing')
-    if run('/usr/bin/systemctl', 'show', '--value', '--property=ActiveState', 'ftesurf-tasrevd.service').stdout.decode().strip() != 'active':
-        raise RuntimeError('The service is not running; owner inspection')
+    if unit_property('ActiveState') != 'active': raise RuntimeError('The service is not running; owner inspection')
+    if unit_property('DropInPaths') or unit_property('NeedDaemonReload') != 'no' or unit_property('FragmentPath') != str(UNIT):
+        raise RuntimeError('The unit has drop-ins, a pending reload or another unit file; owner inspection')
+    check_root()
     probe_app(a.upgrade_from)   # what serves now is the old release
     check_accounts(a.account_db)
     check_imports(blobs)
-    print('Preflight (upgrade): clean source, the unit and snippet this installer wrote for %s, state present, serving it' % a.upgrade_from[:12])
+    print('Preflight (upgrade): the commit\'s files, the unit and snippet this installer wrote for %s, state present, serving it'
+          % a.upgrade_from[:12])
     if not a.apply:
         print('DRY RUN: no changes; owner may rerun under sudo with --apply')
         return
     if os.geteuid() != 0: raise RuntimeError('Owner sudo/root is required for --apply')
     write_release(new, a.commit, blobs)
-    newunit = unit_text(new, service_env(new, a.account_db, a.commit))
-    replace_unit(newunit)
+    newunit = unit_text(new, service_env(new, a.account_db, a.commit)).encode()
+    if UNIT.read_bytes() != oldunit: raise RuntimeError('The unit changed during the upgrade; nothing switched (the new release directory stays)')
+    # The switch and its proof are one step: Ctrl-C or a dropped session must not leave the unit ahead of systemd.
+    held = {n: signal.signal(n, signal.SIG_IGN) for n in (signal.SIGINT, signal.SIGHUP)}
     try:
-        run('/usr/bin/systemctl', 'daemon-reload')
-        run('/usr/bin/systemctl', 'restart', 'ftesurf-tasrevd.service')
-        await_probe(a.commit)
-        await_probe(a.commit, 'https://play.proto.bar/api/tasrev/map/tasrevd_install_probe', pause=.5)
-    except Exception:
-        if UNIT.read_text() == newunit:
-            replace_unit(oldunit)
+        replace_unit(newunit)
+        try:
             run('/usr/bin/systemctl', 'daemon-reload')
-            run('/usr/bin/systemctl', 'restart', 'ftesurf-tasrevd.service')
-        raise   # the new release directory stays for inspection
+            run('/usr/bin/systemctl', 'restart', 'ftesurf-tasrevd.service', timeout=120)
+            await_probe(a.commit)
+            await_probe(a.commit, 'https://play.proto.bar/api/tasrev/map/tasrevd_install_probe', pause=.5)
+        except BaseException as e:
+            raise RuntimeError(rollback(oldunit, newunit, a.upgrade_from, e)) from e
+    finally:
+        for n, h in held.items(): signal.signal(n, h)
     print('Upgraded the TAS revision service to %s (the old release stays at %s)' % (a.commit, old))
 
 
@@ -195,8 +239,7 @@ def main():
         if not a.code or not all(HEX64.fullmatch(c) for c in a.code): ap.error('At least one --code (64 lowercase hex)')
     for p in (a.source, a.account_db): safe_path(p)
     if run('git', '-C', str(a.source), 'rev-parse', 'HEAD').stdout.decode().strip() != a.commit: raise RuntimeError('Source ref differs')
-    if run('git', '-C', str(a.source), 'status', '--porcelain', '--', *FILES).stdout: raise RuntimeError('Service source is not clean at the inspected commit')
-    blobs = {dest: (a.source / src).read_bytes() for src, dest in FILES.items()}
+    blobs = commit_blobs(a.source, a.commit)
     if a.upgrade_from is not None:
         upgrade(a, blobs)
         return
