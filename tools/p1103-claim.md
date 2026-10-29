@@ -30,7 +30,7 @@ Acceptance, timing arithmetic and unsupported held/parked replay remain unchange
 - Exact committed/tagged source rebuilt with the normal native revision/date
   arguments: all 58 native cases pass again.
 - Recording reader: initial source 945 checks/zero failures; after upstream reader
-  additions, current-main 949 checks/zero failures. All 504 same-byte recording /
+  additions, commit `0e420a5e` passes 949 checks/zero failures. All 504 same-byte recording /
   paired-sidecar inputs retain their fault counts (zero increases).
 - Baseline/candidate incremental dedicated compilations: no warnings. LSP reports
   only existing warnings outside the edited seam. No QC source changes by P1103.

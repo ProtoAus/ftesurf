@@ -3022,6 +3022,14 @@ cannot be used, ask; do not silently scatter copies elsewhere.
   Do not assume `-NoDeploy` suppresses every native copy, or that an unsupported
   flag protects anything. Keep control builds away from live destinations;
   intentional deployment still follows the dual-install/Pi operations rules.
+- **Importing a read-only helper can still write beside it (29 Oct 2026).**
+  Python's normal module loader may create `__pycache__` in a retained helper's
+  original directory. Preserve the measured helper in YOUR root before import
+  and inspect/rebind its root parameters, or set `PYTHONDONTWRITEBYTECODE=1`
+  before starting Python (`sys.dont_write_bytecode = True` before import in an
+  existing process). Do not execute an older harness's hardcoded write paths.
+  A cache timestamp alone does not prove ownership: leave uncertain foreign
+  artifacts untouched and record the exact recovery path, not a blanket cleanup.
 - **Retire what you own before ending the task.** Stop only your processes;
   verify no peer, lock or registered descendant still needs the tree. Inspect
   staged, unstaged, untracked AND ignored content. Preserve unique source,
