@@ -1,6 +1,6 @@
 # P1115: installs a staged surfd generation's drop-in (surfd_dropin_install.py). proto starts it with
-# `sudo -n systemctl start surfd-dropin-install.service` (systemctl returns 1 for any failure: the
-# result is /run/surfd-dropin-install.status, whose line carries this run's InvocationID).
+# `sudo -n systemctl start surfd-dropin-install.service`: exit 0 is success; on a failure (1)
+# /run/surfd-dropin-install.status says why, naming the candidate's sha256 and the time.
 # As a system unit it runs in root's own cgroup, with no terminal of the caller's.
 [Unit]
 Description=Install a staged surfd generation drop-in (P1115)

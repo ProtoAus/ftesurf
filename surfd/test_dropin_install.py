@@ -168,8 +168,10 @@ class FS(unittest.TestCase):
         self.assertEqual(slurp(os.path.join(self.ddir, self.backups()[0])), self.live.encode())
         self.assertFalse([n for n in os.listdir(self.ddir) if n.endswith(".tmp")])
         self.assertIn("installed", slurp(D.LOG, "r"))
-        self.assertIn(" exit 0: installed", slurp(D.STATUS, "r"))
-        self.assertTrue(slurp(D.STATUS, "r").startswith("invocation "))
+        st = slurp(D.STATUS, "r")
+        self.assertIn(" exit 0: installed", st)
+        import hashlib
+        self.assertIn(" candidate %s " % hashlib.sha256(self.cand.encode()).hexdigest()[:16], st)   # review 4
 
     def test_dry_run_already_installed(self):
         with open(D.LIVE, "w") as f:
@@ -214,6 +216,23 @@ class FS(unittest.TestCase):
                 mock.patch.object(D, "RELOAD", ["/bin/false"]):
             self.assertEqual(self.run_main(), 0)      # review 3: systemd up to date, no reload asked
         self.assertIn("systemd is up to date", slurp(D.STATUS, "r"))
+
+    def test_status_names_the_invocation(self):      # review 4: M7
+        with mock.patch.dict(os.environ, {"INVOCATION_ID": "abc123"}):
+            self.assertEqual(self.run_main(), 0)
+        self.assertIn(" invocation abc123 exit 0:", slurp(D.STATUS, "r"))
+
+    def test_unknown_reload_state_counts_as_needed(self):    # review 4: M2, M3
+        with open(D.LIVE, "w") as f:
+            f.write(self.cand)              # already installed: only needs_reload decides
+        for probe in ([os.path.join(self.base, "no-such-systemctl")], ["/bin/echo", ""]):
+            with mock.patch.object(D, "NEEDS_RELOAD", probe), mock.patch.object(D, "RELOAD", ["/bin/false"]):
+                self.assertEqual(self.run_main(), 3, probe)
+
+    def test_dangling_symlink_is_not_missing(self):  # review 4: M4 (lexists, not exists)
+        shutil.rmtree(self.aw + "/x")
+        os.symlink(self.base + "/nowhere", self.aw + "/x")
+        self.assertEqual(self.run_main(), 0)
 
     def test_reload_that_raises_is_3(self):          # review 3
         with mock.patch.object(D, "RELOAD", [os.path.join(self.base, "no-such-systemctl")]):

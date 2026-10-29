@@ -4,9 +4,12 @@
 Runs as root ONLY as surfd-dropin-install.service (a oneshot), which proto may start with
 `sudo -n systemctl start surfd-dropin-install.service` (the sudoers line). As a system unit
 it is in root's own cgroup with no terminal of the caller's, so proto cannot pause, freeze
-or signal it partway (review 2). `systemctl start` returns 1 for ANY failure, and proto
-cannot read the journal: the result is STATUS, one world-readable line naming this run's
-InvocationID (compare `systemctl show -p InvocationID --value` taken after the start).
+or signal it partway (review 2). Exit 0 from `sudo -n systemctl start` IS success. Any
+failure returns 1 and proto cannot read the journal: then STATUS says why -- one
+world-readable line naming the candidate it read (its sha256, first 16) and the time, so
+a line about another candidate, or older than the start, is not this run's (a start the
+start limit refused writes none). The unit is unloaded once it succeeds, so its
+InvocationID cannot be read afterwards (review 4).
 
     python3.11 -ISB surfd_dropin_install.py --dry-run     (anyone: check, install nothing)
 
@@ -60,6 +63,7 @@ TMP = re.compile(r"\.10-guarded-startup\..+\.tmp")
 NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 NONBLOCK = getattr(os, "O_NONBLOCK", 0)
 DIRECTORY = getattr(os, "O_DIRECTORY", 0)
+_cand_sha = "-"                         # the candidate this run read, for STATUS
 
 
 class Refused(Exception):
@@ -324,9 +328,9 @@ def _say(code, line, dry=False):
         try:
             fd = os.open(STATUS + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC | NOFOLLOW, 0o644)
             with os.fdopen(fd, "w") as f:
-                f.write("invocation %s at %s exit %d: %s\n" % (
-                    os.environ.get("INVOCATION_ID", "-"),
-                    datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), code, line))
+                f.write("at %s candidate %s invocation %s exit %d: %s\n" % (
+                    datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), _cand_sha,
+                    os.environ.get("INVOCATION_ID", "-"), code, line))
             os.replace(STATUS + ".new", STATUS)
         except OSError:
             pass
@@ -338,9 +342,11 @@ def _say(code, line, dry=False):
 
 
 def _run(dry):
+    global _cand_sha
     try:
         # Everything proto controls first, then the live file (root's), last.
         cand_bytes = read_candidate()
+        _cand_sha = hashlib.sha256(cand_bytes).hexdigest()[:16]
         new, gen, label = parse_tail(cand_bytes.decode("ascii", "replace"))
         check_root(new, gen)
         live_bytes = read_live()
