@@ -280,7 +280,9 @@ void(entity e, float settled) SV_TASReplayFrame =
 
 	good = FALSE;
 	state = e.run_tas_replaystate;
-	if (state == TAS_TAPE_ACTIVE && (e.run_t_state != TS_RUNNING ||
+	// P1100: a legal back replays its start box while armed, with no recording open.
+	if (state == TAS_TAPE_ACTIVE && !(e.taslg_on && e.taslg_target >= 0 && e.run_t_state == TS_ARMED &&
+	    e.rec_rec_serial == e.run_tas_replayserial) && (e.run_t_state != TS_RUNNING ||
 	    !(e.run_t_flags & TF_RECORDING) || e.rec_rec_serial != e.run_tas_replayserial))
 	{
 		tas_tape(e, 0, 0, 0, '0 0 0', '0 0 0', 0);

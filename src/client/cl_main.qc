@@ -2361,6 +2361,14 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas optimize %g %s%s\n", tsseat + 1, tsvalue, argv(3), tsline));
 		}
+		else if (cmdargc == 3 && !strcmp(argv(1), "start"))     // P1100: a legal start at a start zone
+		{
+			tsvalue = stof(argv(2));
+			if (!(tsvalue >= 0 && tsvalue < 256 && tsvalue == floor(tsvalue)) || argv(2) != ftos(tsvalue))
+				print("tas start <zone>: a start or stage zone's number\n");
+			else
+				localcmd(sprintf("p%g cmd tas start %g\n", tsseat + 1, tsvalue));
+		}
 		else if (cmdargc == 3 && !strcmp(argv(1), "speed"))
 		{
 			tsvalue = stof(argv(2));

@@ -738,6 +738,9 @@ float sv_ts_taint_uid[FS_MAXPLAYERS]; // existing native userid, VM-only; surviv
 .float run_tas_replayreq, run_tas_replaynotice, run_tas_replayhead, run_tas_replayfirst;
 .float run_tas_replaybase, run_tas_replayserial;
 .vector run_tas_cmdkey;          // native uint32 sequence as two exact 16-bit words + valid
+// P1100: a legal-start session (sv_taslegal.qc); taslg_moved counts placements it did not make.
+.float taslg_on, taslg_zone, taslg_n, taslg_len, taslg_startat, taslg_target, taslg_serial;
+.float taslg_placing, taslg_moved, taslg_mark, taslg_wait;
 float sv_tas_taint_uid[FS_MAXPLAYERS];
 
 void() SV_TimeScaleMapReset =
@@ -799,6 +802,7 @@ float(entity e) SV_TASFlags =
 
 void(entity e) SV_TASCancel =
 {
+	if (!e.taslg_placing) e.taslg_moved = e.taslg_moved + 1;
 	if (checkbuiltin(tas_tape)) tas_tape(e, 0, 0, 0, '0 0 0', '0 0 0', 0);
 	e.run_tas_paused = e.run_tas_pending = e.run_tas_fault = e.run_tas_rwpin = 0;
 	e.run_tas_seen = e.run_tas_done;

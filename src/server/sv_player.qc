@@ -15,6 +15,8 @@ void(entity e) SV_TASHistoryReset;
 void(entity e) SV_TASProjectReset;
 void(entity e) SV_TASProjectFrame;
 void(entity e) SV_TASOptFrame;
+void(entity e) SV_TASLegalLog;
+void(entity e) SV_TASLegalFrame;
 void(entity e) SV_TASOptReset;
 void(entity e, string why) SV_TASOptStop;
 void(entity e) SV_TASProjectTouch;
@@ -691,6 +693,7 @@ void() PlayerPreThink =
 	// Patch 1025: what the engine reads after this hook (sv_user.c): this command touches.
 	self.run_touchran = !self.run_pmhold;
 	SV_TimerInFrame(self);
+	SV_TASLegalLog(self);           // P1100: a TAS step in the start box of a legal start
 };
 
 /*
@@ -838,6 +841,7 @@ void() PlayerPostThink =
 		if (self.run_tas_done == self.run_tas_seen)
 		{
 			SV_TASOptFrame(self);   // P1088: its backs and tapes start on idle paused frames
+			SV_TASLegalFrame(self); // P1100: likewise a legal back's replay
 			return;
 		}
 		self.run_tas_seen = self.run_tas_done;
@@ -915,6 +919,7 @@ void() PlayerPostThink =
 	SV_TASReplayFrame(self, TRUE);  // completion only after clock/recorder/retained head settle
 	SV_TASProjectFrame(self);       // P1082: the next load chunk; a non-TAS rewind detaches
 	SV_TASOptFrame(self);           // P1088: the optimizer's next candidate
+	SV_TASLegalFrame(self);         // P1100: the start's tick, a legal back's next chunk
 	SV_WatchFrame(self);            // ...and the replay/rewind pin holds no speed
 
 	// Pinned at a save-lock while the load key is held.  After the timer, so the
@@ -1403,6 +1408,7 @@ void(entity e, float count, float ticket) SV_TASQueueSteps =
 #include "sv_tasplan.qc"
 #include "sv_tasproject.qc"
 #include "sv_tasoptimize.qc"
+#include "sv_taslegal.qc"
 
 // The control switch and retained ancestry deliberately have different lifetimes.
 void(entity e, float argc) SV_TASCommand =
@@ -1461,10 +1467,20 @@ void(entity e, float argc) SV_TASCommand =
 		SV_TASPlanCommand(e, argc);
 		return;
 	}
+	if (!strcmp(action, "start") && argc == 3) { SV_TASLegalStart(e, stof(argv(2))); return; }
 	if (!strcmp(action, "back") && argc >= 2 && argc <= 4)
 	{
 		count = argc >= 3 ? stof(argv(2)) : 1;
 		ticket = argc == 4 ? stof(argv(3)) : e.run_tas_req + 1;
+		// P1100: in the start box, or back across the start, a legal session replays from the start.
+		if (SV_TASLegalValid(e) && e.run_tas_paused && !e.run_tas_pending && count >= 1 && count <= 128 && count == floor(count)
+		    && ticket > e.run_tas_req && ticket <= 16000000 && ticket == floor(ticket))
+		if (e.run_t_state == TS_ARMED || SV_TimerTicks(e) - count < 0)
+		{
+			e.run_tas_req = ticket;
+			SV_TASLegalBack(e, (e.run_t_state == TS_ARMED ? e.taslg_n : e.taslg_startat + SV_TimerTicks(e)) - count);
+			return;
+		}
 		SV_TASBack(e, count, ticket);
 		return;
 	}
@@ -1489,6 +1505,9 @@ void(entity e, float argc) SV_TASCommand =
 			e.run_tas_planpitch, e.run_tas_planyaw, e.run_tas_planbits, e.run_tas_planair));
 		sprint(e, PRINT_HIGH, sprintf("tas: timeline tick %.0f hull %.9g eye %.9g duck %.0f\n",
 			SV_TimerTicks(e), e.maxs_z - e.mins_z, e.view_ofs_z, (e.pmove_flags & PMF_DUCKED) ? 1 : 0));
+		if (e.taslg_on)
+			sprint(e, PRINT_HIGH, sprintf("tas: legal start zone %.0f tick %.0f logged %.0f started %.0f valid %.0f\n",
+				e.taslg_zone, e.taslg_n, e.taslg_len, e.taslg_startat, SV_TASLegalValid(e)));
 		return;
 	}
 	if (argc == 2 && !strcmp(action, "pause"))
