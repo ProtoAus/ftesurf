@@ -9,7 +9,7 @@ context join, common bank policy, movement/trajectory/threshold/repeat/output or
 captured data/format/flag/tier/native pin/backend/Build/release change. One
 activation contributor only, not full body/config/logical/multisource accounting.
 
-## Locally verified; independent reviews and ordinary deployment pending
+## Verified; two independent reviews clear; ordinary deployment verified
 
 Final23 paired actual native-QC units, same qualified native/compiler/fixture/
 runner/other source inputs; only entity module differs. Public I/O and real
@@ -36,4 +36,36 @@ diagnostics equal P1125control with unchanged reader:328faultyREC/7faultyVIEW,
 zero introduced, NOT faultfree. Exact raw inputs/failures/reports remain private.
 No authored BSP contact/native mover/prediction/socket/grant/fresh finished
 record/sign/rank/owner feel claim. Fixture recording disabled; only bank sprint
-intercepted. Human checks pending in lextest.md; current installed fleet is P1125.
+intercepted. Human checks pending in lextest.md; local qualification preceded the
+ordinary deployment recorded below (its fleet was P1125).
+
+## Ordinary deployment — 2026-10-29
+
+Both fresh independent read-only reviews report no issues on exact runtime
+QC360b6a15909a7f381f078e0cdce082cd6e79a26f /engine documentation
+a29923f12e9078cbe9e3392f08382052f92b67c1, published exact before promotion. They
+checked actual code/frozen inputs/results and the original failure/correction.
+Source/ref/watchdog checks are independent; committed-range/status/index/tree/
+staged-byte Git provenance parent-produced, not independent child CLI execution.
+Supported normal build SS/menu0warnings/2oldCSF333/zeroNEW; actual status7 included
+spectators and was empty. Ordinary nonforce deployment, one restart per12 lobbies.
+
+Both actual Windows installs six DAT/LNO+actualprev and original/preprev rollback
+verified. Pi exact QW/CS+actualprev and rollback,12fresh same-native actors/healthy12/
+empty verified2026-10-29 20:22:27.669399UTC. All16347/142Windows and35144Pi protected
+paths retain bytes, none missing/zero newPi paths. Backendfiles/unit/AI/native/
+config unchanged. No native/backend/config/Build/release action. Immutable six
+artifacts and rollback retained.
+
+Shipped SHA256 QWc945e77e31504c6a59d372c82eda9fa31d299464fef7fd2b51be8ba7a10e2a84;
+CSfa9bb6d396342b24cbce496898bb7d056dca996b0805bd1f2583358d6efde8a1;
+MENU7cb11cb1d5c0db4a7ab015c222ff837ed5be49642b7d8fce27c8fa9849f4d43e.
+CS/MENU/native/client source unchanged, reuse prior accepted served-CS/drawn
+chain, NOT new GUI/wire/mover/elapsedclock/finishedrecord/rank/owner-feel proof.
+
+101owned files preserved in verified ZIP; only9files/oneNoDeployroot retired,
+92fileminimalrig retained+archived, zero owned games/links/gates. Exact owned
+canonical reservation retired after original-hash/published-number proof, original
+retained and not assumed equal to this public Markdown. Peer/index/player data
+untouched. Delivery-only prose does not rebuild reviewed runtime. Full broader
+value bank stays open; human-only checks remain pending in lextest.md.

@@ -1,9 +1,10 @@
 # lextest.md — things waiting on a human
 
-## P1126 reversal/catapult status (pending deployment and human check)
+## P1126 reversal/catapult status (pending human check)
 
-Paired direct-QC value/IO controls and full build pass; independent reviews and
-deployment remain pending. If a map with reversal/catapult pads is available,
+Both independent reviews clear; deployed both Windows installs/all12Pi lobbies,
+2026-10-29 20:22UTC. Paired direct-QC controls/full build/unchanged-client draw reuse
+are not human acceptance. If a map with reversal/catapult pads is available,
 confirm direction/speed, repeat timing and current-run status feel normal. No
 actual BSP/native mover/prediction/elapsed-clock/finished-ranking or owner feel
 acceptance is established by the synthetic field/deadline-controlled units.
