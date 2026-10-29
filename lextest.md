@@ -1,9 +1,10 @@
 # lextest.md — things waiting on a human
 
-## P1125 gravity zones/status (pending deployment and human check)
+## P1125 gravity zones/status (pending human check)
 
-Actual-QC profile/reset units and full build pass; independent reviews and
-ordinary deployment are pending. On a map with a gravity zone, confirm the
+Both independent reviews clear; deployed both Windows installs/all12Pi lobbies,
+2026-10-29 19:34UTC. Actual-QC profile/reset units, full build and unchanged-client
+draw reuse are not human acceptance. On a map with a gravity zone, confirm the
 ordinary gravity change, any configured return on exit, and current-run status
 remain normal. The numeric/profile units do not establish authored BSP contact,
 native prediction, finished ranking or owner movement feel. Nothing here is

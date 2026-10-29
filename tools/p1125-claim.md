@@ -12,7 +12,7 @@ policy change. No captured field/format/flag/tier/native pin, backend, Build or
 release action. One activation contributor, NOT complete gravity/body/logical/
 config/phase/world/multisource commitment accounting.
 
-## Locally verified; independent reviews and ordinary deployment pending
+## Verified; two independent reviews clear; ordinary deployment verified
 
 Same qualified native/compiler/fixture/runner and other source inputs, only four
 intended production modules differ. Fourteen paired actual native-QC units use
@@ -37,4 +37,36 @@ P1124teleport22 regression passes on final source. Reader949/0/stderr0; fresh
 527REC/167VIEW entire paths/bytes/diagnostics equal retained P1124control with
 byte-identical reader:328faultyREC/7faultyVIEW, zero introduced, NOTfaultfree.
 Human checks are pending in lextest.md. Exact source bindings/raw results remain
-private. Existing installed cohort is P1124; this change is not yet deployed.
+private. The local qualification above preceded deployment; its fleet was P1124.
+
+## Ordinary deployment — 2026-10-29
+
+Both fresh independent read-only reviews report no issues on exact runtime
+QC85a2a9a0682bb52a21673026d86298e186420026 and engine documentation
+f4d17212dac48990847a4445c2b42664072b71de, published exact before promotion.
+Source/ref/watchdog checks are independent; committed-range/status/index/tree/
+staged-equality Git provenance is parent-produced, explicitly not child Git CLI.
+Supported normal build SS/menu0warnings,2oldCSF333/zeroNEW. Actual status7 included
+spectators and was empty; ordinary nonforce deployment, one restart per12 lobbies.
+
+Both actual Windows installs six DAT/LNO+actualprev and preserved original/preprev
+rollback verified. Pi exact QW/CS+actualprev,12fresh same-native actors/healthy12/
+empty verified2026-10-29 19:34:19.661883UTC. All16347/142Windows and35108Pi oldprotected
+paths retained bytes, none missing. Six new REC5 files in the existing momentum
+import/cache namespace were preserved (35114after); narrow header/stat/domain
+check, exact writer NOTattributed. No deletion, restoration or equality waiver.
+Backendfiles/unit/AI/native/config unchanged; no native/backend/config/Build/release
+action. Rollback and immutable six-artifact bundle retained.
+
+Shipped SHA256 QWb6fefe276fa8052f7de317b34e0a557dc61c5a09d1aaf3a97aaa4521c0b5541b;
+CSfa9bb6d396342b24cbce496898bb7d056dca996b0805bd1f2583358d6efde8a1;
+MENU7cb11cb1d5c0db4a7ab015c222ff837ed5be49642b7d8fce27c8fa9849f4d43e.
+Unchanged CS/MENU/native/client source reuse the prior accepted served-CS/drawn
+chain, not a new GUI/wire/mover/lifecycle/finished-record/rank/owner-feel proof.
+
+91owned files preserved in verified ZIP; only9files/oneNoDeployroot retired,
+82fileminimalrig retained+archived, zero owned games/links/gates. Exact owned
+canonical reservation retired after original-hash/published-number proof; original
+retained, not assumed byte-equal to this Markdown claim. Peer/index/player data
+untouched. Delivery-only prose does not rebuild reviewed runtime. Full broader
+value bank remains open; human-only checks remain pending in lextest.md.
