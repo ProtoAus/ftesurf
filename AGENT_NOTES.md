@@ -4044,6 +4044,16 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+P1124: teleport/alias/relative activation uses the existing effective off/on
+cause slots, frozen before reentrant touch outputs. Snapshot recipient values
+AFTER outputs; compare actual pose, ground and carrier before every warp record,
+including landmark return. An unarmed nonzero carrier is NOT inactive garbage:
+SV_BaseVelocityFrame cashes it out next command. Clearing it is a real value
+change; clearing only armed-with-zero is not. Native-QC pending-cashout control
+acts. No-value/current/world/replacement/rejected controls stay clean. This is
+one activation cause and numeric/contact/carrier subset, not logical/phase/full
+bank closure, native contact/prediction or ranked/human acceptance.
+
 P1123: set-speed/alias/conveyor activation uses the same off/on/no-op rule as
 pushes, with inactive context explicitly world0. Freeze the tuple BEFORE touch
 outputs. Price changed velocity, or a NONZERO conveyor contribution even when

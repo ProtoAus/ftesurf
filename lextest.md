@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1124 teleport movement/status (pending)
+
+Implementation and paired native-QC controls complete; independent reviews and
+ordinary deployment still pending. On a normal map teleport, confirm destination,
+facing, preserved/changed speed and clean current-run status remain normal. If
+available, check a relative or landmark teleport too. Synthetic value/flag units
+are not actual map-contact, native prediction, finished-ranking or owner feel
+acceptance; none is confirmed here.
+
 ## P1123 speed-pad/conveyor/Monolith status (pending)
 
 Deployed to both Windows installs and all12Pi lobbies, 2026-10-29; paired VM

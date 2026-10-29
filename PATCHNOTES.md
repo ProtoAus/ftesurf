@@ -21,6 +21,9 @@
 
 ## next
 
+### P1124 Teleport carry status
+- Map teleports keep the right run status when enabled by an earlier attempt. Their destinations and movement are unchanged.
+
 ### P1123 Speed-pad and conveyor carry
 - Speed pads, conveyors and the Monolith booster keep the right run status when an earlier attempt enabled them. Their movement and normal current-run behavior are unchanged.
 

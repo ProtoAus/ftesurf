@@ -2858,7 +2858,9 @@ void(entity t, float on) SV_IOEnable =
 	// These activation slots are not callback state. A no-op Enable does not
 	// reauthor them; an independent off->on without active I/O is world-owned.
 	if (!strcmp(t.classname, "trigger_push") || !strcmp(t.classname, "trigger_setspeed")
-		|| !strcmp(t.classname, "trigger_momentum_setspeed") || !strcmp(t.classname, "func_conveyor"))
+		|| !strcmp(t.classname, "trigger_momentum_setspeed") || !strcmp(t.classname, "func_conveyor")
+		|| !strcmp(t.classname, "trigger_teleport") || !strcmp(t.classname, "trigger_momentum_teleport")
+		|| !strcmp(t.classname, "trigger_teleport_relative"))
 	if (on && wasoff)
 	{
 		if (bank_ctx_depth) SV_BankSnapshot(t);
@@ -6965,11 +6967,20 @@ float(entity e) SV_TeleportBypassed =
 	return e.button2 != 0;
 };
 
+// P1124: numeric/contact/carrier value only, not the logical/phase bank.
+// An unarmed nonzero carrier still has value: the next command cashes it out.
+float(entity p, vector bo, vector bv, vector bang, vector bview, float bg, vector bc) SV_TeleportBodyChanged =
+{
+	return (p.origin != bo || p.velocity != bv || p.angles != bang || p.v_angle != bview ||
+		(p.flags & FL_ONGROUND) != bg || p.run_basevel != bc);
+};
+
 void() trigger_teleport_touch =
 {
-	local entity dest, mark;
-	local vector newpos;
-	local float  vmode, uselm, snapv, snapang;
+	local entity dest, mark, bp;
+	local vector newpos, bo, bv, bang, bview, bc;
+	local float  vmode, uselm, snapv, snapang, bg, bb;
+	local int ba;
 	local string tgt;
 
 	if (other.classname != "player")
@@ -7017,6 +7028,10 @@ void() trigger_teleport_touch =
 	  moves you, and an output that renames the activator must land while the
 	  activator is still where the map thinks it is.
 	*/
+	// Admission precedes reentrant outputs; recipient values follow them.
+	bp = self.bank_src_player;
+	ba = self.bank_src_attempt;
+	bb = self.bank_src_bad;
 	SV_TriggerIOTouch(self, other);
 
 	dest = world;
@@ -7030,6 +7045,12 @@ void() trigger_teleport_touch =
 		return;
 	}
 
+	bo = other.origin;
+	bv = other.velocity;
+	bang = other.angles;
+	bview = other.v_angle;
+	bg = (other.flags & FL_ONGROUND);
+	bc = other.run_basevel;
 	mark = world;
 	if (self.landmark != "")
 		mark = find(world, targetname, self.landmark);
@@ -7168,6 +7189,8 @@ void() trigger_teleport_touch =
 		  return is load-bearing prose and moving it to make one writer fit would
 		  be rearranging working code to suit a log line.
 		*/
+		if (SV_TeleportBodyChanged(other, bo, bv, bang, bview, bg, bc))
+			SV_BankCauseAffect(other, bp, ba, bb);
 		SV_RecWarp(other, "tele");
 		SV_TimerMapTeleport(other);
 		return;
@@ -7200,6 +7223,8 @@ void() trigger_teleport_touch =
 	// BUILD 83: the record, last, so it carries the post-VelocityMode state.
 	// Deliberately NOT behind `run_teleport_warp` above -- that cvar decides a
 	// behaviour, and evidence may not share a gate with a behaviour flag.
+	if (SV_TeleportBodyChanged(other, bo, bv, bang, bview, bg, bc))
+		SV_BankCauseAffect(other, bp, ba, bb);
 	SV_RecWarp(other, "tele");
 	SV_TimerMapTeleport(other);     // Patch 775: a reset if it lands you in your start
 };
@@ -7410,7 +7435,10 @@ void() trigger_gravity =
 */
 void() trigger_teleport_relative_touch =
 {
-	local vector p;
+	local entity bp;
+	local int ba;
+	local float bg, bb;
+	local vector p, bo, bv, bang, bview, bc;
 
 	if (other.classname != "player")
 		return;
@@ -7435,7 +7463,17 @@ void() trigger_teleport_relative_touch =
 		return;
 	// Patch 786: past the returns that leave you untouched (SV_TrigStamp).
 	SV_TrigStamp(other);
+	// Keep the admitting cause even if an output independently re-enables us.
+	bp = self.bank_src_player;
+	ba = self.bank_src_attempt;
+	bb = self.bank_src_bad;
 	SV_TriggerIOTouch(self, other);
+	bo = other.origin;
+	bv = other.velocity;
+	bang = other.angles;
+	bview = other.v_angle;
+	bg = (other.flags & FL_ONGROUND);
+	bc = other.run_basevel;
 
 	// absmin/absmax are symmetric about the model centre, so their midpoint is
 	// WorldSpaceCenter; no hull alignment, origins are at the feet on both sides.
@@ -7490,6 +7528,8 @@ void() trigger_teleport_relative_touch =
 	// BUILD 83: and the record, a separate <kind> from `tele`.  Patch 394: its
 	// vectors are centre+offset and '0 0 0'; earlier files carry origin+offset
 	// and the velocity through.  Readers use the vectors, never the kind.
+	if (SV_TeleportBodyChanged(other, bo, bv, bang, bview, bg, bc))
+		SV_BankCauseAffect(other, bp, ba, bb);
 	SV_RecWarp(other, "telerel");
 	SV_TimerMapTeleport(other);     // Patch 775
 };
