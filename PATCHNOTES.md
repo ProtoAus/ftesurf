@@ -21,6 +21,20 @@
 
 ## next
 
+### P1109 Maps without zones say why
+- A map without timer zones now says "no zones", or "no zones: KSF map" for KSF's Counter-Strike: Source maps, whose zones are not public.
+- surf_blastpit, surf_shape and surf_simple_v3 have zones and now show it.
+
+### P1108 Profile pictures no longer stutter the game
+- Pictures load about twenty times faster and one at a time, so lists full of them no longer hitch.
+
+### P1107 Leaderboards opened at your time scroll up
+- A leaderboard opened at one of your times now loads the ranks above it as you scroll up.
+
+### P1106 Stats: map lists, and Surf / Bhop on every figure
+- Click "maps" for every map you have a time on, or "maps finished" for the maps you have finished, with a switch to the ones you have not (easiest tier first).
+- The All / Surf / Bhop filter now changes times, first places, top tens and maps, and the records list, as the World of Surf switch does.
+
 ### P1100 TAS: start from the start zone
 - `tas start <zone>` puts you standing at a start or stage zone's own start point (where `!r` puts you) and pauses TAS. `cmd zone_dests` lists the zones and their numbers.
 - From there, TAS steps work in the start box, and `tas back` works there too, even back across the start: it replays your inputs from the start point. If something in the start box moved since (a door, another player), it says DIVERGED and ends the session instead of putting you somewhere new.

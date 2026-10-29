@@ -53,6 +53,8 @@ float  mlb_tab, mlb_lasttab;
 float  mlb_state, mlb_code;   // mlb_code: HTTP status, or Mlb_Why's own (<= 0, 900s)
 float  mlb_req, mlb_sent;     // the first page in flight; 0 none
 float  mlb_mreq, mlb_msent, mlb_mlim;  // a later page in flight, and its limit
+// P1107: the page before the rows held (a board opened at a time starts at its rank - 5)
+float  mlb_ureq, mlb_usent, mlb_ulim, mlb_ufail;
 float  mlb_mfail, mlb_mcode;  // a later page failed: the list's last row says why
 float mlb_kreq, mlb_kdead, mlb_kafter;
 string mlb_kstate;
@@ -306,7 +308,9 @@ void() Mlb_ClearRows =
 	Mlb_Abandon(mlb_req);
 	Mlb_Abandon(mlb_mreq);
 	Mlb_Abandon(mlb_kreq);
-	mlb_req = mlb_mreq = mlb_kreq = 0;
+	Mlb_Abandon(mlb_ureq);
+	mlb_req = mlb_mreq = mlb_kreq = mlb_ureq = 0;
+	mlb_ufail = 0;
 	strunzone(mlb_kstate); mlb_kstate = "";
 	strunzone(mlb_near); mlb_near = "";
 	strunzone(mlb_jumpnote); mlb_jumpnote = "";
@@ -439,6 +443,39 @@ float() Mlb_More =
 	if (mlb_mreq || mlb_mfail || mlb_n >= MLB_MAXROW)
 		return FALSE;
 	return Mlb_Fetch(TRUE);
+};
+
+// P1107: the page before the rows held, once the view nears their top.  TRUE if one went out.
+// A failure stops it ("top" and "earlier" still reload from above).
+float() Mlb_Earlier =
+{
+	local string dir, url, tier;
+	local float lim, id;
+
+	if (mlb_state != MLBS_OK || mlb_offset <= 0 || mlb_ureq || mlb_ufail || mlb_going)
+		return FALSE;
+	dir = cvar_string("lobby_dir");
+	if (cvar("rec_terms") < FS_TERMS_ONLINE || dir == "")
+	{
+		mlb_ufail = TRUE;
+		return FALSE;
+	}
+	lim = min(MLB_PAGE, mlb_offset);
+	tier = Mlb_Tier(mlb_tab);
+	url = strcat(sprintf("%s/api/board?map=%s&track=%g&leg=%g&tier=%s&style=%s",
+	              dir, uri_escape(mlb_map), mlb_track, mlb_leg, tier, uri_escape(mlb_style)),
+	              sprintf("&limit=%g&offset=%g", lim, mlb_offset - lim));
+	id = Lob_NextReq();
+	if (!uri_get(url, id))
+	{
+		mlb_ufail = TRUE;
+		return FALSE;
+	}
+	mlb_ureq = id;
+	mlb_usent = time;
+	mlb_ulim = lim;
+	print(sprintf("^5board:^7 asked id %g: %s %s offset %g limit %g (earlier)\n", id, mlb_map, tier, mlb_offset - lim, lim));
+	return TRUE;
 };
 
 // The retry buttons: a first page that did not land, or the next page.
@@ -721,6 +758,66 @@ void(float id, float code, string body, float append) Mlb_Page =
 	}
 };
 
+// P1107: the earlier page lands above the rows held; the scroll moves with them, so the view
+// stays where it was.  Only a whole page that ends where the held rows begin is taken.
+void(float id, float code, string body) Mlb_PageEarlier =
+{
+	local int root, rows;
+	local float n, i, k, off, keep, f;
+
+	root = code ? 0i : json_parse(body);
+	if (!root)
+	{
+		mlb_ufail = TRUE;
+		print(sprintf("^5board:^7 earlier page id %g failed: code %g\n", id, code));
+		return;
+	}
+	rows = json_find_object_child(root, "rows");
+	off = json_get_float(json_find_object_child(root, "offset"));
+	n = json_get_length(rows);
+	if (strcasecmp(json_get_string(json_find_object_child(root, "map")), mlb_map) ||
+	    strcmp(json_get_string(json_find_object_child(root, "tier")), Mlb_Tier(mlb_tab)) ||
+	    strcmp(json_get_string(json_find_object_child(root, "style")), mlb_style) ||
+	    json_get_float(json_find_object_child(root, "track")) != mlb_track ||
+	    json_get_float(json_find_object_child(root, "leg")) != mlb_leg ||
+	    off != mlb_offset - mlb_ulim || n != mlb_ulim)
+	{
+		json_free(root);
+		mlb_ufail = TRUE;               // the board moved under the rows held: "top" reloads it
+		print(sprintf("^5board:^7 earlier page id %g: offset %g rows %g, wanted %g rows -- dropped\n",
+		              id, off, n, mlb_ulim));
+		return;
+	}
+	// At the cap the tail goes, and comes back as the list is scrolled down again.
+	keep = min(mlb_n, MLB_MAXROW - n);
+	if (keep < mlb_n)
+	{
+		Mlb_Abandon(mlb_mreq);
+		mlb_mreq = 0;
+		mlb_mfail = FALSE;
+		mlb_more = TRUE;
+		if (mlb_focus >= keep) mlb_focus = -1;
+	}
+	for (k = keep - 1; k >= 0; k = k - 1)
+	{
+		bufstr_set(mlb_brank, k + n, bufstr_get(mlb_brank, k));
+		bufstr_set(mlb_bname, k + n, bufstr_get(mlb_bname, k));
+		bufstr_set(mlb_btime, k + n, bufstr_get(mlb_btime, k));
+		bufstr_set(mlb_bdate, k + n, bufstr_get(mlb_bdate, k));
+		bufstr_set(mlb_bwho, k + n, bufstr_get(mlb_bwho, k));
+	}
+	f = mlb_focus;
+	for (i = 0; i < n; i = i + 1)
+		Mlb_Row(i, json_get_child_at_index(rows, i));
+	json_free(root);
+	if (f >= 0) mlb_focus = f + n;     // Mlb_Row may have matched in the new rows; the held one stands
+	mlb_n = keep + n;
+	mlb_offset = off;
+	mlb_scroll_y = mlb_scroll_y + n * MLB_ROW_H;
+	print(sprintf("^5board:^7 earlier page id %g: offset %g rows %g -- held %g from #%s\n",
+	              id, off, n, mlb_n, bufstr_get(mlb_brank, 0)));
+};
+
 /*
   From m_lobby.qc's URI_Get_Callback, after the join's test and before the
   poll's.  TRUE when the id was one of ours, live or abandoned.
@@ -786,6 +883,13 @@ float(float reqid, float code, string body) Mlb_Reply =
 	{
 		mlb_mreq = 0;
 		Mlb_Page(reqid, code, body, TRUE);
+		return TRUE;
+	}
+	if (mlb_ureq)
+	if (reqid == mlb_ureq)
+	{
+		mlb_ureq = 0;
+		Mlb_PageEarlier(reqid, code, body);
 		return TRUE;
 	}
 	for (k = 0; k < MLB_DROPS; k = k + 1)
@@ -869,6 +973,13 @@ void() Mlb_Poll =
 		Mlb_Abandon(id);
 		mlb_mreq = 0;
 		Mlb_Fail(id, -2, TRUE);
+	}
+	if (mlb_ureq)
+	if (time - mlb_usent > MLB_DEADLINE)
+	{
+		Mlb_Abandon(mlb_ureq);
+		mlb_ureq = 0;
+		mlb_ufail = TRUE;
 	}
 };
 
@@ -1099,6 +1210,8 @@ void(vector screensize) Mlb_Draw =
 
 		if (floor((mlb_scroll_y + ls_y - 2) / MLB_ROW_H) + MLB_AHEAD >= mlb_n)
 			Mlb_More();
+		if (floor(mlb_scroll_y / MLB_ROW_H) < MLB_AHEAD)
+			Mlb_Earlier();                  // P1107: and the page above, near the top
 
 		// ui_board_test's scroll ends where it was sent, or where the rows run out.
 		if (mlb_going)

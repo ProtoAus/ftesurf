@@ -19,6 +19,13 @@
 - **surf_aura save 3/4 ramp top (Momentum build):** loading save 3 with the
   key, sideways speed went 1766 -> 0 within ~0.15 s near (4560, -3088, -2760),
   then a fail teleport. Not diagnosed (prop hull vs brush vs Source behaviour).
+- **Main-thread network work left after P1108 (read 29 Oct, not measured):** engine map/file/receipt/
+  manifest downloads (cl_parse.c:806 HTTP_CL_Get, no DL_CreateThread) poll on the main thread with a
+  blocking getaddrinfo; QC uri_get is already threaded. Mmm_TakeMeta parses up to 2.5 MB in one menu
+  frame once a session. The progress fields' race was not checked before any threading.
+- **Zones (P1109 leftovers):** ui_pool_load does not look in data/maps/zones/dl or curated (offline
+  only). Nine untimed builds have a zoned sibling (surf_benevolent_refix, surf_luminaris_refix,
+  surf_race_final, surf_ravine_csgo, ...): candidates for a verified zonefit donation.
 - **tools/p663profile.py is stale (measured 29 Oct, P1104 review 1):** with its consent fixed it still
   fails 17 checks on the pre-P1104 progs (5d77fbd8/50245b39), among them V, M and G (the profile's
   paging) and the pointer clicks (X, E, P, T, U); that control run also died at line 637 on a None

@@ -32,6 +32,8 @@ string mp_origin;
 
 float(string ch) MP_Hex1 = { return strstrofs("0123456789abcdef", ch, 0); };
 
+int(string) stoh = #0:stoh;     // P1108: the menu VM has it by name (pr_menu.c); MP_Hex4 without it
+
 int(string s) MP_Hex4 =
 {
 	return (int)(MP_Hex1(substring(s, 0, 1)) * 4096 + MP_Hex1(substring(s, 1, 1)) * 256
@@ -102,45 +104,56 @@ void(string mark, string body) MP_DiskStore =
 	fclose(fh);
 };
 
+string(string s) MP_Unhex =
+{
+	local float d;
+	for (d = 0; d < 16; d = d + 1)
+		s = strreplace(substring("0123456789abcdef", d, 1), "", s);
+	return s;
+};
+
 // A body's pixels into slot `slot`'s texture.  TRUE only for a whole, valid picture.
+// P1108: a row at a time, as cl_steampic.qc's SP_Upload (substring scans the whole string).
 float(float slot, string bdy) MP_Upload =
 {
-	local float i, o, x, y;
+	local float o, x, y, cx, cy, t0, fast;
+	local string row;
 	local int hi, lo, a, seen;
 	local int *px;
 
 	if (strlen(bdy) != MP_HEAD + MP_PX * MP_ROW) return FALSE;
 	if (strcmp(substring(bdy, 0, MP_HEAD), "FTESURF-AVATAR 1 64 64\n")) return FALSE;
-	for (i = MP_HEAD; i < MP_HEAD + MP_PX * MP_ROW; i = i + 1)
-	{
-		if (floor((i - MP_HEAD + 1) / MP_ROW) * MP_ROW == i - MP_HEAD + 1)
-		{
-			if (strcmp(substring(bdy, i, 1), "\n")) return FALSE;
-		}
-		else if (MP_Hex1(substring(bdy, i, 1)) < 0) return FALSE;
-	}
+	t0 = gettime(1);
+	fast = checkbuiltin(stoh);
 	px = memalloc(MP_PX * MP_PX * 4);
 	seen = 0;
-	for (i = 0; i < MP_PX * MP_PX; i = i + 1)
+	for (y = 0; y < MP_PX; y = y + 1)
 	{
-		y = floor(i / MP_PX);
-		x = i - y * MP_PX;
-		o = MP_HEAD + y * MP_ROW + x * 8;
-		hi = MP_Hex4(substring(bdy, o, 4));
-		lo = MP_Hex4(substring(bdy, o + 4, 4));
-		seen = seen | (lo & 255);
-		x = max(MP_ROUND - x - 0.5, x + 0.5 - (MP_PX - MP_ROUND));
-		y = max(MP_ROUND - y - 0.5, y + 0.5 - (MP_PX - MP_ROUND));
-		o = 1;
-		if (x > 0)
-		if (y > 0)
-			o = bound(0, MP_ROUND + 0.5 - sqrt(x * x + y * y), 1);
-		a = (int)((lo & 255) * o);
-		px[i] = (hi >> 8) | ((hi & 255) << 8) | ((lo >> 8) << 16) | (a << 24);
+		row = substring(bdy, MP_HEAD + y * MP_ROW, MP_ROW);
+		if (substring(row, MP_ROW - 1, 1) != "\n" || MP_Unhex(substring(row, 0, MP_ROW - 1)) != "")
+		{
+			memfree(px);
+			return FALSE;
+		}
+		for (x = 0; x < MP_PX; x = x + 1)
+		{
+			hi = fast ? stoh(substring(row, x * 8, 4)) : MP_Hex4(substring(row, x * 8, 4));
+			lo = fast ? stoh(substring(row, x * 8 + 4, 4)) : MP_Hex4(substring(row, x * 8 + 4, 4));
+			seen = seen | (lo & 255);
+			cx = max(MP_ROUND - x - 0.5, x + 0.5 - (MP_PX - MP_ROUND));
+			cy = max(MP_ROUND - y - 0.5, y + 0.5 - (MP_PX - MP_ROUND));
+			o = 1;
+			if (cx > 0)
+			if (cy > 0)
+				o = bound(0, MP_ROUND + 0.5 - sqrt(cx * cx + cy * cy), 1);
+			a = (int)((lo & 255) * o);
+			px[y * MP_PX + x] = (hi >> 8) | ((hi & 255) << 8) | ((lo >> 8) << 16) | (a << 24);
+		}
 	}
 	if (!seen) { memfree(px); return FALSE; }
 	r_uploadimage(sprintf("menupic64/%g", slot), MP_PX, MP_PX, px);
 	memfree(px);
+	if (cvar("developer")) print(sprintf("menupic: slot %g decoded in %.2f ms\n", slot, (gettime(1) - t0) * 1000));
 	shaderforname(sprintf("menupic64/%g", slot),
 	              sprintf("{\naffine\nnomipmaps\nprogram default2d\n{\nclampmap menupic64/%g\nblendfunc blend\n}\nsort additive\n}\n", slot));
 	return TRUE;
@@ -240,9 +253,9 @@ void() MP_Frame =
 			mp_st[i] = MP_FREE;
 		return;
 	}
-	// Disk copies first, two a frame (cl_steampic.qc's SP_DISKBURST).
+	// Disk copies first, one a frame (cl_steampic.qc's SP_DISKBURST; P1108: was two).
 	n = 0;
-	for (i = 0; i < MP_MAX && n < 2; i = i + 1)
+	for (i = 0; i < MP_MAX && n < 1; i = i + 1)
 	{
 		if (mp_st[i] != MP_WANT || mp_disked[i]) continue;
 		mp_disked[i] = TRUE;

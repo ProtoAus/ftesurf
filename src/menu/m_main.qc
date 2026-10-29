@@ -7789,7 +7789,10 @@ void(vector screensize) screen_create =
 					if (pop >= 0) sub = sprintf("%s | %g playing", sub, pop);
 					dep = ui_deps_text(real);
 					if (strcmp(dep, "")) sub = strcat(sub, " | needs ", dep);
-					if (strcmp(bufstr_get(ms_zoned, er), "1")) sub = strcat(MAP_NOZONE_ESC, "zones not listed^7 | ", sub);
+					// P1109: why it is untimed -- most are KSF's CS:S maps, whose zones are not public.
+					if (strcmp(bufstr_get(ms_zoned, er), "1"))
+						sub = strcat(MAP_NOZONE_ESC, (stof(mtier) <= 0 && stof(mktier) > 0) ? "no zones: KSF map" : "no zones",
+						             "^7 | ", sub);
 					sui_text([rp_x + nx, rp_y + 50], '12 12 0', ui_fit_text(sub, cw, '12 12 0'), COL_DIM, 1, 0);
 					if (strcmp(bufstr_get(ms_var, real), ""))
 						ui_build_switch(compact ? rp + '4 84 0' : [rp_x + rs_x - 130, rp_y + 88], real, idx);

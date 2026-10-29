@@ -95,12 +95,19 @@ float  pf_rf_cs, pf_rf_ro;  // the filter the rows held were asked with (cs -1: 
 float  pf_rows_wait;        // a filter changed: its first page is on the way
 float  pf_wos_has, pf_wos_n, pf_wos_wr, pf_wos_wrc, pf_wos_maps, pf_wos_top10;
 float  pf_sw_slide;         // the source switch's knob, 0 Everything .. 1 World of Surf
+// P1106: figures by source (all, wos) and kind (any, surf, bhop), 5 each: n wr wrc top10 maps
+#define PF_FG       30
+float *pf_fg;
+float  pf_fg_has;           // the answer had them (it filters rows by kind too, and echoes it)
+float  pf_rf_cm;            // the kind the rows held were asked with
 
 // ---- one tier's maps, of whoever the breakdown is of
-#define PF_CTROWS   1000    // maps held of one tier (the unrated are eight hundred)
+#define PF_CTROWS   2500    // maps held of one list (the unrated are 1,600; P1106's not-yet 2,000)
 #define PF_CTPAGE   100     // ...and asked for at a time
-#define PF_CF       4       // floats a map: ms, game, have, segmented
-string pf_ct;               // the tier on show: "" none, "u" the unrated, else its number
+#define PF_CF       5       // floats a map: ms, game, have, segmented, tier (P1106; 0 unrated)
+string pf_ct;               // the list on show: "" none, "u" the unrated, a tier's number, or (P1106)
+                            // "a1" every map finished, "a0" not yet, "p" the maps with a time
+float  pf_ctsw_slide;       // the finished / not yet switch's knob
 float  pf_ct_state, pf_ct_req, pf_ct_sent, pf_ct_code, pf_ct_got, pf_ct_again;
 float  pf_ct_more_req, pf_ct_more_sent, pf_ct_more_at, pf_ct_more_n;
 float  pf_ct_n, pf_ct_total, pf_ct_done;
@@ -138,14 +145,16 @@ void() Profile_Alloc =
 	pf_on_f = memalloc(sizeof(float) * PF_ONROWS * PF_RF);
 	pf_on_ms = memalloc(sizeof(int) * PF_ONROWS);
 	pf_cmt = memalloc(sizeof(float) * PF_CMF * 6);
+	pf_fg = memalloc(sizeof(float) * PF_FG);
 	pf_s_sel = -1;
 };
 
 // The `&mode=` a tier's list is asked with, for the kind on show.
 string() Profile_CompletionArg = { return pf_cs ? "&completion_source=wos" : ""; };
-string(float cs, float ro) Profile_RowsArg =
+string(float cs, float ro, float cm) Profile_RowsArg =
 {
-	return strcat((cs < 0) ? "&source=auto" : (cs ? "&source=wos" : ""), (ro == 1) ? "&only=wr" : ((ro == 2) ? "&only=top10" : ""));
+	return strcat((cs < 0) ? "&source=auto" : (cs ? "&source=wos" : ""), (ro == 1) ? "&only=wr" : ((ro == 2) ? "&only=top10" : ""),
+	              (cm == 1) ? "&mode=surf" : ((cm == 2) ? "&mode=bhop" : ""));
 };
 
 string() Profile_ModeArg =
@@ -266,8 +275,9 @@ void() Profile_Ask =
 	// which is Profile_Parse's default too: one ask either way.
 	pf_rf_cs = pf_cs_picked ? pf_cs : -1;
 	pf_rf_ro = pf_ro;
+	pf_rf_cm = pf_cm;
 	pf_req = Profile_Get(sprintf("%s/api/board?player=%s&limit=%g%s", cvar_string("lobby_dir"),
-	                             pf_who, PF_PAGE, Profile_RowsArg(pf_rf_cs, pf_rf_ro)));
+	                             pf_who, PF_PAGE, Profile_RowsArg(pf_rf_cs, pf_rf_ro, pf_rf_cm)));
 	pf_state = pf_req ? PFS_ASK : PFS_FAIL;
 	pf_code = 0;
 	pf_sent = cltime;
@@ -372,6 +382,7 @@ void() Profile_RowsAsk =
 		return;
 	pf_rf_cs = pf_cs;
 	pf_rf_ro = pf_ro;
+	pf_rf_cm = pf_cm;
 	pf_rn = 0;
 	pf_total = 1;                    // unknown until the page says
 	pf_scroll = '0 0 0';
@@ -395,16 +406,27 @@ void(float source) Profile_SourceShow =
 // P1104: a figure's list -- 1 first places, 2 top tens; the same figure again, every time.
 void(float ro) Profile_OnlyShow =
 {
-	ro = (ro == pf_ro) ? 0 : ro;
-	if (ro == pf_ro && pf_ct == "")
-		return;
-	pf_ro = ro;
+	ro = (ro == pf_ro && pf_ct == "") ? 0 : ro;
 	if (pf_ct != "")
 	{
 		pf_ct = "";                  // the results take the tier list's place again
 		Profile_TierAsk();
 	}
+	if (ro == pf_ro)
+		return;
+	pf_ro = ro;
 	Profile_RowsAsk();
+};
+
+// P1106: "maps" (p) and "maps finished" (a1, and its switch's a0) as lists; again closes.
+void(string ct) Profile_ListShow =
+{
+	Profile_Alloc();
+	if (ct == pf_ct || (ct == "a1" && pf_ct == "a0"))
+		ct = "";
+	pf_ct = ct;
+	pf_ct_again = FALSE;
+	Profile_TierAsk();
 };
 
 // `k`: 0 every kind of map, 1 surf, 2 bhop (P853). A tier's list on show is asked again.
@@ -422,6 +444,8 @@ void(float k) Profile_ModeShow =
 		pf_ct_again = FALSE;
 		Profile_TierAsk();
 	}
+	if (pf_fg_has)
+		Profile_RowsAsk();               // P1106: the records follow the chips
 };
 
 // `who`: a search row's handle, or the 8-hex mark the game knows a player by.
@@ -562,7 +586,7 @@ void() Profile_More =
 	pf_more_req = Profile_Get(sprintf("%s/api/board?player=%s&offset=%g&limit=%g%s",
 	                                  cvar_string("lobby_dir"), pf_handle,
 	                                  pf_rn, min(PF_PAGE, PF_ROWS - pf_rn),
-	                                  pf_rf_ok ? Profile_RowsArg(pf_rf_cs, pf_rf_ro) : ""));
+	                                  pf_rf_ok ? Profile_RowsArg(pf_rf_cs, pf_rf_ro, pf_fg_has ? pf_rf_cm : 0) : ""));
 	pf_more_sent = cltime;
 };
 
@@ -589,6 +613,22 @@ void() Profile_SearchAsk =
 // An answer is somebody's text: a `who` is hex or it is nothing, a name and a
 // map are cut to PF_TEXT, and a map's colour codes are taken out (a name's are
 // UI_NameShow's when it is drawn).
+
+// P1106: one source's figures, at pf_fg[at]: any, surf, bhop kinds of map, 5 floats each.
+void(int src, float at) Profile_FigsRead =
+{
+	local float k;
+	local int o;
+	for (k = 0; k < 3; k = k + 1)
+	{
+		o = json_find_object_child(src, (k == 0) ? "any" : ((k == 1) ? "surf" : "bhop"));
+		pf_fg[at + k * 5]     = json_get_float(json_find_object_child(o, "n"));
+		pf_fg[at + k * 5 + 1] = json_get_float(json_find_object_child(o, "wr"));
+		pf_fg[at + k * 5 + 2] = json_get_float(json_find_object_child(o, "wrc"));
+		pf_fg[at + k * 5 + 3] = json_get_float(json_find_object_child(o, "top10"));
+		pf_fg[at + k * 5 + 4] = json_get_float(json_find_object_child(o, "maps"));
+	}
+};
 
 // One row's PF_RF floats.
 void(int row, float *f, float at) Profile_RowF =
@@ -688,6 +728,10 @@ void(string bdy) Profile_Parse =
 	pf_wos_top10 = json_find_object_child(c, "top10") ? json_get_float(json_find_object_child(c, "top10")) : -1;
 	pf_rf_ok     = (json_find_object_child(root, "rows_source") != 0);
 	pf_rf_cs     = pf_rf_ok ? (json_get_string(json_find_object_child(root, "rows_source")) == "wos") : 0;
+	c = json_find_object_child(root, "figs");
+	pf_fg_has    = (c != 0);
+	Profile_FigsRead(json_find_object_child(c, "all"), 0);
+	Profile_FigsRead(json_find_object_child(c, "wos"), 15);
 	pf_av     = json_get_float(json_find_object_child(root, "av"));
 	pf_total  = json_get_float(json_find_object_child(root, "total"));
 	c = json_find_object_child(root, "by_tier");
@@ -730,7 +774,7 @@ void(string bdy) Profile_Parse =
 	pf_state = PFS_OK;
 	// The rows came with the filter asked; the source may have defaulted otherwise here.
 	if (pf_rf_ok)
-	if (pf_rf_cs != pf_cs || pf_rf_ro != pf_ro)
+	if (pf_rf_cs != pf_cs || pf_rf_ro != pf_ro || (pf_fg_has && pf_rf_cm != pf_cm))
 		Profile_RowsAsk();
 	pf_got = cltime;
 	if (!pf_said)
@@ -762,6 +806,7 @@ float(int root) Profile_TierRows =
 		f[at + 1] = Profile_Tier(json_get_string(json_find_object_child(row, "tr")));
 		f[at + 2] = json_get_float(json_find_object_child(row, "have"));
 		f[at + 3] = (f[at] > 0 && !strcmp(json_get_string(json_find_object_child(row, "s")), "segmented"));
+		f[at + 4] = json_get_float(json_find_object_child(row, "t"));     // P1106 lists; absent 0
 		bufstr_set(pf_ct_bmap, pf_ct_n, strdecolorize(substring(
 			json_get_string(json_find_object_child(row, "map")), 0, PF_TEXT)));
 		pf_ct_n = pf_ct_n + 1;
@@ -878,6 +923,8 @@ void(string bdy) Profile_ParseMore =
 	if (!pf_rf_ok || json_get_string(json_find_object_child(root, "rows_source")) == (pf_rf_cs ? "wos" : "all"))
 	if (!pf_rf_ok || json_get_string(json_find_object_child(root, "rows_only"))
 	                 == ((pf_rf_ro == 1) ? "wr" : ((pf_rf_ro == 2) ? "top10" : "")))
+	if (!pf_fg_has || json_get_string(json_find_object_child(root, "rows_mode"))
+	                  == ((pf_rf_cm == 1) ? "surf" : ((pf_rf_cm == 2) ? "bhop" : "")))
 	{
 		pf_rows_wait = FALSE;
 		// What is there NOW; and a page of nothing was the end, whatever it says.
@@ -1509,19 +1556,37 @@ float(vector p, float tsz, float hint, float state, float code, float again, str
 // first, each with the player's fastest time on its main track.
 void(vector p, vector sz, float tsz, float hint) Profile_DrawTier =
 {
-	local float i, x, y, rowh, at, chw, games, mapw;
+	local float i, x, y, rowh, at, chw, games, mapw, all;
 	local float *f;
-	local string s;
+	local string s, kind;
 	local vector lp;
 
 	Font_Set(ui_font_ui);
 	y = p_y;
-	s = (pf_cm == 1) ? " SURF" : ((pf_cm == 2) ? " BHOP" : "");
-	s = (pf_ct == "u") ? sprintf("UNRATED%s MAPS", s) : sprintf("TIER %s%s MAPS", pf_ct, s);
+	kind = (pf_cm == 1) ? "SURF " : ((pf_cm == 2) ? "BHOP " : "");
+	all = (pf_ct == "a1" || pf_ct == "a0" || pf_ct == "p");
+	if (pf_ct == "u") s = sprintf("UNRATED %sMAPS", kind);
+	else if (pf_ct == "a1") s = sprintf("FINISHED %sMAPS", kind);
+	else if (pf_ct == "a0") s = sprintf("%sMAPS NOT FINISHED YET", kind);
+	else if (pf_ct == "p") s = sprintf("%sMAPS WITH A TIME", kind);
+	else s = sprintf("TIER %s %sMAPS", pf_ct, kind);
+	if (pf_cs) s = strcat(s, ", WORLD OF SURF");
 	if (pf_ct_state == PFS_OK)
-		s = sprintf("%s   %g of %g finished", s, pf_ct_done, pf_ct_total);
+	{
+		if (pf_ct == "a1" || pf_ct == "a0") s = sprintf("%s   %g", s, pf_ct_total);
+		else s = sprintf("%s   %g of %g finished", s, pf_ct_done, pf_ct_total);
+	}
 	sui_text([p_x, y], [hint, hint], s, SUI_THEME_MUTED, 1, 0);
 	chw = ceil(hint * 7);
+	if (pf_ct == "a1" || pf_ct == "a0")
+		if (Profile_Switch("pf_ctdone", [p_x + sz_x - tsz - chw - hint * 15, y - ceil(hint * 0.5)], [hint * 14, ceil(hint * 1.9)],
+		                   "Finished", "Not yet", pf_ct == "a0", hint, &pf_ctsw_slide))
+		{
+			pf_ct = (pf_ct == "a1") ? "a0" : "a1";
+			pf_ct_again = FALSE;
+			Profile_TierAsk();
+			return;
+		}
 	if (Profile_Chip("pf_ctback", [p_x + sz_x - tsz - chw, y - ceil(hint * 0.5)], [chw, ceil(hint * 1.9)],
 	                 "All results", hint, FALSE))
 	{
@@ -1542,7 +1607,9 @@ void(vector p, vector sz, float tsz, float hint) Profile_DrawTier =
 	}
 	if (pf_ct_n <= 0)
 	{
-		sui_text([p_x, y + hint], [tsz, tsz], "No maps in this tier", SUI_THEME_DIM, 1, 0);
+		s = (pf_ct == "a1") ? "No maps finished yet" : ((pf_ct == "a0") ? "Every map here is finished"
+		    : ((pf_ct == "p") ? "No times yet" : "No maps in this tier"));
+		sui_text([p_x, y + hint], [tsz, tsz], s, SUI_THEME_DIM, 1, 0);
 		return;
 	}
 	games = ((pf_bt_ours > 0) + (pf_bt_mom > 0) + (pf_bt_ksf > 0) > 1);
@@ -1567,6 +1634,12 @@ void(vector p, vector sz, float tsz, float hint) Profile_DrawTier =
 		sui_text([lp_x + tsz * 1.6, lp_y + (rowh - tsz) * 0.5], [tsz, tsz], s,
 		         (f[at] > 0) ? SUI_THEME_TEXT : SUI_THEME_DIM, 1, 0);
 		x = lp_x + tsz * 1.6 + stringwidth(s, TRUE, [tsz, tsz]) + tsz * 0.6;
+		if (all && f[at + 4] > 0)          // P1106: which tier, in the lists of every tier
+		{
+			s = sprintf("T%g", f[at + 4]);
+			sui_text([x, lp_y + (rowh - hint) * 0.5 + 1], [hint, hint], s, SUI_THEME_MUTED, 1, 0);
+			x = x + stringwidth(s, TRUE, [hint, hint]) + hint * 0.6;
+		}
 		if (f[at] > 0)
 		{
 			if (games)
@@ -1580,7 +1653,8 @@ void(vector p, vector sz, float tsz, float hint) Profile_DrawTier =
 		}
 		else
 		{
-			s = (f[at + 2] > 0) ? "not yet" : "not yet, not hosted here";
+			s = (pf_ct == "p") ? "stages or bonuses only" : "not yet";
+			if (f[at + 2] <= 0) s = strcat(s, ", not hosted here");
 			sui_text([lp_x + sz_x - tsz * 2 - stringwidth(s, TRUE, [hint, hint]), lp_y + (rowh - hint) * 0.5],
 			         [hint, hint], s, SUI_THEME_MUTED, 1, 0);
 		}
@@ -1761,8 +1835,13 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	wos = (pf_cs && pf_wos_has && pf_rf_ok);     // only where the rows follow too
 	fn = wos ? pf_wos_n : pf_n; fwr = wos ? pf_wos_wr : pf_wr; fwrc = wos ? pf_wos_wrc : pf_wrc;
 	ft10 = wos ? pf_wos_top10 : pf_top10; fmaps = wos ? pf_wos_maps : pf_maps;
+	if (pf_fg_has && pf_rf_ok)                     // P1106: by the switch and the kind chips
+	{
+		at = (pf_cs ? 15 : 0) + pf_cm * 5;
+		fn = pf_fg[at]; fwr = pf_fg[at + 1]; fwrc = pf_fg[at + 2]; ft10 = pf_fg[at + 3]; fmaps = pf_fg[at + 4];
+	}
 	if (Profile_TileButton("pf_fig_n", [x, y], [tw, th], ftos(fn), "", (fn == 1) ? "time" : "times", ttl, hint,
-	                       SUI_THEME_TEXT, pf_ro == 0))
+	                       SUI_THEME_TEXT, pf_ct == "" && pf_ro == 0))
 		Profile_OnlyShow(0);
 	x = x + tw + hint;
 	// A first place on a board of one is not a record: the site leads with the same note.
@@ -1770,19 +1849,34 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	if (fwr > 0)
 		s = (fwrc == fwr) ? "all contested" : sprintf("%g contested", fwrc);
 	if (Profile_TileButton("pf_fig_wr", [x, y], [tw, th], ftos(fwr), s, (fwr == 1) ? "first place" : "first places",
-	                       ttl, hint, (fwrc > 0) ? SUI_THEME_WARN : SUI_THEME_TEXT, pf_ro == 1))
+	                       ttl, hint, (fwrc > 0) ? SUI_THEME_WARN : SUI_THEME_TEXT, pf_ct == "" && pf_ro == 1))
 		Profile_OnlyShow(1);
 	x = x + tw + hint;
 	if (Profile_TileButton("pf_fig_t10", [x, y], [tw, th], (ft10 < 0) ? "--" : ftos(ft10), "", "top tens", ttl, hint,
-	                       SUI_THEME_TEXT, pf_ro == 2))
+	                       SUI_THEME_TEXT, pf_ct == "" && pf_ro == 2))
 		Profile_OnlyShow(2);
 	x = x + tw + hint;
-	Profile_Tile([x, y], [tw, th], ftos(fmaps), "", (fmaps == 1) ? "map" : "maps", ttl, hint, SUI_THEME_TEXT);
+	// P1106: maps and maps finished open lists (a surfd with `figs` has them).
+	if (pf_fg_has)
+	{
+		if (Profile_TileButton("pf_fig_maps", [x, y], [tw, th], ftos(fmaps), "", (fmaps == 1) ? "map" : "maps", ttl, hint,
+		                       SUI_THEME_TEXT, pf_ct == "p"))
+			Profile_ListShow("p");
+	}
+	else
+		Profile_Tile([x, y], [tw, th], ftos(fmaps), "", (fmaps == 1) ? "map" : "maps", ttl, hint, SUI_THEME_TEXT);
 	if (pf_c_has)
 	{
 		x = x + tw + hint;
-		Profile_Tile([x, y], [tw, th], sprintf("%g/%g", pf_cmt[pf_cs * 3 * PF_CMF + 1], pf_cmt[pf_cs * 3 * PF_CMF]), "", "maps finished", ttl, hint,
-		             SUI_THEME_GOOD);
+		s = sprintf("%g/%g", pf_cmt[pf_cs * 3 * PF_CMF + 1], pf_cmt[pf_cs * 3 * PF_CMF]);
+		if (pf_fg_has)
+		{
+			if (Profile_TileButton("pf_fig_done", [x, y], [tw, th], s, "", "maps finished", ttl, hint, SUI_THEME_GOOD,
+			                       pf_ct == "a1" || pf_ct == "a0"))
+				Profile_ListShow("a1");
+		}
+		else
+			Profile_Tile([x, y], [tw, th], s, "", "maps finished", ttl, hint, SUI_THEME_GOOD);
 	}
 	y = y + th + hint;
 

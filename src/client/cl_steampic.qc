@@ -44,7 +44,7 @@
 #define SP_OLD    6             // drawn from a disk copy of an earlier day; refresh owed
 #define SP_FRESH  7             // SP_OLD with its refresh in flight; still drawn
 #define SP_DISKDAYS 30          // a disk copy older than this is not drawn
-#define SP_DISKBURST 2          // disk loads a frame; only asks are paced
+#define SP_DISKBURST 1          // disk loads a frame; only asks are paced (P1108: was 2)
 
 float  sp_bmark;                // strbuf: the mark each slot holds
 float  *sp_st;                  // one declarator a line: `float *a, *b` makes b a float**
@@ -445,11 +445,22 @@ void() SteamPic_Frame =
 	sp_asked = sp_asked + 1;
 };
 
+// What is left of `s` once every hex digit is taken out ("": all hex).
+string(string s) SP_Unhex =
+{
+	local float d;
+	for (d = 0; d < 16; d = d + 1)
+		s = strreplace(substring("0123456789abcdef", d, 1), "", s);
+	return s;
+};
+
 // A body's pixels into slot `slot`'s texture.  TRUE only for a whole, valid picture.
+// P1108: a row at a time.  substring costs the whole string's length on every call, and
+// byte by byte over the 32 KB body that was ~1.3 GB of strlen a picture (tens of ms).
 float(float slot, string bdy) SP_Upload =
 {
-	local float i, o, x, y;
-	local string digit;
+	local float o, x, y, cx, cy, t0;
+	local string row;
 	local int hi, lo, a, seen;
 	local int *px;
 
@@ -457,39 +468,36 @@ float(float slot, string bdy) SP_Upload =
 		return FALSE;
 	if (strcmp(substring(bdy, 0, SP_HEAD), "FTESURF-AVATAR 1 64 64\n"))
 		return FALSE;
-
-	// A damaged disk file must not be silently interpreted as black pixels.
-	for (i = SP_HEAD; i < SP_HEAD + SP_PX * SP_ROW; i = i + 1)
-	{
-		digit = substring(bdy, i, 1);
-		if (floor((i - SP_HEAD + 1) / SP_ROW) * SP_ROW == i - SP_HEAD + 1)
-		{
-			if (strcmp(digit, "\n")) return FALSE;
-		}
-		else if (strstrofs("0123456789abcdef", digit, 0) < 0) return FALSE;
-	}
+	t0 = gettime(1);
 
 	// "rrggbbaa" a pixel; memory order is r, g, b, a.  Four hex digits at a
 	// time: eight would not fit a signed int.  The corners are rounded here,
 	// in the alpha: how far a pixel's centre is past the corner's arc.
 	px = memalloc(SP_PX * SP_PX * 4);
 	seen = 0;
-	for (i = 0; i < SP_PX * SP_PX; i = i + 1)
+	for (y = 0; y < SP_PX; y = y + 1)
 	{
-		y = floor(i / SP_PX);
-		x = i - y * SP_PX;
-		o = SP_HEAD + y * SP_ROW + x * 8;
-		hi = stoh(substring(bdy, o, 4));
-		lo = stoh(substring(bdy, o + 4, 4));
-		seen = seen | (lo & 255);
-		x = max(SP_ROUND - x - 0.5, x + 0.5 - (SP_PX - SP_ROUND));
-		y = max(SP_ROUND - y - 0.5, y + 0.5 - (SP_PX - SP_ROUND));
-		o = 1;
-		if (x > 0)
-		if (y > 0)
-			o = bound(0, SP_ROUND + 0.5 - sqrt(x * x + y * y), 1);
-		a = (int)((lo & 255) * o);
-		px[i] = (hi >> 8) | ((hi & 255) << 8) | ((lo >> 8) << 16) | (a << 24);
+		row = substring(bdy, SP_HEAD + y * SP_ROW, SP_ROW);
+		// A damaged disk file must not be silently interpreted as black pixels.
+		if (substring(row, SP_ROW - 1, 1) != "\n" || SP_Unhex(substring(row, 0, SP_ROW - 1)) != "")
+		{
+			memfree(px);
+			return FALSE;
+		}
+		for (x = 0; x < SP_PX; x = x + 1)
+		{
+			hi = stoh(substring(row, x * 8, 4));
+			lo = stoh(substring(row, x * 8 + 4, 4));
+			seen = seen | (lo & 255);
+			cx = max(SP_ROUND - x - 0.5, x + 0.5 - (SP_PX - SP_ROUND));
+			cy = max(SP_ROUND - y - 0.5, y + 0.5 - (SP_PX - SP_ROUND));
+			o = 1;
+			if (cx > 0)
+			if (cy > 0)
+				o = bound(0, SP_ROUND + 0.5 - sqrt(cx * cx + cy * cy), 1);
+			a = (int)((lo & 255) * o);
+			px[y * SP_PX + x] = (hi >> 8) | ((hi & 255) << 8) | ((lo >> 8) << 16) | (a << 24);
+		}
 	}
 	if (!seen)
 	{
@@ -498,6 +506,7 @@ float(float slot, string bdy) SP_Upload =
 	}
 	r_uploadimage(sprintf("steampic64/%g", slot), SP_PX, SP_PX, px);
 	memfree(px);
+	dprint(sprintf("steampic: slot %g decoded in %.2f ms\n", slot, (gettime(1) - t0) * 1000));
 	// A shader of our own, once per slot.  drawpic's default loads its picture
 	// PREMULTIPLIED (gl_shader.c Shader_Default2D), which is another texture
 	// than the one just uploaded: it drew the engine's missing-texture checker.

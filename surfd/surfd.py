@@ -223,6 +223,9 @@ ZONES_LOCAL_DIR = os.environ.get(
     "SURFD_ZONES_LOCAL",
     os.path.join(os.path.dirname(os.path.dirname(os.path.normpath(RUNS_DIR))),
                  "maps", "zones", "local"))
+# P1109: and Momentum's gamedir's own, which the lobbies read through the same mount
+# (14 on the Pi, surf_blastpit / surf_shape / surf_simple_v3 only there).
+ZONES_MOMLOCAL_DIR = os.environ.get("SURFD_ZONES_MOMLOCAL", os.path.join(MAPS_DIR, "zones", "local"))
 
 # HOW LONG THE DIRECTORY LISTING IS BELIEVED.  1312 entries is a ~2 ms scandir
 # on the NVMe and this is a single-worker process, so the cache is not about
@@ -1893,7 +1896,7 @@ def zone_file_index(now=None):
         if at is not None and 0 <= now - at < MAPS_TTL:
             return _zone_files_cache["names"]
     names = set()
-    for zdir in (ZONES_DIR, ZONES_LOCAL_DIR):
+    for zdir in (ZONES_DIR, ZONES_LOCAL_DIR, ZONES_MOMLOCAL_DIR):
         try:
             with os.scandir(zdir) as it:
                 names.update(e.name[:-5].lower() for e in it
@@ -6934,6 +6937,32 @@ def _wos_figures(ranked):
             "maps": len({r["map"] for r, rk, of in rows})}
 
 
+def _map_mode(key):
+    import mapmanifest
+    return mapmanifest.map_mode(key)
+
+
+def _figs_of(rows):
+    return {"n": len(rows), "wr": sum(rk == 1 for r, rk, of in rows),
+            "wrc": sum(rk == 1 and of > 1 for r, rk, of in rows),
+            "top10": sum(1 <= rk <= 10 and of > 1 for r, rk, of in rows),
+            "maps": len({r["map"] for r, rk, of in rows})}
+
+
+def _profile_figs(ranked):
+    """P1106: {source: {kind: figures}} -- all/wos by any/surf/bhop -- so the game's switch and
+    chips change the figures without asking again.  Each counts what its list holds: n the
+    rows, wr/top10 `only=`, maps `ct=p`."""
+    import mapmanifest
+    out = {}
+    for source in ("all", "wos"):
+        rows = [x for x in ranked if source == "all" or x[0]["tier"] == TIER_RANKED]
+        out[source] = {"any": _figs_of(rows)}
+        for mode in mapmanifest.MODES:
+            out[source][mode] = _figs_of([x for x in rows if _map_mode(x[0]["map"]) == mode])
+    return out
+
+
 def _profile_figures(ranked, main_maps):
     """(first places, contested ones, top tens, completion) of _profile_rows'
     rows: the site's page and the game's breakdown lead with the same four.
@@ -7112,7 +7141,7 @@ def game_player(raw, now):
     if len(raw) == 8 and not RANKED_LINKED:
         return fail(404, "no such player")
     ct = request.args.get("ct")
-    if ct is not None and not re.fullmatch(r"[1-9][0-9]?|u", ct):
+    if ct is not None and not re.fullmatch(r"[1-9][0-9]?|u|a[01]|p", ct):
         return fail(400, "bad tier")
     mode = request.args.get("mode", "")
     if mode not in ("", "surf", "bhop"):
@@ -7154,13 +7183,22 @@ def game_player(raw, now):
         return fail(500, "storage error")
     if ct is not None:
         groups, rated = _tier_maps(ranked, main_maps, mode, source)
-        maps = groups.get(None if ct == "u" else int(ct), {"maps": []})["maps"]
-        maps = [m for m in maps if "ms" in m] + [m for m in maps if "ms" not in m]
+        if ct == "p":
+            maps = _played_maps(ranked, main_maps, mode, source)
+        elif ct[0] == "a":
+            # P1106: every tier at once, finished (a1) or not yet (a0), the easiest tier first.
+            maps = [dict(m, t=k) for k in sorted(groups, key=lambda t: (t is None, t or 0))
+                    for m in groups[k]["maps"] if ("ms" in m) == (ct == "a1")]
+        else:
+            maps = groups.get(None if ct == "u" else int(ct), {"maps": []})["maps"]
+            maps = [m for m in maps if "ms" in m] + [m for m in maps if "ms" not in m]
         out = []
         for m in maps[offset:offset + limit]:
             row = {"map": m["map"], "have": m["have"]}
             if "ms" in m:
                 row["ms"], row["tr"], row["s"] = m["ms"], m["tr"], m["s"]
+            if m.get("t") is not None:
+                row["t"] = m["t"]
             out.append(row)
         return Response(game_json(
             {"v": 1, "t": now, "who": handle, "name": me["name"], "ct": ct, "mode": mode,
@@ -7187,7 +7225,8 @@ def game_player(raw, now):
     picked = [(r, rk, of) for r, rk, of in ranked
               if (rows_source == "all" or r["tier"] == TIER_RANKED)
               and (rows_only != "wr" or rk == 1)
-              and (rows_only != "top10" or (1 <= rk <= 10 and of > 1))]
+              and (rows_only != "top10" or (1 <= rk <= 10 and of > 1))
+              and (not mode or _map_mode(r["map"]) == mode)]
     rows = [{"map": bsp.get(r["map"], r["map"]), "track": r["track"], "leg": r["leg"],
              "tr": r["tier"], "style": r["style"], "ms": r["millis"],
              "when": r["submitted"], "r": rk, "of": of}
@@ -7200,7 +7239,8 @@ def game_player(raw, now):
          "av": 1 if player in have else 0, "completion": comp,
          "completion_wos": _completion_wos(ranked, main_maps), "wos": _wos_figures(ranked),
          "ksf_sync": ksfprofile.status(db, player),
-         "rows_source": rows_source, "rows_only": rows_only,
+         "rows_source": rows_source, "rows_only": rows_only, "rows_mode": mode,
+         "figs": _profile_figs(ranked),
          "offset": offset, "total": len(picked), "limit": limit, "rows": rows}),
         status=200, mimetype="application/json")
 
@@ -7237,6 +7277,30 @@ def _tier_maps(ranked, main_maps, mode="", source="all"):
         g["done"] += 1 if mine is not None else 0
         g["maps"].append(row)
     return groups, tiers is not None
+
+
+def _played_maps(ranked, main_maps, mode="", source="all"):
+    """P1106: every map `ranked` has a row on (the profile's "maps" figure), each with the fastest
+    main time where there is one, easiest tier first.  Not limited to the completion pool: a
+    time on a map is counted wherever it is."""
+    _have, playable, bsp = _completion_scope(main_maps)
+    tiers = map_tiers() or {}
+    seen, best = set(), {}
+    for r, _rk, _of in ranked:
+        if (source == "wos" and r["tier"] != TIER_RANKED) or (mode and _map_mode(r["map"]) != mode):
+            continue
+        seen.add(r["map"])
+        if r["track"] == 0 and r["leg"] == 0:
+            cur = best.get(r["map"])
+            if cur is None or r["millis"] < cur["ms"]:
+                best[r["map"]] = {"ms": r["millis"], "tr": r["tier"], "s": r["style"]}
+    out = []
+    for key in seen:
+        row = {"map": bsp.get(key, key), "have": 1 if key in playable else 0, "t": tiers.get(key)}
+        row.update(best.get(key, {}))
+        out.append(row)
+    out.sort(key=lambda m: (m["t"] is None, m["t"] or 0, m["map"].lower()))
+    return out
 
 
 @app.get("/board/api/player/<handle>/maps")

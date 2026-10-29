@@ -1,5 +1,24 @@
 # AGENT_NOTES.md
 
+## Pictures, board pages, stats lists (P1106-P1109, 29 Oct 2026)
+
+- **substring / str2chr / strstrofs strlen the WHOLE string on every call** (pr_bgcmd.c:5271,
+  :4968). Byte by byte over a 32 KB picture body that was 85 ms median a picture (measured,
+  `menupic: slot N decoded in X ms` with developer 1); a row at a time with stoh, 4 ms. Cut a
+  long string into short pieces once before walking it.
+- The menu VM has stoh by name: `int(string) stoh = #0:stoh;` (pr_menu.c:2750), behind
+  checkbuiltin.
+- m_board.qc: a board opened at a time starts at its rank - 5 (Mlb_Browse); Mlb_Earlier loads
+  the page above while the view's top row is under MLB_AHEAD and moves mlb_scroll_y by the rows
+  added. `ui_board_test scroll 0` drives it.
+- /api/board?player=: `figs` {all, wos} x {any, surf, bhop}; `mode=` filters rows too (echo
+  `rows_mode`); `ct=a1|a0|p` are every tier's finished / not-yet maps and the maps with a time.
+  The client sends mode on rows but trusts it only where `figs` came back.
+- zone_file_index reads momentum/maps/zones/local as well (SURFD_ZONES_MOMLOCAL).
+- The Maps page's "no zones" was right for 499 of 502 maps in Lex's surf view (KSF-only or
+  uncatalogued). Their pictures are KSF media, and the MOM / CSS prefix is which library folder
+  holds the file (the Library chips), not the catalogue.
+
 ## Stats page and completed cards (P1104/P1105, 29 Oct 2026)
 
 - **MENU's `min` is `float(float, ...)`**: an int in its varargs tail (json_get_length) reads raw,
