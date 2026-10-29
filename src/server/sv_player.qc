@@ -172,6 +172,7 @@ void() PutClientInServer =
 	// (pm_source.c, gamemovement.cpp:3113), so clearing is the correct reset.
 	self.gravity = 0;
 	self.vbsp_grav_trig = world;      // Patch 865: no trigger_gravity reset owed
+	SV_BankGravityResetClear(self);
 	SV_MomProgressReset(self);        // Patch 869: progress and onehops
 	self.vbsp_ui_held = 0;
 

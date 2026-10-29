@@ -14629,6 +14629,7 @@ void(entity e, float z) SV_TimerTryArm =
 				dprint(sprintf("gravity: %s reset at the start (was %g)\n", e.netname, e.gravity));
 		e.gravity = 0;
 		e.vbsp_grav_trig = world;
+		SV_BankGravityResetClear(e);
 	}
 	// Patch 869: and a START or stage zone entered is the progress trigger
 	// (SetCurrentProgressTrigger, which clears onehops), running or not.

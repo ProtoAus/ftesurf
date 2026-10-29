@@ -12,6 +12,9 @@
 .entity bank_speed_player;
 .int bank_speed_attempt;
 .float bank_speed_bad;
+.entity bank_grav_reset_player;
+.int bank_grav_reset_attempt;
+.float bank_grav_reset_bad;
 
 int bank_serial;
 entity bank_ctx_player;
@@ -20,6 +23,14 @@ float bank_ctx_bad, bank_ctx_depth;
 
 void(entity e) SV_TimerPractice;
 float(entity e) SV_BankSourceTaint;
+
+// P1125: an owed gravity reset keeps the activation that admitted its touch.
+void(entity body) SV_BankGravityResetClear =
+{
+	body.bank_grav_reset_player = world;
+	body.bank_grav_reset_attempt = 0i;
+	body.bank_grav_reset_bad = FALSE;
+};
 
 void(entity e) SV_BankAdvance =
 {

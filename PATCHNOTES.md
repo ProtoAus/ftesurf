@@ -21,6 +21,9 @@
 
 ## next
 
+### P1125 Gravity carry status
+- Gravity zones keep the right run status through a delayed return to normal gravity. Gravity values and movement are unchanged.
+
 ### P1124 Teleport carry status
 - Map teleports keep the right run status when enabled by an earlier attempt. Their destinations and movement are unchanged.
 

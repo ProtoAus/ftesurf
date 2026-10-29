@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1125 gravity zones/status (pending deployment and human check)
+
+Actual-QC profile/reset units and full build pass; independent reviews and
+ordinary deployment are pending. On a map with a gravity zone, confirm the
+ordinary gravity change, any configured return on exit, and current-run status
+remain normal. The numeric/profile units do not establish authored BSP contact,
+native prediction, finished ranking or owner movement feel. Nothing here is
+human-confirmed.
+
 ## P1124 teleport movement/status (pending)
 
 Deployed to both Windows installs and all12Pi lobbies, 2026-10-29; two clear

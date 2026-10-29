@@ -4044,6 +4044,18 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+P1125: trigger_gravity activation and persist0's owed exit reset have separate
+lifetimes. Freeze admitting source before reentrant I/O, compare recipient's
+effective gravity AFTER outputs; native0 means1, so raw0/1 changes alone have no
+profile effect. A no-value touch can still arm a later real reset (2->same2,
+then exit->0). Keep entry cause in dedicated VM-only body reset slots, not the
+volume's subsequently re-authored activation or callback fields. Clear those
+slots where reset ownership already clears (exit/persist/spawn/start). Source
+inspection of existing C consumers establishes normalization, not a measured
+native move. Actual-QC14pairs include currentforeign/world/disabled/no-value/
+reentrant and changed-volume-afterentry controls; one activation contributor
+only, NOT general gravity/body/logical/config/multisource bank closure.
+
 P1124: teleport/alias/relative activation uses the existing effective off/on
 cause slots, frozen before reentrant touch outputs. Snapshot recipient values
 AFTER outputs; compare actual pose, ground and carrier before every warp record,

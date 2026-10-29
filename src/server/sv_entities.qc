@@ -2860,7 +2860,7 @@ void(entity t, float on) SV_IOEnable =
 	if (!strcmp(t.classname, "trigger_push") || !strcmp(t.classname, "trigger_setspeed")
 		|| !strcmp(t.classname, "trigger_momentum_setspeed") || !strcmp(t.classname, "func_conveyor")
 		|| !strcmp(t.classname, "trigger_teleport") || !strcmp(t.classname, "trigger_momentum_teleport")
-		|| !strcmp(t.classname, "trigger_teleport_relative"))
+		|| !strcmp(t.classname, "trigger_teleport_relative") || !strcmp(t.classname, "trigger_gravity"))
 	if (on && wasoff)
 	{
 		if (bank_ctx_depth) SV_BankSnapshot(t);
@@ -7369,39 +7369,66 @@ void() trigger_teleport =
 
 void() trigger_gravity_touch =
 {
+	local entity bp;
+	local int ba;
+	local float bb, oldg, newg;
+
 	if (other.classname != "player")
 		return;
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
 		return;
 	// No filter: Source's GravityTouch reads none (triggers.cpp:2506).
 	SV_TrigStamp(other);
+	bp = self.bank_src_player;
+	ba = self.bank_src_attempt;
+	bb = self.bank_src_bad;
 	SV_TriggerIOTouch(self, other);
 
+	// P1125: outputs own their writes; zero and one are the same profile value.
+	oldg = other.gravity;
+	if (!oldg) oldg = 1;
 	if (other.gravity != self.gravity)
 		if (SV_DevOn())
 			dprint(sprintf("trigger_gravity %s: gravity %g persist '%s'\n", self.model, self.gravity, self.persist));
 	other.gravity = self.gravity;
+	newg = other.gravity;
+	if (!newg) newg = 1;
+	if (oldg != newg)
+		SV_BankCauseAffect(other, bp, ba, bb);
 	if (self.persist != "" && !stof(self.persist))
 	{
 		other.vbsp_grav_trig = self;
 		other.vbsp_grav_touch = TRUE;
+		other.bank_grav_reset_player = bp;
+		other.bank_grav_reset_attempt = ba;
+		other.bank_grav_reset_bad = bb;
 	}
 	else
+	{
 		other.vbsp_grav_trig = world;
+		SV_BankGravityResetClear(other);
+	}
 };
 
 // Called per command from PlayerPreThink: touches run after the move, so a
 // command whose move left the volume reaches here with the flag still clear.
 void(entity p) SV_GravityFrame =
 {
+	local float oldg;
+
 	if (!p.vbsp_grav_trig)
 		return;
 	if (!p.vbsp_grav_touch)
 	{
+		oldg = p.gravity;
+		if (!oldg) oldg = 1;
 		if (SV_DevOn())
 			dprint(sprintf("trigger_gravity %s: left, gravity restored\n", p.vbsp_grav_trig.model));
 		p.gravity = 0;
 		p.vbsp_grav_trig = world;
+		if (oldg != 1)
+			SV_BankCauseAffect(p, p.bank_grav_reset_player, p.bank_grav_reset_attempt, p.bank_grav_reset_bad);
+		SV_BankGravityResetClear(p);
 	}
 	p.vbsp_grav_touch = FALSE;
 };
