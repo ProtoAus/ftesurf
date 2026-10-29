@@ -3157,6 +3157,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             happened.  Collapsing the middle case into absence
                             would be two zeroes agreeing, which is the failure
                             sv_mapcheck shipped for a decade.
+                            P1100: a TAS start (TF_TAS) takes no nudge, and the
+                            rule in force for it is 0: `startjit 0 0 0 0`, written
+                            whenever run_startjitter is on.
 
                             THE RULE IS BESIDE THE OUTCOME on the `zonerule`
                             precedent: a verifier handed only an offset cannot
@@ -5925,10 +5928,10 @@ void(entity e) SV_RecOpen =
 	*/
 	if (run_t_startjit > 0)
 		if (SV_DevOn())
-			dprint(sprintf("timer: startjit %.4f %.4f %.4f\n", run_t_startjit,
+			dprint(sprintf("timer: startjit %.4f %.4f %.4f\n", (e.run_t_flags & TF_TAS) ? 0 : run_t_startjit,
 			               e.run_t_jitter_x, e.run_t_jitter_y));
 	if (run_t_startjit > 0)
-		SV_RecPut(e, sprintf("startjit %.4f %.4f %.4f %.4f", run_t_startjit,
+		SV_RecPut(e, sprintf("startjit %.4f %.4f %.4f %.4f", (e.run_t_flags & TF_TAS) ? 0 : run_t_startjit,
 		                     e.run_t_jitter_x, e.run_t_jitter_y,
 		                     e.run_t_jitter_z));
 
@@ -14472,7 +14475,9 @@ void(entity e) SV_TimerStart =
 	  decided by this point, so nothing here can be mistaken for something the
 	  player did -- which is the mistake a later edit would otherwise make.
 	*/
-	SV_RunStartJitter(e);
+	// P1100: a TAS line is planned to the unit, and its board re-simulates it; no nudge.
+	if (e.run_t_flags & TF_TAS) e.run_t_jitter = '0 0 0';
+	else SV_RunStartJitter(e);
 
 	SV_RecOpen(e);
 

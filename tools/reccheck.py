@@ -258,7 +258,8 @@ HEAD_V6 = HEAD_V5 | {"instart"}
 #           means the rule ran and every candidate was blocked (embedded in
 #           geometry, or back inside the start box), so nothing moved.  Anything
 #           else is a displacement that happened.  The middle case is a legal and
-#           expected file and must not read as the first one.
+#           expected file and must not read as the first one.  P1100: a TAS start
+#           takes no nudge and writes the rule in force for it, 0: `startjit 0 0 0 0`.
 #
 #           WHY IT IS IN THE FILE AT ALL: random() is unseeded everywhere in the
 #           game, so the offset exists once and cannot be re-derived.  A verifier
@@ -1038,7 +1039,10 @@ def _check_rec(r, path, verbose=False, *, data=None):
                 if abs(v) > u + 1e-4:
                     r.fault("startjit %s is %g, outside the rule of %g it "
                             "states" % (nm, v, u))
-            if dx == 0 and dy == 0:
+            if u == 0:
+                r.note("startjit: the rule for this start was 0 u (a TAS start "
+                       "takes no nudge)")
+            elif dx == 0 and dy == 0:
                 r.note("startjit: the rule was in force at %g u and applied "
                        "nothing -- every candidate was blocked" % u)
             r.info["startjit"] = "%g (%g %g %g)" % (u, dx, dy, dz)
