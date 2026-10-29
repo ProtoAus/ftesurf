@@ -288,6 +288,10 @@ history (keylinks today is overwritten on relink, deleted on unlink); unknown pa
 stored as "ancestry unknown" and earn no credit for what they would have supplied.
 5.4 Public credits: per revision, who supplied which ticks along the signed chain (Alice
 0..500, Bob 501..900, Charlie optimizer revision); unsigned or unlinked = unattributed.
+5.3 + 5.4 BUILT as P1091 (28 Oct): surfd/tasrevd.py, an isolated service (tasrev.md is its
+contract; tools/install_tasrevd.py installs it, root). Four review rounds; the last fixes passed
+the round-4 reviewer's fuzzers (800 arrival-order trials against a brute-force reading of the
+contract, 300 statement/cache trials). Live once Lex runs the install.
 5.5 Client: share, browse, open a downloaded revision as a project.
 
 6.1 A project from the legal start (no base save): the run's start zone and spawn, so a

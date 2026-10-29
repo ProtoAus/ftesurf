@@ -225,6 +225,21 @@ Lex's goals of 28 Oct, beyond P1088's constant turn for exit speed ("do what you
 - Each candidate prints ~3 console lines; with a second client on a non-lobby server each
   back's save row stays (as plain `tas back`), so one search adds ~22 rows.
 
+## TAS revision service (P1091): what is left
+
+tasrevd (tasrev.md is the contract). From four review rounds (28 Oct); none moves credit to a
+wrong account.
+- Not recognised as the same work: rows shifted to other ticks, and a near copy (one row changed,
+  saved as a new root) -- the copy rule catches exact copies only.
+- A revision shared privately before its statement is registered can be raced (a statement counts
+  only if it arrived before the revision).
+- A child uploaded before its parent is not supply-checked; only its own signer can lose ticks.
+- Queue cap: an arrival queues at most 20000 revisions that read it; past that,
+  `tasrevd.py --store ... rebuild` repairs.
+- A fragmented upload (every other tick changed, 96000 rows) holds the write lock ~0.3 s on the
+  i9, about 1-2 s on the Pi; writers wait 15 s before a 503.
+- No client yet: sharing, browsing and opening a revision in the game is plan 5.5.
+
 ## TAS statements (P1090): what is left
 
 From five review rounds (28 Oct). None ranks a run or writes a false statement.
