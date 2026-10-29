@@ -6,9 +6,11 @@ headings/untracked test claims (previous maximum 1102).
 ## Current status — 29 October 2026
 
 Implemented, reviewed, pushed and **deployed native-only to both Windows installs**
-at 07:21:39 UTC. No QC/menu/config/player-data deployment or Build/release change.
-ARM dedicated/HL2 build, all 58 clock controls and all 60 full-fixture physics rows
-pass; **ARM lobby/backend promotion remains held at the legacy compatibility gate**.
+at 07:21:39 UTC and **all 12 NanoPi lobbies**, verified at 09:05:36 UTC with live
+version/diagnostic readback at 09:13:16 UTC. No QC/menu/config deployment, backend
+generation/schema/threshold change, Build decision or release. The historical
+legacy-world closure was recovered and qualified before ARM promotion; the
+original incompatible-world HOLD remains retained, not relabelled.
 
 ## Implemented and published
 
@@ -62,7 +64,7 @@ measured partial plugin was removed and the real recipe rerun successfully. No
 fake-success ZIP shim and no system package installation. The final artifact is
 qualified, not the earlier partial shared object.
 
-## Deployment and remaining gate
+## Deployment and recovered legacy-world gate
 
 Windows: all 10 native destinations and `.prev` predecessors verified; immutable
 predecessor copies retained. The fresh process guard first stopped before writes
@@ -73,11 +75,37 @@ Client SHA256 `51771d77840c8db78579b02ca54d1f7cccbb0f919f27357ecbda5879ba8512ed`
 server `626b43d6264b6653974d25c4dd0230b9e30ec776baaca03c7e0e1d1717f8683e`;
 HL2 `5f229e3c4ad4b2768f087864a7b8a05b51b53a5a7c509eb0e175876b7846bc06`.
 
-ARM is **built/tested, not deployed**. The older public `p492voy.rec` compatibility
-fixture currently HOLDs on physents under both the exact installed predecessor
-bundle and P1103 with the same fixture. It is not a passing promotion control in
-that state. Preserve the failure and recover a qualified compatible fixture /
-acting legacy PASS before any native lobby/backend promotion; do not lower the
-gate or repair unrelated code just to pass. No backend generation, schema,
-threshold, release or general held/parked replay change is claimed. Private
-fixtures, raw logs and the operational checkpoint remain private.
+The public `p492voy.rec` pin-2 HOLD was a world-profile mismatch: holding every
+other Windows input fixed and substituting its qualified archived QW program
+(SHA256 `df678374743a1351764d9ea6c7933eae8168c19f3a6172e77674bd8dd4246e98`)
+restores PASS 4418 ticks/4418 rows under both exact predecessor and candidate.
+ARM predecessor/candidate also pass that control and the documented P813 pin-7
+replacement (9194 ticks/9192 rows). This is declared historical-world coverage,
+NOT current-QW compatibility, pin-1 coverage or permission to ship the old QW.
+The original HOLD logs remain failed; no recording was rewritten, gate weakened
+or unrelated product code changed. Windows QW was restored after the falsifier.
+
+ARM native SHA256 `4a085b778e29b4f307539af1e4408719baea9697b75b24cabd3b3e8653ebcab0`;
+HL2 `2043eeb2debc79c8879c16affb7a69f71d24900f2ae771a9e75209303844c403`.
+Only those two images were promoted, retaining exact predecessor/prior-prev
+copies. All 12 positive status-7 empty boundaries included spectators; every
+ordinary restart occurred once. All 12 new PID/birth/native hashes and actual
+HL2 mapped inodes verified. 34,029 pre-existing protected files and all configs
+stayed identical; six newly appearing files were preserved, not erased.
+
+The initial transaction completed swaps/restarts, then hit a missing directory
+method in its newer census helper. Its source/failure receipt remain retained;
+the caller seam was corrected and read-only postflight independently verified
+the original 12 new actors, without another swap/restart or verifier downgrade.
+All 12 actual `version` replies match the qualified native. Two exact synthetic
+early-clock REFUSE probes then act on the live installed native; the first file-
+visibility failure remains retained. Source-reviewed `fs_flush` made the newly
+external-created loose files visible without remount/restart/cvar change; exact
+owned files were removed and the hash cache refreshed afterwards.
+
+The current plain-API backend generation has no native dependency pins; its
+manifest, launchers, systemd unit and health stayed unchanged. No coupled backend
+handoff was needed or performed. Backend healthy/directory 12; AI untouched;
+short sweep flock released, no maintenance gate. General held/parked replay is
+still unsupported. Private fixtures, raw logs and operational checkpoints stay
+private. These are documentation-only follow-ups to the unchanged source/tag.

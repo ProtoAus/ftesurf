@@ -7380,6 +7380,28 @@ corrected12unit readback and cold CSQC hash/drawn-board proof acted. No raw comm
   No product physics defect or single offending input was isolated. Preserve the
   map/override/model/mount/config/zone inputs and use the established full gate;
   do not weaken the comparator or grow more wrappers around the small fixture.
+- Legacy native controls need their declared historical QW world too. P1103's
+  public p492voy pin2 HOLD (52 physent rows, first408) was identical under the
+  predecessor/candidate with current captured QW. Changing ONLY that QW to the
+  qualified archived program (SHA256 df678374743a1351764d9ea6c7933eae8168c19f3a6172e77674bd8dd4246e98)
+  restored4418tick/4418row PASS on both Windows natives; ARM predecessor/candidate
+  passed pin2 and the documented P813 pin7 replacement. Keep the original HOLD;
+  declare the historical profile, do not call it current-QW compatibility or
+  pin1 coverage, and NEVER deploy old QW to fix a fixture. Current full-platform
+  parity and historical legacy qualification are distinct declared contexts.
+- Runtime probes externally creating loose files AFTER server startup may miss
+  the existing filesystem hash: P1103's first live pm_verify said cannot read the
+  file despite its exact bytes existing. Stage all probe files first, then use
+  source-reviewed fs_flush (only marks com_fschanged/increments fs_listgen), NOT
+  fs_restart or a lobby restart. After removing only verified own files, flush
+  again. An unreadable file is not a diagnostic/physics pass. Retain the first
+  failure; do not keep making differently named copies of the same invisible file.
+- Keep deployed postflight adapters on their helper's ACTUAL API: P1103's older
+  two-file promoter expected directory(), newer status7 helper exposed inspect().
+  The images/all12restarts had completed before that wrapper AttributeError.
+  Preserve the failed transaction; fix the one caller seam and complete READ-ONLY
+  verification of the original new PID/birth/native/plugin-inode pairs. Do not
+  rerun swaps/restarts, downgrade a generating fleet, or relabel the failure PASS.
 - **AN OVERLAY BASEDIR IS LINKS INTO THE LIVE GAME, AND A GUI DELETE FOLLOWS
   THEM.** 2026-10-05: an old overlay, /srv/nvme/p323base (126 links, 24 MB real,
   57 GB to anything that follows links), was deleted with a file manager and
