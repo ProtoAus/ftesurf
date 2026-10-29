@@ -15,7 +15,7 @@
 */
 
 #define MLB_PAGE      40     // rows a request asks for; surfd caps at 200
-#define MLB_MAXROW    1000    // rows held; the list stops there
+#define MLB_MAXROW    1000    // rows held: a window that drops the far end as it moves (P1107)
 #define MLB_AHEAD     10      // ask for the next page this many rows before the end
 #define MLB_DEADLINE  10      // s; the engine's HTTP client has no timeout of its own
 #define MLB_DROPS     8       // abandoned ids remembered, so a late reply is reported
@@ -378,7 +378,7 @@ float(float append) Mlb_Fetch =
 	if (append)
 	{
 		off = mlb_offset + mlb_n;
-		lim = min(MLB_PAGE, MLB_MAXROW - mlb_n);
+		lim = MLB_PAGE;
 	}
 	tier = Mlb_Tier(mlb_tab);
 	url = strcat(sprintf("%s/api/board?map=%s&track=%g&leg=%g&tier=%s&style=%s",
@@ -440,7 +440,7 @@ float() Mlb_More =
 {
 	if (mlb_state != MLBS_OK || !mlb_more)
 		return FALSE;
-	if (mlb_mreq || mlb_mfail || mlb_n >= MLB_MAXROW)
+	if (mlb_mreq || mlb_mfail)
 		return FALSE;
 	return Mlb_Fetch(TRUE);
 };
@@ -648,6 +648,32 @@ void(float id, float code, float append) Mlb_Fail =
 	              append ? "next page" : "first page", code, Mlb_Why(code)));
 };
 
+// P1107: the first `d` rows go; the rest move up, and the view and focus with them.
+void(float d) Mlb_DropHead =
+{
+	local float k;
+	if (d <= 0)
+		return;
+	d = min(d, mlb_n);
+	for (k = d; k < mlb_n; k = k + 1)
+	{
+		bufstr_set(mlb_brank, k - d, bufstr_get(mlb_brank, k));
+		bufstr_set(mlb_bname, k - d, bufstr_get(mlb_bname, k));
+		bufstr_set(mlb_btime, k - d, bufstr_get(mlb_btime, k));
+		bufstr_set(mlb_bdate, k - d, bufstr_get(mlb_bdate, k));
+		bufstr_set(mlb_bwho, k - d, bufstr_get(mlb_bwho, k));
+	}
+	mlb_n = mlb_n - d;
+	mlb_offset = mlb_offset + d;
+	mlb_scroll_y = max(0, mlb_scroll_y - d * MLB_ROW_H);
+	mlb_focus = (mlb_focus >= d) ? mlb_focus - d : -1;
+	if (mlb_going) mlb_goto = max(0, mlb_goto - d);
+	Mlb_Abandon(mlb_ureq);              // an earlier page asked before this is no longer above
+	mlb_ureq = 0;
+	mlb_ufail = FALSE;
+	print(sprintf("^5board:^7 dropped the first %g rows: held %g from #%s\n", d, mlb_n, bufstr_get(mlb_brank, 0)));
+};
+
 // One reply to the first page or the next.  Rows land only where they continue
 // the list (the reply's own offset); a page that does not is dropped.
 void(float id, float code, string body, float append) Mlb_Page =
@@ -725,13 +751,17 @@ void(float id, float code, string body, float append) Mlb_Page =
 	n = got;
 	if (n > lim)
 		n = lim;
-	if (n > MLB_MAXROW - mlb_n)
-		n = MLB_MAXROW - mlb_n;
+	if (n > MLB_MAXROW)
+		n = MLB_MAXROW;
+	// P1107: at the cap the head goes, and the view moves up with what is left (Mlb_PageEarlier
+	// brings it back).
+	if (mlb_n + n > MLB_MAXROW)
+		Mlb_DropHead(mlb_n + n - MLB_MAXROW);
 	for (i = 0; i < n; i = i + 1)
 		Mlb_Row(mlb_n + i, json_get_child_at_index(rows, i));
 	json_free(root);
 
-	// A full page: the server may hold more, even at the cap (the tail says so).
+	// A full page: the server may hold more.
 	mlb_n = mlb_n + n;
 	mlb_more = (n >= lim);
 	if (!append)
@@ -788,7 +818,7 @@ void(float id, float code, string body) Mlb_PageEarlier =
 		              id, off, n, mlb_ulim));
 		return;
 	}
-	// At the cap the tail goes, and comes back as the list is scrolled down again.
+	// At the cap the tail goes, and Mlb_More asks for it again as the list is scrolled down.
 	keep = min(mlb_n, MLB_MAXROW - n);
 	if (keep < mlb_n)
 	{
@@ -814,6 +844,7 @@ void(float id, float code, string body) Mlb_PageEarlier =
 	mlb_n = keep + n;
 	mlb_offset = off;
 	mlb_scroll_y = mlb_scroll_y + n * MLB_ROW_H;
+	if (mlb_going) mlb_goto = mlb_goto + n;
 	print(sprintf("^5board:^7 earlier page id %g: offset %g rows %g -- held %g from #%s\n",
 	              id, off, n, mlb_n, bufstr_get(mlb_brank, 0)));
 };
@@ -1043,11 +1074,8 @@ void(vector rp, float rw) Mlb_DrawTail =
 		if (ui_button("mlb_retry2", [rp_x + rw - 88, rp_y + 1], [80, MLB_ROW_H - 2], "retry"))
 			Mlb_Retry();
 	}
-	else if (mlb_mreq || (mlb_more && mlb_n < MLB_MAXROW))
+	else if (mlb_mreq || mlb_more)
 		sui_text(tp, SZ_ROW, "loading...", COL_DIM, 1, 0);
-	else if (mlb_more && Mlb_BoardCount() > mlb_n)
-		sui_text(tp, SZ_ROW, sprintf("the first %g of %g -- the list stops there",
-		                             mlb_n, Mlb_BoardCount()), COL_DIM, 1, 0);
 	else
 		sui_text(tp, SZ_ROW, "end of the list", COL_DIM, 1, 0);
 };
@@ -1216,7 +1244,7 @@ void(vector screensize) Mlb_Draw =
 		// ui_board_test's scroll ends where it was sent, or where the rows run out.
 		if (mlb_going)
 		if (mlb_scroll_y >= mlb_goto * MLB_ROW_H || mlb_mfail
-		    || (!mlb_mreq && (!mlb_more || mlb_n >= MLB_MAXROW)))
+		    || (!mlb_mreq && !mlb_more))
 		{
 			mlb_going = FALSE;
 			print(sprintf("^5board:^7 scrolled: top row %g of %g held\n",

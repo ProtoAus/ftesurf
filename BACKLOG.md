@@ -23,6 +23,13 @@
   manifest downloads (cl_parse.c:806 HTTP_CL_Get, no DL_CreateThread) poll on the main thread with a
   blocking getaddrinfo; QC uri_get is already threaded. Mmm_TakeMeta parses up to 2.5 MB in one menu
   frame once a session. The progress fields' race was not checked before any threading.
+- **Zone folders read in two orders (P1106 review 1, measured on the Pi 29 Oct):** the game reads
+  momentum/maps/zones/local before online, and nine maps have different files in each (surf_brodderlands'
+  online file changed 28 Oct with no effect in game). mapwatch's has-a-local-file check (mapwatch.py:1848,
+  :1867) looks only in ftesurf's folder. Nothing is hit today (no port suffixes there).
+- **test_admin.py: 2 failures on main** ("amplification guard", "three snapshots... got 8, want 4"), the
+  same on P1106's parent: not from it. PF_CTROWS is 2500 against a 2,036-map pool: raise it before the
+  pool nears it (the not-yet list would stop without a word).
 - **Zones (P1109 leftovers):** ui_pool_load does not look in data/maps/zones/dl or curated (offline
   only). Nine untimed builds have a zoned sibling (surf_benevolent_refix, surf_luminaris_refix,
   surf_race_final, surf_ravine_csgo, ...): candidates for a verified zonefit donation.

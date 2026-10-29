@@ -1868,7 +1868,9 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	if (pf_c_has)
 	{
 		x = x + tw + hint;
-		s = sprintf("%g/%g", pf_cmt[pf_cs * 3 * PF_CMF + 1], pf_cmt[pf_cs * 3 * PF_CMF]);
+		// The kind chips' own figure (P1106 review 1): the list it opens is that kind's.
+		at = (pf_cs * 3 + pf_cm) * PF_CMF;
+		s = sprintf("%g/%g", pf_cmt[at + 1], pf_cmt[at]);
 		if (pf_fg_has)
 		{
 			if (Profile_TileButton("pf_fig_done", [x, y], [tw, th], s, "", "maps finished", ttl, hint, SUI_THEME_GOOD,
