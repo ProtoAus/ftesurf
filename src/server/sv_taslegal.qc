@@ -82,6 +82,12 @@ void(entity e, float z) SV_TASLegalStart =
 		sprint(e, PRINT_HIGH, "tas start <zone>: the number of a start or stage zone (cmd zone_dests lists them)\n");
 		return;
 	}
+	// The stage you are on in a running run is a stage restart (the run goes on), not a start.
+	if (SV_TimerWouldRestartSeg(e, z))
+	{
+		sprint(e, PRINT_HIGH, "tas start: that zone restarts the stage you are on, it does not arm a run; !r first\n");
+		return;
+	}
 	if (!SV_TASCanPause(e)) return;
 	s = num_for_edict(e);
 	if (s < 1 || s > FS_MAXPLAYERS) { sprint(e, PRINT_HIGH, "tas: no legal start in this player slot\n"); return; }
@@ -185,6 +191,7 @@ void(entity e, float target) SV_TASLegalBack =
 };
 
 void(entity e) SV_TASLegalLoadRun;
+float(entity e, float n) SV_TimerWouldRestartSeg;
 
 // Settled and idle paused frames: the start's tick, and the next replay chunk.
 void(entity e) SV_TASLegalFrame =
@@ -448,6 +455,11 @@ void(entity e, string name, string cpname) SV_TASLegalLoad =
 	if (!ok || ls < 1 || ls > FS_MAXPLAYERS)
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas project: %s starts at zone %.0f, which is not a start zone here; nothing changed\n", name, z));
+		SV_TASPReadFree(); return;
+	}
+	if (SV_TimerWouldRestartSeg(e, z))
+	{
+		sprint(e, PRINT_HIGH, sprintf("tas project: %s starts at zone %.0f, the stage you are on in this run; !r first; nothing changed\n", name, z));
 		SV_TASPReadFree(); return;
 	}
 	pre = tpr_startat ? tpr_startat : tpr_n;

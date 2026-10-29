@@ -271,6 +271,9 @@ Steps 1-2 of TAS plan 6.1 (P1100) and step 3, version 3 projects (P1110).
 - After a failed v3 save the project is detached (as after a failed base-save save): a default name
   forks, the same name needs force (and then skips the "would cut" warning). A base-save save that
   drops a v3 line and then fails (harvest, base save, write) has lost that line; reload the file.
+- A v3 load whose replay starts the clock early ends with the project reset and no legal-start
+  mark on the attempt, so a base-save save of it may claim the few ticks the tape played after
+  the early start (the attempt is not the saved run).
 - During a v3 load's start-box replay the panel shows a load with no name and `tas project status`
   says none attached.
 - tools/tasrev.py accepts a v3 file whose start box (`startat`, or all rows before the clock) is
@@ -282,8 +285,8 @@ Steps 1-2 of TAS plan 6.1 (P1100) and step 3, version 3 projects (P1110).
   running run).
 - The engine's recording verifier (sv_ccmds.c ~6195) labels `startjit 0 0 0 0` "(blocked)";
   display only.
-- `tas start <a stage zone>` in the middle of a run is a stage restart that does not arm: it moves
-  the player like `zone_goto` (which has the same gap) and says no legal start.
+- `tas start <the stage you are on>` mid-run is refused (P1110: it was a stage restart that did not
+  arm, after resetting the project); `zone_goto` keeps the same gap.
 - Placement measured canonical on bhop_eazy only (p1100-canon1).
 
 ## TAS revision service (P1091): what is left
