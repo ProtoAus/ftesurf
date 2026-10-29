@@ -34,6 +34,7 @@ float *tasp_pbuf[FS_MAXPLAYERS + 1];     // P1090: that revision's own rows (tas
 .vector tasp_lo;                // its placement
 float(entity e) SV_TASLegalValid;
 void(entity e, string name, float force) SV_TASProjectSaveLegal;
+void(entity e, string name, string cpname) SV_TASLegalLoad;
 
 // One file read into temporaries; a load installs them only after every check passed.
 float *tpr_buf;
@@ -777,10 +778,10 @@ void(entity e) SV_TASProjectDrive =
 		e.tasp_result = e.tasp_devtick ? 2 : 1;
 		if (e.tasp_devtick)
 			sprint(e, PRINT_HIGH, sprintf("tas project: loaded %s to tick %.0f; DIVERGED from its saved states at tick %.0f (max %.4f); paused\n",
-				tasp_name[s], head, e.tasp_devtick, e.tasp_dev));
+				tasp_name[s], head + (e.tasp_legal ? e.tasp_lstartat : 0), e.tasp_devtick + (e.tasp_legal ? e.tasp_lstartat : 0), e.tasp_dev));
 		else
 			sprint(e, PRINT_HIGH, sprintf("tas project: loaded %s to tick %.0f; reproduced every saved state exactly; paused\n",
-				tasp_name[s], head));
+				tasp_name[s], head + (e.tasp_legal ? e.tasp_lstartat : 0)));
 		SV_TASProjectEvent(e);
 		return;
 	}
@@ -1403,11 +1404,8 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 		return;
 	}
 	// P1100: a legal start has no base save; it never takes the base-save path below.
-	if (tpr_ver == TASP_LEGAL)
-	{
-		sprint(e, PRINT_HIGH, sprintf("tas project: %s starts at the start zone; loading those is not built yet; nothing changed\n", name));
-		SV_TASPReadFree(); return;
-	}
+	if (tpr_ver == TASP_LEGAL) { SV_TASLegalLoad(e, name, cpname); return; }
+	e.tasp_legal = 0;
 	stop = tpr_base + tpr_n;
 	if (cpname != "")
 	{

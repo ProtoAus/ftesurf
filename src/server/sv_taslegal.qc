@@ -28,6 +28,8 @@ float(entity e) SV_TASLegalValid =
 void(entity e, string why) SV_TASLegalEnd =
 {
 	if (!e.taslg_on) return;
+	// A v3 load that fails in the start box has reproduced nothing: it keeps nothing attached.
+	if (e.taslg_loading) { e.taslg_loading = 0; SV_TASProjectReset(e); e.tasp_result = 3; SV_TASProjectEvent(e); }
 	// A replay in flight stops here, not a packet later from wherever the player now is.
 	if (e.taslg_target >= 0 && checkbuiltin(tas_tape)) tas_tape(e, 0, 0, 0, '0 0 0', '0 0 0', 0);
 	e.taslg_on = 0; e.taslg_target = -1; e.taslg_verify = 0;
@@ -50,6 +52,10 @@ float(entity e) SV_TASLegalPlace =
 	e.run_tas_mode = TRUE;
 	e.run_tas_seen = e.run_tas_done;
 	e.run_tas_paused = TRUE;
+	// Validate and begin need the native input pool, which a fresh map has none of until a step or
+	// plan makes one: make it as `tas plan live` would, only when missing (a configured plan survives).
+	if (!tas_tape(e, 1, 0, 0, '0 0 0', '0 0 0', 0) && e.run_tas_plancap >= TAS_PLAN_CAP)
+		tas_tape(e, TAS_OP_PLANSET, 0, 0, '0 0 0', '0 0 0', 0);
 	// A tape is bound to a recording serial above 0; a connection that never recorded has 0.
 	if (e.rec_rec_serial <= 0) e.rec_rec_serial = SV_RecNextSerial();
 	e.taslg_mark = e.taslg_moved;
@@ -118,7 +124,19 @@ void(entity e) SV_TASLegalLog =
 	if (e.button4) bt = bt + 2;
 	if (e.button8) bt = bt + 4;
 	an = [SV_TASPWord(input_angles_x), SV_TASPWord(input_angles_y), SV_TASPWord(input_angles_z)];
-	if (e.taslg_target >= 0)
+	if (e.taslg_target >= 0 && e.taslg_loading)
+	{
+		// A v3 load: the inputs must be the file's; the states are this replay's, kept for later backs.
+		if (taslg_buf[s][b] != e.movement_x || taslg_buf[s][b+1] != e.movement_y || taslg_buf[s][b+2] != e.movement_z ||
+		    taslg_buf[s][b+3] != an_x || taslg_buf[s][b+4] != an_y || taslg_buf[s][b+5] != an_z || taslg_buf[s][b+6] != bt)
+		{
+			SV_TASLegalEnd(e, sprintf("the load did not apply the file's input of tick %.0f", e.taslg_n + 1));
+			return;
+		}
+		taslg_buf[s][b+7] = e.origin_x; taslg_buf[s][b+8] = e.origin_y; taslg_buf[s][b+9] = e.origin_z;
+		taslg_buf[s][b+10] = e.velocity_x; taslg_buf[s][b+11] = e.velocity_y; taslg_buf[s][b+12] = e.velocity_z;
+	}
+	else if (e.taslg_target >= 0)
 	{
 		// Replaying the log: the step must be the row it was staged from.
 		if (taslg_buf[s][b] != e.movement_x || taslg_buf[s][b+1] != e.movement_y || taslg_buf[s][b+2] != e.movement_z ||
@@ -163,12 +181,40 @@ void(entity e, float target) SV_TASLegalBack =
 	}
 };
 
+void(entity e) SV_TASLegalLoadRun;
+
 // Settled and idle paused frames: the start's tick, and the next replay chunk.
 void(entity e) SV_TASLegalFrame =
 {
 	local float s, count, tx, ok, i, b;
 	if (!e.taslg_on) return;
 	if (e.run_tas_fault) { SV_TASLegalEnd(e, "a TAS step faulted"); return; }
+	// A v3 load's start box ends where the file says the clock started (or, never started, at its head).
+	if (e.taslg_loading && e.taslg_target >= 0 && e.taslg_n == e.taslg_target)
+	{
+		if (e.tasp_lstartat > 0)
+		{
+			if (e.run_t_state != TS_RUNNING || e.taslg_moved != e.taslg_mark)
+			{
+				SV_TASLegalEnd(e, sprintf("the load did not start the clock on tick %.0f as saved", e.tasp_lstartat));
+				return;
+			}
+			e.taslg_startat = e.taslg_n; e.taslg_serial = e.rec_rec_serial;
+		}
+		else if (e.run_t_state != TS_ARMED)
+		{
+			SV_TASLegalEnd(e, "the load started the clock, which the saved project never did");
+			return;
+		}
+		e.taslg_target = -1; e.taslg_loading = 0;
+		SV_TASLegalLoadRun(e);
+		return;
+	}
+	if (e.taslg_loading && e.taslg_target >= 0 && e.run_t_state == TS_RUNNING)
+	{
+		SV_TASLegalEnd(e, sprintf("the load started the clock on tick %.0f, before the saved %.0f", e.taslg_n, e.tasp_lstartat));
+		return;
+	}
 	// Two steps in one packet: the clock starts at the packet's end, so a replay that stops between
 	// them can start it a tick early. That is not the run this start logged.
 	if (e.taslg_target >= 0 && e.run_t_state == TS_RUNNING)
@@ -326,4 +372,120 @@ void(entity e, string name, float force) SV_TASProjectSaveLegal =
 	sprint(e, PRINT_HIGH, sprintf("tas project: saved %s rev 1: a legal start at zone %.0f, inputs to tick %.0f, the clock started on tick %.0f\n",
 		name, e.tasp_lzone, head, e.tasp_lstartat));
 	SV_TASProjectEvent(e);
+};
+
+/*
+  P1100 step 3: load a version 3 project. Place at its start zone (the body must land on the file's
+  baseat), replay the start box from the file's rows through the step that starts the clock, then
+  hand the rest to the project driver in run ticks (tasp_base = -startat puts run tick r at row
+  startat + r). The tpr_* globals hold the file read by SV_TASProjectLoad.
+*/
+void(entity e, string name, string cpname) SV_TASLegalLoad =
+{
+	local float s, ls, z, ok, t, j, pre, bad;
+	s = SV_TASPSlot(e); ls = num_for_edict(e);
+	if (!e.run_tas_rwcap)
+	{
+		sprint(e, PRINT_HIGH, "tas project: a legal start needs native checkpoints; nothing changed\n");
+		SV_TASPReadFree(); return;
+	}
+	if (cpname != "")
+	{
+		sprint(e, PRINT_HIGH, "tas project: a legal start loads to its head (no named checkpoints yet); nothing changed\n");
+		SV_TASPReadFree(); return;
+	}
+	z = tpr_zone;
+	if (!zone_loaded) SV_ZoneFrame();
+	ok = (z >= 0 && z < zone_count && z == floor(z));
+	if (ok) ok = (zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE);
+	if (!ok || ls < 1 || ls > FS_MAXPLAYERS)
+	{
+		sprint(e, PRINT_HIGH, sprintf("tas project: %s starts at zone %.0f, which is not a start zone here; nothing changed\n", name, z));
+		SV_TASPReadFree(); return;
+	}
+	pre = tpr_startat ? tpr_startat : tpr_n;
+	if (pre > TASLG_MAX)
+	{
+		sprint(e, PRINT_HIGH, "tas project: its start box is longer than a session holds; nothing changed\n");
+		SV_TASPReadFree(); return;
+	}
+	if (!SV_TASCanPause(e)) { SV_TASPReadFree(); return; }
+	if (!taslg_buf[ls]) taslg_buf[ls] = (float*)memalloc(TASLG_MAX * TASLG_STRIDE * 4);
+	if (!taslg_buf[ls]) { sprint(e, PRINT_HIGH, "tas project: out of memory\n"); SV_TASPReadFree(); return; }
+	SV_TASHistoryReset(e);
+	SV_TASProjectReset(e);
+	e.taslg_on = 1; e.taslg_zone = z; e.taslg_len = 0; e.taslg_target = -1; e.taslg_loading = 0;
+	if (!SV_TASLegalPlace(e))
+	{
+		e.taslg_on = 0;
+		sprint(e, PRINT_HIGH, "tas project: its start zone did not arm a run; not replaying\n");
+		SV_TASPReadFree(); return;
+	}
+	if (e.origin != tpr_bo)
+	{
+		SV_TASLegalEnd(e, "the start zone does not place the body where this project began (the zones changed?)");
+		SV_TASPReadFree(); return;
+	}
+	bad = SV_TASPValidate(e, tpr_buf, tpr_n);
+	if (bad)
+	{
+		SV_TASLegalEnd(e, sprintf("input row %.0f of the project is refused by the engine", bad));
+		SV_TASPReadFree(); return;
+	}
+	for (t = 0; t < pre; t = t + 1)
+		for (j = 0; j < TAS_INPUT_STRIDE; j = j + 1)
+			taslg_buf[ls][t * TASLG_STRIDE + j] = tpr_buf[t * TAS_INPUT_STRIDE + j];
+	e.taslg_len = pre;
+	// The project, attached once the run part starts (SV_TASLegalLoadRun).
+	tasp_buf[s] = tpr_buf; tasp_cp[s] = tpr_cp; tpr_buf = 0; tpr_cp = 0;
+	tasp_name[s] = strzone(name);
+	tasp_hash[s] = tpr_hash; tasp_parent[s] = tpr_parent; tasp_cpnames[s] = tpr_cpnames;
+	tpr_hash = tpr_parent = tpr_cpnames = "";
+	tasp_revsha[s] = strzone(tpr_h);
+	if (tpr_revsha != "" && tpr_revsha != tasp_revsha[s])
+		sprint(e, PRINT_HIGH, "tas project: this file was changed after it was saved (its revsha does not match)\n");
+	tasp_parsha[s] = tpr_parsha; tpr_parsha = "";
+	e.tasp_supa = tpr_supa; e.tasp_supb = tpr_supb;
+	e.tasp_signed = SV_TASPSignedFor(tasp_revsha[s]);
+	e.tasp_made = SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s], "made"));
+	e.tasp_n = tpr_n; e.tasp_cap = tpr_size; e.tasp_ncp = tpr_ncp; e.tasp_rev = tpr_rev;
+	e.tasp_base = 0; e.tasp_legal = 1; e.tasp_lzone = z; e.tasp_lstartat = tpr_startat; e.tasp_lo = tpr_bo;
+	e.tasp_on = 0; e.tasp_load = 0; e.tasp_parentrev = tpr_parentrev;
+	SV_TASPReadFree();
+	SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE, FALSE);
+	if (e.run_tas_req < 16000000) e.run_tas_req = e.run_tas_req + 1;  // stale timeline pages refuse
+	e.taslg_loading = 1; e.taslg_target = pre;
+	sprint(e, PRINT_HIGH, sprintf("tas project: loading %s rev %.0f: placed at zone %.0f, replaying the start box to tick %.0f\n",
+		name, e.tasp_rev, z, pre));
+	SV_TASProjectEvent(e);
+};
+
+// The start box is replayed: finish, or hand the run part to the project driver.
+void(entity e) SV_TASLegalLoadRun =
+{
+	local float s, k, b;
+	s = SV_TASPSlot(e);
+	if (!s) return;
+	if (!e.tasp_lstartat || e.tasp_n <= e.tasp_lstartat)
+	{
+		e.tasp_result = 1;
+		sprint(e, PRINT_HIGH, sprintf("tas project: loaded %s to tick %.0f (the start box, before the clock); paused\n",
+			tasp_name[s], e.taslg_n));
+		SV_TASProjectEvent(e);
+		return;
+	}
+	// Checkpoints into run ticks, which the driver compares against.
+	for (k = 0; k < e.tasp_ncp; k = k + 1)
+	{
+		b = k * TASP_CPSTRIDE;
+		tasp_cp[s][b] = tasp_cp[s][b] - e.tasp_lstartat;
+	}
+	e.tasp_base = -e.tasp_lstartat;
+	e.tasp_stop = e.tasp_n - e.tasp_lstartat;
+	e.tasp_on = 1; e.tasp_load = 1; e.tasp_cpi = 0; e.tasp_ccount = 0;
+	e.tasp_serial = e.rec_rec_serial; e.tasp_synced = 0; e.tasp_lasthead = 0;
+	e.tasp_filehead = e.tasp_stop; e.tasp_cut = e.tasp_stop;
+	e.tasp_gen = e.rec_rec_gen; e.tasp_dev = e.tasp_devtick = 0; e.tasp_result = 0;
+	SV_RewindTASHead(e);
+	SV_TASProjectDrive(e);
 };
