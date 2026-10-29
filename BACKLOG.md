@@ -19,6 +19,14 @@
 - **surf_aura save 3/4 ramp top (Momentum build):** loading save 3 with the
   key, sideways speed went 1766 -> 0 within ~0.15 s near (4560, -3088, -2760),
   then a fail teleport. Not diagnosed (prop hull vs brush vs Source behaviour).
+- **P1114 leftovers (read 29 Oct):** package/ (DLLF_NONGAME) web downloads write their real name, so a
+  failed one leaves a truncated package under it (cl_parse.c:817-819, :758); they stay polled. Receipts
+  (cl_receipt.c:1023, evidence: review first), master lists (net_master.c) and the manifest update
+  (fs.c:7680) could be threaded the same way. Windows TLS: an untrusted certificate prompts from
+  CertLog_ConnectOkay, main-thread only, which threaded HTTPS users share (uri_get already did).
+- **Pi hygiene (P1115 review, 29 Oct):** /usr/local/lib is owned by uid 501 (no account), on root's
+  Python and library search paths: `chown -R root:root /usr/local/lib`. proto has (ALL:ALL) ALL with a
+  password, so the drop-in installer bounds agents only while that password is not theirs.
 - **Main-thread network work left after P1108 (read 29 Oct, not measured):** engine map/file/receipt/
   manifest downloads (cl_parse.c:806 HTTP_CL_Get, no DL_CreateThread) poll on the main thread with a
   blocking getaddrinfo; QC uri_get is already threaded. Mmm_TakeMeta parses up to 2.5 MB in one menu

@@ -1,5 +1,26 @@
 # AGENT_NOTES.md
 
+## Maps screen, strays, tiers, downloads, drop-in installer (P1111-P1115, 29 Oct 2026)
+
+- A menu-only arm root needs ftesurf/fs_addons.txt (and .default.txt) for installed maps;
+  without them every row is a download offer and the Library filter cannot be measured.
+  `ui_browse` prints the library counts and what show all hides.
+- P1111: ms_lst is the CATALOGUE (mapdl column 4: k/m/km) wherever there is one, not the folder;
+  the Momentum folder holds KSF's CS:S builds since the 27 Oct restore. Measured with mounts:
+  momentum 1637 -> 1162 of 1638. Show all off now hides unzoned or picture-less rows (0 -> 522).
+- P1112: strays are maps whose mapdl catalogue column is '-'. They were switched off with
+  admin.py's own map_pool UPSERT (tools/p1112_disable.py, list tools/p1112-strays.txt; 140, the
+  two Story levels kept). Reversible: enabled=1 or delete the rows. 'Unlisted' is not a category
+  of its own (approved-but-unranked), and private-testing maps are invisible without a login.
+- P1113: map_tiers = mapwatch catalogue mtier, else momtracks.tsv, else catalogue ktier.
+- P1114: the engine's map downloads are threaded (cl_download_threaded). Arms: the console name
+  of fs_dlURL is `sv_dlURL`; the engine remembers a failed URL ("We've failed to download X
+  already") so use fresh names; Con_DPrintf reaches the log only with `log_developer 1`.
+- P1115: surfd generation drop-ins install through surfd-dropin-install.service (write the
+  candidate to /srv/nvme/agent-work/surfd-dropin/candidate.conf, then `sudo -n systemctl start
+  surfd-dropin-install.service`, then read /run/surfd-dropin-install.status). It accepts only the
+  gen_dropin change of the live file. It is NOT a boundary against proto (run.sh is proto's).
+
 ## Pictures, board pages, stats lists (P1106-P1109, 29 Oct 2026)
 
 - **substring / str2chr / strstrofs strlen the WHOLE string on every call** (pr_bgcmd.c:5271,

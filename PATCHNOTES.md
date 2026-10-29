@@ -21,6 +21,21 @@
 
 ## next
 
+### P1114 Map downloads no longer stutter the game
+- Downloading a map runs in the background: before, looking up and connecting to the map host could hold up a frame (one measured download held one for 62 ms).
+
+### P1113 KSF maps have their tier on profiles
+- Profile tier lists use KSF's tier when Momentum has none, so maps like surf_anubis (tier 8) are listed under their tier instead of Unrated. Completion figures change to match.
+
+### P1112 Stray maps are out of the map list
+- 140 maps on no Momentum or KSF list (old beta copies that slipped into the library) no longer show in the map list, lobbies or completion.
+
+### P1111 Maps screen filters
+- Clicking "all" again clears every mode, so you can pick one alone.
+- With "show all" off, maps without zones or a picture are hidden (a search still finds them).
+- The filter group names are easier to read.
+- The Library filter goes by catalogue: Momentum shows Momentum Mod's maps and cs:s shows KSF's, whichever folder a file is in.
+
 ### P1109 Maps without zones say why
 - A map without timer zones now says "no zones", or "no zones: KSF map" for KSF's Counter-Strike: Source maps, whose zones are not public.
 - surf_blastpit, surf_shape and surf_simple_v3 have zones and now show it.
