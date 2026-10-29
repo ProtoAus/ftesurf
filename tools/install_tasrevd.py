@@ -7,8 +7,8 @@ destination files rather than taking over a peer's. The released-code list (code
 seeded from --code (sha256 of each released or deployed csprogs.dat) and only ever appended to.
 
 P1119 --upgrade-from <installed commit>: a new release under RELEASES (every directory above it
-root's alone), and the unit pointed at it. Root runs nothing a proto-owned tree controls: git and
-the import check run as the checkout's owner and as proto. Only when the unit is byte for byte what this installer wrote for that release and
+root's alone), and the unit pointed at it. Root runs no code a proto-owned tree controls: git and
+the import check run as the checkout's owner and as proto (root still reads proto's data). Only when the unit is byte for byte what this installer wrote for that release and
 the nginx snippet is unchanged; state, codes and nginx are not touched. The old unit is put back
 and restarted if the new release does not serve its own source.
 """
@@ -79,7 +79,6 @@ def check_port():
 def check_imports(blobs):
     # The release directory holds only FILES: they must import with nothing else beside them, as proto.
     with tempfile.TemporaryDirectory() as d:
-        os.chmod(d, 0o755)
         for dest, body in blobs.items():
             p = Path(d) / dest; p.parent.mkdir(parents=True, exist_ok=True); p.parent.chmod(0o755); p.write_bytes(body); p.chmod(0o644)
         env = {k: v for k, v in os.environ.items() if k != 'PYTHONPATH'}
@@ -112,15 +111,21 @@ def write_release(release, commit, blobs):
     src.write_text(json.dumps(dict(commit=commit, files={k: sha(v) for k, v in blobs.items()}), indent=2) + '\n'); src.chmod(0o644)
 
 
-def source_owner(source): return pwd.getpwuid(os.stat(source).st_uid).pw_name
+def source_owner(source):
+    # git trusts the owner of .git (and sudo's SUDO_UID): a checkout and its .git must agree.
+    uid = os.stat(source).st_uid
+    if os.stat(Path(source) / '.git').st_uid != uid: raise RuntimeError('The checkout and its .git have different owners')
+    return pwd.getpwuid(uid).pw_name
+
+
+def git(source, *args):
+    env = {k: v for k, v in os.environ.items() if not k.startswith('SUDO_')}
+    return run(*as_user(source_owner(source), 'git', '-C', str(source), '-c', 'core.fsmonitor=false', *args), env=env).stdout
 
 
 def commit_blobs(source, commit):
     # The commit's own bytes, not the working tree's (skip-worktree hides edits from status).
-    owner = source_owner(source)
-    return {dest: run(*as_user(owner, 'git', '-C', str(source), '-c', 'core.fsmonitor=false', 'cat-file', 'blob',
-                               '%s:%s' % (commit, src))).stdout
-            for src, dest in FILES.items()}
+    return {dest: git(source, 'cat-file', 'blob', '%s:%s' % (commit, src)) for src, dest in FILES.items()}
 
 
 def await_probe(commit, url=None, tries=20, pause=.25):
@@ -150,19 +155,27 @@ def check_chain(path):
 
 def rollback(oldunit, newunit, oldcommit, why):
     """Puts the old unit back and proves it serves; returns what happened, for the error."""
+    stage = 'the old unit could not be put back; the new one is on disk'
     try:
         if UNIT.read_bytes() != newunit:
             return 'upgrade failed (%r) and the unit changed meanwhile: left as it is; owner inspection' % why
         replace_unit(oldunit)
+        stage = 'the old unit file is back but systemd may still run the new release'
         try: run('/usr/bin/systemctl', 'reset-failed', 'ftesurf-tasrevd.service')
         except subprocess.CalledProcessError: pass   # not failed: nothing to reset
         run('/usr/bin/systemctl', 'daemon-reload')
         run('/usr/bin/systemctl', 'restart', 'ftesurf-tasrevd.service', timeout=120)
+        stage = 'the old unit is back and restarted but did not serve'
         await_probe(oldcommit)
     except BaseException as e:
-        return ('upgrade failed (%r); the old unit is back but did not serve (%r): systemctl status ftesurf-tasrevd'
-                % (why, e))
+        return 'upgrade failed (%r); %s (%r): systemctl status ftesurf-tasrevd' % (why, stage, e)
     return 'upgrade failed (%r); rolled back, %s serves again (the new release directory stays)' % (why, oldcommit[:12])
+
+
+def record(release, outcome):
+    # For an owner whose session dropped; the terminal already has it.
+    try: (release / 'UPGRADE.txt').write_text(outcome + '\n')
+    except OSError as e: print('(could not write %s: %s)' % (release / 'UPGRADE.txt', e))
 
 
 def upgrade(a, blobs):
@@ -206,13 +219,12 @@ def upgrade(a, blobs):
             await_probe(a.commit, 'https://play.proto.bar/api/tasrev/map/tasrevd_install_probe', pause=.5)
         except BaseException as e:
             outcome = rollback(oldunit, newunit, a.upgrade_from, e)
-            (new / 'UPGRADE.txt').write_text(outcome + '\n')   # for an owner whose session dropped
+            print(outcome); record(new, outcome)
             raise RuntimeError(outcome) from e
     finally:
         for n, h in held.items(): signal.signal(n, h)
     outcome = 'Upgraded the TAS revision service to %s (the old release stays at %s)' % (a.commit, old)
-    (new / 'UPGRADE.txt').write_text(outcome + '\n')
-    print(outcome)
+    print(outcome); record(new, outcome)
 
 
 def unit_text(release, env):
@@ -258,8 +270,7 @@ def main():
         if not re.fullmatch('[0-9a-f]{64}', a.expected_nginx_sha256 or ''): ap.error('Expected exact predecessor nginx SHA256')
         if not a.code or not all(HEX64.fullmatch(c) for c in a.code): ap.error('At least one --code (64 lowercase hex)')
     for p in (a.source, a.account_db): safe_path(p)
-    if run(*as_user(source_owner(a.source), 'git', '-C', str(a.source), 'rev-parse', 'HEAD')).stdout.decode().strip() != a.commit:
-        raise RuntimeError('Source ref differs')
+    if git(a.source, 'rev-parse', 'HEAD').decode().strip() != a.commit: raise RuntimeError('Source ref differs')
     blobs = commit_blobs(a.source, a.commit)
     if a.upgrade_from is not None:
         upgrade(a, blobs)

@@ -74,14 +74,16 @@ run; under sudo with `--apply` it writes the commit's own files (git objects, no
 tree) to /opt/ftesurf-tasrevd/<sha> (every directory above it root's alone: /srv/nvme/ftesurf-ops
 is proto's), points the unit at it and restarts, with Ctrl-C and hangup ignored until the new
 source answers locally and publicly; the outcome is also written to that directory's UPGRADE.txt.
-As root it runs git as the checkout's owner and the import check as proto. It
+As root it runs git as the checkout's owner (which must own its .git too; sudo's SUDO_* is not
+passed on) and the import check as proto. It
 refuses unless the unit and the nginx snippet are byte for byte what this installer wrote for the
 installed release, with no drop-ins or pending reload. If the new release does not serve, the old
 unit is put back, restarted and probed, and the error says whether the old release serves again.
 State, codes.txt and nginx are not touched. Limits: rows the new code wrote before a rollback stay;
 an upgrade runs no schema change (a release that needs one needs its own step); a failed upgrade
 keeps its directory, which must be removed before a retry; a downgrade or a change of unit settings
-is not an upgrade. Tests:
+is not an upgrade; a fresh first install still writes under /srv/nvme/ftesurf-ops/tasrevd (proto's
+parent). Tests:
 `python3 tools/test_install_tasrevd.py` (Linux).
 
 Tests: `python surfd/test_tasrevd.py`.
