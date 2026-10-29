@@ -74,7 +74,9 @@ class FakeKSF(object):
         path = url[len(K.KSF_BASE):]
         self.asked.append(path)
         if self.refuse_after is not None and len(self.asked) > self.refuse_after:
-            raise K.Refused("HTTP 429")
+            if getattr(self, "quiet", False):
+                raise K.Refused("no answer: timed out", transient=True)
+            raise K.Refused("HTTP 429", 429)
         if path.startswith("/api/maps/search/"):
             q = urllib.parse.unquote(path[len("/api/maps/search/"):])
             hits = [dict(info, name=n) for n, info in sorted(self.maps.items())
@@ -332,14 +334,45 @@ def case_no_answer():
         try:
             REAL_FETCH(K.KSF_BASE + "/api/maps/search/surf_x")
             got = "returned"
-        except K.Refused:
-            got = "refused"
+        except K.Refused as e:
+            got = "refused" if e.transient else "refused, not transient"
         except Exception as e:      # the crash this case exists for
             got = type(e).__name__
         finally:
             urllib.request.urlopen = real
-        check("%s stops as a refusal" % label, got, "refused")
+        check("%s stops as a refusal, a transient one (P1117)" % label, got, "refused")
         check("...after one attempt", len(calls), 1)
+    import urllib.error
+
+    def refuse(req, timeout=None):
+        raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {}, io.BytesIO())
+    urllib.request.urlopen = refuse
+    try:
+        REAL_FETCH(K.KSF_BASE + "/api/maps/search/surf_x")
+        got = None
+    except K.Refused as e:
+        got = (e.code, e.transient)
+    finally:
+        urllib.request.urlopen = real
+    check("P1117: an HTTP 429 is a refusal, not transient", got, (429, False))
+
+
+def case_p1117_quiet_park():
+    """No answer parks the crawl QUIET_COOLDOWN, doubling; case_watch_refusal_parks
+    holds an HTTP refusal to COOLDOWN."""
+    fake, cache, mapsdir, names = watch_setup(3, installed=3, prefix="surf_q", refuse_after=2)
+    fake.quiet = True
+    tick(cache, mapsdir, 5)
+    pf = os.path.join(cache, ".refused")
+    park = json.load(io.open(pf, encoding="utf-8"))
+    check("P1117: no answer parks the crawl briefly", (park["n"], park["until"] - park["at"]),
+          (1, K.QUIET_COOLDOWN))
+    park["until"] = park["at"] = 1
+    io.open(pf, "w", encoding="utf-8").write(json.dumps(park))
+    fake.refuse_after = 0
+    tick(cache, mapsdir, 5)
+    park = json.load(io.open(pf, encoding="utf-8"))
+    check("...and doubles", park["until"] - park["at"], 2 * K.QUIET_COOLDOWN)
 
 
 FLAT = {"isLinear": True, "cp_count": 0, "b_count": 0}
@@ -776,7 +809,7 @@ def main():
                  case_linear_asks_no_stages,
                  case_write_and_filter, case_refusal, case_no_answer,
                  case_modes, case_merge_and_refresh, case_watch,
-                 case_watch_refusal_parks, case_watch_dry_and_owed,
+                 case_watch_refusal_parks, case_p1117_quiet_park, case_watch_dry_and_owed,
                  case_review_findings, case_review_round2,
                  case_board_reads_ksf_styles):
         print("\n%s:" % case.__name__)

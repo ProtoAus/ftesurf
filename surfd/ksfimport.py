@@ -167,6 +167,7 @@ UNBLOCK_SCAN = 64          # boards a tick looks through for them
 UNBLOCK_DAYS = 60          # a page re-asked this recently is not asked again
 WATCH_DELAY = 3.0          # s between requests
 COOLDOWN = 6 * 3600        # s parked after a refusal, doubling to COOLDOWN_MAX
+QUIET_COOLDOWN = 30 * 60   # P1117: the same, after no answer at all (timeout, dropped, DNS)
 COOLDOWN_MAX = 48 * 3600
 CATALOG_DAYS = 7           # re-list KSF's maps this often
 REFRESH_DAYS = 14          # re-ask a board's first page this often
@@ -265,11 +266,12 @@ def read_seed(path):
 class Refused(Exception):
     """ksf.surf said no to US.  Reported, never retried, stops the run.
     `code` is the HTTP status when there was one; `board` marks a reply only
-    that board's request got (a page that would not parse as one)."""
+    that board's request got (a page that would not parse as one); `transient`
+    one with no HTTP answer at all, which parks for QUIET_COOLDOWN."""
 
-    def __init__(self, msg, code=0, board=False):
+    def __init__(self, msg, code=0, board=False, transient=False):
         Exception.__init__(self, msg)
-        self.code, self.board = code, board
+        self.code, self.board, self.transient = code, board, transient
 
 
 class OverBudget(Exception):
@@ -310,12 +312,12 @@ def fetch(url):
             raise NoSuchPlayer("HTTP 500")
         raise Refused("HTTP %d" % e.code, e.code)
     except urllib.error.URLError as e:
-        raise Refused(str(e.reason))
+        raise Refused(str(e.reason), transient=True)
     # No answer at all: a read past KSF_TIMEOUT, a connection dropped mid-reply.
     # Not a refusal, but stopped like one -- 2026-10-03's run died here with a
     # traceback after 171 map lookups.
     except (OSError, http.client.HTTPException) as e:
-        raise Refused("no answer: %s" % (str(e) or type(e).__name__))
+        raise Refused("no answer: %s" % (str(e) or type(e).__name__), transient=True)
 
 
 def records(sid, cache_dir, paced):
@@ -1064,9 +1066,10 @@ def watch_mode(args, have, cache):
                     print("  idle: %s walked again from rank 1" % again)
         except Refused as e:
             n = int(park.get("n") or 0) + 1
-            wait = min(COOLDOWN * 2 ** (n - 1), COOLDOWN_MAX)
+            base = QUIET_COOLDOWN if getattr(e, "transient", False) else COOLDOWN
+            wait = min(base * 2 ** (n - 1), COOLDOWN_MAX)
             _save(pf, {"at": now, "until": now + wait, "n": n, "why": str(e)})
-            print("refused: %s -- parked for %d h, nothing is retried" % (e, wait // 3600))
+            print("refused: %s -- parked for %d min, nothing is retried" % (e, wait // 60))
             # Only an answer about the board strikes it: a 403/429/503, or no
             # answer at all, is about the host, and would set aside whichever
             # board happened to be asked first (review, 5 Oct).
