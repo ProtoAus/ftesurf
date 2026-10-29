@@ -171,6 +171,8 @@ def parse(data):
                 startat = num(a[0], 0, TASP_MAX)
             elif k == 'baseat':
                 for x in a: num(x, -1000000, 1000000)
+                if version == '3' and a[3:] != ['0', '0', '0']:
+                    raise Refused('a legal start is placed standing still')
             elif k == 'head':
                 if base is None or len(a) != 1: raise Refused('bad head')
                 size = num(a[0], base + 1, base + TASP_MAX) - base

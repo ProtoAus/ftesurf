@@ -45,6 +45,7 @@ float(entity e) SV_TASLegalPlace =
 	self = was;
 	e.taslg_placing = 0;
 	if (e.run_t_state != TS_ARMED) return FALSE;
+	e.taslg_o0 = e.origin;
 	SV_TASMark(e);
 	e.run_tas_mode = TRUE;
 	e.run_tas_seen = e.run_tas_done;
@@ -220,4 +221,109 @@ void(entity e) SV_TASLegalFrame =
 	}
 	e.taslg_wait = 0;
 	e.run_tas_replayserial = e.rec_rec_serial;
+};
+
+/*
+  P1100 step 3: save a legal-start session as a version 3 project -- a root revision, ticks from
+  the placement: the start box's rows from the session's log, then (once the clock started) the
+  recorder's `in` rows from run tick 1, harvested as a base-save project's are but with
+  tasp_base = -startat so they land at their total tick. One checkpoint: the head.
+*/
+void(entity e, string name, float force) SV_TASProjectSaveLegal =
+{
+	local float s, ls, head, pre, running, t, j, run;
+	local filestream f;
+	s = SV_TASPSlot(e); ls = num_for_edict(e);
+	if (!s || !SV_TASPLocalOnly(e)) return;
+	if (e.tasp_load) { sprint(e, PRINT_HIGH, "tas project: a load is still running\n"); return; }
+	if (!e.run_tas_paused || e.run_tas_pending || e.taslg_target >= 0)
+	{
+		sprint(e, PRINT_HIGH, "tas project: pause, and let a back finish, before saving a legal start\n");
+		return;
+	}
+	running = (e.run_t_state == TS_RUNNING);
+	if (running && SV_ViewTicks(e))
+	{
+		sprint(e, PRINT_HIGH, "tas project: this run opened a viewing window; a legal start saves none\n");
+		return;
+	}
+	run = running ? SV_TimerTicks(e) : 0;
+	pre = running ? e.taslg_startat : e.taslg_n;
+	head = pre + run;
+	if (head < 1) { sprint(e, PRINT_HIGH, "tas project: take a step before saving\n"); return; }
+	if (head > TASP_MAX) { sprint(e, PRINT_HIGH, "tas project: longer than a project holds\n"); return; }
+	if (name == "")
+		for (t = 1; t < 1000; t = t + 1)
+		{
+			name = sprintf("tas%.0f", t);
+			if (!SV_TASPExists(name)) break;
+		}
+	if (SV_TASPExists(name) && !force)
+	{
+		sprint(e, PRINT_HIGH, sprintf("tas project: %s already exists; save under a new name, or tas project save %s force\n", name, name));
+		return;
+	}
+	if (!SV_TASPExists(name) && SV_TASPCount() >= TASP_FILES)
+	{
+		sprint(e, PRINT_HIGH, sprintf("tas project: %.0f projects on this map is the limit\n", TASP_FILES));
+		return;
+	}
+	if (!SV_TASPIdentityOK(e)) return;
+	if (!SV_SaveLocRate(e)) return;
+	name = strzone(name);
+	// A fresh root: none of a base-save project's state carries over.
+	if (tasp_buf[s]) memfree(tasp_buf[s]);
+	if (tasp_cp[s]) memfree(tasp_cp[s]);
+	tasp_buf[s] = 0; tasp_cp[s] = 0;
+	e.tasp_n = e.tasp_cap = e.tasp_ncp = 0;
+	if (tasp_cpnames[s]) strunzone(tasp_cpnames[s]);
+	tasp_cpnames[s] = "";
+	if (tasp_revsha[s] != "") { strunzone(tasp_revsha[s]); tasp_revsha[s] = ""; }
+	e.tasp_on = 0; e.tasp_rev = 0;
+	if (!SV_TASPEnsure(e, s, head)) { sprint(e, PRINT_HIGH, "tas project: out of memory\n"); strunzone(name); return; }
+	for (t = 0; t < pre; t = t + 1)
+		for (j = 0; j < TAS_INPUT_STRIDE; j = j + 1)
+			tasp_buf[s][t * TAS_INPUT_STRIDE + j] = taslg_buf[ls][t * TASLG_STRIDE + j];
+	e.tasp_n = pre;
+	if (running && run > 0)
+	{
+		e.tasp_base = -pre; e.tasp_synced = 0; e.tasp_line = -1;
+		if (!SV_TASPHarvest(e, s, run))
+		{
+			sprint(e, PRINT_HIGH, sprintf("tas project: cannot save: %s; nothing written\n", tasp_why));
+			strunzone(name); e.tasp_n = 0; return;
+		}
+	}
+	e.tasp_base = 0; e.tasp_n = head;
+	tasp_cp[s] = (float*)memalloc(TASP_CPSTRIDE * 4);
+	if (tasp_cp[s])
+	{
+		tasp_cp[s][0] = head; tasp_cp[s][1] = 0;
+		tasp_cp[s][2] = e.origin_x; tasp_cp[s][3] = e.origin_y; tasp_cp[s][4] = e.origin_z;
+		tasp_cp[s][5] = e.velocity_x; tasp_cp[s][6] = e.velocity_y; tasp_cp[s][7] = e.velocity_z;
+		e.tasp_ncp = 1;
+	}
+	e.tasp_legal = 1; e.tasp_lzone = e.taslg_zone; e.tasp_lstartat = running ? e.taslg_startat : 0; e.tasp_lo = e.taslg_o0;
+	e.tasp_supa = 1; e.tasp_supb = head; e.tasp_rev = 1;
+	if (tasp_name[s]) strunzone(tasp_name[s]);
+	tasp_name[s] = name;
+	if (tasp_parent[s]) strunzone(tasp_parent[s]);
+	tasp_parent[s] = strzone("");
+	if (!SV_TASPWrite(e, s, name, ""))
+	{
+		sprint(e, PRINT_HIGH, "tas project: cannot write the project file\n");
+		e.tasp_legal = 0; SV_TASProjectEvent(e); return;
+	}
+	if (!SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE, FALSE))
+		sprint(e, PRINT_HIGH, "tas project: could not keep this revision under its hash; Sign will try again\n");
+	if (strstrofs(infokey(e, "ip"), "LoopBack", 0) >= 0 && !SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s], "made")))
+	{
+		f = fopen(SV_TASPRevPath(tasp_revsha[s], "made"), FILE_WRITE);
+		if (f >= 0) { fputs(f, "saved here\n"); fclose(f); }
+	}
+	e.tasp_made = SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s], "made"));
+	e.tasp_signed = SV_TASPSignedFor(tasp_revsha[s]);
+	sprint(e, PRINT_HIGH, sprintf("tas project: saved %s rev 1: a legal start at zone %.0f, inputs to tick %.0f, the clock started on tick %.0f\n",
+		name, e.tasp_lzone, head, e.tasp_lstartat));
+	SV_TASProjectEvent(e);
 };

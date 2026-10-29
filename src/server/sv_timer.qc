@@ -741,6 +741,7 @@ float sv_ts_taint_uid[FS_MAXPLAYERS]; // existing native userid, VM-only; surviv
 // P1100: a legal-start session (sv_taslegal.qc); taslg_moved counts placements it did not make.
 .float taslg_on, taslg_zone, taslg_n, taslg_len, taslg_startat, taslg_target, taslg_serial;
 .float taslg_placing, taslg_moved, taslg_mark, taslg_wait, taslg_verify;
+.vector taslg_o0;               // where the placement put the body (a v3 project's baseat)
 float sv_tas_taint_uid[FS_MAXPLAYERS];
 
 void() SV_TimeScaleMapReset =

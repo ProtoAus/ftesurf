@@ -30,6 +30,10 @@ float *tasp_pbuf[FS_MAXPLAYERS + 1];     // P1090: that revision's own rows (tas
 // through; tasp_lineserial is the attempt that revision belongs to.
 .float tasp_supa, tasp_supb, tasp_signed, tasp_pbase, tasp_pn, tasp_lineserial;
 .float tasp_made;              // P1090 review 3: the current revision was saved here, not only loaded
+.float tasp_legal, tasp_lzone, tasp_lstartat;  // P1100: this revision is a legal start (version 3)
+.vector tasp_lo;                // its placement
+float(entity e) SV_TASLegalValid;
+void(entity e, string name, float force) SV_TASProjectSaveLegal;
 
 // One file read into temporaries; a load installs them only after every check passed.
 float *tpr_buf;
@@ -486,6 +490,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 			if (i < 6) { tpr_why = "bad base state"; break; }
 			tpr_bo = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
 			tpr_bv = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
+			if (ver == TASP_LEGAL && tpr_bv != '0 0 0') { tpr_why = "a legal start is placed standing still"; break; }
 			have = have | 16;
 			continue;
 		}
@@ -901,7 +906,7 @@ void(entity e, float s, float head) SV_TASPCheckpoints =
 void(filestream f, entity e, float s, string parent) SV_TASPEmit =
 {
 	local float i, b, nm;
-	fputs(f, sprintf("tasproject %.0f\n", TASP_VERSION));
+	fputs(f, sprintf("tasproject %.0f\n", e.tasp_legal ? TASP_LEGAL : TASP_VERSION));
 	fputs(f, sprintf("map %s\n", mapname));
 	fputs(f, sprintf("mapcrc %s\n", infokey(world, "*mapcrc")));
 	fputs(f, sprintf("zonecrc %s\n", zone_crc));
@@ -913,9 +918,19 @@ void(filestream f, entity e, float s, string parent) SV_TASPEmit =
 	if (tasp_revsha[s] != "") fputs(f, sprintf("parentsha %s\n", tasp_revsha[s]));   // P1089
 	if (e.tasp_supa > 0) fputs(f, sprintf("supply %.0f %.0f\n", e.tasp_supa, e.tasp_supb));   // P1090
 	else fputs(f, "supply none\n");
-	fputs(f, sprintf("base %.0f %s %.0f\n", e.tasp_baseid, tasp_hash[s], SV_TASPZ(e.tasp_base)));
-	fputs(f, sprintf("baseat %.9g %.9g %.9g ", SV_TASPZ(e.tasp_bo_x), SV_TASPZ(e.tasp_bo_y), SV_TASPZ(e.tasp_bo_z)));
-	fputs(f, sprintf("%.9g %.9g %.9g\n", SV_TASPZ(e.tasp_bv_x), SV_TASPZ(e.tasp_bv_y), SV_TASPZ(e.tasp_bv_z)));
+	if (e.tasp_legal)
+	{
+		// P1100: placed at a start zone's destination, standing still; ticks count from there.
+		fputs(f, sprintf("start %.0f\n", e.tasp_lzone));
+		fputs(f, sprintf("baseat %.9g %.9g %.9g 0 0 0\n", SV_TASPZ(e.tasp_lo_x), SV_TASPZ(e.tasp_lo_y), SV_TASPZ(e.tasp_lo_z)));
+		fputs(f, sprintf("startat %.0f\n", e.tasp_lstartat));
+	}
+	else
+	{
+		fputs(f, sprintf("base %.0f %s %.0f\n", e.tasp_baseid, tasp_hash[s], SV_TASPZ(e.tasp_base)));
+		fputs(f, sprintf("baseat %.9g %.9g %.9g ", SV_TASPZ(e.tasp_bo_x), SV_TASPZ(e.tasp_bo_y), SV_TASPZ(e.tasp_bo_z)));
+		fputs(f, sprintf("%.9g %.9g %.9g\n", SV_TASPZ(e.tasp_bv_x), SV_TASPZ(e.tasp_bv_y), SV_TASPZ(e.tasp_bv_z)));
+	}
 	fputs(f, sprintf("head %.0f\n", e.tasp_base + e.tasp_n));
 	nm = 0;
 	for (i = 0; i < e.tasp_ncp; i = i + 1)
@@ -1226,6 +1241,7 @@ void(entity e, string name, float force) SV_TASProjectSave =
 	s = SV_TASPSlot(e);
 	if (!s || !SV_TASPLocalOnly(e) || !SV_TASInputReady(e)) return;
 	if (e.tasp_load) { sprint(e, PRINT_HIGH, "tas project: a load is still running\n"); return; }
+	e.tasp_legal = 0;   // P1100: a base-save project is version 2
 	oldrev = e.tasp_rev;
 	SV_RewindTASHead(e);
 	head = SV_TimerTicks(e);
@@ -1385,6 +1401,12 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas project: cannot load %s: %s; nothing changed\n", name, tpr_why));
 		return;
+	}
+	// P1100: a legal start has no base save; it never takes the base-save path below.
+	if (tpr_ver == TASP_LEGAL)
+	{
+		sprint(e, PRINT_HIGH, sprintf("tas project: %s starts at the start zone; loading those is not built yet; nothing changed\n", name));
+		SV_TASPReadFree(); return;
 	}
 	stop = tpr_base + tpr_n;
 	if (cpname != "")
@@ -1734,6 +1756,13 @@ void(entity e, float argc, string action, string sub, string a1, string a2, stri
 	{
 		if (argc >= 4 && a1 != "force" && !SV_TASPNameOK(a1)) goto bad;
 		if (argc == 5 && a2 != "force") goto bad;
+		// P1100: in a legal-start session the project starts at the start zone, not a base save.
+		if (SV_TASLegalValid(e))
+		{
+			if (a1 == "force") SV_TASProjectSaveLegal(e, "", TRUE);
+			else SV_TASProjectSaveLegal(e, argc >= 4 ? a1 : "", argc == 5);
+			return;
+		}
 		if (a1 == "force") SV_TASProjectSave(e, "", TRUE);
 		else SV_TASProjectSave(e, argc >= 4 ? a1 : "", argc == 5);
 		return;

@@ -40,8 +40,9 @@ def mutations(data):
     out.append(('doublespace', put(at(k, lines[k].replace(' ', '  ', 1))), 'refused'))
     m = next(n for n, l in enumerate(lines) if l.startswith('mapcrc '))
     out.append(('reordered', put(lines[:m - 1] + [lines[m], lines[m - 1]] + lines[m + 1:]), 'refused'))
-    b = next(n for n, l in enumerate(lines) if l.startswith('base '))
-    sb = next(n for n, l in enumerate(lines) if l.startswith('supply ') or l.startswith('base '))
+    b = next(n for n, l in enumerate(lines) if l.startswith('base ') or l.startswith('start '))
+    legal = lines[b].startswith('start ')      # P1100: version 3
+    sb = next(n for n, l in enumerate(lines) if l.startswith('supply ') or l.startswith('base ') or l.startswith('start '))
     ps = 'parentsha ' + '0' * 64
     out.append(('twoparents', put(lines[:sb] + [ps, ps] + lines[sb:]), 'refused'))
     out.append(('upperhex', put(lines[:sb] + ['parentsha ' + 'A' * 64] + lines[sb:]), 'refused'))
@@ -49,7 +50,20 @@ def mutations(data):
     out.append(('afterrevsha', put(lines + ['revsha ' + '0' * 64, 'i 0 0 0 0 0 0 0']), 'refused'))
     # Review 2: the twin must also hold the reader's meaning, not just its form.
     out.append(('justend', b'end 1\n', 'refused'))
-    out.append(('version3', put(at(0, 'tasproject 3')), 'refused'))
+    out.append(('version2', put(at(0, 'tasproject 2')), 'refused') if legal else ('version3', put(at(0, 'tasproject 3')), 'refused'))
+    if legal:
+        sa = next(n for n, l in enumerate(lines) if l.startswith('startat '))
+        ba = next(n for n, l in enumerate(lines) if l.startswith('baseat '))
+        hd = int(next(l for l in lines if l.startswith('head ')).split(' ')[1])
+        sat = int(lines[sa].split(' ')[1])
+        out.append(('startzone', put(at(b, 'start 1')), 'different'))
+        out.append(('nostartat', put(lines[:sa] + lines[sa + 1:]), 'refused'))
+        out.append(('startatpast', put(at(sa, 'startat %d' % (hd + 1))), 'refused'))
+        if sat > 0:
+            out.append(('startatmoved', put(at(sa, 'startat %d' % (sat - 1))), 'different'))
+        out.append(('startandbase', put(lines[:b] + ['base 1 %s 0' % ('ab' * 32)] + lines[b:]), 'refused'))
+        bw = lines[ba].split(' ')
+        out.append(('placedmoving', put(at(ba, ' '.join(bw[:4] + ['1', '0', '0']))), 'refused'))
     mp = next(n for n, l in enumerate(lines) if l.startswith('map '))
     out.append(('maptwo', put(at(mp, lines[mp] + ' extra')), 'refused'))
     out.append(('shortrow', put(at(k, 'i 1 2 3')), 'refused'))
@@ -80,7 +94,7 @@ def mutations(data):
     sp = [n for n, l in enumerate(lines) if l.startswith('supply ')]
     if sp:
         sp = sp[0]
-        base = int(lines[b].split(' ')[3]); head = int(next(l for l in lines if l.startswith('head ')).split(' ')[1])
+        base = 0 if legal else int(lines[b].split(' ')[3]); head = int(next(l for l in lines if l.startswith('head ')).split(' ')[1])
         root = not any(l.startswith('parentsha ') for l in lines)
         sw = lines[sp].split(' ')
         out.append(('nosupply', put(lines[:sp] + lines[sp + 1:]), 'refused'))
