@@ -4064,7 +4064,12 @@ same527REC167VIEW entire paths/bytes/diagnostics328faultyREC7faultyVIEW/zero new
 notfaultfree. No newVMfields/policy/math/capture/format/flag/tier/native/Build.
 This is three immediate writer decisions, NOT persistent logical/body/config/
 multisource closure. Same-pose placement still has phase effects; do not extend
-this gate there by analogy. Human checks pending lextest.md; reviews/deploy pending.
+this gate there by analogy. Review caught wrong recipient prose; the other review
+had repeated it as source-verified. Both final addenda explicitly resolve/withdraw
+that claim: dispatch passes resolved t, aliasing actor/target is NOT a routing
+discriminator. Correct only prose, never dispatch to match an assumption. Runtime
+CA8 unchanged under correctedCC; bothWindows/all12Pi verified2026-10-29 21:10UTC,
+normal0NEW, allprotectedbytes/prev/rollback intact. Human checks pending lextest.md.
 
 P1126: reversal/catapult share SV_MomSetVelocity's only two callers. Freeze
 admitting cause BEFORE SV_TouchEntered (it runs reentrant outputs), pass tuple to

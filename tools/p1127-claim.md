@@ -22,7 +22,7 @@ Only these immediate decisions are covered. Placement may reset physical phases
 even with equal pose, so it is NOT changed by analogy. Persistent logical/config/
 world/body/multisource bank work remains open; no full-bank closure is claimed.
 
-## Locally verified; independent reviews and deployment pending
+## Verified; two independent final addenda clear; ordinary deployment below
 
 Final26 same-frozen-input baseline/subject scheduled-public-QC-input units have
 identical actual gravity/carrier/IDs/IO/counters and5actualQCcashouts. Only10
@@ -49,5 +49,37 @@ explicitly invoked BEFORE its future deadline, NOTelapsed-clock/scheduler proof.
 Native source supplies gravity0=1 meaning, not a measured native trajectory.
 No authored BSP/native mover/prediction/socket/grant/freshfinishedrecord/rank or
 human acceptance. Only bank-module notification to synthetic nonclients is
-intercepted/countable. Human-only checks remain pending in lextest.md. Current
-installed fleet remains P1126 until both independent reviews and promotion gates.
+intercepted/countable. Human-only checks remain pending in lextest.md. The local
+qualification above preceded promotion (its installed fleet was P1126).
+
+## Ordinary deployment — 2026-10-29
+
+Original runtimeQCca8fc04a67bc2d2bec6c60e3eef07485221eef38 unchanged under corrected
+QCcc0641ad974b2c56e4e6dae88978a370d84654c4; engine documentation
+49e144c09630e6d724e7cf2587c9368523a09bf0. Reviewer1 caught P2 recipient prose;
+reviewer2 had repeated its wrong source-verification claim. Corrected ONLYprose,
+original reports retained; BOTHfinaladdenda explicitly resolve/withdraw it and
+report no issues on exactfinalranges. No distinct-target routing acceptance
+inferred from actor/target aliasing. Source/ref/watchdog corroboration independent;
+full Git/hash/tree/status/index/staged-byte provenance parent-produced, qualified.
+
+Exact final commits published before promotion. Supported normal build SS/menu0/
+2oldCSF333/zeroNEW; actualstatus7 including spectators empty. Nonforce, one restart
+per12lobbies. Both actual Windows six DAT/LNO+actualprev/originalpreprevrollback
+verified. Pi exactQW/CS+actualprev/rollback,12freshsame-native actors/healthy12/empty
+verified2026-10-29 21:10:23.663152UTC. All16347/142Windows and35168Pi protectedpaths
+retain bytes, none missing/zero newPi paths. Backendfiles/unit/AI/native/config
+unchanged. No native/backend/config/Build/release action. Frozen6/rollback retained.
+
+Shipped SHA256 QW0538e2c302b382ffc6bbf1ffa6d97205149aff4f1b7e2f1eb77d29e158c6d59a;
+CSfa9bb6d396342b24cbce496898bb7d056dca996b0805bd1f2583358d6efde8a1;
+MENU7cb11cb1d5c0db4a7ab015c222ff837ed5be49642b7d8fce27c8fa9849f4d43e.
+CS/MENU/native/client source unchanged: reuse prior scoped served-CS/drawn chain,
+NOTnewGUI/wire/mover/elapsedclock/distincttarget/finishedrecord/rank/human proof.
+
+113ownedfiles preserved in verifiedZIP; only9files/oneNoDeployroot retired,
+104minimalrigfiles retained+archived, zero ownedgames/links/gates. ExactOWNcanonical
+reservation retired originalhash/publishednumberguard, original retained; not
+assumed sameblob as this publicMarkdown. Peer/index/playerdata untouched.
+Delivery-only prose does not rebuild reviewed runtime. Full broader bank stays
+open; lextest.md human-only checks remain pending.

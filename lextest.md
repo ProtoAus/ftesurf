@@ -1,9 +1,10 @@
 # lextest.md — things waiting on a human
 
-## P1127 unchanged map effects/status (pending deployment and human check)
+## P1127 unchanged map effects/status (pending human check)
 
-Paired direct-QC public-input values/flags/cashouts, full build and gravity/pad
-regressions pass; independent reviews/deployment remain pending. When available,
+Both independent final addenda clear; deployed both Windows/all12Pi lobbies,
+2026-10-29 21:10UTC. Paired QC controls/full build/regressions and unchanged-client
+draw reuse are not human acceptance. When available,
 try a familiar map gravity effect and a launch pad: gravity/boost should feel
 unchanged, and normal world/current-run effects should keep their normal status.
 No authored BSP/native trajectory/prediction/elapsed-clock/finished-ranking or
