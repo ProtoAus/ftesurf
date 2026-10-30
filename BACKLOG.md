@@ -1,5 +1,24 @@
 # BACKLOG.md
 
+## Slow-practice camera continuity follow-ups (P1138 candidate)
+
+- Native `CL_UpdateSourcePracticeView`/`CL_GetSourcePracticeViewOffset`: changing
+  slow scales or returning to1 discards the historical offset immediately. A
+  moving camera can advance to the classic position for a frame. Falsifier:
+  compare the last presented feet and first new view while moving at0.1->0.2->1,
+  without a spatial operation. A future transition must start from the actual
+  last presentation, without softening genuine teleport invalidation.
+- `SV_ZoneChatCommand` placement (`sv_zones.qc`) does not publish a save/load
+  epoch or teleport marker. Successful short `!r`/`!m` placements below128units
+  can retain extra pre-reset camera history. Falsifier: move near the destination,
+  reset with unchanged angle/hull/effects and inspect body versus rendered feet
+  and existing epochs, comparing interpolation0/1. A stationary test is not an
+  acting control. Mark successful spatial placement through the existing marker;
+  do not reset on every WOPACK (refused/non-spatial requests advance it too).
+- Render-eye bounds use a prop-inclusive point trace at the presented position,
+  not historical collision reconstruction or the mover's hull sweep. Do not
+  claim general embedded/start-solid or collision-free interpolation coverage.
+
 ## Forced-native Pi preservation: live part before-state (P1136)
 
 - Site: native deployment preservation receipts and `data/parts` recorder

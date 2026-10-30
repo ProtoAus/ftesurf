@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P1138 slow-practice camera (candidate; not installed yet)
+
+Final native build and socket qualification are pending; no human acceptance.
+After installation, jump/fly at host_timescale0.5 and0.1, then restore1. Compare
+cl_source_practice_lerp0/1 while airborne. Check a familiar stair and low roof,
+including a solid prop roof if available, for dips/clipping. Body movement and
+normal-speed feel should remain familiar. Returning1 restores speed; !reset
+must retain the connection's earlier slow-practice status. A new map/connection
+starts a fresh context. Known candidate follow-ups in BACKLOG: a camera phase
+change at speed switches and short zone-reset placements; general embedded-point
+collision safety and human-input/evidence equivalence are not claimed.
+
 ## 0.1.33 public release (automation accepted; human checks still pending)
 
 Published Windows and Linux beta on 30 Oct2026 from frozen QC726bd7af through

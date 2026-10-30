@@ -1223,13 +1223,14 @@ float(entity e, float argc, string arg) SV_TimeScaleCommand =
 	e.run_ts_next = time + 0.2;
 	if (argc == 1)
 	{
-		sprint(e, PRINT_HIGH, sprintf("host_timescale: %g (per-player; 0.1..1; slow values force practice)\n", e.run_timescale));
+		sprint(e, PRINT_HIGH, sprintf("host_timescale: %g (per-player; 0.1..1; %s)\n", e.run_timescale,
+			e.run_ts_used ? "slow-practice latch until new map/reconnect; !reset does not clear it" : "slow values mark this map connection as practice"));
 		return FALSE;
 	}
 	value = stof(arg);
 	if (argc != 2 || !(value >= 0.1 && value <= 1))
 	{
-		sprint(e, PRINT_HIGH, "host_timescale: use 0.1..1 (1 restores speed, not this attempt's flags)\n");
+		sprint(e, PRINT_HIGH, "host_timescale: use 0.1..1 (1 restores speed, not this map connection's practice latch)\n");
 		return FALSE;
 	}
 	if (value < 1)
@@ -1256,7 +1257,8 @@ float(entity e, float argc, string arg) SV_TimeScaleCommand =
 	}
 	e.run_timescale = value;
 	sprint(e, PRINT_HIGH, sprintf("host_timescale: %g (%s)\n", value,
-		value < 1 ? "per-player practice; movement and timer" : "normal speed; slow-practice latch remains until new map/reconnect"));
+		value < 1 ? "per-player practice; movement and timer" :
+			(e.run_ts_used ? "normal speed; slow-practice latch remains until new map/reconnect" : "normal speed")));
 	return TRUE;
 };
 

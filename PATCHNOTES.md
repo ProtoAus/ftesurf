@@ -21,6 +21,10 @@
 
 ## next
 
+### P1138 Smoother slow-practice camera
+- Slow-practice camera motion blends completed movement ticks instead of freezing between repeated poses. Normal-speed movement is unchanged.
+- host_timescale help now distinguishes restored normal speed from the connection's existing practice status; resetting the attempt does not clear earlier slow-practice use.
+
 ### P1136 Airborne gravity carry status with vertical boosts
 - Carried gravity effects keep their run status during more airborne vertical boosts. Movement, boost amounts and normal map-authored effects are unchanged.
 
