@@ -90,4 +90,14 @@ before the switch, so it also detects a missing signal hold when the suite itsel
 passed all 20 tests and rejected all 23 retained installer mutations. These are temporary-tree
 and modelled-systemd checks, not proof that an owner has applied the live upgrade.
 
+Live upgrade: Lex applied `71989410041492504ee88c4bbe85e7cea43ecc09` on 30 Oct 2026
+(service start 05:34:23 UTC; postflight 05:40:28 UTC). All six deployed files match that
+commit, the exact unit and actual master/worker cwd point at its root-owned release,
+and both loopback and the public API report that source. The installed parser accepts
+the retained canonical v3 fixture and rejects a malformed input row. Existing owner-only
+state passes a read-only SQLite quick_check; no pre-upgrade row-identity snapshot was
+captured, so this is health/path verification, not a historical row-equality claim.
+The original `5352dbae5f160a8575e4d0ec7239ecc7e86b4154` release is retained for rollback;
+`UPGRADE.txt` in the new release records the successful transaction. No game/lobby swap.
+
 Tests: `python surfd/test_tasrevd.py`.

@@ -292,11 +292,14 @@ stored as "ancestry unknown" and earn no credit for what they would have supplie
 contract; tools/install_tasrevd.py installs it, root). Four review rounds; the last fixes passed
 the round-4 reviewer's fuzzers (800 arrival-order trials against a brute-force reading of the
 contract, 300 statement/cache trials). LIVE 29 Oct 00:48Z at https://play.proto.bar/api/tasrev/
-(unit ftesurf-tasrevd, source 5352dbae); no game client uses it yet (5.5).
+(unit ftesurf-tasrevd, initially 5352dbae, upgraded to 71989410 on 30 Oct); no game client uses it yet (5.5).
 P1119 (30 Oct): the rollback-checked upgrade tool is published. Its final Pi suite passes
 20 tests and catches all 23 retained mutations; a clean exact-commit upgrade dry-run passes.
-The live root apply still needs the owner's sudo; until then the service remains on 5352dbae
-and does not have the version 3 credit parser. This does not block isolated 6.2 research.
+Owner applied 71989410041492504ee88c4bbe85e7cea43ecc09 at 05:34:23 UTC on 30 Oct;
+postflight at 05:40:28 UTC proves all six destination hashes, exact unit and process cwd,
+loopback/public source, healthy owner-only SQLite and the installed v3 parser's positive/
+malformed-input controls. The original 5352dbae release remains intact for rollback.
+This installs the version 3 credit parser, not the still-unbuilt 6.2 verifier/6.4 board.
 5.5 Client: share, browse, open a downloaded revision as a project.
 
 6.1 A project from the legal start (no base save): the run's start zone and spawn, so a
