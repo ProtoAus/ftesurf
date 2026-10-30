@@ -1,5 +1,23 @@
 # lextest.md — things waiting on a human
 
+## 0.1.33 public release (automation accepted; human checks still pending)
+
+Published Windows and Linux beta on 30 Oct2026 from frozen QC726bd7af through
+P1131, native4bddca067 and launcher646c8d1. Later P1133/P1134 remain under
+`## next`; the sealed candidate was not rebuilt to pick up concurrent work.
+Both exact archives,770 signed objects, site/feed and standalone launchers passed
+public byte verification. Actual default-HTTPS launchers installed in fresh
+synthetic folders: Windows860/Linux859 managed files rehashed, three settings,
+data and edited-zone sentinels preserved per platform, no game launch.
+The extracted Windows native/progs also passed13 synthetic stats/menu controls
+and two launches. These are not real-account, Linux desktop/Steam or movement-feel
+acceptance; the P1130 human check below remains pending.
+
+Normal-size stats screenshots are legible. At the deliberately narrow logical
+640x480 UI, chat status/placeholder/input text can overlap; retain this as a
+non-blocking beta layout follow-up, not an all-visual-QA pass or measured regression.
+Exact candidate, publisher tooling and proofs are retained in the owned release root.
+
 ## P1130 Stats-kind switches and WOS-only completion (pending human check)
 
 Deployed both Windows installs, backend and all12 lobbies on 30 Oct05:43-05:45UTC.
