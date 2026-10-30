@@ -221,8 +221,10 @@ def runtime_manifest(fixture, server, client, plugin, mp, gamemode):
     assets = {}
     selected = [game / p for p in ('qwprogs.dat', 'csprogs.dat', 'menu.dat', 'cfg/default.cfg',
                                    'maps/' + mp + '.bsp', 'maps/zones/local/' + mp + '.json')]
-    for folder in ('glsl', 'models', 'gfx', 'particles', 'scripts', 'downloads/csprogsvers'):
-        selected += sorted(p for p in (game / folder).rglob('*') if p.is_file())
+    case_roots = [game / folder for folder in
+                  ('glsl', 'models', 'gfx', 'particles', 'scripts', 'downloads/csprogsvers')]
+    for folder in case_roots:
+        selected += sorted(p for p in folder.rglob('*') if p.is_file())
     optional = ['cfg/maps/map_' + mp + '.cfg', 'cfg/maps/entfix_' + mp + '.cfg',
                 'cfg/lobby/mode_' + gamemode + '.cfg', 'data/mapmeta.txt',
                 'data/maps/zones/local/' + mp + '.json', 'maps/zones/curated/' + mp + '.json',
@@ -234,7 +236,11 @@ def runtime_manifest(fixture, server, client, plugin, mp, gamemode):
             selected.append(path)
         else:
             absent.append(str(path))
-    selected += sorted(p for p in (game / 'maps').glob(mp + '.*') if p.is_file())
+    for path in sorted((game / 'maps').iterdir()):
+        if path.is_file() and path.name.casefold().startswith(mp.casefold() + '.'):
+            if not path.name.startswith(mp + '.') or path.suffix != path.suffix.lower():
+                raise Held('DEPENDENCY_CASE_ALIAS')
+            selected.append(path)
     # Native SV_LoadRulesetFile reads these exact layers. Never omit a present
     # mode/map override and silently verify against the fallback 15 ms profile.
     for rel in ('cfg/default.cfg', 'cfg/lobby/mode_' + gamemode + '.cfg', 'cfg/maps/map_' + mp + '.cfg'):
@@ -246,13 +252,15 @@ def runtime_manifest(fixture, server, client, plugin, mp, gamemode):
             if match and Decimal(match[1]) != TICK:
                 raise Held('UNSUPPORTED_TAS_TICKRATE')
     # Source's model physics lookup is beside every selected .mdl, not beside the BSP.
-    for mdl in (game / 'models').rglob('*.mdl'):
-        if not mdl.with_suffix('.phy').exists():
-            absent.append(str(mdl.with_suffix('.phy')))
+    for mdl in (game / 'models').rglob('*'):
+        if mdl.is_file() and mdl.suffix.casefold() == '.mdl':
+            if not mdl.with_suffix('.phy').exists():
+                absent.append(str(mdl.with_suffix('.phy')))
     for suffix in ('.phy', '.ent', '.edo', '.entities', '.lit', '.vis', '.rtlights'):
         path = game / 'maps' / (mp + suffix)
         if not path.exists():
             absent.append(str(path))
+    reject_case_aliases(case_roots + selected + [Path(p) for p in absent])
     for p in selected:
         if not p.is_file() or p.is_symlink() or not p.resolve().is_relative_to(game):
             raise ValueError('missing or linked fixture asset: ' + str(p))
@@ -265,13 +273,36 @@ def runtime_manifest(fixture, server, client, plugin, mp, gamemode):
         native[name] = {'path': str(p), 'sha256': filehash(p)}
     return {'format': 1, 'map': mp, 'gamemode': gamemode, 'tickrate': str(TICK),
             'mount_policy': 'exclusive-vfs-1', 'absent_dependencies': absent,
-            'native': native, 'assets': assets}
+            'case_roots': [str(p) for p in case_roots], 'native': native, 'assets': assets}
+
+
+def reject_case_aliases(paths):
+    # Native VFS lookup ignores case. Reject aliases/collisions rather than
+    # approving a different dependency set, including aliases in parent dirs.
+    siblings = {}
+    for path in paths:
+        path = Path(path)
+        while path.parent != path:
+            parent = path.parent
+            if parent not in siblings:
+                try:
+                    names = [p.name for p in parent.iterdir()]
+                except FileNotFoundError:
+                    names = []
+                siblings[parent] = {}
+                for name in names:
+                    siblings[parent].setdefault(name.casefold(), []).append(name)
+            if any(name != path.name for name in siblings[parent].get(path.name.casefold(), ())):
+                raise Held('DEPENDENCY_CASE_ALIAS')
+            path = parent
 
 
 def validate_runtime(r, mp):
     if (r.get('format') != 1 or r.get('map') != mp or r.get('gamemode') not in ('surf', 'bhop') or
-            r.get('tickrate') != str(TICK) or r.get('mount_policy') != 'exclusive-vfs-1'):
+            r.get('tickrate') != str(TICK) or r.get('mount_policy') != 'exclusive-vfs-1' or
+            not isinstance(r.get('case_roots'), list)):
         raise Held('RUNTIME_PROFILE')
+    reject_case_aliases(r['case_roots'] + [item['path'] for item in r['assets'].values()] + r['absent_dependencies'])
     if any(Path(p).exists() for p in r['absent_dependencies']):
         raise Held('DEPENDENCY_APPEARED')
     for item in list(r['native'].values()) + list(r['assets'].values()):
@@ -458,6 +489,8 @@ class Peer:
             self.scan()
             m = rx.search(self.window, max(0, after - self.window_start))
             if m:
+                if time.monotonic() >= deadline:
+                    raise Held('TIME_LIMIT')
                 return m
             time.sleep(.05)
         raise Held('TIME_LIMIT')
@@ -576,6 +609,7 @@ def run(runtime_path, project_path, out, port):
     (out / 'runtime.json').write_bytes(runtime_bytes)
     peers = []
     copied = []
+    begin = None
     try:
         check_cancel()
         path = prepare(out, runtime, raw, report['run_token'], port, copied)
@@ -615,6 +649,7 @@ def run(runtime_path, project_path, out, port):
         begin = time.monotonic()
         budget = float(TICK) * len(p['rows']) * 2
         deadline = begin + budget
+        report['replay_wall_limit_seconds'] = budget
         cut = load_cut = cl.scan()
         binding_cut = sv.scan()
         cl.send('cmd tas project load ' + report['run_token'])
@@ -629,8 +664,6 @@ def run(runtime_path, project_path, out, port):
         report['checks']['editor_terminal_sha256'] = digest(terminal.group(0))
         cut = cl.scan(); cl.send('cmd timer')
         state = cl.wait(rb'timer[^\n]*: (idle|armed|running|finished) on ' + re.escape(runtime['map'].encode()), deadline, cut)
-        report['replay_wall_seconds'] = time.monotonic() - begin
-        report['replay_wall_limit_seconds'] = budget
         if state.group(1) != b'finished':
             raise Held('MISSING_NATURAL_FINISH')
         report['checks']['native_timer_finished'] = True
@@ -712,13 +745,24 @@ def run(runtime_path, project_path, out, port):
         if cleanup_errors:
             report['result'] = 'ERROR'
             report['reason'] = 'CLEANUP_' + cleanup_errors[0]
-        # Signals notify only: never throw while stopping/reaping or retiring files.
-        # A request observed before verdict commit abstains even if replay finished.
+        finish_replay_budget(report, begin)
+        # This final latch read commits the CLI decision; later signals during
+        # serialization/printing are late. Queue promotion needs its own fence.
         if _cancelled and not cleanup_errors:
             report['result'] = 'HOLD'
             report['reason'] = 'CANCELLED'
         (out / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
     return report
+
+
+def finish_replay_budget(report, begin):
+    if begin is None:
+        return
+    elapsed = time.monotonic() - begin
+    report['replay_wall_seconds'] = elapsed
+    if report['result'] == 'PASS' and elapsed > report['replay_wall_limit_seconds']:
+        report['result'] = 'HOLD'
+        report['reason'] = 'TIME_LIMIT'
 
 
 def main():

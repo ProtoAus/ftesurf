@@ -170,7 +170,7 @@ class Runtime(unittest.TestCase):
         required = ['qwprogs.dat', 'csprogs.dat', 'menu.dat', 'cfg/default.cfg',
                     'maps/bhop_eazy.bsp', 'maps/zones/local/bhop_eazy.json']
         self.runtime = {'format': 1, 'map': 'bhop_eazy', 'gamemode': 'surf', 'tickrate': str(v.TICK),
-                        'mount_policy': 'exclusive-vfs-1', 'absent_dependencies': [],
+                        'mount_policy': 'exclusive-vfs-1', 'absent_dependencies': [], 'case_roots': [],
                         'native': {k: dict(item) for k in ('server', 'client', 'plugin')},
                         'assets': {'ftesurf/' + k: dict(item) for k in required}}
 
@@ -202,10 +202,43 @@ class Runtime(unittest.TestCase):
                 v.validate_runtime(r, 'bhop_eazy')
 
     def test_unknown_mount_policy_and_profile_refused(self):
-        for key, value in [('mount_policy', 'fallback'), ('map', 'other'), ('tickrate', '0.01')]:
+        for key, value in [('mount_policy', 'fallback'), ('map', 'other'), ('tickrate', '0.01'), ('case_roots', None)]:
             r = deepcopy(self.runtime); r[key] = value
             with self.assertRaises(v.Held):
                 v.validate_runtime(r, 'bhop_eazy')
+
+    def test_final_matching_scan_cannot_cross_deadline(self):
+        for scanned_at in (.5, 1.5):
+            with self.subTest(scanned_at=scanned_at):
+                now, scans = [0], []
+                peer = object.__new__(v.Peer)
+                peer.watch = [peer]; peer.window = b''; peer.window_start = 0
+                def scan():
+                    scans.append(True)
+                    now[0] = scanned_at
+                    peer.window = b'finished'
+                peer.scan = scan
+                with patch.object(v.time, 'monotonic', side_effect=lambda: now[0]):
+                    if scanned_at < 1:
+                        self.assertEqual(peer.wait(b'finished', 1).group(), b'finished')
+                    else:
+                        with self.assertRaisesRegex(v.Held, 'TIME_LIMIT'):
+                            peer.wait(b'finished', 1)
+                self.assertEqual(len(scans), 1)
+
+    def test_final_budget_includes_assessment_and_cleanup(self):
+        for elapsed in (.9, 1.1):
+            report = {'result': 'PASS', 'replay_wall_limit_seconds': 1}
+            with patch.object(v.time, 'monotonic', return_value=100 + elapsed):
+                v.finish_replay_budget(report, 100)
+            self.assertAlmostEqual(report['replay_wall_seconds'], elapsed)
+            self.assertEqual(report['result'], 'PASS' if elapsed < 1 else 'HOLD')
+            if elapsed > 1:
+                self.assertEqual(report['reason'], 'TIME_LIMIT')
+        report = {'result': 'ERROR', 'reason': 'CLEANUP_PROCESS_ALIVE', 'replay_wall_limit_seconds': 1}
+        with patch.object(v.time, 'monotonic', return_value=102):
+            v.finish_replay_budget(report, 100)
+        self.assertEqual((report['result'], report['reason']), ('ERROR', 'CLEANUP_PROCESS_ALIVE'))
 
     def test_partial_input_time_limit_stops_only_owned_handles(self):
         runtime_file = self.root / 'runtime.json'; runtime_file.write_text(json.dumps(self.runtime))
@@ -326,6 +359,52 @@ class Runtime(unittest.TestCase):
         current = v.runtime_manifest(self.root / 'fixture', source, source, source, 'bhop_eazy', 'surf')
         self.assertIn('ftesurf/maps/bhop_eazy.edo', current['assets'])
         v.validate_runtime(current, 'bhop_eazy')
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'native case-sensitive filesystem controls')
+    def test_native_case_aliases_are_refused_before_and_after_approval(self):
+        game, runtime = self.fixture()
+        source = self.root / 'asset'
+        for rel in ('maps/BHOP_EAZY.edo', 'maps/bhop_eazy.EDO', 'models/BOX.phy', 'MAPS/bhop_eazy.edo'):
+            with self.subTest(alias=rel):
+                path = game / rel
+                parent_created = not path.parent.exists()
+                path.parent.mkdir(exist_ok=True)
+                path.write_bytes(b'case alias')
+                with self.assertRaisesRegex(v.Held, 'DEPENDENCY_CASE_ALIAS'):
+                    v.validate_runtime(runtime, 'bhop_eazy')
+                with self.assertRaisesRegex(v.Held, 'DEPENDENCY_CASE_ALIAS'):
+                    v.runtime_manifest(self.root / 'fixture', source, source, source, 'bhop_eazy', 'surf')
+                path.unlink()
+                if parent_created:
+                    path.parent.rmdir()
+                v.validate_runtime(runtime, 'bhop_eazy')
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'native case-sensitive filesystem controls')
+    def test_missing_model_root_case_alias_is_also_fenced(self):
+        game, unused = self.fixture()
+        (game / 'models/box.mdl').unlink(); (game / 'models').rmdir()
+        source = self.root / 'asset'
+        runtime = v.runtime_manifest(self.root / 'fixture', source, source, source, 'bhop_eazy', 'surf')
+        v.validate_runtime(runtime, 'bhop_eazy')
+        alias = game / 'MODELS'; alias.mkdir()
+        with self.assertRaisesRegex(v.Held, 'DEPENDENCY_CASE_ALIAS'):
+            v.validate_runtime(runtime, 'bhop_eazy')
+        with self.assertRaisesRegex(v.Held, 'DEPENDENCY_CASE_ALIAS'):
+            v.runtime_manifest(self.root / 'fixture', source, source, source, 'bhop_eazy', 'surf')
+        alias.rmdir()
+        v.validate_runtime(runtime, 'bhop_eazy')
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'native case-sensitive filesystem controls')
+    def test_uppercase_mdl_extension_still_has_physics_absence_witness(self):
+        game, unused = self.fixture()
+        (game / 'models/box.mdl').rename(game / 'models/BOX.MDL')
+        source = self.root / 'asset'
+        runtime = v.runtime_manifest(self.root / 'fixture', source, source, source, 'bhop_eazy', 'surf')
+        self.assertIn(str(game / 'models/BOX.phy'), runtime['absent_dependencies'])
+        v.validate_runtime(runtime, 'bhop_eazy')
+        (game / 'models/box.PHY').write_bytes(b'alias')
+        with self.assertRaisesRegex(v.Held, 'DEPENDENCY_CASE_ALIAS'):
+            v.validate_runtime(runtime, 'bhop_eazy')
 
     def test_plugin_policy_requires_a_positive_native_ack(self):
         console = self.root / 'console.log'; console.write_bytes(b'normal startup\n')

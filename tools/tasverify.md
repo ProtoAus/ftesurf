@@ -33,8 +33,11 @@ Base-save projects are practice only. An incompatible mode/map tick-rate overlay
 is held explicitly; it is never silently omitted to obtain a fallback profile.
 The runtime includes actual per-map rules, selected-mode rules, entity fixes,
 map/model collision sidecars, native `.ent`/`.edo` entity fallbacks, and applicable
-absence witnesses. Present dependency
-bytes and absent dependencies are rechecked before launch and before PASS.
+absence witnesses. Present dependency bytes and absent dependencies are rechecked
+before launch and before PASS. Native VFS lookup ignores case: case aliases or
+collisions in relevant dependency names or their parent directories are held,
+not silently omitted or resolved differently. Missing/empty optional asset roots
+are also case-fenced. Regenerate legacy manifests lacking `case_roots`.
 
 ## What PASS establishes
 
@@ -66,8 +69,11 @@ The CLI returns 0 only for `PASS`; HOLD, REFUSE and internal errors return 2.
 
 ## Bounds and cleanup
 
-The existing project parser caps submissions at 96,000 rows. Replay gets exactly
-`2 * submitted rows * 0.015` wall seconds; startup has a separate 180-second limit.
+The existing project parser caps submissions at 96,000 rows. Post-load verification
+gets exactly `2 * submitted rows * 0.015` wall seconds; startup has a separate
+180-second limit. Every matching wait rechecks its deadline after scanning, and
+the final budget check includes evidence assessment and owned cleanup. Result
+serialization/printing is outside that measured interval.
 Timeout/resource/unsupported cases abstain, not accuse the player.
 
 Each native child has a 768 MiB hard address-space cap, zero core size and a
@@ -79,10 +85,14 @@ including native images, share a 2 GiB aggregate cap.
 
 The opt-in `set vid_headless_sleep 0` removes only the headless renderer's sleep;
 normal frame limits remain. Its registered default stays 100 ms for other clients.
-SIGTERM/SIGINT only notify the running job; safe checkpoints and the verdict boundary
-turn an observed request into HOLD. They never throw into child stopping/reaping,
-including cancellation arriving during cleanup. Constructor, assessment and timeout
-failures also reap the job's own peers. Only verified unchanged static copies are retired.
+SIGTERM/SIGINT only notify the running job; safe checkpoints turn requests into HOLD.
+The final cancellation-latch read, after assessment, reaping, retirement and budget
+checks, is the standalone CLI's logical decision commit. Signals arriving later,
+during result serialization/printing, do not revoke that decision. Any future queue
+must independently fence cancellation, lease and status at promotion; private JSON
+PASS does not override a cancelled queue job. Handlers never throw into stopping
+or reaping, including cancellation during cleanup. Constructor, assessment and
+timeout failures also reap the job's own peers. Only verified unchanged static copies are retired.
 Generated recordings/logs and unexpected or changed files are retained for review.
 
 ## Checks and current limits
