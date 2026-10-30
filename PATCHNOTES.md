@@ -21,6 +21,9 @@
 
 ## next
 
+### P1136 Airborne gravity carry status with vertical boosts
+- Carried gravity effects keep their run status during more airborne vertical boosts. Movement, boost amounts and normal map-authored effects are unchanged.
+
 ### P1135 Airborne gravity carry status with horizontal boosts
 - Carried gravity effects keep their run status during more airborne horizontal boosts. Movement, boost amounts and normal map-authored effects are unchanged.
 
