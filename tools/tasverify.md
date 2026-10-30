@@ -32,15 +32,20 @@ The current profile is Source **15 ms** only, using legal-start `.tasp` v3.
 Base-save projects are practice only. An incompatible mode/map tick-rate overlay
 is held explicitly; it is never silently omitted to obtain a fallback profile.
 The runtime includes actual per-map rules, selected-mode rules, entity fixes,
-map/model collision sidecars, and applicable absence witnesses. Present dependency
+map/model collision sidecars, native `.ent`/`.edo` entity fallbacks, and applicable
+absence witnesses. Present dependency
 bytes and absent dependencies are rechecked before launch and before PASS.
 
 ## What PASS establishes
 
 Each job freezes the raw project and runtime, then creates separate fresh VFS roots
 for a dedicated server and headless client. Verified executable/plugin copies are
-colocated in each private binary directory. Actual executable inodes and mapped
-HL2 plugin images are checked; a nominated but shadowed plugin is not evidence.
+colocated in each private binary directory. Native `-pluginrootonly` confines all
+FTE plugin lookups from startup to that directory; a positive native acknowledgement
+is required. Ordinary global/root fallbacks and package plugin enumeration are not
+used in this opt-in mode. Compiled-in code and platform libraries remain part of
+the trusted engine/OS. Actual executable inodes and mapped HL2 plugin images are
+checked; a nominated but shadowed plugin is not evidence.
 No home directory or existing install is mounted.
 
 The server's developer-log binding joins its actual project reader and canonical
@@ -74,8 +79,10 @@ including native images, share a 2 GiB aggregate cap.
 
 The opt-in `set vid_headless_sleep 0` removes only the headless renderer's sleep;
 normal frame limits remain. Its registered default stays 100 ms for other clients.
-SIGTERM/SIGINT produce HOLD and reap the job's own peers, as do constructor,
-assessment and timeout failures. Only verified unchanged static copies are retired.
+SIGTERM/SIGINT only notify the running job; safe checkpoints and the verdict boundary
+turn an observed request into HOLD. They never throw into child stopping/reaping,
+including cancellation arriving during cleanup. Constructor, assessment and timeout
+failures also reap the job's own peers. Only verified unchanged static copies are retired.
 Generated recordings/logs and unexpected or changed files are retained for review.
 
 ## Checks and current limits

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""TAS verifier falsifiers. Synthetic grammar only; no real game/process/data.
+"""TAS verifier falsifiers: synthetic grammar and owned-child resource controls.
+No game engines or player data.
 
 Agents set TAS_TEST_ROOT to their owned task root for temporary unit directories.
 Actual Pi native positive/unfinished/startat controls are separate delivery evidence.
@@ -7,6 +8,7 @@ Actual Pi native positive/unfinished/startat controls are separate delivery evid
 from copy import deepcopy
 import json
 import os
+import signal
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -237,6 +239,61 @@ class Runtime(unittest.TestCase):
         self.assertTrue(r['checks']['owned_peers_stopped'])
         self.assertTrue((self.root / 'job/result.json').is_file())
 
+    @unittest.skipUnless(os.name == 'posix', 'owned process and signal control')
+    def test_cancel_during_cleanup_notifies_without_interrupting_reap(self):
+        runtime_file = self.root / 'runtime.json'; runtime_file.write_text(json.dumps(self.runtime))
+        proj = self.root / 'input.tasp'; proj.write_bytes(project())
+        out = self.root / 'cleanup-cancel'
+        peers, readers = [], []
+
+        class FakePeer(v.Peer):
+            def __init__(self, exe, base, server, watch=None):
+                base.mkdir()
+                self.server = server; self.stopped = False; self.image_identity = None
+                read, self.master = os.pipe(); readers.append(read)
+                self.console = (base / 'console.log').open('xb')
+                self.proc = subprocess.Popen([sys.executable, '-B', '-c', 'import time; time.sleep(60)'],
+                                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                             stderr=subprocess.DEVNULL, start_new_session=True)
+                self.live_at_cancel = False
+                native_wait = self.proc.wait
+                fired = False
+                def wait(timeout=None):
+                    nonlocal fired
+                    if not fired:
+                        fired = True
+                        self.live_at_cancel = self.proc.poll() is None
+                        os.kill(os.getpid(), signal.SIGTERM)
+                        # The live child ignores our pipe's quit; exercise escalation now.
+                        raise subprocess.TimeoutExpired('owned test child', timeout)
+                    return native_wait(timeout)
+                self.proc.wait = wait
+                peers.append(self); watch.append(self)
+            def wait(self, pattern, deadline, after=0):
+                if not self.server:
+                    raise v.Held('TIME_LIMIT')
+
+        argv = ['tasverify.py', 'run', '--runtime', str(runtime_file), '--project', str(proj),
+                '--out', str(out), '--port', '27616']
+        try:
+            with patch.object(v.sys, 'argv', argv), patch.object(v.sys, 'platform', 'linux'), \
+                    patch.object(v.os, 'uname', create=True, return_value=SimpleNamespace(machine='aarch64')), \
+                    patch.object(v, 'Peer', FakePeer), \
+                    patch.object(v, 'prepare', return_value=out / 'project.tasp'), patch('builtins.print'):
+                self.assertEqual(v.main(), 2)
+            report = json.loads((out / 'result.json').read_bytes())
+            self.assertEqual((report['result'], report['reason']), ('HOLD', 'CANCELLED'))
+            self.assertEqual(len(peers), 2)
+            self.assertTrue(all(p.live_at_cancel and p.stopped and p.proc.poll() is not None for p in peers))
+            self.assertTrue(all(p.master is None and p.console is None for p in peers))
+            self.assertTrue(report['checks']['owned_peers_stopped'])
+        finally:
+            for peer in peers:
+                if peer.proc.poll() is None:
+                    peer.proc.kill(); peer.proc.wait(5)
+            for read in readers:
+                os.close(read)
+
     def fixture(self):
         game = self.root / 'fixture/sv/ftesurf'
         for name in ('qwprogs.dat', 'csprogs.dat', 'menu.dat', 'cfg/default.cfg',
@@ -257,6 +314,26 @@ class Runtime(unittest.TestCase):
         phy.write_bytes(b'appeared')
         with self.assertRaisesRegex(v.Held, 'DEPENDENCY_APPEARED'):
             v.validate_runtime(runtime, 'bhop_eazy')
+
+    def test_edo_presence_and_absence_both_pin_native_entities(self):
+        game, runtime = self.fixture()
+        path = game / 'maps/bhop_eazy.edo'
+        self.assertIn(str(path), runtime['absent_dependencies'])
+        path.write_bytes(b'{ }\n')
+        with self.assertRaisesRegex(v.Held, 'DEPENDENCY_APPEARED'):
+            v.validate_runtime(runtime, 'bhop_eazy')
+        source = self.root / 'asset'
+        current = v.runtime_manifest(self.root / 'fixture', source, source, source, 'bhop_eazy', 'surf')
+        self.assertIn('ftesurf/maps/bhop_eazy.edo', current['assets'])
+        v.validate_runtime(current, 'bhop_eazy')
+
+    def test_plugin_policy_requires_a_positive_native_ack(self):
+        console = self.root / 'console.log'; console.write_bytes(b'normal startup\n')
+        peer = SimpleNamespace(base=self.root)
+        with self.assertRaisesRegex(v.Held, 'PLUGIN_SEARCH_POLICY'):
+            v.require_plugin_policy(peer)
+        console.write_bytes(v.PLUGIN_POLICY_ACK + b'\n')
+        v.require_plugin_policy(peer)
 
     def test_incompatible_mode_overlay_is_not_silently_dropped(self):
         game, runtime = self.fixture()
@@ -310,6 +387,7 @@ class Runtime(unittest.TestCase):
                 with self.assertRaises(OSError):
                     v.Peer(str(source), base, True, watch=watch)
             argv = spawn.call_args.args[0]
+            self.assertIn('-pluginrootonly', argv)
             for cvar, value in (('pr_ssqc_memsize', '128m'), ('pr_csqc_memsize', '128m'), ('pr_menu_memsize', '64m')):
                 self.assertEqual(argv[argv.index(cvar) + 1], value)
             self.assertEqual(len(watch), 1)

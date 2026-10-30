@@ -47,6 +47,8 @@ TICK = Decimal('0.015')
 TF_TAS = 1 << 22
 SAFE_MAP = re.compile(r'[A-Za-z0-9_+.-]{1,64}\Z')
 HEX64 = re.compile(r'[0-9a-f]{64}\Z')
+PLUGIN_POLICY_ACK = b'Plugin search: binary-directory only'
+_cancelled = False
 
 
 class Held(Exception):
@@ -55,6 +57,16 @@ class Held(Exception):
 
 class Refused(Exception):
     """The submitted bytes are not an admissible legal-start project."""
+
+
+def check_cancel():
+    if _cancelled:
+        raise Held('CANCELLED')
+
+
+def require_plugin_policy(peer):
+    if PLUGIN_POLICY_ACK not in bounded(peer.base / 'console.log', MAX_LOG):
+        raise Held('PLUGIN_SEARCH_POLICY')
 
 
 def bounded(path, cap):
@@ -237,7 +249,7 @@ def runtime_manifest(fixture, server, client, plugin, mp, gamemode):
     for mdl in (game / 'models').rglob('*.mdl'):
         if not mdl.with_suffix('.phy').exists():
             absent.append(str(mdl.with_suffix('.phy')))
-    for suffix in ('.phy', '.ent', '.entities', '.lit', '.vis', '.rtlights'):
+    for suffix in ('.phy', '.ent', '.edo', '.entities', '.lit', '.vis', '.rtlights'):
         path = game / 'maps' / (mp + suffix)
         if not path.exists():
             absent.append(str(path))
@@ -365,7 +377,7 @@ class Peer:
         # Linux's default QC address-space reservation is 2 GiB per VM. Select
         # bounded VM arenas before loading; never relax the child's hard AS cap.
         args = [exe, '-basedir', str(base), '-manifest', str(base / 'default.fmf'),
-                '-nohome', '-ip', '127.0.0.1', '+set', 'pr_ssqc_memsize', '128m',
+                '-nohome', '-pluginrootonly', '-ip', '127.0.0.1', '+set', 'pr_ssqc_memsize', '128m',
                 '+set', 'pr_csqc_memsize', '128m', '+set', 'pr_menu_memsize', '64m']
         if not server:
             args += ['+set', 'vid_renderer', 'headless', '-nosound']
@@ -388,6 +400,7 @@ class Peer:
             os.close(slave)
 
     def guard(self):
+        check_cancel()
         # Check both sinks for BOTH peers while either one is awaited. RLIMIT_FSIZE
         # additionally bounds producer bursts, including uncaptured native stderr.
         for path in (self.log, self.base / 'console.log'):
@@ -564,16 +577,22 @@ def run(runtime_path, project_path, out, port):
     peers = []
     copied = []
     try:
+        check_cancel()
         path = prepare(out, runtime, raw, report['run_token'], port, copied)
+        check_cancel()
         startup = time.monotonic() + 180
         sv = Peer(str(out / 'sv' / Path(runtime['native']['server']['path']).name), out / 'sv', True, watch=peers)
         sv.wait(rb'Server spawned\.', startup)
+        check_cancel()
         cl = Peer(str(out / 'cl' / Path(runtime['native']['client']['path']).name), out / 'cl', False, watch=peers)
         cl.wait(rb'Headless \(Null\) renderer initialized', startup)
         cl.wait(rb'FTESurf CSQC loaded', startup)
         # CSQC loads before PutClientInServer; early stringcmds can disappear and
         # viewpos can report an unspawned zero body. Gate on SSQC's actual join.
         sv.wait(rb'TASVerifier\^7 joined', startup)
+        for peer in peers:
+            require_plugin_policy(peer)
+        report['checks']['binary_directory_only_plugins'] = True
         cut = cl.scan(); cl.send('vid_headless_sleep')
         cl.wait(rb'"vid_headless_sleep" is "0"', startup, cut)
         cl.wait(b'Default: "100"', startup, cut)
@@ -693,11 +712,17 @@ def run(runtime_path, project_path, out, port):
         if cleanup_errors:
             report['result'] = 'ERROR'
             report['reason'] = 'CLEANUP_' + cleanup_errors[0]
+        # Signals notify only: never throw while stopping/reaping or retiring files.
+        # A request observed before verdict commit abstains even if replay finished.
+        if _cancelled and not cleanup_errors:
+            report['result'] = 'HOLD'
+            report['reason'] = 'CANCELLED'
         (out / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
     return report
 
 
 def main():
+    global _cancelled
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest='command', required=True)
     m = sub.add_parser('runtime')
@@ -715,12 +740,10 @@ def main():
         with a.output.open('x') as f:
             json.dump(data, f, indent=2)
         return 0
-    cancelled = False
+    previous_cancelled, _cancelled = _cancelled, False
     def cancel(signum, frame):
-        nonlocal cancelled
-        if not cancelled:
-            cancelled = True
-            raise Held('CANCELLED')
+        global _cancelled
+        _cancelled = True
     handlers = {sig: signal.signal(sig, cancel) for sig in (signal.SIGTERM, signal.SIGINT)}
     try:
         result = run(a.runtime, a.project, a.out, a.port)
@@ -734,6 +757,7 @@ def main():
     finally:
         for sig, handler in handlers.items():
             signal.signal(sig, handler)
+        _cancelled = previous_cancelled
     if result['result'] == 'PASS':
         print('VERIFY-TAS PASS ticks %d finish' % result['ticks'])
         return 0
