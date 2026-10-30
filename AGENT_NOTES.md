@@ -9948,14 +9948,29 @@ a dedicated localhost socket is not the native LoopBack/physical-key boundary.
 Unlinked fixture signatures receiving no linked credit are not human acceptance.
 
 A failed read-open is not file absence. `fexists` is depth-sensitive and ordinary
-full-path metadata still uses FTE's filename hash. Fresh exact `search_begin`
-enumeration sees loose files created after startup (valid empty handle for no
-matches; lookup errors fail closed). Native Windows read-deny/write-allow tests
-covered both preseeded and late final/staging files. The old cached-only control
-reached failed rename and retained a closed stage; the fresh census refused before
-staging. Protect `.new` and `.new2` as well, then prove an ordinary attached save
-still preserves recovery bytes. This does not promise external-writer atomicity,
-durability or resolve the separate historical P1136 failed-part receipt.
+full-path metadata uses FTE's filename hash. Fresh exact `search_begin` did catch
+late loose files in Windows controls, but POSIX native enumeration discards
+opendir errors: a valid empty handle is NOT authoritative absence. P1140 now
+requires uncached native write-path status; errors are occupied, and unsupported
+home-enabled write fallback fails closed rather than checking only the home root.
+The default manifest disables home. Windows status must use the actual writer's
+same ANSI/wide selection, not blindly UTF8-decode dedicated-server argv paths.
+Acting old/native controls demonstrated both namespace holes; corrected subjects
+preserved bytes and normal non-ASCII ANSI Open reached the real tape loader.
+
+Protect `.new`/`.new2` AND retained revision finals/`.tasp.new`: automatic loading
+reaches an older replace-capable retention helper. Reuse a readable retained final
+or confirm BOTH retention paths absent before staging and at deferred handoff.
+These guards do not harden arbitrary manual save/sign operations or promise
+external-writer atomicity/durability, nor resolve P1136's failed-part receipt.
+
+For Unicode ACL fixtures, Python text/UTF8 pipes into `pwsh -Command -` both
+misdecoded a non-ASCII path and reported GetAcl_PathNotFound. Native UTF16LE
+EncodedCommand worked; read the current SID inside the script, never in argv or
+logs. An explicit read-only home may also prevent game-log creation even though
+the dedicated server spawned: read its captured console sink for that control.
+Use the ACTUAL retained Peer constructor/limits, not a guessed earlier version;
+register ownership before subsequent identity work and restore only own modes.
 
 For teardown falsifiers use actual server teardown, not just a client's UDP close:
 the existing presentation `drop` hook shadows QW's disconnect string (BACKLOG).

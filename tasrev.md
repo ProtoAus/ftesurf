@@ -54,10 +54,14 @@ files added after startup. Automatic loading also protects retained revision
 finals and their `.tasp.new` recovery stages; a readable retained final is reused,
 otherwise both retention paths must be absent. Open requires the P1140 native
 uncached write-path metadata capability: directory enumeration/read failures are
-not absence, and older engines refuse before writing. Failed final rename retains
-the closed download stage. Do not edit the same paths from another process during
-the import/automatic-load transaction;
-this is not an atomic multi-writer or power-loss durability protocol. Base-save
+not absence, and older engines refuse before writing. Explicit `-homedir`/`-usehome`
+overrides also make Open refuse: home-to-base write fallback is deliberately not
+admitted by this single-root check. The default FTESurf manifest disables home;
+no owner home setting or legacy file operation is changed. Windows metadata uses
+the same filename encoding as its actual native writer. Failed final rename
+retains the closed download stage. Do not edit the same paths from another process
+during import/automatic load; this is not an atomic multi-writer or power-loss
+durability protocol. Base-save
 v1/v2 projects need their author's private base and are refused by this portable
 game workflow before starting an upload or staging an incoming body.
 

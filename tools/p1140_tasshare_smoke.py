@@ -6,6 +6,7 @@ root, not a gamedir beneath it. Requires Flask/Werkzeug and the existing rig loc
 Only synthetic, unlinked signatures are used: this is NOT human-press acceptance.
 """
 import argparse
+import base64
 import hashlib
 import json
 from pathlib import Path
@@ -42,7 +43,9 @@ $r = [System.Security.AccessControl.FileSystemAccessRule]::new($u, [System.Secur
 %s
 Set-Acl -LiteralPath $p -AclObject $a
 ''' % (str(path).replace("'", "''"), '$a.AddAccessRule($r)' if deny else '$a.RemoveAccessRuleSpecific($r)')
-    result = subprocess.run(['pwsh', '-NoProfile', '-NonInteractive', '-Command', '-'], input=script, text=True, capture_output=True)
+    # Native PS transport avoids the console codepage corrupting Unicode paths.
+    encoded = base64.b64encode(script.encode('utf-16le')).decode('ascii')
+    result = subprocess.run(['pwsh', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], encoding='utf-8', capture_output=True)
     assert result.returncode == 0, 'owned ACL fixture operation failed (private stderr withheld)'
 
 
