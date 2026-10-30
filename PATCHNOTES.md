@@ -21,6 +21,9 @@
 
 ## next
 
+### P1133 Airborne carry status with jump input
+- Run status follows carried gravity effects during more airborne commands. Holding jump in the air no longer suppresses this status; movement and real jumps are unchanged.
+
 ### P1131 Earlier airborne gravity carry status
 - Run status follows more carried gravity effects during airborne movement. Normal gravity, map-authored behavior and movement are unchanged.
 
