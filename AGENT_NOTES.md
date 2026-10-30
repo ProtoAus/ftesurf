@@ -1,5 +1,28 @@
 # AGENT_NOTES.md
 
+## Operator TAS verifier delivered (P1134, 30 Oct 2026)
+
+- `tools/tasverify.py` is an isolated operator-only 15ms legal-start verifier,
+  not `/api/tas/submit`, a queue, a public receipt reader or a board publisher.
+  See `tools/tasverify.md`; Stage6.3/6.4 remain separate work.
+- Compiled native `cd7efdd93`/tag1134 and QC `bf21d774` retain published P1133.
+  Both FULL builds: zero new warnings; 100 recent native checks plus older checks,
+  60 exact predecessor physics rows/platform and declared historical pin2/pin7
+  pass. Fresh Pi private-zone finish consumes342inputs, 6.133s under45s, own peers
+  reaped. Reuse unchanged CLI negative controls and reader/fixed-corpus evidence;
+  no canonical-zone, all-map, unsupported-tick-rate, human or ranked-run claim.
+- Both Windows installs and12lobbies received exact frozen artifacts. Live11:48UTC:
+  original12new epochs/version1134/mappedHL2 inodes and `.prev`/destination hashes
+  match; 16477Windows and35113lobby protected paths unchanged at promotion.
+  Configs/backend generation/stubs/unit/master unchanged; no force or repeat restart.
+  A fresh isolated client downloads exact CSQC, draws9cols/type14 without QC errors,
+  exits0 and has an inspected screenshot. No zones/terms are not human acceptance.
+  Existing byte-identical CSQC caches are reused; Build89 unchanged.
+- The local SSH caller timed out during the long postflight, not the swap: observe
+  the SAME owned promoter/receipt before deciding failure or retrying. All12new
+  images were already running; the original activation completed successfully with
+  its short sweep lock released. Do not repeat swaps/restarts for a lost response.
+
 ## Existing-signal airborne jump-input status (P1133, 30 Oct 2026)
 
 - The existing earlier-air gravity observer now admits jump input only within its
