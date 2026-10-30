@@ -1,5 +1,13 @@
 # AGENT_NOTES.md
 
+## Collector/account integration (P1142, 30 Oct 2026)
+
+- Finished the held P1117 collector/account branch against current main, keeping schema24 and the current native/QC pins. Steam sign-in queues only; paced workers own upstream HTTP. KSF cached completions never gain fresh board/demo or native evidence authority.
+- Momentum rotation, account walks and backfill share one request cap. Pending accounts retain one request even with backfill1..3 and a permanent stale backlog. Skip giant-integer PB times per row; apply the board fetcher's date bounds with observation-time fallback. The fetcher and its unconditional msml import install flat together; an isolated empty-destination import is an acted deployment control, not a placeholder-file assertion.
+- KSF profile projection must retain INVALID non-null stage/zone markers as invalid, never drop them into main semantics. Persist each walk/style's ordered map AND zone list before indexing it; catalogue changes cannot shift a saved offset. An older offset without its snapshot rewinds that style rather than guessing. Durable page/file-before-cursor ordering survives a restart; stage dates use the same bounded timestamp validation as main rows.
+- The previous three schema20 assertions are pinned to current24. P984 deliberately lets fitting donated zones replace embedded timers: the inheritance fixture now proves a complete valid timer pair before testing that behavior. Original baseline failures and acted review falsifiers remain retained, not regraded. Two admin amplification/snapshot expectations also fail unchanged main and remain a separate follow-up.
+- SOURCE PUBLICATION IS NOT LIVE DELIVERY. The current guarded backend admits an exact81-file family and excludes new momprofile.py. It needs a separately verified closure extension and guarded successor, not ordinary copying, a renamed/embedded module or an opened fence. No backend mutation, native build, lobby restart, live account exercise or external sweep was used for this patch. Human checks remain pending after that rollout.
+
 ## Operator TAS verifier delivered (P1134, 30 Oct 2026)
 
 - `tools/tasverify.py` is an isolated operator-only 15ms legal-start verifier,

@@ -21,6 +21,10 @@
 
 ## next
 
+### Collectors (prepared; pending guarded backend rollout)
+
+- Steam sign-in queues paced Momentum and KSF personal-best refreshes. Collector retries keep unrelated work moving; catalogue changes no longer shift a pending KSF stage walk. This update is not active on the live backend yet.
+
 ### P1139 Gravity carry status through stock takeoff
 - Carried gravity effects keep their run status through more ordinary ground jumps. Jump height, movement and normal map-authored effects are unchanged.
 

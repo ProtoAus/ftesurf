@@ -83,6 +83,28 @@ class Review(unittest.TestCase):
         self.assertEqual(got, (0, 'partial', P.STAGE_MODE, 0))
         self.assertEqual(P.status(self.db, PLAYER)['next'], 0)
 
+    def test_interrupted_rewind_does_not_publish_a_replacement_plan(self):
+        self.at_stage()
+        plans = list(Path(self.cache, 'profiles').rglob('stage-maplist-0.json'))
+        self.assertEqual(len(plans), 1)
+        plans[0].unlink()
+        self.db.execute('UPDATE ksfprofiles SET cursor=1'); self.db.commit()
+        with patch.object(P, 'advance', side_effect=RuntimeError('before rewind ack')):
+            with self.assertRaisesRegex(RuntimeError, 'before rewind ack'):
+                self.step()
+        self.assertFalse(plans[0].exists())
+        self.assertEqual(P.status(self.db, PLAYER)['next'], 1)
+        with patch.object(K, 'fetch', side_effect=AssertionError('rewind must not ask')):
+            got = P.stage_step(K, self.cache, K.Pacer(0, 0), self.have, 3002, PLAYER,
+                               K.S.steam2(PLAYER), P.STAGE_MODE, 1, 1000, False)
+            self.assertEqual(got, (0, 'partial', P.STAGE_MODE, 0))
+            self.assertFalse(plans[0].exists())
+            got = P.stage_step(K, self.cache, K.Pacer(0, 0), self.have, 3003, PLAYER,
+                               K.S.steam2(PLAYER), P.STAGE_MODE, 0, 1000, False)
+        self.assertIsNone(got)   # map0 is pending, not skipped
+        self.assertTrue(plans[0].exists())
+        self.assertEqual(P.status(self.db, PLAYER)['next'], 0)
+
     def test_stage_dates_are_bounded_before_filing(self):
         self.at_stage()
         rows = [dict(zoneId=1, record_id=8001, surfTime=6.5, date_set_at='9999-01-01T00:00:00Z'),

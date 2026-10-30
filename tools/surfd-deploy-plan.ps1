@@ -59,6 +59,11 @@ function Get-SurfdDeployPlan {
     # P1117: momprofile's importers ship with it; surfd's migrate makes its table.
     $momEntries = @('surfd/surfd.py', 'surfd/accounts.py', 'surfd/steamsync.py',
                     'surfd/momwatch.py', 'surfd/momprofile.py', 'tools/momfetch.py', 'tools/msml.py')
+    # The fetcher's unconditional import predates the account/profile module.
+    if ($files -contains 'tools/momfetch.py' -and $files -notcontains 'tools/msml.py') {
+        if ($all -notcontains 'tools/msml.py') { throw "fetcher runtime dependency 'tools/msml.py' is absent at $commit" }
+        $added += 'tools/msml.py'; $files += 'tools/msml.py'
+    }
     do {
         $before = $files.Count
         if ($all -contains 'surfd/momprofile.py' -and

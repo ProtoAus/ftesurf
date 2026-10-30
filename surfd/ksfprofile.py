@@ -348,7 +348,7 @@ def stage_maps(K, cache, player, style, have):
     return out
 
 
-def stage_plan(K, cache, player, style, have, asked):
+def stage_plan(K, cache, player, style, have, asked, start):
     """Durably bind an integer cursor to this walk's map/zone identities.
     A catalogue edit or an uninstall must not shift the remaining offsets.
     Return whether a new snapshot was needed: older walks without one restart
@@ -366,6 +366,11 @@ def stage_plan(K, cache, player, style, have, asked):
                 all(type(z) is int and z != 0 for z in r[1]) for r in maps) and
                 [r[0] for r in maps] == sorted({r[0] for r in maps})):
             return [(mp, set(zones)) for mp, zones in maps], False
+    if start:
+        # No valid replacement may appear before its old offset is rewound.
+        # A crash before/after that DB commit leaves the missing plan visible;
+        # the next zero-cursor step publishes it before consuming any entry.
+        return [], True
     maps = stage_maps(K, cache, player, style, have)
     durable(K, fn, {'asked': asked, 'maps': [[mp, sorted(zones)] for mp, zones in maps]})
     return maps, True
@@ -384,7 +389,7 @@ def stage_step(K, cache, pacer, have, now, player, sid, mode, start, asked, can_
     or 'parked' when a refusal parked the walks.
     Rows are 'cache' bindings, as main completions are: never demo authority."""
     style = mode - STAGE_MODE
-    maps, fresh = stage_plan(K, cache, player, style, have, asked)
+    maps, fresh = stage_plan(K, cache, player, style, have, asked, start)
     if fresh and start:
         advance(K, player, mode, start, asked, now, mode, 0, 'partial', 0)
         return 0, 'partial', mode, 0

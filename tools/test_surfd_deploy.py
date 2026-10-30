@@ -90,7 +90,8 @@ Get-SurfdDeployPlan @p | ConvertTo-Json -Depth 4
         self.assertTrue(self.ksf_set <= set(full['Files']))
         self.assertEqual({f for f in full['Files'] if f.startswith('tools/')},
                          {'tools/ksfconvert.py', 'tools/ksfreplay_info.py'} |
-                         ({'tools/momfetch.py'} if 'surfd/momprofile.py' in self.ksf_set else set()))
+                         ({'tools/momfetch.py', 'tools/msml.py'}
+                          if 'surfd/momprofile.py' in self.ksf_set else set()))
         for entry in self.ksf_set-{'surfd/surfd.py'}:
             p = self.plan(only=[entry, entry])
             self.assertEqual(set(p['Files']), self.ksf_set)
@@ -287,6 +288,23 @@ function scp { Set-Content $env:DEPLOY_TEST_MARKER scp; throw 'network forbidden
                 'assert pathlib.Path(momfetch.__file__).resolve().parent == p; '
                 'assert pathlib.Path(msml.__file__).resolve().parent == p')
         run([sys.executable, '-I', '-B', '-c', code, str(dest)], cwd=dest)
+
+    def test_p1142_legacy_fetcher_keeps_its_catalogue_dependency(self):
+        repo, _old, _new = self.fixture_repo()
+        for name in ('momfetch.py', 'msml.py'):
+            (repo/'tools'/name).write_text((TOOLS/name).read_text(), encoding='utf-8')
+        git(repo, 'add', '--', 'tools/momfetch.py', 'tools/msml.py')
+        git(repo, '-c', 'user.name=Offline fixture', '-c', 'user.email=fixture@example.invalid',
+            '-c', 'commit.gpgsign=false', 'commit', '-qm', 'legacy flat tools without momprofile')
+        p = self.plan(repo, 'HEAD', ['tools/momfetch.py'])
+        self.assertEqual(set(p['Files']), {'tools/momfetch.py', 'tools/msml.py'})
+        dest = self.root/'legacy-flat-runtime'; dest.mkdir()
+        for source, target in zip(p['Files'], p['Destinations']):
+            (dest/target).write_text(git(repo, 'show', 'HEAD:' + source) + '\n', encoding='utf-8')
+        run([sys.executable, '-I', '-B', '-c',
+             'import pathlib,sys; p=pathlib.Path(sys.argv[1]).resolve(); '
+             'sys.path.insert(0,str(p)); import momfetch,msml; '
+             'assert pathlib.Path(msml.__file__).resolve().parent == p', str(dest)], cwd=dest)
 
     def test_social_schema_app_accounts_and_ksf_close_both_dependency_groups(self):
         repo, _, _ = self.fixture_repo()
