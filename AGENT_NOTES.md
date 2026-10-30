@@ -3151,6 +3151,24 @@ cannot be used, ask; do not silently scatter copies elsewhere.
 
 ## Build
 
+### Native CLI receipts: startup banners precede game logging — P1131, 2026-10-30
+
+A standalone `pm_selftest` game log can contain every passing check and shutdown
+but omit the startup version banner: `log_enable` takes effect later. Retain the
+process exit, stdout and stderr BEFORE reader assertions; bind the binary hash
+and source separately. Do not rerun a completed native arm just to fix a reader.
+P1131's final Windows unit CLI receipt is incomplete (exit/stdout unretained after
+a banner assertion), not a passed CLI: its complete check log, same-logic qualified
+candidate exit-0 unit control, and fresh clean-image five-map exit-0/version/physics
+controls are distinct evidence. The final ARM unit/physics CLI completed exit 0.
+
+P1131 exact reviewed native `4bddca067` / QC `e0eb0aa8` artifacts were deployed to
+both Windows installs and all 12 lobbies; live proof 2026-10-30 08:52:35 UTC confirms
+native/plugin epochs, versions and exact destination/previous hashes. Original
+protected data/config bytes and backend generation/unit/master remain unchanged;
+empty guards meant no force restart. A fresh isolated client downloaded the exact
+served CSQC and drew the board; this is not human feel or finished-run acceptance.
+
 **P1003 observed plugin finalization failure (2026-10-25).** A final clean-source
 full native build compiled normally but cod's ZIP metadata reported resource busy
 and ImGui's reported permission denied; cod's DLL remained partial, ImGui's was
