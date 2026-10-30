@@ -1,5 +1,22 @@
 # BACKLOG.md
 
+## Forced-native Pi preservation: live part before-state (P1136)
+
+- Site: native deployment preservation receipts and `data/parts` recorder
+  lifecycle (`SV_RecPartPath`, `SV_RecDiscard`, `SV_RecFailDrop`). A preapproved
+  occupied-lobby restart completed once, but strict postflight flagged two absent
+  part files and one changed part. Exact before payloads/open-handle state were
+  not retained; no byte-identical copy was found in the after snapshot. All other
+  old paths matched at that snapshot; later gameplay changed a save set separately.
+  This does NOT establish loss of a completed recording, or prove every changed
+  part was unfinished. Failed final renames can leave closed bytes in parts.
+- Falsifier/fix: bind each exact runtime-owned stream to its actual actor/handle
+  and retain verifiable before bytes before a forced restart; test active streams,
+  failed-attempt handoffs, a closed failed-rename part, and saved/resumable records.
+  Every unexplained prior path stays protected. No blanket parts exclusion,
+  retrospective waiver, player-data restoration or repeated healthy restart.
+  Preserve the original failed P1136 receipt and its unresolved historical limit.
+
 ## Windows run-corpus lifetime attribution (P1123 observation)
 
 - Site: `ftesurf/data/runs` import/cache lifecycle; actual writer is unknown.

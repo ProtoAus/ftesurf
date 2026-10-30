@@ -7484,6 +7484,21 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+**P1136 forced-native preservation limit (30 Oct2026).** Explicit preapproved
+`-PiForce` restarted all12 once with three clients connected; exact new runtime,
+process/plugin identity, paired previous images, backend/config and health checks
+passed. The original strict old-byte postflight FAILED over three `data/parts`
+files. Preserve that failure, not a re-labelled pass. Source names these per-port
+slot streams and failed-attempt handoffs (`SV_RecPartPath`, `SV_RecDiscard`,
+`SV_RecFailDrop`), but a failed final rename can also leave closed recording bytes
+there. Filename/lifecycle alone is NOT proof the exact old file was disposable.
+A before hash without payload/open-handle state cannot recover that distinction.
+All other old paths matched at the original postflight; later player-save writes
+were separate mutable changes, not grounds to restore someone else's files.
+Never broadly exclude parts, overwrite player data, restart healthy actors again
+or downgrade a generating fleet to make the receipt pass. Future forced-native
+preservation needs exact owned before-state/recovery evidence; see BACKLOG.md.
+
 P1060: lobby TTL controls visibility, not deletion of persisted rotation history.
 `surfd/p1060_lobby_retention.py` exercises first/all12 stale heartbeats, capacity
 refusal and concurrent admission; `--expect-bug` proves the old reaper ACTED.
