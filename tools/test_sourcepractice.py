@@ -82,6 +82,18 @@ int main(int argc,char **argv) {
   puts("UNAVAILABLE rendered-eye helper in retained revision; not a runtime counterexample");return 77;
 #endif
  }
+ if(argc>1 && !strcmp(argv[1],"clock-hold")) {
+  double first,second;
+  p[0]=0;assert(CL_SourcePracticePush(&s,1,p,v,.06f));
+  p[0]=100;assert(CL_SourcePracticePush(&s,2,p,v,.06f));
+  assert(CL_SourcePracticeSample(&s,native_target(.015f,.25f,1.5,1.5),out));first=out[0];
+  assert(CL_SourcePracticeSample(&s,native_target(.015f,.25f,1.504,1.5),out));second=out[0];
+  if(second<=first){puts("FAIL packet-clamped server clock freezes inside a known segment");return 2;}
+  memset(&s,0,sizeof(s));p[0]=0;assert(CL_SourcePracticePush(&s,1000000.0,p,v,.06f));
+  p[0]=3;assert(CL_SourcePracticePush(&s,1000000.06,p,v,.06f));
+  assert(CL_SourcePracticeSample(&s,1000000.03,out));near(out[0],1.5f);
+  puts("PASS existing realtime advances a known segment during server-clock holds; double stamps retain long-uptime precision");return 0;
+ }
  if(argc>1 && !strcmp(argv[1],"packet-delay")) {
   float delay=native_delay(.015f,.75f),first,second;
   p[0]=0;v[0]=100;assert(CL_SourcePracticePush(&s,0,p,v,.02f));
@@ -166,9 +178,11 @@ def main():
     guard = source.split(anchor,1)[1].split('\n\t}',1)[0]
     assert guard.count('goto discontinuity;') == 1
     guard = '\nstatic qboolean native_jump_guard(const vec3_t delta) { int i=0;(void)i;'+guard+'\nreturn false; discontinuity:return true;}\n'
-    target_lines=[line for line in source.splitlines() if 'target = cl.servertime - ' in line]
+    target_lines=[line for line in source.splitlines() if 'target = ' in line and 'CL_SourcePracticeDelay(' in line]
     assert len(target_lines)==1,'Actual native target expression drifted'
-    delay_control='''\nstatic float native_delay(float tick,float scale) {\n struct {double servertime;} cl={0};\n float interval=tick/scale,target;(void)interval;\n'''+target_lines[0]+'''\n return -target;\n}\n'''
+    clock_lines=[line for line in source.splitlines() if line.strip()=='time = realtime;']
+    assert len(clock_lines) in (0,1),'Actual native render clock expression drifted'
+    delay_control='''\nstatic double native_target(float tick,float scale,double realtime,double packettime) {\n struct {double servertime;} cl={packettime};\n double time=0,target;(void)time;(void)cl;(void)realtime;\n'''+ '\n'.join(clock_lines+target_lines)+'''\n return target;\n}\nstatic float native_delay(float tick,float scale) {return -native_target(tick,scale,0,0);}\n'''
     view_file = a.view_source or native/'client/view.c'
     view = view_file.read_text()
     begin = '// refresh position from simulated origin'
@@ -238,7 +252,7 @@ static float native_stair_view(float raw,float delta,float crouch,qboolean activ
         (a.out/('compile-failure-'+digest[:12]+'.json')).write_text(json.dumps({'source':str(source_file),'viewSource':str(view_file),'scriptSha256':script_digest,'exit':compile.returncode,'stdout':compile.stdout,'stderr':compile.stderr},indent=2)+'\n')
         raise SystemExit(3)
     results = []
-    for case in ['core','idle-resume','teleport','stair-view','stair-entry','save-epoch','roof-view','packet-delay']:
+    for case in ['core','idle-resume','teleport','stair-view','stair-entry','save-epoch','roof-view','packet-delay','clock-hold']:
         run = subprocess.run([str(exe)]+([] if case=='core' else [case]),capture_output=True,text=True,env=env)
         print(case,'exit',run.returncode,run.stdout+run.stderr,flush=True)
         results.append({'case':case,'exit':run.returncode,'stdout':run.stdout,'stderr':run.stderr})
