@@ -518,7 +518,7 @@ void(entity e, string name, string cpname) SV_TASLegalLoad =
 	e.tasp_load = 1; e.tasp_stop = pre; e.tasp_filehead = tpr_n;
 	sprint(e, PRINT_HIGH, sprintf("tas project: loading %s rev %.0f: placed at zone %.0f, replaying the start box to tick %.0f\n",
 		name, e.tasp_rev, z, pre));
-	// P1132: the verifier joins the actual reader/placement to its admitted revision and target.
+	// Native verifier joins the actual reader/placement to its admitted revision and target.
 	dprint(sprintf("tas project: binding %s %s %.0f %.0f %.0f %.0f\n",
 		name, tasp_revsha[s], z, e.run_t_track, FS_LegOf(e.run_t_startseg, e.run_t_stagerun), pre));
 	SV_TASProjectEvent(e);

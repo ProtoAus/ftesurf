@@ -328,7 +328,7 @@ current live fleet or canonical map zones:
   reports `the engine stopped the input tape`, since it expects the entire chunk to end
   while the timer is running. Neither this expected abort nor a successful editor load
   is `VERIFY-TAS PASS`.
-P1132 supplies the bounded operator-only [native runner](tasverify.md): admitted raw bytes,
+P1134 supplies the bounded operator-only [native runner](tasverify.md): admitted raw bytes,
 actual server reader/start-target binding, effective native/plugin images, consecutive mover
 inputs, closed natural finish, bounded resources and owned-child cleanup. A fresh 342-tick
 finish and four acting HOLD controls qualify its current 15 ms fixture profile, not canonical

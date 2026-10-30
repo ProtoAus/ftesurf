@@ -349,6 +349,7 @@ $DenyPatterns = @(
     '(^|/)identity\.'
     '(^|/)consent\.txt$'               # shipping it pre-accepts the terms
     '^ftesurf/data/mapdl\.net\.(txt|tmp)$' # runtime directory cache and reply scratch
+    '^ftesurf/data/(map(meta|deps)\.net\.txt|mapmedia\.tmp)$' # P1099 runtime media caches/scratch
     '^ftesurf/data/mapbuild\.txt$'     # player's chosen map builds
     '^ftesurf/(data/)?maps/settings/local/' # player-authored local editor overrides
     '^ftesurf/ftesurf\.cfg$'           # NOT particles/ftesurf.cfg -- see above

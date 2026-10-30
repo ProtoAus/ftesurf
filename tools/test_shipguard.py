@@ -56,11 +56,29 @@ class ShipGuardTests(unittest.TestCase):
 
     def test_runtime_paths_are_narrowly_explained(self):
         hits = [row for row in self.rows if row[0] in RUNTIME_LITERALS and row[1] != 'RUNTIME']
-        self.assertEqual(len(hits), 6, hits)
+        self.assertEqual(len(hits), 8, hits)  # includes the two installed-map port readers
         for literal, verdict, reason, path, line in hits:
             with self.subTest(literal=literal, path=path, line=line):
                 self.assertEqual(verdict, 'DENIED', reason)
                 self.assertTrue(reason)
+
+    def test_mapmedia_caches_are_exact_runtime_exceptions(self):
+        caches = {'data/mapmeta.net.txt', 'data/mapdeps.net.txt', 'data/mapmedia.tmp'}
+        hits = [row for row in self.rows if row[0] in caches]
+        self.assertEqual({row[0] for row in hits}, caches)
+        for literal, verdict, reason, path, line in hits:
+            self.assertEqual(verdict, 'DENIED', (path, line, reason))
+            self.assertIn('runtime', reason)
+            self.assertNotIn(literal, self.files)
+        with patch.dict(shipguard.DENY_EXACT, clear=False):
+            for literal in caches:
+                del shipguard.DENY_EXACT[literal]
+            self.assertEqual({row[0] for row in scan(self.files, self.dirs)
+                              if row[1] == 'MISS'}, caches)
+        for literal in ('data/mapmeta.net2.txt', 'data/mapdeps.new.txt',
+                        'data/mapmedia.tmp.bak'):
+            self.assertEqual(shipguard.classify(literal, 'fopen', set(), set(),
+                                               ', FILE_READ);')[0], 'MISS')
 
     def test_current_source_has_no_unexplained_miss(self):
         self.assertEqual([row for row in self.rows if row[1] == 'MISS'], [])
@@ -89,10 +107,15 @@ class ShipGuardTests(unittest.TestCase):
             self.assertEqual(verdict, 'DENIED', (path, line, reason))
             self.assertIn('Steam', reason)
             self.assertNotIn(literal, self.files)
-        with patch.dict(shipguard.DENY_EXACT, clear=False):
+        # The CSS knife is also covered by the Legacy knife-catalog prefix.
+        # Remove both authorities for this falsifier, not just its exact exception.
+        with patch.dict(shipguard.DENY_EXACT, clear=False), \
+                patch.dict(shipguard.DENY_PREFIX, clear=False):
             for literal in mounted:
                 del shipguard.DENY_EXACT[literal]
-            missing = {row[0] for row in scan(self.files, self.dirs) if row[1] == 'MISS'}
+            del shipguard.DENY_PREFIX['models/weapons/v_knife']
+            missing = {row[0] for row in scan(self.files, self.dirs)
+                       if row[1] == 'MISS' and row[0] in mounted}
             self.assertEqual(missing, mounted)
 
     def test_mounted_source_exceptions_do_not_hide_owned_neighbors(self):
@@ -109,7 +132,7 @@ class ShipGuardTests(unittest.TestCase):
 
     def test_curated_zone_cache_is_narrow_and_runtime_only(self):
         hits = [row for row in self.rows if row[0] == 'maps/zones/curated/']
-        self.assertEqual(len(hits), 3, hits)
+        self.assertEqual(len(hits), 5, hits)  # menu/server plus the three client cache readers
         for literal, verdict, reason, path, line in hits:
             self.assertEqual(verdict, 'DENIED', (path, line, reason))
             self.assertIn('runtime zone cache', reason)
@@ -123,7 +146,7 @@ class ShipGuardTests(unittest.TestCase):
         with patch.dict(shipguard.DENY_PREFIX, clear=False):
             del shipguard.DENY_PREFIX['maps/zones/curated/']
             self.assertEqual(len([row for row in scan(self.files, self.dirs)
-                                  if row[0] == 'maps/zones/curated/' and row[1] == 'MISS']), 3)
+                                  if row[0] == 'maps/zones/curated/' and row[1] == 'MISS']), 5)
 
     def test_fopen_read_remains_a_load(self):
         self.assertEqual(shipguard.classify('data/mapdl.txt', 'fopen', set(), set(), ', FILE_READ);')[0], 'MISS')
@@ -199,7 +222,8 @@ class ShipGuardTests(unittest.TestCase):
         release = Path(shipguard.RELEASE).read_text(encoding='utf-8-sig')
         patterns = shipguard.ps_strings(shipguard.ps_array(release, 'DenyPatterns'))
         for path in ('ftesurf/data/mapdl.net.txt', 'ftesurf/data/mapdl.net.tmp',
-                     'ftesurf/data/mapbuild.txt', 'ftesurf/maps/settings/local/surf_fixture.cfg',
+                     'ftesurf/data/mapmeta.net.txt', 'ftesurf/data/mapdeps.net.txt',
+                     'ftesurf/data/mapmedia.tmp', 'ftesurf/data/mapbuild.txt', 'ftesurf/maps/settings/local/surf_fixture.cfg',
                      'ftesurf/data/maps/settings/local/surf_fixture.cfg'):
             with self.subTest(path=path):
                 self.assertTrue(any(re.search(pattern, path, re.I) for pattern in patterns), path)
