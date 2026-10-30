@@ -21,6 +21,9 @@
 
 ## next
 
+### P1139 Gravity carry status through stock takeoff
+- Carried gravity effects keep their run status through more ordinary ground jumps. Jump height, movement and normal map-authored effects are unchanged.
+
 ### P1138 Smoother slow-practice camera
 - Slow-practice camera motion blends completed movement ticks instead of freezing between repeated poses. Normal-speed movement is unchanged.
 - host_timescale help now distinguishes restored normal speed from the connection's existing practice status; resetting the attempt does not clear earlier slow-practice use.
