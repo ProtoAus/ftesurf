@@ -21,6 +21,8 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import time
+import types
 import urllib.parse
 
 FAILED = []
@@ -41,6 +43,19 @@ import surfd as S        # noqa: E402
 import ksfimport as K    # noqa: E402
 
 REAL_FETCH = K.fetch     # the cases below swap in FakeKSF
+
+# P1117 review 4: no case reaches the network; a fake missed is an error, not a request.
+import socket as _socket    # noqa: E402
+_create = _socket.create_connection
+
+
+def _local_only(addr, *a, **k):
+    if addr[0] not in ("127.0.0.1", "localhost"):
+        raise OSError("test: no network to %s:%s" % addr[:2])
+    return _create(addr, *a, **k)
+
+
+_socket.create_connection = _local_only
 
 
 @atexit.register
@@ -74,7 +89,9 @@ class FakeKSF(object):
         path = url[len(K.KSF_BASE):]
         self.asked.append(path)
         if self.refuse_after is not None and len(self.asked) > self.refuse_after:
-            raise K.Refused("HTTP 429")
+            if getattr(self, "quiet", False):
+                raise K.Refused("no answer: timed out", transient=True)
+            raise K.Refused("HTTP 429", 429)
         if path.startswith("/api/maps/search/"):
             q = urllib.parse.unquote(path[len("/api/maps/search/"):])
             hits = [dict(info, name=n) for n, info in sorted(self.maps.items())
@@ -314,10 +331,15 @@ def case_refusal():
           os.path.exists(os.path.join(cache, "maps", "surf_r.json")), False)
 
 
+def fake_open(fn):
+    """urllib.request.build_opener's stand-in: every open() is fn(req, timeout)."""
+    return lambda *handlers: types.SimpleNamespace(open=fn)
+
+
 def case_no_answer():
     """The real fetch, with urlopen failing the ways 2026-10-03's run saw."""
     import urllib.request
-    real = urllib.request.urlopen
+    real = urllib.request.build_opener
     for label, exc in (("a read that timed out", TimeoutError("The read operation timed out")),
                        ("a connection dropped mid-reply",
                         http.client.RemoteDisconnected("Remote end closed connection")),
@@ -328,18 +350,389 @@ def case_no_answer():
             calls.append(req.full_url)
             raise exc
 
-        urllib.request.urlopen = fail
+        urllib.request.build_opener = fake_open(fail)
         try:
             REAL_FETCH(K.KSF_BASE + "/api/maps/search/surf_x")
             got = "returned"
-        except K.Refused:
-            got = "refused"
+        except K.Refused as e:
+            got = "refused" if e.transient else "refused, not transient"
         except Exception as e:      # the crash this case exists for
             got = type(e).__name__
         finally:
-            urllib.request.urlopen = real
-        check("%s stops as a refusal" % label, got, "refused")
+            urllib.request.build_opener = real
+        check("%s stops as a refusal, a transient one (P1117)" % label, got, "refused")
         check("...after one attempt", len(calls), 1)
+    import urllib.error
+
+    def refuse(req, timeout=None):
+        raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {}, io.BytesIO())
+    urllib.request.build_opener = fake_open(refuse)
+    try:
+        REAL_FETCH(K.KSF_BASE + "/api/maps/search/surf_x")
+        got = None
+    except K.Refused as e:
+        got = (e.code, e.transient)
+    finally:
+        urllib.request.build_opener = real
+    check("P1117: an HTTP 429 is a refusal, not transient", got, (429, False))
+
+
+def case_p1117r1_record_identity():
+    """A walk ('cache') row never rebinds a row naming a record; a board row
+    always takes over its own record from a walk-filed one (review round 1)."""
+    S.migrate()
+    sid, mp, when = "STEAM_0:0:777", "surf_ident", 1790000000
+
+    def row(binding, t, date, rid, file=None):
+        r = K.rec_row(mp, 1, 0, {"steamID": sid, "time": t, "date": date, "record_id": rid,
+                                 "file": file})
+        return dict(r, name="p", binding=binding)
+
+    def held():
+        db = sqlite3.connect(os.environ["SURFD_DB"])
+        try:
+            return db.execute("SELECT runid, replay_id, millis FROM runs WHERE tier='ksf' AND map=?",
+                              (mp,)).fetchone()
+        finally:
+            db.close()
+
+    def reset(*rows, demo=0):
+        db = sqlite3.connect(os.environ["SURFD_DB"])
+        db.execute("DELETE FROM runs WHERE map=?", (mp,))
+        db.commit()
+        db.close()
+        K.write_rows(list(rows))
+        if demo:
+            db = sqlite3.connect(os.environ["SURFD_DB"])
+            db.execute("UPDATE runs SET replay_id=? WHERE map=?", (demo, mp))
+            db.commit()
+            db.close()
+    board = row("board", 6.0, when, 7001, "replay_css_5_0_9_%d.rec" % when)
+    for label, walk in (("the same record a hair faster", row("cache", 6.0 - 1e-7, when, 7001)),
+                        ("the same record dated an hour later", row("cache", 6.0, when + 3600, 7001)),
+                        ("another record at the same millis", row("cache", 6.0002, when + 60, 7002))):
+        reset(board, demo=55)
+        K.write_rows([walk])
+        check("P1117r1: a walk row of %s keeps the board's runid and demo" % label,
+              held()[:2], (board["runid"], 55))
+    reset(board, demo=55)
+    K.write_rows([row("cache", 5.0, when + 60, 7003)])
+    check("...a faster run of another record still lands, unlinked",
+          (held()[1:], held()[0] == board["runid"]), ((0, 5000), False))
+    reset(row("cache", 6.0, when + 3600, 7001))
+    K.write_rows([board])
+    check("a board row takes over its own record from a walk-filed one dated later",
+          held()[0], board["runid"])
+
+
+def case_p1117r2_caps():
+    """A reply over KSF_MAX_BYTES is that request's refusal; nesting is a bad reply."""
+    import urllib.request
+    real = urllib.request.build_opener
+
+    class Big(object):
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self, n=-1):
+            Big.asked = n
+            return b"[" + b" " * (n - 1)
+    urllib.request.build_opener = fake_open(lambda req, timeout=None: Big())
+    try:
+        REAL_FETCH(K.KSF_BASE + "/api/maps/new?offset=0")
+        got = "returned"
+    except K.Refused as e:
+        got = (e.board, Big.asked)
+    finally:
+        urllib.request.build_opener = real
+    check("P1117r2: a reply over KSF_MAX_BYTES is refused as the request's, read no further",
+          (got[0], got[1] <= 64 << 10), (True, True))
+    K.fetch = lambda url: "[" * 200000
+    try:
+        K.Pacer(0, 1).get("/api/maps/new?offset=0")
+        got = "returned"
+    except K.Refused:
+        got = "refused"
+    except RecursionError:
+        got = "RecursionError"
+    check("P1117r2: deeply nested JSON is a reply that did not parse, not a crash", got, "refused")
+
+
+class Reply(object):
+    """A urlopen reply: `chunks` a read1 each, `length` its Content-Length, `clock`
+    the monotonic seconds each read takes."""
+    status = 200
+
+    def __init__(self, chunks, length=None, clock=0.0):
+        self.chunks, self.clock = list(chunks), clock
+        self.headers = {"Content-Length": str(length)} if length is not None else {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read1(self, n):
+        Reply.now += self.clock
+        return self.chunks.pop(0) if self.chunks else b""
+
+
+def case_p1117r3_whole_reply():
+    """The whole reply inside its deadline, and as long as its Content-Length."""
+    import urllib.request
+    real, mono = urllib.request.build_opener, K.time.monotonic
+    out = []
+    for label, reply in (("a trickle past the deadline", Reply([b"x"] * 100, clock=1.0)),
+                         ("a body short of its Content-Length", Reply([b"[1,"], length=10)),
+                         ("a whole one", Reply([b"[1,", b"2]"], length=5))):
+        Reply.now = 0.0
+        urllib.request.build_opener = fake_open(lambda req, timeout=None, r=reply: r)
+        K.time.monotonic = lambda: Reply.now
+        try:
+            out.append((label, REAL_FETCH(K.KSF_BASE + "/api/maps/new?offset=0")))
+        except K.Refused as e:
+            out.append((label, ("refused", e.transient)))
+        finally:
+            urllib.request.build_opener, K.time.monotonic = real, mono
+    check("P1117r3: slow or short is no answer (transient), a whole reply reads",
+          [o[1] for o in out], [("refused", True), ("refused", True), "[1,2]"])
+
+
+def case_p1117r3_same_record_improves():
+    """KSF updates a record_id in place when its player improves: a walk row of the
+    same record faster by >= 1 ms replaces (and unlinks); a hair faster does not."""
+    S.migrate()
+    sid, mp, when = "STEAM_0:0:778", "surf_slot", 1790000000
+
+    def row(binding, t, date, file=None):
+        r = K.rec_row(mp, 31, 0, {"steamID": sid, "time": t, "date": date, "record_id": 4705204,
+                                  "file": file})
+        return dict(r, name="p", binding=binding)
+
+    def held():
+        db = sqlite3.connect(os.environ["SURFD_DB"])
+        try:
+            return db.execute("SELECT millis, replay_id FROM runs WHERE tier='ksf' AND map=?",
+                              (mp,)).fetchone()
+        finally:
+            db.close()
+    db = sqlite3.connect(os.environ["SURFD_DB"])
+    db.execute("DELETE FROM runs WHERE map=?", (mp,))
+    db.commit()
+    db.close()
+    K.write_rows([row("board", 6.0, when, "replay_css_5_0_9_%d.rec" % when)])
+    db = sqlite3.connect(os.environ["SURFD_DB"])
+    db.execute("UPDATE runs SET replay_id=66 WHERE map=?", (mp,))
+    db.commit()
+    db.close()
+    K.write_rows([row("cache", 6.0 - 4e-4, when + 86400)])
+    check("P1117r3: the same record under a millisecond faster keeps the bound row", held(), (6000, 66))
+    K.write_rows([row("cache", 5.9, when + 86400)])
+    check("...and 100 ms faster replaces it, unlinked from the old time's demo", held(), (5900, 0))
+
+
+def drip_server(reply=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", gap=0.2, head=b""):
+    """A local server sending `reply` a byte every `gap` s.  -> (port, stop)."""
+    import socket
+    import threading
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(8)
+    stop = []
+
+    def drip(c):
+        try:
+            c.recv(65536)
+            if head:
+                c.sendall(head)
+            for b in reply:
+                if stop:
+                    break
+                c.sendall(bytes([b]))
+                time.sleep(gap)
+        except OSError:
+            pass
+        finally:
+            c.close()
+
+    def serve():
+        while not stop:
+            try:
+                c, _ = srv.accept()
+            except OSError:
+                return
+            hits.append(1)
+            threading.Thread(target=drip, args=(c,), daemon=True).start()
+    threading.Thread(target=serve, daemon=True).start()
+
+    def close():
+        stop.append(1)
+        srv.close()
+    hits = close.hits = []
+    return srv.getsockname()[1], close
+
+
+def case_p1117r4_watchdog():
+    """A status line dripped a byte at a time: no answer at the deadline, not 8 s on."""
+    port, close = drip_server()
+    old = K.KSF_DEADLINE
+    K.KSF_DEADLINE = 1
+    t0 = time.time()
+    try:
+        REAL_FETCH("http://127.0.0.1:%d/api/maps/new?offset=0" % port)
+        got = "returned"
+    except K.Refused as e:
+        got = ("refused", e.transient)
+    finally:
+        K.KSF_DEADLINE = old
+        close()
+    check("P1117r4: a reply dripped from its status line on is no answer at the deadline",
+          (got, time.time() - t0 < 5), (("refused", True), True))
+
+
+def timed_fetch(url, deadline=1):
+    old, t0 = K.KSF_DEADLINE, time.time()
+    K.KSF_DEADLINE = deadline
+    try:
+        REAL_FETCH(url)
+        got = "returned"
+    except K.Refused as e:
+        got = ("refused", e.transient, e.code)
+    finally:
+        K.KSF_DEADLINE = old
+    return got, time.time() - t0 < 5
+
+
+def slow_connect(seconds):
+    """socket.create_connection, `seconds` late: a connect still pending at the deadline."""
+    import socket as so
+    real = so.create_connection
+
+    def slow(*a, **k):
+        time.sleep(seconds)
+        return real(*a, **k)
+    so.create_connection = slow
+    return lambda: setattr(so, "create_connection", real)
+
+
+def case_p1117r5_watchdog():
+    """Through urllib's own do_open: a body, a chunk-size line and a pending connect."""
+    out = []
+    for head, reply in ((b"HTTP/1.1 200 OK\r\nContent-Length: 200\r\n\r\n", b"[" + b" " * 199), (b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n", b"1" * 200)):
+        port, close = drip_server(reply, 0.2, head)
+        out.append(timed_fetch("http://127.0.0.1:%d/x" % port))
+        close()
+    port, close = drip_server(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]", 0.3)       # 12 s, once connected
+    undo = slow_connect(1.5)
+    try:
+        out.append(timed_fetch("http://127.0.0.1:%d/x" % port))
+    finally:
+        undo()
+        close()
+    port, close = drip_server(b"\x00" * 60, 0.25, b"\x16\x03\x03\x40\x00")   # one TLS record, a byte at a time
+    out.append(timed_fetch("https://127.0.0.1:%d/x" % port))
+    close()
+    check("P1117r5: a dripped body, chunk-size line, late connect, TLS handshake: no answer at the deadline",
+          out, [(("refused", True, 0), True)] * 4)
+    target, tclose = drip_server(b"", 0, b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]")
+    for loc in (b"http://127.0.0.1:%d/x" % target, b"ftp://127.0.0.1/x"):
+        port, close = drip_server(b"", 0, b"HTTP/1.1 302 Found\r\nLocation: " + loc
+                                  + b"\r\nContent-Length: 0\r\n\r\n")
+        out = timed_fetch("http://127.0.0.1:%d/x" % port)
+        close()
+        check("P1117r5: a redirect to %s is refused, never followed" % loc.decode()[:20],
+              (out[0][0], out[0][2], tclose.hits), ("refused", 302, []))
+    tclose()
+
+
+def case_p1117r5_bounds():
+    check("P1117r5: zones_of takes a count only as an int in range",
+          [K.zones_of(i) for i in ({"isLinear": False, "cp_count": "x", "b_count": 1e400},
+                                   {"isLinear": False, "cp_count": 2000000, "b_count": True},
+                                   {"isLinear": False, "cp_count": 1e300, "b_count": -2},
+                                   {"isLinear": False, "cp_count": 2, "b_count": 1})],
+          [[0], [0], [0], [0, 1, 2, 31]])
+    check("P1117r5: _when takes an int or a finite float, never a bool or a string",
+          [K._when({"date": v}) for v in (True, 1790000000.0, "1790000000", float("nan"), 1790000000)],
+          [0, 1790000000, 0, 0, 1790000000])
+
+
+def tls_parts(M):
+    """(an SSL socket keeps its SSL object through Deadline.shut, what a Handshake
+    raises for a connect finished past the deadline) -- socket pairs, no network."""
+    import ssl
+    ctx = ssl.create_default_context()
+    a, b = _socket.socketpair()
+    s = ctx.wrap_socket(a, server_hostname="x", do_handshake_on_connect=False)
+    try:
+        M.Deadline.shut(s)
+        kept = s._sslobj is not None
+    finally:
+        s.close()
+        b.close()
+    dl = M.Deadline(60)
+    dl.fired = True
+    c, d = _socket.socketpair()
+    try:
+        M.Handshake(ctx, dl).wrap_socket(c, server_hostname="x")
+        raised = None
+    except Exception as e:
+        raised = type(e).__name__
+    finally:
+        for x in dl.socks + [c, d]:
+            x.close()
+    return kept, raised
+
+
+def case_p1117r6_watchdog():
+    port, close = drip_server(b"", 0)
+    undo = slow_connect(1.5)
+    try:
+        out = timed_fetch("https://127.0.0.1:%d/x" % port)
+    finally:
+        undo()
+        close()
+    check("P1117r6: a TLS connect finishing past the deadline is no answer, not AttributeError",
+          out, (("refused", True, 0), True))
+    check("P1117r6: shut() keeps the SSL object; a connect past the deadline skips its handshake",
+          tls_parts(K), (True, "TimeoutError"))
+    got, real = [], K._fetch
+    for fired, exc in ((True, AttributeError), (True, ValueError), (False, ValueError)):
+        def broken(url, dl, fired=fired, exc=exc):
+            if fired:
+                dl.fire()
+            raise exc("an SSL object shut under it")
+        K._fetch = broken
+        try:
+            REAL_FETCH("http://127.0.0.1:1/x")
+            got.append("returned")
+        except K.Refused as e:
+            got.append(("no answer", e.transient))
+        except (AttributeError, ValueError) as e:
+            got.append(type(e).__name__)
+        finally:
+            K._fetch = real
+    check("P1117r6: past the deadline AttributeError/ValueError is no answer; before it, a bug",
+          got, [("no answer", True), ("no answer", True), "ValueError"])
+
+
+def case_p1117_quiet_park():
+    """No answer parks the crawl QUIET_COOLDOWN, doubling; case_watch_refusal_parks
+    holds an HTTP refusal to COOLDOWN."""
+    fake, cache, mapsdir, names = watch_setup(3, installed=3, prefix="surf_q", refuse_after=2)
+    fake.quiet = True
+    tick(cache, mapsdir, 5)
+    pf = os.path.join(cache, ".refused")
+    park = json.load(io.open(pf, encoding="utf-8"))
+    check("P1117: no answer parks the crawl briefly", (park["n"], park["until"] - park["at"]),
+          (1, K.QUIET_COOLDOWN))
+    park["until"] = park["at"] = 1
+    io.open(pf, "w", encoding="utf-8").write(json.dumps(park))
+    fake.refuse_after = 0
+    tick(cache, mapsdir, 5)
+    park = json.load(io.open(pf, encoding="utf-8"))
+    check("...and doubles", park["until"] - park["at"], 2 * K.QUIET_COOLDOWN)
 
 
 FLAT = {"isLinear": True, "cp_count": 0, "b_count": 0}
@@ -776,7 +1169,10 @@ def main():
                  case_linear_asks_no_stages,
                  case_write_and_filter, case_refusal, case_no_answer,
                  case_modes, case_merge_and_refresh, case_watch,
-                 case_watch_refusal_parks, case_watch_dry_and_owed,
+                 case_watch_refusal_parks, case_p1117_quiet_park, case_p1117r1_record_identity, case_p1117r2_caps,
+                 case_p1117r3_whole_reply, case_p1117r3_same_record_improves, case_p1117r4_watchdog,
+                 case_p1117r5_watchdog, case_p1117r5_bounds, case_p1117r6_watchdog,
+                 case_watch_dry_and_owed,
                  case_review_findings, case_review_round2,
                  case_board_reads_ksf_styles):
         print("\n%s:" % case.__name__)

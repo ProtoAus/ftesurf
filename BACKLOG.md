@@ -12,6 +12,13 @@
   P1140's transfer-lifetime tests use standard server kick to exercise actual
   teardown; this pre-existing dispatch issue is not fixed by the transfer code.
 
+## P1142 collector/account live rollout (source finished; not deployed)
+
+- The active schema24 backend is pinned to an exact81-file runtime family that does not include new momprofile.py. Extend the private guarded closure deliberately, pin all current runtime and external importer bytes, validate actual pre-import accept/refuse controls and the new module, then prepare a rollback-preserving successor. Do not copy around the fence or widen the existing momgrab-only exception. Falsifier: guarded server/cron routes import the exact new closure while altered/missing/newly unpinned members fail before import; verify health, route generation and unchanged private overlay/player data after one bounded handoff.
+- Offline tests are not a real Steam-login/upstream acceptance test. After guarded rollout, verify a real link queues both sources and paced cron imports supported PB categories without blocking the request handler, inventing missing rows or upgrading imported records to native-ranked/evidence tiers.
+- Pre-socket DNS/connect is not proven to obey the new socket exchange deadline. Request-count caps and acted header/body/TLS interruption tests do not establish a hard whole-DNS deadline. Falsifier: a delayed resolver/connect control must return within a measured cap without leaving workers behind before claiming that stronger guarantee.
+- The broader admin script still has two amplification-warning/snapshot-packet expectation failures. Both fingerprints reproduce on unchanged published main and the integration; no assertion was suppressed. Diagnose the actual timing/cache path with a deterministic acted control separately rather than changing unrelated product code to make this integration green.
+
 ## Forced-native Pi preservation: live part before-state (P1136)
 
 - Site: native deployment preservation receipts and `data/parts` recorder

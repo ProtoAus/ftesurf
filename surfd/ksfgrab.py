@@ -32,6 +32,8 @@ import ksfconvert as C
 FILE = re.compile(r'(?=.{1,255}\Z)replay_css_[0-9]+_([0-3])_([0-9]+)_([0-9]+)\.rec\Z')
 BOARD = re.compile(r'([a-z0-9_]{1,64})/z([0-9]+)(?:m([1-3]))?\.json\Z')
 MAX_BYTES = 16 << 20
+EXCHANGE = 60               # s for one whole download (P1117 review 4)
+PARK = '.refused-demos'    # P1117: downloads' own park, beside the crawler's .refused
 MAX_QUEUE = 256
 MAX_RECOVER = 2
 MAX_FAILED = 2048
@@ -289,13 +291,29 @@ def fetch(file):
     if not FILE.fullmatch(file):
         raise ValueError('invalid replay filename')
 
-    class NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, *args):
-            return None
-
     req = urllib.request.Request(K.KSF_BASE + '/api/replays/' + file + '?game=66t',
                                  headers={'User-Agent': K.UA})
-    with urllib.request.build_opener(NoRedirect).open(req, timeout=30) as r:
+    # P1117 review 4: the whole exchange inside EXCHANGE s (ksfimport.Deadline); past
+    # it, no answer -- whatever the read did when its socket shut (review 5: on Linux
+    # a header trickle ends in EOF after `got`).  A slow BODY is the loop's deadline.
+    dl, got = K.Deadline(EXCHANGE), []
+    try:
+        with dl:
+            data = _download(req, dl, got)
+    except urllib.error.HTTPError:
+        raise
+    except (OSError, http.client.HTTPException, AttributeError, ValueError):
+        if not dl.fired:            # past it, the watchdog's doing (P1117 review 6)
+            raise
+        data = None
+    if dl.fired:
+        raise TimeoutError('no answer within %d s' % EXCHANGE)
+    return data
+
+
+def _download(req, dl, got):
+    with urllib.request.build_opener(*dl.handlers()).open(req, timeout=30) as r:  # no redirects
+        got.append(True)
         claimed = getattr(r, 'headers', {}).get('Content-Length')
         expected = None
         if claimed is not None:
@@ -325,8 +343,8 @@ def fetch(file):
                 parts.append(chunk)
             if expected is not None and size != expected:
                 raise http.client.IncompleteRead(b'', expected - size)
-        except TimeoutError:
-            raise                       # a trickle is the host's
+        # P1117 review: a body past its deadline was answered: the file's failure
+        # (FILESTREAK of them is the host's), not "no answer".
         except (OSError, http.client.HTTPException) as exc:
             raise BodyBroken('%s after the headers' % type(exc).__name__) from exc
     return b''.join(parts)
@@ -504,7 +522,11 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
         discover_wanted(cache, state, conn, prio)
         overflow = discover(cache, state, conn, prio)
         K._save(sf, state)
+        # P1117: the crawler's park stops downloads too; a download's own failure parks
+        # only PARK, so the boards and profile walks keep going.
         park = K._load(os.path.join(cache, '.refused')) or {}
+        dpark = K._load(os.path.join(cache, PARK)) or {}
+        until = max(int(park.get('until') or 0), int(dpark.get('until') or 0))
         # Give each lane one original slot when both have eligible work; viewed maps first.
         queued = sorted(jobs.items(), key=lambda kj: kj[1].get('map') not in prio)
         work = overflow[:1] + [(k, j, None) for k, j in queued] + overflow[1:]
@@ -556,8 +578,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 if data is None:
                     if local_only:
                         continue
-                    if (made >= min(K.DEMO_MAX, max(0, maximum))
-                            or now < int(park.get('until') or 0)):
+                    if made >= min(K.DEMO_MAX, max(0, maximum)) or now < until:
                         continue
                     # Sleep before FIRST request: the board crawler just acted.
                     time.sleep(max(3.0, delay))
@@ -566,6 +587,12 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                     data = transport(download, job['file'])
                 if asked:
                     state['filestreak'] = {}    # the host just served a whole file
+                    if dpark:           # an answer lifts the downloads' park
+                        try:
+                            os.remove(os.path.join(cache, PARK))
+                        except FileNotFoundError:
+                            pass
+                        dpark = {}
                 rid = install(conn, job, data)
                 if rid:
                     linked += 1
@@ -573,7 +600,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                     jobs.pop(key, None)
             except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
                 # Refusal belongs to the HOST, not whichever demo happened to be asked: every
-                # non-2xx, redirect or network failure stops this tick, and parks the crawler --
+                # non-2xx, redirect or network failure stops this tick, and parks downloads --
                 # except (Patch 896) a failure only a file can have: 404/500, or a body broken
                 # after the headers. surf_ab's and then surf_kultur's replays break mid-body on
                 # every ask (21 Oct), and parking for each such file stalled every map's demos
@@ -600,12 +627,22 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                     for k in held:
                         state['failed'].pop(k, None)
                 state['filestreak'] = {}
-                n = int(park.get('n') or 0) + 1
-                wait = min(K.COOLDOWN * 2 ** min(n - 1, 8), K.COOLDOWN_MAX)
-                K._save(os.path.join(cache, '.refused'),
+                # A park long over does not double the next (P1117 review).
+                old = int(dpark.get('until') or 0)
+                n = (int(dpark.get('n') or 0) if now - old < K.COOLDOWN_MAX else 0) + 1
+                base = K.QUIET_COOLDOWN if code == 0 and not own else K.COOLDOWN
+                wait = min(base * 2 ** min(n - 1, 8), K.COOLDOWN_MAX)
+                K._save(os.path.join(cache, PARK),
                         dict(at=now, until=now + wait, n=n, why='demo network %d' % code))
+                if code:
+                    # An HTTP refusal is the host's: the crawl parks too, as before P1117.
+                    cn = int(park.get('n') or 0) + 1
+                    cwait = min(K.COOLDOWN * 2 ** min(cn - 1, 8), K.COOLDOWN_MAX)
+                    K._save(os.path.join(cache, '.refused'),
+                            dict(at=now, until=now + cwait, n=cn, why='demo network %d' % code))
                 job['retry'] = now + wait
-                print('KSF demos refused: network %d; shared crawler parked' % code)
+                print('KSF demos refused: network %d; demos parked %d min%s'
+                      % (code, wait // 60, ', the crawl too' if code else ''))
                 break
             except (OSError, ValueError) as e:
                 job['retry'] = now + 86400

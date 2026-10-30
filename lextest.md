@@ -20,6 +20,10 @@ After the deployment is confirmed, please try this small in-game check:
 No human confirmation is recorded yet. This does not accept verifier/board
 qualification, measured performance, or the remaining optimizer/editor work.
 
+## P1142 collector/account refresh (NOT deployed; check after guarded rollout)
+
+The held collector branch is integrated and offline-tested, not active on the guarded backend. Do not test this as a live feature yet. After the exact runtime-family extension and guarded successor are verified, link/sign in with your real Steam account and check that supported Momentum/KSF main, stage and bonus PBs arrive over paced ticks. A private, unavailable or unsupported upstream record must not fabricate a completion; imported rows remain imported, never native-ranked/evidence. Confirm browsing/sign-in remains responsive while a long or refused walk is pending. No real-account or movement/human acceptance was performed during source integration.
+
 ## 0.1.33 public release (automation accepted; human checks still pending)
 
 Published Windows and Linux beta on 30 Oct2026 from frozen QC726bd7af through

@@ -1,5 +1,13 @@
 # AGENT_NOTES.md
 
+## Collector/account integration (P1142, 30 Oct 2026)
+
+- Finished the held P1117 collector/account branch against current main, keeping schema24 and the current native/QC pins. Steam sign-in queues only; paced workers own upstream HTTP. KSF cached completions never gain fresh board/demo or native evidence authority.
+- Momentum rotation, account walks and backfill share one request cap. Pending accounts retain one request even with backfill1..3 and a permanent stale backlog. Skip giant-integer PB times per row; apply the board fetcher's date bounds with observation-time fallback. The fetcher and its unconditional msml import install flat together; an isolated empty-destination import is an acted deployment control, not a placeholder-file assertion.
+- KSF profile projection must retain INVALID non-null stage/zone markers as invalid, never drop them into main semantics. Persist each walk/style's ordered map AND zone list before indexing it; catalogue changes cannot shift a saved offset. An older offset without its snapshot rewinds that style rather than guessing. Durable page/file-before-cursor ordering survives a restart; stage dates use the same bounded timestamp validation as main rows.
+- The previous three schema20 assertions are pinned to current24. P984 deliberately lets fitting donated zones replace embedded timers: the inheritance fixture now proves a complete valid timer pair before testing that behavior. Original baseline failures and acted review falsifiers remain retained, not regraded. Two admin amplification/snapshot expectations also fail unchanged main and remain a separate follow-up.
+- SOURCE PUBLICATION IS NOT LIVE DELIVERY. The current guarded backend admits an exact81-file family and excludes new momprofile.py. It needs a separately verified closure extension and guarded successor, not ordinary copying, a renamed/embedded module or an opened fence. No backend mutation, native build, lobby restart, live account exercise or external sweep was used for this patch. Human checks remain pending after that rollout.
+
 ## Operator TAS verifier delivered (P1134, 30 Oct 2026)
 
 - `tools/tasverify.py` is an isolated operator-only 15ms legal-start verifier,
@@ -3468,6 +3476,14 @@ return_to is path-sensitive. No public/canonical switch follows from local mocks
 Commands, both-platform controls, findings and remaining gates: tools/p707sitepaths.md.
 
 ## Run and test
+
+**P1139 corpus-domain calibration (30 Oct2026).** The existing reader and all
+527 historical run/paired-view bytes matched their retained control, but one new
+legacy v5 recording without a `begin` was already present before deployment.
+The actual CLI checked 528 runs and reported 336 faulty recording/view items,
+not the historical 335. Preserve that result and the added input; do not call the
+whole corpus a no-increase pass, repair unrelated player data, or rerun a passed
+CLI merely to fix a reader assertion. Attribute changed-domain evidence narrowly.
 
 - Existing input handlers can use exact think-function identity as their capability
   gate. Preserve that public identity when adding callback context; an unrelated
@@ -7483,6 +7499,18 @@ script rather than passing it as an argument, where `ps` would show it.
   we already hold for the same run.
 
 ## Pi operations (public lobbies)
+
+**P1139 forward preservation (30 Oct2026).** A legitimate new native feature,
+not a repeat P1136 receipt-repair restart, used the existing strict no-force
+paired promoter at an empty boundary. Before any restart, retain ALL current
+part payloads against the exact prepared inventory, including unknown completion
+states; verify archive bytes on Pi and off-box. Four parts/1,426,033 bytes had no
+open part FDs in this run. The new update and cold-client check preserved all
+35,714 old protected entries, configs and original new actor epochs. Keep the
+original strict postflight, short execution-only sweep lock and exact `.prev`;
+no blanket parts exclusion, restoration, extra healthy restart or old-failure
+waiver. This proves this no-force boundary, NOT a future active-writer/forced
+snapshot contract or recovery of the historical missing bytes.
 
 **P1136 forced-native preservation limit (30 Oct2026).** Explicit preapproved
 `-PiForce` restarted all12 once with three clients connected; exact new runtime,

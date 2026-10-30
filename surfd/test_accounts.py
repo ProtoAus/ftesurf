@@ -612,6 +612,10 @@ r = signin(m)
 code = code_of(r)
 check("the page shows a code, in fours", (r.status_code, len(code), code[4:5], code[9:10]),
       (200, accounts.CODE_LEN + 2, "-", "-"))
+check("P1117: ...and the sign-in queued the account's own KSF and Momentum walks",
+      (rows(m, "SELECT player, state FROM ksfprofiles"),
+       rows(m, "SELECT player, state, cursor FROM momprofiles")),
+      ([(SID, "queued")], [(SID, "queued", 0)]))
 check("...and the persona, escaped",
       "Signed in as <b>&lt;b&gt;Lex&lt;/b&gt; &amp; &quot;co&quot;</b>" in text(r), True)
 gone = r.headers.get("Set-Cookie", "").split(";")
@@ -858,11 +862,15 @@ check("a second sign-in supersedes the first code, and keeps its row",
 check("the superseded code does not link", link(m, KEY1, first), no("code"))
 
 run(m, "UPDATE accounts SET banned_at = ? WHERE steamid = ?", (START, SID))
+run(m, "DELETE FROM ksfprofiles")
+run(m, "DELETE FROM momprofiles")
 r = signin(m, ip="198.51.100.8")
 check("a banned account signs in and gets no code: none shown, none made, none retired",
       (r.status_code, "is banned" in text(r), code_of(r),
        rows(m, "SELECT code FROM linkcodes WHERE used_at = 0"), count(m, "linkcodes")),
       (403, True, "", [(second,)], 2))
+check("P1117: ...and queues no walk of its records",
+      (count(m, "ksfprofiles"), count(m, "momprofiles")), (0, 0))
 
 m = fresh(steam_key=None)
 m.STEAM_HTTP.down = True
