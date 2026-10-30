@@ -4,9 +4,10 @@
 // FTE's fifth argument posts a string buffer. Generated DP defs expose only four.
 float(string url, float id, string mime, string separator, strbuf buffer) tsh_uri_buffer = #513;
 float(string path) tsh_fexists = #0:fexists;
+float(string path) tsh_pathstatus = #0:fwritepathstatus;
 string(string path, float flags) tsh_location = #503; // whichpack; flag 2 includes loose gamedir paths
 .float tsh_req, tsh_at, tsh_kind, tsh_search, tsh_index;
-.string tsh_sha, tsh_name, tsh_parent, tsh_loadname;
+.string tsh_sha, tsh_name, tsh_parent, tsh_loadname, tsh_loadsha;
 .float tsh_loadat;
 
 void(entity e) SV_TASShareStop =
@@ -24,7 +25,8 @@ void(entity e) SV_TASShareCancel =
 {
 	SV_TASShareStop(e);
 	if (strcmp(e.tsh_loadname,"")) strunzone(e.tsh_loadname);
-	e.tsh_loadname = ""; e.tsh_loadat = 0;
+	if (strcmp(e.tsh_loadsha,"")) strunzone(e.tsh_loadsha);
+	e.tsh_loadname = e.tsh_loadsha = ""; e.tsh_loadat = 0;
 };
 
 float(entity e) SV_TASShareLocal =
@@ -120,14 +122,14 @@ float(entity e) SV_TASShareNext =
 	return SV_TASShareBody(e);
 };
 
-// Do not infer absence from unreadable data or FTE's cached filename lookup.
-// Full-path metadata covers implicit gamedirs; fresh exact enumeration also
-// catches loose files added after startup. External writers must not run
-// concurrently with this QC import transaction.
+// Only uncached OS metadata in the actual write namespace proves absence.
+// Cached/mounted readers remain conservative occupancy checks. No external
+// writers may run concurrently with this import/automatic-load transaction.
 float(string path) SV_TASShareOccupied =
 {
 	local float f;
 	local searchhandle h;
+	if (tsh_pathstatus(path) != 0) return TRUE; // occupied OR metadata error
 	if (tsh_fexists(path)) return TRUE;
 	if (strcmp(tsh_location(path,2),"")) return TRUE;
 	h = search_begin(path,0,TRUE);
@@ -139,6 +141,19 @@ float(string path) SV_TASShareOccupied =
 	fclose(f); return TRUE;
 };
 
+// The ordinary loader retains a missing revision using .tasp.new. Its older
+// replace-capable helper is safe here only with a readable kept final or BOTH
+// retention paths confirmed absent. Never replace retained recovery bytes.
+float(string sha) SV_TASShareHistorySafe =
+{
+	local string path;
+	if (!checkbuiltin(tsh_pathstatus)) return FALSE;
+	path = SV_TASPRevPath(sha, "tasp");
+	if (SV_TASPFileIs(path)) return TRUE;
+	if (SV_TASShareOccupied(path)) return FALSE;
+	return !SV_TASShareOccupied(strcat(path, ".new"));
+};
+
 void(entity e, string body) SV_TASShareInstall =
 {
 	local string tmp, dst, name, sha, why;
@@ -146,9 +161,13 @@ void(entity e, string body) SV_TASShareInstall =
 	name = strzone(e.tsh_name); sha = strzone(e.tsh_sha);
 	dst = strzone(SV_TASPPath(name)); tmp = strzone(strcat(dst, ".download"));
 	owned = FALSE;
-	if (!checkbuiltin(tsh_fexists) || !checkbuiltin(tsh_location))
+	if (!checkbuiltin(tsh_fexists) || !checkbuiltin(tsh_location) || !checkbuiltin(tsh_pathstatus))
 	{
 		sprint(e, PRINT_HIGH, "tas open: this engine cannot check existing project metadata; nothing written\n"); goto done;
+	}
+	if (!SV_TASShareHistorySafe(sha))
+	{
+		sprint(e, PRINT_HIGH, "tas open: retained revision or recovery bytes prevent automatic loading; nothing written\n"); goto done;
 	}
 	if (SV_TASShareOccupied(dst))
 	{
@@ -197,7 +216,7 @@ void(entity e, string body) SV_TASShareInstall =
 	sprint(e, PRINT_HIGH, sprintf("tas open: saved %s as %s; opening as TAS, not a ranked human run\n", substring(sha,0,12), name));
 	// Parse again only on a later server frame, beyond this action's normal
 	// cooldown. Two full parses in one callback exhaust QC on long tapes.
-	e.tsh_loadname = strzone(name); e.tsh_loadat = time + 0.001;
+	e.tsh_loadname = strzone(name); e.tsh_loadsha = strzone(sha); e.tsh_loadat = time + 0.001;
 	done:
 	strunzone(name); strunzone(sha); strunzone(dst); strunzone(tmp);
 };
@@ -314,16 +333,21 @@ void(entity e, float argc) SV_TASShareCommand =
 void() SV_TASShareFrame =
 {
 	local entity e;
-	local string name;
+	local string name, sha;
 	for (e = world; (e = find(e, classname, "player")); )
 	{
 		if (!strcmp(e.tsh_loadname,"")) continue;
 		if (!e.run_inserver) { SV_TASShareCancel(e); continue; }
 		if (time < e.tsh_loadat || time < e.tasp_next) continue;
-		name = e.tsh_loadname; e.tsh_loadname = ""; e.tsh_loadat = 0;
+		name = e.tsh_loadname; sha = e.tsh_loadsha;
+		e.tsh_loadname = e.tsh_loadsha = ""; e.tsh_loadat = 0;
 		// The native tape validator needs the ordinary client-command context,
-		// not StartFrame's world context. Preserve its normal admission gates.
-		if (SV_TASShareLocal(e)) stuffcmd(e, sprintf("cmd tas project load %s\n",name));
-		strunzone(name);
+		// not StartFrame's world context. Recheck retained paths at handoff too.
+		if (SV_TASShareLocal(e))
+		{
+			if (SV_TASShareHistorySafe(sha)) stuffcmd(e, sprintf("cmd tas project load %s\n",name));
+			else sprint(e, PRINT_HIGH, "tas open: retained revision or recovery bytes changed; not opening\n");
+		}
+		strunzone(name); strunzone(sha);
 	}
 };

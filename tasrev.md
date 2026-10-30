@@ -50,8 +50,13 @@ Console equivalents:
 Downloads check size, strict project syntax, map/profile identity and the requested
 canonical hash before installing under a new name. Existing final, staged and
 `.new`/`.new2` recovery paths are protected, including unreadable files and loose
-files added after startup. Failed final rename retains the closed download stage.
-Do not edit the same paths from another process during the import transaction;
+files added after startup. Automatic loading also protects retained revision
+finals and their `.tasp.new` recovery stages; a readable retained final is reused,
+otherwise both retention paths must be absent. Open requires the P1140 native
+uncached write-path metadata capability: directory enumeration/read failures are
+not absence, and older engines refuse before writing. Failed final rename retains
+the closed download stage. Do not edit the same paths from another process during
+the import/automatic-load transaction;
 this is not an atomic multi-writer or power-loss durability protocol. Base-save
 v1/v2 projects need their author's private base and are refused by this portable
 game workflow before starting an upload or staging an incoming body.
