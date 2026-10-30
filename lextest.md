@@ -1,14 +1,18 @@
 # lextest.md — things waiting on a human
 
-## P1138 slow-practice camera (candidate; not installed yet)
+## P1138 slow-practice camera (installed; human feel check pending)
 
-Final native build and socket qualification are pending; no human acceptance.
-After installation, jump/fly at host_timescale0.5 and0.1, then restore1. Compare
+Installed exact qualified native/VMs in C:/FTESurf and C:/FTEQuake on30Oct2026;
+guarded same-QC delivery reached12emptyPi lobbies, no Pi native replacement.
+FULL/8source groups/independent reviews and actual socket checks passed, including
+0.1/0.25/0.5/0.75 and normal/restored1. Not human acceptance or geometry-scene proof.
+Jump/fly at host_timescale0.5 and0.1, then restore1. Compare
 cl_source_practice_lerp0/1 while airborne. Check a familiar stair and low roof,
 including a solid prop roof if available, for dips/clipping. Body movement and
 normal-speed feel should remain familiar. Returning1 restores speed; !reset
 must retain the connection's earlier slow-practice status. A new map/connection
-starts a fresh context. Known candidate follow-ups in BACKLOG: a camera phase
+starts a fresh context (real active-attempt flag checks passed). Known follow-ups
+in BACKLOG: a camera phase
 change at speed switches and short zone-reset placements; general embedded-point
 collision safety and human-input/evidence equivalence are not claimed.
 

@@ -1,5 +1,25 @@
 # AGENT_NOTES.md
 
+## Slow-practice camera delivery (P1138, 30 Oct 2026)
+
+**Problem:** authoritative slow practice repeats completed poses across packets;
+adjacent-packet interpolation freezes/rushes, including a packetized0.75 edge.
+**Change:** native525bd78ab/tag1138 samples completed poses for the camera only,
+with packet margin, stair composition and a presented-eye bound. Shared body and
+command paths remain original; SSQC messages clarify the unchanged connection
+practice latch (1 restores speed; reset does not erase prior slow use).
+**Verified/limits:** FULL/8literal-source groups/actual headers and two independent
+source-review lineages pass. Exact-image half-speed camera freeze OFF39.2%->ON0%;
+0.1/0.25/0.75 and normal/restored1 pass. Actual attempts prove restore/reset latch
+and fresh-connection clearing. One transaction retains failed candidates, invalid
+body-ratio assumption, wrong expected query text and pending-old-peer collision;
+no raw failure was relabeled. BothWindows28native/official VM/cache outputs match,
+224configs unchanged; guarded exact-QC swap restarted12emptyPi lobbies, no Pi
+native replacement or force. Closed rollback/proofs retained in task artifacts.
+Body ratio is descriptive, not byte-equivalence; roof stub is not geometry proof.
+Human feel/stair/roof checks and scale-switch/short-zone-reset follow-ups remain
+in lextest/BACKLOG. Legacy dirty native checkouts and canonical config/data untouched.
+
 ## Operator TAS verifier delivered (P1134, 30 Oct 2026)
 
 - `tools/tasverify.py` is an isolated operator-only 15ms legal-start verifier,
