@@ -1,5 +1,40 @@
 # AGENT_NOTES.md
 
+## Existing-signal airborne jump-input status (P1133, 30 Oct 2026)
+
+- The existing earlier-air gravity observer now admits jump input only within its
+  already eligible dry-air path. The actual air check latches the same input for
+  the default trajectory but cannot jump or change velocity. True grounded jumps
+  and other unsupported consumers remain excluded; no new capture, API, format,
+  flag, tier, gameplay step or movement arithmetic.
+- Clean committed Windows/ARM64 builds: zero new warnings; 9 new native controls,
+  33 prior air controls (the old negative is refined to a genuine ground jump),
+  58 previous gravity checks and all older checks pass. Each platform's 60 acting
+  physics rows directly match qualified P1131. One compiled six-arm socket fixture
+  across original/current/unavailable-API images preserves raw/cache/input/motion/
+  lateral outputs; only the intended two held-input statuses change. Unchanged
+  reader/fixed-corpus evidence is reused, not a new sweep or fault-free claim.
+- Two fresh independent whole-feature reviews found no issues; parent proved both
+  full committed ranges, refs, index/staged/committed equality and source/artifact
+  hashes before launch and after both finished. Runtime source native `64e0191ca`,
+  tag `patch-1133`, QC `31690324`; exact frozen images reached both Windows installs
+  and all 12 lobbies. Public QC merge `c050bd01` preserves a peer's already committed
+  release-only work; the artifacts were not rebuilt from that merge.
+- Live 11:19:31 UTC: all 12 original new native/plugin epochs, versions, paired
+  destinations and `.prev` match. All 16,475 original protected Windows paths and
+  35,095 lobby paths retain their bytes; configs/backend files/unit/master unchanged.
+  No force or repeat restart. Fresh isolated client downloaded exact served CSQC,
+  board drew without QC errors and screenshot was inspected. Empty board/unaccepted
+  terms are not human feel, finished-run, ranked-run or full-bank acceptance.
+  QQ DAT/LNO bytes and both existing CSQC caches are identical to P1131: verified
+  reuse, no needless seed, TMP/DCL deletion or rebuild. Build 89 is unchanged.
+- Measured tooling boundaries: Windows artifact manifests may retain backslash
+  keys; inspect/use the stored key shape rather than assuming POSIX. Read UTF-8
+  review artifacts explicitly, not Windows' default CP1252. Remote-tracking refs
+  are shared across worktrees and can move while an isolated HEAD/index/source
+  stays frozen; classify that separately, inspect/preserve the committed peer
+  delta and never weaken source/index/artifact equality or force-push around it.
+
 ## Stats-kind UI continuation (P1130, 30 Oct 2026)
 
 - Recovered Claude P1122 from `lexmaps-20261029T0440Z/qc` commit 95fa50bd;
