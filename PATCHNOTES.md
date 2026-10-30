@@ -66,7 +66,8 @@
 - A refused save load leaves your current position and speed alone. Valid loads still keep their saved speed.
 
 ### P1116 Finishing a run no longer stutters
-- When a lobby asks for your run's input journal, it is now checked as you play and sent in the background. Before, finishing held up two frames (20 ms and 17 ms measured with a 3 MB journal, more on long runs), and connecting to the server held up another.
+- A lobby's input-journal checks now happen as you play, with sending in the background. Finishing no longer holds up those frames (20 ms and 17 ms measured with a 3 MB journal, more on long runs).
+- Connecting to a lobby no longer pauses a frame to prepare its input-journal check.
 - The map tables the menu fetches from the Pi at startup load over several frames instead of one (68 ms measured).
 
 ### P1110 TAS projects from the start zone
@@ -105,7 +106,8 @@
 
 ### P1100 TAS: start from the start zone
 - `tas start <zone>` puts you standing at a start or stage zone's own start point (where `!r` puts you) and pauses TAS. `cmd zone_dests` lists the zones and their numbers.
-- From there, TAS steps work in the start box, and `tas back` works there too, even back across the start: it replays your inputs from the start point. If something in the start box moved since (a door, another player), it says DIVERGED and ends the session instead of putting you somewhere new.
+- TAS steps and `tas back` work in the start box, even back across the start, by replaying your inputs from the start point.
+- If something in the start box moved since (a door or another player), TAS says DIVERGED and ends the session instead of putting you somewhere new.
 - A run you start under TAS no longer gets the random start nudge: TAS lines are planned to the unit. TAS runs still never count on the normal boards.
 
 ### P1105 Completed maps stand out
@@ -133,7 +135,8 @@
 - The tiers, thumbnails and extra game content each release ships for its maps are refreshed from Momentum every six hours instead of by hand, so new maps arrive with their tier and picture.
 
 ### P1097 TAS: search for the soonest next stage
-- Add `time` to `tas optimize` (with or without `board` and `flick`) to search for the turn that reaches the next stage soonest instead of the one with the most exit speed. If no try reaches it within the ticks given, the fastest try wins. Checkpoints are not counted.
+- Add `time` to `tas optimize` (with or without `board` and `flick`) to search for the turn that reaches the next stage soonest instead of the one with the most exit speed.
+- If no try reaches the next stage within the ticks given, the fastest try wins. Checkpoints are not counted.
 - The console shows each try's result: the tick it reached the next stage, or that it did not.
 - A try that reaches the end zone finishes the run there and ends the search; save a project first if the end is in reach.
 
@@ -160,7 +163,8 @@
 - A save that could not be read back no longer replaces your last revision.
 
 ### P1088 TAS: find the best turn for exit speed
-- TAS can now search for you: Best turn left/right in the TAS panel, or `tas optimize <ticks> <left|right>`, tries turn rates from your current view while strafing that way and keeps the one with the most speed at the end. It plays that one and stays paused there.
+- Best turn left/right in the TAS panel, or `tas optimize <ticks> <left|right>`, tries turn rates from your current view while strafing that way and keeps the one with the most speed at the end.
+- TAS plays the winning turn and stays paused there.
 - Every try is the real movement on the real map, and the console lists each rate and speed. The search covers one constant turn, not every possible line.
 
 ### P1087 TAS: compare against the line you just changed
@@ -169,7 +173,8 @@
 - Stepping back in TAS no longer erases your whole trail; it keeps the line up to the tick you went back to.
 
 ### P1086 Servers can no longer run commands in your game
-- Several old engine paths let a server you join run console commands in your game as if you had typed them, or change files your game loads at startup. They are closed: test input, config files, demo names, saved games and a few settings now ignore what a server sends. Normal play is unchanged.
+- Servers you join can no longer use several old engine paths to run local console commands or change files your game loads at startup.
+- Test input, config files, demo names, saved games and a few settings now ignore those server requests. Normal play is unchanged.
 
 ### P1085 Bhop blocks time your stay in ticks
 - A bhop block now sends you back after a fixed number of ticks on it (7 at 66 tick, 10 at 100 tick) instead of after a tenth of a second of server time, which could vary by a tick with the network.

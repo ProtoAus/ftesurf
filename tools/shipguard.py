@@ -169,6 +169,12 @@ DENY_EXACT = {
                           "ui_dl_load falls back to shipped data/mapdl.txt.",
     "data/mapdl.net.tmp": "Mdl_Reply's runtime reply-parsing scratch, written "
                           "before reading and truncated afterwards.",
+    "data/mapmeta.net.txt": "P1099: Mmm_Step's validated runtime map-tier cache; "
+                           "Mmm_MetaPath falls back to shipped data/mapmeta.txt.",
+    "data/mapdeps.net.txt": "P1099: Mmm_Step's validated runtime mount-table cache; "
+                           "Mmm_DepsPath falls back to shipped data/mapdeps.txt.",
+    "data/mapmedia.tmp": "P1099: Mmm_Step's runtime HTTP reply scratch, written "
+                         "before validation; never release input.",
     "data/mapbuild.txt": "Player's alternate map-build preferences, persisted "
                          "by ui_pick_set; absence keeps the default build.",
     "data/friends_menu.txt": "Patch 781: the menu's last friends list (names and "
