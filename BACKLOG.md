@@ -315,8 +315,8 @@ Steps 1-2 of TAS plan 6.1 (P1100) and step 3, version 3 projects (P1110).
 - tools/tasrev.py accepts a v3 file whose start box (`startat`, or all rows before the clock) is
   over 4096 ticks; the game reads it too but refuses to load it. No session can save one.
 - Two TAS steps in one packet: the clock starts at the packet's end, so the start's tick depends
-  on how steps were grouped; a replay that starts it early ends the session. The Pi's verifier
-  must control packet grouping or check `startat` on replay.
+  on how steps were grouped; a replay that starts it early ends the session. P1132's verifier
+  binds/checks `startat` on native replay; grouped editor stepping is still a separate gap.
 - Input editing, `tas inputs` and the optimizer do not work in the start box yet (they need a
   running run).
 - The engine's recording verifier (sv_ccmds.c ~6195) labels `startjit 0 0 0 0` "(blocked)";

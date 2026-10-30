@@ -21,6 +21,9 @@
 
 ## next
 
+### P1132 TAS verification groundwork
+- Operator checks can replay legal-start TAS projects in a fresh native server. Ordinary run rankings are unchanged; TAS submission and board integration are still in development.
+
 ### P1131 Earlier airborne gravity carry status
 - Run status follows more carried gravity effects during airborne movement. Normal gravity, map-authored behavior and movement are unchanged.
 

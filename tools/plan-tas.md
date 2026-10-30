@@ -327,8 +327,13 @@ current live fleet or canonical map zones:
 - An ordinary project load is NOT a verifier verdict. At that finish its editor driver
   reports `the engine stopped the input tape`, since it expects the entire chunk to end
   while the timer is running. Neither this expected abort nor a successful editor load
-  is `VERIFY-TAS PASS`. Still unbuilt: a bounded production runner which binds the admitted
-  bytes to the fresh native run/finish and emits its own result, plus the queue/board path.
+  is `VERIFY-TAS PASS`.
+P1132 supplies the bounded operator-only [native runner](tasverify.md): admitted raw bytes,
+actual server reader/start-target binding, effective native/plugin images, consecutive mover
+inputs, closed natural finish, bounded resources and owned-child cleanup. A fresh 342-tick
+finish and four acting HOLD controls qualify its current 15 ms fixture profile, not canonical
+map-corpus coverage or production promotion. The approved runtime registry, authenticated
+queue, limits and TAS-only board writer remain 6.3; public tab/credits remain 6.4.
 6.3 surfd `/api/tas/submit` (a signed revision whose re-simulation finishes) -> queue with
 per-submission tick caps -> Pi verifier -> a `tas` style written only by the verifier, as
 importers write momentum/ksf; /api/run keeps refusing TF_TAS.
