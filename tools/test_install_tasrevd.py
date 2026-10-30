@@ -110,7 +110,10 @@ class Upgrade(unittest.TestCase):
 
     def test_apply_installs_the_commit_and_proves_it_publicly(self):
         os.umask(0o077)   # an owner's tight umask must not lock proto out
-        self.main('--apply')
+        # Known handlers first: under nohup/& both are already ignored, and the hold must still show.
+        saved = {n: signal.signal(n, signal.SIG_DFL) for n in (signal.SIGINT, signal.SIGHUP)}
+        try: self.main('--apply')
+        finally: after = {n: signal.getsignal(n) for n in saved}; [signal.signal(n, h) for n, h in saved.items()]
         new = t.RELEASES / NEW
         self.assertEqual(t.UNIT.read_text(), t.unit_text(new, t.service_env(new, Path('/srv/nvme/surfd/data/surfd.db'), NEW)))
         for src, dest in t.FILES.items():
@@ -120,7 +123,7 @@ class Upgrade(unittest.TestCase):
         self.assertEqual(self.serving, NEW)
         self.assertIn((NEW, PUBLIC), self.probes)
         self.assertEqual(self.held, [True])                  # Ctrl-C and hangup held across the switch
-        self.assertEqual(signal.getsignal(signal.SIGINT), signal.default_int_handler)
+        self.assertEqual(after, {signal.SIGINT: signal.SIG_DFL, signal.SIGHUP: signal.SIG_DFL})   # restored
         self.assertEqual(self.chains, [t.RELEASES.parent, t.RELEASES])
         self.assertTrue((t.ROOT / OLD).is_dir())
         self.assertIn('Upgraded', (new / 'UPGRADE.txt').read_text())

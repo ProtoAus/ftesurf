@@ -84,6 +84,10 @@ an upgrade runs no schema change (a release that needs one needs its own step); 
 keeps its directory, which must be removed before a retry; a downgrade or a change of unit settings
 is not an upgrade; a fresh first install still writes under /srv/nvme/ftesurf-ops/tasrevd (proto's
 parent). Tests:
-`python3 tools/test_install_tasrevd.py` (Linux).
+`python3 tools/test_install_tasrevd.py` (Linux). The signal test installs known handlers
+before the switch, so it also detects a missing signal hold when the suite itself runs under
+`nohup` (where SIGINT/SIGHUP may already be ignored). On the Pi as proto, the final suite
+passed all 20 tests and rejected all 23 retained installer mutations. These are temporary-tree
+and modelled-systemd checks, not proof that an owner has applied the live upgrade.
 
 Tests: `python surfd/test_tasrevd.py`.
