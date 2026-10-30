@@ -26,7 +26,9 @@ function Get-SurfdDeployPlan {
         $_ -notmatch '/__pycache__/'
     })
     $codecs = @('tools/ksfconvert.py', 'tools/ksfreplay_info.py')
-    $allowed = @($suite) + @($codecs | Where-Object { $all -contains $_ })
+    # The fetcher and its unconditional catalogue import land flat together.
+    $flat = @{ 'tools/momfetch.py' = 'momfetch.py'; 'tools/msml.py' = 'msml.py' }
+    $allowed = @($suite) + @(@($codecs) + @($flat.Keys) | Where-Object { $all -contains $_ })
     $files = @($suite)
     if ($Only) {
         foreach ($file in $Only) {
@@ -54,8 +56,18 @@ function Get-SurfdDeployPlan {
     $mapEntries = @('surfd/surfd.py', 'surfd/admin.py', 'surfd/mapmanifest.py',
                     'surfd/templates/admin_maps.html')
     $hidEntries = @('surfd/surfd.py', 'surfd/hidupload.py')
+    # P1117: momprofile's importers ship with it; surfd's migrate makes its table.
+    $momEntries = @('surfd/surfd.py', 'surfd/accounts.py', 'surfd/steamsync.py',
+                    'surfd/momwatch.py', 'surfd/momprofile.py', 'tools/momfetch.py', 'tools/msml.py')
     do {
         $before = $files.Count
+        if ($all -contains 'surfd/momprofile.py' -and
+            (@($files | Where-Object { $_ -in $momEntries }).Count -gt 0)) {
+            foreach ($file in $momEntries) {
+                if ($all -notcontains $file) { throw "momprofile runtime dependency '$file' is absent at $commit" }
+                if ($files -notcontains $file) { $added += $file; $files += $file }
+            }
+        }
         if ($all -contains 'surfd/hidupload.py' -and
             (@($files | Where-Object { $_ -in $hidEntries }).Count -gt 0)) {
             foreach ($file in $hidEntries) {
@@ -92,7 +104,7 @@ function Get-SurfdDeployPlan {
         $_ -match '^(tools|src/shared)/.*\.py$' -or $_ -eq 'src/release/ftesurf.nginx'
     })
     # The test stage always contains the complete app, even with -Only. Tools
-    # are staged beside surfd, but only the two allowlisted codecs may ship.
+    # are staged beside surfd; only allowlisted codecs and flat runtime tools ship.
     $staged = @(@($suite) + @($extra) | Sort-Object -Unique)
     $modes = @()
     foreach ($file in $files) {
@@ -106,7 +118,7 @@ function Get-SurfdDeployPlan {
         Commit = "$commit"
         Files = $files
         Modes = $modes
-        Destinations = @($files | ForEach-Object { $_ -replace '^surfd/', '' })
+        Destinations = @($files | ForEach-Object { if ($flat.ContainsKey($_)) { $flat[$_] } else { $_ -replace '^surfd/', '' } })
         AddedDependencies = $added
         StageFiles = $staged
     }

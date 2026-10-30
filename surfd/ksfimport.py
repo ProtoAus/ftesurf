@@ -98,10 +98,13 @@ import http.client
 import io
 import json
 import logging
+import math
 import os
 import re
+import socket
 import sqlite3
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -141,6 +144,8 @@ KSF_MAX_DEFAULT = 50       # players per invocation unless --max says otherwise
 # unknown, scattered) never produces a run this long.
 SKIP_STREAK = 25
 KSF_TIMEOUT = 30
+KSF_DEADLINE = 60          # s for a whole exchange (Deadline)
+KSF_MAX_BYTES = 1 << 20    # a reply; a 20-row page is ~6 KB, a player's map ~4.7 KB
 UA = "FTESurf/0.1 ksfimport (+https://proto.bar/ftesurf)"
 
 # CS:S surf runs at 66.67 ticks a second.  The TIME is the fact here -- KSF
@@ -151,6 +156,7 @@ KSF_TICK = 0.015
 
 KSF_PAGE = 20              # rows in a records page; a shorter one ends the board
 KSF_STAGES = 30            # zones 1..30 are stages; 30+n is bonus n
+KSF_BONUSES = 69           # ...to zone 99
 KSF_DEPTH_DEFAULT = 100    # rows per board for --from-maps; -1 is the whole board
 KSF_REQ_DEFAULT = 300      # requests per --from-maps invocation
 
@@ -167,6 +173,7 @@ UNBLOCK_SCAN = 64          # boards a tick looks through for them
 UNBLOCK_DAYS = 60          # a page re-asked this recently is not asked again
 WATCH_DELAY = 3.0          # s between requests
 COOLDOWN = 6 * 3600        # s parked after a refusal, doubling to COOLDOWN_MAX
+QUIET_COOLDOWN = 30 * 60   # P1117: the same, after no answer at all (timeout, dropped, DNS)
 COOLDOWN_MAX = 48 * 3600
 CATALOG_DAYS = 7           # re-list KSF's maps this often
 REFRESH_DAYS = 14          # re-ask a board's first page this often
@@ -265,11 +272,12 @@ def read_seed(path):
 class Refused(Exception):
     """ksf.surf said no to US.  Reported, never retried, stops the run.
     `code` is the HTTP status when there was one; `board` marks a reply only
-    that board's request got (a page that would not parse as one)."""
+    that board's request got (a page that would not parse as one); `transient`
+    one with no HTTP answer at all, which parks for QUIET_COOLDOWN."""
 
-    def __init__(self, msg, code=0, board=False):
+    def __init__(self, msg, code=0, board=False, transient=False):
         Exception.__init__(self, msg)
-        self.code, self.board = code, board
+        self.code, self.board, self.transient = code, board, transient
 
 
 class OverBudget(Exception):
@@ -293,14 +301,121 @@ class NoSuchPlayer(Exception):
     """
 
 
+class Deadline(object):
+    """P1117 review 4: the WHOLE exchange -- connect, TLS, status line, headers and a
+    body chunked or not -- inside `seconds`.  KSF_TIMEOUT is per read, so a server
+    sending a byte a second held a fetch as long as it liked; at the deadline a timer
+    shuts every socket the opener made, the blocked read raises, and `fired` says
+    the caller has no answer.  shutdown() wakes a blocked recv on Linux and Windows
+    alike, but for a TLS handshake under way on Windows, which waits out its socket
+    timeout (KSF_TIMEOUT); the Pi is Linux."""
+
+    def __init__(self, seconds):
+        self.seconds, self.socks, self.fired = seconds, [], False
+        self.timer = threading.Timer(seconds, self.fire)
+        self.timer.daemon = True
+
+    def __enter__(self):
+        self.timer.start()
+        return self
+
+    def __exit__(self, *a):
+        self.timer.cancel()
+
+    def fire(self):
+        self.fired = True
+        for sock in list(self.socks):
+            self.shut(sock)
+
+    def watch(self, sock):
+        if sock not in self.socks:
+            self.socks.append(sock)
+        if self.fired:
+            self.shut(sock)
+
+    @staticmethod
+    def shut(sock):
+        # socket's own shutdown, not SSLSocket's: that one clears _sslobj, and the
+        # handshake or read that follows raises AttributeError (P1117 review 6).
+        try:
+            socket.socket.shutdown(sock, socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    def handlers(self):
+        """HTTP(S) handlers whose connections hand their socket over AS THEY CONNECT,
+        an HTTPS one before its handshake (P1117 review 5: urllib drops h.sock once
+        the headers are in, so the body was never shut; a connect still pending at
+        the deadline was never seen; a handshake trickled a byte at a time held a
+        1 s deadline 15 s), and no redirect followed (to 127.0.0.1:* or ftp://)."""
+        dl = self
+
+        def watched(base):
+            class Watched(base):
+                def do_open(self, http_class, req, **kw):
+                    class Conn(http_class):
+                        def __init__(self, *a, **k):
+                            super().__init__(*a, **k)
+                            if getattr(self, "_context", None) is not None:
+                                self._context = Handshake(self._context, dl)
+
+                        def connect(self):
+                            super().connect()
+                            dl.watch(self.sock)
+                    return base.do_open(self, Conn, req, **kw)
+            return Watched
+        return [watched(urllib.request.HTTPHandler)(), watched(urllib.request.HTTPSHandler)(),
+                NoRedirect()]
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args):
+        return None
+
+
+class Handshake(object):
+    """An HTTPS context whose sockets the Deadline holds before their handshake."""
+
+    def __init__(self, ctx, dl):
+        self.ctx, self.dl = ctx, dl
+
+    def __getattr__(self, k):
+        return getattr(self.ctx, k)
+
+    def wrap_socket(self, sock, **kw):
+        kw["do_handshake_on_connect"] = False
+        s = self.ctx.wrap_socket(sock, **kw)
+        self.dl.watch(s)
+        if self.dl.fired:               # a connect that finished past the deadline
+            raise TimeoutError("connected after the exchange deadline")
+        s.do_handshake()
+        return s
+
+
 def fetch(url):
+    dl = Deadline(KSF_DEADLINE)
+    try:
+        with dl:
+            body = _fetch(url, dl)
+    except (Refused, AttributeError, ValueError):
+        # Past the deadline any of these is the watchdog's doing (review 6: an SSL
+        # object shut under its handshake raised AttributeError, uncaught).
+        if dl.fired:
+            raise Refused("no answer: the exchange took over %d s" % KSF_DEADLINE, transient=True)
+        raise
+    if dl.fired:            # a body without Content-Length just ends when its socket shuts
+        raise Refused("no answer: the exchange took over %d s" % KSF_DEADLINE, transient=True)
+    return body
+
+
+def _fetch(url, dl):
     req = urllib.request.Request(url, headers={"User-Agent": UA,
                                                "Accept": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=KSF_TIMEOUT) as r:
+        with urllib.request.build_opener(*dl.handlers()).open(req, timeout=KSF_TIMEOUT) as r:
             if r.status < 200 or r.status >= 300:
                 raise Refused("HTTP %d" % r.status, r.status)
-            return r.read().decode("utf-8", "replace")
+            return read_reply(r).decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         # 500 is this host's answer for an id it does not know; anything else
         # (403, 429, 503) is about US and stops the run.  If that reading is
@@ -310,12 +425,40 @@ def fetch(url):
             raise NoSuchPlayer("HTTP 500")
         raise Refused("HTTP %d" % e.code, e.code)
     except urllib.error.URLError as e:
-        raise Refused(str(e.reason))
+        raise Refused(str(e.reason), transient=True)
     # No answer at all: a read past KSF_TIMEOUT, a connection dropped mid-reply.
     # Not a refusal, but stopped like one -- 2026-10-03's run died here with a
     # traceback after 171 map lookups.
     except (OSError, http.client.HTTPException) as e:
-        raise Refused("no answer: %s" % (str(e) or type(e).__name__))
+        raise Refused("no answer: %s" % (str(e) or type(e).__name__), transient=True)
+
+
+def read_reply(r, cap=None, deadline=KSF_TIMEOUT):
+    """P1117 review 3: the whole body inside `deadline` s (the timeout is per read,
+    so a trickle held the crawl's lock), at most `cap`, and all its Content-Length.
+    Slow or short is no answer; too big is that request's (no page is near it)."""
+    cap = KSF_MAX_BYTES if cap is None else cap
+    try:
+        want = int(r.headers.get("Content-Length"))
+    except (AttributeError, TypeError, ValueError):
+        want = None
+    if want is not None and want > cap:
+        raise Refused("a reply over %d bytes" % cap, board=True)
+    end, parts, size = time.monotonic() + deadline, [], 0
+    read = r.read1 if hasattr(r, "read1") else r.read
+    while True:
+        if time.monotonic() > end:
+            raise Refused("no answer: the reply took over %d s" % deadline, transient=True)
+        chunk = read(min(64 << 10, cap + 1 - size))
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > cap:
+            raise Refused("a reply over %d bytes" % cap, board=True)
+        parts.append(chunk)
+    if want is not None and size != want:
+        raise Refused("no answer: %d of %d bytes" % (size, want), transient=True)
+    return b"".join(parts)
 
 
 def records(sid, cache_dir, paced):
@@ -330,7 +473,7 @@ def records(sid, cache_dir, paced):
                  % (KSF_BASE, sid, KSF_TAKE))
     try:
         doc = json.loads(body)
-    except ValueError:
+    except (ValueError, RecursionError):
         raise Refused("ksf.surf's reply did not parse -- their format has "
                       "probably changed")
     os.makedirs(cache_dir, exist_ok=True)
@@ -349,10 +492,14 @@ def zone_track_leg(zone):
 
 
 def zones_of(info):
-    """Main, the stages of a staged map, then the bonuses."""
-    stages = int(info.get("cp_count") or 0) if info.get("isLinear") is False else 0
-    bonuses = int(info.get("b_count") or 0)
-    return ([0] + list(range(1, min(stages, KSF_STAGES) + 1))
+    """Main, the stages of a staged map, then the bonuses.  The counts are KSF's
+    reply, cached for good: an int in range or none (P1117 review 5: "x", 1e400 or
+    2,000,000 stopped or stalled every tick), as ksfgrab.stages_of reads them."""
+    def count(v, top):
+        return v if type(v) is int and 1 <= v <= top else 0
+    stages = count(info.get("cp_count"), KSF_STAGES) if info.get("isLinear") is False else 0
+    bonuses = count(info.get("b_count"), KSF_BONUSES)
+    return ([0] + list(range(1, stages + 1))
             + [KSF_STAGES + n for n in range(1, bonuses + 1)])
 
 
@@ -383,7 +530,7 @@ class Pacer:
             raise Refused(str(e), 500)
         try:
             return json.loads(body)
-        except ValueError:
+        except (ValueError, RecursionError):     # P1117 review 2: nesting is a bad reply too
             raise Refused("ksf.surf's reply did not parse -- their format has "
                           "probably changed")
 
@@ -667,10 +814,14 @@ def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
 
 
 def _when(rec):
-    try:
-        return int(rec.get("date") or 0)
-    except (TypeError, ValueError):
+    """The record's date in epoch seconds, or 0 when it is none: bounded, since
+    SQLite takes 64 bits and inf takes none (P1117 review 4: one date wedged a tick)."""
+    v = rec.get("date")
+    if type(v) is float and math.isfinite(v):
+        v = int(v)
+    elif type(v) is not int:            # a bool is no date (P1117 review 5)
         return 0
+    return v if 0 < v < 2 ** 32 else 0
 
 
 def record_key(rec):
@@ -683,6 +834,12 @@ def record_key(rec):
         filehash = hashlib.sha256(str(rec.get("file") or "").encode()).hexdigest()[:16]
         return "ksf-%d-%d-%s-%s" % (rid, when, clock, filehash)
     return ""
+
+
+def record_of(key):
+    """The upstream record id a record_key names ('' for none)."""
+    parts = key.split("-")
+    return parts[1] if len(parts) == 5 and parts[0] == "ksf" and parts[1].isdigit() else ""
 
 
 def record_seconds(key):
@@ -1038,8 +1195,16 @@ def watch_mode(args, have, cache):
     else:
         try:
             if getattr(args, 'go', False):
-                KP.step(sys.modules[__name__], cache, pacer, have, now,
-                        budget=min(3, max(1, args.max // 3)))
+                # P1117 review 4: nothing a player walk raises stops the crawl.
+                try:
+                    KP.step(sys.modules[__name__], cache, pacer, have, now,
+                            budget=min(3, max(1, args.max // 3)))
+                except sqlite3.Error as e:
+                    print("player walks deferred: %s" % type(e).__name__)
+                except Exception as e:
+                    print("player walks failed (%s: %s): parked, the crawl goes on"
+                          % (type(e).__name__, str(e)[:120]))
+                    KP.park_walks(sys.modules[__name__], cache, now, e)
             cat = catalog_step(cache, pacer, now)
             names = set(cat["names"])
             try:
@@ -1064,9 +1229,10 @@ def watch_mode(args, have, cache):
                     print("  idle: %s walked again from rank 1" % again)
         except Refused as e:
             n = int(park.get("n") or 0) + 1
-            wait = min(COOLDOWN * 2 ** (n - 1), COOLDOWN_MAX)
+            base = QUIET_COOLDOWN if getattr(e, "transient", False) else COOLDOWN
+            wait = min(base * 2 ** (n - 1), COOLDOWN_MAX)
             _save(pf, {"at": now, "until": now + wait, "n": n, "why": str(e)})
-            print("refused: %s -- parked for %d h, nothing is retried" % (e, wait // 3600))
+            print("refused: %s -- parked for %d min, nothing is retried" % (e, wait // 60))
             # Only an answer about the board strikes it: a 403/429/503, or no
             # answer at all, is about the host, and would set aside whichever
             # board happened to be asked first (review, 5 Oct).
@@ -1458,7 +1624,20 @@ def write_rows(rows):
                                 or not 0 < incoming_seconds < 1e6
                                 or int(round(incoming_seconds * 1000)) != r["millis"]):
                             continue
-                    if previous and previous["millis"] == r["millis"]:
+                    # P1117 review: identity is the RECORD, not a float or a date.  A
+                    # walk ('cache') row never rebinds a row naming a record unless it
+                    # is faster by a whole millisecond -- KSF updates a record_id in
+                    # place when its player improves (review 3: surf_kitsune2 b2), and
+                    # the demo was the old time's; a board row always takes over its
+                    # own record from a walk-filed row.
+                    takeover = False
+                    if previous and previous["runid"] and r.get("runid"):
+                        rid = record_of(r["runid"])
+                        same = rid != "" and rid == record_of(previous["runid"])
+                        if r.get("binding") == "cache" and r["millis"] >= previous["millis"]:
+                            continue
+                        takeover = same and r.get("binding") == "board"
+                    if previous and previous["millis"] == r["millis"] and not takeover:
                         oldseconds = (marker["seconds"] or 0.0) if marker else record_seconds(previous["runid"])
                         newseconds = r.get("seconds", r["millis"] / 1000.0)
                         if oldseconds and "seconds" not in r:

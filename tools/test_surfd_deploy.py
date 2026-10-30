@@ -60,6 +60,9 @@ class Tests(unittest.TestCase):
             cls.ksf_set.update({'surfd/admin.py', 'surfd/mapmanifest.py', 'surfd/templates/admin_maps.html'})
         if run(['git', '-C', str(REPO), 'cat-file', '-e', cls.ref+':surfd/hidupload.py'], check=False).returncode == 0:
             cls.ksf_set.add('surfd/hidupload.py')
+        if run(['git', '-C', str(REPO), 'cat-file', '-e', cls.ref+':surfd/momprofile.py'], check=False).returncode == 0:
+            cls.ksf_set.update({'surfd/accounts.py', 'surfd/steamsync.py', 'surfd/momwatch.py',
+                                'surfd/momprofile.py', 'tools/momfetch.py', 'tools/msml.py'})
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix=self._testMethodName+'-', dir=args.out)
@@ -86,7 +89,8 @@ Get-SurfdDeployPlan @p | ConvertTo-Json -Depth 4
         self.assertEqual(full['Commit'], self.ref)
         self.assertTrue(self.ksf_set <= set(full['Files']))
         self.assertEqual({f for f in full['Files'] if f.startswith('tools/')},
-                         {'tools/ksfconvert.py', 'tools/ksfreplay_info.py'})
+                         {'tools/ksfconvert.py', 'tools/ksfreplay_info.py'} |
+                         ({'tools/momfetch.py'} if 'surfd/momprofile.py' in self.ksf_set else set()))
         for entry in self.ksf_set-{'surfd/surfd.py'}:
             p = self.plan(only=[entry, entry])
             self.assertEqual(set(p['Files']), self.ksf_set)
@@ -249,6 +253,40 @@ function scp { Set-Content $env:DEPLOY_TEST_MARKER scp; throw 'network forbidden
         for only in ('surfd/surfd.py', 'surfd/ksfimport.py', 'surfd/ksfprofile.py'):
             self.assertEqual(set(self.plan(repo, 'HEAD', [only])['Files']), KSF_SET|{'surfd/ksfprofile.py'})
         self.assertEqual(self.plan(repo, complete, ['surfd/surfd.py'])['Files'], ['surfd/surfd.py'])
+
+    def test_p1117_momprofile_ships_with_its_importers(self):
+        repo, _, _ = self.fixture_repo()
+        mom = {'surfd/accounts.py', 'surfd/steamsync.py', 'surfd/momwatch.py', 'surfd/momprofile.py',
+               'tools/momfetch.py', 'tools/msml.py'}
+        for name in sorted(mom):
+            (repo/name).parent.mkdir(parents=True, exist_ok=True)
+            # Real unconditional imports, not pass-only fetcher placeholders.
+            text = (TOOLS/Path(name).name).read_text() if name.startswith('tools/') else 'pass\n'
+            (repo/name).write_text(text)
+            git(repo, 'add', '--', name)
+        git(repo, '-c', 'user.name=Offline fixture', '-c', 'user.email=fixture@example.invalid',
+            '-c', 'commit.gpgsign=false', 'commit', '-qm', 'momprofile generation')
+        for entry in sorted(mom | {'surfd/surfd.py'}):
+            p = self.plan(repo, 'HEAD', [entry])
+            self.assertEqual(set(p['Files']), mom | {'surfd/surfd.py'})
+            # P1117 review 2: momwatch's fetcher lands flat beside it, as on the Pi.
+            destinations = dict(zip(p['Files'], p['Destinations']))
+            self.assertEqual(destinations['tools/momfetch.py'], 'momfetch.py')
+            self.assertEqual(destinations['tools/msml.py'], 'msml.py')
+        # Act the actual installed layout in an empty directory. Test-stage tools
+        # or a pre-existing Pi msml must not hide a missing runtime dependency.
+        p = self.plan(repo, 'HEAD')
+        dest = self.root/'real-flat-runtime'
+        dest.mkdir()
+        for source, target in zip(p['Files'], p['Destinations']):
+            path = dest/target
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(git(repo, 'show', 'HEAD:' + source) + '\n', encoding='utf-8')
+        code = ('import pathlib,sys; p=pathlib.Path(sys.argv[1]).resolve(); '
+                'sys.path.insert(0,str(p)); import momfetch,msml; '
+                'assert pathlib.Path(momfetch.__file__).resolve().parent == p; '
+                'assert pathlib.Path(msml.__file__).resolve().parent == p')
+        run([sys.executable, '-I', '-B', '-c', code, str(dest)], cwd=dest)
 
     def test_social_schema_app_accounts_and_ksf_close_both_dependency_groups(self):
         repo, _, _ = self.fixture_repo()
