@@ -21,6 +21,9 @@
 
 ## next
 
+### P1131 Earlier airborne gravity carry status
+- Run status follows more carried gravity effects during airborne movement. Normal gravity, map-authored behavior and movement are unchanged.
+
 ### P1130 Stats and WOS completion
 - Full stats refreshes its records when reopened after a home Surf / Bhop / All change. Switches start in the right position and fit narrow home panels.
 - Show all stays selected during the same session, but starts off next launch.
