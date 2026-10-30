@@ -14,6 +14,7 @@ import tempfile
 from PIL import Image, ImageChops
 from p590bridge import sha
 from p598build import build, ROOT
+from native_test_paths import add_native_paths, resolve_native_paths
 from test_ui_modern import make_map
 
 ARMS = ('absent', 'drawonly', 'scale1', 'scale2')
@@ -198,9 +199,7 @@ def run(a, *, fixture='p600input.qc', config=cfg, grader=grade, prefix='p600-inp
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--fte',type=Path,default=Path('C:/msys64/home/Lex/fteqw-imgui-input'))
-    p.add_argument('--engine',type=Path,default=Path('C:/msys64/home/Lex/fteqw-imgui-input/engine/release/fteqw64.exe'))
-    p.add_argument('--server',type=Path,default=Path('C:/msys64/home/Lex/fteqw-imgui-input/engine/release/fteqwsv64.exe'))
+    add_native_paths(p)
     p.add_argument('--old-engine',type=Path,default=Path('C:/FTESurf/ftesurf64.exe'))
     p.add_argument('--progs',type=Path,default=Path('C:/FTESurf/ftesurf/qwprogs.dat'))
     p.add_argument('--cc',type=Path,default=Path('C:/msys64/ucrt64/bin/g++.exe'))
@@ -212,4 +211,5 @@ if __name__ == '__main__':
         errors = grade(a.rig)
         for s in errors: print('FAIL',s)
         print('failed',len(errors)); raise SystemExit(bool(errors))
+    resolve_native_paths(p, a, source=not bool(a.plugin))
     raise SystemExit(run(a))

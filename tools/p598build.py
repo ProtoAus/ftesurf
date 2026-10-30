@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import subprocess
+from native_test_paths import add_native_paths, resolve_native_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 VENDOR = ('imgui.cpp', 'imgui_draw.cpp', 'imgui_tables.cpp', 'imgui_widgets.cpp')
@@ -53,7 +54,7 @@ def build(fte: Path, out: Path, cc: Path, host=False, index32=False, host_source
 if __name__ == '__main__':
     import argparse
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--fte', type=Path, default=Path('C:/msys64/home/Lex/fteqw-ui-bridge'))
+    add_native_paths(p, client=False, server=False)
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--cc', type=Path, default=Path('C:/msys64/ucrt64/bin/g++.exe'))
     p.add_argument('--host', action='store_true')
@@ -62,5 +63,6 @@ if __name__ == '__main__':
     a = p.parse_args()
     if a.host_source and not a.host:
         p.error('--host-source requires --host')
+    resolve_native_paths(p, a, client=False, server=False)
     print(build(a.fte.resolve(), a.out.resolve(), a.cc.resolve(), a.host, a.index32,
                 a.host_source.resolve() if a.host_source else None))
