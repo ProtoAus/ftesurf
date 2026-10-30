@@ -82,6 +82,16 @@ int main(int argc,char **argv) {
   puts("UNAVAILABLE rendered-eye helper in retained revision; not a runtime counterexample");return 77;
 #endif
  }
+ if(argc>1 && !strcmp(argv[1],"packet-delay")) {
+  float delay=native_delay(.015f,.75f),first,second;
+  p[0]=0;v[0]=100;assert(CL_SourcePracticePush(&s,0,p,v,.02f));
+  p[0]=3;assert(CL_SourcePracticePush(&s,.03f,p,v,.02f));
+  assert(CL_SourcePracticeSample(&s,.055f-delay,out));first=out[0];
+  assert(CL_SourcePracticeSample(&s,.059f-delay,out));second=out[0];
+  if(second<=first) {printf("FAIL packet-quantized gap freezes at newest pose: delay=%g first=%g second=%g\\n",delay,first,second);return 2;}
+  near(delay,.035f);near(first,2);near(second,2.4f);
+  puts("PASS actual target delay covers real packet quantization without extrapolating");return 0;
+ }
  assert(argc==1);
  assert(!CL_SourcePracticeSample(&s,0,out));near(out[0],-999);
  assert(CL_SourcePracticePush(&s,0,p,v,.03f));
@@ -156,6 +166,9 @@ def main():
     guard = source.split(anchor,1)[1].split('\n\t}',1)[0]
     assert guard.count('goto discontinuity;') == 1
     guard = '\nstatic qboolean native_jump_guard(const vec3_t delta) { int i=0;(void)i;'+guard+'\nreturn false; discontinuity:return true;}\n'
+    target_lines=[line for line in source.splitlines() if 'target = cl.servertime - ' in line]
+    assert len(target_lines)==1,'Actual native target expression drifted'
+    delay_control='''\nstatic float native_delay(float tick,float scale) {\n struct {double servertime;} cl={0};\n float interval=tick/scale,target;(void)interval;\n'''+target_lines[0]+'''\n return -target;\n}\n'''
     view_file = a.view_source or native/'client/view.c'
     view = view_file.read_text()
     begin = '// refresh position from simulated origin'
@@ -214,7 +227,7 @@ static float native_stair_view(float raw,float delta,float crouch,qboolean activ
     script_digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     digest = hashlib.sha256((source_digest+view_digest+script_digest).encode()).hexdigest()
     file = a.out/('sourcepractice-core-'+digest[:12]+'.c')
-    file.write_text(preface+compare.group(0)+'\n'+core+guard+roof_control+view_control+TEST)
+    file.write_text(preface+compare.group(0)+'\n'+core+guard+delay_control+roof_control+view_control+TEST)
     gcc = Path('C:/msys64/ucrt64/bin/gcc.exe')
     exe = file.with_suffix('.exe')
     env = dict(os.environ)
@@ -225,7 +238,7 @@ static float native_stair_view(float raw,float delta,float crouch,qboolean activ
         (a.out/('compile-failure-'+digest[:12]+'.json')).write_text(json.dumps({'source':str(source_file),'viewSource':str(view_file),'scriptSha256':script_digest,'exit':compile.returncode,'stdout':compile.stdout,'stderr':compile.stderr},indent=2)+'\n')
         raise SystemExit(3)
     results = []
-    for case in ['core','idle-resume','teleport','stair-view','stair-entry','save-epoch','roof-view']:
+    for case in ['core','idle-resume','teleport','stair-view','stair-entry','save-epoch','roof-view','packet-delay']:
         run = subprocess.run([str(exe)]+([] if case=='core' else [case]),capture_output=True,text=True,env=env)
         print(case,'exit',run.returncode,run.stdout+run.stderr,flush=True)
         results.append({'case':case,'exit':run.returncode,'stdout':run.stdout,'stderr':run.stderr})
