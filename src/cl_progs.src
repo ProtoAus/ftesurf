@@ -306,5 +306,7 @@ client/cl_weaponui.qc
 // TAS panel reuses the workshop slider and precedes cl_main's draw/input hooks.
 client/cl_tasui.qc
 client/cl_tastimeline.qc
+// Shared transport policy must precede both TAS directory callers.
+shared/sh_tasdirectory.qc
 client/cl_tasshare.qc
 client/cl_main.qc

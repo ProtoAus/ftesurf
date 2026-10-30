@@ -25,7 +25,8 @@ commit   eb1f494fa0908a72a958a894b9b439cad86f3655
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1139
-patch    1139
+patch    1140
+# Patch 1140: local legal-start TAS revision sharing, current-map browser/credits and protected download/open (QC only; no native pin or Build bump).
 # Patch 1139: existing gravity-source status follows eligible standing stock ground takeoff through the same default/accepted-path proof; movement, captured fields, formats, flags and tiers unchanged; unsupported consumers remain excluded.
 # Patch 1136: existing gravity-source status includes finite vertical air carriers through the same default/accepted-path proof; movement, captured fields, formats, flags and tiers unchanged; unsupported consumers remain excluded.
 # Patch 1135: existing gravity-source status follows the accepted total air path with finite horizontal carriers; local movement/recorded fields/formats/flags/tiers unchanged, vertical and other unsupported consumers remain excluded.

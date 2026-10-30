@@ -1,5 +1,25 @@
 # lextest.md — things waiting on a human
 
+## P1140 TAS sharing/browser (pending deployment and human check)
+
+Isolated native client/server checks cover real directory traffic, byte-exact
+transfer, normal tape load, protected/recovery files, teardown and bounded credit
+views. Synthetic signatures are not real-account or physical-key acceptance.
+After the deployment is confirmed, please try this small in-game check:
+
+- Host a map locally, open the TAS menu's **Shared** tab, refresh and select a
+  revision. Are rows, contribution ranges and the Open button legible?
+- Save a newly edited legal-start project. Link the signing key to your account
+  first, physically click **Sign**, then confirm **Share saved revision**.
+  Confirm your newly supplied inputs show your account's contribution, not a
+  human/ranked-run claim. Sign before the first upload; late linking/signing does
+  not retroactively claim a revision already seen by the service.
+- Open that revision under a new local name. Confirm the tape loads as TAS and
+  the timeline/trail follows the new project's data rather than the old one.
+
+No human confirmation is recorded yet. This does not accept verifier/board
+qualification, measured performance, or the remaining optimizer/editor work.
+
 ## 0.1.33 public release (automation accepted; human checks still pending)
 
 Published Windows and Linux beta on 30 Oct2026 from frozen QC726bd7af through

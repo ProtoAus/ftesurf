@@ -1,13 +1,13 @@
 // P1140: shared TAS projects are distinct from run rows and verification verdicts.
 string tsb_map, tsb_sha, tsb_note;
-float tsb_req, tsb_at, tsb_kind, tsb_have, tsb_detail, tsb_before, tsb_offset, tsb_creditoffset, tsb_confirm;
+float tsb_req, tsb_at, tsb_kind, tsb_have, tsb_detail, tsb_selected, tsb_before, tsb_offset, tsb_creditoffset, tsb_confirm;
 int tsb_root, tsb_info;
 
 string(string old, string value) TASShare_Keep =
 {
 	local string copy;
 	copy = strzone(value);
-	if (old != "") strunzone(old);
+	if (strcmp(old,"")) strunzone(old);
 	return copy;
 };
 float(string s) TASShare_Hex =
@@ -32,17 +32,24 @@ float() TASShare_Allowed =
 };
 string() TASShare_URL =
 {
-	local string url;
-	url = cvar_string("tas_directory");
-	if (!strcmp(url,"")) return "https://play.proto.bar/api/tasrev";
-	return url;
+	return TASDirectory_Endpoint(cvar_string("tas_directory"));
 };
+void() TASShare_Reset =
+{
+	tsb_req = tsb_selected = tsb_confirm = 0;
+	if (tsb_have) json_free(tsb_root);
+	if (tsb_detail) json_free(tsb_info);
+	tsb_have = tsb_detail = FALSE;
+	tsb_map = TASShare_Keep(tsb_map,""); tsb_sha = TASShare_Keep(tsb_sha,"");
+	tsb_note = TASShare_Keep(tsb_note,"");
+};
+
 void(float before, string sha) TASShare_Request =
 {
 	local string url;
 	if (!TASShare_Allowed()) return;
 	if (tsb_req && cltime - tsb_at < 12) return;
-	tsb_req = 0; tsb_offset = tsb_creditoffset = 0;
+	tsb_req = tsb_selected = tsb_confirm = 0; tsb_offset = tsb_creditoffset = 0;
 	tsb_map = TASShare_Keep(tsb_map,serverkey("map"));
 	tsb_note = TASShare_Keep(tsb_note,"Asking the TAS directory...");
 	if (!strcmp(tsb_map,"")) { tsb_note = TASShare_Keep(tsb_note,"Join or host a map first."); return; }
@@ -67,7 +74,12 @@ float(float reqid, float code, string body) TASShare_Reply =
 	if (!tsb_req || reqid != tsb_req) return FALSE;
 	tsb_req = 0;
 	tsb_note = TASShare_Keep(tsb_note,"The TAS directory returned unavailable or invalid data. Refresh to retry.");
-	if (strlen(body) > 1048576 || code || strcmp(tsb_map,serverkey("map"))) return TRUE;
+	if (code || strcmp(tsb_map,serverkey("map"))) return TRUE;
+	if (strlen(body) > 1048576)
+	{
+		if (tsb_selected) tsb_note = TASShare_Keep(tsb_note,"Credit history exceeds this view's 1 MiB limit. The selected revision can still be opened as TAS.");
+		return TRUE;
+	}
 	root = json_parse(body);
 	if (root <= 0i) return TRUE;
 	valid = (json_get_float(json_find_object_child(root,"ok")) == 1);
@@ -93,8 +105,15 @@ float(float reqid, float code, string body) TASShare_Reply =
 		item = json_find_object_child(root,"revision");
 		rows = json_find_object_child(root,"credit");
 		valid = (valid && !strcmp(json_get_string(json_find_object_child(item,"sha")),tsb_sha) &&
-			!strcmp(json_get_string(json_find_object_child(item,"map")),tsb_map) && json_get_value_type(rows) == 3i && json_get_length(rows) <= 4096i);
-		n = json_get_length(rows); last = -1;
+			!strcmp(json_get_string(json_find_object_child(item,"map")),tsb_map) && json_get_value_type(rows) == 3i);
+		n = json_get_length(rows);
+		if (valid && n > 4096)
+		{
+			json_free(root);
+			tsb_note = TASShare_Keep(tsb_note,"Credit history exceeds this view's 4096-range limit. The selected revision can still be opened as TAS.");
+			return TRUE;
+		}
+		last = -1;
 		for (i = 0; i < n && valid; i = i + 1)
 		{
 			part = json_get_child_at_index(rows,(int)i);
@@ -121,15 +140,21 @@ void(float index) TASShare_Select =
 	local int rows, item;
 	local string sha;
 	if (!tsb_have || index < 0 || floor(index) != index) return;
+	if (strcmp(tsb_map,serverkey("map"))) { TASShare_Reset(); return; }
 	rows = json_find_object_child(tsb_root,"revisions");
 	if (index >= json_get_length(rows)) return;
 	item = json_get_child_at_index(rows,(int)index);
 	sha = strzone(json_get_string(json_find_object_child(item,"sha")));
-	TASShare_Request(0,sha); strunzone(sha);
+	TASShare_Request(0,sha);
+	// Selection is bound by the validated map list, not by loading every
+	// contribution range. Download acceptance remains the strict server reader.
+	if (!strcmp(tsb_sha,sha) && !strcmp(tsb_map,serverkey("map"))) tsb_selected = TRUE;
+	strunzone(sha);
 };
 void() TASShare_Open =
 {
-	if (!TASShare_Allowed() || !TASShare_Hex(tsb_sha) || !tsb_detail) return;
+	if (!TASShare_Allowed() || !TASShare_Hex(tsb_sha) || !tsb_selected) return;
+	if (strcmp(tsb_map,serverkey("map"))) { TASShare_Reset(); return; }
 	if (!isserver()) { print("tas open: host this map locally first\n"); return; }
 	localcmd(sprintf("tas project open %s\n",tsb_sha));
 };
@@ -152,9 +177,10 @@ void(vector at, float width, float tsz, float hint, float row) TASShare_Draw =
 	if (tsb_confirm > cltime) label = "PUBLIC: saved project, metadata and existing signatures. Sign first for credit.";
 	if (tsb_req && cltime - tsb_at >= 12) label = "Directory timed out. Refresh to retry.";
 	sui_text(at,[hint,hint],label,SUI_THEME_DIM,1,0); at_y = at_y + hint*2.5;
-	if (tsb_detail)
+	if (tsb_selected)
 	{
 		sui_text(at,[hint,hint],strcat("Revision ",substring(tsb_sha,0,16)),SUI_THEME_TEXT,1,0); at_y = at_y + row;
+		if (!tsb_detail) return;
 		label = json_get_float(json_find_object_child(tsb_info,"pending")) ? "Credit is still being resolved." : "Contribution ranges (unknown/unsigned stays uncredited):";
 		sui_text(at,[hint,hint],label,SUI_THEME_DIM,1,0); at_y = at_y + row;
 		rows = json_find_object_child(tsb_info,"credit"); n = json_get_length(rows);
@@ -203,7 +229,8 @@ float(float argc, float seat) TASShare_ConsoleCommand =
 	{
 		if (!strcmp(op,"status"))
 		{
-			print(sprintf("tas shared: map %s list %.0f detail %.0f request %.0f\n",tsb_map,tsb_have,tsb_detail,tsb_req)); return TRUE;
+			print(sprintf("tas shared: map %s list %.0f detail %.0f request %.0f selected %.0f\n",tsb_map,tsb_have,tsb_detail,tsb_req,tsb_selected));
+			print("tas shared: endpoint ",TASShare_URL(),"\n"); return TRUE;
 		}
 		if (!strcmp(op,"select") && argc == 4)
 		{
@@ -224,7 +251,9 @@ float(float argc, float seat) TASShare_ConsoleCommand =
 	if (!strcmp(op,"share"))
 	{
 		if (argc == 4 && !strcmp(sha,"yes")) localcmd("p1 cmd tas project share yes\n");
-		else print("tas project share yes: public project metadata and existing signatures; sign first for credit. No private keys.\n");
+		else if (argc == 5 && !strcmp(sha,"yes") && TASShare_Hex(name))
+			localcmd(sprintf("p1 cmd tas project share yes %s\n",name));
+		else print("tas project share yes [retained-hash]: public project metadata and existing signatures; sign first for credit. No private keys.\n");
 		return TRUE;
 	}
 	if (argc < 4 || argc > 5 || !TASShare_Hex(sha)) { print("tas project open <64 lowercase hexadecimal digits> [new-name]\n"); return TRUE; }

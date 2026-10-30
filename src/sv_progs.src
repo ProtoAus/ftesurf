@@ -59,6 +59,8 @@ server/sv_share.qc
 server/sv_savesync.qc
 // Patch 915: timer identity/archive helpers and SH_MC_ONE precede private retrieval.
 server/sv_archive.qc
+// Shared transport policy precedes the player's included TAS sharing module.
+shared/sh_tasdirectory.qc
 server/sv_player.qc
 server/sv_maptier.qc
 server/sv_main.qc

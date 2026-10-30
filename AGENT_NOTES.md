@@ -9910,6 +9910,33 @@ or a stale frame looks the same as a live one.
 
 ## Pitfalls discovered the hard way
 
+**TAS collaboration boundaries (P1140, 31 Oct 2026).** A metadata HTTP callback
+and StartFrame are not ordinary native client-command contexts. Deferred project
+open must use the existing normal client command after its normal cooldown;
+a real socket control must reach the requested tape head. Portable v3 metadata
+reads avoid the legacy native tape validator; refuse host-local old-format game
+sharing before starting any statement request. No author signing is synthesized:
+a dedicated localhost socket is not the native LoopBack/physical-key boundary.
+Unlinked fixture signatures receiving no linked credit are not human acceptance.
+
+A failed read-open is not file absence. `fexists` is depth-sensitive and ordinary
+full-path metadata still uses FTE's filename hash. Fresh exact `search_begin`
+enumeration sees loose files created after startup (valid empty handle for no
+matches; lookup errors fail closed). Native Windows read-deny/write-allow tests
+covered both preseeded and late final/staging files. The old cached-only control
+reached failed rename and retained a closed stage; the fresh census refused before
+staging. Protect `.new` and `.new2` as well, then prove an ordinary attached save
+still preserves recovery bytes. This does not promise external-writer atomicity,
+durability or resolve the separate historical P1136 failed-part receipt.
+
+For teardown falsifiers use actual server teardown, not just a client's UDP close:
+the existing presentation `drop` hook shadows QW's disconnect string (BACKLOG).
+Owned-server kick plus delayed successful replies proved no late install or next
+upload. Credit view limits are informational: retain the validated map-list hash
+and Open gate when a large detail cannot be rendered. Native JSON string type is
+0; a byte-exact buffer upload must preserve the final newline. Directory transport
+is fixed public HTTPS with only a bounded IPv4-loopback test override.
+
 **`!=` on a bare `__variant` is a 64-bit compare (P1077, 28 Oct 2026).**
 `if (getproperty(VF_ACTIVESEAT) != 0) return;` compiled, in both fteqcc 7ccb93d1 and
 c24ede65, to `OP_NE_I64 OFS_RETURN, <const 0>` -- two slots, so the second slot of the

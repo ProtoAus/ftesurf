@@ -3,8 +3,10 @@
 #define TSH_MAXBODY 8388608
 // FTE's fifth argument posts a string buffer. Generated DP defs expose only four.
 float(string url, float id, string mime, string separator, strbuf buffer) tsh_uri_buffer = #513;
+float(string path) tsh_fexists = #0:fexists;
+string(string path, float flags) tsh_location = #503; // whichpack; flag 2 includes loose gamedir paths
 .float tsh_req, tsh_at, tsh_kind, tsh_search, tsh_index;
-.string tsh_sha, tsh_name, tsh_loadname;
+.string tsh_sha, tsh_name, tsh_parent, tsh_loadname;
 .float tsh_loadat;
 
 void(entity e) SV_TASShareStop =
@@ -12,24 +14,26 @@ void(entity e) SV_TASShareStop =
 	e.tsh_req = e.tsh_kind = 0;
 	if (e.tsh_search) search_end(e.tsh_search - 1);
 	e.tsh_search = e.tsh_index = 0;
-	if (e.tsh_sha != "") strunzone(e.tsh_sha);
-	if (e.tsh_name != "") strunzone(e.tsh_name);
-	e.tsh_sha = e.tsh_name = "";
+	if (strcmp(e.tsh_sha,"")) strunzone(e.tsh_sha);
+	if (strcmp(e.tsh_name,"")) strunzone(e.tsh_name);
+	if (strcmp(e.tsh_parent,"")) strunzone(e.tsh_parent);
+	e.tsh_sha = e.tsh_name = e.tsh_parent = "";
 };
 
 void(entity e) SV_TASShareCancel =
 {
 	SV_TASShareStop(e);
-	if (e.tsh_loadname != "") strunzone(e.tsh_loadname);
+	if (strcmp(e.tsh_loadname,"")) strunzone(e.tsh_loadname);
 	e.tsh_loadname = ""; e.tsh_loadat = 0;
 };
 
 float(entity e) SV_TASShareLocal =
 {
 	local string ip;
+	if (!e.run_inserver) return FALSE;
 	if (!SV_TASPLocalOnly(e)) return FALSE;
 	ip = strtolower(infokey(e, "ip"));
-	if (strcmp(ip, "loopback") && strcmp(ip, "127.0.0.1") && substring(ip, 0, 10) != "127.0.0.1:")
+	if (strcmp(ip, "loopback") && strcmp(ip, "127.0.0.1") && strcmp(substring(ip, 0, 10), "127.0.0.1:"))
 	{
 		sprint(e, PRINT_HIGH, "tas share: host this game locally first\n"); return FALSE;
 	}
@@ -38,11 +42,7 @@ float(entity e) SV_TASShareLocal =
 
 string() SV_TASShareURL =
 {
-	// Operator configuration, never a URL supplied by a player or revision.
-	local string url;
-	url = cvar_string("tas_directory");
-	if (!strcmp(url,"")) return "https://play.proto.bar/api/tasrev";
-	return url;
+	return TASDirectory_Endpoint(cvar_string("tas_directory"));
 };
 
 // The existing reader already bound this saved revision. A buffer keeps this linear
@@ -57,6 +57,7 @@ float(entity e) SV_TASShareBody =
 	ok = SV_TASPRead(e, "shared", FALSE);
 	tpr_pathover = "";
 	ok = (ok && !strcmp(tpr_h, e.tsh_sha));
+	if (ok && strcmp(tpr_parsha,"")) e.tsh_parent = strzone(tpr_parsha);
 	SV_TASPReadFree();
 	if (!ok) { strunzone(path); return FALSE; }
 	f = fopen(path, FILE_READ); strunzone(path);
@@ -119,28 +120,61 @@ float(entity e) SV_TASShareNext =
 	return SV_TASShareBody(e);
 };
 
+// Do not infer absence from unreadable data or FTE's cached filename lookup.
+// Full-path metadata covers implicit gamedirs; fresh exact enumeration also
+// catches loose files added after startup. External writers must not run
+// concurrently with this QC import transaction.
+float(string path) SV_TASShareOccupied =
+{
+	local float f;
+	local searchhandle h;
+	if (tsh_fexists(path)) return TRUE;
+	if (strcmp(tsh_location(path,2),"")) return TRUE;
+	h = search_begin(path,0,TRUE);
+	if (h < 0) return TRUE; // lookup error, not confirmed absence
+	f = search_getsize(h); search_end(h);
+	if (f > 0) return TRUE;
+	f = fopen(path, FILE_READ);
+	if (f < 0) return FALSE;
+	fclose(f); return TRUE;
+};
+
 void(entity e, string body) SV_TASShareInstall =
 {
 	local string tmp, dst, name, sha, why;
-	local float f, ok;
+	local float f, ok, owned;
 	name = strzone(e.tsh_name); sha = strzone(e.tsh_sha);
 	dst = strzone(SV_TASPPath(name)); tmp = strzone(strcat(dst, ".download"));
-	f = fopen(dst, FILE_READ);
-	if (f >= 0)
+	owned = FALSE;
+	if (!checkbuiltin(tsh_fexists) || !checkbuiltin(tsh_location))
 	{
-		fclose(f); sprint(e, PRINT_HIGH, "tas open: that project name already exists; choose another name\n"); goto done;
+		sprint(e, PRINT_HIGH, "tas open: this engine cannot check existing project metadata; nothing written\n"); goto done;
 	}
-	f = fopen(tmp, FILE_READ);
-	if (f >= 0)
+	if (SV_TASShareOccupied(dst))
 	{
-		fclose(f); sprint(e, PRINT_HIGH, "tas open: a staged download already exists; choose another name (existing bytes retained)\n"); goto done;
+		sprint(e, PRINT_HIGH, "tas open: that project name already exists; choose another name\n"); goto done;
+	}
+	if (SV_TASShareOccupied(strcat(dst,".new")) || SV_TASShareOccupied(strcat(dst,".new2")))
+	{
+		sprint(e, PRINT_HIGH, "tas open: recovery bytes already occupy that project name; choose another name\n"); goto done;
+	}
+	if (SV_TASShareOccupied(tmp))
+	{
+		sprint(e, PRINT_HIGH, "tas open: a staged download already exists; choose another name (existing bytes retained)\n"); goto done;
 	}
 	if (strlen(body) <= 0 || strlen(body) > TSH_MAXBODY)
 	{
 		sprint(e, PRINT_HIGH, "tas open: empty or oversized project\n"); goto done;
 	}
+	// Only legal-start projects are portable. In particular, do not send old
+	// base-save inputs through native tape validation in an HTTP callback.
+	if (strncmp(body,"tasproject 3\n",13))
+	{
+		sprint(e, PRINT_HIGH, "tas open: refused: this old project needs its author's base save (or the header is unsupported); only legal-start v3 projects are portable\n"); goto done;
+	}
 	f = fopen(tmp, FILE_WRITE);
 	if (f < 0) { sprint(e, PRINT_HIGH, "tas open: cannot stage the project\n"); goto done; }
+	owned = TRUE;
 	fputs(f, body); fclose(f);
 	tpr_pathover = tmp;
 	ok = SV_TASPRead(e, name, TRUE);
@@ -151,7 +185,8 @@ void(entity e, string body) SV_TASShareInstall =
 	SV_TASPReadFree();
 	if (!ok)
 	{
-		fremove(tmp); sprint(e, PRINT_HIGH, strcat("tas open: refused: ", why, "\n")); goto done;
+		if (owned) fremove(tmp);
+		sprint(e, PRINT_HIGH, strcat("tas open: refused: ", why, "\n")); goto done;
 	}
 	// No author statement is made by downloading or opening. Keep named saves
 	// and existing rev/ history intact; the ordinary loader records all playback.
@@ -176,6 +211,7 @@ float(float reqid, float code, string body) SV_TASShareReply =
 	for (e = world; (e = find(e, classname, "player")); )
 	{
 		if (!e.tsh_req || e.tsh_req != reqid) continue;
+		if (!e.run_inserver) { SV_TASShareCancel(e); return TRUE; }
 		kind = e.tsh_kind; e.tsh_req = 0;
 		if (time - e.tsh_at > 30 || !SV_TASShareLocal(e))
 		{
@@ -210,6 +246,7 @@ float(float reqid, float code, string body) SV_TASShareReply =
 		else
 		{
 			sprint(e, PRINT_HIGH, sprintf("tas share: shared revision %s (parents must also be shared for complete credit)\n", e.tsh_sha));
+			if (strcmp(e.tsh_parent,"")) sprint(e, PRINT_HIGH, sprintf("tas share: parent %s; publish a still-private retained parent with tas project share yes <hash>\n",e.tsh_parent));
 			SV_TASShareStop(e);
 		}
 		return TRUE;
@@ -220,7 +257,7 @@ float(float reqid, float code, string body) SV_TASShareReply =
 void(entity e, float argc) SV_TASShareCommand =
 {
 	local string op, sha, name;
-	local float s;
+	local float s, f, portable;
 	op = argv(2); sha = argv(3); name = argv(4);
 	if (!SV_TASShareLocal(e)) return;
 	if (e.tsh_kind && time - e.tsh_at < 30)
@@ -230,14 +267,24 @@ void(entity e, float argc) SV_TASShareCommand =
 	SV_TASShareCancel(e);
 	if (!strcmp(op,"share"))
 	{
-		if (argc != 4 || strcmp(sha,"yes"))
+		if ((argc != 4 && argc != 5) || strcmp(sha,"yes"))
 		{
-			sprint(e, PRINT_HIGH, "tas project share yes: publicly uploads the saved revision and its existing signatures, including saved date and project metadata. Sign first for credit. No keys are uploaded.\n"); return;
+			sprint(e, PRINT_HIGH, "tas project share yes [hash]: publicly uploads the saved or explicitly named retained revision and its existing signatures, including saved date and metadata. Sign first for credit. No private keys are uploaded.\n"); return;
 		}
-		s = SV_TASPSlot(e);
-		if (!s) return;
-		sha = tasp_revsha[s];
+		if (argc == 5) sha = name;
+		else
+		{
+			s = SV_TASPSlot(e);
+			if (!s) return;
+			sha = tasp_revsha[s];
+		}
 		if (!SV_RecIsHex(sha,64)) { sprint(e, PRINT_HIGH, "tas share: save a project revision first\n"); return; }
+		f = fopen(SV_TASPRevPath(sha,"tasp"),FILE_READ);
+		if (f < 0) { sprint(e, PRINT_HIGH,"tas share: saved revision is not readable; no upload started\n"); return; }
+		portable = !strcmp(fgets(f),"tasproject 3"); fclose(f);
+		// Base-save projects are host-local; async metadata reads must not invoke
+		// their native tape validator outside a client-command context.
+		if (!portable) { sprint(e, PRINT_HIGH,"tas share: only legal-start v3 projects are portable; no upload started\n"); return; }
 		e.tsh_sha = strzone(sha);
 		e.tsh_search = search_begin(strcat("data/tasproj/",mapname,"/rev/",sha,".*.tasrev"), TRUE, TRUE) + 1;
 		if (e.tsh_search)
@@ -266,18 +313,17 @@ void(entity e, float argc) SV_TASShareCommand =
 
 void() SV_TASShareFrame =
 {
-	local entity e, oldself;
+	local entity e;
 	local string name;
-	oldself = self;
 	for (e = world; (e = find(e, classname, "player")); )
 	{
-		if (e.tsh_loadname == "") continue;
+		if (!strcmp(e.tsh_loadname,"")) continue;
+		if (!e.run_inserver) { SV_TASShareCancel(e); continue; }
 		if (time < e.tsh_loadat || time < e.tasp_next) continue;
 		name = e.tsh_loadname; e.tsh_loadname = ""; e.tsh_loadat = 0;
-		if (SV_TASShareLocal(e))
-		{
-			self = e; SV_TASProjectLoad(e, name, ""); self = oldself;
-		}
+		// The native tape validator needs the ordinary client-command context,
+		// not StartFrame's world context. Preserve its normal admission gates.
+		if (SV_TASShareLocal(e)) stuffcmd(e, sprintf("cmd tas project load %s\n",name));
 		strunzone(name);
 	}
 };

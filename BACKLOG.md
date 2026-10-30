@@ -1,5 +1,17 @@
 # BACKLOG.md
 
+## QW disconnect string shadowed by presentation drop (P1140 observation)
+
+- Site: `src/server/sv_player.qc`, `SV_ParseClientCommand`'s presentation-only
+  `drop` branch, and native QW disconnect dispatch. An owned dedicated probe's
+  client disconnect emitted three `drop` strings; no server teardown occurred
+  before the probe's shutdown. Do not count a UDP close as ClientDisconnect.
+- Falsifier/fix: on an owned socket connection, disconnect normally and prove
+  prompt `SV_DespawnClient`/ClientDisconnect without breaking the weapon
+  presentation action. Keep the two meanings separate and preserve old binds.
+  P1140's transfer-lifetime tests use standard server kick to exercise actual
+  teardown; this pre-existing dispatch issue is not fixed by the transfer code.
+
 ## Forced-native Pi preservation: live part before-state (P1136)
 
 - Site: native deployment preservation receipts and `data/parts` recorder

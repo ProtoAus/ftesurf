@@ -23,6 +23,7 @@ void() TASProject_Event =
 	tasp_cl_rev = readlong(); tasp_cl_base = readlong(); tasp_cl_head = readlong();
 	was = tasp_cl_load;
 	tasp_cl_load = readbyte(); tasp_cl_stop = readlong(); tasp_cl_result = readbyte();
+	if (tasp_cl_load && !was) tr_tasload_at = cltime; // shared downloads load later than their click
 	tasp_cl_dev = readfloat(); tasp_cl_devtick = readlong(); tasp_cl_ncp = readbyte();
 	tasp_cl_sha = TASProject_Keep(tasp_cl_sha); tasp_cl_parsha = TASProject_Keep(tasp_cl_parsha);
 	tasp_cl_mapcrc = TASProject_Keep(tasp_cl_mapcrc);
@@ -73,7 +74,7 @@ float(float argc, float seat) TASProject_ConsoleCommand =
 		}
 		line = strcat(line, " ", w);
 	}
-	if (argv(1) == "project" && (argv(2) == "share" || argv(2) == "open"))
+	if (!strcmp(argv(1),"project") && (!strcmp(argv(2),"share") || !strcmp(argv(2),"open")))
 		return TASShare_ConsoleCommand(argc,seat);
 	if (argv(1) == "project" && argv(2) == "load")
 		tr_tasload_at = cltime;     // P1087: its load is another run's line (Trail_TASGo)
