@@ -21,6 +21,9 @@
 
 ## next
 
+### P1139 Gravity carry status through stock takeoff
+- Carried gravity effects keep their run status through more ordinary ground jumps. Jump height, movement and normal map-authored effects are unchanged.
+
 ### P1136 Airborne gravity carry status with vertical boosts
 - Carried gravity effects keep their run status during more airborne vertical boosts. Movement, boost amounts and normal map-authored effects are unchanged.
 
