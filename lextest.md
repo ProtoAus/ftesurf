@@ -4,8 +4,9 @@
 
 Installed exact qualified native/VMs in C:/FTESurf and C:/FTEQuake on30Oct2026;
 guarded same-QC delivery reached12emptyPi lobbies, no Pi native replacement.
-FULL/8source groups/independent reviews and actual socket checks passed, including
-0.1/0.25/0.5/0.75 and normal/restored1. Not human acceptance or geometry-scene proof.
+Final412b1d549 integrated build retains already-deliveredP1139; FULL/9source groups,
+two bounded independent reviews and same-image socket checks passed, including
+0.1/0.25/0.5(camerafreeze0%)/0.75(0.37%) and normal/restored1(0%). Not human acceptance or geometry-scene proof.
 Jump/fly at host_timescale0.5 and0.1, then restore1. Compare
 cl_source_practice_lerp0/1 while airborne. Check a familiar stair and low roof,
 including a solid prop roof if available, for dips/clipping. Body movement and

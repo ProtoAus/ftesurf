@@ -4,16 +4,21 @@
 
 **Problem:** authoritative slow practice repeats completed poses across packets;
 adjacent-packet interpolation freezes/rushes, including a packetized0.75 edge.
-**Change:** native525bd78ab/tag1138 samples completed poses for the camera only,
+**Change:** native412b1d549/tag1138-integrated-1139 samples completed poses for the camera only,
 with packet margin, stair composition and a presented-eye bound. Shared body and
 command paths remain original; SSQC messages clarify the unchanged connection
 practice latch (1 restores speed; reset does not erase prior slow use).
-**Verified/limits:** FULL/8literal-source groups/actual headers and two independent
-source-review lineages pass. Exact-image half-speed camera freeze OFF39.2%->ON0%;
-0.1/0.25/0.75 and normal/restored1 pass. Actual attempts prove restore/reset latch
+**Verified/limits:** FULL/9literal-source groups and two bounded independent
+source-review lineages pass. Exact-image half-speed camera freeze OFF38.2%->ON0%;
+0.1/0.25=0%,0.75=0.37%, normal/restored1=0%. Actual attempts prove restore/reset latch
 and fresh-connection clearing. One transaction retains failed candidates, invalid
 body-ratio assumption, wrong expected query text and pending-old-peer collision;
-no raw failure was relabeled. BothWindows28native/official VM/cache outputs match,
+no raw failure was relabeled. A later actual0.25 clock-hold failure exposed
+packet-clamped game time; existing native render realtime/double pose stamps fix
+it without changing game/input clocks. Exact predecessor fails new source control.
+Verbatim published P1139 code retained. Final attempt6 retook all runtime cases;
+all14prior native preimages matched delivered P1139 before replacement. BothWindows
+28native/official VM/cache outputs match (only14native changed; identicalVM skipped),
 224configs unchanged; guarded exact-QC swap restarted12emptyPi lobbies, no Pi
 native replacement or force. Closed rollback/proofs retained in task artifacts.
 Body ratio is descriptive, not byte-equivalence; roof stub is not geometry proof.
