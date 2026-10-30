@@ -81,7 +81,7 @@ float *pf_cmt;
 float  pf_cs, pf_cs_has;    // 0 Everything, 1 WOS; second table available
 float  pf_cs_picked;        // P1084: the player chose a source; else World of Surf when there is one
 float  pf_cm;               // the kind on show
-float  pf_cm_slide;         // P1122: its switch's knob
+var float pf_cm_slide = 2;     // P1130: All's initial knob position
 float  pf_c_modes;          // the answer split them (a surfd before P853 does not)
 float  pf_rn;
 float  pf_bmap;             // strbuf: a row's map

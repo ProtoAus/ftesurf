@@ -4021,7 +4021,7 @@ def board():
     if request.args.get("cards") is not None:      # P1062: visible map-card batch
         return game_mapcards(request.args.get("cards"), request.args.get("player"), now)
     if request.args.get("completed") is not None:  # P1080: the Maps list's completed sort
-        return game_completed(request.args.get("completed"), now)
+        return game_completed(request.args.get("completed"), now, request.args.get("source"))
     if request.args.get("player") is not None:      # ...and game_player
         return game_player(request.args.get("player"), now)
     if request.args.get("story") is not None:       # Patch 854: see game_story
@@ -7065,11 +7065,15 @@ def _game_player(db, who, now):
     return handle, player
 
 
-def game_completed(who, now):
-    """P1080: every map name the player has a clean main finish on, for the
-    game's completed sort. game_mapcards' `complete`: a ranked run on the build
-    itself, or a Momentum/KSF run on its base map. Unknown player = empty list
-    with player_known false, never "nothing completed"."""
+def game_completed(who, now, source=None):
+    """P1080: clean main finishes; imports cover every variant of their base.
+    P1130: source=wos returns only ranked finishes on the exact build, matching
+    the game's Complete! cards. Omitted source preserves the older union.
+    Unknown player = empty list with player_known false, never "nothing completed".
+    """
+    if source not in (None, "all", "wos"):
+        return fail(400, "bad source")
+    wos = source == "wos"
     who = who or ""
     if who and not re.fullmatch(r"[0-9a-f]{8}|[0-9a-f]{%d}" % WEB_HANDLE_LEN, who):
         return fail(400, "bad player")
@@ -7086,15 +7090,18 @@ def game_completed(who, now):
     except sqlite3.Error as exc:
         log.exception("game completed db error: %s", exc)
         return fail(500, "storage error")
-    variant_base("")                    # refresh the catalogue cache
-    with _maps_lock:
-        of = dict(_variants["of"])
-    done = native | {m for m in imported if of.get(m, m) == m}
-    done |= {k for k, b in of.items() if b in imported}
+    done = set(native)
+    if not wos:
+        variant_base("")                # refresh the catalogue cache
+        with _maps_lock:
+            of = dict(_variants["of"])
+        done |= {m for m in imported if of.get(m, m) == m}
+        done |= {k for k, b in of.items() if b in imported}
     return Response(game_json(
         {"v": 1, "t": now, "requested_player": who,
          "who": handle if player is not None else "", "player_known": player is not None,
-         "track": 0, "leg": 0, "style": "clean", "maps": sorted(done)}),
+         "track": 0, "leg": 0, "style": "clean", "source": "wos" if wos else "all",
+         "maps": sorted(done)}),
         status=200, mimetype="application/json")
 
 

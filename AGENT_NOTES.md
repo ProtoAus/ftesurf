@@ -1,5 +1,24 @@
 # AGENT_NOTES.md
 
+## Stats-kind UI continuation (P1130, 30 Oct 2026)
+
+- Recovered Claude P1122 from `lexmaps-20261029T0440Z/qc` commit 95fa50bd;
+  original root untouched. Continuation: `uiresume-20261030T041556Z`.
+- Home kind applies to figures and tiers; Full stats inherits it and re-asks cached
+  records on a kind/source mismatch. Existing `ui_stats` probe includes rows-kind,
+  source and first map. Show all resets only in m_init, not ui_create_open;
+  fixtures use session-only `ui_showall 1`, not the retired saved cvar.
+- Lex's final decision: Complete! is exact-build WOS main/clean only. Keep imported
+  times visible; request completed sort with `&source=wos` and validate its echo.
+  Omitted-source API still returns the legacy native/imported union.
+- `tools/test_stats_modes.py --progs <NoDeploy dir> --out <NEW owned path>` runs
+  a synthetic service and actual menu clicks, cached reopen, full source/kind,
+  sort and two launch controls. It takes p840's shared lock and refuses peer games.
+  Artifacts `ui-r2` pass; removed-refresh `ui-cache-control` fails at Bhop row identity.
+  32 API card checks, profile filters, pool, tiers and zone-index suites pass.
+  Two independent read-only reviews and cross-examination resolved Show all lifetime;
+  no delayed-response race test claimed. No movement/native/plugin/Build change.
+
 ## Finish costs and harness traps (P1116, 29 Oct 2026)
 
 - tools/p1116finish.py measures a lobby finish with a real-sized journal (`in_journal_synth`

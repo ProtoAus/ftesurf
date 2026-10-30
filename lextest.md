@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1130 Stats-kind switches and WOS-only completion (pending human check)
+
+Recovered and finished Claude's P1122. Automated actual-menu clicks verify home
+Surf/Bhop/All, the full Stats switch and Everything source, cached Bhop reopen,
+completed-first WOS sorting, Show all session persistence and reset next launch.
+Synthetic API checks and paired missing-refresh control pass; screenshots inspected.
+Not human acceptance: check the filters with your real account. Imported-only
+Momentum/KSF times should still show, but only a WOS main finish on that build
+should paint Complete! or move it into the completed-first group. Confirm Show all
+stays on while visiting Home, then defaults off after quitting and relaunching.
+
 ## P1128 neutral map speed inputs/status (pending human check)
 
 Both independent reviews clear; deployed bothWindows/all12Pi 2026-10-29 21:46UTC.

@@ -173,7 +173,7 @@ def runtime(a):
             client.stdin.flush()
         log = L.Log(gd / "logs/tiers.log")
         time.sleep(12)
-        for line in ('menu_restart', 'set lobby_dir ""', 'set ui_maps_showall 1', 'ui_strip_test screen create'):
+        for line in ('menu_restart', 'set lobby_dir ""', 'ui_showall 1', 'ui_strip_test screen create'):
             send(line)
             time.sleep(0.5)
         assert log.wait(r"ui_strip_test: screen create", 10), "create command did not act"

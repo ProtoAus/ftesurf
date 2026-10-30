@@ -26,8 +26,13 @@ void() MStats_Open =
 		pf_cs = !mh_source;         // home's 0 is World of Surf, the page's 1
 		pf_cs_picked = TRUE;
 	}
+	pf_sw_slide = !pf_cs;           // P1130: opening must not animate from another source
 	Profile_Stale(60);
 	Profile_TierShow(-2);           // opens on the results, as hud_player does
+	// P1130: changing the home switch must also invalidate a cached profile's rows.
+	// A different player will be asked by Profile_Show; do not ask for their old rows here.
+	if (!strcmp(pf_who, MH_Me()) && pf_rf_ok)
+	if (pf_rf_cm != pf_cm || pf_rf_cs != pf_cs) Profile_RowsAsk();
 	menu_screen = SCREEN_STATS;
 };
 
@@ -103,4 +108,7 @@ void() MStats_Probe =
 {
 	print(sprintf("ui_stats: screen %g who %s state %g name %s runs %g source %g\n", menu_screen == SCREEN_STATS,
 	              (ms_pf_other == "") ? strcat("me:", MH_Me()) : ms_pf_other, pf_state, pf_name, pf_n, pf_cs));
+	print(sprintf("ui_stats: kind %g rows-kind %g rows-source %g rows %g/%g waiting %g first %s\n",
+	              pf_cm, pf_rf_cm, pf_rf_cs, pf_rn, pf_total, pf_rows_wait,
+	              pf_rn ? bufstr_get(pf_bmap, 0) : "--"));
 };

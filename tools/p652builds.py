@@ -133,7 +133,7 @@ def main():
         send('set lobby_dir "http://127.0.0.1:%d"' % hport)
         # No mapmeta in the rig, so no row has a picture or (to the list's
         # mind) a tier: without this the picker files them under "show all".
-        send("set ui_maps_showall 1")
+        send("ui_showall 1")
         time.sleep(1)
 
         # A: the shipped list.

@@ -6,7 +6,8 @@ float mh_wos_done, mh_all_done, mh_total, mh_tiers_wos, mh_tiers_all, mh_buffers
 // P1122: per kind (0 all, 1 surf, 2 bhop, as cl_profile's pf_cm); the tier tables hold MH_TSLOTS
 // slots a kind. mh_mode is the kind on show; mh_modes_has, the reply carried the kinds.
 #define MH_TSLOTS 17
-float mh_mode, mh_modes_has, mh_mode_slide;
+float mh_mode, mh_modes_has;
+var float mh_mode_slide = 2;         // P1130: All's initial knob position, not Surf's
 float mh_kwos[3], mh_kall[3], mh_kof[3], mh_ktimes[3], mh_kwr[3], mh_kwrc[3];
 float mh_lcols, mh_lrows, mh_lheight, mh_lshown, mh_tcols, mh_trows, mh_tshown;
 float mh_lbottom, mh_tbottom, mh_progress_top;
@@ -476,7 +477,7 @@ float mh_sw_slide;
 
 void(vector p, vector size) MH_Stats =
 {
-	local float target, i, tier, done, total, known, n, rows, cols, cw, th, gy, compact, fy, fh, cy, ph, gr, gc, countw, barw, x;
+	local float target, i, tier, done, total, known, n, rows, cols, cw, th, gy, compact, fy, fh, cy, ph, gr, gc, countw, barw, x, srcw, kindw;
 	local vector rp, ts;
 	local string s, label, value, note;
 	mh_ssize = size; mh_tshown = mh_tbottom = 0;
@@ -515,8 +516,11 @@ void(vector p, vector size) MH_Stats =
 	}
 	// P1104: one switch (it was two bracketed buttons). World of Surf needs the native figures,
 	// Everything an answer.
-	x = 16 + 220;
-	if (Profile_Switch("home_stats_src", [16, cy], [220, compact ? 22 : 26], "World of Surf", "Everything",
+	// P1130: keep both switches inside the card even at narrow virtual viewports.
+	srcw = mh_modes_has ? min(220, floor((size_x - 40) * 0.56)) : min(220, size_x - 32);
+	kindw = min(168, size_x - 40 - srcw);
+	x = 16 + srcw;
+	if (Profile_Switch("home_stats_src", [16, cy], [srcw, compact ? 22 : 26], "World of Surf", "Everything",
 	                   mh_source, 12, &mh_sw_slide))
 	{
 		if (mh_source && mh_native) { mh_source = 0; mh_source_picked = TRUE; }
@@ -526,15 +530,16 @@ void(vector p, vector size) MH_Stats =
 	// P1122 (Lex): Surf / Bhop / All, for every figure and tier row below.
 	if (mh_modes_has)
 	{
-		i = Profile_Switch3("home_stats_kind", [x, cy], [168, compact ? 22 : 26], "Surf", "Bhop", "All",
+		i = Profile_Switch3("home_stats_kind", [x, cy], [kindw, compact ? 22 : 26], "Surf", "Bhop", "All",
 		                    Profile_KindPlace(mh_mode), 12, &mh_mode_slide);
 		if (i >= 0) mh_mode = Profile_PlaceKind(i);
-		x = x + 168 + 12;
+		x = x + kindw + 12;
 	}
 	else
 		x = x + 4;
 	s = mh_state == 2 ? sprintf("%g / %g maps", mh_source ? mh_kall[mh_mode] : mh_kwos[mh_mode], mh_kof[mh_mode]) : "-- / -- maps";
-	sui_text([x, cy + 6], '12 12 0', ui_fit_text(s, size_x - x - 16, '12 12 0'), COL_DIM, 1, 0);
+	if (size_x - x - 16 > 0)
+		sui_text([x, cy + 6], '12 12 0', ui_fit_text(s, size_x - x - 16, '12 12 0'), COL_DIM, 1, 0);
 	target = mh_source ? mh_tiers_all : mh_tiers_wos;
 	n = MH_TierCount(target, mh_mode);
 	// P1104: as many columns (up to 4) as it takes for the rows to clear the progress boxes;

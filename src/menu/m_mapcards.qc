@@ -120,14 +120,14 @@ float(float reqid, float code, string body) MCard_Reply =
 	return TRUE;
 };
 
-// P1105: the player has a clean main finish of `name` (MCard_Draw's `done`), held now.
+// P1130 (Lex): Complete! means a clean WOS main finish on this build, not an import.
 float(string name) MCard_Complete =
 {
 	local float row;
 	row = MCard_Index(name);
 	if (!strcmp(bufstr_get(mcr_data, row), "")) return FALSE;
 	tokenize(bufstr_get(mcr_data, row));
-	return stof(argv(5)) && stof(argv(4)) && Mlb_Stoi(argv(1)) > 0i;
+	return stof(argv(5)) && Mlb_Stoi(argv(0)) > 0i;
 };
 
 /*
@@ -187,12 +187,13 @@ void(vector pos, float width, float compact, string name, string id) MCard_Draw 
 		wrwos = Mlb_Stoi(argv(2)); wrall = Mlb_Stoi(argv(3));
 		done = stof(argv(4)); known = stof(argv(5));
 	}
-	done = (known && done && alltime > 0i);
+	done = (known && wos > 0i);          // P1130: same rule as MCard_Complete
 	stale = (have && (gettime(0) - stof(bufstr_get(mcr_seen, row)) >= 60 || !MF_Online()));
 	if (done)
 		status = stale ? "(cached)" : "";       // P1105: the card's backdrop says Complete!
 	else if (!MF_Online()) status = have ? "Cached records" : "Records offline";
 	else if (!strcmp(mcr_who, "") || (have && !known)) status = "Link Steam for your times";
+	else if (have && alltime > 0i) status = stale ? "No WOS finish yet  (cached)" : "No WOS finish yet";
 	else if (have) status = stale ? "No clean main finish  (cached)" : "No clean main finish";
 	else status = mcr_failed ? "Records unavailable" : "Loading records...";
 	sui_text(pos, '12 12 0', status, done ? SUI_THEME_GOOD : COL_DIM, 1, 0);
@@ -210,7 +211,7 @@ void(vector pos, float width, float compact, string name, string id) MCard_Draw 
 	}
 };
 
-// P1080: the player's completed main maps (the cards' `complete`, all at once)
+// P1130: the player's WOS completed main maps (the cards' mine_wos, all at once)
 // for the Maps list's sort. State 1 known, 2 player unknown, 3 unavailable, 0 not yet.
 float mcd_req, mcd_sent, mcd_next, mcd_at, mcd_state, mcd_count, mcd_zoned;
 hashtable mcd_set;
@@ -245,7 +246,7 @@ void() MCard_DoneWant =
 	if (!strcmp(mcd_who, "")) { MCard_DoneState(2); return; }
 	if (mcd_at)
 	if (gettime(0) - mcd_at < 60) return;
-	mcd_req = Sty_Get(strcat("completed=", uri_escape(mcd_who)));
+	mcd_req = Sty_Get(strcat("completed=", uri_escape(mcd_who), "&source=wos"));
 	mcd_sent = gettime(0);
 	if (!mcd_req) { mcd_next = gettime(0) + 30; if (mcd_state != 1) MCard_DoneState(3); }
 };
@@ -266,6 +267,7 @@ float(float reqid, float code, string body) MCard_DoneReply =
 	n = json_get_length(maps);
 	if (json_get_float(json_find_object_child(root, "v")) != 1
 	    || strcmp(json_get_string(json_find_object_child(root, "requested_player")), mcd_who)
+	    || strcmp(json_get_string(json_find_object_child(root, "source")), "wos")
 	    || strcmp(json_get_string(json_find_object_child(root, "style")), "clean")
 	    || json_get_float(json_find_object_child(root, "track")) != 0
 	    || json_get_float(json_find_object_child(root, "leg")) != 0

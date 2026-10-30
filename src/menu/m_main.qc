@@ -537,7 +537,7 @@ float  ms_applied_srcf;
 /*
   ROADMAP 10: how complete each map's data is, one DQ_* per row (ui_data_load),
   which ui_refilter orders by before the tier.  A BARE map is hidden from an
-  empty search unless the "show all" chip is lit (saved as ui_maps_showall).
+  empty search unless the session-only "show all" chip is lit.
 */
 #define DQ_FULL     0           // a picture, a tier, and playable or downloadable
 #define DQ_PICTURE  1           // a picture, short of a tier or a way to play it
@@ -3705,7 +3705,7 @@ void() ui_create_open =
 	MF_Open();
 	registercvar("ui_maps_modes", ftos(FS_MODES_DEFAULT), 32);
 	ms_modes = ui_modes_sane(cvar("ui_maps_modes"));
-	ms_showall = FALSE;             // P1122: off at every launch (it was saved as ui_maps_showall)
+	// P1130: m_init resets Show all at launch, not on same-session navigation.
 	registercvar("ui_maps_compsort", "0", 32);      // P1080, same rules
 	ms_compsort = bound(0, rint(cvar("ui_maps_compsort")), 2);
 
@@ -7433,7 +7433,7 @@ float(float width, float y) ui_map_filters =
 			if (group == 1) sui_tooltip_for(id, f ? "Show/hide this gametype." : "Every gametype; again for none, to pick one alone.", 2);
 			if (group == 2) sui_tooltip_for(id, "Momentum Mod's maps, or KSF's (CS:S) maps: by catalogue, not by folder.", 2);
 			if (group == 3) sui_tooltip_for(id, "Also show maps without zones or a picture. Search always finds them.", 2);
-			if (group == 4) sui_tooltip_for(id, "Your clean main finishes (WOS, Momentum Mod or KSF), tier order within each. Needs a linked account online; while unknown the list stays in tier order.", 2);
+			if (group == 4) sui_tooltip_for(id, "Your clean main finishes in WOS, tier order within each. Needs a linked account online; while unknown the list stays in tier order.", 2);
 			if (!sui_is_released(id)) continue;
 			if (group == 0) ms_tier = f;
 			else if (group == 1) { next = ui_modes_click(ms_modes, f); if (next != ms_modes) ui_modes_set(next); }
@@ -8067,6 +8067,7 @@ void() m_init =
 	registercommand("ui_menu_probe");
 	registercommand("ui_home_probe");
 	registercommand("ui_home_kind");        // P1122: what the Surf / Bhop / All switch sets, for arms
+	registercommand("ui_showall");          // P1130: session-only show-all setter for UI fixtures
 	registercommand("ui_stats_open");
 	registercommand("ui_profile_probe");
 	registercommand("ui_maplist");
@@ -8682,6 +8683,12 @@ float(string cmd) m_consolecommand =
 	if (!strcmp(argv(0), "ui_home_probe"))
 	{
 		MH_Probe();
+		return TRUE;
+	}
+	if (!strcmp(argv(0), "ui_showall"))
+	{
+		if (argv(1) != "") ui_showall_set(stof(argv(1)) != 0);
+		print(sprintf("ui_showall: %g\n", ms_showall));
 		return TRUE;
 	}
 	if (!strcmp(argv(0), "ui_home_kind"))

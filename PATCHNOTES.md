@@ -21,6 +21,11 @@
 
 ## next
 
+### P1130 Stats and WOS completion
+- Full stats refreshes its records when reopened after a home Surf / Bhop / All change. Switches start in the right position and fit narrow home panels.
+- Show all stays selected during the same session, but starts off next launch.
+- Complete! and completed-first sorting count only your clean main finishes in World of Surf, on that map build. Momentum and KSF times stay visible without marking it complete here.
+
 ### P1129 Airborne gravity carry status
 - Carried gravity effects keep the right run status when they affect airborne movement. Gravity amounts, retry speed and normal map-authored effects are unchanged.
 

@@ -100,13 +100,18 @@ def main():
     row('surf_e', 'community', me, 30000)    # community/held/TAS/bonus only: not complete
     row('surf_e', 'ranked', me, 30000, style='tas')
     row('surf_e', 'momentum', me, 30000, track=2)
+    row('surf_z_css', 'ranked', me, 31000)  # native completion never leaks to its base
     db.commit(); db.close()
     import time
     S._variants.update(at=time.monotonic(), ports={},
-                       of={'surf_a_css': 'surf_a', 'surf_b_css': 'surf_b', 'surf_a': 'surf_a', 'surf_b': 'surf_b'})
+                       of={'surf_a_css': 'surf_a', 'surf_b_css': 'surf_b', 'surf_z_css': 'surf_z',
+                           'surf_a': 'surf_a', 'surf_b': 'surf_b'})
 
-    def completed(token):
-        response = c.get('/api/board', query_string={'completed': token})
+    def completed(token, source=None):
+        query = {'completed': token}
+        if source is not None:
+            query['source'] = source
+        response = c.get('/api/board', query_string=query)
         return response.status_code, response.get_json()
 
     code, data = completed(who)
@@ -114,15 +119,26 @@ def main():
           (code, data['v'], data['player_known'], data['who'], data['style'], me in str(data)),
           (200, 1, True, who, 'clean', False))
     check('native, import-only and a variant complete through its base KSF run; no other player',
-          data['maps'], ['surf_a', 'surf_a_css', 'surf_b', 'surf_b_css', 'surf_d'])
-    names = 'surf_a,surf_a_css,surf_b,surf_b_css,surf_c,surf_d,surf_e,surf_missing'
-    cards = {r['map']: r['complete'] for r in get(names)['cards']}
-    check('completed list equals each card\'s complete flag',
-          {n: n in data['maps'] for n in names.split(',')}, cards)
+          data['maps'], ['surf_a', 'surf_a_css', 'surf_b', 'surf_b_css', 'surf_d', 'surf_z_css'])
+    names = 'surf_a,surf_a_css,surf_b,surf_b_css,surf_c,surf_d,surf_e,surf_missing,surf_z,surf_z_css'
+    cards = {r['map']: r for r in get(names)['cards']}
+    check('legacy completed list equals each card\'s all-source complete flag',
+          {n: n in data['maps'] for n in names.split(',')},
+          {n: r['complete'] for n, r in cards.items()})
+    check('explicit all preserves the legacy union', completed(who, 'all')[1]['maps'], data['maps'])
+    code, data = completed(who, 'wos')
+    check('P1130 source is echoed and only exact-build ranked main finishes count',
+          (code, data['source'], data['maps']), (200, 'wos', ['surf_a', 'surf_a_css', 'surf_z_css']))
+    check('WOS completed sort agrees with WOS card times, not imported complete flags',
+          {n: n in data['maps'] for n in names.split(',')},
+          {n: r['mine_wos'] is not None and r['mine_wos'] > 0 for n, r in cards.items()})
+    check('bad completed source is refused', completed(who, 'ksf')[0], 400)
+    check('empty completed source is refused', completed(who, '')[0], 400)
     for token in ('', 'f'*12, '1234abcd'):
-        code, data = completed(token)
-        check('unknown player is unknown, not "nothing completed": '+repr(token),
-              (code, data['player_known'], data['who'], data['maps']), (200, False, '', []))
+        for source in (None, 'wos'):
+            code, data = completed(token, source)
+            check('unknown player is unknown, not "nothing completed": '+repr((token, source)),
+                  (code, data['player_known'], data['who'], data['maps']), (200, False, '', []))
     check('malformed completed token refused',
           c.get('/api/board', query_string={'completed': 'bad/one'}).status_code, 400)
     print('PASS map cards:', checks, 'checks; synthetic DB only')
