@@ -3217,6 +3217,20 @@ cannot be used, ask; do not silently scatter copies elsewhere.
 
 ## Build
 
+### Native version and historical fixture qualification — P1141, 30 Oct 2026
+
+An incremental native rebuild compiled the new normalized-takeoff controls but
+retained the old P1139 startup stamp. New acting checks and source/binary hashes
+bound that candidate; they did not qualify its version metadata. A final tagged
+full build supplied the correct stamp. Derive it from the actual build script:
+its revision count includes the historical +29 offset, not just Git's count.
+
+A retained ARM legacy driver also named an older phase. Read and hash the actual
+helper and its input closure before invoking it; do not infer qualification from
+a familiar filename. Reuse the same qualified driver through its supported label
+seam, preserving original controls and failed transport/reader receipts. Successful
+native arms do not need repeating merely to correct a downstream reader.
+
 ### Native CLI receipts: startup banners precede game logging — P1131, 2026-10-30
 
 A standalone `pm_selftest` game log can contain every passing check and shutdown
