@@ -1424,6 +1424,7 @@ void(entity e, float count, float ticket) SV_TASQueueSteps =
 #include "sv_tasinput.qc"
 #include "sv_tasplan.qc"
 #include "sv_tasproject.qc"
+#include "sv_tasshare.qc"
 #include "sv_tasoptimize.qc"
 #include "sv_taslegal.qc"
 

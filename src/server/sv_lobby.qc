@@ -2033,10 +2033,12 @@ float(string s, float n) SV_RecIsHex;       // sv_timer.qc
 float(string g) Lobby_GuidOk;               // below, beside Lobby_RunKey
 
 float(float reqid, float code, string body) VM_SVReply;
+float(float reqid, float code, string body) SV_TASShareReply;
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
 	if (reqid >= ACCT_ID_BASE)
 	{
+		if (SV_TASShareReply(reqid, responsecode, resourcebody)) return;
 		if (VM_SVReply(reqid, responsecode, resourcebody)) return;
 		if (Social_Reply(reqid, responsecode, resourcebody)) return;
 		Account_Reply(reqid, responsecode, resourcebody);

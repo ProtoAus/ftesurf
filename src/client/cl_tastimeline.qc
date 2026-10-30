@@ -73,6 +73,8 @@ float(float argc, float seat) TASProject_ConsoleCommand =
 		}
 		line = strcat(line, " ", w);
 	}
+	if (argv(1) == "project" && (argv(2) == "share" || argv(2) == "open"))
+		return TASShare_ConsoleCommand(argc,seat);
 	if (argv(1) == "project" && argv(2) == "load")
 		tr_tasload_at = cltime;     // P1087: its load is another run's line (Trail_TASGo)
 	localcmd(strcat(line, "\n"));
