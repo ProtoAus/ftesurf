@@ -3896,6 +3896,19 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 `ftesurf/*.dat`, `*.lno`, `src/defs/*.qc`, `ftesurf/ftesurf.cfg` (auto-saved
 archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
+### Native selftest preconditions: zero friction is load-bearing (P1135)
+
+The carrier controls in `PMSrc_TestBankStartGravity` clear the whole `pmove_t`,
+including `surfacefriction`. Their direct `PMSrc_AirMove` path does not run the
+categorization that would restore friction. `PMSrc_AirAccelerate` multiplies its
+acceleration by that zero. A proposed ambient-input failure was therefore false:
+a callsite-only nonzero forward/side-input control passed all checks, and source
+inspection confirmed no intervening friction write. The probe was reverted; no
+product hardening was needed. Preserve a falsified prediction rather than invent
+a failing control or change code merely to satisfy a review comment. Conversely,
+a nonzero-input control alone does not prove acceleration acted: set and observe
+all necessary fixture preconditions when acceleration is the acceptance claim.
+
 ## Conventions
 
 - P1120 exact flags observation: `%g` rounds large flag words and can print an
