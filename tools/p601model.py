@@ -7,6 +7,7 @@ import re
 from PIL import Image, ImageChops
 import p600input as transport
 from p598build import ROOT
+from native_test_paths import add_native_paths, resolve_native_paths
 
 ARMS = ('absent','drawonly','inputonly','scale1','scale2')
 
@@ -100,9 +101,7 @@ def grade(rig):
 
 if __name__ == '__main__':
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--fte',type=Path,default=Path('C:/msys64/home/Lex/fteqw-imgui-input'))
-    p.add_argument('--engine',type=Path,default=Path('C:/msys64/home/Lex/fteqw-imgui-input/engine/release/fteqw64.exe'))
-    p.add_argument('--server',type=Path,default=Path('C:/msys64/home/Lex/fteqw-imgui-input/engine/release/fteqwsv64.exe'))
+    add_native_paths(p)
     p.add_argument('--old-engine',type=Path,default=ROOT/'rig/p600-input-gmbbkb_b/drawonly/ftesurf64.exe')
     p.add_argument('--input-engine',type=Path,default=ROOT/'rig/p600-input-gmbbkb_b/scale1/ftesurf64.exe')
     p.add_argument('--progs',type=Path,default=Path('C:/FTESurf/ftesurf/qwprogs.dat'))
@@ -115,5 +114,6 @@ if __name__ == '__main__':
         errors=grade(a.rig)
         for s in errors: print('FAIL',s)
         print('failed',len(errors)); raise SystemExit(bool(errors))
+    resolve_native_paths(p, a, source=not bool(a.plugin))
     raise SystemExit(transport.run(a,fixture='p601model.qc',config=cfg,grader=grade,prefix='p601-model-',
                                   arms=ARMS,engines={'inputonly':a.input_engine}))

@@ -14,6 +14,7 @@ import time
 
 from p590bridge import sha
 from p598build import build, ROOT
+from native_test_paths import add_native_paths, resolve_native_paths
 from test_ui_modern import make_map
 
 ARMS = ('legacy', 'native1', 'native2', 'absent', 'oldplugin', 'oldengine')
@@ -390,9 +391,7 @@ def grade(rig):
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--fte', type=Path, default=Path('C:/msys64/home/Lex/fteqw-imgui-input'))
-    p.add_argument('--engine', type=Path, default=Path('C:/msys64/home/Lex/fteqw-imgui-input/engine/release/fteqw64.exe'))
-    p.add_argument('--server', type=Path, default=Path('C:/msys64/home/Lex/fteqw-imgui-input/engine/release/fteqwsv64.exe'))
+    add_native_paths(p)
     p.add_argument('--qc-artifacts', type=Path)
     p.add_argument('--grade', type=Path)
     p.add_argument('--plugin', type=Path)
@@ -410,6 +409,8 @@ if __name__ == '__main__':
     p.add_argument('--font-fallback', action='store_true', help='expect older scoreboard provider to cover non-default sizes')
     p.add_argument('--out', type=Path, help='owned task-root output directory')
     a = p.parse_args()
+    if not a.grade:
+        resolve_native_paths(p, a, source=not bool(a.plugin))
     if not a.grade and a.qc_artifacts is None: p.error('--qc-artifacts is required for runtime')
     if (a.font or a.dense) and a.life: p.error('font/dense and lifecycle gates must run separately')
     if a.font_fallback and not a.font: p.error('--font-fallback requires --font')

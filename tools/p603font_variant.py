@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import shutil
+from native_test_paths import add_native_paths, resolve_native_paths
 
 
 def create(fte, out):
@@ -38,7 +39,8 @@ def create(fte, out):
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--fte', type=Path, default=Path('C:/msys64/home/Lex/fteqw-imgui-input'))
+    add_native_paths(p, client=False, server=False)
     p.add_argument('--out', type=Path, required=True)
     a = p.parse_args()
+    resolve_native_paths(p, a, client=False, server=False)
     print(create(a.fte.resolve(), a.out.resolve()))

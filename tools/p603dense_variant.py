@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import shutil
+from native_test_paths import add_native_paths, resolve_native_paths
 
 
 def create(fte, out, site='plugins/ui_imgui/scores.inc', old='(m.count-base)/9 > 24',
@@ -32,6 +33,8 @@ def create(fte, out, site='plugins/ui_imgui/scores.inc', old='(m.count-base)/9 >
 
 if __name__ == '__main__':
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--fte',type=Path,default=Path('C:/msys64/home/Lex/fteqw-imgui-input'))
+    add_native_paths(p, client=False, server=False)
     p.add_argument('--out',required=True,type=Path)
-    a=p.parse_args(); print(create(a.fte.resolve(),a.out.resolve()))
+    a=p.parse_args()
+    resolve_native_paths(p, a, client=False, server=False)
+    print(create(a.fte.resolve(),a.out.resolve()))

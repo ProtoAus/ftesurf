@@ -21,6 +21,7 @@ import tempfile
 import time
 
 from p603scores import seed
+from native_test_paths import add_native_paths, resolve_native_paths
 from p590bridge import sha
 from test_ui_modern import make_map
 from PIL import Image
@@ -259,8 +260,7 @@ def run(a):
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--engine', type=Path, default=Path('C:/msys64/home/Lex/fteqw-imgui-input/engine/release/fteqw64.exe'))
-    p.add_argument('--server', type=Path, default=Path('C:/FTEQuake/fteqwsv64.exe'))
+    add_native_paths(p)
     p.add_argument('--qc-artifacts', type=Path)
     p.add_argument('--plugin', type=Path)
     p.add_argument('--out', type=Path)
@@ -276,6 +276,7 @@ if __name__ == '__main__':
         errors = grade(a.rig)
         for e in errors: print('FAIL', e)
         print('failures', len(errors)); raise SystemExit(bool(errors))
+    resolve_native_paths(p, a, source=False)
     if a.qc_artifacts is None or a.plugin is None or a.out is None:
         p.error('run requires --qc-artifacts, --plugin and --out')
     raise SystemExit(run(a))
