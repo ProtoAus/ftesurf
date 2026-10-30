@@ -334,6 +334,10 @@ inputs, closed natural finish, bounded resources and owned-child cleanup. A fres
 finish and four acting HOLD controls qualify its current 15 ms fixture profile, not canonical
 map-corpus coverage or production promotion. The approved runtime registry, authenticated
 queue, limits and TAS-only board writer remain 6.3; public tab/credits remain 6.4.
+The committed composite retaining P1133 passes both native platform gates (100 named
+recent checks plus older checks, 60 unchanged physics rows each); its fresh Pi CLI
+finish again consumes exactly 342 run inputs and reaps both peers. Deployment and
+queue/board acceptance are separate, not inferred from these operator checks.
 6.3 surfd `/api/tas/submit` (a signed revision whose re-simulation finishes) -> queue with
 per-submission tick caps -> Pi verifier -> a `tas` style written only by the verifier, as
 importers write momentum/ksf; /api/run keeps refusing TF_TAS.
