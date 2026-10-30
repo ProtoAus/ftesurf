@@ -21,6 +21,9 @@
 
 ## next
 
+### P1129 Airborne gravity carry status
+- Carried gravity effects keep the right run status when they affect airborne movement. Gravity amounts, retry speed and normal map-authored effects are unchanged.
+
 ### P1128 Neutral map speed inputs
 - Neutral map speed inputs no longer make a clean run unranked. Real speed effects keep their existing run status and movement.
 

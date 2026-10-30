@@ -2641,6 +2641,7 @@ void(entity t, string param) SV_IOAddOutput =
 		local float beforegrav, aftergrav;
 		beforegrav = t.gravity ? t.gravity : 1;
 		t.gravity = stof(v);
+		SV_BankGravitySnapshot(t);
 		aftergrav = t.gravity ? t.gravity : 1;
 		if (aftergrav != beforegrav)
 			SV_BankAffect(t);
@@ -7408,6 +7409,7 @@ void() trigger_gravity_touch =
 		if (SV_DevOn())
 			dprint(sprintf("trigger_gravity %s: gravity %g persist '%s'\n", self.model, self.gravity, self.persist));
 	other.gravity = self.gravity;
+	SV_BankGravityBind(other, bp, ba, bb);
 	newg = other.gravity;
 	if (!newg) newg = 1;
 	if (oldg != newg)
@@ -7442,6 +7444,7 @@ void(entity p) SV_GravityFrame =
 		if (SV_DevOn())
 			dprint(sprintf("trigger_gravity %s: left, gravity restored\n", p.vbsp_grav_trig.model));
 		p.gravity = 0;
+		SV_BankGravityBind(p, p.bank_grav_reset_player, p.bank_grav_reset_attempt, p.bank_grav_reset_bad);
 		p.vbsp_grav_trig = world;
 		if (oldg != 1)
 			SV_BankCauseAffect(p, p.bank_grav_reset_player, p.bank_grav_reset_attempt, p.bank_grav_reset_bad);

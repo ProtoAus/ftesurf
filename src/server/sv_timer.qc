@@ -14628,6 +14628,7 @@ void(entity e, float z) SV_TimerTryArm =
 			if (SV_DevOn())
 				dprint(sprintf("gravity: %s reset at the start (was %g)\n", e.netname, e.gravity));
 		e.gravity = 0;
+		SV_BankGravityBind(e, world, 0i, FALSE);
 		e.vbsp_grav_trig = world;
 		SV_BankGravityResetClear(e);
 	}

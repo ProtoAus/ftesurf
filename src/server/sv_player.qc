@@ -171,6 +171,7 @@ void() PutClientInServer =
 	// nothing in any cvar to explain it.  Zero means one on both sides
 	// (pm_source.c, gamemovement.cpp:3113), so clearing is the correct reset.
 	self.gravity = 0;
+	SV_BankGravityBind(self, world, 0i, FALSE);
 	self.vbsp_grav_trig = world;      // Patch 865: no trigger_gravity reset owed
 	SV_BankGravityResetClear(self);
 	SV_MomProgressReset(self);        // Patch 869: progress and onehops

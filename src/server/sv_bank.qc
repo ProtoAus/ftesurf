@@ -24,6 +24,24 @@ float bank_ctx_bad, bank_ctx_depth;
 void(entity e) SV_TimerPractice;
 float(entity e) SV_BankSourceTaint;
 
+// P1129: native RAM only; never add this provenance to saved entity fields.
+void(entity body, entity source, int attempt, float bad) bank_gravity_source = #0;
+
+void(entity body, entity source, int attempt, float bad) SV_BankGravityBind =
+{
+	if (strcmp(body.classname, "player")) return;
+	if (!checkbuiltin(bank_gravity_source)) return;
+	bank_gravity_source(body, source, attempt, bad);
+};
+
+void(entity body) SV_BankGravitySnapshot =
+{
+	if (bank_ctx_depth)
+		SV_BankGravityBind(body, bank_ctx_player, bank_ctx_attempt, bank_ctx_bad);
+	else
+		SV_BankGravityBind(body, world, 0i, FALSE);
+};
+
 // P1125: an owed gravity reset keeps the activation that admitted its touch.
 void(entity body) SV_BankGravityResetClear =
 {
@@ -137,4 +155,10 @@ void(entity body) SV_BankAffect =
 {
 	if (bank_ctx_depth)
 		SV_BankCauseAffect(body, bank_ctx_player, bank_ctx_attempt, bank_ctx_bad);
+};
+
+// Native invokes this after demonstrated use of the actual selected cache.
+void(entity body, entity source, int attempt, float bad) SV_BankGravityUse =
+{
+	SV_BankCauseAffect(body, source, attempt, bad);
 };
