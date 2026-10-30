@@ -264,7 +264,7 @@ def runtime_manifest(fixture, server, client, plugin, mp, gamemode):
     for p in selected:
         if not p.is_file() or p.is_symlink() or not p.resolve().is_relative_to(game):
             raise ValueError('missing or linked fixture asset: ' + str(p))
-        assets['ftesurf/' + p.relative_to(game).as_posix()] = {'path': str(p.resolve()), 'sha256': filehash(p)}
+        assets['ftesurf/' + p.relative_to(game).as_posix()] = {'path': str(p), 'sha256': filehash(p)}
     native = {}
     for name, path in [('server', server), ('client', client), ('plugin', plugin)]:
         p = Path(path).resolve()

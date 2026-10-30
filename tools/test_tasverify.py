@@ -394,6 +394,25 @@ class Runtime(unittest.TestCase):
         alias.rmdir()
         v.validate_runtime(runtime, 'bhop_eazy')
 
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'native directory-link case control')
+    def test_linked_parent_retains_lexical_case_fence(self):
+        game, unused = self.fixture()
+        (game / 'cfg/maps').rename(game / 'rules')
+        (game / 'cfg/maps').symlink_to('../rules', target_is_directory=True)
+        source = self.root / 'asset'
+        runtime = v.runtime_manifest(self.root / 'fixture', source, source, source, 'bhop_eazy', 'surf')
+        self.assertEqual(runtime['assets']['ftesurf/cfg/maps/map_bhop_eazy.cfg']['path'],
+                         str(game / 'cfg/maps/map_bhop_eazy.cfg'))
+        v.validate_runtime(runtime, 'bhop_eazy')
+        alias = game / 'cfg/MAPS'; alias.mkdir()
+        (alias / 'map_bhop_eazy.cfg').write_bytes(b'case alias')
+        with self.assertRaisesRegex(v.Held, 'DEPENDENCY_CASE_ALIAS'):
+            v.validate_runtime(runtime, 'bhop_eazy')
+        with self.assertRaisesRegex(v.Held, 'DEPENDENCY_CASE_ALIAS'):
+            v.runtime_manifest(self.root / 'fixture', source, source, source, 'bhop_eazy', 'surf')
+        (alias / 'map_bhop_eazy.cfg').unlink(); alias.rmdir()
+        v.validate_runtime(runtime, 'bhop_eazy')
+
     @unittest.skipUnless(sys.platform.startswith('linux'), 'native case-sensitive filesystem controls')
     def test_uppercase_mdl_extension_still_has_physics_absence_witness(self):
         game, unused = self.fixture()
