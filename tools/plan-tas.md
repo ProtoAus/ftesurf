@@ -293,6 +293,10 @@ contract; tools/install_tasrevd.py installs it, root). Four review rounds; the l
 the round-4 reviewer's fuzzers (800 arrival-order trials against a brute-force reading of the
 contract, 300 statement/cache trials). LIVE 29 Oct 00:48Z at https://play.proto.bar/api/tasrev/
 (unit ftesurf-tasrevd, source 5352dbae); no game client uses it yet (5.5).
+P1119 (30 Oct): the rollback-checked upgrade tool is published. Its final Pi suite passes
+20 tests and catches all 23 retained mutations; a clean exact-commit upgrade dry-run passes.
+The live root apply still needs the owner's sudo; until then the service remains on 5352dbae
+and does not have the version 3 credit parser. This does not block isolated 6.2 research.
 5.5 Client: share, browse, open a downloaded revision as a project.
 
 6.1 A project from the legal start (no base save): the run's start zone and spawn, so a
@@ -304,10 +308,24 @@ start box and back across the start, by replay from the canonical placement (mea
 placement), saved from a session and loaded by placing and replaying (the clock must start on
 `startat`); a session's saves are one revision line; tasrevd supply-checks a v3 child and never
 joins a v3 line to a base save's. BACKLOG "TAS legal start".
-6.2 Headless re-simulation WITH the map's own world: a dedicated server drives the tape on a
-bot client (tas_tape needs a connected client today), triggers and teleports run live, not
-copied from rows; output `VERIFY-TAS PASS ticks N finish` or HOLD/REFUSE with why. Pinned
-binary/progs/map; only the Pi's result counts (Windows/Pi physents have differed).
+6.2 Headless re-simulation WITH the map's own world: a dedicated server drives the tape using
+a real headless client (P1095; the bot input path is not equivalent). Triggers and teleports
+run live, not copied from rows; output `VERIFY-TAS PASS ticks N finish` or HOLD/REFUSE with why.
+Pinned binary/progs/map; only the Pi's result counts (Windows/Pi physents have differed).
+Further measured 30 Oct, using the retained P1110 progs and owned bhop_eazy fixture, not the
+current live fleet or canonical map zones:
+- A Windows-made v3 project cold-loads on the Pi exactly (80 input rows, startat 32). Moving
+  startat to 31 is refused; altering its head checkpoint reports divergence at row 80.
+- Extend that prefix with forward/jump inputs: the real END region (fixture x400..432)
+  finishes the timer at run tick 342 / legal row 374 and closes a fault-free recording.
+  All 342 recorded run inputs match the project after startat; changing the first input
+  or shifting startat fails that comparison. The remaining 1126 supplied rows are unused:
+  verification must allow a natural finish before the supplied head.
+- An ordinary project load is NOT a verifier verdict. At that finish its editor driver
+  reports `the engine stopped the input tape`, since it expects the entire chunk to end
+  while the timer is running. Neither this expected abort nor a successful editor load
+  is `VERIFY-TAS PASS`. Still unbuilt: a bounded production runner which binds the admitted
+  bytes to the fresh native run/finish and emits its own result, plus the queue/board path.
 6.3 surfd `/api/tas/submit` (a signed revision whose re-simulation finishes) -> queue with
 per-submission tick caps -> Pi verifier -> a `tas` style written only by the verifier, as
 importers write momentum/ksf; /api/run keeps refusing TF_TAS.
