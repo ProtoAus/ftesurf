@@ -18,6 +18,22 @@
   32 API card checks, profile filters, pool, tiers and zone-index suites pass.
   Two independent read-only reviews and cross-examination resolved Show all lifetime;
   no delayed-response race test claimed. No movement/native/plugin/Build change.
+- Deployed source `03693b98` on 30 Oct: backend master2185181 at
+  `/srv/nvme/agent-work/uiresume1130-20261030T0445Z`, generation OPEN, old
+  lexmaps-gen1106 CLOSED/retained. Only surfd.py changed in the exact81 runtime;
+  schema24 unchanged. All7 import stubs,4 cron routes and momrequests read back.
+  Operator installed the sandbox drop-in at05:32Z. Both Windows installs and
+  all12 lobbies now hold the tested progs (05:43-05:45Z); .prev rollback kept.
+  Fresh client downloaded exact CSQC `3564f2b459272e6f`, drew9cols/type14,
+  no QC errors; screenshot inspected. Postflight05:47Z verifies hashes81,
+  bound master/root, fences, launch routes, fresh12-row directory and WOS/legacy API.
+- Handoff traps preserved in artifacts/backend: Type=simple `systemctl start`
+  returns before gunicorn writes its pidfile. First attempt rolled back; fixed
+  readiness waits for health AND matching systemd/pidfile/cwd (3 acting controls).
+  The resumed handoff finished all bindings and closed the old root, then a final
+  instantaneous12-lobby assertion failed. Do not relabel that exit1 as success
+  or rerun swaps: fixed-generation read-only postflight completed the missing
+  gates, with12 fresh rows. Original logs and rollback bytes remain retained.
 
 ## Finish costs and harness traps (P1116, 29 Oct 2026)
 

@@ -2,6 +2,10 @@
 
 ## P1130 Stats-kind switches and WOS-only completion (pending human check)
 
+Deployed both Windows installs, backend and all12 lobbies on 30 Oct05:43-05:45UTC.
+Exact installed hashes match the tested build; a fresh live-lobby client downloaded
+that CSQC and drew9cols/type14 without QC errors. This is not human acceptance.
+
 Recovered and finished Claude's P1122. Automated actual-menu clicks verify home
 Surf/Bhop/All, the full Stats switch and Everything source, cached Bhop reopen,
 completed-first WOS sorting, Show all session persistence and reset next launch.
