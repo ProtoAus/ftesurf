@@ -3469,6 +3469,14 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+**P1139 corpus-domain calibration (30 Oct2026).** The existing reader and all
+527 historical run/paired-view bytes matched their retained control, but one new
+legacy v5 recording without a `begin` was already present before deployment.
+The actual CLI checked 528 runs and reported 336 faulty recording/view items,
+not the historical 335. Preserve that result and the added input; do not call the
+whole corpus a no-increase pass, repair unrelated player data, or rerun a passed
+CLI merely to fix a reader assertion. Attribute changed-domain evidence narrowly.
+
 - Existing input handlers can use exact think-function identity as their capability
   gate. Preserve that public identity when adding callback context; an unrelated
   generic thunk can silently disable ordinary accepted inputs. Prove the actual
@@ -7483,6 +7491,18 @@ script rather than passing it as an argument, where `ps` would show it.
   we already hold for the same run.
 
 ## Pi operations (public lobbies)
+
+**P1139 forward preservation (30 Oct2026).** A legitimate new native feature,
+not a repeat P1136 receipt-repair restart, used the existing strict no-force
+paired promoter at an empty boundary. Before any restart, retain ALL current
+part payloads against the exact prepared inventory, including unknown completion
+states; verify archive bytes on Pi and off-box. Four parts/1,426,033 bytes had no
+open part FDs in this run. The new update and cold-client check preserved all
+35,714 old protected entries, configs and original new actor epochs. Keep the
+original strict postflight, short execution-only sweep lock and exact `.prev`;
+no blanket parts exclusion, restoration, extra healthy restart or old-failure
+waiver. This proves this no-force boundary, NOT a future active-writer/forced
+snapshot contract or recovery of the historical missing bytes.
 
 **P1136 forced-native preservation limit (30 Oct2026).** Explicit preapproved
 `-PiForce` restarted all12 once with three clients connected; exact new runtime,
