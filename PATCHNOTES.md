@@ -21,6 +21,9 @@
 
 ## next
 
+### P1135 Airborne gravity carry status with horizontal boosts
+- Carried gravity effects keep their run status during more airborne horizontal boosts. Movement, boost amounts and normal map-authored effects are unchanged.
+
 ### P1134 TAS verification groundwork
 - Operator checks can replay legal-start TAS projects in a fresh native server. Ordinary run rankings are unchanged; TAS submission and board integration are still in development.
 
