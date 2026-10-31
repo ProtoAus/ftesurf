@@ -7527,6 +7527,25 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+**P1143 native-only delivery and caller binding (31 Oct2026).** Runtime VMs had
+advanced independently of the stable QQ test control. Keep those ACTUAL installed
+programs byte-identical; do not ship an older control or recopy peer work to get a
+native feature out. Refresh and archive actual native/pre-prev bytes, then guard
+only the exact native destinations. Both Windows native installs and all12 empty
+lobbies passed strict unchanged-VM/config/backend/old-data postflight and a fresh
+cold-client check. All four current parts were captured/read back off-box before
+any restart; this is not recovery of the historical P1136 missing payloads.
+A retained remote promoter was an OLD archive, not the qualified local program
+previously streamed on stdin. Bind the actual source bytes and directory/phase at
+the invocation boundary; do not overwrite historical transactions or silently
+switch programs. Compile a script before transport; pass serialized variables
+instead of broad placeholder replacement (OWNER also occurs in OWNER.md).
+Exact install-parent membership, not a /ftesurf/ substring, separates native roots
+from gamedirs. Read the producer's receipt schema: successful activate already
+writes its strict result in activation.json, not a guessed verification.json.
+Fix read-only callers against the saved success; never repeat a healthy restart
+or weaken preservation checks to repair reader/path failures.
+
 **P1139 forward preservation (30 Oct2026).** A legitimate new native feature,
 not a repeat P1136 receipt-repair restart, used the existing strict no-force
 paired promoter at an empty boundary. Before any restart, retain ALL current
