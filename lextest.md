@@ -18,6 +18,16 @@ not changed. Markbeaton54's account was uniquely resolved. The owner's Developer
 assignment is pending their linked Steam display name (no account named Lex was
 found); do not assign an account by guesswork. No human confirmation received.
 
+## P1158 — finite-stamina verifier status (pending human acceptance)
+
+Native-only installed in both Windows installs and all12 lobbies. This extends
+an existing verifier status through finite-stamina jumps; it does not change
+physical movement. When convenient, join a lobby, make a few ordinary jumps and
+perform a practice return/rejoin. Confirm movement and the existing roof/duck
+camera still feel normal. No owner confirmation received. Automated cold boards
+and native cross-platform checks do not establish human feel or ranked finishes;
+concurrent newer-program cold acceptance remains separate. See tools/p1158-gravity.md.
+
 ## P1156 — slow-practice roof/duck follow-up (owner confirmed)
 
 The owner isolated the remaining issue to bhop_goldsrc2 save14, moving forward

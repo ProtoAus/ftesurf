@@ -78,14 +78,32 @@ that tag/pin or rebuild the artifacts for prose. These checks use the stable
 source-8ed test fixture (actual QW program hash begins `fcb5b5a7`), NOT the actual
 current installed program cohort, human play or ranked acceptance.
 
-## Remaining delivery gates
+## Native-only delivery — 31 Oct 2026 UTC
 
-Guarded native-only publication/promotion and actual-current-program runtime
-checks remain pending. Runtime programs must be preserved from their actual
-current identity; the stable test fixture is not permission to deploy it. Pi
-work requires fresh recorder-part namespace/union, actor/FD and on/off-box member
-preservation checks at the actual execution boundary. Historical failed
-preservation checks are not waived or recovered by this source change.
+The exact frozen seven Windows images are installed in BOTH installs, with all
+14 approved P1156 predecessors retained in `.prev` and every member of the
+28-file rollback archive read back. Immediate program/LNO/config/data guards
+remain unchanged. NanoPi server/HL2 are installed in all12 positively empty
+lobbies, each restarted once without force. Every current native-namespace UNION
+suffix-part archive member was individually verified ON and OFF box before
+canonical staging or restart. Strict13 original actors, no open recorder FDs,
+part identities and on/off-box archive authority are checked JIT under the short
+sweep lock. All old data, programs/configs and backend files/unit/master birth
+remain unchanged at the transaction boundary. No programs or backend are shipped.
 
-No backend operation, program promotion, Build/release, human feel, ranked-finish
-or full consumer-bank completion is claimed here.
+Fresh copies of BOTH installed native clients naturally exit after downloading
+the then-served CSQC, drawing the9-column/type14 board and reporting no QC errors.
+Screenshots were read: empty kitsune/terms unaccepted, NOT human feel or ranking.
+The first cold harness passes; the second original harness FAILS because its
+mutable local expected CS advanced during concurrent program deployment. The
+original post-cold SAME12actor gate also REFUSES changed lobby process epochs.
+A separate read-only diagnosis retains both failures: native/predecessor pairs
+remain ours, old Pi data and all part identities/bytes remain exact, current13
+actors have no recorder FDs, and backend files/unit/master birth are unchanged.
+Both Windows program/LNO sets and the Pi QW/CS programs changed; the writer is not
+attributed by this lane. No repeated client, healthy restart, rollback, data
+restore or backend operation is used to manufacture a pass. Acceptance of the
+newer programs remains separate. Source builds, qualification and installation
+are complete for P1158; the broader bank and owner/ranked acceptance stay open.
+Historical preservation failures are not recovered or waived. No backend or
+program promotion, Build or release is performed by this lane.
