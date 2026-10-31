@@ -1,12 +1,18 @@
 # AGENT_NOTES.md
 
-## Forward camera/main integration (P1144, in progress)
+## Forward camera/main integration (P1144, combined qualification passed)
 
 P1143 later replaced the earlier qualified P1138 Windows delivery. Merge the
 camera into shared main rather than shipping another parallel-only build. Retain
 all published TAS sharing, collector-source work and additive-rise native status;
-no backend rollout or policy weakening is part of this task. Fresh FULL/runtime
-and strict preimage/config/data preservation are pending; no final delivery claim.
+no backend rollout or policy weakening is part of this task. Frozen native7d35d5914
+and QC1da2243e pass FULL/source9/actual headers/two fresh whole-feature bounded
+reviews and all actual attempt7 camera/flag cases. Current-source passive observer
+is a renamed original UpdateView plus unchanged read-only suffix; production
+client/input code remains intact. Half-speed OFF43.94% frozen pairs -> ON0%;0.1,
+0.25,0.75, normal/restored1 all0%. Only main delivery-doc commits merged afterward;
+compiled source trees stay exact. Strict actual preimage/config/data preserving
+delivery is pending, not claimed. Known P2s and input/geometry/human limits remain.
 
 ## Slow-practice camera delivery (P1138, historical 30 Oct 2026)
 
@@ -7559,6 +7565,25 @@ script rather than passing it as an argument, where `ps` would show it.
   we already hold for the same run.
 
 ## Pi operations (public lobbies)
+
+**P1143 native-only delivery and caller binding (31 Oct2026).** Runtime VMs had
+advanced independently of the stable QQ test control. Keep those ACTUAL installed
+programs byte-identical; do not ship an older control or recopy peer work to get a
+native feature out. Refresh and archive actual native/pre-prev bytes, then guard
+only the exact native destinations. Both Windows native installs and all12 empty
+lobbies passed strict unchanged-VM/config/backend/old-data postflight and a fresh
+cold-client check. All four current parts were captured/read back off-box before
+any restart; this is not recovery of the historical P1136 missing payloads.
+A retained remote promoter was an OLD archive, not the qualified local program
+previously streamed on stdin. Bind the actual source bytes and directory/phase at
+the invocation boundary; do not overwrite historical transactions or silently
+switch programs. Compile a script before transport; pass serialized variables
+instead of broad placeholder replacement (OWNER also occurs in OWNER.md).
+Exact install-parent membership, not a /ftesurf/ substring, separates native roots
+from gamedirs. Read the producer's receipt schema: successful activate already
+writes its strict result in activation.json, not a guessed verification.json.
+Fix read-only callers against the saved success; never repeat a healthy restart
+or weaken preservation checks to repair reader/path failures.
 
 **P1139 forward preservation (30 Oct2026).** A legitimate new native feature,
 not a repeat P1136 receipt-repair restart, used the existing strict no-force
