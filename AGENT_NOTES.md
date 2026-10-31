@@ -3491,6 +3491,19 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+**Reader transport and clock fields — P1143, 31 Oct 2026.** Expanding 528 absolute
+recording paths into Windows CreateProcess argv failed with WinError206 before
+the reader started. Invoke the SAME existing `reccheck.main` with its exact
+explicit runs-only `sys.argv` list in-process instead; do not fall back to the
+default saves expansion or rerun an already passed reader suite. Preserve the
+original launch failure and prove the input set/raw bytes/domain unchanged.
+
+A socket fixture's printed SSQC `frametime` is not the mover command duration.
+An overbroad identity-row comparison included that live clock field and failed
+after all native arms had passed. Read the actual producer, retain its observed
+values separately, and compare the specified raw/cache/input/body/status fields;
+do not repeat native arms, invent fixed cadence, or redate immutable proof.
+
 **P1139 corpus-domain calibration (30 Oct2026).** The existing reader and all
 527 historical run/paired-view bytes matched their retained control, but one new
 legacy v5 recording without a `begin` was already present before deployment.

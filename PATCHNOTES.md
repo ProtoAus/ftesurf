@@ -20,6 +20,7 @@
 -->
 
 ## next
+- Practice classification now covers another supported jump setting; movement is unchanged.
 - TAS: Share saved legal-start projects and browse shared revisions and contribution ranges for the current map.
 - TAS: Open a shared revision as a new local TAS project without replacing existing projects or recovery files. Shared TAS inputs are never ranked human runs.
 
