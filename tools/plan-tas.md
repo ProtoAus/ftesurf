@@ -307,9 +307,13 @@ browser, bounded informational credit view and protected download/deferred norma
 project load. Retained ancestors can be shared explicitly by hash; there is no
 implicit recursive publication. Base-save versions remain host-local and are
 refused by this portable game workflow. Native transfer/file/lifetime controls
-pass; independent final review, publication/deployment and human acceptance are
-separate pending gates (tasrev.md, lextest.md). This adds no verified time or human
-admission, and does not complete the 6.3/6.4 queue/board work.
+pass and final independent namespace review is clear. Reviewed source QC d182bf39 /
+native2ddb4fe1 is published; both Windows installs and all12 Pi lobbies received
+the exact paired artifacts on 30-31 Oct. Strict old-data and fresh live-download
+checks pass ([delivery](p1140-delivery.md), [contract](../tasrev.md)). Real-account,
+physical-signing and human UI acceptance remain pending in lextest.md. This adds
+no verified time or human admission, and does not complete the 6.3/6.4 queue/board
+work.
 
 6.1 A project from the legal start (no base save): the run's start zone and spawn, so a
 verifier has nothing to trust but the map, the rules and the inputs.

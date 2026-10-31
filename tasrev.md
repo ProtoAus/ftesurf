@@ -77,7 +77,10 @@ override accepts only `http://127.0.0.1:<port>/api/tasrev`, decimal port 1..6553
 other values fall back to the fixed public service. `tas shared status` reports
 the resolved endpoint without issuing a request. Native fixture signatures and
 synthetic credit-boundary DTOs are not real-account/physical-key or human UI
-acceptance; see lextest.md. Source publication and actual deployment are separate.
+acceptance; see lextest.md. Reviewed source and exact paired artifacts are now
+published/deployed to both Windows installs and all12 Pi lobbies (30-31 Oct2026);
+[deployment and limits](tools/p1140-delivery.md). This is development-fleet delivery,
+not a new public release or verifier/board qualification.
 
 ## Credit
 
