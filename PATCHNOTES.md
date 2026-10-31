@@ -21,6 +21,9 @@
 
 ## next
 
+### P1158 Gravity carry status through fatigued jumps
+- Carried gravity effects keep their run status through more supported fatigued jumps. Jump height, movement and normal map-authored effects are unchanged.
+
 ### P1156 Smoother ducking under roofs in slow practice
 - Keep the camera's movement and eye height together while ducking, unducking or clearing a low roof at slow practice speeds. Normal movement and run status are unchanged.
 

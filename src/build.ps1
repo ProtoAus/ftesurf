@@ -92,8 +92,9 @@ param(
     [switch]$Run,
     [switch]$NoDeploy,
 
-    # Parallel make jobs for every engine/plugin make invocation.  The engine
-    # Makefile has no job count of its own and build.ps1 used to call make bare,
+    # Parallel make jobs for engine targets. Plugin packaging stays serial:
+    # concurrent MSYS ZIP metadata writes reproduced temporary-file failures.
+    # The Makefile has no job count and build.ps1 used to call make bare,
     # so a full rebuild compiled 213 objects one at a time.  8 is a good match
     # for the box this is developed on; the link step also picks the jobs up,
     # because the release link is -flto=jobserver and the jobserver hands the
@@ -307,7 +308,7 @@ if ($Engine) {
     # Bare `plugins-rel` dies on an unrelated ffmpeg target (plugins/Makefile:241),
     # so NATIVE_PLUGINS is always explicit.
     Step "make plugins-rel (hl2 cod box3d ode ui_imgui)"
-    & $Make "-j$Jobs" -C $EngineDir plugins-rel FTE_TARGET=win64 NATIVE_PLUGINS="hl2 cod box3d ode ui_imgui" @nativeRevision
+    & $Make '-j1' -C $EngineDir plugins-rel FTE_TARGET=win64 NATIVE_PLUGINS="hl2 cod box3d ode ui_imgui" @nativeRevision
     if ($LASTEXITCODE -ne 0) { throw "plugins-rel failed" }
 
     # ------------------------------------------------------- deploy ---------
