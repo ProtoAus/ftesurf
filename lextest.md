@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1155 — slow-practice roof/duck follow-up (installation pending)
+## P1156 — slow-practice roof/duck follow-up (installation pending)
 
 The owner isolated the remaining issue to bhop_goldsrc2 save14, moving forward
 under a roof ONLY below speed1. The render-only fix pairs camera feet and eye
@@ -12,7 +12,7 @@ After installation, retest that same save below1: move under the roof, duck and
 unduck, then clear it. Compare steady1 and restore1 while moving. Expected: no
 repeated camera-history snaps; hard roof clipping remains. Please report any
 remaining judder and the speed used. Installation/cold-check status is tracked
-in tools/p1155-roof.md; no owner-test pass is claimed yet.
+in tools/p1156-roof.md; no owner-test pass is claimed yet.
 
 ## P1151 clean return — delivered; human feel / start-bank acceptance pending
 
@@ -26,7 +26,7 @@ Earlier refused guards are retained; they did not trigger extra restarts.
 
 Owner feedback: ordinary movement is very smooth; ducking/unducking and clearing
 low roofs still judder. The owner subsequently confirmed ONLY below1 and supplied
-bhop_goldsrc2 save14. P1155 above addresses the render-history flush; the exact
+bhop_goldsrc2 save14. P1156 above addresses the render-history flush; the exact
 roof feel is not yet owner-confirmed. Native real stairs/low/prop-ceiling feel
 and full closed bank/death/retry remain human checks.
 

@@ -1,4 +1,8 @@
-# P1155 — paired slow-practice roof/duck presentation
+# P1155 — paired slow-practice roof/duck presentation (HISTORY, never installed)
+
+Superseded by P1156 after the actual installed native advanced to P1152. The
+compatibility-cohort proposal below did not proceed: its before-byte guard caught
+that advancement. All proofs/failures remain retained; do not install this image.
 
 Claimed after fetching both main branches and checking tracked headings plus
 untracked pNNN claims: maximum1154. Earlier private source-review labels1153

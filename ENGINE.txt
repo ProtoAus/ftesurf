@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   d1bc17875c0e3f0b1f83a1ec805ac74fc7549f18
+commit   e8745fe2e77e4ccf167187b748b68a6f5a2f0950
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,10 +24,10 @@ commit   d1bc17875c0e3f0b1f83a1ec805ac74fc7549f18
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-1155
-patch    1155
-# Patch 1155: pair slow-practice feet and duck eye height; zero-floor Source posture history with unchanged roof cap (engine render-only). Existing P1151 servers/programs remain compatible; no Pi activation needed.
-# The frozen P1155 camera image uses d1bc17875 above and intentionally does not activate pending P1152. Current main preserves P1152 source; its independent rollout remains separate.
+tag      patch-1156
+patch    1156
+# Patch 1156: preserve now-installed P1152 status while shipping the unchanged paired slow-practice roof/duck camera. Original P1155 was never installed; advanced-byte guard retained. No additional physical mover, input, runtime QC, API or format change; no Pi activation.
+# Patch 1155: initial qualified paired feet/eye-height camera snapshot; superseded before installation by P1156 after another task installed P1152. Original tag/history retained.
 # Patch 1152: finite pre-cost recovered-stamina identity also admits eligible ordinary standing takeoff in the existing gravity-use observer; stock crouch and fatigue remain excluded. Preserve P1151 and current programs; no physical mover, capture/API/format/flag/tier, qcbuild or release change. Platform qualification, review and installation are recorded separately.
 # Patch 1151: paired server-confirmed clean return from slow practice at an eligible grounded start; old attempts close before reset, native client/server carry is fenced, and missing acknowledgements remain practice. No mover-version or recording-format change. Human and delivery acceptance are separate.
 # Patch 1148: finite normalized takeoff status accepts an exactly neutral pre-cost stamina multiplier; stock/non-unit contexts remain excluded. Preserve P1147 camera/spatial-reset source and current runtime VMs; no mover, capture/API/format/flag/tier, qcbuild or release change. Integrated clean-tag qualification/deployment are recorded separately.
