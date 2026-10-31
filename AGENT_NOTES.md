@@ -1,6 +1,6 @@
 # AGENT_NOTES.md
 
-## Forward camera/main integration (P1144, combined qualification passed)
+## Forward camera/main integration (P1144, delivered 31 Oct 2026)
 
 P1143 later replaced the earlier qualified P1138 Windows delivery. Merge the
 camera into shared main rather than shipping another parallel-only build. Retain
@@ -11,8 +11,24 @@ reviews and all actual attempt7 camera/flag cases. Current-source passive observ
 is a renamed original UpdateView plus unchanged read-only suffix; production
 client/input code remains intact. Half-speed OFF43.94% frozen pairs -> ON0%;0.1,
 0.25,0.75, normal/restored1 all0%. Only main delivery-doc commits merged afterward;
-compiled source trees stay exact. Strict actual preimage/config/data preserving
-delivery is pending, not claimed. Known P2s and input/geometry/human limits remain.
+compiled source trees stay exact. Both Windows installs now hold the exact frozen
+native/program cohort (28 destinations,20 writes, paired predecessors retained);
+all15,473 old data/config entries including224 configs unchanged at delivery.
+Final readback retains a full-tree mismatch only for data/mapscan.log: the normal
+six-hour scheduled scan ran successfully02:07Z and rewrote it02:08Z. All other
+15,472 old entries, all224 configs and all28 installed targets remain exact; the
+failed full-tree comparator is retained, never excluded/restored into a pass.
+The existing no-force QC-only Pi block delivered to all12 positively empty lobbies, one restart
+each. Pi native/plugins/backend unchanged. All36,512 old protected Pi entries and
+all four closed recording parts (1,426,033bytes) remain exact; the parts were
+archived/read back on-box AND off-box before restarting, never restored to pass.
+A fresh isolated client fetched the expected CSQC, drew9cols/type14, exited0 and
+logged no client QC error. Empty board/unaccepted terms is NOT human/ranked
+acceptance. Post-cold guards retain all old bytes/parts and the same12 native/
+plugin epochs. Supplemental schema/initial UDP/directory refusals are retained;
+finish-only read-only recovery never repeated a healthy restart or swap. Preserve
+the integrated camera in later deliveries. Known P2s and input/geometry/human
+limits remain; no release/Build/backend promotion was added.
 
 ## Slow-practice camera delivery (P1138, historical 30 Oct 2026)
 
