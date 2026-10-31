@@ -3356,6 +3356,17 @@ a familiar filename. Reuse the same qualified driver through its supported label
 seam, preserving original controls and failed transport/reader receipts. Successful
 native arms do not need repeating merely to correct a downstream reader.
 
+### Literal-source receipt hash domains — P1148, 31 Oct 2026
+
+A literal-source invocation can record raw `cl_pred.c` bytes while its receipt
+hashes the producer's universal-newline `read_text()` result. Those hashes differ
+for CRLF input without a source or coverage change. Read the actual producer and
+saved invocation before comparing them or guessing a tool path. After a clean
+tool worktree is retired, its exact published blob plus unchanged raw inputs can
+retain valid prior literal coverage; changed camera/tool inputs require their
+own current proof. Do not rerun passed tests to hide a wrong-path/raw-versus-
+decoded reader assumption. Inspect proof JSON saved before a later assertion.
+
 ### Native CLI receipts: startup banners precede game logging — P1131, 2026-10-30
 
 A standalone `pm_selftest` game log can contain every passing check and shutdown
