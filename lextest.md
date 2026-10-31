@@ -1,5 +1,24 @@
 # lextest.md — things waiting on a human
 
+## Activity / Local TAS checkpoint (01a192ea — NOT installed)
+
+After isolated runtime qualification and a separately approved safe deployment:
+check two maps, a reconnect, native spectator mode, main/bonus/stage starts and
+stage retries on one Steam-linked profile. Rewind/load must not subtract or
+replay counters. Stats currently exclude offline/menu time and shutdown tails
+are best-effort; `PLAYSTATS.md` records the exact limits.
+Check Local retains earlier PBs, separates TAS from clean submissions, and does
+not offer Watch/line on `taslobby` summary rows. A real `replay tas` must still
+select a movement recording. Remote slowmo-only no-rec mirroring is not ready.
+Slowmo-only saves reloaded after clean reset/fresh normal-speed connection still
+lose TAS category (safe practice/cheat exclusion remains); this needs code before
+requesting acceptance of the full saved/segmented TAS workflow.
+For the reported clearance bug, compare a standing and crouched save, ground
+and air, duck held before versus pressed after loading, held save-lock/release,
+server feet/hull versus camera, and final roof clearance over a real dedicated
+socket. Extracted native edge tests are not acceptance of that symptom.
+Also check repeated rewind → save → load → finish keeps the prefix and joins.
+
 ## P1151 clean return — delivered; human feel / start-bank acceptance pending
 
 Both Windows installs and all 12 Pi lobbies now have the qualified P1151 native

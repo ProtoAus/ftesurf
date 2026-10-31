@@ -4290,7 +4290,7 @@ void() Watch_Sample =
 		              (TF_PRACTICE | TF_SHADOW | TF_SEGMENT | TF_CHEAT | TF_TAS | TF_BANKTAINT);
 	else if (rec_wt_tag == RT_SHADOW)
 		rec_wt_flags = TF_PRACTICE | TF_SHADOW;
-	else if (rec_wt_tag == RT_CHEAT)
+	else if (rec_wt_tag == RT_CHEAT || FS_TagTAS(rec_wt_tag))
 		// Unreachable today -- nothing writes this name without also writing a
 		// v4 header -- and kept in step with cl_scores.qc's identical fallback
 		// so the panel and the board cannot disagree about one file.
@@ -4780,6 +4780,7 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	if (strstrofs(path, "_pb.rec") >= 0)     rec_wt_tag = RT_PB;
 	if (strstrofs(path, "_shadow.rec") >= 0) rec_wt_tag = RT_SHADOW;
 	if (strstrofs(path, "/cheat.rec") >= 0)  rec_wt_tag = RT_CHEAT;
+	if (strstrofs(path, "_tas.rec") >= 0)    rec_wt_tag = RT_TAS;
 
 	Watch_Scan();
 
@@ -6769,7 +6770,7 @@ float(string cmd) Watch_ConsoleCommand =
 	  lobby row has.  The leaderboard already refuses the same click in the same
 	  words; this is the console door to it.
 	*/
-	else if (FS_TagFromName(a) == RT_LOBBY)
+	else if (FS_TagSummary(FS_TagFromName(a)))
 	{
 		print("^3replay:^7 that time was set on a lobby -- no replay was recorded\n");
 		return TRUE;

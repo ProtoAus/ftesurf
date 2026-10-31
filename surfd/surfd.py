@@ -44,6 +44,7 @@ import hidupload        # signed, bounded raw journals; never a run verdict
 import accounts         # Steam accounts: schema 12 and its routes
 import social           # Steam friends; authenticated lobby-only capabilities
 import viewmodel        # bounded account setup; additive schema 23
+import playstats        # real connected time and attempts; additive schema 25
 import zonefit          # bounded BSP entity/model reader for legacy timers
 import ksftopup         # bounded, board-scoped requests; no network in HTTP
 import ksfprofile       # resolved profile demand, paced by the same importer
@@ -461,7 +462,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 25
 KSF_UNBOUND_SQL = """
 CREATE TABLE IF NOT EXISTS ksf_unbound (
  map TEXT NOT NULL, track INTEGER NOT NULL, leg INTEGER NOT NULL,
@@ -1649,6 +1650,12 @@ def migrate():
             conn.execute("PRAGMA user_version=24")
             conn.commit()
             version = 24
+
+        if version < 25:
+            conn.executescript(playstats.SQL)
+            conn.execute("PRAGMA user_version=25")
+            conn.commit()
+            version = 25
 
         verdict_metrics(conn)
         gone = accounts.links_now(conn)
@@ -6584,6 +6591,11 @@ def _people_build(db):
         rows[r["player"]] = {"n": r["n"], "maps": r["maps"], "last": r["last"],
                              "ranked": r["ranked"], "mom": r["mom"],
                              "ksf": r["ksf"], "name": r["name"] or ""}
+    # Activity exists before a first finish; those Steam profiles must still
+    # be findable. This adds no board row and no completion/ranking credit.
+    for sid, name in db.execute("SELECT steamid,name FROM accounts a WHERE banned_at=0"
+                               " AND EXISTS(SELECT 1 FROM play_maps p WHERE p.steamid=a.steamid)"):
+        rows.setdefault(sid, dict(n=0, maps=0, last=0, ranked=0, mom=0, ksf=0, name=name))
     # An account is listed under its Steam name, not under whichever of its
     # rows was filed last (an imported row carries another site's alias).
     for sid, raw in db.execute("SELECT steamid, name FROM accounts WHERE name <> ''"):
@@ -6599,7 +6611,7 @@ def _people_build(db):
         by_handle[h] = player
         e["who"] = h
         e["key"] = web_plain(e["name"]).lower()
-        e["src"] = ("ranked" if e["ranked"] else
+        e["src"] = ("ranked" if e["ranked"] or not e["n"] else
                     "momentum" if e["mom"] else "ksf")
         out.append(e)
     out.sort(key=lambda e: (-e["n"], e["key"]))
@@ -7260,6 +7272,7 @@ def game_player(raw, now):
         return Response(game_json(
             {"v": 1, "t": now, "who": handle, "name": me["name"], "on": bsp.get(on, on),
              "av": 1 if player in have else 0, "total": len(mine),
+             "playtime": playstats.profile(db, player, on),
              "rows": [{"track": r["track"], "leg": r["leg"], "tr": r["tier"], "style": r["style"],
                        "ms": r["millis"], "when": r["submitted"], "r": rk, "of": of}
                       for r, rk, of in mine[:GAME_PROFILE_MAX]]}),
@@ -7284,6 +7297,7 @@ def game_player(raw, now):
          "av": 1 if player in have else 0, "completion": comp,
          "completion_wos": _completion_wos(ranked, main_maps), "wos": _wos_figures(ranked),
          "ksf_sync": ksfprofile.status(db, player),
+         "playtime": playstats.profile(db, player),
          "rows_source": rows_source, "rows_only": rows_only, "rows_mode": mode,
          "figs": _profile_figs(ranked),
          "offset": offset, "total": len(picked), "limit": limit, "rows": rows}),
@@ -7439,6 +7453,7 @@ def web_player(handle):
                   "momid": momid[0] if momid else None,
                   "av": 1 if player in pics else 0,
                   "completion": comp, "completion_wos": _completion_wos(ranked, main_maps),
+                   "playtime": playstats.profile(db, player),
                   "ksf_sync": ksfprofile.status(db, player),
                   "offset": offset, "total": len(ranked),
                   "limit": limit, "rows": out}, "max-age=30")

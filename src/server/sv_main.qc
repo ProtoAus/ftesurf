@@ -16,7 +16,10 @@ void() SV_Shutdown =
 
 	p = world;
 	while ((p = findfloat(p, acct_here, TRUE)))
-		Archive_Reset(p);             // map changes do not call ClientDisconnect
+	{
+		PlayStats_Disconnect(p);
+		Archive_Reset(p);
+	}             // map changes do not call ClientDisconnect
 
 	// Patch 382: every spectate ends first -- the park writes `pause` after the
 	// `spec 0`, and a run that is not parked must not arrive on the next map held.
@@ -244,6 +247,7 @@ void() StartFrame =
 	  unless lobby_master names a URL, so a listen server sends nothing.
 	*/
 	Lobby_Heartbeat();
+	PlayStats_Frame();
 	Social_Frame();
 	Account_SelfFrame();            // Patch 1000: private games publish players' own marks
 	VM_SVFrame();

@@ -1064,6 +1064,9 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   distribution of them would be a folder of empty files.
 */
 #define RT_LOBBY     6
+// Tool-assisted completions are a bounded local archive, never clean PBs.
+#define RT_TAS       7
+#define RT_TAS_LOBBY 8   // header-only TAS best, never a replay
 
 /*
   THE RECORDING TERMS, build 22.
@@ -3062,6 +3065,8 @@ string(float tag) FS_TagName =
 	if (tag == RT_PB)     return "pb";
 	if (tag == RT_SHADOW) return "shadow";
 	if (tag == RT_CHEAT)  return "cheat";
+	if (tag == RT_TAS)    return "tas";
+	if (tag == RT_TAS_LOBBY) return "taslobby";
 	if (tag == RT_RUN)    return "run";     // build 48
 	// Build 57, stage T.  No underscore -- see the block over RT_LOBBY, where
 	// that is a requirement of the two readers rather than a style choice.
@@ -3091,6 +3096,8 @@ float(string w) FS_TagFromName =
 	if (w == "pb")     return RT_PB;
 	if (w == "shadow") return RT_SHADOW;
 	if (w == "cheat")  return RT_CHEAT;
+	if (w == "tas")    return RT_TAS;
+	if (w == "taslobby") return RT_TAS_LOBBY;
 	if (w == "last")   return RT_LAST;
 	// Build 48.  Taught to the READER in the same edit that named it, which is
 	// the whole reason this function exists -- the paragraph above is about a
@@ -3147,10 +3154,14 @@ float(string s) FS_IsSample =
 	return FALSE;
 };
 
+float(float tag) FS_TagSummary = { return tag == RT_LOBBY || tag == RT_TAS_LOBBY; };
+float(float tag) FS_TagTAS = { return tag == RT_TAS || tag == RT_TAS_LOBBY; };
+
 float(float tag) FS_TagArchived =
 {
 	if (tag == RT_PB)     return TRUE;
 	if (tag == RT_SHADOW) return TRUE;
+	if (FS_TagTAS(tag))   return TRUE;
 	/*
 	  BUILD 48, and this is the argument the comment below asks a new tag to make.
 

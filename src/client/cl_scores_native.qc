@@ -226,9 +226,10 @@ float(float row, float slot) Scores_NativeToken =
 
 void(float row, float slot) Scores_NativeRow =
 {
-	local float token, ref, tick, usable, line, selected, type, classification;
+	local float token, ref, tick, usable, line, selected, type, classification, replayable;
 	local string name, age, runword, why, replay, lineword, gap, timeword, key;
 	ref = 0;
+	replayable = TRUE;
 	token = Scores_NativeToken(row, slot);
 	gap = "";
 	if (!Scores_IsOnline())
@@ -242,8 +243,10 @@ void(float row, float slot) Scores_NativeRow =
 			if (rec_sb_rowflags[row] > 0) runword = FS_RunKindName(rec_sb_rowflags[row]);
 		why = "";
 		replay = "watch";
-		if (rec_sb_rowtag[row] == RT_LOBBY)
+		if (FS_TagSummary(rec_sb_rowtag[row]))
 		{
+			replayable = FALSE;
+			replay = "no replay";
 			if (rec_sb_rowflags[row] > 0) why = FS_CertWhy(rec_sb_rowflags[row]);
 			if (!strcmp(why, "")) why = "lobby";
 		}
@@ -295,7 +298,7 @@ void(float row, float slot) Scores_NativeRow =
 	Scores_NativeCell(token * 16 + 2, token, 1, 0, timeword);
 	Scores_NativeCell(token * 16 + 3, token, 1, 0, gap);
 	Scores_NativeCell(token * 16 + 4, token, usable ? 2 : 1, 0, name);
-	Scores_NativeCell(token * 16 + 5, token, usable ? 2 : 1, 0, replay);
+	Scores_NativeCell(token * 16 + 5, token, (usable && replayable) ? 2 : 1, 0, replay);
 	Scores_NativeCell(token * 16 + 6, token, 1, 0, age);
 	Scores_NativeCell(token * 16 + 7, token, 1, 0, runword);
 	Scores_NativeCell(token * 16 + 8, token, 1, 0, why);

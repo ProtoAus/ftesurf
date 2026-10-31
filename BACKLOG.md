@@ -1,5 +1,23 @@
 # BACKLOG.md
 
+## Steam activity / TAS / save-load clearance (01a192ea source only)
+
+- Source checkpoint and contract: `PLAYSTATS.md`; task root
+  `C:/FTESurf-worktrees/playstats-01a192ea/`. NOT deployed or owner accepted.
+- Added proven Steam-linked lobby time/map time/attempt counters and profile UI;
+  offline/menu accounting and durable map/process-shutdown tails remain open.
+- Earlier clean PB improvements are retained. Local TAS archive/filter added;
+  remote header-only explicit TAS uses a separate non-replayable namespace.
+  Remote slowmo-only no-rec category transport remains open. Slowmo-only saves
+  also lose TAS category after a clean reset/fresh normal-speed connection;
+  practice/cheat exclusion survives, but the finish falls back to cheat.rec.
+  Additive category provenance across save/rewind/file paths remains open.
+- Server/predicted standing-load duck press edges now match in extracted native
+  controls. Exact airborne height/clearance and held save-lock release still
+  require real dedicated-client comparison; do not mark the reported bug fixed.
+- Real repeated rewind → save → load → finish full-line acceptance remains open;
+  this branch relies on the current prefix/gift implementation, unchanged.
+
 ## Slow-practice camera acceptance (P1147 delivered; coding follow-ups resolved)
 
 - RESOLVED P1147: slow-scale changes rebase at actual last drawn feet; restoring1

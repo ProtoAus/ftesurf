@@ -37,10 +37,16 @@ void(entity e) Social_Clear =
 	forceinfokey(e, "*ahash", "");
 };
 
+void(entity e, string who) PlayStats_Bind;
 void(entity e, string token, string who) Social_Set =
 {
+	if (!SV_RecIsHex(token, 64) || !SV_RecIsHex(who, FS_WHO_IDLEN))
+	{
+		Social_Clear(e);
+		return;
+	}
+	PlayStats_Bind(e, who);
 	Social_Clear(e);
-	if (!SV_RecIsHex(token, 64) || !SV_RecIsHex(who, FS_WHO_IDLEN)) return;
 	e.social_token = strzone(token);
 	e.social_rack = strzone("-1");
 	e.social_here = TRUE;

@@ -1,5 +1,11 @@
 # The engine build this QuakeC requires.
 #
+# Source-only candidate 01a192ea (NOT installed/qualified): paired native branch
+# fix/save-duck-edge-01a192ea resets only the old duck-button latch on a forced
+# stand, both run_forceduck and PM_ApplyPreInput. No ABI/stat/layout changes.
+# Current pin is NOT advanced on extracted-unit evidence: full native/socket
+# save-lock clearance qualification remains open. See PLAYSTATS.md.
+#
 # FTESurf is a mod, and it is not portable to stock FTEQW: the Source movement
 # module (engine/common/pm_source.c) and the hl2 plugin's .phy collision, VTF
 # and VMT work only exist in the fork below.  Bump this file whenever a QC build

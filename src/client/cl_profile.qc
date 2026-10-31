@@ -72,6 +72,10 @@ vector pf_f_scr;                // the screen the field was last drawn on
 string pf_name, pf_handle;
 float  pf_src, pf_n, pf_maps, pf_last, pf_wr, pf_wrc, pf_top10, pf_av, pf_total, pf_t;
 float  pf_bt_ours, pf_bt_mom, pf_bt_ksf;
+float  pf_hasplay, pf_playseconds;
+#define PF_ATTEMPTS 288
+float  pf_on_hasplay, pf_on_playseconds, pf_on_mapseconds, pf_on_an, pf_on_attemptview;
+float *pf_on_attempts;
 float  pf_ksfstate, pf_ksfskip; // 1 pending, 2 checked, 3 bounded/incomplete
 float  pf_c_has, pf_c_done, pf_c_of;   // every map: the "maps finished" figure
 // Maps finished by tier, of every kind (0), surf (1) and bhop (2) alone (P853), PF_CMF floats
@@ -145,6 +149,7 @@ void() Profile_Alloc =
 	pf_ct_bmap = buf_create();
 	pf_on_f = memalloc(sizeof(float) * PF_ONROWS * PF_RF);
 	pf_on_ms = memalloc(sizeof(int) * PF_ONROWS);
+	pf_on_attempts = memalloc(sizeof(float) * PF_ATTEMPTS * 3);
 	pf_cmt = memalloc(sizeof(float) * PF_CMF * 6);
 	pf_fg = memalloc(sizeof(float) * PF_FG);
 	pf_s_sel = -1;
@@ -712,6 +717,9 @@ void(string bdy) Profile_Parse =
 	pf_handle = h;
 	pf_name   = substring(json_get_string(json_find_object_child(root, "name")), 0, PF_TEXT);
 	pf_src    = Profile_Tier(json_get_string(json_find_object_child(root, "src")));
+	c = json_find_object_child(root, "playtime");
+	pf_hasplay = c != 0;
+	pf_playseconds = json_get_float(json_find_object_child(c, "seconds"));
 	pf_t      = json_get_float(json_find_object_child(root, "t"));
 	pf_n      = json_get_float(json_find_object_child(root, "n"));
 	pf_maps   = json_get_float(json_find_object_child(root, "maps"));
@@ -890,6 +898,19 @@ void(string bdy) Profile_OnParse =
 	pf_on_handle = h;
 	pf_on_name = substring(json_get_string(json_find_object_child(root, "name")), 0, PF_TEXT);
 	pf_on_av   = json_get_float(json_find_object_child(root, "av"));
+	row = json_find_object_child(root, "playtime");
+	pf_on_hasplay = row != 0;
+	pf_on_playseconds = json_get_float(json_find_object_child(row, "seconds"));
+	pf_on_mapseconds = json_get_float(json_find_object_child(row, "map_seconds"));
+	rows = json_find_object_child(row, "attempts");
+	pf_on_an = min(PF_ATTEMPTS, json_get_length(rows));
+	for (i = 0; i < pf_on_an; i = i + 1)
+	{
+		row = json_get_child_at_index(rows, i);
+		pf_on_attempts[i * 3] = json_get_float(json_find_object_child(row, "track"));
+		pf_on_attempts[i * 3 + 1] = json_get_float(json_find_object_child(row, "leg"));
+		pf_on_attempts[i * 3 + 2] = json_get_float(json_find_object_child(row, "n"));
+	}
 	n = json_get_float(json_find_object_child(root, "t"));
 	if (n > 0)
 		pf_t = n;                       // Profile_Age's clock, which a breakdown on show reads too
@@ -1707,6 +1728,37 @@ void(vector p, vector sz, float tsz, float hint) Profile_DrawTier =
   bracket: who, then a row a leg.  -> 0, or what was let go of: 1 back, 2 the
   whole profile, 3 + i row i (its track and leg are pf_on_f's).
 */
+string(float seconds) Profile_PlayTime =
+{
+	seconds = max(0, floor(seconds));
+	return sprintf("%gh %02dm %02ds", floor(seconds / 3600), floor(seconds / 60) % 60, seconds % 60);
+};
+
+void(vector p, vector sz, float tsz) Profile_DrawAttempts =
+{
+	local float i, at, rowh;
+	local vector lp;
+	local string s;
+
+	if (pf_on_an <= 0)
+	{
+		sui_text(p, [tsz, tsz], "No recorded attempts on this map yet", SUI_THEME_DIM, 1, 0);
+		return;
+	}
+	rowh = ceil(tsz * 1.9);
+	sui_list_view_begin("pf_attemptrows", p, sz, [sz_x - tsz, rowh], pf_on_an, pf_on_scroll, [0, ceil(tsz * 0.6)]);
+	lp = '0 0 0';
+	for (i = sui_list_item(lp); i > -1; i = sui_list_item(lp))
+	{
+		at = i * 3;
+		s = Profile_Leg(pf_on_attempts[at], pf_on_attempts[at + 1]);
+		sui_text(lp, [tsz, tsz], s, SUI_THEME_TEXT, 1, 0);
+		s = sprintf("%g attempts", pf_on_attempts[at + 2]);
+		sui_text([lp_x + sz_x - tsz - stringwidth(s, TRUE, [tsz, tsz]), lp_y], [tsz, tsz], s, SUI_THEME_DIM, 1, 0);
+	}
+	sui_list_view_end();
+};
+
 float(vector p, vector sz, float tsz, float hint) Profile_DrawOn =
 {
 	local float i, x, y, rowh, pic, act, at, r, chw, chh, games, hot, c1, c2;
@@ -1737,6 +1789,29 @@ float(vector p, vector sz, float tsz, float hint) Profile_DrawOn =
 	pf_on_csz = bs;
 	pf_on_rsz = '0 0 0';
 	y = p_y + pic + hint;
+	if (pf_on_state == PFS_OK && pf_on_hasplay)
+	{
+		s = sprintf("Game playtime: %s   |   Map time: %s (linked lobbies)",
+			Profile_PlayTime(pf_on_playseconds), Profile_PlayTime(pf_on_mapseconds));
+		sui_text([p_x, y], [hint, hint], Chat_Fit(s, sz_x, hint), SUI_THEME_DIM, 1, 0);
+		y = y + hint * 1.8;
+		if (Profile_Chip("pf_showtimes", [p_x, y], [hint * 7, chh], "Times", hint, !pf_on_attemptview))
+		{
+			pf_on_attemptview = FALSE;
+			pf_on_scroll = '0 0 0';
+		}
+		if (Profile_Chip("pf_showattempts", [p_x + hint * 8, y], [hint * 9, chh], "Attempts", hint, pf_on_attemptview))
+		{
+			pf_on_attemptview = TRUE;
+			pf_on_scroll = '0 0 0';
+		}
+		y = y + chh + hint;
+		if (pf_on_attemptview)
+		{
+			Profile_DrawAttempts([p_x, y], [sz_x, max(1, p_y + sz_y - y)], tsz);
+			return act;
+		}
+	}
 	rowh = ceil(tsz * 1.75);
 	Font_Set(ui_font_mono);
 	c1 = ceil(tsz * 0.6 * 11);                              // "#1234 /5678"
@@ -1919,6 +1994,12 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 			Profile_Tile([x, y], [tw, th], s, "", "maps finished", ttl, hint, SUI_THEME_GOOD);
 	}
 	y = y + th + hint;
+	if (pf_hasplay)
+	{
+		s = strcat("Game playtime: ", Profile_PlayTime(pf_playseconds), " (linked lobbies; real time)");
+		sui_text([p_x, y], [hint, hint], Chat_Fit(s, sz_x, hint), SUI_THEME_DIM, 1, 0);
+		y = y + ceil(hint * 1.8);
+	}
 
 	if (pf_bt_ksf > 0 || pf_ksfstate > 0)
 	{

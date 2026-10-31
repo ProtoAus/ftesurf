@@ -18,6 +18,7 @@ import sqlite3
 from flask import Response, request
 import accounts
 import viewmodel
+import playstats
 
 MAX_FRIENDS = 128
 PRESENCE_TTL = 16
@@ -595,6 +596,33 @@ def register(app, d):
                 _activities.pop(token, None)
             return reply({"ok": 0, "error": "friends unavailable"}, 503)
         return reply({"ok": 1, "players": out})
+
+    @app.post("/api/social/playstats")
+    def play_statistics():
+        now, node, early = auth()
+        if early is not None:
+            return early
+        try:
+            stream = request.form.get("stream", "")
+            seconds, attempts = playstats.parse(stream, request.form.get("seconds", ""),
+                                                request.form.get("attempts", ""))
+            mapname = request.form.get("map", "")
+            if not re.fullmatch(r"[a-z0-9_][a-z0-9_-]{0,63}", mapname):
+                raise ValueError("Bad statistics map")
+            db = d.get_db()
+            with db:
+                db.execute("BEGIN IMMEDIATE")
+                owner = session(db, request.form.get("token", ""), node, now)
+                if owner is None:
+                    return reply({"ok": 0, "error": "Link Steam on this lobby first"}, 403)
+                if not d.rate_ok(owner["steamid"], now, 240, "play-statistics"):
+                    return reply({"ok": 0, "error": "Statistics busy; retry later"}, 429)
+                playstats.store(db, owner["steamid"], node, stream, mapname, seconds, attempts, now)
+        except ValueError as error:
+            return reply({"ok": 0, "error": str(error)}, 400)
+        except sqlite3.Error:
+            return reply({"ok": 0, "error": "Statistics unavailable"}, 503)
+        return reply({"ok": 1})
 
     @app.post("/api/social/viewmodel")
     def viewmodel_settings():

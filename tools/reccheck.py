@@ -471,7 +471,7 @@ TF_NORULESET = 1024
 # TF_SHADOW unless a save was ALSO loaded -- so build 44 wrote it as `last` and
 # it overwrote the most recent ordinary attempt.  Unstamped like `last`, because
 # there is no version of "keep every cheated run on this leg" that anyone wants.
-TAGS = ("pb", "last", "shadow", "cheat")
+TAGS = ("pb", "last", "shadow", "cheat", "tas", "taslobby")
 
 
 def tag_from_name(path):
@@ -2850,6 +2850,8 @@ def _check_rec(r, path, verbose=False, *, data=None):
             # and wrongly named, and faulting those would be faulting the
             # archive for predating the fix.
             tw = tag_from_name(path)
+            if tw in ("tas", "taslobby") and (fv & (TF_CHEAT | TF_PRACTICE)) != (TF_CHEAT | TF_PRACTICE):
+                r.fault("named TAS archive without practice/cheat safety flags")
             if tw == "cheat" and not (fv & TF_CHEAT):
                 r.fault("named cheat.rec but header flags %d does not say cheat"
                         % fv)

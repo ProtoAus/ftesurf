@@ -383,11 +383,13 @@ void() ClientConnect =
 	Lobby_ClientConnect(self);
 	Vote_ClientConnect(self);           // Patch 372: every begin, map changes included
 	Account_Connect(self);              // Patch 615: edicts are recycled
+	PlayStats_Connect(self);
 	VM_SVConnect(self);
 };
 
 void() ClientDisconnect =
 {
+	PlayStats_Disconnect(self);
 	SV_TASShareCancel(self);           // callbacks/deferred opens belong to this connection
 	self.bank_attempt = 0i;
 	SV_StagePruneDue(self);             // Patch 998: a stage's prune still queued
@@ -508,6 +510,7 @@ void() SetChangeParms = { };
 // entity stood orphaned until the map changed, one per cycle.
 void() SpectatorDisconnect =
 {
+	PlayStats_Disconnect(self);
 	SV_TASShareCancel(self);
 	SV_SourcePhaseClear(self);
 	Account_Disconnect(self);

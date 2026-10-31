@@ -100,6 +100,7 @@ float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
 #define SB_F_CLEAN     1
 #define SB_F_STITCHED  2
 #define SB_F_PRACTICE  3
+#define SB_F_TAS       4
 
 /*
 ===========================================================================
@@ -673,7 +674,7 @@ float(float r) Scores_Clean =
 	// is a complete answer for this one class -- exactly one thing writes it --
 	// and leaving the gap would make a hand-renamed or truncated file read
 	// UNKNOWN, which shows under every filter including `clean`.
-	if (rec_sb_rowtag[r] == RT_CHEAT)  return RC_CHEAT;
+	if (rec_sb_rowtag[r] == RT_CHEAT || FS_TagTAS(rec_sb_rowtag[r])) return RC_CHEAT;
 	return RC_UNKNOWN;
 };
 
@@ -686,6 +687,8 @@ float(float r) Scores_Passes =
 		return FALSE;
 	if (rec_sb_filter == SB_F_ALL)
 		return TRUE;
+	if (rec_sb_filter == SB_F_TAS)
+		return (FS_TagTAS(rec_sb_rowtag[r]) || (rec_sb_rowflags[r] >= 0 && (rec_sb_rowflags[r] & TF_TAS)));
 
 	c = Scores_Clean(r);
 	if (c == RC_UNKNOWN)
@@ -1455,7 +1458,7 @@ string(float row) Scores_LineKey =
 	}
 	if (row < 0 || row >= rec_sb_rown)
 		return "";
-	if (rec_sb_rowtag[row] == RT_LOBBY)          // nested: || does not short-circuit
+	if (FS_TagSummary(rec_sb_rowtag[row]))          // nested: || does not short-circuit
 		return "";
 	return strcat("l:", bufstr_get(rec_sb_bpath, row));
 };
@@ -2024,7 +2027,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		*/
 		Scores_Cell(lp, SBK_TIME, d,
 		            (ticks > 0) ? Time_TickString(ticks, tick) : "--:--.---",
-		            on ? ((rec_sb_rowtag[idx] == RT_LOBBY) ? SBC_WARN : SBC_TEXT)
+		            on ? (FS_TagSummary(rec_sb_rowtag[idx]) ? SBC_WARN : SBC_TEXT)
 		               : SBC_DIM,
 		            on ? 1 : 0.35);
 
@@ -2154,7 +2157,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		*/
 		if (sb_colon[SBK_TAG])
 		{
-			if (rec_sb_rowtag[idx] == RT_LOBBY)
+			if (FS_TagSummary(rec_sb_rowtag[idx]))
 			{
 				// A demoted lobby run is kept here (LT_Keep) and says why it is
 				// on no board; FS_CertWhy's words fit the last column.
@@ -3045,7 +3048,7 @@ void(vector p, vector sz, float pad, vector scr, float pick) Scores_Finish =
 		  the reason is known, and the board stays up so the next click is
 		  somewhere useful.
 		*/
-		if (rec_sb_rowtag[pick] == RT_LOBBY)
+		if (FS_TagSummary(rec_sb_rowtag[pick]))
 			print("^3scores:^7 that time was set on a lobby -- no replay\n");
 		else
 		{
@@ -3570,6 +3573,9 @@ void(vector scr) Scores_Draw =
 	yc = ytabs + floor((tabh - chiph) * 0.5);
 	if (!online)
 	{
+		if (Scores_Chip("sb_ftas", [x, yc], [chipw, chiph], "TAS", rec_sb_filter == SB_F_TAS))
+			rec_sb_filter = (rec_sb_filter == SB_F_TAS) ? SB_F_ALL : SB_F_TAS;
+		x = x - chipw - 6;
 		if (Scores_Chip("sb_fx", [x, yc], [chipw, chiph], "Practice", rec_sb_filter == SB_F_PRACTICE))
 			rec_sb_filter = (rec_sb_filter == SB_F_PRACTICE) ? SB_F_ALL : SB_F_PRACTICE;
 		x = x - chipw - 6;
@@ -4166,7 +4172,8 @@ float(string cmd) Scores_ConsoleCommand =
 		}
 		else if (argv(1) == "filter")
 		{
-			if (argv(2) == "clean")         rec_sb_filter = SB_F_CLEAN;
+			if (argv(2) == "tas")           rec_sb_filter = SB_F_TAS;
+			else if (argv(2) == "clean")    rec_sb_filter = SB_F_CLEAN;
 			else if (argv(2) == "stitched") rec_sb_filter = SB_F_STITCHED;
 			// Build 44.  `segmented` as well, because that is the word the row
 			// now shows and a console handle nobody can guess is not one.
@@ -4369,7 +4376,7 @@ float(string cmd) Scores_ConsoleCommand =
 				// Build 57, stage T: the same refusal the click gets, because a
 				// console handle that opened a file the mouse will not is a handle
 				// that cannot be used to check the mouse.
-				if (rec_sb_rowtag[stof(argv(2)) - 1] == RT_LOBBY)
+				if (FS_TagSummary(rec_sb_rowtag[stof(argv(2)) - 1]))
 					print("^3scores:^7 that time was set on a lobby -- no replay\n");
 				else
 				{

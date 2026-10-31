@@ -467,6 +467,7 @@ def finish_elsewhere(what):
         other.executescript(m.social.MENU_PRESENCE_SQL)
         other.executescript(m.social.MENU_CHAT_SQL)
         other.executescript(m.viewmodel.SQL)
+        other.executescript(m.playstats.SQL)
         other.execute("PRAGMA user_version=%d" % m.SCHEMA_VERSION)
         other.commit()
         RACED[-1][1] = what
@@ -492,7 +493,7 @@ def racing_connect():
 
 
 outcomes = []
-for at in range(1, 26):                 # Previous24 + the additive account-viewmodel table.
+for at in range(1, 29):                 # Previous25 + the three additive activity tables.
     conn = sqlite3.connect(m._test_db)
     conn.executescript("".join("DROP TABLE IF EXISTS %s;" % t for t in TABLES + ["links"])
                        + "DROP TABLE IF EXISTS ksfprofiles; DROP TABLE IF EXISTS ksf_unbound;"
@@ -508,16 +509,17 @@ for at in range(1, 26):                 # Previous24 + the additive account-view
     finally:
         m.connect = real_connect
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
-check("another process finishing the account steps at any of their twenty-five statements breaks neither",
+check("another process finishing the account steps at any of their twenty-eight statements breaks neither",
       (outcomes, sorted(names & set(TABLES)), "links" in names,
        rows(m, "PRAGMA user_version")[0][0]),
-      (["ok"] * 25, TABLES, False, m.SCHEMA_VERSION))
-check("...and those twenty-five were the statements raced: each table, and each index by its table",
+      (["ok"] * 28, TABLES, False, m.SCHEMA_VERSION))
+check("...and those twenty-eight were the statements raced: each table, and each index by its table",
       [r[1] for r in RACED],
       ["accounts", "linkcodes", "linkcodes", "linknonces", "runs", "ksftopup", "ksfprofiles", "ksf_unbound",
        "social_friends", "social_friends", "social_sessions", "social_sessions", "social_messages", "social_messages",
        "social_menu_presence", "social_menu_presence(seen);", "social_menu_presence(steamid);",
-       "social_menu_messages", "social_menu_messages(until);", "account_viewmodels", "keylinks", "keylinks",
+       "social_menu_messages", "social_menu_messages(until);", "account_viewmodels",
+       "play_sessions", "play_maps", "play_attempts", "keylinks", "keylinks",
        "installs", "runpins", "runs"])
 
 print("\n--- 2. off unless SURFD_BOARD_URL is set -------------------------")

@@ -6490,6 +6490,8 @@ void(entity e) SV_RecDiscard =
 // Patch 998: the search SV_RecPrune runs, so a stage's prune can be run later.
 string(entity e, float leg, string tag, string who) SV_RecPruneGlob =
 {
+	// PB history is the player's record, not a rolling attempt cache.
+	if (tag == "pb") return "";
 	if (who != "")
 		who = strcat(who, "_");
 	return sprintf("%s*_%s%s.rec", FS_RunDir(mapname, e.run_t_track, leg), who, tag);
@@ -6500,6 +6502,7 @@ void(string glob, string keepme) SV_RecPruneIn =
 	local float h, n, i, keep, kl;
 	local string fn, stem;
 
+	if (glob == "") return;
 	keep = cvar("rec_runs_keep");
 	if (keep < 1)
 		return;                 // 0 disables pruning entirely
@@ -6552,6 +6555,7 @@ void(entity e) SV_StagePruneDue =
 void(entity e, string glob, string keepme) SV_StagePruneLater =
 {
 	SV_StagePruneDue(e);
+	if (glob == "") return;
 	e.rec_pr_glob = strzone(glob);
 	e.rec_pr_keep = strzone(keepme);
 };
@@ -9573,8 +9577,12 @@ void(entity e) SV_StageLaunch =
   is the one place that test is written.  A player who slides out of the box down
   a ramp gets no stage record, which is right: that is pre-speed.
 */
+void(entity e, float track, float leg) PlayStats_Attempt;
+void(entity e) PlayStats_StageReset;
+void(entity e, float track, float leg) PlayStats_Stage;
 void(entity e, float ticks) SV_StageStart =
 {
+	PlayStats_Stage(e, e.run_t_track, e.run_st_seg + 1);
 	// A new WALK departure from this held start leaves the in-box noclip
 	// behind. Main practice/segmentation and stage stitch/ghost gates survive.
 	if (e.run_st_hold)
@@ -9638,6 +9646,7 @@ void(entity e, float ticks) SV_StageStart =
 */
 void(entity e, float ticks) SV_StageFail =
 {
+	PlayStats_StageReset(e);
 	e.run_st_fails = e.run_st_fails + 1;
 	e.lobby_sty_fails = e.lobby_sty_fails + 1;      // Patch 856: "first try every stage"
 
@@ -12838,6 +12847,7 @@ void(entity e) SV_TimerRestartSeg =
 	// A reset while waiting in the start box is still the same attempt.
 	if (!SV_ZoneInBox(e.run_leg_zone, e.origin, '0 0 0', '0 0 0'))
 	{
+		PlayStats_StageReset(e);
 		e.run_st_fails = e.run_st_fails + 1;
 		e.lobby_sty_fails = e.lobby_sty_fails + 1;
 	}
@@ -13796,6 +13806,8 @@ void(entity e, float ticks) SV_TimerFinish =
 	tag = RT_LAST;
 	if (ispb)
 		tag = RT_PB;
+	else if ((e.run_t_flags & TF_TAS) || e.run_ts_used)
+		tag = RT_TAS;
 	else if (e.run_t_flags & TF_CHEAT)
 		tag = RT_CHEAT;
 	else if (e.run_t_flags & TF_SHADOW)
@@ -13986,6 +13998,8 @@ void(entity e, float seg, float ticks) SV_TimerSplit =
 	SV_RecPut(e, sprintf("stage %d %d", seg, ticks));
 
 	SV_StageOpen(e, seg, ticks);
+	PlayStats_StageReset(e);
+	PlayStats_Stage(e, e.run_t_track, seg + 1);
 
 	// BUILD 43: a genuinely different stage, so its counters start again.  NOT
 	// in SV_StageOpen, which a fail also goes through -- see the field block.
@@ -14336,6 +14350,10 @@ void(entity e) SV_TimerStart =
 	local float pr, ln;
 
 	e.run_t_state = TS_RUNNING;
+	if (!e.run_t_stagerun) PlayStats_Attempt(e, e.run_t_track, 0);
+	PlayStats_StageReset(e);
+	if (e.run_t_stagerun || e.run_t_segs > 1)
+		PlayStats_Stage(e, e.run_t_track, e.run_t_startseg + 1);
 	e.run_momon = vbsp_momtrig;     // Patch 869: before SV_RecOpen writes `momtrig`
 	e.run_t_ticks = 0;
 	e.lobby_sty_fails = e.lobby_sty_mask = e.lobby_sty_top = 0;     // Patch 856
@@ -16056,7 +16074,10 @@ void(entity e) SV_TimerFrame =
 				if (run_t_stagearm)
 					SV_StageStart(e, SV_TimerTicks(e));
 				else
+				{
+					PlayStats_Stage(e, e.run_t_track, e.run_st_seg + 1);
 					e.run_st_armed = FALSE;
+				}
 			}
 			else if (!shit)
 			{

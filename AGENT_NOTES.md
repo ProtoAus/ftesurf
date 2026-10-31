@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## Steam activity / Local TAS source checkpoint (01a192ea; not deployed)
+
+Owned task root `C:/FTESurf-worktrees/playstats-01a192ea/`; QC base f9d1ad84,
+engine base c36bc6b06. `PLAYSTATS.md` is the scope/API/evidence handoff. Schema25
+stores proven Steam-linked lobby real seconds and per-leg starts, not Steam's
+own playtime and not offline/menu time. Counters are outside saves/rewind.
+Disconnect tails have a bounded in-VM retry queue, not a durable shutdown spool;
+revoked proof is never bypassed. PB improvements remain archived. TAS category
+uses `tas` for full records and `taslobby` for header-only remote summaries;
+no new flags, permissive admission, or clean-summary update. Slowmo does not gain
+the explicit-TAS connection latch. Remote slowmo-only no-rec mirroring and
+slowmo category provenance after clean-reset/fresh-connection save loads remain
+open (such loads stay practice/cheat but finish as cheat.rec). Existing rewind-prefix machinery is unchanged, not newly runtime-proven.
+Paired native changes clear only old duck on a forced stand on server and
+prediction; extracted native controls do not establish airborne clearance.
+No canonical tree/artifact, installed process, Pi backend or player data changed.
+
 ## P1147 practice continuity delivered — 31 Oct 2026
 
 Nativecf2290902/tagpatch-1147 preserves P1145 and fixes actual camera speed-change
