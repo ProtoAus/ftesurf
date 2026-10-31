@@ -2,9 +2,11 @@
 
 ## P1160 — profile inventory / cosmetics (pending human acceptance)
 
-Implementation and isolated native/backend checks are not owner acceptance or
-proof of fleet installation. Delivery provenance is recorded separately.
-After delivery: link Steam on a lobby, open `hud_player`, equip both starter
+Game-side files are installed in both Windows roots and all 12 lobbies;
+backend activation still needs the owner's interactive sudo step. Exact source,
+hashes, tests and limits: `tools/profile-inventory-p1160.md`. These are not owner
+acceptance. For now, check the grid placement and Maps switch after reconnecting
+and `menu_restart`. After backend activation: open `hud_player`, equip both starter
 items in the right-hand 4×4 grid, and ask a second player to confirm the blue
 aura and coloured paper hat. Remove each item separately; the other should
 remain on. Reconnect and check your hat keeps its colour and selected state.
@@ -14,9 +16,10 @@ The aura is an occluded, additive shell, not the supplied through-wall JFA
 post-process; confirm the look/thickness is suitable. No wall visibility or
 numerical performance acceptance is claimed. Tester is automatic for linked
 accounts. Zoner/Developer are cosmetic badges only; map-editing privileges are
-not changed. Markbeaton54's account was uniquely resolved. The owner's Developer
-assignment is pending their linked Steam display name (no account named Lex was
-found); do not assign an account by guesswork. No human confirmation received.
+not changed. Markbeaton54's account was uniquely resolved; its Zoner grant awaits
+backend activation. The owner's Developer assignment also needs their explicit
+Steam profile URL/identity; do not assign by nickname or guesswork. No human
+confirmation received.
 
 ## P1158 — finite-stamina verifier status (pending human acceptance)
 

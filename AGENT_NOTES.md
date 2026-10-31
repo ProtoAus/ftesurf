@@ -40,9 +40,19 @@ fleet source, not unrelated newer KSF/profile changes on main. Schema25 rollback
 requires a compatible baseline: schema24 must not be reopened on a schema25 DB,
 and restoring an old whole DB could erase newer rows. Keep an additive-schema25,
 old-endpoint baseline ready instead; never drop/downgrade tables to make rollback
-pass. The existing systemd sandbox permits canonical `/srv/nvme/surfd` runtime
-state; new immutable source/control roots stay read-only. Validate the actual
-namespace/guard before claiming that placement is usable.
+pass. Keep runtime code, fixed control files and BOTH manifests read-only;
+only declared mutable state/control files may be writable. Validate the actual
+namespace/guard before claiming that placement is usable. P1160 stages primary
+state in `state/` and compatibility state in `control/`: the installer's existing
+`state/manifest.json` and `control/manifest.json` pins protect distinct cohorts.
+Do not overwrite the latter assuming it is a duplicate primary manifest.
+
+Actual QC delivery and limits: `tools/profile-inventory-p1160.md`. Both Windows
+installs and all 12 lobbies have the game-side change. The backend installer
+passes its dry run but needs interactive sudo; its shared ingress was restored
+and the live old fence was not closed. Cold schema25 fixture acceptance is NOT
+production migration/namespace evidence. Special grants remain pending activation
+(and Developer also needs the owner's confirmed Steam identity).
 
 Windows patch files written through `Path.write_text` acquire CRLF even when
 `git diff` supplied LF. `git apply --cached` then fails against an LF index.
