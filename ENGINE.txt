@@ -26,7 +26,7 @@ commit   0879469c97278b3f8f69f0aaa57d94ea5d68b069
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1143
 patch    1143
-# Patch 1143: existing gravity-use status follows finite normalized additive-rise takeoff through unchanged accepted/default-path proof; movement, capture, APIs, formats, flags and tiers unchanged. Engine-only delivery retains verified QQ8ed; unrelated TAS UI/backend are not promoted by this feature.
+# Patch 1143: existing gravity-use status follows finite normalized additive-rise takeoff through unchanged accepted/default-path proof; movement, capture, APIs, formats, flags and tiers unchanged. QQ8ed is a test control only; engine-only promotion preserves actual live programs, never downgrades peer VMs or newly promotes unrelated UI/backend.
 # Patch 1142: finish held collector/account work; bounded shared budgets, durable KSF map/zone cursors and complete flat Momentum dependencies; schema24/native pins unchanged, live guarded rollout pending.
 # Patch 1140: local legal-start TAS sharing/browser/credits and protected Open; native uncached write-path metadata, retained-recovery guards and old-engine fail-closed admission. Includes published P1141; no Build bump.
 # Patch 1141: existing gravity-source status follows eligible normalized standing takeoff through the same accepted/default-path proof; movement, captured fields, formats, flags and tiers unchanged; unsupported consumers remain excluded.
