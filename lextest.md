@@ -1,14 +1,18 @@
 # lextest.md — things waiting on a human
 
-## P1156 — slow-practice roof/duck follow-up (installation pending)
+## P1156 — slow-practice roof/duck follow-up (installed; owner feel pending)
 
 The owner isolated the remaining issue to bhop_goldsrc2 save14, moving forward
 under a roof ONLY below speed1. The render-only fix pairs camera feet and eye
 height and preserves ordinary duck history; movement and saved runs are untouched.
-Final16 source cases and both fresh whole-change reviews pass. Source tests do
-not establish real roof geometry or the exact saved-run feel.
+Final16 source cases and both fresh integrated whole-change reviews pass. All7
+native images are installed in BOTH Windows roots, preserving installed P1152
+status and actual VMs/cache/configs/data. Fresh cold joins from both installed
+image/menu/plugin sources passed, fetched official CSQC, drew the board and
+exited0 without QC errors. Source/cold tests do not establish real roof geometry
+or the exact saved-run feel.
 
-After installation, retest that same save below1: move under the roof, duck and
+Ready now: reopen the game and retest that same save below1. Move under the roof, duck and
 unduck, then clear it. Compare steady1 and restore1 while moving. Expected: no
 repeated camera-history snaps; hard roof clipping remains. Please report any
 remaining judder and the speed used. Installation/cold-check status is tracked
