@@ -1,9 +1,14 @@
 # lextest.md — things waiting on a human
 
-## P1151 clean return from slow practice — qualified; delivery pending
+## P1151 clean return — Windows installed; Pi update guarded/pending
 
-Source and native dedicated/listen controls pass; this is NOT human acceptance.
-After the delivery record says installed, restart the game and try:
+Both Windows installs now have the qualified P1151 native and official programs;
+28 destination targets were read back exact, with old configs/data unchanged at
+promotion. Pi first preflight refused while a public lobby was occupied, BEFORE
+any Pi write/restart or current-parts archive. Public-lobby clean return is NOT
+claimed active yet. Final installed cold smoke and human acceptance are pending.
+Source and native dedicated/listen controls pass. Once Pi delivery is confirmed,
+restart the game and try:
 
 - Use host_timescale 0.5 or 0.1, return to a valid start, release movement/jump/duck,
   stand still, then set host_timescale 1. Wait for "normal speed, clean new attempt

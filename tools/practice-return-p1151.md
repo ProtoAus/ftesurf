@@ -42,7 +42,14 @@ is claimed. Main/stage/bonus and familiar geometry checks remain in `lextest.md`
 
 ## Delivery
 
-Qualification and source publication do not by themselves mean installation.
-Destination hashes, installed-client cold checks and fleet activation are
-recorded separately after guarded promotion. Do not deploy the historical test
-VM as a runtime fix.
+Both Windows installs now hold the qualified native and official programs:
+28 current destination targets read back exact. At promotion all 15,473 old
+protected entries and 224 configs remained unchanged; generated rollback/preimages
+are retained privately. Source and `patch-1151` are pushed to both repositories.
+
+Pi activation is PENDING: the first preflight refused an occupied public lobby,
+BEFORE any live swap/restart or all-current-parts snapshot/archive. No force or
+failed-receipt replacement was used. Public-lobby clean return is not claimed
+active. Final installed-client/downloaded-CSQC cold checks also remain pending.
+Qualification, local installation, fleet activation and human acceptance are
+separate states. Do not deploy the historical test VM as a runtime fix.
