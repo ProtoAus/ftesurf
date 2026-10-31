@@ -7916,7 +7916,13 @@ corrected12unit readback and cold CSQC hash/drawn-board proof acted. No raw comm
   backups in game/. `git hash-object` a file before assuming it is current. That tree is NOT a git checkout: send changed files
   with `git -c core.autocrlf=false archive <sha> <paths> | ssh … tar -x` (plain
   `git archive` here ships CRLF), check them with `git hash-object`, then
-  `make -C engine sv-rel FTE_TARGET=linux CC=gcc BITS=arm64 -j3`. Gate:
+  `make -C engine sv-rel FTE_TARGET=linux CC=gcc BITS=arm64 -j3`.
+  Measured again 31 Oct 2026: an exact matching archive FILELIST still contained
+  718 CRLF-transformed text blobs among 1,124 tracked engine files. The strict per-file
+  Git-object check refused BEFORE compilation. Validate every member locally,
+  not just names/archiveSHA; disable autocrlf or construct a canonical Git-blob
+  tar. Retain the first failed input and fix the exporter, never exempt the
+  changed source from the guard. Gate:
   `pm_dettest` on bhop_eazy prints the same hashes as the Windows build. For a
   one-off run: `+set sv_port <p> +map bhop_eazy +exec cfg/<x>.cfg`. A dedicated
   server with no `+map` dies with "Couldn't load a map", and the Pi has no
