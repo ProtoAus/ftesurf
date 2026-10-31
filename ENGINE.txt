@@ -26,7 +26,8 @@ commit   793ee161a9baa8ba976f1f426e19bfd10c5d877a
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1158 preserves published P1152/P1156 and the P1154 TAS-clock integration.
 tag      patch-1158
-patch    1158
+patch    1160
+# Patch 1160 (QC/backend): Steam-profile cosmetic inventory, persistent starter items, public equipped ice aura/paper hat and coloured role badges; Surf/Bhop-only map switch. Native pin and qcbuild unchanged.
 # Patch 1158: finite pre-cost jump stamina also uses the existing bounded gravity-use observer; model before native debit and retain only an accepted jump. No physical movement, captured field, API, format, flag, tier, qcbuild or release change. Serial Windows plugin packaging fixes reproduced parallel ZIP temporary-file failures. Final-tag/platform and native-only delivery limits: tools/p1158-gravity.md.
 # Patch 1156: preserve now-installed P1152 status while shipping the unchanged paired slow-practice roof/duck camera. Original P1155 was never installed; advanced-byte guard retained. No additional physical mover, input, runtime QC, API or format change; no Pi activation.
 # Patch 1155: initial qualified paired feet/eye-height camera snapshot; superseded before installation by P1156 after another task installed P1152. Original tag/history retained.

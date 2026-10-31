@@ -20,7 +20,8 @@ FILES = frozenset({"surfd.py", "ksfimport.py", "ksfgrab.py", "ksfprofile.py",
 SCHEMA_FILES = {19: FILES, 20: FILES | {"accounts.py", "social.py"},
                 22: FILES | {"accounts.py", "social.py"},
                 23: FILES | {"accounts.py", "social.py", "viewmodel.py"},
-                24: FILES | {"accounts.py", "social.py", "viewmodel.py"}}
+                24: FILES | {"accounts.py", "social.py", "viewmodel.py"},
+                25: FILES | {"accounts.py", "social.py", "viewmodel.py", "inventory.py"}}
 
 
 def target_schema(m):
@@ -68,7 +69,7 @@ def manifest_check(m):
     schema = target_schema(m)
     files = SCHEMA_FILES[schema]
     if "runtime_profile" in m:
-        require(schema in (20, 22, 23, 24) and m["runtime_profile"] == "hid-v1", "unsupported runtime_profile")
+        require(schema in (20, 22, 23, 24, 25) and m["runtime_profile"] == "hid-v1", "unsupported runtime_profile")
         files = files | {"hidupload.py"}
     require(type(m["generation"]) is str and
             re.fullmatch("[0-9a-f]{40}", m["generation"]), "full generation SHA required")

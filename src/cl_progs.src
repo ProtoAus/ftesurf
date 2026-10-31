@@ -193,6 +193,7 @@ client/cl_menu_friends.qc
 client/cl_story.qc
 // Patch 772: the trail line, fed by cl_avatar.qc and cl_body.qc; paint reads cl_avatar.qc's colours.
 client/cl_ptrail.qc
+client/cl_inventory.qc
 client/cl_avatar.qc
 client/cl_paint.qc
 // Patch 383: lobby bodies from the pose stream (CSQC_Ent_Update/Remove).  After

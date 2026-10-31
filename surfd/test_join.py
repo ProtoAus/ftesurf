@@ -695,7 +695,7 @@ with sqlite3.connect(m._test_db) as conn:
     check("unrelated application bytes survive", conn.execute(
           "SELECT marker FROM preserve_lru").fetchall(), [(b"unchanged marker",)])
     check("migration stamps actual new schema", conn.execute(
-          "PRAGMA user_version").fetchone()[0], 24)
+          "PRAGMA user_version").fetchone()[0], m.SCHEMA_VERSION)
 m.migrate()
 check("migration is repeatable without inventing use", usage(m), {"p27510": 0})
 try:
@@ -749,7 +749,7 @@ with sqlite3.connect(m._test_db) as conn:
           row[1] for row in conn.execute("PRAGMA table_info(lobbies)")}, False)
 m.migrate()
 check("same database upgrades after rollback", (user_version(m), usage(m)),
-      (24, {"p27510": 0}))
+      (m.SCHEMA_VERSION, {"p27510": 0}))
 
 
 # --------------------------------------------------------------------------

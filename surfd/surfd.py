@@ -44,6 +44,7 @@ import hidupload        # signed, bounded raw journals; never a run verdict
 import accounts         # Steam accounts: schema 12 and its routes
 import social           # Steam friends; authenticated lobby-only capabilities
 import viewmodel        # bounded account setup; additive schema 23
+import inventory        # account-owned cosmetics; additive schema 25
 import zonefit          # bounded BSP entity/model reader for legacy timers
 import ksftopup         # bounded, board-scoped requests; no network in HTTP
 import ksfprofile       # resolved profile demand, paced by the same importer
@@ -461,7 +462,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 25
 KSF_UNBOUND_SQL = """
 CREATE TABLE IF NOT EXISTS ksf_unbound (
  map TEXT NOT NULL, track INTEGER NOT NULL, leg INTEGER NOT NULL,
@@ -1649,6 +1650,12 @@ def migrate():
             conn.execute("PRAGMA user_version=24")
             conn.commit()
             version = 24
+
+        if version < 25:
+            # Inventory alone: never rewrite player/run/link/history tables.
+            conn.executescript("BEGIN IMMEDIATE;\n" + inventory.SQL +
+                               "\nPRAGMA user_version=25;\nCOMMIT;")
+            version = 25
 
         verdict_metrics(conn)
         gone = accounts.links_now(conn)
@@ -7284,6 +7291,7 @@ def game_player(raw, now):
          "av": 1 if player in have else 0, "completion": comp,
          "completion_wos": _completion_wos(ranked, main_maps), "wos": _wos_figures(ranked),
          "ksf_sync": ksfprofile.status(db, player),
+         "cosmetics": inventory.public(db, player),
          "rows_source": rows_source, "rows_only": rows_only, "rows_mode": mode,
          "figs": _profile_figs(ranked),
          "offset": offset, "total": len(picked), "limit": limit, "rows": rows}),

@@ -70,6 +70,7 @@ float  pf_got;                  // cltime the breakdown held landed
 float  pf_base, pf_seq;         // this VM's request ids: Profile_Get
 vector pf_f_scr;                // the screen the field was last drawn on
 string pf_name, pf_handle;
+vector pf_cosmetics;
 float  pf_src, pf_n, pf_maps, pf_last, pf_wr, pf_wrc, pf_top10, pf_av, pf_total, pf_t;
 float  pf_bt_ours, pf_bt_mom, pf_bt_ksf;
 float  pf_ksfstate, pf_ksfskip; // 1 pending, 2 checked, 3 bounded/incomplete
@@ -465,6 +466,7 @@ void(string who) Profile_Show =
 	pf_rn = 0;
 	pf_total = 0;
 	pf_name = "";
+	pf_cosmetics = '0 0 0';
 	pf_handle = "";
 	pf_ksfstate = 0;
 	pf_ksfskip = 0;
@@ -733,6 +735,10 @@ void(string bdy) Profile_Parse =
 	pf_fg_has    = (c != 0);
 	Profile_FigsRead(json_find_object_child(c, "all"), 0);
 	Profile_FigsRead(json_find_object_child(c, "wos"), 15);
+	c = json_find_object_child(root, "cosmetics");
+	pf_cosmetics = [bound(0, json_get_float(json_find_object_child(c, "roles")), 7),
+	                bound(0, json_get_float(json_find_object_child(c, "outline")), 1),
+	                bound(0, json_get_float(json_find_object_child(c, "hat")), 12)];
 	pf_av     = json_get_float(json_find_object_child(root, "av"));
 	pf_total  = json_get_float(json_find_object_child(root, "total"));
 	c = json_find_object_child(root, "by_tier");

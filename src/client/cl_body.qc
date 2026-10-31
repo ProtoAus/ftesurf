@@ -187,7 +187,7 @@ vector(vector v) Body_Q32 =
 float() Body_Predraw =
 {
 	local float duck;
-	local vector rgb, org;
+	local vector rgb, org, kit;
 
 	if (!self.pb_n || (spc_hideslot && self.pb_slot == spc_hideslot))
 	{
@@ -239,6 +239,8 @@ float() Body_Predraw =
 	}
 	else
 		self.pb_trailok = FALSE;
+	kit = Inv_Public(self.pb_slot - 1);
+	Inv_Draw(self, kit_y, kit_z, duck == 1);
 	return PREDRAW_AUTOADD;
 };
 

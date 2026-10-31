@@ -1,5 +1,23 @@
 # lextest.md — things waiting on a human
 
+## P1160 — profile inventory / cosmetics (pending human acceptance)
+
+Implementation and isolated native/backend checks are not owner acceptance or
+proof of fleet installation. Delivery provenance is recorded separately.
+After delivery: link Steam on a lobby, open `hud_player`, equip both starter
+items in the right-hand 4×4 grid, and ask a second player to confirm the blue
+aura and coloured paper hat. Remove each item separately; the other should
+remain on. Reconnect and check your hat keeps its colour and selected state.
+Check the badge colours/name spacing and click the Maps Surf/Bhop switch once.
+
+The aura is an occluded, additive shell, not the supplied through-wall JFA
+post-process; confirm the look/thickness is suitable. No wall visibility or
+numerical performance acceptance is claimed. Tester is automatic for linked
+accounts. Zoner/Developer are cosmetic badges only; map-editing privileges are
+not changed. Markbeaton54's account was uniquely resolved. The owner's Developer
+assignment is pending their linked Steam display name (no account named Lex was
+found); do not assign an account by guesswork. No human confirmation received.
+
 ## P1156 — slow-practice roof/duck follow-up (owner confirmed)
 
 The owner isolated the remaining issue to bhop_goldsrc2 save14, moving forward

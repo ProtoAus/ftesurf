@@ -53,6 +53,7 @@ WHAT IT DELIBERATELY DOES NOT DO
 """
 
 import base64
+import inventory
 import hashlib
 import hmac
 import json
@@ -2007,6 +2008,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
             conn = db_connect()
             try:
                 rows = bans["ban_list"](conn, bans["imported"])
+                for row in rows:
+                    row["cosmetics"] = inventory.snapshot(conn, row["steamid"])
             except sqlite3.Error as exc:
                 log.exception("admin accounts db error: %s", exc)
                 return jsonify({"ok": False, "error": "storage error"}), 500
@@ -2014,6 +2017,31 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 conn.close()
             return jsonify({"ok": True, "accounts": rows,
                             "ranked_linked": bool(bans["ranked_linked"])})
+
+        @bp.post("/api/inventory")
+        @control
+        def inventory_action():
+            sid = request.form.get("steamid", "")
+            if not STEAMID_TEXT.fullmatch(sid):
+                raise AdminError("Choose a Steam account")
+            op = request.form.get("action", "")
+            value = request.form.get("value", "")
+            if op in ("grant", "revoke"):
+                if value not in ("1", "2"):
+                    raise AdminError("Unknown item")
+                value = int(value)
+            conn = db_connect()
+            try:
+                with conn:
+                    conn.execute("BEGIN IMMEDIATE")
+                    inventory.administer(conn, sid, op, value)
+            except ValueError as error:
+                raise AdminError(str(error))
+            except sqlite3.Error:
+                raise AdminError("Inventory storage error")
+            finally:
+                conn.close()
+            return "Inventory updated"
 
         @bp.post("/api/ban")
         @control

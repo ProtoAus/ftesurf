@@ -1,5 +1,56 @@
 # AGENT_NOTES.md
 
+## Profile cosmetics: authority, fixtures and isolated rollout (P1160)
+
+Inventory ownership/roles live on the backend, never writable player userinfo.
+`*kit` is a server-reserved roles/aura/hat-colour+1 presentation tuple; private
+ownership snapshots bind `*ahash` and monotonic bounded revisions. Social identity
+reset clears both channels and pending request IDs; old poll revisions cannot
+undo an equip reply. Badges confer no zoner/editor/admin privileges. Grant state
+is initialized once, so a revoked starter is not silently refilled on reconnect.
+
+A real socket renderer control must set `lobby_enable 1`: otherwise `sv_pose.qc`
+correctly sends no streamed remote bodies. The cone and aura are procedural /
+material-only CSQC content, not downloaded item paths. Use the ordinary additive
+ice material; the attempted inline custom programs compiled but rendered no
+visible shell, while the unforced enlarged-model control and the final ordinary
+material visibly acted. Cause of that inline-program difference was NOT proved;
+do not turn it into a shader/compiler bug claim. Human look/feel remains separate.
+
+Use `lobby_master` / `lobby_master_key`, the existing account/social transport,
+not an invented `lobby_url`. A render-only injected snapshot does not exercise
+poll opt-in or equip callbacks: the native HTTP control must see a nonempty
+roster with `inventory:1`, two genuine equip posts, and the final private CSQC
+revision/equipment acknowledgement. The fixture capability/mock HTTP backend
+is not an authentication proof; `surfd/test_inventory.py` provides separate
+signed-account/session tests. Audit every owned source path when backporting;
+a selected-path patch that omits `sv_social.qc` can still pass render controls.
+
+The Maps bootcheck now exercises exactly Surf/Bhop and legacy-filter migration.
+It temporarily enables show-all to isolate mode selection from missing zone /
+thumbnail quality, then restores the session flag. A fresh install's consent
+screen can still cover a passing filter fixture: real 1-of-4 / opposite 1-of-4
+counts prove filtering, NOT the visible screen or click. Preserve that limit; do
+not synthesize consent to manufacture a screenshot. Read `lextest.md`.
+
+Before shipping, distinguish main's source from actual installed source. P1160's
+VM backport starts at the installed P1151 QC commit `8c857577`, omitting the three
+pending P1154 SSQC files. The backend backport starts at the inspected `03693b98`
+fleet source, not unrelated newer KSF/profile changes on main. Schema25 rollback
+requires a compatible baseline: schema24 must not be reopened on a schema25 DB,
+and restoring an old whole DB could erase newer rows. Keep an additive-schema25,
+old-endpoint baseline ready instead; never drop/downgrade tables to make rollback
+pass. The existing systemd sandbox permits canonical `/srv/nvme/surfd` runtime
+state; new immutable source/control roots stay read-only. Validate the actual
+namespace/guard before claiming that placement is usable.
+
+Windows patch files written through `Path.write_text` acquire CRLF even when
+`git diff` supplied LF. `git apply --cached` then fails against an LF index.
+Preserve bytes / write LF patches, stop on any command error, and assert the exact
+cached paths/hunks before committing. A printed index listing is not an enforced
+promotion check. Never amend/rewrite a published commit to repair such a failure.
+
+
 ## TAS clock fixture boundaries (P1154)
 
 Select pm_ticrate BEFORE map: SV_TimerMapInit latches run_t_tick. Changing only

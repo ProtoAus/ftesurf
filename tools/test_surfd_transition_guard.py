@@ -83,9 +83,11 @@ class Fixture:
             "import time\nfrom pathlib import Path\n"
             "Path('candidate-acted').write_text('SERVER ACTED')\n"
             "while True: time.sleep(.02)\n")
-        files = FILES + (("accounts.py", "social.py") if target_schema in (20, 22, 23, 24) else ())
-        if target_schema in (23, 24):
+        files = FILES + (("accounts.py", "social.py") if target_schema in (20, 22, 23, 24, 25) else ())
+        if target_schema in (23, 24, 25):
             files += ("viewmodel.py",)
+        if target_schema == 25:
+            files += ("inventory.py",)
         if runtime_profile == "hid-v1":
             files += ("hidupload.py",)
         for name in files[2:]:
@@ -418,13 +420,13 @@ def main():
     out.mkdir(mode=0o700)
     try:
         suite(out)
-        for schema in (20, 22, 23, 24):
+        for schema in (20, 22, 23, 24, 25):
             hid = Fixture(out / ("hid-profile-%d" % schema), target_schema=schema, runtime_profile="hid-v1")
-            if schema == 24:
+            if schema in (24, 25):
                 refused = hid.run("reopen", "--generation", GEN, "--receipt",
-                                  str(hid.receipt(schema=23)), ok=False)
+                                  str(hid.receipt(schema=schema - 1)), ok=False)
                 check("acceptance receipt mismatch" in refused.stderr,
-                      "schema24 accepted a schema23 receipt or missed its binding check")
+                      "accepted a previous-schema receipt or missed its binding check")
             hid.reopen()  # A real fixed candidate must act with the exact schema/profile hashes.
             body = (hid.home / "hidupload.py").read_bytes()
             (hid.home / "hidupload.py").write_bytes(body + b"# changed collector\n")
@@ -432,7 +434,15 @@ def main():
             check("raw hash mismatch: hidupload.py" in refused.stderr, "collector was not sealed")
             check(not (hid.home / "imports").exists(), "changed collector allowed application import")
             (hid.home / "hidupload.py").write_bytes(body)
-            if schema in (23, 24):
+            if schema == 25:
+                inv = hid.home / "inventory.py"
+                original = inv.read_bytes()
+                inv.write_bytes(original + b"# changed inventory dependency\n")
+                refused = hid.run("launch", "--generation", GEN, "--route", "manual", ok=False)
+                check("raw hash mismatch: inventory.py" in refused.stderr and
+                      not (hid.home / "imports").exists(), "inventory dependency was not sealed")
+                inv.write_bytes(original)
+            if schema in (23, 24, 25):
                 vm = hid.home / "viewmodel.py"
                 original = vm.read_bytes()
                 vm.write_bytes(original + b"# changed viewmodel dependency\n")
@@ -447,8 +457,13 @@ def main():
                         ("untagged-hid", {"runtime_profile": None}),
                         ("unknown-profile", {"runtime_profile": "unapproved"}),
                         ("unsupported-schema21", {"target_schema": 21}),
-                        ("unsupported-schema25", {"target_schema": 25})]
-            if schema in (23, 24):
+                        ("unsupported-schema26", {"target_schema": 26})]
+            if schema == 25:
+                variants += [("missing-inventory", {"hashes": {k: v for k, v in hid.hashes.items() if k != "inventory.py"}}),
+                             ("schema24-extra-inventory", {"target_schema": 24})]
+            else:
+                variants += [("schema25-missing-inventory", {"target_schema": 25})]
+            if schema in (23, 24, 25):
                 variants += [("missing-viewmodel", {"hashes": {k: v for k, v in hid.hashes.items() if k != "viewmodel.py"}}),
                              ("schema22-extra-viewmodel", {"target_schema": 22})]
             else:
