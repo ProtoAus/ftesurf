@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   f9f541ee0b16314f3965262e3c5befc91d7993e6
+commit   cf2290902e5ff9581d20c776d944705a4561fb3c
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,9 @@ commit   f9f541ee0b16314f3965262e3c5befc91d7993e6
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-1145
-patch    1145
+tag      patch-1147
+patch    1147
+# Patch 1147: camera-only speed-change history rebase/speed1 offset retirement and absolute render-consumer endpoints; actual position-changing zone placements emit existing native EF_TELEPORT_BIT, including angle-less short resets. No new stat, recording/capture grammar, mover/input or eligibility policy; preserve P1145.
 # Patch 1145: existing gravity-use status follows eligible normalized crouch/ground-duck-transition takeoff with the current hull and unchanged accepted/default-path proof; stock crouch remains excluded. Preserve P1144 camera and actual runtime VMs; no movement, capture/API/format/flag/tier, Build or release change.
 # Patch 1144: forward-integrate qualified camera with P1143/current main; combined native pin moves only to the exact frozen source, no VM/backend downgrade.
 # Patch 1143: existing gravity-use status follows finite normalized additive-rise takeoff through unchanged accepted/default-path proof; movement, capture, APIs, formats, flags and tiers unchanged. QQ8ed is a test control only; engine-only promotion preserves actual live programs, never downgrades peer VMs or newly promotes unrelated UI/backend.

@@ -51,6 +51,10 @@ float zone_loaded;
 // SSQC globals are re-initialised on every map load.
 float zone_entsready;
 
+// Native gl/gl_model.h EF_TELEPORT_BIT (1<<21): presentation interpolation epoch,
+// not a timer/recording flag. Angle-less placements must publish it too.
+const float ZONE_EF_TELEPORT_BIT = 2097152;
+
 // The stage number on a legacy trigger_momentum_timer_stage.  A VBSP entity
 // key is matched to a QC field by name, so declaring it is all it takes to
 // read it; maps that do not set it leave this 0.
@@ -1093,6 +1097,8 @@ void(float n, vector at, float atyaw, float atpit, float haveat, float havepit)
 	SV_TASCancel(self);
 	samestage = SV_TimerTeleported(self, n);
 
+	if (self.origin != dest)
+		self.effects = self.effects ^ ZONE_EF_TELEPORT_BIT;
 	setorigin(self, dest);
 	self.velocity = '0 0 0';
 	// Patch 400: and the push carrier, as Momentum's restart does.  Kept, `!r`

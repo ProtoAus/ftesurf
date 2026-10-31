@@ -18,6 +18,60 @@ int main(int argc,char **argv) {
  sourcepracticelerp_t s={0},saved;
  vec3_t p={0,0,0},v={100,0,0},out={-999,-999,-999};
  int i;float t;
+ if(argc>1 && !strcmp(argv[1],"scale-rebase")) {
+#if HAS_TRANSITIONS
+  float scales[]={.1f,.25f,.5f,.75f};int j,k;
+  for(j=0;j<4;j++)for(k=0;k<4;k++) {
+   vec3_t anchor={10,20,30},end={15,30,40};double target;
+   memset(&s,0,sizeof(s));s.tick=.015f;s.scale=scales[j];
+   assert(CL_SourcePracticePush(&s,1,p,v,.015f/scales[j]));
+   assert(CL_SourcePracticeRebase(&s,2,.015f,scales[k],anchor));
+   assert(s.count==1);assert(CL_SourcePracticePush(&s,2,end,v,.015f/scales[k]));
+   target=2-CL_SourcePracticeDelay(.015f,scales[k]);
+   assert(CL_SourcePracticeSample(&s,target,out));for(i=0;i<3;i++)near(out[i],anchor[i]);
+   assert(CL_SourcePracticeSample(&s,target+.004,out));
+   for(i=0;i<3;i++)assert(out[i]>anchor[i]&&out[i]<end[i]);
+  }
+  puts("PASS all16 slow-scale transitions rebase at last drawn feet and advance within known endpoints");return 0;
+#else
+  puts("UNAVAILABLE continuity helpers in retained source; not a runtime counterexample");return 77;
+#endif
+ }
+ if(argc>1 && !strcmp(argv[1],"scale-release")) {
+#if HAS_TRANSITIONS
+  vec3_t feet={20,0,16},gravity={0,0,-1};
+  s.tick=.015f;s.scale=.5f;s.vieworg[0]=10;s.vieworg[2]=1;
+  CL_SourcePracticeRelease(&s,2,feet,gravity,-15);
+  assert(s.releasing&&!s.count);assert(CL_SourcePracticeReleaseView(&s,2,feet,gravity,-15,out));
+  near(out[0],10);near(out[2],1);
+  feet[0]=24;assert(CL_SourcePracticeReleaseView(&s,2.04,feet,gravity,-15,out));near(out[0],19);near(out[2],1);
+  assert(!CL_SourcePracticeReleaseView(&s,2.08,feet,gravity,-15,out));assert(!s.releasing);
+  puts("PASS speed1 immediately uses normal prediction while camera offset retires continuously with classic stair height");return 0;
+#else
+  puts("UNAVAILABLE continuity helpers in retained source; not a runtime counterexample");return 77;
+#endif
+ }
+ if(argc>1 && !strcmp(argv[1],"short-reset")) {
+#if HAS_RESET_MARKER
+  vec3_t old={12,0,0},dest={10,0,0};
+  assert(native_reset_marker(0,EF_TELEPORT_BIT));assert(native_reset_marker(EF_TELEPORT_BIT,0));
+  assert(!native_reset_marker(EF_TELEPORT_BIT,EF_TELEPORT_BIT));
+  assert(!native_reset_marker(1,2));
+  native_reset_view(&s,old,dest,3);VectorAdd(old,s.viewoffset,out);
+  near(out[0],10);assert(s.blocked&&s.hasoffset&&s.haveview&&!s.count&&!s.releasing);
+  puts("PASS existing native spatial effect bit snaps a two-unit placement, rejects duplicate/nonspatial effects and cancels old history");return 0;
+#else
+  puts("UNAVAILABLE reset marker in retained source; not a runtime counterexample");return 77;
+#endif
+ }
+ if(argc>1 && !strcmp(argv[1],"render-consumer")) {
+  vec3_t desired={10,20,30},earlier={15,25,35},current={12,22,32};
+  native_render_consumer(desired,earlier,current,out);
+  for(i=0;i<3;i++)if(fabsf(current[i]+out[i]-desired[i])>.0001f) {
+   puts("FAIL cached predictor-relative delta moves an acknowledged endpoint when simorg refreshes before render");return 2;
+  }
+  puts("PASS actual render consumer retains the absolute endpoint across a later simorg refresh");return 0;
+ }
  if(argc>1 && !strcmp(argv[1],"idle-resume")) {
   assert(CL_SourcePracticePush(&s,1,p,v,.15f));p[0]=10;
   assert(CL_SourcePracticePush(&s,1.15f,p,vec3_origin,.15f));
@@ -178,6 +232,31 @@ def main():
     guard = source.split(anchor,1)[1].split('\n\t}',1)[0]
     assert guard.count('goto discontinuity;') == 1
     guard = '\nstatic qboolean native_jump_guard(const vec3_t delta) { int i=0;(void)i;'+guard+'\nreturn false; discontinuity:return true;}\n'
+    marker = re.search(r'\(\(s->effects \^ ent->effects\) & EF_TELEPORT_BIT\)',source)
+    reset_control = ''
+    if marker:
+        snap = source.split('\ndiscontinuity:\n',1)[1].split('\ncommit:',1)[0]
+        protocol=(native/'gl/gl_model.h').read_text()
+        bit=re.search(r'#define\s+EF_TELEPORT_BIT\s+\(1<<21\)',protocol)
+        assert bit, 'Native presentation bit changed'
+        producer=(ROOT/'src/server/sv_zones.qc').read_text()
+        assert 'const float ZONE_EF_TELEPORT_BIT = 2097152;' in producer
+        assert re.search(r'if \(self.origin != dest\)\s+self.effects = self.effects \^ ZONE_EF_TELEPORT_BIT;\s+setorigin\(self, dest\);',producer), 'Actual spatial producer missing or toggles on non-placement'
+        reset_control = '\n#define EF_TELEPORT_BIT (1u<<21)\nstatic struct {int ival;} cl_predtrace;\n#define Con_Printf(...) ((void)0)\n'+'''\nstatic qboolean native_reset_marker(unsigned oldeffects,unsigned neweffects) {
+ sourcepracticelerp_t state={0},*s=&state;struct {unsigned effects;} entity,*ent=&entity;
+ s->effects=oldeffects;ent->effects=neweffects;(void)cl_predtrace;
+ return '''+marker.group(0)+''';
+}
+static void native_reset_view(sourcepracticelerp_t *s,const vec3_t old,const vec3_t dest,double time) {
+ struct {vec3_t origin;} entity,*ent=&entity;struct {vec3_t simorg;} player,*pv=&player;int seat=0;
+ VectorCopy(old,pv->simorg);VectorCopy(dest,ent->origin);(void)seat;
+'''+snap+'\n}\n'
+    getter = source.split('qboolean CL_GetSourcePracticeViewOffset(',1)[1].split('\nvoid CL_PredictMovePNum',1)[0]
+    actual = 'VectorSubtract(s->sampleorg, pv->simorg, out);' if 'VectorSubtract(s->sampleorg, pv->simorg, out);' in getter else 'VectorCopy(s->viewoffset, out);'
+    consumer_control = '''\nstatic void native_render_consumer(const vec3_t desired,const vec3_t earlier,const vec3_t current,vec3_t out) {
+ sourcepracticelerp_t state={0},*s=&state;struct {vec3_t simorg;} player,*pv=&player;
+ VectorSubtract(desired,earlier,s->viewoffset);VectorCopy(current,pv->simorg);
+'''+(' VectorCopy(desired,s->sampleorg);\n' if 'sampleorg' in actual else '')+actual+'\n}\n'
     target_lines=[line for line in source.splitlines() if 'target = ' in line and 'CL_SourcePracticeDelay(' in line]
     assert len(target_lines)==1,'Actual native target expression drifted'
     clock_lines=[line for line in source.splitlines() if line.strip()=='time = realtime;']
@@ -235,13 +314,15 @@ static float native_stair_view(float raw,float delta,float crouch,qboolean activ
     preface += '#define HAS_PRACTICE_ENTRY '+str(int(core.count('static void CL_SourcePracticeEntry(')==1))+'\n'
     preface += '#define HAS_SAVE_EPOCH '+str(int(core.count('static qboolean CL_SourcePracticeSaveEpochChanged(')==1))+'\n'
     preface += '#define HAS_VIEW_ROOF '+str(int(bool(roof)))+'\n'
+    preface += '#define HAS_TRANSITIONS '+str(int('static qboolean CL_SourcePracticeRebase(' in core))+'\n'
+    preface += '#define HAS_RESET_MARKER '+str(int(bool(marker)))+'\n'
     a.out.mkdir(exist_ok=True, parents=True)
     source_digest = hashlib.sha256(source.encode()).hexdigest()
     view_digest = hashlib.sha256(view_file.read_bytes()).hexdigest()
     script_digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     digest = hashlib.sha256((source_digest+view_digest+script_digest).encode()).hexdigest()
     file = a.out/('sourcepractice-core-'+digest[:12]+'.c')
-    file.write_text(preface+compare.group(0)+'\n'+core+guard+delay_control+roof_control+view_control+TEST)
+    file.write_text(preface+compare.group(0)+'\n'+core+guard+reset_control+consumer_control+delay_control+roof_control+view_control+TEST)
     gcc = Path('C:/msys64/ucrt64/bin/gcc.exe')
     exe = file.with_suffix('.exe')
     env = dict(os.environ)
@@ -252,7 +333,7 @@ static float native_stair_view(float raw,float delta,float crouch,qboolean activ
         (a.out/('compile-failure-'+digest[:12]+'.json')).write_text(json.dumps({'source':str(source_file),'viewSource':str(view_file),'scriptSha256':script_digest,'exit':compile.returncode,'stdout':compile.stdout,'stderr':compile.stderr},indent=2)+'\n')
         raise SystemExit(3)
     results = []
-    for case in ['core','idle-resume','teleport','stair-view','stair-entry','save-epoch','roof-view','packet-delay','clock-hold']:
+    for case in ['core','idle-resume','teleport','stair-view','stair-entry','save-epoch','roof-view','packet-delay','clock-hold','scale-rebase','scale-release','short-reset','render-consumer']:
         run = subprocess.run([str(exe)]+([] if case=='core' else [case]),capture_output=True,text=True,env=env)
         print(case,'exit',run.returncode,run.stdout+run.stderr,flush=True)
         results.append({'case':case,'exit':run.returncode,'stdout':run.stdout,'stderr':run.stderr})

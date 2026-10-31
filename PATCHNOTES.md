@@ -21,6 +21,10 @@
 
 ## next
 
+### P1147 Smoother practice speed changes and short resets
+- Keep the camera continuous when switching practice speeds or returning to normal speed, and stop blending across short zone resets even when the destination has no angle.
+- Movement and the connection's earlier practice status are unchanged.
+
 ### P1145 Gravity carry status through normalized crouch jumps
 - Carried gravity effects keep their run status through more normalized crouch and duck-transition jumps. Jump height, movement and normal map-authored effects are unchanged.
 
