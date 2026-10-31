@@ -16,6 +16,26 @@
   distinct from authority to arm native replay. Preserve native/timer context,
   current-world, assistance and human-evidence gates.
 
+## Noclip follow-up after owner-confirmed P1156 (investigation; not fixed)
+
+- Slow flight: native `cl_pred.c:CL_SourcePracticeContext` admits only PM_NORMAL,
+  so noclip never receives the slow-camera history fix. Falsifier: actual own
+  noclip below1 must render smoothly while normal walk/duck remains unchanged;
+  do not apply `view.c:V_SourcePracticeEye` roof clipping to collision-free flight.
+- Lobby wheel: `src/client/cl_main.qc:Noclip_Wheel` writes server-owned
+  `pm_noclipspeed`; the private/listen server shares it, a remote lobby does not.
+  Falsifier: one lobby player's Shift+wheel changes that player's authoritative
+  and predicted noclip speed, not a global server cvar or another player's speed;
+  walking inputs/physics and run/evidence semantics must remain unchanged.
+- Above-cap HUD at timescale<1: owner reports speedometer/energy flicker above3500
+  on a map capped3500. Asked whether noclip-only or ordinary air/surf too. Source
+  `PMSrc_CheckVelocity` correctly clamps EACH axis; legal diagonal speed exceeds
+  the scalar cap. Plausible noclip-only mismatch: `sv_user.c` calls generic
+  `sv_phys.c:WPhys_CheckVelocity` while `PMSrc_NoClipMove` intentionally permits
+  uncapped flight. Attribution needs an acting native trace, not a code-only
+  assertion. Falsifier: record authoritative/predicted/HUD vectors at a fixed
+  above-cap noclip speed below1; retain normal-axis cap and diagonal controls.
+
 ## Slow-practice camera acceptance (P1147 delivered; coding follow-ups resolved)
 
 - RESOLVED P1147: slow-scale changes rebase at actual last drawn feet; restoring1
