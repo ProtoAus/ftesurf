@@ -102,8 +102,20 @@ remain ours, old Pi data and all part identities/bytes remain exact, current13
 actors have no recorder FDs, and backend files/unit/master birth are unchanged.
 Both Windows program/LNO sets and the Pi QW/CS programs changed; the writer is not
 attributed by this lane. No repeated client, healthy restart, rollback, data
-restore or backend operation is used to manufacture a pass. Acceptance of the
-newer programs remains separate. Source builds, qualification and installation
-are complete for P1158; the broader bank and owner/ranked acceptance stay open.
+restore or backend operation is used to manufacture a pass.
+
+A separate fresh current-program cohort now passes BOTH installed native/menu
+cold checks using an immutable OFFBOX copy of actual Pi-served CSQC as the
+expected authority, not mutable local Windows CSQC. Same current12 native/plugin
+epochs, programs/configs, strict13 actor/no-FD census, old data and all part
+identities/bytes, backend files/unit/master birth and current Windows preimages
+are held before/after. Both new screenshots are read: empty kitsune/terms
+unaccepted. The first fresh-cohort post-empty census refusal remains retained;
+a separate fresh positive-empty live/directory/no-FD control precedes the
+unchanged postgate on fresh volatile input, WITHOUT repeating either client or
+restarting a healthy lobby. Its original transient cause was not captured; no
+directory-lag explanation is invented. Original older-program/epoch failures are
+not regraded. Source builds, qualification, installation and bounded current-
+program cold checks are complete for P1158; broader bank/human/ranked stay open.
 Historical preservation failures are not recovered or waived. No backend or
 program promotion, Build or release is performed by this lane.

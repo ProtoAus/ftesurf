@@ -26,7 +26,8 @@ physical movement. When convenient, join a lobby, make a few ordinary jumps and
 perform a practice return/rejoin. Confirm movement and the existing roof/duck
 camera still feel normal. No owner confirmation received. Automated cold boards
 and native cross-platform checks do not establish human feel or ranked finishes;
-concurrent newer-program cold acceptance remains separate. See tools/p1158-gravity.md.
+a separate fresh newer-program cold cohort now passes, but it is NOT human
+acceptance. See tools/p1158-gravity.md.
 
 ## P1156 — slow-practice roof/duck follow-up (owner confirmed)
 
