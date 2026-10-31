@@ -114,7 +114,7 @@ def main():
     carry=text['header'][text['header'].rfind('typedef struct',0,end):end]
     n=text['native'].index('static void QCBUILTIN PF_sourcepractice_reset(')
     native=text['native'][n:base.matching(text['native'],text['native'].index('{',n))+1]
-    server='\n'.join(base.translate(base.body(text['return'],f)) for f in ['SV_TimeScaleReturnCancel','SV_TimeScaleReturnZone','CSEv_tsreturn_ff','CSEv_tsreturnready_fff','SV_TimeScaleReturnPlace','SV_TimeScaleReturnCommand'])
+    server='\n'.join(base.translate(base.body(text['return'],f)) for f in ['SV_TimeScaleReturnCancel','SV_TimeScaleReturnSupport','SV_TimeScaleReturnZone','CSEv_tsreturn_ff','CSEv_tsreturnready_fff','SV_TimeScaleReturnPlace','SV_TimeScaleReturnCommand'])
     prefix=base.STUB[:base.STUB.index('int main(){')].replace('__CARRY__',carry).replace('__NATIVE__',native).replace('__QC__',server)
     specs=[('request','Trail_RequestReset'),('warp','WarpOp_Queue')]
     if 'void() WarpOp_PracticeReturnCancel =' in text['warp']:

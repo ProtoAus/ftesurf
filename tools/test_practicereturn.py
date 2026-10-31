@@ -59,6 +59,7 @@ struct E {
  float run_tas_used=0,run_tas_mode=0,run_tas_paused=0,run_tas_pending=0;
  float rec_wt_hold=0,rec_sl_hold=0,run_pmhold=0,run_t_viewowner=0,run_ms_phase=0;
  int flags=FL_ONGROUND,pmove_flags=0;
+ E *groundentity=nullptr;
  float run_t_wantstage1=0;
  vector origin={10,20,0},v_angle={5,45,0},velocity={100,0,0};
  bool armed=true; int zone=2,uid=17,slot=0; float assistance=99;
@@ -90,6 +91,7 @@ __NATIVE__
 float game_time=0,run_ts_return_serial=0,sv_ts_taint_uid[FS_MAXPLAYERS]={};
 float trace_startsolid=0,trace_allsolid=0,trace_fraction=0;
 vector trace_plane_normal={0,0,1};
+entity trace_ent=&other;
 bool geometry_ok=true,supported=true,busy=false,cheats=false,capability=true,placement=true;
 bool force_native_failure=false;
 int trace_count=0,closed=0,reset_calls=0,respawned=0,placed=0,prints=0;
@@ -126,7 +128,7 @@ float sourcepractice_reset(entity e){
  globals.input_movevalues[0]=input_movevalues.x;globals.input_movevalues[1]=input_movevalues.y;globals.input_movevalues[2]=input_movevalues.z;
  PF_sourcepractice_reset(&vm,nullptr);return native_result;
 }
-void SV_PlayerRespawn(){assert(self->run_ts_used);++respawned;advance_admission(self);self->assistance=0;self->origin={-100,0,0};self->velocity={};}
+void SV_PlayerRespawn(){assert(self->run_ts_used);++respawned;advance_admission(self);self->flags=2;self->groundentity=nullptr;self->assistance=0;self->origin={-100,0,0};self->velocity={};}
 void SV_ZoneMoveAt(float z,vector at,float yaw,float pitch,float,float){
  ++placed;if(!placement)return;advance_admission(self);self->origin=at;self->v_angle={pitch,yaw,0};self->velocity={};self->zone=(int)z;self->armed=true;
 }
@@ -172,6 +174,7 @@ int main(){
  body.run_t_wantstage1=1;SV_TimeScaleReturnCommand();
  CHECK(body.run_ts_used&&body.run_ts_return==1&&body.run_ts_return_seed==110&&!body.run_ts_return_ready&&closed==1&&reset_calls==1);
  CHECK(sv_ts_taint_uid[0]==17&&body.run_ts_return_attempt==body.bank_attempt);
+ CHECK((body.flags&FL_ONGROUND)&&body.groundentity==trace_ent);
  neutral(120);SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&reset_calls==1);
  CSEv_tsreturnready_fff(2,110,120);CSEv_tsreturnready_fff(1,109,120);CSEv_tsreturnready_fff(1,110,110);
  CSEv_tsreturnready_fff(1,110,NAN);CHECK(!body.run_ts_return_ready&&body.run_ts_used);
@@ -179,6 +182,7 @@ int main(){
  neutral(120);SV_TimeScaleReturnCommand();
  CHECK(!body.run_ts_used&&body.run_ts_return==-1&&closed==2&&reset_calls==2&&respawned==2&&placed==2);
  CHECK(body.origin==old&&body.v_angle==aim&&body.velocity==vector()&&body.assistance==0&&body.armed&&body.run_t_wantstage1==1);
+ CHECK((body.flags&FL_ONGROUND)&&body.groundentity==trace_ent);
  pmsourcestate_t zero={};CHECK(!memcmp(&client.pmsrc,&zero,sizeof(zero))&&!client.jump_held&&native_carry_mirror._float==0);
  CHECK(!memcmp(&peer,&otherclient.pmsrc,sizeof(peer))&&sv_ts_taint_uid[1]==88&&sv_ts_taint_uid[0]==0);
  SV_TimeScaleReturnCommand();CHECK(reset_calls==2&&body.run_ts_return==-1);
@@ -290,7 +294,7 @@ def main():
     carry = ht[ht.rfind('typedef struct', 0, end):end]
     start = nt.index('static void QCBUILTIN PF_sourcepractice_reset(')
     literal = nt[start:matching(nt, nt.index('{', start))+1]
-    funcs = '\n'.join(translate(body(qt, n)) for n in ['SV_TimeScaleReturnCancel', 'SV_TimeScaleReturnZone', 'CSEv_tsreturn_ff', 'CSEv_tsreturnready_fff', 'SV_TimeScaleReturnPlace', 'SV_TimeScaleReturnCommand'])
+    funcs = '\n'.join(translate(body(qt, n)) for n in ['SV_TimeScaleReturnCancel', 'SV_TimeScaleReturnSupport', 'SV_TimeScaleReturnZone', 'CSEv_tsreturn_ff', 'CSEv_tsreturnready_fff', 'SV_TimeScaleReturnPlace', 'SV_TimeScaleReturnCommand'])
     source = STUB.replace('__CARRY__', carry).replace('__NATIVE__', literal).replace('__QC__', funcs)
     cpp = a.out/'literal-return.cpp'
     retained = None

@@ -35,6 +35,17 @@ void(entity e, float blocked) SV_TimeScaleReturnCancel =
 	e.run_ts_return_block = blocked;
 };
 
+// Fresh geometry, independent of flags cleared by explicit respawn. On success
+// trace_ent is the actual supporting ground for this exact standing body.
+float(entity e) SV_TimeScaleReturnSupport =
+{
+	tracebox(e.origin, PM_HULL_MINS, PM_HULL_MAXS, e.origin, FALSE, e);
+	if (trace_startsolid || trace_allsolid) return FALSE;
+	tracebox(e.origin + '0 0 1', PM_HULL_MINS, PM_HULL_MAXS,
+		e.origin - '0 0 2', FALSE, e);
+	return !trace_startsolid && !trace_allsolid && trace_fraction < 1 && trace_plane_normal_z >= 0.7;
+};
+
 // This is pose selection, NOT proof that an already armed attempt is clean.
 float(entity e) SV_TimeScaleReturnZone =
 {
@@ -49,12 +60,7 @@ float(entity e) SV_TimeScaleReturnZone =
 	z = SV_TimerMarkZone(e);
 	if (z < 0) return -1;
 	if (!(e.flags & FL_ONGROUND) || (e.pmove_flags & PMF_DUCKED)) return -1;
-	tracebox(e.origin, PM_HULL_MINS, PM_HULL_MAXS, e.origin, FALSE, e);
-	if (trace_startsolid || trace_allsolid) return -1;
-	tracebox(e.origin + '0 0 1', PM_HULL_MINS, PM_HULL_MAXS,
-		e.origin - '0 0 2', FALSE, e);
-	if (trace_startsolid || trace_allsolid || trace_fraction >= 1 || trace_plane_normal_z < 0.7)
-		return -1;
+	if (!SV_TimeScaleReturnSupport(e)) return -1;
 	return z;
 };
 
@@ -109,7 +115,7 @@ float(float z, vector at, vector aim, float wantstage1, float clean) SV_TimeScal
 	}
 	self.run_t_wantstage1 = wantstage1;
 	SV_ZoneMoveAt(z, at, aim_y, aim_x, TRUE, TRUE);
-	if (self.bank_attempt <= 0i || self.origin != at || SV_TimerMarkZone(self) != z)
+	if (self.bank_attempt <= 0i || self.origin != at || SV_TimerMarkZone(self) != z || !SV_TimeScaleReturnSupport(self))
 	{
 		self.run_ts_used = TRUE;
 		SV_TimeScaleRemember(self);
@@ -117,6 +123,10 @@ float(float z, vector at, vector aim, float wantstage1, float clean) SV_TimeScal
 		SV_TimeScaleReturnCancel(self, TRUE);
 		return FALSE;
 	}
+	// Respawn removed FL_ONGROUND. A zero-duration Source command cannot run
+	// CategorizePosition; restore ONLY the freshly proved exact support instead.
+	self.flags = self.flags | FL_ONGROUND;
+	self.groundentity = trace_ent;
 	return TRUE;
 };
 
