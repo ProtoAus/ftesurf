@@ -21,6 +21,16 @@ do not label it a native-decoder negative. The official CSQC seeder returns zero
 without copying when downloads/csprogsvers is absent: create that owned namespace
 and verify the actual seeded bytes before launching, not just its exit code.
 
+Final-image readers: native logs retain ^2ok^7 as well as timestamps; strip colour
+codes before counting the original completed test, and stop later arms on a common
+bootstrap-reader failure. Do not rerun a healthy numerical suite for that reader.
+Version count is the exact producer commit's full ancestry plus29, not current HEAD
+or a shallow mirror's count. Compare pinned Git trees and reuse the frozen qualified
+version on the shallow ARM mirror. Docs-only merges do not invalidate code images.
+Plugin zip -A adjusts absolute central/local offsets: it is NOT a modulo-alignment
+rule. Read decompressed metadata; this host's Makefile echo emits literal backslash-n
+separators. Retain wrong-reader failures, not another rebuilt/renamed artifact.
+
 ## Profile cosmetics: authority, fixtures and isolated rollout (P1160)
 
 Inventory ownership/roles live on the backend, never writable player userinfo.
