@@ -19,9 +19,13 @@ CLIENT = r'''
 #define VF_CL_VIEWANGLES 2
 __MACROS__
 float numclientseats=1,clientcommandframe=110,servercommandframe=100,cltime=10,input_timelength=0;
-bool mine=true;float request_stat=1,scale_stat=1;
+bool mine=true;float request_stat=1,scale_stat=1,seed_stat=0;
+bool prediction_capability=true,prediction_ready=false;
+int prediction_calls=0,ready_events=0;
+float sourcepractice_predictreset(float,float seed){if(seed>0)++prediction_calls;return seed>0&&prediction_ready;}
+float checkbuiltin(float(*)(float,float)){return prediction_capability;}
 float run_ts_carry[4]={},run_ts_paused[4]={},run_ts_scale[4]={};
-float run_ts_return[4]={},run_ts_return_sent[4]={},run_ts_return_cancelled[4]={};
+float run_ts_return[4]={},run_ts_return_sent[4]={},run_ts_return_cancelled[4]={},run_ts_return_ready[4]={};
 float seqbuf[64]={},opbuf[64]={},qbuf[64]={},duckbuf[64]={},qtbuf[64]={},blindbuf[64]={};
 vector orgbuf[64],velbuf[64],angbuf[64];
 float *wop_seq=seqbuf,*wop_op=opbuf,*wop_q=qbuf,*wop_duck=duckbuf,*wop_qt=qtbuf,*wop_blind=blindbuf;
@@ -35,7 +39,7 @@ std::string tr_req_cmd[8];float tr_req_raw[8]={},tr_req_head=0,tr_req_n=0,tr_req
 int freed_bufs=0,freed_strings=0,wire_actions=0,events=0;
 float LT_StatsAreMine(){return mine;}
 float getproperty(int){return 0;}
-float getstatf(int s){if(s==STAT_FS_TSRETURN)return request_stat;if(s==STAT_FS_TIMESCALE)return scale_stat;return 0;}
+float getstatf(int s){if(s==STAT_FS_TSRETURN)return request_stat;if(s==STAT_FS_TSRETURNSEED)return seed_stat;if(s==STAT_FS_TIMESCALE)return scale_stat;return 0;}
 float cvar(const char*){return 1;}
 std::string serverkey(const char*){return "1";}
 void buf_del(float){++freed_bufs;}
@@ -51,12 +55,14 @@ template<class... A> std::string QC_sprintf(const char *s,A... a){char b[512];sn
 void setproperty(int,vector){}
 void TimeScale_Seats(){}
 void sendevent(const char*,const char*,float,float){++events;}
+void sendevent(const char*,const char*,float,float,float){++ready_events;}
 __FUNCTIONS__
 int main(){
  int failures=0,total=0;
  auto check=[&](bool v,const char*s){++total;printf("%s %s\n",v?"PASS":"FAIL",s);if(!v)++failures;};
  auto prime=[&](){
-  memset(seqbuf,0,sizeof(seqbuf));request_stat=1;numclientseats=1;mine=true;run_ts_return_cancelled[0]=run_ts_return_sent[0]=0;
+  memset(seqbuf,0,sizeof(seqbuf));request_stat=1;numclientseats=1;mine=true;run_ts_return_cancelled[0]=run_ts_return_sent[0]=run_ts_return_ready[0]=0;
+  seed_stat=0;clientcommandframe=110;prediction_capability=true;prediction_ready=false;prediction_calls=ready_events=0;
   wop_qn=wop_relseq=wop_loadseq=wop_loadackat=wop_relat=0;wire_actions=events=freed_bufs=freed_strings=0;
   rec_sl_holding=rec_sl_wophold=rec_sl_pv_on=rec_sl_holdang_ok=1;rec_sl_holdkey=42;
   tr_req_n=tr_req_wait=1;tr_req_raw[0]=7;tr_req_cmd[0]="sl_load";input_impulse=0;
@@ -72,6 +78,13 @@ int main(){
  // A new operation queued during a pending request cannot use the frame expiry.
  WarpOp_Queue(WOP_LOAD,vector(),vector(),vector(),0);wop_qt[0]=cltime-1;WarpOp_Frame();
  check(!wire_actions&&wop_seq[0]==0&&!rec_sl_holding,"pending load expiry also discarded without fallback side effects");
+ // Server preparation alone is not a native-client epoch confirmation.
+ prime();seed_stat=110;clientcommandframe=120;input_timelength=.01f;input_buttons=2;TimeScale_ReturnInputFrame();
+ check(prediction_calls==1&&!ready_events&&input_timelength==0&&input_buttons==0,"native reset not ready: remain neutral, do NOT grant client-ready event");
+ prediction_ready=true;TimeScale_ReturnInputFrame();TimeScale_ReturnInputFrame();
+ check(ready_events==1&&run_ts_return_ready[0]==1,"actual native reset success sends exactly one ready event per request");
+ prime();prediction_capability=false;TimeScale_ReturnInputFrame();
+ check(events==0&&ready_events==0&&run_ts_return[0]==1,"old native cannot even prepare server; timeout remains practice");
  // Do not cancel a different local seat's connection-global queues.
  prime();numclientseats=2;WarpOp_Queue(WOP_RESET,vector(),vector(),vector(),0);
  TimeScale_Observe();auto oldbuttons=input_buttons=2;auto oldduration=input_timelength=0.01f;
@@ -101,7 +114,7 @@ def main():
     carry=text['header'][text['header'].rfind('typedef struct',0,end):end]
     n=text['native'].index('static void QCBUILTIN PF_sourcepractice_reset(')
     native=text['native'][n:base.matching(text['native'],text['native'].index('{',n))+1]
-    server='\n'.join(base.translate(base.body(text['return'],f)) for f in ['SV_TimeScaleReturnCancel','SV_TimeScaleReturnZone','CSEv_tsreturn_ff','SV_TimeScaleReturnCommand'])
+    server='\n'.join(base.translate(base.body(text['return'],f)) for f in ['SV_TimeScaleReturnCancel','SV_TimeScaleReturnZone','CSEv_tsreturn_ff','CSEv_tsreturnready_fff','SV_TimeScaleReturnPlace','SV_TimeScaleReturnCommand'])
     prefix=base.STUB[:base.STUB.index('int main(){')].replace('__CARRY__',carry).replace('__NATIVE__',native).replace('__QC__',server)
     specs=[('request','Trail_RequestReset'),('warp','WarpOp_Queue')]
     if 'void() WarpOp_PracticeReturnCancel =' in text['warp']:

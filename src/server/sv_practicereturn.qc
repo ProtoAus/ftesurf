@@ -18,6 +18,8 @@ float(entity player) sourcepractice_reset = #0;
 .float run_ts_return_zone;
 .float run_ts_return_after;
 .float run_ts_return_frame;
+.float run_ts_return_seed;          // exact prepared neutral command; stat203
+.float run_ts_return_ready;         // native-client epoch reset acknowledged
 .float run_ts_return_until;
 .float run_ts_return_block;
 float run_ts_return_serial;        // exact, never reused in this VM lifetime
@@ -29,6 +31,7 @@ void(entity e, float blocked) SV_TimeScaleReturnCancel =
 	// This releases assistance only; ancestry remains practice.
 	if (e.run_ts_return > 0 && e.rec_sl_hold) SV_SaveLocRelease(e);
 	e.run_ts_return = e.run_ts_return_frame = e.run_ts_return_until = 0;
+	e.run_ts_return_seed = e.run_ts_return_ready = 0;
 	e.run_ts_return_block = blocked;
 };
 
@@ -63,13 +66,64 @@ void(float request, float frame) CSEv_tsreturn_ff =
 	if (self.run_ts_return != request || self.run_ts_return_until < time) return;
 	if (self.run_ts_return_uid != stof(infokey(self, "*userid"))) return;
 	if (self.run_ts_return_attempt != self.bank_attempt) return;
+	if (self.run_ts_return_seed) return;
 	if (!self.run_ts_return_frame) self.run_ts_return_frame = frame;
+};
+
+// An ACK of the actual prepared command, not merely receipt of a request.
+// A modified client can lie about its own prediction; this cannot bypass the
+// server's independent neutral/native-reset/new-attempt eligibility boundary.
+void(float request, float seed, float frame) CSEv_tsreturnready_fff =
+{
+	if (!(request > 0 && request <= 16000000 && floor(request) == request)) return;
+	if (!(seed > 0 && seed <= 16000000 && floor(seed) == seed)) return;
+	if (!(frame > seed && frame <= 16000000 && floor(frame) == frame)) return;
+	if (self.run_ts_return != request || self.run_ts_return_seed != seed || self.run_ts_return_until < time) return;
+	if (self.run_ts_return_uid != stof(infokey(self, "*userid"))) return;
+	if (self.run_ts_return_attempt != self.bank_attempt) return;
+	if (!self.run_ts_return_ready) self.run_ts_return_ready = frame;
+};
+
+// Both phases close their still-practice evidence BEFORE native carry changes.
+// Preparation does NOT clear the latch; only a later client-ready boundary can.
+float(float z, vector at, vector aim, float wantstage1, float clean) SV_TimeScaleReturnPlace =
+{
+	local float slot;
+	SV_TimerVoid(self, "normal-speed clean restart");
+	if (!sourcepractice_reset(self))
+	{
+		SV_TimeScaleReturnCancel(self, TRUE);
+		return FALSE;
+	}
+	SV_PlayerRespawn();
+	slot = num_for_edict(self) - 1;
+	if (!(slot >= 0 && slot < FS_MAXPLAYERS))
+	{
+		SV_TimeScaleReturnCancel(self, TRUE);
+		return FALSE;
+	}
+	if (clean)
+	{
+		self.run_ts_used = FALSE;
+		sv_ts_taint_uid[slot] = 0;
+	}
+	self.run_t_wantstage1 = wantstage1;
+	SV_ZoneMoveAt(z, at, aim_y, aim_x, TRUE, TRUE);
+	if (self.bank_attempt <= 0i || self.origin != at || SV_TimerMarkZone(self) != z)
+	{
+		self.run_ts_used = TRUE;
+		SV_TimeScaleRemember(self);
+		SV_TimerCheat(self);
+		SV_TimeScaleReturnCancel(self, TRUE);
+		return FALSE;
+	}
+	return TRUE;
 };
 
 // PlayerPreThink, after command-aligned reset ops and before any moved input.
 void() SV_TimeScaleReturnCommand =
 {
-	local float z, frame, uid, request, wantstage1, slot;
+	local float z, frame, uid, request, wantstage1, clean;
 	local vector at, aim;
 	z = SV_TimeScaleReturnZone(self);
 	if (z < 0)
@@ -112,49 +166,32 @@ void() SV_TimeScaleReturnCommand =
 		self.run_ts_return_attempt = self.bank_attempt;
 		self.run_ts_return_zone = z;
 		self.run_ts_return_after = frame;
-		self.run_ts_return_frame = 0;
+		self.run_ts_return_frame = self.run_ts_return_seed = self.run_ts_return_ready = 0;
 		self.run_ts_return_until = time + 5;
 		return;
 	}
-	if (!self.run_ts_return_frame || frame < self.run_ts_return_frame) return;
+	clean = self.run_ts_return_seed > 0;
+	if (clean)
+	{
+		if (!self.run_ts_return_ready || frame < self.run_ts_return_ready) return;
+	}
+	else if (!self.run_ts_return_frame || frame < self.run_ts_return_frame) return;
 	if (input_cmd_msec != 0 || input_cmd_piece_msec != 0 || input_buttons != 0 ||
 		input_impulse != 0 || input_movevalues != '0 0 0') return;
-
-	// Revalidate BEFORE native reset; never restore arbitrary airborne/crouched
-	// practice poses. Take the actual last body/view after all older input drained.
 	if (SV_TimeScaleReturnZone(self) != z) return;
 	at = self.origin;
 	aim = self.v_angle;
 	wantstage1 = self.run_t_wantstage1;
 	request = self.run_ts_return;
-	// Finalize every original row/tail while BOTH the old latch and native
-	// carried state still exist. The new epoch must never leak into old evidence.
-	SV_TimerVoid(self, "normal-speed clean restart");
-	if (!sourcepractice_reset(self))
+	if (!SV_TimeScaleReturnPlace(z, at, aim, wantstage1, clean)) return;
+	if (!clean)
 	{
-		SV_TimeScaleReturnCancel(self, TRUE);
-		return;
-	}
-	// Keep the original latch intact through explicit respawn cleanup as well;
-	// reset map/player assistance, carrier, posture and pre-start evidence ring.
-	SV_PlayerRespawn();
-	slot = num_for_edict(self) - 1;
-	if (!(slot >= 0 && slot < FS_MAXPLAYERS))
-	{
-		SV_TimeScaleReturnCancel(self, TRUE);
-		return;
-	}
-	self.run_ts_used = FALSE;
-	sv_ts_taint_uid[slot] = 0;          // only THIS successful slow-epoch boundary
-	self.run_t_wantstage1 = wantstage1;
-	SV_ZoneMoveAt(z, at, aim_y, aim_x, TRUE, TRUE);
-	if (self.bank_attempt <= 0i || self.origin != at || SV_TimerMarkZone(self) != z)
-	{
-		// Admission exhaustion or placement/arm refusal cannot forgive the old epoch.
-		self.run_ts_used = TRUE;
-		SV_TimeScaleRemember(self);
-		SV_TimerCheat(self);
-		SV_TimeScaleReturnCancel(self, TRUE);
+		// Native client must reseed AFTER this acknowledged authoritative command,
+		// while every later pending command is still neutral. No ACK => practice.
+		self.run_ts_return_seed = frame;
+		self.run_ts_return_ready = 0;
+		self.run_ts_return_attempt = self.bank_attempt;
+		self.run_ts_return_until = time + 5;
 		return;
 	}
 	self.run_ts_return = -request;

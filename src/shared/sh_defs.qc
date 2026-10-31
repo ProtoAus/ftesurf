@@ -153,6 +153,7 @@
 #define STAT_FS_TASPLANBITS 200
 #define STAT_FS_TASPLANAIR 201 // last granted command actually used the air selector
 #define STAT_FS_TSRETURN 202  // derived per-seat neutral-fence request/completion, not evidence
+#define STAT_FS_TSRETURNSEED 203 // actual prepared zero-command, paired native-client epoch fence
 #define TAS_PLAN_LIVE 0
 #define TAS_PLAN_MANUAL 1
 #define TAS_PLAN_LEFT 2

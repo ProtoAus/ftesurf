@@ -53,7 +53,7 @@ struct V {float movetype=MOVETYPE_WALK,health=100;};
 struct E {
  V nativev; V *v=&nativev;
  float run_ts_return=0,run_ts_return_uid=0,run_ts_return_zone=0,run_ts_return_after=0;
- float run_ts_return_frame=0,run_ts_return_until=0,run_ts_return_block=0;
+ float run_ts_return_frame=0,run_ts_return_seed=0,run_ts_return_ready=0,run_ts_return_until=0,run_ts_return_block=0;
  int run_ts_return_attempt=0,bank_attempt=1;
  float run_ts_used=1,run_timescale=1,run_inserver=1,health=100;
  float run_tas_used=0,run_tas_mode=0,run_tas_paused=0,run_tas_pending=0;
@@ -114,12 +114,13 @@ void sprint(entity,float,const char*){++prints;}
 void SV_RecReplayStop(entity){}
 void SV_SaveLocRelease(entity e){e->rec_sl_hold=0;}
 void SV_TimerVoid(entity e,const char*){
- assert(e->run_ts_used);assert(reset_calls==0);++closed;e->armed=false;advance_admission(e);
- // The old native state must still be present when the original tail closes.
- assert(client.pmsrc.stamina==77);
+ assert(e->run_ts_used);assert(reset_calls==closed);
+ // The old tail closes with old carry; prepared practice closes with fresh zero.
+ assert(client.pmsrc.stamina==(closed?0:77));
+ ++closed;e->armed=false;advance_admission(e);
 }
 float sourcepractice_reset(entity e){
- ++reset_calls;assert(closed==1);assert(e->run_ts_used);
+ ++reset_calls;assert(closed==reset_calls);assert(e->run_ts_used);
  if(force_native_failure)return 0;
  native_argument=e;globals.input_buttons=input_buttons;globals.input_impulse=input_impulse;
  globals.input_movevalues[0]=input_movevalues.x;globals.input_movevalues[1]=input_movevalues.y;globals.input_movevalues[2]=input_movevalues.z;
@@ -149,6 +150,8 @@ void initial(){
 }
 void neutral(int seq=110){input_cmd_sequence_lo=(float)seq;input_cmd_msec=input_cmd_piece_msec=0;input_movevalues={};input_buttons=input_impulse=0;}
 void ready(){SV_TimeScaleReturnCommand();CSEv_tsreturn_ff(body.run_ts_return,110);neutral();}
+void prepared(){ready();SV_TimeScaleReturnCommand();}
+void acknowledged(){CSEv_tsreturnready_fff(body.run_ts_return,body.run_ts_return_seed,120);neutral(120);}
 int main(){
  initial();SV_TimeScaleReturnCommand();CHECK(body.run_ts_return==1&&body.run_ts_used&&closed==0);
  CSEv_tsreturn_ff(2,110);CHECK(body.run_ts_return_frame==0);
@@ -167,11 +170,18 @@ int main(){
  input_impulse=0;input_movevalues={1,0,0};SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&!reset_calls);
  input_movevalues={};vector old=body.origin,aim=body.v_angle;auto peer=otherclient.pmsrc;
  body.run_t_wantstage1=1;SV_TimeScaleReturnCommand();
- CHECK(!body.run_ts_used&&body.run_ts_return==-1&&closed==1&&reset_calls==1&&respawned==1&&placed==1);
+ CHECK(body.run_ts_used&&body.run_ts_return==1&&body.run_ts_return_seed==110&&!body.run_ts_return_ready&&closed==1&&reset_calls==1);
+ CHECK(sv_ts_taint_uid[0]==17&&body.run_ts_return_attempt==body.bank_attempt);
+ neutral(120);SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&reset_calls==1);
+ CSEv_tsreturnready_fff(2,110,120);CSEv_tsreturnready_fff(1,109,120);CSEv_tsreturnready_fff(1,110,110);
+ CSEv_tsreturnready_fff(1,110,NAN);CHECK(!body.run_ts_return_ready&&body.run_ts_used);
+ CSEv_tsreturnready_fff(1,110,120);neutral(119);SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&reset_calls==1);
+ neutral(120);SV_TimeScaleReturnCommand();
+ CHECK(!body.run_ts_used&&body.run_ts_return==-1&&closed==2&&reset_calls==2&&respawned==2&&placed==2);
  CHECK(body.origin==old&&body.v_angle==aim&&body.velocity==vector()&&body.assistance==0&&body.armed&&body.run_t_wantstage1==1);
  pmsourcestate_t zero={};CHECK(!memcmp(&client.pmsrc,&zero,sizeof(zero))&&!client.jump_held&&native_carry_mirror._float==0);
  CHECK(!memcmp(&peer,&otherclient.pmsrc,sizeof(peer))&&sv_ts_taint_uid[1]==88&&sv_ts_taint_uid[0]==0);
- SV_TimeScaleReturnCommand();CHECK(reset_calls==1&&body.run_ts_return==-1);
+ SV_TimeScaleReturnCommand();CHECK(reset_calls==2&&body.run_ts_return==-1);
  // Each refusal is an acting state guard, not just an identifier search.
  for(int k=0;k<14;++k){initial();
   if(k==0)body.run_timescale=.5f;if(k==1)body.run_tas_used=1;if(k==2)body.run_tas_mode=1;
@@ -196,7 +206,13 @@ int main(){
   CHECK(body.bank_attempt<0&&body.run_ts_used&&body.run_ts_return==0&&body.run_ts_return_block&&sv_ts_taint_uid[0]==17);
  }
  initial();ready();bank_serial=2147483644;SV_TimeScaleReturnCommand();
- CHECK(body.bank_attempt==2147483647&&!body.run_ts_used&&body.run_ts_return<0&&!body.run_ts_return_block);
+ CHECK(body.bank_attempt==2147483647&&body.run_ts_used&&body.run_ts_return_seed==110&&!body.run_ts_return_block);
+ for(int k=0;k<3;++k){initial();prepared();acknowledged();bank_serial=2147483647-k;SV_TimeScaleReturnCommand();
+  CHECK(body.bank_attempt<0&&body.run_ts_used&&body.run_ts_return==0&&body.run_ts_return_block&&sv_ts_taint_uid[0]==17);
+ }
+ initial();prepared();game_time=6;SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&body.run_ts_return==0&&body.run_ts_return_block&&reset_calls==1);
+ initial();prepared();++body.bank_attempt;CSEv_tsreturnready_fff(1,110,120);CHECK(!body.run_ts_return_ready);SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&body.run_ts_return==0);
+ initial();prepared();acknowledged();placement=false;SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&body.run_ts_return_block&&sv_ts_taint_uid[0]==17);
  // Actual native builtin: malformed/foreign/nondecoded/unsupported contexts do NOT mutate carry.
  for(int k=0;k<19;++k){initial();neutral();auto before=client.pmsrc;
   if(k==0)native_argument=&other;if(k==1)sv_player=&other;if(k==2)client.state=0;
@@ -274,7 +290,7 @@ def main():
     carry = ht[ht.rfind('typedef struct', 0, end):end]
     start = nt.index('static void QCBUILTIN PF_sourcepractice_reset(')
     literal = nt[start:matching(nt, nt.index('{', start))+1]
-    funcs = '\n'.join(translate(body(qt, n)) for n in ['SV_TimeScaleReturnCancel', 'SV_TimeScaleReturnZone', 'CSEv_tsreturn_ff', 'SV_TimeScaleReturnCommand'])
+    funcs = '\n'.join(translate(body(qt, n)) for n in ['SV_TimeScaleReturnCancel', 'SV_TimeScaleReturnZone', 'CSEv_tsreturn_ff', 'CSEv_tsreturnready_fff', 'SV_TimeScaleReturnPlace', 'SV_TimeScaleReturnCommand'])
     source = STUB.replace('__CARRY__', carry).replace('__NATIVE__', literal).replace('__QC__', funcs)
     cpp = a.out/'literal-return.cpp'
     retained = None

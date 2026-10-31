@@ -1053,6 +1053,8 @@ void() PreStrafe_InputFrame =
 float run_ts_scale[RUN_TS_SEATS], run_ts_carry[RUN_TS_SEATS];
 float run_ts_paused[RUN_TS_SEATS], run_tas_request[RUN_TS_SEATS];
 float run_ts_return[RUN_TS_SEATS], run_ts_return_sent[RUN_TS_SEATS], run_ts_return_cancelled[RUN_TS_SEATS];
+float run_ts_return_ready[RUN_TS_SEATS];
+float(float request, float seedframe) sourcepractice_predictreset = #0;
 
 // Native QW tracking substitutes foreign stats, including across an in-place join.
 float() TimeScale_Observe =
@@ -1085,6 +1087,8 @@ float() TimeScale_Observe =
 				WarpOp_PracticeReturnCancel();
 				run_ts_return_cancelled[seat] = run_ts_return[seat];
 			}
+			if (run_ts_return[seat] > 0 && checkbuiltin(sourcepractice_predictreset))
+				sourcepractice_predictreset(run_ts_return[seat], 0);
 		}
 	}
 	if (!(scale >= 0.1 && scale < 1))
@@ -1108,7 +1112,7 @@ void() TimeScale_Seats =
 		{
 			run_ts_scale[i] = 1;
 			run_ts_carry[i] = run_ts_paused[i] = 0;
-			run_ts_return[i] = run_ts_return_sent[i] = run_ts_return_cancelled[i] = 0;
+			run_ts_return[i] = run_ts_return_sent[i] = run_ts_return_cancelled[i] = run_ts_return_ready[i] = 0;
 		}
 		if ((run_ts_scale[i] > 0 && run_ts_scale[i] < 1) || run_ts_paused[i] || run_ts_return[i] > 0)
 			active = TRUE;
@@ -1170,7 +1174,7 @@ void() TimeScale_InputFrame =
 // eligibility: the server waits for a decoded neutral command at/after frame.
 float() TimeScale_ReturnInputFrame =
 {
-	local float seat, request;
+	local float seat, request, seed;
 	seat = getproperty(VF_ACTIVESEAT);
 	if (!(seat >= 0 && seat < RUN_TS_SEATS)) return FALSE;
 	TimeScale_Observe();
@@ -1180,11 +1184,22 @@ float() TimeScale_ReturnInputFrame =
 	run_ts_carry[seat] = 0;
 	input_timelength = input_buttons = input_impulse = 0;
 	input_movevalues = '0 0 0';
+	// Older native cannot confirm a fresh prediction epoch. Do not prepare the
+	// server at all; timeout safely leaves the original assistance practice-only.
+	if (!checkbuiltin(sourcepractice_predictreset)) return TRUE;
 	if (run_ts_return_sent[seat] != request)
 	if (clientcommandframe > 0 && clientcommandframe <= 16000000 && floor(clientcommandframe) == clientcommandframe)
 	{
 		run_ts_return_sent[seat] = request;
 		sendevent("tsreturn", "ff", request, clientcommandframe);
+	}
+	seed = getstatf(STAT_FS_TSRETURNSEED);
+	if (run_ts_return_ready[seat] != request && seed > 0 && seed <= 16000000 && floor(seed) == seed)
+	if (clientcommandframe > seed && clientcommandframe <= 16000000 && floor(clientcommandframe) == clientcommandframe)
+	if (sourcepractice_predictreset(request, seed) == 1)
+	{
+		run_ts_return_ready[seat] = request;
+		sendevent("tsreturnready", "fff", request, seed, clientcommandframe);
 	}
 	return TRUE;
 };
