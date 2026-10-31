@@ -47,9 +47,23 @@ Both Windows installs now hold the qualified native and official programs:
 protected entries and 224 configs remained unchanged; generated rollback/preimages
 are retained privately. Source and `patch-1151` are pushed to both repositories.
 
-Pi activation is PENDING: the first preflight refused an occupied public lobby,
-BEFORE any live swap/restart or all-current-parts snapshot/archive. No force or
-failed-receipt replacement was used. Public-lobby clean return is not claimed
-active. Final installed-client/downloaded-CSQC cold checks also remain pending.
-Qualification, local installation, fleet activation and human acceptance are
-separate states. Do not deploy the historical test VM as a runtime fix.
+Pi activation is COMPLETE. All 12 active lobbies received the qualified native
+server/HL2 pair and official server/client programs, with ONE restart per unit.
+Direct postflight bound executable/plugin hashes and mapped inodes, new PID/birth
+pairs and patch-1151 tag. All 38,235 original protected entries remained exact;
+the complete current-parts archive was verified on-box and off-box. No force,
+player kick, backend change, recording/config restoration or extra restart.
+
+Both installed client image/menu/plugin sources passed fresh isolated GUI checks:
+the actual lobby-served CSQC matched the deployed hash, the board drew, screenshots
+were inspected, and both clients exited 0 without QC errors. The final read-only
+cold guard passed the original byte/parts checks and unchanged postflight
+PID/birth/inode pairs. Earlier occupied-directory refusals and the metadata-schema
+caller failure are retained, not relabelled passes; only missing read-only phases
+were resumed under the same transaction, without repeating successful actors.
+
+Human acceptance is still separate: the owner reports smooth ordinary movement
+but judder during duck/unduck and roof clearance. The active slow-camera path has
+a concrete height/hull discontinuity bypass; no follow-up fix is claimed yet.
+Slow versus steady-normal-speed reproduction and the full-bank/feel checks remain
+in `lextest.md`. Do not deploy the historical test VM as a runtime fix.
