@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Exercise the exact native slow-practice pose-ring functions and math primitives.
 
-Core arithmetic/bounds only; not collision, network, adapter or deployment proof.
-The native full build and actual socket on/off capture cover those separately.
+Literal core, adapter transition predicate and render-expression controls only;
+controlled traces/scalars are not collision-world, packet or deployment proof.
+Native builds and the owner's precise in-game roof check cover those separately.
 """
 import argparse
 import hashlib
@@ -18,6 +19,64 @@ int main(int argc,char **argv) {
  sourcepracticelerp_t s={0},saved;
  vec3_t p={0,0,0},v={100,0,0},out={-999,-999,-999};
  int i;float t;
+ if(argc>1 && !strcmp(argv[1],"posture-eye")) {
+  vec3_t mins={-16,-16,0},maxs={16,16,62};int stand,duck,wrong;
+  stand=COM_EncodeSize(mins,maxs);maxs[2]=45;duck=COM_EncodeSize(mins,maxs);
+  mins[0]=-24;maxs[0]=24;wrong=COM_EncodeSize(mins,maxs);
+  assert(!native_transition_guard(64,64,stand,stand,0));
+  if(native_transition_guard(64,63.9f,stand,stand,0)) {
+   puts("FAIL ordinary eye-height change discards moving slow-camera history");return 2;
+  }
+  assert(!native_transition_guard(64,47,stand,duck,0));
+  assert(native_transition_guard(64,47,stand,wrong,0));
+  assert(native_transition_guard(64,63.9f,stand,stand,EF_TELEPORT_BIT));
+#if HAS_PAIRED_EYE
+  float eye;vec3_t feet={0,0,0};
+  assert(native_push_height(&s,1,feet,vec3_origin,.03f,64));
+  assert(native_push_height(&s,1.03,feet,vec3_origin,.03f,47));
+  assert(s.count>=2);assert(native_sample_height(&s,1.015,out,&eye));near(out[0],0);near(eye,55.5f);
+  memset(&s,0,sizeof(s));assert(native_push_height(&s,1,p,v,.03f,64));p[0]=3;
+  assert(native_push_height(&s,1.03,p,v,.03f,47));assert(native_sample_height(&s,1.015,out,&eye));near(out[0],1.5f);near(eye,55.5f);
+  view_sampleheight=47;near(native_stair_view(0,0,0,true),47);view_sampleheight=64;
+  s.vieworg[0]=1.5f;s.viewheight=55.5f;s.tick=.015f;s.scale=.5f;
+  native_release_height(&s,2,p,(vec3_t){0,0,-1},0,47);
+  assert(native_release_view_height(&s,2,p,(vec3_t){0,0,-1},0,out,47,&eye));near(out[0],1.5f);near(eye,55.5f);
+  puts("PASS ordinary eye/duck transition retains history; eye-only changes sample with feet, render uses sampled eye, speed1 release retains paired eye; wrong hull and teleport still snap");return 0;
+#else
+  puts("FAIL no paired eye sample");return 2;
+#endif
+ }
+ if(argc>1 && !strcmp(argv[1],"idle-eye")) {
+#if HAS_PAIRED_EYE
+  int moving;float eye;vec3_t feet={0,0,0};
+  for(moving=0;moving<2;moving++) {
+   memset(&s,0,sizeof(s));feet[0]=0;
+   assert(native_push_height(&s,1,feet,vec3_origin,.03f,64));
+   assert(native_push_height(&s,9,feet,vec3_origin,.03f,64));assert(s.count==1);
+   feet[0]=moving?1.5f:0;
+   assert(native_push_height(&s,10,feet,moving?v:vec3_origin,.03f,51));
+   assert(native_sample_height(&s,9.955,out,&eye));
+   if(fabsf(out[0])>.0001f||fabsf(eye-64)>.0001f) {
+    printf("FAIL idle-to-eye transition bypasses stationary hold: moving=%d x=%g eye=%g expected0,64\n",moving,out[0],eye);return 2;
+   }
+   assert(native_sample_height(&s,9.985,out,&eye));near(out[0],feet[0]*.5f);near(eye,57.5f);
+   assert(native_sample_height(&s,10,out,&eye));near(out[0],feet[0]);near(eye,51);
+  }
+  puts("PASS long-idle eye-only and moving-eye changes retain paired stationary hold then interpolate over the final tick");return 0;
+#else
+  puts("FAIL no paired eye sample");return 2;
+#endif
+ }
+ if(argc>1 && !strcmp(argv[1],"posture-floor")) {
+  vec3_t mins={-16,-16,-24},maxs={16,16,38};int stand,duck;
+  stand=COM_EncodeSize(mins,maxs);maxs[2]=21;duck=COM_EncodeSize(mins,maxs);
+  if(!native_transition_guard(64,47,stand,duck,0)) {
+   puts("FAIL translated non-Source floor hull is accepted as an ordinary duck transition");return 2;
+  }
+  mins[2]=0;maxs[2]=62;stand=COM_EncodeSize(mins,maxs);maxs[2]=45;duck=COM_EncodeSize(mins,maxs);
+  assert(!native_transition_guard(64,47,stand,duck,0));
+  puts("PASS translated hull still snaps while actual zero-floor Source duck retains paired history");return 0;
+ }
  if(argc>1 && !strcmp(argv[1],"scale-rebase")) {
 #if HAS_TRANSITIONS
   float scales[]={.1f,.25f,.5f,.75f};int j,k;
@@ -216,10 +275,12 @@ def main():
     ap.add_argument('--out', required=True, type=Path)
     ap.add_argument('--source', type=Path, help='Exact retained native source for a negative control; math remains the unchanged native implementation')
     ap.add_argument('--view-source', type=Path, help='Exact retained view source for the independent stair integration control')
+    ap.add_argument('--cases', help='Comma-separated existing case names for a bounded falsifier, not a new harness')
     a = ap.parse_args()
     native = a.engine/'engine'
     source_file = a.source or native/'client/cl_pred.c'
-    source = source_file.read_text()
+    source = source_file.read_text(encoding='utf-8')
+    paired_eye = 'float interval, float viewheight)' in source
     start = '#define SOURCE_PRACTICE_POSES 32'
     end = 'static qboolean CL_SourcePracticeContext'
     assert source.count(start) == source.count(end) == 1
@@ -248,9 +309,28 @@ def main():
  return '''+marker.group(0)+''';
 }
 static void native_reset_view(sourcepracticelerp_t *s,const vec3_t old,const vec3_t dest,double time) {
- struct {vec3_t origin;} entity,*ent=&entity;struct {vec3_t simorg;} player,*pv=&player;int seat=0;
+ struct {vec3_t origin;} entity,*ent=&entity;struct {vec3_t simorg;float viewheight;} player={0},*pv=&player;int seat=0;
  VectorCopy(old,pv->simorg);VectorCopy(dest,ent->origin);(void)seat;
 '''+snap+'\n}\n'
+    transition = re.search(r'if \(\(s->count \|\| s->releasing\) &&.*?goto discontinuity;',source,re.S)
+    assert transition, 'Actual transition predicate drift'
+    transition_control = r'''
+#define STAT_FS_SLSEQ 0
+static qboolean native_transition_guard(float oldheight,float height,int oldsolid,int solid,unsigned effects) {
+ sourcepracticelerp_t state={0},*s=&state;
+ struct {void *worldmodel;int servercount;} cl={&state,1};
+ struct {int viewentity;float viewheight,statsf[256];} player={0},*pv=&player;
+ struct {int modelindex,solidsize;unsigned effects;} entity={2,0,0},*ent=&entity;
+ struct {double servertime;} packet={1},*pack=&packet;
+ struct {float standheight,duckheight;} movevars={62,45};
+ unsigned sequence=2;float interval=.03f,saveop=0;
+ s->count=2;s->owner=pv->viewentity=1;s->world=cl.worldmodel;s->servercount=1;
+ s->sequence=1;s->packettime=1;s->modelindex=2;s->solidsize=oldsolid;s->viewheight=oldheight;
+ pv->viewheight=height;ent->solidsize=solid;ent->effects=effects;(void)movevars;(void)interval;
+'''+transition.group(0)+r'''
+ return false;discontinuity:return true;
+}
+'''
     getter = source.split('qboolean CL_GetSourcePracticeViewOffset(',1)[1].split('\nvoid CL_PredictMovePNum',1)[0]
     actual = 'VectorSubtract(s->sampleorg, pv->simorg, out);' if 'VectorSubtract(s->sampleorg, pv->simorg, out);' in getter else 'VectorCopy(s->viewoffset, out);'
     consumer_control = '''\nstatic void native_render_consumer(const vec3_t desired,const vec3_t earlier,const vec3_t current,vec3_t out) {
@@ -291,18 +371,23 @@ static float CL_TraceLineProps(vec3_t from,vec3_t to,vec3_t hit,vec3_t normal,in
  VectorCopy(fixture_hit,hit);return fixture_fraction;
 }
 '''+clip.group(0)+'\n'+roof.group(0)+'\n'
+    height_assignment = '\tviewheight = practiceview ? practiceheight : pv->viewheight;' if paired_eye else ''
+    if paired_eye:
+        assert height_source.count(height_assignment)==1, 'Actual sampled-eye render consumer missing'
+    getter_args = ',float *height' if paired_eye else ''
+    getter_height = '*height=view_sampleheight;' if paired_eye else ''
     view_control = r'''
 struct {vec3_t vieworg;} r_refdef;
 static qboolean view_active;
-static float view_delta;
-static qboolean CL_GetSourcePracticeViewOffset(const void *pv,vec3_t out) {
- (void)pv;out[0]=out[1]=0;out[2]=view_delta;return view_active;
+static float view_delta,view_sampleheight=64;
+static qboolean CL_GetSourcePracticeViewOffset(const void *pv,vec3_t out'''+getter_args+r''') {
+ (void)pv;(void)view_sampleheight;'''+getter_height+r'''out[0]=out[1]=0;out[2]=view_delta;return view_active;
 }
 static float native_stair_view(float raw,float delta,float crouch,qboolean active) {
- struct {vec3_t simorg,gravitydir;float crouch;} body={{0,0,0},{0,0,-1},0},*pv=&body;
- vec3_t practiceoffset;float viewheight=64;qboolean practiceview=false;
- (void)practiceview;body.simorg[2]=raw;body.crouch=crouch;view_active=active;view_delta=delta;
-'''+view+'\n'+height_lines[0]+height_tail+r'''
+ struct {vec3_t simorg,gravitydir;float crouch,viewheight;} body={{0,0,0},{0,0,-1},0,64},*pv=&body;
+ vec3_t practiceoffset;float viewheight=64,practiceheight=64;qboolean practiceview=false;
+ (void)practiceview;(void)practiceheight;body.simorg[2]=raw;body.crouch=crouch;view_active=active;view_delta=delta;
+'''+view+'\n'+height_assignment+'\n'+height_lines[0]+height_tail+r'''
  return r_refdef.vieworg[2]+viewheight;
 }
 '''
@@ -316,13 +401,39 @@ static float native_stair_view(float raw,float delta,float crouch,qboolean activ
     preface += '#define HAS_VIEW_ROOF '+str(int(bool(roof)))+'\n'
     preface += '#define HAS_TRANSITIONS '+str(int('static qboolean CL_SourcePracticeRebase(' in core))+'\n'
     preface += '#define HAS_RESET_MARKER '+str(int(bool(marker)))+'\n'
+    preface += '#define HAS_PAIRED_EYE '+str(int(paired_eye))+'\n'
+    protocol = (native/'common/protocol.h').read_text(encoding='utf-8')
+    codec_macros = '\n'.join(line for line in protocol.splitlines() if re.match(r'#define ES_SOLID_(NOT|BSP|HULL1|HULL2|HAS_EXTRA_BITS)\b',line))
+    common = (native/'common/common.c').read_text(encoding='utf-8')
+    decode = re.search(r'void COM_DecodeSize\(.*?\n\}',common,re.S)
+    encode = re.search(r'int COM_EncodeSize\(.*?\n\}',common,re.S)
+    assert decode and encode, 'Native hull codec drift'
+    # Unchanged common.c's int-solid == 0x80000000 emits -Wsign-compare under
+    # this C harness's extra warnings. Scope ONLY the literal native codec;
+    # retain -Werror for the new camera/helper/adapter/render code.
+    codec = codec_macros+'\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wsign-compare"\n'+decode.group(0)+'\n'+encode.group(0)+'\n#pragma GCC diagnostic pop\n'
+    compatibility = ''
+    if paired_eye:
+        compatibility = r'''
+static qboolean native_push_height(sourcepracticelerp_t *s,double t,const vec3_t p,const vec3_t v,float i,float h) {return CL_SourcePracticePush(s,t,p,v,i,h);}
+static qboolean native_sample_height(sourcepracticelerp_t *s,double t,vec3_t out,float *h) {return CL_SourcePracticeSample(s,t,out,h);}
+static void native_release_height(sourcepracticelerp_t *s,double t,const vec3_t p,const vec3_t g,float st,float h) {CL_SourcePracticeRelease(s,t,p,g,st,h);}
+static qboolean native_release_view_height(sourcepracticelerp_t *s,double t,const vec3_t p,const vec3_t g,float st,vec3_t out,float h,float *eye) {return CL_SourcePracticeReleaseView(s,t,p,g,st,out,h,eye);}
+static qboolean legacy_sample(sourcepracticelerp_t *s,double t,vec3_t out) {float h;return CL_SourcePracticeSample(s,t,out,&h);}
+static qboolean legacy_release_view(sourcepracticelerp_t *s,double t,const vec3_t p,const vec3_t g,float st,vec3_t out) {float h;return CL_SourcePracticeReleaseView(s,t,p,g,st,out,0,&h);}
+#define CL_SourcePracticePush(s,t,p,v,i) CL_SourcePracticePush(s,t,p,v,i,0)
+#define CL_SourcePracticeSample legacy_sample
+#define CL_SourcePracticeRebase(s,t,tick,scale,p) CL_SourcePracticeRebase(s,t,tick,scale,p,0)
+#define CL_SourcePracticeRelease(s,t,p,g,st) CL_SourcePracticeRelease(s,t,p,g,st,0)
+#define CL_SourcePracticeReleaseView legacy_release_view
+'''
     a.out.mkdir(exist_ok=True, parents=True)
     source_digest = hashlib.sha256(source.encode()).hexdigest()
     view_digest = hashlib.sha256(view_file.read_bytes()).hexdigest()
     script_digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     digest = hashlib.sha256((source_digest+view_digest+script_digest).encode()).hexdigest()
     file = a.out/('sourcepractice-core-'+digest[:12]+'.c')
-    file.write_text(preface+compare.group(0)+'\n'+core+guard+reset_control+consumer_control+delay_control+roof_control+view_control+TEST)
+    file.write_text(preface+compare.group(0)+'\n'+codec+core+guard+reset_control+transition_control+consumer_control+delay_control+roof_control+view_control+compatibility+TEST)
     gcc = Path('C:/msys64/ucrt64/bin/gcc.exe')
     exe = file.with_suffix('.exe')
     env = dict(os.environ)
@@ -333,7 +444,10 @@ static float native_stair_view(float raw,float delta,float crouch,qboolean activ
         (a.out/('compile-failure-'+digest[:12]+'.json')).write_text(json.dumps({'source':str(source_file),'viewSource':str(view_file),'scriptSha256':script_digest,'exit':compile.returncode,'stdout':compile.stdout,'stderr':compile.stderr},indent=2)+'\n')
         raise SystemExit(3)
     results = []
-    for case in ['core','idle-resume','teleport','stair-view','stair-entry','save-epoch','roof-view','packet-delay','clock-hold','scale-rebase','scale-release','short-reset','render-consumer']:
+    known_cases = ['core','idle-resume','teleport','stair-view','stair-entry','save-epoch','roof-view','packet-delay','clock-hold','scale-rebase','scale-release','short-reset','render-consumer','posture-eye','idle-eye','posture-floor']
+    cases = a.cases.split(',') if a.cases else known_cases
+    assert cases and len(set(cases))==len(cases) and all(case in known_cases for case in cases), 'Unknown/duplicate case'
+    for case in cases:
         run = subprocess.run([str(exe)]+([] if case=='core' else [case]),capture_output=True,text=True,env=env)
         print(case,'exit',run.returncode,run.stdout+run.stderr,flush=True)
         results.append({'case':case,'exit':run.returncode,'stdout':run.stdout,'stderr':run.stderr})

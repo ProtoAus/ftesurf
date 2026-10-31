@@ -21,6 +21,9 @@
 
 ## next
 
+### P1156 Smoother ducking under roofs in slow practice
+- Keep the camera's movement and eye height together while ducking, unducking or clearing a low roof at slow practice speeds. Normal movement and run status are unchanged.
+
 ### P1154 TAS frame advance at 100Hz
 - TAS pause, frame advance, retained rewind and input replay can use a selected 10ms Source clock as well as the existing 15ms clock. Default movement timing is unchanged.
 - Clock changes stop queued TAS work instead of silently reusing it. Reload the map after changing its clock before starting a new timeline. TAS remains assisted practice.

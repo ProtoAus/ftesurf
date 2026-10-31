@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P1156 — slow-practice roof/duck follow-up (installation pending)
+
+The owner isolated the remaining issue to bhop_goldsrc2 save14, moving forward
+under a roof ONLY below speed1. The render-only fix pairs camera feet and eye
+height and preserves ordinary duck history; movement and saved runs are untouched.
+Final16 source cases and both fresh whole-change reviews pass. Source tests do
+not establish real roof geometry or the exact saved-run feel.
+
+After installation, retest that same save below1: move under the roof, duck and
+unduck, then clear it. Compare steady1 and restore1 while moving. Expected: no
+repeated camera-history snaps; hard roof clipping remains. Please report any
+remaining judder and the speed used. Installation/cold-check status is tracked
+in tools/p1156-roof.md; no owner-test pass is claimed yet.
+
 ## P1154 10ms TAS — pending delivery and owner feel check
 
 Not installed yet. After the reviewed build is delivered, use a Source map whose
@@ -25,10 +39,10 @@ cold preservation guard passed with the same postflight PID/birth/inode pairs.
 Earlier refused guards are retained; they did not trigger extra restarts.
 
 Owner feedback: ordinary movement is very smooth; ducking/unducking and clearing
-low roofs still judder. NOT marked fixed or accepted. Please specify slow scale
-(0.5/0.1), steady 1 after settling, or both, and a familiar map/spot. Current native
-slow-camera history is explicitly discarded on eye-height or hull changes; this
-is a concrete conditional lead, not a demonstrated fix for a normal-speed report.
+low roofs still judder. The owner subsequently confirmed ONLY below1 and supplied
+bhop_goldsrc2 save14. P1156 above addresses the render-history flush; the exact
+roof feel is not yet owner-confirmed. Native real stairs/low/prop-ceiling feel
+and full closed bank/death/retry remain human checks.
 
 Source and native dedicated/listen controls pass. Restart the game and try:
 
