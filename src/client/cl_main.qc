@@ -1052,7 +1052,7 @@ void() PreStrafe_InputFrame =
 #define RUN_TS_SEATS 4
 float run_ts_scale[RUN_TS_SEATS], run_ts_carry[RUN_TS_SEATS];
 float run_ts_paused[RUN_TS_SEATS], run_tas_request[RUN_TS_SEATS];
-float run_ts_return[RUN_TS_SEATS], run_ts_return_sent[RUN_TS_SEATS];
+float run_ts_return[RUN_TS_SEATS], run_ts_return_sent[RUN_TS_SEATS], run_ts_return_cancelled[RUN_TS_SEATS];
 
 // Native QW tracking substitutes foreign stats, including across an in-place join.
 float() TimeScale_Observe =
@@ -1071,6 +1071,21 @@ float() TimeScale_Observe =
 		run_ts_return[seat] = getstatf(STAT_FS_TSRETURN);
 		if (!(run_ts_return[seat] > 0 && run_ts_return[seat] <= 16000000 &&
 			floor(run_ts_return[seat]) == run_ts_return[seat])) run_ts_return[seat] = 0;
+		if (run_ts_return[seat] > 0)
+		{
+			if (numclientseats != 1)
+			{
+				if (run_ts_return_cancelled[seat] != -run_ts_return[seat])
+					print("host_timescale: clean return needs one local seat; still practice\n");
+				run_ts_return_cancelled[seat] = -run_ts_return[seat];
+				run_ts_return[seat] = 0; // never cancel another seat's global warp queue
+			}
+			else if (run_ts_return_cancelled[seat] != run_ts_return[seat])
+			{
+				WarpOp_PracticeReturnCancel();
+				run_ts_return_cancelled[seat] = run_ts_return[seat];
+			}
+		}
 	}
 	if (!(scale >= 0.1 && scale < 1))
 		scale = 1;
@@ -1093,7 +1108,7 @@ void() TimeScale_Seats =
 		{
 			run_ts_scale[i] = 1;
 			run_ts_carry[i] = run_ts_paused[i] = 0;
-			run_ts_return[i] = run_ts_return_sent[i] = 0;
+			run_ts_return[i] = run_ts_return_sent[i] = run_ts_return_cancelled[i] = 0;
 		}
 		if ((run_ts_scale[i] > 0 && run_ts_scale[i] < 1) || run_ts_paused[i] || run_ts_return[i] > 0)
 			active = TRUE;

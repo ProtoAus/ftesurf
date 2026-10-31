@@ -14,6 +14,7 @@
 float(entity player) sourcepractice_reset = #0;
 .float run_ts_return;              // positive pending identity, negative completed
 .float run_ts_return_uid;
+.int run_ts_return_attempt;      // same-zone resets replace the admission too
 .float run_ts_return_zone;
 .float run_ts_return_after;
 .float run_ts_return_frame;
@@ -23,6 +24,10 @@ float run_ts_return_serial;        // exact, never reused in this VM lifetime
 
 void(entity e, float blocked) SV_TimeScaleReturnCancel =
 {
+	// A pre-fence load already on the wire may park after the client cancelled
+	// its release queue. Refusing return must not strand that authoritative hold.
+	// This releases assistance only; ancestry remains practice.
+	if (e.run_ts_return > 0 && e.rec_sl_hold) SV_SaveLocRelease(e);
 	e.run_ts_return = e.run_ts_return_frame = e.run_ts_return_until = 0;
 	e.run_ts_return_block = blocked;
 };
@@ -31,10 +36,12 @@ void(entity e, float blocked) SV_TimeScaleReturnCancel =
 float(entity e) SV_TimeScaleReturnZone =
 {
 	local float z;
+	if (e.bank_attempt <= 0i) return -1; // exhausted/unknown admissions cannot alias
 	if (!e.run_ts_used || e.run_timescale != 1 || !e.run_inserver || !(e.health > 0))
 		return -1;
 	if (e.run_tas_used || e.run_tas_mode || e.run_tas_paused || e.run_tas_pending ||
-		e.rec_wt_hold || e.run_t_viewowner || e.run_ms_phase || SV_MsBusy(e) || SV_CheatsOn())
+		e.rec_wt_hold || e.rec_sl_hold || e.run_pmhold || e.run_t_viewowner ||
+		e.run_ms_phase || SV_MsBusy(e) || SV_CheatsOn())
 		return -1;
 	z = SV_TimerMarkZone(e);
 	if (z < 0) return -1;
@@ -55,6 +62,7 @@ void(float request, float frame) CSEv_tsreturn_ff =
 	if (!(frame > self.run_ts_return_after && frame <= 16000000 && floor(frame) == frame)) return;
 	if (self.run_ts_return != request || self.run_ts_return_until < time) return;
 	if (self.run_ts_return_uid != stof(infokey(self, "*userid"))) return;
+	if (self.run_ts_return_attempt != self.bank_attempt) return;
 	if (!self.run_ts_return_frame) self.run_ts_return_frame = frame;
 };
 
@@ -88,7 +96,8 @@ void() SV_TimeScaleReturnCommand =
 	if (!(frame > 0 && frame <= 16000000 && floor(frame) == frame)) return;
 	if (self.run_ts_return > 0)
 	{
-		if (self.run_ts_return_zone != z || self.run_ts_return_uid != uid)
+		if (self.run_ts_return_zone != z || self.run_ts_return_uid != uid ||
+			self.run_ts_return_attempt != self.bank_attempt)
 		{
 			SV_TimeScaleReturnCancel(self, FALSE);
 			return;
@@ -100,6 +109,7 @@ void() SV_TimeScaleReturnCommand =
 		run_ts_return_serial = run_ts_return_serial + 1;
 		self.run_ts_return = run_ts_return_serial;
 		self.run_ts_return_uid = uid;
+		self.run_ts_return_attempt = self.bank_attempt;
 		self.run_ts_return_zone = z;
 		self.run_ts_return_after = frame;
 		self.run_ts_return_frame = 0;

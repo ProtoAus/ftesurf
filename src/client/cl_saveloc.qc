@@ -288,6 +288,8 @@ float() WarpOp_Charge;
 void(string c) SaveLoc_Cmd =
 {
 	local float holding, key, rep;
+	if (numclientseats == 1 && LT_StatsAreMine() && getstatf(STAT_FS_TSRETURN) > 0)
+		return; // no new deferred/fallback load can cross the clean-return fence
 	if (Trail_Request(c))
 		return;
 	if (substring(c, 0, 3) == "sl_")

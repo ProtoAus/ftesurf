@@ -54,20 +54,23 @@ struct E {
  V nativev; V *v=&nativev;
  float run_ts_return=0,run_ts_return_uid=0,run_ts_return_zone=0,run_ts_return_after=0;
  float run_ts_return_frame=0,run_ts_return_until=0,run_ts_return_block=0;
+ int run_ts_return_attempt=0,bank_attempt=1;
  float run_ts_used=1,run_timescale=1,run_inserver=1,health=100;
  float run_tas_used=0,run_tas_mode=0,run_tas_paused=0,run_tas_pending=0;
- float rec_wt_hold=0,run_t_viewowner=0,run_ms_phase=0;
+ float rec_wt_hold=0,rec_sl_hold=0,run_pmhold=0,run_t_viewowner=0,run_ms_phase=0;
  int flags=FL_ONGROUND,pmove_flags=0;
  float run_t_wantstage1=0;
  vector origin={10,20,0},v_angle={5,45,0},velocity={100,0,0};
  bool armed=true; int zone=2,uid=17,slot=0; float assistance=99;
 };
 using entity=E*; using edict_t=E;
+struct eval_t {float _float=0.75f;};eval_t native_carry_mirror;
+#define ev_float 2
 E body,other; entity self=&body;
-struct Client {edict_t *edict; int state=cs_spawned,protocol=SCP_QUAKEWORLD;unsigned fteprotocolextensions2=0;pmsourcestate_t pmsrc;bool jump_held=true;};
+struct Client {Client *controller=nullptr,*controlled=nullptr;edict_t *edict; int state=cs_spawned,protocol=SCP_QUAKEWORLD;unsigned fteprotocolextensions2=0;pmsourcestate_t pmsrc;bool jump_held=true;};
 Client client,otherclient; Client *host_client=&client;edict_t *sv_player=&body;
 struct globalvars_s{};
-struct pubprogfuncs_t {int callargc=1;};pubprogfuncs_t vm;pubprogfuncs_t *svprogfuncs=&vm;
+struct pubprogfuncs_t {int callargc=1;eval_t *GetEdictFieldValue(pubprogfuncs_t*,edict_t*,const char*,int,void*){return &native_carry_mirror;}};pubprogfuncs_t vm;pubprogfuncs_t *svprogfuncs=&vm;
 struct cvar_t {int ival=0;}; cvar_t pm_physicsmode={PHYSMODE_SOURCE},sv_nqplayerphysics;
 struct {float gamespeed=1;} sv;
 float input_cmd_kind=1,input_cmd_msec=8,input_cmd_piece_msec=8,input_cmd_offset_msec=0;
@@ -104,6 +107,7 @@ float QC_stof(std::string x){return std::stof(x);}
 float num_for_edict(entity e){return e->slot+1;}
 void sprint(entity,float,const char*){++prints;}
 void SV_RecReplayStop(entity){}
+void SV_SaveLocRelease(entity e){e->rec_sl_hold=0;}
 void SV_TimerVoid(entity e,const char*){
  assert(e->run_ts_used);assert(reset_calls==0);++closed;e->armed=false;
  // The old native state must still be present when the original tail closes.
@@ -129,7 +133,7 @@ void initial(){
  memset(&client.pmsrc,0x5a,sizeof(client.pmsrc));client.pmsrc.stamina=77;
  memset(&otherclient.pmsrc,0x33,sizeof(otherclient.pmsrc));
  host_client=&client;sv_player=&body;native_argument=&body;vm.callargc=1;
- native_result=0;pm_physicsmode.ival=PHYSMODE_SOURCE;sv_nqplayerphysics.ival=0;sv.gamespeed=1;
+ native_result=0;native_carry_mirror._float=.75f;pm_physicsmode.ival=PHYSMODE_SOURCE;sv_nqplayerphysics.ival=0;sv.gamespeed=1;
  input_cmd_kind=1;input_cmd_msec=input_cmd_piece_msec=8;input_cmd_offset_msec=0;
  input_cmd_sequence_lo=100;input_cmd_sequence_hi=0;input_buttons=input_impulse=0;input_movevalues={};
  globals.input_buttons=globals.input_impulse=0;memset(globals.input_movevalues,0,sizeof(globals.input_movevalues));
@@ -160,7 +164,7 @@ int main(){
  body.run_t_wantstage1=1;SV_TimeScaleReturnCommand();
  CHECK(!body.run_ts_used&&body.run_ts_return==-1&&closed==1&&reset_calls==1&&respawned==1&&placed==1);
  CHECK(body.origin==old&&body.v_angle==aim&&body.velocity==vector()&&body.assistance==0&&body.armed&&body.run_t_wantstage1==1);
- pmsourcestate_t zero={};CHECK(!memcmp(&client.pmsrc,&zero,sizeof(zero))&&!client.jump_held);
+ pmsourcestate_t zero={};CHECK(!memcmp(&client.pmsrc,&zero,sizeof(zero))&&!client.jump_held&&native_carry_mirror._float==0);
  CHECK(!memcmp(&peer,&otherclient.pmsrc,sizeof(peer))&&sv_ts_taint_uid[1]==88&&sv_ts_taint_uid[0]==0);
  SV_TimeScaleReturnCommand();CHECK(reset_calls==1&&body.run_ts_return==-1);
  // Each refusal is an acting state guard, not just an identifier search.
@@ -176,10 +180,13 @@ int main(){
  initial();ready();body.uid=18;SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&body.run_ts_return==0&&!reset_calls);
  initial();ready();body.zone=3;SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&body.run_ts_return==0&&!reset_calls);
  initial();ready();body.run_tas_used=1;SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&body.run_ts_return==0&&!reset_calls);
+ initial();ready();++body.bank_attempt;SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&body.run_ts_return==0&&!reset_calls);
+ initial();SV_TimeScaleReturnCommand();++body.bank_attempt;CSEv_tsreturn_ff(body.run_ts_return,110);CHECK(body.run_ts_return_frame==0&&body.run_ts_used);
+ initial();ready();body.rec_sl_hold=1;SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&!body.rec_sl_hold&&!reset_calls);
  initial();ready();force_native_failure=true;SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&body.run_ts_return_block&&closed==1&&!respawned);
  initial();ready();placement=false;SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&body.run_ts_return_block&&sv_ts_taint_uid[0]==17);
  // Actual native builtin: malformed/foreign/nondecoded/unsupported contexts do NOT mutate carry.
- for(int k=0;k<17;++k){initial();neutral();auto before=client.pmsrc;
+ for(int k=0;k<19;++k){initial();neutral();auto before=client.pmsrc;
   if(k==0)native_argument=&other;if(k==1)sv_player=&other;if(k==2)client.state=0;
   if(k==3)client.protocol=0;if(k==4)client.fteprotocolextensions2=PEXT2_VRINPUTS;
   if(k==5)sv_nqplayerphysics.ival=1;if(k==6)pm_physicsmode.ival=0;if(k==7)sv.gamespeed=.5f;
@@ -187,7 +194,8 @@ int main(){
   if(k==11)input_cmd_piece_msec=1;if(k==12)input_cmd_offset_msec=1;
   if(k==13)globals.input_buttons=2;if(k==14)globals.input_impulse=1;
   if(k==15)globals.input_movevalues[0]=1;if(k==16)body.nativev.health=NAN;
-  PF_sourcepractice_reset(&vm,nullptr);CHECK(native_result==0&&!memcmp(&before,&client.pmsrc,sizeof(before))&&client.jump_held);
+  if(k==17)client.controller=&otherclient;if(k==18)client.controlled=&otherclient;
+  PF_sourcepractice_reset(&vm,nullptr);CHECK(native_result==0&&!memcmp(&before,&client.pmsrc,sizeof(before))&&client.jump_held&&native_carry_mirror._float==.75f);
  }
  printf("PASS %d literal QC/native acting checks; controlled geometry/lifecycle stubs, NOT native runtime/record replay\n",checks);
 }
@@ -214,7 +222,7 @@ def matching(text, brace):
 
 def translate(src):
     src = re.sub(r'\b(void|float)\(([^\n]*)\) (\w+)\s*=', lambda m: f'{m[1]} {m[3]}({m[2]})', src)
-    src = src.replace('local ', '')
+    src = src.replace('local ', '').replace('0i', '0')
     src = re.sub(r'\b(e|self)\.', r'\1->', src)
     src = src.replace('trace_plane_normal_z', 'trace_plane_normal.z').replace('aim_y', 'aim.y').replace('aim_x', 'aim.x')
     src = src.replace("'0 0 0'", 'vector()').replace("'0 0 1'", 'vector(0,0,1)').replace("'0 0 2'", 'vector(0,0,2)')
@@ -227,6 +235,8 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--engine', type=Path, required=True)
     p.add_argument('--out', type=Path, required=True)
+    p.add_argument('--qc-file', type=Path, help='explicit retained predecessor QC for an acting counterexample, never a pass substitution')
+    p.add_argument('--native-file', type=Path, help='explicit retained predecessor native source for an acting counterexample')
     p.add_argument('--compiler', default='C:/msys64/ucrt64/bin/g++.exe')
     p.add_argument('--continue-failed', action='store_true', help='retain the original failed receipt/raw files and continue the SAME acting test')
     a = p.parse_args()
@@ -244,8 +254,8 @@ def main():
         if a.continue_failed:
             p.error('no failed transaction to continue')
         a.out.mkdir(parents=True)
-    qc = Path(__file__).resolve().parents[1]/'src/server/sv_practicereturn.qc'
-    native = a.engine/'engine/server/pr_cmds.c'
+    qc = a.qc_file or Path(__file__).resolve().parents[1]/'src/server/sv_practicereturn.qc'
+    native = a.native_file or a.engine/'engine/server/pr_cmds.c'
     header = a.engine/'engine/common/protocol.h'
     qt, nt, ht = qc.read_text(), native.read_text(), header.read_text()
     end = ht.index('} pmsourcestate_t;') + len('} pmsourcestate_t;')

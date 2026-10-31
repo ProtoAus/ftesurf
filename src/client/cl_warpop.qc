@@ -463,6 +463,30 @@ float() WarpOp_Release =
 	return TRUE;
 };
 
+// A clean return discards queued actions as well as the accumulated usercmd.
+// The existing warp/save client queues are connection-global, so clean return
+// currently refuses split-screen rather than cancel another seat's actions.
+// No localcmd/release fallback here: the server owns authoritative teardown.
+void() WarpOp_PracticeReturnCancel =
+{
+	local float i;
+	if (wop_seq)
+		for (i = 0; i < WOP_RING; i = i + 1)
+			wop_seq[i] = 0;
+	wop_qn = wop_loadseq = wop_loadackat = wop_relseq = wop_relat = 0;
+	wop_heldmode = 0;
+	wop_loadvel = '0 0 0';
+	if (rec_sl_holdkey)
+	{
+		rec_sl_refkey = rec_sl_holdkey; // swallow old hold repeats until key-up
+		rec_sl_refseen = cltime;
+	}
+	rec_sl_holding = rec_sl_holdkey = rec_sl_holdrep = rec_sl_holdseen = 0;
+	rec_sl_holdang_ok = rec_sl_wophold = rec_sl_pv_on = 0;
+	rec_sl_holdack = rec_sl_holdackat = 0;
+	Trail_RequestReset();          // do not dispatch an old deferred save/load
+};
+
 /*
   The release's backstop, once its command is acknowledged and the server still
   holds (the command lost to 3+ dropped packets, or trimmed to kind 0).  Not sent
@@ -472,6 +496,12 @@ float() WarpOp_Release =
 void() WarpOp_Frame =
 {
 	local float i, j, op;
+
+	if (numclientseats == 1 && LT_StatsAreMine() && getstatf(STAT_FS_TSRETURN) > 0)
+	{
+		WarpOp_PracticeReturnCancel(); // before the independent stringcmd expiry
+		return;
+	}
 
 	// An op no command has carried in 0.25 s (CSQC_Input_Frame returning early
 	// under a replay, spectate, rewind or ghost): send the old command, or for a
