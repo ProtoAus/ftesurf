@@ -21,6 +21,9 @@
 
 ## next
 
+### P1145 Gravity carry status through normalized crouch jumps
+- Carried gravity effects keep their run status through more normalized crouch and duck-transition jumps. Jump height, movement and normal map-authored effects are unchanged.
+
 ### P1144 Keep the slow-practice camera fix in newer builds
 - Integrate the smoother slow-motion camera with the newer game changes, without changing movement or clearing a connection's earlier practice status.
 - Practice classification now covers another supported jump setting; movement is unchanged.
