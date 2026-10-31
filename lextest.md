@@ -1,21 +1,25 @@
 # lextest.md — things waiting on a human
 
-## P1140 TAS sharing/browser (pending deployment and human check)
+## P1140 TAS sharing/browser (deployed; human check pending)
 
+Deployed both Windows installs on 30 Oct23:56UTC and all12 empty Pi lobbies on
+31 Oct00:08UTC. Exact installed hashes, downloaded client code, native/plugin
+images and strict old-data preservation pass; [delivery record](tools/p1140-delivery.md).
 Isolated native client/server checks cover real directory traffic, byte-exact
 transfer, normal tape load, protected/recovery files, teardown and bounded credit
 views. Synthetic signatures are not real-account or physical-key acceptance.
-After the deployment is confirmed, please try this small in-game check:
+Please try this small in-game check:
 
-- Host a map locally, open the TAS menu's **Shared** tab, refresh and select a
-  revision. Are rows, contribution ranges and the Open button legible?
+- Host a map locally, open the TAS menu's **Shared** tab and refresh. Check its
+  empty state if there are no revisions; create/share one below before selecting.
 - Save a newly edited legal-start project. Link the signing key to your account
   first, physically click **Sign**, then confirm **Share saved revision**.
   Confirm your newly supplied inputs show your account's contribution, not a
   human/ranked-run claim. Sign before the first upload; late linking/signing does
   not retroactively claim a revision already seen by the service.
-- Open that revision under a new local name. Confirm the tape loads as TAS and
-  the timeline/trail follows the new project's data rather than the old one.
+- Refresh and select that revision. Are rows, contribution ranges and the Open
+  button legible? Open it under a new local name. Confirm the tape loads as TAS
+  and the timeline/trail follows the new project's data rather than the old one.
 
 No human confirmation is recorded yet. This does not accept verifier/board
 qualification, measured performance, or the remaining optimizer/editor work.
