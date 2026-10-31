@@ -25,6 +25,19 @@ preserved. No Pi native/QC activation or backend operation is needed.
 - The harness compiles actual helpers/predicates and extracted render expressions;
   its controlled trace is NOT native geometry, network-runtime or human proof.
 
+## Compatibility cohort
+
+P1152 was published during final checks, with its own independent review/ARM and
+installation still pending. Both main branches preserve that source and patch
+entry. Do not accidentally activate that unqualified status change as part of
+this camera task: the inspected complete native cohort remains the exact
+pre-P1152 `patch-1155` / `d1bc17875` image and current actual installed programs.
+Its source, seven stamps, native selftest, all60 five-map physical rows and two
+declared historical controls are qualified. The original two whole reviews apply
+to this exact image source, not a newly merged/compiled P1152 binary. Nothing
+currently installed had P1152, so this does not downgrade an installed feature.
+No source/tag history was rewritten and no passed checks were repeated.
+
 ## Delivery / acceptance
 
 Not installed yet. Final tagged images, strict dual-Windows preservation and
