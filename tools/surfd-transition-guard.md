@@ -56,7 +56,7 @@ python3 -I /trusted/surfd_transition_guard.py --state-dir /owned/fence launch --
 The immutable manifest has the four required keys below and optionally
 `target_schema` and `runtime_profile`. Omitted `target_schema` means **schema19 only**, preserving the
 legacy six-file format. Explicit `target_schema` must be the JSON integer `19`,
-`20`, `22`, `23` or `24`; booleans, floats (including `20.0`), strings, null and unknown schemas
+`20`, `22`, `23`, `24` or `25`; booleans, floats (including `20.0`), strings, null and unknown schemas
 refuse. The target is never inferred from a receipt or the dependency set.
 
 - `generation`: one lowercase full 40-character SHA.
@@ -67,10 +67,12 @@ refuse. The target is never inferred from a receipt or the dependency set.
   `accounts.py` and `social.py`**. Schema22 adds only MENU presence/proof tables.
   Explicit schema23/24 additionally require **`viewmodel.py`**: nine base hashes.
   Schema24 adds only P997's lobby-use metadata, no further application dependency;
-  older schema/default sets are unchanged. The only optional runtime profile
-  is the literal `"runtime_profile":"hid-v1"`, valid with schema20,22,23 or24; it adds
+  older schema/default sets are unchanged. Explicit schema25 adds exactly
+  **`inventory.py`** to schema24 (ten base hashes): the additive cosmetic tables
+  cannot be admitted by a schema24 manifest/receipt. The only optional runtime profile
+  is the literal `"runtime_profile":"hid-v1"`, valid with schema20,22,23,24 or25; it adds
   exactly **`hidupload.py`** to that schema's base set (nine total for20/22, ten
-  for23/24). Wrong/missing/extra dependency sets, unknown profiles and arbitrary
+  for23/24, eleven for25). Wrong/missing/extra dependency sets, unknown profiles and arbitrary
   paths refuse; file count never implicitly selects a schema/profile. All hashes are
   checked for candidate, ordinary launch and reopen. This pins the coordinated
   social/KSF group, **not** its complete import closure or application runtime.
@@ -205,6 +207,18 @@ hashes/generations refuse reopening. A new close invalidates old receipts via
 its closure ID. Receipts are not cryptographic attestations. Authorization to
 start is not evidence of acceptance; the external measurement path remains
 mandatory.
+
+## Schema25 inventory extension (P1160)
+
+Schema25 keeps the same fixed-route, CLOSED-candidate and externally measured
+reopen contract. Its base set is schema24 plus `inventory.py`; HID adds only
+`hidupload.py`. It never infers schema25 from an extra file or accepts a schema24
+receipt. Old manifests, receipts and dependency sets retain their original exact
+meaning. The transition suite includes an acted schema25 candidate/import,
+changed/restored inventory bytes, missing/extra inventory dependencies and a
+previous-schema receipt refusal. This is synthetic guard evidence, not live
+inventory migration/acceptance. Deployments with a separately sealed full-runtime
+profile must independently add the new dependency and retain their complete pins.
 
 ## Offline acceptance tests
 

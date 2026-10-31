@@ -467,6 +467,7 @@ def finish_elsewhere(what):
         other.executescript(m.social.MENU_PRESENCE_SQL)
         other.executescript(m.social.MENU_CHAT_SQL)
         other.executescript(m.viewmodel.SQL)
+        other.executescript(m.inventory.SQL)
         other.execute("PRAGMA user_version=%d" % m.SCHEMA_VERSION)
         other.commit()
         RACED[-1][1] = what
@@ -484,7 +485,12 @@ def racing_connect():
         words = sql.split()
         if words[:1] != ["CREATE"] or (not seen and "accounts" not in words):
             return
-        seen.append(words[words.index("ON") + 1] if words[1] == "INDEX" else words[5])
+        table = words[words.index("ON") + 1] if words[1] == "INDEX" else words[5]
+        # Schema25's two CREATEs hold BEGIN IMMEDIATE together; a second writer
+        # cannot interleave inside them. test_inventory checks transaction cuts.
+        if table in ("account_cosmetics", "account_items"):
+            return
+        seen.append(table)
         if len(seen) == RACED[-1][0]:
             finish_elsewhere(seen[-1])
     conn.set_trace_callback(spy)

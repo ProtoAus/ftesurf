@@ -7286,6 +7286,7 @@ def game_player(raw, now):
          "av": 1 if player in have else 0, "completion": comp,
          "completion_wos": _completion_wos(ranked, main_maps), "wos": _wos_figures(ranked),
          "ksf_sync": ksfprofile.status(db, player),
+         "cosmetics": inventory.public(db, player),
          "rows_source": rows_source, "rows_only": rows_only, "rows_mode": mode,
          "figs": _profile_figs(ranked),
          "offset": offset, "total": len(picked), "limit": limit, "rows": rows}),

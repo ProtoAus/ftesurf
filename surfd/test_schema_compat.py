@@ -106,7 +106,7 @@ class SchemaCompatibility(unittest.TestCase):
         self.env.update(SURFD_HOME=str(self.home), SURFD_DB=str(self.db),
             SURFD_ENV=str(self.home / 'fixture.env'), SURFD_TOOLS=str(TOOLS),
             SURFD_GAME_CODE=str(self.home / 'csprogs.dat'), PYTHONDONTWRITEBYTECODE='1',
-            PYTHONNOUSERSITE='1', PYTHONPATH=os.pathsep.join([str(HELPERS), str(TOOLS)]))
+            PYTHONNOUSERSITE='1', PYTHONPATH=os.pathsep.join([str(SOURCE.parent), str(HELPERS), str(TOOLS)]))
 
     def child(self, mode):
         r = subprocess.run([sys.executable, '-c', CHILD, str(SOURCE), mode],

@@ -18,6 +18,7 @@ import sqlite3
 from flask import Response, request
 import accounts
 import viewmodel
+import inventory
 
 MAX_FRIENDS = 128
 PRESENCE_TTL = 16
@@ -584,6 +585,9 @@ def register(app, d):
                             messages.append(dict(id=str(m["id"]), who=accounts.who_of(m["sender"]),
                                                  name=accounts.game_name(sender["name"]), text=m["body"]))
                     row = dict(token=r["token"], hash=revision, messages=messages)
+                    if r.get("inventory") == 1:
+                        inventory.ensure(db, sid)
+                        row["inventory"] = inventory.snapshot(db, sid)
                     if "rack" in r:
                         row["room"], row["rack"] = room_since(db, sid, r["rack"], node, now)
                     if r.get("hash", "") != revision:
@@ -629,6 +633,39 @@ def register(app, d):
         except sqlite3.Error:
             return reply({"viewmodel": 1, "ok": 0, "error": "Account setup unavailable"}, 503)
         return reply(dict(viewmodel=1, ok=1, **value))
+
+    @app.post("/api/social/inventory")
+    def inventory_settings():
+        now, node, early = auth()
+        if early is not None:
+            return early
+        db = d.get_db()
+        try:
+            with db:
+                db.execute("BEGIN IMMEDIATE")
+                owner = session(db, request.form.get("token", ""), node, now)
+                if owner is None:
+                    return reply({"inventory": 1, "ok": 0, "error": "Link Steam on this lobby first"}, 403)
+                if not d.rate_ok(owner["steamid"], now, 60, "inventory"):
+                    return reply({"inventory": 1, "ok": 0, "error": "Inventory is busy; try shortly"}, 429)
+                inventory.ensure(db, owner["steamid"])
+                op = request.form.get("op", "")
+                if op == "get":
+                    value = inventory.snapshot(db, owner["steamid"])
+                elif op == "equip":
+                    fields = [request.form.get(k, "") for k in ("item", "on", "revision")]
+                    if any(not re.fullmatch(r"[0-9]{1,8}", v, re.ASCII) for v in fields):
+                        raise ValueError("Invalid inventory action")
+                    value = inventory.equip(db, owner["steamid"], *map(int, fields))
+                    if value is None:
+                        return reply({"inventory": 1, "ok": 0, "error": "Inventory changed; reload and try again"}, 409)
+                else:
+                    raise ValueError("Unknown inventory action")
+        except ValueError as error:
+            return reply({"inventory": 1, "ok": 0, "error": str(error)}, 400)
+        except sqlite3.Error:
+            return reply({"inventory": 1, "ok": 0, "error": "Inventory unavailable"}, 503)
+        return reply(dict(inventory=1, ok=1, **value))
 
     @app.post("/api/social/action")
     def action():
