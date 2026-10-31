@@ -21,6 +21,9 @@
 
 ## next
 
+### P1152 Gravity carry status through recovered standing jumps
+- Carried gravity effects keep their run status through ordinary standing jumps with fully recovered stamina. Jump height, movement and normal map-authored effects are unchanged.
+
 ### P1151 Return from slow practice without reconnecting
 - At an eligible start, stand still and restore host_timescale to 1 to arm a fresh clean attempt at the same position. Wait for the server's confirmation before moving.
 - If the clean restart cannot be confirmed, normal speed returns but the attempt stays practice. Earlier practice attempts are not turned into ranked runs.
