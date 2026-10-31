@@ -21,6 +21,9 @@
 
 ## next
 
+### P1155 Smoother ducking under roofs in slow practice
+- Keep the camera's movement and eye height together while ducking, unducking or clearing a low roof at slow practice speeds. Normal movement and run status are unchanged.
+
 ### P1151 Return from slow practice without reconnecting
 - At an eligible start, stand still and restore host_timescale to 1 to arm a fresh clean attempt at the same position. Wait for the server's confirmation before moving.
 - If the clean restart cannot be confirmed, normal speed returns but the attempt stays practice. Earlier practice attempts are not turned into ranked runs.
