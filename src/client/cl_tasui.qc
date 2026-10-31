@@ -4,6 +4,9 @@ float tasu_nextclick, tasu_frames, tasu_tab;
 void() TASTimeline_Reset;
 void(float first) TASTimeline_Request;
 void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw;
+void(vector at, float width, float tsz, float hint, float row) TASShare_Draw;
+void(float before, string sha) TASShare_Request;
+float(float argc, float seat) TASShare_ConsoleCommand;
 void() TASProject_SignPress;
 
 void() TASUI_Close =
@@ -131,10 +134,11 @@ void(vector scr) TASUI_Draw =
 		TASUI_Close(); sui_end(); Font_Set(oldfont); return;
 	}
 	if (Profile_Chip("tasu_tab", pos + [size_x - pad - row - tsz*9, pad*0.6, 0], [tsz*8,row,0],
-		tasu_tab ? "Next input" : "Timeline", hint, tasu_tab))
+		tasu_tab == 0 ? "Timeline" : (tasu_tab == 1 ? "Shared" : "Next input"), hint, tasu_tab))
 	{
-		tasu_tab = !tasu_tab;
-		if (tasu_tab) TASTimeline_Request(0);
+		tasu_tab = (tasu_tab + 1) % 3;
+		if (tasu_tab == 1) TASTimeline_Request(0);
+		if (tasu_tab == 2) TASShare_Request(0,"");
 	}
 	at = pos + [pad, tsz * 3, 0];
 	sui_text(at, [hint, hint], "ASSISTED / PRACTICE - never a human ranked run", SUI_THEME_ACCENT, 1, 0);
@@ -152,7 +156,8 @@ void(vector scr) TASUI_Draw =
 	at_y = at_y + tsz * 2.7;
 	if (tasu_tab)
 	{
-		TASTimeline_Draw(at,width,tsz,hint,row);
+		if (tasu_tab == 2) TASShare_Draw(at,width,tsz,hint,row);
+		else TASTimeline_Draw(at,width,tsz,hint,row);
 		sui_end(); Font_Set(oldfont); return;
 	}
 	sui_text(at, [hint, hint], "Choose the NEXT command; nothing moves until Advance.", SUI_THEME_DIM, 1, 0);
@@ -233,7 +238,7 @@ float(float evtype, float scanx, float chary, float devid) TASUI_Input =
 	if (scanx == K_MOUSE1 || scanx == K_MOUSE2)
 	{
 		if (evtype == IE_KEYDOWN) _sui_mouse_move(_cursor_position, FALSE);
-		if (evtype == IE_KEYDOWN && scanx == K_MOUSE1 && tasu_tab && sui_is_hovered("tasp_sign")) TASProject_SignPress();
+		if (evtype == IE_KEYDOWN && scanx == K_MOUSE1 && tasu_tab == 1 && sui_is_hovered("tasp_sign")) TASProject_SignPress();
 		sui_input_event(evtype, scanx, chary, devid);
 		return TRUE;
 	}

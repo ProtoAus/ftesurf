@@ -1,6 +1,14 @@
 # AGENT_NOTES.md
 
-## Slow-practice camera delivery (P1138, 30 Oct 2026)
+## Forward camera/main integration (P1144, in progress)
+
+P1143 later replaced the earlier qualified P1138 Windows delivery. Merge the
+camera into shared main rather than shipping another parallel-only build. Retain
+all published TAS sharing, collector-source work and additive-rise native status;
+no backend rollout or policy weakening is part of this task. Fresh FULL/runtime
+and strict preimage/config/data preservation are pending; no final delivery claim.
+
+## Slow-practice camera delivery (P1138, historical 30 Oct 2026)
 
 **Problem:** authoritative slow practice repeats completed poses across packets;
 adjacent-packet interpolation freezes/rushes, including a packetized0.75 edge.
@@ -24,6 +32,14 @@ native replacement or force. Closed rollback/proofs retained in task artifacts.
 Body ratio is descriptive, not byte-equivalence; roof stub is not geometry proof.
 Human feel/stair/roof checks and scale-switch/short-zone-reset follow-ups remain
 in lextest/BACKLOG. Legacy dirty native checkouts and canonical config/data untouched.
+
+## Collector/account integration (P1142, 30 Oct 2026)
+
+- Finished the held P1117 collector/account branch against current main, keeping schema24 and the current native/QC pins. Steam sign-in queues only; paced workers own upstream HTTP. KSF cached completions never gain fresh board/demo or native evidence authority.
+- Momentum rotation, account walks and backfill share one request cap. Pending accounts retain one request even with backfill1..3 and a permanent stale backlog. Skip giant-integer PB times per row; apply the board fetcher's date bounds with observation-time fallback. The fetcher and its unconditional msml import install flat together; an isolated empty-destination import is an acted deployment control, not a placeholder-file assertion.
+- KSF profile projection must retain INVALID non-null stage/zone markers as invalid, never drop them into main semantics. Persist each walk/style's ordered map AND zone list before indexing it; catalogue changes cannot shift a saved offset. An older offset without its snapshot rewinds that style rather than guessing. Durable page/file-before-cursor ordering survives a restart; stage dates use the same bounded timestamp validation as main rows.
+- The previous three schema20 assertions are pinned to current24. P984 deliberately lets fitting donated zones replace embedded timers: the inheritance fixture now proves a complete valid timer pair before testing that behavior. Original baseline failures and acted review falsifiers remain retained, not regraded. Two admin amplification/snapshot expectations also fail unchanged main and remain a separate follow-up.
+- SOURCE PUBLICATION IS NOT LIVE DELIVERY. The current guarded backend admits an exact81-file family and excludes new momprofile.py. It needs a separately verified closure extension and guarded successor, not ordinary copying, a renamed/embedded module or an opened fence. No backend mutation, native build, lobby restart, live account exercise or external sweep was used for this patch. Human checks remain pending after that rollout.
 
 ## Operator TAS verifier delivered (P1134, 30 Oct 2026)
 
@@ -3234,6 +3250,20 @@ cannot be used, ask; do not silently scatter copies elsewhere.
 
 ## Build
 
+### Native version and historical fixture qualification — P1141, 30 Oct 2026
+
+An incremental native rebuild compiled the new normalized-takeoff controls but
+retained the old P1139 startup stamp. New acting checks and source/binary hashes
+bound that candidate; they did not qualify its version metadata. A final tagged
+full build supplied the correct stamp. Derive it from the actual build script:
+its revision count includes the historical +29 offset, not just Git's count.
+
+A retained ARM legacy driver also named an older phase. Read and hash the actual
+helper and its input closure before invoking it; do not infer qualification from
+a familiar filename. Reuse the same qualified driver through its supported label
+seam, preserving original controls and failed transport/reader receipts. Successful
+native arms do not need repeating merely to correct a downstream reader.
+
 ### Native CLI receipts: startup banners precede game logging — P1131, 2026-10-30
 
 A standalone `pm_selftest` game log can contain every passing check and shutdown
@@ -3493,6 +3523,19 @@ return_to is path-sensitive. No public/canonical switch follows from local mocks
 Commands, both-platform controls, findings and remaining gates: tools/p707sitepaths.md.
 
 ## Run and test
+
+**Reader transport and clock fields — P1143, 31 Oct 2026.** Expanding 528 absolute
+recording paths into Windows CreateProcess argv failed with WinError206 before
+the reader started. Invoke the SAME existing `reccheck.main` with its exact
+explicit runs-only `sys.argv` list in-process instead; do not fall back to the
+default saves expansion or rerun an already passed reader suite. Preserve the
+original launch failure and prove the input set/raw bytes/domain unchanged.
+
+A socket fixture's printed SSQC `frametime` is not the mover command duration.
+An overbroad identity-row comparison included that live clock field and failed
+after all native arms had passed. Read the actual producer, retain its observed
+values separately, and compare the specified raw/cache/input/body/status fields;
+do not repeat native arms, invent fixed cadence, or redate immutable proof.
 
 **P1139 corpus-domain calibration (30 Oct2026).** The existing reader and all
 527 historical run/paired-view bytes matched their retained control, but one new
@@ -9954,6 +9997,48 @@ a failing gfxcapture hangs with no frames, so kill it on a timeout. The view mus
 or a stale frame looks the same as a live one.
 
 ## Pitfalls discovered the hard way
+
+**TAS collaboration boundaries (P1140, 31 Oct 2026).** A metadata HTTP callback
+and StartFrame are not ordinary native client-command contexts. Deferred project
+open must use the existing normal client command after its normal cooldown;
+a real socket control must reach the requested tape head. Portable v3 metadata
+reads avoid the legacy native tape validator; refuse host-local old-format game
+sharing before starting any statement request. No author signing is synthesized:
+a dedicated localhost socket is not the native LoopBack/physical-key boundary.
+Unlinked fixture signatures receiving no linked credit are not human acceptance.
+
+A failed read-open is not file absence. `fexists` is depth-sensitive and ordinary
+full-path metadata uses FTE's filename hash. Fresh exact `search_begin` did catch
+late loose files in Windows controls, but POSIX native enumeration discards
+opendir errors: a valid empty handle is NOT authoritative absence. P1140 now
+requires uncached native write-path status; errors are occupied, and unsupported
+home-enabled write fallback fails closed rather than checking only the home root.
+The default manifest disables home. Windows status must use the actual writer's
+same ANSI/wide selection, not blindly UTF8-decode dedicated-server argv paths.
+Acting old/native controls demonstrated both namespace holes; corrected subjects
+preserved bytes and normal non-ASCII ANSI Open reached the real tape loader.
+
+Protect `.new`/`.new2` AND retained revision finals/`.tasp.new`: automatic loading
+reaches an older replace-capable retention helper. Reuse a readable retained final
+or confirm BOTH retention paths absent before staging and at deferred handoff.
+These guards do not harden arbitrary manual save/sign operations or promise
+external-writer atomicity/durability, nor resolve P1136's failed-part receipt.
+
+For Unicode ACL fixtures, Python text/UTF8 pipes into `pwsh -Command -` both
+misdecoded a non-ASCII path and reported GetAcl_PathNotFound. Native UTF16LE
+EncodedCommand worked; read the current SID inside the script, never in argv or
+logs. An explicit read-only home may also prevent game-log creation even though
+the dedicated server spawned: read its captured console sink for that control.
+Use the ACTUAL retained Peer constructor/limits, not a guessed earlier version;
+register ownership before subsequent identity work and restore only own modes.
+
+For teardown falsifiers use actual server teardown, not just a client's UDP close:
+the existing presentation `drop` hook shadows QW's disconnect string (BACKLOG).
+Owned-server kick plus delayed successful replies proved no late install or next
+upload. Credit view limits are informational: retain the validated map-list hash
+and Open gate when a large detail cannot be rendered. Native JSON string type is
+0; a byte-exact buffer upload must preserve the final newline. Directory transport
+is fixed public HTTPS with only a bounded IPv4-loopback test override.
 
 **`!=` on a bare `__variant` is a 64-bit compare (P1077, 28 Oct 2026).**
 `if (getproperty(VF_ACTIVESEAT) != 0) return;` compiled, in both fteqcc 7ccb93d1 and

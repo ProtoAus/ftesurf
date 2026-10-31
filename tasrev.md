@@ -26,6 +26,62 @@ whose revision has not arrived within 7 days is dropped. Two uploads parse, and 
 once; resolved credit is cached as text within 16 MB. The unit runs with MemoryMax=384M,
 CPUQuota=50%, Nice=10.
 
+## Game client (P1140)
+
+Host the map locally and open the TAS menu's **Shared** tab. Accept the online
+terms before browsing. Save a **legal-start v3** project; link the signing key to
+your account and physically press **Sign before Share** if you want linked credit.
+Sharing requires explicit public-upload confirmation. It uploads project metadata
+(including saved date and local project metadata) and existing public-key
+statements, never a private signing key. It does not sign automatically.
+
+Console equivalents:
+
+- `tas project share yes` publishes the current saved legal-start revision.
+- `tas project share yes <hash>` publishes an explicitly chosen retained v3
+  revision on this map, even without an attached project. A successful child
+  upload prints its parent hash; share still-private retained ancestors the same
+  way for complete history. Nothing is recursively made public without asking.
+- `tas shared refresh`, `tas shared select <zero-based-row>`, `tas shared status`
+  and `tas shared open` browse the current map and open the selected revision.
+- `tas project open <hash> [new-name]` downloads and validates a v3 project for
+  this map, then uses the ordinary local TAS loader. It is not a human run import.
+
+Downloads check size, strict project syntax, map/profile identity and the requested
+canonical hash before installing under a new name. Existing final, staged and
+`.new`/`.new2` recovery paths are protected, including unreadable files and loose
+files added after startup. Automatic loading also protects retained revision
+finals and their `.tasp.new` recovery stages; a readable retained final is reused,
+otherwise both retention paths must be absent. Open requires the P1140 native
+uncached write-path metadata capability: directory enumeration/read failures are
+not absence, and older engines refuse before writing. Explicit `-homedir`/`-usehome`
+overrides also make Open refuse: home-to-base write fallback is deliberately not
+admitted by this single-root check. The default FTESurf manifest disables home;
+no owner home setting or legacy file operation is changed. Windows metadata uses
+the same filename encoding as its actual native writer. Failed final rename
+retains the closed download stage. Do not edit the same paths from another process
+during import/automatic load; this is not an atomic multi-writer or power-loss
+durability protocol. Base-save
+v1/v2 projects need their author's private base and are refused by this portable
+game workflow before starting an upload or staging an incoming body.
+
+The credit view is informational (at most 4096 ranges / 1 MiB detail). A larger
+or unavailable credit view does not silently remove the validated revision's
+Open action. Attribution is the service's first-seen contract below, not a
+physics verdict, verified time, or proof of human input. Late signing/linking
+cannot retrospectively claim already-seen contributions. An already-sent statement
+can remain at the service if a later body upload fails.
+
+Transport uses `https://play.proto.bar/api/tasrev`. The `tas_directory` test
+override accepts only `http://127.0.0.1:<port>/api/tasrev`, decimal port 1..65535;
+other values fall back to the fixed public service. `tas shared status` reports
+the resolved endpoint without issuing a request. Native fixture signatures and
+synthetic credit-boundary DTOs are not real-account/physical-key or human UI
+acceptance; see lextest.md. Reviewed source and exact paired artifacts are now
+published/deployed to both Windows installs and all12 Pi lobbies (30-31 Oct2026);
+[deployment and limits](tools/p1140-delivery.md). This is development-fleet delivery,
+not a new public release or verifier/board qualification.
+
 ## Credit
 
 Every arrival takes the next number of one sequence; "before" and "earliest" mean by that number.

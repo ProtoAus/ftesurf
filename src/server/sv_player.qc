@@ -13,6 +13,7 @@
 void(entity e, float settled) SV_TASReplayFrame;
 void(entity e) SV_TASHistoryReset;
 void(entity e) SV_TASProjectReset;
+void(entity e) SV_TASShareCancel;
 void(entity e) SV_TASProjectFrame;
 void(entity e) SV_TASOptFrame;
 void(entity e) SV_TASLegalLog;
@@ -387,6 +388,7 @@ void() ClientConnect =
 
 void() ClientDisconnect =
 {
+	SV_TASShareCancel(self);           // callbacks/deferred opens belong to this connection
 	self.bank_attempt = 0i;
 	SV_StagePruneDue(self);             // Patch 998: a stage's prune still queued
 	if (self.rec_st_tail >= 1)
@@ -506,6 +508,7 @@ void() SetChangeParms = { };
 // entity stood orphaned until the map changed, one per cycle.
 void() SpectatorDisconnect =
 {
+	SV_TASShareCancel(self);
 	SV_SourcePhaseClear(self);
 	Account_Disconnect(self);
 	VM_SVConnect(self);
@@ -1426,6 +1429,7 @@ void(entity e, float count, float ticket) SV_TASQueueSteps =
 #include "sv_tasinput.qc"
 #include "sv_tasplan.qc"
 #include "sv_tasproject.qc"
+#include "sv_tasshare.qc"
 #include "sv_tasoptimize.qc"
 #include "sv_taslegal.qc"
 

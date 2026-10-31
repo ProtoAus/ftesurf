@@ -1,11 +1,18 @@
 """Paced, resumable KSF main-map completion walks, demanded by profile views.
-HTTP queues only resolved Steam identities; ksfimport's shared lock/pacer and
-host-wide refusal park own the network. Page durability precedes DB filing,
-which precedes cursor acknowledgement. No replay/evidence authority is added.
+HTTP queues only resolved Steam identities; ksfimport's shared lock and pacer own
+the network. Page durability precedes DB filing, which precedes cursor
+acknowledgement. No replay/evidence authority is added.
+
+P1117 review 3: a walk never parks the host.  Its refusals park only the walks
+(PARK, beside the crawl's .refused), it always moves its cursor or ends, and a bad
+record is skipped and counted rather than refused.
 """
+import calendar
 import hashlib
 import os
 import sqlite3
+import time
+import urllib.parse
 
 SQL = """
 CREATE TABLE IF NOT EXISTS ksfprofiles (
@@ -15,9 +22,70 @@ CREATE TABLE IF NOT EXISTS ksfprofiles (
 );
 """
 TTL = 86400
-MAX_ACTIVE = 32
+MAX_ACTIVE = 32             # P1117 review: live walks of signed-in accounts...
+MAX_VIEWED = 24             # ...and, apart, of anyone else's profile views
+VIEW_PAGES = 20             # pages a profile view's walk asks before it is 'limited'
 PAGE = 5                    # observed pagination.limit, not a request limit
 MAX_POSITION = 10001         # safety bound; 'limited' is NOT complete
+# P1117: after the four main walks, modes 4..7 walk style mode-4's stage and
+# bonus PBs, one map a request: GET /api/players/<id>/records/map/<map>, the
+# route ksf.surf's own player page uses (probed 29 Oct).  `cursor` indexes
+# stage_maps(); the state stays 'partial' until mode 8.
+STAGE_MODE = 4
+# A stage request's failure is that map's unless it is one of these (or no answer).
+HOST_CODES = (429, 502, 503, 504, 520, 521, 522, 523, 524)
+STAGE_RECORDS_MAX = 200     # zones a map reply may carry; more is not a map's
+MAIN_FIELDS = ('mapName', 'stage_id', 'zone_id', 'time', 'date', 'record_id', 'name')
+STAGE_FIELDS = ('zoneId', 'record_id', 'surfTime', 'date_set_at')
+ACCOUNT = "SELECT 1 FROM accounts a WHERE a.steamid = %s AND a.banned_at = 0"
+PARK = '.refused-profiles'
+
+
+def parked(K, cache, now):
+    park = K._load(os.path.join(cache, PARK))
+    return park if isinstance(park, dict) and now < int(park.get('until') or 0) else None
+
+
+def park_walks(K, cache, now, e):
+    """The walks rest, never the host: QUIET_COOLDOWN after no answer, else COOLDOWN,
+    doubling while refusals follow; only an answered request lifts it (answered)."""
+    old = K._load(os.path.join(cache, PARK))
+    old = old if isinstance(old, dict) else {}
+    n = int(old.get('n') or 0) + 1
+    base = K.QUIET_COOLDOWN if getattr(e, 'transient', False) else K.COOLDOWN
+    wait = min(base * 2 ** min(n - 1, 8), K.COOLDOWN_MAX)
+    K._save(os.path.join(cache, PARK), dict(at=now, until=now + wait, n=n, why=str(e)[:120]))
+    print('KSF player walks refused (%s): parked %d min, the crawl is not' % (e, wait // 60))
+
+
+def answered(K, cache):
+    try:
+        os.remove(os.path.join(cache, PARK))
+    except FileNotFoundError:
+        pass
+
+
+def is_account(K, player):
+    db = K.S.connect()
+    try:
+        return db.execute(ACCOUNT % "?", (player,)).fetchone() is not None
+    finally:
+        db.close()
+
+
+def status_pages(K, player):
+    db = K.S.connect()
+    try:
+        return status(db, player).get('pages', 0)
+    finally:
+        db.close()
+
+
+def forget(fn):
+    try:
+        os.remove(fn)
+    except FileNotFoundError:
+        pass
 
 
 def status(db, player):
@@ -42,8 +110,12 @@ def enqueue(db, player, now):
             old = db.execute('SELECT state,updated FROM ksfprofiles WHERE player=?', (player,)).fetchone()
             if old and (old[0] in ('queued', 'partial') or now - old[1] < TTL):
                 return status(db, player)
-            n = db.execute("SELECT count(*) FROM ksfprofiles WHERE state IN ('queued','partial')").fetchone()[0]
-            if n >= MAX_ACTIVE:
+            # Views of other profiles cannot fill an account's slots (P1117 review).
+            mine = db.execute(ACCOUNT % "?", (player,)).fetchone() is not None
+            n = db.execute("SELECT count(*) FROM ksfprofiles p WHERE state IN ('queued','partial')"
+                           " AND %sEXISTS (%s)" % ("" if mine else "NOT ", ACCOUNT % "p.player")
+                           ).fetchone()[0]
+            if n >= (MAX_ACTIVE if mine else MAX_VIEWED):
                 return {'state': 'busy'}
             db.execute("INSERT INTO ksfprofiles(player,mode,cursor,state,asked,updated) VALUES (?,0,1,'queued',?,?) "
                        "ON CONFLICT(player) DO UPDATE SET mode=0,cursor=1,state='queued',asked=excluded.asked,updated=excluded.updated,pages=0,skipped=0", (player, now, now))
@@ -57,14 +129,51 @@ def enqueue(db, player, now):
 
 
 def pending(db):
-    return db.execute("SELECT player,mode,cursor,asked FROM ksfprofiles WHERE state IN ('queued','partial') ORDER BY updated,asked,player LIMIT 3").fetchall()
+    # P1117 review 2: signed-in accounts' walks first, then by turn.
+    return db.execute("SELECT player,mode,cursor,asked FROM ksfprofiles p WHERE state IN ('queued','partial')"
+                      " ORDER BY NOT EXISTS (%s),updated,asked,player LIMIT 3" % (ACCOUNT % "p.player")).fetchall()
+
+
+def kept(recs, fields):
+    """Bounded scalars, without turning an invalid non-main marker into null.
+    False is a bounded non-null sentinel: these fields are accepted only as null.
+    Keep one record per reply row so skipped counts and pagination stay exact.
+    """
+    out = []
+    for r in recs:
+        row = {k: r[k] for k in fields if k in r and
+               (r[k] is None or type(r[k]) in (int, float, bool) or
+                (type(r[k]) is str and len(r[k]) <= 256))}
+        for k in ('stage_id', 'zone_id'):
+            if k in fields and r.get(k) is not None and k not in row:
+                row[k] = False
+        out.append(row)
+    return out
 
 
 def step(K, cache, pacer, have, now, budget=3):
     """Round-robin the selected players, at most budget pages, before the crawl.
     A page cache is retained even after import, so an interrupted write resumes
     without refetching and daily refreshes cannot reuse yesterday's snapshot.
+    Never raises a refusal: see the module docstring.
     """
+    at = []
+    try:
+        return _step(K, cache, pacer, have, now, budget, at)
+    except Exception:
+        # P1117 review 5: a walk that raises every time must not stay first in
+        # pending() with the others behind it: it gives up its turn.
+        if at:
+            touch(K, at[0], at[1], now)
+        raise
+
+
+def _step(K, cache, pacer, have, now, budget, at):
+    park = parked(K, cache, now)
+    if park:
+        print('KSF player walks parked (%s) until %s' % (
+            park.get('why'), time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(park['until']))))
+        return 0
     db = K.S.connect()
     try:
         work = list(pending(db))
@@ -72,10 +181,31 @@ def step(K, cache, pacer, have, now, budget=3):
         db.close()
     spent = 0
     for player, mode, start, asked in work:
-        if spent >= budget:
-            break
+        at[:] = [player, asked]
         sid = K.S.steam2(player)
         if not sid:
+            continue
+        if mode >= STAGE_MODE:
+            if not is_account(K, player):
+                # P1117 review 3: a profile view walks main records only.
+                advance(K, player, mode, start, asked, now, 2 * STAGE_MODE - 1, start, 'complete', 0)
+                continue
+            # A style with nothing to ask advances without spending a request.
+            got = stage_step(K, cache, pacer, have, now, player, sid, mode, start, asked,
+                             spent < budget)
+            if got == 'parked':
+                return spent + 1
+            if got:
+                spent += got[0]
+                if got[1] == 'partial':
+                    work.append((player, got[2], got[3], asked))
+            continue
+        if spent >= budget:
+            continue
+        if not is_account(K, player) and status_pages(K, player) >= VIEW_PAGES:
+            # P1117 review 4: a profile view's walk is capped, so views cannot hold
+            # their slots for days with heavy players.
+            advance(K, player, mode, start, asked, now, mode, start, 'limited', 0)
             continue
         leaf = hashlib.sha256(player.encode('ascii')).hexdigest()
         fn = os.path.join(cache, 'profiles', leaf, '%d-%d.json' % (mode, start))
@@ -86,48 +216,53 @@ def step(K, cache, pacer, have, now, budget=3):
             try:
                 doc = pacer.get('/api/players/%s/bestrecords/%d?game=css&mode=%d' % (sid, start, mode))
             except K.Refused as e:
-                # This route's 500 is KSF's "not a player of mine" (ksfimport.NoSuchPlayer).
-                # Parking the host on it stalled every crawl and demo from 2026-10-15 to
-                # 10-17. At most one per tick; the crawl's next request still parks a
-                # host that answers 500 to everything.
-                if e.code != 500:
-                    raise
-                pacer.unanswered += 1   # never lifts a park (watch_mode)
-                retire(K, player, mode, start, asked, now)
-                return spent + 1
-            saved = {'asked': asked, 'body': doc}
+                pacer.unanswered += 1   # a walk's refusal never lifts the crawl's park
+                spent += 1
+                if e.code in HOST_CODES or getattr(e, 'transient', False):
+                    # Past this page (the next walk refills it), and the walks rest.
+                    advance(K, player, mode, start, asked, now, mode, start + PAGE, 'partial', 1)
+                    park_walks(K, cache, now, e)
+                    return spent
+                # 500 is KSF's "not a player of mine"; 401/403/404 or a page that
+                # will not parse are this walk's: it ends, one walk a tick.
+                retire(K, player, mode, start, asked, now, refused=e.code != 500)
+                return spent
             # Invalid pages must not get a cursor, even if they are empty.
-            validate(K, doc, start)
-            K._save(fn, saved)
-            with open(fn, 'r+b') as f:
-                os.fsync(f.fileno())
-            if os.name != 'nt':
-                fd = os.open(os.path.dirname(fn), os.O_RDONLY | os.O_DIRECTORY)
-                try:
-                    os.fsync(fd)
-                finally:
-                    os.close(fd)
-        doc = saved.get('body')
-        recs = validate(K, doc, start)
+            try:
+                recs = validate(K, doc, start)
+            except K.Refused:
+                pacer.unanswered += 1
+                retire(K, player, mode, start, asked, now, refused=True)
+                return spent + 1
+            answered(K, cache)
+            saved = {'asked': asked, 'body': {'records': kept(recs, MAIN_FIELDS),
+                                              'pagination': {'offset': start - 1, 'limit': PAGE}}}
+            durable(K, fn, saved)
+        try:
+            recs = validate(K, saved.get('body'), start)
+        except K.Refused:
+            forget(fn)              # a saved page that no longer reads is not replayed
+            retire(K, player, mode, start, asked, now, refused=True)
+            continue
         rows, skipped = [], 0
         seen = set()
         for rec in recs:
-            mp = K.S.clean_map(rec.get('mapName', ''))
+            name = rec.get('mapName')
+            mp = K.S.clean_map(name) if isinstance(name, str) else None
             # This endpoint is MAIN records; never guess stage/bonus semantics.
-            if rec.get('stage_id') is not None or rec.get('zone_id') is not None:
-                raise K.Refused('profile contains non-main records')
             # bestrecords currently sends record_id:null, even for valid rows.
             # Completion identity is this player's MAIN map/style; null IDs
             # must NEVER acquire board/demo authority or fabricate a run ID.
-            if not mp or mp in seen or K._when(rec) <= 0:
-                raise K.Refused('profile map/date identity')
-            seen.add(mp)
-            if mp not in have:
+            # A record failing any of it is skipped and counted (P1117 review 3).
+            row = None
+            if (rec.get('stage_id') is None and rec.get('zone_id') is None and mp
+                    and mp not in seen and K._when(rec) > 0 and mp in have):
+                row = K.rec_row(mp, 0, mode, dict(rec, steamID=player))
+            if mp:
+                seen.add(mp)
+            if row is None:
                 skipped += 1
                 continue
-            row = K.rec_row(mp, 0, mode, dict(rec, steamID=player))
-            if row is None:
-                raise K.Refused('profile record time')
             row['style'] = K.KSF_MODES[mode]
             row['binding'] = 'cache'  # never fresh board/demo authority
             rows.append(row)
@@ -143,8 +278,8 @@ def step(K, cache, pacer, have, now, budget=3):
         nextmode, nxt, state = mode, start + len(recs), 'partial'
         if len(recs) < PAGE:
             nextmode, nxt = mode + 1, 1
-            if nextmode == 4:
-                state, nextmode = 'complete', 3
+            if nextmode == STAGE_MODE:
+                nxt = 0             # P1117: on to the stage/bonus phase
         elif nxt >= MAX_POSITION:
             state = 'limited'
         db = K.S.connect()
@@ -162,16 +297,205 @@ def step(K, cache, pacer, have, now, budget=3):
     return spent
 
 
-def retire(K, player, mode, start, asked, now):
-    """End a walk KSF answered 500 for: `unknown` before any page, else `limited`.
-    A later profile view re-queues it after TTL, as for any finished walk."""
+def touch(K, player, asked, now):
+    """A walk gives up its turn: its `updated` moves, nothing else."""
+    try:
+        db = K.S.connect()
+        try:
+            with db:
+                db.execute("UPDATE ksfprofiles SET updated=? WHERE player=? AND asked=?"
+                           " AND state IN ('queued','partial')", (now, player, asked))
+        finally:
+            db.close()
+    except sqlite3.Error:
+        pass
+
+
+def durable(K, fn, saved):
+    K._save(fn, saved)
+    with open(fn, 'r+b') as f:
+        os.fsync(f.fileno())
+    if os.name != 'nt':
+        fd = os.open(os.path.dirname(fn), os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+
+def stage_maps(K, cache, player, style, have):
+    """[(map, zones)]: the player's KSF main rows in `style` on installed maps
+    whose cached map info names stages or bonuses (zones_of).  Never asks."""
+    db = K.S.connect()
+    try:
+        maps = [r[0] for r in db.execute(
+            "SELECT DISTINCT map FROM runs WHERE tier = ? AND player = ? AND style = ?"
+            " AND track = 0 AND leg = 0 ORDER BY map",
+            (K.S.TIER_KSF, player, K.KSF_MODES[style]))]
+    finally:
+        db.close()
+    out = []
+    for mp in maps:
+        if mp not in have:
+            continue
+        try:
+            info = K.map_info(mp, cache, K.Pacer(0, 0))
+        except K.OverBudget:
+            continue
+        zones = set(K.zones_of(info)) - {0} if info else set()
+        if zones:
+            out.append((mp, zones))
+    return out
+
+
+def stage_plan(K, cache, player, style, have, asked, start):
+    """Durably bind an integer cursor to this walk's map/zone identities.
+    A catalogue edit or an uninstall must not shift the remaining offsets.
+    Return whether a new snapshot was needed: older walks without one restart
+    this style at zero rather than silently skipping its new first entries.
+    """
+    leaf = hashlib.sha256(player.encode('ascii')).hexdigest()
+    fn = os.path.join(cache, 'profiles', leaf, 'stage-maplist-%d.json' % style)
+    saved = K._load(fn)
+    if isinstance(saved, dict) and saved.get('asked') == asked:
+        maps = saved.get('maps')
+        if (isinstance(maps, list) and all(
+                isinstance(r, list) and len(r) == 2 and
+                isinstance(r[0], str) and K.S.clean_map(r[0]) == r[0] and
+                isinstance(r[1], list) and r[1] and
+                all(type(z) is int and z != 0 for z in r[1]) for r in maps) and
+                [r[0] for r in maps] == sorted({r[0] for r in maps})):
+            return [(mp, set(zones)) for mp, zones in maps], False
+    if start:
+        # No valid replacement may appear before its old offset is rewound.
+        # A crash before/after that DB commit leaves the missing plan visible;
+        # the next zero-cursor step publishes it before consuming any entry.
+        return [], True
+    maps = stage_maps(K, cache, player, style, have)
+    durable(K, fn, {'asked': asked, 'maps': [[mp, sorted(zones)] for mp, zones in maps]})
+    return maps, True
+
+
+def _iso(raw):
+    try:
+        return calendar.timegm(time.strptime(raw, '%Y-%m-%dT%H:%M:%SZ'))
+    except (TypeError, ValueError):
+        return 0
+
+
+def stage_step(K, cache, pacer, have, now, player, sid, mode, start, asked, can_ask):
+    """One map's stage/bonus PBs, or an advance past a style with none left.
+    -> (requests, state, mode, cursor), None when it would have to ask and may not,
+    or 'parked' when a refusal parked the walks.
+    Rows are 'cache' bindings, as main completions are: never demo authority."""
+    style = mode - STAGE_MODE
+    maps, fresh = stage_plan(K, cache, player, style, have, asked, start)
+    if fresh and start:
+        advance(K, player, mode, start, asked, now, mode, 0, 'partial', 0)
+        return 0, 'partial', mode, 0
+    made, state, nextmode, nxt = 0, 'partial', mode, start + 1
+    if start >= len(maps):
+        nextmode, nxt = mode + 1, 0
+        if nextmode == 2 * STAGE_MODE:
+            state, nextmode = 'complete', 2 * STAGE_MODE - 1
+    else:
+        mp, zones = maps[start]
+        if mp not in have:
+            # Keep offsets stable, but neither ask nor file an uninstalled map.
+            advance(K, player, mode, start, asked, now, mode, start + 1, 'partial', 0)
+            return 0, 'partial', mode, start + 1
+        leaf = hashlib.sha256(player.encode('ascii')).hexdigest()
+        fn = os.path.join(cache, 'profiles', leaf, '%d-%d-%s.json' % (mode, start, mp))
+        saved = K._load(fn)
+        if not isinstance(saved, dict) or saved.get('asked') != asked:
+            if not can_ask or pacer.left() <= 0:
+                return None
+            made, saved = 1, None
+            try:
+                doc = pacer.get('/api/players/%s/records/map/%s?game=css&mode=%d'
+                                % (sid, urllib.parse.quote(mp), style))
+            except K.Refused as e:
+                # P1117 review: a host refusal (or no answer) parks the walks, with the
+                # cursor past this map and the turn given up; 401/403 on this route
+                # ends the stage phase; the rest are the map's.  None lifts a park.
+                pacer.unanswered += 1
+                if e.code in (401, 403):
+                    last = 2 * STAGE_MODE - 1
+                    advance(K, player, mode, start, asked, now, last, start, 'limited', 1)
+                    return 1, 'limited', last, start
+                if e.code in HOST_CODES or getattr(e, 'transient', False):
+                    advance(K, player, mode, start, asked, now, mode, start + 1, 'partial', 1)
+                    park_walks(K, cache, now, e)
+                    return 'parked'
+            else:
+                recs = map_records(doc, sid)
+                if recs is None:
+                    pacer.unanswered += 1
+                else:
+                    answered(K, cache)
+                    # Only what is filed is kept: never a reply's other bytes.
+                    saved = {'asked': asked, 'body': {'basicInfo': {'steamID': sid},
+                                                      'records': kept(recs, STAGE_FIELDS)}}
+                    durable(K, fn, saved)
+        rows = []
+        for r in (map_records(saved['body'], sid) or []) if saved else []:
+            zone = r.get('zoneId')
+            when = K._when({'date': _iso(r.get('date_set_at'))})
+            if type(zone) is not int or zone not in zones or when <= 0:
+                continue
+            row = K.rec_row(mp, zone, style, {'steamID': sid, 'time': r.get('surfTime'),
+                                              'date': when, 'record_id': r.get('record_id')})
+            if row:
+                row['binding'] = 'cache'
+                rows.append(row)
+        if rows:
+            db = K.S.connect()
+            try:
+                named = db.execute("SELECT name FROM runs WHERE player=? ORDER BY submitted DESC"
+                                   " LIMIT 1", (player,)).fetchone()
+            finally:
+                db.close()
+            for row in rows:
+                row['name'] = named[0] if named else 'KSF player'
+            K.write_rows(rows)
+    advance(K, player, mode, start, asked, now, nextmode, nxt, state, made)
+    return made, state, nextmode, nxt
+
+
+def advance(K, player, mode, start, asked, now, nextmode, nxt, state, made):
     db = K.S.connect()
     try:
         db.execute('PRAGMA synchronous=FULL')
         with db:
-            db.execute("UPDATE ksfprofiles SET state=CASE WHEN pages=0 THEN 'unknown' ELSE 'limited' END,"
-                       " updated=? WHERE player=? AND mode=? AND cursor=? AND asked=?"
-                       " AND state IN ('queued','partial')", (now, player, mode, start, asked))
+            db.execute('UPDATE ksfprofiles SET mode=?,cursor=?,state=?,updated=?,pages=pages+?'
+                       " WHERE player=? AND mode=? AND cursor=? AND asked=? AND state IN ('queued','partial')",
+                       (nextmode, nxt, state, now, made, player, mode, start, asked))
+    finally:
+        db.close()
+
+
+def map_records(doc, sid):
+    """The reply's records, or None when it is not this player's map reply."""
+    info = doc.get('basicInfo') if isinstance(doc, dict) else None
+    recs = doc.get('records') if isinstance(info, dict) else None
+    if (not isinstance(info, dict) or info.get('steamID') != sid or not isinstance(recs, list)
+            or len(recs) > STAGE_RECORDS_MAX or not all(isinstance(r, dict) for r in recs)):
+        return None
+    return recs
+
+
+def retire(K, player, mode, start, asked, now, refused=False):
+    """End a walk KSF answered 500 for: `unknown` before any page, else `limited`;
+    one a refusal or a bad page ended is `refused` (P1117 review 4: steamsync gives
+    a found-nobody walk a week, a refused one a day).  A later profile view
+    re-queues it after TTL, as for any finished walk."""
+    db = K.S.connect()
+    try:
+        db.execute('PRAGMA synchronous=FULL')
+        with db:
+            db.execute("UPDATE ksfprofiles SET state=CASE WHEN ? THEN 'refused' WHEN pages=0 THEN 'unknown'"
+                       " ELSE 'limited' END, updated=? WHERE player=? AND mode=? AND cursor=? AND asked=?"
+                       " AND state IN ('queued','partial')", (refused, now, player, mode, start, asked))
     finally:
         db.close()
 

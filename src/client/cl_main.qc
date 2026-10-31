@@ -165,6 +165,7 @@ void() CL_RenderMapFrame =
 void() CSQC_WorldLoaded =
 {
 	TASUI_Close();
+	TASShare_Reset();
 
 	// Patch 475: the trail's two slots may still hold the LAST map's run -- the
 	// arenas outlive a map change and only the CSQC globals are zeroed.
@@ -913,7 +914,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	print("FTESurf CSQC loaded\n");
 };
 
-void() CSQC_Shutdown = { TASUI_Close(); TimeScale_PredictRelease(); TimeScale_ThreadRelease(); MA_Shutdown(); Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
+void() CSQC_Shutdown = { TASUI_Close(); TASShare_Reset(); TimeScale_PredictRelease(); TimeScale_ThreadRelease(); MA_Shutdown(); Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
 
 /*
   Forced view angles from the server -- svc_setangle, its relative form, and

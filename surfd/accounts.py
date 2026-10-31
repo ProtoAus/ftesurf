@@ -121,6 +121,8 @@ import urllib.parse
 from flask import Response, redirect, request
 
 import steam
+import ksfprofile       # P1117: queued at sign-in; no network here
+import momprofile
 
 SQL = """
 CREATE TABLE IF NOT EXISTS accounts (
@@ -1658,6 +1660,15 @@ def register(app, d):
             log.exception("link: storage error")
             return again("Something went wrong on our side. Try again in a "
                          "minute.", 500)
+        if not acct["banned_at"]:
+            # P1117: queue the account's own KSF and Momentum records; the importers
+            # fetch them on their own schedule.  A sign-in never waits on this.
+            for walk in (ksfprofile, momprofile):
+                try:
+                    if walk.enqueue(db, steamid, now).get("state") == "busy":
+                        log.warning("link: %s busy, not queued for %s", walk.__name__, steamid)
+                except sqlite3.Error as exc:
+                    log.warning("link: %s not queued for %s (%s)", walk.__name__, steamid, exc)
 
         who = html.escape(acct["name"] or "Steam account " + steamid)
         browser = secrets.token_urlsafe(18)

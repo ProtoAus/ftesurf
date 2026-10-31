@@ -14,8 +14,13 @@ WHAT IT REFRESHES, IN ORDER:
   1. maps a lobby is on RIGHT NOW whose boards are missing or older than --stale
   2. maps somebody opened on the WEBSITE, newest interest first (--want).  The
      queue is surfd's `mapwant` table, written by /board/api/map.
-  3. with whatever --backfill allows, the shallowest boards anywhere (--depth).
-  4. nothing else.  A full deliberate sweep is still tools/momfetch.py.
+  3. from --backfill, page 1 of up to ROTATE boards older than --stale, the map
+     whose oldest board was fetched longest ago first (P1117), so no board goes
+     unasked for longer than one rotation however nobody plays its map.
+  4. with what --backfill has left, the shallowest boards anywhere (--depth),
+     and one board with places missing inside its depth walked again
+     (momfetch --rewalk).
+  5. nothing else.  A full deliberate sweep is still tools/momfetch.py.
 
 THE WEB QUEUE IS A QUEUE AND NOT A FETCH, and that is the point of it.  A public
 unauthenticated GET must never turn into an outbound request to somebody else's
@@ -52,6 +57,7 @@ remember where it got to, because the board cache is the cursor.
 """
 import argparse
 import io
+import json
 import logging
 import os
 import subprocess
@@ -83,11 +89,108 @@ if not logging.getLogger("surfd").handlers:
 
 import surfd as S       # noqa: E402
 import momfetch         # noqa: E402
+import momprofile       # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 LOBBY_FRESH = 300        # s; a lobby row older than this is not a live lobby
+# P1117 review: the extras take at most EXTRA_MAX of --backfill a tick (the backfill
+# alone used ~2), and rest for QUIET after any refusal; 78 429s in ~1,650 ticks.
+EXTRA_MAX = 6
+ROTATE = 3               # page-1 refreshes a tick
+PROFILE_MAX = 1          # requests a tick for signed-in players' own PBs (momprofile)
+QUIET = 3600
+
+
+ROTATION = ".rotation"   # P1117 review 3: board key -> when the rotation last asked it
+
+
+def rotation_state(boards):
+    try:
+        with io.open(os.path.join(boards, ROTATION), encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def rest(boards, why, now=None):
+    """Rest the rotation, re-walk and player walks for QUIET.  -> why."""
+    now = int(time.time()) if now is None else now
+    try:
+        momfetch.write_board(os.path.join(boards, ".quiet"), {"until": now + QUIET, "why": why})
+    except OSError as e:
+        print("could not record the rest (%s)" % e)
+    return why
+
+
+def resting(boards, now=None):
+    """-> why the extras rest now, or ""."""
+    now = int(time.time()) if now is None else now
+    try:
+        with io.open(os.path.join(boards, ".quiet"), encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        return ""
+    until = d.get("until") if isinstance(d, dict) else None
+    return str(d.get("why") or "a refusal") if type(until) is int and now < until else ""
+
+
+def has_extras(path):
+    """Does the momfetch this runs know --board and --rewalk?  A deploy that ships
+    momwatch without it would otherwise exit 2 at every rotation."""
+    try:
+        with io.open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        return False
+    return '"--board"' in text and '"--rewalk"' in text
+
+
+def profile_get(url):
+    """momfetch.get, where a 404 is an answer: no such player, no PBs."""
+    try:
+        return momfetch.get(url)
+    except momfetch.NoSuchBoard:
+        return b'{"totalCount": 0, "data": []}'
+
+
+def stalest_boards(cat, boards, cut, n):
+    """Up to `n` board keys fetched before `cut`: whole maps, the map whose oldest
+    board is oldest first; a map with more than `n` goes `n` at a time, stalest
+    first.  A board never fetched is the backfill's (it asks those at skip 0).
+    A board's turn is the later of its file's mtime and its last ask in ROTATION."""
+    asked = rotation_state(boards)
+    maps = []
+    for name, m in cat.items():
+        gm = momfetch.gm_of(name)
+        if gm is None:
+            continue
+        old = []
+        for bgm, tt, tn in m["boards"]:
+            if bgm != gm:
+                continue
+            key = momfetch.board_key(m["id"], bgm, tt, tn)
+            try:
+                mt = os.path.getmtime(os.path.join(boards, key + ".json"))
+            except OSError:
+                continue
+            at = asked.get(key)
+            mt = max(mt, at) if type(at) in (int, float) else mt
+            if mt < cut:
+                old.append((mt, key))
+        if old:
+            old.sort()
+            maps.append((old[0][0], name, [k for _, k in old]))
+    out = []
+    for _, _, keys in sorted(maps):
+        if out and len(out) + len(keys) > n:
+            break
+        out += keys[:n - len(out)]
+        if len(out) >= n:
+            break
+    return out
 
 
 def live_maps(conn, fresh=LOBBY_FRESH):
@@ -174,6 +277,8 @@ def main():
     conn = S.connect()
     live = live_maps(conn)
     queued = wanted_maps(conn, a.want)
+    profiles_pending = conn.execute("SELECT 1 FROM momprofiles WHERE state IN ('queued','partial')"
+                                    " LIMIT 1").fetchone() is not None
     conn.close()
 
     # Lobbies first: somebody is standing on those maps.  The website's queue is
@@ -249,7 +354,7 @@ def main():
         print("\nDRY RUN -- nothing fetched.  Pass --go.")
         return 0
 
-    fetched = False
+    fetched, failed = False, 0
 
     if maps:
         cmd = [sys.executable, _momfetch_path(),
@@ -277,35 +382,111 @@ def main():
         if rc != 0:
             print("momfetch stopped (%d) -- see above; nothing is retried here"
                   % rc)
-            return rc
+            rest(a.boards, "live refused")
+            failed = rc
 
     # THE BACKFILL, and it is deliberately the same tool with no --map and no
     # --refresh.  momfetch already sorts its pages by depth, so this asks for the
     # shallowest boards in the whole library and nothing else; --depth must be a
     # real depth or there is nothing to crawl towards, hence the -1 default here
     # rather than 0.
-    if a.backfill > 0:
+    # P1117: the rotation, the player walks and the backfill share at most
+    # EXTRA_MAX of --backfill; for QUIET after any refusal only the backfill runs.
+    # P1117 review 2: whatever refuses moves to the back, and the backfill and the
+    # index run all the same; a refused live fetch still ends the asking.
+    left = min(a.backfill, EXTRA_MAX) if not failed else 0
+    quiet = resting(a.boards)
+    if quiet:
+        print("rotation, re-walk and player walks rest after a refusal: %s" % quiet)
+    new = has_extras(_momfetch_path())
+    if not new:
+        print("momfetch.py there predates P1117 (no --board/--rewalk): no rotation, no re-walk")
+    # Even --backfill 1..3 must advance a queued account in a permanent stale
+    # backlog. Reserve within (never in addition to) the shared request cap.
+    rotation_budget = max(0, left - int(profiles_pending))
+    rot = (stalest_boards(cat, a.boards, cut, min(ROTATE, rotation_budget))
+           if rotation_budget > 0 and not quiet and new else [])
+    if rot:
+        print("\n--- rotation: page 1 of %d board(s), stalest map first ---" % len(rot))
+        cmd = [sys.executable, _momfetch_path(),
+               "--tracks", a.tracks, "--out", a.boards, "--take", str(a.take),
+               "--depth", "0", "--delay", str(a.delay), "--max", str(len(rot)),
+               "--refresh", "--go"]
+        for k in rot:
+            cmd += ["--board", k]
+        if fetched:
+            time.sleep(a.delay)
+        sys.stdout.flush()
+        rc = subprocess.call(cmd)
+        fetched = True
+        left -= len(rot)
+        if rc != 0:
+            print("rotation stopped (%d) -- its unasked boards go to the back" % rc)
+            # P1117 review 3: in ROTATION, not the files' mtime, which the live
+            # refresh reads as fresh.
+            asked = rotation_state(a.boards)
+            for k in rot:
+                try:
+                    if os.path.getmtime(os.path.join(a.boards, k + ".json")) < cut:
+                        asked[k] = int(time.time())
+                except OSError:
+                    pass
+            try:
+                momfetch.write_board(os.path.join(a.boards, ROTATION), asked)
+            except OSError as e:
+                print("could not record the rotation (%s)" % e)
+            quiet = rest(a.boards, "rotation refused")
+            failed = failed or rc
+
+    if left > 0 and not quiet:
+        tracked = {}
+        for name, m in cat.items():
+            gm, mp = momfetch.gm_of(name), S.clean_map(name)
+            for bgm, tt, tn in m["boards"]:
+                if gm is not None and bgm == gm and mp:
+                    tracked[(m["id"], bgm, tt, tn)] = mp
+        spent = 0
+        conn = S.connect()
+        try:
+            spent = momprofile.step(conn, tracked, min(PROFILE_MAX, left), profile_get, a.delay)
+        except Exception as e:
+            # The walks rest; the backfill and the index still run (P1117 review).
+            print("player walk REFUSED, nothing retried: %s: %s" % (type(e).__name__, e))
+            quiet = rest(a.boards, "player walk: %s" % type(e).__name__)
+            spent, fetched = PROFILE_MAX, True
+        finally:
+            conn.close()
+        if spent:
+            print("player walks         %d request(s)" % spent)
+            fetched = True
+            left -= spent
+
+    if left > 0:
         print("\n--- backfill: up to %d page(s) into the shallowest boards ---"
-              % a.backfill)
+              % left)
         cmd = [sys.executable, _momfetch_path(),
                "--tracks", a.tracks, "--out", a.boards,
                "--take", str(a.take),
                "--depth", str(a.depth if a.depth else -1),
-               "--delay", str(a.delay), "--max", str(a.backfill), "--go"]
+               "--delay", str(a.delay), "--max", str(left), "--go"]
+        if not quiet and new:
+            cmd.append("--rewalk")
+        if fetched:
+            time.sleep(a.delay)
         sys.stdout.flush()
         rc = subprocess.call(cmd)
         fetched = True
         if rc != 0:
             print("backfill stopped (%d) -- nothing is retried here" % rc)
-            return rc
+            rest(a.boards, "backfill refused")
+            failed = failed or rc
 
     if a.index and fetched:
         sys.stdout.flush()
         rc = subprocess.call([sys.executable, os.path.join(HERE, "momboards.py"),
                               "--boards", a.boards, "--link", "--go"])
-        if rc != 0:
-            return rc
-    return 0
+        failed = failed or rc
+    return failed
 
 
 if __name__ == "__main__":

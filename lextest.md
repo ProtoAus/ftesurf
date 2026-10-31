@@ -1,6 +1,11 @@
 # lextest.md — things waiting on a human
 
-## P1138 slow-practice camera (installed; human feel check pending)
+## P1144 slow-practice camera forward integration (qualification pending)
+
+P1143 subsequently replaced the earlier P1138 installation below. P1144 combines
+the camera with current main; fresh combined qualification/delivery is pending.
+
+### Historical P1138 qualification; human feel still pending
 
 Installed exact qualified native/VMs in C:/FTESurf and C:/FTEQuake on30Oct2026;
 guarded same-QC delivery reached12emptyPi lobbies, no Pi native replacement.
@@ -16,6 +21,34 @@ starts a fresh context (real active-attempt flag checks passed). Known follow-up
 in BACKLOG: a camera phase
 change at speed switches and short zone-reset placements; general embedded-point
 collision safety and human-input/evidence equivalence are not claimed.
+
+## P1140 TAS sharing/browser (deployed; human check pending)
+
+Deployed both Windows installs on 30 Oct23:56UTC and all12 empty Pi lobbies on
+31 Oct00:08UTC. Exact installed hashes, downloaded client code, native/plugin
+images and strict old-data preservation pass; [delivery record](tools/p1140-delivery.md).
+Isolated native client/server checks cover real directory traffic, byte-exact
+transfer, normal tape load, protected/recovery files, teardown and bounded credit
+views. Synthetic signatures are not real-account or physical-key acceptance.
+Please try this small in-game check:
+
+- Host a map locally, open the TAS menu's **Shared** tab and refresh. Check its
+  empty state if there are no revisions; create/share one below before selecting.
+- Save a newly edited legal-start project. Link the signing key to your account
+  first, physically click **Sign**, then confirm **Share saved revision**.
+  Confirm your newly supplied inputs show your account's contribution, not a
+  human/ranked-run claim. Sign before the first upload; late linking/signing does
+  not retroactively claim a revision already seen by the service.
+- Refresh and select that revision. Are rows, contribution ranges and the Open
+  button legible? Open it under a new local name. Confirm the tape loads as TAS
+  and the timeline/trail follows the new project's data rather than the old one.
+
+No human confirmation is recorded yet. This does not accept verifier/board
+qualification, measured performance, or the remaining optimizer/editor work.
+
+## P1142 collector/account refresh (NOT deployed; check after guarded rollout)
+
+The held collector branch is integrated and offline-tested, not active on the guarded backend. Do not test this as a live feature yet. After the exact runtime-family extension and guarded successor are verified, link/sign in with your real Steam account and check that supported Momentum/KSF main, stage and bonus PBs arrive over paced ticks. A private, unavailable or unsupported upstream record must not fabricate a completion; imported rows remain imported, never native-ranked/evidence. Confirm browsing/sign-in remains responsive while a long or refused walk is pending. No real-account or movement/human acceptance was performed during source integration.
 
 ## 0.1.33 public release (automation accepted; human checks still pending)
 

@@ -483,15 +483,79 @@ def mom_row(m):
     mode = "surf" if name.lower().startswith("surf_") else "bhop"
     gm = 1 if mode == "surf" else 2
     tier, ranked = None, None
+    boards = set()
     lbs = m.get("leaderboards")
     for lb in lbs if isinstance(lbs, list) else []:
-        if (isinstance(lb, dict) and lb.get("gamemode") == gm and lb.get("trackType") == 0
+        if not isinstance(lb, dict):
+            continue
+        if (lb.get("gamemode") == gm and lb.get("trackType") == 0
                 and lb.get("trackNum") == 1 and lb.get("style") == 0):
             tier = lb.get("tier") if type(lb.get("tier")) is int else None
             ranked = lb.get("type") == 0
+        b = (lb.get("gamemode"), lb.get("trackType"), lb.get("trackNum"))
+        if lb.get("style") == 0 and all(type(x) is int and 0 <= x < 1000 for x in b):
+            boards.add(b)
     return {"name": name, "id": m["id"], "sha": sha, "url": url, "mode": mode,
             "zh": zh if HEX40.fullmatch(zh) else None, "tier": tier, "ranked": ranked,
-            "src": "mom"}
+            "src": "mom", "boards": sorted(boards)}
+
+
+TRACKS_HEAD = "# map\tmapid\ttier\tgamemode\ttrackType\ttrackNum\n"
+TRACKS_BOARDS_MAX = 512     # boards a map may claim; surf_kitsune has 81
+
+
+def tracks_rows(mom, inv, old_lines):
+    """P1117: momtracks.tsv (tools/msml.py's format) from this run's Momentum list,
+    for momwatch/momfetch.  A map the list has and the library holds gets the
+    list's boards; a map whose id, boards and tier the list agrees with, or that
+    the list does not carry (Beta, other modes), keeps its lines byte for byte."""
+    old = {}
+    for ln in old_lines:
+        f = ln.rstrip("\n").split("\t")
+        if ln.startswith("#") or len(f) < 6:
+            continue
+        old.setdefault(f[0], []).append(ln if ln.endswith("\n") else ln + "\n")
+    out = dict(old)
+    for key, r in mom.items():
+        if key not in inv or not r.get("boards") or len(r["boards"]) > TRACKS_BOARDS_MAX:
+            continue
+        lines = old.get(key, [])
+        # P1117 review: a reply listing under half the map's own-gamemode boards
+        # held is not trusted to drop the rest.
+        gm = "1" if key.startswith("surf_") else "2"
+        held = sum(1 for ln in lines if ln.split("\t")[3] == gm)
+        if held and 2 * sum(1 for b in r["boards"] if str(b[0]) == gm) < held:
+            continue
+        f = lines[0].split("\t") if lines else []
+        tier = r["tier"] if type(r.get("tier")) is int else (
+            int(f[2]) if len(f) > 2 and f[2].isdigit() else 0)
+        new = ["%s\t%d\t%d\t%d\t%d\t%d\n" % ((key, r["id"], tier) + tuple(b))
+               for b in r["boards"]]
+        if sorted(lines) != sorted(new):
+            out[key] = new
+    return [ln for k in sorted(out) for ln in out[k]]
+
+
+def write_tracks(path, mom, inv):
+    """-> (maps written, maps new or changed).  Atomic; untouched when unchanged."""
+    try:
+        with io.open(path, encoding="utf-8") as fh:
+            old_lines = fh.readlines()
+    except FileNotFoundError:
+        old_lines = []
+    rows = tracks_rows(mom, inv, old_lines)
+    before, after = {}, {}
+    for d, lines in ((before, old_lines), (after, rows)):
+        for ln in lines:
+            if not ln.startswith("#"):
+                d.setdefault(ln.split("\t")[0], []).append(ln)
+    changed = sum(1 for k, v in after.items() if before.get(k) != v)
+    if changed:
+        tmp = path + ".tmp"
+        with io.open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(TRACKS_HEAD + "".join(rows))
+        os.replace(tmp, path)
+    return len(after), changed
 
 
 def mom_list(pacer):
@@ -1171,6 +1235,8 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--maps", default=S.MAPS_DIR)
     ap.add_argument("--state", default=os.path.join(S.DATA_DIR, "mapwatch"))
+    ap.add_argument("--tracks", default=S.MOMTRACKS_PATH,
+                    help="momtracks.tsv, rewritten from Momentum's list (P1117)")
     ap.add_argument("--site-zones", default="",
                     help="also copy a published zone file here when it holds "
                          "none of that name (what clients fetch)")
@@ -1978,6 +2044,10 @@ def run(a):
             cat[kv] = {"name": inv[kv], "mode": ksf[k]["mode"], "src": "k",
                        "ktier": ksf[k]["tier"], "of": inv[k]}
     link_ports(cat, inv, names | set(extra))
+    if "mom" in read:
+        # P1117: momwatch/momfetch crawl only the boards this file names.
+        n, changed = write_tracks(a.tracks, mom, inv)
+        print("  momtracks: %d map(s), %d new or changed" % (n, changed))
     if len(read) == 2:
         _save(cp, {"at": now, "maps": cat, "momnames": sorted(names)})
     else:

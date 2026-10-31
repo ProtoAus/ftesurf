@@ -21,6 +21,19 @@
 
 ## next
 
+### P1144 Keep the slow-practice camera fix in newer builds
+- Integrate the smoother slow-motion camera with the newer game changes, without changing movement or clearing a connection's earlier practice status.
+- Practice classification now covers another supported jump setting; movement is unchanged.
+- TAS: Share saved legal-start projects and browse shared revisions and contribution ranges for the current map.
+- TAS: Open a shared revision as a new local TAS project without replacing existing projects or recovery files. Shared TAS inputs are never ranked human runs.
+
+### Collectors (prepared; pending guarded backend rollout)
+
+- Steam sign-in queues paced Momentum and KSF personal-best refreshes. Collector retries keep unrelated work moving; catalogue changes no longer shift a pending KSF stage walk. This update is not active on the live backend yet.
+
+### P1141 Gravity carry status through normalized takeoff
+- Carried gravity effects keep their run status through more normalized ground jumps. Jump height, movement and normal map-authored effects are unchanged.
+
 ### P1139 Gravity carry status through stock takeoff
 - Carried gravity effects keep their run status through more ordinary ground jumps. Jump height, movement and normal map-authored effects are unchanged.
 

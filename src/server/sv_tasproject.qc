@@ -4,6 +4,9 @@
 #define TASP_VERSION 2          // P1090: 2 adds `supply`; 1 still loads
 #define TASP_LEGAL 3            // P1100: a legal start (`start`, `startat`) in place of a base save
 #define TASP_MAX 96000          // ticks after the base, about 24 minutes at 15 ms
+void(entity e) SV_TASShareCancel;
+void(entity e, float argc) SV_TASShareCommand;
+
 #define TASP_CPMAX 48           // checkpoints kept: auto, the head, named
 #define TASP_CPEVERY 256        // auto spacing, doubled until about 32 fit
 #define TASP_CPSTRIDE 8         // tick, named, origin xyz, velocity xyz
@@ -96,6 +99,7 @@ float() SV_TASPCount =
 void(entity e) SV_TASProjectReset =
 {
 	local float s;
+	SV_TASShareCancel(e);
 	s = SV_TASPSlot(e);
 	e.tasp_on = e.tasp_load = e.tasp_n = e.tasp_cap = e.tasp_ncp = e.tasp_ccount = 0;
 	e.tasp_result = e.tasp_dev = e.tasp_devtick = 0;
@@ -1763,6 +1767,7 @@ void(entity e) SV_TASProjectClose =
 void(entity e, float argc, string action, string sub, string a1, string a2, string a3, string a4) SV_TASProjectArgs =
 {
 	if (action == "cp") { SV_TASCheckpointCommand(e, sub, a1, a2, argc); return; }
+	if (!strcmp(sub,"share") || !strcmp(sub,"open")) { SV_TASShareCommand(e, argc); return; }
 	if (sub == "save" && argc >= 3 && argc <= 5)
 	{
 		if (argc >= 4 && a1 != "force" && !SV_TASPNameOK(a1)) goto bad;

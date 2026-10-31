@@ -209,6 +209,7 @@ void() StartFrame =
 	SV_UpdateMovementServerInfo();
 	SV_ZoneFrame();
 	SV_HeldFrame();                // previous message/callback closure is now complete
+	SV_TASShareFrame();            // deferred local project open, outside its HTTP callback
 
 	// Patch 270.  Returns immediately unless lobby_enable is set, except for
 	// the dimension pass -- which has to run either way, because turning the
