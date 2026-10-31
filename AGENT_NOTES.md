@@ -1,5 +1,30 @@
 # AGENT_NOTES.md
 
+## TAS clock fixture boundaries (P1154)
+
+Select pm_ticrate BEFORE map: SV_TimerMapInit latches run_t_tick. Changing only
+the later native mover creates a mixed timeline; native-ready alone is not a
+SSQC authoring pass. `tas status`'s mover rate is last admitted movement, so it
+can remain old after admission is blocked. Current configured cvar is separate.
+
+Enable TAS before a FRESH recorder/start; a running human REC14 stream is not a
+rewindable practice buffer. Prove running/recording at the actual pause/back,
+not only at an earlier exit. A stepped body can reenter the start and correctly
+refuse back. Native checkpoint capability and timer state are separate predicates.
+
+The tiny text-map UI fixture did not establish solid floor collision: its body
+fell below the intended floor. Timer running under forward input was a vertical
+exit, NOT a grounded walking control. Its actual airborne counts/carry/back/tape
+and optimizer checks remain bounded components, never canonical geometry or
+whole-world/equality proof. Check Z/support before making a ground claim.
+
+Fixture seams: spec_chat_smoke.Peer observes probe.log while tasverify.prepare
+writes tasverify.log; bind the observer to the actual contract. `tas status`
+quietly drops queries inside its0.2 server-second throttle. A text-map argument
+retains .map in mapname: actual zone lookup is e.g. maps/zones/local/test.map.json,
+not test.json. Use actual qcfopen diagnostics, retain original failures and fix
+the existing seam rather than growing fresh roots or weakening gameplay guards.
+
 ## P1147 practice continuity delivered — 31 Oct 2026
 
 Nativecf2290902/tagpatch-1147 preserves P1145 and fixes actual camera speed-change

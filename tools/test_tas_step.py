@@ -22,7 +22,17 @@ int main(void) {
     CHECK(SV_TASClockSupported(1, .015f, 1, 0));
     CHECK(SV_TASClockSupported(1, .015f, 1, .006f));
     CHECK(!SV_TASClockSupported(0, .015f, 1, 0));
-    CHECK(!SV_TASClockSupported(1, .01f, 1, 0));
+    CHECK(SV_TASClockSupported(1, .01f, 1, 0));
+    CHECK(SV_TASClockSupported(1, .01f, 1, .006f));
+    CHECK(!SV_TASClockSupported(1, .01f, 1, .01f));
+    CHECK(!SV_TASClockSupported(1, .01f, 1, .01f-SV_TAS_EPSILON));
+    CHECK(!SV_TASClockSupported(1, nextafterf(.01f,0), 1, 0));
+    CHECK(!SV_TASClockSupported(1, nextafterf(.01f,1), 1, 0));
+    CHECK(!SV_TASClockSupported(1, .02f, 1, 0));
+    CHECK(!SV_TASClockSupported(1, .01f, .5f, 0));
+    CHECK(!SV_TASClockSupported(0, .01f, 1, 0));
+    CHECK(SV_TASTickMsec(.01f)==10 && SV_TASTickMsec(.015f)==15);
+    CHECK(!SV_TASTickMsec(.02f) && !SV_TASTickMsec(NAN));
     CHECK(!SV_TASClockSupported(1, .01499991f, 1, .01498999f));
     CHECK(!SV_TASClockSupported(1, .01500009f, 1, 0));
     CHECK(!SV_TASClockSupported(1, .015f, .5f, 0));
@@ -32,6 +42,25 @@ int main(void) {
     CHECK(!SV_TASClockSupported(1, NAN, 1, 0));
     CHECK(!SV_TASClockSupported(1, .015f, 1, NAN));
     CHECK(!SV_TASClockSupported(1, .015f, 1, INFINITY));
+    {
+        sv_tas_clock_t clock = {0};
+        CHECK(!SV_TASClockContextSupported(&clock,0,1,1,.01f,1,0));
+        CHECK(!SV_TASClockContextSupported(&clock,1,1,1,.02f,1,0));
+        CHECK(SV_TASClockContextSupported(&clock,1,1,1,.01f,1,.006f));
+        CHECK(!SV_TASClockContextSupported(&clock,1,1,1,.015f,1,0));
+        CHECK(!SV_TASClockContextSupported(&clock,1,1,1,.01f,1,0));
+        CHECK(clock.blocked);
+        CHECK(SV_TASClockContextSupported(&clock,2,1,1,.015f,1,0));
+        CHECK(!SV_TASClockContextSupported(&clock,2,1,1,.01f,1,0));
+        CHECK(!SV_TASClockContextSupported(&clock,2,1,1,.015f,1,0));
+        CHECK(SV_TASClockContextSupported(&clock,2,2,1,.01f,1,0));
+        CHECK(!SV_TASClockContextSupported(&clock,2,2,1,.02f,1,0));
+        CHECK(!SV_TASClockContextSupported(&clock,2,2,1,.01f,1,0));
+        CHECK(SV_TASClockContextSupported(&clock,2,3,1,.015f,1,0));
+        CHECK(!SV_TASClockContextSupported(&clock,2,3,1,NAN,1,0));
+        CHECK(!SV_TASClockContextSupported(&clock,2,3,1,.015f,1,0));
+        CHECK(SV_TASPlan(0,0,0,1,1,1,0,0,0)==SV_TAS_NORMAL);
+    }
     CHECK(SV_TASRewindCount(0));
     CHECK(SV_TASRewindCount(15999999));
     CHECK(!SV_TASRewindCount(16000000));
@@ -187,6 +216,8 @@ def main():
     player = (root / 'src/server/sv_player.qc').read_text()
     assert 'if (self.run_tas_done == self.run_tas_seen)' in player
     assert 'run_tas_seen = e.run_movetick' not in player
+    pause = player.split('float(entity e) SV_TASCanPause =', 1)[1].split('};', 1)[0]
+    assert 'if (e.run_movetickrate != run_t_tick)' in pause
     # Reserve distinct numeric slots, including against existing string names.
     defs = (Path(__file__).resolve().parents[1] / 'src/shared/sh_defs.qc').read_text()
     stats = re.findall(r'^#define (STAT_\w+)\s+(\d+)\b', defs, re.M)
@@ -196,6 +227,12 @@ def main():
         assert [s for s, n in stats if int(n) == slot[0]] == ['STAT_FS_' + name], name
     header = a.engine / 'engine/server/sv_tas.h'
     mover = a.engine / 'engine/common/pm_source.c'
+    admission = (a.engine / 'engine/server/sv_user.c').read_text()
+    checkpoints = (a.engine / 'engine/server/sv_tas_rewind.inc').read_text()
+    assert 'tas_cmd.msec = SV_TASTickMsec(SV_TASCurrentTick());' in admission
+    assert 'SV_TASClockForClient(host_client,&clockchanged)' in admission
+    assert 'SV_TASClockForClient(host_client,NULL)' in checkpoints
+    assert 'memset(tas_clock_context,0,sizeof(tas_clock_context))' in checkpoints
     epsilon = re.search(r'^#define PMSRC_TICK_EPSILON\s+([\deE.+-]+)', mover.read_text(), re.M)
     own = re.search(r'^#define SV_TAS_EPSILON\s+([\deE.+-]+)', header.read_text(), re.M)
     if not epsilon or not own or float(epsilon[1]) != float(own[1]):

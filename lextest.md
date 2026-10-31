@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P1154 10ms TAS — pending delivery and owner feel check
+
+Not installed yet. After the reviewed build is delivered, use a Source map whose
+10ms clock was selected BEFORE loading the map. Open a fresh TAS start/session,
+leave the start, then pause, step once and back once. Check the response/camera is
+sensible and the run stays visibly TAS/assisted. Repeat briefly at the normal
+15ms clock; its default is unchanged. Report a map/spot if the shared world
+teleports or otherwise moves the body while paused.
+
+Automated checks cover native airborne counts/carry, retained rewind/input replay
+and a bounded air optimizer, not owner feel, grounded/collision behavior, complete
+cold-project coverage or canonical qualification. This request is PENDING, not a
+human acceptance pass; it does not enable TAS-board admission.
+
 ## P1151 clean return — delivered; human feel / start-bank acceptance pending
 
 Both Windows installs and all 12 Pi lobbies now have the qualified P1151 native

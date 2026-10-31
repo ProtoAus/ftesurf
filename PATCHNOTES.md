@@ -21,6 +21,10 @@
 
 ## next
 
+### P1154 TAS frame advance at 100Hz
+- TAS pause, frame advance, retained rewind and input replay can use a selected 10ms Source clock as well as the existing 15ms clock. Default movement timing is unchanged.
+- Clock changes stop queued TAS work instead of silently reusing it. Reload the map after changing its clock before starting a new timeline. TAS remains assisted practice.
+
 ### P1151 Return from slow practice without reconnecting
 - At an eligible start, stand still and restore host_timescale to 1 to arm a fresh clean attempt at the same position. Wait for the server's confirmation before moving.
 - If the clean restart cannot be confirmed, normal speed returns but the attempt stays practice. Earlier practice attempts are not turned into ranked runs.

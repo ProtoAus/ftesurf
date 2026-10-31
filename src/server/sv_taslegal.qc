@@ -70,7 +70,7 @@ void(entity e, float z) SV_TASLegalStart =
 	local float s, ok;
 	if (e.run_tas_ready != 1 || !e.run_tas_rwcap || !checkbuiltin(tas_tape))
 	{
-		sprint(e, PRINT_HIGH, "tas: a legal start needs the P1055 engine, Source 15ms clock and native checkpoints\n");
+		sprint(e, PRINT_HIGH, "tas: a legal start needs native Source 10/15ms and checkpoints; after a clock change, reconnect or restart the map\n");
 		return;
 	}
 	if (!zone_loaded) SV_ZoneFrame();

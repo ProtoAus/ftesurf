@@ -1275,7 +1275,13 @@ float(entity e) SV_TASCanPause =
 {
 	if (e.run_tas_ready != 1)
 	{
-		sprint(e, PRINT_HIGH, "tas: pause/step requires the P1055 engine, Source 15ms clock and QW duration inputs\n");
+		sprint(e, PRINT_HIGH, "tas: pause/step needs native Source 10/15ms and QW inputs; after a clock change, reconnect or restart the map\n");
+		return FALSE;
+	}
+	// The timer is latched at map load; a later mover change is not a new timeline.
+	if (e.run_movetickrate != run_t_tick)
+	{
+		sprint(e, PRINT_HIGH, "tas: mover and map timer clocks differ; restart the map after changing pm_ticrate\n");
 		return FALSE;
 	}
 	// Keep both the general recorder clock and step ACK inside exact float32 integers.
@@ -1529,6 +1535,8 @@ void(entity e, float argc) SV_TASCommand =
 		sprint(e, PRINT_HIGH, sprintf("tas: paused %.0f pending %.0f completed %.0f request %.0f native %g fault %g\n",
 			e.run_tas_paused, e.run_tas_pending, e.run_tas_done, e.run_tas_req, e.run_tas_ready, e.run_tas_fault));
 		sprint(e, PRINT_HIGH, sprintf("tas: mover %.0f carry %.9g\n", e.run_movetick, e.run_movecarry));
+		sprint(e, PRINT_HIGH, sprintf("tas: clocks mover %.9g timer %.9g rewind %g state %g\n",
+			e.run_movetickrate, run_t_tick, e.run_tas_rwcap, e.run_t_state));
 		sprint(e, PRINT_HIGH, sprintf("tas: next %s f%g s%g pitch%g yaw%g bits%g air%g\n",
 			FS_TASPlanName(e.run_tas_planmode), e.run_tas_planforward, e.run_tas_planside,
 			e.run_tas_planpitch, e.run_tas_planyaw, e.run_tas_planbits, e.run_tas_planair));
