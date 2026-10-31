@@ -42,5 +42,7 @@ selftest, all60 five-map physical rows and both declared historical controls pas
 The local `artifacts/roof-practice/integrated/DELIVERY.json` binds the source,
 binary, source-review, OPS-review, cold and post-cold preservation evidence.
 
-Owner acceptance remains: bhop_goldsrc2 save14, forward under the roof ONLY below1;
-duck/unduck, clear the roof and compare/restore1. No owner-test pass is claimed.
+Owner confirmed the roof/duck retest: "it's epic, works well". The original
+bhop_goldsrc2 save14 case is accepted. Subsequent noclip smoothing, lobby wheel
+and high-speed HUD reports are separate open work in BACKLOG.md; they are not
+claimed fixed by P1156 and do not grant broader native-geometry acceptance.
