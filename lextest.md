@@ -1,5 +1,25 @@
 # lextest.md — things waiting on a human
 
+## P1151 clean return from slow practice — qualified; delivery pending
+
+Source and native dedicated/listen controls pass; this is NOT human acceptance.
+After the delivery record says installed, restart the game and try:
+
+- Use host_timescale 0.5 or 0.1, return to a valid start, release movement/jump/duck,
+  stand still, then set host_timescale 1. Wait for "normal speed, clean new attempt
+  armed here". The pose should not move or blend from an old location. The next
+  jump should act normally and its new run should be clean, not the old practice run.
+- Repeat with a main start, a later stage start and a bonus start. The automated
+  dedicated fixture does NOT stand in for this full-bank runtime/feel matrix.
+- Return to 1 while airborne or moving: speed may return immediately, but no clean
+  result should be claimed until an eligible grounded neutral restart is confirmed.
+  A refused/timed-out restart must still say practice; release keys and reset at
+  the appropriate start rather than expecting an old attempt to be reclassified.
+- Enter slow practice again after a successful clean return. Check slow camera
+  continuity, rapid 0.5 -> 0.25 -> 0.5 -> 1 changes and short !reset/!r placements.
+  The P1147 camera controls still apply, but its old connection-lifetime practice
+  latch expectation below is superseded for a confirmed P1151 clean restart.
+
 ## P1147 slow-practice continuity — READY for owner testing
 
 Installed qualified P1147cf2290902 plus actual spatial-marker SSQC in BOTH
@@ -16,9 +36,9 @@ moving/airborne; switch0.5->0.25->0.5->1 without resetting. Then !reset/!r near
 the start (and !m near a valid mark) to check for any old-position glide. Check
 familiar stairs and a low ceiling/solid prop roof for dips or clipping. No human
 geometry/feel acceptance is claimed yet; report any remaining visible jump.
-Restoring1 resumes normal speed but !reset MUST retain earlier practice status;
-a genuinely fresh clean connection clears that history. Please do not treat
-that deliberate latch as a failed reset.
+Historical P1147 expectation: restoring1 resumed normal speed but !reset retained
+earlier practice status. P1151 now supersedes this ONLY for a server-confirmed
+fresh clean restart. Refused or unconfirmed restarts must still retain practice.
 
 ### Historical P1144/P1138 records (superseded; not current pending work)
 

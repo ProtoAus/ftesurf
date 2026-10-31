@@ -21,6 +21,10 @@
 
 ## next
 
+### P1151 Return from slow practice without reconnecting
+- At an eligible start, stand still and restore host_timescale to 1 to arm a fresh clean attempt at the same position. Wait for the server's confirmation before moving.
+- If the clean restart cannot be confirmed, normal speed returns but the attempt stays practice. Earlier practice attempts are not turned into ranked runs.
+
 ### P1147 Smoother practice speed changes and short resets
 - Keep the camera continuous when switching practice speeds or returning to normal speed, and stop blending across short zone resets even when the destination has no angle.
 - Movement and the connection's earlier practice status are unchanged.
