@@ -1,5 +1,41 @@
 # AGENT_NOTES.md
 
+## Native-only continuation and partial-file scope (P1145, 31 Oct 2026)
+
+The clean8050/tag1145 native cohort retained P1144 camera/current programs. Both
+actual platforms pass144new+567old native checks and60full-content physical rows
+exact to P1143; two fresh whole-feature reviews and6882raw-source/ref/index/frozen
+payload holds pass. Existing explicit-target Deploy AST shipped the CURRENT14
+native Windows cohort (seven per install), not merely the normal build block's10;
+the old secondary ftesurf64.exe alias is NOT a target. Pi native2/all12 positively
+empty lobbies restarted once without force; VMs, backend, UI and configs stayed.
+Installed-image cold join fetched current CSQC/drew board/exit0/no QC error; empty
+board/unaccepted terms is not human/ranked acceptance. Old16989Windows entries and
+35974Pi data entries plus configs/VM/backend remain exact after cold.
+
+**Do not identify recorder parts by `.part` suffix.** Native partial recordings
+are `data/parts/*.rec`, including `-fail.rec`; view/verifytest `.part` files are a
+DIFFERENT set. The P1145 caller's new pre-restart archive captured seven suffix
+files but omitted four native recordings. Existing older on/off-box native backup
+still matches all four actual beforepayloads, and strict after-cold guards prove
+all old bytes survive. A corrected11-member current archive was read back both
+on-box/off-box AFTER deployment. Keep the fresh pre-restart native FD/backup scope
+check FAILED/unwaived; never redate that later archive, restore player data, rerun
+healthy services or call six unrelated suffix matches recovery of P1136's actual
+three lost native payloads. Those originals remain unrecovered. Future inventories
+must use the actual recorder namespace/contract, include slot/fail/held/archive
+files and relevant view parts, inspect all actor FDs against THAT union, then
+verify each member on-box AND off-box BEFORE the first restart and recheck JIT.
+
+Caller-only fixes must consume actual producer schemas. Native version is HEAD
+count+29 plus full `git describe --tags --long --always --dirty`, not ALLrefs or a
+short guessed suffix. The boundary helper has no `backend` key; inspect backend
+separately. Use Path.resolve for Windows target identity rather than doubly escaped
+literals. A long inline Windows shell command was truncated before execution:
+write/compile the SAME planned script artifact and stream its bytes with a short
+entrypoint, not numbered wrapper copies. Original parse/schema/export failures
+stay recorded; no native build/test/restart/client was repeated to repair readers.
+
 ## Forward camera/main integration (P1144, delivered 31 Oct 2026)
 
 P1143 later replaced the earlier qualified P1138 Windows delivery. Merge the
