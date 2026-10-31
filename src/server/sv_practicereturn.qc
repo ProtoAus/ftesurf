@@ -1,0 +1,154 @@
+/*
+  Return from slow practice is a NEW attempt, never forgiveness of an old run.
+  Normal speed + a supported armed opening box requests a per-seat input fence.
+  CSQC consumes its pending command as neutral and keeps sending neutral commands
+  until completion. A reliable event identifies that first generated sequence;
+  the event itself does NOT clear taint. Old QW recovered/repeated commands run
+  before a decoded neutral boundary, at which only this client's complete native
+  Source carry is reset. Explicit respawn then discards the old body/attempt and
+  restores only validated position/view through the ordinary zone placement.
+
+  One derived request/completion stat, no capture grammar or result override.
+  Missing/old/timestamp/thread-bypassing clients cannot complete the fence.
+*/
+float(entity player) sourcepractice_reset = #0;
+.float run_ts_return;              // positive pending identity, negative completed
+.float run_ts_return_uid;
+.float run_ts_return_zone;
+.float run_ts_return_after;
+.float run_ts_return_frame;
+.float run_ts_return_until;
+.float run_ts_return_block;
+float run_ts_return_serial;        // exact, never reused in this VM lifetime
+
+void(entity e, float blocked) SV_TimeScaleReturnCancel =
+{
+	e.run_ts_return = e.run_ts_return_frame = e.run_ts_return_until = 0;
+	e.run_ts_return_block = blocked;
+};
+
+// This is pose selection, NOT proof that an already armed attempt is clean.
+float(entity e) SV_TimeScaleReturnZone =
+{
+	local float z;
+	if (!e.run_ts_used || e.run_timescale != 1 || !e.run_inserver || !(e.health > 0))
+		return -1;
+	if (e.run_tas_used || e.run_tas_mode || e.run_tas_paused || e.run_tas_pending ||
+		e.rec_wt_hold || e.run_t_viewowner || e.run_ms_phase || SV_MsBusy(e) || SV_CheatsOn())
+		return -1;
+	z = SV_TimerMarkZone(e);
+	if (z < 0) return -1;
+	if (!(e.flags & FL_ONGROUND) || (e.pmove_flags & PMF_DUCKED)) return -1;
+	tracebox(e.origin, PM_HULL_MINS, PM_HULL_MAXS, e.origin, FALSE, e);
+	if (trace_startsolid || trace_allsolid) return -1;
+	tracebox(e.origin + '0 0 1', PM_HULL_MINS, PM_HULL_MAXS,
+		e.origin - '0 0 2', FALSE, e);
+	if (trace_startsolid || trace_allsolid || trace_fraction >= 1 || trace_plane_normal_z < 0.7)
+		return -1;
+	return z;
+};
+
+// Seat routing comes from the native QC-request reader, not a client entity id.
+void(float request, float frame) CSEv_tsreturn_ff =
+{
+	if (!(request > 0 && request <= 16000000 && floor(request) == request)) return;
+	if (!(frame > self.run_ts_return_after && frame <= 16000000 && floor(frame) == frame)) return;
+	if (self.run_ts_return != request || self.run_ts_return_until < time) return;
+	if (self.run_ts_return_uid != stof(infokey(self, "*userid"))) return;
+	if (!self.run_ts_return_frame) self.run_ts_return_frame = frame;
+};
+
+// PlayerPreThink, after command-aligned reset ops and before any moved input.
+void() SV_TimeScaleReturnCommand =
+{
+	local float z, frame, uid, request, wantstage1, slot;
+	local vector at, aim;
+	z = SV_TimeScaleReturnZone(self);
+	if (z < 0)
+	{
+		if (self.run_ts_return > 0) SV_TimeScaleReturnCancel(self, FALSE);
+		self.run_ts_return_block = FALSE;
+		return;
+	}
+	if (!checkbuiltin(sourcepractice_reset))
+	{
+		if (self.run_ts_return > 0) SV_TimeScaleReturnCancel(self, TRUE);
+		return; // old native: keep practice, never strand a revived request
+	}
+	if (self.run_ts_return > 0 && self.run_ts_return_until < time)
+	{
+		SV_TimeScaleReturnCancel(self, TRUE);
+		sprint(self, PRINT_HIGH, "host_timescale: clean return not confirmed; still practice. Set 1 again to retry.\n");
+		return;
+	}
+	uid = stof(infokey(self, "*userid"));
+	if (!(uid > 0)) return;
+	if (input_cmd_kind != 1 || input_cmd_offset_msec != 0) return;
+	frame = input_cmd_sequence_hi * 65536 + input_cmd_sequence_lo;
+	if (!(frame > 0 && frame <= 16000000 && floor(frame) == frame)) return;
+	if (self.run_ts_return > 0)
+	{
+		if (self.run_ts_return_zone != z || self.run_ts_return_uid != uid)
+		{
+			SV_TimeScaleReturnCancel(self, FALSE);
+			return;
+		}
+	}
+	else
+	{
+		if (self.run_ts_return_block || run_ts_return_serial >= 16000000) return;
+		run_ts_return_serial = run_ts_return_serial + 1;
+		self.run_ts_return = run_ts_return_serial;
+		self.run_ts_return_uid = uid;
+		self.run_ts_return_zone = z;
+		self.run_ts_return_after = frame;
+		self.run_ts_return_frame = 0;
+		self.run_ts_return_until = time + 5;
+		return;
+	}
+	if (!self.run_ts_return_frame || frame < self.run_ts_return_frame) return;
+	if (input_cmd_msec != 0 || input_cmd_piece_msec != 0 || input_buttons != 0 ||
+		input_impulse != 0 || input_movevalues != '0 0 0') return;
+
+	// Revalidate BEFORE native reset; never restore arbitrary airborne/crouched
+	// practice poses. Take the actual last body/view after all older input drained.
+	if (SV_TimeScaleReturnZone(self) != z) return;
+	at = self.origin;
+	aim = self.v_angle;
+	wantstage1 = self.run_t_wantstage1;
+	request = self.run_ts_return;
+	// Finalize every original row/tail while BOTH the old latch and native
+	// carried state still exist. The new epoch must never leak into old evidence.
+	SV_TimerVoid(self, "normal-speed clean restart");
+	if (!sourcepractice_reset(self))
+	{
+		SV_TimeScaleReturnCancel(self, TRUE);
+		return;
+	}
+	// Keep the original latch intact through explicit respawn cleanup as well;
+	// reset map/player assistance, carrier, posture and pre-start evidence ring.
+	SV_PlayerRespawn();
+	slot = num_for_edict(self) - 1;
+	if (!(slot >= 0 && slot < FS_MAXPLAYERS))
+	{
+		SV_TimeScaleReturnCancel(self, TRUE);
+		return;
+	}
+	self.run_ts_used = FALSE;
+	sv_ts_taint_uid[slot] = 0;          // only THIS successful slow-epoch boundary
+	self.run_t_wantstage1 = wantstage1;
+	SV_ZoneMoveAt(z, at, aim_y, aim_x, TRUE, TRUE);
+	if (self.origin != at || SV_TimerMarkZone(self) != z)
+	{
+		// Placement/arm refusal is NOT permission to forgive the old epoch.
+		self.run_ts_used = TRUE;
+		SV_TimeScaleRemember(self);
+		SV_TimerCheat(self);
+		SV_TimeScaleReturnCancel(self, TRUE);
+		return;
+	}
+	self.run_ts_return = -request;
+	self.run_ts_return_frame = self.run_ts_return_until = 0;
+	self.run_ts_return_block = FALSE;
+	sprint(self, PRINT_HIGH, "host_timescale: normal speed, clean new attempt armed here\n");
+};

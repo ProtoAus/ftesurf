@@ -303,6 +303,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_PMFLAGS,     EV_FLOAT,  pmove_flags);
 	clientstat(STAT_FS_FOLEYJUMP,   EV_FLOAT,  run_foleyjump);
 	clientstat(STAT_FS_TIMESCALE,   EV_FLOAT,  run_timescale);
+	clientstat(STAT_FS_TSRETURN,    EV_FLOAT,  run_ts_return);
 	clientstat(STAT_FS_ARMSTATE,    EV_FLOAT,  run_armstate);
 	clientstat(STAT_FS_TASPAUSE,    EV_FLOAT,  run_tas_paused);
 	clientstat(STAT_FS_TASPENDING,  EV_FLOAT,  run_tas_pending);

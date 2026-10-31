@@ -62,5 +62,6 @@ server/sv_archive.qc
 // Shared transport policy precedes the player's included TAS sharing module.
 shared/sh_tasdirectory.qc
 server/sv_player.qc
+server/sv_practicereturn.qc
 server/sv_maptier.qc
 server/sv_main.qc

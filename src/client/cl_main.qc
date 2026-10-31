@@ -1052,6 +1052,7 @@ void() PreStrafe_InputFrame =
 #define RUN_TS_SEATS 4
 float run_ts_scale[RUN_TS_SEATS], run_ts_carry[RUN_TS_SEATS];
 float run_ts_paused[RUN_TS_SEATS], run_tas_request[RUN_TS_SEATS];
+float run_ts_return[RUN_TS_SEATS], run_ts_return_sent[RUN_TS_SEATS];
 
 // Native QW tracking substitutes foreign stats, including across an in-place join.
 float() TimeScale_Observe =
@@ -1062,11 +1063,14 @@ float() TimeScale_Observe =
 	if (!(seat >= 0 && seat < RUN_TS_SEATS))
 		return 1;
 	scale = 1;
-	run_ts_paused[seat] = 0;
+	run_ts_paused[seat] = run_ts_return[seat] = 0;
 	if (LT_StatsAreMine())
 	{
 		scale = getstatf(STAT_FS_TIMESCALE);
 		run_ts_paused[seat] = (getstatf(STAT_FS_TASPAUSE) == 1);
+		run_ts_return[seat] = getstatf(STAT_FS_TSRETURN);
+		if (!(run_ts_return[seat] > 0 && run_ts_return[seat] <= 16000000 &&
+			floor(run_ts_return[seat]) == run_ts_return[seat])) run_ts_return[seat] = 0;
 	}
 	if (!(scale >= 0.1 && scale < 1))
 		scale = 1;
@@ -1089,8 +1093,9 @@ void() TimeScale_Seats =
 		{
 			run_ts_scale[i] = 1;
 			run_ts_carry[i] = run_ts_paused[i] = 0;
+			run_ts_return[i] = run_ts_return_sent[i] = 0;
 		}
-		if ((run_ts_scale[i] > 0 && run_ts_scale[i] < 1) || run_ts_paused[i])
+		if ((run_ts_scale[i] > 0 && run_ts_scale[i] < 1) || run_ts_paused[i] || run_ts_return[i] > 0)
 			active = TRUE;
 	}
 	if (active)
@@ -1145,6 +1150,30 @@ void() TimeScale_InputFrame =
 	input_timelength = whole * 0.001;
 };
 
+// Consume this seat's accumulated pending command as neutral, then stay neutral
+// until the server completes/cancels this request. Event receipt alone is never
+// eligibility: the server waits for a decoded neutral command at/after frame.
+float() TimeScale_ReturnInputFrame =
+{
+	local float seat, request;
+	seat = getproperty(VF_ACTIVESEAT);
+	if (!(seat >= 0 && seat < RUN_TS_SEATS)) return FALSE;
+	TimeScale_Observe();
+	TimeScale_Seats();
+	request = run_ts_return[seat];
+	if (!(request > 0)) return FALSE;
+	run_ts_carry[seat] = 0;
+	input_timelength = input_buttons = input_impulse = 0;
+	input_movevalues = '0 0 0';
+	if (run_ts_return_sent[seat] != request)
+	if (clientcommandframe > 0 && clientcommandframe <= 16000000 && floor(clientcommandframe) == clientcommandframe)
+	{
+		run_ts_return_sent[seat] = request;
+		sendevent("tsreturn", "ff", request, clientcommandframe);
+	}
+	return TRUE;
+};
+
 void() CL_MoveToStandard =
 {
 	local float m;
@@ -1161,6 +1190,7 @@ void() CSQC_Input_Frame =
 	// direction. The engine sums a pad's stick onto held keys and scales it x360
 	// while walking (in_generic.c); a per-axis clamp would skew a walking stick.
 	CL_MoveToStandard();
+	if (TimeScale_ReturnInputFrame()) return;
 	// Patch 385: the spectate window, countdown included, ahead of the replay so
 	// its time is zeroed whatever else is open.  The stat, not spc_stat: this can
 	// run before the frame that latches it.

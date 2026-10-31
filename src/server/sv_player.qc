@@ -517,6 +517,9 @@ void() SpectatorDisconnect =
 
 void() SpectatorThink = { Account_Think(self); };
 
+void() SV_TimeScaleReturnCommand; // sv_practicereturn.qc: decoded clean-start fence
+void(entity e, float blocked) SV_TimeScaleReturnCancel;
+
 void() PlayerPreThink =
 {
 	local float speedmod, speedcap;
@@ -526,6 +529,7 @@ void() PlayerPreThink =
 	self.svpm_phase_hi = input_cmd_sequence_hi;
 	// Patch 753: first, where a stringcmd sent just before this command would run.
 	SV_WarpOpCommand();
+	SV_TimeScaleReturnCommand();
 
 	// Patch 382: a held body (spectate) runs no move, so nothing here may write a
 	// row, a ride or a pin, cash out a carrier or hand the engine one.
@@ -1227,13 +1231,13 @@ float(entity e, float argc, string arg) SV_TimeScaleCommand =
 	if (argc == 1)
 	{
 		sprint(e, PRINT_HIGH, sprintf("host_timescale: %g (per-player; 0.1..1; %s)\n", e.run_timescale,
-			e.run_ts_used ? "slow-practice latch until new map/reconnect; !reset does not clear it" : "slow values mark this map connection as practice"));
+			e.run_ts_used ? "practice; normal speed + a supported armed start requests a clean new attempt" : "normal eligibility checks apply"));
 		return FALSE;
 	}
 	value = stof(arg);
 	if (argc != 2 || !(value >= 0.1 && value <= 1))
 	{
-		sprint(e, PRINT_HIGH, "host_timescale: use 0.1..1 (1 restores speed, not this map connection's practice latch)\n");
+		sprint(e, PRINT_HIGH, "host_timescale: use 0.1..1 (1 restores speed; a clean armed start can begin a new attempt)\n");
 		return FALSE;
 	}
 	if (value < 1)
@@ -1258,10 +1262,11 @@ float(entity e, float argc, string arg) SV_TimeScaleCommand =
 		SV_TimeScaleRemember(e);
 		SV_TimerCheat(e);
 	}
+	SV_TimeScaleReturnCancel(e, FALSE);
 	e.run_timescale = value;
 	sprint(e, PRINT_HIGH, sprintf("host_timescale: %g (%s)\n", value,
 		value < 1 ? "per-player practice; movement and timer" :
-			(e.run_ts_used ? "normal speed; slow-practice latch remains until new map/reconnect" : "normal speed")));
+			(e.run_ts_used ? "normal speed; still practice until a clean armed-start return is confirmed" : "normal speed")));
 	return TRUE;
 };
 

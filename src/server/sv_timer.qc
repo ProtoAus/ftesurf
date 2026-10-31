@@ -721,7 +721,7 @@ float  run_t_cheatwatch;
 // P954: session-only control, not saved clock/evidence state.
 .float run_timescale;
 .float run_ts_next;
-.float run_ts_used;             // monotone until fresh map/connection; queued commands may still be slow
+.float run_ts_used;             // sticky until fresh connection or validated neutral-fence clean restart
 float sv_ts_taint_uid[FS_MAXPLAYERS]; // existing native userid, VM-only; survives native join's ED_Clear
 
 // P1052: controls are session-only; ancestry survives saves through TF_TAS.
