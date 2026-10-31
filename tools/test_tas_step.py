@@ -216,8 +216,13 @@ def main():
     player = (root / 'src/server/sv_player.qc').read_text()
     assert 'if (self.run_tas_done == self.run_tas_seen)' in player
     assert 'run_tas_seen = e.run_movetick' not in player
+    clock = player.split('float(entity e) SV_TASMapClockMatches =', 1)[1].split('};', 1)[0]
     pause = player.split('float(entity e) SV_TASCanPause =', 1)[1].split('};', 1)[0]
-    assert 'if (e.run_movetickrate != run_t_tick)' in pause
+    assert 'if (e.run_movetickrate != run_t_tick)' in clock
+    assert 'if (!SV_TASMapClockMatches(e)) return FALSE;' in pause
+    project = (root / 'src/server/sv_tasproject.qc').read_text(encoding='utf-8')
+    load = project.split('void(entity e, string name, string cpname) SV_TASProjectLoad =', 1)[1].split('};', 1)[0]
+    assert load.index('if (!SV_TASMapClockMatches(e)) return;') < load.index('if (!SV_TASPRead(e, name, TRUE))')
     # Reserve distinct numeric slots, including against existing string names.
     defs = (Path(__file__).resolve().parents[1] / 'src/shared/sh_defs.qc').read_text()
     stats = re.findall(r'^#define (STAT_\w+)\s+(\d+)\b', defs, re.M)

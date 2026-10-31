@@ -18,6 +18,22 @@ exit, NOT a grounded walking control. Its actual airborne counts/carry/back/tape
 and optimizer checks remain bounded components, never canonical geometry or
 whole-world/equality proof. Check Z/support before making a ground claim.
 
+Project-load preflight must cover BOTH legal and buffered base-save dispatch:
+SV_TASCanPause alone does not cover SV_SaveLocGo plus direct replay queueing.
+The old mixed15ms-map/10ms-mover loader actually placed/paused/granted1 with a
+valid nonempty10ms project; the shared pre-read map-clock refusal prevents it.
+Native-ready is not proof that the map timer matches.
+
+Real bhop ground brushes can be carriers. Native SV_TASRewind op0 intentionally
+refuses FL_ONGROUND with non-world groundentity, so many QC ring rows do not
+prove a native warm base. An authored jump produced actual airborne warm rows
+and nonempty10/15ms base projects. Keep that domain explicit, not ground proof.
+The native TAS_TAPE_VALIDATE currently requires a pre-existing native pool:
+a fresh matched-clock session can reject a valid project's input row before
+placement. Prime REAL live TAS airborne history then warp back only when testing
+an explicitly warm-capable consumer; never call that cold coverage. The separate
+cold-load bug/falsifier remains in BACKLOG.md until fixed.
+
 Fixture seams: spec_chat_smoke.Peer observes probe.log while tasverify.prepare
 writes tasverify.log; bind the observer to the actual contract. `tas status`
 quietly drops queries inside its0.2 server-second throttle. A text-map argument

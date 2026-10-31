@@ -1270,6 +1270,18 @@ float(entity e, float argc, string arg) SV_TimeScaleCommand =
 	return TRUE;
 };
 
+// Clock agreement only: project loads retain their separate body/hold policy.
+float(entity e) SV_TASMapClockMatches =
+{
+	// The timer is latched at map load; a later mover change is not a new timeline.
+	if (e.run_movetickrate != run_t_tick)
+	{
+		sprint(e, PRINT_HIGH, "tas: mover and map timer clocks differ; restart the map after changing pm_ticrate\n");
+		return FALSE;
+	}
+	return TRUE;
+};
+
 // P1055: support is reported by the native mover, not an unlocked cvar.
 float(entity e) SV_TASCanPause =
 {
@@ -1278,12 +1290,7 @@ float(entity e) SV_TASCanPause =
 		sprint(e, PRINT_HIGH, "tas: pause/step needs native Source 10/15ms and QW inputs; after a clock change, reconnect or restart the map\n");
 		return FALSE;
 	}
-	// The timer is latched at map load; a later mover change is not a new timeline.
-	if (e.run_movetickrate != run_t_tick)
-	{
-		sprint(e, PRINT_HIGH, "tas: mover and map timer clocks differ; restart the map after changing pm_ticrate\n");
-		return FALSE;
-	}
+	if (!SV_TASMapClockMatches(e)) return FALSE;
 	// Keep both the general recorder clock and step ACK inside exact float32 integers.
 	if (!(e.run_movetick >= 0 && e.run_movetick < 16000000))
 	{

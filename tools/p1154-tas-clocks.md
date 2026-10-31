@@ -20,7 +20,10 @@ silently converted into a rewindable practice recording.
   rewind capability and timer state. The last mover interval is not a replacement
   for reading the current configured cvar after native admission is blocked.
 
-A mover/timer mismatch refuses authoring before new grants. An observed native
+A mover/timer mismatch refuses authoring and base-save project placement/replay
+before new grants. The ordinary step/input gate and both project-load branches
+share the same map-clock preflight; base-save loading checks it before reading
+the project or moving/pausing the body. An observed native
 rate change invalidates the connection/map clock context, clears marked queued
 work and prevents a return to the previous rate from reviving it. Use a fresh
 connection at the matching map interval, or reload the map for a deliberately
@@ -43,7 +46,8 @@ bounds, native checkpoint ownership and current-world limitations remain.
 - Expanded portable actual-C admission/input/queue controls:100262 checks pass;
   exact/adjacent/invalid intervals, carry boundaries, userid/map identity and
   observed change/revert controls are included. Source assertions cover the
-  native entrypoints and SSQC mover/map-timer refusal.
+  native entrypoints, the shared SSQC mover/map-timer gate and both legal/base-save
+  project-load paths.
 - Header-full isolated Windows engine build: no new warnings over its native
   baseline. SSQC/menu0 warnings; the two existing CSQC F333 warnings remain.
 - Real dedicated sockets:15ms control and10ms subject retain carry, grant exactly
@@ -55,6 +59,18 @@ bounds, native checkpoint ownership and current-world limitations remain.
 - Additional10ms controls exercise manual/directional authored input, retained
   native input-tape replay and a bounded4-tick air optimizer reporting22 candidates.
   Movement and completion deltas are native and monotone throughout.
+- Real `bhop_eazy` base-save controls generate nonempty10/15ms projects and reopen
+  them with one actual input grant each at matching clocks. The loader reports
+  its saved states reproduced. These explicitly retain/prime the native pool;
+  they are NOT fresh-session/cold project coverage.
+- With the same valid10ms project and a primed native pool, the old mixed
+  15ms-map/10ms-mover loader places and pauses the body and completes one grant.
+  The fixed loader refuses before reading/placement/pause/grants, leaves the
+  stable start pose unchanged and completes no grant.
+- Reader regression:949 controls pass. On the same current canonical run corpus,
+  the prefeature reader and current reader produce exactly identical diagnostics,
+  including existing faults. An older historical inventory has fewer members;
+  that growth is not relabeled an unchanged or clean corpus.
 
 These are **airborne components**, with pose comparisons at console print
 precision. The synthetic text-map's intended floor collision was not established;
@@ -63,7 +79,9 @@ A real-map route reentered its start during the stepped tail and correctly
 refused back. Neither result is canonical whole-world or byte-state equality.
 
 Full10ms cold `.tasp` coverage, grounded/collision cases and owner feel are not
-claimed by these controls. Native source qualification and TAS-board admission
+claimed by these controls. A separate matched-clock fresh-session falsifier
+confirms the existing native input-row validator requires an already-created
+native pool; the cold base-save load refusal is tracked in `BACKLOG.md`. Native source qualification and TAS-board admission
 remain held; backend verification's explicitly supported profile is unchanged.
 Review, final commit/tag build and destination/live provenance are separate
 requirements. Human-only acceptance is recorded in `lextest.md`, not inferred

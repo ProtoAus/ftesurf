@@ -1407,6 +1407,7 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 		sprint(e, PRINT_HIGH, "tas project: needs the P1065 native TAS engine\n");
 		return;
 	}
+	if (!SV_TASMapClockMatches(e)) return;
 	if (e.tasp_load || e.run_tas_pending || e.run_tas_replaystate == TAS_TAPE_ACTIVE)
 	{
 		sprint(e, PRINT_HIGH, "tas project: wait for queued TAS work first\n");
