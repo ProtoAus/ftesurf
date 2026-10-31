@@ -239,7 +239,7 @@ def main():
         protocol=(native/'gl/gl_model.h').read_text()
         bit=re.search(r'#define\s+EF_TELEPORT_BIT\s+\(1<<21\)',protocol)
         assert bit, 'Native presentation bit changed'
-        producer=(ROOT/'src/server/sv_zones.qc').read_text()
+        producer=(Path(__file__).resolve().parents[1]/'src/server/sv_zones.qc').read_text()
         assert 'const float ZONE_EF_TELEPORT_BIT = 2097152;' in producer
         assert re.search(r'if \(self.origin != dest\)\s+self.effects = self.effects \^ ZONE_EF_TELEPORT_BIT;\s+setorigin\(self, dest\);',producer), 'Actual spatial producer missing or toggles on non-placement'
         reset_control = '\n#define EF_TELEPORT_BIT (1u<<21)\nstatic struct {int ival;} cl_predtrace;\n#define Con_Printf(...) ((void)0)\n'+'''\nstatic qboolean native_reset_marker(unsigned oldeffects,unsigned neweffects) {

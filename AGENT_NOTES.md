@@ -1,5 +1,39 @@
 # AGENT_NOTES.md
 
+## P1147 practice continuity delivered — 31 Oct 2026
+
+Nativecf2290902/tagpatch-1147 preserves P1145 and fixes actual camera speed-change
+handoff/render-consumer endpoints. SSQCf219896d position-changing zone placements
+publish the standard EF_TELEPORT_BIT even with no angle. No new stat, record
+field/grammar, mover/input, eligibility, Build or release; no Pi-native/backend
+replacement. Ordinary angles/WOPACK/save metadata are not spatial markers.
+
+Thirteen literal-source groups, actual headers, official seven-image source-only
+build and exact-image steady/scale/reset/acting-flag checks pass. Native attempt10
+motion/continuity is retained unchanged;11 finishes only flag checks after the
+new fixture forgot to restore1 following its final half-speed reset. Original
+failure is preserved, not relabeled. Actual installed predecessor counterexamples
+act: slower-switch normalized peak4.030->1.003 (limit3), sub128-unit reset
+first-camera error3.692->0.0625 (limit0.5; placements83.834/90.907units, NOT
+identical-trajectory/input evidence). Angle-only candidates and stale-delta
+counterexample remain retained. Remaining plugins are built/byte-checked, not
+behaviorally exercised; no broad input/captured-data or native geometry claim.
+
+Both Windows installs now hold all28 exact native/program/cache destinations,
+18 writes, paired predecessors retained;224 configs/all15,473 original protected
+entries unchanged at promotion. Normal no-force deploy updated all12 positively
+empty Pi lobbies once. All36,661 old Pi data/config entries and four closed parts
+(1,426,033bytes) unchanged after cold join; archived/read back on-box AND off-box
+before restart, no restore. Fresh installed client fetched expected CSQC, drew
+9cols/type14, exited0/no client QC error; empty/unaccepted-terms board is NOT
+human/ranked acceptance. Post-cold native/plugin epochs retained, no extra healthy
+restart. Preserve this integrated camera AND the spatial placement producer.
+
+Authority, raw history, rollback and limits: the existing owned timescale task's
+artifacts/p1147/FINAL.*. Known scale/reset coding follow-ups are CLOSED; human
+stair/low-roof feel remains for owner testing in lextest.md. Never clear practice
+history on !reset or weaken eligibility to make that UI indicator disappear.
+
 ## Native-only continuation and partial-file scope (P1145, 31 Oct 2026)
 
 The clean8050/tag1145 native cohort retained P1144 camera/current programs. Both

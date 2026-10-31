@@ -1,9 +1,29 @@
 # lextest.md — things waiting on a human
 
-## P1144 slow-practice camera forward integration (qualification pending)
+## P1147 slow-practice continuity — READY for owner testing
 
-P1143 subsequently replaced the earlier P1138 installation below. P1144 combines
-the camera with current main; fresh combined qualification/delivery is pending.
+Installed qualified P1147cf2290902 plus actual spatial-marker SSQC in BOTH
+C:/FTESurf and C:/FTEQuake on31Oct2026. Same tested programs reached all12 empty
+Pi lobbies without force; no Pi-native/backend replacement. All13 source groups,
+actual headers, real native slower/faster/normal switches, short reset, steady
+camera and acting connection flags pass. Strict old config/recording preservation
+and fresh installed-client/downloaded-CSQC smoke pass. Previous angle-only and
+render-consumer failures are retained; this is a real producer fix, not a looser
+camera test. Both known continuity coding follow-ups are closed in BACKLOG.
+
+Restart the game. On a familiar surf map, try host_timescale0.5 and0.1 while
+moving/airborne; switch0.5->0.25->0.5->1 without resetting. Then !reset/!r near
+the start (and !m near a valid mark) to check for any old-position glide. Check
+familiar stairs and a low ceiling/solid prop roof for dips or clipping. No human
+geometry/feel acceptance is claimed yet; report any remaining visible jump.
+Restoring1 resumes normal speed but !reset MUST retain earlier practice status;
+a genuinely fresh clean connection clears that history. Please do not treat
+that deliberate latch as a failed reset.
+
+### Historical P1144/P1138 records (superseded; not current pending work)
+
+P1144 was qualified and delivered31Oct, then preserved in current P1145. P1147
+above is now installed; the older pending sentences below are historical only.
 
 ### Historical P1138 qualification; human feel still pending
 
