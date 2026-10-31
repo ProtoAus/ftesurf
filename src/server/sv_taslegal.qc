@@ -53,12 +53,15 @@ float(entity e) SV_TASLegalPlace =
 	e.run_tas_mode = TRUE;
 	e.run_tas_seen = e.run_tas_done;
 	e.run_tas_paused = TRUE;
-	// Validate and begin need the native input pool, which a fresh map has none of until a step or
-	// plan makes one: make it as `tas plan live` would, only when missing (a configured plan survives).
-	if (!tas_tape(e, 1, 0, 0, '0 0 0', '0 0 0', 0) && e.run_tas_plancap >= TAS_PLAN_CAP)
-		tas_tape(e, TAS_OP_PLANSET, 0, 0, '0 0 0', '0 0 0', 0);
 	// A tape is bound to a recording serial above 0; a connection that never recorded has 0.
 	if (e.rec_rec_serial <= 0) e.rec_rec_serial = SV_RecNextSerial();
+	// CHECK needs a native pool; read-only VALIDATE does not. Keep a configured plan
+	// when ready, otherwise use the existing explicit live-plan allocation after placement.
+	if (!tas_tape(e, 2, 1, 0, '0 0 0', '0 0 0', 0))
+	{
+		if (e.run_tas_plancap < TAS_PLAN_CAP) return FALSE;
+		if (!tas_tape(e, TAS_OP_PLANSET, 0, 0, '0 0 0', '0 0 0', 0)) return FALSE;
+	}
 	e.taslg_mark = e.taslg_moved;
 	e.taslg_n = 0; e.taslg_startat = 0; e.taslg_serial = 0; e.taslg_wait = 0; e.taslg_verify = 0;
 	e.taslg_loading = 0;    // a back or a start during a load's box replay leaves it a plain session

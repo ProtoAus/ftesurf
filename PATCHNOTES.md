@@ -21,6 +21,10 @@
 
 ## next
 
+### P1161 Fresh TAS project loads
+- TAS projects can load and replay in a fresh supported session without first building rewind history. Legal-start rewind keeps working from a fresh start.
+- Loading a TAS project while noclipping or held now refuses before changing your body or saved timeline. TAS remains assisted practice.
+
 ### P1160 Profile inventory and cosmetics
 - Your player profile now has an attached 4x4 inventory. Click an owned item to equip or remove it; selected cosmetics are visible to other players.
 - Linked Steam accounts receive a light-blue ice aura and a paper party hat with a persistent, randomly assigned colour.

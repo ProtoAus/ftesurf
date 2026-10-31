@@ -202,7 +202,7 @@ float(string tok, float lo, float hi, float whole) SV_TASPNum =
 	return TRUE;
 };
 
-// The native row validator needs TAS mode on this body (SV_TASRewindClient).
+// Native rows need current TAS-body admission, not an earlier checkpoint pool.
 float(entity e, float *buf, float n) SV_TASPValidate =
 {
 	local float i, b;
@@ -1413,6 +1413,8 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 		sprint(e, PRINT_HIGH, "tas project: wait for queued TAS work first\n");
 		return;
 	}
+	// Row syntax is not authority to replace an ineligible or held body.
+	if (!SV_TASCanPause(e)) return;
 	if (!SV_TASPRead(e, name, TRUE))
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas project: cannot load %s: %s; nothing changed\n", name, tpr_why));

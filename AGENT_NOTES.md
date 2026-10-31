@@ -1,5 +1,26 @@
 # AGENT_NOTES.md
 
+## Cold TAS validation and refusal controls (P1161)
+
+VALIDATE checks row syntax under current native actor admission; it does not
+prove an input pool exists. Legal placement uses one-row CHECK after serial
+initialization, with the existing explicit PLANSET fallback. Keep the actual
+cold base-load subject unprimed: ordinary restored-head capture after placement
+is not preparatory airborne history. Project body/hold preflight precedes read.
+
+A real noclip/save hold can keep its body, timer, recorder and project unchanged
+while ordinary no-op movement counters/carry continue to advance. The initial
+whole-status equality controls failed only on those natural clocks. Retain the
+failures; prove no-request advancement, then use an explicitly paused OWN server
+for the exact before/request/after counter interval. Read native published fields
+through existing server diagnostics there: the client TAS status throttle uses
+server time and cannot expire while the world is paused. No synthetic hold flags.
+
+A fractional malformed row is refused by canonical form before native decoding;
+do not label it a native-decoder negative. The official CSQC seeder returns zero
+without copying when downloads/csprogsvers is absent: create that owned namespace
+and verify the actual seeded bytes before launching, not just its exit code.
+
 ## Profile cosmetics: authority, fixtures and isolated rollout (P1160)
 
 Inventory ownership/roles live on the backend, never writable player userinfo.

@@ -1,21 +1,5 @@
 # BACKLOG.md
 
-## Cold base-save TAS project validation requires an existing native pool
-
-- Site: native `SV_TASTape`, `SV_TAPE_VALIDATE` dispatch, and SSQC
-  `SV_TASPRead`/buffered base-save load. The pure input-row decoder currently
-  sits after the native-pool requirement. A fresh TAS-enabled, native-ready,
-  matched10ms session rejects a real nonempty project's first input row with
-  nothing changed; the SAME immutable file loads and actually replays after
-  genuine native airborne history has created a pool. No clock mismatch is
-  needed. P1154's warm-capable consumer controls do not close this cold bug.
-- Falsifier/fix: load a game-generated nonempty base-save project in a fresh
-  matching session before any native checkpoint/pool exists; prove actual
-  placement and input replay, with malformed-input and unsupported playback
-  controls still refusing without mutation. Keep read-only row validation
-  distinct from authority to arm native replay. Preserve native/timer context,
-  current-world, assistance and human-evidence gates.
-
 ## Noclip follow-up after owner-confirmed P1156 (investigation; not fixed)
 
 - Slow flight: native `cl_pred.c:CL_SourcePracticeContext` admits only PM_NORMAL,
