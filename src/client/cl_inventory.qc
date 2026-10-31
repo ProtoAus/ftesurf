@@ -1,0 +1,200 @@
+/* Account inventory and procedural cosmetics. Only the lobby publishes *kit.
+   Depth-tested additive ice shell: no world depth capture / wallhack.
+   Hat geometry and both shaders travel in CSQC; no external model required. */
+float inv_ready, inv_revision, inv_roles, inv_own1, inv_own2, inv_colour, inv_eq1, inv_eq2, inv_wait;
+string inv_who;
+entity inv_shell;
+float inv_shader;
+
+vector(float colour) Inv_Colour =
+{
+	if (colour == 0) return '1 0.26 0.32';
+	if (colour == 1) return '1 0.55 0.18';
+	if (colour == 2) return '1 0.85 0.25';
+	if (colour == 3) return '0.45 0.9 0.35';
+	if (colour == 4) return '0.2 0.8 0.65';
+	if (colour == 5) return '0.3 0.85 1';
+	if (colour == 6) return '0.3 0.55 1';
+	if (colour == 7) return '0.65 0.4 1';
+	if (colour == 8) return '1 0.4 0.8';
+	if (colour == 9) return '1 0.7 0.8';
+	if (colour == 10) return '0.9 0.9 1';
+	return '0.7 0.85 0.45';
+};
+
+void() Inv_Init =
+{
+	registercommand("inventory");
+	registercommand("inventory_clear");
+	registercommand("inventory_state");
+};
+
+void() Inv_Clear =
+{
+	inv_ready = inv_roles = inv_own1 = inv_own2 = inv_eq1 = inv_eq2 = inv_wait = 0;
+	if (inv_who != "") strunzone(inv_who);
+	inv_who = "";
+};
+
+// Non-secret presentation only. Server keys never authorize a grant on backend.
+vector(float slot) Inv_Public =
+{
+	local string packed;
+	local vector result;
+	packed = getplayerkeyvalue(slot, "*kit");
+	result = [stof(Gfx_Field(packed, 0, " ")), stof(Gfx_Field(packed, 1, " ")), stof(Gfx_Field(packed, 2, " "))];
+	if (result_x < 0 || result_x > 7 || result_x != floor(result_x)) return '0 0 0';
+	if ((result_y != 0 && result_y != 1) || result_z < 0 || result_z > 12 || result_z != floor(result_z)) return '0 0 0';
+	return result;
+};
+
+float() Inv_Valid =
+{
+	return inv_ready && inv_who != "" && !strcmp(inv_who, getplayerkeyvalue(player_localnum, "*ahash"));
+};
+
+float(float count) Inv_ConsoleCommand =
+{
+	local string command, who;
+	local float revision, roles, own1, own2, colour, eq1, eq2;
+	command = argv(0);
+	if (!strcmp(command, "inventory_clear")) { Inv_Clear(); return TRUE; }
+	if (!strcmp(command, "inventory_state"))
+	{
+		if (count != 9) return TRUE;
+		who = argv(1); revision = stof(argv(2)); roles = stof(argv(3));
+		own1 = stof(argv(4)); own2 = stof(argv(5)); colour = stof(argv(6)); eq1 = stof(argv(7)); eq2 = stof(argv(8));
+		if (strcmp(who, getplayerkeyvalue(player_localnum, "*ahash")) || strlen(who) != 8) return TRUE;
+		if (revision < 0 || revision > 16777215 || revision != floor(revision)) return TRUE;
+		if (Inv_Valid() && revision < inv_revision) return TRUE;
+		if (roles < 1 || roles > 7 || roles != floor(roles)) return TRUE;
+		if ((own1 != 0 && own1 != 1) || (own2 != 0 && own2 != 1)) return TRUE;
+		if ((eq1 != 0 && eq1 != 1) || (eq2 != 0 && eq2 != 1) || eq1 > own1 || eq2 > own2) return TRUE;
+		if (colour < 0 || colour > 11 || colour != floor(colour)) return TRUE;
+		if (inv_who != "") strunzone(inv_who);
+		inv_who = strzone(who);
+		inv_revision = revision; inv_roles = roles; inv_own1 = own1; inv_own2 = own2;
+		inv_colour = colour; inv_eq1 = eq1; inv_eq2 = eq2; inv_ready = TRUE; inv_wait = 0;
+		return TRUE;
+	}
+	if (strcmp(command, "inventory")) return FALSE;
+	print(sprintf("Inventory: ready %g revision %.0f owned %g/%g equipped %g/%g hat colour %g\n",
+	              Inv_Valid(), inv_revision, inv_own1, inv_own2, inv_eq1, inv_eq2, inv_colour));
+	return TRUE;
+};
+
+float(float roles, float textsize) Inv_BadgeWidth =
+{
+	local float w;
+	w = 0;
+	if (roles & 4) w = w + stringwidth("Developer", TRUE, [textsize, textsize]) + textsize * 1.4;
+	if (roles & 2) w = w + stringwidth("Zoner", TRUE, [textsize, textsize]) + textsize * 1.4;
+	if (roles & 1) w = w + stringwidth("Tester", TRUE, [textsize, textsize]) + textsize * 1.4;
+	return w;
+};
+
+float(vector p, float roles, float textsize, float width) Inv_Badges =
+{
+	local float bit, w, x;
+	local string label;
+	local vector colour;
+	x = p_x;
+	for (bit = 4; bit >= 1; bit = bit / 2)
+	{
+		if (!(roles & bit)) continue;
+		label = bit == 4 ? "Developer" : (bit == 2 ? "Zoner" : "Tester");
+		colour = bit == 4 ? '0.86 0.55 1' : (bit == 2 ? '1 0.76 0.3' : '0.4 0.83 1');
+		w = stringwidth(label, TRUE, [textsize, textsize]) + textsize;
+		if (x + w > p_x + width) break;
+		sui_roundbox([x, p_y], [w, textsize * 1.7], textsize * 0.5, colour * 0.19, 1);
+		sui_text([x + textsize * 0.5, p_y + textsize * 0.3], [textsize, textsize], label, colour, 1, 0);
+		x = x + w + textsize * 0.4;
+	}
+	return x - p_x;
+};
+
+void(vector p, float width, float textsize, float editable, vector publickit) Inv_Panel =
+{
+	local float cell, gap, i, owned, on, item, ready;
+	local vector at, colour;
+	local string id, label, note;
+	gap = max(3, floor(textsize * 0.35));
+	cell = floor((width - gap * 5) / 4);
+	sui_style_panel(p, [width, cell * 4 + gap * 5 + textsize * 6], textsize * 0.75, 0.98);
+	sui_text(p + [gap, gap], [textsize, textsize], editable ? "INVENTORY" : "EQUIPPED", SUI_THEME_TEXT, 1, 0);
+	ready = Inv_Valid();
+	for (i = 0; i < 16; i = i + 1)
+	{
+		at = p + [gap + (i % 4) * (cell + gap), textsize * 2 + gap + floor(i / 4) * (cell + gap)];
+		item = i + 1;
+		owned = editable ? (ready && (i == 0 ? inv_own1 : (i == 1 ? inv_own2 : 0))) : (i == 0 ? publickit_y : (i == 1 ? publickit_z : 0));
+		on = editable ? (i == 0 ? inv_eq1 : inv_eq2) : owned;
+		id = sprintf("inv_slot%g", i);
+		if (owned && editable) sui_action_element(at, [cell, cell], id, sui_noop);
+		sui_roundbox(at, [cell, cell], max(3, textsize * 0.4), (owned && on) ? SUI_THEME_SELECTED : SUI_THEME_WELL, 1);
+		if (!owned) continue;
+		colour = i == 0 ? '0.4 0.83 1' : Inv_Colour(editable ? inv_colour : publickit_z - 1);
+		if (i == 0)
+		{
+			sui_roundbox(at + [cell * 0.28, cell * 0.18], [cell * 0.44, cell * 0.55], cell * 0.18, colour, 0.85);
+			sui_roundbox(at + [cell * 0.34, cell * 0.24], [cell * 0.32, cell * 0.43], cell * 0.12, SUI_THEME_WELL, 1);
+		}
+		else
+		{
+			R_BeginPolygon("", DRAWFLAG_TWOSIDED, TRUE);
+			R_PolygonVertex(at + [cell * 0.5, cell * 0.12], '0 0 0', colour, 1);
+			R_PolygonVertex(at + [cell * 0.18, cell * 0.74], '0 0 0', colour * 0.7, 1);
+			R_PolygonVertex(at + [cell * 0.82, cell * 0.74], '0 0 0', colour, 1);
+			R_EndPolygon();
+		}
+		sui_text(at + [3, cell - textsize * 0.85], [textsize * 0.65, textsize * 0.65], on ? "ON" : "OWNED", colour, 1, 0);
+		label = i == 0 ? "Ice outline" : "Paper party hat";
+		sui_tooltip_for(id, strcat(label, editable ? (on ? ": click to unequip" : ": click to equip") : ""), 2);
+		if (editable && owned && sui_is_released(id) && cltime >= inv_wait)
+		{
+			localcmd(sprintf("cmd inventory_equip %g %g %.0f\n", item, !on, inv_revision));
+			inv_wait = cltime + 1;
+		}
+	}
+	note = editable ? (ready ? "Click an item to equip / remove" :
+	       (getplayerkeyvalue(player_localnum, "*ahash") != "" ? "Waiting for lobby inventory service" : "Link Steam on a lobby to load items")) : "Their selected cosmetics";
+	sui_text(p + [gap, cell * 4 + gap * 5 + textsize * 2.3], [textsize * 0.75, textsize * 0.75],
+	         Chat_Fit(note, width - gap * 2, textsize * 0.75), SUI_THEME_MUTED, 1, 0);
+};
+
+void(entity body, float outline, float hat, float duck) Inv_Draw =
+{
+	local vector base, tip, a, b, colour;
+	local float i, t, u;
+	if (outline)
+	{
+		if (!inv_shader)
+			inv_shader = shaderforname("ftesurf/ice_outline", "{\n cull none\n {\n map $whiteimage\n rgbgen const ( 0.3 0.75 1 )\n alphagen const 0.15\n blendfunc GL_SRC_ALPHA GL_ONE\n }\n}\n");
+		if (!inv_shell) { inv_shell = spawn(); inv_shell.effects = EF_NOSHADOW; }
+		setmodel(inv_shell, body.model);
+		// Expand about the body's centre, not upward from the feet.
+		setorigin(inv_shell, body.origin - [0, 0, (duck ? 45 : 62) * 0.035]);
+		inv_shell.angles = body.angles;
+		inv_shell.frame = body.frame;
+		inv_shell.forceshader = inv_shader;
+		inv_shell.scale = 1.07;
+		inv_shell.colormod = '1 1 1';
+		addentity(inv_shell);
+	}
+	if (hat < 1 || hat > 12) return;
+	base = body.origin + [0, 0, duck ? 45 : 62];
+	tip = base + '0 0 22';
+	colour = Inv_Colour(hat - 1);
+	for (i = 0; i < 12; i = i + 1)
+	{
+		t = (i / 12) * 6.2831853 + body.angles_y * (3.14159265 / 180);
+		u = ((i + 1) / 12) * 6.2831853 + body.angles_y * (3.14159265 / 180);
+		a = base + [cos(t) * 11, sin(t) * 11, 0];
+		b = base + [cos(u) * 11, sin(u) * 11, 0];
+		R_BeginPolygon("", DRAWFLAG_TWOSIDED);
+		R_PolygonVertex(a, '0 0 0', colour * ((i % 2) ? 0.7 : 0.95), 1);
+		R_PolygonVertex(b, '0 0 0', colour * 0.9, 1);
+		R_PolygonVertex(tip, '0 0 0', colour, 1);
+		R_EndPolygon();
+	}
+};

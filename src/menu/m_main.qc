@@ -262,6 +262,7 @@ float() ui_browser_screen =
 	return (menu_screen == SCREEN_MAIN || menu_screen == SCREEN_CREATE || menu_screen == SCREEN_STORY
 	        || menu_screen == SCREEN_STATS);
 };
+float ui_boot_savedshowall;
 float ui_bootframe;             // ui_bootcheck 2 frame counter
 vector ui_cs_size;              // create-screen layout, mirrored for the bootcheck
 float  ui_cs_lcols, ui_cs_lshow, ui_cs_rows;
@@ -498,19 +499,9 @@ float  ui_pb_at;
 float  ms_tier;
 float  ms_applied_tier;
 
-/*
-  The gametype SET, ANDed with the tier.  Build 57.
-
-  One bit per GC_* category, GC_OTHER included (ui_cat_bit), where it used to
-  be a single category with 0 for any.  Lex asked for two at once, surf and
-  bhop by default, and a single-select strip cannot say that.
-
-  0 ONLY ON SCREEN (P1111, Lex): "all" again, or the last lit chip, leaves none,
-  and the empty list says to pick one. ui_modes_sane puts the default back over
-  a saved 0 at load.
-
-  Saved as ui_maps_modes: ui_create_open reads it, ui_modes_set writes it.
-*/
+/* Surf/Bhop-only two-position switch, ANDed with tier and source filters.
+   Retain category bits for the row metadata interface: exactly1 or2 is selected.
+   ui_create_open reads ui_maps_modes; ui_modes_set persists actual clicks. */
 float  ms_modes;
 float  ms_applied_modes;
 
@@ -1180,7 +1171,8 @@ string(float slot) ui_srcf_label =
   Each chip is one bit of ms_modes, so any set of them can be lit at once, and
   the strip still fits beside the tier chips at 1280 wide (~925 px of 1216).
 */
-#define FS_NMODES   10          // "all", the eight gamemode CATEGORIES, "other"
+// P1160: Surf/Bhop only in the picker; keep full imported row metadata.
+#define FS_NMODES   3          // toggle handle, surf, bhop
 
 // GamemodeCategory, gamemode.enum.ts.  Read through ui_mode_cat and ui_name_cat.
 #define GC_SURF   1
@@ -1311,8 +1303,8 @@ float(float cat) ui_cat_bit =
 };
 
 // Both follow from ui_cat_bit and GC_OTHER; change either and change these.
-#define FS_MODES_ALL      511   // (1 << GC_OTHER) - 1: every chip lit
-#define FS_MODES_DEFAULT  3     // GC_SURF | GC_BHOP, what Lex asked to open on
+#define FS_MODES_ALL      3     // selectable categories only
+#define FS_MODES_DEFAULT  1     // two-position switch opens on Surf
 
 /*
   Which gametype does this NAME say, or 0.  Build 57.
@@ -3590,7 +3582,7 @@ void() ui_maplist_changed =
 
 /*
   ---------------------------------------------------------------------------
-   The gametype set: click, save, open.  Build 57.
+   The Surf/Bhop switch: click, save, open.  P1160.
   ---------------------------------------------------------------------------
 */
 
@@ -3598,33 +3590,18 @@ void() ui_maplist_changed =
 // empty set -- see ms_modes for why that is not a state worth drawing.
 float(float m) ui_modes_sane =
 {
-	m = m & FS_MODES_ALL;           // 0 only at load: the chips may leave none lit
-	if (!m)
-		m = FS_MODES_DEFAULT;
-	return m;
+	// Old multi-select / other-mode configs migrate to Surf.
+	return (m == 2) ? 2 : FS_MODES_DEFAULT;
 };
 
-/*
-  What clicking chip `slot` makes of `mask`.  PURE -- it neither assigns nor
-  saves -- so the bootcheck driver can put the chips' own rule through its paces
-  without writing the player's config.
-
-  "all" sets every bit, or clears them when every one is lit (P1111); any other
-  chip flips its own bit.
-*/
+// Pure transition: 0 toggles; 1/2 explicitly select Surf/Bhop for controls.
+// The bootcheck exercises this same rule without writing player configuration.
 float(float mask, float slot) ui_modes_click =
 {
-	local float b;
-
-	// P1111 (Lex): "all" again clears every mode, so one can be picked alone; a list with
-	// none says so (screen_create), and a saved 0 opens on the default (ui_modes_sane).
-	if (slot == 0)
-		return (mask == FS_MODES_ALL) ? 0 : FS_MODES_ALL;
-
-	b = ui_cat_bit(ui_mode_id(slot));
-	if (!(mask & b))
-		return mask | b;
-	return mask - b;
+	if (slot == 1) return 1;
+	if (slot == 2) return 2;
+	if (slot == 0) return (ui_modes_sane(mask) == 1) ? 2 : 1;
+	return ui_modes_sane(mask);
 };
 
 /*
@@ -3637,8 +3614,8 @@ float(float mask, float slot) ui_modes_click =
 */
 void(float mask) ui_modes_set =
 {
-	ms_modes = mask;
-	localcmd(sprintf("seta ui_maps_modes %g\n", mask));
+	ms_modes = ui_modes_sane(mask);
+	localcmd(sprintf("seta ui_maps_modes %g\n", ms_modes));
 };
 
 // ROADMAP 10: the "show all" chip, applied and saved the same way.
@@ -5034,6 +5011,9 @@ void() ui_bootcheck_tick =
 		// is read exactly as a player gets it, and the log says what it read.
 		menu_screen = SCREEN_CREATE;
 		ui_create_open();
+		// Isolate the switch from unrelated missing-zone/thumbnail filters.
+		ui_boot_savedshowall = ms_showall;
+		ui_showall_set(TRUE);
 		ui_refilter();
 		print(sprintf("bootcheck: ui_maps_modes %g -- %g of %g maps listed\n",
 		              ms_modes, ms_viewcount, ms_count));
@@ -5042,30 +5022,14 @@ void() ui_bootcheck_tick =
 		localcmd("screenshot ui_menu_create\n");
 	else if (ui_bootframe == 75)
 	{
-		/*
-		  The gametype toggles, where the source strip used to be exercised.
-		  Build 57.
-
-		  Through ui_modes_click, the function the chips themselves call, so the
-		  rule under test is the shipped one and not a copy typed here.  From a
-		  known surf + bhop, whatever this install saved: bhop off must leave
-		  surf alone, and then surf off must be REFUSED, because it is the last
-		  lit chip.  The log line checks both; the screenshot at 105 is the
-		  surf-only list.
-
-		  NOT SAVED.  ui_modes_set would `seta` the player's own config, and a
-		  self-check that rewrites the setting it checks leaves the next launch
-		  testing its own leftovers.  So this assigns ms_modes directly, and
-		  frame 180 puts back what the cvar says.
-		*/
-		ms_modes = ui_modes_click(FS_MODES_DEFAULT, ui_mode_slot(GC_BHOP));
-		float bcl = ui_modes_click(ms_modes, ui_mode_slot(GC_SURF));
-		float bca = ui_modes_click(ui_modes_click(FS_MODES_DEFAULT, 0), 0);    // P1111: all, all again
-		print(sprintf("bootcheck: bhop off leaves %g (want %g), the last lit "
-		              "chip off leaves %g (want 0), all twice leaves %g (want 0) -- %s\n",
-		              ms_modes, ui_cat_bit(GC_SURF), bcl, bca,
-		              (ms_modes == ui_cat_bit(GC_SURF) && bcl == 0 && bca == 0)
+		// Exercise the actual switch and legacy migration, without saving settings.
+		float bcl = ui_modes_click(FS_MODES_DEFAULT, 0);
+		float bca = ui_modes_click(bcl, 0);
+		print(sprintf("bootcheck: Surf/Bhop switch %g -> %g -> %g, legacy %g -- %s\n",
+		              FS_MODES_DEFAULT, bcl, bca, ui_modes_sane(511),
+		              (bcl == 2 && bca == 1 && ui_modes_sane(511) == 1 && ui_modes_sane(0) == 1)
 		                  ? "^2ok^7" : "^1FAILED^7"));
+		ms_modes = bca;
 
 		/*
 		  Select a map too, because SELECTING is what loads the background, and
@@ -5094,33 +5058,15 @@ void() ui_bootcheck_tick =
 		localcmd("screenshot ui_menu_tier\n");
 	else if (ui_bootframe == 145)
 	{
-		/*
-		  Two gametypes at once -- the thing the single-select strip could not
-		  say -- and neither of them the default.  Climb and other: both small
-		  (13 and 49 maps when measured), so "(N of M)" reads distinctly, and
-		  other is GC_OTHER, which exists only as ui_cat_load's last resort; a
-		  fallback that matched nothing would show here as climb's count alone.
-		  Built from frame 75's surf through the chips' own function: climb on,
-		  other on, surf off.  Tier goes back to any, or the two filters would
-		  AND down to a handful and prove much less.
-
-		  THIS FRAME WAS BROKEN FOR AS LONG AS IT EXISTED.  It set ms_mode = 12
-		  with the comment "kz": 12 is a Momentum gamemode ID, df-vq3 at that,
-		  while ms_mode held a CATEGORY and ui_mode_cat never returns 12 -- and
-		  the source filter from frame 75 was still on Momentum.  So
-		  ui_menu_mode.png has always been a picture of "no matches", "0 of
-		  1414", and an empty list cannot tell a broken strip from a correct one.
-		*/
-		ms_tier  = 0;
-		ms_modes = ui_modes_click(ms_modes, ui_mode_slot(GC_CLIMB));
-		ms_modes = ui_modes_click(ms_modes, ui_mode_slot(GC_OTHER));
-		ms_modes = ui_modes_click(ms_modes, ui_mode_slot(GC_SURF));
+		// The opposite arm must actually filter to Bhop, not an empty old mode.
+		ms_tier = 0;
+		ms_modes = ui_modes_click(ms_modes, 0);
 	}
 	else if (ui_bootframe == 175)
 	{
 		// Counted here rather than at 145: m_draw runs this driver BEFORE its
 		// change check, so on the frame that changes the set the view is stale.
-		print(sprintf("bootcheck: climb + other (modes %g) -- %g of %g maps%s\n",
+		print(sprintf("bootcheck: Bhop only (modes %g) -- %g of %g maps%s\n",
 		              ms_modes, ms_viewcount, ms_count,
 		              ms_viewcount ? "" : "  ^1EMPTY^7"));
 		localcmd("screenshot ui_menu_mode\n");
@@ -5143,7 +5089,7 @@ void() ui_bootcheck_tick =
 	  without it a slow WAN fetch reads exactly like five dead servers.
 
 	  The saved gametype set is restored FIRST, so the screenshot shows what a
-	  player actually opens the screen to rather than frame 175's climb+other
+	  player actually opens the screen to rather than frame 175's Bhop
 	  probe.  Frame 178 because 180 either quits or launches a map.
 	*/
 	else if (ui_bootframe == 177)
@@ -5184,6 +5130,7 @@ void() ui_bootcheck_tick =
 		// Back to the SAVED set, which nothing above wrote to.
 		ms_tier  = 0;
 		ms_modes = ui_modes_sane(cvar("ui_maps_modes"));
+		ui_showall_set(ui_boot_savedshowall);
 
 		if (cvar("ui_bootcheck") < 3)
 		{
@@ -7398,6 +7345,22 @@ string(float group, float f) ui_filter_id =
 	return strcat("cs_sort", ftos(f));
 };
 
+float(vector pos) ui_mode_switch =
+{
+	local float bhop;
+	local vector track;
+	bhop = (ms_modes == 2);
+	sui_action_element(pos, '140 24 0', "cs_mode_toggle", sui_noop);
+	sui_text(pos + '3 6 0', '12 12 0', "Surf", bhop ? COL_DIM : COL_ACCENT, 1, 0);
+	track = pos + '43 3 0';
+	sui_roundbox(track, '42 18 0', 9, COL_ROW_SEL, 1);
+	sui_roundbox(track + [bhop ? 25 : 3, 3], '14 12 0', 6, COL_ACCENT, 1);
+	sui_text(pos + '93 6 0', '12 12 0', "Bhop", bhop ? COL_ACCENT : COL_DIM, 1, 0);
+	sui_tooltip_for("cs_mode_toggle", "Switch between Surf and Bhop maps.", 2);
+	if (sui_is_released("cs_mode_toggle")) ui_modes_set(ui_modes_click(ms_modes, 0));
+	return 144;
+};
+
 float(float width, float y) ui_map_filters =
 {
 	local float group, f, n, x, gw, cw, on, bit, next;
@@ -7407,12 +7370,13 @@ float(float width, float y) ui_map_filters =
 	for (group = 0; group < 5; group = group + 1)
 	{
 		heading = group == 0 ? "Tier" : (group == 1 ? "Mode" : (group == 2 ? "Library" : (group == 3 ? "Extra" : "Sort")));
-		n = group == 0 ? 11 : (group == 1 ? FS_NMODES : (group == 2 ? SRCF_NCHIPS : (group == 3 ? 1 : 3)));
+		n = group == 0 ? 11 : (group == 1 ? 0 : (group == 2 ? SRCF_NCHIPS : (group == 3 ? 1 : 3)));
 		Font_Set(ui_font_display);
 		gw = stringwidth(heading, TRUE, '15 15 0') + 8;
 		Font_Set(ui_font_ui);
 		for (f = 0; f < n; f = f + 1)
 			gw = gw + ui_filter_chip_w(ui_filter_label(group, f)) + 4;
+		if (group == 1) gw = gw + 144;
 		if (group == 4 && note != "") gw = gw + stringwidth(note, TRUE, '12 12 0') + 6;
 		if (x > 16 && x + gw > width + 16) { x = 16; y = y + 30; }
 		// P1111 (Lex): the headings in the display face, not faded.
@@ -7420,6 +7384,7 @@ float(float width, float y) ui_map_filters =
 		sui_text([x, y + 5], '15 15 0', heading, COL_TEXT, 1, 0);
 		x = x + stringwidth(heading, TRUE, '15 15 0') + 8;
 		Font_Set(ui_font_ui);
+		if (group == 1) x = x + ui_mode_switch([x, y]);
 		for (f = 0; f < n; f = f + 1)
 		{
 			label = ui_filter_label(group, f);

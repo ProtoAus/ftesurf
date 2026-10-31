@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P1160 — profile inventory / cosmetics (pending human acceptance)
+
+After delivery: link Steam on a lobby, open `hud_player`, equip both starter
+items in the right-hand 4×4 grid and ask a second player to confirm the blue
+aura and coloured paper hat. Remove each separately, reconnect and check that
+hat colour and selected state persist. Check badge spacing/colours and click
+the Maps Surf/Bhop switch. Native two-client and backend checks are not human
+acceptance. The aura is an occluded additive shell, not a through-wall/JFA port.
+The fresh menu fixture retained its consent gate; only real filter counts, not
+menu appearance or clicking, were proved there. Badges grant no privileges.
+Developer assignment still needs the owner's linked Steam display name (Lex
+was not found). No human confirmation has been received. See P1160 delivery
+provenance separately; this entry alone does not claim fleet installation.
+
 ## P1147 slow-practice continuity — READY for owner testing
 
 Installed qualified P1147cf2290902 plus actual spatial-marker SSQC in BOTH

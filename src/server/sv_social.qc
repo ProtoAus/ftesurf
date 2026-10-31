@@ -14,9 +14,12 @@ float(entity e) Account_Busy;
 
 void(entity e) VM_SVAccountReset;
 void(entity e) VM_SVBind;
+void(entity e) Inv_SVReset;
+void(entity e, float root) Inv_SVApply;
 void(entity e) Social_Clear =
 {
 	VM_SVAccountReset(e);
+	Inv_SVReset(e);
 	if (e.social_token != "") strunzone(e.social_token);
 	if (e.social_hash != "") strunzone(e.social_hash);
 	if (e.social_ack != "") strunzone(e.social_ack);
@@ -95,7 +98,7 @@ string(string token, string hash, string ack, string activity, string rack) Soci
 {
 	// uri_escape has an 8192-byte output limit. Encode each bounded row,
 	// never the complete 64-player snapshot (which exceeds that limit).
-	return uri_escape(sprintf("{\"token\":\"%s\",\"hash\":\"%s\",\"ack\":%s,\"activity\":\"%s\",\"rack\":%s}",
+	return uri_escape(sprintf("{\"token\":\"%s\",\"hash\":\"%s\",\"ack\":%s,\"activity\":\"%s\",\"rack\":%s,\"inventory\":1}",
 	                         token, hash, ack != "" ? ack : "0", activity, rack != "" ? rack : "-1"));
 };
 
@@ -225,6 +228,7 @@ float(float reqid, float code, string body) Social_Reply =
 			stuffcmd(e, sprintf("friend_note %s\n", uri_escape("Refreshing Steam for Friends; retrying automatically")));
 			continue;
 		}
+		Inv_SVApply(e, json_find_object_child(row, "inventory"));
 		hash = json_get_string(json_find_object_child(row, "hash"));
 		friends = json_find_object_child(row, "friends");
 		if (friends)

@@ -21,6 +21,12 @@
 
 ## next
 
+### P1160 Profile inventory and cosmetics
+- Your player profile now has an attached 4x4 inventory. Click an owned item to equip or remove it; selected cosmetics are visible to other players.
+- Linked Steam accounts receive a light-blue ice aura and a paper party hat with a persistent, randomly assigned colour.
+- Player profiles show colour-coded Tester, Zoner and Developer badges. Badges are cosmetic, not map-editing or administration permissions.
+- The Maps menu now uses one Surf/Bhop switch instead of the full gamemode filter strip.
+
 ### P1147 Smoother practice speed changes and short resets
 - Keep the camera continuous when switching practice speeds or returning to normal speed, and stop blending across short zone resets even when the destination has no angle.
 - Movement and the connection's earlier practice status are unchanged.

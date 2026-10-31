@@ -25,7 +25,8 @@ commit   f16c2f9f1ec7451bf0ccfc13051859853b708f24
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1148
-patch    1148
+patch    1160
+# Patch 1160 (QC/backend): profile inventory, persistent starter cosmetics and role badges; Surf/Bhop-only map switch. Native pin and qcbuild unchanged; this fleet backport excludes pending P1154 SSQC.
 # Patch 1148: finite normalized takeoff status accepts an exactly neutral pre-cost stamina multiplier; stock/non-unit contexts remain excluded. Preserve P1147 camera/spatial-reset source and current runtime VMs; no mover, capture/API/format/flag/tier, qcbuild or release change. Integrated clean-tag qualification/deployment are recorded separately.
 # Patch 1147: camera-only speed-change history rebase/speed1 offset retirement and absolute render-consumer endpoints; actual position-changing zone placements emit existing native EF_TELEPORT_BIT, including angle-less short resets. No new stat, recording/capture grammar, mover/input or eligibility policy; preserve P1145.
 # Patch 1145: existing gravity-use status follows eligible normalized crouch/ground-duck-transition takeoff with the current hull and unchanged accepted/default-path proof; stock crouch remains excluded. Preserve P1144 camera and actual runtime VMs; no movement, capture/API/format/flag/tier, Build or release change.

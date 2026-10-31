@@ -675,7 +675,10 @@ void() Av_SelfTrail =
 */
 void(entity g) Av_GhostDress =
 {
+	local vector kit;
 	Av_Dress(g);
+	kit = Inv_Public(player_localnum);
+	Inv_Draw(g, kit_y, kit_z, !strcmp(g.model, "models/player_duck.iqm"));
 };
 
 /*
@@ -706,7 +709,7 @@ float(vector pos, string s) Av_Head =
   there is none at the stage -- and fullbrights what is left, so the body
   reads as its colour rather than as whatever light a void has.
 */
-void(vector rpos, vector rsz) Av_Preview =
+void(vector rpos, vector rsz, vector kit) Av_Preview =
 {
 	local vector cam, look, org;
 
@@ -761,6 +764,7 @@ void(vector rpos, vector rsz) Av_Preview =
 	*/
 	setproperty(VF_AFOV, 36);       // Patch 663: the body fills the card's column
 	addentity(av_prev);
+	Inv_Draw(av_prev, kit_y, kit_z, FALSE);
 	renderscene();
 };
 
@@ -932,7 +936,8 @@ void() Av_SelfMark =
 
 void(vector scr) Av_Draw =
 {
-	local vector p, sz, tv, bv;
+	local vector p, sz, tv, bv, kit;
+	local float kitw, namew, badgew;
 	local float i, x, y, y0, sw, fx, want, got, eff, askt, pad, tsz, ttl, hint, sc, me;
 	local float hh, pic, fw, fh, lw, slh, stop, segw, tabh, segs, lit, stripw, striph, chw, link, fr_slot;
 	local float pw, px, psw, ph;
@@ -948,7 +953,7 @@ void(vector scr) Av_Draw =
 	sc = ui_cv_scale;
 	if (sc < 1)
 		sc = 1;
-	while (sc > 1 && (Font_Px(8 * sc) * 46 > scr_x - 8 || Font_Px(8 * sc) * 38 > scr_y - 8))
+	while (sc > 1 && (Font_Px(8 * sc) * 65 > scr_x - 8 || Font_Px(8 * sc) * 38 > scr_y - 8))
 		sc = sc - 0.5;
 	ttl  = Font_Px(10 * sc);
 	tsz  = Font_Px(8 * sc);
@@ -962,10 +967,11 @@ void(vector scr) Av_Draw =
 	fh  = ceil(tsz * 1.9);
 	link = FALSE;
 
-	sz = [min(scr_x - 8, tsz * 46), min(scr_y - 8, tsz * 38)];
+	kitw = tsz * 18;
+	sz = [min(scr_x - kitw - pad - 8, tsz * 46), min(scr_y - 8, tsz * 38)];
 	p  = [cvar("hud_player_x") * scr_x - sz_x * 0.5, cvar("hud_player_y") * scr_y - sz_y * 0.5];
-	// The handle is where the card will be drawn: clamped as it is, below.
-	if (p_x + sz_x > scr_x - 4) p_x = scr_x - 4 - sz_x;
+	// Clamp the card and its attached floating inventory together.
+	if (p_x + sz_x + pad + kitw > scr_x - 4) p_x = scr_x - 4 - sz_x - pad - kitw;
 	if (p_y + sz_y > scr_y - 4) p_y = scr_y - 4 - sz_y;
 	if (p_x < 4) p_x = 4;
 	if (p_y < 4) p_y = 4;
@@ -987,7 +993,7 @@ void(vector scr) Av_Draw =
 		cvar_set("hud_player_y", ftos((av_my - av_dragofs_y + sz_y * 0.5) / scr_y));
 		p = [cvar("hud_player_x") * scr_x - sz_x * 0.5, cvar("hud_player_y") * scr_y - sz_y * 0.5];
 	}
-	if (p_x + sz_x > scr_x - 4) p_x = scr_x - 4 - sz_x;
+	if (p_x + sz_x + pad + kitw > scr_x - 4) p_x = scr_x - 4 - sz_x - pad - kitw;
 	if (p_y + sz_y > scr_y - 4) p_y = scr_y - 4 - sz_y;
 	if (p_x < 4) p_x = 4;
 	if (p_y < 4) p_y = 4;
@@ -1008,6 +1014,9 @@ void(vector scr) Av_Draw =
 	}
 	fr_slot = Friends_ProfileSlot(av_other);
 	fr_target = me ? "" : Friends_ProfileTarget(av_other);
+	if (me) kit = Inv_Public(player_localnum);
+	else kit = fr_slot >= 0 ? Inv_Public(fr_slot) : ((pf_state == PFS_OK) ? pf_cosmetics : '0 0 0');
+	Inv_Panel([p_x + sz_x + pad, p_y], kitw, hint, me, kit);
 	if (me)
 	{
 		nm = getplayerkeyvalue(player_localnum, "name");
@@ -1025,8 +1034,12 @@ void(vector scr) Av_Draw =
 		             pf_state == PFS_OK && pf_av, nm);
 	}
 	x = p_x + pad * 2 + pic;
-	sui_text([x, p_y + pad + 2], [ttl, ttl],
-	         Chat_Fit(UI_NameShow(nm, 0), sz_x - pad * 4 - pic - fw, ttl), SUI_THEME_TEXT, 1, 0);
+	badgew = Inv_BadgeWidth(kit_x, hint);
+	nm = Chat_Fit(UI_NameShow(nm, 0), max(ttl * 2, sz_x - pad * 4 - pic - fw - badgew), ttl);
+	namew = stringwidth(nm, TRUE, [ttl, ttl]);
+	sui_text([x, p_y + pad + 2], [ttl, ttl], nm, SUI_THEME_TEXT, 1, 0);
+	Inv_Badges([x + namew + hint * 0.6, p_y + pad + 2], kit_x, hint,
+	           max(0, p_x + sz_x - pad - fw - hint - x - namew));
 	y = p_y + pad + ttl + ceil(hint * 0.9);
 	chw = ceil(hint * 8);
 	if (me)
@@ -1297,7 +1310,7 @@ void(vector scr) Av_Draw =
 		Av_PaintPanel([px, p_y + sz_y - pad - ph], pw, psw, slh);
 
 		// ---- the body, standing on the card beside its controls
-		Av_Preview([px, y0], [pw, p_y + sz_y - pad * 2 - ph - y0]);
+		Av_Preview([px, y0], [pw, p_y + sz_y - pad * 2 - ph - y0], kit);
 	}
 
 	// The search's list, LAST: over everything, and the element sui answers for.
@@ -1484,6 +1497,7 @@ float(string cmd) Av_ConsoleCommand =
 
 void() Av_RegisterCvars =
 {
+	Inv_Init();
 	/*
 	  THE NAME IS THE ASK'S: `hud_player`.  registercommand silently no-ops on
 	  a name the engine owns (pr_csqc.c:5497) -- `hud_player` was checked

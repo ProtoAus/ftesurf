@@ -2079,6 +2079,11 @@ void(string cmd) SV_ParseClientCommand =
 		return;
 	}
 
+	if (!strcmp(c, "inventory_equip"))
+	{
+		Inv_SVCommand(self, cmdargc);
+		return;
+	}
 	if (!strcmp(c, "vm_setup") || !strcmp(c, "vm_profile") || !strcmp(c, "vm_inspect"))
 	{
 		VM_SVCommand(self, c, cmdargc);

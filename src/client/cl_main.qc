@@ -2824,6 +2824,7 @@ float(string cmd) CSQC_ConsoleCommand =
 		PlayerLabels_Status(argv(1) == "detail");
 		return TRUE;
 	}
+	if (Inv_ConsoleCommand(cmdargc)) return TRUE;
 	if (Account_ConsoleCommand(cmd))    // Patch 615: `link`, and the stuffed `acct_hello`
 		return TRUE;
 	if (MPad_ConsoleCommand(cmd))
