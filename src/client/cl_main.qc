@@ -1378,24 +1378,12 @@ float(float scanx) CL_ButtonBit =
 	return 0;
 };
 
-/*
-  Patch 1029: Shift+mousewheel tunes the noclip fly speed.  pm_noclipspeed is
-  the engine's multiple of sv_maxspeed for a noclipping player (pm_source.c);
-  it is deliberately NOT run-locked (noclip already voids the run, so how fast
-  you fly while voided is a preference), so this sets nothing the server guards.
-  Gated three ways so the wheel is untouched everywhere else: a wheel event,
-  Shift held (ui_kmods, which Keys_ModEdge keeps current for every key), and the
-  server's own movetype stat saying the local player really is noclipping
-  (sv_main.qc mirrors .movetype into STAT_FS_MOVETYPE; cl_hud.qc reads the same).
-  Gentle geometric steps (x1.1): Lex's test showed a bigger step both overshoots
-  at the top and widens the one-frame gap between the speed the client predicts
-  with and the serverinfo the server simulates with, which prints as a noclip
-  prederr while you scroll (steady flight at a synced speed does not).  Clamped
-  0.25x (crawl for placement) to 16x.
-*/
+// P1159: use native userinfo, never the lobby's global pm_noclipspeed.
+// Native client and server must both support the bounded per-player preference.
+// Keep Shift+wheel's existing gesture and geometric steps; noclip stays practice.
 float(float scanx) Noclip_Wheel =
 {
-	local float ns, ms;
+	local float ns;
 
 	if (scanx != K_MWHEELUP && scanx != K_MWHEELDOWN)
 		return FALSE;
@@ -1404,20 +1392,35 @@ float(float scanx) Noclip_Wheel =
 	if (getstatf(STAT_FS_MOVETYPE) != MOVETYPE_NOCLIP)
 		return FALSE;
 
-	ns = cvar("pm_noclipspeed");
-	if (ns <= 0)                                // the engine's own fallback
+	// Native archived cvars mirror into seat0 userinfo. Do not change another
+	// local player's flight while a different split-screen seat owns input.
+	if (getproperty(VF_ACTIVESEAT) != 0)
+	{
+		print("noclip wheel tuning currently supports the first local seat only\n");
+		return TRUE;
+	}
+	if (!(cvar_type("cl_noclipspeed") & 8))       // CVAR_TYPEFLAG_ENGINE
+	{
+		print("noclip speed tuning needs an updated client engine\n");
+		return TRUE;
+	}
+	if (strcmp(serverkey("sv_noclipspeed_user"), "1") || serverkeyfloat("pm_physicsmode") != 1)
+	{
+		print("this server does not support per-player Source noclip speed tuning\n");
+		return TRUE;
+	}
+
+	ns = cvar("cl_noclipspeed");
+	if (!(ns >= 0.25 && ns <= 16))               // 0 uses the server default
+		ns = serverkeyfloat("pm_noclipspeed");
+	if (!(ns > 0 && ns <= 16))
 		ns = 4;
 	if (scanx == K_MWHEELUP) ns = ns * 1.1;
 	else                     ns = ns / 1.1;
 	ns = bound(0.25, ns, 16);
 	ns = floor(ns * 100 + 0.5) / 100;           // keep the stored value tidy
-	cvar_set("pm_noclipspeed", ftos(ns));
-
-	ms = cvar("sv_maxspeed");
-	if (ms > 0)
-		print(sprintf("noclip speed %gx  (%g u/s)\n", ns, ns * ms));
-	else
-		print(sprintf("noclip speed %gx\n", ns));
+	cvar_set("cl_noclipspeed", ftos(ns));
+	print(sprintf("noclip speed %gx (your flight only)\n", ns));
 	return TRUE;
 };
 

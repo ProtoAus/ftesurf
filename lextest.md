@@ -1,18 +1,117 @@
 # lextest.md — things waiting on a human
 
+## P1162 — noclip follow-up (candidate, NOT installed)
+
+The owner confirmed the high-speed flicker is noclip-only. Candidate code fixes
+slow-flight presentation/velocity clipping and gives each supported lobby player
+their own walk-key-plus-wheel flight preference. The shared placement marker also
+reaches default streamed bodies and their spectator consumer. Controlled native
+and QC-VM cases are not owner camera feel, physical wheel input or deployment.
+
+After guarded installation: noclip at host_timescale 0.25 and 0.5, turn and change
+height, and fly fast enough to exceed the map's ordinary movement cap. Hold the
+walk key and scroll in a lobby; confirm only your flight speed changes. Restore
+cl_noclipspeed 0 to use that server's default. Briefly check ordinary movement and
+the already-accepted roof/duck case remain unchanged. No owner retest requested
+before the actual files are installed; no confirmation received.
+
 ## P1160 — profile inventory / cosmetics (pending human acceptance)
 
-After delivery: link Steam on a lobby, open `hud_player`, equip both starter
-items in the right-hand 4×4 grid and ask a second player to confirm the blue
-aura and coloured paper hat. Remove each separately, reconnect and check that
-hat colour and selected state persist. Check badge spacing/colours and click
-the Maps Surf/Bhop switch. Native two-client and backend checks are not human
-acceptance. The aura is an occluded additive shell, not a through-wall/JFA port.
-The fresh menu fixture retained its consent gate; only real filter counts, not
-menu appearance or clicking, were proved there. Badges grant no privileges.
-Developer assignment still needs the owner's linked Steam display name (Lex
-was not found). No human confirmation has been received. See P1160 delivery
-provenance separately; this entry alone does not claim fleet installation.
+Game-side files are installed in both Windows roots and all 12 lobbies;
+backend activation still needs the owner's interactive sudo step. Exact source,
+hashes, tests and limits: `tools/profile-inventory-p1160.md`. These are not owner
+acceptance. For now, check the grid placement and Maps switch after reconnecting
+and `menu_restart`. After backend activation: open `hud_player`, equip both starter
+items in the right-hand 4×4 grid, and ask a second player to confirm the blue
+aura and coloured paper hat. Remove each item separately; the other should
+remain on. Reconnect and check your hat keeps its colour and selected state.
+Check the badge colours/name spacing and click the Maps Surf/Bhop switch once.
+
+The aura is an occluded, additive shell, not the supplied through-wall JFA
+post-process; confirm the look/thickness is suitable. No wall visibility or
+numerical performance acceptance is claimed. Tester is automatic for linked
+accounts. Zoner/Developer are cosmetic badges only; map-editing privileges are
+not changed. Markbeaton54's account was uniquely resolved; its Zoner grant awaits
+backend activation. The owner's Developer assignment also needs their explicit
+Steam profile URL/identity; do not assign by nickname or guesswork. No human
+confirmation received.
+
+## P1158 — finite-stamina verifier status (pending human acceptance)
+
+Native-only installed in both Windows installs and all12 lobbies. This extends
+an existing verifier status through finite-stamina jumps; it does not change
+physical movement. When convenient, join a lobby, make a few ordinary jumps and
+perform a practice return/rejoin. Confirm movement and the existing roof/duck
+camera still feel normal. No owner confirmation received. Automated cold boards
+and native cross-platform checks do not establish human feel or ranked finishes;
+a separate fresh newer-program cold cohort now passes, but it is NOT human
+acceptance. See tools/p1158-gravity.md.
+
+## P1156 — slow-practice roof/duck follow-up (owner confirmed)
+
+The owner isolated the remaining issue to bhop_goldsrc2 save14, moving forward
+under a roof ONLY below speed1. The render-only fix pairs camera feet and eye
+height and preserves ordinary duck history; movement and saved runs are untouched.
+Final16 source cases and both fresh integrated whole-change reviews pass. All7
+native images are installed in BOTH Windows roots, preserving installed P1152
+status and actual VMs/cache/configs/data. Fresh cold joins from both installed
+image/menu/plugin sources passed, fetched official CSQC, drew the board and
+exited0 without QC errors. Source/cold tests do not establish real roof geometry
+or general roof geometry.
+
+Owner retest: "it's epic, works well" — the reported roof/duck case is accepted.
+Separate follow-ups: noclip judders below1; Shift+wheel fly-speed adjustment works
+privately but not in lobbies; speed/energy flickers above a map's velocity cap
+below1. The last report's noclip-versus-normal scope was asked explicitly before
+changing a clamp. These are tracked separately in BACKLOG.md; no noclip fix or
+general native-geometry pass is claimed. See tools/p1156-roof.md for delivery.
+
+## P1154 10ms TAS — pending delivery and owner feel check
+
+Not installed yet. After the reviewed build is delivered, use a Source map whose
+10ms clock was selected BEFORE loading the map. Open a fresh TAS start/session,
+leave the start, then pause, step once and back once. Check the response/camera is
+sensible and the run stays visibly TAS/assisted. Repeat briefly at the normal
+15ms clock; its default is unchanged. Report a map/spot if the shared world
+teleports or otherwise moves the body while paused.
+
+Automated checks cover native airborne counts/carry, retained rewind/input replay
+and a bounded air optimizer, not owner feel, grounded/collision behavior, complete
+cold-project coverage or canonical qualification. This request is PENDING, not a
+human acceptance pass; it does not enable TAS-board admission.
+
+## P1151 clean return — delivered; human feel / start-bank acceptance pending
+
+Both Windows installs and all 12 Pi lobbies now have the qualified P1151 native
+and official programs. Exact destination/inode/epoch/old-byte checks passed; each
+lobby restarted once, without force, backend change or data/config restoration.
+Fresh isolated GUI checks from both installed image/menu/plugin sources downloaded
+the actual official CSQC, drew the board and exited 0 without QC errors. The final
+cold preservation guard passed with the same postflight PID/birth/inode pairs.
+Earlier refused guards are retained; they did not trigger extra restarts.
+
+Owner feedback: ordinary movement is very smooth; ducking/unducking and clearing
+low roofs still judder. The owner subsequently confirmed ONLY below1 and supplied
+bhop_goldsrc2 save14. P1156 above addresses the render-history flush; the exact
+roof feel is not yet owner-confirmed. Native real stairs/low/prop-ceiling feel
+and full closed bank/death/retry remain human checks.
+
+Source and native dedicated/listen controls pass. Restart the game and try:
+
+- Use host_timescale 0.5 or 0.1, return to a valid start, release movement/jump/duck,
+  stand still, then set host_timescale 1. Wait for "normal speed, clean new attempt
+  armed here". The pose should not move or blend from an old location. The next
+  jump should act normally and its new run should be clean, not the old practice run.
+- Repeat with a main start, a later stage start and a bonus start. The automated
+  dedicated fixture does NOT stand in for this full-bank runtime/feel matrix.
+- Return to 1 while airborne or moving: speed may return immediately, but no clean
+  result should be claimed until an eligible grounded neutral restart is confirmed.
+  A refused/timed-out restart must still say practice; release keys and reset at
+  the appropriate start rather than expecting an old attempt to be reclassified.
+- Enter slow practice again after a successful clean return. Check slow camera
+  continuity, rapid 0.5 -> 0.25 -> 0.5 -> 1 changes and short !reset/!r placements.
+  The P1147 camera controls still apply, but its old connection-lifetime practice
+  latch expectation below is superseded for a confirmed P1151 clean restart.
 
 ## P1147 slow-practice continuity — READY for owner testing
 
@@ -30,9 +129,9 @@ moving/airborne; switch0.5->0.25->0.5->1 without resetting. Then !reset/!r near
 the start (and !m near a valid mark) to check for any old-position glide. Check
 familiar stairs and a low ceiling/solid prop roof for dips or clipping. No human
 geometry/feel acceptance is claimed yet; report any remaining visible jump.
-Restoring1 resumes normal speed but !reset MUST retain earlier practice status;
-a genuinely fresh clean connection clears that history. Please do not treat
-that deliberate latch as a failed reset.
+Historical P1147 expectation: restoring1 resumed normal speed but !reset retained
+earlier practice status. P1151 now supersedes this ONLY for a server-confirmed
+fresh clean restart. Refused or unconfirmed restarts must still retain practice.
 
 ### Historical P1144/P1138 records (superseded; not current pending work)
 

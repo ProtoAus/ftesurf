@@ -1,5 +1,186 @@
 # AGENT_NOTES.md
 
+## P1162 noclip-only backport of the P1159 candidate (not delivered)
+
+Actual installed source, not main, governs this delivery: native P1158 commit
+793ee161a and QC P1160 backport84a8ff1a. Both Windows roots' three program hashes
+were read and match that backport. Keep pending P1154/P1161 VM/native decoder
+activation OUT of this cohort. Full main integrations are retained on the old
+fix-timescale branches; reuse the same owned pair on deliver-noclip-1162, not a
+new clone or build tree. The test-only sourcepractice conflict takes the reviewed
+complete fixture (including already-installed roof-camera controls); runtime
+backport applies cleanly to nine Native and nine QC files. Backend is untouched.
+
+The native placement bit must reach the default CSQC lobby stream, not only
+native entities. Pose_Capture compares the shared epoch with the avatar cache;
+Pose_Seed initializes that cache without fabricating a teleport. The existing
+three-bit serial, packet layout, Body_Eval and Body_Pose provide the fence.
+Keep ZONE_EF_TELEPORT_BIT in sv_entities: sv_progs.src loads it BEFORE sv_pose.
+Moving it later caused this compiler to access-violate instead of reporting an
+unknown symbol; both failed official/diagnostic logs remain in the owned task.
+
+`tools/test_noclip_pose.py` compiles literal producer/codec/consumer functions
+into a minimal native QC VM. Eleven controlled scenarios pass; old-source
+counterfactual fails29 assertions. The QC byte buffer replaces transport
+builtins, and role/arrival/render clocks are controlled. This is not CSQC
+network dispatch, GPU/frame/HUD, world movement, fleet or owner acceptance.
+The original missing fixture globals and missing explicit HL2 plugin load are
+retained. Official complete QC rebuild:0 SS/0 menu, two existing CS F333.
+No new wire format, physics, timer/bank/recorder policy or private capture field.
+
+## Cold TAS validation and refusal controls (P1161)
+
+VALIDATE checks row syntax under current native actor admission; it does not
+prove an input pool exists. Legal placement uses one-row CHECK after serial
+initialization, with the existing explicit PLANSET fallback. Keep the actual
+cold base-load subject unprimed: ordinary restored-head capture after placement
+is not preparatory airborne history. Project body/hold preflight precedes read.
+
+A real noclip/save hold can keep its body, timer, recorder and project unchanged
+while ordinary no-op movement counters/carry continue to advance. The initial
+whole-status equality controls failed only on those natural clocks. Retain the
+failures; prove no-request advancement, then use an explicitly paused OWN server
+for the exact before/request/after counter interval. Read native published fields
+through existing server diagnostics there: the client TAS status throttle uses
+server time and cannot expire while the world is paused. No synthetic hold flags.
+
+A fractional malformed row is refused by canonical form before native decoding;
+do not label it a native-decoder negative. The official CSQC seeder returns zero
+without copying when downloads/csprogsvers is absent: create that owned namespace
+and verify the actual seeded bytes before launching, not just its exit code.
+
+Final-image readers: native logs retain ^2ok^7 as well as timestamps; strip colour
+codes before counting the original completed test, and stop later arms on a common
+bootstrap-reader failure. Do not rerun a healthy numerical suite for that reader.
+Version count is the exact producer commit's full ancestry plus29, not current HEAD
+or a shallow mirror's count. Compare pinned Git trees and reuse the frozen qualified
+version on the shallow ARM mirror. Docs-only merges do not invalidate code images.
+Plugin zip -A adjusts absolute central/local offsets: it is NOT a modulo-alignment
+rule. Read decompressed metadata; this host's Makefile echo emits literal backslash-n
+separators. Retain wrong-reader failures, not another rebuilt/renamed artifact.
+
+## Profile cosmetics: authority, fixtures and isolated rollout (P1160)
+
+Inventory ownership/roles live on the backend, never writable player userinfo.
+`*kit` is a server-reserved roles/aura/hat-colour+1 presentation tuple; private
+ownership snapshots bind `*ahash` and monotonic bounded revisions. Social identity
+reset clears both channels and pending request IDs; old poll revisions cannot
+undo an equip reply. Badges confer no zoner/editor/admin privileges. Grant state
+is initialized once, so a revoked starter is not silently refilled on reconnect.
+
+A real socket renderer control must set `lobby_enable 1`: otherwise `sv_pose.qc`
+correctly sends no streamed remote bodies. The cone and aura are procedural /
+material-only CSQC content, not downloaded item paths. Use the ordinary additive
+ice material; the attempted inline custom programs compiled but rendered no
+visible shell, while the unforced enlarged-model control and the final ordinary
+material visibly acted. Cause of that inline-program difference was NOT proved;
+do not turn it into a shader/compiler bug claim. Human look/feel remains separate.
+
+Use `lobby_master` / `lobby_master_key`, the existing account/social transport,
+not an invented `lobby_url`. A render-only injected snapshot does not exercise
+poll opt-in or equip callbacks: the native HTTP control must see a nonempty
+roster with `inventory:1`, two genuine equip posts, and the final private CSQC
+revision/equipment acknowledgement. The fixture capability/mock HTTP backend
+is not an authentication proof; `surfd/test_inventory.py` provides separate
+signed-account/session tests. Audit every owned source path when backporting;
+a selected-path patch that omits `sv_social.qc` can still pass render controls.
+
+The Maps bootcheck now exercises exactly Surf/Bhop and legacy-filter migration.
+It temporarily enables show-all to isolate mode selection from missing zone /
+thumbnail quality, then restores the session flag. A fresh install's consent
+screen can still cover a passing filter fixture: real 1-of-4 / opposite 1-of-4
+counts prove filtering, NOT the visible screen or click. Preserve that limit; do
+not synthesize consent to manufacture a screenshot. Read `lextest.md`.
+
+Before shipping, distinguish main's source from actual installed source. P1160's
+VM backport starts at the installed P1151 QC commit `8c857577`, omitting the three
+pending P1154 SSQC files. The backend backport starts at the inspected `03693b98`
+fleet source, not unrelated newer KSF/profile changes on main. Schema25 rollback
+requires a compatible baseline: schema24 must not be reopened on a schema25 DB,
+and restoring an old whole DB could erase newer rows. Keep an additive-schema25,
+old-endpoint baseline ready instead; never drop/downgrade tables to make rollback
+pass. Keep runtime code, fixed control files and BOTH manifests read-only;
+only declared mutable state/control files may be writable. Validate the actual
+namespace/guard before claiming that placement is usable. P1160 stages primary
+state in `state/` and compatibility state in `control/`: the installer's existing
+`state/manifest.json` and `control/manifest.json` pins protect distinct cohorts.
+Do not overwrite the latter assuming it is a duplicate primary manifest.
+
+Actual QC delivery and limits: `tools/profile-inventory-p1160.md`. Both Windows
+installs and all 12 lobbies have the game-side change. The backend installer
+passes its dry run but needs interactive sudo; its shared ingress was restored
+and the live old fence was not closed. Cold schema25 fixture acceptance is NOT
+production migration/namespace evidence. Special grants remain pending activation
+(and Developer also needs the owner's confirmed Steam identity).
+
+Windows patch files written through `Path.write_text` acquire CRLF even when
+`git diff` supplied LF. `git apply --cached` then fails against an LF index.
+Preserve bytes / write LF patches, stop on any command error, and assert the exact
+cached paths/hunks before committing. A printed index listing is not an enforced
+promotion check. Never amend/rewrite a published commit to repair such a failure.
+
+
+## TAS clock fixture boundaries (P1154)
+
+Select pm_ticrate BEFORE map: SV_TimerMapInit latches run_t_tick. Changing only
+the later native mover creates a mixed timeline; native-ready alone is not a
+SSQC authoring pass. `tas status`'s mover rate is last admitted movement, so it
+can remain old after admission is blocked. Current configured cvar is separate.
+
+Enable TAS before a FRESH recorder/start; a running human REC14 stream is not a
+rewindable practice buffer. Prove running/recording at the actual pause/back,
+not only at an earlier exit. A stepped body can reenter the start and correctly
+refuse back. Native checkpoint capability and timer state are separate predicates.
+
+The tiny text-map UI fixture did not establish solid floor collision: its body
+fell below the intended floor. Timer running under forward input was a vertical
+exit, NOT a grounded walking control. Its actual airborne counts/carry/back/tape
+and optimizer checks remain bounded components, never canonical geometry or
+whole-world/equality proof. Check Z/support before making a ground claim.
+
+Project-load preflight must cover BOTH legal and buffered base-save dispatch:
+SV_TASCanPause alone does not cover SV_SaveLocGo plus direct replay queueing.
+The old mixed15ms-map/10ms-mover loader actually placed/paused/granted1 with a
+valid nonempty10ms project; the shared pre-read map-clock refusal prevents it.
+Native-ready is not proof that the map timer matches.
+
+Real bhop ground brushes can be carriers. Native SV_TASRewind op0 intentionally
+refuses FL_ONGROUND with non-world groundentity, so many QC ring rows do not
+prove a native warm base. An authored jump produced actual airborne warm rows
+and nonempty10/15ms base projects. Keep that domain explicit, not ground proof.
+The native TAS_TAPE_VALIDATE currently requires a pre-existing native pool:
+a fresh matched-clock session can reject a valid project's input row before
+placement. Prime REAL live TAS airborne history then warp back only when testing
+an explicitly warm-capable consumer; never call that cold coverage. The separate
+cold-load bug/falsifier remains in BACKLOG.md until fixed.
+
+Fixture seams: spec_chat_smoke.Peer observes probe.log while tasverify.prepare
+writes tasverify.log; bind the observer to the actual contract. `tas status`
+quietly drops queries inside its0.2 server-second throttle. A text-map argument
+retains .map in mapname: actual zone lookup is e.g. maps/zones/local/test.map.json,
+not test.json. Use actual qcfopen diagnostics, retain original failures and fix
+the existing seam rather than growing fresh roots or weakening gameplay guards.
+
+## P1156 roof/duck camera delivered — 1 Nov 2026 local
+
+Paired feet/eye-height slow-camera history is installed in BOTH Windows roots;
+see `tools/p1156-roof.md`, `lextest.md` and task `integrated/DELIVERY.json`.
+Preserves actual installed P1152 and runtime VMs/cache. All16 unchanged literal
+cases, two fresh integrated WHOLE reviews, final7 SDK images, actual native60/
+selftest/legacy and both installed-image/menu GUI cold checks pass. All15,802 old
+and16,003 union-protected hashes pass after cold. No Pi activation, VM swap or
+backend operation; exact owner bhop_goldsrc2 save14 roof feel remains human-pending.
+
+Read actual producers before writing receipt consumers: literal `compileExit`/
+`results`; cl_pred normalized text hash, view/script RAW hashes; promotion receipt
+is `promotion/receipt.json` with `source`/`qcSource`; lobby-smoke flags are
+`--engine --menu --csprogs --wait`. Reuse a known actual lobby address. Failed
+reader/argv receipts are not native failures and remain retained. If another task
+advances installed generated bytes, stop: integrate that actual source, retain
+original before/backups, rehash EVERY original protected entry, and use an explicit
+SAME-phase generated-preimage continuation; never reset protected hashes/restore
+player bytes or rename a failed lane to pass. Do not rerun healthy cases.
+
 ## P1147 practice continuity delivered — 31 Oct 2026
 
 Nativecf2290902/tagpatch-1147 preserves P1145 and fixes actual camera speed-change
@@ -7896,7 +8077,13 @@ corrected12unit readback and cold CSQC hash/drawn-board proof acted. No raw comm
   backups in game/. `git hash-object` a file before assuming it is current. That tree is NOT a git checkout: send changed files
   with `git -c core.autocrlf=false archive <sha> <paths> | ssh … tar -x` (plain
   `git archive` here ships CRLF), check them with `git hash-object`, then
-  `make -C engine sv-rel FTE_TARGET=linux CC=gcc BITS=arm64 -j3`. Gate:
+  `make -C engine sv-rel FTE_TARGET=linux CC=gcc BITS=arm64 -j3`.
+  Measured again 31 Oct 2026: an exact matching archive FILELIST still contained
+  718 CRLF-transformed text blobs among 1,124 tracked engine files. The strict per-file
+  Git-object check refused BEFORE compilation. Validate every member locally,
+  not just names/archiveSHA; disable autocrlf or construct a canonical Git-blob
+  tar. Retain the first failed input and fix the exporter, never exempt the
+  changed source from the guard. Gate:
   `pm_dettest` on bhop_eazy prints the same hashes as the Windows build. For a
   one-off run: `+set sv_port <p> +map bhop_eazy +exec cfg/<x>.cfg`. A dedicated
   server with no `+map` dies with "Couldn't load a map", and the Pi has no
@@ -8007,6 +8194,22 @@ corrected12unit readback and cold CSQC hash/drawn-board proof acted. No raw comm
   and the cfg then runs to its end marker against no server at all, screenshot
   included. Map content comes from `fs_addons.default.txt`'s Steam mounts; the
   hl2 plugin must sit beside the exe.
+  **Pin the EXPECTED served program, not a mutable peer install** (measured
+  2026-10-31, P1158). The helper reads `--csprogs` when grading; a concurrent
+  deploy can change a Windows canonical CSQC after launch, so a correct earlier
+  server download then fails against a later local build. Before a fresh cold
+  cohort, bind the actual approved server program to an independently hashed,
+  immutable owned/off-box expected file and pass THAT path. Never infer the
+  expected hash from the client download being tested. Hold actual current
+  lobby process/program/config identities across the check; keep any older
+  mutable-expectation or changed-epoch failure. A changed program justifies a
+  distinct current-program cohort, not replaying passed clients or restarting
+  healthy lobbies to hide a failed guard. If a post-client empty census refuses,
+  preserve it and record live/directory counts and ages AT failure when possible;
+  a later positive census is not evidence of the earlier refusal's cause.
+  Refresh only that volatile census after an independent positive control; do
+  not erase the failure or repeat the client. Source/build, cold render, owner
+  feel and ranked acceptance remain separate.
   `build.ps1 -Pi` ALSO REWRITES qwprogs EVERY TIME even when no server QC
   changed: fteqcc stamps the compile date into the file (two bytes at 0x72), so
   "the hash moved" is not evidence that server code did. Diff the bytes.

@@ -21,6 +21,10 @@
 
 ## next
 
+### P1162 Smoother slow noclip and personal lobby flight speed
+- Noclip stays smooth at slow practice speeds, including fast flight. Body and spectator views stop blending across actual placements.
+- Hold the walk key while noclipping and scroll to adjust your own flight speed in a supported lobby, without changing anyone else's speed. Normal movement and run eligibility are unchanged.
+
 ### P1160 Profile inventory and cosmetics
 - Your player profile now has an attached 4x4 inventory. Click an owned item to equip or remove it; selected cosmetics are visible to other players.
 - Linked Steam accounts receive a light-blue ice aura and a paper party hat with a persistent, randomly assigned colour.

@@ -249,13 +249,13 @@ void() PutClientInServer =
 	if (spot)
 	{
 		// CBasePlayer::Spawn nudges 1 unit up off the spawn pad.
-		setorigin(self, spot.origin + '0 0 1');
+		SV_SetPlayerOrigin(self, spot.origin + '0 0 1');
 		self.angles = spot.angles;
 	}
 	else
 	{
 		dprint("WOS: no spawn point in this map, using world origin\n");
-		setorigin(self, '0 0 64');
+		SV_SetPlayerOrigin(self, '0 0 64');
 		self.angles = '0 0 0';
 	}
 	self.angles_z = 0;
@@ -1066,7 +1066,7 @@ void(vector org, float haveang, vector ang) SV_SetPosSelf =
 		self.run_t_pendarm = -1;
 
 	was = self.origin;
-	setorigin(self, org);
+	SV_SetPlayerOrigin(self, org);
 	self.velocity = '0 0 0';
 	SV_ClearCarrier(self);          // Patch 400: or a push pays out here
 	SV_TimerWarped(self);

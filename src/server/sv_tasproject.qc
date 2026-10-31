@@ -1476,7 +1476,7 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 		SV_TASPReadFree(); return;
 	}
 	// state.txt keeps 4 decimals; restore the exact floats (only a rounding-sized correction).
-	setorigin(e, tpr_bo);
+	SV_SetPlayerOrigin(e, tpr_bo);
 	e.velocity = tpr_bv;
 	// P1085: the base is a native checkpoint, so never mid func_bhop dwell (see SV_TASGo).
 	e.vbsp_bhop_on = world; e.vbsp_bhop_since = 0;
