@@ -93,6 +93,11 @@ vector trace_plane_normal={0,0,1};
 bool geometry_ok=true,supported=true,busy=false,cheats=false,capability=true,placement=true;
 bool force_native_failure=false;
 int trace_count=0,closed=0,reset_calls=0,respawned=0,placed=0,prints=0;
+int bank_serial=1;
+void advance_admission(entity e){
+ if(bank_serial<2147483647) e->bank_attempt=++bank_serial;
+ else e->bank_attempt=-1;
+}
 int checks=0;
 #define CHECK(x) do{++checks;if(!(x)){fprintf(stderr,"line%d: %s\n",__LINE__,#x);return 1;}}while(0)
 float SV_TimerMarkZone(entity e){return e->armed?e->zone:-1;}
@@ -109,7 +114,7 @@ void sprint(entity,float,const char*){++prints;}
 void SV_RecReplayStop(entity){}
 void SV_SaveLocRelease(entity e){e->rec_sl_hold=0;}
 void SV_TimerVoid(entity e,const char*){
- assert(e->run_ts_used);assert(reset_calls==0);++closed;e->armed=false;
+ assert(e->run_ts_used);assert(reset_calls==0);++closed;e->armed=false;advance_admission(e);
  // The old native state must still be present when the original tail closes.
  assert(client.pmsrc.stamina==77);
 }
@@ -120,9 +125,9 @@ float sourcepractice_reset(entity e){
  globals.input_movevalues[0]=input_movevalues.x;globals.input_movevalues[1]=input_movevalues.y;globals.input_movevalues[2]=input_movevalues.z;
  PF_sourcepractice_reset(&vm,nullptr);return native_result;
 }
-void SV_PlayerRespawn(){assert(self->run_ts_used);++respawned;self->assistance=0;self->origin={-100,0,0};self->velocity={};}
+void SV_PlayerRespawn(){assert(self->run_ts_used);++respawned;advance_admission(self);self->assistance=0;self->origin={-100,0,0};self->velocity={};}
 void SV_ZoneMoveAt(float z,vector at,float yaw,float pitch,float,float){
- ++placed;if(!placement)return;self->origin=at;self->v_angle={pitch,yaw,0};self->velocity={};self->zone=(int)z;self->armed=true;
+ ++placed;if(!placement)return;advance_admission(self);self->origin=at;self->v_angle={pitch,yaw,0};self->velocity={};self->zone=(int)z;self->armed=true;
 }
 void SV_TimeScaleRemember(entity e){sv_ts_taint_uid[e->slot]=e->uid;}
 void SV_TimerCheat(entity e){assert(e->run_ts_used);}
@@ -140,7 +145,7 @@ void initial(){
  pr_global_ptrs=&pointers;svprogfuncs=&vm;replacement_mover=false;
  game_time=0;run_ts_return_serial=0;memset(sv_ts_taint_uid,0,sizeof(sv_ts_taint_uid));sv_ts_taint_uid[0]=17;sv_ts_taint_uid[1]=88;
  geometry_ok=supported=capability=placement=true;busy=cheats=force_native_failure=false;
- trace_count=closed=reset_calls=respawned=placed=prints=0;
+ trace_count=closed=reset_calls=respawned=placed=prints=0;bank_serial=1;
 }
 void neutral(int seq=110){input_cmd_sequence_lo=(float)seq;input_cmd_msec=input_cmd_piece_msec=0;input_movevalues={};input_buttons=input_impulse=0;}
 void ready(){SV_TimeScaleReturnCommand();CSEv_tsreturn_ff(body.run_ts_return,110);neutral();}
@@ -185,6 +190,13 @@ int main(){
  initial();ready();body.rec_sl_hold=1;SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&!body.rec_sl_hold&&!reset_calls);
  initial();ready();force_native_failure=true;SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&body.run_ts_return_block&&closed==1&&!respawned);
  initial();ready();placement=false;SV_TimeScaleReturnCommand();CHECK(body.run_ts_used&&body.run_ts_return_block&&sv_ts_taint_uid[0]==17);
+ // Admission can exhaust in ANY lifecycle phase AFTER a valid request.
+ // These lifecycle stubs now really advance identities instead of leaving one fixed.
+ for(int k=0;k<3;++k){initial();ready();bank_serial=2147483647-k;SV_TimeScaleReturnCommand();
+  CHECK(body.bank_attempt<0&&body.run_ts_used&&body.run_ts_return==0&&body.run_ts_return_block&&sv_ts_taint_uid[0]==17);
+ }
+ initial();ready();bank_serial=2147483644;SV_TimeScaleReturnCommand();
+ CHECK(body.bank_attempt==2147483647&&!body.run_ts_used&&body.run_ts_return<0&&!body.run_ts_return_block);
  // Actual native builtin: malformed/foreign/nondecoded/unsupported contexts do NOT mutate carry.
  for(int k=0;k<19;++k){initial();neutral();auto before=client.pmsrc;
   if(k==0)native_argument=&other;if(k==1)sv_player=&other;if(k==2)client.state=0;

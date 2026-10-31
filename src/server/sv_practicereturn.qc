@@ -148,9 +148,9 @@ void() SV_TimeScaleReturnCommand =
 	sv_ts_taint_uid[slot] = 0;          // only THIS successful slow-epoch boundary
 	self.run_t_wantstage1 = wantstage1;
 	SV_ZoneMoveAt(z, at, aim_y, aim_x, TRUE, TRUE);
-	if (self.origin != at || SV_TimerMarkZone(self) != z)
+	if (self.bank_attempt <= 0i || self.origin != at || SV_TimerMarkZone(self) != z)
 	{
-		// Placement/arm refusal is NOT permission to forgive the old epoch.
+		// Admission exhaustion or placement/arm refusal cannot forgive the old epoch.
 		self.run_ts_used = TRUE;
 		SV_TimeScaleRemember(self);
 		SV_TimerCheat(self);
