@@ -8125,6 +8125,22 @@ corrected12unit readback and cold CSQC hash/drawn-board proof acted. No raw comm
   and the cfg then runs to its end marker against no server at all, screenshot
   included. Map content comes from `fs_addons.default.txt`'s Steam mounts; the
   hl2 plugin must sit beside the exe.
+  **Pin the EXPECTED served program, not a mutable peer install** (measured
+  2026-10-31, P1158). The helper reads `--csprogs` when grading; a concurrent
+  deploy can change a Windows canonical CSQC after launch, so a correct earlier
+  server download then fails against a later local build. Before a fresh cold
+  cohort, bind the actual approved server program to an independently hashed,
+  immutable owned/off-box expected file and pass THAT path. Never infer the
+  expected hash from the client download being tested. Hold actual current
+  lobby process/program/config identities across the check; keep any older
+  mutable-expectation or changed-epoch failure. A changed program justifies a
+  distinct current-program cohort, not replaying passed clients or restarting
+  healthy lobbies to hide a failed guard. If a post-client empty census refuses,
+  preserve it and record live/directory counts and ages AT failure when possible;
+  a later positive census is not evidence of the earlier refusal's cause.
+  Refresh only that volatile census after an independent positive control; do
+  not erase the failure or repeat the client. Source/build, cold render, owner
+  feel and ranked acceptance remain separate.
   `build.ps1 -Pi` ALSO REWRITES qwprogs EVERY TIME even when no server QC
   changed: fteqcc stamps the compile date into the file (two bytes at 0x72), so
   "the hash moved" is not evidence that server code did. Diff the bytes.
