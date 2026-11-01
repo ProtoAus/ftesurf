@@ -7847,6 +7847,20 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+- **P1168 current-cohort resolution and component scope (1 Nov2026).** Failure
+  to match32 local artifacts did NOT prove the live pair lacked provenance. The
+  completed noclip owner's CURRENT/DELIVERY-FINAL already bound it to c79ee297 /
+  native520. Inspect those actual receipts before requesting a redundant handoff.
+  Apply only the reader delta, preserve other source and native/API pins, then
+  qualify actual images. During promotion another owner changed both menus;
+  preflight correctly refused. Narrow to the proven QW/CS+LNO pair and reuse the
+  existing Deploy helper and COMPLETE -Pi transaction; never default-copy a
+  differing menu, treat a failed preflight as rollout, or block independent work.
+- **Windows client aliases are not identical ship targets.** The actual deployed
+  client is FTESurf/ftesurf64.exe versus FTEQuake/fteqw64.exe. An older optional
+  FTEQuake/ftesurf64.exe existed and was untouched. Compare the real target map,
+  not every similarly named alias; preserve non-target bytes rather than silently
+  overwriting or deleting them to make a cohort check pass.
 - **P1168 frozen-generation rollback observations.** A legacy migration driver
   expected404 on the old fallback inventory GET. Both inspected candidate sources
   already supported schema25 and their real CLOSED fixtures proved405. Correct

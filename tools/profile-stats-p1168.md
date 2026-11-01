@@ -29,7 +29,7 @@ steam_linked_game scope. Missing tracking is not a historical0h claim.
 ## What this does not implement
 
 Real playtime/attempt collection and persistence belongs to a separate existing
-workstream. Its unpublished source has NOT been copied or activated here. The
+workstream. Its pending producer has NOT been adopted or activated here. The
 readers accept profile.playtime.seconds, map_seconds and bounded
 attempts[{track,leg,n}] when available; until that producer is published, qualified
 and deployed, real totals stay unavailable. Historical sessions were not recorded
@@ -74,7 +74,9 @@ only the cosmetic fields already intended for profile display.
 The bounded runtime receipts and failed controls remain under the uniquely owned
 profile-kit-01a19370 task root (historical p1166-ui fixture names). Passed receipts
 are reused explicitly only for unchanged native/VM inputs, never re-dated.
-These checks are not owner acceptance, performance measurement or live adoption.
+These checks are not owner acceptance or performance measurement. The fresh
+current-native run and actual paired adoption are recorded below; earlier
+receipts are not re-dated to claim that adoption.
 
 ## Source and delivery boundaries
 
@@ -86,13 +88,20 @@ Keep the separately published source cohorts distinct:
 - Frozen QC: `bfdf69e5a4f0ce1a2c98c010c584efc5567c17ec` on fleet69fdb328,
   published as `deploy/profile-stats-1168`. It retains that older native cohort;
   do not ship it over a newer unbound pair. Pre-URL-fix artifacts are superseded.
+- Current coherent reader cohort: `14aef133119e68536be1b815c2335413cfa1ada4`,
+  published as `deploy/profile-noclip-1168`. It preserves the exact delivered
+  c79ee297 noclip/placement game source and native520ba3ca/patch1162 cohort,
+  accepted crown/aura, and existing qcbuild. Both game images equal the freshly
+  socket-tested source659ea5b4 images. Published P1169 menu source is retained
+  in this branch, but its MENU image was NOT promoted over the concurrent menu.
+  This branch is not a blanket approval to rebuild/deploy whole public main.
 - Inventory-only backend: `fcc0d20b6e86c8b3597da7636a7fd9be421dc0a9`,
   `deploy/profile-inventory-readers-1168`, on exact live primary da053e69.
   Its82-file closure changes ONLY inventory.py; prior-primary fallback is the
   exact old82-file closure. Same schema25/inventory82-v1, guard and dispatcher;
   no counter family, schema migration, native activation or DB restoration.
 
-### Delivered: Windows MENU only
+### Earlier delivery: Windows MENU only
 
 At **2026-11-01 05:43:15UTC**, both Windows `menu.dat` + matching LNO were
 updated from the clean inspected public integration commit above. Both prior
@@ -133,20 +142,63 @@ account without an existing public board profile also returned404; this update
 does not manufacture a public profile for that case. Main-menu owner interaction
 acceptance remains pending; run `menu_restart` then reopen the profile.
 
-### Concrete remaining blockers
+### Delivered: current game pair, both Windows installs and all12 lobbies
 
-1. **Newer live/Windows SSQC+CSQC source ownership.** Neither matches the clean
-   published fea6969b control or any of32 retained task artifacts. Their current
-   pair remains untouched, including all12 lobbies. Obtain the owning commit /
-   build receipt or explicit handoff, integrate without losing that work, build
-   and validate the exact source, then ordinary paired deploy/readback with
-   rollback. This blocks live `!time` and in-game reader/board adoption, not the
-   separately source-bound MENU update.
-2. **Actual counter collection/persistence remains unimplemented here.** The
-   existing owner must publish/hand off the consented linked-game producer and
-   required family before it can be integrated, qualified and activated. Reader
-   completion is NOT completion of the user's real hours/attempt request. No
-   competing or unpublished collector was copied; no historic hours invented.
+The former source-ownership blocker is **resolved**, not a reason to request
+another handoff. The existing completed noclip CURRENT/DELIVERY-FINAL receipts
+bind the actual prior game pair to c79ee297 and native520ba3ca/patch1162. The
+reader delta was applied to that exact source without reverting movement,
+placement, body-fence, crown/aura or existing native/API changes.
+
+Official three-program NoDeploy builds have zero NEW warnings (the same two
+F333). Six fresh native520 real-socket/UI/HTTP arms passed at source659ea5b4:
+owned2/equipped0 and absent-time control; tracked profile total; ordinary say
+!time absent-data, self and offline-name cases; stage-excluded main/bonus starts;
+earlier seek pages; main/bonus selection and actual picture-to-profile action.
+The actual owned-item and upward-row images were read. All three fixture program
+preimages, synthetic consent and owned-zone cleanup verified; own children stopped
+and the shared rig lease released. No actual time/counter-production claim follows.
+
+At **2026-11-01 08:03:29UTC**, the exact paired programs and matching Windows LNOs
+were adopted in BOTH Windows installs and all12 active lobbies. Source14aef133
+is clean/published and produces the same game bytes as the fresh tested659 pair.
+The existing build Deploy helper and complete -Pi transaction were reused: actual
+active-unit discovery, all12 occupancy rows0, upload hash, adjacent atomic file
+renames, .prev and all12 restarts. No -PiForce or owner-process stop was required.
+
+| Both Windows installs and NanoPi | SHA-256 |
+|---|---|
+| qwprogs.dat | `1ae7cd76a73cbc4eb52cf0deef393238d272692f75024438331a582509989bd3` |
+| csprogs.dat | `a726524a2d4668533d58658e61e676303047752188d5d5f97da8ac2fbf5ff655` |
+
+Both Windows additive CSQC caches use folded-MD4 `ce4124f3`; no .tmp/.dcl was
+pruned. The actual prior pair and older.prev files are retained. A concurrent
+menu-owner update changed both menus to6f8760a5 before adoption; safe preflight
+refused to overwrite it. Only QW/CS+LNO was promoted. Those MENU/LNO/prev, all
+native/plugins and configs stayed byte-identical across the transaction. The
+new combined-source MENU differed from the concurrent menu and was NOT shipped.
+Do not label either source-cohort rejection as a successful rollout.
+
+Independent readback at **08:09:01UTC** verified both Windows pair hashes, NanoPi
+pair/rollback hashes, all12 actual UDP status replies, active process IDs with
+restart epochs after preparation, and all12 fresh SSQC directory heartbeats.
+The bounded legacy public status replies (1028/1029bytes) omit *csprogs here;
+this is NOT per-socket advertised-checksum proof or owner interaction acceptance.
+No synthetic/public test player was joined to production. Bounded actual/failed
+controls, source bindings, immutable preimages and receipt/live-runtime.json are
+retained under profile-kit-01a19370/artifacts/p1168-noclip-delivery.
+
+### Concrete remaining blocker
+
+**Actual counter collection/persistence remains unimplemented here.** Its existing
+owner is still ACTIVE, explicitly NOT delivered, with native signer/private-route,
+whole-writer/UI and protected platform/fleet/backend qualification still open.
+A committed source checkpoint is not a completed delivery handoff. Coordinate
+that exact producer/required family before integration and activation; do not
+copy the active peer or create a competing collector. This blocks real accumulated
+hours/attempt totals, NOT the now-live inventory, !time and in-game reader/board
+adoption. No historic hours have been invented and the frozen schema25 inventory
+backend was not migrated or replaced by this game-pair update.
 
 These are unfinished parts of the same request, not an owner-imposed later pass.
 Native-table Previous runtime proof and owner interaction/appearance acceptance

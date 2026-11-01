@@ -12,9 +12,12 @@ contract. Old unrecorded sessions cannot be reconstructed as historical hours.
 Until that producer is published, qualified and activated, the UI explicitly says
 tracking is unavailable rather than manufacturing totals. Source/activation:
 [tools/profile-stats-p1168.md](tools/profile-stats-p1168.md). MENU readers are now
-installed in both Windows installs and the frozen owned-inventory backend is live;
-newer SSQC/CSQC adoption and actual collection
-still need the owning source/family handoff. This requested work is not complete.
+installed in both Windows installs and the frozen owned-inventory backend is live.
+The former game-cohort blocker is resolved: source14aef133 preserves the delivered
+native520/noclip cohort and its tested reader pair is adopted in both Windows
+installs and all12 lobbies (1Nov2026 08:03UTC). Actual collection still needs the
+ACTIVE existing producer owner's qualified delivery/family handoff. No competing
+collector is created; real hours/attempts remain unfinished requested work.
 
 ## TAS editor and signed collaborative saves — requested 26 Oct 2026
 

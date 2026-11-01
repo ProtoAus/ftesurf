@@ -14,19 +14,25 @@ configs and player data are not part of this menu-only update.
 ## P1168 — public inventory, map stats and seeking (pending)
 
 Windows MENU-only delivery verified in BOTH installs1Nov2026 05:43:15UTC.
-No owner confirmation received. Run `menu_restart`, click a leaderboard/profile
-picture, select Main/Bonus chips, then Jump to me and scroll upward. Confirm
-readability, profile Back/escape and course interaction. This narrow menu update
-left the unknown newer SSQC/CSQC/native/config files and all lobbies untouched.
+The source-cohort blocker is now RESOLVED: exact native520-compatible reader
+QW/CS pair + matching LNO is installed in both Windows installs and all12 lobbies
+at08:03:29UTC. Concurrent menus/native/configs were preserved. Six fresh actual
+native/socket synthetic arms pass; real-owner confirmation is still pending.
+Reconnect to an official lobby, open another linked public profile and verify
+its unequipped owned items. Try plain `!time` and `!time <name>`; absent totals
+must say not recorded, not invented hours. Jump to me, scroll upward (or Native
+Previous when enabled), and check that earlier rows really load. In the menu,
+run `menu_restart`, click a leaderboard/profile picture, select Main/Bonus chips,
+and check Back/escape/readability. No owner game was stopped.
 
 Backend owned-item promotion verified1Nov2026 06:47:08UTC, with actual public
 owned-but-unequipped lists matching persistence at06:54:47UTC. Run menu_restart
 then inspect an unequipped item in another linked public profile; owner visual /
 interaction confirmation is still pending. Accounts without an existing public
-board profile still have no such profile. Live !time and in-game readers await
-source-cohort handoff/adoption. Native-table
-Previous is compile/source-only, not runtime-proved. Actual collection remains
-unfinished: only AFTER its published producer is qualified and activated, compare
+board profile still have no such profile. Live !time and in-game readers are
+now adopted. Native-table Previous is still compile/source-only, not
+runtime-proved; the generic scrolling path has fresh acted runtime evidence.
+Actual collection remains unfinished: only AFTER its published producer is qualified and activated, compare
 profile/map totals and !time/name over a short real session. No old hours are
 backfilled. Synthetic supplied totals are not real hours or human acceptance.
 Exact sources, hashes, rollback and blockers: `tools/profile-stats-p1168.md`.
