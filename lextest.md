@@ -19,8 +19,7 @@ lobbies, site and C:\FTESurf's library since 11:13Z. Please check (PENDING):
   you invite them by email as an Editor. Publishing their zones needs the zone-admin role.
 
 ## P1173 duck held through a save load
-Installed in both Windows installs (client + dedicated, git-8074-patch-1173) and 11 of 12 Pi lobbies
-(lobby 11 had a player; it restarts onto the fix once empty).
+Installed in both Windows installs (client + dedicated, git-8074-patch-1173) and all 12 Pi lobbies.
 Please check: hold duck, then load an airborne standing save (your surf_shape save 52 is the
 one measured). You should crouch at once and fly the same line as pressing duck after the load.
 Measured on save 52: old exe held-before body 8.5 units lower at 3 matched ticks and stopped

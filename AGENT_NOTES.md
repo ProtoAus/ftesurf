@@ -17,8 +17,8 @@ plus two `oldbuttons &= ~BUTTON_DUCK` lines; merged to main 05a8118a3. Windows: 
 client and dedicated exes (addf0956.../d9c5634c...), `.prev` = 520, the older `.prev` pair kept in
 the task root; plugins and VMs untouched. Pi: fteqw-svarm64 9c43b2a3..., `.prev` and
 pre1173-20261101T105814Z = 520, the old `.prev` (P1151) renamed pre1162-20261101T032051Z; hl2
-plugin untouched; each lobby restarted only after reading 0 players (11 at 10:58Z; @11 had
-a player and restarts when it reads 0 -- `sh swap1173.sh restart 11` in the Pi root re-checks). pigate.sh printed identical
+plugin untouched; each lobby restarted only after reading 0 players (11 at 10:58Z; @11
+was occupied and came up on it with P1171's all-lobby restart at 11:46Z). pigate.sh printed identical
 lines on the old and new binaries (60 dettest, the 2 known HOLDs). The new ARM .text is ~4 KB
 smaller than P1162's: erratum-843419 veneer padding; by `nm` on the .db only PM_ApplyPreInput
 and SV_RunCmdPart differ. Final-image save52 check, gate output and swap script: task root
