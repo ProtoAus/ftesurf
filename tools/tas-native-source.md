@@ -51,8 +51,11 @@ Limits are fixed in code, not chosen by submitted metadata:
 | Ordinary Peer inventory/dynamic output | 8,192 | 256 MiB |
 | Preparation Peer inventory/dynamic output | 132,096 | 8 GiB + 256 MiB |
 
-Preparation has its own frame magic and parser entrypoint. The ordinary parser
-rejects that frame, and the preparation parser rejects a component frame. Native
+The native command is `fs_tas_profile_export`, enabled only with
+`-tas-vfs-profile-prepare` and `-tas-vfs-probe`; `ProfilePreparationPeer` supplies
+the preparation flag. It uses the `TASVFSEXPORT` framing family with the distinct
+`profileprep` purpose token and `parse_preparation` entrypoint. The ordinary parser
+rejects that purpose, and preparation parsing rejects a component frame. Native
 per-file and logical-name caps still apply. Peer retains its ordinary 64 MiB
 per-file/log guard, process/address-space limits, static-file checks, symlink
 refusal, cancellation and cleanup. A profile with a larger individual asset is
@@ -80,5 +83,10 @@ Linux skips only the Windows-only managed-content case). Acting ARM checks cover
 execution purpose, raw compressed bytes, alias refusal and a real BSP/QC trusted
 entfix edit. Human reader tests remain949/0 failed; a paired541-run corpus sweep
 retains348 existing faults in both readers. These are component regressions, not
-full source-profile qualification, queue admission or deployment. Final-image and
-deployment acceptance remain separate from source tests and compiler invocation.
+full source-profile qualification, queue admission or deployment. An isolated real
+native preparation smoke also confirms component/preparation byte equality,
+cross-role reader refusal and the actual inherited shared-reader lease: a writer
+remains blocked after the parent's test-only early close until native cleanup,
+then acts and advances the epoch. That does not establish real publisher coverage.
+Final-image and deployment acceptance remain separate from source tests and
+compiler invocation.
