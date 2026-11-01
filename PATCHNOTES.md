@@ -37,6 +37,19 @@
 ### P1186 Enter sends menu chat messages
 - In the main menu's chat, Enter (or keypad Enter) now sends your message on the Maps, Story and Stats screens too, not only on the front page.
 
+### P1185 Boosters no longer put your next run in practice
+- On maps whose boosters switch themselves off and back on (surf_mesa and many others), riding one, then resetting or loading a save and riding it again, no longer marks the new run as practice.
+
+### P1183 Two wrong console messages
+- Loading a save on a map where you have none says "nothing saved on this map" once instead of twice.
+- Shift + mouse wheel noclip speed now works on lobbies; it used to refuse with "first local seat only".
+
+### P1182 The sun hides behind props
+- A map's sun glow (env_sun) no longer shines through pillars, statues and other props in front of it (surf_pantheon's columns, for one). Glass still lets it through.
+
+### P1181 Stage resets face the right way
+- On maps whose zones were made in the zone editor, !r and !s now face you where the map's own stage teleport faces, instead of wherever the zoner happened to be looking (13 maps, e.g. surf_for_shareholder_value, surf_sirena, surf_midnight).
+
 ### P1178 Maps list: snug rows, map authors, sharper pictures
 - Each map in the Maps list now takes the height of its picture plus a little padding, so more maps fit on screen.
 - The map's author is shown after its name in the Maps list, and under the map name in the in-game Map info.

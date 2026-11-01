@@ -27,8 +27,17 @@ commit   dc3e20be390ba5c3bb7d570bcacba8151172cd7d
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1165
+<<<<<<< Updated upstream
 patch    1187
 # Patch 1187 (CSQC + SSQC): a linked player's chat goes to everyone by default (said here + posted to the menu room, tagged [#N]); TAB/team key = this lobby; the lobby skips relaying its own players' room lines. Native pin/tag, backend and Build unchanged.
+=======
+patch    1186
+# Patch 1185 (SSQC): a world-owned activation trigger a player switches off and that same cause switches on again stays world-owned (surf_mesa booster false practice). Native pin/tag and Build unchanged.
+# Patch 1183 (SSQC/CSQC): one "nothing saved" from the load key; Shift+wheel noclip tuning asks about the seat only with 2+ local seats. Native pin/tag and Build unchanged.
+# Patch 1182 (CSQC): env_sun's probe uses the glare mask (SOLID|BODY|visual), so props hide the sun. Native pin/tag and Build unchanged.
+# Patch 1181 (SSQC): editor-made automatic stage spawns face the one info_teleport_destination inside their zone. Native pin/tag and Build unchanged.
+# Patch 1179 (backend unit): surfd drop-in 20-hid-evidence.conf makes the lobbies' evidence tree writable, so /api/hid stores journals again. Native pin/tag, QC and Build unchanged.
+>>>>>>> Stashed changes
 # Patch 1186 (menu): Enter/keypad Enter sends the menu chat on every ui_browser_screen, not only MAIN/CHAT. Native pin/tag and Build unchanged.
 # Patch 1178 (menu/CSQC + tools/data): Maps list rows sized to the 160x90 photo, the author (mapmeta column 12) in the list and HUD Map info, a 160x90 JPEG atlas (gfx/mapthumbs/hd<N>.jpg, columns 13/14) beside the frozen 128x72 one. Native pin/tag and Build unchanged.
 # Patch 1177 (CSQC): hud_player look keys are mirrored in archived cl_lobby* cvars and fill unset userinfo at CSQC init (cfg_save_infos 0 kept userinfo out of ftesurf.cfg). Native pin/tag and Build unchanged.

@@ -1,5 +1,35 @@
 # AGENT_NOTES.md
 
+## P1181/P1182/P1183/P1185 LIVE (1 Nov 2026 18:09Z); P1179 waits on Lex's sudo
+
+Delivered QC base is now `origin/deploy/p1185-lexbugs` 5729ce47 = d4b9bd87 (P1187) + these
+patches; main carries the same lines (P1183's wheel half does not apply: main still has the
+P1029 wheel). Built with fteqcc c24ede65 in C:/FTESurf-worktrees/lexbugs-20261102/qc
+(`build.ps1 -Pi -QuakeDir <absent>`), qw+cs+lno hand-copied into both installs: qwprogs
+6c16ff90, csprogs 84f64afe (codes.txt, backup codes.txt.pre1185), menu not shipped (055fda08).
+`.prev` = e7cdc83f/65698384. 12 lobbies restarted at 0 players, 0 QC errors after.
+
+- P1185 is evidence code: two review rounds, three lenses then two. Round 1 found world causes
+  all share (world, 0, FALSE) and a stale record surviving another cause's Disable; the rule is
+  now "player cause, world-owned slot, back to world only". The residual (a player-re-armed
+  world timer carries their identity) has 0 reachable cases in 2204 BSPs; BACKLOG.
+- P1181's census rule must skip Momentum-mirrored files (root `dataTimestamp`): 3 of the shipped
+  library's 44 centred spawns would turn. Our editor never writes the key, so a resaved file
+  loses the exemption (BACKLOG).
+- P1182: every static prop's triangles are BODY only, so a trace mask of CONTENTBIT_SOLID passes
+  through all props; use SPR_GLARE_MASK. The first visual-bit trace builds the plugin's tree
+  synchronously, so cl_sun.qc warms it at load.
+- Traps met: CSQC dprints reach the log file only with `log_developer 1`; `screenshot_tga` is not
+  a command (`screenshot <name>.png`); a listen client's screenshot can catch a frame at the
+  old position (voidvis flips 3133/1714): settle 8 s first. An arm that walked into surf_mesa's
+  booster from the floor never touched it (the trigger floats); start inside it.
+- P1179: surfd's ProtectSystem=strict leaves /srv/nvme read-only (worker mountinfo), so every
+  POST /api/hid since 26 Oct failed with EROFS (503). Drop-in staged at
+  /srv/nvme/agent-work/hid-evidence-rw-20261102/20-hid-evidence.conf (repo
+  surfd/surfd-hid-evidence.conf); the P1115 installer rewrites only 10-guarded-startup.conf, so
+  Lex installs it once; then `sudo -n systemctl daemon-reload` and stop/start surfd.service
+  (NOPASSWD) and check the worker's mountinfo shows the evidence tree rw.
+
 ## P1187 chat to everyone + P1178, LIVE (1 Nov 2026 18:01Z)
 
 Delivered QC base is now `origin/deploy/p1187-chat` d4b9bd87 = e2's P1178 093fbbe7 (on P1186's

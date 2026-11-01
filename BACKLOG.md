@@ -1,5 +1,57 @@
 # BACKLOG.md
 
+## Lex's bug paste of 2 Nov: diagnosed, not fixed (P1179-P1185 took the rest)
+
+- P1185 residual (round-2 reviews, both lenses): the "same cause" match is on bank identity, and
+  a world logic_timer re-armed by a player input (Enable/ResetTimer/FireTimer/RefireTime,
+  SV_TimerSchedule) carries that player's identity on every later tick, so the timer's own
+  Disable/Enable of a world-owned activation trigger leaves it world-owned at a phase the player
+  chose. Census of all 2204 library BSPs: 885 timers, 4 toggle an activation trigger, 0 reachable
+  by player I/O (scratch cyclecensus.py). Fix if a map ever needs it: refuse the rule for chains
+  run through SV_BankThink (timer/mover callbacks), carrying a "player-fired" mark onto delayed
+  outputs so surf_mesa's OnEndTouch + delayed Enable still passes. Also: two riders leaving one
+  self-toggling booster together cancel the record (the second's no-op Disable), so the old
+  false practice returns after the first restarts; fails toward taint.
+- P1181 provenance is per file: a Momentum zone file saved through our editor loses its
+  `dataTimestamp` (ZoneEdit_WriteFile never writes it), so its centred Momentum spawns turn
+  again. Seen on this PC: data/maps/zones/local/surf_shape.json (29 Oct) turns b1 -45 -> 90.
+  Facing only (yaw is in neither zone hash). Fix: per-spawn provenance, e.g. the editor marks
+  the spawns it placed.
+- P1182: solid see-through props (glass or fences with a .phy, render-mesh foliage) now hide
+  the sun fully; Source's pixel query would show it through their gaps. Frame cost of the
+  per-frame visual walk not measured.
+
+- surf_sirena's anti-cut barriers (`barriercollision_s1`/`_s3`, `s5_barriercollision`, func_brush
+  Solidity 0) open per player through VScript only: `scripts/vscripts/barriercollision.nut` in
+  the map pak sets the player's owner to the barrier (`SetPlayerNoCollideBarrier`, cleared by
+  `ClearPlayerNoCollideBarrier`), called from triggers via `alpha_script, RunScriptCode`.
+  `logic_script` has no spawn function (removed by the catch-all, sv_entities.qc), nothing
+  implements RunScriptCode, so the barriers are solid for everyone. The same map's 350
+  teleports set velocity by script (`SetAbsVelocity`). Needs a narrow VScript subset plus a
+  per-player collision exception on the server (AddLinksToPmove skips only owned entities,
+  sv_user.c) and in prediction; making the barriers non-solid instead is a skip. Falsifier:
+  flying stage 1 through the grant window (#1523) reaches the stage 2 start without prederr;
+  skipping the window stays blocked; a save after the window still passes after reset+load.
+- surf_olivia draws no sky at the hub/map_start: its 3D-sky camera's area (6) holds only the
+  lower box; the sky ceiling is in area 5 of the same cluster, and the 3D-sky pass enables only
+  the camera's area (gl_warp.c R_DrawSkyroom), while the 2D sky paints only over sky faces that
+  drew (gl_warp.c R_CalcSkyChainBounds before GL_DrawSkyBox). The only one of 281 parseable
+  sky_camera maps laid out so. Fix: draw the whole 2D skybox behind a Source map's 3D-sky view,
+  as Source does. Falsifier: sky at map_start with vbsp_skyroom 1; unchanged on surf_santorini.
+- surf_utopia: 14,564 of 16,966 world faces and the sky are TF2 materials; Momentum's install
+  has none of them (its tf placeholder VPK is models only), so without TF2 Momentum shows
+  reflectivity-tinted flat colour (mat_error_texture_advanced). Ours shows the P780 checker.
+  Fix option: in the hl2 plugin, a grey tinted by the material's reflectivity (read and unused
+  at mod_vbsp.c ~2643) instead of the checker, and r_skybox_default when every sky face fails.
+  Falsifier: utopia with TF2 unmounted draws tinted walls and a sky, no checker.
+- Teleport pop-in: brush entities at a teleport's destination arrive with the server's next
+  snapshot after the client's predicted crossing (the server's PVS is from the edict origin,
+  sv_ents.c SV_Snapshot_SetupPVS), so they appear a command interval plus a round trip late
+  (~1-10 frames at 600 fps on LAN, more online). Fix option, QC-only: park a .view2-style
+  marker (SV_ViewEyeAt, sv_saveloc.qc) at the !r destination and at an imminent
+  trigger_teleport's destination. Falsifier: CSQC counts active brush entities each frame after
+  a crossing; control lags, `sv_nopvs 1` and the fix do not.
+
 ## P1171 lobby playtime: review quirks (1 Nov 2026; not integrity, informational totals)
 
 - `surfd/playstats.py:store` credits whatever cumulative seconds a stream reports; nothing ties
