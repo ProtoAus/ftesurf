@@ -522,7 +522,7 @@ void() Mlb_AuxAsk =
 	mlb_aux_sent = time;
 	mlb_course_req = Lob_NextReq();
 	// Reuse the site's existing bounded course catalogue.
-	url = strcat(dir, "/board/api/map/", uri_escape(mlb_map), "?track=0&leg=0&tier=ranked&style=", uri_escape(mlb_style));
+	url = strcat(dir, "/board/api/map?map=", uri_escape(mlb_map), "&track=0&leg=0&tier=ranked&style=", uri_escape(mlb_style));
 	if (!uri_get(url, mlb_course_req)) mlb_course_req = 0;
 	who = MH_Me();
 	if (!MF_Hex(who, 12) && !MF_Hex(who, 8)) return;
