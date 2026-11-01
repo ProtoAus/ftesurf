@@ -18,8 +18,10 @@ Native pin/tag and qcbuild were not changed for this client-only correction.
   hat colour, both items selected. Inspected screenshot shows the cylindrical
   crown and matching inventory icon; the ice aura still renders. No raw player
   identity, forged owner account or production inventory change was used.
-- Appearance/fit and another player's crown remain the owner's small manual
-  check in `lextest.md`. Native preview inspection is not final owner acceptance.
+- Owner appearance acceptance received1Nov2026: "Yep, you did it exactly
+  correct!" Recorded as manual confirmation of the intended crown design in
+  `lextest.md`; another player's crown remains unconfirmed. This does not accept
+  aura appearance, wall occlusion, numerical performance or local VM adoption.
 
 ## Actual delivery and limits
 
