@@ -144,6 +144,50 @@ void() Social_Frame =
 		social_poll = 0;
 };
 
+/*
+  P1187: chat goes to everyone by default -- a linked player's line is said here AND
+  posted to the main menu's room (cl_chat.qc). The post carries this lobby's tag ("[#4] "
+  from "Open Lobby #4"), and the room's lines from players in this lobby are not relayed
+  back here: they were said here.
+*/
+string() Social_RoomTag =
+{
+	local string h;
+	local float k, i, c;
+
+	h = cvar_string("hostname");
+	k = -1;
+	for (i = 0; i < strlen(h); i = i + 1)
+		if (str2chr(h, i) == 35)        // '#'
+			k = i;
+	if (k < 0 || k >= strlen(h) - 1 || strlen(h) - k > 4)
+		return "[lobby] ";
+	for (i = k + 1; i < strlen(h); i = i + 1)
+	{
+		c = str2chr(h, i);
+		if (c < 48 || c > 57)
+			return "[lobby] ";
+	}
+	return strcat("[", substring(h, k, -1), "] ");
+};
+
+float(string who) Social_HereWho =
+{
+	local float i;
+	local entity p;
+
+	if (strlen(who) != FS_WHO_IDLEN)
+		return FALSE;
+	for (i = 1; i <= min(64, cvar("maxclients")); i = i + 1)
+	{
+		p = edict_num(i);
+		if (clienttype(p) == CLIENTTYPE_REAL)
+		if (!strcmp(infokey(p, "*phash"), who))
+			return TRUE;
+	}
+	return FALSE;
+};
+
 void(entity e, string op, string who, string text) Social_Action =
 {
 	local string form;
@@ -176,7 +220,10 @@ void(entity e, string op, string who, string text) Social_Action =
 	    && op != "block" && op != "unblock") return;
 	if (strlen(text) > 960) return; // percent-encoded UTF8, still bounded upstream
 	form = strcat(Social_Form(), "&game=1&token=", e.social_token, "&op=", op, "&who=", who);
-	if (op == "message") form = strcat(form, "&text=", uri_escape(uri_unescape(text)));
+	if (op == "message" && who == "-")
+		form = strcat(form, "&text=", uri_escape(strcat(Social_RoomTag(), uri_unescape(text))));
+	else if (op == "message")
+		form = strcat(form, "&text=", uri_escape(uri_unescape(text)));
 	e.social_req = Account_NextId();
 	e.social_reqtime = time;
 	if (!uri_post(strcat(cvar_string("lobby_master"), "/api/social/action"), e.social_req,
@@ -288,6 +335,8 @@ float(float reqid, float code, string body) Social_Reply =
 		for (j = 0; j < min(6, json_get_length(messages)); j = j + 1)
 		{
 			m = json_get_child_at_index(messages, j);
+			if (Social_HereWho(json_get_string(json_find_object_child(m, "who"))))
+				continue;               // P1187: said here already
 			stuffcmd(e, sprintf("friend_room %s %s %s\n",
 			         json_get_string(json_find_object_child(m, "who")),
 			         uri_escape(json_get_string(json_find_object_child(m, "name"))),

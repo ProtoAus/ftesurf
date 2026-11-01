@@ -395,7 +395,7 @@ float(string hash) Friends_SnapshotFresh =
 float(string cmd) Friends_ConsoleCommand =
 {
 	local string c, nm, s;
-	local float n, tmp, slot, muted;
+	local float n, tmp, slot, muted, k;
 
 	n = tokenize(cmd);
 	c = argv(0);
@@ -486,10 +486,14 @@ float(string cmd) Friends_ConsoleCommand =
 		s = uri_unescape(argv(3));
 		if (!Chat_Silenced(nm))
 		{
+			// P1187: a lobby tags its posts "[#4] " (sv_social.qc Social_RoomTag); untagged is the menu.
+			k = strstrofs(s, "] ", 0);
 			if (substring(s, 0, 2) == "* ")
 				s = strcat("^5[everyone]^2 board^7 ", nm, "^7 ", substring(s, 2, -1));
+			else if (substring(s, 0, 1) == "[" && k >= 2 && k <= 6)
+				s = strcat("^5", substring(s, 0, k + 1), "^7 ", nm, "^7: ", substring(s, k + 2, -1));
 			else
-				s = strcat("^5[everyone]^7 ", nm, "^7: ", s);
+				s = strcat("^5[menu]^7 ", nm, "^7: ", s);
 			if (Friends_MarkSafe(argv(1))) chat_push_mark = argv(1);
 			Chat_Push(s);
 			print(strcat(s, "\n"));

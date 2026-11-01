@@ -141,6 +141,15 @@ void() Chat_PrivateClear =
 	chat_private = "";
 	chat_private_name = "";
 };
+// P1187: a linked player's line starts to everyone (the lobby and the main menu room);
+// "." is this lobby only. Unlinked players keep "", the lobby alone.
+void(float lobbyonly) Chat_PickRoom =
+{
+	Chat_PrivateClear();
+	if (!Chat_RoomOK()) return;
+	chat_private = strzone(lobbyonly ? "." : "-");
+	chat_private_name = strzone(lobbyonly ? "this lobby" : "everyone");
+};
 
 string chat_sil[CHAT_SIL_MAX];  // lowercase names
 float  chat_sil_n;
@@ -1449,7 +1458,7 @@ void() Chat_DumpRows =
 	if (chat_typing)
 	{
 		rows = Chat_Wrap(strcat("> ", chat_buf, "_"), chat_wkey_x, chat_wkey_y);
-		print(sprintf("chat_rows: draft len %g\n", strlen(chat_buf)));
+		print(sprintf("chat_rows: draft len %g to \"%s\"\n", strlen(chat_buf), chat_private_name));
 		Chat_DumpBlock("draft", rows, chat_wr_n);
 	}
 	// Patch 821: the panel, the field and both selections.
@@ -1974,13 +1983,9 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 		// they are bound to -- `bind enter messagemode` made its ENTER a draft.
 		if (Rewind_Owns(scanx))
 			return FALSE;
-		// P1010: team chat has no team here; its key talks to everyone (the main menu room).
+		// P1187: everyone by default; the team key (no teams here) is this lobby only.
 		Chat_Open("");
-		if (b == "messagemode2" && Chat_RoomOK())
-		{
-			chat_private = strzone("-");
-			chat_private_name = strzone("everyone");
-		}
+		Chat_PickRoom(b == "messagemode2");
 		return TRUE;
 	}
 
@@ -2022,32 +2027,29 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 	{
 		if (strtrim(chat_buf) != "")
 		{
-			if (chat_private == "" || chat_private == "-")       // a private line never comes back to go public
+			// a private line never comes back to go public
+			if (chat_private == "" || chat_private == "-" || chat_private == ".")
 				Chat_SentAdd(chat_buf);
-			if (chat_private == "-")
-			{
-				// P1010: the relay echoes nobody's own line back, so it is shown here.
-				localcmd(sprintf("cmd friend message - %s\n", uri_escape(chat_buf)));
-				Chat_Push(strcat("^5[everyone]^7 ", getplayerkeyvalue(player_localnum, "name"), "^7: ", chat_buf));
-			}
-			else if (chat_private != "")
+			if (chat_private != "" && chat_private != "-" && chat_private != ".")
 				localcmd(sprintf("cmd friend message %s %s\n", chat_private, uri_escape(chat_buf)));
 			else if (!WarpOp_Chat(chat_buf))
+			{
+				// P1187: said here (the lobby echoes it), and to everyone posted to the room
+				// too -- not a !command, which is this lobby's alone.
 				Chat_RunSafe("cmd say", chat_buf);
+				if (chat_private == "-")
+				if (substring(strtrim(chat_buf), 0, 1) != "!")
+					localcmd(sprintf("cmd friend message - %s\n", uri_escape(chat_buf)));
+			}
 		}
 		Chat_Close();
 		return TRUE;
 	}
-	// P1010: TAB swaps this lobby's chat and everyone's (the main menu room).
+	// P1010/P1187: TAB swaps everyone and this lobby only; a private line stays private.
 	if (scanx == K_TAB)
 	{
-		if (chat_private == "-")
-			Chat_PrivateClear();
-		else if (chat_private == "" && Chat_RoomOK())
-		{
-			chat_private = strzone("-");
-			chat_private_name = strzone("everyone");
-		}
+		if (chat_private == "" || chat_private == "-" || chat_private == ".")
+			Chat_PickRoom(chat_private == "-");
 		return TRUE;
 	}
 	if (scanx == K_ESCAPE)
@@ -2116,6 +2118,7 @@ float(string cmd) Chat_ConsoleCommand =
 	if (strlen(t) > CHAT_DRAFT_MAX)
 		t = substring(t, 0, CHAT_DRAFT_MAX);
 	Chat_Open(t);
+	Chat_PickRoom(FALSE);
 	return TRUE;
 };
 
@@ -2151,6 +2154,7 @@ float(string args, float team) CSQC_ChatSay =
 	if (strtrim(args) != "")
 		return FALSE;          // `say <text>` is a send, not a draft
 	Chat_Open("");
+	Chat_PickRoom(FALSE);
 	return TRUE;
 };
 
