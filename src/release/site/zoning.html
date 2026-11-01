@@ -1,0 +1,85 @@
+<!doctype html>
+<!-- P1176: KSF maps still without zones. zoning.json and zoning-thumbs.webp come from
+     tools/zoningpage.py; zoning.js asks board/api/maps which of them have zones now. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>World of Surf Zoning</title>
+<meta name="description" content="KSF maps that still need start, stage and end zones in World of Surf, updated as zoners publish them.">
+<meta property="og:title" content="World of Surf Zoning">
+<meta property="og:description" content="KSF maps that still need start, stage and end zones in World of Surf, updated as zoners publish them.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://proto.bar/ftesurf/zoning.html">
+<meta property="og:image" content="https://proto.bar/ftesurf/og-worldofsurf.png">
+<meta property="og:site_name" content="World of Surf">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="site.css?v=p1176">
+<script src="zoning.js?v=p1176" defer></script>
+</head>
+<body>
+
+<header class="nav">
+  <nav class="nav-in" aria-label="Site">
+    <a class="brand" href="./" aria-label="World of Surf home"><span>World of</span><b>Surf</b></a>
+    <div class="links">
+      <a href="./">Overview</a>
+      <a href="board/">Leaderboard</a>
+      <a href="board/#who=">Players</a>
+      <a href="zoning.html" aria-current="page">Zoning</a>
+      <a href="anticheat.html">Anti-Cheat</a>
+    </div>
+    <a class="pill" href="./#download">Download</a>
+  </nav>
+</header>
+
+<main class="compact zoning">
+<section>
+  <div class="wrap">
+    <h1>Zoning</h1>
+    <p class="lede">KSF maps that still need zones. A map leaves this list within a few minutes of its zones being published in game.</p>
+    <div class="zhead">
+      <p class="zstats" id="zstats" aria-live="polite">Loading&hellip;</p>
+      <div class="zbar" aria-hidden="true"><span id="zbar"></span></div>
+    </div>
+    <div class="ztools">
+      <input type="search" id="zq" placeholder="Search maps or mappers" aria-label="Search maps or mappers" autocomplete="off">
+      <div class="zchips" id="ztier" role="group" aria-label="Tier">
+        <button type="button" data-t="0" aria-pressed="true">All</button>
+        <button type="button" data-t="1" aria-pressed="false">T1&ndash;2</button>
+        <button type="button" data-t="3" aria-pressed="false">T3&ndash;4</button>
+        <button type="button" data-t="5" aria-pressed="false">T5+</button>
+      </div>
+      <select id="zsort" aria-label="Sort">
+        <option value="p">Most played</option>
+        <option value="t">Easiest first</option>
+        <option value="z">Fewest zones</option>
+        <option value="n">Name</option>
+      </select>
+      <label class="zcheck"><input type="checkbox" id="zdone"> Show zoned</label>
+    </div>
+    <ol class="zlist" id="zlist"></ol>
+    <p class="znote" id="znote"></p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="fnav">
+      <a href="./">Overview</a><a href="board/">Leaderboard</a><a href="board/#who=">Players</a>
+      <a href="zoning.html">Zoning</a><a href="anticheat.html">Anti-Cheat</a><a href="./#download">Download</a>
+      <a href="https://github.com/ProtoAus/ftesurf">Source</a>
+    </div>
+    <p>World of Surf is GPLv2 or later &middot; <a href="LICENSE.txt">Licence</a> &middot;
+      Built on FTEQW &middot; <a href="https://github.com/ProtoAus/ftequakers">Engine source</a>.
+      Map facts and pictures from <a href="https://ksf.surf/">KSF</a> and Momentum Mod.</p>
+  </div>
+</footer>
+
+</body>
+</html>

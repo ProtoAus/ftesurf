@@ -27,7 +27,8 @@ commit   dc3e20be390ba5c3bb7d570bcacba8151172cd7d
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1165
-patch    1174
+patch    1176
+# Patch 1176 (site): front page down to the wordmark, a rainbow BETA and the downloads; new zoning page (tools/zoningpage.py data, live zoned state from board/api/maps). Native pin/tag, QC and Build unchanged.
 # Patch 1174 (tools + data): KSF site maps get table rows and pictures (mapmeta/ksfshots/mapthumbs, atlas page 10); Momentum zones verified against KSF's WR replays installed on nine KSF builds. Native pin/tag, QC and Build unchanged.
 # Patch 1171 (QC/backend): linked official-lobby playtime and main/bonus attempts under the existing online answer (8); additive surfd schema 26 (P1162 playstats). Native pin/tag and qcbuild unchanged.
 # Patch 1173: a duck held through a standing save load gets a fresh press edge (authoritative run_forceduck and prediction pre-input clear only BUTTON_DUCK from oldbuttons). Built from fix/duck52-release-01a192ea (tag patch-1173, installed native 520 + the fix), merged to main 05a8118a3. Native pin/tag, QC, formats and Build unchanged.

@@ -21,6 +21,10 @@
 
 ## next
 
+### P1176 Site: a cleaner front page and a zoning list
+- The front page is down to the logo, a rainbow BETA and the downloads; hover BETA for the build details.
+- New Zoning page on the site: every KSF map that still needs zones, with its picture, tier, stages, bonuses, plays and mapper. Maps drop off a few minutes after a zoner publishes them.
+
 ### P1175 Zone publishing works again
 - Zone admins can publish from the zone editor again. Since 1 Nov every upload had answered "Zone uploads unavailable".
 

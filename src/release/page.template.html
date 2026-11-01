@@ -29,8 +29,8 @@
 <meta name="twitter:image:alt" content="World of Surf wordmark on a dark background">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="site.css?v=p876">
-<script src="site.js?v=p876" defer></script>
+<link rel="stylesheet" href="site.css?v=p1176">
+<script src="site.js?v=p1176" defer></script>
 </head>
 <body class="landing">
 
@@ -41,6 +41,7 @@
       <a href="./" aria-current="page">Overview</a>
       <a href="board/">Leaderboard</a>
       <a href="board/#who=">Players</a>
+      <a href="zoning.html">Zoning</a>
       <a href="anticheat.html">Anti-Cheat</a>
     </div>
   </nav>
@@ -51,9 +52,9 @@
     <canvas id="runline" data-src="hero-run.json" aria-hidden="true"></canvas>
     <div class="wrap">
       <div class="hero-main">
-        <p class="eyebrow" title="@@DATE@@ &middot; QuakeC build @@QCBUILD@@ &middot; engine patch @@ENGINEPATCH@@">@@VERSION@@ &middot; Free and open source</p>
-        <h1 class="hero-brand"><img src="worldofsurf-wordmark.svg" width="720" height="320" alt="World of Surf"></h1>
-        <p class="lede">Surf and bhop with Counter-Strike: Source and Momentum Mod movement.</p>
+        <!-- The badge's colours cycle like the in-game board's Perfect (cl_hud.qc HUD_BoardGrade). -->
+        <h1 class="hero-brand"><img src="worldofsurf-wordmark.svg" width="720" height="320" alt="World of Surf"><span
+          class="beta" title="@@VERSION@@ &middot; @@DATE@@ &middot; QuakeC build @@QCBUILD@@ &middot; engine patch @@ENGINEPATCH@@"><span>B</span><span>E</span><span>T</span><span>A</span></span></h1>
         <!-- The launcher installs the game into its own folder and updates it. R2 serves
              it with Content-Disposition naming it ftesurf-launcher(.exe), the name the
              engine's update handoff runs (qkupdate.c QKU_Restart_f); `download` alone
@@ -66,13 +67,6 @@
             <small>x86_64 &middot; launcher &middot; beta, unranked</small></a>
           <!--LINUX-END-->
         </div>
-        <!-- P857: the launcher installs into the folder it is started from. -->
-        <p class="launch-note">Put it in its own folder, then run it
-          <!--LINUX-BEGIN-->
-          (Linux: <code>chmod +x</code>)
-          <!--LINUX-END-->
-        </p>
-        <p class="requirements-inline">Requires Momentum Mod Playtest, Counter-Strike: Source and Half-Life 2.</p>
         <p class="launch-note">Full package:
           <a href="@@URL@@" download="@@FILENAME@@" title="@@SIZE_BYTES@@ bytes &middot; SHA-256: @@SHA256@@">Windows</a> (@@SIZE_HUMAN@@)
           <!--LINUX-BEGIN-->

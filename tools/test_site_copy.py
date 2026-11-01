@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REVISION = None
 HOME = "src/release/page.template.html"
 ANTI = "src/release/site/anticheat.html"
+ZONING = "src/release/site/zoning.html"
 
 
 class Content(HTMLParser):
@@ -78,6 +79,14 @@ class CopyTests(unittest.TestCase):
                 with self.subTest(path=path, slogan=slogan):
                     self.assertNotIn(slogan, doc)
 
+    def test_zoning_page(self):
+        doc = source(ZONING)
+        self.assertIn('zoning.js', doc)
+        self.assertIn('aria-current="page">Zoning', doc)
+        for path in (HOME, ANTI):
+            with self.subTest(path=path):
+                self.assertIn('href="zoning.html"', source(path))
+
     def test_verification_facts_and_limits(self):
         words = Content(source(ANTI)).words
         for fact in ("movement inputs", "view angles", "position and velocity", "map build",
@@ -107,19 +116,25 @@ class CopyTests(unittest.TestCase):
                 self.assertIn(f'@@{platform}SHA256@@', full[0]['title'])
                 self.assertIn(f'@@{platform}SIZE_BYTES@@', full[0]['title'])
                 self.assertNotIn('btn', full[0].get('class', '').split())
-        for value in ('id="download"', 'Full package', 'Momentum Mod Playtest', 'Counter-Strike: Source',
-                      'Half-Life 2', 'beta, unranked', 'Tested in WSL only', 'href="version.json"',
-                      'href="LICENSE.txt"', 'QuakeC build @@QCBUILD@@', 'patch @@ENGINEPATCH@@'):
+        for value in ('id="download"', 'Full package', 'beta, unranked', 'Tested in WSL only', 'href="version.json"',
+                      'href="LICENSE.txt"', 'QuakeC build @@QCBUILD@@', 'patch @@ENGINEPATCH@@', 'href="zoning.html"'):
             with self.subTest(value=value):
                 self.assertIn(value, doc)
         for value in ('ftesurf.bat', 'ftesurf.sh', 'Existing alpha installs', 'save as'):
             with self.subTest(gone=value):
                 self.assertNotIn(value, doc)
+        # P1176 (Lex, 2 Nov): no version line, tagline or install/requirements notes on the page;
+        # the build details moved to the BETA badge's title.
+        for value in ('Free and open source', 'Surf and bhop with', 'Put it in its own folder',
+                      'chmod', 'Requires Momentum Mod Playtest'):
+            with self.subTest(removed=value):
+                self.assertNotIn(value, page.words)
+                self.assertNotIn(value, doc.split('</head>', 1)[1])
+        beta = [attrs for tag, attrs in page.attrs if tag == 'span' and attrs.get('class') == 'beta']
+        self.assertEqual(len(beta), 1)
+        self.assertIn('@@VERSION@@', beta[0]['title'])
+        self.assertIn('BETA', page.words.replace(' ', ''))
         outside = re.sub(r"<!--LINUX-BEGIN-->.*?<!--LINUX-END-->", "", doc, flags=re.S)
-        # P857: the launcher installs where it is started; the chmod hint only beside a Linux button.
-        self.assertIn('Put it in its own folder, then run it', outside)
-        self.assertIn('(Linux: <code>chmod +x</code>)', doc)
-        self.assertNotIn('chmod', outside)
         self.assertEqual(set(re.findall(r"@@([A-Z0-9_]+)@@", outside)),
                          {"VERSION", "FILENAME", "URL", "SIZE_HUMAN", "SIZE_BYTES", "SHA256", "DATE", "QCBUILD",
                           "ENGINEPATCH", "LAUNCHER_URL", "LAUNCHER_SHA256"})
