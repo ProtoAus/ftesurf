@@ -38,8 +38,8 @@ Please check: hold duck, then load an airborne standing save (your surf_shape sa
 one measured). You should crouch at once and fly the same line as pressing duck after the load.
 Measured on save 52: old exe held-before body 8.5 units lower at 3 matched ticks and stopped
 at x~7002; new exe held-before == pressed-after (0.0 at 2 ticks) and carries on past it.
-Owner retest (2 Nov): "works just right" -- accepted. Shipped publicly in 0.1.34.
-Not checked as its own case: online prediction against a lobby.
+Owner retest (2 Nov) on a lobby: "works just right" -- accepted, online prediction included.
+Shipped publicly in 0.1.34.
 
 ## P1170 clean lobby disconnects
 DELIVERED both Windows +all12 Pi paired scripts. Please check A->B removes
