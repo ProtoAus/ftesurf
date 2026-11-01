@@ -21,6 +21,9 @@
 
 ## next
 
+### P1186 Enter sends menu chat messages
+- In the main menu's chat, Enter (or keypad Enter) now sends your message on the Maps, Story and Stats screens too, not only on the front page.
+
 ### P1177 Your hud_player colours are kept
 - The colours, belt, trail and glow you pick in hud_player now stay picked after you restart the game, instead of going back to a random colour.
 

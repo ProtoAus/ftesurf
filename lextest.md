@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1186 Enter in the main menu chat
+In both Windows installs (menu.dat) since 2 Nov 04:24 local (17:24Z 1 Nov); public players get it
+with the next release. A game already running then still has the old menu: restart it first.
+Please check: in the main menu, open Maps (or Story/Stats), click the chat box on the right,
+type a line and press Enter (keypad Enter too). It should send, as the send button does.
+Not run by an agent: a send needs a linked account and posts to the live public room.
+
 ## P1177 hud_player colours kept after a restart
 Live on all 12 lobbies and both Windows installs since 2 Nov 04:13 local (17:13Z 1 Nov).
 Please check: open hud_player (p), pick a body colour (and a belt, trail or glow if you
