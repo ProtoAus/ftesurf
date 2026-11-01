@@ -21,6 +21,15 @@
 
 ## next
 
+### P1184 Zone editor: type a zone's exact size
+- The zone editor shows the selected zone's size and its six edges (x min/max, y min/max, bottom, top). Click one to type an exact number, or roll the wheel over it to move that edge a grid step.
+- `zone_edit face <xmin|xmax|ymin|ymax|bottom|top> <value>` does the same from the console.
+
+### P1180 Zone publishing is instant, with a history
+- Publish has one button now, and it takes effect at once: the lobbies on that map restart with the new zones straight away (runs in progress there end). A bad zone no longer waits for people to finish.
+- The zone editor's new History page lists every published version of the map, who published it and when; click one to load it, then Save and Publish to bring it back.
+- The site's Zoning page shows who zoned each map, and a map drops off the list as soon as it is published.
+
 ### P1186 Enter sends menu chat messages
 - In the main menu's chat, Enter (or keypad Enter) now sends your message on the Maps, Story and Stats screens too, not only on the front page.
 

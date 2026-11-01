@@ -230,6 +230,25 @@
   surf_p_fixed zones, while the case expects it not to. Seen at 988f9407 before
   P1093 and unchanged by it. Either the case or PORTS is stale; not decided.
 
+## zonepub after P1180 (instant publish, 2 Nov 2026)
+
+From P1180's three review rounds; none writes wrong bytes or confirms a lobby on the old table.
+- Menu lag: the Maps list learns a map is zoned from surfd's catalogue, whose `map_index` is
+  cached MAPS_TTL (300 s), plus the menu's 60 s poll. The site reads the zone service's history
+  and is instant. Fix direction: `map_index` restats the zone directories' mtimes and rescans on
+  a change. Falsifier: a publish shows `zoned 1` in `/api/board?maps=1` within 60 s.
+- Mode-1 double reload: a lobby with no stated crc (P815 client) or a same-hash edit counts as
+  reloaded only by a load more than ~1 s after put() (`_since` is MONO()+1, uptime is whole
+  seconds); the changelevel now goes out within milliseconds, so a fast load is changelevelled
+  once more a round later. Falsifier: a real lobby's first changelevel is confirmed in round 1.
+- No per-map cooldown: a zone admin (or a stolen admin key) can restart a map's lobbies about
+  every 30-60 s, up to RATE (20) publishes an hour, with a one-line warning at the restart.
+  Accepted with "instant"; the history names every publisher. Falsifier: a cooldown or cap that
+  refuses the 3rd publish of one map inside N minutes with a reason.
+- History limiter: past 4096 addresses seen in a minute, new callers are refused until entries
+  go stale (cheap with IPv6). Falsifier: a per-prefix key, or nginx `limit_req` on the route.
+- The public history lists the zone admins' display names (they publish; Lex asked for it).
+
 ## zonepub holds every lobby's rcon password (P1081 review)
 
 - Sites: `surfd/zonepub_publish.py` `rcon_password`/`lobby_rcon`. "Reload now" reads
@@ -247,10 +266,6 @@ From the round-5 review of P1081; none lets a publish past an owed verdict.
   256 in all, 180 s each; `surfd/zonepub.py` challenge route) can be held by someone who never
   uploads. Falsifier: a zone admin's challenge still succeeds while the table is held full by
   another source.
-- Reload now under steady finishes: a player finishing runs on the map keeps a verdict owed, so
-  a force row can wait until it expires (fails safe: nothing installed). Sites: `force_ready`
-  and the write step's owed check in `zonepub_publish.py`. Falsifier: a force publish on a map
-  with a run finished every minute is written within its hour.
 - Map name case: the service accepts lowercase names only (`zonepub.py` `valid_name`) while the
   client allows uppercase (`src/shared/sh_zonefile.qc` `ZoneFile_Map`). Falsifier: publishing on a
   map whose name has a capital either works or is refused in the dialog with a reason.
@@ -275,9 +290,6 @@ From the round-6 review of P1081; none lets a publish past an owed verdict.
 - Backward clock step: a large backward wall-clock step delays the warning expiry and the
   reload expiry by that much (`_force_pending`, `RELOAD_EXPIRE` in `_force_reload`). Falsifier:
   with the wall clock stepped back an hour, a warning nobody answers still expires in 15 minutes.
-- After `rollback --anyway` mid-watch: lobbies still on the rolled-back table cannot be reloaded
-  (re-arm is refused past the rollback, Reload now of the live zones is a 409). Falsifier: an
-  operator command that warns and reloads a map's lobbies to the zones on disk.
 - Disk files zonepub did not write: duplicate keys, escaped keys or UTF-16 in a publish
   directory's file can make `same_zones` call a real fix "already live" (Python's JSON reads
   them, last key wins). Falsifier: a fix uploaded over such a file is accepted, or refused with
