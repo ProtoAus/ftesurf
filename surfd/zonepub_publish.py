@@ -626,7 +626,9 @@ def _ready_now(connect, store, row, maps, now):
     with connect(store) as db:
         cur = db.execute('SELECT * FROM publications WHERE id=?', (row['id'],)).fetchone()
     if cur is None or cur['kind'] != 'pending': return False
-    if cur['force'] and now - cur['at'] > FORCE_EXPIRE:   # a pre-P1180 row (force 0) had no deadline
+    # A row that has been held: a pre-P1180 row (force 0) had no deadline, and `applying` clears
+    # the hold, so one recovered from a crash before put() is tried again, not expired.
+    if cur['force'] and cur['hold'] and now - cur['at'] > FORCE_EXPIRE:
         _set(connect, store, row['id'], kind='expired')
         _note(connect, store, row['id'], 'expired, nothing installed: ' + (cur['hold'] or 'not ready in time'))
         log('expired', row['map'], row['sha'][:12], cur['hold'] or '')
@@ -703,7 +705,7 @@ def _force_reload(connect, store, rid, send, now, st):
         exp = _expected(db, row['map'])
         newer = _newer_write(db, row['map'], rid)
     if newer is not None:
-        # Its crc and lobbies are no longer this row's to chase (a rollback says nothing to them).
+        # Its crc and lobbies are no longer this row's to chase (a rollback row reloads them itself).
         _set(connect, store, rid, done_at=now)
         _note(connect, store, rid, 'reload ended: %s %d changed the files since' % (newer['kind'], newer['id']))
         log('reload ended', row['map'], row['sha'][:12], newer['kind'], newer['id'])
@@ -766,7 +768,8 @@ def _force_reload(connect, store, rid, send, now, st):
                 warned_ports=json.dumps({str(p): t for p, t in sorted(told.items())}))
     if readable and watch >= WATCH_ROUNDS and all(e[3] or e[4] for e in todo.values()):
         cols['done_at'] = now
-        if gave_ports: cols['kind'] = 'live-partial' if row['kind'] == 'live' else 'noop-partial'
+        if gave_ports and row['kind'] in ('live', 'noop'):
+            cols['kind'] = 'live-partial' if row['kind'] == 'live' else 'noop-partial'
     _set(connect, store, rid, **cols)
     said = ' '.join(words) or ('no lobby on it' if not todo else 'nothing left to read')
     _note(connect, store, rid, 'reload ' + said + ('' if readable else ' (table unread)'))
@@ -779,12 +782,13 @@ def rearm(connect, store, name):
     afresh in mode 1. Refused once a newer row changed the files (a rollback, another publish)."""
     with locked(store), connect(store) as db:
         row = db.execute("SELECT * FROM publications WHERE map=? AND force=1 AND kind IN "
-                         "('live','live-partial','noop','noop-partial') ORDER BY id DESC LIMIT 1", (name,)).fetchone()
+                         "('live','live-partial','noop','noop-partial','rollback') ORDER BY id DESC LIMIT 1",
+                         (name,)).fetchone()
         if row is None: raise ValueError('No reload-now publish of %s to re-arm' % name)
         newer = _newer_write(db, name, row['id'])
         if newer is not None:
             raise ValueError('%s %d changed the files of %s since; nothing re-armed' % (newer['kind'], newer['id'], name))
-        kind = 'live' if row['kind'].startswith('live') else 'noop'
+        kind = 'rollback' if row['kind'] == 'rollback' else ('live' if row['kind'].startswith('live') else 'noop')
         # The write's stamp while it can still be measured (a lobby loaded since stays done); a new one
         # from now after a reboot, or for a row that wrote nothing (every lobby is reloaded once more).
         keep = row['since_mono'] is not None and row['since_boot'] == BOOT() and MONO() >= row['since_mono'] - 1
@@ -862,7 +866,7 @@ def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit, rcon_fn=l
                                (math.ceil(CLOCK()), now, row['id']))
                     done[name] = kind = 'noop'
                 else:
-                    db.execute("UPDATE publications SET kind='applying', force=1, prev=?, result=? WHERE id=?",
+                    db.execute("UPDATE publications SET kind='applying', force=1, hold=NULL, prev=?, result=? WHERE id=?",
                                (json.dumps([[key(d), p.hex() if p is not None else None] for d, p in zip(dirs, prev)]),
                                 json.dumps([[key(d), row['sha']] for d in dirs]), row['id']))
                     kind = None
@@ -928,8 +932,8 @@ def rollback(connect, store, dirs, name, valid_name, maps_fn, now, limit, to_id=
                           'ORDER BY id DESC LIMIT 1' % (LIVE_KINDS,),
                           (name, sha(prev[0]))).fetchone() if prev and prev[0] else None
         # `live` stays NULL until put() is done, as a publish's does (_recover stamps a crashed one).
-        rid = db.execute("INSERT INTO publications(map,sha,steamid,at,kind,prev,result,crc) "
-                         "VALUES(?,?,?,?,'rollingback',?,?,?)",
+        rid = db.execute("INSERT INTO publications(map,sha,steamid,at,kind,prev,result,crc,force) "
+                         "VALUES(?,?,?,?,'rollingback',?,?,?,1)",
                          (name, target['sha'], target['steamid'], now,
                           json.dumps([[k, b.hex() if b is not None else None] for k, b in zip(keys, cur)]),
                           json.dumps([[k, sha(b)] for k, b in zip(keys, prev)]),

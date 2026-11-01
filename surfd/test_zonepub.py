@@ -764,7 +764,35 @@ class PublishNow(Publish):
         self.assertIsNotNone(f['done_at']); self.assertIn('reload ended: rollback', f['reload'])
         self.assertEqual(rb['force'], 1)                                      # P1180: the undo is instant too
         self.assertEqual(self.words('changelevel').count(27510), n + 1)      # back on the old zones
-        with self.assertRaises(ValueError): z.pub.rearm(z.connect, self.store, 'surf_fixture')
+        self.assertEqual(z.pub.rearm(z.connect, self.store, 'surf_fixture'), rb['id'])   # the undo's own reload
+    def test_a_rollback_whose_reload_leaves_a_lobby_stays_a_rollback(self):
+        self.grant(); self.maps={'surf_fixture'}
+        self.upload(self.challenge_now()[1]); self.wait(120)
+        self.stuck={27530}; self.rollback(anyway=True); self.wait(60 * (z.pub.RELOAD_TRIES + 3))
+        rb=self.row(); self.assertEqual((rb['kind'], rb['partial']), ('rollback', '[27530]'))
+        self.assertEqual(self.files(), [self.OLD, None])
+        rows=self.c.c.post('/api/zones/history', data=b'{"map":"surf_fixture"}').json['rows']
+        self.assertEqual(rows[0]['kind'], 'rollback')                        # still the map's current word
+    def test_a_rollback_interrupted_after_its_files_still_reloads(self):
+        self.grant(); self.maps={'surf_fixture'}
+        self.upload(self.challenge_now()[1]); self.wait(120)
+        real_put = z.pub.put
+        def crash(paths, bodies, limit): real_put(paths, bodies, limit); raise KeyboardInterrupt
+        with patch.object(z.pub, 'put', crash):
+            with self.assertRaises(KeyboardInterrupt): self.rollback(anyway=True)
+        n=len(self.words('changelevel')); self.wait(120)
+        self.assertEqual((self.row()['kind'], self.row()['force']), ('rollback', 1))
+        self.assertEqual(sorted(self.words('changelevel')[n:]), [27510, 27530])
+    def test_a_pre_p1180_row_recovered_before_its_write_is_not_expired(self):
+        self.grant(); self.maps={'surf_fixture'}
+        with z.connect(self.store) as db:
+            z.pub.queue(db, 'surf_fixture', self.raw, SID, self.now - 7200)
+            db.execute('UPDATE publications SET force=0')
+        def crash(paths, bodies, limit): raise SystemExit('power cut before the write')
+        with patch.object(z.pub, 'put', crash):
+            with self.assertRaises(SystemExit): self.apply()
+        self.assertEqual(self.row()['kind'], 'applying')
+        self.assertEqual(self.wait(60), {'surf_fixture': 'live'})            # recovered pending, then written
     def test_reload_now_compares_zones_not_bytes_and_not_the_crc(self):
         self.grant(); self.ports={}; self.upload(self.challenge_now()[0])     # raw live
         spaced=json.dumps(json.loads(self.raw), indent=3, sort_keys=True).encode()

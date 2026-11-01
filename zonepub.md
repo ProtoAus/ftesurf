@@ -20,6 +20,10 @@ inside 30 s holds a tick ("rcon budget spent") instead of writing with no reload
 with `applying`, so a crash mid-write recovers into a reload; a row queued before P1180 (force
 0) has no deadline and is written the same way. A `rollback` row is watched like a publish
 (force 1, stamped after its put): the next tick tells and changelevels its lobbies.
+Review round 2: a rollback whose reload leaves a lobby keeps kind `rollback` (with `partial`), so
+it stays the map's current row for history, `state()` and the next rollback, and `zonepub.py
+reload` re-arms it; its row is inserted with force 1, so a crash after its put still reloads;
+only a row that has been held can expire (`applying` clears the hold).
 `quiet()` still guards `rollback` without `--anyway`.
 
 `/api/zones/history` (POST `{"map": name}` or `{}`) lists the newest live, live-partial and
