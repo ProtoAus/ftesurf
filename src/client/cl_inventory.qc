@@ -115,7 +115,7 @@ float(vector p, float roles, float textsize, float width) Inv_Badges =
 
 void(vector p, float width, float textsize, float editable, vector publickit) Inv_Panel =
 {
-	local float cell, gap, i, owned, on, item, ready;
+	local float cell, gap, i, j, x, owned, on, item, ready;
 	local vector at, colour;
 	local string id, label, note;
 	gap = max(3, floor(textsize * 0.35));
@@ -141,14 +141,19 @@ void(vector p, float width, float textsize, float editable, vector publickit) In
 		}
 		else
 		{
-			R_BeginPolygon("", DRAWFLAG_TWOSIDED, TRUE);
-			R_PolygonVertex(at + [cell * 0.5, cell * 0.12], '0 0 0', colour, 1);
-			R_PolygonVertex(at + [cell * 0.18, cell * 0.74], '0 0 0', colour * 0.7, 1);
-			R_PolygonVertex(at + [cell * 0.82, cell * 0.74], '0 0 0', colour, 1);
-			R_EndPolygon();
+			sui_roundbox(at + [cell * 0.18, cell * 0.46], [cell * 0.64, cell * 0.28], 0, colour * 0.85, 1);
+			for (j = 0; j < 3; j = j + 1)
+			{
+				x = 0.28 + j * 0.22;
+				R_BeginPolygon("", DRAWFLAG_TWOSIDED, TRUE);
+				R_PolygonVertex(at + [cell * (x - 0.1), cell * 0.5], '0 0 0', colour * 0.85, 1);
+				R_PolygonVertex(at + [cell * x, cell * 0.18], '0 0 0', colour, 1);
+				R_PolygonVertex(at + [cell * (x + 0.1), cell * 0.5], '0 0 0', colour * 0.85, 1);
+				R_EndPolygon();
+			}
 		}
 		sui_text(at + [3, cell - textsize * 0.85], [textsize * 0.65, textsize * 0.65], on ? "ON" : "OWNED", colour, 1, 0);
-		label = i == 0 ? "Ice aura" : "Paper party hat";
+		label = i == 0 ? "Ice aura" : "Paper party crown";
 		sui_tooltip_for(id, strcat(label, editable ? (on ? ": click to unequip" : ": click to equip") : ""), 2);
 		if (editable && owned && sui_is_released(id) && cltime >= inv_wait)
 		{
@@ -201,17 +206,27 @@ void(entity body, float outline, float hat, float duck) Inv_Draw =
 	}
 	if (hat < 1 || hat > 12) return;
 	base = body.origin + [0, 0, duck ? 45 : 62];
-	tip = base + '0 0 22';
 	colour = Inv_Colour(hat - 1);
-	for (i = 0; i < 12; i = i + 1)
+	for (i = 0; i < 16; i = i + 1)
 	{
-		t = (i / 12) * 6.2831853 + body.angles_y * (3.14159265 / 180);
-		u = ((i + 1) / 12) * 6.2831853 + body.angles_y * (3.14159265 / 180);
+		t = (i / 16) * 6.2831853 + body.angles_y * (3.14159265 / 180);
+		u = ((i + 1) / 16) * 6.2831853 + body.angles_y * (3.14159265 / 180);
 		a = base + [cos(t) * 11, sin(t) * 11, 0];
 		b = base + [cos(u) * 11, sin(u) * 11, 0];
 		R_BeginPolygon("", DRAWFLAG_TWOSIDED);
-		R_PolygonVertex(a, '0 0 0', colour * ((i % 2) ? 0.7 : 0.95), 1);
-		R_PolygonVertex(b, '0 0 0', colour * 0.9, 1);
+		R_PolygonVertex(a, '0 0 0', colour * (0.8 + 0.2 * cos(t)), 1);
+		R_PolygonVertex(b, '0 0 0', colour * (0.8 + 0.2 * cos(u)), 1);
+		R_PolygonVertex(b + '0 0 6', '0 0 0', colour * (0.8 + 0.2 * cos(u)), 1);
+		R_PolygonVertex(a + '0 0 6', '0 0 0', colour * (0.8 + 0.2 * cos(t)), 1);
+		R_EndPolygon();
+		if (i % 2) continue;
+		// Eight paper points around an open cylindrical band, not one cone tip.
+		a = a + '0 0 6';
+		b = base + [cos(t + 0.78539816) * 11, sin(t + 0.78539816) * 11, 6];
+		tip = base + [cos(u) * 11, sin(u) * 11, 14];
+		R_BeginPolygon("", DRAWFLAG_TWOSIDED);
+		R_PolygonVertex(a, '0 0 0', colour * (0.8 + 0.2 * cos(t)), 1);
+		R_PolygonVertex(b, '0 0 0', colour * (0.8 + 0.2 * cos(t + 0.78539816)), 1);
 		R_PolygonVertex(tip, '0 0 0', colour, 1);
 		R_EndPolygon();
 	}
