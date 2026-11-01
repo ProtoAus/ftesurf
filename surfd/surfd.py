@@ -852,6 +852,9 @@ def _harden_db_files():
                     log.error("cannot restrict %s to its owner: %s", DB_PATH, exc)
 
 
+WAL_LIMIT = 16 * 1024 * 1024
+
+
 def _refuse_newer_schema(conn):
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version > SCHEMA_VERSION:
@@ -879,6 +882,9 @@ def connect():
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA busy_timeout=5000")
+        # P1175: with an idle holder the last close no longer deletes the WAL, so a burst's
+        # size would stay; the commit that restarts the log trims it to this.
+        conn.execute("PRAGMA journal_size_limit=%d" % WAL_LIMIT)
         _harden_db_files()
         return conn
     except BaseException:
@@ -1729,30 +1735,38 @@ def verdict_metrics(conn):
 # open, so checkpoints are never held back; read-only, so its close never checkpoints or unlinks
 # (sidecars outlive surfd, as after a crash, and the next writer recovers them). POSIX only, as
 # _harden_db_files: the sandbox is Linux, and on Windows an open handle blocks a test's delete.
-_KEEPER = {"key": None, "conn": None}
+# Opened after migrate() at import and again by get_db(), so a recycled worker holds before its
+# first request. While any holder lives, journal_mode changes and EXCLUSIVE locking from other
+# processes get "database is locked": maintenance stops surfd first anyway.
+_KEEPER = {"key": None, "conn": None, "retry": 0.0}
 _KEEPER_LOCK = threading.Lock()
+KEEPER_RETRY = 60       # seconds between attempts after a failed open, so a failure is not per request
 
 
 def _keep_sidecars():
     if os.name != "posix" or DB_PATH == ":memory:":
         return
     key = (os.getpid(), DB_PATH)
-    if _KEEPER["key"] == key:
+    if _KEEPER["key"] == key or time.monotonic() < _KEEPER["retry"]:
         return
     with _KEEPER_LOCK:
-        if _KEEPER["key"] == key:
+        if _KEEPER["key"] == key or time.monotonic() < _KEEPER["retry"]:
             return
-        old, _KEEPER["conn"] = _KEEPER["conn"], None
-        if old is not None and _KEEPER["key"][0] == key[0]:
+        old, owner = _KEEPER["conn"], _KEEPER["key"]
+        _KEEPER.update(key=None, conn=None)
+        if old is not None and owner and owner[0] == key[0]:
             old.close()                     # this process's, for another path: read-only, harmless
-        _KEEPER["key"] = key                # once per path and process, even if the open fails
+        conn = None
         try:
             uri = Path(DB_PATH).resolve().as_uri() + "?mode=ro"
             conn = sqlite3.connect(uri, uri=True, timeout=5.0, isolation_level=None,
                                    check_same_thread=False)
             conn.execute("SELECT 1 FROM sqlite_master LIMIT 1").fetchall()
-            _KEEPER["conn"] = conn
+            _KEEPER.update(key=key, conn=conn)
         except sqlite3.Error as exc:
+            if conn is not None:
+                conn.close()
+            _KEEPER["retry"] = time.monotonic() + KEEPER_RETRY
             log.warning("cannot hold the database open for read-only readers: %s", exc)
 
 
@@ -7726,6 +7740,7 @@ hidupload.register(app, types.SimpleNamespace(
         setting("SURFD_GAME") or "/srv/nvme/ftesurf-server/game", "tools"))
 
 migrate()
+_keep_sidecars()
 log.info("surfd ready (db=%s ttl=%ds cap=%d nodes)", DB_PATH, LOBBY_TTL, MAX_NODES)
 if PUBLIC_HOST:
     log.info("public host %r for heartbeats from %s; everything else keeps its "
