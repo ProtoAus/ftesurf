@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1169 — larger native Maps filters (pending)
+
+After the menu-only update, run `menu_restart` and open Maps. Confirm the Tier,
+Mode, Library, Extra and Sort text feels large/sharp enough at your normal window
+and UI scale. Click a tier, Surf/Bhop, library and sort option; confirm their
+highlight and list changes, and that search/list/footer remain reachable after
+wrapping. Isolated720p/1080p/900x600 images were read and existing driver tier/mode
+states act; this is NOT owner visual or actual library/sort click acceptance.
+No owner confirmation received. Server/client programs, native bits, lobbies,
+configs and player data are not part of this menu-only update.
+
 ## P1168 — public inventory, map stats and seeking (pending)
 
 Windows MENU-only delivery verified in BOTH installs1Nov2026 05:43:15UTC.

@@ -1,4 +1,5 @@
 # The engine build this QuakeC requires.
+# Patch 1169: MENU-only larger native-pixel Maps filters; existing ABI/pin/tag and all server/client behavior preserved.
 #
 # FTESurf is a mod, and it is not portable to stock FTEQW: the Source movement
 # module (engine/common/pm_source.c) and the hl2 plugin's .phy collision, VTF
@@ -26,7 +27,7 @@ commit   ee1a23894e84cc033c8b8e4d7351929f44d45a70
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1165
-patch    1168
+patch    1169
 # Patch 1168 (QC/backend readers): public owned inventories, optional tracked playtime/map attempts, main/bonus selection, menu profile pictures and upward seek paging. Collection is separate; native pins and qcbuild unchanged.
 # Patch 1167 (backend): opt-in mapwatch and zone-publication content epochs; configured unavailable state fails closed, absent/empty remains unmanaged. Native pin/tag, QC, schema and Build unchanged; partial writer coverage is not canonical approval or activation.
 # Patch 1165: bounded native TAS VFS components and distinct operator preparation; ordinary budgets, human recording/eligibility and queue admission unchanged. Component checks are not source qualification or deployment; tools/tas-native-source.md.
