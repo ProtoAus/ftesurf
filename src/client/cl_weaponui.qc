@@ -293,7 +293,7 @@ void(vector scr) WPU_Draw =
 	at_y = at_y + tsz * 2.7;
 	if (Profile_Chip("wpu_inspect", at, [(width - 12) / 3, row, 0], "Inspect", tsz, FALSE)) WP_Inspect();
 	if (Profile_Chip("wpu_random", at + [(width + 6) / 3, 0, 0], [(width - 12) / 3, row, 0], "Random seed", tsz, FALSE)) WPU_Seed(floor(random() * 1001));
-	if (Profile_Chip("wpu_drop", at + [(width + 6) * 2 / 3, 0, 0], [(width - 12) / 3, row, 0], "Drop", tsz, FALSE)) localcmd("cmd drop\n");
+	if (Profile_Chip("wpu_drop", at + [(width + 6) * 2 / 3, 0, 0], [(width - 12) / 3, row, 0], "Drop", tsz, FALSE)) localcmd("cmd weapon_drop\n");
 	at_y = at_y + tsz * 2.7;
 	if (Profile_Chip("wpu_mount", at, [width, row, 0], "Mount installed CS:GO Legacy", tsz, FALSE)) WP_MountKnifeContent(-1);
 	sui_tooltip_for("wpu_mount", "Session-only installed assets; also requested automatically when selecting a Legacy knife. No download.", sc);

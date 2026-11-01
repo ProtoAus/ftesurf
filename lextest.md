@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1170 — clean lobby switch/quit; candidate qualified, NOT INSTALLED yet
+A->B should remove oldA slot/avatar; B->B leaves exactlyone, normal close removes
+final slot without old ~30sec ghost. Crash/network loss still needs timeout.
+Weapon Drop/key still works; only wire weapon_drop is separate from native drop.
+Exact actual whole control and realUDP weapon/A->B/B->B/normalquit passed;
+Native520/MENU6f unchanged. See `tools/clean-disconnect-p1170.md`. Full CURRENT
+protection snapshots exceeded180sec caller budget, retained, no runtime install.
+
 ## P1169 — map-list update during play (installed both Windows; owner check)
 
 The automatic catalogue refresh now waits outside the entire connected session,

@@ -1,5 +1,30 @@
 # AGENT_NOTES.md
 
+## P1170 ACTIVE — clean disconnect validated, NOT INSTALLED
+
+Native drop/disconnect reaches normal native teardown, weapon Drop stays via
+weapon_drop in BOTH CSQC emitters. Only3 feature files, no native/header/API/
+recording/movement/timeout/backend changes. Actual current public14aef133 SV/CS
+1ae7cd76/a726524a plus MENU6f exact whole-binary official control. Candidate
+1e3aeb37/92a49aa2/MENUexact6f; real localhost UDP old normalquit exit0 ghost,
+new weapon2->0 staysconnected, A->B oldA0, B->B one, normalquitB0; 5logs clean.
+Original caller impulse/idle-wait/reporter mistakes retained; healthy control
+reused, same subject, final reader graded exact actual logs without GUI rerun.
+See tools/clean-disconnect-p1170.md and own artifacts/clean-disconnect/CURRENT.md.
+
+BOTH safety snapshot calls exceeded180sec; NO runtime files changed. Windows
+original generated preimages +4.05GB protected-before.tar retained, no before.json;
+Pi original snapshotPID3817472 continued building/verifying3.08GB full archive,
+no before.json at first inspection. Stop/checkpoint resource gate, never rerun
+new namespace/delete original archives/restore older data or declare delivery.
+Existing interrupted-archive primitive may verify SAME produced Windows tar
+(no rewrite, current hash+member equality and original generated preimages);
+Pi original must finish/pass or retain failure. Full CURRENT on/offbox and zero
+lobbies/native identity/epoch/part checks before paired QC-only transaction.
+Current Native520 and MENU6f remain; pending counter/TAS/backend work NOT adopted.
+Source docs/candidate pending publication/integration on main and final protected
+Windows/Pi install; original task source pair reused, no native build.
+
 ## P1169 map-list refresh defers outside connected gameplay
 
 DELIVERED both Windows, ONLY4 MENU.dat/LNO targets. Native runtime520/P1162,
