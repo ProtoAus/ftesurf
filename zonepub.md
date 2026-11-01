@@ -11,14 +11,24 @@ tick. Rounds every 55 s confirm each lobby by zonecrc and load time, as P1081's 
 Gone: the quiet-map wait, the warning minute, the two-sweep grace and the owed-verdict gate.
 So a run in progress on the map ends, and a finished run not yet swept meets the new zones
 (REFUSE, as after any zone change) -- Lex's call. Zones already live answer "already live"
-without touching a lobby. `quiet()` still guards `rollback` without `--anyway`.
+without touching a lobby (a noop row, force 0, so `reload` never re-arms it).
 `NOW_MARKER` is gone: `PUBLISH_MARKER` alone admits a client.
+Review round 1 (two reviewers) changed: a target whose pre-write `serverinfo` shows another map
+(a stale heartbeat, a 90 s assignment) is marked moved off, not changelevelled; a write needs 2
+free rcon packets per target (`budget_room`) for its say + changelevel, so a second publish
+inside 30 s holds a tick ("rcon budget spent") instead of writing with no reload; `force` is set
+with `applying`, so a crash mid-write recovers into a reload; a row queued before P1180 (force
+0) has no deadline and is written the same way. A `rollback` row is watched like a publish
+(force 1, stamped after its put): the next tick tells and changelevels its lobbies.
+`quiet()` still guards `rollback` without `--anyway`.
 
 `/api/zones/history` (POST `{"map": name}` or `{}`) lists the newest live, live-partial and
-rollback rows (32 for a map, 50 overall): id, map, time, kind, the uploader's account display
-name (never a SteamID), sha prefix, crc. `/api/zones/file` (POST `{"id": n}`) returns that
-row's zone file. Both answer `Access-Control-Allow-Origin: *` (the site's zoning page) and
-60 requests per address per minute; refusals are 200 + ok 0 as P826's.
+rollback rows (32 for a map, 50 overall) from the covering index `publications_history`, never
+the blobs: id, map, time, kind, the uploader's account display name (never a SteamID), sha
+prefix, and the service's `now`. A rollback row carries the undone upload's identity, so its
+name and sha are blank. `/api/zones/file` (POST `{"id": n}`) returns that row's zone file. Both
+answer `Access-Control-Allow-Origin: *` (the site's zoning page and the editor's History page),
+refusals included, and 60 requests per address per minute; refusals are 200 + ok 0 as P826's.
 
 The sections below describe P815/P1081; where they speak of waiting, P1180 replaced it.
 

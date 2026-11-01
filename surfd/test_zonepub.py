@@ -287,7 +287,7 @@ class Publish(Upload):
         with self.assertRaises(ValueError): self.rollback()
         self.stalled=False; self.wait(60); self.rollback(); self.assertEqual(self.files(),[self.OLD,None])
     def test_rollback_supersedes_a_pending_publish_and_repairs_partial(self):
-        self.grant(); self.upload(self.challenge())             # raw live at once
+        self.grant(); self.ports={}; self.upload(self.challenge())   # raw live at once (nobody on the map)
         b=self.raw2(55); self.upload(self.challenge(b),raw=b)    # b live at once
         b2=self.raw2(56); self.ports={}; self.maps={'surf_fixture'}   # a lobby not ours: b2 is held
         self.assertEqual(self.upload(self.challenge(b2),raw=b2).json['published'],0)
@@ -508,6 +508,46 @@ class PublishNow(Publish):
         return sorted(int(p) for p, e in todo.items() if not e[3] and not e[4])
     def row(self):
         with z.connect(self.store) as db: return db.execute('SELECT * FROM publications ORDER BY id DESC').fetchone()
+    def test_a_second_publish_inside_the_rcon_budget_waits_a_tick(self):
+        # P1180 review: say + changelevel must follow the write, so a publish 30 s after another holds.
+        self.grant(); self.maps={'surf_fixture'}
+        self.upload(self.challenge_now()[1]); b=self.raw2(81); self.now += 10
+        r=self.upload(self.challenge_now(b)[1], raw=b)
+        self.assertEqual(r.json['published'], 0); self.assertIn('rcon budget', r.json['note'])
+        self.assertEqual(self.files()[0], self.raw); self.assertEqual(self.words('changelevel'), [27510, 27530])
+        self.assertEqual(self.wait(60), {'surf_fixture': 'live'})
+        self.assertEqual(self.files()[0], b); self.assertEqual(self.words('changelevel'), [27510, 27530] * 2)
+    def test_a_row_queued_before_p1180_is_written_not_expired(self):
+        self.grant(); self.maps={'surf_fixture'}
+        with z.connect(self.store) as db:
+            z.pub.queue(db, 'surf_fixture', self.raw, SID, self.now - 7200)   # force 0, two hours old
+            db.execute('UPDATE publications SET force=0')
+        self.assertEqual(self.apply(), {'surf_fixture': 'live'})
+        self.assertEqual(self.row()['force'], 1); self.assertEqual(self.words('changelevel'), [27510, 27530])
+    def test_a_reupload_of_live_bytes_does_not_change_what_reload_rearms(self):
+        self.grant(); self.maps={'surf_fixture'}; self.stuck={27530}
+        self.upload(self.challenge_now()[1]); self.wait(60 * (z.pub.RELOAD_TRIES + 2))
+        self.now += 60; self.upload(self.challenge_now()[1])                 # "already live"
+        self.assertEqual((self.row()['kind'], self.row()['force']), ('noop', 0))
+        self.stuck=set(); n=len(self.words('changelevel'))
+        z.pub.rearm(z.connect, self.store, 'surf_fixture'); self.wait(60)
+        self.assertEqual(self.words('changelevel')[n:], [27530])              # 27510 was confirmed: left alone
+    def test_history_hides_a_rollbacks_borrowed_identity_and_reads_an_index(self):
+        self.grant(); self.ports={}; self.upload(self.challenge()); self.rollback(anyway=True)
+        rows=self.c.c.post('/api/zones/history', data=b'{"map":"surf_fixture"}').json['rows']
+        self.assertEqual([(r['kind'], r['by'], r['sha'], r['file']) for r in rows][0], ('rollback', '', '', 0))
+        with z.connect(self.store) as db:
+            plan=' '.join(str(tuple(r)) for r in db.execute(
+                "EXPLAIN QUERY PLAN SELECT id, map, steamid, at, live, kind, sha FROM publications INDEXED BY "
+                "publications_history WHERE kind IN ('live','live-partial','rollback') ORDER BY id DESC LIMIT 50"))
+        self.assertIn('COVERING INDEX publications_history', plan)
+    def test_history_refuses_odd_bodies_with_its_own_answer(self):
+        deep=b'[' * 5000 + b']' * 5000
+        for path, body in (('/api/zones/history', deep), ('/api/zones/file', deep),
+                           ('/api/zones/file', b'{"id": 9223372036854775808}')):
+            r=self.c.c.post(path, data=body)                                 # an unreadable body: as {}, or refused
+            self.assertEqual((r.status_code, r.json['ok']), (200, 1 if path.endswith('history') else 0), (path, body[:20]))
+            self.assertEqual(r.headers['Access-Control-Allow-Origin'], '*')
     def test_publish_writes_at_once_and_reloads_only_that_maps_lobbies(self):
         self.grant(); self.maps={'surf_fixture','surf_other'}
         quiet, now = self.challenge_now(); self.assertNotEqual(quiet, now)
@@ -713,15 +753,17 @@ class PublishNow(Publish):
         self.ports={'surf_fixture':[27510, 27530]}; self.wait(60 * (z.pub.RELOAD_TRIES + 3))   # its verdict decides
         self.assertEqual(self.words('changelevel').count(27530), 1)          # no fresh tries
         row=self.row(); self.assertEqual((row['kind'], row['partial']), ('live-partial', '[27510, 27530]'))
-    def test_a_rollback_during_the_watch_ends_it_without_another_word(self):
+    def test_a_rollback_during_the_watch_ends_it_and_reloads_the_lobbies(self):
         self.grant(); self.maps={'surf_fixture'}; self.stuck={27530}
         self.upload(self.challenge_now()[1]); self.wait(240)
         self.assertIn('27510:done', self.row()['reload']); force_id=self.row()['id']
-        self.rollback(anyway=True); n=len(self.sent); self.wait(300)
-        self.assertEqual(self.sent[n:], [])                                   # no changelevel, no say, nothing
+        self.rollback(anyway=True); n=self.words('changelevel').count(27510); self.wait(120)
         with z.connect(self.store) as db:
             f=db.execute('SELECT * FROM publications WHERE id=?', (force_id,)).fetchone()
+            rb=db.execute("SELECT * FROM publications WHERE kind='rollback'").fetchone()
         self.assertIsNotNone(f['done_at']); self.assertIn('reload ended: rollback', f['reload'])
+        self.assertEqual(rb['force'], 1)                                      # P1180: the undo is instant too
+        self.assertEqual(self.words('changelevel').count(27510), n + 1)      # back on the old zones
         with self.assertRaises(ValueError): z.pub.rearm(z.connect, self.store, 'surf_fixture')
     def test_reload_now_compares_zones_not_bytes_and_not_the_crc(self):
         self.grant(); self.ports={}; self.upload(self.challenge_now()[0])     # raw live
@@ -789,15 +831,21 @@ class PublishNow(Publish):
         self.grant(); self.maps={'surf_fixture', 'surf_other'}
         self.fleet[27530]=('surf_other', self.now - 500, 'abcdef01')          # read before the write: elsewhere
         self.ports={'surf_fixture': [27510, 27530], 'surf_other': [27530]}
-        self.upload(self.challenge_now(new)[1], raw=new); self.wait(120)
         real_put=z.pub.put
         def arrive_then_put(paths, bodies, limit):                            # loads the OLD file, then the rename
             self.fleet[27530]=('surf_fixture', self.now, self.crc_of(self.OLD)); real_put(paths, bodies, limit)
-        with patch.object(z.pub, 'put', arrive_then_put): self.wait(60)
-        row=self.row(); self.assertEqual(row['kind'], 'live'); self.assertEqual(json.loads(row['todo'])['27530'][2], 1)
-        self.wait(180)
+        with patch.object(z.pub, 'put', arrive_then_put): self.upload(self.challenge_now(new)[1], raw=new)
+        row=self.row(); self.assertEqual(row['kind'], 'live')
+        self.assertEqual(json.loads(row['todo'])['27530'][2:], [1, 0, 2])     # mode 1, moved off by its read
+        self.assertNotIn(27530, self.words('changelevel'))                    # P1180 review: not dragged over
+        self.wait(180)                                                        # found on the map by a round
         self.assertGreaterEqual(self.words('changelevel').count(27530), 1)
         self.assertIn('27530:done (crc and load time)', self.row()['reload'])
+    def test_a_lobby_reading_another_map_before_the_write_is_not_reloaded(self):
+        # P1180 review: a stale heartbeat or a recent assignment lists it; its own read says otherwise.
+        self.grant(); self.maps={'surf_fixture'}; self.fleet[27530]=('surf_other', self.now - 5)
+        self.assertEqual(self.upload(self.challenge_now()[1]).json['published'],1)
+        self.assertEqual(self.words('changelevel'),[27510]); self.assertIn('27530:moved off', self.row()['reload'])
     def stepped(self, step, same_hash):
         """A stuck lobby, then the wall clock stepped by `step`: the verdicts must not move."""
         if same_hash: self.fleet[27530]=('surf_fixture', self.now - 500, self.crc_of(self.raw))   # mode 1

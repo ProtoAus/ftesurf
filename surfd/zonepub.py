@@ -283,6 +283,8 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
     def private(response):
         response.headers['Cache-Control'] = 'no-store'
         response.headers['X-Content-Type-Options'] = 'nosniff'
+        if request.path in ('/api/zones/history', '/api/zones/file'):
+            response.headers['Access-Control-Allow-Origin'] = '*'      # P1180: public, read-only
         return response
     @app.post('/api/zones/challenge')
     def challenge():
@@ -400,8 +402,10 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                                'these zones now' % name if done == 'live' else 'These zones are already live')
             if done in ('failed', 'partial'):
                 return fail('Accepted, but the zone files could not be written; an operator must look', 500)
-            with connect(store, readonly=True) as db:
-                hold = db.execute('SELECT hold FROM publications WHERE id=?', (rid,)).fetchone()
+            try:
+                with connect(store, readonly=True) as db:
+                    hold = db.execute('SELECT hold FROM publications WHERE id=?', (rid,)).fetchone()
+            except sqlite3.Error: hold = None
             return jsonify(ok=1, draft=ident, published=0, note='Accepted, not live yet: %s; it is tried again '
                            'every minute' % ((hold and hold['hold']) or 'the zone service is busy'))
         except sqlite3.Error: return fail('Zone uploads unavailable', 503)
@@ -413,15 +417,20 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
     def history_ok():
         now, peer = time.monotonic(), request.remote_addr or ''
         with seen_lock:
-            if len(seen) > 4096: seen.clear()
+            if len(seen) > 4096:
+                for k in [k for k, v in seen.items() if not v or now - v[-1] >= 60]: del seen[k]
+                if len(seen) > 4096 and peer not in seen: return False
             hits = [t for t in seen.get(peer, ()) if now - t < 60]
             if len(hits) >= HISTORY_RATE: return False
             seen[peer] = hits + [now]
             return True
     def public(payload, status=200):
         r = jsonify(payload) if not isinstance(payload, bytes) else app.response_class(payload, mimetype='application/json')
-        r.headers['Access-Control-Allow-Origin'] = '*'
         return r, status
+    def asked():
+        # B5: a body nested past the parser's depth is a refusal, not a 500
+        try: return request.get_json(force=True, silent=True)
+        except RecursionError: return None
     def names_of(sids):
         if not sids: return {}
         try:
@@ -432,27 +441,29 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
     @app.post('/api/zones/history')
     def history():
         if not history_ok(): return public(dict(ok=0, error='Too many requests', status=429))
-        data = request.get_json(force=True, silent=True)
+        data = asked()
         data = {} if data is None else data
         name = data.get('map') if isinstance(data, dict) else ''
         if name is not None and not valid_name(name): return public(dict(ok=0, error='Invalid map', status=400))
         where, args = ('map=? AND ', (name,)) if name else ('', ())
         try:
             with connect(store, readonly=True) as db:
-                rows = db.execute('SELECT id, map, steamid, at, live, kind, sha, crc, body IS NOT NULL AS has '
-                                  'FROM publications WHERE %skind IN %s ORDER BY id DESC LIMIT ?'
+                rows = db.execute('SELECT id, map, steamid, at, live, kind, sha FROM publications '
+                                  'INDEXED BY publications_history WHERE %skind IN %s ORDER BY id DESC LIMIT ?'
                                   % (where, pub.LIVE_KINDS), args + (32 if name else 50,)).fetchall()
         except sqlite3.Error: return public(dict(ok=0, error='Zone history unavailable', status=503))
-        names = names_of(sorted({r['steamid'] for r in rows}))
-        return public(dict(ok=1, rows=[dict(id=r['id'], map=r['map'], at=r['live'] or r['at'], kind=r['kind'],
-                                            by=names.get(r['steamid']) or '', sha=r['sha'][:12], crc=r['crc'] or '',
-                                            file=1 if r['has'] else 0) for r in rows]))
+        names = names_of(sorted({r['steamid'] for r in rows if r['kind'] != 'rollback'}))
+        undo = lambda r: r['kind'] == 'rollback'    # an operator's; its steamid and sha are the undone upload's
+        return public(dict(ok=1, now=int(clock()), rows=[dict(
+            id=r['id'], map=r['map'], at=r['live'] or r['at'], kind=r['kind'],
+            by='' if undo(r) else names.get(r['steamid']) or '', sha='' if undo(r) else r['sha'][:12],
+            file=0 if undo(r) else 1) for r in rows]))
     @app.post('/api/zones/file')
     def published_file():
         if not history_ok(): return public(dict(ok=0, error='Too many requests', status=429))
-        data = request.get_json(force=True, silent=True)
+        data = asked()
         rid = data.get('id') if isinstance(data, dict) else None
-        if isinstance(rid, bool) or not isinstance(rid, int) or rid <= 0:
+        if isinstance(rid, bool) or not isinstance(rid, int) or not 0 < rid < 2 ** 53:
             return public(dict(ok=0, error='Invalid request', status=400))
         try:
             with connect(store, readonly=True) as db:
