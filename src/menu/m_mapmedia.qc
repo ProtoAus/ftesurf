@@ -352,7 +352,8 @@ float() Mmm_PutMeta =
 float(string spec) Mmm_KnownMount =
 {
 	return spec == "steam:Team Fortress 2/tf" || spec == "steam:Counter-Strike Global Offensive/csgo"
-	    || spec == "steam:Portal 2/portal2" || spec == "steam:Portal/portal";
+	    || spec == "steam:Portal 2/portal2" || spec == "steam:Portal/portal"
+	    || spec == "steam:Momentum Mod Playtest/platform";     // P1188
 };
 
 // One line of a mapdeps reply, into mmm_keep.

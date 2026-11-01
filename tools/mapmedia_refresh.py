@@ -303,7 +303,8 @@ def build_mapdeps(live, cand, state_path):
     # A game missing on this PC is not maps that stopped needing it: a rescan would
     # drop every line for it (Portal's 20 are under the gate's floor).  Review 2.
     import mapdeps
-    need = [(r, False) for _n, r in mapdeps.MOUNTED] + [(a[1], True) for a in mapdeps.ADDONS]
+    need = [(r, False) for _n, r in mapdeps.MOUNTED] + [(a[1], a[0] not in mapdeps.LOOSE_ADDONS)
+                                                        for a in mapdeps.ADDONS]
     gaps = [str(r) for (r, packs_needed), (_r, isdir, packs) in zip(need, fp) if not isdir or (packs_needed and not packs)]
     if gaps:
         say("  mapdeps: NOT REBUILT -- not installed here: %s" % "; ".join(gaps))

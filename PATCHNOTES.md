@@ -21,6 +21,10 @@
 
 ## next
 
+### P1188 surf_skyhaven's glass is no longer a missing texture
+- surf_skyhaven's glass panes (and rj_tattarrattat's grates) use Momentum's own fallback materials. The game now finds them in your Momentum install instead of drawing the purple checker.
+
+
 ### P1187 One chat for every lobby and the main menu
 - With a linked Steam account, what you type in a lobby's chat now reaches every lobby and the main menu chat, tagged with your lobby number. Press TAB (or the team chat key) to talk to this lobby only.
 - Lines from other lobbies show their number, like [#4], and lines from the main menu show [menu]. Commands starting with ! stay in your lobby.

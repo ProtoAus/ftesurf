@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1188 surf_skyhaven glass
+In both Windows installs (engine exe + menu + the map table); restart a running game first.
+Please check: load surf_skyhaven. No "1 material did not resolve" warning, and the glass
+panes (for example around -9306 14062 -12254, or the sloped roof near -1216 13736 -8098) draw
+as framed glass, not a purple checker. The Maps list's surf_skyhaven row shows a MOM badge.
+Other players get it with the next launcher update (engine change).
+Measured: owned rig, new exe against the installed one on the same data; screenshots in
+C:\FTESurf-worktrees\skyhaven1188-20261101T1805Z\artifacts (glass_fix_over_ctl_*.png).
+
 ## P1180 instant zone publish, history; P1184 zone sizes
 Zone service 85ed1a7c since 1 Nov 18:55Z (your sudo); client on all 12 lobbies ~18:57Z and both
 installs just after (csprogs 9138d2ba): restart a running game first. Please check:

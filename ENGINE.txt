@@ -27,7 +27,8 @@ commit   dc3e20be390ba5c3bb7d570bcacba8151172cd7d
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1165
-patch    1187
+patch    1188
+# Patch 1188 (engine fs.c + menu + tools): per-map tables may mount "steam:Momentum Mod Playtest/platform" (loose fallback/default_* materials: surf_skyhaven glass, rj_tattarrattat grate); mapdeps ADDONS momplatform (loose, no VPK); menu keeps and labels it MOM. Native: tag patch-1188 9e8daa0d0 on installed 117124a41; QC pin/tag unchanged (older engines refuse the line, as before).
 # Patch 1184 (CSQC): zone editor shows the selected zone's size and six values (x/y min/max, bottom, top); typed in the field or nudged with the wheel; zone_edit face. Native pin/tag and Build unchanged.
 # Patch 1180 (zonepub + CSQC + site): every zone publish is written at once and reloads the map's lobbies (say + changelevel); /api/zones/history and /file; one Publish button and an editor History page; zoning page "Recently zoned". zonepub 85ed1a7c (Lex's sudo). Native pin/tag and Build unchanged.
 # Patch 1187 (CSQC + SSQC): a linked player's chat goes to everyone by default (said here + posted to the menu room, tagged [#N]); TAB/team key = this lobby; the lobby skips relaying its own players' room lines. Native pin/tag, backend and Build unchanged.

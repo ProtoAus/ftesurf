@@ -124,9 +124,16 @@ ADDONS = [
      "steam:Portal 2/portal2"),
     ("portal", os.path.join(STEAM, "Portal", "portal"),
      "steam:Portal/portal"),
+    #P1188: Momentum's platform/ (loose materials/fallback/default_*: surf_skyhaven's glass,
+    #rj_tattarrattat's grate). No VPK of its own: see LOOSE_ADDONS.
+    ("momplatform", os.path.join(STEAM, "Momentum Mod Playtest", "platform"),
+     "steam:Momentum Mod Playtest/platform"),
     #P679: Momentum's shared HL2 pack is now automatic base content (MOUNTED).
     #Pack indexes *_dir.vpk only, not Momentum's other-game placeholder VPKs.
 ]
+
+#Addons whose content is loose files only: installed means the folder exists, not a *_dir.vpk.
+LOOSE_ADDONS = ("momplatform",)
 
 #The VMT keys plugins/hl2/mat_vmt.c actually turns into a texture load, at
 #mat_vmt.c:378-597.  Keys it parses and DISCARDS ($detail, $blendmodulatetexture,
