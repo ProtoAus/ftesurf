@@ -1,5 +1,18 @@
 # AGENT_NOTES.md
 
+## P1171 lobby playtime DELIVERED (1 Nov 2026)
+
+surfd generation 495537a9 (fcc0d20b + P1171) at /srv/nvme/agent-work/profile-activity-1171-01a19370,
+primary OPEN 11:37:06Z after "schema migrated 25 -> 26" (API down ~48 s, mostly the drained
+pre-26 backup). Fallback cba82980 (schema-26 tables only) is staged CLOSED in the same root; the
+P1168 root stays CLOSED as history. A schema-25 surfd refuses this DB: rollback to P1168 is the
+private down step (drop P1171's four tables and three triggers, stamp 25), not the backup.
+Lobbies and both installs 11:46:07Z from QC 3cc4fec7 built with c24ede65: qwprogs e487377c,
+csprogs 974f0ce9 (appended to tasrevd-state/codes.txt), menu 14ecde0a; `.prev` = P1170's pair.
+The release session reproduced all three bytes for 0.1.34. P1170's csprogs 92a49aa2 and P1168's
+a726524a were never in codes.txt (TAS credit gap since those deploys; passed to Lex, not added).
+Live profile replies carry `playtime` (zero until a linked player plays). Owner check in lextest.
+
 ## P1171: a terms bump reaches every released client through the lobby (1 Nov 2026)
 
 `FS_TERMS_ONLINE` lives in src/shared/sh_defs.qc, so it is compiled into the csprogs each

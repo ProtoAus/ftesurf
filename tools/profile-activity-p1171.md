@@ -51,6 +51,9 @@ change. The route needs `consent >= 8`, the capability and the current binding.
 
 ## Delivery and rollback
 
+Live 1 Nov 2026: surfd 495537a9 from 11:37:06Z; lobbies and both installs from 11:46:07Z
+(QC 3cc4fec7, c24ede65: qw e487377c, cs 974f0ce9, menu 14ecde0a). Engine journal 65d3059b3.
+
 Generation 495537a9 (fcc0d20b + this) with fallback cba82980 (fcc0d20b + schema-26
 tables only); deploy branches `deploy/profile-activity-{,backend-,fallback-}1171`.
 A schema-25 surfd refuses a schema-26 DB, so going back to P1168 itself means

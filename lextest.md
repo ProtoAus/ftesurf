@@ -1,7 +1,7 @@
 # lextest.md — things waiting on a human
 
-## P1171 lobby playtime and main/bonus attempts (PENDING deploy, then owner check)
-After the schema-26 backend and lobby progs are live: on any official lobby, with online play
+## P1171 lobby playtime and main/bonus attempts (LIVE 1 Nov 11:46Z; owner check PENDING)
+Backend schema 26 and all 12 lobbies plus both installs are live. On any official lobby, with online play
 on and Steam linked, stay connected a minute and start the main course once and a bonus once
 (a stage start should not count). Then open your profile in the menu (or `!time`): connected
 time, this map's time and 1 main + 1 bonus attempt should appear within about a minute of
