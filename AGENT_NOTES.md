@@ -1,6 +1,19 @@
 # AGENT_NOTES.md
 
-## P1162 noclip-only backport of the P1159 candidate (not delivered)
+## P1162 noclip-only backport of the P1159 candidate
+
+Windows phase1 promoted Native520ba3ca9 plus QC67e30b30; all28 outputs and15816
+original protected files verified. Pi BEFORE found actual CSQC39518177, not the
+published P1160 note's cba6fd. Do not overwrite an unexplained preimage: its only
+changed function span was Inv_Draw. Exact whole-binary control build from the
+installed84a8ff1a source plus public P1163 fleet471fa957 cl_inventory reproduces
+39518177 byte-for-byte. Preserve that client file, not pending P1164 or TAS.
+Native seven images/platform60/real noclip actor and33 literal pose functions
+are unchanged and their passing proofs remain; this is a client-aura source
+preservation continuation, not grounds to rerun healthy numerical suites.
+The full on/offbox original Pi snapshot and failed Windows-hash assumption are
+retained; readiness must still validate the same before boundary. Backend is
+already active; preserve it without operations. Owner feel remains pending.
 
 Actual installed source, not main, governs this delivery: native P1158 commit
 793ee161a and QC P1160 backport84a8ff1a. Both Windows roots' three program hashes

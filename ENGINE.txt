@@ -26,6 +26,7 @@ commit   520ba3ca9902f0759fc0c9e5f691bf13ba55fd9e
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1162
 patch    1162
+# Preserve actual live Pi CSQC: full binary provenance proves P1163 aura471fa957 over P1160 backport84a8ff1a; keep that client file. No pending P1164 or TAS activation, no backend operation.
 # Patch 1162: noclip-only backport on actual P1158 native / P1160 VM source. Individual supported-lobby flight preference, slow-flight presentation and placement-serial fences; no pending P1154/P1161 activation, movement/API/recording policy or backend change. Exact-image qualification and delivery are separate.
 # Patch 1160 (QC/backend): profile inventory, persistent starter cosmetics and role badges; Surf/Bhop-only map switch. Native pin and qcbuild unchanged; this fleet backport excludes pending P1154 SSQC.
 # Patch 1148: finite normalized takeoff status accepts an exactly neutral pre-cost stamina multiplier; stock/non-unit contexts remain excluded. Preserve P1147 camera/spatial-reset source and current runtime VMs; no mover, capture/API/format/flag/tier, qcbuild or release change. Integrated clean-tag qualification/deployment are recorded separately.

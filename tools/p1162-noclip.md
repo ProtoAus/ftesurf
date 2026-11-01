@@ -17,9 +17,15 @@ reach both native consumers and the default streamed CSQC body/spectator serial.
 - VM base: P1160 backport84a8ff1a925f3ebda8f681c76387279ac6670472.
 - Native candidate:520ba3ca9902f0759fc0c9e5f691bf13ba55fd9e.
 - Same owned pair on deliver-noclip-1162; full-main integrations kept separately.
+- Pi preflight found CSQC39518177 rather than the published P1160 note's cba6fd.
+  Full binary reconstruction proves it is exactly the published fleet P1163
+  aura fix471fa957 atop84a8ff1a. Preserve that one client file; no pending P1164
+  crown or TAS activation. The original mismatch/refusal and all backups remain.
 - Both Windows three-program hashes were actually read and match the P1160
-  record in profile-inventory-p1160.md. Inventory source is retained; its backend
-  remains separately blocked and is not activated here.
+  record in the saved published profile-inventory-p1160.md. Inventory and the
+  already-activated backend are retained; no backend operation occurs here.
+  Windows phase1 had only the base aura; phase2 adds the actual live fleet aura
+  without redoing Native/platform/recording gates or replacing player data.
 - No pending P1154/P1161 VM or P1161 decoder activation. No physical mover,
   native API epoch, recorder format, practice/ranking policy or qcbuild bump.
 
