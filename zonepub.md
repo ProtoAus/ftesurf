@@ -26,7 +26,12 @@ every minute (zonepub_wsgi.py) and publishes what has become quiet; a newer
 upload of the same map supersedes a pending one; 20 publishes per account an
 hour. Each write is a same-directory temporary and one rename after the row
 holding the replaced bytes is committed; a failed second write puts the first
-back (`failed`), a failed put-back is `partial` for an operator.
+back (`failed`), a failed put-back is `partial` for an operator. A configured
+managed-content scope can also refuse completion after files were installed: that
+is `partial`, with recovery details retained, not a claim that files were restored.
+A refusal before mutation remains `failed` with the files untouched. No unfenced
+rollback, automatic reload or repair of unexpected lease state is attempted; operator
+recovery still requires an available publication scope.
 
 What it does not protect: saves carry no zonecrc, so a save from before a
 publish loads into the new zones (as a segmented run, which pm_verify refuses
@@ -193,7 +198,10 @@ zone-upload purpose, approved CSQC identity, map and exact frozen bytes. Bounds
 cover request size, polygons/table capacity, challenge lifetime, pending counts,
 proof attempts and draft capacity. Failure does not touch the live account schema,
 zone files or leaderboard; only an accepted admin upload writes the publish
-directories. There is no public draft list/read route.
+directories. There is no public draft list/read route. The isolated release includes
+`steam.py`, `ksfprofile.py` and `momprofile.py` for the account resolver, and
+`tascontent.py` for the publisher. These imports do not start collectors; the installer
+checks that the explicit service file set imports without ambient repository modules.
 
 Use the dedicated loopback WSGI service and exact `/api/zones/` HTTPS proxy route,
 not Flask's development server for production. `zonepub_wsgi.py` trusts forwarding

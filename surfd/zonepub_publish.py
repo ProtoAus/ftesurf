@@ -8,8 +8,8 @@ mid-attempt), and the sweeper verifies a finished run against the files as they 
 then. mapwatch.py holds Momentum's zones on the first condition alone.
 
 Kinds: pending, applying (files being written; recovered at the next tick), live,
-noop (already live), superseded, failed (files put back), partial (put back failed:
-an operator's rollback), rollback; P1081 adds expired, live-partial and noop-partial.
+noop (already live), superseded, failed (files unchanged or put back), partial
+(put-back or publication-scope completion uncertain: an operator's rollback), rollback; P1081 adds expired, live-partial and noop-partial.
 `result` is each directory's sha after a live or rollback row, which is what the files
 must still be for a later rollback.
 
@@ -136,7 +136,7 @@ def locked(store):
 
 
 class PartialPublish(Exception):
-    """A write failed and putting back what was already replaced failed too."""
+    """Restoration or publication-scope completion is uncertain; retain recovery state."""
 
 
 def log(*words):
@@ -201,8 +201,20 @@ def content_publication():
 
 
 def put(paths, bodies, limit):
-    with content_publication():
-        return _put(paths, bodies, limit)
+    entered, body_error = False, None
+    try:
+        with content_publication():
+            entered = True
+            try:
+                return _put(paths, bodies, limit)
+            except Exception as error:
+                body_error = error
+                raise
+    except Exception as error:
+        if entered and error is not body_error:
+            # Scope completion failed outside _put's restoration handler.
+            raise PartialPublish('publication scope did not complete; operator recovery required') from error
+        raise
 
 
 def _put(paths, bodies, limit):
@@ -905,7 +917,7 @@ def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit, rcon_fn=l
 
 def rollback(connect, store, dirs, name, valid_name, maps_fn, now, limit, to_id=None, anyway=False):
     """Put back what publish `to_id` (default the newest live one) replaced. A `partial` row
-    (its put-back failed) is repaired only by id and with `anyway`: its files are mixed."""
+    needs its id and `anyway`: restoration or scope completion was uncertain."""
     paths = [zone_path(d, name, valid_name) for d in dirs]
     st = maps_fn()
     with locked(store), connect(store) as db:

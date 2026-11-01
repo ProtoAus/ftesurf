@@ -57,8 +57,12 @@ class Install(unittest.TestCase):
         root=Path(__file__).resolve().parent.parent
         blobs={dest:(root/src).read_bytes() for src,dest in i.FILES.items()}
         i.check_imports(blobs)
-        blobs.pop('steam.py')
-        with self.assertRaises(RuntimeError):i.check_imports(blobs)
+        for module in ('steam.py', 'ksfprofile.py', 'momprofile.py', 'tascontent.py'):
+            with self.subTest(module=module):
+                incomplete = dict(blobs)
+                incomplete.pop(module)
+                with self.assertRaisesRegex(RuntimeError, "No module named '%s'" % Path(module).stem):
+                    i.check_imports(incomplete)
 
 
 class Upgrade(unittest.TestCase):

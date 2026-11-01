@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import tascontent as content
 
@@ -140,6 +141,53 @@ os.close(%d)
             (self.root / 'changed').write_text('after descendant')
         with content.snapshot(self.path) as after:
             self.assertEqual(after.stamp.epoch, 2)
+
+    def test_initial_admission_checks_named_identity_before_mutation(self):
+        original = self.path.read_bytes()
+        named = list(os.stat(self.path, follow_symlinks=False))
+        named[1] += 1
+        foreign = os.stat_result(named)
+        for acquire in (content.snapshot, content.publication):
+            with self.subTest(acquire=acquire.__name__), \
+                 patch.object(content.os, 'stat', return_value=foreign), \
+                 self.assertRaisesRegex(content.Unavailable, 'REPLACED'):
+                with acquire(self.path):
+                    self.fail('unbound initial lease admitted')
+            self.assertEqual(self.path.read_bytes(), original)
+
+    def test_nested_scopes_validate_named_identity(self):
+        for acquire in (content.snapshot, content.publication):
+            with self.subTest(acquire=acquire.__name__), acquire(self.path):
+                named = list(os.stat(self.path, follow_symlinks=False))
+                named[1] += 1
+                with patch.object(content.os, 'stat', return_value=os.stat_result(named)), \
+                     self.assertRaisesRegex(content.Unavailable, 'REPLACED'):
+                    with acquire(self.path):
+                        self.fail('unbound nested lease admitted')
+
+    def test_read_completion_rejects_changed_record(self):
+        original = self.path.read_bytes()
+        valid = content._record(content.Stamp('f' * 32, 4))
+        self.assertEqual(len(valid), content.SIZE)
+        for changed in (b'unexpected fixture record\n', valid):
+            with self.subTest(same_length=len(changed) == content.SIZE):
+                self.path.write_bytes(original)
+                with self.assertRaisesRegex(content.Unavailable, 'CHANGED'):
+                    with content.snapshot(self.path):
+                        self.path.write_bytes(changed)
+                self.assertEqual(self.path.read_bytes(), changed)
+
+    def test_writer_never_repairs_changed_record_on_exit(self):
+        original = self.path.read_bytes()
+        valid = content._record(content.Stamp('f' * 32, 4))
+        self.assertEqual(len(valid), content.SIZE)
+        for changed in (b'unexpected fixture record\n', valid):
+            with self.subTest(same_length=len(changed) == content.SIZE):
+                self.path.write_bytes(original)
+                with self.assertRaisesRegex(content.Unavailable, 'CHANGED'):
+                    with content.publication(self.path):
+                        self.path.write_bytes(changed)
+                self.assertEqual(self.path.read_bytes(), changed)
 
     def test_bad_records_links_permissions_missing_and_overflow_refuse(self):
         original = self.path.read_bytes()

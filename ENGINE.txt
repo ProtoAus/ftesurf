@@ -27,7 +27,8 @@ commit   dc3e20be390ba5c3bb7d570bcacba8151172cd7d
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1165
-patch    1170
+patch    1172
+# Patch 1172 (backend): validate managed content lease binding and expected record through admission/reentry/completion; post-write scope failures retain partial zone-publication recovery, without repairing invalid state. Native pin/tag, QC, schema, capture and Build unchanged; no activation or full writer-coverage claim.
 # Patch 1168 (QC/backend readers): public owned inventories, optional tracked playtime/map attempts, main/bonus selection, menu profile pictures and upward seek paging. Collection is separate; native pins and qcbuild unchanged.
 # Patch 1167 (backend): opt-in mapwatch and zone-publication content epochs; configured unavailable state fails closed, absent/empty remains unmanaged. Native pin/tag, QC, schema and Build unchanged; partial writer coverage is not canonical approval or activation.
 # Patch 1165: bounded native TAS VFS components and distinct operator preparation; ordinary budgets, human recording/eligibility and queue admission unchanged. Component checks are not source qualification or deployment; tools/tas-native-source.md.

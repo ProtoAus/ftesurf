@@ -26,7 +26,14 @@ The operator policy is opt-in; ordinary engine filesystem operation is unchanged
 
 `surfd/tascontent.py` supplies a managed content incarnation/epoch and cooperative
 shared/exclusive kernel leases. It does not itself intercept publishers. Missing,
-odd or replaced state fails closed. `SURFD_TAS_CONTENT_LEASE` opts mapwatch and the
+odd or replaced state fails closed. Patch1172 also checks the held descriptor,
+configured file binding and expected record at admission, reentry and completion.
+Unexpected state is refused, not rewritten as a completed publication. Zone puts
+distinguish body errors from later scope errors: uncertain completion retains partial
+operator-recovery state, not an assertion that installed files were safely restored.
+No unfenced rollback or lease repair is attempted. This relies on cooperative
+namespace ownership, not serialization of arbitrary external renames.
+`SURFD_TAS_CONTENT_LEASE` opts mapwatch and the
 zone publisher into that same lease: environment is first, and an explicitly empty
 value disables it rather than falling back to the env file. Mapwatch fences final
 rename/link and active-zone retirement; an existing BSP/zone replacement uses one
@@ -97,5 +104,19 @@ native preparation smoke also confirms component/preparation byte equality,
 cross-role reader refusal and the actual inherited shared-reader lease: a writer
 remains blocked after the parent's test-only early close until native cleanup,
 then acts and advances the epoch. That does not establish real publisher coverage.
+Patch1172 passes11 content tests (Windows10 POSIX skips; Linux1 Windows-only skip)
+and11 publisher tests (Windows8 POSIX skips), plus155 zone-publisher regressions on
+each platform. Matched predecessor controls distinguish post-write partial outcomes;
+same-length valid-record arms distinguish omission of the exact expected-record check.
+The zone service's isolated ship set includes the lease and account-helper dependencies;
+individually missing dependencies refuse its import preflight. Installer7 passes on
+Windows/Linux; the current isolated service payload and publisher suite pass184 Linux
+tests with1 platform skip.
+Actual native inherited-reader retention,
+source reads, writer exclusion and post-cleanup publication still act. Linux28 VFS
+and42 Peer tests pass. Human readers remain949/0 failed and the unchanged541-run
+corpus retains348 faults, not a clean-corpus claim. Official QC NoDeploy adds no
+warning fingerprints; the same two client warnings remain. No native pin/tag,
+recording format, capture, eligibility, Build, activation or canonical permit changes.
 Final-image and deployment acceptance remain separate from source tests and
 compiler invocation.

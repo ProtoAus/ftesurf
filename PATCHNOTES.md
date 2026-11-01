@@ -21,6 +21,9 @@
 
 ## next
 
+### P1172 Recoverable zone updates
+- Zone updates that cannot confirm completion keep their recovery state instead of being reported as safely reverted.
+
 ### P1170 Clean lobby disconnects
 - Switching or rejoining lobbies and closing the game normally now cleans up the old connection instead of leaving a ghost player until timeout. Weapon Drop still works without disconnecting you.
 

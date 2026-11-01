@@ -41,7 +41,7 @@ class Stamp:
 @dataclass(frozen=True)
 class Lease:
     stamp: Stamp
-    fd: int  # May be explicitly inherited by an owned actor; never LOCK_UN it.
+    fd: int  # Borrowed: never close/LOCK_UN it; an owned actor may inherit a copy.
 
 
 def _path(value):
@@ -60,6 +60,7 @@ def _identity(fd):
     s = os.fstat(fd)
     if (not stat.S_ISREG(s.st_mode) or s.st_nlink != 1 or s.st_uid != os.geteuid() or s.st_mode & 0o077):
         raise Unavailable('CONTENT_LEASE_IDENTITY')
+    return s
 
 
 def _read(fd):
@@ -78,8 +79,26 @@ def _read(fd):
     return Stamp(match[1].decode('ascii'), epoch)
 
 
+def _record(stamp):
+    return MAGIC + stamp.incarnation.encode('ascii') + b' ' + ('%020d\n' % stamp.epoch).encode('ascii')
+
+
+def _bound(path, fd, identity, expected):
+    _path(path)
+    try:
+        current = _identity(fd)
+        named = os.stat(path, follow_symlinks=False)
+    except OSError as error:
+        raise Unavailable('CONTENT_LEASE_REPLACED') from error
+    if ((current.st_dev, current.st_ino) != identity or
+            (named.st_dev, named.st_ino) != identity):
+        raise Unavailable('CONTENT_LEASE_REPLACED')
+    if current.st_size != SIZE or os.pread(fd, SIZE + 1, 0) != _record(expected):
+        raise Unavailable('CONTENT_LEASE_CHANGED')
+
+
 def _write(fd, stamp):
-    raw = MAGIC + stamp.incarnation.encode('ascii') + b' ' + ('%020d\n' % stamp.epoch).encode('ascii')
+    raw = _record(stamp)
     offset = 0
     while offset < len(raw):
         n = os.pwrite(fd, raw[offset:], offset)
@@ -137,28 +156,38 @@ def _lease(value, write, timeout):
     if held is not None:
         if held[0] != path or held[2] != write:
             raise Unavailable('CONTENT_LEASE_LOCK_ORDER')
-        yield held[3]
+        _bound(path, held[3].fd, held[4], held[3].stamp)
+        try:
+            yield held[3]
+        finally:
+            _bound(path, held[3].fd, held[4], held[3].stamp)
         return
     fd = os.open(path, (os.O_RDWR if write else os.O_RDONLY) | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
-        _identity(fd)
+        opened = _identity(fd)
+        identity = (opened.st_dev, opened.st_ino)
         _acquire(fd, write, timeout)
         before = _read(fd)
+        _bound(path, fd, identity, before)
         if write:
             if before.epoch > MAX_EPOCH - 2:
                 raise Unavailable('CONTENT_LEASE_EXHAUSTED')
             odd = Stamp(before.incarnation, before.epoch + 1)
             _write(fd, odd)  # Durable invalidation BEFORE caller can mutate content.
+            _bound(path, fd, identity, odd)
             lease = Lease(odd, fd)
         else:
             lease = Lease(before, fd)
-        _LOCAL.held = (path, os.getpid(), write, lease)
+        _LOCAL.held = (path, os.getpid(), write, lease, identity)
         try:
             yield lease
         finally:
             _LOCAL.held = None
+            _bound(path, fd, identity, lease.stamp)
             if write:
-                _write(fd, Stamp(before.incarnation, before.epoch + 2))
+                after = Stamp(before.incarnation, before.epoch + 2)
+                _write(fd, after)
+                _bound(path, fd, identity, after)
     finally:
         # Closing ONLY this copy preserves any explicitly inherited actor lease.
         os.close(fd)
