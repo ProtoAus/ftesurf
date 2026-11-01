@@ -584,7 +584,8 @@ class PublishNow(Publish):
     def test_lobbies_on_the_map_with_no_port_of_ours_never_count_as_told(self):
         self.grant(); self.maps={'surf_fixture'}; self.ports={}                # on it, none resolved
         self.upload(self.challenge_now()[1]); self.assertEqual(self.wait(900),{})
-        self.assertIsNone(self.row()['notice']); self.assertEqual(self.files(),[self.OLD,None])
+        self.assertIn('not ours', self.row()['hold']); self.assertEqual(self.files(),[self.OLD,None])
+        self.assertEqual(self.words('say'), [])
     def test_a_publish_nobody_answers_expires_with_nothing_installed(self):
         self.grant(); self.maps={'surf_fixture'}; self.silent={27510,27530}
         self.upload(self.challenge_now()[1]); self.wait(z.pub.FORCE_EXPIRE + 120)
@@ -783,6 +784,32 @@ class PublishNow(Publish):
         n=len(self.words('changelevel')); self.wait(120)
         self.assertEqual((self.row()['kind'], self.row()['force']), ('rollback', 1))
         self.assertEqual(sorted(self.words('changelevel')[n:]), [27510, 27530])
+    def test_a_recovered_row_unheard_for_a_tick_gets_a_fresh_hour(self):
+        # Round 3: after a crash before put(), the first ticks may not hear the lobbies yet.
+        self.grant(); self.maps={'surf_fixture'}
+        with z.connect(self.store) as db:
+            z.pub.queue(db, 'surf_fixture', self.raw, SID, self.now - 7200)
+        def crash(paths, bodies, limit): raise SystemExit('power cut before the write')
+        with patch.object(z.pub, 'put', crash):
+            with self.assertRaises(SystemExit): self.apply()
+        self.maps=None; self.wait(300)                                        # rebooting: lobbies unheard
+        self.assertEqual(self.row()['kind'], 'pending'); self.assertIn('cannot all be heard', self.row()['hold'])
+        self.maps={'surf_fixture'}; self.assertEqual(self.wait(60), {'surf_fixture': 'live'})
+    def test_a_held_row_expires_an_hour_after_its_first_hold(self):
+        self.grant(); self.maps={'surf_fixture'}; self.silent={27510}
+        self.upload(self.challenge_now()[1]); self.wait(z.pub.FORCE_EXPIRE - 120)
+        self.assertEqual(self.row()['kind'], 'pending')
+        self.wait(240); self.assertEqual(self.row()['kind'], 'expired')
+    def test_a_second_rollback_states_the_crc_of_the_bytes_it_restores(self):
+        self.grant(); self.ports={}
+        a=self.raw2(61); b=self.raw2(62); c=self.raw2(63)
+        for body in (a, b, c):
+            self.upload(self.challenge_now(body)[0], raw=body); self.now += 31
+        ids={bytes(r['body']): r['id'] for r in self.rows('live')}
+        self.rollback(to_id=ids[b], anyway=True)                              # back to a
+        self.rollback(to_id=ids[c], anyway=True)                              # back to b
+        self.assertEqual(self.files()[0], b)
+        self.assertEqual(self.row()['crc'], self.crc_of(b))
     def test_a_pre_p1180_row_recovered_before_its_write_is_not_expired(self):
         self.grant(); self.maps={'surf_fixture'}
         with z.connect(self.store) as db:

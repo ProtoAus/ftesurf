@@ -19,7 +19,8 @@ A pending row is written once:
      SURFD_PUBLIC_HOST or a literal address of this machine), else it holds (`hold` says why);
      an empty target set counts only when no lobby is on the map at all;
   1. every target answers `serverinfo` just before put() (its zonecrc then is kept), else it
-     holds. Pending past FORCE_EXPIRE: expired, nothing installed.
+     holds. Held FORCE_EXPIRE since its first hold (`notice`; `applying` clears both): expired,
+     nothing installed.
 After put(), each target gets `say` and `changelevel` at once (_reload_now). Then, live: one
 round per ROUND_GAP reads each lobby in `todo`, and any the table now shows on the map, with
 `serverinfo`. Done means its `zonecrc` (the hash of the table it runs, sv_zones.qc)
@@ -36,7 +37,8 @@ is spent only on a changelevel sent; RELOAD_TRIES, SILENT_ROUNDS without an answ
 RELOAD_EXPIRE leave it too. Left lobbies are `partial`, still read, cleared if they later run the
 table; a lobby's state outlives its moves off and back. A newer write of the map (a rollback,
 another publish, a partial one) ends the watch. The row ends (`done_at`) only in a round whose lobby table was
-read, after WATCH_ROUNDS such rounds, with every lobby done, moved off or left (`live-partial`);
+read, after WATCH_ROUNDS such rounds, with every lobby done, moved off or left (`live-partial`;
+a rollback row keeps its kind and records `partial`);
 `zonepub.py reload` re-arms it with its own clock (`rearmed`). Bytes already live reload nobody.
 A crash between the write and the reload recovers as live, which starts the reload.
 """
@@ -573,11 +575,15 @@ def _note(connect, store, rid, text):
 
 
 def _hold(connect, store, row, why):
-    """Why a pending force row waits, said once per change of reason."""
+    """Why a pending row waits, said once per change of reason; the first hold starts its deadline
+    (`notice`, P1081's warning time and unused since P1180)."""
     with connect(store) as db:
         was = db.execute('SELECT hold FROM publications WHERE id=?', (row['id'],)).fetchone()[0]
         if was != why:
-            db.execute('UPDATE publications SET hold=? WHERE id=?', (why, row['id']))
+            # SET reads the row as it was: a first hold (none before) starts the clock, a row from
+            # before P1180 included (its `notice` was a warning time).
+            db.execute('UPDATE publications SET notice=CASE WHEN hold IS NULL THEN ? ELSE notice END, hold=? '
+                       'WHERE id=?', (int(CLOCK()), why, row['id']))
             log('holding', row['map'], row['sha'][:12], why)
 
 
@@ -626,9 +632,9 @@ def _ready_now(connect, store, row, maps, now):
     with connect(store) as db:
         cur = db.execute('SELECT * FROM publications WHERE id=?', (row['id'],)).fetchone()
     if cur is None or cur['kind'] != 'pending': return False
-    # A row that has been held: a pre-P1180 row (force 0) had no deadline, and `applying` clears
-    # the hold, so one recovered from a crash before put() is tried again, not expired.
-    if cur['force'] and cur['hold'] and now - cur['at'] > FORCE_EXPIRE:
+    # Held for FORCE_EXPIRE since its first hold. `applying` clears both, so a row recovered from
+    # a crash before put() (or after downtime) gets a fresh hour, whatever its age.
+    if cur['hold'] and cur['notice'] is not None and now - cur['notice'] > FORCE_EXPIRE:
         _set(connect, store, row['id'], kind='expired')
         _note(connect, store, row['id'], 'expired, nothing installed: ' + (cur['hold'] or 'not ready in time'))
         log('expired', row['map'], row['sha'][:12], cur['hold'] or '')
@@ -866,7 +872,8 @@ def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit, rcon_fn=l
                                (math.ceil(CLOCK()), now, row['id']))
                     done[name] = kind = 'noop'
                 else:
-                    db.execute("UPDATE publications SET kind='applying', force=1, hold=NULL, prev=?, result=? WHERE id=?",
+                    db.execute("UPDATE publications SET kind='applying', force=1, hold=NULL, notice=NULL, "
+                               "prev=?, result=? WHERE id=?",
                                (json.dumps([[key(d), p.hex() if p is not None else None] for d, p in zip(dirs, prev)]),
                                 json.dumps([[key(d), row['sha']] for d in dirs]), row['id']))
                     kind = None
@@ -929,7 +936,7 @@ def rollback(connect, store, dirs, name, valid_name, maps_fn, now, limit, to_id=
         # P1081: the crc of the bytes put back, from a row that wrote them live (None: not stated);
         # a crc stated by an upload that never went live is nobody's word for the files.
         back = db.execute('SELECT crc FROM publications WHERE map=? AND sha=? AND crc IS NOT NULL AND kind IN %s '
-                          'ORDER BY id DESC LIMIT 1' % (LIVE_KINDS,),
+                          'ORDER BY id DESC LIMIT 1' % (('live', 'live-partial'),),
                           (name, sha(prev[0]))).fetchone() if prev and prev[0] else None
         # `live` stays NULL until put() is done, as a publish's does (_recover stamps a crashed one).
         rid = db.execute("INSERT INTO publications(map,sha,steamid,at,kind,prev,result,crc,force) "

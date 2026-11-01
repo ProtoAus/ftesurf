@@ -23,7 +23,10 @@ with `applying`, so a crash mid-write recovers into a reload; a row queued befor
 Review round 2: a rollback whose reload leaves a lobby keeps kind `rollback` (with `partial`), so
 it stays the map's current row for history, `state()` and the next rollback, and `zonepub.py
 reload` re-arms it; its row is inserted with force 1, so a crash after its put still reloads;
-only a row that has been held can expire (`applying` clears the hold).
+a held row expires FORCE_EXPIRE after its first hold (kept in `notice`, P1081's
+warning time; `applying` clears hold and notice, so a recovered row gets a fresh hour). Round 3:
+a rollback takes the crc of the bytes it restores only from a publish row (never another
+rollback, whose sha is the undone upload's).
 `quiet()` still guards `rollback` without `--anyway`.
 
 `/api/zones/history` (POST `{"map": name}` or `{}`) lists the newest live, live-partial and
