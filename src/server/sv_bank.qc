@@ -15,12 +15,11 @@
 .entity bank_grav_reset_player;
 .int bank_grav_reset_attempt;
 .float bank_grav_reset_bad;
-// P1185: an activation slot's last on->off -- who owned the on state, and the cause
-// that switched it off (SV_IOEnable).
+// P1185: the player cause that switched a world-owned activation slot off (SV_IOEnable).
 .float bank_off_have;
-.entity bank_pre_player, bank_off_player;
-.int bank_pre_attempt, bank_off_attempt;
-.float bank_pre_bad, bank_off_bad;
+.entity bank_off_player;
+.int bank_off_attempt;
+.float bank_off_bad;
 
 int bank_serial;
 entity bank_ctx_player;
