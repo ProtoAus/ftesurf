@@ -1394,6 +1394,9 @@ float(float scanx) Noclip_Wheel =
 
 	// Native archived cvars mirror into seat0 userinfo. Do not change another
 	// local player's flight while a different split-screen seat owns input.
+	// Key events do not set the seat (CSQC_KeyPress): VF_ACTIVESEAT is whatever
+	// the last engine call left, non-zero on a lobby, so ask only with 2+ seats.
+	if (numclientseats > 1)
 	if (getproperty(VF_ACTIVESEAT) != 0)
 	{
 		print("noclip wheel tuning currently supports the first local seat only\n");

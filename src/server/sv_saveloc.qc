@@ -4611,11 +4611,10 @@ void(entity e, float down) SV_SaveLocHold =
 	if (!SV_SaveLocAllowed(e, TRUE))
 		return;
 
+	// Silent: a hold only acts right after a load (below), and that load has
+	// already said "nothing saved" -- the load key printed it twice.
 	if (rec_sl_nb[SL_Blk(e)] <= 0)
-	{
-		sprint(e, PRINT_HIGH, "^3save: nothing saved on this map\n");
 		return;
-	}
 
 	/*
 	  Patch 428 r2-r4: ONLY RIGHT AFTER A LOAD OF THIS SAVE.  `2` sends sl_load
