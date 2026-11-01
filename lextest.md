@@ -2,6 +2,12 @@
 
 ## P1169 — larger native Maps filters (pending)
 
+Source/captures qualified; NOT installed. Both current menus changed during
+preparation; the source/predecessor guard refused before any copy. Adoption awaits
+the actual writer's source/build handoff or an explicit owner-only supersession
+decision with all8 current/.prev MENU rollback files retained. Details:
+`tools/p1169-map-fonts.md`. Do not mistake source publication for deployment.
+
 After the menu-only update, run `menu_restart` and open Maps. Confirm the Tier,
 Mode, Library, Extra and Sort text feels large/sharp enough at your normal window
 and UI scale. Click a tier, Surf/Bhop, library and sort option; confirm their

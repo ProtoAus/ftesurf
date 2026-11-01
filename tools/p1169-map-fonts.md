@@ -37,11 +37,30 @@ physics, account, zone/tier, backend, Build or release change.
 
 Client-local `menu.dat` and matching `menu.lno` ONLY, in BOTH Windows installs.
 No menu.dat is ever a lobby ship item. The inspected prior menu/LNO in both
-installs exactly matches the public P1168 fba5b68f delivery AND the untouched
-control build. Preserve `.prev` and archive older predecessors before adoption;
-verify destination hashes and protect unknown newer SSQC/CSQC/native/configs.
+installs initially matched the public P1168 fba5b68f delivery AND the untouched
+control build. At the actual mutation boundary BOTH had changed to an unbound
+menu6f8760a5/LNOa70ad3cb; the guard refused BEFORE any install copy. The separate
+P1168 reader owner also preserved that same concurrent menu. One bounded clean
+public-canonical1d0 control build did NOT match it; checked active-producer
+artifacts did not match either. This is NOT source binding or a successful rollout.
+All8 actual current/.prev MENU files have a read-only rollback archive with each
+member rehashed. Installation remains BLOCKED on the actual menu writer's
+source/build handoff, or an explicit owner decision to supersede just those4
+MENU/LNO files with the qualified candidate while preserving that rollback.
+Never silently weaken the original guard or infer owner approval from testing.
+Preserve `.prev`; verify destination hashes and protect actual newer
+SSQC/CSQC/native/configs when adoption becomes authorized.
 Use the existing build's Deploy helper narrowly; never default-deploy all progs
-or restart lobbies for this change. Reload the installed menu with `menu_restart`.
+or restart lobbies for this change. ONLY AFTER adoption, reload with `menu_restart`.
+
+Qualified source is public `e2a03eee6bcf81295a6be98a5adc92f28d3fac7f`;
+subsequent peer adoption/status changes are docs-only, not a changed menu input.
+Frozen candidate (not installed):
+
+| File | SHA-256 |
+|---|---|
+| menu.dat | `b63095a727f41642cbd6797a8b81e4a67fa86620d324ef8b5b3574fd10f7cd48` |
+| menu.lno | `cca6bc18f13280563ca4b3657a4e10bb7567a7458e43168c86aea2b0cdc6ff9f` |
 
 ## Dated unzoned-map list
 
