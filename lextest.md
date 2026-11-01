@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P1168 — public inventory, map stats and seeking (pending)
+
+Implementation is verified in an isolated synthetic client, not human-accepted.
+Live/local availability and the separate counter-collector blocker are recorded
+in `tools/profile-stats-p1168.md`; do not infer deployment from these checks.
+After the relevant delivery, inspect another linked player's inventory while an
+item is unequipped, click a menu leaderboard picture, and select main/bonus
+courses. Jump to your row and scroll upward; if using the native table, also try
+Previous at the first fetched row (native Previous is not runtime-proved yet).
+When real collection is active, compare your profile/map totals and !time/name
+for a short actual session. Old sessions were not recorded and are not backfilled.
+Confirm readability and interaction feel; no owner confirmation received yet.
+
 ## P1164 — cylindrical paper party crown (appearance confirmed)
 
 Live on all12 lobbies, with exact CSQC caches seeded in both Windows installs

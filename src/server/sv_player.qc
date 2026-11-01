@@ -2408,6 +2408,11 @@ void(string cmd) SV_ParseClientCommand =
 			tail = substring(msg, sp + 1, strlen(msg) - (sp + 1));
 		}
 
+		if (!strcmp(w, "!time"))
+		{
+			PublicTime_Command(self, tail);
+			return;
+		}
 		// Use the existing camera/request path, including name matching and countdown.
 		if (w == "!spec")
 		{

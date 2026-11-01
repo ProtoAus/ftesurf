@@ -71,6 +71,9 @@ float  pf_base, pf_seq;         // this VM's request ids: Profile_Get
 vector pf_f_scr;                // the screen the field was last drawn on
 string pf_name, pf_handle;
 vector pf_cosmetics;
+vector pf_inventory;                 // owned aura, owned crown, saved crown colour
+float pf_inventory_known, pf_play_known, pf_play_seconds;
+float pf_on_play_known, pf_on_play_seconds, pf_on_attempts;
 float  pf_src, pf_n, pf_maps, pf_last, pf_wr, pf_wrc, pf_top10, pf_av, pf_total, pf_t;
 float  pf_bt_ours, pf_bt_mom, pf_bt_ksf;
 float  pf_ksfstate, pf_ksfskip; // 1 pending, 2 checked, 3 bounded/incomplete
@@ -467,6 +470,8 @@ void(string who) Profile_Show =
 	pf_total = 0;
 	pf_name = "";
 	pf_cosmetics = '0 0 0';
+	pf_inventory = '0 0 0';
+	pf_inventory_known = pf_play_known = pf_play_seconds = 0;
 	pf_handle = "";
 	pf_ksfstate = 0;
 	pf_ksfskip = 0;
@@ -555,6 +560,7 @@ void(string who, string map) Profile_OnShow =
 	pf_on_name = "";
 	pf_on_handle = "";
 	pf_on_av = 0;
+	pf_on_play_known = pf_on_play_seconds = pf_on_attempts = 0;
 	pf_on_again = FALSE;
 	pf_on_scroll = '0 0 0';
 	Profile_OnAsk();
@@ -697,7 +703,8 @@ void(int c, float k) Profile_CompRead =
 
 void(string bdy) Profile_Parse =
 {
-	local int root, c;
+	local int root, c, items, row;
+	local float i, item, n;
 	local string h;
 
 	root = json_parse(bdy);
@@ -739,6 +746,24 @@ void(string bdy) Profile_Parse =
 	pf_cosmetics = [bound(0, json_get_float(json_find_object_child(c, "roles")), 7),
 	                bound(0, json_get_float(json_find_object_child(c, "outline")), 1),
 	                bound(0, json_get_float(json_find_object_child(c, "hat")), 12)];
+	items = json_find_object_child(c, "items");
+	pf_inventory_known = (items != 0i);
+	pf_inventory = '0 0 0';
+	n = json_get_length(items);       // MENU min's varargs do not promote integers
+	for (i = 0; i < min(16, n); i = i + 1)
+	{
+		row = json_get_child_at_index(items, i);
+		item = json_get_float(json_find_object_child(row, "id"));
+		if (item == 1) pf_inventory_x = 1;
+		if (item == 2)
+		{
+			pf_inventory_y = 1;
+			pf_inventory_z = bound(0, json_get_float(json_find_object_child(row, "colour")), 11);
+		}
+	}
+	c = json_find_object_child(root, "playtime");
+	pf_play_known = !strcmp(json_get_string(json_find_object_child(c, "scope")), "steam_linked_game");
+	pf_play_seconds = max(0, json_get_float(json_find_object_child(c, "seconds")));
 	pf_av     = json_get_float(json_find_object_child(root, "av"));
 	pf_total  = json_get_float(json_find_object_child(root, "total"));
 	c = json_find_object_child(root, "by_tier");
@@ -877,7 +902,7 @@ void(string bdy, float more) Profile_TierParse =
 
 void(string bdy) Profile_OnParse =
 {
-	local int root, rows, row;
+	local int root, rows, row, activity;
 	local float n, i;
 	local float *f;
 	local string h;
@@ -896,6 +921,18 @@ void(string bdy) Profile_OnParse =
 	pf_on_handle = h;
 	pf_on_name = substring(json_get_string(json_find_object_child(root, "name")), 0, PF_TEXT);
 	pf_on_av   = json_get_float(json_find_object_child(root, "av"));
+	activity = json_find_object_child(root, "playtime");
+	pf_on_play_known = !strcmp(json_get_string(json_find_object_child(activity, "scope")), "steam_linked_game");
+	pf_on_play_seconds = max(0, json_get_float(json_find_object_child(activity, "map_seconds")));
+	rows = json_find_object_child(activity, "attempts");
+	pf_on_attempts = 0;
+	n = json_get_length(rows);
+	for (i = 0; i < min(1024, n); i = i + 1)
+	{
+		row = json_get_child_at_index(rows, i);
+		if (json_get_float(json_find_object_child(row, "leg")) == 0)
+			pf_on_attempts = pf_on_attempts + max(0, json_get_float(json_find_object_child(row, "n")));
+	}
 	n = json_get_float(json_find_object_child(root, "t"));
 	if (n > 0)
 		pf_t = n;                       // Profile_Age's clock, which a breakdown on show reads too
@@ -1743,6 +1780,12 @@ float(vector p, vector sz, float tsz, float hint) Profile_DrawOn =
 	pf_on_csz = bs;
 	pf_on_rsz = '0 0 0';
 	y = p_y + pic + hint;
+	if (pf_on_state == PFS_OK)
+	{
+		s = pf_on_play_known ? sprintf("On this map: %gh %gm  |  %g main/bonus attempts", floor(pf_on_play_seconds / 3600), floor(pf_on_play_seconds / 60) % 60, pf_on_attempts) : "Map playtime / attempts: not recorded yet";
+		sui_text([p_x, y], [hint, hint], Chat_Fit(s, sz_x, hint), SUI_THEME_MUTED, 1, 0);
+		y = y + ceil(hint * 1.8);
+	}
 	rowh = ceil(tsz * 1.75);
 	Font_Set(ui_font_mono);
 	c1 = ceil(tsz * 0.6 * 11);                              // "#1234 /5678"
@@ -1868,6 +1911,10 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 		return;
 	}
 
+	s = pf_play_known ? sprintf("Tracked playtime: %gh %gm", floor(pf_play_seconds / 3600), floor(pf_play_seconds / 60) % 60) : "Playtime: not recorded yet";
+	sui_text(p, [hint, hint], s, SUI_THEME_MUTED, 1, 0);
+	p_y = p_y + ceil(hint * 1.8);
+	sz_y = sz_y - ceil(hint * 1.8);
 	// ---- the figures
 	n = 4 + (pf_c_has ? 1 : 0);
 	th = ceil(ttl + hint * 3.2);

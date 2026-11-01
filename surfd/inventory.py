@@ -57,24 +57,30 @@ def ensure(db, sid):
         grant(db, sid, item)
 
 
+def owned(db, sid):
+    return [dict(id=r["item"], colour=r["colour"], equipped=r["equipped"])
+            for r in db.execute("SELECT item,colour,equipped FROM account_items WHERE steamid=? ORDER BY item LIMIT 16", (sid,))]
+
+
 def public(db, sid):
     if not linked(db, sid):
-        return {"roles": 0, "outline": 0, "hat": 0}
+        return {"roles": 0, "outline": 0, "hat": 0, "items": []}
     row = db.execute("SELECT badges FROM account_cosmetics WHERE steamid=?", (sid,)).fetchone()
-    result = {"roles": 1 | (row[0] if row else 0), "outline": 0, "hat": 0}
-    for r in db.execute("SELECT item,colour FROM account_items WHERE steamid=? AND equipped=1", (sid,)):
-        if r["item"] == 1:
-            result["outline"] = 1
-        elif r["item"] == 2:
-            result["hat"] = r["colour"] + 1
+    result = {"roles": 1 | (row[0] if row else 0), "outline": 0, "hat": 0, "items": owned(db, sid)}
+    for r in result["items"]:
+        if r["equipped"]:
+            if r["id"] == 1:
+                result["outline"] = 1
+            elif r["id"] == 2:
+                result["hat"] = r["colour"] + 1
     return result
 
 
 def snapshot(db, sid):
     row = db.execute("SELECT revision FROM account_cosmetics WHERE steamid=?", (sid,)).fetchone()
-    return dict(revision=row[0] if row else 0, **public(db, sid), items=[
-        dict(id=r["item"], colour=r["colour"], equipped=r["equipped"])
-        for r in db.execute("SELECT item,colour,equipped FROM account_items WHERE steamid=? ORDER BY item LIMIT 16", (sid,))])
+    result = dict(revision=row[0] if row else 0, **public(db, sid))
+    result["items"] = owned(db, sid)
+    return result
 
 
 def equip(db, sid, item, on, revision):

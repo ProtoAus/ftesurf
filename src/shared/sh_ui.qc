@@ -1,5 +1,21 @@
 /* Shared SUI chrome. Existing controls/IDs and the gameplay HUD stay unchanged. */
 
+vector(float colour) sui_inventory_colour =
+{
+	if (colour == 0) return '1 0.26 0.32';
+	if (colour == 1) return '1 0.55 0.18';
+	if (colour == 2) return '1 0.85 0.25';
+	if (colour == 3) return '0.45 0.9 0.35';
+	if (colour == 4) return '0.2 0.8 0.65';
+	if (colour == 5) return '0.3 0.85 1';
+	if (colour == 6) return '0.3 0.55 1';
+	if (colour == 7) return '0.65 0.4 1';
+	if (colour == 8) return '1 0.4 0.8';
+	if (colour == 9) return '1 0.7 0.8';
+	if (colour == 10) return '0.9 0.9 1';
+	return '0.7 0.85 0.45';
+};
+
 /*
   The palette (Patch 606): one dark slate ramp and seven pastel accents, read by
   every restyled panel in both VMs. The ImGui scoreboard provider carries the
