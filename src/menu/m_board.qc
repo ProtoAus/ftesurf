@@ -66,6 +66,11 @@ float  mlb_going, mlb_goto;   // ui_board_test's scroll, held until the rows exi
 string mlb_near, mlb_jumpnote;
 string() MH_Me;
 float  mlb_offset;           // first held row's offset, including a profile seek
+float mlb_course_req, mlb_time_req, mlb_aux_sent, mlb_course_known, mlb_course_n, mlb_course_at;
+float mlb_play_known, mlb_map_seconds, mlb_map_attempts;
+float *mlb_courses;
+float *mlb_attempts;
+string mlb_stats_who;
 string mlb_focuswho;
 int    mlb_focusms;          // exact milliseconds, never float32 display time
 float  mlb_focusrank, mlb_focus; // picked identity/time, never display name
@@ -384,6 +389,7 @@ float(float append) Mlb_Fetch =
 	url = strcat(sprintf("%s/api/board?map=%s&track=%g&leg=%g&tier=%s&style=%s",
 	              dir, uri_escape(mlb_map), mlb_track, mlb_leg, tier, uri_escape(mlb_style)),
 	              sprintf("&limit=%g&offset=%g", lim, off));
+	if (!append)
 	if (mlb_near != "") url = strcat(url, "&near=", uri_escape(mlb_near));
 	id = Lob_NextReq();
 	if (!uri_get(url, id))
@@ -495,6 +501,110 @@ void() Mlb_Retry =
 	}
 };
 
+void() Mlb_AuxAsk =
+{
+	local string dir, who, url;
+	local float i;
+	mlb_course_req = mlb_time_req = 0;
+	mlb_course_known = mlb_play_known = FALSE;
+	mlb_course_n = 1; mlb_course_at = 0;
+	mlb_map_seconds = mlb_map_attempts = 0;
+	if (!mlb_courses)
+	{
+		mlb_courses = memalloc(sizeof(float) * 65);
+		mlb_attempts = memalloc(sizeof(float) * 65);
+	}
+	for (i = 0; i < 65; i = i + 1) { mlb_courses[i] = 0; mlb_attempts[i] = 0; }
+	strunzone(mlb_stats_who); mlb_stats_who = "";
+	if (!mlb_open || cvar("rec_terms") < FS_TERMS_ONLINE) return;
+	dir = cvar_string("lobby_dir");
+	if (dir == "") return;
+	mlb_aux_sent = time;
+	mlb_course_req = Lob_NextReq();
+	// Reuse the site's existing bounded course catalogue.
+	url = strcat(dir, "/board/api/map?map=", uri_escape(mlb_map), "&track=0&leg=0&tier=ranked&style=", uri_escape(mlb_style));
+	if (!uri_get(url, mlb_course_req)) mlb_course_req = 0;
+	who = MH_Me();
+	if (!MF_Hex(who, 12) && !MF_Hex(who, 8)) return;
+	mlb_stats_who = strzone(who);
+	mlb_time_req = Lob_NextReq();
+	if (!uri_get(strcat(dir, "/api/board?player=", who, "&on=", uri_escape(mlb_map)), mlb_time_req)) mlb_time_req = 0;
+};
+
+float(float id, float code, string body) Mlb_AuxReply =
+{
+	local int root, rows, row, activity;
+	local float i, j, n, track, leg, have, courses;
+	local string who;
+	if (id != mlb_course_req && id != mlb_time_req) return FALSE;
+	courses = (id == mlb_course_req);
+	if (courses) mlb_course_req = 0; else mlb_time_req = 0;
+	if (!mlb_open || code || strlen(body) > 262144) return TRUE;
+	root = json_parse(body);
+	if (!root) return TRUE;
+	if (courses)
+	{
+		if (strcasecmp(json_get_string(json_find_object_child(root, "map")), mlb_map)
+		    || strcmp(json_get_string(json_find_object_child(root, "style")), mlb_style))
+		{
+			json_free(root); return TRUE;
+		}
+		rows = json_find_object_child(root, "boards");
+		n = json_get_length(rows);
+		for (i = 0; i < min(4096, n); i = i + 1)
+		{
+			row = json_get_child_at_index(rows, i);
+			track = json_get_float(json_find_object_child(row, "track"));
+			if (track <= 0 || track > 64 || track != floor(track)) continue;
+			if (json_get_float(json_find_object_child(row, "leg")) != 0) continue;
+			if (strcmp(json_get_string(json_find_object_child(row, "style")), mlb_style)) continue;
+			have = FALSE;
+			for (j = 0; j < mlb_course_n; j = j + 1)
+				if (mlb_courses[j] == track) have = TRUE;
+			if (!have && mlb_course_n < 65) mlb_courses[mlb_course_n++] = track;
+		}
+		mlb_course_known = TRUE;
+		for (i = 0; i < mlb_course_n; i = i + 1)
+			if (mlb_courses[i] == mlb_track) mlb_course_at = max(0, i - 2);
+	}
+	else
+	{
+		who = json_get_string(json_find_object_child(root, "who"));
+		if (strcmp(MH_Me(), mlb_stats_who)
+		    || strcmp(substring(who, 0, strlen(mlb_stats_who)), mlb_stats_who)
+		    || strcasecmp(json_get_string(json_find_object_child(root, "on")), mlb_map))
+		{
+			json_free(root); return TRUE;
+		}
+		activity = json_find_object_child(root, "playtime");
+		mlb_play_known = !strcmp(json_get_string(json_find_object_child(activity, "scope")), "steam_linked_game");
+		mlb_map_seconds = max(0, json_get_float(json_find_object_child(activity, "map_seconds")));
+		rows = json_find_object_child(activity, "attempts");
+		n = json_get_length(rows);
+		for (i = 0; i < min(1024, n); i = i + 1)
+		{
+			row = json_get_child_at_index(rows, i);
+			track = json_get_float(json_find_object_child(row, "track"));
+			leg = json_get_float(json_find_object_child(row, "leg"));
+			if (track < 0 || track > 64 || track != floor(track) || leg != 0) continue;
+			mlb_attempts[track] = max(0, json_get_float(json_find_object_child(row, "n")));
+			mlb_map_attempts = mlb_map_attempts + mlb_attempts[track];
+		}
+	}
+	json_free(root);
+	return TRUE;
+};
+
+void(float track) Mlb_SetCourse =
+{
+	if (track == mlb_track && mlb_leg == 0) return;
+	Mlb_ClearRows();
+	mlb_track = track; mlb_leg = mlb_offset = mlb_focusrank = 0;
+	mlb_focusms = 0i;
+	strunzone(mlb_focuswho); mlb_focuswho = "";
+	Mlb_Fetch(FALSE);
+};
+
 void(float t) Mlb_SetTab =
 {
 	if (!mlb_open) return;
@@ -522,6 +632,7 @@ void(string style) Mlb_SetStyle =
 	strunzone(mlb_focuswho); mlb_focuswho = "";
 	strunzone(mlb_style); mlb_style = strzone(style);
 	Mlb_Fetch(FALSE);
+	Mlb_AuxAsk();
 };
 
 void() Mlb_KsfMore =
@@ -547,6 +658,8 @@ void(string why) Mlb_Close =
 	if (!mlb_open)
 		return;
 	Mlb_ClearRows();
+	mlb_course_req = mlb_time_req = 0;
+	strunzone(mlb_stats_who); mlb_stats_who = "";
 	buf_del(mlb_brank);
 	buf_del(mlb_bname);
 	buf_del(mlb_btime);
@@ -604,6 +717,7 @@ void(string mapname, float t) Mlb_Open =
 	print(sprintf("^5board:^7 opened %s on %s; dates are local, %g min from UTC\n",
 	              mlb_map, Mlb_Tier(t), mlb_tzoff / 60));
 	Mlb_Fetch(FALSE);
+	Mlb_AuxAsk();
 };
 
 void(float i, int row) Mlb_Row =
@@ -732,6 +846,7 @@ void(float id, float code, string body, float append) Mlb_Page =
 		Mlb_ClearRows();
 		mlb_offset = json_get_float(json_find_object_child(root, "offset"));
 		mlb_focusms = json_get_integer(json_find_object_child(rows, "ms"));
+		strunzone(mlb_near); mlb_near = "";
 	}
 	tier = json_get_string(json_find_object_child(root, "tier"));
 	off  = json_get_float(json_find_object_child(root, "offset"));
@@ -843,6 +958,7 @@ void(float id, float code, string body) Mlb_PageEarlier =
 	if (f >= 0) mlb_focus = f + n;     // Mlb_Row may have matched in the new rows; the held one stands
 	mlb_n = keep + n;
 	mlb_offset = off;
+	sui_reset_actions();
 	mlb_scroll_y = mlb_scroll_y + n * MLB_ROW_H;
 	if (mlb_going) mlb_goto = mlb_goto + n;
 	print(sprintf("^5board:^7 earlier page id %g: offset %g rows %g -- held %g from #%s\n",
@@ -860,6 +976,7 @@ float(float reqid, float code, string body) Mlb_Reply =
 
 	if (!reqid)
 		return FALSE;
+	if (Mlb_AuxReply(reqid, code, body)) return TRUE;
 	if (mlb_kreq)
 	if (reqid == mlb_kreq)
 	{
@@ -1005,6 +1122,7 @@ void() Mlb_Poll =
 		mlb_mreq = 0;
 		Mlb_Fail(id, -2, TRUE);
 	}
+	if (time - mlb_aux_sent > MLB_DEADLINE) mlb_course_req = mlb_time_req = 0;
 	if (mlb_ureq)
 	if (time - mlb_usent > MLB_DEADLINE)
 	{
@@ -1048,8 +1166,12 @@ void(vector rp, float i, float rw, float tr, float dr, float nw) Mlb_DrawRow =
 	if (mlb_anyav)
 	{
 		if (s != "")
-		if (!MP_Draw([rp_x + MLB_NAME_X, rp_y + 2], MLB_ROW_H - 4, s, 1))
-			sui_roundbox([rp_x + MLB_NAME_X, rp_y + 2], [MLB_ROW_H - 4, MLB_ROW_H - 4], 4, SUI_THEME_CHIP, 1);
+		{
+			if (!MP_Draw([rp_x + MLB_NAME_X, rp_y + 2], MLB_ROW_H - 4, s, 1))
+				sui_roundbox([rp_x + MLB_NAME_X, rp_y + 2], [MLB_ROW_H - 4, MLB_ROW_H - 4], 4, SUI_THEME_CHIP, 1);
+			sui_action_element([rp_x + MLB_NAME_X, rp_y + 2], [MLB_ROW_H - 4, MLB_ROW_H - 4], sprintf("mlb_profile%g", i), sui_noop);
+			if (sui_is_released(sprintf("mlb_profile%g", i))) MFP_Open(s, bufstr_get(mlb_bname, i));
+		}
 		sui_text([rp_x + MLB_NAME_X + MLB_ROW_H, ty], SZ_ROW,
 		         ui_fit_text(bufstr_get(mlb_bname, i), nw - MLB_ROW_H, SZ_ROW), COL_TEXT, 1, 0);
 	}
@@ -1122,7 +1244,7 @@ void(vector p, float w) Mlb_DrawBody =
 void(vector screensize) Mlb_Draw =
 {
 	local vector p, sz, ls, rp;
-	local float w, h, x, t, ly, rw, tr, dr, nw, idx, cw, closeit;
+	local float w, h, x, t, ly, rw, tr, dr, nw, idx, cw, closeit, ci;
 	local string s, id;
 
 	if (!mlb_open)
@@ -1196,7 +1318,30 @@ void(vector screensize) Mlb_Draw =
 	if (ui_button("mlb_refresh", [w - 100, ly], [84, CHIP_H], "refresh"))
 	{
 		Mlb_ClearRows(); Mlb_Fetch(FALSE);
+		Mlb_AuxAsk();
 	}
+
+	ly = ly + CHIP_H + 12;
+	s = mlb_play_known ? sprintf("Your map time: %gh %gm | %g main/bonus attempts", floor(mlb_map_seconds / 3600), floor(mlb_map_seconds / 60) % 60, mlb_map_attempts) : (mlb_time_req ? "Loading your map time / attempts..." : "Map playtime / attempts: not recorded yet");
+	if (mlb_play_known && mlb_leg == 0)
+		s = strcat(s, sprintf(" | this course: %g", mlb_attempts[bound(0, mlb_track, 64)]));
+	sui_text([16, ly], '12 12 0', ui_fit_text(s, w - 32, '12 12 0'), COL_DIM, 1, 0);
+	ly = ly + 22;
+	x = 16;
+	for (ci = mlb_course_at; ci < mlb_course_n; ci = ci + 1)
+	{
+		t = mlb_courses[ci];
+		s = t ? sprintf("Bonus %g", t) : "Main";
+		cw = ui_chip_w(s);
+		if (x + cw > w - 104) break;
+		id = sprintf("mlb_course%g", t);
+		x = x + ui_chip([x, ly], id, s, mlb_track == t && mlb_leg == 0) + CHIP_GAP;
+		if (sui_is_released(id)) Mlb_SetCourse(t);
+	}
+	if (mlb_course_at > 0)
+		if (ui_button("mlb_course_prev", [w - 92, ly], [34, CHIP_H], "<")) mlb_course_at = max(0, mlb_course_at - 4);
+	if (ci < mlb_course_n)
+		if (ui_button("mlb_course_next", [w - 52, ly], [34, CHIP_H], ">")) mlb_course_at = ci;
 
 	// Columns, right-aligned numbers in the mono face: rank, player, time, date.
 	ly = ly + CHIP_H + 30;
@@ -1301,6 +1446,8 @@ void() Mlb_Status =
 	              mlb_known, mlb_cksf, mlb_cmom, mlb_cours, floor(mlb_scroll_y / MLB_ROW_H)));
 	print(sprintf("^5board:^7   pictures: rows have them %g; slots held %g, asked %g, from disk %g, fetched %g\n",
 	              mlb_anyav, MP_Held(), mp_asked, mp_disk, mp_got));
+	print(sprintf("^5board:^7   courses known %g count %g; playtime %g seconds %g attempts %g\n",
+	              mlb_course_known, mlb_course_n, mlb_play_known, mlb_map_seconds, mlb_map_attempts));
 	if (mlb_n > 0)
 	{
 		Mlb_PrintRow("first", 0);

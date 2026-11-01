@@ -6,21 +6,7 @@ string inv_who;
 entity inv_shell;
 float inv_shader;
 
-vector(float colour) Inv_Colour =
-{
-	if (colour == 0) return '1 0.26 0.32';
-	if (colour == 1) return '1 0.55 0.18';
-	if (colour == 2) return '1 0.85 0.25';
-	if (colour == 3) return '0.45 0.9 0.35';
-	if (colour == 4) return '0.2 0.8 0.65';
-	if (colour == 5) return '0.3 0.85 1';
-	if (colour == 6) return '0.3 0.55 1';
-	if (colour == 7) return '0.65 0.4 1';
-	if (colour == 8) return '1 0.4 0.8';
-	if (colour == 9) return '1 0.7 0.8';
-	if (colour == 10) return '0.9 0.9 1';
-	return '0.7 0.85 0.45';
-};
+vector(float colour) Inv_Colour = { return sui_inventory_colour(colour); };
 
 void() Inv_Init =
 {
@@ -113,7 +99,7 @@ float(vector p, float roles, float textsize, float width) Inv_Badges =
 	return x - p_x;
 };
 
-void(vector p, float width, float textsize, float editable, vector publickit) Inv_Panel =
+void(vector p, float width, float textsize, float editable, vector publickit, vector publicitems, float publicknown) Inv_Panel =
 {
 	local float cell, gap, i, j, x, owned, on, item, ready;
 	local vector at, colour;
@@ -121,19 +107,19 @@ void(vector p, float width, float textsize, float editable, vector publickit) In
 	gap = max(3, floor(textsize * 0.35));
 	cell = floor((width - gap * 5) / 4);
 	sui_style_panel(p, [width, cell * 4 + gap * 5 + textsize * 6], textsize * 0.75, 0.98);
-	sui_text(p + [gap, gap], [textsize, textsize], editable ? "INVENTORY" : "EQUIPPED", SUI_THEME_TEXT, 1, 0);
+	sui_text(p + [gap, gap], [textsize, textsize], "INVENTORY", SUI_THEME_TEXT, 1, 0);
 	ready = Inv_Valid();
 	for (i = 0; i < 16; i = i + 1)
 	{
 		at = p + [gap + (i % 4) * (cell + gap), textsize * 2 + gap + floor(i / 4) * (cell + gap)];
 		item = i + 1;
-		owned = editable ? (ready && (i == 0 ? inv_own1 : (i == 1 ? inv_own2 : 0))) : (i == 0 ? publickit_y : (i == 1 ? publickit_z : 0));
-		on = editable ? (i == 0 ? inv_eq1 : inv_eq2) : owned;
+		owned = editable ? (ready && (i == 0 ? inv_own1 : (i == 1 ? inv_own2 : 0))) : (publicknown ? (i == 0 ? publicitems_x : (i == 1 ? publicitems_y : 0)) : (i == 0 ? publickit_y : (i == 1 ? publickit_z : 0)));
+		on = editable ? (i == 0 ? inv_eq1 : inv_eq2) : (i == 0 ? publickit_y : (i == 1 ? publickit_z : 0));
 		id = sprintf("inv_slot%g", i);
-		if (owned && editable) sui_action_element(at, [cell, cell], id, sui_noop);
+		if (owned) sui_action_element(at, [cell, cell], id, sui_noop);
 		sui_roundbox(at, [cell, cell], max(3, textsize * 0.4), (owned && on) ? SUI_THEME_SELECTED : SUI_THEME_WELL, 1);
 		if (!owned) continue;
-		colour = i == 0 ? '0.4 0.83 1' : Inv_Colour(editable ? inv_colour : publickit_z - 1);
+		colour = i == 0 ? '0.4 0.83 1' : Inv_Colour(editable ? inv_colour : (publicknown ? publicitems_z : publickit_z - 1));
 		if (i == 0)
 		{
 			sui_roundbox(at + [cell * 0.28, cell * 0.18], [cell * 0.44, cell * 0.55], cell * 0.18, colour, 0.85);
@@ -154,7 +140,7 @@ void(vector p, float width, float textsize, float editable, vector publickit) In
 		}
 		sui_text(at + [3, cell - textsize * 0.85], [textsize * 0.65, textsize * 0.65], on ? "ON" : "OWNED", colour, 1, 0);
 		label = i == 0 ? "Ice aura" : "Paper party crown";
-		sui_tooltip_for(id, strcat(label, editable ? (on ? ": click to unequip" : ": click to equip") : ""), 2);
+		sui_tooltip_for(id, strcat(label, editable ? (on ? ": click to unequip" : ": click to equip") : (on ? ": equipped (read-only)" : ": owned (read-only)")), 2);
 		if (editable && owned && sui_is_released(id) && cltime >= inv_wait)
 		{
 			localcmd(sprintf("cmd inventory_equip %g %g %.0f\n", item, !on, inv_revision));
@@ -162,7 +148,7 @@ void(vector p, float width, float textsize, float editable, vector publickit) In
 		}
 	}
 	note = editable ? (ready ? "Click an item to equip / remove" :
-	       (getplayerkeyvalue(player_localnum, "*ahash") != "" ? "Waiting for lobby inventory service" : "Link Steam on a lobby to load items")) : "Their selected cosmetics";
+	       (getplayerkeyvalue(player_localnum, "*ahash") != "" ? "Waiting for lobby inventory service" : "Link Steam on a lobby to load items")) : (publicknown ? "Their owned items (read-only)" : "Inventory unavailable; equipped items only");
 	sui_text(p + [gap, cell * 4 + gap * 5 + textsize * 2.3], [textsize * 0.75, textsize * 0.75],
 	         Chat_Fit(note, width - gap * 2, textsize * 0.75), SUI_THEME_MUTED, 1, 0);
 };

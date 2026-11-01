@@ -7,7 +7,7 @@ float scn_handle, scn_failed, scn_painted, scn_revision, scn_count, scn_oldcount
 float scn_page, scn_pagesize, scn_serial, scn_hover, scn_layoutchanged;
 var float scn_pick = -1;
 var float scn_labels = -1, scn_keys = -1, scn_rawlabels = -1;
-float scn_plainchanged, scn_plainutf8;
+float scn_plainchanged, scn_plainutf8, scn_prev_wait;
 var float scn_online_epoch = -1;
 float *scn_cells;
 float scn_tokens[48];
@@ -32,6 +32,7 @@ void() Scores_NativeClose =
 	if (scn_rawlabels >= 0) buf_del(scn_rawlabels);
 	scn_labels = scn_keys = scn_rawlabels = -1;
 	scn_online_epoch = -1;
+	scn_prev_wait = FALSE;
 	if (scn_cells) memfree(scn_cells);
 	scn_cells = __NULL__;
 };
@@ -417,6 +418,13 @@ float(vector p, vector sz) Scores_NativeDraw =
 	standing = "";
 	if (Scores_IsOnline())
 	{
+		if (ob_shift)
+		{
+			scn_page = max(0, scn_page + ob_shift);
+			if (scn_prev_wait && ob_shift > 0) scn_page = max(0, scn_page - scn_pagesize);
+			scn_prev_wait = FALSE;
+			ob_shift = 0;
+		}
 		highlight = ob_mine;
 		if (n > 0)
 		if (Scores_OnlineSeekReady())
@@ -472,7 +480,7 @@ float(vector p, vector sz) Scores_NativeDraw =
 		scn_count = 0;
 		Scores_NativeCell(1, 1, 3, rec_sb_open != 0, rec_sb_open ? "pinned" : "peek");
 		Scores_NativeCell(2, 1, 1, 0, message);
-		Scores_NativeCell(3, 1, scn_page > 0 ? 2 : 1, 0, "Previous");
+		Scores_NativeCell(3, 1, (scn_page > 0 || (Scores_IsOnline() && ob_offset > 0)) ? 2 : 1, 0, "Previous");
 		Scores_NativeCell(4, 1, more ? 2 : 1, 0, "Next");
 		//Display-only checkbox metadata: row token highlights, label pins a standing.
 		Scores_NativeCell(5, 1, 3, 0, standing);
@@ -514,7 +522,11 @@ float(vector p, vector sz) Scores_NativeDraw =
 		actionid = action_x; actionrow = action_y;
 		if (actionrow == 1)
 		{
-			if (actionid == 3) scn_page = max(0, scn_page - scn_pagesize);
+			if (actionid == 3)
+			{
+				if (scn_page > 0) scn_page = max(0, scn_page - scn_pagesize);
+				else if (Scores_IsOnline()) scn_prev_wait = Online_FetchEarlier();
+			}
 			else if (actionid == 4)
 			{
 				if (scn_page + scn_pagesize < n) scn_page = scn_page + scn_pagesize;

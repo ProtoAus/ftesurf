@@ -21,6 +21,19 @@
 
 ## next
 
+### P1168 Public inventory and map statistics
+- Other players' profile inventories show their owned items, including items they are not wearing. Public inventories are read-only and keep each item's saved colour.
+- Profiles show tracked playtime when available. Missing tracking is labelled instead of inventing historical hours.
+- The main-menu map leaderboard has main/bonus course buttons, optional map playtime and attempt counts, and clickable player pictures that open a profile.
+- Use !time or !time followed by a player name to query tracked total/map hours and main/bonus attempts when the server has that data.
+- After Jump to me, scroll upward to fetch earlier ranks instead of getting stuck at the sought page's first row.
+
+### P1164 Paper party crowns
+- The party hat is now a cylindrical paper crown with upward-pointing triangular tips instead of a cone. Your existing hat colour and equipped state stay the same, and its inventory icon matches the new shape.
+
+### P1163 Softer ice aura
+- The inventory's ice aura now fades outward from your player instead of drawing a hard blue stroke. Equipping the aura and paper hat still works independently.
+
 ### P1162 Smoother slow noclip and personal lobby flight speed
 - Noclip stays smooth at slow practice speeds, including fast flight. Body and spectator views stop blending across actual placements.
 - Hold the walk key while noclipping and scroll to adjust your own flight speed in a supported lobby, without changing anyone else's speed. Normal movement and run eligibility are unchanged.

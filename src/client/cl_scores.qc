@@ -2362,6 +2362,11 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 	if (sb_colx[SBK_TIME] - sb_colx[SBK_OWNER] - rec_sb_cw * 9.5 >= rec_sb_cw * 15)
 		sb_avpad = rec_sb_rowh - 4 + ceil(rec_sb_cw * 0.6);
 
+	if (ob_shift)
+	{
+		rec_sb_oscroll_y = max(0, rec_sb_oscroll_y + ob_shift * rec_sb_rowh);
+		ob_shift = 0;
+	}
 	// Patch 357.  The player's own row, pinned under the list when the finish
 	// just set ranks past the page (OB_MAXROW); then the one-time seek to it.
 	pinned = Scores_StandingOutside();
@@ -2561,6 +2566,8 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 
 	// Near the end of what is held: ask for the next page (cl_online.qc, PAGING).
 	if (ob_more)
+	if (floor(rec_sb_oscroll_y / rec_sb_rowh) <= OB_MOREAHEAD)
+		Online_FetchEarlier();
 	if (floor((rec_sb_oscroll_y + rs_y) / rec_sb_rowh) + OB_MOREAHEAD >= ob_n)
 		Online_FetchMore();
 

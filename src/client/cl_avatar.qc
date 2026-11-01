@@ -1016,7 +1016,7 @@ void(vector scr) Av_Draw =
 	fr_target = me ? "" : Friends_ProfileTarget(av_other);
 	if (me) kit = Inv_Public(player_localnum);
 	else kit = fr_slot >= 0 ? Inv_Public(fr_slot) : ((pf_state == PFS_OK) ? pf_cosmetics : '0 0 0');
-	Inv_Panel([p_x + sz_x + pad, p_y], kitw, hint, me, kit);
+	Inv_Panel([p_x + sz_x + pad, p_y], kitw, hint, me, kit, pf_inventory, pf_state == PFS_OK && pf_inventory_known);
 	if (me)
 	{
 		nm = getplayerkeyvalue(player_localnum, "name");
@@ -1489,7 +1489,9 @@ float(string cmd) Av_ConsoleCommand =
 		             sprintf("  tier \"%s\" %g maps %g/%g done %g", pf_ct, pf_ct_state, pf_ct_n, pf_ct_total,
 		                     pf_ct_done),
 		             sprintf("  bar %g,%g %gx%g", pf_bar_p_x, pf_bar_p_y, pf_bar_sz_x, pf_bar_sz_y),
-		             sprintf("  kind %g split %g\n", pf_cm, pf_c_modes)));
+		             sprintf("  kind %g split %g inventory %g owned %g/%g playtime %g seconds %g\n",
+		                     pf_cm, pf_c_modes, pf_inventory_known, pf_inventory_x, pf_inventory_y,
+		                     pf_play_known, pf_play_seconds)));
 	else
 		Av_Toggle();
 	return TRUE;
