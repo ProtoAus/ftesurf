@@ -6595,7 +6595,8 @@ def _people_build(db):
     # A tracked linked player need not have completed a run yet.
     for sid, name in db.execute("SELECT steamid,name FROM accounts a WHERE banned_at=0"
                                " AND EXISTS(SELECT 1 FROM play_maps p WHERE p.steamid=a.steamid)"):
-        rows.setdefault(sid, dict(n=0, maps=0, last=0, ranked=0, mom=0, ksf=0, name=name))
+        rows.setdefault(sid, dict(n=0, maps=0, last=0, ranked=0, mom=0, ksf=0,
+                                  name=accounts.game_name(name) or "player"))
     # An account is listed under its Steam name, not under whichever of its
     # rows was filed last (an imported row carries another site's alias).
     for sid, raw in db.execute("SELECT steamid, name FROM accounts WHERE name <> ''"):

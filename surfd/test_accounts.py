@@ -492,7 +492,7 @@ def racing_connect():
             return
         table = words[words.index("ON") + 1] if words[1] == "INDEX" else words[5]
         # Schema25/26 steps run inside BEGIN IMMEDIATE; a second writer cannot
-        # interleave there. test_inventory/test_playstats check those cuts.
+        # interleave there (test_inventory faults schema 25's cuts).
         if conn.in_transaction:
             return
         seen.append(table)

@@ -118,6 +118,17 @@ class PlayStats(unittest.TestCase):
         self.assertNotIn(self.tokens[0], json.dumps(data))
         self.assertEqual(S.inventory.snapshot(self.db, fixture.IDS[0]), before)
 
+    def test_tracked_only_account_is_listed_under_a_game_safe_name(self):
+        self.db.execute('UPDATE accounts SET name=? WHERE steamid=?',
+                        ('co\x01nsole\n', fixture.IDS[0]))
+        self.db.commit()
+        self.send()
+        _, people, _ = S._people_build(self.db)
+        row = [e for e in people if e['who'] == S.web_handle(fixture.IDS[0])]
+        self.assertEqual(len(row), 1)
+        self.assertEqual(row[0]['name'], 'player')  # account_named() refuses it: no raw fallback
+        self.assertNotIn('\n', row[0]['name'])
+
     def test_no_client_private_upload_route_was_enabled(self):
         self.assertFalse(fixture.F.menu_target('playstats', 'a' * 64))
 
