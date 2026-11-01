@@ -256,6 +256,54 @@ void(string action) SV_StartMarkCommand =
 	sprint(self, PRINT_HIGH, sprintf("startmark: set zone %g at %v\n", z, mark.origin));
 };
 
+// P1181: the zone editor's automatic spawn (the zone's xy centre, ZoneEdit_DestCentre)
+// keeps the zoner's view while drawing. On the lobbies' 91 local files that put 39
+// spawns on 13 maps 80-180 degrees off the map's own stage destination, e.g.
+// shareholder_value s2 -46 against 90. Such a spawn with exactly one
+// info_teleport_destination inside its zone faces it, as the map's teleports do.
+// A Set spawn stands off the centre and keeps its yaw. Not in Zone_Hash's table.
+void() SV_ZoneSpawnYaws =
+{
+	local float n, i, cnt, d;
+	local vector c, o;
+	local entity e, hit;
+
+	for (n = 0; n < zone_count; n = n + 1)
+	{
+		if (zone_td_kind[n] != ZTD_POS || zone_npts[n] < 1)
+			continue;
+		c = '0 0 0';
+		for (i = 0; i < zone_npts[n]; i = i + 1)
+			c = c + zone_pt[zone_first[n] + i];
+		c = c * (1 / zone_npts[n]);
+		o = zone_td_pos[n];
+		if (fabs(o_x - c_x) > 1 || fabs(o_y - c_y) > 1)
+			continue;
+		cnt = 0;
+		hit = world;
+		for (e = find(world, classname, "info_teleport_destination"); e;
+		     e = find(e, classname, "info_teleport_destination"))
+		{
+			if (e.origin_z < zone_bottom[n] - 64 || e.origin_z > zone_top[n] + 512)
+				continue;
+			if (!Zone_XYInRing(n, e.origin_x, e.origin_y))
+				continue;
+			cnt = cnt + 1;
+			hit = e;
+		}
+		if (cnt != 1)
+			continue;
+		d = hit.angles_y - zone_td_yaw[n];
+		d = d - 360 * floor(d / 360);
+		if (d < 0.5 || d > 359.5)
+			continue;
+		if (cvar("developer"))
+			dprint(sprintf("zones: zone %g spawn faces %s (%g, not the file's %g)\n",
+			               n, hit.targetname, hit.angles_y, zone_td_yaw[n]));
+		zone_td_yaw[n] = hit.angles_y;
+	}
+};
+
 float(entity e, float n) SV_TimerTeleported;
 // Patch 445: and the hopped-start taint's one clear.  It lives in sv_timer.qc with
 // the field, and it is called from HERE because this is the function that zeroes the
@@ -313,6 +361,7 @@ void() SV_ZoneLoad =
 	  hash in its header; see Zone_Hash for why the table and not the file.
 	*/
 	Zone_Hash();
+	SV_ZoneSpawnYaws();
 	// P815: what this server times with, so a client can show the same table
 	// (cl_zonedl.qc fetches it from its own fixed origin; this only names it).
 	forceinfokey(world, "zonecrc", zone_crc);
