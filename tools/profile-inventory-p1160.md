@@ -62,19 +62,27 @@ QC destination/hash/rollback observations: **2026-10-31 22:26 UTC**.
 | csprogs.dat | `cba6fdc6359bf8bf0a6ab381636e1d85cc43b9262ecd9a4661487c2f5b9ffdd9` |
 | menu.dat | `6c9f9034ea348ead9874e5224b144751d39fd03d56bebca1d595aafe7bf2d938` |
 
-**The new backend is NOT active yet.** The protected startup installer passed
-its dry run but the exact service-start command requires an interactive sudo
-password. Its shared ingress was restored after the refused attempt. The old
-backend, its admission fence and its database have not been changed. Both new
-production/compatibility fences remain CLOSED; no maintenance pause was left
-on the live backend.
+**Backend activated 2026-11-01 00:33:44 UTC.** After the owner installed the
+protected startup configuration, the unchanged predecessor was closed and its
+foreground leases drained. The prepared primary cohort is OPEN at schema25;
+the predecessor and schema25-compatible rollback remain CLOSED. The actual
+systemd master owns the production listener and uses the frozen primary source.
+Its invocation-bound filesystem preflight passed: both runtime trees and five
+control pins are read-only; mutable state/data/log roots remain writable.
+The four scheduled routes and the restarted Momentum request worker use the
+new guarded generation. No native image or unrelated main-branch source shipped.
 
-Until activation, linked players can see the new grid but it correctly reports
-that it is waiting for the lobby inventory service. Starter ownership/equipment,
-Tester presentation and the requested special badge grants are not live claims.
-Markbeaton54's Zoner assignment awaits activation. Developer also requires the
-owner's explicit Steam profile URL/identity; no account is assigned by nickname
-or by assuming that the only online player is the owner.
+A private consistent pre-migration backup is retained. At the drained acceptance
+boundary all pre-existing table counts and schema definitions matched, as did
+full account/link/viewmodel-table digests. Only the two inventory tables and the
+schema version were added; no old player-data snapshot was restored.
+
+At 00:34 UTC starter items were initialized for all 13 eligible linked accounts.
+Markbeaton54 received Zoner, and the owner's explicitly supplied Steam profile
+received Developer; both also have Tester. Readback verified the persisted
+items/badges and the live profile API's public cosmetic fields. Unauthenticated
+inventory POSTs are rejected, private inventory fields are not in profile
+responses, and all 12 lobby directory rows continue to refresh.
 
 ## Verification and limits
 
@@ -97,10 +105,12 @@ or by assuming that the only online player is the owner.
   F333 argument227 warnings remain baseline warnings, not silently fixed here.
 - The actual menu filter gives Surf1/4 then Bhop1/4. A consent screen covered the
   automated menu view: those counts are not a visual or mouse-click pass.
-- The ice effect is an FTE-compatible depth-tested shell, not the supplied Unity
-  through-wall JFA pipeline. Owner look/thickness, mouse feel and other avatars
-  still need the small manual checks in `lextest.md`. No wall-visibility or
-  numerical performance acceptance is claimed.
+- The ice effect is an FTE-compatible depth-tested shell, not the supplied
+  through-wall JFA pipeline. The owner confirmed the right-hand grid and item
+  toggles work, but rejected the aura as a line stroke rather than the requested
+  soft fade. That visual failure is a follow-up, not accepted appearance. Other
+  avatars/reconnect/badges/Maps checks remain explicit in `lextest.md`. No
+  wall-visibility or numerical performance acceptance is claimed.
 
 Never reopen schema24 code against a migrated schema25 database, drop tables,
 restore a stale player-data snapshot, or weaken the guard to make rollback pass.

@@ -3,23 +3,24 @@
 ## P1160 — profile inventory / cosmetics (pending human acceptance)
 
 Game-side files are installed in both Windows roots and all 12 lobbies;
-backend activation still needs the owner's interactive sudo step. Exact source,
-hashes, tests and limits: `tools/profile-inventory-p1160.md`. These are not owner
-acceptance. For now, check the grid placement and Maps switch after reconnecting
-and `menu_restart`. After backend activation: open `hud_player`, equip both starter
-items in the right-hand 4×4 grid, and ask a second player to confirm the blue
-aura and coloured paper hat. Remove each item separately; the other should
-remain on. Reconnect and check your hat keeps its colour and selected state.
-Check the badge colours/name spacing and click the Maps Surf/Bhop switch once.
+backend activated 1 Nov 2026 at 00:33:44 UTC. Starter items were granted to all
+13 eligible linked profiles; the uniquely selected Markbeaton54 received Zoner
+and the owner's explicitly confirmed Steam profile received Developer. Exact
+source, hashes, tests and limits: `tools/profile-inventory-p1160.md`.
 
-The aura is an occluded, additive shell, not the supplied through-wall JFA
-post-process; confirm the look/thickness is suitable. No wall visibility or
-numerical performance acceptance is claimed. Tester is automatic for linked
-accounts. Zoner/Developer are cosmetic badges only; map-editing privileges are
-not changed. Markbeaton54's account was uniquely resolved; its Zoner grant awaits
-backend activation. The owner's Developer assignment also needs their explicit
-Steam profile URL/identity; do not assign by nickname or guesswork. No human
-confirmation received.
+Owner confirmation 1 Nov: the right-hand 4×4 grid appears and clicking the ice
+aura/paper hat toggles them. This is manual acceptance of those controls, not a
+measurement of performance or data integrity. **Reported visual failure:** the
+aura looks like a line stroke rather than the requested cool fade from the
+player. Follow up on the aura; do not mark its appearance accepted.
+
+Still pending: ask a second player to confirm both selected items; remove each
+separately while the other remains on. Reconnect and check that the hat keeps
+its colour and selection. Check badge colours/name spacing and the Maps
+Surf/Bhop switch. Tester is automatic for linked accounts. Zoner/Developer are
+cosmetic only; map-editing/admin privileges are not changed. The current aura
+is depth-tested, not a through-wall JFA post-process. No wall visibility or
+numerical performance acceptance is claimed.
 
 ## P1158 — finite-stamina verifier status (pending human acceptance)
 
