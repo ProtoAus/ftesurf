@@ -113,6 +113,8 @@ float ze_poly, ze_np, ze_edges, ze_close;
 vector *ze_pts;
 float ze_lastrow, ze_lastclick;
 float ze_settings, ze_field, ze_caret, ze_mode;
+float ze_dim, ze_dim_hover;         // P1184: the face being typed (-1 none), the face under the pointer
+float ze_history, zh_scroll;        // P1180: the published-zones page (cl_zonepublish.qc), its scroll
 string ze_text;
 float ze_values[MAPSET_COUNT];
 float ze_cap_open;                  // P841: the Speed cap the panel opened with
@@ -139,6 +141,16 @@ void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw;
 void(float mode) ZoneEdit_SettingMode;
 void() ZoneEdit_ResetSpawn;
 void(vector p) ZoneEdit_DragStart;
+void(float face) ZoneEdit_DimEdit;
+void() ZoneEdit_DimApply;
+void(float face, float dir) ZoneEdit_DimNudge;
+float(vector p, float w, float y, float rowh, float tsz) ZoneEdit_DimsDraw;
+float(string s) ZoneEdit_DimNumber;
+float(float face, float v) ZoneEdit_DimSet;
+void() ZoneHist_Open;
+void(vector p, float w, float y, float h, float rowh, float tsz) ZoneEdit_HistoryDraw;
+// A text field takes the keys: a map property, or a zone face (P1184).
+float() ZoneEdit_FieldOpen = { return (ze_cursor && ((ze_settings && ze_field >= 0) || (!ze_settings && ze_dim >= 0))); };
 
 void(string s) ZoneEdit_Note =
 {
@@ -1201,7 +1213,11 @@ string(string id) ZoneEdit_Tip =
 	if (id == "ze_xyz") return "Round the selected zone's outline and vertical bounds to the chosen grid. Works in the panel; an invalid or collapsed outline is refused.";
 	if (id == "ze_gs") return "Use the world surface as hit instead of rounding placement to the grid. This is a snapping option, not the Surf gamemode. Click again to restore grid snapping.";
 	if (id == "ze_sv") return "Save the zones to this map's local JSON file on your machine. Reload the map to use them for timing in your hosted game. This does not upload zones or change a lobby's timing or times.";
-	if (id == "ze_upload") return "Publish this map's SAVED local zones, and their speed cap, to the lobbies. Requires a linked zone-admin Steam account; a dialog asks before anything is sent. Lobbies time with them from their next map load; existing times stay.";
+	if (id == "ze_upload") return "Publish this map's SAVED local zones, and their speed cap, to the lobbies. Requires a linked zone-admin Steam account; a dialog asks before anything is sent. Lobbies on the map restart with them at once and runs in progress there end; existing times stay.";
+	if (id == "ze_hist") return "List this map's published zones, newest first, with who published each and when. Click one to load it here as unsaved edits; Save zones, then Publish saved brings it back.";
+	if (id == "ze_hrefresh") return "Ask the zone service for this map's published zones again.";
+	if (id == "ze_hback") return "Return to the zone tools. Nothing is loaded unless you clicked a version.";
+	if (id == "ze_dimapply") return "Apply the typed value to the selected zone. Enter does the same; Esc cancels. Nothing is written until Save zones.";
 	if (id == "ze_rl") return "Discard unsaved zone edits and read this map's zones again. Your saved local file takes priority; use Discard local file to stop using that override.";
 	if (id == "ze_fg") return "Delete this map's saved local zone override and reload the underlying zones. Unsaved zone edits are lost too. Map properties are separate and are not removed.";
 	if (id == "ze_settings") return "Edit local Surf/Bhop presets, speed cap, gravity and air acceleration for this map. Save settings and reload the hosted map to apply them. The speed cap also goes in the zone file, so Publish sends it to the lobbies; the rest stay local.";
@@ -1218,6 +1234,8 @@ string(string id) ZoneEdit_Tip =
 	if (id == "ze_t0") return "Show the main course. Tracks have separate starts, stages, checkpoints and finishes.";
 	if (substring(id, 0, 4) == "ze_t") return "Show a bonus course. A +b tab is the next unused bonus track; select it and add zones to build that course.";
 	if (substring(id, 0, 4) == "ze_z") return "Select this zone to re-place, delete or snap it. Double-click teleports to it only when your zone table matches the server's. The row shows outline points and bottom/top heights.";
+	if (substring(id, 0, 4) == "ze_d" && strlen(id) == 5) return "A face of the selected zone: x min/max, y min/max, bottom, top. Click to type an exact value; the wheel moves it one grid step (1 unit on Surface). X and Y faces stretch the outline from the opposite face. Nothing is written until Save zones.";
+	if (substring(id, 0, 4) == "ze_h") return "Load this published version into the editor as unsaved edits. The lobbies change only when you Save zones and Publish saved.";
 	if (substring(id, 0, 4) == "ze_g") return "Enable grid snapping at this spacing in map units. Affects placement and Snap selected XYZ. The mouse wheel also changes the grid while placing.";
 	return "";
 };
@@ -1337,6 +1355,14 @@ void(vector scr) ZoneEdit_Panel =
 		sui_text([p_x + pad, p_y + h - rowh], [rsz, rsz], ze_note, ZEC_WARN, 1, 0);
 		drawresetcliparea(); ZonePub_Draw(scr); sui_end(); Font_Reset(); return;
 	}
+	if (ze_history)
+	{
+		ZoneEdit_HistoryDraw(p, w, tp_y, h, rowh, rsz);
+		a = 1 - (cltime - ze_note_t) / 6;
+		if (ze_note != "" && a > 0)
+			sui_text([p_x + pad, p_y + h - rowh], [rsz, rsz], ze_note, SUI_THEME_GOOD, min(1, a * 3), 0);
+		drawresetcliparea(); ZonePub_Draw(scr); sui_end(); Font_Reset(); return;
+	}
 
 	// Tracks: main, each bonus there is, and the next one.
 	top = 0;
@@ -1391,7 +1417,7 @@ void(vector scr) ZoneEdit_Panel =
 	for (z = 0; z < zone_count; z = z + 1)
 		if (zone_track[z] == ze_track)
 			n = n + 1;
-	rs = [w - pad * 2, (p_y + h - pad) - tp_y - rowh * 9.9, 0];
+	rs = [w - pad * 2, (p_y + h - pad) - tp_y - rowh * 11.9 - pad * 0.5, 0];
 	sui_style_box(tp - '3 3 0', rs + '6 6 0', 5, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 	lastk = -1;
 	bo = -1;
@@ -1493,7 +1519,8 @@ void(vector scr) ZoneEdit_Panel =
 		ze_sel = -1;
 		ZoneEdit_Touch();
 	}
-	tp_y = tp_y + rowh + pad;
+	tp_y = tp_y + rowh + pad * 0.5;
+	tp_y = ZoneEdit_DimsDraw(p, w, tp_y, rowh, rsz) + pad * 0.5;   // P1184
 
 	// Construction: shape, existing-zone edge snapping, and explicit XYZ snap.
 	sui_text(tp, [rsz, rsz], "CONSTRUCTION  /  shape & snapping", ZEC_DIM, 1, 0);
@@ -1542,14 +1569,15 @@ void(vector scr) ZoneEdit_Panel =
 	if (ZoneEdit_Button(tp + [(bw + 4) * 3, 0], [bw, rowh], "ze_upload", "Publish saved", rsz, ZEC_TEXT))
 		ZonePub_Begin(ze_real_t > 0 && cltime - ze_real_t < 0.25);
 	tp_y = tp_y + rowh + 4;
-	bw = (w - pad * 2 - 8) / 3;
+	bw = (w - pad * 2 - 12) / 4;
 	if (ZoneEdit_Button(tp, [bw, rowh], "ze_settings", "Map properties", rsz, ZEC_TEXT)) ZoneEdit_SettingsOpen();
-	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_look", "Look / fly", rsz, ZEC_TEXT)) ZoneEdit_ToggleMouse();
-	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_cl", "Close", rsz, ZEC_TEXT))
+	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_hist", "History", rsz, ZEC_TEXT)) ZoneHist_Open();
+	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_look", "Look / fly", rsz, ZEC_TEXT)) ZoneEdit_ToggleMouse();
+	if (ZoneEdit_Button(tp + [(bw + 4) * 3, 0], [bw, rowh], "ze_cl", "Close", rsz, ZEC_TEXT))
 	{
 		UI_CursorRelease(UIC_ZONEEDIT);
 		ze_cursor = ze_drag = FALSE;
-		ze_field = -1; sui_text_unfocus();
+		ze_field = ze_dim = -1; ze_history = FALSE; sui_text_unfocus();
 		ui_ze_state = ZE_OFF;
 		if (ze_dirty)
 			print("^3zone_edit^7: closed with unsaved zones; they stay on screen until the map changes\n");
@@ -1617,7 +1645,7 @@ float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 	}
 	if (evtype != IE_KEYDOWN || !valid) return FALSE;
 	if (ZoneEdit_Blocker() != "") return FALSE;
-	if (owned && !(owned == 4 && ze_cursor && ze_settings && ze_field >= 0)) return TRUE;
+	if (owned && !(owned == 4 && ZoneEdit_FieldOpen())) return TRUE;
 	if (!ze_field_keys)
 	{
 		ze_field_keys = memalloc(sizeof(float) * ZE_KEYCOUNT);
@@ -1639,12 +1667,12 @@ float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 		ZoneEdit_ToggleMouse();
 		return TRUE;
 	}
-	if (ze_cursor && ze_settings && ze_field >= 0)
+	if (ZoneEdit_FieldOpen())
 	if (scanx != K_MOUSE1 && scanx != K_MOUSE2 && scanx != K_MWHEELUP && scanx != K_MWHEELDOWN)
 	{
 		ze_field_keys[scanx] = 4;
-		if (scanx == K_ESCAPE) { ze_field = -1; sui_text_unfocus(); }
-		else if (scanx == K_ENTER || scanx == K_KP_ENTER) ZoneEdit_SettingApply();
+		if (scanx == K_ESCAPE) { ze_field = ze_dim = -1; sui_text_unfocus(); }
+		else if (scanx == K_ENTER || scanx == K_KP_ENTER) { if (ze_settings) ZoneEdit_SettingApply(); else ZoneEdit_DimApply(); }
 		else ZoneEdit_FieldKey(evtype, scanx, chary);
 		return TRUE;
 	}
@@ -1654,7 +1682,7 @@ float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 		if (ze_cursor)
 		{
 			UI_CursorRelease(UIC_ZONEEDIT); ui_ze_state = ZE_OFF;
-			ze_cursor = ze_drag = FALSE; ze_field = -1; sui_text_unfocus();
+			ze_cursor = ze_drag = FALSE; ze_field = ze_dim = -1; ze_history = FALSE; sui_text_unfocus();
 		}
 		else { ze_replace = -1; ZoneEdit_ToPanel(); }
 		return TRUE;
@@ -1696,7 +1724,10 @@ float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 		if (scanx == K_MWHEELUP || scanx == K_MWHEELDOWN)
 		{
 			ze_field_keys[scanx] = 1;
-			if (!ze_settings) ze_scroll = max(0, ze_scroll + ((scanx == K_MWHEELUP) ? -2 : 2));
+			if (ze_history) zh_scroll = max(0, zh_scroll + ((scanx == K_MWHEELUP) ? -2 : 2));
+			else if (!ze_settings && ze_dim < 0 && ze_dim_hover >= 0)       // P1184: a face under the pointer
+				ZoneEdit_DimNudge(ze_dim_hover, (scanx == K_MWHEELUP) ? 1 : -1);
+			else if (!ze_settings) ze_scroll = max(0, ze_scroll + ((scanx == K_MWHEELUP) ? -2 : 2));
 			return TRUE;
 		}
 		return FALSE;
@@ -1749,8 +1780,8 @@ void() ZoneEdit_Open =
 	ze_scroll = 0;
 	ze_lastrow = -1;
 	ze_lastclick = -999;
-	ze_settings = FALSE;
-	ze_field = -1;
+	ze_settings = ze_history = FALSE;
+	ze_field = ze_dim = -1;
 	if (ze_grid < 1)
 	{
 		ze_grid = 16;
@@ -1819,7 +1850,7 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 		{
 			UI_CursorRelease(UIC_ZONEEDIT);
 			ze_cursor = ze_drag = FALSE;
-			ze_field = -1; sui_text_unfocus();
+			ze_field = ze_dim = -1; ze_history = FALSE; sui_text_unfocus();
 			ui_ze_state = ZE_OFF;
 			print("^5zone_edit^7: off\n");
 		}
@@ -1918,6 +1949,19 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 	}
 	else if (a == "close") { if (ui_ze_state == ZE_P) ZoneEdit_PolygonClose(); }
 	else if (a == "height") { if (ui_ze_state == ZE_H) ze_h = ZoneEdit_Height(ze_a_z + stof(argv(2))); }
+	else if (a == "face" && n == 4)
+	{
+		// P1184: zone_edit face <xmin|xmax|ymin|ymax|bottom|top> <value>, on the selected zone.
+		z = -1;
+		if (argv(2) == "xmin") z = 0; else if (argv(2) == "xmax") z = 1;
+		else if (argv(2) == "ymin") z = 2; else if (argv(2) == "ymax") z = 3;
+		else if (argv(2) == "bottom") z = 4; else if (argv(2) == "top") z = 5;
+		if (z < 0 || !ZoneEdit_DimNumber(argv(3)) || ze_sel < 0 || ze_sel >= zone_count)
+			print("zone_edit face <xmin|xmax|ymin|ymax|bottom|top> <number>, with a zone selected\n");
+		else if (ZoneEdit_DimSet(z, stof(argv(3))))
+			print(sprintf("zone_edit: zone %g %s %s, bounds %v .. %v\n", ze_sel, argv(2), argv(3),
+			              zone_zmins[ze_sel], zone_zmaxs[ze_sel]));
+	}
 	else if (a == "grid") { ze_grid = bound(1, stof(argv(2)), 64); ze_snap = (argv(3) != "surface"); }
 	else if (a == "snapxyz") ZoneEdit_SnapSelected();
 	else if (a == "row")
@@ -1965,7 +2009,7 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 void() ZoneEdit_Register =
 {
 	registercommand("zone_edit");
-	ze_field = -1;
+	ze_field = ze_dim = ze_dim_hover = -1;
 	ze_sel = -1;
 	ze_replace = -1;
 	ze_grid = 16;
