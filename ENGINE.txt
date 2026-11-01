@@ -25,7 +25,8 @@ commit   f16c2f9f1ec7451bf0ccfc13051859853b708f24
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-1148
-patch    1163
+patch    1164
+# Patch 1164 (CSQC): cylindrical paper party crown with upward triangular points replaces the cone; saved colour/equipment, native pin and qcbuild unchanged.
 # Patch 1163 (CSQC): soft ice-aura falloff replaces the hard inventory stroke; native pin and qcbuild unchanged.
 # Patch 1160 (QC/backend): profile inventory, persistent starter cosmetics and role badges; Surf/Bhop-only map switch. Native pin and qcbuild unchanged; this fleet backport excludes pending P1154 SSQC.
 # Patch 1148: finite normalized takeoff status accepts an exactly neutral pre-cost stamina multiplier; stock/non-unit contexts remain excluded. Preserve P1147 camera/spatial-reset source and current runtime VMs; no mover, capture/API/format/flag/tier, qcbuild or release change. Integrated clean-tag qualification/deployment are recorded separately.
