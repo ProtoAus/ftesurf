@@ -9,6 +9,7 @@ void(entity e) PlayStats_Clear;
 .float social_here, social_req, social_reqtime, social_last;
 .float social_buf, social_buffered, social_sendrow, social_sendtime;
 .float social_refresh, social_retry, social_delay;
+.float social_roomreq, social_roomreqtime, social_roomlast;   // P1187: room posts' own gate
 float social_poll, social_polltime, social_next;
 float() Account_On;
 float() Account_NextId;
@@ -45,6 +46,7 @@ void(entity e) Social_Clear =
 	e.social_here = FALSE;
 	e.social_req = 0;
 	e.social_last = 0;
+	e.social_roomreq = e.social_roomlast = 0;
 	e.social_ack = "";
 	forceinfokey(e, "*ahash", "");
 };
@@ -148,7 +150,9 @@ void() Social_Frame =
   P1187: chat goes to everyone by default -- a linked player's line is said here AND
   posted to the main menu's room (cl_chat.qc). The post carries this lobby's tag ("[#4] "
   from "Open Lobby #4"), and the room's lines from players in this lobby are not relayed
-  back here: they were said here.
+  back here: they were said here. A post has its own one-a-second gate and request, so a
+  quick second line or a pending post drops only the room's copy, without a note, and a
+  friend action is never refused for it.
 */
 string() Social_RoomTag =
 {
@@ -182,7 +186,7 @@ float(string who) Social_HereWho =
 	{
 		p = edict_num(i);
 		if (clienttype(p) == CLIENTTYPE_REAL)
-		if (!strcmp(infokey(p, "*phash"), who))
+		if (!strcmp(infokey(p, "*ahash"), who))     // Social_Set's social_who, the room's who
 			return TRUE;
 	}
 	return FALSE;
@@ -195,6 +199,20 @@ void(entity e, string op, string who, string text) Social_Action =
 	if (!e.social_here)
 	{
 		stuffcmd(e, sprintf("friend_note %s\n", uri_escape("Link Steam on this lobby first")));
+		return;
+	}
+	if (op == "message" && who == "-")
+	{
+		if (time < e.social_roomlast || strlen(text) > 960) return;
+		if (e.social_roomreq && time - e.social_roomreqtime < 15) return;
+		e.social_roomlast = time + 1;
+		form = strcat(Social_Form(), "&game=1&token=", e.social_token, "&op=message&who=-&text=",
+		              uri_escape(strcat(Social_RoomTag(), uri_unescape(text))));
+		e.social_roomreq = Account_NextId();
+		e.social_roomreqtime = time;
+		if (!uri_post(strcat(cvar_string("lobby_master"), "/api/social/action"), e.social_roomreq,
+		              "application/x-www-form-urlencoded", form))
+			e.social_roomreq = 0;
 		return;
 	}
 	if (e.social_req && time - e.social_reqtime < 15)
@@ -220,10 +238,7 @@ void(entity e, string op, string who, string text) Social_Action =
 	    && op != "block" && op != "unblock") return;
 	if (strlen(text) > 960) return; // percent-encoded UTF8, still bounded upstream
 	form = strcat(Social_Form(), "&game=1&token=", e.social_token, "&op=", op, "&who=", who);
-	if (op == "message" && who == "-")
-		form = strcat(form, "&text=", uri_escape(strcat(Social_RoomTag(), uri_unescape(text))));
-	else if (op == "message")
-		form = strcat(form, "&text=", uri_escape(uri_unescape(text)));
+	if (op == "message") form = strcat(form, "&text=", uri_escape(uri_unescape(text)));
 	e.social_req = Account_NextId();
 	e.social_reqtime = time;
 	if (!uri_post(strcat(cvar_string("lobby_master"), "/api/social/action"), e.social_req,
@@ -243,6 +258,12 @@ float(float reqid, float code, string body) Social_Reply =
 
 	if (reqid != social_poll)
 	{
+		e = findfloat(world, social_roomreq, reqid);
+		if (e)
+		{
+			e.social_roomreq = 0;       // P1187: a room post's reply is only its receipt
+			return TRUE;
+		}
 		e = findfloat(world, social_req, reqid);
 		if (!e) return FALSE;
 		e.social_req = 0;

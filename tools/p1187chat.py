@@ -41,17 +41,19 @@ void() ChatFixture_Frame =
 				Social_Set(p, "%s", "%s");
 				print("chat fixture: linked\\n");
 			}
-			if (infokey(p, "*phash") != "%s")
-				forceinfokey(p, "*phash", "%s");
+			// *phash is not the room's who on every lobby (acct_mode 2: the guid's id).
+			if (infokey(p, "*phash") != "dddddddd")
+				forceinfokey(p, "*phash", "dddddddd");
 			return;
 		}
 		p = find(p, classname, "player");
 	}
 };
-''' % (TOKEN, WHO, WHO, WHO)
+''' % (TOKEN, WHO)
 ROOM = [dict(id='5', who=WHO, name='Looker', text='[#7] self line'),
         dict(id='6', who='bbbbbbbb', name='Nine', text='[#9] hello from nine'),
-        dict(id='7', who='cccccccc', name='Menu', text='hello from menu')]
+        dict(id='7', who='cccccccc', name='Menu', text='hello from menu'),
+        dict(id='8', who='eeeeeeee', name='Afk', text='[afk] brb')]
 
 
 def build_server(src, out):
@@ -185,8 +187,8 @@ def main():
         check(seen(sv, 'chat fixture: linked', timeout=20), 'the fixture linked the client')
         time.sleep(2)
 
-        def key(scan):
-            cl.query(f'vote key {scan} 1', r'vote key: scan %d down 1' % scan)
+        def key(scan, char=0):
+            cl.query(f'vote key {scan} 1 {char}', r'vote key: scan %d down 1' % scan)
             cl.send(f'vote key {scan} 0')
 
         def target():
@@ -228,6 +230,32 @@ def main():
         check(got == 'everyone' and len(posts) == n, 'a !command typed to everyone is not posted',
               (got, posts[n:]))
 
+        # 3b. A quoted !command, typed key by key (a console line would lose the quotes).
+        n = len(posts)
+        cl.send('chat_open'); time.sleep(.4)
+        for ch in '"!p1187q"':
+            key(ord(ch), ord(ch))
+        m = cl.query('chat_rows', r'chat_rows: draft len (\d+)')
+        key(K_ENTER)
+        time.sleep(2.5)
+        check(m.group(1) == '9' and len(posts) == n, 'a quoted !command typed to everyone is not posted',
+              (m.group(1), posts[n:]))
+
+        # 3c. Two quick lines and a DM straight after: both lines said here, the room keeps
+        # the first, and the DM is not refused for the room's sake (friend_note never logs).
+        n, pos = len(posts), len(cl.text())
+        cl.send('chat_say gg'); time.sleep(.3)
+        key(K_ENTER)
+        cl.send('chat_say wp'); time.sleep(.3)
+        key(K_ENTER)
+        cl.send('cmd friend message bbbbbbbb hi%20nine')
+        both = seen(cl, r'Looker\S*: wp', pos) and seen(cl, r'Looker\S*: gg', pos)
+        time.sleep(2.5)
+        sent = [(x['who'], x['text']) for x in posts[n:]]
+        check(both and sent[:1] == [('-', '[#7] gg')] and ('-', '[#7] wp') not in sent,
+              'two quick lines: both said here, the room keeps the first', sent)
+        check(('bbbbbbbb', 'hi nine') in sent, 'a DM right after a room post is not refused', sent)
+
         # 4. The room's lines: other lobbies tagged, the menu's [menu], this lobby's own skipped.
         pos = len(cl.text())
         room['serve'] = True
@@ -237,6 +265,8 @@ def main():
         check(room['served'] == 1, 'the backend served the room lines', room['served'])
         check(nine, 'a line from lobby #9 shows as [#9] Nine: ...')
         check(menu, 'an untagged line shows as [menu] Menu: ...')
+        check(seen(cl, r'\[menu\](\^\d)? Afk(\^\d)?: \[afk\] brb', pos, timeout=3),
+              'a menu line starting [afk] is not read as a lobby tag')
         check('self line' not in cl.text()[pos:], "a room line from a player in this lobby is not relayed back")
         report['posts'], report['other_routes'] = posts, sorted(set(other))
     finally:
@@ -245,7 +275,7 @@ def main():
         web.shutdown()
         thread.join(timeout=10)
         report['exits'] = [p.proc.returncode for p in peers]
-        report['ok'] = all(c['pass'] for c in checks) and len(checks) == 12
+        report['ok'] = all(c['pass'] for c in checks) and len(checks) == 16
         (a.out / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
     print('ALL PASS' if report['ok'] else 'NOT ALL PASS')
     return 0 if report['ok'] else 1

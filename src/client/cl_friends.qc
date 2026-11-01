@@ -486,11 +486,16 @@ float(string cmd) Friends_ConsoleCommand =
 		s = uri_unescape(argv(3));
 		if (!Chat_Silenced(nm))
 		{
-			// P1187: a lobby tags its posts "[#4] " (sv_social.qc Social_RoomTag); untagged is the menu.
+			// P1187: a lobby tags its posts "[#4] " or "[lobby] " (sv_social.qc Social_RoomTag);
+			// untagged is the menu.
 			k = strstrofs(s, "] ", 0);
+			if (substring(s, 0, 8) == "[lobby] ")
+				k = 6;
+			else if (!(substring(s, 0, 2) == "[#" && k >= 3 && k <= 5 && stof(substring(s, 2, 3)) >= 1))
+				k = -1;
 			if (substring(s, 0, 2) == "* ")
 				s = strcat("^5[everyone]^2 board^7 ", nm, "^7 ", substring(s, 2, -1));
-			else if (substring(s, 0, 1) == "[" && k >= 2 && k <= 6)
+			else if (k > 0)
 				s = strcat("^5", substring(s, 0, k + 1), "^7 ", nm, "^7: ", substring(s, k + 2, -1));
 			else
 				s = strcat("^5[menu]^7 ", nm, "^7: ", s);
