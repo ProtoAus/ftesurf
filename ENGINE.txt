@@ -26,7 +26,8 @@ commit   ee1a23894e84cc033c8b8e4d7351929f44d45a70
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1165
-patch    1165
+patch    1167
+# Patch 1167 (backend): opt-in mapwatch and zone-publication content epochs; configured unavailable state fails closed, absent/empty remains unmanaged. Native pin/tag, QC, schema and Build unchanged; partial writer coverage is not canonical approval or activation.
 # Patch 1165: bounded native TAS VFS components and distinct operator preparation; ordinary budgets, human recording/eligibility and queue admission unchanged. Component checks are not source qualification or deployment; tools/tas-native-source.md.
 # Patch 1164 (CSQC): cylindrical paper party crown with upward triangular points replaces the cone; saved colour/equipment, native pin and qcbuild unchanged.
 # Patch 1163 (CSQC): soft ice-aura falloff replaces the hard inventory stroke; native pin and qcbuild unchanged.

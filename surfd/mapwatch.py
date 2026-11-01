@@ -148,6 +148,7 @@ if not logging.getLogger("surfd").handlers:
 
 import surfd as S       # noqa: E402
 import zonefit          # noqa: E402
+import tascontent       # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -757,7 +758,17 @@ def flush_hashes(cache):
         _save(cache["_path"], {k: v for k, v in cache.items() if not k.startswith("_")})
 
 
+def content_publication():
+    path = S.setting('SURFD_TAS_CONTENT_LEASE', '')
+    return tascontent.publication(path) if path else contextlib.nullcontext()
+
+
 def publish(part, final, fresh):
+    with content_publication():
+        return _publish(part, final, fresh)
+
+
+def _publish(part, final, fresh):
     """Move a finished file into place, world-readable: importing surfd set
     umask 077, and nginx (www-data) serves these directories.  `fresh` means
     the name must still be free -- a file put there since the listing is kept,
@@ -1734,9 +1745,10 @@ def run(a):
                         tmp = os.path.join(a.maps, ".old", ".mapwatch.%s.part" % stem)
                         shutil.copy2(final, tmp)
                         os.replace(tmp, keep)
-            publish(part, final, False)
-            if raw is not None:
-                zone_put(key, raw, True)
+            with content_publication():
+                publish(part, final, False)
+                if raw is not None:
+                    zone_put(key, raw, True)
             count("replaced")
         elif publish(part, final, True):
             inv[key] = name
@@ -1981,7 +1993,8 @@ def run(a):
                 if quiet(t):
                     aside = os.path.join(zdir, ".old", "%s.%s.json" % (zidx[t], have[:12]))
                     os.makedirs(os.path.dirname(aside), exist_ok=True)
-                    os.replace(os.path.join(zdir, zidx[t] + ".json"), aside)
+                    with content_publication():
+                        os.replace(os.path.join(zdir, zidx[t] + ".json"), aside)
                     # ...and the copy clients fetch, where it is that file.
                     sstem = stems(a.site_zones, ".json").get(t) if a.site_zones else None
                     try:

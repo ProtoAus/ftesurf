@@ -46,7 +46,7 @@ read, after WATCH_ROUNDS such rounds, with every lobby done, moved off or left (
 A crash between the write and the reload recovers as live, which starts the reload. Never past
 an owed verdict; evidence posted after the warning and not yet indexed meets the new zones.
 """
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import hashlib
 import hmac
 import ipaddress
@@ -61,6 +61,7 @@ import sys
 import sqlite3
 import threading
 import time
+import tascontent
 try:
     import fcntl
 except ImportError:             # Windows test runs: one process, the thread lock is enough
@@ -190,7 +191,21 @@ def write_file(path, body):
         if os.path.lexists(tmp): os.unlink(tmp)
 
 
+def content_publication():
+    name = 'SURFD_TAS_CONTENT_LEASE'
+    path = os.environ.get(name)
+    if path is None:
+        env = os.environ.get('SURFD_ENV', os.path.join(os.environ.get('SURFD_HOME', '/srv/nvme/surfd'), 'surfd.env'))
+        path = env_value(name, env)
+    return tascontent.publication(path) if path else nullcontext()
+
+
 def put(paths, bodies, limit):
+    with content_publication():
+        return _put(paths, bodies, limit)
+
+
+def _put(paths, bodies, limit):
     """Write each body (None removes); on failure put back what was already replaced."""
     done = []
     try:

@@ -26,9 +26,18 @@ The operator policy is opt-in; ordinary engine filesystem operation is unchanged
 
 `surfd/tascontent.py` supplies a managed content incarnation/epoch and cooperative
 shared/exclusive kernel leases. It does not itself intercept publishers. Missing,
-odd or replaced state fails closed. Every real mutation route must participate
-before this can protect a canonical observation; initialization alone proves none
-of that. Keep an actual snapshot scope through validation, not just its stamp.
+odd or replaced state fails closed. `SURFD_TAS_CONTENT_LEASE` opts mapwatch and the
+zone publisher into that same lease: environment is first, and an explicitly empty
+value disables it rather than falling back to the env file. Mapwatch fences final
+rename/link and active-zone retirement; an existing BSP/zone replacement uses one
+outer lease. The zone publisher holds one lease across multi-file put and rollback.
+Downloads/staging and long warning/reload workflows remain outside those scopes.
+Absent/empty keeps existing behavior but is an **unmanaged**, unqualified generation;
+configured missing/dirty/busy state refuses publication instead of falling back.
+These hooks are partial coverage, not an activation instruction. Every real mutation
+route must participate before this can protect a canonical observation; initialization
+alone proves none of that. Keep the actual snapshot scope through validation, not
+just its stamp. No live lease bootstrap or canonical permit is supplied here.
 
 ## Separate preparation role
 
