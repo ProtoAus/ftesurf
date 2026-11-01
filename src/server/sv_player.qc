@@ -249,13 +249,13 @@ void() PutClientInServer =
 	if (spot)
 	{
 		// CBasePlayer::Spawn nudges 1 unit up off the spawn pad.
-		setorigin(self, spot.origin + '0 0 1');
+		SV_SetPlayerOrigin(self, spot.origin + '0 0 1');
 		self.angles = spot.angles;
 	}
 	else
 	{
 		dprint("WOS: no spawn point in this map, using world origin\n");
-		setorigin(self, '0 0 64');
+		SV_SetPlayerOrigin(self, '0 0 64');
 		self.angles = '0 0 0';
 	}
 	self.angles_z = 0;
@@ -1066,7 +1066,7 @@ void(vector org, float haveang, vector ang) SV_SetPosSelf =
 		self.run_t_pendarm = -1;
 
 	was = self.origin;
-	setorigin(self, org);
+	SV_SetPlayerOrigin(self, org);
 	self.velocity = '0 0 0';
 	SV_ClearCarrier(self);          // Patch 400: or a push pays out here
 	SV_TimerWarped(self);
@@ -1270,27 +1270,14 @@ float(entity e, float argc, string arg) SV_TimeScaleCommand =
 	return TRUE;
 };
 
-// Clock agreement only: project loads retain their separate body/hold policy.
-float(entity e) SV_TASMapClockMatches =
-{
-	// The timer is latched at map load; a later mover change is not a new timeline.
-	if (e.run_movetickrate != run_t_tick)
-	{
-		sprint(e, PRINT_HIGH, "tas: mover and map timer clocks differ; restart the map after changing pm_ticrate\n");
-		return FALSE;
-	}
-	return TRUE;
-};
-
 // P1055: support is reported by the native mover, not an unlocked cvar.
 float(entity e) SV_TASCanPause =
 {
 	if (e.run_tas_ready != 1)
 	{
-		sprint(e, PRINT_HIGH, "tas: pause/step needs native Source 10/15ms and QW inputs; after a clock change, reconnect or restart the map\n");
+		sprint(e, PRINT_HIGH, "tas: pause/step requires the P1055 engine, Source 15ms clock and QW duration inputs\n");
 		return FALSE;
 	}
-	if (!SV_TASMapClockMatches(e)) return FALSE;
 	// Keep both the general recorder clock and step ACK inside exact float32 integers.
 	if (!(e.run_movetick >= 0 && e.run_movetick < 16000000))
 	{
@@ -1542,8 +1529,6 @@ void(entity e, float argc) SV_TASCommand =
 		sprint(e, PRINT_HIGH, sprintf("tas: paused %.0f pending %.0f completed %.0f request %.0f native %g fault %g\n",
 			e.run_tas_paused, e.run_tas_pending, e.run_tas_done, e.run_tas_req, e.run_tas_ready, e.run_tas_fault));
 		sprint(e, PRINT_HIGH, sprintf("tas: mover %.0f carry %.9g\n", e.run_movetick, e.run_movecarry));
-		sprint(e, PRINT_HIGH, sprintf("tas: clocks mover %.9g timer %.9g rewind %g state %g\n",
-			e.run_movetickrate, run_t_tick, e.run_tas_rwcap, e.run_t_state));
 		sprint(e, PRINT_HIGH, sprintf("tas: next %s f%g s%g pitch%g yaw%g bits%g air%g\n",
 			FS_TASPlanName(e.run_tas_planmode), e.run_tas_planforward, e.run_tas_planside,
 			e.run_tas_planpitch, e.run_tas_planyaw, e.run_tas_planbits, e.run_tas_planair));

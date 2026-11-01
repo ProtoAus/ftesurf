@@ -39,8 +39,6 @@
 ### P1170 Clean lobby disconnects
 - Switching or rejoining lobbies and closing the game normally now cleans up the old connection instead of leaving a ghost player until timeout. Weapon Drop still works without disconnecting you.
 
-- Maps: larger, sharper native-pixel filter text, with roomier controls that wrap on smaller windows.
-
 ### P1168 Public inventory and map statistics
 - Other players' profile inventories show their owned items, including items they are not wearing. Public inventories are read-only and keep each item's saved colour.
 - Profiles show tracked playtime when available. Missing tracking is labelled instead of inventing historical hours.
@@ -54,10 +52,6 @@
 ### P1163 Softer ice aura
 - The inventory's ice aura now fades outward from your player instead of drawing a hard blue stroke. Equipping the aura and paper hat still works independently.
 
-### P1161 Fresh TAS project loads
-- TAS projects can load and replay in a fresh supported session without first building rewind history. Legal-start rewind keeps working from a fresh start.
-- Loading a TAS project while noclipping or held now refuses before changing your body or saved timeline. TAS remains assisted practice.
-
 ### P1160 Profile inventory and cosmetics
 - Your player profile now has an attached 4x4 inventory. Click an owned item to equip or remove it; selected cosmetics are visible to other players.
 - Linked Steam accounts receive a light-blue ice aura and a paper party hat with a persistent, randomly assigned colour.
@@ -69,10 +63,6 @@
 
 ### P1156 Smoother ducking under roofs in slow practice
 - Keep the camera's movement and eye height together while ducking, unducking or clearing a low roof at slow practice speeds. Normal movement and run status are unchanged.
-
-### P1154 TAS frame advance at 100Hz
-- TAS pause, frame advance, retained rewind and input replay can use a selected 10ms Source clock as well as the existing 15ms clock. Default movement timing is unchanged.
-- Clock changes stop queued TAS work instead of silently reusing it. Reload the map after changing its clock before starting a new timeline. TAS remains assisted practice.
 
 ### P1152 Gravity carry status through recovered standing jumps
 - Carried gravity effects keep their run status through ordinary standing jumps with fully recovered stamina. Jump height, movement and normal map-authored effects are unchanged.
@@ -93,10 +83,6 @@
 - Practice classification now covers another supported jump setting; movement is unchanged.
 - TAS: Share saved legal-start projects and browse shared revisions and contribution ranges for the current map.
 - TAS: Open a shared revision as a new local TAS project without replacing existing projects or recovery files. Shared TAS inputs are never ranked human runs.
-
-### Collectors (prepared; pending guarded backend rollout)
-
-- Steam sign-in queues paced Momentum and KSF personal-best refreshes. Collector retries keep unrelated work moving; catalogue changes no longer shift a pending KSF stage walk. This update is not active on the live backend yet.
 
 ### P1141 Gravity carry status through normalized takeoff
 - Carried gravity effects keep their run status through more normalized ground jumps. Jump height, movement and normal map-authored effects are unchanged.

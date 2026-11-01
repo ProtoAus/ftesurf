@@ -940,11 +940,13 @@ float()  Lob_JoinUntil  = { return lj_until; };
 #define MDLS_SAVED   2          // a list was written
 #define MDLS_SAME    3          // the list this install already had
 #define MDLS_NONE    4          // refused, or not a list
+#define MDLS_QUEUED  5          // late reply owned, but no parsing/writes during play
 
 float  mdl_req;                 // 0 when nothing is outstanding
 float  mdl_state;
 float  mdl_rows;                // rows the saved list holds
 float  mdl_bad;                 // rows the reply held that were not kept
+string mdl_deferred;            // one bounded zoned late reply, released on drain/revocation
 
 void() ui_maplist_changed;      // m_main.qc: the picker reloads its list
 
@@ -1047,10 +1049,35 @@ float() Mdl_NetOlder =
 	return (strcmp(a, b) < 0);
 };
 
+float(float reqid, float code, string body) Mdl_Reply;
+
 void() Mdl_Ask =
 {
-	local string dir;
+	local string dir, held;
 
+	if (cvar("rec_terms") < FS_TERMS_ONLINE)
+	{
+		if (mdl_deferred != "")
+		{
+			strunzone(mdl_deferred);
+			mdl_deferred = "";
+			mdl_req = 0;
+			mdl_state = MDLS_NONE;
+		}
+		return;
+	}
+	// MENU's buffers/files are main-thread state, not safe worker-thread state.
+	// Protect all connected play, including ESC, practice, pause and spectating.
+	if (clientstate() != 1) return;
+	if (mdl_deferred != "")
+	{
+		held = mdl_deferred;
+		mdl_deferred = "";
+		Mdl_Reply(mdl_req, 0, held);
+		strunzone(held);
+		mdl_next = time + 60;
+		return;
+	}
 	if (mdl_state == MDLS_ASKED)
 	{
 		// The engine's HTTP client has no timeout. The id stays, so a late reply still lands.
@@ -1103,6 +1130,18 @@ float(float reqid, float code, string body) Mdl_Reply =
 	if (len > MDL_MAXLEN || substring(body, 0, strlen(MDL_HEAD)) != MDL_HEAD)
 	{
 		print(sprintf("^5maplist:^7 a reply of %g bytes that is not a map list -- nothing saved\n", len));
+		return TRUE;
+	}
+
+	// A main-menu request may finish after connecting. Only own a bounded copy
+	// now; CRC, tokenization, disk and catalogue work wait until disconnected.
+	if (clientstate() != 1)
+	{
+		if (mdl_deferred != "") strunzone(mdl_deferred);
+		mdl_deferred = strzone(body);
+		mdl_req = reqid;
+		mdl_state = MDLS_QUEUED;
+		print("^5maplist:^7 update queued until disconnected (gameplay protected)\n");
 		return TRUE;
 	}
 
