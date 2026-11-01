@@ -1,5 +1,27 @@
 # Admin zone uploads, published on acceptance
 
+## P1180: every publish is instant (2 Nov 2026)
+
+Lex: "If the zone is bad, then it NEEDs to be updated now, not after people finish their
+runs. Only have 1 option, publish, and it will restart the servers." Every accepted upload,
+whichever nonce the client signed, is written by the upload's own apply(): each of our
+lobbies on the map answers `serverinfo` just before the write (else it holds and is tried
+every minute; held an hour: `expired`), then each gets `say` and `changelevel` in the same
+tick. Rounds every 55 s confirm each lobby by zonecrc and load time, as P1081's reload did.
+Gone: the quiet-map wait, the warning minute, the two-sweep grace and the owed-verdict gate.
+So a run in progress on the map ends, and a finished run not yet swept meets the new zones
+(REFUSE, as after any zone change) -- Lex's call. Zones already live answer "already live"
+without touching a lobby. `quiet()` still guards `rollback` without `--anyway`.
+`NOW_MARKER` is gone: `PUBLISH_MARKER` alone admits a client.
+
+`/api/zones/history` (POST `{"map": name}` or `{}`) lists the newest live, live-partial and
+rollback rows (32 for a map, 50 overall): id, map, time, kind, the uploader's account display
+name (never a SteamID), sha prefix, crc. `/api/zones/file` (POST `{"id": n}`) returns that
+row's zone file. Both answer `Access-Control-Allow-Origin: *` (the site's zoning page) and
+60 requests per address per minute; refusals are 200 + ok 0 as P826's.
+
+The sections below describe P815/P1081; where they speak of waiting, P1180 replaced it.
+
 ## What is implemented (P729, P815)
 
 The editor's **Publish saved** button (its own device click; since P1081

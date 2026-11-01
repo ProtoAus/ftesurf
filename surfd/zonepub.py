@@ -4,9 +4,10 @@
 No surfd schema migration or leaderboard writes. Run behind the existing HTTPS
 host on a loopback socket; do not replace a sealed surfd generation. The
 operator creates this service's separate store and grants roles explicitly.
-P815: with publish directories configured, an admin's accepted upload is queued
-and written into each of them (the lobbies' zones/local and the site's zones)
-once no lobby has had the map loaded for a while (zonepub_publish.py, zonepub.md).
+P815: with publish directories configured, an admin's accepted upload is written into
+each of them (the lobbies' zones/local and the site's zones); since P1180 at once, and every
+lobby on the map reloads (zonepub_publish.py, zonepub.md). /api/zones/history and
+/api/zones/file list and return what was published, by whom (P1180).
 """
 import argparse
 from contextlib import contextmanager
@@ -20,17 +21,17 @@ import secrets
 import socket
 import sqlite3
 import sys
+import threading
 import time
 from flask import Flask, jsonify, request
 import accounts
 import zonepub_publish as pub
 
 MAX_ZONE_BYTES = 262144
+HISTORY_RATE = 60       # P1180: history/file requests per address per minute
 # A string only P815's cl_zonepublish.qc carries: the P729 client signs the same kind and
 # posts the same body, from any server and any click.
 PUBLISH_MARKER = b'a command cannot start a publish'
-# P1081: only a client that offers "reload now" may ask for it (cl_zonepublish.qc's dialog text).
-NOW_MARKER = b'Lobbies on it are warned, then reload'
 SITE = 'play.proto.bar:443'
 PUBLIC_HOSTS = ('play.proto.bar',)      # P1081: the name players reach the lobbies by
 KIND = -6
@@ -249,7 +250,7 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
             size = request.content_length
             if size is None or size <= 0: return fail('Request length required', 411)
             if size > app.config['MAX_CONTENT_LENGTH']: return fail('Upload too large', 413)
-    def known_game(code, now_mode=False):
+    def known_game(code):
         for path in games:
             try:
                 # No links or request-selected paths; one bounded read for hash and marker.
@@ -263,7 +264,6 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                 if identity(before) != identity(after) or identity(after) != identity(current): continue
                 # Publishing: only a csprogs carrying P815's upload flow, whatever is deployed.
                 if publish_dirs and PUBLISH_MARKER not in data: continue
-                if now_mode and NOW_MARKER not in data: continue
                 if secrets.compare_digest(hashlib.sha256(data).hexdigest(), code): return True
             except OSError: continue
         return False
@@ -340,10 +340,10 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                 row = db.execute('SELECT nonce, nonce_now FROM challenges WHERE (nonce=? OR nonce_now=?) '
                                  'AND created>=? AND attempts<3', (key,key,now-180)).fetchone()
                 if row is None: return fail('Upload confirmation expired or already used', 409)
-                slot, force = row['nonce'], row['nonce_now'] == key    # one challenge, either nonce, once
+                slot = row['nonce']             # one challenge, either nonce (a P1081 client's two buttons), once
                 db.execute('UPDATE challenges SET attempts=attempts+1 WHERE nonce=?', (slot,))
         except sqlite3.Error: return fail('Zone uploads unavailable', 503)
-        if not known_game(code, force): return fail('Update your game before uploading', 403)
+        if not known_game(code): return fail('Update your game before uploading', 403)
         ok = signature(pub_key, nonce, code, sig)
         if ok is None: return fail('Signature verifier unavailable', 503)
         if not ok: return fail('Invalid upload proof', 403)
@@ -368,24 +368,11 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                 except (TypeError, KeyError, RecursionError, UnicodeDecodeError):
                     return fail('Invalid or incomplete zone geometry', 400)
                 rid = None
-                if publish_dirs and force:
-                    # "Reload now" confirms each lobby by the crc the client stated for these bytes.
-                    if not grant['crc']: return fail('Update your game before using Reload now', 400)
-                    # It is for a change: zones already live in every publish directory reload nobody
-                    # (same JSON, whitespace and key order aside), unless this revert cancels a force
-                    # still waiting (an operator re-arms: `zonepub.py reload`). Not by crc: it leaves
-                    # out teleport destinations and the speed cap, which are changes.
-                    try: disk = [pub.read_file(pub.zone_path(d, grant['map'], valid_name), MAX_ZONE_BYTES)
-                                 for d in publish_dirs]
-                    except (OSError, ValueError): disk = [None]
-                    waiting = db.execute("SELECT 1 FROM publications WHERE map=? AND kind='pending'",
-                                         (grant['map'],)).fetchone()
-                    if all(same_zones(b, raw) for b in disk) and not waiting:
-                        return fail('These zones are already live; Reload now is for a change', 409)
                 if publish_dirs:
-                    rid = pub.queue(db, grant['map'], raw, sid, now, force, grant['crc'])
+                    # P1180: every publish is written at once and reloads the map's lobbies.
+                    rid = pub.queue(db, grant['map'], raw, sid, now, True, grant['crc'])
                     if rid is None: return fail('Too many publishes this hour; try again later', 429)
-                    pub.log('queued', grant['map'], grant['sha'][:12], 'by', pub.who(db, sid), 'now' if force else '')
+                    pub.log('queued', grant['map'], grant['sha'][:12], 'by', pub.who(db, sid))
                 prior = db.execute('SELECT id FROM drafts WHERE map=? AND sha=?', (grant['map'],grant['sha'])).fetchone()
                 if prior is None:
                     count = db.execute('SELECT COUNT(*) FROM drafts').fetchone()[0]
@@ -409,18 +396,71 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                 done = row['kind'] if row else 'superseded'
             except sqlite3.Error: done = 'pending'
             if done in ('live', 'noop'):
-                return jsonify(ok=1, draft=ident, published=1, note='Published: lobbies time with these zones from '
-                               'their next map load' if done == 'live' else 'These zones are already live')
+                return jsonify(ok=1, draft=ident, published=1, note='Published: lobbies on %s are reloading with '
+                               'these zones now' % name if done == 'live' else 'These zones are already live')
             if done in ('failed', 'partial'):
                 return fail('Accepted, but the zone files could not be written; an operator must look', 500)
-            if force:
-                return jsonify(ok=1, draft=ident, published=0, now=1,
-                               note='Accepted: lobbies on %s are warned, then reload with these zones once its '
-                                    'runs are verified, usually within 10 minutes' % name)
-            return jsonify(ok=1, draft=ident, published=0,
-                           note='Accepted: live once no lobby has had %s loaded for %d minutes and its runs are '
-                                'verified' % (name, pub.QUIET // 60))
+            with connect(store, readonly=True) as db:
+                hold = db.execute('SELECT hold FROM publications WHERE id=?', (rid,)).fetchone()
+            return jsonify(ok=1, draft=ident, published=0, note='Accepted, not live yet: %s; it is tried again '
+                           'every minute' % ((hold and hold['hold']) or 'the zone service is busy'))
         except sqlite3.Error: return fail('Zone uploads unavailable', 503)
+
+    # P1180: what was published and by whom, for the site's zoning page and the editor's history.
+    # Public like the zone files themselves; account display names, never SteamIDs. POST because
+    # nginx takes only POST here; a text/plain body keeps a browser's cross-origin call simple.
+    seen, seen_lock = {}, threading.Lock()
+    def history_ok():
+        now, peer = time.monotonic(), request.remote_addr or ''
+        with seen_lock:
+            if len(seen) > 4096: seen.clear()
+            hits = [t for t in seen.get(peer, ()) if now - t < 60]
+            if len(hits) >= HISTORY_RATE: return False
+            seen[peer] = hits + [now]
+            return True
+    def public(payload, status=200):
+        r = jsonify(payload) if not isinstance(payload, bytes) else app.response_class(payload, mimetype='application/json')
+        r.headers['Access-Control-Allow-Origin'] = '*'
+        return r, status
+    def names_of(sids):
+        if not sids: return {}
+        try:
+            with connect(account_db, readonly=True) as main:
+                q = 'SELECT steamid, name FROM accounts WHERE steamid IN (%s)' % ','.join('?' * len(sids))
+                return {r['steamid']: r['name'] for r in main.execute(q, tuple(sids))}
+        except sqlite3.Error: return {}
+    @app.post('/api/zones/history')
+    def history():
+        if not history_ok(): return public(dict(ok=0, error='Too many requests', status=429))
+        data = request.get_json(force=True, silent=True)
+        data = {} if data is None else data
+        name = data.get('map') if isinstance(data, dict) else ''
+        if name is not None and not valid_name(name): return public(dict(ok=0, error='Invalid map', status=400))
+        where, args = ('map=? AND ', (name,)) if name else ('', ())
+        try:
+            with connect(store, readonly=True) as db:
+                rows = db.execute('SELECT id, map, steamid, at, live, kind, sha, crc, body IS NOT NULL AS has '
+                                  'FROM publications WHERE %skind IN %s ORDER BY id DESC LIMIT ?'
+                                  % (where, pub.LIVE_KINDS), args + (32 if name else 50,)).fetchall()
+        except sqlite3.Error: return public(dict(ok=0, error='Zone history unavailable', status=503))
+        names = names_of(sorted({r['steamid'] for r in rows}))
+        return public(dict(ok=1, rows=[dict(id=r['id'], map=r['map'], at=r['live'] or r['at'], kind=r['kind'],
+                                            by=names.get(r['steamid']) or '', sha=r['sha'][:12], crc=r['crc'] or '',
+                                            file=1 if r['has'] else 0) for r in rows]))
+    @app.post('/api/zones/file')
+    def published_file():
+        if not history_ok(): return public(dict(ok=0, error='Too many requests', status=429))
+        data = request.get_json(force=True, silent=True)
+        rid = data.get('id') if isinstance(data, dict) else None
+        if isinstance(rid, bool) or not isinstance(rid, int) or rid <= 0:
+            return public(dict(ok=0, error='Invalid request', status=400))
+        try:
+            with connect(store, readonly=True) as db:
+                row = db.execute('SELECT body FROM publications WHERE id=? AND body IS NOT NULL AND kind IN %s'
+                                 % (pub.LIVE_KINDS,), (rid,)).fetchone()
+        except sqlite3.Error: return public(dict(ok=0, error='Zone history unavailable', status=503))
+        if row is None: return public(dict(ok=0, error='No such publish', status=404))
+        return public(bytes(row['body']))
     return app
 
 

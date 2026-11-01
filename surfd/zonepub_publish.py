@@ -1,11 +1,12 @@
 """P815: what an accepted admin upload does to the publish directories, and when.
 
-An upload is queued (`publications`, kind pending) and goes live only when no lobby
-has had its map loaded for QUIET seconds, with every lobby heard throughout, nothing
-of the map owed a verdict and a sweep since: a lobby on the map keeps its table
-until its next map load, but `retry` reloads it (a run would change zones
-mid-attempt), and the sweeper verifies a finished run against the files as they are
-then. mapwatch.py holds Momentum's zones on the first condition alone.
+P1180 (Lex, 2 Nov: "If the zone is bad, then it NEEDs to be updated now, not after people
+finish their runs. Only have 1 option, publish, and it will restart the servers"): every
+pending row is written at the next apply() -- the upload's own call -- and every lobby on the
+map is told and changelevelled in that same tick. A run in progress on the map ends, and a
+finished run the sweeper has not yet verified meets the new zones (REFUSE, as after any zone
+change); the warning minute, the two-sweep grace and the owed-verdict gate of P815/P1081 are
+gone. quiet() remains for `rollback` without --anyway.
 
 Kinds: pending, applying (files being written; recovered at the next tick), live,
 noop (already live), superseded, failed (files unchanged or put back), partial
@@ -13,21 +14,15 @@ noop (already live), superseded, failed (files unchanged or put back), partial
 `result` is each directory's sha after a live or rollback row, which is what the files
 must still be for a later rollback.
 
-P1081 `force` (the admin chose "reload now"), pending:
-  0. every lobby on or assigned to the map must be one of ours (lobby_port: a cfg sv_port at
-     SURFD_PUBLIC_HOST or a literal address of this machine); otherwise it holds (`hold` says
-     why). An empty target set counts only when no lobby is on the map at all.
-  1. warn each target (`say`, then `status` as the ack: say prints nothing to rcon). The ack is
-     weak -- it shows the lobby answered, not that a player read the line. All must answer or
-     the round is retried; unanswered for WARN_EXPIRE, the row is `expired` (nothing installed).
-  2. after FORCE_NOTICE, record the newest sweep completion stamp (`sweepbase`; none readable:
-     not ready); ready once two newer completions are in the log (sweeps cannot overlap,
-     flock -n, so the second STARTED after the grace) and nothing of the map is owed a verdict.
-     A lobby whose own warning is older than REWARN is told again first.
-  3. at the write the targets are read again; a lobby not yet warned is warned and waited for,
-     and every target must answer `status` just before put(). Pending past FORCE_EXPIRE: expired.
-Then, live: one round per ROUND_GAP reads each lobby in `todo`, and any the table now shows on
-the map, with `serverinfo`. Done means its `zonecrc` (the hash of the table it runs, sv_zones.qc)
+A pending row is written once:
+  0. every lobby on or assigned to the map is one of ours (lobby_port: a cfg sv_port at
+     SURFD_PUBLIC_HOST or a literal address of this machine), else it holds (`hold` says why);
+     an empty target set counts only when no lobby is on the map at all;
+  1. every target answers `serverinfo` just before put() (its zonecrc then is kept), else it
+     holds. Pending past FORCE_EXPIRE: expired, nothing installed.
+After put(), each target gets `say` and `changelevel` at once (_reload_now). Then, live: one
+round per ROUND_GAP reads each lobby in `todo`, and any the table now shows on the map, with
+`serverinfo`. Done means its `zonecrc` (the hash of the table it runs, sv_zones.qc)
 equals the crc the client stated for these bytes (`crc`, bound to the nonce) -- and, unless its
 read before the write showed this map with another crc (_mode), also a load after the write: a
 lobby found later, re-armed or recovered, or one whose crc cannot tell old from new, needs both
@@ -36,15 +31,14 @@ taken after put() (_since); in another boot it cannot be measured, and a mode-1 
 ("cannot tell after restart") until a re-arm stamps again. A lobby that loaded after the write
 and runs another table (a shadowing file, a crc that never matches) is left, never changelevelled
 again.
-Otherwise `changelevel`; one not warned for this reload is told first and given a minute. A try
+Otherwise `changelevel` (after a `say` if it was not told for this reload). A try
 is spent only on a changelevel sent; RELOAD_TRIES, SILENT_ROUNDS without an answer, or
 RELOAD_EXPIRE leave it too. Left lobbies are `partial`, still read, cleared if they later run the
 table; a lobby's state outlives its moves off and back. A newer write of the map (a rollback,
 another publish, a partial one) ends the watch. The row ends (`done_at`) only in a round whose lobby table was
 read, after WATCH_ROUNDS such rounds, with every lobby done, moved off or left (`live-partial`);
 `zonepub.py reload` re-arms it with its own clock (`rearmed`). Bytes already live reload nobody.
-A crash between the write and the reload recovers as live, which starts the reload. Never past
-an owed verdict; evidence posted after the warning and not yet indexed meets the new zones.
+A crash between the write and the reload recovers as live, which starts the reload.
 """
 from contextlib import contextmanager, nullcontext
 import hashlib
@@ -74,22 +68,20 @@ SWEPT_AFTER = 360   # the sweep log must be newer than the map's last sighting b
 RATE = 20           # publishes per account per hour
 KEEP_PER_MAP = 32
 KEEP_TOTAL = 1024
-FORCE_NOTICE = 60   # P1081: from the lobbies' warning to the earliest reload
-REWARN = 300        # a warning older than this is given again before the reload
-WARN_EXPIRE = 900   # a first warning nobody could be given by then: expired, nothing installed
-FORCE_EXPIRE = 3600 # a force publish still pending by then: expired
+FORCE_EXPIRE = 3600 # a publish still held (lobbies not ours or not answering) by then: expired
 ROUND_GAP = 55      # one reload round per row per tick, however often apply() is called
 RELOAD_TRIES = 5    # changelevels sent to one lobby before it is left for an operator
 RELOAD_EXPIRE = 1800
 SILENT_ROUNDS = 4   # rounds a lobby may not answer after the write before it is an operator alarm
 WATCH_ROUNDS = 2    # readable lobby-table rounds after the write (or re-arm) before a reload may end
 ZP_BUDGET = 4       # zonepub's rcon packets per port per 30 s, all its processes (a lobby's write
-                    # tick: serverinfo before put(), then serverinfo, status, changelevel);
+                    # tick: serverinfo before put(), say, changelevel; a later round: serverinfo,
+                    # status, say, changelevel);
                     # admin.py keeps 8 (rcon.py), and the engine blocks for 24 h past 15
 LOBBY_CFG_DIR = '/srv/nvme/ftesurf-server/game/ftesurf/cfg/lobby'   # admin.py's, sv_port per lobby
 RCON_ENV = '/srv/nvme/surfd/surfd.env'      # SURFD_RCON_PASSWORD and SURFD_PUBLIC_HOST
-NOTICE = 'Zone update for %s: this map reloads in a few minutes, finish your run'
-NOTICE_SHORT = 'Zone update: this map reloads in a few minutes, finish your run'
+NOTICE = 'New zones for %s: reloading the map now'
+NOTICE_SHORT = 'New zones: reloading the map now'
 CLOCK = time.time   # wall moments: `live`, warnings, expiries (tests set it)
 MONO = time.monotonic   # the rcon budget, ROUND_GAP and the load-time test: a clock step moves none
 
@@ -441,15 +433,6 @@ def notice_text(name):
     return text if len(text) <= 120 else NOTICE_SHORT     # rcon.py refuses an argument over 128
 
 
-def force_ready(row, st, now):
-    """P1081: warned at least FORCE_NOTICE ago, nothing of the map owed a verdict, and two sweeps
-    completed after the grace's base stamp: the second of them started after the grace."""
-    if st is None or row['notice'] is None or row['sweepbase'] is None or row['map'] in st['owed']:
-        return False
-    if now < (row['warned'] or row['notice']) + FORCE_NOTICE: return False
-    return len({s for s in st.get('stamps', []) if s > row['sweepbase']}) >= 2
-
-
 def lobby_rcon(port, argv, reply=False):
     """One command to the lobby on 127.0.0.1:port through rcon.py's argument check and budget;
     its printed reply when asked for ("" when none came)."""
@@ -513,16 +496,6 @@ def sender(store, rcon_fn):
         except Exception as e:
             log('rcon', port, argv[0], type(e).__name__); return None
     return send
-
-
-def warn(send, ports, name):
-    """`say` to each port, then `serverinfo` as the ack. ({port: answered}, all answered); an empty
-    set is not an answer -- the caller decides whether nobody being on the map is fine."""
-    said = {}
-    for port in sorted(set(ports)):
-        ok = send(port, ['say', notice_text(name)]) is not None
-        said[port] = ok and bool(lobby_info(send(port, ['serverinfo'], True)))
-    return said, bool(said) and all(said.values())
 
 
 def _recover(db, dirs, paths_of, limit, now=None):
@@ -628,63 +601,39 @@ def _todo(raw):
     return out
 
 
-def _warn_round(connect, store, row, send, ports, name, now):
-    said, ok = warn(send, ports, name)
-    _note(connect, store, row['id'], 'warn ' + ' '.join('%d:%s' % (p, 'ok' if a else 'no')
-                                                        for p, a in sorted(said.items())))
-    if ok:
-        with connect(store) as db:
-            told = _told(db.execute('SELECT warned, warned_ports FROM publications WHERE id=?',
-                                    (row['id'],)).fetchone())
-        told.update({int(p): now for p in ports})
-        _set(connect, store, row['id'], warned=now, hold=None,
-             warned_ports=json.dumps({str(p): t for p, t in sorted(told.items())}))
-        log('warned', name, row['sha'][:12], sorted(ports))
-    else:
-        _hold(connect, store, row, 'not every lobby on %s answered the warning: %s'
-              % (name, ' '.join(str(p) for p, a in sorted(said.items()) if not a)))
-    return ok
-
-
-def _force_pending(connect, store, row, maps, send, now):
-    """One step of a pending force publish; True when it may be written now."""
-    name = row['map']
+def _ready_now(connect, store, row, maps, now):
+    """P1180: True when a pending row may be written now: not expired, and every lobby on the map
+    is ours (_unreachable). Nothing else waits -- not a warning, a sweep or an owed verdict."""
     with connect(store) as db:
         cur = db.execute('SELECT * FROM publications WHERE id=?', (row['id'],)).fetchone()
     if cur is None or cur['kind'] != 'pending': return False
-    expired = (now - cur['at'] > FORCE_EXPIRE or (cur['notice'] is None and now - cur['at'] > WARN_EXPIRE))
-    if expired:
+    if now - cur['at'] > FORCE_EXPIRE:
         _set(connect, store, row['id'], kind='expired')
         _note(connect, store, row['id'], 'expired, nothing installed: ' + (cur['hold'] or 'not ready in time'))
-        log('expired', name, row['sha'][:12], cur['hold'] or '')
+        log('expired', row['map'], row['sha'][:12], cur['hold'] or '')
         return False
-    why = _unreachable(maps, name)
+    why = _unreachable(maps, row['map'])
     if why: _hold(connect, store, row, why); return False
-    targets = maps['ports'].get(name, [])
-    if cur['notice'] is None:
-        if not targets:                         # nobody on the map: nobody to tell
-            _set(connect, store, row['id'], notice=now, warned=now, warned_ports='{}', hold=None)
-            _note(connect, store, row['id'], 'warn nobody on it')
-        elif _warn_round(connect, store, row, send, targets, name, now):
-            _set(connect, store, row['id'], notice=now)
-        return False
-    r = dict(cur)
-    if r['sweepbase'] is None:
-        if now >= r['notice'] + FORCE_NOTICE:
-            stamps = maps.get('stamps') or []
-            if stamps: _set(connect, store, row['id'], sweepbase=max(stamps))
-            else: _hold(connect, store, row, 'the sweep log has no completion line to wait from')   # fail closed
-        return False
-    if not force_ready(r, maps, now):
-        _hold(connect, store, row, 'a verdict on %s is owed' % name if name in maps['owed']
-              else 'waiting for the warning minute and two sweeps')
-        return False
-    told = _told(cur)
-    stale = [p for p in targets if p in told and now - told[p] > REWARN]
-    if stale:                                   # each lobby's own warning: told again, then a minute
-        _warn_round(connect, store, row, send, stale, name, now)
-        return False
     return True
+
+
+def _reload_now(connect, store, rid, send, name, ports, now):
+    """P1180: right after the write, each target is told and changelevelled in the same tick; the
+    first verifying round comes ROUND_GAP later (_force_reload)."""
+    with connect(store) as db:
+        row = db.execute('SELECT * FROM publications WHERE id=?', (rid,)).fetchone()
+    todo, told, words = _todo(row['todo']), _told(row), []
+    for p in sorted(ports):
+        if send(p, ['say', notice_text(name)]) is not None: told[p] = now
+        sent = send(p, ['changelevel', name]) is not None
+        e = todo.setdefault(int(p), [0, 0, 1, 0, 0])
+        e[0] += 1 if sent else 0
+        words.append('%d:changelevel%s' % (p, '' if sent else '-failed'))
+    _set(connect, store, rid, round=MONO(), todo=json.dumps({str(p): e for p, e in sorted(todo.items())}),
+         warned=now if ports else None, warned_ports=json.dumps({str(p): t for p, t in sorted(told.items())}))
+    said = ' '.join(words) or 'no lobby on it'
+    _note(connect, store, rid, 'reload ' + said)
+    log('reload', name, row['sha'][:12], said)
 
 
 def _expected(db, name):
@@ -781,10 +730,8 @@ def _force_reload(connect, store, rid, send, now, st):
         if tries >= RELOAD_TRIES or expired:
             e[3] = 1; words.append('%d:GAVE UP' % p); log('reload given up', name, p); continue
         if p not in told or (row['rearmed'] and told[p] < row['rearmed']):
-            # Not warned for this reload (found after the write, or re-armed): told, then a minute.
+            # Not told for this reload (found after the write, or re-armed): told, then reloaded at once.
             if send(p, ['say', notice_text(name)]) is not None: told[p] = now
-            words.append('%d:warned' % p); continue
-        if now - told[p] < FORCE_NOTICE: words.append('%d:waiting' % p); continue
         sent = send(p, ['changelevel', name]) is not None
         e[0] = tries + (1 if sent else 0)
         words.append('%d:changelevel%s' % (p, '' if sent else '-failed'))
@@ -825,7 +772,8 @@ def rearm(connect, store, name):
 
 
 def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit, rcon_fn=lobby_rcon):
-    """Put every pending publish whose map is quiet into the directories. Returns {map: kind}."""
+    """Put every pending publish into the directories now, and reload its lobbies (P1180).
+    Returns {map: kind}."""
     paths_of = lambda m: [zone_path(d, m, valid_name) for d in dirs]
     done = {}
     if not dirs: return done        # no publish directories: nothing may be marked live
@@ -845,35 +793,33 @@ def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit, rcon_fn=l
                 "SELECT id FROM publications WHERE force=1 AND kind IN ('live','noop') AND done_at IS NULL ORDER BY id")]
         for row in todo:
             name = row['map']
-            fresh, pre = None, {}
-            if row['force']:
-                if not _force_pending(connect, store, row, maps, send, now): continue
-                fresh = maps_fn()           # who is on the map at the write, not at the tick's start
-                why = _unreachable(fresh, name)
-                if why: _hold(connect, store, row, why); continue
-                if name in fresh['owed']: continue
+            # Zones already live need no lobby at all: noop at once (the write re-checks under its lock).
+            try: live_now = [read_file(p, limit) for p in paths_of(name)]
+            except (OSError, ValueError): live_now = None
+            if live_now is not None and all(same_zones(b, bytes(row['body'])) for b in live_now):
                 with connect(store) as db:
-                    told = _told(db.execute('SELECT warned, warned_ports FROM publications WHERE id=?',
-                                            (row['id'],)).fetchone())
-                targets = sorted(fresh['ports'].get(name, []))
-                new = [p for p in targets if p not in told]
-                if new:                     # moved onto the map since the warning: told, then a minute
-                    _warn_round(connect, store, row, send, new, name, now)
-                    continue
-                # Each target answers just before the write, or nothing is written (a flood that
-                # silences rcon must not leave the reload blind); its crc now says whether the
-                # crc will tell its reload apart (an edit hashing the same needs its load time).
-                pre = {p: lobby_info(send(p, ['serverinfo'], True)) for p in targets}
-                quiet_ports = [p for p, info in pre.items() if not info]
-                if quiet_ports:
-                    _hold(connect, store, row, 'no answer just before the write from %s'
-                          % ' '.join(str(p) for p in quiet_ports))
-                    continue
+                    db.execute("UPDATE publications SET kind='noop', live=?, hold=NULL, done_at=? "
+                               "WHERE id=? AND kind='pending'", (math.ceil(CLOCK()), now, row['id']))
+                done[name] = 'noop'; continue
+            # A row queued before P1180 without "reload now" is written the same way.
+            if not _ready_now(connect, store, row, maps, now): continue
+            fresh = maps_fn()               # who is on the map at the write, not at the tick's start
+            why = _unreachable(fresh, name)
+            if why: _hold(connect, store, row, why); continue
+            targets = sorted(fresh['ports'].get(name, []))
+            # Each target answers just before the write, or nothing is written (a flood that
+            # silences rcon must not leave the reload blind); its crc now says whether the
+            # crc will tell its reload apart (an edit hashing the same needs its load time).
+            pre = {p: lobby_info(send(p, ['serverinfo'], True)) for p in targets}
+            quiet_ports = [p for p, info in pre.items() if not info]
+            if quiet_ports:
+                _hold(connect, store, row, 'no answer just before the write from %s'
+                      % ' '.join(str(p) for p in quiet_ports))
+                continue
             with connect(store) as db:
                 db.execute('BEGIN IMMEDIATE')
                 again = db.execute('SELECT kind FROM publications WHERE id=?', (row['id'],)).fetchone()
                 if again is None or again['kind'] != 'pending': continue
-                if not row['force'] and not quiet(db, name, maps, now): continue
                 body = bytes(row['body'])
                 try:
                     paths = paths_of(name)
@@ -905,11 +851,11 @@ def apply_ready(connect, store, dirs, valid_name, maps_fn, now, limit, rcon_fn=l
                                (kind, math.ceil(CLOCK())) + _since() + (row['id'],))
                     if kind == 'live': log('live', name, row['sha'][:12], 'by', who(db, row['steamid']))
                 done[name] = kind
-            if row['force'] and kind == 'live':
+            if kind == 'live':
                 exp = (row['crc'] or '').lower()
-                todo_now = {str(p): [0, 0, _mode(pre[p], name, exp), 0, 0] for p in sorted(fresh['ports'].get(name, []))}
-                _set(connect, store, row['id'], round=None, watch=0, todo=json.dumps(todo_now))
-                _force_reload(connect, store, row['id'], send, now, fresh)
+                todo_now = {str(p): [0, 0, _mode(pre[p], name, exp), 0, 0] for p in targets}
+                _set(connect, store, row['id'], force=1, round=None, watch=0, todo=json.dumps(todo_now))
+                _reload_now(connect, store, row['id'], send, name, targets, now)
         for rid in reloads:
             _force_reload(connect, store, rid, send, now, maps)
     return done
