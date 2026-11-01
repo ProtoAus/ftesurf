@@ -15,6 +15,11 @@
 .entity bank_grav_reset_player;
 .int bank_grav_reset_attempt;
 .float bank_grav_reset_bad;
+// P1185: the player cause that switched a world-owned activation slot off (SV_IOEnable).
+.float bank_off_have;
+.entity bank_off_player;
+.int bank_off_attempt;
+.float bank_off_bad;
 
 int bank_serial;
 entity bank_ctx_player;

@@ -2862,25 +2862,57 @@ void(entity t) SV_BrushRenderInit =
 
 void(entity t, float on) SV_IOEnable =
 {
-	local float wasoff;
+	local float wasoff, act, same;
 	wasoff = SV_Key2(t.StartDisabled, t.startdisabled);
 	// These activation slots are not callback state. A no-op Enable does not
 	// reauthor them; an independent off->on without active I/O is world-owned.
-	if (!strcmp(t.classname, "trigger_push") || !strcmp(t.classname, "trigger_setspeed")
+	act = (!strcmp(t.classname, "trigger_push") || !strcmp(t.classname, "trigger_setspeed")
 		|| !strcmp(t.classname, "trigger_momentum_setspeed") || !strcmp(t.classname, "func_conveyor")
 		|| !strcmp(t.classname, "trigger_teleport") || !strcmp(t.classname, "trigger_momentum_teleport")
 		|| !strcmp(t.classname, "trigger_teleport_relative") || !strcmp(t.classname, "trigger_gravity")
 		|| !strcmp(t.classname, "trigger_momentum_reversespeed") || !strcmp(t.classname, "trigger_reversespeed")
-		|| !strcmp(t.classname, "trigger_catapult") || !strcmp(t.classname, "trigger_momentum_catapult"))
-	if (on && wasoff)
+		|| !strcmp(t.classname, "trigger_catapult") || !strcmp(t.classname, "trigger_momentum_catapult"));
+	// P1185: a world-owned slot a player switches off and that same cause switches on
+	// again stays world-owned. surf_mesa's booster runs OnEndTouch !self Disable, then
+	// Enable 1 s later; the Enable kept the leaving attempt, and the next attempt's
+	// touch read as inherited (practice). Only a player cause (world sources all share
+	// one identity) and only back to world; any other cause's Disable while it is off
+	// cancels it, as that Enable would then override the map (reviews 1-3).
+	if (act && !on)
 	{
-		if (bank_ctx_depth) SV_BankSnapshot(t);
+		same = (bank_ctx_depth && t.bank_off_player == bank_ctx_player
+			&& t.bank_off_attempt == bank_ctx_attempt && t.bank_off_bad == bank_ctx_bad);
+		if (!wasoff)
+		{
+			t.bank_off_have = (bank_ctx_depth && bank_ctx_attempt != 0i
+				&& t.bank_src_attempt == 0i && !t.bank_src_bad);
+			t.bank_off_player = bank_ctx_depth ? bank_ctx_player : world;
+			t.bank_off_attempt = bank_ctx_depth ? bank_ctx_attempt : 0i;
+			t.bank_off_bad = bank_ctx_depth ? bank_ctx_bad : FALSE;
+		}
+		else if (!same)
+			t.bank_off_have = FALSE;
+	}
+	if (act && on && wasoff)
+	{
+		if (t.bank_off_have && bank_ctx_depth && t.bank_off_player == bank_ctx_player
+			&& t.bank_off_attempt == bank_ctx_attempt && t.bank_off_bad == bank_ctx_bad)
+		{
+			if (cvar("developer"))
+				dprint(sprintf("bank: %s %s on again by the cause that switched it off; stays world's\n",
+				               t.classname, t.targetname));
+			t.bank_src_player = world;
+			t.bank_src_attempt = 0i;
+			t.bank_src_bad = FALSE;
+		}
+		else if (bank_ctx_depth) SV_BankSnapshot(t);
 		else
 		{
 			t.bank_src_player = world;
 			t.bank_src_attempt = 0i;
 			t.bank_src_bad = FALSE;
 		}
+		t.bank_off_have = FALSE;
 	}
 	if (!on)
 	{
