@@ -102,6 +102,30 @@ float  av_self_t;
 // Prototypes: the slider callbacks below land before these definitions.
 float(string key) Av_MyInfo;
 void(string key, float v) Av_SetInfo;
+void() Av_PrintLook;
+
+/*
+  Patch 1177: cfg_save_infos 0 (cfg/default.cfg) keeps userinfo out of ftesurf.cfg,
+  so every look key the panel writes is mirrored in an archived cl_<key> cvar and
+  sent again once a launch (Av_RegisterCvars). A console setinfo still lasts the session.
+*/
+#define AV_LOOKKEYS 7
+string(float i) Av_LookKey =
+{
+	if (i == 0) return "lobbycolor";
+	if (i == 1) return "lobbyrgb";
+	if (i == 2) return "lobbymark";
+	if (i == 3) return "lobbybody";
+	if (i == 4) return "lobbyfx";
+	if (i == 5) return "lobbylen";
+	return "lobbytrail";
+};
+
+void(string key, string v) Av_Put =
+{
+	localcmd(sprintf("setinfo %s \"%s\"\n", key, v));
+	cvar_set(strcat("cl_", key), v);
+};
 
 /*
   The palette mirror.  Keep in lockstep with Lobby_PaletteRGB in
@@ -379,19 +403,17 @@ void(string id, vector pos, vector sz, float maxv, float val, string label,
 // PATCH 457: the sliders move ONE HALF of the body, whichever av_half selects.
 void() Av_SendRGB =
 {
-	localcmd(sprintf("setinfo %s \"%g %g %g\"\n",
-	                 av_half ? "lobbybody" : "lobbymark",
-	                 floor(av_rgb_x + 0.5), floor(av_rgb_y + 0.5),
-	                 floor(av_rgb_z + 0.5)));
+	Av_Put(av_half ? "lobbybody" : "lobbymark",
+	       sprintf("%g %g %g", floor(av_rgb_x + 0.5), floor(av_rgb_y + 0.5), floor(av_rgb_z + 0.5)));
 };
 
 // A palette pick is a palette pick: the custom triple goes away with it, and so
 // do both halves, so the whole body follows the swatch that was just clicked.
 void() Av_ClearRGB =
 {
-	localcmd("setinfo lobbyrgb \"\"\n");
-	localcmd("setinfo lobbymark \"\"\n");
-	localcmd("setinfo lobbybody \"\"\n");
+	Av_Put("lobbyrgb", "");
+	Av_Put("lobbymark", "");
+	Av_Put("lobbybody", "");
 	av_rgb = Av_MyRGB() * 255;
 };
 
@@ -406,9 +428,9 @@ void(float i) Av_PickPalette =
 	av_rgb = Av_PaletteRGB(i) * 255;
 	if (av_half)
 	{
-		localcmd(sprintf("setinfo lobbycolor \"%g\"\n", i));
-		localcmd("setinfo lobbyrgb \"\"\n");
-		localcmd("setinfo lobbybody \"\"\n");
+		Av_Put("lobbycolor", sprintf("%g", i));
+		Av_Put("lobbyrgb", "");
+		Av_Put("lobbybody", "");
 	}
 	else
 		Av_SendRGB();
@@ -610,7 +632,7 @@ float(string key) Av_MyInfo =
 
 void(string key, float v) Av_SetInfo =
 {
-	localcmd(sprintf("setinfo %s \"%g\"\n", key, v));
+	Av_Put(key, sprintf("%g", v));
 };
 
 /*
@@ -1220,7 +1242,7 @@ void(vector scr) Av_Draw =
 		if (Profile_Chip("av_hplain", [x + lw - chw * 1.7, y], [chw * 1.7, ceil(hint * 1.9)], "One colour",
 		                 hint, markstr == ""))
 		{
-			localcmd("setinfo lobbymark \"\"\n");
+			Av_Put("lobbymark", "");
 			av_half = 1;
 			av_rgb = Av_MyBody() * 255;
 		}
@@ -1476,6 +1498,13 @@ float(string cmd) Av_ConsoleCommand =
 		if (av_open)                        // as `tier`: no card, no ask
 			Profile_ModeShow((argv(2) == "surf") ? 1 : ((argv(2) == "bhop") ? 2 : 0));
 	}
+	else if (argv(1) == "swatch")           // Patch 1177: Body, then a palette swatch, for arms
+	{
+		av_half = 1;
+		Av_PickPalette(stof(argv(2)));
+	}
+	else if (argv(1) == "look")             // ...and each look key, asked and saved
+		Av_PrintLook();
 	else if (argv(1) == "status")
 		print(strcat(sprintf("hud_player: open %g page %g view \"%s\" breakdown %g of \"%s\" rows %g/%g",
 		                     av_open, av_tab, av_other, pf_state, pf_who, pf_rn, pf_total),
@@ -1497,9 +1526,62 @@ float(string cmd) Av_ConsoleCommand =
 	return TRUE;
 };
 
+// Only digits, spaces, '.' and '-': a saved value goes inside a quoted setinfo.
+float(string v) Av_LookSafe =
+{
+	local float j, c;
+
+	for (j = 0; j < strlen(v); j = j + 1)
+	{
+		c = str2chr(v, j);
+		if (!((c >= 48 && c <= 57) || c == 32 || c == 46 || c == 45))
+			return FALSE;
+	}
+	return TRUE;
+};
+
+void() Av_PrintLook =
+{
+	local float i;
+	local string k, s;
+
+	s = "hud_player look (asked/saved):";
+	for (i = 0; i < AV_LOOKKEYS; i = i + 1)
+	{
+		k = Av_LookKey(i);
+		s = strcat(s, sprintf(" %s \"%s\"/\"%s\"", k, getplayerkeyvalue(player_localnum, k),
+		                      cvar_string(strcat("cl_", k))));
+	}
+	print(s, sprintf(" granted lc \"%s\"\n", getplayerkeyvalue(player_localnum, "lc")));
+};
+
 void() Av_RegisterCvars =
 {
+	local float i, n;
+	local string k, v;
+
 	Inv_Init();
+	// Patch 1177: the saved look (Av_Put), sent once a launch: a cvar outlives this VM.
+	for (i = 0; i < AV_LOOKKEYS; i = i + 1)
+		registercvar(strcat("cl_", Av_LookKey(i)), "", CVAR_ARCHIVE);
+	registercvar("_av_looksent", "0");
+	if (!cvar("_av_looksent"))
+	{
+		cvar_set("_av_looksent", "1");
+		n = 0;
+		for (i = 0; i < AV_LOOKKEYS; i = i + 1)
+		{
+			k = Av_LookKey(i);
+			v = cvar_string(strcat("cl_", k));
+			if (strlen(v) && Av_LookSafe(v))
+			{
+				localcmd(sprintf("setinfo %s \"%s\"\n", k, v));
+				n = n + 1;
+			}
+		}
+		if (n)
+			print(sprintf("hud_player: %g saved look settings sent\n", n));
+	}
 	/*
 	  THE NAME IS THE ASK'S: `hud_player`.  registercommand silently no-ops on
 	  a name the engine owns (pr_csqc.c:5497) -- `hud_player` was checked
