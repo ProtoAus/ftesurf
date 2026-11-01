@@ -77,6 +77,34 @@ No runtime files changed yet. Final receipts/handoff must establish paired QC-on
 install and current actual Native520/MENU6f/config/data/parts preservation. No
 counter/TAS/backend activation. Source note tools/clean-disconnect-p1170.md.
 
+## KSF pictures and reused zones (P1174, 1 Nov 2026)
+
+Supersedes the counts in the census below: nine of its candidates now have zones.
+- **The census's "415 KSF builds without a picture" was 17 a player sees.** 398 are
+  second builds whose catalogue `of` folds them under a pictured base row (P652).
+  Count gaps per menu row, not per table row.
+- **KSF's sheet is not KSF's list.** ksf_roster.csv (maproster.py, the Drive sheet,
+  928 maps) lacked 16 maps on ksf.surf/maps that mapwatch lists, so they had no
+  mapmeta row at all. mapmeta.py/ksfshots.py now also read data/mapdl.txt's `k` rows
+  with no `of` (a `_css` with `of` is our rename, not a KSF name).
+- **KSF replays time a zone file to the tick.** At 66.67 Hz, main bookmarks are
+  touch 3 zone 1 (left start) and touch 2 zone 99 (end); bonus k uses zone 30+k for
+  both. Walking the frames through our regions (hull +-16, feet to +72) gave the same
+  ticks on nine builds, and caught compulsive_njv_h (+7/-30), aquaflow_css (+4) and a
+  gate off KSF's route on race_final and beyer2_css. zonefit FIT passed all four.
+  Board: `/api/maps/<map>/records/zone/<z>/1?game=css&mode=0`; replay
+  `/api/replays/<file>?game=66t`. Scripts: task root ksfmedia-2b-20261101/tmp
+  (replaycheck.py, bonuscheck.py, entflow.py, build_zones.py).
+- **Identical world, renamed restarts.** On devil/lore/wasteland2 the CS:S build has
+  an entity at the donor restart's exact origin and yaw under another name (devil's
+  stage1dest/stage2dest are swapped). Rename by position, never by name; lore's
+  stage1 has none there and uses teleDestPos.
+- Installed fresh-name-only (hard link, refuses an existing name) to the lobbies'
+  maps/zones/local, ftesurf-site/zones and C:\FTESurf's library with manifest rows
+  `donation <donor>`; surfd's zoned column caches 300 s. Receipts in the task root.
+- Worklist of the other 452 + surf_sinister: https://claude.ai/artifact/SkM2R6f9j43D32AnD8Bz3c
+  (db `maps/<map>` = {status claimed|done, by, at}) and C:\FTESurf\ksf-zoning-worklist-2026-11-01.html.
+
 ## Read-only zone geometry and map-picture census (1 Nov2026)
 
 Do not conflate BSP version differences, global bounds, geometry and restart

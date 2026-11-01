@@ -21,6 +21,11 @@
 
 ## next
 
+### P1174 KSF map pictures and zones
+- 17 KSF maps that showed no picture in the map list now have one, among them surf_corrosion, surf_froots2, surf_null and surf_kraken.
+- Nine KSF maps can now be timed, with zones from their Momentum versions that start and stop where KSF's timer does: surf_benevolent_refix, surf_beverages_remix, surf_neoteric_retexture, surf_nsz_fix and surf_pyzire_retexture.
+- Also surf_devil_css, surf_lore_css and surf_wasteland2_css (restarts fitted to these builds), and surf_fast_css for its main track; its bonuses still need zones.
+
 ### P1173 Duck held through a save load
 - Holding duck while you load a standing save now crouches you straight away, the same as pressing duck right after the load. Before, you stayed standing until you let go and pressed duck again.
 

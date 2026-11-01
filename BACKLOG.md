@@ -1,31 +1,21 @@
 # BACKLOG.md
 
-## Map-zone compatibility and screenshot audit (1 Nov2026; diagnosed, not applied)
+## KSF zones and pictures after P1174 (1 Nov 2026)
 
-- `surfd/zonefit.py:fit` is an advisory bounds/name gate, not complete donor
-  compatibility. Actual `surf_race` -> `surf_race_final` has identical vertex/model
-  lumps and all required names, but stage restart origins differ by up to1952units;
-  it returns FIT. Requested `surf_sinister` versus `surf_sinister_evil` also FITs
-  although later region geometry/restarts differ (about16/141units). Conversely,
-  changed world-minimum bounds are not proof the whole course moved. Falsifier:
-  refuse an unchanged donor when required restart positions/course anchors differ,
-  retain real ace/self/css positive controls, and distinguish remapping from new
-  zone drawing. Do not blindly invalidate existing given zones or promote a
-  sampled geometry match into in-game acceptance while fixing this seam.
-- `tools/ksfshots.py:get` rejects real KSF WEBP at a .jpg URL whose Content-Type is
-  image/jpeg (`surf_froots2`,263106bytes,1920x1080). The same response fully decodes
-  with Pillow as WEBP. Falsifier: accept/normalize that actual image while refusing
-  HTML, truncation, oversized decodes and host403/429; preserve paced fetching.
-- `src/menu/m_main.qc:MMD_LoadFile` joins pictures by exact name, not map-list `of`.
-  Both actual installs lack415 KSF picture mappings:400 have an existing pictured
-  base/equivalent,14 have valid KSF images not integrated, and the exact
-  `surf_parrot_selector_h` image is404 while its base picture exists. Falsifier:
-  `surf_ace_css` gets its deliberate base-picture link without mixing unrelated
-  versions/tiers; both installs and HTTPS media show the new cell/fallback. Do
-  not mark pictures deployed from a cache/download check alone. Full readable
-  audit: `C:/FTESurf/map-audit-2026-11-01.html` (all461 KSF zoning rows,117 loose
-  rows,415 picture gaps; no live changes). Requested surf_sinister stays; other
-  loose files are not a blanket deletion authorization.
+- `surfd/zonefit.py:fit` (and mapwatch's automatic port) passes donors whose zones
+  do not time the target like KSF: surf_race -> surf_race_final and surf_beyer2 ->
+  surf_beyer2_css return FIT though KSF's WR route skips one of their gates, and
+  surf_compulsive -> surf_compulsive_njv_h FITs with start/end 7/30 ticks off KSF.
+  Falsifier: KSF's top replay walked through the zone file (P1174 notes) leaves the
+  start and enters the end on KSF's bookmark ticks and enters every gate in order;
+  those three must refuse and the nine P1174 builds must pass. Not applied to
+  existing given zones without that census.
+- Pictures for folded second builds (398 `_css`/`_ksf` rows with `of`) live only on
+  their base row (src/menu/m_main.qc P652 fold). Only matters if a build's own row is
+  ever shown, or the switch should show the build's own picture.
+- surf_pyzire_retexture bonus 1 ends 5 ticks earlier than KSF's (Momentum's zone,
+  kept); surf_fast_css has its main track only. Both are on the zoning worklist's
+  attached list.
 
 ## Noclip follow-up after owner-confirmed P1156 (investigation; not fixed)
 

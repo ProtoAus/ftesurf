@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1174 KSF map pictures, nine zoned KSF builds, zoning worklist
+Pictures: both installs and the Pi's media table since 11:15Z 1 Nov (atlas page 10). Zones:
+lobbies, site and C:\FTESurf's library since 11:13Z. Please check (PENDING):
+- Maps screen, show all: surf_froots2, surf_corrosion, surf_null, surf_parrot_selector_h show
+  pictures. Players on an older install see them after the next release (atlas page).
+- Host surf_benevolent_refix or surf_lore_css: the timer starts leaving the start and stops in
+  the end; `!r` / stage restarts land in the right places (lore's restarts were renamed).
+- The worklist https://claude.ai/artifact/SkM2R6f9j43D32AnD8Bz3c (or
+  C:\FTESurf\ksf-zoning-worklist-2026-11-01.html): share it; a helper ticks for everyone only if
+  you invite them by email as an Editor. Publishing their zones needs the zone-admin role.
+
 ## P1173 duck held through a save load
 Installed in both Windows installs (client + dedicated, git-8074-patch-1173) and 11 of 12 Pi lobbies
 (lobby 11 had a player; it restarts onto the fix once empty).
