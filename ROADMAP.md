@@ -11,7 +11,9 @@ scope, persist real elapsed time and main/bonus starts, and expose the reader
 contract. Old unrecorded sessions cannot be reconstructed as historical hours.
 Until that producer is published, qualified and activated, the UI explicitly says
 tracking is unavailable rather than manufacturing totals. Source/activation:
-[tools/profile-stats-p1168.md](tools/profile-stats-p1168.md).
+[tools/profile-stats-p1168.md](tools/profile-stats-p1168.md). MENU readers are now
+installed in both Windows installs; newer SSQC/CSQC adoption and actual collection
+still need the owning source/family handoff. This requested work is not complete.
 
 ## TAS editor and signed collaborative saves — requested 26 Oct 2026
 

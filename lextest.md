@@ -2,16 +2,20 @@
 
 ## P1168 — public inventory, map stats and seeking (pending)
 
-Implementation is verified in an isolated synthetic client, not human-accepted.
-Live/local availability and the separate counter-collector blocker are recorded
-in `tools/profile-stats-p1168.md`; do not infer deployment from these checks.
-After the relevant delivery, inspect another linked player's inventory while an
-item is unequipped, click a menu leaderboard picture, and select main/bonus
-courses. Jump to your row and scroll upward; if using the native table, also try
-Previous at the first fetched row (native Previous is not runtime-proved yet).
-When real collection is active, compare your profile/map totals and !time/name
-for a short actual session. Old sessions were not recorded and are not backfilled.
-Confirm readability and interaction feel; no owner confirmation received yet.
+Windows MENU-only delivery verified in BOTH installs1Nov2026 05:43:15UTC.
+No owner confirmation received. Run `menu_restart`, click a leaderboard/profile
+picture, select Main/Bonus chips, then Jump to me and scroll upward. Confirm
+readability, profile Back/escape and course interaction. This narrow menu update
+left the unknown newer SSQC/CSQC/native/config files and all lobbies untouched.
+
+Backend owned-item promotion still needs protected namespace authentication;
+after that promotion, inspect an unequipped item in another linked profile.
+Live !time and in-game readers await source-cohort handoff/adoption. Native-table
+Previous is compile/source-only, not runtime-proved. Actual collection remains
+unfinished: only AFTER its published producer is qualified and activated, compare
+profile/map totals and !time/name over a short real session. No old hours are
+backfilled. Synthetic supplied totals are not real hours or human acceptance.
+Exact sources, hashes, rollback and blockers: `tools/profile-stats-p1168.md`.
 
 ## P1164 — cylindrical paper party crown (appearance confirmed)
 

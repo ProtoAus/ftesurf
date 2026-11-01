@@ -59,6 +59,12 @@ only the cosmetic fields already intended for profile display.
 - Inspected course, profile and seeking screenshots. The first menu crown's raw
   polygons missed the SUI frame transform; its detached tips were retained as a
   failed visual control. Corrected screenshot has the entire crown in slot2.
+- A real backend HTTP check caught a fabricated catalogue suffix route (404).
+  Fixed it to the actual `/board/api/map?map=...` Flask/nginx route (200), and
+  tightened the fixture so it rejects the fabricated path. The rerun acted two
+  canonical catalogue requests, both200, with no suffix requests; course image
+  inspected, children stopped and preimages restored. This supersedes the old
+  fixture's insufficient endpoint-contract coverage.
 - Existing test_board_navigation.py:7/9 on both inspected baseline and subject;
   identical stale brand-text/PF_CF expectations account for the two failures.
 - All owned fixture children stopped; three native-fixture program preimages and
@@ -72,21 +78,65 @@ These checks are not owner acceptance, performance measurement or live adoption.
 
 ## Source and delivery boundaries
 
-The runtime source is an isolated backport on inspected fleet69fdb328 (published
-as deploy/profile-crown-1164), not a full current-main rollout. Current published
-native/TAS/backend source is preserved in the public integration; it must NOT be
-silently activated on the frozen runtime. ENGINE.txt advances only the product
-patch; each tree retains its own existing native pin/tag and qcbuild.
+Keep the separately published source cohorts distinct:
 
-At this document's initial commit, deployment is pending. Required next actions:
-clean exact-commit product build, publish inspected SHAs, ordinary guarded Pi pair
-swap/readback, and inventory.py-only backend promotion on the frozen schema25
-cohort. Do not use a whole-main backend deploy to bypass generation/namespace
-admission. Keep rollback and record actual hashes/UTC after successful delivery.
+- Public integration: `fba5b68f629416a19c0a219fb7489cf9451f362f`, including
+  the corrected catalogue URL. Existing published native/TAS/backend work is
+  preserved here; this is NOT approval for whole-main backend activation.
+- Frozen QC: `bfdf69e5a4f0ce1a2c98c010c584efc5567c17ec` on fleet69fdb328,
+  published as `deploy/profile-stats-1168`. It retains that older native cohort;
+  do not ship it over a newer unbound pair. Pre-URL-fix artifacts are superseded.
+- Inventory-only backend: `fcc0d20b6e86c8b3597da7636a7fd9be421dc0a9`,
+  `deploy/profile-inventory-readers-1168`, on exact live primary da053e69.
+  Its82-file closure changes ONLY inventory.py; prior-primary fallback is the
+  exact old82-file closure. Same schema25/inventory82-v1, guard and dispatcher;
+  no counter family, schema migration, native activation or DB restoration.
 
-Both Windows local VM/native cohorts previously changed without an established
-source/owner. They remain protected: no blind overwrite, downgrade or restore.
-Content-addressed official-CSQC cache seeding is a separate safe step; local
-MENU adoption needs that cohort resolved. menu.dat is never a lobby ship item.
-Counter collection and native Previous/manual feel remain separate pending gates.
-Human-only checks are in lextest.md. No delivery is implied by the local fixtures.
+### Delivered: Windows MENU only
+
+At **2026-11-01 05:43:15UTC**, both Windows `menu.dat` + matching LNO were
+updated from the clean inspected public integration commit above. Both prior
+menus exactly matched a clean published fea6969b control build. That resolves
+MENU ownership independently; it does NOT establish the unknown CSQC/SSQC/native
+pair's source. The build's existing Deploy/.prev helper was reused narrowly.
+Both destination hashes were verified, `.prev` retains the actual predecessor,
+and older `.prev` files were preserved in this task's evidence. All captured
+CSQC/SSQC/native/plugin/config hashes stayed unchanged; no owner process restarted.
+
+| Both Windows installs | SHA-256 |
+|---|---|
+| menu.dat | `8a3705aa799622a42fb69b6a75e01f89d04d905a4b6905ad426436e03f468b46` |
+| menu.lno | `b607841121e9d01e09933c4d81c1f15b0465255b83c2ff226bedb327252c2116` |
+
+Reload with `menu_restart`. Picture-to-profile navigation, main/bonus chips and
+menu earlier-page fetching are installed. Owned-but-unequipped display still
+needs the backend promotion below; absent real counters remain unavailable.
+menu.dat is client-local and is NEVER a lobby ship item.
+
+### Concrete remaining blockers
+
+1. **Backend namespace authentication.** Both frozen source cohorts passed real
+   CLOSED gunicorn fixture startup/acceptance/reopen/drain checks, with acted
+   missing/changed/opposite-schema refusals. The protected namespace dry-run
+   passes, but the actual installer requires interactive sudo authentication.
+   Shared ingress was restored exactly; health200, live predecessor OPEN and
+   both prepared fences CLOSED were verified. No candidate production import, gate close,
+   candidate restart, migration or DB restoration occurred. After owner admission, perform
+   the existing code-only generation swap/receipt/reopen, then verify public
+   ownership and destination source hashes. Do not bypass namespace admission.
+2. **Newer live/Windows SSQC+CSQC source ownership.** Neither matches the clean
+   published fea6969b control or any of32 retained task artifacts. Their current
+   pair remains untouched, including all12 lobbies. Obtain the owning commit /
+   build receipt or explicit handoff, integrate without losing that work, build
+   and validate the exact source, then ordinary paired deploy/readback with
+   rollback. This blocks live `!time` and in-game reader/board adoption, not the
+   separately source-bound MENU update.
+3. **Actual counter collection/persistence remains unimplemented here.** The
+   existing owner must publish/hand off the consented linked-game producer and
+   required family before it can be integrated, qualified and activated. Reader
+   completion is NOT completion of the user's real hours/attempt request. No
+   competing or unpublished collector was copied; no historic hours invented.
+
+These are unfinished parts of the same request, not an owner-imposed later pass.
+Native-table Previous runtime proof and owner interaction/appearance acceptance
+also remain pending. Human-only checks are in lextest.md.
