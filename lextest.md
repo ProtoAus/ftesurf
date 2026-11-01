@@ -1,12 +1,14 @@
 # lextest.md — things waiting on a human
 
-## P1170 — clean lobby switch/quit; candidate qualified, NOT INSTALLED yet
-A->B should remove oldA slot/avatar; B->B leaves exactlyone, normal close removes
-final slot without old ~30sec ghost. Crash/network loss still needs timeout.
-Weapon Drop/key still works; only wire weapon_drop is separate from native drop.
-Exact actual whole control and realUDP weapon/A->B/B->B/normalquit passed;
-Native520/MENU6f unchanged. See `tools/clean-disconnect-p1170.md`. Full CURRENT
-protection snapshots exceeded180sec caller budget, retained, no runtime install.
+## P1170 DELIVERED — owner ordinary lobby UX check
+Both Windows +all12 Pi paired scripts updated; Native520/MENU6f unchanged.
+Please check A->B removes oldA avatar/slot, B->B leaves one, normal game close
+clears final slot promptly; weapon Drop should remain connected. Actual local
+lifecycle/old-ghost controls passed, installed-image cold client fetched new
+92a49aa2/drewHUD/exit0. All old configs/data and complete live/on-offboxpart held.
+Crash/network loss still needs timeout. No playtime/attempt collector enabled.
+Full private receipt artifacts/clean-disconnect/delivery-final.json; no more
+engineering probes/restarts needed unless owner reports a problem.
 
 ## P1169 — map-list update during play (installed both Windows; owner check)
 

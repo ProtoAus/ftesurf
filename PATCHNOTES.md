@@ -21,6 +21,9 @@
 
 ## next
 
+### P1170 Clean lobby disconnects
+- Switching or rejoining lobbies and closing the game normally now cleans up the old connection instead of leaving a ghost player until timeout. Weapon Drop still works without disconnecting you.
+
 ### P1162 Smoother slow noclip and personal lobby flight speed
 - Noclip stays smooth at slow practice speeds, including fast flight. Body and spectator views stop blending across actual placements.
 - Hold the walk key while noclipping and scroll to adjust your own flight speed in a supported lobby, without changing anyone else's speed. Normal movement and run eligibility are unchanged.

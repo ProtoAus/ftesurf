@@ -1,6 +1,37 @@
 # AGENT_NOTES.md
 
-## P1170 ACTIVE — clean disconnect validated, NOT INSTALLED
+## P1170 DELIVERED — clean normal lobby switch/rejoin/quit, weapon Drop remains
+
+Runtime source6d132181 (on publicmain), native documentationca4bcbea0; Native520/
+P1162 and MENU6f byte-identical. Exact current public14aef133 oldSV/CS/MENU
+control matched all3 whole programs; only3 feature files change. Both CSQC weapon
+emitters use weapon_drop; QW drop/disconnect reaches existing native teardown.
+Normal ClientDisconnect save/avatar/slot handling stays. Crash/lost network still
+uses timeout. No native/header/API/mover/recorder/backend/stats/TAS activation.
+
+DELIVERED bothWindows10 VM/LNO/cache targets, all14 native identities/MENU and36
+non-target generated preimages held,224cfg/all15819 old protected exact AFTERcold.
+Pi official noforce deploy: all12 positivelyempty native+directory, paired new
+1e3aeb37/92a49aa2, exactlyone restart perunit, exact native/plugin520 mapped
+identities held, after->cold epochs stable. All39241 old protected held (current
+39275). COMPLETE livepart1 exact in ready/preapply/after/cold AND original full
+on/offbox archives. Post-phase JSON omits convenience parts; printed0 was default
+not actual0. Final reader KeyError caught it: used real protected census and
+explicit currentparts==before guard, no receipt rewrite/actor/backup replay.
+
+Actual local old normalquit exit0 ghost, new weapon2->0 staysconnected, A->B
+oldA0, B->B one, normalquitB0,5logs clean. Installed520/MENU6f cold Pi client
+NO local CSQC fetched84661c2c/92a49aa2, visible HUD/board9/type14 screenshot,
+exit0/noQCerrors, unaccepted terms/unranked. All own actors closed/lease released.
+Original caller/idle/reporter/snapshot/SFTP/manifest/schema refusals retained;
+SAME archives/transaction corrected only at caller/reader bindings, no guard
+relaxation, source/image rebuild, new namespace or data restoration. No healthy
+lifecycle case/restart rerun. Full delivery-final.json and private receipts in
+own artifacts/clean-disconnect; root HANDOFF.md owns current source/disposition.
+Only owner ordinary switch/rejoin/quit UX acceptance remains; no latency or crash
+cleanup guarantee. Do NOT rerun healthy promoters/probes or blanket-buildmain.
+
+## P1170 pre-install checkpoint (historical)
 
 Native drop/disconnect reaches normal native teardown, weapon Drop stays via
 weapon_drop in BOTH CSQC emitters. Only3 feature files, no native/header/API/
