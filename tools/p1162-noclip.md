@@ -1,74 +1,89 @@
-# P1162 — both Windows installs updated; Pi rollout safely paused
+# P1162 — delivered to both Windows installs and all 12 Pi lobbies
 
-Installed Native520ba3ca9 plus compiled QC5a4c685b on both Windows roots. Both
-28-target receipts pass; fresh cold joins from both installed native/menu/plugin
-sets load the current peer lobby's CSQC and board without QC errors. This is not
-a claim that our Pi rollout happened or that physical wheel/owner feel passed.
+Native `520ba3ca9` / annotated `patch-1162`, compiled QC `c79ee297`.
+Both actual Windows roots and all12 active lobbies now have the scoped noclip
+update. Exact current source preserves the already-live P1163 aura and P1164
+paper crown; no backend operation or pending TAS activation occurred.
+Human slow-flight / physical wheel acceptance is still pending.
 
-Pi BEFORE/complete on-offbox backups passed (38962 protected files, one current
-part). Before commit, another rollout changed CSQC39518177 to9640f764 and all12
-service epochs while retaining NativeP1158/SSQC051557. The READY gate correctly
-FAILED. Native apply exited before any native-stage report, swap or service
-operation; this task did NOT replace/restart lobbies. Do not overwrite the newer
-crown/client update or reset before/ready to force a pass. Coordinate a quiet
-rollout and prove/preserve the latest live client source before resuming.
+## What changed
 
-Local original protected hashes passed at each promotion. A later post-cold
-read detected30 primary entries changed after promotion and before both cold
-actors (28 data/cache texts, one other data text, ftesurf.cfg). Config key names
-only: cl_noclipspeed, topcolor, bottomcolor, r_viewmodel_maxlight and
-r_wateralpha_extendpvs. Values/bytes were left intact; no owner-data restoration
-or protection-pass relabel occurred. The cold rigs use isolated copied folders
-and disable config saving. No human acceptance is inferred from those writes.
-
-Native source/tag, final images and unchanged numerical/role proofs remain
-valid; only the Pi authority/baseline and latest client preservation need work.
-
-Two owner reports: noclip judder below host_timescale1 and the walk-key/wheel
-speed adjustment working privately but not in lobbies. The high-speed flicker
-was confirmed noclip-only; do not widen the fix to normal movement.
+Two owner reports: noclip judder below host_timescale1 and walk-key/wheel speed
+adjustment working privately but not in lobbies. The high-speed flicker was
+confirmed noclip-only; normal movement was not widened into the fix.
 
 The code uses the existing slow-practice presentation path with finite fast-flight
 bounds, preserves Source noclip velocity outside the walking cap, and sends an
-individual bounded native cl_noclipspeed userinfo preference instead of changing
-the lobby's global pm_noclipspeed. Unsupported servers retain the fallback;
+individual bounded native `cl_noclipspeed` userinfo preference instead of changing
+the lobby's global `pm_noclipspeed`. Unsupported servers retain the fallback;
 nonzero local seats do not mutate the primary local preference. Real placements
 reach both native consumers and the default streamed CSQC body/spectator serial.
 
-## Delivery baseline is actual installed source, not main
+## Exact installed scope
 
-- Native base: P1158/tag793ee161a9baa8ba976f1f426e19bfd10c5d877a.
-- VM base: P1160 backport84a8ff1a925f3ebda8f681c76387279ac6670472.
-- Native candidate:520ba3ca9902f0759fc0c9e5f691bf13ba55fd9e.
-- Same owned pair on deliver-noclip-1162; full-main integrations kept separately.
-- Pi preflight found CSQC39518177 rather than the published P1160 note's cba6fd.
-  Full binary reconstruction proves it is exactly the published fleet P1163
-  aura fix471fa957 atop84a8ff1a. Preserve that one client file; no pending P1164
-  crown or TAS activation. The original mismatch/refusal and all backups remain.
-- Both Windows three-program hashes were actually read and match the P1160
-  record in the saved published profile-inventory-p1160.md. Inventory and the
-  already-activated backend are retained; no backend operation occurs here.
-  Windows phase1 had only the base aura; phase2 adds the actual live fleet aura
-  without redoing Native/platform/recording gates or replacing player data.
-- No pending P1154/P1161 VM or P1161 decoder activation. No physical mover,
-  native API epoch, recorder format, practice/ranking policy or qcbuild bump.
+- Actual Native base: P1158 `793ee161a`; candidate/tag `520ba3ca9`.
+- Actual VM base: P1160 backport `84a8ff1a`; compiled final `c79ee297`.
+- Same sole owned source pair / `deliver-noclip-1162` branches. Saved full-main
+  integrations are retained separately, not activated over the installed scope.
+- Nine native runtime files equal the reviewed candidate. Native pm_source.c
+  and sv_tas_rewind.inc remain the actual P1158 baseline. No physical mover,
+  API epoch, recorder format, practice/ranking policy or qcbuild bump.
+- Pi first exposed live CSQC39518177 rather than the published Windows baseline.
+  Exact whole-binary control reconstructs published P1163 inventory over84a8ff1a.
+  It was preserved in Windows phase2, without replacing user data.
+- A concurrent peer then changed live CSQC to9640f764 and all12 service epochs.
+  The original READY failed correctly; no original native swap/restart happened.
+  After the owner closed the game, exact whole-binary control reproduced9640f764
+  using the PUBLIC P1164 `69fdb328a7fea9c10ee22d4e8544e183d97ef4c0`
+  cl_inventory.qc over84a8ff1a. Final c79ee297 preserves that exact client file.
+  Only inventory changes from the already-qualified noclip5a4c685b source;
+  cl_main, all33 pose functions and the Native images remain exact.
+- Current CSQC SHA256 b3ef8935baacd70101b51ebe6073d950e564480a609d9c6d176df3d6d7d32267;
+  advertised/downloaded cache `32158989.dat`. SSQC54fc2f59, menu6c9f9034.
 
-All nine native runtime files equal the reviewed candidate. Native pm_source.c
-and sv_tas_rewind.inc remain the installed P1158 baseline. Nine QC runtime files
-backport cleanly; one test-only conflict takes the reviewed full sourcepractice
-fixture, retaining controls for already-installed roof-camera behavior.
+## Actual acceptance and limits
 
-The held-source native preference/presentation controls and eleven-scenario
-native-QC-VM stream regression pass. The old stream source fails29 assertions
-with continuous/walking/same-origin/reseed controls acting. Transport, roles and
-arrival/render clocks are controlled; this is not real CSQC network dispatch,
-GPU, owner feel or canonical world movement. Original harness/global/plugin and
-compile-order failures remain in the owned task. The actual code closures must
-be bound to the scoped final images before delivery is claimed.
+- Header-required clean all7 Windows build and ARM server+HL2 pair passed with
+  exact final Native520 stamps. Official QC build0SS/0menu and the existing2CS
+  F333 warnings. Native source/image closure reused, not rebuilt for inventory.
+- Exact final Native images on both platforms: native selftest, all60 named
+  physical rows equal, declared reconstructed historicalpin2/pin7 controls PASS.
+- Actual four-case listen probes: old/disabled path frozen-camera fraction~0.72;
+  current preference2/default16 zero frozen fraction; full8320 flight speed;
+  normal walking control. No physical mouse-wheel claim from scripted controls.
+- Eleven-scenario controlled native-QC-VM stream regression0fail/681 assertions,
+  old-source29fail/664 with controls acting; all33 literal functions held. Roles,
+  arrivals and clocks are controlled, not real CSQC dispatch/GPU/world physics.
+- Final both-Windows28-target receipt PASS. BOTH actual installed EXE/menu/HL2+
+  ImGui sets made fresh isolated lobby joins, downloaded the final CSQC, drew
+  cols9/type14 boards, captured screenshots and exited0 without QC errors.
+- Final Pi exact Native520 executable/plugin mappings and VM hashes PASS on
+  all12 fresh service epochs. Exactly one official restart per lobby; no extra
+  restart after cold joins. Fresh-epoch server journals have no QC/native errors.
+- Actual owner roof/duck/high-speed noclip feel, physical wheel input and other
+  players' unchanged speed remain human checks; automated results do not imply
+  acceptance. No ranked finish, GPU geometry or backend acceptance is claimed.
 
-Header-full seven-image build is required by client.h helper declarations even
-without a public ABI bump. Final source/tag, both-platform/native/legacy/role
-acceptance, protected data/config/parts preservation, exact installation/cold and
-human feel are distinct pending gates. See lextest.md; do not ask for an owner
-retest before installed files really exist. Nothing in this document is a live
-Windows, Pi, backend, public release or human-acceptance claim.
+## Preservation, including newer saves
+
+Original snapshots, complete data/config archives, failed READY and all earlier
+harness/reader failures remain retained. They were not reset or relabelled PASS.
+The old local post-cold guard found later settings/cache writes; those actual
+bytes were kept. After the owner closed the game, a linked explicit continuation
+backed up ALL15818 current Windows protected files;40 changed old entries were
+recorded, not restored. Final post-cold guard verifies all15818 unchanged across
+installation, plus28 generated outputs and224 configuration files.
+
+Pi's linked continuation first refused three changed closed data/resume files
+from the same testing window. Review proved the change set was exactly those
+three, with all other old data/config/links and the complete one-part boundary
+held. Original refusal/old save generations remain archived. The current resume
+state then received a complete separate39037-file on/offbox verified backup.
+Native preflight and final under-lock commit verified ALL current closed parts,
+not an old subset. Final after/cold guards verify the current protected bytes,
+links, part hashes and archive unchanged. No player data/config was restored,
+deleted, skipped or written by a deployment helper. Runtime-created new entries
+are not a loss of old bytes. The native pair lock critical section was1.13s.
+
+See `lextest.md` for the remaining short owner check. Source/runtime proofs and
+private original/current archives stay in the same owned task; no new clone.

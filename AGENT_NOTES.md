@@ -2,17 +2,29 @@
 
 ## P1162 noclip-only backport of the P1159 candidate
 
-CURRENT partial delivery: Native520ba3ca9/compiledQC5a4c685b are installed on
-both Windows roots; all28 output checks and both actual cold joins pass. Pi
-READY correctly refuses after a concurrent peer CSQC39518177->9640f764 update
-and all12 service epoch changes. Our native apply failed BEFORE any native/live
-write or restart. Do not reset before/ready or downgrade that newer crown/client
-program; coordinate deployments and preserve the latest actual source first.
-Original full private Windows/Pi data/config/parts backups remain verified.
-Post-cold guard records30 later primary config/data changes, timestamps before
-our cold actors, mostly28 cache texts and changed personal cvar keys; KEEP them
-and the failure, never restore/relabel. No human/physical-wheel/Pi-complete claim.
+CURRENT DELIVERED: Native520ba3ca9/tagpatch1162 + compiledQCc79ee297 on BOTH
+Windows roots AND ALL12 Pi lobbies. Source branch/tag published. Final28 outputs,
+224cfg and15818 current protected Windows files PASS after both fresh installed
+native/menu/plugin cold joins; both downloaded finalCSQCb3ef8935/cache32158989,
+boardcols9/type14, no QC error, exit0. All12 exact final native/plugin/VM epochs
+and journals PASS after/cold; exactly one official restart each, no extra later.
+Physical60/NativeSelf/declaredlegacy/actualnoclip4cases held by same Native520;
+all33 functions/cl_main exact, only public inventory file changes from5a4c685b.
+Whole binary control reproduced actual live9640f764 using PUBLIC69fdb328a7fea9c10ee22d4e8544e183d97ef4c0 inventory, so P1163 aura + P1164 crown retained.
+Original concurrent-update READY FAIL and all original full backups retained.
+After owner closed game, linked explicit peer-crown continuation captured all
+current settings/data:40 observed original local changes kept; current15818 full
+archive verified. Pi first refused exactly3 changed closed resume files from
+01:59 testing window; explicit reviewed continuation retained that FAIL, old
+archive and newer resume generations, then fully archived39037 current files
+on/offbox. All other old data/cfg/links and complete current1part held; native
+commit checks ALL parts under sweep lock, critical1.13s. Final current protected
+bytes/links/parts PASS, never restore/relabel old failures. No backend operation,
+no pending TAS activation, no main-scope widening. Both source trees clean; own
+GUI actors exited/lease released. Human slow-noclip/+speed-wheel feel PENDING.
 See tools/p1162-noclip.md and task CURRENT.md; no healthy suite rerun needed.
+
+Historical earlier scoped-candidate/first-Windows state follows:
 
 Windows phase1 promoted Native520ba3ca9 plus QC67e30b30; all28 outputs and15816
 original protected files verified. Pi BEFORE found actual CSQC39518177, not the

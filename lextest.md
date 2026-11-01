@@ -1,24 +1,22 @@
 # lextest.md — things waiting on a human
 
-## P1162 — noclip follow-up (Windows installed; Pi rollout blocked by peer update)
+## P1162 — noclip follow-up (both Windows + all12 lobbies installed; owner check)
 
-The owner confirmed the high-speed flicker is noclip-only. Candidate code fixes
-slow-flight presentation/velocity clipping and gives each supported lobby player
-their own walk-key-plus-wheel flight preference. The shared placement marker also
-reaches default streamed bodies and their spectator consumer. Controlled native
-and QC-VM cases are not owner camera feel, physical wheel input or deployment.
+Native520ba3ca9/tagpatch1162 and compiledQCc79ee297 are installed. Both actual
+Windows native/menu/plugin fresh joins downloaded the final lobby CSQC and drew
+boards without QC errors. All12 exact new native/plugin/VM epochs passed after
+and cold guards, one restart each. Current P1163 aura/P1164 crown are preserved;
+newer personal settings and resume saves were fully backed up and kept, not
+restored to make old hash failures pass. Details: `tools/p1162-noclip.md`.
 
-Windows is ready for a private-server check: noclip at host_timescale0.25 and0.5,
-turn/change height, and fly fast. Private walk-key/wheel preference can be checked.
-Lobby wheel support is NOT deployed yet: another client/crown rollout changed
-all12 epochs before our commit; the strict READY guard stopped us. Coordinate
-other deployments and preserve that newer live source before finishing Pi.
-After Pi is really installed, hold the walk key and scroll in a lobby; confirm
-only your flight speed changes. Restore
-cl_noclipspeed 0 to use that server's default. Briefly check ordinary movement and
-the already-accepted roof/duck case remain unchanged. Windows files are installed and both cold joins passed; no confirmation received.
-The current config/cache changes were kept, not restored to make a hash check
-pass. No lobby completion or human feel is claimed.
+Please test noclip at `host_timescale 0.25` and `0.5`: turn, change height and fly
+fast. In a lobby, hold the walk / `+speed` key and scroll; confirm your flight
+speed changes and another player's does not. `cl_noclipspeed 0` restores that
+server's default. Briefly check ordinary movement and the accepted roof/duck
+case remain smooth. The reported high-speed flicker was noclip-only; the fix
+was not widened to ordinary movement. Controlled native/QC-VM results and cold
+joins are not human camera feel or physical wheel acceptance. No confirmation
+received yet.
 
 ## P1160 — profile inventory / cosmetics (pending human acceptance)
 
