@@ -109,29 +109,40 @@ CSQC/SSQC/native/plugin/config hashes stayed unchanged; no owner process restart
 | menu.lno | `b607841121e9d01e09933c4d81c1f15b0465255b83c2ff226bedb327252c2116` |
 
 Reload with `menu_restart`. Picture-to-profile navigation, main/bonus chips and
-menu earlier-page fetching are installed. Owned-but-unequipped display still
-needs the backend promotion below; absent real counters remain unavailable.
+menu earlier-page fetching are installed. Owned-but-unequipped display is now
+backed by the live inventory promotion below; real counters remain unavailable.
 menu.dat is client-local and is NEVER a lobby ship item.
+
+### Delivered: frozen inventory backend
+
+Owner confirmed protected namespace admission. At **2026-11-01 06:47:08UTC**
+primary `fcc0d20b` was activated through the existing CLOSED-candidate/receipt
+protocol and reopened OPEN. Exact previous-primary fallback remains CLOSED and
+available on the SAME database; original predecessor drained CLOSED. All82 raw
+source hashes and every canonical entrypoint were checked, actual process/CWD,
+listener and service namespace verified, four cron routes rebound, momrequests
+restarted and health200. Schema remains25; all closed-boundary table counts,
+existing schema and identity/inventory row digests matched. No old DB restoration,
+native/game-program deployment, collector activation or historical backfill.
+
+Independent live verification at **06:54:47UTC** checked seven real public
+`/api/board?player=...` profiles: all persisted owned lists matched exactly,
+including14 real unequipped items. No grants/equipment changes or fake users were
+made for this check. The acted unknown-player control returned404. One linked
+account without an existing public board profile also returned404; this update
+does not manufacture a public profile for that case. Main-menu owner interaction
+acceptance remains pending; run `menu_restart` then reopen the profile.
 
 ### Concrete remaining blockers
 
-1. **Backend namespace authentication.** Both frozen source cohorts passed real
-   CLOSED gunicorn fixture startup/acceptance/reopen/drain checks, with acted
-   missing/changed/opposite-schema refusals. The protected namespace dry-run
-   passes, but the actual installer requires interactive sudo authentication.
-   Shared ingress was restored exactly; health200, live predecessor OPEN and
-   both prepared fences CLOSED were verified. No candidate production import, gate close,
-   candidate restart, migration or DB restoration occurred. After owner admission, perform
-   the existing code-only generation swap/receipt/reopen, then verify public
-   ownership and destination source hashes. Do not bypass namespace admission.
-2. **Newer live/Windows SSQC+CSQC source ownership.** Neither matches the clean
+1. **Newer live/Windows SSQC+CSQC source ownership.** Neither matches the clean
    published fea6969b control or any of32 retained task artifacts. Their current
    pair remains untouched, including all12 lobbies. Obtain the owning commit /
    build receipt or explicit handoff, integrate without losing that work, build
    and validate the exact source, then ordinary paired deploy/readback with
    rollback. This blocks live `!time` and in-game reader/board adoption, not the
    separately source-bound MENU update.
-3. **Actual counter collection/persistence remains unimplemented here.** The
+2. **Actual counter collection/persistence remains unimplemented here.** The
    existing owner must publish/hand off the consented linked-game producer and
    required family before it can be integrated, qualified and activated. Reader
    completion is NOT completion of the user's real hours/attempt request. No

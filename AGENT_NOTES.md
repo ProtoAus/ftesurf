@@ -7847,6 +7847,17 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+- **P1168 frozen-generation rollback observations.** A legacy migration driver
+  expected404 on the old fallback inventory GET. Both inspected candidate sources
+  already supported schema25 and their real CLOSED fixtures proved405. Correct
+  the operator expectation from that acted evidence BEFORE closing production;
+  preserve the old driver, never weaken source/schema/namespace/receipt checks or
+  restore an old DB. A post-swap observer also inherited a stale "six entrypoints"
+  count; the pinned dispatch set had evolved. All destination hashes matched, but
+  the magic cardinality failed. Derive the exact expected set from the pinned
+  dispatcher plus launcher, not comments, and repair only the observer. Do not
+  restart/recopy a healthy accepted generation for a verification-tool mismatch.
+
 **P1143 native-only delivery and caller binding (31 Oct2026).** Runtime VMs had
 advanced independently of the stable QQ test control. Keep those ACTUAL installed
 programs byte-identical; do not ship an older control or recopy peer work to get a

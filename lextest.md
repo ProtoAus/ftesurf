@@ -8,9 +8,12 @@ picture, select Main/Bonus chips, then Jump to me and scroll upward. Confirm
 readability, profile Back/escape and course interaction. This narrow menu update
 left the unknown newer SSQC/CSQC/native/config files and all lobbies untouched.
 
-Backend owned-item promotion still needs protected namespace authentication;
-after that promotion, inspect an unequipped item in another linked profile.
-Live !time and in-game readers await source-cohort handoff/adoption. Native-table
+Backend owned-item promotion verified1Nov2026 06:47:08UTC, with actual public
+owned-but-unequipped lists matching persistence at06:54:47UTC. Run menu_restart
+then inspect an unequipped item in another linked public profile; owner visual /
+interaction confirmation is still pending. Accounts without an existing public
+board profile still have no such profile. Live !time and in-game readers await
+source-cohort handoff/adoption. Native-table
 Previous is compile/source-only, not runtime-proved. Actual collection remains
 unfinished: only AFTER its published producer is qualified and activated, compare
 profile/map totals and !time/name over a short real session. No old hours are
