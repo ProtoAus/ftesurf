@@ -327,6 +327,7 @@ float  ob_more_lim;        // rows it asked for
 float  ob_more_wait;       // cltime before which a failed append is not re-asked
 float  ob_epoch;           // bumped whenever the rows are thrown away
 float  ob_more_epoch;      // ob_epoch when the append was asked
+float ob_page_dir, ob_page_from, ob_shift;
 
 void() Online_Status;
 
@@ -392,6 +393,7 @@ void() Online_FreeHave =
 void() Online_Clear =
 {
 	ob_n = 0;
+	ob_shift = 0;
 	ob_anyav = FALSE;
 	ob_t = 0;
 	ob_cnt_ranked = 0;
@@ -607,6 +609,20 @@ void(float i, int row) Online_RowSet =
 		bufstr_set(ob_bwho, i, "");
 };
 
+void(float to, float from) Online_RowCopy =
+{
+	ob_rank[to] = ob_rank[from]; ob_ticks[to] = ob_ticks[from];
+	ob_ms[to] = ob_ms[from]; ob_flags[to] = ob_flags[from];
+	ob_rate[to] = ob_rate[from]; ob_wrow[to] = ob_wrow[from];
+	ob_rep[to] = ob_rep[from]; ob_src[to] = ob_src[from];
+	ob_run[to] = ob_run[from]; ob_ver[to] = ob_ver[from];
+	bufstr_set(ob_bmap, to, bufstr_get(ob_bmap, from));
+	bufstr_set(ob_bget, to, bufstr_get(ob_bget, from));
+	bufstr_set(ob_bname, to, bufstr_get(ob_bname, from));
+	bufstr_set(ob_bplayer, to, bufstr_get(ob_bplayer, from));
+	bufstr_set(ob_bwho, to, bufstr_get(ob_bwho, from));
+};
+
 // Row i's source: its own on a merged board (`tr`), else the board's tier.
 float(float i) Online_RowSrc =
 {
@@ -807,7 +823,7 @@ float() Online_FetchMore =
 
 	if (!ob_more || ob_more_req || ob_state != OBS_OK || !ob_have_zoned)
 		return FALSE;
-	if (ob_n >= OB_MAXROW || cltime < ob_more_wait)
+	if (cltime < ob_more_wait)
 		return FALSE;
 	if (ui_consent_ver < FS_TERMS_ONLINE)
 	if (cvar("rec_terms") < FS_TERMS_ONLINE)
@@ -816,7 +832,9 @@ float() Online_FetchMore =
 	if (dir == "" || strcmp(ob_have_map, serverkey("map")))
 		return FALSE;
 
-	ob_more_lim = min(OB_PAGE, OB_MAXROW - ob_n);
+	ob_more_lim = OB_PAGE;
+	ob_page_dir = 1;
+	ob_page_from = ob_offset + ob_n;
 	// Two sprintfs: the ninth argument of one would be dropped (AGENTS.md).
 	url = strcat(sprintf("%s/api/board?map=%s&track=%g&leg=%g&tier=%s&style=%s",
 	                     dir, uri_escape(ob_have_map), ob_have_track, ob_have_leg,
@@ -835,11 +853,41 @@ float() Online_FetchMore =
 	return TRUE;
 };
 
-// The reply to Online_FetchMore.  Appends, or drops a page that no longer fits.
+float() Online_FetchEarlier =
+{
+	local string dir, url;
+	if (ob_offset <= 0 || ob_more_req || ob_state != OBS_OK || !ob_have_zoned || cltime < ob_more_wait)
+		return FALSE;
+	if (ui_consent_ver < FS_TERMS_ONLINE)
+	if (cvar("rec_terms") < FS_TERMS_ONLINE)
+		return FALSE;
+	dir = cvar_string("lobby_dir");
+	if (dir == "" || strcmp(ob_have_map, serverkey("map"))) return FALSE;
+	ob_more_lim = min(OB_PAGE, ob_offset);
+	ob_page_dir = -1;
+	ob_page_from = ob_offset - ob_more_lim;
+	url = strcat(sprintf("%s/api/board?map=%s&track=%g&leg=%g&tier=%s&style=%s",
+	                     dir, uri_escape(ob_have_map), ob_have_track, ob_have_leg,
+	                     uri_escape(ob_have_tier), uri_escape(ob_have_style)),
+	             sprintf("&limit=%g&offset=%g", ob_more_lim, ob_page_from));
+	if (ob_have_name != "") url = strcat(url, "&name=", uri_escape(ob_have_name));
+	ob_more_req = Online_NextReq();
+	ob_more_epoch = ob_epoch;
+	if (!uri_get(url, ob_more_req))
+	{
+		ob_more_req = 0;
+		ob_more_wait = cltime + OB_RETRY_SECS;
+		return FALSE;
+	}
+	ob_more_sent = cltime;
+	return TRUE;
+};
+
+// One guarded paging request at a time; prepend and append share its epoch.
 void(float code, string body) Online_ParseMore =
 {
 	local int root, rows;
-	local float n, i;
+	local float n, i, kept, drop;
 
 	ob_more_req = 0;
 	if (code)
@@ -861,13 +909,49 @@ void(float code, string body) Online_ParseMore =
 		ob_more = FALSE;
 		return;
 	}
+	if (strcasecmp(json_get_string(json_find_object_child(root, "map")), ob_have_map)
+	    || strcmp(json_get_string(json_find_object_child(root, "tier")), ob_have_tier)
+	    || strcmp(json_get_string(json_find_object_child(root, "style")), ob_have_style)
+	    || json_get_float(json_find_object_child(root, "track")) != ob_have_track
+	    || json_get_float(json_find_object_child(root, "leg")) != ob_have_leg)
+	{
+		json_free(root);
+		return;
+	}
 	rows = json_find_object_child(root, "rows");
 	n = json_get_length(rows);
+	if (ob_page_dir < 0)
+	{
+		if (json_get_float(json_find_object_child(root, "offset")) == ob_page_from)
+		if (n == ob_more_lim && ob_page_from + n == ob_offset)
+		{
+			kept = min(ob_n, OB_MAXROW - n);
+			if (kept < ob_n) ob_more = TRUE;
+			for (i = kept - 1; i >= 0; i = i - 1) Online_RowCopy(i + n, i);
+			for (i = 0; i < n; i = i + 1) Online_RowSet(i, json_get_child_at_index(rows, i));
+			ob_n = kept + n;
+			ob_offset = ob_page_from;
+			ob_shift = ob_shift + n;
+			sui_reset_actions();
+			ob_mine = Online_FindMine(0, ob_n);
+		}
+		json_free(root);
+		return;
+	}
 	if (json_get_float(json_find_object_child(root, "offset")) == ob_offset + ob_n)
 	{
-		ob_more = (n >= ob_more_lim && ob_n + n < OB_MAXROW);
-		if (n > ob_more_lim)
-			n = ob_more_lim;
+		ob_more = (n >= ob_more_lim);
+		if (n > ob_more_lim) n = ob_more_lim;
+		drop = max(0, ob_n + n - OB_MAXROW);
+		if (drop > 0)
+		{
+			for (i = drop; i < ob_n; i = i + 1) Online_RowCopy(i - drop, i);
+			ob_n = ob_n - drop;
+			ob_offset = ob_offset + drop;
+			ob_shift = ob_shift - drop;
+			sui_reset_actions();
+			ob_mine = ob_mine >= drop ? ob_mine - drop : -1;
+		}
 		for (i = 0; i < n; i = i + 1)
 			Online_RowSet(ob_n + i, json_get_child_at_index(rows, i));
 		// A row of ours on this page takes over from an imported one held before it.

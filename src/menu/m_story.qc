@@ -1277,7 +1277,11 @@ void(vector pos, vector size) Sty_Players =
 		Font_Set(ui_font_ui);
 		x = rp_x + 48;
 		if (av != "-")
+		{
 			MP_Draw([x, rp_y + 6], 32, av, 1);
+			sui_action_element([x, rp_y + 6], '32 32 0', sprintf("sty_avatar%g", idx), sui_noop);
+			if (sui_is_released(sprintf("sty_avatar%g", idx))) MFP_Open(av, nm);
+		}
 		else
 			sui_roundbox([x, rp_y + 6], '32 32 0', 6, COL_ROW, 1);
 		col = !strcmp(who, sty_me) ? " ^2(you)" : "";

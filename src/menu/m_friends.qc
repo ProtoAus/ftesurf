@@ -605,7 +605,6 @@ void(vector pos, vector size) MF_Draw =
 	local float i, rel, online, menuonline, at, fresh, alpha, flag, room;
 	local vector rp;
 	local string who, nm, server, map, status, id, ago, activity;
-	if (MFP_IsOpen()) { MFP_Draw(pos, size); return; }
 	sui_style_panel(pos, size, 12, 1);
 	sui_push_frame(pos, size);
 	sui_text('16 12 0', SZ_HEAD, "friends", COL_ACCENT, 1, 0);
@@ -655,8 +654,12 @@ void(vector pos, vector size) MF_Draw =
 			room = size_x - 114;
 			sui_style_box(rp, [size_x - 38, 64], 8, SUI_THEME_WELL, SUI_THEME_EDGE, alpha);
 			if (MF_WhoSafe(who))
-			if (!MP_Draw(rp + '10 10 0', 44, who, alpha))
-				sui_roundbox(rp + '10 10 0', '44 44 0', 8, SUI_THEME_CHIP, alpha);
+			{
+				if (!MP_Draw(rp + '10 10 0', 44, who, alpha))
+					sui_roundbox(rp + '10 10 0', '44 44 0', 8, SUI_THEME_CHIP, alpha);
+				sui_action_element(rp + '10 10 0', '44 44 0', strcat("mf_avatar", who), sui_noop);
+				if (sui_is_released(strcat("mf_avatar", who))) MFP_Open(who, nm);
+			}
 			id = strcat("mf_profile", who);
 			sui_action_element(rp + '64 8 0', [room, 24], id, sui_noop);
 			sui_text(rp + '64 12 0', SZ_ROW, ui_fit_text(nm, room, SZ_ROW), COL_TEXT, alpha, 0);

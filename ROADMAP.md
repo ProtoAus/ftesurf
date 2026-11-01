@@ -1,5 +1,18 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
+## Linked-profile playtime and main/bonus attempts — requested 1 Nov 2026
+
+P1168 implements the public readers: profile totals, per-map time and main/bonus
+attempts, course selectors and !time/name. Real collection/persistence is a
+SEPARATE unfinished workstream and is not activated by those readers. Coordinate
+with its existing owner; do not ship another session's unpublished collector.
+The remaining implementation must collect only the agreed consented linked-game
+scope, persist real elapsed time and main/bonus starts, and expose the reader
+contract. Old unrecorded sessions cannot be reconstructed as historical hours.
+Until that producer is published, qualified and activated, the UI explicitly says
+tracking is unavailable rather than manufacturing totals. Source/activation:
+[tools/profile-stats-p1168.md](tools/profile-stats-p1168.md).
+
 ## TAS editor and signed collaborative saves — requested 26 Oct 2026
 
 Full staged plan and acceptance: [tools/plan-tas.md](tools/plan-tas.md). P1052 starts

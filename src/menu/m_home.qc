@@ -657,7 +657,6 @@ void(vector size) MH_Sidebar =
 		}
 		ui_para(p + [left + 28, 112], right - 32, '12 12 0', 18, "Link once on an account-enabled lobby. You can keep playing without linking.", COL_DIM, TRUE);
 	}
-	else if (MFP_IsOpen()) MFP_Draw(p + [left + 12, 0], [right, fh]);
 	else MF_Draw(p + [left + 12, 0], [right, fh]);
 	MC_Panel(p + [left + 12, fh + 12], [right, size_y - fh - 12], TRUE);
 };
