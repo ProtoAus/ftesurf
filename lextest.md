@@ -10,13 +10,13 @@ covered by the arm: the real backend and real Steam links (it used a stand-in), 
 busy evening's volume feels.
 
 ## P1178 Maps list: snug rows, map authors, sharper pictures
-In both Windows installs since 2 Nov ~04:45 local (menu 055fda08, csprogs f557a642); the lobbies
-get the HUD line with 48's P1187 deploy. Please check, in the game from C:\FTESurf:
+In both Windows installs since 2 Nov ~04:45 local (menu 055fda08); on all 12 lobbies since 05:01
+local (18:01Z), shipped with P1187 (csprogs 65698384). Please check, in the game from C:\FTESurf:
 1. Maps: each row is the picture plus a little padding above and below; nothing under the
    picture is cut off, and the MOM / CS:S switch sits under Play inside its row.
 2. Each map name has "by <author>" after it (Momentum's credited authors, else KSF's mappers).
 3. The pictures look sharper than before (stored at 160x90 now, the size they are drawn).
-4. In a lobby (once P1187 is live) or a local game, the top-right Map info shows "by <author>"
+4. In a lobby or a local game, the top-right Map info shows "by <author>"
    under the map name.
 Other players: the HUD line once their menu has fetched the new map table (once a session, with
 online features on); the rows and the sharper pictures come with the next launcher update.
