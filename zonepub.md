@@ -207,6 +207,14 @@ Use the dedicated loopback WSGI service and exact `/api/zones/` HTTPS proxy rout
 not Flask's development server for production. `zonepub_wsgi.py` trusts forwarding
 only from the local proxy. Keep its store/service provenance private.
 
+The account read depends on surfd (P1175). The sandbox cannot write `surfd/data/`, and a
+`mode=ro` open of a WAL database needs `-wal`/`-shm` to exist already. SQLite deletes them
+when the last connection closes, so surfd keeps one idle read-only connection per worker.
+Without one, every upload answers "Zone uploads unavailable": this happened from 1 Nov until
+P1175. A readback that probes only `/api/zones/challenge` never opens the account DB, so it
+cannot see this. Check the lookup inside a read-only bind mount instead
+(`unshare -rm sh -c "mount -o bind,ro <data> <data> && python3 ..."`).
+
 `tools/install_zonepub.py` is a **new-service-only, dry-run-first** owner helper.
 It requires a clean inspected source commit, exact nginx predecessor hash, the
 existing account DB, and the actual deployed `csprogs.dat` file(s). It refuses an

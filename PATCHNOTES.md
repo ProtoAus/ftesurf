@@ -21,6 +21,9 @@
 
 ## next
 
+### P1175 Zone publishing works again
+- Zone admins can publish from the zone editor again. Since 1 Nov every upload had answered "Zone uploads unavailable".
+
 ### P1169 Larger Maps filter text
 - Maps: larger, sharper native-pixel filter text, with roomier controls that wrap on smaller windows.
 

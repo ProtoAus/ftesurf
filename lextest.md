@@ -8,6 +8,12 @@ game was launched. Worth a look in the Desktop WorldofSurf install after it upda
 reads 0.1.34, the terms page shows the "Playtime and attempts" paragraph, a new KSF zone (e.g.
 surf_lore_css) times, and holding duck through a standing save load crouches. tools/release034.md.
 
+## P1175 zone publishing works again; Markbeaton54 holds the zone-admin role (LIVE 1 Nov 14:30Z)
+Every zone upload since 1 Nov had answered "Zone uploads unavailable"; surfd 58dbbf40 fixes it.
+Markbeaton54 was granted the zone-admin role on your say-so (his Zoner badge alone is cosmetic).
+Please have him (or you) Publish a saved zone once: the dialog should say Accepted or Published,
+not "unavailable". PENDING.
+
 ## P1171 lobby playtime and main/bonus attempts (LIVE 1 Nov 11:46Z; owner check PENDING)
 Backend schema 26 and all 12 lobbies plus both installs are live. On any official lobby, with online play
 on and Steam linked, stay connected a minute and start the main course once and a bonus once

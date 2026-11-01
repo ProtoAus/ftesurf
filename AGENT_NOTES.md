@@ -1,5 +1,30 @@
 # AGENT_NOTES.md
 
+## P1175 surfd holds the DB for the zone service — LIVE (1 Nov 2026 14:30Z)
+
+**Symptom.** From 1 Nov every zone upload answered "Zone uploads unavailable".
+
+**Cause.** The zone service opens surfd.db with `mode=ro` from a ProtectSystem=strict sandbox.
+A WAL database opened that way needs `-wal`/`-shm` to exist already, and SQLite deletes them
+when the last connection closes. Whatever used to hold the DB open was gone after 1 Nov's
+restarts, and surfd connects per request, so the sidecars were mostly absent. Reproduced with
+`unshare -rm` and a read-only bind mount: 8/8 "unable to open database file" without a holder,
+15/15 lookups with one.
+
+**Fix.** Each gunicorn worker keeps one idle `mode=ro` connection (`_keep_sidecars`): opened at
+import only under gunicorn, and again by `get_db`. `connect()` sets `journal_size_limit` 16 MiB,
+because the WAL is no longer deleted on idle.
+
+**Side effect.** While a worker lives, journal_mode changes and EXCLUSIVE locking from other
+processes get "database is locked"; stopping surfd releases the holder. Never add
+`--preload`: the master would hold, and workers would inherit the connection.
+
+**Delivery.** Generation 58dbbf40 at /srv/nvme/agent-work/zonepub-dbhold-1175-01a19370, code
+only, no backup. API down 14:29:57-14:30:20Z. The fallback is the exact P1171 primary 495537a9
+on the same DB; P1171's root stays CLOSED. A bridge process held the DB from 13:41Z until the
+swap. Markbeaton54 was granted the zone-admin role the same day (Lex's call; the Zoner badge
+grants nothing). zonepub.md has the readback lesson.
+
 ## P1171 lobby playtime DELIVERED (1 Nov 2026)
 
 surfd generation 495537a9 (fcc0d20b + P1171) at /srv/nvme/agent-work/profile-activity-1171-01a19370,
