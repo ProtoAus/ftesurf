@@ -1,5 +1,17 @@
 # AGENT_NOTES.md
 
+## P1172 zone service LIVE (1 Nov 2026 10:48Z)
+
+ftesurf-zonepub runs release 6cff6856 (Lex's sudo `install_zonepub.py --upgrade --apply`);
+66ed6677 stays on disk as the way back. Readback: unit 0ae817c6 is exactly
+upgraded_unit(old, 6cff6856), no SURFD_TAS_CONTENT_LEASE, 10 payload files == source,
+loopback + public challenge healthy, nginx/schema/roles unchanged. Zone service only:
+the live surfd's mapwatch.py does not import tascontent; no lobby/install/progs change.
+Lex approved the writer-audit policy the same day: managed canonical assets read-only
+to enrolled game actors, runtime recording/save/log paths writable, changes through the
+managed publisher (activation is its own delivery). Private record: TAS root
+stage6/r2i/a/writer-audit/OPERATOR-HANDOFF.md.
+
 ## P1170 DELIVERED — clean normal lobby lifecycle; weapon Drop remains
 
 Exact runtime source6d132181/native documentationca4bcbea0 is on publicmain;
