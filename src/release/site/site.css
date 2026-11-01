@@ -398,6 +398,15 @@ details ul { padding-left: 20px; margin: 0; }
 
 /* ---- zoning page (P1176) --------------------------------------------------------- */
 .zoning .wrap { max-width: 900px; }
+.zrecent { margin-top: 18px; }
+.zrecent h2 { font-size: 13px; font-weight: 600; color: var(--text-2); letter-spacing: 0; }
+.zrecent ol { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.zrecent li {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px;
+  font-size: 12px; color: var(--text-2);
+}
+.zrecent li b { font: 600 12px var(--mono); color: var(--text); margin-right: 6px; }
+.zby { color: var(--text-3); font-size: 12px; }
 .zoning h1 { font-size: clamp(36px, 5vw, 56px); }
 .zoning .lede { max-width: none; font-size: clamp(17px, 2vw, 20px); margin-top: 10px; }
 .zhead { margin-top: 24px; }

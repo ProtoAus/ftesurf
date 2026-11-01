@@ -46,6 +46,11 @@
       <p class="zstats" id="zstats" aria-live="polite">Loading&hellip;</p>
       <div class="zbar" aria-hidden="true"><span id="zbar"></span></div>
     </div>
+    <!-- P1180: the zone service's newest publishes; hidden until it answers. -->
+    <div class="zrecent" id="zrecent" hidden>
+      <h2>Recently zoned</h2>
+      <ol id="zrecent-list"></ol>
+    </div>
     <div class="ztools">
       <input type="search" id="zq" placeholder="Search maps or mappers" aria-label="Search maps or mappers" autocomplete="off">
       <div class="zchips" id="ztier" role="group" aria-label="Tier">

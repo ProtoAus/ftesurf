@@ -1,8 +1,10 @@
 // P1176: the zoning page. zoning.json is the list as tools/zoningpage.py found it;
 // board/api/maps says which maps have zones now (`have` = BSP and zones on the Pi).
+// P1180: the zone service's history says who published what, and when.
 (function () {
   'use strict';
   var POLL_MS = 60000;
+  var HISTORY = 'https://play.proto.bar/api/zones/history';   // POST, text/plain: no preflight
   var list = document.getElementById('zlist');
   var stats = document.getElementById('zstats');
   var bar = document.getElementById('zbar');
@@ -12,6 +14,7 @@
   var showDone = document.getElementById('zdone');
   var tierBox = document.getElementById('ztier');
   var data = null, zoned = null, checked = 0, liveFailed = false, tierMin = 0, timer = 0;
+  var byMap = {}, recent = [], serverNow = 0, fetchedAt = 0;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -20,7 +23,14 @@
     return e;
   }
   function plural(n, one, many) { return n.toLocaleString() + ' ' + (n === 1 ? one : many); }
-  function isDone(r) { return !!(zoned && zoned[r.n]); }
+  function isDone(r) { return !!((zoned && zoned[r.n]) || byMap[r.n]); }
+  function ago(at) {
+    var s = Math.max(0, serverNow + (Date.now() - fetchedAt) / 1000 - at);
+    if (s < 90) { return 'just now'; }
+    if (s < 5400) { return Math.round(s / 60) + ' min ago'; }
+    if (s < 129600) { return Math.round(s / 3600) + ' h ago'; }
+    return Math.round(s / 86400) + ' days ago';
+  }
   function tierBand(t) { return t <= 0 ? 0 : t <= 2 ? 1 : t <= 4 ? 3 : 5; }
 
   function track(r) {
@@ -46,7 +56,11 @@
     var name = el('div', 'zname');
     name.appendChild(el('b', null, r.n));
     if (r.t > 0) { name.appendChild(el('span', 'ztier t' + Math.min(r.t, 7), 'T' + r.t)); }
-    if (isDone(r)) { name.appendChild(el('span', 'zok', 'Zoned')); }
+    if (isDone(r)) {
+      var h = byMap[r.n];
+      name.appendChild(el('span', 'zok', 'Zoned'));
+      if (h) { name.appendChild(el('span', 'zby', (h.by ? 'by ' + h.by + ', ' : '') + ago(h.at))); }
+    }
     main.appendChild(name);
     var bits = [];
     var tr = track(r);
@@ -103,6 +117,36 @@
     return isNaN(d) ? 'this list was made' : d.toLocaleDateString([], { day: 'numeric', month: 'short' });
   }
 
+  function drawRecent() {
+    var box = document.getElementById('zrecent'), ol = document.getElementById('zrecent-list');
+    ol.textContent = '';
+    recent.slice(0, 8).forEach(function (h) {
+      var li = el('li');
+      li.appendChild(el('b', null, h.map));
+      li.appendChild(el('span', null, h.kind === 'rollback' ? 'rolled back, ' + ago(h.at)
+                                                                : (h.by ? h.by + ', ' : '') + ago(h.at)));
+      ol.appendChild(li);
+    });
+    box.hidden = !recent.length;
+  }
+
+  function history() {
+    fetch(HISTORY, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'text/plain' }, body: '{}' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (doc) {
+        if (!doc || !doc.ok || !Array.isArray(doc.rows)) { return; }
+        serverNow = +doc.now || Date.now() / 1000; fetchedAt = Date.now();
+        var seen = {};
+        recent = doc.rows.filter(function (h) {
+          var first = !seen[h.map]; seen[h.map] = 1; return first;    // newest per map
+        });
+        byMap = {};
+        recent.forEach(function (h) { if (h.kind !== 'rollback') { byMap[String(h.map).toLowerCase()] = h; } });
+        drawRecent(); render();
+      })
+      .catch(function () { /* the page works without it */ });
+  }
+
   function poll() {
     clearTimeout(timer);
     fetch('board/api/maps', { credentials: 'omit' }).then(function (r) {
@@ -116,6 +160,7 @@
       liveFailed = true;
     }).then(function () {
       render();
+      history();
       if (!document.hidden) { timer = setTimeout(poll, POLL_MS); }
     });
   }
