@@ -1089,7 +1089,8 @@ void(float reqid, float code, string body) Account_Reply =
 		who.acct_fail = ACCT_F_NONE;
 		Account_Is(who, linked, banned, nm, named);
 		Social_Set(who, social, socialwho);
-		who.ps_binding = strzone(activity);
+		if (strlen(who.ps_binding)) strunzone(who.ps_binding);
+		who.ps_binding = strlen(activity) ? strzone(activity) : "";
 		if (who.acct_who != "")
 			strunzone(who.acct_who);
 		who.acct_who = "";
@@ -1150,7 +1151,8 @@ void(float reqid, float code, string body) Account_Reply =
 		who.acct_fail = ACCT_F_NONE;
 		Account_Is(who, TRUE, banned, nm, named);
 		Social_Set(who, social, socialwho);
-		who.ps_binding = strzone(activity);
+		if (strlen(who.ps_binding)) strunzone(who.ps_binding);
+		who.ps_binding = strlen(activity) ? strzone(activity) : "";
 		if (who.acct_who != "")
 			strunzone(who.acct_who);
 		who.acct_who = "";
