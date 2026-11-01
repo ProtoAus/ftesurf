@@ -583,8 +583,8 @@ def _hold(connect, store, row, why):
     with connect(store) as db:
         cur = db.execute('SELECT hold, notice FROM publications WHERE id=?', (row['id'],)).fetchone()
         if cur[0] is not None and cur[1] is not None and now - cur[1] > FORCE_EXPIRE:
-            db.execute("UPDATE publications SET kind='expired' WHERE id=? AND kind='pending'", (row['id'],))
-            expired = True
+            expired = db.execute("UPDATE publications SET kind='expired' WHERE id=? AND kind='pending'",
+                                 (row['id'],)).rowcount == 1     # 0: superseded meanwhile
         else:
             expired = False
             if cur[0] != why or cur[1] is None:
@@ -593,8 +593,8 @@ def _hold(connect, store, row, why):
                 db.execute('UPDATE publications SET notice=CASE WHEN hold IS NULL OR notice IS NULL THEN ? '
                            'ELSE notice END, hold=? WHERE id=?', (now, why, row['id']))
     if expired:
-        _note(connect, store, row['id'], 'expired, nothing installed: ' + (cur[0] or 'not ready in time'))
-        log('expired', row['map'], row['sha'][:12], cur[0] or '')
+        _note(connect, store, row['id'], 'expired, nothing installed: ' + why)
+        log('expired', row['map'], row['sha'][:12], why)
     elif cur[0] != why:
         log('holding', row['map'], row['sha'][:12], why)
 
