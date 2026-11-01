@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1173 duck held through a save load
+Installed in both Windows installs (client + dedicated, git-8074-patch-1173) and 11 of 12 Pi lobbies
+(lobby 11 had a player; it restarts onto the fix once empty).
+Please check: hold duck, then load an airborne standing save (your surf_shape save 52 is the
+one measured). You should crouch at once and fly the same line as pressing duck after the load.
+Measured on save 52: old exe held-before body 8.5 units lower at 3 matched ticks and stopped
+at x~7002; new exe held-before == pressed-after (0.0 at 2 ticks) and carries on past it.
+Not covered: online prediction against a lobby, and the public download (next release).
+
 ## P1170 clean lobby disconnects
 DELIVERED both Windows +all12 Pi paired scripts. Please check A->B removes
 oldA avatar/slot, B->B leaves one, normal close clears final slot; weapon Drop

@@ -21,6 +21,9 @@
 
 ## next
 
+### P1173 Duck held through a save load
+- Holding duck while you load a standing save now crouches you straight away, the same as pressing duck right after the load. Before, you stayed standing until you let go and pressed duck again.
+
 ### P1172 Recoverable zone updates
 - Zone updates that cannot confirm completion keep their recovery state instead of being reported as safely reverted.
 
