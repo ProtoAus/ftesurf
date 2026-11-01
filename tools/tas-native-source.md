@@ -15,6 +15,11 @@ flat membership and limits. An export is a COMPONENT, not a complete-world proof
 
 Readonly asset enumeration has an internal data-open purpose distinct from code
 opens. Reading static bytes does not authorize executing scripts/configuration.
+Command and server-VM consumers request execution explicitly, independently of
+suffix classification. Exported bodies and lookup hashes preserve raw selected
+bytes rather than running extension-based decompression. Nonadjacent file/descendant
+aliases are refused before bodies are copied. Archive ancestry must have a declared
+parent with an earlier construction identity; search order may differ.
 Directory/provider declarations and actual opened-file checks remain required;
 unsupported provenance does not become trusted through a filename or fallback.
 The operator policy is opt-in; ordinary engine filesystem operation is unchanged.
@@ -70,5 +75,10 @@ change public submission admission.
 
 Focused checks are `tools/test_tasvfs.py`, `surfd/test_tascontent.py` and
 `tools/test_tasverify.py`. POSIX-only skips on Windows are not Linux acceptance.
-Native acting controls, final-image checks and deployment are separate from these
-unit tests and from a successful compiler invocation.
+Reviewed source passes28/7/42 tests on each platform (Windows skips3/6/9;
+Linux skips only the Windows-only managed-content case). Acting ARM checks cover
+execution purpose, raw compressed bytes, alias refusal and a real BSP/QC trusted
+entfix edit. Human reader tests remain949/0 failed; a paired541-run corpus sweep
+retains348 existing faults in both readers. These are component regressions, not
+full source-profile qualification, queue admission or deployment. Final-image and
+deployment acceptance remain separate from source tests and compiler invocation.

@@ -247,6 +247,29 @@ class GrammarTests(unittest.TestCase):
             with self.assertRaises(v.Invalid):
                 parse(value)
 
+    def test_provider_ancestry_follows_native_construction_not_search_order(self):
+        for purpose, reader in [('component', v.parse_component), ('profileprep', v.parse_preparation)]:
+            raw, _ = fixture(purpose=purpose)
+            # Child (origin2) is first in search order; its directory parent is second.
+            child = 'SOURCE 1 0 3 1 1 2 1 ' + hx('/fixture/g/pak0.pk3') + ' -'
+            parent = ('SOURCE 2 0 1 1 1 1 0 ' + hx('/fixture/g') + ' ' + hx('/fixture/g') +
+                      '\nPATH 2 ' + hx('/fixture/g') + '\nPUREPATH 2 -\n')
+            rows = raw.decode().splitlines()
+            rows[0] = rows[0].replace(' 1 1 0 0 0 ', ' 1 2 0 0 0 ')
+            source = next(i for i, row in enumerate(rows) if row.startswith('SOURCE '))
+            rows[source] = child
+            rows.insert(source + 3, parent.rstrip())
+            valid = ('\n'.join(rows) + '\n').encode()
+            def read(value):
+                return reader(value, hashlib.sha256(value).hexdigest(), WORLD)
+            with self.subTest(purpose=purpose, graph='valid child-first'):
+                self.assertEqual([p.origin for p in read(valid).providers], [2, 1])
+            malformed = [valid.replace(b'SOURCE 1 0 3 1 1 2 1 ', b'SOURCE 1 0 3 1 1 2 0 '),
+                         valid.replace(b'SOURCE 2 0 1 1 1 1 0 ', b'SOURCE 2 0 3 1 1 1 2 ')]
+            for value in malformed:
+                with self.subTest(purpose=purpose, graph=value[:140]), self.assertRaisesRegex(v.Invalid, 'ORIGIN_PARENT'):
+                    read(value)
+
     def test_parent_case_and_nonadjacent_file_directory_aliases(self):
         cases = [{'models/Parent/one.txt': b'a', 'models/parent/two.txt': b'b'},
                  {'models/a': b'a', 'models/a.ext': b'b', 'models/a/child': b'c'}]

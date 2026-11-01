@@ -321,7 +321,9 @@ def _parse_materialisation(raw, expected_sha256, world, *, preparation):
                                   _text(logical[2], True), _text(purepath[2], True)))
     # Active parents may be absent only if a future full witness independently
     # binds the retired constructor chain. Do not silently accept an orphan here.
-    _require(all(p.parent == 0 or p.parent in origins for p in providers), 'ORIGIN_PARENT')
+    _require(all((p.kind != 3 or p.parent != 0) and
+                 (p.parent == 0 or (p.parent in origins and p.parent < p.origin))
+                 for p in providers), 'ORIGIN_PARENT')
     pureorder = []
     while next_is('PUREORDER'):
         r = take('PUREORDER', 3)
