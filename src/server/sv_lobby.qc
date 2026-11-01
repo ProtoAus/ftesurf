@@ -653,9 +653,9 @@ float(entity p, float idx) Lobby_ColourTaken =
   departure is available again the moment the 1 Hz re-resolve runs.
 
   `setinfo lobbycolor <n>` is how a player picks.  infokey is real in SSQC in
-  this engine -- PF_infokey_s, builtin 80 (pr_cmds.c:11437), not PF_Fixme --
-  and userinfo archives itself into the client's config the same way name and
-  topcolor already do, so the choice survives a restart with no work from us.
+  this engine -- PF_infokey_s, builtin 80 (pr_cmds.c:11437), not PF_Fixme.
+  Userinfo does NOT archive itself (cfg_save_infos 0); the client's panel keeps
+  its picks in cl_lobby* cvars and re-sends them (cl_avatar.qc, Patch 1177).
   0 or empty means "you choose".
 */
 float(entity p) Lobby_ColourFor =
