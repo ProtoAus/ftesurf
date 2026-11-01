@@ -1,4 +1,28 @@
-# P1162 — scoped noclip candidate (not installed)
+# P1162 — both Windows installs updated; Pi rollout safely paused
+
+Installed Native520ba3ca9 plus compiled QC5a4c685b on both Windows roots. Both
+28-target receipts pass; fresh cold joins from both installed native/menu/plugin
+sets load the current peer lobby's CSQC and board without QC errors. This is not
+a claim that our Pi rollout happened or that physical wheel/owner feel passed.
+
+Pi BEFORE/complete on-offbox backups passed (38962 protected files, one current
+part). Before commit, another rollout changed CSQC39518177 to9640f764 and all12
+service epochs while retaining NativeP1158/SSQC051557. The READY gate correctly
+FAILED. Native apply exited before any native-stage report, swap or service
+operation; this task did NOT replace/restart lobbies. Do not overwrite the newer
+crown/client update or reset before/ready to force a pass. Coordinate a quiet
+rollout and prove/preserve the latest live client source before resuming.
+
+Local original protected hashes passed at each promotion. A later post-cold
+read detected30 primary entries changed after promotion and before both cold
+actors (28 data/cache texts, one other data text, ftesurf.cfg). Config key names
+only: cl_noclipspeed, topcolor, bottomcolor, r_viewmodel_maxlight and
+r_wateralpha_extendpvs. Values/bytes were left intact; no owner-data restoration
+or protection-pass relabel occurred. The cold rigs use isolated copied folders
+and disable config saving. No human acceptance is inferred from those writes.
+
+Native source/tag, final images and unchanged numerical/role proofs remain
+valid; only the Pi authority/baseline and latest client preservation need work.
 
 Two owner reports: noclip judder below host_timescale1 and the walk-key/wheel
 speed adjustment working privately but not in lobbies. The high-speed flicker

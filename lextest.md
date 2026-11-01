@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1162 — noclip follow-up (candidate, NOT installed)
+## P1162 — noclip follow-up (Windows installed; Pi rollout blocked by peer update)
 
 The owner confirmed the high-speed flicker is noclip-only. Candidate code fixes
 slow-flight presentation/velocity clipping and gives each supported lobby player
@@ -8,12 +8,17 @@ their own walk-key-plus-wheel flight preference. The shared placement marker als
 reaches default streamed bodies and their spectator consumer. Controlled native
 and QC-VM cases are not owner camera feel, physical wheel input or deployment.
 
-After guarded installation: noclip at host_timescale 0.25 and 0.5, turn and change
-height, and fly fast enough to exceed the map's ordinary movement cap. Hold the
-walk key and scroll in a lobby; confirm only your flight speed changes. Restore
+Windows is ready for a private-server check: noclip at host_timescale0.25 and0.5,
+turn/change height, and fly fast. Private walk-key/wheel preference can be checked.
+Lobby wheel support is NOT deployed yet: another client/crown rollout changed
+all12 epochs before our commit; the strict READY guard stopped us. Coordinate
+other deployments and preserve that newer live source before finishing Pi.
+After Pi is really installed, hold the walk key and scroll in a lobby; confirm
+only your flight speed changes. Restore
 cl_noclipspeed 0 to use that server's default. Briefly check ordinary movement and
-the already-accepted roof/duck case remain unchanged. No owner retest requested
-before the actual files are installed; no confirmation received.
+the already-accepted roof/duck case remain unchanged. Windows files are installed and both cold joins passed; no confirmation received.
+The current config/cache changes were kept, not restored to make a hash check
+pass. No lobby completion or human feel is claimed.
 
 ## P1160 — profile inventory / cosmetics (pending human acceptance)
 

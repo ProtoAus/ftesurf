@@ -2,6 +2,18 @@
 
 ## P1162 noclip-only backport of the P1159 candidate
 
+CURRENT partial delivery: Native520ba3ca9/compiledQC5a4c685b are installed on
+both Windows roots; all28 output checks and both actual cold joins pass. Pi
+READY correctly refuses after a concurrent peer CSQC39518177->9640f764 update
+and all12 service epoch changes. Our native apply failed BEFORE any native/live
+write or restart. Do not reset before/ready or downgrade that newer crown/client
+program; coordinate deployments and preserve the latest actual source first.
+Original full private Windows/Pi data/config/parts backups remain verified.
+Post-cold guard records30 later primary config/data changes, timestamps before
+our cold actors, mostly28 cache texts and changed personal cvar keys; KEEP them
+and the failure, never restore/relabel. No human/physical-wheel/Pi-complete claim.
+See tools/p1162-noclip.md and task CURRENT.md; no healthy suite rerun needed.
+
 Windows phase1 promoted Native520ba3ca9 plus QC67e30b30; all28 outputs and15816
 original protected files verified. Pi BEFORE found actual CSQC39518177, not the
 published P1160 note's cba6fd. Do not overwrite an unexplained preimage: its only
