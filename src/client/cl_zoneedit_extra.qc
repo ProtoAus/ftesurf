@@ -193,6 +193,7 @@ void(float z) ZoneEdit_Goto =
 
 void(float z) ZoneEdit_RowClick =
 {
+	if (ze_dim >= 0 && z != ze_sel) { ze_dim = -1; sui_text_unfocus(); }   // P1184: the field was for that zone
 	ze_sel = z;
 	if (ze_lastrow == z && cltime - ze_lastclick <= 0.35)
 	{
@@ -212,7 +213,7 @@ void() ZoneEdit_ToggleMouse =
 		ze_mouse_seen = cl_ptr_real_ok = FALSE;  // P1081: a new cursor; the old place is stale
 		activate_mouse_cursor();
 		UI_CursorClaim(UIC_ZONEEDIT);
-		if (ze_field >= 0) sui_field_focus("ze_value");
+		if (ze_field >= 0 || ze_dim >= 0) sui_field_focus("ze_value");
 	}
 	else
 	{
@@ -274,7 +275,7 @@ void() ZoneEdit_SettingsOpen =
 		}
 		fclose(fh);
 	}
-	ze_settings = TRUE; ze_field = -1;
+	ze_settings = TRUE; ze_field = ze_dim = -1; ze_history = FALSE;
 	ze_cap_open = ze_values[0];
 	if (sui_text_has_focus("ze_value")) sui_text_unfocus();
 };
@@ -294,7 +295,7 @@ void(float evtype, float scan, float char) ZoneEdit_FieldKey =
 float(float c) ZoneEdit_Paste =
 {
 	if (c < 32 || c > 126) return FALSE;
-	if (!ui_ze_state || !ze_cursor || !ze_settings || ze_field < 0) return FALSE;
+	if (!ui_ze_state || !ZoneEdit_FieldOpen()) return FALSE;
 	if (!sui_text_has_focus("ze_value") || ZoneEdit_Blocker() != "") return FALSE;
 	ZoneEdit_FieldKey(IE_KEYDOWN, 0, c);
 	return TRUE;
@@ -485,4 +486,175 @@ void() ZoneEdit_PolygonGhost =
 			Zone_Line(a, a + up, ZEC_NEW, 1);
 		}
 	}
+};
+
+/*
+  P1184: the selected zone's bounds as six numbers (x min/max, y min/max, bottom, top), each
+  typed or nudged with the wheel, for corners the crosshair cannot reach (Lex, 2 Nov). An x or y
+  face moves by stretching the outline along that axis from the opposite face, so a box's face
+  moves exactly and a polygon keeps its shape's proportions.
+*/
+string(float face) ZoneEdit_DimName =
+{
+	if (face == 0) return "x min";
+	if (face == 1) return "x max";
+	if (face == 2) return "y min";
+	if (face == 3) return "y max";
+	if (face == 4) return "bottom";
+	return "top";
+};
+
+float(float z, float face) ZoneEdit_DimGet =
+{
+	local float i, first, n, v, x;
+	local vector p;
+	if (face == 4) return zone_bottom[z];
+	if (face == 5) return zone_top[z];
+	first = zone_first[z]; n = zone_npts[z];
+	p = zone_pt[first];
+	v = (face < 2) ? p_x : p_y;
+	for (i = 1; i < n; i = i + 1)
+	{
+		p = zone_pt[first + i];
+		x = (face < 2) ? p_x : p_y;
+		if (face == 0 || face == 2) v = min(v, x);
+		else v = max(v, x);
+	}
+	return v;
+};
+
+// A plain decimal, a leading minus allowed (MapSet_Number takes none).
+float(string s) ZoneEdit_DimNumber =
+{
+	local float i, c, digits, dot;
+	digits = dot = 0;
+	if (s == "" || strlen(s) > 16) return FALSE;
+	for (i = 0; i < strlen(s); i = i + 1)
+	{
+		c = str2chr(s, i);
+		if (c == '-' && i == 0) continue;
+		if (c == '.') { if (dot) return FALSE; dot = TRUE; continue; }
+		if (c < '0' || c > '9') return FALSE;
+		digits = digits + 1;
+	}
+	return digits > 0;
+};
+
+// Set one face of the selected zone; TRUE when it changed.
+float(float face, float v) ZoneEdit_DimSet =
+{
+	local float z, i, first, n, lo, hi, nlo, nhi, k, x;
+	local vector p;
+	z = ze_sel;
+	if (z < 0 || z >= zone_count || face < 0 || face > 5) return FALSE;
+	if (fabs(v) > 1000000) { ZoneEdit_Note("Keep coordinates within 1000000"); return FALSE; }
+	if (v == ZoneEdit_DimGet(z, face)) { ZoneEdit_Note(sprintf("%s unchanged", ZoneEdit_DimName(face))); return TRUE; }
+	if (face == 4 || face == 5)
+	{
+		nlo = (face == 4) ? v : zone_bottom[z];
+		nhi = (face == 5) ? v : zone_top[z];
+		if (nhi - nlo < ZE_MINH || nhi - nlo > ZE_MAXH)
+		{
+			ZoneEdit_Note(sprintf("Height must stay %g to %g units", ZE_MINH, ZE_MAXH)); return FALSE;
+		}
+		zone_bottom[z] = nlo; zone_top[z] = nhi;
+	}
+	else
+	{
+		lo = ZoneEdit_DimGet(z, (face < 2) ? 0 : 2);
+		hi = ZoneEdit_DimGet(z, (face < 2) ? 1 : 3);
+		nlo = (face == 0 || face == 2) ? v : lo;
+		nhi = (face == 1 || face == 3) ? v : hi;
+		if (nhi - nlo < 1 || hi - lo <= 0) { ZoneEdit_Note("A zone must stay at least 1 unit wide"); return FALSE; }
+		k = (nhi - nlo) / (hi - lo);
+		first = zone_first[z]; n = zone_npts[z];
+		for (i = 0; i < n; i = i + 1)
+		{
+			p = zone_pt[first + i];
+			x = (face < 2) ? p_x : p_y;
+			x = nlo + (x - lo) * k;
+			if (face < 2) p_x = x; else p_y = x;
+			zone_pt[first + i] = p;
+		}
+	}
+	ZoneEdit_Touch();
+	if (zone_td_kind[ze_sel] == ZTD_POS && !Zone_PointInside(ze_sel, zone_td_pos[ze_sel] + '0 0 2'))
+		ZoneEdit_Note(sprintf("%s %s %s; its custom spawn is now outside: Set spawn again",
+		                      ZoneEdit_Label(ze_sel), ZoneEdit_DimName(face), ZoneEdit_Num(v)));
+	else
+		ZoneEdit_Note(sprintf("%s %s %s (not saved)", ZoneEdit_Label(ze_sel), ZoneEdit_DimName(face), ZoneEdit_Num(v)));
+	return TRUE;
+};
+
+void(float face) ZoneEdit_DimEdit =
+{
+	if (ze_sel < 0 || ze_sel >= zone_count || ui_ze_state != ZE_PANEL) return;
+	ze_dim = face;
+	if (ze_text != "") strunzone(ze_text);
+	ze_text = strzone(ZoneEdit_Num(ZoneEdit_DimGet(ze_sel, face))); ze_caret = strlen(ze_text);
+	sui_field_focus("ze_value");
+};
+
+void() ZoneEdit_DimApply =
+{
+	if (ze_dim < 0) return;
+	if (!ZoneEdit_DimNumber(ze_text)) { ZoneEdit_Note("Enter a number, e.g. -1024 or 96.5"); return; }
+	if (ZoneEdit_DimSet(ze_dim, stof(ze_text))) { ze_dim = -1; sui_text_unfocus(); }
+};
+
+// The wheel over a value: one grid step (1 unit with Surface snapping), up adds.
+void(float face, float dir) ZoneEdit_DimNudge =
+{
+	local float step;
+	if (ze_sel < 0 || ze_sel >= zone_count || ui_ze_state != ZE_PANEL) return;
+	step = ze_snap ? max(1, ze_grid) : 1;
+	ZoneEdit_DimSet(face, ZoneEdit_DimGet(ze_sel, face) + dir * step);
+};
+
+// Inspector rows for the selected zone: its size, then six values (or the open field). Returns y.
+float(vector p, float w, float y, float rowh, float tsz) ZoneEdit_DimsDraw =
+{
+	local float face, cw, z, a, pad;
+	local vector cp, fp;
+	local string id;
+	pad = 8 * ui_cv_scale;              // the panel's own margin
+	z = ze_sel;
+	a = (z >= 0 && z < zone_count);
+	ze_dim_hover = -1;
+	if (!a)
+	{
+		if (ze_dim >= 0) { ze_dim = -1; sui_text_unfocus(); }
+		ZoneEdit_Text([p_x + pad, y + 4], tsz, "SIZE  /  select a zone to see and type its faces", ZEC_DIM);
+		return y + rowh * 2;
+	}
+	if (ze_dim >= 0)
+	{
+		ZoneEdit_Text([p_x + pad, y + 4], tsz, sprintf("type %s, Enter applies, Esc cancels", ZoneEdit_DimName(ze_dim)), ZEC_DIM);
+		y = y + rowh;
+		fp = [p_x + pad, y, 0];
+		sui_style_box(fp, [w * 0.62, rowh - 3, 0], 4, SUI_THEME_WELL, SUI_THEME_EDGE_HI, 1);
+		sui_text_metrics(tsz * 0.5, [tsz, tsz]);
+		sui_text_input("ze_value", fp, [w * 0.62, rowh - 3, 0], ze_text, ze_caret);
+		ZoneEdit_Text(fp + [tsz * 0.5, 5, 0], tsz, ze_text, ZEC_TEXT);
+		if (sui_text_has_focus("ze_value"))
+			drawfill(fp + [tsz * 0.5 + stringwidth(substring(ze_text, 0, ze_caret), TRUE, [tsz, tsz]), 4, 0],
+				[1, tsz + 2, 0], ZEC_SEL, 1, 0);
+		if (ZoneEdit_Button([p_x + w * 0.66, y], [w * 0.30, rowh - 3], "ze_dimapply", "Apply", tsz, ZEC_TEXT)) ZoneEdit_DimApply();
+		return y + rowh;
+	}
+	ZoneEdit_Text([p_x + pad, y + 4], tsz, sprintf("SIZE %s x %s x %s  /  x min, x max, y min, y max, bottom, top",
+		ZoneEdit_Num(ZoneEdit_DimGet(z, 1) - ZoneEdit_DimGet(z, 0)),
+		ZoneEdit_Num(ZoneEdit_DimGet(z, 3) - ZoneEdit_DimGet(z, 2)),
+		ZoneEdit_Num(zone_top[z] - zone_bottom[z])), ZEC_DIM);
+	y = y + rowh;
+	cw = (w - pad * 2 - 20) / 6;
+	for (face = 0; face < 6; face = face + 1)
+	{
+		id = sprintf("ze_d%g", face);
+		cp = [p_x + pad + (cw + 4) * face, y, 0];
+		if (ZoneEdit_Button(cp, [cw, rowh - 3], id, ZoneEdit_Num(ZoneEdit_DimGet(z, face)), tsz, ZEC_TEXT))
+			ZoneEdit_DimEdit(face);
+		if (sui_is_hovered(id)) ze_dim_hover = face;
+	}
+	return y + rowh;
 };

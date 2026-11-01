@@ -3,8 +3,8 @@
  * the dialog's Publish click, or Enter, inside the engine's own key event).
  * No lobby secret, SteamID or role claim here; surfd/zonepub.py decides and,
  * for an admin, publishes (P815: lobbies time with it from their next map load).
- * P1081: also from a lobby (ZonePub_Offhost), opened by `zone_edit publish`, and
- * "Reload now" signs a second nonce that has the service reload the map's lobbies. */
+ * P1081: also from a lobby (ZonePub_Offhost), opened by `zone_edit publish`.
+ * P1180: one Publish; the service writes at once and reloads the map's lobbies. */
 #define ZP_CHALLENGE 1
 #define ZP_CONFIRM   2
 #define ZP_UPLOAD    3
@@ -15,11 +15,12 @@ float zp_cap;                       // P841: the saved file's maxVelocity, 0 = n
 float zp_bycmd;                     // P1081: a command opened it: only a click on a button sends
 float zp_armed;                     // P1081: presses before this (the page's first 0.6 s) are ignored
 string zp_map, zp_body, zp_sha, zp_nonce, zp_crc, zp_said;
-string zp_nonce_now;                // P1081: the service's second nonce, "reload now"
 vector zp_go_p, zp_go_s, zp_no_p, zp_no_s;   // the dialog's buttons as last drawn; a zero size is no button
-vector zp_now_p, zp_now_s;
-vector zp_geo_go, zp_geo_size, zp_geo_now, zp_geo_no;  // P1081: the buttons as last drawn, to see them move
-float zp_out_go, zp_out_now;        // P1081 round 3: the device pointer was outside that button since arming
+vector zp_geo_go, zp_geo_size, zp_geo_no;  // P1081: the buttons as last drawn, to see them move
+float zp_out_go;                    // P1081 round 3: the device pointer was outside Publish since arming
+void(float code, string body) ZoneHist_ListReply;
+void(float code, string body) ZoneHist_FileReply;
+float zh_req, zh_freq;              // P1180 history requests (defined with the history page below)
 
 void() ZonePub_Cancel =
 {
@@ -27,13 +28,12 @@ void() ZonePub_Cancel =
 	if (strlen(zp_body)) strunzone(zp_body);
 	if (strlen(zp_sha)) strunzone(zp_sha);
 	if (strlen(zp_nonce)) strunzone(zp_nonce);
-	if (strlen(zp_nonce_now)) strunzone(zp_nonce_now);
 	if (strlen(zp_crc)) strunzone(zp_crc);
 	if (strlen(zp_said)) strunzone(zp_said);
-	zp_map = zp_body = zp_sha = zp_nonce = zp_nonce_now = zp_crc = zp_said = "";
+	zp_map = zp_body = zp_sha = zp_nonce = zp_crc = zp_said = "";
 	zp_state = zp_req = zp_count = zp_bad = zp_live = zp_cap = zp_bycmd = zp_armed = 0;
 	zp_shown = -1;                  // P1081 review: no page counts as drawn until it is drawn again
-	zp_go_s = zp_no_s = zp_now_s = '0 0 0';
+	zp_go_s = zp_no_s = '0 0 0';
 };
 
 // The dialog's last page: what the service said (or why nothing went).
@@ -224,13 +224,11 @@ void(float real) ZonePub_Begin =
 
 // Publish's press, Enter's or the click's. The engine signs only while a device's key
 // event is being delivered (CSQC_RealKey), so a command or a frame never gets here signed.
-// now: the "Reload now" button, which signs the service's second nonce (P1081).
-void(float now) ZonePub_Send =
+void() ZonePub_Send =
 {
 	local string p, envelope, why;
 	if (zp_state != ZP_CONFIRM) return;
 	if (!cl_input_real) { ZoneEdit_Note("click Publish: a command cannot start a publish"); return; }
-	if (now && strlen(zp_nonce_now) != 32) return;
 	// Still the file and the game the dialog was made from.
 	why = ZonePub_Offhost();
 	if (strlen(why)) { ZonePub_Answer(strcat(why, ". Nothing was sent."), TRUE, FALSE); return; }
@@ -238,7 +236,7 @@ void(float now) ZonePub_Send =
 	{
 		ZonePub_Answer("The saved file changed. Nothing was sent.", TRUE, FALSE); return;
 	}
-	p = acct_sign(now ? zp_nonce_now : zp_nonce, -6);
+	p = acct_sign(zp_nonce, -6);
 	if (!strlen(p))
 	{
 		ZonePub_Answer("The game would not sign the upload: it needs a linked Steam account, "
@@ -249,7 +247,7 @@ void(float now) ZonePub_Send =
 	// Raw JSON preserves the exact frozen bytes whose SHA256 the nonce names.
 	// No uri_escape/sprintf of the large file (both have small output bounds).
 	envelope = sprintf("{\"nonce\":\"%s\",\"pub\":\"%s\",\"sig\":\"%s\",\"game\":\"%s\",\"zones\":",
-	                   now ? zp_nonce_now : zp_nonce, argv(0), argv(2), argv(4));
+	                   zp_nonce, argv(0), argv(2), argv(4));
 	envelope = strcat(envelope, zp_body, "}");
 	zp_state = ZP_UPLOAD; zp_until = gettime(0) + 120;
 	zp_next = zp_next + 1; zp_req = zp_next;
@@ -258,11 +256,11 @@ void(float now) ZonePub_Send =
 	else print("zone_edit: upload sent, signed under a real press\n");
 };
 
-void(float now) ZonePub_Go =
+void() ZonePub_Go =
 {
 	if (zp_shown != zp_state) return;     // a reply lands between frames: act on the page drawn
-	if (zp_state == ZP_CONFIRM) { if (zp_armed > 0 && gettime(0) >= zp_armed) ZonePub_Send(now); }
-	else if (zp_state == ZP_DONE && !now) ZonePub_Cancel();
+	if (zp_state == ZP_CONFIRM) { if (zp_armed > 0 && gettime(0) >= zp_armed) ZonePub_Send(); }
+	else if (zp_state == ZP_DONE) ZonePub_Cancel();
 };
 
 // An upload in flight is not withdrawn: the service may already have it.
@@ -288,8 +286,8 @@ float(float scan) ZonePub_Key =
 	if (scan == K_ENTER || scan == K_KP_ENTER)
 	{
 		// P1081: a dialog a command opened is confirmed by a click on its button, never Enter.
-		if (zp_bycmd && zp_state == ZP_CONFIRM) ZoneEdit_Note("click Publish or Reload now: Enter does not confirm here");
-		else ZonePub_Go(FALSE);
+		if (zp_bycmd && zp_state == ZP_CONFIRM) ZoneEdit_Note("click Publish: Enter does not confirm here");
+		else ZonePub_Go();
 		return TRUE;
 	}
 	if (scan == K_MOUSE1)
@@ -302,8 +300,7 @@ float(float scan) ZonePub_Key =
 		seen = cl_input_real ? cl_ptr_real_ok : ze_mouse_seen;
 		if (cl_input_real && zp_state == ZP_CONFIRM && (zp_armed <= 0 || cl_ptr_real_t < zp_armed)) seen = FALSE;
 		entered = !(cl_input_real && zp_state == ZP_CONFIRM);          // an entry is asked of real presses
-		if (seen && is_2dpoint_in_bbox(at, zp_go_p, zp_go_s)) { if (entered || zp_out_go) ZonePub_Go(FALSE); }
-		else if (seen && is_2dpoint_in_bbox(at, zp_now_p, zp_now_s)) { if (entered || zp_out_now) ZonePub_Go(TRUE); }
+		if (seen && is_2dpoint_in_bbox(at, zp_go_p, zp_go_s)) { if (entered || zp_out_go) ZonePub_Go(); }
 		else if (seen && is_2dpoint_in_bbox(at, zp_no_p, zp_no_s)) ZonePub_Back();
 		return TRUE;
 	}
@@ -340,19 +337,16 @@ float(vector at, float w, float sz, string s, vector col, float draw) ZonePub_Wr
 };
 
 // One button; hovered from SUI (registered above the blocker), clicked in ZonePub_Key.
-// primary: 1 the default action, 2 the disruptive one (P1081 Reload now, warning colours).
 void(vector p, vector s, string id, string word, float sz, float primary, float live) ZonePub_Button =
 {
 	local float w;
 	local vector col;
 	if (live) sui_action_element(p, s, id, sui_noop);
 	if (!live) sui_style_box(p, s, 4, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
-	else if (primary == 2)
-		sui_style_box(p, s, 4, sui_is_hovered(id) ? SUI_THEME_HOVER : SUI_THEME_WELL, SUI_THEME_WARN, 1);
 	else if (primary)
 		sui_style_box(p, s, 4, sui_is_hovered(id) ? SUI_THEME_PRESSED : SUI_THEME_SELECTED, SUI_THEME_EDGE_HI, 1);
 	else sui_style_box(p, s, 4, sui_is_hovered(id) ? SUI_THEME_HOVER : SUI_THEME_CHIP, SUI_THEME_EDGE, 1);
-	col = !live ? SUI_THEME_MUTED : (primary == 2 ? SUI_THEME_WARN : (primary ? SUI_THEME_ACCENT : SUI_THEME_TEXT));
+	col = !live ? SUI_THEME_MUTED : (primary ? SUI_THEME_ACCENT : SUI_THEME_TEXT);
 	w = stringwidth(word, TRUE, [sz, sz]);
 	sui_text(p + [(s_x - w) * 0.5, (s_y - sz) * 0.5], [sz, sz], word, col, 1, 0);
 };
@@ -365,7 +359,7 @@ void(vector scr) ZonePub_Draw =
 	local string title, head, body, go;
 
 	ZonePub_Pump();
-	zp_go_s = zp_no_s = zp_now_s = '0 0 0';
+	zp_go_s = zp_no_s = '0 0 0';
 	if (!zp_state && zp_shown) print("zone_edit: publish dialog closed\n");
 	if (!zp_state)
 	{
@@ -377,7 +371,7 @@ void(vector scr) ZonePub_Draw =
 	tsz = Font_Px(11 * ui_cv_scale);
 	rsz = Font_Px(8 * ui_cv_scale);
 	bh = rsz + 12 * ui_cv_scale;
-	w = min(scr_x - 32, (strlen(zp_nonce_now) ? 460 : 380) * ui_cv_scale);
+	w = min(scr_x - 32, 400 * ui_cv_scale);
 
 	head = sprintf("%s  /  %g zones  /  crc %s", zp_map, zp_count, zp_crc);
 	go = "Publish";
@@ -391,12 +385,9 @@ void(vector scr) ZonePub_Draw =
 		title = "Publish zones to the lobbies?";
 		if (zp_state == ZP_CHALLENGE) body = "Asking the zone service...";
 		else if (zp_state == ZP_UPLOAD) { body = "Publishing..."; go = "Publishing"; }
-		else body = sprintf("Your saved file goes to every lobby. They switch to it once none of them has "
-		                    "had %s loaded for 10 minutes and its runs are verified. Existing times stay. %s", zp_map,
+		else body = sprintf("Your saved file goes to every lobby now, and lobbies on %s restart the map with it "
+		                    "at once: runs in progress there end. Existing times stay. %s", zp_map,
 		                    zp_cap > 0 ? sprintf("Speed cap %g goes with it.", zp_cap) : "It sets no speed cap.");
-		if (zp_state == ZP_CONFIRM && strlen(zp_nonce_now))
-			body = strcat(body, " Reload now: Lobbies on it are warned, then reload with these zones once its runs "
-			              "are verified, usually within 10 minutes; runs in progress there end.");
 	}
 
 	// Measure, then draw: the box fits what it says.
@@ -428,25 +419,18 @@ void(vector scr) ZonePub_Draw =
 		ZonePub_Button(np, bs, "zp_no", "Cancel", rsz, FALSE, TRUE);     // P815's place, unchanged
 		zp_no_p = np; zp_no_s = bs;
 	}
-	if (zp_state == ZP_CONFIRM && strlen(zp_nonce_now))
-	{
-		// P1081: the disruptive choice at the far left, away from Cancel, a click only (ZonePub_Key).
-		tp = [p_x + pad, gp_y, 0];
-		ZonePub_Button(tp, bs, "zp_now", "Reload now", rsz, 2, TRUE);
-		zp_now_p = tp; zp_now_s = bs;
-	}
-	else if (zp_state == ZP_CONFIRM)
+	if (zp_state == ZP_CONFIRM)
 		sui_text([p_x + pad, gp_y + (bh - rsz) * 0.5], [rsz, rsz], zp_bycmd ? "click to confirm" : "Enter / Esc",
 		         SUI_THEME_MUTED, 1, 0);
 
 	// P1081 review: buttons that moved (hud_scale, a resize) under a resting pointer arm again.
 	if (zp_state == ZP_CONFIRM && zp_shown == zp_state)
-	if (zp_go_p != zp_geo_go || zp_go_s != zp_geo_size || zp_now_p != zp_geo_now || zp_no_p != zp_geo_no)
+	if (zp_go_p != zp_geo_go || zp_go_s != zp_geo_size || zp_no_p != zp_geo_no)
 	{
 		zp_armed = gettime(0) + 0.6;
-		zp_out_go = zp_out_now = FALSE;
+		zp_out_go = FALSE;
 	}
-	zp_geo_go = zp_go_p; zp_geo_size = zp_go_s; zp_geo_now = zp_now_p; zp_geo_no = zp_no_p;
+	zp_geo_go = zp_go_p; zp_geo_size = zp_go_s; zp_geo_no = zp_no_p;
 
 	// Where it is, once a page: an arm clicks by these (developer 1).
 	if (zp_shown != zp_state)
@@ -454,25 +438,20 @@ void(vector scr) ZonePub_Draw =
 		if (zp_state == ZP_CONFIRM)
 		{
 			zp_armed = gettime(0) + 0.6;    // P1081: no press carried in from before
-			zp_out_go = zp_out_now = FALSE;
+			zp_out_go = FALSE;
 		}
-		dprint(sprintf("zone_edit: publish dialog page %g, screen %v, go %v %v, cancel %v %v",
+		dprint(sprintf("zone_edit: publish dialog page %g, screen %v, go %v %v, cancel %v %v\n",
 		               zp_state, scr, zp_go_p, zp_go_s, zp_no_p, zp_no_s));
-		dprint(sprintf(", now %v %v\n", zp_now_p, zp_now_s));
 	}
 	zp_shown = zp_state;
-	// P1081 round 3: Publish or Reload now counts a press only once the device pointer has been
-	// outside it since arming -- a delta queued at a resting pointer (in_journal_synth) is no entry.
+	// P1081 round 3: Publish counts a press only once the device pointer has been outside it
+	// since arming -- a delta queued at a resting pointer (in_journal_synth) is no entry.
 	if (zp_state == ZP_CONFIRM && cl_ptr_real_ok)
-	{
 		if (!is_2dpoint_in_bbox(cl_ptr_real, zp_go_p, zp_go_s)) zp_out_go = TRUE;
-		if (!is_2dpoint_in_bbox(cl_ptr_real, zp_now_p, zp_now_s)) zp_out_now = TRUE;
-	}
 
-	// `zone_edit press zp_go|zp_now|zp_no` for arms: Back works, Go reaches Send, which refuses a command.
+	// `zone_edit press zp_go|zp_no` for arms: Back works, Go reaches Send, which refuses a command.
 	if (ZoneEdit_Clicked("zp_no")) ZonePub_Back();
-	else if (ZoneEdit_Clicked("zp_go")) ZonePub_Go(FALSE);
-	else if (ZoneEdit_Clicked("zp_now")) ZonePub_Go(TRUE);
+	else if (ZoneEdit_Clicked("zp_go")) ZonePub_Go();
 };
 
 // A non-200 reply reaches QC with no body (httpclient.c keeps no file), so zonepub.py answers
@@ -493,6 +472,8 @@ float(float id, float code, string body) ZonePub_Reply =
 	local int root;
 	local string nonce, message;
 	if (id < 6100000 || id >= 6200000) return FALSE;
+	if (zh_req && id == zh_req) { ZoneHist_ListReply(code, body); return TRUE; }
+	if (zh_freq && id == zh_freq) { ZoneHist_FileReply(code, body); return TRUE; }
 	if (!zp_state || id != zp_req) return TRUE;
 	ZonePub_Pump();
 	if (!zp_state) return TRUE;
@@ -515,10 +496,8 @@ float(float id, float code, string body) ZonePub_Reply =
 		 && strcmp(json_get_string(json_find_object_child(root, "sha")), zp_sha) == 0)
 		{
 			zp_nonce = strzone(nonce); zp_state = ZP_CONFIRM;
-			nonce = json_get_string(json_find_object_child(root, "nonce_now"));
-			if (strlen(nonce) == 32 && strcmp(nonce, zp_nonce) != 0) zp_nonce_now = strzone(nonce);
-			print(sprintf("zone_edit: publish dialog waiting for Publish%s or Cancel%s\n",
-			              strlen(zp_nonce_now) ? ", Reload now" : "", zp_bycmd ? " (opened by command)" : ""));
+			print(sprintf("zone_edit: publish dialog waiting for Publish or Cancel%s\n",
+			              zp_bycmd ? " (opened by command)" : ""));
 		}
 		else ZonePub_Answer("The zone service's confirmation did not match this file. Nothing was sent.", TRUE, FALSE);
 	}
@@ -532,4 +511,178 @@ float(float id, float code, string body) ZonePub_Reply =
 	}
 	if (root) json_free(root);
 	return TRUE;
+};
+
+/*
+  P1180: the map's published zones, newest first (zonepub /api/zones/history: when, who, which),
+  and any one of them loaded into the editor as unsaved edits. Save zones, then Publish saved,
+  brings it back. The file comes from our service only (ZP_BASE), for a row the admin chose.
+*/
+#define ZH_MAX 32
+float zh_state;                     // 0 idle, 1 asking, 2 listed, 3 failed
+float zh_n, zh_now, zh_pick;
+float zh_id[ZH_MAX], zh_at[ZH_MAX], zh_file[ZH_MAX];
+string zh_by[ZH_MAX], zh_kind[ZH_MAX];
+string zh_msg, zh_map;
+
+float() ZonePub_NextId =
+{
+	if (zp_next < 6100000) zp_next = 6100000 + floor(random() * 80000);
+	zp_next = zp_next + 1;
+	return zp_next;
+};
+
+void() ZoneHist_Clear =
+{
+	local float i;
+	for (i = 0; i < zh_n; i = i + 1)
+	{
+		if (strlen(zh_by[i])) strunzone(zh_by[i]);
+		if (strlen(zh_kind[i])) strunzone(zh_kind[i]);
+		zh_by[i] = zh_kind[i] = "";
+	}
+	if (strlen(zh_msg)) strunzone(zh_msg);
+	if (strlen(zh_map)) strunzone(zh_map);
+	zh_msg = zh_map = "";
+	zh_n = zh_req = zh_freq = zh_state = 0;
+};
+
+void(string why) ZoneHist_Fail =
+{
+	if (strlen(zh_msg)) strunzone(zh_msg);
+	zh_msg = strzone(why); zh_state = 3; zh_req = 0;
+};
+
+void() ZoneHist_Open =
+{
+	if (ui_ze_state != ZE_PANEL || ze_settings) return;
+	if (cvar("rec_terms") < FS_TERMS_ONLINE) { ZoneEdit_Note("enable online features from the main menu to see published zones"); return; }
+	if (!ZoneFile_Map(ze_map)) { ZoneEdit_Note("no zone history for this map name"); return; }
+	ZoneHist_Clear();
+	if (ze_dim >= 0) { ze_dim = -1; sui_text_unfocus(); }
+	ze_history = TRUE; zh_state = 1; zh_scroll = 0;
+	zh_map = strzone(ze_map);
+	if (zp_next >= 6199990) { ZoneHist_Fail("restart the game before asking again"); return; }
+	zh_req = ZonePub_NextId();
+	if (!uri_post(strcat(ZP_BASE, "history"), zh_req, "application/json", sprintf("{\"map\":\"%s\"}", ze_map)))
+		ZoneHist_Fail("The zone service could not be reached.");
+};
+
+void(float i) ZoneHist_Load =
+{
+	if (i < 0 || i >= zh_n || !zh_file[i] || zh_freq) return;
+	if (zp_next >= 6199990) { ZoneEdit_Note("restart the game before asking again"); return; }
+	zh_pick = i;
+	zh_freq = ZonePub_NextId();
+	if (!uri_post(strcat(ZP_BASE, "file"), zh_freq, "application/json", sprintf("{\"id\":%.0f}", zh_id[i])))
+	{
+		zh_freq = 0; ZoneEdit_Note("The zone service could not be reached.");
+	}
+	else ZoneEdit_Note(sprintf("fetching publish #%.0f...", zh_id[i]));
+};
+
+string(float secs) ZoneHist_Age =
+{
+	if (secs < 90) return "just now";
+	if (secs < 5400) return sprintf("%.0f min ago", secs / 60);
+	if (secs < 129600) return sprintf("%.0f h ago", secs / 3600);
+	return sprintf("%.0f days ago", secs / 86400);
+};
+
+void(float code, string body) ZoneHist_ListReply =
+{
+	local int root, rows, r;
+	local float i, n;
+	local string s;
+	zh_req = 0;
+	root = json_parse(body);
+	if ((code != 0 && code != 200) || !root || !json_get_float(json_find_object_child(root, "ok")))
+	{
+		s = root ? json_get_string(json_find_object_child(root, "error")) : "";
+		if (root) json_free(root);
+		ZoneHist_Fail(strlen(s) ? substring(s, 0, 120) : "The zone service did not answer.");
+		return;
+	}
+	zh_now = json_get_float(json_find_object_child(root, "now"));
+	rows = json_find_object_child(root, "rows");
+	n = rows ? json_get_length(rows) : 0;
+	for (i = 0; i < n && zh_n < ZH_MAX; i = i + 1)
+	{
+		r = json_get_child_at_index(rows, i);
+		zh_id[zh_n] = json_get_float(json_find_object_child(r, "id"));
+		zh_at[zh_n] = json_get_float(json_find_object_child(r, "at"));
+		zh_file[zh_n] = json_get_float(json_find_object_child(r, "file"));
+		s = substring(json_get_string(json_find_object_child(r, "by")), 0, 32);
+		zh_by[zh_n] = strzone(strlen(s) ? s : "someone");
+		zh_kind[zh_n] = strzone(substring(json_get_string(json_find_object_child(r, "kind")), 0, 16));
+		zh_n = zh_n + 1;
+	}
+	json_free(root);
+	zh_state = 2;
+};
+
+void(float code, string body) ZoneHist_FileReply =
+{
+	local int root;
+	local float i, ok;
+	zh_freq = 0;
+	i = zh_pick;
+	// The editor moved on (closed, another map, back to zones): nothing to load into.
+	if (ui_ze_state == ZE_OFF || !ze_history || i < 0 || i >= zh_n || strcmp(zh_map, zone_mapname) != 0) return;
+	root = json_parse(body);
+	ok = ((code == 0 || code == 200) && root && json_find_object_child(root, "formatVersion"));
+	if (root) json_free(root);
+	if (!ok) { ZoneEdit_Note(sprintf("publish #%.0f could not be fetched", zh_id[i])); return; }
+	if (!Zone_LoadJsonText(body, sprintf("published #%.0f", zh_id[i]), ZSRC_DL) || !zone_count)
+	{
+		zone_mapname = "";              // the loader may have emptied the table: read the map again
+		Zone_LoadForMap();
+		ze_sel = -1; ze_dirty = FALSE;
+		ZoneEdit_Note(sprintf("publish #%.0f could not be read; zones reloaded", zh_id[i]));
+		return;
+	}
+	// Our service's bytes for a row the admin picked: no server or package stands in for them.
+	zone_own = zone_base_untrusted = FALSE;
+	Zone_Hash();
+	ze_dirty = TRUE; ze_sel = -1; ze_history = FALSE;
+	ZoneEdit_Note(sprintf("publish #%.0f by %s loaded, not saved: Save zones, then Publish saved to bring it back",
+	                      zh_id[i], zh_by[i]));
+	print(sprintf("zone_edit: loaded published #%.0f of %s (%g zones, crc %s)\n", zh_id[i], zh_map, zone_count, zone_crc));
+};
+
+// The panel's history page, drawn where the zone list would be.
+void(vector p, float w, float y, float h, float rowh, float tsz) ZoneEdit_HistoryDraw =
+{
+	local float i, shown, room, live, pad;
+	local vector rp;
+	local string id, s;
+	pad = 8 * ui_cv_scale;
+	ZoneEdit_Text([p_x + pad, y + 4], tsz, sprintf("PUBLISHED ZONES  /  %s  /  newest first", zh_map), ZEC_DIM);
+	y = y + rowh * 1.3;
+	room = floor((p_y + h - rowh * 4 - y) / rowh);
+	if (zh_state == 1) ZoneEdit_Text([p_x + pad, y + 4], tsz, "Asking the zone service...", ZEC_DIM);
+	else if (zh_state == 3) ZoneEdit_Text([p_x + pad, y + 4], tsz, zh_msg, ZEC_WARN);
+	else if (!zh_n) ZoneEdit_Text([p_x + pad, y + 4], tsz, "Nothing published for this map yet.", ZEC_DIM);
+	zh_scroll = bound(0, zh_scroll, max(0, zh_n - room));
+	shown = 0; live = TRUE;
+	for (i = 0; i < zh_n; i = i + 1)
+	{
+		if (strcmp(zh_kind[i], "rollback") == 0)
+			s = sprintf("#%.0f  %s  an operator's rollback%s", zh_id[i], ZoneHist_Age(zh_now - zh_at[i]), live ? "  (live now)" : "");
+		else
+			s = sprintf("#%.0f  %s  by %s%s", zh_id[i], ZoneHist_Age(zh_now - zh_at[i]), zh_by[i], live ? "  (live now)" : "");
+		live = FALSE;
+		if (i < zh_scroll || shown >= room) continue;
+		id = sprintf("ze_h%g", i);
+		rp = [p_x + pad, y, 0];
+		if (ZoneEdit_Button(rp, [w - pad * 2, rowh - 2], id, s, tsz, zh_file[i] ? ZEC_TEXT : ZEC_DIM))
+			ZoneHist_Load(i);
+		y = y + rowh; shown = shown + 1;
+	}
+	if (zh_n > shown && zh_state == 2)
+		ZoneEdit_Text([p_x + pad, y + 4], tsz, sprintf("%g more: the wheel scrolls", zh_n - shown), ZEC_WARN);
+	y = p_y + h - rowh * 2.4;
+	if (ZoneEdit_Button([p_x + pad, y], [(w - pad * 2 - 4) * 0.5, rowh - 3], "ze_hrefresh", "Refresh", tsz, ZEC_TEXT)) ZoneHist_Open();
+	if (ZoneEdit_Button([p_x + pad + (w - pad * 2 + 4) * 0.5, y], [(w - pad * 2 - 4) * 0.5, rowh - 3], "ze_hback", "Back to zones", tsz, ZEC_TEXT))
+		ze_history = FALSE;
 };
