@@ -192,8 +192,8 @@ float  zone_source;                 // ZSRC_*
 string zone_mapname;                // what the tables were built for
 float  zone_overflow;               // hit a cap on this map
 float  zone_maxvel;                 // P841: the file's maxVelocity, 0 = none; not in zone_crc.
-float  zone_stamped;                // P1181: has Momentum's dataTimestamp, which our editor never writes
                                     // The server's cap comes from the engine (sv_phys.c).
+float  zone_stamped;                // P1181: has Momentum's dataTimestamp, which our editor never writes
 string zone_crc;                    // build 81: 8 hex of sha256 over the BUILT
                                     // table, "" until Zone_Hash runs.  See it.
 
