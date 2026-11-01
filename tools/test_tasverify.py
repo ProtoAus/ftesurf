@@ -463,6 +463,73 @@ class Runtime(unittest.TestCase):
             peer.assert_not_called()
 
     @unittest.skipUnless(os.name == 'posix', 'Linux process-image/PTY controls')
+    def test_peer_optional_home_and_args_preserve_parent_environment(self):
+        source = self.root / 'asset'
+        original = Path.stat
+        image = original(source)
+        def status(path, *args, **kwargs):
+            return image if str(path) == '/proc/12345/exe' else original(path, *args, **kwargs)
+        canonical = self.root / 'canonical-source'; canonical.mkdir()
+        lock = self.root / 'probe-custody'; lock.write_bytes(b'')
+        for isolated, probe in ((False, False), (True, False), (True, True)):
+            base = self.root / ('private-home-%s-%s' % (isolated, probe))
+            base.mkdir()
+            proc = SimpleNamespace(pid=12345, poll=lambda: 0, wait=lambda timeout: 0)
+            before = dict(os.environ)
+            peer, fd = None, os.open(lock, os.O_RDWR) if probe else None
+            extra = (('-tas-vfs-probe', '-tas-vfs-world', 'bhop_eazy', '-tas-vfs-private', str(base))
+                     if probe else ('-tas-vfs-probe',))
+            with patch.object(v.subprocess, 'Popen', return_value=proc) as spawn, patch.object(Path, 'stat', status):
+                try:
+                    peer = v.Peer(str(source), base, True, extra_args=extra, isolated_home=isolated,
+                                  custody_fd=fd, source_base=str(canonical) if probe else None)
+                    args = spawn.call_args.args[0]
+                    self.assertEqual(args[-len(extra)-2:], [*extra, '+exec', 'verify.cfg'])
+                    self.assertEqual(args[args.index('-basedir') + 1], str(canonical if probe else base))
+                    self.assertEqual(spawn.call_args.kwargs['pass_fds'], (fd,) if probe else ())
+                    if probe:
+                        self.assertNotIn('-nohome', args)
+                        self.assertIn('-usehome', args)
+                        self.assertEqual(args[args.index('-homedir') + 1], str(base.resolve()))
+                    else:
+                        self.assertIn('-nohome', args)
+                        self.assertNotIn('-homedir', args)
+                    env = spawn.call_args.kwargs['env']
+                    if isolated:
+                        home = base.resolve()
+                        self.assertEqual(env['HOME'], str(home))
+                        for name, suffix in (('XDG_DATA_HOME', 'xdg-data'), ('XDG_CONFIG_HOME', 'xdg-config'),
+                                             ('XDG_CACHE_HOME', 'xdg-cache'), ('XDG_DATA_DIRS', 'xdg-system')):
+                            self.assertEqual(env[name], str(home / suffix))
+                    else:
+                        self.assertIsNone(env)
+                    self.assertEqual(dict(os.environ), before)
+                finally:
+                    if peer is not None:
+                        peer.stop()
+                    if fd is not None:
+                        os.close(fd)
+            self.assertIsNone(peer.master)
+            self.assertIsNone(peer.console)
+
+    def test_source_probe_rejects_unconfined_context_before_spawn(self):
+        base = self.root / 'source-probe-reject'; base.mkdir()
+        canonical = self.root / 'source-readonly'; canonical.mkdir()
+        extra = ('-tas-vfs-world', 'bhop_eazy', '-tas-vfs-private', str(base))
+        cases = [(None, True, str(canonical), extra), (123, False, str(canonical), extra),
+                 (123, True, str(canonical), ('-tas-vfs-world', 'bhop_eazy')),
+                 (123, True, str(canonical), (*extra, '-tas-vfs-private', str(canonical))),
+                 (123, True, str(canonical), (*extra, '-tas-vfs-private', 'relative')),
+                 (123, True, str(base), extra)]
+        with patch.object(v.subprocess, 'Popen') as spawn:
+            for fd, isolated, source_base, args in cases:
+                with self.subTest(context=(fd, isolated)), self.assertRaisesRegex(v.Held, 'SOURCE_BASE_CONTEXT'):
+                    v.Peer('not-started', base, True, custody_fd=fd, isolated_home=isolated,
+                           extra_args=args, source_base=source_base)
+            spawn.assert_not_called()
+        self.assertEqual(list(base.iterdir()), [])
+
+    @unittest.skipUnless(os.name == 'posix', 'Linux process-image/PTY controls')
     def test_both_post_spawn_identity_failures_reap_and_close(self):
         original = Path.stat
         source = self.root / 'asset'
@@ -505,6 +572,20 @@ class Runtime(unittest.TestCase):
             with self.assertRaisesRegex(v.Held, 'PLUGIN_IMAGE'):
                 v.plugin_image(peer, v.digest(b'plugin-B'))
 
+    def test_inaccessible_child_custody_fails_closed(self):
+        for initial, after, reason in ((None, None, 'NATIVE_CUSTODY_LOST'),
+                                       (None, -11, 'ENGINE_EXIT'), (-11, -11, 'ENGINE_EXIT')):
+            with self.subTest(initial=initial, after=after):
+                states = iter((initial, after))
+                peer = object.__new__(v.Peer)
+                peer.proc = SimpleNamespace(pid=12345, poll=lambda: next(states, after))
+                peer.custody_identity = (1, 2)
+                peer.custody_fd = 3
+                with patch.object(Path, 'stat', side_effect=PermissionError('denied')) as status:
+                    with self.assertRaisesRegex(v.Held, '^' + reason + '$'):
+                        peer.guard()
+                    self.assertEqual(status.call_count, 0 if initial is not None else 1)
+
     def test_pending_client_wait_monitors_server_and_console(self):
         for which in ('server-log', 'server-console', 'client-console'):
             peers = []
@@ -514,6 +595,7 @@ class Runtime(unittest.TestCase):
                 peer.log = peer.base / 'ftesurf/logs/tasverify.log'; peer.log.parent.mkdir(parents=True)
                 peer.offset = 0; peer.window = b''; peer.window_start = 0
                 peer.static = {}; peer.last_inventory = 0
+                peer.custody_identity = None
                 peer.proc = SimpleNamespace(poll=lambda: None)
                 peer.watch = peers; peers.append(peer)
             target = peers[0].log if which == 'server-log' else peers[0 if which == 'server-console' else 1].base / 'console.log'

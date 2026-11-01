@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   844619bcfdac4bdb52fc8fa81093128e76308617
+commit   eaa655d08350a8823fba4748c11d92f4467b2f03
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -25,8 +25,9 @@ commit   844619bcfdac4bdb52fc8fa81093128e76308617
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
-tag      patch-1161
-patch    1164
+tag      patch-1165
+patch    1165
+# Patch 1165: bounded native TAS VFS components and distinct operator preparation; ordinary budgets, human recording/eligibility and queue admission unchanged. Component checks are not source qualification or deployment; tools/tas-native-source.md.
 # Patch 1164 (CSQC): cylindrical paper party crown with upward triangular points replaces the cone; saved colour/equipment, native pin and qcbuild unchanged.
 # Patch 1163 (CSQC): soft ice-aura falloff replaces the hard inventory stroke; native pin and qcbuild unchanged.
 # Patch 1161: admitted read-only TAS row validation no longer requires native history; cold legal replay keeps explicit pool allocation and base-project loads preflight living/unheld bodies. Replay authority, movement, recording formats and human eligibility unchanged. Final images/canonical/fleet acceptance are separate; no qcbuild or release bump.

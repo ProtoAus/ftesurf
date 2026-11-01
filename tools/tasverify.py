@@ -375,10 +375,42 @@ def plugin_image(peer, wanted):
     return {'sha256': wanted, 'device_inode': [device, inode], 'name': path.name}
 
 
+def parent_death_setup(parent, signum):
+    """Prepare in the parent; execute after fork or in the fresh CLI, not a web thread."""
+    if sys.platform != 'linux' or type(parent) is not int or parent <= 1:
+        raise Held('KERNEL_CUSTODY_REQUIRED')
+    import ctypes
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.prctl.argtypes = [ctypes.c_int] + [ctypes.c_ulong] * 4
+    libc.prctl.restype = ctypes.c_int
+    def apply():
+        if libc.prctl(1, signum, 0, 0, 0) != 0:  # PR_SET_PDEATHSIG
+            raise Held('PARENT_DEATH_SETUP')
+        # Parent may die between Popen and prctl. Never adopt an orphaned job.
+        if os.getppid() != parent:
+            raise Held('CUSTODIAN_LOST')
+    return apply
+
+
+def custody_identity(fd):
+    import fcntl
+    if type(fd) is not int or fd < 3:
+        raise Held('CUSTODY_FD')
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size != 0:
+        raise Held('CUSTODY_FD')
+    # Inherited descriptors share the SAME flock/open-file-description. This
+    # cannot succeed against a different worker's live exclusive lease.
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    return info.st_dev, info.st_ino
+
+
 def native_limits():
     # Import before fork. The child callback performs only resource/syscall setup.
     import resource
+    parent_death = parent_death_setup(os.getpid(), signal.SIGKILL)
     def apply():
+        parent_death()
         os.nice(19)
         for kind, cap in ((resource.RLIMIT_FSIZE, MAX_LOG), (resource.RLIMIT_CORE, 0),
                           (resource.RLIMIT_AS, 768 * 1024 * 1024)):
@@ -390,8 +422,36 @@ def native_limits():
 
 
 class Peer:
-    def __init__(self, exe, base, server, watch=None):
+    def _output_limits(self):
+        # Ordinary replay limits are not selected by manifests or player metadata.
+        return MAX_FILES, MAX_DYNAMIC
+
+    def _inherited_descriptors(self):
+        return () if self.custody_fd is None else (self.custody_fd,)
+
+    def __init__(self, exe, base, server, watch=None, custody_fd=None, *, extra_args=(), isolated_home=False,
+                 source_base=None):
+        # Trusted operator source PROBES only, not player metadata or authority.
+        # Existing replay keeps its original private basedir/-nohome defaults.
+        if source_base is not None:
+            try:
+                owned = base.resolve(strict=True)
+                source = Path(source_base).resolve(strict=True)
+                private = [Path(extra_args[i + 1]) for i, arg in enumerate(extra_args)
+                           if arg == '-tas-vfs-private']
+                valid = (sys.platform == 'linux' and isolated_home and custody_fd is not None and
+                         type(extra_args) is tuple and '-tas-vfs-world' in extra_args and source.is_dir() and
+                         source.is_absolute() and str(source) == os.fspath(source_base) and bool(private) and
+                         os.path.commonpath((owned, source)) not in (str(owned), str(source)) and
+                         all(path.is_absolute() and os.path.commonpath((owned, path.resolve())) == str(owned)
+                             for path in private))
+            except (OSError, ValueError, TypeError, IndexError):
+                raise Held('SOURCE_BASE_CONTEXT') from None
+            if not valid:
+                raise Held('SOURCE_BASE_CONTEXT')
         import pty
+        self.custody_fd = custody_fd
+        self.custody_identity = custody_identity(custody_fd) if custody_fd is not None else None
         self.base = base
         self.log = base / 'ftesurf/logs/tasverify.log'
         self.log.parent.mkdir(parents=True, exist_ok=True)
@@ -404,19 +464,30 @@ class Peer:
         self.watch = watch if watch is not None else []
         self.last_inventory = 0.0
         self.static = {p: p.stat().st_size for p in base.rglob('*') if p.is_file()}
-        self.master, slave = pty.openpty()
         # Linux's default QC address-space reservation is 2 GiB per VM. Select
         # bounded VM arenas before loading; never relax the child's hard AS cap.
-        args = [exe, '-basedir', str(base), '-manifest', str(base / 'default.fmf'),
-                '-nohome', '-pluginrootonly', '-ip', '127.0.0.1', '+set', 'pr_ssqc_memsize', '128m',
-                '+set', 'pr_csqc_memsize', '128m', '+set', 'pr_menu_memsize', '64m']
+        args = [exe, '-basedir', str(base if source_base is None else source),
+                '-manifest', str(base / 'default.fmf')]
+        args += ['-nohome'] if source_base is None else ['-homedir', str(base.resolve()), '-usehome']
+        args += ['-pluginrootonly', '-ip', '127.0.0.1', '+set', 'pr_ssqc_memsize', '128m',
+                 '+set', 'pr_csqc_memsize', '128m', '+set', 'pr_menu_memsize', '64m']
         if not server:
             args += ['+set', 'vid_renderer', 'headless', '-nosound']
-        args += ['+exec', 'verify.cfg']
+        args += [*extra_args, '+exec', 'verify.cfg']
+        env = None
+        if isolated_home:
+            # Filesystem home flags fence configs, not Steam/XDG discovery. Keep those
+            # searches inside this fresh owned runtime too; never admit host HOME.
+            home = base.resolve()
+            env = dict(os.environ, HOME=str(home), XDG_DATA_HOME=str(home / 'xdg-data'),
+                       XDG_CONFIG_HOME=str(home / 'xdg-config'), XDG_CACHE_HOME=str(home / 'xdg-cache'),
+                       XDG_DATA_DIRS=str(home / 'xdg-system'))
+        self.master, slave = pty.openpty()
         try:
             self.console = (base / 'console.log').open('xb')
             self.proc = subprocess.Popen(args, stdin=slave, stdout=self.console, stderr=subprocess.STDOUT,
-                                         cwd=base, start_new_session=True, preexec_fn=native_limits())
+                                         cwd=base, env=env, start_new_session=True, preexec_fn=native_limits(),
+                                         pass_fds=self._inherited_descriptors())
             # Register immediately: even a later identity-read/cleanup failure is owned.
             self.watch.append(self)
             st = Path('/proc/' + str(self.proc.pid) + '/exe').stat()
@@ -432,6 +503,16 @@ class Peer:
 
     def guard(self):
         check_cancel()
+        if self.proc.poll() is not None:
+            raise Held('ENGINE_EXIT')
+        if self.custody_identity is not None:
+            try:
+                info = Path('/proc/%d/fd/%d' % (self.proc.pid, self.custody_fd)).stat()
+            except OSError as error:
+                reason = 'ENGINE_EXIT' if self.proc.poll() is not None else 'NATIVE_CUSTODY_LOST'
+                raise Held(reason) from error
+            if (info.st_dev, info.st_ino) != self.custody_identity:
+                raise Held('NATIVE_CUSTODY_LOST')
         # Check both sinks for BOTH peers while either one is awaited. RLIMIT_FSIZE
         # additionally bounds producer bursts, including uncaptured native stderr.
         for path in (self.log, self.base / 'console.log'):
@@ -441,6 +522,7 @@ class Peer:
         if now - self.last_inventory >= .25:
             self.last_inventory = now
             total = count = 0
+            max_files, max_dynamic = self._output_limits()
             for root, dirs, files in os.walk(self.base, followlinks=False):
                 if any((Path(root) / d).is_symlink() for d in dirs):
                     raise Held('JOB_SYMLINK')
@@ -448,13 +530,13 @@ class Peer:
                     path = Path(root) / name
                     st = path.lstat()
                     count += 1
-                    if count > MAX_FILES or not stat.S_ISREG(st.st_mode):
+                    if count > max_files or not stat.S_ISREG(st.st_mode):
                         raise Held('JOB_FILE_LIMIT')
                     if path in self.static and st.st_size != self.static[path]:
                         raise Held('JOB_STATIC_CHANGED')
                     if path not in self.static:
                         total += st.st_size
-                        if st.st_size >= MAX_LOG or total >= MAX_DYNAMIC:
+                        if st.st_size >= MAX_LOG or total >= max_dynamic:
                             raise Held('JOB_OUTPUT_LIMIT')
         if self.proc is not None and self.proc.poll() is not None:
             raise Held('ENGINE_EXIT')
@@ -530,11 +612,71 @@ class Peer:
                     self.stopped = self.proc is None or self.proc.poll() is not None
 
 
+class ProfilePreparationPeer(Peer):
+    """Bounded operator static-profile preparation, NEVER a replay-job choice.
+
+    Borrow a real tascontent.snapshot lease; keep its parent scope through final
+    validation. Native inherits the SAME reader description through exec/cleanup.
+    This is not proof that all real publishers participate: W3 still gates use.
+    Per-file/log/AS caps and every other Peer guard remain unchanged.
+    """
+    def __init__(self, exe, base, server, watch=None, custody_fd=None, *, source_lease,
+                 extra_args=(), isolated_home=False, source_base=None):
+        if sys.platform != 'linux':
+            raise Held('SOURCE_PREPARATION_PLATFORM')
+        if (server is not True or custody_fd is None or not isolated_home or type(extra_args) is not tuple or
+                any(flag not in extra_args for flag in ('-tas-vfs-probe', '-tas-vfs-world', '-tas-vfs-private'))):
+            raise Held('SOURCE_PREPARATION_CONTEXT')
+        try:
+            import tascontent
+        except ImportError:
+            from surfd import tascontent
+        import fcntl
+        try:
+            if type(source_lease) is not tascontent.Lease or type(source_lease.fd) is not int or source_lease.fd < 3:
+                raise ValueError('lease')
+            info = os.fstat(source_lease.fd)
+            flags = fcntl.fcntl(source_lease.fd, fcntl.F_GETFL)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1 or
+                    info.st_mode & 0o022 or flags & os.O_ACCMODE != os.O_RDONLY or
+                    source_lease.fd == custody_fd):
+                raise ValueError('lease')
+            # Reassert the SAME shared description, never unlock a borrowed lease.
+            fcntl.flock(source_lease.fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            if tascontent._read(source_lease.fd) != source_lease.stamp:
+                raise ValueError('lease')
+        except (OSError, ValueError, TypeError, AttributeError):
+            raise Held('SOURCE_PREPARATION_LEASE') from None
+        self.source_reader_fd = source_lease.fd
+        self.source_reader_identity = info.st_dev, info.st_ino
+        super().__init__(exe, base, server, watch, custody_fd,
+                         extra_args=extra_args + ('-tas-vfs-profile-prepare',),
+                         isolated_home=isolated_home, source_base=source_base)
+
+    def _output_limits(self):
+        # Fixed complete-class tier plus bounded cfg/log/index overhead. Never
+        # edit ordinary constants or accept limits from an uploaded manifest.
+        return 131072 + 1024, 8 * 1024 ** 3 + MAX_DYNAMIC
+
+    def _inherited_descriptors(self):
+        return super()._inherited_descriptors() + (self.source_reader_fd,)
+
+    def guard(self):
+        super().guard()
+        try:
+            info = Path('/proc/%d/fd/%d' % (self.proc.pid, self.source_reader_fd)).stat()
+        except OSError as error:
+            raise Held('SOURCE_READER_LOST') from error
+        if (info.st_dev, info.st_ino) != self.source_reader_identity:
+            raise Held('SOURCE_READER_LOST')
+
+
 def prepare(out, runtime, project, token, port, copied):
     total = 0
     common = ['cfg_save_auto 0', 'con_savehistory 0', 'log_enable 1', 'log_dir logs',
               'log_name tasverify', 'log_readable 1', 'set cl_idlefps 0', 'set cl_maxfps 100',
-              'set cl_netfps 100', 'set cl_threadedphysics 0', 'set run_resume 0', 'set lobby_dir ""',
+              'set cl_netfps 100', 'set cl_threadedphysics 0', 'set run_resume 0',
+              'set run_resume_days 0', 'set lobby_dir ""',
               'set lobby_master ""', 'set lobby_enable 0', 'set cl_run_upload 0',
               'set cl_board_url ""', 'sv_public 0', 'sensitivity 0', 'set m_accel 0',
               'cl_forwardspeed 70', 'cl_sidespeed 70', 'plug_load hl2']
