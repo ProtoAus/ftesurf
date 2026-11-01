@@ -21,6 +21,9 @@
 
 ## next
 
+### P1163 Softer ice aura
+- The inventory's ice aura now fades outward from your player instead of drawing a hard blue stroke. Equipping the aura and paper hat still works independently.
+
 ### P1160 Profile inventory and cosmetics
 - Your player profile now has an attached 4x4 inventory. Click an owned item to equip or remove it; selected cosmetics are visible to other players.
 - Linked Steam accounts receive a light-blue ice aura and a paper party hat with a persistent, randomly assigned colour.

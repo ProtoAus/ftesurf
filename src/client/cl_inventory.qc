@@ -1,5 +1,5 @@
 /* Account inventory and procedural cosmetics. Only the lobby publishes *kit.
-   Depth-tested additive ice shell: no world depth capture / wallhack.
+   Depth-tested soft ice halo: no world depth capture / wallhack.
    Hat geometry and both shaders travel in CSQC; no external model required. */
 float inv_ready, inv_revision, inv_roles, inv_own1, inv_own2, inv_colour, inv_eq1, inv_eq2, inv_wait;
 string inv_who;
@@ -148,7 +148,7 @@ void(vector p, float width, float textsize, float editable, vector publickit) In
 			R_EndPolygon();
 		}
 		sui_text(at + [3, cell - textsize * 0.85], [textsize * 0.65, textsize * 0.65], on ? "ON" : "OWNED", colour, 1, 0);
-		label = i == 0 ? "Ice outline" : "Paper party hat";
+		label = i == 0 ? "Ice aura" : "Paper party hat";
 		sui_tooltip_for(id, strcat(label, editable ? (on ? ": click to unequip" : ": click to equip") : ""), 2);
 		if (editable && owned && sui_is_released(id) && cltime >= inv_wait)
 		{
@@ -169,17 +169,35 @@ void(entity body, float outline, float hat, float duck) Inv_Draw =
 	if (outline)
 	{
 		if (!inv_shader)
-			inv_shader = shaderforname("ftesurf/ice_outline", "{\n cull none\n {\n map $whiteimage\n rgbgen const ( 0.3 0.75 1 )\n alphagen const 0.15\n blendfunc GL_SRC_ALPHA GL_ONE\n }\n}\n");
+			inv_shader = shaderforname("ftesurf/ice_aura", "{\n cull back\n sort additive\n glslprogram\n{\n"
+				"!!ver 110\n!!permu FRAMEBLEND\n!!permu SKELETAL\n"
+				"#include \"sys/defs.h\"\n"
+				"#ifdef VERTEX_SHADER\n#include \"sys/skeletal.h\"\n"
+				"void main() {\n vec3 w,n,s,t;\n skeletaltransform_wnst(w,n,s,t);\n"
+				" w+=normalize(n)*e_colourident.r;\n"
+				" gl_Position=m_modelviewprojection*vec4(w,1.0);\n}\n#endif\n"
+				"#ifdef FRAGMENT_SHADER\nvoid main() {\n"
+				" gl_FragColor=vec4(0.3,0.75,1.0,e_colourident.a);\n}\n#endif\n"
+				"}\n {\n map $whiteimage\n blendfunc GL_SRC_ALPHA GL_ONE\n }\n}\n");
 		if (!inv_shell) { inv_shell = spawn(); inv_shell.effects = EF_NOSHADOW; }
 		setmodel(inv_shell, body.model);
-		// Expand about the body's centre, not upward from the feet.
-		setorigin(inv_shell, body.origin - [0, 0, (duck ? 45 : 62) * 0.035]);
+		setorigin(inv_shell, body.origin);
 		inv_shell.angles = body.angles;
 		inv_shell.frame = body.frame;
+		inv_shell.frame2 = body.frame2;
+		inv_shell.lerpfrac = body.lerpfrac;
 		inv_shell.forceshader = inv_shader;
-		inv_shell.scale = 1.07;
-		inv_shell.colormod = '1 1 1';
-		addentity(inv_shell);
+		inv_shell.scale = 1;
+		// Integrated shell weights approximate a squared fade, not bright rings.
+		// Radius travels in colour.r; the program emits a fixed ice-blue colour.
+		for (i = 0; i < 16; i = i + 1)
+		{
+			t = i / 16;
+			u = (i + 1) / 16;
+			inv_shell.colormod = [u * 8, 1, 1];
+			inv_shell.alpha = 0.65 * ((1 - t) * (1 - t) - (1 - u) * (1 - u));
+			addentity(inv_shell);
+		}
 	}
 	if (hat < 1 || hat > 12) return;
 	base = body.origin + [0, 0, duck ? 45 : 62];
