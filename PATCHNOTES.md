@@ -24,6 +24,11 @@
 ### P1186 Enter sends menu chat messages
 - In the main menu's chat, Enter (or keypad Enter) now sends your message on the Maps, Story and Stats screens too, not only on the front page.
 
+### P1178 Maps list: snug rows, map authors, sharper pictures
+- Each map in the Maps list now takes the height of its picture plus a little padding, so more maps fit on screen.
+- The map's author is shown after its name in the Maps list, and under the map name in the in-game Map info.
+- Map pictures in the list are sharper: they are now stored at the size they are drawn.
+
 ### P1177 Your hud_player colours are kept
 - The colours, belt, trail and glow you pick in hud_player now stay picked after you restart the game, instead of going back to a random colour.
 

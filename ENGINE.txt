@@ -29,6 +29,7 @@ commit   dc3e20be390ba5c3bb7d570bcacba8151172cd7d
 tag      patch-1165
 patch    1186
 # Patch 1186 (menu): Enter/keypad Enter sends the menu chat on every ui_browser_screen, not only MAIN/CHAT. Native pin/tag and Build unchanged.
+# Patch 1178 (menu/CSQC + tools/data): Maps list rows sized to the 160x90 photo, the author (mapmeta column 12) in the list and HUD Map info, a 160x90 JPEG atlas (gfx/mapthumbs/hd<N>.jpg, columns 13/14) beside the frozen 128x72 one. Native pin/tag and Build unchanged.
 # Patch 1177 (CSQC): hud_player look keys are mirrored in archived cl_lobby* cvars and fill unset userinfo at CSQC init (cfg_save_infos 0 kept userinfo out of ftesurf.cfg). Native pin/tag and Build unchanged.
 # Patch 1176 (site): front page down to the wordmark, a rainbow BETA and the downloads; new zoning page (tools/zoningpage.py data, live zoned state from board/api/maps). Native pin/tag, QC and Build unchanged.
 # Patch 1174 (tools + data): KSF site maps get table rows and pictures (mapmeta/ksfshots/mapthumbs, atlas page 10); Momentum zones verified against KSF's WR replays installed on nine KSF builds. Native pin/tag, QC and Build unchanged.

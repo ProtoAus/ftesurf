@@ -165,16 +165,16 @@ KINDS = ("meta", "variant", "dep")
 
 
 def keys(path):
-    """A table's entries for the gate: (kind, name) -> (tier, page, cell), where a
-    variant or dep line is its own name and has neither tier nor cell."""
+    """A table's entries for the gate: (kind, name) -> (tier, page, cell, hd page),
+    where a variant or dep line is its own name and has neither tier nor cell."""
     out = {}
     if os.path.exists(path):
         for l in open(path, encoding="utf-8", errors="replace"):
             t = l.split()
             if len(t) > 7 and t[0] == "meta":
-                out[("meta", t[1].lower())] = (t[2], t[6], t[7])
+                out[("meta", t[1].lower())] = (t[2], t[6], t[7], t[13] if len(t) > 14 else "-")
             elif (len(t) == 3 and t[0] == "variant") or (len(t) >= 3 and t[0] == "dep"):
-                out[(t[0], " ".join(t[1:]).lower())] = ("-", "-", "-")
+                out[(t[0], " ".join(t[1:]).lower())] = ("-", "-", "-", "-")
     return out
 
 
@@ -183,6 +183,8 @@ def losses(old, new):
     gone = {k: [n for (kk, n) in old if kk == k and (kk, n) not in new] for k in KINDS}
     tiers = [n for (k, n), v in old.items() if v[0] != "-" and new.get((k, n), ("-",))[0] == "-"]
     cells = [n for (k, n), v in old.items() if v[1] != "-" and new.get((k, n), ("", "-"))[1] == "-"]
+    # P1178: an hd cell lost counts the same as an old one.
+    cells += [n for (k, n), v in old.items() if v[3] != "-" and new.get((k, n), ("", "", "", "-"))[3] == "-"]
     return gone, tiers, cells
 
 
@@ -199,7 +201,7 @@ def gate(label, live, cand, state, accept):
         % (label, len(new), len(old), len(set(new) - set(old)), ngone, len(tiers), len(cells)))
     over = (any(len(gone[k]) > limit(sum(1 for kk, _ in old if kk == k)) for k in KINDS)
             or len(tiers) > limit(sum(1 for v in old.values() if v[0] != "-"))
-            or len(cells) > limit(sum(1 for v in old.values() if v[1] != "-")))
+            or len(cells) > limit(sum((v[1] != "-") + (v[3] != "-") for v in old.values())))
     refused = os.path.join(state, "refused-" + os.path.basename(live))
     if not over or accept:
         if over:
@@ -224,7 +226,7 @@ def read_stamped(path):
     for l in open(path, encoding="utf-8", errors="replace").read().splitlines():
         if l.startswith("# stamp "):
             st = l[8:].strip()
-        elif not l.startswith(("# atlas ", "# end ")):
+        elif not l.startswith(("# atlas ", "# hd ", "# end ")):
             body.append(l)
     return st, body
 
@@ -232,8 +234,8 @@ def read_stamped(path):
 def stamp(path, gamedir, prev, atlas):
     """`# stamp` after the header line, kept from `prev` (read_stamped's answer for
     the table it replaces) when the content is the same, and for mapmeta
-    `# atlas <page> <bytes>`: the menu trusts a page's cells only at the size
-    listed (P1099)."""
+    `# atlas <page> <bytes>` and `# hd <page> <bytes>` (P1178): the menu trusts a
+    page's cells only at the size listed (P1099)."""
     _, body = read_stamped(path)
     pst, pbody = prev
     # Order-blind: mapthumbs puts the variant lines above the rows and mapmeta.py below.
@@ -244,6 +246,10 @@ def stamp(path, gamedir, prev, atlas):
             n = os.path.basename(p)[5:-4]
             if n.isdigit():
                 add.append("# atlas %s %d" % (n, os.path.getsize(p)))
+        for p in sorted(glob.glob(os.path.join(gamedir, "gfx", "mapthumbs", "hd*.jpg"))):
+            n = os.path.basename(p)[2:-4]
+            if n.isdigit():
+                add.append("# hd %s %d" % (n, os.path.getsize(p)))
     at = 1 if body and body[0].startswith("FTESURF-") else 0
     # `# end N`, last: a download cut short still answers 200, and the menu refuses a
     # table whose meta/dep line count is not this (P1099 review 1).
@@ -415,19 +421,17 @@ def refresh(a, g, state, view):
             os.remove(dtmp)
 
     if a.atlas and meta_ok:
-        pages = [int(os.path.basename(p)[5:-4]) for p in glob.glob(os.path.join(g, "gfx", "mapthumbs", "atlas*.png"))
-                 if os.path.basename(p)[5:-4].isdigit()]
+        # P1178: new pictures get hd cells on new hd pages; the 128x72 pages are frozen.
+        # fill-missing starts past the highest hd page, never into one a release shipped.
         cmd = [sys.executable, "-I", os.path.join(TOOLS, "mapthumbs.py"), "--momentum", view,
-               "--gamedir", g, "--fill-missing"]
-        if pages:
-            cmd += ["--start-page", str(max(pages) + 1)]    # never into a page a release shipped
+               "--gamedir", g, "--hd", "--fill-missing"]
         before = read_stamped(meta)
-        had = set(glob.glob(os.path.join(g, "gfx", "mapthumbs", "atlas*.png")))
+        had = set(glob.glob(os.path.join(g, "gfx", "mapthumbs", "hd*.jpg")))
         r = subprocess.run(cmd, capture_output=True, text=True)
         say("  atlas: " + (r.stdout.strip().splitlines() or ["?"])[-1])
         if r.returncode != 0:
             # It saves the page before it raises; no row points into it (review 2).
-            for p in set(glob.glob(os.path.join(g, "gfx", "mapthumbs", "atlas*.png"))) - had:
+            for p in set(glob.glob(os.path.join(g, "gfx", "mapthumbs", "hd*.jpg"))) - had:
                 os.remove(p)
                 say("  atlas: removed %s, written by the failed run" % p)
             raise SystemExit("mapthumbs failed: %s" % (r.stderr or r.stdout)[-400:])

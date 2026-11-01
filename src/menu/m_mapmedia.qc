@@ -27,6 +27,8 @@ float mmm_fresh;                // a table was taken: the map list reloads once 
 float mmm_urls, mmm_urlsok;     // strbuf, rebuilt by every ui_meta_load
 float mmm_pagesz[MMM_MAXPAGES]; // the chosen table's "# atlas P bytes"; 0 = not listed
 float mmm_pagehave[MMM_MAXPAGES];
+float mmm_hdsz[MMM_MAXPAGES];   // P1178: "# hd P bytes", gfx/mapthumbs/hd<P>.jpg
+float mmm_hdhave[MMM_MAXPAGES];
 float ms_consent;               // m_main.qc's: the terms version on disk
 // P1116: the reply being checked, a slice a frame (Mmm_Step); its table is written in one frame
 float mmm_job;                  // 0, or the kind being read
@@ -95,23 +97,45 @@ void(string path) Mmm_Pages =
 	local string ln, nm;
 	local float i, n, p;
 	for (i = 0; i < MMM_MAXPAGES; i = i + 1)
-		mmm_pagesz[i] = mmm_pagehave[i] = 0;
+		mmm_pagesz[i] = mmm_pagehave[i] = mmm_hdsz[i] = mmm_hdhave[i] = 0;
 	fh = fopen(path, FILE_READ);
 	if (fh >= 0)
 	{
-		for (i = 0; i < 80; i = i + 1)
+		for (i = 0; i < 120; i = i + 1)
 		{
 			ln = fgets(fh);
 			if (ln == "")
 				break;
-			if (substring(ln, 0, 8) != "# atlas ")
+			if (substring(ln, 0, 2) != "# ")
 				continue;
 			n = tokenize(ln);
 			p = stof(argv(2));
-			if (n == 4 && p >= 0 && p < MMM_MAXPAGES && p == floor(p))
+			if (n != 4 || p < 0 || p >= MMM_MAXPAGES || p != floor(p))
+				continue;
+			if (argv(1) == "atlas")
 				mmm_pagesz[p] = stof(argv(3));
+			else if (argv(1) == "hd")
+				mmm_hdsz[p] = stof(argv(3));
 		}
 		fclose(fh);
+	}
+	// P1178: an hd page is drawn only at the size the table lists (none listed, none drawn).
+	sh = search_begin("gfx/mapthumbs/hd*.jpg", TRUE, TRUE);
+	if (sh >= 0)
+	{
+		n = search_getsize(sh);
+		for (i = 0; i < n; i = i + 1)
+		{
+			nm = strtolower(search_getfilename(sh, i));
+			p = stof(substring(nm, strlen("gfx/mapthumbs/hd"), -1));
+			if (p < 0 || p >= MMM_MAXPAGES || nm != strcat("gfx/mapthumbs/hd", ftos(p), ".jpg"))
+				continue;
+			if (mmm_hdsz[p] > 0)
+			if (checkbuiltin(search_getfilesize))
+			if (search_getfilesize(sh, i) == mmm_hdsz[p])
+				mmm_hdhave[p] = 1;
+		}
+		search_end(sh);
 	}
 	sh = search_begin("gfx/mapthumbs/atlas*.png", TRUE, TRUE);
 	if (sh < 0)
@@ -137,6 +161,13 @@ float(float page) Mmm_PageOK =
 	if (page < 0 || page >= MMM_MAXPAGES || page != floor(page))
 		return FALSE;
 	return mmm_pagehave[page];
+};
+
+float(float page) Mmm_HdOK =
+{
+	if (page < 0 || page >= MMM_MAXPAGES || page != floor(page))
+		return FALSE;
+	return mmm_hdhave[page];
 };
 
 // A row's picture from the Pi when no local atlas has it: its virtual page, or -1.
@@ -280,9 +311,9 @@ void(string ln) Mmm_MetaLine =
 			bufstr_add(mmm_keep, strcat("# stamp ", argv(2)), TRUE);
 		mmm_st = TRUE;
 	}
-	else if (n == 4 && argv(0) == "#" && argv(1) == "atlas"
+	else if (n == 4 && argv(0) == "#" && (argv(1) == "atlas" || argv(1) == "hd")
 	         && Mdl_Made(argv(2), MDL_DIGITS, 2) && Mdl_Made(argv(3), MDL_DIGITS, 10))
-		bufstr_add(mmm_keep, strcat("# atlas ", argv(2), " ", argv(3)), TRUE);
+		bufstr_add(mmm_keep, strcat("# ", argv(1), " ", argv(2), " ", argv(3)), TRUE);
 	else if (n >= 10 && n <= 16 && argv(0) == "meta" && Mdl_Made(argv(1), MDL_NAMECH, 64))
 	{
 		ok = TRUE;

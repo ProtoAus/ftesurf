@@ -47,8 +47,19 @@ everything else.
 Anything with no source at all keeps `-` for page/cell and the menu draws its
 placeholder.  That is deliberate: a wrong picture is worse than an obvious absence.
 
+THE HD ATLAS (P1178).  The Maps list draws its pictures at 160x90 since P1111, so a
+128x72 cell is magnified and soft.  `--hd` packs 160x90 cells into
+gfx/mapthumbs/hd<N>.jpg (1920x2016, 12 x 21 cells on a 96 px pitch: whole 16 px JPEG
+blocks, the last 6 rows repeat the picture's bottom row so nothing bleeds) and writes
+their page/cell to mapmeta columns 13/14.  New names and new columns, so a menu that
+predates them keeps drawing the 128x72 pages it shipped with from columns 6/7, which
+this mode never touches.  A row with an old cell whose source has gone takes that
+cell, scaled up: no row loses its picture.
+
 Usage:
-    python mapthumbs.py                 # rebuild the atlases and patch mapmeta.txt
+    python mapthumbs.py --hd            # rebuild the 160x90 atlas (columns 13/14)
+    python mapthumbs.py --hd --fill-missing   # cells for rows that have none, new pages
+    python mapthumbs.py                 # rebuild the old 128x72 atlases and patch mapmeta.txt
     python mapthumbs.py --report        # also say what resolved and what did not
     python mapthumbs.py --limit 50      # small run, for checking the packing
     python mapthumbs.py --gamedir DIR   # another tree's mapmeta, atlases and pictures
@@ -91,6 +102,15 @@ THUMB_IDS = {}
 
 # mapmeta.txt column indices, matching what mapmeta.py writes
 C_NAME, C_PAGE, C_CELL, C_THUMB = 1, 6, 7, 8
+C_HPAGE, C_HCELL = 13, 14
+NCOLS = 15
+
+# P1178: the menu's HD_* constants (m_main.qc) say the same.
+HD_W, HD_H, HD_PITCH = 160, 90, 96
+HD_COLS, HD_ROWS = 12, 21
+HD_PAGE_W, HD_PAGE_H = HD_COLS * HD_W, HD_ROWS * HD_PITCH     # 1920 x 2016
+HD_PER_PAGE = HD_COLS * HD_ROWS                                 # 252
+HD_QUALITY = 92
 
 
 def read_meta(path):
@@ -135,6 +155,120 @@ def source_for(name, uuid, momentum):
     if name.lower() in SAME_BSP:
         return source_for(SAME_BSP[name.lower()], "-", momentum)
     return None
+
+
+def fit_169(im):
+    w, h = im.size
+    want = 16 / 9
+    have = w / h if h else want
+    if abs(have - want) > 0.001:
+        if have > want:
+            nw = int(round(h * want))
+            im = im.crop(((w - nw) // 2, 0, (w - nw) // 2 + nw, h))
+        else:
+            nh = int(round(w / want))
+            im = im.crop((0, (h - nh) // 2, w, (h - nh) // 2 + nh))
+    return im
+
+
+def load_hd(path):
+    """One 160x90 picture: centre-crop to 16:9, Lanczos (sharper than BOX at this
+    size; a 480x270 source is exactly 3:1).  None on failure."""
+    try:
+        im = Image.open(path)
+        im.load()
+    except Exception as e:                                      # noqa: BLE001
+        print("  ! %s: %s" % (os.path.basename(path), e), file=sys.stderr)
+        return None
+    return fit_169(im.convert("RGB")).resize((HD_W, HD_H), Image.LANCZOS)
+
+
+def old_cell(atlasdir, page, cell):
+    """A row's 128x72 cell from the old atlas, scaled to 160x90, or None."""
+    p = os.path.join(atlasdir, "atlas%d.png" % page)
+    try:
+        with Image.open(p) as im:
+            x, y = (cell % 16) * 128, (cell // 16) * 72
+            return im.convert("RGB").crop((x, y, x + 128, y + 72)).resize((HD_W, HD_H), Image.LANCZOS)
+    except (OSError, ValueError):
+        return None
+
+
+def build_hd(momentum, meta_path, atlasdir, fill_missing=False, report=False):
+    """The 160x90 atlas; returns (cells written, pages written)."""
+    head, rows = read_meta(meta_path)
+    for r in rows:
+        r.extend(["-"] * (NCOLS - len(r)))
+    os.makedirs(atlasdir, exist_ok=True)
+    have = [int(r[C_HPAGE]) for r in rows if r[C_HPAGE].isdigit() and r[C_HCELL].isdigit()]
+    first_page = (max(have) + 1 if have else 0) if fill_missing else 0
+    todo, fallback, none = [], 0, 0
+    for r in rows:
+        if fill_missing and r[C_HPAGE].isdigit() and r[C_HCELL].isdigit():
+            continue
+        src = source_for(r[C_NAME], r[C_THUMB], momentum)
+        if src is None and r[C_PAGE].isdigit() and r[C_CELL].isdigit():
+            src = ("old", int(r[C_PAGE]), int(r[C_CELL]))
+            fallback += 1
+        if src is None:
+            r[C_HPAGE] = r[C_HCELL] = "-"
+            none += 1
+            continue
+        todo.append((r, src))
+    print("  hd: %d rows to pack (%d from an old cell, no source left), %d with no picture"
+          % (len(todo), fallback, none))
+    if fill_missing and not todo:
+        print("  hd: no row is missing a cell; pages and table unchanged")
+        return 0, 0
+    written = failed = slot = 0
+    page_img, page_no, pages = None, -1, 0
+
+    def flush():
+        out = os.path.join(atlasdir, "hd%d.jpg" % page_no)
+        page_img.save(out + ".tmp", "JPEG", quality=HD_QUALITY, subsampling=0, optimize=True)
+        os.replace(out + ".tmp", out)
+        print("  wrote %s (%d bytes)" % (out, os.path.getsize(out)))
+
+    for r, src in todo:
+        cell = old_cell(atlasdir, src[1], src[2]) if isinstance(src, tuple) else load_hd(src)
+        if cell is None:
+            r[C_HPAGE] = r[C_HCELL] = "-"
+            failed += 1
+            continue
+        p, c = first_page + slot // HD_PER_PAGE, slot % HD_PER_PAGE
+        if p != page_no:
+            if page_img is not None:
+                flush()
+            page_img = Image.new("RGB", (HD_PAGE_W, HD_PAGE_H), (18, 18, 22))
+            page_no, pages = p, pages + 1
+        x, y = (c % HD_COLS) * HD_W, (c // HD_COLS) * HD_PITCH
+        page_img.paste(cell, (x, y))
+        edge = cell.crop((0, HD_H - 1, HD_W, HD_H))
+        for k in range(HD_H, HD_PITCH):
+            page_img.paste(edge, (x, y + k))
+        r[C_HPAGE], r[C_HCELL] = str(p), str(c)
+        slot += 1
+        written += 1
+    if page_img is not None:
+        flush()
+    if not fill_missing:
+        for extra in range(page_no + 1, page_no + 32):
+            stale = os.path.join(atlasdir, "hd%d.jpg" % extra)
+            if os.path.exists(stale):
+                os.remove(stale)
+                print("  removed stale %s" % stale)
+    if failed:
+        raise RuntimeError('%d image decodes failed; metadata not replaced' % failed)
+    with open(meta_path + ".tmp", "w", encoding="utf-8", newline="\n") as f:
+        for h in head:
+            f.write(h + "\n")
+        for r in rows:
+            f.write(" ".join(r) + "\n")
+    os.replace(meta_path + ".tmp", meta_path)
+    if report:
+        print("\n  hd: %d cells over %d page(s), %d per page, %dx%d on a %d pitch"
+              % (written, pages, HD_PER_PAGE, HD_W, HD_H, HD_PITCH))
+    return written, pages
 
 
 def load_cell(path):
@@ -281,6 +415,8 @@ def main():
     ap.add_argument("--start-page", type=int, help="first new page for fill-missing; must exceed existing pages")
     ap.add_argument("--cell-width", type=int, choices=(128,256,512), default=128,
                     help="128 is the game atlas contract; larger values are offline export layouts")
+    ap.add_argument("--hd", action="store_true",
+                    help="the 160x90 atlas (gfx/mapthumbs/hd<N>.jpg, mapmeta columns 13/14)")
     a = ap.parse_args()
 
     global SHOTS, FETCHED, KSFSHOTS, FALLBACK_IMAGES, THUMB_IDS
@@ -305,6 +441,13 @@ def main():
         raise SystemExit("%s not found -- run mapmeta.py first" % meta)
 
     print("packing from %s" % os.path.join(a.momentum, "_cache", "images"))
+    if a.hd:
+        if a.cell_width != 128 or a.start_page is not None or a.limit:
+            ap.error("--hd takes no --cell-width, --start-page or --limit")
+        CELL_W, CELL_H = HD_W, HD_H     # source_for: the smallest image this size or larger
+        n, pages = build_hd(a.momentum, meta, atlasdir, a.fill_missing, a.report)
+        print("\npacked %d hd thumbnails, patched %s" % (n, meta))
+        return
     if a.fill_missing and CELL_W != 128: ap.error('fill-missing preserves the game 128px atlas contract')
     n, pages = build(a.momentum, meta, atlasdir, a.limit, a.report, a.fill_missing, a.start_page)
     with open(os.path.join(atlasdir, 'layout.json'), 'w', encoding='utf-8') as f:

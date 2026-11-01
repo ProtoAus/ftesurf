@@ -3715,6 +3715,87 @@ string() HUD_MapClockText =
 	return strcat("time left ", Time_Clock(left));
 };
 
+// P1178 (Lex): "by <author>" under the map name, from this PC's map table (mapmeta
+// column 12). CSQC may read data/mapmeta*.txt (QC_MenuTable refuses only changes); the
+// newer `# stamp` of the shipped and the fetched copy wins, as the menu's Mmm_MetaPath.
+// 128 lines a frame until the row is found; a map change starts again.
+string hud_au_map, hud_au_text;
+float hud_au_zoned;
+var filestream hud_au_fh = -1;
+
+string(string path) HUD_AuthorStamp =
+{
+	local filestream fh;
+	local string ln, st;
+	local float i;
+	fh = fopen(path, FILE_READ);
+	if (fh < 0)
+		return "";
+	st = "";
+	for (i = 0; i < 40; i = i + 1)
+	{
+		ln = fgets(fh);
+		if not (ln)
+			break;
+		if (substring(ln, 0, 8) == "# stamp ")
+		{
+			st = substring(ln, 8, 14);
+			break;
+		}
+	}
+	fclose(fh);
+	return st;
+};
+
+string() HUD_MapAuthor =
+{
+	local string m, ln, path;
+	local float i;
+	m = strtolower(serverkey("map"));
+	if (!hud_au_zoned || strcmp(m, hud_au_map))
+	{
+		if (hud_au_fh >= 0)
+			fclose(hud_au_fh);
+		hud_au_fh = -1;
+		if (hud_au_zoned)
+		{
+			strunzone(hud_au_map);
+			strunzone(hud_au_text);
+		}
+		hud_au_map = strzone(m);
+		hud_au_text = strzone("");
+		hud_au_zoned = TRUE;
+		path = "data/mapmeta.txt";
+		if (strcmp(HUD_AuthorStamp("data/mapmeta.net.txt"), HUD_AuthorStamp(path)) > 0)
+			path = "data/mapmeta.net.txt";
+		if (m != "")
+			hud_au_fh = fopen(path, FILE_READ);
+	}
+	for (i = 0; i < 128; i = i + 1)
+	{
+		if (hud_au_fh < 0)
+			break;
+		ln = fgets(hud_au_fh);
+		if not (ln)
+		{
+			fclose(hud_au_fh);
+			hud_au_fh = -1;
+			break;
+		}
+		if (substring(ln, 0, 5) != "meta ")
+			continue;
+		if (tokenize(ln) < 13)
+			continue;
+		if (strcmp(strtolower(argv(1)), m))
+			continue;
+		strunzone(hud_au_text);
+		hud_au_text = strzone(MapAuthor_Text(argv(12)));
+		fclose(hud_au_fh);
+		hud_au_fh = -1;
+	}
+	return hud_au_text;
+};
+
 void(vector scr) HUD_DrawMapInfo =
 {
 	local vector p, bp, col;
@@ -3782,6 +3863,15 @@ void(vector scr) HUD_DrawMapInfo =
 	tw = stringwidth(s, TRUE, [sz, sz]);    if (tw > bw) bw = tw;
 	HUD_TextR(p, s, sz, '0.70 0.75 0.84', 0.95);
 	p_y = p_y + lh;
+
+	s = HUD_MapAuthor();
+	if (s != "")
+	{
+		s = strcat("by ", s);
+		tw = stringwidth(s, TRUE, [sz, sz]); if (tw > bw) bw = tw;
+		HUD_TextR(p, s, sz, '0.55 0.60 0.68', 0.95);
+		p_y = p_y + lh;
+	}
 
 	s = HUD_MapTier();
 	tw = stringwidth(s, TRUE, [sz, sz]);    if (tw > bw) bw = tw;

@@ -145,6 +145,7 @@ import json
 import os
 import struct
 import sys
+import unicodedata
 import zlib
 from collections import Counter
 
@@ -277,7 +278,7 @@ class Meta:
 
     __slots__ = ("name", "tier", "linear", "stages", "bonuses",
                  "thumb", "mode", "page", "cell", "origin", "tsrc", "status",
-                 "ktier")
+                 "ktier", "author", "hpage", "hcell")
 
     def __init__(self, name):
         self.name = name
@@ -293,6 +294,9 @@ class Meta:
         self.tsrc = TS_NONE   # where `tier` came from; column 10
         self.status = None    # MapStatus, for the report and the merge rule
         self.ktier = None     # KSF's tier whatever column 2 says; column 11
+        self.author = None    # [names]; column 12, author_token()
+        self.hpage = None     # P1178: the 160x90 atlas (gfx/mapthumbs/hd<N>.jpg); 13/14
+        self.hcell = None
 
     def field(self, v):
         if v is None:
@@ -306,13 +310,82 @@ class Meta:
         # with n < 10 and reads argv(10) only when present; the engine
         # (SV_MapMetaLookup) stops at column 10.  So an older reader sees exactly
         # the file it always did -- the same additive rule the .rec header follows.
-        return "meta %s %s %s %s %s %s %s %s %s %s %s" % (
+        # Columns 12-14 (P1178) follow the same rule; the menu's net-table check
+        # takes 10-16 tokens, so 15 still passes an older menu.
+        return "meta %s %s %s %s %s %s %s %s %s %s %s %s %s %s" % (
             self.name,
             self.field(self.tier), self.field(self.linear),
             self.field(self.stages), self.field(self.bonuses),
             self.field(self.page), self.field(self.cell),
             self.field(self.thumb), self.field(self.mode),
-            self.tsrc, self.field(self.ktier))
+            self.tsrc, self.field(self.ktier), author_token(self.author),
+            self.field(self.hpage), self.field(self.hcell))
+
+
+# P1178: column 12, the mapper(s) as one token the menu's net-table check accepts
+# ([A-Za-z0-9_.-], at most 64).  Letters and digits stand; '_' is a space; every
+# other byte of the UTF-8 is '.' and two lower-case hex digits.  '-' alone is unknown.
+AUTHOR_MAX = 64
+
+
+def author_esc(text):
+    out = []
+    for ch in text:
+        if ch.isascii() and ch.isalnum():
+            out.append(ch)
+        elif ch == " ":
+            out.append("_")
+        else:
+            out.extend(".%02x" % b for b in ch.encode("utf-8"))
+    return "".join(out)
+
+
+def author_clean(name):
+    """One display name: no control/format characters, no '^' (a colour code in
+    FTE text), whitespace collapsed.  "" when nothing is left."""
+    name = unicodedata.normalize("NFC", str(name or ""))
+    name = "".join(" " if c.isspace() else c for c in name
+                   if c == " " or c.isspace() or (unicodedata.category(c)[0] != "C" and c != "^"))
+    return " ".join(name.split())
+
+
+def author_token(names):
+    seen, keep = set(), []
+    for n in names or ():
+        n = author_clean(n)
+        if n and n.lower() not in seen:
+            seen.add(n.lower())
+            keep.append(n)
+    if not keep:
+        return "-"
+    for k in range(len(keep), 0, -1):
+        text = ", ".join(keep[:k]) + ("" if k == len(keep) else " +%d" % (len(keep) - k))
+        tok = author_esc(text)
+        if len(tok) <= AUTHOR_MAX:
+            return tok
+    tok = ""
+    for ch in keep[0]:              # one very long name: whole characters only
+        nxt = tok + author_esc(ch)
+        if len(nxt) > AUTHOR_MAX:
+            break
+        tok = nxt
+    return tok or "-"
+
+
+def author_text(tok):
+    """author_token's inverse, for tests and reports."""
+    if tok in ("", "-"):
+        return ""
+    raw, i = bytearray(), 0
+    while i < len(tok):
+        c = tok[i]
+        if c == ".":
+            raw.append(int(tok[i + 1:i + 3], 16))
+            i += 3
+            continue
+        raw += b" " if c == "_" else c.encode("ascii")
+        i += 1
+    return raw.decode("utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -472,6 +545,14 @@ def from_cache(m):
 
     thumb = m.get("thumbnail") or {}
     meta.thumb = thumb.get("id")
+    # P1178: Momentum's credit type 0 is Author (1 contributor, 2 tester, 3 thanks).
+    # A submission's authors without a Momentum account are submission.placeholders.
+    meta.author = [(c.get("user") or {}).get("alias") for c in m.get("credits") or []
+                   if isinstance(c, dict) and c.get("type") == 0]
+    sub = m.get("submission") if isinstance(m.get("submission"), dict) else {}
+    meta.author += [c.get("alias") for c in sub.get("placeholders") or []
+                    if isinstance(c, dict) and c.get("type") == 0]
+    meta.author = meta.author or None
     meta.origin = "cache"
     return meta
 
@@ -633,6 +714,7 @@ def alias_rows(metas, stats, report=False):
         meta.tier, meta.linear = src.tier, src.linear
         meta.stages, meta.bonuses = src.stages, src.bonuses
         meta.thumb, meta.mode, meta.status = src.thumb, src.mode, src.status
+        meta.author = src.author
         meta.origin = "alias/" + src.name
         meta.tsrc = TS_ALIAS if src.tier is not None else TS_NONE
         metas[nm] = meta
@@ -770,7 +852,27 @@ def ksf_rows(metas, ksf, zones, stats):
 
 
 # ---------------------------------------------------------------------------
-def build(momentum, override_path, report=False, ksf_path=None, gamedir=GAMEDIR):
+def ksf_mappers(cache, name):
+    """tools/ksfmappers.py's cached answer for one name: [names], [] for none or not asked."""
+    try:
+        with open(os.path.join(cache, name + ".json"), encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    return [m for m in doc.get("mappers") or [] if isinstance(m, str) and m] if doc.get("found") else []
+
+
+def ksf_authors(metas, cache, stats):
+    """P1178: KSF's mappers for rows Momentum credits nobody on (Momentum's credit wins)."""
+    if not cache or not os.path.isdir(cache):
+        return
+    for key, meta in metas.items():
+        if not meta.author:
+            meta.author = ksf_mappers(cache, key) or None
+            stats["ksf-author"] += bool(meta.author)
+
+
+def build(momentum, override_path, report=False, ksf_path=None, gamedir=GAMEDIR, ksf_mappers=None):
     metas = {}          # lowercased name -> Meta
     stats = Counter()
 
@@ -853,6 +955,7 @@ def build(momentum, override_path, report=False, ksf_path=None, gamedir=GAMEDIR)
     kzones = scan_zone_dir(os.path.join(gamedir, "maps", "zones", "local"),
                            "gamedir", dict(zones))
     ksf_rows(metas, ksf, kzones, stats)
+    ksf_authors(metas, ksf_mappers, stats)
     print("  %-24s %5d maps: ktier on %d existing rows, %d rows added "
           "(%d with zone counts)"
           % (os.path.basename(ksf_path or "-"), len(ksf), stats["ksf-ktier"],
@@ -939,7 +1042,11 @@ def keep_atlas(metas, out):
             meta = metas.get(t[1].lower())
             if meta is None or meta.page is not None:
                 continue
-            if t[6] == "-" or t[7] == "-" or t[8] != meta.field(meta.thumb):
+            if t[8] != meta.field(meta.thumb):
+                continue
+            if len(t) > 14 and t[13].isdigit() and t[14].isdigit():     # P1178 hd cell
+                meta.hpage, meta.hcell = int(t[13]), int(t[14])
+            if t[6] == "-" or t[7] == "-":
                 continue
             try:
                 meta.page, meta.cell = int(t[6]), int(t[7])
@@ -980,7 +1087,9 @@ def write(metas, out, momentum=None):
         f.write("# written by tools/mapmeta.py -- do not edit, use "
                 "data/mapmeta_override.txt\n")
         f.write("# meta <name> <tier> <linear> <stages> <bonuses> <page> <cell> "
-                "<thumbuuid> <mode> <tsrc> <ktier>\n")
+                "<thumbuuid> <mode> <tsrc> <ktier> <author> <hpage> <hcell>\n")
+        f.write("# author: letters/digits as they are, '_' a space, '.hh' any other "
+                "UTF-8 byte; hpage/hcell: gfx/mapthumbs/hd<N>.jpg (160x90)\n")
         f.write("# '-' means unknown, and is not the same as 0.  page/cell are "
                 "filled in by mapthumbs.py.\n")
         f.write("# tsrc: rank = a ranked leaderboard tier; sugg = a SUBMITTER'S "
@@ -1078,6 +1187,7 @@ def main():
     ap.add_argument("--override",
                     help="hand-edited override table (<gamedir>/data/mapmeta_override.txt)")
     ap.add_argument("--ksf", help="KSF's roster (<gamedir>/data/ksf_roster.csv)")
+    ap.add_argument("--ksf-mappers", help="tools/ksfmappers.py's cache (<gamedir>/data/mapmedia/ksf)")
     ap.add_argument("--report", action="store_true",
                     help="print coverage stats and write nothing")
     ap.add_argument("--check", metavar="MAP", help="dump one map's raw leaderboards")
@@ -1104,7 +1214,8 @@ def main():
 
     print("reading %s" % a.momentum)
     metas = build(a.momentum, override, report=a.report, ksf_path=ksf,
-                  gamedir=a.gamedir)
+                  gamedir=a.gamedir,
+                  ksf_mappers=a.ksf_mappers or os.path.join(data, "mapmedia", "ksf"))
 
     # --report is READ-ONLY.  It used to fall through to write(), so asking for
     # the stats rewrote the table as a side effect -- see the module docstring.

@@ -131,4 +131,90 @@ class Media(unittest.TestCase):
         self.assertEqual(got, {'surf_corrosion': (6, ''), 'surf_untiered': (None, '')})
 
 
+class P1178(unittest.TestCase):
+    FIELD = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.')
+
+    def test_author_token_fits_the_menu_field_check_and_round_trips(self):
+        import mapmeta as mm
+        cases = [(['ArcticPanda'], 'ArcticPanda'), (['Sneaky Weasel', 'rio.'], 'Sneaky Weasel, rio.'),
+                 (['\u00dcber', '\u65e5\u672c'], '\u00dcber, \u65e5\u672c'), (['^1Red\x07  Name'], '1Red Name'),
+                 (['-'], '-'), ([], ''), (None, '')]
+        for names, text in cases:
+            tok = mm.author_token(names)
+            self.assertTrue(1 <= len(tok) <= 64 and set(tok) <= self.FIELD, tok)
+            self.assertEqual(mm.author_text(tok), text)
+        tok = mm.author_token(['x' * 20, 'y' * 20, 'z' * 20, 'w' * 20])
+        self.assertEqual(mm.author_text(tok), 'x' * 20 + ', ' + 'y' * 20 + ' +2')
+        self.assertEqual(len(mm.author_token(['a' * 80])), 64)
+        self.assertEqual(mm.author_token(['   ']), '-')
+
+    def test_momentum_author_is_credit_type_zero(self):
+        import mapmeta as mm
+        rec = dict(name='surf_fixture', leaderboards=[], credits=[
+            dict(type=1, user=dict(alias='Helper')), dict(type=0, user=dict(alias='Maker')),
+            dict(type=0, user=dict(alias='Second')), dict(type=2, user=dict(alias='Tester'))])
+        rec['submission'] = dict(placeholders=[dict(alias='NoAccount', type=0), dict(alias='Thanks', type=3)])
+        meta = mm.from_cache(rec)
+        self.assertEqual(meta.author, ['Maker', 'Second', 'NoAccount'])
+        rec['submission']['placeholders'] = []
+        meta = mm.from_cache(rec)
+        self.assertEqual(meta.author, ['Maker', 'Second'])
+        t = meta.line().split()
+        self.assertEqual(len(t), 15)
+        self.assertEqual(mm.author_text(t[12]), 'Maker, Second')
+        self.assertEqual(t[13:], ['-', '-'])
+
+    def test_hd_atlas_packs_every_row_and_never_touches_old_cells(self):
+        import mapthumbs as t
+        other = 'aaaaaaaa-abcd-1234-abcd-123456789abc'
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); images = root / 'images'; images.mkdir(); atlas = root / 'atlas'; atlas.mkdir()
+            Image.new('RGB', (480, 270), (200, 10, 10)).save(images / (other + '-small.jpg'))
+            page = Image.new('RGB', (2048, 2048), (0, 0, 0))
+            page.paste(Image.new('RGB', (128, 72), (10, 200, 10)), (5 * 128, 0))
+            page.save(atlas / 'atlas0.png')
+            rows = ['meta surf_gone 1 1 1 0 0 5 ' + U + ' 1 rank -',
+                    'meta surf_red 1 1 1 0 - - ' + other + ' 1 rank - Maker',
+                    'meta surf_none 1 1 1 0 - - - 1 rank -']
+            meta = root / 'mapmeta.txt'; meta.write_text('FTESURF-MAPMETA 1\n' + '\n'.join(rows) + '\n')
+            with patch.object(t, 'FETCHED', str(images)), patch.object(t, 'KSFSHOTS', str(images / 'ksf')), \
+                    patch.object(t, 'SHOTS', str(root)):
+                self.assertEqual(t.build_hd('absent', str(meta), str(atlas)), (2, 1))
+            got = [l.split() for l in meta.read_text().splitlines()[1:]]
+            self.assertEqual([r[6:8] for r in got], [['0', '5'], ['-', '-'], ['-', '-']])
+            self.assertEqual([r[13:15] for r in got], [['0', '0'], ['0', '1'], ['-', '-']])
+            self.assertEqual(got[1][12], 'Maker')
+            with Image.open(atlas / 'hd0.jpg') as im:
+                self.assertEqual(im.size, (1920, 2016))
+                im = im.convert('RGB')
+                self.assertGreater(im.getpixel((80, 45))[1], 150)           # the old green cell, scaled
+                self.assertGreater(im.getpixel((240, 45))[0], 150)          # the red source
+                self.assertEqual(im.getpixel((240, 93)), im.getpixel((240, 89)))   # padding repeats the edge
+            self.assertEqual((atlas / 'atlas0.png').stat().st_size > 0, True)
+            # fill-missing: a new row goes on a NEW page, existing cells stay put.
+            meta.write_text(meta.read_text() + 'meta surf_new 1 1 1 0 - - ' + other + ' 1 rank -\n')
+            with patch.object(t, 'FETCHED', str(images)), patch.object(t, 'KSFSHOTS', str(images / 'ksf')), \
+                    patch.object(t, 'SHOTS', str(root)):
+                self.assertEqual(t.build_hd('absent', str(meta), str(atlas), fill_missing=True), (1, 1))
+            got = [l.split() for l in meta.read_text().splitlines()[1:]]
+            self.assertEqual([r[13:15] for r in got], [['0', '0'], ['0', '1'], ['-', '-'], ['1', '0']])
+
+    def test_refresh_lists_hd_pages_and_gates_their_loss(self):
+        import mapmedia_refresh as r
+        with tempfile.TemporaryDirectory() as d:
+            g = Path(d); (g / 'gfx' / 'mapthumbs').mkdir(parents=True)
+            (g / 'gfx' / 'mapthumbs' / 'hd0.jpg').write_bytes(b'x' * 7)
+            (g / 'gfx' / 'mapthumbs' / 'atlas0.png').write_bytes(b'y' * 3)
+            t = g / 'mapmeta.txt'
+            t.write_text('FTESURF-MAPMETA 1\n# hd 0 1\nmeta surf_a 1 1 1 0 0 0 - 1 rank - - 0 0\n')
+            r.stamp(str(t), str(g), ('', []), True)
+            lines = t.read_text().splitlines()
+            self.assertIn('# hd 0 7', lines)
+            self.assertIn('# atlas 0 3', lines)
+            self.assertEqual(sum(l.startswith('# hd ') for l in lines), 1)
+            old = {('meta', 'surf_%d' % i): ('1', '-', '-', '0') for i in range(40)}
+            new = {k: ('1', '-', '-', '-') for k in old}
+            self.assertEqual(len(r.losses(old, new)[2]), 40)
+
+
 if __name__ == '__main__': unittest.main()
