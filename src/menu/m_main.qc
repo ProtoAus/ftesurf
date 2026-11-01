@@ -8340,6 +8340,14 @@ void(vector screensize) m_draw =
 		screensize = fullsize;
 		MH_Tabs(screensize);
 	}
+	if (MFP_IsOpen())
+	if (menu_screen != SCREEN_TERMS)
+	{
+		_action_elements_index = 0;
+		sui_fill('0 0 0', screensize, '0 0 0', 0.65, 0);
+		content = [min(740, screensize_x - 24), min(680, screensize_y - 24)];
+		MFP_Draw((screensize - content) * 0.5, content);
+	}
 	MU_Hint(screensize);
 	MM_DrawFps(screensize);
 	sui_menu_nav();
@@ -8385,6 +8393,7 @@ void() m_close =
 	*/
 	ui_join_cancel();
 	Mlb_Close("menu closed");
+	MFP_Close();
 	MM_Close();
 
 	setkeydest(0);
@@ -8430,6 +8439,13 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 	if (sui_text_has_focus("mc_text"))
 	{
 		MC_Send();
+		return TRUE;
+	}
+	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE)
+	if (MFP_IsOpen())
+	{
+		MFP_Close();
+		sui_text_unfocus();
 		return TRUE;
 	}
 	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_CHAT)
