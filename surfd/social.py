@@ -19,6 +19,7 @@ from flask import Response, request
 import accounts
 import viewmodel
 import inventory
+import playstats
 
 MAX_FRIENDS = 128
 PRESENCE_TTL = 16
@@ -103,7 +104,8 @@ def issue(db, pub, sid, node, now, old_token=""):
     # legitimately prove the same key on two simultaneous connections.
     db.execute("INSERT INTO social_sessions(token,pub,steamid,node,issued,ack) VALUES(?,?,?,?,?,?)",
                (digest(token), pub, sid, node, now, ack))
-    return {"social": token, "social_who": accounts.who_of(sid)}
+    return {"social": token, "social_who": accounts.who_of(sid),
+            "activity_binding": playstats.binding(db, pub, sid)}
 
 
 def session(db, token, node, now):
@@ -599,6 +601,42 @@ def register(app, d):
                 _activities.pop(token, None)
             return reply({"ok": 0, "error": "friends unavailable"}, 503)
         return reply({"ok": 1, "players": out})
+
+    @app.post("/api/social/playstats")
+    def play_statistics():
+        now, node, early = auth()
+        if early is not None:
+            return early
+        # The lobby's own record of the player's online answer (FS_TERMS_ONLINE, 8 since P923).
+        consent = request.form.get('consent', '')
+        if re.fullmatch(r'[0-9]{1,3}', consent) is None or int(consent) < 8:
+            return reply({'ok': 0, 'error': 'Accept the online terms in the game'}, 403)
+        try:
+            stream = request.form.get('stream', '')
+            seconds, attempts = playstats.parse(stream, request.form.get('seconds', ''),
+                                                request.form.get('attempts', ''))
+            mapname = d.clean_map(request.form.get('map', ''))
+            if not mapname:
+                raise ValueError('Bad statistics map')
+            db = d.get_db()
+            with db:
+                db.execute('BEGIN IMMEDIATE')
+                owner = session(db, request.form.get('token', ''), node, now)
+                if owner is None:
+                    return reply({'ok': 0, 'error': 'Link Steam on this lobby first'}, 403)
+                capture = request.form.get('binding', '')
+                if (re.fullmatch(r'[0-9a-f]{32}', capture) is None or
+                        not hmac.compare_digest(capture, playstats.binding(
+                            db, owner['pub'], owner['steamid']))):
+                    raise ValueError('Activity belongs to an earlier account association')
+                if not d.rate_ok(owner['steamid'], now, 240, 'play-statistics'):
+                    return reply({'ok': 0, 'error': 'Statistics busy; retry later'}, 429)
+                playstats.store(db, owner['steamid'], node, stream, mapname, seconds, attempts, now)
+        except ValueError as error:
+            return reply({'ok': 0, 'error': str(error)}, 400)
+        except sqlite3.Error:
+            return reply({'ok': 0, 'error': 'Statistics unavailable'}, 503)
+        return reply({'ok': 1})
 
     @app.post("/api/social/viewmodel")
     def viewmodel_settings():

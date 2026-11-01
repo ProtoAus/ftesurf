@@ -21,8 +21,11 @@ SCHEMA_FILES = {19: FILES, 20: FILES | {"accounts.py", "social.py"},
                 22: FILES | {"accounts.py", "social.py"},
                 23: FILES | {"accounts.py", "social.py", "viewmodel.py"},
                 24: FILES | {"accounts.py", "social.py", "viewmodel.py"},
-                25: FILES | {"accounts.py", "social.py", "viewmodel.py", "inventory.py"}}
+                25: FILES | {"accounts.py", "social.py", "viewmodel.py", "inventory.py"},
+                26: FILES | {"accounts.py", "social.py", "viewmodel.py", "inventory.py", "playstats.py"}}
 
+
+CURRENT_FAMILY_FILES = frozenset(['accounts.py', 'admin.py', 'b65stub.py', 'b66stub.py', 'hidupload.py', 'ksfgrab.py', 'ksfimport.py', 'ksfprofile.py', 'ksftopup.py', 'mapmanifest.py', 'mapwatch.py', 'mkadminpw.py', 'momboards.py', 'momdates.py', 'momfetch.py', 'momgrab.py', 'momindex.py', 'momrequest.py', 'momwatch.py', 'msml.py', 'p357board.py', 'p371stub.py', 'rcon.py', 'recplot.py', 'simcheck.py', 'social.py', 'steam.py', 'steamsync.py', 'surfd.py', 'sweep.py', 'templates/_admin_style.html', 'templates/admin.html', 'templates/admin_accounts.html', 'templates/admin_login.html', 'templates/admin_maps.html', 'templates/admin_run.html', 'templates/admin_runs.html', 'test_accounts.py', 'test_admin.py', 'test_admin_association_bounds.py', 'test_admin_log_bounds.py', 'test_admin_metrics.py', 'test_admin_similarity.py', 'test_board.py', 'test_evidence.py', 'test_join.py', 'test_ksfimport.py', 'test_mappool.py', 'test_momboards.py', 'test_momgrab.py', 'test_momindex.py', 'test_momrequest.py', 'test_ranked.py', 'test_receipt_angle_reasons.py', 'test_receipt_identity.py', 'test_receipt_late_hid.py', 'test_receipt_late_rec.py', 'test_receipt_late_view.py', 'test_recplot.py', 'test_recplot_budget.py', 'test_recsim_observations.py', 'test_replays.py', 'test_simcheck.py', 'test_surfd.py', 'test_sweep.py', 'test_verifier_counts.py', 'test_verifier_finish.py', 'test_verifier_sources.py', 'test_web.py', 'tools/ksfconvert.py', 'tools/ksfreplay_info.py', 'viewmodel.py', 'web/board.css', 'web/board.html', 'web/board.js', 'web/link.css', 'web/runview.js', 'web/watch.css', 'web/watch.html', 'web/watch.js', 'zonefit.py'])
 
 def target_schema(m):
     # Keyless manifests retain their original schema19 meaning; never infer from receipts.
@@ -64,18 +67,41 @@ def read_json(path, private=False):
 
 def manifest_check(m):
     keys = {"generation", "source_home", "hashes", "routes"}
-    optional = {"target_schema", "runtime_profile"}
+    optional = {"target_schema", "runtime_profile", "external_python"}
     require(type(m) is dict and keys <= set(m) <= keys | optional, "malformed manifest")
     schema = target_schema(m)
     files = SCHEMA_FILES[schema]
     if "runtime_profile" in m:
-        require(schema in (20, 22, 23, 24, 25) and m["runtime_profile"] == "hid-v1", "unsupported runtime_profile")
-        files = files | {"hidupload.py"}
+        if m["runtime_profile"] == "current81-v1":
+            require(schema == 24, "current81-v1 requires explicit schema24")
+            files = CURRENT_FAMILY_FILES
+        elif m["runtime_profile"] == "inventory82-v1":
+            require(schema == 25, "inventory82-v1 requires explicit schema25")
+            files = CURRENT_FAMILY_FILES | {"inventory.py"}
+        elif m["runtime_profile"] == "activity83-v1":
+            require(schema == 26, "activity83-v1 requires explicit schema26")
+            files = CURRENT_FAMILY_FILES | {"inventory.py", "playstats.py"}
+        else:
+            require(schema in (20, 22, 23, 24, 25, 26) and m["runtime_profile"] == "hid-v1", "unsupported runtime_profile")
+            files = files | {"hidupload.py"}
     require(type(m["generation"]) is str and
             re.fullmatch("[0-9a-f]{40}", m["generation"]), "full generation SHA required")
     require(plain_path(m["source_home"]).is_dir(), "missing source home")
     require(type(m["hashes"]) is dict and set(m["hashes"]) == files,
             "exact schema%d/profile raw hash set required" % schema)
+    if m.get("runtime_profile") in ("current81-v1", "inventory82-v1", "activity83-v1"):
+        external = m.get("external_python")
+        require(type(external) is dict and set(external) == {"momimport", "momreimport", "momreplay"},
+                "exact three-converter external source closure required")
+        for name, item in external.items():
+            require(type(item) is dict and set(item) == {"origin", "sha256"}, "external source shape")
+            require(type(item["origin"]) is str and plain_path(item["origin"]).is_file() and
+                    Path(item["origin"]).name == name + ".py", "external source origin")
+            require(type(item["sha256"]) is str and re.fullmatch("[0-9a-f]{64}", item["sha256"]), "external source hash")
+        require(len({str(Path(item["origin"]).parent) for item in external.values()}) == 1,
+                "converter closure must share selected tools directory")
+    else:
+        require("external_python" not in m, "external closure requires explicit current81/schema24, inventory82/schema25 or activity83/schema26")
     for digest in m["hashes"].values():
         require(type(digest) is str and re.fullmatch("[0-9a-f]{64}", digest), "bad hash")
     require(type(m["routes"]) is dict and bool(m["routes"]), "routes required")
@@ -101,6 +127,16 @@ def verify_hashes(m):
         require(hashed.hexdigest() == digest,
                 "target source raw hash mismatch: " + name)
 
+    for name, item in m.get("external_python", {}).items():
+        p = plain_path(item["origin"])
+        fd = os.open(p, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as source:
+            meta = os.fstat(source.fileno())
+            require(stat.S_ISREG(meta.st_mode) and meta.st_nlink == 1 and
+                    meta.st_uid == os.geteuid() and not meta.st_mode & 0o022, "unsafe external source")
+            actual = hashlib.sha256(source.read()).hexdigest()
+        require(actual == item["sha256"], "external source raw hash mismatch: " + name)
+
 
 def write_new(path, data):
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -119,10 +155,15 @@ def sync_dir(path):
         os.close(fd)
 
 
-def state_write(root, state):
+def state_write(root, state, not_after_ns=None):
     temp = root / ("state-" + uuid.uuid4().hex)
     write_new(temp, state)
-    os.replace(temp, root / "state.json")
+    try:
+        if not_after_ns is not None:
+            require(time.monotonic_ns() < not_after_ns, "OPEN deadline expired; remains CLOSED")
+        os.replace(temp, root / "state.json")
+    finally:
+        if temp.exists(): temp.unlink()
     sync_dir(root)
 
 
@@ -208,6 +249,7 @@ def main():
     candidate.add_argument("--generation", required=True)
     candidate.add_argument("--route", required=True)
     candidate.add_argument("--authorization", required=True)
+    parser.add_argument("--open-deadline-ns", type=int)
     a = parser.parse_args()
     require(math.isfinite(a.timeout) and 0 <= a.timeout <= 300, "invalid timeout")
     root = plain_path(a.state_dir)
@@ -331,7 +373,7 @@ def main():
                 finally:
                     os.close(lifetime)
                 s["admission"] = "OPEN"
-                state_write(root, s)
+                state_write(root, s, not_after_ns=a.open_deadline_ns)
                 print("OPEN: external receipt consumed; not independently attested")
         finally:
             if controller is not None:
