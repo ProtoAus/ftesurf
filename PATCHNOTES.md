@@ -32,8 +32,7 @@
 - TAS pause, frame advance, retained rewind and input replay can use a selected 10ms Source clock as well as the existing 15ms clock. Default movement timing is unchanged.
 - Clock changes stop queued TAS work instead of silently reusing it. Reload the map after changing its clock before starting a new timeline. TAS remains assisted practice.
 
-### Collectors (prepared; pending guarded backend rollout)
-
+### P1142 Collector recovery (pending backend rollout)
 - Steam sign-in queues paced Momentum and KSF personal-best refreshes. Collector retries keep unrelated work moving; catalogue changes no longer shift a pending KSF stage walk. This update is not active on the live backend yet.
 
 ## 0.1.34 2026-11-01
