@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1187 one chat: lobbies and the main menu
+Live on all 12 lobbies and both installs since 2 Nov 05:01 local (18:01Z 1 Nov), combined with P1178.
+Please check with your linked account: in a lobby, open chat (it should say "to everyone"),
+type a line and press Enter. Players in your lobby see it as normal chat; the main menu chat
+and the other lobbies see it as "[#N] you: ...". TAB switches to "to this lobby" (not sent
+elsewhere). A line typed in the main menu shows in lobbies as "[menu] you: ...". Not
+covered by the arm: the real backend and real Steam links (it used a stand-in), and how a
+busy evening's volume feels.
+
 ## P1178 Maps list: snug rows, map authors, sharper pictures
 In both Windows installs since 2 Nov ~04:45 local (menu 055fda08, csprogs f557a642); the lobbies
 get the HUD line with 48's P1187 deploy. Please check, in the game from C:\FTESurf:

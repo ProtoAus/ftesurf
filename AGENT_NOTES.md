@@ -1,5 +1,17 @@
 # AGENT_NOTES.md
 
+## P1187 chat to everyone + P1178, LIVE (1 Nov 2026 18:01Z)
+
+Delivered QC base is now `origin/deploy/p1187-chat` d4b9bd87 = e2's P1178 093fbbe7 (on P1186's
+5f4293a7) + P1187's two commits; main 75dd89e3/3309d76e. qwprogs e7cdc83f, csprogs 65698384 (in
+tasrevd codes.txt, backup codes.txt.pre1187); installs keep e2's menu 055fda08 (the combined
+build reproduced it). `.prev`: Pi f0e66da4/310caf73, installs f0e66da4/f557a642. -PiForce
+dropped one player on lobby 1 after a 13-minute wait. Linked players' chat now leaves the lobby
+by default (posted to surfd's menu room, tagged [#N]); room posts have their own gate
+(social_roomreq) and are dropped silently when early. Arm: tools/p1187chat.py (fake surfd +
+test-only server fixture; 16/16). Room lines' `who` is surfd who_of = `*ahash`, not `*phash`
+(which is the guid's id on acct_mode 2 lobbies).
+
 ## P1178 Maps rows, map authors, the hd atlas — installs LIVE (1 Nov 2026 ~17:45Z)
 `origin/deploy/p1178-mapslist` 093fbbe7 = 5f4293a7 (P1186) + P1178's src (main 83702b06,
 9b0f0dde). Both installs: menu 055fda08, csprogs f557a642 (in tasrevd codes.txt, backup

@@ -21,6 +21,10 @@
 
 ## next
 
+### P1187 One chat for every lobby and the main menu
+- With a linked Steam account, what you type in a lobby's chat now reaches every lobby and the main menu chat, tagged with your lobby number. Press TAB (or the team chat key) to talk to this lobby only.
+- Lines from other lobbies show their number, like [#4], and lines from the main menu show [menu]. Commands starting with ! stay in your lobby.
+
 ### P1184 Zone editor: type a zone's exact size
 - The zone editor shows the selected zone's size and its six edges (x min/max, y min/max, bottom, top). Click one to type an exact number, or roll the wheel over it to move that edge a grid step.
 - `zone_edit face <xmin|xmax|ymin|ymax|bottom|top> <value>` does the same from the console.
