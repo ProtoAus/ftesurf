@@ -114,4 +114,21 @@ class Media(unittest.TestCase):
         self.assertEqual(rows[2]['source'], 'live-approved')
 
 
+    def test_catalogue_ksf_names_fill_only_own_unsheeted_rows(self):
+        # P1174: KSF's site names the sheet lacks get rows; a renamed second
+        # build (`of` set), a Momentum-only row and a sheet name do not.
+        import mapmeta
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d, 'mapdl.txt')
+            p.write_text('FTESURF-MAPDL 1\n'
+                         'dl surf_corrosion surf k 6 64962 2026-10-11 0 0 6 -\n'
+                         'dl surf_x_css surf k 4 1 2026-10-11 0 0 4 surf_x\n'
+                         'dl surf_mom surf m 2 1 2026-10-11 0 2 0 -\n'
+                         'dl surf_sheet surf k 3 1 2026-10-11 0 0 3 -\n'
+                         'dl surf_untiered surf k 0 1 2026-10-11 0 0 0\n'
+                         'dl kz_other kz k 2 1 2026-10-11 0 0 2 -\n')
+            got = mapmeta.read_catalogue_ksf(str(p), {'surf_sheet'})
+        self.assertEqual(got, {'surf_corrosion': (6, ''), 'surf_untiered': (None, '')})
+
+
 if __name__ == '__main__': unittest.main()

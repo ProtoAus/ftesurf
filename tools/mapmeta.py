@@ -716,6 +716,29 @@ def read_ksf(path):
     return out
 
 
+def read_catalogue_ksf(path, sheet=()):
+    """data/mapdl.txt (tools/mapscan.py, from the Pi's mapwatch) -> read_ksf()'s
+    shape, for KSF's own names its sheet lacks (P1174).  mapwatch reads
+    ksf.surf/maps, which on 1 Nov 2026 listed 16 surf maps the sheet did not, so
+    those had no row here: no picture, no tier.  A row naming another map in its
+    `of` column is a renamed second build (surf_x_css), not a name KSF uses."""
+    out = {}
+    if not os.path.exists(path):
+        return out
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        for raw in f:
+            t = raw.split()      # dl <name> <mode> <src> <tier> <kb> <first> <new> <mtier> <ktier> [<of>]
+            if len(t) < 10 or t[0] != "dl" or "k" not in t[3]:
+                continue
+            nm = t[1].lower()
+            if nm in sheet or (len(t) > 10 and t[10] != "-"):
+                continue
+            if not nm.startswith(("surf_", "bhop_")):
+                continue
+            out[nm] = (int(t[9]) if t[9].isdigit() and int(t[9]) > 0 else None, "")
+    return out
+
+
 def ksf_rows(metas, ksf, zones, stats):
     """ktier on every row KSF lists, and a row for each roster map with none.
 
@@ -823,6 +846,10 @@ def build(momentum, override_path, report=False, ksf_path=None, gamedir=GAMEDIR)
     # gamedir's maps/zones/local first, then Momentum's.  (A roster map with a
     # Momentum zone file already has a zone-only row, so only the first can add.)
     ksf = read_ksf(ksf_path) if ksf_path else {}
+    site = read_catalogue_ksf(os.path.join(gamedir, "data", "mapdl.txt"), ksf)
+    ksf.update(site)
+    if site:
+        print("  %-24s %5d KSF maps its sheet lacks" % ("mapdl.txt", len(site)))
     kzones = scan_zone_dir(os.path.join(gamedir, "maps", "zones", "local"),
                            "gamedir", dict(zones))
     ksf_rows(metas, ksf, kzones, stats)

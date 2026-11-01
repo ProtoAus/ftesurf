@@ -83,6 +83,9 @@ ROWS = PAGE // CELL_H                 # 28
 PER_PAGE = COLS * ROWS                # 448
 
 SHOT_EXTS = (".png", ".jpg", ".jpeg", ".tga", ".bmp")
+# A KSF name whose BSP is byte-identical to another map's, with no picture of its
+# own (ksf.surf 404): it shows that map's.  sha1 72c859a2 for both (P1174).
+SAME_BSP = {"surf_parrot_selector_h": "surf_parrot_selector"}
 FALLBACK_IMAGES = None
 THUMB_IDS = {}
 
@@ -129,6 +132,8 @@ def source_for(name, uuid, momentum):
         p = os.path.join(SHOTS, name + ext)
         if os.path.exists(p):
             return p
+    if name.lower() in SAME_BSP:
+        return source_for(SAME_BSP[name.lower()], "-", momentum)
     return None
 
 

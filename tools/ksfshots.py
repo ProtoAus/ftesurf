@@ -84,8 +84,11 @@ def get(url):
         raise Failed("HTTP %d" % e.code)
     except (urllib.error.URLError, http.client.HTTPException, OSError) as e:
         raise Failed(str(getattr(e, "reason", e)) or e.__class__.__name__)
-    # An error page saved as .jpg would only fail later, in mapthumbs.
-    if not body.startswith((b"\xff\xd8\xff", b"\x89PNG")):
+    # An error page saved as .jpg would only fail later, in mapthumbs.  KSF serves
+    # some pictures as WEBP under .jpg and image/jpeg (surf_froots2, P1174); the
+    # bytes decide, and mapthumbs' Pillow decodes all three.
+    if not (body.startswith((b"\xff\xd8\xff", b"\x89PNG"))
+            or (body[:4] == b"RIFF" and body[8:12] == b"WEBP")):
         raise Failed("not a picture (%s, %d bytes)" % (ctype or "no type", len(body)))
     return body
 
@@ -140,6 +143,10 @@ def main():
         sys.exit("no %s -- run tools/maproster.py fetch first" % roster)
 
     names = read_roster(roster)
+    # KSF's site lists maps its sheet does not (mapmeta.py makes their rows the same way).
+    sys.path.insert(0, HERE)            # python -I leaves the script's dir off the path
+    from mapmeta import read_catalogue_ksf
+    names += sorted(read_catalogue_ksf(os.path.join(a.gamedir, "data", "mapdl.txt"), set(names)))
     if a.only:
         want = [n.lower() for n in a.only]
         stray = [n for n in want if n not in names]
