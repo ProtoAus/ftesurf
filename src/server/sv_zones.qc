@@ -262,12 +262,16 @@ void(string action) SV_StartMarkCommand =
 // shareholder_value s2 -46 against 90. Such a spawn with exactly one
 // info_teleport_destination inside its zone faces it, as the map's teleports do.
 // A Set spawn stands off the centre and keeps its yaw. Not in Zone_Hash's table.
+// Momentum's mirrored files (zone_stamped) keep their zoners' yaws: of the shipped
+// library's 44 centred spawns only 3 would turn, and surf_shape's b1 -45 may be meant.
 void() SV_ZoneSpawnYaws =
 {
 	local float n, i, cnt, d;
 	local vector c, o;
 	local entity e, hit;
 
+	if (zone_stamped)
+		return;
 	for (n = 0; n < zone_count; n = n + 1)
 	{
 		if (zone_td_kind[n] != ZTD_POS || zone_npts[n] < 1)

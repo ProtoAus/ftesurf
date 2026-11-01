@@ -192,6 +192,7 @@ float  zone_source;                 // ZSRC_*
 string zone_mapname;                // what the tables were built for
 float  zone_overflow;               // hit a cap on this map
 float  zone_maxvel;                 // P841: the file's maxVelocity, 0 = none; not in zone_crc.
+float  zone_stamped;                // P1181: has Momentum's dataTimestamp, which our editor never writes
                                     // The server's cap comes from the engine (sv_phys.c).
 string zone_crc;                    // build 81: 8 hex of sha256 over the BUILT
                                     // table, "" until Zone_Hash runs.  See it.
@@ -1505,6 +1506,7 @@ float(string text, string path, float src) Zone_LoadJsonText =
 
 	Zone_Clear();
 	ok = TRUE;
+	zone_stamped = (json_get_value_type(json_find_object_child(root, "dataTimestamp")) == 1i);
 	// P841: as the engine takes it (sv_phys.c SV_LoadZoneRuleset): a number in 1..100000.
 	if (json_get_value_type(json_find_object_child(root, "maxVelocity")) == 1i)
 		zone_maxvel = json_get_float(json_find_object_child(root, "maxVelocity"));
