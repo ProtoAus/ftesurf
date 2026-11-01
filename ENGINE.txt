@@ -26,7 +26,8 @@ commit   844619bcfdac4bdb52fc8fa81093128e76308617
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1161
-patch    1161
+patch    1163
+# Patch 1163 (CSQC): soft ice-aura falloff replaces the hard inventory stroke; native pin and qcbuild unchanged.
 # Patch 1161: admitted read-only TAS row validation no longer requires native history; cold legal replay keeps explicit pool allocation and base-project loads preflight living/unheld bodies. Replay authority, movement, recording formats and human eligibility unchanged. Final images/canonical/fleet acceptance are separate; no qcbuild or release bump.
 # Patch 1160 (QC/backend): Steam-profile cosmetic inventory, persistent starter items, public equipped ice aura/paper hat and coloured role badges; Surf/Bhop-only map switch. Native pin and qcbuild unchanged.
 # Patch 1158: finite pre-cost jump stamina also uses the existing bounded gravity-use observer; model before native debit and retain only an accepted jump. No physical movement, captured field, API, format, flag, tier, qcbuild or release change. Serial Windows plugin packaging fixes reproduced parallel ZIP temporary-file failures. Final-tag/platform and native-only delivery limits: tools/p1158-gravity.md.

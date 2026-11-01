@@ -2210,6 +2210,25 @@ renderer; source and build in `src/viewer/` (its README). The bundle
   means it stopped drawing, and anything that runs from CSQC_UpdateView (the share pick)
   then never happens.
 
+## Inventory aura falloff (P1163, 2026-11-01)
+
+- A single expanded shell with a view-angle/Fresnel fade can compile and still
+  look like flat strokes on the low-poly player: flat normals do not supply a
+  silhouette-distance field. P1163's first real preview capture falsified that
+  approach. Sixteen normally expanded backface shells with integrated decreasing
+  weights produced the visible outward fade; ordinary depth testing remains.
+  Keep shader compilation, actual equipment, inspected appearance and owner
+  acceptance separate. Mesh-shell approximation is not JFA/pixel-width or
+  measured performance equivalence.
+- In an isolated QC worktree, build.ps1 writes that tree's gamedir plus QuakeDir
+  (default C:\FTEQuake), not magically C:\FTESurf too. Check actual targets before
+  delivery. Missing primary install was completed from the exact verified files
+  with preimage/.prev checks, without another build/restart. Pi ships two DATs,
+  not Windows LNOs. Do not require absent Pi LNOs in a postflight or label that
+  caller assumption data loss. Raw Windows Bash command transport can strip
+  backslashes even inside an inline Python heredoc: use the saved script or
+  bytes([92]) for Quake info separators, not a broken single-backslash literal.
+
 ## Paint held, presets, and two-player rigs (P773, 2026-10-18)
 
 - An inline `shaderforname` `glslprogram` gets the attribute prelude (`v_position`,

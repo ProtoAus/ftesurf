@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P1163 — soft inventory aura (pending appearance acceptance)
+
+Deployed in both Windows installs and all12 lobbies, verified1Nov2026
+00:57:55UTC. Source/hashes/rollback: `tools/profile-aura-p1163.md`.
+The owner rejected P1160's hard blue stroke. P1163 replaces it with a sixteen-
+layer, normal-expanded ice halo with decreasing weights, retaining ordinary
+scene depth testing. Native dedicated-socket off/on captures show the actor
+actually equipped and a cyan fade outside the body; the first single-shell
+view-angle approach was rejected from its own capture. No numerical performance
+or through-wall acceptance is claimed. After reconnecting, open `hud_player`
+and check the aura fades away from the body, the hat still toggles independently,
+and another player's aura is hidden when fully behind a wall. Confirm the look
+and ordinary playing smoothness. The original grid/toggle acceptance below is
+valid; the corrected aura's owner acceptance has not been received.
+
 ## P1160 — profile inventory / cosmetics (pending human acceptance)
 
 Game-side files are installed in both Windows roots and all 12 lobbies;

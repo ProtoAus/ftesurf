@@ -21,6 +21,9 @@
 
 ## next
 
+### P1163 Softer ice aura
+- The inventory's ice aura now fades outward from your player instead of drawing a hard blue stroke. Equipping the aura and paper hat still works independently.
+
 ### P1161 Fresh TAS project loads
 - TAS projects can load and replay in a fresh supported session without first building rewind history. Legal-start rewind keeps working from a fresh start.
 - Loading a TAS project while noclipping or held now refuses before changing your body or saved timeline. TAS remains assisted practice.

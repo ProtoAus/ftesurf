@@ -108,7 +108,8 @@ responses, and all 12 lobby directory rows continue to refresh.
 - The ice effect is an FTE-compatible depth-tested shell, not the supplied
   through-wall JFA pipeline. The owner confirmed the right-hand grid and item
   toggles work, but rejected the aura as a line stroke rather than the requested
-  soft fade. That visual failure is a follow-up, not accepted appearance. Other
+  soft fade. P1163 now deploys a layered fading halo; see
+  `profile-aura-p1163.md`. Its owner appearance acceptance is still pending. Other
   avatars/reconnect/badges/Maps checks remain explicit in `lextest.md`. No
   wall-visibility or numerical performance acceptance is claimed.
 
