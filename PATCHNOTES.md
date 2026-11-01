@@ -21,6 +21,9 @@
 
 ## next
 
+### P1169 Sharper, larger Maps filters
+- Maps filters use larger native-pixel fonts with matching click targets instead of soft legacy-shadowed text.
+
 ### P1168 Public inventory and map statistics
 - Other players' profile inventories show their owned items, including items they are not wearing. Public inventories are read-only and keep each item's saved colour.
 - Profiles show tracked playtime when available. Missing tracking is labelled instead of inventing historical hours.

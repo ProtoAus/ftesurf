@@ -7310,20 +7310,35 @@ void(vector pos, vector sz, string sel) ui_board_button =
 		Mlb_Open(sel, -1);
 };
 
+#define UI_MAP_FILTER_FONT 16
+#define UI_MAP_FILTER_HEADING 20
+#define UI_MAP_FILTER_H 32
+#define UI_MAP_FILTER_PITCH 40
+
+// P1169: measure and draw the same physical bake; leave other menu text alone.
+void(float slot) ui_filter_font =
+{
+	Font_Set(slot);
+	drawfont = Font_NativeSlot(slot);
+};
+
 float(string label) ui_filter_chip_w =
 {
-	return stringwidth(label, TRUE, '12 12 0') + 12;
+	return stringwidth(label, TRUE, sui_native_text_size(UI_MAP_FILTER_FONT)) + 16;
 };
 
 float(vector pos, string id, string label, float on) ui_filter_chip =
 {
 	local float w, hot;
+	local vector glyph;
 	w = ui_filter_chip_w(label);
-	sui_action_element(pos, [w, 24], id, sui_noop);
+	glyph = sui_native_text_size(UI_MAP_FILTER_FONT);
+	sui_action_element(pos, [w, UI_MAP_FILTER_H], id, sui_noop);
 	hot = sui_is_hovered(id);
-	sui_roundbox(pos, [w, 24], 7, on ? COL_ROW_SEL : COL_ROW, 1);
-	if (hot) sui_style_box(pos, [w, 24], 7, COL_ROW_SEL, SUI_THEME_EDGE_HI, 1);
-	sui_text(pos + '6 6 0', '12 12 0', label, on ? COL_ACCENT : COL_TEXT, 1, 0);
+	sui_roundbox(pos, [w, UI_MAP_FILTER_H], 8, on ? COL_ROW_SEL : COL_ROW, 1);
+	if (hot) sui_style_box(pos, [w, UI_MAP_FILTER_H], 8, COL_ROW_SEL, SUI_THEME_EDGE_HI, 1);
+	sui_native_text(pos + [8, (UI_MAP_FILTER_H - glyph_y) * 0.5], label,
+		UI_MAP_FILTER_FONT, on ? COL_ACCENT : COL_TEXT, 1);
 	return w;
 };
 
@@ -7345,25 +7360,36 @@ string(float group, float f) ui_filter_id =
 	return strcat("cs_sort", ftos(f));
 };
 
+float() ui_mode_switch_w =
+{
+	return ui_filter_chip_w("Surf") + ui_filter_chip_w("Bhop") + 50;
+};
+
 float(vector pos) ui_mode_switch =
 {
-	local float bhop;
-	local vector track;
+	local float bhop, w, surfw;
+	local vector track, glyph;
 	bhop = (ms_modes == 2);
-	sui_action_element(pos, '140 24 0', "cs_mode_toggle", sui_noop);
-	sui_text(pos + '3 6 0', '12 12 0', "Surf", bhop ? COL_DIM : COL_ACCENT, 1, 0);
-	track = pos + '43 3 0';
-	sui_roundbox(track, '42 18 0', 9, COL_ROW_SEL, 1);
-	sui_roundbox(track + [bhop ? 25 : 3, 3], '14 12 0', 6, COL_ACCENT, 1);
-	sui_text(pos + '93 6 0', '12 12 0', "Bhop", bhop ? COL_ACCENT : COL_DIM, 1, 0);
+	w = ui_mode_switch_w();
+	glyph = sui_native_text_size(UI_MAP_FILTER_FONT);
+	surfw = stringwidth("Surf", TRUE, glyph);
+	sui_action_element(pos, [w, UI_MAP_FILTER_H], "cs_mode_toggle", sui_noop);
+	sui_native_text(pos + [8, (UI_MAP_FILTER_H - glyph_y) * 0.5], "Surf",
+		UI_MAP_FILTER_FONT, bhop ? COL_DIM : COL_ACCENT, 1);
+	track = pos + [8 + surfw + 10, (UI_MAP_FILTER_H - 22) * 0.5];
+	sui_roundbox(track, '46 22 0', 11, COL_ROW_SEL, 1);
+	sui_roundbox(track + [bhop ? 27 : 3, 3], '16 16 0', 8, COL_ACCENT, 1);
+	sui_native_text([track_x + 56, pos_y + (UI_MAP_FILTER_H - glyph_y) * 0.5],
+		"Bhop", UI_MAP_FILTER_FONT, bhop ? COL_ACCENT : COL_DIM, 1);
 	sui_tooltip_for("cs_mode_toggle", "Switch between Surf and Bhop maps.", 2);
 	if (sui_is_released("cs_mode_toggle")) ui_modes_set(ui_modes_click(ms_modes, 0));
-	return 144;
+	return w + 4;
 };
 
 float(float width, float y) ui_map_filters =
 {
 	local float group, f, n, x, gw, cw, on, bit, next;
+	local vector glyph;
 	local string heading, label, id, note;
 	x = 16;
 	note = ms_compsort ? MCard_DoneNote() : "";
@@ -7371,19 +7397,21 @@ float(float width, float y) ui_map_filters =
 	{
 		heading = group == 0 ? "Tier" : (group == 1 ? "Mode" : (group == 2 ? "Library" : (group == 3 ? "Extra" : "Sort")));
 		n = group == 0 ? 11 : (group == 1 ? 0 : (group == 2 ? SRCF_NCHIPS : (group == 3 ? 1 : 3)));
-		Font_Set(ui_font_display);
-		gw = stringwidth(heading, TRUE, '15 15 0') + 8;
-		Font_Set(ui_font_ui);
+		ui_filter_font(ui_font_display);
+		gw = stringwidth(heading, TRUE, sui_native_text_size(UI_MAP_FILTER_HEADING)) + 12;
+		ui_filter_font(ui_font_ui);
 		for (f = 0; f < n; f = f + 1)
 			gw = gw + ui_filter_chip_w(ui_filter_label(group, f)) + 4;
-		if (group == 1) gw = gw + 144;
-		if (group == 4 && note != "") gw = gw + stringwidth(note, TRUE, '12 12 0') + 6;
-		if (x > 16 && x + gw > width + 16) { x = 16; y = y + 30; }
-		// P1111 (Lex): the headings in the display face, not faded.
-		Font_Set(ui_font_display);
-		sui_text([x, y + 5], '15 15 0', heading, COL_TEXT, 1, 0);
-		x = x + stringwidth(heading, TRUE, '15 15 0') + 8;
-		Font_Set(ui_font_ui);
+		if (group == 1) gw = gw + ui_mode_switch_w() + 4;
+		if (group == 4 && note != "") gw = gw + stringwidth(note, TRUE, sui_native_text_size(UI_MAP_FILTER_FONT)) + 6;
+		if (x > 16 && x + gw > width + 16) { x = 16; y = y + UI_MAP_FILTER_PITCH; }
+		// Keep the display headings distinct, at the same native scale as their width.
+		ui_filter_font(ui_font_display);
+		glyph = sui_native_text_size(UI_MAP_FILTER_HEADING);
+		sui_native_text([x, y + (UI_MAP_FILTER_H - glyph_y) * 0.5], heading,
+			UI_MAP_FILTER_HEADING, COL_TEXT, 1);
+		x = x + stringwidth(heading, TRUE, glyph) + 12;
+		ui_filter_font(ui_font_ui);
 		if (group == 1) x = x + ui_mode_switch([x, y]);
 		for (f = 0; f < n; f = f + 1)
 		{
@@ -7392,7 +7420,7 @@ float(float width, float y) ui_map_filters =
 			bit = group == 1 ? ui_cat_bit(ui_mode_id(f)) : (group == 2 ? ui_srcf_bit(f) : 0);
 			on = group == 0 ? (ms_tier == f) : (group == 1 ? (f == 0 ? ms_modes == FS_MODES_ALL : (ms_modes & bit) != 0) : (group == 2 ? ms_srcf == bit : (group == 3 ? ms_showall : ms_compsort == f)));
 			cw = ui_filter_chip_w(label);
-			if (x + cw > width + 16) { x = 16; y = y + 30; }
+			if (x + cw > width + 16) { x = 16; y = y + UI_MAP_FILTER_PITCH; }
 			x = x + ui_filter_chip([x, y], id, label, on) + 4;
 			if (group == 0) sui_tooltip_for(id, f == 0 ? "Every tier, including untiered maps." : sprintf("MOM or KSF tier %g.", f), 2);
 			if (group == 1) sui_tooltip_for(id, f ? "Show/hide this gametype." : "Every gametype; again for none, to pick one alone.", 2);
@@ -7408,12 +7436,15 @@ float(float width, float y) ui_map_filters =
 		}
 		if (group == 4 && note != "")
 		{
-			sui_text([x + 2, y + 6], '12 12 0', note, COL_DIM, 1, 0);
-			x = x + stringwidth(note, TRUE, '12 12 0') + 6;
+			glyph = sui_native_text_size(UI_MAP_FILTER_FONT);
+			sui_native_text([x + 2, y + (UI_MAP_FILTER_H - glyph_y) * 0.5], note,
+				UI_MAP_FILTER_FONT, COL_DIM, 1);
+			x = x + stringwidth(note, TRUE, glyph) + 6;
 		}
 		x = x + 12;
 	}
-	return y + 34;
+	Font_Set(ui_font_ui);
+	return y + UI_MAP_FILTER_H + 10;
 };
 
 void(vector screensize) screen_create =
