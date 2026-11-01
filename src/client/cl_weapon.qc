@@ -799,7 +799,7 @@ float() WP_Command =
 	if (!strcmp(cmd, "butterfly")) { WP_ChooseKnife(1); return TRUE; }
 	if (!strcmp(cmd, "m9")) { WP_ChooseKnife(2); return TRUE; }
 	if (!strcmp(cmd, "knife_css")) { WP_ChooseKnife(0); return TRUE; }
-	if (!strcmp(cmd, "drop")) { localcmd("cmd drop\n"); return TRUE; }
+	if (!strcmp(cmd, "drop")) { localcmd("cmd weapon_drop\n"); return TRUE; }
 	if (!strcmp(cmd, "weapon_info"))
 	{
 		if (!strcmp(argv(1), "refresh")) wp_weapon = 0;

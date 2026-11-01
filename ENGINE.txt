@@ -1,5 +1,5 @@
 # The engine build this QuakeC requires.
-# Patch 1169: MENU-only larger native-pixel Maps filters; existing ABI/pin/tag and all server/client behavior preserved.
+# Patch 1170: separate transport drop/disconnect from weapon_drop; no Native/API/recorder/movement/timeout change. Qualified actual Native520/MENU6f preserved; main's pending native work is separate.
 #
 # FTESurf is a mod, and it is not portable to stock FTEQW: the Source movement
 # module (engine/common/pm_source.c) and the hl2 plugin's .phy collision, VTF
@@ -14,7 +14,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   ee1a23894e84cc033c8b8e4d7351929f44d45a70
+commit   dc3e20be390ba5c3bb7d570bcacba8151172cd7d
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -27,7 +27,7 @@ commit   ee1a23894e84cc033c8b8e4d7351929f44d45a70
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1165
-patch    1169
+patch    1170
 # Patch 1168 (QC/backend readers): public owned inventories, optional tracked playtime/map attempts, main/bonus selection, menu profile pictures and upward seek paging. Collection is separate; native pins and qcbuild unchanged.
 # Patch 1167 (backend): opt-in mapwatch and zone-publication content epochs; configured unavailable state fails closed, absent/empty remains unmanaged. Native pin/tag, QC, schema and Build unchanged; partial writer coverage is not canonical approval or activation.
 # Patch 1165: bounded native TAS VFS components and distinct operator preparation; ordinary budgets, human recording/eligibility and queue admission unchanged. Component checks are not source qualification or deployment; tools/tas-native-source.md.

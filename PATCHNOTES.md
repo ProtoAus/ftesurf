@@ -21,6 +21,9 @@
 
 ## next
 
+### P1170 Clean lobby disconnects
+- Switching or rejoining lobbies and closing the game normally now cleans up the old connection instead of leaving a ghost player until timeout. Weapon Drop still works without disconnecting you.
+
 - Maps: larger, sharper native-pixel filter text, with roomier controls that wrap on smaller windows.
 
 ### P1168 Public inventory and map statistics

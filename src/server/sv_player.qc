@@ -1601,6 +1601,13 @@ void(string cmd) SV_ParseClientCommand =
 	}
 	cmdargc = tokenize(cmd);
 	c = argv(0);
+	// QW's final network message is "drop". Never consume lifecycle commands
+	// as weapon presentation: the engine must run its normal ClientDisconnect.
+	if (!strcmp(c, "drop") || !strcmp(c, "disconnect"))
+	{
+		clientcommand(self, cmd);
+		return;
+	}
 	if (!strcmp(c, "tas"))
 	{
 		SV_TASCommand(self, cmdargc);
@@ -1616,7 +1623,7 @@ void(string cmd) SV_ParseClientCommand =
 		EventFog_Command(self, cmdargc, argv(1));
 		return;
 	}
-	if (!strcmp(c, "drop"))
+	if (!strcmp(c, "weapon_drop"))
 	{
 		// Presentation only: no physical item, damage or input/movement change.
 		self.weapon = self.weaponframe = 0;

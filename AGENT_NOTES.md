@@ -1,5 +1,26 @@
 # AGENT_NOTES.md
 
+## P1170 — qualified clean-disconnect release source integrated; deployment pending
+
+Qualified scoped source6d132181 and native documentationca4bcbea0 are integrated
+as explicit parents on public main. Main retains ALL independently pending work;
+only the3 P1170 feature hunks are adopted, not the older release tree wholesale.
+Runtime delivery uses EXACT inspected6d132181 inputs/qualified artifacts, NOT an
+untested blanket main build. Actual whole old1ae7cd76/a726524a/MENU6f control
+matches all3. Candidate1e3aeb37/92a49aa2/MENU6f: realUDP old exit0 ghost, weapon
+Drop2->0 staysconnected, A->B oldA0, B->B one, normalquitB0,5logs clean. Original
+caller/guard/reporter failures retained, no healthy product case replayed.
+
+Full CURRENT Windows15819 and Pi39241 protected files plus complete old Pi part
+captured. Both original180sec snapshot callers timed out: Windows SAME completed
+4.05GB archive verified through existing interrupted-archive seam without rewrite;
+Pi SAME original PID finished PASS. Original evidence retained, no restoration or
+new namespace. Offbox original SCP used unsupported SFTP braces and copied nothing;
+same empty destination corrected to explicit7 source paths, not a new snapshot.
+No runtime files changed yet. Final receipts/handoff must establish paired QC-only
+install and current actual Native520/MENU6f/config/data/parts preservation. No
+counter/TAS/backend activation. Source note tools/clean-disconnect-p1170.md.
+
 ## Cold TAS validation and refusal controls (P1161)
 
 VALIDATE checks row syntax under current native actor admission; it does not

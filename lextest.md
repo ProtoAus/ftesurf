@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1170 clean lobby disconnects
+After final paired QC-only install: A->B removes oldA avatar/slot, B->B leaves
+one, normal close clears final slot; weapon Drop remains connected. Real local
+UDP controls passed. Abrupt crash/network loss still needs timeout fallback.
+Native520/MENU6f unchanged; pending stats/TAS/backend changes not adopted.
+Qualified release6d132181 is on public main as explicit parent; this does NOT
+qualify a blanket-main build. Final handoff/receipts own the delivery status.
+
 ## P1169 — larger native Maps filters (pending)
 
 Source/captures qualified; NOT installed. Both current menus changed during
