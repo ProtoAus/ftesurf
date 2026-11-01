@@ -28,6 +28,8 @@ commit   dc3e20be390ba5c3bb7d570bcacba8151172cd7d
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1165
 patch    1187
+# Patch 1184 (CSQC): zone editor shows the selected zone's size and six values (x/y min/max, bottom, top); typed in the field or nudged with the wheel; zone_edit face. Native pin/tag and Build unchanged.
+# Patch 1180 (zonepub + CSQC + site): every zone publish is written at once and reloads the map's lobbies (say + changelevel); /api/zones/history and /file; one Publish button and an editor History page; zoning page "Recently zoned". zonepub 85ed1a7c (Lex's sudo). Native pin/tag and Build unchanged.
 # Patch 1187 (CSQC + SSQC): a linked player's chat goes to everyone by default (said here + posted to the menu room, tagged [#N]); TAB/team key = this lobby; the lobby skips relaying its own players' room lines. Native pin/tag, backend and Build unchanged.
 # Patch 1185 (SSQC): a world-owned activation trigger a player switches off and that same cause switches on again stays world-owned (surf_mesa booster false practice). Native pin/tag and Build unchanged.
 # Patch 1183 (SSQC/CSQC): one "nothing saved" from the load key; Shift+wheel noclip tuning asks about the seat only with 2+ local seats. Native pin/tag and Build unchanged.

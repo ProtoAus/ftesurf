@@ -1,5 +1,26 @@
 # AGENT_NOTES.md
 
+## P1180 instant zone publish + P1184 zone faces LIVE (1 Nov 2026 18:57Z)
+
+zonepub 85ed1a7c installed by Lex's sudo (`install_zonepub.py --upgrade --source
+/srv/nvme/agent-work/zonepub-p1180-2b/source --commit 85ed1a7c... --apply`; 6cff6856 kept).
+Client csprogs 9138d2ba on all 12 lobbies (build.ps1 -Pi -QuakeDir <absent>, 0 players) and
+both installs (hand copy; `.prev` = 84f64afe); appended to tasrevd-state/codes.txt (backup
+codes.txt.pre1180). Delivered QC base now origin/deploy/p1180-zones = 4a03e17b.
+- Every upload is a force row; `_reload_now` sends say + changelevel in the write tick, rounds
+  confirm. `budget_room` (2 free packets per target) holds a second publish inside 30 s; the
+  history route reads the covering index publications_history only. zonepub.md's top section
+  has the rest, including each review round's fixes.
+- Review lesson: five rounds each found real defects in the previous round's fixes (12 in all),
+  all in rollback/recovery/expiry corners rather than the main path. A fix to a state machine
+  with crash recovery needs its own round, and each round's new tests must fail on the commit
+  before (they did, every round).
+- A runlines_smoke screenshot can show the frame before the commands just run: compare the log's
+  "Wrote" time and take a second shot 1.5 s later before calling a panel stale.
+- Site: tools/zoningpage.py regenerates zoning.json/zoning-thumbs.webp; publish with
+  src/release/sitepage.ps1 -Version 0.1.34 -OutDir <dir holding copies of that release's receipt
+  and version.json> (the receipt lives in the release session's worktree, not C:\FTESurf\dist).
+
 ## P1181/P1182/P1183/P1185 LIVE (1 Nov 2026 18:09Z); P1179 LIVE 18:57Z
 
 Delivered QC base is now `origin/deploy/p1185-lexbugs` 5729ce47 = d4b9bd87 (P1187) + these

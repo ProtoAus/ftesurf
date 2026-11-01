@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P1180 instant zone publish, history; P1184 zone sizes
+Zone service 85ed1a7c since 1 Nov 18:55Z (your sudo); client on all 12 lobbies ~18:57Z and both
+installs just after (csprogs 9138d2ba): restart a running game first. Please check:
+- Publish (in a game you host or on a lobby): the dialog has one Publish button. After it,
+  every lobby on that map shows "New zones for <map>: reloading the map now" and restarts at
+  once with the new zones (runs in progress end). The editor's History button lists the map's
+  publishes with who and when; clicking one loads it as unsaved edits.
+- Zone editor: select a zone; the SIZE row shows six values. Click one and type a number
+  (Enter), or roll the wheel over it: the white box in the world follows.
+- https://proto.bar/ftesurf/zoning.html: "Recently zoned" shows Markbeaton54 / Proto with ages;
+  a map you publish counts as zoned at once.
+Measured: 169 service tests and 5 review rounds; the instant reload ran only against a fake
+fleet, so the first real publish is the check. A second publish of a map inside ~30 s waits a
+minute (rcon budget) and says so.
+
 ## P1179 journal uploads stored again
 Live since 1 Nov 18:57Z (your sudo + a surfd restart). Please check: with journal upload on,
 finish a run on a lobby; the console should say "rec_ul_send: journal HTTP stored and digest
