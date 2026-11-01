@@ -519,6 +519,8 @@ in lextest/BACKLOG. Legacy dirty native checkouts and canonical config/data unto
   candidate to /srv/nvme/agent-work/surfd-dropin/candidate.conf, then `sudo -n systemctl start
   surfd-dropin-install.service`, then read /run/surfd-dropin-install.status). It accepts only the
   gen_dropin change of the live file. It is NOT a boundary against proto (run.sh is proto's).
+  The sudoers rule (/etc/sudoers.d/surfd-dropin) went live 1 Nov 2026 10:59Z. `sudo -n -l <cmd>`
+  says yes to anything proto's password rule covers: grep `sudo -n -l` for the NOPASSWD line.
 
 ## Pictures, board pages, stats lists (P1106-P1109, 29 Oct 2026)
 
