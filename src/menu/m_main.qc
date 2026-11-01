@@ -2637,6 +2637,7 @@ void(float max) ui_dlkb_run =
 	local float end, row, lkb;
 	local vector keep;
 
+	if (clientstate() != 1) return;
 	if (ui_dlkb_q < 0)
 		return;
 	end = min(ui_dlkb_i + max, buf_getsize(ui_dlkb_q));
@@ -2734,8 +2735,17 @@ void() ui_data_load =
 	              n[DQ_FULL], n[DQ_PICTURE], n[DQ_TIER], n[DQ_BARE]));
 };
 
+float ui_maplist_dirty;
+
 void() ui_load_maps =
 {
+	if (clientstate() != 1)
+	{
+		if (!ui_maplist_dirty)
+			print("^5maplist:^7 catalogue refresh queued until disconnected\n");
+		ui_maplist_dirty = TRUE;
+		return;
+	}
 	if (ms_name >= 0) buf_del(ms_name);
 	if (ms_src  >= 0) buf_del(ms_src);
 	if (ms_lst  >= 0) buf_del(ms_lst);
@@ -3553,12 +3563,20 @@ float(vector pos, float row, float idx) ui_build_switch =
 	return 2 * BSW_W + 2 + 10;
 };
 
-// m_lobby.qc's Mdl_Reply saved a new list: read it, and keep what was picked.
+// Transport/media callbacks only mark dirtiness; keep cached rows during play.
 void() ui_maplist_changed =
+{
+	ui_maplist_dirty = TRUE;
+};
+
+// Coalesce notifications and rebuild only disconnected, with the menu visible.
+void() ui_maplist_apply =
 {
 	local string keep;
 	local float i;
 
+	if (!ui_maplist_dirty || clientstate() != 1 || !menu_active) return;
+	ui_maplist_dirty = FALSE;
 	if (ms_name < 0 || !ms_count)
 		return;                     // never loaded: the next open reads the new file
 	keep = "";
@@ -8137,7 +8155,6 @@ void() ui_boot_preload =
 	if (time < ui_boot_at)
 		return;
 	if (clientstate() != 1)
-	if (!menu_active)
 		return;
 	ui_boot_done = TRUE;
 	t = gettime(1);
@@ -8194,6 +8211,7 @@ void(vector screensize) m_draw =
 		mmm_fresh = FALSE;
 		ui_maplist_changed();       // keeps the selection, resets the backdrop
 	}
+	ui_maplist_apply();
 	Mzd_Pump();
 	ui_boot_preload();
 	ui_dlkb_step();                 // Patch 999
@@ -8802,11 +8820,12 @@ float(string cmd) m_consolecommand =
 		}
 		if (argv(1) == "ask")
 		{
-			mdl_state = MDLS_IDLE;
+			if (mdl_deferred == "") mdl_state = MDLS_IDLE;
 			mdl_next = 0;
 			Mdl_Ask();
 		}
-		print(sprintf("ui_mapnet: state %g rows %g not kept %g\n", Mdl_State(), Mdl_Rows(), mdl_bad));
+		print(sprintf("ui_mapnet: state %g rows %g not kept %g client %g queued %g dirty %g\n",
+		              Mdl_State(), Mdl_Rows(), mdl_bad, clientstate(), strlen(mdl_deferred), ui_maplist_dirty));
 		return TRUE;
 	}
 

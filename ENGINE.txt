@@ -12,8 +12,10 @@
 # degrades to a comment if it ever stops being maintained.
 
 repo     https://github.com/ProtoAus/ftequakers
-branch   deliver-noclip-1162
-commit   520ba3ca9902f0759fc0c9e5f691bf13ba55fd9e
+branch   fix-maplist-idle-20261101
+commit   4531949aa10cb9e610f871d6e4c033e99192f46d
+# P1169 is MENU-only; this pin adds ENGINE_PATCHES documentation, no native code.
+# Supplied native images remain exact patch1162/tag520ba3ca9; no rebuild required.
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary

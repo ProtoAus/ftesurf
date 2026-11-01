@@ -1,5 +1,38 @@
 # AGENT_NOTES.md
 
+## P1169 map-list refresh defers outside connected gameplay
+
+MENU-only qualified candidate, install pending. Native runtime520/P1162 and
+actual SSQC54fc2f59/CSQCb3ef8935 unchanged; no lobby restart/backend/mover/cancel
+policy operation. Current BOTH installed MENU8a3705aa is newer P1168: whole
+binary control from public7f759762 consumed MENU input closure plus official
+UI_MENU_VERSION0.1.33/DEVELOPMENT1 matches exactly. Preserve those8 public MENU
+input deltas before fix, not older noclip6c9f or a full-main/server activation.
+HTTP was already async; Mdl_Reply did main-thread CRC/parse/save then synchronous
+full catalogue rebuild. Gate request/drain during connected session; bound/zone
+one late valid body, clear on drain/revocation; dirty/coalesce callbacks, apply
+only disconnected+menuvisible. Central reload, boot warm-up and wrong-build disk
+queue also wait. Cached rows preserved. Never put QC/UI shared state on a new
+worker thread. Deliberately protects ESC/practice/pause/spectators, not just a
+ranked timer. Native HTTP-close cost is separate and NOT claimed fixed.
+Actual private GUI/listen, SAME Native/SSQC/CSQC, local2179-row delayed HTTP:
+ARMED then RUNNING witness; subject6f8760a5 client2/state5/queued106787 with no
+save/WOS catalogue pass, no second HTTP from forced ask, ESC/manual reload stays
+queued and timer stillRUNNING. Disconnect client1/state2/rows2179/queued0/dirty0,
+all2179 saved/catalogue applied. Exact old installed8a control DOES save/rebuild
+whileRUNNING. Both actual actors exit/lease released; noQCerrors. Official build
+0SS/0MENU, existing2CS F333; only MENU outputs may be deployed.
+Retain SAME-fixture failures: missing transitive include, version-literal diff
+isolated development vs0.1.33 then exact official defines; initialGUI teleported
+before QW spawn/begin so actual timeridle correctly failed. Continue samecase
+waiting actualbegin+ARMED beforemovement, stillrequireRUNNING, never relax toidle.
+First calibration public-zoneGET readonly; continuation zone URL empty. Failed
+MENU-selector launched no compiler; unchanged original official path used after
+MENU diagnostic source changed. No broad healthy Native/physics rerun.
+Proofs/limits: tools/maplist-idle-p1169.md; human jitter/UX check pending. Same
+sole owned pair reused on fix-maplist-idle-20261101; keep P1162 original/current
+archives and tags, no new task root or private-peer source copying.
+
 ## P1162 noclip-only backport of the P1159 candidate
 
 CURRENT DELIVERED: Native520ba3ca9/tagpatch1162 + compiledQCc79ee297 on BOTH

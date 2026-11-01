@@ -78,9 +78,9 @@
 - Menu: if Mmm_Spool's read-back fopen fails the reply stays in data/mapmedia.tmp
   (pre-existing); the map-table job advances only while the menu draws (a minimised window
   waits).
-- Other one-frame costs measured on the way: the map-list save ("maplist: saved N map(s)")
-  ~65 ms at boot; the boot map-list load 81-97 ms; the finish frame's own CSQC ~16 ms, spread
-  over HUD drawing (Rec_ViewEnd ~3.5 ms, LT_Keep ~6 ms).
+- The finish frame's own CSQC ~16 ms, spread over HUD drawing
+  (Rec_ViewEnd ~3.5 ms, LT_Keep ~6 ms), remains separate from the map-list work
+  deferred outside connected gameplay by P1169.
 - csprogs on first join after a build: the client asks sv_dlURL/ftesurf/csprogs.dat first
   (404), then takes 6.5 MB over the game channel. Served there gzipped (1.4 MB) it would come
   over HTTPS; needs nginx and a deploy step that keeps it in step with the lobbies.
