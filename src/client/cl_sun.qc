@@ -9,9 +9,11 @@
     glow   size `overlaysize` (-1 = size) x6, colour overlaycolor (or the core's
            when 0 0 0), alpha 0.75 looking straight at the sun falling to 0 at a
            dot of 0.9 (c_sun.h C_SunGlowOverlay).
-  Visibility is UpdateGlowObstruction's trace (CONTENTS_SOLID): a ray along the
-  direction that hits anything but a sky side hides it, faded over
-  cl_sun_decay_rate's 0.05 s.  Drawn without depth, as light_glow02_add_noz is.
+  Visibility: a ray along the direction that hits anything but a sky side hides
+  it, faded over cl_sun_decay_rate's 0.05 s.  Source's normal path is a pixel
+  query, which models occlude (glow_overlay.cpp:160-170; the CONTENTS_SOLID
+  trace is its fallback), so P1182 traces props as the glares do.
+  Drawn without depth, as light_glow02_add_noz is.
   Direction: use_angles takes angles with the pitch key's override
   (SetupLightNormalFromProps), else the sun's origin minus its target's (the
   first, any case); no target, or one that is not there, keeps CSun's (0,0,1).
@@ -24,7 +26,7 @@ vector sun_col, sun_ocol;
 float  sun_size, sun_osize;
 string sun_mat, sun_omat;
 float  sun_vis;                 // 0..1, the obstruction fade
-entity sun_probe;               // the trace's mask: CONTENTBIT_SOLID, so glass shows the sun
+entity sun_probe;               // the trace's mask; glass is in neither part, so it shows the sun
 float  sun_seen;                // the last visibility printed: -1 none yet
 
 string(string m) Sun_Shader =
@@ -195,7 +197,10 @@ void() Sun_Draw =
 	if (!sun_probe)
 	{
 		sun_probe = spawn();
-		sun_probe.hitcontentsmaski = CONTENTBIT_SOLID;
+		// P1182: the glares' mask. Every prop's triangles are BODY only (mod_hl2.c), so
+		// SOLID alone let all props through (pantheon's hubpillar); VISUAL adds the
+		// draw-only ones. WINDOW stays out, so glass still shows the sun.
+		sun_probe.hitcontentsmaski = SPR_GLARE_MASK;
 	}
 	traceline(eye, eye + sun_dir * 32768, MOVE_NOMONSTERS, sun_probe);
 	// SURF_SKY does not come through a VBSP trace; the side's name does (cl_emit.qc's rain).
