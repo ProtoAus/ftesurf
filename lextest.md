@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P1164 — cylindrical paper party crown (pending appearance acceptance)
+
+Live on all12 lobbies, with exact CSQC caches seeded in both Windows installs
+at1Nov2026 01:44:06UTC. Local/offline VM adoption is BLOCKED by intervening
+Windows cohort changes; no unknown program/native/config was overwritten.
+Reconnect to an official lobby to load the new CSQC before checking appearance.
+Owner requested a cylindrical band on the head with upward-pointing tips, not
+P1160's cone. P1164 draws a sixteen-sided open paper band with eight triangular
+points, plus a matching crown-shaped inventory icon. It keeps the existing item,
+saved random colour, equipment state and P1163 ice aura. Actual native dedicated
+OFF/ON snapshots and inspected preview show the crown/icon with the same supplied
+hat colour; this is not final owner appearance acceptance. Reconnect, open
+`hud_player`, and confirm the crown matches the intended shape/fit. Also confirm
+it on another player when convenient. See `tools/profile-crown-p1164.md` for
+source/delivery provenance. Original grid/toggle acceptance remains valid; aura
+appearance and the other original pending manual cases below are not implied.
+
 ## P1163 — soft inventory aura (pending appearance acceptance)
 
 Deployed in both Windows installs and all12 lobbies, verified1Nov2026

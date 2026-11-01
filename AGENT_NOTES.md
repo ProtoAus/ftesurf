@@ -2210,6 +2210,18 @@ renderer; source and build in `src/viewer/` (its README). The bundle
   means it stopped drawing, and anything that runs from CSQC_UpdateView (the share pick)
   then never happens.
 
+## Cosmetic delivery with intervening Windows cohorts (P1164, 2026-11-01)
+
+- A previously verified Windows program/native cohort can change before the next
+  cosmetic delivery even while the Pi still matches. P1164's Windows preimage
+  check refused both installs. Do not overwrite/restore those unknown changes,
+  infer their source from old mtimes, or let one blocked target stop safe work.
+  The unchanged Pi cohort was independently updated using build.ps1's supported
+  QuakeDir=SurfDir branch (no second install copy). Both Windows clients received
+  only a new content-addressed CSQC cache entry, not local VM/native replacement.
+  Record local/offline adoption as BLOCKED until current source/writer is bound;
+  an official-lobby cache/render pass is not full dual-install VM adoption.
+
 ## Inventory aura falloff (P1163, 2026-11-01)
 
 - A single expanded shell with a view-angle/Fresnel fade can compile and still

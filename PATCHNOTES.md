@@ -21,6 +21,9 @@
 
 ## next
 
+### P1164 Paper party crowns
+- The party hat is now a cylindrical paper crown with upward-pointing triangular tips instead of a cone. Your existing hat colour and equipped state stay the same, and its inventory icon matches the new shape.
+
 ### P1163 Softer ice aura
 - The inventory's ice aura now fades outward from your player instead of drawing a hard blue stroke. Equipping the aura and paper hat still works independently.
 
