@@ -19,8 +19,11 @@ DBDIR = HOME / "db"
 DBDIR.mkdir()
 DB = DBDIR / "surfd.db"
 os.environ.update(SURFD_HOME=str(HOME), SURFD_DB=str(DB), SURFD_ENV=str(HOME / "surfd.env"))
+import types
+sys.modules["gunicorn"] = types.ModuleType("gunicorn")    # import as a gunicorn worker does
 import surfd as S
 AT_IMPORT = S._KEEPER["key"]     # before any test resets it: a fresh worker holds before a request
+del sys.modules["gunicorn"]
 
 
 def sidecar(tail):
@@ -71,6 +74,12 @@ class Keeper(unittest.TestCase):
 
     def test_import_holds_before_any_request(self):
         self.assertEqual(AT_IMPORT, (os.getpid(), str(DB)))
+
+    def test_import_outside_gunicorn_holds_nothing(self):
+        # Crons and the requests watcher import surfd; their holder would outlive a surfd stop.
+        out = subprocess.run([sys.executable, "-B", "-c", "import surfd as S; print(S._KEEPER['key'])"],
+                             cwd=str(Path(S.__file__).parent), capture_output=True, text=True, timeout=60)
+        self.assertEqual(out.stdout.strip().splitlines()[-1:], ["None"], out.stderr[-400:])
 
     def test_read_only_reader_opens_after_a_request(self):
         tables = self.request()
