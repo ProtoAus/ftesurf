@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1177 hud_player colours kept after a restart
+Live on all 12 lobbies and both Windows installs since 2 Nov 04:13 local (17:13Z 1 Nov).
+Please check: open hud_player (p), pick a body colour (and a belt, trail or glow if you
+like), quit the game, start it again and join a lobby. Your picks should be there, not a
+random colour. Colours picked before this patch were never saved: pick them once more.
+A reconnect without restarting already kept them (measured); a console `setinfo` is still
+not saved. Measured: tools/p1177look.py 16/16 on the deployed build, with cfg_save_all 1.
+
 ## 0.1.34 public release (automation accepted; human check pending)
 
 Published 1 Nov 12:51Z: QC 3cc4fec7 (as live), engine P1173, launcher 646c8d1, P1174 zones/pictures.

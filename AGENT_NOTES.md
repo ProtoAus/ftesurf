@@ -1,5 +1,20 @@
 # AGENT_NOTES.md
 
+## P1177 hud_player look kept after a restart — LIVE (1 Nov 2026 17:13Z)
+
+Delivered QC base is now `origin/deploy/p1177-look` 28bbd501 = 3cc4fec7 (P1171's delivered
+branch) + P1177's two commits; main has the same change (1d54d35d, 6553ff6a). Lobby QC must be
+built on the latest delivered branch, not main: main lacks delivered code and carries
+undelivered P1169/P1154/P1161 work. Built with fteqcc c24ede65 from the deploy worktree
+(`build.ps1 -Pi -QuakeDir <absent>`, then qw+cs hand-copied into both installs):
+qwprogs f0e66da4, csprogs 310caf73 (appended to tasrevd-state/codes.txt, backup
+codes.txt.pre1177), menu.dat not shipped (installs keep 14ecde0a). `.prev` = e487377c/974f0ce9
+on the Pi and in both installs; all 12 lobbies restarted at 0 players, no QC errors after.
+Arm: tools/p1177look.py (16/16; the review-0 build fails at the restore). A named `cfg_save
+<name>`, or `cfg_save_all 1`, writes non-archived cvars too: never keep per-process state in a
+plain QC cvar that a saved config can bring back. Task root
+C:/FTESurf-worktrees/looksave-20261101T1645Z.
+
 ## P1175 surfd holds the DB for the zone service — LIVE (1 Nov 2026 14:30Z)
 
 **Symptom.** From 1 Nov every zone upload answered "Zone uploads unavailable".

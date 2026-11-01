@@ -21,6 +21,9 @@
 
 ## next
 
+### P1177 Your hud_player colours are kept
+- The colours, belt, trail and glow you pick in hud_player now stay picked after you restart the game, instead of going back to a random colour.
+
 ### P1176 Site: a cleaner front page and a zoning list
 - The front page is down to the logo, a rainbow BETA and the downloads; hover BETA for the build details.
 - New Zoning page on the site: every KSF map that still needs zones, with its picture, tier, stages, bonuses, plays and mapper. Maps drop off a few minutes after a zoner publishes them.

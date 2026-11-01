@@ -27,7 +27,8 @@ commit   dc3e20be390ba5c3bb7d570bcacba8151172cd7d
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1165
-patch    1176
+patch    1177
+# Patch 1177 (CSQC): hud_player look keys are mirrored in archived cl_lobby* cvars and fill unset userinfo at CSQC init (cfg_save_infos 0 kept userinfo out of ftesurf.cfg). Native pin/tag and Build unchanged.
 # Patch 1176 (site): front page down to the wordmark, a rainbow BETA and the downloads; new zoning page (tools/zoningpage.py data, live zoned state from board/api/maps). Native pin/tag, QC and Build unchanged.
 # Patch 1174 (tools + data): KSF site maps get table rows and pictures (mapmeta/ksfshots/mapthumbs, atlas page 10); Momentum zones verified against KSF's WR replays installed on nine KSF builds. Native pin/tag, QC and Build unchanged.
 # Patch 1171 (QC/backend): linked official-lobby playtime and main/bonus attempts under the existing online answer (8); additive surfd schema 26 (P1162 playstats). Native pin/tag and qcbuild unchanged.
