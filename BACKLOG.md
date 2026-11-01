@@ -1,5 +1,32 @@
 # BACKLOG.md
 
+## Map-zone compatibility and screenshot audit (1 Nov2026; diagnosed, not applied)
+
+- `surfd/zonefit.py:fit` is an advisory bounds/name gate, not complete donor
+  compatibility. Actual `surf_race` -> `surf_race_final` has identical vertex/model
+  lumps and all required names, but stage restart origins differ by up to1952units;
+  it returns FIT. Requested `surf_sinister` versus `surf_sinister_evil` also FITs
+  although later region geometry/restarts differ (about16/141units). Conversely,
+  changed world-minimum bounds are not proof the whole course moved. Falsifier:
+  refuse an unchanged donor when required restart positions/course anchors differ,
+  retain real ace/self/css positive controls, and distinguish remapping from new
+  zone drawing. Do not blindly invalidate existing given zones or promote a
+  sampled geometry match into in-game acceptance while fixing this seam.
+- `tools/ksfshots.py:get` rejects real KSF WEBP at a .jpg URL whose Content-Type is
+  image/jpeg (`surf_froots2`,263106bytes,1920x1080). The same response fully decodes
+  with Pillow as WEBP. Falsifier: accept/normalize that actual image while refusing
+  HTML, truncation, oversized decodes and host403/429; preserve paced fetching.
+- `src/menu/m_main.qc:MMD_LoadFile` joins pictures by exact name, not map-list `of`.
+  Both actual installs lack415 KSF picture mappings:400 have an existing pictured
+  base/equivalent,14 have valid KSF images not integrated, and the exact
+  `surf_parrot_selector_h` image is404 while its base picture exists. Falsifier:
+  `surf_ace_css` gets its deliberate base-picture link without mixing unrelated
+  versions/tiers; both installs and HTTPS media show the new cell/fallback. Do
+  not mark pictures deployed from a cache/download check alone. Full readable
+  audit: `C:/FTESurf/map-audit-2026-11-01.html` (all461 KSF zoning rows,117 loose
+  rows,415 picture gaps; no live changes). Requested surf_sinister stays; other
+  loose files are not a blanket deletion authorization.
+
 ## Noclip follow-up after owner-confirmed P1156 (investigation; not fixed)
 
 - Slow flight: native `cl_pred.c:CL_SourcePracticeContext` admits only PM_NORMAL,

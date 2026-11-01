@@ -51,6 +51,46 @@ No runtime files changed yet. Final receipts/handoff must establish paired QC-on
 install and current actual Native520/MENU6f/config/data/parts preservation. No
 counter/TAS/backend activation. Source note tools/clean-disconnect-p1170.md.
 
+## Read-only zone geometry and map-picture census (1 Nov2026)
+
+Do not conflate BSP version differences, global bounds, geometry and restart
+positions. Actual1091 held Momentum donors/125 candidate pairs gave6 strong
+KSF drop-in candidates (identical vertex/model lumps, unchanged required restart
+origins, no brush-transform differences),5 geometry-identical restart-remap cases,
+2 main-only-check candidates,12 related-version reviews and436 without a verified
+donor. This partitions461 currently untimed KSF builds, not461 manual-zone jobs.
+Same names are insufficient: race_final restarts moved up to1952units despite
+identical geometry; devil_css reassigns some named restarts over21000units.
+Sinister stays by owner request: sinister_evil is related, early regions match,
+later regions/restarts differ16/141units. No zones were copied or runtime acceptance
+claimed. A conservative world-minimum SHIFTED verdict is not proof of global
+translation. Use actual region-local coordinates and destination origins; preserve
+ace/self/css FIT and in-memory missing-name refusal controls.
+
+Actual media tables/atlas decoding agree in both installs:1633/2179 pictured,
+including all1087 Momentum-tagged entries. KSF941/1356 pictured;415 missing links.
+400 have existing base/equivalent pictures,14 more real KSF images were fetched
+only into audit evidence, and parrot_selector_h's exact picture URL404 has a
+pictured base available as a deliberate fallback. In the461 zoning queue the30
+picture gaps are17 existing links +12 upstream images +1 base/exact-build choice.
+The public222648-byte mapmeta matches disk; real JPEG route200/absent route404.
+2255 hosted referenced JPEGs decode,6 absent names are outside the held library.
+No screenshot installation occurred. Metadata presence is not an image decode;
+raw-cache absence on the secondary is not a missing image when its atlas is good.
+WEBP served as .jpg/image/jpeg (froots2) is real: ksfshots' JPEG/PNG-only magic
+check is a false rejection; validate decoding and retain pacing/refusal behavior.
+
+Owner says the unclassified files are largely loose Momentum-folder extras.
+Exclude116 from NEW KSF zoning work unless retained deliberately, but do not delete
+anything or call unmatched names proven non-Momentum. Keep surf_sinister. Full
+readable report/contact sheet and exact source hashes live under owned
+C:/FTESurf-worktrees/maps-fonts-1101-01a1861d, with user copies
+C:/FTESurf/map-audit-2026-11-01.html and .md. Original failed audit-reader/format
+controls remain evidence, not product passes; subsequent successful census used
+actual surfd `_lump(fh,idx,strict=False)` / `_box` interfaces, not census helpers'
+different table/signature. No agent process/overlay or production maintenance gate
+was left active on the Pi. These are dated findings, not a future live count.
+
 ## Cold TAS validation and refusal controls (P1161)
 
 VALIDATE checks row syntax under current native actor admission; it does not
