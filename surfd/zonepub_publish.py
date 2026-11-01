@@ -19,8 +19,8 @@ A pending row is written once:
      SURFD_PUBLIC_HOST or a literal address of this machine), else it holds (`hold` says why);
      an empty target set counts only when no lobby is on the map at all;
   1. every target answers `serverinfo` just before put() (its zonecrc then is kept), else it
-     holds. Held FORCE_EXPIRE since its first hold (`notice`; `applying` clears both): expired,
-     nothing installed.
+     holds. Still blocked FORCE_EXPIRE after its first hold (`notice`; `applying` clears both):
+     expired, nothing installed (_hold).
 After put(), each target gets `say` and `changelevel` at once (_reload_now). Then, live: one
 round per ROUND_GAP reads each lobby in `todo`, and any the table now shows on the map, with
 `serverinfo`. Done means its `zonecrc` (the hash of the table it runs, sv_zones.qc)
@@ -575,16 +575,28 @@ def _note(connect, store, rid, text):
 
 
 def _hold(connect, store, row, why):
-    """Why a pending row waits, said once per change of reason; the first hold starts its deadline
-    (`notice`, P1081's warning time and unused since P1180)."""
+    """Why a pending row waits, said once per change of reason. The deadline runs from the first
+    hold (`notice`, P1081's warning time and unused since P1180), started on any hold that finds
+    it unset; a row still blocked FORCE_EXPIRE after it is expired here, at the moment it is held
+    again, so a row that can be written is never expired first."""
+    now = int(CLOCK())
     with connect(store) as db:
-        was = db.execute('SELECT hold FROM publications WHERE id=?', (row['id'],)).fetchone()[0]
-        if was != why:
-            # SET reads the row as it was: a first hold (none before) starts the clock, a row from
-            # before P1180 included (its `notice` was a warning time).
-            db.execute('UPDATE publications SET notice=CASE WHEN hold IS NULL THEN ? ELSE notice END, hold=? '
-                       'WHERE id=?', (int(CLOCK()), why, row['id']))
-            log('holding', row['map'], row['sha'][:12], why)
+        cur = db.execute('SELECT hold, notice FROM publications WHERE id=?', (row['id'],)).fetchone()
+        if cur[0] is not None and cur[1] is not None and now - cur[1] > FORCE_EXPIRE:
+            db.execute("UPDATE publications SET kind='expired' WHERE id=? AND kind='pending'", (row['id'],))
+            expired = True
+        else:
+            expired = False
+            if cur[0] != why or cur[1] is None:
+                # SET reads the row as it was: no hold before (a row from before P1180 included,
+                # whose `notice` was a warning time) or no clock yet starts it now.
+                db.execute('UPDATE publications SET notice=CASE WHEN hold IS NULL OR notice IS NULL THEN ? '
+                           'ELSE notice END, hold=? WHERE id=?', (now, why, row['id']))
+    if expired:
+        _note(connect, store, row['id'], 'expired, nothing installed: ' + (cur[0] or 'not ready in time'))
+        log('expired', row['map'], row['sha'][:12], cur[0] or '')
+    elif cur[0] != why:
+        log('holding', row['map'], row['sha'][:12], why)
 
 
 def _unreachable(st, name):
@@ -627,18 +639,12 @@ def _todo(raw):
 
 
 def _ready_now(connect, store, row, maps, now):
-    """P1180: True when a pending row may be written now: not expired, and every lobby on the map
-    is ours (_unreachable). Nothing else waits -- not a warning, a sweep or an owed verdict."""
+    """P1180: True when a pending row may be written now: every lobby on the map is ours
+    (_unreachable). Nothing else waits -- not a warning, a sweep or an owed verdict."""
     with connect(store) as db:
         cur = db.execute('SELECT * FROM publications WHERE id=?', (row['id'],)).fetchone()
     if cur is None or cur['kind'] != 'pending': return False
-    # Held for FORCE_EXPIRE since its first hold. `applying` clears both, so a row recovered from
-    # a crash before put() (or after downtime) gets a fresh hour, whatever its age.
-    if cur['hold'] and cur['notice'] is not None and now - cur['notice'] > FORCE_EXPIRE:
-        _set(connect, store, row['id'], kind='expired')
-        _note(connect, store, row['id'], 'expired, nothing installed: ' + (cur['hold'] or 'not ready in time'))
-        log('expired', row['map'], row['sha'][:12], cur['hold'] or '')
-        return False
+    # Expiry is _hold's: a row is expired only while something still blocks it.
     why = _unreachable(maps, row['map'])
     if why: _hold(connect, store, row, why); return False
     return True

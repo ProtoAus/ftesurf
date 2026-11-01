@@ -795,6 +795,22 @@ class PublishNow(Publish):
         self.maps=None; self.wait(300)                                        # rebooting: lobbies unheard
         self.assertEqual(self.row()['kind'], 'pending'); self.assertIn('cannot all be heard', self.row()['hold'])
         self.maps={'surf_fixture'}; self.assertEqual(self.wait(60), {'surf_fixture': 'live'})
+    def test_a_row_held_before_this_version_without_a_clock_still_expires(self):
+        # Round 4: a hold with no `notice` (an earlier P1180 build, or a pre-P1180 row held before
+        # its first warning) starts the clock at its next hold.
+        self.grant(); self.maps={'surf_fixture'}; self.silent={27510}
+        with z.connect(self.store) as db:
+            z.pub.queue(db, 'surf_fixture', self.raw, SID, self.now)
+            db.execute("UPDATE publications SET hold='left by an older build', notice=NULL")
+        self.wait(z.pub.FORCE_EXPIRE - 120); self.assertEqual(self.row()['kind'], 'pending')
+        self.wait(240); self.assertEqual(self.row()['kind'], 'expired')
+    def test_a_held_row_that_can_be_written_after_downtime_is_written(self):
+        # Round 4: expiry happens only at a hold, so a row writable now is written, not expired.
+        self.grant(); self.maps={'surf_fixture'}; self.silent={27510}
+        self.upload(self.challenge_now()[1]); self.wait(120)
+        self.assertIn('27510', self.row()['hold'])
+        self.now += z.pub.FORCE_EXPIRE + 600; self.silent=set()           # the service was down
+        self.assertEqual(self.apply(), {'surf_fixture': 'live'})
     def test_a_held_row_expires_an_hour_after_its_first_hold(self):
         self.grant(); self.maps={'surf_fixture'}; self.silent={27510}
         self.upload(self.challenge_now()[1]); self.wait(z.pub.FORCE_EXPIRE - 120)
