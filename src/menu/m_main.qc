@@ -8470,7 +8470,9 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 		ui_f2_open("");
 		return TRUE;
 	}
-	if (evtype == IE_KEYDOWN && scanx == K_ENTER && (menu_screen == SCREEN_CHAT || menu_screen == SCREEN_MAIN))
+	// P1186: the sidebar draws the chat on every ui_browser_screen, not only MAIN (MC_Active's test).
+	if (evtype == IE_KEYDOWN && (scanx == K_ENTER || scanx == K_KP_ENTER))
+	if (menu_screen == SCREEN_CHAT || ui_browser_screen())
 	if (sui_text_has_focus("mc_text"))
 	{
 		MC_Send();
