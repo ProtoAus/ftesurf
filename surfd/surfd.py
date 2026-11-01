@@ -1728,9 +1728,43 @@ def verdict_metrics(conn):
                     raise
 
 
+# P1175: the zone service reads this DB with mode=ro from a read-only mount (ProtectSystem=strict),
+# which works only while the WAL sidecars exist, and sqlite unlinks them when the last connection
+# closes. One idle read-only connection per worker keeps them: autocommit, no statement left
+# open, so checkpoints are never held back; read-only, so its close never checkpoints or unlinks
+# (sidecars outlive surfd, as after a crash, and the next writer recovers them). POSIX only, as
+# _harden_db_files: the sandbox is Linux, and on Windows an open handle blocks a test's delete.
+_KEEPER = {"key": None, "conn": None}
+_KEEPER_LOCK = threading.Lock()
+
+
+def _keep_sidecars():
+    if os.name != "posix" or DB_PATH == ":memory:":
+        return
+    key = (os.getpid(), DB_PATH)
+    if _KEEPER["key"] == key:
+        return
+    with _KEEPER_LOCK:
+        if _KEEPER["key"] == key:
+            return
+        old, _KEEPER["conn"] = _KEEPER["conn"], None
+        if old is not None and _KEEPER["key"][0] == key[0]:
+            old.close()                     # this process's, for another path: read-only, harmless
+        _KEEPER["key"] = key                # once per path and process, even if the open fails
+        try:
+            uri = Path(DB_PATH).resolve().as_uri() + "?mode=ro"
+            conn = sqlite3.connect(uri, uri=True, timeout=5.0, isolation_level=None,
+                                   check_same_thread=False)
+            conn.execute("SELECT 1 FROM sqlite_master LIMIT 1").fetchall()
+            _KEEPER["conn"] = conn
+        except sqlite3.Error as exc:
+            log.warning("cannot hold the database open for read-only readers: %s", exc)
+
+
 def get_db():
     if "db" not in g:
         g.db = connect()
+        _keep_sidecars()        # after connect(): its schema refusal has run in this process
     return g.db
 
 
