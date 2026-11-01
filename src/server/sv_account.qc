@@ -981,7 +981,7 @@ void(float reqid, float code, string body) Account_Reply =
 	local entity who;
 	local int    root;
 	local float  kind, answered, ok, linked, banned, rmode, named;
-	local string why, nm, a, b, st, cd, mark, social, socialwho;
+	local string why, nm, a, b, st, cd, mark, social, socialwho, activity;
 
 	who = findfloat(world, acct_rq, reqid);
 	if (who == world)
@@ -1011,6 +1011,7 @@ void(float reqid, float code, string body) Account_Reply =
 	named    = json_get_float(json_find_object_child(root, "named"));
 	social   = strcat(json_get_string(json_find_object_child(root, "social")));
 	socialwho = strcat(json_get_string(json_find_object_child(root, "social_who")));
+	activity = strcat(json_get_string(json_find_object_child(root, "activity_binding")));
 	if (root)
 		json_free(root);
 	if (code)
@@ -1088,6 +1089,7 @@ void(float reqid, float code, string body) Account_Reply =
 		who.acct_fail = ACCT_F_NONE;
 		Account_Is(who, linked, banned, nm, named);
 		Social_Set(who, social, socialwho);
+		who.ps_binding = strzone(activity);
 		if (who.acct_who != "")
 			strunzone(who.acct_who);
 		who.acct_who = "";
@@ -1148,6 +1150,7 @@ void(float reqid, float code, string body) Account_Reply =
 		who.acct_fail = ACCT_F_NONE;
 		Account_Is(who, TRUE, banned, nm, named);
 		Social_Set(who, social, socialwho);
+		who.ps_binding = strzone(activity);
 		if (who.acct_who != "")
 			strunzone(who.acct_who);
 		who.acct_who = "";

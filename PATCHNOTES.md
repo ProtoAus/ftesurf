@@ -21,6 +21,10 @@
 
 ## next
 
+### P1171 Profile playtime and course attempts
+- With online play on and Steam linked, official-lobby play records your connected time, map time and main/bonus course starts on your public profile.
+- Counters retry without double counting; offline/unlinked play is not uploaded and old unrecorded hours are not invented.
+
 ### P1162 Smoother slow noclip and personal lobby flight speed
 - Noclip stays smooth at slow practice speeds, including fast flight. Body and spectator views stop blending across actual placements.
 - Hold the walk key while noclipping and scroll to adjust your own flight speed in a supported lobby, without changing anyone else's speed. Normal movement and run eligibility are unchanged.

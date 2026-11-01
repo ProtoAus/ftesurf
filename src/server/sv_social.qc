@@ -1,6 +1,9 @@
 /* Steam friends: capability stays on the lobby, never in userinfo/client logs.
    Full-node presence snapshot every five seconds; reliable private stuffcmds.
    Compile before sv_account: it calls Set/Clear only after a proven reply. */
+void(entity e) PlayStats_Leaving;
+void(entity e) PlayStats_Clear;
+.string ps_binding;
 .string social_token, social_hash, social_ack, social_retire;
 .string social_rack;            // P1010: the main menu room's cursor, kept here; "-1" joins now
 .float social_here, social_req, social_reqtime, social_last;
@@ -19,6 +22,10 @@ void(entity e) PublicTime_Reset;
 void(entity e, float root) Inv_SVApply;
 void(entity e) Social_Clear =
 {
+	PlayStats_Leaving(e);
+	PlayStats_Clear(e);
+	if (strlen(e.ps_binding)) strunzone(e.ps_binding);
+	e.ps_binding = "";
 	VM_SVAccountReset(e);
 	Inv_SVReset(e);
 	PublicTime_Reset(e);
