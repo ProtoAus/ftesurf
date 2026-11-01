@@ -32,6 +32,10 @@
 ### P1172 Recoverable zone updates
 - Zone updates that cannot confirm completion keep their recovery state instead of being reported as safely reverted.
 
+### P1171 Profile playtime and course attempts
+- With online play on and Steam linked, official-lobby play records your connected time, map time and main/bonus course starts on your public profile.
+- Counters retry without double counting; offline/unlinked play is not uploaded and old unrecorded hours are not invented.
+
 ### P1170 Clean lobby disconnects
 - Switching or rejoining lobbies and closing the game normally now cleans up the old connection instead of leaving a ghost player until timeout. Weapon Drop still works without disconnecting you.
 

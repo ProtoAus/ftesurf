@@ -1,5 +1,19 @@
 # BACKLOG.md
 
+## P1171 lobby playtime: review quirks (1 Nov 2026; not integrity, informational totals)
+
+- `surfd/playstats.py:store` credits whatever cumulative seconds a stream reports; nothing ties
+  them to wall time, and simultaneous connections on one key each earn time (two clients = 2x
+  hours). Falsifier: two concurrent streams for one account over 60 s credit at most ~60 s;
+  a first post may not exceed now minus the stream's first sighting plus slack.
+- `play_sessions` keeps one row per (node, stream) forever and `updated` has no index;
+  lobby outboxes (`data/playstats-server1/p<port>/<who>.<binding>/`) keep files for players
+  who never return or relinked. Falsifier: an expiry pass bounds both without deleting an
+  unacknowledged current-binding snapshot.
+- `playstats.profile` ignores `accounts.banned_at` (a banned account keeps showing playtime),
+  and a main start under `!s 1` counts as a stage (excluded). Map names with capitals fail
+  `PlayStats_MapValid` silently.
+
 ## KSF zones and pictures after P1174 (1 Nov 2026)
 
 - `surfd/zonefit.py:fit` (and mapwatch's automatic port) passes donors whose zones

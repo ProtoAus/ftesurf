@@ -5710,6 +5710,8 @@ void(vector p, float w, float draw, string t) ui_tm_dot =
       for both (cl_online.qc, cl_steampic.qc), not for the map picker only.
   FS_TERMS_ONLINE is NOT bumped: nothing new leaves the machine of a player
   who does not link, and linking is its own act on its own page.
+  P1171's playtime paragraph is not a bump either (owner, 1 Nov 2026): a bump
+  would stop ranked uploads for every released menu until it re-asked.
 */
 float(float c, vector p, float w, float draw) ui_terms_col =
 {
@@ -5743,6 +5745,8 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_par(p, w, draw, "Your client's view-angle sidecar also goes to that server for anti-cheat review (rec_upload controls it). Choosing play online includes raw mouse and keyboard event journals, with timings, sent to play.proto.bar over HTTPS for private review, not public replays. Untick the journal box on the summary to opt out, or stop uploads later with F2. Stopping does not delete evidence already received.", COL_TEXT);
 		ui_tm_par(p, w, draw, "With online features enabled, play.proto.bar refreshes the map list at startup and serves zones, leaderboards and player pictures. Selecting a map can fetch its backdrop from dl.proto.bar. These services see your IP address, as does any lobby you join.", COL_TEXT);
 		ui_tm_par(p, w, draw, "A zone admin can upload saved zones to play.proto.bar. They are stored with the linked account and go live on the lobbies once none of them has the map loaded; existing times stay.", COL_TEXT);
+		ui_tm_head(p, draw, "Playtime and attempts");
+		ui_tm_par(p, w, draw, "On official lobbies, a linked account also saves real connected time (including spectating), time on each map, and main/bonus course starts to play.proto.bar. These informational totals appear on your public profile; they do not rank a run. Offline and unlinked play are not uploaded. Play offline stops future collection; unlinking stops new account submissions, not totals already received.", COL_TEXT);
 		ui_tm_head(p, draw, "Steam");
 		ui_tm_par(p, w, draw, "A ranked time needs a Steam account linked to this game. You sign in on Steam's own page in your browser; the game never sees your password. play.proto.bar keeps your Steam ID, name and profile picture and, for this install, the key and id that name it, where and when it was linked, and when and how often it sends ranked runs.", COL_TEXT);
 		ui_tm_par(p, w, draw, "Once linked, your Steam name is your name on lobbies, and it and your picture are shown with your times, in the game and on proto.bar, where they link to your Steam profile and sit beside your Momentum Mod and KSF records.", COL_TEXT);

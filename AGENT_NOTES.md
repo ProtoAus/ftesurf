@@ -1,5 +1,15 @@
 # AGENT_NOTES.md
 
+## P1171: a terms bump reaches every released client through the lobby (1 Nov 2026)
+
+`FS_TERMS_ONLINE` lives in src/shared/sh_defs.qc, so it is compiled into the csprogs each
+lobby serves. Raising it on the lobby while released menus still record the old answer
+turns off `Rec_UploadConsentOK`, the board, Momentum and profile gates for everyone on a
+release: "TERMS NOT ACCEPTED - RUNS WILL NOT SUBMIT". The first P1171 cut did exactly
+that (8 -> 9); Lex chose to count the existing answer instead. A real bump needs a release
+carrying the re-asking menu before any lobby serves the new number. Detail and the
+producer/backend contract: tools/profile-activity-p1171.md.
+
 ## P1173 duck-on-load DELIVERED (1 Nov 2026 ~11:00Z)
 
 Native-only. Source fix/duck52-release-01a192ea 117124a41 (tag patch-1173) = installed 520ba3ca

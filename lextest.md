@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1171 lobby playtime and main/bonus attempts (PENDING deploy, then owner check)
+After the schema-26 backend and lobby progs are live: on any official lobby, with online play
+on and Steam linked, stay connected a minute and start the main course once and a bonus once
+(a stage start should not count). Then open your profile in the menu (or `!time`): connected
+time, this map's time and 1 main + 1 bonus attempt should appear within about a minute of
+leaving (or of the next 30 s save). Toggling uploads off in F2 should pause, not reset, it.
+
 ## P1174 KSF map pictures, nine zoned KSF builds, zoning worklist
 Pictures: both installs and the Pi's media table since 11:15Z 1 Nov (atlas page 10). Zones:
 lobbies, site and C:\FTESurf's library since 11:13Z. Please check (PENDING):

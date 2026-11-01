@@ -196,6 +196,10 @@ def body(resp):
         assert len(result["social_who"]) == 8
         result.pop("social")
         result.pop("social_who")
+    # P1171: the lobby's activity association generation rides with the capability.
+    if "activity_binding" in result:
+        assert len(result["activity_binding"]) == 32
+        result.pop("activity_binding")
     return result
 
 
@@ -468,6 +472,7 @@ def finish_elsewhere(what):
         other.executescript(m.social.MENU_CHAT_SQL)
         other.executescript(m.viewmodel.SQL)
         other.executescript(m.inventory.SQL)
+        other.executescript(m.playstats.SQL)
         other.execute("PRAGMA user_version=%d" % m.SCHEMA_VERSION)
         other.commit()
         RACED[-1][1] = what
@@ -486,9 +491,9 @@ def racing_connect():
         if words[:1] != ["CREATE"] or (not seen and "accounts" not in words):
             return
         table = words[words.index("ON") + 1] if words[1] == "INDEX" else words[5]
-        # Schema25's two CREATEs hold BEGIN IMMEDIATE together; a second writer
-        # cannot interleave inside them. test_inventory checks transaction cuts.
-        if table in ("account_cosmetics", "account_items"):
+        # Schema25/26 steps run inside BEGIN IMMEDIATE; a second writer cannot
+        # interleave there (test_inventory faults schema 25's cuts).
+        if conn.in_transaction:
             return
         seen.append(table)
         if len(seen) == RACED[-1][0]:

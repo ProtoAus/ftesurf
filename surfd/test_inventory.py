@@ -203,12 +203,12 @@ class InventoryTests(unittest.TestCase):
             self.assertNotIn("account_items", names)
             self.assertEqual(list(map(tuple, self.db.execute("SELECT * FROM accounts ORDER BY steamid"))), before)
             S.migrate()
-            self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 25)
+            self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 26)
         self.assertEqual(self.kit().get_json()["roles"], 1)
 
     def test_schema_constraints_and_preservation(self):
         self.kit()
-        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 25)
+        self.assertEqual(self.db.execute("PRAGMA user_version").fetchone()[0], 26)
         for table in ("accounts", "keylinks", "runs", "lobbies"):
             before = list(map(tuple, self.db.execute("SELECT * FROM " + table)))
             with self.db:

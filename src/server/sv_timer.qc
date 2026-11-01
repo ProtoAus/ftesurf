@@ -14331,10 +14331,12 @@ float(entity t, entity p) SV_MomTrackOK =
 	return (p.run_t_track == stof(t.track_number));
 };
 
+void(entity e, float track, float leg) PlayStats_Attempt;
 void(entity e) SV_TimerStart =
 {
 	local float pr, ln;
 
+	PlayStats_Attempt(e, e.run_t_track, FS_LegOf(e.run_t_startseg, e.run_t_stagerun));
 	e.run_t_state = TS_RUNNING;
 	e.run_momon = vbsp_momtrig;     // Patch 869: before SV_RecOpen writes `momtrig`
 	e.run_t_ticks = 0;

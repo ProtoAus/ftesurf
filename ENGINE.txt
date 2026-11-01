@@ -29,6 +29,7 @@ commit   dc3e20be390ba5c3bb7d570bcacba8151172cd7d
 tag      patch-1165
 patch    1174
 # Patch 1174 (tools + data): KSF site maps get table rows and pictures (mapmeta/ksfshots/mapthumbs, atlas page 10); Momentum zones verified against KSF's WR replays installed on nine KSF builds. Native pin/tag, QC and Build unchanged.
+# Patch 1171 (QC/backend): linked official-lobby playtime and main/bonus attempts under the existing online answer (8); additive surfd schema 26 (P1162 playstats). Native pin/tag and qcbuild unchanged.
 # Patch 1173: a duck held through a standing save load gets a fresh press edge (authoritative run_forceduck and prediction pre-input clear only BUTTON_DUCK from oldbuttons). Built from fix/duck52-release-01a192ea (tag patch-1173, installed native 520 + the fix), merged to main 05a8118a3. Native pin/tag, QC, formats and Build unchanged.
 # Patch 1172 (backend): validate managed content lease binding and expected record through admission/reentry/completion; post-write scope failures retain partial zone-publication recovery, without repairing invalid state. Native pin/tag, QC, schema, capture and Build unchanged; no activation or full writer-coverage claim.
 # Patch 1168 (QC/backend readers): public owned inventories, optional tracked playtime/map attempts, main/bonus selection, menu profile pictures and upward seek paging. Collection is separate; native pins and qcbuild unchanged.
