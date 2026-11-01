@@ -32,13 +32,14 @@ lobbies, site and C:\FTESurf's library since 11:13Z. Please check (PENDING):
   C:\FTESurf\ksf-zoning-worklist-2026-11-01.html): share it; a helper ticks for everyone only if
   you invite them by email as an Editor. Publishing their zones needs the zone-admin role.
 
-## P1173 duck held through a save load
+## P1173 duck held through a save load (owner confirmed)
 Installed in both Windows installs (client + dedicated, git-8074-patch-1173) and all 12 Pi lobbies.
 Please check: hold duck, then load an airborne standing save (your surf_shape save 52 is the
 one measured). You should crouch at once and fly the same line as pressing duck after the load.
 Measured on save 52: old exe held-before body 8.5 units lower at 3 matched ticks and stopped
 at x~7002; new exe held-before == pressed-after (0.0 at 2 ticks) and carries on past it.
-Not covered: online prediction against a lobby, and the public download (next release).
+Owner retest (2 Nov): "works just right" -- accepted. Shipped publicly in 0.1.34.
+Not checked as its own case: online prediction against a lobby.
 
 ## P1170 clean lobby disconnects
 DELIVERED both Windows +all12 Pi paired scripts. Please check A->B removes
