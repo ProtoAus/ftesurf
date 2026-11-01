@@ -1,12 +1,14 @@
 # lextest.md — things waiting on a human
 
 ## P1170 clean lobby disconnects
-After final paired QC-only install: A->B removes oldA avatar/slot, B->B leaves
-one, normal close clears final slot; weapon Drop remains connected. Real local
-UDP controls passed. Abrupt crash/network loss still needs timeout fallback.
-Native520/MENU6f unchanged; pending stats/TAS/backend changes not adopted.
-Qualified release6d132181 is on public main as explicit parent; this does NOT
-qualify a blanket-main build. Final handoff/receipts own the delivery status.
+DELIVERED both Windows +all12 Pi paired scripts. Please check A->B removes
+oldA avatar/slot, B->B leaves one, normal close clears final slot; weapon Drop
+remains connected. Local lifecycle controls passed; installed-image cold live
+client fetched92a49aa2/drewHUD/exit0. All old config/data/completepart held.
+Native520/MENU6f unchanged; no stats/TAS/backend activation. Abrupt crash/network
+loss still needs timeout. Runtime6d132181 on main, NOT blanket-main build.
+Final own artifacts/clean-disconnect/delivery-final.json +rootHANDOFF; no more
+engineering probes/restarts needed unless owner reports a problem.
 
 ## P1169 — larger native Maps filters (pending)
 

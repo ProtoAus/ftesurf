@@ -1,6 +1,36 @@
 # AGENT_NOTES.md
 
-## P1170 — qualified clean-disconnect release source integrated; deployment pending
+## P1170 DELIVERED — clean normal lobby lifecycle; weapon Drop remains
+
+Exact runtime source6d132181/native documentationca4bcbea0 is on publicmain;
+final scoped docs742b71c0 only, no rebuild. Main's separately pending work stays
+intact; NOT a blanket-main runtime build. Native520/P1162 and MENU6f unchanged.
+Only3 feature files: transport drop/disconnect reaches existing native teardown,
+both CSQC weapon emitters use weapon_drop, user-facing Drop/key stays. No native/
+header/API/mover/recorder/timeout/backend/stats/TAS activation.
+
+BothWindows10VM/LNO/cache targets delivered, all14 native identities/MENU and36
+non-target generated preimages held,224cfg/15819old protected exact AFTERcold.
+Pi all12 native+directory positivelyempty, official noforce paired new1e3aeb37/
+92a49aa2, exactlyone required restart each; actual mapped native/plugin520 and
+all39241old protected bytes held, after->cold epochsstable. COMPLETE livepart1
+and full CURRENT on/offbox archives exact in ALL5phases. Report postphases omit
+convenience parts, printed0 was defaultnotactual0; finalreaderKeyError corrected
+from protected records+explicit currentparts==before producer guard, no healthy
+backup/actor/restart rerun or rawreceipt rewrite. Currentcoldprotected39275.
+
+Real local oldexit0ghost, weapon2->0 staysconnected, A->B oldA0, B->B one,
+normalquitB0/5logs clean. Installed520/MENU6f fresh live client hadNOlocalCSQC,
+fetched84661c2c/92a49aa2, visibleHUD/board9/type14 screenshot, exit0/noQCerrors,
+unacceptedterms/unranked. Own actors exited/sharedlease released, no background.
+Original caller/idle/reporter/snapshot/SFTP/manifest/schema refusals retained and
+fixed at SAME caller/reader/binding only, no datarestore/guardrelaxation/newnamespace.
+Root HANDOFF and own artifacts/clean-disconnect/delivery-final.json are authority.
+Engineering complete/retired-keep; owner ordinary switch/rejoin/quit UX remains.
+Crash/network loss still uses timeout; no numeric latency or livePi-hop benchmark.
+Do NOT rebuild/deploy/restart healthy delivery absent a new owner report.
+
+## P1170 pre-install source-publication checkpoint (historical)
 
 Qualified scoped source6d132181 and native documentationca4bcbea0 are integrated
 as explicit parents on public main. Main retains ALL independently pending work;
