@@ -1,6 +1,21 @@
 # lextest.md — things waiting on a human
 
-<<<<<<< Updated upstream
+## P1179 journal uploads stored again
+Live since 1 Nov 18:57Z (your sudo + a surfd restart). Please check: with journal upload on,
+finish a run on a lobby; the console should say "rec_ul_send: journal HTTP stored and digest
+acknowledged", not "not acknowledged (status 503)". Uploads that failed before cannot be re-sent.
+
+## P1181-P1185 Lex's bug paste of 2 Nov
+Live on all 12 lobbies and both Windows installs since 2 Nov 05:09 local (18:09Z 1 Nov); a game
+already running then has the old client: restart it. Please check on a lobby:
+- surf_for_shareholder_value `!s 2` (or `!r` from stage 2): you face the stage the way the
+  fail teleport does, not the corner. Same on surf_sirena / surf_midnight stage resets.
+- Shift + mouse wheel while noclipping: "noclip speed Nx (your flight only)", not "first local seat".
+- Load key on a map with no saves: "nothing saved on this map" once.
+- surf_pantheon at your save 1: the sun glow is gone behind the column (e2's surf_whiteout ramps too,
+  if they are props).
+- surf_mesa: ride the booster, reset or load a save, ride it again: no "practice -- inherited" line.
+
 ## P1187 one chat: lobbies and the main menu
 Live on all 12 lobbies and both installs since 2 Nov 05:01 local (18:01Z 1 Nov), combined with P1178.
 Please check with your linked account: in a lobby, open chat (it should say "to everyone"),
@@ -22,18 +37,6 @@ local (18:01Z), shipped with P1187 (csprogs 65698384). Please check, in the game
 Other players: the HUD line once their menu has fetched the new map table (once a session, with
 online features on); the rows and the sharper pictures come with the next launcher update.
 Measured: owned rig at 1920x1080 and 800x600 (screenshots in the P1178 task root).
-=======
-## P1181-P1185 Lex's bug paste of 2 Nov
-Live on all 12 lobbies and both Windows installs since 2 Nov 05:09 local (18:09Z 1 Nov); a game
-already running then has the old client: restart it. Please check on a lobby:
-- surf_for_shareholder_value `!s 2` (or `!r` from stage 2): you face the stage the way the
-  fail teleport does, not the corner. Same on surf_sirena / surf_midnight stage resets.
-- Shift + mouse wheel while noclipping: "noclip speed Nx (your flight only)", not "first local seat".
-- Load key on a map with no saves: "nothing saved on this map" once.
-- surf_pantheon at your save 1: the sun glow is gone behind the column (e2's surf_whiteout ramps too,
-  if they are props).
-- surf_mesa: ride the booster, reset or load a save, ride it again: no "practice -- inherited" line.
->>>>>>> Stashed changes
 
 ## P1186 Enter in the main menu chat
 In both Windows installs (menu.dat) since 2 Nov 04:24 local (17:24Z 1 Nov); public players get it

@@ -1,6 +1,6 @@
 # AGENT_NOTES.md
 
-## P1181/P1182/P1183/P1185 LIVE (1 Nov 2026 18:09Z); P1179 waits on Lex's sudo
+## P1181/P1182/P1183/P1185 LIVE (1 Nov 2026 18:09Z); P1179 LIVE 18:57Z
 
 Delivered QC base is now `origin/deploy/p1185-lexbugs` 5729ce47 = d4b9bd87 (P1187) + these
 patches; main carries the same lines (P1183's wheel half does not apply: main still has the
@@ -28,7 +28,11 @@ P1029 wheel). Built with fteqcc c24ede65 in C:/FTESurf-worktrees/lexbugs-2026110
   /srv/nvme/agent-work/hid-evidence-rw-20261102/20-hid-evidence.conf (repo
   surfd/surfd-hid-evidence.conf); the P1115 installer rewrites only 10-guarded-startup.conf, so
   Lex installs it once; then `sudo -n systemctl daemon-reload` and stop/start surfd.service
-  (NOPASSWD) and check the worker's mountinfo shows the evidence tree rw.
+  (NOPASSWD) and check the worker's mountinfo shows the evidence tree rw. Done 1 Nov 18:57Z
+  (Lex installed it; same generation 58dbbf40, master 4156432): the worker's mountinfo shows
+  data/evidence rw, lobbies.json 200 with 12 rows, an empty POST /api/hid answers 413 (its length
+  guard), surfd.db-wal/-shm recreated for zonepub. Wait for a lobby deploy's build.ps1 -Pi to
+  finish first: it reads 8084/lobbies.json before acting. A signed upload is Lex's check.
 
 ## P1187 chat to everyone + P1178, LIVE (1 Nov 2026 18:01Z)
 

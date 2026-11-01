@@ -25,56 +25,71 @@
 - With a linked Steam account, what you type in a lobby's chat now reaches every lobby and the main menu chat, tagged with your lobby number. Press TAB (or the team chat key) to talk to this lobby only.
 - Lines from other lobbies show their number, like [#4], and lines from the main menu show [menu]. Commands starting with ! stay in your lobby.
 
+
+### P1186 Enter sends menu chat messages
+- In the main menu's chat, Enter (or keypad Enter) now sends your message on the Maps, Story and Stats screens too, not only on the front page.
+
+
+### P1185 Boosters no longer put your next run in practice
+- On maps whose boosters switch themselves off and back on (surf_mesa and many others), riding one, then resetting or loading a save and riding it again, no longer marks the new run as practice.
+
+
 ### P1184 Zone editor: type a zone's exact size
 - The zone editor shows the selected zone's size and its six edges (x min/max, y min/max, bottom, top). Click one to type an exact number, or roll the wheel over it to move that edge a grid step.
 - `zone_edit face <xmin|xmax|ymin|ymax|bottom|top> <value>` does the same from the console.
+
+
+### P1183 Two wrong console messages
+- Loading a save on a map where you have none says "nothing saved on this map" once instead of twice.
+- Shift + mouse wheel noclip speed now works on lobbies; it used to refuse with "first local seat only".
+
+
+### P1182 The sun hides behind props
+- A map's sun glow (env_sun) no longer shines through pillars, statues and other props in front of it (surf_pantheon's columns, for one). Glass still lets it through.
+
+
+### P1181 Stage resets face the right way
+- On maps whose zones were made in the zone editor, !r and !s now face you where the map's own stage teleport faces, instead of wherever the zoner happened to be looking (13 maps, e.g. surf_for_shareholder_value, surf_sirena, surf_midnight).
+
 
 ### P1180 Zone publishing is instant, with a history
 - Publish has one button now, and it takes effect at once: the lobbies on that map restart with the new zones straight away (runs in progress there end). A bad zone no longer waits for people to finish.
 - The zone editor's new History page lists every published version of the map, who published it and when; click one to load it, then Save and Publish to bring it back.
 - The site's Zoning page shows who zoned each map, and a map drops off the list as soon as it is published.
 
-### P1186 Enter sends menu chat messages
-- In the main menu's chat, Enter (or keypad Enter) now sends your message on the Maps, Story and Stats screens too, not only on the front page.
-
-### P1185 Boosters no longer put your next run in practice
-- On maps whose boosters switch themselves off and back on (surf_mesa and many others), riding one, then resetting or loading a save and riding it again, no longer marks the new run as practice.
-
-### P1183 Two wrong console messages
-- Loading a save on a map where you have none says "nothing saved on this map" once instead of twice.
-- Shift + mouse wheel noclip speed now works on lobbies; it used to refuse with "first local seat only".
-
-### P1182 The sun hides behind props
-- A map's sun glow (env_sun) no longer shines through pillars, statues and other props in front of it (surf_pantheon's columns, for one). Glass still lets it through.
-
-### P1181 Stage resets face the right way
-- On maps whose zones were made in the zone editor, !r and !s now face you where the map's own stage teleport faces, instead of wherever the zoner happened to be looking (13 maps, e.g. surf_for_shareholder_value, surf_sirena, surf_midnight).
 
 ### P1178 Maps list: snug rows, map authors, sharper pictures
 - Each map in the Maps list now takes the height of its picture plus a little padding, so more maps fit on screen.
 - The map's author is shown after its name in the Maps list, and under the map name in the in-game Map info.
 - Map pictures in the list are sharper: they are now stored at the size they are drawn.
 
+
 ### P1177 Your hud_player colours are kept
 - The colours, belt, trail and glow you pick in hud_player now stay picked after you restart the game, instead of going back to a random colour.
+
 
 ### P1176 Site: a cleaner front page and a zoning list
 - The front page is down to the logo, a rainbow BETA and the downloads; hover BETA for the build details.
 - New Zoning page on the site: every KSF map that still needs zones, with its picture, tier, stages, bonuses, plays and mapper. Maps drop off a few minutes after a zoner publishes them.
 
+
 ### P1175 Zone publishing works again
 - Zone admins can publish from the zone editor again. Since 1 Nov every upload had answered "Zone uploads unavailable".
 
+
 ### P1169 Larger Maps filter text
 - Maps: larger, sharper native-pixel filter text, with roomier controls that wrap on smaller windows.
+
 
 ### P1161 Fresh TAS project loads
 - TAS projects can load and replay in a fresh supported session without first building rewind history. Legal-start rewind keeps working from a fresh start.
 - Loading a TAS project while noclipping or held now refuses before changing your body or saved timeline. TAS remains assisted practice.
 
+
 ### P1154 TAS frame advance at 100Hz
 - TAS pause, frame advance, retained rewind and input replay can use a selected 10ms Source clock as well as the existing 15ms clock. Default movement timing is unchanged.
 - Clock changes stop queued TAS work instead of silently reusing it. Reload the map after changing its clock before starting a new timeline. TAS remains assisted practice.
+
 
 ### P1142 Collector recovery (pending backend rollout)
 - Steam sign-in queues paced Momentum and KSF personal-best refreshes. Collector retries keep unrelated work moving; catalogue changes no longer shift a pending KSF stage walk. This update is not active on the live backend yet.
