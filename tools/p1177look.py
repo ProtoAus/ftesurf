@@ -100,16 +100,18 @@ def main():
         check(got == ('5', '5'), 'a reconnect without a restart still asks 5', str(got))
         lc = granted(cl, '5')
         check(lc == '5', 'the lobby grants 5 after the reconnect', lc)
-        # Bare cfg_save is the quit-time autosave: the manifest's MAINCONFIG, archived cvars only
-        # (cfg_save_all ""). A named cfg_save writes every cvar, the once-a-launch flag included.
-        wrote = cl.query('cfg_save; echo P1177_SAVED', r'Wrote \$basedir/(\S+\.cfg)').group(1)
+        check('saved look settings sent' not in cl.text(), 'the reconnect sends nothing')
+        # Bare cfg_save is the quit-time autosave (the manifest's MAINCONFIG); cfg_save_all 1
+        # makes it write every cvar, the worst case for anything kept in a non-archived cvar.
+        wrote = cl.query('set cfg_save_all 1; cfg_save; echo P1177_SAVED',
+                         r'Wrote \$basedir/(\S+\.cfg)').group(1)
         cl.wait('P1177_SAVED')
         cl.stop(); peers.remove(cl)
         mainconfig = base / wrote
         saved = mainconfig.read_text(errors='replace')
         check('seta cl_lobbycolor "5"' in saved, 'the saved config keeps cl_lobbycolor 5')
         check(not re.search(r'^setinfo ', saved, re.M), 'no userinfo lines saved (cfg_save_infos 0)')
-        check('_av_looksent' not in saved, 'the once-a-launch flag is not saved')
+        check(re.search(r'^set ', saved, re.M), 'cfg_save_all 1 saved non-archived cvars too')
         with open(mainconfig, 'a') as f:
             f.write('seta cl_lobbylen "x"\n')
 

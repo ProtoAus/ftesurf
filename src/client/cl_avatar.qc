@@ -107,8 +107,10 @@ void() Av_PrintLook;
 /*
   Patch 1177: cfg_save_infos 0 (cfg/default.cfg) keeps userinfo out of ftesurf.cfg,
   so every look key the panel writes is mirrored in an archived cl_<key> cvar and
-  sent again once a launch (Av_RegisterCvars). A console setinfo still lasts the session.
+  fills the key again when this process has not set it (Av_RegisterCvars). A console
+  setinfo still lasts the session.
 */
+string(float seat, string keyname) Av_LocalInfo = #0:getlocaluserinfo;
 #define AV_LOOKKEYS 7
 string(float i) Av_LookKey =
 {
@@ -1561,19 +1563,22 @@ void() Av_RegisterCvars =
 	local string k, v;
 
 	Inv_Init();
-	// Patch 1177: the saved look (Av_Put), sent once a launch: a cvar outlives this VM.
+	/*
+	  Patch 1177: the saved look (Av_Put) fills only keys this process has not set:
+	  userinfo lasts the process, so a map change or reconnect sends nothing and a
+	  command-line setinfo wins. No once-a-launch cvar: cfg_save_all 1 would save it.
+	*/
 	for (i = 0; i < AV_LOOKKEYS; i = i + 1)
 		registercvar(strcat("cl_", Av_LookKey(i)), "", CVAR_ARCHIVE);
-	registercvar("_av_looksent", "0");
-	if (!cvar("_av_looksent"))
+	if (checkbuiltin(Av_LocalInfo))
 	{
-		cvar_set("_av_looksent", "1");
 		n = 0;
 		for (i = 0; i < AV_LOOKKEYS; i = i + 1)
 		{
 			k = Av_LookKey(i);
 			v = cvar_string(strcat("cl_", k));
 			if (strlen(v) && Av_LookSafe(v))
+			if (!strlen(Av_LocalInfo(0, k)))
 			{
 				localcmd(sprintf("setinfo %s \"%s\"\n", k, v));
 				n = n + 1;
