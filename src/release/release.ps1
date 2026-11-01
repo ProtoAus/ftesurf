@@ -287,6 +287,7 @@ $ShipGlobs = @(
     # Keep the three font faces and both OFL notices, never install backup copies.
     @{ Path = 'ftesurf/gfx/fonts';      Filter = '*'; Deny = @('*.prev') }
     @{ Path = 'ftesurf/gfx/mapthumbs';  Filter = '*.png' }
+    @{ Path = 'ftesurf/gfx/mapthumbs';  Filter = 'hd*.jpg' }   # P1178: the 160x90 atlas
     @{ Path = 'ftesurf/gfx/crosshairs'; Filter = '*.png' }
     # Patch 467: the 2x1 placeholder that makes `r_skybox milk` register the
     # skybox_milk script shader -- R_SetSky only takes that branch when an image

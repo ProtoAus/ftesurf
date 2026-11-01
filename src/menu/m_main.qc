@@ -419,6 +419,7 @@ strbuf ms_ksftier;
 strbuf ms_momtsrc; // Provenance of the selected MOM value, not a skipped suggestion.
 strbuf ms_modev;
 strbuf ms_meta;
+strbuf ms_author;       // P1178: mapmeta column 12, a token for MapAuthor_Text
 
 /*
   ms_catv -- the GAMETYPE a map is filed under, one GC_* per map, as a string.
@@ -563,6 +564,16 @@ float  ms_bgpage, ms_bgcell;
 #define THUMB_H     72
 #define ATLAS_PX    2048
 #define THUMB_COLS  16          // ATLAS_PX / THUMB_W
+// P1178: the 160x90 atlas, gfx/mapthumbs/hd<N>.jpg (mapthumbs.py --hd says the same).
+// ms_meta stores its page as HD_VPAGE + N, so every caller hands it to ui_thumb as is.
+#define HD_VPAGE    500
+#define HD_W        160
+#define HD_H        90
+#define HD_PITCH    96
+#define HD_COLS     12
+#define HD_ROWS     21
+#define HD_PAGE_W   1920
+#define HD_PAGE_H   2016
 
 // ---------------------------------------------------------------------------
 //  Small widgets.  sui_sys gives us hit-testing, clipping, scrolling and text
@@ -1507,21 +1518,24 @@ void() ui_meta_load =
 	local filestream fh;
 	local hashtable byname;
 	local string ln, key;
-	local float i, n, row, hit, maxpage, vp;
+	local float i, n, row, hit, maxpage, maxhd, vp;
 	local string pth, pg, cl;
 
 	if (ms_tierv >= 0) buf_del(ms_tierv);
 	if (ms_modev >= 0) buf_del(ms_modev);
 	if (ms_meta  >= 0) buf_del(ms_meta);
+	if (ms_author >= 0) buf_del(ms_author);
 	ms_tierv = buf_create();
 	ms_modev = buf_create();
 	ms_meta  = buf_create();
+	ms_author = buf_create();
 
 	for (i = 0; i < ms_count; i = i + 1)
 	{
 		bufstr_add(ms_tierv, "0", TRUE);
 		bufstr_add(ms_modev, "0", TRUE);
 		bufstr_add(ms_meta, "", TRUE);
+		bufstr_add(ms_author, "-", TRUE);
 	}
 
 	pth = Mmm_MetaPath();       // P1099: the Pi's copy when it is the newer
@@ -1541,7 +1555,7 @@ void() ui_meta_load =
 		         HASH_REPLACE | EV_FLOAT);
 
 	hit = 0;
-	maxpage = -1;
+	maxpage = maxhd = -1;
 	while ((ln = fgets(fh)) != "")
 	{
 		n = tokenize(ln);
@@ -1604,6 +1618,18 @@ void() ui_meta_load =
 		if (pg != "-")
 		if (!Mmm_PageOK(stof(pg)))
 			pg = "-";
+		// P1178: the 160x90 cell instead, where this install has its page at the listed size
+		// and the cell is a whole number on it (a net table's field is any [A-Za-z0-9_.-]).
+		if (n >= 15)
+		if (strcmp(argv(13), "-") && strcmp(argv(14), "-"))
+		if (Mmm_HdOK(stof(argv(13))))
+		if (stof(argv(14)) == floor(stof(argv(14))) && stof(argv(14)) >= 0 && stof(argv(14)) < HD_COLS * HD_ROWS)
+		{
+			pg = ftos(HD_VPAGE + stof(argv(13)));
+			cl = argv(14);
+		}
+		if (n >= 13)
+			bufstr_set(ms_author, row, argv(12));
 		if (pg == "-")
 		{
 			vp = Mmm_UrlPage(argv(8));
@@ -1620,9 +1646,15 @@ void() ui_meta_load =
 		                                (n >= 12) ? argv(11) : "-"));
 
 		if (pg != "-")
-			if (stof(pg) < MMM_VPAGE)
-			if (stof(pg) > maxpage)
-				maxpage = stof(pg);
+		{
+			if (stof(pg) < HD_VPAGE)
+			{
+				if (stof(pg) > maxpage)
+					maxpage = stof(pg);
+			}
+			else if (stof(pg) < MMM_VPAGE)
+				maxhd = max(maxhd, stof(pg) - HD_VPAGE);
+		}
 
 		hit = hit + 1;
 	}
@@ -1687,10 +1719,12 @@ void() ui_meta_load =
 	*/
 	for (i = 0; i <= maxpage; i = i + 1)
 		precache_pic(strcat("gfx/mapthumbs/atlas", ftos(i)));
+	for (i = 0; i <= maxhd; i = i + 1)
+		precache_pic(strcat("gfx/mapthumbs/hd", ftos(i)));
 
-	print(sprintf("WOS: %s matched %g of %g maps, %g thumbnail page(s)"
+	print(sprintf("WOS: %s matched %g of %g maps, %g thumbnail page(s) + %g hd"
 	              ", %g picture(s) from the Pi, %g tier(s) from KSF's roster\n",
-	              pth, hit, ms_count, maxpage + 1, Mmm_UrlCount(), fb));
+	              pth, hit, ms_count, maxpage + 1, maxhd + 1, Mmm_UrlCount(), fb));
 
 	/*
 	  One probe against a file we know we wrote, so that a later "no backdrop"
@@ -2225,6 +2259,15 @@ void(vector pos, vector size, float page, float cell) ui_thumb =
 	{
 		sui_fill(pos, size, '0.05 0.05 0.07', 1, 0);    // until the download lands
 		sui_subpic(pos, size, Mmm_UrlFor(page), '0 0 0', '1 1 0', '1 1 1', 1, 0);
+		return;
+	}
+	if (page >= HD_VPAGE)
+	{
+		col = cell - floor(cell / HD_COLS) * HD_COLS;
+		row = floor(cell / HD_COLS);
+		sui_subpic(pos, size, strcat("gfx/mapthumbs/hd", ftos(page - HD_VPAGE)),
+		           [col * HD_W / HD_PAGE_W, row * HD_PITCH / HD_PAGE_H, 0],
+		           [HD_W / HD_PAGE_W, HD_H / HD_PAGE_H, 0], '1 1 1', 1, 0);
 		return;
 	}
 
@@ -5429,7 +5472,7 @@ string(string uuid, float scrw) ui_bgpick =
 void(vector screensize, float page, float cell) ui_bgatlas =
 {
 	local vector sp, ss, base, sz;
-	local float col, row, d, i, gx, gy, w, acc, scale;
+	local float col, row, d, i, gx, gy, w, acc, scale, texw;
 	local string pic;
 
 	if (page < 0 || cell < 0)
@@ -5445,6 +5488,16 @@ void(vector screensize, float page, float cell) ui_bgatlas =
 	sp = [(col * THUMB_W + 0.5) / ATLAS_PX, (row * THUMB_H + 0.5) / ATLAS_PX, 0];
 	ss = [(THUMB_W - 1) / ATLAS_PX, (THUMB_H - 1) / ATLAS_PX, 0];
 	pic = strcat("gfx/mapthumbs/atlas", ftos(page));
+	texw = THUMB_W;
+	if (page >= HD_VPAGE && page < MMM_VPAGE)
+	{
+		col = cell - floor(cell / HD_COLS) * HD_COLS;
+		row = floor(cell / HD_COLS);
+		sp = [(col * HD_W + 0.5) / HD_PAGE_W, (row * HD_PITCH + 0.5) / HD_PAGE_H, 0];
+		ss = [(HD_W - 1) / HD_PAGE_W, (HD_H - 1) / HD_PAGE_H, 0];
+		pic = strcat("gfx/mapthumbs/hd", ftos(page - HD_VPAGE));
+		texw = HD_W;
+	}
 	if (page >= MMM_VPAGE)
 	{
 		sp = '0 0 0';
@@ -5460,7 +5513,7 @@ void(vector screensize, float page, float cell) ui_bgatlas =
 		scale = screensize_y / 1080;
 	sz = [1920 * scale, 1080 * scale, 0];
 
-	d = (sz_x / THUMB_W) * BG_BLUR_TEXELS;      // one texel, in screen pixels
+	d = (sz_x / texw) * BG_BLUR_TEXELS;         // one texel, in screen pixels
 	sz = sz + [d * 2, d * 2, 0];
 	base = [floor((screensize_x - sz_x) * 0.5),
 	        floor((screensize_y - sz_y) * 0.5), 0];
@@ -7449,9 +7502,11 @@ void(vector screensize) screen_create =
 	size = screensize; pos = '0 0 0';
 	inner = size_x - 32;
 	compact = (inner < 760);
-	rh = compact ? 160 : 128;
+	// P1178: wide rows are the 90 px photo plus 8 above and below (were 128, 29 px empty
+	// under it); compact rows end 8 below their Play button.
+	rh = compact ? 156 : 106;
 	nx = compact ? 140 : 176;
-	actiony = compact ? 108 : 28;
+	actiony = compact ? 108 : 29;
 	namesize = '20 20 0';
 	ui_cs_size = size;
 	ui_cs_lcols = ui_cs_lshow = 0;
@@ -7728,6 +7783,10 @@ void(vector screensize) screen_create =
 			{
 				float real = stof(bufstr_get(ms_view, idx));
 				float er = ui_eff(real);           // Patch 652: the build this row plays
+				// Wide: Play is centred in the row, or sits above the MOM/CS:S switch.
+				float ay = actiony;
+				if (!compact && strcmp(bufstr_get(ms_var, real), ""))
+					ay = 12;
 				string rid = strcat("cs_row", ftos(idx));
 				vector rs  = [ls_x - 14, rh];
 
@@ -7741,8 +7800,8 @@ void(vector screensize) screen_create =
 
 				// Metadata is parsed only for visible cards. Keep times source-separated.
 				{
-					local float mn, mpage, mcell, mstages, mbonus, mlinear, cw, neww, pop;
-					local string mtier, mktier, mnmf, sub, mode, dep;
+					local float mn, mpage, mcell, mstages, mbonus, mlinear, cw, neww, pop, ax;
+					local string mtier, mktier, mnmf, sub, mode, dep, au;
 					mn = tokenize(bufstr_get(ms_meta, real));
 					mpage = mcell = -1; mstages = mbonus = mlinear = -1;
 					if (mn > MT_UUID)
@@ -7763,6 +7822,14 @@ void(vector screensize) screen_create =
 					if (neww)
 						sui_text([rp_x + nx + 4 + stringwidth(mnmf, TRUE, namesize), rp_y + 8], namesize,
 						         strcat(SUI_ESC_GOOD, "NEW"), COL_TEXT, 1, 0);
+					// P1178 (Lex): the author after the name, in what the name leaves.
+					au = MapAuthor_Text(bufstr_get(ms_author, real));
+					if (au == "")
+						au = MapAuthor_Text(bufstr_get(ms_author, er));
+					ax = nx + stringwidth(mnmf, TRUE, namesize) + neww + 10;
+					if (au != "" && cw - (ax - nx) > 48)
+						sui_text([rp_x + ax, rp_y + 11], '16 16 0',
+						         ui_fit_text(strcat("by ", au), cw - (ax - nx), '16 16 0'), COL_DIM, 1, 0);
 					mtier = bufstr_get(ms_momtier, real); mktier = bufstr_get(ms_ksftier, real);
 					sub = sprintf("MOM %s | KSF %s", stof(mtier) > 0 ? strcat("T", mtier) : "-", stof(mktier) > 0 ? strcat("T", mktier) : "-");
 					if (!strcmp(bufstr_get(ms_var, real), ""))
@@ -7782,7 +7849,7 @@ void(vector screensize) screen_create =
 						             "^7 | ", sub);
 					sui_text([rp_x + nx, rp_y + 50], '12 12 0', ui_fit_text(sub, cw, '12 12 0'), COL_DIM, 1, 0);
 					if (strcmp(bufstr_get(ms_var, real), ""))
-						ui_build_switch(compact ? rp + '4 84 0' : [rp_x + rs_x - 130, rp_y + 88], real, idx);
+						ui_build_switch(compact ? rp + '4 84 0' : [rp_x + rs_x - 130, rp_y + 68], real, idx);
 					MCard_Draw([rp_x + nx, rp_y + 32], cw, compact, bufstr_get(ms_name, er), rid);
 				}
 
@@ -7816,7 +7883,7 @@ void(vector screensize) screen_create =
 				*/
 				if (dlg > 0 && bufstr_get(ms_have, er) == "1")
 				{
-					vector pp = [rp_x + (compact ? 4 : rs_x - 4 - dlg), rp_y + actiony];
+					vector pp = [rp_x + (compact ? 4 : rs_x - 4 - dlg), rp_y + ay];
 					vector ps = [dlg - 4, compact ? 40 : 48];
 					string pid = strcat("cs_play", ftos(idx));
 					float  ph, pb;
@@ -7850,7 +7917,7 @@ void(vector screensize) screen_create =
 				}
 				else if (dlg > 0 && bufstr_get(ms_have, er) != "1")
 				{
-					vector gp = [rp_x + (compact ? 4 : rs_x - 4 - dlg), rp_y + actiony];
+					vector gp = [rp_x + (compact ? 4 : rs_x - 4 - dlg), rp_y + ay];
 					vector gs = [dlg - 4, compact ? 40 : 48];
 					string gid = strcat("cs_dl", ftos(idx));
 					string mnm = bufstr_get(ms_name, er);
@@ -8007,6 +8074,7 @@ void() m_init =
 
 	ms_name = ms_src = ms_lst = -1;
 	ms_tierv = ms_momtier = ms_ksftier = ms_momtsrc = ms_modev = ms_meta = ms_pbv = -1;
+	ms_author = -1;
 	ms_catv = ms_pblob = -1;
 	ms_have = ms_new = ms_dlkb = -1;
 	ms_wr = ms_dltier = ms_dataq = ms_deps = -1;
