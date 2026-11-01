@@ -2,9 +2,15 @@
 
 ## P1169 map-list refresh defers outside connected gameplay
 
-MENU-only qualified candidate, install pending. Native runtime520/P1162 and
-actual SSQC54fc2f59/CSQCb3ef8935 unchanged; no lobby restart/backend/mover/cancel
-policy operation. Current BOTH installed MENU8a3705aa is newer P1168: whole
+DELIVERED both Windows, ONLY4 MENU.dat/LNO targets. Native runtime520/P1162,
+actual SSQC54fc2f59/CSQCb3ef8935 and all non-target generated/cache/prev bytes
+unchanged; no lobby restart/backend/mover/cancel policy operation. Both actual
+installed native/menu/plugin fresh colds download correct unchangedCSQC, draw
+boardcols9/type14, screenshot/noQCerror/exit0. Full CURRENT15818-file before
+archive verified; all15818/224cfg + archive unchanged afterboth colds. Initial
+caller lacked registered parent and failed BEFORE any snapshot/preimage/archive;
+log retained, same owned parent/same before completed, no reset. Source/pin
+published; no owner game stopped/hot-reloaded; own actors exited/lease released. Pre-update BOTH actual menus8a3705aa were newer P1168: whole
 binary control from public7f759762 consumed MENU input closure plus official
 UI_MENU_VERSION0.1.33/DEVELOPMENT1 matches exactly. Preserve those8 public MENU
 input deltas before fix, not older noclip6c9f or a full-main/server activation.

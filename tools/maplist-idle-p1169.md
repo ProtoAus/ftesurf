@@ -1,8 +1,9 @@
 # P1169 — map-list update waits outside connected gameplay
 
-Qualified candidate, MENU-only installation pending. Native remains P1162/520,
-actual server/client programs54fc2f59/b3ef8935 remain unchanged. No lobby restart
-or backend operation is needed. Exact already-installed P1168 menu8a3705aa,
+DELIVERED on both Windows installs: only MENU.dat and MENU.lno,4 targets total.
+Native remains P1162/520; actual server/client programs54fc2f59/b3ef8935 and all
+other generated/cache/previous bytes are unchanged. No lobby restart or backend
+operation occurred. Exact already-installed P1168 menu8a3705aa,
 including profile/time/course readers, is preserved rather than overwritten by
 older P1162 UI. The public MENU input closure and official version defines
 reproduce that entire installed program byte-for-byte.
@@ -54,3 +55,18 @@ No numerical frame-time, all-HTTP-worker, hardware input, GPU geometry, ranked
 finish or human-feel acceptance is inferred. The older HTTP-worker close cost
 in BACKLOG is separate, not claimed fixed. Raw receipts remain in the same owned
 task's maplist-idle evidence; private data/config backups are never published.
+
+## Final installed checks
+
+Both actual installed native/menu/HL2+ImGui fresh private joins downloaded the
+unchanged expected lobby CSQC, drew boards cols9/type14, captured screenshots,
+exited0 and reported no QC errors. Before promotion a complete CURRENT15818-file
+configuration/data archive plus52 generated/previous preimages was captured and
+verified. After both cold joins all15818 protected files,224cfg and the complete
+archive match. ALL non-target native/server/client/cache/previous images match
+before. Only4 MENU/LNO targets changed; generated previous menus8a retained.
+The caller initially lacked the registered snapshot parent; it failed BEFORE
+any before/preimage/archive creation. Log kept; same parent marked owned and
+same before phase succeeded, not a new namespace or protection reset. Source
+branch/pin published; own actors exited/lease released. Human UX/hitch check
+remains in lextest.md; automated deferral is not subjective acceptance.

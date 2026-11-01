@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1169 — map-list update during play (qualified; install pending)
+## P1169 — map-list update during play (installed both Windows; owner check)
 
 The automatic catalogue refresh now waits outside the entire connected session,
 including ESC/practice/paused runs. Cached rows stay available; late directory
@@ -9,8 +9,10 @@ file probes also pause during play. HTTP already uses native background work;
 QC/UI shared state was not moved onto an unsafe worker thread. Actual RUNNING
 subject+old-menu control and2179-row idle drain passed; not a zero-hitch or broad
 HTTP performance claim. Details: `tools/maplist-idle-p1169.md`.
-After guarded MENU-only installation, play normally and confirm no automatic
-map-list/WOS rebuild appears mid-run. On disconnect, confirm the library updates.
+Both MENU-only installs and fresh native/menu/plugin joins passed; current
+config/data and non-target programs preserved. Play normally and confirm no
+automatic map-list/WOS rebuild appears mid-run. On disconnect, confirm the library
+updates. No need to close/reinstall anything for this completed delivery.
 Run-cancel/movement/ranking rules are unchanged; no human confirmation yet.
 
 ## P1162 — noclip follow-up (both Windows + all12 lobbies installed; owner check)
