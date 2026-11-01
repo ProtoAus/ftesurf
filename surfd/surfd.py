@@ -33,6 +33,7 @@ import shlex
 import shutil
 import sqlite3
 import stat
+import sys
 import threading
 import time
 import types
@@ -1740,9 +1741,11 @@ def verdict_metrics(conn):
 # open, so checkpoints are never held back; read-only, so its close never checkpoints or unlinks
 # (sidecars outlive surfd, as after a crash, and the next writer recovers them). POSIX only, as
 # _harden_db_files: the sandbox is Linux, and on Windows an open handle blocks a test's delete.
-# Opened after migrate() at import and again by get_db(), so a recycled worker holds before its
-# first request. While any holder lives, journal_mode changes and EXCLUSIVE locking from other
-# processes get "database is locked": maintenance stops surfd first anyway.
+# Opened by get_db(), and after migrate() at import in a gunicorn worker only, so a recycled
+# worker holds before its first request. Not at import elsewhere: crons and the requests
+# watcher import surfd too, and a holder there would outlive `systemctl stop surfd`. While a
+# holder lives, journal_mode changes and EXCLUSIVE locking from other processes get "database is
+# locked"; stopping surfd releases every holder.
 _KEEPER = {"key": None, "conn": None, "retry": 0.0}
 _KEEPER_LOCK = threading.Lock()
 KEEPER_RETRY = 60       # seconds between attempts after a failed open, so a failure is not per request
@@ -7745,7 +7748,8 @@ hidupload.register(app, types.SimpleNamespace(
         setting("SURFD_GAME") or "/srv/nvme/ftesurf-server/game", "tools"))
 
 migrate()
-_keep_sidecars()
+if "gunicorn" in sys.modules:
+    _keep_sidecars()
 log.info("surfd ready (db=%s ttl=%ds cap=%d nodes)", DB_PATH, LOBBY_TTL, MAX_NODES)
 if PUBLIC_HOST:
     log.info("public host %r for heartbeats from %s; everything else keeps its "
