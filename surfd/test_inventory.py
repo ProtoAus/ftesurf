@@ -53,6 +53,21 @@ class InventoryTests(unittest.TestCase):
         self.addCleanup(self.db.close)
         self.assertEqual(I.public(self.db, IDS[0])["hat"], colour + 1)
 
+    def test_public_inventory_includes_unequipped_owned_items_read_only(self):
+        private = self.kit().get_json()
+        before = list(map(tuple, self.db.execute("SELECT * FROM account_items ORDER BY steamid,item")))
+        public = I.public(self.db, IDS[0])
+        self.assertEqual(public["items"], private["items"])
+        self.assertEqual([r["id"] for r in public["items"]], [1, 2])
+        self.assertTrue(all(r["equipped"] == 0 for r in public["items"]))
+        self.assertEqual((public["outline"], public["hat"]), (0, 0))
+        self.assertEqual(set(public), {"roles", "outline", "hat", "items"})
+        self.assertEqual(list(map(tuple, self.db.execute("SELECT * FROM account_items ORDER BY steamid,item"))), before)
+        self.change(2, 1)
+        self.assertEqual(I.public(self.db, IDS[0])["items"][1]["equipped"], 1)
+        self.change(2, 0)
+        self.assertEqual(len(I.public(self.db, IDS[0])["items"]), 2)
+
     def test_stale_revision_fails_no_optimistic_public_change(self):
         revision = self.kit().get_json()["revision"]
         self.assertEqual(self.change(1, 1, revision=revision).status_code, 200)
@@ -110,7 +125,7 @@ class InventoryTests(unittest.TestCase):
         self.change(1, 1)
         with self.db:
             self.db.execute("DELETE FROM keylinks WHERE steamid=?", (IDS[0],))
-        self.assertEqual(I.public(self.db, IDS[0]), {"roles": 0, "outline": 0, "hat": 0})
+        self.assertEqual(I.public(self.db, IDS[0]), {"roles": 0, "outline": 0, "hat": 0, "items": []})
         self.assertEqual(self.kit().status_code, 403)
         self.kit(1)
         with self.db:
