@@ -1966,7 +1966,7 @@ void(float scanx, float chary) Chat_FieldKey =
 
 float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 {
-	local string b;
+	local string b, cmdt;
 
 	if (!chat_typing)
 	{
@@ -2035,10 +2035,14 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 			else if (!WarpOp_Chat(chat_buf))
 			{
 				// P1187: said here (the lobby echoes it), and to everyone posted to the room
-				// too -- not a !command, which is this lobby's alone.
+				// too -- not a !command, which is this lobby's alone, quoted or not (the
+				// server reads `"!rtv"` as !rtv; cl_warpop.qc strips the same pair).
 				Chat_RunSafe("cmd say", chat_buf);
+				cmdt = strtrim(chat_buf);
+				if (substring(cmdt, 0, 1) == "\"")
+					cmdt = strtrim(substring(cmdt, 1, -1));
 				if (chat_private == "-")
-				if (substring(strtrim(chat_buf), 0, 1) != "!")
+				if (substring(cmdt, 0, 1) != "!")
 					localcmd(sprintf("cmd friend message - %s\n", uri_escape(chat_buf)));
 			}
 		}
