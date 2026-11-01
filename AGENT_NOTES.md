@@ -1,5 +1,33 @@
 # AGENT_NOTES.md
 
+## P1178 Maps rows, map authors, the hd atlas — installs LIVE (1 Nov 2026 ~17:45Z)
+`origin/deploy/p1178-mapslist` 093fbbe7 = 5f4293a7 (P1186) + P1178's src (main 83702b06,
+9b0f0dde). Both installs: menu 055fda08, csprogs f557a642 (in tasrevd codes.txt, backup
+codes.txt.pre1178), `.prev` 21934e39 / 310caf73; qwprogs unchanged (f0e66da4). The lobbies get
+the csprogs with ftesurf-48's P1187, stacked on 093fbbe7 (one restart; lobby 7 was busy).
+Table 3b9ff363 (stamp 20261101174309) + hd0-11.jpg installed through mapmedia_refresh's own
+lock/gate/stamp/copy (artifacts/install_data.py), and published to the Pi media.
+- mapmeta columns: 12 author token, 13/14 hd page/cell. Append only: the released menu's net check
+  takes 10-16 tokens of [A-Za-z0-9_.-] up to 64, the engine stops at column 10, and the menu's
+  `# atlas` scan is the first 80 lines (the `# hd` lines come after the atlas lines).
+- The 128x72 atlas (atlas*.png, columns 6/7) is FROZEN: older menus read it from the same table.
+  New pictures get hd cells only (`mapmedia_refresh.py --atlas` runs `mapthumbs.py --hd
+  --fill-missing`, past every hd page on disk). A full `--hd` rebuild re-lays every hd page, so
+  it is a release step like `--atlas`: the shipped pages and the published table must agree.
+- The menu uses an hd page only when the chosen table lists `# hd P bytes` equal to the file on
+  disk (stricter than old pages, which are trusted when unlisted). A table without `# hd` lines
+  (a hand-built one) draws the old atlas: stamp it with mapmedia_refresh.stamp().
+- KSF authors come from data/mapmedia/ksf/<map>.json (tools/ksfmappers.py, cached forever, one
+  request per new KSF name). Momentum credit type 0 is Author; a submission's unregistered
+  authors are submission.placeholders type 0.
+- CSQC reads data/mapmeta(.net).txt for the HUD author: reading is allowed, and the file is
+  closed in the same frame. An open handle is a mapped view on Windows and would stop the menu
+  rewriting mapmeta.net.txt.
+- Rig: artifacts/p1178arm.py in C:/FTESurf-worktrees/mapslist1178-20261101T1700Z. A menu-only rig needs data/mapdl.txt (the list
+  shows only catalogue maps) and maps/zones/local (show-all-off hides unzoned rows), plus the
+  hl2 plugin with `plug_load hl2` for a Source map. Search is `ui_hover @cs_search` (three
+  moves), `ui_mouse down/up`, then `ui_key <c> down <ord>`.
+
 ## P1177 hud_player look kept after a restart — LIVE (1 Nov 2026 17:13Z)
 
 Delivered QC base is now `origin/deploy/p1177-look` 28bbd501 = 3cc4fec7 (P1171's delivered
