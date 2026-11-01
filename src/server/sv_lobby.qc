@@ -2035,10 +2035,12 @@ float(string g) Lobby_GuidOk;               // below, beside Lobby_RunKey
 float(float reqid, float code, string body) VM_SVReply;
 float(float reqid, float code, string body) Inv_SVReply;
 float(float reqid, float code, string body) SV_TASShareReply;
+float(float reqid, float code, string body) PublicTime_Reply;
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
 	if (reqid >= ACCT_ID_BASE)
 	{
+		if (PublicTime_Reply(reqid, responsecode, resourcebody)) return;
 		if (SV_TASShareReply(reqid, responsecode, resourcebody)) return;
 		if (Inv_SVReply(reqid, responsecode, resourcebody)) return;
 		if (VM_SVReply(reqid, responsecode, resourcebody)) return;

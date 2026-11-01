@@ -15,11 +15,13 @@ float(entity e) Account_Busy;
 void(entity e) VM_SVAccountReset;
 void(entity e) VM_SVBind;
 void(entity e) Inv_SVReset;
+void(entity e) PublicTime_Reset;
 void(entity e, float root) Inv_SVApply;
 void(entity e) Social_Clear =
 {
 	VM_SVAccountReset(e);
 	Inv_SVReset(e);
+	PublicTime_Reset(e);
 	if (e.social_token != "") strunzone(e.social_token);
 	if (e.social_hash != "") strunzone(e.social_hash);
 	if (e.social_ack != "") strunzone(e.social_ack);
