@@ -66,6 +66,7 @@ Usage:
 """
 
 import argparse
+import glob
 import json
 import os
 import re
@@ -201,6 +202,10 @@ def build_hd(momentum, meta_path, atlasdir, fill_missing=False, report=False):
         r.extend(["-"] * (NCOLS - len(r)))
     os.makedirs(atlasdir, exist_ok=True)
     have = [int(r[C_HPAGE]) for r in rows if r[C_HPAGE].isdigit() and r[C_HCELL].isdigit()]
+    for p in glob.glob(os.path.join(atlasdir, "hd*.jpg")):
+        n = os.path.basename(p)[2:-4]
+        if n.isdigit():
+            have.append(int(n))
     first_page = (max(have) + 1 if have else 0) if fill_missing else 0
     todo, fallback, none = [], 0, 0
     for r in rows:
@@ -222,12 +227,12 @@ def build_hd(momentum, meta_path, atlasdir, fill_missing=False, report=False):
         return 0, 0
     written = failed = slot = 0
     page_img, page_no, pages = None, -1, 0
+    made = []           # page numbers saved as hd<N>.jpg.new, renamed only once all decoded
 
     def flush():
         out = os.path.join(atlasdir, "hd%d.jpg" % page_no)
-        page_img.save(out + ".tmp", "JPEG", quality=HD_QUALITY, subsampling=0, optimize=True)
-        os.replace(out + ".tmp", out)
-        print("  wrote %s (%d bytes)" % (out, os.path.getsize(out)))
+        page_img.save(out + ".new", "JPEG", quality=HD_QUALITY, subsampling=0, optimize=True)
+        made.append(page_no)
 
     for r, src in todo:
         cell = old_cell(atlasdir, src[1], src[2]) if isinstance(src, tuple) else load_hd(src)
@@ -251,14 +256,20 @@ def build_hd(momentum, meta_path, atlasdir, fill_missing=False, report=False):
         written += 1
     if page_img is not None:
         flush()
+    if failed:
+        for p in made:
+            os.remove(os.path.join(atlasdir, "hd%d.jpg.new" % p))
+        raise RuntimeError('%d image decodes failed; pages and metadata not replaced' % failed)
+    for p in made:
+        out = os.path.join(atlasdir, "hd%d.jpg" % p)
+        os.replace(out + ".new", out)
+        print("  wrote %s (%d bytes)" % (out, os.path.getsize(out)))
     if not fill_missing:
         for extra in range(page_no + 1, page_no + 32):
             stale = os.path.join(atlasdir, "hd%d.jpg" % extra)
             if os.path.exists(stale):
                 os.remove(stale)
                 print("  removed stale %s" % stale)
-    if failed:
-        raise RuntimeError('%d image decodes failed; metadata not replaced' % failed)
     with open(meta_path + ".tmp", "w", encoding="utf-8", newline="\n") as f:
         for h in head:
             f.write(h + "\n")

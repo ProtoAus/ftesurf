@@ -3717,17 +3717,17 @@ string() HUD_MapClockText =
 
 // P1178 (Lex): "by <author>" under the map name, from this PC's map table (mapmeta
 // column 12). CSQC may read data/mapmeta*.txt (QC_MenuTable refuses only changes); the
-// newer `# stamp` of the shipped and the fetched copy wins, as the menu's Mmm_MetaPath.
-// 128 lines a frame until the row is found; a map change starts again.
+// newer 14-digit `# stamp` of the shipped and the fetched copy wins (Mmm_MetaPath also
+// refuses a stamp ahead of the clock). One scan at a map change, closed before the frame
+// ends: an open handle (a mapped view on Windows) would stop the menu rewriting the table.
 string hud_au_map, hud_au_text;
 float hud_au_zoned;
-var filestream hud_au_fh = -1;
 
 string(string path) HUD_AuthorStamp =
 {
 	local filestream fh;
 	local string ln, st;
-	local float i;
+	local float i, c;
 	fh = fopen(path, FILE_READ);
 	if (fh < 0)
 		return "";
@@ -3740,6 +3740,12 @@ string(string path) HUD_AuthorStamp =
 		if (substring(ln, 0, 8) == "# stamp ")
 		{
 			st = substring(ln, 8, 14);
+			for (i = 0; i < 14; i = i + 1)
+			{
+				c = str2chr(st, i);
+				if (c < 48 || c > 57)
+					st = "";
+			}
 			break;
 		}
 	}
@@ -3749,50 +3755,45 @@ string(string path) HUD_AuthorStamp =
 
 string() HUD_MapAuthor =
 {
-	local string m, ln, path;
-	local float i;
+	local string m, ln, path, want;
+	local filestream fh;
+	local float n;
 	m = strtolower(serverkey("map"));
-	if (!hud_au_zoned || strcmp(m, hud_au_map))
+	if (hud_au_zoned && !strcmp(m, hud_au_map))
+		return hud_au_text;
+	if (hud_au_zoned)
 	{
-		if (hud_au_fh >= 0)
-			fclose(hud_au_fh);
-		hud_au_fh = -1;
-		if (hud_au_zoned)
-		{
-			strunzone(hud_au_map);
-			strunzone(hud_au_text);
-		}
-		hud_au_map = strzone(m);
-		hud_au_text = strzone("");
-		hud_au_zoned = TRUE;
-		path = "data/mapmeta.txt";
-		if (strcmp(HUD_AuthorStamp("data/mapmeta.net.txt"), HUD_AuthorStamp(path)) > 0)
-			path = "data/mapmeta.net.txt";
-		if (m != "")
-			hud_au_fh = fopen(path, FILE_READ);
-	}
-	for (i = 0; i < 128; i = i + 1)
-	{
-		if (hud_au_fh < 0)
-			break;
-		ln = fgets(hud_au_fh);
-		if not (ln)
-		{
-			fclose(hud_au_fh);
-			hud_au_fh = -1;
-			break;
-		}
-		if (substring(ln, 0, 5) != "meta ")
-			continue;
-		if (tokenize(ln) < 13)
-			continue;
-		if (strcmp(strtolower(argv(1)), m))
-			continue;
+		strunzone(hud_au_map);
 		strunzone(hud_au_text);
-		hud_au_text = strzone(MapAuthor_Text(argv(12)));
-		fclose(hud_au_fh);
-		hud_au_fh = -1;
 	}
+	hud_au_map = strzone(m);
+	hud_au_text = strzone("");
+	hud_au_zoned = TRUE;
+	path = "data/mapmeta.txt";
+	if (strcmp(HUD_AuthorStamp("data/mapmeta.net.txt"), HUD_AuthorStamp(path)) > 0)
+		path = "data/mapmeta.net.txt";
+	if (!strcmp(m, ""))
+		return hud_au_text;
+	fh = fopen(path, FILE_READ);
+	if (fh < 0)
+		return hud_au_text;
+	want = strcat("meta ", m, " ");
+	n = strlen(want);
+	for (;;)
+	{
+		ln = fgets(fh);
+		if not (ln)                 // EOF only: !ln would also stop at a blank line
+			break;
+		if (strcmp(strtolower(substring(ln, 0, n)), want))  // most lines stop here
+			continue;
+		if (tokenize(ln) >= 13)
+		{
+			strunzone(hud_au_text);
+			hud_au_text = strzone(MapAuthor_Text(argv(12)));
+		}
+		break;
+	}
+	fclose(fh);
 	return hud_au_text;
 };
 

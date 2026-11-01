@@ -198,6 +198,25 @@ class P1178(unittest.TestCase):
                 self.assertEqual(t.build_hd('absent', str(meta), str(atlas), fill_missing=True), (1, 1))
             got = [l.split() for l in meta.read_text().splitlines()[1:]]
             self.assertEqual([r[13:15] for r in got], [['0', '0'], ['0', '1'], ['-', '-'], ['1', '0']])
+            # A page on disk that the table no longer names is never written into.
+            (atlas / 'hd2.jpg').write_bytes(b'shipped page')
+            meta.write_text(meta.read_text() + 'meta surf_new2 1 1 1 0 - - ' + other + ' 1 rank -\n')
+            with patch.object(t, 'FETCHED', str(images)), patch.object(t, 'KSFSHOTS', str(images / 'ksf')), \
+                    patch.object(t, 'SHOTS', str(root)):
+                self.assertEqual(t.build_hd('absent', str(meta), str(atlas), fill_missing=True), (1, 1))
+            self.assertEqual((atlas / 'hd2.jpg').read_bytes(), b'shipped page')
+            self.assertEqual(meta.read_text().splitlines()[-1].split()[13:15], ['3', '0'])
+            # A failed decode leaves the pages and the table as they were.
+            before = meta.read_text()
+            buf = io.BytesIO(); Image.effect_noise((480, 270), 80).convert('RGB').save(buf, 'JPEG')
+            (images / ('bbbbbbbb-abcd-1234-abcd-123456789abc-small.jpg')).write_bytes(buf.getvalue()[:len(buf.getvalue()) // 2])  # header intact, scan cut
+            meta.write_text(before + 'meta surf_bad 1 1 1 0 - - bbbbbbbb-abcd-1234-abcd-123456789abc 1 rank -\n')
+            pages = sorted(p.name for p in atlas.iterdir())
+            with patch.object(t, 'FETCHED', str(images)), patch.object(t, 'KSFSHOTS', str(images / 'ksf')), \
+                    patch.object(t, 'SHOTS', str(root)):
+                with self.assertRaises(RuntimeError):
+                    t.build_hd('absent', str(meta), str(atlas))
+            self.assertEqual(sorted(p.name for p in atlas.iterdir()), pages)
 
     def test_refresh_lists_hd_pages_and_gates_their_loss(self):
         import mapmedia_refresh as r
@@ -214,7 +233,17 @@ class P1178(unittest.TestCase):
             self.assertEqual(sum(l.startswith('# hd ') for l in lines), 1)
             old = {('meta', 'surf_%d' % i): ('1', '-', '-', '0') for i in range(40)}
             new = {k: ('1', '-', '-', '-') for k in old}
-            self.assertEqual(len(r.losses(old, new)[2]), 40)
+            self.assertEqual(len(r.losses(old, new)[3]), 40)
+            self.assertIn('gfx/mapthumbs/hd0.jpg', r.media_files(str(g)))
+            # 30 old cells lost of 30 is over the gate even with 100 hd cells kept.
+            old = {('meta', 'surf_%d' % i): ('1', '0' if i < 30 else '-', '0', '0') for i in range(100)}
+            new = {k: ('1', '-', '-', '0') for k in old}
+            live, cand, state = g / 'live.txt', g / 'cand.txt', g / 'state'
+            state.mkdir()
+            write = lambda p, d: p.write_text(''.join('meta %s 1 1 1 0 %s %s - 1 rank - - %s 0\n'
+                                                      % (n, v[1], v[2], v[3]) for (_, n), v in d.items()))
+            write(live, old); write(cand, new)
+            self.assertFalse(r.gate('mapmeta', str(live), str(cand), str(state), False))
 
 
 if __name__ == '__main__': unittest.main()

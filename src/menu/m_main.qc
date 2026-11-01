@@ -571,6 +571,7 @@ float  ms_bgpage, ms_bgcell;
 #define HD_H        90
 #define HD_PITCH    96
 #define HD_COLS     12
+#define HD_ROWS     21
 #define HD_PAGE_W   1920
 #define HD_PAGE_H   2016
 
@@ -1617,10 +1618,12 @@ void() ui_meta_load =
 		if (pg != "-")
 		if (!Mmm_PageOK(stof(pg)))
 			pg = "-";
-		// P1178: the 160x90 cell instead, where this install has its page at the listed size.
+		// P1178: the 160x90 cell instead, where this install has its page at the listed size
+		// and the cell is a whole number on it (a net table's field is any [A-Za-z0-9_.-]).
 		if (n >= 15)
 		if (strcmp(argv(13), "-") && strcmp(argv(14), "-"))
 		if (Mmm_HdOK(stof(argv(13))))
+		if (stof(argv(14)) == floor(stof(argv(14))) && stof(argv(14)) >= 0 && stof(argv(14)) < HD_COLS * HD_ROWS)
 		{
 			pg = ftos(HD_VPAGE + stof(argv(13)));
 			cl = argv(14);

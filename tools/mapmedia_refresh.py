@@ -179,13 +179,12 @@ def keys(path):
 
 
 def losses(old, new):
-    """What `new` drops of `old`: {kind: names gone}, tiers and atlas cells lost."""
+    """What `new` drops of `old`: {kind: names gone}, tiers, atlas cells and hd cells lost."""
     gone = {k: [n for (kk, n) in old if kk == k and (kk, n) not in new] for k in KINDS}
     tiers = [n for (k, n), v in old.items() if v[0] != "-" and new.get((k, n), ("-",))[0] == "-"]
     cells = [n for (k, n), v in old.items() if v[1] != "-" and new.get((k, n), ("", "-"))[1] == "-"]
-    # P1178: an hd cell lost counts the same as an old one.
-    cells += [n for (k, n), v in old.items() if v[3] != "-" and new.get((k, n), ("", "", "", "-"))[3] == "-"]
-    return gone, tiers, cells
+    hd = [n for (k, n), v in old.items() if v[3] != "-" and new.get((k, n), ("", "", "", "-"))[3] == "-"]
+    return gone, tiers, cells, hd
 
 
 def limit(n):
@@ -195,13 +194,14 @@ def limit(n):
 def gate(label, live, cand, state, accept):
     """True to install `cand` over `live`.  A refusal keeps the candidate."""
     old, new = keys(live), keys(cand)
-    gone, tiers, cells = losses(old, new)
+    gone, tiers, cells, hd = losses(old, new)
     ngone = sum(len(v) for v in gone.values())
-    say("  %s: %d entries (was %d): %d added, %d gone, %d tiers lost, %d cells lost"
-        % (label, len(new), len(old), len(set(new) - set(old)), ngone, len(tiers), len(cells)))
+    say("  %s: %d entries (was %d): %d added, %d gone, %d tiers lost, %d cells lost, %d hd cells lost"
+        % (label, len(new), len(old), len(set(new) - set(old)), ngone, len(tiers), len(cells), len(hd)))
     over = (any(len(gone[k]) > limit(sum(1 for kk, _ in old if kk == k)) for k in KINDS)
             or len(tiers) > limit(sum(1 for v in old.values() if v[0] != "-"))
-            or len(cells) > limit(sum((v[1] != "-") + (v[3] != "-") for v in old.values())))
+            or len(cells) > limit(sum(1 for v in old.values() if v[1] != "-"))
+            or len(hd) > limit(sum(1 for v in old.values() if v[3] != "-")))
     refused = os.path.join(state, "refused-" + os.path.basename(live))
     if not over or accept:
         if over:
@@ -209,7 +209,8 @@ def gate(label, live, cand, state, accept):
         if os.path.exists(refused):
             os.remove(refused)
         return True
-    for what, names in [(k + " gone", gone[k]) for k in KINDS] + [("tier lost", tiers), ("cell lost", cells)]:
+    for what, names in [(k + " gone", gone[k]) for k in KINDS] + [("tier lost", tiers), ("cell lost", cells),
+                                                                   ("hd cell lost", hd)]:
         if names:
             say("    %d %s: %s%s" % (len(names), what, " ".join(sorted(names)[:8]), " ..." if len(names) > 8 else ""))
     shutil.copy2(cand, refused)
@@ -334,6 +335,8 @@ def media_files(gamedir):
     files = list(MEDIA)
     files += ["gfx/mapthumbs/" + os.path.basename(p)
               for p in sorted(glob.glob(os.path.join(gamedir, "gfx", "mapthumbs", "atlas*.png")))]
+    files += ["gfx/mapthumbs/" + os.path.basename(p)       # P1178 review 1
+              for p in sorted(glob.glob(os.path.join(gamedir, "gfx", "mapthumbs", "hd*.jpg")))]
     return files
 
 
