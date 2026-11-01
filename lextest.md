@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## 0.1.34 public release (automation accepted; human check pending)
+
+Published 1 Nov 12:51Z: QC 3cc4fec7 (as live), engine P1173, launcher 646c8d1, P1174 zones/pictures.
+Fresh launcher installs (Windows 870 / Linux 869 files) and the 0.1.33 launcher both install it; no
+game was launched. Worth a look in the Desktop WorldofSurf install after it updates: the main menu
+reads 0.1.34, the terms page shows the "Playtime and attempts" paragraph, a new KSF zone (e.g.
+surf_lore_css) times, and holding duck through a standing save load crouches. tools/release034.md.
+
 ## P1171 lobby playtime and main/bonus attempts (LIVE 1 Nov 11:46Z; owner check PENDING)
 Backend schema 26 and all 12 lobbies plus both installs are live. On any official lobby, with online play
 on and Steam linked, stay connected a minute and start the main course once and a bonus once
