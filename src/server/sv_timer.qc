@@ -3197,7 +3197,8 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             cvars and pmsrcver -- as engine Patch 346 snapshot
                             them just before PM_PlayerMove, %.9g, matched BY NAME.
                             Never cvar(): five movevars are spawn-latched and
-                            maxspeed/entgravity lag a send frame.  Absent when the
+                            maxspeed lags a send frame (entgravity did until
+                            P1211; it is read per command now).  Absent when the
                             engine does not publish: the physics are then UNKNOWN.
                             Readers still take keys in any order; `after flags`
                             is where the writer puts it, not a rule to check.
@@ -5971,8 +5972,8 @@ void(entity e) SV_RecOpen =
 	  BUILD 87 (v9): THE PHYSICS PIN, AFTER `flags` so the scoreboard's 24-line
 	  header read still reaches `flags`.  The mover's inputs as of the start
 	  packet's last move, as the engine snapshot them (Patch 346) -- never
-	  cvar(): five movevars are spawn-latched and maxspeed/entgravity lag a send
-	  frame.  Absent on an engine that does not publish, and a reader must then
+	  cvar(): five movevars are spawn-latched and maxspeed lags a send frame
+	  (entgravity until P1211).  Absent on an engine that does not publish, and a reader must then
 	  treat the physics as unknown.
 	*/
 	pin = SV_RecPinText(e, "*pmpin");
