@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1219 console crash on a map change (installs now; everyone with the next release)
+Your 02:20 crash on 3 Nov. Both installs run the fixed exe (e9ff729b; 0.1.37's 6fbf7e74 is the .prev).
+In C:\FTESurf or C:\FTEQuake: open the console, type `chat_` (the list shows chat_mouse, chat_open,
+chat_rows, chat_say), leave it open and change map (`map surf_dune`, or a vote). No crash, and the list
+still reads chat_... afterwards. The Desktop copy keeps the 0.1.37 exe until a release: clear the
+console line before a map change there.
+
 ## P1213 Source fog toward the screen edges (with the next release)
 surf_shape at spawn, looking along the dunes: the horizon above them is orange-brown haze like your
 CS:S screenshot, with no white band. In the console, `r_fog_radial 0` brings the old band back and

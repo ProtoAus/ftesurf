@@ -2046,6 +2046,8 @@ executable path and hash, not a similarly named maintained copy.
   C:/FTESurf/ftesurf64.exe`. The logger writes beside the exe that crashed (a rig's --client copy has
   its own file); symbols come from a rebuild of the stamped commit, and --check proves the layout. In a
   rig the crash shows as the log ending (here after "Hardware gamma is not supported"), exit 3221225477.
+  The record's first frames are the logger's own exception dispatch (P1219: rvas like 0x2454..., far
+  past the image), not driver frames under the fault; the fault is the frame equal to the record's rva.
 - P883's ent_view control survived its run: the freed shader's block had been reused, so it drew with
   the wrong shader instead of crashing. A check build printing the cached pointer beside
   R_ShaderFind's answer showed the staleness in one run.

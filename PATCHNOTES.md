@@ -21,6 +21,9 @@
 
 ## next
 
+### P1219 Console crash on a map change
+- Fixed a crash when the console was open with a command half typed while the map changed or reloaded.
+
 ### P1169 Larger Maps filter text
 - Maps: larger, sharper native-pixel filter text, with roomier controls that wrap on smaller windows.
 

@@ -1,0 +1,1 @@
+P1219 claimed by ftesurf-ac (Claude Code session 57e27fa4) 2026-11-02T16:02Z. Crash in 0.1.37 (Lex's Desktop, 02:20 local 3 Nov): console completion keeps pointers to command/cvar names that CSQC frees at a map change; Hash_KeyInsensitive AV under Con_BuildCompletion. Engine common/cmd.c. Docs: PATCHNOTES, lextest, ENGINE.txt, engine journal.

@@ -32,6 +32,15 @@
 - A build in the release engine worktree rewrites plugins/hl2/mat_vmt_progs.h's header comment
   (the generator's path), which the clean-input gate refuses; restore it, or build elsewhere.
 
+## P1219 residuals (3 Nov 2026)
+- Cmd_AddCommandAD keeps a command's description pointer uncopied: a server-QC `registercommand`
+  description outlives PR_Deinit, a native menu DLL's outlives the DLL. FTESurf has neither; the
+  completion memo now reads descriptions when it builds, so copy in Cmd_AddCommandAD if one appears.
+- The completion memo is not dropped when names are freed: after a map change the dropdown keeps
+  listing removed commands (as copies) until the line changes.
+- Cmd_Complete_CheckArg's `repl` is allocated and never freed (one leak per rebuild of an argument
+  completion with a replacement, e.g. server names).
+
 ## P1211 residuals (2 Nov 2026)
 - Not mirrored, so still a short snap: trigger_gravity (87 maps; only AddOutput gravity rows are),
   the START gravity reset (P865), CancelPending, and edges the mirror mispredicts (an entry lands on
