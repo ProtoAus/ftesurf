@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## P1231/P1232 surfd (ftesurf-2b; LIVE 2 Nov 18:37Z, generation 988ff315, root lexlist-1232-382effae)
+- The first P1231 activation (17:49Z) stopped on activate_backend's boundary row-count assert:
+  social_menu_presence 1 -> 0, an expiry by the serving candidate. Its fallback (64f0b0f4) was finished
+  by hand (kit1231/finish_fallback_1231.py: receipt, guard reopen, run.sh launch CAS, cron rebind,
+  momrequests start); collectors were refused 17:50-17:53. Kits since report those churn tables
+  (social_menu_presence, social_sessions; P1234 adds ksfprofiles, momprofiles) and assert the rest.
+- After a fallback the live cohort is the root's CONTROL dir (source rollback-runtime): the next kit's
+  predecessor paths, run.sh rewrite and cron rewrite must say control (kit/make_kit_1231b.py).
+- The drop-in installer's label is P plus 3-5 digits; "P1231b" was refused before any write.
+- The momgrab --go cron loses its lock to the per-minute requests-only job about half the time
+  (124 refusals beside 133 ticks in the log before P1232): a recheck may wait several ticks.
+- KSF park lifted by hand at 18:40Z (copy: lexlist-1232/ksf-refused.pre1232); its reason was the
+  refusal P1232 removed. 18:45 tick: "1 of 5 record(s) on one page skipped as malformed", 8 requests,
+  67 rows; 18:50: 104 rows. momtracks.tsv before mapwatch's first rewrite: lexlist-1232/momtracks.tsv.pre1232.
+- Fallback cohort in lexlist-1232/control is 64f0b0f4; P1229's root lexlist-1229 and the dead retry
+  root lexlist-1231b are CLOSED and unreferenced.
+
 ## Lex's map list of 3 Nov (P1215, P1217, P1218; P1214 is 2b's)
 - Delivered lobby QC base: deploy/p1218-maplist 9f0203eb (2b's deploy/p1229-lexlist 1fa43aa2 + P1215/
   P1218); qw 63fa13a5, cs b6166b20 (.prev 9553acb6/36bd66bd), codes.txt appended. Engine: tag

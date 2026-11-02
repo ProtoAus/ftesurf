@@ -21,6 +21,14 @@
 
 ## next
 
+### P1232 Records from KSF and Momentum
+- KSF times and demos are collected again: one bad entry in a player's KSF profile had stopped all KSF collection since 30 October.
+- The leaderboards of 349 Momentum maps that had never been fetched are now collected.
+- Momentum demos set aside as made on a different version of the map are added once the server holds that version (about 1,400 qualify now).
+
+### P1231 Faster combined leaderboards
+- The combined leaderboard opens faster on big maps.
+
 ### P1218 Source maps: sky leaks, distance fades and map decals
 - Light shafts and sprites behind a skybox wall no longer show through the sky (surf_eternity).
 - Panes that fade with distance (surf_sidelines' doorway) fade at the same distance as in CS:S when the game renders above screen resolution.

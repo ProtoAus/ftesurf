@@ -22,14 +22,32 @@
   and every setpos fell back to the hub; r_budget_dump writes the clipboard (the driver restores it).
 
 ## DB audit of 3 Nov (P1229): left open (surfd; measured on a 2 Nov snapshot, 3.47M runs)
-- The combined board sorts the whole three-tier board per page (0.04 s on surf_beginner's 8.7k rows);
-  per-tier queries merged would be O(page). The player directory scans all runs every 5 min in the
-  web worker; profile rank counts are N+1 (cached 120 s). Details: the audit in the P1229 journal.
+- Profile rank counts are N+1 (cached 120 s). The player directory (P1231) rebuilds when runs gains a
+  row, an account changes or play_maps grows, else hourly: an UPDATE or DELETE of runs (a demotion,
+  an admin delete) shows within the hour. Details: the audit in the P1229 journal.
 - `SELECT COUNT(*) FROM replays WHERE kind='run'` scans 41k rows on each new replay (0.15 s cold).
 - The lobby does not retry a /api/run that surfd answered with a 5xx (sv_lobby.qc); see the momwatch
   item under Ranking integrity, whose flush half P1229 closed.
-- %TEMP% holds ~67,800 surfd-* test homes from earlier suite runs (test_board/test_web never remove
-  theirs). Not removed: not all are this session's.
+
+## Grabber audit of 3 Nov (P1232): left open (counts from 2 Nov, before P1232 went live)
+- Momentum boards refresh only for maps a lobby is on or the site queued: the median board file was
+  32 days old (90th percentile 35). P1234 (main's P1117 rotation) refreshes the 3 stalest a tick.
+- KSF demos: 26,546 advertised recordings wait behind null-ID ksf_unbound rows (2 unblock pages a
+  tick) and 19,444 eligible ones beyond the 256-job queue; 6 downloads a tick is Lex's rate. The log
+  holds 463 time-mismatch and 226 invalid-bookmark conversion refusals.
+- KSF boards never fetched: 4,175 (1,505 Forward stage on 258 maps, 928 Forward bonus on 324, 1,740
+  SW/HSW/BW main), and 9,825 SW/HSW/BW stage/bonus boards wait on those mains; the sweep spends about
+  2 of a tick's 8 requests on new pages (ksfimport.sweep_maps ranks deep pages first).
+- Never asked, a product decision: Momentum styles other than Normal (10,525 boards on approved maps)
+  and the boards of 145 held Beta maps. How many hold runs is unknown.
+- momgrab takes each board's top 10 only (35,037 picks; 2,555 not yet tried on 2 Nov).
+- P1232 review 2, low: a malformed `judged` entry in momgrab state.json raises every --go tick (only a
+  hand edit makes one); demo_build keeps [None, None] for good after a transient read error;
+  recheck_builds' have() hides a bsp.json write failure (every tick then rehashes); the momrequests
+  service rehashes a replaced BSP once a lifetime; a KSF profile page whose records are all malformed
+  still advances the walk (one log line, no player); ksfimport._when accepts numeric strings and bools
+  (main's returns 0); ksfimport --seed with an infinite time raises.
+- test_mapwatch's four port/zone cases (surf_p_fixed) fail at 64f0b0f4 too, on Windows and the Pi.
 
 ## P1213 Source fog distance, UnlitGeneric on vmt/unlit: residuals (2 Nov 2026; display only)
 - surf_shape's horizon band is 124,75,52 against CS:S 118,69,45 (old 143,101,80). Most of the rest is
