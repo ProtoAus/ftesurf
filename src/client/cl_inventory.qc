@@ -273,13 +273,13 @@ void(string k) Inv_GlowMats =
 		"{\nprogram default2d\n{\nmap $whiteimage\nblendfunc gl_zero gl_zero\nrgbgen vertex\nalphagen vertex\n}\n}\n");
 	shaderforname(Inv_N(strcat("ftesurf/aura_blurh_", k)), sprintf("{\n{\nprogram milk_blur#H\nmap $rt:%s\n}\n}\n", Inv_RT(k, "mask")));
 	shaderforname(Inv_N(strcat("ftesurf/aura_blurv_", k)), sprintf("{\n{\nprogram milk_blur#V\nmap $rt:%s\n}\n}\n", Inv_RT(k, "b1")));
-	// The mask was drawn by a 3D view and is read upside down from the 2D-drawn blur.
+	// A target drawn by a 3D view reads the same way up as one drawn in 2D (GL_Set2D flips 2D into targets).
 	shaderforname(Inv_N(strcat("ftesurf/aura_comp_", k)), strcat("{\n glslprogram\n{\n"
 		"!!ver 110\n!!samps glow=0 mask=1\n#include \"sys/defs.h\"\nvarying vec2 tc;\nvarying vec4 vc;\n"
 		"#ifdef VERTEX_SHADER\nvoid main() { tc = v_texcoord; vc = v_colour; gl_Position = ftetransform(); }\n#endif\n"
 		"#ifdef FRAGMENT_SHADER\nvoid main() {\n"
 		" float g = texture2D(s_glow, tc).r;\n"
-		" float m = texture2D(s_mask, vec2(tc.x, 1.0 - tc.y)).r;\n"
+		" float m = texture2D(s_mask, tc).r;\n"
 		" float a = clamp(g * 2.5, 0.0, 1.0) * (1.0 - m) * vc.a;\n"
 		" gl_FragColor = vec4(vc.rgb * a, 1.0);\n}\n#endif\n}\n",
 		sprintf(" {\n map $rt:%s\n map $rt:%s\n blendfunc gl_one gl_one\n rgbgen vertex\n alphagen vertex\n }\n}\n", Inv_RT(k, "b2"), Inv_RT(k, "mask"))));
@@ -399,8 +399,8 @@ void(float main) Inv_GlowPass =
 	setproperty(VF_RT_DESTCOLOUR, Inv_RT(k, "b1"), 1, ms);
 	c = [a_x * ms_x, a_y * ms_y - 8, 0];
 	p = [s_x * ms_x, s_y * ms_y + 16, 0];
-	drawsubpic(c, p, Inv_N(strcat("ftesurf/aura_blurh_", k)), [c_x / ms_x, 1 - c_y / ms_y, 0],
-	           [p_x / ms_x, 0 - p_y / ms_y, 0], '1 1 1', 1, 0);
+	drawsubpic(c, p, Inv_N(strcat("ftesurf/aura_blurh_", k)), [c_x / ms_x, c_y / ms_y, 0],
+	           [p_x / ms_x, p_y / ms_y, 0], '1 1 1', 1, 0);
 	setproperty(VF_RT_COVERAGE, 0);
 	setproperty(VF_RT_DESTCOLOUR, Inv_RT(k, "b2"), 1, ms);
 	c = [a_x * ms_x, a_y * ms_y, 0];
