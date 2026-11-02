@@ -4327,6 +4327,34 @@ float() SV_NoColSend =
 	return !SV_NoColLent(other, self);
 };
 
+// P1204: the grant is saved state, as Momentum keeps m_hOwnerEntity across savelocs. A save
+// stores the barrier's brush model while the grant opens it in the current attempt; a load
+// (saves, retry, Multi-Session resume, rewind) re-grants it in the load's own new attempt.
+string(entity e) SV_NoColHeld =
+{
+	if (!SV_NoColLent(e, e.nocol_bar)) return "";
+	if (substring(e.nocol_bar.model, 0, 1) != "*") return "";
+	return e.nocol_bar.model;
+};
+
+void(entity e, entity bar) SV_NoColGrant;
+
+// After the load's SV_BankNewAttempt; `m` is a saved SV_NoColHeld. Only an entity a
+// barriercollision.nut call can name (a targetname, not a player) is re-granted.
+void(entity e, string m) SV_NoColRegrant =
+{
+	local entity bar;
+	SV_NoColGrant(e, world);
+	if (substring(m, 0, 1) != "*") return;
+	bar = find(world, model, m);
+	if (bar == world || bar.classname == "player" || bar.targetname == "") return;
+	e.nocol_bar = bar;
+	e.nocol_player = e;
+	e.nocol_attempt = e.bank_attempt;
+	bar.customizeentityforclient = SV_NoColSend;
+	if (SV_DevOn()) dprint(sprintf("script: %s's saved grant reopens %s on attempt %i\n", e.netname, m, e.bank_attempt));
+};
+
 void(entity e, entity bar) SV_NoColGrant =
 {
 	e.nocol_bar = bar;

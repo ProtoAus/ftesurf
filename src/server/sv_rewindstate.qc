@@ -12,7 +12,7 @@ void(entity e, float b) SV_RewindStateSample =
 	if (e.rw_names < 1)
 		e.rw_names = buf_create_ex("string", 0);
 	if (e.rw_names > 0)
-		bufstr_set(e.rw_names, b / RW_STRIDE, strcat("n", e.targetname, "\n", e.vbsp_ctx));	// P1036: no name holds a newline
+		bufstr_set(e.rw_names, b / RW_STRIDE, strcat("n", e.targetname, "\n", e.vbsp_ctx, chr2str(1), SV_NoColHeld(e)));	// P1036: no name holds a newline; P1204: no keyvalue a chr 1
 	m[b+10] = e.run_t_track;
 	m[b+11] = e.run_t_startseg;
 	m[b+12] = e.run_t_stagerun;
@@ -103,7 +103,14 @@ void(entity e, float f, float b) SV_RewindWriteName =
 	{
 		nl = strstrofs(name, "\n", 0);
 		fputs(f, sprintf("targetname %S\n", substring(name, 1, nl - 1)));
-		SV_CtxWrite(f, substring(name, nl + 1, -1));    // Patch 1036
+		name = substring(name, nl + 1, -1);
+		nl = strstrofs(name, chr2str(1), 0);         // P1204: the barrier grant held at that sample
+		if (nl >= 0)
+		{
+			if (strlen(name) > nl + 1) fputs(f, sprintf("nocol %S\n", substring(name, nl + 1, -1)));
+			name = substring(name, 0, nl);
+		}
+		SV_CtxWrite(f, name);    // Patch 1036
 	}
 };
 

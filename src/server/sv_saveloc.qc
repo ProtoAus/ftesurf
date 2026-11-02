@@ -1272,6 +1272,8 @@ float(entity e, float id, float seq) SV_SaveWriteState =
 	fputs(f, sprintf("targetname %S\n", e.targetname));
 	fputs(f, sprintf("srcclass %S\n", e.run_srcclass));   // Patch 865, additive
 	SV_CtxWrite(f, e.vbsp_ctx);                           // Patch 1036, additive
+	if (SV_NoColHeld(e) != "")                           // P1204, additive
+		fputs(f, sprintf("nocol %S\n", SV_NoColHeld(e)));
 	// Patch 869, additive: Momentum progress and the onehops landed on.
 	fputs(f, sprintf("momprog %S %g %g\n", e.run_progtrig ? e.run_progtrig.model : "",
 	                 e.run_prognum, e.run_progzone));
@@ -1876,7 +1878,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	local float hadrec;             // Patch 441 r3: ...and when the LOAD began
 	local string drid;              // Patch 426: the run the Patch 360 discard kept
 	local vector rorg, rvel;
-	local string savedname, savedcls, mprog, mohs, savedctx;
+	local string savedname, savedcls, mprog, mohs, savedctx, savednocol;
 	local float  mnum, mzone, mmon;
 	local float hasname, hasctx;
 
@@ -1909,6 +1911,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	mnum = mzone = mmon = -1;
 	hasname = FALSE;
 	savedctx = "";                  // Patch 1036
+	savednocol = "";                // P1204
 	hasctx = FALSE;
 	srun = -1;                      // a pre-57 save file: derived from startseg below
 	sgs = 1;
@@ -1986,6 +1989,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 		if (k == "targetname") { savedname = argv(1); hasname = TRUE; continue; }
 		if (k == "srcclass")   { savedcls = argv(1); continue; }   // Patch 865
 		if (k == "contexts")   { hasctx = TRUE; continue; }        // Patch 1036
+		if (k == "nocol")      { savednocol = argv(1); continue; }  // P1204
 		if (k == "context")    { savedctx = strcat(savedctx, argv(1), ":", argv(2), "\n"); continue; }
 		if (k == "momprog")    { mprog = argv(1); mnum = stof(argv(2)); mzone = stof(argv(3)); continue; }
 		if (k == "onehops")    { mohs = argv(1); continue; }
@@ -2059,6 +2063,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	}
 	// Validation succeeded; old exit cleanup above still belongs to the old admission.
 	SV_BankNewAttempt(e);
+	SV_NoColRegrant(e, savednocol);  // P1204: in this new attempt, or none
 
 	/*
 	  PATCH 450: THE MAP COMPARISON, made here because the whole file has been read and
@@ -3274,6 +3279,7 @@ float(float id, float rows) SV_SaveReadIdentRows =
 		if (k == "srcclass")   { sl_fcls = argv(1); continue; }
 		if (k == "contexts")   { sl_fctx = strcat(sl_fctx, "contexts 1\n"); continue; }      // Patch 1036
 		if (k == "context")    { sl_fctx = strcat(sl_fctx, sprintf("context %S %S\n", argv(1), argv(2))); continue; }
+		if (k == "nocol")      { sl_fctx = strcat(sl_fctx, sprintf("nocol %S\n", argv(1))); continue; }   // P1204
 		if (k == "seq")     { sl_fseq = stof(argv(1)); continue; }
 		if (k == "rewindgo") { sl_fgo = stof(argv(1)); continue; }
 		if (k == "ticks")   { sl_fticks = stof(argv(1)); continue; }
