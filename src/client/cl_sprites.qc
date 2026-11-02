@@ -225,6 +225,23 @@ float  spr_gtraced[SPR_MAX];            // 0 = never traced; else the visit coun
 float  spr_gnext;                       // round-robin cursor for the trace budget
 
 /*
+  P1218: Source draws sprites and shafts from the PVS; these polygons have none, and the
+  sky mask sits at 2x the sky's distance (P990), so surf_eternity's spotlight shafts 7-9k
+  units out showed through a sky 4.5k away.  One whose line from the eye meets a sky side
+  first is skipped.  vbsp_sprite_skyrays traces a frame, round-robin over both tables.
+  One seen from sky_camera is never skipped: the same polygon draws the 3D sky.
+*/
+#define SKY_UNTESTED 0
+#define SKY_CLEAR    1
+#define SKY_BEHIND   2
+#define SKY_ROOM     3
+float  spr_sky[SPR_MAX];
+float  beam_sky[BEAM_MAX];
+float  spr_skynext;                     // cursor over sprites then beams
+vector spr_skyeye;                      // last frame's eye; a jump retests everything
+float  spr_skyhid;                      // skipped last frame (vbsp_sprite_debug)
+
+/*
 ===========================================================================
   BUILD 54 -- THE GLOW PARAMETER SETS, and why they are a table.
 
@@ -1499,6 +1516,9 @@ void() Sprite_LoadForMap =
 		spr_gvis[mat] = 0;
 		spr_glare[mat] = 0;
 		spr_gtraced[mat] = FALSE;
+		spr_sky[mat] = SKY_UNTESTED;    // P1218
+		if (mat < BEAM_MAX)
+			beam_sky[mat] = SKY_UNTESTED;
 		/*
 		  BUILD 54.  Cleared here and not merely in Sprite_ResolveSkips, because
 		  Sprite_LoadOccluders has already removed the previous map's occluders a
@@ -2487,6 +2507,57 @@ void() Sprite_Glare =
 	}
 };
 
+// P1218: the sky state of one sprite (i < spr_n) or beam (i - spr_n), from this eye.
+string trace_surfacename;       // also cl_emit.qc's; the engine fills it for a progs that declares it
+float(vector eye, vector p, float st) Sprite_SkyTest =
+{
+	if (st == SKY_ROOM)
+		return st;
+	if (st == SKY_UNTESTED && vbsp_skyroom_have)
+	{
+		traceline(vbsp_skyroom_pos, p, MOVE_NOMONSTERS, world);
+		if (trace_fraction >= 1)
+			return SKY_ROOM;
+	}
+	traceline(eye, p, MOVE_NOMONSTERS, world);
+	// SURF_SKY does not come through a VBSP trace; the side's name does (cl_sun.qc).
+	if (trace_fraction < 1 && substring(strtolower(trace_surfacename), 0, 4) == "sky/")
+		return SKY_BEHIND;
+	return SKY_CLEAR;
+};
+
+void(vector eye) Sprite_SkyTick =
+{
+	local float i, k, n, rays;
+
+	n = spr_n + beam_n;
+	rays = min(cvar("vbsp_sprite_skyrays"), n);
+	if (vlen(eye - spr_skyeye) > 256)
+	{
+		for (i = 0; i < spr_n; i = i + 1)
+			if (spr_sky[i] != SKY_ROOM)
+				spr_sky[i] = SKY_UNTESTED;
+		for (i = 0; i < beam_n; i = i + 1)
+			if (beam_sky[i] != SKY_ROOM)
+				beam_sky[i] = SKY_UNTESTED;
+	}
+	spr_skyeye = eye;
+	for (k = 0; k < rays; k = k + 1)
+	{
+		if (spr_skynext >= n)
+			spr_skynext = 0;
+		i = spr_skynext;
+		spr_skynext = spr_skynext + 1;
+		if (i < spr_n)
+			spr_sky[i] = Sprite_SkyTest(eye, spr_org[i], spr_sky[i]);
+		else
+		{
+			i = i - spr_n;
+			beam_sky[i] = Sprite_SkyTest(eye, (beam_org[i] + beam_end[i]) * 0.5, beam_sky[i]);
+		}
+	}
+};
+
 void() Sprite_Draw =
 {
 	local float  i, m, maxdist, drawn, dbg, mo;
@@ -2514,6 +2585,7 @@ void() Sprite_Draw =
 	local float  gl_seen, gl_side, gl_hid, gl_fade, gl_drawn;
 	local float  dist, fade, pset, gmn, gmx, gout;
 	local vector toglow, base;
+	local float  skyon, skyhid;     // P1218
 
 	if (serverkey("map") != vbsp_spr_map)
 		Sprite_LoadForMap();
@@ -2546,6 +2618,10 @@ void() Sprite_Draw =
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
 	fwd = v_forward;
+	if (cvar("vbsp_sprite_skyrays") > 0)
+		Sprite_SkyTick(eye);
+	skyon = cvar("vbsp_sprite_skyrays") > 0;
+	skyhid = 0;
 	/*
 	  BUILD 55.  SPR_VP_PARALLEL is literally the view's own basis --
 	  c_sprite.cpp:283-288 copies CurrentViewUp/Right/Forward element by element
@@ -2635,6 +2711,8 @@ void() Sprite_Draw =
 		              srcmode ? "on" : "OFF", spr_dim_n, cvar("vbsp_glare_rays")));
 		print(sprintf("  under the blended surfaces (vbsp_sprite_under %g, %g rays a frame): %g additive sprite(s) last frame, %g rays since load\n",
 		              underon, cvar("vbsp_sprite_under_rays"), spr_under_n, spr_utraced));
+		print(sprintf("  behind the sky (vbsp_sprite_skyrays %g): %g skipped last frame\n",
+		              cvar("vbsp_sprite_skyrays"), spr_skyhid));
 		for (m = 0; m < sprmat_n; m = m + 1)
 			print(sprintf("  %2g %-40s %gx%g  orient %g\n",
 			              m, sprmat_name[m], sprmat_w[m], sprmat_h[m], sprmat_orient[m]));
@@ -2691,6 +2769,11 @@ void() Sprite_Draw =
 		{
 			if (spr_mat[i] != m)
 				continue;
+			if (skyon && spr_sky[i] == SKY_BEHIND)
+			{
+				skyhid = skyhid + 1;
+				continue;
+			}
 
 			dd = spr_org[i] - eye;
 
@@ -2879,6 +2962,11 @@ void() Sprite_Draw =
 	{
 		if (spr_kind[i] != SPRK_GLOW)
 			continue;
+		if (skyon && spr_sky[i] == SKY_BEHIND)
+		{
+			skyhid = skyhid + 1;
+			continue;
+		}
 
 		dd = spr_org[i] - eye;
 		dist = vlen(dd);
@@ -3026,6 +3114,11 @@ void() Sprite_Draw =
 	*/
 	for (i = 0; i < beam_n; i = i + 1)
 	{
+		if (skyon && beam_sky[i] == SKY_BEHIND)
+		{
+			skyhid = skyhid + 1;
+			continue;
+		}
 		mid = (beam_org[i] + beam_end[i]) * 0.5;
 		dd = mid - eye;
 
@@ -3055,6 +3148,7 @@ void() Sprite_Draw =
 		R_EndPolygon();
 		drawn = drawn + 1;
 	}
+	spr_skyhid = skyhid;
 
 	if (dbg)
 	{

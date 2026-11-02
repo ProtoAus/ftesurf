@@ -174,6 +174,9 @@ vector(float k) ZoneEdit_SnapCol;
 void(vector eye) ZoneEdit_SnapDraw3D;
 void(float rsz) ZoneEdit_SnapMark2D;
 void(float rsz) ZoneEdit_Handles2D;
+void(float rsz) ZoneEdit_Spawns2D;
+float(float z) ZoneEdit_SpawnDest;
+string ze_tdname[256];
 vector() ZoneEdit_HandleCol;
 void() ZoneEdit_EditBegin;
 void() ZoneEdit_EditFrame;
@@ -1370,6 +1373,7 @@ void(vector scr) ZoneEdit_Panel =
 	tsz  = Font_Px(9 * ui_cv_scale);
 	rsz  = Font_Px(8 * ui_cv_scale);
 	rowh = rsz + 6 * ui_cv_scale;
+	ZoneEdit_Spawns2D(rsz);         // P1215
 
 	if (ui_ze_state >= ZE_A && !ze_cursor)
 	{
@@ -1597,6 +1601,12 @@ void(vector scr) ZoneEdit_Panel =
 	s = "SELECT A ZONE  /  double-click to teleport";
 	if (a) s = strcat("SELECTED  /  ", ZoneEdit_Label(ze_sel));
 	if (k) s = strcat(s, zone_td_kind[ze_sel] == ZTD_NONE ? "  /  automatic spawn" : "  /  custom spawn");
+	if (k)          // P1215; QC's && evaluates both sides
+	{
+		i = ZoneEdit_SpawnDest(ze_sel);
+		if (i >= 0)
+			s = strcat(s, " at the map teleport ", ze_tdname[i]);
+	}
 	sui_text(tp, [rsz, rsz], s, ZEC_DIM, 1, 0);
 	tp_y = tp_y + rowh;
 	if (ZoneEdit_Button(tp, [bw, rowh], "ze_rp", "Re-place", rsz, a ? ZEC_TEXT : ZEC_DIM))

@@ -1405,3 +1405,156 @@ void(float rsz) ZoneEdit_Handles2D =
 		}
 	}
 };
+
+/*
+  P1215 (Lex, 3 Nov): where !r puts you, on screen while zoning.  Each start and stage
+  spawn gets a post and a facing arrow, drawn over the world; the map's own teleport
+  destinations get a dim one with their names.  An automatic spawn (at the zone's xy
+  centre) with exactly one destination inside the zone stands and faces as that
+  destination: the server's rule, SV_ZoneSpawnYaws, mirrored here.
+*/
+#define ZE_TDMAX 256
+#define ZE_NOYAW -9999
+vector ze_tdorg[ZE_TDMAX];
+float  ze_tdyaw[ZE_TDMAX];
+string ze_tdname[ZE_TDMAX];
+float  ze_tdn;
+string ze_tdmap;
+
+void() ZoneEdit_TeleDests =
+{
+	local string tok, key, cn, nm;
+	local vector org;
+	local float yaw, na, i, opened;
+
+	if (ze_tdmap == serverkey("map")) return;
+	for (i = 0; i < ze_tdn; i = i + 1) strunzone(ze_tdname[i]);
+	ze_tdn = 0;
+	opened = FALSE;
+	getentitytoken(0);
+	while ((tok = getentitytoken()) != "")
+	{
+		if (tok != "{") continue;
+		opened = TRUE;
+		cn = nm = ""; org = '0 0 0'; yaw = 0;
+		while ((key = getentitytoken()) != "" && key != "}")
+		{
+			tok = getentitytoken();
+			if (key == "classname") cn = tok;
+			else if (key == "targetname") nm = tok;
+			else if (key == "angle") yaw = stof(tok);
+			else if (key == "origin" || key == "angles")
+			{
+				na = tokenize(tok);
+				if (na < 3) continue;
+				if (key == "origin") org = [stof(argv(0)), stof(argv(1)), stof(argv(2))];
+				else yaw = stof(argv(1));
+			}
+		}
+		if (cn != "info_teleport_destination" || ze_tdn >= ZE_TDMAX) continue;
+		ze_tdorg[ze_tdn] = org; ze_tdyaw[ze_tdn] = yaw; ze_tdname[ze_tdn] = strzone(nm);
+		ze_tdn = ze_tdn + 1;
+	}
+	// The lump can be unreadable for a frame or two after serverkey("map") (cl_decals.qc).
+	if (!opened) return;
+	if (ze_tdmap != "") strunzone(ze_tdmap);
+	ze_tdmap = strzone(serverkey("map"));
+};
+
+// The destination an automatic spawn of zone z takes, or -1 (SV_ZoneSpawnYaws).
+float(float z) ZoneEdit_SpawnDest =
+{
+	local float i, n, hit;
+	local vector c, o;
+
+	ZoneEdit_TeleDests();
+	if (z < 0 || z >= zone_count) return -1;
+	if (zone_type[z] != ZONE_START && zone_type[z] != ZONE_STAGE) return -1;
+	if (zone_npts[z] < 1 || zone_td_kind[z] == ZTD_NAME) return -1;
+	if (zone_td_kind[z] == ZTD_POS)
+	{
+		c = '0 0 0';
+		for (i = 0; i < zone_npts[z]; i = i + 1) c = c + zone_pt[zone_first[z] + i];
+		c = c * (1 / zone_npts[z]);
+		o = zone_td_pos[z];
+		if (fabs(o_x - c_x) > 1 || fabs(o_y - c_y) > 1) return -1;
+	}
+	n = 0; hit = -1;
+	for (i = 0; i < ze_tdn; i = i + 1)
+	{
+		o = ze_tdorg[i];
+		if (o_z < zone_bottom[z] - 64 || o_z > zone_top[z] + 512) continue;
+		if (!Zone_XYInRing(z, o_x, o_y)) continue;
+		n = n + 1; hit = i;
+	}
+	if (n != 1) return -1;
+	o = ze_tdorg[hit];
+	tracebox(o, PM_HULL_MINS, PM_HULL_MAXS, o - '0 0 1024', MOVE_NOMONSTERS, world);
+	return Zone_PointInside(z, trace_endpos + '0 0 2') ? hit : -1;
+};
+
+// Post, facing arrow and name of one spawn or destination, over the world.
+void(vector p, float yaw, string label, vector eye, vector fwd, vector col, float s, float rsz) ZoneEdit_SpawnMark =
+{
+	local vector d, sp;
+
+	ZoneEdit_Dots(p, p + '0 0 72', eye, fwd, col, s);
+	ZoneEdit_Square(p, eye, fwd, col, s * 2, FALSE);
+	d = [cos(yaw * (M_PI / 180)), sin(yaw * (M_PI / 180)), 0];
+	if (yaw != ZE_NOYAW)    // a spawn with none keeps your view
+	{
+		ZoneEdit_Dots(p + '0 0 36', p + '0 0 36' + d * 40, eye, fwd, col, s);
+		ZoneEdit_Square(p + '0 0 36' + d * 40, eye, fwd, col, s * 1.5, TRUE);
+	}
+	if (label == "" || (p + '0 0 76' - eye) * fwd < 8) return;
+	sp = project(p + '0 0 76'); sp_z = 0;
+	drawstring(sp - [stringwidth(label, TRUE, [rsz, rsz]) * 0.5, rsz], label, [rsz, rsz], col, 1, 0);
+};
+
+void(float rsz) ZoneEdit_Spawns2D =
+{
+	local float z, i, d, s, used;
+	local vector eye, fwd, p, col;
+	local string lb;
+
+	if (!ui_ze_state) return;
+	eye = getproperty(VF_ORIGIN);
+	makevectors(getproperty(VF_ANGLES)); fwd = v_forward;
+	s = max(2, rint(rsz / 4));
+	ZoneEdit_TeleDests();
+	used = ZoneEdit_SpawnDest(ze_sel);
+	for (i = 0; i < ze_tdn; i = i + 1)
+	{
+		p = ze_tdorg[i];
+		if (i == used || vlen(p - eye) > 4096) continue;
+		ZoneEdit_SpawnMark(p, ze_tdyaw[i], ze_tdname[i], eye, fwd, ZEC_DIM, max(1, s * 0.5), rsz * 0.8);
+	}
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		if (zone_type[z] != ZONE_START && zone_type[z] != ZONE_STAGE) continue;
+		col = (z == ze_sel) ? ZEC_NEW : zone_cv_typecol[zone_type[z]];
+		d = ZoneEdit_SpawnDest(z);
+		if (d >= 0)
+			ZoneEdit_SpawnMark(ze_tdorg[d], ze_tdyaw[d], sprintf("%s spawn: %s", ZoneEdit_Label(z), ze_tdname[d]),
+			                   eye, fwd, col, s, rsz);
+		else if (zone_td_kind[z] == ZTD_NAME)
+		{
+			for (i = 0; i < ze_tdn; i = i + 1)
+				if (ze_tdname[i] == zone_td_name[z]) break;
+			if (i < ze_tdn)
+				ZoneEdit_SpawnMark(ze_tdorg[i], ze_tdyaw[i], sprintf("%s spawn: %s", ZoneEdit_Label(z), ze_tdname[i]),
+				                   eye, fwd, col, s, rsz);
+		}
+		else if (zone_td_kind[z] == ZTD_POS)
+		{
+			lb = sprintf("%s spawn", ZoneEdit_Label(z));
+			ZoneEdit_SpawnMark(zone_td_pos[z], zone_td_yaw[z], lb, eye, fwd, col, s, rsz);
+		}
+		else
+		{
+			p = zone_centre[z];
+			lb = sprintf("%s spawn", ZoneEdit_Label(z));
+			ZoneEdit_SpawnMark([p_x, p_y, zone_bottom[z] + 2], ZE_NOYAW, lb, eye, fwd, col, s, rsz);
+		}
+	}
+};
