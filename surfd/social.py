@@ -34,6 +34,7 @@ MESSAGES_MAX = 20000            # every saved line; past it the heaviest sender'
 # READ + reader + ":" + friend (a (recipient,id) index range per reader), body = the newest
 # id read. Every message read names its recipient or excludes '@...'.
 READ = "@read:"
+READ_FORM = re.compile(r"[0-9a-f]{8}:[0-9]{1,10}\Z")
 PURGE_EVERY = 600               # s between expiry sweeps in a worker; the TTL is 30 days
 # What menus before P1200 accept (they refuse more than 32), and `hist=1` (a P1200 menu);
 # DMs also per conversation, so a chatty friend cannot push a quiet one out of the snapshot.
@@ -251,15 +252,17 @@ def befriend(db, sid, other):
     return 1, "Friend added", 200
 
 
-def level_cut(counts, excess, first=()):
+def level_cut(counts, excess, first=(), oldest=None):
     """{key: rows to drop} removing `excess`: keys in `first` emptied first, then the largest
-    counts cut to one level (within one row), so no key is emptied while another keeps more."""
+    counts cut to one level (within one row), so no key is emptied while another keeps more.
+    Equal counts lose by age, the key with the oldest row (`oldest`: key -> min id) first: by
+    key, a new room line from a low steamid was deleted as it was posted (review 1)."""
     cut, live = {}, []
     for key, count in counts.items():
         if key in first:
             cut[key] = max(0, min(count, excess - sum(cut.values())))
         else:
-            live.append((count, key))
+            live.append((count, (oldest or {}).get(key, 0), key))    # equal counts: newest first
     excess -= sum(cut.values())
     live.sort(reverse=True)
     total = 0
@@ -269,8 +272,8 @@ def level_cut(counts, excess, first=()):
         if excess > 0 and total - k * floor >= excess:
             level = (total - excess) // k
             spare = total - excess - level * k
-            for i, (count, key) in enumerate(live[:k]):
-                cut[key] = count - level - (1 if i < spare else 0)
+            for i, (count, _, key) in enumerate(live[:k]):
+                cut[key] = count - level - (1 if i < spare else 0)    # larger, then newer, keep the spare
             break
     return {key: k for key, k in cut.items() if k > 0}
 
@@ -384,12 +387,13 @@ def keep_room(db, sid):
                       " ON a.steamid=m.sender WHERE m.recipient=? ORDER BY m.id", (CHAT_ROOM,)).fetchall()
     if len(rows) <= ROOM_KEEP:
         return
-    counts, gone = {}, set()
+    counts, gone, oldest = {}, set(), {}
     for r in rows:
         counts[r[1]] = counts.get(r[1], 0) + 1
+        oldest.setdefault(r[1], r[0])
         if r[2] is None or r[2]:
             gone.add(r[1])
-    need = level_cut(counts, len(rows) - ROOM_KEEP, gone)
+    need = level_cut(counts, len(rows) - ROOM_KEEP, gone, oldest)
     doomed = []
     for r in rows:
         if need.get(r[1]):
@@ -417,14 +421,15 @@ def make_room(db):
     if n < MESSAGES_MAX:
         return
     excess = n - MESSAGES_MAX + 100
-    counts, gone = {}, set()
-    for sender, count, banned in db.execute(
-            "SELECT m.sender, COUNT(*), a.banned_at FROM social_messages m"
+    counts, gone, oldest = {}, set(), {}
+    for sender, count, first, banned in db.execute(
+            "SELECT m.sender, COUNT(*), MIN(m.id), a.banned_at FROM social_messages m"
             " LEFT JOIN accounts a ON a.steamid=m.sender GROUP BY m.sender").fetchall():
         counts[sender] = count
+        oldest[sender] = first
         if banned is None or banned:
             gone.add(sender)
-    cut = level_cut(counts, excess, gone)
+    cut = level_cut(counts, excess, gone, oldest)
     # One oldest-first scan picks every id; a DELETE per sender scanned once each (244 ms with
     # 100 tied senders at 20,000 rows, review 3).
     need = {sender: k for sender, k in cut.items() if k > 0}
@@ -633,6 +638,8 @@ def register(app, d):
             # A menu heartbeat is not a lobby session/capability or join target.
             with db:
                 mark = f.get("read", "") if op == "chat" else ""
+                if not READ_FORM.fullmatch(mark):
+                    mark = ""               # malformed: read only, no write lock (review 1)
                 db.execute("BEGIN IMMEDIATE" if op in ("presence", "message") or mark else "BEGIN")
                 account = db.execute("SELECT k.steamid FROM keylinks k JOIN accounts a USING(steamid)"
                                      " WHERE k.pub=? AND a.banned_at=0", (pub,)).fetchone()
@@ -658,9 +665,9 @@ def register(app, d):
                     return reply({"ok": 1, "friends": rows})
                 if op == "chat":
                     # P1206: "<friend mark>:<id>", the newest line the menu showed in that thread.
-                    peer, _, upto = mark.partition(":")
-                    if MARK.fullmatch(peer) and len(peer) == 8 and upto.isdigit() and len(upto) <= 10:
-                        other = resolve(db, peer)
+                    if mark:
+                        peer, _, upto = mark.partition(":")
+                        other = resolve(db, peer, sid)      # among the reader's own (review 1)
                         if other and relation(db, sid, other) == 3:
                             set_read(db, sid, other, upto, now)
                     return reply(chat_snapshot(db, sid, now, d.lobby_ttl, f.get("hist") == "1"))
@@ -769,7 +776,12 @@ def register(app, d):
                         if sender and not sender["banned_at"]:
                             messages.append(dict(id=str(m["id"]), who=accounts.who_of(m["sender"]),
                                                  name=accounts.game_name(sender["name"]), text=m["body"]))
-                            set_read(db, sid, m["sender"], m["id"], now)   # P1206: shown in the game
+                            # P1206: shown in the game -- unless an older line from them is
+                            # still unread (the relay skips lines over two minutes old, review 1).
+                            prev = db.execute("SELECT MAX(id) FROM social_messages WHERE recipient=? AND sender=?"
+                                              " AND id<?", (sid, m["sender"], m["id"])).fetchone()[0]
+                            if prev is None or prev <= read_marks(db, sid).get(m["sender"], 0):
+                                set_read(db, sid, m["sender"], m["id"], now)
                     row = dict(token=r["token"], hash=revision, messages=messages)
                     if r.get("inventory") == 1:
                         inventory.ensure(db, sid)

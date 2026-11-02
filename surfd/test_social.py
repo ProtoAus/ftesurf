@@ -972,6 +972,35 @@ class Friends(unittest.TestCase):
         self.assertEqual(body.get("reads"), 1)
         self.assertEqual([(m["text"], m.get("new")) for m in body["messages"]], [("in game", None)])
 
+    def test_p1206r1_a_full_room_of_single_senders_drops_the_oldest_not_the_new_line(self):
+        many = ["765611980000%05d" % (60000 + i) for i in range(F.ROOM_KEEP)]   # all above IDS[0]
+        self.add_accounts(many)
+        self.db.executemany("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                            [(sid, F.CHAT_ROOM, "old " + sid, self.now - 20 * 86400) for sid in many])
+        self.db.commit()
+        self.assertEqual(self.chat_send(0, "brand new")[0]["ok"], 1)
+        bodies = [r[0] for r in self.db.execute("SELECT body FROM social_messages WHERE recipient=?", (F.CHAT_ROOM,))]
+        self.assertIn("brand new", bodies)
+        self.assertNotIn("old " + many[0], bodies)          # the oldest line went
+        self.assertEqual(len(bodies), F.ROOM_KEEP)
+
+    def test_p1206r1_a_relayed_line_does_not_mark_older_unrelayed_lines_read(self):
+        self.befriend(); self.poll()
+        self.db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                        (IDS[0], IDS[1], "an hour ago", self.now - 3600))
+        self.db.commit()
+        self.assertEqual(self.action(0, "message", text="fresh").status_code, 200)
+        self.assertEqual([m["text"] for m in self.poll()[1]["messages"]], ["fresh"])
+        body = self.menu_read(self.menu_form(1, "chat"))
+        self.assertEqual([(m["text"], m.get("new")) for m in body["messages"]], [("an hour ago", 1), ("fresh", 1)])
+
+    def test_p1206r1_odd_digits_in_read_are_ignored_not_an_error(self):
+        self.befriend(); self.poll()
+        form = self.menu_form(0, "chat")
+        form["read"] = A.who_of(IDS[1]) + ":1\u00b2"
+        body = self.menu_read(form)
+        self.assertEqual((body["ok"], F.read_marks(self.db, IDS[0])), (1, {}))
+
     def test_lobby_dm_to_offline_friend_waits_in_the_menu(self):
         self.befriend(); self.poll()
         self.now += F.PRESENCE_TTL + 1                  # friend 1 has left every lobby
