@@ -1,5 +1,16 @@
 # AGENT_NOTES.md
 
+## P1197 zone_edit snaps to the map (live 2 Nov 06:37Z, deploy/p1197-zonesnap 7bfe2807, cs bddd5081)
+- Lobby QC is origin/deploy/p1197-zonesnap 7bfe2807 (96f009ed + P1197; qwprogs unchanged
+  6955e756); ac's deploy/p1198-menu 3d50226d (= 7bfe2807 + menu) is the newest delivered set.
+- Zoners place zones in a game they HOST: the lobby csprogs does not reach them, a release does.
+- getsurfacepoint does not check its mesh or point index (pr_bgcmd.c): call getsurfacenumpoints
+  first and stay below it. On VBSP an unbuilt mesh is all origin and getsurfaceclippedpoint hands
+  the input back (distance 0), so "clipped point = aim" does not prove a face is filled.
+- `zone_edit snapprobe ex ey ez tx ty tz` grades the snap without a view; `wsurf x y z` lists a
+  face; the arm is tools/p1197snap.py (copies surf_sinsane_ez from Momentum's maps folder).
+  surf_sinsane_ez's z 13740 "floor" beside the start is water: a trace goes through it.
+
 ## P1198-P1200 menu profiles, menu board, saved chat (2 Nov)
 - Any player click in the menu goes to MStats_Player(who) (m_stats.qc; 8- or 12-hex). Its Back
   returns to CHAT / STORY / CREATE, and to the same board via Mlb_Reopen (trusted; Mlb_Browse is

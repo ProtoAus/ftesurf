@@ -27,7 +27,8 @@ commit   dc3e20be390ba5c3bb7d570bcacba8151172cd7d
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1165
-patch    1196
+patch    1197
+# Patch 1197 (CSQC): zone_edit Edge snap reads the world face under the aim (getsurface*): a corner within 14 screen units wins, else an edge point; compiler splits of one flat floor refused by a trace; grid kept along an edge; on by default. Native pin/tag, backend and Build unchanged.
 # Patch 1192 (engine gl_warp.c): inside a Source map's 3D-sky view the whole 2D skybox is drawn behind the sky room (Source's R_DrawSkyBox), not only over the sky faces that view kept (surf_olivia's hub); r_skyroom_fullbox 0 = old. Native: engine main dd570d36c, not installed; QC pin/tag and Build unchanged.
 # Patch 1191 (hl2 plugin + gl_warp.c): a world material with no VMT whose image will not load draws its dtexdata reflectivity colour under its lightmap, not the P780 checker (surf_utopia without TF2; hl2_missingtint 0 = old); a declared sky with every face missing draws r_skybox_default. Native: engine main b164fc896, not installed; QC pin/tag and Build unchanged.
 # Patch 1195 (engine cl_pred.c + CSQC + SSQC + tools): prederror reports. The engine keeps a ring of Patch 335's server-against-predicted comparisons, counts its lines in cl_prederror_count/_last and writes the ring with prederr_dump (data/prederr/ only). CSQC writes the context beside it, offers it in a side box (F6) and sends it to the lobby in acked sendevent chunks; the lobby writes data/prederr/<map>/. tools/prederr_triage.py. Native: tag patch-1195 = fb3e181d6 on 9e8daa0d0; older engines show no box. QC pin/tag unchanged.

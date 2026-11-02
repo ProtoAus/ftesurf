@@ -21,6 +21,10 @@
 
 ## next
 
+### P1197 Zone editor snaps to the map's corners
+- Zone editor: Edge snap now snaps to the corners and edges of the map surface under your crosshair, not only to other zones, and it starts switched on.
+- A square marks the snapped point, the surface being read is outlined, and the placing hint shows what your next click takes, with its coordinates.
+
 ### P1200 Chat is saved, and friends can get your message later
 - Main-menu chat and messages to friends are now kept for 30 days, so a friend who was offline sees your message the next time they play.
 - You can message a friend who is offline. A friend with new messages shows a count on their Message button and at the top of the chat.

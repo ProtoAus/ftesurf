@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P1197 zone editor snaps to the map's corners
+On all 12 lobbies and in both C:\FTESurf / C:\FTEQuake installs (CSQC only; restart a running game).
+A game you host uses its own install's files, so your Desktop WorldofSurf install gets it with
+release 0.1.36 (being cut 2 Nov). Please check on surf_sinsane_ez, hosted:
+`zone_edit`, place a start (box or polygon), aim near a corner of the start floor: a green square
+sits on the corner and the line under the hint says "map corner 11718.0 8396.0 ..."; the click
+takes it exactly. Near an edge it says "map edge" (cyan). Edge snap off in the panel gives back
+the grid. Not covered by the arm: maps whose floors are displacements (they do not snap), and
+how it feels on a busy map.
+
 ## P1198 / P1199 / P1200 profiles, menu leaderboard, saved chat
 menu.dat 8bae5190 is on both installs (deploy/p1198-menu 3d50226d; qw/cs unchanged). Players get it
 with the next client release. The saved-chat server half (surfd) is NOT live yet: it goes live
