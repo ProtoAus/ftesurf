@@ -62,7 +62,7 @@ void(string who) MStats_Player =
 		ms_bmap = strzone(mlb_map);
 		if (ms_bsource != "") strunzone(ms_bsource);
 		if (ms_bstyle != "") strunzone(ms_bstyle);
-		ms_bsource = strzone(!strcmp(mlb_source, "all") ? "all" : Mlb_Tier(mlb_tab));
+		ms_bsource = strzone((mlb_tab == MLB_T_ALL) ? "all" : Mlb_Tier(mlb_tab));
 		ms_bstyle = strzone(mlb_style);
 		ms_btrack = mlb_track; ms_bleg = mlb_leg;
 	}
