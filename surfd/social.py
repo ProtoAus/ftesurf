@@ -29,9 +29,14 @@ MESSAGE_TTL = 30 * 86400        # P1200: saved, so a DM to an offline friend wai
 LOBBY_DM_TTL = 120              # a lobby relays only DMs this recent; older ones wait in the menu
 ROOM_KEEP = 128
 DM_KEEP = 50                    # per sender and recipient
-MESSAGES_MAX = 200000           # every saved line; past it a send is refused, never a purge
-SNAP_ROOM, SNAP_DM = 24, 32     # what menus before P1200 accept (they refuse more than 32)
-HIST_ROOM, HIST_DM = 50, 100    # `hist=1`: a P1200 menu
+MESSAGES_MAX = 20000            # every saved line; past it the heaviest sender's oldest go (make_room)
+ROOM_SHARE = 40                 # one sender's lines among the room's ROOM_KEEP
+PURGE_EVERY = 600               # s between expiry sweeps in a worker; the TTL is 30 days
+# What menus before P1200 accept (they refuse more than 32), and `hist=1` (a P1200 menu);
+# DMs also per conversation, so a chatty friend cannot push a quiet one out of the snapshot.
+SNAP_ROOM, SNAP_DM, SNAP_PEER = 24, 32, 8
+HIST_ROOM, HIST_DM, HIST_PEER = 50, 100, 25
+SNAP_BYTES = 120000
 TOKEN = re.compile(r"[0-9a-f]{64}\Z")
 MARK = re.compile(r"[0-9a-f]{8}(?:[0-9a-f]{4})?\Z")
 MENU_NONCE = re.compile(r"[0-9a-f]{32}\Z")
@@ -106,6 +111,11 @@ def issue(db, pub, sid, node, now, old_token=""):
             ack = old["ack"]
         db.execute("DELETE FROM social_sessions WHERE token=? AND pub=? AND node=?",
                    (digest(old_token), pub, node))
+    # P1200 review 1: past every saved DM a lobby would not relay anyway, so the poll's walk
+    # from `ack` is the last LOBBY_DM_TTL seconds, not the whole 30-day inbox.
+    floor = db.execute("SELECT MAX(id) FROM social_messages WHERE recipient=? AND sent<?",
+                       (sid, now - LOBBY_DM_TTL)).fetchone()[0]
+    ack = max(ack, floor or 0)
     db.execute("DELETE FROM social_sessions WHERE issued<?", (now - SESSION_TTL,))
     # Per-CONNECTION capability, not UNIQUE(pub,node): copied installations can
     # legitimately prove the same key on two simultaneous connections.
@@ -251,21 +261,37 @@ def chat_snapshot(db, sid, now, lobby_ttl, hist=False):
             continue
         room.append(dict(id=str(row["id"]), who=accounts.who_of(row["sender"]),
                          name=accounts.game_name(row["name"]), text=row["body"], sent=row["sent"]))
-    for row in db.execute("SELECT m.*,a.name FROM social_messages m JOIN accounts a ON a.steamid=m.sender"
-                          " WHERE a.banned_at=0 AND m.sent>=? AND (m.recipient=? OR m.sender=?)"
-                          " AND m.recipient<>? ORDER BY m.id DESC LIMIT 1024",
-                          (now - MESSAGE_TTL, sid, sid, CHAT_ROOM)):
+    # Mine are read through each friend's recipient index: `sender=?` has no index (review 1).
+    friends = [r[0] for r in db.execute("SELECT CASE WHEN lo=? THEN hi ELSE lo END FROM social_friends"
+                                        " WHERE (lo=? OR hi=?) AND accepted=1", (sid, sid, sid))][:MAX_FRIENDS]
+    pick = "SELECT m.*,a.name FROM social_messages m JOIN accounts a ON a.steamid=m.sender WHERE a.banned_at=0 AND m.sent>=?"
+    rows = list(db.execute(pick + " AND m.recipient=? ORDER BY m.id DESC LIMIT 1024", (now - MESSAGE_TTL, sid)))
+    if friends:
+        rows += db.execute(pick + " AND m.recipient IN (%s) AND m.sender=? ORDER BY m.id DESC LIMIT 1024"
+                           % ",".join("?" * len(friends)), (now - MESSAGE_TTL, *friends, sid)).fetchall()
+    rows.sort(key=lambda r: -r["id"])
+    per, peer_max = {}, (HIST_PEER if hist else SNAP_PEER)
+    for row in rows:
         if len(messages) >= dm_max:
             break
         other = row["sender"] if row["recipient"] == sid else row["recipient"]
-        if relation(db, sid, other) != 3:
+        if other not in per:
+            per[other] = 0 if relation(db, sid, other) == 3 else peer_max
+        if per[other] >= peer_max:
             continue
+        per[other] += 1
         messages.append(dict(id=str(row["id"]), who=accounts.who_of(row["sender"]),
                              name=accounts.game_name(row["name"]), text=row["body"], sent=row["sent"],
                              peer=accounts.who_of(other)))
-    return dict(ok=1, me=accounts.who_of(sid), room=list(reversed(room)),
-                messages=list(reversed(messages)),
-                friends=[r for r in friend_rows(db, sid, now, lobby_ttl) if r["relation"] == 3])
+    out = dict(ok=1, me=accounts.who_of(sid), room=list(reversed(room)), messages=list(reversed(messages)),
+               friends=[r for r in friend_rows(db, sid, now, lobby_ttl) if r["relation"] == 3])
+    # The menu refuses a body over 131072 (m_chat.qc MC_Reply): the oldest lines give way.
+    while len(json.dumps(out, separators=(",", ":"), ensure_ascii=False).encode("utf-8")) > SNAP_BYTES:
+        longer = out["messages"] if len(out["messages"]) >= len(out["room"]) else out["room"]
+        if not longer:
+            break
+        longer.pop(0)
+    return out
 
 
 def keep_dms(db, sender, recipient):
@@ -275,10 +301,36 @@ def keep_dms(db, sender, recipient):
                (sender, recipient, sender, recipient, DM_KEEP))
 
 
-def keep_room(db):
+def keep_room(db, sid):
+    """One sender holds at most ROOM_SHARE of the room, so a spammer cannot wipe it (review 1)."""
+    db.execute("DELETE FROM social_messages WHERE recipient=? AND sender=? AND id NOT IN"
+               " (SELECT id FROM social_messages WHERE recipient=? AND sender=? ORDER BY id DESC LIMIT ?)",
+               (CHAT_ROOM, sid, CHAT_ROOM, sid, ROOM_SHARE))
     db.execute("DELETE FROM social_messages WHERE recipient=? AND id NOT IN"
                " (SELECT id FROM social_messages WHERE recipient=? ORDER BY id DESC LIMIT ?)",
                (CHAT_ROOM, CHAT_ROOM, ROOM_KEEP))
+
+
+_purged = {"at": 0}
+
+
+def purge(db, now):
+    """Expiry needs a full scan (no index on `sent`); a 30-day TTL needs it only every PURGE_EVERY s."""
+    if 0 <= now - _purged["at"] < PURGE_EVERY:
+        return
+    _purged["at"] = now
+    db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
+
+
+def make_room(db):
+    """At MESSAGES_MAX the heaviest sender's oldest lines go.  Refusing instead let a group of
+    accounts block every chat path for 30 days, banned or not (review 1)."""
+    n = db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0]
+    if n < MESSAGES_MAX:
+        return
+    top = db.execute("SELECT sender FROM social_messages GROUP BY sender ORDER BY COUNT(*) DESC LIMIT 1").fetchone()
+    db.execute("DELETE FROM social_messages WHERE id IN (SELECT id FROM social_messages WHERE sender=?"
+               " ORDER BY id LIMIT ?)", (top[0], n - MESSAGES_MAX + 100))
 
 
 # P996: a board line in the public room -- a world record or personal best, said
@@ -302,12 +354,11 @@ def announce(db, sid, body, now, always=False):
                 return False
             if any(r.split(" -- ")[0] == what for r in recent):
                 return False
-            db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
-            if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= MESSAGES_MAX:
-                return False
+            purge(db, now)
+            make_room(db)
             db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
                        (sid, CHAT_ROOM, ANNOUNCE + body[:300], now))
-            keep_room(db)
+            keep_room(db, sid)
         return True
     except sqlite3.Error:
         return False
@@ -356,9 +407,8 @@ def menu_message(db, sid, nonce, expires, target, text, now, lobby_ttl):
     proof = digest(sid + "\n" + nonce)
     if db.execute("SELECT 1 FROM social_menu_messages WHERE proof=?", (proof,)).fetchone():
         return {"ok": 0, "error": "Message already sent"}, 409
-    db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
-    if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= MESSAGES_MAX:
-        return {"ok": 0, "error": "Chat is busy"}, 429
+    purge(db, now)
+    make_room(db)
     serial = db.execute("SELECT seq FROM sqlite_sequence WHERE name='social_messages'").fetchone()
     if serial and serial[0] >= 2147483647:
         return {"ok": 0, "error": "Chat is busy"}, 429
@@ -366,7 +416,7 @@ def menu_message(db, sid, nonce, expires, target, text, now, lobby_ttl):
     row = db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
                      (sid, other, text, now))
     if other == CHAT_ROOM:
-        keep_room(db)
+        keep_room(db, sid)
     else:
         keep_dms(db, sid, other)
     return {"ok": 1, "id": str(row.lastrowid), "note": "Message sent"}, 200
@@ -566,7 +616,7 @@ def register(app, d):
                 db.execute("BEGIN IMMEDIATE")
                 location = db.execute("SELECT map FROM lobbies WHERE node=?", (node,)).fetchone()
                 mapname = location[0] if location else ""
-                db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
+                purge(db, now)
                 db.execute("DELETE FROM social_sessions WHERE issued<?", (now - SESSION_TTL,))
                 db.execute("DELETE FROM social_menu_presence WHERE seen<=?", (now - MENU_PRESENCE_TTL,))
                 # Full-node snapshot. Tokens of disconnected slots cannot keep presence alive.
@@ -749,15 +799,14 @@ def register(app, d):
                         return reply({"ok": 0, "error": "Lines starting with '* ' are the board's"}, 400)
                     if not d.rate_ok(sid, now, 12, "social-room"):
                         return reply({"ok": 0, "error": "Slow down; try again shortly"}, 429)
-                    db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
-                    if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= MESSAGES_MAX:
-                        return reply({"ok": 0, "error": "Chat is busy"}, 429)
+                    purge(db, now)
+                    make_room(db)
                     serial = db.execute("SELECT seq FROM sqlite_sequence WHERE name='social_messages'").fetchone()
                     if serial and serial[0] >= 2147483647:
                         return reply({"ok": 0, "error": "Chat is busy"}, 429)
                     db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
                                (sid, CHAT_ROOM, text, now))
-                    keep_room(db)
+                    keep_room(db, sid)
                     return reply({"ok": 1, "note": ""})      # the line is its own receipt
                 other = resolve(db, request.form.get("who", ""), sid if op in ("remove", "unblock") else None)
                 if not other or other == sid:
@@ -828,9 +877,8 @@ def register(app, d):
                     if not text or len(text) > 160 or len(text.encode("utf-8")) > 320 or any(
                             ord(c) < 32 or ord(c) == 127 for c in text):
                         return reply({"ok": 0, "error": "Use 1-160 characters on one line"}, 400)
-                    db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
-                    if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= MESSAGES_MAX:
-                        return reply({"ok": 0, "error": "Private chat is busy"}, 429)
+                    purge(db, now)
+                    make_room(db)
                     serial = db.execute("SELECT seq FROM sqlite_sequence WHERE name='social_messages'").fetchone()
                     if serial and serial[0] >= 2147483647:
                         return reply({"ok": 0, "error": "Private chat is busy"}, 429)

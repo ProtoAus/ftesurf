@@ -792,17 +792,88 @@ class Friends(unittest.TestCase):
                             + [(IDS[1], IDS[2], "not mine", self.now)] * 300)
         self.db.commit()
         old = self.menu_read(self.menu_form(0, "chat"))
-        self.assertEqual((len(old["room"]), len(old["messages"])), (F.SNAP_ROOM, F.SNAP_DM))
+        self.assertEqual((len(old["room"]), len(old["messages"])), (F.SNAP_ROOM, F.SNAP_PEER))
         self.assertEqual(old["room"][-1]["text"], "room 59")
         form = self.menu_form(0, "chat")
         form["hist"] = "1"
         new = self.menu_read(form)
-        self.assertEqual((len(new["room"]), len(new["messages"])), (F.HIST_ROOM, 80))
+        self.assertEqual((len(new["room"]), len(new["messages"])), (F.HIST_ROOM, F.HIST_PEER))
         self.assertEqual([new["room"][0]["text"], new["messages"][-1]["text"]], ["room 10", "re 39"])
         self.assertEqual({m["peer"] for m in new["messages"]}, {A.who_of(IDS[1])})
         self.assertNotIn("not mine", json.dumps(new))
         self.now += F.MESSAGE_TTL + 1
         self.assertEqual(self.menu_read(self.menu_form(0, "chat"))["room"], [])
+
+    def befriend_cal(self):
+        self.assertEqual(self.action(0, "add", 2).status_code, 200)
+        self.assertEqual(self.action(2, "add", 0).status_code, 200)
+
+    def test_review1_quiet_friend_is_not_crowded_out_of_the_snapshot(self):
+        self.befriend(); self.befriend_cal(); self.poll()
+        self.db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                        (IDS[2], IDS[0], "quiet hello", self.now - 600))
+        self.db.executemany("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                            [(IDS[1], IDS[0], "chatty %d" % i, self.now) for i in range(F.DM_KEEP)]
+                            + [(IDS[0], IDS[1], "reply %d" % i, self.now) for i in range(F.DM_KEEP)])
+        self.db.commit()
+        form = self.menu_form(0, "chat")
+        form["hist"] = "1"
+        for body in (self.menu_read(self.menu_form(0, "chat")), self.menu_read(form)):
+            self.assertIn("quiet hello", [m["text"] for m in body["messages"]])
+
+    def test_review1_full_table_evicts_the_heaviest_sender_not_everyone(self):
+        self.befriend(); self.befriend_cal(); self.poll()
+        self.db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                        (IDS[2], IDS[0], "keep me", self.now))
+        for i in range(30):
+            self.db.executemany("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                                [(IDS[1], "766%014d" % (i * 10 + k), "flood", self.now) for k in range(10)])
+        self.db.commit()
+        with patch.object(F, "MESSAGES_MAX", 250):
+            self.assertEqual(self.action(2, "message", 0, text="still works").status_code, 200)
+            self.assertEqual(self.chat_send(2, "room still works")[0]["ok"], 1)
+        rows = dict(self.db.execute("SELECT body, COUNT(*) FROM social_messages GROUP BY body").fetchall())
+        self.assertEqual((rows.get("keep me"), rows.get("still works"), rows.get("room still works")), (1, 1, 1))
+        self.assertLess(rows["flood"], 250)
+
+    def test_review1_one_sender_cannot_wipe_the_saved_room(self):
+        self.db.executemany("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                            [(IDS[2], F.CHAT_ROOM, "others %d" % i, self.now) for i in range(60)]
+                            + [(IDS[1], F.CHAT_ROOM, "spam %d" % i, self.now) for i in range(200)])
+        self.db.commit()
+        self.assertEqual(self.chat_send(1, "one more")[0]["ok"], 1)
+        n = dict(self.db.execute("SELECT sender, COUNT(*) FROM social_messages WHERE recipient=? GROUP BY sender",
+                                 (F.CHAT_ROOM,)).fetchall())
+        self.assertEqual(n[IDS[1]], F.ROOM_SHARE)
+        self.assertEqual(n[IDS[2]], 60)
+
+    def test_review1_new_lobby_session_starts_past_the_saved_inbox(self):
+        self.befriend(); self.poll()
+        self.db.executemany("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                            [(IDS[0], IDS[1], "old %d" % i, self.now - 3600) for i in range(5)])
+        self.db.commit()
+        old = self.db.execute("SELECT MAX(id) FROM social_messages").fetchone()[0]
+        token = self.hello(2)["social"]
+        ack = self.db.execute("SELECT ack FROM social_sessions WHERE token=?", (F.digest(token),)).fetchone()[0]
+        self.assertEqual(ack, old)
+        self.assertEqual(self.action(0, "message", text="fresh").status_code, 200)
+        self.tokens[1] = token
+        self.assertEqual([m["text"] for m in self.poll()[1]["messages"]], ["fresh"])
+
+    def test_review1_snapshot_fits_the_menu_body_limit(self):
+        self.befriend(); self.poll()
+        self.db.executemany("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                            [(IDS[1], IDS[0], "\u00e9" * 160, self.now) for i in range(F.DM_KEEP)]
+                            + [(IDS[1], F.CHAT_ROOM, "\u00e9" * 160, self.now) for i in range(60)])
+        self.db.commit()
+        form = self.menu_form(0, "chat")
+        form["hist"] = "1"
+        with patch.object(F, "SNAP_BYTES", 12000):
+            body = self.menu_read(form)
+        self.assertLessEqual(len(F.json.dumps({k: v for k, v in body.items() if k not in ("v", "status")},
+                                              separators=(",", ":"), ensure_ascii=False).encode()), 12000)
+        self.assertGreater(len(body["messages"]), 0)
+        self.assertGreater(len(body["room"]), 0)
 
     def test_lobby_dm_to_offline_friend_waits_in_the_menu(self):
         self.befriend(); self.poll()
