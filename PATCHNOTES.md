@@ -21,6 +21,18 @@
 
 ## next
 
+### P1200 Chat is saved, and friends can get your message later
+- Main-menu chat and messages to friends are now kept for 30 days, so a friend who was offline sees your message the next time they play.
+- You can message a friend who is offline. A friend with new messages shows a count on their Message button and at the top of the chat.
+
+### P1199 Map leaderboards in the menu work like the in-game one
+- The map leaderboard opened from the main menu now has All games plus each game, every stage, bonus and bonus stage in a list down the side, and a delta column.
+- It loads more times as you scroll; the earlier, top and refresh buttons are gone.
+
+### P1198 Clicking a player opens their Stats page
+- Clicking a player's name or picture in the main menu (friends, leaderboards, story ranking, lobby chat) opens the full Stats page for them; Back returns to where you were.
+- Friends have a Message button, and the Stats page has an Inventory button that shows a player's items.
+
 ### P1169 Larger Maps filter text
 - Maps: larger, sharper native-pixel filter text, with roomier controls that wrap on smaller windows.
 

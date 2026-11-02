@@ -1,5 +1,18 @@
 # AGENT_NOTES.md
 
+## P1198-P1200 menu profiles, menu board, saved chat (2 Nov)
+- Any player click in the menu goes to MStats_Player(who) (m_stats.qc; 8- or 12-hex). Its Back
+  returns to CHAT / STORY / CREATE, and to the same board via Mlb_Reopen (trusted; Mlb_Browse is
+  for untrusted requests and refuses e.g. Sideways outside KSF). m_profile.qc is gone.
+- Menu board: MLB_T_ALL is a tab (tier combined); legs from /board/api/map `boards`; DELTA's
+  reference is the r == 1 row; no earlier/top/refresh (Mlb_More / Mlb_Earlier page on scroll).
+- Chat: surfd social.py keeps lines MESSAGE_TTL (30 days), room 128 (40 per sender), DMs 50 per
+  pair, MESSAGES_MAX 20000 with level eviction (banned first); lobbies relay only DMs < 120 s.
+  The snapshot sends `keep`; the menu words its note from it. cl_chat_read holds "mark id" pairs:
+  menu tokenize splits ':' into its own token (the arm caught "022bb951:44" never matching).
+- Arm: C:\FTESurf-worktrees\profiles-20261102\artifacts\p1198arm.py (real surfd on 127.0.0.1:47123,
+  synthetic data, arm-only MF_SITE + a ui_chat registration; 25 checks; the 0.1.35 menu fails 18).
+
 ## P1190 / P1193 (live 2 Nov 03:01Z, deploy/p1193-sirena 96f009ed, qw 6955e756)
 - P1190: every playing client gets a `tp_view_eye` entity in `.view2` (sv_warpop.qc
   SV_TpEyeThink), at an imminent trigger_teleport's destination or the `!r` stat. The replay /

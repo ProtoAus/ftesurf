@@ -1,5 +1,19 @@
 # BACKLOG.md
 
+## P1198-P1200 menu profiles, board, saved chat: residuals (2 Nov 2026)
+- Saved chat goes live with a client release: 0.1.35's menu says "expire after two minutes; not
+  saved". Until then surfd keeps the old behaviour (the surfd half is on fix/chat-1200, not live).
+- Abuse bounds, not fixed: 4 accounts can replace the room's 128 lines in about 2 minutes
+  (40 per sender, 20 sends/min); three chatty conversations can push a quiet friend's line out of
+  a hist=1 snapshot (120 lines, 50 per conversation), two out of an old menu's (32, 16 each). The
+  rows are still stored. A full table (20,000) evicts the heaviest senders to one level.
+- Read marks (cl_chat_read) are per install, not per account; unread counts exist only while the
+  chat is polled (the friends list on the Maps screen shows no counts).
+- Player clicks in the board/chat lists hit-test by row index: a page landing between mouse-down
+  and mouse-up could open the neighbour's Stats page.
+- tools/test_board_navigation.py: test_profile_row_styles (PF_CF) fails on 96f009ed already; the
+  boundary-fixture test errors on an import path when run as tools.X.
+
 ## P1196 teleport gates: review 1 notes (2 Nov 2026; prediction only, fail-safe)
 
 - Before a netgated teleport's first snapshot (about one RTT after join) its own replayable outputs

@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P1198 / P1199 / P1200 profiles, menu leaderboard, saved chat
+menu.dat 8bae5190 is on both installs (deploy/p1198-menu 3d50226d; qw/cs unchanged). Players get it
+with the next client release. The saved-chat server half (surfd) is NOT live yet: it goes live
+together with that release, because 0.1.35's menu tells players chat is not saved. Until then the
+new menu says "Recent messages expire after two minutes" (it reads the server's own keep value).
+Please check in the main menu:
+1. Click a friend's name or picture: the Stats page opens for them. Inventory (top right of the
+   header) shows their items. Esc closes Inventory, then the page.
+2. A friend's row has Message at the right; it opens your chat with them.
+3. Maps > a map > leaderboard: All games / WOS / Momentum / KSF tabs, a TRACK list (Main, stages,
+   bonuses), # / PLAYER / TIME / DELTA / DATE, no earlier/top/refresh; scroll for more. Click a
+   name: their Stats page; Esc comes back to the same board (also on Sideways etc.).
+4. After the surfd half is live: message an offline friend; they see "Message (1)" and a
+   "Name (1)" button in the chat when they next open the game.
+
 ## P1191 / P1192 flat colours for missing materials; olivia's sky (in 0.1.35)
 Engine exe + hl2 plugin only: shipped in release 0.1.35 (2 Nov 05:41Z, engine release-0135 686d42014 =
 patch-1195 + P1191/P1192). Please check on 0.1.35:
