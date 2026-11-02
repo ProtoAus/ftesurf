@@ -532,6 +532,8 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	// Draw distance in units, 0 = unlimited.  A sprite is culled on its centre
 	// less its own radius, so a large glow stays visible past the line.
 	registercvar("vbsp_sprite_dist", "0");
+	// P1218: sky tests a frame for sprites and light shafts (cl_sprites.qc); 0 = none, all drawn.
+	registercvar("vbsp_sprite_skyrays", "64", CVAR_ARCHIVE);
 	// One-frame dump of the material table and the cull result; clears itself,
 	// same idiom as zone_debug.
 	registercvar("vbsp_sprite_debug", "0");

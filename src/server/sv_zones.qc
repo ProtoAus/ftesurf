@@ -263,6 +263,9 @@ void(string action) SV_StartMarkCommand =
 // shareholder_value s2 -46 against 90. Such a spawn with exactly one
 // info_teleport_destination inside its zone faces it, as the map's teleports do.
 // A Set spawn stands off the centre and keeps its yaw. Not in Zone_Hash's table.
+// P1215 (Lex, 3 Nov): it also stands there, if that point's floor is inside the zone,
+// so !r lands where the map's own teleports do (surf_eternity's s1); a start or stage
+// with no spawn at all takes it too.  zone_edit shows it (ZoneEdit_SpawnDest).
 // Momentum's mirrored files (zone_stamped) keep their zoners' yaws: of the shipped
 // library's 44 centred spawns only 3 would turn, and surf_shape's b1 -45 may be meant.
 void() SV_ZoneSpawnYaws =
@@ -275,14 +278,19 @@ void() SV_ZoneSpawnYaws =
 		return;
 	for (n = 0; n < zone_count; n = n + 1)
 	{
-		if (zone_td_kind[n] != ZTD_POS || zone_npts[n] < 1)
+		if (zone_npts[n] < 1 || (zone_type[n] != ZONE_START && zone_type[n] != ZONE_STAGE))
 			continue;
-		c = '0 0 0';
-		for (i = 0; i < zone_npts[n]; i = i + 1)
-			c = c + zone_pt[zone_first[n] + i];
-		c = c * (1 / zone_npts[n]);
-		o = zone_td_pos[n];
-		if (fabs(o_x - c_x) > 1 || fabs(o_y - c_y) > 1)
+		if (zone_td_kind[n] == ZTD_POS)
+		{
+			c = '0 0 0';
+			for (i = 0; i < zone_npts[n]; i = i + 1)
+				c = c + zone_pt[zone_first[n] + i];
+			c = c * (1 / zone_npts[n]);
+			o = zone_td_pos[n];
+			if (fabs(o_x - c_x) > 1 || fabs(o_y - c_y) > 1)
+				continue;
+		}
+		else if (zone_td_kind[n] != ZTD_NONE)
 			continue;
 		cnt = 0;
 		hit = world;
@@ -297,6 +305,20 @@ void() SV_ZoneSpawnYaws =
 			hit = e;
 		}
 		if (cnt != 1)
+			continue;
+		tracebox(hit.origin, PM_HULL_MINS, PM_HULL_MAXS, hit.origin - '0 0 1024', FALSE, world);   // ZONE_SNAP_DROP, below
+		if (Zone_PointInside(n, trace_endpos + '0 0 2'))
+		{
+			if (cvar("developer"))
+				dprint(sprintf("zones: zone %g spawn stands at %s\n", n, hit.targetname));
+			zone_td_pos[n] = hit.origin;
+			if (zone_td_kind[n] == ZTD_NONE)
+			{
+				zone_td_kind[n] = ZTD_POS;
+				zone_td_yaw[n] = hit.angles_y;
+			}
+		}
+		if (zone_td_kind[n] != ZTD_POS)
 			continue;
 		d = hit.angles_y - zone_td_yaw[n];
 		d = d - 360 * floor(d / 360);
