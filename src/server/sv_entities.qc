@@ -2392,7 +2392,7 @@ void(entity t, string who, entity act) SV_PointTeleport =
 	local entity p;
 	local float vmode, spd, hs;
 
-	if (who == "!activator" || who == "!player" || who == "!caller")
+	if (FS_IsActivator(who))          // P1205: case-folded, as SV_IODeliver
 		p = act;
 	else
 		p = SV_FindByName(who, world);
@@ -4384,6 +4384,8 @@ void(entity e) SV_VsVelPost =
 	// replay re-seeds the velocity (the touch's `tele` warp holds the one before the write).
 	if (v != e.velocity)
 		SV_BankCauseAffect(e, e.vsv_bp, e.vsv_ba, e.vsv_bb);
+	if (v_z > PM_NONJUMP_VEL && v_z > e.velocity_z)
+		e.run_pushed = TRUE;        // a lift, not a jump (surf_beyond2 2250): as trigger_setspeed (review 2)
 	e.velocity = v;
 	SV_RecWarp(e, "speed");
 };
