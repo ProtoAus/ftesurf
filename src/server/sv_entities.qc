@@ -495,6 +495,7 @@ float  vbsp_io_over_map;	// refused by the map-wide ceiling
 .float  vbsp_slide_skin;	// Patch 280: a func_slide's tag, worn on .skin only while solid
 .string vbsp_defanim;		// P1202: a prop's DefaultAnim keyvalue
 .float  vbsp_skyent;		// P1202: in the 3D skybox (SV_SkyRoomAll): always sent; props animate
+.float  vbsp_skyanim_set;	// P1202: a SetAnimation has played (SetDefaultAnimation then waits)
 void(entity t, string anim) SV_SkyAnim;
 
 // On an vbsp_output entity.  .owner is the source entity.
@@ -4482,7 +4483,18 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	}
 	if (in == "kill")           { remove(t);                            return; }
 	if (t.vbsp_skyent)		// P1202: only a 3D-skybox prop animates (props are static elsewhere)
-	if (in == "setanimation" || in == "setdefaultanimation") { SV_SkyAnim(t, pm); return; }
+	if (in == "setanimation" || in == "setdefaultanimation")
+	{
+		// Source's SetDefaultAnimation only names what follows a one-shot; with no end-of-anim
+		// event here it plays only while no SetAnimation has.
+		if (in == "setanimation")
+			t.vbsp_skyanim_set = TRUE;
+		else
+			t.vbsp_defanim = strcat(pm);
+		if (in == "setanimation" || !t.vbsp_skyanim_set)
+			SV_SkyAnim(t, pm);
+		return;
+	}
 	if (in == "enable")         { SV_IOEnable(t, TRUE);                 return; }
 	if (in == "disable")        { SV_IOEnable(t, FALSE);                return; }
 	/*
@@ -6160,13 +6172,15 @@ void() info_player_teamspawn            = { };
   client (gameinterface.cpp CheckTransmit: "Always send entities in the player's 3d skybox"). FTE
   sends what the client's PVS sees, and a sky room is sealed off from it, so surf_shape's moving
   dunes (prop_dynamic skybox_mdl) reached nobody. QC has no areas: an entity counts when the sky
-  camera's PVS holds it and no spawn point's does.
+  camera's PVS holds it, its centre sees the camera, and no spawn point's PVS holds it.
 */
 vector vbsp_skycam_org;
 float  vbsp_skycam_have, vbsp_skyroom_n, vbsp_skyroom_anim_n;
 vector vbsp_skyspawn[8];
 #define VBSP_SKYROOM_MAX 256
 
+// Removed here as before: keeping the edict would renumber every later lump entity, and the
+// physent digest hashes entity numbers (Patch 352).
 void() sky_camera =
 {
 	if (!vbsp_skycam_have)          // the first, as cl_decals.qc's reader takes
@@ -6180,13 +6194,18 @@ void() sky_camera =
 void(entity t, string anim) SV_SkyAnim =
 {
 	local float f;
-	if (anim == "")
+	// Studio models only: frameforname answers 0, not -1, for a brush or sprite model.
+	if (anim == "" || strtolower(substring(t.model, strlen(t.model) - 4, 4)) != ".mdl")
 		return;
-	// The hl2 plugin names frame groups after MDL anims, and a $sequence's inline anim is
-	// "@<sequence>" (sand_dunes.mdl: sequence "move", anim "@move").
+	// The hl2 plugin names frame groups after MDL anims, case and all, and a $sequence's inline
+	// anim is "@<sequence>" (sand_dunes.mdl: sequence "move", anim "@move").
 	f = frameforname(t.modelindex, anim);
 	if (f < 0)
 		f = frameforname(t.modelindex, strcat("@", anim));
+	if (f < 0)
+		f = frameforname(t.modelindex, strtolower(anim));
+	if (f < 0)
+		f = frameforname(t.modelindex, strcat("@", strtolower(anim)));
 	if (f < 0)
 		return;
 	t.frame = f;
@@ -6195,17 +6214,20 @@ void(entity t, string anim) SV_SkyAnim =
 
 void() SV_SkyRoomAll =
 {
-	local entity e;
+	local entity e, pt;
 	local float n, ns, i, pass;
+	local vector ptorg;
 	local string cn;
 	if (!vbsp_skycam_have)
 		return;
-	if (pointcontents(vbsp_skycam_org) == CONTENT_SOLID)   // no cluster: checkpvs would pass everything
+	if (pointcontents(vbsp_skycam_org) == CONTENT_SOLID)   // no cluster, so an empty PVS: say so
 	{
 		print("skyroom(sv): sky_camera in solid, nothing sent always\n");
 		return;
 	}
 	ns = n = 0;
+	pt = world;
+	ptorg = '0 0 0';
 	for (e = nextent(world); e && ns < 8; e = nextent(e))
 	{
 		cn = e.classname;
@@ -6214,7 +6236,16 @@ void() SV_SkyRoomAll =
 		{
 			vbsp_skyspawn[ns] = e.origin + '0 0 64';
 			ns = ns + 1;
+			if (!pt && !e.modelindex)
+				pt = e;
 		}
+	}
+	// The exact test below needs an entity at the camera, and a new edict would renumber the I/O
+	// build's: a model-less spawn point (never sent, not solid) stands in and goes back after.
+	if (pt)
+	{
+		ptorg = pt.origin;
+		setorigin(pt, vbsp_skycam_org);
 	}
 	for (pass = 0; pass < 2; pass = pass + 1)
 	{
@@ -6222,6 +6253,11 @@ void() SV_SkyRoomAll =
 		for (e = nextent(world); e; e = nextent(e))
 		{
 			if (!e.modelindex || (e.flags & FL_CLIENT) || !checkpvs(vbsp_skycam_org, e))
+				continue;
+			// A big entity's checkpvs falls back to its headnode (mod_vbsp.c VBSP_EdictInFatPVS);
+			// its centre against the camera's point is exact.
+			if (pt)
+			if (!checkpvs((e.absmin + e.absmax) * 0.5, pt))
 				continue;
 			for (i = 0; i < ns; i = i + 1)
 				if (checkpvs(vbsp_skyspawn[i], e))
@@ -6236,12 +6272,16 @@ void() SV_SkyRoomAll =
 				SV_SkyAnim(e, e.vbsp_defanim);
 			}
 		}
-		if (n > VBSP_SKYROOM_MAX)       // the PVS leaked into the map: sending it all is worse
-		{
-			print(sprintf("skyroom(sv): ^3%g entities seen from the sky_camera, over %g; none sent always\n",
-			              n, VBSP_SKYROOM_MAX));
-			return;
-		}
+		if (n > VBSP_SKYROOM_MAX)
+			break;                      // before the marking pass
+	}
+	if (pt)
+		setorigin(pt, ptorg);
+	if (n > VBSP_SKYROOM_MAX)           // the PVS leaked into the map: sending it all is worse
+	{
+		print(sprintf("skyroom(sv): ^3%g entities seen from the sky_camera, over %g; none sent always\n",
+		              n, VBSP_SKYROOM_MAX));
+		return;
 	}
 	vbsp_skyroom_n = n;
 	print(sprintf("skyroom(sv): %g entities in the 3D skybox always sent, %g animated (%g spawn points)\n",
