@@ -5,12 +5,11 @@ Both installs once the patch-1233-with-1230 exe is installed (it waits on your o
 - At your settings (hl2_water 2), surf_garden saves 1 and 4 and surf_boreas saves 7 and 10 run faster than before
   (rig: 335 -> 499, 405 -> 575, 323 -> 395, 326 -> 429 fps); the water's reflection and refraction look the same.
 
-## P1235 visualizer sky clock (lobbies), huge models out of sight (installs after P1233's check)
+## P1235 visualizer sky clock (lobbies, pending), huge models out of sight (both installs now)
 Lobbies and both installs once the lobby deploy lands (QC):
 - surf_dragonfall save 1 with the visualizer sky (r_skybox milk): walk or fly past the lava panels;
   they scroll smoothly instead of flickering.
-Both installs once engine patch-1235 is installed (it waits on your P1233 check with e2); your Desktop
-copy with the next release:
+Both installs now (Source plugin, 3 Nov 08:05Z); your Desktop copy with the next release:
 - surf_remeanian save 18: no window frames in the sky. Fly toward the big window structure: it still
   appears when you are near or inside it.
 

@@ -55,7 +55,8 @@
   4452, whose sprp leaf list names 138 clusters, none visible. Lists past MAX_ENT_LEAFS (32) were
   re-derived from the radius box, overflowed to the headnode test and passed; the plugin now culls
   them by the lump's own clusters (engine tag patch-1235 = 9fd62fe61 on patch-1233, main efbbcd5e2;
-  stamped pair ship1235: exe 9dbc52d5, plugin 354b596e, NOT installed until e2's P1233 confirm).
+  plugin only: patch-1233..1235 is mod_vbsp.c alone). Both installs run hl2 plugin 354b596e (.prev
+  1a3c9737) beside ac's exe 923af422 since 3 Nov 08:05Z; ship1235's exe 9dbc52d5 is not used.
   The func_illusionary panes first blamed never reach visedicts. `prop_census <name>` prints
   "own clusters" and the verdict.
 - P1235 (dragonfall's flicker): a 2D draw into a render target (any VF_RT_DESTCOLOUR switch) runs
