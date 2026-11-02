@@ -1,5 +1,19 @@
 # AGENT_NOTES.md
 
+## P1195 prederror reports: where they land, how to read them
+- Client: the engine's ring (cl_pred.c, first-pass server-against-predicted rows, reset per connection)
+  is dumped by `prederr_dump <name>.txt` to data/prederr/ (newest 120 files kept); CSQC writes
+  <stem>_ctx.txt beside it. Old engines have no prederr_dump: CSQC does nothing (pe_ok).
+- Lobby: F6 uploads in sendevent chunks (CSEv_pe_fs), one per `prederr_ack`; the lobbies' shared
+  gamedir gets data/prederr/<map>_<utc>_p<port>_s<slot>.txt, streamed (FS_FILE_WRITESTREAM).
+  Caps: 400 x 1 KB chunks whatever the client declares; 3 per connection per map, 20 s apart;
+  12 per lobby per map, 10 s apart; NOTHING is taken once 600 files are there -- fetch and clear:
+  `python tools/prederr_triage.py --fetch <dir>` copies them (scp) and prints, per report, the
+  worst line, the seq where client and server first disagree, the rows around it and the context
+  (server prints, mirror triggers by seq, gates, warp ops). Clear the Pi copies after reading.
+- Arm: C:/FTESurf-worktrees/prederr1195-20261102T0125Z/artifacts/p1195report.py (server+client on
+  surf_network2008; cfg-driven: the client ignored stdin commands in this setup).
+
 ## P1189 surfd zone-folder rescan LIVE (2 Nov 2026 01:53Z)
 
 surfd generation 0d72a27c (origin/deploy/p1189-maps = live 58dbbf40 + P1189; main 0ac1c88c) at

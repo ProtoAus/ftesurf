@@ -21,6 +21,11 @@
 
 ## next
 
+### P1195 Report a prediction error with one key
+- When the game corrects your position by a lot (a "prediction error"), it now keeps a short record of the last few seconds and shows a box on the right. Press F6 to send it to the lobby so we can find the cause.
+- Nothing is sent unless you press F6. `cl_prederr_ask 0` keeps the reports on your PC without asking; `cl_prederr_report` sets how big an error has to be (32 units).
+
+
 ### P1196 No snap when surf_network2008's spawn sends you on
 - Teleports that the map switches on and off with timers (surf_network2008's spawn and jail teleports, and others like them) are now predicted, so they no longer snap you back and forth by up to 2000 units.
 

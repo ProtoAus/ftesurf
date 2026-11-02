@@ -389,6 +389,7 @@ void() ClientConnect =
 void() ClientDisconnect =
 {
 	SV_TASShareCancel(self);           // callbacks/deferred opens belong to this connection
+	SV_PeClose(self);                  // Patch 1195: a report still uploading
 	self.bank_attempt = 0i;
 	SV_StagePruneDue(self);             // Patch 998: a stage's prune still queued
 	if (self.rec_st_tail >= 1)

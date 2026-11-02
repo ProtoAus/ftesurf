@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1195 prederror reports
+Engine in both Windows installs, QC on all 12 lobbies (restart a running game first). Please check:
+1. On a lobby, get a prediction error (surf_network2008 before P1196 was the easy one; any snap of 32+
+   units will do). A box on the right says "Prediction error  N units" for 20 s.
+2. Press F6: it says "sending k of n", then "sent -- thank you" (the console says the same).
+3. Tell an agent the time; they run `python tools/prederr_triage.py --fetch <dir>` to read it from the Pi.
+Your PC keeps every report in ftesurf/data/prederr/ whether or not you send it. Other players get the box
+with the next launcher update (it needs the new engine).
+Measured: owned server+client rig on surf_network2008 (without P1196): report kept, box drawn, F6 path sent
+and the lobby stored header + context + ring; prederr_dump refuses ../, sub/ and non-.txt names.
+
 ## P1196 surf_network2008 spawn teleport
 On all 12 lobbies (QC only; restart a running game first). Please check on surf_network2008: in the first
 30 s after the map loads, drop into the area under the spawn (as on 2 Nov). The map sends you to fall2 with

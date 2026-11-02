@@ -65,6 +65,8 @@ server/sv_savesync.qc
 server/sv_archive.qc
 // Shared transport policy precedes the player's included TAS sharing module.
 shared/sh_tasdirectory.qc
+// Patch 1195: prederror reports from CSQC (CSEv_pe_fs); ClientDisconnect closes one.
+server/sv_prederr.qc
 server/sv_player.qc
 server/sv_practicereturn.qc
 server/sv_maptier.qc

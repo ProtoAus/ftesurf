@@ -413,6 +413,7 @@ void(string msg, float level) CSQC_Parse_Print =
 
 	if (level != CHAT_LVL_PRINT)
 	{
+		PE_Note(strcat("sv ", (substring(msg, strlen(msg) - 1, 1) == "\n") ? substring(msg, 0, strlen(msg) - 1) : msg));
 		Ev_ServerPrint(msg);
 		print(msg);
 		return;

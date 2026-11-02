@@ -311,4 +311,6 @@ client/cl_tastimeline.qc
 // Shared transport policy must precede both TAS directory callers.
 shared/sh_tasdirectory.qc
 client/cl_tasshare.qc
+// Patch 1195: prederror reports; cl_triggers/cl_chat/cl_warpop call it through prototypes.
+client/cl_prederr.qc
 client/cl_main.qc
