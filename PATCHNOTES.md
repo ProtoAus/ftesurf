@@ -25,6 +25,10 @@
 - Very large models the map hides from where you stand no longer draw through the sky (surf_remeanian's window frames).
 - With the visualizer sky on, scrolling and animated textures no longer flicker as you move (surf_dragonfall's lava panels).
 
+### P1233 Faster water on Source maps
+- Water with live reflections (hl2_water 2) draws faster with the same picture: about 22-49% more frames per second at your
+  surf_garden and surf_boreas saves.
+
 ### P1232 Records from KSF and Momentum
 - KSF times and demos are collected again: one bad entry in a player's KSF profile had stopped all KSF collection since 30 October.
 - The leaderboards of 349 Momentum maps that had never been fetched are now collected.

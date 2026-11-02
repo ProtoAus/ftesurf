@@ -8,6 +8,10 @@
   1171 -> 651 draws at hl2_water 5 (333 -> 521 fps); boreas s10 314 -> 428, s7 308 -> 353. Source's water_lod_control
   would not help at reflect-all (viewrender.cpp DetermineWaterRenderInfo: no LOD with a local reflection); an opt-in
   distance cutoff for captures would be a departure from Source.
+- P1233 (each water capture keeps its own FBO; 15% of garden's main thread was GLBE_FBO_Update re-creating the
+  shared one): garden s1 2.99 -> 2.00 ms, s4 2.47 -> 1.74, boreas s10 3.07 -> 2.33, s7 3.10 -> 2.53 at hl2_water 2.
+  Narrowing a capture's frustum to its water's screen rectangle was ruled out: the water samples the reflection up to
+  $reflectamount x the normal's tilt away (garden 0.9, boreas 2.5), so a safe margin culls little.
 - r_renderscale 2 makes demise s33 GPU-bound (3.31 ms GPU: 3D sky 1.24, world 1.08, props 0.65; 342 fps at scale 1).
   The 3D sky is 0.8-1.3 ms of GPU on demise, garden and boreas at scale 2.
 - CSQC is ~0.5 ms a frame on every map with no hotspot (garden s1: cl_hud 0.10, cl_sprites 0.09 of 0.51 ms QC).
@@ -16,6 +20,12 @@
 - Stalls: Lex's 11.1 fps shot of surf_eternity's stair room (save 7, -8028 7274 7310, yaw -151) is 419 fps there
   steadily. One 2 s window on demise s33 (run2) read 6 fps (present 163 ms, props 28 ms GPU) right after a teleport,
   then 308 fps; it did not repeat in run1 or run3. Cause not found (VRAM 2.5/8 GB; free RAM was ~2-3 GB).
+  Re-measured on a quiet machine (run8, exe 53c01d27): no multi-second drops; first-arrival worst frames 31-75 ms,
+  single frames. Lex thinks the earlier drops were the machine's load.
+- Left on the 3D sky: a lower-resolution sky room (demise s33 r_fastsky 1: 310 -> 458 fps; ~0.5M triangles of skybox
+  foliage). A quality trade, so Lex's call. demise's main thread (run9b): present wait 19%, draw submission 14%, vis 13%.
+- surf_eternity saves 4 and 10 (the new reflective glass) read ~205 fps against ~480 elsewhere; not yet measured
+  against a control with the glass off.
 - P1222 review leftovers: gl_overbright_all has no callback and r_stains 0 leaves stains drawn (both pre-existing,
   now visible on unlit maps too); a Q2 BSP without lighting but with lightofs >= 0 per face still rebuilds styled faces.
 - Rig traps met: eternity's files take 22.8 s to load, so a fixed 20 s wait sent noclip before the spawn (reset by it)
