@@ -246,6 +246,7 @@ void(float why, string cls, string name) TG_Skip =
 #define TFR_FAIL    0
 float  tf_ctxmode;              // Patch 1037: TF_EvalD as if the server judges contexts (1) or not (0)
 float  tg_ctx_live;             // serverinfo fs_contexts is not "0", read each frame
+float  tg_grav_srv;             // P1211: serverinfo fs_grav is "1" (the server's engine applies gravity per command)
 float  tf_n, tf_over;
 // P865: filter_activator_team/class.  The map's team is SV_LateSpawnAll's rule;
 // tf_clsdyn says an output renames the player's class, so class filters are UNKNOWN.
@@ -2023,6 +2024,7 @@ void() Trig_LoadForMap =
 	tg_c_filtok = 0;
 	tg_c_fctx = 0;
 	tg_ctx_live = (serverkey("fs_contexts") != "0");    // Patch 1037: the first replay precedes Trig_Frame
+	tg_grav_srv = (serverkey("fs_grav") == "1");
 	tf_n = 0;
 	tf_over = 0;
 	tf_clsdyn = tf_ctspawn = tf_tspawn = 0;
@@ -2422,6 +2424,7 @@ void() Trig_Frame =
 	// world-load hook (measured on bhop_tealbox; Patch 285 measured the same race for *csprogs).  Not yet
 	// received counts as on, the side that predicts less.
 	tg_ctx_live = (serverkey("fs_contexts") != "0");
+	tg_grav_srv = (serverkey("fs_grav") == "1");
 	Trig_IOMapSpawn();
 	if (!tg_needload)
 		return;
