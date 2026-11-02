@@ -35,6 +35,7 @@ have it via launcher"). 13 patch entries; see PATCHNOTES.md `## 0.1.37`.
 - The 0.1.36 launcher (ftesurf-launcher-0.1.36.exe --dir <empty> --yes --no-launch) installed
   0.1.37 (exe 6fbf7e74; no launcher file, as the feed omits it).
 - e2's acceptance with the release launcher: test_update_wrappers PASS, test_launcher_dev_handoff
-  exit 0; the menu restart handoff run by e2.
+  exit 0; test_update_handoff --arm restart through the real menu PASS (the engine ran
+  WOS-Launcher.exe --dir <install>/. --wait-for-game --yes; evidence accept0137-20261102T1302Z).
 - Both installs run the release engine (exes and plugins, `.prev` = e2's patch-1212 a2a97860).
 - Task root: C:\FTESurf-worktrees\release0137-20261102T1233Z (OWNER.md, artifacts/, qc/dist candidate).
