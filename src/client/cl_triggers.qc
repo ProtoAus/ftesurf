@@ -951,7 +951,7 @@ float(float seq) TG_PcClock =
 // Every pre-move piece (cl_warpop.qc). held: the spectate hold, which the server does not tick.
 void(float seq, float seconds, float offset, float held, vector vel, float grav) TG_PreMove =
 {
-	local float k, o, m, cm, cm1, left, pass;
+	local float k, o, m, cm, cm1, left, pass, best, bleft;
 
 	tg_pm_velon = 0;
 	tg_pm_vel = vel;
@@ -959,10 +959,9 @@ void(float seq, float seconds, float offset, float held, vector vel, float grav)
 		return;                 // nothing on this map to schedule: the engine's gravity stands
 	if (!tg_pc_clk)
 		tg_pc_clk = memalloc(sizeof(float) * 64 * 2);
-	// A replay from the ack (seq - 1 is the last command the server answered). Its first command
-	// is servercommandframe + 1 even when the ack passed every command predicted so far (review 1).
-	if (seq < tg_pm_seq || (seq == tg_pm_seq && offset <= tg_pm_off) || !tg_pm_gravon
-	    || (offset == 0 && seq == servercommandframe + 1))
+	// A replay from the ack: seq - 1 is the last command the server answered. (An ack passing
+	// every predicted command is not seen here; servercommandframe is set after the replay.)
+	if (seq < tg_pm_seq || (seq == tg_pm_seq && offset <= tg_pm_off) || !tg_pm_gravon)
 	{
 		tg_grav = grav;         // the server's, sent with that frame (engine P1211)
 		tg_pm_gravon = 1;
@@ -1005,19 +1004,34 @@ void(float seq, float seconds, float offset, float held, vector vel, float grav)
 	tg_pm_seq = seq;
 	tg_pm_off = offset;
 
-	// Zero-delay rows first: on the server they are written at the edge, before SV_PcTick's
-	// delayed landings, which therefore win a same-command tie (review 1).
+	// Zero-delay rows first, in birth order: on the server they are written at the edge, before
+	// SV_PcTick's delayed landings, which therefore win a same-command tie (review 1). Then the
+	// delayed ones as SV_PcTick picks them: earliest due (least left), ties oldest (review 2).
 	for (pass = 0; pass < 2; pass = pass + 1)
-	for (k = 0; k < tg_pc_n; k = k + 1)
+	while (TRUE)
 	{
-		if (tg_pc[k * TG_PC_W + 3])
-			continue;
+		best = -1;
+		bleft = 0;
+		for (k = 0; k < tg_pc_n; k = k + 1)
+		{
+			if (tg_pc[k * TG_PC_W + 3])
+				continue;
+			o = tg_pc[k * TG_PC_W];
+			if ((io_delay[o] > 0) != pass)
+				continue;
+			left = rint(io_delay[o] * 1000) - (tg_pc_now - tg_pc[k * TG_PC_W + 2]);
+			if (left > 0)
+				continue;
+			if (best < 0 || (pass && left < bleft))
+			{
+				best = k;
+				bleft = left;
+			}
+		}
+		if (best < 0)
+			break;
+		k = best;
 		o = tg_pc[k * TG_PC_W];
-		if ((io_delay[o] > 0) != pass)
-			continue;
-		left = rint(io_delay[o] * 1000) - (tg_pc_now - tg_pc[k * TG_PC_W + 2]);
-		if (left > 0)
-			continue;
 		tg_pc[k * TG_PC_W + 3] = seq;
 		if (io_inp[o] == IN_ADDOUT)
 			tg_grav = io_gv[o];
