@@ -81,6 +81,7 @@ strbuf mlb_bname;
 strbuf mlb_btime;
 strbuf mlb_bdate;
 strbuf mlb_bwho;               // Patch 789: the row's picture mark, "" none
+strbuf mlb_bhand;              // P1198: the row's 12-hex handle (surfd's web_handle), "" none
 float  mlb_anyav;               // some row has one: every name moves over
 
 string(float t) Mlb_Tier =
@@ -665,6 +666,7 @@ void(string why) Mlb_Close =
 	buf_del(mlb_btime);
 	buf_del(mlb_bdate);
 	buf_del(mlb_bwho);
+	buf_del(mlb_bhand);
 	print(sprintf("^5board:^7 closed %s (%s)\n", mlb_map, why));
 	strunzone(mlb_style);
 	strunzone(mlb_source);
@@ -706,6 +708,7 @@ void(string mapname, float t) Mlb_Open =
 	mlb_btime = buf_create();
 	mlb_bdate = buf_create();
 	mlb_bwho  = buf_create();
+	mlb_bhand = buf_create();
 	mlb_anyav = FALSE;
 	mlb_open  = TRUE;
 	mlb_tab   = mlb_lasttab = t;
@@ -737,6 +740,8 @@ void(float i, int row) Mlb_Row =
 	bufstr_set(mlb_bwho, i, json_get_float(json_find_object_child(row, "av"))
 	           ? FS_GuidId(json_get_string(json_find_object_child(row, "player"))) : "");
 	if (bufstr_get(mlb_bwho, i) != "") mlb_anyav = TRUE;
+	s = json_get_string(json_find_object_child(row, "player"));
+	bufstr_set(mlb_bhand, i, (s != "") ? substring(strtolower(digest_hex("SHA256", s)), 0, 12) : "");
 };
 
 void(string label, float i) Mlb_PrintRow =
@@ -776,6 +781,7 @@ void(float d) Mlb_DropHead =
 		bufstr_set(mlb_btime, k - d, bufstr_get(mlb_btime, k));
 		bufstr_set(mlb_bdate, k - d, bufstr_get(mlb_bdate, k));
 		bufstr_set(mlb_bwho, k - d, bufstr_get(mlb_bwho, k));
+		bufstr_set(mlb_bhand, k - d, bufstr_get(mlb_bhand, k));
 	}
 	mlb_n = mlb_n - d;
 	mlb_offset = mlb_offset + d;
@@ -950,6 +956,7 @@ void(float id, float code, string body) Mlb_PageEarlier =
 		bufstr_set(mlb_btime, k + n, bufstr_get(mlb_btime, k));
 		bufstr_set(mlb_bdate, k + n, bufstr_get(mlb_bdate, k));
 		bufstr_set(mlb_bwho, k + n, bufstr_get(mlb_bwho, k));
+		bufstr_set(mlb_bhand, k + n, bufstr_get(mlb_bhand, k));
 	}
 	f = mlb_focus;
 	for (i = 0; i < n; i = i + 1)
@@ -1170,7 +1177,7 @@ void(vector rp, float i, float rw, float tr, float dr, float nw) Mlb_DrawRow =
 			if (!MP_Draw([rp_x + MLB_NAME_X, rp_y + 2], MLB_ROW_H - 4, s, 1))
 				sui_roundbox([rp_x + MLB_NAME_X, rp_y + 2], [MLB_ROW_H - 4, MLB_ROW_H - 4], 4, SUI_THEME_CHIP, 1);
 			sui_action_element([rp_x + MLB_NAME_X, rp_y + 2], [MLB_ROW_H - 4, MLB_ROW_H - 4], sprintf("mlb_profile%g", i), sui_noop);
-			if (sui_is_released(sprintf("mlb_profile%g", i))) MFP_Open(s, bufstr_get(mlb_bname, i));
+			if (sui_is_released(sprintf("mlb_profile%g", i))) MStats_Player(bufstr_get(mlb_bhand, i));
 		}
 		sui_text([rp_x + MLB_NAME_X + MLB_ROW_H, ty], SZ_ROW,
 		         ui_fit_text(bufstr_get(mlb_bname, i), nw - MLB_ROW_H, SZ_ROW), COL_TEXT, 1, 0);
@@ -1178,6 +1185,13 @@ void(vector rp, float i, float rw, float tr, float dr, float nw) Mlb_DrawRow =
 	else
 		sui_text([rp_x + MLB_NAME_X, ty], SZ_ROW,
 		         ui_fit_text(bufstr_get(mlb_bname, i), nw, SZ_ROW), COL_TEXT, 1, 0);
+	if (bufstr_get(mlb_bhand, i) != "")         // P1198: the name opens their Stats page too
+	{
+		ty = mlb_anyav ? MLB_ROW_H : 0;
+		s = sprintf("mlb_name%g", i);
+		sui_action_element([rp_x + MLB_NAME_X + ty, rp_y], [nw - ty, MLB_ROW_H], s, sui_noop);
+		if (sui_is_released(s)) MStats_Player(bufstr_get(mlb_bhand, i));
+	}
 };
 
 // The row after the last one held: what comes next, or why nothing does.
