@@ -527,6 +527,7 @@ void() PlayerPreThink =
 	local float speedmod, speedcap;
 
 	SV_HeldCheck(self);
+	SV_VsVelPost(self);                 // P1205: the previous command's VScript velocity write
 	SV_NoColRestore();                  // P1193: lent again at the end of this function
 	self.svpm_phase_lo = input_cmd_sequence_lo;
 	self.svpm_phase_hi = input_cmd_sequence_hi;
@@ -850,6 +851,7 @@ void() PlayerPostThink =
 
 	SV_HeldCheck(self);
 	SV_NoColPost(self);                 // P1193: before anything else traces
+	SV_VsVelPost(self);                 // P1205: a VScript velocity write from this command's touches
 	SV_SourcePhaseClear(self);
 	self.svpm_phase_stat = strzone(sprintf("%.0f:%.0f:%.0f:%.9g", num_for_edict(self), self.svpm_phase_lo, self.svpm_phase_hi, self.run_movecarry));
 	self.run_pkn = self.run_pkn + 1;    // Patch 382: the trigger gate's packet count

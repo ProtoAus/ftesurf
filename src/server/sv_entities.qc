@@ -4339,7 +4339,7 @@ void(entity e, string m) SV_NoColRegrant =
 	e.nocol_player = e;
 	e.nocol_attempt = e.bank_attempt;
 	bar.customizeentityforclient = SV_NoColSend;
-	if (SV_DevOn()) dprint(sprintf("script: %s's saved grant reopens %s on attempt %i\n", e.netname, m, e.bank_attempt));
+	if (cvar("developer")) dprint(sprintf("script: %s's saved grant reopens %s on attempt %i\n", e.netname, m, e.bank_attempt));
 };
 
 void(entity e, entity bar) SV_NoColGrant =
@@ -4359,6 +4359,24 @@ void(entity e, entity bar) SV_NoColGrant =
 
 float(string code, string call) SV_ScriptIs = { return substring(code, 0, strlen(call)) == call; };
 
+// P1205: a pending velocity write, applied at the first of the next PlayerPreThink or this
+// PlayerPostThink (the engine may run several commands before one PostThink): right after the
+// command whose touch fired it, where cl_triggers.qc applies it at the end of its prediction.
+.float vsv_on;
+.vector vsv_eop, vsv_ea, vsv_eb;
+
+void(entity e) SV_VsVelPost =
+{
+	local vector v;
+	if (!e.vsv_on)
+		return;
+	e.vsv_on = FALSE;
+	v = FS_VsVelApply(e.velocity, e.vsv_eop, e.vsv_ea, e.vsv_eb);
+	if (cvar("developer"))
+		dprint(sprintf("script: %s velocity %v -> %v\n", e.netname, e.velocity, v));
+	e.velocity = v;
+};
+
 // RunScriptCode: only barriercollision.nut's two calls; barrierscript.nut's emissive calls
 // retexture a viewmodel and are dropped. Anything else is censused as before.
 float(entity t, entity act, string code) SV_ScriptCode =
@@ -4367,6 +4385,20 @@ float(entity t, entity act, string code) SV_ScriptCode =
 	local string name;
 	local entity bar;
 
+	// P1205: a velocity write on the player (sh_vsvel.qc's grammar) waits for the end of this
+	// command (SV_VsVelPost): Source runs RunScriptCode from the event queue, after the move
+	// whose touch fired it; here a zero-delay output is delivered inside the touch, before a
+	// teleport moves the player.
+	if (t.classname == "player")
+	{
+		if (!FS_VsVelParse(code))
+			return FALSE;
+		t.vsv_on = TRUE;
+		t.vsv_eop = vsv_op;
+		t.vsv_ea = vsv_a;
+		t.vsv_eb = vsv_b;
+		return TRUE;
+	}
 	if (t.classname != "logic_script")
 		return FALSE;
 	if (SV_ScriptIs(code, "SetPlayerNoCollideBarrier("))
@@ -4995,7 +5027,7 @@ void(entity o, entity act) SV_IODeliver =
 	val = vbsp_io_value;		// Patch 1050: re-armed before each SV_ApplyInput, which clears it
 	vbsp_io_value = "";
 
-	if (tn == "!activator" || tn == "!caller" || tn == "!player")
+	if (FS_IsActivator(tn))          // P1205: Source's FStrEq folds case (surf_fairy's "!Activator")
 	{
 		if (act)
 		{
@@ -5004,7 +5036,7 @@ void(entity o, entity act) SV_IODeliver =
 		}
 		return;
 	}
-	if (tn == "!self")
+	if (!strcasecmp(tn, "!self"))
 	{
 		if (o.owner)
 		{
