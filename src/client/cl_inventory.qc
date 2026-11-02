@@ -297,16 +297,29 @@ void(string k) Inv_GlowMats =
 		        Inv_RT(k, "b2"), Inv_RT(k, "mask"))));
 };
 
+// The engine's own r_scenedepth (CVAR_TYPEFLAG_ENGINE, 8), on GL. Only the type is asked: on an engine
+// without it, cvar() creates a user cvar of that name, which a plain cvar_type() then reports as present
+// (fallback037b: a 0.1.37 client queued glows it could not draw and lost the shells).
+float() Inv_GlowCan =
+{
+	if (!(cvar_type("r_scenedepth") & 8))
+		return FALSE;
+	return Milk_Supported();
+};
+
 // Just before the main renderscene: this frame's pass needs the scene's depth kept as a texture.
 void() Inv_GlowPre =
 {
 	local float want;
-	inv_glowok = (cvar_type("r_scenedepth") && Milk_Supported()) ? 1 : -1;
-	want = (inv_glowok > 0 && inv_glown > 0);
-	// Against the cvar itself, not a copy: CSQC restarts at every map while the cvar lives on,
-	// and the console can set it (review 1: left on after a map change, or set off under a pass).
-	if (inv_glowok > 0 && cvar("r_scenedepth") != want)
-		cvar_set("r_scenedepth", want ? "1" : "0");
+	inv_glowok = Inv_GlowCan() ? 1 : -1;
+	if (inv_glowok > 0)
+	{
+		want = (inv_glown > 0);
+		// Against the cvar itself, not a copy: CSQC restarts at every map while the cvar lives on,
+		// and the console can set it (review 1: left on after a map change, or set off under a pass).
+		if (cvar("r_scenedepth") != want)
+			cvar_set("r_scenedepth", want ? "1" : "0");
+	}
 };
 
 /*
@@ -518,7 +531,7 @@ void(entity body, float outline, float hat, float duck) Inv_Draw =
 	if (outline)
 	{
 		if (!inv_glowok)
-			inv_glowok = (cvar_type("r_scenedepth") && Milk_Supported()) ? 1 : -1;
+			inv_glowok = Inv_GlowCan() ? 1 : -1;
 		if (inv_glowok > 0)
 		{
 			if (inv_glown < INV_GLOWMAX)
