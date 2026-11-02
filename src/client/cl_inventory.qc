@@ -250,8 +250,11 @@ string(string extra) Inv_MaskCode =
 		// own depth to within half a texel of slope, and nothing blends an occluder's edge. A filtered
 		// sample (visual4) and the nearest of five (visual5-7, slack 1.5 x slope) both let edge-on
 		// strips of a covered body through.
+		// The engine draws the main view into its target the GL way up; CSQC's 3D views into a
+		// target (this mask) are drawn flipped so 2D reads them upright: rows mirror (depthdbg2).
 		" ivec2 dsz = textureSize(s_depth, 0);\n"
 		" vec2 uv = cp.xy / cp.w * 0.5 + 0.5;\n"
+		" uv.y = 1.0 - uv.y;\n"
 		" float zs = texelFetch(s_depth, clamp(ivec2(uv * vec2(dsz)), ivec2(0), dsz - 1), 0).r;\n"
 		" float ds = m_projection[3][2] / (zs * 2.0 - 1.0 + m_projection[2][2]);\n"
 		" float df = m_projection[3][2] / (gl_FragCoord.z * 2.0 - 1.0 + m_projection[2][2]);\n"
