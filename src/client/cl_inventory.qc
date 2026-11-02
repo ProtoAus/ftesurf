@@ -245,7 +245,7 @@ string(string extra) Inv_MaskCode =
 		"#ifdef FRAGMENT_SHADER\nvoid main() {\n"
 		"#ifdef DEPTH\n"
 		// Distance along the view from each depth: the scene's (rt/$lastgameviewdepth, this frame's
-		// main view) against this body's; behind by more than 2% + 4u is behind something else.
+		// main view) against this body's; nearer than the slack below is something in front of it.
 		" vec2 uv = cp.xy / cp.w * 0.5 + 0.5;\n"
 		// The nearest depth within about a mask pixel: one filtered sample blends an occluder's
 		// edge with what is behind it, and leaked a sliver of a wearer behind a wall (visual4).
@@ -254,7 +254,9 @@ string(string extra) Inv_MaskCode =
 		"   min(texture2D(s_depth, uv + vec2(o.x, -o.y)).r, texture2D(s_depth, uv + vec2(-o.x, o.y)).r)));\n"
 		" float ds = m_projection[3][2] / (zs * 2.0 - 1.0 + m_projection[2][2]);\n"
 		" float df = m_projection[3][2] / (gl_FragCoord.z * 2.0 - 1.0 + m_projection[2][2]);\n"
-		" if (zs < 0.99999 && ds < df * 0.98 - 4.0) discard;\n"
+		// Slack for the body's own depth across the samples: its slope, not a share of the
+		// distance (2% + 4u let a wearer sunk 14u into a dune show through it, visual5).
+		" if (zs < 0.99999 && ds < df - 2.0 - 1.5 * fwidth(df)) discard;\n"
 		"#endif\n"
 		" gl_FragColor = vec4(1.0);\n}\n#endif\n");
 };
