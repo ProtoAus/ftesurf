@@ -29,7 +29,7 @@
 - WOS-Launcher.exe and the game now name World of Surf as their publisher and product in Windows (file Properties, SmartScreen, antivirus). They used to name the FTE engine, or nothing.
 
 ### P1211 Gravity launchers and delayed speed stops no longer snap
-- Maps that change your gravity (bhop_decimus's launch pads and about 200 others) are predicted by your game, so the view no longer jumps when gravity flips or comes back (up to 8 units at 80 ms ping before). Needs the next release's game; the lobbies already support it.
+- Maps that change your gravity (bhop_decimus's launch pads and about 200 others) are predicted by your game, so the view no longer jumps when gravity flips or comes back (up to 8 units before). Needs this update's game.
 - A map script that stops you a moment after a teleport (surf_oneiric's hub) is predicted too, on every game version.
 - The server applies a map's gravity change on your next move, as Momentum does.
 
