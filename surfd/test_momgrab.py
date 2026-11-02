@@ -197,6 +197,24 @@ def case_bsp_case():
           got, hashlib.sha1(b"bsp").hexdigest().upper())
 
 
+def case_bsp_cache_merge():
+    d = tempfile.mkdtemp(prefix="maps-", dir=HOME)
+    cache = os.path.join(d, "bsp.json")
+    for n in ("surf_a", "surf_b"):
+        io.open(os.path.join(d, n + ".bsp"), "wb").write(n.encode())
+    G._bsp.clear()
+    G._bsp_names.clear()
+    G.bsp_sha1("surf_a", d, cache)                    # this process: {surf_a}
+    disk = json.load(io.open(cache, encoding="utf-8"))
+    disk["surf_z"] = [1, 2, "Z" * 40]                 # another process saved surf_z since
+    io.open(cache, "w").write(json.dumps(disk))
+    G.bsp_sha1("surf_b", d, cache)
+    check("P1232 review: a save merges what another process saved since",
+          sorted(json.load(io.open(cache, encoding="utf-8"))), ["surf_a", "surf_b", "surf_z"])
+    G._bsp.clear()
+    G._bsp_names.clear()
+
+
 def run(argv):
     import argparse
     old = sys.argv
@@ -352,7 +370,11 @@ def case_convert_and_file():
             c.commit()
 
         def tick_on(build):
-            G.bsp_sha1 = lambda m, d, cache: build
+            def held(m, d, cache):
+                if isinstance(build, Exception):
+                    raise build
+                return build
+            G.bsp_sha1 = held
             G.download = fake_download
             try:
                 run(argv)
@@ -364,37 +386,45 @@ def case_convert_and_file():
             return c.execute("SELECT replay_id > 0 FROM runs WHERE tier='momentum' AND map=?",
                              (mp,)).fetchone()[0]
 
+        def legacy(st):
+            fresh()
+            st["done"][sha] = "otherbuild"
+            st["judged"] = {}
+            io.open(sp, "w").write(json.dumps(st))
+
         c = db()
         fresh()
-        other = "0" * 40
+        other, third, own = "0" * 40, "1" * 40, head["map_sha1"].upper()
         st = tick_on(other)
-        check("P1232: a demo of another build is settled with the build it was judged on",
-              (st["done"].get(sha), st["judged"].get(sha)), ("otherbuild", [mp, other]))
+        check("P1232: a demo of another build is settled with its own build recorded",
+              (st["done"].get(sha), st["judged"].get(sha)), ("otherbuild", [mp, own]))
         st = tick_on(other)
         check("...and stays settled while that build is held",
               (st["done"].get(sha), linked()), ("otherbuild", 0))
-        st = tick_on(head["map_sha1"].upper())
+        st = tick_on(third)
+        check("...and while a third build is held",
+              (st["done"].get(sha), linked()), ("otherbuild", 0))
+        st = tick_on(None)
+        check("...and while no file holds the map (review 1: it filed as nomap)",
+              (st["done"].get(sha), linked()), ("otherbuild", 0))
+        st = tick_on(PermissionError("unreadable BSP"))
+        check("...and while the map cannot be read, and the tick still ends and saves",
+              (st["done"].get(sha), st["judged"].get(sha), linked()), ("otherbuild", [mp, own], 0))
+        st = tick_on(own)
         check("...and is filed and linked once the held build is the demo's",
               (st["done"].get(sha) in ("ok", "have"), sha in st["judged"], linked()),
               (True, False, 1))
-        fresh()
-        st["done"][sha] = "otherbuild"
-        st["judged"] = {}
-        io.open(sp, "w").write(json.dumps(st))
+        legacy(st)
         st = tick_on(other)
-        check("...a verdict from before P1232 is judged once from the demo on disk",
-              (st["done"].get(sha), st["judged"].get(sha), linked()), ("otherbuild", [mp, other], 0))
-        st["judged"] = {}
-        io.open(sp, "w").write(json.dumps(st))
-        st = tick_on(head["map_sha1"].upper())
+        check("...a verdict from before P1232 is read once from the demo on disk",
+              (st["done"].get(sha), st["judged"].get(sha), linked()), ("otherbuild", [mp, own], 0))
+        legacy(st)
+        st = tick_on(own)
         check("...and reopened when the build held now is the demo's",
               (st["done"].get(sha) in ("ok", "have"), linked()), (True, 1))
         os.remove(os.path.join(demos, sha[:2], sha + ".mtv"))
-        fresh()
-        st["done"][sha] = "otherbuild"
-        st["judged"] = {}
-        io.open(sp, "w").write(json.dumps(st))
-        st = tick_on(head["map_sha1"].upper())
+        legacy(st)
+        st = tick_on(own)
         check("...and one with no demo on disk to read stays settled",
               (st["done"].get(sha), st["judged"].get(sha), linked()), ("otherbuild", [None, None], 0))
         c.close()
@@ -461,7 +491,7 @@ def case_park_and_lock():
 
 
 def main():
-    for case in (case_queue_and_pick, case_download, case_bsp_case,
+    for case in (case_queue_and_pick, case_download, case_bsp_case, case_bsp_cache_merge,
                  case_convert_and_file, case_park_and_lock):
         print("\n%s:" % case.__name__)
         case()

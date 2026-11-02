@@ -668,9 +668,11 @@ def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
 
 def _when(rec):
     try:
-        return int(rec.get("date") or 0)
-    except (TypeError, ValueError):
+        v = int(rec.get("date") or 0)
+    except (TypeError, ValueError, OverflowError):
         return 0
+    # P1232 review: inf raised here and a 64-bit-plus date would not store (main's P1117 r4).
+    return v if 0 < v < 2 ** 32 else 0
 
 
 def record_key(rec):

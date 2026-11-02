@@ -6857,8 +6857,8 @@ def _people_marker(db):
     play_maps. An upserted time keeps its rowid, so a changed `last` or alias waits for the
     next new row or WEB_PEOPLE_KEEP. A build is ~9.5 s of a Pi core (69,069 players, 2 Nov)."""
     runs = db.execute("SELECT MAX(rowid) FROM runs").fetchone()[0] or 0
-    acct = hashlib.sha256(repr(db.execute(
-        "SELECT steamid, name, banned_at FROM accounts ORDER BY steamid").fetchall()).encode()).hexdigest()[:16]
+    acct = hashlib.sha256(repr([tuple(r) for r in db.execute(
+        "SELECT steamid, name, banned_at FROM accounts ORDER BY steamid")]).encode()).hexdigest()[:16]
     maps = tuple(db.execute("SELECT COUNT(*), MAX(rowid) FROM play_maps").fetchone())
     return "%d %s %d %d" % (runs, acct, maps[0] or 0, maps[1] or 0)
 

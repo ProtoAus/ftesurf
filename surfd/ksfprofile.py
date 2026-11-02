@@ -109,7 +109,7 @@ def step(K, cache, pacer, have, now, budget=3):
                     os.close(fd)
         doc = saved.get('body')
         recs = validate(K, doc, start)
-        rows, skipped = [], 0
+        rows, skipped, bad = [], 0, 0
         seen = set()
         for rec in recs:
             mp = K.S.clean_map(rec.get('mapName', ''))
@@ -120,12 +120,14 @@ def step(K, cache, pacer, have, now, budget=3):
             # This endpoint is MAIN records; never guess stage/bonus semantics.
             if rec.get('stage_id') is not None or rec.get('zone_id') is not None:
                 skipped += 1
+                bad += 1
                 continue
             # bestrecords currently sends record_id:null, even for valid rows.
             # Completion identity is this player's MAIN map/style; null IDs
             # must NEVER acquire board/demo authority or fabricate a run ID.
             if not mp or mp in seen or K._when(rec) <= 0:
                 skipped += 1
+                bad += 1
                 continue
             seen.add(mp)
             if mp not in have:
@@ -134,10 +136,14 @@ def step(K, cache, pacer, have, now, budget=3):
             row = K.rec_row(mp, 0, mode, dict(rec, steamID=player))
             if row is None:
                 skipped += 1
+                bad += 1
                 continue
             row['style'] = K.KSF_MODES[mode]
             row['binding'] = 'cache'  # never fresh board/demo authority
             rows.append(row)
+        if bad:
+            print('KSF profile walk: %d of %d record(s) on one page skipped as malformed'
+                  % (bad, len(recs)))
         # A missing display name must not erase an already imported Steam name.
         db = K.S.connect()
         try:

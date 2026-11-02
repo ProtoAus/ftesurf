@@ -558,10 +558,6 @@ def write_tracks(path, mom, inv):
     return len(after), changed
 
 
-TRACKS_HEAD = "# map\tmapid\ttier\tgamemode\ttrackType\ttrackNum\n"
-TRACKS_BOARDS_MAX = 512     # boards a map may claim; surf_kitsune has 81
-
-
 def mom_list(pacer):
     """-> (rows we could install, by lowercased name; EVERY surf/bhop name the
     list carries).  The second is what decides whose build a name gets, and a

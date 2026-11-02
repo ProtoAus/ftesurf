@@ -365,43 +365,52 @@ def bsp_sha1(mp, maps_dir, cache_path):
     with open(p, "rb") as fh:
         for blk in iter(lambda: fh.read(1 << 20), b""):
             h.update(blk)
-    _bsp[mp] = key + [h.hexdigest().upper()]
+    mine = key + [h.hexdigest().upper()]
+    # P1232 review: the momrequests service keeps one _bsp for its lifetime; merge what other
+    # processes saved since, or this save drops their entries and the next tick hashes again.
+    disk = _load(cache_path)
+    _bsp.update(disk if isinstance(disk, dict) else {})
+    _bsp[mp] = mine
     _save(cache_path, _bsp)
-    return _bsp[mp][2]
+    return mine[2]
+
+
+def demo_build(path):
+    """[map, build SHA1] from a demo's own header, or [None, None] when it cannot be read."""
+    try:
+        with open(path, "rb") as fh:
+            head = momreplay.read_header(fh.read(0x200))
+        return [(head["map"] or "").lower() or None, (head["map_sha1"] or "").upper() or None]
+    except Exception:
+        return [None, None]
 
 
 def recheck_builds(done, judged, demos, maps_dir, bsp_cache):
-    """P1232: reopen "otherbuild" verdicts whose map's held build has changed.  mapwatch
+    """P1232: reopen an "otherbuild" verdict once the build held is the demo's own.  mapwatch
     replaces builds, and on 2 Nov 1,437 settled demos on disk matched the build then held.
-    `judged` is demo -> [map, held SHA1 at the verdict]; a verdict from before it is judged
-    once from its demo on disk, and one with no demo to read stays settled.  -> reopened."""
+    `judged` is demo -> demo_build(); a verdict from before it is read once from its demo on
+    disk.  A map no file holds, or one that cannot be read, reopens nothing (review 1: either
+    would file a wrong-build demo as `nomap`).  -> the number reopened."""
     held, reopened = {}, 0
 
     def have(mp):
         if mp not in held:
-            held[mp] = bsp_sha1(mp, maps_dir, bsp_cache)
+            try:
+                held[mp] = bsp_sha1(mp, maps_dir, bsp_cache)
+            except Exception:
+                held[mp] = None
         return held[mp]
 
     for h in [h for h in judged if done.get(h) != "otherbuild"]:
         del judged[h]
     for h in [h for h, why in done.items() if why == "otherbuild"]:
-        j = judged.get(h)
-        if j is None:
-            try:
-                with open(os.path.join(demos, h[:2], h + ".mtv"), "rb") as fh:
-                    head = momreplay.read_header(fh.read(0x200))
-                mp, want = (head["map"] or "").lower(), (head["map_sha1"] or "").upper()
-            except Exception:
-                judged[h] = [None, None]
-                continue
-            if not (mp and want and have(mp) == want):
-                judged[h] = [mp or None, have(mp) if mp else None]
-                continue
-        elif not j[0] or have(j[0]) == j[1]:
-            continue
-        del done[h]
-        judged.pop(h, None)
-        reopened += 1
+        if h not in judged:
+            judged[h] = demo_build(os.path.join(demos, h[:2], h + ".mtv"))
+        mp, want = judged[h]
+        if mp and want and have(mp) == want:
+            del done[h]
+            del judged[h]
+            reopened += 1
     return reopened
 
 
@@ -772,8 +781,7 @@ def run(a, stop=None):
                 done[h] = status
                 later.pop(h, None)
                 if status == "otherbuild":
-                    judged[h] = [b["map"], bsp_sha1(b["map"], a.maps,
-                                                    os.path.join(a.state, "bsp.json"))]
+                    judged[h] = demo_build(dest)
             _save(sp, st)
         # Lifted only by an answer: a tick that asked nothing proves nothing.
         if park and asked:
