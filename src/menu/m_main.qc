@@ -169,13 +169,8 @@ void(float visible) MF_Poll;
 void() MF_ResumeJoin;
 void(vector pos, vector size) MF_Draw;
 void() MF_Open;
-void() MFP_Close;
 void(string mark, float boot) MC_SelfMark;
-float() MFP_IsOpen;
-void(string who, string name) MFP_Open;
-void(vector pos, vector size) MFP_Draw;
-float(float reqid, float code, string body) MFP_Reply;
-void() MFP_Probe;
+void(string who, string name) MC_Message;
 void() MM_Init;
 float() MM_Active;
 void(vector screensize) MM_Frame;
@@ -209,6 +204,10 @@ float cltime;                   // P1084: client/cl_profile.qc's clock, set in m
 void() MStats_Open;
 void() MStats_Close;
 void(string who) MStats_SetOther;
+void(string who) MStats_Player;
+float() MStats_InvOpen;
+void() MStats_InvClose;
+void() MStats_InvToggle;
 void(vector size) MStats_Draw;
 void() MStats_Probe;
 string() MCard_DoneNote;
@@ -8126,7 +8125,6 @@ void() m_init =
 	registercommand("ui_home_kind");        // P1122: what the Surf / Bhop / All switch sets, for arms
 	registercommand("ui_showall");          // P1130: session-only show-all setter for UI fixtures
 	registercommand("ui_stats_open");
-	registercommand("ui_profile_probe");
 	registercommand("ui_maplist");
 	registercommand("ui_browse");
 	registercommand("ui_compsort");
@@ -8432,14 +8430,6 @@ void(vector screensize) m_draw =
 		screensize = fullsize;
 		MH_Tabs(screensize);
 	}
-	if (MFP_IsOpen())
-	if (menu_screen != SCREEN_TERMS)
-	{
-		_action_elements_index = 0;
-		sui_fill('0 0 0', screensize, '0 0 0', 0.65, 0);
-		content = [min(740, screensize_x - 24), min(680, screensize_y - 24)];
-		MFP_Draw((screensize - content) * 0.5, content);
-	}
 	MU_Hint(screensize);
 	MM_DrawFps(screensize);
 	sui_menu_nav();
@@ -8485,7 +8475,7 @@ void() m_close =
 	*/
 	ui_join_cancel();
 	Mlb_Close("menu closed");
-	MFP_Close();
+	MStats_InvClose();
 	MM_Close();
 
 	setkeydest(0);
@@ -8536,9 +8526,9 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 		return TRUE;
 	}
 	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE)
-	if (MFP_IsOpen())
+	if (MStats_InvOpen())
 	{
-		MFP_Close();
+		MStats_InvClose();
 		sui_text_unfocus();
 		return TRUE;
 	}
@@ -8806,18 +8796,6 @@ float(string cmd) m_consolecommand =
 		print(sprintf("ui_menu_probe: friends_direct=%g board=%S %s active=%g\n", MF_Direct(), serverkey("board"), MF_ProbeNote(), menu_active));
 		return TRUE;
 	}
-	if (strcmp(argv(0), "ui_profile_probe") == 0)
-	{
-		// <8hex> opens that profile in the Friends panel; bare, reports what it holds.
-		if (argv(1) != "")
-		{
-			menu_screen = SCREEN_CREATE;
-			cvar_set("ui_maps_friends", "1");
-			MFP_Open(argv(1), "probe");
-		}
-		MFP_Probe();
-		return TRUE;
-	}
 	if (strcmp(argv(0), "ui_notes") == 0)
 	{
 		MU_NotesCommand(argv(1));
@@ -8856,6 +8834,8 @@ float(string cmd) m_consolecommand =
 			if (argv(2) != "") MStats_SetOther(argv(2));    // P1104: `open <handle>`, as the search picks one
 		}
 		else if (argv(1) == "close") MStats_Close();
+		else if (argv(1) == "player") MStats_Player(argv(2));   // P1198: as a player click
+		else if (argv(1) == "inv") MStats_InvToggle();
 		MStats_Probe();
 		return TRUE;
 	}

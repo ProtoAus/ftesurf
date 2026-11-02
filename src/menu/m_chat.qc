@@ -6,6 +6,7 @@ vector mc_scroll, mc_friend_scroll;
 float mc_visible, mc_req, mc_wire, mc_phase, mc_at, mc_next, mc_seen;
 string mc_peer, mc_peer_name, mc_me, mc_draft, mc_note;
 string mc_op, mc_target, mc_sent;
+string mc_pick, mc_pick_name;    // P1198: a Message click waiting for the chat to load
 
 void(__inout string dst, string src) MC_Keep =
 {
@@ -68,6 +69,15 @@ void(string who, string name) MC_Select =
 	mc_cursor = 0;
 	mc_scroll_y = 999999;
 	MC_Rebuild();
+};
+
+// P1198: a friend's Message button.  The chat clears itself when it first shows
+// (MC_Poll, MC_Snapshot), so the pick waits in MC_Panel until it has loaded.
+void(string who, string name) MC_Message =
+{
+	if (!ui_browser_screen()) MC_Open();
+	MC_Keep(mc_pick, who);
+	MC_Keep(mc_pick_name, name);
 };
 
 void() MC_Clear =
@@ -307,6 +317,11 @@ void(vector pos, vector size, float embedded) MC_Panel =
 	local vector rp;
 	local float left, right, i, width, board, compact, message_y, field_y, field_h;
 	local string who, name, text, id;
+	if (mc_pick != "" && !mc_wire && mc_me != "")
+	{
+		MC_Select(mc_pick, mc_pick_name);
+		MC_Keep(mc_pick, "");
+	}
 	sui_style_panel(pos, size, 12, 1);
 	sui_push_frame(pos, size);
 	sui_text('16 18 0', SZ_HEAD, "lobby chat", COL_ACCENT, 1, 0);
@@ -378,6 +393,10 @@ void(vector pos, vector size, float embedded) MC_Panel =
 				continue;
 			}
 			sui_text(rp, SZ_LABEL, ui_fit_text(MC_Plain(name), width - 20, SZ_LABEL), COL_ACCENT, 1, 0);
+			// P1198: the sender's name opens their Stats page.
+			id = sprintf("mc_who%g", i);
+			sui_action_element(rp, [min(width - 20, stringwidth(ui_fit_text(MC_Plain(name), width - 20, SZ_LABEL), TRUE, SZ_LABEL)), 20], id, sui_noop);
+			if (sui_is_released(id)) MStats_Player(who);
 			ui_para(rp + '0 22 0', width - 20, SZ_LABEL, 18, MC_Plain(text), COL_TEXT, TRUE);
 		}
 		sui_list_view_end();
