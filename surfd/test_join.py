@@ -39,7 +39,10 @@ one.
 
 import importlib
 import json
+import atexit
+import logging
 import os
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -48,6 +51,20 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 FAILED = []
+
+
+_HOMES = []   # P1231: this run's temp homes, removed at exit (67,721 had piled up in %TEMP%)
+
+
+def _drop_homes():
+    if os.environ.get("SURFD_TEST_KEEP"):
+        return
+    logging.shutdown()          # an open surfd.log keeps Windows from removing its home
+    for h in _HOMES:
+        shutil.rmtree(h, ignore_errors=True)
+
+
+atexit.register(_drop_homes)
 
 
 def check(label, got, want):
@@ -72,6 +89,7 @@ ZONED_LOCAL = ["surf_localonly"]
 def fresh(key="testkey", seed_v3=False, library=None, zoned=None):
     """Import surfd with a clean home dir and a fake map library."""
     home = tempfile.mkdtemp(prefix="surfd-join-")
+    _HOMES.append(home)
     db = os.path.join(home, "test.db")
     with open(os.path.join(home, "surfd.env"), "w") as fh:
         fh.write("SURFD_KEY=%s\n" % key)

@@ -38,7 +38,10 @@ reaches a public body.  Section 18 is schema 6: a stage row's `run`, and the
 import hashlib
 import importlib
 import json
+import atexit
+import logging
 import os
+import shutil
 import re
 import sqlite3
 import sys
@@ -50,6 +53,20 @@ import threading
 os.environ.setdefault("SURFD_RANKED_LINKED", "0")
 
 FAILED = []
+
+
+_HOMES = []   # P1231: this run's temp homes, removed at exit (67,721 had piled up in %TEMP%)
+
+
+def _drop_homes():
+    if os.environ.get("SURFD_TEST_KEEP"):
+        return
+    logging.shutdown()          # an open surfd.log keeps Windows from removing its home
+    for h in _HOMES:
+        shutil.rmtree(h, ignore_errors=True)
+
+
+atexit.register(_drop_homes)
 
 
 def check(label, got, want):
@@ -70,6 +87,7 @@ def fresh(key="testkey", seed_v1=False, seed=None):
     picker on the deploy that shipped the board.
     """
     home = tempfile.mkdtemp(prefix="surfd-board-")
+    _HOMES.append(home)
     db = os.path.join(home, "test.db")
     with open(os.path.join(home, "surfd.env"), "w") as fh:
         fh.write("SURFD_KEY=%s\n" % key)
@@ -1458,6 +1476,7 @@ check("...and the lapsed reject no longer moves it", m5.restand(m5.connect(), ri
 print("\n--- 17. nothing private reaches a public body ---------------------")
 
 priv = tempfile.mkdtemp(prefix="surfd-board-maps-")
+_HOMES.append(priv)
 os.makedirs(os.path.join(priv, "zones", "online"))
 os.environ["SURFD_MAPS"] = priv
 os.environ["SURFD_ZONES"] = os.path.join(priv, "zones", "online")

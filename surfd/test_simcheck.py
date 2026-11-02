@@ -33,6 +33,8 @@ likely to be wrong:
 """
 
 import importlib
+import atexit
+import logging
 import os
 import shutil
 import sqlite3
@@ -42,6 +44,20 @@ import tempfile
 import time
 
 FAILED = []
+
+
+_HOMES = []   # P1231: this run's temp homes, removed at exit (67,721 had piled up in %TEMP%)
+
+
+def _drop_homes():
+    if os.environ.get("SURFD_TEST_KEEP"):
+        return
+    logging.shutdown()          # an open surfd.log keeps Windows from removing its home
+    for h in _HOMES:
+        shutil.rmtree(h, ignore_errors=True)
+
+
+atexit.register(_drop_homes)
 
 
 def check(label, got, want):
@@ -66,6 +82,7 @@ CENSUS = os.path.join(REPO, "tools", "census", "recsim.py")
 def fresh(with_census=True):
     """A throwaway surfd + sweep + simcheck, and a run tree to put files in."""
     home = tempfile.mkdtemp(prefix="surfd-sim-")
+    _HOMES.append(home)
     with open(os.path.join(home, "surfd.env"), "w") as fh:
         fh.write("SURFD_KEY=testkey\n")
     runs = os.path.join(home, "ftesurf", "data", "runs")

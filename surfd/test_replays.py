@@ -46,7 +46,10 @@ change there would silently stop the ledger indexing anything rather than fail.
 import hashlib
 import importlib
 import json
+import atexit
+import logging
 import os
+import shutil
 import re
 import sqlite3
 import sys
@@ -57,6 +60,20 @@ import tempfile
 os.environ.setdefault("SURFD_RANKED_LINKED", "0")
 
 FAILED = []
+
+
+_HOMES = []   # P1231: this run's temp homes, removed at exit (67,721 had piled up in %TEMP%)
+
+
+def _drop_homes():
+    if os.environ.get("SURFD_TEST_KEEP"):
+        return
+    logging.shutdown()          # an open surfd.log keeps Windows from removing its home
+    for h in _HOMES:
+        shutil.rmtree(h, ignore_errors=True)
+
+
+atexit.register(_drop_homes)
 
 
 def check(label, got, want):
@@ -74,6 +91,7 @@ def fresh(key="testkey", seed_v2=False):
     2 -> 3 upgrade, since surfd migrates at import time.
     """
     home = tempfile.mkdtemp(prefix="surfd-replay-")
+    _HOMES.append(home)
     db = os.path.join(home, "test.db")
     with open(os.path.join(home, "surfd.env"), "w") as fh:
         fh.write("SURFD_KEY=%s\n" % key)
