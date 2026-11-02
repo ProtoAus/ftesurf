@@ -14,7 +14,10 @@ run tree and evidence tree; nothing touches a live instance.
 
 import hashlib
 import importlib
+import atexit
+import logging
 import os
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -27,6 +30,20 @@ os.environ.setdefault("SURFD_RANKED_LINKED", "0")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 FAILED = []
+
+
+_HOMES = []   # P1231: this run's temp homes, removed at exit (67,721 had piled up in %TEMP%)
+
+
+def _drop_homes():
+    if os.environ.get("SURFD_TEST_KEEP"):
+        return
+    logging.shutdown()          # an open surfd.log keeps Windows from removing its home
+    for h in _HOMES:
+        shutil.rmtree(h, ignore_errors=True)
+
+
+atexit.register(_drop_homes)
 
 
 def check(label, got, want):
@@ -62,6 +79,7 @@ def leaf(ticks, player):
 
 def fresh(admin_pw=None, keep=None):
     home = tempfile.mkdtemp(prefix="surfd-evidence-")
+    _HOMES.append(home)
     data = os.path.join(home, "game", "ftesurf", "data")
     os.makedirs(os.path.join(data, "runs"))
     os.makedirs(os.path.join(data, "evidence"))
@@ -875,7 +893,8 @@ def _inject(m, marker, act):
 def case_stage_post_lock():
     """E19: an admin reject cannot land between a stage post's hidden check and
     its write"""
-    for marker in ("COUNT(*) FROM runs WHERE leg>0", "INSERT INTO runs"):
+    # P1231: P1229 counts through runs_live (_runs_full), which renamed this marker's SQL.
+    for marker in ("COUNT(*) FROM runs INDEXED BY runs_live WHERE leg>0", "INSERT INTO runs"):
         m = fresh(admin_pw=PW)
         conn = m.connect()
         submit(m, leg=2, ticks=454)

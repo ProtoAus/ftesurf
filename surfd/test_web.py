@@ -13,7 +13,10 @@ maps list has to be (zoned AND bsp) OR runs, in the disk's spelling.
 import hashlib
 import importlib
 import json
+import atexit
+import logging
 import os
+import shutil
 import re
 import sqlite3
 import sys
@@ -27,6 +30,20 @@ os.environ.setdefault("SURFD_RANKED_LINKED", "0")
 FAILED = []
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+
+
+_HOMES = []   # P1231: this run's temp homes, removed at exit (67,721 had piled up in %TEMP%)
+
+
+def _drop_homes():
+    if os.environ.get("SURFD_TEST_KEEP"):
+        return
+    logging.shutdown()          # an open surfd.log keeps Windows from removing its home
+    for h in _HOMES:
+        shutil.rmtree(h, ignore_errors=True)
+
+
+atexit.register(_drop_homes)
 
 
 def check(label, got, want):
@@ -56,6 +73,7 @@ class FakeClock(object):
 
 def fresh(admin_hash=None):
     home = tempfile.mkdtemp(prefix="surfd-web-")
+    _HOMES.append(home)
     with open(os.path.join(home, "surfd.env"), "w") as fh:
         fh.write("SURFD_KEY=testkey\n")
     maps = os.path.join(home, "maps")

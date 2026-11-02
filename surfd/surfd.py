@@ -2902,6 +2902,15 @@ def _board_scope(mapname, base, col):
             TIERS_IMPORTED + tuple(imports) + TIERS_IMPORTED + (mapname,))
 
 
+def _board_tier_scope(mapname, base, tier):
+    """_board_scope for ONE tier: the branch of its OR that tier takes, so the tier's query
+    seeks runs_board by (map, track, leg, tier, style) instead of testing an OR."""
+    if base and tier in TIERS_IMPORTED:
+        imports = sorted({base} | {k for k, b in _variants["ports"].items() if b == base})
+        return "map IN (%s)" % ",".join("?" * len(imports)), tuple(imports)
+    return "map=?", (mapname,)
+
+
 def _ksf_playback_family(mapname, base):
     """Configured imported scope, never a BSP-equivalence or native-trust claim."""
     return sorted({mapname} | ({base} | {
@@ -2942,7 +2951,22 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
     # second ranking rule to keep in step with BOARD_ORDER.
     expand = TIER_EXPAND.get(tier)
     combined = expand is not None
-    if combined:
+    if combined and not name and offset + limit <= 1000:
+        # P1231: each tier's own first offset+limit rows in BOARD_ORDER (runs_board walks them
+        # and stops), and the one ORDER BY below over those alone. The page is the same: the
+        # board's first offset+limit rows are among the tiers' first offset+limit each. A sort
+        # of the whole three-tier board per page was the cost (an index scan of every row).
+        # Deeper pages keep that sort: each tier would read offset+limit rows (2 Nov snapshot:
+        # kitsune leg 1 page one 0.130 -> 0.029 s; at offset 25,000 0.081 -> 0.117 s).
+        parts, args = [], ()
+        for t in expand:
+            tscope, targs = _board_tier_scope(mapname, base, t)
+            parts.append("SELECT rid FROM (SELECT rowid AS rid FROM runs WHERE " + tscope
+                         + " AND track=? AND leg=? AND tier=? AND style=? ORDER BY " + BOARD_ORDER
+                         + " LIMIT ?)")
+            args += targs + (track, leg, t, style, limit + offset)
+        where = "r.rowid IN (" + " UNION ALL ".join(parts) + ")"
+    elif combined:
         where = "r.tier IN (%s)" % ",".join("?" * len(expand))
         args = tuple(expand)
     else:
@@ -6530,6 +6554,7 @@ def web_map():
 # the tier in ONE place (web_ext), with a test that a ranked row never has it.
 WEB_HANDLE_LEN = 12
 WEB_PEOPLE_TTL = 300     # s the player directory is reused
+WEB_PEOPLE_KEEP = 3600   # P1231: s an unchanged directory is kept without a rebuild
 WEB_PEOPLE_FLOOR = 30    # s; a miss may not rebuild more often than this
 WEB_SEARCH_MAX = 60      # players one search returns
 GAME_SEARCH_MAX = 12     # ...and one /api/board?players= answer names
@@ -6798,8 +6823,11 @@ def _people_save(by_handle, lst, main_maps, at):
         # 0600: a ranked player's guid is a credential (see web_handle).
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            with _people_lock:
+                mark, built = _people.get("marker"), _people.get("built")
             json.dump({"v": 1, "at": at, "players": players, "list": lst,
-                       "main_maps": sorted(main_maps)}, fh, separators=(",", ":"))
+                       "main_maps": sorted(main_maps), "marker": mark, "built": built},
+                      fh, separators=(",", ":"))
         os.replace(tmp, PEOPLE_SNAPSHOT)
     except (OSError, ValueError) as exc:
         log.warning("people snapshot not written: %s", exc)
@@ -6818,13 +6846,31 @@ def _people_load():
             doc = json.load(fh)
         if doc.get("v") != 1:
             return None
+        # P1231: a recycled worker keeps the marker of the build it loads (gunicorn recycles
+        # every ~5,000 requests, so a marker kept only in memory bought one skip a worker).
+        if isinstance(doc.get("marker"), str) and isinstance(doc.get("built"), (int, float)):
+            with _people_lock:
+                if "marker" not in _people:
+                    _people["marker"], _people["built"] = doc["marker"], doc["built"]
         return (doc["players"], doc["list"], set(doc["main_maps"]), int(doc["at"]))
     except (OSError, ValueError, KeyError, TypeError):
         return None
 
 
+def _people_marker(db):
+    """P1231: what the directory reads, cheaply: new runs rows, the accounts (17 rows) and
+    play_maps. An upserted time keeps its rowid, so a changed `last` or alias waits for the
+    next new row or WEB_PEOPLE_KEEP. A build is ~9.5 s of a Pi core (69,069 players, 2 Nov)."""
+    runs = db.execute("SELECT MAX(rowid) FROM runs").fetchone()[0] or 0
+    acct = hashlib.sha256(repr(db.execute(
+        "SELECT steamid, name, banned_at FROM accounts ORDER BY steamid").fetchall()).encode()).hexdigest()[:16]
+    maps = tuple(db.execute("SELECT COUNT(*), MAX(rowid) FROM play_maps").fetchone())
+    return "%d %s %d %d" % (runs, acct, maps[0] or 0, maps[1] or 0)
+
+
 def _people_kick(now):
-    """Rebuild the directory on a thread, at most one at a time."""
+    """Rebuild the directory on a thread, at most one at a time; or, when nothing it reads
+    has changed (_people_marker) and it is under WEB_PEOPLE_KEEP old, keep it."""
     with _people_lock:
         if _people.get("busy"):
             return
@@ -6834,10 +6880,18 @@ def _people_kick(now):
         try:
             conn = connect()
             try:
-                built = _people_build(conn)
+                marker = _people_marker(conn)
+                with _people_lock:
+                    same = (marker == _people.get("marker")
+                            and _within(_people.get("built", -1e9), now, WEB_PEOPLE_KEEP))
+                    if same:
+                        _people["at"] = now     # P1231: still current; no 9 s scan
+                built = None if same else _people_build(conn)
             finally:
                 conn.close()
-            if _people_install(*built, at=now):
+            if built is not None and _people_install(*built, at=now):
+                with _people_lock:
+                    _people["marker"], _people["built"] = marker, now
                 _people_save(*built, at=now)
         except Exception:
             log.exception("people directory rebuild failed")
@@ -6908,6 +6962,8 @@ def people_reset():
     profile_forget()
     with _people_lock:
         _people["at"], _people["by_handle"], _people["list"] = -1e9, {}, []
+        _people.pop("marker", None)
+        _people.pop("built", None)
         _people["main_maps"], _people["by_mark"], _people["entry"] = set(), {}, {}
     try:
         os.remove(PEOPLE_SNAPSHOT)
