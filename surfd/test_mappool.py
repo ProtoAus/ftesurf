@@ -111,6 +111,23 @@ def main():
           next(x for x in body.splitlines() if x.startswith('dl '+names[0]+' ')).endswith(' - 1 0'), True)
     check('missing zone flag is per build',
           next(x for x in body.splitlines() if x.startswith('dl '+names[1]+' ')).endswith(' '+names[0]+' 0 1'), True)
+    # P1189: the menu's feed shows a zone at its next poll, well inside MAPS_TTL. Each change
+    # starts from an old, settled folder mtime, so two changes in one timestamp tick (15.6 ms
+    # on Windows) cannot look like none; test_web covers that case.
+    row = lambda: next(x for x in c.get('/api/board?maps=1').get_data(as_text=True).splitlines()
+                       if x.startswith('dl '+names[1]+' '))
+    def settle():
+        t = S.time.time() - 3600
+        os.utime(S.ZONES_DIR, (t, t))
+        return row()
+    published = os.path.join(S.ZONES_DIR, names[1]+'.json')
+    check('control: the settled list has no zone for it', settle().endswith(' '+names[0]+' 0 1'), True)
+    with open(published, 'w') as f:
+        f.write('{}')
+    check('a zone published is in the next map list', row().endswith(' '+names[0]+' 1 1'), True)
+    settle()
+    os.remove(published)
+    check('...and a zone removed', row().endswith(' '+names[0]+' 0 1'), True)
     check('enable reverses policy', setmap(names[0],'1').get_json()['ok'], True)
     check('enabled join reaches allocator (no lobbies)', c.get('/api/join?map='+names[0]).status_code, 503)
     check('files untouched', os.path.isfile(os.path.join(S.MAPS_DIR,names[0]+'.bsp')), True)

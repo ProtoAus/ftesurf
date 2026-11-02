@@ -1334,6 +1334,50 @@ def main():
         th.join(5)
     check("three cold callers at once run one scan and all get its answer",
           (len(scans), [sorted(x) for x in got]), (1, [["surf_new"]] * 3))
+
+    # P1189: a zone published or removed is in the next read, not one MAPS_TTL later. The
+    # racy window is measured against m.time.time(), this file's fake wall clock.
+    zdirs = [d for d in (m.ZONES_DIR, m.ZONES_LOCAL_DIR, m.ZONES_MOMLOCAL_DIR) if os.path.isdir(d)]
+    def dir_mtime(t):
+        for d in zdirs:
+            os.utime(d, (t, t))
+    newzone = os.path.join(m.ZONES_LOCAL_DIR, "surf_nozone.json")
+    def zoned(now):
+        return "surf_nozone" in m.map_index(now=now)[1]
+    scans = []
+    m._scan_maps = lambda: scans.append(1) or real_scan()
+    dir_mtime(m.time.time() - 3600)
+    m.maps_reset()
+    m.map_index(now=3000.0)
+    m.map_index(now=3000.0 + m.MAPS_TTL - 1)
+    m.zone_file_index(now=3000.0)
+    m.zone_file_index(now=3000.0 + m.MAPS_TTL - 1)
+    check("control: unchanged zone folders are scanned once per MAPS_TTL",
+          (len(scans), m._zone_files_cache["at"]), (1, 3000.0))
+    open(newzone, "wb").close()
+    dir_mtime(m.time.time() - 60)
+    check("a zone published is in the next read of both lists",
+          (zoned(3010.0), "surf_nozone" in m.zone_file_index(now=3010.0), len(scans)), (True, True, 2))
+    os.remove(newzone)
+    dir_mtime(m.time.time() - 30)
+    check("...and a zone removed", (zoned(3020.0), "surf_nozone" in m.zone_file_index(now=3020.0)),
+          (False, False))
+    check("control: then no rescan until the next change", (zoned(3200.0), len(scans)), (False, 3))
+    # A second change inside the first one's timestamp tick leaves the mtime as it was.
+    dir_mtime(m.time.time())
+    m.maps_reset()
+    scans.clear()
+    zoned(4000.0)
+    st = os.stat(m.ZONES_LOCAL_DIR)
+    open(newzone, "wb").close()
+    os.utime(m.ZONES_LOCAL_DIR, ns=(st.st_atime_ns, st.st_mtime_ns))
+    check("...a change in the same tick is read within MAPS_RESCAN_MIN",
+          (zoned(4000.0 + m.MAPS_RESCAN_MIN / 2), zoned(4000.0 + m.MAPS_RESCAN_MIN + 0.1), len(scans)),
+          (False, True, 2))
+    dir_mtime(m.time.time() - 3600)
+    check("...and once settled, the cache holds again",
+          (zoned(4010.0), zoned(4200.0), len(scans)), (True, True, 3))
+    os.remove(newzone)
     m._scan_maps = real_scan
     m.maps_reset()
     check("an unknown run is 404", get(m, "/board/api/run/99999").status_code, 404)
