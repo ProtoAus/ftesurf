@@ -2120,6 +2120,8 @@ string(string spec) ui_dep_label =
 {
 	local string g;
 	local float p;
+	if (spec == "steam:Momentum Mod Playtest/platform")
+		return "MOM";       // P1188: Momentum's own fallback materials
 	g = spec;
 	if (substring(g, 0, 6) == "steam:")
 		g = substring(g, 6, strlen(g) - 6);
