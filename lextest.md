@@ -114,7 +114,10 @@ In both Windows installs (menu.dat) since 2 Nov 04:24 local (17:24Z 1 Nov); publ
 with the next release. A game already running then still has the old menu: restart it first.
 Please check: in the main menu, open Maps (or Story/Stats), click the chat box on the right,
 type a line and press Enter (keypad Enter too). It should send, as the send button does.
-Not run by an agent: a send needs a linked account and posts to the live public room.
+Shipped in 0.1.35. Measured 2 Nov 06:06Z on the released files (rig, unlinked identity): with the
+box focused, Enter on the front page and Enter / keypad Enter on Maps each start a send -- the next
+frame reads "Sending..." and the button "wait..." -- and the server then refuses the unlinked
+identity; Enter with the box unfocused does nothing. Still yours: a real post from your account.
 
 ## P1177 hud_player colours kept after a restart
 Live on all 12 lobbies and both Windows installs since 2 Nov 04:13 local (17:13Z 1 Nov).
