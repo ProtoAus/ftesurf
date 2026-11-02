@@ -26,7 +26,9 @@
 #define MLB_T_KSF     0
 #define MLB_T_MOM     1
 #define MLB_T_OURS    2
-#define MLB_NTABS     3
+#define MLB_T_ALL     3       // P1199: every game merged (tier combined), the in-game default
+#define MLB_NTABS     4
+#define MLB_LEGS      128     // legs the sidebar lists
 
 #define MLBS_IDLE     0
 #define MLBS_FETCH    1       // the first page is out
@@ -47,7 +49,7 @@ const int MLB_DAYSECS = 86400;
 
 float  mlb_open;
 float mlb_track, mlb_leg, mlb_browsing;
-string mlb_style, mlb_source;
+string mlb_style;
 string mlb_map;               // strzoned while open
 float  mlb_tab, mlb_lasttab;
 float  mlb_state, mlb_code;   // mlb_code: HTTP status, or Mlb_Why's own (<= 0, 900s)
@@ -66,9 +68,12 @@ float  mlb_going, mlb_goto;   // ui_board_test's scroll, held until the rows exi
 string mlb_near, mlb_jumpnote;
 string() MH_Me;
 float  mlb_offset;           // first held row's offset, including a profile seek
-float mlb_course_req, mlb_time_req, mlb_aux_sent, mlb_course_known, mlb_course_n, mlb_course_at;
+float mlb_course_req, mlb_time_req, mlb_aux_sent, mlb_course_known;
+// P1199: the legs /board/api/map lists for this style, with each game's count (n, nm, nk).
+float mlb_lgt[MLB_LEGS], mlb_lgl[MLB_LEGS], mlb_lgr[MLB_LEGS], mlb_lgm[MLB_LEGS], mlb_lgk[MLB_LEGS];
+float mlb_lgn;
+vector mlb_legscroll;
 float mlb_play_known, mlb_map_seconds, mlb_map_attempts;
-float *mlb_courses;
 float *mlb_attempts;
 string mlb_stats_who;
 string mlb_focuswho;
@@ -82,11 +87,13 @@ strbuf mlb_btime;
 strbuf mlb_bdate;
 strbuf mlb_bwho;               // Patch 789: the row's picture mark, "" none
 strbuf mlb_bhand;              // P1198: the row's 12-hex handle (surfd's web_handle), "" none
+strbuf mlb_bms;                // P1199: the row's exact ms as an int string, for DELTA
+int    mlb_refms;              // the fastest ms held (cl_scores.qc's delta reference)
 float  mlb_anyav;               // some row has one: every name moves over
 
 string(float t) Mlb_Tier =
 {
-	if (!strcmp(mlb_source, "all")) return "combined";
+	if (t == MLB_T_ALL) return "combined";
 	if (t == MLB_T_KSF) return "ksf";
 	if (t == MLB_T_MOM) return "momentum";
 	return "ranked";
@@ -94,6 +101,7 @@ string(float t) Mlb_Tier =
 
 string(float t) Mlb_TabName =
 {
+	if (t == MLB_T_ALL) return "All games";
 	if (t == MLB_T_KSF) return "KSF";
 	if (t == MLB_T_MOM) return "Momentum";
 	return "WOS";
@@ -101,6 +109,7 @@ string(float t) Mlb_TabName =
 
 float(float t) Mlb_TabCount =
 {
+	if (t == MLB_T_ALL) return mlb_cksf + mlb_cmom + mlb_cours;
 	if (t == MLB_T_KSF) return mlb_cksf;
 	if (t == MLB_T_MOM) return mlb_cmom;
 	return mlb_cours;
@@ -108,7 +117,6 @@ float(float t) Mlb_TabCount =
 
 float() Mlb_BoardCount =
 {
-	if (!strcmp(mlb_source, "all")) return mlb_cksf + mlb_cmom + mlb_cours;
 	return Mlb_TabCount(mlb_tab);
 };
 
@@ -128,6 +136,7 @@ string(float t) Mlb_TabLabel =
 // -1 when the word names no tab.
 float(string s) Mlb_TabOf =
 {
+	if (s == "all" || s == "combined") return MLB_T_ALL;
 	if (s == "ksf")      return MLB_T_KSF;
 	if (s == "momentum") return MLB_T_MOM;
 	if (s == "ranked" || s == "ftesurf") return MLB_T_OURS;
@@ -136,7 +145,7 @@ float(string s) Mlb_TabOf =
 
 string() Mlb_Source =
 {
-	if (!strcmp(mlb_source, "all")) return "All games: World of Surf, Momentum Mod, KSF";
+	if (mlb_tab == MLB_T_ALL) return "All games: World of Surf, Momentum Mod, KSF";
 	if (mlb_tab == MLB_T_KSF) return "KSF (ksf.surf), Counter-Strike: Source -- times only";
 	if (mlb_tab == MLB_T_MOM) return "Momentum Mod's own leaderboard, imported";
 	return "ranked runs on World of Surf's public lobbies";
@@ -144,6 +153,7 @@ string() Mlb_Source =
 
 string() Mlb_EmptyLine =
 {
+	if (mlb_tab == MLB_T_ALL) return sprintf("Nobody has a time on %s yet", mlb_map);
 	if (mlb_tab == MLB_T_KSF) return sprintf("KSF has no times on %s", mlb_map);
 	if (mlb_tab == MLB_T_MOM) return sprintf("Momentum Mod has no times on %s", mlb_map);
 	return sprintf("Nobody has set a time on %s on a World of Surf lobby yet", mlb_map);
@@ -178,11 +188,49 @@ string(float code) Mlb_Why =
   float32 chain Time_TickString(ms, 0.001) ran; Patch 496 moved that split into
   sh_time.qc, so there is one formatter again and this keeps only the row rule.
 */
+// P1199: the tab drawn at position k -- every game first, as the in-game filter.
+float(float k) Mlb_TabAt =
+{
+	if (k == 0) return MLB_T_ALL;
+	if (k == 1) return MLB_T_OURS;
+	if (k == 2) return MLB_T_MOM;
+	return MLB_T_KSF;
+};
+
+string(float track, float leg) Mlb_LegName =
+{
+	if (!track) return leg ? sprintf("Stage %g", leg) : "Main";
+	return leg ? sprintf("Bonus %g stage %g", track, leg) : sprintf("Bonus %g", track);
+};
+
+float(float i, float t) Mlb_LegCount =
+{
+	if (t == MLB_T_KSF) return mlb_lgk[i];
+	if (t == MLB_T_MOM) return mlb_lgm[i];
+	if (t == MLB_T_OURS) return mlb_lgr[i];
+	return mlb_lgr[i] + mlb_lgm[i] + mlb_lgk[i];
+};
+
 string(int ms) Mlb_MsString =
 {
 	if (ms <= 0)
 		return "--";
 	return Time_MsString(ms);
+};
+
+// cl_scores.qc's Scores_Delta: "+2.070", not "+0:02.070".
+string(int d) Mlb_Delta =
+{
+	local string t;
+	t = Time_MsString(d);
+	if (substring(t, 0, 2) == "0:")
+	{
+		t = substring(t, 2, -1);
+		if (substring(t, 0, 1) == "0")
+		if (substring(t, 1, 1) != ".")
+			t = substring(t, 1, -1);
+	}
+	return strcat("+", t);
 };
 
 // Seconds east of UTC now, from the two clocks strftime can read.
@@ -305,7 +353,7 @@ void(float id, float code, string body, float append) Mlb_Page;
 // The panel shows a plain first page: the cache may answer it.
 float() Mlb_CPlain =
 {
-	return (!mlb_offset && mlb_focuswho == "" && mlb_source == "" && mlb_near == "");
+	return (!mlb_offset && mlb_focuswho == "" && mlb_near == "");
 };
 
 // Empty the list.  The strbufs are bounded by mlb_n, not by their size.
@@ -327,6 +375,7 @@ void() Mlb_ClearRows =
 	mlb_scroll = '0 0 0';
 	mlb_focus = -1;
 	mlb_going = FALSE;
+	mlb_refms = 0i;
 };
 
 // The first page (append FALSE) or the one after the rows held.  TRUE if sent.
@@ -453,7 +502,7 @@ float() Mlb_More =
 };
 
 // P1107: the page before the rows held, once the view nears their top.  TRUE if one went out.
-// A failure stops it ("top" and "earlier" still reload from above).
+// A failure stops it (P1199: the footer's "reload from #1").
 float() Mlb_Earlier =
 {
 	local string dir, url, tier;
@@ -508,14 +557,12 @@ void() Mlb_AuxAsk =
 	local float i;
 	mlb_course_req = mlb_time_req = 0;
 	mlb_course_known = mlb_play_known = FALSE;
-	mlb_course_n = 1; mlb_course_at = 0;
+	mlb_lgn = 0;
+	mlb_legscroll = '0 0 0';
 	mlb_map_seconds = mlb_map_attempts = 0;
-	if (!mlb_courses)
-	{
-		mlb_courses = memalloc(sizeof(float) * 65);
+	if (!mlb_attempts)
 		mlb_attempts = memalloc(sizeof(float) * 65);
-	}
-	for (i = 0; i < 65; i = i + 1) { mlb_courses[i] = 0; mlb_attempts[i] = 0; }
+	for (i = 0; i < 65; i = i + 1) mlb_attempts[i] = 0;
 	strunzone(mlb_stats_who); mlb_stats_who = "";
 	if (!mlb_open || cvar("rec_terms") < FS_TERMS_ONLINE) return;
 	dir = cvar_string("lobby_dir");
@@ -535,7 +582,7 @@ void() Mlb_AuxAsk =
 float(float id, float code, string body) Mlb_AuxReply =
 {
 	local int root, rows, row, activity;
-	local float i, j, n, track, leg, have, courses;
+	local float i, j, n, track, leg, courses;
 	local string who;
 	if (id != mlb_course_req && id != mlb_time_req) return FALSE;
 	courses = (id == mlb_course_req);
@@ -550,23 +597,32 @@ float(float id, float code, string body) Mlb_AuxReply =
 		{
 			json_free(root); return TRUE;
 		}
+		// P1199: every leg with times in this style, main first (rows come by track, leg).
+		mlb_lgn = 1;
+		mlb_lgt[0] = mlb_lgl[0] = mlb_lgr[0] = mlb_lgm[0] = mlb_lgk[0] = 0;
 		rows = json_find_object_child(root, "boards");
 		n = json_get_length(rows);
 		for (i = 0; i < min(4096, n); i = i + 1)
 		{
 			row = json_get_child_at_index(rows, i);
-			track = json_get_float(json_find_object_child(row, "track"));
-			if (track <= 0 || track > 64 || track != floor(track)) continue;
-			if (json_get_float(json_find_object_child(row, "leg")) != 0) continue;
 			if (strcmp(json_get_string(json_find_object_child(row, "style")), mlb_style)) continue;
-			have = FALSE;
-			for (j = 0; j < mlb_course_n; j = j + 1)
-				if (mlb_courses[j] == track) have = TRUE;
-			if (!have && mlb_course_n < 65) mlb_courses[mlb_course_n++] = track;
+			track = json_get_float(json_find_object_child(row, "track"));
+			leg = json_get_float(json_find_object_child(row, "leg"));
+			if (track < 0 || track > 64 || track != floor(track) || leg < 0 || leg > 256 || leg != floor(leg)) continue;
+			j = (track == 0 && leg == 0) ? 0 : mlb_lgn;
+			if (j == mlb_lgn)
+			{
+				if (mlb_lgn >= MLB_LEGS) continue;
+				mlb_lgn = mlb_lgn + 1;
+			}
+			mlb_lgt[j] = track; mlb_lgl[j] = leg;
+			mlb_lgr[j] = max(0, json_get_float(json_find_object_child(row, "n")));
+			mlb_lgm[j] = max(0, json_get_float(json_find_object_child(row, "nm")));
+			mlb_lgk[j] = max(0, json_get_float(json_find_object_child(row, "nk")));
 		}
 		mlb_course_known = TRUE;
-		for (i = 0; i < mlb_course_n; i = i + 1)
-			if (mlb_courses[i] == mlb_track) mlb_course_at = max(0, i - 2);
+		for (i = 0; i < mlb_lgn; i = i + 1)
+			if (mlb_lgt[i] == mlb_track && mlb_lgl[i] == mlb_leg) mlb_legscroll_y = max(0, (i - 2) * 40);
 	}
 	else
 	{
@@ -596,11 +652,11 @@ float(float id, float code, string body) Mlb_AuxReply =
 	return TRUE;
 };
 
-void(float track) Mlb_SetCourse =
+void(float track, float leg) Mlb_SetLeg =
 {
-	if (track == mlb_track && mlb_leg == 0) return;
+	if (track == mlb_track && leg == mlb_leg) return;
 	Mlb_ClearRows();
-	mlb_track = track; mlb_leg = mlb_offset = mlb_focusrank = 0;
+	mlb_track = track; mlb_leg = leg; mlb_offset = mlb_focusrank = 0;
 	mlb_focusms = 0i;
 	strunzone(mlb_focuswho); mlb_focuswho = "";
 	Mlb_Fetch(FALSE);
@@ -609,9 +665,7 @@ void(float track) Mlb_SetCourse =
 void(float t) Mlb_SetTab =
 {
 	if (!mlb_open) return;
-	if (t == mlb_tab && mlb_source == "") return;
-	strunzone(mlb_source);
-	mlb_source = "";
+	if (t == mlb_tab) return;
 	Mlb_ClearRows();
 	mlb_offset = mlb_focusrank = 0;
 	mlb_focusms = 0i;
@@ -667,10 +721,9 @@ void(string why) Mlb_Close =
 	buf_del(mlb_bdate);
 	buf_del(mlb_bwho);
 	buf_del(mlb_bhand);
+	buf_del(mlb_bms);
 	print(sprintf("^5board:^7 closed %s (%s)\n", mlb_map, why));
 	strunzone(mlb_style);
-	strunzone(mlb_source);
-	mlb_source = "";
 	strunzone(mlb_map);
 	mlb_map = "";
 	strunzone(mlb_focuswho); mlb_focuswho = "";
@@ -684,7 +737,7 @@ void(string why) Mlb_Close =
 void(string mapname, float t) Mlb_Open =
 {
 	if (t < 0 || t >= MLB_NTABS)
-		t = mlb_browsing ? mlb_lasttab : MLB_T_OURS;
+		t = mlb_browsing ? mlb_lasttab : MLB_T_ALL;
 	if (mlb_open)
 	{
 		if (!strcmp(mapname, mlb_map) && mlb_track == 0 && mlb_leg == 0 && mlb_style == "clean")
@@ -709,6 +762,7 @@ void(string mapname, float t) Mlb_Open =
 	mlb_bdate = buf_create();
 	mlb_bwho  = buf_create();
 	mlb_bhand = buf_create();
+	mlb_bms   = buf_create();
 	mlb_anyav = FALSE;
 	mlb_open  = TRUE;
 	mlb_tab   = mlb_lasttab = t;
@@ -726,6 +780,7 @@ void(string mapname, float t) Mlb_Open =
 void(float i, int row) Mlb_Row =
 {
 	local string s;
+	local int ms;
 
 	bufstr_set(mlb_brank, i, ftos(json_get_float(json_find_object_child(row, "r"))));
 	if (mlb_focuswho != "")
@@ -734,7 +789,10 @@ void(float i, int row) Mlb_Row =
 		mlb_focus = i;
 	s = json_get_string(json_find_object_child(row, "name"));
 	bufstr_set(mlb_bname, i, (s != "") ? s : "unknown");
-	bufstr_set(mlb_btime, i, Mlb_MsString(json_get_integer(json_find_object_child(row, "ms"))));
+	ms = json_get_integer(json_find_object_child(row, "ms"));
+	bufstr_set(mlb_btime, i, Mlb_MsString(ms));
+	bufstr_set(mlb_bms, i, (ms > 0i) ? Mlb_Itos(ms) : "");
+	if (ms > 0i && (mlb_refms == 0i || ms < mlb_refms)) mlb_refms = ms;
 	bufstr_set(mlb_bdate, i, Mlb_Date(json_get_integer(json_find_object_child(row, "when"))));
 	// Patch 789: `av` is surfd saying the player has a picture (cl_online.qc's rule).
 	bufstr_set(mlb_bwho, i, json_get_float(json_find_object_child(row, "av"))
@@ -782,6 +840,7 @@ void(float d) Mlb_DropHead =
 		bufstr_set(mlb_bdate, k - d, bufstr_get(mlb_bdate, k));
 		bufstr_set(mlb_bwho, k - d, bufstr_get(mlb_bwho, k));
 		bufstr_set(mlb_bhand, k - d, bufstr_get(mlb_bhand, k));
+		bufstr_set(mlb_bms, k - d, bufstr_get(mlb_bms, k));
 	}
 	mlb_n = mlb_n - d;
 	mlb_offset = mlb_offset + d;
@@ -934,7 +993,7 @@ void(float id, float code, string body) Mlb_PageEarlier =
 	    off != mlb_offset - mlb_ulim || n != mlb_ulim)
 	{
 		json_free(root);
-		mlb_ufail = TRUE;               // the board moved under the rows held: "top" reloads it
+		mlb_ufail = TRUE;               // the board moved under the rows held: "reload from #1"
 		print(sprintf("^5board:^7 earlier page id %g: offset %g rows %g, wanted %g rows -- dropped\n",
 		              id, off, n, mlb_ulim));
 		return;
@@ -957,6 +1016,7 @@ void(float id, float code, string body) Mlb_PageEarlier =
 		bufstr_set(mlb_bdate, k + n, bufstr_get(mlb_bdate, k));
 		bufstr_set(mlb_bwho, k + n, bufstr_get(mlb_bwho, k));
 		bufstr_set(mlb_bhand, k + n, bufstr_get(mlb_bhand, k));
+		bufstr_set(mlb_bms, k + n, bufstr_get(mlb_bms, k));
 	}
 	f = mlb_focus;
 	for (i = 0; i < n; i = i + 1)
@@ -1148,10 +1208,11 @@ vector(float r) Mlb_RankCol =
 	return SUI_THEME_MUTED;
 };
 
-void(vector rp, float i, float rw, float tr, float dr, float nw) Mlb_DrawRow =
+void(vector rp, float i, float rw, float tr, float dlr, float dr, float nw) Mlb_DrawRow =
 {
 	local float ty;
 	local string s;
+	local int ms;
 
 	if (i == mlb_focus)
 		sui_fill(rp, [rw, MLB_ROW_H], SUI_THEME_SELECTED, 0.85, 0);
@@ -1165,6 +1226,14 @@ void(vector rp, float i, float rw, float tr, float dr, float nw) Mlb_DrawRow =
 	         Mlb_RankCol(stof(s)), 1, 0);
 	s = bufstr_get(mlb_btime, i);
 	sui_text([rp_x + tr - stringwidth(s, TRUE, SZ_ROW), ty], SZ_ROW, s, COL_TEXT, 1, 0);
+	s = bufstr_get(mlb_bms, i);
+	if (mlb_refms > 0i && s != "")
+	{
+		ms = Mlb_Stoi(s);
+		s = (ms == mlb_refms) ? "best" : ((ms > mlb_refms) ? Mlb_Delta(ms - mlb_refms) : "");
+		sui_text([rp_x + dlr - stringwidth(s, TRUE, SZ_ROW), ty], SZ_ROW, s,
+		         (ms == mlb_refms) ? SUI_THEME_GOOD : COL_FAIL, 0.9, 0);
+	}
 	s = bufstr_get(mlb_bdate, i);
 	sui_text([rp_x + dr - stringwidth(s, TRUE, SZ_ROW), ty], SZ_ROW, s, COL_DIM, 1, 0);
 	Font_Set(ui_font_ui);
@@ -1254,19 +1323,22 @@ void(vector p, float w) Mlb_DrawBody =
   Over the create screen, from m_draw, which has already struck that screen's
   controls from sui's hit list, so the rows, wheel and keys under the panel are
   dead while it is up.
+  P1199: laid out as the in-game board (cl_scores.qc): game tabs, styles, the legs
+  in a sidebar, and # / player / time / delta / date.  Scrolling is the paging
+  (Mlb_More, Mlb_Earlier); there is no earlier/top/refresh.
 */
 void(vector screensize) Mlb_Draw =
 {
-	local vector p, sz, ls, rp;
-	local float w, h, x, t, ly, rw, tr, dr, nw, idx, cw, closeit, ci;
+	local vector p, sz, ls, rp, lp, lsz;
+	local float w, h, x, t, k, ly, rw, tr, dlr, dr, nw, idx, cw, closeit, sidew, lx, on, hot, c;
 	local string s, id;
 
 	if (!mlb_open)
 		return;
 	Mlb_Poll();
 
-	w  = min(screensize_x - 64, 760);
-	h  = min(screensize_y - 64, 680);
+	w  = min(screensize_x - 64, 980);
+	h  = min(screensize_y - 64, 720);
 	p  = [floor((screensize_x - w) * 0.5), floor((screensize_y - h) * 0.5)];
 	sz = [w, h];
 
@@ -1281,31 +1353,18 @@ void(vector screensize) Mlb_Draw =
 		closeit = TRUE;
 
 	sui_text([16, 14], SZ_HEAD, ui_fit_text(mlb_map, w - 266, SZ_HEAD), COL_ACCENT, 1, 0);
-	s = sprintf("%s / %s / %s", !strcmp(mlb_source, "all") ? "All games" : Mlb_TabName(mlb_tab),
-	            mlb_track ? sprintf("bonus %g", mlb_track) : "main", FS_BoardStyleName(mlb_style));
-	if (mlb_leg) s = strcat(s, sprintf(" / stage %g", mlb_leg));
+	s = sprintf("%s / %s / %s", Mlb_TabName(mlb_tab), Mlb_LegName(mlb_track, mlb_leg), FS_BoardStyleName(mlb_style));
 	sui_text([16, 38], '12 12 0', ui_fit_text(s, w - 32, '12 12 0'), COL_DIM, 1, 0);
 
+	// The games, in the in-game filter's order: every game, then each one.
 	x = 16;
-	for (t = 0; t < MLB_NTABS; t = t + 1)
+	for (k = 0; k < MLB_NTABS; k = k + 1)
 	{
+		t = Mlb_TabAt(k);
 		id = strcat("mlb_tab", ftos(t));
 		x = x + ui_chip([x, 56], id, Mlb_TabLabel(t), t == mlb_tab) + CHIP_GAP;
 		if (sui_is_released(id))
 			Mlb_SetTab(t);
-	}
-
-	if (mlb_offset > 0)
-	{
-		if (ui_button("mlb_earlier", [w - 204, 56], [92, CHIP_H], "earlier")
-		    || ui_button("mlb_top", [w - 100, 56], [84, CHIP_H], "top"))
-		{
-			mlb_offset = sui_is_released("mlb_top") ? 0 : max(0, mlb_offset - MLB_PAGE);
-			strunzone(mlb_focuswho); mlb_focuswho = "";
-			mlb_focusrank = 0;
-			mlb_focusms = 0i;
-			Mlb_ClearRows(); Mlb_Fetch(FALSE);
-		}
 	}
 
 	x = 16;
@@ -1320,8 +1379,7 @@ void(vector screensize) Mlb_Draw =
 		if (sui_is_released(id)) Mlb_SetStyle(Mlb_StyleKey(t));
 	}
 	x = x + 16;
-	// Keep refresh's 84px target and a gap clear; wrap instead of stealing clicks.
-	if (x + 150 + 8 > w - 100) { x = 16; ly = ly + CHIP_H + 8; }
+	if (x + 150 > w - 16) { x = 16; ly = ly + CHIP_H + 8; }
 	sui_action_element([x, ly], [150, CHIP_H], "mlb_segmented", sui_noop);
 	sui_roundbox([x, ly + 2], [36, CHIP_H - 4], (CHIP_H - 4) * 0.5, SUI_THEME_WELL, 1);
 	sui_roundbox([x + (FS_BoardSegmented(mlb_style) ? 18 : 2), ly + 4], [CHIP_H - 8, CHIP_H - 8],
@@ -1329,11 +1387,6 @@ void(vector screensize) Mlb_Draw =
 	sui_text([x + 44, ly + 4], SZ_LABEL, "Segmented", COL_TEXT, 1, 0);
 	if (sui_is_released("mlb_segmented"))
 		Mlb_SetStyle(FS_BoardStyle(FS_BoardDirection(mlb_style), !FS_BoardSegmented(mlb_style)));
-	if (ui_button("mlb_refresh", [w - 100, ly], [84, CHIP_H], "refresh"))
-	{
-		Mlb_ClearRows(); Mlb_Fetch(FALSE);
-		Mlb_AuxAsk();
-	}
 
 	ly = ly + CHIP_H + 12;
 	s = mlb_play_known ? sprintf("Your map time: %gh %gm | %g main/bonus attempts", floor(mlb_map_seconds / 3600), floor(mlb_map_seconds / 60) % 60, mlb_map_attempts) : (mlb_time_req ? "Loading your map time / attempts..." : "Map playtime / attempts: not recorded yet");
@@ -1341,41 +1394,57 @@ void(vector screensize) Mlb_Draw =
 		s = strcat(s, sprintf(" | this course: %g", mlb_attempts[bound(0, mlb_track, 64)]));
 	sui_text([16, ly], '12 12 0', ui_fit_text(s, w - 32, '12 12 0'), COL_DIM, 1, 0);
 	ly = ly + 22;
-	x = 16;
-	for (ci = mlb_course_at; ci < mlb_course_n; ci = ci + 1)
-	{
-		t = mlb_courses[ci];
-		s = t ? sprintf("Bonus %g", t) : "Main";
-		cw = ui_chip_w(s);
-		if (x + cw > w - 104) break;
-		id = sprintf("mlb_course%g", t);
-		x = x + ui_chip([x, ly], id, s, mlb_track == t && mlb_leg == 0) + CHIP_GAP;
-		if (sui_is_released(id)) Mlb_SetCourse(t);
-	}
-	if (mlb_course_at > 0)
-		if (ui_button("mlb_course_prev", [w - 92, ly], [34, CHIP_H], "<")) mlb_course_at = max(0, mlb_course_at - 4);
-	if (ci < mlb_course_n)
-		if (ui_button("mlb_course_next", [w - 52, ly], [34, CHIP_H], ">")) mlb_course_at = ci;
+	sui_fill([16, ly], [w - 32, 1], SUI_THEME_EDGE, 1, 0);
+	ly = ly + 12;
 
-	// Columns, right-aligned numbers in the mono face: rank, player, time, date.
-	ly = ly + CHIP_H + 30;
-	ls = [w - 32, h - ly - 44];
+	// ---- the legs, a sidebar (cl_scores.qc's "sb_legs") -----------------------
+	sidew = (w >= 760) ? 190 : 150;
+	sui_text([20, ly], SZ_LABEL, "TRACK", COL_DIM, 1, 0);
+	ly = ly + 26;
+	lsz = [sidew - 12, 40];
+	ls = [sidew, h - ly - 44];
+	if (!mlb_course_known)
+		sui_text([20, ly + 8], SZ_LABEL, mlb_course_req ? "loading..." : Mlb_LegName(mlb_track, mlb_leg), COL_DIM, 1, 0);
+	else
+	{
+		sui_list_view_begin("mlb_legs", [16, ly], ls, lsz, mlb_lgn, mlb_legscroll, [0, 10]);
+		lp = '0 0 0';
+		for (idx = sui_list_item(lp); idx > -1; idx = sui_list_item(lp))
+		{
+			id = sprintf("mlb_leg%g", idx);
+			sui_action_element(lp, lsz, id, sui_noop);
+			on = (mlb_lgt[idx] == mlb_track && mlb_lgl[idx] == mlb_leg);
+			hot = sui_is_hovered(id);
+			if (on || hot)
+				sui_roundbox(lp + '0 1 0', lsz - '0 2 0', 7, on ? SUI_THEME_SELECTED : SUI_THEME_HOVER, 1);
+			sui_text(lp + '8 3 0', SZ_LABEL, ui_fit_text(Mlb_LegName(mlb_lgt[idx], mlb_lgl[idx]), lsz_x - 16, SZ_LABEL),
+			         on ? COL_ACCENT : (hot ? COL_TEXT : COL_DIM), 1, 0);
+			c = Mlb_LegCount(idx, mlb_tab);
+			s = (c > 0) ? sprintf("%g %s", c, (c == 1) ? "time" : "times") : "no times";
+			sui_text(lp + '8 22 0', '12 12 0', s, on ? COL_TEXT : SUI_THEME_MUTED, 1, 0);
+			if (sui_is_released(id)) Mlb_SetLeg(mlb_lgt[idx], mlb_lgl[idx]);
+		}
+		sui_list_view_end();
+	}
+
+	// ---- the runs -----------------------------------------------------------------
+	lx = 16 + sidew + 12;
+	ls = [w - lx - 16, h - ly - 44];
 	rw = ls_x - 14;
 	Font_Set(ui_font_mono);
 	dr = rw - 12;
-	tr = dr - stringwidth("0000-00-00", TRUE, SZ_ROW) - 28;
+	dlr = dr - stringwidth("0000-00-00", TRUE, SZ_ROW) - 24;
+	tr = dlr - stringwidth("+00:00.000", TRUE, SZ_ROW) - 20;
 	nw = tr - stringwidth("0:00:00.000", TRUE, SZ_ROW) - 24 - MLB_NAME_X;
 	Font_Set(ui_font_ui);
 
-	sui_text([17 + MLB_RANK_R - stringwidth("rank", TRUE, SZ_LABEL), ly - 22], SZ_LABEL,
-	         "rank", COL_DIM, 1, 0);
-	sui_text([17 + MLB_NAME_X, ly - 22], SZ_LABEL, "player", COL_DIM, 1, 0);
-	sui_text([17 + tr - stringwidth("time", TRUE, SZ_LABEL), ly - 22], SZ_LABEL,
-	         "time", COL_DIM, 1, 0);
-	sui_text([17 + dr - stringwidth("date", TRUE, SZ_LABEL), ly - 22], SZ_LABEL,
-	         "date", COL_DIM, 1, 0);
+	sui_text([lx + 1 + MLB_RANK_R - stringwidth("#", TRUE, SZ_LABEL), ly - 22], SZ_LABEL, "#", COL_DIM, 1, 0);
+	sui_text([lx + 1 + MLB_NAME_X, ly - 22], SZ_LABEL, "PLAYER", COL_DIM, 1, 0);
+	sui_text([lx + 1 + tr - stringwidth("TIME", TRUE, SZ_LABEL), ly - 22], SZ_LABEL, "TIME", COL_DIM, 1, 0);
+	sui_text([lx + 1 + dlr - stringwidth("DELTA", TRUE, SZ_LABEL), ly - 22], SZ_LABEL, "DELTA", COL_DIM, 1, 0);
+	sui_text([lx + 1 + dr - stringwidth("DATE", TRUE, SZ_LABEL), ly - 22], SZ_LABEL, "DATE", COL_DIM, 1, 0);
 
-	sui_style_box([16, ly], ls, 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
+	sui_style_box([lx, ly], ls, 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 
 	if (mlb_state == MLBS_OK && mlb_n > 0)
 	{
@@ -1383,7 +1452,7 @@ void(vector screensize) Mlb_Draw =
 			mlb_scroll_y = mlb_goto * MLB_ROW_H;
 
 		// One row past the rows held: loading, an error, or the end.
-		sui_list_view_begin("mlb_list", [17, ly + 1], [ls_x - 2, ls_y - 2],
+		sui_list_view_begin("mlb_list", [lx + 1, ly + 1], [ls_x - 2, ls_y - 2],
 		                    [rw, MLB_ROW_H], mlb_n + 1, mlb_scroll, [0, 10]);
 		rp = '0 0 0';
 		for (idx = sui_list_item(rp); idx > -1; idx = sui_list_item(rp))
@@ -1391,7 +1460,7 @@ void(vector screensize) Mlb_Draw =
 			if (idx >= mlb_n)
 				Mlb_DrawTail(rp, rw);
 			else
-				Mlb_DrawRow(rp, idx, rw, tr, dr, nw);
+				Mlb_DrawRow(rp, idx, rw, tr, dlr, dr, nw);
 		}
 		sui_list_view_end();
 
@@ -1412,7 +1481,7 @@ void(vector screensize) Mlb_Draw =
 	}
 	else
 	{
-		Mlb_DrawBody([32, ly + 16], ls_x - 32);
+		Mlb_DrawBody([lx + 16, ly + 16], ls_x - 32);
 		if (mlb_going)
 		if (mlb_state != MLBS_FETCH && mlb_state != MLBS_IDLE)
 		{
@@ -1421,13 +1490,29 @@ void(vector screensize) Mlb_Draw =
 		}
 	}
 
-	sui_text([16, h - 30], SZ_LABEL, ui_fit_text(mlb_jumpnote != "" ? mlb_jumpnote : Mlb_Source(), w - 160, SZ_LABEL),
-	         COL_DIM, 1, 0);
+	s = mlb_jumpnote != "" ? mlb_jumpnote : Mlb_Source();
+	x = w - 16;
 	if (mlb_state == MLBS_OK)
 	{
-		s = sprintf("%g of %g", mlb_n, Mlb_BoardCount());
-		sui_text([w - 16 - stringwidth(s, TRUE, SZ_LABEL), h - 30], SZ_LABEL, s, COL_DIM, 1, 0);
+		// An earlier page that did not land stops the scroll upward; this is its retry.
+		if (mlb_ufail && mlb_offset > 0)
+		{
+			x = x - 150;
+			if (ui_button("mlb_reload", [x, h - 36], [150, 28], "reload from #1"))
+			{
+				mlb_offset = 0;
+				strunzone(mlb_focuswho); mlb_focuswho = "";
+				mlb_focusrank = 0;
+				mlb_focusms = 0i;
+				Mlb_ClearRows(); Mlb_Fetch(FALSE);
+			}
+			x = x - 12;
+		}
+		id = sprintf("%g of %g", mlb_n, Mlb_BoardCount());
+		x = x - stringwidth(id, TRUE, SZ_LABEL);
+		sui_text([x, h - 30], SZ_LABEL, id, COL_DIM, 1, 0);
 	}
+	sui_text([16, h - 30], SZ_LABEL, ui_fit_text(s, x - 32, SZ_LABEL), COL_DIM, 1, 0);
 
 	sui_pop_frame();
 	if (closeit)
@@ -1460,8 +1545,8 @@ void() Mlb_Status =
 	              mlb_known, mlb_cksf, mlb_cmom, mlb_cours, floor(mlb_scroll_y / MLB_ROW_H)));
 	print(sprintf("^5board:^7   pictures: rows have them %g; slots held %g, asked %g, from disk %g, fetched %g\n",
 	              mlb_anyav, MP_Held(), mp_asked, mp_disk, mp_got));
-	print(sprintf("^5board:^7   courses known %g count %g; playtime %g seconds %g attempts %g\n",
-	              mlb_course_known, mlb_course_n, mlb_play_known, mlb_map_seconds, mlb_map_attempts));
+	print(sprintf("^5board:^7   legs known %g count %g; playtime %g seconds %g attempts %g\n",
+	              mlb_course_known, mlb_lgn, mlb_play_known, mlb_map_seconds, mlb_map_attempts));
 	if (mlb_n > 0)
 	{
 		Mlb_PrintRow("first", 0);
@@ -1626,7 +1711,7 @@ float(string value, int limit) Mlb_FocusNumber =
 };
 float(string map, string source, string track, string leg, string style, string rank, string who, string time_ms) Mlb_Browse =
 {
-	local float i, c, t, tr, lg, allsource, off, pickedrank;
+	local float i, c, t, tr, lg, off, pickedrank;
 	local int pickedms;
 	local string savedmap, savedstyle, savedwho;
 	if (map == "" || strlen(map) > 64) return FALSE;
@@ -1641,8 +1726,7 @@ float(string map, string source, string track, string leg, string style, string 
 	if (!strcmp(style, "sw") || !strcmp(style, "hsw") || !strcmp(style, "bw"))
 	if (strcmp(source, "ksf")) return FALSE;
 	if (!Mlb_ScopeNumber(track, 64) || !Mlb_ScopeNumber(leg, 256)) return FALSE;
-	allsource = !strcmp(source, "all");
-	t = allsource ? MLB_T_OURS : Mlb_TabOf(source);
+	t = Mlb_TabOf(source);
 	tr = stof(track); lg = stof(leg);
 	off = pickedrank = 0;
 	pickedms = 0i;
@@ -1659,7 +1743,6 @@ float(string map, string source, string track, string leg, string style, string 
 	}
 	savedmap = strzone(map); savedstyle = strzone(style); savedwho = strzone(who);
 	Mlb_Close("browse");
-	if (allsource) mlb_source = strzone("all");
 	if (!menu_active) m_open();
 	menu_screen = SCREEN_CREATE;
 	ui_create_open();
