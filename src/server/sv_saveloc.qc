@@ -2537,7 +2537,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	// stage itself -- the slot's counters are in ms.txt, not in this file.
 	if (retry == 2)
 	{
-		SV_NoColRegrant(e, savednocol);   // P1204: resume returns here (review 1)
+		SV_NoColRegrant(e, sl_mapsame ? savednocol : "");   // P1204: resume returns here (review 1)
 		return;
 	}
 	if (SV_RecRewind(e, SL_RecPath(id), mark, serial, samples, padn, cps))
@@ -2784,7 +2784,9 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	if (e.run_tas_used)
 		SV_TASMark(e);
 	// P1204: last, in the attempt the load ends in: SV_SaveLoadTag's forgiveness advances it too.
-	SV_NoColRegrant(e, savednocol);
+	// Only on a build PROVED the same (sl_mapsame): a brush number names another entity on
+	// another build of the map (review 2).
+	SV_NoColRegrant(e, sl_mapsame ? savednocol : "");
 };
 
 float(entity e, float id, float retry) SV_SaveApplyState =
