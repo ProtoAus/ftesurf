@@ -21,6 +21,10 @@
 
 ## next
 
+### P1203 Zone editor: drag corners, edges and faces
+- Zone editor: select a zone and press Edit shape, then aim at a corner, edge or face to light it up and hold Mouse1 to drag it. Right-click cancels, Esc returns to the panel.
+- Dragged corners snap like placing does: to the grid (the wheel changes it), to the map's corners and edges, and to other zones. Side faces push and pull, top and bottom set the height.
+
 ### P1207 No prediction-error box in a game you host
 - A game running on your own PC (single player) no longer offers prediction-error reports. Nothing is predicted there, so a teleport or `!r` was being reported as an error.
 - When `!r` or another reset cannot be predicted, the report now says why, and it names the game files you were running.

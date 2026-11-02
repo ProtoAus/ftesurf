@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1203 zone editor: drag corners, edges and faces
+On all 12 lobbies and in both C:\FTESurf / C:\FTEQuake installs (CSQC only); a game you host uses
+its own install's files, so your Desktop WorldofSurf install gets it with the next release. Host
+surf_sinsane_ez from C:\FTESurf, `zone_edit`, place or select a zone, press Edit shape: aim at a
+corner (orange square), hold Mouse1 and move (green), let go. Try a corner onto a map corner (it
+lands exactly), an edge, a side face (pushes straight out), the top and the bottom; right-click
+mid-drag puts it back. Not covered by the arm: real mouse feel, and handles seen from far away.
+
 ## P1207 no prederror box in a game you host
 QC on all 12 lobbies and both Windows installs (restart a running game first; the Desktop copy gets it with
 the next release). Please check:

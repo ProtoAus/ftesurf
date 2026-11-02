@@ -1,5 +1,14 @@
 # AGENT_NOTES.md
 
+## P1203 zone_edit handles (live 2 Nov 08:44Z, deploy/p1203-handles b826c9ba, cs 4745b94a)
+- Delivered QC base for the next lobby deploy: origin/deploy/p1203-handles b826c9ba (e2's
+  46b75823 + 5 CSQC commits; qwprogs e2fa9632 unchanged, .prev restored to 6955e756 by 2b).
+- A `-Pi` deploy that leaves qwprogs unchanged still overwrites qwprogs.dat.prev with the same
+  bytes: save the Pi's .prev before and put it back after (2b, 2 Nov).
+- Arm: tools/p1203handles.py drives the real per-frame code with `zone_edit aimfix` (an eye and
+  aim for every frame), `click`/`drop`/`back`, and reads `zone_edit ring`. Its overlay must carry
+  ftesurf/scripts (p1197snap.prepare copies it).
+
 ## P1202 3D-skybox entities sent, sky props animated (live 2 Nov 08:30Z, deploy/p1202-skyroom 90821a52, qw e2fa9632)
 
 Delivered QC base is now `origin/deploy/p1202-skyroom` 90821a52 = deploy/p1198-menu 3d50226d + 5 SSQC
