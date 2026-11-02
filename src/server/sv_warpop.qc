@@ -302,3 +302,165 @@ void(entity e) SV_WarpOpPublish =
 		SV_WarpOpLegs(e);
 	}
 };
+
+// P1190: teleport pop-in. The client predicts a teleport at once; the destination's networked
+// entities (func_brush ramps, prop_dynamic) waited for a snapshot from the new origin, a command
+// interval plus a round trip later. A second PVS origin through .view2, as above, sits at the
+// destination of a teleport the player is about to touch, else at this stage's `!r` destination.
+// The replay/ghost/spectate eye outranks it. sv_tp_pvs 0 detaches it, 2 keeps teleports only.
+.entity tp_eye;
+.float  tp_eye_next;
+.float  tp_eye_hold;             // until: the eye stays at a crossed teleport's destination
+.float  tp_eye_zone;             // on the eye: the !r zone it shows, -1 for a teleport
+.entity tp_next;
+entity  tp_chain;               // every live trigger_teleport, relinked each second
+float   tp_chain_at;
+
+void(entity e) SV_TpEyeDetach =
+{
+	if (e.tp_eye == world)
+		return;
+	if (e.view2 == e.tp_eye)
+		e.view2 = world;
+	remove(e.tp_eye);
+	e.tp_eye = world;
+};
+
+void() SV_TpChain =
+{
+	local entity t;
+
+	tp_chain = world;
+	for (t = nextent(world); t; t = nextent(t))
+		if (t.touch == trigger_teleport_touch)
+		{
+			t.tp_next = tp_chain;
+			tp_chain = t;
+		}
+	tp_chain_at = time + 1;
+};
+
+void(entity e) SV_TpEyeThink =
+{
+	local entity t, best, d;
+	local vector lo, hi, sw, org, c;
+	local float ahead, bd, dd, z, yaw, haveyaw, fallback, have;
+	local string tgt;
+
+	if (e.rec_wt_hold || e.rec_gh_on || e.run_sp_phase || e.rec_vw_eye != world
+		|| !cvar("sv_tp_pvs"))
+	{
+		SV_TpEyeDetach(e);
+		return;
+	}
+	if (e.tp_eye != world && time < e.tp_eye_next)
+		return;
+	e.tp_eye_next = time + 0.05;
+	if (time >= tp_chain_at || tp_chain_at > time + 1)
+		SV_TpChain();
+
+	// The client runs a round trip ahead of the snapshot that answers it; 400*t^2 is
+	// half of sv_gravity 800, for a fall into a fail trigger.
+	ahead = bound(0.2, stof(infokey(e, "ping")) * 0.0015 + 0.1, 0.8);
+	sw = e.velocity * ahead;
+	lo = e.absmin + [min(sw_x, 0), min(sw_y, 0), min(sw_z, 0) - 400 * ahead * ahead];
+	hi = e.absmax + [max(sw_x, 0), max(sw_y, 0), max(sw_z, 0)];
+	best = world;
+	bd = 999999999;
+	for (t = tp_chain; t; t = t.tp_next)
+	{
+		if (wasfreed(t) || t.touch != trigger_teleport_touch || (t.solid == SOLID_NOT && !t.vbsp_tooltrig))
+			continue;
+		if (SV_Key2(t.StartDisabled, t.startdisabled))
+			continue;
+		if (t.absmin_x > hi_x || t.absmax_x < lo_x || t.absmin_y > hi_y || t.absmax_y < lo_y
+			|| t.absmin_z > hi_z || t.absmax_z < lo_z)
+			continue;
+		c = [bound(t.absmin_x, e.origin_x, t.absmax_x), bound(t.absmin_y, e.origin_y, t.absmax_y),
+		     bound(t.absmin_z, e.origin_z, t.absmax_z)];
+		dd = vlen(c - e.origin);
+		if (dd < bd)
+		{
+			bd = dd;
+			best = t;
+		}
+	}
+
+	// Just crossed: the eye stays at that destination while `!r`'s stat catches up (up to 1 s
+	// stale, sv_warpop.qc), or it would flash to the last stage's start.
+	if (best == world && time < e.tp_eye_hold && e.tp_eye != world)
+		return;
+	have = FALSE;
+	d = world;
+	org = '0 0 0';
+	if (best != world)
+	{
+		tgt = SV_TpDest(best, e);
+		if (tgt != "")              // find("") returns client slot 0 (Patch 881)
+			d = find(world, targetname, tgt);
+		if (d != world)
+		{
+			org = d.origin;
+			have = TRUE;
+			e.tp_eye_hold = time + 1;
+		}
+	}
+	z = -1;
+	if (cvar("sv_tp_pvs") == 2)
+		z = -4;             // teleports only (the arm's lookahead control)
+	else if (!have && e.wop_rorg != '0 0 0')
+	{
+		org = e.wop_rorg;           // the client's own `!r` prediction target
+		have = TRUE;
+		z = -3;
+	}
+	if (!have && z == -1 && zone_count > 0)
+	{
+		z = SV_ZoneRequestZone(e, "!r", 0);
+		if (z >= 0 && z < zone_count)
+		if (zone_td_kind[z] == ZTD_NONE || zone_td_kind[z] == ZTD_POS || zone_td_kind[z] == ZTD_NAME)
+		{
+			org = SV_ZoneDestRead(e, z, yaw, haveyaw, fallback);
+			have = TRUE;
+		}
+	}
+	if (!have)
+	{
+		SV_TpEyeDetach(e);
+		return;
+	}
+
+	if (e.tp_eye == world)
+	{
+		// A slot's next client inherits the field cleared, not the entity (Patch 477 round 27).
+		e.tp_eye = find(world, classname, "tp_view_eye");
+		while (e.tp_eye != world && e.tp_eye.owner != e)
+			e.tp_eye = find(e.tp_eye, classname, "tp_view_eye");
+	}
+	if (e.tp_eye == world)
+	{
+		e.tp_eye = spawn();
+		e.tp_eye.classname = "tp_view_eye";
+		e.tp_eye.movetype  = MOVETYPE_NONE;
+		e.tp_eye.solid     = SOLID_NOT;
+		e.tp_eye.owner     = e;
+		setmodel(e.tp_eye, "");
+		setsize(e.tp_eye, '0 0 0', '0 0 0');
+		e.tp_eye.tp_eye_zone = -2;
+	}
+	e.view2 = e.tp_eye;
+	if (cvar("developer"))
+	if (e.tp_eye.enemy != best || e.tp_eye.tp_eye_zone != z || vlen(org + e.view_ofs - e.tp_eye.origin) > 64)
+	{
+		if (best != world)
+			tgt = sprintf("teleport %s -> %s", etos(best), etos(d));
+		else if (z == -3)
+			tgt = "!r stat";
+		else
+			tgt = sprintf("!r zone %g", z);
+		dprint(sprintf("tp_pvs: %s eye at %v (%s)\n", e.netname, org + e.view_ofs, tgt));
+	}
+	setorigin(e.tp_eye, org + e.view_ofs);
+	e.tp_eye.enemy = best;
+	e.tp_eye.tp_eye_zone = z;
+};

@@ -423,6 +423,7 @@ void() ClientDisconnect =
 	self.run_own = FALSE;
 	SV_WatchRelease(self);              // Patch 477: or its view entity outlives the slot
 	SV_ViewEyeDetach(self);             // round 26: a ghost's too (the release returns without a pin)
+	SV_TpEyeDetach(self);               // P1190
 	self.run_inserver = FALSE;          // round 27
 
 	// Close any open .rec before the edict goes: fclose is what actually
@@ -855,6 +856,7 @@ void() PlayerPostThink =
 		SV_HeldEvent(self, "maint-post");
 	SV_NoclipWatch(self);
 	Account_Think(self);                // Patch 619: a started Steam link, waited on
+	SV_TpEyeThink(self);                // P1190: PVS ahead of predicted teleports
 
 	SV_TASReplayFrame(self, FALSE); // terminal faults must be visible even without a new tick
 	// P1055: use the bounded actual-step ACK, not the general float counter
