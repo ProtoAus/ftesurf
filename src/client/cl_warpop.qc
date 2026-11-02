@@ -612,6 +612,7 @@ void() WarpOp_InputFrame =
 	if (wop_op[best] == WOP_RELEASE)
 		wop_relseq = clientcommandframe;
 	dprint(sprintf("warpop: %g on command %g\n", wop_op[best], clientcommandframe));
+	PE_Note(sprintf("warpop %g on command %g", wop_op[best], clientcommandframe));
 };
 
 // The server's body for op `op` (ring slot i), at the first piece of its command.

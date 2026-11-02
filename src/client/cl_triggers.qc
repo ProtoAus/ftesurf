@@ -529,6 +529,10 @@ float  tg_io_tbase;             // PERSISTENT: clock value at the last ack
 float  tg_iotime0;              // client time at load, for mapspawn delays
 float  tg_c_event, tg_c_iodem, tg_c_sdok, tg_c_ioown, tg_c_iogated, tg_c_fctx;
 .float tg_netgate, tg_netready, tg_neton;
+// Patch 1195: cl_prederr.qc, later in cl_progs.src (cl_chat and cl_warpop use these too).
+void(string s) PE_Note;
+void(float i, float seq) PE_TrigFired;
+void() PE_MapReset;
 .float tg_sspartoffset;          // EveryTick's last applied part within tg_ssinseq
 .float tg_seenoff;               // Patch 1025: predmove_offset of the last touch (tick parts)
 .float tg_fctx;                  // Patch 1037: passes only while the server ignores contexts
@@ -1047,6 +1051,8 @@ void(float modelnum, float ready, float on) Trig_NetState =
 		if (tg_kind[i] == TG_PUSH || tg_kind[i] == TG_TELE)
 			if (!strcmp(tg_ent[i].model, modelname))
 			{
+				if (tg_ent[i].tg_netready != ready || tg_ent[i].tg_neton != on)
+					PE_Note(sprintf("gate #%g %s ready %g on %g", i, modelname, ready, on));
 				tg_ent[i].tg_netready = ready;
 				tg_ent[i].tg_neton = on;
 				if (cvar("cl_trigdebug"))
@@ -1716,6 +1722,8 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 		else
 			hit = TG_FirePush(i, seq);
 
+		if (hit)
+			PE_TrigFired(i, seq);
 		if (hit && tg_cv_debug)
 			print(sprintf("^5trig^7: seq %g trig #%g kind %g fired (org %v vel %v)\n",
 			              seq, i, tg_kind[i], predmove_org, predmove_vel));
@@ -2145,6 +2153,7 @@ void() Trig_LoadForMap =
 
 	TG_IOResolve();
 	Body_TrigSeed();
+	PE_MapReset();
 	if (!tg_inring)
 	{
 		tg_inring  = memalloc(sizeof(float) * TG_MAX * TG_RING * 2);
