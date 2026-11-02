@@ -1904,6 +1904,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		if (getcursormode(TRUE)) navfocus = FALSE;
 	Rewind_Frame(navfocus);         // Patch 477: the cursor and the countdown
 
+	MilkSky_Passes();               // P1218: its render targets before clearscene (cl_milk.qc)
 	clearscene();
 
 	setproperty(VF_DRAWENGINESBAR, 0);
@@ -2074,8 +2075,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	Trail_Pin();
 	RG_Pin();                       // Patch 746: the ghosts' highlights, the same 2D pass
 
-	// Patch 467.  The sky's render-target passes, last before the scene that
-	// samples them; Milk_Tick puts VF_RT_DESTCOLOUR back to the screen.
+	// Patch 467.  The sky's camera and user data (its passes ran before clearscene, P1218).
 	MilkSky_Frame();
 
 	// Cosmetic shot punch lives ONLY in the main scene, never input/aim/sidecars.
