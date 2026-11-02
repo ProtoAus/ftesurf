@@ -186,13 +186,8 @@ void(string rendererdescription) CSQC_RendererRestarted =
 	Inv_GlowLost();                 // P1230: the aura's and crown's materials and targets
 };
 
-/*
-  P1218: the render-target passes run BEFORE clearscene.  A 2D draw into a target sets the
-  engine's scene time to realtime (gl_draw.c GL_Set2D) and renderscene does not set it back;
-  clearscene does (cl.servertime).  Drawn after clearscene, every frame the sim ticked rendered
-  the world on the other clock, so scrolling and animated textures jumped (Lex, 3 Nov: surf_dragonfall's
-  lava panels flickered with the visualizer sky, not with the map's own).
-*/
+// P1235: before clearscene.  A 2D draw into a target leaves the scene time on realtime
+// (gl_draw.c GL_Set2D) and only clearscene sets it back: the world's scrolling textures jumped.
 void() MilkSky_Passes =
 {
 	local float now, q, s;
