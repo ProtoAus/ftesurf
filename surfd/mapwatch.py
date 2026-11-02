@@ -1264,6 +1264,10 @@ def main():
                     help="replace a build or zone file that differs from the published one")
     ap.add_argument("--go", action="store_true", help="fetch; else a plan")
     a = ap.parse_args()
+    if S.setting('SURFD_TAS_CONTENT_LEASE', ''):
+        # P1234: before any download; content_publication() refuses too, as a backstop.
+        print("SURFD_TAS_CONTENT_LEASE is set, but this mapwatch has no tascontent: nothing run")
+        return 2
 
     lock = take_lock(a.state)
     if lock is None:
