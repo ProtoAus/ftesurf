@@ -21,6 +21,15 @@
 
 ## next
 
+### P1192 surf_olivia's sky is back over the hub
+- On maps with a 3D sky, the whole sky is now drawn behind it, as Momentum does. surf_olivia's start area showed black (with smears) where the sky should be.
+
+
+### P1191 Missing textures from a game you do not have draw as flat colours
+- Walls whose material comes from a game you do not have (surf_utopia without Team Fortress 2) now draw as a flat colour, lit like the rest of the map, as Momentum does, instead of the missing-texture checker.
+- A map whose sky comes from a game you do not have now shows the default sky instead of black.
+
+
 ### P1195 Report a prediction error with one key
 - When the game corrects your position by a lot (a "prediction error"), it now keeps a short record of the last few seconds and shows a box on the right. Press F6 to send it to the lobby so we can find the cause.
 - Nothing is sent unless you press F6. `cl_prederr_ask 0` keeps the reports on your PC without asking; `cl_prederr_report` sets how big an error has to be (32 units).

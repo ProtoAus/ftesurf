@@ -42,18 +42,15 @@
   sv_user.c) and in prediction; making the barriers non-solid instead is a skip. Falsifier:
   flying stage 1 through the grant window (#1523) reaches the stage 2 start without prederr;
   skipping the window stays blocked; a save after the window still passes after reset+load.
-- surf_olivia draws no sky at the hub/map_start: its 3D-sky camera's area (6) holds only the
-  lower box; the sky ceiling is in area 5 of the same cluster, and the 3D-sky pass enables only
-  the camera's area (gl_warp.c R_DrawSkyroom), while the 2D sky paints only over sky faces that
-  drew (gl_warp.c R_CalcSkyChainBounds before GL_DrawSkyBox). The only one of 281 parseable
-  sky_camera maps laid out so. Fix: draw the whole 2D skybox behind a Source map's 3D-sky view,
-  as Source does. Falsifier: sky at map_start with vbsp_skyroom 1; unchanged on surf_santorini.
-- surf_utopia: 14,564 of 16,966 world faces and the sky are TF2 materials; Momentum's install
-  has none of them (its tf placeholder VPK is models only), so without TF2 Momentum shows
-  reflectivity-tinted flat colour (mat_error_texture_advanced). Ours shows the P780 checker.
-  Fix option: in the hl2 plugin, a grey tinted by the material's reflectivity (read and unused
-  at mod_vbsp.c ~2643) instead of the checker, and r_skybox_default when every sky face fails.
-  Falsifier: utopia with TF2 unmounted draws tinted walls and a sky, no checker.
+- P1191 residuals (missing-material colour): a VMT that loaded but whose image is missing
+  (surf_me's walls without the TF2 pack) keeps the checker, because its shader is not finished
+  when VBSP_GenerateMaterials runs (sort 0) and a translucent one cannot be told apart; water
+  (#WARP) keeps it too. Tinting those needs the VMT's blend state carried from mat_vmt.c.
+  r_skybox_default (sky_cape_hill) ships only in Momentum's own folder, so a player without
+  Momentum mounted gets no default sky either.
+- P1192 residual: the whole box is drawn by the 3D-sky view's first sky batch, so a sky room
+  whose view keeps no sky face at all would still show the clear colour (not seen; olivia's
+  view keeps its walls).
 - Teleport pop-in: brush entities at a teleport's destination arrive with the server's next
   snapshot after the client's predicted crossing (the server's PVS is from the edict origin,
   sv_ents.c SV_Snapshot_SetupPVS), so they appear a command interval plus a round trip late

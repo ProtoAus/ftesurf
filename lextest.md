@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P1191 / P1192 flat colours for missing materials; olivia's sky (next client release)
+Engine exe + hl2 plugin only (engine 461b03b17): nothing installed yet; reaches players with the next
+client release. Please check once it is installed:
+1. surf_utopia without TF2 (yesh, or `fs_unload` TF2 and reload): the walls are lit flat colours, not
+   the checker; the "materials did not resolve" notice still shows. `hl2_missingtint 0` + reload brings
+   the checker back. Looking at the sky shows the default sky (cape hill), not black.
+2. surf_olivia: `!r`, look up from map_start: sky overhead, no black or smears. `r_skyroom_fullbox 0`
+   shows the old gap.
+Measured on owned rigs: control vs fix screenshots and pixel diffs in engine ENGINE_PATCHES.md.
+
 ## P1195 prederror reports
 Engine in both Windows installs, QC on all 12 lobbies (restart a running game first). Please check:
 1. On a lobby, get a prediction error (surf_network2008 before P1196 was the easy one; any snap of 32+
