@@ -697,7 +697,7 @@ float(float s) TG_IOSource =
 // keep a trigger predicted that the server can rewrite, the unsafe side.
 float(float o, float s) TG_IOHits =
 {
-	if (!strcmp(io_tgt[o], "!self"))
+	if (!strcasecmp(io_tgt[o], "!self"))
 		return io_src[o] == s;
 	if (substring(io_tgt[o], 0, 1) == "!")
 		return FALSE;			// !activator and friends are never a slot
@@ -769,6 +769,8 @@ float(float s) TG_IOOwnerBad =
 			return TRUE;
 		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_PMOVE)
 			return TRUE;
+		if (io_inp[o] == IN_VSVEL && !(TG_IOVsOK(o) && (io_ev[o] == EV_START || io_ev[o] == EV_END)))
+			return TRUE;              // P1205: delayed, counted or OnJump: the server's alone
 		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_BVEL && !TG_IOBvelOK(o))
 			return TRUE;
 	}
@@ -833,7 +835,7 @@ float(float o, float seq) TG_IOApply =
 			return 0;			// spent, as SV_FireOutput spends it
 	}
 	val = (io_inp[o] == IN_EN) ? 1 : 0;
-	if (!strcmp(io_tgt[o], "!self"))
+	if (!strcasecmp(io_tgt[o], "!self"))
 	{
 		s = io_src[o];
 		if (s >= 0 && tg_kind[s])
@@ -1232,8 +1234,8 @@ void() TG_IOResolve =
 			if (io_src[o] == s && io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_BVEL && TG_IOBvelOK(o))
 				tg_io_own[s] = 1;   // Patch 1025
 		for (o = 0; o < io_n; o = o + 1)
-			if (io_src[o] == s && io_inp[o] == IN_VSVEL && io_ev[o] == EV_END && TG_IOVsOK(o))
-				tg_io_own[s] = 1;   // P1205: its OnEndTouch writes are this mirror's to fire
+			if (io_src[o] == s && io_inp[o] == IN_VSVEL && TG_IOVsOK(o))
+				tg_io_own[s] = 1;   // P1205: owned, so its touch state resets and START fires every entry (review 1)
 		if (tg_io_own[s])
 			tg_c_ioown = tg_c_ioown + 1;
 		if (tg_io_gated[s])

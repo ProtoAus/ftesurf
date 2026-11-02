@@ -2536,7 +2536,10 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	// Multi-Session (retry 2): SV_MsApply attaches the recorder and reopens the
 	// stage itself -- the slot's counters are in ms.txt, not in this file.
 	if (retry == 2)
+	{
+		SV_NoColRegrant(e, savednocol);   // P1204: resume returns here (review 1)
 		return;
+	}
 	if (SV_RecRewind(e, SL_RecPath(id), mark, serial, samples, padn, cps))
 	{
 		// Patch 426: a kept abandon THIS load held (the Patch 360 discard above)

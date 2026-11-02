@@ -4378,6 +4378,9 @@ float(string code, string call) SV_ScriptIs = { return substring(code, 0, strlen
 .float vsv_on;
 .vector vsv_eop, vsv_ea, vsv_eb;
 .int vsv_attempt;                // the bank attempt it was fired in: a reset, load or setpos drops it
+.entity vsv_bp;                  // the firing output's bank context (SV_FireOutput), for SV_BankCauseAffect
+.int vsv_ba;
+.float vsv_bb;
 
 void(entity e) SV_VsVelPost =
 {
@@ -4390,7 +4393,12 @@ void(entity e) SV_VsVelPost =
 	v = FS_VsVelApply(e.velocity, e.vsv_eop, e.vsv_ea, e.vsv_eb);
 	if (cvar("developer"))
 		dprint(sprintf("script: %s velocity %v -> %v\n", e.netname, e.velocity, v));
+	// trigger_setspeed's two duties (review 1): its source's taint, and a `speed` warp so a
+	// replay re-seeds the velocity (the touch's `tele` warp holds the one before the write).
+	if (v != e.velocity)
+		SV_BankCauseAffect(e, e.vsv_bp, e.vsv_ba, e.vsv_bb);
 	e.velocity = v;
+	SV_RecWarp(e, "speed");
 };
 
 // RunScriptCode: only barriercollision.nut's two calls; barrierscript.nut's emissive calls
@@ -4411,6 +4419,9 @@ float(entity t, entity act, string code) SV_ScriptCode =
 			return FALSE;
 		t.vsv_on = TRUE;
 		t.vsv_attempt = t.bank_attempt;
+		t.vsv_bp = bank_ctx_player;
+		t.vsv_ba = bank_ctx_attempt;
+		t.vsv_bb = bank_ctx_bad;
 		t.vsv_eop = vsv_op;
 		t.vsv_ea = vsv_a;
 		t.vsv_eb = vsv_b;

@@ -5,8 +5,10 @@
 //   [local flVelocity = self.GetAbsVelocity();] self.Set[Abs]Velocity( Vector(c c c) | Vector() ) [;]
 // c: a number; the same axis read back (self.GetAbsVelocity().z, self.GetVelocity().z,
 // flVelocity.z); or `that > N ? M : that`. Commas between parts are optional, as in
-// Squirrel's call arguments. Anything else (a 4-part Vector, a missing paren, a part read
-// from another axis) errors in Source or is not this grammar: FALSE, and nothing runs.
+// Squirrel's call arguments. Names are case-sensitive, as Squirrel's member lookup is
+// (bhop_surf_apex's `self.setAbsVelocity` errors there), and code wrapped in backticks is a
+// string, not a call (surf_fairy). Anything else (a 4-part Vector, a missing paren, a part
+// read from another axis) errors in Source or is not this grammar: FALSE, and nothing runs.
 
 vector vsv_op, vsv_a, vsv_b;    // FS_VsVelParse's answer, per axis: op 0 keep, 1 set a, 2 (v > a) ? b : v
 
@@ -26,11 +28,38 @@ float(string s) FS_VsNum =
 	return digits;
 };
 
-// s is spaceless and lowercase.
+float(string s, float i) FS_VsBlank =
+{
+	local float c;
+	c = str2chr(s, i);
+	return (c == 32 || c == 9);
+};
+
+// Spaces and tabs off both ends; with `semi`, trailing ';' too.
+string(string s, float semi) FS_VsTrimX =
+{
+	while (s != "" && FS_VsBlank(s, 0))
+		s = substring(s, 1, -1);
+	while (s != "" && (FS_VsBlank(s, strlen(s) - 1) || (semi && str2chr(s, strlen(s) - 1) == 59)))
+		s = substring(s, 0, strlen(s) - 1);
+	return s;
+};
+string(string s) FS_VsTrim = { return FS_VsTrimX(s, TRUE); };
+string(string s) FS_VsTrimOf = { return FS_VsTrimX(s, FALSE); };
+
+// The first and last characters are ( and ): what is between, trimmed; else "!".
+string(string s) FS_VsParens =
+{
+	if (strlen(s) < 2 || str2chr(s, 0) != 40 || str2chr(s, strlen(s) - 1) != 41)
+		return "!";
+	return FS_VsTrim(substring(s, 1, strlen(s) - 2));
+};
+
+// s is spaceless.
 float(string s, string ax, float al) FS_VsRead =
 {
-	return (s == strcat("self.getabsvelocity().", ax) || s == strcat("self.getvelocity().", ax)
-	        || (al && s == strcat("flvelocity.", ax)));
+	return (s == strcat("self.GetAbsVelocity().", ax) || s == strcat("self.GetVelocity().", ax)
+	        || (al && s == strcat("flVelocity.", ax)));
 };
 
 // One part for axis ax ("x"/"y"/"z"): its op, with vsc_a/vsc_b; -1 if not the grammar.
@@ -38,6 +67,9 @@ float vsc_a, vsc_b;
 float(string s, string ax, float al) FS_VsPart =
 {
 	local float q, c, g;
+	q = strstrofs(s, "?", 0);
+	if (q < 0 && strstrofs(FS_VsTrimOf(s), " ", 0) >= 0)
+		return -1;                  // two values in one comma part: another argument
 	s = strreplace(" ", "", s);
 	if (FS_VsNum(s)) { vsc_a = stof(s); return 1; }
 	if (FS_VsRead(s, ax, al)) return 0;
@@ -55,50 +87,26 @@ float(string s, string ax, float al) FS_VsPart =
 	return -1;
 };
 
-float(string s, float i) FS_VsBlank =
-{
-	local float c;
-	c = str2chr(s, i);
-	return (c == 32 || c == 9);
-};
-
-string(string s) FS_VsTrim =
-{
-	while (s != "" && FS_VsBlank(s, 0))
-		s = substring(s, 1, -1);
-	while (s != "" && (FS_VsBlank(s, strlen(s) - 1) || str2chr(s, strlen(s) - 1) == 59))   // ';'
-		s = substring(s, 0, strlen(s) - 1);
-	return s;
-};
-
-// The first and last characters are ( and ): what is between, trimmed; else "!".
-string(string s) FS_VsParens =
-{
-	if (strlen(s) < 2 || str2chr(s, 0) != 40 || str2chr(s, strlen(s) - 1) != 41)
-		return "!";
-	return FS_VsTrim(substring(s, 1, strlen(s) - 2));
-};
-
 float(string code) FS_VsVelParse =
 {
-	local float al, n, i, k, op;
+	local float al, n, i, k, op, comma;
 	local string s, p, ax;
 
-	s = FS_VsTrim(strtolower(strreplace("`", "", code)));
+	s = FS_VsTrim(code);
 	al = FALSE;
-	if (substring(s, 0, 16) == "local flvelocity")
+	if (substring(s, 0, 16) == "local flVelocity")
 	{
 		k = strstrofs(s, ";", 0);
-		if (k < 0 || strreplace(" ", "", substring(s, 0, k)) != "localflvelocity=self.getabsvelocity()")
+		if (k < 0 || strreplace(" ", "", substring(s, 0, k)) != "localflVelocity=self.GetAbsVelocity()")
 			return FALSE;
 		al = TRUE;
 		s = FS_VsTrim(substring(s, k + 1, -1));
 	}
-	if (substring(s, 0, 19) == "self.setabsvelocity") s = FS_VsTrim(substring(s, 19, -1));
-	else if (substring(s, 0, 16) == "self.setvelocity") s = FS_VsTrim(substring(s, 16, -1));
+	if (substring(s, 0, 19) == "self.SetAbsVelocity") s = FS_VsTrim(substring(s, 19, -1));
+	else if (substring(s, 0, 16) == "self.SetVelocity") s = FS_VsTrim(substring(s, 16, -1));
 	else return FALSE;
 	s = FS_VsParens(s);
-	if (substring(s, 0, 6) != "vector") return FALSE;
+	if (substring(s, 0, 6) != "Vector") return FALSE;
 	s = FS_VsParens(FS_VsTrim(substring(s, 6, -1)));
 	if (s == "!") return FALSE;
 	vsv_op = vsv_a = vsv_b = '0 0 0';
@@ -107,7 +115,8 @@ float(string code) FS_VsVelParse =
 		vsv_op = '1 1 1';              // Vector(): zero
 		return TRUE;
 	}
-	n = tokenizebyseparator(s, (strstrofs(s, ",", 0) >= 0) ? "," : " ");
+	comma = (strstrofs(s, ",", 0) >= 0);
+	n = tokenizebyseparator(s, comma ? "," : " ");
 	k = 0;
 	for (i = 0; i < n; i = i + 1)
 	{
@@ -137,7 +146,7 @@ vector(vector v, vector op, vector a, vector b) FS_VsVelApply =
 	return [FS_VsAxis(v_x, op_x, a_x, b_x), FS_VsAxis(v_y, op_y, a_y, b_y), FS_VsAxis(v_z, op_z, a_z, b_z)];
 };
 
-// Source matches "!activator" and friends case-insensitively (FStrEq); surf_fairy writes "!Activator".
+// Source matches "!activator" and friends case-insensitively (FStrEq).
 float(string t) FS_IsActivator =
 {
 	t = strtolower(t);
