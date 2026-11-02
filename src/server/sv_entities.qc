@@ -4377,6 +4377,7 @@ float(string code, string call) SV_ScriptIs = { return substring(code, 0, strlen
 // command whose touch fired it, where cl_triggers.qc applies it at the end of its prediction.
 .float vsv_on;
 .vector vsv_eop, vsv_ea, vsv_eb;
+.int vsv_attempt;                // the bank attempt it was fired in: a reset, load or setpos drops it
 
 void(entity e) SV_VsVelPost =
 {
@@ -4384,6 +4385,8 @@ void(entity e) SV_VsVelPost =
 	if (!e.vsv_on)
 		return;
 	e.vsv_on = FALSE;
+	if (e.vsv_attempt != e.bank_attempt)
+		return;                     // a boost touched, then !r: not into the new run
 	v = FS_VsVelApply(e.velocity, e.vsv_eop, e.vsv_ea, e.vsv_eb);
 	if (cvar("developer"))
 		dprint(sprintf("script: %s velocity %v -> %v\n", e.netname, e.velocity, v));
@@ -4407,6 +4410,7 @@ float(entity t, entity act, string code) SV_ScriptCode =
 		if (!FS_VsVelParse(code))
 			return FALSE;
 		t.vsv_on = TRUE;
+		t.vsv_attempt = t.bank_attempt;
 		t.vsv_eop = vsv_op;
 		t.vsv_ea = vsv_a;
 		t.vsv_eb = vsv_b;
