@@ -8,8 +8,8 @@ string ms_pf_other;             // a player picked from the search; "" is me
 float  ms_pf_zoned;
 float  ms_back;                 // P1198: the screen a player click came from
 float  ms_inv;                  // the Inventory window is up
-string ms_bmap, ms_bsource, ms_bstyle;  // P1198: the board a row click left, reopened on Back
-float  ms_btrack, ms_bleg;
+string ms_bmap, ms_bstyle;     // P1198: the board a row click left, reopened on Back
+float  ms_btab, ms_btrack, ms_bleg;
 
 void(string who) MStats_SetOther =
 {
@@ -56,13 +56,12 @@ void(string who) MStats_Player =
 	if (!menu_active) m_open();
 	MStats_Open();
 	MStats_SetOther(who);
-	if (back == SCREEN_CHAT || back == SCREEN_STORY || board) ms_back = back;
+	if (back == SCREEN_CHAT || back == SCREEN_STORY || back == SCREEN_CREATE) ms_back = back;
 	if (board)
 	{
 		ms_bmap = strzone(mlb_map);
-		if (ms_bsource != "") strunzone(ms_bsource);
 		if (ms_bstyle != "") strunzone(ms_bstyle);
-		ms_bsource = strzone((mlb_tab == MLB_T_ALL) ? "all" : Mlb_Tier(mlb_tab));
+		ms_btab = mlb_tab;
 		ms_bstyle = strzone(mlb_style);
 		ms_btrack = mlb_track; ms_bleg = mlb_leg;
 	}
@@ -76,7 +75,7 @@ void() MStats_Close =
 	menu_screen = ms_back;
 	ms_back = SCREEN_MAIN;
 	if (ms_bmap == "") return;
-	Mlb_Browse(ms_bmap, ms_bsource, ftos(ms_btrack), ftos(ms_bleg), ms_bstyle, "", "", "");
+	Mlb_Reopen(ms_bmap, ms_btab, ms_btrack, ms_bleg, ms_bstyle);
 	strunzone(ms_bmap); ms_bmap = "";
 };
 

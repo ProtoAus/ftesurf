@@ -88,7 +88,7 @@ strbuf mlb_bdate;
 strbuf mlb_bwho;               // Patch 789: the row's picture mark, "" none
 strbuf mlb_bhand;              // P1198: the row's 12-hex handle (surfd's web_handle), "" none
 strbuf mlb_bms;                // P1199: the row's exact ms as an int string, for DELTA
-int    mlb_refms;              // the fastest ms held (cl_scores.qc's delta reference)
+int    mlb_refms;              // the #1 row's ms (DELTA's reference)
 float  mlb_anyav;               // some row has one: every name moves over
 
 string(float t) Mlb_Tier =
@@ -792,7 +792,9 @@ void(float i, int row) Mlb_Row =
 	ms = json_get_integer(json_find_object_child(row, "ms"));
 	bufstr_set(mlb_btime, i, Mlb_MsString(ms));
 	bufstr_set(mlb_bms, i, (ms > 0i) ? Mlb_Itos(ms) : "");
-	if (ms > 0i && (mlb_refms == 0i || ms < mlb_refms)) mlb_refms = ms;
+	// DELTA's reference is the #1 row: a board opened at someone's rank shows none until scrolled there.
+	if (ms > 0i && json_get_float(json_find_object_child(row, "r")) == 1)
+	if (mlb_refms == 0i || ms < mlb_refms) mlb_refms = ms;
 	bufstr_set(mlb_bdate, i, Mlb_Date(json_get_integer(json_find_object_child(row, "when"))));
 	// Patch 789: `av` is surfd saying the player has a picture (cl_online.qc's rule).
 	bufstr_set(mlb_bwho, i, json_get_float(json_find_object_child(row, "av"))
@@ -1404,7 +1406,11 @@ void(vector screensize) Mlb_Draw =
 	lsz = [sidew - 12, 40];
 	ls = [sidew, h - ly - 44];
 	if (!mlb_course_known)
+	{
 		sui_text([20, ly + 8], SZ_LABEL, mlb_course_req ? "loading..." : Mlb_LegName(mlb_track, mlb_leg), COL_DIM, 1, 0);
+		if (!mlb_course_req)
+		if (ui_button("mlb_legs_retry", [20, ly + 36], [84, 26], "retry")) Mlb_AuxAsk();
+	}
 	else
 	{
 		sui_list_view_begin("mlb_legs", [16, ly], ls, lsz, mlb_lgn, mlb_legscroll, [0, 10]);
@@ -1709,6 +1715,25 @@ float(string value, int limit) Mlb_FocusNumber =
 	if (strcmp(value, bound) > 0) return FALSE;
 	return Mlb_Stoi(value) > 0i;
 };
+// P1198: the board the menu itself held, on exactly that tab, leg and style.  Mlb_Browse's
+// checks are for requests and refuse e.g. Sideways outside KSF (review 1).
+void(string map, float t, float tr, float lg, string style) Mlb_Reopen =
+{
+	local string savedmap, savedstyle;
+	savedmap = strzone(map); savedstyle = strzone(style);
+	Mlb_Close("stats back");
+	if (!menu_active) m_open();
+	menu_screen = SCREEN_CREATE;
+	ui_create_open();
+	mlb_track = tr; mlb_leg = lg; mlb_style = strzone(savedstyle);
+	mlb_offset = mlb_focusrank = 0;
+	mlb_focusms = 0i;
+	mlb_browsing = TRUE;
+	Mlb_Open(savedmap, t);
+	mlb_browsing = FALSE;
+	strunzone(savedmap); strunzone(savedstyle);
+};
+
 float(string map, string source, string track, string leg, string style, string rank, string who, string time_ms) Mlb_Browse =
 {
 	local float i, c, t, tr, lg, off, pickedrank;

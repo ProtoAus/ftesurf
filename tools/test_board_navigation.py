@@ -93,12 +93,13 @@ class BoardNavigation(unittest.TestCase):
         self.assertIn('registercvar("ui_board_request", "", 0);', main)
         draw = main[main.index('void(vector screensize) m_draw ='):]
         self.assertLess(draw.index('Mlb_Poll();'), draw.index('if (!menu_active)'))
-        self.assertIn('if (t == mlb_tab && mlb_source == "") return;', b)
-        self.assertIn('if (!strcmp(mlb_source, "all")) return "combined";', b)
+        # P1199: "all" is a tab (MLB_T_ALL), not a source string.
+        self.assertIn('if (t == mlb_tab) return;', b)
+        self.assertIn('if (t == MLB_T_ALL) return "combined";', b)
+        self.assertNotIn('mlb_source', b)
         counts = b[b.index('float(float t) Mlb_TabCount ='):b.index('// "KSF')]
         per_tab, active = counts.split('float() Mlb_BoardCount =', 1)
-        self.assertNotIn('mlb_source', per_tab)
-        self.assertIn('mlb_cksf + mlb_cmom + mlb_cours', active)
+        self.assertIn('mlb_cksf + mlb_cmom + mlb_cours', per_tab)
         self.assertIn('Mlb_TabCount(mlb_tab)', active)
         self.assertIn('All games: FTESurf, Momentum Mod, KSF', b)
 
@@ -110,8 +111,10 @@ class BoardNavigation(unittest.TestCase):
         self.assertIn('substring(digest_hex("SHA256", json_get_string(json_find_object_child(row, "player"))), 0, strlen(mlb_focuswho))', b)
         self.assertIn('== mlb_focusms', b)
         self.assertIn('i == mlb_focus', b)
-        self.assertIn('"mlb_earlier"', b)
-        self.assertIn('"mlb_top"', b)
+        # P1199: scrolling pages both ways; the earlier/top buttons are gone.
+        self.assertNotIn('"mlb_earlier"', b)
+        self.assertNotIn('"mlb_top"', b)
+        self.assertIn('Mlb_Earlier();', b)
         p = source('src/client/cl_profile.qc')
         self.assertIn('sui_action_element(lp, [sz_x - tsz, rowh], strcat("pf_map", ftos(i))', p)
         s = source('src/client/cl_scores.qc')

@@ -601,9 +601,9 @@ float(float reqid, float code, string body) MF_Reply =
 
 void(vector pos, vector size) MF_Draw =
 {
-	local float i, rel, online, menuonline, at, fresh, alpha, flag, room;
+	local float i, rel, online, menuonline, at, fresh, alpha, flag, room, bw;
 	local vector rp;
-	local string who, nm, server, map, status, id, ago, activity;
+	local string who, nm, server, map, status, id, ago, activity, label;
 	sui_style_panel(pos, size, 12, 1);
 	sui_push_frame(pos, size);
 	sui_text('16 12 0', SZ_HEAD, "friends", COL_ACCENT, 1, 0);
@@ -653,7 +653,19 @@ void(vector pos, vector size) MF_Draw =
 			room = size_x - 114;
 			sui_style_box(rp, [size_x - 38, 64], 8, SUI_THEME_WELL, SUI_THEME_EDGE, alpha);
 			// P1198: a button at the right (Message, or Add back) takes its width from the row.
-			if ((rel == 3 || (rel == 2 && !MF_Direct())) && MF_WhoSafe(who)) room = room - 120;
+			// P1198: a button at the right (Message, or Add back) takes its width from the row;
+			// a narrow sidebar gets the short label rather than a name squeezed to nothing.
+			bw = 0;
+			label = "";
+			if (rel == 3 && MF_WhoSafe(who))
+			{
+				label = MC_Unread(who) ? sprintf("Message (%g)", MC_Unread(who)) : "Message";
+				if (room - stringwidth(label, TRUE, SZ_LABEL) - 34 < 90)
+					label = MC_Unread(who) ? sprintf("%g new", MC_Unread(who)) : "Msg";
+				bw = max(52, stringwidth(label, TRUE, SZ_LABEL) + 24);
+			}
+			else if (rel == 2 && !MF_Direct() && MF_WhoSafe(who)) bw = 82;
+			if (bw) room = room - bw - 10;
 			if (MF_WhoSafe(who))
 			{
 				if (!MP_Draw(rp + '10 10 0', 44, who, alpha))
@@ -691,15 +703,11 @@ void(vector pos, vector size) MF_Draw =
 			else if (rel == 3 && flag == 2) status = strcat("Last seen: ", map);
 			sui_text(rp + '64 36 0', '12 12 0', ui_fit_text(status, room, '12 12 0'), (online || menuonline) ? SUI_THEME_GOOD : COL_DIM, alpha, 0);
 			if (rel == 2 && !MF_Direct() && MF_WhoSafe(who))
-			if (ui_button(strcat("mf_add", who), rp + [size_x - 126, 20], [82, 24], "Add back"))
+			if (ui_button(strcat("mf_add", who), rp + [size_x - 46 - bw, 20], [bw, 24], "Add back"))
 				localcmd(sprintf("friends_menu_add %s\n", who));
 			if (rel == 3 && MF_WhoSafe(who))
-			{
-				id = MC_Unread(who) ? sprintf("Message (%g)", MC_Unread(who)) : "Message";
-				at = max(82, stringwidth(id, TRUE, SZ_LABEL) + 24);
-				if (ui_button(strcat("mf_msg", who), rp + [size_x - 46 - at, 20], [at, 24], id, MC_Unread(who) > 0))
-					MC_Message(who, nm);
-			}
+			if (ui_button(strcat("mf_msg", who), rp + [size_x - 46 - bw, 20], [bw, 24], label, MC_Unread(who) > 0))
+				MC_Message(who, nm);
 		}
 		sui_list_view_end();
 	}
