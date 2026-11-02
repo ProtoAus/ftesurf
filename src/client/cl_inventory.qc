@@ -176,7 +176,6 @@ void(vector p, float width, float textsize, float editable, vector publickit, ve
 entity inv_glowe[INV_GLOWMAX];
 float inv_glown;            // wearers queued since the last pass
 float inv_glowok;           // 1 glow, -1 shells, 0 not asked yet
-float inv_glowdepth;        // what this file last set r_scenedepth to
 float inv_glowmat;          // bit 1: the main view's materials exist, bit 2: the preview's
 float inv_maskd, inv_mask;  // the mask: tested against the scene's depth, and not (the preview)
 float inv_hatok;            // 1 models/party_crown.png loads, -1 it does not, 0 not asked yet
@@ -258,7 +257,10 @@ string(string extra) Inv_MaskCode =
 		" float zs = texelFetch(s_depth, clamp(ivec2(uv * vec2(dsz)), ivec2(0), dsz - 1), 0).r;\n"
 		" float ds = m_projection[3][2] / (zs * 2.0 - 1.0 + m_projection[2][2]);\n"
 		" float df = m_projection[3][2] / (gl_FragCoord.z * 2.0 - 1.0 + m_projection[2][2]);\n"
-		" if (zs < 0.99999 && ds < df - 1.0 - 0.25 * fwidth(df)) discard;\n"
+		// fwidth outside the branch (derivatives in non-uniform flow are undefined); the slack capped
+		// so an edge-on face cannot carry a wide one (review 1).
+		" float slack = 1.0 + min(0.25 * fwidth(df), 6.0);\n"
+		" if (zs < 0.99999 && ds < df - slack) discard;\n"
 		"#endif\n"
 		" gl_FragColor = vec4(1.0);\n}\n#endif\n");
 };
@@ -301,11 +303,10 @@ void() Inv_GlowPre =
 	local float want;
 	inv_glowok = (cvar_type("r_scenedepth") && Milk_Supported()) ? 1 : -1;
 	want = (inv_glowok > 0 && inv_glown > 0);
-	if (inv_glowok > 0 && want != inv_glowdepth)
-	{
+	// Against the cvar itself, not a copy: CSQC restarts at every map while the cvar lives on,
+	// and the console can set it (review 1: left on after a map change, or set off under a pass).
+	if (inv_glowok > 0 && cvar("r_scenedepth") != want)
 		cvar_set("r_scenedepth", want ? "1" : "0");
-		inv_glowdepth = want;
-	}
 };
 
 /*
@@ -324,6 +325,13 @@ void(float main) Inv_GlowPass =
 	n = inv_glown;
 	inv_glown = 0;
 	if (n <= 0 || inv_glowok <= 0)
+		return;
+	// Fail closed: only on depth this frame's view wrote (an old frame's could show a wearer the
+	// scene now hides: r_projection's cubemap path, a loading world, r_scenedepth just switched on).
+	if (main && cvar("r_scenedepth_drawn") != 1)
+		return;
+	// Not under an engine target (screenshot_mega) or a demo capture: the pass ends on the screen.
+	if (getproperty(VF_RT_COVERAGE) < 0 || (isdemo() && cvar("capturedemowidth") && cvar("capturedemoheight")))
 		return;
 	vmin = getproperty(VF_MIN);
 	vsz = getproperty(VF_SIZE);
@@ -423,8 +431,8 @@ void(float main) Inv_GlowPass =
 	p = [s_x * ms_x, s_y * ms_y, 0];
 	drawsubpic(c, p, Inv_N(strcat("ftesurf/aura_blurv_", k)), a, s, '1 1 1', 1, 0);
 	setproperty(VF_RT_COVERAGE, 0);
-	setproperty(VF_RT_DESTCOLOUR, "");
 
+	// Restored while a target is still bound: the engine then leaves the player's stair smoothing.
 	setproperty(VF_MIN, vmin);
 	setproperty(VF_SIZE, vsz);
 	setproperty(VF_FOV, fov);
@@ -436,6 +444,7 @@ void(float main) Inv_GlowPass =
 	setproperty(VF_DRAWWORLD, dw);
 	setproperty(VF_DRAWCROSSHAIR, dc);
 	setproperty(VF_DRAWENGINESBAR, ds);
+	setproperty(VF_RT_DESTCOLOUR, "");
 	drawsubpic(lo, hi - lo, Inv_N(strcat("ftesurf/aura_comp_", k)), a, s, INV_ICE, 1, 0);
 };
 #pragma warning enable F333
@@ -517,6 +526,8 @@ void(entity body, float outline, float hat, float duck) Inv_Draw =
 				inv_glowe[inv_glown] = body;
 				inv_glown = inv_glown + 1;
 			}
+			else
+				Inv_Shells(body);       // past the queue: the old look rather than none
 		}
 		else
 			Inv_Shells(body);
