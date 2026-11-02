@@ -59,7 +59,7 @@ vector(vector p) ZoneEdit_EdgeSnap =
 	// Existing zone vertices and projected XY edges, preserving the traced Z.
 	for (z = 0; z < zone_count; z = z + 1)
 	{
-		if (ze_dragging && z == ze_sel) continue;   // P1203: not the zone being dragged
+		if (ze_dragging && z == ze_dz) continue;    // P1203: not the zone being dragged
 		first = zone_first[z]; n = zone_npts[z];
 		for (i = 0; i < n; i = i + 1)
 		{
@@ -1118,9 +1118,13 @@ void() ZoneEdit_DragStep =
 	if (!ZoneEdit_DragSame()) { ZoneEdit_DragCancel(); return; }
 	z = ze_dz; n = ze_onp;
 	g = max(1, ze_grid);
-	// Edge snap's point is the world's: it stands for a handle on about that level only (a top
-	// corner aimed past the zone would jump to the floor's XY far beyond it).
-	snapped = (ze_edges && ze_hitok && ze_skind != ZES_NONE && fabs(ze_sat_z - ze_grab_z) < 48);
+	// Edge snap's point is the world's: a corner or edge on one level takes it only near that level
+	// (a top corner aimed past the zone would jump to the floor's XY far beyond it); a vertical edge
+	// or side, within the zone's height; the bottom face, always (the floor is its target).
+	if (ze_hk == ZEH_SIDE || (ze_hk == ZEH_VERT && ze_hl == 2)) lev = (ze_sat_z > ze_obot - 48 && ze_sat_z < ze_otop + 48);
+	else if (ze_hk == ZEH_VERT || ze_hk == ZEH_EDGE) lev = (fabs(ze_sat_z - ze_grab_z) < 48);
+	else lev = TRUE;
+	snapped = (ze_edges && ze_hitok && ze_skind != ZES_NONE && lev);
 	for (i = 0; i < n; i = i + 1)
 		ze_pts[i] = ze_orig[i];
 	nb = ze_obot; nt = ze_otop;
