@@ -475,6 +475,7 @@ float(string s) TT_Find =
 #define IN_STATE    3           // toggle/kill: stateful, never mirrored
 #define IN_ADDOUT   4           // io_parm says which key
 #define IN_MODSPD   5
+#define IN_VSVEL    6           // P1205: a VScript velocity write on the activator (sh_vsvel.qc)
 #define IOP_PMOVE   1           // gravity/origin/angles: player movement
 #define IOP_BVEL    3           // Patch 1025: basevelocity, mirrored when tg_bvel_ok
 #define IOP_TNAME   2           // targetname: routing state
@@ -489,6 +490,11 @@ float  io_times[TIO_MAX];
 float  io_fired[TIO_MAX];       // committed fires; mapspawn rows: 1 = done
 string io_tgt[TIO_MAX];
 vector *io_bv;                  // Patch 1025: an IOP_BVEL row's vector (memalloc: globals are full)
+vector *io_vsop;                // P1205: an IN_VSVEL row's per-axis rule (FS_VsVelParse)
+vector *io_vsa;
+vector *io_vsb;
+float  tg_vs_on;                // P1205: a write fired this command, applied at its end
+vector tg_vs_op, tg_vs_a, tg_vs_b;
 
 /*
   Patch 1025: OnEndTouch on the next command (SV_TriggerEndEdge) and AddOutput basevelocity paid
@@ -587,6 +593,23 @@ void(string key, string val) TG_IOParse =
 	else if (lk == "toggle")      inp = IN_STATE;
 	else if (lk == "kill")        inp = IN_STATE;
 	else if (lk == "modifyspeed") inp = IN_MODSPD;
+	else if (lk == "runscriptcode")
+	{
+		// P1205: only the velocity grammar, aimed at the activator; other scripts are inert here
+		// as on the server (its census says so).
+		if (nt < 3 || !FS_IsActivator(argv(0)) || !FS_VsVelParse(argv(2)))
+			return;
+		inp = IN_VSVEL;
+		if (!io_vsop)
+		{
+			io_vsop = memalloc(sizeof(vector) * TIO_MAX);
+			io_vsa = memalloc(sizeof(vector) * TIO_MAX);
+			io_vsb = memalloc(sizeof(vector) * TIO_MAX);
+		}
+		io_vsop[io_n] = vsv_op;
+		io_vsa[io_n] = vsv_a;
+		io_vsb[io_n] = vsv_b;
+	}
 	else if (lk == "setremotedestination") inp = IN_STATE;	// Patch 1050: rewrites the target, per player
 	else if (lk == "addspeed" || lk == "addhorizontalspeed" || lk == "addverticalspeed")
 		inp = IN_MODSPD;		// Patch 1002: moves the player, so its trigger stays server-only
@@ -703,6 +726,15 @@ float(float o) TG_IOMirrorOK =
 	return tg_kind[io_src[o]] != 0;	// owner predicted (fixpoint updates this)
 };
 
+// P1205: a velocity script row the mirror pays at the end of the command: no delay (no
+// scheduler here), no firing count, an owner it predicts.
+float(float o) TG_IOVsOK =
+{
+	if (io_delay[o] != 0 || io_times[o] >= 0 || io_src[o] < 0)
+		return FALSE;
+	return tg_kind[io_src[o]] != 0;
+};
+
 // Patch 1025: a basevelocity row this mirror can pay (TG_IOFireEv) rather than demoting its owner.
 float(float o) TG_IOBvelOK =
 {
@@ -724,8 +756,7 @@ float(float s) TG_IOOwnerBad =
 		if (io_src[o] != s)
 			continue;
 		t = io_tgt[o];
-		if (strcmp(t, "!activator") && strcmp(t, "!player") &&
-		    strcmp(t, "!caller"))
+		if (!FS_IsActivator(t))
 			continue;
 		if (io_inp[o] == IN_MODSPD)
 			return TRUE;
@@ -840,8 +871,7 @@ void(float i, float ev, float seq) TG_IOFireEv =
 			// TG_IOOwnerBad kept this slot only if every such row is TG_IOBvelOK, and its
 			// targets are the activator (other targets are no carrier of ours).
 			if (tg_endexact && TG_IOBvelOK(o))
-			if (!strcmp(io_tgt[o], "!activator") || !strcmp(io_tgt[o], "!player") ||
-			    !strcmp(io_tgt[o], "!caller"))
+			if (FS_IsActivator(io_tgt[o]))
 			{
 				predmove_bvset = io_bv[o];
 				predmove_bvsetflag = 1;
@@ -849,6 +879,20 @@ void(float i, float ev, float seq) TG_IOFireEv =
 					print(sprintf("^5trig^7: seq %g IO #%g %s -> basevelocity %v\n", seq, i,
 					              (ev == EV_START) ? "OnStartTouch" : (ev == EV_END) ? "OnEndTouch" : "OnJump",
 					              io_bv[o]));
+			}
+			continue;
+		}
+		if (io_inp[o] == IN_VSVEL)
+		{
+			if (TG_IOVsOK(o) && (ev == EV_START || ev == EV_END))
+			{
+				tg_vs_on = 1;
+				tg_vs_op = io_vsop[o];
+				tg_vs_a = io_vsa[o];
+				tg_vs_b = io_vsb[o];
+				if (tg_cv_debug)
+					print(sprintf("^5trig^7: seq %g IO #%g %s -> script velocity, op %v\n", seq, i,
+					              (ev == EV_START) ? "OnStartTouch" : "OnEndTouch", io_vsop[o]));
 			}
 			continue;
 		}
@@ -1180,6 +1224,9 @@ void() TG_IOResolve =
 		for (o = 0; o < io_n; o = o + 1)
 			if (io_src[o] == s && io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_BVEL && TG_IOBvelOK(o))
 				tg_io_own[s] = 1;   // Patch 1025
+		for (o = 0; o < io_n; o = o + 1)
+			if (io_src[o] == s && io_inp[o] == IN_VSVEL && io_ev[o] == EV_END && TG_IOVsOK(o))
+				tg_io_own[s] = 1;   // P1205: its OnEndTouch writes are this mirror's to fire
 		if (tg_io_own[s])
 			tg_c_ioown = tg_c_ioown + 1;
 		if (tg_io_gated[s])
@@ -1738,6 +1785,14 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 				TG_IOFireEv(i, EV_JUMP, seq);
 
 	TG_IOEndSweep(seq);
+	if (tg_vs_on)                   // P1205: where the server applies it (SV_VsVelPost)
+	{
+		if (tg_cv_debug)
+			print(sprintf("^5trig^7: seq %g script velocity %v -> %v\n", seq, predmove_vel,
+			              FS_VsVelApply(predmove_vel, tg_vs_op, tg_vs_a, tg_vs_b)));
+		predmove_vel = FS_VsVelApply(predmove_vel, tg_vs_op, tg_vs_a, tg_vs_b);
+		tg_vs_on = 0;
+	}
 	if (tg_endexact && tg_inring && tg_orgring)
 	{
 		k = (seq - TG_RING * floor(seq / TG_RING)) * 4;
