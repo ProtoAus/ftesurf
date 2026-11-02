@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1189 new zones in the Maps menu
+Backend only (surfd 0d72a27c since 2 Nov 01:53Z); no client update. Please check: after the next
+zone publish (yours or Markbeaton54's), the map shows as zoned in the Maps menu within about a
+minute, without restarting the game. Measured: on the Pi a zone folder change was rescanned on
+the very next read; the menu itself still asks only every 60 s.
+
 ## P1188 surf_skyhaven glass
 In both Windows installs (engine exe + menu + the map table); restart a running game first.
 Please check: load surf_skyhaven. No "1 material did not resolve" warning, and the glass

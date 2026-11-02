@@ -285,10 +285,11 @@
 ## zonepub after P1180 (instant publish, 2 Nov 2026)
 
 From P1180's three review rounds; none writes wrong bytes or confirms a lobby on the old table.
-- Menu lag: the Maps list learns a map is zoned from surfd's catalogue, whose `map_index` is
-  cached MAPS_TTL (300 s), plus the menu's 60 s poll. The site reads the zone service's history
-  and is instant. Fix direction: `map_index` restats the zone directories' mtimes and rescans on
-  a change. Falsifier: a publish shows `zoned 1` in `/api/board?maps=1` within 60 s.
+- Menu lag: fixed by P1189 (surfd rescans when a zone folder's mtime changes; the menu's own
+  60 s poll remains). Left: a copy that restores the folder's mtime (`rsync -a`, `cp -a`,
+  `tar -x`) can hide an added zone until MAPS_TTL; no live writer does that. Fix direction:
+  `st_ctime_ns` in `_zone_dirs_sig` (the same-tick tests fake the mtime with os.utime, which
+  moves ctime, so they need another way to stage that case).
 - Mode-1 double reload: a lobby with no stated crc (P815 client) or a same-hash edit counts as
   reloaded only by a load more than ~1 s after put() (`_since` is MONO()+1, uptime is whole
   seconds); the changelevel now goes out within milliseconds, so a fast load is changelevelled

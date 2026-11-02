@@ -1,5 +1,25 @@
 # AGENT_NOTES.md
 
+## P1189 surfd zone-folder rescan LIVE (2 Nov 2026 01:53Z)
+
+surfd generation 0d72a27c (origin/deploy/p1189-maps = live 58dbbf40 + P1189; main 0ac1c88c) at
+/srv/nvme/agent-work/mapsrescan-1189-2b, API down 01:53:23-46Z. The fallback is 58dbbf40,
+staged CLOSED in that root's control/. The P1175 root is CLOSED and kept. Drop-in 10- is now
+ceb9cbd3; P1179's 20-hid-evidence.conf is untouched (evidence rw, empty /api/hid POST = 413).
+The next surfd swap builds on 0d72a27c from this root.
+- Kit: C:\FTESurf-worktrees\mapsrescan-1189-2b\kit (prepare_1189.py = P1175's exact seams over
+  its generated stage/qualify/install/activate). The runtime closure pins surfd's test files
+  too, so a commit touching test_*.py changes more than surfd.py: set `want` accordingly.
+- surfd-dropin/CANDIDATE-PROTOCOL.md requires an O_EXCL reservation held from before the slot
+  write until a verified install; P1175's install_namespace.py took none. This kit's does
+  (namespace-reservation.json and namespace-complete.json in the root).
+- Live proof: `touch -c` the lobbies' zones/local, then read /api/board?maps=1. The read right
+  after rescans, a read within 1 s does not, settling rescans follow at 1.5 s and 3 s, then
+  none; each scan logs "map library:" in /srv/nvme/surfd/logs/surfd.log. The maps=1 body was
+  byte-identical before and after the swap.
+- Review: round 1 found an overtaken map_index waiter scanning again (P829); the fix
+  0d72a27c got round 2, which found nothing (production cost: +3 stats, ~7 us per read).
+
 ## P1180 instant zone publish + P1184 zone faces LIVE (1 Nov 2026 18:57Z)
 
 zonepub 85ed1a7c installed by Lex's sudo (`install_zonepub.py --upgrade --source

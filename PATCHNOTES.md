@@ -21,6 +21,10 @@
 
 ## next
 
+### P1189 Newly zoned maps reach the Maps menu within a minute
+- When a zoner publishes a map's zones, the Maps menu now shows that map as zoned at its next refresh, within about a minute, instead of up to six minutes later.
+
+
 ### P1188 surf_skyhaven's glass is no longer a missing texture
 - surf_skyhaven's glass panes (and rj_tattarrattat's grates) use Momentum's own fallback materials. The game now finds them in your Momentum install instead of drawing the purple checker.
 
