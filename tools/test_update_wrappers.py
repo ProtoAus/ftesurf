@@ -212,7 +212,9 @@ def main():
                 prefix = []
             assert acted[0]['argv'][1:] == prefix + expected_args, row
             assert result.returncode == code, row
-            if not (win and terminal):
+            # P704: on Windows the real launcher starts the game detached with null stdio, so the
+            # actor's own record above (argv, cwd) is the proof, not its stdout.
+            if not (win and terminal) and not (win and real):
                 assert 'WRAPPER_ACTOR_ACTED' in result.stdout, row
             if not win:
                 assert 'WRAPPER_ACTOR_STDERR' in stderr_log.read_text(), row

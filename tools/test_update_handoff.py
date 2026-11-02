@@ -181,7 +181,8 @@ def main():
                    'mu_off': 'update_permission 0', 'mu_check': 'update_check force'}
     def click(id):
         if id in UPDATE_CMDS: return UPDATE_CMDS[id] + '\nwait 60\n'
-        return f'ui_hover @{id}\nwait 5\nui_mouse down\nwait 5\nui_mouse up\nwait 60\n'
+        page = 'ui_updates\nwait 30\n' if id.startswith('mu_') else ''   # P902: the Updates page (F2), not the title
+        return page + f'ui_hover @{id}\nwait 5\nui_mouse down\nwait 5\nui_mouse up\nwait 60\n'
     def start(dest, name, steps, env=None, manifest_url=None):
         cfgdir = dest / 'ftesurf/cfg/test'; cfgdir.mkdir(parents=True, exist_ok=True)
         (cfgdir / (name + '.cfg')).write_text('cfg_save_auto 0\ncl_idlefps 0\ncl_maxfps 100\nvid_fullscreen 0\nvid_width 1280\nvid_height 720\nvolume 0\nmusicvolume 0\n'
@@ -232,6 +233,9 @@ def main():
         said = (dest / 'launcher.log').read_bytes().decode('utf-8', 'replace')   # the launcher prints UTF-8 (P1208 arrows)
         assert f'World of Surf {version} is ready.' in said or f'\u2192 {version}.' in said, 'real launcher update actor missing'
         assert 'arg1=--dir' in adapter_text and f'arg2={dest.as_posix()}/.' in adapter_text.replace('\\', '/') and 'arg3=--wait-for-game' in adapter_text and 'arg4=--yes' in adapter_text, adapter_text
+        until = time.monotonic() + 30   # P704: the launcher detaches the game and exits before it boots
+        while time.monotonic() < until and 'handoff-actor: real returning game' not in logs(dest, 'handoff-return'):
+            time.sleep(0.25)
         assert 'handoff-actor: real returning game' in logs(dest, 'handoff-return'), 'real Rust launch did not act'
         assert json.loads((dest / '.ftesurf-updater/state.json').read_text())['version'] == version
         sentinels(dest)

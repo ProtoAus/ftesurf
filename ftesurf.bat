@@ -8,13 +8,14 @@ REM mount list on fs_load/fs_unload and strips every comment out of it.  The
 REM annotated master is fs_addons.default.txt; seed from it on a fresh clone.
 if not exist "ftesurf\fs_addons.txt" copy /y "ftesurf\fs_addons.default.txt" "ftesurf\fs_addons.txt" >nul
 setlocal DisableDelayedExpansion
-set "runner=ftesurf64.exe"
+REM P1212: .\ always: with NoDefaultCurrentDirectoryInExePath set, cmd does not look in the cwd.
+set "runner=.\ftesurf64.exe"
 set "handoff="
 REM P1209: the launcher is WOS-Launcher.exe; an install from before it has ftesurf-launcher.exe.
 set "launcher="
 if exist "WOS-Launcher.exe" (set "launcher=WOS-Launcher.exe") else if exist "ftesurf-launcher.exe" set "launcher=ftesurf-launcher.exe"
 if defined launcher (
-    set "runner=%launcher%"
+    set "runner=.\%launcher%"
     set "handoff=--"
     REM No consent and no terminal: play without a bootstrap check; don't save permission.
     if not exist ".ftesurf-updater\consent" (
