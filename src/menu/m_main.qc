@@ -171,6 +171,7 @@ void(vector pos, vector size) MF_Draw;
 void() MF_Open;
 void(string mark, float boot) MC_SelfMark;
 void(string who, string name) MC_Message;
+float(string peer) MC_Unread;
 void() MM_Init;
 float() MM_Active;
 void(vector screensize) MM_Frame;
@@ -8052,6 +8053,7 @@ void() m_init =
 	// Patch 1000: this install's account mark, as a proving lobby or the menu's signed
 	// chat last said it; sent as userinfo `smark` so a private game can show profiles.
 	registercvar("cl_self_mark", "", 32);
+	registercvar("cl_chat_read", "", 32);     // P1200: m_chat.qc's read marks
 	MC_SelfMark(cvar_string("cl_self_mark"), TRUE);
 	registercvar("ui_maps_filters", "0", 32);
 	registercvar("ui_maps_large", "1", 32);
