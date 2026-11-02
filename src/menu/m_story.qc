@@ -1279,8 +1279,8 @@ void(vector pos, vector size) Sty_Players =
 		if (av != "-")
 		{
 			MP_Draw([x, rp_y + 6], 32, av, 1);
-			sui_action_element([x, rp_y + 6], '32 32 0', sprintf("sty_avatar%g", idx), sui_noop);
-			if (sui_is_released(sprintf("sty_avatar%g", idx))) MStats_Player(who);   // P1198: the row's 12-hex handle
+			sui_action_element([x, rp_y + 6], '32 32 0', strcat("sty_avatar", who), sui_noop);    // P1206: by player
+			if (sui_is_released(strcat("sty_avatar", who))) MStats_Player(who);   // P1198: the row's 12-hex handle
 		}
 		else
 			sui_roundbox([x, rp_y + 6], '32 32 0', 6, COL_ROW, 1);

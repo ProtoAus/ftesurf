@@ -1247,8 +1247,11 @@ void(vector rp, float i, float rw, float tr, float dlr, float dr, float nw) Mlb_
 		{
 			if (!MP_Draw([rp_x + MLB_NAME_X, rp_y + 2], MLB_ROW_H - 4, s, 1))
 				sui_roundbox([rp_x + MLB_NAME_X, rp_y + 2], [MLB_ROW_H - 4, MLB_ROW_H - 4], 4, SUI_THEME_CHIP, 1);
-			sui_action_element([rp_x + MLB_NAME_X, rp_y + 2], [MLB_ROW_H - 4, MLB_ROW_H - 4], sprintf("mlb_profile%g", i), sui_noop);
-			if (sui_is_released(sprintf("mlb_profile%g", i))) MStats_Player(bufstr_get(mlb_bhand, i));
+			// P1206: keyed by player and rank, not row: a page landing mid-click shifts the rows.
+			sui_action_element([rp_x + MLB_NAME_X, rp_y + 2], [MLB_ROW_H - 4, MLB_ROW_H - 4],
+			                   strcat("mlb_profile", bufstr_get(mlb_bhand, i), ":", bufstr_get(mlb_brank, i)), sui_noop);
+			if (sui_is_released(strcat("mlb_profile", bufstr_get(mlb_bhand, i), ":", bufstr_get(mlb_brank, i))))
+				MStats_Player(bufstr_get(mlb_bhand, i));
 		}
 		sui_text([rp_x + MLB_NAME_X + MLB_ROW_H, ty], SZ_ROW,
 		         ui_fit_text(bufstr_get(mlb_bname, i), nw - MLB_ROW_H, SZ_ROW), COL_TEXT, 1, 0);
@@ -1259,7 +1262,7 @@ void(vector rp, float i, float rw, float tr, float dlr, float dr, float nw) Mlb_
 	if (bufstr_get(mlb_bhand, i) != "")         // P1198: the name opens their Stats page too
 	{
 		ty = mlb_anyav ? MLB_ROW_H : 0;
-		s = sprintf("mlb_name%g", i);
+		s = strcat("mlb_name", bufstr_get(mlb_bhand, i), ":", bufstr_get(mlb_brank, i));
 		sui_action_element([rp_x + MLB_NAME_X + ty, rp_y], [nw - ty, MLB_ROW_H], s, sui_noop);
 		if (sui_is_released(s)) MStats_Player(bufstr_get(mlb_bhand, i));
 	}
