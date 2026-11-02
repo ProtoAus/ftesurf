@@ -334,6 +334,70 @@ def case_convert_and_file():
         st = json.load(io.open(os.path.join(state, "state.json"), encoding="utf-8"))
         check("a demo left in flight by a killed tick counts a try",
               (st["inflight"], st["later"].get("e" * 40, [0])[0]), (None, 1))
+
+        # P1232: an "otherbuild" verdict reopens once the held build changes.
+        state = tempfile.mkdtemp(prefix="state-", dir=HOME)
+        demos = tempfile.mkdtemp(prefix="demos-", dir=HOME)
+        argv = ["--boards", bd, "--state", state, "--demos", demos, "--out", out,
+                "--maps", HOME, "--delay", "0", "--go"]
+        sp = os.path.join(state, "state.json")
+
+        def fresh():
+            c.execute("DELETE FROM runs WHERE tier='momentum'")
+            c.execute("DELETE FROM replays WHERE kind='momentum'")
+            c.execute("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
+                      " tickrate, millis, flags, node, runid, submitted, replay_id)"
+                      " VALUES (?,?,?,'momentum','clean',?,'x',1,66.67,?,0,'mom','',1,0)",
+                      (mp, track, leg, str(head["steam_id"]), ms))
+            c.commit()
+
+        def tick_on(build):
+            G.bsp_sha1 = lambda m, d, cache: build
+            G.download = fake_download
+            try:
+                run(argv)
+            finally:
+                G.download = realdl
+            return json.load(io.open(sp, encoding="utf-8"))
+
+        def linked():
+            return c.execute("SELECT replay_id > 0 FROM runs WHERE tier='momentum' AND map=?",
+                             (mp,)).fetchone()[0]
+
+        c = db()
+        fresh()
+        other = "0" * 40
+        st = tick_on(other)
+        check("P1232: a demo of another build is settled with the build it was judged on",
+              (st["done"].get(sha), st["judged"].get(sha)), ("otherbuild", [mp, other]))
+        st = tick_on(other)
+        check("...and stays settled while that build is held",
+              (st["done"].get(sha), linked()), ("otherbuild", 0))
+        st = tick_on(head["map_sha1"].upper())
+        check("...and is filed and linked once the held build is the demo's",
+              (st["done"].get(sha) in ("ok", "have"), sha in st["judged"], linked()),
+              (True, False, 1))
+        fresh()
+        st["done"][sha] = "otherbuild"
+        st["judged"] = {}
+        io.open(sp, "w").write(json.dumps(st))
+        st = tick_on(other)
+        check("...a verdict from before P1232 is judged once from the demo on disk",
+              (st["done"].get(sha), st["judged"].get(sha), linked()), ("otherbuild", [mp, other], 0))
+        st["judged"] = {}
+        io.open(sp, "w").write(json.dumps(st))
+        st = tick_on(head["map_sha1"].upper())
+        check("...and reopened when the build held now is the demo's",
+              (st["done"].get(sha) in ("ok", "have"), linked()), (True, 1))
+        os.remove(os.path.join(demos, sha[:2], sha + ".mtv"))
+        fresh()
+        st["done"][sha] = "otherbuild"
+        st["judged"] = {}
+        io.open(sp, "w").write(json.dumps(st))
+        st = tick_on(head["map_sha1"].upper())
+        check("...and one with no demo on disk to read stays settled",
+              (st["done"].get(sha), st["judged"].get(sha), linked()), ("otherbuild", [None, None], 0))
+        c.close()
     finally:
         G.bsp_sha1 = real
 

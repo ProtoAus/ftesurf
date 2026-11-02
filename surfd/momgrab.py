@@ -370,6 +370,41 @@ def bsp_sha1(mp, maps_dir, cache_path):
     return _bsp[mp][2]
 
 
+def recheck_builds(done, judged, demos, maps_dir, bsp_cache):
+    """P1232: reopen "otherbuild" verdicts whose map's held build has changed.  mapwatch
+    replaces builds, and on 2 Nov 1,437 settled demos on disk matched the build then held.
+    `judged` is demo -> [map, held SHA1 at the verdict]; a verdict from before it is judged
+    once from its demo on disk, and one with no demo to read stays settled.  -> reopened."""
+    held, reopened = {}, 0
+
+    def have(mp):
+        if mp not in held:
+            held[mp] = bsp_sha1(mp, maps_dir, bsp_cache)
+        return held[mp]
+
+    for h in [h for h in judged if done.get(h) != "otherbuild"]:
+        del judged[h]
+    for h in [h for h, why in done.items() if why == "otherbuild"]:
+        j = judged.get(h)
+        if j is None:
+            try:
+                with open(os.path.join(demos, h[:2], h + ".mtv"), "rb") as fh:
+                    head = momreplay.read_header(fh.read(0x200))
+                mp, want = (head["map"] or "").lower(), (head["map_sha1"] or "").upper()
+            except Exception:
+                judged[h] = [None, None]
+                continue
+            if not (mp and want and have(mp) == want):
+                judged[h] = [mp or None, have(mp) if mp else None]
+                continue
+        elif not j[0] or have(j[0]) == j[1]:
+            continue
+        del done[h]
+        judged.pop(h, None)
+        reopened += 1
+    return reopened
+
+
 def fresh_header(h, sha, build, track, leg):
     """The header momimport writes for a .wrpath, from the demo's own header;
     momreimport.convert then sets clock, momquality, moves and momdemo."""
@@ -609,6 +644,7 @@ def run(a, stop=None):
     # at that first handoff too rather than immediately spending another slot.
     st.setdefault("last_request", time.time())
     park = st.setdefault("park", {})
+    judged = st.setdefault("judged", {})
 
     def again(h, why):
         w = later.get(h) or [0, 0, why]
@@ -624,6 +660,10 @@ def run(a, stop=None):
     except ImportError:
         zstd = False
     q, read, unread, prio = {"boards": {}}, 0, 0, set()
+    if a.go and not getattr(a, "requests_only", False):
+        n = recheck_builds(done, judged, a.demos, a.maps, os.path.join(a.state, "bsp.json"))
+        if n:
+            print("reopened %d demo(s) judged on a build no longer held" % n)
     explicit = request_picks(done, later, now, zstd) if a.go else []
     automatic = []
     if not getattr(a, "requests_only", False):
@@ -731,6 +771,9 @@ def run(a, stop=None):
             else:
                 done[h] = status
                 later.pop(h, None)
+                if status == "otherbuild":
+                    judged[h] = [b["map"], bsp_sha1(b["map"], a.maps,
+                                                    os.path.join(a.state, "bsp.json"))]
             _save(sp, st)
         # Lifted only by an answer: a tick that asked nothing proves nothing.
         if park and asked:

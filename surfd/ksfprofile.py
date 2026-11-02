@@ -113,21 +113,28 @@ def step(K, cache, pacer, have, now, budget=3):
         seen = set()
         for rec in recs:
             mp = K.S.clean_map(rec.get('mapName', ''))
+            # P1232: a record failing any check below is skipped and counted. A refusal here
+            # parked the whole KSF crawl and every demo download from 30 Oct 03:51Z on one
+            # record dated 0 (surf_commune_too_beta5), replayed from this cache at each
+            # expiry with the park doubling (main's P1117 review 3 makes the same change).
             # This endpoint is MAIN records; never guess stage/bonus semantics.
             if rec.get('stage_id') is not None or rec.get('zone_id') is not None:
-                raise K.Refused('profile contains non-main records')
+                skipped += 1
+                continue
             # bestrecords currently sends record_id:null, even for valid rows.
             # Completion identity is this player's MAIN map/style; null IDs
             # must NEVER acquire board/demo authority or fabricate a run ID.
             if not mp or mp in seen or K._when(rec) <= 0:
-                raise K.Refused('profile map/date identity')
+                skipped += 1
+                continue
             seen.add(mp)
             if mp not in have:
                 skipped += 1
                 continue
             row = K.rec_row(mp, 0, mode, dict(rec, steamID=player))
             if row is None:
-                raise K.Refused('profile record time')
+                skipped += 1
+                continue
             row['style'] = K.KSF_MODES[mode]
             row['binding'] = 'cache'  # never fresh board/demo authority
             rows.append(row)

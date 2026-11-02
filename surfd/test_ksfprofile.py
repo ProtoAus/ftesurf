@@ -123,6 +123,18 @@ class Profiles(unittest.TestCase):
         self.assertEqual(P.pending(self.db)[0][3], 1001+P.TTL)
         self.step(now=1002+P.TTL)
         self.assertEqual(len(self.src.calls), 6) # old cached page must not satisfy refresh
+    def test_bad_record_is_skipped_not_a_crawl_refusal(self):
+        # P1232: one record dated 0 refused the page and parked every KSF crawl from 30 Oct.
+        self.queue()
+        page = json.loads(Source(5)('https://fake/bestrecords/1?game=css&mode=0'))
+        page['records'][1]['date'] = 0
+        page['records'][3]['stage_id'] = 2
+        with patch.object(K, 'fetch', return_value=json.dumps(page)):
+            self.step()
+        self.assertEqual(self.count(), 3)
+        self.assertEqual(P.status(self.db, PLAYER)['next'], 6)
+        self.assertFalse(os.path.exists(os.path.join(self.cache, '.refused')))
+
     def test_active_cap_and_invalid_identity(self):
         self.assertEqual(self.queue('private-guid')['state'], 'ineligible')
         self.assertEqual(self.queue('11111111111111111')['state'], 'ineligible')
@@ -208,7 +220,7 @@ class Profiles(unittest.TestCase):
         before = [tuple(r) for r in self.db.execute('SELECT * FROM runs ORDER BY map')]
         self.db.executescript('DROP TABLE ksf_unbound; PRAGMA user_version=18;')
         S.migrate()
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 20)
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], S.SCHEMA_VERSION)
         columns = self.db.execute('PRAGMA table_info(ksf_unbound)').fetchall()
         self.assertEqual([(r[1], r[2], r[3], r[5]) for r in columns],
                          [('map','TEXT',1,1), ('track','INTEGER',1,2), ('leg','INTEGER',1,3),
@@ -224,12 +236,12 @@ class Profiles(unittest.TestCase):
         before = [tuple(r) for r in self.db.execute('SELECT * FROM runs ORDER BY map')]
         self.db.executescript('DROP TABLE ksf_unbound; DROP TABLE ksfprofiles; PRAGMA user_version=17;')
         S.migrate()
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 20)
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], S.SCHEMA_VERSION)
         self.assertEqual(self.db.execute('SELECT count(*) FROM ksf_unbound').fetchone()[0], 0)
         self.assertEqual([tuple(r) for r in self.db.execute('SELECT * FROM runs ORDER BY map')], before)
 
     def test_migrate20_idempotent_and_no_existing_run_changes(self):
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 20)
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], S.SCHEMA_VERSION)
         S.migrate(); self.assertEqual(self.count(), 0)
 
 
