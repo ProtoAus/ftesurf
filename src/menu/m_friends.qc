@@ -652,7 +652,6 @@ void(vector pos, vector size) MF_Draw =
 			alpha = (online || menuonline) ? 1 : 0.45;
 			room = size_x - 114;
 			sui_style_box(rp, [size_x - 38, 64], 8, SUI_THEME_WELL, SUI_THEME_EDGE, alpha);
-			// P1198: a button at the right (Message, or Add back) takes its width from the row.
 			// P1198: a button at the right (Message, or Add back) takes its width from the row;
 			// a narrow sidebar gets the short label rather than a name squeezed to nothing.
 			bw = 0;

@@ -1408,7 +1408,7 @@ void(vector screensize) Mlb_Draw =
 	if (!mlb_course_known)
 	{
 		sui_text([20, ly + 8], SZ_LABEL, mlb_course_req ? "loading..." : Mlb_LegName(mlb_track, mlb_leg), COL_DIM, 1, 0);
-		if (!mlb_course_req)
+		if (!mlb_course_req && cvar("rec_terms") >= FS_TERMS_ONLINE && cvar_string("lobby_dir") != "")
 		if (ui_button("mlb_legs_retry", [20, ly + 36], [84, 26], "retry")) Mlb_AuxAsk();
 	}
 	else
