@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1204 / P1205 / P1206 sirena saves, teleport speed scripts, chat
+Live 2 Nov: lobbies and both installs on deploy/p1205-vsvel f7316747 (qw 07354dba, cs 29c73849, menu
+a78349ac); surfd chat generation 470ab7c9 since 09:10Z. Players get the menu part with the next release.
+1. surf_sirena stage 1: pass the opening window, save past it, load the save: the barrier lets you
+   through. Load a save made before the window: shut. After `!r`: shut.
+2. surf_centipedes (or surf_affliction): fall into a stage-end teleport: you arrive standing still
+   (the map's script stops you), with no snap or rubber-band.
+3. Chat: open a friend's thread; their "Message (N)" clears, and stays cleared after a restart.
+
 ## P1203 zone editor: drag corners, edges and faces
 On all 12 lobbies and in both C:\FTESurf / C:\FTEQuake installs (CSQC only); a game you host uses
 its own install's files, so your Desktop WorldofSurf install gets it with the next release. Host

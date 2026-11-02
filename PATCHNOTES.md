@@ -21,24 +21,33 @@
 
 ## next
 
-### P1203 Zone editor: drag corners, edges and faces
-- Zone editor: select a zone and press Edit shape, then aim at a corner, edge or face to light it up and hold Mouse1 to drag it. Right-click cancels, Esc returns to the panel.
-- Dragged corners snap like placing does: to the grid (the wheel changes it), to the map's corners and edges, and to other zones. Side faces push and pull, top and bottom set the height.
-
 ### P1207 No prediction-error box in a game you host
 - A game running on your own PC (single player) no longer offers prediction-error reports. Nothing is predicted there, so a teleport or `!r` was being reported as an error.
 - When `!r` or another reset cannot be predicted, the report now says why, and it names the game files you were running.
 
+### P1206 Chat: fairer saved history, read on every install
+- The saved lobby chat keeps everyone's lines: a few spam accounts can only push out each other's, and a quiet friend's message always shows in your chat.
+- A message you have read is read on your account, so a friend's Message count clears on every install, and one you saw in a game counts as read.
+- Clicking a name in the menu's lists no longer opens the wrong player when the list updates during the click.
+
+### P1205 Map scripts that set your speed at teleports work
+- About 40 maps (surf_centipedes, surf_affliction, surf_skipalot, surf_spaceracer and others) set your speed when a teleport or trigger fires. Those scripts now run, as on Momentum, and your game predicts them, so there is no snap.
+- bhop_decimus: its jump triggers that change gravity now work, as on Momentum.
+
+### P1204 surf_sirena's barriers stay open after a save load
+- A barrier you opened on surf_sirena stays open when you load a save, rewind or resume from after its trigger. A save from before the trigger still finds it shut.
+
+### P1203 Zone editor: drag corners, edges and faces
+- Zone editor: select a zone and press Edit shape, then aim at a corner, edge or face to light it up and hold Mouse1 to drag it. Right-click cancels, Esc returns to the panel.
+- Dragged corners snap like placing does: to the grid (the wheel changes it), to the map's corners and edges, and to other zones. Side faces push and pull, top and bottom set the height.
 
 ### P1202 3D skies show their moving scenery
 - Things placed in a map's 3D sky (props, trains, spinning parts) now show behind the map, as Momentum shows them. surf_shape's sand dunes, surf_centipedes' bird flocks, surf_colony's skyline and surf_destruction's cyclones were missing before.
 - Sky props that have an animation now play it: surf_shape's dunes move past.
 
-
 ### P1201 surf_view and ent_view: outlines and see-through planes
 - surf_view now outlines every face it shows, so you can tell where one ramp ends and the one behind it starts. ent_view's trigger volumes get the same outlines.
 - New setting surf_view_style: 0 dotted (the old look), 1 dotted with outlines (default), 2 see-through planes, 3 see-through planes with outlines. surf_view_fill sets how strong the fill is.
-
 
 ### P1169 Larger Maps filter text
 - Maps: larger, sharper native-pixel filter text, with roomier controls that wrap on smaller windows.

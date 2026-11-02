@@ -1,5 +1,18 @@
 # AGENT_NOTES.md
 
+## P1204-P1206 (live 2 Nov: deploy/p1205-vsvel f7316747; surfd 470ab7c9)
+- P1204: a sirena grant is saved state (`nocol <brush model>` in state.txt and the rw_names ring
+  after chr 1). SV_NoColRegrant runs LAST in SV_SaveApplyStateRows (SV_SaveLoadTag's forgiveness
+  advances the attempt after SV_BankNewAttempt) and at the resume return, only when sl_mapsame.
+- P1205: sh_vsvel.qc is the VScript velocity grammar for both progs (case-sensitive, as Squirrel).
+  The server queues the write (bound to its bank attempt) and applies it at PreThink top, after
+  SV_TriggerEndEdge and at PostThink top, with a `speed` warp and SV_BankCauseAffect. The client
+  mirror owns any slot with IN_VSVEL rows and applies at the end of CSQC_PredictPlayerMove.
+  Special targets fold case (FS_IsActivator). A listen game runs no client prediction: test with a
+  dedicated server + UDP client (lexlist4-20261102/artifacts/p1205arm.py).
+- P1206: read marks are social_messages rows with recipient "@read:<reader>:<friend>" (like the
+  room's "@menu"). Every social_messages read must name its recipient or exclude '@...'.
+
 ## P1203 zone_edit handles (live 2 Nov 08:44Z, deploy/p1203-handles b826c9ba, cs 4745b94a)
 - Delivered QC base for the next lobby deploy: origin/deploy/p1203-handles b826c9ba (e2's
   46b75823 + 5 CSQC commits; qwprogs e2fa9632 unchanged, .prev restored to 6955e756 by 2b).

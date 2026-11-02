@@ -10,6 +10,20 @@
   it is never animated). The spawn test for those stays coarse too.
 - Census stopped by the memory reaper at map 180 of 297 (census/v4a, v4b in the root); the rest unread.
 
+## P1204-P1206 residuals (2 Nov 2026)
+- P1205 rows the client does not mirror snap a little: a delayed write (surf_oneiric, 1 s), two
+  writes in one command (the client keeps the last, the server applies each), writes from
+  sources the mirror does not track (func_dustmotes, func_brush, info_teleport_destination,
+  trigger_setspeed: 10 rows).
+- Outputs with times "0": this engine treats them as spent; Source's FireOutput decrements 0 to
+  -1 (EVENT_FIRE_ALWAYS) and fires forever. Older than P1205; 15 velocity rows (surf_haze,
+  surf_despair, surf_lucid) and other outputs. Needs checking against the SDK first.
+- bhop_decimus: the "!ACTIVATOR" case fold turns on six OnJump AddOutput gravity writes, as in
+  Source. Gravity is not replayed, so runs that use them HOLD; its boards were set without them.
+- P1204's rewind path is reviewed, not measured (the arm cannot open the rewind from a cfg).
+- P1206: the room's shown lines are dealt fairly across senders, so a busy room shows a spread,
+  not a continuous run.
+
 ## P1198-P1200 menu profiles, board, saved chat: residuals (2 Nov 2026)
 - Saved chat is live (surfd ac283934, 2 Nov 07:10Z, with release 0.1.36). Players still on 0.1.35
   see "expire after two minutes; not saved" until they update.
@@ -17,10 +31,8 @@
   (40 per sender, 20 sends/min); three chatty conversations can push a quiet friend's line out of
   a hist=1 snapshot (120 lines, 50 per conversation), two out of an old menu's (32, 16 each). The
   rows are still stored. A full table (20,000) evicts the heaviest senders to one level.
-- Read marks (cl_chat_read) are per install, not per account; unread counts exist only while the
-  chat is polled (the friends list on the Maps screen shows no counts).
-- Player clicks in the board/chat lists hit-test by row index: a page landing between mouse-down
-  and mouse-up could open the neighbour's Stats page.
+- Unread counts exist only while the chat is polled (the friends list on the Maps screen shows
+  none). (Per-account read marks and the row-index click race: fixed by P1206.)
 - tools/test_board_navigation.py: test_profile_row_styles (PF_CF) fails on 96f009ed already; the
   boundary-fixture test errors on an import path when run as tools.X.
 
