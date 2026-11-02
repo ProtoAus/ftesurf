@@ -101,7 +101,7 @@ class BoardNavigation(unittest.TestCase):
         per_tab, active = counts.split('float() Mlb_BoardCount =', 1)
         self.assertIn('mlb_cksf + mlb_cmom + mlb_cours', per_tab)
         self.assertIn('Mlb_TabCount(mlb_tab)', active)
-        self.assertIn('All games: FTESurf, Momentum Mod, KSF', b)
+        self.assertIn('All games: World of Surf, Momentum Mod, KSF', b)
 
     def test_profile_seek_offset_identity_and_paging(self):
         b = source('src/menu/m_board.qc')
