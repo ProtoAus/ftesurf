@@ -5,10 +5,14 @@
   + P1210; qwprogs c65f2e37 unchanged, .prev kept 07354dba).
 - KSF binaries have the duck BUTTON (mask 4) only; DUCKED is inferred (ksfconvert.infer_ducked =
   cl_ksf.qc KSF_Ducked). Change one, change the other: tools/p1210ksfduck.py checks parity per file.
-- PENDING: surfd still converts with the old ksfconvert.py (generation 470ab7c9) and serves 6,838
-  KSF .rec converted before P1210. Leaf names carry the body's hash, so re-converting changes
-  names: keep the originals, write beside, swap the directory in one rename (2b), and update the
-  replays rows. Kit: ac's C:/FTESurf-worktrees/lexlist4-20261102/kit/prepare_1206.py.
+- surfd half LIVE: generation 833c8c58 (470ab7c9 + ksfconvert.py) since 10:36:08Z at
+  /srv/nvme/agent-work/ksfduck-1210-37d486c9 (fallback 470ab7c9 CLOSED in its control/); the next
+  surfd swap builds on it from that root (kit: zonesnap-20261102T0534Z/kit, make_kit_1210.py over
+  ac's prepare_1206). 6,440 KSF replays rows re-pointed at new conversions at 10:50:05Z (old
+  leaves kept beside them; `p1210_reconvert.py rollback` there undoes it from reconvert/plan.json).
+- A converter change re-names served KSF leaves (the name hashes the body): re-run that root's
+  p1210_reconvert.py pattern -- old converter must reproduce each row exactly, write beside, one
+  guarded row transaction. No directory rename is needed.
 
 ## P1204-P1206 (live 2 Nov: deploy/p1205-vsvel f7316747; surfd 470ab7c9)
 - P1204: a sirena grant is saved state (`nocol <brush model>` in state.txt and the rw_names ring

@@ -6,10 +6,11 @@ If a player still sees a Defender warning, ask for the detection name and file; 
 Both installs already run the patch-1212 game exe.
 
 ## P1210 KSF replays show crouching
-In game, for a KSF file opened with `replay ksf <file> <map> <bonus> <style>` (all 12 lobbies and
-both installs). KSF runs the backend serves were converted before this, so they show it only
-after a backend update that re-converts them (not done yet). Please check on surf_wasteland2 or
-surf_beverages_remix: a crouch held on a ramp after letting go shows the crouched model and eye.
+Everywhere KSF runs show: the backend re-converted its 6,838 served KSF runs (2 Nov 10:50Z; 398 had no crouch) and
+new downloads convert the same way; local KSF files opened with `replay ksf ...` too. Please check
+a KSF replay or race ghost on surf_wasteland2 or surf_beverages_remix: a crouch held on a ramp
+after letting go shows the crouched model and eye. If a run you watched before still stands up,
+your game may have the old copy cached.
 
 ## P1208 / P1209 launcher versions; the launcher is WOS-Launcher (after the next release)
 Launcher and release tooling only; nothing changes until a release is cut. Then:
