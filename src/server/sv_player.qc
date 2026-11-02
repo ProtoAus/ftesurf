@@ -591,6 +591,7 @@ void() PlayerPreThink =
 	// Patch 1025: the PREVIOUS command's end-touch edge, read the same way.
 	if (self.run_touchran)
 		SV_TriggerEndEdge(self);
+	SV_VsVelPost(self);                 // P1205: an OnEndTouch write, before this command's move (review 1)
 
 	/*
 	  The pre-move ground state, for OnLand (SV_TriggerIOTouch) and for the edge
