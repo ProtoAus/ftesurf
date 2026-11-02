@@ -1,7 +1,7 @@
 # lextest.md — things waiting on a human
 
-## P1233 faster water (installs once engine patch-1235 is installed)
-Both installs once the patch-1235 exe (it carries P1233) is installed; your Desktop copy with the next release:
+## P1233 faster water (installs once its exe is installed)
+Both installs once the patch-1233-with-1230 exe is installed (it waits on your okay); your Desktop copy with the next release:
 - At your settings (hl2_water 2), surf_garden saves 1 and 4 and surf_boreas saves 7 and 10 run faster than before
   (rig: 335 -> 499, 405 -> 575, 323 -> 395, 326 -> 429 fps); the water's reflection and refraction look the same.
 
