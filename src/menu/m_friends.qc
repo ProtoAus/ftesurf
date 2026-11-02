@@ -694,7 +694,8 @@ void(vector pos, vector size) MF_Draw =
 			if (ui_button(strcat("mf_add", who), rp + [size_x - 126, 20], [82, 24], "Add back"))
 				localcmd(sprintf("friends_menu_add %s\n", who));
 			if (rel == 3 && MF_WhoSafe(who))
-			if (ui_button(strcat("mf_msg", who), rp + [size_x - 126, 20], [82, 24], "Message"))
+			if (ui_button(strcat("mf_msg", who), rp + [size_x - 126, 20], [82, 24],
+			              MC_Unread(who) ? sprintf("Message (%g)", MC_Unread(who)) : "Message", MC_Unread(who) > 0))
 				MC_Message(who, nm);
 		}
 		sui_list_view_end();

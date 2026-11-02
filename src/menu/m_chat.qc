@@ -1,4 +1,6 @@
 // P963: explicit main-menu lobby/DM screen. No text/proof cache on disk or cvars.
+// P1200: surfd keeps the lines 30 days; the only thing kept here is cl_chat_read,
+// "mark:id" per friend -- the newest of their messages this install has shown.
 #define MC_MSG_H 96
 float mc_rows, mc_view, mc_friends;
 float mc_count, mc_height, mc_cursor;
@@ -7,6 +9,8 @@ float mc_visible, mc_req, mc_wire, mc_phase, mc_at, mc_next, mc_seen;
 string mc_peer, mc_peer_name, mc_me, mc_draft, mc_note;
 string mc_op, mc_target, mc_sent;
 string mc_pick, mc_pick_name;    // P1198: a Message click waiting for the chat to load
+float mc_unread;                 // P1200: strbuf, "mark count name" per friend with unread lines
+float mc_unread_n, mc_markdue;
 
 void(__inout string dst, string src) MC_Keep =
 {
@@ -16,7 +20,7 @@ void(__inout string dst, string src) MC_Keep =
 
 void() MC_Init =
 {
-	mc_rows = mc_view = mc_friends = -1;
+	mc_rows = mc_view = mc_friends = mc_unread = -1;
 	MC_Keep(mc_peer, "-");
 	MC_Keep(mc_peer_name, "Public lobby");
 };
@@ -40,6 +44,100 @@ float() MC_Relayed = { return (clientstate() == 2 && serverkey("board") != "loca
 
 string(string text) MC_Plain = { return strreplace("^", "^^", text); };
 
+// P1200: ids are decimal strings up to 10 digits; compared as such, not as float32.
+float(string s) MC_Digits =
+{
+	local float i, c;
+	if (strlen(s) < 1 || strlen(s) > 10) return FALSE;
+	for (i = 0; i < strlen(s); i = i + 1)
+	{
+		c = str2chr(s, i);
+		if (c < 48 || c > 57) return FALSE;
+	}
+	return TRUE;
+};
+
+float(string a, string b) MC_IdAfter =
+{
+	if (strlen(a) != strlen(b)) return strlen(a) > strlen(b);
+	return strcmp(a, b) > 0;
+};
+
+string(string peer) MC_ReadMark =
+{
+	local float i, n;
+	n = tokenize(cvar_string("cl_chat_read"));
+	for (i = 0; i < n; i = i + 1)
+		if (substring(argv(i), 0, 9) == strcat(peer, ":")) return substring(argv(i), 9, 10);
+	return "0";
+};
+
+void(string peer, string id) MC_SetRead =
+{
+	local float i, n, kept;
+	local string out;
+	out = strcat(peer, ":", id);
+	kept = 1;
+	n = tokenize(cvar_string("cl_chat_read"));
+	for (i = 0; i < n && kept < 128; i = i + 1)
+		if (substring(argv(i), 0, 9) != strcat(peer, ":"))
+		if (MF_Hex(substring(argv(i), 0, 8), 8))
+		{
+			out = strcat(out, " ", argv(i));
+			kept = kept + 1;
+		}
+	cvar_set("cl_chat_read", out);
+};
+
+// Lines from each friend newer than their read mark, into mc_unread.
+void() MC_CountUnread =
+{
+	local float i, j, k;
+	local string peer, mark, id, name;
+	if (mc_unread >= 0) buf_del(mc_unread);
+	mc_unread = buf_create();
+	mc_unread_n = 0;
+	if (mc_rows < 0) return;
+	for (i = 0; i < buf_getsize(mc_rows); i = i + 1)
+	{
+		if (tokenize(bufstr_get(mc_rows, i)) != 5) continue;
+		peer = argv(0); id = argv(4); name = argv(2);
+		if (peer == "-" || argv(1) == mc_me) continue;
+		mark = MC_ReadMark(peer);
+		if (!MC_IdAfter(id, mark)) continue;
+		for (j = 0; j < mc_unread_n; j = j + 1)
+			if (tokenize(bufstr_get(mc_unread, j)) == 3) if (argv(0) == peer) break;
+		k = (j < mc_unread_n) ? stof(argv(1)) : 0;
+		bufstr_set(mc_unread, j, strcat(peer, " ", ftos(k + 1), " ", name));
+		if (j == mc_unread_n) mc_unread_n = mc_unread_n + 1;
+	}
+};
+
+float(string peer) MC_Unread =
+{
+	local float j;
+	if (mc_unread < 0) return 0;
+	for (j = 0; j < mc_unread_n; j = j + 1)
+		if (tokenize(bufstr_get(mc_unread, j)) == 3) if (argv(0) == peer) return stof(argv(1));
+	return 0;
+};
+
+// The open DM thread's newest line from them becomes their read mark.
+void() MC_MarkRead =
+{
+	local float i;
+	local string best;
+	mc_markdue = FALSE;
+	if (mc_view < 0 || mc_peer == "-") return;
+	best = "";
+	for (i = 0; i < mc_count; i = i + 1)
+		if (tokenize(bufstr_get(mc_view, i)) == 5) if (argv(1) != mc_me)
+		if (best == "" || MC_IdAfter(argv(4), best)) best = argv(4);
+	if (best == "" || !MC_IdAfter(best, MC_ReadMark(mc_peer))) return;
+	MC_SetRead(mc_peer, best);
+	MC_CountUnread();
+};
+
 void() MC_Rebuild =
 {
 	local float i, follow;
@@ -52,12 +150,14 @@ void() MC_Rebuild =
 	for (i = 0; i < buf_getsize(mc_rows); i = i + 1)
 	{
 		row = bufstr_get(mc_rows, i);
-		if (tokenize(row) != 4) continue;
+		if (tokenize(row) != 5) continue;
 		if (strcmp(argv(0), mc_peer)) continue;
 		bufstr_set(mc_view, mc_count, row);
 		mc_count = mc_count + 1;
 	}
 	if (follow) mc_scroll_y = 999999;
+	mc_markdue = TRUE;
+	MC_CountUnread();
 };
 
 void(string who, string name) MC_Select =
@@ -85,7 +185,9 @@ void() MC_Clear =
 	if (mc_rows >= 0) buf_del(mc_rows);
 	if (mc_view >= 0) buf_del(mc_view);
 	if (mc_friends >= 0) buf_del(mc_friends);
-	mc_rows = mc_view = mc_friends = -1;
+	if (mc_unread >= 0) buf_del(mc_unread);
+	mc_rows = mc_view = mc_friends = mc_unread = -1;
+	mc_unread_n = 0;
 	mc_count = mc_seen = mc_cursor = 0;
 	MC_Keep(mc_me, "");
 	MC_Keep(mc_draft, "");
@@ -178,7 +280,7 @@ float(int root) MC_Snapshot =
 {
 	local int arr, row;
 	local float n, i, pass, stage, friends, j;
-	local string who, peer, name, text, me;
+	local string who, peer, name, text, me, id;
 	me = json_get_string(json_find_object_child(root, "me"));
 	if (!MF_Hex(me, 8)) return FALSE;
 	MC_SelfMark(me, FALSE);
@@ -193,7 +295,7 @@ float(int root) MC_Snapshot =
 	{
 		arr = json_find_object_child(root, pass ? "messages" : "room");
 		n = json_get_length(arr);
-		if (!arr || n < 0 || n > 32) { buf_del(stage); return FALSE; }
+		if (!arr || n < 0 || n > 128) { buf_del(stage); return FALSE; }
 		for (i = 0; i < n; i = i + 1)
 		{
 			row = json_get_child_at_index(arr, i);
@@ -201,10 +303,12 @@ float(int root) MC_Snapshot =
 			peer = pass ? json_get_string(json_find_object_child(row, "peer")) : "-";
 			name = json_get_string(json_find_object_child(row, "name"));
 			text = json_get_string(json_find_object_child(row, "text"));
+			id = json_get_string(json_find_object_child(row, "id"));
 			if (!MF_Hex(who, 8) || strlen(name) > 192 || !strlen(text) || strlen(text) > 320) continue;
+			if (!MC_Digits(id)) continue;
 			if (pass) if (!MF_Hex(peer, 8)) continue;
 			if (!strlen(name)) name = "Player";
-			bufstr_set(stage, j, strcat(peer, " ", who, " ", uri_escape(name), " ", uri_escape(text)));
+			bufstr_set(stage, j, strcat(strcat(peer, " ", who, " ", uri_escape(name)), " ", uri_escape(text), " ", id));
 			j = j + 1;
 		}
 	}
@@ -279,6 +383,7 @@ float(float reqid, float code, string body) MC_Reply =
 		form = sprintf("op=%s&who=%s&nonce=%s&expires=%s&ticket=%s&pub=%s&sig=%s",
 		               mc_op, uri_escape(mc_target), nonce, expires, ticket, pub, sig);
 		if (!strcmp(mc_op, "message")) form = strcat(form, "&text=", uri_escape(mc_sent));
+		if (!strcmp(mc_op, "chat")) form = strcat(form, "&hist=1");    // P1200: 50 room / 100 DM lines
 		mc_req = Lob_NextReq();
 		mc_wire = mc_req;
 		mc_phase = 2;
@@ -300,7 +405,7 @@ float(float reqid, float code, string body) MC_Reply =
 	else
 	{
 		if (!MC_Snapshot(root)) MC_Fail("Invalid chat snapshot.");
-		else { MC_Keep(mc_note, "Recent messages expire after two minutes; not saved."); mc_next = time + 8; }
+		else { MC_Keep(mc_note, "Messages are saved for 30 days, so friends see them when they next play."); mc_next = time + 8; }
 		mc_phase = 0;
 	}
 	json_free(root);
@@ -310,6 +415,8 @@ float(float reqid, float code, string body) MC_Reply =
 void() MC_Probe =
 {
 	print(sprintf("browser_chat: active %g visible %g draft %g public %g\n", MC_Active(), mc_visible, strlen(mc_draft), !strcmp(mc_peer, "-")));
+	print(sprintf("browser_chat: rows %g shown %g peer %s unread-friends %g read %S\n",
+	              (mc_rows >= 0) ? buf_getsize(mc_rows) : -1, mc_count, mc_peer, mc_unread_n, cvar_string("cl_chat_read")));
 };
 
 void(vector pos, vector size, float embedded) MC_Panel =
@@ -329,6 +436,18 @@ void(vector pos, vector size, float embedded) MC_Panel =
 	{
 		if (ui_button("mc_public", [size_x - 116, 12], '100 30 0', "Public lobby"))
 			if (!mc_wire) MC_Select("-", "Public lobby");
+	}
+	// P1200: a friend's saved message waiting, from the public room or another thread.
+	if (mc_unread_n > 0 && MF_Online())
+	if (tokenize(bufstr_get(mc_unread, 0)) == 3)
+	{
+		who = argv(0); name = uri_unescape(argv(2)); i = stof(argv(1));
+		text = (i > 1) ? sprintf("%g new from %s", i, MC_Plain(name)) : strcat("New message from ", MC_Plain(name));
+		left = (embedded ? size_x - 124 : size_x - 106) - 150;     // between the title and the right button
+		if (left > 80)
+		if (ui_button("mc_newdm", '150 12 0', [min(left, stringwidth(text, TRUE, SZ_LABEL) + 32), 30],
+		              ui_fit_text(text, left - 24, SZ_LABEL), TRUE))
+			if (!mc_wire) MC_Select(who, name);
 	}
 	else if (ui_button("mc_back", [size_x - 98, 12], '82 30 0', "back"))
 	{
@@ -360,7 +479,8 @@ void(vector pos, vector size, float embedded) MC_Panel =
 			if (tokenize(bufstr_get(mc_friends, i)) != 2) continue;
 			who = argv(0); name = uri_unescape(argv(1));
 			id = strcat("mc_dm_", who);
-			if (ui_button(id, rp, [left - 14, 32], ui_fit_text(MC_Plain(name), left - 36, SZ_LABEL)))
+			text = MC_Unread(who) ? sprintf("%s (%g)", MC_Plain(name), MC_Unread(who)) : MC_Plain(name);
+			if (ui_button(id, rp, [left - 14, 32], ui_fit_text(text, left - 36, SZ_LABEL), MC_Unread(who) > 0))
 				if (!mc_wire) MC_Select(who, name);
 		}
 		sui_list_view_end();
@@ -379,7 +499,7 @@ void(vector pos, vector size, float embedded) MC_Panel =
 		rp = '0 0 0';
 		for (i = sui_list_item(rp); i > -1; i = sui_list_item(rp))
 		{
-			if (tokenize(bufstr_get(mc_view, i)) != 4) continue;
+			if (tokenize(bufstr_get(mc_view, i)) != 5) continue;
 			who = argv(1); name = uri_unescape(argv(2)); text = uri_unescape(argv(3));
 			board = (argv(0) == "-");               // the public room, not a message
 			if (!strcmp(who, mc_me)) name = "You";
@@ -400,7 +520,8 @@ void(vector pos, vector size, float embedded) MC_Panel =
 			ui_para(rp + '0 22 0', width - 20, SZ_LABEL, 18, MC_Plain(text), COL_TEXT, TRUE);
 		}
 		sui_list_view_end();
-		if (!mc_count) sui_text([right, message_y + 8], SZ_LABEL, "No recent messages.", COL_DIM, 1, 0);
+		if (!mc_count) sui_text([right, message_y + 8], SZ_LABEL, "No messages yet.", COL_DIM, 1, 0);
+		if (mc_markdue) MC_MarkRead();
 	}
 	else ui_para([right, message_y + 8], width, SZ_LABEL, 18, "Waiting for a fresh chat snapshot...", COL_DIM, TRUE);
 	ui_field("mc_text", [right, field_y], [width - 88, field_h], mc_draft, mc_cursor, "Write a message...");
