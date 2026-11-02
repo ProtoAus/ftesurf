@@ -10,8 +10,13 @@
 - surfd: with no sqlite_stat1 the planner scans runs_board (3.47M entries) for a tier NOT IN count
   even when the literal matches runs_live's WHERE; `INDEXED BY runs_live` takes 0.01 s (2.1 s cold).
   Read-only checks run on a backup-API snapshot in /srv/nvme/agent-work (artifacts/dbaudit_run.py).
+- serverinfo fs_zegoto 1 says the server's zone_edit_goto takes a zone's point; *boardgen counts stored
+  rows across maps (seeded from serverinfo). A CSQC global seed must sit above every early return of
+  the per-frame function that sets it (review 2: one placed after obp_i's increment never ran).
+- A load key let go waits in rec_sl_upwait: every writer of rec_sl_holding must set it too (review 1).
 - Arms: C:\FTESurf-worktrees\lexlist-20261102T1615Z\artifacts (lexui_arm.py: synthetic surfd, menu
-  chat/inventory/search, HUD shots, P1223/P1226 checks; lead_arm.py: the load tap).
+  chat/inventory/search, HUD shots, P1223/P1226 checks; lead_arm.py: the load tap; startup_arm.py: every
+  startup screen via an arm-only p1221_screen; with consent 0 the terms gate wins every frame).
 
 ## P1211 gravity and delayed-write prediction (live 2 Nov 12:23Z: QC deploy/p1211-gravity 82ec7e1c)
 - The Pi engine is c284f65b = patch-1173 + P1211's server files (engine branch p1211-pi
