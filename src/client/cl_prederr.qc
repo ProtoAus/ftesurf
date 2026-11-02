@@ -84,6 +84,21 @@ string(string s) PE_Safe =
 	return o;
 };
 
+// Patch 1207: CSQC_PredictPlayerPreMove runs on every replayed command.  A local game replays none
+// after spawn (cl_pred.c stops at to.time >= simtime), so a line there is a server move nothing
+// predicted, not a misprediction.
+float() PE_Predicting =
+{
+	return (cltime - wop_premove_t < 0.5 && cltime >= wop_premove_t);
+};
+
+// Never offered for sending to this PC's own server.  (P1195 read cvar("sv_running"), which the
+// engine does not have, so it was always 0.)
+float() PE_Local =
+{
+	return !strncmp(serverkey("ip"), "QLoopBack", 9);
+};
+
 void(string stem) PE_WriteContext =
 {
 	local float f, i, i0;
@@ -97,6 +112,8 @@ void(string stem) PE_WriteContext =
 	                 cvar_string("cl_netfps"), cvar_string("rate"), cvar_string("cl_maxfps"),
 	                 cvar_string("cl_prederror"), cvar_string("cl_triggers"), cvar_string("cl_warpop")));
 	fputs(f, sprintf("ping %s\n", getplayerkeyvalue(player_localnum, "ping")));   // the engine is in the ring's header
+	fputs(f, sprintf("csprogs crc %s size %s predicting %g local %g\n", serverkey("*csprogs"),
+	                 serverkey("*csprogssize"), PE_Predicting(), PE_Local()));   // P1207
 	fputs(f, "# context: time seq what (server prints, mirror triggers, gates, warp ops, prederr lines)\n");
 	i0 = max(0, pe_ring_n - PE_RING);
 	for (i = i0; i < pe_ring_n; i = i + 1)
@@ -124,7 +141,7 @@ void() PE_Write =
 	print(sprintf("prederr: report kept in data/prederr/%s.txt (worst %.0f units)\n", stem, pe_err));
 	pe_name_err = pe_err;
 	pe_name_seq = pe_errseq;
-	if (cvar("cl_prederr_ask") && !cvar("sv_running"))
+	if (cvar("cl_prederr_ask") && !PE_Local())
 	{
 		if (pe_send >= 0)
 			pe_box_pending = TRUE;
@@ -154,7 +171,10 @@ void() PE_Frame =
 		n = tokenize(cvar_string("cl_prederror_last"));
 		e = (n >= 9) ? stof(argv(2)) : 0;
 		PE_Note(strcat("prederr ", cvar_string("cl_prederror_last")));
-		if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report"))
+		if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && !PE_Predicting())
+			PE_Note(sprintf("not reported: no prediction for %.1f s (a local game predicts nothing)",
+			                cltime - wop_premove_t));
+		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report"))
 		{
 			if (!pe_due && cltime >= pe_cool)
 			{
@@ -238,7 +258,7 @@ void() PE_SendNext =
 // Only while the box is asking: a server can stuffcmd prederr_send.
 void() PE_Send =
 {
-	if (pe_box_end <= cltime || pe_name == "" || pe_send >= 0 || pe_sent_ok == 1 || cvar("sv_running"))
+	if (pe_box_end <= cltime || pe_name == "" || pe_send >= 0 || pe_sent_ok == 1 || PE_Local())
 		return;
 	if (!PE_Pack(pe_name))
 	{

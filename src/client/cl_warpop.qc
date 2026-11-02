@@ -60,6 +60,7 @@ float  *wop_blind;              // Patch 759: WOPB_* -- sent unpredicted
 float  wop_slot;                // the slot WarpOp_Queue just filled
 vector wop_tgorg, wop_tgang, wop_tgvel;   // WarpOp_Row's answer: origin, pitch/yaw/duck, speed
 float  wop_tok, wop_tokt;       // SV_SaveLocRate's bucket, mirrored
+string wop_why;                 // Patch 1207: why the last WarpOp_Able/Reset said no (a constant)
 
 void() WarpOp_RegisterCvars =
 {
@@ -73,14 +74,19 @@ void() WarpOp_RegisterCvars =
 
 float() WarpOp_Able =
 {
+	wop_why = "off (cl_warpop 0, or the server has no fs_wop)";
 	if (!cvar("cl_warpop") || serverkey("fs_wop") != "1")
 		return FALSE;
+	wop_why = "no prediction running (a local game predicts nothing)";
 	if (cltime - wop_premove_t > 0.5 || cltime < wop_premove_t)
 		return FALSE;
+	wop_why = "no input frame to carry it";
 	if (cltime - wop_inputt > 0.25 || cltime < wop_inputt)
 		return FALSE;                   // nothing would carry the op to the server
+	wop_why = "spectating, watching or rewinding";
 	if (!LT_StatsAreMine() || Spec_Active() || rec_wt_on || rec_wt_open || rec_gh_on || rw_on)
 		return FALSE;
+	wop_why = "";
 	if (!wop_seq)
 	{
 		wop_seq  = memalloc(sizeof(float) * WOP_RING);
@@ -306,14 +312,18 @@ void() WarpOp_Legs =
 
 // `!r`, `!m`, `!s N`, `!b N` (WOP_RESET, WOP_SPAWN, WOP_STAGE1 + N - 1,
 // WOP_BONUS1 + N - 1).  FALSE: send the old command instead.
-float(float op) WarpOp_Reset =
+float(float op) WarpOp_ResetTry =
 {
 	local vector org, ang;
 	local float i, blind;
 
-	if (!WarpOp_Able() || rec_sl_holding || Trail_RequestBusy())
+	if (!WarpOp_Able())
+		return FALSE;
+	wop_why = "a save hold or trail request is busy";
+	if (rec_sl_holding || Trail_RequestBusy())
 		return FALSE;
 	SaveLoc_Resync();
+	wop_why = "a save command is in flight";
 	if (rec_sl_sent != getstatf(STAT_FS_SLACK))
 		return FALSE;                   // an sl_ command in flight would land after the op
 	if (op == WOP_SPAWN)
@@ -328,12 +338,14 @@ float(float op) WarpOp_Reset =
 	}
 	else
 	{
+		wop_why = "no stage table yet";
 		if (!wop_legang)
 			return FALSE;
 		i = (op >= WOP_BONUS1) ? WOP_STAGES + op - WOP_BONUS1 : op - WOP_STAGE1;
 		org = wop_legorg[i];
 		ang = wop_legang[i];
 	}
+	wop_why = "the server published no destination";
 	if (ang_z != WOPD_KEEP && ang_z != WOPD_ANG)
 		return FALSE;
 	ang_z = (ang_z == WOPD_ANG);
@@ -342,11 +354,21 @@ float(float op) WarpOp_Reset =
 	blind = (op == WOP_RESET && WarpOp_Pending(WOPP_MOVE));
 	if (blind)
 		ang_z = 0;
+	wop_why = "the op queue is full";
 	if (!WarpOp_Queue(op, org, '0 0 0', ang, 0))
 		return FALSE;
 	if (blind)
 		wop_blind[wop_slot] = WOPB_BLIND;
 	return TRUE;
+};
+
+// Patch 1207: a reset sent unpredicted says why in the prederror context.
+float(float op) WarpOp_Reset =
+{
+	if (WarpOp_ResetTry(op))
+		return TRUE;
+	PE_Note(sprintf("warpop %g not predicted: %s", op, wop_why));
+	return FALSE;
 };
 
 // The load key's sl_load + sl_hold.  Same gates as SaveLoc_PredictLoad's camera.
