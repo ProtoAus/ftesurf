@@ -2075,7 +2075,9 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// Cosmetic shot punch lives ONLY in the main scene, never input/aim/sidecars.
 	wp_baseview = getproperty(VF_ANGLES);
 	if (wp_kick != 0) setproperty(VF_ANGLES, wp_baseview + [wp_kick, 0, 0]);
+	Inv_GlowPre();                  // P1230: keeps this view's depth for the aura's pass
 	renderscene();
+	Inv_GlowPass(TRUE);             // ...with the angles the scene was drawn at
 	if (wp_kick != 0) setproperty(VF_ANGLES, wp_baseview);
 	if (notmenu) WP_ScopeDraw(scr); // CSS mask under HUD/windows, no weapon crosshair
 
