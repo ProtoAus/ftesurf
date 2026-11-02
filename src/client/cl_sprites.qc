@@ -231,8 +231,10 @@ float  spr_gnext;                       // round-robin cursor for the trace budg
   first, 64 units or more short of it, is skipped (a shaft is tested at its source, which
   an IgnoreSolid one may reach past).  vbsp_sprite_skyrays traces a frame, round-robin over
   both tables, four times that for a sweep after the eye jumps (a teleport keeps the old
-  answers meanwhile).  One whose line from sky_camera meets no sky side is never skipped:
-  it is in the 3D sky room, and the same polygon draws the 3D sky.
+  answers meanwhile).  One that a line from sky_camera reaches (to within 64) is never
+  skipped: it is in the 3D sky room, and the same polygon draws the 3D sky.  ("Meets no sky
+  side" also passed main-world sprites behind a room's nodraw or glass shell: bhop_curse
+  377 of 377, surf_limbo 237 of 249.)
 */
 #define SKY_UNTESTED 0
 #define SKY_CLEAR    1
@@ -2521,7 +2523,7 @@ float(vector eye, vector p, float st) Sprite_SkyTest =
 	if (st == SKY_UNTESTED && vbsp_skyroom_have)
 	{
 		traceline(vbsp_skyroom_pos, p, MOVE_NOMONSTERS, world);
-		if (trace_fraction >= 1 || substring(strtolower(trace_surfacename), 0, 4) != "sky/")
+		if ((1 - trace_fraction) * vlen(p - vbsp_skyroom_pos) < 64)
 			return SKY_ROOM;
 	}
 	traceline(eye, p, MOVE_NOMONSTERS, world);

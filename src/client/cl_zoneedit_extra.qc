@@ -1419,6 +1419,8 @@ float  ze_tdyaw[ZE_TDMAX];
 string ze_tdname[ZE_TDMAX];
 float  ze_tdn;
 string ze_tdmap;
+float  ze_sdest[ZONE_MAX];      // ZoneEdit_SpawnDest's answers, as of ze_sdest_t
+float  ze_sdest_t;
 
 void() ZoneEdit_TeleDests =
 {
@@ -1427,8 +1429,9 @@ void() ZoneEdit_TeleDests =
 	local float yaw, na, i, opened;
 
 	if (ze_tdmap == serverkey("map")) return;
-	for (i = 0; i < ze_tdn; i = i + 1) strunzone(ze_tdname[i]);
+	for (i = 0; i < ze_tdn; i = i + 1) { strunzone(ze_tdname[i]); ze_tdname[i] = ""; }
 	ze_tdn = 0;
+	ze_sdest_t = 0;                 // the cached answers index the old list
 	opened = FALSE;
 	getentitytoken(0);
 	while ((tok = getentitytoken()) != "")
@@ -1461,7 +1464,7 @@ void() ZoneEdit_TeleDests =
 };
 
 // The destination an automatic spawn of zone z takes, or -1 (SV_ZoneSpawnYaws).
-float(float z) ZoneEdit_SpawnDest =
+float(float z) ZoneEdit_SpawnDestNow =
 {
 	local float i, n, hit;
 	local vector c, o;
@@ -1488,8 +1491,22 @@ float(float z) ZoneEdit_SpawnDest =
 	}
 	if (n != 1) return -1;
 	o = ze_tdorg[hit];
-	tracebox(o, PM_HULL_MINS, PM_HULL_MAXS, o - '0 0 1024', FALSE, world);
+	tracebox(o, PM_HULL_MINS, PM_HULL_MAXS, o - '0 0 1024', MOVE_NOMONSTERS, world);
 	return Zone_PointInside(z, trace_endpos + '0 0 2') ? hit : -1;
+};
+
+float(float z) ZoneEdit_SpawnDest =
+{
+	local float i;
+
+	if (z < 0 || z >= zone_count) return -1;
+	if (time >= ze_sdest_t || time < ze_sdest_t - 1)       // a map change resets time
+	{
+		for (i = 0; i < zone_count; i = i + 1)
+			ze_sdest[i] = ZoneEdit_SpawnDestNow(i);
+		ze_sdest_t = time + 0.25;
+	}
+	return ze_sdest[z];
 };
 
 // Post, facing arrow and name of one spawn or destination, over the world.

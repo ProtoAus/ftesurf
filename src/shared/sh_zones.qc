@@ -458,6 +458,7 @@ void() Zone_Clear =
 	zone_source = ZSRC_NONE;
 	zone_overflow = FALSE;
 	zone_maxvel = 0;
+	zone_stamped = FALSE;           // P1215: a table not from a stamped file (BSP zones, a new one) is not
 
 	// Build 81: the hash describes the table that just went away.  Released
 	// HERE rather than at the top of Zone_Hash alone, because Zone_LoadJson
