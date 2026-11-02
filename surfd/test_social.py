@@ -793,6 +793,7 @@ class Friends(unittest.TestCase):
         self.db.commit()
         old = self.menu_read(self.menu_form(0, "chat"))
         self.assertEqual((len(old["room"]), len(old["messages"])), (F.SNAP_ROOM, F.SNAP_PEER))
+        self.assertEqual(old["keep"], F.MESSAGE_TTL)
         self.assertEqual(old["room"][-1]["text"], "room 59")
         form = self.menu_form(0, "chat")
         form["hist"] = "1"

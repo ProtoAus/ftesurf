@@ -281,7 +281,9 @@ def chat_snapshot(db, sid, now, lobby_ttl, hist=False):
         messages.append(dict(id=str(row["id"]), who=accounts.who_of(row["sender"]),
                              name=accounts.game_name(row["name"]), text=row["body"], sent=row["sent"],
                              peer=accounts.who_of(other)))
-    out = dict(ok=1, me=accounts.who_of(sid), room=list(reversed(room)), messages=list(reversed(messages)),
+    # `keep`: how long lines are saved, which the P1200 menu words its note from.
+    out = dict(ok=1, me=accounts.who_of(sid), keep=MESSAGE_TTL, room=list(reversed(room)),
+               messages=list(reversed(messages)),
                friends=[r for r in friend_rows(db, sid, now, lobby_ttl) if r["relation"] == 3])
     # The menu refuses a body over 131072 (m_chat.qc MC_Reply): the oldest lines give way.
     while len(json.dumps(out, separators=(",", ":"), ensure_ascii=False).encode("utf-8")) > SNAP_BYTES:
@@ -348,10 +350,23 @@ def make_room(db):
             for i, (count, sender) in enumerate(live[:k]):
                 cut[sender] = count - level - (1 if i < spare else 0)
             break
-    for sender, k in cut.items():
-        if k > 0:
-            db.execute("DELETE FROM social_messages WHERE id IN (SELECT id FROM social_messages WHERE sender=?"
-                       " ORDER BY id LIMIT ?)", (sender, k))
+    # One oldest-first scan picks every id; a DELETE per sender scanned once each (244 ms with
+    # 100 tied senders at 20,000 rows, review 3).
+    need = {sender: k for sender, k in cut.items() if k > 0}
+    doomed = []
+    scan = db.execute("SELECT id, sender FROM social_messages ORDER BY id")
+    for rid, sender in scan:
+        if need.get(sender):
+            doomed.append(rid)
+            need[sender] -= 1
+            if not need[sender]:
+                del need[sender]
+                if not need:
+                    break
+    scan.close()
+    for i in range(0, len(doomed), 500):
+        chunk = doomed[i:i + 500]
+        db.execute("DELETE FROM social_messages WHERE id IN (%s)" % ",".join("?" * len(chunk)), chunk)
 
 
 # P996: a board line in the public room -- a world record or personal best, said
