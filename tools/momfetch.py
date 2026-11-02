@@ -70,6 +70,9 @@ duplicate the boundary row and dropping blind would lose it; identity by hash is
 immune to the shift.  The `rank` field the API sends is kept but is ADVISORY --
 nothing reads it (checked: momboards.py never mentions it, and surfd derives
 rank at query time from BOARD_ORDER), which is what makes a stale one harmless.
+A player keeps one row, their newest (P1117 review 5: Momentum holds a player's
+current run only, and the union kept every superseded one), and a board file at
+most TOTAL_MAX rows, held rows the page did not serve going first (review 6).
 WHAT THIS CANNOT SEE is a run DELETED upstream.  A union never shrinks, and
 --refresh merges too rather than replacing, so nothing in this tool purges a row
 the API has stopped serving -- deleting the board's json is the only way, which
@@ -78,11 +81,16 @@ it passes --refresh every 7 minutes, and a first page that REPLACED would cut
 each played map's board back to one page of rows on every tick.
 """
 import argparse
+import calendar
 import collections
+import http.client
 import io
 import json
 import os
+import re
+import socket
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -104,6 +112,15 @@ API = "https://api.momentum-mod.org/v1"
 UA = "FTESurf/0.1 momfetch (+https://proto.bar/ftesurf)"
 TIMEOUT = 30
 TAKE_MAX = 100        # the API's own cap: take=101 is a 400
+TOTAL_MAX = 60000     # a totalCount past this is not a board (the deepest, 27,022), and
+                      # no board file holds more rows (P1117 review 6)
+HEX40 = re.compile(r"[0-9a-f]{40}")
+CREATED = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z")
+ALIAS_BYTES = 256     # an alias once JSON-escaped (an astral character is 12 bytes)
+STEAM64 = 76561197960265728   # an individual account's SteamID64 is this + its 32-bit id
+DEADLINE = 60         # s for a whole exchange (Deadline)
+REWALK_STRIKES = 3    # host refusals of one re-walk page before that re-walk ends
+MAX_BYTES = 1 << 20   # a reply; a 100-row page is ~13.5 KB
 
 # Consecutive 404s before the sweep stops.  See NoSuchBoard: a 404 is about
 # one board, but a host that began refusing everything would answer 404 to
@@ -112,7 +129,16 @@ SKIP_STREAK = 40
 
 
 class Refused(Exception):
-    """The host said no TO US.  Reported, never retried, stops the sweep."""
+    """The host said no TO US.  Reported, never retried, stops the sweep.
+    `code` is the HTTP status, 0 for no answer, -1 for a reply refused here."""
+
+    def __init__(self, msg, code=0):
+        Exception.__init__(self, msg)
+        self.code = code
+
+
+# A refusal about the host, not one board: a re-walk keeps its cursor through these.
+HOST_CODES = (0, 429, 502, 503, 504, 520, 521, 522, 523, 524)
 
 
 class NoSuchBoard(Exception):
@@ -135,20 +161,152 @@ class NoSuchBoard(Exception):
     """
 
 
+class Deadline(object):
+    """P1117 review 4: the WHOLE exchange (connect, status line, headers, chunked or
+    not) inside `seconds`: a timer shuts every socket the opener made, the blocked
+    read raises, `fired` says there was no answer.  surfd/ksfimport.py has its twin;
+    this file runs beside momwatch with nothing of surfd's."""
+
+    def __init__(self, seconds):
+        self.seconds, self.socks, self.fired = seconds, [], False
+        self.timer = threading.Timer(seconds, self.fire)
+        self.timer.daemon = True
+
+    def __enter__(self):
+        self.timer.start()
+        return self
+
+    def __exit__(self, *a):
+        self.timer.cancel()
+
+    def fire(self):
+        self.fired = True
+        for sock in list(self.socks):
+            self.shut(sock)
+
+    def watch(self, sock):
+        if sock not in self.socks:
+            self.socks.append(sock)
+        if self.fired:
+            self.shut(sock)
+
+    @staticmethod
+    def shut(sock):
+        # socket's own shutdown, not SSLSocket's: that one clears _sslobj, and the
+        # handshake or read that follows raises AttributeError (P1117 review 6).
+        try:
+            socket.socket.shutdown(sock, socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    def handlers(self):
+        """HTTP(S) handlers whose connections hand their socket over AS THEY CONNECT,
+        an HTTPS one before its handshake (P1117 review 5: urllib drops h.sock once
+        the headers are in, so the body was never shut; a connect still pending at
+        the deadline was never seen; a handshake trickled a byte at a time held a
+        1 s deadline 15 s), and no redirect followed (to 127.0.0.1:* or ftp://)."""
+        dl = self
+
+        def watched(base):
+            class Watched(base):
+                def do_open(self, http_class, req, **kw):
+                    class Conn(http_class):
+                        def __init__(self, *a, **k):
+                            super().__init__(*a, **k)
+                            if getattr(self, "_context", None) is not None:
+                                self._context = Handshake(self._context, dl)
+
+                        def connect(self):
+                            super().connect()
+                            dl.watch(self.sock)
+                    return base.do_open(self, Conn, req, **kw)
+            return Watched
+        return [watched(urllib.request.HTTPHandler)(), watched(urllib.request.HTTPSHandler)(),
+                NoRedirect()]
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args):
+        return None
+
+
+class Handshake(object):
+    """An HTTPS context whose sockets the Deadline holds before their handshake."""
+
+    def __init__(self, ctx, dl):
+        self.ctx, self.dl = ctx, dl
+
+    def __getattr__(self, k):
+        return getattr(self.ctx, k)
+
+    def wrap_socket(self, sock, **kw):
+        kw["do_handshake_on_connect"] = False
+        s = self.ctx.wrap_socket(sock, **kw)
+        self.dl.watch(s)
+        if self.dl.fired:               # a connect that finished past the deadline
+            raise TimeoutError("connected after the exchange deadline")
+        s.do_handshake()
+        return s
+
+
 def get(url):
+    dl = Deadline(DEADLINE)
+    try:
+        with dl:
+            body = _get(url, dl)
+    except (Refused, AttributeError, ValueError):
+        # Past the deadline any of these is the watchdog's doing (review 6).
+        if dl.fired:
+            raise Refused("no answer: the exchange took over %d s" % DEADLINE)
+        raise
+    if dl.fired:
+        raise Refused("no answer: the exchange took over %d s" % DEADLINE)
+    return body
+
+
+def _get(url, dl):
     req = urllib.request.Request(url, headers={"User-Agent": UA,
                                                "Accept": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        with urllib.request.build_opener(*dl.handlers()).open(req, timeout=TIMEOUT) as r:
             if r.status < 200 or r.status >= 300:
-                raise Refused("HTTP %d" % r.status)
-            return r.read()
+                raise Refused("HTTP %d" % r.status, r.status)
+            return read_reply(r)
     except urllib.error.HTTPError as e:
         if e.code == 404:
             raise NoSuchBoard("HTTP 404")
-        raise Refused("HTTP %d" % e.code)
+        raise Refused("HTTP %d" % e.code, e.code)
     except urllib.error.URLError as e:
         raise Refused(str(e.reason))
+    # P1117 review 2: a body cut short or a read timing out is no answer, not a crash.
+    except (OSError, http.client.HTTPException) as e:
+        raise Refused("no answer: %s" % (str(e) or type(e).__name__))
+
+
+def read_reply(r, cap=MAX_BYTES, deadline=TIMEOUT):
+    """P1117 review 3: the whole body inside `deadline` s (TIMEOUT is per read, so a
+    trickle held the cron slot), at most `cap` bytes, and all Content-Length said."""
+    try:
+        want = int(r.headers.get("Content-Length"))
+    except (AttributeError, TypeError, ValueError):
+        want = None
+    if want is not None and want > cap:
+        raise Refused("a reply over %d bytes" % cap, -1)
+    end, parts, size = time.monotonic() + deadline, [], 0
+    read = r.read1 if hasattr(r, "read1") else r.read
+    while True:
+        if time.monotonic() > end:
+            raise Refused("no answer: the reply took over %d s" % deadline)
+        chunk = read(min(64 << 10, cap + 1 - size))
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > cap:
+            raise Refused("a reply over %d bytes" % cap, -1)
+        parts.append(chunk)
+    if want is not None and size != want:
+        raise Refused("no answer: %d of %d bytes" % (size, want))
+    return b"".join(parts)
 
 
 def read_tracks(path):
@@ -206,7 +364,7 @@ def write_board(path, rec):
     os.replace(part, path)
 
 
-def merge_rows(old, new):
+def merge_rows(old, new, cap=None):
     """Union by replayHash, ordered by time.
 
     See the docstring's ROWS MERGE paragraph for why identity is the hash and
@@ -214,14 +372,99 @@ def merge_rows(old, new):
     -- parse_board already refuses those on the way in, and this is the second
     reader that would otherwise have to guess.
     """
+    cap = TOTAL_MAX if cap is None else cap
+    fresh = {r.get("hash") for r in new}
     by = {}
     for r in list(old) + list(new):        # new wins: its rank is the fresher one
         h = r.get("hash")
         if h:
             by[h] = r
-    out = list(by.values())
-    out.sort(key=lambda r: (r.get("time", 0.0), r.get("rank") or 0))
+            if "url" in r:                 # nothing reads it: momgrab asks the CDN by hash
+                by[h] = dict(r)
+                del by[h]["url"]
+    best, out = {}, []
+    for r in by.values():
+        sid = r.get("steamid")
+        if not sid:
+            out.append(r)
+        elif sid not in best or replaces(r, best[sid], fresh):
+            best[sid] = r
+    out += best.values()
+    order = lambda r: (r.get("time", 0.0), r.get("rank") or 0)
+    out.sort(key=order)
+    if len(out) > cap:
+        # P1117 review 6: a row this page served is never dropped; held ones go
+        # first, slowest first.
+        mine = [r for r in out if r["hash"] in fresh]
+        rest = [r for r in out if r["hash"] not in fresh][:max(cap - len(mine), 0)]
+        out = sorted(mine + rest, key=order)
     return out
+
+
+def replaces(r, b, fresh):
+    """Whether r takes over from b as a player's one row: the newer `created` (P1117
+    review 5: of the players held twice on 30 Oct, 98 had an older run strictly
+    faster than their newest and 70 an equal one), the page's own row where either
+    has no date or they tie (review 6), else the faster."""
+    rc, bc = created_at(r.get("created")), created_at(b.get("created"))
+    rp = r.get("hash") in fresh
+    if rp != (b.get("hash") in fresh) and (not rc or not bc or rc == bc):
+        return rp
+    if rc != bc:
+        return rc > bc
+    return r.get("time", 0.0) < b.get("time", 0.0)
+
+
+def created_at(v, now=None):
+    """createdAt as epoch seconds, or 0: the API's ISO form only, at most a day ahead
+    (P1117 review 6: compared as text, one row dated 2999 beat every later one)."""
+    if not isinstance(v, str) or not CREATED.fullmatch(v):
+        return 0
+    try:
+        t = calendar.timegm(time.strptime(v[:19], "%Y-%m-%dT%H:%M:%S")) + float("0" + v[19:-1])
+    except (ValueError, OverflowError):
+        return 0
+    return t if 0 < t <= (time.time() if now is None else now) + 86400 else 0
+
+
+def deepest(rows):
+    """The deepest rank a cached board holds, by the ranks its pages carried."""
+    return max((r["rank"] for r in rows if type(r.get("rank")) is int), default=0)
+
+
+def holed(cur):
+    """P1117: places missing inside the held depth -- runs that entered above a
+    page after it was fetched.  No tail page reaches them; a re-walk does.
+    Measured 29 Oct: 1,454 boards, at least 63,509 places."""
+    return not cur.get("absent") and deepest(cur["rows"]) > len(cur["rows"])
+
+
+REWALK = ".rewalk"         # P1117 review 3: re-walk state, out of the boards' mtime (no .json: momgrab lists those)
+
+
+def rewalk_state(out):
+    try:
+        with io.open(os.path.join(out, REWALK), encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        d = None
+    d = d if isinstance(d, dict) else {}
+    part = lambda k: d[k].items() if isinstance(d.get(k), dict) else ()
+    # P1117 review 5: a malformed entry is dropped, never a TypeError at its use.
+    return {"walking": {k: v for k, v in part("walking") if type(v) is int and v >= 0},
+            "walked": {k: v for k, v in part("walked") if type(v) is int and v >= 0},
+            "strikes": {k: v for k, v in part("strikes")
+                        if isinstance(v, list) and len(v) == 2 and all(type(x) is int for x in v)}}
+
+
+def end_rewalk(out, state, walking, p):
+    """A re-walk ends: done, or refused by that board (not by the host)."""
+    key = os.path.basename(p)[:-len(".json")]
+    state["walking"].pop(key, None)
+    state["strikes"].pop(key, None)
+    state["walked"][key] = int(time.time())
+    walking.pop(p, None)
+    write_board(os.path.join(out, REWALK), state)
 
 
 def gm_of(name):
@@ -245,33 +488,51 @@ def parse_board(doc):
     if not isinstance(doc, dict):
         return 0, []
     total = doc.get("totalCount")
-    total = total if isinstance(total, int) else 0
+    # P1117 review: clamped, since the planner pages up to it (27,022 was the deepest, 29 Oct).
+    total = min(total, TOTAL_MAX) if type(total) is int and total > 0 else 0
     out = []
-    for e in (doc.get("data") or []):
+    data = doc.get("data")
+    for e in data if isinstance(data, list) else []:
         if not isinstance(e, dict):
             continue
-        h = e.get("replayHash")
-        t = e.get("time")
-        if not isinstance(h, str) or not h or not isinstance(t, (int, float)):
+        h, t = e.get("replayHash"), e.get("time")
+        h = h.lower() if isinstance(h, str) else ""
+        # P1117 review 5: every field bounded (a board file keeps them for good), a
+        # time in (0, 1e6) s compared before float() -- a 400-digit int overflows it,
+        # and a bool is no time -- and a row it cannot take skipped, never raised.
+        if not HEX40.fullmatch(h) or type(t) not in (int, float) or not 0 < t < 1e6:
             continue
-        u = e.get("user") or {}
+        u = e.get("user") if isinstance(e.get("user"), dict) else {}
         # steamID is a STRING on purpose: a SteamID64 does not survive a JSON
         # number, which is a double and loses the low digits above 2^53.
         sid = u.get("steamID")
         # Momentum's own user number: its dashboard addresses a profile by it
         # (/profile/<id>) and by nothing else, a SteamID there is a 404.
-        uid = u.get("id")
+        uid, rank, created = u.get("id"), e.get("rank"), e.get("createdAt")
         out.append({
-            "uid": uid if isinstance(uid, int) and not isinstance(uid, bool) and uid > 0 else 0,
-            "rank": e.get("rank") if isinstance(e.get("rank"), int) else 0,
+            "uid": uid if type(uid) is int and 0 < uid < 2 ** 53 else 0,
+            "rank": rank if type(rank) is int and 0 < rank <= TOTAL_MAX else 0,
             "time": float(t),
             "hash": h,
-            "steamid": sid if isinstance(sid, str) else "",
-            "alias": (u.get("alias") or "?").replace("\t", " ").strip() or "?",
-            "created": e.get("createdAt") or "",
-            "url": e.get("downloadURL") or "",
+            "steamid": sid if steam64(sid) else "",
+            "alias": _alias(u.get("alias")),
+            "created": created if created_at(created) else "",
         })
     return total, out
+
+
+def steam64(v):
+    """An individual account's SteamID64, in ASCII digits (review 6: isdigit takes U+0667)."""
+    return (isinstance(v, str) and len(v) == 17 and v.isascii() and v.isdigit()
+            and STEAM64 < int(v) < STEAM64 + 2 ** 32)
+
+
+def _alias(v):
+    """At most 64 characters and ALIAS_BYTES once JSON-escaped, as write_board writes it."""
+    v = v.replace("\t", " ").strip()[:64] if isinstance(v, str) else ""
+    while len(json.dumps(v)) > ALIAS_BYTES + 2:
+        v = v[:-1]
+    return v or "?"
 
 
 def main():
@@ -293,12 +554,18 @@ def main():
     ap.add_argument("--main-only", action="store_true", help="skip stages and bonuses")
     ap.add_argument("--refresh", action="store_true", help="re-ask for cached boards")
     ap.add_argument("--map", action="append", default=[], help="only these map names")
+    ap.add_argument("--board", action="append", default=[],
+                    help="only these boards, by cache key (e.g. 1007_g1_t01)")
+    ap.add_argument("--rewalk", action="store_true",
+                    help="also walk one board with places missing inside its\n"
+                         "held depth again from rank 1 (see holed)")
     ap.add_argument("--go", action="store_true", help="actually make requests")
     a = ap.parse_args()
 
     take = max(1, min(a.take, TAKE_MAX))
     want_gm = set(a.gamemode) or {msml.GM_SURF, msml.GM_BHOP}
     only = {m.lower() for m in a.map}
+    picked = set(a.board)
 
     if a.tracks:
         cat = read_tracks(a.tracks)
@@ -329,6 +596,8 @@ def main():
                 continue
             if a.main_only and tt != msml.TRACK_MAIN:
                 continue
+            if picked and board_key(m["id"], bgm, tt, tn) not in picked:
+                continue
             jobs.append((name, m["id"], gm, tt, tn))
 
     os.makedirs(a.out, exist_ok=True)
@@ -337,6 +606,8 @@ def main():
     # off the cached rows, so this list is a plan against what is already held.
     todo = []
     held = wanted = fresh_boards = 0
+    walking, holes = {}, []     # path -> re-walk cursor; re-walk candidates
+    rw = rewalk_state(a.out)
     for (name, mid, gm, tt, tn) in jobs:
         path = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
         cur = load_board(path)
@@ -352,19 +623,45 @@ def main():
             if a.refresh:
                 todo.append((0, name, mid, gm, tt, tn))
             continue
-        total = cur.get("total") or 0
+        total = cur.get("total")
+        total = min(total, TOTAL_MAX) if type(total) is int and total > 0 else 0
         want = total if a.depth < 0 else (min(total, a.depth) if a.depth else
                                          min(total, take))
         wanted += want
         # A set, so --refresh's page 1 and a tail that also starts at 0 are one
         # request rather than two.  A non-aligned skip is fine and is the normal
         # case here: the 2,914 boards stopped at 25 resume at skip=25, which
-        # returns ranks 26-125.
-        skips = set(range(have, want, take))
+        # returns ranks 26-125.  P1117: the tail starts past the deepest rank
+        # held, not at len(rows): surf_believe held ranks to 861 in 661 rows and
+        # re-asked 662-861 for nothing every tick.
+        # P1117 review 4: no more of a board planned than a run may ask (--max).
+        lo = max(have, deepest(cur["rows"]))
+        skips = set(range(lo, min(want, lo + a.max * take), take))
         if a.refresh:
             skips.add(0)
         for s in sorted(skips):
             todo.append((s, name, mid, gm, tt, tn))
+        if a.rewalk:
+            job, key = (name, mid, gm, tt, tn, total), board_key(mid, gm, tt, tn)
+            at = rw["walking"].get(key)
+            if type(at) is int and at >= 0:
+                walking[path] = (at, job)
+            elif holed(cur):
+                walked = rw["walked"].get(key)
+                holes.append((walked if type(walked) is int else 0,
+                              int(cur.get("fetched") or 0), path, job))
+    # One board at a time, the one walked longest ago (KSF's rewalk_step).
+    if a.rewalk and not walking and holes:
+        _w, _f, path, job = min(holes)
+        walking[path] = (0, job)
+        rw["walking"][os.path.basename(path)[:-len(".json")]] = 0
+    planned = set(todo)
+    for path, (start, (name, mid, gm, tt, tn, total)) in sorted(walking.items()):
+        print("re-walk           %s from skip %d of %d" % (os.path.basename(path), start, total))
+        for s in range(start, min(max(total, start + 1), start + a.max * take), take):
+            if (s, name, mid, gm, tt, tn) not in planned:
+                todo.append((s, name, mid, gm, tt, tn))
+    walking = {p: s for p, (s, _job) in walking.items()}
 
     print("boards in scope   %d" % len(jobs))
     print("boards cached     %d" % fresh_boards)
@@ -405,23 +702,51 @@ def main():
             # the FIRST page: a 404 at skip=900 is the board ending, not the
             # board being absent, and writing absent:True there would throw away
             # 900 good rows.
-            if skip:
+            p = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
+            cur = load_board(p)
+            if skip or (cur and cur["rows"]):
+                # P1117 review: the board ends there, and a re-walk that reached it is
+                # done; a page-1 404 (the rotation asks every board) keeps the rows.
+                if cur is None:
+                    continue
+                rec = dict(cur, fetched=int(time.time()))
+                if skip:
+                    rec["total"] = min(cur.get("total") or 0, skip)
+                else:
+                    rec["missing"] = rec["fetched"]
+                write_board(p, rec)
+                if walking.get(p) == skip or (not skip and p in walking):
+                    end_rewalk(a.out, rw, walking, p)
                 continue
             rec = {"map": name, "mapid": mid, "gamemode": gm, "trackType": tt,
                    "trackNum": tn, "total": 0, "fetched": int(time.time()),
                    "absent": True, "rows": []}
-            write_board(os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json"),
-                        rec)
+            write_board(p, rec)
             continue
         except Refused as e:
             refused = "%s (%s g%d t%d%d): %s" % (name, mid, gm, tt, tn, e)
+            # P1117 review 3: the board's own refusal ends its re-walk; the host's keeps it.
+            p = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
+            if walking.get(p) == skip:
+                # P1117 review 4: ...and REWALK_STRIKES of them on one page end it too.
+                key = board_key(mid, gm, tt, tn)
+                at = rw["strikes"].get(key)
+                n = at[1] + 1 if isinstance(at, list) and len(at) == 2 and at[0] == skip else 1
+                if e.code not in HOST_CODES or n >= REWALK_STRIKES:
+                    end_rewalk(a.out, rw, walking, p)
+                else:
+                    rw["strikes"][key] = [skip, n]
+                    write_board(os.path.join(a.out, REWALK), rw)
             break
         streak = 0
         asked += 1
         try:
             doc = json.loads(body.decode("utf-8", "replace"))
-        except ValueError:
+        except (ValueError, RecursionError):
             refused = "%s: reply did not parse" % name
+            p = os.path.join(a.out, board_key(mid, gm, tt, tn) + ".json")
+            if walking.get(p) == skip:
+                end_rewalk(a.out, rw, walking, p)
             break
         total, data = parse_board(doc)
         if not data:
@@ -440,8 +765,10 @@ def main():
         # --refresh on every 7-minute tick, so that would have quietly cut every
         # played map's board back to `take` rows.
         cur = load_board(p)
-        merged = merge_rows(cur["rows"], data) if cur else data
-        got += len(merged) - (len(cur["rows"]) if cur else 0)
+        held = cur["rows"] if cur else []
+        merged = merge_rows(held, data)
+        had = set(r.get("hash") for r in held)
+        got += sum(1 for r in data if r["hash"] not in had)     # review 6: was len(merged) - len(held)
 
         # A SHORT LATER PAGE MEANS THE BOARD ENDED, so believe the page over the
         # board's own totalCount.  Without this an off-by-a-few totalCount is an
@@ -455,6 +782,15 @@ def main():
                "trackNum": tn, "total": total, "fetched": int(time.time()),
                "rows": merged}
         write_board(p, rec)
+        if walking.get(p) == skip:
+            # The re-walk's cursor moves only over pages answered in order.
+            nxt = skip + take
+            if len(data) < take or nxt >= total:
+                end_rewalk(a.out, rw, walking, p)
+            else:
+                walking[p] = rw["walking"][os.path.basename(p)[:-len(".json")]] = nxt
+                rw["strikes"].pop(os.path.basename(p)[:-len(".json")], None)
+                write_board(os.path.join(a.out, REWALK), rw)
         if (i + 1) % 100 == 0:
             el = time.time() - t0
             print("  %5d/%d  %6.1f min  %6d new rows  %4d empty  (%s skip %d)"
