@@ -21,6 +21,15 @@
 
 ## next
 
+### P1209 The launcher is now WOS-Launcher
+- The World of Surf launcher is now WOS-Launcher.exe (WOS-Launcher on Linux). Download it again from the site to get it; the launcher you have keeps working.
+- The in-game update restart uses WOS-Launcher when it is next to the game, and your old launcher otherwise.
+
+
+### P1208 The launcher shows your version and the new one
+- The launcher says which version you have installed, which version an update brings (for example 0.1.36 -> 0.1.37), and when you are already up to date.
+
+
 ### P1207 No prediction-error box in a game you host
 - A game running on your own PC (single player) no longer offers prediction-error reports. Nothing is predicted there, so a teleport or `!r` was being reported as an error.
 - When `!r` or another reset cannot be predicted, the report now says why, and it names the game files you were running.

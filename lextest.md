@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P1208 / P1209 launcher versions; the launcher is WOS-Launcher (after the next release)
+Launcher and release tooling only; nothing changes until a release is cut. Then:
+1. The download button on the site saves WOS-Launcher.exe. Run it on your Desktop copy's folder: while checking it
+   says "Installed: World of Surf <yours>", the prompt reads "<yours> -> <new>", and it ends "Updated World of Surf
+   <yours> -> <new>." (or "... is up to date." on a second run).
+2. Your old launcher (ftesurf-launcher-0.1.28.exe) still updates and starts the game.
+3. An in-game update that needs the launcher restarts through WOS-Launcher.exe if it is in the game folder.
+Measured: owned loopback feeds (versions 0.1.25 -> 0.1.26), the release bootstrap build, the preflight, and the
+engine handoff under both names; Windows Defender found nothing in either launcher build on this PC.
+
 ## P1204 / P1205 / P1206 sirena saves, teleport speed scripts, chat
 Live 2 Nov: lobbies and both installs on deploy/p1205-vsvel f7316747 (qw 07354dba, cs 29c73849, menu
 a78349ac); surfd chat generation 470ab7c9 since 09:10Z. Players get the menu part with the next release.
