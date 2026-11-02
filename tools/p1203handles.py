@@ -284,6 +284,16 @@ def main():
               'review 2: a vertical edge grabbed mid-height snaps to the map corner below',
               f"handle {mid['hk']} {mid['hl']} corner {end_['pts'][i]}")
 
+        # Review 3: with no snap, that vertical edge goes where the aim meets the floor (on the grid),
+        # not where the aim crosses the grab's height (near the eye when that is eye level).
+        st, r = fresh(edges=0)
+        i = idx(r, x0, y0)
+        mid, end_ = drag((x0, y0, zb + h / 2), (11950.0, 8365.0, 13776.0))
+        report['cases']['vertical_edge_floor'] = [mid, end_]
+        check(mid['hk'] == 1 and mid['hl'] == 2 and end_['pts'][i] == (11952.0, 8368.0),
+              'review 3: a vertical edge with no snap goes to the aimed floor point on the grid',
+              f"handle {mid['hk']} {mid['hl']} corner {end_['pts'][i]} want (11952, 8368)")
+
         # Another panel opening mid-drag puts the zone back.
         st, r = fresh(edges=0)
         mid, _ = drag((x0, y0, zb), (11850.0, 8300.0, zb), drop=False)
