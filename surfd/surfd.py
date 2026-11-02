@@ -235,6 +235,10 @@ ZONES_MOMLOCAL_DIR = os.environ.get("SURFD_ZONES_MOMLOCAL", os.path.join(MAPS_DI
 # cost -- it is about not doing it once per request under a flood while still
 # noticing a map that mapsync.py copied in five minutes ago.
 MAPS_TTL = 300           # seconds
+# P1189: a zone published or removed reaches the maps lists at once, not after MAPS_TTL: each
+# read stats the three zone directories and rescans when one changed (_zone_dirs_sig).
+MAPS_RESCAN_MIN = 1.0    # seconds between the rescans of a directory still settling
+ZONE_DIR_RACY = 2.0      # seconds an mtime is "still settling"
 
 # A JOIN IS A CHEAP READ IN THE COMMON CASE (somebody is already on that map)
 # and a map load in the uncommon one, so it gets its own bucket like every other
@@ -1948,17 +1952,39 @@ _maps_lock = threading.Lock()
 _maps_scan_lock = threading.Lock()      # held across a scan; _maps_lock only around the cache
 # "at" None = never scanned.  -1.0 read as fresh for the first MAPS_TTL after
 # boot (monotonic() counts from boot on Linux): every map "not installed".
-_maps_cache = {"at": None, "bsp": {}, "zone": frozenset()}
-_zone_files_cache = {"at": None, "names": frozenset()}
+_maps_cache = {"at": None, "sig": None, "settled": False, "bsp": {}, "zone": frozenset()}
+_zone_files_cache = {"at": None, "sig": None, "settled": False, "names": frozenset()}
 
 
-def zone_file_index(now=None):
-    """Authoritative zone files, separately from BSP-embedded timer brushes."""
-    now = time.monotonic() if now is None else now
-    with _maps_lock:
-        at = _zone_files_cache["at"]
-        if at is not None and 0 <= now - at < MAPS_TTL:
-            return _zone_files_cache["names"]
+def _zone_dirs_sig():
+    """(sig, settled) for P1189's rescan.  sig is each zone directory's (dev, inode, mtime_ns),
+    None where unreadable: a zone created, renamed in (zonepub's write) or removed changes it.
+    Not settled while one changed within ZONE_DIR_RACY of now, because a second change in the
+    same timestamp tick (a jiffy on ext4) leaves the mtime as it was."""
+    wall = time.time()
+    sig, settled = [], True
+    for zdir in (ZONES_DIR, ZONES_LOCAL_DIR, ZONES_MOMLOCAL_DIR):
+        try:
+            st = os.stat(zdir)
+        except OSError:
+            sig.append(None)
+            continue
+        sig.append((st.st_dev, st.st_ino, st.st_mtime_ns))
+        if abs(wall - st.st_mtime_ns / 1e9) < ZONE_DIR_RACY:
+            settled = False
+    return tuple(sig), settled
+
+
+def _maps_fresh(cache, now, sig):
+    """A cached listing still stands: younger than MAPS_TTL, taken with the zone directories
+    as they are (sig, read before the listing), and settled or under MAPS_RESCAN_MIN old."""
+    at = cache["at"]
+    if at is None or not 0 <= now - at < MAPS_TTL or cache["sig"] != sig:
+        return False
+    return cache["settled"] or now - at < MAPS_RESCAN_MIN
+
+
+def _zone_files_list():
     names = set()
     for zdir in (ZONES_DIR, ZONES_LOCAL_DIR, ZONES_MOMLOCAL_DIR):
         try:
@@ -1968,9 +1994,20 @@ def zone_file_index(now=None):
         except OSError as exc:
             if zdir == ZONES_DIR:
                 log.warning("zone directory %s unreadable: %s", zdir, exc)
+    return frozenset(names)
+
+
+def zone_file_index(now=None):
+    """Authoritative zone files, separately from BSP-embedded timer brushes."""
+    now = time.monotonic() if now is None else now
+    sig, settled = _zone_dirs_sig()
     with _maps_lock:
-        _zone_files_cache["at"], _zone_files_cache["names"] = now, frozenset(names)
-        return _zone_files_cache["names"]
+        if _maps_fresh(_zone_files_cache, now, sig):
+            return _zone_files_cache["names"]
+    names = _zone_files_list()
+    with _maps_lock:
+        _zone_files_cache.update(at=now, sig=sig, settled=settled, names=names)
+        return names
 
 
 def _scan_maps():
@@ -2004,7 +2041,7 @@ def _scan_maps():
         log.warning("map library %s unreadable: %s", MAPS_DIR, exc)
         return {}, frozenset()
 
-    zone.update(zone_file_index())
+    zone.update(_zone_files_list())     # listed after map_index's sig, never zone_file_index's cache
 
     disk = _timer_cache_load()
     # This process's own answers too: the file may be unreadable or unwritable
@@ -2105,26 +2142,25 @@ def _timer_cache_save(seen):
 
 
 def map_index(now=None):
-    """The installed library, cached for MAPS_TTL.  Returns (bsp, zone).
+    """The installed library, cached for MAPS_TTL or until a zone directory
+    changes (P1189).  Returns (bsp, zone).
 
     One scan at a time (Patch 829): a thread that finds the cache stale waits
     for a scan already running and takes its answer.  With the timer cache warm
     a scan is a listing and a stat per map; see _timer_cache_path."""
     now = time.monotonic() if now is None else now
+    sig = _zone_dirs_sig()[0]
     with _maps_lock:
-        at = _maps_cache["at"]
-        if at is not None and now - at < MAPS_TTL:
+        if _maps_fresh(_maps_cache, now, sig):
             return _maps_cache["bsp"], _maps_cache["zone"]
     with _maps_scan_lock:
+        sig, settled = _zone_dirs_sig()             # before the listing it vouches for
         with _maps_lock:
-            at = _maps_cache["at"]
-            if at is not None and now - at < MAPS_TTL:      # scanned while this one waited
+            if _maps_fresh(_maps_cache, now, sig):  # scanned while this one waited
                 return _maps_cache["bsp"], _maps_cache["zone"]
         bsp, zone = _scan_maps()
         with _maps_lock:
-            _maps_cache["at"] = now
-            _maps_cache["bsp"] = bsp
-            _maps_cache["zone"] = zone
+            _maps_cache.update(at=now, sig=sig, settled=settled, bsp=bsp, zone=zone)
             log.info("map library: %d installed, %d with zones (%s)",
                      len(bsp), len(zone), MAPS_DIR)
             return bsp, zone
@@ -2142,10 +2178,8 @@ def map_index_cached():
 def maps_reset():
     """Drop the cached library.  For tests, and for a future admin control."""
     with _maps_lock:
-        _maps_cache["at"] = None
-        _maps_cache["bsp"] = {}
-        _maps_cache["zone"] = frozenset()
-        _zone_files_cache["at"], _zone_files_cache["names"] = None, frozenset()
+        _maps_cache.update(at=None, sig=None, settled=False, bsp={}, zone=frozenset())
+        _zone_files_cache.update(at=None, sig=None, settled=False, names=frozenset())
 
 
 def style_of(flags):
