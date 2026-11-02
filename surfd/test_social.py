@@ -862,8 +862,9 @@ class Friends(unittest.TestCase):
         self.assertEqual(self.chat_send(1, "one more")[0]["ok"], 1)
         n = dict(self.db.execute("SELECT sender, COUNT(*) FROM social_messages WHERE recipient=? GROUP BY sender",
                                  (F.CHAT_ROOM,)).fetchall())
-        self.assertEqual(n[IDS[1]], F.ROOM_SHARE)
+        # P1206: the heaviest sender is cut to the level that fits; the lighter one keeps all 60.
         self.assertEqual(n[IDS[2]], 60)
+        self.assertEqual(n[IDS[1]], F.ROOM_KEEP - 60)
 
     def test_review1_new_lobby_session_starts_past_the_saved_inbox(self):
         self.befriend(); self.poll()
@@ -892,6 +893,84 @@ class Friends(unittest.TestCase):
                                               separators=(",", ":"), ensure_ascii=False).encode()), 12000)
         self.assertGreater(len(body["messages"]), 0)
         self.assertGreater(len(body["room"]), 0)
+
+    def add_accounts(self, sids):
+        for sid in sids:
+            self.db.execute("INSERT INTO accounts(steamid,name,created_at) VALUES(?,?,?)", (sid, "p" + sid[-3:], self.now))
+
+    def friends_with(self, me, sids):
+        for sid in sids:
+            self.db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,1)", (*F.pair(me, sid), me))
+
+    def test_p1206_a_few_spam_accounts_cannot_push_out_lighter_senders(self):
+        spam = ["765611980000003%02d" % i for i in range(4)]
+        legit = ["765611980000004%02d" % i for i in range(10)]
+        self.add_accounts(spam + legit)
+        # The legit lines are the OLDEST: a newest-128 trim would drop every one of them.
+        rows = [(lg, F.CHAT_ROOM, "legit " + lg, self.now - 60) for lg in legit for _ in range(2)]
+        rows += [(sp, F.CHAT_ROOM, "spam", self.now) for sp in spam for _ in range(60)]
+        self.db.executemany("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)", rows)
+        self.db.commit()
+        self.assertEqual(self.chat_send(2, "one more")[0]["ok"], 1)
+        n = dict(self.db.execute("SELECT sender, COUNT(*) FROM social_messages WHERE recipient=? GROUP BY sender",
+                                 (F.CHAT_ROOM,)).fetchall())
+        self.assertEqual(sum(n.values()), F.ROOM_KEEP)
+        self.assertEqual([n.get(lg) for lg in legit], [2] * 10)
+        form = self.menu_form(0, "chat")
+        form["hist"] = "1"
+        shown = {r["text"] for r in self.menu_read(form)["room"]}
+        self.assertTrue(all("legit " + lg in shown for lg in legit), shown)
+
+    def test_p1206_a_quiet_friend_survives_three_busy_conversations(self):
+        busy = ["765611980000005%02d" % i for i in range(3)]
+        self.add_accounts(busy)
+        self.friends_with(IDS[0], busy + [IDS[2]])
+        self.db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                        (IDS[2], IDS[0], "quiet hello", self.now - 600))
+        self.db.executemany("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                            [(b, IDS[0], "busy", self.now) for b in busy for _ in range(F.DM_KEEP)])
+        self.db.commit()
+        form = self.menu_form(0, "chat")
+        form["hist"] = "1"
+        for body in (self.menu_read(self.menu_form(0, "chat")), self.menu_read(form)):
+            self.assertIn("quiet hello", [m["text"] for m in body["messages"]])
+            self.assertLessEqual(len(body["messages"]), F.HIST_DM)
+
+    def test_p1206_read_marks_follow_the_account(self):
+        self.befriend(); self.poll()
+        self.db.executemany("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                            [(IDS[1], IDS[0], "line %d" % i, self.now - 600 + i) for i in range(3)])
+        self.db.commit()
+        ids = [r[0] for r in self.db.execute("SELECT id FROM social_messages WHERE sender=? ORDER BY id", (IDS[1],))]
+        body = self.menu_read(self.menu_form(0, "chat"))
+        self.assertEqual(body["reads"], 1)
+        self.assertEqual([m.get("new") for m in body["messages"]], [1, 1, 1])
+        form = self.menu_form(0, "chat")
+        form["read"] = A.who_of(IDS[1]) + ":" + str(ids[1])
+        self.assertEqual([m.get("new") for m in self.menu_read(form)["messages"]], [None, None, 1])
+        # The account's other install sees the same marks; a read past the newest is capped.
+        self.assertEqual([m.get("new") for m in self.menu_read(self.menu_form(3, "chat"))["messages"]], [None, None, 1])
+        form = self.menu_form(0, "chat")
+        form["read"] = A.who_of(IDS[1]) + ":" + str(ids[2] + 999)
+        self.menu_read(form)
+        self.assertEqual(F.read_marks(self.db, IDS[0]), {IDS[1]: ids[2]})
+        # Not a friend: no mark. Marks never surface as messages, rooms or relays.
+        form = self.menu_form(0, "chat")
+        form["read"] = A.who_of(IDS[2]) + ":" + str(ids[2])
+        body = self.menu_read(form)
+        self.assertEqual(F.read_marks(self.db, IDS[0]), {IDS[1]: ids[2]})
+        self.assertNotIn(F.READ, F.json.dumps(body))
+        self.assertNotIn(F.READ, F.json.dumps(self.poll()))
+        self.assertEqual(self.action(0, "remove").status_code, 200)
+        self.assertEqual(F.read_marks(self.db, IDS[0]), {})
+
+    def test_p1206_a_dm_relayed_into_a_game_counts_as_read(self):
+        self.befriend(); self.poll()
+        self.assertEqual(self.action(0, "message", text="in game").status_code, 200)
+        self.assertEqual([m["text"] for m in self.poll()[1]["messages"]], ["in game"])
+        body = self.menu_read(self.menu_form(1, "chat"))
+        self.assertEqual(body.get("reads"), 1)
+        self.assertEqual([(m["text"], m.get("new")) for m in body["messages"]], [("in game", None)])
 
     def test_lobby_dm_to_offline_friend_waits_in_the_menu(self):
         self.befriend(); self.poll()
