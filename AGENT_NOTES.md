@@ -45,14 +45,24 @@
   Engine: static map decals lift 0.25 off the face, sign from the decal's own axis (a VBSP face
   stores its own plane: SURF_PLANEBACK is wrong there), plus BEF_DECALDEPTH's two depth steps.
 - CSQC: cl_sprites.qc skips sprites/shafts whose line from the eye meets sky 64+ units short
-  (vbsp_sprite_skyrays; `vbsp_sprite_debug 1` prints the count). P990's 2x sky mask still shows
-  BRUSH ENTITIES 1x-2x behind a sky (surf_remeanian save 18's func_illusionary panes): not fixed.
+  (vbsp_sprite_skyrays; `vbsp_sprite_debug 1` prints the count).
 - P1215: SV_ZoneSpawnYaws moves an automatic spawn (centred or none) onto the zone's one inner
   info_teleport_destination when its floor is in the zone (not Momentum-stamped files). A TAS
   legal-start project saved at such a start no longer loads (its start moved).
-- Open from the list: eternity save 7 cubemap reflections much weaker than CS:S (same LDR cubemap);
-  surf_dragonfall's "lava" in the gap at save 1 is the map's own sky, which the visualizer sky
-  replaces everywhere (a limit of that option, not a bug).
+- Open from the list: eternity save 7 cubemap reflections much weaker than CS:S (same LDR cubemap;
+  the wall's normal-map alpha mask averages ~0.1, cube orientation not yet checked against CS:S).
+- P1235 (remeanian save 18's "window in the sky"): static prop 57, models/fs/windows1.mdl, radius
+  4452, whose sprp leaf list names 138 clusters, none visible. Lists past MAX_ENT_LEAFS (32) were
+  re-derived from the radius box, overflowed to the headnode test and passed; the plugin now culls
+  them by the lump's own clusters (engine tag patch-1235 = 9fd62fe61 on patch-1233, main efbbcd5e2;
+  stamped pair ship1235: exe 9dbc52d5, plugin 354b596e, NOT installed until e2's P1233 confirm).
+  The func_illusionary panes first blamed never reach visedicts. `prop_census <name>` prints
+  "own clusters" and the verdict.
+- P1235 (dragonfall's flicker): a 2D draw into a render target (any VF_RT_DESTCOLOUR switch) runs
+  GL_Set2D, which sets r_refdef.time = realtime, and renderscene never resets it; only clearscene
+  does (cl.servertime). Anything drawing into a target between clearscene and renderscene puts that
+  frame's scrolling/animated textures on the other clock: the visualizer sky did on 122 of 200
+  frames. Its passes now run before clearscene (MilkSky_Passes); ac's P1230 glow pass did the same.
 
 ## Lex's list of 3 Nov: P1214, P1220, P1221, P1223-P1229 (ftesurf-2b; LIVE 2 Nov 17:26Z)
 - Delivered QC base for the next lobby deploy: origin/deploy/p1229-lexlist 1fa43aa2 (qw 9553acb6,

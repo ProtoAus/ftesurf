@@ -73,6 +73,21 @@
   or over 256; 7 animate (surf_aquaflow 10, surf_destruction 2, surf_shape, surf_4am(_css),
   bhop_unreal_space, surf_watertemple_alpha).
 
+## Found during P1235 (3 Nov 2026)
+- RELEASE BLOCKER, main only: a csprogs built from FTESurf main draws surf_dragonfall's sky
+  magenta/black after `map surf_sidelines` then `map surf_dragonfall` in one client (1.4% of the
+  frame magenta). The lobby line (deploy/p1235-visclock) is clean in the same sequence, and so is a
+  fresh load, so something undelivered on main breaks a Source sky after a map change. Not bisected.
+- The hl2 plugin's sprp loader writes each prop's collision transform by lump index (mod_vbsp.c, the
+  `prv->staticprops[i].transform` writes beside P1235's list), while the BIH build and the .phy brushes
+  read it by packed slot. Props skipped by the dx/cpu/gpu rules push the two apart: on bhop_maya (20
+  skipped) and what_is_this (4), every solid prop after the first skip collides through another
+  prop's origin and axes (418 and 762 props, from P1235 review 1's code read and census, not a run;
+  no other library map skips).
+  Fix is `sent->transform`, but it changes collision on those two maps, client and Pi alike.
+- P1235's big-prop cull applies no area walk, so a prop behind a closed areaportal whose clusters are
+  in the PVS still draws (over-draw only).
+
 ## Release tooling, found cutting 0.1.37 (2 Nov 2026)
 - `release.ps1 -BuildEngine` cannot run: its filter over build.ps1's output reads `$_.kind` under
   StrictMode, and build.ps1's engine path emits an object without it, so the pipeline throws and

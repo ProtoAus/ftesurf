@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1235 visualizer sky clock (lobbies), huge models out of sight (installs after P1233's check)
+Lobbies and both installs once the lobby deploy lands (QC):
+- surf_dragonfall save 1 with the visualizer sky (r_skybox milk): walk or fly past the lava panels;
+  they scroll smoothly instead of flickering.
+Both installs once engine patch-1235 is installed (it waits on your P1233 check with e2); your Desktop
+copy with the next release:
+- surf_remeanian save 18: no window frames in the sky. Fly toward the big window structure: it still
+  appears when you are near or inside it.
+
 ## P1215 zone spawns, P1218 sky shafts (lobbies now); P1217/P1218 Source rendering (next release)
 Lobbies and both installs now (QC, deploy/p1218-maplist):
 - surf_eternity `zone_edit`: each start/stage spawn has a post and facing arrow with its name, the map's
