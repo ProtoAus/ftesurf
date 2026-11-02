@@ -5419,7 +5419,7 @@ void(entity e, float n) SV_SpecStart =
 	if (e.run_trig_pkn >= e.run_pkn)
 		intrig = TRUE;
 	pend = SV_TrigPending(e);
-	if (pend == 2)
+	if (pend == 2 || e.vsv_on)     // P1205: a queued script write is due too (review 3)
 	{
 		SV_SpecRefuse(e, "a map output is still due on you -- try again");
 		return;
