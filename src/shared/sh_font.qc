@@ -325,6 +325,10 @@ float(float first, float n, float want) Font_PxOld =
 };
 #endif
 
+// P1221: the UI face's capitals fill the top 0.64 of the em (9 of 14 px, measured on the key hint
+// strip), so text centred by its em box sits high on a key cap; + FONT_CAPDROP * px centres them.
+#define FONT_CAPDROP 0.18
+
 // Patch 863: the last four answers. The ladders are parsed only from the constant strings
 // above, so (where a ladder starts, want) settles the answer; 43M QC ops in 3 s of Lex's HUD.
 float fpx_first[4], fpx_want[4], fpx_got[4];

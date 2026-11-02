@@ -125,7 +125,8 @@ float(string name) MCard_Complete =
 {
 	local float row;
 	row = MCard_Index(name);
-	if (!strcmp(bufstr_get(mcr_data, row), "")) return FALSE;
+	// P1228: until the card's own row lands, the completed list asked at start (same rule).
+	if (!strcmp(bufstr_get(mcr_data, row), "")) return MCard_Done(name) == 1;
 	tokenize(bufstr_get(mcr_data, row));
 	return stof(argv(5)) && Mlb_Stoi(argv(0)) > 0i;
 };
@@ -188,9 +189,10 @@ void(vector pos, float width, float compact, string name, string id) MCard_Draw 
 		done = stof(argv(4)); known = stof(argv(5));
 	}
 	done = (known && wos > 0i);          // P1130: same rule as MCard_Complete
+	if (!have && MCard_Done(name) == 1) done = TRUE;   // P1228: the list asked at start
 	stale = (have && (gettime(0) - stof(bufstr_get(mcr_seen, row)) >= 60 || !MF_Online()));
 	if (done)
-		status = stale ? "(cached)" : "";       // P1105: the card's backdrop says Complete!
+		status = !have ? "Loading times..." : (stale ? "(cached)" : "");   // P1105: the backdrop says Complete!
 	else if (!MF_Online()) status = have ? "Cached records" : "Records offline";
 	else if (!strcmp(mcr_who, "") || (have && !known)) status = "Link Steam for your times";
 	else if (have && alltime > 0i) status = stale ? "No WOS finish yet  (cached)" : "No WOS finish yet";
@@ -316,7 +318,7 @@ string() MCard_DoneNote =
 	if (mcd_state == 1) return "";
 	if (mcd_state == 2) return "link Steam to sort";
 	if (mcd_state == 3) return "records unavailable";
-	return "loading...";
+	return MCD_LOADING;
 };
 
 void() MCard_Probe =

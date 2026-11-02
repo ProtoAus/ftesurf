@@ -599,6 +599,12 @@ float() WarpOp_LoadRefused =
 	return (!getstatf(STAT_FS_HOLD) && cltime - wop_loadackat > 0.3);
 };
 
+// P1227: the load's command has reached the server and been answered (SaveLoc_LeadDone).
+float() WarpOp_LoadAnswered =
+{
+	return (wop_loadseq > 0 && servercommandframe >= wop_loadseq);
+};
+
 // CSQC_Input_Frame: the oldest queued op rides this command.
 void() WarpOp_InputFrame =
 {

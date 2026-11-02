@@ -4954,14 +4954,17 @@ void(vector scr, float speed, float onground, vector gnorm, vector wishdir,
 #define KEY_DOWN     1
 #define KEY_FORCED   2
 
+// P1221: rounded like the rest of the HUD (were square drawfills).
 void(vector pos, vector sz, float held) HUD_Key =
 {
+	local float r;
+	r = ceil(min(sz_x, sz_y) * 0.14);
 	if (held == KEY_FORCED)
-		drawfill(pos, sz, '1.00 0.82 0.20', 0.85, 0);
+		_sui_round_draw(pos, sz, r, '1.00 0.82 0.20', 0.85);
 	else if (held)
-		drawfill(pos, sz, '1 1 1', 0.85, 0);
+		_sui_round_draw(pos, sz, r, '1 1 1', 0.85);
 	else
-		drawfill(pos, sz, '0 0 0', 0.35, 0);
+		_sui_round_draw(pos, sz, r, '0 0 0', 0.35);
 };
 
 /*
@@ -5142,13 +5145,13 @@ void(vector scr) HUD_DrawKeys =
 	HUD_Key([p_x + k + gap, p_y], sz, kw);
 
 	// row 2:  |  A S D  |   -- the flanking bars are +left and +right
-	drawfill([p_x - bw - gap, p_y + k + gap], [bw, k],
-	         tl ? '0.45 0.70 1.00' : '0 0 0', tl ? 0.85 : 0.35, 0);
+	_sui_round_draw([p_x - bw - gap, p_y + k + gap], [bw, k], ceil(bw * 0.5),
+	                tl ? '0.45 0.70 1.00' : '0 0 0', tl ? 0.85 : 0.35);
 	HUD_Key([p_x,               p_y + k + gap], sz, ka);
 	HUD_Key([p_x + k + gap,     p_y + k + gap], sz, ks);
 	HUD_Key([p_x + 2*(k + gap), p_y + k + gap], sz, kd);
-	drawfill([p_x + 3*(k + gap), p_y + k + gap], [bw, k],
-	         tr ? '0.45 0.70 1.00' : '0 0 0', tr ? 0.85 : 0.35, 0);
+	_sui_round_draw([p_x + 3*(k + gap), p_y + k + gap], [bw, k], ceil(bw * 0.5),
+	                tr ? '0.45 0.70 1.00' : '0 0 0', tr ? 0.85 : 0.35);
 
 	// row 3:  duck + jump
 	HUD_Key([p_x,           p_y + 2*(k + gap)], [k, lsz * 2], duck);

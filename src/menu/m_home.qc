@@ -179,6 +179,8 @@ void() MH_Poll =
 	if (!menu_active || menu_screen != SCREEN_MAIN || !MF_Online()) return;
 	Lob_Poll();
 	Sty_Prefetch();
+	MCard_Begin();                  // P1228: the completed maps before the first MAPS click
+	MCard_DoneWant();
 	who = MH_Me();
 	if (who == "") return;
 	if (strcmp(who, mh_who))

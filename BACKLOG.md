@@ -1,5 +1,16 @@
 # BACKLOG.md
 
+## DB audit of 3 Nov (P1229): left open (surfd; measured on a 2 Nov snapshot, 3.47M runs)
+- 19 surfd.db backups in /srv/nvme/surfd/data, 15 GB, Sep-Oct. Which to keep is Lex's call.
+- The combined board sorts the whole three-tier board per page (0.04 s on surf_beginner's 8.7k rows);
+  per-tier queries merged would be O(page). The player directory scans all runs every 5 min in the
+  web worker; profile rank counts are N+1 (cached 120 s). Details: the audit in the P1229 journal.
+- `SELECT COUNT(*) FROM replays WHERE kind='run'` scans 41k rows on each new replay (0.15 s cold).
+- The lobby does not retry a /api/run that surfd answered with a 5xx (sv_lobby.qc); see the momwatch
+  item under Ranking integrity, whose flush half P1229 closed.
+- %TEMP% holds ~67,800 surfd-* test homes from earlier suite runs (test_board/test_web never remove
+  theirs). Not removed: not all are this session's.
+
 ## P1213 Source fog distance, UnlitGeneric on vmt/unlit: residuals (2 Nov 2026; display only)
 - surf_shape's horizon band is 124,75,52 against CS:S 118,69,45 (old 143,101,80). Most of the rest is
   cl_fog.qc's known approximation: Source lerps by the squared factor in linear light, we in gamma space.
@@ -4982,8 +4993,8 @@ below is the collection side and the rules that still only note.
   submission surfd refused with a 5xx.
   THE LINK PASS HALF IS DONE (808756b, live 4 Oct 09:31 UTC): its UPDATE scanned
   2.35M rows inside the write transaction (6.2 s); it now reads first and
-  writes only the rows it links. STILL OPEN: `flush()` (momboards.py:112-134)
-  sets a tick's board rows in one transaction. The link pass's final review
+  writes only the rows it links. CLOSED BY P1229: `flush()` commits 500 rows a
+  transaction (it set a tick's board rows in one). STILL OPEN: the lobby's retry. The link pass's final review
   measured, on the PC, 20,000 rows (16,000 landing) holding the lock 1.83 s
   with a heartbeat beside it waiting 1.49 s, and unchanged rows cheap (20,000 in
   0.37 s); the Pi ran the old link UPDATE ~4.6x slower than the PC, so a tick

@@ -399,10 +399,31 @@ void() ZoneEdit_SnapSelected =
 
 void(float z) ZoneEdit_Goto =
 {
+	local float i, first;
+	local vector lo, hi, p;
 	if (z < 0 || z >= zone_count) return;
 	Zone_Hash();
-	localcmd(sprintf("cmd zone_edit_goto %g %s\n", z, zone_crc));
-	ZoneEdit_Note("Teleport requested; save/reload first if zones were edited");
+	if (!ze_dirty || zone_npts[z] <= 0)
+	{
+		localcmd(sprintf("cmd zone_edit_goto %g %s\n", z, zone_crc));
+		ZoneEdit_Note("Teleport requested");
+		return;
+	}
+	// P1223: unsaved, the server's zone z is not this one: send where it is drawn, the middle of
+	// its outline's box on its floor (SV_ZoneGotoAng's place for a zone with no destination).
+	// The three-word form stays for a table the server has: an older server refuses five.
+	first = zone_first[z];
+	lo = zone_pt[first];
+	hi = lo;
+	for (i = 1; i < zone_npts[z]; i = i + 1)
+	{
+		p = zone_pt[first + i];
+		lo_x = min(lo_x, p_x); lo_y = min(lo_y, p_y);
+		hi_x = max(hi_x, p_x); hi_y = max(hi_y, p_y);
+	}
+	localcmd(sprintf("cmd zone_edit_goto %g %s %.1f %.1f %.1f\n", z, zone_crc,
+	                 (lo_x + hi_x) * 0.5, (lo_y + hi_y) * 0.5, zone_bottom[z] + 2));
+	ZoneEdit_Note("Teleport to the unsaved zone requested");
 };
 
 void(float z) ZoneEdit_RowClick =

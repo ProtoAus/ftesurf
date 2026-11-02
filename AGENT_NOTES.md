@@ -1,5 +1,18 @@
 # AGENT_NOTES.md
 
+## Lex's list of 3 Nov: P1214, P1220, P1221, P1223-P1229 (ftesurf-2b)
+- Text centred by its em box sits high on a key cap: the UI face's capitals are the top 0.64 of the em
+  (9 of 14 px). FONT_CAPDROP (sh_font.qc) = 0.18 px of drop per px of size; the hint strip's Z went
+  from 2.5 px above its chip's centre to 0.5. Measured on screenshots at 1:1, ui_font_ui only.
+- A client cannot set a `*` serverinfo key (`serverinfo *boardgen 1`: "Can't set * keys"); the
+  P1226 arm bumped *boardgen through an arm-only `cmd` in its own qwprogs.
+- `ui_strip_test screen create` opens the map picker (`ui_strip_test create` only prints usage).
+- surfd: with no sqlite_stat1 the planner scans runs_board (3.47M entries) for a tier NOT IN count
+  even when the literal matches runs_live's WHERE; `INDEXED BY runs_live` takes 0.01 s (2.1 s cold).
+  Read-only checks run on a backup-API snapshot in /srv/nvme/agent-work (artifacts/dbaudit_run.py).
+- Arms: C:\FTESurf-worktrees\lexlist-20261102T1615Z\artifacts (lexui_arm.py: synthetic surfd, menu
+  chat/inventory/search, HUD shots, P1223/P1226 checks; lead_arm.py: the load tap).
+
 ## P1211 gravity and delayed-write prediction (live 2 Nov 12:23Z: QC deploy/p1211-gravity 82ec7e1c)
 - The Pi engine is c284f65b = patch-1173 + P1211's server files (engine branch p1211-pi
   461134547), NOT the patch-1212 line: P1188's fs.c is still not on the Pi. Route, reusable:

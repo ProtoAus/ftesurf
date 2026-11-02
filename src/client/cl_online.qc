@@ -189,6 +189,7 @@ float  ob_q_gen;
 float  ob_mine;
 float  ob_staleat;         // Patch 781: cached copies stored before this are asked again when shown
 void() Online_MarkStale = { ob_gen = ob_gen + 1; ob_staleat = cltime; };
+float  ob_svgen, ob_svgen_t;  // P1226: the lobby's *boardgen as last acted on, and when
 
 float  ob_code;            // last non-zero responsecode
 float  ob_when;            // cltime the rows landed
@@ -2171,6 +2172,16 @@ float(float track, float leg, string tier, string style) Online_Shows =
 float(float track, float leg, string tier, string style) Online_Need =
 {
 	local float i;
+
+	// P1226: somebody's finish was stored on this lobby (sv_lobby.qc): ask again, at most
+	// every 3 s -- a later bump waits, it is not lost.
+	i = stof(serverkey("*boardgen"));
+	if (i != ob_svgen && cltime - ob_svgen_t >= 3)
+	{
+		ob_svgen = i;
+		ob_svgen_t = cltime;
+		Online_MarkStale();
+	}
 
 	if (strcmp(ob_name, Profile_BoardQuery()))
 	{

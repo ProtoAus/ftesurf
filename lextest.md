@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## Lex's list of 3 Nov: P1214, P1220, P1221, P1223-P1229
+1. Main menu chat (P1214): messages sit close together; no "saved for 30 days" or "not encrypted" lines.
+2. In game, open chat (P1220): the field is empty, with a small "To everyone" tag at the box's top right
+   ("To this lobby" after TAB, "To <name>" for a private line).
+3. Key hints, the save menu (Z) and the F6 report box (P1221): letters centred on their keys; the report
+   box and the keys display look like the other panels. Hud_player's inventory hint is readable and the
+   ON / OWNED tags are pills, in game and on the menu's Stats > Inventory. Startup: "Choose your name" was
+   the square box; terms, Steam sign-in, name and the journal now all use the same rounded panel.
+4. Zone editor (P1223): edit a zone without saving, double-click its row: you land in it.
+5. Maps search (P1224): drag-select the text leftwards and let go outside the box: it stays selected.
+6. Join a lobby (P1225): your colour and items show within about a second.
+7. Finish a run on a lobby with someone else on it (P1226): their open board updates by itself; the
+   finisher's board says "your run: submitting..." until it lands. TAB after 15 s fetches the board again.
+8. Tap the load key on a lobby (P1227): no forward snap. hud_edit > Save & load sets the lead-in.
+9. Start the game and open MAPS (P1228): Complete! shows on finished maps straight away.
+
 ## P1219 console crash on a map change (installs now; everyone with the next release)
 Your 02:20 crash on 3 Nov. Both installs run the fixed exe (e9ff729b; 0.1.37's 6fbf7e74 is the .prev).
 In C:\FTESurf or C:\FTEQuake: open the console, type `chat_` (the list shows chat_mouse, chat_open,

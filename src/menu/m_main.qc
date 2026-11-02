@@ -212,6 +212,7 @@ void() MStats_InvToggle;
 void(vector size) MStats_Draw;
 void() MStats_Probe;
 string() MCard_DoneNote;
+#define MCD_LOADING "loading your progress..."
 void(vector pos, float width, float compact, string name, string id) MCard_Draw;
 void(vector pos, vector size, string name) MCard_Backdrop;     // P1105
 void() MCard_Probe;
@@ -6250,8 +6251,7 @@ void(vector screensize) screen_name =
 	if (p_y < 0)
 		p = [p_x, 0];
 
-	sui_fill(p, [520, ph], COL_PANEL, 0.94, 0);
-	sui_border_box(p, [520, ph], 1, COL_BORDER, 1, 0);
+	sui_style_panel(p, [520, ph], 12, 1);   // P1221: was a square fill and border
 
 	Font_Set(ui_font_display);
 	sui_text([p_x + 24, p_y + 20], SZ_TITLE, "Choose your name", COL_ACCENT, 1, 0);
@@ -7451,7 +7451,8 @@ float(float width, float y) ui_map_filters =
 	local vector glyph;
 	local string heading, label, id, note;
 	x = 16;
-	note = ms_compsort ? MCard_DoneNote() : "";
+	note = MCard_DoneNote();
+	if (!ms_compsort && strcmp(note, MCD_LOADING)) note = "";   // P1228: loading shows whatever the sort
 	for (group = 0; group < 5; group = group + 1)
 	{
 		heading = group == 0 ? "Tier" : (group == 1 ? "Mode" : (group == 2 ? "Library" : (group == 3 ? "Extra" : "Sort")));
@@ -7511,7 +7512,7 @@ void(vector screensize) screen_create =
 	local float rh, nx, inner, y, compact, actiony;
 	local vector size, pos, namesize;
 	MCard_Begin();
-	if (ms_compsort) MCard_DoneWant();
+	MCard_DoneWant();               // P1228: every card's Complete! reads it, not only the sort
 
 	// The shared shell already reserved Friends/chat. Fill the remainder.
 	size = screensize; pos = '0 0 0';
@@ -8255,6 +8256,8 @@ void() ui_boot_preload =
 // vid_conautoscale 1.  Declaring this with a vector parameter matters: two
 // float parameters would make the engine assume a DarkPlaces menu and hand
 // over physical pixel sizes instead (pr_menu.c:3391-3395).
+float ms_cstate;               // P1225: clientstate() as m_draw last saw it
+void(float age) Profile_Stale;  // client/cl_profile.qc, compiled after this file
 void(vector screensize) m_draw =
 {
 	local float shell, shellhead, bootstart;
@@ -8284,6 +8287,11 @@ void(vector screensize) m_draw =
 	Dl_Tick();
 	ui_prejoin_tick();
 
+	if (clientstate() != ms_cstate)    // P1225
+	{
+		ms_cstate = clientstate();
+		Profile_Stale(0);
+	}
 	MF_Poll(menu_active && ui_browser_screen());
 	MC_Poll(menu_active && (menu_screen == SCREEN_CHAT || ui_browser_screen()));
 	MH_Poll();

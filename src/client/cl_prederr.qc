@@ -324,7 +324,7 @@ float(float scanx) PE_Key =
 void(vector scr) PE_Draw =
 {
 	local vector p;
-	local float sc, w, h, lsz, y;
+	local float sc, w, h, hh, lsz, y;
 	local string st;
 	if (!PE_BoxUp())
 		return;
@@ -332,14 +332,17 @@ void(vector scr) PE_Draw =
 	Font_Set(ui_font_ui);
 	lsz = Font_Px(8 * sc);
 	h = 14 * sc;
-	w = 190 * sc;
+	hh = 15 * sc;                       // P1221: the digit menus' header band and rule (SaveLoc_Draw)
+	w = 160 * sc;
 	p = [scr_x - w - 8 * sc, scr_y * 0.42, 0];
-	_sui_round_draw(p, [w, 6 * sc + 3 * h, 0], 5 * sc, SUI_THEME_PANEL, 0.9);
+	_sui_round_draw(p, [w, 3 * sc + hh + 3 * h + 3 * sc, 0], 5 * sc, SUI_THEME_PANEL, 0.90);
 	y = p_y + 3 * sc;
-	HUD_Text([p_x + 6 * sc, y + (h - lsz) * 0.5], sprintf("Prediction error  %.0f units", pe_box_err),
-	         lsz, SUI_THEME_TEXT, 1);
-	HUD_TextR([p_x + w - 6 * sc, y + (h - lsz) * 0.5], sprintf("%gs", ceil(max(0, pe_box_end - cltime))),
+	HUD_Text([p_x + 6 * sc, y + (hh - 2 * sc - lsz) * 0.5], "Prediction error", lsz, SUI_THEME_TEXT, 1);
+	HUD_TextR([p_x + w - 6 * sc, y + (hh - 2 * sc - lsz) * 0.5], sprintf("%gs", ceil(max(0, pe_box_end - cltime))),
 	          lsz, SUI_THEME_WARN, 1);
+	drawfill([p_x + 4 * sc, y + hh - 2 * sc, 0], [w - 8 * sc, 1, 0], SUI_THEME_EDGE_HI, 0.7, 0);
+	y = y + hh;
+	HUD_Text([p_x + 6 * sc, y + (h - lsz) * 0.5], sprintf("%.0f units off", pe_box_err), lsz, SUI_THEME_DIM, 1);
 	y = y + h;
 	if (pe_sent_ok == 1)
 		st = "sent -- thank you";

@@ -1319,7 +1319,7 @@ string(string id) ZoneEdit_Tip =
 	if (id == "ze_msback") return "Return to the zone tools without saving properties. Use Save settings first: reopening properties reads the saved values, not your unsaved changes.";
 	if (id == "ze_t0") return "Show the main course. Tracks have separate starts, stages, checkpoints and finishes.";
 	if (substring(id, 0, 4) == "ze_t") return "Show a bonus course. A +b tab is the next unused bonus track; select it and add zones to build that course.";
-	if (substring(id, 0, 4) == "ze_z") return "Select this zone to re-place, delete or snap it. Double-click teleports to it only when your zone table matches the server's. The row shows outline points and bottom/top heights.";
+	if (substring(id, 0, 4) == "ze_z") return "Select this zone to re-place, delete or snap it. Double-click teleports to it, saved or not (an unsaved zone: the middle of its outline, on its floor). The row shows outline points and bottom/top heights.";
 	if (substring(id, 0, 4) == "ze_d" && strlen(id) == 5) return "A face of the selected zone: x min/max, y min/max, bottom, top. Click to type an exact value; the wheel moves it one grid step (1 unit on Surface). X and Y faces stretch the outline from the opposite face. Nothing is written until Save zones.";
 	if (substring(id, 0, 4) == "ze_h") return "Load this published version into the editor as unsaved edits. The lobbies change only when you Save zones and Publish saved.";
 	if (substring(id, 0, 4) == "ze_g") return "Enable grid snapping at this spacing in map units. Affects placement and Snap selected XYZ. The mouse wheel also changes the grid while placing.";

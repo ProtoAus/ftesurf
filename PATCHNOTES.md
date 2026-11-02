@@ -21,8 +21,45 @@
 
 ## next
 
+### P1229 Faster run submits
+- A new time reaches the leaderboard sooner: the server no longer reads every board row before storing a first finish or a new stage time.
+
+### P1228 Your progress loads with the game
+- The maps you have finished load when the game starts, so the Maps screen shows Complete! on every one of them as soon as it opens.
+- Until they arrive, the Maps filters say "loading your progress...".
+
+### P1227 Load lead-in
+- A quick tap of the load key now holds you at the save until the server has placed you there (and at least 100 ms), so the view no longer snaps forward.
+- hud_edit has a new Save & load pane to set the lead-in, from none to one second, or typed in milliseconds.
+
+### P1226 Leaderboards refresh themselves
+- When anyone on your lobby sets a new time, open leaderboards fetch it again on their own.
+- Pressing TAB fetches a board again if it is more than 15 seconds old, and the board says "your run: submitting..." until your own finish is in.
+
+### P1225 Colour and items when you join
+- Joining a lobby now loads your items and your colour within about a second, instead of after several.
+- The main menu's Stats page asks for your inventory again after you join or leave a server.
+
+### P1224 Text selection
+- A selection made by dragging in a text box, such as the map search, stays selected when you let go outside the box.
+
+### P1223 Zone editor teleport
+- Double-clicking a zone in the zone editor teleports you to it even before you save. An unsaved zone puts you in its middle, on its floor.
+
+### P1221 Tidier menus and HUD
+- Key letters sit centred on their keys in the key hints, the save menu, the Steam link box and the report box.
+- The prediction-error report box, the name screen and the keys display use the same rounded style as the rest of the interface.
+- Inventory: the hint under the items is larger, and the ON / OWNED tags are clearer.
+
+### P1220 In-game chat
+- The chat box no longer puts "to everyone" in front of what you type or shows the Enter/Esc hint. A small tag at its top right says who will get the line.
+
 ### P1219 Console crash on a map change
 - Fixed a crash when the console was open with a command half typed while the map changed or reloaded.
+
+### P1214 Main menu chat
+- Messages in the main menu chat sit close together, each as tall as its text.
+- The notes about saving and encryption under the chat are gone.
 
 ### P1169 Larger Maps filter text
 - Maps: larger, sharper native-pixel filter text, with roomier controls that wrap on smaller windows.

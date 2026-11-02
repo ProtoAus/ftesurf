@@ -1079,7 +1079,7 @@ void(vector scr) KC_HintDraw =
 
 	p = [scr_x * cvar("hud_keyhint_x"), scr_y * cvar("hud_keyhint_y"), 0];
 	_sui_round_draw(p, [kc_hl_w, h, 0], 4 * sc, SUI_THEME_PANEL, 0.75);
-	ty = p_y + (h - lsz) * 0.5;
+	ty = p_y + (h - lsz) * 0.5 + lsz * FONT_CAPDROP;   // P1221: capitals centred on the chip
 	x = p_x + 3 * sc;
 	// Under 6 pixels between items a glyph's edge, or the fallback font's shadow and ring,
 	// could reach the next chip: then each item whole, in the old order.
