@@ -1120,10 +1120,11 @@ void() ZoneEdit_DragStep =
 	g = max(1, ze_grid);
 	// Edge snap's point is the world's: a corner or edge on one level takes it only near that level
 	// (a top corner aimed past the zone would jump to the floor's XY far beyond it); a vertical edge
-	// or side, within the zone's height; the bottom face, always (the floor is its target).
+	// or side, within the zone's height; the bottom face, a snap within 64 of the grab's vertical
+	// (the floor under the zone is its target, not a ledge across the room).
 	if (ze_hk == ZEH_SIDE || (ze_hk == ZEH_VERT && ze_hl == 2)) lev = (ze_sat_z > ze_obot - 48 && ze_sat_z < ze_otop + 48);
 	else if (ze_hk == ZEH_VERT || ze_hk == ZEH_EDGE) lev = (fabs(ze_sat_z - ze_grab_z) < 48);
-	else lev = TRUE;
+	else lev = (vlen([ze_sat_x - ze_grab_x, ze_sat_y - ze_grab_y, 0]) < 64);
 	snapped = (ze_edges && ze_hitok && ze_skind != ZES_NONE && lev);
 	for (i = 0; i < n; i = i + 1)
 		ze_pts[i] = ze_orig[i];
@@ -1142,12 +1143,12 @@ void() ZoneEdit_DragStep =
 		if (snapped) to = [ze_sat_x, ze_sat_y, ze_grab_z];
 		else if (ze_hk == ZEH_VERT && ze_hl == 2 && ze_hitok && ze_raw_z > ze_obot - 48 && ze_raw_z < ze_otop + 48)
 			to = [ze_raw_x, ze_raw_y, ze_grab_z];  // a corner's vertical edge goes where the aim meets the world, as placing
-		else
-		{
-			lev = ze_grab_z;
-			if (!ZoneEdit_AtLevel(ze_eye, ze_fwd, lev)) return;
+		else if (ZoneEdit_AtLevel(ze_eye, ze_fwd, ze_grab_z))
 			to = ze_grab_at;
-		}
+		else if (ze_hk == ZEH_SIDE && ze_hitok && ze_raw_z > ze_obot - 48 && ze_raw_z < ze_otop + 48)
+			to = [ze_raw_x, ze_raw_y, ze_grab_z];  // a side taken above the eye, aimed at the floor
+		else
+			return;
 		dv = to - ze_grab; dv_z = 0;
 		if (ze_hk == ZEH_VERT)
 		{
