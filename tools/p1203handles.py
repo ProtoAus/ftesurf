@@ -294,6 +294,25 @@ def main():
               'review 3: a vertical edge with no snap goes to the aimed floor point on the grid',
               f"handle {mid['hk']} {mid['hl']} corner {end_['pts'][i]} want (11952, 8368)")
 
+        # Review 4: a side face taken above the eye, aimed down at the floor beyond it, still moves.
+        st, r = fresh(edges=0)
+        ia, ib = idx(r, x0, y1), idx(r, x1, y1)
+        mid, end_ = drag(((x0 + x1) / 2, y1, zb + h - 14), (12010.0, 8530.0, 13776.0))
+        report['cases']['side_above_eye'] = [mid, end_]
+        check(mid['hk'] == 3 and end_['pts'][ia] == (x0, y1 + 48) and end_['pts'][ib] == (x1, y1 + 48),
+              'review 4: a side face taken above the eye follows the aim on the floor',
+              f"handle {mid['hk']} {end_['pts'][ia]} {end_['pts'][ib]}")
+
+        # Review 4: the bottom face ignores a map corner across the room (the slope's foot at
+        # 12230 8331 13749): its height is where the aim passes the grab's vertical.
+        st, r = fresh(edges=1)
+        gx, gy = (x0 + x1) / 2 - 40, (y0 + y1) / 2
+        mid, end_ = drag((gx, gy, zb), (12227.0, 8333.0, 13749.0))
+        report['cases']['bottom_far_snap'] = [mid, end_]
+        # NOT a check: the review-3 build (no gate) also gave a bottom other than 13744 here, so this
+        # aim never produced the far snap the gate refuses. Recorded, not graded.
+        notes.append(f"bottom face aimed at a far corner: handle {mid['hk']} bottom {end_['bottom']} (not discriminating)")
+
         # Another panel opening mid-drag puts the zone back.
         st, r = fresh(edges=0)
         mid, _ = drag((x0, y0, zb), (11850.0, 8300.0, zb), drop=False)
