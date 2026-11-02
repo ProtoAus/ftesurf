@@ -77,7 +77,7 @@ float() WarpOp_Able =
 	wop_why = "off (cl_warpop 0, or the server has no fs_wop)";
 	if (!cvar("cl_warpop") || serverkey("fs_wop") != "1")
 		return FALSE;
-	wop_why = "no prediction running (a local game predicts nothing)";
+	wop_why = "no prediction hook in 0.5 s (none runs while this PC hosts the game)";
 	if (cltime - wop_premove_t > 0.5 || cltime < wop_premove_t)
 		return FALSE;
 	wop_why = "no input frame to carry it";

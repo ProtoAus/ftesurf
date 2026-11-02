@@ -84,16 +84,16 @@ string(string s) PE_Safe =
 	return o;
 };
 
-// Patch 1207: CSQC_PredictPlayerPreMove runs on every replayed command.  A local game replays none
-// after spawn (cl_pred.c stops at to.time >= simtime), so a line there is a server move nothing
-// predicted, not a misprediction.
+// Patch 1207: CSQC_PredictPlayerPreMove runs on every replayed command.  The engine skips it, and
+// every CSQC prediction hook, while this process hosts a server (pr_csqc.c: sv.state != ss_dead).
 float() PE_Predicting =
 {
 	return (cltime - wop_premove_t < 0.5 && cltime >= wop_premove_t);
 };
 
-// Never offered for sending to this PC's own server.  (P1195 read cvar("sv_running"), which the
-// engine does not have, so it was always 0.)
+// This PC hosts the game: no warp op or trigger is predicted, so a line is a server move, not a
+// misprediction; nor is a report sent to itself.  (P1195 read cvar("sv_running"), which the engine
+// does not have: always 0.)
 float() PE_Local =
 {
 	return !strncmp(serverkey("ip"), "QLoopBack", 9);
@@ -112,8 +112,8 @@ void(string stem) PE_WriteContext =
 	                 cvar_string("cl_netfps"), cvar_string("rate"), cvar_string("cl_maxfps"),
 	                 cvar_string("cl_prederror"), cvar_string("cl_triggers"), cvar_string("cl_warpop")));
 	fputs(f, sprintf("ping %s\n", getplayerkeyvalue(player_localnum, "ping")));   // the engine is in the ring's header
-	fputs(f, sprintf("csprogs crc %s size %s predicting %g local %g\n", serverkey("*csprogs"),
-	                 serverkey("*csprogssize"), PE_Predicting(), PE_Local()));   // P1207
+	fputs(f, sprintf("csprogs crc %s size %s local %g qchook %s\n", serverkey("*csprogs"),
+	                 serverkey("*csprogssize"), PE_Local(), cvar_string("cl_predict_qchook")));   // P1207
 	fputs(f, "# context: time seq what (server prints, mirror triggers, gates, warp ops, prederr lines)\n");
 	i0 = max(0, pe_ring_n - PE_RING);
 	for (i = i0; i < pe_ring_n; i = i + 1)
@@ -171,9 +171,11 @@ void() PE_Frame =
 		n = tokenize(cvar_string("cl_prederror_last"));
 		e = (n >= 9) ? stof(argv(2)) : 0;
 		PE_Note(strcat("prederr ", cvar_string("cl_prederror_last")));
-		if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && !PE_Predicting())
-			PE_Note(sprintf("not reported: no prediction for %.1f s (a local game predicts nothing)",
-			                cltime - wop_premove_t));
+		if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && PE_Local())
+			PE_Note("not reported: this PC hosts the game, so nothing is predicted");
+		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && cvar("cl_predict_qchook")
+		         && !PE_Predicting())
+			PE_Note(sprintf("not reported: no prediction hook for %.1f s", cltime - wop_premove_t));
 		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report"))
 		{
 			if (!pe_due && cltime >= pe_cool)
