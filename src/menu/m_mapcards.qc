@@ -199,7 +199,7 @@ void(vector pos, float width, float compact, string name, string id) MCard_Draw 
 	else if (have && alltime > 0i) status = stale ? "No WOS finish yet  (cached)" : "No WOS finish yet";
 	else if (have) status = stale ? "No clean main finish  (cached)" : "No clean main finish";
 	else status = mcr_failed ? "Records unavailable" : "Loading records...";
-	sui_text(pos, '12 12 0', status, done ? SUI_THEME_GOOD : COL_DIM, 1, 0);
+	sui_text(pos, '12 12 0', status, (done && (have || (MF_Online() && !mcr_failed))) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
 	sui_tooltip_for(id, "Main track, clean style. WOS = ranked public lobbies; overall = WOS + Momentum Mod + KSF. Local/community PBs are separate. Cached values may be older.", 2);
 	cw = floor(width / (compact ? 2 : 4));
 	for (i = 0; i < 4; i = i + 1)
