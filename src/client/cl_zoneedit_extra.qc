@@ -94,7 +94,10 @@ vector(vector p) ZoneEdit_EdgeSnap =
   surf_sinsane_ez has corners no grid step reaches).  The map surface under the aim is read with
   the getsurface builtins; a corner within ZE_SNAPPX of the crosshair on screen wins -- its own
   or an existing zone's, whichever is nearer -- else the nearest edge point.  XY are the
-  surface's exactly; Z keeps ZoneEdit_SnapV's floor-down rule.
+  surface's exactly (with the grid on, an edge point keeps the grid along the edge); Z keeps
+  ZoneEdit_SnapV's floor-down rule.  Review 1: splits the compiler cut into one flat floor (BSP
+  nodes, lightmap chops) are not corners or edges, a candidate must be near the aim in the world
+  too (at a shallow pitch 14 px covers hundreds of units), and searches are rate-limited.
 */
 // How far from the crosshair a world point is drawn, in screen units (ze_pxtan: ZoneEdit_AimFrom).
 float(vector eye, vector fwd, vector p) ZoneEdit_PxOff =
@@ -108,49 +111,107 @@ float(vector eye, vector fwd, vector p) ZoneEdit_PxOff =
 	return ze_pxtan * vlen(w - fwd * along) / along;
 };
 
+// Surface s is under the aim: its nearest point is the aim, and its mesh is filled (an unbuilt
+// VBSP mesh is all origin, and the triangle clip hands every point back unchanged).
+float(float s, vector raw) ZoneEdit_SurfUnder =
+{
+	if (getsurfacenumpoints(world, s) < 3) return FALSE;
+	if (getsurfacepoint(world, s, 0) == getsurfacepoint(world, s, 1)) return FALSE;
+	return vlen(getsurfaceclippedpoint(world, s, raw) - raw) < 1;
+};
+
 // The world surface under the aim, -1 none.  getsurfacenearpoint walks every world triangle
-// (cl_paint.qc), so it is asked again only when the aim leaves the last answer.  The clipped
-// point must be the aim: that also refuses a mesh the renderer never filled (all origin).
+// (cl_paint.qc): it is asked again only when the aim leaves the last answer, and at most every
+// 50 ms (an aim at a prop or a clip brush has no face under it, every frame).
 float(vector raw) ZoneEdit_WorldSurf =
 {
+	local float s;
+
 	if (!checkbuiltin(getsurfacenearpoint) || !checkbuiltin(getsurfacenumtriangles))
 		return -1;
-	if (ze_wsurf >= 0 && getsurfacenumpoints(world, ze_wsurf) >= 3)
-	if (vlen(getsurfaceclippedpoint(world, ze_wsurf, raw) - raw) < 0.25)
+	if (ze_wsurf >= 0 && ZoneEdit_SurfUnder(ze_wsurf, raw))
 		return ze_wsurf;
-	if (ze_wsurf < 0 && ze_wasks && vlen(raw - ze_wq) < 1)
-		return -1;                      // nothing here a moment ago either
-	ze_wq = raw;
+	ze_wsurf = -1;
+	if (cltime >= ze_wask_t && cltime < ze_wask_t + 0.05)
+		return -1;
+	ze_wask_t = cltime;
 	ze_wasks = ze_wasks + 1;
-	ze_wsurf = getsurfacenearpoint(world, raw);
-	if (ze_wsurf >= 0)
-	if (getsurfacenumpoints(world, ze_wsurf) < 3 || vlen(getsurfaceclippedpoint(world, ze_wsurf, raw) - raw) > 1)
-		ze_wsurf = -1;
+	s = getsurfacenearpoint(world, raw);
+	if (s >= 0 && ZoneEdit_SurfUnder(s, raw))
+		ze_wsurf = s;
 	return ze_wsurf;
+};
+
+// The face's own flat floor goes on at p: a short trace through p, from the face's side, lands
+// on that plane at p.  A wall, a ledge or another slope there makes p a real corner or edge.
+float(vector p, vector nm) ZoneEdit_FlatOn =
+{
+	traceline(p + nm * 4, p - nm * 4, MOVE_NOMONSTERS, world);
+	return (!trace_startsolid && trace_fraction < 1 && trace_plane_normal * nm > 0.999 &&
+	        fabs(trace_fraction - 0.5) < 0.01);
+};
+
+// A corner the compiler made by splitting one flat floor has that floor on every side.
+float(vector v, vector nm) ZoneEdit_RealCorner =
+{
+	local vector t1, t2;
+
+	t1 = (fabs(nm_z) < 0.9) ? '0 0 1' : '1 0 0';
+	t1 = normalize(crossproduct(nm, t1));
+	t2 = crossproduct(nm, t1);
+	return !(ZoneEdit_FlatOn(v + (t1 + t2) * 2, nm) && ZoneEdit_FlatOn(v + (t1 - t2) * 2, nm) &&
+	         ZoneEdit_FlatOn(v - (t1 + t2) * 2, nm) && ZoneEdit_FlatOn(v - (t1 - t2) * 2, nm));
 };
 
 void(vector eye, vector fwd, vector raw) ZoneEdit_Snap =
 {
-	local float s, n, i, d, bv, be, kv, ke;
-	local vector v, w, q, pv, pe, zp;
+	local float s, n, i, d, bv, be, kv, ke, reach;
+	local vector v, w, q, pv, pe, zp, nm, mid, ev, ew, gp;
 
 	bv = be = ZE_SNAPPX * ui_cv_scale;
 	kv = ke = ZES_NONE;
-	pv = pe = '0 0 0';
+	pv = pe = ev = ew = mid = '0 0 0';
+	reach = max(32, vlen(raw - eye) * 0.2);
+	gp = [ze_hit_x, ze_hit_y, raw_z];   // the grid's point, at the aim's height
 	s = ZoneEdit_WorldSurf(raw);
 	n = (s >= 0) ? getsurfacenumpoints(world, s) : 0;
-	if (n && getsurfacenumtriangles(world, s) == n - 2)   // a ring; a displacement's grid is not corners
+	if (n && getsurfacenumtriangles(world, s) != n - 2)
+		n = 0;                          // not a ring: a displacement's grid is not corners
 	for (i = 0; i < n; i = i + 1)
 	{
 		v = getsurfacepoint(world, s, i);
 		w = getsurfacepoint(world, s, (i + 1) % n);
-		d = ZoneEdit_PxOff(eye, fwd, v);
-		if (d < bv) { bv = d; pv = v; kv = ZES_MAPV; }
+		mid = mid + v * (1 / n);
+		if (vlen(v - raw) <= reach)
+		{
+			d = ZoneEdit_PxOff(eye, fwd, v);
+			if (d < bv) { bv = d; pv = v; kv = ZES_MAPV; }
+		}
 		q = w - v;
 		if (q * q > 0) q = v + bound(0, ((raw - v) * q) / (q * q), 1) * q;
 		else q = v;
-		d = ZoneEdit_PxOff(eye, fwd, q);
-		if (d < be) { be = d; pe = q; ke = ZES_MAPE; }
+		if (vlen(q - raw) <= reach)
+		{
+			d = ZoneEdit_PxOff(eye, fwd, q);
+			if (d < be) { be = d; pe = q; ke = ZES_MAPE; ev = v; ew = w; }
+		}
+	}
+	if (n)
+	{
+		nm = normalize(getsurfacenormal(world, s));
+		if (kv && !ZoneEdit_RealCorner(pv, nm)) kv = ZES_NONE;
+		if (ke)
+		{
+			q = normalize(crossproduct(ew - ev, nm));
+			if (q * (mid - pe) > 0) q = -q;
+			if (ZoneEdit_FlatOn(pe + q * 2, nm)) ke = ZES_NONE;
+			else if (ze_snap)
+			{
+				// The grid along the edge: the grid point's foot on it.
+				q = ew - ev;
+				pe = ev + bound(0, ((gp - ev) * q) / (q * q), 1) * q;
+			}
+		}
 	}
 	// An existing zone's corner or edge, by its own world-unit reach; nearer on screen wins.
 	zp = ZoneEdit_EdgeSnap(ze_hit);

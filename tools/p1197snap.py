@@ -221,31 +221,90 @@ def main():
         check(grid_kind and missed, 'control, Edge snap off: the same aims take the grid and miss corners',
               f'{len(missed)}/{len(measured)} missed')
 
-        # A long edge's middle, two units inside: an edge point, on the segment, not a corner.
-        edge_cases = []
+        # A long edge's middle, two units inside: an edge point, on the segment, not a corner. With
+        # the grid on it is the grid point's foot on the edge; with Surface, the aim's.
         pts = s['pts']
-        cl.send('zone_edit edges 1')
+
+        def foot(p, v, w):
+            ex, ey = w[0] - v[0], w[1] - v[1]
+            k = max(0, min(1, ((p[0] - v[0]) * ex + (p[1] - v[1]) * ey) / (ex * ex + ey * ey)))
+            return (v[0] + k * ex, v[1] + k * ey)
+
+        def inside(p, poly):
+            c = False
+            for (x0, y0, _), (x1, y1, _) in zip(poly, poly[1:] + poly[:1]):
+                if (y0 > p[1]) != (y1 > p[1]) and p[0] < x0 + (p[1] - y0) * (x1 - x0) / (y1 - y0):
+                    c = not c
+            return c
+
+        # Each edge is a split or a real edge by the surface lists alone: a split has another face of
+        # the same flat floor just outside it (surf_sinsane_ez: the triangle's x 12176 edge, whose
+        # floor goes on to a strip ending at the slope at x 12198).
+        splits = set()
         for i, v in enumerate(pts):
             w = pts[(i + 1) % len(pts)]
-            if math.dist(v[:2], w[:2]) < 128:
-                continue
-            mid = ((v[0] + w[0]) / 2, (v[1] + w[1]) / 2, (v[2] + w[2]) / 2)
-            t = inward(mid, 2)
-            r = probe(eye, t)
-            if math.dist(r['raw'], t) >= 1.5:
-                continue
-            ex, ey = w[0] - v[0], w[1] - v[1]
-            L = math.hypot(ex, ey)
-            perp = abs((r['hit'][0] - v[0]) * ey - (r['hit'][1] - v[1]) * ex) / L
-            along = ((r['hit'][0] - v[0]) * ex + (r['hit'][1] - v[1]) * ey) / L
-            edge_cases.append({'edge': [v, w], 'kind': r['kind'], 'perp': perp, 'along': along, 'len': L})
-        report['edge_probes'] = edge_cases
-        if not edge_cases:
-            note('no edge of 128+ units was reachable: edge snap not measured')
+            mid = ((v[0] + w[0]) / 2, (v[1] + w[1]) / 2, v[2])
+            o = inward(mid, -3)
+            n2 = wsurf((o[0], o[1], floor))
+            if (n2['surf'] not in (-1, s['surf']) and n2['normal'][2] > 0.999 and n2['pts'] and
+                    all(abs(p[2] - v[2]) < 0.05 for p in n2['pts']) and inside(o, n2['pts'])):
+                splits.add(i)
+        report['split_edges'] = sorted(splits)
+        note(f'{len(splits)} of the {len(pts)} edges are splits of one flat floor (by the surface lists)')
+
+        cl.send('zone_edit edges 1')
+        for mode in ('grid', 'surface'):
+            cl.send('zone_edit grid 16' + (' surface' if mode == 'surface' else ''))
+            edge_cases, split_cases = [], []
+            for i, v in enumerate(pts):
+                w = pts[(i + 1) % len(pts)]
+                if math.dist(v[:2], w[:2]) < 128:
+                    continue
+                mid = ((v[0] + w[0]) / 2, (v[1] + w[1]) / 2, (v[2] + w[2]) / 2)
+                t = inward(mid, 2)
+                r = probe(eye, t)
+                if math.dist(r['raw'], t) >= 1.5:
+                    continue
+                if i in splits:
+                    split_cases.append({'edge': [v, w], 'kind': r['kind'], 'hit': r['hit']})
+                    continue
+                ex, ey = w[0] - v[0], w[1] - v[1]
+                L = math.hypot(ex, ey)
+                perp = abs((r['hit'][0] - v[0]) * ey - (r['hit'][1] - v[1]) * ex) / L
+                along = ((r['hit'][0] - v[0]) * ex + (r['hit'][1] - v[1]) * ey) / L
+                src = ((round(r['raw'][0] / 16) * 16, round(r['raw'][1] / 16) * 16) if mode == 'grid'
+                       else r['raw'][:2])
+                off = math.dist(r['hit'][:2], foot(src, v, w))
+                edge_cases.append({'edge': [v, w], 'kind': r['kind'], 'perp': perp, 'along': along,
+                                   'len': L, 'hit': r['hit'], 'raw': r['raw'], 'off_foot': off})
+            report['edge_probes_' + mode] = edge_cases
+            report['split_probes_' + mode] = split_cases
+            if not edge_cases:
+                note(f'no real edge of 128+ units was reachable ({mode}): edge snap not measured')
+            else:
+                check(all(c['kind'] == 'map edge' and c['perp'] < 0.01 and 1 < c['along'] < c['len'] - 1 and
+                          c['off_foot'] < 0.02 for c in edge_cases),
+                      f'{mode}: a real edge aimed at its middle takes the {mode} point\'s foot on that edge',
+                      '; '.join('%s %.3f %.3f off %.3f' % (c['kind'], c['hit'][0], c['hit'][1], c['off_foot'])
+                                for c in edge_cases))
+            if not split_cases:
+                note(f'no split edge was reachable ({mode}): split refusal not measured')
+            else:
+                check(all(c['kind'] in ('grid 16', 'surface') for c in split_cases),
+                      f'{mode}: a split edge in one flat floor is not snapped to',
+                      '; '.join('%s %.3f %.3f' % (c['kind'], c['hit'][0], c['hit'][1]) for c in split_cases))
+        cl.send('zone_edit grid 16')
+
+        # The floor's real end past the split: the strip's x 12198 edge, where the slope starts.
+        strip = wsurf((12187.0, SPAWN[1], floor))
+        far = [p for p in strip['pts'] if abs(p[0] - 12198) < .01]
+        if strip['surf'] == s['surf'] or len(far) < 2:
+            note(f"no strip ending at x 12198 beside the start ({strip['surf']}): its edge not measured")
         else:
-            check(all(c['kind'] == 'map edge' and c['perp'] < 0.01 and 1 < c['along'] < c['len'] - 1
-                      for c in edge_cases), 'a long edge aimed at its middle takes a point on that edge',
-                  f'{len(edge_cases)} edges')
+            r = probe(eye, (12196.0, SPAWN[1], floor))
+            check(r['kind'] == 'map edge' and abs(r['hit'][0] - 12198) < .01 and r['hit'][1] == round(SPAWN[1] / 16) * 16,
+                  'the floor\'s real end past the split (x 12198, the slope) is a map edge, on the grid along it',
+                  f"{r['kind']} {r['hit']}")
 
         # Far from every edge: the grid.
         dmin = min((abs((SPAWN[0] - v[0]) * (w[1] - v[1]) - (SPAWN[1] - v[1]) * (w[0] - v[0])) /
