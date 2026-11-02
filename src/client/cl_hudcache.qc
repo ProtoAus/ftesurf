@@ -16,7 +16,9 @@
   screen's pixels, and while the frame itself goes to an engine target (screenshot_mega, a capture):
   switching back from a layer's target returns to the screen, not to that target.
 */
+#ifndef VF_RT_COVERAGE          // cl_inventory.qc (P1230) defines it first
 #define VF_RT_COVERAGE  226     // engine Patch 871; not in fteqcc's table
+#endif
 #define HC_FMT          1       // RGBA8 (milk_sys.qc's MILK_FMT_RGBA8), negated for nearest
 
 float hc_have;                  // 1 the engine can, -1 it cannot, 0 not asked yet

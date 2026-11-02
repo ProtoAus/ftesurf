@@ -788,8 +788,10 @@ void(vector rpos, vector rsz, vector kit) Av_Preview =
 	*/
 	setproperty(VF_AFOV, 36);       // Patch 663: the body fills the card's column
 	addentity(av_prev);
+	Inv_GlowReset();
 	Inv_Draw(av_prev, kit_y, kit_z, FALSE);
 	renderscene();
+	Inv_GlowPass(FALSE);            // P1230: the aura in the card, no world to test against
 };
 
 // Patch 772: cl_paint.qc compiles after this file.

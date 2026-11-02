@@ -1,6 +1,6 @@
 /* Account inventory and procedural cosmetics. Only the lobby publishes *kit.
-   Depth-tested soft ice halo: no world depth capture / wallhack.
-   Hat geometry and both shaders travel in CSQC; no external model required. */
+   The ice halo is depth-tested per pixel against the scene: no wallhack (P1230, Inv_GlowPass).
+   Shaders travel in CSQC; the crown's texture is models/party_crown.png, with polygons without it. */
 float inv_ready, inv_revision, inv_roles, inv_own1, inv_own2, inv_colour, inv_eq1, inv_eq2, inv_wait;
 string inv_who;
 entity inv_shell;
@@ -165,46 +165,301 @@ void(vector p, float width, float textsize, float editable, vector publickit, ve
 	         Chat_Fit(note, width - gap * 2, textsize), SUI_THEME_MUTED, 1, 0);
 };
 
-void(entity body, float outline, float hat, float duck) Inv_Draw =
+/*
+  P1230: the Ice aura is a glow in screen space. P1163's sixteen normal-pushed shells split into floating
+  panels along the low-poly body's hard edges and cost sixteen skinned draws a wearer. Now each wearer
+  is drawn once into a half-size mask (pixels behind the scene's depth discarded: no wallhack), the
+  mask is blurred by milk_blur, and the blur is added around the visible silhouette. Engines without
+  r_scenedepth (0.1.37 and older) and non-GL renderers keep the shells.
+*/
+#define INV_GLOWMAX 16
+entity inv_glowe[INV_GLOWMAX];
+float inv_glown;            // wearers queued since the last pass
+float inv_glowok;           // 1 glow, -1 shells, 0 not asked yet
+float inv_glowdepth;        // what this file last set r_scenedepth to
+float inv_glowmat;          // bit 1: the main view's materials exist, bit 2: the preview's
+float inv_maskd, inv_mask;  // the mask: tested against the scene's depth, and not (the preview)
+float inv_hatok;            // 1 models/party_crown.png loads, -1 it does not, 0 not asked yet
+float inv_gen;              // renderer generation: a restart drops targets and materials (Inv_GlowLost)
+const vector INV_ICE = '0.3 0.75 1.0';
+#ifndef VF_RT_COVERAGE
+#define VF_RT_COVERAGE  226     // engine Patch 871; not in fteqcc's table (cl_hudcache.qc)
+#endif
+
+// Named per generation: a name drawn after a restart is a missing file for good (cl_hudcache.qc).
+string(string what) Inv_N = { return sprintf("%s_%g", what, inv_gen); };
+string(string k, string what) Inv_RT = { return sprintf("inv/%s%s_%g", k, what, inv_gen); };
+
+// CSQC_RendererRestarted (cl_milk.qc).
+void() Inv_GlowLost =
 {
-	local vector base, tip, a, b, colour;
+	inv_gen = inv_gen + 1;
+	inv_glowmat = 0;
+	inv_hatok = 0;
+	inv_glowok = 0;
+	inv_shader = 0;
+};
+
+void(entity body) Inv_Shells =
+{
 	local float i, t, u;
-	if (outline)
+	if (!inv_shader)
+		inv_shader = shaderforname(Inv_N("ftesurf/ice_aura"), "{\n cull back\n sort additive\n glslprogram\n{\n"
+			"!!ver 110\n!!permu FRAMEBLEND\n!!permu SKELETAL\n"
+			"#include \"sys/defs.h\"\n"
+			"#ifdef VERTEX_SHADER\n#include \"sys/skeletal.h\"\n"
+			"void main() {\n vec3 w,n,s,t;\n skeletaltransform_wnst(w,n,s,t);\n"
+			" w+=normalize(n)*e_colourident.r;\n"
+			" gl_Position=m_modelviewprojection*vec4(w,1.0);\n}\n#endif\n"
+			"#ifdef FRAGMENT_SHADER\nvoid main() {\n"
+			" gl_FragColor=vec4(0.3,0.75,1.0,e_colourident.a);\n}\n#endif\n"
+			"}\n {\n map $whiteimage\n blendfunc GL_SRC_ALPHA GL_ONE\n }\n}\n");
+	if (!inv_shell) { inv_shell = spawn(); inv_shell.effects = EF_NOSHADOW; }
+	setmodel(inv_shell, body.model);
+	setorigin(inv_shell, body.origin);
+	inv_shell.angles = body.angles;
+	inv_shell.frame = body.frame;
+	inv_shell.frame2 = body.frame2;
+	inv_shell.lerpfrac = body.lerpfrac;
+	inv_shell.forceshader = inv_shader;
+	inv_shell.scale = 1;
+	// Integrated shell weights approximate a squared fade, not bright rings.
+	// Radius travels in colour.r; the program emits a fixed ice-blue colour.
+	for (i = 0; i < 16; i = i + 1)
 	{
-		if (!inv_shader)
-			inv_shader = shaderforname("ftesurf/ice_aura", "{\n cull back\n sort additive\n glslprogram\n{\n"
-				"!!ver 110\n!!permu FRAMEBLEND\n!!permu SKELETAL\n"
-				"#include \"sys/defs.h\"\n"
-				"#ifdef VERTEX_SHADER\n#include \"sys/skeletal.h\"\n"
-				"void main() {\n vec3 w,n,s,t;\n skeletaltransform_wnst(w,n,s,t);\n"
-				" w+=normalize(n)*e_colourident.r;\n"
-				" gl_Position=m_modelviewprojection*vec4(w,1.0);\n}\n#endif\n"
-				"#ifdef FRAGMENT_SHADER\nvoid main() {\n"
-				" gl_FragColor=vec4(0.3,0.75,1.0,e_colourident.a);\n}\n#endif\n"
-				"}\n {\n map $whiteimage\n blendfunc GL_SRC_ALPHA GL_ONE\n }\n}\n");
-		if (!inv_shell) { inv_shell = spawn(); inv_shell.effects = EF_NOSHADOW; }
-		setmodel(inv_shell, body.model);
-		setorigin(inv_shell, body.origin);
-		inv_shell.angles = body.angles;
-		inv_shell.frame = body.frame;
-		inv_shell.frame2 = body.frame2;
-		inv_shell.lerpfrac = body.lerpfrac;
-		inv_shell.forceshader = inv_shader;
-		inv_shell.scale = 1;
-		// Integrated shell weights approximate a squared fade, not bright rings.
-		// Radius travels in colour.r; the program emits a fixed ice-blue colour.
-		for (i = 0; i < 16; i = i + 1)
+		t = i / 16;
+		u = (i + 1) / 16;
+		inv_shell.colormod = [u * 8, 1, 1];
+		inv_shell.alpha = 0.65 * ((1 - t) * (1 - t) - (1 - u) * (1 - u));
+		addentity(inv_shell);
+	}
+};
+
+// The mask program; `extra` adds the depth test (the 3D view) or nothing (the preview).
+string(string extra) Inv_MaskCode =
+{
+	return strcat("!!ver 110\n!!permu FRAMEBLEND\n!!permu SKELETAL\n", extra,
+		"#include \"sys/defs.h\"\nvarying vec4 cp;\n"
+		"#ifdef VERTEX_SHADER\n#include \"sys/skeletal.h\"\n"
+		"void main() { gl_Position = skeletaltransform(); cp = gl_Position; }\n#endif\n"
+		"#ifdef FRAGMENT_SHADER\nvoid main() {\n"
+		"#ifdef DEPTH\n"
+		// Distance along the view from each depth: the scene's (rt/$lastgameviewdepth, this frame's
+		// main view) against this body's; behind by more than 2% + 4u is behind something else.
+		" vec2 uv = cp.xy / cp.w * 0.5 + 0.5;\n"
+		" float zs = texture2D(s_depth, uv).r;\n"
+		" float ds = m_projection[3][2] / (zs * 2.0 - 1.0 + m_projection[2][2]);\n"
+		" float df = m_projection[3][2] / (gl_FragCoord.z * 2.0 - 1.0 + m_projection[2][2]);\n"
+		" if (zs < 0.99999 && ds < df * 0.98 - 4.0) discard;\n"
+		"#endif\n"
+		" gl_FragColor = vec4(1.0);\n}\n#endif\n");
+};
+
+// Per view kind k ("g" the 3D view, "p" the preview): mask -> b1 (horizontal) -> b2 (vertical) -> screen.
+void(string k) Inv_GlowMats =
+{
+	local float bit;
+	bit = (k == "g") ? 1 : 2;
+	if (inv_glowmat & bit) return;
+	inv_glowmat = inv_glowmat | bit;
+	if (bit == 1)
+		inv_maskd = shaderforname(Inv_N("ftesurf/aura_maskd"), strcat("{\n glslprogram\n{\n",
+			Inv_MaskCode("!!samps depth=0\n#define DEPTH\n"),
+			"}\n {\n map $rt:rt/$lastgameviewdepth\n }\n}\n"));
+	else
+		inv_mask = shaderforname(Inv_N("ftesurf/aura_mask"), strcat("{\n glslprogram\n{\n",
+			Inv_MaskCode(""), "}\n {\n map $whiteimage\n }\n}\n"));
+	shaderforname(Inv_N("ftesurf/aura_clr"),
+		"{\nprogram default2d\n{\nmap $whiteimage\nblendfunc gl_zero gl_zero\nrgbgen vertex\nalphagen vertex\n}\n}\n");
+	shaderforname(Inv_N(strcat("ftesurf/aura_blurh_", k)), sprintf("{\n{\nprogram milk_blur#H\nmap $rt:%s\n}\n}\n", Inv_RT(k, "mask")));
+	shaderforname(Inv_N(strcat("ftesurf/aura_blurv_", k)), sprintf("{\n{\nprogram milk_blur#V\nmap $rt:%s\n}\n}\n", Inv_RT(k, "b1")));
+	// The mask was drawn by a 3D view and is read upside down from the 2D-drawn blur.
+	shaderforname(Inv_N(strcat("ftesurf/aura_comp_", k)), strcat("{\n glslprogram\n{\n"
+		"!!ver 110\n!!samps glow=0 mask=1\n#include \"sys/defs.h\"\nvarying vec2 tc;\nvarying vec4 vc;\n"
+		"#ifdef VERTEX_SHADER\nvoid main() { tc = v_texcoord; vc = v_colour; gl_Position = ftetransform(); }\n#endif\n"
+		"#ifdef FRAGMENT_SHADER\nvoid main() {\n"
+		" float g = texture2D(s_glow, tc).r;\n"
+		" float m = texture2D(s_mask, vec2(tc.x, 1.0 - tc.y)).r;\n"
+		" float a = clamp(g * 2.5, 0.0, 1.0) * (1.0 - m) * vc.a;\n"
+		" gl_FragColor = vec4(vc.rgb * a, 1.0);\n}\n#endif\n}\n",
+		sprintf(" {\n map $rt:%s\n map $rt:%s\n blendfunc gl_one gl_one\n rgbgen vertex\n alphagen vertex\n }\n}\n", Inv_RT(k, "b2"), Inv_RT(k, "mask"))));
+};
+
+// Just before the main renderscene: this frame's pass needs the scene's depth kept as a texture.
+void() Inv_GlowPre =
+{
+	local float want;
+	inv_glowok = (cvar_type("r_scenedepth") && Milk_Supported()) ? 1 : -1;
+	want = (inv_glowok > 0 && inv_glown > 0);
+	if (inv_glowok > 0 && want != inv_glowdepth)
+	{
+		cvar_set("r_scenedepth", want ? "1" : "0");
+		inv_glowdepth = want;
+	}
+};
+
+/*
+  Right after a renderscene that queued wearers, with that view's properties still set: main is the 3D
+  view (its depth tests the mask), otherwise the profile preview (no world). Draws only inside the
+  wearers' projected box; leaves the view properties as it found them. A second clearscene per frame
+  also decays fading dynamic lights a second time, as the preview's own clearscene already does.
+*/
+#pragma warning disable F333        // VF_RT_COVERAGE is not in fteqcc's table (cl_hudcache.qc)
+void(float main) Inv_GlowPass =
+{
+	local float n, i, j, behind, dw, dc, ds, mind, maxd, persp, fs;
+	local vector vmin, vsz, vs, ps, ms, fov, org, ang, lo, hi, p, c, pad, a, s;
+	local string k;
+	local entity b;
+	n = inv_glown;
+	inv_glown = 0;
+	if (n <= 0 || inv_glowok <= 0)
+		return;
+	vmin = getproperty(VF_MIN);
+	vsz = getproperty(VF_SIZE);
+	vs = getproperty(VF_SCREENVSIZE);
+	ps = getproperty(VF_SCREENPSIZE);
+	if (vsz_x < 2 || vsz_y < 2 || vs_x < 1 || vs_y < 1)
+		return;
+	// The wearers' box on screen, padded by the blur's reach (about 16 physical pixels).
+	lo = vmin + vsz;
+	hi = vmin;
+	behind = FALSE;
+	for (i = 0; i < n; i = i + 1)
+	{
+		b = inv_glowe[i];
+		for (j = 0; j < 8; j = j + 1)
 		{
-			t = i / 16;
-			u = (i + 1) / 16;
-			inv_shell.colormod = [u * 8, 1, 1];
-			inv_shell.alpha = 0.65 * ((1 - t) * (1 - t) - (1 - u) * (1 - u));
-			addentity(inv_shell);
+			c = b.origin + [(j & 1) ? 26 : -26, (j & 2) ? 26 : -26, (j & 4) ? 80 : -6];
+			p = project(c);
+			if (p_z <= -1)
+				behind = TRUE;          // behind the eye: project mirrors it, so take the whole view
+			lo_x = min(lo_x, p_x);
+			lo_y = min(lo_y, p_y);
+			hi_x = max(hi_x, p_x);
+			hi_y = max(hi_y, p_y);
 		}
 	}
-	if (hat < 1 || hat > 12) return;
+	pad = [16 * vs_x / ps_x, 16 * vs_y / ps_y, 0];
+	lo = lo - pad;
+	hi = hi + pad;
+	if (behind)
+	{
+		lo = vmin;
+		hi = vmin + vsz;
+	}
+	lo_x = max(lo_x, vmin_x);
+	lo_y = max(lo_y, vmin_y);
+	hi_x = min(hi_x, vmin_x + vsz_x);
+	hi_y = min(hi_y, vmin_y + vsz_y);
+	if (hi_x - lo_x < 1 || hi_y - lo_y < 1)
+		return;                         // none of them on screen
+	k = main ? "g" : "p";
+	Inv_GlowMats(k);
+	ms = [max(2, floor(vsz_x * ps_x / vs_x * 0.5)), max(2, floor(vsz_y * ps_y / vs_y * 0.5)), 0];
+	// The box in the view's 0..1 (a) and its size (s); the mask/blur rows are a, s scaled by ms.
+	a = [(lo_x - vmin_x) / vsz_x, (lo_y - vmin_y) / vsz_y, 0];
+	s = [(hi_x - lo_x) / vsz_x, (hi_y - lo_y) / vsz_y, 0];
+
+	fov = getproperty(VF_FOV);
+	org = getproperty(VF_ORIGIN);
+	ang = getproperty(VF_ANGLES);
+	mind = getproperty(VF_MINDIST);
+	maxd = getproperty(VF_MAXDIST);
+	persp = getproperty(VF_PERSPECTIVE);
+	dw = getproperty(VF_DRAWWORLD);
+	dc = getproperty(VF_DRAWCROSSHAIR);
+	ds = getproperty(VF_DRAWENGINESBAR);
+
+	setproperty(VF_RT_COVERAGE, 0);     // the screen's queued 2D first
+	clearscene();
+	setproperty(VF_RT_DESTCOLOUR, Inv_RT(k, "mask"), 1, ms);
+	drawsubpic('0 0 0', ms, Inv_N("ftesurf/aura_clr"), '0 0 0', '1 1 0', '0 0 0', 0, 0);
+	setproperty(VF_RT_COVERAGE, 0);     // the clear before the 3D
+	setproperty(VF_MIN, '0 0 0');
+	setproperty(VF_SIZE, ms);
+	setproperty(VF_FOV, fov);
+	setproperty(VF_ORIGIN, org);
+	setproperty(VF_ANGLES, ang);
+	setproperty(VF_MINDIST, mind);
+	setproperty(VF_MAXDIST, maxd);
+	setproperty(VF_PERSPECTIVE, persp);
+	setproperty(VF_DRAWWORLD, 0);
+	for (i = 0; i < n; i = i + 1)
+	{
+		b = inv_glowe[i];
+		fs = b.forceshader;
+		b.forceshader = main ? inv_maskd : inv_mask;
+		addentity(b);
+		b.forceshader = fs;
+	}
+	renderscene();
+
+	// Horizontal, over the box and 8 mask rows above and below it (the vertical pass reads them).
+	setproperty(VF_RT_DESTCOLOUR, Inv_RT(k, "b1"), 1, ms);
+	c = [a_x * ms_x, a_y * ms_y - 8, 0];
+	p = [s_x * ms_x, s_y * ms_y + 16, 0];
+	drawsubpic(c, p, Inv_N(strcat("ftesurf/aura_blurh_", k)), [c_x / ms_x, 1 - c_y / ms_y, 0],
+	           [p_x / ms_x, 0 - p_y / ms_y, 0], '1 1 1', 1, 0);
+	setproperty(VF_RT_COVERAGE, 0);
+	setproperty(VF_RT_DESTCOLOUR, Inv_RT(k, "b2"), 1, ms);
+	c = [a_x * ms_x, a_y * ms_y, 0];
+	p = [s_x * ms_x, s_y * ms_y, 0];
+	drawsubpic(c, p, Inv_N(strcat("ftesurf/aura_blurv_", k)), a, s, '1 1 1', 1, 0);
+	setproperty(VF_RT_COVERAGE, 0);
+	setproperty(VF_RT_DESTCOLOUR, "");
+
+	setproperty(VF_MIN, vmin);
+	setproperty(VF_SIZE, vsz);
+	setproperty(VF_FOV, fov);
+	setproperty(VF_ORIGIN, org);
+	setproperty(VF_ANGLES, ang);
+	setproperty(VF_MINDIST, mind);
+	setproperty(VF_MAXDIST, maxd);
+	setproperty(VF_PERSPECTIVE, persp);
+	setproperty(VF_DRAWWORLD, dw);
+	setproperty(VF_DRAWCROSSHAIR, dc);
+	setproperty(VF_DRAWENGINESBAR, ds);
+	drawsubpic(lo, hi - lo, Inv_N(strcat("ftesurf/aura_comp_", k)), a, s, INV_ICE, 1, 0);
+};
+#pragma warning enable F333
+
+/*
+  The paper crown: one cylinder, 32 sides, 11 around and 14 tall, wearing models/party_crown.png once
+  around (512x128, its top row at the top), alpha-tested so it writes depth and sorts against itself.
+  The texture is tinted by the chosen colour: paint it white/grey. Without the file, the old polygons.
+*/
+void(entity body, float hat, float duck) Inv_Hat =
+{
+	local vector base, tip, a, b, colour, sz;
+	local float i, t, u;
 	base = body.origin + [0, 0, duck ? 45 : 62];
 	colour = Inv_Colour(hat - 1);
+	if (!inv_hatok)
+	{
+		sz = drawgetimagesize("models/party_crown.png");
+		inv_hatok = (sz_x > 0) ? 1 : -1;
+		if (inv_hatok > 0)
+			shaderforname(Inv_N("ftesurf/party_crown"),
+				"{\n cull disable\n {\n map models/party_crown.png\n alphafunc GE128\n rgbgen vertex\n }\n}\n");
+	}
+	if (inv_hatok > 0)
+	{
+		for (i = 0; i < 32; i = i + 1)
+		{
+			t = (i / 32) * 6.2831853 + body.angles_y * (3.14159265 / 180);
+			u = ((i + 1) / 32) * 6.2831853 + body.angles_y * (3.14159265 / 180);
+			a = base + [cos(t) * 11, sin(t) * 11, 0];
+			b = base + [cos(u) * 11, sin(u) * 11, 0];
+			R_BeginPolygon(Inv_N("ftesurf/party_crown"), DRAWFLAG_TWOSIDED);
+			R_PolygonVertex(a, [i / 32, 1, 0], colour * (0.8 + 0.2 * cos(t)), 1);
+			R_PolygonVertex(b, [(i + 1) / 32, 1, 0], colour * (0.8 + 0.2 * cos(u)), 1);
+			R_PolygonVertex(b + '0 0 14', [(i + 1) / 32, 0, 0], colour * (0.8 + 0.2 * cos(u)), 1);
+			R_PolygonVertex(a + '0 0 14', [i / 32, 0, 0], colour * (0.8 + 0.2 * cos(t)), 1);
+			R_EndPolygon();
+		}
+		return;
+	}
 	for (i = 0; i < 16; i = i + 1)
 	{
 		t = (i / 16) * 6.2831853 + body.angles_y * (3.14159265 / 180);
@@ -228,4 +483,28 @@ void(entity body, float outline, float hat, float duck) Inv_Draw =
 		R_PolygonVertex(tip, '0 0 0', colour, 1);
 		R_EndPolygon();
 	}
+};
+
+// The preview queues its own wearer; nothing the 3D view left behind belongs in its pass.
+void() Inv_GlowReset = { inv_glown = 0; };
+
+void(entity body, float outline, float hat, float duck) Inv_Draw =
+{
+	if (outline)
+	{
+		if (!inv_glowok)
+			inv_glowok = (cvar_type("r_scenedepth") && Milk_Supported()) ? 1 : -1;
+		if (inv_glowok > 0)
+		{
+			if (inv_glown < INV_GLOWMAX)
+			{
+				inv_glowe[inv_glown] = body;
+				inv_glown = inv_glown + 1;
+			}
+		}
+		else
+			Inv_Shells(body);
+	}
+	if (hat >= 1 && hat <= 12)
+		Inv_Hat(body, hat, duck);
 };

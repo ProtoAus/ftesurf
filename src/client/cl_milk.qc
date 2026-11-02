@@ -183,6 +183,7 @@ void(string rendererdescription) CSQC_RendererRestarted =
 	LineGraph_CacheLost();         // Patch 837
 	ui_font_gen = ui_font_gen + 1;  // Patch 863: the fonts were baked again
 	HC_Lost();                      // Patch 871
+	Inv_GlowLost();                 // P1230: the aura's and crown's materials and targets
 };
 
 // Before renderscene, every frame; ticks only when the sim is due.
