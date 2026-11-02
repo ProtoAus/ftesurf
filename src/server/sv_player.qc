@@ -527,7 +527,7 @@ void() PlayerPreThink =
 	local float speedmod, speedcap;
 
 	SV_HeldCheck(self);
-	SV_NoColPre(self);                  // P1193
+	SV_NoColRestore();                  // P1193: lent again at the end of this function
 	self.svpm_phase_lo = input_cmd_sequence_lo;
 	self.svpm_phase_hi = input_cmd_sequence_hi;
 	// Patch 753: first, where a stringcmd sent just before this command would run.
@@ -720,6 +720,7 @@ void() PlayerPreThink =
 	self.run_touchran = !self.run_pmhold;
 	SV_TimerInFrame(self);
 	SV_TASLegalLog(self);           // P1100: a TAS step in the start box of a legal start
+	SV_NoColPre(self);              // P1193 review 2: after this tick's warp op and any new attempt
 };
 
 /*
