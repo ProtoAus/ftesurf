@@ -36,8 +36,9 @@ same-bytes csprogs over its `.prev`: csprogs.dat.prev was restored to 7f6adb64 o
   VBSP_EdictInFatPVS): the exact tests move a model-less spawn point to the camera / the entity's point and
   back. Never spawn an edict for it, nor keep sky_camera's: entity numbers feed the physent digest (P352).
 - Census (tools in the root's artifacts/: skycensus_arm.py, one fteqwsv64 per 12 maps -- a dedicated
-  server keeps every model and stopped at map 26 on `mod_numknown == MAX_MOD_KNOWN`): 179 of 297 sky_camera
-  maps, 113 mark 0, max 217 (bhop_darkage's sky props); none in solid or over the 256 cap.
+  server keeps every model and stopped at map 26 on `mod_numknown == MAX_MOD_KNOWN`): all 297 sky_camera
+  maps on the live build, 186 mark 0, median 0, max 217 (bhop_darkage's sky props), 7 animate; none in
+  solid or over the 256 cap.
 - Rig trap: an online/consent rig must `set rec_terms N` itself -- the menu's own localcmd_local queues
   behind a cfg's waitms (P1186 Enter check, same day).
 Root: C:\FTESurf-worktrees\skyroom1202-20261102T0620Z.

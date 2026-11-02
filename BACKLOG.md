@@ -8,7 +8,10 @@
 - Every point of an entity in solid keeps checkpvs's coarse answer (surf_colony's in-wall canister
   train needs it), so a big buried main-map entity no spawn sees can still be sent always (bandwidth only:
   it is never animated). The spawn test for those stays coarse too.
-- Census stopped by the memory reaper at map 180 of 297 (census/v4a, v4b in the root); the rest unread.
+- Census complete (live qwprogs e2fa9632, census/live1-4 in the root): all 297 sky_camera maps answer;
+  186 mark 0, 82 mark 1-10, 20 mark 11-50, 9 over 50 (max 217, bhop_darkage), 1803 in all; none in solid
+  or over 256; 7 animate (surf_aquaflow 10, surf_destruction 2, surf_shape, surf_4am(_css),
+  bhop_unreal_space, surf_watertemple_alpha).
 
 ## P1204-P1206 residuals (2 Nov 2026)
 - P1205 rows the client does not mirror snap a little: a delayed write (surf_oneiric, 1 s), two
