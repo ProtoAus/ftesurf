@@ -2063,7 +2063,6 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	}
 	// Validation succeeded; old exit cleanup above still belongs to the old admission.
 	SV_BankNewAttempt(e);
-	SV_NoColRegrant(e, savednocol);  // P1204: in this new attempt, or none
 
 	/*
 	  PATCH 450: THE MAP COMPARISON, made here because the whole file has been read and
@@ -2781,6 +2780,8 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	// Retry/void/clean-save branches may replace latches, not retained TAS ancestry.
 	if (e.run_tas_used)
 		SV_TASMark(e);
+	// P1204: last, in the attempt the load ends in: SV_SaveLoadTag's forgiveness advances it too.
+	SV_NoColRegrant(e, savednocol);
 };
 
 float(entity e, float id, float retry) SV_SaveApplyState =
