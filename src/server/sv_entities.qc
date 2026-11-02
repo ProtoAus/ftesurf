@@ -4408,6 +4408,10 @@ float(entity t, entity act, string code) SV_ScriptCode =
 	// teleport moves the player.
 	if (t.classname == "player")
 	{
+		// P1211 review 1: a second write before the first is applied composes in order, as Source
+		// runs both scripts, and as the client mirror does; nothing moves the body in between.
+		if (t.vsv_on)
+			SV_VsVelPost(t);
 		if (!FS_VsVelParse(code))
 			return FALSE;
 		t.vsv_on = TRUE;
@@ -5147,8 +5151,9 @@ void() SV_IODelayThink =
 // activator's own command time, not world time, so both sides land them before the same move.
 // SV_PcTick, at PlayerPreThink after the edges: fire what has nothing left, then spend this
 // command's msec. Still vbsp_iodelay edicts, so SV_TrigPending and CancelPending see them.
-.float pc_on, pc_rem;           // on a vbsp_iodelay: counting, and ms left
+.float pc_on, pc_rem, pc_ord;   // on a vbsp_iodelay: counting, ms left, creation order
 float  sv_pc_live;              // an upper bound; 0 skips the scan
+float  sv_pc_ord;
 
 // Must match the mirror's rows: RunScriptCode in the velocity grammar, or AddOutput gravity,
 // aimed at the activator, with no fired-with value.
@@ -5172,23 +5177,29 @@ float(entity o, entity act, string val) SV_PcEligible =
 
 void(entity e) SV_PcTick =
 {
-	local entity d, oself;
+	local entity d, oself, best;
 	local float ms, n;
 
 	if (sv_pc_live <= 0)
 		return;
-	// Due first, one at a time: a delivery can spawn or cancel others, so rescan after each.
-	for (d = find(world, classname, "vbsp_iodelay"); d; d = find(d, classname, "vbsp_iodelay"))
-		if (d.pc_on && d.enemy == e && d.pc_rem <= 0)
-		{
-			if (cvar("developer"))
-				dprint(sprintf("pc: %s's %s '%s' lands\n", e.netname, d.owner.vbsp_io_input, d.owner.vbsp_io_param));
-			oself = self;
-			self = d;
-			SV_IODelayThink();          // removes d before it delivers
-			self = oself;
-			d = world;
-		}
+	// Due first, oldest first (the mirror lands in birth order, review 1), one at a time: a
+	// delivery can spawn or cancel others, so rescan after each.
+	while (TRUE)
+	{
+		best = world;
+		for (d = find(world, classname, "vbsp_iodelay"); d; d = find(d, classname, "vbsp_iodelay"))
+			if (d.pc_on && d.enemy == e && d.pc_rem <= 0)
+			if (!best || d.pc_ord < best.pc_ord)
+				best = d;
+		if (!best)
+			break;
+		if (cvar("developer"))
+			dprint(sprintf("pc: %s's %s '%s' lands\n", e.netname, best.owner.vbsp_io_input, best.owner.vbsp_io_param));
+		oself = self;
+		self = best;
+		SV_IODelayThink();              // removes best before it delivers
+		self = oself;
+	}
 	ms = rint(frametime * 1000);
 	n = 0;
 	for (d = find(world, classname, "vbsp_iodelay"); d; d = find(d, classname, "vbsp_iodelay"))
@@ -5305,6 +5316,8 @@ void(entity src, string name, entity act) SV_FireOutputBody =
 			{
 				d.pc_on = TRUE;         // P1211: SV_PcTick, not a think
 				d.pc_rem = rint(o.vbsp_io_delay * 1000);
+				sv_pc_ord = sv_pc_ord + 1;
+				d.pc_ord = sv_pc_ord;
 				sv_pc_live = sv_pc_live + 1;
 			}
 			else

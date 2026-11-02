@@ -904,7 +904,7 @@ float(float o, float seq) TG_IOApply =
   state has the rest) and lets this chain's own edges re-add the others.
 */
 #define TG_PC_MAX 16
-#define TG_PC_W   4             // tg_pc rows: [k*4] row, [+1] born seq, [+2] clock at birth, [+3] landed this chain
+#define TG_PC_W   4             // tg_pc rows, in birth order: [k*4] row, [+1] born seq, [+2] clock at birth, [+3] seq it landed at (0 not yet)
 float  *tg_pc;
 float  tg_pc_n, tg_pc_now;      // entries; the clock at the start of the piece being predicted
 float  *tg_pc_clk;              // [(seq % 64) * 2] = clock after seq, [+1] = seq
@@ -931,12 +931,13 @@ void(float o, float seq) TG_PcAdd =
 	tg_pc_n = tg_pc_n + 1;
 };
 
+// Keeps birth order: SV_PcTick lands same-command rows oldest first (review 1).
 void(float k) TG_PcDrop =
 {
 	local float j;
 	tg_pc_n = tg_pc_n - 1;
-	for (j = 0; j < TG_PC_W; j = j + 1)
-		tg_pc[k * TG_PC_W + j] = tg_pc[tg_pc_n * TG_PC_W + j];
+	for (j = k * TG_PC_W; j < tg_pc_n * TG_PC_W; j = j + 1)
+		tg_pc[j] = tg_pc[j + TG_PC_W];
 };
 
 // The clock after seq, or -1 if the ring no longer holds it.
@@ -950,7 +951,7 @@ float(float seq) TG_PcClock =
 // Every pre-move piece (cl_warpop.qc). held: the spectate hold, which the server does not tick.
 void(float seq, float seconds, float offset, float held, vector vel, float grav) TG_PreMove =
 {
-	local float k, o, m, cm, cm1, left;
+	local float k, o, m, cm, cm1, left, pass;
 
 	tg_pm_velon = 0;
 	tg_pm_vel = vel;
@@ -958,9 +959,11 @@ void(float seq, float seconds, float offset, float held, vector vel, float grav)
 		return;                 // nothing on this map to schedule: the engine's gravity stands
 	if (!tg_pc_clk)
 		tg_pc_clk = memalloc(sizeof(float) * 64 * 2);
-	if (seq < tg_pm_seq || (seq == tg_pm_seq && offset <= tg_pm_off) || !tg_pm_gravon)
+	// A replay from the ack (seq - 1 is the last command the server answered). Its first command
+	// is servercommandframe + 1 even when the ack passed every command predicted so far (review 1).
+	if (seq < tg_pm_seq || (seq == tg_pm_seq && offset <= tg_pm_off) || !tg_pm_gravon
+	    || (offset == 0 && seq == servercommandframe + 1))
 	{
-		// A replay from the ack: seq - 1 is the last command the server has answered.
 		tg_grav = grav;         // the server's, sent with that frame (engine P1211)
 		tg_pm_gravon = 1;
 		m = seq - 1;
@@ -974,29 +977,48 @@ void(float seq, float seconds, float offset, float held, vector vel, float grav)
 				TG_PcDrop(k);   // this chain re-adds it, or its clock base is gone
 				continue;
 			}
+			if (tg_pc[k * TG_PC_W + 3] && tg_pc[k * TG_PC_W + 3] <= m)
+			{
+				TG_PcDrop(k);   // landed by m, on any piece: in the server's state already (review 1)
+				continue;
+			}
 			o = tg_pc[k * TG_PC_W];
 			if (tg_pc[k * TG_PC_W + 1] < m)
 			if (cm1 >= 0)
 			if (rint(io_delay[o] * 1000) - (cm1 - tg_pc[k * TG_PC_W + 2]) <= 0)
 			{
-				TG_PcDrop(k);   // landed by m: in the server's state already
+				TG_PcDrop(k);   // landed by m though no replay saw it land
 				continue;
 			}
 			tg_pc[k * TG_PC_W + 3] = 0;
+		}
+		if (tg_pc_now > 4194304)
+		{
+			// Rebase at 2^22 ms (70 min): +15 ms steps round once a float passes 2^24 (review 1).
+			for (k = 0; k < tg_pc_n; k = k + 1)
+				tg_pc[k * TG_PC_W + 2] = tg_pc[k * TG_PC_W + 2] - tg_pc_now;
+			for (k = 0; k < 128; k = k + 2)
+				tg_pc_clk[k] = tg_pc_clk[k] - tg_pc_now;
+			tg_pc_now = 0;
 		}
 	}
 	tg_pm_seq = seq;
 	tg_pm_off = offset;
 
+	// Zero-delay rows first: on the server they are written at the edge, before SV_PcTick's
+	// delayed landings, which therefore win a same-command tie (review 1).
+	for (pass = 0; pass < 2; pass = pass + 1)
 	for (k = 0; k < tg_pc_n; k = k + 1)
 	{
 		if (tg_pc[k * TG_PC_W + 3])
 			continue;
 		o = tg_pc[k * TG_PC_W];
+		if ((io_delay[o] > 0) != pass)
+			continue;
 		left = rint(io_delay[o] * 1000) - (tg_pc_now - tg_pc[k * TG_PC_W + 2]);
 		if (left > 0)
 			continue;
-		tg_pc[k * TG_PC_W + 3] = 1;
+		tg_pc[k * TG_PC_W + 3] = seq;
 		if (io_inp[o] == IN_ADDOUT)
 			tg_grav = io_gv[o];
 		else
