@@ -6438,6 +6438,21 @@ float(string cmd) Watch_ConsoleCommand =
 		return TRUE;
 	}
 
+	if (a == "duckcount")
+	{
+		// P1210: samples and DUCKED samples in the open replay (an arm's read-back).
+		track = leg = 0;
+		for (i = rec_wt_rec0; rec_wt_rec && i < rec_wt_recn; i = i + 1)
+		{
+			p = bufstr_get(rec_wt_rec, i);
+			if (str2chr(p, 0) != 45 && (str2chr(p, 0) < 48 || str2chr(p, 0) > 57)) continue;
+			track = track + 1;
+			if (tokenize(p) > 9 && (stof(argv(9)) & WT_F_DUCKED)) leg = leg + 1;
+		}
+		print(sprintf("replay: duckcount samples %g ducked %g source %s\n", track, leg, rec_wt_source));
+		return TRUE;
+	}
+
 	/*
 	  The scripted controls.  They exist so a config can drive the reader to an
 	  exact position and read it back -- playback otherwise advances with the
