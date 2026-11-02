@@ -4421,10 +4421,6 @@ float(entity t, entity act, string code) SV_ScriptCode =
 	// teleport moves the player.
 	if (t.classname == "player")
 	{
-		// P1211 review 1: a second write before the first is applied composes in order, as Source
-		// runs both scripts, and as the client mirror does; nothing moves the body in between.
-		if (t.vsv_on)
-			SV_VsVelPost(t);
 		if (!FS_VsVelParse(code))
 			return FALSE;
 		t.vsv_on = TRUE;
@@ -5195,19 +5191,24 @@ void(entity e) SV_PcTick =
 
 	if (sv_pc_live <= 0)
 		return;
-	// Due first, oldest first (the mirror lands in birth order, review 1), one at a time: a
-	// delivery can spawn or cancel others, so rescan after each.
+	// Due first, earliest due first as Source's event queue, ties oldest first (the mirror does
+	// the same, reviews 1-2), one at a time: a delivery can spawn or cancel others, so rescan.
 	while (TRUE)
 	{
 		best = world;
 		for (d = find(world, classname, "vbsp_iodelay"); d; d = find(d, classname, "vbsp_iodelay"))
 			if (d.pc_on && d.enemy == e && d.pc_rem <= 0)
-			if (!best || d.pc_ord < best.pc_ord)
+			if (!best || d.pc_rem < best.pc_rem || (d.pc_rem == best.pc_rem && d.pc_ord < best.pc_ord))
 				best = d;
 		if (!best)
 			break;
 		if (cvar("developer"))
 			dprint(sprintf("pc: %s's %s '%s' lands\n", e.netname, best.owner.vbsp_io_input, best.owner.vbsp_io_param));
+		// A velocity write already queued (an edge's this PreThink, or the previous landing) is
+		// applied first, so delayed writes compose in order as the mirror composes them; touch-time
+		// writes keep the single slot's last-wins, as the mirror's tg_vs does (review 2).
+		if (e.vsv_on)
+			SV_VsVelPost(e);
 		oself = self;
 		self = best;
 		SV_IODelayThink();              // removes best before it delivers
