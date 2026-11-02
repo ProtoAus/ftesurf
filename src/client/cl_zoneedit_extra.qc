@@ -55,6 +55,7 @@ vector(vector p) ZoneEdit_EdgeSnap =
 	local vector a, b, d, q, out;
 	best = 999999; corner = FALSE; out = p;
 	limit = max(4, ze_grid * 0.5);
+	ze_zkind = 0;
 	// Existing zone vertices and projected XY edges, preserving the traced Z.
 	for (z = 0; z < zone_count; z = z + 1)
 	{
@@ -66,18 +67,169 @@ vector(vector p) ZoneEdit_EdgeSnap =
 			a_z = p_z; b_z = p_z;
 			dist = vlen(p - a);
 			if (dist <= limit)
-			if (!corner || dist < best) { corner = TRUE; best = dist; out = a; }
+			if (!corner || dist < best)
+			{
+				corner = TRUE; best = dist; out = a;
+				ze_zkind = 1; ze_zat = [a_x, a_y, zone_bottom[z]];
+			}
 			if (corner) continue;
 			d = b - a;
 			if (d * d > 0)
 			{
 				t = bound(0, ((p - a) * d) / (d * d), 1);
 				q = a + t * d; dist = vlen(p - q);
-				if (dist < best && dist <= limit) { best = dist; out = q; }
+				if (dist < best && dist <= limit)
+				{
+					best = dist; out = q;
+					ze_zkind = 2; ze_zat = [q_x, q_y, zone_bottom[z]];
+				}
 			}
 		}
 	}
 	return out;
+};
+
+/*
+  P1197: snapping to the map's own corners and edges (Lex, 2 Nov: the angled start of
+  surf_sinsane_ez has corners no grid step reaches).  The map surface under the aim is read with
+  the getsurface builtins; a corner within ZE_SNAPPX of the crosshair on screen wins -- its own
+  or an existing zone's, whichever is nearer -- else the nearest edge point.  XY are the
+  surface's exactly; Z keeps ZoneEdit_SnapV's floor-down rule.
+*/
+// How far from the crosshair a world point is drawn, in screen units (ze_pxtan: ZoneEdit_AimFrom).
+float(vector eye, vector fwd, vector p) ZoneEdit_PxOff =
+{
+	local vector w;
+	local float along;
+
+	w = p - eye;
+	along = w * fwd;
+	if (along < 1) return 999999;
+	return ze_pxtan * vlen(w - fwd * along) / along;
+};
+
+// The world surface under the aim, -1 none.  getsurfacenearpoint walks every world triangle
+// (cl_paint.qc), so it is asked again only when the aim leaves the last answer.  The clipped
+// point must be the aim: that also refuses a mesh the renderer never filled (all origin).
+float(vector raw) ZoneEdit_WorldSurf =
+{
+	if (!checkbuiltin(getsurfacenearpoint) || !checkbuiltin(getsurfacenumtriangles))
+		return -1;
+	if (ze_wsurf >= 0 && getsurfacenumpoints(world, ze_wsurf) >= 3)
+	if (vlen(getsurfaceclippedpoint(world, ze_wsurf, raw) - raw) < 0.25)
+		return ze_wsurf;
+	if (ze_wsurf < 0 && ze_wasks && vlen(raw - ze_wq) < 1)
+		return -1;                      // nothing here a moment ago either
+	ze_wq = raw;
+	ze_wasks = ze_wasks + 1;
+	ze_wsurf = getsurfacenearpoint(world, raw);
+	if (ze_wsurf >= 0)
+	if (getsurfacenumpoints(world, ze_wsurf) < 3 || vlen(getsurfaceclippedpoint(world, ze_wsurf, raw) - raw) > 1)
+		ze_wsurf = -1;
+	return ze_wsurf;
+};
+
+void(vector eye, vector fwd, vector raw) ZoneEdit_Snap =
+{
+	local float s, n, i, d, bv, be, kv, ke;
+	local vector v, w, q, pv, pe, zp;
+
+	bv = be = ZE_SNAPPX * ui_cv_scale;
+	kv = ke = ZES_NONE;
+	pv = pe = '0 0 0';
+	s = ZoneEdit_WorldSurf(raw);
+	n = (s >= 0) ? getsurfacenumpoints(world, s) : 0;
+	if (n && getsurfacenumtriangles(world, s) == n - 2)   // a ring; a displacement's grid is not corners
+	for (i = 0; i < n; i = i + 1)
+	{
+		v = getsurfacepoint(world, s, i);
+		w = getsurfacepoint(world, s, (i + 1) % n);
+		d = ZoneEdit_PxOff(eye, fwd, v);
+		if (d < bv) { bv = d; pv = v; kv = ZES_MAPV; }
+		q = w - v;
+		if (q * q > 0) q = v + bound(0, ((raw - v) * q) / (q * q), 1) * q;
+		else q = v;
+		d = ZoneEdit_PxOff(eye, fwd, q);
+		if (d < be) { be = d; pe = q; ke = ZES_MAPE; }
+	}
+	// An existing zone's corner or edge, by its own world-unit reach; nearer on screen wins.
+	zp = ZoneEdit_EdgeSnap(ze_hit);
+	if (ze_zkind)
+	{
+		d = ZoneEdit_PxOff(eye, fwd, ze_zat);
+		if (ze_zkind == 1 && (!kv || d < bv)) { bv = d; pv = ze_zat; kv = ZES_ZONEV; }
+		if (ze_zkind == 2 && (!ke || d < be)) { be = d; pe = ze_zat; ke = ZES_ZONEE; }
+	}
+	if (kv) { ze_skind = kv; q = pv; }
+	else if (ke) { ze_skind = ke; q = pe; }
+	else return;
+	ze_sat = q;
+	if (ze_skind >= ZES_ZONEV)
+	{
+		ze_hit = zp;                    // the zone's XY, the aim's floor (ZoneEdit_EdgeSnap)
+		return;
+	}
+	ze_hitz = q_z;
+	d = max(1, ze_grid);
+	ze_hit = [q_x, q_y, ze_snap ? floor(q_z / d) * d : q_z];
+};
+
+string(float k) ZoneEdit_SnapName =
+{
+	if (k == ZES_MAPV) return "map corner";
+	if (k == ZES_MAPE) return "map edge";
+	if (k == ZES_ZONEV) return "zone corner";
+	if (k == ZES_ZONEE) return "zone edge";
+	return ze_snap ? sprintf("grid %g", ze_grid) : "surface";
+};
+
+vector(float k) ZoneEdit_SnapCol =
+{
+	if (k == ZES_MAPV) return '0.35 1 0.45';
+	if (k == ZES_MAPE) return '0.35 0.85 1';
+	if (k == ZES_ZONEV || k == ZES_ZONEE) return '1 1 1';
+	return ZEC_NEW;
+};
+
+// The map surface the snap reads, outlined a hair off it, its corners ticked.
+void(vector eye) ZoneEdit_SnapDraw3D =
+{
+	local float n, i, t;
+	local vector nm, v, w;
+
+	if (!ze_edges || ze_wsurf < 0) return;
+	n = getsurfacenumpoints(world, ze_wsurf);
+	if (getsurfacenumtriangles(world, ze_wsurf) != n - 2) return;
+	nm = normalize(getsurfacenormal(world, ze_wsurf));
+	for (i = 0; i < n; i = i + 1)
+	{
+		v = getsurfacepoint(world, ze_wsurf, i) + nm * 0.5;
+		w = getsurfacepoint(world, ze_wsurf, (i + 1) % n) + nm * 0.5;
+		Zone_Line(v, w, ZoneEdit_SnapCol(ZES_MAPE), 0.45);
+		t = max(3, vlen(v - eye) * 0.01);
+		Zone_Line(v, v + nm * t, ZoneEdit_SnapCol(ZES_MAPV), 0.9);
+	}
+};
+
+// A square round the snapped point on screen, so a corner far off still shows where it is.
+void(float rsz) ZoneEdit_SnapMark2D =
+{
+	local vector eye, sp, col;
+	local float r, t;
+
+	if (!ze_skind) return;
+	eye = getproperty(VF_ORIGIN);
+	makevectors(getproperty(VF_ANGLES));
+	if (v_forward * (ze_sat - eye) < 8) return;
+	sp = project(ze_sat);
+	sp_z = 0;
+	col = ZoneEdit_SnapCol(ze_skind);
+	r = max(4, rsz * 0.8);
+	t = max(1, rint(rsz / 8));
+	drawfill(sp + [-r, -r], [r * 2, t], col, 1, 0);
+	drawfill(sp + [-r, r - t], [r * 2, t], col, 1, 0);
+	drawfill(sp + [-r, -r], [t, r * 2], col, 1, 0);
+	drawfill(sp + [r - t, -r], [t, r * 2], col, 1, 0);
 };
 
 void() ZoneEdit_PolygonClose =
