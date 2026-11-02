@@ -405,7 +405,14 @@ float(float reqid, float code, string body) MC_Reply =
 	else
 	{
 		if (!MC_Snapshot(root)) MC_Fail("Invalid chat snapshot.");
-		else { MC_Keep(mc_note, "Messages are saved for 30 days, so friends see them when they next play."); mc_next = time + 8; }
+		else
+		{
+			// P1200: the server says how long it keeps lines; one that does not keeps two minutes.
+			i = json_get_float(json_find_object_child(root, "keep"));
+			MC_Keep(mc_note, (i >= 86400) ? sprintf("Messages are saved for %g days, so friends see them when they next play.", floor(i / 86400))
+			                              : "Recent messages expire after two minutes; not saved.");
+			mc_next = time + 8;
+		}
 		mc_phase = 0;
 	}
 	json_free(root);
