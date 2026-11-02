@@ -527,6 +527,7 @@ void() PlayerPreThink =
 	local float speedmod, speedcap;
 
 	SV_HeldCheck(self);
+	SV_NoColPre(self);                  // P1193
 	self.svpm_phase_lo = input_cmd_sequence_lo;
 	self.svpm_phase_hi = input_cmd_sequence_hi;
 	// Patch 753: first, where a stringcmd sent just before this command would run.
@@ -847,6 +848,7 @@ void() PlayerPostThink =
 	local vector dest;
 
 	SV_HeldCheck(self);
+	SV_NoColPost(self);                 // P1193: before anything else traces
 	SV_SourcePhaseClear(self);
 	self.svpm_phase_stat = strzone(sprintf("%.0f:%.0f:%.0f:%.9g", num_for_edict(self), self.svpm_phase_lo, self.svpm_phase_hi, self.run_movecarry));
 	self.run_pkn = self.run_pkn + 1;    // Patch 382: the trigger gate's packet count

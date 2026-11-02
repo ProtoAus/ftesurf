@@ -2862,9 +2862,38 @@ void(entity t) SV_BrushRenderInit =
 	SV_BrushRenderState(t);
 };
 
+/*
+  P1193: surf_sirena's anti-cut barriers (barriercollision_s1/_s3, s5_barriercollision: faceless
+  func_brushes) open per player through scripts/vscripts/barriercollision.nut in the map pak.
+  SetPlayerNoCollideBarrier(player, name) sets the player's m_hOwnerEntity to the barrier, which
+  Source's collision filter skips; ClearPlayerNoCollideBarrier clears it. Called from triggers as
+  `alpha_script,RunScriptCode,...`. Here: the barrier is SOLID_NOT for the granted player's own
+  move only (PlayerPreThink..PostThink; one move runs at a time) and is not sent to that client,
+  so its prediction agrees (engine AddLinksToPmove skips only owned entities, not owners).
+  Passing through on a grant from an earlier attempt is an inherited map effect (sv_bank.qc).
+*/
+.entity nocol_bar;              // player: the barrier the script let this player through
+.entity nocol_player;           // player: the grant's I/O cause, for the bank
+.int    nocol_attempt;
+.float  nocol_bad;
+.float  nocol_was;              // barrier: its solid while lent out
+.float  nocol_in;               // player: inside its barrier after the last move
+entity  nocol_off;              // the barrier non-solid for the move running now
+
+void() SV_NoColRestore =
+{
+	if (nocol_off == world)
+		return;
+	if (!wasfreed(nocol_off))
+		nocol_off.solid = nocol_off.nocol_was;
+	nocol_off = world;
+};
+
 void(entity t, float on) SV_IOEnable =
 {
 	local float wasoff, act, same;
+	if (t == nocol_off)
+		SV_NoColRestore();        // P1193: I/O acts on the real solidity
 	wasoff = SV_Key2(t.StartDisabled, t.startdisabled);
 	// These activation slots are not callback state. A no-op Enable does not
 	// reauthor them; an independent off->on without active I/O is world-owned.
@@ -4266,6 +4295,117 @@ float(entity t, string in) SV_PsysInput =
 	return TRUE;
 };
 
+// P1193: not sent to a player it is lent to (customizeentityforclient: FALSE skips).
+float() SV_NoColSend =
+{
+	return (other.nocol_bar != self);
+};
+
+void(entity e, entity bar) SV_NoColGrant =
+{
+	e.nocol_bar = bar;
+	e.nocol_player = world;
+	e.nocol_attempt = 0i;
+	e.nocol_bad = FALSE;
+	if (bar == world)
+		return;
+	if (bank_ctx_depth)
+	{
+		e.nocol_player = bank_ctx_player;
+		e.nocol_attempt = bank_ctx_attempt;
+		e.nocol_bad = bank_ctx_bad;
+	}
+	bar.customizeentityforclient = SV_NoColSend;
+};
+
+float(string code, string call) SV_ScriptIs = { return substring(code, 0, strlen(call)) == call; };
+
+// RunScriptCode: only barriercollision.nut's two calls; barrierscript.nut's emissive calls
+// retexture a viewmodel and are dropped. Anything else is censused as before.
+float(entity t, entity act, string code) SV_ScriptCode =
+{
+	local float a, b;
+	local string name;
+	local entity bar;
+
+	if (t.classname != "logic_script")
+		return FALSE;
+	if (SV_ScriptIs(code, "SetPlayerNoCollideBarrier("))
+	{
+		a = strstrofs(code, "`", 0);
+		if (a < 0)
+			a = strstrofs(code, "\"", 0);
+		b = (a < 0) ? -1 : strstrofs(code, substring(code, a, 1), a + 1);
+		if (b < 0 || act.classname != "player")
+			return TRUE;
+		name = substring(code, a + 1, b - a - 1);
+		bar = (name != "") ? find(world, targetname, name) : world;
+		if (bar == world)
+			return TRUE;            // Entities.FindByName found nothing: the script returns
+		SV_NoColGrant(act, bar);
+		if (cvar("developer"))
+			dprint(sprintf("script: %s may pass %s (%s)\n", act.netname, name, etos(bar)));
+		return TRUE;
+	}
+	if (SV_ScriptIs(code, "ClearPlayerNoCollideBarrier("))
+	{
+		if (act.classname == "player")
+		{
+			if (cvar("developer") && act.nocol_bar != world)
+				dprint(sprintf("script: %s may no longer pass %s\n", act.netname, act.nocol_bar.targetname));
+			SV_NoColGrant(act, world);
+		}
+		return TRUE;
+	}
+	if (SV_ScriptIs(code, "SetEmissiveStrengthForPlayer(") || SV_ScriptIs(code, "InitEmissiveTrick("))
+		return TRUE;
+	return FALSE;
+};
+
+// Before this player's move: lend it its barrier. Idempotent (the engine may run several
+// PlayerPreThinks before one PlayerPostThink).
+void(entity e) SV_NoColPre =
+{
+	local entity bar;
+
+	SV_NoColRestore();
+	bar = e.nocol_bar;
+	if (bar == world)
+		return;
+	if (wasfreed(bar) || bar.customizeentityforclient != SV_NoColSend)
+	{
+		e.nocol_bar = world;        // killed, or the slot was reused
+		return;
+	}
+	if (bar.solid == SOLID_NOT)
+		return;
+	bar.nocol_was = bar.solid;
+	bar.solid = SOLID_NOT;
+	nocol_off = bar;
+};
+
+// After it: take it back, and if the player is inside it on an earlier attempt's grant,
+// that is an inherited map effect.
+void(entity e) SV_NoColPost =
+{
+	local entity bar, oo;
+
+	bar = nocol_off;
+	SV_NoColRestore();
+	if (bar == world || bar != e.nocol_bar)
+		return;
+	oo = other;
+	other = bar;
+	tracebox(e.origin, e.mins, e.maxs, e.origin, MOVE_OTHERONLY, e);
+	other = oo;
+	if (trace_startsolid && cvar("developer") && !e.nocol_in)
+		dprint(sprintf("script: %s passes %s on attempt %i's grant (now %i)\n", e.netname,
+			bar.targetname, e.nocol_attempt, e.bank_attempt));
+	e.nocol_in = trace_startsolid;
+	if (trace_startsolid)
+		SV_BankCauseAffect(e, e.nocol_player, e.nocol_attempt, e.nocol_bad);
+};
+
 void(entity t, entity o, entity act) SV_ApplyInput =
 {
 	local string in, pm;
@@ -4299,6 +4439,9 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 			return;
 
 	if (in == "addoutput")      { SV_IOAddOutput(t, pm);                return; }
+	if (in == "runscriptcode")
+		if (SV_ScriptCode(t, act, pm))   // P1193
+			return;
 	if (vbsp_ctx_on)	// Patch 1036
 	if (in == "addcontext" || in == "removecontext" || in == "clearcontext")
 	{
@@ -12562,6 +12705,7 @@ void() logic_relay     = { SV_SpawnIOPoint(); };
   read off the output chain at fire time, and the shuffle state starts zeroed.
 */
 void() logic_case      = { SV_SpawnIOPoint(); };
+void() logic_script    = { SV_SpawnIOPoint(); };   // P1193: RunScriptCode target
 
 /*
   logic_branch and logic_compare -- Build 63.  Same story as logic_case: no
