@@ -2190,8 +2190,19 @@ void(string cmd) SV_ParseClientCommand =
 	if (c == "zone_edit_goto")
 	{
 		if (!zone_loaded) SV_ZoneFrame();
-		if (cmdargc != 3 || zone_crc == "" || strcmp(argv(2), zone_crc) != 0)
+		if ((cmdargc != 3 && cmdargc != 6) || zone_crc == "" || strcmp(argv(2), zone_crc) != 0)
 		{
+			// P1223: an editor's unsaved table names zones this server does not have, so the
+			// client sends where the zone is drawn; placed as setpos (a run cheat, as any
+			// position not earned).
+			if (cmdargc == 6)
+			{
+				if (SV_MsBusy(self)) return;
+				self.run_t_wantstage1 = FALSE;
+				SV_SetPosSelf([stof(argv(3)), stof(argv(4)), stof(argv(5))], FALSE, '0 0 0');
+				sprint(self, PRINT_HIGH, sprintf("zone_edit_goto: an unsaved zone, now at %v\n", self.origin));
+				return;
+			}
 			sprint(self, PRINT_HIGH, "zone_edit_goto: zones differ; save/reload your hosted map first\n");
 			return;
 		}

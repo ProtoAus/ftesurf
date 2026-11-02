@@ -323,6 +323,8 @@ void() HE_BuildTable =
 	HE_Add("chat",    "Chat",       "hud_chat_x",    "hud_chat_y",    "hud_chat",     0, HEA_LB,  340, 170);
 	he_chatrow = he_n - 1;
 	HE_Text("hud_chat_size",     "16 20 24 28", 10);     // UI; 20 at hud_scale 2
+	// P1227: how a load holds you, options only.
+	HE_Add("saves",   "Save & load",  "",             "",              "",             1, HEA_CT,    0,   0);
 	// Patch 798: switches for elements with no list row of their own, options only.
 	HE_Add("display", "Display Info", "",             "",              "",             0, HEA_CT,    0,   0);
 	/*
@@ -717,6 +719,14 @@ string(string id, float row) HE_OptDef =
 		return "";
 	}
 
+	if (id == "saves")
+	{
+		if (row == 0) return "cl_sl_leadin|Load lead-in|c|0 0.1 0.25 0.5 1|none;100 ms;250 ms;0.5 s;1 s"
+		                     "|A load holds you at the save at least this long, even on a tap, and until the server has answered it.";
+		if (row == 1) return "cl_sl_leadin|Lead-in in ms|n|1000 0 2000|ms"
+		                     "|Click and type the lead-in in milliseconds, then Enter. 0 still waits for the server's answer.";
+		return "";
+	}
 	if (id == "ghost")
 	{
 		if (row == 0) return "hud_ghost|Show|c|0 1 2 3|off;body;line highlight;both"
@@ -809,6 +819,7 @@ string(string id) HE_Tip =
 	if (id == "banner")   return "Across the screen when you finish the map, a bonus or a stage.";
 	if (id == "lines")    return "The path a recording took, drawn through walls, with what happened along it.";
 	if (id == "labels")   return "What is written on the run lines: each run's name, and the numbers at its marks.";
+	if (id == "saves")    return "How a load from your saves (the load key) holds you before you move.";
 	if (id == "ghost")    return "A ghost of your PB, or of a ticked run, racing you from the moment you leave the start.";
 	if (id == "compare")  return "You against the ghost's line where you are: time to get here, speed and energy. Green is ahead.";
 	if (id == "graph")    return "Speed over time for the runs whose LINE box is ticked on the leaderboard. On screen only while one is.";
@@ -2285,6 +2296,7 @@ void() HE_ResetAll =
 	         "seta hud_ghost_offset 0.5\nseta hud_ghost_alpha 0.25\nseta hud_ghost_dither 1\nseta hud_ghost_near 256\n"
 	         "seta hud_ghost_names 1\n");
 	localcmd("seta hud_chat 1\n");          // Patch 798: default.cfg never sets it
+	localcmd("seta cl_sl_leadin 0.1\n");    // P1227: only the game code registers it
 	// Patch 824: the Chat pane's, literals for the same reason (only the game code registers them).
 	localcmd("seta hud_chat_size 20\nseta hud_chat_w 0.3\nseta hud_chat_rows 12\nseta hud_chat_full 1\n"
 	         "seta hud_chat_lines 6\nseta hud_chat_time 30\nseta hud_chat_bg 0.5\n");

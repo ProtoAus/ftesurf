@@ -1078,9 +1078,7 @@ float(float c) Chat_FieldRow =
 // The field's label and rows for this frame.  -> its height.
 float(float maxw, float sz, float lh) Chat_FieldLayout =
 {
-	chat_fld_pw = 0;
-	if (chat_private != "")
-		chat_fld_pw = stringwidth(strcat("to ", chat_private_name, "^7:"), TRUE, [sz, sz]) + ceil(sz * 0.4);
+	chat_fld_pw = 0;                    // P1220: the recipient is Chat_DrawTo's tag, not a prefix
 	Chat_FieldWrap(max(sz * 3, maxw - ceil(sz * 0.5) * 2 - chat_fld_pw), sz);
 	return ceil(sz * 1.75) + lh * (chat_fr_n - 1);
 };
@@ -1124,8 +1122,6 @@ void(float x, float yb, float maxw, float fh, float sz, float lh, float a) Chat_
 	_sui_round_draw(p + '1 1 0', [maxw - 2, fh - 2], max(0, rad - 1), SUI_THEME_WELL, a);
 	inset = ceil(sz * 0.5);
 	tp = [p_x + inset, p_y + floor((ceil(sz * 1.75) - sz) * 0.5)];
-	if (chat_private != "")
-		drawstring(tp, strcat("to ", chat_private_name, "^7:"), [sz, sz], SUI_THEME_ACCENT2, a, 0);
 	avail = maxw - inset * 2 - chat_fld_pw;
 	chat_fld_p  = p;
 	chat_fld_s  = [maxw, fh];
@@ -1133,8 +1129,6 @@ void(float x, float yb, float maxw, float fh, float sz, float lh, float a) Chat_
 	chat_fld_ty = tp_y;
 
 	drawsetcliparea(chat_fld_tx - 2, p_y + 1, avail + 4, fh - 2);
-	if (chat_buf == "")
-		drawrawstring([chat_fld_tx, tp_y], "Enter sends, Esc closes", [sz, sz], SUI_THEME_MUTED, a, 0);
 	a0 = min(chat_anchor, chat_caret);
 	a1 = Chat_FieldSelected() ? max(chat_anchor, chat_caret) : a0;
 	for (r = 0; r < chat_fr_n; r = r + 1)
@@ -1159,6 +1153,23 @@ void(float x, float yb, float maxw, float fh, float sz, float lh, float a) Chat_
 		drawfill([chat_fld_tx + x0, tp_y + lh * r - 1], [max(1, floor(sz / 12)), sz + 2], SUI_THEME_ACCENT, a, 0);
 	}
 	drawresetcliparea();
+};
+
+// P1220: who the line goes to, a tag at the box's top right (was "to ...:" in the field).
+void(vector bp, vector bs, float sz, float pad, float a) Chat_DrawTo =
+{
+	local string s;
+	local float tsz, w, h, room;
+	local vector p;
+	room = (!strcmp(chat_private, "") || !strcmp(chat_private, "-") || !strcmp(chat_private, "."));
+	s = !strcmp(chat_private, "-") ? "To everyone" : (room ? "To this lobby" : strcat("To ", chat_private_name));
+	tsz = Font_Px(sz * 0.7);
+	w = stringwidth(s, TRUE, [tsz, tsz]) + ceil(tsz * 1.2);
+	h = ceil(tsz * 1.6);
+	p = [bp_x + bs_x - w - pad * 0.5, bp_y + pad * 0.5];
+	_sui_round_draw(p, [w, h], ceil(h * 0.5), SUI_THEME_CHIP, a);
+	drawstring([p_x + ceil(tsz * 0.6), p_y + (h - tsz) * 0.5 + tsz * FONT_CAPDROP], s, [tsz, tsz],
+	           room ? SUI_THEME_DIM : SUI_THEME_ACCENT2, a, 0);
 };
 
 void(vector scr) Chat_Draw =
@@ -1351,6 +1362,8 @@ void(vector scr) Chat_Draw =
 			drawfill([bp_x + bs_x - pad * 0.5 - 1, top + (hb - top - w) * (1 - chat_scroll / (total - used))],
 			         [2, w], SUI_THEME_EDGE_HI, ba, 0);
 		}
+		if (chat_typing && cltime - chat_copied_t >= 1.5)
+			Chat_DrawTo(bp, bs, sz, pad, ba);
 		if (cltime - chat_copied_t < 1.5)
 		{
 			a = ba * min(1, (1.5 - (cltime - chat_copied_t)) / 0.4);

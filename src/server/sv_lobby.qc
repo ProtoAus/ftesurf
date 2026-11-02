@@ -249,7 +249,9 @@ float lobby_was_on;
   SSQC, so the only way to notice is to look; 1 Hz is far below the cost of
   caring and far above the latency anyone will perceive.
 */
+float lobby_boardgen;           // P1226: stored rows since start, published as serverinfo *boardgen
 float lobby_colcheck;
+float lobby_colfast;            // P1225: until then the pass runs at 4 Hz (somebody joined)
 
 /*
 ===========================================================================
@@ -1600,7 +1602,7 @@ void() Lobby_Frame =
 	*/
 	if (time >= lobby_colcheck)
 	{
-		lobby_colcheck = time + 1;
+		lobby_colcheck = time + ((time < lobby_colfast) ? 0.25 : 1);
 
 		nfx = 0;
 		p = find(world, classname, "player");
@@ -2830,6 +2832,14 @@ void(float reqid, float code, string body) Lobby_RunReply =
 					                 stored, prevms, tier);
 			}
 
+			// P1226: a stored row changes a board anyone here may be showing; serverinfo reaches
+			// every client at once and each marks its own stale (cl_online.qc Online_Need).
+			if (stored)
+			{
+				lobby_boardgen = max(lobby_boardgen, stof(infokey(world, "*boardgen"))) + 1;   // review 1
+				forceinfokey(world, "*boardgen", ftos(lobby_boardgen));
+			}
+
 			/*
 			  A LINE ONLY WHEN THE BOARD ACTUALLY MOVED.  The finish card
 			  draws the rank either way, and a run that did not improve has
@@ -3695,6 +3705,8 @@ void(entity p) Lobby_ClientConnect =
 	// avatars are off, or turning them on later inherits a stale index.
 	p.lobby_colour = 0;
 	p.lobby_acct_told = 0;          // Patch 629: a new connection has been told nothing
+	lobby_colcheck = 0;             // P1225: resolved now, and re-read fast while its look arrives
+	lobby_colfast = time + 30;
 
 	/*
 	  PATCH 340: THE PLAYER HASH, published to its owner once per connection.

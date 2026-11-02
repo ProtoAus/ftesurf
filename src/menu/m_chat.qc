@@ -1,9 +1,13 @@
 // P963: explicit main-menu lobby/DM screen. No text/proof cache on disk or cvars.
 // P1200: surfd keeps the lines 30 days; the only thing kept here is cl_chat_read,
 // "mark id" per friend -- the newest of their messages this install has shown.
-#define MC_MSG_H 96
+#define MC_NAME_H 22             // a message's name line; its text follows at MC_PITCH a line
+#define MC_PITCH 18
+#define MC_GAP 10                // P1214: between messages (each row was a fixed 96 px)
 float mc_rows, mc_view, mc_friends;
 float mc_count, mc_height, mc_cursor;
+float *mc_rowy;                  // P1214: row i's top; [mc_count] is the content height
+float mc_rowy_n, mc_lay_w, mc_lay_gen, mc_gen;
 vector mc_scroll, mc_friend_scroll;
 float mc_visible, mc_req, mc_wire, mc_phase, mc_at, mc_next, mc_seen;
 string mc_peer, mc_peer_name, mc_me, mc_draft, mc_note;
@@ -146,7 +150,8 @@ void() MC_Rebuild =
 {
 	local float i, follow;
 	local string row;
-	follow = (mc_scroll_y >= max(0, mc_count * MC_MSG_H - mc_height) - 8);
+	follow = (mc_scroll_y >= max(0, (mc_rowy_n > mc_count ? mc_rowy[mc_count] : 0) - mc_height) - 8);
+	mc_gen = mc_gen + 1;
 	if (mc_view >= 0) buf_del(mc_view);
 	mc_view = buf_create();
 	mc_count = 0;
@@ -417,8 +422,7 @@ float(float reqid, float code, string body) MC_Reply =
 		{
 			// P1200: the server says how long it keeps lines; one that does not keeps two minutes.
 			i = json_get_float(json_find_object_child(root, "keep"));
-			MC_Keep(mc_note, (i >= 86400) ? sprintf("Messages are saved for %g days, so friends see them when they next play.", floor(i / 86400))
-			                              : "Recent messages expire after two minutes; not saved.");
+			MC_Keep(mc_note, (i >= 86400) ? "" : "Recent messages expire after two minutes; not saved.");
 			mc_next = time + 8;
 			if (mc_readsend == mc_readsent) MC_Keep(mc_readsend, "");   // sent: the server has it (or ignores it)
 		}
@@ -437,11 +441,55 @@ void() MC_Probe =
 	              mc_unread_n ? bufstr_get(mc_unread, 0) : "", mc_readsend));
 };
 
+// Message i of mc_view at rp (draw), or only measured. -> its height, gap included.
+float(float i, vector rp, float width, float draw) MC_Row =
+{
+	local string msgid, who, name, text, id;
+	if (tokenize(bufstr_get(mc_view, i)) != 6) return 0;
+	msgid = argv(4);
+	who = argv(1); name = uri_unescape(argv(2)); text = uri_unescape(argv(3));
+	if (!strcmp(who, mc_me)) name = "You";
+	// P996: "* ..." in the room is a board line surfd said for the player (social.announce).
+	if (argv(0) == "-")              // the public room, not a message
+	if (substring(text, 0, 2) == "* ")
+	{
+		if (draw) sui_text(rp, SZ_LABEL, "board", COL_DIM, 1, 0);
+		return MC_NAME_H + MC_GAP + ui_para(rp + [0, MC_NAME_H], width - 20, SZ_LABEL, MC_PITCH,
+		       MC_Plain(strcat(name, " ", substring(text, 2, -1))), SUI_THEME_GOOD, draw);
+	}
+	if (draw)
+	{
+		sui_text(rp, SZ_LABEL, ui_fit_text(MC_Plain(name), width - 20, SZ_LABEL), COL_ACCENT, 1, 0);
+		// P1198: the sender's name opens their Stats page.
+		id = strcat("mc_who", msgid);          // P1206: the line's id, not its row (a snapshot can land mid-click)
+		sui_action_element(rp, [min(width - 20, stringwidth(ui_fit_text(MC_Plain(name), width - 20, SZ_LABEL), TRUE, SZ_LABEL)), 20], id, sui_noop);
+		if (sui_is_released(id)) MStats_Player(who);
+	}
+	return MC_NAME_H + MC_GAP + ui_para(rp + [0, MC_NAME_H], width - 20, SZ_LABEL, MC_PITCH, MC_Plain(text), COL_TEXT, draw);
+};
+
+void(float width) MC_Layout =
+{
+	local float i;
+	if (mc_lay_w == width && mc_lay_gen == mc_gen && mc_rowy_n > mc_count) return;
+	if (mc_rowy_n <= mc_count)
+	{
+		if (mc_rowy) memfree(mc_rowy);
+		mc_rowy_n = mc_count + 64;
+		mc_rowy = memalloc(sizeof(float) * mc_rowy_n);
+	}
+	mc_rowy[0] = 0;
+	for (i = 0; i < mc_count; i = i + 1)
+		mc_rowy[i + 1] = mc_rowy[i] + MC_Row(i, '0 0 0', width, FALSE);
+	mc_lay_w = width;
+	mc_lay_gen = mc_gen;
+};
+
 void(vector pos, vector size, float embedded) MC_Panel =
 {
 	local vector rp;
-	local float left, right, i, width, board, compact, message_y, field_y, field_h;
-	local string who, name, text, id, msgid;
+	local float left, right, i, width, compact, message_y, field_y, field_h;
+	local string who, name, text, id;
 	if (mc_pick != "" && !mc_wire && mc_me != "")
 	{
 		MC_Select(mc_pick, mc_pick_name);
@@ -506,46 +554,27 @@ void(vector pos, vector size, float embedded) MC_Panel =
 	}
 	compact = (embedded && size_y < 300);
 	message_y = compact ? 72 : 96;
-	field_y = size_y - (compact ? 84 : 110);
+	field_y = size_y - (compact ? 62 : 86);
 	field_h = compact ? 30 : 34;
 	sui_text([right, compact ? 48 : 62], compact ? SZ_LABEL : SZ_HEAD,
 		ui_fit_text(MC_Plain(mc_peer_name), width, compact ? SZ_LABEL : SZ_HEAD), COL_TEXT, 1, 0);
 	mc_height = max(24, field_y - message_y - 12);
 	if (mc_view >= 0 && mc_seen > 0 && time >= mc_seen && time - mc_seen <= 24)
 	{
-		sui_list_view_begin("mc_messages", [right, message_y], [width, mc_height], [width - 14, MC_MSG_H], mc_count, mc_scroll, [0, 6]);
-		rp = '0 0 0';
-		for (i = sui_list_item(rp); i > -1; i = sui_list_item(rp))
-		{
-			if (tokenize(bufstr_get(mc_view, i)) != 6) continue;
-			msgid = argv(4);
-			who = argv(1); name = uri_unescape(argv(2)); text = uri_unescape(argv(3));
-			board = (argv(0) == "-");               // the public room, not a message
-			if (!strcmp(who, mc_me)) name = "You";
-			// P996: "* ..." in the room is a board line surfd said for the player (social.announce).
-			if (board)
-			if (substring(text, 0, 2) == "* ")
-			{
-				sui_text(rp, SZ_LABEL, "board", COL_DIM, 1, 0);
-				ui_para(rp + '0 22 0', width - 20, SZ_LABEL, 18,
-				        MC_Plain(strcat(name, " ", substring(text, 2, -1))), SUI_THEME_GOOD, TRUE);
-				continue;
-			}
-			sui_text(rp, SZ_LABEL, ui_fit_text(MC_Plain(name), width - 20, SZ_LABEL), COL_ACCENT, 1, 0);
-			// P1198: the sender's name opens their Stats page.
-			id = strcat("mc_who", msgid);          // P1206: the line's id, not its row (a snapshot can land mid-click)
-			sui_action_element(rp, [min(width - 20, stringwidth(ui_fit_text(MC_Plain(name), width - 20, SZ_LABEL), TRUE, SZ_LABEL)), 20], id, sui_noop);
-			if (sui_is_released(id)) MStats_Player(who);
-			ui_para(rp + '0 22 0', width - 20, SZ_LABEL, 18, MC_Plain(text), COL_TEXT, TRUE);
-		}
-		sui_list_view_end();
+		MC_Layout(width);                  // the row wraps at width - 20, as before
+		sui_scroll_view_begin("mc_messages", [right, message_y], [width, mc_height], [width - 14, mc_rowy[mc_count]],
+		                      mc_scroll, [0, 6], MC_NAME_H + MC_PITCH);
+		for (i = 0; i < mc_count; i = i + 1)
+			if (mc_rowy[i + 1] > mc_scroll_y)
+			if (mc_rowy[i] < mc_scroll_y + mc_height)
+				MC_Row(i, [0, mc_rowy[i]], width, TRUE);
+		sui_scroll_view_end();
 		if (!mc_count) sui_text([right, message_y + 8], SZ_LABEL, "No messages yet.", COL_DIM, 1, 0);
 		if (mc_markdue) MC_MarkRead();
 	}
 	else ui_para([right, message_y + 8], width, SZ_LABEL, 18, "Waiting for a fresh chat snapshot...", COL_DIM, TRUE);
 	ui_field("mc_text", [right, field_y], [width - 88, field_h], mc_draft, mc_cursor, "Write a message...");
 	if (ui_button("mc_send", [size_x - 96, field_y], [80, field_h], mc_wire ? "wait..." : "send")) MC_Send();
-	sui_text([right, size_y - (compact ? 40 : 66)], '12 12 0', ui_fit_text(MC_Plain(mc_note), width, '12 12 0'), COL_DIM, 1, 0);
-	sui_text([16, size_y - (compact ? 20 : 32)], '12 12 0', ui_fit_text("Lobby / DMs: not end-to-end encrypted.", size_x - 32, '12 12 0'), COL_DIM, 1, 0);
+	sui_text([right, size_y - (compact ? 24 : 36)], '12 12 0', ui_fit_text(MC_Plain(mc_note), width, '12 12 0'), COL_DIM, 1, 0);
 	sui_pop_frame();
 };

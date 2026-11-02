@@ -1664,8 +1664,17 @@ void(string id, vector pos, vector size, __inout string text, __inout float curs
 		{
 			_sui_sel_drag = FALSE;
 			_sui_sel_allheld = FALSE;
-			if (_sui_sel_anchor == cursor || !focus)
-				_sui_sel_anchor = -1;       // a click and not a drag, or let go off the field
+			// P1224: let go off the field, a drag begun on it keeps the keyboard and the
+			// selection, as if let go on it (Lex: the map search dropped both). No click fires.
+			if (!focus && _sui_sel_seen == _sui_prev_t)
+			{
+				_last_clicked_actions[0] = id;
+				_last_clicked_action_count = 1;
+				_sui_sel_seen = _sui_cur_t;
+				focus = TRUE;
+			}
+			if (_sui_sel_anchor == cursor)
+				_sui_sel_anchor = -1;       // a click and not a drag
 		}
 		else if (sui_is_clicked(id) && _sui_hold_mouse)
 		{

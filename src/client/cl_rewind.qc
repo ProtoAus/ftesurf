@@ -582,7 +582,7 @@ void() Rewind_Answer =
 		// No normal rewind countdown and no client release to thaw the body.
 		if (getstatf(STAT_FS_TASREWIND) != 1)
 			print("tas: native restore failed; body remains paused\n");
-		rec_sl_holding = FALSE;
+		rec_sl_holding = rec_sl_upwait = FALSE;      // P1227 review 1
 		rw_on = rw_ack = rw_cd = rw_dir = rw_leave = 0;
 		tr_cur_on = FALSE;
 		return;
@@ -599,7 +599,8 @@ void() Rewind_Answer =
 	rec_sl_holdackat = 0;
 	rec_sl_holding   = TRUE;
 	rec_sl_holdkey   = 0;
-	rec_sl_holdseen  = cltime;
+	rec_sl_holdseen  = rec_sl_holdt0 = cltime;
+	rec_sl_upwait    = FALSE;                    // P1227 review 1: the countdown is not a tapped key
 	rec_sl_holdrep   = FALSE;
 	rw_resi    = rw_goi;
 	rw_resgen  = tr_gen;

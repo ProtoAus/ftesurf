@@ -99,6 +99,18 @@ float(vector p, float roles, float textsize, float width) Inv_Badges =
 	return x - p_x;
 };
 
+// P1221: an item cell's ON / OWNED tag, a pill in its bottom-left corner (m_stats.qc draws the same).
+void(vector at, float cell, float bsz, float on) Inv_Badge =
+{
+	local string s;
+	local float bh;
+	s = on ? "ON" : "OWNED";
+	bh = ceil(bsz * 1.5);
+	at = at + [3, cell - bh - 3];
+	sui_roundbox(at, [stringwidth(s, TRUE, [bsz, bsz]) + bsz, bh], bh * 0.5, on ? SUI_THEME_GOOD_BG : SUI_THEME_CHIP, 0.92);
+	sui_text(at + [bsz * 0.5, (bh - bsz) * 0.5 + bsz * FONT_CAPDROP], [bsz, bsz], s, on ? SUI_THEME_GOOD : SUI_THEME_DIM, 1, 0);
+};
+
 void(vector p, float width, float textsize, float editable, vector publickit, vector publicitems, float publicknown) Inv_Panel =
 {
 	local float cell, gap, i, j, x, owned, on, item, ready;
@@ -138,7 +150,7 @@ void(vector p, float width, float textsize, float editable, vector publickit, ve
 				R_EndPolygon();
 			}
 		}
-		sui_text(at + [3, cell - textsize * 0.85], [textsize * 0.65, textsize * 0.65], on ? "ON" : "OWNED", colour, 1, 0);
+		Inv_Badge(at, cell, Font_Px(textsize * 0.8), on);
 		label = i == 0 ? "Ice aura" : "Paper party crown";
 		sui_tooltip_for(id, strcat(label, editable ? (on ? ": click to unequip" : ": click to equip") : (on ? ": equipped (read-only)" : ": owned (read-only)")), 2);
 		if (editable && owned && sui_is_released(id) && cltime >= inv_wait)
@@ -149,8 +161,8 @@ void(vector p, float width, float textsize, float editable, vector publickit, ve
 	}
 	note = editable ? (ready ? "Click an item to equip / remove" :
 	       (getplayerkeyvalue(player_localnum, "*ahash") != "" ? "Waiting for lobby inventory service" : "Link Steam on a lobby to load items")) : (publicknown ? "Their owned items (read-only)" : "Inventory unavailable; equipped items only");
-	sui_text(p + [gap, cell * 4 + gap * 5 + textsize * 2.3], [textsize * 0.75, textsize * 0.75],
-	         Chat_Fit(note, width - gap * 2, textsize * 0.75), SUI_THEME_MUTED, 1, 0);
+	sui_text(p + [gap, cell * 4 + gap * 5 + textsize * 2.1], [textsize, textsize],
+	         Chat_Fit(note, width - gap * 2, textsize), SUI_THEME_MUTED, 1, 0);
 };
 
 void(entity body, float outline, float hat, float duck) Inv_Draw =

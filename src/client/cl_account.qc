@@ -171,6 +171,7 @@ void() Account_RegisterCvars =
 	if (checkbuiltin(acct_browse))
 		acct_cl_old = FALSE;
 	registercvar("_acct_prompted", "0");    // once a game, not once a map: a cvar outlives this VM
+	registercvar("_acct_server", "");       // P1225: where the last hello went
 	acct_cl_asks = 0;
 	acct_cl_at   = 0;
 	acct_cl_got  = FALSE;
@@ -429,9 +430,12 @@ void() Account_Frame =
 	if (!acct_cl_at)
 	{
 		// Three to seven seconds in, not the same instant as everyone else on
-		// the map: the engine refuses uri_post past 32 in flight.
+		// the map: the engine refuses uri_post past 32 in flight.  P1225: that crowd
+		// is a map change (or a restart) of this server; a join to another is one
+		// player, so it asks within a second and the inventory follows sooner.
 		acct_cl_at   = cltime;
-		acct_cl_wait = 3 + random() * 4;
+		acct_cl_wait = strcmp(cvar_string("_acct_server"), serverkey("ip")) ? 0.3 + random() * 0.7 : 3 + random() * 4;
+		cvar_set("_acct_server", serverkey("ip"));
 		return;
 	}
 	if (cltime - acct_cl_at < acct_cl_wait)
@@ -1054,7 +1058,7 @@ float(float x, float y, float sz, string cap, string what) Account_Cap =
 		return x;
 	px = Font_Px(sz);
 	cw = stringwidth(cap, TRUE, [px, px]) + px * 0.9;
-	Account_Box([x, y - px * 0.28], [cw, px * 1.56], ceil(px * 0.3), SUI_THEME_CHIP, SUI_THEME_EDGE_HI, 1);
+	Account_Box([x, y - px * (0.28 + FONT_CAPDROP)], [cw, px * 1.56], ceil(px * 0.3), SUI_THEME_CHIP, SUI_THEME_EDGE_HI, 1);
 	HUD_Text([x + px * 0.45, y], cap, sz, SUI_THEME_DIM, 1);
 	x = x + cw + px * 0.5;
 	HUD_Text([x, y], what, sz, SUI_THEME_MUTED, 1);
@@ -1093,7 +1097,7 @@ void(float cx, float y, float sz, string s, float n, float grp, float bad) Accou
 			edge = SUI_THEME_BAD;
 		Account_Box([x, y], [cw, ch], ceil(px * 0.28), SUI_THEME_WELL, edge, 1);
 		if (i < len)
-			HUD_TextC([x + cw * 0.5, y + (ch - px) * 0.5], substring(s, i, 1), sz, SUI_THEME_TEXT, 1);
+			HUD_TextC([x + cw * 0.5, y + (ch - px) * 0.5 + px * FONT_CAPDROP], substring(s, i, 1), sz, SUI_THEME_TEXT, 1);
 		x = x + cw;
 	}
 };

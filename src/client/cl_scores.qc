@@ -2835,6 +2835,8 @@ string() Scores_CountLine =
 				s = strcat(s, "   saved copy");
 			if (ob_state == OBS_FETCH)
 				s = strcat(s, "   refreshing...");
+			if (rec_sb_finwait && Scores_FinishedOnline())   // P1226: your finish, not yet answered
+				s = strcat(s, "   your run: submitting...");
 		}
 		else
 			s = sprintf("%s on %s", Scores_ImpWord(), Scores_LegName(rec_sb_leg));
@@ -4058,6 +4060,9 @@ float(string cmd) Scores_ConsoleCommand =
 	{
 		if (!sc_held && !rec_sb_open) Scores_NativeReset(TRUE);
 		sc_held = TRUE;
+		// P1226: rows on hand for more than 15 s are asked again as the board comes up.
+		if (ob_state == OBS_OK && cltime - ob_when > 15)
+			Online_MarkStale();
 		// Patch 784: over an open replay or profile card the pointer is already
 		// up, and a held board drops clicks (Patch 635) -- so it opens pinned,
 		// and a row or a name replaces what is open. Release keeps that pin.

@@ -2929,6 +2929,9 @@ _PREV_SQL = ("SELECT millis, submitted FROM runs WHERE map=? AND track=? AND leg
              " AND tier=? AND style=? AND player=?")
 
 
+_RUNS_FULL_SAID = []   # P1229 review 1: the fallback is logged once
+
+
 def _runs_full(db, leg):
     """True when the board table holds its cap of main (leg 0) or stage rows.
 
@@ -2937,10 +2940,20 @@ def _runs_full(db, leg):
     good from the 28-30 Sep backfill, and a lobby's run was refused on 4 Oct
     ("run cap 200000 reached").
     """
-    q = ("SELECT COUNT(*) FROM runs WHERE %s AND tier NOT IN (%s)"
-         % ("leg=0" if leg == 0 else "leg>0", ",".join("?" * len(TIERS_IMPORTED))))
-    return (db.execute(q, TIERS_IMPORTED).fetchone()[0]
-            >= (MAX_RUNS if leg == 0 else MAX_STAGE_RUNS))
+    # P1229: through runs_live, whose WHERE (accounts.live_index) is this NOT IN, written
+    # out the same way; unforced, with no sqlite_stat1, the planner scanned runs_board's
+    # 3.47M entries: 2.1 s cold (0.37 s warm) a new main row, 0.65 s a stage row, against
+    # 0.01 s, on a 2 Nov snapshot. A runs_live that is missing falls back to the scan.
+    cond = "%s AND tier NOT IN (%s)" % ("leg=0" if leg == 0 else "leg>0",
+                                        ", ".join("'%s'" % t for t in TIERS_IMPORTED))
+    try:
+        n = db.execute("SELECT COUNT(*) FROM runs INDEXED BY runs_live WHERE " + cond).fetchone()[0]
+    except sqlite3.OperationalError as e:
+        if not _RUNS_FULL_SAID:
+            _RUNS_FULL_SAID.append(1)
+            log.warning("_runs_full: runs_live unusable (%s); counting by scan", e)
+        n = db.execute("SELECT COUNT(*) FROM runs WHERE " + cond).fetchone()[0]
+    return n >= (MAX_RUNS if leg == 0 else MAX_STAGE_RUNS)
 
 
 _UPSERT_RUN = """

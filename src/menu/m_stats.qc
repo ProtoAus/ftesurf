@@ -97,6 +97,20 @@ void() MStats_Board =
 // P1198: the read-only grid of CSQC's Inv_Panel (cl_inventory.qc), from the profile
 // reply the page already holds: pf_inventory (owned aura, owned crown, crown colour)
 // when the server listed the items, else pf_cosmetics (what is equipped).
+// P1221: cl_inventory.qc's Inv_Badge: ON / OWNED as a pill, at a size the UI face has.
+void(vector at, float cell, float on) MStats_Badge =
+{
+	local string s;
+	local float bsz, bh;
+	s = on ? "ON" : "OWNED";
+	Font_Set(ui_font_ui);
+	bsz = Font_Px(12);
+	bh = ceil(bsz * 1.5);
+	at = at + [4, cell - bh - 4];
+	sui_roundbox(at, [stringwidth(s, TRUE, [bsz, bsz]) + bsz, bh], bh * 0.5, on ? SUI_THEME_GOOD_BG : SUI_THEME_CHIP, 0.92);
+	sui_text(at + [bsz * 0.5, (bh - bsz) * 0.5 + bsz * FONT_CAPDROP], [bsz, bsz], s, on ? SUI_THEME_GOOD : SUI_THEME_DIM, 1, 0);
+};
+
 void(vector size, string nm) MStats_InvDraw =
 {
 	local float cell, gap, i, j, x, owned, on, w, h;
@@ -145,7 +159,7 @@ void(vector size, string nm) MStats_InvDraw =
 				R_EndPolygon();
 			}
 		}
-		sui_text(at + [4, cell - 14], '10 10 0', on ? "ON" : "OWNED", colour, 1, 0);
+		MStats_Badge(at, cell, on);
 		id = sprintf("ms_inv%g", i);
 		sui_action_element(at, [cell, cell], id, sui_noop);
 		sui_tooltip_for(id, strcat(i == 0 ? "Ice aura" : "Paper party crown", on ? ": equipped" : ": owned"), 2);

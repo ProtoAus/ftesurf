@@ -137,6 +137,8 @@ float rec_sl_holdkey;            // the scancode that started it
   different order of problem from being stuck until the map changes.
 */
 float rec_sl_holdseen;           // cltime of the last down edge for the hold key
+float rec_sl_holdt0;             // P1227: cltime the hold's load was pressed
+float rec_sl_upwait;             // P1227: its key is up; the release waits for SaveLoc_LeadDone
 float rec_sl_holdrep;            // a repeat has been observed for THIS hold
 
 #define SL_HOLD_DEADMAN 1.5
@@ -227,6 +229,7 @@ void() SaveLoc_RegisterCvars =
 	registercommand("-sl_hold");    // the `-` form on release (keys.c:4199-4203)
 
 	registercvar("cl_slpredict", "1", CVAR_ARCHIVE);    // Patch 430: draw the load at once
+	registercvar("cl_sl_leadin", "0.1", CVAR_ARCHIVE);  // P1227: seconds a load holds you at least
 };
 
 /*
@@ -287,7 +290,7 @@ float() WarpOp_Charge;
 
 void(string c) SaveLoc_Cmd =
 {
-	local float holding, key, rep;
+	local float holding, key, rep, upwait, t0;
 	if (numclientseats == 1 && LT_StatsAreMine() && getstatf(STAT_FS_TSRETURN) > 0)
 		return; // no new deferred/fallback load can cross the clean-return fence
 	if (Trail_Request(c))
@@ -306,10 +309,12 @@ void(string c) SaveLoc_Cmd =
 	    c == "sl_first" || c == "sl_last" || substring(c, 0, 8) == "sl_goto ")
 	{
 		holding = rec_sl_holding; key = rec_sl_holdkey; rep = rec_sl_holdrep;
+		upwait = rec_sl_upwait; t0 = rec_sl_holdt0;     // P1227 review 1: a key let go stays let go
 		SaveLoc_LoadContext();
 		if (Trail_RequestDispatching() && holding)
 		{
 			rec_sl_holding = TRUE; rec_sl_holdkey = key; rec_sl_holdrep = rep;
+			rec_sl_upwait = upwait; rec_sl_holdt0 = t0;
 		}
 	}
 	c = Trail_Command(c);
@@ -388,6 +393,7 @@ float rec_sl_wophold;             // Patch 753: this hold's load rode a usercmd 
 float() WarpOp_Load;
 float() WarpOp_Release;
 float() WarpOp_LoadRefused;
+float() WarpOp_LoadAnswered;
 void() WarpOp_Frame;
 float(float op, float rep) WarpOp_Step;
 
@@ -423,6 +429,7 @@ void() SaveLoc_Release =
 	if (!rec_sl_holding)
 		return;
 	rec_sl_holding = FALSE;
+	rec_sl_upwait = FALSE;
 	rec_sl_holdkey = 0;
 	rec_sl_holdrep = FALSE;
 	rec_sl_holdang_ok = FALSE;
@@ -561,7 +568,8 @@ void(float scan) SaveLoc_LoadKey =
 		rec_sl_holdack  = 0;
 		rec_sl_holding  = TRUE;
 		rec_sl_holdkey  = scan;
-		rec_sl_holdseen = cltime;
+		rec_sl_holdseen = rec_sl_holdt0 = cltime;
+		rec_sl_upwait   = FALSE;
 		rec_sl_holdrep  = FALSE;
 		return;
 	}
@@ -575,8 +583,37 @@ void(float scan) SaveLoc_LoadKey =
 	rec_sl_holdackat = 0;
 	rec_sl_holding  = TRUE;
 	rec_sl_holdkey  = scan;
-	rec_sl_holdseen = cltime;
+	rec_sl_holdseen = rec_sl_holdt0 = cltime;
+	rec_sl_upwait   = FALSE;
 	rec_sl_holdrep  = FALSE;
+};
+
+/*
+  P1227: a load key let go is a release only once the hold has stood cl_sl_leadin and the
+  server has answered its load. A tap let go before the answer was released at the save's
+  speed a round trip early, and the view jumped ahead to where the server had the body
+  (Lex, 3 Nov). An answer that never comes releases a second past the lead-in.
+*/
+float() SaveLoc_LeadDone =
+{
+	local float t, lead, answered;
+	t = cltime - rec_sl_holdt0;
+	lead = bound(0, cvar("cl_sl_leadin"), 2);
+	if (t < lead)
+		return FALSE;
+	if (rec_sl_wophold)
+		answered = WarpOp_LoadAnswered();
+	else
+		answered = (rec_sl_holdack > 0 && getstatf(STAT_FS_SLACK) >= rec_sl_holdack);
+	return (answered || t >= lead + 1);
+};
+
+void() SaveLoc_KeyUp =
+{
+	if (SaveLoc_LeadDone())
+		SaveLoc_Release();
+	else
+		rec_sl_upwait = TRUE;
 };
 
 // Called every frame the HUD IS drawn.  The deadman above.
@@ -585,6 +622,12 @@ void() SaveLoc_HoldFrame =
 	WarpOp_Frame();
 	if (!rec_sl_holding)
 		return;
+	if (rec_sl_upwait)
+	{
+		if (SaveLoc_LeadDone())
+			SaveLoc_Release();
+		return;
+	}
 
 	if (rec_sl_wophold && WarpOp_LoadRefused())
 	{
@@ -685,10 +728,11 @@ float(float scan, float down) SaveLoc_Key =
 		if (down)
 		{
 			rec_sl_holdseen = cltime;
-			rec_sl_holdrep  = TRUE;
+			rec_sl_holdrep  = !rec_sl_upwait;    // a press after letting go is not a repeat
+			rec_sl_upwait   = FALSE;
 		}
 		else
-			SaveLoc_Release();
+			SaveLoc_KeyUp();
 		return TRUE;
 	}
 
@@ -866,11 +910,11 @@ float() SaveLoc_Console =
 		if (k > 32 && k < 127)
 		{
 			if (rec_sl_holding && rec_sl_holdkey == k)
-				SaveLoc_Release();
+				SaveLoc_KeyUp();
 			return TRUE;
 		}
 		if (rec_sl_holding)
-			SaveLoc_Release();      // which sends sl_holdoff itself
+			SaveLoc_KeyUp();        // its release sends sl_holdoff itself
 		else
 			SaveLoc_Cmd("sl_holdoff");   // never latched; let the server go anyway
 		return TRUE;
@@ -956,9 +1000,9 @@ void(vector p, float w, float h, string key, string label, float state, float ls
 	cap = h - 3 * sc;
 	_sui_round_draw([p_x + 4 * sc, p_y + sc, 0], [cap, cap, 0], 2 * sc, capfill, 1);
 	kw = stringwidth(key, TRUE, [lsz, lsz]);
-	HUD_Text([p_x + 4 * sc + (cap - kw) * 0.5, p_y + sc + (cap - lsz) * 0.5], key, lsz,
+	HUD_Text([p_x + 4 * sc + (cap - kw) * 0.5, p_y + sc + (cap - lsz) * 0.5 + lsz * FONT_CAPDROP], key, lsz,
 	         (state == KM_HOT || state == KM_DANGER) ? SUI_THEME_WELL : SUI_THEME_DIM, 1);
-	HUD_Text([p_x + 8 * sc + cap, p_y + (h - sc - lsz) * 0.5], label, lsz, fg, 1);
+	HUD_Text([p_x + 8 * sc + cap, p_y + (h - sc - lsz) * 0.5 + lsz * FONT_CAPDROP], label, lsz, fg, 1);
 };
 
 void(vector scr) SaveLoc_Draw =
