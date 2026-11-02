@@ -1140,6 +1140,8 @@ void() ZoneEdit_DragStep =
 	{
 		// Where the grab point goes: Edge snap's point, else the aim on the grab point's level.
 		if (snapped) to = [ze_sat_x, ze_sat_y, ze_grab_z];
+		else if (ze_hk == ZEH_VERT && ze_hl == 2 && ze_hitok && ze_raw_z > ze_obot - 48 && ze_raw_z < ze_otop + 48)
+			to = [ze_raw_x, ze_raw_y, ze_grab_z];  // a corner's vertical edge goes where the aim meets the world, as placing
 		else
 		{
 			lev = ze_grab_z;
