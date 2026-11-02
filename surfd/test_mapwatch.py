@@ -765,14 +765,22 @@ def case_given_zones():
            "surf_q": {"bsp": build(b"q"), "zones": gz, "tier": 1},
            "surf_q_fix": {"bsp": build(b"qfix"), "zones": gz2, "tier": 1},
            "surf_q_ksf": {"bsp": build(b"qksf"), "zones": None, "tier": 1}}
-    own_timer = TZ.vbsp(WORLD[0], WORLD[1], ("start_dest",), extra=(
-        b'{\n"classname" "trigger_momentum_timer_start"\n"model" "*1"\n}\n'))
+    # P984 deliberately lets a fitting donated file replace embedded timers.
+    # Make BOTH valid brush triggers, not a dangling start-only fixture.
+    own_timer = bytearray(TZ.vbsp(WORLD[0], WORLD[1], ("start_dest",), extra=(
+        b'{\n"classname" "trigger_momentum_timer_start"\n"model" "*1"\n}\n'
+        b'{\n"classname" "trigger_momentum_timer_stop"\n"model" "*2"\n}\n')))
+    model_at, model_size = struct.unpack_from("<ii", own_timer, 8 + 14 * 16)
+    own_timer += own_timer[model_at:model_at + model_size] * 2
+    struct.pack_into("<i", own_timer, 8 + 14 * 16 + 4, model_size * 3)
     held = [("surf_p_fix", build(b"fix")), ("surf_p_v2", build(b"v2")),
             ("surf_p_ksf", build(b"ksf", names=())), ("surf_p_njv", build(b"njv")),
             ("surf_p_go", build(b"go")), ("surf_p_csgo", build(b"csgo")),
             ("surf_p_css", build(b"somebody's own css")), ("surf_p_mom", build(b"pm")),
             ("surf_p_fixed", own_timer)]
     w, maps, state = setup(mom, {}, held=held)
+    check("embedded-timer fixture has both valid brush timers before donation",
+          W.zonefit.has_timer(os.path.join(maps, "surf_p_fixed.bsp")), True)
     # Momentum lists surf_p_mom itself, with a row this tool cannot use.
     w.rawrows = [{"id": 7, "name": "surf_p_mom", "status": 0, "leaderboards": [],
                   "currentVersion": {"bspHash": "zz", "downloadURL": "http://elsewhere/x.bsp",
@@ -792,13 +800,15 @@ def case_given_zones():
           "are not; Momentum's own map of such a name keeps its own",
           (zlist(maps), zfile(maps, "surf_p_fix") == raw, zfile(maps, "surf_q_fix") == raw2,
            zfile(maps, "surf_q_ksf"), zfile(maps, "surf_p_njv"), given(state)),
-          (["surf_p.json", "surf_p_fix.json", "surf_p_njv.json", "surf_q.json", "surf_q_fix.json"],
-           True, True, None, b'{"somebody":"made these"}', ["surf_p_fix"]))
-    check("...nor is a _css file that is not KSF's archive, a name Momentum lists itself "
-          "with a row that cannot be used, or a port with timer triggers of its own",
-          (zfile(maps, "surf_p_css"), zfile(maps, "surf_p_mom"), zfile(maps, "surf_p_fixed"),
+          (["surf_p.json", "surf_p_fix.json", "surf_p_fixed.json", "surf_p_njv.json",
+            "surf_q.json", "surf_q_fix.json"],
+           True, True, None, b'{"somebody":"made these"}', ["surf_p_fix", "surf_p_fixed"]))
+    check("a foreign _css file or Momentum-listed name stays untouched; fitting donated "
+          "zones replace embedded timers (P984), not an OWN-TIMER refusal",
+          (zfile(maps, "surf_p_css"), zfile(maps, "surf_p_mom"),
+           zfile(maps, "surf_p_fixed") == raw,
            sorted(k for k, v in state_of(state)["nofit"].items() if v[2] == "OWN-TIMER")),
-          (None, None, None, ["surf_p_fixed"]))
+          (None, None, True, []))
     lobby("p4", "surf_p_go")
     tick(maps, state, "--go", "--updates")
     check("with --updates the one with runs is given them; one a lobby is on still waits; "
@@ -846,8 +856,8 @@ def case_given_zones():
     swap("surf_p_fix", build(b"fix, recompiled"))
     tick(maps, state, "--go", "--updates", "--site-zones", site)
     check("a build given zones is replaced by one that still fits: the zones stay",
-          (zfile(maps, "surf_p_fix") == raw2, given(state)), (True, ["surf_p_csgo", "surf_p_fix",
-                                                                     "surf_p_go"]))
+          (zfile(maps, "surf_p_fix") == raw2, given(state)),
+          (True, ["surf_p_csgo", "surf_p_fix", "surf_p_fixed", "surf_p_go"]))
     swap("surf_p_fix", build(b"fix, moved", mins=(-3000, -4096, -512)))
     tick(maps, state, "--go", "--site-zones", site)
     check("...by one in another frame: without --updates they are left, and said to be",
@@ -864,7 +874,8 @@ def case_given_zones():
           (zfile(maps, "surf_p_fix"),
            [f for f in os.listdir(aside) if read(os.path.join(aside, f)) == raw2],
            given(state), read(os.path.join(site, "surf_p_fix.json"))),
-          (None, ["surf_p_fix.%s.json" % sha(raw2)[:12]], ["surf_p_csgo", "surf_p_go"],
+          (None, ["surf_p_fix.%s.json" % sha(raw2)[:12]],
+           ["surf_p_csgo", "surf_p_fixed", "surf_p_go"],
            b'{"shipped":"another"}'))
     # The same again where the site's copy IS the file given: it goes too.
     swap("surf_p_go", build(b"go, moved", mins=(-3000, -4096, -512)))

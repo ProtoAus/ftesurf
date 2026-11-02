@@ -43,6 +43,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import accounts          # noqa: E402
+import ksfprofile        # noqa: E402
+import momprofile        # noqa: E402
 import steam             # noqa: E402
 import surfd as S        # noqa: E402  -- import-safe: app.run is __main__-guarded
 
@@ -421,6 +423,44 @@ def sync(conn, key, http, go, limit, out=print):
     return asked, renamed, rows
 
 
+RECENT_DAYS = 30         # P1117 review 3: accounts signed in or played this recently...
+DONE_TTL = 7 * 86400     # ...and a walk that finished, or found nobody, waits this long
+
+
+def requeue(conn, now, go):
+    """P1117: recent unbanned accounts' KSF and Momentum walks, queued again once
+    their last walk is a day old (a week once complete/unknown); each enqueue keeps
+    its own TTL and cap.  -> walks queued (a dry run: walks due)."""
+    n = 0
+    cut = now - RECENT_DAYS * 86400
+    # Longest unwalked first (P1117 review 2), so a full queue turns everyone over.
+    for (sid,) in conn.execute(
+            "SELECT a.steamid FROM accounts a"
+            " LEFT JOIN ksfprofiles k ON k.player = a.steamid"
+            " LEFT JOIN momprofiles m ON m.player = a.steamid"
+            " WHERE a.banned_at = 0 AND (a.seen_at >= ? OR EXISTS ("
+            "   SELECT 1 FROM installs i WHERE i.steamid = a.steamid AND i.last_at >= ?))"
+            " ORDER BY min(coalesce(k.updated, 0), coalesce(m.updated, 0)), a.steamid",
+            (cut, cut)).fetchall():
+        for walk in (ksfprofile, momprofile):
+            try:
+                st = walk.status(conn, sid)
+                ttl = DONE_TTL if st["state"] in ("complete", "unknown") else walk.TTL
+                due = (st["state"] not in ("queued", "partial")
+                       and now - st.get("updated", 0) >= ttl)
+                if due and go:
+                    state = walk.enqueue(conn, sid, now).get("state")
+                    if state == "busy":
+                        print("%s busy: %s not queued again" % (walk.__name__, sid))
+                    due = state == "queued"
+            except sqlite3.Error as e:
+                # One account's walk table cannot stop the others' (review 3).
+                print("%s: %s not queued again (%s)" % (walk.__name__, sid, e))
+                due = False
+            n += due
+    return n
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawTextHelpFormatter)
@@ -430,6 +470,14 @@ def main():
                     help="players of imported rows asked about a run (0: none)")
     ap.add_argument("--pictures", type=int, default=1500, help="pictures fetched a run")
     a = ap.parse_args()
+    conn = S.connect()
+    try:
+        print("%d account walk(s) queued again (KSF, Momentum)" % requeue(
+            conn, int(time.time()), a.go))
+    except sqlite3.Error as exc:
+        print("account walks not queued this run: the database said %s" % exc)
+    finally:
+        conn.close()
     key = (S.setting("SURFD_STEAM_KEY") or "").strip()
     if not key:
         print("no SURFD_STEAM_KEY: names are not refreshed")

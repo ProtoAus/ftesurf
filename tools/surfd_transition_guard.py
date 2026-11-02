@@ -81,6 +81,10 @@ def manifest_check(m):
         elif m["runtime_profile"] == "activity83-v1":
             require(schema == 26, "activity83-v1 requires explicit schema26")
             files = CURRENT_FAMILY_FILES | {"inventory.py", "playstats.py"}
+        elif m["runtime_profile"] == "collectors84-v1":
+            # P1234: P1117's momprofile.py, imported by surfd.py, accounts.py and momwatch.py.
+            require(schema == 26, "collectors84-v1 requires explicit schema26")
+            files = CURRENT_FAMILY_FILES | {"inventory.py", "playstats.py", "momprofile.py"}
         else:
             require(schema in (20, 22, 23, 24, 25, 26) and m["runtime_profile"] == "hid-v1", "unsupported runtime_profile")
             files = files | {"hidupload.py"}
@@ -89,7 +93,7 @@ def manifest_check(m):
     require(plain_path(m["source_home"]).is_dir(), "missing source home")
     require(type(m["hashes"]) is dict and set(m["hashes"]) == files,
             "exact schema%d/profile raw hash set required" % schema)
-    if m.get("runtime_profile") in ("current81-v1", "inventory82-v1", "activity83-v1"):
+    if m.get("runtime_profile") in ("current81-v1", "inventory82-v1", "activity83-v1", "collectors84-v1"):
         external = m.get("external_python")
         require(type(external) is dict and set(external) == {"momimport", "momreimport", "momreplay"},
                 "exact three-converter external source closure required")
