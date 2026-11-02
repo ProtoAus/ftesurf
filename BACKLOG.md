@@ -13,6 +13,22 @@
   or over 256; 7 animate (surf_aquaflow 10, surf_destruction 2, surf_shape, surf_4am(_css),
   bhop_unreal_space, surf_watertemple_alpha).
 
+## P1211 residuals (2 Nov 2026)
+- Not mirrored, so still a short snap: trigger_gravity (87 maps; only AddOutput gravity rows are),
+  the START gravity reset (P865), CancelPending, and edges the mirror mispredicts (an entry lands on
+  the client only, until the ack passes it).
+- An edge velocity write and a delayed one due within about a tick of it apply edge first in one
+  PreThink; Source orders by fire time. Recorded exactly (evidence review round 3).
+- A replay restart is missed if the ack passes every predicted command (threaded input):
+  servercommandframe is set after CL_PredictMove. An engine preload of the ack sequence would fix it.
+- Delayed rows count frametime (gamespeed-scaled) on the server and raw msec on the client: they
+  part under sv_gamespeed != 1 or the per-player timescale (practice only).
+- P1205: a zero-delay OnStartTouch velocity write on one command and an OnEndTouch one on the next:
+  the server applies both, the mirror keeps the last.
+- Other delayed outputs aimed at the player (basevelocity and the rest) still run on world time.
+- The status reply is capped near 1 KB, which hides late serverinfo keys (fs_contexts, fs_grav):
+  read them with a client's `serverinfo` (lexlist4-20261102/artifacts/p1211live.py).
+
 ## P1204-P1206 residuals (2 Nov 2026)
 - P1205 rows the client does not mirror snap a little: a delayed write (surf_oneiric, 1 s), two
   writes in one command (the client keeps the last, the server applies each), writes from
@@ -24,8 +40,8 @@
 - bhop_decimus: the "!ACTIVATOR" case fold turns on the last 6 of its 50 OnJump/OnStartTouch
   gravity writes (44 lowercase ones fired before P1205). Gravity IS replayed: each change is a
   `pm` pin row, and counted runs with mid-run gravity PASS (surf_spacejam -0.1 -> 1, surf_beyond
-  51 changes, surf_botanica; Pi verdicts, 2 Nov). No decimus runs on the boards yet. Prediction of
-  these writes: P1211.
+  51 changes, surf_botanica; Pi verdicts, 2 Nov). No decimus runs on the boards yet. Predicted since
+  P1211 (with the P1211 client exe).
 - P1204's rewind path is reviewed, not measured (the arm cannot open the rewind from a cfg).
 - P1206: the room's shown lines are dealt fairly across senders, so a busy room shows a spread,
   not a continuous run.

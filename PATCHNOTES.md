@@ -24,6 +24,10 @@
 ### P1212 The launcher and game say World of Surf in Windows
 - WOS-Launcher.exe and the game now name World of Surf as their publisher and product in Windows (file Properties, SmartScreen, antivirus). They used to name the FTE engine, or nothing.
 
+### P1211 Gravity launchers and delayed speed stops no longer snap
+- Maps that change your gravity (bhop_decimus's launch pads and about 200 others) are predicted by your game, so the view no longer jumps when gravity flips or comes back (up to 8 units at 80 ms ping before). Needs the next release's game; the lobbies already support it.
+- A map script that stops you a moment after a teleport (surf_oneiric's hub) is predicted too, on every game version.
+- The server applies a map's gravity change on your next move, as Momentum does.
 
 ### P1210 KSF replays show crouching
 - KSF replays now show when the player is crouched, including a crouch the ramp keeps after the key is let go, worked out from how the player moves since KSF does not record it.
@@ -32,10 +36,8 @@
 - The World of Surf launcher is now WOS-Launcher.exe (WOS-Launcher on Linux). Download it again from the site to get it; the launcher you have keeps working.
 - The in-game update restart uses WOS-Launcher when it is next to the game, and your old launcher otherwise.
 
-
 ### P1208 The launcher shows your version and the new one
 - The launcher says which version you have installed, which version an update brings (for example 0.1.36 -> 0.1.37), and when you are already up to date.
-
 
 ### P1207 No prediction-error box in a game you host
 - A game running on your own PC (single player) no longer offers prediction-error reports. Nothing is predicted there, so a teleport or `!r` was being reported as an error.

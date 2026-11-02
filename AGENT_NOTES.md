@@ -1,5 +1,25 @@
 # AGENT_NOTES.md
 
+## P1211 gravity and delayed-write prediction (live 2 Nov 12:23Z: QC deploy/p1211-gravity 82ec7e1c)
+- The Pi engine is c284f65b = patch-1173 + P1211's server files (engine branch p1211-pi
+  461134547), NOT the patch-1212 line: P1188's fs.c is still not on the Pi. Route, reusable:
+  lexlist4-20261102/artifacts/pi1211 (raw-blob tar from `git cat-file`, blobs.tsv checked on the
+  Pi, sv-rel with SVN_VERSION, pigate old vs new, swap1211.sh). Record:
+  tools/lobby-engine-p1211-20261102.md.
+- Server engine: SV_ClientGravityRefresh before each move re-selects the bank's gravity cache with
+  it (SV_BankGravityUsed compares the two); svc_entgravity goes unreliably every frame;
+  FTESURF_SV_GRAVITY_PERCMD -> SSQC publishes serverinfo fs_grav.
+- QC: delayed AddOutput gravity and velocity RunScriptCode rows aimed at a player count down in
+  command msec (SV_PcTick, PlayerPreThink after the edges; earliest due first; a queued velocity
+  write applies before each delivery). Mirror: TG_PcAdd/TG_PreMove (an absolute command clock;
+  landed-sequence pruning at each replay restart); WOP_GRAVITY only when predinput_version >= 1211
+  and fs_grav is 1.
+- Measuring: the engine's prederr meter compares one packet's drift, so a missed velocity or gravity
+  change reads ~2 u there while the view jumps ~8. The probe-only snap meter
+  (lexlist4-20261102/artifacts/snapmeter.patch, cl_snapprobe) measures the jump; arm
+  artifacts/p1210probe.py. A setpos INTO a trigger is a server-side touch the client never
+  predicts: walk in (oneiric2).
+
 ## P1210 KSF ducked body (live in lobby QC 2 Nov 10:19Z, deploy/p1210-ksfduck e3d324e1, cs 220b9696)
 - Delivered QC base for the next lobby deploy: origin/deploy/p1210-ksfduck e3d324e1 (ac's 387fd3e0
   + P1210; qwprogs c65f2e37 unchanged, .prev kept 07354dba).
