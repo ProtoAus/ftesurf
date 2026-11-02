@@ -2131,7 +2131,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	*/
 	if (retry)
 	{
-		setorigin(e, rorg);
+		SV_SetPlayerOrigin(e, rorg);
 		e.velocity = rvel;
 		SV_ClearCarrier(e);     // Patch 400, as SV_SaveLocPlace
 		e.angles   = [rpit, ryaw, 0];
@@ -4176,7 +4176,7 @@ float(entity e) SL_ArmBoxAt =
 
 void(entity e, float r) SV_SaveLocPlace =
 {
-	setorigin(e, SL_BoxFloor(e, rec_sl_org[r]));
+	SV_SetPlayerOrigin(e, SL_BoxFloor(e, rec_sl_org[r]));
 	e.velocity = rec_sl_vel[r];
 	SV_ClearCarrier(e);     // Patch 400: Momentum's load passes a velocity to Teleport
 
@@ -5504,7 +5504,7 @@ void(entity e, string why) SV_SpecRelease =
 	rb = "";
 	if (e.origin != e.run_sp_org)
 	{
-		setorigin(e, e.run_sp_org);         // relinks; touches nothing
+		SV_SetPlayerOrigin(e, e.run_sp_org);         // relinks; touches nothing
 		rb = strcat(rb, " origin");
 	}
 	if (e.velocity != e.run_sp_vel)
@@ -5610,7 +5610,7 @@ void(entity e) SV_SpecNudge =
 	}
 	SV_TimerCheat(e);
 	e.run_t_handcarry = e.run_t_handcarry | TF_CHEAT;
-	setorigin(e, e.origin + '0 16 0');
+	SV_SetPlayerOrigin(e, e.origin + '0 16 0');
 	if (SV_DevOn())
 		dprint(sprintf("spectate: %s nudged to %v\n", e.netname, e.origin));
 };

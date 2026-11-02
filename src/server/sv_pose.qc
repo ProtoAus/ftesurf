@@ -79,6 +79,7 @@
 .vector pb_cvel;
 .float  pb_ser;             // teleport serial, 0..7
 .float  pb_px;              // run_portalx at the last capture
+.float  pb_cepoch;          // shared spatial epoch at capture/seed (avatar only)
 // ...the published sample.
 .float  pb_pubt;            // run_movetick it was taken at
 .float  pb_kat;             // server time it was published
@@ -306,13 +307,14 @@ void(entity p) Pose_Capture =
 	}
 	else if (vlen(p.origin - av.pb_corg) > 1)
 		tp = TRUE;              // the tick went backwards
-	if (p.run_portalx != av.pb_px)
+	if (p.run_portalx != av.pb_px || (p.effects & ZONE_EF_TELEPORT_BIT) != av.pb_cepoch)
 		tp = TRUE;
 
 	av.pb_ct   = p.run_movetick;
 	av.pb_corg = p.origin;
 	av.pb_cvel = p.velocity;
 	av.pb_px   = p.run_portalx;
+	av.pb_cepoch = p.effects & ZONE_EF_TELEPORT_BIT;
 	if (tp)
 	{
 		av.pb_ser = (av.pb_ser + 1) & 7;
@@ -360,6 +362,7 @@ void(entity av, entity p) Pose_Seed =
 	av.pb_corg = p.origin;
 	av.pb_cvel = p.velocity;
 	av.pb_px   = p.run_portalx;
+	av.pb_cepoch = p.effects & ZONE_EF_TELEPORT_BIT;
 	av.pb_held = FALSE;         // live angles: pb_q0 may predate a stream switch-off
 	held = Pose_Held(p);
 	Pose_Quant(av, p, held);
