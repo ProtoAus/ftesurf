@@ -238,7 +238,7 @@ void(entity body) Inv_Shells =
 // The mask program; `extra` adds the depth test (the 3D view) or nothing (the preview).
 string(string extra) Inv_MaskCode =
 {
-	return strcat("!!ver 110\n!!permu FRAMEBLEND\n!!permu SKELETAL\n", extra,
+	return strcat("!!ver 130\n!!permu FRAMEBLEND\n!!permu SKELETAL\n", extra,
 		"#include \"sys/defs.h\"\nvarying vec4 cp;\n"
 		"#ifdef VERTEX_SHADER\n#include \"sys/skeletal.h\"\n"
 		"void main() { gl_Position = skeletaltransform(); cp = gl_Position; }\n#endif\n"
@@ -246,17 +246,16 @@ string(string extra) Inv_MaskCode =
 		"#ifdef DEPTH\n"
 		// Distance along the view from each depth: the scene's (rt/$lastgameviewdepth, this frame's
 		// main view) against this body's; nearer than the slack below is something in front of it.
+		// One texel, unfiltered: screen-space depth is linear across a face, so the body meets its
+		// own depth to within half a texel of slope, and nothing blends an occluder's edge. A filtered
+		// sample (visual4) and the nearest of five (visual5-7, slack 1.5 x slope) both let edge-on
+		// strips of a covered body through.
+		" ivec2 dsz = textureSize(s_depth, 0);\n"
 		" vec2 uv = cp.xy / cp.w * 0.5 + 0.5;\n"
-		// The nearest depth within about a mask pixel: one filtered sample blends an occluder's
-		// edge with what is behind it, and leaked a sliver of a wearer behind a wall (visual4).
-		" vec2 o = vec2(abs(dFdx(uv.x)), abs(dFdy(uv.y))) * 0.75;\n"
-		" float zs = min(texture2D(s_depth, uv).r, min(min(texture2D(s_depth, uv + o).r, texture2D(s_depth, uv - o).r),\n"
-		"   min(texture2D(s_depth, uv + vec2(o.x, -o.y)).r, texture2D(s_depth, uv + vec2(-o.x, o.y)).r)));\n"
+		" float zs = texelFetch(s_depth, clamp(ivec2(uv * vec2(dsz)), ivec2(0), dsz - 1), 0).r;\n"
 		" float ds = m_projection[3][2] / (zs * 2.0 - 1.0 + m_projection[2][2]);\n"
 		" float df = m_projection[3][2] / (gl_FragCoord.z * 2.0 - 1.0 + m_projection[2][2]);\n"
-		// Slack for the body's own depth across the samples: its slope, not a share of the
-		// distance (2% + 4u let a wearer sunk 14u into a dune show through it, visual5).
-		" if (zs < 0.99999 && ds < df - 2.0 - 1.5 * fwidth(df)) discard;\n"
+		" if (zs < 0.99999 && ds < df - 1.0 - 0.25 * fwidth(df)) discard;\n"
 		"#endif\n"
 		" gl_FragColor = vec4(1.0);\n}\n#endif\n");
 };
