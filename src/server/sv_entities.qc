@@ -2870,14 +2870,16 @@ void(entity t) SV_BrushRenderInit =
   `alpha_script,RunScriptCode,...`. Here: the barrier is SOLID_NOT for the granted player's own
   move only (PlayerPreThink..PostThink; one move runs at a time) and is not sent to that client,
   so its prediction agrees (engine AddLinksToPmove skips only owned entities, not owners).
-  Passing through on a grant from an earlier attempt is an inherited map effect (sv_bank.qc).
+  Only a grant this player's own touch made in its current attempt opens it (review 1: an
+  end-of-packet inside test missed fast low-rate crossings on an old grant), so a reset or a
+  save load closes it until the window is touched again. pm_verify rebuilds physents with
+  the barrier solid, so a granted pass reads HOLD there (per-player solidity is unrecorded).
 */
 .entity nocol_bar;              // player: the barrier the script let this player through
-.entity nocol_player;           // player: the grant's I/O cause, for the bank
+.entity nocol_player;           // player: the grant's I/O cause (bank_ctx)
 .int    nocol_attempt;
-.float  nocol_bad;
 .float  nocol_was;              // barrier: its solid while lent out
-.float  nocol_in;               // player: inside its barrier after the last move
+.float  nocol_in;               // player: inside its barrier after the last move (dprint edge)
 entity  nocol_off;              // the barrier non-solid for the move running now
 
 void() SV_NoColRestore =
@@ -4295,10 +4297,17 @@ float(entity t, string in) SV_PsysInput =
 	return TRUE;
 };
 
-// P1193: not sent to a player it is lent to (customizeentityforclient: FALSE skips).
+// P1193: lent only on this player's own grant from its current attempt.
+float(entity e, entity bar) SV_NoColLent =
+{
+	return (bar != world && e.nocol_bar == bar && e.nocol_player == e
+		&& e.nocol_attempt > 0i && e.nocol_attempt == e.bank_attempt);
+};
+
+// Not sent to a player it is lent to (customizeentityforclient: FALSE skips).
 float() SV_NoColSend =
 {
-	return (other.nocol_bar != self);
+	return !SV_NoColLent(other, self);
 };
 
 void(entity e, entity bar) SV_NoColGrant =
@@ -4306,14 +4315,12 @@ void(entity e, entity bar) SV_NoColGrant =
 	e.nocol_bar = bar;
 	e.nocol_player = world;
 	e.nocol_attempt = 0i;
-	e.nocol_bad = FALSE;
 	if (bar == world)
 		return;
 	if (bank_ctx_depth)
 	{
 		e.nocol_player = bank_ctx_player;
 		e.nocol_attempt = bank_ctx_attempt;
-		e.nocol_bad = bank_ctx_bad;
 	}
 	bar.customizeentityforclient = SV_NoColSend;
 };
@@ -4340,6 +4347,8 @@ float(entity t, entity act, string code) SV_ScriptCode =
 			return TRUE;
 		name = substring(code, a + 1, b - a - 1);
 		bar = (name != "") ? find(world, targetname, name) : world;
+		while (bar != world && bar.classname == "player")
+			bar = find(bar, targetname, name);   // review 1: players come first
 		if (bar == world)
 			return TRUE;            // Entities.FindByName found nothing: the script returns
 		SV_NoColGrant(act, bar);
@@ -4377,33 +4386,30 @@ void(entity e) SV_NoColPre =
 		e.nocol_bar = world;        // killed, or the slot was reused
 		return;
 	}
-	if (bar.solid == SOLID_NOT)
+	if (!SV_NoColLent(e, bar) || bar.solid == SOLID_NOT)
 		return;
 	bar.nocol_was = bar.solid;
 	bar.solid = SOLID_NOT;
 	nocol_off = bar;
 };
 
-// After it: take it back, and if the player is inside it on an earlier attempt's grant,
-// that is an inherited map effect.
+// After it: take it back.
 void(entity e) SV_NoColPost =
 {
 	local entity bar, oo;
 
 	bar = nocol_off;
 	SV_NoColRestore();
-	if (bar == world || bar != e.nocol_bar)
+	if (bar == world || bar != e.nocol_bar || !cvar("developer"))
 		return;
 	oo = other;
 	other = bar;
 	tracebox(e.origin, e.mins, e.maxs, e.origin, MOVE_OTHERONLY, e);
 	other = oo;
-	if (trace_startsolid && cvar("developer") && !e.nocol_in)
+	if (trace_startsolid && !e.nocol_in)
 		dprint(sprintf("script: %s passes %s on attempt %i's grant (now %i)\n", e.netname,
 			bar.targetname, e.nocol_attempt, e.bank_attempt));
 	e.nocol_in = trace_startsolid;
-	if (trace_startsolid)
-		SV_BankCauseAffect(e, e.nocol_player, e.nocol_attempt, e.nocol_bad);
 };
 
 void(entity t, entity o, entity act) SV_ApplyInput =
@@ -4512,6 +4518,8 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 			SV_IOBranch(t, !t.vbsp_branch_val, FALSE, act);
 			return;
 		}
+		if (t == nocol_off)
+			SV_NoColRestore();        // P1193 review 1: not the lent solidity
 		SV_IOEnable(t, t.solid == SOLID_NOT);
 		return;
 	}
