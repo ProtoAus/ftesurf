@@ -1,5 +1,23 @@
 # AGENT_NOTES.md
 
+## P1202 3D-skybox entities sent, sky props animated (live 2 Nov 08:30Z, deploy/p1202-skyroom 90821a52, qw e2fa9632)
+
+Delivered QC base is now `origin/deploy/p1202-skyroom` 90821a52 = deploy/p1198-menu 3d50226d + 5 SSQC
+commits (main 5b93ccbe..0f175292). Lobbies (-PiForce, 1 player on L5): qwprogs e2fa9632 (.prev 6955e756),
+csprogs bddd5081 unchanged. Both installs the same pairs. `-Pi`'s FTEQuake sync and the Pi swap copy a
+same-bytes csprogs over its `.prev`: csprogs.dat.prev was restored to 7f6adb64 on the Pi and both installs.
+- `skyroom(sv): N entities in the 3D skybox always sent, M animated (S spawn points)` per map load;
+  `developer 1` lists each (`(2)` a point saw the camera, `(1)` every point was in solid, coarse answer).
+- QC has no areas, and checkpvs on a big entity falls back to its headnode (mod_vbsp.c
+  VBSP_EdictInFatPVS): the exact tests move a model-less spawn point to the camera / the entity's point and
+  back. Never spawn an edict for it, nor keep sky_camera's: entity numbers feed the physent digest (P352).
+- Census (tools in the root's artifacts/: skycensus_arm.py, one fteqwsv64 per 12 maps -- a dedicated
+  server keeps every model and stopped at map 26 on `mod_numknown == MAX_MOD_KNOWN`): 179 of 297 sky_camera
+  maps, 113 mark 0, max 217 (bhop_darkage's sky props); none in solid or over the 256 cap.
+- Rig trap: an online/consent rig must `set rec_terms N` itself -- the menu's own localcmd_local queues
+  behind a cfg's waitms (P1186 Enter check, same day).
+Root: C:\FTESurf-worktrees\skyroom1202-20261102T0620Z.
+
 ## P1197 zone_edit snaps to the map (live 2 Nov 06:37Z, deploy/p1197-zonesnap 7bfe2807, cs bddd5081)
 - Lobby QC is origin/deploy/p1197-zonesnap 7bfe2807 (96f009ed + P1197; qwprogs unchanged
   6955e756); ac's deploy/p1198-menu 3d50226d (= 7bfe2807 + menu) is the newest delivered set.

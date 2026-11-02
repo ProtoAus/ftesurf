@@ -27,7 +27,8 @@ commit   dc3e20be390ba5c3bb7d570bcacba8151172cd7d
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1165
-patch    1201
+patch    1202
+# Patch 1202 (SSQC): entities in a Source map's 3D skybox are always sent (PVSF_IGNOREPVS) -- Source always transmits the sky camera's area (gameinterface.cpp CheckTransmit) and FTE sends only the PVS, so sky-room props/trains never reached clients (surf_shape's dunes). SV_SkyRoomAll (first frame): in the camera's PVS, a point of the entity sees the camera, no spawn sees it; triggers/occluders/clip skipped. Point-placed SOLID_NOT sky props play DefaultAnim/SetAnimation (props stay static elsewhere). Live 2 Nov 08:30Z, deploy/p1202-skyroom 90821a52, qw e2fa9632. Native pin/tag and Build unchanged.
 # Patch 1201 (engine cl_ents.c): surf_view_style (archived, default 1) for surf_view and ent_view's brush fills: 0 dither, 1 dither + every face's edges, 2 translucent planes (sort additive, after glass/water), 3 translucent + edges. Native: tag patch-1201 = aa94bf981 on release-0135 686d42014 (both installs, exe 9a4aeaa4), merged to engine main; QC pin/tag and Build unchanged; older engines ignore the cvar.
 # Patch 1197 (CSQC): zone_edit Edge snap reads the world face under the aim (getsurface*): a corner within 14 screen units wins, else an edge point; compiler splits of one flat floor refused by a trace; grid kept along an edge; on by default. Native pin/tag, backend and Build unchanged.
 # Patch 1192 (engine gl_warp.c): inside a Source map's 3D-sky view the whole 2D skybox is drawn behind the sky room (Source's R_DrawSkyBox), not only over the sky faces that view kept (surf_olivia's hub); r_skyroom_fullbox 0 = old. Native: engine main dd570d36c, not installed; QC pin/tag and Build unchanged.

@@ -21,6 +21,11 @@
 
 ## next
 
+### P1202 3D skies show their moving scenery
+- Things placed in a map's 3D sky (props, trains, spinning parts) now show behind the map, as Momentum shows them. surf_shape's sand dunes, surf_centipedes' bird flocks, surf_colony's skyline and surf_destruction's cyclones were missing before.
+- Sky props that have an animation now play it: surf_shape's dunes move past.
+
+
 ### P1201 surf_view and ent_view: outlines and see-through planes
 - surf_view now outlines every face it shows, so you can tell where one ramp ends and the one behind it starts. ent_view's trigger volumes get the same outlines.
 - New setting surf_view_style: 0 dotted (the old look), 1 dotted with outlines (default), 2 see-through planes, 3 see-through planes with outlines. surf_view_fill sets how strong the fill is.

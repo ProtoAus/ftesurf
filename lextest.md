@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1202 3D skies show their moving scenery (live 2 Nov 08:30Z on all lobbies)
+Please check on a lobby running surf_shape: behind the map, the 3D sky now shows big sand dunes (with a
+giant hand, a head and an arch) that slowly move past, where before there was only the flat 2D sky.
+Also worth a look: surf_centipedes (bird flocks fly in the sky), surf_colony, surf_destruction.
+Open question for you: above surf_shape's dunes there is a white band near the horizon that stays with
+both fogs off (not fog, and not in the dunes texture). If Momentum shows it too it is the map's own.
+
 ## P1201 surf_view outlines and see-through planes
 Engine exe in both Windows installs (the Desktop copy gets it with the next release). Please check:
 1. surf_dune's spawn (ramps behind ramps), `surf_view 1`: every blue ramp, yellow clip and red teleport face is

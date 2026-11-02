@@ -1,5 +1,15 @@
 # BACKLOG.md
 
+## P1202 3D-skybox entities: residuals (2 Nov 2026; display only)
+- surf_shape: a white band near the horizon above the 3D dunes stays with `skyroomfog 0` and `fog 0`;
+  not in the dunes texture, no nested sky pass. Compare with Momentum before calling it ours.
+- SetDefaultAnimation only stores the name: Source plays it after a non-looping sequence ends, and there
+  is no end-of-anim event here (a one-shot SetAnimation stays on its last frame).
+- Every point of an entity in solid keeps checkpvs's coarse answer (surf_colony's in-wall canister
+  train needs it), so a big buried main-map entity no spawn sees can still be sent always (bandwidth only:
+  it is never animated). The spawn test for those stays coarse too.
+- Census stopped by the memory reaper at map 180 of 297 (census/v4a, v4b in the root); the rest unread.
+
 ## P1198-P1200 menu profiles, board, saved chat: residuals (2 Nov 2026)
 - Saved chat is live (surfd ac283934, 2 Nov 07:10Z, with release 0.1.36). Players still on 0.1.35
   see "expire after two minutes; not saved" until they update.
