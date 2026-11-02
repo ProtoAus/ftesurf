@@ -30,7 +30,10 @@ LOBBY_DM_TTL = 120              # a lobby relays only DMs this recent; older one
 ROOM_KEEP = 128
 DM_KEEP = 50                    # per sender and recipient
 MESSAGES_MAX = 20000            # every saved line; past it the heaviest sender's oldest go (make_room)
-ROOM_SHARE = 40                 # one sender's lines among the room's ROOM_KEEP
+# P1206: a read mark is a row like the room's: sender = the reader, recipient =
+# READ + reader + ":" + friend (a (recipient,id) index range per reader), body = the newest
+# id read. Every message read names its recipient or excludes '@...'.
+READ = "@read:"
 PURGE_EVERY = 600               # s between expiry sweeps in a worker; the TTL is 30 days
 # What menus before P1200 accept (they refuse more than 32), and `hist=1` (a P1200 menu);
 # DMs also per conversation, so a chatty friend cannot push a quiet one out of the snapshot.
@@ -248,41 +251,114 @@ def befriend(db, sid, other):
     return 1, "Friend added", 200
 
 
+def level_cut(counts, excess, first=()):
+    """{key: rows to drop} removing `excess`: keys in `first` emptied first, then the largest
+    counts cut to one level (within one row), so no key is emptied while another keeps more."""
+    cut, live = {}, []
+    for key, count in counts.items():
+        if key in first:
+            cut[key] = max(0, min(count, excess - sum(cut.values())))
+        else:
+            live.append((count, key))
+    excess -= sum(cut.values())
+    live.sort(reverse=True)
+    total = 0
+    for k in range(1, len(live) + 1):
+        total += live[k - 1][0]
+        floor = live[k][0] if k < len(live) else 0
+        if excess > 0 and total - k * floor >= excess:
+            level = (total - excess) // k
+            spare = total - excess - level * k
+            for i, (count, key) in enumerate(live[:k]):
+                cut[key] = count - level - (1 if i < spare else 0)
+            break
+    return {key: k for key, k in cut.items() if k > 0}
+
+
+def fair_pick(rows, key, total, cap=None):
+    """Up to `total` rows (newest first in each group), dealt round-robin across groups so every
+    sender or conversation is shown before any shows more (P1206). Newest first."""
+    groups, order = {}, []
+    for row in rows:
+        k = key(row)
+        if k not in groups:
+            groups[k] = []
+            order.append(k)
+        groups[k].append(row)
+    picked, depth = [], 0
+    while len(picked) < total:
+        took = False
+        for k in order:
+            if depth < len(groups[k]) and (cap is None or depth < cap) and len(picked) < total:
+                picked.append(groups[k][depth])
+                took = True
+        if not took:
+            break
+        depth += 1
+    picked.sort(key=lambda r: -r["id"])
+    return picked
+
+
+def read_marks(db, sid):
+    """{friend steamid: newest id read} for `sid`."""
+    lo = READ + sid + ":"
+    return {r["recipient"][len(lo):]: int(r["body"]) for r in db.execute(
+        "SELECT recipient, body FROM social_messages WHERE recipient>? AND recipient<?",
+        (lo, READ + sid + ";")) if r["body"].isdigit()}
+
+
+def set_read(db, sid, other, upto, now):
+    """Raise sid's read mark on `other` to `upto`, capped at the newest line `other` sent sid."""
+    newest = db.execute("SELECT MAX(id) FROM social_messages WHERE recipient=? AND sender=?",
+                        (sid, other)).fetchone()[0] or 0
+    upto = min(int(upto), newest)
+    if upto <= read_marks(db, sid).get(other, 0):
+        return
+    key = READ + sid + ":" + other
+    db.execute("DELETE FROM social_messages WHERE recipient=?", (key,))
+    db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)", (sid, key, str(upto), now))
+
+
 def chat_snapshot(db, sid, now, lobby_ttl, hist=False):
     """Bounded saved text only; neither Steam IDs nor other people's inboxes."""
     room_max, dm_max = (HIST_ROOM, HIST_DM) if hist else (SNAP_ROOM, SNAP_DM)
     room, messages = [], []
+    seen, lines = {}, []
     for row in db.execute("SELECT m.*,a.name FROM social_messages m JOIN accounts a ON a.steamid=m.sender"
                           " WHERE a.banned_at=0 AND m.sent>=? AND m.recipient=?"
                           " ORDER BY m.id DESC LIMIT ?", (now - MESSAGE_TTL, CHAT_ROOM, ROOM_KEEP)):
-        if len(room) >= room_max:
-            break
-        if relation(db, sid, row["sender"]) in (4, 5):
-            continue
+        if row["sender"] not in seen:
+            seen[row["sender"]] = relation(db, sid, row["sender"]) not in (4, 5)
+        if seen[row["sender"]]:
+            lines.append(row)
+    for row in fair_pick(lines, lambda r: r["sender"], room_max):
         room.append(dict(id=str(row["id"]), who=accounts.who_of(row["sender"]),
                          name=accounts.game_name(row["name"]), text=row["body"], sent=row["sent"]))
     # Received through the (recipient,id) index; sent by a newest-first scan, which the
     # MESSAGES_MAX table makes cheap (through each friend's inbox index it cost ~10x, review 2).
     pick = "SELECT m.*,a.name FROM social_messages m JOIN accounts a ON a.steamid=m.sender WHERE a.banned_at=0 AND m.sent>=?"
     rows = list(db.execute(pick + " AND m.recipient=? ORDER BY m.id DESC LIMIT 1024", (now - MESSAGE_TTL, sid)))
-    rows += db.execute(pick + " AND m.sender=? AND +m.recipient<>? ORDER BY m.id DESC LIMIT 1024",
-                       (now - MESSAGE_TTL, sid, CHAT_ROOM)).fetchall()
+    rows += db.execute(pick + " AND m.sender=? AND substr(m.recipient,1,1)<>'@' ORDER BY m.id DESC LIMIT 1024",
+                       (now - MESSAGE_TTL, sid)).fetchall()
     rows.sort(key=lambda r: -r["id"])
-    per, peer_max = {}, (HIST_PEER if hist else SNAP_PEER)
+    other = lambda r: r["sender"] if r["recipient"] == sid else r["recipient"]
+    friendly = {}
     for row in rows:
-        if len(messages) >= dm_max:
-            break
-        other = row["sender"] if row["recipient"] == sid else row["recipient"]
-        if other not in per:
-            per[other] = 0 if relation(db, sid, other) == 3 else peer_max
-        if per[other] >= peer_max:
-            continue
-        per[other] += 1
-        messages.append(dict(id=str(row["id"]), who=accounts.who_of(row["sender"]),
-                             name=accounts.game_name(row["name"]), text=row["body"], sent=row["sent"],
-                             peer=accounts.who_of(other)))
+        if other(row) not in friendly:
+            friendly[other(row)] = relation(db, sid, other(row)) == 3
+    marks = read_marks(db, sid)
+    for row in reversed(fair_pick([r for r in rows if friendly[other(r)]], other, dm_max,
+                                  HIST_PEER if hist else SNAP_PEER)):
+        item = dict(id=str(row["id"]), who=accounts.who_of(row["sender"]),
+                    name=accounts.game_name(row["name"]), text=row["body"], sent=row["sent"],
+                    peer=accounts.who_of(other(row)))
+        if row["recipient"] == sid and row["id"] > marks.get(row["sender"], 0):
+            item["new"] = 1
+        messages.append(item)
+    messages.reverse()
     # `keep`: how long lines are saved, which the P1200 menu words its note from.
-    out = dict(ok=1, me=accounts.who_of(sid), keep=MESSAGE_TTL, room=list(reversed(room)),
+    # `reads`: this server keeps read marks per account (P1206) and flags unread lines `new`.
+    out = dict(ok=1, me=accounts.who_of(sid), keep=MESSAGE_TTL, reads=1, room=list(reversed(room)),
                messages=list(reversed(messages)),
                friends=[r for r in friend_rows(db, sid, now, lobby_ttl) if r["relation"] == 3])
     # The menu refuses a body over 131072 (m_chat.qc MC_Reply): the oldest lines give way.
@@ -302,13 +378,24 @@ def keep_dms(db, sender, recipient):
 
 
 def keep_room(db, sid):
-    """One sender holds at most ROOM_SHARE of the room, so a spammer cannot wipe it (review 1)."""
-    db.execute("DELETE FROM social_messages WHERE recipient=? AND sender=? AND id NOT IN"
-               " (SELECT id FROM social_messages WHERE recipient=? AND sender=? ORDER BY id DESC LIMIT ?)",
-               (CHAT_ROOM, sid, CHAT_ROOM, sid, ROOM_SHARE))
-    db.execute("DELETE FROM social_messages WHERE recipient=? AND id NOT IN"
-               " (SELECT id FROM social_messages WHERE recipient=? ORDER BY id DESC LIMIT ?)",
-               (CHAT_ROOM, CHAT_ROOM, ROOM_KEEP))
+    """Past ROOM_KEEP the senders holding the most lines lose their oldest (level_cut), so a few
+    spam accounts push out only each other, never someone with fewer lines (P1206)."""
+    rows = db.execute("SELECT m.id, m.sender, a.banned_at FROM social_messages m LEFT JOIN accounts a"
+                      " ON a.steamid=m.sender WHERE m.recipient=? ORDER BY m.id", (CHAT_ROOM,)).fetchall()
+    if len(rows) <= ROOM_KEEP:
+        return
+    counts, gone = {}, set()
+    for r in rows:
+        counts[r[1]] = counts.get(r[1], 0) + 1
+        if r[2] is None or r[2]:
+            gone.add(r[1])
+    need = level_cut(counts, len(rows) - ROOM_KEEP, gone)
+    doomed = []
+    for r in rows:
+        if need.get(r[1]):
+            doomed.append(r[0])
+            need[r[1]] -= 1
+    db.execute("DELETE FROM social_messages WHERE id IN (%s)" % ",".join("?" * len(doomed)), doomed)
 
 
 _purged = {"at": 0}
@@ -330,26 +417,14 @@ def make_room(db):
     if n < MESSAGES_MAX:
         return
     excess = n - MESSAGES_MAX + 100
-    cut, live = {}, []
+    counts, gone = {}, set()
     for sender, count, banned in db.execute(
             "SELECT m.sender, COUNT(*), a.banned_at FROM social_messages m"
             " LEFT JOIN accounts a ON a.steamid=m.sender GROUP BY m.sender").fetchall():
+        counts[sender] = count
         if banned is None or banned:
-            cut[sender] = max(0, min(count, excess - sum(cut.values())))
-        else:
-            live.append((count, sender))
-    excess -= sum(cut.values())
-    live.sort(reverse=True)
-    total = 0
-    for k in range(1, len(live) + 1):
-        total += live[k - 1][0]
-        floor = live[k][0] if k < len(live) else 0
-        if excess > 0 and total - k * floor >= excess:
-            level = (total - excess) // k           # the top k keep `level` each, give or take one
-            spare = total - excess - level * k
-            for i, (count, sender) in enumerate(live[:k]):
-                cut[sender] = count - level - (1 if i < spare else 0)
-            break
+            gone.add(sender)
+    cut = level_cut(counts, excess, gone)
     # One oldest-first scan picks every id; a DELETE per sender scanned once each (244 ms with
     # 100 tied senders at 20,000 rows, review 3).
     need = {sender: k for sender, k in cut.items() if k > 0}
@@ -557,7 +632,8 @@ def register(app, d):
             db = d.get_db()
             # A menu heartbeat is not a lobby session/capability or join target.
             with db:
-                db.execute("BEGIN IMMEDIATE" if op in ("presence", "message") else "BEGIN")
+                mark = f.get("read", "") if op == "chat" else ""
+                db.execute("BEGIN IMMEDIATE" if op in ("presence", "message") or mark else "BEGIN")
                 account = db.execute("SELECT k.steamid FROM keylinks k JOIN accounts a USING(steamid)"
                                      " WHERE k.pub=? AND a.banned_at=0", (pub,)).fetchone()
                 if not account:
@@ -581,6 +657,12 @@ def register(app, d):
                     rows = [r for r in friend_rows(db, sid, now, d.lobby_ttl) if r["relation"] <= 3]
                     return reply({"ok": 1, "friends": rows})
                 if op == "chat":
+                    # P1206: "<friend mark>:<id>", the newest line the menu showed in that thread.
+                    peer, _, upto = mark.partition(":")
+                    if MARK.fullmatch(peer) and len(peer) == 8 and upto.isdigit() and len(upto) <= 10:
+                        other = resolve(db, peer)
+                        if other and relation(db, sid, other) == 3:
+                            set_read(db, sid, other, upto, now)
                     return reply(chat_snapshot(db, sid, now, d.lobby_ttl, f.get("hist") == "1"))
                 if op == "message":
                     if not d.rate_ok(sid, now, 20, "social-action"):
@@ -679,7 +761,7 @@ def register(app, d):
                             " JOIN social_friends f ON ((f.lo=m.sender AND f.hi=m.recipient) OR"
                             " (f.hi=m.sender AND f.lo=m.recipient))"
                             " WHERE m.recipient=? AND m.id>? AND m.sent>=? AND a.banned_at=0 AND f.accepted=1"
-                            " ORDER BY m.id LIMIT 2", (sid, s["ack"], now - LOBBY_DM_TTL)):
+                            " ORDER BY m.id LIMIT 2", (sid, s["ack"], now - LOBBY_DM_TTL)).fetchall():
                         if relation(db, sid, m["sender"]) != 3:
                             continue
                         sender = db.execute("SELECT name,banned_at FROM accounts WHERE steamid=?",
@@ -687,6 +769,7 @@ def register(app, d):
                         if sender and not sender["banned_at"]:
                             messages.append(dict(id=str(m["id"]), who=accounts.who_of(m["sender"]),
                                                  name=accounts.game_name(sender["name"]), text=m["body"]))
+                            set_read(db, sid, m["sender"], m["id"], now)   # P1206: shown in the game
                     row = dict(token=r["token"], hash=revision, messages=messages)
                     if r.get("inventory") == 1:
                         inventory.ensure(db, sid)
@@ -861,7 +944,8 @@ def register(app, d):
                 elif op == "remove":
                     db.execute("DELETE FROM social_friends WHERE lo=? AND hi=?", (lo, hi))
                     db.execute("DELETE FROM social_messages WHERE (sender=? AND recipient=?) OR"
-                               " (sender=? AND recipient=?)", (sid, other, other, sid))
+                               " (sender=? AND recipient=?) OR recipient IN (?,?)",
+                               (sid, other, other, sid, READ + sid + ":" + other, READ + other + ":" + sid))
                     note = "Friend / request removed"
                 elif op == "block":
                     # Block is how an account refuses another: it ends a
@@ -883,7 +967,8 @@ def register(app, d):
                         db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,-1)",
                                    (lo, hi, sid))
                     db.execute("DELETE FROM social_messages WHERE (sender=? AND recipient=?) OR"
-                               " (sender=? AND recipient=?)", (sid, other, other, sid))
+                               " (sender=? AND recipient=?) OR recipient IN (?,?)",
+                               (sid, other, other, sid, READ + sid + ":" + other, READ + other + ":" + sid))
                     note = "Blocked: they cannot add or message you"
                 elif op == "unblock":
                     if rel == 5 and asked == "remove":
