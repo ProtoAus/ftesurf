@@ -207,7 +207,7 @@ class Runtime(BASE_RUNTIME):
         self.require(any(e['query'].get('offset') == '1594' for e in asks), 'next page lost the base offset')
         self.send('ui_board_test scroll 0', 1.0)
         # P1199: no earlier/top buttons; reaching the top of the rows asks for the page above.
-        self.require(any(int(e['query'].get('offset') or -1) in range(0, 1494) for e in self.fixture.since(at, '/api/board')),
+        self.require(any(int(e['query'].get('offset') or -1) in range(1, 1494) for e in self.fixture.since(at, '/api/board')),
                      'scrolling to the top did not ask for the page above')
         self.send('ui_board_test close', 0.1)
         self.send('ui_close', 0.1)

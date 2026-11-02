@@ -52,6 +52,7 @@ void(string who) MStats_Player =
 {
 	local float back, board;
 	back = menu_screen;
+	if (back == SCREEN_STATS) { MStats_SetOther(who); return; }   // keep where Back goes
 	board = (back == SCREEN_CREATE && Mlb_IsOpen());
 	if (!menu_active) m_open();
 	MStats_Open();
