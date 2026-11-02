@@ -4390,6 +4390,8 @@ void(entity e) SV_VsVelPost =
 	e.vsv_on = FALSE;
 	if (e.vsv_attempt != e.bank_attempt)
 		return;                     // a boost touched, then !r: not into the new run
+	if (SV_MapMoveHeld(e))
+		return;                     // queued before a hold began: skipped like every map move (P865)
 	v = FS_VsVelApply(e.velocity, e.vsv_eop, e.vsv_ea, e.vsv_eb);
 	if (cvar("developer"))
 		dprint(sprintf("script: %s velocity %v -> %v\n", e.netname, e.velocity, v));
