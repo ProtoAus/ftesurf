@@ -21,6 +21,10 @@
 
 ## next
 
+### P1213 Fog on Source maps looks like Source's
+- Fog now thickens toward the edges of the screen as it does in CS:S and Momentum, not only straight ahead. On surf_shape the horizon above the dunes is orange haze, as in CS:S, instead of a white band.
+- Glowing signs, sky blends, rain and other unlit surfaces fade into the fog like the walls around them, including on maps where they were not fogged at all before.
+
 ### P1212 The launcher and game say World of Surf in Windows
 - WOS-Launcher.exe and the game now name World of Surf as their publisher and product in Windows (file Properties, SmartScreen, antivirus). They used to name the FTE engine, or nothing.
 

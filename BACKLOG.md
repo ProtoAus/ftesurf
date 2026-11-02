@@ -1,8 +1,19 @@
 # BACKLOG.md
 
+## P1213 Source fog distance, UnlitGeneric on vmt/unlit: residuals (2 Nov 2026; display only)
+- surf_shape's horizon band is 124,75,52 against CS:S 118,69,45 (old 143,101,80). Most of the rest is
+  cl_fog.qc's known approximation: Source lerps by the squared factor in linear light, we in gamma space.
+- Program-less passes keep view depth: UnlitGeneric with a $whiteimage or HDR base, non-additive Sprite
+  passes. GL_NV_fog_distance is per vertex on NVIDIA, so it is no way out (engine P1213 journal).
+- RF_DEPTHHACK viewmodels draw with m_projection_view but take m_projection_std's radial terms.
+- From review 2, Source-like or rare: $translucent+$alphatest apply both; $color above 1 is unclamped;
+  the alpha test reads texture alpha, not texture x $alpha; an unmounted named base shows the checker;
+  a static prop of this class stops counting as see-through for light-glow hiding (mod_vbsp.c reads
+  pass alpha-test bits, not the program's #MASK).
+- engine tools/test_gl_blend_faces.py no longer compiles (GPUB_PORTALS etc. unstubbed since after P748).
+
 ## P1202 3D-skybox entities: residuals (2 Nov 2026; display only)
-- surf_shape: a white band near the horizon above the 3D dunes stays with `skyroomfog 0` and `fog 0`;
-  not in the dunes texture, no nested sky pass. Compare with Momentum before calling it ours.
+- surf_shape's white band near the horizon: fixed by P1213 (the ring card was under-fogged; see below).
 - SetDefaultAnimation only stores the name: Source plays it after a non-looping sequence ends, and there
   is no end-of-anim event here (a one-shot SetAnimation stays on its last frame).
 - Every point of an entity in solid keeps checkpvs's coarse answer (surf_colony's in-wall canister

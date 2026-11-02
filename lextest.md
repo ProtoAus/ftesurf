@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1213 Source fog toward the screen edges (with the next release)
+surf_shape at spawn, looking along the dunes: the horizon above them is orange-brown haze like your
+CS:S screenshot, with no white band. In the console, `r_fog_radial 0` brings the old band back and
+`r_fog_radial 1` (default) removes it, live. On other fogged maps, signs and glows should fade into the
+fog like the walls beside them. Kitsune's coloured grids should still overlap in the right order.
+
 ## P1211 gravity launchers and delayed speed stops
 Lobbies live 2 Nov 12:23Z (QC d7260fd5/c898930c, Pi engine c284f65b). The gravity half needs the
 P1211 client exe (the next release, or the merged build once it is in your installs).

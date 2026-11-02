@@ -20,6 +20,19 @@
   artifacts/p1210probe.py. A setpos INTO a trigger is a server-side touch the client never
   predicts: walk in (oneiric2).
 
+## P1213 Source fog distance; UnlitGeneric on vmt/unlit (engine patch-1213 = 6043414d6, next release)
+- `r_fog_radial` (engine, live) and `hl2_unlitprogram` (plugin, takes a map reload) are the A/Bs. With
+  `developer 1` a translucent/alpha material's `[vmt]` line ends in `type vmt/unlit` or the pass's class
+  name. The per-map stats line only prints on a fresh model load: a same-map reload says nothing.
+- Rig traps: a server-progs build before P1202 never sends surf_shape's sky-room ring, so no band and
+  nothing to measure. Shots taken after consecutive `cmd setpos` on boreas land the camera a few units
+  apart, so compare fog modes standing still. `noclip` then `setpos` in a local game renders from the
+  wrong predicted origin (all white).
+- World blend-sort eligibility (`GLBE_BlendPlaneShaderEligible`) refuses programs other than vmt/unlit.
+  Moving a world material onto a program takes it out of Patches 700/701 unless that list grows. Check it
+  with `r_blendsort 2` + `r_blendtrace` `admitted=` (artifacts/kitsune_arm.py).
+Root: C:\FTESurf-worktrees\skyfog1213-20261102.
+
 ## P1210 KSF ducked body (live in lobby QC 2 Nov 10:19Z, deploy/p1210-ksfduck e3d324e1, cs 220b9696)
 - Delivered QC base for the next lobby deploy: origin/deploy/p1210-ksfduck e3d324e1 (ac's 387fd3e0
   + P1210; qwprogs c65f2e37 unchanged, .prev kept 07354dba).

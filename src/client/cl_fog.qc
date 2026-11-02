@@ -68,10 +68,9 @@
       factor in gamma space.  The two errors partly cancel and the residue is
       not predictable from theory -- it wants a screenshot against Momentum with
       vid_srgb pinned, not an argument.
-    * Source measures RADIAL distance; FTE's gl_FragCoord.z/gl_FragCoord.w is
-      planar eye depth.  Source's fog thickens toward the screen edges by
-      ~1.3-1.4x at the corners of a wide fov and ours does not.  This affects
-      every map, not just the 13 that set `fogradial`.
+    * Source measures RADIAL distance.  Since engine Patch 1213 GLSL fog does
+      too on Source maps (r_fog_radial 1); a pass with no program keeps planar
+      eye depth (GL_NV_fog_distance is per vertex on NVIDIA).
     * fogblend/fogcolor2/fogdir (40 controllers) blend two colours by view angle.
       fogstate_t holds one colour.  We use fogcolor.
     * farz is ignored; there is no FTE equivalent on this path.
