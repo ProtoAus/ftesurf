@@ -228,8 +228,11 @@ float  spr_gnext;                       // round-robin cursor for the trace budg
   P1218: Source draws sprites and shafts from the PVS; these polygons have none, and the
   sky mask sits at 2x the sky's distance (P990), so surf_eternity's spotlight shafts 7-9k
   units out showed through a sky 4.5k away.  One whose line from the eye meets a sky side
-  first is skipped.  vbsp_sprite_skyrays traces a frame, round-robin over both tables.
-  One seen from sky_camera is never skipped: the same polygon draws the 3D sky.
+  first, 64 units or more short of it, is skipped (a shaft is tested at its source, which
+  an IgnoreSolid one may reach past).  vbsp_sprite_skyrays traces a frame, round-robin over
+  both tables, four times that for a sweep after the eye jumps (a teleport keeps the old
+  answers meanwhile).  One whose line from sky_camera meets no sky side is never skipped:
+  it is in the 3D sky room, and the same polygon draws the 3D sky.
 */
 #define SKY_UNTESTED 0
 #define SKY_CLEAR    1
@@ -239,6 +242,7 @@ float  spr_sky[SPR_MAX];
 float  beam_sky[BEAM_MAX];
 float  spr_skynext;                     // cursor over sprites then beams
 vector spr_skyeye;                      // last frame's eye; a jump retests everything
+float  spr_skyburst;                    // tests left at 4x after a jump
 float  spr_skyhid;                      // skipped last frame (vbsp_sprite_debug)
 
 /*
@@ -2513,15 +2517,16 @@ float(vector eye, vector p, float st) Sprite_SkyTest =
 {
 	if (st == SKY_ROOM)
 		return st;
+	// SURF_SKY does not come through a VBSP trace; the side's name does (cl_sun.qc).
 	if (st == SKY_UNTESTED && vbsp_skyroom_have)
 	{
 		traceline(vbsp_skyroom_pos, p, MOVE_NOMONSTERS, world);
-		if (trace_fraction >= 1)
+		if (trace_fraction >= 1 || substring(strtolower(trace_surfacename), 0, 4) != "sky/")
 			return SKY_ROOM;
 	}
 	traceline(eye, p, MOVE_NOMONSTERS, world);
-	// SURF_SKY does not come through a VBSP trace; the side's name does (cl_sun.qc).
 	if (trace_fraction < 1 && substring(strtolower(trace_surfacename), 0, 4) == "sky/")
+	if ((1 - trace_fraction) * vlen(p - eye) >= 64)
 		return SKY_BEHIND;
 	return SKY_CLEAR;
 };
@@ -2531,17 +2536,16 @@ void(vector eye) Sprite_SkyTick =
 	local float i, k, n, rays;
 
 	n = spr_n + beam_n;
-	rays = min(cvar("vbsp_sprite_skyrays"), n);
 	if (vlen(eye - spr_skyeye) > 256)
-	{
-		for (i = 0; i < spr_n; i = i + 1)
-			if (spr_sky[i] != SKY_ROOM)
-				spr_sky[i] = SKY_UNTESTED;
-		for (i = 0; i < beam_n; i = i + 1)
-			if (beam_sky[i] != SKY_ROOM)
-				beam_sky[i] = SKY_UNTESTED;
-	}
+		spr_skyburst = n;
 	spr_skyeye = eye;
+	rays = cvar("vbsp_sprite_skyrays");
+	if (spr_skyburst > 0)
+	{
+		rays = rays * 4;
+		spr_skyburst = spr_skyburst - rays;
+	}
+	rays = min(rays, n);
 	for (k = 0; k < rays; k = k + 1)
 	{
 		if (spr_skynext >= n)
@@ -2553,7 +2557,7 @@ void(vector eye) Sprite_SkyTick =
 		else
 		{
 			i = i - spr_n;
-			beam_sky[i] = Sprite_SkyTest(eye, (beam_org[i] + beam_end[i]) * 0.5, beam_sky[i]);
+			beam_sky[i] = Sprite_SkyTest(eye, beam_org[i], beam_sky[i]);
 		}
 	}
 };
