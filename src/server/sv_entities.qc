@@ -494,9 +494,8 @@ float  vbsp_io_over_map;	// refused by the map-wide ceiling
 .float  vbsp_toolshape;	// ...the box keys it has taken: 1 mins, 2 maxs
 .float  vbsp_slide_skin;	// Patch 280: a func_slide's tag, worn on .skin only while solid
 .string vbsp_defanim;		// P1202: a prop's DefaultAnim keyvalue
-.float  vbsp_skyent;		// P1202: in the 3D skybox (SV_SkyRoomAll): always sent; props animate
-.float  vbsp_skyanim_set;	// P1202: a SetAnimation has played (SetDefaultAnimation then waits)
-void(entity t, string anim) SV_SkyAnim;
+.float  vbsp_skyent;		// P1202: in the 3D skybox (SV_SkyRoomAll): always sent; 2 = may animate
+float(entity t, string anim) SV_SkyAnim;
 
 // On an vbsp_output entity.  .owner is the source entity.
 .entity vbsp_io_next;
@@ -4482,17 +4481,15 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		return;
 	}
 	if (in == "kill")           { remove(t);                            return; }
-	if (t.vbsp_skyent)		// P1202: only a 3D-skybox prop animates (props are static elsewhere)
+	if (t.vbsp_skyent == 2)	// P1202: only a non-solid 3D-skybox prop animates (props are static elsewhere)
 	if (in == "setanimation" || in == "setdefaultanimation")
 	{
-		// Source's SetDefaultAnimation only names what follows a one-shot; with no end-of-anim
-		// event here it plays only while no SetAnimation has.
+		// Source's SetDefaultAnimation only names what follows a one-shot; there is no end-of-anim
+		// event here, so it plays nothing.
 		if (in == "setanimation")
-			t.vbsp_skyanim_set = TRUE;
+			SV_SkyAnim(t, pm);
 		else
 			t.vbsp_defanim = strcat(pm);
-		if (in == "setanimation" || !t.vbsp_skyanim_set)
-			SV_SkyAnim(t, pm);
 		return;
 	}
 	if (in == "enable")         { SV_IOEnable(t, TRUE);                 return; }
@@ -6171,10 +6168,9 @@ void() info_player_teamspawn            = { };
   P1202: THE 3D SKYBOX'S ENTITIES. Source sends every entity in the sky camera's area to every
   client (gameinterface.cpp CheckTransmit: "Always send entities in the player's 3d skybox"). FTE
   sends what the client's PVS sees, and a sky room is sealed off from it, so surf_shape's moving
-  dunes (prop_dynamic skybox_mdl) reached nobody. QC has no areas: an entity counts when the sky
-  camera's PVS holds it, its centre sees the camera, and no spawn point's PVS holds it.
+  dunes (prop_dynamic skybox_mdl) reached nobody. QC has no areas: see SV_SkySees.
 */
-vector vbsp_skycam_org;
+vector vbsp_skycam_org, vbsp_skypt;
 float  vbsp_skycam_have, vbsp_skyroom_n, vbsp_skyroom_anim_n;
 vector vbsp_skyspawn[8];
 #define VBSP_SKYROOM_MAX 256
@@ -6191,34 +6187,39 @@ void() sky_camera =
 	remove(self);
 };
 
-void(entity t, string anim) SV_SkyAnim =
+// TRUE when it set an animation. Studio models only: frameforname/frametoname answer for a brush
+// or sprite model too. The hl2 plugin names frame groups after MDL anims, case and all, and a
+// $sequence's inline anim is "@<sequence>" (sand_dunes.mdl: sequence "move", anim "@move");
+// Source matches sequence names without case.
+float(entity t, string anim) SV_SkyAnim =
 {
 	local float f;
-	// Studio models only: frameforname answers 0, not -1, for a brush or sprite model.
+	local string nm;
 	if (anim == "" || strtolower(substring(t.model, strlen(t.model) - 4, 4)) != ".mdl")
-		return;
-	// The hl2 plugin names frame groups after MDL anims, case and all, and a $sequence's inline
-	// anim is "@<sequence>" (sand_dunes.mdl: sequence "move", anim "@move").
-	f = frameforname(t.modelindex, anim);
-	if (f < 0)
-		f = frameforname(t.modelindex, strcat("@", anim));
-	if (f < 0)
-		f = frameforname(t.modelindex, strtolower(anim));
-	if (f < 0)
-		f = frameforname(t.modelindex, strcat("@", strtolower(anim)));
-	if (f < 0)
-		return;
-	t.frame = f;
-	vbsp_skyroom_anim_n = vbsp_skyroom_anim_n + 1;
+		return FALSE;
+	for (f = 0; f < 256; f = f + 1)
+	{
+		nm = frametoname(t.modelindex, f);
+		if (nm == "")
+			break;
+		if (!strcasecmp(nm, anim) || !strcasecmp(nm, strcat("@", anim)))
+		{
+			t.frame = f;
+			vbsp_skyroom_anim_n = vbsp_skyroom_anim_n + 1;
+			return TRUE;
+		}
+	}
+	return FALSE;
 };
 
 /*
   A big entity's checkpvs falls back to its headnode (mod_vbsp.c VBSP_EdictInFatPVS), which passed
-  main-map triggers and props (surf_ab: 21, one of them animated). A point of it against the camera's
-  point is exact: a model's origin, then its box centre (sand_dunes.mdl runs 1831 below its origin,
-  so its centre is in solid); a brush entity's centre (an origin-less one sits at '0 0 0'). A point
-  in solid sees nothing, so only an open point that cannot see rejects; every point in solid keeps
-  the coarse answer (surf_colony's sky canister train starts inside a wall).
+  main-map triggers and props (surf_ab: 21, one of them animated). One point of it against a point
+  entity is exact: a model's origin, then its box centre (sand_dunes.mdl runs 1831 below its
+  origin, so its centre is in solid); a brush entity's centre (an origin-less one sits at
+  '0 0 0'). A point in solid sees nothing. 2: a point (vbsp_skypt) sees the camera. 1: every point
+  is in solid, so only the coarse test spoke (surf_colony's sky canister train starts in a wall).
+  0: an open point does not see it.
 */
 float(entity e, entity cam) SV_SkySees =
 {
@@ -6228,20 +6229,24 @@ float(entity e, entity cam) SV_SkySees =
 	if (substring(e.model, 0, 1) != "*")
 	if (pointcontents(e.origin) != CONTENT_SOLID)
 	{
+		vbsp_skypt = e.origin;
 		if (checkpvs(e.origin, cam))
-			return TRUE;
+			return 2;
 		open = TRUE;
 	}
 	c = (e.absmin + e.absmax) * 0.5;
 	if (pointcontents(c) != CONTENT_SOLID)
-		return checkpvs(c, cam);
-	return !open;
+	{
+		vbsp_skypt = c;
+		return checkpvs(c, cam) ? 2 : 0;
+	}
+	return open ? 0 : 1;
 };
 
 void() SV_SkyRoomAll =
 {
 	local entity e, pt;
-	local float n, ns, i, pass;
+	local float n, ns, i, pass, seen;
 	local vector ptorg;
 	local string cn;
 	if (!vbsp_skycam_have)
@@ -6266,8 +6271,9 @@ void() SV_SkyRoomAll =
 				pt = e;
 		}
 	}
-	// The exact test below needs an entity at the camera, and a new edict would renumber the I/O
-	// build's: a model-less spawn point (never sent, not solid) stands in and goes back after.
+	// The exact tests need a point entity, and a new edict would renumber the I/O build's: a
+	// model-less spawn point (never sent, SOLID_NOT) stands in and goes back after. It stays linked,
+	// which nothing reads (spawn selection uses find and .origin).
 	if (pt)
 	{
 		ptorg = pt.origin;
@@ -6278,26 +6284,42 @@ void() SV_SkyRoomAll =
 		n = 0;
 		for (e = nextent(world); e; e = nextent(e))
 		{
-			// Triggers are never drawn, and a sky room's are no part of play.
-			if (!e.modelindex || (e.flags & FL_CLIENT) || substring(e.classname, 0, 8) == "trigger_"
-			    || !checkpvs(vbsp_skycam_org, e))
+			// Never drawn, and in a sky room no part of play.
+			cn = e.classname;
+			if (!e.modelindex || (e.flags & FL_CLIENT) || substring(cn, 0, 8) == "trigger_"
+			    || cn == "func_occluder" || substring(cn, 0, 9) == "func_clip"
+			    || substring(cn, 0, 15) == "func_areaportal" || !checkpvs(vbsp_skycam_org, e))
 				continue;
+			seen = 1;
 			if (pt)
-			if (!SV_SkySees(e, pt))
+				seen = SV_SkySees(e, pt);
+			if (!seen)
 				continue;
+			// Seen from the playable space too: not the sky room's. Point to point when a point saw
+			// the camera, as the camera test (the marker visits that point and comes back).
+			if (seen == 2)
+				setorigin(pt, vbsp_skypt);
 			for (i = 0; i < ns; i = i + 1)
-				if (checkpvs(vbsp_skyspawn[i], e))
+				if (checkpvs(vbsp_skyspawn[i], (seen == 2) ? pt : e))
 					break;
+			if (seen == 2)
+				setorigin(pt, vbsp_skycam_org);
 			if (i < ns)
 				continue;
 			n = n + 1;
 			if (pass)
 			{
-				e.vbsp_skyent = TRUE;
 				e.pvsflags = (e.pvsflags & 252) | PVSF_IGNOREPVS;   // keeps PVSF_NOREMOVE
-				SV_SkyAnim(e, e.vbsp_defanim);
+				e.vbsp_skyent = 1;
+				// Animated only when a point placed it and nothing collides with it: an
+				// animated mesh never moves a collision shape.
+				if (seen == 2 && e.solid == SOLID_NOT)
+				{
+					e.vbsp_skyent = 2;
+					SV_SkyAnim(e, e.vbsp_defanim);
+				}
 				if (cvar("developer"))      // not SV_DevOn: lobbies would log every one at each map
-					print(sprintf("skyroom(sv): %s %s at %v\n", e.classname, e.model, e.origin));
+					print(sprintf("skyroom(sv): %s %s at %v (%g)\n", cn, e.model, e.origin, seen));
 			}
 		}
 		if (n > VBSP_SKYROOM_MAX)
@@ -6312,9 +6334,10 @@ void() SV_SkyRoomAll =
 		return;
 	}
 	vbsp_skyroom_n = n;
-	print(sprintf("skyroom(sv): %g entities in the 3D skybox always sent, %g animated (%g spawn points)\n",
-	              vbsp_skyroom_n, vbsp_skyroom_anim_n, ns));
+	print(sprintf("skyroom(sv): %g entities in the 3D skybox always sent, %g animated (%g spawn points%s)\n",
+	              vbsp_skyroom_n, vbsp_skyroom_anim_n, ns, pt ? "" : "; no model-less one, coarse test only"));
 };
+
 void() info_player_logo                 = { remove(self); };
 void() info_teleport_destination        = { };
 void() info_target                      = { };
