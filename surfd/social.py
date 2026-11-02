@@ -34,8 +34,8 @@ ROOM_SHARE = 40                 # one sender's lines among the room's ROOM_KEEP
 PURGE_EVERY = 600               # s between expiry sweeps in a worker; the TTL is 30 days
 # What menus before P1200 accept (they refuse more than 32), and `hist=1` (a P1200 menu);
 # DMs also per conversation, so a chatty friend cannot push a quiet one out of the snapshot.
-SNAP_ROOM, SNAP_DM, SNAP_PEER = 24, 32, 8
-HIST_ROOM, HIST_DM, HIST_PEER = 50, 100, 25
+SNAP_ROOM, SNAP_DM, SNAP_PEER = 24, 32, 16
+HIST_ROOM, HIST_DM, HIST_PEER = 50, 120, DM_KEEP
 SNAP_BYTES = 120000
 TOKEN = re.compile(r"[0-9a-f]{64}\Z")
 MARK = re.compile(r"[0-9a-f]{8}(?:[0-9a-f]{4})?\Z")
@@ -261,14 +261,12 @@ def chat_snapshot(db, sid, now, lobby_ttl, hist=False):
             continue
         room.append(dict(id=str(row["id"]), who=accounts.who_of(row["sender"]),
                          name=accounts.game_name(row["name"]), text=row["body"], sent=row["sent"]))
-    # Mine are read through each friend's recipient index: `sender=?` has no index (review 1).
-    friends = [r[0] for r in db.execute("SELECT CASE WHEN lo=? THEN hi ELSE lo END FROM social_friends"
-                                        " WHERE (lo=? OR hi=?) AND accepted=1", (sid, sid, sid))][:MAX_FRIENDS]
+    # Received through the (recipient,id) index; sent by a newest-first scan, which the
+    # MESSAGES_MAX table makes cheap (through each friend's inbox index it cost ~10x, review 2).
     pick = "SELECT m.*,a.name FROM social_messages m JOIN accounts a ON a.steamid=m.sender WHERE a.banned_at=0 AND m.sent>=?"
     rows = list(db.execute(pick + " AND m.recipient=? ORDER BY m.id DESC LIMIT 1024", (now - MESSAGE_TTL, sid)))
-    if friends:
-        rows += db.execute(pick + " AND m.recipient IN (%s) AND m.sender=? ORDER BY m.id DESC LIMIT 1024"
-                           % ",".join("?" * len(friends)), (now - MESSAGE_TTL, *friends, sid)).fetchall()
+    rows += db.execute(pick + " AND m.sender=? AND +m.recipient<>? ORDER BY m.id DESC LIMIT 1024",
+                       (now - MESSAGE_TTL, sid, CHAT_ROOM)).fetchall()
     rows.sort(key=lambda r: -r["id"])
     per, peer_max = {}, (HIST_PEER if hist else SNAP_PEER)
     for row in rows:
@@ -323,14 +321,37 @@ def purge(db, now):
 
 
 def make_room(db):
-    """At MESSAGES_MAX the heaviest sender's oldest lines go.  Refusing instead let a group of
-    accounts block every chat path for 30 days, banned or not (review 1)."""
+    """At MESSAGES_MAX, oldest lines go: banned or deleted senders' first, then the heaviest
+    senders' down to one level, so nobody is emptied while others keep more (review 2).
+    Refusing instead let a group of accounts block every chat path for 30 days (review 1)."""
     n = db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0]
     if n < MESSAGES_MAX:
         return
-    top = db.execute("SELECT sender FROM social_messages GROUP BY sender ORDER BY COUNT(*) DESC LIMIT 1").fetchone()
-    db.execute("DELETE FROM social_messages WHERE id IN (SELECT id FROM social_messages WHERE sender=?"
-               " ORDER BY id LIMIT ?)", (top[0], n - MESSAGES_MAX + 100))
+    excess = n - MESSAGES_MAX + 100
+    cut, live = {}, []
+    for sender, count, banned in db.execute(
+            "SELECT m.sender, COUNT(*), a.banned_at FROM social_messages m"
+            " LEFT JOIN accounts a ON a.steamid=m.sender GROUP BY m.sender").fetchall():
+        if banned is None or banned:
+            cut[sender] = max(0, min(count, excess - sum(cut.values())))
+        else:
+            live.append((count, sender))
+    excess -= sum(cut.values())
+    live.sort(reverse=True)
+    total = 0
+    for k in range(1, len(live) + 1):
+        total += live[k - 1][0]
+        floor = live[k][0] if k < len(live) else 0
+        if excess > 0 and total - k * floor >= excess:
+            level = (total - excess) // k           # the top k keep `level` each, give or take one
+            spare = total - excess - level * k
+            for i, (count, sender) in enumerate(live[:k]):
+                cut[sender] = count - level - (1 if i < spare else 0)
+            break
+    for sender, k in cut.items():
+        if k > 0:
+            db.execute("DELETE FROM social_messages WHERE id IN (SELECT id FROM social_messages WHERE sender=?"
+                       " ORDER BY id LIMIT ?)", (sender, k))
 
 
 # P996: a board line in the public room -- a world record or personal best, said

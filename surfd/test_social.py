@@ -836,6 +836,23 @@ class Friends(unittest.TestCase):
         self.assertEqual((rows.get("keep me"), rows.get("still works"), rows.get("room still works")), (1, 1, 1))
         self.assertLess(rows["flood"], 250)
 
+    def test_review2_eviction_levels_the_heaviest_and_takes_banned_first(self):
+        self.befriend_cal(); self.poll()
+        fakes = ["76561198000000201", "76561198000000202", "76561198000000203"]
+        banned = "76561198000000204"
+        for sid in fakes + [banned]:
+            self.db.execute("INSERT INTO accounts(steamid,name,created_at,banned_at) VALUES(?,?,?,?)",
+                            (sid, "x", self.now, self.now if sid == banned else 0))
+        rows = [(IDS[1], "766%014d" % i, "honest", self.now) for i in range(90)]
+        rows += [(f, "766%014d" % i, "fake", self.now) for f in fakes for i in range(70)]
+        rows += [(banned, "766%014d" % i, "banned", self.now) for i in range(30)]
+        self.db.executemany("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)", rows)
+        self.db.commit()
+        with patch.object(F, "MESSAGES_MAX", 300):
+            self.assertEqual(self.action(2, "message", 0, text="trigger").status_code, 200)
+        n = dict(self.db.execute("SELECT sender, COUNT(*) FROM social_messages GROUP BY sender").fetchall())
+        self.assertEqual((n.get(banned, 0), n[IDS[1]], [n[f] for f in fakes]), (0, 50, [50, 50, 50]))
+
     def test_review1_one_sender_cannot_wipe_the_saved_room(self):
         self.db.executemany("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
                             [(IDS[2], F.CHAT_ROOM, "others %d" % i, self.now) for i in range(60)]
