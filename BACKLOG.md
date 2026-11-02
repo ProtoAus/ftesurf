@@ -18,8 +18,11 @@
 - Outputs with times "0": this engine treats them as spent; Source's FireOutput decrements 0 to
   -1 (EVENT_FIRE_ALWAYS) and fires forever. Older than P1205; 15 velocity rows (surf_haze,
   surf_despair, surf_lucid) and other outputs. Needs checking against the SDK first.
-- bhop_decimus: the "!ACTIVATOR" case fold turns on six OnJump AddOutput gravity writes, as in
-  Source. Gravity is not replayed, so runs that use them HOLD; its boards were set without them.
+- bhop_decimus: the "!ACTIVATOR" case fold turns on the last 6 of its 50 OnJump/OnStartTouch
+  gravity writes (44 lowercase ones fired before P1205). Gravity IS replayed: each change is a
+  `pm` pin row, and counted runs with mid-run gravity PASS (surf_spacejam -0.1 -> 1, surf_beyond
+  51 changes, surf_botanica; Pi verdicts, 2 Nov). No decimus runs on the boards yet. Prediction of
+  these writes: P1210.
 - P1204's rewind path is reviewed, not measured (the arm cannot open the rewind from a cfg).
 - P1206: the room's shown lines are dealt fairly across senders, so a busy room shows a spread,
   not a continuous run.
