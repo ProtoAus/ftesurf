@@ -7,11 +7,11 @@ CS:S screenshot, with no white band. In the console, `r_fog_radial 0` brings the
 fog like the walls beside them. Kitsune's coloured grids should still overlap in the right order.
 
 ## P1211 gravity launchers and delayed speed stops
-Lobbies live 2 Nov 12:23Z (QC d7260fd5/c898930c, Pi engine c284f65b). The gravity half needs the
-P1211 client exe (the next release, or the merged build once it is in your installs).
+Lobbies live 2 Nov 12:23Z (QC d7260fd5/c898930c, Pi engine c284f65b). Released in 0.1.37, and
+both installs run its exe (6fbf7e74).
 1. surf_oneiric: from the hub spawn walk west down the corridor into the teleport. About a second
    after you arrive you stop dead, with no snap. Works on your current exe.
-2. bhop_decimus, with the P1211 client: jump on a launch pad. You fly up and come back down with
+2. bhop_decimus: jump on a launch pad. You fly up and come back down with
    no correction jitter.
 
 ## P1212 World of Surf in Windows (after the next release)

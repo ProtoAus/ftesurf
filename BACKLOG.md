@@ -24,6 +24,14 @@
   or over 256; 7 animate (surf_aquaflow 10, surf_destruction 2, surf_shape, surf_4am(_css),
   bhop_unreal_space, surf_watertemple_alpha).
 
+## Release tooling, found cutting 0.1.37 (2 Nov 2026)
+- `release.ps1 -BuildEngine` cannot run: its filter over build.ps1's output reads `$_.kind` under
+  StrictMode, and build.ps1's engine path emits an object without it, so the pipeline throws and
+  make dies on the broken pipe (release0137 artifacts/prepare-failed1-buildengine.log). 0.1.35-0.1.37
+  built the engine with build.ps1 -Engine -Full -NoDeploy and copied the natives in instead.
+- A build in the release engine worktree rewrites plugins/hl2/mat_vmt_progs.h's header comment
+  (the generator's path), which the clean-input gate refuses; restore it, or build elsewhere.
+
 ## P1211 residuals (2 Nov 2026)
 - Not mirrored, so still a short snap: trigger_gravity (87 maps; only AddOutput gravity rows are),
   the START gravity reset (P865), CancelPending, and edges the mirror mispredicts (an entry lands on
