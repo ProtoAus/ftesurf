@@ -1,6 +1,6 @@
 // P963: explicit main-menu lobby/DM screen. No text/proof cache on disk or cvars.
 // P1200: surfd keeps the lines 30 days; the only thing kept here is cl_chat_read,
-// "mark:id" per friend -- the newest of their messages this install has shown.
+// "mark id" per friend -- the newest of their messages this install has shown.
 #define MC_MSG_H 96
 float mc_rows, mc_view, mc_friends;
 float mc_count, mc_height, mc_cursor;
@@ -63,12 +63,13 @@ float(string a, string b) MC_IdAfter =
 	return strcmp(a, b) > 0;
 };
 
+// Pairs "mark id", spaces only: tokenize splits a ':' off as its own token.
 string(string peer) MC_ReadMark =
 {
 	local float i, n;
 	n = tokenize(cvar_string("cl_chat_read"));
-	for (i = 0; i < n; i = i + 1)
-		if (substring(argv(i), 0, 9) == strcat(peer, ":")) return substring(argv(i), 9, 10);
+	for (i = 0; i + 1 < n; i = i + 2)
+		if (argv(i) == peer) return argv(i + 1);
 	return "0";
 };
 
@@ -76,14 +77,13 @@ void(string peer, string id) MC_SetRead =
 {
 	local float i, n, kept;
 	local string out;
-	out = strcat(peer, ":", id);
+	out = strcat(peer, " ", id);
 	kept = 1;
 	n = tokenize(cvar_string("cl_chat_read"));
-	for (i = 0; i < n && kept < 128; i = i + 1)
-		if (substring(argv(i), 0, 9) != strcat(peer, ":"))
-		if (MF_Hex(substring(argv(i), 0, 8), 8))
+	for (i = 0; i + 1 < n && kept < 128; i = i + 2)
+		if (argv(i) != peer && MF_Hex(argv(i), 8) && MC_Digits(argv(i + 1)))
 		{
-			out = strcat(out, " ", argv(i));
+			out = strcat(out, " ", argv(i), " ", argv(i + 1));
 			kept = kept + 1;
 		}
 	cvar_set("cl_chat_read", out);
