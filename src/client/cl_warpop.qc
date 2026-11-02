@@ -722,7 +722,9 @@ void(float seat, float seq, float seconds, float offset) CSQC_PredictPlayerPreMo
 		predinput_apply = predinput_apply | WOP_BODY;   // origin and ground stay as the engine preloaded them
 		predinput_velocity = tg_pm_vel;
 	}
-	if (tg_pm_gravon && predinput_version >= 1211)
+	// The client engine must take the flag, and the server's engine apply gravity per command
+	// (review: a P1211 csprogs ahead of the lobby engine, or after its rollback).
+	if (tg_pm_gravon && predinput_version >= 1211 && tg_grav_srv)
 	{
 		predinput_apply = predinput_apply | WOP_GRAVITY;
 		predinput_entgravity = tg_grav;
