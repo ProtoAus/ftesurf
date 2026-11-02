@@ -836,6 +836,23 @@ def main():
     check("a search sees through Quake colour codes",
           [x["name"] for x in s["players"]], ["^1Red^7Shift"])
 
+    # P1231 review 1: the directory marker reads the accounts' data, not their Row objects.
+    db = m.connect()
+    try:
+        db.execute("INSERT OR IGNORE INTO accounts (steamid, name, created_at) VALUES (?, ?, 1)",
+                   ("76561198000000077", "Marker"))
+        db.commit()
+        a, b = m._people_marker(db), m._people_marker(db)
+        db.execute("UPDATE accounts SET banned_at=5 WHERE steamid=?", ("76561198000000077",))
+        db.commit()
+        c = m._people_marker(db)
+        db.execute("DELETE FROM accounts WHERE steamid=?", ("76561198000000077",))
+        db.commit()
+    finally:
+        db.close()
+    check("the directory marker repeats while nothing changes, and moves on a ban",
+          (a == b, b == c), (True, False))
+
     # ---- one profile -------------------------------------------------------
     h1 = m.web_handle("p1")
     p = body(get(m, "/board/api/player/" + h1))

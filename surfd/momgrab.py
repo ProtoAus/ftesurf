@@ -365,9 +365,53 @@ def bsp_sha1(mp, maps_dir, cache_path):
     with open(p, "rb") as fh:
         for blk in iter(lambda: fh.read(1 << 20), b""):
             h.update(blk)
-    _bsp[mp] = key + [h.hexdigest().upper()]
+    mine = key + [h.hexdigest().upper()]
+    # P1232 review: the momrequests service keeps one _bsp for its lifetime; merge what other
+    # processes saved since, or this save drops their entries and the next tick hashes again.
+    disk = _load(cache_path)
+    _bsp.update(disk if isinstance(disk, dict) else {})
+    _bsp[mp] = mine
     _save(cache_path, _bsp)
-    return _bsp[mp][2]
+    return mine[2]
+
+
+def demo_build(path):
+    """[map, build SHA1] from a demo's own header, or [None, None] when it cannot be read."""
+    try:
+        with open(path, "rb") as fh:
+            head = momreplay.read_header(fh.read(0x200))
+        return [(head["map"] or "").lower() or None, (head["map_sha1"] or "").upper() or None]
+    except Exception:
+        return [None, None]
+
+
+def recheck_builds(done, judged, demos, maps_dir, bsp_cache):
+    """P1232: reopen an "otherbuild" verdict once the build held is the demo's own.  mapwatch
+    replaces builds, and on 2 Nov 1,437 settled demos on disk matched the build then held.
+    `judged` is demo -> demo_build(); a verdict from before it is read once from its demo on
+    disk.  A map no file holds, or one that cannot be read, reopens nothing (review 1: either
+    would file a wrong-build demo as `nomap`).  -> the number reopened."""
+    held, reopened = {}, 0
+
+    def have(mp):
+        if mp not in held:
+            try:
+                held[mp] = bsp_sha1(mp, maps_dir, bsp_cache)
+            except Exception:
+                held[mp] = None
+        return held[mp]
+
+    for h in [h for h in judged if done.get(h) != "otherbuild"]:
+        del judged[h]
+    for h in [h for h, why in done.items() if why == "otherbuild"]:
+        if h not in judged:
+            judged[h] = demo_build(os.path.join(demos, h[:2], h + ".mtv"))
+        mp, want = judged[h]
+        if mp and want and have(mp) == want:
+            del done[h]
+            del judged[h]
+            reopened += 1
+    return reopened
 
 
 def fresh_header(h, sha, build, track, leg):
@@ -609,6 +653,7 @@ def run(a, stop=None):
     # at that first handoff too rather than immediately spending another slot.
     st.setdefault("last_request", time.time())
     park = st.setdefault("park", {})
+    judged = st.setdefault("judged", {})
 
     def again(h, why):
         w = later.get(h) or [0, 0, why]
@@ -624,6 +669,10 @@ def run(a, stop=None):
     except ImportError:
         zstd = False
     q, read, unread, prio = {"boards": {}}, 0, 0, set()
+    if a.go and not getattr(a, "requests_only", False):
+        n = recheck_builds(done, judged, a.demos, a.maps, os.path.join(a.state, "bsp.json"))
+        if n:
+            print("reopened %d demo(s) judged on a build no longer held" % n)
     explicit = request_picks(done, later, now, zstd) if a.go else []
     automatic = []
     if not getattr(a, "requests_only", False):
@@ -731,6 +780,8 @@ def run(a, stop=None):
             else:
                 done[h] = status
                 later.pop(h, None)
+                if status == "otherbuild":
+                    judged[h] = demo_build(dest)
             _save(sp, st)
         # Lifted only by an answer: a tick that asked nothing proves nothing.
         if park and asked:

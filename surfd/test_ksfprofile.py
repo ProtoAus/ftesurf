@@ -481,7 +481,7 @@ class Profiles(unittest.TestCase):
         S.migrate()
         # The scoped marker is the schema20 step; migrate() also runs the
         # subsequent additive steps. Pin today's final schema, not that step.
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 24)
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], S.SCHEMA_VERSION)
         columns = self.db.execute('PRAGMA table_info(ksf_unbound)').fetchall()
         self.assertEqual([(r[1], r[2], r[3], r[5]) for r in columns],
                          [('map','TEXT',1,1), ('track','INTEGER',1,2), ('leg','INTEGER',1,3),
@@ -497,12 +497,12 @@ class Profiles(unittest.TestCase):
         before = [tuple(r) for r in self.db.execute('SELECT * FROM runs ORDER BY map')]
         self.db.executescript('DROP TABLE ksf_unbound; DROP TABLE ksfprofiles; PRAGMA user_version=17;')
         S.migrate()
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 24)
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], S.SCHEMA_VERSION)
         self.assertEqual(self.db.execute('SELECT count(*) FROM ksf_unbound').fetchone()[0], 0)
         self.assertEqual([tuple(r) for r in self.db.execute('SELECT * FROM runs ORDER BY map')], before)
 
     def test_migrate_current_schema_idempotent_and_no_existing_run_changes(self):
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 24)
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], S.SCHEMA_VERSION)
         S.migrate(); self.assertEqual(self.count(), 0)
 
 
