@@ -247,7 +247,11 @@ string(string extra) Inv_MaskCode =
 		// Distance along the view from each depth: the scene's (rt/$lastgameviewdepth, this frame's
 		// main view) against this body's; behind by more than 2% + 4u is behind something else.
 		" vec2 uv = cp.xy / cp.w * 0.5 + 0.5;\n"
-		" float zs = texture2D(s_depth, uv).r;\n"
+		// The nearest depth within about a mask pixel: one filtered sample blends an occluder's
+		// edge with what is behind it, and leaked a sliver of a wearer behind a wall (visual4).
+		" vec2 o = vec2(abs(dFdx(uv.x)), abs(dFdy(uv.y))) * 0.75;\n"
+		" float zs = min(texture2D(s_depth, uv).r, min(min(texture2D(s_depth, uv + o).r, texture2D(s_depth, uv - o).r),\n"
+		"   min(texture2D(s_depth, uv + vec2(o.x, -o.y)).r, texture2D(s_depth, uv + vec2(-o.x, o.y)).r)));\n"
 		" float ds = m_projection[3][2] / (zs * 2.0 - 1.0 + m_projection[2][2]);\n"
 		" float df = m_projection[3][2] / (gl_FragCoord.z * 2.0 - 1.0 + m_projection[2][2]);\n"
 		" if (zs < 0.99999 && ds < df * 0.98 - 4.0) discard;\n"
