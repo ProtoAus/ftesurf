@@ -5,7 +5,8 @@ and stay on the lobby. Menu proofs use a separate fixed signature domain;
 message proofs additionally bind recipient and exact UTF-8 body hash. Every use rechecks the
 key link and ban, and binds the capability to that lobby's node. Presence and
 join addresses are never supplied by clients. Messages are operator-readable,
-not E2E encrypted, and are bounded/expired (not logged).
+not E2E encrypted, and bounded: P1200 (Lex) keeps them MESSAGE_TTL, the room's
+last ROOM_KEEP lines and each sender's last DM_KEEP to each friend.
 """
 import hashlib
 import hmac
@@ -24,7 +25,13 @@ import playstats
 MAX_FRIENDS = 128
 PRESENCE_TTL = 16
 SESSION_TTL = 86400
-MESSAGE_TTL = 120
+MESSAGE_TTL = 30 * 86400        # P1200: saved, so a DM to an offline friend waits for them
+LOBBY_DM_TTL = 120              # a lobby relays only DMs this recent; older ones wait in the menu
+ROOM_KEEP = 128
+DM_KEEP = 50                    # per sender and recipient
+MESSAGES_MAX = 200000           # every saved line; past it a send is refused, never a purge
+SNAP_ROOM, SNAP_DM = 24, 32     # what menus before P1200 accept (they refuse more than 32)
+HIST_ROOM, HIST_DM = 50, 100    # `hist=1`: a P1200 menu
 TOKEN = re.compile(r"[0-9a-f]{64}\Z")
 MARK = re.compile(r"[0-9a-f]{8}(?:[0-9a-f]{4})?\Z")
 MENU_NONCE = re.compile(r"[0-9a-f]{32}\Z")
@@ -231,37 +238,53 @@ def befriend(db, sid, other):
     return 1, "Friend added", 200
 
 
-def chat_snapshot(db, sid, now, lobby_ttl):
-    """Bounded recent text only; neither Steam IDs nor other people's inboxes."""
+def chat_snapshot(db, sid, now, lobby_ttl, hist=False):
+    """Bounded saved text only; neither Steam IDs nor other people's inboxes."""
+    room_max, dm_max = (HIST_ROOM, HIST_DM) if hist else (SNAP_ROOM, SNAP_DM)
     room, messages = [], []
-    rows = db.execute("SELECT m.*,a.name FROM social_messages m JOIN accounts a ON a.steamid=m.sender"
-                      " WHERE a.banned_at=0 AND m.sent>=?"
-                      " AND (m.recipient=? OR m.sender=? OR m.recipient=?)"
-                      " ORDER BY m.id DESC LIMIT 256", (now - MESSAGE_TTL, CHAT_ROOM, sid, sid))
-    for row in rows:
-        public = row["recipient"] == CHAT_ROOM
-        other = row["sender"] if row["recipient"] == sid else row["recipient"]
-        if public:
-            if len(room) >= 24 or relation(db, sid, row["sender"]) in (4, 5):
-                continue
-        elif len(messages) >= 32 or relation(db, sid, other) != 3:
+    for row in db.execute("SELECT m.*,a.name FROM social_messages m JOIN accounts a ON a.steamid=m.sender"
+                          " WHERE a.banned_at=0 AND m.sent>=? AND m.recipient=?"
+                          " ORDER BY m.id DESC LIMIT ?", (now - MESSAGE_TTL, CHAT_ROOM, ROOM_KEEP)):
+        if len(room) >= room_max:
+            break
+        if relation(db, sid, row["sender"]) in (4, 5):
             continue
-        item = dict(id=str(row["id"]), who=accounts.who_of(row["sender"]),
-                    name=accounts.game_name(row["name"]), text=row["body"], sent=row["sent"])
-        if public:
-            room.append(item)
-        else:
-            item["peer"] = accounts.who_of(other)
-            messages.append(item)
+        room.append(dict(id=str(row["id"]), who=accounts.who_of(row["sender"]),
+                         name=accounts.game_name(row["name"]), text=row["body"], sent=row["sent"]))
+    for row in db.execute("SELECT m.*,a.name FROM social_messages m JOIN accounts a ON a.steamid=m.sender"
+                          " WHERE a.banned_at=0 AND m.sent>=? AND (m.recipient=? OR m.sender=?)"
+                          " AND m.recipient<>? ORDER BY m.id DESC LIMIT 1024",
+                          (now - MESSAGE_TTL, sid, sid, CHAT_ROOM)):
+        if len(messages) >= dm_max:
+            break
+        other = row["sender"] if row["recipient"] == sid else row["recipient"]
+        if relation(db, sid, other) != 3:
+            continue
+        messages.append(dict(id=str(row["id"]), who=accounts.who_of(row["sender"]),
+                             name=accounts.game_name(row["name"]), text=row["body"], sent=row["sent"],
+                             peer=accounts.who_of(other)))
     return dict(ok=1, me=accounts.who_of(sid), room=list(reversed(room)),
                 messages=list(reversed(messages)),
                 friends=[r for r in friend_rows(db, sid, now, lobby_ttl) if r["relation"] == 3])
 
 
+def keep_dms(db, sender, recipient):
+    """P1200: a sender's oldest DMs to one friend go past DM_KEEP."""
+    db.execute("DELETE FROM social_messages WHERE sender=? AND recipient=? AND id NOT IN"
+               " (SELECT id FROM social_messages WHERE sender=? AND recipient=? ORDER BY id DESC LIMIT ?)",
+               (sender, recipient, sender, recipient, DM_KEEP))
+
+
+def keep_room(db):
+    db.execute("DELETE FROM social_messages WHERE recipient=? AND id NOT IN"
+               " (SELECT id FROM social_messages WHERE recipient=? ORDER BY id DESC LIMIT ?)",
+               (CHAT_ROOM, CHAT_ROOM, ROOM_KEEP))
+
+
 # P996: a board line in the public room -- a world record or personal best, said
 # from the player's account (surfd's submit_run).  A typed message may not start so.
 ANNOUNCE = "* "
-ANNOUNCE_GAP = MESSAGE_TTL          # one personal-best line per player per room lifetime
+ANNOUNCE_GAP = 120                  # one personal-best line per player per two minutes (the old room lifetime)
 
 
 def announce(db, sid, body, now, always=False):
@@ -280,13 +303,11 @@ def announce(db, sid, body, now, always=False):
             if any(r.split(" -- ")[0] == what for r in recent):
                 return False
             db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
-            if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= 2048:
+            if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= MESSAGES_MAX:
                 return False
             db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
                        (sid, CHAT_ROOM, ANNOUNCE + body[:300], now))
-            db.execute("DELETE FROM social_messages WHERE recipient=? AND id NOT IN"
-                       " (SELECT id FROM social_messages WHERE recipient=? ORDER BY id DESC LIMIT 128)",
-                       (CHAT_ROOM, CHAT_ROOM))
+            keep_room(db)
         return True
     except sqlite3.Error:
         return False
@@ -331,18 +352,12 @@ def menu_message(db, sid, nonce, expires, target, text, now, lobby_ttl):
     if other != CHAT_ROOM:
         if not other or other == sid or relation(db, sid, other) != 3:
             return {"ok": 0, "error": "Add each other as friends first"}, 403
-        live = presence(db, other, now, lobby_ttl)
-        if not live["online"] and not live["menu_online"]:
-            return {"ok": 0, "error": "Your friend is offline"}, 409
     db.execute("DELETE FROM social_menu_messages WHERE until<?", (now,))
     proof = digest(sid + "\n" + nonce)
     if db.execute("SELECT 1 FROM social_menu_messages WHERE proof=?", (proof,)).fetchone():
         return {"ok": 0, "error": "Message already sent"}, 409
     db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
-    if other != CHAT_ROOM and db.execute("SELECT COUNT(*) FROM social_messages WHERE recipient=?",
-                                        (other,)).fetchone()[0] >= 32:
-        return {"ok": 0, "error": "Your friend's inbox is busy"}, 429
-    if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= 2048:
+    if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= MESSAGES_MAX:
         return {"ok": 0, "error": "Chat is busy"}, 429
     serial = db.execute("SELECT seq FROM sqlite_sequence WHERE name='social_messages'").fetchone()
     if serial and serial[0] >= 2147483647:
@@ -351,9 +366,9 @@ def menu_message(db, sid, nonce, expires, target, text, now, lobby_ttl):
     row = db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
                      (sid, other, text, now))
     if other == CHAT_ROOM:
-        db.execute("DELETE FROM social_messages WHERE recipient=? AND id NOT IN"
-                   " (SELECT id FROM social_messages WHERE recipient=? ORDER BY id DESC LIMIT 128)",
-                   (CHAT_ROOM, CHAT_ROOM))
+        keep_room(db)
+    else:
+        keep_dms(db, sid, other)
     return {"ok": 1, "id": str(row.lastrowid), "note": "Message sent"}, 200
 
 
@@ -480,7 +495,7 @@ def register(app, d):
                     rows = [r for r in friend_rows(db, sid, now, d.lobby_ttl) if r["relation"] <= 3]
                     return reply({"ok": 1, "friends": rows})
                 if op == "chat":
-                    return reply(chat_snapshot(db, sid, now, d.lobby_ttl))
+                    return reply(chat_snapshot(db, sid, now, d.lobby_ttl, f.get("hist") == "1"))
                 if op == "message":
                     if not d.rate_ok(sid, now, 20, "social-action"):
                         return reply({"ok": 0, "error": "Slow down; try again shortly"}, 429)
@@ -577,8 +592,8 @@ def register(app, d):
                             "SELECT m.* FROM social_messages m JOIN accounts a ON a.steamid=m.sender"
                             " JOIN social_friends f ON ((f.lo=m.sender AND f.hi=m.recipient) OR"
                             " (f.hi=m.sender AND f.lo=m.recipient))"
-                            " WHERE m.recipient=? AND m.id>? AND a.banned_at=0 AND f.accepted=1"
-                            " ORDER BY m.id LIMIT 2", (sid, s["ack"])):
+                            " WHERE m.recipient=? AND m.id>? AND m.sent>=? AND a.banned_at=0 AND f.accepted=1"
+                            " ORDER BY m.id LIMIT 2", (sid, s["ack"], now - LOBBY_DM_TTL)):
                         if relation(db, sid, m["sender"]) != 3:
                             continue
                         sender = db.execute("SELECT name,banned_at FROM accounts WHERE steamid=?",
@@ -735,16 +750,14 @@ def register(app, d):
                     if not d.rate_ok(sid, now, 12, "social-room"):
                         return reply({"ok": 0, "error": "Slow down; try again shortly"}, 429)
                     db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
-                    if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= 2048:
+                    if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= MESSAGES_MAX:
                         return reply({"ok": 0, "error": "Chat is busy"}, 429)
                     serial = db.execute("SELECT seq FROM sqlite_sequence WHERE name='social_messages'").fetchone()
                     if serial and serial[0] >= 2147483647:
                         return reply({"ok": 0, "error": "Chat is busy"}, 429)
                     db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
                                (sid, CHAT_ROOM, text, now))
-                    db.execute("DELETE FROM social_messages WHERE recipient=? AND id NOT IN"
-                               " (SELECT id FROM social_messages WHERE recipient=? ORDER BY id DESC LIMIT 128)",
-                               (CHAT_ROOM, CHAT_ROOM))
+                    keep_room(db)
                     return reply({"ok": 1, "note": ""})      # the line is its own receipt
                 other = resolve(db, request.form.get("who", ""), sid if op in ("remove", "unblock") else None)
                 if not other or other == sid:
@@ -806,26 +819,24 @@ def register(app, d):
                         return reply({"ok": 0, "error": "They have not added you back yet"}, 403)
                     if rel != 3:
                         return reply({"ok": 0, "error": "Add them as a friend first"}, 403)
-                    live = presence(db, other, now, d.lobby_ttl)
-                    if not live["online"]:
-                        return reply({"ok": 0, "error": "Your friend is offline"}, 409)
                     if op == "join":
+                        live = presence(db, other, now, d.lobby_ttl)
+                        if not live["online"]:
+                            return reply({"ok": 0, "error": "Your friend is offline"}, 409)
                         return reply({"ok": 1, "addr": live["addr"], "note": "Joining friend"})
                     text = request.form.get("text", "").strip()
                     if not text or len(text) > 160 or len(text.encode("utf-8")) > 320 or any(
                             ord(c) < 32 or ord(c) == 127 for c in text):
                         return reply({"ok": 0, "error": "Use 1-160 characters on one line"}, 400)
                     db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
-                    if db.execute("SELECT COUNT(*) FROM social_messages WHERE recipient=?",
-                                  (other,)).fetchone()[0] >= 32:
-                        return reply({"ok": 0, "error": "Your friend's inbox is busy"}, 429)
-                    if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= 2048:
+                    if db.execute("SELECT COUNT(*) FROM social_messages").fetchone()[0] >= MESSAGES_MAX:
                         return reply({"ok": 0, "error": "Private chat is busy"}, 429)
                     serial = db.execute("SELECT seq FROM sqlite_sequence WHERE name='social_messages'").fetchone()
                     if serial and serial[0] >= 2147483647:
                         return reply({"ok": 0, "error": "Private chat is busy"}, 429)
                     db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
                                (sid, other, text, now))
+                    keep_dms(db, sid, other)
                     note = "Private message sent"
         except sqlite3.Error:
             return reply({"ok": 0, "error": "Friends unavailable"}, 503)
