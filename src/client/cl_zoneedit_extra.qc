@@ -59,6 +59,7 @@ vector(vector p) ZoneEdit_EdgeSnap =
 	// Existing zone vertices and projected XY edges, preserving the traced Z.
 	for (z = 0; z < zone_count; z = z + 1)
 	{
+		if (ze_dragging && z == ze_sel) continue;   // P1203: not the zone being dragged
 		first = zone_first[z]; n = zone_npts[z];
 		for (i = 0; i < n; i = i + 1)
 		{
@@ -870,4 +871,453 @@ float(vector p, float w, float y, float rowh, float tsz) ZoneEdit_DimsDraw =
 		if (sui_is_hovered(id)) ze_dim_hover = face;
 	}
 	return y + rowh;
+};
+
+/*
+  P1203: handles (Lex, 2 Nov: "highlight and grab vertex points with your mouse, and then drag it
+  around in 3d ... same with grabbing edges and faces").  A zone is a flat ring pulled up, so a
+  corner or edge moves in XY and the top and bottom faces move the whole ceiling or floor.  The
+  crosshair picks the handle, as placing does: a corner within ZE_SNAPPX on screen, else an edge,
+  else the face the aim passes through.  A dragged point goes where Edge snap puts the aim
+  (ZoneEdit_Snap) and otherwise to the aim on its own level's plane, on the grid; an edge moves by
+  the grab point's offset, a side face along its outward normal, top and bottom by the height the
+  aim passes nearest.  A move that would cross the outline keeps the last good one.
+*/
+// The point of segment a-b nearest the aim's line.
+vector(vector eye, vector fwd, vector a, vector b) ZoneEdit_RayNear =
+{
+	local vector u, w;
+	local float uu, uf, uw, fw, den;
+
+	u = b - a; w = a - eye;
+	uu = u * u; uf = u * fwd; uw = u * w; fw = fwd * w;
+	den = uu - uf * uf;
+	if (uu < 0.0001 || den < 0.0001) return a;
+	return a + u * bound(0, (uf * fw - uw) / den, 1);
+};
+
+// The height where the aim passes nearest the vertical through x y (ZoneEdit_Pull's geometry).
+float(vector eye, vector fwd, float x, float y, float keep) ZoneEdit_VertNear =
+{
+	local vector w;
+	local float den;
+
+	w = eye - [x, y, 0];
+	den = 1 - fwd_z * fwd_z;
+	if (den < 0.0001) return keep;
+	return (w_z - fwd_z * (fwd * w)) / den;
+};
+
+// Where the aim crosses the level z, or FALSE (behind the eye, or looking along it).
+float(vector eye, vector fwd, float z) ZoneEdit_AtLevel =
+{
+	local float t;
+
+	if (fabs(fwd_z) < 0.0001) return FALSE;
+	t = (z - eye_z) / fwd_z;
+	if (t <= 0) return FALSE;
+	ze_grab_at = eye + fwd * t;
+	return TRUE;
+};
+
+// The outward normal of ring edge i of the zone as the drag found it, in XY (either winding).
+vector(float i) ZoneEdit_SideOut =
+{
+	local float k, n, area;
+	local vector a, b, nm;
+
+	n = ze_onp;
+	area = 0;
+	for (k = 0; k < n; k = k + 1)
+	{
+		a = ze_orig[k]; b = ze_orig[(k + 1) % n];
+		area = area + a_x * b_y - b_x * a_y;
+	}
+	a = ze_orig[i]; b = ze_orig[(i + 1) % n];
+	nm = normalize([b_y - a_y, a_x - b_x, 0]);
+	return (area >= 0) ? nm : -nm;      // counter-clockwise: the right of each edge is outside
+};
+
+// The nearest face of zone z the aim passes through: its distance, or ZE_REACH. Sets ze_pk/ze_pi.
+float(vector eye, vector fwd, float z) ZoneEdit_FaceHit =
+{
+	local float i, n, first, best, d, s, lev, zz;
+	local vector a, b, nm, q, u;
+
+	first = zone_first[z]; n = zone_npts[z];
+	best = ZE_REACH; ze_pk = ZEH_NONE;
+	for (i = 0; i < n; i = i + 1)
+	{
+		a = zone_pt[first + i]; b = zone_pt[first + ((i + 1) % n)];
+		nm = normalize([b_y - a_y, a_x - b_x, 0]);
+		d = fwd * nm;
+		if (fabs(d) < 0.0001) continue;
+		d = ([a_x, a_y, eye_z] - eye) * nm / d;
+		if (d <= 0 || d >= best) continue;
+		q = eye + fwd * d;
+		u = b - a; s = ((q - a) * u) / (u * u);
+		if (s < 0 || s > 1 || q_z < zone_bottom[z] || q_z > zone_top[z]) continue;
+		best = d; ze_pk = ZEH_SIDE; ze_pi = i; ze_pat = q;
+	}
+	for (lev = 0; lev < 2; lev = lev + 1)
+	{
+		zz = lev ? zone_top[z] : zone_bottom[z];
+		if (!ZoneEdit_AtLevel(eye, fwd, zz)) continue;
+		d = vlen(ze_grab_at - eye);
+		if (d >= best) continue;
+		if (!Zone_PointInside(z, [ze_grab_at_x, ze_grab_at_y, (zone_bottom[z] + zone_top[z]) * 0.5])) continue;
+		best = d; ze_pk = lev ? ZEH_TOP : ZEH_BOT; ze_pi = 0; ze_pat = ze_grab_at;
+	}
+	return best;
+};
+
+// The handle of the selected zone under the aim.
+void() ZoneEdit_Hover =
+{
+	local float z, i, n, first, lev, d, best, zz;
+	local vector a, b, q;
+
+	ze_hk = ZEH_NONE;
+	z = ze_sel;
+	if (z < 0 || z >= zone_count) return;
+	first = zone_first[z]; n = zone_npts[z];
+	best = ZE_SNAPPX * ui_cv_scale;
+	for (i = 0; i < n; i = i + 1)
+		for (lev = 0; lev < 2; lev = lev + 1)
+		{
+			a = zone_pt[first + i];
+			a_z = lev ? zone_top[z] : zone_bottom[z];
+			d = ZoneEdit_PxOff(ze_eye, ze_fwd, a);
+			if (d < best) { best = d; ze_hk = ZEH_VERT; ze_hi = i; ze_hl = lev; ze_grab = a; }
+		}
+	if (ze_hk) return;
+	for (i = 0; i < n; i = i + 1)
+	{
+		a = zone_pt[first + i]; b = zone_pt[first + ((i + 1) % n)];
+		for (lev = 0; lev < 3; lev = lev + 1)
+		{
+			if (lev < 2)
+			{
+				zz = lev ? zone_top[z] : zone_bottom[z];
+				q = ZoneEdit_RayNear(ze_eye, ze_fwd, [a_x, a_y, zz], [b_x, b_y, zz]);
+			}
+			else
+				q = ZoneEdit_RayNear(ze_eye, ze_fwd, [a_x, a_y, zone_bottom[z]], [a_x, a_y, zone_top[z]]);
+			d = ZoneEdit_PxOff(ze_eye, ze_fwd, q);
+			if (d >= best) continue;
+			best = d; ze_hi = i; ze_grab = q;
+			if (lev < 2) { ze_hk = ZEH_EDGE; ze_hl = lev; }
+			else { ze_hk = ZEH_VERT; ze_hl = 2; }
+		}
+	}
+	if (ze_hk) return;
+	if (ZoneEdit_FaceHit(ze_eye, ze_fwd, z) < ZE_REACH)
+	{
+		ze_hk = ze_pk; ze_hi = ze_pi; ze_hl = 0; ze_grab = ze_pat;
+	}
+};
+
+string() ZoneEdit_HandleName =
+{
+	if (ze_hk == ZEH_VERT) return sprintf("corner %g%s", ze_hi + 1, (ze_hl == 2) ? "" : (ze_hl ? " (top)" : " (bottom)"));
+	if (ze_hk == ZEH_EDGE) return sprintf("edge %g-%g %s", ze_hi + 1, (ze_hi + 1) % zone_npts[ze_sel] + 1, ze_hl ? "top" : "bottom");
+	if (ze_hk == ZEH_SIDE) return sprintf("side %g-%g", ze_hi + 1, (ze_hi + 1) % zone_npts[ze_sel] + 1);
+	if (ze_hk == ZEH_TOP) return sprintf("top  z %.1f", zone_top[ze_sel]);
+	if (ze_hk == ZEH_BOT) return sprintf("bottom  z %.1f", zone_bottom[ze_sel]);
+	return "";
+};
+
+string() ZoneEdit_EditLine =
+{
+	if (!ze_hk) return "aim at a corner, edge or face of the white zone; Mouse1 on another zone selects it";
+	if (!ze_dragging) return sprintf("%s  -  hold Mouse1 to drag", ZoneEdit_HandleName());
+	if (ze_dragbad) return sprintf("%s: that move would cross the outline", ZoneEdit_HandleName());
+	return sprintf("dragging %s", ZoneEdit_HandleName());
+};
+
+void() ZoneEdit_EditBegin =
+{
+	if (ze_sel < 0 || ze_sel >= zone_count) { ZoneEdit_Note("Select a zone first"); return; }
+	if (zone_npts[ze_sel] > ZE_MAXPTS)
+	{
+		ZoneEdit_Note(sprintf("%g corners: only zones of up to %g can be edited here", zone_npts[ze_sel], ZE_MAXPTS));
+		return;
+	}
+	if (!ze_orig) ze_orig = memalloc(sizeof(vector) * ZE_MAXPTS);
+	ZoneEdit_ToPlacing();
+	ui_ze_state = ZE_E;
+	ze_hk = ZEH_NONE;
+	ze_dragging = ze_drop = FALSE;
+	ZoneEdit_Note("Aim at a corner, edge or face; hold Mouse1 to drag it");
+};
+
+// The zone as it was when the drag began.
+void() ZoneEdit_DragRestore =
+{
+	local float i, first;
+
+	first = zone_first[ze_sel];
+	for (i = 0; i < ze_onp; i = i + 1)
+		zone_pt[first + i] = ze_orig[i];
+	zone_bottom[ze_sel] = ze_obot; zone_top[ze_sel] = ze_otop;
+	Zone_Finish(ze_sel);
+};
+
+void() ZoneEdit_DragCancel =
+{
+	if (!ze_dragging) return;
+	if (ze_sel >= 0 && ze_sel < zone_count && zone_npts[ze_sel] == ze_onp) ZoneEdit_DragRestore();
+	ze_dragging = ze_drop = ze_dragbad = FALSE;
+	ZoneEdit_Note("Drag cancelled; the zone is as it was");
+};
+
+void() ZoneEdit_GrabStart =
+{
+	local float i, first;
+
+	ze_onp = zone_npts[ze_sel];
+	first = zone_first[ze_sel];
+	for (i = 0; i < ze_onp; i = i + 1)
+		ze_orig[i] = zone_pt[first + i];
+	ze_obot = zone_bottom[ze_sel]; ze_otop = zone_top[ze_sel];
+	ze_dragging = TRUE; ze_dragbad = FALSE;
+};
+
+// One frame of a drag: the candidate goes through ze_pts (ZoneEdit_PolygonValid's scratch).
+void() ZoneEdit_DragStep =
+{
+	local float z, i, n, g, snapped, lev, d, nb, nt;
+	local vector to, dv, nm;
+
+	z = ze_sel; n = ze_onp;
+	g = max(1, ze_grid);
+	snapped = (ze_edges && ze_hitok && ze_skind != ZES_NONE);
+	for (i = 0; i < n; i = i + 1)
+		ze_pts[i] = ze_orig[i];
+	nb = ze_obot; nt = ze_otop;
+	if (ze_hk == ZEH_TOP || ze_hk == ZEH_BOT)
+	{
+		d = ZoneEdit_VertNear(ze_eye, ze_fwd, ze_grab_x, ze_grab_y, ze_grab_z);
+		if (ze_hk == ZEH_BOT && snapped && ze_skind <= ZES_MAPE) d = ze_hit_z;      // the floor's own height
+		else if (ze_snap) d = (ze_hk == ZEH_BOT) ? floor(d / g) * g : rint(d / g) * g;
+		if (ze_hk == ZEH_TOP) nt = bound(nb + ZE_MINH, d, nb + ZE_MAXH);
+		else nb = bound(nt - ZE_MAXH, d, nt - ZE_MINH);
+	}
+	else
+	{
+		// Where the grab point goes: Edge snap's point, else the aim on the grab point's level.
+		if (snapped) to = [ze_sat_x, ze_sat_y, ze_grab_z];
+		else
+		{
+			lev = ze_grab_z;
+			if (!ZoneEdit_AtLevel(ze_eye, ze_fwd, lev)) return;
+			to = ze_grab_at;
+		}
+		dv = to - ze_grab; dv_z = 0;
+		if (ze_hk == ZEH_VERT)
+		{
+			if (!snapped && ze_snap) to = [rint(to_x / g) * g, rint(to_y / g) * g, 0];
+			ze_pts[ze_hi] = [to_x, to_y, 0];
+		}
+		else if (ze_hk == ZEH_EDGE)
+		{
+			if (!snapped && ze_snap) dv = [rint(dv_x / g) * g, rint(dv_y / g) * g, 0];
+			ze_pts[ze_hi] = ze_orig[ze_hi] + dv;
+			ze_pts[(ze_hi + 1) % n] = ze_orig[(ze_hi + 1) % n] + dv;
+		}
+		else if (ze_hk == ZEH_SIDE)
+		{
+			nm = ZoneEdit_SideOut(ze_hi);
+			d = dv * nm;
+			if (!snapped && ze_snap) d = rint(d / g) * g;
+			ze_pts[ze_hi] = ze_orig[ze_hi] + nm * d;
+			ze_pts[(ze_hi + 1) % n] = ze_orig[(ze_hi + 1) % n] + nm * d;
+		}
+	}
+	ze_np = n;
+	ze_dragbad = !ZoneEdit_PolygonValid();
+	ze_np = 0;
+	if (ze_dragbad) return;
+	for (i = 0; i < n; i = i + 1)
+	{
+		dv = ze_pts[i]; dv_z = 0;
+		zone_pt[zone_first[z] + i] = dv;
+	}
+	zone_bottom[z] = nb; zone_top[z] = nt;
+	Zone_Finish(z);
+};
+
+void() ZoneEdit_DragDrop =
+{
+	local float i, same, first;
+
+	ze_drop = FALSE;
+	if (!ze_dragging) return;
+	ze_dragging = ze_dragbad = FALSE;
+	first = zone_first[ze_sel];
+	same = (zone_bottom[ze_sel] == ze_obot && zone_top[ze_sel] == ze_otop);
+	for (i = 0; same && i < ze_onp; i = i + 1)
+		if (zone_pt[first + i] != ze_orig[i]) same = FALSE;
+	if (same) { ZoneEdit_Note(sprintf("%s unchanged", ZoneEdit_HandleName())); return; }
+	ZoneEdit_Touch();
+	if (zone_td_kind[ze_sel] == ZTD_POS && !Zone_PointInside(ze_sel, zone_td_pos[ze_sel] + '0 0 2'))
+		ZoneEdit_Note(sprintf("%s moved; its custom spawn is now outside: Set spawn again", ZoneEdit_Label(ze_sel)));
+	else
+		ZoneEdit_Note(sprintf("%s: moved %s (not saved)", ZoneEdit_Label(ze_sel), ZoneEdit_HandleName()));
+};
+
+// A click on nothing of the selected zone selects the zone the aim passes through.
+void() ZoneEdit_EditPick =
+{
+	local float z, d, best, pick;
+
+	best = ZE_REACH; pick = -1;
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		d = ZoneEdit_FaceHit(ze_eye, ze_fwd, z);
+		if (d < best) { best = d; pick = z; }
+	}
+	if (pick < 0 || pick == ze_sel) return;
+	if (zone_npts[pick] > ZE_MAXPTS) { ZoneEdit_Note("That zone has too many corners to edit here"); return; }
+	ze_sel = pick;
+	ZoneEdit_Note(sprintf("selected %s", ZoneEdit_Label(pick)));
+};
+
+// The edit state's draw pass, after ZoneEdit_Aim: clicks, the drag, then the handles.
+void() ZoneEdit_EditFrame =
+{
+	local float z, n, first;
+	local vector a, b;
+
+	z = ze_sel;
+	if (z < 0 || z >= zone_count) { ZoneEdit_ToPanel(); return; }
+	if (ze_back)
+	{
+		ze_back = FALSE;
+		if (ze_dragging) ZoneEdit_DragCancel();
+		else { ZoneEdit_ToPanel(); return; }
+	}
+	if (ze_click)
+	{
+		ze_click = FALSE;
+		if (!ze_dragging)
+		{
+			ZoneEdit_Hover();
+			if (ze_hk) ZoneEdit_GrabStart();
+			else ZoneEdit_EditPick();
+		}
+	}
+	if (ze_dragging) ZoneEdit_DragStep();
+	else ZoneEdit_Hover();
+	if (ze_drop) ZoneEdit_DragDrop();
+	z = ze_sel;                         // a drop renumbers the table (ZoneEdit_Touch)
+
+	// The lit side face, filled in the world; corners, edges and rings are ZoneEdit_Handles2D's.
+	if (ze_hk == ZEH_SIDE)
+	{
+		first = zone_first[z]; n = zone_npts[z];
+		a = zone_pt[first + ze_hi]; b = zone_pt[first + ((ze_hi + 1) % n)];
+		Zone_Face([a_x, a_y, zone_bottom[z]], [b_x, b_y, zone_bottom[z]], [a_x, a_y, zone_top[z]],
+		          [b_x, b_y, zone_top[z]], ZoneEdit_HandleCol(), 0.25);
+	}
+	if (ze_dragging && ze_skind) ZoneEdit_SnapDraw3D(ze_eye);
+};
+
+vector() ZoneEdit_HandleCol =
+{
+	if (!ze_dragging) return '1 0.6 0.15';     // lit
+	return ze_dragbad ? ZEC_WARN : '0.35 1 0.45';
+};
+
+/*
+  The handles on screen, in the HUD pass: a zone's bottom sits at or under the floor, so lines in
+  the world would be hidden where they matter (the ftesurf_zone_xray shader did not show through
+  in the arm's screenshots).  Filled squares only (drawfill), no polygon batch: see cl_plot.qc's
+  ORDER note.
+*/
+// A world segment as dots on screen, clipped to the near side of the eye.
+void(vector a, vector b, vector eye, vector fwd, vector col, float s) ZoneEdit_Dots =
+{
+	local float da, db, k, len, step;
+	local vector pa, pb, dir;
+
+	da = (a - eye) * fwd - 8; db = (b - eye) * fwd - 8;
+	if (da < 0 && db < 0) return;
+	if (da < 0) a = a + (b - a) * (da / (da - db));
+	else if (db < 0) b = b + (a - b) * (db / (db - da));
+	pa = project(a); pb = project(b); pa_z = pb_z = 0;
+	len = min(4000, vlen(pb - pa));
+	step = s * 2;
+	dir = (len > 0) ? normalize(pb - pa) : '0 0 0';
+	for (k = 0; k <= len; k = k + step)
+		drawfill(pa + dir * k - [s, s] * 0.5, [s, s], col, 1, 0);
+};
+
+void(vector p, vector eye, vector fwd, vector col, float r, float fill) ZoneEdit_Square =
+{
+	local float t;
+	local vector sp;
+
+	if ((p - eye) * fwd < 8) return;
+	sp = project(p); sp_z = 0;
+	if (fill) { drawfill(sp - [r, r], [r * 2, r * 2], col, 0.85, 0); return; }
+	t = max(1, rint(r / 3));
+	drawfill(sp + [-r, -r], [r * 2, t], col, 1, 0);
+	drawfill(sp + [-r, r - t], [r * 2, t], col, 1, 0);
+	drawfill(sp + [-r, -r], [t, r * 2], col, 1, 0);
+	drawfill(sp + [r - t, -r], [t, r * 2], col, 1, 0);
+};
+
+void(float rsz) ZoneEdit_Handles2D =
+{
+	local float z, i, n, first, s, lev, zz;
+	local vector eye, fwd, a, b, col;
+
+	z = ze_sel;
+	if (ui_ze_state != ZE_E || z < 0 || z >= zone_count) return;
+	eye = getproperty(VF_ORIGIN);
+	makevectors(getproperty(VF_ANGLES)); fwd = v_forward;
+	first = zone_first[z]; n = zone_npts[z];
+	s = max(2, rint(rsz / 4));
+	for (i = 0; i < n; i = i + 1)
+	{
+		a = zone_pt[first + i];
+		b = zone_pt[first + ((i + 1) % n)];
+		ZoneEdit_Dots([a_x, a_y, zone_bottom[z]], [b_x, b_y, zone_bottom[z]], eye, fwd, ZEC_DIM, max(1, s * 0.5));
+		ZoneEdit_Square([a_x, a_y, zone_bottom[z]], eye, fwd, ZEC_TEXT, s * 1.5, FALSE);
+		ZoneEdit_Square([a_x, a_y, zone_top[z]], eye, fwd, ZEC_DIM, s * 1.5, FALSE);
+	}
+	if (!ze_hk) return;
+	col = ZoneEdit_HandleCol();
+	a = zone_pt[first + ze_hi]; b = zone_pt[first + ((ze_hi + 1) % n)];
+	if (ze_hk == ZEH_VERT)
+	{
+		if (ze_hl != 1) ZoneEdit_Square([a_x, a_y, zone_bottom[z]], eye, fwd, col, s * 2.5, TRUE);
+		if (ze_hl != 0) ZoneEdit_Square([a_x, a_y, zone_top[z]], eye, fwd, col, s * 2.5, TRUE);
+		if (ze_hl == 2) ZoneEdit_Dots([a_x, a_y, zone_bottom[z]], [a_x, a_y, zone_top[z]], eye, fwd, col, s);
+	}
+	else if (ze_hk == ZEH_EDGE)
+	{
+		zz = ze_hl ? zone_top[z] : zone_bottom[z];
+		ZoneEdit_Dots([a_x, a_y, zz], [b_x, b_y, zz], eye, fwd, col, s);
+	}
+	else if (ze_hk == ZEH_SIDE)
+	{
+		for (lev = 0; lev < 2; lev = lev + 1)
+		{
+			zz = lev ? zone_top[z] : zone_bottom[z];
+			ZoneEdit_Dots([a_x, a_y, zz], [b_x, b_y, zz], eye, fwd, col, s);
+		}
+		ZoneEdit_Dots([a_x, a_y, zone_bottom[z]], [a_x, a_y, zone_top[z]], eye, fwd, col, s);
+		ZoneEdit_Dots([b_x, b_y, zone_bottom[z]], [b_x, b_y, zone_top[z]], eye, fwd, col, s);
+	}
+	else
+	{
+		zz = (ze_hk == ZEH_TOP) ? zone_top[z] : zone_bottom[z];
+		for (i = 0; i < n; i = i + 1)
+		{
+			a = zone_pt[first + i]; b = zone_pt[first + ((i + 1) % n)];
+			ZoneEdit_Dots([a_x, a_y, zz], [b_x, b_y, zz], eye, fwd, col, s);
+		}
+	}
 };
