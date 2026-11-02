@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P1207 no prederror box in a game you host
+QC on all 12 lobbies and both Windows installs (restart a running game first; the Desktop copy gets it with
+the next release). Please check:
+1. Single player (Play -> a map) on surf_anubis: `!r` from the spawn. The console may still print a `prederr:`
+   line, but no box appears on the right and nothing new lands in data/prederr/.
+2. On a lobby, `!r` as usual: no box, because the reset is predicted there.
+Measured: your 17:18 report was a local game (the client predicts nothing while hosting); copies of your
+Desktop exe/progs reproduced it every time, and over the network the same reset was predicted with no
+prederror. A forced unpredicted reset on a networked rig still makes a report, and it now says why.
+
 ## P1202 3D skies show their moving scenery (live 2 Nov 08:30Z on all lobbies)
 Please check on a lobby running surf_shape: behind the map, the 3D sky now shows big sand dunes (with a
 giant hand, a head and an arch) that slowly move past, where before there was only the flat 2D sky.

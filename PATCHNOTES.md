@@ -21,6 +21,11 @@
 
 ## next
 
+### P1207 No prediction-error box in a game you host
+- A game running on your own PC (single player) no longer offers prediction-error reports. Nothing is predicted there, so a teleport or `!r` was being reported as an error.
+- When `!r` or another reset cannot be predicted, the report now says why, and it names the game files you were running.
+
+
 ### P1202 3D skies show their moving scenery
 - Things placed in a map's 3D sky (props, trains, spinning parts) now show behind the map, as Momentum shows them. surf_shape's sand dunes, surf_centipedes' bird flocks, surf_colony's skyline and surf_destruction's cyclones were missing before.
 - Sky props that have an animation now play it: surf_shape's dunes move past.
