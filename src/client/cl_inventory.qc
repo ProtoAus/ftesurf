@@ -397,6 +397,9 @@ void(float main) Inv_GlowPass =
 	setproperty(VF_MAXDIST, maxd);
 	setproperty(VF_PERSPECTIVE, persp);
 	setproperty(VF_DRAWWORLD, 0);
+	// A depth TEXTURE, like the main view's under r_scenedepth: GLBE_FBO_Update destroys and rebuilds
+	// the shared game-view FBO whenever the depth kind changes, which cost 0.66 ms a frame (perf3).
+	setproperty(VF_RT_DEPTH, Inv_RT(k, "depth"), 4, ms);
 	for (i = 0; i < n; i = i + 1)
 	{
 		b = inv_glowe[i];
@@ -406,6 +409,7 @@ void(float main) Inv_GlowPass =
 		b.forceshader = fs;
 	}
 	renderscene();
+	setproperty(VF_RT_DEPTH, "");
 
 	// Horizontal, over the box and 8 mask rows above and below it (the vertical pass reads them).
 	setproperty(VF_RT_DESTCOLOUR, Inv_RT(k, "b1"), 1, ms);
