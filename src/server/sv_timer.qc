@@ -16514,6 +16514,7 @@ void() SV_TimerMapInit =
 	registercvar("run_rearmspeed", "290");       // P1008: re-arm at rest in the box below this
 	registercvar("rec_runs_keep", "25");         // build 23, and see the trap above
 	registercvar("rec_watch_pvs", "1");          // build 43, and see the trap above
+	registercvar("sv_tp_pvs", "1");              // P1190: the teleport destination's PVS eye
 	registercvar("run_stagefail", "1");          // build 43, and see the trap above
 	registercvar("run_stagearm", "1");
 	registercvar("run_stageclean", "1");
