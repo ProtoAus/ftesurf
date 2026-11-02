@@ -453,7 +453,6 @@ float(float reqid, float code, string body) MF_Reply =
 	local float n, i, rel, online, stage;
 	local string nonce, expires, ticket, proof, pub, sig, form, who, addr, map, why;
 	if (MF_PresenceReply(reqid, code, body)) return TRUE;
-	if (MFP_Reply(reqid, code, body)) return TRUE;
 	if (!mf_wire || reqid != mf_wire) return FALSE;
 	mf_wire = 0;
 	if (!mf_req || reqid != mf_req) return TRUE;
@@ -653,21 +652,19 @@ void(vector pos, vector size) MF_Draw =
 			alpha = (online || menuonline) ? 1 : 0.45;
 			room = size_x - 114;
 			sui_style_box(rp, [size_x - 38, 64], 8, SUI_THEME_WELL, SUI_THEME_EDGE, alpha);
+			// P1198: a button at the right (Message, or Add back) takes its width from the row.
+			if ((rel == 3 || (rel == 2 && !MF_Direct())) && MF_WhoSafe(who)) room = room - 92;
 			if (MF_WhoSafe(who))
 			{
 				if (!MP_Draw(rp + '10 10 0', 44, who, alpha))
 					sui_roundbox(rp + '10 10 0', '44 44 0', 8, SUI_THEME_CHIP, alpha);
 				sui_action_element(rp + '10 10 0', '44 44 0', strcat("mf_avatar", who), sui_noop);
-				if (sui_is_released(strcat("mf_avatar", who))) MFP_Open(who, nm);
+				if (sui_is_released(strcat("mf_avatar", who))) MStats_Player(who);
 			}
 			id = strcat("mf_profile", who);
 			sui_action_element(rp + '64 8 0', [room, 24], id, sui_noop);
 			sui_text(rp + '64 12 0', SZ_ROW, ui_fit_text(nm, room, SZ_ROW), COL_TEXT, alpha, 0);
-			if (sui_is_released(id) && MF_WhoSafe(who))
-			{
-				if (ui_browser_screen() && rel == 3) MC_Select(who, nm);
-				else MFP_Open(who, nm);
-			}
+			if (sui_is_released(id) && MF_WhoSafe(who)) MStats_Player(who);
 			status = fresh ? "Offline" : "Checking...";
 			if (rel == 1) status = "Added -- waiting for them";
 			if (rel == 2) status = "Added you";
@@ -694,8 +691,11 @@ void(vector pos, vector size) MF_Draw =
 			else if (rel == 3 && flag == 2) status = strcat("Last seen: ", map);
 			sui_text(rp + '64 36 0', '12 12 0', ui_fit_text(status, room, '12 12 0'), (online || menuonline) ? SUI_THEME_GOOD : COL_DIM, alpha, 0);
 			if (rel == 2 && !MF_Direct() && MF_WhoSafe(who))
-			if (ui_button(strcat("mf_add", who), rp + [size_x - 126, 32], [78, 24], "Add back"))
+			if (ui_button(strcat("mf_add", who), rp + [size_x - 126, 20], [82, 24], "Add back"))
 				localcmd(sprintf("friends_menu_add %s\n", who));
+			if (rel == 3 && MF_WhoSafe(who))
+			if (ui_button(strcat("mf_msg", who), rp + [size_x - 126, 20], [82, 24], "Message"))
+				MC_Message(who, nm);
 		}
 		sui_list_view_end();
 	}

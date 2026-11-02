@@ -1280,7 +1280,7 @@ void(vector pos, vector size) Sty_Players =
 		{
 			MP_Draw([x, rp_y + 6], 32, av, 1);
 			sui_action_element([x, rp_y + 6], '32 32 0', sprintf("sty_avatar%g", idx), sui_noop);
-			if (sui_is_released(sprintf("sty_avatar%g", idx))) MFP_Open(av, nm);
+			if (sui_is_released(sprintf("sty_avatar%g", idx))) MStats_Player(who);   // P1198: the row's 12-hex handle
 		}
 		else
 			sui_roundbox([x, rp_y + 6], '32 32 0', 6, COL_ROW, 1);
