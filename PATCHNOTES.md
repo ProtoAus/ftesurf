@@ -71,20 +71,6 @@
 - surf_view now outlines every face it shows, so you can tell where one ramp ends and the one behind it starts. ent_view's trigger volumes get the same outlines.
 - New setting surf_view_style: 0 dotted (the old look), 1 dotted with outlines (default), 2 see-through planes, 3 see-through planes with outlines. surf_view_fill sets how strong the fill is.
 
-### P1169 Larger Maps filter text
-- Maps: larger, sharper native-pixel filter text, with roomier controls that wrap on smaller windows.
-
-### P1161 Fresh TAS project loads
-- TAS projects can load and replay in a fresh supported session without first building rewind history. Legal-start rewind keeps working from a fresh start.
-- Loading a TAS project while noclipping or held now refuses before changing your body or saved timeline. TAS remains assisted practice.
-
-### P1154 TAS frame advance at 100Hz
-- TAS pause, frame advance, retained rewind and input replay can use a selected 10ms Source clock as well as the existing 15ms clock. Default movement timing is unchanged.
-- Clock changes stop queued TAS work instead of silently reusing it. Reload the map after changing its clock before starting a new timeline. TAS remains assisted practice.
-
-### P1142 Collector recovery (pending backend rollout)
-- Steam sign-in queues paced Momentum and KSF personal-best refreshes. Collector retries keep unrelated work moving; catalogue changes no longer shift a pending KSF stage walk. This update is not active on the live backend yet.
-
 ## 0.1.36 2026-11-02
 
 ### P1200 Chat is saved, and friends can get your message later
