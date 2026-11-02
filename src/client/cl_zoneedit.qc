@@ -132,6 +132,9 @@ vector *ze_orig;                    // the zone's ring before the drag (MOUSE2 p
 float  ze_onp, ze_obot, ze_otop;
 float  ze_drop;                     // MOUSE1 came up: drop in the draw pass
 float  ze_dragbad;                  // this frame's move would cross the outline: the last good one stays
+float  ze_dz;                       // review 1: the zone the drag holds, and the table it began on
+float  ze_dcount, ze_dpts, ze_dfirst;
+string ze_dcrc;
 vector ze_grab_at;                  // ZoneEdit_AtLevel's answer
 float  ze_pk, ze_pi;                // ZoneEdit_FaceHit's face (ZEH_SIDE / TOP / BOT) and ring index
 vector ze_pat;                      // ...and where the aim meets it
@@ -1178,6 +1181,7 @@ void() ZoneEdit_Draw3D =
 	local float z, g;
 	local vector eye, c, lc;
 
+	if (ze_dragging && (ui_ze_state != ZE_E || ze_cursor)) ZoneEdit_DragCancel();   // P1203 review 1
 	if (!ui_ze_state)
 		return;
 	if (ze_map != zone_mapname || serverkey("map") != ze_map)
@@ -1204,6 +1208,7 @@ void() ZoneEdit_Draw3D =
 	if (ZoneEdit_Blocker() != "")
 	{
 		ze_click = ze_back = FALSE;     // another panel is up: its clicks are its own
+		if (ze_dragging) ZoneEdit_DragCancel();     // P1203: and a held drag goes back
 		return;
 	}
 	if (ze_cursor)
@@ -1683,6 +1688,7 @@ void(vector scr) ZoneEdit_Panel =
 	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_look", "Look / fly", rsz, ZEC_TEXT)) ZoneEdit_ToggleMouse();
 	if (ZoneEdit_Button(tp + [(bw + 4) * 3, 0], [bw, rowh], "ze_cl", "Close", rsz, ZEC_TEXT))
 	{
+		if (ze_dragging) ZoneEdit_DragCancel();
 		UI_CursorRelease(UIC_ZONEEDIT);
 		ze_cursor = ze_drag = FALSE;
 		ze_field = ze_dim = -1; ze_history = FALSE; sui_text_unfocus();
@@ -1790,6 +1796,7 @@ float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 		ze_field_keys[scanx] = 5;
 		if (ze_cursor)
 		{
+			if (ze_dragging) ZoneEdit_DragCancel();
 			UI_CursorRelease(UIC_ZONEEDIT); ui_ze_state = ZE_OFF;
 			ze_cursor = ze_drag = FALSE; ze_field = ze_dim = -1; ze_history = FALSE; sui_text_unfocus();
 		}
@@ -1961,6 +1968,7 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 	{
 		if (ui_ze_state)
 		{
+			if (ze_dragging) ZoneEdit_DragCancel();
 			UI_CursorRelease(UIC_ZONEEDIT);
 			ze_cursor = ze_drag = FALSE;
 			ze_field = ze_dim = -1; ze_history = FALSE; sui_text_unfocus();

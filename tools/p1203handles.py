@@ -264,6 +264,70 @@ def main():
         frames()
         report['screenshots'] = sorted(str(p) for p in (base / 'ftesurf/screenshots').glob('p1203_*'))
         check(len(report['screenshots']) == 2, 'two screenshots written', report['screenshots'])
+
+        # Review 1. A top corner with Edge snap on: a map corner on the floor far below is not its
+        # target, and an aim that never meets the top's level does not move it.
+        st, r = fresh(edges=1)
+        i = idx(r, x0, y0)
+        mid, end_ = drag((x0, y0, zb + h), (11721.0, 8396.0, 13776.0))
+        report['cases']['top_corner_snap'] = [mid, end_]
+        check(mid['hk'] == 1 and mid['hl'] == 1 and end_['pts'][i] == (x0, y0),
+              'review 1: a top corner does not jump to a map corner on the floor below',
+              f"handle {mid['hk']} {mid['hl']} corner {end_['pts'][i]}")
+
+        # Another panel opening mid-drag puts the zone back.
+        st, r = fresh(edges=0)
+        mid, _ = drag((x0, y0, zb), (11850.0, 8300.0, zb), drop=False)
+        cl.send('scores open')
+        frames(0.6)
+        under = ring()
+        cl.send('scores close')
+        frames()
+        report['cases']['blocker'] = [mid, under]
+        check(mid['pts'] != r['pts'] and under['pts'] == r['pts'] and under['drag'] == 0,
+              'review 1: a panel opening mid-drag puts the zone back', f"{mid['pts']} -> {under['pts']}")
+
+        # The table replaced under a held drag (zone_reload of the saved file): let go, nothing written.
+        st, r = fresh(edges=0)
+        cl.send('zone_edit back')
+        frames()
+        cl.send('zone_edit save force')
+        frames(0.8)
+        cl.send('zone_edit add end 0 11000 8000 11128 8128 13776 128')
+        frames()
+        sel_a = None
+        for z in range(2):
+            cl.send(f'zone_edit sel {z}')
+            if ring()['pts'][0][0] > 11500:
+                sel_a = z
+        cl.send(f'zone_edit sel {sel_a}')
+        cl.send('zone_edit edit')
+        frames()
+        mid, _ = drag((x0, y0, zb), (11850.0, 8300.0, zb), drop=False)
+        cl.send('zone_reload')
+        frames(0.8)
+        zones = int(cl.query('zone_edit status', r'zone_edit: state \d+ map \S+ zones (\d+)').group(1))
+        cl.send('zone_edit sel 0')
+        after = ring()
+        report['cases']['reload'] = [mid, after, zones]
+        check(mid['pts'] != r['pts'] and zones == 1 and after['pts'] == r['pts'] and after['drag'] == 0,
+              'review 1: a table replaced mid-drag is let go, the reloaded zone untouched',
+              f"zones {zones} {after['pts']} drag {after['drag']}")
+
+        # Last (the review-0 build dies here): the editor closed mid-drag, then opened again.
+        st, r = fresh(edges=0)
+        mid, _ = drag((x0, y0, zb), (11850.0, 8300.0, zb), drop=False)
+        cl.send('zone_edit')
+        frames()
+        cl.send('zone_edit')
+        frames(0.8)
+        st = state()
+        cl.send('zone_edit sel 0')
+        again = ring()
+        report['cases']['close_reopen'] = [mid, again, st]
+        check(cl.proc.poll() is None and st == 1 and again['pts'] == r['pts'] and again['drag'] == 0,
+              'review 1: closing the editor mid-drag puts the zone back; reopening is safe',
+              f"state {st} {again['pts']}")
     except Exception as e:
         check(False, 'arm ran to the end', repr(e))
     finally:

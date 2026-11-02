@@ -419,6 +419,7 @@ void(float z) ZoneEdit_RowClick =
 
 void() ZoneEdit_ToggleMouse =
 {
+	if (ze_dragging) ZoneEdit_DragCancel();     // P1203: the panel's buttons can change the table
 	ze_cursor = !ze_cursor;
 	ze_drag = FALSE;
 	sui_reset_actions();
@@ -1031,7 +1032,7 @@ string() ZoneEdit_EditLine =
 {
 	if (!ze_hk) return "aim at a corner, edge or face of the white zone; Mouse1 on another zone selects it";
 	if (!ze_dragging) return sprintf("%s  -  hold Mouse1 to drag", ZoneEdit_HandleName());
-	if (ze_dragbad) return sprintf("%s: that move would cross the outline", ZoneEdit_HandleName());
+	if (ze_dragbad) return sprintf("%s: refused, the outline would not stay simple", ZoneEdit_HandleName());
 	return sprintf("dragging %s", ZoneEdit_HandleName());
 };
 
@@ -1051,35 +1052,60 @@ void() ZoneEdit_EditBegin =
 	ZoneEdit_Note("Aim at a corner, edge or face; hold Mouse1 to drag it");
 };
 
+// The table is still the one the drag began on (a zone_reload, say, replaces it). Nested ifs:
+// QC evaluates both sides of &&, and zone_npts[-1] takes the VM down.
+float() ZoneEdit_DragSame =
+{
+	if (ze_dz < 0 || ze_dz >= zone_count) return FALSE;
+	if (zone_npts[ze_dz] != ze_onp || zone_first[ze_dz] != ze_dfirst) return FALSE;
+	return (zone_count == ze_dcount && zone_ptcount == ze_dpts && zone_crc == ze_dcrc);
+};
+
 // The zone as it was when the drag began.
 void() ZoneEdit_DragRestore =
 {
-	local float i, first;
+	local float i;
 
-	first = zone_first[ze_sel];
 	for (i = 0; i < ze_onp; i = i + 1)
-		zone_pt[first + i] = ze_orig[i];
-	zone_bottom[ze_sel] = ze_obot; zone_top[ze_sel] = ze_otop;
-	Zone_Finish(ze_sel);
+		zone_pt[ze_dfirst + i] = ze_orig[i];
+	zone_bottom[ze_dz] = ze_obot; zone_top[ze_dz] = ze_otop;
+	Zone_Finish(ze_dz);
+};
+
+void() ZoneEdit_DragEnd =
+{
+	ze_dragging = ze_drop = ze_dragbad = FALSE;
+	if (ze_dcrc != "") strunzone(ze_dcrc);
+	ze_dcrc = "";
 };
 
 void() ZoneEdit_DragCancel =
 {
 	if (!ze_dragging) return;
-	if (ze_sel >= 0 && ze_sel < zone_count && zone_npts[ze_sel] == ze_onp) ZoneEdit_DragRestore();
-	ze_dragging = ze_drop = ze_dragbad = FALSE;
-	ZoneEdit_Note("Drag cancelled; the zone is as it was");
+	if (ZoneEdit_DragSame())
+	{
+		ZoneEdit_DragRestore();
+		ZoneEdit_Note("Drag cancelled; the zone is as it was");
+	}
+	else
+		ZoneEdit_Note("The zone table changed under the drag; it was let go");
+	ZoneEdit_DragEnd();
 };
 
 void() ZoneEdit_GrabStart =
 {
-	local float i, first;
+	local float i;
 
-	ze_onp = zone_npts[ze_sel];
-	first = zone_first[ze_sel];
+	if (zone_npts[ze_sel] > ZE_MAXPTS) { ZoneEdit_Note("That zone has too many corners to edit here"); return; }
+	ze_dz = ze_sel;
+	ze_onp = zone_npts[ze_dz];
+	ze_dfirst = zone_first[ze_dz];
+	ze_dcount = zone_count; ze_dpts = zone_ptcount;
+	if (ze_dcrc != "") strunzone(ze_dcrc);
+	ze_dcrc = strzone(zone_crc);
 	for (i = 0; i < ze_onp; i = i + 1)
-		ze_orig[i] = zone_pt[first + i];
-	ze_obot = zone_bottom[ze_sel]; ze_otop = zone_top[ze_sel];
+		ze_orig[i] = zone_pt[ze_dfirst + i];
+	ze_obot = zone_bottom[ze_dz]; ze_otop = zone_top[ze_dz];
 	ze_dragging = TRUE; ze_dragbad = FALSE;
 };
 
@@ -1089,9 +1115,12 @@ void() ZoneEdit_DragStep =
 	local float z, i, n, g, snapped, lev, d, nb, nt;
 	local vector to, dv, nm;
 
-	z = ze_sel; n = ze_onp;
+	if (!ZoneEdit_DragSame()) { ZoneEdit_DragCancel(); return; }
+	z = ze_dz; n = ze_onp;
 	g = max(1, ze_grid);
-	snapped = (ze_edges && ze_hitok && ze_skind != ZES_NONE);
+	// Edge snap's point is the world's: it stands for a handle on about that level only (a top
+	// corner aimed past the zone would jump to the floor's XY far beyond it).
+	snapped = (ze_edges && ze_hitok && ze_skind != ZES_NONE && fabs(ze_sat_z - ze_grab_z) < 48);
 	for (i = 0; i < n; i = i + 1)
 		ze_pts[i] = ze_orig[i];
 	nb = ze_obot; nt = ze_otop;
@@ -1141,7 +1170,7 @@ void() ZoneEdit_DragStep =
 	for (i = 0; i < n; i = i + 1)
 	{
 		dv = ze_pts[i]; dv_z = 0;
-		zone_pt[zone_first[z] + i] = dv;
+		zone_pt[ze_dfirst + i] = dv;
 	}
 	zone_bottom[z] = nb; zone_top[z] = nt;
 	Zone_Finish(z);
@@ -1153,9 +1182,10 @@ void() ZoneEdit_DragDrop =
 
 	ze_drop = FALSE;
 	if (!ze_dragging) return;
-	ze_dragging = ze_dragbad = FALSE;
-	first = zone_first[ze_sel];
-	same = (zone_bottom[ze_sel] == ze_obot && zone_top[ze_sel] == ze_otop);
+	if (!ZoneEdit_DragSame()) { ZoneEdit_DragCancel(); return; }
+	ZoneEdit_DragEnd();
+	first = ze_dfirst;
+	same = (zone_bottom[ze_dz] == ze_obot && zone_top[ze_dz] == ze_otop);
 	for (i = 0; same && i < ze_onp; i = i + 1)
 		if (zone_pt[first + i] != ze_orig[i]) same = FALSE;
 	if (same) { ZoneEdit_Note(sprintf("%s unchanged", ZoneEdit_HandleName())); return; }
@@ -1205,6 +1235,7 @@ void() ZoneEdit_EditFrame =
 			ZoneEdit_Hover();
 			if (ze_hk) ZoneEdit_GrabStart();
 			else ZoneEdit_EditPick();
+			if (ze_dragging) ZoneEdit_Aim();    // the snap now leaves this zone out
 		}
 	}
 	if (ze_dragging) ZoneEdit_DragStep();
@@ -1213,7 +1244,7 @@ void() ZoneEdit_EditFrame =
 	z = ze_sel;                         // a drop renumbers the table (ZoneEdit_Touch)
 
 	// The lit side face, filled in the world; corners, edges and rings are ZoneEdit_Handles2D's.
-	if (ze_hk == ZEH_SIDE)
+	if (ze_hk == ZEH_SIDE && ze_hi < zone_npts[z])
 	{
 		first = zone_first[z]; n = zone_npts[z];
 		a = zone_pt[first + ze_hi]; b = zone_pt[first + ((ze_hi + 1) % n)];
@@ -1235,6 +1266,30 @@ vector() ZoneEdit_HandleCol =
   in the arm's screenshots).  Filled squares only (drawfill), no polygon batch: see cl_plot.qc's
   ORDER note.
 */
+// Segment a-b clipped to the screen (Liang-Barsky): FALSE when none of it is on it.
+vector ze_clip_a, ze_clip_b;
+float(vector a, vector b) ZoneEdit_ClipScreen =
+{
+	local vector vs, d;
+	local float t0, t1, k, p, q, e;
+
+	vs = getproperty(VF_SCREENVSIZE);
+	d = b - a; t0 = 0; t1 = 1;
+	for (k = 0; k < 4; k = k + 1)
+	{
+		if (k == 0) { p = -d_x; q = a_x; }
+		else if (k == 1) { p = d_x; q = vs_x - a_x; }
+		else if (k == 2) { p = -d_y; q = a_y; }
+		else { p = d_y; q = vs_y - a_y; }
+		if (p == 0) { if (q < 0) return FALSE; continue; }
+		e = q / p;
+		if (p < 0) { if (e > t1) return FALSE; if (e > t0) t0 = e; }
+		else { if (e < t0) return FALSE; if (e < t1) t1 = e; }
+	}
+	ze_clip_a = a + d * t0; ze_clip_b = a + d * t1;
+	return TRUE;
+};
+
 // A world segment as dots on screen, clipped to the near side of the eye.
 void(vector a, vector b, vector eye, vector fwd, vector col, float s) ZoneEdit_Dots =
 {
@@ -1246,7 +1301,9 @@ void(vector a, vector b, vector eye, vector fwd, vector col, float s) ZoneEdit_D
 	if (da < 0) a = a + (b - a) * (da / (da - db));
 	else if (db < 0) b = b + (a - b) * (db / (db - da));
 	pa = project(a); pb = project(b); pa_z = pb_z = 0;
-	len = min(4000, vlen(pb - pa));
+	if (!ZoneEdit_ClipScreen(pa, pb)) return;
+	pa = ze_clip_a; pb = ze_clip_b;
+	len = vlen(pb - pa);
 	step = s * 2;
 	dir = (len > 0) ? normalize(pb - pa) : '0 0 0';
 	for (k = 0; k <= len; k = k + step)
@@ -1274,7 +1331,7 @@ void(float rsz) ZoneEdit_Handles2D =
 	local vector eye, fwd, a, b, col;
 
 	z = ze_sel;
-	if (ui_ze_state != ZE_E || z < 0 || z >= zone_count) return;
+	if (ui_ze_state != ZE_E || ze_cursor || z < 0 || z >= zone_count) return;
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES)); fwd = v_forward;
 	first = zone_first[z]; n = zone_npts[z];
@@ -1287,7 +1344,7 @@ void(float rsz) ZoneEdit_Handles2D =
 		ZoneEdit_Square([a_x, a_y, zone_bottom[z]], eye, fwd, ZEC_TEXT, s * 1.5, FALSE);
 		ZoneEdit_Square([a_x, a_y, zone_top[z]], eye, fwd, ZEC_DIM, s * 1.5, FALSE);
 	}
-	if (!ze_hk) return;
+	if (!ze_hk || ze_hi >= n) return;
 	col = ZoneEdit_HandleCol();
 	a = zone_pt[first + ze_hi]; b = zone_pt[first + ((ze_hi + 1) % n)];
 	if (ze_hk == ZEH_VERT)
