@@ -442,7 +442,7 @@ void(vector pos, vector size, float embedded) MC_Panel =
 	if (tokenize(bufstr_get(mc_unread, 0)) == 3)
 	{
 		who = argv(0); name = uri_unescape(argv(2)); i = stof(argv(1));
-		text = (i > 1) ? sprintf("%g new from %s", i, MC_Plain(name)) : strcat("New message from ", MC_Plain(name));
+		text = sprintf("%s (%g)", MC_Plain(name), i);
 		left = (embedded ? size_x - 124 : size_x - 106) - 150;     // between the title and the right button
 		if (left > 80)
 		if (ui_button("mc_newdm", '150 12 0', [min(left, stringwidth(text, TRUE, SZ_LABEL) + 32), 30],
