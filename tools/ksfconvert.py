@@ -109,9 +109,9 @@ def infer_ducked(frames, dt=0.015):
     on 98% of air presses -- and a surface just under the feet blocks the unduck, so a released
     duck can stay down (a ramp: 50 of 64 such holds had under 8.5 units below the box, and none on
     the frame it stood). Ducked while the button is held, and after a release until that -8.5
-    shift, at once or up to DUCK_LOOK frames later with the button still up; with no shift found
-    (the v3 ground bit, a teleport, a new press, the window or the file ends) the body stands at
-    the release. cl_ksf.qc's KSF_Ducked is the same rule.
+    shift: within two frames of the release, else searched from two frames after it for up to
+    DUCK_LOOK frames with the button still up; the v3 ground bit, a teleport or a new press there
+    ends the search, and with no shift found the body stands at the release. cl_ksf.qc's KSF_Ducked is the same rule.
     frames: (buttons, x, y, z, vx, vy, vz, ground or None). Returns (ducked flags, holds).
     """
     n = len(frames)

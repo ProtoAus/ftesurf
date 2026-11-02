@@ -33,8 +33,8 @@ int(int *name) KSF_TargetClass =
   Patch 1210: the ducked body, which the binary does not record -- tools/ksfconvert.py's
   infer_ducked, the same rule and numbers (its docstring has the measurements). Ducked while the
   duck button (4) is held, and after a release until the in-air -8.5 origin shift an unduck
-  makes, at once or within 400 frames with the button still up; with no shift found (ground,
-  a teleport, a new press, the window or the file ends) standing at the release. Sets dk[i] to 1
+  makes: within two frames of the release, else searched from two frames after it for 400
+  frames with the button up (ground, a teleport or a new press ends it); else standing at once. Sets dk[i] to 1
   for each ducked frame; returns how many releases a surface held.
 */
 float(float n, float *bt, vector *o, vector *v, float *gr, float *dk) KSF_Ducked =
