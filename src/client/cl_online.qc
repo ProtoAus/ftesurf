@@ -191,6 +191,7 @@ float  ob_staleat;         // Patch 781: cached copies stored before this are as
 void() Online_MarkStale = { ob_gen = ob_gen + 1; ob_staleat = cltime; };
 float  ob_svgen, ob_svgen_t;  // P1226: the lobby's *boardgen as last acted on, and when
 float  ob_svgen_due;          // ...a newer one is acted on at this cltime (0 = none seen)
+float  ob_svseeded;           // this map's *boardgen taken as what its prefetch holds (CSQC restarts a map)
 
 float  ob_code;            // last non-zero responsecode
 float  ob_when;            // cltime the rows landed
@@ -2263,6 +2264,11 @@ void() Online_Prefetch =
 	local string dir, mname, url, tier, style;
 	local float i;
 
+	if (!ob_svseeded)                // P1226 review 2: before every early return below
+	{
+		ob_svseeded = TRUE;
+		ob_svgen = stof(serverkey("*boardgen"));
+	}
 	if (obc_dirty)
 	if (cltime >= obc_saveat)
 		OBC_Save();
@@ -2301,8 +2307,6 @@ void() Online_Prefetch =
 		return;                         // and is asking it now
 	url = sprintf("%s/api/board?map=%s&track=0&leg=0&tier=%s&style=%s&limit=%g",
 	              dir, uri_escape(mname), uri_escape(tier), uri_escape(style), OB_PAGE);
-	if (!obp_i)                      // P1226 review 1: what this map's prefetch already holds
-		ob_svgen = stof(serverkey("*boardgen"));
 	obp_req = Online_NextReq();
 	if (!uri_get(url, obp_req))
 	{
