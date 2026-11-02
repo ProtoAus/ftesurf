@@ -94,6 +94,7 @@ def prepare(a):
         shutil.copy2(a.progs / leaf, game / leaf)
     shutil.copy2(ROOT / 'ftesurf/cfg/default.cfg', game / 'cfg/default.cfg')
     shutil.copy2(MAPS / f'{MAP}.bsp', game / f'maps/{MAP}.bsp')
+    shutil.copytree(ROOT / 'ftesurf/scripts', game / 'scripts')   # zones.shader: P1203's x-ray handles
     (base / 'default.fmf').write_text(
         'FTEMANIFEST 1\nGAME FTESurfZoneSnapFixture\nBASEGAME ftesurf\n'
         'DISABLEHOMEDIR 1\nMAINCONFIG snap-unused\n')

@@ -49,6 +49,15 @@
 #define ZE_B      3                 // the opposite corner
 #define ZE_H      4                 // the height
 #define ZE_P      5                 // polygon outline
+#define ZE_E      6                 // P1203: dragging the selected zone's corners, edges and faces
+
+// P1203: the handle under the aim on the selected zone (ze_hk), with ze_hi its ring index.
+#define ZEH_NONE  0
+#define ZEH_VERT  1                 // a corner; ze_hl 0 bottom, 1 top, 2 the vertical edge
+#define ZEH_EDGE  2                 // the ring edge ze_hi -> ze_hi + 1; ze_hl 0 bottom, 1 top
+#define ZEH_SIDE  3                 // the side face over that edge
+#define ZEH_TOP   4
+#define ZEH_BOT   5
 #define ZE_MAXPTS 64
 
 #define ZEB_M1    1
@@ -113,6 +122,19 @@ vector ze_raw;                      // the aim as traced, before any snap
 float  ze_pxtan;                    // screen units per unit of tan(angle off the crosshair)
 float  ze_zkind;                    // ZoneEdit_EdgeSnap's last answer: 0 none, 1 corner, 2 edge
 vector ze_zat;                      // ...and the zone point it used, at the zone's bottom
+vector ze_eye, ze_fwd;              // P1203: this frame's aim
+float  ze_fixaim;                   // `zone_edit aimfix`: an arm's eye and aim stand in for the view
+vector ze_fixeye, ze_fixfwd;
+float  ze_hk, ze_hi, ze_hl;         // P1203: the handle under the aim (ZEH_*), ring index, level
+float  ze_dragging;                 // a handle is held; the ze_h* are frozen
+vector ze_grab;                     // where on the handle it was taken
+vector *ze_orig;                    // the zone's ring before the drag (MOUSE2 puts it back)
+float  ze_onp, ze_obot, ze_otop;
+float  ze_drop;                     // MOUSE1 came up: drop in the draw pass
+float  ze_dragbad;                  // this frame's move would cross the outline: the last good one stays
+vector ze_grab_at;                  // ZoneEdit_AtLevel's answer
+float  ze_pk, ze_pi;                // ZoneEdit_FaceHit's face (ZEH_SIDE / TOP / BOT) and ring index
+vector ze_pat;                      // ...and where the aim meets it
 float  ze_rsig;                     // the table when a re-place began (count and points)
 float  ze_real_t;                   // cltime of the last MOUSE1 release a DEVICE made in the panel
 float  ze_click, ze_back;           // asked for by the input handler, done in the draw pass
@@ -148,6 +170,12 @@ string(float k) ZoneEdit_SnapName;
 vector(float k) ZoneEdit_SnapCol;
 void(vector eye) ZoneEdit_SnapDraw3D;
 void(float rsz) ZoneEdit_SnapMark2D;
+void(float rsz) ZoneEdit_Handles2D;
+vector() ZoneEdit_HandleCol;
+void() ZoneEdit_EditBegin;
+void() ZoneEdit_EditFrame;
+void() ZoneEdit_DragCancel;
+string() ZoneEdit_EditLine;
 float(float top) ZoneEdit_Height;
 vector(float z) ZoneEdit_Interior;
 float() ZoneEdit_AddPolygon;
@@ -816,6 +844,8 @@ void(vector eye, vector fwd) ZoneEdit_AimFrom =
 {
 	local float w;
 
+	ze_eye = eye;
+	ze_fwd = fwd;
 	w = getproperty(VF_SIZE_X);
 	ze_pxtan = ((w > 0) ? w : 640) * 0.5 / tan(bound(10, getproperty(VF_FOVX), 170) * M_PI / 360);
 	traceline(eye, eye + fwd * ZE_REACH, MOVE_NOMONSTERS, world);
@@ -834,6 +864,7 @@ void() ZoneEdit_Aim =
 {
 	local vector eye;
 
+	if (ze_fixaim) { ZoneEdit_AimFrom(ze_fixeye, ze_fixfwd); return; }
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
 	ZoneEdit_AimFrom(eye, v_forward);
@@ -887,7 +918,8 @@ void() ZoneEdit_ToPanel =
 {
 	local string why;
 
-	ze_click = ze_back = ze_close = FALSE;
+	if (ze_dragging) ZoneEdit_DragCancel();
+	ze_click = ze_back = ze_close = ze_drop = FALSE;
 	ze_cursor = TRUE;
 	ui_ze_state = ZE_PANEL;
 	why = ZoneEdit_Blocker();
@@ -1158,6 +1190,7 @@ void() ZoneEdit_Draw3D =
 			print("^3zone_edit^7: the map changed; the unsaved zones are gone\n");
 		ze_dirty = FALSE;
 		ze_wsurf = -1;
+		ze_dragging = ze_drop = FALSE;
 		return;
 	}
 	// Every zone, whatever zone_draw, its type switches and its distance say (Zone_Draw may
@@ -1179,6 +1212,7 @@ void() ZoneEdit_Draw3D =
 		return;
 	}
 	ZoneEdit_Aim();
+	if (ui_ze_state == ZE_E) { ZoneEdit_EditFrame(); return; }
 	if (ui_ze_state == ZE_H)
 		ze_h = ZoneEdit_Height(ze_a_z + ZoneEdit_Pull());
 	if (ze_back)
@@ -1250,6 +1284,7 @@ string(string id) ZoneEdit_Tip =
 	if (id == "ze_ag") return "Place the next stage start in this track. Stages divide the course into timed segments and are numbered in order.";
 	if (id == "ze_ac") return "Place a checkpoint in the selected zone's segment, or the last segment if none is selected. Checkpoints record progress without starting a new stage.";
 	if (id == "ze_ae") return "Place this track's finish zone. Entering it ends the run. Each track has one end; select it and Re-place to move it.";
+	if (id == "ze_ed") return "Drag the selected zone's corners, edges and faces with the crosshair. Aim at one to light it up, hold Mouse1 and move; grid and Edge snap apply. Right-click cancels a drag; Esc returns to the panel.";
 	if (id == "ze_rp") return "Select a zone, then redraw its floor and height. Its track, type and course position stay the same. Right-click steps back; Esc returns to the panel.";
 	if (id == "ze_sp") return "For a selected start or stage, use your current position and facing as its restart spawn. Stand at a safe point inside the zone first.";
 	if (id == "ze_resetspawn") return "For a selected start or stage, remove its custom spawn and use the zone's default floor point. Concave zones keep a safe point inside the outline.";
@@ -1334,7 +1369,9 @@ void(vector scr) ZoneEdit_Panel =
 	if (ui_ze_state >= ZE_A && !ze_cursor)
 	{
 		// Placing: the mouse is the game's.  One line of what the next click does.
-		if (ui_ze_state == ZE_P)
+		if (ui_ze_state == ZE_E)
+			s = ZoneEdit_EditLine();
+		else if (ui_ze_state == ZE_P)
 			s = sprintf("click corners (%g); Enter / first corner closes; Mouse2: back", ze_np);
 		else if (ui_ze_state == ZE_A)
 			s = "MOUSE1 first floor corner";
@@ -1345,17 +1382,24 @@ void(vector scr) ZoneEdit_Panel =
 		title = sprintf("%s %s  /  %s", (ze_replace >= 0) ? "RE-PLACING" : "PLACING",
 			Zone_TypeName(ze_ntype), ze_poly ? "polygon" : "box");
 		controls = sprintf("MOUSE2 back  /  wheel grid %g  /  V noclip  /  ESC panel", ze_grid);
+		if (ui_ze_state == ZE_E)
+		{
+			title = sprintf("EDITING %s  /  corners, edges, faces", ZoneEdit_Label(ze_sel));
+			controls = sprintf("hold MOUSE1 drag  /  MOUSE2 cancel, back  /  wheel grid %g  /  ESC panel", ze_grid);
+		}
 		// P1197: what the next click takes; after the first corner the floor is that corner's.
 		g = (ui_ze_state == ZE_B || (ui_ze_state == ZE_P && ze_np > 0)) ? ze_a_z : ze_hit_z;
 		snapline = sprintf("%s  %.1f %.1f  floor %.1f%s", ZoneEdit_SnapName(ze_skind), ze_hit_x, ze_hit_y, g,
 		                   ze_edges ? "" : "  (Edge snap off)");
 		rsz = min(rsz, max(8, scr_x / 80));
 		w = max(stringwidth(s, TRUE, [rsz, rsz]), stringwidth(controls, TRUE, [rsz, rsz]));
+		if (ui_ze_state == ZE_E && !ze_dragging) snapline = ze_hk ? "" : "the selected zone is drawn white";
 		if (ze_hitok && ui_ze_state != ZE_H) w = max(w, stringwidth(snapline, TRUE, [rsz, rsz]));
 		w = min(scr_x - pad * 2, max(w, stringwidth(title, TRUE, [rsz, rsz])) + pad * 2);
 		h = rsz * 3 + pad * 3;
 		if (ui_ze_state != ZE_H) h = h + rsz + pad * 0.5;
 		p = [(scr_x - w) * 0.5, min(scr_y * 0.72, scr_y - h - pad), 0];
+		ZoneEdit_Handles2D(rsz);        // P1203: under the hint box
 		// Raw SUI chrome, in these draw coordinates: no second input bracket.
 		_sui_round_draw(p + '-2 -1 0', [w + 4, h + 4, 0], 7, '0 0 0', 0.22);
 		_sui_round_draw(p, [w, h, 0], 6, SUI_THEME_EDGE_HI, 1);
@@ -1363,7 +1407,9 @@ void(vector scr) ZoneEdit_Panel =
 		drawstring(p + [pad, pad, 0], title, [rsz, rsz], SUI_THEME_ACCENT, 1, 0);
 		drawstring(p + [pad, pad * 1.5 + rsz, 0], s, [rsz, rsz], ZEC_TEXT, 1, 0);
 		drawstring(p + [pad, pad * 2 + rsz * 2, 0], controls, [rsz, rsz], ZEC_DIM, 1, 0);
-		if (!ze_hitok && ui_ze_state != ZE_H)
+		if (ui_ze_state == ZE_E && !ze_dragging)
+			drawstring(p + [pad, pad * 2.5 + rsz * 3, 0], snapline, [rsz, rsz], ZEC_DIM, 1, 0);
+		else if (!ze_hitok && ui_ze_state != ZE_H)
 			drawstring(p + [pad, pad * 2.5 + rsz * 3, 0], "Aim at the map: nothing solid under the crosshair",
 				[rsz, rsz], ZEC_WARN, 1, 0);
 		else if (ui_ze_state != ZE_H)
@@ -1473,7 +1519,7 @@ void(vector scr) ZoneEdit_Panel =
 	for (z = 0; z < zone_count; z = z + 1)
 		if (zone_track[z] == ze_track)
 			n = n + 1;
-	rs = [w - pad * 2, (p_y + h - pad) - tp_y - rowh * 11.9 - pad * 0.5, 0];
+	rs = [w - pad * 2, (p_y + h - pad) - tp_y - rowh * 12.9 - pad * 0.5, 0];
 	sui_style_box(tp - '3 3 0', rs + '6 6 0', 5, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 	lastk = -1;
 	bo = -1;
@@ -1575,6 +1621,12 @@ void(vector scr) ZoneEdit_Panel =
 		ze_sel = -1;
 		ZoneEdit_Touch();
 	}
+	tp_y = tp_y + rowh + 4;
+	// P1203: drag the selected zone's corners, edges and faces with the crosshair.
+	if (ZoneEdit_Button(tp, [bw, rowh], "ze_ed", "Edit shape", rsz, a ? ZEC_TEXT : ZEC_DIM))
+	if (a && ui_ze_state == ZE_PANEL)
+		ZoneEdit_EditBegin();
+	sui_text(tp + [bw + 8, (rowh - rsz) * 0.5], [rsz, rsz], "drag corners, edges and faces", ZEC_DIM, 1, 0);
 	tp_y = tp_y + rowh + pad * 0.5;
 	tp_y = ZoneEdit_DimsDraw(p, w, tp_y, rowh, rsz) + pad * 0.5;   // P1184
 
@@ -1680,6 +1732,7 @@ float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 		if (!owned) return FALSE;
 		ze_field_keys[scanx] = 0;
 		if (owned == 4) ZoneEdit_FieldKey(evtype, scanx, chary);
+		if (owned == 2 && scanx == K_MOUSE1 && ui_ze_state == ZE_E) ze_drop = TRUE;   // P1203
 		if (scanx == K_MOUSE1)
 		{
 			onpanel = (cl_ptr_real_ok && is_2dpoint_in_bbox(cl_ptr_real, ze_panel_p, ze_panel_s));
@@ -1929,7 +1982,7 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 		return TRUE;
 	}
 	// P1081: on a server, any word here may be the server's (see WHO MAY WRITE A FILE).
-	if (a != "publish" && a != "upload" && a != "edgeprobe" && a != "snapprobe" && a != "wsurf" && a != "snapcost")
+	if (a != "publish" && a != "upload" && a != "edgeprobe" && a != "snapprobe" && a != "wsurf" && a != "snapcost" && a != "ring")
 	if (!ZoneEdit_Hosting())
 		zone_cmd_taint = TRUE;
 	t = -1;
@@ -1938,7 +1991,8 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 	else if (argv(2) == "stage")      t = ZONE_STAGE;
 	else if (argv(2) == "checkpoint") t = ZONE_CHECKPOINT;
 	if (ui_ze_state >= ZE_A)
-	if (a != "click" && a != "back" && a != "mouse" && a != "point" && a != "close" && a != "height" && a != "grid" && a != "edges")
+	if (a != "click" && a != "back" && a != "mouse" && a != "point" && a != "close" && a != "height" && a != "grid" && a != "edges"
+	    && a != "drop" && a != "aimfix" && a != "ring")
 	{
 		print("^3zone_edit^7: finish or cancel the zone being placed first (click, back)\n");
 		return TRUE;
@@ -1993,6 +2047,30 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 		print(sprintf("zone_edit: edge snap %g %g %g\n", zv_x, zv_y, zv_z));
 	}
 	else if (a == "edges") ze_edges = (argv(2) != "0");
+	else if (a == "edit") { if (ui_ze_state == ZE_PANEL) ZoneEdit_EditBegin(); }
+	else if (a == "drop") ze_drop = (ui_ze_state == ZE_E);
+	else if (a == "aimfix")
+	{
+		// P1203: zone_edit aimfix ex ey ez tx ty tz | off -- an arm's eye and aim for every frame.
+		ze_fixaim = (n == 8);
+		ze_fixeye = [stof(argv(2)), stof(argv(3)), stof(argv(4))];
+		if (ze_fixaim) ze_fixfwd = normalize([stof(argv(5)), stof(argv(6)), stof(argv(7))] - ze_fixeye);
+	}
+	else if (a == "ring")
+	{
+		// P1203: the selected zone's outline and heights, exactly.
+		if (ze_sel >= 0 && ze_sel < zone_count)
+		{
+			print(sprintf("zone_edit: ring %g pts %g bottom %.3f top %.3f", ze_sel, zone_npts[ze_sel],
+			              zone_bottom[ze_sel], zone_top[ze_sel]));
+			print(sprintf(" handle %g %g %g drag %g bad %g\n", ze_hk, ze_hi, ze_hl, ze_dragging, ze_dragbad));
+			for (t = 0; t < zone_npts[ze_sel]; t = t + 1)
+			{
+				zv = zone_pt[zone_first[ze_sel] + t];
+				print(sprintf("zone_edit: ring pt %g %.3f %.3f\n", t, zv_x, zv_y));
+			}
+		}
+	}
 	else if (a == "snapprobe" && n == 8)
 	{
 		// P1197: the aim from eye x y z toward x y z, snapped as placing would take it.
