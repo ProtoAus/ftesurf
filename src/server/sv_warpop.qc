@@ -353,8 +353,8 @@ void(entity e) SV_TpEyeThink =
 		SV_TpEyeDetach(e);
 		return;
 	}
-	if (e.tp_eye != world && time < e.tp_eye_next)
-		return;
+	if (time < e.tp_eye_next && e.tp_eye_next < time + 1)
+		return;                     // 20 Hz with or without an eye (review: unzoned maps)
 	e.tp_eye_next = time + 0.05;
 	if (time >= tp_chain_at || tp_chain_at > time + 1)
 		SV_TpChain();
@@ -369,7 +369,7 @@ void(entity e) SV_TpEyeThink =
 	bd = 999999999;
 	for (t = tp_chain; t; t = t.tp_next)
 	{
-		if (wasfreed(t) || t.touch != trigger_teleport_touch || (t.solid == SOLID_NOT && !t.vbsp_tooltrig))
+		if (wasfreed(t) || t.touch != trigger_teleport_touch || t.solid == SOLID_NOT)
 			continue;
 		if (SV_Key2(t.StartDisabled, t.startdisabled))
 			continue;
@@ -386,8 +386,9 @@ void(entity e) SV_TpEyeThink =
 		}
 	}
 
-	// Just crossed: the eye stays at that destination while `!r`'s stat catches up (up to 1 s
-	// stale, sv_warpop.qc), or it would flash to the last stage's start.
+	// A teleport just left the sweep (usually crossed): the eye stays at its destination while
+	// `!r`'s stat catches up (up to 1 s stale), or it would flash to the last stage's start.
+	// Filters and spawnflags are not tested: a teleport that will not fire costs one PVS.
 	if (best == world && time < e.tp_eye_hold && e.tp_eye != world)
 		return;
 	have = FALSE;
