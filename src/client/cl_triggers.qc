@@ -597,8 +597,15 @@ void(string key, string val) TG_IOParse =
 	{
 		// P1205: only the velocity grammar, aimed at the activator; other scripts are inert here
 		// as on the server (its census says so).
-		if (nt < 3 || !FS_IsActivator(argv(0)) || !FS_VsVelParse(argv(2)))
+		// One test at a time: QC's || evaluates every operand, and FS_VsVelParse tokenizes,
+		// which replaced this row's argv (target, delay, count) with the Vector's parts.
+		if (nt < 3)
 			return;
+		if (!FS_IsActivator(argv(0)))
+			return;
+		if (!FS_VsVelParse(argv(2)))
+			return;
+		nt = tokenizebyseparator(val, sep);
 		inp = IN_VSVEL;
 		if (!io_vsop)
 		{
