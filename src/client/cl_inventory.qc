@@ -374,10 +374,12 @@ void(float main) Inv_GlowPass =
 	ds = getproperty(VF_DRAWENGINESBAR);
 
 	setproperty(VF_RT_COVERAGE, 0);     // the screen's queued 2D first
-	clearscene();
 	setproperty(VF_RT_DESTCOLOUR, Inv_RT(k, "mask"), 1, ms);
 	drawsubpic('0 0 0', ms, Inv_N("ftesurf/aura_clr"), '0 0 0', '1 1 0', '0 0 0', 0, 0);
 	setproperty(VF_RT_COVERAGE, 0);     // the clear before the 3D
+	// After the 2D: a target's 2D leaves the scene clock on realtime until clearscene (P1235's
+	// measurement), and the mask's poses must use the clock the bodies were drawn with.
+	clearscene();
 	setproperty(VF_MIN, '0 0 0');
 	setproperty(VF_SIZE, ms);
 	setproperty(VF_FOV, fov);
