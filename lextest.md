@@ -1,8 +1,8 @@
 # lextest.md — things waiting on a human
 
-## P1191 / P1192 flat colours for missing materials; olivia's sky (next client release)
-Engine exe + hl2 plugin only (engine 461b03b17): nothing installed yet; reaches players with the next
-client release. Please check once it is installed:
+## P1191 / P1192 flat colours for missing materials; olivia's sky (in 0.1.35)
+Engine exe + hl2 plugin only: shipped in release 0.1.35 (2 Nov 05:41Z, engine release-0135 686d42014 =
+patch-1195 + P1191/P1192). Please check on 0.1.35:
 1. surf_utopia without TF2 (yesh, or `fs_unload` TF2 and reload): the walls are lit flat colours, not
    the checker; the "materials did not resolve" notice still shows. `hl2_missingtint 0` + reload brings
    the checker back. Looking at the sky shows the default sky (cape hill), not black.
