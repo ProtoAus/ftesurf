@@ -6212,11 +6212,37 @@ void(entity t, string anim) SV_SkyAnim =
 	vbsp_skyroom_anim_n = vbsp_skyroom_anim_n + 1;
 };
 
+/*
+  A big entity's checkpvs falls back to its headnode (mod_vbsp.c VBSP_EdictInFatPVS), which passed
+  main-map triggers and props (surf_ab: 21, one of them animated). A point of it against the camera's
+  point is exact: a model's origin, then its box centre (sand_dunes.mdl runs 1831 below its origin,
+  so its centre is in solid); a brush entity's centre (an origin-less one sits at '0 0 0'). A point
+  in solid sees nothing, so only an open point that cannot see rejects; every point in solid keeps
+  the coarse answer (surf_colony's sky canister train starts inside a wall).
+*/
+float(entity e, entity cam) SV_SkySees =
+{
+	local vector c;
+	local float open;
+	open = FALSE;
+	if (substring(e.model, 0, 1) != "*")
+	if (pointcontents(e.origin) != CONTENT_SOLID)
+	{
+		if (checkpvs(e.origin, cam))
+			return TRUE;
+		open = TRUE;
+	}
+	c = (e.absmin + e.absmax) * 0.5;
+	if (pointcontents(c) != CONTENT_SOLID)
+		return checkpvs(c, cam);
+	return !open;
+};
+
 void() SV_SkyRoomAll =
 {
 	local entity e, pt;
 	local float n, ns, i, pass;
-	local vector ptorg, cp;
+	local vector ptorg;
 	local string cn;
 	if (!vbsp_skycam_have)
 		return;
@@ -6252,17 +6278,12 @@ void() SV_SkyRoomAll =
 		n = 0;
 		for (e = nextent(world); e; e = nextent(e))
 		{
-			if (!e.modelindex || (e.flags & FL_CLIENT) || !checkpvs(vbsp_skycam_org, e))
+			// Triggers are never drawn, and a sky room's are no part of play.
+			if (!e.modelindex || (e.flags & FL_CLIENT) || substring(e.classname, 0, 8) == "trigger_"
+			    || !checkpvs(vbsp_skycam_org, e))
 				continue;
-			// A big entity's checkpvs falls back to its headnode (mod_vbsp.c VBSP_EdictInFatPVS);
-			// one point of it against the camera's point is exact. A brush entity's is its box
-			// centre; a model's is its origin, since its box can leave the room (sand_dunes.mdl
-			// runs 1831 below its origin, which put the centre in solid: an empty PVS).
-			cp = (e.absmin + e.absmax) * 0.5;
-			if (substring(e.model, 0, 1) != "*")
-				cp = e.origin;
 			if (pt)
-			if (!checkpvs(cp, pt))
+			if (!SV_SkySees(e, pt))
 				continue;
 			for (i = 0; i < ns; i = i + 1)
 				if (checkpvs(vbsp_skyspawn[i], e))
@@ -6275,6 +6296,8 @@ void() SV_SkyRoomAll =
 				e.vbsp_skyent = TRUE;
 				e.pvsflags = (e.pvsflags & 252) | PVSF_IGNOREPVS;   // keeps PVSF_NOREMOVE
 				SV_SkyAnim(e, e.vbsp_defanim);
+				if (cvar("developer"))      // not SV_DevOn: lobbies would log every one at each map
+					print(sprintf("skyroom(sv): %s %s at %v\n", e.classname, e.model, e.origin));
 			}
 		}
 		if (n > VBSP_SKYROOM_MAX)
