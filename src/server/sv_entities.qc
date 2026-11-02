@@ -2369,9 +2369,22 @@ string(string s) SV_IOTrim =
 // A held body is not moved by the map; defined in sv_saveloc.qc, after the hold fields.
 float(entity p) SV_MapMoveHeld;
 
+// Native EF_TELEPORT_BIT (1<<21), shared by all spatial placement producers.
+// Presentation only: no timer, recorder or practice/bank policy is changed.
+const float ZONE_EF_TELEPORT_BIT = 2097152;
+
+// Only the spatial write and its presentation epoch. Callers retain their own
+// timer/bank/record/velocity/angle ordering; this is not SV_PlacePlayer's policy.
+void(entity p, vector org) SV_SetPlayerOrigin =
+{
+	if (p.origin != org)
+		p.effects = p.effects ^ ZONE_EF_TELEPORT_BIT;
+	setorigin(p, org);
+};
+
 void(entity p, vector org) SV_PlacePlayer =
 {
-	setorigin(p, org);
+	SV_SetPlayerOrigin(p, org);
 	p.flags = p.flags - (p.flags & FL_ONGROUND);
 	if (cvar("run_teleport_warp"))
 		SV_TimerWarped(p);
@@ -7300,7 +7313,7 @@ void() trigger_teleport_touch =
 		snapang = !(self.spawnflags & SF_TELEPORT_PRESERVE_ANGLES);
 	}
 
-	setorigin(other, newpos);
+	SV_SetPlayerOrigin(other, newpos);
 
 	/*
 	  "I did not travel here, I was put here."  Build 20, and it was missing.
@@ -7731,7 +7744,7 @@ void() trigger_teleport_relative_touch =
 				dprint(sprintf("telerel: %s lifted 1 at %v\n", other.netname, p));
 		}
 	}
-	setorigin(other, p);
+	SV_SetPlayerOrigin(other, p);
 	other.velocity = '0 0 0';
 	SV_ClearCarrier(other);             // Patch 400: Teleport(.., &vec3_origin)
 
@@ -12403,7 +12416,7 @@ void(entity b, entity pl) SV_BhopTeleport =
 		return;
 	}
 
-	setorigin(pl, dest.origin + '0 0 1');
+	SV_SetPlayerOrigin(pl, dest.origin + '0 0 1');
 
 	// A teleport into a fall must not spend its first tick believing it is
 	// standing -- the same rule trigger_teleport_touch follows, and here it is

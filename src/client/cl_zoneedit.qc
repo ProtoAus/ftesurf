@@ -61,6 +61,15 @@
 #define ZE_MINH   16                // a zone is at least this tall
 #define ZE_MAXH   16384             // and at most this
 
+// P1197: what the aim snapped to (ze_skind), and how near the crosshair a snap pulls, in
+// screen units at ui scale 1.
+#define ZES_NONE  0                 // the grid, or the surface as hit
+#define ZES_MAPV  1                 // a corner of the map surface under the aim
+#define ZES_MAPE  2                 // a point on one of its edges
+#define ZES_ZONEV 3                 // an existing zone's corner
+#define ZES_ZONEE 4                 // an existing zone's edge
+#define ZE_SNAPPX 14
+
 // The Dusk look's own colours (sh_ui.qc); the box being placed has one of its own.
 #define ZEC_PANEL SUI_THEME_PANEL
 #define ZEC_LINE  SUI_THEME_EDGE
@@ -95,6 +104,15 @@ vector ze_hit;                      // where the aim meets the world, snapped
 float  ze_hitok;
 float  ze_hitz;                     // ...and its height as hit, before the snap
 float  ze_floor;                    // the first corner's: where a new start's spawn stands
+float  ze_skind;                    // P1197: ZES_*, what ze_hit snapped to
+vector ze_sat;                      // ...that point, where the marker is drawn
+float  ze_wsurf;                    // P1197: the world surface under the aim, -1 none
+float  ze_wask_t;                   // cltime of the last full surface search
+float  ze_wasks;                    // full searches so far (`zone_edit snapprobe` prints it)
+vector ze_raw;                      // the aim as traced, before any snap
+float  ze_pxtan;                    // screen units per unit of tan(angle off the crosshair)
+float  ze_zkind;                    // ZoneEdit_EdgeSnap's last answer: 0 none, 1 corner, 2 edge
+vector ze_zat;                      // ...and the zone point it used, at the zone's bottom
 float  ze_rsig;                     // the table when a re-place began (count and points)
 float  ze_real_t;                   // cltime of the last MOUSE1 release a DEVICE made in the panel
 float  ze_click, ze_back;           // asked for by the input handler, done in the draw pass
@@ -125,6 +143,11 @@ void() ZoneEdit_PolygonClick;
 void() ZoneEdit_PolygonClose;
 void() ZoneEdit_PolygonGhost;
 vector(vector p) ZoneEdit_EdgeSnap;
+void(vector eye, vector fwd, vector raw) ZoneEdit_Snap;
+string(float k) ZoneEdit_SnapName;
+vector(float k) ZoneEdit_SnapCol;
+void(vector eye) ZoneEdit_SnapDraw3D;
+void(float rsz) ZoneEdit_SnapMark2D;
 float(float top) ZoneEdit_Height;
 vector(float z) ZoneEdit_Interior;
 float() ZoneEdit_AddPolygon;
@@ -789,19 +812,31 @@ vector(vector v) ZoneEdit_SnapV =
 
 // Where the crosshair meets the world.  The world model only: a CSQC trace falls
 // through brush entities (cl_soundscape.qc), so aim at solid map, not at a door.
+void(vector eye, vector fwd) ZoneEdit_AimFrom =
+{
+	local float w;
+
+	w = getproperty(VF_SIZE_X);
+	ze_pxtan = ((w > 0) ? w : 640) * 0.5 / tan(bound(10, getproperty(VF_FOVX), 170) * M_PI / 360);
+	traceline(eye, eye + fwd * ZE_REACH, MOVE_NOMONSTERS, world);
+	ze_hitok = (trace_fraction < 1 && !trace_startsolid);
+	ze_raw = trace_endpos;
+	ze_hitz = ze_raw_z;
+	ze_hit = ZoneEdit_SnapV(ze_raw);
+	ze_skind = ZES_NONE;
+	if (ze_edges && ze_hitok && ui_ze_state != ZE_H) ZoneEdit_Snap(eye, fwd, ze_raw);
+	if (!ze_skind) ze_sat = [ze_hit_x, ze_hit_y, ze_hitz];
+	if (!ze_snap)
+		ze_hit_z = ze_hit_z - 1;        // the surface as hit: a hair under it, for the same reason
+};
+
 void() ZoneEdit_Aim =
 {
 	local vector eye;
 
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
-	traceline(eye, eye + v_forward * ZE_REACH, MOVE_NOMONSTERS, world);
-	ze_hitok = (trace_fraction < 1 && !trace_startsolid);
-	ze_hitz = trace_endpos_z;
-	ze_hit = ZoneEdit_SnapV(trace_endpos);
-	if (ze_edges && ze_hitok) ze_hit = ZoneEdit_EdgeSnap(ze_hit);
-	if (!ze_snap)
-		ze_hit_z = ze_hit_z - 1;        // the surface as hit: a hair under it, for the same reason
+	ZoneEdit_AimFrom(eye, v_forward);
 };
 
 // The height the view is pulling: where the aim passes nearest the vertical through the
@@ -1109,7 +1144,7 @@ void(vector a, vector b, float bottom, float top, vector col, float alpha) ZoneE
 void() ZoneEdit_Draw3D =
 {
 	local float z, g;
-	local vector eye, c;
+	local vector eye, c, lc;
 
 	if (!ui_ze_state)
 		return;
@@ -1122,6 +1157,7 @@ void() ZoneEdit_Draw3D =
 		if (ze_dirty)
 			print("^3zone_edit^7: the map changed; the unsaved zones are gone\n");
 		ze_dirty = FALSE;
+		ze_wsurf = -1;
 		return;
 	}
 	// Every zone, whatever zone_draw, its type switches and its distance say (Zone_Draw may
@@ -1159,16 +1195,26 @@ void() ZoneEdit_Draw3D =
 	if (ui_ze_state < ZE_A)
 		return;
 
-	if (ze_poly) { ZoneEdit_PolygonGhost(); return; }
-	// The aim: a small cross on the floor at the snapped point.
+	// The aim: a small cross on the floor at the snapped point, in the snap's colour; a corner
+	// gets a diamond round it (P1197, which also outlines the map surface the snap reads).
 	if (ze_hitok && ui_ze_state != ZE_H)
 	{
+		ZoneEdit_SnapDraw3D(eye);
 		g = max(4, ze_grid * 0.5);
 		c = [ze_hit_x, ze_hit_y, ze_hitz + 0.5];
-		Zone_Line(c - [g, 0, 0], c + [g, 0, 0], ZEC_NEW, 1);
-		Zone_Line(c - [0, g, 0], c + [0, g, 0], ZEC_NEW, 1);
-		Zone_Line(c, c + [0, 0, g * 2], ZEC_NEW, 1);
+		lc = ZoneEdit_SnapCol(ze_skind);
+		Zone_Line(c - [g, 0, 0], c + [g, 0, 0], lc, 1);
+		Zone_Line(c - [0, g, 0], c + [0, g, 0], lc, 1);
+		Zone_Line(c, c + [0, 0, g * 2], lc, 1);
+		if (ze_skind == ZES_MAPV || ze_skind == ZES_ZONEV)
+		{
+			Zone_Line(c + [g, 0, 0], c + [0, g, 0], lc, 1);
+			Zone_Line(c + [0, g, 0], c - [g, 0, 0], lc, 1);
+			Zone_Line(c - [g, 0, 0], c - [0, g, 0], lc, 1);
+			Zone_Line(c - [0, g, 0], c + [g, 0, 0], lc, 1);
+		}
 	}
+	if (ze_poly) { ZoneEdit_PolygonGhost(); return; }
 	if (ui_ze_state == ZE_B)
 	{
 		if (ze_hitok)
@@ -1209,7 +1255,7 @@ string(string id) ZoneEdit_Tip =
 	if (id == "ze_resetspawn") return "For a selected start or stage, remove its custom spawn and use the zone's default floor point. Concave zones keep a safe point inside the outline.";
 	if (id == "ze_dl") return "Remove the selected zone from your edits. Stages and checkpoints are renumbered. Nothing is written to disk until Save zones.";
 	if (id == "ze_shape") return "Choose Box or Polygon for new and re-placed zones. A box uses two opposite floor corners; a polygon uses an outline closed with Enter or a click on its first corner. Both have a flat floor and vertical height.";
-	if (id == "ze_edges") return "Snap placement near existing zone corners and edges on the same floor. Corners take priority. This does not snap to the map's brush edges.";
+	if (id == "ze_edges") return "Snap placement to the map's corners and edges near the crosshair, and to existing zone corners and edges. Corners take priority. The map surface being read is outlined; the line under the placing hint shows what the next click takes.";
 	if (id == "ze_xyz") return "Round the selected zone's outline and vertical bounds to the chosen grid. Works in the panel; an invalid or collapsed outline is refused.";
 	if (id == "ze_gs") return "Use the world surface as hit instead of rounding placement to the grid. This is a snapping option, not the Surf gamemode. Click again to restore grid snapping.";
 	if (id == "ze_sv") return "Save the zones to this map's local JSON file on your machine. Reload the map to use them for timing in your hosted game. This does not upload zones or change a lobby's timing or times.";
@@ -1257,8 +1303,8 @@ float(vector p, vector s, string id, string word, float tsz, vector col) ZoneEdi
 void(vector scr) ZoneEdit_Panel =
 {
 	local vector p, tp, lp, rs;
-	local float w, h, pad, tsz, rsz, rowh, bw, z, n, i, k, best, bo, o, a, top, lastk, cut;
-	local string s, id, title, controls;
+	local float w, h, pad, tsz, rsz, rowh, bw, z, n, i, k, best, bo, o, a, top, lastk, cut, g;
+	local string s, id, title, controls, snapline;
 
 	ZonePub_Pump();
 	if (!ui_ze_state || !ze_cursor)
@@ -1299,11 +1345,16 @@ void(vector scr) ZoneEdit_Panel =
 		title = sprintf("%s %s  /  %s", (ze_replace >= 0) ? "RE-PLACING" : "PLACING",
 			Zone_TypeName(ze_ntype), ze_poly ? "polygon" : "box");
 		controls = sprintf("MOUSE2 back  /  wheel grid %g  /  V noclip  /  ESC panel", ze_grid);
+		// P1197: what the next click takes; after the first corner the floor is that corner's.
+		g = (ui_ze_state == ZE_B || (ui_ze_state == ZE_P && ze_np > 0)) ? ze_a_z : ze_hit_z;
+		snapline = sprintf("%s  %.1f %.1f  floor %.1f%s", ZoneEdit_SnapName(ze_skind), ze_hit_x, ze_hit_y, g,
+		                   ze_edges ? "" : "  (Edge snap off)");
 		rsz = min(rsz, max(8, scr_x / 80));
 		w = max(stringwidth(s, TRUE, [rsz, rsz]), stringwidth(controls, TRUE, [rsz, rsz]));
+		if (ze_hitok && ui_ze_state != ZE_H) w = max(w, stringwidth(snapline, TRUE, [rsz, rsz]));
 		w = min(scr_x - pad * 2, max(w, stringwidth(title, TRUE, [rsz, rsz])) + pad * 2);
 		h = rsz * 3 + pad * 3;
-		if (!ze_hitok && ui_ze_state != ZE_H) h = h + rsz + pad * 0.5;
+		if (ui_ze_state != ZE_H) h = h + rsz + pad * 0.5;
 		p = [(scr_x - w) * 0.5, min(scr_y * 0.72, scr_y - h - pad), 0];
 		// Raw SUI chrome, in these draw coordinates: no second input bracket.
 		_sui_round_draw(p + '-2 -1 0', [w + 4, h + 4, 0], 7, '0 0 0', 0.22);
@@ -1315,6 +1366,11 @@ void(vector scr) ZoneEdit_Panel =
 		if (!ze_hitok && ui_ze_state != ZE_H)
 			drawstring(p + [pad, pad * 2.5 + rsz * 3, 0], "Aim at the map: nothing solid under the crosshair",
 				[rsz, rsz], ZEC_WARN, 1, 0);
+		else if (ui_ze_state != ZE_H)
+		{
+			drawstring(p + [pad, pad * 2.5 + rsz * 3, 0], snapline, [rsz, rsz], ZoneEdit_SnapCol(ze_skind), 1, 0);
+			ZoneEdit_SnapMark2D(rsz);
+		}
 		Font_Reset();
 		return;
 	}
@@ -1808,6 +1864,10 @@ void() ZoneEdit_Status =
 	              ze_a_x, ze_a_y, ze_a_z));
 	print(sprintf(" b %g %g h %g hit %g %g %g ok %g\n", ze_b_x, ze_b_y, ze_h, ze_hit_x, ze_hit_y,
 	              ze_hit_z, ze_hitok));
+	p = getproperty(VF_ORIGIN);
+	print(sprintf("zone_edit: snap %s edges %g surf %g at %.3f %.3f %.3f", ZoneEdit_SnapName(ze_skind), ze_edges,
+	              ze_wsurf, ze_sat_x, ze_sat_y, ze_sat_z));
+	print(sprintf(" eye %.3f %.3f %.3f\n", p_x, p_y, p_z));
 	// (sprintf takes eight arguments at most: three prints a zone, one line.)
 	for (z = 0; z < zone_count; z = z + 1)
 	{
@@ -1869,7 +1929,7 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 		return TRUE;
 	}
 	// P1081: on a server, any word here may be the server's (see WHO MAY WRITE A FILE).
-	if (a != "publish" && a != "upload" && a != "edgeprobe")
+	if (a != "publish" && a != "upload" && a != "edgeprobe" && a != "snapprobe" && a != "wsurf" && a != "snapcost")
 	if (!ZoneEdit_Hosting())
 		zone_cmd_taint = TRUE;
 	t = -1;
@@ -1878,7 +1938,7 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 	else if (argv(2) == "stage")      t = ZONE_STAGE;
 	else if (argv(2) == "checkpoint") t = ZONE_CHECKPOINT;
 	if (ui_ze_state >= ZE_A)
-	if (a != "click" && a != "back" && a != "mouse" && a != "point" && a != "close" && a != "height" && a != "grid")
+	if (a != "click" && a != "back" && a != "mouse" && a != "point" && a != "close" && a != "height" && a != "grid" && a != "edges")
 	{
 		print("^3zone_edit^7: finish or cancel the zone being placed first (click, back)\n");
 		return TRUE;
@@ -1931,6 +1991,42 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 	{
 		zv = ZoneEdit_EdgeSnap([stof(argv(2)), stof(argv(3)), stof(argv(4))]);
 		print(sprintf("zone_edit: edge snap %g %g %g\n", zv_x, zv_y, zv_z));
+	}
+	else if (a == "edges") ze_edges = (argv(2) != "0");
+	else if (a == "snapprobe" && n == 8)
+	{
+		// P1197: the aim from eye x y z toward x y z, snapped as placing would take it.
+		zv = [stof(argv(2)), stof(argv(3)), stof(argv(4))];
+		ze_wask_t = -1;                 // a probe is never rate-limited
+		ZoneEdit_AimFrom(zv, normalize([stof(argv(5)), stof(argv(6)), stof(argv(7))] - zv));
+		print(sprintf("zone_edit: snap %s ok %g hit %.3f %.3f %.3f floor %.3f", ZoneEdit_SnapName(ze_skind),
+		              ze_hitok, ze_hit_x, ze_hit_y, ze_hit_z, ze_hitz));
+		print(sprintf(" raw %.3f %.3f %.3f surf %g asks %g\n", ze_raw_x, ze_raw_y, ze_raw_z, ze_wsurf, ze_wasks));
+	}
+	else if (a == "wsurf" && n == 5)
+	{
+		// P1197: the world surface nearest x y z and its points, as the snap reads them.
+		zv = [stof(argv(2)), stof(argv(3)), stof(argv(4))];
+		z = getsurfacenearpoint(world, zv);
+		t = (z >= 0) ? getsurfacenumpoints(world, z) : 0;
+		zv = (z >= 0) ? getsurfacenormal(world, z) : '0 0 0';
+		print(sprintf("zone_edit: wsurf %g points %g tris %g normal %.3f %.3f %.3f\n", z, t,
+		              (z >= 0) ? getsurfacenumtriangles(world, z) : 0, zv_x, zv_y, zv_z));
+		for (n = 0; n < t; n = n + 1)
+		{
+			zv = getsurfacepoint(world, z, n);
+			print(sprintf("zone_edit: wsurf pt %g %.3f %.3f %.3f\n", n, zv_x, zv_y, zv_z));
+		}
+	}
+	else if (a == "snapcost" && n == 6)
+	{
+		// P1197: what one full surface search costs here (gettime(1) is in whole milliseconds).
+		zv = [stof(argv(3)), stof(argv(4)), stof(argv(5))];
+		n = bound(1, stof(argv(2)), 500);
+		t = gettime(1);
+		for (z = 0; z < n; z = z + 1)
+			getsurfacenearpoint(world, zv);
+		print(sprintf("zone_edit: snapcost %g searches %.0f ms\n", n, (gettime(1) - t) * 1000));
 	}
 	else if (a == "pointer")
 	{
@@ -2014,4 +2110,6 @@ void() ZoneEdit_Register =
 	ze_replace = -1;
 	ze_grid = 16;
 	ze_snap = TRUE;
+	ze_edges = TRUE;                // P1197: on by default now that it reads the map
+	ze_wsurf = -1;
 };
