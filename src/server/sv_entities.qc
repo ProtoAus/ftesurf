@@ -2662,6 +2662,8 @@ void(entity t, string param) SV_IOAddOutput =
 		aftergrav = t.gravity ? t.gravity : 1;
 		if (aftergrav != beforegrav)
 			SV_BankAffect(t);
+		if (cvar("developer"))          // P1211: the write prints itself (gated: SV_DevOn is true on lobbies)
+			dprint(sprintf("gravity: %s %g -> %g\n", t.netname, beforegrav, aftergrav));
 		return;
 	}
 
@@ -5154,6 +5156,76 @@ void() SV_IODelayThink =
 	bank_ctx_depth = bd;
 };
 
+// P1211: the delayed rows the client mirror predicts (cl_triggers.qc TG_PcAdd) count down in the
+// activator's own command time, not world time, so both sides land them before the same move.
+// SV_PcTick, at PlayerPreThink after the edges: fire what has nothing left, then spend this
+// command's msec. Still vbsp_iodelay edicts, so SV_TrigPending and CancelPending see them.
+.float pc_on, pc_rem;           // on a vbsp_iodelay: counting, and ms left
+float  sv_pc_live;              // an upper bound; 0 skips the scan
+
+// Must match the mirror's rows: RunScriptCode in the velocity grammar, or AddOutput gravity,
+// aimed at the activator, with no fired-with value.
+float(entity o, entity act, string val) SV_PcEligible =
+{
+	local string p;
+	local float sp;
+	if (act.classname != "player" || val != "")
+		return FALSE;
+	if (!FS_IsActivator(o.vbsp_io_target))
+		return FALSE;
+	p = strtolower(o.vbsp_io_input);
+	if (p == "runscriptcode")
+		return FS_VsVelParse(o.vbsp_io_param);
+	if (p != "addoutput")
+		return FALSE;
+	p = strtolower(o.vbsp_io_param);
+	sp = strstrofs(p, " ", 0);
+	return ((sp < 0) ? p : substring(p, 0, sp)) == "gravity";
+};
+
+void(entity e) SV_PcTick =
+{
+	local entity d, oself;
+	local float ms, n;
+
+	if (sv_pc_live <= 0)
+		return;
+	// Due first, one at a time: a delivery can spawn or cancel others, so rescan after each.
+	for (d = find(world, classname, "vbsp_iodelay"); d; d = find(d, classname, "vbsp_iodelay"))
+		if (d.pc_on && d.enemy == e && d.pc_rem <= 0)
+		{
+			if (cvar("developer"))
+				dprint(sprintf("pc: %s's %s '%s' lands\n", e.netname, d.owner.vbsp_io_input, d.owner.vbsp_io_param));
+			oself = self;
+			self = d;
+			SV_IODelayThink();          // removes d before it delivers
+			self = oself;
+			d = world;
+		}
+	ms = rint(frametime * 1000);
+	n = 0;
+	for (d = find(world, classname, "vbsp_iodelay"); d; d = find(d, classname, "vbsp_iodelay"))
+		if (d.pc_on)
+		{
+			if (d.enemy == e)
+				d.pc_rem = d.pc_rem - ms;
+			n = n + 1;
+		}
+	sv_pc_live = n;
+};
+
+// ClientDisconnect: the next player in this edict must not inherit the count.
+void(entity e) SV_PcForget =
+{
+	local entity d, nx;
+	for (d = find(world, classname, "vbsp_iodelay"); d; d = nx)
+	{
+		nx = find(d, classname, "vbsp_iodelay");
+		if (d.pc_on && d.enemy == e)
+			remove(d);
+	}
+};
+
 void(entity src, string name, entity act) SV_FireOutputBody =
 {
 	local entity o, nx, d;
@@ -5241,9 +5313,18 @@ void(entity src, string name, entity act) SV_FireOutputBody =
 			d.owner = o;
 			d.enemy = act;
 			SV_BankSnapshot(d);
-			d.think = SV_IODelayThink;
-			d.nextthink = time + o.vbsp_io_delay;
 			d.vbsp_io_param = val;
+			if (SV_PcEligible(o, act, val))
+			{
+				d.pc_on = TRUE;         // P1211: SV_PcTick, not a think
+				d.pc_rem = rint(o.vbsp_io_delay * 1000);
+				sv_pc_live = sv_pc_live + 1;
+			}
+			else
+			{
+				d.think = SV_IODelayThink;
+				d.nextthink = time + o.vbsp_io_delay;
+			}
 		}
 		else
 		{

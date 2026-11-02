@@ -479,6 +479,7 @@ float(string s) TT_Find =
 #define IOP_PMOVE   1           // gravity/origin/angles: player movement
 #define IOP_BVEL    3           // Patch 1025: basevelocity, mirrored when tg_bvel_ok
 #define IOP_TNAME   2           // targetname: routing state
+#define IOP_GRAV    4           // P1211: gravity at the activator, predicted through TG_PcAdd
 
 float  io_n, io_over;
 float  io_src[TIO_MAX];         // owner slot; -1 other entity; -3 logic_auto
@@ -490,6 +491,8 @@ float  io_times[TIO_MAX];
 float  io_fired[TIO_MAX];       // committed fires; mapspawn rows: 1 = done
 string io_tgt[TIO_MAX];
 vector *io_bv;                  // Patch 1025: an IOP_BVEL row's vector (memalloc: globals are full)
+float  *io_gv;                  // P1211: an IOP_GRAV row's value
+float  tg_pc_rows;              // P1211: the map has rows TG_PcAdd takes
 vector *io_vsop;                // P1205: an IN_VSVEL row's per-axis rule (FS_VsVelParse)
 vector *io_vsa;
 vector *io_vsb;
@@ -638,7 +641,14 @@ void(string key, string val) TG_IOParse =
 				io_bv = memalloc(sizeof(vector) * TIO_MAX);
 			io_bv[io_n] = (sp < 0) ? '0 0 0' : stov(substring(p0, sp + 1, -1));
 		}
-		else if (w == "gravity" || w == "origin" || w == "angles")
+		else if (w == "gravity")
+		{
+			parm = IOP_GRAV;            // P1211
+			if (!io_gv)
+				io_gv = memalloc(sizeof(float) * TIO_MAX);
+			io_gv[io_n] = (sp < 0) ? 0 : stof(substring(p0, sp + 1, -1));
+		}
+		else if (w == "origin" || w == "angles")
 			parm = IOP_PMOVE;
 		else if (w == "targetname")
 			parm = IOP_TNAME;
@@ -678,6 +688,11 @@ void(string key, string val) TG_IOParse =
 	io_delay[io_n] = (nt > 3) ? stof(argv(3)) : 0;
 	io_times[io_n] = (nt > 4) ? stof(argv(4)) : -1;
 	io_tgt[io_n]   = argv(0);
+	if (parm == IOP_GRAV)
+		tg_pc_rows = 1;
+	if (inp == IN_VSVEL)
+	if (io_delay[io_n] > 0)
+		tg_pc_rows = 1;
 	io_n = io_n + 1;
 };
 
@@ -733,11 +748,24 @@ float(float o) TG_IOMirrorOK =
 	return tg_kind[io_src[o]] != 0;	// owner predicted (fixpoint updates this)
 };
 
-// P1205: a velocity script row the mirror pays at the end of the command: no delay (no
-// scheduler here), no firing count, an owner it predicts.
+// P1205: a velocity script row the mirror pays: at the end of the command, or through TG_PcAdd
+// when delayed (P1211). No firing count, an owner it predicts.
 float(float o) TG_IOVsOK =
 {
-	if (io_delay[o] != 0 || io_times[o] >= 0 || io_src[o] < 0)
+	if (io_times[o] >= 0 || io_src[o] < 0)
+		return FALSE;
+	return tg_kind[io_src[o]] != 0;
+};
+
+// P1211: a gravity row the mirror pays through TG_PcAdd: an edge it sees on an owner it predicts,
+// no firing count. OnJump only where Patch 1025 mirrors it (an event trigger, tg_bvel_ok).
+float(float o) TG_IOGravOK =
+{
+	if (io_times[o] >= 0 || io_src[o] < 0)
+		return FALSE;
+	if (io_ev[o] == EV_JUMP)
+		return (tg_bvel_ok && tg_kind[io_src[o]] == TG_EVENT);
+	if (io_ev[o] != EV_START && io_ev[o] != EV_END)
 		return FALSE;
 	return tg_kind[io_src[o]] != 0;
 };
@@ -771,6 +799,8 @@ float(float s) TG_IOOwnerBad =
 			return TRUE;
 		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_BVEL && !TG_IOBvelOK(o))
 			return TRUE;
+		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_GRAV && !TG_IOGravOK(o))
+			return TRUE;            // P1211: a gravity row it cannot pay keeps its owner server-only, as before
 	}
 	return FALSE;
 };
@@ -864,6 +894,128 @@ float(float o, float seq) TG_IOApply =
 	return pushed;
 };
 
+/*
+  P1211: the mirror's half of SV_PcTick. A gravity row (any delay) or a delayed velocity row
+  fired by command S's move lands at the pre-move of the first command K whose start is its
+  delay or more after S's end, in summed command msec: delay - (clock(K-1) - clock(S)) <= 0.
+  The clock is absolute (tg_pc_clk, per seq), so a 1.7 s row outlives the 64-command ring.
+  A replay from the ack M keeps the entries born by M that had not landed by M (the server's
+  state has the rest) and lets this chain's own edges re-add the others.
+*/
+#define TG_PC_MAX 16
+#define TG_PC_W   4             // tg_pc rows: [k*4] row, [+1] born seq, [+2] clock at birth, [+3] landed this chain
+float  *tg_pc;
+float  tg_pc_n, tg_pc_now;      // entries; the clock at the start of the piece being predicted
+float  *tg_pc_clk;              // [(seq % 64) * 2] = clock after seq, [+1] = seq
+float  tg_pm_seq, tg_pm_off;    // the last pre-move piece, for the chain test
+float  tg_grav, tg_pm_gravon;   // the gravity this chain predicts, once a chain has started
+vector tg_pm_vel;               // TG_PreMove's velocity, for cl_warpop.qc's hook
+float  tg_pm_velon;
+
+void(float o, float seq) TG_PcAdd =
+{
+	local float k;
+	if (!tg_pc)
+		tg_pc = memalloc(sizeof(float) * TG_PC_MAX * TG_PC_W);
+	for (k = 0; k < tg_pc_n; k = k + 1)
+		if (tg_pc[k * TG_PC_W] == o && tg_pc[k * TG_PC_W + 1] == seq)
+			return;             // a split piece of the same command
+	if (tg_pc_n >= TG_PC_MAX)
+		return;
+	k = tg_pc_n * TG_PC_W;
+	tg_pc[k] = o;
+	tg_pc[k + 1] = seq;
+	tg_pc[k + 2] = tg_pc_now;   // TG_PreMove has added this piece's msec
+	tg_pc[k + 3] = 0;
+	tg_pc_n = tg_pc_n + 1;
+};
+
+void(float k) TG_PcDrop =
+{
+	local float j;
+	tg_pc_n = tg_pc_n - 1;
+	for (j = 0; j < TG_PC_W; j = j + 1)
+		tg_pc[k * TG_PC_W + j] = tg_pc[tg_pc_n * TG_PC_W + j];
+};
+
+// The clock after seq, or -1 if the ring no longer holds it.
+float(float seq) TG_PcClock =
+{
+	local float k;
+	k = (seq - 64 * floor(seq / 64)) * 2;
+	return (tg_pc_clk[k + 1] == seq) ? tg_pc_clk[k] : -1;
+};
+
+// Every pre-move piece (cl_warpop.qc). held: the spectate hold, which the server does not tick.
+void(float seq, float seconds, float offset, float held, vector vel, float grav) TG_PreMove =
+{
+	local float k, o, m, cm, cm1, left;
+
+	tg_pm_velon = 0;
+	tg_pm_vel = vel;
+	if (!tg_pc_rows)
+		return;                 // nothing on this map to schedule: the engine's gravity stands
+	if (!tg_pc_clk)
+		tg_pc_clk = memalloc(sizeof(float) * 64 * 2);
+	if (seq < tg_pm_seq || (seq == tg_pm_seq && offset <= tg_pm_off) || !tg_pm_gravon)
+	{
+		// A replay from the ack: seq - 1 is the last command the server has answered.
+		tg_grav = grav;         // the server's, sent with that frame (engine P1211)
+		tg_pm_gravon = 1;
+		m = seq - 1;
+		cm = TG_PcClock(m);
+		cm1 = TG_PcClock(m - 1);
+		tg_pc_now = (cm < 0) ? 0 : cm;
+		for (k = tg_pc_n - 1; k >= 0; k = k - 1)
+		{
+			if (cm < 0 || tg_pc[k * TG_PC_W + 1] > m)
+			{
+				TG_PcDrop(k);   // this chain re-adds it, or its clock base is gone
+				continue;
+			}
+			o = tg_pc[k * TG_PC_W];
+			if (tg_pc[k * TG_PC_W + 1] < m)
+			if (cm1 >= 0)
+			if (rint(io_delay[o] * 1000) - (cm1 - tg_pc[k * TG_PC_W + 2]) <= 0)
+			{
+				TG_PcDrop(k);   // landed by m: in the server's state already
+				continue;
+			}
+			tg_pc[k * TG_PC_W + 3] = 0;
+		}
+	}
+	tg_pm_seq = seq;
+	tg_pm_off = offset;
+
+	for (k = 0; k < tg_pc_n; k = k + 1)
+	{
+		if (tg_pc[k * TG_PC_W + 3])
+			continue;
+		o = tg_pc[k * TG_PC_W];
+		left = rint(io_delay[o] * 1000) - (tg_pc_now - tg_pc[k * TG_PC_W + 2]);
+		if (left > 0)
+			continue;
+		tg_pc[k * TG_PC_W + 3] = 1;
+		if (io_inp[o] == IN_ADDOUT)
+			tg_grav = io_gv[o];
+		else
+		{
+			tg_pm_vel = FS_VsVelApply(tg_pm_vel, io_vsop[o], io_vsa[o], io_vsb[o]);
+			tg_pm_velon = 1;
+		}
+		if (tg_cv_debug)
+			print(sprintf("^5trig^7: seq %g pc row %g lands: %s\n", seq, o,
+			              (io_inp[o] == IN_ADDOUT) ? sprintf("gravity %g", io_gv[o])
+			                                       : sprintf("velocity %v -> %v", vel, tg_pm_vel)));
+	}
+
+	if (!held)
+		tg_pc_now = tg_pc_now + rint(seconds * 1000);
+	k = (seq - 64 * floor(seq / 64)) * 2;
+	tg_pc_clk[k] = tg_pc_now;   // a split command's later pieces overwrite it with more
+	tg_pc_clk[k + 1] = seq;
+};
+
 void(float i, float ev, float seq) TG_IOFireEv =
 {
 	local float o;
@@ -871,8 +1023,15 @@ void(float i, float ev, float seq) TG_IOFireEv =
 	{
 		if (io_src[o] != i || io_ev[o] != ev)
 			continue;
-		if (ev == EV_JUMP && !(io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_BVEL))
+		if (ev == EV_JUMP && !(io_inp[o] == IN_ADDOUT && (io_parm[o] == IOP_BVEL || io_parm[o] == IOP_GRAV)))
 			continue;		// an OnJump state row demoted what it aims at
+		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_GRAV)
+		{
+			// P1211: lands at the next pre-move (delay 0) or later, as SV_PcTick does
+			if (TG_IOGravOK(o) && FS_IsActivator(io_tgt[o]))
+				TG_PcAdd(o, seq);
+			continue;
+		}
 		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_BVEL)
 		{
 			// TG_IOOwnerBad kept this slot only if every such row is TG_IOBvelOK, and its
@@ -891,7 +1050,9 @@ void(float i, float ev, float seq) TG_IOFireEv =
 		}
 		if (io_inp[o] == IN_VSVEL)
 		{
-			if (TG_IOVsOK(o) && (ev == EV_START || ev == EV_END))
+			if (TG_IOVsOK(o) && (ev == EV_START || ev == EV_END) && io_delay[o] > 0)
+				TG_PcAdd(o, seq);       // P1211
+			else if (TG_IOVsOK(o) && (ev == EV_START || ev == EV_END))
 			{
 				tg_vs_on = 1;
 				tg_vs_op = io_vsop[o];
@@ -1234,6 +1395,9 @@ void() TG_IOResolve =
 		for (o = 0; o < io_n; o = o + 1)
 			if (io_src[o] == s && io_inp[o] == IN_VSVEL && TG_IOVsOK(o))
 				tg_io_own[s] = 1;   // P1205: owned, so its touch state resets and START fires every entry (review 1)
+		for (o = 0; o < io_n; o = o + 1)
+			if (io_src[o] == s && io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_GRAV && TG_IOGravOK(o))
+				tg_io_own[s] = 1;   // P1211
 		if (tg_io_own[s])
 			tg_c_ioown = tg_c_ioown + 1;
 		if (tg_io_gated[s])
@@ -1866,6 +2030,11 @@ void() Trig_LoadForMap =
 	tg_needload = 0;
 	io_n = 0;
 	io_over = 0;
+	tg_pc_rows = tg_pc_n = tg_pc_now = 0;   // P1211
+	tg_pm_gravon = tg_pm_seq = tg_pm_off = 0;
+	if (tg_pc_clk)
+		for (i = 0; i < 128; i = i + 1)
+			tg_pc_clk[i] = -1;
 	tgs_head = world;
 	tg_c_box = 0;
 	ior_n = 0;
