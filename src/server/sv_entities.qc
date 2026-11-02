@@ -493,6 +493,9 @@ float  vbsp_io_over_map;	// refused by the map-wide ceiling
 .float  vbsp_tooltrig;	// Patch 892: a model-less trigger kept for AddOutput mins/maxs (SV_ToolTrig)
 .float  vbsp_toolshape;	// ...the box keys it has taken: 1 mins, 2 maxs
 .float  vbsp_slide_skin;	// Patch 280: a func_slide's tag, worn on .skin only while solid
+.string vbsp_defanim;		// P1202: a prop's DefaultAnim keyvalue
+.float  vbsp_skyent;		// P1202: in the 3D skybox (SV_SkyRoomAll): always sent; props animate
+void(entity t, string anim) SV_SkyAnim;
 
 // On an vbsp_output entity.  .owner is the source entity.
 .entity vbsp_io_next;
@@ -1635,6 +1638,7 @@ void(string key, string value) ED_ParseUnknownEpair =
 	// Patch 1036: Source keeps the last ResponseContext and adds it at Activate (SV_CtxInit).
 	if (!strcasecmp(key, "responsecontext")) { self.vbsp_ctx_kv = strcat(value); return; }
 	if (!strcasecmp(key, "any")) { self.vbsp_ctx_any = stof(value); return; }
+	if (!strcasecmp(key, "defaultanim")) { self.vbsp_defanim = strcat(value); return; }   // P1202
 
 	if (key == "x") { self.vbsp_gt_x = stof(value); return; }
 	if (key == "y") { self.vbsp_gt_y = stof(value); return; }
@@ -4477,6 +4481,8 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		return;
 	}
 	if (in == "kill")           { remove(t);                            return; }
+	if (t.vbsp_skyent)		// P1202: only a 3D-skybox prop animates (props are static elsewhere)
+	if (in == "setanimation" || in == "setdefaultanimation") { SV_SkyAnim(t, pm); return; }
 	if (in == "enable")         { SV_IOEnable(t, TRUE);                 return; }
 	if (in == "disable")        { SV_IOEnable(t, FALSE);                return; }
 	/*
@@ -6148,6 +6154,99 @@ void() info_player_deathmatch           = { };
 void() info_player_terrorist            = { };
 void() info_player_counterterrorist     = { };
 void() info_player_teamspawn            = { };
+
+/*
+  P1202: THE 3D SKYBOX'S ENTITIES. Source sends every entity in the sky camera's area to every
+  client (gameinterface.cpp CheckTransmit: "Always send entities in the player's 3d skybox"). FTE
+  sends what the client's PVS sees, and a sky room is sealed off from it, so surf_shape's moving
+  dunes (prop_dynamic skybox_mdl) reached nobody. QC has no areas: an entity counts when the sky
+  camera's PVS holds it and no spawn point's does.
+*/
+vector vbsp_skycam_org;
+float  vbsp_skycam_have, vbsp_skyroom_n, vbsp_skyroom_anim_n;
+vector vbsp_skyspawn[8];
+#define VBSP_SKYROOM_MAX 256
+
+void() sky_camera =
+{
+	if (!vbsp_skycam_have)          // the first, as cl_decals.qc's reader takes
+	{
+		vbsp_skycam_org = self.origin;
+		vbsp_skycam_have = TRUE;
+	}
+	remove(self);
+};
+
+void(entity t, string anim) SV_SkyAnim =
+{
+	local float f;
+	if (anim == "")
+		return;
+	// The hl2 plugin names frame groups after MDL anims, and a $sequence's inline anim is
+	// "@<sequence>" (sand_dunes.mdl: sequence "move", anim "@move").
+	f = frameforname(t.modelindex, anim);
+	if (f < 0)
+		f = frameforname(t.modelindex, strcat("@", anim));
+	if (f < 0)
+		return;
+	t.frame = f;
+	vbsp_skyroom_anim_n = vbsp_skyroom_anim_n + 1;
+};
+
+void() SV_SkyRoomAll =
+{
+	local entity e;
+	local float n, ns, i, pass;
+	local string cn;
+	if (!vbsp_skycam_have)
+		return;
+	if (pointcontents(vbsp_skycam_org) == CONTENT_SOLID)   // no cluster: checkpvs would pass everything
+	{
+		print("skyroom(sv): sky_camera in solid, nothing sent always\n");
+		return;
+	}
+	ns = n = 0;
+	for (e = nextent(world); e && ns < 8; e = nextent(e))
+	{
+		cn = e.classname;
+		if (cn == "info_player_start" || cn == "info_player_deathmatch" || cn == "info_player_terrorist"
+		    || cn == "info_player_counterterrorist" || cn == "info_player_teamspawn")
+		{
+			vbsp_skyspawn[ns] = e.origin + '0 0 64';
+			ns = ns + 1;
+		}
+	}
+	for (pass = 0; pass < 2; pass = pass + 1)
+	{
+		n = 0;
+		for (e = nextent(world); e; e = nextent(e))
+		{
+			if (!e.modelindex || (e.flags & FL_CLIENT) || !checkpvs(vbsp_skycam_org, e))
+				continue;
+			for (i = 0; i < ns; i = i + 1)
+				if (checkpvs(vbsp_skyspawn[i], e))
+					break;
+			if (i < ns)
+				continue;
+			n = n + 1;
+			if (pass)
+			{
+				e.vbsp_skyent = TRUE;
+				e.pvsflags = (e.pvsflags & 252) | PVSF_IGNOREPVS;   // keeps PVSF_NOREMOVE
+				SV_SkyAnim(e, e.vbsp_defanim);
+			}
+		}
+		if (n > VBSP_SKYROOM_MAX)       // the PVS leaked into the map: sending it all is worse
+		{
+			print(sprintf("skyroom(sv): ^3%g entities seen from the sky_camera, over %g; none sent always\n",
+			              n, VBSP_SKYROOM_MAX));
+			return;
+		}
+	}
+	vbsp_skyroom_n = n;
+	print(sprintf("skyroom(sv): %g entities in the 3D skybox always sent, %g animated (%g spawn points)\n",
+	              vbsp_skyroom_n, vbsp_skyroom_anim_n, ns));
+};
 void() info_player_logo                 = { remove(self); };
 void() info_teleport_destination        = { };
 void() info_target                      = { };
@@ -6368,6 +6467,7 @@ void() SV_EntityReset =
 	vbsp_targetfix_n = 0;
 	vbsp_lpd_n = vbsp_lpd_unpaired = 0;
 	vbsp_lpd_reporter = world;	// Patch 207: SV_EntityReset clears this too
+	vbsp_skycam_have = vbsp_skyroom_n = vbsp_skyroom_anim_n = 0;   // P1202
 
 	// Build 37.  Same trap as every counter above: these are globals and they
 	// would otherwise accumulate across every map loaded in a session.

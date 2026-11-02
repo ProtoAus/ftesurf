@@ -185,6 +185,7 @@ void() StartFrame =
 		// materialising outputs needs every entity on the map to exist.
 		SV_BrushRenderAll();        // P844: before the window panes, which hide theirs
 		SV_PortalWindowsActivate();
+		SV_SkyRoomAll();            // P1202: before the I/O build, whose OnMapSpawn may SetAnimation
 		SV_EntityIOBuild();
 
 		SV_EntityReport();
