@@ -6203,7 +6203,7 @@ void() SV_SkyRoomAll =
 {
 	local entity e, pt;
 	local float n, ns, i, pass;
-	local vector ptorg;
+	local vector ptorg, cp;
 	local string cn;
 	if (!vbsp_skycam_have)
 		return;
@@ -6242,9 +6242,14 @@ void() SV_SkyRoomAll =
 			if (!e.modelindex || (e.flags & FL_CLIENT) || !checkpvs(vbsp_skycam_org, e))
 				continue;
 			// A big entity's checkpvs falls back to its headnode (mod_vbsp.c VBSP_EdictInFatPVS);
-			// its centre against the camera's point is exact.
+			// one point of it against the camera's point is exact. A brush entity's is its box
+			// centre; a model's is its origin, since its box can leave the room (sand_dunes.mdl
+			// runs 1831 below its origin, which put the centre in solid: an empty PVS).
+			cp = (e.absmin + e.absmax) * 0.5;
+			if (substring(e.model, 0, 1) != "*")
+				cp = e.origin;
 			if (pt)
-			if (!checkpvs((e.absmin + e.absmax) * 0.5, pt))
+			if (!checkpvs(cp, pt))
 				continue;
 			for (i = 0; i < ns; i = i + 1)
 				if (checkpvs(vbsp_skyspawn[i], e))
