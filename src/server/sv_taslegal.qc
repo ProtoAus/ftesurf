@@ -482,7 +482,7 @@ void(entity e, string name, string cpname) SV_TASLegalLoad =
 	}
 	if (e.origin != tpr_bo)
 	{
-		SV_TASLegalEnd(e, "the start zone does not place the body where this project began (the zones changed?)");
+		SV_TASLegalEnd(e, "the start zone does not place the body where this project began (the zones or their spawn changed?)");
 		SV_TASPReadFree(); return;
 	}
 	bad = SV_TASPValidate(e, tpr_buf, tpr_n);

@@ -1413,7 +1413,6 @@ void(float rsz) ZoneEdit_Handles2D =
   centre) with exactly one destination inside the zone stands and faces as that
   destination: the server's rule, SV_ZoneSpawnYaws, mirrored here.
 */
-#define ZE_TDMAX 256
 #define ZE_NOYAW -9999
 vector ze_tdorg[ZE_TDMAX];
 float  ze_tdyaw[ZE_TDMAX];
@@ -1468,7 +1467,7 @@ float(float z) ZoneEdit_SpawnDest =
 	local vector c, o;
 
 	ZoneEdit_TeleDests();
-	if (z < 0 || z >= zone_count) return -1;
+	if (z < 0 || z >= zone_count || zone_stamped) return -1;     // stamped: the server leaves them
 	if (zone_type[z] != ZONE_START && zone_type[z] != ZONE_STAGE) return -1;
 	if (zone_npts[z] < 1 || zone_td_kind[z] == ZTD_NAME) return -1;
 	if (zone_td_kind[z] == ZTD_POS)
@@ -1489,7 +1488,7 @@ float(float z) ZoneEdit_SpawnDest =
 	}
 	if (n != 1) return -1;
 	o = ze_tdorg[hit];
-	tracebox(o, PM_HULL_MINS, PM_HULL_MAXS, o - '0 0 1024', MOVE_NOMONSTERS, world);
+	tracebox(o, PM_HULL_MINS, PM_HULL_MAXS, o - '0 0 1024', FALSE, world);
 	return Zone_PointInside(z, trace_endpos + '0 0 2') ? hit : -1;
 };
 

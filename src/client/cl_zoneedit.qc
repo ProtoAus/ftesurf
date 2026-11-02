@@ -176,7 +176,8 @@ void(float rsz) ZoneEdit_SnapMark2D;
 void(float rsz) ZoneEdit_Handles2D;
 void(float rsz) ZoneEdit_Spawns2D;
 float(float z) ZoneEdit_SpawnDest;
-string ze_tdname[256];
+#define ZE_TDMAX 1024                   // bhop_desertbus has 901 destinations
+string ze_tdname[ZE_TDMAX];
 vector() ZoneEdit_HandleCol;
 void() ZoneEdit_EditBegin;
 void() ZoneEdit_EditFrame;
