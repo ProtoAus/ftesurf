@@ -23,6 +23,8 @@ float predinput_onground;
 float predinput_pmtype;
 float predinput_forceduck;
 float predinput_held;           // Patch 754: the engine predicts through PM_NONE (this server's holds)
+float predinput_entgravity;     // P1211: preloaded with the server's gravity; WOP_GRAVITY sets this piece's
+float predinput_version;        // P1211: 1211+ on an engine that takes WOP_GRAVITY (older ones reject the mask)
 
 #define WOP_PM_NORMAL 0
 #define WOP_PM_NONE   5
@@ -31,6 +33,7 @@ float predinput_held;           // Patch 754: the engine predicts through PM_NON
 #define WOP_DUCK  4
 #define WOP_HOLD  8
 #define WOP_CLEARCARRIER 16
+#define WOP_GRAVITY 32                  // P1211: engine PMPI_GRAVITY
 
 #define WOP_RING 64                 // a slot is held 64 commands past its answer: room for a held key
 float  *wop_seq;                // the command it rode; -1 queued; 0 free
@@ -709,6 +712,21 @@ void(float seat, float seq, float seconds, float offset) CSQC_PredictPlayerPreMo
 	if (predinput_pmtype == WOP_PM_NONE)
 	if (getstatf(STAT_FS_SPEC))
 		predinput_apply = predinput_apply | WOP_HOLD;
+
+	// P1211: the trigger mirror's gravity and delayed velocity rows (cl_triggers.qc TG_PreMove).
+	if (seat)
+		return;
+	TG_PreMove(seq, seconds, offset, predinput_apply & WOP_HOLD, predinput_velocity, predinput_entgravity);
+	if (tg_pm_velon)
+	{
+		predinput_apply = predinput_apply | WOP_BODY;   // origin and ground stay as the engine preloaded them
+		predinput_velocity = tg_pm_vel;
+	}
+	if (tg_pm_gravon && predinput_version >= 1211)
+	{
+		predinput_apply = predinput_apply | WOP_GRAVITY;
+		predinput_entgravity = tg_grav;
+	}
 };
 
 // cl_triggers.qc's CSQC_PredictPlayerMove: a reset that turns the view registers

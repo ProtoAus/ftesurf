@@ -390,6 +390,7 @@ void() ClientDisconnect =
 {
 	SV_TASShareCancel(self);           // callbacks/deferred opens belong to this connection
 	SV_PeClose(self);                  // Patch 1195: a report still uploading
+	SV_PcForget(self);                 // P1211: delayed rows counting this player's commands
 	self.bank_attempt = 0i;
 	SV_StagePruneDue(self);             // Patch 998: a stage's prune still queued
 	if (self.rec_st_tail >= 1)
@@ -591,6 +592,7 @@ void() PlayerPreThink =
 	// Patch 1025: the PREVIOUS command's end-touch edge, read the same way.
 	if (self.run_touchran)
 		SV_TriggerEndEdge(self);
+	SV_PcTick(self);                    // P1211: delayed rows in command time, after the edges that schedule them
 	SV_VsVelPost(self);                 // P1205: an OnEndTouch write, before this command's move (review 1)
 
 	/*
