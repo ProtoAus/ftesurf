@@ -305,7 +305,7 @@ void() SV_ZoneSpawnYaws =
 		}
 		if (cnt != 1)
 			continue;
-		tracebox(hit.origin, PM_HULL_MINS, PM_HULL_MAXS, hit.origin - '0 0 1024', FALSE, world);   // ZONE_SNAP_DROP, below
+		tracebox(hit.origin, PM_HULL_MINS, PM_HULL_MAXS, hit.origin - '0 0 1024', MOVE_NOMONSTERS, world);   // ZONE_SNAP_DROP, below
 		if (Zone_PointInside(n, trace_endpos + '0 0 2'))
 		{
 			if (cvar("developer"))
