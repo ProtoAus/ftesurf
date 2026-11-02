@@ -21,6 +21,11 @@
 
 ## next
 
+### P1201 surf_view and ent_view: outlines and see-through planes
+- surf_view now outlines every face it shows, so you can tell where one ramp ends and the one behind it starts. ent_view's trigger volumes get the same outlines.
+- New setting surf_view_style: 0 dotted (the old look), 1 dotted with outlines (default), 2 see-through planes, 3 see-through planes with outlines. surf_view_fill sets how strong the fill is.
+
+
 ### P1169 Larger Maps filter text
 - Maps: larger, sharper native-pixel filter text, with roomier controls that wrap on smaller windows.
 

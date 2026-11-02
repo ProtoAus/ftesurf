@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1201 surf_view outlines and see-through planes
+Engine exe in both Windows installs (the Desktop copy gets it with the next release). Please check:
+1. surf_dune's spawn (ramps behind ramps), `surf_view 1`: every blue ramp, yellow clip and red teleport face is
+   outlined. Does depth read better than the old dither?
+2. `surf_view_style 3` (see-through planes with outlines) and `surf_view_style 2` (planes only): which do you
+   prefer as the default? `surf_view_style 0` is the old dither; `surf_view_fill 0.4` makes the fill stronger.
+3. `ent_view`: the trigger volumes in view follow the same style.
+Measured: dither and planes cost the same (about 0.15 ms for the whole overlay, surf_dune at 1920x1200);
+edges continuous at 1:1; on surf_skyhaven's glass the planes keep their colour (a plane behind glass now
+draws over it rather than dimmed by it).
+
 ## P1197 zone editor snaps to the map's corners
 On all 12 lobbies and in both C:\FTESurf / C:\FTEQuake installs (CSQC only; restart a running game).
 A game you host uses its own install's files, so your Desktop WorldofSurf install gets it with
