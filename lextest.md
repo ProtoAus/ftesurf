@@ -124,6 +124,16 @@ random colour. Colours picked before this patch were never saved: pick them once
 A reconnect without restarting already kept them (measured); a console `setinfo` is still
 not saved. Measured: tools/p1177look.py 16/16 on the deployed build, with cfg_save_all 1.
 
+## 0.1.35 public release (automation accepted; human check pending)
+
+Published 2 Nov 05:41Z: the lobbies' QC (96f009ed), engine patch-1195 + P1191/P1192, launcher 646c8d1,
+P1178's map table and hd pictures. Your launcher (0.1.28) installs it into an empty folder; fresh
+installs Windows 882 / Linux 881 files; no game was launched from them. Please check in the Desktop
+WorldofSurf install after it updates: the main menu reads 0.1.35; Maps rows are the picture plus a
+little padding, with "by <author>" after the name and sharp pictures; Map info (top right in a map)
+shows the author; surf_olivia's hub has its sky; F6 is offered after a big prediction error.
+tools/release035.md.
+
 ## 0.1.34 public release (automation accepted; human check pending)
 
 Published 1 Nov 12:51Z: QC 3cc4fec7 (as live), engine P1173, launcher 646c8d1, P1174 zones/pictures.

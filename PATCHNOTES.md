@@ -21,6 +21,25 @@
 
 ## next
 
+### P1169 Larger Maps filter text
+- Maps: larger, sharper native-pixel filter text, with roomier controls that wrap on smaller windows.
+
+
+### P1161 Fresh TAS project loads
+- TAS projects can load and replay in a fresh supported session without first building rewind history. Legal-start rewind keeps working from a fresh start.
+- Loading a TAS project while noclipping or held now refuses before changing your body or saved timeline. TAS remains assisted practice.
+
+
+### P1154 TAS frame advance at 100Hz
+- TAS pause, frame advance, retained rewind and input replay can use a selected 10ms Source clock as well as the existing 15ms clock. Default movement timing is unchanged.
+- Clock changes stop queued TAS work instead of silently reusing it. Reload the map after changing its clock before starting a new timeline. TAS remains assisted practice.
+
+
+### P1142 Collector recovery (pending backend rollout)
+- Steam sign-in queues paced Momentum and KSF personal-best refreshes. Collector retries keep unrelated work moving; catalogue changes no longer shift a pending KSF stage walk. This update is not active on the live backend yet.
+
+## 0.1.35 2026-11-02
+
 ### P1196 No snap when surf_network2008's spawn sends you on
 - Teleports that the map switches on and off with timers (surf_network2008's spawn and jail teleports, and others like them) are now predicted, so they no longer snap you back and forth by up to 2000 units.
 
@@ -108,24 +127,6 @@
 
 ### P1175 Zone publishing works again
 - Zone admins can publish from the zone editor again. Since 1 Nov every upload had answered "Zone uploads unavailable".
-
-
-### P1169 Larger Maps filter text
-- Maps: larger, sharper native-pixel filter text, with roomier controls that wrap on smaller windows.
-
-
-### P1161 Fresh TAS project loads
-- TAS projects can load and replay in a fresh supported session without first building rewind history. Legal-start rewind keeps working from a fresh start.
-- Loading a TAS project while noclipping or held now refuses before changing your body or saved timeline. TAS remains assisted practice.
-
-
-### P1154 TAS frame advance at 100Hz
-- TAS pause, frame advance, retained rewind and input replay can use a selected 10ms Source clock as well as the existing 15ms clock. Default movement timing is unchanged.
-- Clock changes stop queued TAS work instead of silently reusing it. Reload the map after changing its clock before starting a new timeline. TAS remains assisted practice.
-
-
-### P1142 Collector recovery (pending backend rollout)
-- Steam sign-in queues paced Momentum and KSF personal-best refreshes. Collector retries keep unrelated work moving; catalogue changes no longer shift a pending KSF stage walk. This update is not active on the live backend yet.
 
 ## 0.1.34 2026-11-01
 
