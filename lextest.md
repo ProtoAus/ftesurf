@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1212 World of Surf in Windows (after the next release)
+Right-click WOS-Launcher.exe and ftesurf64.exe -> Properties -> Details: Company and Product read World of Surf.
+If a player still sees a Defender warning, ask for the detection name and file; signing is the real fix.
+Both installs already run the patch-1212 game exe.
+
 ## P1210 KSF replays show crouching
 In game, for a KSF file opened with `replay ksf <file> <map> <bonus> <style>` (all 12 lobbies and
 both installs). KSF runs the backend serves were converted before this, so they show it only

@@ -21,6 +21,10 @@
 
 ## next
 
+### P1212 The launcher and game say World of Surf in Windows
+- WOS-Launcher.exe and the game now name World of Surf as their publisher and product in Windows (file Properties, SmartScreen, antivirus). They used to name the FTE engine, or nothing.
+
+
 ### P1210 KSF replays show crouching
 - KSF replays now show when the player is crouched, including a crouch the ramp keeps after the key is let go, worked out from how the player moves since KSF does not record it.
 

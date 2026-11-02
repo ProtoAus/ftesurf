@@ -27,7 +27,8 @@ commit   dc3e20be390ba5c3bb7d570bcacba8151172cd7d
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1165
-patch    1209
+patch    1212
+# Patch 1212 (launcher build.rs + engine winquake.rc + ftesurf.bat + tests): World of Surf version info in WOS-Launcher.exe (Quakers-Launcher 1538d9c, MSVC only, no crates) and the game exe (resource text only); ftesurf.bat runs .\ explicitly; test_update_wrappers/test_update_handoff follow P704/P902. Native: tag patch-1212 = a0a211465 on patch-1209, merged to main. The next release engine line is patch-1212. QC pin/tag and Build unchanged.
 # Patch 1210 (CSQC + tools): KSF imports get native DUCKED, inferred from the duck button and the in-air -8.5 unduck shift (a ramp under the feet holds a released duck); ksfconvert.py infer_ducked and cl_ksf.qc KSF_Ducked, one rule. surfd's conversion and its archive not swapped yet. Native pin/tag and Build unchanged.
 # Patch 1209 (launcher + engine qkupdate.c + release tooling): the launcher is WOS-Launcher(.exe) (Quakers-Launcher 2ad05bc). QKU_Restart_f runs WOS-Launcher when it exists beside the game, else ftesurf-launcher (installs keep the old copy: the launcher is not feed-managed). release.ps1/bootstrap/linux scripts/page serve WOS-Launcher-<ver>; ftesurf.bat/.sh fall back; updatefeed omits both. Native: tag patch-1209 = 40ac435b7 on patch-1201, merged to main. QC pin/tag and Build unchanged.
 # Patch 1208 (launcher only): the launcher names the installed release and the one it updates to (Quakers-Launcher 371aab2). Reaches players with a launcher downloaded after the next release. Native/QC unchanged.
