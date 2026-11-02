@@ -588,8 +588,12 @@ class Friends(unittest.TestCase):
         for text in ("", "x" * 161, "x\nnewline", "x\rreturn", "x\tTAB", "\x04"):
             self.assertEqual(self.action(0, "message", text=text).status_code, 400)
         self.assertEqual(self.action(0, "message", text="x" * 160).status_code, 200)
-        self.now += F.MESSAGE_TTL + 1
+        # P1200: a lobby relays a DM only while it is recent; the saved row waits in the menu.
+        self.now += F.LOBBY_DM_TTL + 1
         self.assertEqual(self.poll()[1]["messages"], [])
+        self.assertEqual([r["text"] for r in self.menu_read(self.menu_form(1, "chat"))["messages"]], ["x" * 160])
+        self.now += F.MESSAGE_TTL
+        self.poll()
         self.assertEqual(self.db.execute("SELECT count(*) FROM social_messages").fetchone()[0], 0)
 
     def test_invalid_wrong_node_rotated_and_expired_token(self):
@@ -664,11 +668,19 @@ class Friends(unittest.TestCase):
 
     def test_friend_and_inbox_caps_and_per_account_rate(self):
         self.befriend(); self.poll()
-        for i in range(32):
+        for i in range(F.DM_KEEP + 10):
             self.db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
                             (IDS[0], IDS[1], "busy", self.now))
+            self.db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                            (IDS[2], IDS[1], "other sender", self.now))
         self.db.commit()
-        self.assertEqual(self.action(0, "message", text="full").status_code, 429)
+        # P1200: no full inbox; the sender's own oldest lines to this friend go.
+        self.assertEqual(self.action(0, "message", text="full").status_code, 200)
+        rows = [r[0] for r in self.db.execute("SELECT body FROM social_messages WHERE sender=? AND recipient=?"
+                                              " ORDER BY id", (IDS[0], IDS[1]))]
+        self.assertEqual((len(rows), rows[-1]), (F.DM_KEEP, "full"))
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM social_messages WHERE sender=?",
+                                         (IDS[2],)).fetchone()[0], F.DM_KEEP + 10)
         S._rate.clear()
         for _ in range(20): self.action(0, "join")
         self.assertEqual(self.action(3, "join").status_code, 429) # second install shares budget
@@ -705,8 +717,12 @@ class Friends(unittest.TestCase):
             self.assertEqual([r["text"] for r in body["messages"]], ["Private hello"])
             self.assertEqual(body["room"], [])
         self.assertEqual(self.menu_read(self.menu_form(2, "chat"))["messages"], [])
+        # P1200: an offline friend's message waits for them.
         self.now += F.MENU_PRESENCE_TTL + 1
-        self.assertEqual(self.chat_send(text="offline", peer=A.who_of(IDS[1]))[0]["status"], 409)
+        self.assertEqual(self.chat_send(text="offline", peer=A.who_of(IDS[1]))[0]["ok"], 1)
+        self.now += 86400
+        self.assertEqual([r["text"] for r in self.menu_read(self.menu_form(1, "chat"))["messages"]],
+                         ["Private hello", "offline"])
 
     def test_menu_chat_body_target_and_proof_substitution_refuse(self):
         target = "-:" + hashlib.sha256(b"original").hexdigest()
@@ -764,6 +780,39 @@ class Friends(unittest.TestCase):
         self.assertEqual(self.db.execute("SELECT body FROM social_messages WHERE recipient=?", (IDS[2],)).fetchone()[0], "unrelated private")
         self.assertEqual(len(self.menu_read(self.menu_form(0, "chat"))["room"]), 24)
 
+    def test_saved_chat_history_limits_and_room_not_crowded_out(self):
+        """P1200: old menus get 24/32 (they refuse more than 32); `hist=1` gets 50/100; a
+        busy inbox does not push the room out of the snapshot; 30 days, then gone."""
+        self.befriend(); self.poll()
+        self.db.executemany("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                            [(IDS[1], F.CHAT_ROOM, "room %d" % i, self.now) for i in range(60)])
+        self.db.executemany("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
+                            [(IDS[1], IDS[0], "dm %d" % i, self.now) for i in range(40)]
+                            + [(IDS[0], IDS[1], "re %d" % i, self.now) for i in range(40)]
+                            + [(IDS[1], IDS[2], "not mine", self.now)] * 300)
+        self.db.commit()
+        old = self.menu_read(self.menu_form(0, "chat"))
+        self.assertEqual((len(old["room"]), len(old["messages"])), (F.SNAP_ROOM, F.SNAP_DM))
+        self.assertEqual(old["room"][-1]["text"], "room 59")
+        form = self.menu_form(0, "chat")
+        form["hist"] = "1"
+        new = self.menu_read(form)
+        self.assertEqual((len(new["room"]), len(new["messages"])), (F.HIST_ROOM, 80))
+        self.assertEqual([new["room"][0]["text"], new["messages"][-1]["text"]], ["room 10", "re 39"])
+        self.assertEqual({m["peer"] for m in new["messages"]}, {A.who_of(IDS[1])})
+        self.assertNotIn("not mine", json.dumps(new))
+        self.now += F.MESSAGE_TTL + 1
+        self.assertEqual(self.menu_read(self.menu_form(0, "chat"))["room"], [])
+
+    def test_lobby_dm_to_offline_friend_waits_in_the_menu(self):
+        self.befriend(); self.poll()
+        self.now += F.PRESENCE_TTL + 1                  # friend 1 has left every lobby
+        self.assertEqual(self.action(0, "message", text="see you later").status_code, 200)
+        self.assertEqual(self.action(0, "join").status_code, 409)   # join still needs them online
+        self.now += 3600
+        self.assertEqual([r["text"] for r in self.menu_read(self.menu_form(1, "chat"))["messages"]],
+                         ["see you later"])
+
     def test_menu_board_lines_are_paced_and_cannot_be_typed(self):
         self.assertEqual(self.chat_send(text="* set the world record on surf_x -- 0:01.000")[0]["status"], 400)
         self.assertTrue(F.announce(self.db, IDS[1], "set a personal best on surf_x -- 1:00.000", self.now))
@@ -777,14 +826,16 @@ class Friends(unittest.TestCase):
         self.assertEqual([(r["name"], r["text"]) for r in room],
                          [("Bob", "* set a personal best on surf_x -- 1:00.000"),
                           ("Bob", "* set the world record on surf_x -- 0:30.000")])
-        # The record line counts toward the gap; past it, the room has aged both out.
+        # The record line counts toward the gap; past it, a new line joins the saved room (P1200).
         self.assertFalse(F.announce(self.db, IDS[1], "set a personal best on surf_y -- 2:01.000",
                                     self.now + F.ANNOUNCE_GAP))
         self.now += F.ANNOUNCE_GAP + 1
         self.assertTrue(F.announce(self.db, IDS[1], "set a personal best on surf_y -- 2:00.000", self.now))
         room = self.menu_read(self.menu_form(0, "chat"))["room"]
         self.assertEqual([(r["name"], r["text"]) for r in room],
-                         [("Bob", "* set a personal best on surf_y -- 2:00.000")])
+                         [("Bob", "* set a personal best on surf_x -- 1:00.000"),
+                          ("Bob", "* set the world record on surf_x -- 0:30.000"),
+                          ("Bob", "* set a personal best on surf_y -- 2:00.000")])
         self.db.execute("UPDATE accounts SET banned_at=? WHERE steamid=?", (self.now, IDS[1]));self.db.commit()
         self.assertEqual(self.menu_read(self.menu_form(0, "chat"))["room"], [])
 
