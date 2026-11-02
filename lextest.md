@@ -19,6 +19,8 @@ minute (rcon budget) and says so.
 Live since 1 Nov 18:57Z (your sudo + a surfd restart). Please check: with journal upload on,
 finish a run on a lobby; the console should say "rec_ul_send: journal HTTP stored and digest
 acknowledged", not "not acknowledged (status 503)". Uploads that failed before cannot be re-sent.
+Use a run under ~38 s: the client keeps no journal past that. By 2 Nov 01:10Z no client had
+posted one since the restart (4 receipts, none a finish under 38 s).
 
 ## P1181-P1185 Lex's bug paste of 2 Nov
 Live on all 12 lobbies and both Windows installs since 2 Nov 05:09 local (18:09Z 1 Nov); a game
