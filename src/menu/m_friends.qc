@@ -653,7 +653,7 @@ void(vector pos, vector size) MF_Draw =
 			room = size_x - 114;
 			sui_style_box(rp, [size_x - 38, 64], 8, SUI_THEME_WELL, SUI_THEME_EDGE, alpha);
 			// P1198: a button at the right (Message, or Add back) takes its width from the row.
-			if ((rel == 3 || (rel == 2 && !MF_Direct())) && MF_WhoSafe(who)) room = room - 92;
+			if ((rel == 3 || (rel == 2 && !MF_Direct())) && MF_WhoSafe(who)) room = room - 120;
 			if (MF_WhoSafe(who))
 			{
 				if (!MP_Draw(rp + '10 10 0', 44, who, alpha))
@@ -694,9 +694,12 @@ void(vector pos, vector size) MF_Draw =
 			if (ui_button(strcat("mf_add", who), rp + [size_x - 126, 20], [82, 24], "Add back"))
 				localcmd(sprintf("friends_menu_add %s\n", who));
 			if (rel == 3 && MF_WhoSafe(who))
-			if (ui_button(strcat("mf_msg", who), rp + [size_x - 126, 20], [82, 24],
-			              MC_Unread(who) ? sprintf("Message (%g)", MC_Unread(who)) : "Message", MC_Unread(who) > 0))
-				MC_Message(who, nm);
+			{
+				id = MC_Unread(who) ? sprintf("Message (%g)", MC_Unread(who)) : "Message";
+				at = max(82, stringwidth(id, TRUE, SZ_LABEL) + 24);
+				if (ui_button(strcat("mf_msg", who), rp + [size_x - 46 - at, 20], [at, 24], id, MC_Unread(who) > 0))
+					MC_Message(who, nm);
+			}
 		}
 		sui_list_view_end();
 	}
