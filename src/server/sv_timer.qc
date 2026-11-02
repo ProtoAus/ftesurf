@@ -14306,7 +14306,7 @@ float(entity e) SV_RunStartJitter =
 		if (!ok)
 			continue;
 
-		setorigin(e, cand);
+		SV_SetPlayerOrigin(e, cand);
 		e.run_t_jitter = off;
 		return TRUE;
 	}
