@@ -22,7 +22,7 @@
   gravity writes (44 lowercase ones fired before P1205). Gravity IS replayed: each change is a
   `pm` pin row, and counted runs with mid-run gravity PASS (surf_spacejam -0.1 -> 1, surf_beyond
   51 changes, surf_botanica; Pi verdicts, 2 Nov). No decimus runs on the boards yet. Prediction of
-  these writes: P1210.
+  these writes: P1211.
 - P1204's rewind path is reviewed, not measured (the arm cannot open the rewind from a cfg).
 - P1206: the room's shown lines are dealt fairly across senders, so a busy room shows a spread,
   not a continuous run.
