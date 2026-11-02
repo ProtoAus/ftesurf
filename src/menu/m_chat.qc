@@ -437,6 +437,11 @@ void(vector pos, vector size, float embedded) MC_Panel =
 		if (ui_button("mc_public", [size_x - 116, 12], '100 30 0', "Public lobby"))
 			if (!mc_wire) MC_Select("-", "Public lobby");
 	}
+	else if (ui_button("mc_back", [size_x - 98, 12], '82 30 0', "back"))
+	{
+		menu_screen = SCREEN_MAIN;
+		sui_text_unfocus();
+	}
 	// P1200: a friend's saved message waiting, from the public room or another thread.
 	if (mc_unread_n > 0 && MF_Online())
 	if (tokenize(bufstr_get(mc_unread, 0)) == 3)
@@ -448,11 +453,6 @@ void(vector pos, vector size, float embedded) MC_Panel =
 		if (ui_button("mc_newdm", '150 12 0', [min(left, stringwidth(text, TRUE, SZ_LABEL) + 32), 30],
 		              ui_fit_text(text, left - 24, SZ_LABEL), TRUE))
 			if (!mc_wire) MC_Select(who, name);
-	}
-	else if (ui_button("mc_back", [size_x - 98, 12], '82 30 0', "back"))
-	{
-		menu_screen = SCREEN_MAIN;
-		sui_text_unfocus();
 	}
 	if (!MF_Online())
 	{
