@@ -1980,13 +1980,18 @@ def _zone_dirs_sig():
     return tuple(sig), settled
 
 
-def _maps_fresh(cache, now, sig):
+def _maps_fresh(cache, now, sig, newer_ok=False):
     """A cached listing still stands: younger than MAPS_TTL, taken with the zone directories
-    as they are (sig, read before the listing), and settled or under MAPS_RESCAN_MIN old."""
+    as they are (sig, read before the listing), and settled or under MAPS_RESCAN_MIN old.
+    newer_ok: a listing stored after `now` stands too, for map_index's waiter that a scan
+    overtook (P829's one scan; zone_file_index keeps its old lower bound)."""
     at = cache["at"]
-    if at is None or not 0 <= now - at < MAPS_TTL or cache["sig"] != sig:
+    if at is None or cache["sig"] != sig:
         return False
-    return cache["settled"] or now - at < MAPS_RESCAN_MIN
+    age = now - at
+    if age >= MAPS_TTL or (age < 0 and not newer_ok):
+        return False
+    return cache["settled"] or age < MAPS_RESCAN_MIN
 
 
 def _zone_files_list():
@@ -2156,12 +2161,12 @@ def map_index(now=None):
     now = time.monotonic() if now is None else now
     sig = _zone_dirs_sig()[0]
     with _maps_lock:
-        if _maps_fresh(_maps_cache, now, sig):
+        if _maps_fresh(_maps_cache, now, sig, True):
             return _maps_cache["bsp"], _maps_cache["zone"]
     with _maps_scan_lock:
         sig, settled = _zone_dirs_sig()             # before the listing it vouches for
         with _maps_lock:
-            if _maps_fresh(_maps_cache, now, sig):  # scanned while this one waited
+            if _maps_fresh(_maps_cache, now, sig, True):    # scanned while this one waited
                 return _maps_cache["bsp"], _maps_cache["zone"]
         bsp, zone = _scan_maps()
         with _maps_lock:

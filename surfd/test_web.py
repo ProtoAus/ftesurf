@@ -1334,6 +1334,24 @@ def main():
         th.join(5)
     check("three cold callers at once run one scan and all get its answer",
           (len(scans), [sorted(x) for x in got]), (1, [["surf_new"]] * 3))
+    # ...including one that entered first and was overtaken: its `now` is older than the scan's.
+    m.maps_reset()
+    gate, scans, got = threading.Event(), [], {}
+    m._scan_maps = slow_scan
+    late = threading.Thread(target=lambda: got.__setitem__("late", m.map_index(now=2000.001)[0]))
+    late.start()
+    for _ in range(100):
+        if scans:
+            break
+        threading.Event().wait(0.01)
+    early = threading.Thread(target=lambda: got.__setitem__("early", m.map_index(now=2000.0)[0]))
+    early.start()
+    threading.Event().wait(0.3)          # waiting on the scan lock by now
+    gate.set()
+    for th in (early, late):
+        th.join(5)
+    check("...and an overtaken caller takes the newer scan (P1189 review)",
+          (len(scans), sorted(got)), (1, ["early", "late"]))
 
     # P1189: a zone published or removed is in the next read, not one MAPS_TTL later. The
     # racy window is measured against m.time.time(), this file's fake wall clock.
@@ -1378,6 +1396,34 @@ def main():
     check("...and once settled, the cache holds again",
           (zoned(4010.0), zoned(4200.0), len(scans)), (True, True, 3))
     os.remove(newzone)
+    # The signature is read before the listing, so a zone that lands while a scan is still
+    # running is in the next read rather than hidden by the cache.
+    dir_mtime(m.time.time() - 3600)
+    m.maps_reset()
+    landed = []
+    def scan_then_publish():
+        result = real_scan()
+        if not landed:
+            landed.append(1)
+            open(newzone, "wb").close()
+            dir_mtime(m.time.time() - 50)
+        return result
+    m._scan_maps = scan_then_publish
+    check("...a zone that lands during a scan is in the next read",
+          (zoned(5000.0), zoned(5010.0)), (False, True))
+    os.remove(newzone)
+    # zone_file_index (the menu feed's enabled column, /api/join's pool) settles the same way.
+    dir_mtime(m.time.time())
+    m.maps_reset()
+    m.zone_file_index(now=6000.0)
+    st = os.stat(m.ZONES_LOCAL_DIR)
+    open(newzone, "wb").close()
+    os.utime(m.ZONES_LOCAL_DIR, ns=(st.st_atime_ns, st.st_mtime_ns))
+    check("...and zone_file_index reads a same-tick change within MAPS_RESCAN_MIN",
+          ("surf_nozone" in m.zone_file_index(now=6000.0 + m.MAPS_RESCAN_MIN / 2),
+           "surf_nozone" in m.zone_file_index(now=6000.0 + m.MAPS_RESCAN_MIN + 0.1)), (False, True))
+    os.remove(newzone)
+    dir_mtime(m.time.time() - 3600)
     m._scan_maps = real_scan
     m.maps_reset()
     check("an unknown run is 404", get(m, "/board/api/run/99999").status_code, 404)
