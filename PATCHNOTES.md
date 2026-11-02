@@ -21,6 +21,10 @@
 
 ## next
 
+### P1196 No snap when surf_network2008's spawn sends you on
+- Teleports that the map switches on and off with timers (surf_network2008's spawn and jail teleports, and others like them) are now predicted, so they no longer snap you back and forth by up to 2000 units.
+
+
 ### P1189 Newly zoned maps reach the Maps menu within a minute
 - When a zoner publishes a map's zones, the Maps menu now shows that map as zoned at its next refresh, within about a minute, instead of up to six minutes later.
 

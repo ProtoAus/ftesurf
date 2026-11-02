@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1196 surf_network2008 spawn teleport
+On all 12 lobbies (QC only; restart a running game first). Please check on surf_network2008: in the first
+30 s after the map loads, drop into the area under the spawn (as on 2 Nov). The map sends you to fall2 with
+no `prederr` line in the console. After 30 s the same drop takes you back up to the spawn level, also with
+no `prederr` line.
+Measured: owned server+client rig, fix against the unfixed build: 2144.57 u at the spawn teleport and
+1284.71 u at the jail without it, none with it (the arm's own setpos snap is in both).
+
 ## P1189 new zones in the Maps menu
 Backend only (surfd 0d72a27c since 2 Nov 01:53Z); no client update. Please check: after the next
 zone publish (yours or Markbeaton54's), the map shows as zoned in the Maps menu within about a

@@ -2727,12 +2727,14 @@ void(entity t, string param) SV_IOAddOutput =
 
 // Continuous pushes publish their shared gate, not their movement. A late
 // join gets a full state; SendFlags changes use the engine's loss/retry path.
+// P1196: named teleports too. One StartDisabled at spawn stays SOLID_BSPTRIGGER (its
+// touch returns at StartDisabled); a Disable makes it SOLID_NOT. Both read off.
 float(entity to, float changed) SV_TrigStateSend =
 {
 	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
 	WriteByte(MSG_ENTITY, ENTWIRE_TRIGSTATE);
 	WriteShort(MSG_ENTITY, stof(substring(self.model, 1, -1)));
-	WriteByte(MSG_ENTITY, self.solid != SOLID_NOT);
+	WriteByte(MSG_ENTITY, self.solid != SOLID_NOT && !SV_Key2(self.StartDisabled, self.startdisabled));
 	return TRUE;
 };
 
@@ -7403,6 +7405,14 @@ void() trigger_teleport =
 	SV_TrigSolid();
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
 		vbsp_tele_disabled_n = vbsp_tele_disabled_n + 1;
+	// P1196: an Enable/Disable the client cannot replay (surf_network2008's logic_timer)
+	// would leave it server-only; outputs reach a teleport by name, so only named ones.
+	if (!self.vbsp_tooltrig && self.targetname != "")
+	{
+		self.SendEntity = SV_TrigStateSend;
+		self.SendFlags = 1;
+		self.pvsflags = PVSF_IGNOREPVS;
+	}
 };
 
 /*

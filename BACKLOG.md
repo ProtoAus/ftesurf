@@ -1,5 +1,15 @@
 # BACKLOG.md
 
+## P1196 teleport gates: review 1 notes (2 Nov 2026; prediction only, fail-safe)
+
+- Before a netgated teleport's first snapshot (about one RTT after join) its own replayable outputs
+  (e.g. OnStartTouch tele2,Disable) are not replayed while the client keeps tele2 predicted. Transient;
+  no map in the library known to have the shape.
+- The teleport pre-pass runs once before the IO fixpoint, so a writer that becomes unreplayable through
+  the cascade (its owner demoted) demotes the teleport instead of netgating it. Old behaviour, coverage gap.
+- The server sends every named brush teleport; only those with an unreplayable Enable/Disable writer are
+  used. Gating the send on the IO table would trim the join burst (8 bytes each). Not measured as a cost.
+
 ## Lex's bug paste of 2 Nov: diagnosed, not fixed (P1179-P1185 took the rest)
 
 - P1185 residual (round-2 reviews, both lenses): the "same cause" match is on bank identity, and

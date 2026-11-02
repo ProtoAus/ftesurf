@@ -46,6 +46,8 @@
   snapshots (Patch 670), including delayed cooldowns and other players' IO.
   Until a snapshot exists they stay server-only. Speed/name rewrites, once
   retirement and movement outputs still require the original proof.
+  P1196: a named teleport uses the same snapshot when one of its Enable/Disable
+  writers cannot be replayed (surf_network2008's spawn logic_timer).
 
   THE ENTER-EDGE ACROSS CHAIN RESTARTS was the one genuinely new problem.
   The prediction chain replays every unacked command on every rendered
@@ -755,7 +757,17 @@ float(float i, float seq) TG_IOEff =
 	// Server snapshots own delayed/shared gates. No stream (older server)
 	// means no prediction, not a guess that the trigger is enabled.
 	if (tg_ent[i].tg_netgate)
-		return tg_ent[i].tg_netready && tg_ent[i].tg_neton;
+	{
+		if (!tg_ent[i].tg_netready)
+			return 0;
+		// P1196 review: a teleport's replayable writers act on commands the snapshot has not
+		// seen (the ring is this chain's, from the ack on: TG_IOCommit), so they win over it.
+		if (tg_kind[i] == TG_TELE)
+			for (e = ior_n - 1; e >= 0; e = e - 1)
+				if (ior_slot[e] == i && ior_seq[e] <= seq)
+					return ior_val[e];
+		return tg_ent[i].tg_neton;
+	}
 	if (!tg_io_gated[i])
 		return 1;
 	for (e = ior_n - 1; e >= 0; e = e - 1)
@@ -1032,7 +1044,7 @@ void(float modelnum, float ready, float on) Trig_NetState =
 
 	modelname = sprintf("*%g", modelnum);
 	for (i = 0; i < tg_n; i = i + 1)
-		if (tg_kind[i] == TG_PUSH)
+		if (tg_kind[i] == TG_PUSH || tg_kind[i] == TG_TELE)
 			if (!strcmp(tg_ent[i].model, modelname))
 			{
 				tg_ent[i].tg_netready = ready;
@@ -1066,11 +1078,22 @@ void() TG_IOResolve =
 	// not just this seat's output chain. Never widen a truncated graph.
 	if (!io_over)
 		for (s = 0; s < tg_n; s = s + 1)
-			if (tg_kind[s] == TG_PUSH && !(tg_flags[s] & TG_SF_PUSH_ONCE))
+			if (tg_kind[s] == TG_PUSH && !(tg_flags[s] & TG_SF_PUSH_ONCE) && !tg_ent[s].tg_isbox)
 				for (o = 0; o < io_n; o = o + 1)
 					if (io_inp[o] == IN_EN || io_inp[o] == IN_DIS)
 						if (TG_IOHits(o, s))
 							tg_ent[s].tg_netgate = 1;
+	// P1196: a teleport only when a writer would demote it (its replayable ones still
+	// predict through the ring, TG_IOEff). The server sends named brush teleports only,
+	// and no zone-tool box (both pre-passes: it has no model to match).
+	if (!io_over)
+		for (s = 0; s < tg_n; s = s + 1)
+			if (tg_kind[s] == TG_TELE && tg_tname[s] != "" && !tg_ent[s].tg_isbox)
+				for (o = 0; o < io_n; o = o + 1)
+					if (io_inp[o] == IN_EN || io_inp[o] == IN_DIS)
+						if (!TG_IOMirrorOK(o))
+							if (TG_IOHits(o, s))
+								tg_ent[s].tg_netgate = 1;
 
 	pass = 0;
 	changed = TRUE;
@@ -1125,6 +1148,10 @@ void() TG_IOResolve =
 		if (!tg_kind[s])
 			continue;
 		tg_io_on[s] = !tg_sd[s];
+		// P1196: the touch pass reads TG_IOEff only on gated slots, so a gate whose
+		// every writer is unmirrorable (no SD, no replayable row) has to be one.
+		if (tg_ent[s].tg_netgate)
+			tg_io_gated[s] = 1;
 		if (tg_sd[s])
 		{
 			tg_c_sdok = tg_c_sdok + 1;

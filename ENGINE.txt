@@ -27,7 +27,8 @@ commit   dc3e20be390ba5c3bb7d570bcacba8151172cd7d
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1165
-patch    1188
+patch    1196
+# Patch 1196 (SSQC + CSQC): a named brush trigger_teleport publishes its on/off gate (SV_TrigStateSend, which now also reads StartDisabled); the client mirror follows it when an Enable/Disable writer cannot be replayed (surf_network2008's spawn logic_timer), replayable writers still win through the ring; every netgated slot is gated (a timer-only push fired regardless before); no zone-tool box is netgated. Native pin/tag and Build unchanged.
 # Patch 1189 (surfd): map_index/zone_file_index rescan when a zone folder's mtime changes (a listing within 2 s of a change is redone after 1 s), so a published zone reaches /api/board?maps=1 at once and the Maps menu at its next 60 s poll. surfd generation 0d72a27c. Native pin/tag, QC and Build unchanged.
 # Patch 1188 (engine fs.c + menu + tools): per-map tables may mount "steam:Momentum Mod Playtest/platform" (loose fallback/default_* materials: surf_skyhaven glass, rj_tattarrattat grate); mapdeps ADDONS momplatform (loose, no VPK); menu keeps and labels it MOM. Native: tag patch-1188 9e8daa0d0 on installed 117124a41; QC pin/tag unchanged (older engines refuse the line, as before).
 # Patch 1184 (CSQC): zone editor shows the selected zone's size and six values (x/y min/max, bottom, top); typed in the field or nudged with the wheel; zone_edit face. Native pin/tag and Build unchanged.
