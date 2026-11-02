@@ -1,0 +1,1 @@
+P1218 claimed by ftesurf-48 (Claude Code session 37d486c9) 2026-11-02T15:53Z. Lex list 3 Nov: other Source rendering (eternity animated walls, cubemap room, things through the sky; sinsane_ez overlay z-fight; remeanian window in the sky; sidelines wall; dragonfall sky vs lava). Engine hl2 plugin. Docs: PATCHNOTES, lextest, AGENT_NOTES, ENGINE.txt, engine journal.

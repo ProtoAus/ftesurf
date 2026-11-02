@@ -21,6 +21,19 @@
 
 ## next
 
+### P1218 Source maps: sky leaks, distance fades and map decals
+- Light shafts and sprites behind a skybox wall no longer show through the sky (surf_eternity).
+- Panes that fade with distance (surf_sidelines' doorway) fade at the same distance as in CS:S when the game renders above screen resolution.
+- Map-painted text and decals sit just off their wall instead of on it, so they can no longer flicker against it.
+- Animated screens on models play (surf_eternity's screens behind its glass panels), and models that fade out with distance fade instead of popping (surf_remeanian's end).
+
+### P1217 Mirror floors and water on Source maps
+- Mirror surfaces (CS:S reflective glass) now reflect the scene instead of drawing flat white, which fixes surf_eternity's pink rivers and pools.
+
+### P1215 Zone editor shows where reset puts you
+- The zone editor draws each start and stage spawn, and the map's own teleport destinations, with their facing.
+- A start or stage without a set spawn now resets you onto the map's own teleport destination inside it, facing the way the map does.
+
 ### P1229 Faster run submits
 - A new time reaches the leaderboard sooner: the server no longer reads every board row before storing a first finish or a new stage time.
 

@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P1215 zone spawns, P1218 sky shafts (lobbies now); P1217/P1218 Source rendering (next release)
+Lobbies and both installs now (QC, deploy/p1218-maplist):
+- surf_eternity `zone_edit`: each start/stage spawn has a post and facing arrow with its name, the map's
+  teleport points (s1, s2...) are drawn dim with theirs, and a zone with no spawn set says "automatic
+  spawn at the map teleport s1". `!r` on a zone without a set spawn lands on that teleport.
+- surf_eternity save 12: no dashes in the sky; the start room's light shafts still show.
+Both installs now (engine patch-1218 exe and Source plugin); your Desktop copy with the next release:
+- surf_eternity saves 4/10/11: the rivers and pools reflect the lava, trees and arches (Glass
+  "Refracting" adds the CS:S ripple); saves 5/13: the stargate screens behind the panels animate.
+- surf_sidelines from the start: the doorway is black, then see-through grey, then clear as you walk in.
+- surf_remeanian past save 19: the world fades to black as you fly on, instead of switching.
+- surf_sinsane_ez's credits: no flicker on the wall text while you move.
+
 ## P1222 frame rate on maps without lighting (both installs, 2 Nov; the Desktop copy gets it with the next release)
 1. surf_leet_xl_beta7z from C:\FTESurf or C:\FTEQuake: the corridor view that showed 85.9 fps should read several hundred,
    and look exactly as before.

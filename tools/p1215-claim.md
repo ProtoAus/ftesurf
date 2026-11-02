@@ -1,0 +1,1 @@
+P1215 claimed by ftesurf-48 (Claude Code session 37d486c9) 2026-11-02T15:53Z. Lex list 3 Nov: zone_edit shows the start teleport destination; reset/!r uses it (surf_eternity -5616 -672 13824 yaw 94). QC. Docs: PATCHNOTES, lextest, AGENT_NOTES, engine journal.

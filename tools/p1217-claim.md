@@ -1,0 +1,1 @@
+P1217 claimed by ftesurf-48 (Claude Code session 37d486c9) 2026-11-02T15:53Z. Lex list 3 Nov: Source water/refraction on surf_eternity (flat pink water, missing refraction). Engine hl2 plugin. Docs: PATCHNOTES, lextest, AGENT_NOTES, ENGINE.txt, engine journal.

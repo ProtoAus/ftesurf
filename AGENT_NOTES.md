@@ -1,5 +1,26 @@
 # AGENT_NOTES.md
 
+## Lex's map list of 3 Nov (P1215, P1217, P1218; P1214 is 2b's)
+- Delivered lobby QC base: deploy/p1218-maplist 9f0203eb (2b's deploy/p1229-lexlist 1fa43aa2 + P1215/
+  P1218); qw 63fa13a5, cs b6166b20 (.prev 9553acb6/36bd66bd), codes.txt appended. Engine: tag
+  patch-1218 = 13f6a55a5 on patch-1222, main 0ffb39bd9; both installs run exe 53c01d27 and hl2
+  plugin 1a3c9737 (.prev 8b2942a8 / c75a26f5); rides the next release.
+- Source plugin: LightmappedReflective = vmt/lmreflect (func_reflective_glass), hl2_water picks the
+  captures; translucent LightmappedGeneric mip fades (VMT_MipFade) sample at log2(r_renderscale)
+  bias; a leading '/' on a $ value is dropped; vertexlit.glsl and animated.glsl apply entity alpha
+  (static prop fade); a $model VertexLitGeneric flipbook takes vmt/animated #MODELLIT (no $selfillum).
+  Engine: static map decals lift 0.25 off the face, sign from the decal's own axis (a VBSP face
+  stores its own plane: SURF_PLANEBACK is wrong there), plus BEF_DECALDEPTH's two depth steps.
+- CSQC: cl_sprites.qc skips sprites/shafts whose line from the eye meets sky 64+ units short
+  (vbsp_sprite_skyrays; `vbsp_sprite_debug 1` prints the count). P990's 2x sky mask still shows
+  BRUSH ENTITIES 1x-2x behind a sky (surf_remeanian save 18's func_illusionary panes): not fixed.
+- P1215: SV_ZoneSpawnYaws moves an automatic spawn (centred or none) onto the zone's one inner
+  info_teleport_destination when its floor is in the zone (not Momentum-stamped files). A TAS
+  legal-start project saved at such a start no longer loads (its start moved).
+- Open from the list: eternity save 7 cubemap reflections much weaker than CS:S (same LDR cubemap);
+  surf_dragonfall's "lava" in the gap at save 1 is the map's own sky, which the visualizer sky
+  replaces everywhere (a limit of that option, not a bug).
+
 ## Lex's list of 3 Nov: P1214, P1220, P1221, P1223-P1229 (ftesurf-2b; LIVE 2 Nov 17:26Z)
 - Delivered QC base for the next lobby deploy: origin/deploy/p1229-lexlist 1fa43aa2 (qw 9553acb6,
   cs 36bd66bd, in codes.txt). Both installs run it with menu 439ea80c. surfd 64f0b0f4 since 17:26:32Z
