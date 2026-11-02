@@ -1,5 +1,26 @@
 # BACKLOG.md
 
+## Frame-rate audit of 3 Nov (P1222): where the frame goes at Lex's settings (display only)
+- Rig (i9-9900K, RTX 2080 SUPER), Lex's cfg (r_renderscale 2, hl2_water 2), 1920x1200, local game, r_budget 2 s windows
+  at his lobby saves. After P1222: leet ~990 fps; demise 294-668; boreas 308-496; garden 333-399; eternity 372-753.
+  Driver and logs: C:\FTESurf-worktrees\perf1222-20261102T1610Z\artifacts (p1222arm.py, parse.py, run1-run5).
+- Water captures (hl2_water 2) are the largest systematic cost on water maps: garden s1 CPU 2.79 -> 1.56 ms and
+  1171 -> 651 draws at hl2_water 5 (333 -> 521 fps); boreas s10 314 -> 428, s7 308 -> 353. Source's water_lod_control
+  would not help at reflect-all (viewrender.cpp DetermineWaterRenderInfo: no LOD with a local reflection); an opt-in
+  distance cutoff for captures would be a departure from Source.
+- r_renderscale 2 makes demise s33 GPU-bound (3.31 ms GPU: 3D sky 1.24, world 1.08, props 0.65; 342 fps at scale 1).
+  The 3D sky is 0.8-1.3 ms of GPU on demise, garden and boreas at scale 2.
+- CSQC is ~0.5 ms a frame on every map with no hotspot (garden s1: cl_hud 0.10, cl_sprites 0.09 of 0.51 ms QC).
+- A ~700-draw floor on demise (bonus view 696 draws with 12 entity batches) and ~1,050 non-entity draws at garden s1
+  were not broken down: per-pass draw counts are the next measurement.
+- Stalls: Lex's 11.1 fps shot of surf_eternity's stair room (save 7, -8028 7274 7310, yaw -151) is 419 fps there
+  steadily. One 2 s window on demise s33 (run2) read 6 fps (present 163 ms, props 28 ms GPU) right after a teleport,
+  then 308 fps; it did not repeat in run1 or run3. Cause not found (VRAM 2.5/8 GB; free RAM was ~2-3 GB).
+- P1222 review leftovers: gl_overbright_all has no callback and r_stains 0 leaves stains drawn (both pre-existing,
+  now visible on unlit maps too); a Q2 BSP without lighting but with lightofs >= 0 per face still rebuilds styled faces.
+- Rig traps met: eternity's files take 22.8 s to load, so a fixed 20 s wait sent noclip before the spawn (reset by it)
+  and every setpos fell back to the hub; r_budget_dump writes the clipboard (the driver restores it).
+
 ## DB audit of 3 Nov (P1229): left open (surfd; measured on a 2 Nov snapshot, 3.47M runs)
 - The combined board sorts the whole three-tier board per page (0.04 s on surf_beginner's 8.7k rows);
   per-tier queries merged would be O(page). The player directory scans all runs every 5 min in the

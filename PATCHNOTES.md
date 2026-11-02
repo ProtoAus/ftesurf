@@ -46,6 +46,9 @@
 ### P1223 Zone editor teleport
 - Double-clicking a zone in the zone editor teleports you to it even before you save. An unsaved zone puts you in its middle, on its floor.
 
+### P1222 Maps without lighting run much faster
+- Maps compiled without lighting (surf_leet_xl_beta7z, surf_legends_css, surf_rebel_resistance, surf_ev2 and about 25 more) no longer redraw their lighting every frame: on our test PC surf_leet_xl_beta7z went from about 200 to over 750 fps.
+
 ### P1221 Tidier menus and HUD
 - Key letters sit centred on their keys in the key hints, the save menu, the Steam link box and the report box.
 - The prediction-error report box, the name screen and the keys display use the same rounded style as the rest of the interface.

@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1222 frame rate on maps without lighting (both installs, 2 Nov; the Desktop copy gets it with the next release)
+1. surf_leet_xl_beta7z from C:\FTESurf or C:\FTEQuake: the corridor view that showed 85.9 fps should read several hundred,
+   and look exactly as before.
+2. If a map drops to ~10 fps again (eternity's stair room did): note whether bots were running rig tests or builds,
+   and if it stays low for more than a few seconds, `r_budget 1` then `r_budget_dump` and paste the text.
+3. Water maps (garden, boreas): Graphics > water "Screen-space" (hl2_water 5) gained 15-56% here over "live";
+   reflections then show only what is on screen. Your choice; nothing was changed in your config.
+
 ## Lex's list of 3 Nov: P1214, P1220, P1221, P1223-P1229 (live: lobbies and both installs, 2 Nov)
 1. Main menu chat (P1214): messages sit close together; no "saved for 30 days" or "not encrypted" lines.
 2. In game, open chat (P1220): the field is empty, with a small "To everyone" tag at the box's top right
