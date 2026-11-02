@@ -758,8 +758,10 @@ def flush_hashes(cache):
 
 
 def content_publication():
-    # P1234: main's tascontent lease (P1172) is not in this closure; the Pi never set
-    # SURFD_TAS_CONTENT_LEASE, so this is the nullcontext it always was here.
+    # P1234: main's tascontent lease (P1172) is not in this closure. Unset on the Pi, where
+    # it was always this nullcontext; a configured lease refuses rather than going unfenced.
+    if S.setting('SURFD_TAS_CONTENT_LEASE', ''):
+        raise SystemExit('SURFD_TAS_CONTENT_LEASE is set, but this mapwatch has no tascontent')
     return contextlib.nullcontext()
 
 

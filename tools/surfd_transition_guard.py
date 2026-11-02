@@ -82,7 +82,7 @@ def manifest_check(m):
             require(schema == 26, "activity83-v1 requires explicit schema26")
             files = CURRENT_FAMILY_FILES | {"inventory.py", "playstats.py"}
         elif m["runtime_profile"] == "collectors84-v1":
-            # P1234: P1117's momprofile.py, imported by surfd.py, accounts.py and momwatch.py.
+            # P1234: P1117's momprofile.py (surfd.py, accounts.py, momwatch.py, steamsync.py).
             require(schema == 26, "collectors84-v1 requires explicit schema26")
             files = CURRENT_FAMILY_FILES | {"inventory.py", "playstats.py", "momprofile.py"}
         else:
@@ -105,7 +105,7 @@ def manifest_check(m):
         require(len({str(Path(item["origin"]).parent) for item in external.values()}) == 1,
                 "converter closure must share selected tools directory")
     else:
-        require("external_python" not in m, "external closure requires explicit current81/schema24, inventory82/schema25 or activity83/schema26")
+        require("external_python" not in m, "external closure requires explicit current81/schema24, inventory82/schema25, activity83/schema26 or collectors84/schema26")
     for digest in m["hashes"].values():
         require(type(digest) is str and re.fullmatch("[0-9a-f]{64}", digest), "bad hash")
     require(type(m["routes"]) is dict and bool(m["routes"]), "routes required")
