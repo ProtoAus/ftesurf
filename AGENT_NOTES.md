@@ -8,7 +8,9 @@
   The server queues the write (bound to its bank attempt) and applies it at PreThink top, after
   SV_TriggerEndEdge and at PostThink top, with a `speed` warp and SV_BankCauseAffect. The client
   mirror owns any slot with IN_VSVEL rows and applies at the end of CSQC_PredictPlayerMove.
-  Special targets fold case (FS_IsActivator). A listen game runs no client prediction: test with a
+  Special targets fold case (FS_IsActivator). A held body (SV_MapMoveHeld) skips a queued write,
+  and spectate entry refuses while one is queued (round 3, qw c65f2e37, deploy 387fd3e0).
+  A listen game runs no client prediction: test with a
   dedicated server + UDP client (lexlist4-20261102/artifacts/p1205arm.py).
 - P1206: read marks are social_messages rows with recipient "@read:<reader>:<friend>" (like the
   room's "@menu"). Every social_messages read must name its recipient or exclude '@...'.
