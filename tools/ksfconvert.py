@@ -98,6 +98,52 @@ def interval(bookmarks, bonus, lead_ok=False, stage=0, last=False):
     return start, stops[0]
 
 
+DUCK_SHIFT, DUCK_TOL, DUCK_LOOK = 8.5, 0.05, 400
+
+
+def infer_ducked(frames, dt=0.015):
+    """Patch 1210: the ducked body per frame, which the binary does not record.
+
+    The duck BUTTON is in every frame (IN_DUCK 4). In the air CS moves the origin +8.5 when a duck
+    completes and -8.5 when an unduck does -- measured on 42 KSF files (2 Nov 2026): 8.4995..8.5005
+    on 98% of air presses -- and a surface just under the feet blocks the unduck, so a released
+    duck can stay down (a ramp: 50 of 64 such holds had under 8.5 units below the box, and none on
+    the frame it stood). Ducked while the button is held, and after a release until that -8.5
+    shift, at once or up to DUCK_LOOK frames later with the button still up; with no shift found
+    (the v3 ground bit, a teleport, a new press, the window or the file ends) the body stands at
+    the release. cl_ksf.qc's KSF_Ducked is the same rule.
+    frames: (buttons, x, y, z, vx, vy, vz, ground or None). Returns (ducked flags, holds).
+    """
+    n = len(frames)
+    r, jump = [0.0] * n, [True] * n
+    for i in range(n - 1):
+        a, b = frames[i], frames[i + 1]
+        dxy = math.hypot(b[1] - a[1], b[2] - a[2])
+        jump[i] = dxy > (math.hypot(a[4], a[5]) + math.hypot(b[4], b[5])) * dt + 24
+        r[i] = (b[3] - a[3]) - 0.5 * (a[6] + b[6]) * dt
+
+    def down(k):
+        return 0 <= k < n - 1 and not jump[k] and abs(r[k] + DUCK_SHIFT) < DUCK_TOL
+
+    ducked = [bool(f[0] & 4) for f in frames]
+    holds = 0
+    for i in range(1, n):
+        if not (frames[i - 1][0] & 4) or frames[i][0] & 4 or frames[i][7]:
+            continue
+        end = next((k for k in (i - 2, i - 1, i, i + 1) if down(k)), None)
+        if end is None:
+            for k in range(i + 2, min(n - 1, i + DUCK_LOOK)):
+                if frames[k][0] & 4 or jump[k] or frames[k][7]:
+                    break
+                if down(k):
+                    end = k
+                    holds += 1
+                    break
+        for k in range(i, (end if end is not None else i - 1) + 1):
+            ducked[k] = True            # standing from end + 1, where the shifted origin is
+    return ducked, holds
+
+
 def clean_owner(owner):
     # Owner runs to EOL; quotes/comment delimiters would also alter QC tokens.
     return ''.join(' ' if ord(c) < 32 or ord(c) == 127 or c in '\"\\' else c
@@ -162,8 +208,14 @@ def convert(data, mapname, bonus=0, style='FW', owner='?', seconds=None, stage=0
     # v3 common prefix + ground bit, and the documented full 18-cell layout.
     ground = info['version'] == 3 and info['frame_cells'] >= 11
     moves = info['version'] == 3 and info['frame_cells'] == 18
-    # Cell10 bit1 is conflicting in the public viewer (ducked vs teleport).
-    # Never turn it into native DUCKED. Neither version records a ramp plane.
+    # Cell10 bit1 is conflicting in the public viewer (ducked vs teleport) and does not follow
+    # the duck button: never native DUCKED. DUCKED is infer_ducked's. No ramp plane is recorded.
+    frames = []
+    for i in range(stop + 1):
+        b, x, y, z, _p, _y, _r, vx, vy, vz = K.PREFIX.unpack_from(data, off + i * stride)
+        g = (struct.unpack_from('<i', data, off + i * stride + 40)[0] & 1) if ground else None
+        frames.append((b, x, y, z, vx, vy, vz, g))
+    ducked, holds = infer_ducked(frames, dt)
     digest = hashlib.sha256(data).hexdigest()
     out = io.StringIO()
     out.write('FTESURF-REC 5\nmap %s\ntrack %d\nstartseg %d\nleg %d\n'
@@ -188,6 +240,8 @@ def convert(data, mapname, bonus=0, style='FW', owner='?', seconds=None, stage=0
         fl = (4 if b & 2 else 0) | (8 if b & 1 else 0)
         if ground and struct.unpack_from('<i', data, p + 40)[0] & 1:
             fl |= 1
+        if ducked[i]:
+            fl |= 2
         keys = sum(dst for src, dst in KEYS if b & src)
         # v2 unit direction proxy, NOT a measured analog magnitude. Opposing
         # keys cancel rather than guessing Source's SOCD order. Raw mask below.
@@ -213,7 +267,8 @@ def convert(data, mapname, bonus=0, style='FW', owner='?', seconds=None, stage=0
                                 official_seconds=seconds, repeats=repeats, sha256=digest,
                                 map=mapname, bonus=bonus, stage=stage, timed_stop=timed, style=style,
                                 ground_recorded=ground, moves_recorded=moves,
-                                duck_state='unknown', map_build='unknown')
+                                duck_state='inferred', duck_holds=holds,
+                                ducked_frames=sum(ducked), map_build='unknown')
 
 
 def main():
@@ -238,8 +293,9 @@ def main():
         a.out.parent.mkdir(parents=True, exist_ok=True)
         with a.out.open('x', encoding='utf-8', newline='\n') as f:
             f.write(text)
-        print('%s: KSF import, %d frames, %.3fs bookmark clock; map build/duck state unknown' %
-              (a.out, info['stop'] + 1, info['seconds']))
+        print('%s: KSF import, %d frames, %.3fs bookmark clock; map build unknown; ducked inferred '
+              '(%d frames, %d held after a release)' % (a.out, info['stop'] + 1, info['seconds'],
+                                                        info['ducked_frames'], info['duck_holds']))
     except (OSError, ValueError, struct.error) as e:
         p.exit(1, str(e) + '\n')
 

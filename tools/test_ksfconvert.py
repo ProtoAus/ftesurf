@@ -42,7 +42,8 @@ class Convert(unittest.TestCase):
             self.assertEqual((info['start'], info['stop'], info['seconds']), (2, 6, .06))
             self.assertEqual(len(r), 7)
             self.assertEqual(list(map(float, r[2][:9])), [0, 2.25, 2.5, 2.75, 4.25, 4.5, 4.75, 3.25, 3.5])
-            self.assertEqual(int(r[2][9]), 12 + (v == 3))  # NEVER map ambiguous bit1 to ducked
+            # Jump 4 + attack 8 + DUCKED 2 (the duck button is held: P1210), ground 1 on v3.
+            self.assertEqual(int(r[2][9]), 14 + (v == 3))
             self.assertEqual(int(r[2][10]), 1 + 4 + 16 + 32 + 64 + 256)
             self.assertEqual(list(map(float, r[2][11:14])), [123.25, -456.5, 7.75] if v == 3 else [1, -1, 0])
             self.assertEqual(r[2][14:], ['0', '0', '0'])
@@ -55,6 +56,38 @@ class Convert(unittest.TestCase):
             self.assertEqual('demodata 1' in text, v == 3)
             for key in ('nonce ', 'mapcrc ', 'zonecrc ', 'pmpin ', 'warp ', '\nin ', 'momdemo ', 'momquality '):
                 self.assertNotIn(key, text)
+
+    def test_ducked_is_inferred_never_bit1(self):
+        # P1210. v3 cell 10 = 3 sets the ambiguous bit1: with the duck button up, still not ducked.
+        def frames(buttons, zs):
+            return [(b, 100.0 + i, 0.0, z, 66.67, 0.0, 0.0, None) for i, (b, z) in enumerate(zip(buttons, zs))]
+        held = [4, 4, 4, 0, 0, 0, 0, 0, 0, 0]
+        # Released at 3; the origin drops 8.5 between 6 and 7 (a ramp held it): ducked 0..6.
+        ducked, holds = C.infer_ducked(frames(held, [0, 0, 0, 0, 0, 0, 0, -8.5, -8.5, -8.5]))
+        self.assertEqual(ducked, [True] * 7 + [False] * 3)
+        self.assertEqual(holds, 1)
+        # Dropped at the release itself (3 -> 4): ducked 0..3, not a hold.
+        ducked, holds = C.infer_ducked(frames(held, [0, 0, 0, 0, -8.5, -8.5, -8.5, -8.5, -8.5, -8.5]))
+        self.assertEqual((ducked, holds), ([True] * 4 + [False] * 6, 0))
+        # No shift at all (landed, say): stands at the release.
+        ducked, holds = C.infer_ducked(frames(held, [0] * 10))
+        self.assertEqual((ducked, holds), ([True] * 3 + [False] * 7, 0))
+        # A drop that is not 8.5, a new press, a teleport or the v3 ground bit ends the search.
+        self.assertEqual(C.infer_ducked(frames(held, [0] * 7 + [-9.5] * 3))[0], [True] * 3 + [False] * 7)
+        self.assertEqual(C.infer_ducked(frames([4, 4, 4, 0, 0, 4, 0, 0, 0, 0],
+                                               [0] * 7 + [-8.5] * 3))[0][3:5], [False, False])
+        tele = frames(held, [0, 0, 0, 0, 0, 0, 0, -8.5, -8.5, -8.5])
+        tele[5] = (0, 5000.0, 0.0, 0.0, 66.67, 0.0, 0.0, None)
+        self.assertEqual(C.infer_ducked(tele)[0], [True] * 3 + [False] * 7)
+        grounded = [f[:7] + (1 if i == 5 else 0,) for i, f in enumerate(frames(held, [0] * 7 + [-8.5] * 3))]
+        self.assertEqual(C.infer_ducked(grounded)[0], [True] * 3 + [False] * 7)
+        # Through convert: the fixture's v3 frames carry bit1 but no duck button here.
+        data = bytearray(binary(3))
+        off = 24 + 3 * 4 + 3 * 524
+        for i in range(9):
+            struct.pack_into('<i', data, off + i * 18 * 4, 8 | 512)
+        r = rows(C.convert(bytes(data), 'surf_test', seconds=.06)[0])
+        self.assertTrue(all(int(x[9]) & 2 == 0 for x in r))
 
     def test_bookmark_bonus_and_named_triggers(self):
         for names in (('', '', ''), ('5939107', '5939107', '5939108')):

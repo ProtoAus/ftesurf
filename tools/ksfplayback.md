@@ -109,10 +109,13 @@ Input is bounded at 64 MiB; converted playback is bounded at 200,000 frames.
 - v2 lacks recorded ground and analog move magnitudes. `moves buttons 1` is an
   explicit **unit direction proxy**, not measured input amplitude; opposing
   directions cancel without guessing SOCD order. Ramp contact is unavailable.
-- The public viewer conflicts on v3 flag bit1 (ducked versus teleport). We do
-  not translate it to native ducked state or warp evidence. Duck INPUT remains
-  visible; ducked BODY/eye height is unknown and playback uses the existing
-  standing-eye default. No native collision/ramp plane is invented.
+- The public viewer conflicts on v3 flag bit1 (ducked versus teleport), and it
+  does not follow the duck button, so it is never native ducked state or warp
+  evidence. Patch 1210: native DUCKED (flags bit 2) is INFERRED -- set while the
+  duck button is held and, after a release, until the in-air origin shift of
+  -8.5 that an unduck makes (`infer_ducked`; a ramp under the feet holds a
+  released duck). With no shift found the body stands at the release. It is
+  derived display state, not a recorded field. No collision/ramp plane is invented.
 - The binary contains no BSP digest. A matching map name is not proof of the
   same build; KSF playback always states build unknown. Visual alignment on the
   installed maps was sampled, not verified across every KSF map revision.
