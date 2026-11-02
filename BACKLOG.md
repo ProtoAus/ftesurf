@@ -1,8 +1,8 @@
 # BACKLOG.md
 
 ## P1198-P1200 menu profiles, board, saved chat: residuals (2 Nov 2026)
-- Saved chat goes live with a client release: 0.1.35's menu says "expire after two minutes; not
-  saved". Until then surfd keeps the old behaviour (the surfd half is on fix/chat-1200, not live).
+- Saved chat is live (surfd ac283934, 2 Nov 07:10Z, with release 0.1.36). Players still on 0.1.35
+  see "expire after two minutes; not saved" until they update.
 - Abuse bounds, not fixed: 4 accounts can replace the room's 128 lines in about 2 minutes
   (40 per sender, 20 sends/min); three chatty conversations can push a quiet friend's line out of
   a hist=1 snapshot (120 lines, 50 per conversation), two out of an old menu's (32, 16 each). The
