@@ -275,6 +275,15 @@ def main():
               'review 1: a top corner does not jump to a map corner on the floor below',
               f"handle {mid['hk']} {mid['hl']} corner {end_['pts'][i]}")
 
+        # Review 2: a corner's vertical edge, grabbed mid-height, still takes the floor's map corner.
+        st, r = fresh(edges=1)
+        i = idx(r, x0, y0)
+        mid, end_ = drag((x0, y0, zb + h / 2), (11721.0, 8396.0, 13776.0))
+        report['cases']['vertical_edge_snap'] = [mid, end_]
+        check(mid['hk'] == 1 and mid['hl'] == 2 and abs(end_['pts'][i][0] - 11718) < .01 and abs(end_['pts'][i][1] - 8396) < .01,
+              'review 2: a vertical edge grabbed mid-height snaps to the map corner below',
+              f"handle {mid['hk']} {mid['hl']} corner {end_['pts'][i]}")
+
         # Another panel opening mid-drag puts the zone back.
         st, r = fresh(edges=0)
         mid, _ = drag((x0, y0, zb), (11850.0, 8300.0, zb), drop=False)
