@@ -1,7 +1,7 @@
 # Real FTESurf bootstrap build/provenance. Dot-sourced by release.ps1.
 # Never select a pre-existing install executable: rebuild from an explicit source tree.
 function Assert-BootstrapEntries ([string[]]$Entries, [string]$Platform) {
-    $name = switch ($Platform) { 'win64' { 'ftesurf-launcher.exe' }; 'linux64' { 'ftesurf-launcher' }; default { throw 'unknown bootstrap platform' } }
+    $name = switch ($Platform) { 'win64' { 'WOS-Launcher.exe' }; 'linux64' { 'WOS-Launcher' }; default { throw 'unknown bootstrap platform' } }
     foreach ($required in @($name, 'notices/bootstrap.txt')) {
         if ($Entries -cnotcontains $required) { throw "archive is missing a required bootstrap file: $required" }
     }
@@ -66,7 +66,7 @@ function Build-Bootstrap ($Source, [string]$Distro = '', [string]$LinuxBuildChro
         if ($LASTEXITCODE -ne 0) { throw 'cannot resolve Linux bootstrap builder path' }
         $out = & wsl.exe -d $Distro -u root --exec bash -lc 'exec bash "$@"' linux-bootstrap "$builder" $wroot "$wroot/target/ftesurf-linux" $LinuxBuildChroot 2>&1
         $code = $LASTEXITCODE
-        $binary = Join-Path $root "target/ftesurf-linux/$target/release/ftesurf-launcher"
+        $binary = Join-Path $root "target/ftesurf-linux/$target/release/WOS-Launcher"
     } else {
         $compiler = @(& rustc -vV)
         if ($LASTEXITCODE -ne 0) { throw 'Windows bootstrap requires rustc/cargo' }
@@ -75,10 +75,10 @@ function Build-Bootstrap ($Source, [string]$Distro = '', [string]$LinuxBuildChro
         if ($target -notmatch '^x86_64-pc-windows-(msvc|gnu)$') { throw 'Windows bootstrap requires the Windows x86_64 target' }
         Push-Location $root
         try {
-            $out = & cargo build --locked --release --bin ftesurf-launcher --target $target --target-dir (Join-Path $root 'target') 2>&1
+            $out = & cargo build --locked --release --bin WOS-Launcher --target $target --target-dir (Join-Path $root 'target') 2>&1
             $code = $LASTEXITCODE
         } finally { Pop-Location }
-        $binary = Join-Path $root "target/$target/release/ftesurf-launcher.exe"
+        $binary = Join-Path $root "target/$target/release/WOS-Launcher.exe"
     }
     foreach ($line in $out) { Write-Host "    $line" }
     if ($code -ne 0) { throw "bootstrap build failed (exit $code)" }

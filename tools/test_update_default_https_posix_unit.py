@@ -23,8 +23,8 @@ class Graders(unittest.TestCase):
         self.engine = WORK / 'native/fteqw64'
         self.rows = [
             {'pid': 11, 'exit': 0, 'errors': [], 'execs': [{'image': str(self.engine), 'argv': [str(self.engine)]}]},
-            {'pid': 12, 'exit': 0, 'errors': [], 'execs': [{'image': str(self.dest/'ftesurf-launcher'),
-             'argv': [str(self.dest/'ftesurf-launcher'), '--dir', str(self.dest) + '/', '--wait-for-game', '--yes']}]},
+            {'pid': 12, 'exit': 0, 'errors': [], 'execs': [{'image': str(self.dest/'WOS-Launcher'),
+             'argv': [str(self.dest/'WOS-Launcher'), '--dir', str(self.dest) + '/', '--wait-for-game', '--yes']}]},
             {'pid': 13, 'exit': 0, 'errors': [], 'execs': [{'image': str(self.dest/'ftesurf64'),
              'argv': [str(self.dest/'ftesurf64'), '-manifest', 'default.fmf']}]},
             {'pid': 14, 'exit': 0, 'errors': [], 'execs': []}]
@@ -39,7 +39,7 @@ class Graders(unittest.TestCase):
 
     def test_extra_or_reordered_launcher_argv(self):
         for argv in [self.rows[1]['execs'][0]['argv'] + ['--offline'],
-                     [str(self.dest/'ftesurf-launcher'), '--yes', '--dir', str(self.dest), '--wait-for-game']]:
+                     [str(self.dest/'WOS-Launcher'), '--yes', '--dir', str(self.dest), '--wait-for-game']]:
             rows = copy.deepcopy(self.rows); rows[1]['execs'][0]['argv'] = argv
             with self.assertRaises(AssertionError): self.grade(rows)
 

@@ -47,17 +47,17 @@ def expected_receipt(path, sha):
 
 
 def run_launcher(root, platform, distro):
-    binary = root / ('ftesurf-launcher.exe' if platform == 'win64' else 'ftesurf-launcher')
+    binary = root / ('WOS-Launcher.exe' if platform == 'win64' else 'WOS-Launcher')
     if platform == 'win64':
         if os.name != 'nt':
             raise ValueError('Windows launcher smoke requires Windows')
         cmd = [str(binary), '--yes', '--no-launch']
     else:
         mapped = subprocess.check_output(['wsl.exe', '-d', distro, '--exec', 'wslpath', '-a', str(root)], text=True).strip()
-        subprocess.run(['wsl.exe', '-d', distro, '--exec', 'chmod', '0755', mapped + '/ftesurf-launcher'], check=True)
+        subprocess.run(['wsl.exe', '-d', distro, '--exec', 'chmod', '0755', mapped + '/WOS-Launcher'], check=True)
         # timeout owns only this synthetic launcher, never a game/owner process.
         cmd = ['wsl.exe', '-d', distro, '--cd', mapped, '--exec', 'timeout', '--kill-after=5s', '180s',
-               './ftesurf-launcher', '--yes', '--no-launch']
+               './WOS-Launcher', '--yes', '--no-launch']
     with (root / 'launcher.log').open('wb') as log:
         subprocess.run(cmd, cwd=root, stdout=log, stderr=subprocess.STDOUT, timeout=195, check=True)
 
@@ -84,7 +84,7 @@ def smoke(receipt, root, distro):
         raise ValueError('unexpected standalone launcher platform set')
     for platform in sorted(wanted):
         artifact = artifacts[platform]
-        name = f'ftesurf-launcher-{version}' + ('.exe' if platform == 'win64' else '-linux-x86_64')
+        name = f'WOS-Launcher-{version}' + ('.exe' if platform == 'win64' else '-linux-x86_64')
         url = 'https://dl.proto.bar/ftesurf/' + name
         if artifact['name'] != name or artifact['url'] != url:
             raise ValueError('smoke requires canonical production launcher URLs')
@@ -93,7 +93,7 @@ def smoke(receipt, root, distro):
             raise ValueError('downloaded launcher differs from prepared build')
         install = root / platform
         install.mkdir()
-        (install / ('ftesurf-launcher.exe' if platform == 'win64' else 'ftesurf-launcher')).write_bytes(data)
+        (install / ('WOS-Launcher.exe' if platform == 'win64' else 'WOS-Launcher')).write_bytes(data)
         files = [f for f in payload['files'] if f['platform'] == platform]
         zone = next(f['path'] for f in files if f['path'].startswith('ftesurf/maps/zones/local/') and f['path'].endswith('.json'))
         sentinels = {'ftesurf/ftesurf.cfg': b'// synthetic release smoke settings\n',

@@ -33,15 +33,15 @@ foreach ($case in @(
     $LinuxNeededAllow = $defaultAllow; $lxNeeded = [ordered]@{}
     $lxGlibc = $case.engine; $lxHostGlibc = '2.35'
     function Invoke-Wsl {
-        "N ftesurf-launcher $($case.needed)"
-        if ($case.floor) { "G ftesurf-launcher GLIBC_$($case.floor)" }
+        "N WOS-Launcher $($case.needed)"
+        if ($case.floor) { "G WOS-Launcher GLIBC_$($case.floor)" }
     }
     $reason = $null
     try { . $block } catch { $reason = $_.Exception.Message }
     if ($case.error) {
         if (-not $reason -or -not $reason.Contains($case.error)) { throw "$($case.name): expected '$($case.error)', got '$reason' (combined floor $lxGlibc)" }
     } else {
-        if ($reason -or $lxGlibc -ne '2.31' -or $lxNeeded['ftesurf-launcher'] -cne $case.needed) { throw "$($case.name): baseline did not act: $reason / $lxGlibc" }
+        if ($reason -or $lxGlibc -ne '2.31' -or $lxNeeded['WOS-Launcher'] -cne $case.needed) { throw "$($case.name): baseline did not act: $reason / $lxGlibc" }
     }
     $results += @{ case = $case.name; reason = $reason; combined_floor = $lxGlibc }
     Write-Host "PASS $($case.name)"

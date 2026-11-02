@@ -101,7 +101,7 @@ class CopyTests(unittest.TestCase):
         doc = source(HOME)
         page = Content(doc)
         # P852: the buttons are the launchers; the archives are the "Full package" links.
-        for platform, save in (('', 'ftesurf-launcher.exe'), ('LINUX_', 'ftesurf-launcher')):
+        for platform, save in (('', 'WOS-Launcher.exe'), ('LINUX_', 'WOS-Launcher')):
             with self.subTest(platform=platform or 'WINDOWS'):
                 buttons = [attrs for tag, attrs in page.attrs
                            if tag == 'a' and attrs.get('href') == f'@@{platform}LAUNCHER_URL@@']

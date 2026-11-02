@@ -55,9 +55,9 @@ $results = @(@{ name = 'baseline'; problems = $baseline })
 foreach ($mutant in $inputData.mutants) {
     $problems = @(Check-Archive $mutant $stage)
     $want = switch ($mutant.name) {
-        'missing-bootstrap' { 'FTESurf/ftesurf-launcher is staged but not in the archive' }
+        'missing-bootstrap' { 'FTESurf/WOS-Launcher is staged but not in the archive' }
         'missing-notices' { 'FTESurf/notices/bootstrap.txt is staged but not in the archive' }
-        'bootstrap-not-executable' { 'FTESurf/ftesurf-launcher is -rw-r--r--, not -rwxr-xr-x' }
+        'bootstrap-not-executable' { 'FTESurf/WOS-Launcher is -rw-r--r--, not -rwxr-xr-x' }
         'notices-executable' { 'FTESurf/notices/bootstrap.txt is -rwxr-xr-x, not -rw-r--r--' }
         'notices-byte-change' { 'FTESurf/notices/bootstrap.txt sha256 differs from the stage' }
         default { throw 'unknown archive mutant' }

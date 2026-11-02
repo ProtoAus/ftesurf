@@ -17,7 +17,7 @@ function Fixture ([string]$Name) {
     $r = Join-Path $WorkRoot $Name
     [IO.Directory]::CreateDirectory($r) | Out-Null
     $archive = Join-Path $r 'ftesurf-1.2.3.7z'; Put $archive 'synthetic archive bytes'
-    $launcher = Join-Path $r 'ftesurf-launcher-1.2.3.exe'; Put $launcher 'synthetic launcher bytes'
+    $launcher = Join-Path $r 'WOS-Launcher-1.2.3.exe'; Put $launcher 'synthetic launcher bytes'
     $page = Join-Path $r 'site'; Put (Join-Path $page 'index.html') 'synthetic page'
     $feed = Join-Path $r 'feed'; Put (Join-Path $feed 'update.json') '{}'; Put (Join-Path $feed 'objects.txt') ''
     Put (Join-Path $feed 'objects/00/fixture') 'synthetic object'
@@ -40,7 +40,7 @@ function Fixture ([string]$Name) {
     $state.ReceiptPath = $receipt; $state.pageDir = $page; $state.pageSha = (Get-FileHash (Join-Path $page 'index.html') -Algorithm SHA256).Hash.ToLowerInvariant()
     $state.publisherDir = $publisher; $state.PiHost = 'fixture@example.invalid'; $state.SiteRoot = '/srv/fixture'; $state.SiteUrl = 'https://invalid.example/ftesurf'
     $state.updateFeed = [ordered]@{ Root = $feed; Tool = (Join-Path $publisher 'updatefeed.py'); PreviousSha = 'none'; FeedSha = (Get-FileHash (Join-Path $feed 'update.json') -Algorithm SHA256).Hash.ToLowerInvariant() }
-    $state.launcherArtifacts = @([ordered]@{ Platform = 'win64'; Name = 'ftesurf-launcher-1.2.3.exe'; Path = $launcher; Key = 'ftesurf/ftesurf-launcher-1.2.3.exe'; Url = 'https://invalid.example/ftesurf/ftesurf-launcher-1.2.3.exe'; Sha = (Get-FileHash $launcher -Algorithm SHA256).Hash.ToLowerInvariant(); Md5 = (Get-FileHash $launcher -Algorithm MD5).Hash.ToLowerInvariant() })
+    $state.launcherArtifacts = @([ordered]@{ Platform = 'win64'; Name = 'WOS-Launcher-1.2.3.exe'; Path = $launcher; Key = 'ftesurf/WOS-Launcher-1.2.3.exe'; Url = 'https://invalid.example/ftesurf/WOS-Launcher-1.2.3.exe'; Sha = (Get-FileHash $launcher -Algorithm SHA256).Hash.ToLowerInvariant(); Md5 = (Get-FileHash $launcher -Algorithm MD5).Hash.ToLowerInvariant() })
     $candidate = New-ReleaseCandidate -Root $r -Path (Join-Path $r 'candidate.json') -State $state -Files @($archive, $launcher, $receipt, (Join-Path $feed 'update.json'), (Join-Path $feed 'objects.txt')) -Trees @($page, $publisher, (Join-Path $feed 'objects')) -ReaderDirectory $PSScriptRoot
     return [pscustomobject]@{ Root = $r; Candidate = $candidate; Archive = $archive; Page = $page; Feed = $feed }
 }

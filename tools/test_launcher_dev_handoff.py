@@ -195,7 +195,7 @@ def main():
         si.dwFlags, si.wShowWindow = subprocess.STARTF_USESHOWWINDOW, 0
         cmd = [str(exe.resolve()), '--dir', str(d), '--offline', '--', '+map', 'fixture_map', 'space value']
         if batch:
-            shutil.copyfile(exe, d / 'ftesurf-launcher.exe')
+            shutil.copyfile(exe, d / 'WOS-Launcher.exe')
             (d / 'ftesurf').mkdir()
             (d / 'ftesurf/fs_addons.txt').write_bytes(b'fixture\n')
             shutil.copyfile(Path(__file__).resolve().parent.parent / 'ftesurf.bat', d / 'ftesurf.bat')

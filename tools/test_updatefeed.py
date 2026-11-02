@@ -97,8 +97,8 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(feed.object_bytes(self.root / 'feed/objects', row['hash'], row['size']), p.read_bytes())
 
     def test_launcher_is_bootstrap_not_self_replaced(self):
-        (self.win / 'ftesurf-launcher.exe').write_bytes(b'bootstrap')
-        self.assertEqual(self.build()['omitted'], ['ftesurf-launcher.exe'])
+        (self.win / 'WOS-Launcher.exe').write_bytes(b'bootstrap')
+        self.assertEqual(self.build()['omitted'], ['WOS-Launcher.exe'])
 
     def test_missing_required_game_file_fails(self):
         (self.win / 'ftesurf/menu.dat').unlink()

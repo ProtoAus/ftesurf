@@ -18,7 +18,7 @@ class Grades(unittest.TestCase):
         dest = Path('C:/owned synthetic install')
         rows = [
             {'pid': 1, 'image': 'C:/external/real-engine.exe', 'argv': 'real-engine.exe', 'exit': 0},
-            {'pid': 2, 'image': str(dest / 'ftesurf-launcher.exe'), 'argv': f'"{dest}/ftesurf-launcher.exe" --dir "{dest}/." --wait-for-game --yes', 'exit': 0},
+            {'pid': 2, 'image': str(dest / 'WOS-Launcher.exe'), 'argv': f'"{dest}/WOS-Launcher.exe" --dir "{dest}/." --wait-for-game --yes', 'exit': 0},
             {'pid': 3, 'image': str(dest / 'ftesurf64.exe'), 'argv': f'"{dest}/ftesurf64.exe" -manifest default.fmf', 'exit': 0},
             {'pid': 4, 'image': str(Path(os.environ['SystemRoot']) / 'System32/conhost.exe'), 'argv': 'conhost.exe 0x4', 'exit': 109},
         ]

@@ -98,6 +98,9 @@ def main():
     ap.add_argument('--engine-exe', type=Path, help='Explicit pre-fix native control override')
     ap.add_argument('--progs', type=Path, help='Fresh isolated QC outputs to overlay on the frozen stage')
     ap.add_argument('--launcher', type=Path, required=True)
+    # P1209: the name the native handoff should find; ftesurf-launcher.exe is what an older install has.
+    ap.add_argument('--bootstrap-name', choices=['WOS-Launcher.exe', 'ftesurf-launcher.exe'], default='WOS-Launcher.exe')
+    ap.add_argument('--restart-by', choices=['menu', 'command'], default='menu')  # command: update_restart from the cfg
     ap.add_argument('--arm', choices=['all', 'toggle', 'missing', 'held', 'outage', 'restart', 'permission-link', 'restart-link', 'wait-lock', 'recovery-version'], default='all')
     a = ap.parse_args()
     assert os.name == 'nt', 'Windows runtime driver'
@@ -211,8 +214,8 @@ def main():
         (root / 'adapter-build.log').write_text(r.stdout + r.stderr)
         assert r.returncode == 0 and not r.stderr, f'adapter build must be warning-free: exit {r.returncode:#x}, {r.stderr}'
         if provision:
-            if linked: (dest / 'ftesurf-launcher.exe').symlink_to(target)
-            else: shutil.copyfile(target, dest / 'ftesurf-launcher.exe')
+            if linked: (dest / a.bootstrap_name).symlink_to(target)
+            else: shutil.copyfile(target, dest / a.bootstrap_name)
         cfgdir = dest / 'ftesurf/cfg/test'; cfgdir.mkdir(parents=True, exist_ok=True)
         (cfgdir / 'handoff-return.cfg').write_text('cfg_save_auto 0\ncl_idlefps 0\ncl_maxfps 100\nvid_fullscreen 0\nvolume 0\nmusicvolume 0\n'
             'log_name handoff-return\nlog_enable 1\ndeveloper 1\nlog_developer 1\n'
@@ -226,7 +229,8 @@ def main():
             if 'launcher_exit=' in adapter_text: break
             time.sleep(0.05)
         assert 'launcher_exit=0' in adapter_text, adapter_text
-        assert f'FTESurf {version} is ready.' in (dest / 'launcher.log').read_text(errors='replace'), 'real launcher update actor missing'
+        said = (dest / 'launcher.log').read_bytes().decode('utf-8', 'replace')   # the launcher prints UTF-8 (P1208 arrows)
+        assert f'World of Surf {version} is ready.' in said or f'\u2192 {version}.' in said, 'real launcher update actor missing'
         assert 'arg1=--dir' in adapter_text and f'arg2={dest.as_posix()}/.' in adapter_text.replace('\\', '/') and 'arg3=--wait-for-game' in adapter_text and 'arg4=--yes' in adapter_text, adapter_text
         assert 'handoff-actor: real returning game' in logs(dest, 'handoff-return'), 'real Rust launch did not act'
         assert json.loads((dest / '.ftesurf-updater/state.json').read_text())['version'] == version
@@ -280,7 +284,7 @@ def main():
                 assert '"update_error" is "linked launcher path; restart was not started.' in text
                 assert 'Use a regular local launcher beside FTESurf, then retry.' in text
                 assert not (dest / 'adapter.log').exists(), 'linked executable was spawned'
-            finally: (dest / 'ftesurf-launcher.exe').unlink()
+            finally: (dest / a.bootstrap_name).unlink()
             print('PASS real launcher file symlink: restart refused BEFORE process spawn, current game survives')
         if a.arm in ['all', 'toggle']:
             dest = install('toggle', 0); hits.clear()
@@ -333,7 +337,7 @@ def main():
             p = start(dest, 'missing-retry', steps, env)
             text = wait_actor(p, dest, 'missing-retry', 'handoff-actor: missing launcher observed')
             assert reason in text and 'state=restart' in text and not (dest / 'adapter.log').exists()
-            shutil.copyfile(root / 'handoff-adapter.exe', dest / 'ftesurf-launcher.exe')
+            shutil.copyfile(root / 'handoff-adapter.exe', dest / a.bootstrap_name)
             text = finish(p, dest, 'missing-retry')
             retry = text.split('handoff-actor: missing launcher observed', 1)[1]
             assert 'last error' not in retry and '"update_error" is ""' in retry, 'successful same-game retry retained the spawn failure'
@@ -414,7 +418,8 @@ def main():
             with (stage / 'ftesurf64.exe').open('ab') as f: f.write(b'owned handoff trailer')
             publish('0.1.26')
             env = adapter(dest)
-            p = start(dest, 'restart', 'wait 400\nui_update_probe\nupdate_info\n' + click('mu_restart') + 'echo handoff-actor: cfg tail before queued quit\n', env)
+            go = click('mu_restart') if a.restart_by == 'menu' else 'update_restart\n'
+            p = start(dest, 'restart', 'wait 400\nui_update_probe\nupdate_info\n' + go + 'echo handoff-actor: cfg tail before queued quit\n', env)
             text = finish(p, dest, 'restart')
             assert 'state=launcher' in text
             returned(dest, '0.1.26')

@@ -22,13 +22,18 @@ say() {
 here=$(dirname -- "$(readlink -f -- "$0")") && cd -- "$here" || {
     echo "ftesurf.sh: cannot enter the folder this script is in" >&2; exit 1; }
 runner=./ftesurf64
-if [ -e ./ftesurf-launcher ] || [ -L ./ftesurf-launcher ]; then
-    if [ -L ./ftesurf-launcher ] || [ ! -f ./ftesurf-launcher ] || [ ! -x ./ftesurf-launcher ]; then
-        say "$here/ftesurf-launcher is not executable (or is a link).
+# P1209: the launcher is WOS-Launcher; an install from before it has ftesurf-launcher.
+launcher=
+for l in ./WOS-Launcher ./ftesurf-launcher; do
+    if [ -e "$l" ] || [ -L "$l" ]; then launcher=$l; break; fi
+done
+if [ -n "$launcher" ]; then
+    if [ -L "$launcher" ] || [ ! -f "$launcher" ] || [ ! -x "$launcher" ]; then
+        say "$here/${launcher#./} is not executable (or is a link).
 Extract the official archive onto a drive that allows running programs."
         exit 1
     fi
-    runner=./ftesurf-launcher
+    runner=$launcher
 elif [ ! -f ./ftesurf64 ]; then
     say "$here/ftesurf64 is missing.
 Extract the .tar.xz with tar or an archive manager."

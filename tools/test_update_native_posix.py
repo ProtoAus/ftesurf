@@ -286,7 +286,7 @@ def main():
         passed('native flock -> duplicate native/Rust refusal -> real Rust wait/update; zero requests or updater-metadata/content changes throughout controlled 2s held interval')
 
         def adapter(dest):
-            path = dest / 'ftesurf-launcher'
+            path = dest / 'WOS-Launcher'
             body = '#!/usr/bin/python3\nimport json, os, pathlib, subprocess, sys\n'
             body += f'root = pathlib.Path({str(dest)!r})\n'
             body += 'assert sys.argv[1] == "--dir" and pathlib.Path(sys.argv[2]).resolve() == root\nassert sys.argv[3:] == ["--wait-for-game", "--yes"], sys.argv\n'
@@ -334,7 +334,7 @@ def main():
             steps += 'echo posix-actor: retry armed\nexec cfg/test/gate-retry.cfg\nupdate_error\necho posix-actor: successful retry queued quit\n'
             p = start(dest, name, steps)
             expected_state = 'launcher' if binary else 'restart'
-            path = dest / 'ftesurf-launcher'
+            path = dest / 'WOS-Launcher'
             for failure, reason in [('missing', 'launcher is missing or not executable'), ('nonexec', 'launcher is missing or not executable'), ('linked', 'linked launcher path; restart was not started'), ('interpreter', 'could not start the launcher')]:
                 armed = f'posix-actor: {failure} armed'
                 observed = f'posix-actor: {failure} observed'
@@ -377,7 +377,7 @@ def main():
             for fault in ['EINTR', 'EIO']:
                 dest = install('restart-read-' + fault, 1); hits.clear()
                 marker = dest / 'read-fault'
-                path = dest / 'ftesurf-launcher'
+                path = dest / 'WOS-Launcher'
                 path.write_text('#!/missing-owned-interpreter\n'); path.chmod(0o755)
                 env['LD_PRELOAD'] = str(a.fault_library.resolve())
                 env['FTESURF_POSIX_READ_FAULT'] = str(marker)

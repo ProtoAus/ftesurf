@@ -56,14 +56,14 @@
         <h1 class="hero-brand"><img src="worldofsurf-wordmark.svg" width="720" height="320" alt="World of Surf"><span
           class="beta" title="@@VERSION@@ &middot; @@DATE@@ &middot; QuakeC build @@QCBUILD@@ &middot; engine patch @@ENGINEPATCH@@"><span>B</span><span>E</span><span>T</span><span>A</span></span></h1>
         <!-- The launcher installs the game into its own folder and updates it. R2 serves
-             it with Content-Disposition naming it ftesurf-launcher(.exe), the name the
+             it with Content-Disposition naming it WOS-Launcher(.exe), the name the
              engine's update handoff runs (qkupdate.c QKU_Restart_f); `download` alone
              is ignored cross-origin. -->
         <div class="cta">
-          <a class="btn" href="@@LAUNCHER_URL@@" download="ftesurf-launcher.exe" title="Installs and updates World of Surf &middot; SHA-256: @@LAUNCHER_SHA256@@">Download for Windows
+          <a class="btn" href="@@LAUNCHER_URL@@" download="WOS-Launcher.exe" title="Installs and updates World of Surf &middot; SHA-256: @@LAUNCHER_SHA256@@">Download for Windows
             <small>x64 &middot; launcher</small></a>
           <!--LINUX-BEGIN-->
-          <a class="btn alt" href="@@LINUX_LAUNCHER_URL@@" download="ftesurf-launcher" title="Tested in WSL only &middot; glibc @@LINUX_GLIBC@@+ &middot; engine patch @@LINUX_ENGINE@@ &middot; SHA-256: @@LINUX_LAUNCHER_SHA256@@">Download for Linux
+          <a class="btn alt" href="@@LINUX_LAUNCHER_URL@@" download="WOS-Launcher" title="Tested in WSL only &middot; glibc @@LINUX_GLIBC@@+ &middot; engine patch @@LINUX_ENGINE@@ &middot; SHA-256: @@LINUX_LAUNCHER_SHA256@@">Download for Linux
             <small>x86_64 &middot; launcher &middot; beta, unranked</small></a>
           <!--LINUX-END-->
         </div>

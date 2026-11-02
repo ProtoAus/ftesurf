@@ -68,11 +68,11 @@ def local_path(path):
 
 
 def grade_handoff(rows, dest, initial_pid):
-    launchers = [r for r in rows if Path(r['image']).resolve() == dest / 'ftesurf-launcher.exe']
+    launchers = [r for r in rows if Path(r['image']).resolve() == dest / 'WOS-Launcher.exe']
     returns = [r for r in rows if r['pid'] != initial_pid and Path(r['image']).resolve() == dest / 'ftesurf64.exe']
     assert len(launchers) == len(returns) == 1, ('real handoff census missing', rows)
     launch = argv_tokens(launchers[0]['argv'])
-    assert len(launch) == 5 and local_path(launch[0]) == dest / 'ftesurf-launcher.exe', launch
+    assert len(launch) == 5 and local_path(launch[0]) == dest / 'WOS-Launcher.exe', launch
     assert launch[1] == '--dir' and local_path(launch[2]) == dest, launch
     assert launch[3:] == ['--wait-for-game', '--yes'], launch
     returned = argv_tokens(returns[0]['argv'])
@@ -264,14 +264,14 @@ def main():
         assert len(actual) == receipt['content']['file_count']
         assert sum((dest / p).stat().st_size for p in actual) == receipt['content']['raw_bytes']
         assert all(actual.get(p) == h.upper() for p, h in expected.items()), 'archive critical receipt mismatch'
-        assert actual['ftesurf-launcher.exe'] == receipt['bootstrap']['sha256'].upper()
+        assert actual['WOS-Launcher.exe'] == receipt['bootstrap']['sha256'].upper()
         assert actual['notices/bootstrap.txt'] == receipt['bootstrap']['notices_sha256'].upper()
         files = {f['path']: f for f in manifest['files'] if f['platform'] in ('all', 'win64')}
-        assert set(actual) == set(files) | {'ftesurf-launcher.exe'}, 'archive signed closure mismatch'
+        assert set(actual) == set(files) | {'WOS-Launcher.exe'}, 'archive signed closure mismatch'
         assert 'DISABLEHOMEDIR 1' in (dest / 'default.fmf').read_text(), 'returning game must not use owner home'
         assert all(digest((dest / p).read_bytes()) == f['hash'] and (dest / p).stat().st_size == f['size'] for p, f in files.items())
         result.update(engine_sha256=sha(engine.read_bytes()), archive_sha256=sha(archive.read_bytes()),
-                      feed_sha256=sha(signed), version=manifest['version'], bootstrap_sha256=actual['ftesurf-launcher.exe'])
+                      feed_sha256=sha(signed), version=manifest['version'], bootstrap_sha256=actual['WOS-Launcher.exe'])
         meta = dest / '.ftesurf-updater'; meta.mkdir()
         state = {'version': manifest['version'], 'files': {p: f['hash'] for p, f in files.items()}}
         (meta / 'state.json').write_text(json.dumps(state))
@@ -288,7 +288,7 @@ def main():
         def guard():
             for path, data in protected.items():
                 assert (dest / path).read_bytes() == data, 'changed sentinel: ' + path
-            assert sha((dest / 'ftesurf-launcher.exe').read_bytes()).upper() == actual['ftesurf-launcher.exe']
+            assert sha((dest / 'WOS-Launcher.exe').read_bytes()).upper() == actual['WOS-Launcher.exe']
         def start(name):
             (cfgdir / 'https-return.cfg').write_text('cfg_save_auto 0\n')
             (cfgdir / (name + '.cfg')).write_text('cfg_save_auto 0\ncl_idlefps 0\ncl_maxfps 100\nvid_fullscreen 0\nvid_width 1280\nvid_height 720\n'

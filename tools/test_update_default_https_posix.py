@@ -197,14 +197,14 @@ def grade_chain(rows, engine, dest, restart, initial_argv=None):
         visited.add(pid)
         pending.extend(child for parent, child in edges if parent == pid)
     assert visited == ids, 'unreachable task trace'
-    launchers = [(pid, e) for pid, e in execs if Path(e['image']).resolve() == dest / 'ftesurf-launcher']
+    launchers = [(pid, e) for pid, e in execs if Path(e['image']).resolve() == dest / 'WOS-Launcher']
     returns = [(pid, e) for pid, e in execs if Path(e['image']).resolve() == dest / 'ftesurf64']
     assert len(execs) == (3 if restart else 1), ('unexpected executable census', execs)
     if restart:
         assert len(launchers) == len(returns) == 1
         pid, launch = launchers[0]
         argv = launch['argv']
-        assert len(argv) == 5 and Path(argv[0]).resolve() == dest / 'ftesurf-launcher', argv
+        assert len(argv) == 5 and Path(argv[0]).resolve() == dest / 'WOS-Launcher', argv
         assert argv[1] == '--dir' and Path(argv[2]).resolve() == dest, argv
         assert argv[3:] == ['--wait-for-game', '--yes'], argv
         returned = returns[0][1]['argv']
@@ -482,7 +482,7 @@ def extract_archive(archive, dest):
                 out.mkdir(parents=True, exist_ok=True)
                 out.chmod(m.mode)
             else:
-                expected = 0o755 if rel.as_posix() in ['ftesurf64', 'ftesurf-launcher', 'ftesurf.sh'] else 0o644
+                expected = 0o755 if rel.as_posix() in ['ftesurf64', 'WOS-Launcher', 'ftesurf.sh'] else 0o644
                 assert m.mode == expected, ('archive mode', m.name, m.mode)
                 assert not out.exists(), 'duplicate archive member'
                 out.parent.mkdir(parents=True, exist_ok=True)
@@ -570,14 +570,14 @@ def main():
         assert len(actual) == linux['content']['file_count']
         assert sum((dest / p).stat().st_size for p in actual) == linux['content']['raw_bytes']
         assert all(actual.get(p) == h.upper() for p, h in linux['content']['hashes'].items())
-        assert actual['ftesurf-launcher'] == linux['bootstrap']['sha256'].upper()
+        assert actual['WOS-Launcher'] == linux['bootstrap']['sha256'].upper()
         assert actual['notices/bootstrap.txt'] == linux['bootstrap']['notices_sha256'].upper()
         files = {f['path']: f for f in manifest['files'] if f['platform'] in ('all', 'linux64')}
-        assert set(actual) == set(files) | {'ftesurf-launcher'}
+        assert set(actual) == set(files) | {'WOS-Launcher'}
         assert 'DISABLEHOMEDIR 1' in (dest / 'default.fmf').read_text()
         assert all(digest((dest / p).read_bytes()) == f['hash'] and (dest / p).stat().st_size == f['size'] for p, f in files.items())
         result.update(engine_sha256=sha(engine.read_bytes()), archive_sha256=sha(archive.read_bytes()),
-                      feed_sha256=sha(signed), version=manifest['version'], bootstrap_sha256=actual['ftesurf-launcher'],
+                      feed_sha256=sha(signed), version=manifest['version'], bootstrap_sha256=actual['WOS-Launcher'],
                       returning_engine_sha256=actual['ftesurf64'])
         meta = dest / '.ftesurf-updater'; meta.mkdir()
         state = {'version': manifest['version'], 'files': {p: f['hash'] for p, f in files.items()}}
@@ -595,7 +595,7 @@ def main():
             for path, data in protected.items():
                 no_links(dest, dest / path)
                 assert (dest / path).read_bytes() == data, 'changed sentinel: ' + path
-            assert sha((dest / 'ftesurf-launcher').read_bytes()).upper() == actual['ftesurf-launcher']
+            assert sha((dest / 'WOS-Launcher').read_bytes()).upper() == actual['WOS-Launcher']
         def start(name):
             (cfgdir / 'https-return.cfg').write_text('cfg_save_auto 0\n')
             (cfgdir / (name + '.cfg')).write_text('cfg_save_auto 0\ncl_idlefps 0\ncl_maxfps 100\nvid_fullscreen 0\nvid_width 1280\nvid_height 720\n'

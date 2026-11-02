@@ -123,7 +123,7 @@ def main():
             (game / 'fs_addons.default.txt').write_text('portable mount sentinel\n')
             (install / 'default.fmf').write_text('fixture manifest sentinel\n')
             engine_path = install / ('ftesurf64' + suffix)
-            bootstrap_path = install / ('ftesurf-launcher' + suffix)
+            bootstrap_path = install / ('WOS-Launcher' + suffix)
             if engine:
                 shutil.copy2(actor, engine_path)
             if bootstrap:

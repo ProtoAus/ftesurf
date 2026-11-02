@@ -52,12 +52,12 @@ def main():
         info = {'provenance': receipt['bootstrap']}
     else:
         info = json.loads(args.build_info.read_text(encoding='utf-8-sig'))
-        shutil.copyfile(info['binary'], stage / 'ftesurf-launcher.exe')
+        shutil.copyfile(info['binary'], stage / 'WOS-Launcher.exe')
         (stage / 'notices').mkdir(exist_ok=True)
         shutil.copyfile(args.notices, stage / 'notices/bootstrap.txt')
     expected = {p.relative_to(stage).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                 for p in stage.rglob('*') if p.is_file()}
-    assert expected['ftesurf-launcher.exe'].upper() == info['provenance']['sha256']
+    assert expected['WOS-Launcher.exe'].upper() == info['provenance']['sha256']
     sevenzip = 'C:/Program Files/7-Zip/7z.exe'
     if args.archive:
         archive = args.archive.resolve()
@@ -91,7 +91,7 @@ def main():
         else:
             assert result.returncode == 0, result.stderr
     policy(list(actual))
-    for missing in ('ftesurf-launcher.exe', 'notices/bootstrap.txt'):
+    for missing in ('WOS-Launcher.exe', 'notices/bootstrap.txt'):
         bad = root / ('missing-' + Path(missing).stem + '.7z')
         shutil.copyfile(archive, bad)
         subprocess.run([sevenzip, 'd', '-bso0', '-bsp0', str(bad), missing], check=True, capture_output=True, timeout=90)
@@ -125,7 +125,7 @@ def main():
     updatefeed.build({'win64': stage}, baseline, '0.1.24', [url], seed)
     meta = install / '.ftesurf-updater'; meta.mkdir()
     payload = updatefeed.verify((baseline / 'update.json').read_bytes())
-    assert all(f['path'] != 'ftesurf-launcher.exe' for f in payload['files'])
+    assert all(f['path'] != 'WOS-Launcher.exe' for f in payload['files'])
     (meta / 'state.json').write_text(json.dumps({'version': payload['version'], 'files': {f['path']: f['hash'] for f in payload['files']}}))
     (meta / 'installed.json').write_bytes((baseline / 'update.json').read_bytes())
     rel = 'ftesurf/gfx/updater_fixture.txt'
@@ -156,7 +156,7 @@ def main():
             'ruleset_allow_in 1\nin 3 quit\n')
         stdout = (root / f'{name}-stdout.log').open('wb')
         # Suspend until job assignment: even a fast launcher cannot create an uncontained child.
-        process = subprocess.Popen([str(install / 'ftesurf-launcher.exe'), *flags, '--',
+        process = subprocess.Popen([str(install / 'WOS-Launcher.exe'), *flags, '--',
                                     '-window', '+set', 'cfg_save_auto', '0', '+set', 'bootstrap_arg', name + ' argument with spaces',
                                     '+exec', cfg], cwd='C:/FTESurf', stdout=stdout, stderr=subprocess.STDOUT,
                                    creationflags=0x4)
@@ -190,7 +190,7 @@ def main():
         assert hits['/update.json'] >= 1 and sum(v for p, v in hits.items() if '/objects/' in p) == 1, hits
         assert (install / rel).read_bytes() == (stage / rel).read_bytes()
         assert json.loads((meta / 'state.json').read_text())['version'] == '0.1.25'
-        assert hashlib.sha256((install / 'ftesurf-launcher.exe').read_bytes()).hexdigest() == expected['ftesurf-launcher.exe']
+        assert hashlib.sha256((install / 'WOS-Launcher.exe').read_bytes()).hexdigest() == expected['WOS-Launcher.exe']
         print('PASS real signed direct update: one object installed; bootstrap excluded and unchanged')
         # Native reads persisted permission too. Give this one-launch CLI arm a
         # stored opt-out to suppress native auto checks while measuring Rust's --offline.

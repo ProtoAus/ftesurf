@@ -219,7 +219,7 @@ $ShipRootFiles = @(
     # Its third-party notices are THIRD-PARTY.txt, generated below.
     'fteplug_ui_imgui_x64.dll'
     'default.fmf'            # carries the 66.667 Hz / 15 ms tick constants
-    # P852: no ftesurf.bat / ftesurf_debug.bat. ftesurf-launcher.exe (staged below)
+    # P852: no ftesurf.bat / ftesurf_debug.bat. WOS-Launcher.exe (staged below)
     # starts the game with the install as its CWD, and fs_addons.txt ships generated.
     'LICENSE'                # GPLv2. Required alongside a redistributed binary.
 )
@@ -378,8 +378,8 @@ $DenyPatterns = @(
 #  Windows stage, so both archives carry the same game bytes. $LinuxDeny is
 #  applied on top of $DenyPatterns, and only to the Linux tree.
 $LinuxTop  = 'FTESurf'
-$LinuxExec = @('ftesurf64', 'ftesurf.sh', 'ftesurf-launcher')
-$LinuxRequired = @('ftesurf64', 'fteplug_hl2_amd64.so', 'ftesurf.sh', 'ftesurf-launcher', 'notices/bootstrap.txt', 'default.fmf', 'LICENSE',
+$LinuxExec = @('ftesurf64', 'ftesurf.sh', 'WOS-Launcher')
+$LinuxRequired = @('ftesurf64', 'fteplug_hl2_amd64.so', 'ftesurf.sh', 'WOS-Launcher', 'notices/bootstrap.txt', 'default.fmf', 'LICENSE',
     'INSTALL.txt', 'VERSION.txt', 'SOURCE.txt', 'ftesurf/csprogs.dat', 'ftesurf/qwprogs.dat', 'ftesurf/menu.dat',
     'ftesurf/fs_addons.default.txt', 'ftesurf/fs_addons.txt', 'ftesurf/cfg/default.cfg')
 # Template keys come from the same Get-ReceiptTokens renderer used below.
@@ -1000,7 +1000,7 @@ if ($Linux) {
     if (-not $bootstrapGlibcs.Count) { Fail 'Linux bootstrap has no measured glibc floor' }
     $extra = @($bootstrapNeeded | Where-Object { $LinuxNeededAllow -notcontains $_ })
     if ($extra.Count) { Fail "Linux bootstrap needs $($extra -join ', ') (not in -LinuxNeededAllow)" }
-    $lxNeeded['ftesurf-launcher'] = $bootstrapNeeded
+    $lxNeeded['WOS-Launcher'] = $bootstrapNeeded
     $lxGlibc = Assert-BootstrapGlibc (@($lxGlibc) + $bootstrapGlibcs)
     if ([version]$lxGlibc -gt [version]$lxHostGlibc) { Fail 'Linux bootstrap needs a newer glibc than the build/test host' }
     Good "Linux bootstrap: dependencies allowed, combined glibc floor $lxGlibc"
@@ -1036,8 +1036,8 @@ foreach ($rel in $shipRel) {
     Copy-Item -LiteralPath $srcFile -Destination $dstFile -Force
     $staged++; $stagedBytes += (Get-Item -LiteralPath $dstFile).Length
 }
-Copy-Item -LiteralPath $bootstrap.binary -Destination (Join-Path $StageDir 'ftesurf-launcher.exe')
-if ((Get-FileHash -LiteralPath (Join-Path $StageDir 'ftesurf-launcher.exe') -Algorithm SHA256).Hash -ne $bootstrap.provenance.sha256) {
+Copy-Item -LiteralPath $bootstrap.binary -Destination (Join-Path $StageDir 'WOS-Launcher.exe')
+if ((Get-FileHash -LiteralPath (Join-Path $StageDir 'WOS-Launcher.exe') -Algorithm SHA256).Hash -ne $bootstrap.provenance.sha256) {
     Fail 'staged bootstrap changed since its build'
 }
 
@@ -1114,7 +1114,7 @@ engine patch     $engineLabel
 git HEAD         $GitShort  $GitHeadSub
 bootstrap commit $($bootstrap.provenance.commit)
 bootstrap source sha256 $($bootstrap.provenance.source_sha256)
-ftesurf-launcher.exe  sha256 $($bootstrap.provenance.sha256)
+WOS-Launcher.exe  sha256 $($bootstrap.provenance.sha256)
 ftesurf64.exe        sha256 $hExeLocal
 fteplug_hl2_x64.dll  sha256 $hDllLocal
 fteplug_ui_imgui_x64.dll  sha256 $hImgLocal
@@ -1153,12 +1153,12 @@ your sensitivity first.  A fresh install has no ftesurf.cfg.
     Both CS:GO Source 1 layouts are found automatically. Modern CS2's Source 2
     game/csgo content is not an interchangeable asset pack.
 
-3.  Start ftesurf-launcher.exe. It checks for a signed update, then starts
+3.  Start WOS-Launcher.exe. It checks for a signed update, then starts
     the game. The first launch asks permission before checking; choosing
     Play online in the game turns updates on.
-    ftesurf-launcher.exe --offline skips the check without changing saved
+    WOS-Launcher.exe --offline skips the check without changing saved
     permission; the game's own auto-check still follows that permission.
-    To forward engine options: ftesurf-launcher.exe -- -window +map <mapname>.
+    To forward engine options: WOS-Launcher.exe -- -window +map <mapname>.
 
     The launcher is a separate bootstrap, NOT self-updated by the normal
     feed. To upgrade it, exit both game and launcher, then extract a newer
@@ -1402,7 +1402,7 @@ if ($onlyArchive.Count -or $onlyStage.Count) {
     if ($onlyStage.Count)   { $m += "`n    staged but NOT in archive:`n" + (($onlyStage | ForEach-Object { "      $_" }) -join "`n") }
     Fail $m
 }
-foreach ($must in @('ftesurf64.exe', 'ftesurf-launcher.exe', 'fteplug_hl2_x64.dll', 'fteplug_ui_imgui_x64.dll', 'THIRD-PARTY.txt',
+foreach ($must in @('ftesurf64.exe', 'WOS-Launcher.exe', 'fteplug_hl2_x64.dll', 'fteplug_ui_imgui_x64.dll', 'THIRD-PARTY.txt',
         'default.fmf', 'LICENSE', 'notices/bootstrap.txt',
         'ftesurf/csprogs.dat', 'ftesurf/qwprogs.dat', 'ftesurf/menu.dat',
         'ftesurf/fs_addons.default.txt', 'ftesurf/cfg/default.cfg')) {
@@ -1444,8 +1444,8 @@ if ($Linux) {
     $lxSrc = [regex]::Replace($lxSrc, '(?m)^  engine patch .*$', $lxSrcLine.Replace('$', '$$'))
     if (-not $lxSrc.Contains($lxSrcLine)) { Fail 'Linux SOURCE.txt: no engine patch line to replace' }
     [System.IO.File]::WriteAllText((Join-Path $LxTree 'SOURCE.txt'), $lxSrc, (New-Object System.Text.UTF8Encoding $false))
-    Copy-Item -LiteralPath $linuxBootstrap.binary -Destination (Join-Path $LxTree 'ftesurf-launcher')
-    if ((Get-FileHash -LiteralPath (Join-Path $LxTree 'ftesurf-launcher') -Algorithm SHA256).Hash -ne $linuxBootstrap.provenance.sha256) {
+    Copy-Item -LiteralPath $linuxBootstrap.binary -Destination (Join-Path $LxTree 'WOS-Launcher')
+    if ((Get-FileHash -LiteralPath (Join-Path $LxTree 'WOS-Launcher') -Algorithm SHA256).Hash -ne $linuxBootstrap.provenance.sha256) {
         Fail 'staged Linux bootstrap changed since its build'
     }
     Copy-Item -LiteralPath $lxExe  -Destination (Join-Path $LxTree 'ftesurf64')
@@ -1472,7 +1472,7 @@ glibc needed     $lxGlibc or newer
 git HEAD         $GitShort  $GitHeadSub
 bootstrap commit $($linuxBootstrap.provenance.commit)
 bootstrap source sha256 $($linuxBootstrap.provenance.source_sha256)
-ftesurf-launcher      sha256 $($linuxBootstrap.provenance.sha256)
+WOS-Launcher      sha256 $($linuxBootstrap.provenance.sha256)
 ftesurf64             sha256 $hLxExe
 fteplug_hl2_amd64.so  sha256 $hLxPlug
 csprogs.dat           sha256 $($lxDat['csprogs.dat'])
@@ -1519,7 +1519,7 @@ yours), OpenGL, and an X11 or Wayland desktop.
     checking. The first desktop launch without a terminal starts the installed
     game without a bootstrap check or saved permission; choosing Play online
     in the game turns updates on. Later launches follow the saved permission.
-    ./ftesurf-launcher --offline skips the bootstrap check without changing
+    ./WOS-Launcher --offline skips the bootstrap check without changing
     permission; the game's own auto-check still follows that permission.
     Engine options are forwarded, for example:
         ./ftesurf.sh -window +map <mapname>
@@ -1681,7 +1681,7 @@ $launcherArtifacts = @()
 foreach ($platform in @('win64', 'linux64')) {
     if ($platform -eq 'linux64' -and -not $Linux) { continue }
     $boot = if ($platform -eq 'win64') { $bootstrap } else { $linuxBootstrap }
-    $name = if ($platform -eq 'win64') { "ftesurf-launcher-$Ver.exe" } else { "ftesurf-launcher-$Ver-linux-x86_64" }
+    $name = if ($platform -eq 'win64') { "WOS-Launcher-$Ver.exe" } else { "WOS-Launcher-$Ver-linux-x86_64" }
     $path = Join-Path $OutDir $name
     Copy-Item -LiteralPath $boot.binary -Destination $path
     $sha = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -2095,7 +2095,7 @@ if (-not $SkipUpload -or -not $SkipSite) {
     foreach ($artifact in $launcherArtifacts) {
         # P852: the page's main download. Saved under the name the engine's update
         # handoff runs (qkupdate.c QKU_Restart_f), not the versioned key.
-        $saveAs = if ($artifact.Platform -eq 'win64') { 'ftesurf-launcher.exe' } else { 'ftesurf-launcher' }
+        $saveAs = if ($artifact.Platform -eq 'win64') { 'WOS-Launcher.exe' } else { 'WOS-Launcher' }
         if (-not $SkipUpload) {
             foreach ($suffix in @('', '.sha256')) {
                 $type = if ($suffix) { 'text/plain; charset=utf-8' } else { 'application/octet-stream' }

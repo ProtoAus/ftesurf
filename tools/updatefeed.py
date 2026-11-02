@@ -206,7 +206,7 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
             if not managed(p):
                 # Ordinary distribution docs and the launcher itself are not self-managed.
                 # Anything player-owned in a stage is still a fatal publishing mistake.
-                if p in ("ftesurf-launcher.exe", "ftesurf-launcher"):
+                if p in ("WOS-Launcher.exe", "WOS-Launcher", "ftesurf-launcher.exe", "ftesurf-launcher"):  # P1209
                     omitted.append(p)
                     continue
                 raise ValueError(f"stage contains an unmanaged file: {p}")

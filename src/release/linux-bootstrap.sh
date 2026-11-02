@@ -51,15 +51,15 @@ chroot "$ch" /usr/bin/env -i PATH=/mnt/rust/bin:/usr/bin:/bin HOME=/mnt/target \
     mkdir -p "$CARGO_HOME" "$TMPDIR"
     if [[ ! -e $CARGO_HOME/registry ]]; then ln -s /mnt/registry "$CARGO_HOME/registry"; fi
     cd /mnt/source
-    cargo build --locked --offline --release --bin ftesurf-launcher --target x86_64-unknown-linux-gnu
+    cargo build --locked --offline --release --bin WOS-Launcher --target x86_64-unknown-linux-gnu
     cargo metadata --locked --offline --format-version 1 --filter-platform x86_64-unknown-linux-gnu > /mnt/target/metadata.json
     getconf GNU_LIBC_VERSION > /mnt/target/builder-glibc.txt
     rustc -vV > /mnt/target/compiler.txt
-    readelf -V /mnt/target/x86_64-unknown-linux-gnu/release/ftesurf-launcher > /mnt/target/versions.txt
+    readelf -V /mnt/target/x86_64-unknown-linux-gnu/release/WOS-Launcher > /mnt/target/versions.txt
     grep -o "GLIBC_[0-9][0-9.]*" /mnt/target/versions.txt | sort -Vu > /mnt/target/glibc-symbols.txt
     floor=$(tail -1 /mnt/target/glibc-symbols.txt)
     [[ $(printf "%s\n" GLIBC_2.31 "$floor" | sort -V | tail -1) == GLIBC_2.31 ]] || { echo "linux-bootstrap: floor $floor exceeds 2.31" >&2; exit 1; }
-    /mnt/target/x86_64-unknown-linux-gnu/release/ftesurf-launcher --help > /mnt/target/help-baseline.txt
+    /mnt/target/x86_64-unknown-linux-gnu/release/WOS-Launcher --help > /mnt/target/help-baseline.txt
     grep -q -- --manifest-url /mnt/target/help-baseline.txt
     echo "BOOTSTRAP glibc 2.31; measured $floor; --help acted on baseline"
 '
