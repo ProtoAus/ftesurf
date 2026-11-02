@@ -282,7 +282,9 @@ void(string k) Inv_GlowMats =
 		" float m = texture2D(s_mask, tc).r;\n"
 		" float a = clamp(g * 2.5, 0.0, 1.0) * (1.0 - m) * vc.a;\n"
 		" gl_FragColor = vec4(vc.rgb * a, 1.0);\n}\n#endif\n}\n",
-		sprintf(" {\n map $rt:%s\n map $rt:%s\n blendfunc gl_one gl_one\n rgbgen vertex\n alphagen vertex\n }\n}\n", Inv_RT(k, "b2"), Inv_RT(k, "mask"))));
+		// A shader-level program takes one texture per pass (one pass with two maps bound only the last).
+		sprintf(" {\n map $rt:%s\n blendfunc gl_one gl_one\n rgbgen vertex\n alphagen vertex\n }\n {\n map $rt:%s\n }\n}\n",
+		        Inv_RT(k, "b2"), Inv_RT(k, "mask"))));
 };
 
 // Just before the main renderscene: this frame's pass needs the scene's depth kept as a texture.
