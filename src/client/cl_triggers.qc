@@ -769,8 +769,6 @@ float(float s) TG_IOOwnerBad =
 			return TRUE;
 		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_PMOVE)
 			return TRUE;
-		if (io_inp[o] == IN_VSVEL && !(TG_IOVsOK(o) && (io_ev[o] == EV_START || io_ev[o] == EV_END)))
-			return TRUE;              // P1205: delayed, counted or OnJump: the server's alone
 		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_BVEL && !TG_IOBvelOK(o))
 			return TRUE;
 	}
