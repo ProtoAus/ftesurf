@@ -2166,6 +2166,22 @@ executable path and hash, not a similarly named maintained copy.
   1 s window and 1.3 s waits every dump measured the previous setting, and the first table read
   backwards.
 
+## CSQC render-target 3D views (P1230, 2026-11-03)
+
+- A CSQC renderscene into a target is drawn FLIPPED (gl_rmain.c's target branch, so 2D reads it
+  upright), the engine's own main view into rt/$lastgameview the GL way up: a pass that maps one onto
+  the other mirrors rows (uv.y = 1 - uv.y). Measured by drawing both as plain pictures.
+- GLBE_FBO_Update DESTROYS and rebuilds the shared game-view FBO whenever the depth kind (texture vs
+  renderbuffer) changes: a target view beside a main view with the other kind cost 0.66 ms a frame.
+  Give the target view VF_RT_DEPTH of the same kind.
+- A target view used to leave r_refdef.vrect at its size, and project() before the next screen view
+  reads vrect (HUD pins at half scale); patch-1230 puts it back. A 2D draw into a target leaves the
+  scene clock on realtime until the next clearscene (P1235): draw a target's 2D before clearscene.
+- A shader-level glslprogram binds ONE texture per pass: two maps in one pass bound only the last.
+- Reading an engine cvar that may not exist: cvar() CREATES it (PF_Cvar_FindOrGet), after which plain
+  cvar_type() says present. Gate on cvar_type(name) & 8 (CVAR_TYPEFLAG_ENGINE) and read only after it;
+  QuakeC && does not short-circuit, so `ok && cvar(x)` still reads x.
+
 ## The HUD's per-frame caches (P863, 2026-10-20)
 
 - Four caches; each is keyed on every input it reads, and A NEW INPUT MUST JOIN ITS KEY. The key

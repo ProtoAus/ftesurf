@@ -21,6 +21,10 @@
 
 ## next
 
+### P1230 Ice aura glow, party crown
+- The Ice aura is now a soft glow around the player instead of stacked shells that looked like panels, and it is cheaper with many wearers. It never shows through walls.
+- The party crown is one piece with a printed band and points, so no half of it draws over the other.
+
 ### P1235 Source maps: huge models out of sight, the visualizer sky
 - Very large models the map hides from where you stand no longer draw through the sky (surf_remeanian's window frames).
 - With the visualizer sky on, scrolling and animated textures no longer flicker as you move (surf_dragonfall's lava panels).

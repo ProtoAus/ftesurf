@@ -106,6 +106,16 @@
 - A build in the release engine worktree rewrites plugins/hl2/mat_vmt_progs.h's header comment
   (the generator's path), which the clean-input gate refuses; restore it, or build elsewhere.
 
+## P1230 residuals (3 Nov 2026)
+- The glow's mask view is a second clearscene/renderscene a frame: fading dlights and v_dmg_time decay
+  twice and the stair smoothing runs twice while a wearer is queued (the profile preview already did).
+- Frames where the glow fails closed (r_projection, screenshot_mega, a demo capture, a loading world)
+  draw no aura for the first 16 wearers but shells for any past 16.
+- r_scenedepth_drawn flips 1 -> 0 -> 1 every frame with wearers (a Cvar_ForceSet each); no measured cost.
+- VR (vid.vr) would need `!vid.vr` in the r_scenedepth_drawn condition (no OpenXR plugin ships).
+- A body faded by cl_playerfade still gets the full ring; the crown is not in the mask, so the ring
+  washes over its base.
+
 ## P1219 residuals (3 Nov 2026)
 - Cmd_AddCommandAD keeps a command's description pointer uncopied: a server-QC `registercommand`
   description outlives PR_Deinit, a native menu DLL's outlives the DLL. FTESurf has neither; the
