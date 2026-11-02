@@ -21,6 +21,9 @@
 
 ## next
 
+### P1210 KSF replays show crouching
+- KSF replays now show when the player is crouched, including a crouch the ramp keeps after the key is let go, worked out from how the player moves since KSF does not record it.
+
 ### P1209 The launcher is now WOS-Launcher
 - The World of Surf launcher is now WOS-Launcher.exe (WOS-Launcher on Linux). Download it again from the site to get it; the launcher you have keeps working.
 - The in-game update restart uses WOS-Launcher when it is next to the game, and your old launcher otherwise.

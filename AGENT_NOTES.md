@@ -1,5 +1,15 @@
 # AGENT_NOTES.md
 
+## P1210 KSF ducked body (live in lobby QC 2 Nov 10:19Z, deploy/p1210-ksfduck e3d324e1, cs 220b9696)
+- Delivered QC base for the next lobby deploy: origin/deploy/p1210-ksfduck e3d324e1 (ac's 387fd3e0
+  + P1210; qwprogs c65f2e37 unchanged, .prev kept 07354dba).
+- KSF binaries have the duck BUTTON (mask 4) only; DUCKED is inferred (ksfconvert.infer_ducked =
+  cl_ksf.qc KSF_Ducked). Change one, change the other: tools/p1210ksfduck.py checks parity per file.
+- PENDING: surfd still converts with the old ksfconvert.py (generation 470ab7c9) and serves 6,838
+  KSF .rec converted before P1210. Leaf names carry the body's hash, so re-converting changes
+  names: keep the originals, write beside, swap the directory in one rename (2b), and update the
+  replays rows. Kit: ac's C:/FTESurf-worktrees/lexlist4-20261102/kit/prepare_1206.py.
+
 ## P1204-P1206 (live 2 Nov: deploy/p1205-vsvel f7316747; surfd 470ab7c9)
 - P1204: a sirena grant is saved state (`nocol <brush model>` in state.txt and the rw_names ring
   after chr 1). SV_NoColRegrant runs LAST in SV_SaveApplyStateRows (SV_SaveLoadTag's forgiveness

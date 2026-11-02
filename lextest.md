@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1210 KSF replays show crouching
+In game, for a KSF file opened with `replay ksf <file> <map> <bonus> <style>` (all 12 lobbies and
+both installs). KSF runs the backend serves were converted before this, so they show it only
+after a backend update that re-converts them (not done yet). Please check on surf_wasteland2 or
+surf_beverages_remix: a crouch held on a ramp after letting go shows the crouched model and eye.
+
 ## P1208 / P1209 launcher versions; the launcher is WOS-Launcher (after the next release)
 Launcher and release tooling only; nothing changes until a release is cut. Then:
 1. The download button on the site saves WOS-Launcher.exe. Run it on your Desktop copy's folder: while checking it
