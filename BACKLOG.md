@@ -31,33 +31,44 @@
   the sun fully; Source's pixel query would show it through their gaps. Frame cost of the
   per-frame visual walk not measured.
 
-- surf_sirena's anti-cut barriers (`barriercollision_s1`/`_s3`, `s5_barriercollision`, func_brush
-  Solidity 0) open per player through VScript only: `scripts/vscripts/barriercollision.nut` in
-  the map pak sets the player's owner to the barrier (`SetPlayerNoCollideBarrier`, cleared by
-  `ClearPlayerNoCollideBarrier`), called from triggers via `alpha_script, RunScriptCode`.
-  `logic_script` has no spawn function (removed by the catch-all, sv_entities.qc), nothing
-  implements RunScriptCode, so the barriers are solid for everyone. The same map's 350
-  teleports set velocity by script (`SetAbsVelocity`). Needs a narrow VScript subset plus a
-  per-player collision exception on the server (AddLinksToPmove skips only owned entities,
-  sv_user.c) and in prediction; making the barriers non-solid instead is a skip. Falsifier:
-  flying stage 1 through the grant window (#1523) reaches the stage 2 start without prederr;
-  skipping the window stays blocked; a save after the window still passes after reset+load.
+- P1193 (surf_sirena barriers), LEX'S CALL: a grant opens its barrier only in the attempt that
+  earned it (reviews: an old grant let fast low-rate crossings cut unnoticed). So a save load,
+  TAS back, rewind or a Multi-Session resume between the window and the barrier is blocked
+  until the window is touched again; on s1 that is 7,800 u back with no route up. Momentum keeps
+  m_hOwnerEntity across savelocs. Carrying it safely needs a save/resume field (as vbsp_ctx has).
+- P1193 residuals: pm_verify rebuilds physents with the barrier solid, so every granted pass
+  reads HOLD (per-player solidity is unrecorded, like other I/O solidity). Split-screen: the hide
+  test uses the connection's primary seat. A grant window overlapping a start/stage zone would
+  grant on the attempt the zone then replaces (none on sirena). Only barriercollision.nut's two
+  calls run.
+- VScript velocity writes are not run (census of 2204 BSPs, artifacts vscensus.py):
+  `self.SetAbsVelocity(Vector(N N self.GetAbsVelocity().z))` 1105 outputs on 13 maps
+  (surf_centipedes, surf_fairy, surf_ferros...), other SetAbsVelocity/SetVelocity forms on ~30
+  more (surf_calzone 220, surf_perennial/prismatic 210, surf_affliction 162...), mostly from
+  trigger_teleport OnStartTouch on `!activator`. A server-only write would prederr every predicted
+  teleport on those maps: it needs the cl_triggers.qc mirror to apply the same write. Falsifier:
+  a surf_centipedes stage teleport exits with zero horizontal speed on both sides, no prederr.
 - P1191 residuals (missing-material colour): a VMT that loaded but whose image is missing
   (surf_me's walls without the TF2 pack) keeps the checker, because its shader is not finished
   when VBSP_GenerateMaterials runs (sort 0) and a translucent one cannot be told apart; water
   (#WARP) keeps it too. Tinting those needs the VMT's blend state carried from mat_vmt.c.
   r_skybox_default (sky_cape_hill) ships only in Momentum's own folder, so a player without
   Momentum mounted gets no default sky either.
-- P1192 residual: the whole box is drawn by the 3D-sky view's first sky batch, so a sky room
-  whose view keeps no sky face at all would still show the clear colour (not seen; olivia's
-  view keeps its walls).
-- Teleport pop-in: brush entities at a teleport's destination arrive with the server's next
-  snapshot after the client's predicted crossing (the server's PVS is from the edict origin,
-  sv_ents.c SV_Snapshot_SetupPVS), so they appear a command interval plus a round trip late
-  (~1-10 frames at 600 fps on LAN, more online). Fix option, QC-only: park a .view2-style
-  marker (SV_ViewEyeAt, sv_saveloc.qc) at the !r destination and at an imminent
-  trigger_teleport's destination. Falsifier: CSQC counts active brush entities each frame after
-  a crossing; control lags, `sv_nopvs 1` and the fix do not.
+- P1191 review (latent, inert as shipped): the 4x4 RGBX tint goes through
+  Mod_RegisterBasicShader -> R_BuildLegacyTexnums (gl_shader.c ~7491), which reads it as 8-bit
+  palette indices for the glow layer; with vid.fullbright > 0 (r_builtinpalette 0 + id1's
+  palette) a pale tint grows palette-coloured glow. FTESurf runs r_builtinpalette 1. Fix:
+  register the tint so the legacy fallbacks never see RGBX. Also: the default-sky fallback now
+  applies to Quake/HL maps naming a missing sky too.
+- P1192 residual: the whole box is drawn by the 3D-sky view's first sky batch, and an empty
+  batch is skipped (gl_backend.c ~7839), so a sky-room view whose sky faces are all outside the
+  frustum would still show the clear colour (not seen; olivia's view keeps its walls; one more
+  3D-sky map pose owed).
+- P1190 (teleport pop-in) residuals: the eye ignores teleport filters/spawnflags (a teleport
+  that will not fire costs one PVS for 1 s); trigger_teleport_relative is not covered; the `!r`
+  eye keeps the start area in every client's snapshot (bandwidth not measured; mostly static
+  entities, deltas only); entities seen only from below a destination still arrive a round trip
+  late (surf_diverge_css: 3 at 353 ms with sv_minping 150).
 
 ## P1171 lobby playtime: review quirks (1 Nov 2026; not integrity, informational totals)
 

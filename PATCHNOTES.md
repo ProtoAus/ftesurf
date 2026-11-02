@@ -21,6 +21,19 @@
 
 ## next
 
+### P1196 No snap when surf_network2008's spawn sends you on
+- Teleports that the map switches on and off with timers (surf_network2008's spawn and jail teleports, and others like them) are now predicted, so they no longer snap you back and forth by up to 2000 units.
+
+
+### P1195 Report a prediction error with one key
+- When the game corrects your position by a lot (a "prediction error"), it now keeps a short record of the last few seconds and shows a box on the right. Press F6 to send it to the lobby so we can find the cause.
+- Nothing is sent unless you press F6. `cl_prederr_ask 0` keeps the reports on your PC without asking; `cl_prederr_report` sets how big an error has to be (32 units).
+
+
+### P1193 surf_sirena's barriers open after their trigger
+- surf_sirena's invisible barriers now let you through once you have passed the trigger that opens them, as on Momentum, and stay shut for anyone who skipped it.
+- An opening lasts for the run that earned it: after a reset, a save load or a resumed run, pass the trigger again.
+
 ### P1192 surf_olivia's sky is back over the hub
 - On maps with a 3D sky, the whole sky is now drawn behind it, as Momentum does. surf_olivia's start area showed black (with smears) where the sky should be.
 
@@ -30,14 +43,8 @@
 - A map whose sky comes from a game you do not have now shows the default sky instead of black.
 
 
-### P1195 Report a prediction error with one key
-- When the game corrects your position by a lot (a "prediction error"), it now keeps a short record of the last few seconds and shows a box on the right. Press F6 to send it to the lobby so we can find the cause.
-- Nothing is sent unless you press F6. `cl_prederr_ask 0` keeps the reports on your PC without asking; `cl_prederr_report` sets how big an error has to be (32 units).
-
-
-### P1196 No snap when surf_network2008's spawn sends you on
-- Teleports that the map switches on and off with timers (surf_network2008's spawn and jail teleports, and others like them) are now predicted, so they no longer snap you back and forth by up to 2000 units.
-
+### P1190 Teleports arrive with their ramps already there
+- Ramps and props at a teleport's destination, and at your reset point, are now there the moment you arrive instead of appearing a moment later (about one ping online).
 
 ### P1189 Newly zoned maps reach the Maps menu within a minute
 - When a zoner publishes a map's zones, the Maps menu now shows that map as zoned at its next refresh, within about a minute, instead of up to six minutes later.

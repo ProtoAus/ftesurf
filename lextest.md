@@ -66,6 +66,16 @@ acknowledged", not "not acknowledged (status 503)". Uploads that failed before c
 Use a run under ~38 s: the client keeps no journal past that. By 2 Nov 01:10Z no client had
 posted one since the restart (4 receipts, none a finish under 38 s).
 
+## P1190 / P1193 teleport pop-in, surf_sirena barriers
+Live on all 12 lobbies and both installs since 2 Nov 14:01 local (03:01Z), deploy/p1193-sirena 96f009ed, qw 6955e756. Please check on a lobby:
+- P1190: take a stage teleport on a map with ramps at the far end (surf_diverge_css's floor
+  teleport into kiiru_stage is the measured one). The ramps should already be there when you land,
+  with no pop-in. Same after `!r` from far away.
+- P1193: surf_sirena stage 1. Fly through the opening window, and the barrier after it lets you through
+  with no snap-back. Skip the window and it blocks you. After `!r`, or after loading a save past the
+  window, it blocks you until you touch the window again. If that last part is too strict, say so
+  (BACKLOG has the choice).
+
 ## P1181-P1185 Lex's bug paste of 2 Nov
 Live on all 12 lobbies and both Windows installs since 2 Nov 05:09 local (18:09Z 1 Nov); a game
 already running then has the old client: restart it. Please check on a lobby:

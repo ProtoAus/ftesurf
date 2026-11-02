@@ -1,5 +1,16 @@
 # AGENT_NOTES.md
 
+## P1190 / P1193 (live 2 Nov 03:01Z, deploy/p1193-sirena 96f009ed, qw 6955e756)
+- P1190: every playing client gets a `tp_view_eye` entity in `.view2` (sv_warpop.qc
+  SV_TpEyeThink), at an imminent trigger_teleport's destination or the `!r` stat. The replay /
+  ghost / spectate eye (rec_vw_eye) outranks it; anything else that wants `.view2` must too.
+  `sv_tp_pvs 0` detaches it, 2 = teleports only.
+- P1193: surf_sirena's barriers are SOLID_NOT only between the granted player's PlayerPreThink
+  (end) and PlayerPostThink (start), and hidden from that client (customizeentityforclient).
+  Anything that reads a barrier's .solid mid-move must call SV_NoColRestore first (SV_IOEnable
+  and Toggle do). Evidence: pm_verify reads every granted pass as HOLD; a HOLD at a sirena
+  barrier says nothing either way. Arms: popin-20261102 artifacts (popinarm.py, sirenaarm.py).
+
 ## P1195 prederror reports: where they land, how to read them
 - Client: the engine's ring (cl_pred.c, first-pass server-against-predicted rows, reset per connection)
   is dumped by `prederr_dump <name>.txt` to data/prederr/ (newest 120 files kept); CSQC writes
