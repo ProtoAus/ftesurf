@@ -2836,7 +2836,7 @@ void(float reqid, float code, string body) Lobby_RunReply =
 			// every client at once and each marks its own stale (cl_online.qc Online_Need).
 			if (stored)
 			{
-				lobby_boardgen = lobby_boardgen + 1;
+				lobby_boardgen = max(lobby_boardgen, stof(infokey(world, "*boardgen"))) + 1;   // review 1
 				forceinfokey(world, "*boardgen", ftos(lobby_boardgen));
 			}
 

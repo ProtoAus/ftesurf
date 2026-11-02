@@ -190,6 +190,7 @@ float  ob_mine;
 float  ob_staleat;         // Patch 781: cached copies stored before this are asked again when shown
 void() Online_MarkStale = { ob_gen = ob_gen + 1; ob_staleat = cltime; };
 float  ob_svgen, ob_svgen_t;  // P1226: the lobby's *boardgen as last acted on, and when
+float  ob_svgen_due;          // ...a newer one is acted on at this cltime (0 = none seen)
 
 float  ob_code;            // last non-zero responsecode
 float  ob_when;            // cltime the rows landed
@@ -2176,10 +2177,13 @@ float(float track, float leg, string tier, string style) Online_Need =
 	// P1226: somebody's finish was stored on this lobby (sv_lobby.qc): ask again, at most
 	// every 3 s -- a later bump waits, it is not lost.
 	i = stof(serverkey("*boardgen"));
-	if (i != ob_svgen && cltime - ob_svgen_t >= 3)
+	if (i != ob_svgen && !ob_svgen_due)
+		ob_svgen_due = max(cltime + random() * 2, ob_svgen_t + 3);
+	if (ob_svgen_due && cltime >= ob_svgen_due)
 	{
 		ob_svgen = i;
 		ob_svgen_t = cltime;
+		ob_svgen_due = 0;
 		Online_MarkStale();
 	}
 
@@ -2297,6 +2301,8 @@ void() Online_Prefetch =
 		return;                         // and is asking it now
 	url = sprintf("%s/api/board?map=%s&track=0&leg=0&tier=%s&style=%s&limit=%g",
 	              dir, uri_escape(mname), uri_escape(tier), uri_escape(style), OB_PAGE);
+	if (!obp_i)                      // P1226 review 1: what this map's prefetch already holds
+		ob_svgen = stof(serverkey("*boardgen"));
 	obp_req = Online_NextReq();
 	if (!uri_get(url, obp_req))
 	{

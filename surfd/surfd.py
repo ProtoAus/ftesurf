@@ -3032,6 +3032,9 @@ _PREV_SQL = ("SELECT millis, submitted FROM runs WHERE map=? AND track=? AND leg
              " AND tier=? AND style=? AND player=?")
 
 
+_RUNS_FULL_SAID = []   # P1229 review 1: the fallback is logged once
+
+
 def _runs_full(db, leg):
     """True when the board table holds its cap of main (leg 0) or stage rows.
 
@@ -3048,7 +3051,10 @@ def _runs_full(db, leg):
                                         ", ".join("'%s'" % t for t in TIERS_IMPORTED))
     try:
         n = db.execute("SELECT COUNT(*) FROM runs INDEXED BY runs_live WHERE " + cond).fetchone()[0]
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as e:
+        if not _RUNS_FULL_SAID:
+            _RUNS_FULL_SAID.append(1)
+            log.warning("_runs_full: runs_live unusable (%s); counting by scan", e)
         n = db.execute("SELECT COUNT(*) FROM runs WHERE " + cond).fetchone()[0]
     return n >= (MAX_RUNS if leg == 0 else MAX_STAGE_RUNS)
 

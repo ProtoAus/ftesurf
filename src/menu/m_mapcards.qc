@@ -192,7 +192,8 @@ void(vector pos, float width, float compact, string name, string id) MCard_Draw 
 	if (!have && MCard_Done(name) == 1) done = TRUE;   // P1228: the list asked at start
 	stale = (have && (gettime(0) - stof(bufstr_get(mcr_seen, row)) >= 60 || !MF_Online()));
 	if (done)
-		status = !have ? "Loading times..." : (stale ? "(cached)" : "");   // P1105: the backdrop says Complete!
+		status = have ? (stale ? "(cached)" : "")      // P1105: the backdrop says Complete!
+		       : (!MF_Online() ? "Records offline" : (mcr_failed ? "Records unavailable" : "Loading times..."));
 	else if (!MF_Online()) status = have ? "Cached records" : "Records offline";
 	else if (!strcmp(mcr_who, "") || (have && !known)) status = "Link Steam for your times";
 	else if (have && alltime > 0i) status = stale ? "No WOS finish yet  (cached)" : "No WOS finish yet";

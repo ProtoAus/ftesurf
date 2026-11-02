@@ -507,7 +507,7 @@ void() WarpOp_PracticeReturnCancel =
 		rec_sl_refseen = cltime;
 	}
 	rec_sl_holding = rec_sl_holdkey = rec_sl_holdrep = rec_sl_holdseen = 0;
-	rec_sl_holdang_ok = rec_sl_wophold = rec_sl_pv_on = 0;
+	rec_sl_holdang_ok = rec_sl_wophold = rec_sl_pv_on = rec_sl_upwait = 0;   // P1227 review 1
 	rec_sl_holdack = rec_sl_holdackat = 0;
 	Trail_RequestReset();          // do not dispatch an old deferred save/load
 };

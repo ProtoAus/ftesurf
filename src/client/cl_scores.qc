@@ -2835,7 +2835,7 @@ string() Scores_CountLine =
 				s = strcat(s, "   saved copy");
 			if (ob_state == OBS_FETCH)
 				s = strcat(s, "   refreshing...");
-			if (rec_sb_finwait)            // P1226: the board has not answered your finish yet
+			if (rec_sb_finwait && Scores_FinishedOnline())   // P1226: your finish, not yet answered
 				s = strcat(s, "   your run: submitting...");
 		}
 		else

@@ -1666,7 +1666,7 @@ void(string id, vector pos, vector size, __inout string text, __inout float curs
 			_sui_sel_allheld = FALSE;
 			// P1224: let go off the field, a drag begun on it keeps the keyboard and the
 			// selection, as if let go on it (Lex: the map search dropped both). No click fires.
-			if (!focus)
+			if (!focus && _sui_sel_seen == _sui_prev_t)
 			{
 				_last_clicked_actions[0] = id;
 				_last_clicked_action_count = 1;

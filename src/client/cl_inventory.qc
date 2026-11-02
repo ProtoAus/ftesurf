@@ -107,7 +107,7 @@ void(vector at, float cell, float bsz, float on) Inv_Badge =
 	s = on ? "ON" : "OWNED";
 	bh = ceil(bsz * 1.5);
 	at = at + [3, cell - bh - 3];
-	sui_roundbox(at, [stringwidth(s, TRUE, [bsz, bsz]) + bsz, bh], bh * 0.5, on ? SUI_THEME_GOOD_BG : SUI_THEME_PANEL, 0.92);
+	sui_roundbox(at, [stringwidth(s, TRUE, [bsz, bsz]) + bsz, bh], bh * 0.5, on ? SUI_THEME_GOOD_BG : SUI_THEME_CHIP, 0.92);
 	sui_text(at + [bsz * 0.5, (bh - bsz) * 0.5 + bsz * FONT_CAPDROP], [bsz, bsz], s, on ? SUI_THEME_GOOD : SUI_THEME_DIM, 1, 0);
 };
 

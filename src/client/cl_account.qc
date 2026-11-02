@@ -1097,7 +1097,7 @@ void(float cx, float y, float sz, string s, float n, float grp, float bad) Accou
 			edge = SUI_THEME_BAD;
 		Account_Box([x, y], [cw, ch], ceil(px * 0.28), SUI_THEME_WELL, edge, 1);
 		if (i < len)
-			HUD_TextC([x + cw * 0.5, y + (ch - px) * (0.5 + FONT_CAPDROP)], substring(s, i, 1), sz, SUI_THEME_TEXT, 1);
+			HUD_TextC([x + cw * 0.5, y + (ch - px) * 0.5 + px * FONT_CAPDROP], substring(s, i, 1), sz, SUI_THEME_TEXT, 1);
 		x = x + cw;
 	}
 };

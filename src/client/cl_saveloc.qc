@@ -290,7 +290,7 @@ float() WarpOp_Charge;
 
 void(string c) SaveLoc_Cmd =
 {
-	local float holding, key, rep;
+	local float holding, key, rep, upwait, t0;
 	if (numclientseats == 1 && LT_StatsAreMine() && getstatf(STAT_FS_TSRETURN) > 0)
 		return; // no new deferred/fallback load can cross the clean-return fence
 	if (Trail_Request(c))
@@ -309,10 +309,12 @@ void(string c) SaveLoc_Cmd =
 	    c == "sl_first" || c == "sl_last" || substring(c, 0, 8) == "sl_goto ")
 	{
 		holding = rec_sl_holding; key = rec_sl_holdkey; rep = rec_sl_holdrep;
+		upwait = rec_sl_upwait; t0 = rec_sl_holdt0;     // P1227 review 1: a key let go stays let go
 		SaveLoc_LoadContext();
 		if (Trail_RequestDispatching() && holding)
 		{
 			rec_sl_holding = TRUE; rec_sl_holdkey = key; rec_sl_holdrep = rep;
+			rec_sl_upwait = upwait; rec_sl_holdt0 = t0;
 		}
 	}
 	c = Trail_Command(c);
