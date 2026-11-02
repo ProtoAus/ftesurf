@@ -286,7 +286,12 @@
   P1140's transfer-lifetime tests use standard server kick to exercise actual
   teardown; this pre-existing dispatch issue is not fixed by the transfer code.
 
-## P1142 collector/account live rollout (source finished; not deployed)
+## P1142 collector/account rollout: LIVE via P1234 (2 Nov 19:11Z); what is still open
+- Live: surfd 372e4854 (main's collectors, momprofile.py in an 84-file collectors84-v1 closure) at
+  lexlist-1234-382effae; fallback 988ff315 (P1232) in its control dir. Before ANY rollback to an older
+  generation run lexlist-1234/rollback_1234.py: walks in the stage phase (mode 4-7) would be read by
+  the old ksfprofile as modes it has no slot for and could park the crawl again.
+- The bullets below were written before the rollout; the closure one is done, the rest stand.
 
 - The active schema24 backend is pinned to an exact81-file runtime family that does not include new momprofile.py. Extend the private guarded closure deliberately, pin all current runtime and external importer bytes, validate actual pre-import accept/refuse controls and the new module, then prepare a rollback-preserving successor. Do not copy around the fence or widen the existing momgrab-only exception. Falsifier: guarded server/cron routes import the exact new closure while altered/missing/newly unpinned members fail before import; verify health, route generation and unchanged private overlay/player data after one bounded handoff.
 - Offline tests are not a real Steam-login/upstream acceptance test. After guarded rollout, verify a real link queues both sources and paced cron imports supported PB categories without blocking the request handler, inventing missing rows or upgrading imported records to native-ranked/evidence tiers.

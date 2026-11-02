@@ -96,8 +96,10 @@
 - TAS pause, frame advance, retained rewind and input replay can use a selected 10ms Source clock as well as the existing 15ms clock. Default movement timing is unchanged.
 - Clock changes stop queued TAS work instead of silently reusing it. Reload the map after changing its clock before starting a new timeline. TAS remains assisted practice.
 
-### P1142 Collector recovery (pending backend rollout)
-- Steam sign-in queues paced Momentum and KSF personal-best refreshes. Collector retries keep unrelated work moving; catalogue changes no longer shift a pending KSF stage walk. This update is not active on the live backend yet.
+### P1234 Your records when you link Steam
+- Signing in with Steam now fetches your KSF and Momentum personal bests, KSF stage and bonus times included, and accounts that play are refreshed regularly, so your records stay up to date.
+- Momentum leaderboards nobody is playing are refreshed in rotation, about once a week.
+- KSF collection recovers sooner after a timeout, and one failing job no longer holds up the others.
 
 ## 0.1.37 2026-11-02
 

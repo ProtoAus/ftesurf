@@ -1,5 +1,21 @@
 # AGENT_NOTES.md
 
+## P1234 surfd collectors (ftesurf-2b; LIVE 2 Nov 19:11Z, generation 372e4854, root lexlist-1234-382effae)
+- Main's P1117/P1142 collector files byte for byte (accounts, ksfgrab, ksfimport, ksfprofile,
+  momboards, momprofile, momwatch, steamsync, tools/momfetch.py) over P1232; mapwatch differs from
+  main only by dropping tascontent (SURFD_TAS_CONTENT_LEASE unset on the Pi; set = mapwatch exits 2).
+- Closure: 84 files under the guard's new collectors84-v1 (activity83-v1 plus momprofile.py); the
+  fallback in control is P1232's 83 files. The live momprofiles table already had main's DDL (0 rows).
+- The systemd drop-in names EVERY historical agent-work root (18 on 2 Nov). A deleted root it names
+  can stop surfd from starting: remove only roots it does not list (lexlist-1231b was one).
+- Rollback first runs lexlist-1234/rollback_1234.py (needs P1234's fence CLOSED and its admission
+  lock free). kit1234 (task root lexlist-20261102T1615Z) is P1231's templates plus the seams in
+  kit/make_kit_1234.py's docstring; three review rounds.
+- mapwatch run once by hand at 19:11Z (the cron line verbatim): KSF's list read again (955 maps,
+  surf_insomnia installed) but Momentum's answered 429, so momtracks.tsv (still 628 maps) is rewritten
+  by the first run that reads Momentum's list (cron 23 */6). First ticks: KSF 19:16 8 requests 103
+  rows; momwatch 19:14 rotation 2 + re-walk 4 beside the 19 stale-board refreshes.
+
 ## P1231/P1232 surfd (ftesurf-2b; LIVE 2 Nov 18:37Z, generation 988ff315, root lexlist-1232-382effae)
 - The first P1231 activation (17:49Z) stopped on activate_backend's boundary row-count assert:
   social_menu_presence 1 -> 0, an expiry by the serving candidate. Its fallback (64f0b0f4) was finished
