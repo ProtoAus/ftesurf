@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## Lex's list of 3 Nov: P1214, P1220, P1221, P1223-P1229
+## Lex's list of 3 Nov: P1214, P1220, P1221, P1223-P1229 (live: lobbies and both installs, 2 Nov)
 1. Main menu chat (P1214): messages sit close together; no "saved for 30 days" or "not encrypted" lines.
 2. In game, open chat (P1220): the field is empty, with a small "To everyone" tag at the box's top right
    ("To this lobby" after TAB, "To <name>" for a private line).

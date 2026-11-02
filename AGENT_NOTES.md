@@ -1,6 +1,13 @@
 # AGENT_NOTES.md
 
-## Lex's list of 3 Nov: P1214, P1220, P1221, P1223-P1229 (ftesurf-2b)
+## Lex's list of 3 Nov: P1214, P1220, P1221, P1223-P1229 (ftesurf-2b; LIVE 2 Nov 17:26Z)
+- Delivered QC base for the next lobby deploy: origin/deploy/p1229-lexlist 1fa43aa2 (qw 9553acb6,
+  cs 36bd66bd, in codes.txt). Both installs run it with menu 439ea80c. surfd 64f0b0f4 since 17:26:32Z
+  from /srv/nvme/agent-work/lexlist-1229-382effae (fallback 833c8c58 CLOSED): the next swap's OLD;
+  kit C:\FTESurf-worktrees\lexlist-20261102T1615Z\kit\make_kit_1229.py (a new Pi root must be chmod
+  0700 without the setgid bit it inherits, or stage_runtime refuses it).
+- The surfd.db backups (38 copies, 14 GB) are gone on Lex's word; data/surfd.db.bak-snapshot-
+  20261102T1645Z (quick_check ok, schema 26) is the one kept.
 - Text centred by its em box sits high on a key cap: the UI face's capitals are the top 0.64 of the em
   (9 of 14 px). FONT_CAPDROP (sh_font.qc) = 0.18 px of drop per px of size; the hint strip's Z went
   from 2.5 px above its chip's centre to 0.5. Measured on screenshots at 1:1, ui_font_ui only.

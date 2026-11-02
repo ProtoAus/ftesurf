@@ -1,7 +1,6 @@
 # BACKLOG.md
 
 ## DB audit of 3 Nov (P1229): left open (surfd; measured on a 2 Nov snapshot, 3.47M runs)
-- 19 surfd.db backups in /srv/nvme/surfd/data, 15 GB, Sep-Oct. Which to keep is Lex's call.
 - The combined board sorts the whole three-tier board per page (0.04 s on surf_beginner's 8.7k rows);
   per-tier queries merged would be O(page). The player directory scans all runs every 5 min in the
   web worker; profile rank counts are N+1 (cached 120 s). Details: the audit in the P1229 journal.
