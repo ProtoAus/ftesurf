@@ -304,6 +304,8 @@ float() Inv_GlowCan =
 {
 	if (!(cvar_type("r_scenedepth") & 8))
 		return FALSE;
+	if (!(cvar_type("r_scenedepth_drawn") & 8))     // an engine with the first but not the second (review 2)
+		return FALSE;
 	return Milk_Supported();
 };
 
