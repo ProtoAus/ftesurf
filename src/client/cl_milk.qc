@@ -185,8 +185,14 @@ void(string rendererdescription) CSQC_RendererRestarted =
 	HC_Lost();                      // Patch 871
 };
 
-// Before renderscene, every frame; ticks only when the sim is due.
-void() MilkSky_Frame =
+/*
+  P1218: the render-target passes run BEFORE clearscene.  A 2D draw into a target sets the
+  engine's scene time to realtime (gl_draw.c GL_Set2D) and renderscene does not set it back;
+  clearscene does (cl.servertime).  Drawn after clearscene, every frame the sim ticked rendered
+  the world on the other clock, so scrolling and animated textures jumped (Lex, 3 Nov: surf_dragonfall's
+  lava panels flickered with the visualizer sky, not with the map's own).
+*/
+void() MilkSky_Passes =
 {
 	local float now, q, s;
 
@@ -250,7 +256,14 @@ void() MilkSky_Frame =
 	milk_quality = q;
 	s = 256 + q * 128;          // 384 / 512 / 640 square
 	Milk_Frame([s, s], now);
-	// Camera must update even on frames between fixed-rate feedback ticks.
+};
+
+// After clearscene, before renderscene, every frame: the camera must update even on frames
+// between fixed-rate feedback ticks.
+void() MilkSky_Frame =
+{
+	if (cvar_string("r_skybox") != "milk" || !Milk_Supported())
+		return;
 	MilkSky_Pack();
 	setproperty(VF_USERDATA, milk_ud, MILK_UDBYTES);
 };
