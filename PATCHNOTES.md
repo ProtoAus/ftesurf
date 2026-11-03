@@ -27,6 +27,27 @@
 ### P1276 Smoother reflections
 - With MSAA on (vid_multisample), water and glass reflections are anti-aliased too, so reflected edges no longer stair-step (surf_eternity's river and glass floors). It costs about 0.05 ms a frame on a fast graphics card; r_reflectmultisample 0 turns it off.
 
+### P1274 surf_santorini's windmills
+- Windmill sails no longer hang in the sky on their own. They were sent from places where the map hides their tower, and popped in and out as they turned. Now they show where the rest of the windmill does.
+
+### P1273 Gulls that move
+- Decorative props that play an idle animation in Source now play it here too: surf_santorini's gulls flap. Only props nothing collides with animate.
+
+### P1272 Smoother spinning scenery
+- Rotating and orbiting scenery, like surf_voyager's asteroids, now moves smoothly instead of stepping.
+
+### P1271 Whole space stations on surf_voyager
+- On maps built without visibility data (68 of them, surf_voyager among them), scenery beyond a sky wall draws whole, as in Source. It used to be cut off, and less of it showed the closer you got.
+
+### P1270 No black squares in space
+- Glowing orbs drawn with a multiply effect, like surf_voyager's, no longer show as black squares.
+
+### P1269 No seam on blended floors
+- Blended displacement floors were drawn a quarter darker than the flat floor beside them, so a sharp seam showed (surf_starvald's crystal floor). Both now take the same light, as in CS:S.
+
+### P1268 Glass and ice layers in order
+- On a model with glass or ice, the see-through layers after the glass now draw over it, as in Source (surf_starvald's start platform).
+
 ### P1161 Fresh TAS project loads
 - TAS projects can load and replay in a fresh supported session without first building rewind history. Legal-start rewind keeps working from a fresh start.
 - Loading a TAS project while noclipping or held now refuses before changing your body or saved timeline. TAS remains assisted practice.

@@ -1,5 +1,21 @@
 # BACKLOG.md
 
+## Lex's map list of 3 Nov (P1268-P1274): review residuals
+- P1268: a model's held-back translucent meshes draw in NEAREST, after every BLEND batch, so translucent things
+  in front of such a model (world glass, sprites, particles) are drawn under them. The pane itself has had this
+  since Patch 878. Two Refract meshes on one model draw in reverse mesh order (equal depth, prepended list).
+- P1273: the MDL loader takes any anim flag as `loop`, so a one-shot DefaultAnim may loop where Source holds its
+  last frame. SetAnimation/SetDefaultAnimation inputs still reach only sky-room props. The gate to prop_dynamic*
+  is shown to pass (santorini's 25 gulls); that it blocks other classes rests on reading the code.
+- P1270: a particle VMT that is a Modulate without $vertexcolor now loses per-particle colour (as Source's
+  material says); none checked. Only the Modulate arm reads $vertexcolor by value; the others (mat_vmt.c ~3117,
+  3420-3523, 4060) still switch on the key being present, so "$vertexcolor 0" still turns them on.
+- P1274 class: the client draws every entity it is sent (r_ignoreentpvs 1) and the sky depth mask stands in for
+  Source's per-leaf cull. `r_ignoreentpvs 0` measured right on santorini; switching it on for Source maps needs
+  the skyroom entity path (gl_warp.c's note) checked first.
+- P1271: on the 68 unvised maps the sky no longer hides what is behind it, as in Source; a 3D-sky room on one of
+  them is now visible through sky faces from the main map if in line of sight (as in Source). Not surveyed.
+
 ## P1278 ramp wear (4 Nov): next steps and residuals
 - Props: ramps built from models (surf_demise's prop_dynamic_override, surf_classics3's static props, part of
   surf_666) need the bake to read MDL/VVD/VTX from the map's pakfile and place contacts on model triangles.
