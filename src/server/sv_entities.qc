@@ -4321,21 +4321,29 @@ float(entity t, string in) SV_PsysInput =
 };
 
 /*
-  P1256: env_laser answers TurnOn, TurnOff and Toggle (19 outputs on 13 maps aim at a laser's name).
+  P1256: env_laser answers TurnOn, TurnOff and Toggle (315 outputs on 33 maps aim at a laser's name).
   cl_lasers.qc draws every laser from the lump; this edict holds one named laser's state and, from the
   first input that reaches it, sends it to every client (ENTWIRE_LASERSTATE, matched there on origin
   and targetname).  Stashed as info_particle_system is; an unnamed laser cannot be addressed.
+  The identity goes only on a client's first send (every bit changed): surf_hyper's timer flips 48
+  lasers ~240 times a second, ~7 KB/s a client with it every time.
 */
 .float vbsp_las_on;
+#define LAS_SF_STATE 1
+#define LAS_SF_ID    2
 
 float(entity to, float changed) SV_LaserSend =
 {
 	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
 	WriteByte(MSG_ENTITY, ENTWIRE_LASERSTATE);
-	WriteFloat(MSG_ENTITY, self.origin_x);
-	WriteFloat(MSG_ENTITY, self.origin_y);
-	WriteFloat(MSG_ENTITY, self.origin_z);
-	WriteString(MSG_ENTITY, self.targetname);
+	WriteByte(MSG_ENTITY, (changed & LAS_SF_ID) ? 1 : 0);
+	if (changed & LAS_SF_ID)
+	{
+		WriteFloat(MSG_ENTITY, self.origin_x);
+		WriteFloat(MSG_ENTITY, self.origin_y);
+		WriteFloat(MSG_ENTITY, self.origin_z);
+		WriteString(MSG_ENTITY, self.targetname);
+	}
 	WriteByte(MSG_ENTITY, self.vbsp_las_on);
 	return TRUE;
 };
@@ -4367,14 +4375,14 @@ float(entity t, string in) SV_LaserInput =
 		on = !on;
 	else
 		return FALSE;
-	if (cvar("developer"))
+	if (cvar("developer") >= 2)     // one line per laser: ~240 a second on surf_hyper
 		dprint(sprintf("env_laser %s at %v: %s, %s\n", t.targetname, t.origin, in, on ? "on" : "off"));
 	if (t.SendEntity && on == t.vbsp_las_on)
 		return TRUE;
+	t.SendFlags = t.SendEntity ? LAS_SF_STATE : (LAS_SF_STATE | LAS_SF_ID);
 	t.vbsp_las_on = on;
 	t.SendEntity = SV_LaserSend;
 	t.pvsflags = PVSF_IGNOREPVS;
-	t.SendFlags = 1;
 	return TRUE;
 };
 
@@ -5200,10 +5208,13 @@ void(entity o, entity act) SV_IODeliver =
 };
 
 // P1256: Source's ent_fire <target> [input] [param], a cheat as there: one row through SV_IODeliver,
-// the player its activator and its !self.  No input means Use, as Source.
+// the player its activator and its !self, in a bank context of its own like SV_FireOutput's and
+// tainted, so nothing it causes counts as the map's (review 1).  No input means Use, as Source.
 void(entity pl, string tgt, string in, string pm) SV_EntFire =
 {
-	local entity o;
+	local entity o, bp;
+	local int ba;
+	local float bb, bd;
 
 	if (!cvar("sv_cheats"))
 	{
@@ -5224,7 +5235,18 @@ void(entity pl, string tgt, string in, string pm) SV_EntFire =
 	o.vbsp_io_param = pm;
 	o.owner = pl;
 	sprint(pl, PRINT_HIGH, sprintf("ent_fire: %s %s %s\n", tgt, in, pm));
+	bp = bank_ctx_player;
+	ba = bank_ctx_attempt;
+	bb = bank_ctx_bad;
+	bd = bank_ctx_depth;
+	SV_BankBegin(pl);
+	bank_ctx_bad = bank_ctx_bad | BANK_PRACTICE | BANK_UNRANKED;
+	bank_ctx_depth = bd + 1;
 	SV_IODeliver(o, pl);
+	bank_ctx_player = bp;
+	bank_ctx_attempt = ba;
+	bank_ctx_bad = bb;
+	bank_ctx_depth = bd;
 	remove(o);
 };
 

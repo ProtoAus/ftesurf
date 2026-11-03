@@ -683,10 +683,13 @@ void(float isnew) CSQC_Ent_Update =
 		else if (f == ENTWIRE_LASERSTATE)
 		{
 			self.classname = "laser_net";
-			self.origin_x = readfloat();
-			self.origin_y = readfloat();
-			self.origin_z = readfloat();
-			self.las_nettnc = crc16(TRUE, readstring());
+			if (readbyte())         // the identity, on a first send only
+			{
+				self.origin_x = readfloat();
+				self.origin_y = readfloat();
+				self.origin_z = readfloat();
+				self.las_nettnc = crc16(TRUE, readstring());
+			}
 			self.las_neton = readbyte();
 			Laser_Net(self);
 		}

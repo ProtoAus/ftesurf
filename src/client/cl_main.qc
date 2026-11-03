@@ -2391,7 +2391,11 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (Timer_ResumeCommand()) return TRUE;     // P1004
 	if (!strcmp(argv(0), "ent_fire"))
 	{
-		localcmd(strcat("cmd ", cmd, "\n"));
+		tsseat = getproperty(VF_ACTIVESEAT);   // the seat that typed it is the activator
+		if (tsseat >= 0 && tsseat < RUN_TS_SEATS)
+			localcmd(sprintf("p%g cmd %s\n", tsseat + 1, cmd));
+		else
+			localcmd(strcat("cmd ", cmd, "\n"));
 		return TRUE;
 	}
 	if (!strcmp(argv(0), "tas"))
