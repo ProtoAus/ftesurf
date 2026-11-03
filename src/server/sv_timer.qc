@@ -819,14 +819,13 @@ float(entity e) SV_TimeScaleTainted =
 float() SV_CheatsOn =
 {
 	if (!run_t_cheatwatch) return FALSE;
+	if (vbsp_entfire_map) return TRUE;  // P1256: ent_fire edited this map; it outlives sv_cheats
 	return cvar("sv_cheats") ? TRUE : FALSE;
 };
 
 float(entity e) SV_CheatLevel =
 {
 	if (SV_TimeScaleTainted(e))
-		return TRUE;
-	if (vbsp_entfire_map)       // P1256 review 2: ent_fire edited this map's state
 		return TRUE;
 	/*
 	  The NOCLIP half still carries the run_class gate, so at 0 noclip alone
