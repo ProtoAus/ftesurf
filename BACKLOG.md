@@ -35,6 +35,12 @@
   ~180 sub-draws; hl2_seamless 0 and hl2_bumpmap2 0 change nothing; part of it does not scale with render
   scale. Next to try: draw displacement batches after the brushes (or front to back) so early-z rejects
   terrain hidden behind them; merge their sub-draws. The test switch is artifacts/p1237_nodisp_test.diff.
+- P1241 (displacements, measured 3 Nov, no change shipped): the cost is texture sampling, not geometry or
+  overdraw. A flat-colour override of vmt/transition (no texture reads) took demise s33's world pass 0.99 ->
+  0.08 ms and its sky room 1.08 -> 0.66. Drawing displacement batches after the brushes gained ~0.07 ms (diff
+  in artifacts/p1241_displast.diff; not worth a plugin release). Textures are BC1/BC3, mipmapped, mostly
+  2048x2048; Lex's gl_texture_anisotropy 4 at r_renderscale 2 is the lever: demise GPU 2.98 -> 2.52 ms at 2,
+  2.25 at 1 (boreas s10 1.87 -> 1.68 -> 1.43). His setting, his call.
 - Unmeasured: level of detail for models with VVD fixups (P201 left it undone) would cut skybox foliage
   triangles (demise's sky room: 0.6M triangles, 565 draws).
 - r_skyroom_scale review leftovers: one shared sky target for every top-level view (unequal splitscreen
