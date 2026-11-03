@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1258/P1259 the loading screen (both installs: exe d1008a7f patch-1259, plugin 08c7b116, menu 2100c9b2; your Desktop copy with the next release)
+## P1258/P1259 the loading screen (both installs: exe 39e00f6e patch-1262 carries it, plugin d500ef70, menu e65ff200 with native font sizes; your Desktop copy with the next release)
 1. Join a lobby: they were all updated this evening (P1256), so the first join downloads the new game code. The
    loading screen should stay up with "Downloading ..." at the bottom left (file, percent, speed, size left).
 2. Load surf_eternity (from the menu, or on a lobby): the wireframe and the dots keep moving the whole way, and
