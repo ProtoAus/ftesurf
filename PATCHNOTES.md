@@ -21,6 +21,10 @@
 
 ## next
 
+### P1247 Steadier KSF replay downloads
+- One broken KSF replay file no longer stops that round of downloads, so the backlog keeps moving.
+- Replays the converter could not read are fetched again as soon as the converter is updated, instead of waiting a week.
+
 ### P1244 A new loading screen
 - Loading a map shows what the game is doing, step by step, in white text: the newest step on top, the earlier ones pushed down and fading.
 - A spinning white wireframe keeps you company while it loads: the lobby avatar or a surf ramp, seen from above.

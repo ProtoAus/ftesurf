@@ -70,11 +70,13 @@
   once (3 strikes a day apart held 97 of 252 queue slots). Still open:
   - 26,546 advertised recordings waited behind null-ID ksf_unbound rows on 2 Nov (2 unblock pages a
     tick, UNBLOCK_MAX).
-  - One own-file 500 or broken body ends a tick's downloads (P896's `break`; ~1.7% of downloads).
-  - No brake on a mass content refusal: a converter regression, or a KSF format change that passes
-    inspect's header checks, sets every file aside 7 days (~8,000 downloads, then 256 terminal jobs
-    jam the queue a week). After the fix, drop the int entries of demos.json's `failed` with the KSF
-    cache lock held. Round 2's run-of-refusals park was removed: one map's refusals cluster.
+  - P1247: a file-level failure no longer ends a tick; the converter's set-asides (Unconvertible, a
+    third ValueError strike, ledger or terminal) are asked again when ksfconvert/ksfreplay_info change
+    -- any byte, so a docstring-only deploy re-downloads them once. Before that update a mass content
+    refusal still costs 24 downloads a tick, and once the 8192 ledger fills (~28 h) terminal jobs
+    fill the queue. No brake: one was tried in P1247 review 1 and removed (once the backlog is done
+    the queue is mostly known refusals back from their week, so it would park tick after tick).
+    Set-asides from before P1247 are not recorded and wait out their 7 days.
   - A body cut on a frame boundary before its finish is set aside 7 days, not struck; one cut after
     its finish links with the cut bytes as its original and provenance (older than P1240).
   - DEMO_SECONDS counts from the demo phase, not the board crawl: worst case the KSF lock is held
@@ -83,8 +85,16 @@
   P1240: every board's first page before any deeper page, 16 requests a tick (the sweep gets ~7), so
   ~2 days; SW/HSW/BW stage/bonus boards follow where their main has rows. Untraced review note: a
   set-aside board's index.json flag is never re-aged in --watch, so SKIP_DAYS may not apply.
-- Momentum has no styles (Lex, 3 Nov): nothing to collect beyond Normal. Still a product decision:
-  the boards of 145 held Beta maps.
+- Momentum has no styles (Lex, 3 Nov): nothing to collect beyond Normal.
+- Momentum Beta boards: Lex said yes (3 Nov); split out of P1247 into its own patch. 306 Beta maps are
+  held, all with ids; 139 have no momtracks.tsv line (the other 167 came from a PC export and ARE
+  collected today). Measured: Momentum drops a map's testing runs when it approves it (surf_solitude,
+  approved 24 Oct 11:22Z; the oldest of its top 100 is 11:30Z after 6 days in testing), so collected
+  Beta runs go stale at approval and block slower approved times (momboards keeps the faster). The
+  patch needs, at approval: the map's board cache files and TIER_MOMENTUM runs purged under momwatch's
+  lock (/tmp/surfd-momwatch.lock), AND its Beta recordings retired -- link_demos/momgrab.link_exact
+  join any kind='momentum' replay within 20 ms, and those rows carry ingest dates, not run dates.
+  Reviewed draft (mapwatch beta_boards/beta_purge, two rounds) on branch fix/p1247 (14453734).
 - momgrab takes each board's top 10 only (35,037 picks; 2,555 not yet tried on 2 Nov).
 - P1232 review 2, low: a malformed `judged` entry in momgrab state.json raises every --go tick (only a
   hand edit makes one); demo_build keeps [None, None] for good after a transient read error;

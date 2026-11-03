@@ -1,5 +1,23 @@
 # AGENT_NOTES.md
 
+## P1247 KSF bad-file rule, converter release (ftesurf-2b; LIVE 3 Nov 04:48Z, generation 12e362a5, root lexlist-1247-382effae)
+- ksfgrab only: a 404/500/broken body sets that file aside and the tick goes on (FILESTREAK in a row
+  still parks the host); state['unconvertible'] = {converter: sha256[:16] of ksfconvert.py +
+  ksfreplay_info.py, keys} records the converter's set-asides; another hash releases them (ledger
+  entries and terminal jobs). No brake (review 1). Momentum Beta boards split out (BACKLOG).
+- Rollback to 20d99092 needs no data step (the `unconvertible` key is carried along unread); further
+  back: lexlist-1240/rollback_1240.py, then lexlist-1234/rollback_1234.py. kit1247 = kit/make_kit_1247.py
+  (kit1234's templates, roots moved by count checks); OLD for the next swap is lexlist-1247 STATE.
+- OUTAGE 04:41:26-04:48:43Z (~7 min, surfd down): activate_backend closed P1240's fence, stopped
+  momrequests and surfd, then its 60 s drain timed out on the KSF tick launched at 04:41:00 (~2.8
+  min since P1240) and it STOPPED. Finished by hand with kit1247/finish_1247.py (re-proves the drain
+  with the old guard's `close`, then main()'s post-drain steps; primary accepted, nothing moved at
+  the boundary). Start activations right after a KSF tick (ticks at minute 1, 6, 11...: go at about
+  :x4:30, `pgrep -f ksfimport` empty), or raise the kit's drain (`--timeout 60`/`wait(65)`) to ~240 s.
+- On the Pi, a backgrounded `a && b && tar -xf - ... &` gives tar /dev/null as stdin: unpack in the
+  foreground, background only the run, e.g. `(nohup sh -c "..." < /dev/null &)`.
+- First P1247 tick: the last P1240 ticks (04:31, 04:36) each linked 24 of 24 demos; the first P1247 tick is 04:51.
+
 ## P1240 KSF crawl budgets (ftesurf-2b; LIVE 3 Nov 03:21Z, generation 20d99092, root lexlist-1240-382effae)
 - ksfimport: WATCH_BOARDS 16, DEMO_MAX 24 (40 requests a tick, 3 s apart); derived from --max: profile
   walks 3, refresh 4, unblock 2 (capped), sweep >= 7. sweep_maps (watch order only): a board with no
