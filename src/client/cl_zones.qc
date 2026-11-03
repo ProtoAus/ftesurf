@@ -210,6 +210,8 @@ void() Zone_RegisterCvars =
 
 // P1239: the per-type cvar names, and the colour strings last parsed (memalloc'd, ZONE_TYPES each):
 // 14 strcats and 7 parses a frame before.
+float ui_ze_state;              // cl_zoneedit.qc's (ZE_OFF 0), declared again here for the throttle
+float zone_cv_next;
 string *zone_cv_dname;          // (one a line: fteqcc reads "string *a, *b" as b string**)
 string *zone_cv_cname;
 string *zone_cv_cstr;
@@ -586,7 +588,12 @@ void() Zone_Draw =
 	if (serverkey("map") != zone_mapname)
 		Zone_LoadForMap();
 
-	Zone_ReadCvars();
+	// P1239: ten times a second (22 cvar lookups), every frame while the zone editor is up.
+	if (ui_ze_state || cltime >= zone_cv_next || cltime < zone_cv_next - 0.2)
+	{
+		zone_cv_next = cltime + 0.1;
+		Zone_ReadCvars();
+	}
 
 	if (!zone_cv_draw || !zone_count)
 		return;
