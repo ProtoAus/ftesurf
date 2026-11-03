@@ -54,7 +54,7 @@ vector wop_loadvel;
 float  wop_relseq;              // the release's command (-1 queued) until the server lets go
 float  wop_rellast, wop_loadlast;   // P1238: the last release and load commands sent (not cleared on an ack)
 // P1238: STAT_FS_WOPCUR parsed (WarpOp_Cur); wop_c_ok 0 on a lobby without it (the separate stats then).
-float  wop_c_ok, wop_c_ack, wop_c_idx, wop_c_cnt;
+float  wop_c_ok, wop_c_ack, wop_c_idx, wop_c_cnt, wop_c_slack;
 vector wop_c_org[5], wop_c_ang[5], wop_c_vel[5];   // cursor, next, prev, first, last
 string wop_c_src;
 float  wop_relat;
@@ -80,6 +80,14 @@ void() WarpOp_RegisterCvars =
 	registercommand("mom_start_mark_set");
 };
 
+// P1238: the prediction hook ran on this map and within the last frame or two (a slow first frame on
+// a map is longer than 0.5 s: outra, starvald), and never more than 2 s ago.
+float() WarpOp_HookAlive =
+{
+	return wop_premove_t > 0 && cltime >= wop_premove_t
+	       && cltime - wop_premove_t <= min(2, max(0.5, 2.5 * clframetime));
+};
+
 float() WarpOp_Able =
 {
 	wop_why = "off (cl_warpop 0, or the server has no fs_wop)";
@@ -88,7 +96,7 @@ float() WarpOp_Able =
 	// P1238: within a frame or two of the last hook, not 0.5 s of wall time: the first frames on a map
 	// can each take longer (outra, starvald: 0.8 and 1.6 s), and the op then went unpredicted.
 	wop_why = "no prediction hook in the last frames (this PC hosts the game, or prediction is off)";
-	if (cltime - wop_premove_t > max(0.5, 2.5 * clframetime) || cltime < wop_premove_t)
+	if (!WarpOp_HookAlive())
 		return FALSE;
 	wop_why = "no input frame to carry it";
 	if (cltime - wop_inputt > 0.25 || cltime < wop_inputt)
@@ -133,17 +141,18 @@ void() WarpOp_Cur =
 	if (wop_c_src != "")
 		strunzone(wop_c_src);
 	wop_c_src = strzone(s);
-	wop_c_ok = (tokenize(s) == 49 && argv(0) == "C");
+	wop_c_ok = (tokenize(s) == 50 && argv(0) == "C");
 	if (!wop_c_ok)
 		return;
 	wop_c_ack = stof(argv(1));
 	wop_c_idx = stof(argv(2));
 	wop_c_cnt = stof(argv(3));
+	wop_c_slack = stof(argv(4));
 	for (r = 0; r < 5; r = r + 1)
 	{
-		wop_c_org[r] = [stof(argv(4 + r * 9)), stof(argv(5 + r * 9)), stof(argv(6 + r * 9))];
-		wop_c_ang[r] = [stof(argv(7 + r * 9)), stof(argv(8 + r * 9)), stof(argv(9 + r * 9))];
-		wop_c_vel[r] = [stof(argv(10 + r * 9)), stof(argv(11 + r * 9)), stof(argv(12 + r * 9))];
+		wop_c_org[r] = [stof(argv(5 + r * 9)), stof(argv(6 + r * 9)), stof(argv(7 + r * 9))];
+		wop_c_ang[r] = [stof(argv(8 + r * 9)), stof(argv(9 + r * 9)), stof(argv(10 + r * 9))];
+		wop_c_vel[r] = [stof(argv(11 + r * 9)), stof(argv(12 + r * 9)), stof(argv(13 + r * 9))];
 	}
 };
 
@@ -243,6 +252,10 @@ float(float op) WarpOp_Row =
 	wop_tgorg = '0 0 0';
 	wop_tgang = '0 0 0';
 	wop_tgvel = '0 0 0';
+	// P1238: string stats follow the numeric ones, so a fresh sl_save's ack (STAT_FS_SLACK) can land a
+	// packet before the cursor string that answers it: predict nothing until they agree.
+	if (wop_c_ok && wop_c_slack != getstatf(STAT_FS_SLACK))
+		return FALSE;
 	cnt = WarpOp_Cnt();
 	i0 = WarpOp_Idx();
 	if (cnt < 1 || i0 < 1 || i0 > cnt)
@@ -764,6 +777,24 @@ void(float seat, float seq, float seconds, float offset) CSQC_PredictPlayerPreMo
 	wop_premove_t = cltime;
 	tg_baseseq = seq;                // Patch 1025: cl_triggers.qc's ring check, before any warp
 	tg_baseorg = predinput_origin;
+	// P1238: the server sends movetype only when it changes (sv_ents.c SVFTE_DeltaCalcBits), so a lost
+	// snapshot leaves the release's PM_NONE in the baseline for a round trip.  A save-lock hold is
+	// always still (SV_SaveLocHold), so a moving one after this client's release, no load since, is
+	// that: read on the chain's first command only (the server's state, not this client's), never
+	// under spectate (its hold keeps velocity), and disarmed once a baseline past the release is free.
+	if (!seat)
+	if (offset == 0)
+	if (seq == servercommandframe + 1)
+	if (wop_rellast > wop_loadlast && seq > wop_rellast)
+	{
+		if (predinput_pmtype != WOP_PM_NONE)
+			wop_rellast = 0;
+		else if (!getstatf(STAT_FS_SPEC) && vlen(predinput_velocity) > 0)
+		{
+			predinput_apply = predinput_apply | WOP_MODE;
+			predinput_pmtype = (wop_heldmode == WOP_PM_NONE) ? WOP_PM_NORMAL : wop_heldmode;
+		}
+	}
 	if (!seat)
 	if (offset == 0)
 	if (wop_seq)
@@ -773,17 +804,6 @@ void(float seat, float seq, float seconds, float offset) CSQC_PredictPlayerPreMo
 				WarpOp_Apply(wop_op[i], i);
 				break;
 			}
-	// P1238: the server sends movetype only when it changes (sv_ents.c SVFTE_DeltaCalcBits), so a lost
-	// snapshot leaves the release's PM_NONE in the baseline for a round trip; a server hold is always
-	// still (SV_SaveLocHold), so a moving one after this client's release, no load since, is that.
-	if (!seat)
-	if (predinput_pmtype == WOP_PM_NONE)
-	if (wop_rellast > wop_loadlast && seq > wop_rellast)
-	if (vlen(predinput_velocity) > 0)
-	{
-		predinput_apply = predinput_apply | WOP_MODE;
-		predinput_pmtype = (wop_heldmode == WOP_PM_NONE) ? WOP_PM_NORMAL : wop_heldmode;
-	}
 	// The spectate hold runs no ticks and touches nothing (run_pmhold, msec 0);
 	// a save-lock hold runs PM_NONE ticks and triggers, so it is not held here.
 	if (predinput_pmtype == WOP_PM_NONE)

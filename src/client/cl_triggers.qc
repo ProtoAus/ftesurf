@@ -161,6 +161,7 @@ float  tg_tspeed[TG_MAX];
 // push
 vector tg_pushdir[TG_MAX];
 vector tg_reloff[TG_MAX];       // P1238: trigger_teleport_relative's teleportoffset
+entity tg_relprobe;             // ...and the hull probe its lift traces with
 #define TG_SOD_MAX  32
 vector tg_sod[TG_SOD_MAX];      // P1238: destinations of teleports demoted to server-only (prederror rules)
 float  tg_sod_n;
@@ -1666,10 +1667,17 @@ float(float i, float seq) TG_FireRelTele =
 		return 0;
 	TG_IOEdge(i, seq);
 	p = (tg_ent[i].absmin + tg_ent[i].absmax) * 0.5 + tg_reloff[i];
-	tracebox(p, predmove_mins, predmove_maxs, p, MOVE_NOMONSTERS, world);
+	// As a hull: player clip too, and not cl_sprites' occluder copies (the server's server-side brush
+	// entities have no copy here either).  The cl_lines.qc probe idiom.
+	if (!tg_relprobe)
+	{
+		tg_relprobe = spawn();
+		tg_relprobe.hitcontentsmaski = CONTENTBITS_BOXSOLID;
+	}
+	tracebox(p, predmove_mins, predmove_maxs, p, MOVE_NOMONSTERS | MOVE_MISSILE, tg_relprobe);
 	if (trace_startsolid || trace_allsolid)
 	{
-		tracebox(p + '0 0 1', predmove_mins, predmove_maxs, p + '0 0 1', MOVE_NOMONSTERS, world);
+		tracebox(p + '0 0 1', predmove_mins, predmove_maxs, p + '0 0 1', MOVE_NOMONSTERS | MOVE_MISSILE, tg_relprobe);
 		if (!trace_startsolid && !trace_allsolid)
 			p = p + '0 0 1';
 	}
@@ -2310,7 +2318,7 @@ void() Trig_LoadForMap =
 
 		// Not a brush, or not predictable from the lump alone -- except a named trigger with no
 		// brush, which may be a zone-tool box (Patch 892, TG_ShapeBoxes).
-		box = (mdl == "" && tname != "");
+		box = (mdl == "" && tname != "" && kind != TG_RELTELE);   // P1238: the server removes a brushless one
 		if (!box && (mdl == "" || substring(mdl, 0, 1) != "*"))
 		{
 			TG_Skip(TG_SK_NOBRUSH, cn, mdl);
