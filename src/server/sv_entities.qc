@@ -7580,9 +7580,10 @@ void(float defsolid) SV_SpawnProp =
 
 	// "Don't Render" and, Patch 1041, the translucent modes: see SV_PropRenderState.
 	SV_PropRenderState(self);
-	// P1273 (Lex, 3 Nov): a prop nothing collides with plays its DefaultAnim, as Source's prop_dynamic does
-	// (surf_santorini's gulls). A solid one stays still: an animated mesh never moves its collision (P1202).
-	if (self.solid == SOLID_NOT)
+	// P1273 (Lex, 3 Nov): a prop_dynamic nothing collides with plays its DefaultAnim, as Source's does
+	// (surf_santorini's gulls); other classes never read the key. A solid one stays still: an animated
+	// mesh never moves its collision (P1202).
+	if (self.solid == SOLID_NOT && substring(self.classname, 0, 12) == "prop_dynamic")
 	if (SV_ModelAnim(self, self.vbsp_defanim))
 		vbsp_prop_anim_n = vbsp_prop_anim_n + 1;
 
@@ -11380,12 +11381,15 @@ void(entity e, vector o, vector a) SV_SpWrite =
 	if (fabs(anglemod(a_y - e.angles_y + 180) - 180) < 0.01)
 	if (fabs(anglemod(a_z - e.angles_z + 180) - 180) < 0.01)
 		return;
-	// Turned, the model reaches past its unturned box; the server culls by the box.
+	// Turned, a mesh reaches past its unturned box; the server culls by the box. The engine turns a
+	// brush model's box itself, exactly (World_LinkEdict): P1274, a cube it turned reached r * sqrt 2,
+	// and surf_santorini's windmill sails popped in and out of sight from beyond the map's PVS.
 	if (!e.vbsp_sp_sized)
 	{
 		e.vbsp_sp_sized = TRUE;
 		r = max(vlen(e.mins), vlen(e.maxs));
-		setsize(e, '-1 -1 -1' * r, '1 1 1' * r);
+		if (substring(e.model, 0, 1) != "*")
+			setsize(e, '-1 -1 -1' * r, '1 1 1' * r);
 		// P1272: the client lerps a MOVETYPE_NONE edict across its own changes (RENDER_STEP, sv_ents.c:3749)
 		// and a pusher across each snapshot, so a 20 Hz pose stepped: surf_voyager's asteroids stuttered.
 		// The pose is all clock (SV_SpPlace); no pusher physics ran on a SOLID_NOT mover anyway.
