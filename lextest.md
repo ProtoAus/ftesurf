@@ -18,6 +18,10 @@
    changes anything. `bih_tracecache 2` re-checks every skipped one and `bih_tracestats` prints how many differed
    (it has been 0 in every test).
 
+## P1276 smoother reflections (both installs: exe a9b8a2ec patch-1276; your Desktop copy with the next release)
+1. surf_eternity's river and glass floors, with your MSAA (4): the reflected arches and walls have smooth edges.
+   `r_reflectmultisample 0` shows the old stair-steps; `r_reflectmultisample -1` (the default) follows vid_multisample.
+
 ## P1258/P1259/P1265/P1267 the loading screen (in release 0.1.38: both installs run it, exe 60ef259c patch-1266, which carries patch-1267, plugin 205bf373; your Desktop copy once its launcher updates)
 00. P1267: after a map change (a lobby's vote, or changelevel), no hitch about a second into play, and the end of
    the load is shorter. Water and glass should look as before; if any look wrong until you type `flushshaders`,

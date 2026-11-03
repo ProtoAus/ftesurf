@@ -21,6 +21,9 @@
 
 ## next
 
+### P1276 Smoother reflections
+- With MSAA on (vid_multisample), water and glass reflections are anti-aliased too, so reflected edges no longer stair-step (surf_eternity's river and glass floors). It costs about 0.05 ms a frame on a fast graphics card; r_reflectmultisample 0 turns it off.
+
 ### P1161 Fresh TAS project loads
 - TAS projects can load and replay in a fresh supported session without first building rewind history. Legal-start rewind keeps working from a fresh start.
 - Loading a TAS project while noclipping or held now refuses before changing your body or saved timeline. TAS remains assisted practice.
