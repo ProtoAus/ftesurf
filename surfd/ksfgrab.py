@@ -46,6 +46,7 @@ FILESTREAK = 3             # Patch 896: this many file-level failures in a day, 
 NOT_A_REPLAY = ('replay length out of bounds', 'unsupported replay header', 'truncated v3 header',
                 'unsupported frame/extension size', 'truncated bookmarks or frames',
                 'frame count out of bounds')
+BRAKE_MAPS = 4             # P1247: content refusals on this many maps, nothing linked yet, park a tick's downloads
 FLOOR = 15 << 30           # Patch 896: no download or install below this much free disk
 SCAN = 32
 BINDING = ('map', 'track', 'leg', 'style', 'player', 'runid', 'millis', 'when', 'file')
@@ -361,6 +362,15 @@ class BodyBroken(OSError):
     """Patch 891: the host answered for this file and its body broke after the headers."""
 
 
+def converter_hash():
+    """P1247: what decides an Unconvertible: ksfconvert and the ksfreplay_info it reads with."""
+    h = hashlib.sha256()
+    for mod in (C, C.K):
+        with open(mod.__file__, 'rb') as f:
+            h.update(f.read())
+    return h.hexdigest()[:16]
+
+
 class Unconvertible(ValueError):
     """P1240: ksfconvert refused this replay's content for this job; the same bytes refuse the same way."""
 
@@ -525,6 +535,19 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
         print('KSF demos parked locally: deferral ledger exceeds %d; no work or state save' % MAX_FAILED)
         return 0, 0
     jobs = state['jobs']
+    # P1247: Unconvertible set-asides are this converter's verdict; another converter
+    # (a deploy that changes ksfconvert/ksfreplay_info) asks them all again.
+    conv = converter_hash()
+    unconv = state.get('unconvertible') if isinstance(state.get('unconvertible'), dict) else {}
+    keys = unconv.get('keys') if isinstance(unconv.get('keys'), list) else []
+    keys = [k for k in keys if isinstance(k, str) and type(state['failed'].get(k)) is int]
+    if unconv and unconv.get('converter') != conv:
+        for k in keys:
+            del state['failed'][k]
+        print('KSF demos: the converter changed; %d set-aside(s) asked again' % len(keys))
+        keys = []
+    unconv = state['unconvertible'] = dict(converter=conv, keys=keys)
+    refused_maps = set()
     conn = S.connect()
     made = linked = recovered = 0
     stop = time.monotonic() + DEMO_SECONDS
@@ -627,6 +650,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 # after the headers. surf_ab's and then surf_kultur's replays break mid-body on
                 # every ask (21 Oct), and parking for each such file stalled every map's demos
                 # for days. That file is set aside 7 days; FILESTREAK of them in a row is the host.
+                # P1247: the tick goes on to the next file (it ended here, ~1.7% of downloads).
                 code = getattr(e, 'code', 0)
                 own = code in (404, 500) or isinstance(getattr(e, 'reason', None), BodyBroken)
                 run = state.get('filestreak') if isinstance(state.get('filestreak'), dict) else {}
@@ -642,7 +666,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                     state['filestreak'] = dict(at=now, keys=held + [key])
                     print('KSF demo set aside: network %d on its own file (%d in a row)'
                           % (code, len(held) + 1))
-                    break
+                    continue
                 # The host's -- and so was a run of file-looking failures that reached
                 # FILESTREAK, so the files it set aside go back to the queue.
                 if own:
@@ -675,8 +699,23 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 if key in state['failed'] or len(state['failed']) < MAX_FAILED:
                     state['failed'][key] = now + 7 * 86400
                     jobs.pop(key, None)
+                    if key not in unconv['keys']:
+                        unconv['keys'].append(key)
                 else:
                     job.update(retry=now + 7 * 86400, terminal=True)
+                # P1247: refusals on BRAKE_MAPS maps with nothing linked yet this tick are the
+                # converter's or the format's, not the files': stop and park downloads. What
+                # was set aside stays (nothing comes back to the queue's head to trip it again);
+                # a new converter asks it all again (tick's start).
+                if asked:
+                    refused_maps.add(job['map'])
+                    if not linked and len(refused_maps) >= BRAKE_MAPS:
+                        K._save(os.path.join(cache, PARK), dict(
+                            at=now, until=now + K.COOLDOWN, n=0,
+                            why='demo conversion refused on %d maps, none linked' % len(refused_maps)))
+                        print('KSF demos parked %d min: conversion refused on %d maps, none linked'
+                              % (K.COOLDOWN // 60, len(refused_maps)))
+                        break
             except (OSError, ValueError) as e:
                 job['retry'] = now + 86400
                 job['why'] = type(e).__name__

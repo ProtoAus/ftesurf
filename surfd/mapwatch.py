@@ -170,6 +170,8 @@ TIMEOUT = 60
 WATCH_MAX = 40          # downloads a run
 WATCH_GB = 6.0          # ...and bytes
 ZONES_MAX = 40          # zone requests a run
+BETA_BOARDS_MAX = 40    # P1247: Beta maps' board lists asked a run (139 of 306 held had none, 3 Nov)
+BETA_BOARDS_DAYS = 7    # ...and how often each is asked again
 MAX_MAP_BYTES = 1 << 30     # the largest BSP known is 335 MB
 MAX_API_BYTES = 6 << 20     # a list page is 1.4 MB, ksf.surf/maps 0.8 MB; parsed, a
                             # megabyte of empty rows is tens of megabytes of objects
@@ -482,10 +484,16 @@ def mom_row(m):
         return None
     zh = str(cv.get("zoneHash") or "").lower()
     mode = "surf" if name.lower().startswith("surf_") else "bhop"
-    gm = 1 if mode == "surf" else 2
+    tier, ranked, boards = leaderboard_boards(m.get("leaderboards"), 1 if mode == "surf" else 2)
+    return {"name": name, "id": m["id"], "sha": sha, "url": url, "mode": mode,
+            "zh": zh if HEX40.fullmatch(zh) else None, "tier": tier, "ranked": ranked,
+            "src": "mom", "boards": boards}
+
+
+def leaderboard_boards(lbs, gm):
+    """-> (tier, ranked, sorted Normal-style boards) from a map's `leaderboards`."""
     tier, ranked = None, None
     boards = set()
-    lbs = m.get("leaderboards")
     for lb in lbs if isinstance(lbs, list) else []:
         if not isinstance(lb, dict):
             continue
@@ -496,9 +504,46 @@ def mom_row(m):
         b = (lb.get("gamemode"), lb.get("trackType"), lb.get("trackNum"))
         if lb.get("style") == 0 and all(type(x) is int and 0 <= x < 1000 for x in b):
             boards.add(b)
-    return {"name": name, "id": m["id"], "sha": sha, "url": url, "mode": mode,
-            "zh": zh if HEX40.fullmatch(zh) else None, "tier": tier, "ranked": ranked,
-            "src": "mom", "boards": sorted(boards)}
+    return tier, ranked, sorted(boards)
+
+
+def beta_boards(pacer, extra, inv, asked, tracks_path, now):
+    """P1247 (Lex, 3 Nov: collect them): -> {key: row with boards} for held Beta maps,
+    each from its own /v1/maps/<id>?expand=leaderboards (the public list carries only
+    approved maps). A map with no momtracks.tsv line goes first, then the longest
+    unasked; BETA_BOARDS_MAX a run, each again after BETA_BOARDS_DAYS. `asked` (state)
+    is updated. A 401/403/404 is that map's (it waits its turn); any other refusal is
+    raised for the caller to end the API for this run."""
+    try:
+        with io.open(tracks_path, encoding="utf-8") as fh:
+            have = {ln.split("\t", 1)[0].lower() for ln in fh if not ln.startswith("#")}
+    except OSError:
+        have = set()
+    due = [k for k, r in extra.items() if k in inv and type(r.get("id")) is int
+           and now - (asked.get(k) if type(asked.get(k)) is int else 0) >= BETA_BOARDS_DAYS * 86400]
+    due.sort(key=lambda k: (k in have, asked.get(k) if type(asked.get(k)) is int else 0, k))
+    out = {}
+    for k in due[:BETA_BOARDS_MAX]:
+        r = extra[k]
+        try:
+            m = pacer.json("%s/maps/%d?expand=leaderboards" % (MOM_API, r["id"]))
+        except Refused as e:
+            if e.code not in (401, 403, 404):
+                raise
+            asked[k] = now
+            print("  %s: Beta boards refused (%s): asked again in %d days" % (k, e, BETA_BOARDS_DAYS))
+            continue
+        asked[k] = now
+        if (not isinstance(m, dict) or m.get("id") != r["id"]
+                or str(m.get("name") or "").lower() != k):
+            print("  %s: Beta boards: the reply is not this map's" % k)
+            continue
+        tier, _, boards = leaderboard_boards(m.get("leaderboards"), 1 if k.startswith("surf_") else 2)
+        if boards:
+            out[k] = {"name": r["name"], "id": r["id"], "tier": tier, "boards": boards}
+    for k in [k for k in asked if k not in extra]:
+        del asked[k]
+    return out
 
 
 TRACKS_HEAD = "# map\tmapid\ttier\tgamemode\ttrackType\ttrackNum\n"
@@ -2058,8 +2103,19 @@ def run(a):
                        "ktier": ksf[k]["tier"], "of": inv[k]}
     link_ports(cat, inv, names | set(extra))
     if "mom" in read:
+        # P1247: and held Beta maps' boards, each from its own reply.
+        beta = {}
+        if "api" not in dead and time.time() < deadline:
+            asked = st.get("betaboards") if isinstance(st.get("betaboards"), dict) else {}
+            st["betaboards"] = asked
+            try:
+                beta = beta_boards(pacer, extra, inv, asked, a.tracks, now)
+            except Refused as e:
+                dead["api"] = str(e)
+                print("  api refused (%s): nothing more is asked of it this run" % e)
+            print("  beta boards: %d map(s) answered with boards" % len(beta))
         # P1117: momwatch/momfetch crawl only the boards this file names.
-        n, changed = write_tracks(a.tracks, mom, inv)
+        n, changed = write_tracks(a.tracks, {**mom, **beta}, inv)
         print("  momtracks: %d map(s), %d new or changed" % (n, changed))
     if len(read) == 2:
         _save(cp, {"at": now, "maps": cat, "momnames": sorted(names)})

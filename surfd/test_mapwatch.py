@@ -375,6 +375,62 @@ def case_p1117_momtracks():
           1000000000)
 
 
+def case_p1247_beta_boards():
+    """P1247: held Beta maps' boards come from each map's own reply into momtracks.tsv,
+    the unlisted first, BETA_BOARDS_DAYS apart; a 401 waits its turn, a 429 ends the API."""
+    lb = [{"gamemode": 1, "trackType": tt, "trackNum": tn, "style": st, "tier": None, "type": 3}
+          for tt, tn, st in ((0, 1, 0), (1, 1, 0), (0, 1, 2))]
+    mom = dict(MOM, surf_bt=dict(M("bt"), leaderboards=lb), surf_bu=M("bu"))
+    w, maps, state = setup(mom, {}, held=[("surf_bt", bsp("bt")), ("surf_bu", bsp("bu"))])
+    w.hidden = {"surf_bt", "surf_bu"}
+    os.makedirs(state, exist_ok=True)
+    with io.open(os.path.join(state, "extra.tsv"), "w", newline="\n") as fh, \
+            io.open(os.path.join(state, "betaids.tsv"), "w", newline="\n") as ids:
+        for n in ("surf_bt", "surf_bu"):
+            fh.write("%s %s %s%s.bsp\n" % (n, sha(bsp(n[5:])), W.MOM_CDN, uuid_of(n)))
+            ids.write("%s %s %d -\n" % (n, sha(bsp(n[5:])), w.ids[n]))
+    tracks = os.path.join(os.path.dirname(maps), "momtracks.tsv")
+    with io.open(tracks, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(W.TRACKS_HEAD + "surf_bu\t%d\t0\t1\t0\t1\n" % w.ids["surf_bu"])
+    url = {n: "%s/maps/%d?expand=leaderboards" % (W.MOM_API, w.ids[n]) for n in ("surf_bt", "surf_bu")}
+
+    def beta_asks():
+        return [u for u in w.asked if "?expand=leaderboards" in u]
+
+    def rewind():
+        sp = os.path.join(state, "state.json")
+        st = json.load(io.open(sp, encoding="utf-8"))
+        st["betaboards"] = {}
+        with io.open(sp, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(st))
+
+    tick(maps, state, "--go", "--tracks", tracks)
+    check("P1247: each held Beta map is asked for its own boards, the unlisted one first",
+          beta_asks(), [url["surf_bt"], url["surf_bu"]])
+    check("...and its Normal boards are written under its id",
+          [l for l in read(tracks).decode().splitlines() if l.startswith("surf_bt")],
+          ["surf_bt\t%d\t0\t1\t0\t1" % w.ids["surf_bt"], "surf_bt\t%d\t0\t1\t1\t1" % w.ids["surf_bt"]])
+    w.asked = []
+    tick(maps, state, "--go", "--tracks", tracks)
+    check("...and is not asked again within BETA_BOARDS_DAYS", beta_asks(), [])
+    rewind()
+    w.asked = []
+    w.zonecode["surf_bt"] = 401
+    tick(maps, state, "--go", "--tracks", tracks)
+    check("...a 401 for one Beta map leaves it for its turn and asks the next",
+          beta_asks(), [url["surf_bt"], url["surf_bu"]])
+    rewind()
+    w.asked = []
+    w.zonecode["surf_bt"] = 429
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        tick(maps, state, "--go", "--tracks", tracks)
+    check("...a 429 ends the API for the run, and the boards held stay",
+          (beta_asks(), "api refused (HTTP 429)" in out.getvalue(),
+           sum(l.startswith("surf_bt") for l in read(tracks).decode().splitlines())),
+          ([url["surf_bt"]], True, 2))
+
+
 def case_p1117r1_tracks_guards():
     old = ["surf_a\t101\t2\t1\t0\t1\n", "surf_a\t101\t2\t1\t1\t1\n", "surf_a\t101\t2\t1\t1\t2\n",
            "surf_a\t101\t2\t2\t0\t1\n"]
@@ -2592,7 +2648,7 @@ def main():
                  case_unhashed_zones,
                  case_bad_names_and_shapes, case_hosts,
                  case_held_builds, case_first_zones, case_variants, case_zones_and_limits,
-                 case_extra_and_lock, case_beta_zones, case_mapscan, case_p1117_momtracks,
+                 case_extra_and_lock, case_beta_zones, case_mapscan, case_p1117_momtracks, case_p1247_beta_boards,
                  case_p1117r1_tracks_guards):
         print("\n%s:" % case.__name__)
         case()
