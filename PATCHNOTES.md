@@ -216,14 +216,6 @@
 ### P1169 Larger Maps filter text
 - Maps: larger, sharper native-pixel filter text, with roomier controls that wrap on smaller windows.
 
-### P1161 Fresh TAS project loads
-- TAS projects can load and replay in a fresh supported session without first building rewind history. Legal-start rewind keeps working from a fresh start.
-- Loading a TAS project while noclipping or held now refuses before changing your body or saved timeline. TAS remains assisted practice.
-
-### P1154 TAS frame advance at 100Hz
-- TAS pause, frame advance, retained rewind and input replay can use a selected 10ms Source clock as well as the existing 15ms clock. Default movement timing is unchanged.
-- Clock changes stop queued TAS work instead of silently reusing it. Reload the map after changing its clock before starting a new timeline. TAS remains assisted practice.
-
 ### P1234 Your records when you link Steam
 - Signing in with Steam now fetches your KSF and Momentum personal bests, KSF stage and bonus times included, and accounts that play are refreshed regularly, so your records stay up to date.
 - Momentum leaderboards nobody is playing are refreshed in rotation, about once a week.
