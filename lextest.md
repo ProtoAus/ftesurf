@@ -1,5 +1,8 @@
 # lextest.md — things waiting on a human
 
+**0.1.38 is out (3 Nov ~14:25Z).** It carries every item below marked "next release" from P1214 to P1267
+(not the TAS P1154/P1161). Update your Desktop copy through WOS-Launcher, then check from there.
+
 ## Your fantasy rings and ceaseless walls (P1263, P1264): your install C:/FTESurf (exe 11994f33 patch-1264); lobbies have P1263
 1. surf_fantasy, by the laser rings: purple glow particles swirl round each ring (they take a second to fill in),
    and they stop while the game is paused. `vbsp_emit_orbits 0` hides them. Other players see them after the

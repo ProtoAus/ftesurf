@@ -295,6 +295,14 @@
 - P1235's big-prop cull applies no area walk, so a prop behind a closed areaportal whose clusters are
   in the PVS still draws (over-draw only).
 
+## Release tooling, found cutting 0.1.38 (3 Nov 2026)
+- A fresh release engine worktree has no engine/libs-x86_64-w64-mingw32 (m-rel dies on opus.h): copy the
+  72 MB cache from the previous release root's engine worktree (release0137 -> release0138).
+- vmmemWSL keeps the Linux build's memory with no distribution running (1.8 GB on 3 Nov); on a 16 GB machine
+  shared with the owner, `wsl --shutdown` of the idle VM before the prepare (check `wsl --list --running`).
+- Background builds get reaped for low memory while the session idles; the engine build fits a foreground
+  call at -Jobs 3 (under ten minutes), and so did the prepare.
+
 ## Release tooling, found cutting 0.1.37 (2 Nov 2026)
 - `release.ps1 -BuildEngine` cannot run: its filter over build.ps1's output reads `$_.kind` under
   StrictMode, and build.ps1's engine path emits an object without it, so the pipeline throws and
