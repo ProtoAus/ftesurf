@@ -118,6 +118,17 @@
   or over 256; 7 animate (surf_aquaflow 10, surf_destruction 2, surf_shape, surf_4am(_css),
   bhop_unreal_space, surf_watertemple_alpha).
 
+## P1244 loading screen follow-ups (3 Nov 2026)
+- Still freezing the screen (surf_eternity, ls_debug): the hl2 plugin's world load ~1.5 s hosting
+  (likely a single main-thread item; the plugin cannot call SCR_LoadingPump), the entity lump parse
+  in the wads stage ~0.35 s, the shader reload ~0.28 s (Shader_DoReload: not safe to draw inside).
+- The pump does not pump window messages (vid_winthread 0): a single stretch past ~5 s would let
+  Windows ghost the window as "Not Responding".
+- The legacy screen's download %, rate and "Connecting to: <address>" are not shown on the new one.
+- MP_Executing counts only pr_menu.c's entries: PR_uri_get_callback2 and MP_RendererRestarted run menu
+  QC without inmenuprogs (a nested MP_Draw from there would also overwrite mp_abort).
+- Vulkan's VK_SCR_UpdateScreen has no loading guard: the pump is GL-only for that reason.
+
 ## P1238 prederror follow-ups (3 Nov 2026)
 - Join snaps (chungus, eternity: 36-93 u at the first comparison) are excused, not explained; not
   reproduced locally (eternity, 40 ms). The excusal also hides their data.

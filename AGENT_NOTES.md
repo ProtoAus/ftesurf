@@ -51,6 +51,21 @@
 - Fallback cohort in lexlist-1232/control is 64f0b0f4; P1229's root lexlist-1229 and the dead retry
   root lexlist-1231b are CLOSED and unreferenced.
 
+## P1244 loading screen, P1243 deploy warning (3 Nov)
+- P1243: build.ps1 -Pi -PiForce, when it goes past players (or past not knowing), runs
+  tools/lobby_announce.py on the Pi after the swap (surfd's rcon.py, one hashed say per port) and waits
+  -PiWarnSeconds (10). The engine blocks an rcon source for 24 h past 15 packets/30 s/port, shared with
+  zonepub and the admin panel: one say per port per deploy.
+- P1244 menu: src/menu/m_loading.qc. FTE calls m_drawloading under the plaque only; before it (the
+  connection stage) m_draw runs, so m_draw draws the screen while scr_loadingstep != "" (engine
+  P1244 cvar; empty on older engines, which get the screen under the plaque without steps). The
+  shapes are convex prisms (the avatar is player.iqm: 10 welded verts, 15 feature edges), so edges are
+  2D quads with hidden-edge culling -- no renderscene during a load. The menu's drawline ignores its
+  width. `set ls_debug 1` prints every redraw gap of 50 ms+ with the steps either side.
+- P1244 engine (tag patch-1244 5b7addc01 on patch-1237, main 386e5d784; installs exe b4ddb77d):
+  SCR_LoadingPump redraws only in GLSCR_UpdateScreen's loading branch; its guards are in the journal.
+  Left (BACKLOG): the hl2 plugin's world load, the entity lump parse and the shader reload still stall.
+
 ## P1238 prederror reports and the mispredictions they found (3 Nov)
 - LIVE 3 Nov 02:52Z (forced restart, announced in every lobby's chat 10 s ahead through surfd's
   rcon.py on the Pi: artifacts/pi1238/announce.py in the task root): deploy/p1238-prederr 760b2dfe

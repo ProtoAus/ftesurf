@@ -21,6 +21,15 @@
 
 ## next
 
+### P1244 A new loading screen
+- Loading a map shows what the game is doing, step by step, in white text: the newest step on top, the earlier ones pushed down and fading.
+- A spinning white wireframe keeps you company while it loads: the lobby avatar or a surf ramp, seen from above.
+- "Loading" in the bottom right corner, with its dots growing and shrinking.
+- The screen keeps moving through most of a load instead of freezing between steps.
+
+### P1243 A warning before a lobby restarts
+- When a lobby has to restart for an update while people are playing, everyone on it gets a chat message ten seconds before.
+
 ### P1242 Faster Source maps with light shafts and sprites
 - The check that hides light shafts and sprites behind a skybox now runs only when you have moved, instead of every frame for every one. surf_eternity's start room: 190 -> 398 fps; surf_garden while running: 271 -> 352 fps. What is hidden is unchanged.
 

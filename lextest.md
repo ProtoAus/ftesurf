@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1244 the new loading screen (both installs now: exe b4ddb77d, menu 4c5dc080; your Desktop copy with the next release)
+1. Join any lobby, and load surf_eternity from the menu: a black screen with the steps in white (newest on top,
+   older fading), a spinning wireframe avatar or ramp (it picks one each load), and "Loading" with dots at the bottom right.
+2. The wireframe and the dots keep moving through most of the load. Known freezes left: the map's world itself loading
+   (about 1.5 s on eternity), the entity list (~0.35 s) and the shader reload (~0.3 s).
+3. If anything looks off: `set ls_debug 1`, load again, and send the console lines starting "loadscreen:".
+
 ## P1242 Source sprite sky check (both installs now; lobbies when empty; everyone with the next release)
 In C:\FTESurf or C:\FTEQuake (csprogs 6240a5a1): surf_eternity save 12 runs much faster (rig: 190 -> 398 fps)
 and still has no dashes in the sky while the start room's light shafts show; surf_garden while running
