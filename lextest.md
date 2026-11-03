@@ -10,6 +10,19 @@
 4. If a map hitches in the same place on every run, that is one of the other stalls I found (BACKLOG), not this.
    Tell me the map and the place.
 
+## Your map list of 3 Nov (P1268-P1274): both installs (exe 2151546b, plugin 02cb49fb, qwprogs e2e44268); lobbies have the server half (P1272-P1274)
+1. surf_starvald save 7: the start platform's ice now has its layers drawn over it as in your CS:S shot.
+2. surf_starvald save 8: the floor's dark wedge is gone; the blended floor and the flat floor beside it take the same light.
+   Ours is still a little darker there than your CS:S shot (about 0.87 of it).
+3. surf_voyager save 2: the glowing orbs no longer show black squares.
+4. surf_voyager saves 3 and 4: the far stations are in a sealed-off part of the map (its own area, with no opening to
+   where you stand), and the map has no visibility data. Source hides such parts by area, so they are no longer drawn
+   from there at all, rather than half drawn. I have not compared it with CS:S: if CS:S does show the stations from
+   save 4, one screenshot from there tells me it is wrong.
+5. surf_voyager: the rotating asteroids move smoothly (on a lobby too).
+6. surf_santorini: the gulls flap (on a lobby too). From save 1 the windmill sails no longer float in the sky: the map
+   hides that windmill from there, and the sails were popping in and out as they turned. Save 2 was the same bug.
+
 ## P1278 worn ramps: your install C:/FTESurf (csprogs ae5ee543), lobbies too
 1. surf_classics, surf_colin_blaster_69000 or surf_666 (23 maps in all, list in data/rampwear): the ramps carry a
    dirt film with clean lines where people ride, and scratches where they board -- steeper landings scratch more.
