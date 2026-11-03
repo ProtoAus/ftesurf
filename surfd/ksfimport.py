@@ -164,9 +164,9 @@ KSF_REQ_DEFAULT = 300      # requests per --from-maps invocation
 KSF_MODES = {0: S.STYLE_CLEAN, 1: S.STYLE_SW, 2: S.STYLE_HSW, 3: S.STYLE_BW}
 KSF_LIST_PAGE = 10         # maps per /api/maps/new page (measured 5 Oct)
 
-# --watch, the unattended crawl.  10 requests every 5 minutes is ~2,900 a day.
-WATCH_BOARDS = 8           # board requests a --watch tick; --demos downloads come on top
-DEMO_MAX = 6               # Patch 896, Lex 21 Oct: "6 per 5 minutes" (was 2 of 10)
+# --watch, the unattended crawl.  40 requests every 5 minutes, 3 s apart, is ~11,500 a day.
+WATCH_BOARDS = 16          # board requests a --watch tick; --demos downloads come on top
+DEMO_MAX = 24              # P1240, Lex 3 Nov "do what you can" with ~46,000 waiting (P896: 6)
 WATCH_MAX = WATCH_BOARDS + DEMO_MAX
 UNBLOCK_MAX = 2            # Patch 896: pages a tick re-asks for recordings on null-ID rows
 UNBLOCK_SCAN = 64          # boards a tick looks through for them
@@ -183,7 +183,9 @@ WANT_DAYS = 14             # a map viewed this recently is crawled first
 # boards to WANT_REST and EVERY map's Forward main board to MAIN_FIRST; only
 # then deeper.  Until 11 Oct a viewed map's every board went to its END first
 # (30 stages in 4 styles is thousands of requests): 372 of 448 main boards
-# held one page.
+# held one page.  P1240: a board never fetched joins that class, so its first
+# page goes before any deeper one -- on 3 Nov 4,037 stage, bonus and style boards
+# of unviewed maps waited behind ~4,000 deeper pages.
 WANT_FIRST = 1000          # shallow-board priority, NOT a storage/display cap
 WANT_REST = 100
 MAIN_FIRST = 200           # surfd.BOARD_LIMIT_MAX
@@ -787,12 +789,13 @@ def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
         main = z == 0 and m == 0
         if mp in prio:
             return 0 if main and n < want_first else 1 if n < want_rest else 2
-        return 1 if main and n < main_first else 3
+        return 1 if (main and n < main_first) or (main_first and not n) else 3
 
     def push(mp, z, m):
         st = board_state(cache, idx, mp, z, m)
         if wants_more(st, depth):
-            heapq.heappush(heap, (rank(mp, z, m, st[0]), st[0], mp, z, m))
+            # P1240: at equal depth Forward goes first, then by map.
+            heapq.heappush(heap, (rank(mp, z, m, st[0]), st[0], m, mp, z))
 
     for mp, info in infos.items():
         zones = zones_of(info)
@@ -801,7 +804,7 @@ def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
                       else zones[:1]):
                 push(mp, z, m)
     while heap and pacer.left() > 0:
-        _, n, mp, z, m = heapq.heappop(heap)
+        _, n, m, mp, z = heapq.heappop(heap)
         d, page = board_page(cache, mp, z, pacer, m, idx=idx)
         if fetched is not None:
             fetched.append((mp, z, m, page))
@@ -1473,7 +1476,7 @@ def main():
     ap.add_argument("--watch", action="store_true",
                     help="one unattended crawl tick, for cron (see the docstring)")
     ap.add_argument("--demos", action="store_true",
-                    help="--watch --go: download up to DEMO_MAX (6) advertised demos after the board requests")
+                    help="--watch --go: download up to DEMO_MAX (24) advertised demos after the board requests")
     ap.add_argument("--delay", type=float, default=None,
                     help="--from-maps/--watch: seconds between requests\n(default %.1f, --watch %.1f)"
                     % (KSF_DELAY_MS / 1000.0, WATCH_DELAY))
@@ -1533,7 +1536,7 @@ def main():
 
     demo_max = 0
     if args.watch and args.go and args.demos:
-        demo_max = min(DEMO_MAX, max(0, args.max - WATCH_BOARDS))   # boards keep the first 8
+        demo_max = min(DEMO_MAX, max(0, args.max - WATCH_BOARDS))   # boards keep the first WATCH_BOARDS
         args.max -= demo_max
     lock = take_lock(cache)
     if lock is None:
