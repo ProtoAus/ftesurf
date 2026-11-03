@@ -129,13 +129,15 @@
   GLBE_SelectEntity's 4x4 inverse (1.2%) feeds e_eyepos, which 15 of 23 vmt shaders read: not worth deferring.
   Eternity's Surf_RenderDynamicLightmaps 10.8% is the first touch of each emitted face (P1237's skip test
   moved the cost, not removed it). Prop collision (BIH_MODEL -> the plugin's .phy NativeTrace) ~7% on demise.
-- Movement collision (P1266 claimed, measured 3 Nov, not built): surf_voyager surfed hands-free in a local game,
-  collision is ~20% of the main thread (BIH_RecursiveTrace 10.1%, ClipBoxToBrush 6.6%, BoundsIntersect 2.5%).
-  145 world traces a frame, 96.5% from PM_TransformedHullCheck; the player move runs 2.5 times a frame for 3.9
-  Source ticks, 94% of it CL_PredictUsercmdPart replaying the unacked chain (~37 traces a tick). Only 13.5% of
-  traces repeat exactly within a frame. A whole-tick replay cache is not exact: CSQC_PredictPlayerPreMove /
-  CSQC_PredictPlayerMove (cl_triggers.qc) run inside every tick on chain-start probes, server gate snapshots and
-  replicated IO state that change between frames. The noclip demise profile (no movement) showed none of this.
+- Movement collision (P1266 shipped 3 Nov: exact trace reuse, prediction 0.13 -> 0.11 ms a frame on surf_voyager).
+  The sampler's "collision ~20% of the main thread" overstated the per-frame cost: r_budget on voyager hands-free
+  (2.33 ms CPU busy) puts prediction at 0.13 and the local server at 0.23, against draw calls 0.80 (transparent
+  0.60), CSQC UpdateView/HUD 0.42, swap 0.25, PrepareFrame 0.20, entity setup 0.14. Transparent draws are the
+  next CPU lever on that map. What is left in prediction is not exactly cacheable: a whole-tick replay memo is
+  not exact (CSQC_PredictPlayerPreMove / CSQC_PredictPlayerMove in cl_triggers.qc read chain-start probes, server
+  gate snapshots and replicated IO state that change between frames), and only ~15% of traces repeat. com_bih.c
+  at -O2 under the release's -Os measured no gain and was dropped. pm_dettest stands the cache aside (it reads
+  the probe record), so bih_tracecache 2 and a pm_verify at 0 vs 1 are the only checks that exercise it.
 - vid_restart mid-map left surf_eternity s4's PrepareFrame at 1.76 ms against 1.11 for the following seconds
   (loading still on the main thread); not followed up.
 - P1222 review leftovers: gl_overbright_all has no callback and r_stains 0 leaves stains drawn (both pre-existing,

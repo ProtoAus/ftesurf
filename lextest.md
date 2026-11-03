@@ -10,6 +10,12 @@
 3. Other maps' bump-mapped walls and floors (surf_sedona's sand shows its grain) can read a little darker or
    brighter than before, as Source draws them. Tell me if one looks wrong.
 
+## P1266 movement prediction (both installs: exe c3342a2d patch-1266; your Desktop copy with the next release)
+1. Nothing to see: surfing should feel exactly as before (the game skips collision checks it has just made with
+   the same inputs). If a ramp or a landing ever feels different, `bih_tracecache 0` turns it off: say if that
+   changes anything. `bih_tracecache 2` re-checks every skipped one and `bih_tracestats` prints how many differed
+   (it has been 0 in every test).
+
 ## P1258/P1259/P1265/P1267 the loading screen (both installs: exe 76e78e80 patch-1267, plugin c3c9062f, menu d92320af; your Desktop copy with the next release)
 00. P1267: after a map change (a lobby's vote, or changelevel), no hitch about a second into play, and the end of
    the load is shorter. Water and glass should look as before; if any look wrong until you type `flushshaders`,
