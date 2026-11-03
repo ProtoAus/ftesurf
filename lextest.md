@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1242 Source sprite sky check (both installs now; lobbies when empty; everyone with the next release)
+In C:\FTESurf or C:\FTEQuake (csprogs 6240a5a1): surf_eternity save 12 runs much faster (rig: 190 -> 398 fps)
+and still has no dashes in the sky while the start room's light shafts show; surf_garden while running
+gains too (271 -> 352 fps).
+
 ## P1239 lighter HUD (both installs now; lobbies when empty; everyone with the next release)
 In C:\FTESurf or C:\FTEQuake (csprogs 1f0206f5, menu dbdf2b6f): the movement keys look exactly as before (rounded,
 lit when held). Toggling a HUD setting from the console or a bind (`hud_keys 0`, `hud_speed 0`) shows

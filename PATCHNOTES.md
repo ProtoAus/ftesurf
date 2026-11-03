@@ -21,6 +21,9 @@
 
 ## next
 
+### P1242 Faster Source maps with light shafts and sprites
+- The check that hides light shafts and sprites behind a skybox now runs only when you have moved, instead of every frame for every one. surf_eternity's start room: 190 -> 398 fps; surf_garden while running: 271 -> 352 fps. What is hidden is unchanged.
+
 ### P1238 Fewer snap-backs, better prediction-error reports
 - Teleports on maps that put a second teleport at the arrival point (surf_frey_remake and about 40 others) no longer snap you back about 185 units after you arrive.
 - Letting go of a save-lock hold no longer leaves you frozen in place for a moment when a network packet is lost (players far from the server saw large snaps).

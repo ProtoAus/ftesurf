@@ -145,6 +145,18 @@
 - A build in the release engine worktree rewrites plugins/hl2/mat_vmt_progs.h's header comment
   (the generator's path), which the clean-input gate refuses; restore it, or build elsewhere.
 
+## P1242 residuals (3 Nov 2026)
+- A Source sprite's sky verdict is re-traced once the eye moves 16 units from where it was last
+  traced, so near a sky edge it can be up to 16 units of travel late; a brush entity moving between
+  the eye and a sprite does not re-trace it on its own.
+- On maps with more than 256 sprites and beams a frame looks at 256 of them (bhop_rpg 862): a full
+  pass takes several frames, as the 64-ray budget already did.
+- Audit residue (3 Nov, leet_xl idle and garden mid-run, profile_csqc): no other single CSQC function
+  passes ~0.01 ms a frame; the largest left are the rounded keys, MPad_Draw, LineGraph_WorldLabels,
+  Chat_Draw (lays out the input field every frame even when not typing), Scores_LinesFrame,
+  HUD_DrawMapInfo and CSQC_PredictPlayerMove. Outlined mono text (hud_font_outline 1/2) draws each
+  string 9-10 times: ~4.5 us against ~0.5 us a 10-character string.
+
 ## P1239 residuals (3 Nov 2026)
 - HUD_ReadCvars and the per-frame Zone_ReadCvars hold their cvars up to 0.1 s (not in the HUD or
   zone editor, the zone_debug frame or ui_bootcheck): an arm that sets a hud_*/zone_* cvar and grades
