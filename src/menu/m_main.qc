@@ -8286,6 +8286,8 @@ void(vector screensize) m_draw =
 	// as in-flight, and the row would never turn back into a playable map.
 	Dl_Tick();
 	ui_prejoin_tick();
+	if (LS_Active())                // P1244: a load before the plaque (the connection stage)
+		LS_Draw(fullsize);
 
 	if (clientstate() != ms_cstate)    // P1225
 	{
