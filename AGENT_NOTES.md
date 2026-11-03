@@ -22,6 +22,19 @@
 - Harness: `ui_close` alone is undone by the engine on the next idle frame (con_stayhidden opens the menu);
   send "connect X; ui_close" in one line, as the menu does.
 
+## P1263/P1264 surf_fantasy rings and world bump mapping (3 Nov; root C:/FTESurf-worktrees/rampprop-20261103)
+- tools/pcf.py bakes every pcf maps/<map>_particles.txt lists (KeyValues tokens: ~50 manifests use bare keys),
+  last definition wins, files outside particles/ refused as Source does. A shell orbit (Constrain distance with
+  min > 0, twist) is an `orbit` index line stepped by cl_emit.qc Emit_OrbitFrame (verlet scaled by step/last
+  step, nothing stepped on a 0 frame); `pause` in a local game needs `set pausable 1`. p1236arm copies the
+  Desktop release's game dir and no data/mapparticles.txt: pass P1263_EXTRA (an overlay dir) for bakes.
+- hl2 plugin VBSP_BuildRNM (P1264): bumped faces' flat set := mean of the basis maps; deluxemap = one direction
+  in Source's bump basis, zero vector = no data. The bump factor is linear light on an sRGB-encoded lightmap
+  (VBSP_ConvertLuxel), so the shader applies F^(1/2.2). The 2/5 layout is [flat][b0][b1][b2][extra]
+  (artifacts/p1264order2.py over 40 maps). hl2_rnm latches with the MODEL: reloading the same map keeps it.
+- C:/FTESurf/src/fteqcc64.exe is 7ccb93d1 and miscompiles cl_viewmodel.qc's setproperty(227) (2 warnings
+  F333): build install QC in a worktree with c24ede65 (-NoDeploy) and copy the dats in.
+
 ## P1254-P1257 follow-ups to the ramp/prop list (3 Nov; root C:/FTESurf-worktrees/rampprop-20261103)
 - PM_DETTEST'S MOVER PASSES NEVER COLLIDED. SV_DetTest_f memsets pmove, leaving skipent 0 = the world
   physent's info, so PM_PlayerTrace skips the world (pmovetst.c:1168): mover/srcmover/propmover/pinmover/

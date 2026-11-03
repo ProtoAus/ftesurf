@@ -25,6 +25,12 @@
 - The loading screen shows the map you are loading at the bottom left: its picture, its name, and its author, tiers and stages as the map list has them.
 - The loading screen's text is a little smaller.
 
+### P1264 Bump mapping on map walls and floors
+- Walls and floors with a bump map are lit the way Source lights them, so their cracks, grain and relief show (bhop_ceaseless's rock walls, surf_sedona's sand). Some read a little darker or brighter than before. hl2_rnm 0 turns it off.
+
+### P1263 Particle rings on surf_fantasy
+- surf_fantasy's laser rings have their swirling glow back, and the map's other particle systems all load (it lists three particle files; only the first was read).
+
 ### P1262 Smooth leaves and fences with MSAA
 - With vid_multisample on, the cut-out edges of leaves, fences and grates are smoothed too, about as well as render scale 2, at no measurable cost. r_alphacoverage 0 turns it off.
 
@@ -91,7 +97,7 @@
 - When a lobby has to restart for an update while people are playing, everyone on it gets a chat message ten seconds before.
 
 ### P1242 Faster Source maps with light shafts and sprites
-- The check that hides light shafts and sprites behind a skybox now runs only when you have moved, instead of every frame for every one. surf_eternity's start room: 190 -> 398 fps; surf_garden while running: 271 -> 352 fps. What is hidden is unchanged.
+- The check that hides light shafts and sprites behind a skybox now runs only when you have moved, not every frame. surf_eternity's start room: 190 -> 398 fps; surf_garden while running: 271 -> 352 fps. What is hidden is unchanged.
 
 ### P1240 KSF replays and boards, faster
 - KSF replays now download four times as fast, so the roughly 46,000 still waiting should arrive in about a week instead of a month.

@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## Your fantasy rings and ceaseless walls (P1263, P1264): your install C:/FTESurf (exe 11994f33 patch-1264); lobbies have P1263
+1. surf_fantasy, by the laser rings: purple glow particles swirl round each ring (they take a second to fill in),
+   and they stop while the game is paused. `vbsp_emit_orbits 0` hides them. Other players see them after the
+   next release (the ring data ships with it).
+2. bhop_ceaseless save 34: the rock walls show their cracked relief. It is subtler than a flat-lit wall would
+   suggest because Source applies it in linear light; `hl2_rnm 0` + loading another map and back shows the old
+   flat look. If it should be stronger, a Momentum screenshot from save 34 settles it.
+3. Other maps' bump-mapped walls and floors (surf_sedona's sand shows its grain) can read a little darker or
+   brighter than before, as Source draws them. Tell me if one looks wrong.
+
 ## P1258/P1259/P1265 the loading screen (both installs: exe b82e01f1 patch-1265, plugin d500ef70, menu d92320af; your Desktop copy with the next release)
 0. P1265: bottom left, the map's name, "by <author> | MOM T | KSF T | stages" and its picture under them (picture and
    line need the map list, which loads half a second after the menu opens). Text a rung smaller than before.

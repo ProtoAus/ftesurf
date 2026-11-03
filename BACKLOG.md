@@ -1,5 +1,13 @@
 # BACKLOG.md
 
+## P1264 world bump mapping (3 Nov): residuals
+- vmt/transition (WorldVertexTransition) and vmt/animated bumped faces get the basis mean but no relief; the
+  nine repacked trailer maps get neither (the repack keeps set 0 only).
+- Per-direction colour is folded into one direction plus the mean colour; a face lit by two differently
+  coloured lights from different sides shows one colour where Source shows two.
+- r_surf.c's RGB8/L8 deluxe walks lack D1's lmextra (only VBSP sets the stride, always E5BGR9).
+- Not compared against a Momentum screenshot: the relief strength rests on the gamma argument (F^(1/2.2)).
+
 ## P1263 orbit particles (3 Nov): review residuals, latent
 - A placed system that is itself an orbit never starts its psys children (the no-psys `continue`
   in cl_emit.qc's EK_PSYS branch runs first) and emit_list counts it "off"; no library system does it.
