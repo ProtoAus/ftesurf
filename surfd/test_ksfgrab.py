@@ -770,35 +770,42 @@ class Tests(unittest.TestCase):
             self.assertEqual(G.tick(self.cache, maximum=24, download=bad), (0, 0))
         self.assertEqual(len(calls), 8)
 
-    # Review 4: no download starts DEMO_SECONDS into a tick (mapwatch waits 300 s for the lock).
-    # P1247: content refusals on BRAKE_MAPS maps with nothing linked yet park the downloads;
-    # what was set aside stays set aside, so nothing comes back to trip it again.
-    def test_p1247_refusals_on_many_maps_none_linked_park_downloads(self):
-        for i in range(G.BRAKE_MAPS + 2):
+    # P1247 review 1: no brake -- refusals on many maps with nothing linked (the queue once
+    # the backlog is done) park nothing; each is set aside and recorded as the converter's.
+    def test_p1247_refusals_on_many_maps_park_nothing(self):
+        for i in range(6):
             self.one_board('surf_k%d' % i, i)
-        calls = []
-        def bad(file):
-            calls.append(file)
-            return refused()
-        now = int(time.time())
-        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now):
-            self.assertEqual(G.tick(self.cache, maximum=24, download=bad), (G.BRAKE_MAPS, 0))
-        state = K._load(os.path.join(self.cache, 'demos.json'))
-        park = K._load(os.path.join(self.cache, G.PARK))
-        self.assertEqual((len(state['failed']), self.parks(), park['until'] - now, park['n']),
-                         (G.BRAKE_MAPS, [G.PARK], K.COOLDOWN, 0))
-        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now + 60):
-            self.assertEqual(G.tick(self.cache, maximum=24, download=bad), (0, 0))
-        self.assertEqual(len(calls), G.BRAKE_MAPS)
-
-    def test_p1247_a_link_first_keeps_the_brake_off(self):
-        rows = [self.one_board('surf_k%d' % i, i) for i in range(G.BRAKE_MAPS + 2)]
-        good = rows[0]['file']
         with patch.object(G.time, 'sleep'):
-            self.assertEqual(G.tick(self.cache, maximum=24,
-                                    download=lambda f: binary() if f == good else refused()),
-                             (len(rows), 1))
-        self.assertEqual(self.parks(), [])
+            self.assertEqual(G.tick(self.cache, maximum=24, download=lambda f: refused()), (6, 0))
+        state = K._load(os.path.join(self.cache, 'demos.json'))
+        self.assertEqual((len(state['failed']), len(state['unconvertible']['keys']), self.parks()),
+                         (6, 6, []))
+
+    # A header the converter cannot read strikes three times, and is its verdict too: a new
+    # converter asks it again. So is an Unconvertible that a full ledger left terminal.
+    def test_p1247_strikes_and_terminal_set_asides_are_released_too(self):
+        self.board([self.r])
+        key = 'surf_test|0|0|' + self.job['runid']
+        sf = os.path.join(self.cache, 'demos.json')
+        now = int(time.time())
+        K._save(sf, dict(jobs={key: dict(self.job, retry=0, strikes=2)}, failed={}))
+        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now):
+            self.assertEqual(G.tick(self.cache, download=lambda f: b'<html>'), (1, 0))
+        state = K._load(sf)
+        self.assertEqual((state['failed'], state['unconvertible']['keys']),
+                         ({key: now + 7 * 86400}, [key]))
+        ledger = self.active_deferral_ledger(now)
+        K._save(sf, dict(jobs={key: dict(self.job, retry=0)}, failed=ledger))
+        with patch.object(G.time, 'time', return_value=now), patch.object(G.time, 'sleep'):
+            self.assertEqual(G.tick(self.cache, download=lambda f: refused()), (1, 0))
+        state = K._load(sf)
+        self.assertEqual((state['jobs'][key]['terminal'], state['unconvertible']['keys']), (True, [key]))
+        state['unconvertible']['converter'] = '0' * 16
+        K._save(sf, state)
+        self.conn.execute("DELETE FROM runs WHERE map='surf_ledger'")
+        self.conn.commit()
+        with patch.object(G.time, 'time', return_value=now + 60), patch.object(G.time, 'sleep'):
+            self.assertEqual(G.tick(self.cache, download=lambda f: binary()), (1, 1))
 
     # P1247: one bad file no longer ends the tick; FILESTREAK of them in a row are the host's.
     def test_p1247_three_bad_files_in_a_row_are_the_hosts(self):
@@ -830,6 +837,7 @@ class Tests(unittest.TestCase):
                 self.assertEqual(G.tick(self.cache, download=lambda f: binary()), want, conv)
         self.assertEqual(K._load(sf)['unconvertible'], dict(converter=G.converter_hash(), keys=[key]))
 
+    # Review 4: no download starts DEMO_SECONDS into a tick (mapwatch waits 300 s for the lock).
     def test_p1240_downloads_stop_at_the_deadline(self):
         self.conv_rows(5)
         clock = iter([0.0, 0.0, 0.0])

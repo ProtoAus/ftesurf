@@ -46,7 +46,6 @@ FILESTREAK = 3             # Patch 896: this many file-level failures in a day, 
 NOT_A_REPLAY = ('replay length out of bounds', 'unsupported replay header', 'truncated v3 header',
                 'unsupported frame/extension size', 'truncated bookmarks or frames',
                 'frame count out of bounds')
-BRAKE_MAPS = 4             # P1247: content refusals on this many maps, nothing linked yet, park a tick's downloads
 FLOOR = 15 << 30           # Patch 896: no download or install below this much free disk
 SCAN = 32
 BINDING = ('map', 'track', 'leg', 'style', 'player', 'runid', 'millis', 'when', 'file')
@@ -535,19 +534,26 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
         print('KSF demos parked locally: deferral ledger exceeds %d; no work or state save' % MAX_FAILED)
         return 0, 0
     jobs = state['jobs']
-    # P1247: Unconvertible set-asides are this converter's verdict; another converter
-    # (a deploy that changes ksfconvert/ksfreplay_info) asks them all again.
+    # P1247: set-asides for what the converter said (Unconvertible, or a third ValueError
+    # strike -- a header it cannot read) are its verdict; another converter (any byte of
+    # ksfconvert/ksfreplay_info changed by a deploy) asks them all again.
     conv = converter_hash()
     unconv = state.get('unconvertible') if isinstance(state.get('unconvertible'), dict) else {}
     keys = unconv.get('keys') if isinstance(unconv.get('keys'), list) else []
-    keys = [k for k in keys if isinstance(k, str) and type(state['failed'].get(k)) is int]
+    keys = [k for k in keys if isinstance(k, str) and (
+        type(state['failed'].get(k)) is int
+        or (isinstance(jobs.get(k), dict) and jobs[k].get('terminal')))]
     if unconv and unconv.get('converter') != conv:
         for k in keys:
-            del state['failed'][k]
+            state['failed'].pop(k, None)
+            jobs.pop(k, None)
         print('KSF demos: the converter changed; %d set-aside(s) asked again' % len(keys))
         keys = []
     unconv = state['unconvertible'] = dict(converter=conv, keys=keys)
-    refused_maps = set()
+
+    def verdict(key):
+        if key not in unconv['keys']:
+            unconv['keys'].append(key)
     conn = S.connect()
     made = linked = recovered = 0
     stop = time.monotonic() + DEMO_SECONDS
@@ -695,27 +701,16 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 # downloads of the same bytes and held a queue slot two days (97 of 252 on 3 Nov).
                 # Bytes that are no replay at all never get here (NOT_A_REPLAY strikes). Review 3:
                 # no run-of-refusals park -- one map's files refuse together and sit together.
+                # P1247: no brake either (review 1: once the backlog is done the queue is
+                # mostly known refusals back from their week, so "none linked" is normal); a
+                # new converter asks these again (verdict, tick's start).
                 print('KSF demo set aside 7 days: %s' % ' '.join(str(e).split())[:120])
                 if key in state['failed'] or len(state['failed']) < MAX_FAILED:
                     state['failed'][key] = now + 7 * 86400
                     jobs.pop(key, None)
-                    if key not in unconv['keys']:
-                        unconv['keys'].append(key)
                 else:
                     job.update(retry=now + 7 * 86400, terminal=True)
-                # P1247: refusals on BRAKE_MAPS maps with nothing linked yet this tick are the
-                # converter's or the format's, not the files': stop and park downloads. What
-                # was set aside stays (nothing comes back to the queue's head to trip it again);
-                # a new converter asks it all again (tick's start).
-                if asked:
-                    refused_maps.add(job['map'])
-                    if not linked and len(refused_maps) >= BRAKE_MAPS:
-                        K._save(os.path.join(cache, PARK), dict(
-                            at=now, until=now + K.COOLDOWN, n=0,
-                            why='demo conversion refused on %d maps, none linked' % len(refused_maps)))
-                        print('KSF demos parked %d min: conversion refused on %d maps, none linked'
-                              % (K.COOLDOWN // 60, len(refused_maps)))
-                        break
+                verdict(key)
             except (OSError, ValueError) as e:
                 job['retry'] = now + 86400
                 job['why'] = type(e).__name__
@@ -728,6 +723,8 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                         jobs.pop(key, None)
                     else:
                         job.update(retry=now + 7 * 86400, terminal=True)
+                    if isinstance(e, ValueError):
+                        verdict(key)
                 elif local_only:
                     state['failed'][key] = dict(retry=job['retry'], strikes=job['strikes'])
             finally:

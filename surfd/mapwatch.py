@@ -172,6 +172,8 @@ WATCH_GB = 6.0          # ...and bytes
 ZONES_MAX = 40          # zone requests a run
 BETA_BOARDS_MAX = 40    # P1247: Beta maps' board lists asked a run (139 of 306 held had none, 3 Nov)
 BETA_BOARDS_DAYS = 7    # ...and how often each is asked again
+MOM_LOCK = "/tmp/surfd-momwatch.lock"   # what momwatch's cron line holds for a tick
+MOM_WAIT = 300          # s to wait for it before leaving a Beta purge to the next run
 MAX_MAP_BYTES = 1 << 30     # the largest BSP known is 335 MB
 MAX_API_BYTES = 6 << 20     # a list page is 1.4 MB, ksf.surf/maps 0.8 MB; parsed, a
                             # megabyte of empty rows is tens of megabytes of objects
@@ -335,6 +337,31 @@ def ksf_turn():
             except OSError:
                 if time.time() - t0 >= KSF_WAIT:
                     raise Refused("its crawl is on it: not asked beside that")
+                time.sleep(2)
+        yield
+    finally:
+        if fh is not None:
+            fh.close()
+
+
+@contextlib.contextmanager
+def mom_turn():
+    """P1247: momwatch's cron lock (its `flock -n` skips a tick that starts meanwhile),
+    waited for MOM_WAIT, for beta_purge. Linux only, as ksf_turn."""
+    try:
+        import fcntl
+        fh = open(MOM_LOCK, "a")
+    except (ImportError, OSError):
+        fh = None
+    try:
+        t0 = time.time()
+        while fh is not None:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.time() - t0 >= MOM_WAIT:
+                    raise Refused("momwatch is on its boards: not purged beside it")
                 time.sleep(2)
         yield
     finally:
@@ -507,33 +534,42 @@ def leaderboard_boards(lbs, gm):
     return tier, ranked, sorted(boards)
 
 
-def beta_boards(pacer, extra, inv, asked, tracks_path, now):
-    """P1247 (Lex, 3 Nov: collect them): -> {key: row with boards} for held Beta maps,
-    each from its own /v1/maps/<id>?expand=leaderboards (the public list carries only
-    approved maps). A map with no momtracks.tsv line goes first, then the longest
-    unasked; BETA_BOARDS_MAX a run, each again after BETA_BOARDS_DAYS. `asked` (state)
-    is updated. A 401/403/404 is that map's (it waits its turn); any other refusal is
-    raised for the caller to end the API for this run."""
+def _next(asked, k):
+    v = asked.get(k)
+    return v["next"] if isinstance(v, dict) and type(v.get("next")) is int else 0
+
+
+def beta_boards(pacer, extra, inv, asked, tracks_path, now, deadline):
+    """P1247 (Lex, 3 Nov: collect them): -> ({key: row with boards}, why the API ended
+    or "") for held Beta maps, each from its own /v1/maps/<id>?expand=leaderboards (the
+    public list carries only approved maps). A map with no momtracks.tsv line goes
+    first, then the one due longest; BETA_BOARDS_MAX a run. `asked` (state) gets
+    {"next": when it is due again, "id": its map id}: BETA_BOARDS_DAYS after an answer
+    or a refusal of that map (401/403/404), a day after any other refusal -- which ends
+    the API for the run, keeping what was answered before it."""
     try:
         with io.open(tracks_path, encoding="utf-8") as fh:
             have = {ln.split("\t", 1)[0].lower() for ln in fh if not ln.startswith("#")}
     except OSError:
         have = set()
     due = [k for k, r in extra.items() if k in inv and type(r.get("id")) is int
-           and now - (asked.get(k) if type(asked.get(k)) is int else 0) >= BETA_BOARDS_DAYS * 86400]
-    due.sort(key=lambda k: (k in have, asked.get(k) if type(asked.get(k)) is int else 0, k))
+           and _next(asked, k) <= now]
+    due.sort(key=lambda k: (k in have, _next(asked, k), k))
     out = {}
     for k in due[:BETA_BOARDS_MAX]:
+        if time.time() > deadline:
+            break
         r = extra[k]
         try:
             m = pacer.json("%s/maps/%d?expand=leaderboards" % (MOM_API, r["id"]))
         except Refused as e:
-            if e.code not in (401, 403, 404):
-                raise
-            asked[k] = now
+            own = e.code in (401, 403, 404)
+            asked[k] = {"next": now + (BETA_BOARDS_DAYS if own else 1) * 86400, "id": r["id"]}
+            if not own:
+                return out, str(e)
             print("  %s: Beta boards refused (%s): asked again in %d days" % (k, e, BETA_BOARDS_DAYS))
             continue
-        asked[k] = now
+        asked[k] = {"next": now + BETA_BOARDS_DAYS * 86400, "id": r["id"]}
         if (not isinstance(m, dict) or m.get("id") != r["id"]
                 or str(m.get("name") or "").lower() != k):
             print("  %s: Beta boards: the reply is not this map's" % k)
@@ -541,9 +577,35 @@ def beta_boards(pacer, extra, inv, asked, tracks_path, now):
         tier, _, boards = leaderboard_boards(m.get("leaderboards"), 1 if k.startswith("surf_") else 2)
         if boards:
             out[k] = {"name": r["name"], "id": r["id"], "tier": tier, "boards": boards}
-    for k in [k for k in asked if k not in extra]:
-        del asked[k]
-    return out
+    return out, ""
+
+
+def beta_purge(name, mapid, boards_dir):
+    """P1247: Momentum drops a Beta map's testing runs when it approves the map
+    (surf_solitude, approved 24 Oct 11:22Z: the oldest of its top 100 is 11:30Z), so
+    the runs filed from its Beta boards go, and so do their cached pages -- momfetch
+    keeps every row it has seen -- for momwatch to fetch the approved boards afresh.
+    Under momwatch's own lock, so a fetch in flight cannot write the old rows back.
+    -> (board files removed, run rows removed)."""
+    files = 0
+    with mom_turn():
+        prefix = "%d_g" % mapid
+        try:
+            names = os.listdir(boards_dir)
+        except FileNotFoundError:
+            names = []
+        for f in names:
+            if f.startswith(prefix) and f.endswith(".json"):
+                os.remove(os.path.join(boards_dir, f))
+                files += 1
+        conn = S.connect()
+        try:
+            with conn:
+                rows = conn.execute("DELETE FROM runs WHERE tier=? AND map=?",
+                                    (S.TIER_MOMENTUM, S.clean_map(name))).rowcount
+        finally:
+            conn.close()
+    return files, rows
 
 
 TRACKS_HEAD = "# map\tmapid\ttier\tgamemode\ttrackType\ttrackNum\n"
@@ -1293,6 +1355,8 @@ def main():
     ap.add_argument("--state", default=os.path.join(S.DATA_DIR, "mapwatch"))
     ap.add_argument("--tracks", default=S.MOMTRACKS_PATH,
                     help="momtracks.tsv, rewritten from Momentum's list (P1117)")
+    ap.add_argument("--boards", default=os.path.join(S.DATA_DIR, "momboards"),
+                    help="momfetch's board cache, for P1247's Beta purge (momgrab's default)")
     ap.add_argument("--site-zones", default="",
                     help="also copy a published zone file here when it holds "
                          "none of that name (what clients fetch)")
@@ -2103,16 +2167,29 @@ def run(a):
                        "ktier": ksf[k]["tier"], "of": inv[k]}
     link_ports(cat, inv, names | set(extra))
     if "mom" in read:
-        # P1247: and held Beta maps' boards, each from its own reply.
+        # P1247: held Beta maps' boards, each from its own reply; a Beta map whose boards
+        # were filed and that Momentum's list now carries was approved: purged first.
+        asked = st.get("betaboards") if isinstance(st.get("betaboards"), dict) else {}
+        asked = {k: v for k, v in asked.items() if isinstance(v, dict) and type(v.get("id")) is int}
+        st["betaboards"] = asked
+        if a.go:
+            for k in sorted(k for k in asked if k in names):
+                try:
+                    files, rows = beta_purge(k, asked[k]["id"], a.boards)
+                except Refused as e:
+                    print("  %s: approved, Beta runs not purged yet (%s)" % (k, e))
+                    continue
+                del asked[k]
+                print("  %s: approved: its Beta boards purged (%d file(s), %d run(s))" % (k, files, rows))
+        if extra:                           # an unread Beta list forgets nothing
+            for k in [k for k in asked if k not in extra and k not in names]:
+                del asked[k]
         beta = {}
         if "api" not in dead and time.time() < deadline:
-            asked = st.get("betaboards") if isinstance(st.get("betaboards"), dict) else {}
-            st["betaboards"] = asked
-            try:
-                beta = beta_boards(pacer, extra, inv, asked, a.tracks, now)
-            except Refused as e:
-                dead["api"] = str(e)
-                print("  api refused (%s): nothing more is asked of it this run" % e)
+            beta, why = beta_boards(pacer, extra, inv, asked, a.tracks, now, deadline)
+            if why:
+                dead["api"] = why
+                print("  api refused (%s): nothing more is asked of it this run" % why)
             print("  beta boards: %d map(s) answered with boards" % len(beta))
         # P1117: momwatch/momfetch crawl only the boards this file names.
         n, changed = write_tracks(a.tracks, {**mom, **beta}, inv)

@@ -377,58 +377,118 @@ def case_p1117_momtracks():
 
 def case_p1247_beta_boards():
     """P1247: held Beta maps' boards come from each map's own reply into momtracks.tsv,
-    the unlisted first, BETA_BOARDS_DAYS apart; a 401 waits its turn, a 429 ends the API."""
+    the unlisted first, BETA_BOARDS_DAYS apart; a 401 waits its turn; any other refusal
+    ends the API for the run, keeps what was answered and holds that map a day; and a
+    Beta map Momentum's list later carries (approved) has its Beta runs purged."""
     lb = [{"gamemode": 1, "trackType": tt, "trackNum": tn, "style": st, "tier": None, "type": 3}
           for tt, tn, st in ((0, 1, 0), (1, 1, 0), (0, 1, 2))]
-    mom = dict(MOM, surf_bt=dict(M("bt"), leaderboards=lb), surf_bu=M("bu"))
-    w, maps, state = setup(mom, {}, held=[("surf_bt", bsp("bt")), ("surf_bu", bsp("bu"))])
-    w.hidden = {"surf_bt", "surf_bu"}
+    W.MOM_LOCK = os.path.join(HOME, "momwatch.lock")   # never the live momwatch's
+    mom = dict(MOM, surf_bz=dict(M("bz"), leaderboards=lb), surf_ba=M("ba"))
+    w, maps, state = setup(mom, {}, held=[("surf_bz", bsp("bz")), ("surf_ba", bsp("ba"))])
+    w.hidden = {"surf_bz", "surf_ba"}
     os.makedirs(state, exist_ok=True)
     with io.open(os.path.join(state, "extra.tsv"), "w", newline="\n") as fh, \
             io.open(os.path.join(state, "betaids.tsv"), "w", newline="\n") as ids:
-        for n in ("surf_bt", "surf_bu"):
+        for n in ("surf_ba", "surf_bz"):
             fh.write("%s %s %s%s.bsp\n" % (n, sha(bsp(n[5:])), W.MOM_CDN, uuid_of(n)))
             ids.write("%s %s %d -\n" % (n, sha(bsp(n[5:])), w.ids[n]))
     tracks = os.path.join(os.path.dirname(maps), "momtracks.tsv")
     with io.open(tracks, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(W.TRACKS_HEAD + "surf_bu\t%d\t0\t1\t0\t1\n" % w.ids["surf_bu"])
-    url = {n: "%s/maps/%d?expand=leaderboards" % (W.MOM_API, w.ids[n]) for n in ("surf_bt", "surf_bu")}
+        fh.write(W.TRACKS_HEAD + "surf_ba\t%d\t0\t1\t0\t1\n" % w.ids["surf_ba"])
+    boards = os.path.join(os.path.dirname(maps), "momboards")
+    url = {n: "%s/maps/%d?expand=leaderboards" % (W.MOM_API, w.ids[n]) for n in ("surf_bz", "surf_ba")}
+    sp = os.path.join(state, "state.json")
+    run = ("--go", "--tracks", tracks, "--boards", boards)
 
     def beta_asks():
         return [u for u in w.asked if "?expand=leaderboards" in u]
 
+    def asked():
+        return json.load(io.open(sp, encoding="utf-8")).get("betaboards")
+
     def rewind():
-        sp = os.path.join(state, "state.json")
         st = json.load(io.open(sp, encoding="utf-8"))
         st["betaboards"] = {}
         with io.open(sp, "w", encoding="utf-8") as fh:
             fh.write(json.dumps(st))
 
-    tick(maps, state, "--go", "--tracks", tracks)
+    def lines(n):
+        return [l for l in read(tracks).decode().splitlines() if l.startswith(n + "\t")]
+
+    t0 = int(time.time())
+    tick(maps, state, *run)
     check("P1247: each held Beta map is asked for its own boards, the unlisted one first",
-          beta_asks(), [url["surf_bt"], url["surf_bu"]])
+          beta_asks(), [url["surf_bz"], url["surf_ba"]])
     check("...and its Normal boards are written under its id",
-          [l for l in read(tracks).decode().splitlines() if l.startswith("surf_bt")],
-          ["surf_bt\t%d\t0\t1\t0\t1" % w.ids["surf_bt"], "surf_bt\t%d\t0\t1\t1\t1" % w.ids["surf_bt"]])
+          lines("surf_bz"), ["surf_bz\t%d\t0\t1\t0\t1" % w.ids["surf_bz"],
+                             "surf_bz\t%d\t0\t1\t1\t1" % w.ids["surf_bz"]])
+    a = asked()
+    check("...and each is due again BETA_BOARDS_DAYS later, with its id kept",
+          (a["surf_bz"]["id"], 0 <= a["surf_bz"]["next"] - t0 - W.BETA_BOARDS_DAYS * 86400 <= 5),
+          (w.ids["surf_bz"], True))
     w.asked = []
-    tick(maps, state, "--go", "--tracks", tracks)
-    check("...and is not asked again within BETA_BOARDS_DAYS", beta_asks(), [])
+    tick(maps, state, *run)
+    check("...and is not asked again before then", beta_asks(), [])
+
     rewind()
     w.asked = []
-    w.zonecode["surf_bt"] = 401
-    tick(maps, state, "--go", "--tracks", tracks)
+    w.zonecode["surf_ba"] = 401
+    tick(maps, state, *run)
     check("...a 401 for one Beta map leaves it for its turn and asks the next",
-          beta_asks(), [url["surf_bt"], url["surf_bu"]])
+          beta_asks(), [url["surf_ba"], url["surf_bz"]])
+    w.asked = []
+    tick(maps, state, *run)
+    check("...and that map is held back BETA_BOARDS_DAYS", beta_asks(), [])
+
     rewind()
     w.asked = []
-    w.zonecode["surf_bt"] = 429
+    w.zonecode["surf_ba"] = 500
+    t1 = int(time.time())
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        tick(maps, state, "--go", "--tracks", tracks)
-    check("...a 429 ends the API for the run, and the boards held stay",
-          (beta_asks(), "api refused (HTTP 429)" in out.getvalue(),
-           sum(l.startswith("surf_bt") for l in read(tracks).decode().splitlines())),
-          ([url["surf_bt"]], True, 2))
+        tick(maps, state, *run)
+    check("...a 500 ends the API for the run", (beta_asks(), "api refused (HTTP 500)" in out.getvalue()),
+          ([url["surf_ba"]], True))
+    w.asked = []
+    tick(maps, state, *run)
+    check("...holds that map a day, and the maps behind it are asked next run (review 1)",
+          (beta_asks(), 0 <= asked()["surf_ba"]["next"] - t1 - 86400 <= 5), ([url["surf_bz"]], True))
+
+    rewind()
+    w.asked = []
+    del w.zonecode["surf_ba"]
+    w.zonecode["surf_bz"] = 429
+    w.mom["surf_ba"] = dict(w.mom["surf_ba"], leaderboards=lb)
+    tick(maps, state, *run)
+    check("...what was answered before a refusal is kept (review 1)",
+          (beta_asks(), len(lines("surf_ba"))), ([url["surf_ba"], url["surf_bz"]], 2))
+
+    # Approved: the public list now carries surf_bz. Its Beta boards and runs go.
+    del w.zonecode["surf_bz"]
+    os.makedirs(boards, exist_ok=True)
+    for f in ("%d_g1_t01.json" % w.ids["surf_bz"], "%d_g1_t11.json" % w.ids["surf_bz"],
+              "%d_g1_t01.json" % w.ids["surf_ba"]):
+        with io.open(os.path.join(boards, f), "w") as fh:
+            fh.write("{}")
+    for n, sid in (("surf_bz", "76561197960000001"), ("surf_bz", "76561197960000002"),
+                   ("surf_ba", "76561197960000003")):
+        sql("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis,"
+            " flags, node, runid, submitted, replay_id) VALUES (?,0,0,?,'clean',?,'x',1,66.67,1000,"
+            "0,'mom','',1,0)", (n, S.TIER_MOMENTUM, sid))
+    w.hidden = {"surf_ba"}
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        tick(maps, state, *run)
+    conn = REAL_CONNECT()
+    try:
+        left = sorted(r[0] for r in conn.execute("SELECT map FROM runs WHERE tier=?", (S.TIER_MOMENTUM,)))
+    finally:
+        conn.close()
+    check("...approved, a Beta map's cached boards and imported runs are purged, no other map's",
+          (sorted(os.listdir(boards)), left, "surf_bz" in asked(),
+           "surf_bz: approved: its Beta boards purged (2 file(s), 2 run(s))" in out.getvalue()),
+          (["%d_g1_t01.json" % w.ids["surf_ba"]], ["surf_ba"], False, True))
+    sql("DELETE FROM runs WHERE tier=?", (S.TIER_MOMENTUM,))
 
 
 def case_p1117r1_tracks_guards():
