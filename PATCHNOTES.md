@@ -21,6 +21,12 @@
 
 ## next
 
+### P1262 Smooth leaves and fences with MSAA
+- With vid_multisample on, the cut-out edges of leaves, fences and grates are smoothed too, about as well as render scale 2, at no measurable cost. r_alphacoverage 0 turns it off.
+
+### P1261 Less CPU work on Source maps
+- Source maps no longer re-check every prop and terrain patch against what you can see each frame while you stay in the same part of the map: surf_demise spends about a quarter less time on it.
+
 ### P1259 The loading screen keeps moving
 - Big Source maps no longer freeze the loading screen while they build their collision, materials and sky: on surf_eternity those were stops of 1.4 s, 0.4 s and 0.4 s.
 - Starting a map yourself spends less time placing its entities.

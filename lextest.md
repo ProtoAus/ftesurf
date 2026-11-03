@@ -16,13 +16,14 @@
 3. Nothing should look different from the near clip (gl_mindist 2); if a wall, ceiling or water surface
    cuts away in a replay, rewind chase or spectate, tell me (`gl_mindist 1` puts it back).
 
-## Frame-rate work (P1245, P1260): both installs now (exe 79dbfde0, plugin 1ba21f71); Desktop copy with the next release
+## Frame-rate work (P1245, P1260, P1261, P1262): both installs now (exe 39e00f6e, plugin d500ef70); Desktop copy with the next release
 1. `r_capturehalfrate 1` (saves in your config). surf_eternity saves 4 and 10, boreas save 10, garden: faster
    (rig: eternity s4 200 -> 273 fps). Turn and strafe in front of the glass and the water: the reflection
    should stay put when you turn; when you strafe fast, nearby things in it may lag a frame. 0 turns it off.
 2. MSAA: `r_renderscale 1` and `vid_multisample 4` (takes effect at once). Edges as smooth as render scale 2
-   for about half the graphics work (demise s33 306 -> 348 fps on the rig). Trees and fences stay jagged
-   under MSAA; if they bother you, `r_renderscale 1.5` (demise 369 fps) or back to 2.
+   for about half the graphics work (demise s33 306 -> 348 fps on the rig). Since P1262 (exe 39e00f6e) the
+   cut-out edges of trees and fences are smoothed too: look at demise's firs; `r_alphacoverage 0` puts the
+   hard cut back for comparison.
 
 ## Your ramp/prop list (P1248-P1252): both installs now (exe b2b09404, plugin 7b93539c); lobbies live
 1. surf_sedona save 2 and surf_pantheon save 13 on a LOBBY (the server decides; your installs predict the same):

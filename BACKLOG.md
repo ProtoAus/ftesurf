@@ -91,18 +91,20 @@
   re-render after glass or a portal shows one frame of uncorrected kinds; 3D-sky water samples the reused
   level-0 targets uncorrected (N+1 frames old); turning clamps a strip at the leading edge on reused frames.
   Half-size captures (r_watertargetsize 512 against the 1024 cap) gained 0-8%: the captures are CPU-bound.
-- P1260 (MSAA, live in installs 3 Nov): foliage and fences (alpha test) are not smoothed; alpha-to-coverage
-  needs the MASKLT discards in vmt/{animated,lightmapped,transition,unlit,unlitreflect,vertexlit} and
-  defaultskin/defaultwall rewritten to output a sharpened alpha (offered to Lex, not built). The resolve
-  costs ~0.06 ms CPU a frame. r_skyroom_scale below 1 draws full size under MSAA (two blits measured slower).
-- P1246 (3D sky only where sky shows): not built. Lex's settings give the scene a DEPTH32 depth texture with
+- P1260 (MSAA, live in installs 3 Nov): the resolve costs ~0.06 ms CPU a frame; r_skyroom_scale below 1 draws
+  full size under MSAA (two blits measured slower). P1262 (live 3 Nov) smooths alpha-tested Source materials by
+  alpha-to-coverage; the engine's own defaultskin/defaultwall (Quake/HL models and walls) still cut, and under
+  real-time lights the additive light pass (blended, so cut) leaves the outermost covered samples unlit.
+  On GLES2 fwidth needs GL_OES_standard_derivatives, which nothing enables (desktop only today).
+- P1246 (3D sky only where sky shows): dropped (Lex agreed 3 Nov). Lex's settings give the scene a DEPTH32 depth texture with
   no stencil (r_shadow_shadowmapping 1), the sky masks would have to move after the opaque world, and at
   render scale 1 + MSAA demise is CPU-bound (2.7 ms CPU, 1.8 ms GPU) so the GPU saving buys no frames; at
   scale 2 r_skyroom_scale 0.5 already takes most of it.
 - CPU after P1245/P1260 (demise s33 profile, 20 s, plugin symbols): VBSP_PrepareFrame 6.3%, RecursiveWorldNode
   5.1%, EdictInFatPVS 4.2%, MarkLeaves 3.7%, BoxOnPlaneSide 2.4% of the main thread; the static props'
-  nearest-cubemap scan (Mod_CubemapForOrigin) is under 0.3%. Next lever: cache EdictInFatPVS verdicts per
-  view level while the view's clusters, area and FloodAreaConnections count are unchanged (~5% on demise).
+  nearest-cubemap scan (Mod_CubemapForOrigin) is under 0.3%. P1261 (live 3 Nov) caches the EdictInFatPVS
+  verdicts per view level: demise PrepareFrame 0.79 -> 0.60 ms; vbsp_pvsstat now counts only the misses.
+  GLBE_SelectEntity's 4x4 inverse (1.2%) feeds e_eyepos, which 15 of 23 vmt shaders read: not worth deferring.
   Eternity's Surf_RenderDynamicLightmaps 10.8% is the first touch of each emitted face (P1237's skip test
   moved the cost, not removed it). Prop collision (BIH_MODEL -> the plugin's .phy NativeTrace) ~7% on demise.
 - vid_restart mid-map left surf_eternity s4's PrepareFrame at 1.76 ms against 1.11 for the following seconds
