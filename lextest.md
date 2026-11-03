@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1258/P1259 the loading screen (both installs: exe d1008a7f patch-1259, plugin 08c7b116, menu 2100c9b2; your Desktop copy with the next release)
+1. Join a lobby: they were all updated this evening (P1256), so the first join downloads the new game code. The
+   loading screen should stay up with "Downloading ..." at the bottom left (file, percent, speed, size left).
+2. Load surf_eternity (from the menu, or on a lobby): the wireframe and the dots keep moving the whole way, and
+   the newest step shows its seconds.
+3. Short freezes are left: about 0.3 s at the very start, about 0.35 s on a lobby join (a file scan), about 0.3 s
+   at the end (shader reload).
+4. If anything looks off: `set ls_debug 1`, load again, and send the console lines starting "loadscreen:".
+
 ## Follow-ups (P1254-P1257): both installs (exe patch-1257); lobbies have P1254 and P1256
 1. A map with no zones (surf_1day): the energy line reads "e 0 from jump" standing at the spawn.
 2. surf_hyper on a lobby: the ramp lasers chase on and off. In a local game with sv_cheats 1,

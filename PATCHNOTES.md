@@ -21,6 +21,15 @@
 
 ## next
 
+### P1259 The loading screen keeps moving
+- Big Source maps no longer freeze the loading screen while they build their collision, materials and sky: on surf_eternity those were stops of 1.4 s, 0.4 s and 0.4 s.
+- Starting a map yourself spends less time placing its entities.
+
+### P1258 The loading screen says what it is doing
+- Bottom left: the server it is connecting to and for how long, a download's file, percent, speed and size left, and how far the load has got.
+- A join that downloads files (a lobby's update, a missing map) keeps the loading screen up instead of showing a black screen.
+- The newest step shows how long it has been running, and the whole load's time sits under "Loading".
+
 ### P1257 Sharper depth far away
 - The camera's near clip is 2 units instead of 1 (gl_mindist; Source's 3D sky uses 2, its main view 7), so surfaces far away fight each other less. Weapons keep 1. `gl_mindist 1` puts it back.
 

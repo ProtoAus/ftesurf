@@ -1,5 +1,23 @@
 # AGENT_NOTES.md
 
+## P1258/P1259 loading screen info and stalls (3 Nov; root C:/FTESurf-worktrees/loading1258-20261103)
+- Menu (src/menu/m_loading.qc): the bottom-left lines come from serverkey("transferring"/"dlstate"/
+  "loadstate"), read with LS_Tok, never tokenize: argv is one buffer shared by every VM, and the screen
+  draws inside their builtins (a loading pump during a CSQC model wait).
+- va() has two buffers. Nothing on the loading-step path (SCR_LoadingStepSet) or in serverkey's loading
+  fields may use it: download names (csprogsvers, sounds) and the code a pump interrupts hold va() strings.
+- Engine P1258: for a menu QC loading screen the enqueue leaves the plaque alone, CL_SendDownloadStartRequest
+  drops it (step "download <file>"), CL_DownloadFinished and CL_RequestNextDownload raise it once per
+  download. CL_DownloadFinished loads a downloaded world synchronously (22 s for surf_eternity).
+- Engine P1259: pumps in VBSP_BuildBIHMain and VBSP_GenerateMaterials (plugin, through the
+  "FTESurfLoading/1" interface), BIH_BuildNode, Mod_Batches_*, between sky faces; SV_BadField looks
+  ED_ParseUnknownEpair up once per spawn (each PR_FindFunction is a linear scan of every global).
+- To find a stall: engine branch p1259-probe (cl_screen.c P1259PROF samples the main thread's stack while
+  the loading screen is 100 ms stale, and writes <cwd>/p1259prof.txt at the end of each load), then
+  `python tools/loadprof_resolve.py p1259prof.txt <exe>.db <plugin dll>`.
+- Harness: `ui_close` alone is undone by the engine on the next idle frame (con_stayhidden opens the menu);
+  send "connect X; ui_close" in one line, as the menu does.
+
 ## P1254-P1257 follow-ups to the ramp/prop list (3 Nov; root C:/FTESurf-worktrees/rampprop-20261103)
 - PM_DETTEST'S MOVER PASSES NEVER COLLIDED. SV_DetTest_f memsets pmove, leaving skipent 0 = the world
   physent's info, so PM_PlayerTrace skips the world (pmovetst.c:1168): mover/srcmover/propmover/pinmover/
