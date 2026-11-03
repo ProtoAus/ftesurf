@@ -494,11 +494,18 @@ void(vector scr) LS_Draw =
 		drawstring(_sui_pixel_align([x0, y]), ls_itext[i], sz, '1 1 1', 0.85, 0);
 		y = y - sz_y * 0.5;
 	}
-	// P1265: the map's card above them: thumbnail, name, the map list's detail line (1080 p: 160 px tall)
+	// P1265: the map's card above them: name, the map list's detail line, thumbnail (1080 p: 160 px tall)
 	LS_Card();
 	if (ls_cardmap != "")
 	{
 		y = y - sz_y * 0.75;
+		if (ls_cardpage >= 0 && ls_cardcell >= 0)
+		{
+			th = floor(phys / 6.75) / sui_style_pixel_ratio_y;
+			y = y - th;
+			ui_thumb(_sui_pixel_align([x0, y]), [th * 16 / 9, th], ls_cardpage, ls_cardcell);
+			y = y - sz_y * 0.6;
+		}
 		if (ls_cardinfo != "")
 		{
 			y = y - sz_y;
@@ -507,13 +514,6 @@ void(vector scr) LS_Draw =
 		}
 		y = y - nsz_y;
 		drawstring(_sui_pixel_align([x0, y]), ls_cardmap, nsz, '1 1 1', 1, 0);
-		y = y - nsz_y * 0.6;
-		if (ls_cardpage >= 0 && ls_cardcell >= 0)
-		{
-			th = floor(phys / 6.75) / sui_style_pixel_ratio_y;
-			y = y - th;
-			ui_thumb(_sui_pixel_align([x0, y]), [th * 16 / 9, th], ls_cardpage, ls_cardcell);
-		}
 	}
 	if (time - ls_t0 >= 1)                  // the whole load, under "Loading"
 	{
