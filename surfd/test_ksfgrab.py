@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import json
 import os
 from pathlib import Path
+import re
 import struct
 import subprocess
 import sys
@@ -750,45 +751,35 @@ class Tests(unittest.TestCase):
         K._save(K.board_path(self.cache, 'surf_conv', 0), dict(rows=rows, done=True))
         return rows
 
-    # P1240 review 2: CONVSTREAK refusals in a row are not the files' -- undone, and downloads park.
-    def test_p1240_conversion_streak_parks_and_undoes_its_set_asides(self):
-        rows = self.conv_rows(6)
+    # Review 3: one map's files refuse together and sit together in the queue: each is set
+    # aside on its own, nothing parks, and the next tick asks none of them again.
+    def test_p1240_one_maps_refusals_in_a_row_are_each_set_aside(self):
+        self.conv_rows(8)
         calls = []
         def bad(file):
             calls.append(file)
-            return refused()        # a replay every file of which refuses: not the files' fault
+            return refused()
         now = int(time.time())
         with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now):
-            self.assertEqual(G.tick(self.cache, maximum=24, download=bad), (G.CONVSTREAK, 0))
+            self.assertEqual(G.tick(self.cache, maximum=24, download=bad), (8, 0))
         state = K._load(os.path.join(self.cache, 'demos.json'))
-        self.assertEqual((state['failed'], 'convstreak' in state), ({}, False))
-        self.assertEqual(self.parks(), [G.PARK])
-        park = K._load(os.path.join(self.cache, G.PARK))
-        self.assertEqual((park['until'] - now, 'conversion' in park['why']), (K.COOLDOWN, True))
-        tripped = 'surf_conv|0|0|' + G.candidate('surf_conv', 0, 0, rows[G.CONVSTREAK-1])['runid']
-        self.assertEqual(state['jobs'][tripped]['retry'], now + K.COOLDOWN)
-        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now + 60):
+        self.assertEqual((len(state['failed']), state['jobs'], self.parks()), (8, {}, []))
+        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now + 86400):
             self.assertEqual(G.tick(self.cache, maximum=24, download=bad), (0, 0))
-        self.assertEqual(len(calls), G.CONVSTREAK)
-        self.assertEqual(len(K._load(os.path.join(self.cache, 'demos.json'))['jobs']), 6)  # undone ones requeued
+        self.assertEqual(len(calls), 8)
 
-    def test_p1240_a_good_conversion_resets_the_streak(self):
-        rows = self.conv_rows(7)
-        good = rows[G.CONVSTREAK-1]['file']
-        def mixed(file):
-            return binary() if file == good else refused()
-        with patch.object(G.time, 'sleep'):
-            self.assertEqual(G.tick(self.cache, maximum=24, download=mixed), (7, 1))
-        state = K._load(os.path.join(self.cache, 'demos.json'))
-        self.assertEqual((len(state['failed']), self.parks()), (6, []))
-
-    # Review 2: bytes that are not a whole replay (a 200 page, a cut body) and install's own
-    # refusals strike as before; every NOT_A_REPLAY message is one ksfreplay_info raises.
+    # Review 2: bytes that are not a whole replay (a 200 page, a cut body, empty) and install's own
+    # refusals strike as before. NOT_A_REPLAY is exactly inspect's refusals before the bookmark loop.
     def test_p1240_not_a_replay_and_other_value_errors_still_strike(self):
         source = (G.TOOLS / 'ksfreplay_info.py').read_text(encoding='utf-8')
-        for message in G.NOT_A_REPLAY:
-            self.assertIn("raise ValueError('%s')" % message, source)
-        for body in (b'<!DOCTYPE html><html>Just a moment...</html>', binary()[:-7],
+        body = source[source.index('def inspect('):]
+        head, rest = body.split('for i in range(marks):', 1)
+        rest = rest[:rest.index('\ndef ')]
+        raised = r"raise ValueError\('([^']*)'\)"
+        self.assertEqual(set(re.findall(raised, head)), set(G.NOT_A_REPLAY))
+        self.assertEqual(set(re.findall(raised, rest)) & set(G.NOT_A_REPLAY), set())
+        self.assertIn('invalid bookmark', re.findall(raised, rest))
+        for body in (b'<!DOCTYPE html><html>Just a moment...</html>', binary()[:-7], b'',
                      b'\0' * (G.MAX_BYTES + 1)):
             for name in ('demos.json', G.PARK):
                 (Path(self.cache) / name).unlink(missing_ok=True)
