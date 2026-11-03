@@ -361,6 +361,15 @@ class BodyBroken(OSError):
     """Patch 891: the host answered for this file and its body broke after the headers."""
 
 
+def converter_hash():
+    """P1247: what decides an Unconvertible: ksfconvert and the ksfreplay_info it reads with."""
+    h = hashlib.sha256()
+    for mod in (C, C.K):
+        with open(mod.__file__, 'rb') as f:
+            h.update(f.read())
+    return h.hexdigest()[:16]
+
+
 class Unconvertible(ValueError):
     """P1240: ksfconvert refused this replay's content for this job; the same bytes refuse the same way."""
 
@@ -525,6 +534,26 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
         print('KSF demos parked locally: deferral ledger exceeds %d; no work or state save' % MAX_FAILED)
         return 0, 0
     jobs = state['jobs']
+    # P1247: set-asides for what the converter said (Unconvertible, or a third ValueError
+    # strike -- a header it cannot read) are its verdict; another converter (any byte of
+    # ksfconvert/ksfreplay_info changed by a deploy) asks them all again.
+    conv = converter_hash()
+    unconv = state.get('unconvertible') if isinstance(state.get('unconvertible'), dict) else {}
+    keys = unconv.get('keys') if isinstance(unconv.get('keys'), list) else []
+    keys = [k for k in keys if isinstance(k, str) and (
+        type(state['failed'].get(k)) is int
+        or (isinstance(jobs.get(k), dict) and jobs[k].get('terminal')))]
+    if unconv and unconv.get('converter') != conv:
+        for k in keys:
+            state['failed'].pop(k, None)
+            jobs.pop(k, None)
+        print('KSF demos: the converter changed; %d set-aside(s) asked again' % len(keys))
+        keys = []
+    unconv = state['unconvertible'] = dict(converter=conv, keys=keys)
+
+    def verdict(key):
+        if key not in unconv['keys']:
+            unconv['keys'].append(key)
     conn = S.connect()
     made = linked = recovered = 0
     stop = time.monotonic() + DEMO_SECONDS
@@ -627,6 +656,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 # after the headers. surf_ab's and then surf_kultur's replays break mid-body on
                 # every ask (21 Oct), and parking for each such file stalled every map's demos
                 # for days. That file is set aside 7 days; FILESTREAK of them in a row is the host.
+                # P1247: the tick goes on to the next file (it ended here, ~1.7% of downloads).
                 code = getattr(e, 'code', 0)
                 own = code in (404, 500) or isinstance(getattr(e, 'reason', None), BodyBroken)
                 run = state.get('filestreak') if isinstance(state.get('filestreak'), dict) else {}
@@ -642,7 +672,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                     state['filestreak'] = dict(at=now, keys=held + [key])
                     print('KSF demo set aside: network %d on its own file (%d in a row)'
                           % (code, len(held) + 1))
-                    break
+                    continue
                 # The host's -- and so was a run of file-looking failures that reached
                 # FILESTREAK, so the files it set aside go back to the queue.
                 if own:
@@ -671,12 +701,16 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 # downloads of the same bytes and held a queue slot two days (97 of 252 on 3 Nov).
                 # Bytes that are no replay at all never get here (NOT_A_REPLAY strikes). Review 3:
                 # no run-of-refusals park -- one map's files refuse together and sit together.
+                # P1247: no brake either (review 1: once the backlog is done the queue is
+                # mostly known refusals back from their week, so "none linked" is normal); a
+                # new converter asks these again (verdict, tick's start).
                 print('KSF demo set aside 7 days: %s' % ' '.join(str(e).split())[:120])
                 if key in state['failed'] or len(state['failed']) < MAX_FAILED:
                     state['failed'][key] = now + 7 * 86400
                     jobs.pop(key, None)
                 else:
                     job.update(retry=now + 7 * 86400, terminal=True)
+                verdict(key)
             except (OSError, ValueError) as e:
                 job['retry'] = now + 86400
                 job['why'] = type(e).__name__
@@ -689,6 +723,8 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                         jobs.pop(key, None)
                     else:
                         job.update(retry=now + 7 * 86400, terminal=True)
+                    if isinstance(e, ValueError):
+                        verdict(key)
                 elif local_only:
                     state['failed'][key] = dict(retry=job['retry'], strikes=job['strikes'])
             finally:
