@@ -1774,8 +1774,8 @@ float(string id, vector textpos, vector fontsize, string text, float cursor, vec
 	b = bound(0, max(_sui_sel_anchor, cursor), strlen(text));
 	if (a == b)
 		return FALSE;
-	x0 = stringwidth(substring(text, 0, a), TRUE, fontsize);
-	x1 = stringwidth(substring(text, 0, b), TRUE, fontsize);
+	x0 = Font_PenX(text, a, TRUE, fontsize);      // Patch 1236: where the kerned draw puts them
+	x1 = Font_PenX(text, b, TRUE, fontsize);
 	sui_fill([textpos_x + x0, textpos_y - 1], [x1 - x0, fontsize_y + 2], color, alpha, 0);
 	return TRUE;
 };

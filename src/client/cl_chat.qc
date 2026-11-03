@@ -861,7 +861,7 @@ float(string t, float o, float sz) Chat_RowX =
 		k = k + Chat_PlainLen(t, i, n, l);
 		i = i + l;
 	}
-	return stringwidth(substring(t, 0, i), TRUE, [sz, sz]);
+	return Font_PenX(t, i, TRUE, [sz, sz]);        // Patch 1236: kerned
 };
 
 // 0 = the newest line, the ring's oldest is CHAT_RING - 1.
@@ -1138,8 +1138,8 @@ void(float x, float yb, float maxw, float fh, float sz, float lh, float a) Chat_
 		y = tp_y + lh * r;
 		if (a1 > s && a0 < e)
 		{
-			x0 = stringwidth(substring(chat_buf, s, max(a0, s) - s), FALSE, [sz, sz]);
-			x1 = stringwidth(substring(chat_buf, s, min(a1, e) - s), FALSE, [sz, sz]);
+			x0 = Font_PenX(substring(chat_buf, s, e - s), max(a0, s) - s, FALSE, [sz, sz]);   // Patch 1236: kerned
+			x1 = Font_PenX(substring(chat_buf, s, e - s), min(a1, e) - s, FALSE, [sz, sz]);
 			drawfill([chat_fld_tx + x0, y - 1], [x1 - x0, sz + 2], SUI_THEME_SELECTED, a, 0);
 		}
 		if (e > s)
@@ -1149,7 +1149,8 @@ void(float x, float yb, float maxw, float fh, float sz, float lh, float a) Chat_
 	if (!(floor((cltime - chat_blink) * 2) & 1))
 	{
 		r = Chat_FieldRow(chat_caret);
-		x0 = stringwidth(substring(chat_buf, chat_fr[r], chat_caret - chat_fr[r]), FALSE, [sz, sz]);
+		e = (r + 1 < chat_fr_n) ? chat_fr[r + 1] : strlen(chat_buf);
+		x0 = Font_PenX(substring(chat_buf, chat_fr[r], e - chat_fr[r]), chat_caret - chat_fr[r], FALSE, [sz, sz]);
 		drawfill([chat_fld_tx + x0, tp_y + lh * r - 1], [max(1, floor(sz / 12)), sz + 2], SUI_THEME_ACCENT, a, 0);
 	}
 	drawresetcliparea();
