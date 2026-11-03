@@ -56,7 +56,7 @@ Both installs now (engine patch-1218 exe and Source plugin); your Desktop copy w
 8. Tap the load key on a lobby (P1227): no forward snap. hud_edit > Save & load sets the lead-in.
 9. Start the game and open MAPS (P1228): Complete! shows on finished maps straight away.
 
-## P1230 Ice aura glow and party crown (installs now; lobbies when empty; everyone with the next release)
+## P1230 Ice aura glow and party crown (installs and lobbies now; everyone with the next release)
 In C:\FTESurf or C:\FTEQuake (exe 923af422), wear the Ice aura and the crown, open `hud_player`: the
 preview has a soft ice ring around the body, nothing over the body, and the crown is one band with
 points. In a game with another wearer: the ring follows only what you can see of them (none through a

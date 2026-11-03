@@ -33,6 +33,16 @@
 - Fallback cohort in lexlist-1232/control is 64f0b0f4; P1229's root lexlist-1229 and the dead retry
   root lexlist-1231b are CLOSED and unreferenced.
 
+## Aura glow and kerned text (P1230, P1236; 3 Nov)
+- Delivered lobby QC base: deploy/p1236-hud bcca394e = deploy/p1218-maplist 9f0203eb + P1230 (glow,
+  crown) + P1236 (Font_PenX carets, line-graph cvars); qw 63fa13a5, cs 0eb2a1c4 (.prev b6166b20),
+  codes.txt appended (backup codes.txt.pre1236), 12 lobbies restarted about 01:23Z 3 Nov with nobody on.
+  48's P1235 CSQC stacks on it. Main carries P1235's CSQC (c6aca012), which the installs do not.
+- Both installs: exe 8c93b1fc (tag patch-1236 on patch-1233-with-1230; .pre1236 4092e2fc), cs
+  0eb2a1c4, menu 1d0dbc5d (.prev ba7061a3 / 439ea80c), qw 63fa13a5, hl2 plugin 354b596e. A QC
+  build.ps1 run from a worktree deploys to that worktree's ftesurf/ and C:\FTEQuake only: copy
+  C:\FTESurf\ftesurf by hand.
+
 ## Lex's map list of 3 Nov (P1215, P1217, P1218; P1214 is 2b's)
 - Delivered lobby QC base: deploy/p1218-maplist 9f0203eb (2b's deploy/p1229-lexlist 1fa43aa2 + P1215/
   P1218); qw 63fa13a5, cs b6166b20 (.prev 9553acb6/36bd66bd), codes.txt appended. Engine: tag
