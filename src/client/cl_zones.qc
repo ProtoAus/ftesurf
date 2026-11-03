@@ -208,9 +208,17 @@ void() Zone_RegisterCvars =
 	registercommand("ent_io");
 };
 
+// P1239: the per-type cvar names, and the colour strings last parsed (memalloc'd, ZONE_TYPES each):
+// 14 strcats and 7 parses a frame before.
+float ui_ze_state;              // cl_zoneedit.qc's (ZE_OFF 0), declared again here for the throttle
+float zone_cv_next;
+string *zone_cv_dname;          // (one a line: fteqcc reads "string *a, *b" as b string**)
+string *zone_cv_cname;
+string *zone_cv_cstr;
 void() Zone_ReadCvars =
 {
 	local float t;
+	local string s;
 
 	zone_cv_draw      = cvar("zone_draw");
 	zone_cv_dist      = cvar("zone_draw_dist");
@@ -227,10 +235,28 @@ void() Zone_ReadCvars =
 	zone_cv_fillalpha = cvar("zone_fill_alpha");
 	zone_cv_shader    = cvar("zone_xray") ? "ftesurf_zone_xray" : "";
 
+	if (!zone_cv_dname)
+	{
+		zone_cv_dname = memalloc(sizeof(string) * ZONE_TYPES);
+		zone_cv_cname = memalloc(sizeof(string) * ZONE_TYPES);
+		zone_cv_cstr  = memalloc(sizeof(string) * ZONE_TYPES);
+		for (t = 0; t < ZONE_TYPES; t = t + 1)
+		{
+			zone_cv_dname[t] = strzone(strcat(Zone_CvarStem(t), "_draw"));
+			zone_cv_cname[t] = strzone(strcat(Zone_CvarStem(t), "_color"));
+		}
+	}
 	for (t = 0; t < ZONE_TYPES; t = t + 1)
 	{
-		zone_cv_typedraw[t] = cvar(strcat(Zone_CvarStem(t), "_draw"));
-		zone_cv_typecol[t]  = Zone_ParseColor(cvar_string(strcat(Zone_CvarStem(t), "_color")));
+		zone_cv_typedraw[t] = cvar(zone_cv_dname[t]);
+		s = cvar_string(zone_cv_cname[t]);
+		if (s != zone_cv_cstr[t])
+		{
+			if (zone_cv_cstr[t])
+				strunzone(zone_cv_cstr[t]);
+			zone_cv_cstr[t] = strzone(s);
+			zone_cv_typecol[t] = Zone_ParseColor(s);
+		}
 	}
 };
 
@@ -562,7 +588,14 @@ void() Zone_Draw =
 	if (serverkey("map") != zone_mapname)
 		Zone_LoadForMap();
 
-	Zone_ReadCvars();
+	// P1239: ten times a second (22 cvar lookups), every frame while the zone editor is up and on
+	// the zone_debug frame (its dump prints them).
+	dbg = cvar("zone_debug");
+	if (dbg || ui_ze_state || cltime >= zone_cv_next || cltime < zone_cv_next - 0.2)
+	{
+		zone_cv_next = cltime + 0.1;
+		Zone_ReadCvars();
+	}
 
 	if (!zone_cv_draw || !zone_count)
 		return;
@@ -578,7 +611,6 @@ void() Zone_Draw =
 	// and it dumps ONE frame and clears itself -- a latch would still be one
 	// bool away from filling the console at 600 fps, and this is a tool you
 	// reach for when something is already confusing.
-	dbg = cvar("zone_debug");
 	if (dbg)
 	{
 		cvar_set("zone_debug", "0");

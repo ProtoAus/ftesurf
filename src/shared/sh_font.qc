@@ -333,19 +333,33 @@ float(float first, float n, float want) Font_PxOld =
 // above, so (where a ladder starts, want) settles the answer; 43M QC ops in 3 s of Lex's HUD.
 float fpx_first[4], fpx_want[4], fpx_got[4];
 float fpx_fill, fpx_next;
+float *fpx_tab;                 // P1239: [ladder * 128 + whole size] -> the rung, 0 not asked yet
 
 float(float want) Font_Px =
 {
-	local float i, first, n, best, bd, d;
+	local float i, first, n, best, bd, d, k, slot;
 
-	if (ui_font_display && ui_font_cur == ui_font_display) { first = ui_lad_disp_first; n = ui_lad_disp_n; }
-	else if (ui_font_ui && ui_font_cur == ui_font_ui)      { first = ui_lad_ui_first;   n = ui_lad_ui_n;   }
-	else if (ui_font_mono && ui_font_cur == ui_font_mono)  { first = ui_lad_mono_first; n = ui_lad_mono_n; }
-	else if (ui_font_dispsm && ui_font_cur == ui_font_dispsm) { first = ui_lad_dsm_first; n = ui_lad_dsm_n; }
+	if (ui_font_display && ui_font_cur == ui_font_display) { first = ui_lad_disp_first; n = ui_lad_disp_n; k = 0; }
+	else if (ui_font_ui && ui_font_cur == ui_font_ui)      { first = ui_lad_ui_first;   n = ui_lad_ui_n;   k = 1; }
+	else if (ui_font_mono && ui_font_cur == ui_font_mono)  { first = ui_lad_mono_first; n = ui_lad_mono_n; k = 2; }
+	else if (ui_font_dispsm && ui_font_cur == ui_font_dispsm) { first = ui_lad_dsm_first; n = ui_lad_dsm_n; k = 3; }
 	else                                                   return want;
 
 	if (n <= 0)
 		return want;
+
+	// P1239: a whole size under 128 is answered once and looked up after (the ladders are constant).
+	slot = -1;
+	if (want >= 1)
+	if (want < 128)
+	if (want == floor(want))
+	{
+		if (!fpx_tab)
+			fpx_tab = memalloc(sizeof(float) * 4 * 128);
+		slot = k * 128 + want;
+		if (fpx_tab[slot])
+			return fpx_tab[slot];
+	}
 
 	for (i = 0; i < fpx_fill; i = i + 1)
 		if (fpx_want[i] == want)
@@ -373,6 +387,8 @@ float(float want) Font_Px =
 			best = ui_lad[first + i];
 		}
 	}
+	if (slot >= 0)
+		fpx_tab[slot] = best;
 	fpx_first[fpx_next] = first;
 	fpx_want[fpx_next] = want;
 	fpx_got[fpx_next] = best;
@@ -476,13 +492,29 @@ void(float slot) Font_Set  = { drawfont = slot; ui_font_cur = slot; };
 // completed or split a markup code (^xRGB, ^Uxxxx, ^{..}).
 float(string s, float i, float usecol, vector sz) Font_PenX =
 {
-	local float c, plain, pen;
+	local float c, plain, pen, j;
 	if (i <= 0)
 		return 0;
 	plain = stringwidth(substring(s, 0, i), usecol, sz);
 	c = str2chr(s, i);
 	if (i >= strlen(s) || c >= 128 || c < 0 || c == 9)
 		return plain;
+	// P1239: inside an open ^{hex.. the glyph is not known until its close (^{2F}: a short prefix
+	// can decode to a narrow glyph and pass the gap test below). The longest is ^{10FFFF}. Only where
+	// markup is parsed (usecol), and only while every character back to the { is a hex digit.
+	if (usecol)
+	for (j = i - 1; j >= 1 && j >= i - 10; j = j - 1)
+	{
+		c = str2chr(s, j);
+		if (c == 123)
+		{
+			if (str2chr(s, j - 1) == 94)
+				return plain;
+			break;
+		}
+		if (!((c >= 48 && c <= 57) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102)))
+			break;
+	}
 	pen = stringwidth(substring(s, 0, i + 1), usecol, sz) - stringwidth(substring(s, i, 1), usecol, sz);
 	if (fabs(pen - plain) > sz_y * 0.2)
 		return plain;

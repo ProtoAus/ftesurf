@@ -723,8 +723,17 @@ float  ui_eta;              // dE/dt as a fraction of the physical ceiling
 void() HUD_ClearEnergyHistory;      // defined below; the anchor reset calls it
 void() HUD_ClearTurnHistory;        // likewise
 
+// P1239: ten times a second (about 60 cvar lookups), every frame while the layout editor is up and
+// during menu/m_main.qc's ui_bootcheck (it shoots hud_debug six frames after setting it). Nothing
+// else writes ui_cv_*, so a held value is only ever up to 0.1 s behind its cvar.
+float ui_cv_next;
 void() HUD_ReadCvars =
 {
+	if (!ui_he_open)
+	if (cltime < ui_cv_next && cltime > ui_cv_next - 0.2)
+	if (!cvar("ui_bootcheck"))
+		return;
+	ui_cv_next = cltime + 0.1;
 	ui_cv_scale     = cvar("hud_scale");        if (!ui_cv_scale) ui_cv_scale = 2;
 
 	// Patch 440: out-of-range clamps to the shipped default, not to 0 -- a typo at
@@ -4959,12 +4968,12 @@ void(vector pos, vector sz, float held) HUD_Key =
 {
 	local float r;
 	r = ceil(min(sz_x, sz_y) * 0.14);
-	if (held == KEY_FORCED)
-		_sui_round_draw(pos, sz, r, '1.00 0.82 0.20', 0.85);
+	if (held == KEY_FORCED)                         // P1239: one quad each (sui_round_fixed)
+		sui_round_fixed(pos, sz, r, '1.00 0.82 0.20', 0.85);
 	else if (held)
-		_sui_round_draw(pos, sz, r, '1 1 1', 0.85);
+		sui_round_fixed(pos, sz, r, '1 1 1', 0.85);
 	else
-		_sui_round_draw(pos, sz, r, '0 0 0', 0.35);
+		sui_round_fixed(pos, sz, r, '0 0 0', 0.35);
 };
 
 /*
@@ -5145,12 +5154,12 @@ void(vector scr) HUD_DrawKeys =
 	HUD_Key([p_x + k + gap, p_y], sz, kw);
 
 	// row 2:  |  A S D  |   -- the flanking bars are +left and +right
-	_sui_round_draw([p_x - bw - gap, p_y + k + gap], [bw, k], ceil(bw * 0.5),
+	sui_round_fixed([p_x - bw - gap, p_y + k + gap], [bw, k], ceil(bw * 0.5),
 	                tl ? '0.45 0.70 1.00' : '0 0 0', tl ? 0.85 : 0.35);
 	HUD_Key([p_x,               p_y + k + gap], sz, ka);
 	HUD_Key([p_x + k + gap,     p_y + k + gap], sz, ks);
 	HUD_Key([p_x + 2*(k + gap), p_y + k + gap], sz, kd);
-	_sui_round_draw([p_x + 3*(k + gap), p_y + k + gap], [bw, k], ceil(bw * 0.5),
+	sui_round_fixed([p_x + 3*(k + gap), p_y + k + gap], [bw, k], ceil(bw * 0.5),
 	                tr ? '0.45 0.70 1.00' : '0 0 0', tr ? 0.85 : 0.35);
 
 	// row 3:  duck + jump

@@ -190,6 +190,13 @@ float  sui_rnd_gen;             // the number in this VM's names: one more a res
 float  sui_rnd_last;            // the radius made last (the status print)
 float  sui_rnd_off;             // the upload does not work here: the .png for good
 float  sui_rnd_n;               // masks made since start (the status print)
+// P1239: sui_round_fixed's boxes made at their own pixel size: [i*3] w, [i*3+1] h, [i*3+2] radius
+// (pixels; w 0 = free), and their shader names, which are named by that size: a size made again
+// (after its slot was reused, or by the next map's VM) lands on the same texture and shader.
+#define SUI_RRC 8
+float  *sui_rrc;
+string *sui_rrc_name;
+float  sui_rrc_next, sui_rrc_off, sui_rrc_last;
 
 float(float px) _sui_rnd_step =
 {
@@ -250,6 +257,10 @@ void() _sui_rnd_forget =
 	local float i;
 	sui_rnd_gen += 1;
 	sui_rnd_last = 0;
+	sui_rrc_off = FALSE;
+	if (sui_rrc)
+		for (i = 0; i < SUI_RRC; i += 1)
+			sui_rrc[i * 3] = 0;
 	if (!sui_rnd_made)
 		return;
 	for (i = 0; i <= SUI_RND_TOP; i += 1)
@@ -381,6 +392,116 @@ void(vector pos, vector size, float radius, vector color, float alpha) _sui_roun
 			sui_style_quads += 1;
 		}
 	}
+};
+
+// P1239: a rounded box that keeps its size frame to frame (the movement keys, 8 a frame) as ONE
+// quad of a texture made once at its pixel size; _sui_round_draw spends seven quads and a mask
+// lookup (~3.4 us) a box. SUI_RRC sizes are kept (the oldest replaced). A box past 256 px, or where
+// textures cannot be made, is _sui_round_draw. Raw screen coordinates, like _sui_round_draw.
+void(vector pos, vector size, float radius, vector color, float alpha) sui_round_fixed =
+{
+	local vector at, far, got;
+	local float r, w, h, rp, i, x, y, dx, dy, rx, ry;
+	local int *buf;
+	local string tex;
+	// Plain compares and _sui_rnd_snap written out: per box, QC calls cost more than the quads.
+	if (size_x <= 0 || size_y <= 0) return;
+	r = size_x;
+	if (size_y < r) r = size_y;
+	r = r * 0.5;
+	if (radius < r) r = radius;
+	if (r <= 0 || sui_rnd_off || sui_rrc_off)
+	{
+		_sui_round_draw(pos, size, radius, color, alpha);
+		return;
+	}
+	rx = sui_style_pixel_ratio_x;
+	ry = sui_style_pixel_ratio_y;
+	x = ceil(pos_x * rx - 0.5);
+	y = ceil(pos_y * ry - 0.5);
+	w = ceil((pos_x + size_x) * rx - 0.5) - x;
+	h = ceil((pos_y + size_y) * ry - 0.5) - y;
+	if (w < 2 || h < 2 || w > 256 || h > 256)
+	{
+		_sui_round_draw(pos, size, radius, color, alpha);
+		return;
+	}
+	at = [x / rx, y / ry, 0];
+	far = [w / rx, h / ry, 0];
+	dx = far_x;
+	if (far_y < dx) dx = far_y;
+	dx = dx * 0.5;
+	if (r < dx) dx = r;
+	rp = rint(dx * ry * 4) / 4;
+	if (rp < 1)                     // a disc under a pixel: the inside would not reach full coverage
+	{
+		_sui_round_draw(pos, size, radius, color, alpha);
+		return;
+	}
+	if (!sui_rrc)
+	{
+		sui_rrc = memalloc(sizeof(float) * SUI_RRC * 3);
+		sui_rrc_name = memalloc(sizeof(string) * SUI_RRC);
+	}
+	i = sui_rrc_last;
+	if (sui_rrc[i * 3] != w || sui_rrc[i * 3 + 1] != h || sui_rrc[i * 3 + 2] != rp)
+		for (i = 0; i < SUI_RRC; i += 1)
+			if (sui_rrc[i * 3] == w)
+			if (sui_rrc[i * 3 + 1] == h)
+			if (sui_rrc[i * 3 + 2] == rp)
+				break;
+	if (i < SUI_RRC)
+	{
+		sui_rrc_last = i;
+		sui_round_calls += 1;
+		drawpic(at, sui_rrc_name[i], far, color, alpha, 0);
+		sui_style_quads += 1;
+		return;
+	}
+	if (!checkbuiltin(r_uploadimage) || !checkbuiltin(shaderforname))
+	{
+		sui_rrc_off = TRUE;
+		_sui_round_draw(pos, size, radius, color, alpha);
+		return;
+	}
+	// White with the coverage in alpha; the corners as _sui_rnd_make's discs, edges and middle opaque.
+	buf = memalloc((int)(w * h * 4));
+	for (y = 0; y < h; y += 1)
+	{
+		dy = max(0, max(rp - y - 0.5, y + 0.5 - (h - rp)));
+		for (x = 0; x < w; x += 1)
+		{
+			dx = max(0, max(rp - x - 0.5, x + 0.5 - (w - rp)));
+			buf[y * w + x] = ((int)rint(bound(0, rp + 0.5 - sqrt(dx * dx + dy * dy), 1) * 255) << 24i) | 0x00ffffffi;
+		}
+	}
+	i = sui_rrc_next;
+	sui_rrc_next += 1;
+	if (sui_rrc_next >= SUI_RRC)
+		sui_rrc_next = 0;
+	tex = sprintf("sui_rrt%s%g_%gx%gr%g", SUI_RND_VM, sui_rnd_gen, w, h, rp * 4);
+	r_uploadimage(tex, (int)w, (int)h, buf);
+	memfree(buf);
+	if (sui_rrc_name[i])
+		strunzone(sui_rrc_name[i]);
+	sui_rrc_name[i] = strzone(sprintf("sui_rr%s%g_%gx%gr%g", SUI_RND_VM, sui_rnd_gen, w, h, rp * 4));
+	shaderforname(sui_rrc_name[i], sprintf(
+		"{\naffine\nnomipmaps\nprogram default2d\n{\nclampmap %s\nrgbgen vertex\nalphagen vertex\nblendfunc blend\n}\nsort additive\n}\n", tex));
+	got = drawgetimagesize(sui_rrc_name[i]);
+	if (got_x != w || got_y != h)
+	{
+		sui_rrc[i * 3] = 0;
+		sui_rrc_off = TRUE;
+		_sui_round_draw(pos, size, radius, color, alpha);
+		return;
+	}
+	sui_rrc[i * 3] = w;
+	sui_rrc[i * 3 + 1] = h;
+	sui_rrc[i * 3 + 2] = rp;
+	sui_rrc_last = i;
+	sui_round_calls += 1;
+	drawpic(at, sui_rrc_name[i], far, color, alpha, 0);
+	sui_style_quads += 1;
 };
 
 void(vector pos, vector size, float radius, vector color, float alpha) sui_roundbox =
