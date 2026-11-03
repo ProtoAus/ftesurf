@@ -42,6 +42,11 @@ def binary(version=2, marks=((0, 2, 1), (2, 3, 1), (6, 2, 99))):
     return h
 
 
+def refused():
+    """P1240: a whole replay whose last bookmark is past its frames: ksfconvert refuses its content."""
+    return binary(marks=((0, 2, 1), (2, 3, 1), (60, 2, 99)))
+
+
 def raw(**updates):
     r = dict(rank=1, playerID=7, steamID='STEAM_0:0:123', name='demo',
              time=.06, date=1700000000, record_id=111,
@@ -722,12 +727,12 @@ class Tests(unittest.TestCase):
 
     # P1240: a conversion refusal is set aside at once, and the next tick does not ask again.
     def test_p1240_unconvertible_set_aside_at_first_refusal(self):
-        with self.assertRaises(G.Unconvertible): G.install(self.conn, self.job, b'bad')
+        with self.assertRaises(G.Unconvertible): G.install(self.conn, self.job, refused())
         self.board([self.r])
         calls = []
         def bad(file):
             calls.append(file)
-            return b'bad'
+            return refused()
         now = int(time.time())
         with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now):
             self.assertEqual(G.tick(self.cache, download=bad), (1, 0))
@@ -738,13 +743,77 @@ class Tests(unittest.TestCase):
             self.assertEqual(G.tick(self.cache, download=bad), (0, 0))
         self.assertEqual((len(calls), self.parks()), (1, []))
 
-    def test_p1240_other_value_errors_still_strike(self):
-        self.board([self.r])
-        with patch.object(G.time, 'sleep'), patch.object(G, 'install', side_effect=ValueError('acted other')):
-            self.assertEqual(G.tick(self.cache, download=lambda f: binary()), (1, 0))
+    def conv_rows(self, n):
+        rows = [raw(playerID=4000+i, steamID='STEAM_0:0:%d' % (4000+i), record_id=50000+i,
+                    file='replay_css_5_0_%d_1700000000.rec' % (4000+i)) for i in range(n)]
+        K.write_rows([K.rec_row('surf_conv', 0, 0, r) for r in rows])
+        K._save(K.board_path(self.cache, 'surf_conv', 0), dict(rows=rows, done=True))
+        return rows
+
+    # P1240 review 2: CONVSTREAK refusals in a row are not the files' -- undone, and downloads park.
+    def test_p1240_conversion_streak_parks_and_undoes_its_set_asides(self):
+        rows = self.conv_rows(6)
+        calls = []
+        def bad(file):
+            calls.append(file)
+            return refused()        # a replay every file of which refuses: not the files' fault
+        now = int(time.time())
+        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now):
+            self.assertEqual(G.tick(self.cache, maximum=24, download=bad), (G.CONVSTREAK, 0))
         state = K._load(os.path.join(self.cache, 'demos.json'))
-        job = state['jobs']['surf_test|0|0|' + self.job['runid']]
-        self.assertEqual((job['strikes'], state['failed']), (1, {}))
+        self.assertEqual((state['failed'], 'convstreak' in state), ({}, False))
+        self.assertEqual(self.parks(), [G.PARK])
+        park = K._load(os.path.join(self.cache, G.PARK))
+        self.assertEqual((park['until'] - now, 'conversion' in park['why']), (K.COOLDOWN, True))
+        tripped = 'surf_conv|0|0|' + G.candidate('surf_conv', 0, 0, rows[G.CONVSTREAK-1])['runid']
+        self.assertEqual(state['jobs'][tripped]['retry'], now + K.COOLDOWN)
+        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now + 60):
+            self.assertEqual(G.tick(self.cache, maximum=24, download=bad), (0, 0))
+        self.assertEqual(len(calls), G.CONVSTREAK)
+        self.assertEqual(len(K._load(os.path.join(self.cache, 'demos.json'))['jobs']), 6)  # undone ones requeued
+
+    def test_p1240_a_good_conversion_resets_the_streak(self):
+        rows = self.conv_rows(7)
+        good = rows[G.CONVSTREAK-1]['file']
+        def mixed(file):
+            return binary() if file == good else refused()
+        with patch.object(G.time, 'sleep'):
+            self.assertEqual(G.tick(self.cache, maximum=24, download=mixed), (7, 1))
+        state = K._load(os.path.join(self.cache, 'demos.json'))
+        self.assertEqual((len(state['failed']), self.parks()), (6, []))
+
+    # Review 2: bytes that are not a whole replay (a 200 page, a cut body) and install's own
+    # refusals strike as before; every NOT_A_REPLAY message is one ksfreplay_info raises.
+    def test_p1240_not_a_replay_and_other_value_errors_still_strike(self):
+        source = (G.TOOLS / 'ksfreplay_info.py').read_text(encoding='utf-8')
+        for message in G.NOT_A_REPLAY:
+            self.assertIn("raise ValueError('%s')" % message, source)
+        for body in (b'<!DOCTYPE html><html>Just a moment...</html>', binary()[:-7],
+                     b'\0' * (G.MAX_BYTES + 1)):
+            for name in ('demos.json', G.PARK):
+                (Path(self.cache) / name).unlink(missing_ok=True)
+            self.board([self.r])
+            with patch.object(G.time, 'sleep'):
+                self.assertEqual(G.tick(self.cache, download=lambda f: body), (1, 0))
+            state = K._load(os.path.join(self.cache, 'demos.json'))
+            job = state['jobs']['surf_test|0|0|' + self.job['runid']]
+            self.assertEqual((job['strikes'], job['why'], state['failed'], self.parks()),
+                             (1, 'ValueError', {}, []), body[:16])
+
+    def test_p1240_unconvertible_with_a_full_ledger_is_terminal_not_asked_again(self):
+        self.board([self.r])
+        now = int(time.time())
+        key = 'surf_test|0|0|' + self.job['runid']
+        ledger = self.active_deferral_ledger(now)
+        sf = os.path.join(self.cache, 'demos.json')
+        K._save(sf, dict(jobs={key: dict(self.job, retry=0)}, failed=ledger))
+        with patch.object(G.time, 'time', return_value=now), patch.object(G.time, 'sleep'):
+            self.assertEqual(G.tick(self.cache, download=lambda f: refused()), (1, 0))
+        state = K._load(sf)
+        self.assertEqual((state['failed'], state['jobs'][key]['retry'], state['jobs'][key]['terminal']),
+                         (ledger, now + 7 * 86400, True))
+        with patch.object(G.time, 'time', return_value=now + 1), patch.object(G.time, 'sleep'):
+            self.assertEqual(G.tick(self.cache, download=lambda f: self.fail('asked again')), (0, 0))
 
     # P1240: jobs passed over untouched are not saved one by one.
     def test_p1240_untouched_jobs_are_not_saved_each(self):
