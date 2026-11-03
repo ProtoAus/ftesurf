@@ -140,7 +140,10 @@
   the probe record). Key mutants (artifacts/p1266_mut.py): dropping the trace end changes pm_verify's verdicts
   and mode 2 counts 5541/34003 differed; dropping the hull size leaves pm_verify's verdicts UNCHANGED (voyager
   HOLD 52@408, boreas 0002871_pb PASS) while mode 2 counts 8455/4622. bih_tracecache 2 is the check that
-  discriminates; pm_verify alone is not. The axis mutant was never run (reaped for low memory).
+  discriminates; pm_verify alone is not. NOT DEMONSTRATED: movers. A brush entity is traced in its own space
+  with the caller's transformed start/end/axis in the key, but no mode-2 run has covered a map with moving
+  brushes, and the axis mutant (p1266_mut.py C) was reaped for low memory before it ran. Closing it: a mover map
+  at mode 2 on the real build (0 differed) and on mutant C (more than 0).
 - vid_restart mid-map left surf_eternity s4's PrepareFrame at 1.76 ms against 1.11 for the following seconds
   (loading still on the main thread); not followed up.
 - P1222 review leftovers: gl_overbright_all has no callback and r_stains 0 leaves stains drawn (both pre-existing,

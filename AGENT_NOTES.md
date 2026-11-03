@@ -1,5 +1,14 @@
 # AGENT_NOTES.md
 
+## P1266 trace cache: what tests it (3 Nov; root C:/FTESurf-worktrees/perf1222-20261102T1610Z)
+- bih_tracecache 2 is the cache's test: it re-traces every hit and compares every trace_t field. pm_verify's
+  verdict is not: a key mutant that drops the hull size left both verdicts unchanged (p492voy HOLD 52@408,
+  boreas 0002871_pb PASS) while mode 2 counted 8455 and 4622 differences. pm_dettest holds bih_probe_readers,
+  so the cache stands aside inside it and its hashes say nothing about the cache.
+- A change to com_bih.c's trace inputs (a new global or cvar the walk reads, a field a loader writes after
+  BIH_Build) must join the key or bump bih_collisionepoch. Movers (start/end/axis transformed by the caller) are
+  read, not measured: no mode-2 run on a map with moving brushes, and the axis mutant never ran.
+
 ## P1258/P1259 loading screen info and stalls (3 Nov; root C:/FTESurf-worktrees/loading1258-20261103)
 - Menu (src/menu/m_loading.qc): the bottom-left lines come from serverkey("transferring"/"dlstate"/
   "loadstate"), read with LS_Tok, never tokenize: argv is one buffer shared by every VM, and the screen
