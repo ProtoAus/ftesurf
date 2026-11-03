@@ -45,6 +45,25 @@ string(string s) LS_Friendly =
 		return "Receiving the game state";
 	if (s == "csqc init")
 		return "Starting the game code";
+	// A game this PC hosts: the server's own steps (sv_init.c).
+	if (s == "spawnserver")
+		return "Starting the server";
+	if (s == "map")
+		return "The server is loading the map";
+	if (s == "phs")
+		return "Working out what can be heard where";
+	if (s == "gamecode")
+		return "Starting the server's game code";
+	if (s == "clients")
+		return "Making room for players";
+	if (s == "entities")
+		return "Placing the map's entities";
+	if (s == "finalize server")
+		return "Finishing the server";
+	if (s == "server spawned")
+		return "Server ready";
+	if (s == "loading data")
+		return "Loading game data";
 	if (s == "csprogs" || s == "csprogs world" || s == "hlclient")
 	{
 		ls_fkey = "code";
