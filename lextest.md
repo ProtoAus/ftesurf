@@ -16,7 +16,7 @@
    changes anything. `bih_tracecache 2` re-checks every skipped one and `bih_tracestats` prints how many differed
    (it has been 0 in every test).
 
-## P1258/P1259/P1265/P1267 the loading screen (both installs: exe 76e78e80 patch-1267, plugin c3c9062f, menu d92320af; your Desktop copy with the next release)
+## P1258/P1259/P1265/P1267 the loading screen (both installs: exe c3342a2d patch-1266, which carries patch-1267, plugin c3c9062f, menu d92320af; your Desktop copy with the next release)
 00. P1267: after a map change (a lobby's vote, or changelevel), no hitch about a second into play, and the end of
    the load is shorter. Water and glass should look as before; if any look wrong until you type `flushshaders`,
    that is this patch (`r_shader_reload_afterframe 1` brings the old reload back).
