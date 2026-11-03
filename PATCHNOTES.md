@@ -21,6 +21,9 @@
 
 ## next
 
+### P1267 No hitch after you spawn
+- A map load ends sooner and the half-second hitch a moment after you spawn on a new map is gone: the game no longer re-reads every material in memory twice per load (bikini_bottom after another map: 1.1 s down to 0.04 s).
+
 ### P1265 The map on the loading screen
 - The loading screen shows the map you are loading at the bottom left: its picture, its name, and its author, tiers and stages as the map list has them.
 - The loading screen's text is a little smaller.

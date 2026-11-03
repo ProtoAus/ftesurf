@@ -220,18 +220,19 @@
 ## P1244/P1258/P1259 loading screen follow-ups (3 Nov 2026)
 - Still freezing the screen (surf_eternity, ls_debug; tools/loadprof_resolve.py names the code): a lobby
   join's filesystem hash rebuild after the old map's pack drops, 0.34-0.36 s (P180's rebuild; not safe to
-  draw inside FS_RebuildFSHash); the shader reload at activation, 0.27-0.30 s (Shader_DoReload: not safe to
-  draw inside; developer 2 names its trigger); csqc init 0.08-0.16 s; a hosted map's first 0.34-0.39 s
+  draw inside FS_RebuildFSHash); the shader reload at activation (P1267: 0.04-0.09 s after a first map,
+  0.25 s on a first connect, which stays full); csqc init 0.08-0.16 s; a hosted map's first 0.34-0.39 s
   (SV_Map_f before spawnserver); the BIH root's own sort, ~0.16 s.
 - Downloads that do not start through CL_SendDownloadStartRequest (Q3, demo-embedded csprogs, plain HTTP
   ones: the package manager, a typed `download http://`) run under the plaque for up to 60 s; in demo/EZTV
   playback the per-frame resume can raise it over a running download (P1258 review 4; not regressions).
-- Shader reloads per map (P1265 measurement, developer 2, surf_eternity): CL_MakeActive's (the map change's
-  FS rescan, "map change (search paths kept)", 601 shaders) at the end of the load, and a second full one
-  about 2 s INTO PLAY: cl_main.c's "post-first-frame water fixup" (r_shader_reload_afterframe 1), a
-  workaround for stale water whose own comment says the real fix is a targeted reload (water shaders only).
-  ~0.27-0.3 s each at developer 0. The first-visit join's world load also showed one 707 ms gap during the
-  download on 3 Nov (other runs of the same build stayed under 150 ms there): not explained yet.
+- Shader reloads per map: P1267 made the activation one targeted and turned the after-frame one off. Left:
+  shader uses are never released at Mod_Purge, so every earlier map's shaders stay live and are re-read at
+  each later map change (1062 of frey_remake's 85 ms after bikini_bottom). Releasing them at a purge needs
+  every holder found (models' textures and batches, skins, R2D, fonts, particles). Lazy re-reading at lookup
+  was tried and rejected (ENGINE_PATCHES 1267).
+- The first-visit join's world load showed one 707 ms gap during the download on 3 Nov (other runs of the
+  same build stayed under 150 ms there): not explained yet.
 - serverkey("transferring") still formats with va() for KEXLAN/ICE/RTC addresses (CL_TryingToConnect);
   UDP lobbies never reach it.
 - The pump does not pump window messages (vid_winthread 0): a single stretch past ~5 s would let

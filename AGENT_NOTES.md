@@ -19,6 +19,10 @@
   stale through a hosted load and until a join's new serverinfo) and m_main.qc ui_load_card (the row's
   thumbnail cell and detail line, once a map). A client started with conbridge --map never builds the
   map list (ui_boot_preload waits for the menu), so the card has no row: start at the menu and connect.
+- P1267: a map change's shader reload is targeted (gl_shader.c shader_fsgen: a filesystem-only reload
+  skips shaders parsed since the change that no script defines) and r_shader_reload_afterframe defaults 0.
+  developer 1's `shaders NNNms ... N parsed since the files changed` counts the skip. Nothing releases a
+  shader's uses at Mod_Purge, so old maps' shaders stay live and every later map change re-reads them.
 - Harness: `ui_close` alone is undone by the engine on the next idle frame (con_stayhidden opens the menu);
   send "connect X; ui_close" in one line, as the menu does.
 
