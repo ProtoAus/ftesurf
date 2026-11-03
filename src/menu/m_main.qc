@@ -8288,7 +8288,10 @@ void(vector screensize) m_draw =
 	if (LS_Active())                // P1244: a load before the plaque (the connection stage)
 		LS_Draw(fullsize);
 	else
+	{
 		ls_idle = TRUE;
+		Font_NativeSlot(ui_font_ui);    // P1258: baked here, not first inside a loading pump
+	}
 
 	if (clientstate() != ms_cstate)    // P1225
 	{

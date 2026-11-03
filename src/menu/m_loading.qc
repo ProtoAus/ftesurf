@@ -401,8 +401,9 @@ void() LS_Gather =
 
 void(vector scr) LS_Draw =
 {
-	local float i, seq, px, y, dots, bw, bh;
+	local float i, seq, y, dots, bw, bh, phys, x0;
 	local string raw, word;
+	local vector sz;
 	if (ls_idle || time < ls_last)
 	{	// a new load
 		ls_idle = FALSE;
@@ -434,51 +435,57 @@ void(vector scr) LS_Draw =
 	drawfill('0 0 0', scr, '0 0 0', 1, 0);
 	LS_DrawShape(scr);
 
+	// Text on the UI face's physical (pixels=1) bake at a baked size, on whole pixels: a size between
+	// rungs is a resample.  Physical sizes from the screen's height; 1080 p: steps 24, lines 16, "Loading" 32.
+	sui_style_hud(scr);
+	phys = scr_y * sui_style_pixel_ratio_y;
 	Font_Set(ui_font_ui);
-	px = max(10, scr_y / 40);
+	drawfont = Font_NativeSlot(ui_font_ui);
+	x0 = scr_x * 0.05;
+	sz = sui_native_text_size(bound(12, phys / 45, 32));
 	y = scr_y * 0.07;
 	for (i = 0; i < LS_LOG; i = i + 1)
 	{
 		if (ls_log[i] == "")
 			break;
-		drawstring([scr_x * 0.05, y, 0], ls_log[i], [px, px, 0], '1 1 1', max(0.12, 1 - i * 0.15), 0);
+		drawstring(_sui_pixel_align([x0, y]), ls_log[i], sz, '1 1 1', max(0.12, 1 - i * 0.15), 0);
 		if (i == 0 && time - ls_stept >= 1)     // how long the newest step has run
-			drawstring([scr_x * 0.05 + stringwidth(ls_log[0], TRUE, [px, px, 0]) + px, y, 0],
-			           sprintf("%.0f s", time - ls_stept), [px, px, 0], '1 1 1', 0.45, 0);
-		y = y + px * 1.5;
+			drawstring(_sui_pixel_align([x0 + stringwidth(ls_log[0], TRUE, sz) + sz_y, y]),
+			           sprintf("%.0f s", time - ls_stept), sz, '1 1 1', 0.45, 0);
+		y = y + sz_y * 1.5;
 	}
 	// The bottom-left lines, upward from the line "Loading" sits on, a bar under its line
-	px = max(9, scr_y / 50);
+	sz = sui_native_text_size(bound(12, phys / 60, 32));
 	bw = scr_x * 0.3;
-	bh = max(2, px * 0.25);
+	bh = max(2, floor(sz_y * 0.25 * sui_style_pixel_ratio_y)) / sui_style_pixel_ratio_y;
 	y = scr_y - scr_y * 0.06;
 	for (i = ls_in - 1; i >= 0; i = i - 1)
 	{
 		if (ls_ibar[i] >= 0)
 		{
 			y = y - bh;
-			drawfill([scr_x * 0.05, y, 0], [bw, bh, 0], '0.25 0.25 0.25', 1, 0);
-			drawfill([scr_x * 0.05, y, 0], [bw * ls_ibar[i], bh, 0], '1 1 1', 1, 0);
-			y = y - px * 0.4;
+			drawfill(_sui_pixel_align([x0, y]), [bw, bh, 0], '0.25 0.25 0.25', 1, 0);
+			drawfill(_sui_pixel_align([x0, y]), [bw * ls_ibar[i], bh, 0], '1 1 1', 1, 0);
+			y = y - sz_y * 0.4;
 		}
-		y = y - px;
-		drawstring([scr_x * 0.05, y, 0], ls_itext[i], [px, px, 0], '1 1 1', 0.85, 0);
-		y = y - px * 0.5;
+		y = y - sz_y;
+		drawstring(_sui_pixel_align([x0, y]), ls_itext[i], sz, '1 1 1', 0.85, 0);
+		y = y - sz_y * 0.5;
 	}
 	if (time - ls_t0 >= 1)                  // the whole load, under "Loading"
 	{
 		word = sprintf("%.0f s", time - ls_t0);
-		drawstring([scr_x - scr_x * 0.05 - stringwidth(word, TRUE, [px, px, 0]), scr_y - scr_y * 0.06 + px * 0.5, 0],
-		           word, [px, px, 0], '1 1 1', 0.45, 0);
+		drawstring(_sui_pixel_align([scr_x - x0 - stringwidth(word, TRUE, sz), scr_y - scr_y * 0.06 + sz_y * 0.5]),
+		           word, sz, '1 1 1', 0.45, 0);
 	}
 	// "Loading" with 0..3 dots and back, the text held still (it starts where "Loading..." would)
 	dots = floor(time * 4.5);
 	dots = dots - floor(dots / 6) * 6;
 	dots = (dots > 3) ? 6 - dots : dots;
 	word = strcat("Loading", substring("...", 0, dots));
-	px = max(12, scr_y / 30);
-	drawstring([scr_x - scr_x * 0.05 - stringwidth("Loading...", TRUE, [px, px, 0]), scr_y - scr_y * 0.06 - px, 0],
-	           word, [px, px, 0], '1 1 1', 1, 0);
+	sz = sui_native_text_size(bound(16, phys / 34, 32));
+	drawstring(_sui_pixel_align([scr_x - x0 - stringwidth("Loading...", TRUE, sz), scr_y - scr_y * 0.06 - sz_y]),
+	           word, sz, '1 1 1', 1, 0);
 	Font_Reset();
 };
 
