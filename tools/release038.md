@@ -44,4 +44,7 @@ new release"). 51 patch entries; see PATCHNOTES.md `## 0.1.38`.
   of the idle VM brought it to 4.4 GB before the prepare.
 - The plugin build rewrites mat_vmt_progs.h's banner in the release engine worktree; restored before the prepare.
 
+- Both installs run the release natives since 14:31Z: exe 60ef259c, hl2 205bf373, imgui 82f96e45 (backups
+  *.pre0138-20261103T143137Z; the patch-1266 exe c3342a2d and ac's plugin c3c9062f before them).
+
 Task root: C:\FTESurf-worktrees\release0138-20261103T1319Z (OWNER.md, artifacts/, qc/dist candidate).
