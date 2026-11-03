@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1236 kerning and fuller text (both installs now; everyone with the next release)
+In C:\FTESurf or C:\FTEQuake (exe 8c93b1fc): menu titles, the key strip, chat and the big clock/speed font
+show kerned pairs (AV, To, Ty, LT, P.) closer than before, and text is slightly fuller. Typing in chat,
+the caret should sit right against the letters, including between T and o. Compare by typing
+`r_font_kerning 0` (instant) and `r_font_gamma 1; vid_reload`, then set them back (1 and 1.4).
+
 ## P1233 faster water (both installs now)
 Both installs now (exe 4092e2fc); your Desktop copy with the next release:
 - At your settings (hl2_water 2), surf_garden saves 1 and 4 and surf_boreas saves 7 and 10 run faster than before

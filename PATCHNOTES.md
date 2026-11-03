@@ -21,6 +21,11 @@
 
 ## next
 
+### P1236 Kerned, fuller text
+- Letters in the menus, the HUD and chat now sit as their font intends: pairs like AV, To, Ty and P. close up (kerning). Number readouts do not move, because neither font kerns digits.
+- Text edges are a little fuller, so light text on dark reads crisper. `r_font_kerning 0` and `r_font_gamma 1` (then `vid_reload`) bring back the old look.
+- Carets and selections in chat and name fields sit right against the letters, and a map message's typing effect no longer jumps as letters settle.
+
 ### P1230 Ice aura glow, party crown
 - The Ice aura is now a soft glow around the player instead of stacked shells that looked like panels, and it is cheaper with many wearers. It never shows through walls.
 - The party crown is one piece with a printed band and points, so no half of it draws over the other.

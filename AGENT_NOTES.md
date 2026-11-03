@@ -2167,6 +2167,18 @@ executable path and hash, not a similarly named maintained copy.
   1 s window and 1.3 s waits every dump measured the previous setting, and the first table read
   backwards.
 
+## Kerned text (P1236, 2026-11-03)
+
+- Since engine patch-1236, drawstring/drawrawstring kern pairs and stringwidth includes them, so
+  stringwidth is NOT additive: width(a) + width(b) can exceed width(a + b) by the kern at the join.
+  Anything placed at stringwidth(prefix) (a caret, a selection edge, one letter drawn alone) sits
+  inside the next glyph by that kern: use Font_PenX(s, i, usecolours, size) (sh_font.qc), which
+  returns where character i starts when s is drawn whole.
+- The kern applies only when Font_DrawScaleChar is passed back the pen it returned (same font, same
+  y), and every string starts unkerned; text drawn one character per call is never kerned.
+- `r_font_kerndump [face]` prints a face's baked pairs; tools to diff them against fontTools and
+  HarfBuzz are in the aura1230 task root (artifacts/hud1236: kernoracle.py, hbcheck.py).
+
 ## CSQC render-target 3D views (P1230, 2026-11-03)
 
 - A CSQC renderscene into a target is drawn FLIPPED (gl_rmain.c's target branch, so 2D reads it

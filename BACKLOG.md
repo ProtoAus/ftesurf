@@ -106,6 +106,32 @@
 - A build in the release engine worktree rewrites plugins/hl2/mat_vmt_progs.h's header comment
   (the generator's path), which the clean-input gate refuses; restore it, or build elsewhere.
 
+## P1236 residuals (3 Nov 2026)
+- Kerning covers U+0020..U+00FF of a font's first face: Roboto's Cyrillic and Greek pairs are not
+  read. GPOS cases no shipped font reaches are not implemented: value 2 (a pair that consumes its
+  second glyph), lookup flags (marks), only the first 'kern' feature of a LangSys, the 'dflt'
+  script tag, 'dist', contextual (type 7/8) kerning, legacy 'kern' tables.
+- The console, sbar, drawtextfield and engine Font_DrawChar text are not kerned. Plug_Draw_String
+  draws unkerned while Plug_Draw_StringWidth kerns (latent: font_default is not a kerned TTF and no
+  installed plugin calls them).
+- Changing r_font_kerning mid-session leaves the chat wrap cache (keyed on "abcdefghij", which has no
+  pair that kerns under 43 px) and the graph's name widths at the old widths until they refresh.
+- Click-to-caret hit tests (sui_sys.qc, cl_chat.qc) still use stringwidth(prefix): off by half a kern.
+- With outline=N slots the dilated ring is built from raw coverage, the fill from r_font_gamma's curve.
+  vid_srgb -1 blends in linear light without VID_SRGBAWARE, so it still gets the 1.4 curve.
+- Font_PenX (sh_font.qc), cosmetic and only with typed markup: on the digit of a ^{2X} code the caret
+  can sit 2-5 px left of the one before; before a ^U/^{ code whose glyph kerns with the previous
+  glyph it is off by that kern; inside a ^[..^] link it counts the hidden '['.
+- Pre-existing: COM_ParseFunString's ezQuake branch (HAVE_LEGACY, PFS_EZQUAKEMARKUP: echo with
+  ezcompat_markup >= 2) reads past a string ending in '^' and writes without counting outsize; only a
+  ~4 KB echo line that loses its newline reaches it.
+- Pre-existing: Font_DrawScaleChar sends a tracker-image glyph (plane 250) to fontplanes.texnum[250]
+  (4 entries); Font_DrawChar handles it.
+- Pre-existing: tools/p545graph.py's "shared mouse cursor" check fails on main's progs too (cursor
+  0.1236 against duration 0.1 at 11:38 on 3 Nov).
+- HUD_ReadCvars and Zone_ReadCvars cost 0.019 ms a frame (profiled) for ~60 cvar() reads; FTE
+  autocvars would make it 0 but bring the registration-default questions they carry.
+
 ## P1230 residuals (3 Nov 2026)
 - The glow's mask view is a second clearscene/renderscene a frame: fading dlights and v_dmg_time decay
   twice and the stair smoothing runs twice while a wearer is queued (the profile preview already did).
