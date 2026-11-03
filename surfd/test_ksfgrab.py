@@ -465,6 +465,7 @@ class Tests(unittest.TestCase):
 
     def test_fixed_origin_ua_and_body_failures_set_their_file_aside(self):
         # Patch 896: a body broken after the headers is the file's -- set aside, no park.
+        # P1247: and the tick goes on to the next file (two in a row is under FILESTREAK).
         other = raw(playerID=8, steamID='STEAM_0:0:124', record_id=112,
                     file='replay_css_5_0_8_1700000000.rec')
         K.write_rows([K.rec_row('surf_test', 0, 0, other)])
@@ -483,15 +484,15 @@ class Tests(unittest.TestCase):
             with patch.object(G.urllib.request, 'build_opener') as build, patch.object(G.time, 'sleep'):
                 opener = build.return_value
                 opener.open.return_value = Body()
-                self.assertEqual(G.tick(self.cache), (1, 0))
-                self.assertEqual(opener.open.call_count, 1)
-                req = opener.open.call_args.args[0]
+                self.assertEqual(G.tick(self.cache), (2, 0))
+                self.assertEqual(opener.open.call_count, 2)
+                req = opener.open.call_args_list[0].args[0]
                 self.assertEqual(req.full_url, K.KSF_BASE+'/api/replays/'+self.r['file']+'?game=66t')
                 self.assertEqual(req.get_header('User-agent'), K.UA)
-                self.assertEqual(self_count, [64<<10])
+                self.assertEqual(self_count, [64<<10, 64<<10])
             self.assertEqual(self.parks(), [])
             state = K._load(os.path.join(self.cache, 'demos.json'))
-            self.assertEqual((len(state['jobs']), len(state['failed'])), (1, 1))
+            self.assertEqual((len(state['jobs']), len(state['failed'])), (0, 2))
         with self.assertRaises(ValueError): G.fetch('../file.rec')
 
     def test_streaming_byte_cap_and_body_deadline_act_before_decode(self):
@@ -740,6 +741,7 @@ class Tests(unittest.TestCase):
         state = K._load(os.path.join(self.cache, 'demos.json'))
         key = 'surf_test|0|0|' + self.job['runid']
         self.assertEqual((state['jobs'], state['failed']), ({}, {key: now + 7 * 86400}))
+        self.assertEqual(state['unconvertible'], dict(converter=G.converter_hash(), keys=[key]))
         with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now + 2 * 86400):
             self.assertEqual(G.tick(self.cache, download=bad), (0, 0))
         self.assertEqual((len(calls), self.parks()), (1, []))
@@ -767,6 +769,73 @@ class Tests(unittest.TestCase):
         with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now + 86400):
             self.assertEqual(G.tick(self.cache, maximum=24, download=bad), (0, 0))
         self.assertEqual(len(calls), 8)
+
+    # P1247 review 1: no brake -- refusals on many maps with nothing linked (the queue once
+    # the backlog is done) park nothing; each is set aside and recorded as the converter's.
+    def test_p1247_refusals_on_many_maps_park_nothing(self):
+        for i in range(6):
+            self.one_board('surf_k%d' % i, i)
+        with patch.object(G.time, 'sleep'):
+            self.assertEqual(G.tick(self.cache, maximum=24, download=lambda f: refused()), (6, 0))
+        state = K._load(os.path.join(self.cache, 'demos.json'))
+        self.assertEqual((len(state['failed']), len(state['unconvertible']['keys']), self.parks()),
+                         (6, 6, []))
+
+    # A header the converter cannot read strikes three times, and is its verdict too: a new
+    # converter asks it again. So is an Unconvertible that a full ledger left terminal.
+    def test_p1247_strikes_and_terminal_set_asides_are_released_too(self):
+        self.board([self.r])
+        key = 'surf_test|0|0|' + self.job['runid']
+        sf = os.path.join(self.cache, 'demos.json')
+        now = int(time.time())
+        K._save(sf, dict(jobs={key: dict(self.job, retry=0, strikes=2)}, failed={}))
+        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now):
+            self.assertEqual(G.tick(self.cache, download=lambda f: b'<html>'), (1, 0))
+        state = K._load(sf)
+        self.assertEqual((state['failed'], state['unconvertible']['keys']),
+                         ({key: now + 7 * 86400}, [key]))
+        ledger = self.active_deferral_ledger(now)
+        K._save(sf, dict(jobs={key: dict(self.job, retry=0)}, failed=ledger))
+        with patch.object(G.time, 'time', return_value=now), patch.object(G.time, 'sleep'):
+            self.assertEqual(G.tick(self.cache, download=lambda f: refused()), (1, 0))
+        state = K._load(sf)
+        self.assertEqual((state['jobs'][key]['terminal'], state['unconvertible']['keys']), (True, [key]))
+        state['unconvertible']['converter'] = '0' * 16
+        K._save(sf, state)
+        self.conn.execute("DELETE FROM runs WHERE map='surf_ledger'")
+        self.conn.commit()
+        with patch.object(G.time, 'time', return_value=now + 60), patch.object(G.time, 'sleep'):
+            self.assertEqual(G.tick(self.cache, download=lambda f: binary()), (1, 1))
+
+    # P1247: one bad file no longer ends the tick; FILESTREAK of them in a row are the host's.
+    def test_p1247_three_bad_files_in_a_row_are_the_hosts(self):
+        for i in range(4):
+            self.one_board('surf_k%d' % i, i)
+        calls = []
+        def broken(file):
+            calls.append(file)
+            raise urllib.error.HTTPError('x', 500, 'own', {}, io.BytesIO())
+        with patch.object(G.time, 'sleep'):
+            self.assertEqual(G.tick(self.cache, maximum=24, download=broken), (G.FILESTREAK, 0))
+        state = K._load(os.path.join(self.cache, 'demos.json'))
+        self.assertEqual((len(calls), self.parks(), state['failed']),
+                         (G.FILESTREAK, ['.refused', G.PARK], {}))
+
+    # P1247: a new converter asks the old one's Unconvertible set-asides again.
+    def test_p1247_a_new_converter_asks_its_set_asides_again(self):
+        self.board([self.r])
+        key = 'surf_test|0|0|' + self.job['runid']
+        now = int(time.time())
+        sf = os.path.join(self.cache, 'demos.json')
+        for conv, want in (('0' * 16, (1, 1)), (G.converter_hash(), (0, 0))):
+            self.conn.execute('DELETE FROM replays')
+            self.conn.execute('UPDATE runs SET replay_id=0')
+            self.conn.commit()
+            K._save(sf, dict(jobs={}, failed={key: now + 7 * 86400},
+                             unconvertible=dict(converter=conv, keys=[key])))
+            with patch.object(G.time, 'sleep'):
+                self.assertEqual(G.tick(self.cache, download=lambda f: binary()), want, conv)
+        self.assertEqual(K._load(sf)['unconvertible'], dict(converter=G.converter_hash(), keys=[key]))
 
     # Review 4: no download starts DEMO_SECONDS into a tick (mapwatch waits 300 s for the lock).
     def test_p1240_downloads_stop_at_the_deadline(self):
@@ -1652,15 +1721,10 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
             return binary()
         base = int(time.time())
         with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=base):
-            # A broken file is set aside and ends the tick's downloads; the host is not parked.
-            self.assertEqual(G.tick(self.cache, maximum=6, download=serve), (1, 0))
-            self.assertEqual(self.parks(), [])
-            # A whole file in between resets the run of failures: 2 more broken, still no park.
-            self.assertEqual(G.tick(self.cache, maximum=6, download=serve), (2, 1))
-            self.assertEqual(G.tick(self.cache, maximum=6, download=serve), (1, 0))
-            self.assertEqual(self.parks(), [])
-            # The third broken file in a row is the host's: parked.
-            self.assertEqual(G.tick(self.cache, maximum=6, download=serve), (1, 0))
+            # P1247: a broken file is set aside and the tick goes on; a whole file in between
+            # resets the run of failures; the third broken file in a row is the host's: parked.
+            self.assertEqual(G.tick(self.cache, maximum=6, download=serve), (5, 1))
+        self.assertEqual(self.parks(), [G.PARK])
         self.assertEqual(K._load(os.path.join(self.cache, G.PARK))['n'], 1)
         self.assertEqual(len(asked), 5)
         # The run that parked was the host's: its first two files go back, the third stays queued.
@@ -1677,7 +1741,8 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
             def fail(file):
                 raise urllib.error.HTTPError('public', code, 'broken', {}, io.BytesIO())
             with patch.object(G.time, 'sleep'):
-                self.assertEqual(G.tick(self.cache, maximum=6, download=fail), (1, 0))
+                # P1247: the tick goes on, and row 1's kept original relinks with no download.
+                self.assertEqual(G.tick(self.cache, maximum=1, download=fail), (1, 1))
             self.assertEqual(self.parks(), [], code)
             self.assertEqual(len(K._load(os.path.join(self.cache, 'demos.json'))['failed']), 1)
         # What a host that is down or refusing answers parks every time, and sets nothing aside.
@@ -1702,19 +1767,18 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
         def five(file):
             raise urllib.error.HTTPError('public', 500, 'broken', {}, io.BytesIO())
         base = int(time.time())
-        with patch.object(G.time, 'sleep'):
-            for i, parked in ((0, False), (1, False), (2, True)):
-                with patch.object(G.time, 'time', return_value=base + i * 300):
-                    self.assertEqual(G.tick(self.cache, maximum=6, download=five), (1, 0))
-                self.assertEqual((Path(self.cache) / G.PARK).exists(), parked)
+        # P1247: one tick goes on past a broken file, so the third in a row parks in it.
+        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=base):
+            self.assertEqual(G.tick(self.cache, maximum=6, download=five), (G.FILESTREAK, 0))
+        self.assertEqual((Path(self.cache) / G.PARK).exists(), True)
         self.assertEqual(K._load(os.path.join(self.cache, 'demos.json'))['failed'], {})
         # A run more than a day old starts again: two, a day's gap, one more -- no park.
         for name in ('.refused', G.PARK, 'demos.json'):
             (Path(self.cache)/name).unlink(missing_ok=True)
         with patch.object(G.time, 'sleep'):
-            for when in (base, base + 300, base + 300 + 86401):
+            for when, most in ((base, 2), (base + 86401, 1)):
                 with patch.object(G.time, 'time', return_value=when):
-                    G.tick(self.cache, maximum=6, download=five)
+                    G.tick(self.cache, maximum=most, download=five)
         self.assertEqual(self.parks(), [])
 
     def test_only_a_body_broken_after_the_headers_is_the_files(self):
