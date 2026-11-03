@@ -275,6 +275,7 @@ void(entity e) Portal_Refresh =
 	local vector ext;
 
 	lpd_offertime = -1;		// Portal_Offer walks again with this door's new state
+	spr_skysolidgen += 1;	// P1242: Sprite_SkyTick re-traces with the door's new solid
 	e.solid = SOLID_NOT;
 	e.drawmask = 0;
 	e.lpd_ok = FALSE;
@@ -459,6 +460,7 @@ void(string mdl, string sorg, string sdd, string smin, string smax) LOD_Spawn =
 void() Portal_Clear =
 {
 	local entity e, n;
+	spr_skysolidgen += 1;	// P1242
 	e = findchain(classname, "vbsp_portal");
 	while (e)
 	{

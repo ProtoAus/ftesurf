@@ -246,6 +246,7 @@ float  spr_skynext;                     // cursor over sprites then beams
 vector spr_skyeye;                      // last frame's eye; a jump retests everything
 float  spr_skyburst;                    // tests left at 4x after a jump
 vector *spr_skyat;                      // P1242: the eye each sprite then beam was last traced from
+float  spr_skysolidgen, spr_skysolidseen; // P1242: bumped by cl_portal.qc when a door's collision changes
 float  spr_skyhid;                      // skipped last frame (vbsp_sprite_debug)
 
 /*
@@ -2555,7 +2556,17 @@ void(vector eye) Sprite_SkyTick =
 	}
 	if (!spr_skyat)
 		spr_skyat = memalloc(sizeof(vector) * (SPR_MAX + BEAM_MAX));
-	look = min(n, 256);
+	// A portal door opened, closed or was rebuilt: the traces can end elsewhere with the eye still.
+	// Every one is due again (its verdict kept until it is traced) and the burst settles them.
+	if (spr_skysolidseen != spr_skysolidgen)
+	{
+		spr_skysolidseen = spr_skysolidgen;
+		for (k = 0; k < n; k = k + 1)
+			spr_skyat[k] = '1e9 1e9 1e9';
+		spr_skyburst = n;
+		rays = rays * 4;
+	}
+	look = min(n, max(256, rays));
 	for (k = 0; k < look && rays > 0; k = k + 1)
 	{
 		if (spr_skynext >= n)
