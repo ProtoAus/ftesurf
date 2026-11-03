@@ -417,6 +417,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	  while the buffer drains.  See the essay above Emit_Precache.
 	*/
 	Emit_RegisterCvars();
+	RampWear_Init();                // P1278
 	Snds_RegisterCvars();           // build 66, env_soundscape
 	GA_Register();                 // local movement Foley from mounted CSS
 	MA_Register();                 // opt-in local altitude tone and A/D drums
@@ -2053,6 +2054,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	  final here, which is what the distance cull reads.
 	*/
 	Emit_Frame();
+	RampWear_Frame();               // P1278: its own map latch, whatever vbsp_emit says
 	Paint_Frame();                  // Patch 772: the camera is final; the world pass draws it
 	Share_Frame();                  // Patch 777: the pick reads the same camera
 	Archive_ClientFrame();
