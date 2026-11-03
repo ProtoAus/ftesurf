@@ -1,5 +1,31 @@
 # AGENT_NOTES.md
 
+## P1254-P1257 follow-ups to the ramp/prop list (3 Nov; root C:/FTESurf-worktrees/rampprop-20261103)
+- PM_DETTEST'S MOVER PASSES NEVER COLLIDED. SV_DetTest_f memsets pmove, leaving skipent 0 = the world
+  physent's info, so PM_PlayerTrace skips the world (pmovetst.c:1168): mover/srcmover/propmover/pinmover/
+  fixmover have measured free fall since Patch 322, and every "mover identical on both machines" since
+  then compared gravity arithmetic, not collision. Kept for their recorded values. P1255's pickmover
+  (starts on a prop contact) and ride11/ride12 set skipent -1 and the feet hull, as pm_recsim does, and
+  print "touched" (ticks where bih_probe_seq moved or the mover stood). Windows == Pi arm64 on all 90
+  lines over pigate's six maps, rides differing between movers 11 and 12 on axil (16 of 72) and sedona
+  (11 of 116) identically on both. A Windows rig compares only with the game cfg/ and the map's zone-file
+  cvars in it (the Pi's surf_boreas sets sv_maxvelocity 5000; 75 of 90 lines matched without it).
+- P1256: env_laser edicts (named only, SV_LateStash), ENTWIRE_LASERSTATE with the identity only on a
+  client's first send (SENDFLAGS_USABLE, sv_ents.c:399), matched on origin + crc16(targetname). ent_fire:
+  SV_EntFire opens a tainted bank context, and vbsp_entfire_map makes SV_CheatLevel cheat every run on the
+  map until SV_EntityReset (map state it edits outlives sv_cheats). Census trap: a dict over an entity's
+  keys keeps one of its repeated outputs (19 found, 315 real).
+- P1254: mode 0 without a start zone uses ui_jump_z; ui_jump_base makes it follow the floor from a
+  re-base to the first takeoff (also mode 1).
+- P1257: gl_mindist defaults 2 (review 1: at 4 the rewind chase camera, 4 units off its hit, and replay
+  eyes under low ceilings saw through; a sky-room clamp did nothing, R_DrawSkyroom reuses the outer
+  projection). m_projection_view (viewmodels) keeps 1, GL only. Installs tag patch-1257 c355068d9 (on
+  patch-1251 + patch-1260): exe 20b1609f, fteqwsv64 79111b05, plugin unchanged 1ba21f71.
+- LOBBY QC deploy/p1256-laserio 091d1275 (on deploy/p1252-lasers) LIVE 3 Nov ~09:55Z: qw ebfdbb85, cs
+  bda1b34d, codes.txt appended (.pre1256). NEXT LOBBY QC STACKS ON IT.
+- Pi: agent-work/chatfair-1206-57e27fa4 and chatsave-1200-57e27fa4 are in the live surfd drop-in's
+  ReadWritePaths and its preflight writes into each: deleting them stops surfd starting.
+
 ## P1248-P1252 Lex's ramp/prop list (3 Nov; root C:/FTESurf-worktrees/rampprop-20261103)
 - P1248 MOVER 12 (PMSRC_VERSION 12). For .phy prop pieces (struct bihtrace_s inphy, set round the
   piece loop only) at mover 12 (bih_phypick, pm_source.c) the REPORTED plane is the entering plane with

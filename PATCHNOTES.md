@@ -21,6 +21,17 @@
 
 ## next
 
+### P1257 Sharper depth far away
+- The camera's near clip is 2 units instead of 1 (gl_mindist; Source's 3D sky uses 2, its main view 7), so surfaces far away fight each other less. Weapons keep 1. `gl_mindist 1` puts it back.
+
+### P1256 Lasers that switch on and off
+- Lasers that maps turn on, off or flash now do it: surf_hyper's ramp lights chase, and secret and stage lasers appear when their trigger fires (315 switches on 33 maps).
+- `ent_fire <name> <input> [value]` fires a map input as in Source. It needs sv_cheats 1, and after it every run on that map counts as cheated until the map reloads.
+
+### P1254 Energy on maps without a start zone
+- With no start zone (or before you stand in one) the energy readout measures from your last jump and says "from jump", instead of "-- no start zone".
+- Standing where you spawned or teleported now reads 0 before your first jump; it used to read the few units you dropped on arrival.
+
 ### P1260 MSAA works on Source maps
 - vid_multisample 4 (or 8) now smooths the edges of the 3D view. Before, it did nothing on Source maps, because the scene is drawn off-screen first.
 - Render scale 1 with MSAA 4 smooths edges like render scale 2 for about half the graphics work. Leaves and fences cut out of textures are not smoothed by MSAA.

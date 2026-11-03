@@ -1,12 +1,24 @@
 # BACKLOG.md
 
+## P1254-P1257 residuals (3 Nov)
+- pm_dettest: mover..fixmover are free fall (skipent 0) and stay so for their recorded values; pickmover
+  on maps with no prop contact still starts in the void (bhop_eazy, surf_ace: touched 0). Every line
+  reads unpinned settings (maxvelocity, viewheight via ClipEye, pm_trisoup_bevels, pm_rotatedboxhulls,
+  pm_portalcsg_scanall). No v12 lobby recording existed at P1255: point pigate's PASSREC at one.
+- P1256: ent_fire's bank taint reaches bank-aware writes only; vbsp_entfire_map covers the rest by
+  cheating the whole map. Start-off laser entries join Sprite_SkyTick's round-robin though they may
+  never draw (602 on surf_not_so_neb). surf_hyper's chase is ~1.7 KB/s a client. Color inputs aimed at
+  env_laser (6) are still not followed.
+- P1257 at near 2 (review 2): replay eyes in 48-49 unit ducked tunnels lose a strip at the top, the
+  water-surface strip at the eye lasts ~2x longer, rewind chase on ultrawide can show a corner sliver,
+  world within 2-3 units draws over a viewmodel; Vulkan/D3D viewmodels take 2 (not clamped).
+
 ## Lex's ramp/prop list of 3 Nov (P1248-P1252): residuals
 - P1248 mover 12: a start already within DIST_EPSILON of the reported plane clamps at fraction 0 closer
   than eps, so the slide can re-hit at fraction 0 and lean on P813 (15-967 per 2M near-touching random
   traces; 0 in 225 simulated rides). PM_PlayerTrace merges physents by fraction, so a switched piece's
-  earlier stop can beat a brush ENTITY met first (one more bump). Nothing measures mover 12 across
-  machines: pm_dettest pins movers 6-9 and never sets bih_phypick; a v12 pass on surf_sedona and
-  surf_pantheon in pm_dettest/pigate.sh would. If HELD_SOURCE_VERSION is ever raised, the held saved
+  earlier stop can beat a brush ENTITY met first (one more bump). P1255 measures mover 12 across
+  machines (pm_dettest pickmover/ride lines). If HELD_SOURCE_VERSION is ever raised, the held saved
   trace flags must include bih_phypick (tools/test_heldmeta.py:187 still asserts 10). Prederr reports
   carry no client mover version, so a 0.1.37 client mispredicting at creases looks like divergence.
   Near-ties within float noise between a top face and an added side plane remain (4 of 359 prop hits).
@@ -19,7 +31,7 @@
   (v17) loader unchanged. Lit warp faces on brush entities cast stencil shadow volumes under realtime
   lights. surf_ixtab's endmark Color "127.5 ..." shows the intended colours where Source truncates to
   reds; an empty Color param would turn a brush black (only math_colorblend sends it, unimplemented).
-- P1252 lasers, Phase A only: not drawn -- start-off (562; needs I/O), parented (24), moving targets
+- P1252 lasers (start-off and I/O since P1256): not drawn -- parented (24), moving targets
   (49), EndSprite, sparks, HDRColorScale; NoiseAmplitude beams (500) drawn straight; renderfx 15 Distort
   (41) ~40% too bright; Color inputs aimed at env_laser (6) not followed. The sky test reads the start
   point only; the load trace stops at the world and brush copies (Source's MASK_SOLID also stops at

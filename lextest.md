@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## Follow-ups (P1254-P1257): both installs (exe patch-1257); lobbies have P1254 and P1256
+1. A map with no zones (surf_1day): the energy line reads "e 0 from jump" standing at the spawn.
+2. surf_hyper on a lobby: the ramp lasers chase on and off. In a local game with sv_cheats 1,
+   `ent_fire bob TurnOn` on surf_graphia lights the green secret laser (and says runs there are cheated).
+3. Nothing should look different from the near clip (gl_mindist 2); if a wall, ceiling or water surface
+   cuts away in a replay, rewind chase or spectate, tell me (`gl_mindist 1` puts it back).
+
 ## Frame-rate work (P1245, P1260): both installs now (exe 79dbfde0, plugin 1ba21f71); Desktop copy with the next release
 1. `r_capturehalfrate 1` (saves in your config). surf_eternity saves 4 and 10, boreas save 10, garden: faster
    (rig: eternity s4 200 -> 273 fps). Turn and strafe in front of the glass and the water: the reflection
