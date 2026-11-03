@@ -1560,6 +1560,59 @@ vector(float q) HUD_QualityColor =
   every single jump.  Zones only.
 ===========================================================================
 */
+/*
+  P1254: until you stand in a start zone (and on maps that have none) the zero is the floor under
+  the spawn point, of the class SV_SelectSpawnPoint picks first; of several, the one nearest where
+  you are when first asked, which is just after spawning.  Looked up once a map.
+*/
+float  ui_spawn_look;           // 0 = not yet this map, 1 = found, 2 = the map has none
+float  ui_spawn_z;
+
+void(vector org) HUD_SpawnLookup =
+{
+	local string tok, key, cn;
+	local vector o, best;
+	local float  rank, brank, d, bd;
+
+	ui_spawn_look = 2;
+	brank = 6;
+	bd = rank = 0;
+	best = '0 0 0';
+	getentitytoken(0);
+	while ((tok = getentitytoken()) != "")
+	{
+		if (tok != "{")
+			continue;
+		cn = "";
+		o = '0 0 0';
+		while ((key = getentitytoken()) != "" && key != "}")
+		{
+			tok = getentitytoken();
+			if      (key == "classname") cn = tok;
+			else if (key == "origin")    o = Sprite_ParseVec(tok);
+		}
+		if      (cn == "info_player_start")            rank = 1;
+		else if (cn == "info_player_counterterrorist") rank = 2;
+		else if (cn == "info_player_terrorist")        rank = 3;
+		else if (cn == "info_player_deathmatch")       rank = 4;
+		else if (cn == "info_player_teamspawn")        rank = 5;
+		else
+			continue;
+		d = vlen(o - org);
+		if (rank < brank || (rank == brank && d < bd))
+		{
+			brank = rank;
+			bd = d;
+			best = o;
+		}
+	}
+	if (brank > 5)
+		return;
+	tracebox(best, PM_HULL_MINS, PM_HULL_MAXS, best - '0 0 4096', MOVE_NOMONSTERS, world);
+	ui_spawn_z = trace_startsolid ? best_z : trace_endpos_z;
+	ui_spawn_look = 1;
+};
+
 void(vector org) HUD_UpdateAnchor =
 {
 	local float z;
@@ -1570,6 +1623,7 @@ void(vector org) HUD_UpdateAnchor =
 		ui_anchor_zone   = -1;
 		ui_anchor_z      = 0;
 		ui_anchor_manual = 0;           // a new map is a new question
+		ui_spawn_look    = 0;           // P1254
 		ui_jump_have     = 0;           // and so is where the last jump was: the
 		                                // 512-unit teleport guard below cannot be
 		                                // relied on to notice a spawn that happens
@@ -1598,6 +1652,8 @@ void(vector org) HUD_UpdateAnchor =
 		}
 		return;
 	}
+	if (ui_anchor_zone < 0 && !ui_spawn_look)
+		HUD_SpawnLookup(org);
 };
 
 /*
@@ -1894,7 +1950,15 @@ float() HUD_EnergyRef =
 		return ui_anchor_z;
 	if (ui_cv_energyref)
 		return ui_jump_z;
+	if (ui_anchor_zone < 0 && ui_spawn_look == 1)
+		return ui_spawn_z;      // P1254
 	return ui_anchor_z;
+};
+
+// P1254: the zero is the spawn point's floor, so the readout says so.
+float() HUD_ZeroIsSpawn =
+{
+	return (!ui_anchor_manual && !ui_cv_energyref && ui_anchor_zone < 0 && ui_spawn_look == 1);
 };
 
 // Patch 631: whether that zero has an answer.  The speedometer prints `-- no
@@ -1905,7 +1969,7 @@ float() HUD_ZeroKnown =
 		return TRUE;
 	if (ui_cv_energyref)
 		return !ui_jump_fresh;
-	return (ui_anchor_zone >= 0);
+	return (ui_anchor_zone >= 0 || ui_spawn_look == 1);
 };
 
 // Patch 744: spectate measures the watched body from its own zero (Spec_Feed);
@@ -2402,6 +2466,8 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 		}
 		else
 			s = sprintf((ui_rw_on && !ui_rw_exact) ? "e line %d" : "e %d", rint(HUD_Round(ui_hl_e)));
+		if (!ui_rw_on && !nozone && HUD_ZeroIsSpawn())
+			s = strcat(s, " from spawn");       // P1254
 
 		// Build 65: its own size, because it is a second readout inside one panel
 		// and "make the energy line bigger" is not "make the speedometer bigger".
@@ -5536,7 +5602,7 @@ void(vector scr, vector vel, float onground, vector gnorm, float mtype) HUD_Draw
 
 	HUD_Text(p, "anchor", sz, '0.6 0.6 0.6', 0.7);
 	HUD_TextR([rx, p_y], (ui_anchor_zone < 0 && !ui_anchor_manual)
-	          ? "--" : sprintf("%.0f", ui_anchor_z),
+	          ? ((ui_spawn_look == 1) ? sprintf("%.0f spawn", ui_spawn_z) : "--") : sprintf("%.0f", ui_anchor_z),
 	          sz, '0.6 0.6 0.6', 0.7);                                  p_y += lh;
 
 	/*
