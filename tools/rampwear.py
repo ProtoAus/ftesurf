@@ -434,7 +434,8 @@ def main():
     ap.add_argument('--bsp', help='default: Momentum maps/<map>.bsp')
     ap.add_argument('--gamedir', default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ftesurf'))
     ap.add_argument('--texel', type=float, default=8.0, help='units per mask texel')
-    ap.add_argument('--minhits', type=int, default=3, help='contacts a chart needs to be drawn')
+    ap.add_argument('--minhits', type=int, default=3, help='contacts a chart needs to carry wear')
+    ap.add_argument('--grow', type=int, default=3, help='rings of touching steep surfaces drawn dirty without wear')
     ap.add_argument('--dry', action='store_true')
     a = ap.parse_args()
 
@@ -448,6 +449,18 @@ def main():
     for fn in files:
         bake_replay(fn, grid, stats)
     used = [c for c in charts if c.hits >= a.minhits]
+    # the rest of a ridden ramp: steep surfaces sharing a vertex with a drawn one, a.grow rings out
+    vkey = lambda v: (round(v[0]), round(v[1]), round(v[2]))
+    byv = collections.defaultdict(set)
+    for i, c in enumerate(charts):
+        for v in c.verts:
+            byv[vkey(v)].add(i)
+    drawn = set(i for i, c in enumerate(charts) if c.hits >= a.minhits)
+    ring = set(drawn)
+    for _ in range(a.grow):
+        ring = set(j for i in ring for v in charts[i].verts for j in byv[vkey(v)]) - drawn
+        drawn |= ring
+    plain = [charts[i] for i in sorted(drawn) if charts[i].hits < a.minhits]
     print('%s: %d replays (%d read), %d contact ticks, %d placed (%d on brush faces, %d on displacements); '
           '%d of %d surfaces drawn (%d displacements of %d), %d boardings' % (
               a.map, len(files), stats['replays'], stats['contacts'], stats['placed'], stats['placed_f'], stats['placed_d'],
@@ -462,6 +475,8 @@ def main():
     texel = a.texel
     while True:
         painted = {c.key: paint(c, texel) for c in used}
+        painted[('empty',)] = dict(u0=0, v0=0, w=4, h=4, ride=np.zeros((4, 4), np.float32),
+                                   scr=np.zeros((4, 4), np.float32), dsum=np.zeros((4, 4, 2), np.float32))
         pos, W, H = pack(painted, 2048)
         if H <= 4096:
             break
@@ -479,18 +494,22 @@ def main():
         dv = np.where(dl > 1e-4, p['dsum'][..., 1] / np.maximum(dl, 1e-4), 0.0)
         tile = np.stack([wear * 255, p['scr'] * 255, (0.5 + 0.5 * du) * 255, (0.5 + 0.5 * dv) * 255], -1)
         img[y:y + p['h'], x:x + p['w']] = np.clip(tile + 0.5, 0, 255).astype(np.uint8)
-    print('atlas %dx%d, texel %.1f units, ride p99 %.1f, scratch texels %d' % (
-        W, H, texel, p99, int(sum((p['scr'] > 0.05).sum() for p in painted.values()))))
+    print('atlas %dx%d, texel %.1f units, ride p99 %.1f, scratch texels %d; %d unridden neighbours drawn dirty' % (
+        W, H, texel, p99, int(sum((p['scr'] > 0.05).sum() for p in painted.values())), len(plain)))
 
     # data/rampwear/<map>.txt, read by cl_rampwear.qc:
     #   rampwear 1 <map> <surfaces> <triangles>
     #   c <cx> <cy> <cz> <radius> <triangles>             a surface, its triangles follow
     #   t <x y z s t> x3 <nx ny nz>                       s, t in the atlas, t from the top
-    lines = ['rampwear 1 %s %d %d' % (a.map, len(used), sum(len(c.tris) for c in used))]
-    for c in used:
-        p = painted[c.key]
-        x, y = pos[c.key]
-        st = [((x + (pu - p['u0']) / texel) / W, (y + (pv - p['v0']) / texel) / H) for (pu, pv) in c.vcc]
+    ex, ey = pos[('empty',)]
+    lines = ['rampwear 1 %s %d %d' % (a.map, len(used) + len(plain), sum(len(c.tris) for c in used + plain))]
+    for c in used + plain:
+        if c.key in painted:
+            p = painted[c.key]
+            x, y = pos[c.key]
+            st = [((x + (pu - p['u0']) / texel) / W, (y + (pv - p['v0']) / texel) / H) for (pu, pv) in c.vcc]
+        else:       # dirt only: every corner on the empty block's centre
+            st = [((ex + 2.0) / W, (ey + 2.0) / H)] * len(c.verts)
         cen = [sum(v[i] for v in c.verts) / len(c.verts) for i in range(3)]
         rad = max(math.dist(cen, v) for v in c.verts)
         lines.append('c %.1f %.1f %.1f %.1f %d' % (cen[0], cen[1], cen[2], rad, len(c.tris)))
@@ -509,7 +528,7 @@ def main():
         fh.write('\n'.join(lines) + '\n')
     Image.fromarray(img, 'RGBA').save(os.path.join(tdir, a.map + '.png'))
     print('wrote', os.path.join(ddir, a.map + '.txt'), 'and', os.path.join(tdir, a.map + '.png'),
-          '(%d triangles)' % sum(len(c.tris) for c in used))
+          '(%d triangles)' % sum(len(c.tris) for c in used + plain))
 
 
 if __name__ == '__main__':
