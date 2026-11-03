@@ -137,7 +137,10 @@
   not exact (CSQC_PredictPlayerPreMove / CSQC_PredictPlayerMove in cl_triggers.qc read chain-start probes, server
   gate snapshots and replicated IO state that change between frames), and only ~15% of traces repeat. com_bih.c
   at -O2 under the release's -Os measured no gain and was dropped. pm_dettest stands the cache aside (it reads
-  the probe record), so bih_tracecache 2 and a pm_verify at 0 vs 1 are the only checks that exercise it.
+  the probe record). Key mutants (artifacts/p1266_mut.py): dropping the trace end changes pm_verify's verdicts
+  and mode 2 counts 5541/34003 differed; dropping the hull size leaves pm_verify's verdicts UNCHANGED (voyager
+  HOLD 52@408, boreas 0002871_pb PASS) while mode 2 counts 8455/4622. bih_tracecache 2 is the check that
+  discriminates; pm_verify alone is not. The axis mutant was never run (reaped for low memory).
 - vid_restart mid-map left surf_eternity s4's PrepareFrame at 1.76 ms against 1.11 for the following seconds
   (loading still on the main thread); not followed up.
 - P1222 review leftovers: gl_overbright_all has no callback and r_stains 0 leaves stains drawn (both pre-existing,
