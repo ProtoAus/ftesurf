@@ -50,7 +50,7 @@ void() RampWear_Free =
 void() RampWear_Load =
 {
 	local string mname, line;
-	local float fh, ns, nt, s, t, k, j;
+	local float fh, ns, nt, s, t, k, j, skip;
 
 	RampWear_Free();
 	if (rw_map)
@@ -84,18 +84,22 @@ void() RampWear_Load =
 	rw_st    = memalloc(sizeof(vector) * nt * 3);
 	rw_nrm   = memalloc(sizeof(vector) * nt);
 	s = t = 0;
+	skip = TRUE;            // triangles before any surface line, or after a bad one, belong to nothing
 	while ((line = fgets(fh)))
 	{
 		k = tokenize(line);
-		if (argv(0) == "c" && k == 6 && s < ns)
+		if (argv(0) == "c")
 		{
+			skip = (k != 6 || s >= ns);
+			if (skip)
+				continue;
 			rw_cen[s] = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
 			rw_rad[s] = stof(argv(4));
 			rw_first[s] = t;
 			rw_cnt[s] = 0;
 			s = s + 1;
 		}
-		else if (argv(0) == "t" && k == 19 && s > 0 && t < nt)
+		else if (argv(0) == "t" && k == 19 && !skip && t < nt)
 		{
 			for (j = 0; j < 3; j = j + 1)
 			{
@@ -112,7 +116,9 @@ void() RampWear_Load =
 	rw_ntri = t;
 	rw_shader = strzone(sprintf("ftesurf_rampwear/%s", mname));
 	rw_alloc = TRUE;
-	shaderforname(rw_shader, sprintf("{\npolygonoffset\nsort decal\n{\nprogram ftesurf_rampwear\nblendfunc filter\nclampmap textures/rampwear/%s.png\nrgbgen vertex\nalphagen vertex\n}\n}\n", mname));
+	// exactvertex: plain `vertex` scales by identitylighting (HDR exposure), and the colour is a normal.
+	// $nosrgb: the mask is data, not colour.
+	shaderforname(rw_shader, sprintf("{\npolygonoffset\nsort decal\n{\nprogram ftesurf_rampwear\nblendfunc filter\nclampmap $nosrgb:textures/rampwear/%s.png\nrgbgen exactvertex\nalphagen vertex\n}\n}\n", mname));
 	print(sprintf("rampwear: %s, %g surfaces, %g triangles\n", mname, rw_n, rw_ntri));
 };
 
@@ -129,6 +135,9 @@ void() RampWear_Frame =
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
 	fwd = v_forward;
+	// One begin a frame: R_EndPolygon keeps the shader for the next polygon (pr_csqc.c
+	// PF_R_PolygonEnd), and each begin is a shader lookup that counts a use.
+	R_BeginPolygon(rw_shader, 0, FALSE);
 	for (i = 0; i < rw_n; i = i + 1)
 	{
 		d = rw_cen[i] - eye;
@@ -138,7 +147,6 @@ void() RampWear_Frame =
 		for (t = rw_first[i]; t < e; t = t + 1)
 		{
 			col = rw_nrm[t] * 0.5 + '0.5 0.5 0.5';
-			R_BeginPolygon(rw_shader, 0, FALSE);
 			for (j = 0; j < 3; j = j + 1)
 				R_PolygonVertex(rw_pos[t * 3 + j], rw_st[t * 3 + j], col, 1);
 			R_EndPolygon();

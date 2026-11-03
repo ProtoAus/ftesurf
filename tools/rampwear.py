@@ -9,8 +9,11 @@ cl_rampwear.qc draws with glsl/ftesurf_rampwear.glsl.  Mask channels, per texel 
   R  ride wear: hull contacts swept tick to tick, log-scaled to the map's 99th percentile
   G  boarding scratch: each arrival on a ramp streaks along the travel direction, stronger and
      longer the steeper the impact (asin(|v.n| / |v|) of the pre-clip velocity; parallel = none)
-  BA the travel direction in the shader's frame of the surface normal (frame() below: u level
-     along the ramp, v down the slope), 0.5 + 0.5 * (u, v)
+  BA the travel direction as a line, in the surface's frame (frame() of its normal: u level along
+     the ramp, v up it): 0.5 + 0.5 * (cos 2a, sin 2a), so opposite traffic adds instead of cancelling
+One frame per surface (a brush face's normal, a displacement's base face's), so the shader's pattern
+does not restart at each triangle.  Ride segments and boarding streaks are kept in world space and
+painted into every surface they cross, so wear carries over a seam.
 
 Contacts come from Momentum replays (.mtv, tools/momreplay.py) with tools/rampinfer.py's rule:
 airborne pairs one tick apart, no teleport, vz pushed above the fall step.  The touched surface
@@ -57,7 +60,7 @@ def unit(a):
 
 
 def frame(n):
-    """(u, v): u level along the ramp, v down the slope.  glsl/ftesurf_rampwear.glsl builds the same."""
+    """(u, v): u level along the ramp, v up it.  glsl/ftesurf_rampwear.glsl builds the same."""
     l = math.hypot(n[0], n[1]) or 1.0
     u = (-n[1] / l, n[0] / l, 0.0)
     return u, cross(n, u)
@@ -123,16 +126,40 @@ class Facet:
 
 
 class Chart:
-    """What is painted and drawn as one block of the atlas."""
-    def __init__(self, key):
+    """What is painted and drawn as one block of the atlas, in one frame (normal n)."""
+    def __init__(self, key, n):
         self.key = key
+        self.n = n
+        self.fu, self.fv = frame(n)
         self.facets = []
         self.verts = []         # world positions
         self.vcc = []           # chart coords per vertex
-        self.tris = []          # (i, j, k, normal)
-        self.ride = []          # (u0, v0, u1, v1, du, dv): segment in chart coords, direction in the shader frame
-        self.boards = []        # (u, v, cu, cv, du, dv, degrees): point, chart-space travel, shader-frame travel
+        self.tris = []          # (i, j, k)
         self.hits = 0
+        self.cen = None         # facet centroids (numpy), for mapping world points onto a displacement
+
+    def bounds(self):
+        self.lo = [min(v[i] for v in self.verts) for i in range(3)]
+        self.hi = [max(v[i] for v in self.verts) for i in range(3)]
+
+    def map(self, p):
+        """(chart coords, distance off the surface) of world point p."""
+        if self.key[0] == 'f':
+            f = self.facets[0]
+            return f.chart_of(p), abs(dot(f.n, p) - f.d)
+        if self.cen is None:
+            self.cen = np.array([[sum(w[i] for w in f.poly) / 3.0 for i in range(3)] for f in self.facets])
+        k = int(np.argmin(((self.cen - np.array(p)) ** 2).sum(1)))
+        f = self.facets[k]
+        return f.chart_of(p), abs(dot(f.n, p) - f.d)
+
+    def line_dir(self, vel):
+        """A travel vector as a line in this chart's frame: (cos 2a, sin 2a), or None if it has no length here."""
+        du, dv = dot(self.fu, vel), dot(self.fv, vel)
+        l2 = du * du + dv * dv
+        if l2 < 1e-6:
+            return None
+        return ((du * du - dv * dv) / l2, 2 * du * dv / l2)
 
 
 def steep(n):
@@ -191,13 +218,14 @@ def load_charts(bsp):
         n, dd, poly, ti, di = face(f)
         if di >= 0 or not steep(n) or len(poly) < 3 or not drawn(ti):
             continue
-        c = Chart(('f', f))
+        c = Chart(('f', f), n)
         fa = Facet(c, n, dd, poly)
         c.facets.append(fa)
         c.verts = list(poly)
         c.vcc = list(fa.p2)
         for j in range(1, len(poly) - 1):
-            c.tris.append((0, j, j + 1, n))
+            c.tris.append((0, j, j + 1))
+        c.bounds()
         charts.append(c)
 
     # displacements: vertices exactly as VBSP_LoadDisplacements builds them
@@ -224,7 +252,7 @@ def load_charts(bsp):
         P = lambda x, y: xyz[y * (w + 1) + x]
         sx = sum(math.dist(P(x, y), P(x + 1, y)) for y in range(w + 1) for x in range(w)) / ((w + 1) * w)
         sy = sum(math.dist(P(x, y), P(x, y + 1)) for x in range(w + 1) for y in range(w)) / ((w + 1) * w)
-        c = Chart(('d', i))
+        c = Chart(('d', i), n0)
         c.verts = xyz
         c.vcc = [(x * sx, y * sy) for y in range(w + 1) for x in range(w + 1)]
         for y in range(w):
@@ -243,8 +271,9 @@ def load_charts(bsp):
                         continue
                     fa = Facet(c, nn, dot(nn, a), [a, b, cc], [c.vcc[ia], c.vcc[ib], c.vcc[ic]])
                     c.facets.append(fa)
-                    c.tris.append((ia, ib, ic, nn))
+                    c.tris.append((ia, ib, ic))
         if c.facets:
+            c.bounds()
             charts.append(c)
             ndisp += 1
     return charts, ndisp
@@ -284,7 +313,39 @@ def touched(grid, o):
 
 
 # ------------------------------------------------------------------ replays
-def bake_replay(path, grid, stats):
+class Events:
+    """World-space ride segments and boardings, gridded so a chart finds the ones crossing it."""
+    def __init__(self, cell=512.0):
+        self.cell = cell
+        self.ride = []          # (a, b, vel): support points of consecutive contacts, travel vector
+        self.boards = []        # (p, tangent, vel, degrees)
+        self.g = collections.defaultdict(list)
+
+    def _add(self, kind, idx, lo, hi):
+        for cx in range(int(math.floor(lo[0] / self.cell)), int(math.floor(hi[0] / self.cell)) + 1):
+            for cy in range(int(math.floor(lo[1] / self.cell)), int(math.floor(hi[1] / self.cell)) + 1):
+                self.g[(cx, cy)].append((kind, idx))
+
+    def add_ride(self, a, b, vel):
+        self.ride.append((a, b, vel))
+        self._add('r', len(self.ride) - 1, [min(a[i], b[i]) - 32 for i in range(2)], [max(a[i], b[i]) + 32 for i in range(2)])
+
+    def add_board(self, p, tangent, vel, ang):
+        self.boards.append((p, tangent, vel, ang))
+        e = [p[i] + tangent[i] * board_length(ang) for i in range(3)]
+        self._add('b', len(self.boards) - 1, [min(p[i], e[i]) - 40 for i in range(2)], [max(p[i], e[i]) + 40 for i in range(2)])
+
+    def near(self, lo, hi):
+        seen = set()
+        for cx in range(int(math.floor(lo[0] / self.cell)), int(math.floor(hi[0] / self.cell)) + 1):
+            for cy in range(int(math.floor(lo[1] / self.cell)), int(math.floor(hi[1] / self.cell)) + 1):
+                for k in self.g.get((cx, cy), ()):
+                    if k not in seen:
+                        seen.add(k)
+                        yield k
+
+
+def bake_replay(path, grid, ev, stats):
     try:
         r = momreplay.parse(path)
     except Exception as ex:     # an unreadable replay is counted, never fatal
@@ -300,15 +361,19 @@ def bake_replay(path, grid, stats):
         ok.append(b.tick - a.tick == 1 and not ((a.flags | b.flags) & 1) and
                   (a.noint is None or a.noint == b.noint) and
                   not rampinfer.snap((a.x, a.y, a.z), (a.vx, a.vy, a.vz), (b.x, b.y, b.z), (b.vx, b.vy, b.vz), dt))
+    nair = sum(ok)
     falls = collections.Counter(int(math.floor((t[i - 1].vz - t[i].vz) * 100 + 0.5)) for i in range(1, len(t)) if ok[i])
     falls = {k: c for k, c in falls.items() if 1 <= k <= rampinfer.HMAX}
     if not falls:
         stats['nofall'] += 1
         return
     top = max(falls.values())
+    if nair < rampinfer.MINAIR or top / nair < rampinfer.MINSHARE:     # rampinfer.infer's UNAVAILABLE
+        stats['unavailable'] += 1
+        return
     step = min(k for k, c in falls.items() if c == top) / 100.0
     stats['replays'] += 1
-    prev = None             # (chart, chart point) of the previous tick's placed contact
+    prev = None             # support point of the previous tick's placed contact
     was = False             # the previous tick was a contact, placed or not: no arrival
     for i in range(1, len(t)):
         a, b = t[i - 1], t[i]
@@ -320,39 +385,31 @@ def bake_replay(path, grid, stats):
             prev, was = None, False
             continue
         stats['contacts'] += 1
-        o = (b.x, b.y, b.z)
-        f, c = touched(grid, o)
+        f, c = touched(grid, (b.x, b.y, b.z))
         arrival = not was
         was = True
         if f is None:
             prev = None
             continue
-        ch = f.chart
         stats['placed'] += 1
-        stats['placed_' + ch.key[0]] += 1
-        ch.hits += 1
-        q = f.chart_of(c)
+        stats['placed_' + f.chart.key[0]] += 1
+        f.chart.hits += 1
         vel = (b.vx, b.vy, b.vz)
-        vt = (dot(f.u, vel), dot(f.v, vel))
-        l = math.hypot(vt[0], vt[1]) or 1.0
-        dirn = (vt[0] / l, vt[1] / l)                       # shader frame
-        ahead = f.chart_of((c[0] + vel[0] * 0.01, c[1] + vel[1] * 0.01, c[2] + vel[2] * 0.01))
-        cd = (ahead[0] - q[0], ahead[1] - q[1])
-        l = math.hypot(cd[0], cd[1]) or 1.0
-        cdir = (cd[0] / l, cd[1] / l)                       # chart space
-        if prev is not None and prev[0] is ch:
-            ch.ride.append((prev[1][0], prev[1][1], q[0], q[1], dirn[0], dirn[1]))
+        if prev is not None and math.dist(prev, c) < 200:
+            ev.add_ride(prev, c, vel)
         else:
-            ch.ride.append((q[0], q[1], q[0], q[1], dirn[0], dirn[1]))
-            if arrival:         # the tick before was in the air
-                vpre = (a.vx, a.vy, a.vz - 0.5 * step)
-                sp = math.sqrt(dot(vpre, vpre)) or 1.0
-                vn = dot(vpre, f.n)
-                ang = math.degrees(math.asin(min(1.0, -vn / sp))) if vn < 0 else 0.0
-                stats['boards'] += 1
-                stats['board_deg_%d' % min(30, int(ang // 5) * 5)] += 1
-                ch.boards.append((q[0], q[1], cdir[0], cdir[1], dirn[0], dirn[1], ang))
-        prev = (ch, q)
+            ev.add_ride(c, c, vel)
+        if arrival:             # the tick before was in the air
+            vpre = (a.vx, a.vy, a.vz - 0.5 * step)
+            sp = math.sqrt(dot(vpre, vpre)) or 1.0
+            vn = dot(vpre, f.n)
+            ang = math.degrees(math.asin(min(1.0, -vn / sp))) if vn < 0 else 0.0
+            tan = sub(vel, tuple(f.n[k] * dot(vel, f.n) for k in range(3)))
+            stats['boards'] += 1
+            stats['board_deg_%d' % min(30, int(ang // 5) * 5)] += 1
+            if math.sqrt(dot(tan, tan)) > 1e-3:
+                ev.add_board(c, unit(tan), vel, ang)
+        prev = c
 
 
 # ------------------------------------------------------------------ mask
@@ -361,12 +418,19 @@ def board_strength(ang):
     return max(0.0, min(1.0, (ang - 1.5) / 18.5))
 
 
-def paint(ch, texel):
+def board_length(ang):
+    return 48 + 420 * board_strength(ang)
+
+
+MARGIN = 4      # texels round each chart: mip levels average across that much before they reach a neighbour
+
+
+def paint(ch, texel, ev):
     us = [p[0] for p in ch.vcc]
     vs = [p[1] for p in ch.vcc]
-    u0, v0 = min(us) - 2 * texel, min(vs) - 2 * texel
-    w = int(math.ceil((max(us) - u0) / texel)) + 3
-    h = int(math.ceil((max(vs) - v0) / texel)) + 3
+    u0, v0 = min(us) - MARGIN * texel, min(vs) - MARGIN * texel
+    w = int(math.ceil((max(us) - u0) / texel)) + MARGIN + 1
+    h = int(math.ceil((max(vs) - v0) / texel)) + MARGIN + 1
     ride = np.zeros((h, w), np.float32)
     scr = np.zeros((h, w), np.float32)
     dsum = np.zeros((h, w, 2), np.float32)
@@ -387,28 +451,48 @@ def paint(ch, texel):
         tt = np.clip(((su - ax) * ex + (sv - ay) * ey) / l2, 0, 1) if l2 > 1e-6 else np.zeros_like(su)
         return (slice(y0, y1), slice(x0, x1)), (np.hypot(su - ax - tt * ex, sv - ay - tt * ey), tt)
 
-    for (a0, a1, b0, b1, du, dv) in ch.ride:
-        sl, g = capsule((a0, a1), (b0, b1), RIDE_R + texel)
-        if sl is None:
-            continue
-        wgt = np.clip(1.0 - g[0] / (RIDE_R + texel), 0, 1)
-        ride[sl] += wgt
-        dsum[sl][..., 0] += wgt * du
-        dsum[sl][..., 1] += wgt * dv
-    for (bu, bv, cdu, cdv, du, dv, ang) in ch.boards:
-        s = board_strength(ang)
-        if s <= 0:
-            continue
-        length = 48 + 420 * s
-        width = 12 + 14 * s
-        sl, g = capsule((bu, bv), (bu + cdu * length, bv + cdv * length), width)
-        if sl is None:
-            continue
-        dist, tt = g
-        val = s * np.clip(1.0 - dist / width, 0, 1) * (1.0 - 0.85 * tt)
-        scr[sl] = np.maximum(scr[sl], val)
-        dsum[sl][..., 0] += 4 * val * du
-        dsum[sl][..., 1] += 4 * val * dv
+    lo = [ch.lo[i] - 48 for i in range(3)]
+    hi = [ch.hi[i] + 48 for i in range(3)]
+    for kind, idx in ev.near(lo, hi):
+        if kind == 'r':
+            a, b, vel = ev.ride[idx]
+            if not all(lo[i] - 500 <= min(a[i], b[i]) and max(a[i], b[i]) <= hi[i] + 500 for i in range(3)):
+                continue
+            (qa, da), (qb, db) = ch.map(a), ch.map(b)
+            if min(da, db) > 20:
+                continue
+            d2 = ch.line_dir(vel)
+            if d2 is None:
+                continue
+            sl, g = capsule(qa, qb, RIDE_R + texel)
+            if sl is None:
+                continue
+            wgt = np.clip(1.0 - g[0] / (RIDE_R + texel), 0, 1)
+            ride[sl] += wgt
+            dsum[sl][..., 0] += wgt * d2[0]
+            dsum[sl][..., 1] += wgt * d2[1]
+        else:
+            p, tan, vel, ang = ev.boards[idx]
+            s = board_strength(ang)
+            if s <= 0:
+                continue
+            length = board_length(ang)
+            width = 12 + 14 * s
+            e = tuple(p[i] + tan[i] * length for i in range(3))
+            (qa, da), (qb, db) = ch.map(p), ch.map(e)
+            if min(da, db) > 40:
+                continue
+            d2 = ch.line_dir(tan)
+            if d2 is None:
+                continue
+            sl, g = capsule(qa, qb, width)
+            if sl is None:
+                continue
+            dist, tt = g
+            val = s * np.clip(1.0 - dist / width, 0, 1) * (1.0 - 0.85 * tt)
+            scr[sl] = np.maximum(scr[sl], val)
+            dsum[sl][..., 0] += 4 * val * d2[0]
+            dsum[sl][..., 1] += 4 * val * d2[1]
     return dict(u0=u0, v0=v0, w=w, h=h, ride=ride, scr=scr, dsum=dsum)
 
 
@@ -442,12 +526,13 @@ def main():
     bsp = Bsp(a.bsp or os.path.join(MOMENTUM, 'maps', a.map + '.bsp'))
     charts, ndisp = load_charts(bsp)
     grid = Grid([f for c in charts for f in c.facets])
+    ev = Events()
     files = sorted(glob.glob(a.replays or os.path.join(MOMENTUM, 'momtv', '*', a.map, '*.mtv')))
     if not files:
         raise SystemExit('no replays for %s' % a.map)
     stats = collections.Counter()
     for fn in files:
-        bake_replay(fn, grid, stats)
+        bake_replay(fn, grid, ev, stats)
     used = [c for c in charts if c.hits >= a.minhits]
     # the rest of a ridden ramp: steep surfaces sharing a vertex with a drawn one, a.grow rings out
     vkey = lambda v: (round(v[0]), round(v[1]), round(v[2]))
@@ -461,9 +546,9 @@ def main():
         ring = set(j for i in ring for v in charts[i].verts for j in byv[vkey(v)]) - drawn
         drawn |= ring
     plain = [charts[i] for i in sorted(drawn) if charts[i].hits < a.minhits]
-    print('%s: %d replays (%d read), %d contact ticks, %d placed (%d on brush faces, %d on displacements); '
+    print('%s: %d replays (%d read, %d without a judgeable fall step), %d contact ticks, %d placed (%d on brush faces, %d on displacements); '
           '%d of %d surfaces drawn (%d displacements of %d), %d boardings' % (
-              a.map, len(files), stats['replays'], stats['contacts'], stats['placed'], stats['placed_f'], stats['placed_d'],
+              a.map, len(files), stats['replays'], stats['unavailable'] + stats['nofall'], stats['contacts'], stats['placed'], stats['placed_f'], stats['placed_d'],
               len(used), len(charts), sum(1 for c in used if c.key[0] == 'd'), ndisp, stats['boards']))
     print('boarding angle, 5-degree bins:', ' '.join('%d:%d' % (k, stats['board_deg_%d' % k]) for k in range(0, 35, 5)))
     for k in sorted(stats):
@@ -474,9 +559,9 @@ def main():
 
     texel = a.texel
     while True:
-        painted = {c.key: paint(c, texel) for c in used}
-        painted[('empty',)] = dict(u0=0, v0=0, w=4, h=4, ride=np.zeros((4, 4), np.float32),
-                                   scr=np.zeros((4, 4), np.float32), dsum=np.zeros((4, 4, 2), np.float32))
+        painted = {c.key: paint(c, texel, ev) for c in used}
+        painted[('empty',)] = dict(u0=0, v0=0, w=8, h=8, ride=np.zeros((8, 8), np.float32),
+                                   scr=np.zeros((8, 8), np.float32), dsum=np.zeros((8, 8, 2), np.float32))
         pos, W, H = pack(painted, 2048)
         if H <= 4096:
             break
@@ -490,7 +575,7 @@ def main():
         x, y = pos[k]
         wear = np.clip(np.log1p(p['ride']) / math.log1p(max(p99, 1e-3)), 0, 1)
         dl = np.hypot(p['dsum'][..., 0], p['dsum'][..., 1])
-        du = np.where(dl > 1e-4, p['dsum'][..., 0] / np.maximum(dl, 1e-4), 0.0)
+        du = np.where(dl > 1e-4, p['dsum'][..., 0] / np.maximum(dl, 1e-4), 0.0)     # (cos 2a, sin 2a)
         dv = np.where(dl > 1e-4, p['dsum'][..., 1] / np.maximum(dl, 1e-4), 0.0)
         tile = np.stack([wear * 255, p['scr'] * 255, (0.5 + 0.5 * du) * 255, (0.5 + 0.5 * dv) * 255], -1)
         img[y:y + p['h'], x:x + p['w']] = np.clip(tile + 0.5, 0, 255).astype(np.uint8)
@@ -500,7 +585,7 @@ def main():
     # data/rampwear/<map>.txt, read by cl_rampwear.qc:
     #   rampwear 1 <map> <surfaces> <triangles>
     #   c <cx> <cy> <cz> <radius> <triangles>             a surface, its triangles follow
-    #   t <x y z s t> x3 <nx ny nz>                       s, t in the atlas, t from the top
+    #   t <x y z s t> x3 <nx ny nz>                       s, t in the atlas, t from the top; n the surface's frame
     ex, ey = pos[('empty',)]
     lines = ['rampwear 1 %s %d %d' % (a.map, len(used) + len(plain), sum(len(c.tris) for c in used + plain))]
     for c in used + plain:
@@ -509,13 +594,13 @@ def main():
             x, y = pos[c.key]
             st = [((x + (pu - p['u0']) / texel) / W, (y + (pv - p['v0']) / texel) / H) for (pu, pv) in c.vcc]
         else:       # dirt only: every corner on the empty block's centre
-            st = [((ex + 2.0) / W, (ey + 2.0) / H)] * len(c.verts)
+            st = [((ex + 4.0) / W, (ey + 4.0) / H)] * len(c.verts)
         cen = [sum(v[i] for v in c.verts) / len(c.verts) for i in range(3)]
         rad = max(math.dist(cen, v) for v in c.verts)
         lines.append('c %.1f %.1f %.1f %.1f %d' % (cen[0], cen[1], cen[2], rad, len(c.tris)))
-        for (i0, i1, i2, n) in c.tris:
+        for (i0, i1, i2) in c.tris:     # the chart's frame normal on every triangle: one pattern frame a surface
             lines.append('t ' + ' '.join('%.3f %.3f %.3f %.5f %.5f' % (c.verts[k] + st[k]) for k in (i0, i1, i2)) +
-                         ' %.4f %.4f %.4f' % n)
+                         ' %.4f %.4f %.4f' % c.n)
     if a.dry:
         print('dry run: nothing written')
         return
