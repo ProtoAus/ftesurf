@@ -8288,6 +8288,8 @@ void(vector screensize) m_draw =
 	ui_prejoin_tick();
 	if (LS_Active())                // P1244: a load before the plaque (the connection stage)
 		LS_Draw(fullsize);
+	else
+		ls_idle = TRUE;
 
 	if (clientstate() != ms_cstate)    // P1225
 	{

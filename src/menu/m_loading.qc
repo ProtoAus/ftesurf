@@ -15,14 +15,32 @@ string ls_key[LS_LOG];          // a merged run's kind ("models"), zoned; "" = a
 float  ls_cnt[LS_LOG];          // ...and how many steps it holds
 float  ls_seq;                  // the last scr_loadingseq taken
 float  ls_shape;                // 0 avatar, 1 ramp
-float  ls_last;                 // when LS_Draw last ran: a gap of 2 s starts a new load
+float  ls_last;                 // when LS_Draw last ran (ls_debug)
+var float ls_idle = 1;          // m_draw saw no load since: the next LS_Draw starts one (var: an initialised global is a constant)
 string ls_fkey;                 // LS_Friendly's merge key
 string ls_prev;                 // ls_debug: the step at the last redraw, zoned
 vector ls_ring[5];              // the shape: a convex ring in one plane...
 float  ls_rn;
 vector ls_ext;                  // ...and the extrusion, perpendicular to it
 
-void(float width, vector pos1, vector pos2, vector rgb, float alpha, optional float drawflag) drawline = #466;
+#define LS_TWOSIDED 1024        // DRAWFLAG_TWOSIDED (m_stats.qc's MS_TWOSIDED)
+
+// A white line `w` wide: a quad, since the menu's drawline ignores its width (pr_menu.c).
+void(vector a, vector c, float w) LS_Line =
+{
+	local vector d, n;
+	d = c - a;
+	if (vlen(d) < 0.01)
+		return;
+	d = normalize(d);
+	n = [0 - d_y, d_x, 0] * (w * 0.5);
+	R_BeginPolygon("", LS_TWOSIDED, TRUE);
+	R_PolygonVertex(a + n, '0 0 0', '1 1 1', 1);
+	R_PolygonVertex(c + n, '0 0 0', '1 1 1', 1);
+	R_PolygonVertex(c - n, '0 0 0', '1 1 1', 1);
+	R_PolygonVertex(a - n, '0 0 0', '1 1 1', 1);
+	R_EndPolygon();
+};
 
 // The engine clears scr_loadingstep when no load is in progress (engine Patch 1244).
 float() LS_Active = { return cvar_string("scr_loadingstep") != ""; };
@@ -204,7 +222,7 @@ void(vector scr) LS_DrawShape =
 	ls_k = scr_y * 0.32 / 62;
 	ls_sa = sin(time * 0.8);
 	ls_ca = cos(time * 0.8);
-	lw = max(1, scr_y / 400);
+	lw = max(1.5, scr_y / 300);
 	na = normalize(ls_ext) * -1;
 	nb = normalize(ls_ext);
 	visa = LS_Faces(na);
@@ -229,11 +247,11 @@ void(vector scr) LS_DrawShape =
 		vj = LS_Faces(ni);
 		j = (i + 1 < ls_rn) ? i + 1 : 0;
 		if (visa || vi)
-			drawline(lw, LS_Proj(ls_ring[i]), LS_Proj(ls_ring[j]), '1 1 1', 1);
+			LS_Line(LS_Proj(ls_ring[i]), LS_Proj(ls_ring[j]), lw);
 		if (visb || vi)
-			drawline(lw, LS_Proj(ls_ring[i] + ls_ext), LS_Proj(ls_ring[j] + ls_ext), '1 1 1', 1);
+			LS_Line(LS_Proj(ls_ring[i] + ls_ext), LS_Proj(ls_ring[j] + ls_ext), lw);
 		if (vi || vj)
-			drawline(lw, LS_Proj(ls_ring[i]), LS_Proj(ls_ring[i] + ls_ext), '1 1 1', 1);
+			LS_Line(LS_Proj(ls_ring[i]), LS_Proj(ls_ring[i] + ls_ext), lw);
 	}
 };
 
@@ -241,14 +259,16 @@ void(vector scr) LS_Draw =
 {
 	local float i, seq, px, y, dots;
 	local string raw, word;
-	if (time - ls_last > 2 || time < ls_last)
+	if (ls_idle || time < ls_last)
 	{	// a new load
+		ls_idle = FALSE;
 		LS_Clear();
 		ls_shape = (random() < 0.5) ? 0 : 1;
 		ls_seq = -1;
+		ls_last = time;
 	}
 	raw = cvar_string("scr_loadingstep");
-	if (cvar("ls_debug") && time - ls_last > 0.05 && time - ls_last <= 2)   // set ls_debug 1: the stalls
+	if (cvar("ls_debug") && time - ls_last > 0.05)   // set ls_debug 1: every stall
 		print(sprintf("loadscreen: %.0f ms without a redraw, from %s to %s\n", (time - ls_last) * 1000, ls_prev, raw));
 	ls_last = time;
 	if (raw != ls_prev)
