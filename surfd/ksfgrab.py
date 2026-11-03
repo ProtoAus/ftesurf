@@ -33,6 +33,7 @@ FILE = re.compile(r'(?=.{1,255}\Z)replay_css_[0-9]+_([0-3])_([0-9]+)_([0-9]+)\.r
 BOARD = re.compile(r'([a-z0-9_]{1,64})/z([0-9]+)(?:m([1-3]))?\.json\Z')
 MAX_BYTES = 16 << 20
 EXCHANGE = 60               # s for one whole download (P1117 review 4)
+DEMO_SECONDS = 150          # P1240 review 4: no download starts later in a tick (24 take ~106 s; mapwatch waits 300)
 PARK = '.refused-demos'    # P1117: downloads' own park, beside the crawler's .refused
 MAX_QUEUE = 256
 MAX_RECOVER = 2
@@ -526,6 +527,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
     jobs = state['jobs']
     conn = S.connect()
     made = linked = recovered = 0
+    stop = time.monotonic() + DEMO_SECONDS
     try:
         state['failed'] = {k: t for k, t in state['failed'].items()
                            if not isinstance(t, dict) or pending_deferral(conn, k)}
@@ -596,7 +598,8 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 if data is None:
                     if local_only:
                         continue
-                    if made >= min(K.DEMO_MAX, max(0, maximum)) or now < until:
+                    if (made >= min(K.DEMO_MAX, max(0, maximum)) or now < until
+                            or time.monotonic() > stop):
                         dirty = False   # a fairness move above is saved at the tick's end
                         continue
                     # Sleep before FIRST request: the board crawler just acted.
