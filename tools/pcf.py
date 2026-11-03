@@ -132,8 +132,33 @@ def material_look(content, mat):
 def pcfs_in_map(bsp):
     z = bsp_pak(bsp)
     if not z:
-        return []
+        return [], None
     return [n for n in z.namelist() if n.lower().endswith(".pcf")], z
+
+
+def pairs_of(blocks, runtime):
+    """P1263: bake's blocks and runtime rows side by side; a rope (Patch 791) has a row and no block."""
+    it = iter(blocks)
+    return [(None if ("rope" in rt or "orbit" in rt) else next(it), rt) for rt in runtime]
+
+
+def manifest_pcfs(z, mapname, names):
+    """P1263: the pcfs Source loads for this map, in order -- maps/<map>_particles.txt's "file" rows
+    ("!" means precache every system in it), or every pcf in the pakfile when it ships no manifest.
+    surf_fantasy lists three; baking only the first left its ring01 rings out."""
+    want = "maps/%s_particles.txt" % mapname.lower()
+    man = [n for n in z.namelist() if n.lower() == want]
+    if not man:
+        return names
+    byl = dict((n.lower(), n) for n in names)
+    out = []
+    for f in re.findall(r'"file"\s+"([^"]+)"', z.read(man[0]).decode("latin-1"), re.I):
+        f = f.lstrip("!").replace("\\", "/").lower()
+        if f in byl and byl[f] not in out:
+            out.append(byl[f])
+        elif f not in byl:
+            print("note: the manifest lists %s, which the pakfile does not ship (a game pcf)" % f)
+    return out or names
 
 
 # ------------------------------------------------------------- the translator
@@ -292,12 +317,125 @@ def translate_rope(d, e, content):
                       nominal=nominal, children=children, trail=None, look=look, rope=rope)
 
 
+# P1263: a shell orbit.  Particles spawn on a sphere about the control point, "Constrain distance
+# to control point" holds them to it and "twist around axis" spins them round (surf_fantasy's
+# ring01-03, 512 about its laser rings).  r_part has no constraint and no force, so as a block the
+# particles drift off; cl_emit.qc (Emit_OrbitFrame) steps each one with Source's rule instead:
+# Movement Basic's verlet step under gravity plus the twist (a force of `amount` along
+# cross(perpendicular, axis)), then the distance clamp.  Anything outside ORBIT_OPS refuses.
+ORBIT_OPS = {"emit_continuously", "Position Within Sphere Random", "Lifetime Random", "Movement Basic",
+             "Alpha Fade and Decay", "Alpha Random", "Color Random", "Radius Random",
+             "render_animated_sprites", "twist around axis", "Constrain distance to control point"}
+
+
+def orbit_line(mapname, rt, parent):
+    """orbit <map> <name> <image> <add> <rate> <maxp> <life lo hi> <radius lo hi> <spawn dist lo hi>
+       <clamp lo hi> <gx gy gz> <axis x y z> <twist> <local> <drag> <rgb1> <rgb2> <alpha lo hi>
+       <start alpha> <end alpha> <fade in start, end> <fade out start, end> <max dist> <parent|->
+       Forty words.  Older clients skip them: the first word is not psys."""
+    o = rt["orbit"]
+    v = [mapname, rt["name"], o["image"], "%d" % o["add"], "%.4g" % rt["rate"], "%d" % rt["maxp"]]
+    v += ["%.6g" % x for x in o["life"] + o["rad"] + o["spawn"] + o["clamp"] + o["grav"] + o["axis"]]
+    v += ["%.6g" % o["twist"], "%d" % o["local"], "%.6g" % o["drag"]]
+    v += ["%.6g" % x for x in o["rgb1"] + o["rgb2"] + o["alpha"] + [o["alpha0"], o["alpha1"]] + o["fade"]]
+    v += ["%.6g" % rt["maxdist"], parent]
+    return "orbit " + " ".join(v)
+
+
+def translate_orbit(d, e, content):
+    for key in ("emitters", "initializers", "operators", "renderers", "forces", "constraints"):
+        for o in ops(d, e, key):
+            if o.get("functionName") not in ORBIT_OPS:
+                raise Untranslated("orbit with %s: not drawn" % o.get("functionName"))
+    em = find(d, e, "emitters", "emit_continuously")
+    nominal = float(em.get("emission_rate", EMIT_DEFAULT)) if em else 0.0
+    if not em or float(em.get("emission_duration", 0) or 0) > 0 or float(em.get("emission_start_time", 0) or 0) > 0:
+        raise Untranslated("orbit without a continuous emitter from birth: not drawn")
+    lt = find(d, e, "initializers", "Lifetime Random")
+    lo = float(lt.get("lifetime_min", 1.0)) if lt else 1.0
+    hi = float(lt.get("lifetime_max", lo)) if lt else 1.0
+    lo, hi = min(lo, hi), max(lo, hi)
+    maxp = float(e.get("max_particles", 0) or 0)
+    if nominal <= 0 or hi <= 0 or maxp <= 0:
+        raise Untranslated("orbit: no emission, life or pool")
+    rate = min(nominal, maxp / ((lo + hi) * 0.5))
+    sp = find(d, e, "initializers", "Position Within Sphere Random")
+    if not sp:
+        raise Untranslated("orbit without Position Within Sphere Random: not drawn")
+    for k, dv in (("control_point_number", 0), ("speed_min", 0), ("speed_max", 0)):
+        if float(sp.get(k, dv) or 0) != dv:
+            raise Untranslated("orbit spawn with %s: not drawn" % k)
+    for k in ("speed_in_local_coordinate_system_min", "speed_in_local_coordinate_system_max"):
+        if any(float(x) != 0 for x in (sp.get(k) or [0, 0, 0])):
+            raise Untranslated("orbit spawn with %s: not drawn" % k)
+    if [float(x) for x in (sp.get("distance_bias") or [1, 1, 1])] != [1.0, 1.0, 1.0]:
+        raise Untranslated("orbit spawn with a distance bias: not drawn")
+    spawn = sorted([float(sp.get("distance_min", 0) or 0), float(sp.get("distance_max", 0) or 0)])
+    cs = find(d, e, "constraints", "Constrain distance to control point")
+    if float(cs.get("control point number", 0) or 0) != 0 or \
+            any(float(x) != 0 for x in (cs.get("offset of center") or [0, 0, 0])):
+        raise Untranslated("orbit clamp about another point: not drawn")
+    clamp = [float(cs.get("minimum distance", 0) or 0), float(cs.get("maximum distance", 100) or 0)]
+    if clamp[0] <= 0:
+        # A ball clamp (surf_fantasy's torches: 0..128, about 100 units of rise in a 1 s life) barely
+        # acts, and stepped here their 20 cost 0.3-0.5 ms a frame: baked as particles instead.
+        raise Untranslated("a ball clamp, not a shell")
+    mv = find(d, e, "operators", "Movement Basic")
+    grav = [float(x) for x in (mv.get("gravity", [0, 0, 0]) if mv else [0, 0, 0])]
+    drag = float(mv.get("drag", 0) or 0) if mv else 0.0
+    tw = find(d, e, "forces", "twist around axis")
+    axis = [float(x) for x in (tw.get("twist axis", [0, 0, 1]) if tw else [0, 0, 1])]
+    twist = float(tw.get("amount of force", 0) or 0) if tw else 0.0
+    local = 1 if tw and tw.get("object local space axis") else 0
+    col = e.get("color", [255, 255, 255, 255])
+    cr = find(d, e, "initializers", "Color Random")
+    rgb1 = [float(x) for x in (cr.get("color1", col) if cr else col)[:3]]
+    rgb2 = [float(x) for x in (cr.get("color2", col) if cr else col)[:3]]
+    ar = find(d, e, "initializers", "Alpha Random")
+    a_own = float(col[3]) if len(col) > 3 else 255.0
+    alpha = [float(ar.get("alpha_min", 255)), float(ar.get("alpha_max", 255))] if ar else [a_own, a_own]
+    rr = find(d, e, "initializers", "Radius Random")
+    r_own = float(e.get("radius", 5.0))
+    rad = [float(rr.get("radius_min", r_own)), float(rr.get("radius_max", r_own))] if rr else [r_own, r_own]
+    fd = find(d, e, "operators", "Alpha Fade and Decay")          # read as translate_rope reads it
+    fade, alpha0, alpha1 = [0.0, 0.0, 1.0, 1.0], None, None
+    if fd:
+        alpha0 = float(fd.get("start_alpha", 1.0))
+        alpha1 = float(fd.get("end_alpha", 0.0))
+        fade = [float(fd.get(k, dv)) for k, dv in (("start_fade_in_time", 0.0), ("end_fade_in_time", 0.5),
+                                                    ("start_fade_out_time", 0.5), ("end_fade_out_time", 1.0))]
+    mat = re.sub(r"\.vmt$", "", (e.get("material") or "").replace("\\", "/"), flags=re.I)
+    if not mat.strip():
+        raise Untranslated("orbit with no material: not drawn")
+    image, blend, look = mat, "blendalpha", "material %s: no content given, drawn by its name, orbit" % mat
+    if content is not None:
+        try:
+            image, blend = material_look(content, mat)
+        except (ValueError, OSError, struct.error) as ex:
+            raise Untranslated("orbit material %s NOT RESOLVED (%s): not drawn" % (mat, ex))
+        look = "material %s: image %s, blend %s, orbit" % (mat, image, blend)
+    children = [d.elements[c.get("child")].name for c in ops(d, e, "children")
+                if c.get("child", -1) is not None and c.get("child", -1) >= 0]
+    orbit = dict(image=image, add=1 if blend == "adda" else 0, life=[lo, hi], rad=rad, spawn=spawn,
+                 clamp=clamp, grav=grav, axis=axis, twist=twist, local=local, drag=drag, rgb1=rgb1, rgb2=rgb2,
+                 alpha=alpha, alpha0=-1.0 if alpha0 is None else alpha0, alpha1=-1.0 if alpha1 is None else alpha1,
+                 fade=fade)
+    return None, dict(name=e.name, rate=rate, vel=[0.0, 0.0, 0.0], wvel=[0.0, 0.0, 0.0], ofs=[0.0, 0.0, 0.0],
+                      jit=0.0, maxp=int(maxp), die=hi, maxdist=draw_distance(e),
+                      nominal=nominal, children=children, trail=None, look=look, orbit=orbit)
+
+
 def translate(d, e, unknown, mapname, content=None):
     """One DmeParticleSystemDefinition -> (cfg block text, runtime fields)."""
     name = e.name
     rend = ops(d, e, "renderers")
     if rend and rend[0].get("functionName") == "render_rope":
         return translate_rope(d, e, content)
+    if find(d, e, "constraints", "Constrain distance to control point"):
+        try:
+            return translate_orbit(d, e, content)
+        except Untranslated as ex:              # baked as before, the constraint counted below
+            unknown["(not an orbit: %s)" % ex] += 1
 
     for key in ("emitters", "initializers", "operators", "renderers",
                 "forces", "constraints"):
@@ -1141,19 +1279,33 @@ def main():
         names, z = pcfs_in_map(bsp)
         if not names:
             sys.exit("%s ships no .pcf -- nothing to bake" % a.map)
-        if len(names) > 1:
-            print("note: %d pcfs, using %s" % (len(names), names[0]))
-        data = z.read(names[0])
+        names = manifest_pcfs(z, a.map, names)
+        datas = [(os.path.basename(n), z.read(n)) for n in names]
         mapname = a.map
-        srcname = os.path.basename(names[0])
+        srcname = ", ".join(n for n, d in datas)
         sources.insert(0, BspSource(bsp))	# the map's own materials win, as in the game
     else:
         sys.exit("need --map or --pcf")
+    if a.pcf:
+        datas = [(srcname, data)]
 
-    try:
-        blocks, runtime, skipped = bake(data, mapname, unknown, Content(sources))
-    except dmx.DmxError as ex:
-        sys.exit("REFUSED: %s" % ex)
+    # P1263: every listed pcf; a system name defined twice keeps its first definition.
+    blocks, runtime, skipped = [], [], []
+    seen = set()
+    for fname, fdata in datas:
+        try:
+            b, r, sk = bake(fdata, mapname, unknown, Content(sources))
+        except dmx.DmxError as ex:
+            sys.exit("REFUSED: %s: %s" % (fname, ex))
+        for blk, rt in pairs_of(b, r):
+            if rt["name"].lower() in seen:
+                skipped.append((rt["name"], "defined again in %s; the first definition kept" % fname))
+                continue
+            seen.add(rt["name"].lower())
+            if blk is not None:
+                blocks.append(blk)
+            runtime.append(rt)
+        skipped.extend(sk)
 
     total = len(runtime) + len(skipped)
     body = HEADER % dict(map=mapname, src=srcname,
@@ -1192,12 +1344,20 @@ def main():
     # rope lines: see rope_line (Patch 791).
     def ropeline(rt, parent):
         return rope_line(mapname, rt, parent)
-    nps = len([rt for rt in runtime if "rope" not in rt]) + len([1 for p_, rt in edges if "rope" not in rt])
+
+    def anyline(rt, parent):                    # P1263: orbits, like ropes, have a line and no psys
+        if "rope" in rt:
+            return ropeline(rt, parent)
+        if "orbit" in rt:
+            return orbit_line(mapname, rt, parent)
+        return psline(rt, parent)
+    flat = lambda rt: "rope" not in rt and "orbit" not in rt
+    nps = len([rt for rt in runtime if flat(rt)]) + len([1 for p_, rt in edges if flat(rt)])
     idx = ["particles %s %d" % (mapname, nps)]
     for rt in runtime:
-        idx.append(ropeline(rt, "-") if "rope" in rt else psline(rt, "-"))
+        idx.append(anyline(rt, "-"))
     for parent, rt in edges:
-        idx.append(ropeline(rt, parent) if "rope" in rt else psline(rt, parent))
+        idx.append(anyline(rt, parent))
     # trail <map> <name> <material> <rate> <box x y z> <speed spread x y z> <gravity>
     #       <n> <t0> <ratio> <half a streak's length, 0 = 0.05 s of travel>
     # Sixteen words, after the psys lines.  A client from before Patch 659 skips
@@ -1240,6 +1400,7 @@ def main():
     print("   wrote %s" % cfg)
 
     mp = os.path.join(a.gamedir, "data", "mapparticles.txt")
+    os.makedirs(os.path.dirname(mp), exist_ok=True)
     keep = []
     if os.path.exists(mp):
         for line in open(mp, encoding="latin-1"):
