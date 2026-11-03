@@ -826,6 +826,8 @@ float(entity e) SV_CheatLevel =
 {
 	if (SV_TimeScaleTainted(e))
 		return TRUE;
+	if (vbsp_entfire_map)       // P1256 review 2: ent_fire edited this map's state
+		return TRUE;
 	/*
 	  The NOCLIP half still carries the run_class gate, so at 0 noclip alone
 	  leaves run_st_cheat untouched and build 43's single umbrella is all that is
