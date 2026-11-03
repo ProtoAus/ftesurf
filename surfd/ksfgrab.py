@@ -39,12 +39,12 @@ MAX_RECOVER = 2
 MAX_FAILED = 8192          # P1240: ~5% of files refuse conversion; at 24 a tick 7-day tombstones pass 2048
 MAX_PROVENANCE = 16 << 10
 FILESTREAK = 3             # Patch 896: this many file-level failures in a day, in a row, are the host's
-CONVSTREAK = 4             # P1240 review 2: the same for conversion refusals (~5% a file: 4 in a row ~6e-6)
 # P1240 review 2: ksfreplay_info.inspect's refusals before any bookmark is read say "not a whole
 # replay" -- a 200 page, a body cut short, a format not read here -- which a later download can
 # cure, so they strike as before; only a replay's own content is Unconvertible.
 NOT_A_REPLAY = ('replay length out of bounds', 'unsupported replay header', 'truncated v3 header',
-                'unsupported frame/extension size', 'truncated bookmarks or frames')
+                'unsupported frame/extension size', 'truncated bookmarks or frames',
+                'frame count out of bounds')
 FLOOR = 15 << 30           # Patch 896: no download or install below this much free disk
 SCAN = 32
 BINDING = ('map', 'track', 'leg', 'style', 'player', 'runid', 'millis', 'when', 'file')
@@ -617,7 +617,6 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                     linked += 1
                     state['failed'].pop(key, None)
                     jobs.pop(key, None)
-                    state.pop('convstreak', None)   # the converter just worked
             except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
                 # Refusal belongs to the HOST, not whichever demo happened to be asked: every
                 # non-2xx, redirect or network failure stops this tick, and parks downloads --
@@ -667,33 +666,14 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
             except Unconvertible as e:
                 # P1240: set aside at the first refusal. Three strikes a day apart cost three
                 # downloads of the same bytes and held a queue slot two days (97 of 252 on 3 Nov).
-                # Review 2: CONVSTREAK in a row is no file's fault (a 200 page, a new format):
-                # the run's set-asides go back and downloads park, as FILESTREAK does above.
-                run = state.get('convstreak') if isinstance(state.get('convstreak'), dict) else {}
-                at = run.get('at') if type(run.get('at')) is int else 0
-                held = [k for k in (run.get('keys') if isinstance(run.get('keys'), list) else [])
-                        if isinstance(k, str)] if 0 <= now - at <= 86400 else []
-                print('KSF demo unconvertible (%d in a row): %s'
-                      % (len(held) + 1, ' '.join(str(e).split())[:120]))
-                if len(held) + 1 < CONVSTREAK:
-                    if key in state['failed'] or len(state['failed']) < MAX_FAILED:
-                        state['failed'][key] = now + 7 * 86400
-                        jobs.pop(key, None)
-                    else:
-                        job.update(retry=now + 7 * 86400, terminal=True)
-                    state['convstreak'] = dict(at=now, keys=held + [key])
-                    continue
-                for k in held:
-                    state['failed'].pop(k, None)
-                state.pop('convstreak', None)
-                old = int(dpark.get('until') or 0)
-                n = (int(dpark.get('n') or 0) if now - old < K.COOLDOWN_MAX else 0) + 1
-                wait = min(K.COOLDOWN * 2 ** min(n - 1, 8), K.COOLDOWN_MAX)
-                K._save(os.path.join(cache, PARK), dict(at=now, until=now + wait, n=n,
-                        why='demo conversion refused %d in a row' % CONVSTREAK))
-                job['retry'] = now + wait
-                print('KSF demos parked %d min: %d conversion refusals in a row' % (wait // 60, CONVSTREAK))
-                break
+                # Bytes that are no replay at all never get here (NOT_A_REPLAY strikes). Review 3:
+                # no run-of-refusals park -- one map's files refuse together and sit together.
+                print('KSF demo set aside 7 days: %s' % ' '.join(str(e).split())[:120])
+                if key in state['failed'] or len(state['failed']) < MAX_FAILED:
+                    state['failed'][key] = now + 7 * 86400
+                    jobs.pop(key, None)
+                else:
+                    job.update(retry=now + 7 * 86400, terminal=True)
             except (OSError, ValueError) as e:
                 job['retry'] = now + 86400
                 job['why'] = type(e).__name__
