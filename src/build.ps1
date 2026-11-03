@@ -57,6 +57,9 @@
       before step 1, never a list written down here), one ssh each so every unit
       keeps its own exit code and message.  A failure is reported and the rest
       still restart; the script fails at the end.
+      P1243: when -PiForce let it past players (or past not knowing), every
+      lobby's chat is told first (tools/lobby_announce.py on the Pi, one rcon
+      `say` per port) and the restart waits -PiWarnSeconds (10).
 
  WHY STEP 4 IS A RENAME, AND BOTH FILES IN ONE COMMAND.  scp writes into its
  target in place.  A lobby that loads csprogs.dat while it is half-copied -- a
@@ -112,6 +115,10 @@ param(
     # of the five lobbies that are about to be restarted.
     [switch]$Pi,
     [switch]$PiForce,
+    # P1243: seconds between the chat warning and the restart a forced deploy gives
+    # the players it is about to drop; 0 skips the warning.
+    [ValidateRange(0, 120)]
+    [int]$PiWarnSeconds = 10,
 
     # The Pi as ssh sees it.  Its host half also locates surfd's directory,
     # http://<host>:8084/lobbies.json, which -Pi reads before touching anything.
@@ -503,6 +510,7 @@ if ($Pi) {
     #    so a short list refuses exactly like an unreachable directory.
     Step "Pi: who is on"
     $dirUrl = "http://${piAddr}:8084/lobbies.json"
+    $warn   = $false                    # P1243: -PiForce went past players, or past not knowing
     $busy   = $null                     # $null = could not tell; @() = no row has players
     $noRow  = @()                       # lobbies step 5 restarts that have no row at all
     try {
@@ -528,6 +536,7 @@ if ($Pi) {
             throw "cannot tell whether anyone is on a lobby, so nothing was deployed.  Check surfd, or pass -PiForce."
         }
         Write-Host "    -PiForce: deploying without knowing who is on" -ForegroundColor Yellow
+        $warn = $true
     } elseif ($busy.Count -gt 0) {
         foreach ($l in $busy) {
             Write-Host ("    {0} on {1}: {2}/{3} players" -f $l.name, $l.map, $l.players, $l.max) -ForegroundColor Yellow
@@ -536,6 +545,7 @@ if ($Pi) {
             throw ("players are on a lobby and -Pi restarts all {0}, so nothing was deployed.  Wait for 0 players, or pass -PiForce." -f $lobbies.Count)
         }
         Write-Host "    -PiForce: deploying anyway -- everyone above is dropped" -ForegroundColor Yellow
+        $warn = $true
     } elseif ($noRow.Count -gt 0) {
         foreach ($l in $noRow) {
             Write-Host ("    no row for ftesurf@{0} (port {1}) -- it may be up and full" -f $l.Unit, $l.Port) -ForegroundColor Yellow
@@ -547,6 +557,7 @@ if ($Pi) {
                    "heart-beating -- a newly added unit needs its sudoers grant and a systemctl enable -- or pass -PiForce.")
         }
         Write-Host "    -PiForce: deploying without knowing who is on the lobbies above" -ForegroundColor Yellow
+        $warn = $true
     } else {
         Ok ("nobody on any lobby (a row for each of the {0}, all 0 players)" -f $lobbies.Count)
     }
@@ -595,6 +606,30 @@ if ($Pi) {
         }
     }
     Ok "live qwprogs.dat and csprogs.dat are this build (previous pair kept as .prev)"
+
+    # 4b. P1243: tell the players a forced restart is about to drop, then give them the seconds.
+    #     surfd's rcon.py does the sending (tools/lobby_announce.py); a warning that fails is
+    #     reported and the deploy goes on -- the progs are already swapped.
+    if ($warn -and $PiWarnSeconds -gt 0) {
+        Step "Pi: warn every lobby, then wait $PiWarnSeconds s"
+        $ann  = Join-Path $SurfDir 'tools\lobby_announce.py'
+        $text = "^3Server update:^7 this lobby restarts in $PiWarnSeconds seconds -- rejoin in about a minute"
+        $dest = ('{0}/../lobby_announce.py' -f $PiGame)
+        Push-Location (Split-Path $ann)
+        try { $r = PiNative 'scp' ($sshOpts + @('-q', 'lobby_announce.py', ('{0}:{1}' -f $PiHost, $dest))) }
+        finally { Pop-Location }
+        if ($r.Code -ne 0) {
+            Write-Host "    could not copy lobby_announce.py (exit $($r.Code)) -- restarting without a warning" -ForegroundColor Yellow
+        } else {
+            $ports = ($lobbies | ForEach-Object { $_.Port }) -join ' '
+            $r = PiNative 'ssh' ($sshOpts + @($PiHost, ("python3 -I {0} --text '{1}' {2}" -f $dest, $text, $ports)))
+            $r.Out | ForEach-Object { Write-Host "    $_" }
+            if ($r.Code -ne 0) {
+                Write-Host "    the warning did not reach every lobby (exit $($r.Code)); waiting anyway" -ForegroundColor Yellow
+            }
+            Start-Sleep -Seconds $PiWarnSeconds
+        }
+    }
 
     # 5. Restart every active lobby.  NO .service SUFFIX -- sudo matches the grant
     #    literally, see the header.  -n: a missing grant fails, it never prompts.
