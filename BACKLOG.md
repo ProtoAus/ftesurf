@@ -65,14 +65,26 @@
 ## Grabber audit of 3 Nov (P1232): left open (counts from 2 Nov, before P1232 went live)
 - Momentum boards refresh only for maps a lobby is on or the site queued: the median board file was
   32 days old (90th percentile 35). P1234 (main's P1117 rotation) refreshes the 3 stalest a tick.
-- KSF demos: 26,546 advertised recordings wait behind null-ID ksf_unbound rows (2 unblock pages a
-  tick) and 19,444 eligible ones beyond the 256-job queue; 6 downloads a tick is Lex's rate. The log
-  holds 463 time-mismatch and 226 invalid-bookmark conversion refusals.
-- KSF boards never fetched: 4,175 (1,505 Forward stage on 258 maps, 928 Forward bonus on 324, 1,740
-  SW/HSW/BW main), and 9,825 SW/HSW/BW stage/bonus boards wait on those mains; the sweep spends about
-  2 of a tick's 8 requests on new pages (ksfimport.sweep_maps ranks deep pages first).
-- Never asked, a product decision: Momentum styles other than Normal (10,525 boards on approved maps)
-  and the boards of 145 held Beta maps. How many hold runs is unknown.
+- momtracks.tsv is written from Momentum's list since P1232: 980 maps on 3 Nov 00:25Z (was 628).
+- KSF demos: P1240 (3 Nov) downloads 24 a tick (was 6) and sets a content refusal aside 7 days at
+  once (3 strikes a day apart held 97 of 252 queue slots). Still open:
+  - 26,546 advertised recordings waited behind null-ID ksf_unbound rows on 2 Nov (2 unblock pages a
+    tick, UNBLOCK_MAX).
+  - One own-file 500 or broken body ends a tick's downloads (P896's `break`; ~1.7% of downloads).
+  - No brake on a mass content refusal: a converter regression, or a KSF format change that passes
+    inspect's header checks, sets every file aside 7 days (~8,000 downloads, then 256 terminal jobs
+    jam the queue a week). After the fix, drop the int entries of demos.json's `failed` with the KSF
+    cache lock held. Round 2's run-of-refusals park was removed: one map's refusals cluster.
+  - A body cut on a frame boundary before its finish is set aside 7 days, not struck; one cut after
+    its finish links with the cut bytes as its original and provenance (older than P1240).
+  - DEMO_SECONDS counts from the demo phase, not the board crawl: worst case the KSF lock is held
+    ~280 s against mapwatch's 300 s wait (it then skips KSF for that 6-hourly run).
+- KSF boards never fetched: 4,037 on 3 Nov (stages, bonuses and SW/HSW/BW mains of unviewed maps).
+  P1240: every board's first page before any deeper page, 16 requests a tick (the sweep gets ~7), so
+  ~2 days; SW/HSW/BW stage/bonus boards follow where their main has rows. Untraced review note: a
+  set-aside board's index.json flag is never re-aged in --watch, so SKIP_DAYS may not apply.
+- Momentum has no styles (Lex, 3 Nov): nothing to collect beyond Normal. Still a product decision:
+  the boards of 145 held Beta maps.
 - momgrab takes each board's top 10 only (35,037 picks; 2,555 not yet tried on 2 Nov).
 - P1232 review 2, low: a malformed `judged` entry in momgrab state.json raises every --go tick (only a
   hand edit makes one); demo_build keeps [None, None] for good after a transient read error;

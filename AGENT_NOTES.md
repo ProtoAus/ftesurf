@@ -1,5 +1,23 @@
 # AGENT_NOTES.md
 
+## P1240 KSF crawl budgets (ftesurf-2b; LIVE 3 Nov 03:21Z, generation 20d99092, root lexlist-1240-382effae)
+- ksfimport: WATCH_BOARDS 16, DEMO_MAX 24 (40 requests a tick, 3 s apart); derived from --max: profile
+  walks 3, refresh 4, unblock 2 (capped), sweep >= 7. sweep_maps (watch order only): a board with no
+  page joins rank 1; heap key (rank, depth, not viewed, mode, map, zone).
+- ksfgrab: a whole replay's content refusal is Unconvertible, set aside 7 days at once; NOT_A_REPLAY
+  (exactly inspect's refusals before the bookmark loop, pinned by a test) strikes a day apart as
+  before; MAX_FAILED 8192; a job passed over untouched is not saved; DEMO_SECONDS 150.
+- Five review rounds. Round 2's run-of-refusals park (CONVSTREAK) was removed in round 3: refusals
+  cluster by map and sit together in the queue, so one board tripped it every 6 h for good.
+- Rollback: lexlist-1240/rollback_1240.py first (an older ksfgrab refuses a deferral ledger over 2048);
+  past 372e4854 also lexlist-1234/rollback_1234.py. kit1240 = kit1234's workflow with the roots moved
+  (task root lexlist-20261102T1615Z, kit/make_kit_1240.py); OLD for the next swap is lexlist-1240 STATE.
+- A round-3 reviewer's simulation called ksfgrab.tick() without `download=` and sent 9 GETs to
+  ksf.surf in ~30 s: briefs that may run collector code say stub downloads and block sockets.
+- Before P1240 (3 Nov): demos 4.2-4.6 s apart from ~33 s into a tick; the queue 252 = 155 fresh + 97
+  struck conversion refusals; 145 GB free; originals ~160 KB, converted .rec ~890 KB (the ~46,000
+  left need ~48 GB). First P1240 tick: 03:26 tick: 16 requests, 13 board pages (7 new, 4 refreshed, 2 unblocking), 241 rows; 24 demos asked and 24 linked in 103 s; the tick took ~2.8 min.
+
 ## P1234 surfd collectors (ftesurf-2b; LIVE 2 Nov 19:11Z, generation 372e4854, root lexlist-1234-382effae)
 - Main's P1117/P1142 collector files byte for byte (accounts, ksfgrab, ksfimport, ksfprofile,
   momboards, momprofile, momwatch, steamsync, tools/momfetch.py) over P1232; mapwatch differs from
