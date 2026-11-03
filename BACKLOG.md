@@ -1,5 +1,14 @@
 # BACKLOG.md
 
+## P1278 ramp wear (4 Nov): next steps and residuals
+- Props: ramps built from models (surf_demise's prop_dynamic_override, surf_classics3's static props, part of
+  surf_666) need the bake to read MDL/VVD/VTX from the map's pakfile and place contacts on model triangles.
+- More data: KSF replays and the lobbies' own runs (the .rec board records carry the exact arrival plane and
+  pre-clip velocity) would widen it past the 23 maps with 15+ Momentum replays; live accumulation on the server.
+- Cost: ~0.2 ms CPU a frame at 15k triangles (QC vertex calls); a static mesh would take it off the CPU.
+- Not measured: a partly fogged ramp (both test densities hid it completely; on == off there).
+- Scratch rows restart at a brush face's edge (one frame per surface); dirt is continuous (3D noise).
+
 ## P1264 world bump mapping (3 Nov): residuals
 - vmt/transition (WorldVertexTransition) and vmt/animated bumped faces get the basis mean but no relief; the
   nine repacked trailer maps get neither (the repack keeps set 0 only).

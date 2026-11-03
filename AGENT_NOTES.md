@@ -1,5 +1,17 @@
 # AGENT_NOTES.md
 
+## P1278 ramp wear (4 Nov; root C:/FTESurf-worktrees/rampwear-20261104)
+- `python tools/rampwear.py --map M [--gamedir DIR]` bakes data/rampwear/M.txt + textures/rampwear/M.png from
+  Momentum .mtv replays (untracked in C:/FTESurf/ftesurf like the particle bakes; release.ps1 ships both folders).
+  It reads world brush faces and displacements, not props: surf_demise and surf_classics3 ramps are models
+  (prop_dynamic_override / static props), and its placement line says so (placed vs contact ticks).
+- Drawn as CSQC polygons (cl_rampwear.qc): one map-sized OBJ entity with world-space verts was never drawn
+  (model loaded, bounds right, nothing rendered; not chased). ~0.2 ms CPU at 15k triangles on the PC.
+- GLSL traps met: `!!cvarf x` needs `uniform float cvar_x;` too; a program gets fog only with `!!permu FOG`;
+  a vertex colour that carries data wants `rgbgen exactvertex` (plain `vertex` scales by HDR exposure), a mask
+  texture `$nosrgb:`. Rotating a pattern by a per-texel angle with world coordinates in the thousands makes
+  swirls: fixed angle bins, blended.
+
 ## P1253 Momentum Beta boards, approval wipes (ftesurf-2b; LIVE 3 Nov 12:54Z, generation ea4e8b3c, root lexlist-1253-382effae)
 - mapwatch only. beta_boards: held Beta maps' boards into momtracks.tsv (40 a run, each 7 days).
   approvals(): each approved map once per approvedDate (state `approvals`: [date, verdict, t,
@@ -102,9 +114,9 @@
   eyes under low ceilings saw through; a sky-room clamp did nothing, R_DrawSkyroom reuses the outer
   projection). m_projection_view (viewmodels) keeps 1, GL only. Installs tag patch-1257 c355068d9 (on
   patch-1251 + patch-1260): exe 20b1609f, fteqwsv64 79111b05, plugin unchanged 1ba21f71.
-- LOBBY QC deploy/p1263-orbits c71e6e19 (on deploy/p1256-laserio 091d1275) LIVE 3 Nov ~11:20Z: qw ebfdbb85
-  (unchanged), cs f56efecb, codes.txt appended (.pre1263; installs' 082a9888 too, .pre1264). NEXT LOBBY QC
-  STACKS ON IT.
+- LOBBY QC deploy/p1278-rampwear c549d8df (on deploy/p1263-orbits c71e6e19) LIVE 4 Nov ~06:10Z: qw 4da8f37e
+  (date stamp only), cs 688f1a5a, codes.txt appended (.pre1278; installs' ae5ee543 too). NEXT LOBBY QC STACKS
+  ON IT.
 - Pi: agent-work/chatfair-1206-57e27fa4 and chatsave-1200-57e27fa4 are in the live surfd drop-in's
   ReadWritePaths and its preflight writes into each: deleting them stops surfd starting.
 

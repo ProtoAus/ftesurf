@@ -21,6 +21,9 @@
 
 ## next
 
+### P1278 Worn ramps
+- On 23 maps, ramps look used: a film of dirt that riders have wiped clean along the lines people surf, and scratches where they land on a ramp, more and longer the steeper the landing (a landing parallel to the ramp leaves none). Built from replays of real runs. r_rampwear 0 turns it off.
+
 ### P1276 Smoother reflections
 - With MSAA on (vid_multisample), water and glass reflections are anti-aliased too, so reflected edges no longer stair-step (surf_eternity's river and glass floors). It costs about 0.05 ms a frame on a fast graphics card; r_reflectmultisample 0 turns it off.
 

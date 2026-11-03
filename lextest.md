@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1278 worn ramps: your install C:/FTESurf (csprogs ae5ee543), lobbies too
+1. surf_classics, surf_colin_blaster_69000 or surf_666 (23 maps in all, list in data/rampwear): the ramps carry a
+   dirt film with clean lines where people ride, and scratches where they board -- steeper landings scratch more.
+2. `r_rampwear 0` / `1` toggles it live. `r_rampwear_dirt` and `r_rampwear_scratch` (default 1, up to 2) scale the
+   two looks; `r_rampwear_debug 1` shows the raw map (red = ride lines, blue = boarding scratches).
+3. Not on prop-built ramps yet: surf_demise, surf_classics3 and part of surf_666's stages are models, not brushes.
+4. Tell me what to change: stronger or weaker, dirt colour, scratch size, or a different look (snow, a rubbed-off
+   painted surface) on the same lines.
+
 **0.1.38 is out (3 Nov ~14:25Z).** It carries every item below marked "next release" from P1214 to P1267
 (not the TAS P1154/P1161). Update your Desktop copy through WOS-Launcher, then check from there.
 
