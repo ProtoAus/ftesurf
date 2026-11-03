@@ -56,8 +56,9 @@
   eyes under low ceilings saw through; a sky-room clamp did nothing, R_DrawSkyroom reuses the outer
   projection). m_projection_view (viewmodels) keeps 1, GL only. Installs tag patch-1257 c355068d9 (on
   patch-1251 + patch-1260): exe 20b1609f, fteqwsv64 79111b05, plugin unchanged 1ba21f71.
-- LOBBY QC deploy/p1256-laserio 091d1275 (on deploy/p1252-lasers) LIVE 3 Nov ~09:55Z: qw ebfdbb85, cs
-  bda1b34d, codes.txt appended (.pre1256). NEXT LOBBY QC STACKS ON IT.
+- LOBBY QC deploy/p1263-orbits c71e6e19 (on deploy/p1256-laserio 091d1275) LIVE 3 Nov ~11:20Z: qw ebfdbb85
+  (unchanged), cs f56efecb, codes.txt appended (.pre1263; installs' 082a9888 too, .pre1264). NEXT LOBBY QC
+  STACKS ON IT.
 - Pi: agent-work/chatfair-1206-57e27fa4 and chatsave-1200-57e27fa4 are in the live surfd drop-in's
   ReadWritePaths and its preflight writes into each: deleting them stops surfd starting.
 
