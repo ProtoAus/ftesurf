@@ -1,5 +1,19 @@
 # BACKLOG.md
 
+## P1263 orbit particles (3 Nov): review residuals, latent
+- A placed system that is itself an orbit never starts its psys children (the no-psys `continue`
+  in cl_emit.qc's EK_PSYS branch runs first) and emit_list counts it "off"; no library system does it.
+- Births walk placed orbits in index order: once the shared 2048 pool fills, later orbits can stay
+  empty without a word (surf_fantasy places 3 x 100). Rotate the start index if a map hits it.
+- Alpha Fade and Decay: the orbit multiplies the particle's own alpha, Emit_RopeAlpha takes start alpha
+  as absolute; one is wrong (the particles lib is not in the SDK). Translucent quads draw unsorted.
+- translate() still reads absent lifetime_min as 1.0 and absent Radius Random as 1.0/system radius;
+  translate_orbit now uses Source's 0 and 1 (recalled). Unknown-operator counts from a duplicate
+  definition that loses still reach --strict.
+- Last-definition-wins across a map's pcfs follows VDC's override note, not code: it decides portal2 on
+  surf_destruction and duplicates on bhop_rin and surf_technical. surf_technical bakes 79 psys lines
+  against the client's 64 (pcf.py warns): its 15 child links are dropped.
+
 ## P1254-P1257 residuals (3 Nov)
 - pm_dettest: mover..fixmover are free fall (skipent 0) and stay so for their recorded values; pickmover
   on maps with no prop contact still starts in the void (bhop_eazy, surf_ace: touched 0). Every line

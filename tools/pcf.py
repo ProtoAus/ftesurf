@@ -142,19 +142,42 @@ def pairs_of(blocks, runtime):
     return [(None if ("rope" in rt or "orbit" in rt) else next(it), rt) for rt in runtime]
 
 
+def kv_tokens(text):
+    """KeyValues tokens: quoted strings, bare words, braces; // comments to the end of the line."""
+    return [m.group(1) if m.group(1) is not None else m.group(2)
+            for m in re.finditer(r'//[^\n]*|"([^"]*)"|([^\s{}"]+|[{}])', text) if not m.group(0).startswith("//")]
+
+
 def manifest_pcfs(z, mapname, names):
     """P1263: the pcfs Source loads for this map, in order -- maps/<map>_particles.txt's "file" rows
     ("!" means precache every system in it), or every pcf in the pakfile when it ships no manifest.
-    surf_fantasy lists three; baking only the first left its ring01 rings out."""
+    surf_fantasy lists three; baking only the first left its ring01 rings out.  Keys may be bare
+    (about 50 manifests in the library), and a file not directly under particles/ is refused as
+    Source refuses it (particle_parse.cpp:186-205)."""
     want = "maps/%s_particles.txt" % mapname.lower()
     man = [n for n in z.namelist() if n.lower() == want]
     if not man:
         return names
     byl = dict((n.lower(), n) for n in names)
+    toks = kv_tokens(z.read(man[0]).decode("latin-1"))
+    files, depth, i = [], 0, 0
+    while i < len(toks):
+        t = toks[i]
+        if t == "{":
+            depth += 1
+        elif t == "}":
+            depth -= 1
+        elif depth == 1 and i + 1 < len(toks) and toks[i + 1] not in ("{", "}"):
+            if t.lower() == "file":
+                files.append(toks[i + 1])
+            i += 1
+        i += 1
     out = []
-    for f in re.findall(r'"file"\s+"([^"]+)"', z.read(man[0]).decode("latin-1"), re.I):
+    for f in files:
         f = f.lstrip("!").replace("\\", "/").lower()
-        if f in byl and byl[f] not in out:
+        if os.path.dirname(f) != "particles":
+            print("note: the manifest lists %s, not directly under particles/: Source refuses it" % f)
+        elif f in byl and byl[f] not in out:
             out.append(byl[f])
         elif f not in byl:
             print("note: the manifest lists %s, which the pakfile does not ship (a game pcf)" % f)
@@ -205,6 +228,7 @@ RENDERER_TYPE = {
 # emission_rate defaults to 100 (bhop_ceaseless's purpleboost4 has an empty emitter; read as 0
 # it was refused as "not a continuous emitter" and its boost strip drew nothing).
 EMIT_DEFAULT = 100.0
+PS_MAX = 64             # src/client/cl_emit.qc: psys lines a client keeps a map
 
 
 # Same rule for the system's "maximum draw distance" (100000 when absent). Read as 0, cl_emit.qc
@@ -323,8 +347,12 @@ def translate_rope(d, e, content):
 # particles drift off; cl_emit.qc (Emit_OrbitFrame) steps each one with Source's rule instead:
 # Movement Basic's verlet step under gravity plus the twist (a force of `amount` along
 # cross(perpendicular, axis)), then the distance clamp.  Anything outside ORBIT_OPS refuses.
+# Absent attributes take Source's defaults, as recalled from its particles library (not in the SDK):
+# max_particles 1000, lifetime_min/max 0, radius_min/max 1.  The client kills a particle at the end
+# of its life, which in Source only a decay operator does, and applies forces as Movement Basic does,
+# so a system needs both.
 ORBIT_OPS = {"emit_continuously", "Position Within Sphere Random", "Lifetime Random", "Movement Basic",
-             "Alpha Fade and Decay", "Alpha Random", "Color Random", "Radius Random",
+             "Alpha Fade and Decay", "Lifespan Decay", "Alpha Random", "Color Random", "Radius Random",
              "render_animated_sprites", "twist around axis", "Constrain distance to control point"}
 
 
@@ -351,14 +379,20 @@ def translate_orbit(d, e, content):
     nominal = float(em.get("emission_rate", EMIT_DEFAULT)) if em else 0.0
     if not em or float(em.get("emission_duration", 0) or 0) > 0 or float(em.get("emission_start_time", 0) or 0) > 0:
         raise Untranslated("orbit without a continuous emitter from birth: not drawn")
+    if not find(d, e, "operators", "Movement Basic"):
+        raise Untranslated("orbit without Movement Basic: not drawn")
+    if not find(d, e, "operators", "Alpha Fade and Decay") and not find(d, e, "operators", "Lifespan Decay"):
+        raise Untranslated("orbit whose particles never die: not drawn")
     lt = find(d, e, "initializers", "Lifetime Random")
-    lo = float(lt.get("lifetime_min", 1.0)) if lt else 1.0
-    hi = float(lt.get("lifetime_max", lo)) if lt else 1.0
+    if not lt:
+        raise Untranslated("orbit without Lifetime Random: not drawn")
+    lo = float(lt.get("lifetime_min", 0.0))
+    hi = float(lt.get("lifetime_max", 0.0))
     lo, hi = min(lo, hi), max(lo, hi)
-    maxp = float(e.get("max_particles", 0) or 0)
+    maxp = float(e.get("max_particles", 1000))
     if nominal <= 0 or hi <= 0 or maxp <= 0:
         raise Untranslated("orbit: no emission, life or pool")
-    rate = min(nominal, maxp / ((lo + hi) * 0.5))
+    rate = nominal          # the client holds the pool, so the emitter runs at its own rate
     sp = find(d, e, "initializers", "Position Within Sphere Random")
     if not sp:
         raise Untranslated("orbit without Position Within Sphere Random: not drawn")
@@ -396,8 +430,8 @@ def translate_orbit(d, e, content):
     alpha = [float(ar.get("alpha_min", 255)), float(ar.get("alpha_max", 255))] if ar else [a_own, a_own]
     rr = find(d, e, "initializers", "Radius Random")
     r_own = float(e.get("radius", 5.0))
-    rad = [float(rr.get("radius_min", r_own)), float(rr.get("radius_max", r_own))] if rr else [r_own, r_own]
-    fd = find(d, e, "operators", "Alpha Fade and Decay")          # read as translate_rope reads it
+    rad = [float(rr.get("radius_min", 1.0)), float(rr.get("radius_max", 1.0))] if rr else [r_own, r_own]
+    fd = find(d, e, "operators", "Alpha Fade and Decay")
     fade, alpha0, alpha1 = [0.0, 0.0, 1.0, 1.0], None, None
     if fd:
         alpha0 = float(fd.get("start_alpha", 1.0))
@@ -1289,23 +1323,29 @@ def main():
     if a.pcf:
         datas = [(srcname, data)]
 
-    # P1263: every listed pcf; a system name defined twice keeps its first definition.
+    # P1263: every listed pcf.  A system defined in two of them keeps the LAST definition, translated
+    # or not: a map's pcfs override stock systems by name (VDC), so later reads replace earlier ones.
     blocks, runtime, skipped = [], [], []
-    seen = set()
+    baked = []
     for fname, fdata in datas:
         try:
-            b, r, sk = bake(fdata, mapname, unknown, Content(sources))
+            baked.append((fname,) + tuple(bake(fdata, mapname, unknown, Content(sources))))
         except dmx.DmxError as ex:
             sys.exit("REFUSED: %s: %s" % (fname, ex))
+    last = {}
+    for n, (fname, b, r, sk) in enumerate(baked):
+        for nm in [rt["name"] for rt in r] + [x[0] for x in sk]:
+            last[nm.lower()] = n
+    for n, (fname, b, r, sk) in enumerate(baked):
+        later = lambda nm: last[nm.lower()] != n
         for blk, rt in pairs_of(b, r):
-            if rt["name"].lower() in seen:
-                skipped.append((rt["name"], "defined again in %s; the first definition kept" % fname))
+            if later(rt["name"]):
+                skipped.append((rt["name"], "defined again in %s; that definition kept" % baked[last[rt["name"].lower()]][0]))
                 continue
-            seen.add(rt["name"].lower())
             if blk is not None:
                 blocks.append(blk)
             runtime.append(rt)
-        skipped.extend(sk)
+        skipped.extend(x for x in sk if not later(x[0]))
 
     total = len(runtime) + len(skipped)
     body = HEADER % dict(map=mapname, src=srcname,
@@ -1353,6 +1393,9 @@ def main():
         return psline(rt, parent)
     flat = lambda rt: "rope" not in rt and "orbit" not in rt
     nps = len([rt for rt in runtime if flat(rt)]) + len([1 for p_, rt in edges if flat(rt)])
+    if nps > PS_MAX:
+        print("WARNING: %d psys lines; the client reads the first %d (cl_emit.qc PS_MAX), "
+              "children last, so %d are dropped" % (nps, PS_MAX, nps - PS_MAX))
     idx = ["particles %s %d" % (mapname, nps)]
     for rt in runtime:
         idx.append(anyline(rt, "-"))

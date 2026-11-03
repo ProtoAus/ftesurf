@@ -431,8 +431,8 @@ float  ri_type[RI_MAX];
 vector ri_org[RI_MAX];
 
 // P1263: shell orbits -- tools/pcf.py's `orbit` lines (translate_orbit), stepped and drawn by
-// Emit_OrbitFrame.  surf_fantasy: ring01-03 (512 about the laser rings) and its torches.
-#define OB_MAX          16      // orbit systems a map; surf_fantasy has 6
+// Emit_OrbitFrame.  surf_fantasy: ring01-03, shells of 512 about the laser rings.
+#define OB_MAX          16      // orbit systems a map; surf_fantasy has 3
 #define OI_MAX          64      // placed orbits
 #define OP_MAX          2048    // live orbit particles, every placed orbit together
 #define OB_STEP         0.015   // longest simulation step: Source steps its particles once a frame
@@ -461,6 +461,7 @@ float  *orp_life;
 float  *orp_alpha;
 float  *orp_rad;
 float  orp_n;
+float  orp_h;                   // the last step's length: the verlet move carries velocity across a change
 float  ps_zoned;                // ps_name[]/ps_parent[] hold strzone handles to give back
 
 void() Emit_TrailForget;
@@ -500,6 +501,7 @@ void() Emit_PsysFree =
 		strunzone(ori_eff[i]);
 	orb_zoned = FALSE;
 	orb_n = ori_n = orp_n = 0;
+	orp_h = 0;
 };
 
 #define TRAIL_SHADER "ftesurf_trail/"   // tools/pcf.py has these by the same names
@@ -808,7 +810,7 @@ void() Emit_OrbitNote =
 };
 
 // The orbits a placed system starts: its children, or itself.  A local-space twist axis turns
-// with the entity (makevectors: forward is x, left is y, up is z).
+// with the entity: x right, y forward, z up (particles.h:1562-1574 TransformAxis).
 void(string effname, vector org, vector ang, float stopped) Emit_OrbitAt =
 {
 	local float j;
@@ -826,7 +828,7 @@ void(string effname, vector org, vector ang, float stopped) Emit_OrbitAt =
 			if (orb_local[j])
 			{
 				makevectors(ang);
-				a = normalize(v_forward * a_x - v_right * a_y + v_up * a_z);
+				a = normalize(v_right * a_x + v_forward * a_y + v_up * a_z);
 			}
 			ori_type[ori_n] = j;
 			ori_org[ori_n]  = org;
@@ -838,7 +840,7 @@ void(string effname, vector org, vector ang, float stopped) Emit_OrbitAt =
 		}
 };
 
-// The alpha multiplier at fraction f of the life: Alpha Fade and Decay as Emit_RopeAlpha reads it.
+// The multiplier on a particle's own alpha at fraction f of its life (Alpha Fade and Decay).
 float(float j, float f) Emit_OrbitAlpha =
 {
 	local vector fi, fo;
@@ -857,11 +859,13 @@ float(float j, float f) Emit_OrbitAlpha =
   (`amount` along cross(the offset's part perpendicular to the axis, normalized, axis)), then
   "Constrain distance to control point" clamps the distance and leaves the previous position,
   so the clamp also bends the velocity.  Steps of at most OB_STEP; a frame longer than 0.1 s is
-  cut short rather than run.
+  cut short rather than run.  The carried displacement is scaled by this step over the last
+  (Source's m_flPreviousDt), else alternating 14/16 ms frames change the speed 1.79x; a paused
+  frame (0) steps nothing and only draws.
 */
 void() Emit_OrbitFrame =
 {
-	local float i, j, k, s, nsub, h, dt, d, u, lf, keep;
+	local float i, j, k, s, nsub, h, dt, d, u, lf, keep, ratio;
 	local vector eye, rt, up, fwd, ofs, perp, acc, np, col, v;
 
 	if (!ori_n || !cvar("vbsp_emit_orbits"))
@@ -909,8 +913,9 @@ void() Emit_OrbitFrame =
 
 	for (j = 0; j < orb_n; j = j + 1)
 		shaderforname(orb_shader[j], orb_body[j]);   // re-registered each frame, as the ropes'
-	nsub = max(1, ceil(dt / OB_STEP));
-	h = dt / nsub;
+	nsub = (dt > 0) ? max(1, ceil(dt / OB_STEP)) : 0;
+	h = (dt > 0) ? dt / nsub : 0;
+	ratio = (h > 0 && orp_h > 0) ? bound(0.25, h / orp_h, 4) : 1;   // bounded: one hitch frame
 	for (k = 0; k < orp_n; k = k + 1)
 	{
 		i = orp_inst[k];
@@ -918,7 +923,7 @@ void() Emit_OrbitFrame =
 		orp_age[k] = orp_age[k] + dt;
 		if (orp_age[k] >= orp_life[k])
 		{
-			// Dead: the last live particle takes the slot (re-examined next frame).
+			// Dead: the last live particle takes the slot, and this pass looks at it next.
 			ori_live[i] = ori_live[i] - 1;
 			orp_n = orp_n - 1;
 			orp_pos[k] = orp_pos[orp_n];  orp_prev[k] = orp_prev[orp_n];  orp_inst[k] = orp_inst[orp_n];
@@ -938,7 +943,7 @@ void() Emit_OrbitFrame =
 				if (perp * perp > 0.0001)
 					acc = acc + crossproduct(normalize(perp), ori_axis[i]) * orb_twist[j];
 			}
-			np = orp_pos[k] + (orp_pos[k] - orp_prev[k]) * keep + acc * (h * h);
+			np = orp_pos[k] + (orp_pos[k] - orp_prev[k]) * (keep * (s ? 1 : ratio)) + acc * (h * h);
 			orp_prev[k] = orp_pos[k];
 			ofs = np - ori_org[i];
 			d = vlen(ofs);
@@ -969,6 +974,8 @@ void() Emit_OrbitFrame =
 		R_PolygonVertex(orp_pos[k] - rt * orp_rad[k] + up * orp_rad[k], [0, 0, 0], col, lf);
 		R_EndPolygon();
 	}
+	if (h > 0)
+		orp_h = h;
 };
 
 void() Emit_TrailForget =
