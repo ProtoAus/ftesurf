@@ -1301,7 +1301,7 @@ void(string id, vector p, vector sz, float tsz, string text, float caret, string
 		sui_text(tp, [tsz, tsz], text, SUI_THEME_TEXT, 1, 0);
 	if (focus)
 	if (cltime - floor(cltime) < 0.5)
-		sui_fill([tp_x + stringwidth(substring(text, 0, caret), TRUE, [tsz, tsz]), tp_y - 1],
+		sui_fill([tp_x + Font_PenX(text, caret, TRUE, [tsz, tsz]), tp_y - 1],
 		         [1, tsz + 2], SUI_THEME_ACCENT, 1, 0);
 };
 

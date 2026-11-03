@@ -211,7 +211,7 @@ void(vector scr) MapMsg_DrawText =
 			for (j = sv; j < vis; j = j + 1)
 			{
 				t = bound(0, (e - (base + j + 1) * fin) / max(0.001, fxt), 1);
-				HUD_TextDraw(p + [stringwidth(substring(line, 0, j), TRUE, [sz, sz]), 0, 0],
+				HUD_TextDraw(p + [Font_PenX(line, j, TRUE, [sz, sz]), 0, 0],   // Patch 1236: where it settles
 				             substring(line, j, 1), sz, mm_col2[ch] * (1 - t) + c * t, a);
 			}
 			base = base + strlen(line);

@@ -467,4 +467,17 @@ void() Font_Check =
   path need no special casing at any call site.
 */
 void(float slot) Font_Set  = { drawfont = slot; ui_font_cur = slot; };
+
+// Patch 1236: where character i of s starts when s is drawn whole. The engine kerns pairs, so
+// stringwidth(prefix) stops short of a kerned pair by its kern and a caret put there sits inside
+// the next glyph. A colour code at i keeps the plain prefix width. (|| does not short-circuit;
+// str2chr past the end reads 0.)
+float(string s, float i, float usecol, vector sz) Font_PenX =
+{
+	if (i <= 0)
+		return 0;
+	if (i >= strlen(s) || str2chr(s, i) == 94 || str2chr(s, i - 1) == 94)
+		return stringwidth(substring(s, 0, i), usecol, sz);
+	return stringwidth(substring(s, 0, i + 1), usecol, sz) - stringwidth(substring(s, i, 1), usecol, sz);
+};
 void()           Font_Reset = { drawfont = FONT_DEFAULT; ui_font_cur = FONT_DEFAULT; };

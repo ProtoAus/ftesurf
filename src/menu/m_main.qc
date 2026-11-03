@@ -1024,7 +1024,7 @@ void(string id, vector pos, vector size, __inout string text,
 	// fonts too.
 	if (focus && (floor(time * 2) & 1) == 0)
 	{
-		float cx = stringwidth(substring(text, 0, cursor), 1, SZ_LABEL);
+		float cx = Font_PenX(text, cursor, 1, SZ_LABEL);   // Patch 1236: kerned
 		sui_fill([tp_x + cx, tp_y], [1, SZ_LABEL_H], COL_ACCENT, 1, 0);
 	}
 };
@@ -1066,7 +1066,7 @@ void(string id, vector pos, vector size, __inout string text,
 
 	if (focus && (floor(time * 2) & 1) == 0)
 	{
-		float cx = stringwidth(substring(text, 0, cursor), 1, SZ_LABEL);
+		float cx = Font_PenX(text, cursor, 1, SZ_LABEL);   // Patch 1236: kerned
 		sui_fill([tp_x + cx, tp_y], [1, SZ_LABEL_H], COL_ACCENT, 1, 0);
 	}
 };
