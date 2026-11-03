@@ -1,6 +1,8 @@
 # lextest.md — things waiting on a human
 
-## P1258/P1259 the loading screen (both installs: exe 39e00f6e patch-1262 carries it, plugin d500ef70, menu e65ff200 with native font sizes; your Desktop copy with the next release)
+## P1258/P1259/P1265 the loading screen (both installs: exe b82e01f1 patch-1265, plugin d500ef70, menu 7eeb9095; your Desktop copy with the next release)
+0. P1265: bottom left, the map's picture, its name and "by <author> | MOM T | KSF T | stages" (the picture and the
+   line need the map list, which loads half a second after the menu opens). Text a rung smaller than before.
 1. Join a lobby: they were all updated this evening (P1256), so the first join downloads the new game code. The
    loading screen should stay up with "Downloading ..." at the bottom left (file, percent, speed, size left).
 2. Load surf_eternity (from the menu, or on a lobby): the wireframe and the dots keep moving the whole way, and

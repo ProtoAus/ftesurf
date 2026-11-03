@@ -15,6 +15,10 @@
 - To find a stall: engine branch p1259-probe (cl_screen.c P1259PROF samples the main thread's stack while
   the loading screen is 100 ms stale, and writes <cwd>/p1259prof.txt at the end of each load), then
   `python tools/loadprof_resolve.py p1259prof.txt <exe>.db <plugin dll>`.
+- P1265: the map card reads engine cvar scr_loadingmap (SCR_ImageName's base name; serverkey("map") is
+  stale through a hosted load and until a join's new serverinfo) and m_main.qc ui_load_card (the row's
+  thumbnail cell and detail line, once a map). A client started with conbridge --map never builds the
+  map list (ui_boot_preload waits for the menu), so the card has no row: start at the menu and connect.
 - Harness: `ui_close` alone is undone by the engine on the next idle frame (con_stayhidden opens the menu);
   send "connect X; ui_close" in one line, as the menu does.
 

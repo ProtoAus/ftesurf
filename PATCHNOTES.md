@@ -21,6 +21,10 @@
 
 ## next
 
+### P1265 The map on the loading screen
+- The loading screen shows the map you are loading at the bottom left: its picture, its name, and its author, tiers and stages as the map list has them.
+- The loading screen's text is a little smaller.
+
 ### P1262 Smooth leaves and fences with MSAA
 - With vid_multisample on, the cut-out edges of leaves, fences and grates are smoothed too, about as well as render scale 2, at no measurable cost. r_alphacoverage 0 turns it off.
 
