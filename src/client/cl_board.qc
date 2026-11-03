@@ -1217,6 +1217,7 @@ float  ui_rs_deadline;          // cltime after which the arm expires anyway
 */
 float  ui_jump_z;           // z of the ground we last jumped from
 float  ui_jump_have;        // FALSE until we have seen ground at all
+float  ui_jump_base;        // P1254: set by a re-base (map, teleport), not a jump: standing moves it to the floor
 /*
   Patch 332: the zone half of the energy reference, moved here from cl_hud.qc
   because Seq_Mark/Seq_AnchorRestore/Seq_AnchorReassert write it and this file
@@ -1312,6 +1313,7 @@ void(float jz, float gz, float ong, float have, float az, float azone, vector de
 	ui_ground_z     = gz;
 	ui_was_onground = ong;
 	ui_jump_have    = have;
+	ui_jump_base    = FALSE;      // P1254: a restored zero stands until the next jump
 	ui_anchor_z     = az;         // Patch 332
 	ui_anchor_zone  = azone;      // Patch 332
 

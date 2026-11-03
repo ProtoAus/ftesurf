@@ -1560,59 +1560,6 @@ vector(float q) HUD_QualityColor =
   every single jump.  Zones only.
 ===========================================================================
 */
-/*
-  P1254: until you stand in a start zone (and on maps that have none) the zero is the floor under
-  the spawn point, of the class SV_SelectSpawnPoint picks first; of several, the one nearest where
-  you are when first asked, which is just after spawning.  Looked up once a map.
-*/
-float  ui_spawn_look;           // 0 = not yet this map, 1 = found, 2 = the map has none
-float  ui_spawn_z;
-
-void(vector org) HUD_SpawnLookup =
-{
-	local string tok, key, cn;
-	local vector o, best;
-	local float  rank, brank, d, bd;
-
-	ui_spawn_look = 2;
-	brank = 6;
-	bd = rank = 0;
-	best = '0 0 0';
-	getentitytoken(0);
-	while ((tok = getentitytoken()) != "")
-	{
-		if (tok != "{")
-			continue;
-		cn = "";
-		o = '0 0 0';
-		while ((key = getentitytoken()) != "" && key != "}")
-		{
-			tok = getentitytoken();
-			if      (key == "classname") cn = tok;
-			else if (key == "origin")    o = Sprite_ParseVec(tok);
-		}
-		if      (cn == "info_player_start")            rank = 1;
-		else if (cn == "info_player_counterterrorist") rank = 2;
-		else if (cn == "info_player_terrorist")        rank = 3;
-		else if (cn == "info_player_deathmatch")       rank = 4;
-		else if (cn == "info_player_teamspawn")        rank = 5;
-		else
-			continue;
-		d = vlen(o - org);
-		if (rank < brank || (rank == brank && d < bd))
-		{
-			brank = rank;
-			bd = d;
-			best = o;
-		}
-	}
-	if (brank > 5)
-		return;
-	tracebox(best, PM_HULL_MINS, PM_HULL_MAXS, best - '0 0 4096', MOVE_NOMONSTERS, world);
-	ui_spawn_z = trace_startsolid ? best_z : trace_endpos_z;
-	ui_spawn_look = 1;
-};
-
 void(vector org) HUD_UpdateAnchor =
 {
 	local float z;
@@ -1623,7 +1570,6 @@ void(vector org) HUD_UpdateAnchor =
 		ui_anchor_zone   = -1;
 		ui_anchor_z      = 0;
 		ui_anchor_manual = 0;           // a new map is a new question
-		ui_spawn_look    = 0;           // P1254
 		ui_jump_have     = 0;           // and so is where the last jump was: the
 		                                // 512-unit teleport guard below cannot be
 		                                // relied on to notice a spawn that happens
@@ -1652,8 +1598,6 @@ void(vector org) HUD_UpdateAnchor =
 		}
 		return;
 	}
-	if (ui_anchor_zone < 0 && !ui_spawn_look)
-		HUD_SpawnLookup(org);
 };
 
 /*
@@ -1731,6 +1675,7 @@ void(vector org, vector vel, float onground) HUD_UpdateJumpRef =
 		ui_ground_z  = org_z;
 		ui_jump_z    = org_z;
 		ui_jump_have = TRUE;
+		ui_jump_base = TRUE;
 	}
 	ui_jump_lastorg = org;
 
@@ -1739,6 +1684,10 @@ void(vector org, vector vel, float onground) HUD_UpdateJumpRef =
 		ui_jump_fresh   = FALSE;
 		ui_ground_z     = org_z;
 		ui_was_onground = TRUE;
+		// P1254: a spawn or teleport lands you a few units under where it re-based; until the
+		// first jump the zero is the floor you stand on (rig: -10 at surf_1day's spawn, -65 at surf_1024's).
+		if (ui_jump_base && !ui_rs_armed)
+			ui_jump_z = org_z;
 
 		/*
 		  BUILD 47: STANDING IN A START BOX, THE FLOOR IS THE REFERENCE.
@@ -1776,7 +1725,10 @@ void(vector org, vector vel, float onground) HUD_UpdateJumpRef =
 
 	// Left the ground.  Only a jump moves the reference; a ledge does not.
 	if (ui_was_onground && vel_z > 0)
+	{
 		ui_jump_z = ui_ground_z;
+		ui_jump_base = FALSE;
+	}
 	ui_was_onground = FALSE;
 };
 
@@ -1950,15 +1902,15 @@ float() HUD_EnergyRef =
 		return ui_anchor_z;
 	if (ui_cv_energyref)
 		return ui_jump_z;
-	if (ui_anchor_zone < 0 && ui_spawn_look == 1)
-		return ui_spawn_z;      // P1254
+	if (ui_anchor_zone < 0)
+		return ui_jump_z;       // P1254: no start zone yet, so mode 1's zero (Lex's choice)
 	return ui_anchor_z;
 };
 
-// P1254: the zero is the spawn point's floor, so the readout says so.
-float() HUD_ZeroIsSpawn =
+// P1254: mode 0 measuring from the last jump for want of a start zone, so the readout says so.
+float() HUD_ZeroIsJump =
 {
-	return (!ui_anchor_manual && !ui_cv_energyref && ui_anchor_zone < 0 && ui_spawn_look == 1);
+	return (!ui_anchor_manual && !ui_cv_energyref && ui_anchor_zone < 0);
 };
 
 // Patch 631: whether that zero has an answer.  The speedometer prints `-- no
@@ -1969,13 +1921,15 @@ float() HUD_ZeroKnown =
 		return TRUE;
 	if (ui_cv_energyref)
 		return !ui_jump_fresh;
-	return (ui_anchor_zone >= 0 || ui_spawn_look == 1);
+	if (ui_anchor_zone >= 0)
+		return TRUE;
+	return !ui_jump_fresh;
 };
 
 // Patch 744: spectate measures the watched body from its own zero (Spec_Feed);
 // yours waits here.  A map change in between drops it -- it was that map's.
 float  ui_anch_held, ui_anch_svz, ui_anch_svzone, ui_anch_svman;
-float  ui_anch_svjz, ui_anch_svjhave, ui_anch_svgz, ui_anch_svwas;
+float  ui_anch_svjz, ui_anch_svjhave, ui_anch_svgz, ui_anch_svwas, ui_anch_svjbase;
 vector ui_anch_svlast;
 string ui_anch_svmap;
 
@@ -1991,6 +1945,7 @@ void(float hold) HUD_AnchorHold =
 		ui_anch_svman  = ui_anchor_manual;
 		ui_anch_svjz   = ui_jump_z;
 		ui_anch_svjhave = ui_jump_have;
+		ui_anch_svjbase = ui_jump_base;
 		ui_anch_svgz   = ui_ground_z;
 		ui_anch_svwas  = ui_was_onground;
 		ui_anch_svlast = ui_jump_lastorg;
@@ -2009,6 +1964,7 @@ void(float hold) HUD_AnchorHold =
 	ui_anchor_manual = ui_anch_svman;
 	ui_jump_z        = ui_anch_svjz;
 	ui_jump_have     = ui_anch_svjhave;
+	ui_jump_base     = ui_anch_svjbase;
 	ui_ground_z      = ui_anch_svgz;
 	ui_was_onground  = ui_anch_svwas;
 	ui_jump_lastorg  = ui_anch_svlast;
@@ -2466,8 +2422,8 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 		}
 		else
 			s = sprintf((ui_rw_on && !ui_rw_exact) ? "e line %d" : "e %d", rint(HUD_Round(ui_hl_e)));
-		if (!ui_rw_on && !nozone && HUD_ZeroIsSpawn())
-			s = strcat(s, " from spawn");       // P1254
+		if (!ui_rw_on && !nozone && HUD_ZeroIsJump())
+			s = strcat(s, " from jump");        // P1254
 
 		// Build 65: its own size, because it is a second readout inside one panel
 		// and "make the energy line bigger" is not "make the speedometer bigger".
@@ -5602,7 +5558,7 @@ void(vector scr, vector vel, float onground, vector gnorm, float mtype) HUD_Draw
 
 	HUD_Text(p, "anchor", sz, '0.6 0.6 0.6', 0.7);
 	HUD_TextR([rx, p_y], (ui_anchor_zone < 0 && !ui_anchor_manual)
-	          ? ((ui_spawn_look == 1) ? sprintf("%.0f spawn", ui_spawn_z) : "--") : sprintf("%.0f", ui_anchor_z),
+	          ? sprintf("%.0f jump", ui_jump_z) : sprintf("%.0f", ui_anchor_z),
 	          sz, '0.6 0.6 0.6', 0.7);                                  p_y += lh;
 
 	/*
