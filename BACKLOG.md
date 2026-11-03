@@ -13,8 +13,10 @@
 - P1274 class: the client draws every entity it is sent (r_ignoreentpvs 1) and the sky depth mask stands in for
   Source's per-leaf cull. `r_ignoreentpvs 0` measured right on santorini; switching it on for Source maps needs
   the skyroom entity path (gl_warp.c's note) checked first.
-- P1271: on the 68 unvised maps the sky no longer hides what is behind it, as in Source; a 3D-sky room on one of
-  them is now visible through sky faces from the main map if in line of sight (as in Source). Not surveyed.
+- P1271: the unvised path area-culls world leaves (never area 0, as Source's R_CullNode) and draws every
+  displacement and static prop (a prop's area pair is its first and last leaf: the loader's FIXME). The sky
+  mask still cuts same-area geometry behind a sky face at r_sky_forcedepth_scale's distance there, where
+  Source shows it whole. Our vised walk area-culls area-0 leaves, which Source does not.
 
 ## P1278 ramp wear (4 Nov): next steps and residuals
 - Props: ramps built from models (surf_demise's prop_dynamic_override, surf_classics3's static props, part of

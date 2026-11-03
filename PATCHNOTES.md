@@ -36,8 +36,8 @@
 ### P1272 Smoother spinning scenery
 - Rotating and orbiting scenery, like surf_voyager's asteroids, now moves smoothly instead of stepping.
 
-### P1271 Whole space stations on surf_voyager
-- On maps built without visibility data (68 of them, surf_voyager among them), scenery beyond a sky wall draws whole, as in Source. It used to be cut off, and less of it showed the closer you got.
+### P1271 No half-drawn stations on surf_voyager
+- On maps built without visibility data (68 of them), parts of the map sealed off from where you are no longer show through the sky, cut off and shrinking as you got closer. Source hides them, and now so do we: surf_voyager's far stations among them.
 
 ### P1270 No black squares in space
 - Glowing orbs drawn with a multiply effect, like surf_voyager's, no longer show as black squares.
