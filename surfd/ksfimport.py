@@ -186,7 +186,8 @@ WANT_DAYS = 14             # a map viewed this recently is crawled first
 # held one page.  P1240: a board never fetched joins that class, so its first
 # page goes before any deeper one -- on 3 Nov 4,037 stage, bonus and style boards
 # of unviewed maps waited behind ~4,000 deeper pages.  At equal depth a viewed
-# map goes first; its pages past the first wait until every board has one.
+# map goes first; past their first page its boards other than the Forward main
+# (WANT_FIRST) wait until every board has one.
 WANT_FIRST = 1000          # shallow-board priority, NOT a storage/display cap
 WANT_REST = 100
 MAIN_FIRST = 200           # surfd.BOARD_LIMIT_MAX
