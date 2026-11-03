@@ -282,7 +282,6 @@ float ui_cs_rowheight, ui_cs_list_top, ui_cs_list_bottom;
 //  case-insensitive and that bit is a documented no-op (pr_bgcmd.c:3502).
 // ---------------------------------------------------------------------------
 string(searchhandle handle, float num) search_getpackagename = #0:search_getpackagename;
-string(string key) serverkey = #354;    // pr_menu.c:2692
 
 /*
   free_pic IS in the menu builtin table (pr_menu.c:2746, index 453) right next to

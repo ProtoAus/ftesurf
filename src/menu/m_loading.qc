@@ -8,7 +8,12 @@
   exactly when both its faces look away, and the faces read as black without being drawn.
   The steps come from the engine's scr_loadingstep / scr_loadingseq (engine Patch 1244); an older
   engine gives none, and the rest still draws under the plaque.
+  P1258: bottom left, what the legacy screen showed -- the address being tried, a download's file,
+  percent, rate and size left, and the load percent -- from serverkey, which every engine has.
+  Before engine P1258 a download mid-load ended the step, and the engine opened the menu instead.
 */
+string(string key) serverkey = #354;    // pr_menu.c:2692; here because this is its first user
+
 #define LS_LOG    8
 string ls_log[LS_LOG];          // newest first, zoned; "" = empty
 string ls_key[LS_LOG];          // a merged run's kind ("models"), zoned; "" = a single step
@@ -22,6 +27,16 @@ string ls_prev;                 // ls_debug: the step at the last redraw, zoned
 vector ls_ring[5];              // the shape: a convex ring in one plane...
 float  ls_rn;
 vector ls_ext;                  // ...and the extrusion, perpendicular to it
+float  ls_t0;                   // when this load started
+float  ls_stept;                // when the newest step arrived
+float  ls_cont0;                // when this connect attempt was first seen, 0 = none
+string ls_dlname;               // the download being timed, zoned
+float  ls_dlb, ls_dlt, ls_dlrate;   // its bytes and time at the last sample; bytes/s
+
+#define LS_INFO 5
+string ls_itext[LS_INFO];       // this frame's bottom-left lines, top to bottom (temp strings)
+float  ls_ibar[LS_INFO];        // ...each one's bar, 0..1, or -1 for none
+float  ls_in;
 
 #define LS_TWOSIDED 1024        // DRAWFLAG_TWOSIDED (m_stats.qc's MS_TWOSIDED)
 
@@ -101,6 +116,11 @@ string(string s) LS_Friendly =
 	{
 		ls_fkey = "content";
 		return "Loading map content";
+	}
+	if (substring(s, 0, 9) == "download ")     // engine P1258, one per file
+	{
+		ls_fkey = "dl";
+		return "Downloading files";
 	}
 	if (e == ".bsp")
 		return strcat("Loading the map ", (substring(s, 0, 5) == "maps/") ? substring(s, 5, n - 9) : substring(s, 0, n - 4));
@@ -255,9 +275,99 @@ void(vector scr) LS_DrawShape =
 	}
 };
 
+string(float b) LS_Bytes =
+{
+	if (b < 1048576)
+		return sprintf("%.0f KB", b / 1024);
+	return sprintf("%.1f MB", b / 1048576);
+};
+
+string(string s) LS_Base =
+{
+	local float i, n;
+	n = strlen(s);
+	for (i = n - 1; i >= 0; i = i - 1)
+		if (str2chr(s, i) == 47)    // '/'
+			return substring(s, i + 1, n - i - 1);
+	return s;
+};
+
+void(string s, float bar) LS_Info =
+{
+	if (ls_in >= LS_INFO)
+		return;
+	ls_itext[ls_in] = s;
+	ls_ibar[ls_in] = bar;
+	ls_in = ls_in + 1;
+};
+
+// The bottom-left lines.  The rate is timed here: the engine refreshes cls.download->rate only
+// when the legacy screen or the console asks (CL_DownloadRate).
+void() LS_Gather =
+{
+	local string s, l;
+	local float n, pct, got, left, stage, tot;
+	ls_in = 0;
+	s = serverkey("transferring");      // the address while the handshake runs, a status line may follow
+	if (s == "")
+		ls_cont0 = 0;
+	else
+	{
+		if (!ls_cont0)
+			ls_cont0 = time;
+		n = tokenizebyseparator(s, "\n");
+		l = strcat("Connecting to ", argv(0));
+		if (time - ls_cont0 >= 2)
+			l = sprintf("%s (%.0f s)", l, time - ls_cont0);
+		LS_Info(l, -1);
+		if (n > 1)
+			LS_Info(argv(1), -1);
+	}
+	s = serverkey("dlstate");           // fields as m_main.qc's map downloads read them
+	n = (s != "") ? tokenize(s) : 0;
+	if (n >= 9)
+	{
+		pct = bound(0, stof(argv(5)), 100);
+		got = stof(argv(7));
+		if (argv(3) != ls_dlname || got < ls_dlb)
+		{
+			if (ls_dlname != "")
+				strunzone(ls_dlname);
+			ls_dlname = strzone(argv(3));
+			ls_dlb = got;
+			ls_dlt = time;
+			ls_dlrate = 0;
+		}
+		else if (time - ls_dlt >= 1)
+		{
+			ls_dlrate = (got - ls_dlb) / (time - ls_dlt);
+			ls_dlb = got;
+			ls_dlt = time;
+		}
+		LS_Info(sprintf("Downloading %s  %.0f%%", LS_Base(argv(3)), pct), pct / 100);
+		left = max(0, stof(argv(1)) - got);
+		l = sprintf("%s%s left", LS_Bytes(left), (stof(argv(2)) != 0) ? "+" : "");
+		if (stof(argv(0)) > 0)
+			l = sprintf("%s, %g more file%s", l, stof(argv(0)), (stof(argv(0)) == 1) ? "" : "s");
+		if (ls_dlrate > 0)
+			l = sprintf("%s/s, %s", LS_Bytes(ls_dlrate), l);
+		LS_Info(l, -1);
+	}
+	else if (n >= 3 && stof(argv(0)) > 0)
+		LS_Info(sprintf("Waiting to download %g file%s", stof(argv(0)), (stof(argv(0)) == 1) ? "" : "s"), -1);
+	n = tokenize(serverkey("loadstate"));   // stage current total levelshot (pr_clcmd.c)
+	stage = stof(argv(0));
+	tot = stof(argv(2));
+	if (n >= 3 && stage >= 2 && tot > 0)    // LS_SERVER, LS_CLIENT
+	{
+		pct = bound(0, stof(argv(1)) / tot, 1);
+		LS_Info(sprintf("%s %.0f%%", (stage == 2) ? "Server" : "Game", pct * 100), pct);
+	}
+};
+
 void(vector scr) LS_Draw =
 {
-	local float i, seq, px, y, dots;
+	local float i, seq, px, y, dots, bw, bh;
 	local string raw, word;
 	if (ls_idle || time < ls_last)
 	{	// a new load
@@ -265,7 +375,8 @@ void(vector scr) LS_Draw =
 		LS_Clear();
 		ls_shape = (random() < 0.5) ? 0 : 1;
 		ls_seq = -1;
-		ls_last = time;
+		ls_last = ls_t0 = ls_stept = time;
+		ls_cont0 = 0;
 	}
 	raw = cvar_string("scr_loadingstep");
 	if (cvar("ls_debug") && time - ls_last > 0.05)   // set ls_debug 1: every stall
@@ -282,7 +393,9 @@ void(vector scr) LS_Draw =
 	{
 		LS_Step(raw, (ls_seq < 0 || seq < ls_seq) ? 1 : seq - ls_seq);
 		ls_seq = seq;
+		ls_stept = time;
 	}
+	LS_Gather();
 
 	drawfill('0 0 0', scr, '0 0 0', 1, 0);
 	LS_DrawShape(scr);
@@ -295,7 +408,34 @@ void(vector scr) LS_Draw =
 		if (ls_log[i] == "")
 			break;
 		drawstring([scr_x * 0.05, y, 0], ls_log[i], [px, px, 0], '1 1 1', max(0.12, 1 - i * 0.15), 0);
+		if (i == 0 && time - ls_stept >= 1)     // how long the newest step has run
+			drawstring([scr_x * 0.05 + stringwidth(ls_log[0], TRUE, [px, px, 0]) + px, y, 0],
+			           sprintf("%.0f s", time - ls_stept), [px, px, 0], '1 1 1', 0.45, 0);
 		y = y + px * 1.5;
+	}
+	// The bottom-left lines, upward from the line "Loading" sits on, a bar under its line
+	px = max(9, scr_y / 50);
+	bw = scr_x * 0.3;
+	bh = max(2, px * 0.25);
+	y = scr_y - scr_y * 0.06;
+	for (i = ls_in - 1; i >= 0; i = i - 1)
+	{
+		if (ls_ibar[i] >= 0)
+		{
+			y = y - bh;
+			drawfill([scr_x * 0.05, y, 0], [bw, bh, 0], '0.25 0.25 0.25', 1, 0);
+			drawfill([scr_x * 0.05, y, 0], [bw * ls_ibar[i], bh, 0], '1 1 1', 1, 0);
+			y = y - px * 0.4;
+		}
+		y = y - px;
+		drawstring([scr_x * 0.05, y, 0], ls_itext[i], [px, px, 0], '1 1 1', 0.85, 0);
+		y = y - px * 0.5;
+	}
+	if (time - ls_t0 >= 1)                  // the whole load, under "Loading"
+	{
+		word = sprintf("%.0f s", time - ls_t0);
+		drawstring([scr_x - scr_x * 0.05 - stringwidth(word, TRUE, [px, px, 0]), scr_y - scr_y * 0.06 + px * 0.5, 0],
+		           word, [px, px, 0], '1 1 1', 0.45, 0);
 	}
 	// "Loading" with 0..3 dots and back, the text held still (it starts where "Loading..." would)
 	dots = floor(time * 4.5);
