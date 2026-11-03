@@ -2902,6 +2902,7 @@ float(string cmd) LineGraph_Command =
 	{
 		s = bound(0, floor(stof(argv(2))), LG_SLOTS - 1);
 		t = stof(argv(3));
+		LineGraph_ReadCvars();          // Patch 1236: between frames, so not the last frame's
 		sample = LineGraph_At(s, t);
 		print(sprintf("linegraph: slot %g t %.4f valid %g speed %.4f selected %g bins %g\n", s, t, sample_z, sample_x, lg_selected[s], lg_buildslot));
 		if (sample_z && ln_g[s] > 0)
