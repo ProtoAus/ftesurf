@@ -1636,6 +1636,11 @@ void(string cmd) SV_ParseClientCommand =
 		EventFog_Command(self, cmdargc, argv(1));
 		return;
 	}
+	if (!strcmp(c, "ent_fire"))     // P1256
+	{
+		SV_EntFire(self, argv(1), argv(2), argv(3));
+		return;
+	}
 	if (!strcmp(c, "weapon_drop"))
 	{
 		// Presentation only: no physical item, damage or input/movement change.

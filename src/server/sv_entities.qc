@@ -4307,6 +4307,64 @@ float(entity t, string in) SV_PsysInput =
 	return TRUE;
 };
 
+/*
+  P1256: env_laser answers TurnOn, TurnOff and Toggle (19 outputs on 13 maps aim at a laser's name).
+  cl_lasers.qc draws every laser from the lump; this edict holds one named laser's state and, from the
+  first input that reaches it, sends it to every client (ENTWIRE_LASERSTATE, matched there on origin
+  and targetname).  Stashed as info_particle_system is; an unnamed laser cannot be addressed.
+*/
+.float vbsp_las_on;
+
+float(entity to, float changed) SV_LaserSend =
+{
+	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
+	WriteByte(MSG_ENTITY, ENTWIRE_LASERSTATE);
+	WriteFloat(MSG_ENTITY, self.origin_x);
+	WriteFloat(MSG_ENTITY, self.origin_y);
+	WriteFloat(MSG_ENTITY, self.origin_z);
+	WriteString(MSG_ENTITY, self.targetname);
+	WriteByte(MSG_ENTITY, self.vbsp_las_on);
+	return TRUE;
+};
+
+void() env_laser =
+{
+	if (self.targetname == "")
+	{
+		remove(self);
+		return;
+	}
+	SV_LateStash("targetname origin spawnflags");
+};
+
+// Kill turns it off and keeps the edict, as for particle systems.
+float(entity t, string in) SV_LaserInput =
+{
+	local float on;
+
+	if (t.SendEntity)
+		on = t.vbsp_las_on;
+	else
+		on = (t.spawnflags & 1);    // CEnvLaser::Spawn: a named laser starts off without SF_BEAM_STARTON
+	if (in == "turnon")
+		on = TRUE;
+	else if (in == "turnoff" || in == "kill")
+		on = FALSE;
+	else if (in == "toggle")
+		on = !on;
+	else
+		return FALSE;
+	if (cvar("developer"))
+		dprint(sprintf("env_laser %s at %v: %s, %s\n", t.targetname, t.origin, in, on ? "on" : "off"));
+	if (t.SendEntity && on == t.vbsp_las_on)
+		return TRUE;
+	t.vbsp_las_on = on;
+	t.SendEntity = SV_LaserSend;
+	t.pvsflags = PVSF_IGNOREPVS;
+	t.SendFlags = 1;
+	return TRUE;
+};
+
 // P1193: lent only on this player's own grant from its current attempt.
 float(entity e, entity bar) SV_NoColLent =
 {
@@ -4531,6 +4589,9 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		return;
 	if (t.classname == "info_particle_system")
 		if (SV_PsysInput(t, in))
+			return;
+	if (t.classname == "env_laser")
+		if (SV_LaserInput(t, in))
 			return;
 
 	if (in == "addoutput")      { SV_IOAddOutput(t, pm);                return; }
@@ -5123,6 +5184,35 @@ void(entity o, entity act) SV_IODeliver =
 		t = SV_FindByName(tn, t);
 	}
 	vbsp_io_value = "";
+};
+
+// P1256: Source's ent_fire <target> [input] [param], a cheat as there: one row through SV_IODeliver,
+// the player its activator and its !self.  No input means Use, as Source.
+void(entity pl, string tgt, string in, string pm) SV_EntFire =
+{
+	local entity o;
+
+	if (!cvar("sv_cheats"))
+	{
+		sprint(pl, PRINT_HIGH, "^3ent_fire needs sv_cheats 1\n");
+		return;
+	}
+	if (tgt == "")
+	{
+		sprint(pl, PRINT_HIGH, "ent_fire <target> [input] [param]\n");
+		return;
+	}
+	if (in == "")
+		in = "Use";
+	o = spawn();
+	o.classname = "vbsp_entfire";
+	o.vbsp_io_target = tgt;
+	o.vbsp_io_input = in;
+	o.vbsp_io_param = pm;
+	o.owner = pl;
+	sprint(pl, PRINT_HIGH, sprintf("ent_fire: %s %s %s\n", tgt, in, pm));
+	SV_IODeliver(o, pl);
+	remove(o);
 };
 
 // A delayed output.  Two entity references and a think; removed before it

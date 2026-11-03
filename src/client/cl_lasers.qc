@@ -4,10 +4,10 @@
 
   CEnvLaser (EnvLaser.cpp StrikeThink) traces MASK_SOLID from its origin to a random
   entity named LaserTarget, every think.  Nothing kept here moves, so one trace at
-  load gives the same end.  Declined and counted: a laser that starts off (no I/O
-  yet), one with a parentname, one whose target is parented or a mover, one with
-  no target entity, one whose material does not resolve.  The server still removes
-  every env_laser; the client draws from the lump.
+  load gives the same end.  Declined and counted: one with a parentname, one whose
+  target is parented or a mover, one with no target entity, one whose material does
+  not resolve.  P1256: a laser that starts off is kept, undrawn; the server's edict
+  (SV_LaserInput) sends TurnOn/TurnOff/Toggle, applied by Laser_Net.
 
   Each (laser, target) pair is one entry in cl_sprites.qc's beam table after the
   shafts (beam_spot_n .. beam_n), so Sprite_SkyTick and the distance/behind culls
@@ -34,6 +34,8 @@ float *las_grp;                 // the entry heading this entry's group
 float *las_cnt;                 // at a head: entries in the group
 float *las_pick;                // at a head: the entry drawn now
 float *las_next;                // at a head: when to pick again
+float *las_on;                  // at a head: drawn; the lump's start state until the server says (P1256)
+float *las_tnc;                 // at a head: crc16 of its targetname, with the origin what Laser_Net matches
 
 // Load-time staging: per laser (LAS_MAX), per target name (LAS_MAX), per target (LAS_TGT_MAX).
 vector *lsg_org;
@@ -42,6 +44,8 @@ float *lsg_wid;                 // full width
 float *lsg_speed;
 float *lsg_mat;
 float *lsg_name;                // its target name's index; -1 once declined
+float *lsg_on;
+float *lsg_tnc;
 float *lname_head;              // first target + 1, 0 = none
 vector *ltgt_org;
 float *ltgt_mov;
@@ -63,12 +67,33 @@ float(string cn) Laser_Mover =
 	return FALSE;
 };
 
+// P1256: one laser's on/off from the server (SV_LaserSend, cl_body.qc), on the laser with that origin
+// and name.  Kept on the entity, so a load after it arrives reapplies it.
+.float las_neton, las_nettnc;
+
+void(entity e) Laser_Net =
+{
+	local float i, k;
+
+	if (!las_on)
+		return;
+	for (i = beam_spot_n; i < beam_n; i = i + 1)
+	{
+		k = i - beam_spot_n;
+		if (las_grp[k] == k && las_tnc[k] == e.las_nettnc && vlen(beam_org[i] - e.origin) < 0.1)
+			las_on[k] = e.las_neton;
+	}
+	if (cvar("developer"))
+		print(sprintf("lasers: the laser at %v turned %s by the server\n", e.origin, e.las_neton ? "on" : "off"));
+};
+
 void(float want) Laser_LoadForMap =
 {
 	local string tok, key, cn, tn, pn, lt, tex, scol;
 	local vector org, col, endp;
 	local float  sf, rmode, ramt, wid, ts, nl, nn, nt, l, w, t, n, mov, m, e, h, lost;
 	local hashtable names;
+	local entity net;
 
 	// vbsp_las_seen is counted by Sprite_LoadForMap's walk.
 	vbsp_las_n = vbsp_las_off = vbsp_las_notgt = 0;
@@ -85,6 +110,10 @@ void(float want) Laser_LoadForMap =
 		las_cnt    = memalloc(sizeof(float) * BEAM_MAX);
 		las_pick   = memalloc(sizeof(float) * BEAM_MAX);
 		las_next   = memalloc(sizeof(float) * BEAM_MAX);
+		las_on     = memalloc(sizeof(float) * BEAM_MAX);
+		lsg_on     = memalloc(sizeof(float) * LAS_MAX);
+		las_tnc    = memalloc(sizeof(float) * BEAM_MAX);
+		lsg_tnc    = memalloc(sizeof(float) * LAS_MAX);
 		lsg_org    = memalloc(sizeof(vector) * LAS_MAX);
 		lsg_col    = memalloc(sizeof(vector) * LAS_MAX);
 		lsg_wid    = memalloc(sizeof(float) * LAS_MAX);
@@ -131,12 +160,6 @@ void(float want) Laser_LoadForMap =
 		if (cn != "env_laser")
 			continue;
 
-		// CEnvLaser::Spawn: off only when named AND lacking SF_BEAM_STARTON, as env_sprite.
-		if (tn != "" && !(sf & 1))
-		{
-			vbsp_las_off = vbsp_las_off + 1;
-			continue;
-		}
 		if (pn != "")
 		{
 			vbsp_las_parent = vbsp_las_parent + 1;
@@ -182,6 +205,8 @@ void(float want) Laser_LoadForMap =
 		lsg_speed[nl] = ts * ts;
 		lsg_mat[nl]   = Sprite_Material(tex, 0);   // "" resolves to -1, as Spawn removes it
 		lsg_name[nl]  = w;
+		lsg_on[nl]    = !(tn != "" && !(sf & 1));  // CEnvLaser::Spawn: off when named without SF_BEAM_STARTON
+		lsg_tnc[nl]   = crc16(TRUE, tn);           // 79 lasers share an origin with a differently named one
 		nl = nl + 1;
 	}
 
@@ -296,9 +321,16 @@ void(float want) Laser_LoadForMap =
 			las_cnt[h]  = n;
 			las_pick[h] = h + floor(random() * n);
 			las_next[h] = 0;
+			las_on[h]   = lsg_on[l];
+			las_tnc[h]  = lsg_tnc[l];
 			vbsp_las_n = vbsp_las_n + 1;
+			if (!lsg_on[l])
+				vbsp_las_off = vbsp_las_off + 1;
 		}
 	}
+
+	for (net = find(world, classname, "laser_net"); net; net = find(net, classname, "laser_net"))
+		Laser_Net(net);
 };
 
 // Called from Sprite_Draw after the shafts; returns the beams drawn.
@@ -315,6 +347,8 @@ float(vector eye, vector fwd, float maxdist, float skyon) Laser_Draw =
 	{
 		k = i - beam_spot_n;
 		h = las_grp[k];
+		if (!las_on[h])
+			continue;
 		if (las_cnt[h] > 1)
 		{
 			// The second test catches time running backwards (a demo seek, a reconnect).
