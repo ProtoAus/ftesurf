@@ -9,11 +9,11 @@
 # axil's .phy hulls past 65,536 copied points (Patch 888: fixtrace must differ from
 # proptrace and print a nonzero "wrapped N"; pantheon's "unwrapped decided" is 0 by
 # geometry, a clip brush sits over ramp07), surf_sedona's prop creases (Patch 1255: picktrace,
-# pickmover and ride11/ride12 measure mover 12; "pick changed N" must be nonzero on pantheon, axil
-# and sedona; rides ending apart were 0 on all six maps at P1255, so they compare the code, not a
-# snag).  A Windows run compares only with the game's cfg/ and the map's zone-file cvars in its rig:
-# the walks read unpinned movevars, and the Pi's surf_boreas zone file sets sv_maxvelocity 5000
-# (P1255: 90 of 90 lines equal that way, 75 without the zone file) --
+# pickmover and ride11/ride12 measure mover 12 and are the only mover lines that collide -- the
+# older ones fall freely; "touched" must be nonzero on the four prop maps, and rides differ between
+# movers 11 and 12 on axil (16 of 72) and sedona (11 of 116)).  A Windows run compares only with the
+# game's cfg/ and the map's zone-file cvars in its rig: the walks read unpinned settings, and the
+# Pi's surf_boreas zone file sets sv_maxvelocity 5000 (P1255: 90 of 90 lines equal that way) --
 # then pm_verify of a pin-1 file the sweeper PASSed (PASSMAP/PASSREC override
 # it; once a lobby has recorded a v12 run on a prop map, point them at it), and
 # of p492voy.rec (pmsrcver 2) through a throwaway overlay, since the
