@@ -1,0 +1,147 @@
+// FTESurf P1278: ramp wear. tools/rampwear.py bakes, per map, the ridden ramps' triangles
+// (data/rampwear/<map>.txt) and their mask (textures/rampwear/<map>.png) from replays; this draws
+// them as polygons with glsl/ftesurf_rampwear.glsl and a multiply blend, so the ramp's own lighting
+// carries it. Polygons, not a model entity: one map-sized OBJ entity was never drawn (P1278 notes).
+// The normal rides in the vertex colour. r_rampwear 0 hides it; r_rampwear_dirt / r_rampwear_scratch
+// scale the looks; r_rampwear_debug 1 shows the mask.
+
+#define RW_FAR 6000             // the shader has faded the overlay out by here
+
+string rw_map;                  // the map the overlay was looked up for
+string rw_shader;               // its shader name, "" when the map has none
+float  rw_n;                    // surfaces
+float  rw_ntri;
+vector *rw_cen;                 // per surface: centre, radius, first triangle, triangles
+float  *rw_rad;
+float  *rw_first;
+float  *rw_cnt;
+vector *rw_pos;                 // per triangle corner
+vector *rw_st;
+vector *rw_nrm;                 // per triangle
+
+void() RampWear_Init =
+{
+	registercvar("r_rampwear", "1", 0);
+	registercvar("r_rampwear_dirt", "1", 0);
+	registercvar("r_rampwear_scratch", "1", 0);
+	registercvar("r_rampwear_debug", "0", 0);     // 1: show the mask itself
+};
+
+float  rw_alloc;                // the arrays above hold memory, and rw_shader is zoned
+
+void() RampWear_Free =
+{
+	if (rw_alloc)
+	{
+		memfree(rw_cen);
+		memfree(rw_rad);
+		memfree(rw_first);
+		memfree(rw_cnt);
+		memfree(rw_pos);
+		memfree(rw_st);
+		memfree(rw_nrm);
+		strunzone(rw_shader);
+	}
+	rw_alloc = FALSE;
+	rw_n = rw_ntri = 0;
+	rw_shader = "";
+};
+
+void() RampWear_Load =
+{
+	local string mname, line;
+	local float fh, ns, nt, s, t, k, j;
+
+	RampWear_Free();
+	if (rw_map)
+		strunzone(rw_map);
+	mname = serverkey("map");
+	rw_map = strzone(mname);
+	if (mname == "")
+		return;
+	fh = fopen(sprintf("data/rampwear/%s.txt", mname), FILE_READ);
+	if (fh < 0)
+		return;
+	line = fgets(fh);
+	if (tokenize(line) != 5 || argv(0) != "rampwear" || argv(1) != "1")
+	{
+		print(sprintf("^3rampwear: data/rampwear/%s.txt: not a version 1 file\n", mname));
+		fclose(fh);
+		return;
+	}
+	ns = stof(argv(3));
+	nt = stof(argv(4));
+	if (ns <= 0 || nt <= 0)
+	{
+		fclose(fh);
+		return;
+	}
+	rw_cen   = memalloc(sizeof(vector) * ns);
+	rw_rad   = memalloc(sizeof(float) * ns);
+	rw_first = memalloc(sizeof(float) * ns);
+	rw_cnt   = memalloc(sizeof(float) * ns);
+	rw_pos   = memalloc(sizeof(vector) * nt * 3);
+	rw_st    = memalloc(sizeof(vector) * nt * 3);
+	rw_nrm   = memalloc(sizeof(vector) * nt);
+	s = t = 0;
+	while ((line = fgets(fh)))
+	{
+		k = tokenize(line);
+		if (argv(0) == "c" && k == 6 && s < ns)
+		{
+			rw_cen[s] = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
+			rw_rad[s] = stof(argv(4));
+			rw_first[s] = t;
+			rw_cnt[s] = 0;
+			s = s + 1;
+		}
+		else if (argv(0) == "t" && k == 19 && s > 0 && t < nt)
+		{
+			for (j = 0; j < 3; j = j + 1)
+			{
+				rw_pos[t * 3 + j] = [stof(argv(1 + j * 5)), stof(argv(2 + j * 5)), stof(argv(3 + j * 5))];
+				rw_st[t * 3 + j]  = [stof(argv(4 + j * 5)), stof(argv(5 + j * 5)), 0];
+			}
+			rw_nrm[t] = [stof(argv(16)), stof(argv(17)), stof(argv(18))];
+			rw_cnt[s - 1] = rw_cnt[s - 1] + 1;
+			t = t + 1;
+		}
+	}
+	fclose(fh);
+	rw_n = s;
+	rw_ntri = t;
+	rw_shader = strzone(sprintf("ftesurf_rampwear/%s", mname));
+	rw_alloc = TRUE;
+	shaderforname(rw_shader, sprintf("{\npolygonoffset\nsort decal\n{\nprogram ftesurf_rampwear\nblendfunc filter\nclampmap textures/rampwear/%s.png\nrgbgen vertex\nalphagen vertex\n}\n}\n", mname));
+	print(sprintf("rampwear: %s, %g surfaces, %g triangles\n", mname, rw_n, rw_ntri));
+};
+
+// Before renderscene, beside Emit_Frame: the map latch, then the surfaces in front within RW_FAR.
+void() RampWear_Frame =
+{
+	local float i, t, e, j;
+	local vector eye, fwd, d, col;
+
+	if (serverkey("map") != rw_map)
+		RampWear_Load();
+	if (!rw_n || !cvar("r_rampwear"))
+		return;
+	eye = getproperty(VF_ORIGIN);
+	makevectors(getproperty(VF_ANGLES));
+	fwd = v_forward;
+	for (i = 0; i < rw_n; i = i + 1)
+	{
+		d = rw_cen[i] - eye;
+		if (vlen(d) - rw_rad[i] > RW_FAR || d * fwd < -rw_rad[i])
+			continue;
+		e = rw_first[i] + rw_cnt[i];
+		for (t = rw_first[i]; t < e; t = t + 1)
+		{
+			col = rw_nrm[t] * 0.5 + '0.5 0.5 0.5';
+			R_BeginPolygon(rw_shader, 0, FALSE);
+			for (j = 0; j < 3; j = j + 1)
+				R_PolygonVertex(rw_pos[t * 3 + j], rw_st[t * 3 + j], col, 1);
+			R_EndPolygon();
+		}
+	}
+};
