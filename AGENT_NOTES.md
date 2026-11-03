@@ -2177,6 +2177,15 @@ executable path and hash, not a similarly named maintained copy.
   1 s window and 1.3 s waits every dump measured the previous setting, and the first table read
   backwards.
 
+## HUD reads (P1239, 2026-11-03)
+
+- HUD_ReadCvars (cl_hud.qc) and Zone_Draw's Zone_ReadCvars refresh at most every 0.1 s of cltime,
+  but every frame while ui_he_open / ui_ze_state, on the zone_debug frame and while ui_bootcheck is
+  set. A test that sets a hud_* or zone_* cvar and screenshots or greps the HUD sooner reads the old
+  value; open the editor, or wait 200 ms.
+- sui_round_fixed (sh_ui.qc) is for boxes that keep their size frame to frame (one quad of a texture
+  named by its pixel size); a box that animates its size belongs on _sui_round_draw/sui_roundbox.
+
 ## Kerned text (P1236, 2026-11-03)
 
 - Since engine patch-1236, drawstring/drawrawstring kern pairs and stringwidth includes them, so

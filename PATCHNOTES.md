@@ -21,6 +21,10 @@
 
 ## next
 
+### P1239 Lighter HUD
+- The HUD's own script work is about an eighth lighter: the rounded movement keys are drawn as one piece each (they look exactly the same), and settings the HUD reads every frame are now read ten times a second.
+- A HUD or zone setting changed from the console or a bind now shows within a tenth of a second (instantly while the HUD or zone editor is open).
+
 ### P1237 Faster skies on Source maps
 - The flat sky on Source maps is drawn whole, as Source draws it, instead of being worked out piece by piece
   every frame: about 8-10% more frames per second where a lot of sky is reflected (surf_eternity's glass),

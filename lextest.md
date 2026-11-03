@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1239 lighter HUD (both installs now; lobbies when empty; everyone with the next release)
+In C:\FTESurf or C:\FTEQuake (csprogs 1f0206f5, menu dbdf2b6f): the movement keys look exactly as before (rounded,
+lit when held). Toggling a HUD setting from the console or a bind (`hud_keys 0`, `hud_speed 0`) shows
+within a tenth of a second; in the HUD editor (C) it is instant as before.
+
 ## P1237 skies (both installs now; your Desktop copy with the next release)
 - surf_eternity saves 4 and 10: faster than before (rig: save 4 about 190 -> 212 fps); the sky seen in the
   glass looks the same.

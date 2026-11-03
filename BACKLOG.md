@@ -123,6 +123,16 @@
 - A build in the release engine worktree rewrites plugins/hl2/mat_vmt_progs.h's header comment
   (the generator's path), which the clean-input gate refuses; restore it, or build elsewhere.
 
+## P1239 residuals (3 Nov 2026)
+- HUD_ReadCvars and the per-frame Zone_ReadCvars hold their cvars up to 0.1 s (not in the HUD or
+  zone editor, the zone_debug frame or ui_bootcheck): an arm that sets a hud_*/zone_* cvar and grades
+  the HUD inside 0.1 s must open the editor or wait.
+- sui_round_fixed's corners are the exact radius; at a 2D pixel ratio of 1.25 or 1.5 (or rp 3.75)
+  up to ~100 corner pixels differ by up to 35/255 from _sui_round_draw's scaled disc (identical at 1:1
+  and 2x). Each distinct key size made in a session keeps its texture until a renderer restart.
+- Font_PenX treats a literal ^^{ (escaped) as an open code when usecol is set: one kern (1-3 px) for
+  up to 10 characters.
+
 ## P1236 residuals (3 Nov 2026)
 - Kerning covers U+0020..U+00FF of a font's first face: Roboto's Cyrillic and Greek pairs are not
   read. GPOS cases no shipped font reaches are not implemented: value 2 (a pair that consumes its
