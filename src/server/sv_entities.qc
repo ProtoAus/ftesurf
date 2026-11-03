@@ -7581,8 +7581,8 @@ void(float defsolid) SV_SpawnProp =
 	// "Don't Render" and, Patch 1041, the translucent modes: see SV_PropRenderState.
 	SV_PropRenderState(self);
 	// P1273 (Lex, 3 Nov): a prop_dynamic nothing collides with plays its DefaultAnim, as Source's does
-	// (surf_santorini's gulls); other classes never read the key. A solid one stays still: an animated
-	// mesh never moves its collision (P1202).
+	// (surf_santorini's gulls); other classes never read the key, though SV_SkyRoomAll animates any it
+	// marks. A solid one stays still: an animated mesh never moves its collision (P1202).
 	if (self.solid == SOLID_NOT && substring(self.classname, 0, 12) == "prop_dynamic")
 	if (SV_ModelAnim(self, self.vbsp_defanim))
 		vbsp_prop_anim_n = vbsp_prop_anim_n + 1;
