@@ -38,6 +38,13 @@ string ls_itext[LS_INFO];       // this frame's bottom-left lines, top to bottom
 float  ls_ibar[LS_INFO];        // ...each one's bar, 0..1, or -1 for none
 float  ls_in;
 
+// P1265: the map card above them, for engine P1265's scr_loadingmap (none on an older engine).
+string ls_cardmap, ls_cardinfo; // the map's name and its detail line, zoned
+float  ls_cardpage, ls_cardcell;   // its thumbnail cell, -1 for none
+float(string nm) ui_map_index;  // m_main.qc
+void(float row) ui_load_card;   // m_main.qc: fills ls_cardinfo/page/cell
+void(vector pos, vector size, float page, float cell) ui_thumb;  // m_main.qc
+
 #define LS_TWOSIDED 1024        // DRAWFLAG_TWOSIDED (m_stats.qc's MS_TWOSIDED)
 
 // A white line `w` wide: a quad, since the menu's drawline ignores its width (pr_menu.c).
@@ -399,11 +406,24 @@ void() LS_Gather =
 	}
 };
 
+// The card is looked up once a map: ui_map_index scans the whole list.
+void() LS_Card =
+{
+	local string m;
+	m = cvar_string("scr_loadingmap");
+	if (m == ls_cardmap)
+		return;
+	if (ls_cardmap != "")
+		strunzone(ls_cardmap);
+	ls_cardmap = (m != "") ? strzone(m) : "";
+	ui_load_card((m != "") ? ui_map_index(m) : -1);
+};
+
 void(vector scr) LS_Draw =
 {
-	local float i, seq, y, dots, bw, bh, phys, x0;
+	local float i, seq, y, dots, bw, bh, phys, x0, th;
 	local string raw, word;
-	local vector sz;
+	local vector sz, nsz;
 	if (ls_idle || time < ls_last)
 	{	// a new load
 		ls_idle = FALSE;
@@ -436,13 +456,15 @@ void(vector scr) LS_Draw =
 	LS_DrawShape(scr);
 
 	// Text on the UI face's physical (pixels=1) bake at a baked size, on whole pixels: a size between
-	// rungs is a resample.  Physical sizes from the screen's height; 1080 p: steps 24, lines 16, "Loading" 32.
+	// rungs is a resample.  Physical sizes from the screen's height; 1080 p: steps and the map's name
+	// 20, lines 16, "Loading" 28.
 	sui_style_hud(scr);
 	phys = scr_y * sui_style_pixel_ratio_y;
 	Font_Set(ui_font_ui);
 	drawfont = Font_NativeSlot(ui_font_ui);
 	x0 = scr_x * 0.05;
-	sz = sui_native_text_size(bound(12, phys / 45, 32));
+	sz = sui_native_text_size(bound(12, phys / 54, 32));
+	nsz = sz;
 	y = scr_y * 0.07;
 	for (i = 0; i < LS_LOG; i = i + 1)
 	{
@@ -455,7 +477,7 @@ void(vector scr) LS_Draw =
 		y = y + sz_y * 1.5;
 	}
 	// The bottom-left lines, upward from the line "Loading" sits on, a bar under its line
-	sz = sui_native_text_size(bound(12, phys / 60, 32));
+	sz = sui_native_text_size(bound(12, phys / 68, 32));
 	bw = scr_x * 0.3;
 	bh = max(2, floor(sz_y * 0.25 * sui_style_pixel_ratio_y)) / sui_style_pixel_ratio_y;
 	y = scr_y - scr_y * 0.06;
@@ -472,6 +494,27 @@ void(vector scr) LS_Draw =
 		drawstring(_sui_pixel_align([x0, y]), ls_itext[i], sz, '1 1 1', 0.85, 0);
 		y = y - sz_y * 0.5;
 	}
+	// P1265: the map's card above them: thumbnail, name, the map list's detail line (1080 p: 160 px tall)
+	LS_Card();
+	if (ls_cardmap != "")
+	{
+		y = y - sz_y * 0.75;
+		if (ls_cardinfo != "")
+		{
+			y = y - sz_y;
+			drawstring(_sui_pixel_align([x0, y]), ls_cardinfo, sz, '1 1 1', 0.6, 0);
+			y = y - sz_y * 0.35;
+		}
+		y = y - nsz_y;
+		drawstring(_sui_pixel_align([x0, y]), ls_cardmap, nsz, '1 1 1', 1, 0);
+		y = y - nsz_y * 0.6;
+		if (ls_cardpage >= 0 && ls_cardcell >= 0)
+		{
+			th = floor(phys / 6.75) / sui_style_pixel_ratio_y;
+			y = y - th;
+			ui_thumb(_sui_pixel_align([x0, y]), [th * 16 / 9, th], ls_cardpage, ls_cardcell);
+		}
+	}
 	if (time - ls_t0 >= 1)                  // the whole load, under "Loading"
 	{
 		word = sprintf("%.0f s", time - ls_t0);
@@ -483,7 +526,7 @@ void(vector scr) LS_Draw =
 	dots = dots - floor(dots / 6) * 6;
 	dots = (dots > 3) ? 6 - dots : dots;
 	word = strcat("Loading", substring("...", 0, dots));
-	sz = sui_native_text_size(bound(16, phys / 34, 32));
+	sz = sui_native_text_size(bound(16, phys / 38, 32));
 	drawstring(_sui_pixel_align([scr_x - x0 - stringwidth("Loading...", TRUE, sz), scr_y - scr_y * 0.06 - sz_y]),
 	           word, sz, '1 1 1', 1, 0);
 	Font_Reset();

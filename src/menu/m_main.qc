@@ -2284,6 +2284,43 @@ void(vector pos, vector size, float page, float cell) ui_thumb =
 	           sp, ss, '1 1 1', 1, 0);
 };
 
+// P1265: the loading screen's map card (m_loading.qc LS_Card): the row's thumbnail cell and the
+// detail line the map list words, once per map.  LS_Tok, not tokenize: the loading screen draws
+// inside other VMs' builtins.
+void(float row) ui_load_card =
+{
+	local string meta, s, au, mt, kt;
+	local float stages, bonus, linear;
+	ls_cardpage = ls_cardcell = -1;
+	if (ls_cardinfo != "")
+		strunzone(ls_cardinfo);
+	ls_cardinfo = "";
+	if (row < 0)
+		return;
+	meta = bufstr_get(ms_meta, row);
+	stages = bonus = linear = -1;
+	if (LS_Tok(meta, MT_UUID) != "")
+	{
+		if (LS_Tok(meta, MT_PAGE) != "-" && LS_Tok(meta, MT_CELL) != "-")
+		{
+			ls_cardpage = stof(LS_Tok(meta, MT_PAGE));
+			ls_cardcell = stof(LS_Tok(meta, MT_CELL));
+		}
+		linear = (LS_Tok(meta, MT_LINEAR) != "-") ? stof(LS_Tok(meta, MT_LINEAR)) : -1;
+		stages = (LS_Tok(meta, MT_STAGES) != "-") ? stof(LS_Tok(meta, MT_STAGES)) : -1;
+		bonus = (LS_Tok(meta, MT_BONUS) != "-") ? stof(LS_Tok(meta, MT_BONUS)) : -1;
+	}
+	mt = bufstr_get(ms_momtier, row);
+	kt = bufstr_get(ms_ksftier, row);
+	s = sprintf("MOM %s | KSF %s", stof(mt) > 0 ? strcat("T", mt) : "-", stof(kt) > 0 ? strcat("T", kt) : "-");
+	if (stages > 0) s = sprintf("%s | %g stages", s, stages);
+	else if (linear == 1) s = strcat(s, " | linear");
+	if (bonus > 0) s = sprintf("%s, %g bonus", s, bonus);
+	au = MapAuthor_Text(bufstr_get(ms_author, row));
+	if (au != "") s = strcat("by ", au, " | ", s);
+	ls_cardinfo = strzone(s);
+};
+
 /*
   data/mapdl.txt -- the maps the Pi will hand out, appended to the list as rows
   this install does not have.  Written by tools/mapscan.py every six hours.
