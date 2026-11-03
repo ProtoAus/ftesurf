@@ -1677,6 +1677,7 @@ void(vector org, vector vel, float onground) HUD_UpdateJumpRef =
 		ui_jump_have = TRUE;
 		ui_jump_base = TRUE;
 		ui_jump_basez = org_z;
+		ui_jump_settle = 0;
 		ui_was_onground = FALSE;    // the last map's or the old place's: not a takeoff from here
 	}
 	ui_jump_lastorg = org;
@@ -1686,12 +1687,20 @@ void(vector org, vector vel, float onground) HUD_UpdateJumpRef =
 		ui_jump_fresh   = FALSE;
 		ui_ground_z     = org_z;
 		ui_was_onground = TRUE;
-		// P1254: a spawn or teleport lands you a few units under where it re-based; until the
-		// first jump the zero is the floor you stand on (rig: -10 at surf_1day's spawn, -65 at surf_1024's).
-		// Review 3: only an arrival's drop.  A teleport over a ramp lands you on the platform below it
-		// without a takeoff, and that ride's energy must stay in the readout.
-		if (ui_jump_base && !ui_rs_armed && ui_jump_basez - org_z <= 128)
-			ui_jump_z = org_z;
+		// P1254: a spawn or teleport re-bases a few units above the floor you land on (rig: -10 at
+		// surf_1day's spawn, -65 at surf_1024's), so the FIRST floor after it is the zero, followed for
+		// 0.25 s while the landing settles (0.9 units on surf_1day).  Only an arrival's drop (reviews
+		// 3-4): not after a ride down from an airborne arrival, not higher up, and walking on does not
+		// move it, as Momentum's last-jump reference.
+		if (ui_jump_base && !ui_rs_armed)
+		{
+			if (!ui_jump_settle)
+				ui_jump_settle = cltime + 0.25;
+			if (ui_jump_basez - org_z >= -16 && ui_jump_basez - org_z <= 128)
+				ui_jump_z = org_z;
+			if (cltime >= ui_jump_settle)
+				ui_jump_base = FALSE;
+		}
 
 		/*
 		  BUILD 47: STANDING IN A START BOX, THE FLOOR IS THE REFERENCE.
@@ -1727,12 +1736,11 @@ void(vector org, vector vel, float onground) HUD_UpdateJumpRef =
 		return;
 	}
 
-	// Left the ground.  Only a jump moves the reference; a ledge does not.  Any takeoff ends the
-	// P1254 floor-follow, so only the landing after a re-base re-zeroes (review 2).
+	// Left the ground.  Only a jump moves the reference; a ledge does not.
 	if (ui_was_onground && vel_z > 0)
 		ui_jump_z = ui_ground_z;
 	if (ui_was_onground)
-		ui_jump_base = FALSE;
+		ui_jump_base = FALSE;   // P1254: a takeoff inside the settle window ends it too
 	ui_was_onground = FALSE;
 };
 
