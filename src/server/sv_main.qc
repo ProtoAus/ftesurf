@@ -163,6 +163,7 @@ void() EndFrame =
 void() StartFrame =
 {
 	SV_ClockServerFrame();          // Patch 840: the server's own frame gap
+	SV_PeFrame();                   // P1238: server frame stalls for prederror reports
 	SV_NoColRestore();              // P1193: entity physics sees the barrier solid
 	// Armed by worldspawn, so this is the first frame AFTER the entity lump
 	// was built rather than the first frame of any kind -- StartFrame does get
@@ -495,6 +496,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_WOPLEGS + 4,    EV_STRING, wop_legs4);
 	clientstat(STAT_FS_WOPLEGS + 5,    EV_STRING, wop_legs5);
 	clientstat(STAT_FS_WOPACK,         EV_FLOAT, wop_ack);
+	clientstat(STAT_FS_WOPCUR,         EV_STRING, wop_cur);           // P1238
 	clientstat(STAT_FS_SAVEROOT,       EV_STRING, sl_rootstat);
 	clientstat(STAT_FS_SOURCEPHASE,    EV_STRING, svpm_phase_stat);
 	clientstat(STAT_FS_SLACK,          EV_FLOAT, rec_sl_ack);

@@ -154,6 +154,10 @@
 #define STAT_FS_TASPLANAIR 201 // last granted command actually used the air selector
 #define STAT_FS_TSRETURN 202  // derived per-seat neutral-fence request/completion, not evidence
 #define STAT_FS_TSRETURNSEED 203 // actual prepared zero-command, paired native-client epoch fence
+// P1238: "C ack index count" then the cursor, next, prev, first and last rows (origin, angles, velocity
+// each), one string: the engine sends at most 32 changed stats a packet, lowest index first, so
+// WOPACK (177) could trail SAVEINDEX (62) and the rows, and a step was counted twice.
+#define STAT_FS_WOPCUR 204
 #define TAS_PLAN_LIVE 0
 #define TAS_PLAN_MANUAL 1
 #define TAS_PLAN_LEFT 2

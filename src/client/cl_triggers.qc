@@ -80,6 +80,7 @@
 #define TG_PUSH     2
 #define TG_SPEED    3
 #define TG_EVENT    4       // trigger_multiple kept as an IO event source only
+#define TG_RELTELE  5       // P1238: trigger_teleport_relative (WorldSpaceCenter + teleportoffset)
 
 #define TG_MAX      1024        // triggers kept per map
 #define TG_TT_MAX   2048        // targetname rows (destinations, landmarks)
@@ -159,6 +160,10 @@ float  tg_tspeed[TG_MAX];
 
 // push
 vector tg_pushdir[TG_MAX];
+vector tg_reloff[TG_MAX];       // P1238: trigger_teleport_relative's teleportoffset
+#define TG_SOD_MAX  32
+vector tg_sod[TG_SOD_MAX];      // P1238: destinations of teleports demoted to server-only (prederror rules)
+float  tg_sod_n;
 float  tg_speed[TG_MAX];
 float  tg_onceseq[TG_MAX];      // SF_PUSH_ONCE: -1 unarmed, else the sequence it fired on
 float  tg_onceoffset[TG_MAX];   // P924: first firing part within that sequence
@@ -543,6 +548,7 @@ float  tg_c_event, tg_c_iodem, tg_c_sdok, tg_c_ioown, tg_c_iogated, tg_c_fctx;
 void(string s) PE_Note;
 void(float i, float seq) PE_TrigFired;
 void() PE_MapReset;
+void(string why) PE_Expect;     // P1238
 .float tg_sspartoffset;          // EveryTick's last applied part within tg_ssinseq
 .float tg_seenoff;               // Patch 1025: predmove_offset of the last touch (tick parts)
 .float tg_fctx;                  // Patch 1037: passes only while the server ignores contexts
@@ -1221,9 +1227,24 @@ void(float s0) TG_IOCommit =
 	ior_n = 0;
 };
 
+// P1238: a teleport the mirror leaves to the server lands the body on its destination a round trip
+// late; keep where, so the prederror rules can tell that snap from a misprediction.
+void(float i) TG_NoteServerTele =
+{
+	local float d;
+	if (tg_kind[i] != TG_TELE || tg_landmark[i] != "" || tg_sod_n >= TG_SOD_MAX)
+		return;
+	d = TT_Find(tg_target[i]);
+	if (d < 0)
+		return;
+	tg_sod[tg_sod_n] = tt_org[d];
+	tg_sod_n = tg_sod_n + 1;
+};
+
 void(float i, float why) TG_DemoteIO =
 {
-	if (tg_kind[i] == TG_TELE)       tg_c_tele  = tg_c_tele - 1;
+	TG_NoteServerTele(i);           // P1238
+	if (tg_kind[i] == TG_TELE || tg_kind[i] == TG_RELTELE) tg_c_tele = tg_c_tele - 1;
 	else if (tg_kind[i] == TG_PUSH)  tg_c_push  = tg_c_push - 1;
 	else if (tg_kind[i] == TG_SPEED) tg_c_speed = tg_c_speed - 1;
 	else                             tg_c_event = tg_c_event - 1;
@@ -1233,6 +1254,7 @@ void(float i, float why) TG_DemoteIO =
 		tg_c_iodem = tg_c_iodem + 1;
 	TG_Skip(why,
 	        (tg_kind[i] == TG_TELE) ? "trigger_teleport" :
+	        (tg_kind[i] == TG_RELTELE) ? "trigger_teleport_relative" :
 	        (tg_kind[i] == TG_PUSH) ? "trigger_push" :
 	        (tg_kind[i] == TG_SPEED) ? "trigger_setspeed" : "trigger_multiple",
 	        tg_tname[i]);
@@ -1628,6 +1650,41 @@ float(float i, float seq) TG_FireTeleport =
 	return 1;
 };
 
+// P1238: trigger_teleport_relative_touch (sv_entities.qc): the box's centre plus teleportoffset, lifted 1
+// only where that is solid, velocity zeroed, carrier cleared, off the ground, angles kept.  It fires on
+// the command after a teleport lands inside it, as the server's touch does (Momentum's surf_frey_remake
+// puts one round every destination).
+float(float i, float seq) TG_FireRelTele =
+{
+	local vector p;
+	if ((predmove_pmtype == TG_PM_OLD_SPECTATOR ||
+	     predmove_pmtype == TG_PM_SPECTATOR) && (predmove_buttons & TG_BUTTON_JUMP))
+		return 0;
+	if (getstatf(STAT_HEALTH) <= 0)
+		return 0;
+	if (tg_flags[i] && !(tg_flags[i] & TG_SF_TELE_CLIENTS))
+		return 0;
+	TG_IOEdge(i, seq);
+	p = (tg_ent[i].absmin + tg_ent[i].absmax) * 0.5 + tg_reloff[i];
+	tracebox(p, predmove_mins, predmove_maxs, p, MOVE_NOMONSTERS, world);
+	if (trace_startsolid || trace_allsolid)
+	{
+		tracebox(p + '0 0 1', predmove_mins, predmove_maxs, p + '0 0 1', MOVE_NOMONSTERS, world);
+		if (!trace_startsolid && !trace_allsolid)
+			p = p + '0 0 1';
+	}
+	predmove_org = p;
+	predmove_vel = '0 0 0';
+	predmove_onground = 0;
+	tg_teleseq = seq;
+	if (tg_bvel_ok)
+	{
+		predmove_bvset = '0 0 0';       // SV_ClearCarrier: the held carrier is zero from here
+		predmove_bvsetflag = 1;
+	}
+	return 1;
+};
+
 /*
   trigger_push_touch.  The once arm is an impulse ADD through
   SV_ClampImpulse's clamp; the continuous arm accumulates the carrier across
@@ -1972,6 +2029,8 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 
 		if (tg_kind[i] == TG_TELE)
 			hit = TG_FireTeleport(i, seq);
+		else if (tg_kind[i] == TG_RELTELE)
+			hit = TG_FireRelTele(i, seq);
 		else if (tg_kind[i] == TG_SPEED)
 			hit = TG_FireSpeed(i, seq);
 		else
@@ -2037,7 +2096,7 @@ void() Trig_LoadForMap =
 {
 	local string tok, key, cn, mdl;
 	local string target, landmark, filt, tname, uselm_s, snapv_s, farg;
-	local vector org, ang, pushdir, ssang, ssdir, cvdir;
+	local vector org, ang, pushdir, ssang, ssdir, cvdir, reloff;
 	local float  spawnflags, disabled, vmode, tspeed, speed;
 	local float  hmode, hs, hsmode, vsmode, hsp, vsp, ssstrict;
 	local float  negu, negl, ftype, fi, r;
@@ -2083,6 +2142,7 @@ void() Trig_LoadForMap =
 	tg_bvel_ok = checkextension("FTESURF_PREDICT_BVSET");
 	tg_io_esc = chr2str(27);
 	tg_c_event = tg_c_iodem = tg_c_sdok = tg_c_ioown = tg_c_iogated = 0;
+	tg_sod_n = 0;                   // P1238
 
 	getentitytoken(0);
 	opened = FALSE;
@@ -2094,7 +2154,7 @@ void() Trig_LoadForMap =
 
 		cn = mdl = "";
 		target = landmark = filt = tname = uselm_s = snapv_s = farg = "";
-		org = ang = pushdir = ssang = ssdir = cvdir = '0 0 0';
+		org = ang = pushdir = ssang = ssdir = cvdir = reloff = '0 0 0';
 		spawnflags = disabled = vmode = tspeed = speed = 0;
 		hmode = hs = hsmode = vsmode = hsp = vsp = ssstrict = 0;
 		keeph = keepv = hsamount = vsamount = 0;
@@ -2154,6 +2214,7 @@ void() Trig_LoadForMap =
 			else if (key == "targetname")             tname    = tok;
 			else if (key == "target")                 target   = tok;
 			else if (key == "landmark")               landmark = tok;
+			else if (key == "teleportoffset")         reloff   = stov(tok);   // P1238
 			else if (key == "spawnflags")             spawnflags = stof(tok);
 			else if (key == "startdisabled")          disabled = stof(tok);
 			else if (key == "filtername")             filt     = tok;
@@ -2228,6 +2289,8 @@ void() Trig_LoadForMap =
 		kind = 0;
 		if (cn == "trigger_teleport" || cn == "trigger_momentum_teleport")
 			kind = TG_TELE;
+		else if (cn == "trigger_teleport_relative")
+			kind = TG_RELTELE;
 		else if (cn == "trigger_push")
 			kind = TG_PUSH;
 		else if (cn == "trigger_setspeed" || cn == "trigger_momentum_setspeed")
@@ -2307,6 +2370,11 @@ void() Trig_LoadForMap =
 			tg_snapv[i]    = (snapv_s != "") ? (stof(snapv_s) != 0) : -1;
 			tg_vmode[i]    = vmode;
 			tg_tspeed[i]   = tspeed;
+			tg_c_tele = tg_c_tele + 1;
+		}
+		else if (kind == TG_RELTELE)
+		{
+			tg_reloff[i] = reloff;
 			tg_c_tele = tg_c_tele + 1;
 		}
 		else if (kind == TG_PUSH)
@@ -2396,7 +2464,8 @@ void() Trig_LoadForMap =
 			tg_c_filtok = tg_c_filtok + 1;
 			continue;
 		}
-		if (tg_kind[i] == TG_TELE)
+		TG_NoteServerTele(i);           // P1238
+		if (tg_kind[i] == TG_TELE || tg_kind[i] == TG_RELTELE)
 			tg_c_tele = tg_c_tele - 1;
 		else if (tg_kind[i] == TG_PUSH)
 			tg_c_push = tg_c_push - 1;
@@ -2407,6 +2476,7 @@ void() Trig_LoadForMap =
 		tg_c_filt = tg_c_filt + 1;
 		TG_Skip(TG_SK_FILT,
 		        (tg_kind[i] == TG_TELE) ? "trigger_teleport" :
+		        (tg_kind[i] == TG_RELTELE) ? "trigger_teleport_relative" :
 		        (tg_kind[i] == TG_PUSH) ? "trigger_push" :
 		        (tg_kind[i] == TG_SPEED) ? "trigger_setspeed" :
 		                                  "trigger_multiple",

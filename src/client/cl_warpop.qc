@@ -52,6 +52,11 @@ float  wop_loadseq;             // the last load's command, for the refusal chec
 float  wop_loadackat;
 vector wop_loadvel;
 float  wop_relseq;              // the release's command (-1 queued) until the server lets go
+float  wop_rellast, wop_loadlast;   // P1238: the last release and load commands sent (not cleared on an ack)
+// P1238: STAT_FS_WOPCUR parsed (WarpOp_Cur); wop_c_ok 0 on a lobby without it (the separate stats then).
+float  wop_c_ok, wop_c_ack, wop_c_idx, wop_c_cnt;
+vector wop_c_org[5], wop_c_ang[5], wop_c_vel[5];   // cursor, next, prev, first, last
+string wop_c_src;
 float  wop_relat;
 
 // Patch 759: STAT_FS_WOPLEGS parsed -- stage N at N - 1, bonus N at WOP_STAGES + N - 1.
@@ -80,8 +85,10 @@ float() WarpOp_Able =
 	wop_why = "off (cl_warpop 0, or the server has no fs_wop)";
 	if (!cvar("cl_warpop") || serverkey("fs_wop") != "1")
 		return FALSE;
-	wop_why = "no prediction hook in 0.5 s (none runs while this PC hosts the game)";
-	if (cltime - wop_premove_t > 0.5 || cltime < wop_premove_t)
+	// P1238: within a frame or two of the last hook, not 0.5 s of wall time: the first frames on a map
+	// can each take longer (outra, starvald: 0.8 and 1.6 s), and the op then went unpredicted.
+	wop_why = "no prediction hook in the last frames (this PC hosts the game, or prediction is off)";
+	if (cltime - wop_premove_t > max(0.5, 2.5 * clframetime) || cltime < wop_premove_t)
 		return FALSE;
 	wop_why = "no input frame to carry it";
 	if (cltime - wop_inputt > 0.25 || cltime < wop_inputt)
@@ -111,11 +118,40 @@ float() WarpOp_Able =
 // Patch 759: an op the server has not answered -- STAT_FS_WOPACK (which arrives
 // with the rows the op moved) has not reached its command, and it was queued
 // under a second ago (by then the server dropped it).
+float() WarpOp_Ack = { return wop_c_ok ? wop_c_ack : getstatf(STAT_FS_WOPACK); };
+float() WarpOp_Idx = { return wop_c_ok ? wop_c_idx : getstatf(STAT_FS_SAVEINDEX); };
+float() WarpOp_Cnt = { return wop_c_ok ? wop_c_cnt : getstatf(STAT_FS_SAVECOUNT); };
+
+// CSQC_Input_Frame (it tokenizes): STAT_FS_WOPCUR into the cache when it changes.
+void() WarpOp_Cur =
+{
+	local string s;
+	local float r;
+	s = getstats(STAT_FS_WOPCUR);
+	if (!strcmp(s, wop_c_src))
+		return;
+	if (wop_c_src != "")
+		strunzone(wop_c_src);
+	wop_c_src = strzone(s);
+	wop_c_ok = (tokenize(s) == 49 && argv(0) == "C");
+	if (!wop_c_ok)
+		return;
+	wop_c_ack = stof(argv(1));
+	wop_c_idx = stof(argv(2));
+	wop_c_cnt = stof(argv(3));
+	for (r = 0; r < 5; r = r + 1)
+	{
+		wop_c_org[r] = [stof(argv(4 + r * 9)), stof(argv(5 + r * 9)), stof(argv(6 + r * 9))];
+		wop_c_ang[r] = [stof(argv(7 + r * 9)), stof(argv(8 + r * 9)), stof(argv(9 + r * 9))];
+		wop_c_vel[r] = [stof(argv(10 + r * 9)), stof(argv(11 + r * 9)), stof(argv(12 + r * 9))];
+	}
+};
+
 float(float i) WarpOp_Unanswered =
 {
 	if (wop_seq[i] == -1)
 		return TRUE;
-	if (wop_seq[i] <= 0 || wop_seq[i] <= getstatf(STAT_FS_WOPACK))
+	if (wop_seq[i] <= 0 || wop_seq[i] <= WarpOp_Ack())
 		return FALSE;
 	return (cltime - wop_qt[i] < 1 && cltime >= wop_qt[i]);
 };
@@ -207,8 +243,8 @@ float(float op) WarpOp_Row =
 	wop_tgorg = '0 0 0';
 	wop_tgang = '0 0 0';
 	wop_tgvel = '0 0 0';
-	cnt = getstatf(STAT_FS_SAVECOUNT);
-	i0 = getstatf(STAT_FS_SAVEINDEX);
+	cnt = WarpOp_Cnt();
+	i0 = WarpOp_Idx();
 	if (cnt < 1 || i0 < 1 || i0 > cnt)
 		return FALSE;
 	idx = i0;
@@ -235,6 +271,13 @@ float(float op) WarpOp_Row =
 		idx = WarpOp_StepIdx(wop_op[j], idx, cnt);
 	}
 	idx = WarpOp_StepIdx(op, idx, cnt);
+	if (idx == i0 && wop_c_ok)
+	{
+		wop_tgorg = wop_c_org[0];
+		wop_tgang = wop_c_ang[0];
+		wop_tgvel = wop_c_vel[0];
+		return (wop_tgorg != '0 0 0');
+	}
 	if (idx == i0)
 	{
 		wop_tgorg = [getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1), getstatf(STAT_FS_SLORG + 2)];
@@ -252,6 +295,13 @@ float(float op) WarpOp_Row =
 		b = 3;
 	else
 		return FALSE;
+	if (wop_c_ok)
+	{
+		wop_tgorg = wop_c_org[b + 1];
+		wop_tgang = wop_c_ang[b + 1];
+		wop_tgvel = wop_c_vel[b + 1];
+		return (wop_tgorg != '0 0 0');
+	}
 	b = STAT_FS_WOPROW + WOPROW_STRIDE * b;
 	wop_tgorg = [getstatf(b), getstatf(b + 1), getstatf(b + 2)];
 	wop_tgang = [getstatf(b + 3), getstatf(b + 4), getstatf(b + 5)];
@@ -371,6 +421,7 @@ float(float op) WarpOp_Reset =
 	if (WarpOp_ResetTry(op))
 		return TRUE;
 	PE_Note(sprintf("warpop %g not predicted: %s", op, wop_why));
+	PE_Expect("a reset sent unpredicted");     // P1238: every caller sends the plain command next
 	return FALSE;
 };
 
@@ -499,6 +550,7 @@ void() WarpOp_PracticeReturnCancel =
 		for (i = 0; i < WOP_RING; i = i + 1)
 			wop_seq[i] = 0;
 	wop_qn = wop_loadseq = wop_loadackat = wop_relseq = wop_relat = 0;
+	wop_rellast = wop_loadlast = 0;
 	wop_heldmode = 0;
 	wop_loadvel = '0 0 0';
 	if (rec_sl_holdkey)
@@ -549,6 +601,7 @@ void() WarpOp_Frame =
 			{
 				op = wop_op[j];
 				wop_seq[j] = 0;
+				PE_Expect("a reset sent unpredicted");     // P1238
 				if (op == WOP_RESET)
 					localcmd("cmd zone_reset\n");
 				else if (op == WOP_SPAWN)
@@ -615,7 +668,10 @@ void() WarpOp_InputFrame =
 	predinput_held = (cvar("cl_warpop") && serverkey("fs_wop") == "1");
 	wop_inputt = cltime;
 	if (predinput_held)
+	{
 		WarpOp_Legs();
+		WarpOp_Cur();               // P1238
+	}
 	if (!wop_seq)
 		return;
 	best = -1;
@@ -639,11 +695,15 @@ void() WarpOp_InputFrame =
 		setproperty(VF_CL_VIEWANGLES, a);
 	}
 	if (wop_op[best] == WOP_LOAD)
-		wop_loadseq = clientcommandframe;
+		wop_loadseq = wop_loadlast = clientcommandframe;
 	if (wop_op[best] == WOP_RELEASE)
-		wop_relseq = clientcommandframe;
+		wop_relseq = wop_rellast = clientcommandframe;
 	dprint(sprintf("warpop: %g on command %g\n", wop_op[best], clientcommandframe));
-	PE_Note(sprintf("warpop %g on command %g", wop_op[best], clientcommandframe));
+	// P1238: blind, and the cursor stats the prediction read (they can arrive in different packets).
+	PE_Note(sprintf("warpop %g on command %g%s ack %g save %g of %g", wop_op[best], clientcommandframe,
+	                wop_blind[best] ? " blind" : "", WarpOp_Ack(), WarpOp_Idx(), WarpOp_Cnt()));
+	if (wop_blind[best])
+		PE_Expect("a warp op sent blind (its destination was not published yet)");
 };
 
 // The server's body for op `op` (ring slot i), at the first piece of its command.
@@ -713,6 +773,17 @@ void(float seat, float seq, float seconds, float offset) CSQC_PredictPlayerPreMo
 				WarpOp_Apply(wop_op[i], i);
 				break;
 			}
+	// P1238: the server sends movetype only when it changes (sv_ents.c SVFTE_DeltaCalcBits), so a lost
+	// snapshot leaves the release's PM_NONE in the baseline for a round trip; a server hold is always
+	// still (SV_SaveLocHold), so a moving one after this client's release, no load since, is that.
+	if (!seat)
+	if (predinput_pmtype == WOP_PM_NONE)
+	if (wop_rellast > wop_loadlast && seq > wop_rellast)
+	if (vlen(predinput_velocity) > 0)
+	{
+		predinput_apply = predinput_apply | WOP_MODE;
+		predinput_pmtype = (wop_heldmode == WOP_PM_NONE) ? WOP_PM_NORMAL : wop_heldmode;
+	}
 	// The spectate hold runs no ticks and touches nothing (run_pmhold, msec 0);
 	// a save-lock hold runs PM_NONE ticks and triggers, so it is not held here.
 	if (predinput_pmtype == WOP_PM_NONE)
@@ -850,6 +921,7 @@ float() WarpOp_Console =
 	{
 		if (!WarpOp_Able())
 		{
+			PE_Expect("goto_start, not predicted here");     // P1238
 			localcmd("cmd zone_start\n");        // spectating, replays: the server decides on your own leg
 			return TRUE;
 		}
@@ -875,6 +947,7 @@ float() WarpOp_Console =
 	// A respawn, so not predicted.
 	if (argv(0) == "goto_spawn")
 	{
+		PE_Expect("goto_spawn, a respawn");     // P1238
 		localcmd("cmd zone_spawn\n");
 		return TRUE;
 	}

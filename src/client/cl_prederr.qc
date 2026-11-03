@@ -27,6 +27,9 @@ float  pe_sent_ok;              // 1 stored, -1 failed, 0 neither
 float  pe_tseq[TG_MAX];         // last seq a mirror trigger fired, for enter-only notes
 float  pe_name_err, pe_name_seq; // the last report written: its worst line
 float  pe_box_pending;          // a report written during an upload gets its box after it
+float  pe_join_t;               // P1238: cltime of the last map start
+float  pe_exp_t, pe_exp_seq;    // P1238: an unpredicted move this client asked for, and its command
+string pe_exp_why;              //        what it was (a literal)
 
 void() PE_RegisterCvars =
 {
@@ -59,9 +62,19 @@ void(float i, float seq) PE_TrigFired =
 	pe_tseq[i] = seq;
 };
 
+// P1238: the client asked the server for a move it does not predict (goto_spawn, a reset sent as a
+// plain command); the snap that answers it is that move, not a misprediction.
+void(string why) PE_Expect =
+{
+	pe_exp_t = cltime;
+	pe_exp_seq = clientcommandframe;
+	pe_exp_why = why;
+};
+
 void() PE_MapReset =
 {
 	local float i;
+	pe_join_t = cltime;
 	for (i = 0; i < TG_MAX; i = i + 1)
 		pe_tseq[i] = 0;
 	PE_Note(sprintf("map %s", mapname));
@@ -111,7 +124,8 @@ void(string stem) PE_WriteContext =
 	fputs(f, sprintf("cvars cl_netfps %s rate %s cl_maxfps %s cl_prederror %s cl_triggers %s cl_warpop %s\n",
 	                 cvar_string("cl_netfps"), cvar_string("rate"), cvar_string("cl_maxfps"),
 	                 cvar_string("cl_prederror"), cvar_string("cl_triggers"), cvar_string("cl_warpop")));
-	fputs(f, sprintf("ping %s\n", getplayerkeyvalue(player_localnum, "ping")));   // the engine is in the ring's header
+	fputs(f, sprintf("ping %s pl %s\n", getplayerkeyvalue(player_localnum, "ping"),
+	                 getplayerkeyvalue(player_localnum, "pl")));   // P1238: packet loss %
 	fputs(f, sprintf("csprogs crc %s size %s local %g qchook %s\n", serverkey("*csprogs"),
 	                 serverkey("*csprogssize"), PE_Local(), cvar_string("cl_predict_qchook")));   // P1207
 	fputs(f, "# context: time seq what (server prints, mirror triggers, gates, warp ops, prederr lines)\n");
@@ -159,9 +173,30 @@ void() PE_SendStop =
 		PE_BoxOpen();
 };
 
+// P1238: the server put the body on the destination of a teleport the mirror left to it.
+float(vector srv) PE_ServerTele =
+{
+	local float i;
+	for (i = 0; i < tg_sod_n; i = i + 1)
+		if (vlen(srv - tg_sod[i]) < 2)
+			return TRUE;
+	return FALSE;
+};
+
+// P1238: an error within a second (and two pings) of a move PE_Expect noted, at or after its command.
+float(float seq) PE_Expected =
+{
+	local float ping;
+	if (!pe_exp_t)
+		return FALSE;
+	ping = stof(getplayerkeyvalue(player_localnum, "ping")) / 1000;
+	return cltime - pe_exp_t < 1 + 2 * min(ping, 1) && seq >= pe_exp_seq - 2;
+};
+
 void() PE_Frame =
 {
-	local float c, n, e;
+	local float c, n, e, s;
+	local vector srv;
 	if (!pe_ok)
 		return;
 	c = cvar("cl_prederror_count");
@@ -170,9 +205,21 @@ void() PE_Frame =
 		pe_count = c;
 		n = tokenize(cvar_string("cl_prederror_last"));
 		e = (n >= 9) ? stof(argv(2)) : 0;
+		s = stof(argv(1));             // P1238: kept, the calls below may tokenize
+		srv = (n >= 9) ? stov(sprintf("%s %s %s", argv(6), argv(7), argv(8))) : '0 0 0';
 		PE_Note(strcat("prederr ", cvar_string("cl_prederror_last")));
 		if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && PE_Local())
 			PE_Note("not reported: this PC hosts the game, so nothing is predicted");
+		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && cltime - pe_join_t < 3)
+			PE_Note("not reported: the first moments on the map");     // P1238: the spawn's first comparison
+		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && n >= 9 && PE_Expected(s))
+			PE_Note(sprintf("not reported: %s, which is not predicted", pe_exp_why));
+		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report")
+		         && (rec_gh_on || Spec_Active() || rec_wt_on || rw_on))
+			PE_Note("not reported: ghost, spectating, watching or rewinding (nothing is predicted)");
+		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && n >= 9
+		         && PE_ServerTele(srv))
+			PE_Note("not reported: a teleport only the server runs (its trigger is filtered or gated)");
 		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && cvar("cl_predict_qchook")
 		         && !PE_Predicting())
 			PE_Note(sprintf("not reported: no prediction hook for %.1f s", cltime - wop_premove_t));
@@ -182,11 +229,13 @@ void() PE_Frame =
 			{
 				pe_due = cltime + 1.5;     // the commands after it go in the ring too
 				pe_err = 0;
+				if (!PE_Local())
+					sendevent("pe_mk", "f", s);   // P1238: the lobby freezes its rows of it
 			}
 			if (pe_due && e > pe_err)
 			{
 				pe_err = e;
-				pe_errseq = stof(argv(1));
+				pe_errseq = s;
 			}
 		}
 	}
