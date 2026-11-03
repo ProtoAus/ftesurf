@@ -1,5 +1,6 @@
 !!ver 110
 !!fixed
+!!permu FOG
 !!samps wear=0
 !!cvarf r_rampwear_dirt
 !!cvarf r_rampwear_scratch
