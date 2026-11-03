@@ -83,7 +83,7 @@ void(entity e) Laser_Net =
 		if (las_grp[k] == k && las_tnc[k] == e.las_nettnc && vlen(beam_org[i] - e.origin) < 0.1)
 			las_on[k] = e.las_neton;
 	}
-	if (cvar("developer"))
+	if (cvar("developer") >= 2)     // one line per laser: ~240 a second on surf_hyper
 		print(sprintf("lasers: the laser at %v turned %s by the server\n", e.origin, e.las_neton ? "on" : "off"));
 };
 
