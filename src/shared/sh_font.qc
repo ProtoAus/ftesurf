@@ -470,20 +470,22 @@ void(float slot) Font_Set  = { drawfont = slot; ui_font_cur = slot; };
 
 // Patch 1236: where character i of s starts when s is drawn whole. The engine kerns pairs, so
 // stringwidth(prefix) stops short of a kerned pair by its kern and a caret put there sits inside
-// the next glyph. The plain prefix width is kept where adding character i would not measure one
-// glyph: a ^ in s[i-4..i] (inside ^xRGB or ^&FB the next byte can complete a hidden code), a UTF-8
-// byte (a lone lead byte measures as another glyph) and a tab (a tab stop).
+// the next glyph. The plain prefix width (the old answer) is kept before a UTF-8 byte (a lone lead
+// byte measures as another glyph), before a tab (a tab stop), and wherever the kerned answer is
+// further from it than any kern: no shipped pair passes 0.16 em, so a bigger gap means character i
+// completed or split a markup code (^xRGB, ^Uxxxx, ^{..}).
 float(string s, float i, float usecol, vector sz) Font_PenX =
 {
-	local float j, c;
+	local float c, plain, pen;
 	if (i <= 0)
 		return 0;
+	plain = stringwidth(substring(s, 0, i), usecol, sz);
 	c = str2chr(s, i);
 	if (i >= strlen(s) || c >= 128 || c < 0 || c == 9)
-		return stringwidth(substring(s, 0, i), usecol, sz);
-	for (j = max(0, i - 4); j <= i; j = j + 1)
-		if (str2chr(s, j) == 94)
-			return stringwidth(substring(s, 0, i), usecol, sz);
-	return stringwidth(substring(s, 0, i + 1), usecol, sz) - stringwidth(substring(s, i, 1), usecol, sz);
+		return plain;
+	pen = stringwidth(substring(s, 0, i + 1), usecol, sz) - stringwidth(substring(s, i, 1), usecol, sz);
+	if (fabs(pen - plain) > sz_y * 0.2)
+		return plain;
+	return pen;
 };
 void()           Font_Reset = { drawfont = FONT_DEFAULT; ui_font_cur = FONT_DEFAULT; };
