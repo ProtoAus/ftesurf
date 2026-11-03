@@ -245,6 +245,7 @@ float  beam_sky[BEAM_MAX];
 float  spr_skynext;                     // cursor over sprites then beams
 vector spr_skyeye;                      // last frame's eye; a jump retests everything
 float  spr_skyburst;                    // tests left at 4x after a jump
+vector *spr_skyat;                      // P1242: the eye each sprite then beam was last traced from
 float  spr_skyhid;                      // skipped last frame (vbsp_sprite_debug)
 
 /*
@@ -2533,9 +2534,14 @@ float(vector eye, vector p, float st) Sprite_SkyTest =
 	return SKY_CLEAR;
 };
 
+// P1242: a verdict changes only when the eye moves (sprites and beams stand still), so a tested one
+// is traced again only once the eye is 16 units from where it was last traced; with fewer sprites
+// than vbsp_sprite_skyrays every one was traced every frame (surf_garden, 17: ~0.45 ms a frame).
+// Rays still cap the traces a frame, and at most 256 are looked at a frame.
 void(vector eye) Sprite_SkyTick =
 {
-	local float i, k, n, rays;
+	local float i, k, n, rays, look, st;
+	local vector d;
 
 	n = spr_n + beam_n;
 	if (vlen(eye - spr_skyeye) > 256)
@@ -2547,20 +2553,33 @@ void(vector eye) Sprite_SkyTick =
 		rays = rays * 4;
 		spr_skyburst = spr_skyburst - rays;
 	}
-	rays = min(rays, n);
-	for (k = 0; k < rays; k = k + 1)
+	if (!spr_skyat)
+		spr_skyat = memalloc(sizeof(vector) * (SPR_MAX + BEAM_MAX));
+	look = min(n, 256);
+	for (k = 0; k < look && rays > 0; k = k + 1)
 	{
 		if (spr_skynext >= n)
 			spr_skynext = 0;
 		i = spr_skynext;
 		spr_skynext = spr_skynext + 1;
 		if (i < spr_n)
-			spr_sky[i] = Sprite_SkyTest(eye, spr_org[i], spr_sky[i]);
+			st = spr_sky[i];
 		else
+			st = beam_sky[i - spr_n];
+		if (st == SKY_ROOM)
+			continue;
+		if (st != SKY_UNTESTED)
 		{
-			i = i - spr_n;
-			beam_sky[i] = Sprite_SkyTest(eye, beam_org[i], beam_sky[i]);
+			d = eye - spr_skyat[i];
+			if (d * d < 256)
+				continue;
 		}
+		spr_skyat[i] = eye;
+		rays = rays - 1;
+		if (i < spr_n)
+			spr_sky[i] = Sprite_SkyTest(eye, spr_org[i], st);
+		else
+			beam_sky[i - spr_n] = Sprite_SkyTest(eye, beam_org[i - spr_n], st);
 	}
 };
 
