@@ -1941,7 +1941,7 @@ float() HUD_ZeroKnown =
 // Patch 744: spectate measures the watched body from its own zero (Spec_Feed);
 // yours waits here.  A map change in between drops it -- it was that map's.
 float  ui_anch_held, ui_anch_svz, ui_anch_svzone, ui_anch_svman;
-float  ui_anch_svjz, ui_anch_svjhave, ui_anch_svgz, ui_anch_svwas, ui_anch_svjbase;
+float  ui_anch_svjz, ui_anch_svjhave, ui_anch_svgz, ui_anch_svwas, ui_anch_svjbase, ui_anch_svjbasez;
 vector ui_anch_svlast;
 string ui_anch_svmap;
 
@@ -1958,6 +1958,7 @@ void(float hold) HUD_AnchorHold =
 		ui_anch_svjz   = ui_jump_z;
 		ui_anch_svjhave = ui_jump_have;
 		ui_anch_svjbase = ui_jump_base;
+		ui_anch_svjbasez = ui_jump_basez;
 		ui_anch_svgz   = ui_ground_z;
 		ui_anch_svwas  = ui_was_onground;
 		ui_anch_svlast = ui_jump_lastorg;
@@ -1977,6 +1978,8 @@ void(float hold) HUD_AnchorHold =
 	ui_jump_z        = ui_anch_svjz;
 	ui_jump_have     = ui_anch_svjhave;
 	ui_jump_base     = ui_anch_svjbase;
+	ui_jump_basez    = ui_anch_svjbasez;
+	ui_jump_settle   = 0;        // P1254: a held follow restarts its window on your next floor
 	ui_ground_z      = ui_anch_svgz;
 	ui_was_onground  = ui_anch_svwas;
 	ui_jump_lastorg  = ui_anch_svlast;
