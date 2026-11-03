@@ -1218,6 +1218,7 @@ float  ui_rs_deadline;          // cltime after which the arm expires anyway
 float  ui_jump_z;           // z of the ground we last jumped from
 float  ui_jump_have;        // FALSE until we have seen ground at all
 float  ui_jump_base;        // P1254: set by a re-base (map, teleport), not a jump: standing moves it to the floor
+float  ui_jump_basez;       // ...within 128 units below the z it re-based at (HUD_UpdateJumpRef)
 /*
   Patch 332: the zone half of the energy reference, moved here from cl_hud.qc
   because Seq_Mark/Seq_AnchorRestore/Seq_AnchorReassert write it and this file

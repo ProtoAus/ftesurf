@@ -1676,6 +1676,7 @@ void(vector org, vector vel, float onground) HUD_UpdateJumpRef =
 		ui_jump_z    = org_z;
 		ui_jump_have = TRUE;
 		ui_jump_base = TRUE;
+		ui_jump_basez = org_z;
 		ui_was_onground = FALSE;    // the last map's or the old place's: not a takeoff from here
 	}
 	ui_jump_lastorg = org;
@@ -1687,7 +1688,9 @@ void(vector org, vector vel, float onground) HUD_UpdateJumpRef =
 		ui_was_onground = TRUE;
 		// P1254: a spawn or teleport lands you a few units under where it re-based; until the
 		// first jump the zero is the floor you stand on (rig: -10 at surf_1day's spawn, -65 at surf_1024's).
-		if (ui_jump_base && !ui_rs_armed)
+		// Review 3: only an arrival's drop.  A teleport over a ramp lands you on the platform below it
+		// without a takeoff, and that ride's energy must stay in the readout.
+		if (ui_jump_base && !ui_rs_armed && ui_jump_basez - org_z <= 128)
 			ui_jump_z = org_z;
 
 		/*

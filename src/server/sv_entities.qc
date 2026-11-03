@@ -5208,8 +5208,8 @@ void(entity o, entity act) SV_IODeliver =
 };
 
 // P1256 review 2: set by ent_fire, cleared by SV_EntityReset.  What it edits (a retargeted teleport,
-// a killed hazard, an enabled boost trigger) outlives sv_cheats, so SV_CheatLevel cheats every run
-// on the map until it reloads.
+// a killed hazard, an enabled boost trigger) outlives sv_cheats, so SV_CheatsOn answers TRUE, and
+// every run on the map is cheated, until it reloads.
 float vbsp_entfire_map;
 
 // P1256: Source's ent_fire <target> [input] [param], a cheat as there: one row through SV_IODeliver,
