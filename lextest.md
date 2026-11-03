@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## Your ramp/prop list (P1248-P1252): both installs now (exe b2b09404, plugin 7b93539c); lobbies live
+1. surf_sedona save 2 and surf_pantheon save 13 on a LOBBY (the server decides; your installs predict the same):
+   the ramp ends ride through instead of catching you at the crease.
+2. surf_pantheon save 14: the pillars are marble, not yellow.
+3. surf_bikini_bottom save 3: the windows are a thin teal layer of water you can see through, with ripples.
+4. surf_fantasy save 10: no black stripes over the fake sky; the blue laser rings draw (vbsp_lasers 0 hides them).
+   surf_orbion: the panels flash white when you pass the first trigger.
+Known: water on some maps (surf_acerbus, surf_again_njv) is now lit by the room instead of glowing, as in
+Source. Lasers that switch on during play or move are not drawn yet.
+
 ## P1244 the new loading screen (both installs now: exe b4ddb77d, menu 4c5dc080; your Desktop copy with the next release)
 1. Join any lobby, and load surf_eternity from the menu: a black screen with the steps in white (newest on top,
    older fading), a spinning wireframe avatar or ramp (it picks one each load), and "Loading" with dots at the bottom right.

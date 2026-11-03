@@ -21,6 +21,24 @@
 
 ## next
 
+### P1252 Laser beams on Source maps
+- Laser beams in Source maps are drawn now: surf_fantasy's blue rings, surf_sky_city's flickering lasers and about 2,000 more on 180 maps.
+- Lasers that start switched off, move with a part of the map or have no target are not drawn yet. vbsp_lasers 0 hides them.
+
+### P1251 No more black stripes over fake skies
+- The black hatching over far-away fake sky windows (surf_fantasy's last stage) is gone.
+
+### P1250 Water windows and coloured brushes on Source maps
+- Water and glass surfaces take the map's lighting instead of glowing flat white: surf_bikini_bottom's windows are a thin layer of water again, and water and lava on about 290 maps look as they do in Source.
+- Coloured brushes show their colour, and maps that change a brush's colour now do it (surf_orbion's flashing panels).
+
+### P1249 Prop lighting on older Source maps
+- Props on 770 Source maps no longer take their light from the wrong place: surf_pantheon's yellow pillars are marble again.
+
+### P1248 No more snags where prop ramps meet
+- Ramps built from props no longer catch you where two pieces meet: the end of surf_sedona's ramp 3 and surf_pantheon's ramps ride through.
+- The lobbies have it now. Until your game updates you may see a small correction at those spots on a lobby.
+
 ### P1247 Steadier KSF replay downloads
 - One broken KSF replay file no longer stops that round of downloads, so the backlog keeps moving.
 - Replays the converter could not read are fetched again as soon as the converter is updated, instead of waiting a week.

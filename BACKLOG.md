@@ -1,5 +1,30 @@
 # BACKLOG.md
 
+## Lex's ramp/prop list of 3 Nov (P1248-P1252): residuals
+- P1248 mover 12: a start already within DIST_EPSILON of the reported plane clamps at fraction 0 closer
+  than eps, so the slide can re-hit at fraction 0 and lean on P813 (15-967 per 2M near-touching random
+  traces; 0 in 225 simulated rides). PM_PlayerTrace merges physents by fraction, so a switched piece's
+  earlier stop can beat a brush ENTITY met first (one more bump). Nothing measures mover 12 across
+  machines: pm_dettest pins movers 6-9 and never sets bih_phypick; a v12 pass on surf_sedona and
+  surf_pantheon in pm_dettest/pigate.sh would. If HELD_SOURCE_VERSION is ever raised, the held saved
+  trace flags must include bih_phypick (tools/test_heldmeta.py:187 still asserts 10). Prederr reports
+  carry no client mover version, so a 0.1.37 client mispredicting at creases looks like divergence.
+  Near-ties within float noise between a top face and an added side plane remain (4 of 359 prop hits).
+- P1251: a face within 4 units in front of a fake sky loses to it from ~2.9k-5.8k units (275 world
+  pairs on ~23 maps, e.g. surf_serenity2 parkinglot 1 unit in front of fakeskies/sky40); translucent
+  faces in front of imposters likewise. Root-cause option: near clip 4 (gl_mindist's cap; Source uses
+  7) gives 4x depth precision everywhere; untested for close-up geometry and viewmodels.
+- P1250: ~46,900 lit warp faces on ~292 maps now take lightmaps (Source-correct, visible); 8,909 faces
+  with materials unresolved offline (mostly CS:GO liquids) change if found as LightmappedGeneric. Vampire
+  (v17) loader unchanged. Lit warp faces on brush entities cast stencil shadow volumes under realtime
+  lights. surf_ixtab's endmark Color "127.5 ..." shows the intended colours where Source truncates to
+  reds; an empty Color param would turn a brush black (only math_colorblend sends it, unimplemented).
+- P1252 lasers, Phase A only: not drawn -- start-off (562; needs I/O), parented (24), moving targets
+  (49), EndSprite, sparks, HDRColorScale; NoiseAmplitude beams (500) drawn straight; renderfx 15 Distort
+  (41) ~40% too bright; Color inputs aimed at env_laser (6) not followed. The sky test reads the start
+  point only; the load trace stops at the world and brush copies (Source's MASK_SOLID also stops at
+  props); textures load before the declines; no under-blend fix behind glass.
+
 ## Frame-rate audit of 3 Nov (P1222): where the frame goes at Lex's settings (display only)
 - Rig (i9-9900K, RTX 2080 SUPER), Lex's cfg (r_renderscale 2, hl2_water 2), 1920x1200, local game, r_budget 2 s windows
   at his lobby saves. After P1222: leet ~990 fps; demise 294-668; boreas 308-496; garden 333-399; eternity 372-753.

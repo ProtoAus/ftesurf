@@ -1,5 +1,47 @@
 # AGENT_NOTES.md
 
+## P1248-P1252 Lex's ramp/prop list (3 Nov; root C:/FTESurf-worktrees/rampprop-20261103)
+- P1248 MOVER 12 (PMSRC_VERSION 12). For .phy prop pieces (struct bihtrace_s inphy, set round the
+  piece loop only) at mover 12 (bih_phypick, pm_source.c) the REPORTED plane is the entering plane with
+  the largest unadjusted entry, and trace.fraction is pulled back to DIST_EPSILON in front of it
+  (clamped at 0); the hit test and truefraction (cross-brush key, tree cull) stay mover 11's. Four review
+  rounds: SV_PMSrcVer lacked 12 (recordings would have pinned 2 -- A VERSION BUMP MUST ADD ITSELF THERE,
+  as P916 did for 11); the stop from the reported plane invented and dropped hits; mover 11's stop left a
+  grazed reported plane closer than eps (re-hits at fraction 0); the pulled-back stop as the cross-brush
+  key beat the brush met first. Rejected, measured: switching the plane only past a clearance floor keeps
+  exactly the snags (pantheon save 13 sits on eps/2 and lost 1523 u/s).
+- LIVE: lobby engine fteqw-svarm64 ce06d73e (branch p1248-pi 97f98dd9e on p1238-pi), swapped 3 Nov
+  06:10:06Z, .prev and pre1248-20261103T061006Z = 5f41b215; 12/12 by /proc exe hash; serverinfo
+  pm_sourceversion 12. NEVER ROLL THE PI BINARY BACK PAST IT once a lobby has run it: a pre-P1248
+  verifier REFUSEs v12 recordings. Legal TAS projects pinned at 11 refuse on it (any bump does). Held
+  capture stays fenced at HELD_SOURCE_VERSION 11 (dormant). Kit: artifacts/pi1248 (mktar from 48's P1238
+  blobs.tsv, build1248.sh, swap1248.sh); pigate.sh cds into the game dir, so pass ABSOLUTE paths -- the
+  first run with relative ones printed four lines and an "identical" diff that measured nothing.
+- Installs: tag patch-1251 c78d47489 (patch-1244 + p1249-propflags + p1250-engine + p1248-fix) exe
+  b2b09404, fteqwsv64 78c8006c, hl2 plugin 7b93539c (.pre1251 b4ddb77d / b2abe6aa / 354b596e); engine
+  main cbf686065. The plugin line joins patch-1235 here; e2's P1245 merges on top.
+- Arms: hud1236 p1236arm.py (aura1230 root) with P1248_SAVES (local saves are data/saves/<map>/saveNNN,
+  no guid), P1236_CSPROGS, P1250_QWPROGS; views_ramps.json + gradeprobe.py grade pm_dispprobe 2 contact
+  planes (old: sedona hits (0 -0.762 0.647) six times, pantheon stops by x -3777; mover 12: none, -5826).
+  agent-ramps/sim2.py simulates the clip rules with the engine's ramp-fix recovery in double and float32.
+- P1249: sprp v10 with 72-byte records (SDK 2013) keeps m_Flags as a uint at offset 64; byte 31 is
+  padding. 80/76-byte records keep flags at byte 31 and an RGBA tint at 64.
+- P1250: TI_WARP faces keep VRAD lightmaps (DRAWTILED only without samples). r_surf.c sets
+  BEF_FORCECOLOURMOD for MDLF_SOURCEBSP brush models; e_colourident.rgb is 1 unless the batch forces it,
+  and unlit/transition/lightmapped all multiply by it. QC SV_BrushColour serves rendercolor and the Color
+  input (brushes that maps flash from black would otherwise hold black).
+- P1251: engine shader keyword `depthpush N` (N depth steps away, negative toward, no slope term); the
+  plugin gives opaque WindowImposter depthpush -2. The generated VMT script is a shader BODY
+  (Shader_ReadShader consumed the brace): the first '{' opens a pass, so shader keywords go before it.
+- P1252: cl_lasers.qc; lasers sit in the sprite beam table after the spotlights (beam_spot_n); one quad a
+  beam (cross(dir, p - eye) is constant along a straight beam); load line "lasers: N of M drawn" names
+  every decline. Lobby QC deploy/p1252-lasers eba34959 LIVE ~06:00Z 3 Nov (with P1242 under it): qw
+  32cabec7, cs 518120a8 (.prev 73c6259a / 929515dc), codes.txt appended (.pre1252). NEXT LOBBY QC STACKS ON IT.
+- Build traps: a make launched with PowerShell Start-Process hung twice with no compiler running -- run
+  make in the foreground (run_in_background); a fresh engine worktree needs libs-x86_64-w64-mingw32
+  copied in; a plugins/hl2/glsl edit needs `make -C plugins/hl2` (gcc engine/shaders/generatebuiltinsl.c
+  first) and the regenerated mat_vmt_progs.h committed.
+
 ## P1247 KSF bad-file rule, converter release (ftesurf-2b; LIVE 3 Nov 04:48Z, generation 12e362a5, root lexlist-1247-382effae)
 - ksfgrab only: a 404/500/broken body sets that file aside and the tick goes on (FILESTREAK in a row
   still parks the host); state['unconvertible'] = {converter: sha256[:16] of ksfconvert.py +
