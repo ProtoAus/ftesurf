@@ -19,6 +19,7 @@ import logging
 import os
 import shutil
 import signal
+import sqlite3
 import stat
 import struct
 import sys
@@ -60,11 +61,13 @@ def _cleanup():
 
 
 W.MOM_TAKE = 2           # so the list pages
+W.PROBE_PAGES = 3        # so a probe board's middle goes unread with few rows
 W.KSF_MIN = 1
 W.MOM_MIN = 0            # the fixture worlds are a handful of maps
 W.GET_DELAY = 0.0
 W.FLOOR_GB = 0           # this box's free space is not under test (the Pi's /tmp has 4 GB)
 W.KSF_LOCK = os.path.join(HOME, "ksfwatch.lock")    # not the live crawl's
+W.MOM_LOCK = os.path.join(HOME, "momwatch.lock")    # not the live momwatch's
 os.makedirs(os.path.dirname(S.RUNS_DIR))    # the game's data folder: without one, played() cannot tell
 REAL_CONNECT = S.connect
 REAL_TIME = time.time
@@ -160,6 +163,8 @@ class World(object):
         self.nozones = set()    # names whose zone reply carries no zones at all
         self.down = set()       # "mom" / "ksf": that list answers 500
         self.hidden = set()     # on the CDN, not in the public list (a Beta map)
+        self.live = {}          # (name, trackType, trackNum) -> [(steamid, created, time)]
+        self.lbcode = {}        # name -> an HTTP status for its probe board
         self.rawrows = []       # rows added to the surf list as they are
         self.short = False      # the surf list ends on an empty page, early
         self.stuck = False      # the surf list ignores `skip`
@@ -174,8 +179,12 @@ class World(object):
               "zoneHash": sha(ztext(m["zones"]).encode()) if m.get("zones") else None}
         lb = [{"gamemode": 1 if n.startswith("surf_") else 2, "trackType": 0,
                "trackNum": 1, "style": 0, "tier": m.get("tier"), "type": 0}]
-        return {"id": self.ids[n], "name": n, "status": 0, "currentVersion": cv,
-                "leaderboards": m.get("leaderboards", lb)}
+        row = {"id": self.ids[n], "name": n, "status": 0, "currentVersion": cv,
+               "leaderboards": m.get("leaderboards", lb)}
+        if "approved" in m:     # P1253: only where a case gives one, so no other case purges
+            row["info"] = {"approvedDate": m["approved"]}
+            row["createdAt"] = m.get("born", "2026-01-01T00:00:00.000Z")
+        return row
 
     def __call__(self, url):
         self.asked.append(url)
@@ -195,6 +204,20 @@ class World(object):
                 return Resp(json.dumps({"totalCount": len(rows) + 5, "data": []}).encode())
             return Resp(json.dumps({"totalCount": len(rows) + (5 if self.short and surf else 0),
                                     "data": rows[skip:skip + take]}).encode())
+        if url.startswith(W.MOM_API + "/maps/") and "/leaderboard?" in url:
+            mid = int(url[len(W.MOM_API + "/maps/"):].split("/")[0])
+            n = [k for k, v in self.ids.items() if v == mid][0]
+            if n in self.lbcode:
+                raise http(url, self.lbcode[n])
+            q = dict(kv.split("=") for kv in url.split("?", 1)[1].split("&"))
+            gm, tt, tn = int(q["gamemode"]), int(q["trackType"]), int(q["trackNum"])
+            rows = [{"mapID": mid, "gamemode": gm, "trackType": tt, "trackNum": tn, "style": 0,
+                     "rank": i + 1, "time": t, "createdAt": iso(c), "user": {"steamID": sid},
+                     "replayHash": hh[0] if hh else hashlib.sha1(repr((sid, t)).encode()).hexdigest()}
+                    for i, (sid, c, t, *hh) in enumerate(self.live.get((n, tt, tn), []))]
+            skip = int(q.get("skip", 0))
+            return Resp(json.dumps({"totalCount": len(rows),
+                                    "data": rows[skip:skip + int(q["take"])]}).encode())
         if url.startswith(W.MOM_API + "/maps/"):
             mid = int(url[len(W.MOM_API + "/maps/"):].split("?")[0])
             n = [k for k, v in self.ids.items() if v == mid][0]
@@ -373,6 +396,1392 @@ def case_p1117_momtracks():
     tick(maps, state, "--go", "--tracks", tracks)
     check("...nor does a run that could not read Momentum's list", os.stat(tracks).st_mtime,
           1000000000)
+
+
+def case_p1253_beta_boards():
+    """P1253: held Beta maps' boards come from each map's own reply into momtracks.tsv,
+    the unlisted first, BETA_BOARDS_DAYS apart; a 401 waits its turn; any other refusal
+    ends the API for the run, keeps what was answered and holds that map a day."""
+    lb = [{"gamemode": 1, "trackType": tt, "trackNum": tn, "style": st, "tier": None, "type": 3}
+          for tt, tn, st in ((0, 1, 0), (1, 1, 0), (0, 1, 2))]
+    mom = dict(MOM, surf_bz=dict(M("bz"), leaderboards=lb), surf_ba=M("ba"))
+    w, maps, state = setup(mom, {}, held=[("surf_bz", bsp("bz")), ("surf_ba", bsp("ba"))])
+    w.hidden = {"surf_bz", "surf_ba"}
+    os.makedirs(state, exist_ok=True)
+    with io.open(os.path.join(state, "extra.tsv"), "w", newline="\n") as fh, \
+            io.open(os.path.join(state, "betaids.tsv"), "w", newline="\n") as ids:
+        for n in ("surf_ba", "surf_bz"):
+            fh.write("%s %s %s%s.bsp\n" % (n, sha(bsp(n[5:])), W.MOM_CDN, uuid_of(n)))
+            ids.write("%s %s %d -\n" % (n, sha(bsp(n[5:])), w.ids[n]))
+    tracks = os.path.join(os.path.dirname(maps), "momtracks.tsv")
+    with io.open(tracks, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(W.TRACKS_HEAD + "surf_ba\t%d\t0\t1\t0\t1\n" % w.ids["surf_ba"])
+    boards = os.path.join(os.path.dirname(maps), "momboards")
+    url = {n: "%s/maps/%d?expand=leaderboards" % (W.MOM_API, w.ids[n]) for n in ("surf_bz", "surf_ba")}
+    sp = os.path.join(state, "state.json")
+    run = ("--go", "--tracks", tracks, "--boards", boards)
+
+    def beta_asks():
+        return [u for u in w.asked if "?expand=leaderboards" in u]
+
+    def asked():
+        return json.load(io.open(sp, encoding="utf-8")).get("betaboards")
+
+    def rewind():
+        st = json.load(io.open(sp, encoding="utf-8"))
+        st["betaboards"] = {}
+        with io.open(sp, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(st))
+
+    def lines(n):
+        return [l for l in read(tracks).decode().splitlines() if l.startswith(n + "\t")]
+
+    t0 = int(time.time())
+    tick(maps, state, *run)
+    check("P1253: each held Beta map is asked for its own boards, the unlisted one first",
+          beta_asks(), [url["surf_bz"], url["surf_ba"]])
+    check("...and its Normal boards are written under its id",
+          lines("surf_bz"), ["surf_bz\t%d\t0\t1\t0\t1" % w.ids["surf_bz"],
+                             "surf_bz\t%d\t0\t1\t1\t1" % w.ids["surf_bz"]])
+    a = asked()
+    check("...and each is due again BETA_BOARDS_DAYS later, with its id kept",
+          (a["surf_bz"]["id"], 0 <= a["surf_bz"]["next"] - t0 - W.BETA_BOARDS_DAYS * 86400 <= 5),
+          (w.ids["surf_bz"], True))
+    w.asked = []
+    tick(maps, state, *run)
+    check("...and is not asked again before then", beta_asks(), [])
+
+    rewind()
+    w.asked = []
+    w.zonecode["surf_ba"] = 401
+    t401 = int(time.time())
+    tick(maps, state, *run)
+    check("...a 401 for one Beta map leaves it for its turn and asks the next",
+          beta_asks(), [url["surf_ba"], url["surf_bz"]])
+    w.asked = []
+    tick(maps, state, *run)
+    check("...and that map is held back BETA_BOARDS_DAYS, not a day",
+          (beta_asks(), 0 <= asked()["surf_ba"]["next"] - t401 - W.BETA_BOARDS_DAYS * 86400 <= 5),
+          ([], True))
+
+    rewind()
+    w.asked = []
+    w.zonecode["surf_ba"] = 500
+    t1 = int(time.time())
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        tick(maps, state, *run)
+    check("...a 500 ends the API for the run", (beta_asks(), "api refused (HTTP 500)" in out.getvalue()),
+          ([url["surf_ba"]], True))
+    w.asked = []
+    tick(maps, state, *run)
+    check("...holds that map a day, and the maps behind it are asked next run (review 1)",
+          (beta_asks(), 0 <= asked()["surf_ba"]["next"] - t1 - 86400 <= 5), ([url["surf_bz"]], True))
+
+    rewind()
+    w.asked = []
+    del w.zonecode["surf_ba"]
+    w.zonecode["surf_bz"] = 429
+    w.mom["surf_ba"] = dict(w.mom["surf_ba"], leaderboards=lb)
+    tick(maps, state, *run)
+    check("...what was answered before a refusal is kept (review 1)",
+          (beta_asks(), len(lines("surf_ba"))), ([url["surf_ba"], url["surf_bz"]], 2))
+    del w.zonecode["surf_bz"]
+    w.hidden = {"surf_ba"}
+    tick(maps, state, *run)
+    check("...and a Beta map Momentum's list now carries leaves the Beta schedule",
+          sorted(asked()), ["surf_ba"])
+
+
+LEAF = "000010%d_%s-0123abcd_run.rec"     # surfd._LEAF_OK: replay_file finds it
+
+
+def iso(t):
+    return time.strftime("%Y-%m-%dT%H:%M:%S.500Z", time.gmtime(t))
+
+
+class LivePacer(object):
+    """Serves `rows` by skip/take (totalCount `total`, else their count), or raises `rows`."""
+    def __init__(self, reply, total=None):
+        self.reply, self.urls, self.total = reply, [], total
+
+    def json(self, url):
+        self.urls.append(url)
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        q = dict(kv.split("=") for kv in url.split("?", 1)[1].split("&"))
+        skip, take = int(q["skip"]), int(q["take"])
+        total = len(self.reply) if self.total is None else self.total
+        return {"totalCount": total, "data": self.reply[skip:skip + take]}
+
+
+class DropPacer(LivePacer):
+    """A board that loses its first row after its first page is read (review 9)."""
+    def json(self, url):
+        got = LivePacer.json(self, url)
+        if len(self.urls) == 1:
+            self.reply = [dict(r, rank=n + 1) for n, r in enumerate(self.reply[1:])]
+        return got
+
+
+class ShrinkPacer(LivePacer):
+    """A board cut to the rows its first page showed, after that page (review 9)."""
+    def json(self, url):
+        got = LivePacer.json(self, url)
+        if len(self.urls) == 1:
+            self.reply = self.reply[:W.MOM_TAKE]
+        return got
+
+
+class AbovePacer(LivePacer):
+    """A board that gains two faster rows after its first page is read (review 11)."""
+    def json(self, url):
+        got = LivePacer.json(self, url)
+        if len(self.urls) == 1:
+            first = self.reply[0]
+            self.reply = [dict(first, time=t, user={"steamID": steam(50 + n)}, replayHash=rhash(50 + n))
+                          for n, t in enumerate((1.0, 2.0))] + self.reply
+            self.reply = [dict(r, rank=n + 1) for n, r in enumerate(self.reply)]
+        return got
+
+
+class DropAddPacer(LivePacer):
+    """A board that loses rows above its seam and gains as many slower ones after its first page,
+    its count unchanged (review 14)."""
+    def __init__(self, reply, n=1):
+        LivePacer.__init__(self, reply)
+        self.n = n
+
+    def json(self, url):
+        got = LivePacer.json(self, url)
+        if len(self.urls) == 1:
+            last = self.reply[-1]
+            self.reply = self.reply[:1] + self.reply[1 + self.n:] + [
+                dict(last, time=last["time"] + 1.0 + k, user={"steamID": steam(99 - k)}, replayHash=rhash(99 - k))
+                for k in range(self.n)]
+            self.reply = [dict(r, rank=n + 1) for n, r in enumerate(self.reply)]
+        return got
+
+
+class GrowPacer(LivePacer):
+    """A board that gains a slower row after its first page is read (review 6)."""
+    def json(self, url):
+        got = LivePacer.json(self, url)
+        if len(self.urls) == 1:
+            last = self.reply[-1]
+            self.reply = self.reply + [dict(last, rank=last["rank"] + 1, time=last["time"] + 1.0,
+                                            user={"steamID": steam(99)}, replayHash=rhash(99))]
+        return got
+
+
+def steam(i):
+    return str(W.STEAM_BASE + 1 + i)
+
+
+def rhash(*key):
+    return hashlib.sha1(repr(key).encode()).hexdigest()
+
+
+def lrow(i, c, t, rank, b=(1, 0, 1), mapid=24):
+    return {"mapID": mapid, "gamemode": b[0], "trackType": b[1], "trackNum": b[2], "style": 0,
+            "rank": rank, "time": t, "createdAt": iso(c), "user": {"steamID": steam(i)},
+            "replayHash": rhash(i, c, t, rank)}
+
+
+def lboard(*rows):
+    return [lrow(i, c, t, n + 1) for n, (i, c, t) in enumerate(rows)]
+
+
+def case_p1253_wipe_verdict():
+    A = 1790000000
+    old = {steam(1): [10.0], steam(2): [11.0], steam(3): [12.0]}
+
+    def probe(o=old, new=()):
+        return (1, 0, 1, o, list(new), {})
+
+    def verdict(reply, p=None, total=None):
+        pacer = LivePacer(reply, total)
+        try:
+            got = W.wipe_verdict(pacer, 24, A, probe() if p is None else p, A + 86400)[0]
+        except W.Refused as e:
+            got = "raised %s" % e
+        except Exception as e:
+            got = "crashed %r" % e
+        return got, len(pacer.urls)
+    url = ("%s/maps/24/leaderboard?gamemode=1&trackType=0&trackNum=1&take=%d&skip=0"
+           % (W.MOM_API, W.MOM_TAKE))
+    pacer = LivePacer(lboard((9, A - 1, 50.0)))
+    check("P1253: a run from before the approval on the live board: Momentum kept them (surf_me)",
+          (W.wipe_verdict(pacer, 24, A, probe(), A + 86400)[:2], pacer.urls), (("kept", None), [url]))
+    check("...none, and three players whose Beta times would show are gone: wiped, the whole "
+          "board read", W.wipe_verdict(LivePacer(lboard((9, A + 5, 13.0))), 24, A, probe(), A + 86400)[:2],
+          ("wiped", (None, None)))
+    check("...or shown slower than their Beta time -- Momentum keeps a player's best (review 4)",
+          verdict(lboard((1, A + 5, 10.5), (2, A + 5, 11.5), (3, A + 5, 12.5)))[0], "wiped")
+    check("...the same players shown faster: not told (they improved)",
+          verdict(lboard((1, A + 5, 9.0), (2, A + 5, 9.5), (3, A + 5, 9.9)))[0], "unknown")
+    check("...a player shown faster than any one of their Beta times is not gone (review 5: an "
+          "older faster Beta run Momentum dropped mid-test)",
+          verdict(lboard((1, A + 5, 15.0), (2, A + 5, 15.5), (3, A + 5, 15.9)),
+                  probe({steam(1): [10.0, 20.0], steam(2): [11.0, 21.0], steam(3): [12.0, 22.0]}))[0],
+          "unknown")
+    check("...two gone of three: not told", verdict(lboard((1, A + 5, 9.0)))[0], "unknown")
+    check("...an empty live board is unread (review 4)", verdict([]), ("unread", 1))
+    deep = lboard(*[(10 + i, A + 5, 6.0 + 0.5 * i) for i in range(10)])
+    check("...pages are read until they pass the slowest Beta time, PROBE_PAGES at most, then "
+          "the last page; a Beta time past them is no witness",
+          verdict(deep), ("unknown", W.PROBE_PAGES + 1))
+    early = probe({steam(1): [1.5], steam(2): [2.5], steam(3): [3.5]})
+    got = W.wipe_verdict(LivePacer(deep), 24, A, early, A + 86400)[:2]
+    check("...a Beta time inside them is; the cover is under the cut, and the last page on "
+          "(review 5: what lies between is not judged)",
+          (got, W.covered(5.0, got[1]), W.covered(7.0, got[1]), W.covered(11.0, got[1])),
+          (("wiped", (6.5, 10.5)), True, False, True))
+    check("...a board that loses a row between its pages is not told: the next page skipped one "
+          "(review 9)", W.wipe_verdict(DropPacer(lboard(*[(10 + i, A + 5, 5.0 + i) for i in range(7)])),
+                                       24, A, probe(), A + 86400)[0], "unknown")
+    check("...nor one cut short before its end page: only a board that grew is asked again (review 9)",
+          W.wipe_verdict(ShrinkPacer(deep), 24, A, early, A + 86400)[0], "unknown")
+    check("...three held later runs past the end page's start, not shown: a reply that ends early is "
+          "not told (reviews 9, 12)",
+          W.wipe_verdict(LivePacer(deep), 24, A,
+                         probe(early[3], [(steam(30), 12.0), (steam(31), 13.0), (steam(32), 14.0)]),
+                         A + 86400)[0], "unknown")
+    check("...one, beside three Beta players gone, is not: a slow player who improved into the "
+          "unread middle (review 10)", W.wipe_verdict(LivePacer(deep), 24, A,
+                                                       probe(early[3], [(steam(30), 12.0)]), A + 86400)[0], "wiped")
+    keep, W.PROBE_PAGES = W.PROBE_PAGES, 10
+    try:
+        check("...two such beside nine shown under the cut are not a reply cut short: three at least "
+              "(reviews 11, 12)",
+              W.wipe_verdict(LivePacer(lboard(*[(10 + i, A + 5, 5.0 + 0.1 * i) for i in range(40)])), 24, A,
+                             probe({steam(1): [5.05], steam(2): [5.15], steam(3): [5.85]},
+                                   [(steam(10 + i), 5.0 + 0.1 * i) for i in range(9)]
+                                   + [(steam(60), 9.5), (steam(61), 9.6)]), A + 86400)[0], "wiped")
+    finally:
+        W.PROBE_PAGES = keep
+    keep, W.PROBE_PAGES = W.PROBE_PAGES, 10
+    try:
+        whole = lboard(*[(10 + i, A + 5, 5.0 + 0.1 * i) for i in range(11)])
+        check("...a whole read missing three held later runs slower than its last row is a reply cut "
+              "short: there is no middle to have improved into (review 12)",
+              W.wipe_verdict(LivePacer(whole), 24, A,
+                             probe({steam(1): [5.05], steam(2): [5.15], steam(3): [5.25], steam(4): [5.35],
+                                    steam(5): [7.0]},
+                                   [(steam(10 + i), 5.0 + 0.1 * i) for i in range(10)]
+                                   + [(steam(60), 9.0), (steam(61), 9.1), (steam(62), 9.2)]), A + 86400)[:2],
+              ("unknown", None))
+        big = [lrow(10 + i, A + 5, 1.0 + i, i + 1, (1, 2, 1)) for i in range(24)]
+        check("...a track whose held later runs past its end page's start mostly do not show is kept, "
+              "however many show under the cut (review 12: their own count)",
+              W.board_kept(LivePacer(big), 24, A, (1, 2, 1), A + 86400, 19.5,
+                           [(steam(10 + i), 1.0 + i) for i in range(19)]
+                           + [(steam(33), 24.5), (steam(60), 25.0), (steam(61), 26.0), (steam(62), 27.0)])[0], True)
+    finally:
+        W.PROBE_PAGES = keep
+    keep, W.MOM_TAKE = W.MOM_TAKE, 20
+    try:
+        mid = W.wipe_verdict(LivePacer(lboard(*[(10 + i, A + 5, 6.0 + 0.1 * i) for i in range(30)])), 24, A,
+                             probe(early[3], [(steam(10 + i), 6.0 + 0.1 * i) for i in range(30)]
+                                   + [(steam(60), 9.5), (steam(61), 9.6), (steam(62), 9.7)]), A + 86400)[:2]
+    finally:
+        W.MOM_TAKE = keep
+    check("...a board whose end page starts among the rows read is read whole, so three held later runs "
+          "slower than its last row, not shown, are a reply cut short (review 13)", mid, ("unknown", None))
+    keep, W.MOM_TAKE = W.MOM_TAKE, 5
+    try:
+        nine = [(10 + i, A + 5, tm) for i, tm in enumerate((6.0, 6.2, 6.4, 6.6, 6.8, 7.0, 7.2, 7.4, 7.6))]
+        abut = W.wipe_verdict(DropAddPacer(lboard(*nine)), 24, A, early, A + 86400)[:2]
+        shift = W.wipe_verdict(DropAddPacer(lboard(*nine[:8]), 2), 24, A, early, A + 86400)[:2]
+    finally:
+        W.MOM_TAKE = keep
+    check("...an end page that does not hold the last row read is no whole read: rows deleted above "
+          "and as many added below shift one past it (review 14)", (abut, shift),
+          (("wiped", (6.8, 7.2)), ("wiped", (6.8, 7.2))))
+    keep, W.MOM_TAKE = W.MOM_TAKE, 5
+    try:
+        grown = W.wipe_verdict(AbovePacer(lboard(*[(10 + i, A + 5, tm) for i, tm in
+                                                   enumerate((6.0, 6.2, 6.4, 6.6, 6.8, 7.0, 7.2))])),
+                               24, A, early, A + 86400)[:2]
+    finally:
+        W.MOM_TAKE = keep
+    check("...and on pages of more than two rows its retried end page may start among the rows read "
+          "(review 11: production's 100)", grown, ("wiped", (6.8, 6.6)))
+    got = W.wipe_verdict(AbovePacer(lboard((10, A + 5, 6.0), (11, A + 5, 6.5), (12, A + 5, 8.0))), 24, A,
+                         early, A + 86400)[:2]
+    check("...a board that grows above the cut before its end page is asked again, not refused for "
+          "rows that slid onto it (review 11)", got, ("wiped", (6.5, 8.0)))
+    lowered = [dict(r, time=r["time"] - 5.0) if r["rank"] == 10 else r for r in deep]
+    check("...nor an end page past the rows read whose times come before them (review 10)",
+          W.wipe_verdict(LivePacer(lowered), 24, A, early, A + 86400)[0], "unknown")
+    check("...a board that grows between its pages is asked for its last page again (review 6)",
+          (lambda p: (W.wipe_verdict(p, 24, A, early, A + 86400)[:2], len(p.urls)))(GrowPacer(deep)),
+          (("wiped", (6.5, 11.5)), 3))
+    four = lboard(*[(10 + i, A + 5, 1.0 + i) for i in range(4)])
+    check("...a board read to its last row by the early stop is whole (review 6)",
+          W.wipe_verdict(LivePacer(four), 24, A, probe({steam(1): [1.5], steam(2): [2.5], steam(3): [3.5]}),
+                         A + 86400)[:2], ("wiped", (None, None)))
+    check("...and covered is strict, SLACK clear of either edge (review 6: ties)",
+          [W.covered(t, (6.5, 10.0)) for t in (6.5, 6.4995, 6.498, 10.0, 10.0005, 10.002)],
+          [False, False, True, False, False, True])
+    check("...a run from before the approval on the last page: kept (review 2)",
+          verdict(lboard(*[(10 + i, A + 5 if i < 9 else A - 5, 6.0 + 0.5 * i) for i in range(10)]), early),
+          ("kept", 2))
+    check("...a short page whose totalCount disagrees is not told (reviews 1, 3)",
+          verdict(lboard((9, A + 5, 13.0)), total=500), ("unknown", 1))
+    check("...nor a full page with a totalCount under it (review 4)",
+          verdict(lboard((9, A + 5, 13.0), (8, A + 5, 14.0)), total=1), ("unknown", 1))
+    check("...nor a board longer than its totalCount: its end, asked one row early, is a full "
+          "page (review 8)", verdict(lboard(*[(10 + i, A + 5, 1.0 + i) for i in range(8)]), total=6),
+          ("unknown", W.PROBE_PAGES + 1))
+    check("...nor a last page that is not the board's last rows whole (review 3)",
+          verdict(lboard((9, A + 5, 13.0), (8, A + 5, 14.0)), total=40), ("unknown", 2))
+    good = lboard((9, A + 5, 13.0))[0]
+    bad = {"no user": dict(good, user=None), "a steamID not a steam64": dict(good, user={"steamID": "123"}),
+           "a steamID under the individual range": dict(good, user={"steamID": "76561197960000001"}),
+           "a time of 1e9": dict(good, time=1e9), "a 400-digit time": dict(good, time=10 ** 400),
+           "an infinite time": dict(good, time=float("inf")), "a boolean time": dict(good, time=True),
+           "an offset createdAt": dict(good, createdAt="2026-09-21T14:13:25.000+10:00"),
+           "another map's row": dict(good, mapID=25), "another board's row": dict(good, trackType=1),
+           "another style": dict(good, style=2), "rank 0": dict(good, rank=0),
+           "no replay hash": dict(good, replayHash=None),
+           "a rank past its position (review 9: a row hidden)": dict(good, rank=2)}
+    check("...a row momfetch would not take, or not this board's, is unread and raises nothing "
+          "(reviews 1, 2, 4): " + ", ".join(sorted(bad)),
+          sorted((k, verdict([r])[0]) for k, r in bad.items()), sorted((k, "unread") for k in bad))
+    check("...as are rows out of time order (review 1: newest first)",
+          verdict([lrow(9, A + 5, 9.5, 1), lrow(8, A + 5, 9.0, 2)])[0], "unread")
+    check("...a steamID sent as a number is the same player",
+          verdict([dict(good, user={"steamID": int(steam(9))})])[0], "wiped")
+    check("...a steamID past 765612000... is a steam64 too (review 2: momfetch's range)",
+          W.steam64(str(W.STEAM_BASE + 2039734272)), str(W.STEAM_BASE + 2039734272))
+    check("...times off the scale by 10x (review 2: milliseconds) are not told",
+          verdict(lboard((9, A + 5, 13000.0)))[0], "unknown")
+    later = [(steam(5), 9.4), (steam(6), 9.5), (steam(7), 9.6)]
+    shown = lboard((5, A + 5, 9.0), (6, A + 5, 9.1), (9, A + 5, 13.0))
+    check("...three runs after the approval held here that should show and do not: not told "
+          "(review 2: a filtered reply)", verdict(lboard((9, A + 5, 13.0)), probe(new=later))[0], "unknown")
+    check("...one Momentum removed is not a reply cut short (review 3): wiped",
+          verdict(shown, probe(new=later))[0], "wiped")
+    keep, W.PROBE_PAGES = W.PROBE_PAGES, 10
+    try:
+        check("...nor two of twelve -- banned players' runs Momentum removed (review 6)",
+              verdict(lboard(*[(5 + i, A + 5, 9.0 + 0.01 * i) for i in range(10)] + [(30, A + 5, 13.0)]),
+                      probe(new=[(steam(5 + i), 9.4 + 0.01 * i) for i in range(12)]))[0], "wiped")
+    finally:
+        W.PROBE_PAGES = keep
+    keep, W.PROBE_PAGES = W.PROBE_PAGES, 10
+    try:
+        check("...nor as many later runs missing as Beta players gone (review 7: a reply filtered to "
+              "hide Beta rows hides later ones too)",
+              verdict(lboard(*[(5 + i, A + 5, 9.0 + 0.01 * i) for i in range(10)] + [(30, A + 5, 13.0)]),
+                      probe(new=[(steam(5 + i), 9.4 + 0.01 * i) for i in range(13)]))[0], "unknown")
+    finally:
+        W.PROBE_PAGES = keep
+    served = [dict(r, replayHash="%040x" % (n + 1)) for n, r in enumerate(lboard((9, A + 5, 13.0), (8, A + 5, 13.5)))]
+    check("...and the replay hashes a read shows come back with it (review 7: never dropped)",
+          W.wipe_verdict(LivePacer(served), 24, A, probe(), A + 86400)[2],
+          {("%040x" % 1)[:24], ("%040x" % 2)[:24]})
+    check("...but two of two are (review 4: a small set)",
+          verdict(lboard((9, A + 5, 13.0)), probe(new=later[:2]))[0], "unknown")
+    check("...the scale is the held later runs' fastest, not a Beta skip's (review 3)",
+          verdict(shown, probe(dict(old, **{steam(8): [0.5]}), later))[0], "wiped")
+    check("...a 404 is not told; a 400 or 500 is unread (review 4)",
+          [verdict(W.Refused("HTTP %d" % c, c))[0] for c in (404, 400, 500)], ["unknown", "unread", "unread"])
+    check("...a 401, 403, 429 or 502 refuses: the API is done for the run (review 5)",
+          [verdict(W.Refused("HTTP %d" % c, c))[0] for c in (401, 403, 429, 502)],
+          ["raised HTTP %d" % c for c in (401, 403, 429, 502)])
+    check("...and no probe board asks nothing",
+          (W.wipe_verdict(LivePacer([]), 24, A, None, A + 86400)[:2], 0), (("unknown", None), 0))
+
+    def kept(reply, total=None, new=()):
+        pacer = LivePacer(reply, total)
+        try:
+            return W.board_kept(pacer, 24, A, (1, 2, 1), A + 86400, 0.0, list(new))[0], len(pacer.urls)
+        except W.Refused as e:
+            return "raised %s" % e, len(pacer.urls)
+    b21 = lambda *rows: [lrow(i, c, t, n + 1, (1, 2, 1)) for n, (i, c, t) in enumerate(rows)]
+    five = b21(*[(10 + i, A + 5, 1.0 + i) for i in range(5)])
+    check("board_kept: another board showing a run from before the approval keeps its Beta data",
+          kept(b21((1, A - 5, 10.0))), (True, 1))
+    check("...one whose page and last page show none does not, with what was read as its cover",
+          (kept(five), W.board_kept(LivePacer(five), 24, A, (1, 2, 1), A + 86400, 0.0, [])[:2]),
+          ((False, 2), (False, (2.0, 5.0))))
+    check("...three held later runs past the end page's start, not shown, keep it: a reply that "
+          "ends early (reviews 9, 12)", kept(five, new=[(steam(30), 7.0), (steam(31), 8.0), (steam(32), 9.0)]),
+          (True, 2))
+    check("...two beside one the end page shows do not: slow players who improved into the unread "
+          "middle (reviews 10, 12)", kept(five, new=[(steam(30), 7.0), (steam(31), 8.0), (steam(14), 6.0)]),
+          (False, 2))
+    check("...the last page showing one does",
+          kept(b21(*[(10 + i, A + 5 if i < 4 else A - 5, 1.0 + i) for i in range(5)])), (True, 2))
+    check("...an empty answer keeps it (review 7: it cannot be told from a bad reply)", kept([]), (True, 1))
+    shown = b21(*[(5 + i, A + 5, 1.0 + i) for i in range(5)])
+    whole = lambda new: W.board_kept(LivePacer(shown), 24, A, (1, 2, 1), A + 86400, 10.0, new)[0]
+    check("...one of five players' later runs missing is a run Momentum removed (review 6)",
+          whole([(steam(5 + i), 1.0 + i) for i in range(4)] + [(steam(20), 2.5)]), False)
+    check("...but of fewer than four players, any missing keeps it (review 7)",
+          whole([(steam(5), 1.0), (steam(20), 2.5)]), True)
+    tie = b21(*[(10 + i, A + 5, 1.0 + i) for i in range(3)] + [(1, A - 5, 9.0), (14, A + 5, 9.0), (15, A + 5, 10.0)])
+    got = W.board_kept(LivePacer(tie), 24, A, (1, 2, 1), A + 86400, 0.0, [])[:2]
+    check("...a run from before the approval unread but tied with the last page's first leaves that "
+          "time uncovered (review 6)", (got, W.covered(9.0, got[1])), ((False, (2.0, 10.0)), False))
+    check("...a last page past the end, or a short page totalCount disagrees with, keeps it (review 3)",
+          (kept(five, 20)[0], kept(b21((10, A + 5, 1.0)), 20)[0]), (True, True))
+    check("...an unreadable reply or a 404 keeps it (it cannot be told)",
+          (kept([dict(b21((1, A + 5, 10.0))[0], style=3)])[0], kept(W.Refused("HTTP 404", 404))[0]),
+          (True, True))
+    check("...and a 429 refuses", kept(W.Refused("HTTP 429", 429))[0], "raised HTTP 429")
+
+
+def case_p1253_approvals():
+    """P1253: an approved map's leftovers from before its approvedDate go only where
+    Momentum's live board shows twice, runs apart, that it dropped them -- on every track
+    holding Beta data, in the board files or in `runs`, and only what both reads covered and
+    did not show served -- and not on a track that kept them, nor of a map that kept them or
+    cannot tell, nor anything newer or served since."""
+    A = 1790000000
+    mom = dict(MOM, surf_bz=dict(M("bz"), approved=iso(A)),
+               surf_ba=dict(M("ba"), approved=iso(A - 30 * 86400)),
+               surf_bk=dict(M("bk"), approved=iso(A - 100)),
+               surf_bu=dict(M("bu"), approved=iso(A - 200)),
+               surf_bq=dict(M("bq"), approved=iso(A - 300)))
+    w, maps, state = setup(mom, {}, held=[("surf_" + n, bsp(n)) for n in ("bz", "ba", "bk", "bu", "bq")])
+    w.ids.update(surf_bz=24, surf_ba=2448, surf_bk=26, surf_bu=27, surf_bq=28)   # one id a prefix of another
+    keep_gap, W.SUSPECT_GAP = W.SUSPECT_GAP, 0
+    base = os.path.dirname(maps)
+    boards, retired = os.path.join(base, "momboards"), os.path.join(base, "momretired")
+    os.makedirs(boards)
+    run = ("--boards", boards, "--retired", retired)
+    h = {k: hashlib.sha256(k.encode()).hexdigest()[:40] for k in
+         ("old", "beta", "beta2", "beta3", "appr", "again", "rerun", "dbfast", "served", "eq", "late",
+          "late2", "new", "ba", "k1", "k2", "k3", "u1", "u2", "u3", "bon", "since", "prof", "gap",
+          "skew", "mid", "redate", "live", "q1", "q2", "q3", "qs")}
+
+    def board(f, rows):
+        """rows: (hash key, created) -- player row index, time 10 + index -- or (key, created,
+        player, time)."""
+        gm, t = f.split("_")[1:3]
+        out = []
+        for i, r in enumerate(rows):
+            k, c = r[:2]
+            sid, tm = (r[2], r[3]) if len(r) > 2 else (i, 10.0 + i)
+            out.append({"hash": h[k], "steamid": steam(sid), "time": tm, "created": iso(c)})
+        with io.open(os.path.join(boards, f), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"map": f, "gamemode": int(gm[1:]), "trackType": int(t[1]),
+                                 "trackNum": int(t[2]), "total": len(rows), "rows": out}))
+
+    def rows_of(f):
+        return [r["hash"] for r in json.load(io.open(os.path.join(boards, f), encoding="utf-8"))["rows"]]
+    main = [("beta", A - 3600), ("beta2", A - 3000), ("beta3", A - 2000), ("appr", A + 60),
+            ("again", A + 200, 8, 15.0),        # steam(8) ran again, slower than in Beta
+            ("served", A - 600, 10, 25.0),      # steam(10)'s newer Beta row, still served (unread)
+            ("eq", A + 300, 12, 30.0),          # steam(12) ran its Beta time again after it
+            ("skew", A - 1500, 14, 16.0),       # its run's ms (19 s) past the cover (review 6)
+            ("mid", A - 1600, 16, 16.8),        # inside the second read's cover, not the first's
+            ("redate", A - 1700, 17, 14.5)]     # Momentum serves it again, re-dated (review 7)
+    board("24_g1_t01.json", main)
+    board("24_g1_t11.json", [("new", A + 120)])
+    board("24_g1_t21.json", [("bon", A - 500)])          # a bonus Momentum did not wipe
+    board("2448_g1_t01.json", [("ba", A - 3600)])        # after surf_ba's own approval
+    board("26_g1_t01.json", [("k1", A - 900), ("k2", A - 800), ("k3", A - 700)])
+    board("27_g1_t01.json", [("u1", A - 1000), ("u2", A - 900), ("u3", A - 800)])
+    board("28_g1_t01.json", [("q1", A - 4000), ("q2", A - 3900), ("q3", A - 3800)])
+    board("28_g1_t11.json", [("qs", A - 4100, 5, 20.0)])
+    # bz's main board, read 3 pages of 2 and its end. The first read's 16.5 s row is gone by
+    # the second, so the reads cover up to 16.5 and 17 s; both, 16.5 (review 6). The 25 s Beta
+    # row Momentum still serves lies unread between the cut and the end (review 5).
+    filler = (steam(25), A + 400, 16.5)
+    bz_main = [(steam(3), A + 60, 13.0), (steam(17), A + 5, 14.5, h["redate"]), (steam(8), A + 200, 15.0),
+               (steam(18), A + 5, 15.5, h["live"]), (steam(20), A + 400, 16.0), filler,
+               (steam(21), A + 400, 17.0), (steam(22), A + 400, 18.0),
+               (steam(23), A + 400, 19.0), (steam(10), A - 600, 25.0), (steam(24), A + 400, 26.0),
+               (steam(12), A + 300, 30.0)]
+    w.live.update({("surf_bz", 0, 1): bz_main,
+                   ("surf_bz", 1, 3): [(steam(40), A + 500, 30.0)],
+                   ("surf_bz", 2, 1): [(steam(0), A - 500, 10.0)],
+                   ("surf_bk", 0, 1): [(steam(0), A - 900, 10.0)],
+                   ("surf_bu", 0, 1): [(steam(0), A + 10, 9.0), (steam(1), A + 10, 9.5)],
+                   ("surf_bq", 0, 1): [(steam(50), A + 10, 9.0)],
+                   ("surf_bq", 1, 1): [(steam(5), A - 4100, 20.0)]})
+    old = time.time() - 86400
+    for f in os.listdir(boards):
+        os.utime(os.path.join(boards, f), (old, old))
+
+    def replay(mp, leaf, k, submitted, track=0, millis=1500):
+        d = os.path.join(S.MOMENTUM_DIR, mp, S.leg_dir(track, 0))
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, leaf), "w") as fh:
+            fh.write(leaf)
+        conn = REAL_CONNECT()
+        try:
+            with conn:
+                return conn.execute(
+                    "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player, name,"
+                    " ticks, tickrate, millis, flags, node, submitted, bytes, kind, bound, runid)"
+                    " VALUES (?,?,?,0,?,'momentum','clean','76561197960000009','x',100,66.67,?,0,"
+                    "'import',?,?,'momentum',1,?)",
+                    (mp, mp, track, leaf, millis, submitted, len(leaf), "mom-" + h[k][:24])).lastrowid
+        finally:
+            conn.close()
+    rid = {k: replay("surf_bz", LEAF % (i, "x"), k, s) for i, (k, s) in enumerate(
+        (("old", A - 60), ("beta", A + 99), ("late", A + 99), ("new", A + 99), ("rerun", A + 150)))}
+    rid["served"] = replay("surf_bz", LEAF % (0, "s"), "served", A + 100, millis=25000)
+    rid["eq"] = replay("surf_bz", LEAF % (0, "e"), "eq", A + 350, millis=30000)
+    rid["gap"] = replay("surf_bz", LEAF % (0, "g"), "gap", A - 50, millis=22000)   # where no read reached
+    rid["bon"] = replay("surf_bz", LEAF % (0, "b"), "bon", A + 99, track=1)
+    rid["ba"] = replay("surf_ba", LEAF % (0, "y"), "ba", A - 3600)
+    rid["k1"] = replay("surf_bk", LEAF % (0, "z"), "k1", A - 900)
+
+    def runrow(mp, sid, submitted, replay_id=0, track=0, leg=0, millis=1000, demo=""):
+        sql("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis,"
+            " flags, node, runid, submitted, replay_id, momdemo) VALUES (?,?,?,?,'clean',?,'x',1,66.67,?,"
+            "0,'mom','',?,?,?)", (mp, track, leg, S.TIER_MOMENTUM, sid, millis, submitted, replay_id, demo))
+    runrow("surf_bz", steam(1), A - 1, millis=11000)
+    runrow("surf_bz", steam(2), A, rid["beta"])     # approved, linked to a Beta demo
+    runrow("surf_bz", steam(8), A - 400, millis=9000, demo=h["rerun"])    # only in `runs` (review 4)
+    runrow("surf_bz", steam(10), A - 700, millis=9500, demo=h["dbfast"])  # dropped mid-test (review 5)
+    runrow("surf_bz", steam(12), A - 800, millis=30000, demo=h["eq"])     # momboards' equal-time backfill
+    runrow("surf_bz", steam(13), A - 900, millis=22000)                   # where no read reached
+    runrow("surf_bz", steam(14), A - 1500, millis=19000, demo=h["skew"])  # its row covered, its ms not
+    runrow("surf_bz", steam(17), A - 1700, millis=14500, demo=h["redate"])  # served again
+    runrow("surf_bz", steam(18), A - 1800, millis=15500, demo=h["live"])    # served again, no file row
+    runrow("surf_bz", steam(9), A - 300, leg=2, millis=20000)             # a stage whose board is empty
+    runrow("surf_bz", steam(15), A - 350, leg=3, millis=21000)            # a stage no file holds
+    runrow("surf_bz", steam(6), A - 500, track=1)   # the bonus that kept its runs
+    runrow("surf_bq", steam(5), A - 4100, leg=1, millis=20000)
+    runrow("surf_ba", steam(3), A - 3600)
+    runrow("surf_bk", steam(4), A - 900, rid["k1"])
+
+    def held():
+        conn = REAL_CONNECT()
+        try:
+            return (sorted(r[0] for r in conn.execute("SELECT id FROM replays WHERE kind='momentum'")),
+                    sorted(tuple(r) for r in conn.execute(
+                        "SELECT map, track, leg, player, replay_id FROM runs WHERE tier=?", (S.TIER_MOMENTUM,))))
+        finally:
+            conn.close()
+
+    def probes(mid):
+        return [u for u in w.asked if u.startswith("%s/maps/%d/leaderboard?" % (W.MOM_API, mid))]
+
+    def marks():        # a dry run writes no state.json
+        if not os.path.exists(os.path.join(state, "state.json")):
+            return {}
+        return {k: v[1] for k, v in state_of(state).get("approvals", {}).items()}
+
+    def plan():
+        p = os.path.join(state, "betaplan.json")
+        return json.load(io.open(p, encoding="utf-8")) if os.path.exists(p) else {}
+
+    def go():
+        w.asked = []
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            tick(maps, state, "--go", *run)
+        return out.getvalue()
+
+    def shift(name, i, by):
+        st = state_of(state)
+        st["approvals"][name][i] -= by
+        with io.open(os.path.join(state, "state.json"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(st))
+
+    def owe(name, approved, made=None, tries=0, khash="k1"):
+        st = state_of(state)
+        st["approvals"][name] = [approved, "owed", 0, int(time.time())]
+        with io.open(os.path.join(state, "state.json"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(st))
+        p = {"approved": approved, "tracks": [[0, 0, None, None]], "filed": [[0, 0]],
+             "hashes": [h[khash][:24]], "tries": tries}
+        if made is not None:
+            p["made"] = made
+        with io.open(os.path.join(state, "betaplan.json"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({name: p}))
+    before, mt = held(), {f: os.path.getmtime(os.path.join(boards, f)) for f in os.listdir(boards)}
+    stamp = lambda t: time.strftime("%Y-%m-%d %H:%MZ", time.gmtime(t))
+    hashes = sorted(h[k][:24] for k in ("beta", "beta2", "beta3", "skew", "rerun", "dbfast"))
+    rec_path = os.path.join(retired, "surf_bz", "purge-%d.json" % A)
+
+    w.asked = []
+    tick(maps, state, *run)
+    check("a dry run asks no board of Momentum and moves nothing",
+          (probes(24), probes(26), held(), sorted(os.listdir(boards)), marks()),
+          ([], [], before, sorted(mt), {}))
+
+    w.lbcode["surf_bz"] = 429
+    out = go()
+    check("--go: a refused probe drops nothing, ends the API for the run, and leaves the maps due",
+          ("api refused (HTTP 429)" in out, probes(26), held(), marks()),
+          (True, [], before, {"surf_ba": "clean"}))
+    out = go()
+    del w.lbcode["surf_bz"]
+    check("...and the map refused is asked last next run, so the others are not held up (review 7)",
+          ("api refused (HTTP 429)" in out, "surf_bk: approved %s, holds from before: 1 board file(s), "
+           "1 run(s), 1 recording(s); Momentum keeps them" % stamp(A - 100) in out, marks()),
+          (True, True, {"surf_ba": "clean", "surf_bk": "kept", "surf_bu": "unknown", "surf_bq": "suspect"}))
+
+    w.live[("surf_bq", 1, 1)] = [(steam(51), A + 20, 21.0)]     # bq's stage now reads wiped
+    bq_first = hashlib.sha1(repr((steam(50), 9.0)).encode()).hexdigest()[:24]
+    w.live[("surf_bq", 0, 1)] = [(steam(52), A + 10, 9.1)]      # and its main shows another row
+    out = go()
+    check("...the first 'wiped' answer only makes the map a suspect; the others are said too",
+          ("surf_bz: approved %s, holds from before: 2 board file(s), 11 run(s), 6 recording(s); "
+           "Momentum seems to have dropped them: asked again next run" % stamp(A) in out,
+           "surf_bu: approved %s, holds from before: 1 board file(s), 0 run(s), 0 recording(s); "
+           "whether Momentum dropped them cannot be told: kept" % stamp(A - 200) in out,
+           "surf_ba:" in out, held(), sorted(os.listdir(boards)), marks()),
+          (True, True, False, before, sorted(mt),
+           {"surf_ba": "clean", "surf_bk": "kept", "surf_bu": "unknown", "surf_bq": "suspect", "surf_bz": "suspect"}))
+    first = dict(plan().get("surf_bz") or {})
+    check("...that first read judges every other Beta track too -- an empty board keeps it (review 7) "
+          "-- with the replay hashes it showed (review 6, 7)",
+          (first.get("first"), {h["redate"][:24], h["live"][:24]} <= set(first.get("served", []))),
+          ([[0, 0, 16.5, 30.0], [0, 3, None, None]], True))
+    check("...a suspect whose second read judges a track its first kept stays a suspect, that read its "
+          "new first (review 7), keeping what the earlier read showed served (review 8)",
+          (marks()["surf_bq"], plan()["surf_bq"]["first"], bq_first in plan()["surf_bq"]["served"]),
+          ("suspect", [[0, 0, None, None], [0, 1, None, None]], True))
+    bz_main.remove(filler)
+
+    try:
+        import fcntl
+    except ImportError:
+        fcntl = None
+    L = 1 if fcntl is not None else 0
+    if fcntl is not None:
+        keep, W.MOM_WAIT = W.MOM_WAIT, 0
+        real_turn, seen = W.mom_turn, []
+
+        def spy():
+            p = dict(plan().get("surf_bz") or {})
+            p.pop("made", None)
+            served_ok = {h["redate"][:24], h["live"][:24]} <= set(p.pop("served", []))
+            seen.append((state_of(state)["approvals"]["surf_bz"][1], p, served_ok))
+            return real_turn()
+        W.mom_turn = spy
+        fh = open(W.MOM_LOCK, "a")
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            out = go()
+        finally:
+            fh.close()
+            W.MOM_WAIT, W.mom_turn = keep, real_turn
+        check("...the second 'wiped' makes it owed: the tracks both reads judged wiped, with what both "
+              "covered (review 6), those with a file, the covered Beta hashes -- `runs`' included, "
+              "none after the approval, none a read showed served (review 7) -- on disk before the "
+              "lock is asked for (reviews 1-7)",
+              ("Momentum dropped them (asked twice); 2 track(s) that kept theirs left alone" in out, seen),
+              (True, [("owed", {"approved": A, "tracks": [[0, 0, 16.5, 30.0], [0, 3, None, None]],
+                                "filed": [[0, 0]], "hashes": hashes}, True)]))
+        check("...while momwatch holds its lock nothing is dropped; an unknown map is asked again",
+              ("left for the next run (momwatch is on its boards" in out, held(),
+               sorted(os.listdir(boards)), probes(27) != [], marks()["surf_bq"]),
+              (True, before, sorted(mt), True, "owed"))
+        board("24_g1_t01.json", main + [("since", A - 100, 7, 14.0)])     # served after the plan
+        runrow("surf_bz", steam(7), A - 100, millis=14000, demo=h["since"])
+        rid["since"] = replay("surf_bz", LEAF % (6, "x"), "since", A - 90)
+        runrow("surf_bz", steam(11), A - 200, millis=9800, demo=h["prof"])    # filed after the plan
+        rid["prof"] = replay("surf_bz", LEAF % (0, "p"), "prof", A + 300, millis=9800)
+        keep = W.MOM_LOCK
+        W.MOM_LOCK = os.path.join(HOME, "no-such-dir", "momwatch.lock")
+        try:
+            out = go()
+        finally:
+            W.MOM_LOCK = keep
+        check("...an owed purge is not asked again, and waits for a lock that cannot be opened",
+              ("momwatch's lock cannot be opened" in out, probes(24), marks()["surf_bz"]),
+              (True, [], "owed"))
+    else:
+        SKIPPED.append("P1253 purge beside momwatch's lock, and rows served after its plan (no flock)")
+
+    os.makedirs(os.path.dirname(rec_path), exist_ok=True)
+    with io.open(rec_path, "w", encoding="utf-8") as fh:     # an earlier try left this unfinished
+        fh.write(json.dumps({"approved": A, "purges": [{"at": 1, "done": False, "boards": {},
+                                                         "runs": [{"rowid_": 999999}], "replays": []}]}))
+    real_move, moved = W.shutil.move, []
+
+    def watch_move(src, dst):
+        if os.path.exists(rec_path):
+            rec = json.load(io.open(rec_path, encoding="utf-8"))
+            moved.append(rid["old"] in [r.get("id") for e in rec["purges"] for r in e.get("replays", [])]
+                         or "surf_bz" not in src)
+        return real_move(src, dst)
+    W.shutil.move = watch_move
+    try:
+        out = go()
+    finally:
+        W.shutil.move = real_move
+    check("the purge's record is on disk before any recording is moved (review 3)",
+          (moved != [], all(moved)), (True, True))
+    check("the purge: Beta runs and recordings both reads covered on the judged tracks go -- filed "
+          "before the approval, or carrying a covered Beta hash, which decides alone (review 6) -- and "
+          "an approved run linked to a Beta demo stays, unlinked; the Beta row Momentum serves where no "
+          "read reached (review 5), one only the second read covered (review 6), one a read showed "
+          "served (review 7), a stage whose board answers empty (review 7), the bonus that kept its "
+          "runs, a recording no Beta hash dates, runs after the approval, rows served after the plan, "
+          "surf_ba (id 2448), and the maps that kept or cannot tell stay",
+          (held()[1], sorted(set(before[0]) - set(held()[0])) + ([rid["prof"]] if L and rid["prof"] not in held()[0] else []),
+           marks(), "surf_bz: dropped %d Beta run(s), %d recording(s) retired, 1 board file(s) rewritten "
+           "without their Beta rows" % (5 + L, 3 + L) in out,
+           "surf_bq: dropped 1 Beta run(s), 0 recording(s) retired, 2 board file(s) rewritten" in out),
+          (sorted([("surf_ba", 0, 0, steam(3), 0), ("surf_bk", 0, 0, steam(4), rid["k1"]),
+                   ("surf_bz", 0, 0, steam(2), 0), ("surf_bz", 1, 0, steam(6), 0),
+                   ("surf_bz", 0, 0, steam(12), 0), ("surf_bz", 0, 0, steam(13), 0),
+                   ("surf_bz", 0, 0, steam(17), 0), ("surf_bz", 0, 0, steam(18), 0),
+                   ("surf_bz", 0, 2, steam(9), 0)]
+                  + ([("surf_bz", 0, 0, steam(7), 0)] if L else [])),
+           sorted([rid["old"], rid["beta"], rid["rerun"]]) + ([rid["prof"]] if L else []),
+           {"surf_ba": "clean", "surf_bk": "kept", "surf_bu": "unknown", "surf_bq": "wiped", "surf_bz": "wiped"},
+           True, True))
+    check("...board files are rewritten without the plan's Beta rows, not deleted (review 2); no "
+          "board the plan did not judge is touched (review 3), nor any other map's",
+          (sorted(os.listdir(boards)), rows_of("24_g1_t01.json"), rows_of("24_g1_t21.json"),
+           rows_of("28_g1_t01.json"), rows_of("28_g1_t11.json"),
+           [os.path.getmtime(os.path.join(boards, f)) == mt[f] for f in
+            ("24_g1_t11.json", "24_g1_t21.json", "2448_g1_t01.json", "26_g1_t01.json", "27_g1_t01.json")]),
+          (sorted(mt), [h[k] for k in ("appr", "again", "served", "eq", "mid", "redate")] + ([h["since"]] if L else []),
+           [h["bon"]], [], [], [True] * 5))
+    rec = json.load(io.open(rec_path, encoding="utf-8"))
+    check("...and every row, run and replay row it dropped is recorded, one record per approvedDate, "
+          "marked done, added to the entry an earlier try left unfinished (reviews 3-6)",
+          (rec["approved"], [(p["done"], len(p["boards"]["24_g1_t01.json"]), len(p["runs"]), len(p["replays"]),
+                              999999 in [r.get("rowid_") for r in p["runs"]]) for p in rec["purges"]]),
+          (A, [(True, 4, 6 + L, 3 + L, True)]))
+    check("...and the recordings are moved out of the archive, not deleted",
+          (sorted(os.listdir(os.path.join(retired, "surf_bz", "main"))),
+           sorted(os.listdir(os.path.join(S.MOMENTUM_DIR, "surf_bz", "main")))),
+          (sorted([LEAF % (i, "x") for i in (0, 1, 4)] + ([LEAF % (0, "p")] if L else [])),
+           sorted([LEAF % (i, "x") for i in (2, 3)] + [LEAF % (0, "s"), LEAF % (0, "e"), LEAF % (0, "g")]
+                  + ([LEAF % (6, "x")] if L else []))))
+
+    dropped = state_of(state)["approvals"]["surf_bz"]
+    with open(os.path.join(retired, "surf_bz", "main", LEAF % (4, "x")), "a") as fh:
+        fh.write("x")                                   # not the file its row was filed with
+    board("24_g1_t01.json", [("beta", A - 3600), ("beta2", A - 3000), ("appr", A + 60),
+                             ("rerun", A - 400, 8, 9.0)])   # Momentum serves these again
+    runrow("surf_bz", steam(5), A - 50)
+    now = int(time.time()) + 1
+    served = replay("surf_bz", LEAF % (5, "x"), "beta2", now)     # momgrab files its demo
+    late = replay("surf_bz", LEAF % (1, "x"), "beta3", now)       # picked before the purge; the name
+    other = replay("surf_bz", LEAF % (8, "x"), "late2", now)      #   of a retired one (review 5)
+    out = go()
+    got = held()
+    check("a recheck retires only recordings filed since the purge whose hash is the plan's and on "
+          "no board row now (review 2: one Momentum serves again stays); board files and runs are "
+          "left; nothing is asked; the purge's time is kept (review 1)",
+          (late in got[0], served in got[0], other in got[0], ("surf_bz", 0, 0, steam(5), 0) in got[1],
+           rows_of("24_g1_t01.json"), probes(24),
+           "surf_bz: 1 Beta recording(s) filed since its purge retired" in out,
+           state_of(state)["approvals"]["surf_bz"]),
+          (False, True, True, True, [h["beta"], h["beta2"], h["appr"], h["rerun"]], [], True, dropped))
+    conn = REAL_CONNECT()
+    try:
+        back = conn.execute("SELECT runid FROM replays WHERE map='surf_bz' AND leaf=?",
+                            (LEAF % (1, "x"),)).fetchall()
+        rerun = conn.execute("SELECT count(*) FROM replays WHERE runid=?", ("mom-" + h["rerun"][:24],)).fetchone()[0]
+    finally:
+        conn.close()
+    check("...a recording the purge retired whose row Momentum serves again goes back and is filed "
+          "again (review 3), the one retired beside it under the same name is kept apart (review 5), "
+          "and one whose file is not the size its row was filed at stays retired (review 6)",
+          ("surf_bz: 1 retired recording(s) Momentum serves again restored" in out,
+           [tuple(r) for r in back], rerun,
+           os.path.exists(os.path.join(S.MOMENTUM_DIR, "surf_bz", "main", LEAF % (1, "x"))),
+           os.path.exists(os.path.join(retired, "surf_bz", "main", LEAF % (1, "x") + ".%d" % late))),
+          (True, [("mom-" + h["beta"][:24],)], 0, True, True))
+
+    shift("surf_bu", 2, W.UNKNOWN_RETRY - 3600)      # an hour of retries left
+    go()
+    check("an unknown map is still asked within UNKNOWN_RETRY of its first unknown answer", probes(27) != [], True)
+    shift("surf_bu", 2, 3601)
+    shift("surf_bz", 2, W.APPROVAL_RECHECK)
+    last = replay("surf_bz", LEAF % (9, "x"), "beta3", int(time.time()) + 1)
+    go()
+    check("...the window closes only with a recheck done after it (review 2): that one still "
+          "retires; then the map is final and its plan gone; an unknown map past UNKNOWN_RETRY "
+          "from its FIRST unknown answer is not asked again, however recent its last (reviews 2, 6)",
+          (last in held()[0], marks()["surf_bz"], "surf_bz" in plan(), probes(27)),
+          (False, "rechecked", False, []))
+    after = replay("surf_bz", LEAF % (9, "a"), "beta3", int(time.time()) + 1)
+    go()
+    check("...and after it nothing is rechecked", after in held()[0], True)
+    del w.mom["surf_bz"]["approved"]
+    go()
+    check("a list run without the map's approvedDate keeps its verdict (review 1)",
+          marks().get("surf_bz"), "rechecked")
+    owe("surf_bk", A - 100)
+    w.mom["surf_bk"]["approved"] = iso(A - 50)
+    go()
+    check("an owed map whose approvedDate changes is checked afresh, not purged on the old plan "
+          "(review 3)", (probes(26) != [], state_of(state)["approvals"]["surf_bk"][:2],
+                         ("surf_bk", 0, 0, steam(4), rid["k1"]) in held()[1], "surf_bk" in plan()),
+          (True, [A - 50, "kept"], True, False))
+    owe("surf_bk", A - 50, made=int(time.time()) - W.OWED_MAX - 10)
+    go()
+    check("an owed plan older than OWED_MAX is asked afresh, not purged (review 7)",
+          (probes(26) != [], marks().get("surf_bk"), ("surf_bk", 0, 0, steam(4), rid["k1"]) in held()[1]),
+          (True, "kept", True))
+    w.mom["surf_bu"]["approved"] = iso(A - 150)
+    w.lbcode["surf_bu"] = 500
+    out = go()
+    check("a probe answered 500 is unread: stored, and asked again next run (review 5)",
+          (marks().get("surf_bu"), "its board could not be read" in out), ("unread", True))
+    go()
+    check("...within UNREAD_RETRY of its first check", probes(27) != [], True)
+    shift("surf_bu", 2, W.UNREAD_RETRY)
+    go()
+    check("...and not after it", probes(27), [])
+    shift("surf_bu", 2, -W.UNREAD_RETRY)
+    shift("surf_bu", 3, W.RETRY_CAP)
+    go()
+    check("...nor, its own window open, past RETRY_CAP from the map's first check (review 6)", probes(27), [])
+    del w.lbcode["surf_bu"]
+    owe("surf_bk", A - 50, tries=W.PURGE_TRIES - 1)
+    real_purge = W.beta_purge
+
+    def failing(*a, **kw):
+        raise OSError("a refused move")
+    W.beta_purge = failing
+    try:
+        out = go()
+    finally:
+        W.beta_purge = real_purge
+    check("a purge failing PURGE_TRIES times is given up, loudly, and its data left (review 6)",
+          ("surf_bk: GIVEN UP" in out, marks().get("surf_bk"), "surf_bk" in plan(),
+           ("surf_bk", 0, 0, steam(4), rid["k1"]) in held()[1]), (True, "abandoned", False, True))
+    go()
+    check("...and not taken up again (review 7)", probes(26), [])
+    W.SUSPECT_GAP = keep_gap
+    sql("DELETE FROM runs WHERE tier=?", (S.TIER_MOMENTUM,))
+    sql("DELETE FROM replays WHERE kind='momentum'")
+
+
+
+
+def case_p1253_purge_resume():
+    """P1253 reviews 8, 9: a purge that failed partway is finished or undone from its record --
+    nothing it moved is left out of place while its row stays, whatever the next attempt drops."""
+    A, now = 1790000000, int(time.time())
+    base = tempfile.mkdtemp(prefix="rz-", dir=HOME)
+    boards, retired, state = (os.path.join(base, d) for d in ("boards", "retired", "state"))
+    for d in (boards, retired, state):
+        os.makedirs(d)
+    mp, mapid = "surf_rz", 29
+    hh = lambda k: hashlib.sha256(("rz" + k).encode()).hexdigest()[:40]
+    live_dir = os.path.join(S.MOMENTUM_DIR, mp, S.leg_dir(0, 0))
+    gone_dir = os.path.join(retired, mp, S.leg_dir(0, 0))
+
+    def rep(i, k, submitted=A - 100, body=None):
+        leaf = LEAF % (i, "r")
+        os.makedirs(live_dir, exist_ok=True)
+        body = body or leaf
+        with open(os.path.join(live_dir, leaf), "w") as fh:
+            fh.write(body)
+        conn = REAL_CONNECT()
+        try:
+            with conn:
+                return conn.execute(
+                    "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style, player, name,"
+                    " ticks, tickrate, millis, flags, node, submitted, bytes, kind, bound, runid)"
+                    " VALUES (?,?,0,0,?,'momentum','clean','76561197960000009','x',100,66.67,1500,0,"
+                    "'import',?,?,'momentum',1,?)",
+                    (mp, mp, leaf, submitted, len(body), "mom-" + hh(k)[:24])).lastrowid
+        finally:
+            conn.close()
+
+    def where(rid, i):
+        conn = REAL_CONNECT()
+        try:
+            has = conn.execute("SELECT 1 FROM replays WHERE id=?", (rid,)).fetchone() is not None
+        finally:
+            conn.close()
+        return os.path.exists(os.path.join(live_dir, LEAF % (i, "r"))), has
+
+    class Locked(object):
+        """A connection whose deletes fail: the database busy past its timeout."""
+        def __init__(self, c):
+            self.c = c
+
+        def __enter__(self):
+            return self.c.__enter__()
+
+        def __exit__(self, *e):
+            return self.c.__exit__(*e)
+
+        def execute(self, q, *args):
+            if q.lstrip().startswith("DELETE"):
+                raise sqlite3.OperationalError("database is locked")
+            return self.c.execute(q, *args)
+
+    def purge(rids, locked=False, approved=A, runs=()):
+        conn = REAL_CONNECT()
+        try:
+            reps = [conn.execute("SELECT * FROM replays WHERE id=?", (r,)).fetchone() for r in rids]
+            lo = {"stale": [], "other": [], "reps": reps, "runrows": [
+                conn.execute("SELECT rowid AS rowid_, * FROM runs WHERE rowid=?", (r,)).fetchone() for r in runs]}
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                try:
+                    W.beta_purge(Locked(conn) if locked else conn, mp, approved, boards, lo, retired,
+                                 {"hashes": []}, now)
+                    return "done", out.getvalue()
+                except Exception as e:
+                    return str(e), out.getvalue()
+        finally:
+            conn.close()
+
+    def undo(approved=A):
+        conn = REAL_CONNECT()
+        try:
+            return W.undo_moves(conn, mp, approved, retired)
+        finally:
+            conn.close()
+    last = lambda approved=A: json.load(io.open(W.purge_record(retired, mp, approved), encoding="utf-8"))["purges"][-1]
+
+    r1, r2 = rep(1, "a"), rep(2, "b")
+    got1 = purge([r1, r2], locked=True)[0]
+    at1 = (where(r1, 1), where(r2, 2), W.purge_phase(retired, mp, A))
+    got2 = purge([r2])[0]       # r1 served again since: not this attempt's
+    check("P1253: a retry that no longer drops a recording an earlier attempt moved puts it back "
+          "before it is done (review 9)",
+          (got1, at1, got2, where(r1, 1), where(r2, 2), last()["done"], [x.get("undone") for x in last()["replays"]]),
+          ("database is locked", ((False, True), (False, True), "moved"), "done", (True, True), (False, False),
+           True, [True, None]))
+    check("...each recording marked moved when it is: retired_as is only the name it goes to (review 12)",
+          [x.get("moved") for x in last()["replays"]], [True, True])
+    ra2, rb2 = rep(23, "x2"), rep(24, "y2")
+    real_move, n_moves = W.shutil.move, []
+
+    def second_fails(a_, b_):
+        n_moves.append(1)
+        if len(n_moves) == 2:
+            raise OSError("a refused move")
+        return real_move(a_, b_)
+    W.shutil.move = second_fails
+    try:
+        purge([ra2, rb2])
+    finally:
+        W.shutil.move = real_move
+    purge([ra2, rb2])
+    check("...and marked again when a retry finds it retired by an attempt that failed later on (review 13)",
+          [x.get("moved") for x in last()["replays"]], [True, True])
+
+    r3 = rep(3, "c")
+    purge([r3], locked=True)
+    n1 = undo()
+    purge([r3], locked=True)    # owed again: the same entry, the recording moved again
+    flag = [x.get("undone") for x in last()["replays"] if x.get("id") == r3]
+    n2 = undo()
+    check("...a recording put back and moved again is put back again: a merge clears its mark (review 9)",
+          (n1, flag, n2, where(r3, 3)), ((1, 0), [None], (1, 0), (True, True)))
+    purge([r3])
+
+    r5 = rep(5, "e")
+    os.makedirs(gone_dir, exist_ok=True)
+    decoy = os.path.join(gone_dir, LEAF % (5, "r"))
+    with open(decoy, "w") as fh:
+        fh.write("another of that name")
+    real_replace = W.os.replace
+
+    def killed(a, b):
+        if b.endswith(".%d" % r5):
+            raise OSError("killed between the renames")
+        return real_replace(a, b)
+    W.os.replace = killed
+    try:
+        got1 = purge([r5])[0]
+    finally:
+        W.os.replace = real_replace
+    got2 = purge([r5])[0]
+    check("...a retry finishes the move an attempt killed between its renames, under the name it "
+          "recorded (review 9)",
+          (got1, got2, os.path.exists(decoy + ".%d" % r5), os.path.exists(decoy + ".%d.part" % r5),
+           open(decoy).read(), where(r5, 5)),
+          ("killed between the renames", "done", True, False, "another of that name", (False, False)))
+
+    r6 = rep(6, "f")
+    purge([r6], locked=True)
+    with open(os.path.join(live_dir, LEAF % (6, "r")), "w") as fh:
+        fh.write("momgrab filed another run of that name")
+    sql("UPDATE replays SET bytes=? WHERE id=?", (len("momgrab filed another run of that name"), r6))
+    got, out = purge([r6])
+    check("...a recording of another size under a name a purge began on is someone else's: left (review 9)",
+          (got, "is not the file a purge began on" in out, where(r6, 6),
+           open(os.path.join(live_dir, LEAF % (6, "r"))).read(), last()["done"]),
+          ("done", True, (True, True), "momgrab filed another run of that name", True))
+
+    import types
+    a = types.SimpleNamespace(state=state, retired=retired, boards=boards)
+
+    def approvals(t, entry, plan=None):
+        st = {"approvals": {mp: entry}}
+        with io.open(os.path.join(state, "betaplan.json"), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({mp: plan} if plan else {}))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            W.approvals(a, st, {mp: (t, mapid)}, int(time.time()), time.time() + 600, None, {}, lambda: None)
+        pl = json.load(io.open(os.path.join(state, "betaplan.json"), encoding="utf-8"))
+        return st["approvals"][mp][1], pl.get(mp), out.getvalue()
+
+    def board(rows):
+        with io.open(os.path.join(boards, "%d_g1_t01.json" % mapid), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"gamemode": 1, "trackType": 0, "trackNum": 1, "rows": [
+                {"hash": hh(k), "steamid": steam(i), "time": 10.0 + i, "created": iso(c)}
+                for i, (k, c) in enumerate(rows)]}))
+    rows_of = lambda: [r["hash"] for r in json.load(io.open(os.path.join(boards, "%d_g1_t01.json" % mapid),
+                                                            encoding="utf-8"))["rows"]]
+
+    r7 = rep(7, "g")
+    purge([r7], locked=True)
+    v, _p, out = approvals(A, [A, "owed", 0, now])
+    check("...a plan lost after its purge moved recordings: they are put back, under momwatch's "
+          "lock, the entry closed and the map asked afresh (reviews 8-10)",
+          (v, where(r7, 7), "1 recording(s) put back" in out, last()["done"], last().get("undone")),
+          ("suspect", (True, True), True, True, True))
+
+    A2 = A + 1000
+    board([("x", A2 - 50), ("y", A2 - 60), ("z", A2 + 50), ("w", A2 - 70)])
+    rp = W.purge_record(retired, mp, A2)
+    with io.open(rp, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps({"approved": A2, "purges": [{"at": 1, "done": False, "phase": "committed",
+                             "boards": {"%d_g1_t01.json" % mapid: [{"hash": hh(k), "created": iso(A2 - 50)}
+                                                                   for k in ("x", "z", "w")]},
+                             "hashes": [hh("x")[:24], hh("z")[:24]], "other": [], "runs": [], "replays": []}]}))
+
+    def run(k, submitted):
+        sql("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis,"
+            " flags, node, runid, submitted, replay_id, momdemo) VALUES (?,0,0,?,'clean',?,'x',1,66.67,1500,"
+            "0,'mom','',?,0,?)", (mp, S.TIER_MOMENTUM, steam(70 + len(k) + ord(k[0])), submitted, hh(k)))
+
+    def runs_of():
+        conn = REAL_CONNECT()
+        try:
+            got = [r[0] for r in conn.execute("SELECT momdemo FROM runs WHERE map=? AND track=0", (mp,))]
+        finally:
+            conn.close()
+        return sorted(k for k in ("x", "y", "z", "w") if hh(k) in got)
+    for k in ("x", "y", "w"):
+        run(k, A2 - 100)        # momboards read them back before the files were rewritten
+    sql("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis, flags, node,"
+        " runid, submitted, replay_id, momdemo) VALUES (?,1,0,?,'clean',?,'x',1,66.67,1500,0,'mom','',?,0,?)",
+        (mp, S.TIER_MOMENTUM, steam(90), A2 - 100, hh("x")))         # a bonus no recorded board holds
+    sql("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis, flags, node,"
+        " runid, submitted, replay_id, momdemo) VALUES (?,0,0,?,'clean',?,'x',1,66.67,1500,0,'mom',?,?,0,?)",
+        (mp, S.TIER_MOMENTUM, steam(91), "mom-" + hh("x")[:24], A2 - 100, hh("v")))   # a stale runid
+    stage = os.path.join(boards, "%d_g1_t11.json" % mapid)
+    with io.open(stage, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps({"gamemode": 1, "trackType": 1, "trackNum": 1, "rows": []}))
+    os.utime(stage, (now - 86400, now - 86400))
+    rec2 = json.load(io.open(rp, encoding="utf-8"))
+    rec2["purges"][-1]["boards"][os.path.basename(stage)] = []
+    with io.open(rp, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec2))
+    v, _p, out = approvals(A2, [A2, "owed", 0, now])
+    conn = REAL_CONNECT()
+    try:
+        spared = sorted((r[0], r[1] == hh("x"), r[2] != "") for r in conn.execute(
+            "SELECT track, momdemo, runid FROM runs WHERE map=? AND player IN (?, ?)", (mp, steam(90), steam(91))))
+    finally:
+        conn.close()
+    check("...only on its boards' tracks, a run naming another demo spared whatever its runid, and "
+          "its boards touched, so momboards reads a player's approved row back (review 11)",
+          (spared, os.path.getmtime(stage) > now - 3600), ([(0, False, True), (1, True, False)], True))
+    check("...one lost after its rows went is finished from its record: its board rows and the runs "
+          "momboards read back meanwhile dropped where still dated before the approval, none its "
+          "latest plan protected, not abandoned (reviews 9, 10)",
+          (v, rows_of(), runs_of(), last(A2)["done"], "finished from its record" in out),
+          ("rechecked", [hh("y"), hh("z"), hh("w")], ["w", "y"], True, True))
+    sql("DELETE FROM runs WHERE map=?", (mp,))
+
+    A3 = A + 2000
+    real_purge = W.beta_purge
+
+    def failing(*x, **kw):
+        raise OSError("a refused move")
+    W.beta_purge = failing
+    try:
+        v, pl, out = approvals(A3, [A3, "owed", 0, now],
+                               {"approved": A3, "tracks": [[0, 0, None, None]], "filed": [[0, 0]],
+                                "hashes": [hh("q")[:24]], "tries": 1, "made": now - W.OWED_MAX - 10})
+    finally:
+        W.beta_purge = real_purge
+    check("...an owed purge already tried is not asked afresh after OWED_MAX: its tries count on "
+          "to PURGE_TRIES (review 8)", (v, (pl or {}).get("tries")), ("owed", 2))
+
+    A4 = A + 3000
+    v, pl, out = approvals(A4, [A4, "suspect", now - 10, now - W.RETRY_CAP - 1],
+                           {"approved": A4, "first": [[0, 0, None, None]], "served": []})
+    check("...a suspect with no second read that agrees in RETRY_CAP ends, said, its plan gone (review 9)",
+          (v, pl, "not settled in" in out), ("unknown", None, True))
+
+    A5 = A + 4000
+    r8 = rep(8, "h", submitted=now - 50)
+    purge([r8], locked=True, approved=A5)
+    board([("h", A5 + 10)])     # Momentum serves it again: not this recheck's to retire
+    v, pl, out = approvals(A5, [A5, "wiped", now - 100, now],
+                           {"approved": A5, "tracks": [[0, 0, None, None]], "filed": [[0, 0]],
+                            "hashes": [hh("h")[:24]], "served": [], "made": now})
+    check("...a recheck that began a purge finishes it with nothing new to retire: what it moved is "
+          "put back (review 9)", (v, where(r8, 8), last(A5)["done"]), ("wiped", (True, True), True))
+
+    A7 = A + 6000
+    r9 = rep(9, "i")
+    real_raise = W.raise_phase
+
+    def killed_at_commit(entry, phase):
+        if phase == "committed":
+            raise OSError("killed after the commit")
+        return real_raise(entry, phase)
+    W.raise_phase = killed_at_commit
+    try:
+        got = purge([r9], approved=A7)[0]
+    finally:
+        W.raise_phase = real_raise
+    v, _p, out = approvals(A7, [A7, "owed", 0, now])
+    check("...one killed after its commit, before its record said so, is finished as committed, not "
+          "undone (review 10)", (got, v, where(r9, 9), last(A7)["done"], last(A7).get("undone")),
+          ("killed after the commit", "rechecked", (False, False), True, None))
+
+    A8 = A + 7000
+    r10 = rep(10, "j")
+    purge([r10], locked=True, approved=A8)
+    real_back = W.put_back
+
+    def age(approved, at):
+        r = json.load(io.open(W.purge_record(retired, mp, approved), encoding="utf-8"))
+        r["purges"][-1]["at"] = at
+        with io.open(W.purge_record(retired, mp, approved), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(r))
+    W.put_back = lambda *x: (0, 1)
+    try:
+        held = approvals(A8, [A8, "owed", 0, now - W.RETRY_CAP - 1])    # the map first checked long ago
+        age(A8, now - W.RETRY_CAP - 1)
+        given = approvals(A8, [A8, "owed", 0, now])
+    finally:
+        W.put_back = real_back
+    check("...a lost plan whose recordings cannot go back is asked again next run, and given up, "
+          "loudly, RETRY_CAP after its purge began (reviews 10, 11)",
+          (held[0], "tried again next run" in held[2], given[0], "GIVEN UP" in given[2]),
+          ("owed", True, "abandoned", True))
+
+    r11 = rep(11, "k")
+    purge([r11], locked=True)
+    with open(os.path.join(live_dir, LEAF % (11, "r")), "w") as fh:
+        fh.write("Y" * len(LEAF % (11, "r")))      # momgrab: another run, of that name and size
+    got, out = purge([r11])
+    check("...a retry never moves a file over the copy an earlier attempt retired (review 10)",
+          (got, "not the file a purge began on" in out, open(os.path.join(gone_dir, LEAF % (11, "r"))).read(),
+           where(r11, 11)),
+          ("done", True, LEAF % (11, "r"), (True, True)))
+
+    def killed(rids, approved, locked=False):
+        W.raise_phase = killed_at_commit
+        try:
+            return purge(rids, locked=locked, approved=approved)[0]
+        finally:
+            W.raise_phase = real_raise
+
+    A9 = A + 8000
+    ra, rb = rep(12, "l"), rep(13, "m")
+    purge([ra, rb], locked=True, approved=A9)
+    with open(os.path.join(live_dir, LEAF % (12, "r")), "w") as fh:
+        fh.write("momgrab filed another run")
+    sql("UPDATE replays SET bytes=? WHERE id=?", (len("momgrab filed another run"), ra))
+    got = killed([ra, rb], A9)
+    v, _p, out = approvals(A9, [A9, "owed", 0, now])
+    rows = {r.get("id"): r for r in last(A9)["replays"]}
+    check("...one killed after a commit that left a row it recorded is finished, not closed as undone: "
+          "the commit's own rows decide (review 11)",
+          (got, v, last(A9)["done"], last(A9).get("undone"), last(A9).get("phase"), where(rb, 13),
+           os.path.exists(os.path.join(gone_dir, LEAF % (13, "r"))), where(ra, 12), rows[ra].get("left")),
+          ("killed after the commit", "rechecked", True, None, "committed", (False, False), True, (True, True),
+           True))
+
+    A10 = A + 9000
+    rc, rd = rep(14, "n"), rep(15, "o")
+    got = killed([rc], A10)
+    purge([rd], locked=True, approved=A10)      # a later attempt, its commit refused
+    v, _p, out = approvals(A10, [A10, "owed", 0, now])
+    check("...so does an earlier attempt's commit under a later one that failed (review 11)",
+          (got, v, where(rc, 14), where(rd, 15), last(A10)["done"]),
+          ("killed after the commit", "rechecked", (False, False), (True, True), True))
+
+    A11 = A + 10000
+    re_ = rep(16, "p")
+    killed([re_], A11)
+    plan11 = {"approved": A11, "tracks": [[0, 0, None, None]], "filed": [[0, 0]], "hashes": [hh("p")[:24]],
+              "tries": W.PURGE_TRIES - 1, "made": now}
+    W.beta_purge = failing
+    try:
+        v1, _p, out1 = approvals(A11, [A11, "owed", 0, now], dict(plan11))
+        age(A11, now - W.RETRY_CAP - 1)
+        v2, _p, out2 = approvals(A11, [A11, "owed", 0, now], dict(plan11))
+    finally:
+        W.beta_purge = real_purge
+    check("...a purge whose commit ran is not given up at PURGE_TRIES as if nothing went, but RETRY_CAP "
+          "after it began (review 11)",
+          (v1, "its rows are dropped; it is finished next run" in out1, v2, "its rows are dropped and it is not finished" in out2),
+          ("owed", True, "abandoned", True))
+
+    A12 = A + 11000
+    rf = rep(17, "q")
+    purge([rf], locked=True, approved=A12)
+    with open(os.path.join(gone_dir, LEAF % (17, "r")), "a") as fh:
+        fh.write("more")
+    v, _p, out = approvals(A12, [A12, "owed", 0, now])
+    check("...a retired copy not of its recorded size is out of place: the entry stays open (review 11)",
+          (v, "not settled" in out, last(A12)["done"]), ("owed", True, False))
+
+    A13 = A + 12000
+    sql("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis, flags, node,"
+        " runid, submitted, replay_id, momdemo) VALUES (?,0,0,?,'clean',?,'x',1,66.67,1500,0,'mom','',?,0,?)",
+        (mp, S.TIER_MOMENTUM, steam(80), A13 - 100, hh("r")))
+    conn = REAL_CONNECT()
+    try:
+        rid13 = conn.execute("SELECT rowid FROM runs WHERE map=? AND player=?", (mp, steam(80))).fetchone()[0]
+    finally:
+        conn.close()
+    got = purge([], locked=True, approved=A13, runs=[rid13])[0]
+    sql("UPDATE runs SET millis=1400, submitted=? WHERE rowid=?", (A13 + 50, rid13))   # momboards: improved
+    v, _p, out = approvals(A13, [A13, "owed", 0, now])
+    check("...a run its player improved since is no commit -- momboards keeps its rowid and key, "
+          "changes its time: the purge is undone and asked afresh (review 12)",
+          (got, v, last(A13)["done"], last(A13).get("undone")), ("database is locked", "suspect", True, True))
+
+    A14 = A + 13000
+    rg, rh = rep(18, "s"), rep(19, "t")
+    killed([rg], A14)
+    purge([rh], locked=True, approved=A14)      # a later attempt moves another, its commit refused
+    age(A14, now - W.RETRY_CAP - 1)
+    W.beta_purge = failing
+    try:
+        v, _p, out = approvals(A14, [A14, "owed", 0, now],
+                               {"approved": A14, "tracks": [[0, 0, None, None]], "filed": [[0, 0]],
+                                "hashes": [hh("s")[:24]], "tries": 0, "made": now})
+    finally:
+        W.beta_purge = real_purge
+    check("...given up RETRY_CAP after its commit, what a later attempt moved goes back (review 12)",
+          (v, where(rh, 19), where(rg, 18)), ("abandoned", (True, True), (False, False)))
+
+    A15 = A + 14000
+    rk, rl = rep(20, "u"), rep(21, "v")
+    killed([rk], A15)
+    purge([rl], locked=True, approved=A15)
+    age(A15, now - W.RETRY_CAP - 1)
+    real_ffr = W.finish_from_record
+
+    def refused(*x):
+        raise OSError("a refused rewrite")
+    W.finish_from_record = refused
+    try:
+        v, _p, out = approvals(A15, [A15, "owed", 0, now])
+    finally:
+        W.finish_from_record = real_ffr
+    check("...a lost plan given up puts back what no commit dropped (review 12)",
+          (v, "GIVEN UP" in out, where(rl, 21), where(rk, 20)), ("abandoned", True, (True, True), (False, False)))
+
+    A16 = A + 15000
+    rm_ = rep(22, "w")
+    purge([rm_], locked=True, approved=A16)
+    age(A16, now - W.RETRY_CAP - 1)
+    W.put_back = lambda *x: (0, 1)
+    try:
+        v1 = approvals(A16, [A16, "owed", 0, now])[0]
+    finally:
+        W.put_back = real_back
+    rpk = W.purge_record(retired, mp, A16)
+    r16 = json.load(io.open(rpk, encoding="utf-8"))
+    r16["purges"][-1]["at"] = now - W.RETRY_CAP - 1
+    with io.open(rpk, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(r16))
+    real_undo = W.undo_moves
+    calls = []
+
+    def undo_then(*x):
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("a refused move")
+        return real_undo(*x)
+    W.undo_moves = undo_then
+    try:
+        v2, _p, out = approvals(A16, [A16, "owed", 0, now])
+    finally:
+        W.undo_moves = real_undo
+    check("...and closes its entry when everything went back (review 13)",
+          (v1, v2, where(rm_, 22), last(A16)["done"], last(A16).get("undone")),
+          ("abandoned", "abandoned", (True, True), True, True))
+
+    A17 = A + 16000
+    rn = rep(25, "z2")
+    purge([rn], locked=True, approved=A17)
+    with open(os.path.join(live_dir, LEAF % (25, "r")), "w") as fh:
+        fh.write("momgrab filed another run")
+    v, _p, out = approvals(A17, [A17, "owed", 0, now])
+    check("...a lost plan's entry closed with a recording whose name another file took says so (review 14)",
+          (v, last(A17)["done"], [r.get("left") for r in last(A17)["replays"]]), ("suspect", True, [True]))
+
+    r26 = rep(26, "a3")
+    leaf26 = LEAF % (26, "r")
+
+    def killed_at_rename(a_, b_):
+        if b_ == os.path.join(gone_dir, leaf26):
+            raise OSError("killed between the renames")
+        return real_replace(a_, b_)
+    W.os.replace = killed_at_rename
+    try:
+        got1 = purge([r26])[0]
+    finally:
+        W.os.replace = real_replace
+    with open(os.path.join(live_dir, leaf26), "w") as fh:
+        fh.write("R" * len(leaf26))             # momgrab: another run of that name and size
+    got2, out = purge([r26])
+    check("...a retry never moves a file over a retired .part a killed attempt left (review 15)",
+          (got1, got2, "not the file a purge began on" in out, open(os.path.join(gone_dir, leaf26) + ".part").read(),
+           open(os.path.join(live_dir, leaf26)).read(), where(r26, 26)),
+          ("killed between the renames", "done", True, leaf26, "R" * len(leaf26), (True, True)))
+
+    A18 = A + 17000
+    r27 = rep(27, "b3")
+    purge([r27], locked=True, approved=A18)
+    shutil.copy(os.path.join(gone_dir, LEAF % (27, "r")), os.path.join(live_dir, LEAF % (27, "r")))
+    v, _p, out = approvals(A18, [A18, "owed", 0, now])
+    row27 = last(A18)["replays"][0]
+    check("...a live copy byte for byte the retired one is the recording back, not another file (review 15)",
+          (v, row27.get("undone"), row27.get("left")), ("suspect", True, None))
+
+    A19 = A + 18000
+    rx, ry = rep(28, "c3"), rep(29, "d3")
+    purge([rx], locked=True, approved=A19)
+    real_move2 = W.shutil.move
+
+    def y_fails(a_, b_):
+        if LEAF % (29, "r") in a_:
+            raise OSError("a refused move")
+        return real_move2(a_, b_)
+    W.shutil.move = y_fails
+    try:
+        purge([ry, rx], approved=A19)
+    finally:
+        W.shutil.move = real_move2
+    check("...a retry that fails before reaching a retired recording still records it moved (review 15)",
+          [r.get("moved") for r in last(A19)["replays"] if r.get("id") == rx], [True])
+
+    A6 = A + 5000
+    board([("p", A6 + 5)])      # a plan hash Momentum now dates after the approval
+    sql("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis,"
+        " flags, node, runid, submitted, replay_id, momdemo) VALUES (?,0,0,?,'clean',?,'x',1,66.67,1500,"
+        "0,'mom','',?,0,?)", (mp, S.TIER_MOMENTUM, steam(60), A6 - 100, hh("p")))
+    conn = REAL_CONNECT()
+    try:
+        lo = W.beta_leftovers(conn, mp, mapid, A6, boards, W.board_files(boards), now,
+                              {"approved": A6, "tracks": [[0, 0, None, None]], "filed": [[0, 0]],
+                               "hashes": [hh("p")[:24]], "served": []})
+    finally:
+        conn.close()
+    check("...a run whose plan hash a board now dates after the approval stays (review 5)", lo["runrows"], [])
+    sql("DELETE FROM runs WHERE map=?", (mp,))
+    sql("DELETE FROM replays WHERE map=?", (mp,))
 
 
 def case_p1117r1_tracks_guards():
@@ -2593,6 +4002,8 @@ def main():
                  case_bad_names_and_shapes, case_hosts,
                  case_held_builds, case_first_zones, case_variants, case_zones_and_limits,
                  case_extra_and_lock, case_beta_zones, case_mapscan, case_p1117_momtracks,
+                 case_p1253_beta_boards, case_p1253_wipe_verdict, case_p1253_approvals,
+                 case_p1253_purge_resume,
                  case_p1117r1_tracks_guards):
         print("\n%s:" % case.__name__)
         case()

@@ -117,8 +117,11 @@ all (a block page) is the host's: no strike, and the file goes to the back of
 the next run.  A transfer cut short is nobody's strike either.
 """
 import argparse
+import calendar
 import contextlib
 import faulthandler
+import filecmp
+import glob
 import hashlib
 import http.client
 import io
@@ -129,6 +132,7 @@ import os
 import re
 import shutil
 import signal
+import sqlite3
 import struct
 import sys
 import time
@@ -170,6 +174,21 @@ TIMEOUT = 60
 WATCH_MAX = 40          # downloads a run
 WATCH_GB = 6.0          # ...and bytes
 ZONES_MAX = 40          # zone requests a run
+BETA_BOARDS_MAX = 40    # P1253: Beta maps' board lists asked a run (139 of 306 held had none, 3 Nov)
+BETA_BOARDS_DAYS = 7    # ...and how often each is asked again
+MOM_LOCK = "/tmp/surfd-momwatch.lock"   # what momwatch's cron line holds for a tick
+MOM_WAIT = 300          # s to wait for it before leaving a Beta purge to the next run
+APPROVAL_CHECKS = 200   # P1253: approved maps checked for Beta leftovers a run, newest first
+APPROVAL_RECHECK = 86400    # ...and a wiped one's late recordings this long: momgrab may
+                            # file a demo it picked before the purge
+WIPE_WITNESSES = 3      # players gone from a probe board that make a wipe (wipe_verdict)
+PROBE_PAGES = 10        # ...pages of it read at most, then its last (review 6: 3 left big boards' middles)
+SUSPECT_GAP = 3600      # s between the two "wiped" answers a purge needs (review 1)
+UNKNOWN_RETRY = 7 * 86400   # an "unknown" is asked again this long from its first answer
+UNREAD_RETRY = 30 * 86400  # ...an unreadable or empty board this long (review 5)
+RETRY_CAP = 60 * 86400  # ...and neither past this from the map's first check (review 6)
+PURGE_TRIES = 8         # a purge or recheck failing this often is given up, loudly
+OWED_MAX = 86400        # an owed purge older than this is confirmed afresh (review 7)
 MAX_MAP_BYTES = 1 << 30     # the largest BSP known is 335 MB
 MAX_API_BYTES = 6 << 20     # a list page is 1.4 MB, ksf.surf/maps 0.8 MB; parsed, a
                             # megabyte of empty rows is tens of megabytes of objects
@@ -340,6 +359,37 @@ def ksf_turn():
             fh.close()
 
 
+@contextlib.contextmanager
+def mom_turn():
+    """momwatch's cron lock (its `flock -n` skips a tick that starts meanwhile), waited
+    for MOM_WAIT, for beta_purge. Without fcntl (Windows) there is no momwatch to wait
+    for; a lock file that cannot be opened refuses (P1253 review: was no lock at all)."""
+    try:
+        import fcntl
+    except ImportError:
+        fcntl = None
+    fh = None
+    if fcntl is not None:
+        try:
+            fh = open(MOM_LOCK, "a")
+        except OSError as e:
+            raise Refused("momwatch's lock cannot be opened (%s)" % e)
+    try:
+        t0 = time.time()
+        while fh is not None:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.time() - t0 >= MOM_WAIT:
+                    raise Refused("momwatch is on its boards: not purged beside it")
+                time.sleep(2)
+        yield
+    finally:
+        if fh is not None:
+            fh.close()
+
+
 def ksf_parked(now):
     """-> why KSF must not be asked now, or "".  The crawl's own rule is that a
     refusal is not retried until its park ends; a second tool asking the same
@@ -482,10 +532,16 @@ def mom_row(m):
         return None
     zh = str(cv.get("zoneHash") or "").lower()
     mode = "surf" if name.lower().startswith("surf_") else "bhop"
-    gm = 1 if mode == "surf" else 2
+    tier, ranked, boards = leaderboard_boards(m.get("leaderboards"), 1 if mode == "surf" else 2)
+    return {"name": name, "id": m["id"], "sha": sha, "url": url, "mode": mode,
+            "zh": zh if HEX40.fullmatch(zh) else None, "tier": tier, "ranked": ranked,
+            "src": "mom", "boards": boards}
+
+
+def leaderboard_boards(lbs, gm):
+    """-> (tier, ranked, sorted Normal-style boards) from a map's `leaderboards`."""
     tier, ranked = None, None
     boards = set()
-    lbs = m.get("leaderboards")
     for lb in lbs if isinstance(lbs, list) else []:
         if not isinstance(lb, dict):
             continue
@@ -496,9 +552,1181 @@ def mom_row(m):
         b = (lb.get("gamemode"), lb.get("trackType"), lb.get("trackNum"))
         if lb.get("style") == 0 and all(type(x) is int and 0 <= x < 1000 for x in b):
             boards.add(b)
-    return {"name": name, "id": m["id"], "sha": sha, "url": url, "mode": mode,
-            "zh": zh if HEX40.fullmatch(zh) else None, "tier": tier, "ranked": ranked,
-            "src": "mom", "boards": sorted(boards)}
+    return tier, ranked, sorted(boards)
+
+
+def _next(asked, k):
+    v = asked.get(k)
+    return v["next"] if isinstance(v, dict) and type(v.get("next")) is int else 0
+
+
+def beta_boards(pacer, extra, inv, asked, tracks_path, now, deadline):
+    """P1253 (Lex, 3 Nov: collect them): -> ({key: row with boards}, why the API ended
+    or "") for held Beta maps, each from its own /v1/maps/<id>?expand=leaderboards (the
+    public list carries only approved maps). A map with no momtracks.tsv line goes
+    first, then the one due longest; BETA_BOARDS_MAX a run. `asked` (state) gets
+    {"next": when it is due again, "id": its map id}: BETA_BOARDS_DAYS after an answer
+    or a refusal of that map (401/403/404), a day after any other refusal -- which ends
+    the API for the run, keeping what was answered before it."""
+    try:
+        with io.open(tracks_path, encoding="utf-8") as fh:
+            have = {ln.split("\t", 1)[0].lower() for ln in fh if not ln.startswith("#")}
+    except OSError:
+        have = set()
+    due = [k for k, r in extra.items() if k in inv and type(r.get("id")) is int
+           and _next(asked, k) <= now]
+    due.sort(key=lambda k: (k in have, _next(asked, k), k))
+    out = {}
+    for k in due[:BETA_BOARDS_MAX]:
+        if time.time() > deadline:
+            break
+        r = extra[k]
+        try:
+            m = pacer.json("%s/maps/%d?expand=leaderboards" % (MOM_API, r["id"]))
+        except Refused as e:
+            own = e.code in (401, 403, 404)
+            asked[k] = {"next": now + (BETA_BOARDS_DAYS if own else 1) * 86400, "id": r["id"]}
+            if not own:
+                return out, str(e)
+            print("  %s: Beta boards refused (%s): asked again in %d days" % (k, e, BETA_BOARDS_DAYS))
+            continue
+        asked[k] = {"next": now + BETA_BOARDS_DAYS * 86400, "id": r["id"]}
+        if (not isinstance(m, dict) or m.get("id") != r["id"]
+                or str(m.get("name") or "").lower() != k):
+            print("  %s: Beta boards: the reply is not this map's" % k)
+            continue
+        tier, _, boards = leaderboard_boards(m.get("leaderboards"), 1 if k.startswith("surf_") else 2)
+        if boards:
+            out[k] = {"name": r["name"], "id": r["id"], "tier": tier, "boards": boards}
+    return out, ""
+
+
+ISO_Z = re.compile(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d{1,9})?Z")
+HASH24 = re.compile(r"[0-9a-f]{24}")
+STEAM_BASE = 76561197960265728  # an individual account's SteamID64 is this + its 32-bit id
+SLACK = 0.001                   # s: a time rounded to the ms is the same run
+
+
+def iso_epoch(v, now):
+    """Momentum's UTC time ("2026-10-24T11:22:09.142Z") -> whole seconds, or None (another
+    form, or past now + a day)."""
+    m = ISO_Z.fullmatch(v) if isinstance(v, str) else None
+    if not m:
+        return None
+    try:
+        t = calendar.timegm(time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S"))
+    except ValueError:
+        return None
+    return t if 0 < t <= now + 86400 else None
+
+
+def steam64(v):
+    """momfetch's steam64 test, a JSON number allowed: -> the id as text, or ""."""
+    v = str(v) if type(v) in (str, int) else ""
+    ok = len(v) == 17 and v.isascii() and v.isdigit() and STEAM_BASE < int(v) < STEAM_BASE + 2 ** 32
+    return v if ok else ""
+
+
+def hash24(v):
+    """A demo hash's first 24 hex digits -- what a replay's runid ("mom-" + them) keeps -- or ""."""
+    v = str(v or "").lower()[:24]
+    return v if HASH24.fullmatch(v) else ""
+
+
+def runid_hash(runid):
+    runid = str(runid or "")
+    return hash24(runid[4:]) if runid.startswith("mom-") else ""
+
+
+def track_leg(tt, tn):
+    """momboards' (trackType, trackNum) -> (track, leg)."""
+    return (0, 0) if tt == 0 else (0, tn) if tt == 1 else (tn, 0)
+
+
+def track_board(own, track, leg):
+    """(track, leg) -> the board (gamemode, trackType, trackNum) momfetch keeps for it."""
+    return (own, 0, 1) if (track, leg) == (0, 0) else (own, 1, leg) if track == 0 else (own, 2, track)
+
+
+def covered(t, cover):
+    """Whether a time is one the live read could see (cover = (cut, last page's first time);
+    None for no bound): under the cut, or past the last page's first time (review 5: nothing
+    in between is judged) -- SLACK clear of either edge (review 6: a tie can straddle a page's
+    start, and a `runs` time is the ms where the API's is a float)."""
+    cut, tail = cover
+    return (cut is None or t < cut - SLACK) or (tail is not None and t > tail + SLACK)
+
+
+def board_files(boards_dir):
+    """map id -> momfetch's board files for it (<id>_g<gm>_t<tt><tn>.json)."""
+    out = {}
+    try:
+        names = os.listdir(boards_dir)
+    except FileNotFoundError:
+        return out
+    for f in names:
+        head = f.split("_", 1)[0]
+        if f.endswith(".json") and head.isdigit():
+            out.setdefault(int(head), []).append(f)
+    return out
+
+
+def board_doc(path):
+    try:
+        with io.open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    return doc if isinstance(doc, dict) and isinstance(doc.get("rows"), list) else None
+
+
+def beta_leftovers(conn, name, mapid, approved, boards_dir, files, now, plan=None, since=None):
+    """P1253: what map `name` holds from before its approval at `approved` (stale only where
+    wipe_verdict, then board_kept, find Momentum dropped it) -> dict:
+      tracks: (track, leg) -> {board, file or None, old: {steamid: [every Beta time]}, new:
+              [(steamid, time)] after (a fileless track's from `runs`: review 5), beta: {Beta
+              hash: its time}} -- from the board files AND `runs` (review 4: momfetch keeps a
+              player's newest row, momboards the fastest); a hash a board row carries after the
+              approval, or undated, is never a Beta hash (review 5: momboards' equal-time
+              backfill; a row it dated itself)
+      stale / other: board files with / without Beta rows (with `plan`: plan's)
+      runs: how many runs go; runrows (with `plan`): those runs
+      reps: momentum replays filed before, or carrying a Beta hash
+      probe: wipe_verdict's board, among those momfetch holds a file of (review 5: Momentum
+             lists it) -- the main track where WIPE_WITNESSES players have Beta times, else
+             the one with most -- as (board..., old, new, beta), or None
+      held: every hash a board row carries now; missing: plan tracks whose file is gone
+    With `plan` only its tracks count, only times its read covered (review 5), and its
+    hashes date; a Beta row a board carries that the plan does not was served since: its run
+    and replay stay (review 3). With `since` (a recheck) only replays filed since count,
+    whose hash is plan's and on no board row now."""
+    own = 1 if name.startswith("surf_") else 2
+    lo = {"tracks": {}, "stale": [], "other": [], "runs": 0, "runrows": [], "reps": [],
+          "reptracks": set(), "probe": None, "held": set(), "missing": []}
+    T = lo["tracks"]
+    cover = {(x[0], x[1]): (x[2], x[3]) for x in plan["tracks"]} if plan else None
+    phash, pre, post, undated = set(plan["hashes"]) if plan else set(), set(), set(), set()
+
+    def track(tl):
+        return T.setdefault(tl, {"board": track_board(own, *tl), "file": None, "old": {},
+                                 "new": [], "beta": {}})
+    for f in sorted(files.get(mapid, [])):
+        doc = board_doc(os.path.join(boards_dir, f))
+        b = tuple(doc.get(x) for x in ("gamemode", "trackType", "trackNum")) if doc else ()
+        if not b or not all(type(x) is int for x in b):
+            continue
+        tr = {"board": b, "file": f, "old": {}, "new": [], "beta": {}}
+        for r in doc["rows"]:
+            if not isinstance(r, dict):
+                continue
+            h = hash24(r.get("hash"))
+            if h:
+                lo["held"].add(h)
+            c, t, sid = iso_epoch(r.get("created"), now), r.get("time"), steam64(r.get("steamid"))
+            if c is None:
+                undated.add(h)
+                continue
+            if type(t) not in (int, float) or not 0 < t < 1e6:
+                continue
+            if c >= approved:
+                post.add(h)
+                tr["new"].append((sid, float(t)))
+                continue
+            if sid:
+                tr["old"].setdefault(sid, []).append(float(t))
+            if h:
+                tr["beta"][h] = float(t)
+        tl = track_leg(b[1], b[2])
+        if b[0] != own or (cover is not None and tl not in cover):
+            continue
+        T[tl] = tr
+        pre |= set(tr["beta"])
+        (lo["stale"] if (set(tr["beta"]) & phash if plan else tr["old"] or tr["beta"]) else lo["other"]).append(f)
+    post.discard("")
+    undated.discard("")
+    mp = S.clean_map(name)
+    if plan:
+        gone = {tuple(x) for x in plan["filed"]} - {tl for tl, tr in T.items() if tr["file"]}
+        lo["missing"] = sorted(gone)
+        for tl in gone:
+            cover.pop(tl, None)
+        protected = (pre - phash) | undated | post | set(plan.get("served", []))
+        ok = lambda tl, ms: tl in cover and type(ms) is int and covered(ms / 1000.0, cover[tl])
+        if since is None:
+            for row in conn.execute("SELECT rowid AS rowid_, * FROM runs WHERE tier=? AND map=?",
+                                    (S.TIER_MOMENTUM, mp)).fetchall():
+                tl, d, ri = (row["track"], row["leg"]), hash24(row["momdemo"]), runid_hash(row["runid"])
+                if tl not in cover or d in protected or ri in protected:
+                    continue
+                # a plan hash decides by itself (review 6: its row's time and its run's ms differ)
+                if (d and d in phash) or (ri and ri in phash) or (
+                        row["submitted"] < approved and ok(tl, row["millis"])):
+                    lo["runrows"].append(row)
+            lo["runs"] = len(lo["runrows"])
+        rep_h = (phash | {hash24(r["momdemo"]) for r in lo["runrows"]}) - {""} - protected
+    else:
+        protected = set()
+        ok = lambda tl, ms: True
+        for row in conn.execute("SELECT track, leg, player, millis, momdemo, submitted FROM runs"
+                                " WHERE tier=? AND map=?", (S.TIER_MOMENTUM, mp)).fetchall():
+            tl, sid, d, ms = (row["track"], row["leg"]), steam64(row["player"]), hash24(row["momdemo"]), row["millis"]
+            if type(ms) is not int or ms <= 0:
+                continue
+            if row["submitted"] >= approved:
+                if tl in T and T[tl]["file"]:
+                    continue    # a filed track's later runs are its file's
+                if sid:
+                    track(tl)["new"].append((sid, ms / 1000.0))
+                continue
+            tr = track(tl)
+            lo["runs"] += 1
+            if sid:
+                tr["old"].setdefault(sid, []).append(ms / 1000.0)
+            if d and d not in post and d not in undated:
+                tr["beta"].setdefault(d, ms / 1000.0)
+        rep_h = set().union(*(set(tr["beta"]) for tr in T.values()))
+    for row in conn.execute("SELECT * FROM replays WHERE kind='momentum' AND map=?", (mp,)).fetchall():
+        tl, h = (row["track"], row["leg"]), runid_hash(row["runid"])
+        if plan and tl not in cover:
+            continue
+        if since is not None:
+            beta = row["submitted"] >= since and h in phash and h not in lo["held"]
+        else:
+            beta = h not in protected and ((h and h in rep_h) or (
+                row["submitted"] < approved and ok(tl, row["millis"])))
+        if beta:
+            lo["reps"].append(row)
+            lo["reptracks"].add(tl)
+            if not plan:
+                track(tl)
+    if since is not None:
+        lo["stale"], lo["other"] = [], []
+    if not plan:
+        cands = [(tl, tr) for tl, tr in sorted(T.items()) if tr["old"] and tr["file"]]
+        main = [c for c in cands if c[0] == (0, 0) and len(c[1]["old"]) >= WIPE_WITNESSES]
+        best = main[0] if main else max(cands, key=lambda c: len(c[1]["old"]), default=None)
+        if best:
+            tr = best[1]
+            lo["probe"] = tr["board"] + (tr["old"], tr["new"], tr["beta"])
+    return lo
+
+
+def read_board(pacer, mapid, b, skip, now, after):
+    """One page of live board `b` = (gamemode, trackType, trackNum) from `skip` -> ([(steamid,
+    time, created, rank, replay hash)], totalCount); "absent" for a 404 or 410; None for a 400 or 500 for
+    that board, or any row not as momfetch takes them (a steam64, a UTC createdAt, 0 < time
+    < 1e6, a 40-digit replayHash: review 8) or not this board's, or out of order after `after` = (time, rank),
+    or ranked past its position (review 9: a row hidden; 3 Nov, 14,592 of 14,592 rows on 32
+    boards, wiped and kept, ranked at their position, equal times too). Other refusals
+    raise, a 401 and 403 too (review 5: the API refusing, not the board)."""
+    gm, tt, tn = b
+    try:
+        d = pacer.json("%s/maps/%d/leaderboard?gamemode=%d&trackType=%d&trackNum=%d&take=%d&skip=%d"
+                       % (MOM_API, mapid, gm, tt, tn, MOM_TAKE, skip))
+    except Refused as e:
+        if e.code in (404, 410):
+            return "absent"
+        if e.code in (400, 500):
+            return None
+        raise
+    rows = d.get("data") if isinstance(d, dict) else None
+    total = d.get("totalCount") if isinstance(d, dict) else None
+    if not isinstance(rows, list) or type(total) is not int or len(rows) > MOM_TAKE:
+        return None
+    out, (lt, lr) = [], after
+    for i, r in enumerate(rows):
+        if not isinstance(r, dict):
+            return None
+        u = r.get("user")
+        sid = steam64(u.get("steamID")) if isinstance(u, dict) else ""
+        t, c, rank = r.get("time"), iso_epoch(r.get("createdAt"), now), r.get("rank")
+        rh = r.get("replayHash")
+        if (not sid or c is None or type(t) not in (int, float) or not 0 < t < 1e6 or t < lt
+                or not (isinstance(rh, str) and re.fullmatch(r"[0-9a-fA-F]{40}", rh))
+                or type(rank) is not int or rank <= skip or rank < lr or rank > skip + i + 1
+                or (r.get("mapID"), r.get("gamemode"), r.get("trackType"), r.get("trackNum"),
+                    r.get("style")) != (mapid, gm, tt, tn, 0)):
+            return None
+        out.append((sid, float(t), c, rank, hash24(r.get("replayHash"))))
+        lt, lr = t, rank
+    return out, total
+
+
+def read_live(pacer, mapid, approved, b, now, slowest):
+    """Board `b` read as wipe_verdict and board_kept read it: its first PROBE_PAGES pages until
+    they pass `slowest`, then its whole last page if rows remain. -> "kept" (a run from before
+    the approval), "unread" (read_board None), "absent", "unknown" (a page totalCount
+    disagrees with, or a last page not whole: review 3), or ({steamid: time}, cover, {the
+    replay hashes it showed} -- never dropped: review 7)."""
+    live, served, last, complete, total, page = {}, set(), (0.0, 0), False, 0, 0
+    last_h = ""
+    for page in range(PROBE_PAGES):
+        skip = page * MOM_TAKE
+        top = total
+        got = read_board(pacer, mapid, b, skip, now, last)
+        if not isinstance(got, tuple):
+            return got or "unread"
+        rows, total = got
+        if total < top or (len(rows) == MOM_TAKE and total < skip + MOM_TAKE):
+            return "unknown"    # review 9: a count that fell mid-read may have skipped a row
+        for sid, t, c, rank, h in rows:
+            if c < approved:
+                return "kept"
+            live.setdefault(sid, t)
+            served.add(h)
+            last, last_h = (t, rank), h
+        if len(rows) < MOM_TAKE:
+            if total != skip + len(rows):
+                return "unknown"
+            complete = True
+            break
+        if last[0] >= slowest:
+            break
+    tail = None
+    if not complete:            # the board's end: its last rows, asked one row early so a board
+        want = total            # longer than its totalCount answers a full page (review 8)
+        for attempt in range(2):    # one that grew or shrank between reads is asked once more,
+            skip = max(want - MOM_TAKE + 1, 0)      # and the page must be the one asked (review 7)
+            got = read_board(pacer, mapid, b, skip, now, (0.0, 0))
+            if isinstance(got, tuple) and got[1] == want and len(got[0]) == want - skip:
+                break
+            if attempt or not (isinstance(got, tuple) and got[1] > want):
+                return "unknown"    # review 9: one that shrank can have skipped a row
+            want = got[1]
+        if want == total and skip >= (page + 1) * MOM_TAKE and got[0] and got[0][0][1] < last[0]:
+            return "unknown"    # review 10: past the rows read, after them -- unless it grew (review 11)
+        if any(c < approved for _, _, c, _, _ in got[0]):
+            return "kept"
+        for sid, t, _c, _r, h in got[0]:
+            live.setdefault(sid, t)     # review 9: held later runs past its start must show
+            served.add(h)
+        if want <= (page + 1) * MOM_TAKE or (want == total and skip <= (page + 1) * MOM_TAKE
+                                              and last_h in {h for _, _, _, _, h in got[0]}):
+            complete = True     # every row read, its end confirmed (reviews 6, 13, 14: no middle)
+        elif got[0]:
+            tail = got[0][0][1]
+    served.discard("")
+    return live, (None if complete else last[0], tail), served
+
+
+def missing_later(live, cover, new):
+    """((players whose fastest run after the approval held here is under the cut, those not shown
+    at it or faster), (the same past the end page's start)) (review 7: a fileless track's later
+    runs are all its `runs`; review 9: a reply that ends early misses the second; review 10: a
+    slow player who improved into the unread middle does too, so they are judged apart: review
+    12, three at least, of that region; on a whole read, slower than its last row: no middle)."""
+    best = {}
+    for sid, t in new:
+        if sid:
+            best[sid] = min(best.get(sid, math.inf), t)
+    cut, tail = cover
+    if cut is None and tail is None and live:
+        tail = max(live.values())
+    out = []
+    for inside in (lambda t: cut is None or t < cut - SLACK, lambda t: tail is not None and t > tail + SLACK):
+        got = [(sid, t) for sid, t in best.items() if inside(t)]
+        out.append((len(got), sum(1 for sid, t in got if live.get(sid, math.inf) > t + SLACK)))
+    return tuple(out)
+
+
+def short(shown, missing):
+    """At least 2, and over a quarter, of the players that should show (review 6: a run or two
+    Momentum removed -- a banned player's -- is not a reply cut short)."""
+    return missing >= 2 and 4 * missing > shown
+
+
+def short_past(shown, missing):
+    """The same past the end page's start, three at least (review 12: two slow players who
+    improved into the unread middle are no reply cut short; a cap that hides most of the
+    slowest held players is)."""
+    return missing >= 3 and 4 * missing > shown
+
+
+def cut_short(live, cover, new):
+    """Whether a reply looks cut short (review 2: filtered, or times in ms) under the cut, or
+    past the end page's start (review 9: one that ends early)."""
+    under, past = missing_later(live, cover, new)
+    return short(*under) or short_past(*past)
+
+
+def wipe_verdict(pacer, mapid, approved, probe, now):
+    """P1253: whether Momentum dropped map `mapid`'s runs from before its approval, from the
+    probe board (read_live, until past its slowest Beta time: review 5) -> (verdict, cover,
+    the replay hashes it showed):
+    "kept" if a run there predates it (3 Nov: surf_me 43 of its top 100, surf_grid 59,
+    surf_whiteout 1 -- older approvals kept theirs); "wiped" if WIPE_WITNESSES players have
+    Beta times under the cut and none of them shown there at that time or faster (Momentum
+    keeps a player's best: review 4), and the later runs held that should show do (review 2:
+    a filtered reply, or times in ms -- the fastest within 10x of the held later runs', else
+    of the Beta median); "unread" for an empty board or a read_board None (review 4: a format
+    change); else "unknown". Wiped on 3 Nov: surf_solitude, surf_not_so_sinister."""
+    if probe is None:
+        return "unknown", None, set()
+    b, old, new = probe[:3], probe[3], probe[4]
+    times = sorted(t for ts in old.values() for t in ts)
+    got = read_live(pacer, mapid, approved, b, now, times[-1])
+    if not isinstance(got, tuple):
+        return ("unknown" if got == "absent" else got), None, set()
+    live, cover, served = got
+    cut = cover[0]
+    if not live:
+        return "unread", None, set()
+    ref = min(t for _, t in new) if new else times[len(times) // 2]
+    if not ref / 10 <= min(live.values()) <= ref * 10 or cut_short(live, cover, new):
+        return "unknown", None, set()
+    gone = 0
+    for sid, ts in old.items():
+        under = [t for t in ts if cut is None or t < cut]
+        if under and all(live.get(sid, math.inf) > t + SLACK for t in under):
+            gone += 1
+    missing = missing_later(live, cover, new)[0][1]
+    if gone < WIPE_WITNESSES or (missing and missing >= gone):  # review 7: a reply filtered to
+        return "unknown", None, set()                          # hide Beta rows hides later ones
+    return "wiped", cover, served
+
+
+def board_kept(pacer, mapid, approved, b, now, slowest, new):
+    """P1253 reviews 2-7: whether another board of a wiped map keeps its Beta data -- it shows a
+    run from before the approval as far as read_live reads, cannot be read whole, answers empty,
+    or misses a later run held here (any, of fewer than 4 players; else as cut_short) -> (kept,
+    cover, the replay hashes it showed). Read at both "wiped" answers (review 6)."""
+    got = read_live(pacer, mapid, approved, b, now, slowest)
+    if not isinstance(got, tuple):
+        return True, None, set()
+    live, cover, served = got
+    (shown, missing), past = missing_later(live, cover, new)
+    if not live or (missing and shown < 4) or short(shown, missing) or short_past(*past):
+        return True, None, set()
+    return False, cover, served
+
+
+def purge_record(retired, name, approved):
+    return os.path.join(retired, S.clean_map(name), "purge-%d.json" % approved)
+
+
+def beta_purge(conn, name, approved, boards_dir, lo, retired, plan, now):
+    """P1253: drops beta_leftovers `lo` (found again under momwatch's lock, from `plan`): first
+    a record of every board row, run and replay row it drops, beside the recordings in
+    `retired` (review 3: a wrong purge can be undone; one per approvedDate, an unfinished
+    entry kept: review 5), each recording's retired name in it (another of the same name
+    already there is not overwritten); then the Beta recordings -- momgrab and link_demos
+    match a recording to a row by time alone -- moved there, rows and links gone; the Beta
+    runs; the board files rewritten without plan's rows (momfetch keeps every row it has
+    seen); and plan's other board files touched, so momboards reads them again and an
+    approved time a faster Beta one kept out goes in. Files last: a retry still dates by
+    plan's hashes. -> (runs, recordings, files rewritten)."""
+    phash = set(plan["hashes"])
+
+    def dropped(r):
+        return (isinstance(r, dict) and hash24(r.get("hash")) in phash
+                and (iso_epoch(r.get("created"), now) or approved) < approved)
+    drop = {}
+    for f in lo["stale"]:
+        doc = board_doc(os.path.join(boards_dir, f))
+        if doc is not None:
+            drop[f] = [r for r in doc["rows"] if dropped(r)]
+    rp = purge_record(retired, name, approved)
+    rec = _load(rp)
+    if not (isinstance(rec, dict) and isinstance(rec.get("purges"), list)):
+        if os.path.exists(rp):  # review 7: the only record of earlier purges is not overwritten
+            raise RuntimeError("%s cannot be read: nothing dropped beside it" % rp)
+        rec = {"approved": approved, "purges": []}
+    last = rec["purges"][-1] if rec["purges"] and isinstance(rec["purges"][-1], dict) else None
+    entry = last if last is not None and not last.get("done") else None
+    old = {r.get("id"): r for r in (entry or {}).get("replays") or [] if isinstance(r, dict)}
+    reps = []
+    for row in lo["reps"]:
+        src = S.replay_file(row)[0]
+        was = old.get(row["id"])
+        if was is not None and isinstance(was.get("retired_as"), str) and was["retired_as"]:
+            if src and (os.path.getsize(src) != was.get("bytes") or retired_copy(retired, was["retired_as"])):
+                print("  %s: %s is not the file a purge began on: left" % (name, row["leaf"]))
+                was["left"] = True      # review 9: momgrab wrote another run of that name since;
+                continue                # review 10: never over the copy an earlier attempt moved
+            reps.append(dict(row, retired_as=was["retired_as"]))    # its recorded name (review 9)
+            if os.path.isfile(os.path.join(retired, was["retired_as"])):
+                reps[-1]["moved"] = True    # from the disk, before the "moving" save (review 15)
+            continue
+        rel = os.path.join(row["map_dir"], S.leg_dir(row["track"], row["leg"]), row["leaf"])
+        if retired_copy(retired, rel) and src:
+            rel += ".%d" % row["id"]    # another of that name; with no source an interrupted
+        reps.append(dict(row, retired_as=rel))  # purge moved it there: that name is it (review 6)
+    if entry is not None:       # a retry adds to the entry it did not finish (review 6)
+        for f, rows in drop.items():
+            have = {hash24(r.get("hash")) for r in entry.setdefault("boards", {}).get(f, []) if isinstance(r, dict)}
+            entry["boards"].setdefault(f, []).extend(r for r in rows if hash24(r.get("hash")) not in have)
+        key = lambda r: (r.get("rowid_"), r.get("millis"), r.get("momdemo"), r.get("player"))
+        have = {key(r) for r in entry.setdefault("runs", []) if isinstance(r, dict)}
+        entry["runs"].extend(dict(r) for r in lo["runrows"] if key(dict(r)) not in have)
+        mine = {r["id"]: r for r in reps}
+        entry["replays"] = [mine.pop(r.get("id")) if isinstance(r, dict) and r.get("id") in mine else r
+                            for r in entry.setdefault("replays", [])] + list(mine.values())
+        entry["other"] = sorted(set(entry.get("other") or []) | set(lo["other"]))
+    else:
+        entry = {"at": now, "done": False, "boards": drop, "other": list(lo["other"]),
+                 "runs": [dict(r) for r in lo["runrows"]], "replays": reps}
+        rec["purges"].append(entry)
+    entry["hashes"] = sorted(phash)     # the latest plan's: a finish from the record drops no more
+    raise_phase(entry, "moving")
+    _save(rp, rec)
+    moving = []
+    for row in reps:
+        src, _why = S.replay_file(row)
+        dst = os.path.join(retired, row["retired_as"])
+        if src and retired_copy(retired, row["retired_as"]):    # a new row's suffixed name taken too
+            print("  %s: %s is retired already under its recorded name: left" % (name, row["leaf"]))
+            for r in entry["replays"]:
+                if isinstance(r, dict) and r.get("id") == row["id"]:
+                    r["left"] = True
+            continue
+        moving.append(row)
+        if src:     # a file moved by an interrupted purge is "missing": its row still goes
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.move(src, dst + ".part")     # review 7: never a partial copy under its name
+            os.replace(dst + ".part", dst)
+            row["moved"] = True     # review 12: retired_as is only the name it goes to
+        elif os.path.isfile(dst + ".part") and not os.path.exists(dst) and (
+                type(row.get("bytes")) is not int or row["bytes"] < 0
+                or os.path.getsize(dst + ".part") == row["bytes"]):
+            os.replace(dst + ".part", dst)      # review 8: killed between the two renames
+            row["moved"] = True
+        elif os.path.isfile(dst):
+            row["moved"] = True     # an earlier attempt's move (review 13)
+    reps = moving
+    entry.setdefault("commits", []).append(     # review 11: what this attempt's commit deletes
+        {"replays": [r["id"] for r in reps],
+         "runs": [[r["rowid_"], r["map"], r["track"], r["leg"], r["tier"], r["style"], r["player"]]
+                  for r in lo["runrows"]]})
+    raise_phase(entry, "moved")
+    _save(rp, rec)
+    with conn:
+        for row in lo["runrows"]:
+            conn.execute("DELETE FROM runs WHERE rowid=? AND tier=? AND map=?",
+                         (row["rowid_"], S.TIER_MOMENTUM, row["map"]))
+        for row in reps:
+            conn.execute("UPDATE runs SET replay_id=0 WHERE replay_id=? AND tier=?",
+                         (row["id"], S.TIER_MOMENTUM))
+            conn.execute("DELETE FROM replays WHERE id=? AND kind='momentum'", (row["id"],))
+    raise_phase(entry, "committed")         # from here a failure is retried, never given up
+    _save(rp, rec)
+    finish(conn, name, approved, boards_dir, retired, rec, entry, dropped)
+    return len(lo["runrows"]), len(reps), len(drop)
+
+
+def retired_copy(retired, rel):
+    """A recording's retired copy, under its name or its .part (review 15: a purge killed between
+    its two renames leaves the .part), or None."""
+    return next((os.path.join(retired, rel) + x for x in ("", ".part")
+                 if os.path.exists(os.path.join(retired, rel) + x)), None)
+
+
+def board_name(f):
+    """A name board_files would list, and nothing else (a record is read back)."""
+    return (isinstance(f, str) and f.endswith(".json") and f.split("_", 1)[0].isdigit()
+            and os.path.basename(f) == f and "\\" not in f)
+
+
+def finish(conn, name, approved, boards_dir, retired, rec, entry, dropped=None):
+    """The end of a committed purge (review 9: from its record alone when its plan is lost, not
+    left for momboards to read its Beta rows back): its board files rewritten without its rows,
+    its others touched, and what an earlier attempt moved that no attempt dropped put back;
+    done only when nothing of that is left."""
+    tls = set()
+    for f in sorted(entry.get("boards") or {}):
+        rows = entry["boards"][f]
+        if not (board_name(f) and isinstance(rows, list)):
+            continue
+        p = os.path.join(boards_dir, f)
+        doc = board_doc(p)
+        if doc is None:
+            continue
+        b = tuple(doc.get(x) for x in ("gamemode", "trackType", "trackNum"))
+        if all(type(x) is int for x in b):
+            tls.add(track_leg(b[1], b[2]))
+        if dropped is not None:
+            keep = [r for r in doc["rows"] if not dropped(r)]
+        else:                   # from the record: its rows' hashes, dated before the approval
+            gone, now = {hash24(r.get("hash")) for r in rows if isinstance(r, dict)} - {""}, int(time.time())
+            if isinstance(entry.get("hashes"), list):
+                gone &= set(entry["hashes"])    # review 10: none a later plan protected
+            keep = [r for r in doc["rows"] if not (isinstance(r, dict) and hash24(r.get("hash")) in gone
+                                                   and (iso_epoch(r.get("created"), now) or approved) < approved)]
+        if len(keep) == len(doc["rows"]):
+            continue
+        doc["rows"] = keep
+        with io.open(p + ".part", "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps(doc, separators=(",", ":")))
+        os.replace(p + ".part", p)
+    for f in entry.get("other") or []:
+        if board_name(f):
+            try:
+                os.utime(os.path.join(boards_dir, f))
+            except OSError:
+                pass
+    if dropped is None:         # review 10: momboards read them back from the files meanwhile
+        hs = {hash24(r.get("hash")) for rows in (entry.get("boards") or {}).values() if isinstance(rows, list)
+              for r in rows if isinstance(r, dict)} - {""}
+        if isinstance(entry.get("hashes"), list):
+            hs &= set(entry["hashes"])
+        with conn:
+            for rid, tr, lg, md, ri in conn.execute(
+                    "SELECT rowid, track, leg, momdemo, runid FROM runs WHERE tier=? AND map=? AND submitted < ?",
+                    (S.TIER_MOMENTUM, S.clean_map(name), approved)).fetchall():
+                if (tr, lg) in tls and (hash24(md) in hs or (not hash24(md) and runid_hash(ri) in hs)):
+                    conn.execute("DELETE FROM runs WHERE rowid=?", (rid,))
+        for f in entry.get("boards") or {}:
+            if board_name(f):
+                try:
+                    os.utime(os.path.join(boards_dir, f))
+                except OSError:
+                    pass
+    left = put_back(conn, name, entry, retired)[1]
+    if left:
+        _save(purge_record(retired, name, approved), rec)   # what did go back stays marked
+        raise RuntimeError("%d recording(s) an earlier attempt moved could not be put back" % left)
+    entry["done"] = True
+    _save(purge_record(retired, name, approved), rec)
+
+
+PHASES = (None, "moving", "moved", "committed")
+
+
+def raise_phase(entry, phase):
+    """A purge entry's phase only ever rises (review 8: a retry merged into a committed entry
+    must not open the give-up path again)."""
+    if PHASES.index(entry.get("phase") if entry.get("phase") in PHASES else None) < PHASES.index(phase):
+        entry["phase"] = phase
+
+
+def purge_phase(retired, name, approved):
+    """The phase the last purge entry reached unfinished ("moving", "moved", "committed"), or None."""
+    rec = _load(purge_record(retired, name, approved))
+    last = open_entry(rec)
+    return last.get("phase") if last else None
+
+
+def open_entry(rec):
+    """A purge record's last entry if it is unfinished, else None."""
+    last = rec["purges"][-1] if isinstance(rec, dict) and isinstance(rec.get("purges"), list) \
+        and rec["purges"] and isinstance(rec["purges"][-1], dict) else None
+    return last if last and not last.get("done") else None
+
+
+def rows_gone(conn, name, approved, retired):
+    """Whether an unfinished purge entry's commit ran (review 10: killed before the record said
+    so), from one attempt's own list (review 11): a replay row of it gone -- ids are never
+    reused, and only a purge drops momentum replays (or momindex --prune, by hand: never while
+    a purge entry is open) -- or, with none, every run of it gone, a run known by its rowid and
+    key (review 12: momboards' upsert keeps both and changes the time)."""
+    last = open_entry(_load(purge_record(retired, name, approved)))
+    for c in (last or {}).get("commits") or []:
+        if not isinstance(c, dict):
+            continue
+        ids = [i for i in c.get("replays") or [] if type(i) is int]
+        runs = [tuple(r) for r in c.get("runs") or [] if isinstance(r, list) and len(r) == 7]
+        if ids:
+            if not all(conn.execute("SELECT 1 FROM replays WHERE id=?", (i,)).fetchone() for i in ids):
+                return True
+        elif runs and not any(conn.execute(
+                "SELECT 1 FROM runs WHERE rowid=? AND map=? AND track=? AND leg=? AND tier=? AND style=? AND player=?",
+                r).fetchone() for r in runs):
+            return True
+    return False
+
+
+def commit_ran(conn, name, approved, retired):
+    """Whether an unfinished purge's commit ran: its record says so, or rows_gone finds it, and
+    then the record is raised to say so first (review 12)."""
+    rp = purge_record(retired, name, approved)
+    rec = _load(rp)
+    last = open_entry(rec)
+    if last is None:
+        return False
+    if last.get("phase") == "committed":
+        return True
+    if not rows_gone(conn, name, approved, retired):
+        return False
+    raise_phase(last, "committed")
+    _save(rp, rec)
+    return True
+
+
+def begun(retired, name, approved):
+    """When an unfinished purge entry began, or None."""
+    last = open_entry(_load(purge_record(retired, name, approved)))
+    return last.get("at") if last and type(last.get("at")) is int else None
+
+
+def close_undone(name, approved, retired):
+    """An unfinished entry whose recordings are all back, its rows never gone: closed, so the
+    approval date has no purge begun (review 10: OWED_MAX's re-ask needs that)."""
+    rp = purge_record(retired, name, approved)
+    rec = _load(rp)
+    last = open_entry(rec)
+    if last is not None:
+        last["done"] = last["undone"] = True
+        _save(rp, rec)
+
+
+def put_back(conn, name, entry, retired):
+    """P1253 reviews 7-9: the recordings purge entry `entry` moved whose rows are still there go
+    back -- one at a time, each of its recorded size, each marked; one failing is said and
+    skips only it. -> (put back, still out of place)."""
+    n = left = 0
+    for row in entry.get("replays") or []:
+        if not isinstance(row, dict):
+            continue
+        md, leaf, rel = str(row.get("map_dir") or ""), str(row.get("leaf") or ""), str(row.get("retired_as") or "")
+        if (row.get("undone") or not S._MAPNAME_OK.match(md) or not S._LEAF_OK.match(leaf) or not rel
+                or os.path.isabs(rel) or ".." in rel.replace("\\", "/").split("/")
+                or type(row.get("track")) is not int or type(row.get("leg")) is not int):
+            continue
+        try:
+            if not conn.execute("SELECT 1 FROM replays WHERE id=?", (row.get("id"),)).fetchone():
+                continue
+            size = row.get("bytes") if type(row.get("bytes")) is int and row["bytes"] >= 0 else None
+            fits = lambda f: os.path.isfile(f) and (size is None or os.path.getsize(f) == size)
+            dst = os.path.join(S.MOMENTUM_DIR, md, S.leg_dir(row["track"], row["leg"]), leaf)
+            src = next((f for f in (os.path.join(retired, rel), os.path.join(retired, rel) + ".part",
+                                    dst + ".part") if fits(f)), None)
+            if os.path.exists(dst) or src is None:
+                copy = retired_copy(retired, rel)
+                if fits(dst) and (copy is None or filecmp.cmp(dst, copy, shallow=False)):
+                    row["undone"] = True    # review 10: back, or never moved (review 15: or a copy of it)
+                elif os.path.exists(dst) and copy:
+                    row["left"] = True      # review 14: another file under its name
+                elif not os.path.exists(dst) and copy:
+                    left += 1   # review 11: a retired copy not of its recorded size
+                    print("  %s: %s's retired copy is not of its recorded size" % (name, leaf))
+                continue        # its file is where its row says, or never left
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            if src != dst + ".part":
+                shutil.move(src, dst + ".part")
+            os.replace(dst + ".part", dst)
+            row["undone"] = True
+            n += 1
+        except (OSError, sqlite3.Error) as e:
+            left += 1
+            print("  %s: %s not put back (%s)" % (name, leaf, e))
+    return n, left
+
+
+def undo_moves(conn, name, approved, retired):
+    """A purge or recheck given up before its rows went puts back what it moved (reviews 7, 8)
+    -> (put back, still out of place)."""
+    rp = purge_record(retired, name, approved)
+    rec = _load(rp)
+    last = rec["purges"][-1] if isinstance(rec, dict) and isinstance(rec.get("purges"), list) \
+        and rec["purges"] and isinstance(rec["purges"][-1], dict) else None
+    if not last or last.get("done"):
+        return 0, 0
+    n, left = put_back(conn, name, last, retired)
+    _save(rp, rec)              # its marks too, whatever it moved (review 13)
+    return n, left
+
+
+def finish_from_record(conn, name, approved, boards_dir, retired):
+    """A committed purge whose plan is lost, finished from its record (review 9)."""
+    rp = purge_record(retired, name, approved)
+    rec = _load(rp)
+    last = rec["purges"][-1] if isinstance(rec, dict) and isinstance(rec.get("purges"), list) \
+        and rec["purges"] and isinstance(rec["purges"][-1], dict) else None
+    if last and not last.get("done"):
+        finish(conn, name, approved, boards_dir, retired, rec, last)
+
+
+def beta_restore(conn, name, approved, retired, held):
+    """P1253 reviews 3-5: a recording a purge retired whose row Momentum serves again goes back
+    and is filed again (momgrab's done list would never fetch it; link_demos links it) -- the
+    row inserted first and the file moved inside that transaction, never beside a copy momgrab
+    filed again; one row's failure is said and skips only it. -> how many."""
+    rp = purge_record(retired, name, approved)
+    rec = _load(rp)
+    if not isinstance(rec, dict) or not isinstance(rec.get("purges"), list):
+        return 0
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(replays)")} - {"id"}
+    n = 0
+    for p in rec["purges"]:
+        if not (isinstance(p, dict) and p.get("done")) or p.get("undone"):
+            continue            # review 8: its rows may still be there; undo_moves is its way back
+        for row in p.get("replays") or []:
+            if not isinstance(row, dict) or row.get("restored") or row.get("undone"):
+                continue        # undone: put back, its row never went (review 9)
+            h = runid_hash(row.get("runid"))
+            md, leaf = str(row.get("map_dir") or ""), str(row.get("leaf") or "")
+            rel = str(row.get("retired_as") or "")
+            if (not h or h not in held or not S._MAPNAME_OK.match(md) or not S._LEAF_OK.match(leaf)
+                    or type(row.get("track")) is not int or type(row.get("leg")) is not int
+                    or (rel and (os.path.isabs(rel) or ".." in rel.replace("\\", "/").split("/")))):
+                continue
+            try:
+                if conn.execute("SELECT 1 FROM replays WHERE kind='momentum' AND map=? AND runid=? AND id != ?",
+                                (row.get("map"), row.get("runid"), row.get("id"))).fetchone():
+                    row["restored"] = True      # momgrab filed it again: nothing to restore
+                    continue
+                sub = (md, S.leg_dir(row["track"], row["leg"]), leaf)
+                src = os.path.join(retired, rel) if rel else os.path.join(retired, *sub)
+                dst = os.path.join(S.MOMENTUM_DIR, *sub)
+                size = row.get("bytes") if type(row.get("bytes")) is int and row["bytes"] >= 0 else None
+                if (not os.path.exists(src) and os.path.isfile(dst + ".part") and size is not None
+                        and os.path.getsize(dst + ".part") == size):
+                    src = dst + ".part"         # review 7: killed between its move and rename
+                moving = (os.path.isfile(src) and not os.path.exists(dst)
+                          and (size is None or os.path.getsize(src) == size))   # review 6: no partial copy
+                owed = (not os.path.exists(src) and os.path.isfile(dst) and size is not None
+                        and os.path.getsize(dst) == size)               # moved, the insert lost
+                if not (moving or owed):
+                    continue
+                keep = sorted(c for c in row if c in cols)
+                with conn:
+                    cur = conn.execute("INSERT OR IGNORE INTO replays (%s) VALUES (%s)"
+                                       % (",".join(keep), ",".join("?" * len(keep))),
+                                       [row[c] for c in keep])
+                    if cur.rowcount != 1:
+                        continue
+                    if moving:
+                        os.makedirs(os.path.dirname(dst), exist_ok=True)
+                        if src != dst + ".part":
+                            shutil.move(src, dst + ".part")
+                        os.replace(dst + ".part", dst)
+                row["restored"] = True
+                n += 1
+            except (OSError, sqlite3.Error) as e:
+                print("  %s: %s not restored (%s)" % (name, leaf, e))
+    _save(rp, rec)
+    return n
+
+
+# st["approvals"][name] = [approvedDate, verdict, t, first checked]. Final for that date:
+# clean, kept, rechecked, and unknown / unread UNKNOWN_RETRY / UNREAD_RETRY after their first
+# answer (t), or RETRY_CAP after `first` (review 6). suspect (t: the first "wiped"; its plan
+# the tracks that read judged wiped, with what it covered) is asked again a run SUSPECT_GAP
+# later; owed is a confirmed wipe still to drop, saved with its plan (<state>/betaplan.json:
+# the tracks both reads judged wiped, with what both covered; those with a board file; their
+# covered Beta hashes) before anything goes; wiped (t: the purge) rechecks late recordings,
+# and restores any Momentum serves again, until one recheck ends APPROVAL_RECHECK after it;
+# a purge or recheck failing PURGE_TRIES times is given up, loudly.
+VERDICTS = {"clean": "", "kept": "Momentum keeps them", "unknown": "whether Momentum dropped "
+            "them cannot be told: kept", "suspect": "Momentum seems to have dropped them: asked "
+            "again next run", "owed": "Momentum dropped them (asked twice)", "wiped": "",
+            "rechecked": "", "unread": "its board could not be read: asked again next run",
+            "abandoned": ""}
+
+
+LOST = object()     # approvals' work: a plan lost after its purge began
+
+
+def good_plan(p, t, verdict):
+    num = lambda x: x is None or (type(x) in (int, float) and math.isfinite(x))
+    pairs = lambda v: isinstance(v, list) and all(
+        isinstance(x, list) and len(x) == 2 and all(type(i) is int for i in x) for x in v)
+    reads = lambda v: isinstance(v, list) and all(
+        isinstance(x, list) and len(x) == 4 and type(x[0]) is int and type(x[1]) is int
+        and num(x[2]) and num(x[3]) for x in v)
+    if not (isinstance(p, dict) and p.get("approved") == t and type(p.get("tries", 0)) is int):
+        return False
+    hashes = lambda v: isinstance(v, list) and all(isinstance(h, str) and HASH24.fullmatch(h) for h in v)
+    if not (hashes(p.get("served", [])) and type(p.get("made", 0)) is int):
+        return False
+    if verdict == "suspect":
+        return reads(p.get("first"))
+    return reads(p.get("tracks")) and pairs(p.get("filed")) and hashes(p.get("hashes"))
+
+
+def both(c1, c2):
+    """What two reads both covered: under both cuts, past both last pages; a whole read covers
+    what the other did (review 7)."""
+    if tuple(c1) == (None, None) or tuple(c2) == (None, None):
+        return tuple(c2) if tuple(c1) == (None, None) else tuple(c1)
+    cuts = [c for c in (c1[0], c2[0]) if c is not None]
+    return (min(cuts) if cuts else None,
+            max(c1[1], c2[1]) if c1[1] is not None and c2[1] is not None else None)
+
+
+def approvals(a, st, appr, now, deadline, pacer, dead, save):
+    """P1253: each approved map is checked for Beta leftovers once per approvedDate, newest
+    approval first, APPROVAL_CHECKS a run (owed purges and rechecks first, outside that);
+    where it holds any, wipe_verdict asks Momentum, and only two "wiped" answers runs apart
+    drop them, under momwatch's lock and found again there (--go only: a dry run of mapwatch
+    returns before this). `save` writes state.json. An entry outlives a list read without its
+    map (review 3: one paging slip would forget a plan)."""
+    done = st.get("approvals") if isinstance(st.get("approvals"), dict) else {}
+    done = {k: v for k, v in done.items() if isinstance(v, list) and len(v) == 4
+            and type(v[0]) is int and v[1] in VERDICTS and all(type(x) is int for x in v[2:])}
+    st["approvals"] = done
+    pp = os.path.join(a.state, "betaplan.json")
+    raw = _load(pp)
+    raw = raw if isinstance(raw, dict) else {}
+    plans = {k: p for k, p in raw.items() if k in done and done[k][1] in ("suspect", "owed", "wiped")
+             and good_plan(p, done[k][0], done[k][1]) and (k not in appr or appr[k][0] == done[k][0])}
+    if len(plans) != len(raw):
+        try:
+            _save(pp, plans)
+        except OSError as e:
+            print("  betaplan.json not written (%s)" % e)
+
+    def mark(k, verdict, t):
+        v = done.get(k)
+        same = bool(v) and v[0] == appr[k][0]
+        if verdict in ("unknown", "unread") and same and v[1] == verdict:
+            t = v[2]            # its window runs from the first answer of its kind (review 6)
+        done[k] = [appr[k][0], verdict, t, v[3] if same else now]
+        if verdict not in ("suspect", "owed", "wiped"):
+            plans.pop(k, None)
+
+    def pending(k):             # an owed purge or a recheck for the date Momentum gives now
+        v = done.get(k)
+        return bool(v) and k in appr and v[0] == appr[k][0] and v[1] in ("owed", "wiped")
+
+    def due(k, t):
+        v = done.get(k)
+        if not v or v[0] != t:
+            return True
+        if v[1] == "suspect":
+            return True         # one past RETRY_CAP is ended before this (review 9)
+        retry = {"unknown": UNKNOWN_RETRY, "unread": UNREAD_RETRY}.get(v[1])
+        return bool(retry) and now - v[2] < retry and now - v[3] < RETRY_CAP
+
+    def lost(conn, k, t):
+        """A plan lost after its purge began: one whose rows went -- committed, or every row it
+        recorded gone (review 10) -- finished from its record (review 9); else what it moved
+        put back (review 8), the entry closed (review 10) and the map asked afresh, runs apart.
+        Failing, asked again next run until RETRY_CAP, then given up, loudly (review 10)."""
+        rp = purge_record(a.retired, k, t)
+        try:
+            if commit_ran(conn, k, t, a.retired):
+                finish_from_record(conn, k, t, a.boards, a.retired)
+                print("  %s: its plan is lost after its rows went: finished from its record" % k)
+                mark(k, "rechecked", now)
+                return
+            back, left = undo_moves(conn, k, t, a.retired)
+            if left:
+                raise RuntimeError("%d recording(s) not put back" % left)
+            close_undone(k, t, a.retired)
+        except Exception as e:
+            if now - (begun(a.retired, k, t) or done[k][3]) >= RETRY_CAP:
+                print("  %s: GIVEN UP -- its plan is lost and its purge not settled in %d days (%s); "
+                      "see %s" % (k, RETRY_CAP // 86400, e, rp))
+                try:
+                    if not undo_moves(conn, k, t, a.retired)[1] and not commit_ran(conn, k, t, a.retired):
+                        close_undone(k, t, a.retired)   # review 12: what no commit dropped goes back
+                except Exception:
+                    pass
+                mark(k, "rechecked" if done[k][1] == "wiped" else "abandoned", now)
+            else:
+                print("  %s: its plan is lost and its purge not settled (%s): tried again next run; "
+                      "see %s" % (k, e, rp))
+            return
+        if back:
+            print("  %s: its plan is lost: %d recording(s) put back" % (k, back))
+        mark(k, "suspect" if done[k][1] == "owed" else "rechecked", now)
+
+    def judge(lo, mapid, t, pcover, pserved):
+        """board_kept over every other track holding Beta data -> ({track: cover} judged wiped,
+        the probe's own included; [tracks kept]; the replay hashes the reads showed)."""
+        reads, kept, served = {}, [], set(pserved)
+        ptl = track_leg(lo["probe"][1], lo["probe"][2])
+        for tl, tr in sorted(lo["tracks"].items()):
+            if not (tr["old"] or tr["beta"] or tl in lo["reptracks"]):
+                continue        # nothing of it to judge
+            if tl == ptl:
+                reads[tl] = pcover
+                continue
+            if time.time() > deadline:
+                raise TimeoutError("the run's deadline, mid-judgement")
+            slow = max([x for ts in tr["old"].values() for x in ts] + list(tr["beta"].values()), default=0.0)
+            hold, cov, srv = board_kept(pacer, mapid, t, tr["board"], now, slow, tr["new"])
+            if hold:
+                kept.append(tl)
+            else:
+                reads[tl] = cov
+                served |= srv
+        return reads, kept, served
+
+    def stamp(t):
+        return time.strftime("%Y-%m-%d %H:%MZ", time.gmtime(t))
+
+    refused = st.get("approvals_refused") if isinstance(st.get("approvals_refused"), dict) else {}
+    refused = {k: t0 for k, t0 in refused.items() if type(t0) is int and now - t0 < 86400}
+    st["approvals_refused"] = refused
+    work = []                   # (name, the purge's time for a recheck, or None for a purge)
+    for k in sorted(k for k in done if pending(k)):
+        t, started = done[k][0], purge_phase(a.retired, k, done[k][0])
+        if k in plans and "hashes" in plans[k] and done[k][1] == "owed" and started is None \
+                and not plans[k].get("tries") and now - plans[k].get("made", now) > OWED_MAX:
+            mark(k, "suspect", now)     # review 7: an old verdict not yet acted on is asked again
+            continue
+        if k in plans and "hashes" in plans[k]:
+            work.append((k, done[k][2] if done[k][1] == "wiped" else None))
+        elif started is not None:
+            work.append((k, LOST))      # its plan lost after a purge began: under the lock (review 9)
+        else:                   # its plan is lost: confirm afresh, runs apart; or end the recheck
+            mark(k, "suspect" if done[k][1] == "owed" else "rechecked", now)
+    for k in sorted(done):
+        v = done[k]
+        if v[1] == "suspect" and k in appr and v[0] == appr[k][0] and now - v[3] >= RETRY_CAP:
+            print("  %s: not settled in %d days of checks: left as it is" % (k, RETRY_CAP // 86400))
+            mark(k, "unknown", now)     # review 9: final, as unknown is past RETRY_CAP
+    todo = sorted(((t, k) for k, (t, _id) in appr.items() if due(k, t) and not pending(k)),
+                  key=lambda c: (c[1] in refused, -c[0]))[:APPROVAL_CHECKS]   # refused: last (review 7)
+    try:
+        files = board_files(a.boards)
+        conn = S.connect()
+    except Exception as e:      # as the queue's readers: a check costs nothing of the run
+        print("  approved maps not checked for Beta leftovers (%s)" % e)
+        return
+    try:
+        for t, k in todo:
+            if time.time() > deadline:
+                break
+            v = done.get(k) if k in done and done[k][0] == t else None
+            mapid = appr[k][1]
+            try:
+                if v and v[1] == "suspect" and now - v[2] < SUSPECT_GAP:
+                    continue
+                lo = beta_leftovers(conn, k, mapid, t, a.boards, files, now)
+                if not (lo["stale"] or lo["runs"] or lo["reps"]):
+                    mark(k, "clean", 0)
+                    continue
+                if "api" in dead:
+                    continue
+                verdict, pcover, pserved = wipe_verdict(pacer, mapid, t, lo["probe"], now)
+                kept, judged, served = [], {}, set()
+                if verdict == "wiped":
+                    reads, kept, served = judge(lo, mapid, t, pcover, pserved)
+                    first = plans.get(k) if v and v[1] == "suspect" else None
+                    prior = ({(x[0], x[1]): (x[2], x[3]) for x in first["first"]}
+                             if first and "first" in first else None)
+                    if prior is not None and reads and all(tl in prior for tl in reads):
+                        judged = {tl: both(c, prior[tl]) for tl, c in reads.items()}
+                        served |= set(first.get("served", []))
+                        verdict = "owed"
+                    else:   # a first read, or one judging a track the first did not (review 7)
+                        verdict = "suspect"
+                        judged = reads
+                        if first:
+                            served |= set(first.get("served", []))      # review 8
+            except Refused as e:
+                dead["api"] = str(e)
+                refused[k] = now
+                print("  api refused (%s): nothing more is asked of it this run" % e)
+                continue
+            except Exception as e:      # this map only; it stays as it was
+                print("  %s: not checked for Beta leftovers (%s)" % (k, e))
+                continue
+            print("  %s: approved %s, holds from before: %d board file(s), %d run(s), "
+                  "%d recording(s); %s%s" % (k, stamp(t), len(lo["stale"]), lo["runs"], len(lo["reps"]),
+                                             VERDICTS[verdict], "; %d track(s) that kept theirs "
+                                             "left alone" % len(kept) if kept else ""))
+            if verdict == "owed":
+                plans[k] = {"approved": t,
+                            "tracks": [[tl[0], tl[1], c[0], c[1]] for tl, c in sorted(judged.items())],
+                            "filed": [list(tl) for tl in sorted(judged) if lo["tracks"][tl]["file"]],
+                            "hashes": sorted(h for tl, c in judged.items()
+                                             for h, ht in lo["tracks"][tl]["beta"].items()
+                                             if covered(ht, c) and h not in served),
+                            "served": sorted(served), "made": now}
+                work.append((k, None))
+            elif verdict == "suspect":
+                plans[k] = {"approved": t, "first": [[tl[0], tl[1], c[0], c[1]] for tl, c in sorted(judged.items())],
+                            "served": sorted(served)}
+            mark(k, verdict, 0 if verdict == "owed" else now)
+    finally:
+        conn.close()
+    if not work:
+        try:
+            _save(pp, plans)    # a suspect's first read
+        except OSError as e:
+            print("  betaplan.json not written (%s)" % e)
+        return
+    try:
+        _save(pp, plans)        # an owed purge, with its plan, outlives a failure partway
+        save()
+        with mom_turn():
+            conn = S.connect()
+            try:
+                files = board_files(a.boards)
+                for k, since in work:
+                    if time.time() > deadline:
+                        break
+                    t, mapid = appr[k]
+                    if since is LOST:
+                        try:
+                            lost(conn, k, t)
+                        except Exception as e:
+                            print("  %s: its lost plan not settled (%s): tried again next run" % (k, e))
+                        save()
+                        continue
+                    try:
+                        lo = beta_leftovers(conn, k, mapid, t, a.boards, files, now, plans[k], since)
+                        if lo["missing"]:
+                            print("  %s: board file(s) of %s gone since the plan: those tracks left"
+                                  % (k, lo["missing"]))
+                        got = beta_purge(conn, k, t, a.boards, lo, a.retired, plans[k], now) if (
+                            since is None or lo["reps"] or purge_phase(a.retired, k, t) is not None) \
+                            else (0, 0, 0)
+                    except Exception as e:      # still owed, or still rechecked: PURGE_TRIES
+                        tries = plans[k]["tries"] = plans[k].get("tries", 0) + 1
+                        print("  %s: Beta leftovers not dropped (%s), try %d of %d" % (k, e, tries, PURGE_TRIES))
+                        try:
+                            went = commit_ran(conn, k, t, a.retired)
+                        except Exception:
+                            went = True     # cannot tell: not given up as if nothing went
+                        if went and now - (begun(a.retired, k, t) or done[k][3]) < RETRY_CAP:
+                            print("  %s: its rows are dropped; it is finished next run" % k)
+                        elif went:          # review 11: one cap, from when the purge began
+                            print("  %s: GIVEN UP -- its rows are dropped and it is not finished in %d days; "
+                                  "see %s" % (k, RETRY_CAP // 86400, purge_record(a.retired, k, t)))
+                            try:
+                                undo_moves(conn, k, t, a.retired)   # review 12: a later attempt's moves
+                            except Exception:
+                                pass
+                            mark(k, "rechecked" if since is not None else "abandoned", now)
+                        elif tries >= PURGE_TRIES or (since is not None and now - since >= APPROVAL_RECHECK):
+                            try:
+                                back = "%d (%d not)" % undo_moves(conn, k, t, a.retired)    # a recheck's too
+                            except Exception as e2:
+                                back = "none (%s)" % e2
+                            print("  %s: GIVEN UP -- %s left as they are, %s recording(s) put back; see %s"
+                                  % (k, "its recheck" if since is not None else "the purge", back,
+                                     purge_record(a.retired, k, t)))
+                            try:
+                                if back.endswith("(0 not)"):
+                                    close_undone(k, t, a.retired)
+                            except Exception as e2:
+                                print("  %s: its record not closed (%s)" % (k, e2))
+                            mark(k, "rechecked" if since is not None else "abandoned", now)
+                        save()
+                        continue
+                    if since is None:
+                        mark(k, "wiped", now)
+                        plans[k]["tries"] = 0   # review 10: the rechecks count their own
+                        print("  %s: dropped %d Beta run(s), %d recording(s) retired, %d board "
+                              "file(s) rewritten without their Beta rows" % ((k,) + got))
+                    else:
+                        if got[1]:
+                            print("  %s: %d Beta recording(s) filed since its purge retired"
+                                  % (k, got[1]))
+                        try:
+                            back = beta_restore(conn, k, t, a.retired, lo["held"])
+                        except Exception as e:
+                            back = 0
+                            print("  %s: restores not tried (%s)" % (k, e))
+                        if back:
+                            print("  %s: %d retired recording(s) Momentum serves again restored"
+                                  % (k, back))
+                        if now - since >= APPROVAL_RECHECK:
+                            mark(k, "rechecked", since)
+                            plans.pop(k, None)
+                    save()
+            finally:
+                conn.close()
+    except Exception as e:
+        print("  Beta leftovers of %d approved map(s) left for the next run (%s)" % (len(work), e))
+    try:
+        _save(pp, plans)
+    except OSError as e:
+        print("  betaplan.json not written (%s)" % e)
 
 
 TRACKS_HEAD = "# map\tmapid\ttier\tgamemode\ttrackType\ttrackNum\n"
@@ -561,14 +1789,16 @@ def write_tracks(path, mom, inv):
 
 def mom_list(pacer):
     """-> (rows we could install, by lowercased name; EVERY surf/bhop name the
-    list carries).  The second is what decides whose build a name gets, and a
-    row we cannot use is still Momentum's name."""
-    rows, names = {}, set()
+    list carries; name -> (approvedDate, id) where it gives both, the date not ahead).  The second
+    is what decides whose build a name gets, and a row we cannot use is still
+    Momentum's name.  P1253: `info` for approvedDate added 2% to a page (3 Nov)."""
+    rows, names, appr = {}, set(), {}
+    now = int(time.time())
     for gm, _mode in MOM_MODES:
         skip, seen = 0, set()       # distinct: a host ignoring `skip` repeats a page
         for _ in range(MOM_PAGES):
             d = pacer.json("%s/maps?gamemode=%d&take=%d&skip=%d"
-                           "&expand=currentVersion,leaderboards"
+                           "&expand=currentVersion,leaderboards,info"
                            % (MOM_API, gm, MOM_TAKE, skip))
             page = d.get("data") if isinstance(d, dict) else None
             total = d.get("totalCount") if isinstance(d, dict) else None
@@ -582,6 +1812,10 @@ def mom_list(pacer):
                 if isinstance(m, dict) and okname(m.get("name")):
                     names.add(m["name"].lower())
                     seen.add(m["name"].lower())
+                    info = m.get("info") if isinstance(m.get("info"), dict) else {}
+                    t = iso_epoch(info.get("approvedDate"), now)
+                    if t is not None and t <= now and type(m.get("id")) is int and m["id"] > 0:
+                        appr.setdefault(m["name"].lower(), (t, m["id"]))
                 r = mom_row(m)
                 if r:
                     rows.setdefault(r["name"].lower(), r)
@@ -595,7 +1829,7 @@ def mom_list(pacer):
         if len(seen) < MOM_MIN:
             raise Refused("only %d maps in gamemode %d -- their format has "
                           "probably changed" % (len(seen), gm))
-    return rows, names
+    return rows, names, appr
 
 
 def next_chunks(html):
@@ -1248,6 +2482,10 @@ def main():
     ap.add_argument("--state", default=os.path.join(S.DATA_DIR, "mapwatch"))
     ap.add_argument("--tracks", default=S.MOMTRACKS_PATH,
                     help="momtracks.tsv, rewritten from Momentum's list (P1117)")
+    ap.add_argument("--boards", default=os.path.join(S.DATA_DIR, "momboards"),
+                    help="momfetch's board cache, for P1253's Beta purge (momgrab's default)")
+    ap.add_argument("--retired", default=os.path.join(S.DATA_DIR, "momretired"),
+                    help="where an approved map's Beta recordings are moved (P1253)")
     ap.add_argument("--site-zones", default="",
                     help="also copy a published zone file here when it holds "
                          "none of that name (what clients fetch)")
@@ -1341,9 +2579,9 @@ def run(a):
         return "%s:ksf" % k if r["src"] == "ksf" else "%s:%s" % (k, r["sha"][:12])
 
     # Each source is read on its own: one refusing must not hide the others.
-    mom, names, ksf, said, read = {}, set(), {}, [], set()
+    mom, names, appr, ksf, said, read = {}, set(), {}, {}, [], set()
     try:
-        mom, names = mom_list(pacer)
+        mom, names, appr = mom_list(pacer)
         read.add("mom")
     except Refused as e:
         said.append("momentum: NOT READ (%s)" % e)
@@ -2058,8 +3296,23 @@ def run(a):
                        "ktier": ksf[k]["tier"], "of": inv[k]}
     link_ports(cat, inv, names | set(extra))
     if "mom" in read:
+        approvals(a, st, appr, now, deadline, pacer, dead, lambda: _save(sp, st))
+        # P1253: held Beta maps' boards, each from its own reply.
+        asked = st.get("betaboards") if isinstance(st.get("betaboards"), dict) else {}
+        asked = {k: v for k, v in asked.items() if isinstance(v, dict) and type(v.get("id")) is int}
+        st["betaboards"] = asked
+        if extra:                           # an unread Beta list forgets nothing
+            for k in [k for k in asked if k not in extra]:
+                del asked[k]
+        beta = {}
+        if "api" not in dead and time.time() < deadline:
+            beta, why = beta_boards(pacer, extra, inv, asked, a.tracks, now, deadline)
+            if why:
+                dead["api"] = why
+                print("  api refused (%s): nothing more is asked of it this run" % why)
+            print("  beta boards: %d map(s) answered with boards" % len(beta))
         # P1117: momwatch/momfetch crawl only the boards this file names.
-        n, changed = write_tracks(a.tracks, mom, inv)
+        n, changed = write_tracks(a.tracks, {**mom, **beta}, inv)
         print("  momtracks: %d map(s), %d new or changed" % (n, changed))
     if len(read) == 2:
         _save(cp, {"at": now, "maps": cat, "momnames": sorted(names)})
