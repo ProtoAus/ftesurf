@@ -728,10 +728,10 @@ class Tests(unittest.TestCase):
         def demos(cache, maximum, delay):
             self.assertIsNone(K.take_lock(cache))  # The real main lock still acts.
             seen.append(('demos', maximum))
-        # Patch 896: boards keep the first 8 requests of a tick, downloads get up to 6 above.
+        # P1240: boards keep the first 16 requests of a tick, downloads get up to 24 above.
         for extra, want in ((['--max', '6'], [('boards', 6), ('demos', 0)]),
-                            (['--max', '10'], [('boards', 8), ('demos', 2)]),
-                            ([], [('boards', 8), ('demos', 6)])):
+                            (['--max', '20'], [('boards', 16), ('demos', 4)]),
+                            ([], [('boards', 16), ('demos', 24)])):
             seen.clear()
             argv = ['ksfimport.py','--watch','--go','--demos','--cache',self.cache] + extra
             with patch.object(sys, 'argv', argv), patch.object(K, 'playable_maps', return_value={'surf_test'}), \
