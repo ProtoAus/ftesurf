@@ -283,6 +283,9 @@ $ShipGlobs = @(
     @{ Path = 'ftesurf/glsl';           Filter = '*' }
     @{ Path = 'ftesurf/models';         Filter = '*' }
     @{ Path = 'ftesurf/particles';      Filter = '*' }
+    # P1278: ramp wear bakes (tools/rampwear.py), untracked beside the particle bakes
+    @{ Path = 'ftesurf/data/rampwear';  Filter = '*.txt' }
+    @{ Path = 'ftesurf/textures/rampwear'; Filter = '*.png' }
     @{ Path = 'ftesurf/scripts';        Filter = '*' }
     # Keep the three font faces and both OFL notices, never install backup copies.
     @{ Path = 'ftesurf/gfx/fonts';      Filter = '*'; Deny = @('*.prev') }
