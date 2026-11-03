@@ -45,8 +45,29 @@ void() HC_Lost =
 	hc_have = 0;                    // a restart can be a renderer switch: ask again
 };
 
-string(float l) HC_RT  = { return sprintf("hc_rt%g_%g", l, hc_gen); };
-string(float l) HC_Mat = { return sprintf("hc_mat%g_%g", l, hc_gen); };
+// P1239: [0..1] the targets, [2..3] their materials, [4] the clear, made once a generation (two
+// sprintfs a frame before).
+string *hc_nm;
+float hc_nmgen;
+void() HC_Names =
+{
+	local float i;
+	if (hc_nm && hc_nmgen == hc_gen + 1)
+		return;
+	if (!hc_nm)
+		hc_nm = memalloc(sizeof(string) * 5);
+	for (i = 0; i < 5; i = i + 1)
+		if (hc_nm[i])
+			strunzone(hc_nm[i]);
+	hc_nm[0] = strzone(sprintf("hc_rt%g_%g", 0, hc_gen));
+	hc_nm[1] = strzone(sprintf("hc_rt%g_%g", 1, hc_gen));
+	hc_nm[2] = strzone(sprintf("hc_mat%g_%g", 0, hc_gen));
+	hc_nm[3] = strzone(sprintf("hc_mat%g_%g", 1, hc_gen));
+	hc_nm[4] = strzone(sprintf("hc_clr%g", hc_gen));
+	hc_nmgen = hc_gen + 1;
+};
+string(float l) HC_RT  = { HC_Names(); return hc_nm[l]; };
+string(float l) HC_Mat = { HC_Names(); return hc_nm[2 + l]; };
 
 // fteqcc's own table has no VF_RT_COVERAGE, so it warns on the id (F333) in the next three.
 #pragma warning disable F333
@@ -92,7 +113,8 @@ void() HC_Frame =
 		for (l = 0; l < 2; l = l + 1)
 			shaderforname(HC_Mat(l), sprintf("{\naffine\nnomipmaps\nprogram default2d\n{\nmap $rt:%s\nblendfunc gl_one gl_one_minus_src_alpha\nrgbgen vertex\nalphagen vertex\n}\n}\n",
 			              HC_RT(l)));
-		shaderforname(sprintf("hc_clr%g", hc_gen),
+		HC_Names();
+		shaderforname(hc_nm[4],
 		              "{\nprogram default2d\n{\nmap $whiteimage\nblendfunc gl_zero gl_zero\nrgbgen vertex\nalphagen vertex\n}\n}\n");
 		hc_matgen = hc_gen + 1;
 	}
@@ -131,7 +153,7 @@ float(float l) HC_Begin =
 	setproperty(VF_RT_COVERAGE, 0);         // flushes the screen's queued 2D first
 	setproperty(VF_RT_DESTCOLOUR, HC_RT(l), 0 - HC_FMT, hc_size);
 	setproperty(VF_RT_COVERAGE, 1);
-	drawsubpic('0 0 0', hc_size, sprintf("hc_clr%g", hc_gen), '0 0 0', '1 1 0', '0 0 0', 0, 0);
+	drawsubpic('0 0 0', hc_size, hc_nm[4], '0 0 0', '1 1 0', '0 0 0', 0, 0);
 	return TRUE;
 };
 

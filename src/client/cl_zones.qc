@@ -208,9 +208,15 @@ void() Zone_RegisterCvars =
 	registercommand("ent_io");
 };
 
+// P1239: the per-type cvar names, and the colour strings last parsed (memalloc'd, ZONE_TYPES each):
+// 14 strcats and 7 parses a frame before.
+string *zone_cv_dname;          // (one a line: fteqcc reads "string *a, *b" as b string**)
+string *zone_cv_cname;
+string *zone_cv_cstr;
 void() Zone_ReadCvars =
 {
 	local float t;
+	local string s;
 
 	zone_cv_draw      = cvar("zone_draw");
 	zone_cv_dist      = cvar("zone_draw_dist");
@@ -227,10 +233,28 @@ void() Zone_ReadCvars =
 	zone_cv_fillalpha = cvar("zone_fill_alpha");
 	zone_cv_shader    = cvar("zone_xray") ? "ftesurf_zone_xray" : "";
 
+	if (!zone_cv_dname)
+	{
+		zone_cv_dname = memalloc(sizeof(string) * ZONE_TYPES);
+		zone_cv_cname = memalloc(sizeof(string) * ZONE_TYPES);
+		zone_cv_cstr  = memalloc(sizeof(string) * ZONE_TYPES);
+		for (t = 0; t < ZONE_TYPES; t = t + 1)
+		{
+			zone_cv_dname[t] = strzone(strcat(Zone_CvarStem(t), "_draw"));
+			zone_cv_cname[t] = strzone(strcat(Zone_CvarStem(t), "_color"));
+		}
+	}
 	for (t = 0; t < ZONE_TYPES; t = t + 1)
 	{
-		zone_cv_typedraw[t] = cvar(strcat(Zone_CvarStem(t), "_draw"));
-		zone_cv_typecol[t]  = Zone_ParseColor(cvar_string(strcat(Zone_CvarStem(t), "_color")));
+		zone_cv_typedraw[t] = cvar(zone_cv_dname[t]);
+		s = cvar_string(zone_cv_cname[t]);
+		if (s != zone_cv_cstr[t])
+		{
+			if (zone_cv_cstr[t])
+				strunzone(zone_cv_cstr[t]);
+			zone_cv_cstr[t] = strzone(s);
+			zone_cv_typecol[t] = Zone_ParseColor(s);
+		}
 	}
 };
 
