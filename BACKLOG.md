@@ -22,6 +22,23 @@
   then 308 fps; it did not repeat in run1 or run3. Cause not found (VRAM 2.5/8 GB; free RAM was ~2-3 GB).
   Re-measured on a quiet machine (run8, exe 53c01d27): no multi-second drops; first-arrival worst frames 31-75 ms,
   single frames. Lex thinks the earlier drops were the machine's load.
+- P1237 (3D sky and glass, measured 3 Nov): the sky room is drawn as Source draws it (once, from the sky camera
+  with its own vis and area, under the whole view); at r_renderscale 2 its cost is fill. r_skyroom_scale 0.5
+  (opt-in): demise s33 306 -> 355 fps; the blit costs ~0.05-0.1 ms where the sky is cheap (garden s4). Left:
+  a depth-tested composite after the opaque world would shade only the visible sky pixels, not the whole
+  view. r_skybox_full (default): eternity s4/s10 8-10% faster. Eternity's glass reflection is still ~3 ms
+  (353 prop batches against the main view's 51; Source's glass view draws entities too): r_portalareas 0
+  and an instanced vmt/unlit (106 fewer batches) changed nothing; the rest is driver time under its draws
+  and the plugin's prop walk for the reflection.
+- Displacements are surf_demise's biggest GPU cost (test-only plugin switch hiding them, s33): 3.25 ->
+  2.57 ms, GPU 3.19 -> 1.54 (main view's world ~1.0 ms, sky room ~0.7). Only 0.12M of 1.11M triangles and
+  ~180 sub-draws; hl2_seamless 0 and hl2_bumpmap2 0 change nothing; part of it does not scale with render
+  scale. Next to try: draw displacement batches after the brushes (or front to back) so early-z rejects
+  terrain hidden behind them; merge their sub-draws. The test switch is artifacts/p1237_nodisp_test.diff.
+- Unmeasured: level of detail for models with VVD fixups (P201 left it undone) would cut skybox foliage
+  triangles (demise's sky room: 0.6M triangles, 565 draws).
+- r_skyroom_scale review leftovers: one shared sky target for every top-level view (unequal splitscreen
+  re-allocates it each view); plain GLES 3.0 cannot draw into the float target and falls back to full size.
 - Left on the 3D sky: a lower-resolution sky room (demise s33 r_fastsky 1: 310 -> 458 fps; ~0.5M triangles of skybox
   foliage). A quality trade, so Lex's call. demise's main thread (run9b): present wait 19%, draw submission 14%, vis 13%.
 - surf_eternity saves 4 and 10 (the new reflective glass) read ~205 fps against ~480 elsewhere; not yet measured

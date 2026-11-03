@@ -21,6 +21,14 @@
 
 ## next
 
+### P1237 Faster skies on Source maps
+- The flat sky on Source maps is drawn whole, as Source draws it, instead of being worked out piece by piece
+  every frame: about 8-10% more frames per second where a lot of sky is reflected (surf_eternity's glass),
+  with the same picture.
+- New setting `r_skyroom_scale`: 0.5 draws a map's 3D sky at half resolution, which at `r_renderscale 2` is
+  your screen's own resolution. surf_demise runs about 16% faster at those settings with a slightly softer
+  sky; maps with a simple sky gain nothing. It is off (1) unless you set it.
+
 ### P1236 Kerned, fuller text
 - Letters in the menus, the HUD and chat now sit as their font intends: pairs like AV, To, Ty and P. close up (kerning). Number readouts do not move, because neither font kerns digits.
 - Text edges are a little fuller, so light text on dark reads crisper. `r_font_kerning 0` and `r_font_gamma 1` (then `vid_reload`) bring back the old look.

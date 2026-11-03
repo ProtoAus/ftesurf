@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1237 skies (both installs now; your Desktop copy with the next release)
+- surf_eternity saves 4 and 10: faster than before (rig: save 4 about 190 -> 212 fps); the sky seen in the
+  glass looks the same.
+- surf_demise save 33: try `r_skyroom_scale 0.5` (it saves in your config). Rig: 306 -> 355 fps. Check the
+  distant trees and mountains still look right to you; `r_skyroom_scale 1` puts it back. On maps whose 3D
+  sky is simple (surf_garden) it gains nothing and costs a little.
+
 ## P1236 kerning and fuller text (both installs now; everyone with the next release)
 In C:\FTESurf or C:\FTEQuake (exe 8c93b1fc): menu titles, the key strip, chat and the big clock/speed font
 show kerned pairs (AV, To, Ty, LT, P.) closer than before, and text is slightly fuller. Typing in chat,
