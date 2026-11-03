@@ -6503,7 +6503,8 @@ void() sky_camera =
 // or sprite model too. The hl2 plugin names frame groups after MDL anims, case and all, and a
 // $sequence's inline anim is "@<sequence>" (sand_dunes.mdl: sequence "move", anim "@move");
 // Source matches sequence names without case.
-float(entity t, string anim) SV_SkyAnim =
+// P1273: t plays the .mdl sequence named anim (the client loops it from .frame); FALSE when it has none
+float(entity t, string anim) SV_ModelAnim =
 {
 	local float f;
 	local string nm;
@@ -6517,11 +6518,17 @@ float(entity t, string anim) SV_SkyAnim =
 		if (!strcasecmp(nm, anim) || !strcasecmp(nm, strcat("@", anim)))
 		{
 			t.frame = f;
-			vbsp_skyroom_anim_n = vbsp_skyroom_anim_n + 1;
 			return TRUE;
 		}
 	}
 	return FALSE;
+};
+float(entity t, string anim) SV_SkyAnim =
+{
+	if (!SV_ModelAnim(t, anim))
+		return FALSE;
+	vbsp_skyroom_anim_n = vbsp_skyroom_anim_n + 1;
+	return TRUE;
 };
 
 /*
@@ -6814,6 +6821,7 @@ void() env_smokestack                   = { remove(self); };
      of number that looks plausible and is wrong.
 */
 float vbsp_prop_n, vbsp_prop_solid_n, vbsp_prop_scaled_n, vbsp_prop_dropped_n;
+float vbsp_prop_anim_n;	// P1273: props playing their DefaultAnim
 // Props whose modelscale was not on the 1/16 grid the wire carries, so the spawn
 // floored it.  Same map-change trap as every counter here -- reset below.
 float vbsp_prop_requant_n;
@@ -6855,6 +6863,7 @@ void() SV_EntityReset =
 	vbsp_entfire_map = FALSE;                       // P1256
 	vbsp_ml_head = world;                           // Patch 882: it would hold the last map's edicts
 	vbsp_prop_n = vbsp_prop_solid_n = vbsp_prop_scaled_n = vbsp_prop_dropped_n = 0;
+	vbsp_prop_anim_n = 0;
 	vbsp_prop_requant_n = 0;
 	vbsp_prop_nophy_n = 0;
 	vbsp_prop_bbox_n = 0;
@@ -7005,6 +7014,8 @@ void() SV_EntityReport =
 	              vbsp_prop_n, vbsp_prop_solid_n, vbsp_prop_scaled_n));
 	if (vbsp_prop_dropped_n)
 		print(sprintf(", %g dropped (no model)", vbsp_prop_dropped_n));
+	if (vbsp_prop_anim_n)
+		print(sprintf(", %g animated", vbsp_prop_anim_n));
 	// Build 34.  Printed ONLY when non-zero, because zero is the expected state
 	// and a line that always says "0 with no bounds" would be read past.  A
 	// non-zero here means props are ghosts -- see worldspawn's setmodelsize_qw.
@@ -7569,6 +7580,11 @@ void(float defsolid) SV_SpawnProp =
 
 	// "Don't Render" and, Patch 1041, the translucent modes: see SV_PropRenderState.
 	SV_PropRenderState(self);
+	// P1273 (Lex, 3 Nov): a prop nothing collides with plays its DefaultAnim, as Source's prop_dynamic does
+	// (surf_santorini's gulls). A solid one stays still: an animated mesh never moves its collision (P1202).
+	if (self.solid == SOLID_NOT)
+	if (SV_ModelAnim(self, self.vbsp_defanim))
+		vbsp_prop_anim_n = vbsp_prop_anim_n + 1;
 
 	vbsp_prop_n = vbsp_prop_n + 1;
 	if (self.solid != SOLID_NOT)
@@ -7577,9 +7593,8 @@ void(float defsolid) SV_SpawnProp =
 		vbsp_prop_scaled_n = vbsp_prop_scaled_n + 1;
 };
 
-// prop_dynamic is an animated prop in Source.  Here it is a static one: the
-// user's call, and the right one for a surf map, where a prop is scenery or
-// it is geometry and in neither case should it be simulating.
+// prop_dynamic is an animated prop in Source.  Here it simulates nothing: a non-solid one loops its
+// DefaultAnim (P1273), a solid one is static, because its collision cannot follow an animation.
 void() prop_dynamic              = { SV_SpawnProp(SRCSOLID_NONE); };
 void() prop_dynamic_override     = { SV_SpawnProp(SRCSOLID_NONE); };
 void() prop_dynamic_glow         = { SV_SpawnProp(SRCSOLID_NONE); };
@@ -10941,7 +10956,8 @@ float(entity e, string lk) SV_RotButtonOutputKnown =
   output it owns targets itself (SV_SpRawSelfOnly).  Followers are SOLID_NOT prop_*.
   Poses come from clocks, as SV_RotButtonPlace's do, composed down the parent chain
   in Source's matrix convention (AngleMatrix/MatrixAngles, mathlib_base.cpp); the
-  edicts are written at most 20 times a second and the clients lerp between.  A mover
+  edicts are written at most 20 times a second and the clients lerp between (as
+  MOVETYPE_NONE edicts, P1272).  A mover
   that goes solid is put back where it spawned and dropped (SV_SpDrop), and a name
   shared with anything frozen keeps the whole group frozen.  Nothing allocates an
   edict (see SV_SpWake).  Library census (1,926 maps): 948 non-solid drawn START_ON
@@ -10958,6 +10974,7 @@ float(entity e, string lk) SV_RotButtonOutputKnown =
 .float  vbsp_sp_draw;       // writes its own pose: drawn and SOLID_NOT
 .float  vbsp_sp_need;
 .float  vbsp_sp_sized, vbsp_sp_wrote, vbsp_sp_grpbad, vbsp_sp_printt;
+.float  vbsp_sp_mt0;        // P1272: movetype before the first write, restored by SV_SpDrop
 .vector vbsp_sp_o0, vbsp_sp_a0, vbsp_sp_mins0, vbsp_sp_maxs0;    // as spawned, for SV_SpDrop
 .entity vbsp_sp_parent;
 .vector vbsp_sp_lorg, vbsp_sp_lang;     // spawn pose in the parent's spawn frame
@@ -11338,6 +11355,8 @@ void(entity e) SV_SpDrop =
 		setsize(e, e.vbsp_sp_mins0, e.vbsp_sp_maxs0);
 		setorigin(e, e.vbsp_sp_o0);
 	}
+	if (e.vbsp_sp_sized)
+		e.movetype = e.vbsp_sp_mt0;	// P1272
 	if (SV_DevOn())
 		dprint(sprintf("spin %s: went solid, back at its spawn pose and stopped\n", e.model));
 	e.vbsp_sp_kind = 0;
@@ -11367,6 +11386,11 @@ void(entity e, vector o, vector a) SV_SpWrite =
 		e.vbsp_sp_sized = TRUE;
 		r = max(vlen(e.mins), vlen(e.maxs));
 		setsize(e, '-1 -1 -1' * r, '1 1 1' * r);
+		// P1272: the client lerps a MOVETYPE_NONE edict across its own changes (RENDER_STEP, sv_ents.c:3749)
+		// and a pusher across each snapshot, so a 20 Hz pose stepped: surf_voyager's asteroids stuttered.
+		// The pose is all clock (SV_SpPlace); no pusher physics ran on a SOLID_NOT mover anyway.
+		e.vbsp_sp_mt0 = e.movetype;
+		e.movetype = MOVETYPE_NONE;
 	}
 	e.vbsp_sp_wrote = TRUE;
 	e.angles = a;
