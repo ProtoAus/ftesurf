@@ -25,8 +25,6 @@
 
 #define LAS_MAX       1024      // lasers staged a map; worst (surf_s_t_a_t_i_o_n) is 232
 #define LAS_TGT_MAX   4096      // entities carrying a wanted target name
-#define LAS_SEG_LEN   64        // units per camera-facing segment...
-#define LAS_SEGS_MAX  16        // ...up to this many
 #define LAS_REPICK    0.015     // one think at 66 tick
 
 // Per beam entry, indexed by (beam index - beam_spot_n); BEAM_MAX long.
@@ -303,22 +301,11 @@ void(float want) Laser_LoadForMap =
 	}
 };
 
-// The side vector at one point: across the beam, facing the eye (CBeamSegDraw does it
-// per point); rel is the point minus the eye.  The eye on the beam's line keeps the last one.
-vector(vector dir, vector rel, vector last) Laser_Side =
-{
-	local vector s;
-	s = crossproduct(dir, rel);
-	if (s * s < 0.0001)
-		return last;
-	return normalize(s);
-};
-
 // Called from Sprite_Draw after the shafts; returns the beams drawn.
 float(vector eye, vector fwd, float maxdist, float skyon) Laser_Draw =
 {
-	local float  i, k, h, j, segs, len, half, v, vstep, tm, m, drawn;
-	local vector dir, dd, p, q, sp, sq, col;
+	local float  i, k, h, len, half, v, tm, m, drawn;
+	local vector dir, dd, p, q, sp, col;
 	local string mat;
 
 	drawn = 0;
@@ -357,37 +344,28 @@ float(vector eye, vector fwd, float maxdist, float skyon) Laser_Draw =
 			continue;
 		dir = dir * (1 / len);
 
-		// One quad facing the eye at its middle goes edge-on along a long beam.
-		segs = min(LAS_SEGS_MAX, ceil(len / LAS_SEG_LEN));
+		// Across the beam, facing the eye: cross(dir, point - eye) is the same at every point of a
+		// straight beam, so one quad is what CBeamSegDraw's per-point segments draw.
 		half = beam_w0[i] * 0.5;
 		col = beam_col[i];
 		m = las_mat[k];
 		mat = sprmat_name[m];
-		vstep = len * 0.01 / segs;
 		v = tm * las_speed[k];
 		v = v - floor(v);
-
-		sp = crossproduct(dir, fwd);
-		if (sp * sp < 0.0001)
-			sp = crossproduct(dir, '0 0 1');
-		if (sp * sp < 0.0001)
-			sp = '1 0 0';
 		p = beam_org[i];
-		sp = Laser_Side(dir, p - eye, normalize(sp));
-		for (j = 1; j <= segs; j = j + 1)
-		{
-			q = beam_org[i] + dir * (len * j / segs);
-			sq = Laser_Side(dir, q - eye, sp);
-			R_BeginPolygon(mat, DRAWFLAG_ADD);
-			R_PolygonVertex(p - sp * half, [0, v, 0], col, 1);
-			R_PolygonVertex(p + sp * half, [1, v, 0], col, 1);
-			R_PolygonVertex(q + sq * half, [1, v + vstep, 0], col, 1);
-			R_PolygonVertex(q - sq * half, [0, v + vstep, 0], col, 1);
-			R_EndPolygon();
-			p = q;
-			sp = sq;
-			v = v + vstep;
-		}
+		q = beam_end[i];
+		sp = crossproduct(dir, p - eye);
+		if (sp * sp < 0.0001)
+			sp = crossproduct(dir, fwd);	// the eye on the beam's line: it is a point anyway
+		if (sp * sp < 0.0001)
+			continue;
+		sp = normalize(sp) * half;
+		R_BeginPolygon(mat, DRAWFLAG_ADD);
+		R_PolygonVertex(p - sp, [0, v, 0], col, 1);
+		R_PolygonVertex(p + sp, [1, v, 0], col, 1);
+		R_PolygonVertex(q + sp, [1, v + len * 0.01, 0], col, 1);
+		R_PolygonVertex(q - sp, [0, v + len * 0.01, 0], col, 1);
+		R_EndPolygon();
 		drawn = drawn + 1;
 	}
 	las_drawn = drawn;
