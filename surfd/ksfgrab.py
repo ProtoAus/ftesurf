@@ -3,7 +3,7 @@
 Original bytes and row provenance are retained, normalized text gets kind=ksf,
 and ONLY an exact current KSF PB is linked. Never probe a filename or submit a
 native result. Called under ksfimport's shared lock in unattended --watch --go.
-No network from HTTP handlers. A tick scans <=32 board files and downloads <=24
+No network from HTTP handlers. A tick scans <=2 x SCAN board files and downloads <=24
 (ksfimport.DEMO_MAX) advertised CSS/66t files, sequentially, after the board crawler's last request.
 """
 import hashlib
@@ -36,7 +36,7 @@ EXCHANGE = 60               # s for one whole download (P1117 review 4)
 PARK = '.refused-demos'    # P1117: downloads' own park, beside the crawler's .refused
 MAX_QUEUE = 256
 MAX_RECOVER = 2
-MAX_FAILED = 2048
+MAX_FAILED = 8192          # P1240: ~5% of files refuse conversion; at 24 a tick 7-day tombstones pass 2048
 MAX_PROVENANCE = 16 << 10
 FILESTREAK = 3             # Patch 896: this many file-level failures in a day, in a row, are the host's
 FLOOR = 15 << 30           # Patch 896: no download or install below this much free disk
@@ -354,6 +354,10 @@ class BodyBroken(OSError):
     """Patch 891: the host answered for this file and its body broke after the headers."""
 
 
+class Unconvertible(ValueError):
+    """P1240: ksfconvert refused these bytes for this job; the same download refuses the same way."""
+
+
 def transport(download, file):
     """Keep socket/header/body failures separate from LOCAL archive errors."""
     try:
@@ -430,9 +434,12 @@ def install(conn, job, data):
         parent = parent.parent
     if shutil.disk_usage(parent).free < (256 << 20):
         raise OSError('KSF archive reserve below 256 MiB')
-    text, info = C.convert(data, job['map'], job['bonus'], STYLES[job['mode']],
-                           job['name'], job['seconds'], stage=job['leg'],
-                           last=job.get('last', False))
+    try:
+        text, info = C.convert(data, job['map'], job['bonus'], STYLES[job['mode']],
+                               job['name'], job['seconds'], stage=job['leg'],
+                               last=job.get('last', False))
+    except ValueError as e:
+        raise Unconvertible(str(e)) from e
     ticks = info['stop'] - info['start']
     # Archive naming grammar, source hash distinguishes styles/equal-time runs.
     sid = hashlib.sha256(job['player'].encode()).hexdigest()[:8]
@@ -561,6 +568,8 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
             if not current(conn, job):
                 jobs.pop(key, None)
                 continue
+            # P1240: a job passed over untouched is not saved (~250 rewrites of this file a tick).
+            dirty = True
             try:
                 data = None
                 asked = False
@@ -570,6 +579,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 if digest:
                     if not local_only:
                         if recovered >= MAX_RECOVER:
+                            dirty = False
                             continue
                         recovered += 1  # Bound original reads, including corrupt/missing bytes.
                     if not local_only:
@@ -579,6 +589,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                     if local_only:
                         continue
                     if made >= min(K.DEMO_MAX, max(0, maximum)) or now < until:
+                        dirty = bool(digest)    # the fairness move above changed the queue
                         continue
                     # Sleep before FIRST request: the board crawler just acted.
                     time.sleep(max(3.0, delay))
@@ -644,6 +655,15 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 print('KSF demos refused: network %d; demos parked %d min%s'
                       % (code, wait // 60, ', the crawl too' if code else ''))
                 break
+            except Unconvertible as e:
+                # P1240: set aside at the first refusal. Three strikes a day apart cost three
+                # downloads of the same bytes and held a queue slot two days (97 of 252 on 3 Nov).
+                print('KSF demo set aside: unconvertible: %s' % ' '.join(str(e).split())[:120])
+                if key in state['failed'] or len(state['failed']) < MAX_FAILED:
+                    state['failed'][key] = now + 7 * 86400
+                    jobs.pop(key, None)
+                else:
+                    job.update(retry=now + 7 * 86400, terminal=True)
             except (OSError, ValueError) as e:
                 job['retry'] = now + 86400
                 job['why'] = type(e).__name__
@@ -659,7 +679,8 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 elif local_only:
                     state['failed'][key] = dict(retry=job['retry'], strikes=job['strikes'])
             finally:
-                K._save(sf, state)
+                if dirty:
+                    K._save(sf, state)
         # Also persist local-only removals/empty ticks, not just fetch attempts.
         K._save(sf, state)
         print('KSF demos: %d request(s), %d linked, %d pending' % (made, linked, len(jobs)))

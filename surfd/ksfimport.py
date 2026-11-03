@@ -52,7 +52,7 @@ of the same seed list makes no requests at all.
 
 AUTOMATIC SINCE 5 OCT 2026, BY LEX'S DECISION.  This said "never automatic:
 every run of this is a person typing it" until Lex asked for the record list to
-fill slowly by itself.  --watch is that: on the Pi's crontab, a few requests a
+fill slowly by itself.  --watch is that: on the Pi's crontab, WATCH_MAX requests a
 tick, the next unseen page of each board shallowest first, maps somebody is
 looking at first (mapwant).  ksf.surf's robots.txt (checked 5 Oct) carries only
 Cloudflare's content-signal preamble and no Disallow.
@@ -185,7 +185,8 @@ WANT_DAYS = 14             # a map viewed this recently is crawled first
 # (30 stages in 4 styles is thousands of requests): 372 of 448 main boards
 # held one page.  P1240: a board never fetched joins that class, so its first
 # page goes before any deeper one -- on 3 Nov 4,037 stage, bonus and style boards
-# of unviewed maps waited behind ~4,000 deeper pages.
+# of unviewed maps waited behind ~4,000 deeper pages.  At equal depth a viewed
+# map goes first; its pages past the first wait until every board has one.
 WANT_FIRST = 1000          # shallow-board priority, NOT a storage/display cap
 WANT_REST = 100
 MAIN_FIRST = 200           # surfd.BOARD_LIMIT_MAX
@@ -789,13 +790,14 @@ def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
         main = z == 0 and m == 0
         if mp in prio:
             return 0 if main and n < want_first else 1 if n < want_rest else 2
+        # P1240: an unfetched board joins class 1 in watch order only (first=(0,0,0) is --from-maps').
         return 1 if (main and n < main_first) or (main_first and not n) else 3
 
     def push(mp, z, m):
         st = board_state(cache, idx, mp, z, m)
         if wants_more(st, depth):
-            # P1240: at equal depth Forward goes first, then by map.
-            heapq.heappush(heap, (rank(mp, z, m, st[0]), st[0], m, mp, z))
+            # P1240: at equal depth a viewed map goes first, then Forward, then by map.
+            heapq.heappush(heap, (rank(mp, z, m, st[0]), st[0], mp not in prio, m, mp, z))
 
     for mp, info in infos.items():
         zones = zones_of(info)
@@ -804,7 +806,7 @@ def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
                       else zones[:1]):
                 push(mp, z, m)
     while heap and pacer.left() > 0:
-        _, n, m, mp, z = heapq.heappop(heap)
+        _, n, _, m, mp, z = heapq.heappop(heap)
         d, page = board_page(cache, mp, z, pacer, m, idx=idx)
         if fetched is not None:
             fetched.append((mp, z, m, page))
