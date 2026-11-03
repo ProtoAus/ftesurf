@@ -21,6 +21,13 @@
 
 ## next
 
+### P1238 Fewer snap-backs, better prediction-error reports
+- Teleports on maps that put a second teleport at the arrival point (surf_frey_remake and about 40 others) no longer snap you back about 185 units after you arrive.
+- Letting go of a save-lock hold no longer leaves you frozen in place for a moment when a network packet is lost (players far from the server saw large snaps).
+- Stepping quickly through your saves at high ping no longer predicts the wrong save.
+- The prediction error box no longer appears for things that are not errors: joining a map, Go to spawn, resets the game sends without predicting, ghost or spectate, and teleports only the server can run.
+- A report you send now carries the lobby's own record of the moments around it, so causes such as lost packets can be told apart from movement bugs.
+
 ### P1239 Lighter HUD
 - The HUD's own script work is about an eighth lighter: the rounded movement keys are drawn as one piece each (they look exactly the same), and settings the HUD reads every frame are now read ten times a second.
 - A HUD or zone setting changed from the console or a bind now shows within a tenth of a second (instantly while the HUD or zone editor is open).

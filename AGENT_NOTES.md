@@ -33,6 +33,39 @@
 - Fallback cohort in lexlist-1232/control is 64f0b0f4; P1229's root lexlist-1229 and the dead retry
   root lexlist-1231b are CLOSED and unreferenced.
 
+## P1238 prederror reports and the mispredictions they found (3 Nov)
+- Reports (P1195) now carry "== server": one row per command the lobby ran (sv_prederr.qc: P675's
+  kind 1 network / 2 timestamp-split / 0 loss fill or untagged, sequence, msec, piece, offset, the
+  body after the command, impulse). Context is taken at the command's PlayerPreThink and the row
+  written at the next one: PostThink runs once a PACKET (sv_user.c SV_PostRunCmd), and P675's
+  input_cmd_* globals are cleared after PreThink. The client marks a report at its first bad line
+  (sendevent "pe_mk" -> CSEv_pe_mk_f; FTE appends the arg types to the name); the lobby freezes 512
+  rows 1.6 s later and writes them, then "== client", before the client's chunks. Server frames
+  over 50 ms are listed as "stall". tools/prederr_triage.py prints the GAP (no server packet for
+  N s), "server ran N of M commands", NEVER RAN, and uses the report's own worst line.
+- Measured (arms in C:/FTESurf-worktrees/prederr1238-20261103/arms, net_fakeloss): a 0.45 s
+  blackout loses every command (sv_user.c replays lost commands only when fewer than 20 packets
+  are lost, as copies of the last); a 0.2 s one is replayed exactly, no error. A server
+  net_fakeloss set in the cfg before the map kills the connect handshake; the dedicated server
+  ignores stdin, so turn it on with `waitms` in its cfg.
+- Not reported now (cl_prederr.qc): the first 3 s on a map, a move this client asked for
+  unpredicted (PE_Expect: goto_spawn, a reset sent as a plain command, a blind warp op) within half a
+  round trip of commands, ghost/spectate/watch/rewind, and a snap onto the destination of a teleport
+  the mirror demoted when no predicted teleport lands there too (autumn's anti-prespeed).
+- trigger_teleport_relative is mirrored (TG_RELTELE): surf_frey_remake's ~185 u snaps, 3/3 in the
+  live client, 0 with it. A save-lock hold whose release snapshot is lost: the engine sends
+  movetype only on a change (sv_ents.c SVFTE_DeltaCalcBits), so the client predicted the player held
+  for a round trip (23 such commands, 18 mispredicted, in 30 cycles at 25% loss). Fixed twice: the
+  client guard (its first cut: 20 stale, 0 mispredicted; the review-1 cut, which reads only the
+  chain's first command and skips spectate, met no stale sample before its rerun was stopped for
+  low memory) and the lobby engine sending it every update (0 stale).
+- STAT_FS_WOPCUR (204, string): "C ack index count slack" + five rows (cursor, next, prev, first,
+  last; origin, angles, velocity). The engine sends at most 32 changed stats a packet, lowest index
+  first, and string stats after numerics, so WOPACK (177) could trail SAVEINDEX (62) and a step
+  counted twice (noble). Chained steps past +-1 still go blind (8 of 24 at a 330 ms round trip).
+- A csprogs A/B must put the control csprogs on the SERVER too: the lobby serves its own and the
+  client loads that (two of my arms compared the fixed client with itself).
+
 ## Aura glow and kerned text (P1230, P1236; 3 Nov)
 - Delivered lobby QC base: deploy/p1236-hud bcca394e = deploy/p1218-maplist 9f0203eb + P1230 (glow,
   crown) + P1236 (Font_PenX carets, line-graph cvars); qw 63fa13a5, cs 0eb2a1c4 (.prev b6166b20),

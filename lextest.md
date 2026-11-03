@@ -23,8 +23,17 @@ Both installs now (exe 4092e2fc); your Desktop copy with the next release:
 - At your settings (hl2_water 2), surf_garden saves 1 and 4 and surf_boreas saves 7 and 10 run faster than before
   (rig: 335 -> 499, 405 -> 575, 323 -> 395, 326 -> 429 fps); the water's reflection and refraction look the same.
 
-## P1235 visualizer sky clock (lobbies, pending), huge models out of sight (both installs now)
-Lobbies and both installs once the lobby deploy lands (QC):
+## P1238 prediction errors (lobbies once its deploy lands; the report box everywhere)
+1. surf_frey_remake: fall off stage 1 (or any stage) into the teleport: you arrive and stay put, with no
+   jump down a moment later.
+2. Go to spawn, and joining a map: no "Prediction error" box.
+3. Load a save with the load key and let go while moving: no frozen moment after letting go (most
+   visible from far away; at your ping it was at most a tick).
+4. If the box does appear, send it (F6) and tell an agent: the report now includes the lobby's own
+   rows, and `tools/prederr_triage.py --fetch` says what the server ran.
+
+## P1235 visualizer sky clock (lobbies live 3 Nov), huge models out of sight (both installs now)
+Lobbies and both installs (QC):
 - surf_dragonfall save 1 with the visualizer sky (r_skybox milk): walk or fly past the lava panels;
   they scroll smoothly instead of flickering.
 Both installs now (Source plugin, 3 Nov 08:05Z); your Desktop copy with the next release:

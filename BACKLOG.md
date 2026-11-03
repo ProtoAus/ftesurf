@@ -100,6 +100,22 @@
   or over 256; 7 animate (surf_aquaflow 10, surf_destruction 2, surf_shape, surf_4am(_css),
   bhop_unreal_space, surf_watertemple_alpha).
 
+## P1238 prederror follow-ups (3 Nov 2026)
+- Join snaps (chungus, eternity: 36-93 u at the first comparison) are excused, not explained; not
+  reproduced locally (eternity, 40 ms). The excusal also hides their data.
+- Lex's 0.2 s eternity snap (284 u; the server ran ~6 of 13 commands) is not explained: a 0.2 s
+  loss is replayed exactly in the arm. The next report with == server rows will show it.
+- Chained save steps beyond +-1 of the acked cursor are sent blind (now excused): publish +-2/3
+  rows in STAT_FS_WOPCUR to predict them.
+- TG_NoteServerTele records only TG_TELE (not demoted relative teleports) and at most 32.
+- Server: trigger_teleport_relative never sets vbsp_io_solid, so an Enable not preceded by a
+  Disable makes it SOLID_BSP and drawn (sv_entities.qc ~2966). P1190's PVS eye covers only
+  trigger_teleport_touch, so a relative teleport's destination entities pop in.
+- TG_FireTeleport never clears the carrier for VelocityMode 1-3, though the server does
+  (sv_entities.qc ~7792).
+- The server row ring is one strbuf of formatted rows per player (3 sprintfs a command); keep raw
+  numbers and format on upload if lobby CPU ever matters. Sequence floats pass 2^24 after ~70 h.
+
 ## Found during P1235 (3 Nov 2026)
 - RELEASE BLOCKER, main only: a csprogs built from FTESurf main draws surf_dragonfall's sky
   magenta/black after `map surf_sidelines` then `map surf_dragonfall` in one client (1.4% of the
