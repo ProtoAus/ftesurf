@@ -499,16 +499,21 @@ float(string s, float i, float usecol, vector sz) Font_PenX =
 	c = str2chr(s, i);
 	if (i >= strlen(s) || c >= 128 || c < 0 || c == 9)
 		return plain;
-	// P1239: inside an open ^{..} the glyph is not known until its close (^{2F}: a short prefix can
-	// decode to a narrow glyph and pass the gap test below). The longest is ^{10FFFF}.
+	// P1239: inside an open ^{hex.. the glyph is not known until its close (^{2F}: a short prefix
+	// can decode to a narrow glyph and pass the gap test below). The longest is ^{10FFFF}. Only where
+	// markup is parsed (usecol), and only while every character back to the { is a hex digit.
+	if (usecol)
 	for (j = i - 1; j >= 1 && j >= i - 10; j = j - 1)
 	{
 		c = str2chr(s, j);
-		if (c == 125)
-			break;
 		if (c == 123)
-		if (str2chr(s, j - 1) == 94)
-			return plain;
+		{
+			if (str2chr(s, j - 1) == 94)
+				return plain;
+			break;
+		}
+		if (!((c >= 48 && c <= 57) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102)))
+			break;
 	}
 	pen = stringwidth(substring(s, 0, i + 1), usecol, sz) - stringwidth(substring(s, i, 1), usecol, sz);
 	if (fabs(pen - plain) > sz_y * 0.2)

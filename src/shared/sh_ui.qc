@@ -191,11 +191,12 @@ float  sui_rnd_last;            // the radius made last (the status print)
 float  sui_rnd_off;             // the upload does not work here: the .png for good
 float  sui_rnd_n;               // masks made since start (the status print)
 // P1239: sui_round_fixed's boxes made at their own pixel size: [i*3] w, [i*3+1] h, [i*3+2] radius
-// (pixels; w 0 = free), and their shader names.
+// (pixels; w 0 = free), and their shader names, which are named by that size: a size made again
+// (after its slot was reused, or by the next map's VM) lands on the same texture and shader.
 #define SUI_RRC 8
 float  *sui_rrc;
 string *sui_rrc_name;
-float  sui_rrc_next, sui_rrc_n, sui_rrc_off, sui_rrc_last;
+float  sui_rrc_next, sui_rrc_off, sui_rrc_last;
 
 float(float px) _sui_rnd_step =
 {
@@ -256,6 +257,7 @@ void() _sui_rnd_forget =
 	local float i;
 	sui_rnd_gen += 1;
 	sui_rnd_last = 0;
+	sui_rrc_off = FALSE;
 	if (sui_rrc)
 		for (i = 0; i < SUI_RRC; i += 1)
 			sui_rrc[i * 3] = 0;
@@ -431,12 +433,16 @@ void(vector pos, vector size, float radius, vector color, float alpha) sui_round
 	dx = dx * 0.5;
 	if (r < dx) dx = r;
 	rp = rint(dx * ry * 4) / 4;
+	if (rp < 1)                     // a disc under a pixel: the inside would not reach full coverage
+	{
+		_sui_round_draw(pos, size, radius, color, alpha);
+		return;
+	}
 	if (!sui_rrc)
 	{
 		sui_rrc = memalloc(sizeof(float) * SUI_RRC * 3);
 		sui_rrc_name = memalloc(sizeof(string) * SUI_RRC);
 	}
-	sui_round_calls += 1;
 	i = sui_rrc_last;
 	if (sui_rrc[i * 3] != w || sui_rrc[i * 3 + 1] != h || sui_rrc[i * 3 + 2] != rp)
 		for (i = 0; i < SUI_RRC; i += 1)
@@ -447,6 +453,7 @@ void(vector pos, vector size, float radius, vector color, float alpha) sui_round
 	if (i < SUI_RRC)
 	{
 		sui_rrc_last = i;
+		sui_round_calls += 1;
 		drawpic(at, sui_rrc_name[i], far, color, alpha, 0);
 		sui_style_quads += 1;
 		return;
@@ -472,13 +479,12 @@ void(vector pos, vector size, float radius, vector color, float alpha) sui_round
 	sui_rrc_next += 1;
 	if (sui_rrc_next >= SUI_RRC)
 		sui_rrc_next = 0;
-	sui_rrc_n += 1;
-	tex = sprintf("sui_rrt%s%g_%g", SUI_RND_VM, sui_rnd_gen, sui_rrc_n);
+	tex = sprintf("sui_rrt%s%g_%gx%gr%g", SUI_RND_VM, sui_rnd_gen, w, h, rp * 4);
 	r_uploadimage(tex, (int)w, (int)h, buf);
 	memfree(buf);
 	if (sui_rrc_name[i])
 		strunzone(sui_rrc_name[i]);
-	sui_rrc_name[i] = strzone(sprintf("sui_rr%s%g_%g", SUI_RND_VM, sui_rnd_gen, sui_rrc_n));
+	sui_rrc_name[i] = strzone(sprintf("sui_rr%s%g_%gx%gr%g", SUI_RND_VM, sui_rnd_gen, w, h, rp * 4));
 	shaderforname(sui_rrc_name[i], sprintf(
 		"{\naffine\nnomipmaps\nprogram default2d\n{\nclampmap %s\nrgbgen vertex\nalphagen vertex\nblendfunc blend\n}\nsort additive\n}\n", tex));
 	got = drawgetimagesize(sui_rrc_name[i]);
@@ -493,6 +499,7 @@ void(vector pos, vector size, float radius, vector color, float alpha) sui_round
 	sui_rrc[i * 3 + 1] = h;
 	sui_rrc[i * 3 + 2] = rp;
 	sui_rrc_last = i;
+	sui_round_calls += 1;
 	drawpic(at, sui_rrc_name[i], far, color, alpha, 0);
 	sui_style_quads += 1;
 };

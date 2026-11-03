@@ -588,8 +588,10 @@ void() Zone_Draw =
 	if (serverkey("map") != zone_mapname)
 		Zone_LoadForMap();
 
-	// P1239: ten times a second (22 cvar lookups), every frame while the zone editor is up.
-	if (ui_ze_state || cltime >= zone_cv_next || cltime < zone_cv_next - 0.2)
+	// P1239: ten times a second (22 cvar lookups), every frame while the zone editor is up and on
+	// the zone_debug frame (its dump prints them).
+	dbg = cvar("zone_debug");
+	if (dbg || ui_ze_state || cltime >= zone_cv_next || cltime < zone_cv_next - 0.2)
 	{
 		zone_cv_next = cltime + 0.1;
 		Zone_ReadCvars();
@@ -609,7 +611,6 @@ void() Zone_Draw =
 	// and it dumps ONE frame and clears itself -- a latch would still be one
 	// bool away from filling the console at 600 fps, and this is a tool you
 	// reach for when something is already confusing.
-	dbg = cvar("zone_debug");
 	if (dbg)
 	{
 		cvar_set("zone_debug", "0");

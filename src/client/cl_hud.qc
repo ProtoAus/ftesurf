@@ -723,13 +723,15 @@ float  ui_eta;              // dE/dt as a fraction of the physical ceiling
 void() HUD_ClearEnergyHistory;      // defined below; the anchor reset calls it
 void() HUD_ClearTurnHistory;        // likewise
 
-// P1239: ten times a second (about 60 cvar lookups), every frame while the layout editor is up.
-// Nothing else writes ui_cv_*, so a held value is only ever up to 0.1 s behind its cvar.
+// P1239: ten times a second (about 60 cvar lookups), every frame while the layout editor is up and
+// during menu/m_main.qc's ui_bootcheck (it shoots hud_debug six frames after setting it). Nothing
+// else writes ui_cv_*, so a held value is only ever up to 0.1 s behind its cvar.
 float ui_cv_next;
 void() HUD_ReadCvars =
 {
 	if (!ui_he_open)
 	if (cltime < ui_cv_next && cltime > ui_cv_next - 0.2)
+	if (!cvar("ui_bootcheck"))
 		return;
 	ui_cv_next = cltime + 0.1;
 	ui_cv_scale     = cvar("hud_scale");        if (!ui_cv_scale) ui_cv_scale = 2;
