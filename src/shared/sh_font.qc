@@ -470,14 +470,20 @@ void(float slot) Font_Set  = { drawfont = slot; ui_font_cur = slot; };
 
 // Patch 1236: where character i of s starts when s is drawn whole. The engine kerns pairs, so
 // stringwidth(prefix) stops short of a kerned pair by its kern and a caret put there sits inside
-// the next glyph. A colour code at i keeps the plain prefix width. (|| does not short-circuit;
-// str2chr past the end reads 0.)
+// the next glyph. The plain prefix width is kept where adding character i would not measure one
+// glyph: a ^ in s[i-4..i] (inside ^xRGB or ^&FB the next byte can complete a hidden code), a UTF-8
+// byte (a lone lead byte measures as another glyph) and a tab (a tab stop).
 float(string s, float i, float usecol, vector sz) Font_PenX =
 {
+	local float j, c;
 	if (i <= 0)
 		return 0;
-	if (i >= strlen(s) || str2chr(s, i) == 94 || str2chr(s, i - 1) == 94)
+	c = str2chr(s, i);
+	if (i >= strlen(s) || c >= 128 || c < 0 || c == 9)
 		return stringwidth(substring(s, 0, i), usecol, sz);
+	for (j = max(0, i - 4); j <= i; j = j + 1)
+		if (str2chr(s, j) == 94)
+			return stringwidth(substring(s, 0, i), usecol, sz);
 	return stringwidth(substring(s, 0, i + 1), usecol, sz) - stringwidth(substring(s, i, 1), usecol, sz);
 };
 void()           Font_Reset = { drawfont = FONT_DEFAULT; ui_font_cur = FONT_DEFAULT; };
