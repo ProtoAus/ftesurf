@@ -720,6 +720,45 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.conn.execute('SELECT runid,replay_id FROM runs').fetchone()[:],
                          (self.job['runid'], 0))
 
+    # P1240: a conversion refusal is set aside at once, and the next tick does not ask again.
+    def test_p1240_unconvertible_set_aside_at_first_refusal(self):
+        with self.assertRaises(G.Unconvertible): G.install(self.conn, self.job, b'bad')
+        self.board([self.r])
+        calls = []
+        def bad(file):
+            calls.append(file)
+            return b'bad'
+        now = int(time.time())
+        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now):
+            self.assertEqual(G.tick(self.cache, download=bad), (1, 0))
+        state = K._load(os.path.join(self.cache, 'demos.json'))
+        key = 'surf_test|0|0|' + self.job['runid']
+        self.assertEqual((state['jobs'], state['failed']), ({}, {key: now + 7 * 86400}))
+        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now + 2 * 86400):
+            self.assertEqual(G.tick(self.cache, download=bad), (0, 0))
+        self.assertEqual((len(calls), self.parks()), (1, []))
+
+    def test_p1240_other_value_errors_still_strike(self):
+        self.board([self.r])
+        with patch.object(G.time, 'sleep'), patch.object(G, 'install', side_effect=ValueError('acted other')):
+            self.assertEqual(G.tick(self.cache, download=lambda f: binary()), (1, 0))
+        state = K._load(os.path.join(self.cache, 'demos.json'))
+        job = state['jobs']['surf_test|0|0|' + self.job['runid']]
+        self.assertEqual((job['strikes'], state['failed']), (1, {}))
+
+    # P1240: jobs passed over untouched are not saved one by one.
+    def test_p1240_untouched_jobs_are_not_saved_each(self):
+        rows = [raw(playerID=3000+i, steamID='STEAM_0:0:%d' % (3000+i), record_id=40000+i,
+                    file='replay_css_5_0_%d_1700000000.rec' % (3000+i)) for i in range(20)]
+        K.write_rows([K.rec_row('surf_many', 0, 0, r) for r in rows])
+        K._save(K.board_path(self.cache, 'surf_many', 0), dict(rows=rows, done=True))
+        sf = os.path.join(self.cache, 'demos.json')
+        with patch.object(G.time, 'sleep'), patch.object(K, '_save', wraps=K._save) as save:
+            self.assertEqual(G.tick(self.cache, maximum=1, download=lambda f: binary()), (1, 1))
+        writes = [c for c in save.call_args_list if c.args[0] == sf]
+        self.assertEqual(len(writes), 3)    # after discovery, after the one download, at the end
+        self.assertEqual(len(K._load(sf)['jobs']), 19)
+
     def test_budget_reservation_and_shared_lock_in_main_path(self):
         seen = []
         def watch(args, have, cache):

@@ -232,20 +232,33 @@ def case_main_boards_first():
 
 
 def case_p1240_unfetched_first():
-    # An unviewed map: main (100 rows), stage 1, bonus 1, and Sideways main and stage.
+    # An unviewed map: main (100 rows), stage 1, bonus 1; Sideways main and stage; an
+    # empty Half-Sideways main over an HSW stage that has rows (never to be asked).
     info = {"isLinear": False, "cp_count": 1, "b_count": 1}
     boards = {("surf_r", 0): 100, ("surf_r", 1): 30, ("surf_r", 31): 5,
-              ("surf_r", 0, 1): 3, ("surf_r", 1, 1): 2}
+              ("surf_r", 0, 1): 3, ("surf_r", 1, 1): 2, ("surf_r", 1, 2): 4}
     fake = FakeKSF({"surf_r": info}, boards)
     K.fetch = fake
-    K.sweep_maps(["surf_r"], fresh_cache(), -1, K.Pacer(0, 8), [0, 1],
-                 first=(K.WANT_FIRST, K.WANT_REST, K.MAIN_FIRST))   # 1 search + 7
-    check("every board's first page before the main board's second; Forward before "
-          "Sideways at equal depth; a style's stages once its main has a row",
+    K.sweep_maps(["surf_r"], fresh_cache(), -1, K.Pacer(0, 9), [0, 1, 2],
+                 first=(K.WANT_FIRST, K.WANT_REST, K.MAIN_FIRST))   # 1 search + 8
+    check("every board's first page before the main board's second; Forward, then "
+          "Sideways, then Half-Sideways at equal depth; no stage of an empty style main",
           pages(fake, modes=True),
           [("surf_r", 0, 1, 0), ("surf_r", 1, 1, 0), ("surf_r", 31, 1, 0),
            ("surf_r", 0, 1, 1), ("surf_r", 1, 1, 1), ("surf_r", 31, 1, 1),
-           ("surf_r", 0, 21, 0)])
+           ("surf_r", 0, 1, 2), ("surf_r", 0, 21, 0)])
+
+    # Review 1: a viewed map keeps its place at each depth.
+    staged = {"isLinear": False, "cp_count": 1, "b_count": 0}
+    boards = {("surf_a", 0): 10, ("surf_a", 1): 30, ("surf_v", 0): 10, ("surf_v", 1): 30}
+    fake = FakeKSF({"surf_a": staged, "surf_v": staged}, boards)
+    K.fetch = fake
+    K.sweep_maps(["surf_a", "surf_v"], fresh_cache(), -1, K.Pacer(0, 8), prio=["surf_v"],
+                 first=(K.WANT_FIRST, K.WANT_REST, K.MAIN_FIRST))   # 2 searches + 6
+    check("a viewed map's first pages before an unviewed map's, and its second before theirs",
+          pages(fake),
+          [("surf_v", 0, 1), ("surf_v", 1, 1), ("surf_a", 0, 1), ("surf_a", 1, 1),
+           ("surf_v", 1, 21), ("surf_a", 1, 21)])
 
 
 def case_linear_asks_no_stages():
@@ -857,14 +870,14 @@ def case_watch():
           ksf_rows("map='surf_w07'"), 20)
     fake.asked = []
     tick(cache, mapsdir, 3)
-    check("tick 2: the wanted map's Forward board to its end, then main boards by depth",
+    check("tick 2: the wanted map's Forward board to its end, then first pages, its own first",
           pages(fake, modes=True), [("surf_w07", 0, 21, 0), ("surf_w07", 0, 41, 0),
-                                    ("surf_w00", 0, 1, 0)])
+                                    ("surf_w07", 0, 1, 1)])
     fake.asked = []
     tick(cache, mapsdir, 3)
-    check("tick 3: ...the wanted map's other styles in that same turn, not ahead of it",
-          pages(fake, modes=True), [("surf_w01", 0, 1, 0), ("surf_w02", 0, 1, 0),
-                                    ("surf_w03", 0, 1, 0)])
+    check("tick 3: ...the wanted map's other styles, then the other maps' main boards (P1240)",
+          pages(fake, modes=True), [("surf_w07", 0, 1, 2), ("surf_w07", 0, 1, 3),
+                                    ("surf_w00", 0, 1, 0)])
     check("the wanted map is whole on the board", ksf_rows("map='surf_w07'"), 45)
     tick(cache, mapsdir, 400)
     check("a map that is not installed is never asked about",
