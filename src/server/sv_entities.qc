@@ -2863,21 +2863,25 @@ void() SV_BrushRenderAll =
 	dprint(sprintf("brush render: %g brush entities besides func_brush carry a rendermode\n", n));
 };
 
-void(entity t) SV_BrushRenderInit =
+// rendercolor at spawn and the Color input (P1250): "R G B" in 0-255.
+void(entity t, string rgb) SV_BrushColour =
 {
 	local vector color;
 
+	color = stov(rgb) / 255;
+	color_x = bound(0, color_x, 1);
+	color_y = bound(0, color_y, 1);
+	color_z = bound(0, color_z, 1);
+	// Native all-zero colormod means white. Nonzero sub-byte tint encodes black.
+	if (color == '0 0 0')
+		color_x = 0.001;
+	t.colormod = color;
+};
+
+void(entity t) SV_BrushRenderInit =
+{
 	if (t.rendercolor != "")
-	{
-		color = stov(t.rendercolor) / 255;
-		color_x = bound(0, color_x, 1);
-		color_y = bound(0, color_y, 1);
-		color_z = bound(0, color_z, 1);
-		// Native all-zero colormod means white. Nonzero sub-byte tint encodes black.
-		if (color == '0 0 0')
-			color_x = 0.001;
-		t.colormod = color;
-	}
+		SV_BrushColour(t, t.rendercolor);
 	SV_BrushRenderState(t);
 };
 
@@ -5040,7 +5044,18 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		return;
 	}
 
-	// Point entities and Color inputs still have no native render-state adapter.
+	// Patch 1250: engines from P1250 draw a Source brush's tint, so a map that flashes brushes from
+	// black (surf_orbion's 84, bhop_miku_v2's beat) needs the input or they stay at the spawn colour.
+	if (in == "color" && substring(t.model, 0, 1) == "*")
+	{
+		SV_BrushColour(t, pm);
+		if (cvar("developer"))
+			dprint(sprintf("entity I/O: %s Color %s\n", t.targetname, pm));
+		SV_BrushRenderState(t);
+		return;
+	}
+
+	// Point entities' Color inputs still have no native render-state adapter.
 	if (in == "color" || in == "alpha")
 		return;
 
