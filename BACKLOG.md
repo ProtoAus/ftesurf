@@ -204,6 +204,12 @@
 - Downloads that do not start through CL_SendDownloadStartRequest (Q3, demo-embedded csprogs, plain HTTP
   ones: the package manager, a typed `download http://`) run under the plaque for up to 60 s; in demo/EZTV
   playback the per-frame resume can raise it over a running download (P1258 review 4; not regressions).
+- Shader reloads per map (P1265 measurement, developer 2, surf_eternity): CL_MakeActive's (the map change's
+  FS rescan, "map change (search paths kept)", 601 shaders) at the end of the load, and a second full one
+  about 2 s INTO PLAY: cl_main.c's "post-first-frame water fixup" (r_shader_reload_afterframe 1), a
+  workaround for stale water whose own comment says the real fix is a targeted reload (water shaders only).
+  ~0.27-0.3 s each at developer 0. The first-visit join's world load also showed one 707 ms gap during the
+  download on 3 Nov (other runs of the same build stayed under 150 ms there): not explained yet.
 - serverkey("transferring") still formats with va() for KEXLAN/ICE/RTC addresses (CL_TryingToConnect);
   UDP lobbies never reach it.
 - The pump does not pump window messages (vid_winthread 0): a single stretch past ~5 s would let
