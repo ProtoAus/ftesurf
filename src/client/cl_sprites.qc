@@ -488,10 +488,17 @@ float  beam_w0[BEAM_MAX];               // full width at the source
 float  beam_w1[BEAM_MAX];               // ...and at the far end
 float  beam_rad[BEAM_MAX];
 float  beam_n;
+float  beam_spot_n;                     // P1252: the shafts; env_lasers follow them up to beam_n
+void(float want) Laser_LoadForMap;      // cl_lasers.qc
+float(vector eye, vector fwd, float maxdist, float skyon) Laser_Draw;
 
 // ------------------------------------------------------------------ counters
 string vbsp_spr_map;                      // lazy-reload latch, as the decals use
-float  spr_want_spr, spr_want_beam, spr_want_glow;   // Patch 894: the cvars as the last load read them
+float  spr_want_spr, spr_want_beam, spr_want_glow, spr_want_las;   // Patch 894: the cvars as the last load read them
+// P1252: env_laser, counted per laser (a laser with several targets is several beam entries)
+float  vbsp_las_seen, vbsp_las_n, vbsp_las_off, vbsp_las_notgt;
+float  vbsp_las_parent, vbsp_las_moving, vbsp_las_nomat, vbsp_las_over;
+float  las_drawn;                         // laser beams drawn last frame (vbsp_sprite_debug)
 float  vbsp_spr_seen;                     // sprite entities found, drawn or not
 float  vbsp_spr_off;                      // skipped: named and not "start on"
 float  vbsp_spr_nomat;                    // skipped: the material did not resolve
@@ -1491,6 +1498,7 @@ void() Sprite_LoadForMap =
 	spr_want_spr = wantspr;
 	spr_want_beam = wantbeam;
 	spr_want_glow = wantglow;
+	spr_want_las = cvar("vbsp_lasers");
 
 	Sprite_FreeMaterials();
 	/*
@@ -1500,7 +1508,7 @@ void() Sprite_LoadForMap =
 	  declared further down the file.
 	*/
 	Sprite_LoadOccluders();
-	spr_n = beam_n = 0;
+	spr_n = beam_n = beam_spot_n = 0;
 	if (spr_under)
 		for (mat = 0; mat < SPR_MAX; mat = mat + 1)
 			spr_under[mat] = spr_utime[mat] = 0;   // Patch 847: positions are reused
@@ -1551,6 +1559,7 @@ void() Sprite_LoadForMap =
 	vbsp_beam_seen = vbsp_beam_off = 0;
 	vbsp_trail_seen = 0;
 	vbsp_glow_seen = vbsp_glow_off = vbsp_glow_n = 0;
+	vbsp_las_seen = 0;
 	opened = FALSE;
 
 	/*
@@ -1757,13 +1766,21 @@ void() Sprite_LoadForMap =
 			         Glow_ParamSet(gmin, gmax, gouter, gproxy),
 			         spawnflags & 1);        // SF_LIGHTGLOW_DIRECTIONAL
 		}
+		// P1252: counted here so Laser_LoadForMap walks the lump only on maps that have one.
+		else if (cn == "env_laser")
+			vbsp_las_seen = vbsp_las_seen + 1;
 	}
+
+	beam_spot_n = beam_n;
 
 	// Same guard the decals use: serverkey("map") can lead the entity data by a
 	// frame, and latching before the lump was readable means never looking again.
 	if (!opened)
 		return;
 	vbsp_spr_map = map;
+
+	// P1252: appended to the beam table after the shafts, so the sky test and the culls cover them.
+	Laser_LoadForMap(spr_want_las);
 
 	// BUILD 54.  Needs both walks finished: the occluders exist and the sprites
 	// have been read.  Neither ever moves, so the answer is a load-time constant.
@@ -1802,9 +1819,24 @@ void() Sprite_LoadForMap =
 			print(sprintf("spotlights: %g found, none drawn (vbsp_spotlights 0)\n", vbsp_beam_seen));
 		else if (vbsp_beam_off)
 			print(sprintf("spotlights: %g of %g drawn (%g start off)\n",
-			              beam_n, vbsp_beam_seen, vbsp_beam_off));
+			              beam_spot_n, vbsp_beam_seen, vbsp_beam_off));
 		else
-			print(sprintf("spotlights: %g of %g drawn\n", beam_n, vbsp_beam_seen));
+			print(sprintf("spotlights: %g of %g drawn\n", beam_spot_n, vbsp_beam_seen));
+	}
+
+	// P1252.  Drawn plus every bucket (the cap included) is the total; sprintf takes eight values, so the cap has its own line.
+	if (vbsp_las_seen)
+	{
+		if (!spr_want_las)
+			print(sprintf("lasers: %g found, none drawn (vbsp_lasers 0)\n", vbsp_las_seen));
+		else if (vbsp_las_n < vbsp_las_seen)
+			print(sprintf("lasers: %g of %g drawn (%g start off, %g no target, %g parented, %g moving target, %g no material)\n",
+			              vbsp_las_n, vbsp_las_seen, vbsp_las_off, vbsp_las_notgt, vbsp_las_parent,
+			              vbsp_las_moving, vbsp_las_nomat));
+		else
+			print(sprintf("lasers: %g of %g drawn\n", vbsp_las_n, vbsp_las_seen));
+		if (vbsp_las_over)
+			print(sprintf("lasers: %g over the beam table's cap (BEAM_MAX)\n", vbsp_las_over));
 	}
 
 	/*
@@ -2626,7 +2658,7 @@ void() Sprite_Draw =
 	if (serverkey("map") != vbsp_spr_map)
 		Sprite_LoadForMap();
 	else if (cvar("vbsp_sprites") != spr_want_spr || cvar("vbsp_spotlights") != spr_want_beam ||
-	         cvar("vbsp_lightglow") != spr_want_glow)
+	         cvar("vbsp_lightglow") != spr_want_glow || cvar("vbsp_lasers") != spr_want_las)
 		Sprite_LoadForMap();    // Patch 894: live, without a map reload
 
 	/*
@@ -2749,6 +2781,8 @@ void() Sprite_Draw =
 		              underon, cvar("vbsp_sprite_under_rays"), spr_under_n, spr_utraced));
 		print(sprintf("  behind the sky (vbsp_sprite_skyrays %g): %g skipped last frame\n",
 		              cvar("vbsp_sprite_skyrays"), spr_skyhid));
+		print(sprintf("  lasers (vbsp_lasers %g): %g of %g kept at load as %g beam entries, %g drawn last frame\n",
+		              spr_want_las, vbsp_las_n, vbsp_las_seen, beam_n - beam_spot_n, las_drawn));
 		for (m = 0; m < sprmat_n; m = m + 1)
 			print(sprintf("  %2g %-40s %gx%g  orient %g\n",
 			              m, sprmat_name[m], sprmat_w[m], sprmat_h[m], sprmat_orient[m]));
@@ -3148,7 +3182,7 @@ void() Sprite_Draw =
 	  construction Zone_Quad uses for a thick line -- with the two widths and
 	  the SHADEOUT alpha ramp applied at the two ends.
 	*/
-	for (i = 0; i < beam_n; i = i + 1)
+	for (i = 0; i < beam_spot_n; i = i + 1)
 	{
 		if (skyon && beam_sky[i] == SKY_BEHIND)
 		{
@@ -3185,6 +3219,7 @@ void() Sprite_Draw =
 		drawn = drawn + 1;
 	}
 	spr_skyhid = skyhid;
+	drawn = drawn + Laser_Draw(eye, fwd, maxdist, skyon);   // P1252: adds its sky skips to spr_skyhid
 
 	if (dbg)
 	{
