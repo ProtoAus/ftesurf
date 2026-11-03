@@ -67,6 +67,10 @@
 - vid_multisample 4 (or 8) now smooths the edges of the 3D view. Before, it did nothing on Source maps, because the scene is drawn off-screen first.
 - Render scale 1 with MSAA 4 smooths edges like render scale 2 for about half the graphics work. Leaves and fences cut out of textures are not smoothed by MSAA.
 
+### P1253 Momentum Beta map leaderboards
+- Leaderboards of the Momentum maps still in Beta testing are now collected too, for the Beta maps the server has.
+- When Momentum approves a map and clears its testing runs, the old testing times and replays are cleared here too, so the board shows only runs Momentum still lists. Maps whose testing runs Momentum kept keep them here.
+
 ### P1252 Laser beams on Source maps
 - Laser beams in Source maps are drawn now: surf_fantasy's blue rings, surf_sky_city's flickering lasers and about 2,000 more on 180 maps.
 - Lasers that start switched off, move with a part of the map or have no target are not drawn yet. vbsp_lasers 0 hides them.

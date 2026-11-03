@@ -1,5 +1,38 @@
 # AGENT_NOTES.md
 
+## P1253 Momentum Beta boards, approval wipes (ftesurf-2b; LIVE 3 Nov 12:54Z, generation ea4e8b3c, root lexlist-1253-382effae)
+- mapwatch only. beta_boards: held Beta maps' boards into momtracks.tsv (40 a run, each 7 days).
+  approvals(): each approved map once per approvedDate (state `approvals`: [date, verdict, t,
+  first]; plans in <state>/betaplan.json). Where it holds data from before the approval,
+  wipe_verdict reads the probe board live; two "wiped" answers SUSPECT_GAP apart, every Beta track
+  judged at both (board_kept), make it owed. The purge runs under momwatch's lock from a record
+  written first (<retired>/<map>/purge-<A>.json: every board row, run and replay row; each
+  attempt's commit list; phases moving/moved/committed): recordings to data/momretired, one DB
+  transaction, board files rewritten. Rechecks for a day retire late Beta recordings and restore
+  any Momentum serves again.
+- THE WIPE IS NOT UNIVERSAL. 3 Nov, read-only: 47 approved maps held Beta data; 13 read wiped (all
+  approved 3-31 Oct 2026), 32 kept (surf_me: 43 of its top 100 predate approval), 2 cannot tell.
+  The first draft purged by date; the dry scan caught it. Measure an upstream "rule" on the corpus.
+- Momentum ranks are positions (3 Nov: 14,592 of 14,592 rows on 32 boards, equal times too), so a
+  gap is a hidden row and read_board refuses it.
+- What keeps served data: a read covers only what it saw (the cut; the end page asked one row
+  early, so a board longer than its count shows); replay hashes a read shows, post-approval and
+  undated hashes are never dropped; a reply that looks filtered or cut short (held later runs
+  missing under the cut, past the end page, or beyond a whole read's last row) reads unknown.
+- A failed purge settles from its record: never re-judged once begun; any give-up first puts back
+  what no commit dropped; a commit is proven by a replay id it dropped (only a purge, or momindex
+  --prune by hand, drops momentum replays: NEVER run --prune with a purge entry open) or by its
+  runs' rowid+key all gone; a lost plan is finished from the record. Give-ups print GIVEN UP,
+  RETRY_CAP (60 d) after the purge began. A row marked `left` keeps its recording at <retired_as>
+  or <retired_as>.part (a purge killed between its renames); another run holds its live name.
+- 16 review rounds, three lenses (control flow, stored data, upstream replies); 403 checks; 125
+  mutants, all killed but 5 guards another check shadows (scratch mutants_1253.py; its RUN list
+  names the cases it runs -- a case left off it measured nothing for two rounds).
+- Rollback to 12e362a5 needs no data step: records, betaplan.json and momretired are inert to it,
+  but an open entry stays open (settle by hand with undo_moves). Further back: rollback_1240, then
+  rollback_1234.
+- First run: the first P1253 mapwatch run is the 18:23Z cron; purges need two reads an hour or more apart, so nothing is dropped before 00:23Z 4 Nov.
+
 ## P1266 trace cache: what tests it (3 Nov; root C:/FTESurf-worktrees/perf1222-20261102T1610Z)
 - bih_tracecache 2 is the cache's test: it re-traces every hit and compares every trace_t field. pm_verify's
   verdict is not: a key mutant that drops the hull size left both verdicts unchanged (p492voy HOLD 52@408,
