@@ -768,6 +768,16 @@ class Tests(unittest.TestCase):
             self.assertEqual(G.tick(self.cache, maximum=24, download=bad), (0, 0))
         self.assertEqual(len(calls), 8)
 
+    # Review 4: no download starts DEMO_SECONDS into a tick (mapwatch waits 300 s for the lock).
+    def test_p1240_downloads_stop_at_the_deadline(self):
+        self.conv_rows(5)
+        clock = iter([0.0, 0.0, 0.0])
+        def monotonic():
+            return next(clock, G.DEMO_SECONDS + 1.0)
+        with patch.object(G.time, 'sleep'), patch.object(G.time, 'monotonic', side_effect=monotonic):
+            self.assertEqual(G.tick(self.cache, maximum=24, download=lambda f: binary()), (2, 2))
+        self.assertEqual(len(K._load(os.path.join(self.cache, 'demos.json'))['jobs']), 3)
+
     # Review 2: bytes that are not a whole replay (a 200 page, a cut body, empty) and install's own
     # refusals strike as before. NOT_A_REPLAY is exactly inspect's refusals before the bookmark loop.
     def test_p1240_not_a_replay_and_other_value_errors_still_strike(self):
