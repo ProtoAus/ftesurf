@@ -301,12 +301,41 @@ void(string s, float bar) LS_Info =
 	ls_in = ls_in + 1;
 };
 
+// Field n of s (space-separated, a quoted field whole).  Not tokenize: its buffer is shared by every
+// VM, and this draws inside their builtins (a loading pump during a CSQC model wait).
+string(string s, float n) LS_Tok =
+{
+	local float i, len, k, q, start;
+	len = strlen(s);
+	i = 0;
+	k = 0;
+	while (1)
+	{
+		while (i < len && str2chr(s, i) == 32)
+			i = i + 1;
+		if (i >= len)
+			return "";
+		q = (str2chr(s, i) == 34);
+		if (q)
+			i = i + 1;
+		start = i;
+		while (i < len && str2chr(s, i) != (q ? 34 : 32))
+			i = i + 1;
+		if (k == n)
+			return substring(s, start, i - start);
+		if (q)
+			i = i + 1;
+		k = k + 1;
+	}
+	return "";
+};
+
 // The bottom-left lines.  The rate is timed here: the engine refreshes cls.download->rate only
 // when the legacy screen or the console asks (CL_DownloadRate).
 void() LS_Gather =
 {
-	local string s, l;
-	local float n, pct, got, left, stage, tot;
+	local string s, l, name;
+	local float i, pct, got, left, stage, tot, more;
 	ls_in = 0;
 	s = serverkey("transferring");      // the address while the handshake runs, a status line may follow
 	if (s == "")
@@ -315,25 +344,30 @@ void() LS_Gather =
 	{
 		if (!ls_cont0)
 			ls_cont0 = time;
-		n = tokenizebyseparator(s, "\n");
-		l = strcat("Connecting to ", argv(0));
+		i = strstrofs(s, "\n");
+		l = strcat("Connecting to ", (i < 0) ? s : substring(s, 0, i));
 		if (time - ls_cont0 >= 2)
 			l = sprintf("%s (%.0f s)", l, time - ls_cont0);
 		LS_Info(l, -1);
-		if (n > 1)
-			LS_Info(argv(1), -1);
+		if (i >= 0)
+		{
+			s = substring(s, i + 1, strlen(s) - i - 1);
+			i = strstrofs(s, "\n");
+			LS_Info((i < 0) ? s : substring(s, 0, i), -1);
+		}
 	}
 	s = serverkey("dlstate");           // fields as m_main.qc's map downloads read them
-	n = (s != "") ? tokenize(s) : 0;
-	if (n >= 9)
+	more = stof(LS_Tok(s, 0));
+	if (LS_Tok(s, 8) != "")             // a file in flight
 	{
-		pct = bound(0, stof(argv(5)), 100);
-		got = stof(argv(7));
-		if (argv(3) != ls_dlname || got < ls_dlb)
+		name = LS_Tok(s, 3);
+		pct = bound(0, stof(LS_Tok(s, 5)), 100);
+		got = stof(LS_Tok(s, 7));
+		if (name != ls_dlname || got < ls_dlb)
 		{
 			if (ls_dlname != "")
 				strunzone(ls_dlname);
-			ls_dlname = strzone(argv(3));
+			ls_dlname = strzone(name);
 			ls_dlb = got;
 			ls_dlt = time;
 			ls_dlrate = 0;
@@ -344,23 +378,23 @@ void() LS_Gather =
 			ls_dlb = got;
 			ls_dlt = time;
 		}
-		LS_Info(sprintf("Downloading %s  %.0f%%", LS_Base(argv(3)), pct), pct / 100);
-		left = max(0, stof(argv(1)) - got);
-		l = sprintf("%s%s left", LS_Bytes(left), (stof(argv(2)) != 0) ? "+" : "");
-		if (stof(argv(0)) > 0)
-			l = sprintf("%s, %g more file%s", l, stof(argv(0)), (stof(argv(0)) == 1) ? "" : "s");
+		LS_Info(sprintf("Downloading %s  %.0f%%", LS_Base(name), pct), pct / 100);
+		left = max(0, stof(LS_Tok(s, 1)) - got);
+		l = sprintf("%s%s left", LS_Bytes(left), (stof(LS_Tok(s, 2)) != 0) ? "+" : "");
+		if (more > 0)
+			l = sprintf("%s, %g more file%s", l, more, (more == 1) ? "" : "s");
 		if (ls_dlrate > 0)
 			l = sprintf("%s/s, %s", LS_Bytes(ls_dlrate), l);
 		LS_Info(l, -1);
 	}
-	else if (n >= 3 && stof(argv(0)) > 0)
-		LS_Info(sprintf("Waiting to download %g file%s", stof(argv(0)), (stof(argv(0)) == 1) ? "" : "s"), -1);
-	n = tokenize(serverkey("loadstate"));   // stage current total levelshot (pr_clcmd.c)
-	stage = stof(argv(0));
-	tot = stof(argv(2));
-	if (n >= 3 && stage >= 2 && tot > 0)    // LS_SERVER, LS_CLIENT
+	else if (more > 0)
+		LS_Info(sprintf("Waiting to download %g file%s", more, (more == 1) ? "" : "s"), -1);
+	s = serverkey("loadstate");         // stage current total levelshot (pr_clcmd.c)
+	stage = stof(LS_Tok(s, 0));
+	tot = stof(LS_Tok(s, 2));
+	if (stage >= 2 && tot > 0)          // LS_SERVER, LS_CLIENT
 	{
-		pct = bound(0, stof(argv(1)) / tot, 1);
+		pct = bound(0, stof(LS_Tok(s, 1)) / tot, 1);
 		LS_Info(sprintf("%s %.0f%%", (stage == 2) ? "Server" : "Game", pct * 100), pct);
 	}
 };
