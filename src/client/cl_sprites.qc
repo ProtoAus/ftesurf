@@ -2562,7 +2562,7 @@ void(vector eye) Sprite_SkyTick =
 	{
 		spr_skysolidseen = spr_skysolidgen;
 		for (k = 0; k < n; k = k + 1)
-			spr_skyat[k] = '1e9 1e9 1e9';
+			spr_skyat[k] = '1000000 1000000 1000000';   // far from any eye
 		spr_skyburst = n;
 		rays = rays * 4;
 	}
