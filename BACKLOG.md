@@ -74,6 +74,27 @@
   foliage). A quality trade, so Lex's call. demise's main thread (run9b): present wait 19%, draw submission 14%, vis 13%.
 - surf_eternity saves 4 and 10 (the new reflective glass) read ~205 fps against ~480 elsewhere; not yet measured
   against a control with the glass off.
+- P1245 (r_capturehalfrate, live in installs 3 Nov): known gaps, all reviewed and left: a reused frame's water
+  fog depth ignores the eye's travel along the capture's forward (one frame's movement); a refraction-only
+  re-render after glass or a portal shows one frame of uncorrected kinds; 3D-sky water samples the reused
+  level-0 targets uncorrected (N+1 frames old); turning clamps a strip at the leading edge on reused frames.
+  Half-size captures (r_watertargetsize 512 against the 1024 cap) gained 0-8%: the captures are CPU-bound.
+- P1260 (MSAA, live in installs 3 Nov): foliage and fences (alpha test) are not smoothed; alpha-to-coverage
+  needs the MASKLT discards in vmt/{animated,lightmapped,transition,unlit,unlitreflect,vertexlit} and
+  defaultskin/defaultwall rewritten to output a sharpened alpha (offered to Lex, not built). The resolve
+  costs ~0.06 ms CPU a frame. r_skyroom_scale below 1 draws full size under MSAA (two blits measured slower).
+- P1246 (3D sky only where sky shows): not built. Lex's settings give the scene a DEPTH32 depth texture with
+  no stencil (r_shadow_shadowmapping 1), the sky masks would have to move after the opaque world, and at
+  render scale 1 + MSAA demise is CPU-bound (2.7 ms CPU, 1.8 ms GPU) so the GPU saving buys no frames; at
+  scale 2 r_skyroom_scale 0.5 already takes most of it.
+- CPU after P1245/P1260 (demise s33 profile, 20 s, plugin symbols): VBSP_PrepareFrame 6.3%, RecursiveWorldNode
+  5.1%, EdictInFatPVS 4.2%, MarkLeaves 3.7%, BoxOnPlaneSide 2.4% of the main thread; the static props'
+  nearest-cubemap scan (Mod_CubemapForOrigin) is under 0.3%. Next lever: cache EdictInFatPVS verdicts per
+  view level while the view's clusters, area and FloodAreaConnections count are unchanged (~5% on demise).
+  Eternity's Surf_RenderDynamicLightmaps 10.8% is the first touch of each emitted face (P1237's skip test
+  moved the cost, not removed it). Prop collision (BIH_MODEL -> the plugin's .phy NativeTrace) ~7% on demise.
+- vid_restart mid-map left surf_eternity s4's PrepareFrame at 1.76 ms against 1.11 for the following seconds
+  (loading still on the main thread); not followed up.
 - P1222 review leftovers: gl_overbright_all has no callback and r_stains 0 leaves stains drawn (both pre-existing,
   now visible on unlit maps too); a Q2 BSP without lighting but with lightofs >= 0 per face still rebuilds styled faces.
 - Rig traps met: eternity's files take 22.8 s to load, so a fixed 20 s wait sent noclip before the spawn (reset by it)

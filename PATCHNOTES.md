@@ -21,6 +21,10 @@
 
 ## next
 
+### P1260 MSAA works on Source maps
+- vid_multisample 4 (or 8) now smooths the edges of the 3D view. Before, it did nothing on Source maps, because the scene is drawn off-screen first.
+- Render scale 1 with MSAA 4 smooths edges like render scale 2 for about half the graphics work. Leaves and fences cut out of textures are not smoothed by MSAA.
+
 ### P1252 Laser beams on Source maps
 - Laser beams in Source maps are drawn now: surf_fantasy's blue rings, surf_sky_city's flickering lasers and about 2,000 more on 180 maps.
 - Lasers that start switched off, move with a part of the map or have no target are not drawn yet. vbsp_lasers 0 hides them.
@@ -42,6 +46,10 @@
 ### P1247 Steadier KSF replay downloads
 - One broken KSF replay file no longer stops that round of downloads, so the backlog keeps moving.
 - Replays the converter could not read are fetched again as soon as the converter is updated, instead of waiting a week.
+
+### P1245 Half-rate reflections (optional)
+- New setting r_capturehalfrate 1: water and glass reflections are redrawn every second frame and turned with your view in between. surf_eternity's glass about 40% faster, water maps up to 24%.
+- Off (0) unless you set it. When you strafe fast, nearby things in a reflection can trail by a frame.
 
 ### P1244 A new loading screen
 - Loading a map shows what the game is doing, step by step, in white text: the newest step on top, the earlier ones pushed down and fading.
