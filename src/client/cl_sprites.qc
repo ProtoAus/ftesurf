@@ -1830,11 +1830,11 @@ void() Sprite_LoadForMap =
 		if (!spr_want_las)
 			print(sprintf("lasers: %g found, none drawn (vbsp_lasers 0)\n", vbsp_las_seen));
 		else if (vbsp_las_n < vbsp_las_seen)
-			print(sprintf("lasers: %g of %g drawn (%g start off, %g no target, %g parented, %g moving target, %g no material)\n",
+			print(sprintf("lasers: %g of %g drawn, %g of them start off (%g no target, %g parented, %g moving target, %g no material)\n",
 			              vbsp_las_n, vbsp_las_seen, vbsp_las_off, vbsp_las_notgt, vbsp_las_parent,
 			              vbsp_las_moving, vbsp_las_nomat));
 		else
-			print(sprintf("lasers: %g of %g drawn\n", vbsp_las_n, vbsp_las_seen));
+			print(sprintf("lasers: %g of %g drawn, %g of them start off\n", vbsp_las_n, vbsp_las_seen, vbsp_las_off));
 		if (vbsp_las_over)
 			print(sprintf("lasers: %g over the beam table's cap (BEAM_MAX)\n", vbsp_las_over));
 	}

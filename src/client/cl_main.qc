@@ -404,6 +404,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	registercommand("timefmt");     // Patch 496: sh_time.qc's own harness handle
 	registercommand("host_timescale"); // P954: server-authorized, per-player practice
 	registercommand("tas");            // P1052: explicit assisted practice session
+	registercommand("ent_fire");       // P1256: Source's cheat, run by the server (SV_EntFire)
 	Ghost_RegisterCvars();
 	Results_RegisterCvars();        // build 48
 	Banner_RegisterCvars();         // Patch 361
@@ -2388,6 +2389,11 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (VM_ConsoleCommand()) return TRUE;
 	if (WP_Command()) return TRUE;
 	if (Timer_ResumeCommand()) return TRUE;     // P1004
+	if (!strcmp(argv(0), "ent_fire"))
+	{
+		localcmd(strcat("cmd ", cmd, "\n"));
+		return TRUE;
+	}
 	if (!strcmp(argv(0), "tas"))
 	{
 		tsseat = getproperty(VF_ACTIVESEAT);

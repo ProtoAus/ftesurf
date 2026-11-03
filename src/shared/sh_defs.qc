@@ -36,6 +36,7 @@
 #define ENTWIRE_TRIGSTATE 1
 #define ENTWIRE_PORTALSTATE 2
 #define ENTWIRE_PSYSSTATE 3     // Patch 1028: an info_particle_system's Start/Stop
+#define ENTWIRE_LASERSTATE 4    // P1256: an env_laser's TurnOn/TurnOff/Toggle
 
 // --- hulls ------------------------------------------------------------------
 // Source puts the player origin AT THE FEET, unlike Quake's centred origin.
