@@ -50,6 +50,27 @@ float fbm(vec2 p)
 	return 0.5 * vnoise(p) + 0.25 * vnoise(p * 2.03 + 7.1) + 0.125 * vnoise(p * 4.01 + 3.7) + 0.125 * vnoise(p * 8.1 + 1.3);
 }
 
+// Rows across angle bin `b` (15 degrees each), dashes along it: 0..1 coverage of a scratch here.
+float scratches(vec2 p, float b, float amount)
+{
+	float a = mod(b, 12.0) * 0.2617994;
+	vec2 d = vec2(cos(a), sin(a));
+	vec2 q = vec2(dot(p, d), dot(p, vec2(-d.y, d.x)));
+	float rowh = 2.5;
+	float row = floor(q.y / rowh);
+	float fy = fract(q.y / rowh);
+	float dash = mix(30.0, 260.0, hash(vec2(row, 9.1 + b)));
+	float sx = (q.x + hash(vec2(row, 1.7 + b)) * 977.0) / dash;
+	float seg = floor(sx);
+	float fx = fract(sx);
+	float wid = mix(0.12, 0.4, hash(vec2(seg, row * 3.1 + b)));
+	float aa = fwidth(q.y) / rowh;
+	float line = 1.0 - smoothstep(wid, wid + aa + 0.02, abs(fy - 0.5) * 2.0);
+	line *= smoothstep(0.0, 0.08, fx) * smoothstep(1.0, 0.7, fx);
+	float s = line * step(hash(vec2(row * 0.37 + b, seg * 1.3)), amount * 1.2) * min(1.0, 0.4 + amount);
+	return s * (1.0 - smoothstep(0.35, 0.9, aa));   // a row under a pixel: shimmer, not detail
+}
+
 void main()
 {
 	vec4 m = texture2D(s_wear, tc);
@@ -75,23 +96,14 @@ void main()
 	float dirt = clamp(cvar_r_rampwear_dirt, 0.0, 2.0) * (0.45 + 0.55 * blot) * (1.0 - smoothstep(0.05, 0.8, wear));
 	vec3 grime = mix(vec3(1.0), vec3(0.58, 0.53, 0.46) * (0.88 + 0.24 * grain), clamp(dirt, 0.0, 1.0));
 
-	// scratches: rows across the travel direction, dashes along it
-	vec2 q = vec2(dot(p, dir), dot(p, vec2(-dir.y, dir.x)));
-	float rowh = 2.5;
-	float row = floor(q.y / rowh);
-	float fy = fract(q.y / rowh);
-	float r1 = hash(vec2(row, 1.7));
-	float dash = mix(30.0, 260.0, hash(vec2(row, 9.1)));
-	float sx = (q.x + r1 * 977.0) / dash;
-	float seg = floor(sx);
-	float fx = fract(sx);
-	float wid = mix(0.12, 0.4, hash(vec2(seg, row * 3.1)));
-	float aa = fwidth(q.y) / rowh;
-	float line = 1.0 - smoothstep(wid, wid + aa + 0.02, abs(fy - 0.5) * 2.0);
-	line *= smoothstep(0.0, 0.08, fx) * smoothstep(1.0, 0.7, fx);
+	// scratches along the travel direction, drawn at the two nearest of 12 fixed angles and blended:
+	// rotating by the mask's per-texel angle itself bends the rows into swirls (dot(p, dir) with p in
+	// the thousands moves a row a long way for a small turn)
 	float amount = clamp(cvar_r_rampwear_scratch, 0.0, 2.0) * clamp(scr + 0.45 * wear, 0.0, 1.0);
-	float s = line * step(hash(vec2(row * 0.37, seg * 1.3)), amount * 1.2) * min(1.0, 0.4 + amount);
-	s *= 1.0 - smoothstep(0.35, 0.9, aa);           // a row under a pixel: shimmer, not detail
+	float bins = atan(dir.y, dir.x) / 0.2617994;    // 15 degree steps; a scratch is a line, so mod 180
+	float b0 = floor(bins);
+	float bt = bins - b0;
+	float s = mix(scratches(p, b0, amount), scratches(p, b0 + 1.0, amount), smoothstep(0.25, 0.75, bt));
 
 	// a scratch shows the clean surface through the dirt and a groove on it; a hard boarding also scuffs
 	vec3 col = mix(grime, vec3(1.0), s) * (1.0 - 0.45 * s) * (1.0 - 0.18 * clamp(scr * cvar_r_rampwear_scratch, 0.0, 1.0));
