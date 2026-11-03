@@ -63,6 +63,9 @@ def parse(text):
             part = "ring"
             continue
         if line.startswith("== server"):
+            if sv:
+                part = "tail"           # only the lobby's own section; a client chunk can spell it too
+                continue
             part = "sv"
             sv.append(line)
             continue
@@ -135,14 +138,20 @@ def server_report(sv, rows, worst, prev):
     if wt is not None:
         near_fill = [r for r in fills if abs(r["t"] - wt) < 1.0]
         for line in sv[1:]:
-            if line.startswith("stall ") and abs(float(line.split()[1]) - wt) < 2.0:
+            f = line.split()
+            try:
+                near = line.startswith("stall ") and len(f) >= 3 and abs(float(f[1]) - wt) < 2.0
+            except ValueError:
+                near = False
+            if near:
                 print("  SERVER STALL near it: " + clean(line))
         if near_fill:
-            print("  LOSS FILLS: the server ran %d command(s) of its own within 1 s of it (kind 0: a replayed "
-                  "last command for lost packets)" % len(near_fill))
-    ran = sorted({r["seq"] for r in span})
+            print("  KIND 0: the server ran %d command(s) with no sequence within 1 s of it (a loss fill, which "
+                  "replays the last command for lost packets, or an untagged one)" % len(near_fill))
+    ran = {r["seq"] for r in span}
+    lo = max(lo, worst["seq"] - 2000)   # a client-written ring can name any two sequences
     missing = [s for s in range(int(lo) + 1, int(worst["seq"]) + 1) if s not in ran]
-    msec = sum(r["piece"] for r in span if lo < r["seq"] <= worst["seq"])
+    msec = sum(r["piece"] for r in span if lo < r["seq"] <= worst["seq"])   # one row per piece
     cms = sorted(r["msec"] for r in rows)
     nominal = cms[len(cms) // 2] if cms else 0
     n = int(worst["seq"] - lo)

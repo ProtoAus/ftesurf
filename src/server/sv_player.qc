@@ -528,12 +528,12 @@ void() PlayerPreThink =
 {
 	local float speedmod, speedcap;
 
+	SV_PeCmd(self);                     // P1238: the last command's row, this one's context
 	SV_HeldCheck(self);
 	SV_VsVelPost(self);                 // P1205: the previous command's VScript velocity write
 	SV_NoColRestore();                  // P1193: lent again at the end of this function
 	self.svpm_phase_lo = input_cmd_sequence_lo;
 	self.svpm_phase_hi = input_cmd_sequence_hi;
-	SV_PeCmd(self);                     // P1238: the context the prederror row reports after the move
 	// Patch 753: first, where a stringcmd sent just before this command would run.
 	SV_WarpOpCommand();
 	SV_TimeScaleReturnCommand();
@@ -860,7 +860,6 @@ void() PlayerPostThink =
 	SV_SourcePhaseClear(self);
 	self.svpm_phase_stat = strzone(sprintf("%.0f:%.0f:%.0f:%.9g", num_for_edict(self), self.svpm_phase_lo, self.svpm_phase_hi, self.run_movecarry));
 	self.run_pkn = self.run_pkn + 1;    // Patch 382: the trigger gate's packet count
-	SV_PeRow(self);                     // P1238: the prederror report's server rows
 
 	SV_WatchHoldMove(self);             // Patch 499: ahead of the watcher that reads it
 	if (self.rec_wt_hold)

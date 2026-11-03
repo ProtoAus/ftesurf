@@ -282,7 +282,7 @@ void(entity e) SV_WarpOpCur =
 {
 	local string s;
 	local float sig;
-	sig = e.wop_ack + e.rec_sl_index * 4099.5 + e.rec_sl_count * 77.25
+	sig = e.wop_ack + e.rec_sl_index * 4099.5 + e.rec_sl_count * 77.25 + e.rec_sl_ack * 0.37
 	      + SV_WopCurSig(e.rec_sl_curorg, e.rec_sl_curang, e.rec_sl_curvel)
 	      + 2 * SV_WopCurSig(e.wop_norg, e.wop_nang, e.wop_nvel) + 3 * SV_WopCurSig(e.wop_porg, e.wop_pang, e.wop_pvel)
 	      + 5 * SV_WopCurSig(e.wop_forg, e.wop_fang, e.wop_fvel) + 7 * SV_WopCurSig(e.wop_lorg, e.wop_lang, e.wop_lvel);
@@ -290,7 +290,7 @@ void(entity e) SV_WarpOpCur =
 		return;
 	e.wop_csig = sig;
 	e.wop_ct = time;
-	s = strcat(sprintf("C %.0f %g %g ", e.wop_ack, e.rec_sl_index, e.rec_sl_count),
+	s = strcat(sprintf("C %.0f %g %g %g ", e.wop_ack, e.rec_sl_index, e.rec_sl_count, e.rec_sl_ack),
 	           SV_WopCurRow(e.rec_sl_curorg, e.rec_sl_curang, e.rec_sl_curvel),
 	           SV_WopCurRow(e.wop_norg, e.wop_nang, e.wop_nvel),
 	           SV_WopCurRow(e.wop_porg, e.wop_pang, e.wop_pvel),

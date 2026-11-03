@@ -101,7 +101,7 @@ string(string s) PE_Safe =
 // every CSQC prediction hook, while this process hosts a server (pr_csqc.c: sv.state != ss_dead).
 float() PE_Predicting =
 {
-	return (cltime - wop_premove_t < 0.5 && cltime >= wop_premove_t);
+	return WarpOp_HookAlive();      // P1238: the gate the ops use
 };
 
 // This PC hosts the game: no warp op or trigger is predicted, so a line is a server move, not a
@@ -173,13 +173,24 @@ void() PE_SendStop =
 		PE_BoxOpen();
 };
 
-// P1238: the server put the body on the destination of a teleport the mirror left to it.
+// P1238: the server put the body on the destination of a teleport the mirror left to it, and no
+// teleport the mirror still predicts lands there (one it missed would land there too).
 float(vector srv) PE_ServerTele =
 {
-	local float i;
+	local float i, j, d;
 	for (i = 0; i < tg_sod_n; i = i + 1)
 		if (vlen(srv - tg_sod[i]) < 2)
+		{
+			for (j = 0; j < tg_n; j = j + 1)
+				if (tg_kind[j] == TG_TELE)
+				{
+					d = TT_Find(tg_target[j]);
+					if (d >= 0)
+					if (vlen(tt_org[d] - tg_sod[i]) < 2)
+						return FALSE;
+				}
 			return TRUE;
+		}
 	return FALSE;
 };
 
@@ -189,8 +200,10 @@ float(float seq) PE_Expected =
 	local float ping;
 	if (!pe_exp_t)
 		return FALSE;
-	ping = stof(getplayerkeyvalue(player_localnum, "ping")) / 1000;
-	return cltime - pe_exp_t < 1 + 2 * min(ping, 1) && seq >= pe_exp_seq - 2;
+	ping = min(stof(getplayerkeyvalue(player_localnum, "ping")) / 1000, 1);
+	// The move lands about half a round trip of commands after the one it was asked on.
+	return cltime - pe_exp_t < 1 + 2 * ping && seq >= pe_exp_seq - 2
+	       && seq <= pe_exp_seq + ceil(ping * cvar("cl_netfps")) + 8;
 };
 
 void() PE_Frame =

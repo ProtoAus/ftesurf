@@ -6,9 +6,10 @@
   1 KB whatever the client declares; per connection 3 a map and 20 s apart; per lobby 12 a map and
   10 s apart; and nothing is taken once PE_SV_STORE files are on the box (fetch and clear them).
 
-  P1238: the server's own side.  Every command a player runs adds one row to that player's ring
-  (PlayerPostThink, with P675's command context: kind 1 network, 2 timestamp-split, 0 a loss fill
-  or untagged).  The client marks a report the moment it sees the error (CSEv_pe_mk_f); 1.6 s later
+  P1238: the server's own side.  Every command a player runs adds one row to that player's ring:
+  P675's context (kind 1 network, 2 timestamp-split, 0 a loss fill or untagged) and time taken at
+  its PlayerPreThink, the body written at the next one, after PlayerPostThink's pins and teleports
+  (PostThink runs once a packet, not once a command).  The client marks a report the moment it sees the error (CSEv_pe_mk_f); 1.6 s later
   the ring is frozen, and the upload writes it as "== server" with the stalls around it.
 */
 #define PE_SV_CHUNKS   400
@@ -25,7 +26,8 @@ float  pe_lobby_n, pe_lobby_last;
 .float pe_rb, pe_rn;            // per-command ring: strbuf + 1 (0 = none; fields clear at a map change), rows ever
 .float pe_sb, pe_sn;            // the frozen snapshot: strbuf + 1, rows
 .float pe_mk_due, pe_mk_seq, pe_mk_t, pe_mk_last, pe_sn_seq, pe_sn_t;
-.float pe_ck, pe_cs, pe_cm, pe_cp, pe_co, pe_ci;   // this command's context, kept from PlayerPreThink
+.float pe_ck, pe_cs, pe_cm, pe_cp, pe_co, pe_ci;   // the pending command's context, from its PlayerPreThink
+.float pe_ct, pe_crt, pe_cpend;                    // ...its time and realtime, and whether one is pending
 float  pe_hit_t[PE_SV_HITCHES], pe_hit_d[PE_SV_HITCHES];
 float  pe_hit_n, pe_rt_last;    // server frames longer than 50 ms: lobby-wide, newest PE_SV_HITCHES
 
@@ -56,42 +58,49 @@ void(entity p) SV_PeSnap =
 	p.pe_sb = b + 1;
 	i0 = max(0, p.pe_rn - PE_SV_ROWS);
 	for (i = i0; i < p.pe_rn; i = i + 1)
-		bufstr_add(b, bufstr_get(p.pe_rb - 1, i - floor(i / PE_SV_ROWS) * PE_SV_ROWS), FALSE);
+		bufstr_add(b, bufstr_get(p.pe_rb - 1, i - floor(i / PE_SV_ROWS) * PE_SV_ROWS), TRUE);
 	p.pe_sn = p.pe_rn - i0;
 	p.pe_sn_seq = p.pe_mk_seq;
 	p.pe_sn_t = p.pe_mk_t;
 };
 
-// PlayerPreThink: sv_user.c publishes P675's context around PlayerPreThink only and clears it after.
+// The pending command's row: its context and time, and the body as it stands now.  Columns are in
+// the == server header line.
+void(entity p) SV_PeRow =
+{
+	local float b;
+	p.pe_cpend = FALSE;
+	if (!p.pe_rb)
+		p.pe_rb = buf_create() + 1;
+	b = p.pe_rb - 1;
+	bufstr_set(b, p.pe_rn - floor(p.pe_rn / PE_SV_ROWS) * PE_SV_ROWS,
+	           strcat(sprintf("%.3f %.3f %g %.0f %g %g %g ", p.pe_ct, p.pe_crt, p.pe_ck, p.pe_cs,
+	                          p.pe_cm, p.pe_cp, p.pe_co),
+	                  sprintf("%.2f %.2f %.2f %.1f %.1f %.1f ", p.origin_x, p.origin_y, p.origin_z,
+	                          p.velocity_x, p.velocity_y, p.velocity_z),
+	                  sprintf("%g %g %g", p.movetype, (p.flags & FL_ONGROUND) ? 1 : 0, p.pe_ci)));
+	p.pe_rn = p.pe_rn + 1;
+	if (p.pe_mk_due && time >= p.pe_mk_due)
+		SV_PeSnap(p);
+};
+
+// The top of PlayerPreThink, once per command part (loss fills and tick parts included): the last
+// command's row, then this one's context, which sv_user.c publishes around PlayerPreThink only.
 void(entity p) SV_PeCmd =
 {
+	if (clienttype(p) != CLIENTTYPE_REAL)
+		return;
+	if (p.pe_cpend)
+		SV_PeRow(p);
 	p.pe_ck = input_cmd_kind;
 	p.pe_cs = input_cmd_sequence_hi * 65536 + input_cmd_sequence_lo;
 	p.pe_cm = input_cmd_msec;
 	p.pe_cp = input_cmd_piece_msec;
 	p.pe_co = input_cmd_offset_msec;
 	p.pe_ci = input_impulse;
-};
-
-// PlayerPostThink: this command's result.  Columns are in the == server header line.
-void(entity p) SV_PeRow =
-{
-	local float b;
-	if (clienttype(p) != CLIENTTYPE_REAL)
-		return;
-	if (!p.pe_rb)
-		p.pe_rb = buf_create() + 1;
-	b = p.pe_rb - 1;
-	bufstr_set(b, p.pe_rn - floor(p.pe_rn / PE_SV_ROWS) * PE_SV_ROWS,
-	           strcat(sprintf("%.3f %.3f %g %.0f %g %g %g ", time, gettime(1), p.pe_ck, p.pe_cs,
-	                          p.pe_cm, p.pe_cp, p.pe_co),
-	                  sprintf("%.2f %.2f %.2f %.1f %.1f %.1f ", p.origin_x, p.origin_y, p.origin_z,
-	                          p.velocity_x, p.velocity_y, p.velocity_z),
-	                  sprintf("%g %g %g", p.movetype, (p.flags & FL_ONGROUND) ? 1 : 0, p.pe_ci)));
-	p.pe_rn = p.pe_rn + 1;
-	p.pe_ck = p.pe_cs = p.pe_cm = p.pe_cp = p.pe_co = p.pe_ci = 0;   // a PostThink without a PreThink logs 0
-	if (p.pe_mk_due && time >= p.pe_mk_due)
-		SV_PeSnap(p);
+	p.pe_ct = time;
+	p.pe_crt = gettime(1);
+	p.pe_cpend = TRUE;
 };
 
 // The client saw an error at its command `seq`; freeze the ring once the commands after it ran.
@@ -113,19 +122,21 @@ void(entity p) SV_PeForget =
 		buf_del(p.pe_rb - 1);
 	if (p.pe_sb)
 		buf_del(p.pe_sb - 1);
-	p.pe_rb = p.pe_rn = p.pe_sb = p.pe_sn = p.pe_mk_due = 0;
+	p.pe_rb = p.pe_rn = p.pe_sb = p.pe_sn = p.pe_mk_due = p.pe_cpend = 0;
 };
 
 // The frozen ring, if it is this report's: its mark within 1000 commands of the worst line.
 void(entity p, float worstseq) SV_PeWriteServer =
 {
 	local float i, j, k;
+	if (p.pe_mk_due)
+		SV_PeSnap(p);               // sent before the freeze was due: the rows so far
 	if (!p.pe_sb)
 	{
 		fputs(p.pe_fh, "== server none (no mark from this client on this map)\n");
 		return;
 	}
-	if (fabs(p.pe_sn_seq - worstseq) > 1000)
+	if (!(fabs(p.pe_sn_seq - worstseq) <= 1000))       // positive form: NaN fails it
 	{
 		fputs(p.pe_fh, sprintf("== server none (the last mark was seq %.0f)\n", p.pe_sn_seq));
 		return;
@@ -233,6 +244,7 @@ void(entity p, string s) SV_PeBegin =
 	fputs(p.pe_fh, sprintf("server origin %v velocity %v movetype %g flags %g run_t_flags %g\n",
 	                       p.origin, p.velocity, p.movetype, p.flags, p.run_t_flags));
 	SV_PeWriteServer(p, stof(argv(4)));     // P1238
+	fputs(p.pe_fh, "== client\n");         // what follows is the client's: the triage reads no server rows there
 	print(sprintf("prederr: report from %s -> %s\n", p.netname, path));
 	stuffcmd(p, "prederr_ack 0\n");
 };
