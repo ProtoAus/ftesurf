@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P1277 fewer shader stutters (both installs: exe b9fb1679 patch-1277; your Desktop copy with the next release)
+1. Nothing to set: it is on (`r_glsl_warm 1`). The game writes ftesurf/data/glslwarm.txt as you play.
+2. Where it shows: after an update, a map's first run can still hitch once where a new shader appears. From the
+   next load on, those shaders are built behind the loading screen. That load is up to about half a second longer
+   the first time after an update (boreas: 0.56 s), and about 0.01 s after that.
+3. Optional, your call: in NVIDIA Control Panel, Manage 3D settings, Shader Cache Size. This game's cache folder is
+   full at 560 MB, so the driver throws old shaders out. A larger size (10 GB, say) keeps more of them.
+4. If a map hitches in the same place on every run, that is one of the other stalls I found (BACKLOG), not this.
+   Tell me the map and the place.
+
 ## P1278 worn ramps: your install C:/FTESurf (csprogs ae5ee543), lobbies too
 1. surf_classics, surf_colin_blaster_69000 or surf_666 (23 maps in all, list in data/rampwear): the ramps carry a
    dirt film with clean lines where people ride, and scratches where they board -- steeper landings scratch more.

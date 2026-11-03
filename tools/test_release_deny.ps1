@@ -27,7 +27,8 @@ $good = @('ftesurf/data/mapdl.txt', 'ftesurf/maps/zones/local/surf_fixture.json'
           'ftesurf/gfx/fonts/Roboto.ttf', 'ftesurf/gfx/fonts/FONTS.md', 'ftesurf/gfx/fonts/OFL.txt')
 $bad = @('ftesurf/data/mapdl.net.txt', 'ftesurf/data/mapdl.net.tmp', 'ftesurf/data/mapbuild.txt',
          'ftesurf/maps/settings/local/surf_fixture.cfg', 'ftesurf/data/maps/settings/local/surf_fixture.cfg',
-         'ftesurf/gfx/fonts/Roboto.ttf.prev', 'FTESURF/DATA/MAPBUILD.TXT')
+         'ftesurf/gfx/fonts/Roboto.ttf.prev', 'FTESURF/DATA/MAPBUILD.TXT',
+         'ftesurf/data/glslwarm.txt', 'ftesurf/data/glslwarm.bak', 'ftesurf/data/glslwarm.0a1b2c3d.tmp')
 function Put-File([string]$Stage, [string]$Relative) {
     $target = Join-Path $Stage $Relative
     New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null

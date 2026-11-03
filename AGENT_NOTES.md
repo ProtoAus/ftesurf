@@ -1,5 +1,39 @@
 # AGENT_NOTES.md
 
+## P1277 frame pacing: what stalls a surf run, and the shader warm list (4 Nov; root C:/FTESurf-worktrees/pacing1277-2b)
+- Method:
+  - Replays of expensive maps. The viewer pass (`replay online <id>`) is a smooth camera at real speed. The drive
+    (setpos + waitms from the .rec) moves the player, so entities stream; it runs at ~0.68x, because waits round up
+    to frames.
+  - artifacts/p1277arm.py builds the fixture from the Desktop install with Lex's cfg. p1277parse.py reads
+    r_frametime and cl_debug_spikes per pass.
+  - The hitch probe (engine branch p1277-hitchprobe, NEVER ship) samples the main thread every 1 ms while a frame
+    is over hitchprof_ms. It writes slow-frame, file-open and permutation-compile records; p1277resolve.py
+    symbolises them.
+- Harness traps:
+  - log_enable 1 reopens the log for each line, and AV makes an open slow (up to 686 ms). Passes run log_enable 0
+    and condump.
+  - log_developer 1 multiplies that cost: the log's "shader reload" load stage went from 120 to 800 ms.
+  - developer 1 prints reach the console only; log_developer puts them in the log.
+  - A screenshot blocks for 0.5-2 s. r_frametime_dump writes the clipboard (80-850 ms; the arm restores Lex's).
+    Opening a replay costs 80-380 ms.
+- Found: no file opens mid-run on 8 maps. Stalls: lazy GLSL permutation compiles (fixed here), lightmap rebuilds,
+  first-view portal lightmaps and lighting traces near movers (BACKLOG).
+- Cold-cache test: r_glsl_p1277salt (test branch only) adds a define, so every compile misses NVIDIA's cache.
+  - Each salted run adds a full program set to C:/Users/Lex/AppData/Local/NVIDIA/GLCache. The game's folder stayed
+    at 560 MB, so the cache is full, and those runs evict Lex's entries. Run as few as you need.
+  - The ship exe, unsalted, warmed boreas's 27 in 12 ms, so those were still cached.
+- r_glsl_warm:
+  - GLSLWarm_MapActive runs in CL_MakeActive, after its shader reload.
+  - It prints (dprint) "glslwarm: N remembered permutations compiled while loading, M ms".
+  - A fixture that carries a data/glslwarm.txt moves compiles to load time.
+- Engine facts met:
+  - Shader_DoReload runs every frame (SCR_UpdateScreen), not only when a reload is pending.
+  - FS_Rename and FS_Remove return true on success, though common.h says 0. Desktop Windows Sys_Rename is
+    MoveFileW, which will not replace a file.
+  - SCR_BeginLoadingPlaque does nothing unless the client is ca_active, so a local map from the menu never sets
+    scr_disabled_for_loading. Neither does a first NQ connect or a demo.
+
 ## P1278 ramp wear (4 Nov; root C:/FTESurf-worktrees/rampwear-20261104)
 - `python tools/rampwear.py --map M [--gamedir DIR]` bakes data/rampwear/M.txt + textures/rampwear/M.png from
   Momentum .mtv replays (untracked in C:/FTESurf/ftesurf like the particle bakes; release.ps1 ships both folders).

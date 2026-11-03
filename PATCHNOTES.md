@@ -21,6 +21,14 @@
 
 ## next
 
+### P1277 Fewer shader stutters
+- A surface drawn a new way for the first time (water seen from a new spot, a lit model, fog) needs a shader built
+  for it. When your graphics driver had not kept that shader -- after an update, or once its cache fills -- building
+  it froze a frame mid-run for up to a fifth of a second. The game now remembers those shaders and builds them while
+  the next map loads, behind the loading screen (surf_boreas with a cold driver cache, as after an update: 11 mid-run stalls gone).
+- It learns as you play: a map's first run can still hitch once at a new shader, and every later load covers it.
+  That load takes up to about half a second longer the first time after an update. `r_glsl_warm 0` turns it off.
+
 ### P1278 Worn ramps
 - On 23 maps, ramps look used: a film of dirt that riders have wiped clean along the lines people surf, and scratches where they land on a ramp, more and longer the steeper the landing (a landing parallel to the ramp leaves none). Built from replays of real runs. r_rampwear 0 turns it off.
 

@@ -18,6 +18,24 @@
   mask still cuts same-area geometry behind a sky face at r_sky_forcedepth_scale's distance there, where
   Source shows it whole. Our vised walk area-culls area-0 leaves, which Source does not.
 
+## P1277 frame pacing (4 Nov): other stalls found, and warm-list residuals
+- surf_monolith lightmap rebuilds: Surf_RenderDynamicLightmaps -> Surf_BuildLightMap/Surf_BuildDeluxMap/
+  Surf_PackE5BRG9, up to ~85 ms in a frame.
+- surf_boreas, the first view of a portal or water surface: GLR_DrawPortal -> GLBE_GenerateBatchTextures, ~30 ms once.
+- surf_voyager model lighting beside movers: R_CalcModelLighting -> VBSP_LightPointValues -> VBSP_AddWorldLightCube ->
+  VBSP_WorldLightVisible (BIH traces), 8-13 ms.
+- Opening a replay (Watch_Open parses the .rec in CSQC): 80-380 ms, before playback, not mid-run.
+- A seed list built from the census maps would cover a fresh install's first plays. It would ship as its own file:
+  data/glslwarm.txt is per PC and denied.
+- Warm list, not covered:
+  - programs created mid-run, and programfixedemu;
+  - a later reload (r_shader_reload_afterframe 1, vid_restart, a shader cvar) drops warmed permutations, as before;
+  - a crash between the write and the rename leaks a data/glslwarm.<hex>.tmp;
+  - on Linux a full disk at fclose goes unseen;
+  - nothing is pruned (capped at 4 MiB / 65536 entries).
+- NVIDIA "Shader Cache Size" (Control Panel, Manage 3D settings): the game's folder is full at 560 MB. Raising it
+  is Lex's setting.
+
 ## P1278 ramp wear (4 Nov): next steps and residuals
 - Props: ramps built from models (surf_demise's prop_dynamic_override, surf_classics3's static props, part of
   surf_666) need the bake to read MDL/VVD/VTX from the map's pakfile and place contacts on model triangles.
