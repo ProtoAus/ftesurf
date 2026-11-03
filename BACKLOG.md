@@ -231,6 +231,9 @@
   each later map change (1062 of frey_remake's 85 ms after bikini_bottom). Releasing them at a purge needs
   every holder found (models' textures and batches, skins, R2D, fonts, particles). Lazy re-reading at lookup
   was tried and rejected (ENGINE_PATCHES 1267).
+  A change that narrows the per-map reload further reruns ac's P1264 deluxe check: surf_sedona with
+  hl2_rnm 0 after bhop_ceaseless with 1 (and back) must match a fresh load (P1267: mean abs diff 0.06,
+  max 0.19; C:/FTESurf-worktrees/rampprop-20261103/artifacts/chk1267/run.sh while that root lasts).
 - The first-visit join's world load showed one 707 ms gap during the download on 3 Nov (other runs of the
   same build stayed under 150 ms there): not explained yet.
 - serverkey("transferring") still formats with va() for KEXLAN/ICE/RTC addresses (CL_TryingToConnect);
