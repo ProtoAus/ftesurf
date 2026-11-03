@@ -5194,6 +5194,11 @@ void(entity o, entity act) SV_IODeliver =
 	vbsp_io_value = "";
 };
 
+// P1256 review 2: set by ent_fire, cleared by SV_EntityReset.  What it edits (a retargeted teleport,
+// a killed hazard, an enabled boost trigger) outlives sv_cheats, so SV_CheatLevel cheats every run
+// on the map until it reloads.
+float vbsp_entfire_map;
+
 // P1256: Source's ent_fire <target> [input] [param], a cheat as there: one row through SV_IODeliver,
 // the player its activator and its !self, in a bank context of its own like SV_FireOutput's and
 // tainted, so nothing it causes counts as the map's (review 1).  No input means Use, as Source.
@@ -5215,6 +5220,9 @@ void(entity pl, string tgt, string in, string pm) SV_EntFire =
 	}
 	if (in == "")
 		in = "Use";
+	if (!vbsp_entfire_map)
+		bprint(PRINT_HIGH, "^3ent_fire: every run on this map counts as cheated until it reloads\n");
+	vbsp_entfire_map = TRUE;
 	o = spawn();
 	o.classname = "vbsp_entfire";
 	o.vbsp_io_target = tgt;
@@ -6831,6 +6839,7 @@ entity  vbsp_ml_head;                               // Patch 882: the map's limi
 
 void() SV_EntityReset =
 {
+	vbsp_entfire_map = FALSE;                       // P1256
 	vbsp_ml_head = world;                           // Patch 882: it would hold the last map's edicts
 	vbsp_prop_n = vbsp_prop_solid_n = vbsp_prop_scaled_n = vbsp_prop_dropped_n = 0;
 	vbsp_prop_requant_n = 0;

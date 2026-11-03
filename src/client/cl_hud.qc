@@ -1676,6 +1676,7 @@ void(vector org, vector vel, float onground) HUD_UpdateJumpRef =
 		ui_jump_z    = org_z;
 		ui_jump_have = TRUE;
 		ui_jump_base = TRUE;
+		ui_was_onground = FALSE;    // the last map's or the old place's: not a takeoff from here
 	}
 	ui_jump_lastorg = org;
 
@@ -1723,12 +1724,12 @@ void(vector org, vector vel, float onground) HUD_UpdateJumpRef =
 		return;
 	}
 
-	// Left the ground.  Only a jump moves the reference; a ledge does not.
+	// Left the ground.  Only a jump moves the reference; a ledge does not.  Any takeoff ends the
+	// P1254 floor-follow, so only the landing after a re-base re-zeroes (review 2).
 	if (ui_was_onground && vel_z > 0)
-	{
 		ui_jump_z = ui_ground_z;
+	if (ui_was_onground)
 		ui_jump_base = FALSE;
-	}
 	ui_was_onground = FALSE;
 };
 
