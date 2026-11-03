@@ -18,6 +18,8 @@
 
 .float wop_lo, wop_hi;           // the last op's command
 .float wop_ack;                  // Patch 759: the same, one number (STAT_FS_WOPACK)
+.string wop_cur;                 // P1238: STAT_FS_WOPCUR, zoned (SV_WarpOpCur)
+.float  wop_csig, wop_ct;        // ...a cheap signature of what it carries, and when it was last built
 float  wop_live;                 // fs_wop published
 
 .vector wop_rorg, wop_rang;      // STAT_FS_WOPR/RANG: where `!r` would put you
@@ -263,6 +265,44 @@ void(entity e) SV_WarpOpLegs =
   save list, a hold, the movetype, a pin) and at least once a second; the `!s`/`!b`
   table on the same changes and at least every 5 s.
 */
+string(vector o, vector a, vector v) SV_WopCurRow =
+{
+	return strcat(sprintf("%.9g %.9g %.9g %.9g %.9g %.9g ", o_x, o_y, o_z, a_x, a_y, a_z),
+	              sprintf("%.9g %.9g %.9g ", v_x, v_y, v_z));
+};
+
+float(vector o, vector a, vector v) SV_WopCurSig =
+{
+	return o_x * 1.1 + o_y * 1.3 + o_z * 1.7 + a_x * 0.7 + a_y * 0.9 + a_z * 3.1 + v_x * 0.11 + v_y * 0.13 + v_z * 0.17;
+};
+
+// P1238: STAT_FS_WOPCUR, rebuilt after the rows.  The sprintfs run only when the signature moves, or
+// once a second so a signature that collided cannot leave the string stale for longer.
+void(entity e) SV_WarpOpCur =
+{
+	local string s;
+	local float sig;
+	sig = e.wop_ack + e.rec_sl_index * 4099.5 + e.rec_sl_count * 77.25
+	      + SV_WopCurSig(e.rec_sl_curorg, e.rec_sl_curang, e.rec_sl_curvel)
+	      + 2 * SV_WopCurSig(e.wop_norg, e.wop_nang, e.wop_nvel) + 3 * SV_WopCurSig(e.wop_porg, e.wop_pang, e.wop_pvel)
+	      + 5 * SV_WopCurSig(e.wop_forg, e.wop_fang, e.wop_fvel) + 7 * SV_WopCurSig(e.wop_lorg, e.wop_lang, e.wop_lvel);
+	if (e.wop_cur != "" && sig == e.wop_csig && time - e.wop_ct < 1 && time >= e.wop_ct)
+		return;
+	e.wop_csig = sig;
+	e.wop_ct = time;
+	s = strcat(sprintf("C %.0f %g %g ", e.wop_ack, e.rec_sl_index, e.rec_sl_count),
+	           SV_WopCurRow(e.rec_sl_curorg, e.rec_sl_curang, e.rec_sl_curvel),
+	           SV_WopCurRow(e.wop_norg, e.wop_nang, e.wop_nvel),
+	           SV_WopCurRow(e.wop_porg, e.wop_pang, e.wop_pvel),
+	           SV_WopCurRow(e.wop_forg, e.wop_fang, e.wop_fvel),
+	           SV_WopCurRow(e.wop_lorg, e.wop_lang, e.wop_lvel));
+	if (!strcmp(e.wop_cur, s))
+		return;
+	if (e.wop_cur != "")
+		strunzone(e.wop_cur);
+	e.wop_cur = strzone(s);
+};
+
 void(entity e) SV_WarpOpPublish =
 {
 	local float blk, sig, sig2, sig3, moved;
@@ -270,6 +310,7 @@ void(entity e) SV_WarpOpPublish =
 	if (!wop_live)
 		return;
 	SV_WarpOpRows(e);
+	SV_WarpOpCur(e);                // P1238
 	blk = SL_Blk(e);
 	sig = e.run_leg_zone + 1024 * (e.run_t_state + 8 * (e.rec_sl_hold + 2 * (e.movetype
 	      + 16 * (e.run_pmhold || e.run_sp_phase || e.rec_wt_hold || e.rec_gh_on || e.run_ms_phase))));

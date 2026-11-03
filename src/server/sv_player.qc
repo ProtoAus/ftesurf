@@ -390,6 +390,7 @@ void() ClientDisconnect =
 {
 	SV_TASShareCancel(self);           // callbacks/deferred opens belong to this connection
 	SV_PeClose(self);                  // Patch 1195: a report still uploading
+	SV_PeForget(self);                 // P1238: its command ring
 	SV_PcForget(self);                 // P1211: delayed rows counting this player's commands
 	self.bank_attempt = 0i;
 	SV_StagePruneDue(self);             // Patch 998: a stage's prune still queued
@@ -532,6 +533,7 @@ void() PlayerPreThink =
 	SV_NoColRestore();                  // P1193: lent again at the end of this function
 	self.svpm_phase_lo = input_cmd_sequence_lo;
 	self.svpm_phase_hi = input_cmd_sequence_hi;
+	SV_PeCmd(self);                     // P1238: the context the prederror row reports after the move
 	// Patch 753: first, where a stringcmd sent just before this command would run.
 	SV_WarpOpCommand();
 	SV_TimeScaleReturnCommand();
@@ -858,6 +860,7 @@ void() PlayerPostThink =
 	SV_SourcePhaseClear(self);
 	self.svpm_phase_stat = strzone(sprintf("%.0f:%.0f:%.0f:%.9g", num_for_edict(self), self.svpm_phase_lo, self.svpm_phase_hi, self.run_movecarry));
 	self.run_pkn = self.run_pkn + 1;    // Patch 382: the trigger gate's packet count
+	SV_PeRow(self);                     // P1238: the prederror report's server rows
 
 	SV_WatchHoldMove(self);             // Patch 499: ahead of the watcher that reads it
 	if (self.rec_wt_hold)
