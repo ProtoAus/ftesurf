@@ -429,6 +429,38 @@ vector rp_fi[RP_MAX];           // fade in, x..y, fractions of the life
 vector rp_fo[RP_MAX];           // fade out, x..y
 float  ri_type[RI_MAX];
 vector ri_org[RI_MAX];
+
+// P1263: shell orbits -- tools/pcf.py's `orbit` lines (translate_orbit), stepped and drawn by
+// Emit_OrbitFrame.  surf_fantasy: ring01-03 (512 about the laser rings) and its torches.
+#define OB_MAX          16      // orbit systems a map; surf_fantasy has 6
+#define OI_MAX          64      // placed orbits
+#define OP_MAX          2048    // live orbit particles, every placed orbit together
+#define OB_STEP         0.015   // longest simulation step: Source steps its particles once a frame
+string orb_name[OB_MAX];
+string orb_parent[OB_MAX];
+string orb_shader[OB_MAX];
+string orb_body[OB_MAX];
+float  orb_rate[OB_MAX], orb_maxp[OB_MAX], orb_twist[OB_MAX], orb_local[OB_MAX], orb_drag[OB_MAX];
+float  orb_a0[OB_MAX], orb_a1[OB_MAX], orb_dist[OB_MAX];
+vector orb_life[OB_MAX], orb_rad[OB_MAX], orb_spawn[OB_MAX], orb_clamp[OB_MAX], orb_alpha[OB_MAX];  // x..y
+vector orb_grav[OB_MAX], orb_axis[OB_MAX], orb_c1[OB_MAX], orb_c2[OB_MAX];
+vector orb_fi[OB_MAX], orb_fo[OB_MAX];
+float  orb_n;
+float  orb_zoned;
+float  ori_type[OI_MAX], ori_stop[OI_MAX], ori_acc[OI_MAX], ori_live[OI_MAX];
+vector ori_org[OI_MAX], ori_axis[OI_MAX];
+string ori_eff[OI_MAX];          // the placing system's effect_name, which a server Start/Stop names
+float  ori_n;
+// OP_MAX long, memalloc'd at the first orbit line: as arrays they took the globals past 16 bits.
+vector *orp_pos;
+vector *orp_prev;
+vector *orp_col;
+float  *orp_inst;
+float  *orp_age;
+float  *orp_life;
+float  *orp_alpha;
+float  *orp_rad;
+float  orp_n;
 float  ps_zoned;                // ps_name[]/ps_parent[] hold strzone handles to give back
 
 void() Emit_TrailForget;
@@ -456,6 +488,18 @@ void() Emit_PsysFree =
 		}
 	rp_zoned = FALSE;
 	rp_n = ri_n = 0;
+	if (orb_zoned)
+		for (i = 0; i < orb_n; i = i + 1)
+		{
+			strunzone(orb_name[i]);
+			strunzone(orb_parent[i]);
+			strunzone(orb_shader[i]);
+			strunzone(orb_body[i]);
+		}
+	for (i = 0; i < ori_n; i = i + 1)
+		strunzone(ori_eff[i]);
+	orb_zoned = FALSE;
+	orb_n = ori_n = orp_n = 0;
 };
 
 #define TRAIL_SHADER "ftesurf_trail/"   // tools/pcf.py has these by the same names
@@ -711,6 +755,222 @@ void() Emit_RopeFrame =
 	}
 };
 
+void() Emit_OrbitNote =
+{
+	local string img;
+
+	if (stof(argv(5)) <= 0 || stof(argv(6)) <= 0 || stof(argv(8)) <= 0)
+		return;
+	if (orb_n >= OB_MAX)
+	{
+		dprint(sprintf("^3emit: orbit %s dropped, more than %g orbit lines\n", argv(2), OB_MAX));
+		return;
+	}
+	if (!orp_pos)
+	{
+		orp_pos   = memalloc(sizeof(vector) * OP_MAX);
+		orp_prev  = memalloc(sizeof(vector) * OP_MAX);
+		orp_col   = memalloc(sizeof(vector) * OP_MAX);
+		orp_inst  = memalloc(sizeof(float) * OP_MAX);
+		orp_age   = memalloc(sizeof(float) * OP_MAX);
+		orp_life  = memalloc(sizeof(float) * OP_MAX);
+		orp_alpha = memalloc(sizeof(float) * OP_MAX);
+		orp_rad   = memalloc(sizeof(float) * OP_MAX);
+	}
+	img = argv(3);
+	orb_name[orb_n]   = strzone(argv(2));
+	orb_parent[orb_n] = strzone(argv(39) == "-" ? "" : argv(39));
+	orb_shader[orb_n] = strzone(sprintf("ftesurf_orbit/%s/%s", img, argv(4)));
+	orb_body[orb_n] = strzone(sprintf("{\ncull disable\nsort %s\n{\nmap \"materials/%s.vtf\"\nblendfunc %s\nrgbgen vertex\nalphagen vertex\n}\n}\n",
+		stof(argv(4)) ? "additive" : "blend", img,
+		stof(argv(4)) ? "GL_SRC_ALPHA GL_ONE" : "GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA"));
+	orb_rate[orb_n]  = stof(argv(5));
+	orb_maxp[orb_n]  = stof(argv(6));
+	orb_life[orb_n]  = [stof(argv(7)), stof(argv(8)), 0];
+	orb_rad[orb_n]   = [stof(argv(9)), stof(argv(10)), 0];
+	orb_spawn[orb_n] = [stof(argv(11)), stof(argv(12)), 0];
+	orb_clamp[orb_n] = [stof(argv(13)), stof(argv(14)), 0];
+	orb_grav[orb_n]  = [stof(argv(15)), stof(argv(16)), stof(argv(17))];
+	orb_axis[orb_n]  = normalize([stof(argv(18)), stof(argv(19)), stof(argv(20))]);
+	orb_twist[orb_n] = stof(argv(21));
+	orb_local[orb_n] = stof(argv(22));
+	orb_drag[orb_n]  = stof(argv(23));
+	orb_c1[orb_n]    = [stof(argv(24)), stof(argv(25)), stof(argv(26))] * (1 / 255);
+	orb_c2[orb_n]    = [stof(argv(27)), stof(argv(28)), stof(argv(29))] * (1 / 255);
+	orb_alpha[orb_n] = [stof(argv(30)), stof(argv(31)), 0] * (1 / 255);
+	orb_a0[orb_n]    = stof(argv(32));       // -1: no Alpha Fade and Decay, the particle's own alpha
+	orb_a1[orb_n]    = stof(argv(33));
+	orb_fi[orb_n]    = [stof(argv(34)), stof(argv(35)), 0];
+	orb_fo[orb_n]    = [stof(argv(36)), stof(argv(37)), 0];
+	orb_dist[orb_n]  = stof(argv(38));
+	orb_n = orb_n + 1;
+	orb_zoned = TRUE;
+};
+
+// The orbits a placed system starts: its children, or itself.  A local-space twist axis turns
+// with the entity (makevectors: forward is x, left is y, up is z).
+void(string effname, vector org, vector ang, float stopped) Emit_OrbitAt =
+{
+	local float j;
+	local vector a;
+
+	for (j = 0; j < orb_n; j = j + 1)
+		if (orb_parent[j] == effname || (orb_parent[j] == "" && orb_name[j] == effname))
+		{
+			if (ori_n >= OI_MAX)
+			{
+				dprint(sprintf("^3emit: orbit %s at %v dropped, more than %g placed\n", orb_name[j], org, OI_MAX));
+				continue;
+			}
+			a = orb_axis[j];
+			if (orb_local[j])
+			{
+				makevectors(ang);
+				a = normalize(v_forward * a_x - v_right * a_y + v_up * a_z);
+			}
+			ori_type[ori_n] = j;
+			ori_org[ori_n]  = org;
+			ori_axis[ori_n] = a;
+			ori_stop[ori_n] = stopped;
+			ori_acc[ori_n]  = ori_live[ori_n] = 0;
+			ori_eff[ori_n]  = strzone(effname);
+			ori_n = ori_n + 1;
+		}
+};
+
+// The alpha multiplier at fraction f of the life: Alpha Fade and Decay as Emit_RopeAlpha reads it.
+float(float j, float f) Emit_OrbitAlpha =
+{
+	local vector fi, fo;
+	local float v;
+
+	if (orb_a0[j] < 0)
+		return 1;
+	fi = orb_fi[j];
+	fo = orb_fo[j];
+	v = orb_a0[j] + (1 - orb_a0[j]) * Emit_Smooth(fi_x, fi_y, f);
+	return v + (orb_a1[j] - v) * Emit_Smooth(fo_x, fo_y, f);
+};
+
+/*
+  Source's step, per particle: Movement Basic's verlet move under gravity plus the twist force
+  (`amount` along cross(the offset's part perpendicular to the axis, normalized, axis)), then
+  "Constrain distance to control point" clamps the distance and leaves the previous position,
+  so the clamp also bends the velocity.  Steps of at most OB_STEP; a frame longer than 0.1 s is
+  cut short rather than run.
+*/
+void() Emit_OrbitFrame =
+{
+	local float i, j, k, s, nsub, h, dt, d, u, lf, keep;
+	local vector eye, rt, up, fwd, ofs, perp, acc, np, col, v;
+
+	if (!ori_n || !cvar("vbsp_emit_orbits"))
+		return;
+	dt = bound(0, frametime, 0.1);
+	eye = getproperty(VF_ORIGIN);
+	makevectors(getproperty(VF_ANGLES));
+	rt = v_right;
+	up = v_up;
+	fwd = v_forward;
+
+	// Births.  The accumulator is capped at the pool, so a long stop does not burst on Start.
+	for (i = 0; i < ori_n; i = i + 1)
+	{
+		j = ori_type[i];
+		if (ori_stop[i])
+			continue;
+		v = orb_clamp[j];
+		if (orb_dist[j] > 0 && vlen(ori_org[i] - eye) > orb_dist[j] + v_y)
+			continue;
+		ori_acc[i] = min(ori_acc[i] + orb_rate[j] * dt, orb_maxp[j]);
+		while (ori_acc[i] >= 1 && ori_live[i] < orb_maxp[j] && orp_n < OP_MAX)
+		{
+			ori_acc[i] = ori_acc[i] - 1;
+			u = random() * 2 - 1;               // uniform on the sphere
+			d = random() * 6.2831853;
+			ofs = [sqrt(1 - u * u) * cos(d), sqrt(1 - u * u) * sin(d), u];
+			k = orp_n;
+			v = orb_spawn[j];
+			orp_pos[k]   = ori_org[i] + ofs * (v_x + (v_y - v_x) * random());
+			orp_prev[k]  = orp_pos[k];
+			orp_inst[k]  = i;
+			orp_age[k]   = 0;
+			v = orb_life[j];
+			orp_life[k]  = v_x + (v_y - v_x) * random();
+			orp_col[k]   = orb_c1[j] + (orb_c2[j] - orb_c1[j]) * random();
+			v = orb_alpha[j];
+			orp_alpha[k] = v_x + (v_y - v_x) * random();
+			v = orb_rad[j];
+			orp_rad[k]   = v_x + (v_y - v_x) * random();
+			orp_n = orp_n + 1;
+			ori_live[i] = ori_live[i] + 1;
+		}
+	}
+
+	for (j = 0; j < orb_n; j = j + 1)
+		shaderforname(orb_shader[j], orb_body[j]);   // re-registered each frame, as the ropes'
+	nsub = max(1, ceil(dt / OB_STEP));
+	h = dt / nsub;
+	for (k = 0; k < orp_n; k = k + 1)
+	{
+		i = orp_inst[k];
+		j = ori_type[i];
+		orp_age[k] = orp_age[k] + dt;
+		if (orp_age[k] >= orp_life[k])
+		{
+			// Dead: the last live particle takes the slot (re-examined next frame).
+			ori_live[i] = ori_live[i] - 1;
+			orp_n = orp_n - 1;
+			orp_pos[k] = orp_pos[orp_n];  orp_prev[k] = orp_prev[orp_n];  orp_inst[k] = orp_inst[orp_n];
+			orp_age[k] = orp_age[orp_n];  orp_life[k] = orp_life[orp_n];  orp_col[k] = orp_col[orp_n];
+			orp_alpha[k] = orp_alpha[orp_n];  orp_rad[k] = orp_rad[orp_n];
+			k = k - 1;
+			continue;
+		}
+		keep = (orb_drag[j] > 0) ? pow(1 - min(orb_drag[j], 1), h * 30) : 1;
+		for (s = 0; s < nsub; s = s + 1)
+		{
+			ofs = orp_pos[k] - ori_org[i];
+			acc = orb_grav[j];
+			if (orb_twist[j] != 0)
+			{
+				perp = ofs - ori_axis[i] * (ofs * ori_axis[i]);
+				if (perp * perp > 0.0001)
+					acc = acc + crossproduct(normalize(perp), ori_axis[i]) * orb_twist[j];
+			}
+			np = orp_pos[k] + (orp_pos[k] - orp_prev[k]) * keep + acc * (h * h);
+			orp_prev[k] = orp_pos[k];
+			ofs = np - ori_org[i];
+			d = vlen(ofs);
+			v = orb_clamp[j];
+			if (d > 0.001)
+			{
+				if (d < v_x)
+					np = ori_org[i] + ofs * (v_x / d);
+				else if (d > v_y)
+					np = ori_org[i] + ofs * (v_y / d);
+			}
+			orp_pos[k] = np;
+		}
+
+		lf = orp_alpha[k] * Emit_OrbitAlpha(j, orp_age[k] / orp_life[k]);
+		if (lf <= 0)
+			continue;
+		ofs = orp_pos[k] - eye;
+		if (ofs * fwd < -orp_rad[k])               // behind the eye
+			continue;
+		if (orb_dist[j] > 0 && vlen(ofs) > orb_dist[j])
+			continue;
+		col = orp_col[k];
+		R_BeginPolygon(orb_shader[j], DRAWFLAG_TWOSIDED, FALSE);
+		R_PolygonVertex(orp_pos[k] - rt * orp_rad[k] - up * orp_rad[k], [0, 1, 0], col, lf);
+		R_PolygonVertex(orp_pos[k] + rt * orp_rad[k] - up * orp_rad[k], [1, 1, 0], col, lf);
+		R_PolygonVertex(orp_pos[k] + rt * orp_rad[k] + up * orp_rad[k], [1, 0, 0], col, lf);
+		R_PolygonVertex(orp_pos[k] - rt * orp_rad[k] + up * orp_rad[k], [0, 0, 0], col, lf);
+		R_EndPolygon();
+	}
+};
+
 void() Emit_TrailForget =
 {
 	while (em_trmats > 0)
@@ -787,6 +1047,10 @@ void(string mname) Emit_PsysLoad =
 		if (argv(0) == "rope")
 		if (argv(1) == mname)
 			Emit_RopeNote();
+		if (n == 40)
+		if (argv(0) == "orbit")
+		if (argv(1) == mname)
+			Emit_OrbitNote();
 		if (n < 10)
 			continue;
 		if (argv(0) != "psys" || argv(1) != mname)
@@ -2085,6 +2349,7 @@ void() Emit_RegisterCvars =
 	registercvar("vbsp_emit_psys_children", "0", 0);
 	// Patch 791: render_rope ribbons (Emit_RopeFrame), whatever the line above says.
 	registercvar("vbsp_emit_ropes", "1", 0);
+	registercvar("vbsp_emit_orbits", "1", 0);      // P1263
 
 	registercommand("emit_list");
 	registercommand("emit_test");
@@ -2877,6 +3142,10 @@ void(entity e) Emit_PsysNet =
 {
 	local float i, ps;
 
+	for (i = 0; i < ori_n; i = i + 1)       // P1263: orbits have no psys line, so before that exit
+		if (ori_eff[i] == e.em_npeff)
+		if (vlen(ori_org[i] - e.origin) < 0.1)
+			ori_stop[i] = !e.em_npon;
 	if (!em_mins)
 		return;
 	ps = Emit_PsysFind(e.em_npeff);
@@ -3616,7 +3885,10 @@ void() Emit_LoadForMap =
 		if (kind == EK_PSYS)
 		{
 			if (effname != "")
+			{
 				Emit_RopeAt(effname, org);	// before the no-psys exit: a rope has no psys line
+				Emit_OrbitAt(effname, org, ang, disabled);   // P1263: nor an orbit
+			}
 			ps = (effname == "") ? -1 : Emit_PsysFind(effname);
 			if (ps < 0)
 			{
@@ -3782,6 +4054,8 @@ void() Emit_LoadForMap =
 	}
 	else
 		dprint(sprintf("emit: none for %s\n", mname));
+	if (ori_n)                                  // P1263
+		print(sprintf("^3emit:^7 %g orbits placed on %s, %g orbit systems baked\n", ori_n, mname, orb_n));
 };
 
 void() Emit_LoadFromWorld =
@@ -3881,6 +4155,7 @@ void() Emit_Frame =
 	}
 
 	Emit_RopeFrame();
+	Emit_OrbitFrame();
 	if (!em_n && !pr_n)
 		return;
 
