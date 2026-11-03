@@ -34,6 +34,13 @@
   root lexlist-1231b are CLOSED and unreferenced.
 
 ## P1238 prederror reports and the mispredictions they found (3 Nov)
+- LIVE 3 Nov 02:52Z (forced restart, announced in every lobby's chat 10 s ahead through surfd's
+  rcon.py on the Pi: artifacts/pi1238/announce.py in the task root): deploy/p1238-prederr 760b2dfe
+  = ac's deploy/p1239-hudperf + P1238; qw 73c6259a, cs 929515dc (.prev 63fa13a5/1a4e5a3c);
+  codes.txt appended (backup codes.txt.pre1238). Lobby engine fteqw-svarm64 5f41b215 (p1238-pi
+  8e4dfc24d), 12/12 by /proc exe hash; .prev and pre1238-20261103T025045Z = c284f65b (P1211).
+  Rollback: cp -p fteqw-svarm64.prev, mv -f into place, restart empty lobbies. Both installs
+  csprogs 929515dc (.prev 1f0206f5, P1239).
 - Reports (P1195) now carry "== server": one row per command the lobby ran (sv_prederr.qc: P675's
   kind 1 network / 2 timestamp-split / 0 loss fill or untagged, sequence, msec, piece, offset, the
   body after the command, impulse). Context is taken at the command's PlayerPreThink and the row

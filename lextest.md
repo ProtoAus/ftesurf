@@ -23,7 +23,7 @@ Both installs now (exe 4092e2fc); your Desktop copy with the next release:
 - At your settings (hl2_water 2), surf_garden saves 1 and 4 and surf_boreas saves 7 and 10 run faster than before
   (rig: 335 -> 499, 405 -> 575, 323 -> 395, 326 -> 429 fps); the water's reflection and refraction look the same.
 
-## P1238 prediction errors (lobbies once its deploy lands; the report box everywhere)
+## P1238 prediction errors (lobbies live 3 Nov 02:52Z with P1239; both installs' csprogs)
 1. surf_frey_remake: fall off stage 1 (or any stage) into the teleport: you arrive and stay put, with no
    jump down a moment later.
 2. Go to spawn, and joining a map: no "Prediction error" box.
