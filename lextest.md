@@ -73,7 +73,7 @@
    hides that windmill from there, and the sails were popping in and out as they turned. Save 2 was the same bug.
 
 ## P1278 worn ramps: your install C:/FTESurf (csprogs ae5ee543), lobbies too
-1. surf_classics, surf_colin_blaster_69000 or surf_666 (23 maps in all, list in data/rampwear): the ramps carry a
+1. surf_classics, surf_colin_blaster_69000 or surf_666 (23 maps in all, list in gfx/rampwear): the ramps carry a
    dirt film with clean lines where people ride, and scratches where they board -- steeper landings scratch more.
 2. `r_rampwear 0` / `1` toggles it live. `r_rampwear_dirt` and `r_rampwear_scratch` (default 1, up to 2) scale the
    two looks; `r_rampwear_debug 1` shows the raw map (red = ride lines, blue = boarding scratches).

@@ -2,8 +2,8 @@
 
   python tools/rampwear.py --map NAME [--replays GLOB] [--gamedir ftesurf] [--texel 8] [--dry]
 
-Writes <gamedir>/data/rampwear/<map>.txt (the ridden ramp surfaces' triangles, world coordinates,
-atlas UVs, one normal each) and <gamedir>/textures/rampwear/<map>.png (the mask), which
+Writes <gamedir>/gfx/rampwear/<map>.txt (the ridden ramp surfaces' triangles, world coordinates,
+atlas UVs, one normal each) and <gamedir>/gfx/rampwear/<map>.png (the mask; gfx/ since P1293), which
 cl_rampwear.qc draws with glsl/ftesurf_rampwear.glsl.  Mask channels, per texel of a chart
 (a brush face, or a whole displacement in its own grid):
   R  ride wear: hull contacts swept tick to tick, log-scaled to the map's 99th percentile
@@ -582,7 +582,7 @@ def main():
     print('atlas %dx%d, texel %.1f units, ride p99 %.1f, scratch texels %d; %d unridden neighbours drawn dirty' % (
         W, H, texel, p99, int(sum((p['scr'] > 0.05).sum() for p in painted.values())), len(plain)))
 
-    # data/rampwear/<map>.txt, read by cl_rampwear.qc:
+    # gfx/rampwear/<map>.txt, read by cl_rampwear.qc:
     #   rampwear 1 <map> <surfaces> <triangles>
     #   c <cx> <cy> <cz> <radius> <triangles>             a surface, its triangles follow
     #   t <x y z s t> x3 <nx ny nz>                       s, t in the atlas, t from the top; n the surface's frame
@@ -605,10 +605,8 @@ def main():
         print('dry run: nothing written')
         return
     from PIL import Image
-    ddir = os.path.join(a.gamedir, 'data', 'rampwear')
-    tdir = os.path.join(a.gamedir, 'textures', 'rampwear')
+    ddir = tdir = os.path.join(a.gamedir, 'gfx', 'rampwear')    # P1293: a launcher-managed path
     os.makedirs(ddir, exist_ok=True)
-    os.makedirs(tdir, exist_ok=True)
     with open(os.path.join(ddir, a.map + '.txt'), 'w', newline='\n') as fh:
         fh.write('\n'.join(lines) + '\n')
     Image.fromarray(img, 'RGBA').save(os.path.join(tdir, a.map + '.png'))

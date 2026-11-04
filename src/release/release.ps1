@@ -285,12 +285,12 @@ $ShipGlobs = @(
     @{ Path = 'ftesurf/glsl';           Filter = '*' }
     @{ Path = 'ftesurf/models';         Filter = '*' }
     @{ Path = 'ftesurf/particles';      Filter = '*' }
-    # P1278: ramp wear bakes (tools/rampwear.py), untracked beside the particle bakes
-    @{ Path = 'ftesurf/data/rampwear';  Filter = '*.txt' }
-    @{ Path = 'ftesurf/textures/rampwear'; Filter = '*.png' }
-    # P1286: the snow event's sky masks (tools/snowmask.py); the flakes ride the glsl/models/scripts globs
-    @{ Path = 'ftesurf/data/snowmask';  Filter = '*.txt' }
-    @{ Path = 'ftesurf/textures/snowmask'; Filter = '*.png' }
+    # P1278 ramp wear (tools/rampwear.py) and P1286 snow masks (tools/snowmask.py), untracked like the particle
+    # bakes; under gfx/ because installed launchers refuse a feed naming data/ or textures/ subfolders (P1293)
+    @{ Path = 'ftesurf/gfx/rampwear';   Filter = '*.txt' }
+    @{ Path = 'ftesurf/gfx/rampwear';   Filter = '*.png' }
+    @{ Path = 'ftesurf/gfx/snowmask';   Filter = '*.txt' }
+    @{ Path = 'ftesurf/gfx/snowmask';   Filter = '*.png' }
     @{ Path = 'ftesurf/scripts';        Filter = '*' }
     # Keep the three font faces and both OFL notices, never install backup copies.
     @{ Path = 'ftesurf/gfx/fonts';      Filter = '*'; Deny = @('*.prev') }

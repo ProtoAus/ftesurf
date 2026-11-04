@@ -58,14 +58,14 @@
     scr_disabled_for_loading. Neither does a first NQ connect or a demo.
 
 ## P1286 snow event (4 Nov; root C:/FTESurf-worktrees/lexmaps1268-20261103T1722Z)
-- `python tools/snowmask.py --map M` bakes data/snowmask/M.txt + textures/snowmask/M.png (untracked, like the
+- `python tools/snowmask.py --map M` bakes gfx/snowmask/M.txt + gfx/snowmask/M.png (untracked, like the
   ramp wear; release.ps1 ships both folders) from the BSP's world brushes; a map with no sky gets no mask.
   The event maps are cl_snow.qc's r_snow_maps default; bake each one listed. tools/snowflakes.py writes the
   tracked models/snow/flakes.iqm (deterministic).
 - Shader trap: `!!cvar4f` uploads three components (gl_backend.c SP_CVAR4F); use cvar3f.
 
 ## P1278 ramp wear (4 Nov; root C:/FTESurf-worktrees/rampwear-20261104)
-- `python tools/rampwear.py --map M [--gamedir DIR]` bakes data/rampwear/M.txt + textures/rampwear/M.png from
+- `python tools/rampwear.py --map M [--gamedir DIR]` bakes gfx/rampwear/M.txt + gfx/rampwear/M.png from
   Momentum .mtv replays (untracked in C:/FTESurf/ftesurf like the particle bakes; release.ps1 ships both folders).
   It reads world brush faces and displacements, not props: surf_demise and surf_classics3 ramps are models
   (prop_dynamic_override / static props), and its placement line says so (placed vs contact ticks).
