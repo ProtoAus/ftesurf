@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1295 chat commands, P1296 reflections, P1297 segmented runs (both installs and every lobby, 4 Nov 18:21Z)
+1. On a lobby map with bonuses, type each of !b3, /b 3, /b3 and !B3 in chat: each takes you to bonus 3, and none
+   shows up in the global chat room. !s2 and /s 2 should go to stage 2.
+2. `r_capturerate` reads 60 now (it was 144); water and glass should still look right. If reflections look choppy
+   on a fast pan, `r_capturerate 144` puts it back.
+3. Your profile: "maps finished" and the completion bars no longer count maps you only have a segmented time on;
+   "maps with a time" still lists them, and its "N of M finished" leaves them out.
+
 ## P1300 ramp wear / inspect / default sky (NOT deployed; acceptance pending)
 Source/build and offline mask controls only until the shared renderer rig is
 available. Do not treat these as owner-confirmed fixes or instructions for an

@@ -1,5 +1,28 @@
 # AGENT_NOTES.md
 
+## P1295-P1297 chat variants, reflections 60/s, segmented is not completed (4 Nov; ftesurf-2b, root C:/FTESurf-worktrees/chatcap-1295-20261104T1723Z)
+- Lobbies 18:21Z (fleet empty): deploy/p1295-chatcmd 85254ea5 = pi.dev's P1298 main + P1295/P1296, fteqcc c24ede65,
+  qw dc1fbdbb, cs f4f6f0e9 (.prev 52b4c337/517849e5). NEXT LOBBY QC STACKS ON IT (main has P1299/P1300 since).
+  Both installs run the same pair and menu 3c27ad72 (backups *.pre1295-*).
+- pi.dev's P1298 deploy (17:42Z, lobbies and installs) was built by C:\FTESurf's fteqcc 7ccb93d1 (stamp git-6681)
+  and did not append cs 517849e5 to tasrevd codes.txt. Both fixed: codes.txt 49 -> 51 lines (517849e5, f4f6f0e9;
+  backup .pre1295), installs' menu e69b5f24 -> 3c27ad72 (same source, 40 bytes: the 7ccb93d1 signature).
+- ChatCmd_Normalize (src/shared/sh_chatcmd.qc) is the one rule: lowercase, leading "/" -> "!", and "!b3" -> "!b 3"
+  only for m/s/b/r followed by digits only ("!b3x" stays). The server's say parser, WarpOp_Chat's prediction and
+  the chatbox's global-room test all call it. Arm: artifacts/runs_p1295.json (surf_caged, subject t1295d against
+  installed-progs control t1295c).
+- r_capturerate: HE_MigrateDefaults moves 144 -> 60 once (r_capturerate_rev 1296).
+- surfd: _finishes(r) is the completion rule (main track, style not segmented*). completion, completion_wos, ct=a1/a0,
+  the site's tier lists and ct=p's done use it; ct=p's rows keep the fastest time, segmented or not ("fin" flag).
+  The game's completed-maps reply was already clean-only. Live proof (artifacts/live_1297.py, read-only, every page):
+  16 segmented-only (player, map) pairs, none finished, all still timed, ct=p done = timed - segmented-only.
+- surfd generation b5ce68f6 (deploy/p1297-surfd) since 18:16:45Z, root /srv/nvme/agent-work/lexlist-1297b-382effae,
+  fallback b8b05207 CLOSED: the next swap's OLD. b8b05207 (first cut, without ct=p's done) ran 18:04:51-18:14:26Z
+  from lexlist-1297. Rollback b8b05207, then ea4e8b3c; no data step. Kits: kit/make_kit_1297.py and
+  make_kit_1297b.py (exact seams over kit1253's). The drop-in helper takes labels P<digits> only.
+- Swap window: momwatch runs at */7 minutes. The 18:14:25Z activation drained behind its 18:14 run: API down 2 min
+  19 s (18:14:26-18:16:45Z), against 26 s at 18:04:25Z. Launch at :x4:25 with pgrep empty for ksfimport AND momwatch.
+
 ## TAS continuation and workshop reopen — P1298, 4 Nov 2026
 
 - Start recovery at tools/tas-status.md and tools/plan-tas.md. Historical stage

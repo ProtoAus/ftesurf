@@ -1,5 +1,8 @@
 # BACKLOG.md
 
+## Lobby deploys keep shipping the wrong compiler and skipping codes.txt (4 Nov, P1295)
+- A deploy run from C:\FTESurf compiles with its fteqcc 7ccb93d1, which miscompiles cl_viewmodel's setproperty(227), and nothing appends the new csprogs to tasrevd codes.txt (30 Oct P1118, 4 Nov P1298). build.ps1 -Pi could refuse a compiler whose progs stamp is not git-7809, and append the csprogs sha256 to codes.txt over the same ssh.
+
 ## P1286 snow event (4 Nov): residuals
 - Engine: SP_CVAR4F uploads with qglUniform3fvARB (gl_backend.c ~5133), so a program's !!cvar4f never gets
   its w. The snow shader uses two cvar3f instead; the fix is one word (Uniform4fv) for the next engine batch.
