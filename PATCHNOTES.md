@@ -21,6 +21,12 @@
 
 ## next
 
+### P1281 Faster water and glass at high frame rates
+- Water and glass reflections are redrawn about 144 times a second instead of every frame (turned with your view in between, and redrawn at once if you move or turn far). At 200-300 fps on surf_eternity's glass that is about 40% more frames; at or below 144 fps nothing changes. r_capturerate sets the rate (0: every frame).
+
+### P1275 Smoother map lighting
+- Source maps' lighting is filtered bicubically, as Half-Life 2's 20th anniversary update does: smoother light and shadow gradients where a map's lighting is coarse. No measurable cost; r_lightmap_bicubic 0 turns it off (from the next map).
+
 ### P1277 Fewer shader stutters
 - A surface drawn a new way for the first time (water seen from a new spot, a lit model, fog) needs a shader built
   for it. When your graphics driver had not kept that shader -- after an update, or once its cache fills -- building

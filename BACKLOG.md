@@ -9044,3 +9044,10 @@ hud_edit rows (3 since P798); their height estimate only errs high.
   func_conveyor and func_illusionary drop theirs at spawn in Source and in the game since P1048/P1049
   (9 + 18 + 25 entities on 9 maps). Old runs on those maps re-verify as a physents HOLD, not "not comparable"
   (no rule key; beta).
+
+## P1275/P1276/P1281 follow-ups (4 Nov 2026)
+- P1281: 3D sky-room water sharing the level-0 targets samples a kept capture without the turn correction
+  (m_capturefix is identity at recursion > 0), up to 1/r_capturerate old.
+- P1276: a refused first MSAA resolve shows one stale reflection frame (the capture FBO is not cleared under MSAA).
+- P1275: r_lightmap_bicubic applies when lightmaps are next built (a new map or vid_restart), not live; an exe-only
+  install pads without the plugin's bicubic shaders (ship exe and plugin together).
