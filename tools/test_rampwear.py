@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Small offline ramp-wear falsifiers. No engine, replay writes or player data."""
 import math
+import hashlib
+from pathlib import Path
 import unittest
 
 import numpy as np
@@ -62,6 +64,28 @@ class RampWearTests(unittest.TestCase):
                     continue
                 self.assertTrue(x + charts[k]['w'] <= xx or xx + charts[j]['w'] <= x or
                                 y + charts[k]['h'] <= yy or yy + charts[j]['h'] <= y)
+
+    def test_shader_asset_abi_source_contract(self):
+        root = Path(__file__).resolve().parents[1]
+        legacy = (root / 'ftesurf/glsl/ftesurf_rampwear.glsl').read_bytes()
+        modern = (root / 'ftesurf/glsl/ftesurf_rampwear_v2.glsl').read_bytes()
+        # Qualified852 legacy and unchanged A84 modern bytes: independent authorities.
+        self.assertEqual(hashlib.sha256(legacy).hexdigest(), '7b350f403958e031fe0b7d780671de1a293c2e4146602945b611b0abe9daaee4')
+        self.assertEqual(hashlib.sha256(modern).hexdigest(), '7c61c929b87764a1b656831d390a62b6b8182d47c37266ea9153b0c1729a8668')
+        qc = (root / 'src/client/cl_rampwear.qc').read_text()
+        self.assertIn('fopen("glsl/ftesurf_rampwear_v2.glsl", FILE_READ)', qc)
+        self.assertIn('modern ? "v2" : "legacy"', qc)  # distinct cached material keys too
+        self.assertIn('modern ? "ftesurf_rampwear_v2" : "ftesurf_rampwear"', qc)
+        self.assertIn('modern ? "gl_dst_color gl_src_color" : "gl_dst_color gl_zero"', qc)
+        self.assertNotIn('fopen(', qc.split('void() RampWear_Frame =', 1)[1])
+        # Source/blend mathematics only, NOT a native driver/render/FPS test.
+        for new_client in (False, True):
+            for new_assets in (False, True):
+                use_v2 = new_client and new_assets
+                for multiplier in (0.55, 1.0, 1.12):
+                    source = multiplier * (0.5 if use_v2 else 1.0)
+                    self.assertAlmostEqual(source * (2 if use_v2 else 1), multiplier)
+                    self.assertNotEqual(multiplier * 2, multiplier, 'mismatched ABI control must visibly differ')
 
     def test_boarding_strength_control(self):
         self.assertEqual(rw.board_strength(0), 0)

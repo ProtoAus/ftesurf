@@ -21,6 +21,10 @@
 
 ## next
 
+### P1307 Ramp marks across client updates
+- Ramp marks keep their intended brightness when client files update at different times; older shader files retain the previous rendering mode.
+- Additional existing replays drive provisional ramp-mark bakes for Frost, Simple and Garden. The much larger Christmas overlay stays staged until its moving-view cost is checked.
+
 ### P1304 A permanent Christmas Santa hat
 - A small red-and-white Santa hat has its own inventory cell and shares the headwear slot with the party crown; your aura stays independent.
 - Linked players present on a trusted lobby during the enabled Christmas event earn the hat permanently. It is not auto-equipped, survives event end, and cannot be claimed from a web or menu visit. Event activation is off until its dates are chosen.

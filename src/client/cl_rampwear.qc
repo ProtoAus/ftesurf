@@ -51,7 +51,7 @@ void() RampWear_Free =
 void() RampWear_Load =
 {
 	local string mname, line;
-	local float fh, ns, nt, s, t, k, j, skip;
+	local float fh, ns, nt, s, t, k, j, skip, modern;
 
 	RampWear_Free();
 	if (rw_map)
@@ -115,14 +115,21 @@ void() RampWear_Load =
 	fclose(fh);
 	rw_n = s;
 	rw_ntri = t;
-	rw_shader = strzone(sprintf("ftesurf_rampwear/%s", mname));
+	// P1307: code/assets and cached materials can update independently. The v2
+	// half-output shader MUST pair with double modulation, never legacy filter.
+	// Probe once at map load; clients without the new file retain the old look.
+	fh = fopen("glsl/ftesurf_rampwear_v2.glsl", FILE_READ);
+	modern = (fh >= 0);
+	if (modern) fclose(fh);
+	rw_shader = strzone(sprintf("ftesurf_rampwear_%s/%s", modern ? "v2" : "legacy", mname));
 	rw_alloc = TRUE;
-	// exactvertex: plain `vertex` scales by identitylighting (HDR exposure), and the colour is a normal.
-	// $nosrgb: the mask is data, not colour.
-	// No slope bias (it floats/overlaps at grazing angles), no cross-chart atlas mips.
-	// Double modulation permits a subtle polish highlight in the same single pass.
-	shaderforname(rw_shader, sprintf("{\ndepthpush -2\nnomipmaps\nnopicmip\nsort decal\n{\nprogram ftesurf_rampwear\nblendfunc gl_dst_color gl_src_color\nclampmap $nosrgb:gfx/rampwear/%s.png\nrgbgen exactvertex\nalphagen vertex\n}\n}\n", mname));
+	// exactvertex: vertex colour encodes a normal, not HDR-scaled brightness.
+	// $nosrgb: mask data; no cross-chart mips or grazing-angle slope bias.
+	shaderforname(rw_shader, sprintf("{\ndepthpush -2\nnomipmaps\nnopicmip\nsort decal\n{\nprogram %s\nblendfunc %s\nclampmap $nosrgb:gfx/rampwear/%s.png\nrgbgen exactvertex\nalphagen vertex\n}\n}\n",
+	              modern ? "ftesurf_rampwear_v2" : "ftesurf_rampwear",
+	              modern ? "gl_dst_color gl_src_color" : "gl_dst_color gl_zero", mname));
 	print(sprintf("rampwear: %s, %g surfaces, %g triangles\n", mname, rw_n, rw_ntri));
+	print(sprintf("rampwear: shader %s\n", modern ? "v2" : "legacy (new asset not installed)"));
 };
 
 // Before renderscene, beside Emit_Frame: the map latch, then the surfaces in front within reach.

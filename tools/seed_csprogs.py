@@ -50,11 +50,7 @@ if os.path.isdir(d):
     dst = os.path.join(d, h + '.dat')
     shutil.copyfile(path, dst)
     print('seeded', dst)
-    for f in os.listdir(d):
-        # Other hashes stay: a file is named by its own content's hash, so it can
-        # only ever serve that exact csprogs (e.g. the fleet's, while local differs).
-        if f.endswith(('.tmp', '.dcl')):
-            os.remove(os.path.join(d, f))
-            print('removed stale', f)
+    # Preserve other hashes AND pending .tmp/.dcl downloads. Their names do not
+    # establish ownership or inactivity; a peer/owner client may still use them.
 else:
     print('no', d, '-- copy manually')
