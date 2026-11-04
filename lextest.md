@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1305/P1306 native update — one normal ranked finish pending
+
+Both Windows installs and all12Pi lobbies have the qualified native pair.
+Automated native/physics and cold current-CSQC/board checks pass; the isolated
+cold clients had unaccepted terms/no-zone maps and submitted no ranked run.
+On your usual account and a familiar zoned map, finish one normal legal line and
+confirm it submits and returns the normal ranked result (or report the rejection).
+This is pending human integration acceptance, not detector calibration, a claim
+that the whole anti-cheat bank is complete, or permission to collect new raw input.
+No need to repeat a long test route or change your settings.
+
 ## P1304 Santa hat — pending, not visually accepted
 
 Backend ownership/authority/preservation controls pass; no native hat screenshot
