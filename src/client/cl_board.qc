@@ -1956,6 +1956,93 @@ void(float id) Seq_WriteMk =
 	fclose(fh);
 };
 
+/*
+  P1289: a save made in a replay is a demoted row, and those keep no seq.txt (a rewind row reuses its id), so its
+  zero is kept by PLACE: one line per replay save in viewzero.txt (the replay body's origin, its jump state and the
+  replay leg's zero), and a demoted row whose loaded origin is within a unit of a line takes that zero. No id, no
+  ticket: a refused save leaves a line nothing will load at.
+*/
+#define VIEWZERO_MAX 128
+float(float z) HUD_ZoneAtFloor;     // cl_hud.qc
+
+string() Seq_ViewZeroPath = { return strcat(CL_SaveRoot(), "/viewzero.txt"); };
+
+void(vector org) Seq_ViewZeroNote =
+{
+	local float fh, n, i;
+	local strbuf b;
+	local string l;
+
+	if (ui_anchor_zone < 0)
+		return;                     // no zone-made zero to keep (the caller skips a hand-set one)
+	b = buf_create();
+	fh = fopen(Seq_ViewZeroPath(), FILE_READ);
+	if (fh >= 0)
+	{
+		l = fgets(fh);
+		while (l)
+		{
+			bufstr_add(b, l, TRUE);
+			l = fgets(fh);
+		}
+		fclose(fh);
+	}
+	n = buf_getsize(b);
+	fh = fopen(Seq_ViewZeroPath(), FILE_WRITE);
+	if (fh >= 0)
+	{
+		for (i = max(0, n - (VIEWZERO_MAX - 1)); i < n; i = i + 1)
+			fputs(fh, strcat(bufstr_get(b, i), "\n"));
+		fputs(fh, strcat(sprintf("v %.3f %.3f %.3f ", org_x, org_y, org_z),
+		          sprintf("%.4f %.4f %g %g %.4f\n", ui_jump_z, ui_ground_z, ui_was_onground, ui_jump_have, ui_anchor_z)));
+		fclose(fh);
+	}
+	buf_del(b);
+};
+
+void() Seq_ViewZeroLoad =
+{
+	local float fh, best, d, jz, gz, ong, have, az, found;
+	local vector dest, o;
+	local string l;
+
+	fh = fopen(Seq_ViewZeroPath(), FILE_READ);
+	if (fh < 0)
+		return;
+	dest = [getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1), getstatf(STAT_FS_SLORG + 2)];
+	best = 1;
+	found = FALSE;
+	jz = 0;
+	gz = 0;
+	ong = 0;
+	have = 0;
+	az = 0;
+	l = fgets(fh);
+	while (l)
+	{
+		tokenize(l);
+		if (argv(0) == "v")
+		{
+			o = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
+			d = vlen(o - dest);
+			if (d <= best)          // the newest of the nearest
+			{
+				best  = d;
+				jz    = stof(argv(4));
+				gz    = stof(argv(5));
+				ong   = stof(argv(6));
+				have  = stof(argv(7));
+				az    = stof(argv(8));
+				found = TRUE;
+			}
+		}
+		l = fgets(fh);
+	}
+	fclose(fh);
+	if (found)
+		Seq_AnchorRestore(jz, gz, ong, have, az, HUD_ZoneAtFloor(az), dest);
+};
+
 void(float id) Seq_Write =
 {
 	if (id < FS_RETRY_SLOT || id > FS_MAXSAVES)
@@ -2368,6 +2455,7 @@ void() Seq_SaveEvents =
 					seq_mk_id = -1;
 				Board_Warped();
 				Seq_HistClear(FALSE);
+				Seq_ViewZeroLoad();         // P1289: after Board_Warped, which disarms a restore
 			}
 			else
 			{

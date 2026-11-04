@@ -3896,10 +3896,28 @@ void() Watch_BoardApply =
 	}
 };
 
+// P1289: the zero the replayed leg starts from (a stage window: its segment's), the floor of the latch stack.
+float() Watch_AnchorBase =
+{
+	local float ok;
+	ok = HUD_AnchorSeg(rec_wt_track, (rec_wt_winseg >= 0) ? rec_wt_winseg : rec_wt_startseg);
+	if (!ok)
+		HUD_AnchorFresh();          // not your zone or your last jump: the body's own, once it jumps
+	ui_anch_replay = TRUE;
+	ui_anch_n = 0;
+	ui_anch_stamp = rec_wt_vt0;
+	HUD_AnchorPush(ui_anchor_zone);
+	return ok;
+};
+
 void(float t) Watch_Seek =
 {
 	if (t < rec_wt_vt0) t = rec_wt_vt0;
 	if (t > rec_wt_vt1) t = rec_wt_vt1;
+	// P1289: back in time, the zero the body had latched by then (HUD_AnchorPush); playing on latches again.
+	if (t < rec_wt_time && ui_anch_replay)
+		HUD_AnchorBack(t);
+	ui_anch_stamp = t;
 	rec_wt_time = t;
 
 	// A seek can go either way, so every cursor is invalidated rather than
@@ -4636,6 +4654,7 @@ void() Watch_Stop =
 	// The player's own segment column, back where it was.  Before the print, so
 	// that a restore that faults says so with the stop line still to come.
 	Watch_SeqRestore();
+	ui_anch_replay = FALSE;         // P1289
 	HUD_AnchorHold(FALSE);          // P1279: and your energy zero (dropped if the map changed)
 
 	/*
@@ -4888,12 +4907,9 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	Watch_Seek(rec_wt_vt0);
 	// P1279: the energy zero is the replayed leg's start zone from the first frame (a stage window:
 	// its segment's), not whatever box the body is or is not seen standing in.
-	if (!HUD_AnchorSeg(rec_wt_track, (rec_wt_winseg >= 0) ? rec_wt_winseg : rec_wt_startseg))
-	{
-		HUD_AnchorFresh();          // not your zone or your last jump: the body's own, once it jumps
+	if (!Watch_AnchorBase())
 		print(sprintf("replay: no start zone for track %g segment %g -- energy reads from its jumps\n",
 		              rec_wt_track, (rec_wt_winseg >= 0) ? rec_wt_winseg : rec_wt_startseg));
-	}
 	Trn_Clear();
 	trn_demo = trn_demo_restart = TRUE;
 	trn_demo_ready = FALSE;
@@ -5018,11 +5034,12 @@ float(float seg) Watch_StageWindow =
 		return FALSE;
 	if (!Watch_WindowFind(seg))
 	{
-		Watch_SetCut(FALSE);
+		Watch_SetCut(FALSE);            // the body stays where it is, and so does its zero
 		return FALSE;
 	}
 	Watch_SetCut(TRUE);
 	Watch_Seek(rec_wt_vt0);
+	Watch_AnchorBase();                 // P1289: the window's stage, not the leg the replay opened on
 	rec_wt_paused = FALSE;
 	print(sprintf("replay: stage %g window %.4f..%.4f s from %.4f (ticks %g..%g, %s)\n",
 	              seg + 1, rec_wt_wint0, rec_wt_wint1, rec_wt_time, rec_wt_wina,
@@ -5966,6 +5983,7 @@ void(float navfocus) Watch_Frame =
 			rec_wt_time   = rec_wt_vt1;
 			rec_wt_paused = TRUE;        // hold on the last frame rather than
 		}                               // snapping back to your own body
+		ui_anch_stamp = rec_wt_time;    // P1289: playing on is not a seek; a latch is stamped with this
 
 		/*
 		  ---- AND SKIP THE DEAD AIR.  Build 43. ------------------------------

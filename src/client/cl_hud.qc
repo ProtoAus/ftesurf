@@ -1560,6 +1560,32 @@ vector(float q) HUD_QualityColor =
   every single jump.  Zones only.
 ===========================================================================
 */
+// P1289: the zones a replay's body latched and when (Watch_Seek stamps ui_anch_stamp), so a backward seek puts back
+// the one it had at that moment. [0] is the leg's own start, set when the replay opens.
+#define ANCH_STACK 32
+float ui_anch_replay, ui_anch_stamp, ui_anch_n;
+float ui_anch_st[ANCH_STACK], ui_anch_sz[ANCH_STACK], ui_anch_szz[ANCH_STACK];
+void(float z) HUD_AnchorPush =
+{
+	if (ui_anch_n >= ANCH_STACK)
+		ui_anch_n = ANCH_STACK - 1;     // full: the newest replaces the last, [0] stays
+	ui_anch_st[ui_anch_n] = ui_anch_stamp;
+	ui_anch_sz[ui_anch_n] = z;
+	ui_anch_szz[ui_anch_n] = (z >= 0) ? zone_bottom[z] : ui_anchor_z;
+	ui_anch_n = ui_anch_n + 1;
+};
+void(float t) HUD_AnchorBack =
+{
+	if (ui_anchor_manual)
+		return;                         // a hand-set zero is not the zones' to move
+	while (ui_anch_n > 1 && ui_anch_st[ui_anch_n - 1] > t)
+		ui_anch_n = ui_anch_n - 1;
+	if (ui_anch_n < 1)
+		return;
+	ui_anchor_zone = ui_anch_sz[ui_anch_n - 1];
+	ui_anchor_z    = ui_anch_szz[ui_anch_n - 1];
+};
+
 void(vector org) HUD_UpdateAnchor =
 {
 	local float z;
@@ -1595,6 +1621,8 @@ void(vector org) HUD_UpdateAnchor =
 		{
 			ui_anchor_zone = z;
 			ui_anchor_z    = zone_bottom[z];
+			if (ui_anch_replay)
+				HUD_AnchorPush(z);  // P1289
 		}
 		return;
 	}
@@ -1967,6 +1995,20 @@ float() HUD_ZeroKnown =
 	return !ui_jump_fresh;
 };
 
+void() HUD_AnchorFresh;     // P1289: the restore's fallback, defined below
+
+// P1289: a START or STAGE zone whose floor is z, or -1. Within 0.01: a floor written as text and read back
+// (viewzero.txt, %.4f) is not always the same float (50 of 3921 floors in the library, e.g. -127.99928).
+float(float z) HUD_ZoneAtFloor =
+{
+	local float i;
+	for (i = 0; i < zone_count; i = i + 1)
+		if (zone_type[i] == ZONE_START || zone_type[i] == ZONE_STAGE)
+		if (fabs(zone_bottom[i] - z) < 0.01)
+			return i;
+	return -1;
+};
+
 // Patch 744: spectate measures the watched body from its own zero (Spec_Feed);
 // yours waits here.  A map change in between drops it -- it was that map's.
 float  ui_anch_held, ui_anch_svz, ui_anch_svzone, ui_anch_svman;
@@ -2000,9 +2042,16 @@ void(float hold) HUD_AnchorHold =
 		return;
 	ui_anch_held = FALSE;
 	if (strcmp(ui_anch_svmap, ui_anchor_map))
+	{
+		HUD_AnchorFresh();      // P1289: not the watched body's leftovers either; your next zone or jump sets it
 		return;
+	}
 	ui_anchor_z      = ui_anch_svz;
 	ui_anchor_zone   = ui_anch_svzone;
+	// P1289: a zone download or publish in between rebuilt the table, so the index may name another zone now
+	if (ui_anchor_zone >= 0)
+	if (ui_anchor_zone >= zone_count || zone_bottom[ui_anchor_zone] != ui_anchor_z)
+		ui_anchor_zone = HUD_ZoneAtFloor(ui_anchor_z);
 	ui_anchor_manual = ui_anch_svman;
 	ui_jump_z        = ui_anch_svjz;
 	ui_jump_have     = ui_anch_svjhave;
