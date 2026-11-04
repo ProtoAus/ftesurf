@@ -1,5 +1,26 @@
 # AGENT_NOTES.md
 
+## P1305/P1306 native observation and active-cohort discovery (4 Nov 2026)
+
+Both Windows installs and all12Pi native/plugin pairs are delivered; exact source,
+acting controls, part/data guards and current-CSQC cold limits are recorded in
+tools/p1306-gravity-context.md. No progs/config/backend deployment or general
+native file-writer closure. Full broader bank/ranked acceptance stays partial.
+The earlier P1299 backend-integrity diagnosis was wrong: process cwd's neighboring
+control manifest was an old CLOSED fallback, not the state-dir named in the
+canonical service launcher. Resolve the actual fixed launcher/guard/state-dir,
+validate OPEN admission and declared source-home/process binding, then pin the
+whole actual closure. Do not compare a runtime against a guessed fallback root,
+repair a peer's valid source, or waive a real mismatch. Corrected contract156files
+includes the actual collectors84-v1 runtime plus external/launch dependencies.
+A transient unknown nonactor FD denial remains a refusal, not a new exemption;
+fresh all13actor/part evidence was captured before actual archive/stage/restarts.
+After a caller timeout, inspect the real remote receipt/PIDs/targets before any
+retry: here all12restarts had finished successfully. Repeating a swap/restart or
+rolling a generating fleet back would have been wrong. Own lock released, all old
+46,259 protected entries unchanged; cold screenshots show only unranked/no-zone
+board compatibility. No historical failed guard was retrospectively passed.
+
 ## P1301 roof eye blends between ticks (5 Nov; ftesurf-2b, root C:/FTESurf-worktrees/roofeye-1301-20261104T1843Z)
 - Engine patch-1301 (cl_pred.c only) on engine main; both installs' client exe 09bb2fac (fteqwsv64 and plugins untouched,
   P1299's). Lobbies need nothing: the view is client-only.

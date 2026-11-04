@@ -72,22 +72,31 @@ installs' menu program is outside this promotion set and has not been restored;
 the original activation receipt is retained, not a claim that unrelated files
 can never change after the transaction.
 
-**Pi not deployed:** the original read-only recorder-stability/open-FD failure is
-retained. A later genuinely empty/closed window allowed progress with the actual
-`collectors84-v1` profile (84 files), not the old 81-file helper. A player returned
-at the first preparation boundary, so no archive/stage occurred; after a further
-empty window the exact current-cohort hash guard found a backend source file that
-does not match its deployed generation manifest. The file matches published
-source, but the manifest disagreement is not waived or normalized away. The
-peer-owned runtime and manifest were left untouched; its owner must reconcile
-that deployment identity before this promotion can proceed.
+**Correction / later Pi delivery, 4 Nov 2026:** the earlier published backend
+integrity diagnosis was incorrect. The preparer guessed a manifest beside the
+live process cwd and selected a CLOSED rollback controller. That manifest agrees
+with its own declared rollback source home; it was not the live controller. The
+actual canonical launcher names a different state-dir. Resolving that fixed
+launch contract proves OPEN admission, the actual process/source-home binding,
+all84 runtime members and156 immutable launch/source inputs. No peer file,
+manifest, admission state or backend generation needed repair or was changed.
+The selector was fixed in the same preparation seam, not bypassed.
 
-No Pi recorder archive, canonical staging, maintenance gate, swap, restart or
-backend operation occurred. Only source copies in the owned private task root.
-Occupancy approval / `-PiForce` is not a waiver of recorder or cohort preservation.
-Safe Pi activation and actual live-client/current-program ranked readback remain
-pending. Native publication, Windows installation and legacy compatibility do not
-imply a lobby rollout or full anti-cheat bank completion.
+Original recorder/FD refusals and occupied-window failures remain failures. A
+fresh, genuinely empty boundary later verified all13 required native/backend
+actors and no recorder-part FD, then archived all8 current parts (2,821,850bytes)
+and individually rehashed them ON/OFFBOX before canonical staging or restart.
+P1299 plus the later P1305/P1306 extensions now run on all12Pi native/plugin pairs
+at21:34:09UTC. All46,259 pre-existing protected files and configs/programs remain
+unchanged; all156 backend inputs and its generation/actor remain unchanged.
+Existing predecessors are retained. No force was needed. The SSH caller timed
+out, but the actual remote activation receipt/all12healthy processes were verified
+read-only; no swap/restart was repeated. Exact current sources, dual Windows
+installation and cold current-CSQC/board checks: [P1306 delivery](p1306-gravity-context.md).
+
+Cold clients submitted no timed/ranked run. Actual ranked/current-program
+acceptance, full provenance-bank closure and the deferred general native
+file-writer audit remain open. Occupancy approval is not a preservation waiver.
 Private source/evidence, raw runtime data and outstanding historical failures stay
 private. This patch does not close the wider anti-cheat bank or the deferred native
 file-writer audit.
