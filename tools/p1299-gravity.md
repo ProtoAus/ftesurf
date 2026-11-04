@@ -38,7 +38,8 @@ partial. Build number and release version are unchanged.
 - Changed code has no new compiler warning. Full server baseline has 21 existing
   warnings; the official QC build retains the same two pre-existing client F333
   diagnostics, SSQC/menu zero. Reader suite: 949 checks, zero failed. Corpus
-  baseline: 541 recordings, 341 existing structural faults; not a clean-corpus claim.
+  before/after: 541 recordings, 341 existing structural faults; identical file
+  inventory, bytes and findings. This is not a clean-corpus claim.
 - Original build/transport/setup/parser failures remain failures. The full build
   needed a populated dependency cache, not the empty canonical placeholder. The
   ARM transfer uses individually verified raw Git blobs, not CRLF-converted
@@ -48,16 +49,25 @@ partial. Build number and release version are unchanged.
 
 ## Delivery status
 
-Native source/tag are published. Builds and native/platform checks above are
-verified. **Not deployed:** dual Windows installation is blocked by an active
-owner/peer game process; no process is stopped. The read-only Pi preparation
-failed its recorder-stability gate, and a separate diagnostic confirms a current
-open recorder FD and changing parts across the strict 13-actor scope. No archive,
-staging, gate, swap or restart was performed, and the failure is not regraded.
-The live backend is `collectors84-v1` (84 files), not the old 81-file helper
-profile; activation must use the actual current profile without weakening it.
-Windows/Pi activation, historical verifier compatibility and actual live-client
-readback remain pending. No deployment is claimed by source publication.
+Native source/tag and QC declaration are published. Builds and native/platform
+checks above are verified. **Windows deployed 2026-11-04 18:18:26 UTC:** after the
+active game exited naturally, existing guarded `Deploy` installed the exact
+frozen native client/server and five plugins in BOTH installs (14 files). All
+destination hashes match; all current predecessors remain `.prev`; 21 predecessor
+and older-prev files were archived and individually rehashed. All 1,441 protected
+config/program files remain byte-identical. Both actual installed dedicated
+binaries repeat 1,472/1,472 native checks. No process was killed and no progs,
+config, player data, assets or backend were deployed.
+
+**Pi not deployed:** read-only preparation failed its recorder-stability gate. A
+separate diagnostic confirms a current open recorder FD and changing parts across
+the strict 13-actor scope. No Pi archive, staging, gate, swap or restart was
+performed, and the failure is not regraded. Occupancy approval / `-PiForce` is not
+a waiver of recorder preservation. The live backend is `collectors84-v1` (84
+files), not the old 81-file helper profile; activation must bind the actual
+current profile without weakening it. Historical verifier compatibility, safe
+Pi activation and actual live-client readback remain pending. Native publication
+or Windows deployment does not imply a lobby rollout.
 Private source/evidence, raw runtime data and outstanding historical failures stay
 private. This patch does not close the wider anti-cheat bank or the deferred native
 file-writer audit.
