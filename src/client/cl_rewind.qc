@@ -1211,6 +1211,8 @@ string() SaveLoc_SaveCommand =
 	{
 		Watch_Sample();
 		Trail_ReplayPrefix();
+		if (!ui_anchor_manual)
+			Seq_ViewZeroNote(rec_wt_org);   // P1289
 		return sprintf("sl_saveview %s %s %.6f %.6f %g %g",
 		               sprintf("%.6f %.6f %.6f", rec_wt_org_x, rec_wt_org_y, rec_wt_org_z),
 		               sprintf("%.6f %.6f %.6f", rec_wt_vel_x, rec_wt_vel_y, rec_wt_vel_z),

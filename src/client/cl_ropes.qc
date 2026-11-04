@@ -51,7 +51,7 @@ void() Ropes_LoadForMap =
 {
 	local string tok, key, cn, tname, next, mat;
 	local vector org, p0, p1;
-	local float slack, width, tscale, i, j, n, d, th, k, sag;
+	local float slack, width, tscale, i, j, n, d, th, k, sag, vc;
 	local strbuf names, recs;
 	local entity e;
 	local string rec;
@@ -99,6 +99,7 @@ void() Ropes_LoadForMap =
 	}
 
 	// A span from every point that names a NextKey to the point carrying that name.
+	vc = cvar("hl2_lt_vcache");
 	n = buf_getsize(recs);
 	for (i = 0; i < n; i = i + 1)
 	{
@@ -138,7 +139,13 @@ void() Ropes_LoadForMap =
 		if (th <= 0)
 			th = 64;
 		e.rope_tex = (d + slack) / k * 4 / (tscale * th);
+		// P1289: sampled once and kept, so not from the plugin's remembered light; set back at once, so an
+		// aborted loop cannot leave it off
+		if (vc)
+			cvar_set("hl2_lt_vcache", "0");
 		e.rope_col = getlight(e.rope_mid) * (1 / 255);
+		if (vc)
+			cvar_set("hl2_lt_vcache", ftos(vc));
 		if (e.rope_col == '0 0 0')
 			e.rope_col = '0.5 0.5 0.5';
 		e.rope_col_x = min(1, e.rope_col_x);
