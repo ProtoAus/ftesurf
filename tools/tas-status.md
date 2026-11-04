@@ -9,6 +9,9 @@ but its public ranked-submission path is not qualified.
 surf-line authoring. Directional movement, air assistance and stepping were
 useful, but this is NOT human usability acceptance. The requested redesign is
 [planned here](plan-tas-human-workflow.md); it is not implemented or deployed.
+Lex subsequently approved that design direction and added crouched strafing and
+optional vertical look following travel, independent of the main yaw control.
+This is plan approval only; crouch movement and camera feel remain to validate.
 
 ## Implemented
 
@@ -44,8 +47,10 @@ A code/test result is not proof of the current owner client or live fleet.
 3. **Human-first editor, now the owner's local priority.** Normal play/pause and
    earlier-line recalculation, arrow-layout independent movement/turn controls,
    fine gain-relative turn rate, whole-run tick browsing and per-tick recipe
-   restoration are requested work. Ground prestrafe and later ramp/airtime
-   navigation/constrained optimization need distinct models and validation.
+   restoration are requested work, including actual crouch/duck-transition handling
+   and optional Follow travel pitch with manual override. Ground prestrafe and
+   later ramp/airtime navigation/constrained optimization need distinct models
+   and validation.
    [The redesign plan](plan-tas-human-workflow.md) includes capability limits for
    other runs; it does not pretend a position-only import contains exact inputs.
    Dynamic-world, streamed-history and general-route limits remain explicit;

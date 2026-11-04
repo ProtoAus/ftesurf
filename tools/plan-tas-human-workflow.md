@@ -5,6 +5,9 @@ Requested by Lex after trying the existing workshop, 4 November 2026.
 This changes the local-editor priority in [the original TAS plan](plan-tas.md),
 not its assisted ancestry, contribution or verified-board requirements.
 Owner observations are recorded separately in [lextest.md](../lextest.md).
+Lex approved this design direction on 4 November and added crouched strafing and
+automatic vertical aim following travel. This approves the plan, not unbuilt
+product behavior or numeric physics claims.
 
 ## 1. The product we are building
 
@@ -33,6 +36,9 @@ cause. The exact ground rules/state and a reproducible example remain to capture
 6. Seek/back restores the associated control settings, not today's stale draft.
 7. Browse another run's timeline without claiming missing inputs or state exist.
 8. Later: navigate and improve start/jump, air, ramp, air, ramp sections.
+9. Handle standing/crouched strafes and duck transitions using actual mover rules.
+10. Optional automatic vertical aim: look up when climbing and down when falling,
+    without taking over the important left/right yaw control.
 
 ## 2. What the existing implementation does, and does not do
 
@@ -77,6 +83,7 @@ Turning: [ Manual ] [ Auto strafe ]     Direction follows Left/Right
 Turn amount:    -   [---------|---------]   +       1.20x
                 gentler   1.00x reference   sharper
 Status: air-gain guide / ground-gain guide / preset / unavailable
+Vertical look: [ Manual ] [ Follow travel ]
 
 [ Back 1 ] [ Forward 1 ] [ Step 8 v ]  [ Play slowly ]
 
@@ -133,6 +140,70 @@ Labels/numbers are a mockup, not current game commands or measured values.
   guide is unavailable, show exactly what is applied; no falsely advertised
   optimum on a preset or unsupported friction/water/ladder/transition state.
 
+### Crouched strafing is part of the controller, not just a duck button
+
+- Keep Duck visibly selectable for a tick/range and restore it on seek/load/Undo,
+  including the actual transition state from historical mover state/replay, not
+  unchecked editor metadata. Requested duck, fully crouched, part-way down/up
+  and blocked unduck are not interchangeable. A smaller hull can change
+  ramp/ceiling contact and therefore the resulting line.
+- Inspect the production mover rather than assume a lower crouched
+  `airaccelerate`. Native source be4e3072: `PMSrc_HandleDuckingSpeedCrop` crops
+  inputs only for `ducked && onground`; `PMSrc_AirMove` passes the ordinary
+  `movevars.airaccelerate`, and `PMSrc_AirAccelerate` has no crouch multiplier.
+  Airborne crouch therefore does NOT receive that ground-only crop. Existing
+  source tests explicitly cover the difference. This source finding is not a
+  new measured guarantee that crouch never affects a surf trajectory.
+- Compute references from effective state/rules, key mask, wishspeed, friction,
+  clock and contact, not a guessed blanket duck penalty. Ground crouch needs the
+  real cropped inputs; air crouch must not accidentally use the ground model.
+  Include entering/leaving a ramp or ground contact during duck transitions.
+- Compare standing/crouched air strafes from matched supported state, then actual
+  crouched ramp routes and grounded combined-key cases. Prove Duck executes and
+  the hull/transition changes where appropriate. Check both clocks and a
+  deliberately cropped-ground control; identical output in one capped air case
+  is not proof of globally identical behavior or absence of a binding-rate case.
+
+### Automatic vertical aim: Follow travel
+
+The request is to follow the vertical DIRECTION of travel, not to derive yaw
+from velocity or bank the whole screen. Left/right yaw remains the primary
+manual/strafe control. Keep the horizon level by default.
+
+- Add **Vertical look: Manual / Follow travel**. The target inclination follows
+  actual travel: upwards on a climb, near level through an apex, down while
+  falling. In the normal world-up convention, the reference is
+  `atan2(vertical velocity, horizontal speed)`; convert to the engine's pitch
+  sign (negative looks up). Do not use yaw-turn rate as vertical inclination.
+- Smooth changes and limit pitch/angular rate to comfortable bounds, with a
+  configurable strength/offset under Advanced. No collision-driven camera
+  chatter, snap on enabling, upside-down roll or rapid near-vertical oscillation.
+  At negligible travel speed hold the last useful pitch or ease gently neutral.
+- Use accepted physical travel velocity, including a verified carrier
+  contribution where applicable, not a teleport displacement or render-frame
+  estimate. Reset/reseed at portals/warps and restore the historical state on
+  seek. Do not blend across unrelated branches or treat a rewind as falling.
+- Default to a clearly labelled VIEW/PREVIEW convenience: never alter yaw,
+  movement keys, gain targets or an immutable run's recorded angles. If authored
+  head motion should appear in a saved/exported TAS, expose an explicit record-
+  pitch option and generate ordinary input pitch through the existing validated
+  path. Cosmetic camera motion and recorded command pitch are distinct.
+- Save the mode/strength/offset with the tick's editing recipe. For deterministic
+  recorded pitch, evaluate smoothing on physics ticks and preserve/reconstruct
+  its state across checkpoints/chunk boundaries; never use wall-clock or render
+  FPS. Existing raw pitch rows remain truth on unchanged replay.
+- Mouse vertical input can temporarily override/release automatic pitch without
+  changing horizontal control; resume is smooth and explicit. Crouch eye-height
+  interpolation remains owned by the existing mover/camera, not counted a second
+  time as auto-pitch. Genuine server corrections retain their existing ownership.
+- Acceptance: climbing ramp, apex, falling air, standstill, duck/unduck and portal/
+  seek transitions. Show actual pitch and unchanged authored yaw/inputs with
+  follow on/off; a physically operated owner check settles comfort/readability.
+  A recorded-pitch option additionally needs same-state movement/arrival controls,
+  especially combined forward/side inputs and nonstandard movement states. Do
+  not assume every ruleset treats pitch as physics-neutral just because the
+  normal published `PMSrc_WishDir` flattens/normalizes forward/right horizontally.
+
 ## 4. Play normally, then revise a previous line
 
 1. A local editing session captures effective executed inputs from its beginning
@@ -184,7 +255,9 @@ paste the old endpoint or silently discard inconvenient trajectory changes.
 ### Restore settings as well as the body
 
 Each authored interval has an editing recipe: movement/key mask, assist mode,
-turn direction/multiplier, jump/duck and any intentional manual aim behavior.
+turn direction/multiplier, requested jump/duck, vertical-look mode/settings and
+any intentional manual/recorded aim behavior. Physical duck-transition state is
+restored by the qualified movement-history path, not trusted from this recipe.
 Store both that recipe and the ACTUAL executed commands. Commands remain the
 replay truth; an assistant algorithm update must not silently rewrite old work.
 
@@ -286,7 +359,7 @@ acceptance. Suggested implementation order:
 | Slice | Deliverable / acceptance that must ACT |
 |---|---|
 | 0. Fast owner layout check | Show a small directional-pad/turn/timeline mockup. Lex can identify forward/A/D/back, change turn sharpness and understand the selected range without raw angles. Use a five-minute human check, not a new UI-test framework. |
-| 1. Human controller and recipe state | A/D and W+D remain the chosen keys under assistance; direction correct, multipliers on both sides of1.00 visibly change actual executed yaw rate and ramp trajectory; no enable-time snap. Back/load/Undo restore the expected recipe. Manual/ground fallback is labelled, not called solved. Pilot one familiar ramp early. |
+| 1. Human controller and recipe state | A/D and W+D remain selected under assistance; turn multipliers visibly change yaw/trajectory without a snap. Duck/unduck uses real state, not a guessed air-acceleration penalty. Optional Follow travel pitches up/down without taking yaw control. Back/load/Undo restore settings and transition/filter state. Ground fallback remains explicit. Pilot one familiar ramp early. |
 | 2. Complete normal-play editing loop | Play a captured line LONGER than128 ticks and beyond the warm ring, pause, edit an early interval, replay to the old head, compare/keep/discard, save/reload and resume. Unchanged replay must match the scoped control; an intentional key/turn edit must visibly act. Entire captured extent stays browsable. Complete this before calling the first full-workflow milestone delivered. |
 | 3. Ground guide | Same-state manual and old-preset controls act; real ground acceleration/steady-speed comparisons prove selected W+D is retained and the claimed improvement occurs at both supported clocks. Lex's reported case is repeated; numeric289 is not assumed. |
 | 4. Section navigation | Manual markers first, then actual air/ramp contact edges on a familiar two-ramp line; jump Start/End and back across boarding restore the right body, tick and controls. Boundary changes on an edited route invalidate old labels. |
@@ -305,7 +378,10 @@ local UX or become the priority merely because its infrastructure already exists
   Reuse existing native strafer/tape tests and a small real-map check; do not
   spend the feature effort constructing a new proof framework.
 - Both clocks, frame/net cadence, angle wrap, left/right symmetry, zero speed,
-  combined/opposed keys, contact changes, input release and enable/disable.
+  combined/opposed keys, standing/crouched/transition/blocked-unduck states,
+  contact changes, input release and enable/disable. Follow-travel pitch covers
+  ascent/apex/descent, yaw independence, manual override, portal corrections and
+  seek/cold-load/filter continuity; camera-only on/off must not change commands.
 - Whole-history/chunk boundaries, branch/undo, cold seek, partial/malformed data,
   cancellation, storage limits, disconnect and natural finish. Missing exact
   context refuses before mutation. No fake unchanged-input pass based only on

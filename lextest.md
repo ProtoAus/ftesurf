@@ -5,6 +5,10 @@
 Lex tried the existing TAS tools. Confirmed useful in his trial: left/right
 movement controls, auto strafe for air speed gain, and advancing frames. This is
 manual feedback for those observed interactions, not an all-map or optimizer pass.
+Later on 4 Nov, Lex approved the proposed redesign direction ("looks really good")
+and requested crouched strafes plus automatic vertical look along movement while
+retaining left/right view-angle control. This is plan approval, not acceptance of
+an implemented redesign, a crouch-physics claim or a new in-game camera test.
 
 Reported problems/requests:
 - Could not readily play a normal line, pause and recalculate the earlier line;
@@ -19,6 +23,13 @@ Reported problems/requests:
   measurements are not yet captured; do not record this as a verified cap/bug fix.
 - Longer-term: start/jump/air/ramp sections, seek to section boundaries and
   improve a ramp/air section while reaching the following ramp well.
+- Follow-up: handle crouched strafing; "less airaccelerate or something" is the
+  owner's hypothesis, not a measured rule. Source inspection shows this mover's
+  duck input crop is ground-only; actual stance/contact/transitions still need
+  matched movement controls during implementation.
+- Follow-up: automatic vertical aim should look upwards when climbing a ramp and
+  downwards while falling. Horizontal yaw matters most and stays independent;
+  smoothing, manual override and seek-restored settings need owner comfort checks.
 
 Plan only: [human-first workflow](tools/plan-tas-human-workflow.md). No new screen,
 turn multiplier, full-history edit path or ground fix is installed by that plan.

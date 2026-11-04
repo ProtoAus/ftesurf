@@ -76,7 +76,11 @@ Full staged plan and acceptance: [tools/plan-tas.md](tools/plan-tas.md).
 [tools/plan-tas-human-workflow.md](tools/plan-tas-human-workflow.md). Prioritize
 normal play -> pause -> revise/recalculate an earlier interval; a forward/left/
 back/right pad; independently adjustable gain-relative turning with fine control;
-complete captured tick browsing and restored settings on seek/back/load. Ground
+complete captured tick browsing and restored settings on seek/back/load. Lex
+approved the design direction and added crouched strafing/duck transitions plus
+optional vertical aim following travel (climb up/fall down, without taking yaw
+control). Use actual stance/mover rules, not an assumed crouch air-acceleration
+penalty; keep view-only pitch distinct from explicitly recorded input pitch. Ground
 prestrafe needs a real ground objective (the existing assist is air-only); later
 add start/jump/air/ramp sections, exact Start/End seeking and constrained section
 improvement that boards the next ramp rather than merely maximizing exit speed.
