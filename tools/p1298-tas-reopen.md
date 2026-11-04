@@ -34,6 +34,30 @@ physical-device feel, real-account or all-map validation. Owner acceptance is
 pending in lextest.md. Destination hashes/live rollout are recorded separately;
 a successful build is not evidence of deployment.
 
+## Deployment readback — 4 November 2026, 17:47 UTC
+
+Frozen product source `0fbcc76382f0bdc6aa7905d3e8c950c3fa5665d7` was built
+from its clean isolated worktree. The resulting programs exactly match the acted
+subject. Both Windows installs received the programs with predecessors preserved;
+the native images and 13 sampled protected config/install/native files are unchanged.
+The ordinary `build.ps1 -Pi -PiForce` path warned for 10 seconds and restarted all
+12 lobbies (three players were connected). Backend services and native binaries
+were not replaced.
+
+| Program | SHA256 |
+|---|---|
+| qwprogs.dat | `52b4c337cbfb83a7e65b96cb55cefcedb7eedcb69f36f651e078753ae49e6feb` |
+| csprogs.dat | `517849e503c3e12ebc9af811bba0c4bd9ba579822c859734fb4250bf8c3c8f01` |
+| menu.dat (Windows only) | `e69b5f249e0fb09f777c3fc8f8a3e72c846d8b27200923f4795d93219ae3af04` |
+
+All 12 active lobbies report the new `78f388a3` CSQC checksum. A fresh client
+with no local CSQC downloaded these exact bytes, rendered the board panel and
+captured a screenshot without a VM error. This small fixture has no local zone
+rows; it is not populated-board validation. The downloaded client then exercised Timeline
+close/reopen on a live lobby: the tab and actual drawn frames persist, and the
+cursor releases/reclaims correctly. Its owned process stopped. Owner visual/feel
+acceptance remains pending; no public TAS admission was enabled.
+
 ## Project recovery
 
 The [status map](tas-status.md) reconciles the original plan with P1077-P1172.

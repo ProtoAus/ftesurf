@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1298 TAS workshop reopen (owner acceptance pending)
+## P1298 TAS workshop reopen (both installs and lobbies, 4 Nov; owner acceptance pending)
 In a local practice game, `tas timeline`, close the workshop, then `tas menu`:
 Timeline should reopen rather than Next input. Repeat from `tas shared` (online
 terms still apply). Check that closing restores normal mouse control and the
