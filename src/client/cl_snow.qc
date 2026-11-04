@@ -37,6 +37,22 @@ float(string list, string word) Snow_InList =
 	return strstrofs(strcat(" ", list, " "), strcat(" ", word, " ")) >= 0;
 };
 
+float(string path) Snow_Exists =
+{
+	local float fh;
+	fh = fopen(path, FILE_READ);
+	if (fh < 0)
+		return FALSE;
+	fclose(fh);
+	return TRUE;
+};
+
+// The map's own copy of scripts/snow.shader's block, its mask bound. Again after a renderer restart.
+void() Snow_MakeShader =
+{
+	shaderforname(snow_shader, sprintf("{\nsort additive\ncull disable\nnomipmaps\nnopicmip\n{\nprogram ftesurf_snow\nclampmap $nosrgb:$nearest:textures/snowmask/%s.png\nblendfunc blend\nrgbgen const 1 1 1\n}\n}\n", snow_map));
+};
+
 void() Snow_Load =
 {
 	local float fh, n;
@@ -49,51 +65,50 @@ void() Snow_Load =
 		strunzone(snow_shader);
 	snow_shader = "";
 	snow_maskon = -1;
-	// "snowmask 1 <map> x0 y0 cell width height z0 zrange"
+	// "snowmask 1 <map> x0 y0 cell width height z0 zrange"; no PNG, no mask (a missing image reads as roofs)
 	fh = fopen(sprintf("data/snowmask/%s.txt", snow_map), FILE_READ);
 	if (fh >= 0)
 	{
 		line = fgets(fh);
 		fclose(fh);
 		n = tokenize(line);
-		if (n >= 10 && argv(0) == "snowmask" && stof(argv(1)) == 1)
+		if (n >= 10 && argv(0) == "snowmask" && stof(argv(1)) == 1 && Snow_Exists(sprintf("textures/snowmask/%s.png", snow_map)))
 		{
 			cvar_set("r_snow_maskxy", sprintf("%s %s %s", argv(3), argv(4), argv(5)));
 			if (snow_maskz != "")
 				strunzone(snow_maskz);
 			snow_maskz = strzone(sprintf("%s %s 1", argv(8), argv(9)));
 			snow_shader = strzone(sprintf("ftesurf_snow/%s", snow_map));
-			shaderforname(snow_shader, sprintf("{\nsort additive\ncull disable\nnomipmaps\nnopicmip\n{\nprogram ftesurf_snow\nclampmap $nosrgb:$nearest:textures/snowmask/%s.png\nblendfunc blend\nrgbgen const 1 1 1\n}\n}\n", snow_map));
+			Snow_MakeShader();
 		}
 	}
 	print(sprintf("snow: %s, mask %s\n", snow_map, (snow_shader != "") ? "yes" : "none"));
 };
 
-// Before renderscene, beside RampWear_Frame: on the eye, or hidden.
+// CSQC_RendererRestarted: vid_restart frees every shader, so the handle in .forceshader names another.
+void() Snow_Lost =
+{
+	if (snow_shader != "")
+		Snow_MakeShader();
+	snow_maskon = -1;
+};
+
+// Before renderscene, beside RampWear_Frame. Added here, after the move: addentities has already run
+// (cl_main.qc), and an entity it drew would carry last frame's eye.
 void() Snow_Frame =
 {
-	local float want, mask, fh;
+	local float want, mask;
 
 	if (serverkey("map") != snow_map)
 		Snow_Load();
 	want = cvar("r_snow");
 	want = ((want >= 2) || (want >= 1 && Snow_InList(cvar_string("r_snow_maps"), snow_map)));   // = binds tighter than ||
 	if (!want)
-	{
-		if (snow_ent)
-			snow_ent.drawmask = 0;
 		return;
-	}
 	if (!snow_have)
 	{
-		snow_have = -1;
-		fh = fopen("models/snow/flakes.iqm", FILE_READ);
-		if (fh >= 0)
-		{
-			fclose(fh);
-			snow_have = 1;
-		}
-		else
+		snow_have = Snow_Exists("models/snow/flakes.iqm") ? 1 : -1;
+		if (snow_have < 0)
 			print("snow: models/snow/flakes.iqm is not installed; no snow\n");
 	}
 	if (snow_have < 0)
@@ -104,6 +119,7 @@ void() Snow_Frame =
 		snow_ent = spawn();
 		snow_ent.classname = "snow";
 		setmodel(snow_ent, "models/snow/flakes.iqm");
+		snow_ent.effects = EF_NOSHADOW;
 	}
 	mask = (snow_shader != "" && !cvar("r_snow_indoor"));
 	if (mask != snow_maskon)
@@ -112,6 +128,6 @@ void() Snow_Frame =
 		cvar_set("r_snow_maskz", mask ? snow_maskz : "0 0 0");
 		snow_ent.forceshader = mask ? shaderforname(snow_shader) : 0;
 	}
-	snow_ent.drawmask = MASK_ENGINE;
 	setorigin(snow_ent, getproperty(VF_ORIGIN));
+	addentity(snow_ent);
 };

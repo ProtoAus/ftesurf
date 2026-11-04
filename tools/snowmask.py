@@ -2,11 +2,13 @@
 """P1286: bake a map's sky mask for the snow event.
 
 For every cell column of the map, the top of the highest solid brush that is not sky: a flake below it
-is under a roof (glsl/ftesurf_snow.glsl hides it). Brushes are read from the BSP itself (lumps 1, 18,
-19), clipped against each column at the cell's centre. Sky brushes (a side flagged SURF_SKY/SKY2D or
-named toolsskybox*), brushes with no visible side (all tools/ or nodraw: clips, invisible walls) and
-non-solid contents (clips, water) do not stop snow. Props and displacements are not read: a flake under
-a displaced terrain is behind it anyway, and one under a prop roof is the known gap.
+is under a roof (glsl/ftesurf_snow.glsl hides it). The world's brushes are those in model 0's leaves
+(lumps 5, 10, 17); a brush entity's are stored round (0,0,0), so only func_brush and func_illusionary
+(static, unturned) are read, moved to their origin; triggers and movers never are. Each is clipped
+against each column at the cell's centre. Sky brushes (a side flagged SURF_SKY/SKY2D or named
+toolsskybox*), brushes with no visible side (all tools/ except toolsblack, or nodraw: clips, invisible
+walls) and non-solid contents (clips, water) do not stop snow. Props and displacements are not read: a
+flake under a displaced terrain is behind it anyway, and one under a prop roof is the known gap.
 
 Writes <gamedir>/data/snowmask/<map>.txt ("snowmask 1 <map> x0 y0 cell width height z0 zrange") and
 <gamedir>/textures/snowmask/<map>.png (height in 16 bits: r high byte, g low). cl_snow.qc reads both.
@@ -16,6 +18,7 @@ Writes <gamedir>/data/snowmask/<map>.txt ("snowmask 1 <map> x0 y0 cell width hei
 import argparse
 import lzma
 import os
+import re
 import struct
 import sys
 from pathlib import Path
@@ -73,8 +76,39 @@ def main():
     def texflags(ti):
         return struct.unpack_from("<i", texinfo, 72 * ti + 64)[0]
 
-    wmin = np.array(struct.unpack_from("<3f", bsp.lump(14), 0))
-    wmax = np.array(struct.unpack_from("<3f", bsp.lump(14), 12))
+    def visible(t):
+        n = texname(t)
+        return not (texflags(t) & SURF_NODRAW) and (not n.startswith("tools/") or "black" in n)
+
+    models = bsp.lump(14)
+    nodes = bsp.lump(5)
+    leafs = bsp.lump(10)
+    leafbrush = struct.unpack_from("<%dH" % (len(bsp.lump(17)) // 2), bsp.lump(17))
+    leafsize = 56 if struct.unpack_from("<i", bsp.d, 8 + 16 * 10 + 8)[0] == 0 else 32   # lump version 0 carries ambient light
+
+    def model_brushes(m):
+        out, stack = set(), [struct.unpack_from("<i", models, 48 * m + 36)[0]]
+        while stack:
+            n = stack.pop()
+            if n < 0:
+                f, c = struct.unpack_from("<HH", leafs, leafsize * (-1 - n) + 24)
+                out.update(leafbrush[f:f + c])
+            else:
+                stack.extend(struct.unpack_from("<2i", nodes, 32 * n + 4))
+        return out
+
+    work = [(b, (0.0, 0.0, 0.0)) for b in sorted(model_brushes(0))]
+    for blk in re.findall(r"\{[^{}]*\}", bsp.lump(0).decode("latin-1", "replace")):
+        kv = dict(re.findall(r'"([^"]+)"\s+"([^"]*)"', blk))
+        if kv.get("classname") in ("func_brush", "func_illusionary") and kv.get("model", "").startswith("*"):
+            ang = [float(v) for v in kv.get("angles", "0 0 0").split()[:3]]
+            if any(ang):
+                continue
+            org = tuple(float(v) for v in kv.get("origin", "0 0 0").split()[:3])
+            work += [(b, org) for b in sorted(model_brushes(int(kv["model"][1:])))]
+
+    wmin = np.array(struct.unpack_from("<3f", models, 0))
+    wmax = np.array(struct.unpack_from("<3f", models, 12))
     cell = a.cell
     x0, y0 = float(np.floor(wmin[0])), float(np.floor(wmin[1]))
     w = int(np.ceil((wmax[0] - x0) / cell)) + 1
@@ -87,7 +121,8 @@ def main():
     top = np.full((h, w), z0, dtype=np.float64)
 
     used = sky = tool = 0
-    for b in brushes:
+    for bi, org in work:
+        b = brushes[bi]
         if not (b["contents"] & (CONTENTS_SOLID | CONTENTS_WINDOW)):
             continue
         ss = sides[b["first"]:b["first"] + b["num"]]
@@ -95,11 +130,12 @@ def main():
         if any(texflags(t) & (SURF_SKY | SURF_SKY2D) or texname(t).startswith("tools/toolsskybox") for t in tis):
             sky += 1
             continue
-        if all(texflags(t) & SURF_NODRAW or texname(t).startswith("tools/") for t in tis):
+        if not any(visible(t) for t in tis):
             tool += 1
             continue
         pl = planes[ss["plane"]]
-        n, d = pl["n"].astype(np.float64), pl["d"].astype(np.float64)
+        n = pl["n"].astype(np.float64)
+        d = pl["d"].astype(np.float64) + n @ np.array(org)     # a moved entity's planes
         mn, mx = np.full(3, -1e9), np.full(3, 1e9)
         for k in range(3):     # the axial bevels every brush carries give its box
             ax = np.abs(n[:, k]) > 0.9999
@@ -146,8 +182,8 @@ def main():
     Image.fromarray(img, "RGB").save(gd / "textures/snowmask" / (a.map + ".png"))   # row 0 = y0
     (gd / "data/snowmask" / (a.map + ".txt")).write_text(
         "snowmask 1 %s %g %g %g %d %d %g %g\n" % (a.map, x0, y0, cell, w, h, z0, zr), encoding="ascii", newline="\n")
-    print("snowmask %s: %dx%d cells of %g, %d brushes stop snow (%d sky, %d tool-only skipped), from %s"
-          % (a.map, w, h, cell, used, sky, tool, path))
+    print("snowmask %s: %dx%d cells of %g, %d of %d brushes stop snow (%d sky, %d invisible skipped), from %s"
+          % (a.map, w, h, cell, used, len(work), sky, tool, path))
 
 
 if __name__ == "__main__":

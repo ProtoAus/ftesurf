@@ -91,6 +91,6 @@ void main()
 	float a = fade * (1.0 - smoothstep(0.3, 1.0, length(tc - 0.5) * 2.0));
 	if (a <= 0.004)
 		discard;
-	gl_FragColor = fog4(vec4(cvar_r_snow_debug != 0.0 ? vec3(maskv) : cvar_r_snow_colour, a));
+	gl_FragColor = fog4blend(vec4(cvar_r_snow_debug != 0.0 ? vec3(maskv) : cvar_r_snow_colour, a));
 }
 #endif
