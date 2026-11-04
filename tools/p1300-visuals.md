@@ -3,7 +3,8 @@
 ## Delivery state
 
 Implemented in an isolated source tree and QC-compiled; offline bake controls
-pass. **NOT fully runtime-qualified, NOT deployed.** The original rendered control
+pass. **NOT fully runtime-qualified.** A later A84/c24ede65 candidate is installed
+in both Windows installs for owner validation; lobbies are still pending. The original rendered control
 ran after waiting 544 seconds at the helper's 20-second quiet / 4 GiB free-memory
 gate. Correction on source reread, 4 Nov continuation: the earlier '60-second'
 claim was wrong; the borrowed file actually set QUIET=20. The three checks are
@@ -68,10 +69,13 @@ These hashes identify staging, NOT either install or lobby deployment.
   boarding-strength control passes. Shared synthetic coplanar samples agree to
   1e-6 and the crossing streak is nonzero on both faces.
 - Read-only replay bakes to the owned artifacts directory:
-  surf_colin_blaster_69000: 77/77 demos read, 648966 ticks, 37 ridden charts,
-  780 boarding events, 1376 triangles, 2048x2048 RGBA atlas.
-  surf_classics3: 70/70 demos read, 381388 ticks, 31 ridden charts,
-  609 boarding events, 1831 triangles, 2048x2048 RGBA atlas.
+  **P1307 source-output correction:** earlier counts were not supported by the
+  retained payloads. Fresh CLI runs are byte-identical to those retained outputs:
+  surf_colin_blaster_69000:77/77 demos,56609 CONTACT ticks,243 ridden surfaces,
+  780 boardings,277 total surfaces including34 neighbours,652 triangles,2048x4096.
+  surf_classics3:70/70 demos,11608 CONTACT ticks,529 ridden surfaces,366 boardings,
+  560 total surfaces including31 neighbours,1831 triangles,2048x2048. Do not mix
+  contact ticks with total replay frames or treat these as native submissions.
   These use the existing corpus, NOT new demo downloads. surf_demise's local
   inputs yielded zero contact charts; it refused a bake and no replacement is
   shipped. Do not treat that as a successful empty map.
@@ -99,3 +103,15 @@ The linked smoke project's README was inspected. Its Valve SDK terms restrict
 use to modified Valve games on Half-Life; no code/assets were imported. Proposed
 FTE smoke is an independent, capped impostor/slice approximation, not a promise
 of full volumetric simulation at negligible cost.
+
+## P1307 continuation
+
+The shader now has separate legacy/full and v2/half-output file/program/material
+identities, with matching blend selection at map load. This is required because
+canonical source assets can advance independently of ignored progs. Old assets
+keep the old look, not the wrong brightness. No extra per-frame pass/sample/I/O.
+Additional real local replay bakes cover Frost2, Simple125 and Garden41 demos:
+315 replay instances across the five provisional maps, NOT unique players or new
+online downloads. Christmas10 also baked, but8024 triangles (5840 with one neighbour
+ring) remain staged until moving-view cost is checked under the MAX-FPS request.
+No unsupported bluewinter replay coverage or numerical frame-time claim.

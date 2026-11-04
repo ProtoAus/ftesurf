@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1307 ramp asset pairing / extra maps — pending, not visually accepted
+
+A small local Frost look was already requested; no owner confirmation yet.
+After the updated candidate/assets are installed, start fresh and load Frost:
+console should report `rampwear: shader v2`; check near/distant marks and brightness
+while moving. Simple/Garden also have nonzero replay-driven candidate bakes.
+Older asset clients deliberately retain legacy mode rather than mix brightness
+contracts. Source/mathematics and QC compile checks do not establish native shader
+execution, no-hitch or numerical MAX-FPS. The8024-triangle Christmas overlay is
+staged, not default-shipped pending its moving-view check. Props are separate.
+
 ## P1304 Santa hat — pending, not visually accepted
 
 Backend ownership/authority/preservation controls pass; no native hat screenshot

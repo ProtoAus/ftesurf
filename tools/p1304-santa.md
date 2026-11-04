@@ -56,9 +56,10 @@ client identity claim, arbitrary model path or recorder/evidence format change.
 -8 existing ahead-schema/retained-WAL controls pass. Existing social/profile and
   geometry controls are recorded with their exact commands in task evidence.
 -Actual generated IQM header/counts/bounds and byte-identical regeneration checked.
--Actual QC compiler: zero NEW warnings; only the2 inherited F333 viewmodel227
-  diagnostics. First failed compile (missed remote-player call/too many diagnostic
-  format args) was retained and repaired, not described as a pass.
+-Actual QC compiler: initial older-tool builds had only2 inherited F333
+  viewmodel227 diagnostics; the final approved c24ede65 build has ZERO warnings.
+  First failed compile (missed remote-player call/too many diagnostic format args)
+  was retained and repaired, not described as a pass.
 
 These are NOT a native model, screenshot, moving-view FPS or live-deployment pass.
 The shared quiet/4096MiB runtime guard previously expired without a subject
@@ -66,3 +67,19 @@ launch. Do not weaken it or infer a performance number from this small mesh.
 Human look checks are pending in `lextest.md`. Christmas activation remains OFF.
 No native code/pin/tag, movement, recorder/evidence format or QC Build change. Windows/Pi
 provenance must be recorded separately after actual deployment.
+
+## Actual deployment continuation
+
+Backend02a56b32f0d0414a0a42cb421cee30d488704951 (exact live b5ce68f6 plus ONLY
+P1304's4 runtime files) is LIVE since4Nov21:03:22Z. Both actual Linux CLOSED
+fixture cohorts passed before the existing bounded installer and guarded swap.
+The old core schema/count/identity comparisons passed; core26/event1, zero early
+gifts, eventOFF. System surfd and USER momrequests are healthy; `/health` is200ok.
+A consistent private historical DB snapshot and unchanged-data fallback cohort
+are retained. Code rollback uses the SAME DB, never a stale snapshot restore.
+
+The clean A84/c24ede65 candidate and18 runtime assets reached BOTH Windows
+installs with exact hashes, rollback and unchanged native/config. Native hat
+appearance remains pending; this is not manual or FPS acceptance. P1307 follows
+with asset-ABI compatibility before the lobby cohort ships. No lobby deployment
+is claimed by this section.

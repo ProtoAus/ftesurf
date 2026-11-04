@@ -1,4 +1,5 @@
 # The engine build this QuakeC requires.
+# Patch 1307 (QC/assets only): separate legacy/full and v2/half ramp-shader ABIs, choose matching blend and distinct material cache keys at map load. Old assets retain legacy mode; no added per-frame I/O/pass/sample/trace. More provisional replay bakes are separate generated content. Native pin/tag and qcbuild unchanged.
 # Patch 1304 (QC/backend/content only): permanent trusted-presence Santa gift, native hat and inventory UI; event defaults OFF. Core DB26 / newer-schema refusal preserved with additive event component1. Native pin/tag and qcbuild unchanged; visual/deployment acceptance separate.
 # Patch 1302 (QC/shader/content only): selected-map Kenney CC0 holiday props and hard-capped shader mist. Mist defaults off pending real moving-view performance acceptance. Native pin/tag and qcbuild unchanged.
 # Patch 1300 (CSQC/shader/tools only): longer-lived ramp scuffs, chart seam/depth fixes, inspect-sound warming and release of a stale milk sky override. Native pin/tag and qcbuild unchanged; runtime acceptance/deployment tracked separately.
@@ -31,7 +32,7 @@ commit   7ae5d53b2ccd5a216c418a510d3cabc2053f89a8
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1306
-patch    1306
+patch    1307
 # Patches 1305/1306 (engine common/pm_source.c): faithful existing gravity-use observation across finite native jump configurations and stock postures. Movement, capture/API/format and ranking policy unchanged. Clean Windows/ARM, acting controls and dual Windows/all12Pi native delivery verified; actual ranked/full-bank acceptance separate. Windows source7ae5d53b2 includes published P1301; Pi source76acc7c6b/tagpatch-1306 has identical mover/server inputs. Details and corrected old-manifest selector diagnosis: tools/p1306-gravity-context.md.
 # Patch 1299: initial finite nonnegative normalized-offset extension; full native delivery now superseded by the qualified 1305/1306 set. Historical proof and correction in tools/p1299-gravity.md.
 # Patches 1255/1257 (engine sv_ccmds.c pm_dettest mover-12 lines; renderer gl_mindist 2, viewmodels keep 1): installs tag patch-1257, which merges patch-1260. QC needs neither.
