@@ -493,8 +493,9 @@ float(string cmd) Friends_ConsoleCommand =
 				k = 6;
 			else if (!(substring(s, 0, 2) == "[#" && k >= 3 && k <= 5 && stof(substring(s, 2, 3)) >= 1))
 				k = -1;
+			// P1291: a board line is the green line itself, no "board" title (Lex)
 			if (substring(s, 0, 2) == "* ")
-				s = strcat("^5[everyone]^2 board^7 ", nm, "^7 ", substring(s, 2, -1));
+				s = strcat("^5[everyone]^2 ", nm, "^2 ", substring(s, 2, -1));
 			else if (k > 0)
 				s = strcat("^5", substring(s, 0, k + 1), "^7 ", nm, "^7: ", substring(s, k + 2, -1));
 			else
