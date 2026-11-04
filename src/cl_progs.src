@@ -4,6 +4,7 @@ defs/cl_defs.qc
 shared/sh_defs.qc
 shared/sh_vsvel.qc          // P1205: VScript velocity grammar, shared with sv_entities.qc
 shared/sh_time.qc
+shared/sh_chatcmd.qc        // P1295: chat warp commands as typed
 shared/sh_mapauthor.qc
 shared/sh_viewmodel.qc
 shared/sh_boardstyle.qc

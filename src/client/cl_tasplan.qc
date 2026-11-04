@@ -11,7 +11,7 @@ float(float argc, float seat) CL_TASPlanCommand =
 		if (argc == 2) TASUI_Toggle(seat);
 		else if (argc == 3 && !strcmp(argv(2), "status"))
 		{
-			print(sprintf("tas menu: open %g claims %g frames %g draft %s native %g\n", tasu_open, UI_CursorHeld(), tasu_frames, FS_TASPlanName(tasu_mode), getstatf(STAT_FS_TASPLANCAP)));
+			print(sprintf("tas menu: open %g claims %g frames %g draft %s native %g tab %g\n", tasu_open, UI_CursorHeld(), tasu_frames, FS_TASPlanName(tasu_mode), getstatf(STAT_FS_TASPLANCAP), tasu_tab));
 			print(sprintf("tas menu draft: f%g s%g pitch%.13f yaw%.13f bits%g\n",
 				tasu_forward, tasu_side, tasu_pitch, tasu_yaw, tasu_bits));
 		}

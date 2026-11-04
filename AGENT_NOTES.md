@@ -1,5 +1,46 @@
 # AGENT_NOTES.md
 
+## TAS continuation and workshop reopen — P1298, 4 Nov 2026
+
+- Start recovery at tools/tas-status.md and tools/plan-tas.md. Historical stage
+  paragraphs are not current completion claims: P1077-P1172 already added
+  timelines/projects/comparison/optimization/signing/sharing, 10/15ms native
+  authoring and cold admission. Public source qualification and queue/board
+  admission remain incomplete. Preserve the held queue rather than rebuilding it.
+- Recheck an old infrastructure blocker against today's environment before asking
+  the owner to repeat privileged setup. A successful capability probe is not a
+  canonical source/alias/writer qualification or permission to replay a stale
+  installer against an advanced service. Fresh private inventory is separate from
+  public feature evidence; no system/source-policy change was made by P1298.
+- Workshop close may remember the tab, but must still call TASTimeline_Reset:
+  in-flight tags/pages and project status cannot survive as current authority.
+  Reopen Timeline through its existing rate/seat/body/input guards. Shared may
+  keep its immutable browser view; no consent bypass or automatic publication.
+- Actual dedicated/rendered control and subject each14checks; baseline reset
+  ACTED, subject retains Timeline/Shared. The isolated fixture has an empty
+  timeline: rows0/current0 is not a populated replay proof. Subject PNG inspected.
+- Clean source0fbcc763 programs match the acted subject; BOTH Windows installs
+  and12lobbies verified17:47UTC. Three players were on: approved -PiForce warned
+  10seconds before restarting. All12live CSQC checksums78f388a3, cold download
+  SHA517849e5, drawn board and live Timeline close/reopen act. Native/backend
+  untouched; owner feel remains in lextest.md. Exact receipt: tools/p1298-tas-reopen.md.
+
+## P1300 offline ramp seam controls / pending renderer (4 Nov 2026)
+
+`tools/test_rampwear.py` exercises the actual baker: adjacent coplanar chart
+minima at 3/100 units use different grids in old paint(), so their common-edge
+samples disagree. Snap origins to the world texel lattice; paint crossing board
+streaks on uncontacted neighbours too. Old pack() also returned a non-power-of-two
+atlas height. Exact old functions fail those two tests (0 errors); subject passes
+all three, and Colin 77 / Classics3 70 local demos rebake read-only. Demise's local
+inputs produced 0 contacts: the tool refused; do NOT ship an empty replacement.
+The shader/depth/knife/sky runtime checks are NOT complete: renderer work waited
+at the shared quiet/4-GiB memory gate. No deployment/performance/owner-feel claim.
+QC compile of conditionally called `getmodeleventidx` needs explicit initial
+values for its output locals to avoid F302; declaring the call successful through
+a separate valid flag does not satisfy fteqcc's definite-assignment analysis.
+Scope, actual build/control limits and resume checks: tools/p1300-visuals.md.
+
 ## 0.1.39 release (4 Nov; ftesurf-2b, root C:/FTESurf-worktrees/release0139-20261104T1033Z)
 - Shipped paths must be managed by the update policy that players' launchers carry (ftesurf_update.rs managed(),
   mirrored in tools/updatefeed.py and engine qkupdate.c). A feed naming any other path is refused WHOLE by every

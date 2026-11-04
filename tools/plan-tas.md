@@ -1,7 +1,10 @@
 # TAS projects, editable lines and contribution history
 
 Requested by Lex, 26 October 2026. This extends [the styles/TAS outline](plan-styles-tas.md).
-This is a staged implementation plan, not a claim that the editor or signed saves exist.
+This is the original staged implementation plan; its dated stage limits are historical,
+not a claim that later-delivered editor or signing features are still absent. For the
+reconciled implemented/pending split and continuation point, see
+[the current TAS status](tas-status.md) (4 November 2026).
 
 ## Goal and acceptance
 
@@ -43,7 +46,9 @@ Valid physics, a server timestamp or a player signature cannot prove manual play
 ## Stage 1: explicit TAS practice sessions (P1052, first implementation)
 
 Implemented and installed locally; [verification and deployment status](p1052-tas.md).
-Public fleet/backend promotion remains blocked by its guarded runtime handoff.
+This paragraph records Stage 1's original delivery boundary. Later compatible
+Windows/fleet deliveries are recorded in the later patch receipts; it is not a
+claim that all TAS practice is still waiting for its first public deployment.
 
 - Console tas on, tas off, tas status and tas speed 0.1..1, retaining the existing
   host_timescale interface and per-seat routing.

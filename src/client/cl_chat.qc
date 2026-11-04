@@ -2057,7 +2057,7 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 				if (substring(cmdt, 0, 1) == "\"")
 					cmdt = strtrim(substring(cmdt, 1, -1));
 				if (chat_private == "-")
-				if (substring(cmdt, 0, 1) != "!")
+				if (substring(ChatCmd_Normalize(cmdt), 0, 1) != "!")     // P1295: "/b 3" stays in its lobby too
 					localcmd(sprintf("cmd friend message - %s\n", uri_escape(chat_buf)));
 			}
 		}

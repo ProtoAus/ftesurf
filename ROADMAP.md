@@ -1,5 +1,53 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
+## Christmas environment and cosmetics — requested 4 Nov 2026
+
+The falling-snow event exists (P1286); the following additions are requested,
+NOT implemented by the ramp/knife/sky follow-up P1300. Snow cover is already
+reserved to ftesurf-e2 under P1287: coordinate that work rather than shipping a
+second competing world-shader override.
+
+- Accumulation: bake static sky-exposed upward surfaces/ledge caps per map;
+  add hand-selected sheltered corners/rooms only on nominated maps. Use mesh
+  or material masks, no runtime snow physics, full-map voxelization or per-frame
+  roof traces. Preserve visibility/collision and show effect-off controls.
+- Frozen water/lava: an event-only visual ice/frost skin. Do NOT change liquid
+  contents, collisions, movement or damage rules without a separate gameplay
+  decision. Water/lava coverage, transparent sorting, moving surfaces and
+  recognizability each need an in-game check.
+- Santa hat: small original/licensed model plus a real inventory definition and
+  server-owned event entitlement. No client self-grants; choose event dates and
+  whether the gift is permanently retained before activating the grant.
+- Snowmen: licensed candidate FOUND: [Kenney Holiday Kit](https://kenney.nl/assets/holiday-kit)
+  (bundled CC0 license checked), snowman 892 triangles / top-hat variant 1110.
+  These are asset candidates, NOT converted/placed/deployed models; the black
+  top hat is not the requested Santa hat. Still need per-map placement records,
+  editor preview and a hard visible-instance cap. Source/provenance:
+  [tools/winter-assets.md](tools/winter-assets.md).
+- Winter audio: licensed/original outside wind and sheltered ambience, selected
+  from the existing sky/roof mask, crossfaded without per-frame file loads. Add
+  nearby/distant thunder with delayed playback and preloaded sounds.
+- Sky lightning: sky-only flash plus a few short bolt ribbons, not a full-world
+  relight or reflection rebuild. Respect reduced-flash/off settings; verify that
+  visualizer and map/default skies both return to their prior state.
+- Atmospheric smoke/mist/light shafts: independently authored, bounded billboard
+  or slice approximation near selected emitters/lights, distance/PVS culled and
+  capped for overdraw. No full-level volumetric simulation, per-particle dynamic
+  light query or reflection capture. The linked Admer456/halflife-smoke README
+  uses Valve SDK terms limited to modified Valve games on Half-Life; do not port
+  its implementation into FTE without a compatible license grant.
+- More demo coverage: nominate maps first, use the existing bounded collector,
+  then rebake from the expanded corpus. P1300's local 77-demo Colin and 70-demo
+  Classics3 rebakes are NOT newly downloaded demos or broader route coverage.
+
+Acceptance: event-off is unchanged; cold asset loads occur before play, not on
+first inspect/first flake/first thunder. Compare moving-view frame-time tails
+against effect-off on the target hardware, and inspect indoor leaks, seams,
+transparent ordering and night/bright-map readability. No performance claim from
+a successful compile or a static screenshot. Needed owner choices: extra map
+list/placement preferences, Christmas grant dates/retention and desired ambience
+assets/style. Optional original low-poly hat/snowman avoids third-party licensing.
+
 ## Linked-profile playtime and main/bonus attempts — requested 1 Nov 2026
 
 P1168 implements the public readers: profile totals, per-map time and main/bonus
@@ -21,13 +69,19 @@ collector is created; real hours/attempts remain unfinished requested work.
 
 ## TAS editor and signed collaborative saves — requested 26 Oct 2026
 
-Full staged plan and acceptance: [tools/plan-tas.md](tools/plan-tas.md). P1052 starts
-with explicit TAS practice sessions and retained ancestry using existing slow motion.
-P1055 adds authoritative per-player pause and actual movement-tick advance. P1061
-adds exact retained-tick rewind and a tick-based paused cursor, with native carried
-movement state restored. These controls are verified and installed in both Windows
-installs; public guarded-lobby promotion and owner rewind feel are separate pending
-items. See [P1061 scope/delivery](tools/p1061-tas-rewind.md).
+Full staged plan and acceptance: [tools/plan-tas.md](tools/plan-tas.md).
+**Current delivery map and resume point (4 Nov): [tools/tas-status.md](tools/tas-status.md).**
+The local editor is substantially implemented: P1052/P1055/P1061 practice, pause,
+step and retained rewind; P1065/P1074/P1077 input editing/workshop/undo-redo;
+P1082/P1110 saved and portable legal-start projects; P1087 comparison ghosts;
+P1088/P1092/P1097 bounded optimizers; P1090/P1091/P1140 signed contributions and
+sharing. P1154 supports bounded 10/15ms native authoring; P1161 adds fresh-session
+admission. P1298 retains the workshop tab when reopening, with stale timeline
+pages still invalidated. These are not all-map/world or owner-feel acceptance.
+The P1134 operator verifier exists, but protected canonical-source qualification,
+the public submission/runtime registry and a TAS-only verified board (6.3/6.4)
+remain unfinished. Do not rebuild the held queue or call it a deployed service.
+Historical stage receipts retain their exact installation and support limits.
 REC14 historical stream rewind/edit support remains unbuilt: the warm snapshot
 writer must capture the historical mover-command state needed by stream restore,
 and preflight must prove that complete state before any transaction mutation.
@@ -36,9 +90,10 @@ history is supported. Do not substitute current-head metadata for a past tick.
 
 P1065 implements the bounded console input core: list captured ticks, edit a
 movement/aim/jump/duck/walk slice and recalculate the affected exact warm tail.
-It is not the whole project/timeline stage: persistent/branching TAS projects,
-undo/redo and a visual timeline, comparison ghosts, route/interval optimizers,
-signed contributions and a separately verified TAS board remain planned. See
+At P1065 delivery this was not the whole project/timeline stage. Projects,
+undo/redo, the input table, comparison ghosts, bounded optimizers and signed
+sharing have since landed as summarized above; general route optimization and
+the separately verified public TAS board remain unfinished. See
 [P1065 scope and checks](tools/p1065-tas-inputs.md); actual installation and owner
 camera/input feel have separate provenance, not implied by this roadmap entry.
 

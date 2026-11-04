@@ -862,6 +862,7 @@ float(string text) WarpOp_Chat =
 	text = strtrim(text);
 	if (substring(text, 0, 1) == "\"" && substring(text, strlen(text) - 1, 1) == "\"")
 		text = strtrim(substring(text, 1, strlen(text) - 2));
+	text = ChatCmd_Normalize(text);     // FTESurf Patch 1295: "!b3", "/b 3" as the server reads them
 	if (text == "!r")
 		return WarpOp_Reset(WOP_RESET);
 	if (text == "!m")

@@ -2401,7 +2401,7 @@ void(string cmd) SV_ParseClientCommand =
 	*/
 	if (c == "say" || c == "say_team")
 	{
-		local string msg, w, tail;
+		local string msg, w, tail, norm;
 		local float  n, sp, i, ch, alldigits;
 
 		msg = strtolower(argv(1));
@@ -2443,6 +2443,11 @@ void(string cmd) SV_ParseClientCommand =
 			w    = substring(msg, 0, sp);
 			tail = substring(msg, sp + 1, strlen(msg) - (sp + 1));
 		}
+		// FTESurf Patch 1295: "!b3", "/b 3", "/b3" read as "!b 3" (shared/sh_chatcmd.qc)
+		norm = ChatCmd_Normalize((tail == "") ? w : strcat(w, " ", tail));
+		sp = strstrofs(norm, " ", 0);
+		w = (sp < 0) ? norm : substring(norm, 0, sp);
+		tail = (sp < 0) ? "" : substring(norm, sp + 1, strlen(norm) - (sp + 1));
 
 		if (!strcmp(w, "!time"))
 		{

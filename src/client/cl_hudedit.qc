@@ -2407,6 +2407,15 @@ void() HE_MigrateDefaults =
 			print("chat: the chat text is a size smaller now (hud_chat_size 20)\n");
 		localcmd("seta hud_chat_rev 821\n");
 	}
+	// FTESurf Patch 1296: water and glass captures redrawn 60 times a second, not 144 (Lex, 5 Nov). Only where the
+	// engine has the setting (P1281): a 0.1.38 engine would otherwise be marked done without the move.
+	registercvar("r_capturerate_rev", "0", CVAR_ARCHIVE);
+	if (cvar_type("r_capturerate") && cvar("r_capturerate_rev") < 1296)
+	{
+		if (HE_MoveOne("r_capturerate", 144, "60"))
+			print("reflections: water and glass are redrawn 60 times a second now (r_capturerate 60)\n");
+		localcmd("seta r_capturerate_rev 1296\n");
+	}
 	registercvar("hud_layout_rev", "0", CVAR_ARCHIVE);
 	/*
 	  Patch 898: Lex's layout of 21 Oct for every setting still on the default it replaced.  The

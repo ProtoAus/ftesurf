@@ -21,8 +21,16 @@
 
 ## next
 
+### P1300 Ramp scuffs, knife sounds and sky recovery
+- Ramp wear has a longer adjustable range, stronger scratches and broad distant scuffs instead of losing the fine detail abruptly. Atlas seam bleeding and grazing-angle depth bias are reduced; smooth ride lines gain a subtle optional polish highlight.
+- Knife inspect sounds warm after equip instead of first resolving every new sound during the animation. Sound aliases no longer keep paths from a different weapon package.
+- A disabled or unsupported visualizer sky releases its stale override when a map loads, allowing maps without an authored sky to use the default sky again.
+
 ### P1299 Gravity carry status through supported jump-height offsets
 - Carried gravity effects keep their run status through more supported normalized jumps on maps with a takeoff-height offset. Jump height, movement and normal map-authored effects are unchanged.
+
+### P1298 TAS workshop remembers its tab
+- Close and reopen the TAS workshop: it returns to Timeline or Shared instead of always switching to Next input. The timeline still refreshes before old rows can be edited.
 
 ### P1161 Fresh TAS project loads
 - TAS projects can load and replay in a fresh supported session without first building rewind history. Legal-start rewind keeps working from a fresh start.

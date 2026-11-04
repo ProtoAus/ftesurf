@@ -163,10 +163,15 @@ void() MilkSky_WorldLoaded =
 	ms_thumb_map = "";
 	ms_thumb_page = ms_thumb_cell = -1;
 	ms_thumb_next = 0;
-	// The map key may still be empty; start lookup only in an active sky frame.
-	if (cvar("milk_sky"))
-	if (Milk_Supported())
-	if (cvar_string("r_skybox") != "milk")
+	// Do not retain our transient override when the saved toggle is off (or unsupported).
+	// In particular a no-skyname map needs the engine's r_skybox_default again. Other
+	// user sky overrides are theirs: only release the one we own.
+	if (!cvar("milk_sky") || !Milk_Supported())
+	{
+		if (!strcmp(cvar_string("r_skybox"), "milk"))
+			localcmd("r_skybox \"\"\n");
+	}
+	else if (strcmp(cvar_string("r_skybox"), "milk"))
 		localcmd("r_skybox milk\n");
 };
 

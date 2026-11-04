@@ -7137,10 +7137,15 @@ def profile_forget():
         _prof.clear()
 
 
+def _finishes(r):
+    """P1297: a main-track finish that completes its map. A segmented run (and a KSF segmented import) is not one:
+    it was put together from saved positions."""
+    return r["track"] == 0 and r["leg"] == 0 and not str(r["style"]).startswith(STYLE_SEGMENTED)
+
+
 def _completion_wos(ranked, main_maps):
     """Native main-track finishes, against the SAME population as Everything."""
-    done = {r["map"] for r, _rk, _of in ranked
-            if r["track"] == 0 and r["leg"] == 0 and r["tier"] == TIER_RANKED}
+    done = {r["map"] for r, _rk, _of in ranked if _finishes(r) and r["tier"] == TIER_RANKED}
     return _completion(done, main_maps, map_tiers())
 
 
@@ -7190,7 +7195,7 @@ def _profile_figures(ranked, main_maps):
     wr = sum(1 for _r, rk, _of in ranked if rk == 1)
     wrc = sum(1 for _r, rk, of in ranked if rk == 1 and of > 1)
     top10 = sum(1 for _r, rk, of in ranked if 1 <= rk <= 10 and of > 1)
-    done = {r["map"] for r, _rk, _of in ranked if r["track"] == 0 and r["leg"] == 0}
+    done = {r["map"] for r, _rk, _of in ranked if _finishes(r)}
     return wr, wrc, top10, _completion(done, main_maps, map_tiers())
 
 
@@ -7425,7 +7430,7 @@ def game_player(raw, now):
         return Response(game_json(
             {"v": 1, "t": now, "who": handle, "name": me["name"], "ct": ct, "mode": mode,
              "rated": 1 if rated else 0,
-             "done": sum(1 for m in maps if "ms" in m), "offset": offset, "total": len(maps),
+             "done": sum(1 for m in maps if (m.get("fin") if ct == "p" else "ms" in m)), "offset": offset, "total": len(maps),
              "limit": limit, "maps": out}), status=200, mimetype="application/json")
     bsp, _zoned = map_index()
     if on is not None:
@@ -7479,7 +7484,7 @@ def _tier_maps(ranked, main_maps, mode="", source="all"):
     import mapmanifest
     best = {}                   # map -> [fastest main time, its game, {games}, its style]
     for r, _rk, _of in ranked:
-        if r["track"] or r["leg"] or (source == "wos" and r["tier"] != TIER_RANKED):
+        if not _finishes(r) or (source == "wos" and r["tier"] != TIER_RANKED):
             continue
         cur = best.setdefault(r["map"], [r["millis"], r["tier"], set(), r["style"]])
         if r["millis"] < cur[0]:
@@ -7507,10 +7512,11 @@ def _tier_maps(ranked, main_maps, mode="", source="all"):
 def _played_maps(ranked, main_maps, mode="", source="all"):
     """P1106: every map `ranked` has a row on (the profile's "maps" figure), each with the fastest
     main time where there is one, easiest tier first.  Not limited to the completion pool: a
-    time on a map is counted wherever it is."""
+    time on a map is counted wherever it is.  "fin" marks a map _finishes() holds for (P1297: the
+    fastest time shown may still be a segmented one)."""
     _have, playable, bsp = _completion_scope(main_maps)
     tiers = map_tiers() or {}
-    seen, best = set(), {}
+    seen, best, fin = set(), {}, set()
     for r, _rk, _of in ranked:
         if (source == "wos" and r["tier"] != TIER_RANKED) or (mode and _map_mode(r["map"]) != mode):
             continue
@@ -7519,10 +7525,14 @@ def _played_maps(ranked, main_maps, mode="", source="all"):
             cur = best.get(r["map"])
             if cur is None or r["millis"] < cur["ms"]:
                 best[r["map"]] = {"ms": r["millis"], "tr": r["tier"], "s": r["style"]}
+            if _finishes(r):
+                fin.add(r["map"])
     out = []
     for key in seen:
         row = {"map": bsp.get(key, key), "have": 1 if key in playable else 0, "t": tiers.get(key)}
         row.update(best.get(key, {}))
+        if key in fin:
+            row["fin"] = 1
         out.append(row)
     out.sort(key=lambda m: (m["t"] is None, m["t"] or 0, m["map"].lower()))
     return out
@@ -7533,7 +7543,7 @@ def web_player_maps(handle):
     """Every map the site holds a main board for, by difficulty tier, with
     whether this player has finished it and in which game (Patch 636).  The
     same rule and the same denominator as the profile's bars (_completion): a
-    map is finished when its main track is, in any game and any style."""
+    map is finished when its main track is, in any game and any style but segmented (P1297)."""
     now = int(time.time())
     if not rate_ok(rate_key(), now, WEB_RATE_MAX, "web"):
         return fail(429, "rate limited")
