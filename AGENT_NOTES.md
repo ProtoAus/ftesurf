@@ -156,6 +156,9 @@
   the line below.
 - LOBBY QC deploy/p1285-zones 87564f20 (P1285 zone lines by PVS, client QC, on deploy/p1280-hands) LIVE 4 Nov 06:13Z:
   qw 45d4be3a (unchanged), cs 0ee0d7aa (.prev 5266984f), codes.txt appended (.pre1285; installs' 82981b0b too).
+  Superseded by the line below.
+- LOBBY QC deploy/p1290-land 694b5819 (P1290 hard-landing sound, client QC, on deploy/p1285-zones) LIVE 5 Nov 07:30Z:
+  qw 45d4be3a (unchanged), cs 348f07bb (.prev 0ee0d7aa), codes.txt appended (.pre1290; installs' b1cb665b too).
   NEXT LOBBY QC STACKS ON IT.
 - Pi: agent-work/chatfair-1206-57e27fa4 and chatsave-1200-57e27fa4 are in the live surfd drop-in's
   ReadWritePaths and its preflight writes into each: deleting them stops surfd starting.

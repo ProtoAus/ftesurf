@@ -65,6 +65,10 @@
    changes anything. `bih_tracecache 2` re-checks every skipped one and `bih_tracestats` prints how many differed
    (it has been 0 in every test).
 
+## P1290 landing sound (lobbies live 5 Nov; both installs: csprogs b1cb665b)
+1. With `cl_game_sfx 1`: drop from a height onto a floor. You should hear a loud footstep of that floor (concrete,
+   metal...), not the grunt-like fall-damage sound. `gameaudio_info` prints the last sound played.
+
 ## P1288 tinted brush materials (both installs: hl2 plugin b5ec1cc8 patch-1288 beside exe b89fde71; your Desktop copy with the next release)
 1. surf_eternity's stair room (your CS:S spot, setpos -7594.77 7642.67 7854.67): the walls about twice as bright as
    before, nearer your CS:S shot. Still somewhat darker than CS:S overall (the stairs too), which is a separate

@@ -21,6 +21,9 @@
 
 ## next
 
+### P1290 Landing sounds as in CS:S
+- With game sounds on (cl_game_sfx), a hard landing played Counter-Strike's fall-damage grunt, which CS:S only plays when you take fall damage (so never on surf). It now plays the footstep of the surface you land on, at full volume, as CS:S does.
+
 ### P1288 Tinted map surfaces as bright as in CS:S
 - Map surfaces tinted by their material ($color) were drawn much darker than CS:S draws them: Source applies that tint in linear light. surf_eternity's stair-room walls are now about twice as bright, close to CS:S.
 
