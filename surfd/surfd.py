@@ -7137,10 +7137,15 @@ def profile_forget():
         _prof.clear()
 
 
+def _finishes(r):
+    """P1297: a main-track finish that completes its map. A segmented run (and a KSF segmented import) is not one:
+    it was put together from saved positions."""
+    return r["track"] == 0 and r["leg"] == 0 and not str(r["style"]).startswith(STYLE_SEGMENTED)
+
+
 def _completion_wos(ranked, main_maps):
     """Native main-track finishes, against the SAME population as Everything."""
-    done = {r["map"] for r, _rk, _of in ranked
-            if r["track"] == 0 and r["leg"] == 0 and r["tier"] == TIER_RANKED}
+    done = {r["map"] for r, _rk, _of in ranked if _finishes(r) and r["tier"] == TIER_RANKED}
     return _completion(done, main_maps, map_tiers())
 
 
@@ -7190,7 +7195,7 @@ def _profile_figures(ranked, main_maps):
     wr = sum(1 for _r, rk, _of in ranked if rk == 1)
     wrc = sum(1 for _r, rk, of in ranked if rk == 1 and of > 1)
     top10 = sum(1 for _r, rk, of in ranked if 1 <= rk <= 10 and of > 1)
-    done = {r["map"] for r, _rk, _of in ranked if r["track"] == 0 and r["leg"] == 0}
+    done = {r["map"] for r, _rk, _of in ranked if _finishes(r)}
     return wr, wrc, top10, _completion(done, main_maps, map_tiers())
 
 
@@ -7479,7 +7484,7 @@ def _tier_maps(ranked, main_maps, mode="", source="all"):
     import mapmanifest
     best = {}                   # map -> [fastest main time, its game, {games}, its style]
     for r, _rk, _of in ranked:
-        if r["track"] or r["leg"] or (source == "wos" and r["tier"] != TIER_RANKED):
+        if not _finishes(r) or (source == "wos" and r["tier"] != TIER_RANKED):
             continue
         cur = best.setdefault(r["map"], [r["millis"], r["tier"], set(), r["style"]])
         if r["millis"] < cur[0]:
