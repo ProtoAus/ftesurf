@@ -60,14 +60,14 @@
    changes anything. `bih_tracecache 2` re-checks every skipped one and `bih_tracestats` prints how many differed
    (it has been 0 in every test).
 
-## P1275/P1281 lighting and reflections (both installs: exe 9d2e564e patch-1281 and hl2 plugin 5f384232; your Desktop copy with the next release)
+## P1275/P1281 lighting and reflections (both installs: exe b89fde71 patch-1280, which carries patch-1281, and hl2 plugin 5f384232; your Desktop copy with the next release)
 1. P1281: surf_eternity's glass and the water on surf_boreas: frame rate up at high fps (eternity's glass ~200 -> ~280
    fps). Turn and strafe in front of them: the reflection should still follow you. `r_capturerate 0` is the old
    every-frame behaviour; any number is captures per second.
 2. P1275: lighting on Source maps a little smoother where it was blocky (surf_sedona's sand). Subtle by design;
    `r_lightmap_bicubic 0` then a new map shows the old filtering.
 
-## P1276 smoother reflections (both installs: exe a9b8a2ec patch-1276; your Desktop copy with the next release)
+## P1276 smoother reflections (both installs carry it: exe b89fde71 patch-1280; your Desktop copy with the next release)
 1. surf_eternity's river and glass floors, with your MSAA (4): the reflected arches and walls have smooth edges.
    `r_reflectmultisample 0` shows the old stair-steps; `r_reflectmultisample -1` (the default) follows vid_multisample.
 
