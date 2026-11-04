@@ -21,6 +21,9 @@
 
 ## next
 
+### P1291 Record lines in chat
+- When someone sets a personal best or a record, the chat line no longer starts with a "board" title: the green line says it. In the main menu's chat it now shows the player's picture, as the in-game chat does.
+
 ### P1290 Landing sounds as in CS:S
 - With game sounds on (cl_game_sfx), a hard landing played Counter-Strike's fall-damage grunt, which CS:S only plays when you take fall damage (so never on surf). It now plays the footstep of the surface you land on, at full volume, as CS:S does.
 
