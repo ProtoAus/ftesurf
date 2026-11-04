@@ -34,16 +34,12 @@
 - hl2_lt_vcache 0 turns it off.
 
 ### P1284 No hitch when a new part of a map comes into view
-- Every map used to rebuild its lighting, unchanged, the first time each surface came into view, because the light
-  setting the server sends just after a load looked different from the one the map was built with. On big maps
-  that froze a frame as you surfed into a new area (measured on surf_monolith: up to 34 ms in one frame, about 85 ms
-  over a run; the same rebuilds showed on surf_demise and surf_boreas). It no longer does, and the lighting looks
-  exactly the same.
+- Every map used to rebuild its lighting, unchanged, the first time each surface came into view, because the light setting the server sends just after a load looked different from the one the map was built with.
+- On big maps that froze a frame as you surfed into a new area (measured on surf_monolith: up to 34 ms in one frame, about 85 ms over a run; the same rebuilds showed on surf_demise and surf_boreas).
+- It no longer does, and the lighting looks exactly the same.
 
 ### P1282 Fewer shader stutters on a fresh install
-- The game now ships a starter list of the shaders 24 maps need (more to come), so their first play on a new
-  install builds those shaders while the map loads rather than mid-run (surf_boreas on a fresh install: 28 mid-run
-  shader builds gone).
+- The game now ships a starter list of the shaders 26 maps need (more to come), so their first play on a new install builds those shaders while the map loads rather than mid-run (surf_boreas on a fresh install: 28 mid-run shader builds gone).
 
 ### P1286 Snow
 - Snow falls on Christmas and winter maps (surf_christmas 1 to 3, surf_frost, surf_bluewinter, surf_iceworld), only where there is sky above you, at almost no cost to frame rate. `r_snow 0` turns it off, `r_snow 2` brings it to every map.
@@ -69,24 +65,25 @@
 - A replay's energy readout is measured from the start zone of the track or stage it plays, instead of from a jump when the replay begins outside that zone. Closing a replay gives you back your own zero.
 
 ### P1281 Faster water and glass at high frame rates
-- Water and glass reflections are redrawn about 144 times a second instead of every frame (turned with your view in between, and redrawn at once if you move or turn far). At 200-300 fps on surf_eternity's glass that is about 40% more frames; at or below 144 fps nothing changes. r_capturerate sets the rate (0: every frame).
+- Water and glass reflections are redrawn about 144 times a second instead of every frame (turned with your view in between, and redrawn at once if you move or turn far).
+- At 200-300 fps on surf_eternity's glass that is about 40% more frames; at or below 144 fps nothing changes. r_capturerate sets the rate (0: every frame).
 
 ### P1275 Smoother map lighting
 - Source maps' lighting is filtered bicubically, as Half-Life 2's 20th anniversary update does: smoother light and shadow gradients where a map's lighting is coarse. No measurable cost; r_lightmap_bicubic 0 turns it off (from the next map).
 
 ### P1277 Fewer shader stutters
-- A surface drawn a new way for the first time (water seen from a new spot, a lit model, fog) needs a shader built
-  for it. When your graphics driver had not kept that shader -- after an update, or once its cache fills -- building
-  it froze a frame mid-run for up to a fifth of a second. The game now remembers those shaders and builds them while
-  the next map loads, behind the loading screen (surf_boreas with a cold driver cache, as after an update: 11 mid-run stalls gone).
-- It learns as you play: a map's first run can still hitch once at a new shader, and every later load covers it.
-  That load takes up to about half a second longer the first time after an update. `r_glsl_warm 0` turns it off.
+- A surface drawn a new way for the first time (water seen from a new spot, a lit model, fog) needs a shader built for it.
+- When your graphics driver had not kept that shader -- after an update, or once its cache fills -- building it froze a frame mid-run for up to a fifth of a second.
+- The game now remembers those shaders and builds them while the next map loads, behind the loading screen (surf_boreas with a cold driver cache, as after an update: 11 mid-run stalls gone).
+- It learns as you play: a map's first run can still hitch once at a new shader, and every later load covers it. That load takes up to about half a second longer the first time after an update. `r_glsl_warm 0` turns it off.
 
 ### P1278 Worn ramps
-- On 23 maps, ramps look used: a film of dirt that riders have wiped clean along the lines people surf, and scratches where they land on a ramp, more and longer the steeper the landing (a landing parallel to the ramp leaves none). Built from replays of real runs. r_rampwear 0 turns it off.
+- On 23 maps, ramps look used: a film of dirt that riders have wiped clean along the lines people surf, and scratches where they land on a ramp, more and longer the steeper the landing (a landing parallel to the ramp leaves none).
+- Built from replays of real runs. r_rampwear 0 turns it off.
 
 ### P1276 Smoother reflections
-- With MSAA on (vid_multisample), water and glass reflections are anti-aliased too, so reflected edges no longer stair-step (surf_eternity's river and glass floors). It costs about 0.05 ms a frame on a fast graphics card; r_reflectmultisample 0 turns it off.
+- With MSAA on (vid_multisample), water and glass reflections are anti-aliased too, so reflected edges no longer stair-step (surf_eternity's river and glass floors). It costs about 0.05 ms a frame on a fast graphics card;
+- r_reflectmultisample 0 turns it off.
 
 ### P1274 surf_santorini's windmills
 - Windmill sails no longer hang in the sky on their own. They were sent from places where the map hides their tower, and popped in and out as they turned. Now they show where the rest of the windmill does.
@@ -108,14 +105,6 @@
 
 ### P1268 Glass and ice layers in order
 - On a model with glass or ice, the see-through layers after the glass now draw over it, as in Source (surf_starvald's start platform).
-
-### P1161 Fresh TAS project loads
-- TAS projects can load and replay in a fresh supported session without first building rewind history. Legal-start rewind keeps working from a fresh start.
-- Loading a TAS project while noclipping or held now refuses before changing your body or saved timeline. TAS remains assisted practice.
-
-### P1154 TAS frame advance at 100Hz
-- TAS pause, frame advance, retained rewind and input replay can use a selected 10ms Source clock as well as the existing 15ms clock. Default movement timing is unchanged.
-- Clock changes stop queued TAS work instead of silently reusing it. Reload the map after changing its clock before starting a new timeline. TAS remains assisted practice.
 
 ## 0.1.38 2026-11-03
 
