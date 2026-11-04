@@ -1,5 +1,28 @@
 # AGENT_NOTES.md
 
+## P1282/P1284 starter warm list, first-view lightmaps (4 Nov; root C:/FTESurf-worktrees/pacing1277-2b)
+- P1284's cause, from the hitch probe's lightmap counters (probe branch p1277-hitchprobe: each slow frame's
+  rebuilds by cause, and the first rebuild's style with its cached and current light and colour key):
+  - every rebuild was style 0, light 264>264, colour key 0>0x40100400;
+  - R_BumpLightstyles left colourkey 0 on slots it made white;
+  - surf_monolith has no animated lights (artifacts/bspstyles.py reads a BSP's styles; Momentum lumps are LZMA).
+- P1284's A/B is the probe with and without the fix (probe_adfda0d96 vs probe_be4176601), plus screenshots at
+  fixed views (shotdiff.py).
+  - The first view after the run drive drifts between shots (residual velocity), so its numbers are not usable.
+  - The frame graph differs in every shot.
+- P1282's starter list is artifacts/seedruns.py + seedgen.sh: the Desktop install's cached replays, a C:\FTESurf
+  fixture, no Lex cfg, 8 maps a rig hold, each batch starting from the last's list.
+  - Batches 1-3 (24 maps) plus a knife pass are committed.
+  - The knife only draws with cl_viewweapon 1, the knife cvars and `knife` (ac's sequence in p1277arm.py "hands").
+- Product-exe smokes on fresh fixtures measure shader compiles first: the first arm warms the driver cache for
+  the second. Grade a lightmap or compile change by its own counter, not by an exe A/B's frame times.
+- The low-memory reaper kills idle background jobs, waiting ones included, and the loop script survives it.
+  - After a kill: list processes, stop the loop, release a lock whose holder pid is dead.
+  - Run game arms in the foreground with artifacts/rigwait.sh (60 s quiet, 4 GB free).
+  - The wrapper's 60 s beats the peers' 20 s, so they win the gaps.
+- NVIDIA's shader cache was raised to 10 GB (Lex agreed) with artifacts/nvcache.py, nvapi DRS, setting 0x00AC8497.
+  `--set 0` puts back the driver default.
+
 ## P1277 frame pacing: what stalls a surf run, and the shader warm list (4 Nov; root C:/FTESurf-worktrees/pacing1277-2b)
 - Method:
   - Replays of expensive maps. The viewer pass (`replay online <id>`) is a smooth camera at real speed. The drive

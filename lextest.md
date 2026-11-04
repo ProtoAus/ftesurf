@@ -10,6 +10,13 @@
    reading is as it was before you opened it.
 5. `r_viewmodel_lightrate` (default 60) is the refresh rate; 0 = every frame.
 
+## P1284 no hitch at new areas, P1282 starter shaders (both installs: exe 9eb7aed8 patch-1284; your Desktop copy with the next release)
+1. surf_monolith, surf_demise or surf_boreas: surf into parts of the map you have not seen yet this load. The small
+   freeze as a new area appears should be gone; the lighting should look exactly as before.
+2. P1282 shows on a fresh install only: the 24 maps in its list build their shaders at load instead of mid-run.
+3. Your NVIDIA shader cache is now 10 GB (was the driver default). To undo:
+   `python C:\FTESurf-worktrees\pacing1277-2b\artifacts\nvcache.py --set 0`.
+
 ## P1277 fewer shader stutters (both installs: exe b9fb1679 patch-1277; your Desktop copy with the next release)
 1. Nothing to set: it is on (`r_glsl_warm 1`). The game writes ftesurf/data/glslwarm.txt as you play.
 2. Where it shows: after an update, a map's first run can still hitch once where a new shader appears. From the

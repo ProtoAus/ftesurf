@@ -60,22 +60,23 @@
   Source shows it whole. Our vised walk area-culls area-0 leaves, which Source does not.
 
 ## P1277 frame pacing (4 Nov): other stalls found, and warm-list residuals
-- surf_monolith lightmap rebuilds: Surf_RenderDynamicLightmaps -> Surf_BuildLightMap/Surf_BuildDeluxMap/
-  Surf_PackE5BRG9, up to ~85 ms in a frame.
+- surf_monolith lightmap rebuilds (~85 ms a run): fixed by P1284, first-view rebuilds on every map.
 - surf_boreas, the first view of a portal or water surface: GLR_DrawPortal -> GLBE_GenerateBatchTextures, ~30 ms once.
 - surf_voyager model lighting beside movers: R_CalcModelLighting -> VBSP_LightPointValues -> VBSP_AddWorldLightCube ->
   VBSP_WorldLightVisible (BIH traces), 8-13 ms.
 - Opening a replay (Watch_Open parses the .rec in CSQC): 80-380 ms, before playback, not mid-run.
-- A seed list built from the census maps would cover a fresh install's first plays. It would ship as its own file:
-  data/glslwarm.txt is per PC and denied.
+- P1282's starter list (ftesurf/glsl/warmseed.txt) covers 24 maps and the knife's default arms and glove.
+  - Still to run: the 41 other maps with cached replays (runs_seed_4..9.json; ~13 min a batch).
+  - Not covered: knife_finish (needs a knife with a finish), #WATCHED (needs someone to spectate), and maps
+    without a cached replay.
 - Warm list, not covered:
   - programs created mid-run, and programfixedemu;
   - a later reload (r_shader_reload_afterframe 1, vid_restart, a shader cvar) drops warmed permutations, as before;
   - a crash between the write and the rename leaks a data/glslwarm.<hex>.tmp;
   - on Linux a full disk at fclose goes unseen;
   - nothing is pruned (capped at 4 MiB / 65536 entries).
-- NVIDIA "Shader Cache Size" (Control Panel, Manage 3D settings): the game's folder is full at 560 MB. Raising it
-  is Lex's setting.
+- NVIDIA "Shader Cache Size" raised to 10 GB on the PC (4 Nov, Lex agreed); whether the game's 560 MB folder now
+  grows is not yet seen.
 
 ## P1278 ramp wear (4 Nov): next steps and residuals
 - Props: ramps built from models (surf_demise's prop_dynamic_override, surf_classics3's static props, part of

@@ -21,6 +21,18 @@
 
 ## next
 
+### P1284 No hitch when a new part of a map comes into view
+- Every map used to rebuild its lighting, unchanged, the first time each surface came into view, because the light
+  setting the server sends just after a load looked different from the one the map was built with. On big maps
+  that froze a frame as you surfed into a new area (measured on surf_monolith: up to 34 ms in one frame, about 85 ms
+  over a run; the same rebuilds showed on surf_demise and surf_boreas). It no longer does, and the lighting looks
+  exactly the same.
+
+### P1282 Fewer shader stutters on a fresh install
+- The game now ships a starter list of the shaders 24 maps need (more to come), so their first play on a new
+  install builds those shaders while the map loads rather than mid-run (surf_boreas on a fresh install: 28 mid-run
+  shader builds gone).
+
 ### P1286 Snow
 - Snow falls on Christmas and winter maps (surf_christmas 1 to 3, surf_frost, surf_bluewinter, surf_iceworld), only where there is sky above you, at almost no cost to frame rate. `r_snow 0` turns it off, `r_snow 2` brings it to every map.
 
