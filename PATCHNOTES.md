@@ -21,6 +21,9 @@
 
 ## next
 
+### P1285 Zone lines only where you can see
+- Zone outlines now show only while their part of the map is visible from where you are, as in Momentum, so other stages' and bonuses' zones no longer show through the sky. `zone_pvs 0` shows them all again.
+
 ### P1280 CS:GO hands no longer cost frame rate
 - The knife, CS:GO arms and sleeve each worked out the map's light at your eye every frame; they now share one look-up, refreshed up to 60 times a second (r_viewmodel_lightrate; 0 = every frame). bhop_ceaseless, hands out, moving: 462 to 628 fps.
 - The plain-leather gloves (Specialist, Sporty, Slick, Motorcycle and others) no longer draw almost black.

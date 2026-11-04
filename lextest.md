@@ -20,6 +20,12 @@
 4. If a map hitches in the same place on every run, that is one of the other stalls I found (BACKLOG), not this.
    Tell me the map and the place.
 
+## P1285 zone lines through the sky: both installs (csprogs 82981b0b) and every lobby (cs 0ee0d7aa)
+1. surf_voyager saves 3 and 4: the red end-zone outline that hung in the sky is gone; your own course's zones still draw.
+2. Any staged map: the zones of stages you cannot see from where you are (and the bonuses) are not drawn; walk on and
+   they appear as their part of the map comes into view. `zone_pvs 0` draws them all again; `zone_xray 1` still does.
+3. Through a portal door (surf_tripportals), the zones beyond it should still show. Tell me if one is missing.
+
 ## Your map list of 3 Nov (P1268-P1274): both installs (exe 2151546b, plugin 02cb49fb, qwprogs e2e44268); lobbies have the server half (P1272-P1274)
 1. surf_starvald save 7: the start platform's ice now has its layers drawn over it as in your CS:S shot.
 2. surf_starvald save 8: the floor's dark wedge is gone; the blended floor and the flat floor beside it take the same light.
