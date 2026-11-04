@@ -13,7 +13,7 @@ void() TASUI_Close =
 {
 	if (!tasu_open) return;
 	tasu_open = FALSE;
-	tasu_tab = 0;
+	// Keep the view, not authority: reopening must refresh the timeline page.
 	TASTimeline_Reset();
 	UI_CursorRelease(UIC_TAS);
 	sui_reset_actions();
@@ -61,6 +61,7 @@ void(float seat) TASUI_Toggle =
 	tasu_open = TRUE;
 	sui_reset_actions();
 	UI_CursorClaim(UIC_TAS);
+	if (tasu_tab == 1) TASTimeline_Request(0);
 };
 
 void() TASUI_Mouse =

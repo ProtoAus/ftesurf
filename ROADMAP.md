@@ -21,13 +21,19 @@ collector is created; real hours/attempts remain unfinished requested work.
 
 ## TAS editor and signed collaborative saves — requested 26 Oct 2026
 
-Full staged plan and acceptance: [tools/plan-tas.md](tools/plan-tas.md). P1052 starts
-with explicit TAS practice sessions and retained ancestry using existing slow motion.
-P1055 adds authoritative per-player pause and actual movement-tick advance. P1061
-adds exact retained-tick rewind and a tick-based paused cursor, with native carried
-movement state restored. These controls are verified and installed in both Windows
-installs; public guarded-lobby promotion and owner rewind feel are separate pending
-items. See [P1061 scope/delivery](tools/p1061-tas-rewind.md).
+Full staged plan and acceptance: [tools/plan-tas.md](tools/plan-tas.md).
+**Current delivery map and resume point (4 Nov): [tools/tas-status.md](tools/tas-status.md).**
+The local editor is substantially implemented: P1052/P1055/P1061 practice, pause,
+step and retained rewind; P1065/P1074/P1077 input editing/workshop/undo-redo;
+P1082/P1110 saved and portable legal-start projects; P1087 comparison ghosts;
+P1088/P1092/P1097 bounded optimizers; P1090/P1091/P1140 signed contributions and
+sharing. P1154 supports bounded 10/15ms native authoring; P1161 adds fresh-session
+admission. P1298 retains the workshop tab when reopening, with stale timeline
+pages still invalidated. These are not all-map/world or owner-feel acceptance.
+The P1134 operator verifier exists, but protected canonical-source qualification,
+the public submission/runtime registry and a TAS-only verified board (6.3/6.4)
+remain unfinished. Do not rebuild the held queue or call it a deployed service.
+Historical stage receipts retain their exact installation and support limits.
 REC14 historical stream rewind/edit support remains unbuilt: the warm snapshot
 writer must capture the historical mover-command state needed by stream restore,
 and preflight must prove that complete state before any transaction mutation.
@@ -36,9 +42,10 @@ history is supported. Do not substitute current-head metadata for a past tick.
 
 P1065 implements the bounded console input core: list captured ticks, edit a
 movement/aim/jump/duck/walk slice and recalculate the affected exact warm tail.
-It is not the whole project/timeline stage: persistent/branching TAS projects,
-undo/redo and a visual timeline, comparison ghosts, route/interval optimizers,
-signed contributions and a separately verified TAS board remain planned. See
+At P1065 delivery this was not the whole project/timeline stage. Projects,
+undo/redo, the input table, comparison ghosts, bounded optimizers and signed
+sharing have since landed as summarized above; general route optimization and
+the separately verified public TAS board remain unfinished. See
 [P1065 scope and checks](tools/p1065-tas-inputs.md); actual installation and owner
 camera/input feel have separate provenance, not implied by this roadmap entry.
 

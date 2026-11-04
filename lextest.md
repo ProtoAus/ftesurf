@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1298 TAS workshop reopen (owner acceptance pending)
+In a local practice game, `tas timeline`, close the workshop, then `tas menu`:
+Timeline should reopen rather than Next input. Repeat from `tas shared` (online
+terms still apply). Check that closing restores normal mouse control and the
+remembered tab feels useful. Automated empty-timeline/dedicated-client controls
+pass; populated-timeline and physical-device feel are not owner-confirmed.
+
 ## P1292 no string-cleanup hitches (both installs: exe 16408c21; your Desktop copy with the next release)
 1. Surf demise, boreas or monolith for a few minutes: the occasional 20-30 ms hitch every 10-ish seconds is gone.
    Rig, replays with your settings: worst frame 30 / 17.5 / 26.7 ms -> 10 / 5.6 / 9.6 ms.
