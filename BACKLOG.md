@@ -7,6 +7,14 @@
   its base brush (behind the terrain, so unseen). Cells are 32 units, so flakes reach up to half a cell under a
   roof's edge.
 - Event maps (r_snow_maps) are a client default; a lobby cannot yet switch the event on or off for everyone.
+- e_time is cl.servertime as a 32-bit float: a listen server left on one map a day steps the fall by 0.5
+  units a frame (judders after ~4 days). Lobbies rotate hourly.
+- models/snow/ is not in the engine's sv_prop_hull_exclude default, so loading the model builds convex hulls
+  over its points (off the main thread; not timed). Add it beside the SP_CVAR4F fix.
+- Flakes sort additive, after blend: they draw over glass, translucent ice and water behind which they fall.
+- Brush entities other than unturned func_brush/func_illusionary (movers, turned brushes) do not stop snow.
+- Not measured on a weak GPU: 192k vertices with one vertex texture fetch each, again in every portal or
+  skyroom view. r_snow_density only degenerates flakes; it does not cut the vertex work.
 - Next: snow cover (P1287) -- a screen-space pass whitening upward faces under the same mask.
 
 ## P1285 zone lines by PVS (4 Nov): review residuals

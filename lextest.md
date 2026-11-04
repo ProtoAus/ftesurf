@@ -20,6 +20,18 @@
 4. If a map hitches in the same place on every run, that is one of the other stalls I found (BACKLOG), not this.
    Tell me the map and the place.
 
+## P1286 snow: your install C:/FTESurf (and C:/FTEQuake); lobbies give it to players with this install
+1. surf_christmas: snow falls over the open spawn and the outdoor stages; step into a stage room (the red room,
+   the wooden cabin) and it stops at the roof, as if you came in out of the weather.
+2. surf_christmas2/3, surf_frost, surf_iceworld the same; surf_bluewinter has no sky at all, so it snows
+   everywhere there (the "inside too" mode). `r_snow_indoor 1` does that on any map.
+3. `r_snow 0` off, `1` on these maps (the list is `r_snow_maps`), `2` on every map. Look: `r_snow_size`,
+   `r_snow_speed`, `r_snow_density`, `r_snow_wind`, `r_snow_sway`, `r_snow_alpha`. Tell me how it should
+   look: bigger flakes, heavier, a blizzard, slower.
+4. Cost on this PC: about 0.03 ms of GPU a frame (64,000 flakes, one draw per 16,000).
+5. Next, if you want it: snow on the ground (white on floors and ledges under the sky, ride lines cleared
+   on ramps), then trails through it.
+
 ## P1285 zone lines through the sky: both installs (csprogs 82981b0b) and every lobby (cs 0ee0d7aa)
 1. surf_voyager saves 3 and 4: the red end-zone outline that hung in the sky is gone; your own course's zones still draw.
 2. Any staged map: the zones of stages you cannot see from where you are (and the bonuses) are not drawn; walk on and

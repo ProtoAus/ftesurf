@@ -21,6 +21,9 @@
 
 ## next
 
+### P1286 Snow
+- Snow falls on Christmas and winter maps (surf_christmas 1 to 3, surf_frost, surf_bluewinter, surf_iceworld), only where there is sky above you, at almost no cost to frame rate. `r_snow 0` turns it off, `r_snow 2` brings it to every map.
+
 ### P1291 Record lines in chat
 - When someone sets a personal best or a record, the chat line no longer starts with a "board" title: the green line says it. In the main menu's chat it now shows the player's picture, as the in-game chat does.
 
