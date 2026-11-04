@@ -18,9 +18,12 @@ second competing world-shader override.
 - Santa hat: small original/licensed model plus a real inventory definition and
   server-owned event entitlement. No client self-grants; choose event dates and
   whether the gift is permanently retained before activating the grant.
-- Snowmen: original/redistributable low-poly static model and per-map placement
-  records, with editor preview and a hard visible-instance cap. Do not download
-  and redistribute an arbitrary model without its license.
+- Snowmen: licensed candidate FOUND: [Kenney Holiday Kit](https://kenney.nl/assets/holiday-kit)
+  (bundled CC0 license checked), snowman 892 triangles / top-hat variant 1110.
+  These are asset candidates, NOT converted/placed/deployed models; the black
+  top hat is not the requested Santa hat. Still need per-map placement records,
+  editor preview and a hard visible-instance cap. Source/provenance:
+  [tools/winter-assets.md](tools/winter-assets.md).
 - Winter audio: licensed/original outside wind and sheltered ambience, selected
   from the existing sky/roof mask, crossfaded without per-frame file loads. Add
   nearby/distant thunder with delayed playback and preloaded sounds.
