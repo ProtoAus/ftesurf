@@ -65,6 +65,11 @@
    changes anything. `bih_tracecache 2` re-checks every skipped one and `bih_tracestats` prints how many differed
    (it has been 0 in every test).
 
+## P1288 tinted brush materials (both installs: hl2 plugin b5ec1cc8 patch-1288 beside exe b89fde71; your Desktop copy with the next release)
+1. surf_eternity's stair room (your CS:S spot, setpos -7594.77 7642.67 7854.67): the walls about twice as bright as
+   before, nearer your CS:S shot. Still somewhat darker than CS:S overall (the stairs too), which is a separate
+   question; tell me if any other map's walls or floors now look too bright.
+
 ## P1275/P1281 lighting and reflections (both installs: exe b89fde71 patch-1280, which carries patch-1281, and hl2 plugin 5f384232; your Desktop copy with the next release)
 1. P1281: surf_eternity's glass and the water on surf_boreas: frame rate up at high fps (eternity's glass ~200 -> ~280
    fps). Turn and strafe in front of them: the reflection should still follow you. `r_capturerate 0` is the old

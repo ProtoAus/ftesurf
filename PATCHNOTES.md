@@ -21,6 +21,9 @@
 
 ## next
 
+### P1288 Tinted map surfaces as bright as in CS:S
+- Map surfaces tinted by their material ($color) were drawn much darker than CS:S draws them: Source applies that tint in linear light. surf_eternity's stair-room walls are now about twice as bright, close to CS:S.
+
 ### P1285 Zone lines only where you can see
 - Zone outlines now show only while their part of the map is visible from where you are, as in Momentum, so other stages' and bonuses' zones no longer show through the sky. `zone_pvs 0` shows them all again.
 
