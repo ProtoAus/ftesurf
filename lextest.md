@@ -12,16 +12,15 @@ contracts. Source/mathematics and QC compile checks do not establish native shad
 execution, no-hitch or numerical MAX-FPS. The8024-triangle Christmas overlay is
 staged, not default-shipped pending its moving-view check. Props are separate.
 
-## P1305/P1306 native update — one normal ranked finish pending
+## P1305/P1306 native update — owner normal run performed
 
-Both Windows installs and all12Pi lobbies have the qualified native pair.
-Automated native/physics and cold current-CSQC/board checks pass; the isolated
-cold clients had unaccepted terms/no-zone maps and submitted no ranked run.
-On your usual account and a familiar zoned map, finish one normal legal line and
-confirm it submits and returns the normal ranked result (or report the rejection).
-This is pending human integration acceptance, not detector calibration, a claim
-that the whole anti-cheat bank is complete, or permission to collect new raw input.
-No need to repeat a long test route or change your settings.
+Owner reported "I did a normal run" on4Nov2026 after the dual Windows/all12Pi
+native update. Record that as human-observed normal-run completion; a ranked
+submission/result was not separately stated, so that outcome is not invented.
+Automated native/physics and cold current-CSQC/board checks also pass; those
+isolated clients had unaccepted terms/no-zone maps and submitted no ranked run.
+Neither observation establishes detector calibration, full anti-cheat-bank
+completion or permission to collect new raw input. No repeat run requested.
 
 ## P1304 Santa hat — pending, not visually accepted
 
