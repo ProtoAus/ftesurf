@@ -4,7 +4,8 @@
 
 Implemented in an isolated source tree and QC-compiled; offline bake controls
 pass. **NOT fully runtime-qualified.** A later A84/c24ede65 candidate is installed
-in both Windows installs for owner validation; lobbies are still pending. The original rendered control
+in both Windows installs for owner validation; final C95 follow-up reached all12
+empty lobbies22:42Z4Nov (see tools/p1307-ramp-assets.md). The original rendered control
 ran after waiting 544 seconds at the helper's 20-second quiet / 4 GiB free-memory
 gate. Correction on source reread, 4 Nov continuation: the earlier '60-second'
 claim was wrong; the borrowed file actually set QUIET=20. The three checks are

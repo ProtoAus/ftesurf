@@ -81,5 +81,9 @@ are retained. Code rollback uses the SAME DB, never a stale snapshot restore.
 The clean A84/c24ede65 candidate and18 runtime assets reached BOTH Windows
 installs with exact hashes, rollback and unchanged native/config. Native hat
 appearance remains pending; this is not manual or FPS acceptance. P1307 follows
-with asset-ABI compatibility before the lobby cohort ships. No lobby deployment
-is claimed by this section.
+with asset-ABI compatibility. Final C95 QQ2 plus29assets reached all12empty
+lobbies22:42:09Z, with noForce, exact13actor/part guard and all8parts verified
+ONBOX+OFFBOX BEFORE staging. Protected data/config/native/backend unchanged;
+known health200 afterwards. Codecatalog53 includes exact new fae924... CS identity.
+Native hat/third-cell/profile/body feel and actual ranked acceptance remain pending;
+gift dates still unspecified and eventOFF. Details: tools/p1307-ramp-assets.md.

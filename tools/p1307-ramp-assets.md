@@ -72,7 +72,29 @@ private historical DB snapshot and same-DB rollback cohort are retained. Never
 restore the old DB to roll back code. No private output/identifiers are published.
 
 Both Windows installs previously received A84/c24ede65 candidate progs+assets,
-with exact hashes, rollback copies and unchanged native/config. P1307 and its
-bake destination hashes/provenance are recorded only after actual publication;
-source publication, compilation, installation and visual acceptance are separate.
-No native pin/tag, QC Build decision, movement or recorder change.
+with exact hashes, rollback copies and unchanged native/config. Final P1307 C95 candidate installed BOTH Windows at22:05:23.7571741Z,4Nov2026:
+70exact copies (6program/LNO+19source assets+10baked files per install), both old
+and prior.prev retained,20actual native/config hashes unchanged. Safe helper seeds
+both `e1e7ee6a.dat` caches with exact new CSQC bytes, preserves pending downloads.
+Peer independently upgraded nativeP1306; this operation did not overwrite it.
+
+Pi source/baked29assets read back, then exact QQ2 promoted22:42:09.227204Z:
+all12empty lobbies restarted,0skipped, NO FORCE. Eight actual recorder parts,
+2,821,850bytes, were individually rehashed ONBOX+OFFBOX BEFORE canonical staging;
+strict13actor/FD/exact-part checks repeat at the real locked boundary. All46300
+protected old paths unchanged,0new, config/native/backend preserved, lock released.
+Current/.prev and actual process/native/plugin readiness pass existing producer;
+known `/health` returns200 afterwards. No optional observer failure is regraded.
+
+Actual clean/current c24 builds all3VMs with zero warnings; fresh final C95 output
+matches frozen code. Full program identities:
+- QW eb0135778b73ec7d9c60caf60f90ba3f2448f6aa246114e77966cc2adc0ae5d9
+- CS fae924336e042c4578eb8571851690f8eca9c7d068ce975fa7bf72578930e840
+- Menu464c0a9bb3076f9caff7e105ddf45724a1ca107a2f065b25665c4a9698691596
+
+Exact CS identity added to existing catalog52->53 preserving every prior byte.
+This is code admission, NOT an actual ranked run or native visual/FPS acceptance.
+Original sources/receipts/predecessors retained in owned task roots; raw recorder
+archives and actor details stay private. Source publication, compilation, install
+and visual acceptance remain separate. No release, native change by this task,
+QC Build decision, movement or recorder change.

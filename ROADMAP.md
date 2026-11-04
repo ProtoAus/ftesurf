@@ -5,9 +5,10 @@
 The falling-snow event exists (P1286). P1302 implements a small licensed native
 prop set and opt-in/capped shader mist. P1304 implements the original Santa model,
 real inventory cell and permanently earned trusted-lobby gift; backend preservation
-and authority controls pass. Hat appearance/deployment and renderer/performance
-acceptance remain pending, so this is NOT an all-effects-complete or default-on
-performance claim. Christmas gift activation is still OFF pending event dates.
+and authority controls pass. Backend02 is live21:03Z4Nov; finalC95 candidate/assets
+installed BOTH Windows22:05 and all12empty lobbies22:42Z. Hat appearance and native
+renderer/performance acceptance remain pending, so this is NOT all-effects-complete
+or a default-on performance claim. Christmas gift activation is still OFF pending event dates.
 Provisional maps chosen with owner permission: surf_christmas, surf_frost and
 surf_bluewinter. The final event list can be changed later. Remaining additions
 below were NOT implemented by the ramp/knife/sky follow-up P1300. Snow cover is already
@@ -26,7 +27,7 @@ second competing world-shader override.
   (bundled CC0 license checked), snowman 892 triangles / top-hat variant 1110.
   P1302 converts these plus two trees and two gifts to native IQMs and adds
   bounded sidecar placement records on the three provisional maps. Actual
-  renderer/placement acceptance and deployment remain pending; the black top
+  renderer/placement acceptance remains pending despite candidate installation; the black top
   hat is not the requested Santa hat. Source/provenance:
   [tools/winter-assets.md](tools/winter-assets.md).
 - Winter audio: licensed/original outside wind and sheltered ambience, selected
@@ -41,9 +42,12 @@ second competing world-shader override.
   light query or reflection capture. The linked Admer456/halflife-smoke README
   uses Valve SDK terms limited to modified Valve games on Half-Life; do not port
   its implementation into FTE without a compatible license grant.
-- More demo coverage: nominate maps first, use the existing bounded collector,
-  then rebake from the expanded corpus. P1300's local 77-demo Colin and 70-demo
-  Classics3 rebakes are NOT newly downloaded demos or broader route coverage.
+- More demo coverage: provisional maps approved; use the existing bounded
+  collector for genuinely NEW inputs. Five real local-replay bakes now INSTALLED
+  on both Windows/Pi use315 replay instances:Colin77,Classics370,Frost2,Simple125,
+  Garden41. These are NOT newly downloaded demos or unique players. Christmas10
+  also baked but its8024tri (one-ring5840) overlay stays staged for moving-view
+  cost. The lighter five do not establish a numerical frame-time pass.
 
 Acceptance: event-off is unchanged; cold asset loads occur before play, not on
 first inspect/first flake/first thunder. Compare moving-view frame-time tails

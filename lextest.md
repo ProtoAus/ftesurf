@@ -3,7 +3,8 @@
 ## P1307 ramp asset pairing / extra maps — pending, not visually accepted
 
 A small local Frost look was already requested; no owner confirmation yet.
-After the updated candidate/assets are installed, start fresh and load Frost:
+Final C95 candidate/assets are installed BOTH Windows and all12lobbies; start
+fresh and load Frost (no new visual/FPS acceptance is inferred from installation):
 console should report `rampwear: shader v2`; check near/distant marks and brightness
 while moving. Simple/Garden also have nonzero replay-driven candidate bakes.
 Older asset clients deliberately retain legacy mode rather than mix brightness
