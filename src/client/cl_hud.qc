@@ -1600,6 +1600,35 @@ void(vector org) HUD_UpdateAnchor =
 	}
 };
 
+// P1279: a replay knows its leg, so its zero is that segment's start zone (segment 0: the track's
+// START zone; segment s: the STAGE zone carrying s, sh_zones.qc) even when the body is never seen
+// inside it -- an import starts on the exit, a stage window just past the box.  FALSE: no such zone.
+float(float track, float seg) HUD_AnchorSeg =
+{
+	local float z;
+
+	if (ui_anchor_manual)
+		return TRUE;
+	if (zone_mapname != ui_anchor_map)      // HUD_UpdateAnchor's map latch has not run: it would undo this
+		return FALSE;
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		if (zone_track[z] != track)
+			continue;
+		if (seg > 0)
+		{
+			if (zone_type[z] != ZONE_STAGE || zone_seg[z] != seg)
+				continue;
+		}
+		else if (zone_type[z] != ZONE_START)
+			continue;
+		ui_anchor_zone = z;
+		ui_anchor_z    = zone_bottom[z];
+		return TRUE;
+	}
+	return FALSE;
+};
+
 /*
   Are you standing in a START zone?  Build 47.
 

@@ -664,7 +664,7 @@ void() WP_Frame =
 		wp_ent.frame1time = wp_ent.frame1time - floor(wp_ent.frame1time / wp_duration) * wp_duration;
 	wp_ent.frame2time = wp_ent.frame1time;
 	WPU_Apply();
-	if (!WP_IsScoped())
+	if (!WP_IsScoped() && cvar("r_drawviewmodel") > 0)     // P1280: as the engine's own viewmodel (cl_ents.c)
 	{
 		addentity(wp_ent);
 		WP_FlashFrame();
