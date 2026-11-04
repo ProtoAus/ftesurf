@@ -40,6 +40,15 @@ partial. Build number and release version are unchanged.
   diagnostics, SSQC/menu zero. Reader suite: 949 checks, zero failed. Corpus
   before/after: 541 recordings, 341 existing structural faults; identical file
   inventory, bytes and findings. This is not a clean-corpus claim.
+- Additional actual-fleet compatibility: all 72 legacy probe rows emitted by the
+  installed lobby binary match the corresponding subject rows. Its command module
+  predates the 18 extra pick/ride probe rows; their absence was checked, not called
+  a 90-row fleet pass. The full 90-row modern parent/subject/ARM comparison above
+  remains valid. The first 15-row expectation on the older fleet command module
+  failed and is retained; its already-successful native exit was not repeated.
+- Historical verifier compatibility with the qualified archived test progs:
+  actual fleet and subject retain both known legacy HOLD results identically;
+  both gravity-reference runs PASS on each. No relaxed verdict or tolerance.
 - Original build/transport/setup/parser failures remain failures. The full build
   needed a populated dependency cache, not the empty canonical placeholder. The
   ARM transfer uses individually verified raw Git blobs, not CRLF-converted
@@ -63,15 +72,22 @@ installs' menu program is outside this promotion set and has not been restored;
 the original activation receipt is retained, not a claim that unrelated files
 can never change after the transaction.
 
-**Pi not deployed:** read-only preparation failed its recorder-stability gate. A
-separate diagnostic confirms a current open recorder FD and changing parts across
-the strict 13-actor scope. No Pi archive, staging, gate, swap or restart was
-performed, and the failure is not regraded. Occupancy approval / `-PiForce` is not
-a waiver of recorder preservation. The live backend is `collectors84-v1` (84
-files), not the old 81-file helper profile; activation must bind the actual
-current profile without weakening it. Historical verifier compatibility, safe
-Pi activation and actual live-client readback remain pending. Native publication
-or Windows deployment does not imply a lobby rollout.
+**Pi not deployed:** the original read-only recorder-stability/open-FD failure is
+retained. A later genuinely empty/closed window allowed progress with the actual
+`collectors84-v1` profile (84 files), not the old 81-file helper. A player returned
+at the first preparation boundary, so no archive/stage occurred; after a further
+empty window the exact current-cohort hash guard found a backend source file that
+does not match its deployed generation manifest. The file matches published
+source, but the manifest disagreement is not waived or normalized away. The
+peer-owned runtime and manifest were left untouched; its owner must reconcile
+that deployment identity before this promotion can proceed.
+
+No Pi recorder archive, canonical staging, maintenance gate, swap, restart or
+backend operation occurred. Only source copies in the owned private task root.
+Occupancy approval / `-PiForce` is not a waiver of recorder or cohort preservation.
+Safe Pi activation and actual live-client/current-program ranked readback remain
+pending. Native publication, Windows installation and legacy compatibility do not
+imply a lobby rollout or full anti-cheat bank completion.
 Private source/evidence, raw runtime data and outstanding historical failures stay
 private. This patch does not close the wider anti-cheat bank or the deferred native
 file-writer audit.
