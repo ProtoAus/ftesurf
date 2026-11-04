@@ -21,6 +21,9 @@
 
 ## next
 
+- TAS practice gets a movement-key pad, independent auto strafe, fine gentler/sharper turning, held jump/crouch and optional view-only vertical travel following. Recent authored warm ticks restore their control settings; the full captured-run editor is still being built.
+- TAS turning preserves fractional/negative yaw instead of repeatedly corrupting its cached heading. Ground and crouched-ground guidance use the real mover rules rather than the old air-only preset.
+
 ### P1307 Ramp marks across client updates
 - Ramp marks keep their intended brightness when client files update at different times; older shader files retain the previous rendering mode.
 - Additional existing replays drive provisional ramp-mark bakes for Frost, Simple and Garden. The much larger Christmas overlay stays staged until its moving-view cost is checked.

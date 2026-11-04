@@ -310,6 +310,7 @@ void() ClientConnect =
 	self.run_tas_incap = 0;
 	self.run_tas_plancap = self.run_tas_planmode = self.run_tas_planair = 0;
 	self.run_tas_planforward = self.run_tas_planside = self.run_tas_planpitch = self.run_tas_planyaw = self.run_tas_planbits = 0;
+	self.run_tas_planamount = 1; self.run_tas_pitchfollow = 0;
 	if (checkbuiltin(tas_input))
 	if (checkbuiltin(tas_tape))
 	{
@@ -1479,6 +1480,7 @@ void(entity e, float argc) SV_TASCommand =
 		if (!strcmp(action, "off"))
 		{
 			e.run_tas_mode = FALSE;
+			e.run_tas_pitchfollow = 0;
 			e.run_timescale = 1;
 			sprint(e, PRINT_HIGH, "tas: controls off, normal speed; ancestry is not cleared\n");
 		}

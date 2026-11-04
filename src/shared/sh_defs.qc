@@ -159,13 +159,19 @@
 // each), one string: the engine sends at most 32 changed stats a packet, lowest index first, so
 // WOPACK (177) could trail SAVEINDEX (62) and the rows, and a step was counted twice.
 #define STAT_FS_WOPCUR 204
+#define STAT_FS_TASPLANAMOUNT 205
+#define STAT_FS_TASPITCHFOLLOW 206
 #define TAS_PLAN_LIVE 0
 #define TAS_PLAN_MANUAL 1
 #define TAS_PLAN_LEFT 2
 #define TAS_PLAN_RIGHT 3
+#define TAS_PLAN_GUIDE 4
+#define TAS_PLAN_HOLD 5
+#define TAS_GUIDE_CAP 1308
 #define TAS_PLAN_CAP 1071
 #define TAS_OP_PLANCAP 8
 #define TAS_OP_PLANSET 9
+#define TAS_OP_CONTROLSET 10
 #define TAS_TAPE_MAX 128
 #define TAS_EV_PAGE 50         // own retained-input page; 40-42 are sv_archive's AR_EV_*
 #define TAS_EV_PROJECT 51      // P1082 project status, sv_tasproject/cl_tastimeline

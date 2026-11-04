@@ -1,7 +1,10 @@
 # Human-first surf TAS editor
 
 Requested by Lex after trying the existing workshop, 4 November 2026.
-**Status: design/implementation plan only; none of this redesign is shipped.**
+**Status: work in progress.** The P1308 controller foundation is implemented and
+has isolated native/UI controls; final combined-source qualification/deployment
+and owner feel are tracked in [the controller checkpoint](p1308-tas-controller.md).
+The complete normal-play/full-history/section workflow below is NOT delivered.
 This changes the local-editor priority in [the original TAS plan](plan-tas.md),
 not its assisted ancestry, contribution or verified-board requirements.
 Owner observations are recorded separately in [lextest.md](../lextest.md).

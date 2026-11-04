@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P1308 TAS controller — pending; not yet owner-accepted
+
+Once the matching native/progs candidate is installed, take a small familiar
+ramp in local TAS practice. `tas pause`, then `tas menu`: identify A/D/W/back,
+select A or D (and W+D), and compare1.00x with1.10/1.20x. Does sharper turn help
+stay on the chosen line without an unwanted initial angle jump? Does horizontal
+view/steering behave as expected when stepping? Try held Duck and release it.
+Toggle Follow travel: comfortable up on climb, level near apex, down on fall;
+manual vertical look should override it without disturbing horizontal aim.
+This is a short feel/readability check, not a request for a long test route.
+
+Isolated machine controls passed, including scoped15ms standing289.5414 and
+fully crouched97.8939 ground curves; this is NOT a reproduction of Lex's earlier
+unspecified W+D/map/275 case. That exact setup, physical mouse comfort and the
+complete normal-play/full-history workflow remain unconfirmed. Do not mark the
+approved mockup or these automated checks as owner acceptance.
+
 ## P1307 ramp asset pairing / extra maps — pending, not visually accepted
 
 A small local Frost look was already requested; no owner confirmation yet.
