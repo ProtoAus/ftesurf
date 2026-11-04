@@ -1,7 +1,7 @@
 // FTESurf P1286: the snow event's falling snow. One entity on the eye draws models/snow/flakes.iqm
 // (tools/snowflakes.py); glsl/ftesurf_snow.glsl moves every flake, so the CPU cost is this entity.
 // r_snow 0 off, 1 on the event's maps (r_snow_maps), 2 on every map. A map with a sky mask
-// (tools/snowmask.py: data/snowmask/<map>.txt + textures/snowmask/<map>.png) keeps the flakes out
+// (tools/snowmask.py: gfx/snowmask/<map>.txt + gfx/snowmask/<map>.png, P1293) keeps the flakes out
 // from under its roofs; r_snow_indoor 1 ignores the mask (snow everywhere, e.g. a map with no sky).
 // r_snow_debug 1 colours each flake by the mask height it read and hides none.
 
@@ -50,7 +50,7 @@ float(string path) Snow_Exists =
 // The map's own copy of scripts/snow.shader's block, its mask bound. Again after a renderer restart.
 void() Snow_MakeShader =
 {
-	shaderforname(snow_shader, sprintf("{\nsort additive\ncull disable\nnomipmaps\nnopicmip\n{\nprogram ftesurf_snow\nclampmap $nosrgb:$nearest:textures/snowmask/%s.png\nblendfunc blend\nrgbgen const 1 1 1\n}\n}\n", snow_map));
+	shaderforname(snow_shader, sprintf("{\nsort additive\ncull disable\nnomipmaps\nnopicmip\n{\nprogram ftesurf_snow\nclampmap $nosrgb:$nearest:gfx/snowmask/%s.png\nblendfunc blend\nrgbgen const 1 1 1\n}\n}\n", snow_map));
 };
 
 void() Snow_Load =
@@ -66,13 +66,13 @@ void() Snow_Load =
 	snow_shader = "";
 	snow_maskon = -1;
 	// "snowmask 1 <map> x0 y0 cell width height z0 zrange"; no PNG, no mask (a missing image reads as roofs)
-	fh = fopen(sprintf("data/snowmask/%s.txt", snow_map), FILE_READ);
+	fh = fopen(sprintf("gfx/snowmask/%s.txt", snow_map), FILE_READ);
 	if (fh >= 0)
 	{
 		line = fgets(fh);
 		fclose(fh);
 		n = tokenize(line);
-		if (n >= 10 && argv(0) == "snowmask" && stof(argv(1)) == 1 && Snow_Exists(sprintf("textures/snowmask/%s.png", snow_map)))
+		if (n >= 10 && argv(0) == "snowmask" && stof(argv(1)) == 1 && Snow_Exists(sprintf("gfx/snowmask/%s.png", snow_map)))
 		{
 			cvar_set("r_snow_maskxy", sprintf("%s %s %s", argv(3), argv(4), argv(5)));
 			if (snow_maskz != "")

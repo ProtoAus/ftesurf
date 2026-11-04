@@ -10,8 +10,8 @@ toolsskybox*), brushes with no visible side (all tools/ except toolsblack, or no
 walls) and non-solid contents (clips, water) do not stop snow. Props and displacements are not read: a
 flake under a displaced terrain is behind it anyway, and one under a prop roof is the known gap.
 
-Writes <gamedir>/data/snowmask/<map>.txt ("snowmask 1 <map> x0 y0 cell width height z0 zrange") and
-<gamedir>/textures/snowmask/<map>.png (height in 16 bits: r high byte, g low). cl_snow.qc reads both.
+Writes <gamedir>/gfx/snowmask/<map>.txt ("snowmask 1 <map> x0 y0 cell width height z0 zrange") and
+<gamedir>/gfx/snowmask/<map>.png (gfx/ since P1293; height in 16 bits: r high byte, g low). cl_snow.qc reads both.
 
   python tools/snowmask.py --map surf_christmas [--bsp PATH] [--cell 32] [--gamedir ftesurf]
 """
@@ -167,7 +167,7 @@ def main():
 
     gd = Path(a.gamedir)
     if not sky:     # nothing is under the sky: no mask, so it snows everywhere (cl_snow.qc, as r_snow_indoor 1)
-        for f in (gd / "textures/snowmask" / (a.map + ".png"), gd / "data/snowmask" / (a.map + ".txt")):
+        for f in (gd / "gfx/snowmask" / (a.map + ".png"), gd / "gfx/snowmask" / (a.map + ".txt")):
             if f.exists():
                 f.unlink()
         print("snowmask %s: no sky brushes, no mask written (snow falls everywhere)" % a.map)
@@ -177,10 +177,9 @@ def main():
     img[..., 0] = q >> 8
     img[..., 1] = q & 255
     from PIL import Image
-    (gd / "textures/snowmask").mkdir(parents=True, exist_ok=True)
-    (gd / "data/snowmask").mkdir(parents=True, exist_ok=True)
-    Image.fromarray(img, "RGB").save(gd / "textures/snowmask" / (a.map + ".png"))   # row 0 = y0
-    (gd / "data/snowmask" / (a.map + ".txt")).write_text(
+    (gd / "gfx/snowmask").mkdir(parents=True, exist_ok=True)
+    Image.fromarray(img, "RGB").save(gd / "gfx/snowmask" / (a.map + ".png"))   # row 0 = y0
+    (gd / "gfx/snowmask" / (a.map + ".txt")).write_text(
         "snowmask 1 %s %g %g %g %d %d %g %g\n" % (a.map, x0, y0, cell, w, h, z0, zr), encoding="ascii", newline="\n")
     print("snowmask %s: %dx%d cells of %g, %d of %d brushes stop snow (%d sky, %d invisible skipped), from %s"
           % (a.map, w, h, cell, used, len(work), sky, tool, path))
