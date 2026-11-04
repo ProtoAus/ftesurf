@@ -14,7 +14,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   82d3bebc52fa19fafcfc11f88ff9df8a61d01a04
+commit   9d0a294bd0d60f4f119b3b4c9e79747cf4fbf429
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -26,8 +26,9 @@ commit   82d3bebc52fa19fafcfc11f88ff9df8a61d01a04
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
-tag      patch-1292
-patch    1292
+tag      patch-1299
+patch    1299
+# Patch 1299 (engine common/pm_source.c): existing gravity carry observation admits finite nonnegative normalized jump offsets through the actual native takeoff origin. Movement, recorder/API and ranking policy unchanged. Native controls pass; final build/platform/deployment status is recorded in tools/p1299-gravity.md.
 # Patches 1255/1257 (engine sv_ccmds.c pm_dettest mover-12 lines; renderer gl_mindist 2, viewmodels keep 1): installs tag patch-1257, which merges patch-1260. QC needs neither.
 # Patches 1248-1252 (engine com_bih.c/pm_source.c/pmove.h/sv_user.c + hl2 plugin + engine shader keyword + QC): mover 12 reports a prop piece's real contact plane (no crease snags; lobby engine p1248-pi LIVE 3 Nov 06:10Z, installs tag patch-1251); sprp v10@72 flags at offset 64; lit warp faces keep lightmaps and Source brush tints draw (QC Color input); opaque fake skies depthpush -2; env_laser beams (CSQC). QC needs none of it: older engines just do not show the tint or the fixes.
 # Patch 1266 (engine com_bih.c, gl_model.c, common.c, sv_ccmds.c): exact reuse of a collision trace asked again with the same inputs and world (bih_tracecache 1; 2 re-traces every hit and counts differences; bih_tracestats); CL_PredictMove 0.13 -> 0.11 ms a frame on surf_voyager, movement unchanged (pm_dettest 90/90 equal to patch-1257, pm_verify equal at 0/1/2). Native: tag patch-1266 = 9e6c5806b on patch-1267, merged to main (db1007b6c); both installs run exe c3342a2d (git-8171-patch-1266-0-g9e6c5806b) with plugin c3c9062f. Rides the next release; the Pi's server gains nothing measurable from it (server frames 0.24 -> 0.23 ms).
