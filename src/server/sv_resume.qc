@@ -790,7 +790,7 @@ void(entity e) SV_MsAccept =
 		SV_GhostSet(e, FALSE);
 
 	e.run_ms_org = ms_org;
-	setorigin(e, ms_org);
+	SV_SetPlayerOrigin(e, ms_org);
 	e.velocity = '0 0 0';
 	e.angles = ms_ang;
 	e.v_angle = ms_ang;
@@ -1230,7 +1230,7 @@ void(entity e) SV_MsFrame =
 		e.velocity = '0 0 0';
 		if (e.origin != e.run_ms_org)
 		{
-			setorigin(e, e.run_ms_org);
+			SV_SetPlayerOrigin(e, e.run_ms_org);
 			SV_TimerWarped(e);
 		}
 		if (e.run_ms_phase == MS_WAIT)

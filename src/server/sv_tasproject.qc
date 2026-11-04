@@ -202,7 +202,7 @@ float(string tok, float lo, float hi, float whole) SV_TASPNum =
 	return TRUE;
 };
 
-// Native rows need current TAS-body admission, not an earlier checkpoint pool.
+// The native row validator needs TAS mode on this body (SV_TASRewindClient).
 float(entity e, float *buf, float n) SV_TASPValidate =
 {
 	local float i, b;
@@ -1407,14 +1407,11 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 		sprint(e, PRINT_HIGH, "tas project: needs the P1065 native TAS engine\n");
 		return;
 	}
-	if (!SV_TASMapClockMatches(e)) return;
 	if (e.tasp_load || e.run_tas_pending || e.run_tas_replaystate == TAS_TAPE_ACTIVE)
 	{
 		sprint(e, PRINT_HIGH, "tas project: wait for queued TAS work first\n");
 		return;
 	}
-	// Row syntax is not authority to replace an ineligible or held body.
-	if (!SV_TASCanPause(e)) return;
 	if (!SV_TASPRead(e, name, TRUE))
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas project: cannot load %s: %s; nothing changed\n", name, tpr_why));
@@ -1479,7 +1476,7 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 		SV_TASPReadFree(); return;
 	}
 	// state.txt keeps 4 decimals; restore the exact floats (only a rounding-sized correction).
-	setorigin(e, tpr_bo);
+	SV_SetPlayerOrigin(e, tpr_bo);
 	e.velocity = tpr_bv;
 	// P1085: the base is a native checkpoint, so never mid func_bhop dwell (see SV_TASGo).
 	e.vbsp_bhop_on = world; e.vbsp_bhop_since = 0;
