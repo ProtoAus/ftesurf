@@ -21,6 +21,9 @@
 
 ## next
 
+### P1292 No more 20-30 ms hitches from the game's string cleanup
+- The game code's temporary-text cleanup could make a frame wait for it to finish (17-30 ms hitches on surf_demise, surf_boreas and surf_monolith); it never waits now, and runs about six times less often. 0.1% low on those maps: 125-189 to 150-258 fps.
+
 ### P1289 Replays: energy after scrubbing back and from replay saves
 - Scrubbing a replay backwards measures energy from the zone the run had reached by then, not the last one passed, and a hand-set zero stays put.
 - A save made while watching a replay keeps that replay's energy zero when you load it, instead of your own.

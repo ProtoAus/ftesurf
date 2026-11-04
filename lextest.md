@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1292 no string-cleanup hitches (both installs: exe 16408c21; your Desktop copy with the next release)
+1. Surf demise, boreas or monolith for a few minutes: the occasional 20-30 ms hitch every 10-ish seconds is gone.
+   Rig, replays with your settings: worst frame 30 / 17.5 / 26.7 ms -> 10 / 5.6 / 9.6 ms.
+2. If anything crashes or text on screen goes blank or garbled, say so at once: this changed how the game frees
+   temporary text.
+
 ## P1283 lighting dips, P1289 replay energy (both installs: exe 23ec25b6, plugin d8b18216, csprogs 05fb419a; lobbies cs f1ba05b8)
 1. bhop_ceaseless with the CS:GO hands, walking through the light-heavy area near the start (and surf_voyager by
    its moving asteroids): no hitches. Rig: 1% low 137 -> ~380 fps, 175 stutters -> 0-28.

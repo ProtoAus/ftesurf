@@ -37,6 +37,14 @@
 - P1289: the stage-window floor (Watch_AnchorBase in Watch_StageWindow) is not measured; viewzero.txt lines outlive
   their saves (128 kept) and match by place only, so a later demoted row within a unit of one takes its zero.
 
+## P1292 QC tempstring collector (4 Nov): residuals
+- Each collection still copies the VM's string-bearing memory on the main thread first (1.4-3.5 ms); rarer now for
+  the small VM (131072-slot floor), every ~10 s for the large one. An incremental or copy-free mark would remove it.
+- The floor counts slots, not bytes: up to ~65k dead temps of any size wait for a collection.
+- The done pass (clearing dead slots) is O(dead) on the main thread, ~1 ms for the 1M VM by estimate (not measured).
+- Pre-existing: PR_FreeAllTemps loops if pr_gc_threaded becomes 2 with a collection in flight; unchecked mallocs.
+- The lobby server binary (Pi) does not carry it; its SSQC runs the old threaded path.
+
 ## P1283 light cache (4 Nov): residuals (display only)
 - A still model first lit where many lights are new keeps an estimate until its re-sample settles it (1-2 s).
 - Callers within 64qu share a slot's answers; a frame with several views gets the 1 ms trace budget each.

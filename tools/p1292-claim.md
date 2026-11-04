@@ -6,4 +6,4 @@ collector. Measured (P1277 probe with GC timings, surf_boreas/voyager/monolith r
 a 30 ms frame in the dip survey). Plan: the worker hands back the slots it freed so the table can grow during a
 collection (no main-thread wait), and a larger table floor so collections are rarer. Threaded path only.
 Files: engine/qclib/initlib.c (engine repo); ENGINE_PATCHES.md.
-State: in progress.
+State: live: both installs (exe 16408c21); tag patch-1292, engine main 640c931e6.
