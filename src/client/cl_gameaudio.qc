@@ -108,7 +108,7 @@ void() GA_InputFrame =
 void() GA_Frame =
 {
 	local vector feet, vel, delta;
-	local float grounded, water, speed, swimspeed, jumpseq, jumped, volume, ducked;
+	local float grounded, water, speed, swimspeed, jumpseq, jumped, volume, ducked, landvol;
 
 	if (cvar("cl_game_sfx") <= 0 || !LT_StatsAreMine() || rec_gh_on || rec_wt_on ||
 	    getstatf(STAT_FS_SPEC) || rw_on || getstatf(STAT_FS_MOVETYPE) != MOVETYPE_WALK)
@@ -162,11 +162,13 @@ void() GA_Frame =
 	}
 	else if (grounded && !ga_ground && ga_vel_z < -160 && !water)
 	{
-		if (ga_vel_z < -580 && ga_fall)
-		{
-			if (GA_Play(sprintf("player/damage%g.wav", floor(random() * 3) + 1), 0.7)) ga_lands = ga_lands + 1;
-		}
-		else if (GA_Foot(feet, water, volume)) ga_lands = ga_lands + 1;
+		// P1290: CS:S lands with the surface's step at 1.0 past PLAYER_MAX_SAFE_FALL_SPEED (580) and 0.85 past
+		// PLAYER_FALL_PUNCH_THRESHOLD (350) (gamemovement.cpp CheckFalling/PlayerRoughLandingEffects).
+		// Player.FallDamage sounds only with damage dealt (movehelper_server.cpp), which surf never deals.
+		if (ga_vel_z < -580) landvol = 1;
+		else if (ga_vel_z < -350) landvol = max(volume, 0.85);
+		else landvol = volume;
+		if (GA_Foot(feet, water, landvol)) ga_lands = ga_lands + 1;
 		ga_stepat = time + 0.15;
 	}
 	delta_z = 0;
