@@ -5,10 +5,19 @@
 Implemented in an isolated source tree and QC-compiled; offline bake controls
 pass. **NOT fully runtime-qualified, NOT deployed.** The original rendered control
 ran after waiting 544 seconds at the existing 60-second quiet / 4 GiB free-memory
-gate. Subject is queued at that same gate; the negative producer is confirmed.
+gate. Subject remained blocked at that same gate and its verified owned waiter
+was stopped without child processes or an owned gate left behind. The negative
+producer is confirmed; subject qualification remains paused, not passed.
 Do not equate the build with a visual, audio, frame-time or lobby acceptance pass.
 User-facing human checks are in lextest.md; remaining Christmas content is in
 ROADMAP.md. No release, QC Build decision, native pin/tag or gameplay change.
+
+Source published: product commit `7dd89457`, asset/provenance docs `ea72a344`;
+engine journal `5157ca209`. Final isolated clean-commit progs (7dd89457):
+qwprogs SHA256 `9fc3dd89e0db56509aef5d5fe634f4f0b0afbed4d2bb813469e06fddc46a1309`,
+csprogs `56c9bd62753a8bca63684c4144cf6eb423798752b8fa47f7bce751d29ed27b57`,
+menu `e69b5f249e0fb09f777c3fc8f8a3e72c846d8b27200923f4795d93219ae3af04`.
+These hashes identify staging, NOT either install or lobby deployment.
 
 ## Changes / predictions
 
