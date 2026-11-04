@@ -54,10 +54,14 @@ checks above are verified. **Windows deployed 2026-11-04 18:18:26 UTC:** after t
 active game exited naturally, existing guarded `Deploy` installed the exact
 frozen native client/server and five plugins in BOTH installs (14 files). All
 destination hashes match; all current predecessors remain `.prev`; 21 predecessor
-and older-prev files were archived and individually rehashed. All 1,441 protected
-config/program files remain byte-identical. Both actual installed dedicated
+and older-prev files were archived and individually rehashed. At that activation
+boundary, all 1,441 protected config/program files were byte-identical. Both actual installed dedicated
 binaries repeat 1,472/1,472 native checks. No process was killed and no progs,
-config, player data, assets or backend were deployed.
+config, player data, assets or backend were deployed. Later native readback still
+matches all 14 destinations and `.prev` files. A separate later change to both
+installs' menu program is outside this promotion set and has not been restored;
+the original activation receipt is retained, not a claim that unrelated files
+can never change after the transaction.
 
 **Pi not deployed:** read-only preparation failed its recorder-stability gate. A
 separate diagnostic confirms a current open recorder FD and changing parts across

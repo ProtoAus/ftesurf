@@ -21,6 +21,15 @@
 
 ## next
 
+### P1297 Segmented runs are not completions
+- Your profile's maps finished, completion bars and finished counts leave out maps you have only finished as a segmented run. Segmented times still show on the boards and in your maps with a time.
+
+### P1296 Reflections at 60 per second
+- Water and glass reflections are redrawn 60 times a second by default instead of 144, so they cost less GPU time. A saved 144 moves to 60 once; r_capturerate sets another rate.
+
+### P1295 Chat commands typed any way
+- Warp commands work however they are typed in chat: !b3, !b 3, /b 3, /b3 and !B3 all go to bonus 3, and !s, !m and !r take the same forms. They stay in your lobby's chat instead of the global room.
+
 ### P1300 Ramp scuffs, knife sounds and sky recovery
 - Ramp wear has a longer adjustable range, stronger scratches and broad distant scuffs instead of losing the fine detail abruptly. Atlas seam bleeding and grazing-angle depth bias are reduced; smooth ride lines gain a subtle optional polish highlight.
 - Knife inspect sounds warm after equip instead of first resolving every new sound during the animation. Sound aliases no longer keep paths from a different weapon package.
