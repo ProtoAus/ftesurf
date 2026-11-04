@@ -21,6 +21,11 @@
 
 ## next
 
+### P1300 Ramp scuffs, knife sounds and sky recovery
+- Ramp wear has a longer adjustable range, stronger scratches and broad distant scuffs instead of losing the fine detail abruptly. Atlas seam bleeding and grazing-angle depth bias are reduced; smooth ride lines gain a subtle optional polish highlight.
+- Knife inspect sounds warm after equip instead of first resolving every new sound during the animation. Sound aliases no longer keep paths from a different weapon package.
+- A disabled or unsupported visualizer sky releases its stale override when a map loads, allowing maps without an authored sky to use the default sky again.
+
 ### P1298 TAS workshop remembers its tab
 - Close and reopen the TAS workshop: it returns to Timeline or Shared instead of always switching to Next input. The timeline still refreshes before old rows can be edited.
 

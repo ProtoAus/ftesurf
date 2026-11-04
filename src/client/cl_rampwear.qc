@@ -6,8 +6,6 @@
 // The normal rides in the vertex colour. r_rampwear 0 hides it; r_rampwear_dirt / r_rampwear_scratch
 // scale the looks; r_rampwear_debug 1 shows the mask.
 
-#define RW_FAR 6000             // the shader has faded the overlay out by here
-
 string rw_map;                  // the map the overlay was looked up for
 string rw_shader;               // its shader name, "" when the map has none
 float  rw_n;                    // surfaces
@@ -24,7 +22,9 @@ void() RampWear_Init =
 {
 	registercvar("r_rampwear", "1", 0);
 	registercvar("r_rampwear_dirt", "1", 0);
-	registercvar("r_rampwear_scratch", "1", 0);
+	registercvar("r_rampwear_scratch", "1.5", 0);
+	registercvar("r_rampwear_distance", "12000", CVAR_ARCHIVE);
+	registercvar("r_rampwear_shine", "0.15", CVAR_ARCHIVE);
 	registercvar("r_rampwear_debug", "0", 0);     // 1: show the mask itself
 };
 
@@ -119,14 +119,16 @@ void() RampWear_Load =
 	rw_alloc = TRUE;
 	// exactvertex: plain `vertex` scales by identitylighting (HDR exposure), and the colour is a normal.
 	// $nosrgb: the mask is data, not colour.
-	shaderforname(rw_shader, sprintf("{\npolygonoffset\nsort decal\n{\nprogram ftesurf_rampwear\nblendfunc filter\nclampmap $nosrgb:gfx/rampwear/%s.png\nrgbgen exactvertex\nalphagen vertex\n}\n}\n", mname));
+	// No slope bias (it floats/overlaps at grazing angles), no cross-chart atlas mips.
+	// Double modulation permits a subtle polish highlight in the same single pass.
+	shaderforname(rw_shader, sprintf("{\ndepthpush -2\nnomipmaps\nnopicmip\nsort decal\n{\nprogram ftesurf_rampwear\nblendfunc gl_dst_color gl_src_color\nclampmap $nosrgb:gfx/rampwear/%s.png\nrgbgen exactvertex\nalphagen vertex\n}\n}\n", mname));
 	print(sprintf("rampwear: %s, %g surfaces, %g triangles\n", mname, rw_n, rw_ntri));
 };
 
-// Before renderscene, beside Emit_Frame: the map latch, then the surfaces in front within RW_FAR.
+// Before renderscene, beside Emit_Frame: the map latch, then the surfaces in front within reach.
 void() RampWear_Frame =
 {
-	local float i, t, e, j;
+	local float i, t, e, j, reach;
 	local vector eye, fwd, d, col;
 
 	if (serverkey("map") != rw_map)
@@ -134,6 +136,7 @@ void() RampWear_Frame =
 	if (!rw_n || !cvar("r_rampwear"))
 		return;
 	eye = getproperty(VF_ORIGIN);
+	reach = bound(1024, cvar("r_rampwear_distance"), 24000);
 	makevectors(getproperty(VF_ANGLES));
 	fwd = v_forward;
 	// One begin a frame: R_EndPolygon keeps the shader for the next polygon (pr_csqc.c
@@ -142,7 +145,7 @@ void() RampWear_Frame =
 	for (i = 0; i < rw_n; i = i + 1)
 	{
 		d = rw_cen[i] - eye;
-		if (vlen(d) - rw_rad[i] > RW_FAR || d * fwd < -rw_rad[i])
+		if (vlen(d) - rw_rad[i] > reach || d * fwd < -rw_rad[i])
 			continue;
 		e = rw_first[i] + rw_cnt[i];
 		for (t = rw_first[i]; t < e; t = t + 1)

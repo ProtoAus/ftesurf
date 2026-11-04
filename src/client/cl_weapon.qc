@@ -14,7 +14,9 @@ vector wp_muzzleorg;
 vector wp_facing, wp_motionbody, wp_motionorg, wp_motionang;
 // Existing DPEF_NOGUNBOB: replace Quake weapon-matrix bob for this entity only.
 #define WP_EF_NOGUNBOB 256i
-string wp_sndname[16], wp_sndpath[16];
+#define WP_SOUND_CACHE 64
+string wp_sndname[WP_SOUND_CACHE], wp_sndpath[WP_SOUND_CACHE];
+float wp_warmclip, wp_warmevent, wp_warmdone, wp_warmed;
 
 void(float kind) WP_MountKnifeContent;
 
@@ -108,13 +110,11 @@ float(string name, float oneshot) WP_Animate =
 };
 
 // Knife aliases come from the active CS:GO package, never by raising its VFS
-// priority above CSS's shared models/materials. Caller owns the zoned result.
-string() WP_WeaponScript =
+// priority above CSS's shared models/materials. Caller closes the returned stream.
+filestream() WP_WeaponScript =
 {
 	local float f, h, i, n;
-	local int bytes;
-	local void *buffer;
-	local string text, package;
+	local string package;
 	f = -1;
 	if (wp_weapon == FS_WEAPON_KNIFE && KCAT_Knife() > 0)
 	if (checkbuiltin(GM_SearchPackage))
@@ -134,49 +134,39 @@ string() WP_WeaponScript =
 			search_end(h);
 		}
 	}
+	if (f < 0) f = fopen("scripts/game_sounds_weapons.txt", FILE_READ);
 	if (f >= 0)
+	if (fsize(f) > 2097152i)
 	{
-		bytes = fsize(f);
-		text = "";
-		if (bytes > 0i && bytes <= 2097152i)
-		{
-			buffer = memalloc(bytes + 1i);
-			memfill8(buffer, 0i, bytes + 1i);
-			if (fread(f, buffer, bytes) == bytes) text = strzone((string)buffer);
-			memfree(buffer);
-		}
 		fclose(f);
-		return text;
+		return -1;
 	}
-	f = fopen("scripts/game_sounds_weapons.txt", FILE_READNL);
-	if (f < 0) return "";
-	text = strzone(fgets(f));
-	fclose(f);
-	return text;
+	return f;
 };
 
 // Resolve mounted Source sound-script names. Cache successes AND missing names.
 string(string name) WP_SoundPath =
 {
-	local float i, count, k, depth, active, wave, p, n, comment;
-	local string text, line, token, path;
+	local float i, count, k, depth, active, wave, p, comment, f;
+	local string line, token, path;
 
-	for (i = 0; i < 16; i = i + 1)
+	for (i = 0; i < WP_SOUND_CACHE; i = i + 1)
 		if (!strcmp(wp_sndname[i], name)) return wp_sndpath[i];
 	path = "";
 	depth = 0;
 	active = wave = FALSE;
-	text = WP_WeaponScript();
-	if (strcmp(text, ""))
+	f = WP_WeaponScript();
+	if (f >= 0)
 	{
-		wp_scriptbytes = strlen(text);
-		wp_scriptalias = strstrofs(text, name, 0); // exact-case diagnostic; never casefold the whole file
+		wp_scriptbytes = fsize(f);
+		wp_scriptalias = -1;
 		wp_scripthits = 0;
 		p = 0;
 		for (i = 0; i < 40000; i = i + 1)
 		{
-			n = strstrofs(text, "\n", p);
-			line = (n < 0) ? substring(text, p, -1) : substring(text, p, n - p);
+			line = fgets(f);
+			if (!line) break;
+			p = p + strlen(line) + 1;
 			comment = strstrofs(line, "//", 0);
 			if (comment >= 0) line = substring(line, 0, comment);
 			count = tokenize(line);
@@ -188,6 +178,7 @@ string(string name) WP_SoundPath =
 				{
 					active = TRUE;
 					wp_scripthits = wp_scripthits + 1;
+					wp_scriptalias = p - strlen(line) - 1;
 				}
 				if (!strcmp(token, "{")) depth = depth + 1;
 				else if (!strcmp(token, "}"))
@@ -207,11 +198,10 @@ string(string name) WP_SoundPath =
 					wave = !strcmp(token, "wave");
 				}
 			}
-			if (strcmp(path, "") || n < 0) break;
-			p = n + 1;
+			if (strcmp(path, "")) break;
 		}
+		fclose(f);
 	}
-	if (strcmp(text, "")) strunzone(text);
 	// Content-only CSS packs can have the WAV/model but no legacy sound script
 	// (or a higher-priority game's script). Timing still comes from the MODEL.
 	if (!strcmp(path, ""))
@@ -228,12 +218,51 @@ string(string name) WP_SoundPath =
 			path = strzone("weapons/usp/usp_silencer_off.wav");
 	}
 	i = wp_sndnext;
-	wp_sndnext = (wp_sndnext + 1) % 16;
+	wp_sndnext = (wp_sndnext + 1) % WP_SOUND_CACHE;
 	if (strcmp(wp_sndname[i], "")) strunzone(wp_sndname[i]);
 	if (strcmp(wp_sndpath[i], "")) strunzone(wp_sndpath[i]);
 	wp_sndname[i] = strzone(name);
 	wp_sndpath[i] = path;
 	return path;
+};
+
+// One inspect event per frame after equip, never play it. Resolve before the animation needs it.
+void() WP_WarmInspect =
+{
+	local string clip, data, path;
+	local float f, timestamp, valid;
+	local int code;
+	if (wp_warmdone || !wp_ready || VM_Cvar("cl_weapon_sfx") <= 0) return;
+	if (wp_weapon != FS_WEAPON_KNIFE || KCAT_Knife() <= 0) { wp_warmdone = TRUE; return; }
+	if (!checkbuiltin(getmodeleventidx)) { wp_warmdone = TRUE; return; }
+	clip = KCAT_Get(KCAT_Knife(), KCAT_INSPECT);
+	if (KCAT_Knife() == 1) clip = sprintf("lookat0%g", wp_warmclip + 1);
+	if (!strcmp(clip, "")) { wp_warmdone = TRUE; return; }
+	f = frameforname(wp_ent.modelindex, clip);
+	if (f < 0) f = frameforname(wp_ent.modelindex, strcat("@", clip));
+	valid = FALSE;
+	data = "";
+	code = 0i;
+	timestamp = 0;
+	if (f >= 0)
+	if (wp_warmevent < 128)
+		valid = getmodeleventidx(wp_ent.modelindex, f, (int)wp_warmevent, timestamp, code, data);
+	if (!valid)
+	{
+		wp_warmevent = 0;
+		wp_warmclip = wp_warmclip + 1;
+		if (KCAT_Knife() != 1 || wp_warmclip >= 3) wp_warmdone = TRUE;
+		return;
+	}
+	wp_warmevent = wp_warmevent + 1;
+	if (code != 5004i || !strcmp(data, "")) return;
+	path = WP_SoundPath(data);
+	if (strcmp(path, ""))
+	if (GA_Exists(path))
+	{
+		precache_sound(path);
+		wp_warmed = wp_warmed + 1;
+	}
 };
 
 // Attachment #1 is CSS's authored muzzle. Read its bone + local position;
@@ -562,6 +591,14 @@ void() WP_Frame =
 	if (!wp_ent) wp_ent = spawn();
 	if (w != wp_weapon || strcmp(mdl, wp_model))
 	{
+		// A different package can define the same alias differently. Do not keep stale paths.
+		for (i = 0i; i < WP_SOUND_CACHE; i += 1i)
+		{
+			if (strcmp(wp_sndname[i], "")) strunzone(wp_sndname[i]);
+			if (strcmp(wp_sndpath[i], "")) strunzone(wp_sndpath[i]);
+			wp_sndname[i] = wp_sndpath[i] = "";
+		}
+		wp_sndnext = wp_warmclip = wp_warmevent = wp_warmdone = wp_warmed = 0;
 		wp_weapon = w;
 		wp_motionvalid = FALSE;
 		wp_mode = floor(seq / 4) % 2;
@@ -663,6 +700,7 @@ void() WP_Frame =
 	if (wp_until <= 0 && wp_duration > 0)
 		wp_ent.frame1time = wp_ent.frame1time - floor(wp_ent.frame1time / wp_duration) * wp_duration;
 	wp_ent.frame2time = wp_ent.frame1time;
+	WP_WarmInspect();
 	WPU_Apply();
 	if (!WP_IsScoped() && cvar("r_drawviewmodel") > 0)     // P1280: as the engine's own viewmodel (cl_ents.c)
 	{
@@ -836,6 +874,7 @@ float() WP_Command =
 		print(sprintf("weapon: motion valid %g offset %v angles %v\n", wp_motionvalid, wp_motionorg, wp_motionang));
 		print(sprintf("weapon: mode %g burst-pending %g kick %g velocity %g render-dt %g\n", wp_mode, wp_burstleft, wp_kick, wp_kickvel, wp_kickdt));
 		print(sprintf("weapon: muzzle attachment %g flashes %g\n", wp_muzzletag, wp_flashes));
+		print(sprintf("weapon: inspect-warm events %g done %g\n", wp_warmed, wp_warmdone));
 		print(sprintf("weapon: draw-starts %g zoom %g scoped %g rezoom %g movetype %g\n", wp_drawstarts, wp_zoom, WP_IsScoped(), wp_scopepending, getstatf(STAT_FS_MOVETYPE)));
 		print(sprintf("weapon: view %v render-angles %v input-angles %v\n", getproperty(VF_ORIGIN), getproperty(VF_ANGLES), getproperty(VF_CL_VIEWANGLES)));
 		return TRUE;

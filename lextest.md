@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P1300 ramp wear / inspect / default sky (NOT deployed; acceptance pending)
+Source/build and offline mask controls only until the shared renderer rig is
+available. Do not treat these as owner-confirmed fixes or instructions for an
+already installed build. Once the candidate is qualified and installed:
+1. On Colin Blaster and Classics3, look along a ramp near a join, then back away:
+   no close flicker, no floating/double seam band, and broad scratches remain
+   beyond the former short throw. Share the worst seam screenshot if one remains.
+2. Smooth ridden bands have a restrained shine; `r_rampwear_shine 0` disables it.
+   `r_rampwear_distance 12000` is the default (clamped 1024..24000), and scratch
+   strength defaults to 1.5. Check moving-view smoothness as well as appearance.
+3. Equip a Legacy knife, wait a moment, inspect twice: check for first-inspect
+   hitches, correct sounds and no sound playing merely because warming ran.
+4. Fresh-load surf_colin_blaster_69000 with Visualizer sky off: the default sky
+   should appear without toggling the option twice. A manually chosen non-milk
+   sky should remain untouched. The identified stale-override branch is not all
+   possible default-sky loading failures.
+
 ## P1298 TAS workshop reopen (both installs and lobbies, 4 Nov; owner acceptance pending)
 In a local practice game, `tas timeline`, close the workshop, then `tas menu`:
 Timeline should reopen rather than Next input. Repeat from `tas shared` (online

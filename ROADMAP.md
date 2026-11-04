@@ -1,5 +1,50 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
+## Christmas environment and cosmetics — requested 4 Nov 2026
+
+The falling-snow event exists (P1286); the following additions are requested,
+NOT implemented by the ramp/knife/sky follow-up P1300. Snow cover is already
+reserved to ftesurf-e2 under P1287: coordinate that work rather than shipping a
+second competing world-shader override.
+
+- Accumulation: bake static sky-exposed upward surfaces/ledge caps per map;
+  add hand-selected sheltered corners/rooms only on nominated maps. Use mesh
+  or material masks, no runtime snow physics, full-map voxelization or per-frame
+  roof traces. Preserve visibility/collision and show effect-off controls.
+- Frozen water/lava: an event-only visual ice/frost skin. Do NOT change liquid
+  contents, collisions, movement or damage rules without a separate gameplay
+  decision. Water/lava coverage, transparent sorting, moving surfaces and
+  recognizability each need an in-game check.
+- Santa hat: small original/licensed model plus a real inventory definition and
+  server-owned event entitlement. No client self-grants; choose event dates and
+  whether the gift is permanently retained before activating the grant.
+- Snowmen: original/redistributable low-poly static model and per-map placement
+  records, with editor preview and a hard visible-instance cap. Do not download
+  and redistribute an arbitrary model without its license.
+- Winter audio: licensed/original outside wind and sheltered ambience, selected
+  from the existing sky/roof mask, crossfaded without per-frame file loads. Add
+  nearby/distant thunder with delayed playback and preloaded sounds.
+- Sky lightning: sky-only flash plus a few short bolt ribbons, not a full-world
+  relight or reflection rebuild. Respect reduced-flash/off settings; verify that
+  visualizer and map/default skies both return to their prior state.
+- Atmospheric smoke/mist/light shafts: independently authored, bounded billboard
+  or slice approximation near selected emitters/lights, distance/PVS culled and
+  capped for overdraw. No full-level volumetric simulation, per-particle dynamic
+  light query or reflection capture. The linked Admer456/halflife-smoke README
+  uses Valve SDK terms limited to modified Valve games on Half-Life; do not port
+  its implementation into FTE without a compatible license grant.
+- More demo coverage: nominate maps first, use the existing bounded collector,
+  then rebake from the expanded corpus. P1300's local 77-demo Colin and 70-demo
+  Classics3 rebakes are NOT newly downloaded demos or broader route coverage.
+
+Acceptance: event-off is unchanged; cold asset loads occur before play, not on
+first inspect/first flake/first thunder. Compare moving-view frame-time tails
+against effect-off on the target hardware, and inspect indoor leaks, seams,
+transparent ordering and night/bright-map readability. No performance claim from
+a successful compile or a static screenshot. Needed owner choices: extra map
+list/placement preferences, Christmas grant dates/retention and desired ambience
+assets/style. Optional original low-poly hat/snowman avoids third-party licensing.
+
 ## Linked-profile playtime and main/bonus attempts — requested 1 Nov 2026
 
 P1168 implements the public readers: profile totals, per-map time and main/bonus

@@ -422,13 +422,15 @@ def board_length(ang):
     return 48 + 420 * board_strength(ang)
 
 
-MARGIN = 4      # texels round each chart: mip levels average across that much before they reach a neighbour
+MARGIN = 4      # bilinear border; runtime disables cross-chart mipmaps
 
 
 def paint(ch, texel, ev):
     us = [p[0] for p in ch.vcc]
     vs = [p[1] for p in ch.vcc]
-    u0, v0 = min(us) - MARGIN * texel, min(vs) - MARGIN * texel
+    # Shared world lattice: coplanar neighbours sample the same field at their common edge.
+    u0 = (math.floor(min(us) / texel) - MARGIN) * texel
+    v0 = (math.floor(min(vs) / texel) - MARGIN) * texel
     w = int(math.ceil((max(us) - u0) / texel)) + MARGIN + 1
     h = int(math.ceil((max(vs) - v0) / texel)) + MARGIN + 1
     ride = np.zeros((h, w), np.float32)
@@ -508,7 +510,8 @@ def pack(charts, maxw):
         pos[k] = (x, y)
         x += c['w']
         shelf = max(shelf, c['h'])
-    return pos, maxw, y + shelf
+    # Avoid engine resampling of a non-power-of-two atlas moving the lookup off its chart.
+    return pos, maxw, 1 << max(0, (y + shelf - 1).bit_length())
 
 
 def main():
@@ -559,7 +562,12 @@ def main():
 
     texel = a.texel
     while True:
-        painted = {c.key: paint(c, texel, ev) for c in used}
+        # A boarding streak may cross a seam onto a face with no contact ticks of its own.
+        # Paint neighbouring faces too, rather than substituting a uniformly dirty block there.
+        if any(max(max(p[i] for p in c.vcc) - min(p[i] for p in c.vcc) for i in range(2)) / texel + 2 * MARGIN + 2 > 2048 for c in used + plain):
+            texel *= 1.25
+            continue
+        painted = {c.key: paint(c, texel, ev) for c in used + plain}
         painted[('empty',)] = dict(u0=0, v0=0, w=8, h=8, ride=np.zeros((8, 8), np.float32),
                                    scr=np.zeros((8, 8), np.float32), dsum=np.zeros((8, 8, 2), np.float32))
         pos, W, H = pack(painted, 2048)

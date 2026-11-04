@@ -5,9 +5,11 @@
 !!cvarf r_rampwear_dirt
 !!cvarf r_rampwear_scratch
 !!cvarf r_rampwear_debug
+!!cvarf r_rampwear_distance
+!!cvarf r_rampwear_shine
 
-// FTESurf P1278: ramp wear over the ramps (cl_rampwear.qc's polygons), blendfunc filter, so the output
-// is a multiplier on the lit ramp. Mask (tools/rampwear.py): r ride wear, g boarding scratch, ba the
+// FTESurf P1300: single-pass double modulation (dst_color, src_color), output half the multiplier.
+// This retains the ramp's own lighting and permits a small view-dependent polish highlight. Mask (tools/rampwear.py): r ride wear, g boarding scratch, ba the
 // travel direction as a line, (cos 2a, sin 2a) in the surface's frame -- u level along the ramp, v up
 // it, built here from the surface normal that rides in v_colour exactly as frame() does there.
 // Dirt is 3D noise in world space, so it runs on across faces; scratches use the surface's frame (one
@@ -34,6 +36,8 @@ void main()
 uniform float cvar_r_rampwear_dirt;
 uniform float cvar_r_rampwear_scratch;
 uniform float cvar_r_rampwear_debug;
+uniform float cvar_r_rampwear_distance;
+uniform float cvar_r_rampwear_shine;
 
 float hash(vec2 p)
 {
@@ -61,13 +65,12 @@ float fbm3(vec3 p)
 
 // Rows across angle bin b (15 degrees each, a line, so 12 bins), dashes along it: scratch coverage.
 // aa: a row's footprint in pixels, taken once in main() -- fwidth in here would see the bin jump.
-float scratches(vec2 p, float b, float amount, float aa)
+float scratches(vec2 p, float b, float amount, float aa, float rowh)
 {
 	b = mod(b, 12.0);
 	float a = b * 0.2617994;
 	vec2 d = vec2(cos(a), sin(a));
 	vec2 q = vec2(dot(p, d), dot(p, vec2(-d.y, d.x)));
-	float rowh = 2.5;
 	float row = floor(q.y / rowh);
 	float fy = fract(q.y / rowh);
 	float dash = mix(30.0, 260.0, hash(vec2(row, 9.1 + b)));
@@ -76,7 +79,7 @@ float scratches(vec2 p, float b, float amount, float aa)
 	float fx = fract(sx);
 	float wid = mix(0.12, 0.4, hash(vec2(seg, row * 3.1 + b)));
 	float line = 1.0 - smoothstep(wid, wid + aa + 0.02, abs(fy - 0.5) * 2.0);
-	line *= smoothstep(0.0, 0.08, fx) * smoothstep(1.0, 0.7, fx);
+	line *= smoothstep(0.0, 0.08, fx) * (1.0 - smoothstep(0.7, 1.0, fx));
 	return line * step(hash(vec2(row * 0.37 + b, seg * 1.3)), amount * 1.2) * min(1.0, 0.4 + amount);
 }
 
@@ -85,7 +88,7 @@ void main()
 	vec4 m = texture2D(s_wear, tc);
 	if (cvar_r_rampwear_debug > 0.0)
 	{	// the mask itself: ride wear red, boarding scratch blue
-		gl_FragColor = vec4(1.0 - 0.9 * m.g, 1.0 - 0.9 * max(m.r, m.g), 1.0 - 0.9 * m.r, 1.0);
+		gl_FragColor = vec4(vec3(1.0 - 0.9 * m.g, 1.0 - 0.9 * max(m.r, m.g), 1.0 - 0.9 * m.r) * 0.5, 1.0);
 		return;
 	}
 	vec3 n = normalize(wnorm);
@@ -112,12 +115,26 @@ void main()
 	float aa = max(abs(fwidth(p.x)), abs(fwidth(p.y))) / 2.5;
 	float bins = lineang / 0.2617994;
 	float b0 = floor(bins);
-	float s = mix(scratches(p, b0, amount, aa), scratches(p, b0 + 1.0, amount, aa), smoothstep(0.25, 0.75, bins - b0));
-	s *= 1.0 - smoothstep(0.35, 0.9, aa);           // a row under a pixel: shimmer, not detail
+	float blend = smoothstep(0.25, 0.75, bins - b0);
+	// Fine grooves cannot survive below a pixel. Broader scuffs take over instead of erasing the
+	// entire scratch layer at ~500 units. Both scales keep the same world-space phase at seams.
+	// Only the transition evaluates both scales; no extra texture samples/passes/light traces.
+	float fine = 0.0, coarse = 0.0;
+	if (aa < 0.7)
+		fine = mix(scratches(p, b0, amount, aa, 2.5), scratches(p, b0 + 1.0, amount, aa, 2.5), blend);
+	if (aa > 0.2)
+		coarse = mix(scratches(p, b0, amount, aa * 0.125, 20.0), scratches(p, b0 + 1.0, amount, aa * 0.125, 20.0), blend);
+	float s = mix(fine, coarse * 0.65, smoothstep(0.2, 0.7, aa));
+	s *= 1.0 - smoothstep(0.35, 0.9, aa * 0.125);
 
 	// a scratch shows the clean surface through the dirt and a groove on it; a hard boarding also scuffs
 	vec3 col = mix(grime, vec3(1.0), s) * (1.0 - 0.45 * s) * (1.0 - 0.18 * clamp(scr * cvar_r_rampwear_scratch, 0.0, 1.0));
-	col = mix(vec3(1.0), col, 1.0 - smoothstep(3500.0, 6000.0, distance(wpos, e_eyepos)));
-	gl_FragColor = vec4(vec3(1.0) - fog3additive(vec3(1.0) - col), 1.0);   // fogged with the ramp under it
+	// Cheap polish, not a reflection capture or a light query. Only the smooth ridden band shines.
+	vec3 h = normalize(normalize(e_eyepos - wpos) + normalize(vec3(0.3, 0.4, 1.0)));
+	float polish = pow(max(0.0, dot(n, h)), 32.0) * wear * (1.0 - 0.65 * scr);
+	col += vec3(clamp(cvar_r_rampwear_shine, 0.0, 0.5) * polish);
+	float reach = clamp(cvar_r_rampwear_distance, 1024.0, 24000.0);
+	col = mix(vec3(1.0), col, 1.0 - smoothstep(reach * 0.75, reach, distance(wpos, e_eyepos)));
+	gl_FragColor = vec4((vec3(1.0) - fog3additive(vec3(1.0) - col)) * 0.5, 1.0);
 }
 #endif
