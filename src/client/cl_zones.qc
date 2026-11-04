@@ -140,7 +140,8 @@ void() Zone_RegisterCvars =
 	// P1285 (Lex, 4 Nov): zone lines showed through sky faces from parts of the map you cannot see.
 	// Momentum's zones are trigger entities, drawn only while in the PVS (and area); ours are never
 	// networked, so Zone_InPVS asks checkpvs of a probe linked to each zone's box. Build 40's probes
-	// culled every zone; FindTouchedLeafs now runs for SOLID_NOT too (world.c World_LinkEdict).
+	// culled every zone, by a fault not run down then (the hl2 plugin's later no-vis and area fixes,
+	// Patches 209c and 257, are the likely cure); measured passing zones on vised and unvised maps.
 	registercvar("zone_pvs",        "1");
 
 	// Cancel / bhop / overbounce default OFF: allowBhop reaches 68 regions on
@@ -552,8 +553,10 @@ void(float z, vector col, float alpha, vector eye) Zone_DrawOne =
 	}
 };
 
-// P1285: one probe per zone, relinked to its box at each test (bounds move in the editor, and a link
-// made before the world loaded would hold no leaves). Verdicts are refreshed at 10 Hz or a 64-unit move.
+// P1285: one probe per zone, relinked when its box changes (the editor moves them; CSQC_WorldLoaded
+// relinks one made before the world). Verdicts are refreshed at 10 Hz or a 64-unit move; a zone a door
+// exit's eye sees also passes (cl_portal.qc).
+float(entity e) Portal_EyesSee;
 entity zone_pvsent[ZONE_MAX];
 float  zone_pvsok[ZONE_MAX];
 float  zone_pvsnext;
@@ -569,9 +572,9 @@ float(float z, vector eye) Zone_InPVS =
 		e.solid = SOLID_NOT;
 		zone_pvsent[z] = e;
 	}
-	setorigin(e, '0 0 0');
-	setsize(e, zone_zmins[z], zone_zmaxs[z]);
-	return checkpvs(eye, e);
+	if (e.mins != zone_zmins[z] || e.maxs != zone_zmaxs[z])
+		setsize(e, zone_zmins[z], zone_zmaxs[z]);
+	return checkpvs(eye, e) || Portal_EyesSee(e);
 };
 
 void() Zone_Draw =
@@ -615,7 +618,8 @@ void() Zone_Draw =
 		zone_pvsnext = cltime + 0.1;
 		zone_pvseye = eye;
 		for (z = 0; z < zone_count; z = z + 1)
-			zone_pvsok[z] = Zone_InPVS(z, eye);
+			if (zone_cv_typedraw[zone_type[z]] && (zone_cv_bonus || zone_track[z] == 0))
+				zone_pvsok[z] = Zone_InPVS(z, eye);
 	}
 
 	// Cull trace: why a zone you expected is not on screen.  Set zone_debug 1

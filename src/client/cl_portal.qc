@@ -157,6 +157,7 @@ vector(vector org, vector ang) FS_PortalTransformView =
 #define LPD_MAXEYES 32
 #define LPD_MAXLEVELS 5	// GLR_PortalDrawableAt: R_MAX_RECURSE-1
 float  lpd_offertime;
+float  lpd_neyes;			// P1285: Portal_Offer's eye count, for Portal_EyesSee
 vector lpd_offereye, lpd_offerang;
 vector lpd_eye[LPD_MAXEYES];
 vector lpd_eyefwd[LPD_MAXEYES];
@@ -231,6 +232,20 @@ void(vector root, vector ang) Portal_Offer =
 			n = n + 1;
 		}
 	}
+	lpd_neyes = n;
+};
+
+// P1285: e is in the PVS of a door exit the last offer walked (eyes 1..), so cl_zones.qc does not hide a
+// zone seen through a door. The offer is per frame while doors draw; older than 0.5 s, none drew.
+float(entity e) Portal_EyesSee =
+{
+	local float i;
+	if (cltime - lpd_offertime > 0.5)
+		return FALSE;
+	for (i = 1; i < lpd_neyes; i = i + 1)
+		if (checkpvs(lpd_eyepvs[i], e))
+			return TRUE;
+	return FALSE;
 };
 
 float() FS_PortalPredraw =

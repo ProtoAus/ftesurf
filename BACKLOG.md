@@ -1,5 +1,14 @@
 # BACKLOG.md
 
+## P1285 zone lines by PVS (4 Nov): review residuals
+- A probe records two areas (VBSP_FindTouchedLeafs), so a zone spanning more without overflowing hides from
+  the rest: one region in the library, surf_bossfight's main start (areas 4-10, sealed). Source records two too.
+- The eye's single leaf decides; the world renderer merges a second cluster near water, so an eye just under
+  a water surface can hide zones above it.
+- Verdicts lag a table swap or a cluster change by up to 0.1 s / 64 units (new indices read hidden).
+- The probes sit in CSQC's collision grid (sv_gameplayfix_nolinknonsolid 1); a box over 16 cells joins the
+  overflow list every CSQC trace walks (skipped at the SOLID_NOT test).
+
 ## P1279/P1280 (4 Nov): review residuals (display only)
 - P1280: one sample at two bhop_ceaseless spots (-2400 1860, -2563 1785) traces 1248-1516 world lights (~10 ms; 86 at
   spawn). The shared sample halves those frames with the hands, a rate cap cannot remove them, and a dim-light cut
