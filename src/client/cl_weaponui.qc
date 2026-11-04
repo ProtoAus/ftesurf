@@ -2,6 +2,7 @@
 float wpu_open, wpu_frames, wpu_skinstate, wpu_painted;
 entity wpu_parts[2];
 float wpu_rows[2], wpu_counts[2], wpu_sources[2];
+float wpu_availrow[2], wpu_avail[2], wpu_availat[2];   // P1280: KCAT_Available per part, its fopen rechecked every 2 s
 float wpu_source, wpu_srcskel, wpu_srcabs;
 int *wpu_armmap;
 int *wpu_layermap;
@@ -31,7 +32,14 @@ void(float slot, float row) WPU_Part =
 	local int *mapping;
 	local string name, rules;
 	local vector org, forward, right, up;
-	if (row < (float)KCAT_ARMS || !KCAT_Available(row)) return;
+	if (row < (float)KCAT_ARMS) return;
+	if (row != wpu_availrow[(int)slot] || cltime >= wpu_availat[(int)slot])
+	{
+		wpu_avail[(int)slot] = KCAT_Available(row);
+		wpu_availrow[(int)slot] = row;
+		wpu_availat[(int)slot] = cltime + 2;
+	}
+	if (!wpu_avail[(int)slot]) return;
 	forward = v_forward; right = v_right; up = v_up;
 	part = wpu_parts[(int)slot];
 	if (!part) { part = spawn(); wpu_parts[(int)slot] = part; }
@@ -95,7 +103,7 @@ void() WPU_Apply =
 	if (wp_weapon == FS_WEAPON_KNIFE && kind > 0)
 	{
 		WPU_SourcePose();
-		if (VM_Cvar("cl_knife_arms"))
+		if (VM_Cvar("cl_knife_arms") && cvar("r_drawviewmodel") > 0)     // P1280: hidden with the knife (WP_Frame)
 		{
 			WPU_Part(0, KCAT_Hands());
 			if (KCAT_ActiveLayer() >= (float)KCAT_LAYERS) WPU_Part(1, KCAT_ActiveLayer());

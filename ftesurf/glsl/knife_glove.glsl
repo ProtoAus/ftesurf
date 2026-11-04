@@ -21,8 +21,9 @@ void main()
 {
 	// Installed AO preserves the template's seams without pretending to be an
 	// inventory paint kit. Neutral matte leather, no borrowed colour texture.
+	// P1280: a mid warm grey, not the 0.2 slate it was: under the ambient clamp that read as black.
 	float ao = texture2D(s_t0, glove_uv).r;
-	vec3 leather = vec3(0.20, 0.22, 0.24) * (0.18 + 0.82 * ao);
+	vec3 leather = vec3(0.46, 0.42, 0.38) * (0.25 + 0.75 * ao);
 	gl_FragColor = vec4(leather * glove_light, 1.0);
 }
 #endif

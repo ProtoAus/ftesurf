@@ -4636,6 +4636,7 @@ void() Watch_Stop =
 	// The player's own segment column, back where it was.  Before the print, so
 	// that a restore that faults says so with the stop line still to come.
 	Watch_SeqRestore();
+	HUD_AnchorHold(FALSE);          // P1279: and your energy zero (dropped if the map changed)
 
 	/*
 	  BUILD 47: ONLY IF NOTHING ELSE STILL WANTS THE CURSOR.
@@ -4883,7 +4884,16 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 		      "pre-clip velocity, so the strafe bar, the board panel and the "
 		      "segment column stay off.  Runs recorded from build 24 carry them.\n");
 
+	HUD_AnchorHold(TRUE);           // P1279: your zero waits here; Watch_Stop puts it back
 	Watch_Seek(rec_wt_vt0);
+	// P1279: the energy zero is the replayed leg's start zone from the first frame (a stage window:
+	// its segment's), not whatever box the body is or is not seen standing in.
+	if (!HUD_AnchorSeg(rec_wt_track, (rec_wt_winseg >= 0) ? rec_wt_winseg : rec_wt_startseg))
+	{
+		HUD_AnchorFresh();          // not your zone or your last jump: the body's own, once it jumps
+		print(sprintf("replay: no start zone for track %g segment %g -- energy reads from its jumps\n",
+		              rec_wt_track, (rec_wt_winseg >= 0) ? rec_wt_winseg : rec_wt_startseg));
+	}
 	Trn_Clear();
 	trn_demo = trn_demo_restart = TRUE;
 	trn_demo_ready = FALSE;
