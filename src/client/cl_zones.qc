@@ -63,6 +63,7 @@ float  zone_cv_lines, zone_cv_thickness;
   scripts/zones.shader for the other one.
 */
 string zone_cv_shader;
+float  zone_cv_pvs;             // P1285
 float  zone_cv_fill, zone_cv_fillalpha;
 float  zone_cv_typedraw[ZONE_TYPES];
 vector zone_cv_typecol[ZONE_TYPES];
@@ -136,35 +137,12 @@ void() Zone_RegisterCvars =
 	registercvar("zone_fill",       "0");
 	registercvar("zone_fill_alpha", "0.10");
 
-	/*
-	  BUILD 40 -- THERE IS NO zone_pvs, AND THAT IS A MEASURED RESULT.
-
-	  "quake/source uses BSP and can you use PVS to decide if they are
-	  rendered?"  Two answers, and the first one is the important one:
-
-	  PVS WAS NEVER WHAT WAS HIDING THEM.  The zones are not entities and are
-	  never networked -- both VMs parse the same Momentum JSON independently at
-	  map load (sv_zones.qc:5-7), so no server-side PVS test has ever been
-	  applied to a single one of them.  What was hiding them was a 4096-unit
-	  distance gate and the depth test, both above.
-
-	  And a CLIENT-side gate was built, tested, and removed.  checkpvs (#240) is
-	  registered for CSQC and takes its world from the client's own
-	  (pr_bgcmd.c:1412-1433), so it looked like a free companion to zone_xray --
-	  show the zones in rooms you could see into, through whatever is in front.
-	  It culled EVERY zone on the map, including the four in front of the
-	  camera, in both of its forms: with a SOLID_NOT probe (never linked into
-	  the leaf tree, so pvsinfo is empty) and with a SOLID_BBOX one that is
-	  linked.  `zone_debug` says `0 of 19 zones passed the cull` on
-	  surf_aesthetic either way, against `4 of 19` with it off.
-
-	  It is not shipped disabled, it is not shipped at all.  A visibility switch
-	  that hides everything is worse than no switch, and one that is present but
-	  known-broken is worse than both -- somebody would find it in a config dump
-	  in six months and turn it on.  If it is ever wanted, the thing to chase is
-	  PF_checkpvs passing a NULL buffer to ClusterPVS and VBSP_EdictInFatPVS's
-	  area test, neither of which was run down here.
-	*/
+	// P1285 (Lex, 4 Nov): zone lines showed through sky faces from parts of the map you cannot see.
+	// Momentum's zones are trigger entities, drawn only while in the PVS (and area); ours are never
+	// networked, so Zone_InPVS asks checkpvs of a probe linked to each zone's box. Build 40's probes
+	// culled every zone, by a fault not run down then (the hl2 plugin's later no-vis and area fixes,
+	// Patches 209c and 257, are the likely cure); measured passing zones on vised and unvised maps.
+	registercvar("zone_pvs",        "1");
 
 	// Cancel / bhop / overbounce default OFF: allowBhop reaches 68 regions on
 	// a single map and would bury the timer zones you actually came to see.
@@ -234,6 +212,7 @@ void() Zone_ReadCvars =
 	zone_cv_fill      = cvar("zone_fill");
 	zone_cv_fillalpha = cvar("zone_fill_alpha");
 	zone_cv_shader    = cvar("zone_xray") ? "ftesurf_zone_xray" : "";
+	zone_cv_pvs       = cvar("zone_pvs");
 
 	if (!zone_cv_dname)
 	{
@@ -574,9 +553,33 @@ void(float z, vector col, float alpha, vector eye) Zone_DrawOne =
 	}
 };
 
+// P1285: one probe per zone, relinked when its box changes (the editor moves them; CSQC_WorldLoaded
+// relinks one made before the world). Verdicts are refreshed at 10 Hz or a 64-unit move; a zone a door
+// exit's eye sees also passes (cl_portal.qc).
+float(entity e) Portal_EyesSee;
+entity zone_pvsent[ZONE_MAX];
+float  zone_pvsok[ZONE_MAX];
+float  zone_pvsnext;
+vector zone_pvseye;
+float(float z, vector eye) Zone_InPVS =
+{
+	local entity e;
+	e = zone_pvsent[z];
+	if (!e)
+	{
+		e = spawn();
+		e.classname = "zone_pvs";
+		e.solid = SOLID_NOT;
+		zone_pvsent[z] = e;
+	}
+	if (e.mins != zone_zmins[z] || e.maxs != zone_zmaxs[z])
+		setsize(e, zone_zmins[z], zone_zmaxs[z]);
+	return checkpvs(eye, e) || Portal_EyesSee(e);
+};
+
 void() Zone_Draw =
 {
-	local float z, t, maxdist, dbg, drawn;
+	local float z, t, maxdist, dbg, drawn, pvs;
 	local vector eye, fwd, d;
 
 	// Before the map test, not after: a fetch that landed has to re-read the
@@ -607,6 +610,18 @@ void() Zone_Draw =
 	maxdist = zone_cv_dist;
 	drawn = 0;
 
+	// P1285: not under zone_xray (see everything), in the editor, or with the eye in solid (noclip
+	// outside the map, where Source draws every leaf).
+	pvs = zone_cv_pvs && zone_cv_shader == "" && !ui_ze_state && pointcontents(eye) != CONTENT_SOLID;
+	if (pvs && (dbg || cltime >= zone_pvsnext || cltime < zone_pvsnext - 0.2 || vlen(eye - zone_pvseye) > 64))
+	{
+		zone_pvsnext = cltime + 0.1;
+		zone_pvseye = eye;
+		for (z = 0; z < zone_count; z = z + 1)
+			if (zone_cv_typedraw[zone_type[z]] && (zone_cv_bonus || zone_track[z] == 0))
+				zone_pvsok[z] = Zone_InPVS(z, eye);
+	}
+
 	// Cull trace: why a zone you expected is not on screen.  Set zone_debug 1
 	// and it dumps ONE frame and clears itself -- a latch would still be one
 	// bool away from filling the console at 600 fps, and this is a tool you
@@ -621,6 +636,7 @@ void() Zone_Draw =
 		print(sprintf("zone_debug: xray %s  fill %g@%.2f\n",
 		              (zone_cv_shader == "") ? "off (depth-tested)" : zone_cv_shader,
 		              zone_cv_fill, zone_cv_fillalpha));
+		print(sprintf("zone_debug: pvs %s\n", pvs ? "on" : "off"));
 	}
 
 	for (z = 0; z < zone_count; z = z + 1)
@@ -634,8 +650,8 @@ void() Zone_Draw =
 		d = zone_centre[z] - eye;
 
 		if (dbg)
-			print(sprintf("  %3g %-10s dist %8.0f radius %7.0f dot %9.0f\n",
-			              z, Zone_TypeName(t), vlen(d), zone_radius[z], fwd * d));
+			print(sprintf("  %3g %-10s dist %8.0f radius %7.0f dot %9.0f pvs %g\n",
+			              z, Zone_TypeName(t), vlen(d), zone_radius[z], fwd * d, pvs ? zone_pvsok[z] : 1));
 
 		// Distance and behind-camera, both off the precomputed centre/radius.
 		// Deliberately NO traceline occlusion test: a zone you are about to
@@ -644,6 +660,8 @@ void() Zone_Draw =
 		if (maxdist > 0 && vlen(d) - zone_radius[z] > maxdist)
 			continue;
 		if (fwd * d < -zone_radius[z])
+			continue;
+		if (pvs && !zone_pvsok[z])
 			continue;
 
 		Zone_DrawOne(z, zone_cv_typecol[t], zone_cv_alpha, eye);
