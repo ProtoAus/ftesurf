@@ -58,7 +58,19 @@ class Segmented(unittest.TestCase):
     def test_maps_with_a_time_and_rows_keep_them(self):
         p = self.ask('&ct=p')
         self.assertEqual(sorted(m['map'] for m in p['maps']), sorted(MAPS))
+        self.assertEqual(p['done'], 2)      # the header's "N of M finished"; surf_both's best shown is segmented
+        both = next(m for m in p['maps'] if m['map'] == 'surf_both')
+        self.assertEqual((both['ms'], both['s']), (1500, 'segmented'))
         self.assertEqual(self.ask()['total'], len(ROWS))
+
+    def test_site_map_lists_leave_segmented_out(self):
+        with patch.object(S, 'map_tiers', return_value={m: 1 for m in MAPS}):
+            with S.app.test_client() as c:
+                r = c.get('/board/api/player/' + S.web_handle(ME) + '/maps')
+        self.assertEqual(r.status_code, 200, r.data[:200])
+        t1 = r.json['tiers'][0]
+        self.assertEqual((t1['tier'], t1['done']), (1, 2))
+        self.assertEqual(sorted(m['map'] for m in t1['maps'] if 'ms' in m), ['surf_a', 'surf_both'])
 
 
 if __name__ == '__main__':
