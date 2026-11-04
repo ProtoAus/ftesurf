@@ -1,5 +1,14 @@
 # BACKLOG.md
 
+## P1286 snow event (4 Nov): residuals
+- Engine: SP_CVAR4F uploads with qglUniform3fvARB (gl_backend.c ~5133), so a program's !!cvar4f never gets
+  its w. The snow shader uses two cvar3f instead; the fix is one word (Uniform4fv) for the next engine batch.
+- The sky mask reads world brushes only: snow falls through prop roofs, and a displaced terrain's flakes stop at
+  its base brush (behind the terrain, so unseen). Cells are 32 units, so flakes reach up to half a cell under a
+  roof's edge.
+- Event maps (r_snow_maps) are a client default; a lobby cannot yet switch the event on or off for everyone.
+- Next: snow cover (P1287) -- a screen-space pass whitening upward faces under the same mask.
+
 ## P1285 zone lines by PVS (4 Nov): review residuals
 - A probe records two areas (VBSP_FindTouchedLeafs), so a zone spanning more without overflowing hides from
   the rest: one region in the library, surf_bossfight's main start (areas 4-10, sealed). Source records two too.

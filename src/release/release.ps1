@@ -286,6 +286,9 @@ $ShipGlobs = @(
     # P1278: ramp wear bakes (tools/rampwear.py), untracked beside the particle bakes
     @{ Path = 'ftesurf/data/rampwear';  Filter = '*.txt' }
     @{ Path = 'ftesurf/textures/rampwear'; Filter = '*.png' }
+    # P1286: the snow event's sky masks (tools/snowmask.py); the flakes ride the glsl/models/scripts globs
+    @{ Path = 'ftesurf/data/snowmask';  Filter = '*.txt' }
+    @{ Path = 'ftesurf/textures/snowmask'; Filter = '*.png' }
     @{ Path = 'ftesurf/scripts';        Filter = '*' }
     # Keep the three font faces and both OFL notices, never install backup copies.
     @{ Path = 'ftesurf/gfx/fonts';      Filter = '*'; Deny = @('*.prev') }

@@ -65,6 +65,8 @@ client/cl_smokesheet.qc
 client/cl_emit.qc
 // P1278: ramp wear overlay; before cl_main.qc, which calls RampWear_Init and RampWear_Frame.
 client/cl_rampwear.qc
+// P1286: the snow event's falling snow; before cl_main.qc, which calls Snow_Init and Snow_Frame.
+client/cl_snow.qc
 // Build 66.  A FIFTH independent walk of the same entity lump -- the decals,
 // sprites, fog and emitters are the other four, and no one of the five reads
 // another.  env_soundscape: the entity Source maps actually use for ambience,
