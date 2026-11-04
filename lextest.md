@@ -27,8 +27,7 @@
 3. surf_voyager save 2: the glowing orbs no longer show black squares.
 4. surf_voyager saves 3 and 4: the far stations are in a sealed-off part of the map (its own area, with no opening to
    where you stand), and the map has no visibility data. Source hides such parts by area, so they are no longer drawn
-   from there at all, rather than half drawn. I have not compared it with CS:S: if CS:S does show the stations from
-   save 4, one screenshot from there tells me it is wrong.
+   from there at all, rather than half drawn. You checked Momentum (4 Nov): it hides them too.
 5. surf_voyager: the rotating asteroids move smoothly (on a lobby too).
 6. surf_santorini: the gulls flap (on a lobby too). From save 1 the windmill sails no longer float in the sky: the map
    hides that windmill from there, and the sails were popping in and out as they turned. Save 2 was the same bug.
