@@ -77,8 +77,9 @@
 - FIXED P1283 (stutters 377 -> 5 on the osku replay): surf_voyager model lighting beside movers: R_CalcModelLighting -> VBSP_LightPointValues -> VBSP_AddWorldLightCube ->
   VBSP_WorldLightVisible (BIH traces), 8-13 ms.
 - Opening a replay (Watch_Open parses the .rec in CSQC): 80-380 ms, before playback, not mid-run.
-- P1282's starter list (ftesurf/glsl/warmseed.txt) covers 24 maps and the knife's default arms and glove.
-  - Still to run: the 41 other maps with cached replays (runs_seed_4..9.json; ~13 min a batch).
+- P1282's starter list (ftesurf/glsl/warmseed.txt) covers 26 maps and the knife's default arms and glove.
+  - Still to run: 39 more maps with cached replays: `bash artifacts/seedchunkC.sh 2` .. 21, in the foreground
+    (C:/FTESurf-worktrees/pacing1277-2b; 2 maps, ~5 min a chunk), then copy the last list here.
   - Not covered: knife_finish (needs a knife with a finish), #WATCHED (needs someone to spectate), and maps
     without a cached replay.
 - Warm list, not covered:
