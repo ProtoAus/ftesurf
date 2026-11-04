@@ -1,6 +1,6 @@
 # Winter asset candidates — 4 Nov 2026
 
-## Snowman: found, licensed, not placed/deployed
+## Holiday props: licensed and converted; runtime acceptance pending
 
 [Kenney Holiday Kit 2.0](https://kenney.nl/assets/holiday-kit), 100 assets.
 The actual downloaded package's `License.txt` identifies Creative Commons Zero
@@ -13,9 +13,15 @@ not required, but retain the source/license and credit Kenney voluntarily.
 - Previews inspected: stylized white snowman, carrot nose, twig arms; optional
   black top hat. That hat is NOT a Santa hat and does not supply an inventory item.
 
-The 4,482,244-byte archive is staged under the owned task root, not in either
-install or a lobby. No map placement, collision, runtime material conversion or
-performance acceptance is implied. For FTE's OBJ loader, a supplied .mtl alone
+The 4,482,244-byte archive is staged under the owned task root, not redistributed
+as a whole. P1302's tools/holiday_assets.py now emits six small native IQMs under
+ftesurf/models/christmas: these two snowmen, tree-decorated-snow (1620 triangles),
+tree-snow-a (756), present-a-cube (330) and present-b-rectangle (330), total5038.
+Bundled CC0 license/palette retained; only license trailing tabs/CRLF are
+normalized for Git (legal text unchanged, original archive/hash preserved).
+Material is uniquely namespaced. Provisional
+flat-floor-validated sidecar records exist for Christmas/Frost/Bluewinter. Actual
+renderer/placement/performance acceptance and deployment remain pending. For FTE's OBJ loader, a supplied .mtl alone
 is NOT sufficient: it takes the shader name from usemtl and does not parse mtllib.
 Use a uniquely namespaced material and validate orientation/scale; do not create a
 world-global shader named simply colormap. Default mod_obj_orientation=1 accepts
@@ -45,5 +51,6 @@ or obtain a compatible license, rather than assuming public GitHub means reusabl
 ## Still needed
 
 Santa-hat mesh/inventory entitlement, winter wind/sheltered ambience/thunder
-assets with clear licenses, nominated map placements, grant dates/retention and
-in-game performance/appearance checks. ROADMAP.md tracks the complete request.
+assets with clear licenses, actual event dates and in-game appearance/performance
+checks. Owner allows agent-chosen provisional maps and confirmed Santa is a
+PERMANENT gift for event participants; those decisions are no longer blockers. ROADMAP.md tracks the complete request.

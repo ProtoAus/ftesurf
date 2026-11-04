@@ -202,6 +202,7 @@ void() CSQC_WorldLoaded =
 	// here for the same reason -- func_dustmotes alone is 4999 instances across
 	// 464 maps and had never drawn anything.  cl_emit.qc.
 	Emit_LoadFromWorld();
+	Winter_Load();                 // P1302: bounded map setup only
 	Sun_LoadForMap();               // Patch 874
 	Ropes_LoadForMap();
 
@@ -419,6 +420,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Emit_RegisterCvars();
 	RampWear_Init();                // P1278
 	Snow_Init();                    // P1286
+	Winter_Init();                  // P1302
 	Snds_RegisterCvars();           // build 66, env_soundscape
 	GA_Register();                 // local movement Foley from mounted CSS
 	MA_Register();                 // opt-in local altitude tone and A/D drums
@@ -2051,6 +2053,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	Emit_Frame();
 	RampWear_Frame();               // P1278: its own map latch, whatever vbsp_emit says
 	Snow_Frame();                   // P1286
+	Winter_Frame();                 // P1302: capped props/mist, no per-frame traces
 	Paint_Frame();                  // Patch 772: the camera is final; the world pass draws it
 	Share_Frame();                  // Patch 777: the pick reads the same camera
 	Archive_ClientFrame();
@@ -2873,6 +2876,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	// is drawing" is nearly always either a handle of 0 or a cfg that did not
 	// parse, and those two have different fixes.
 	if (Emit_ConsoleCommand(cmd))
+		return TRUE;
+	if (Winter_ConsoleCommand(cmd))
 		return TRUE;
 
 	// Build 66.  `snd_report` -- which soundscape won, how far away, how many

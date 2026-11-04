@@ -2,8 +2,12 @@
 
 ## Christmas environment and cosmetics — requested 4 Nov 2026
 
-The falling-snow event exists (P1286); the following additions are requested,
-NOT implemented by the ramp/knife/sky follow-up P1300. Snow cover is already
+The falling-snow event exists (P1286). P1302 implements a small licensed native
+prop set and opt-in/capped shader mist; renderer/performance acceptance remains
+pending, so this is NOT an all-effects-complete or default-on performance claim.
+Provisional maps chosen with owner permission: surf_christmas, surf_frost and
+surf_bluewinter. The final event list can be changed later. Remaining additions
+below were NOT implemented by the ramp/knife/sky follow-up P1300. Snow cover is already
 reserved to ftesurf-e2 under P1287: coordinate that work rather than shipping a
 second competing world-shader override.
 
@@ -16,13 +20,15 @@ second competing world-shader override.
   decision. Water/lava coverage, transparent sorting, moving surfaces and
   recognizability each need an in-game check.
 - Santa hat: small original/licensed model plus a real inventory definition and
-  server-owned event entitlement. No client self-grants; choose event dates and
-  whether the gift is permanently retained before activating the grant.
+  server-owned event entitlement. Owner confirmed the gift is PERMANENT for
+  people who play during the event. No client self-grants or web-only claims;
+  leave activation OFF until the actual event should start.
 - Snowmen: licensed candidate FOUND: [Kenney Holiday Kit](https://kenney.nl/assets/holiday-kit)
   (bundled CC0 license checked), snowman 892 triangles / top-hat variant 1110.
-  These are asset candidates, NOT converted/placed/deployed models; the black
-  top hat is not the requested Santa hat. Still need per-map placement records,
-  editor preview and a hard visible-instance cap. Source/provenance:
+  P1302 converts these plus two trees and two gifts to native IQMs and adds
+  bounded sidecar placement records on the three provisional maps. Actual
+  renderer/placement acceptance and deployment remain pending; the black top
+  hat is not the requested Santa hat. Source/provenance:
   [tools/winter-assets.md](tools/winter-assets.md).
 - Winter audio: licensed/original outside wind and sheltered ambience, selected
   from the existing sky/roof mask, crossfaded without per-frame file loads. Add
@@ -44,9 +50,10 @@ Acceptance: event-off is unchanged; cold asset loads occur before play, not on
 first inspect/first flake/first thunder. Compare moving-view frame-time tails
 against effect-off on the target hardware, and inspect indoor leaks, seams,
 transparent ordering and night/bright-map readability. No performance claim from
-a successful compile or a static screenshot. Needed owner choices: extra map
-list/placement preferences, Christmas grant dates/retention and desired ambience
-assets/style. Optional original low-poly hat/snowman avoids third-party licensing.
+a successful compile or a static screenshot. Owner allowed provisional map choices
+and confirmed permanent Santa ownership, so those are NOT blockers. Final map
+preferences and desired ambience/style can follow; actual event activation still
+needs the intended dates. P1302 mist remains opt-in/default0 until qualified.
 
 ## Linked-profile playtime and main/bonus attempts — requested 1 Nov 2026
 

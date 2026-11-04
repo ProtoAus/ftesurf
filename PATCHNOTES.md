@@ -21,6 +21,10 @@
 
 ## next
 
+### P1302 Holiday props and lightweight mist preview
+- Snowmen, snowy decorated trees and gifts are available on provisional Christmas, Frost and Bluewinter layouts. Decorations are visual-only and can be disabled in Display Info.
+- Optional light mist uses shader-animated wisps with strict size, range, draw and coverage caps. It defaults off until moving-view performance is qualified; enable Light mist in Display Info to preview it.
+
 ### P1297 Segmented runs are not completions
 - Your profile's maps finished, completion bars and finished counts leave out maps you have only finished as a segmented run. Segmented times still show on the boards and in your maps with a time.
 

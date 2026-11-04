@@ -1,4 +1,5 @@
 # The engine build this QuakeC requires.
+# Patch 1302 (QC/shader/content only): selected-map Kenney CC0 holiday props and hard-capped shader mist. Mist defaults off pending real moving-view performance acceptance. Native pin/tag and qcbuild unchanged.
 # Patch 1300 (CSQC/shader/tools only): longer-lived ramp scuffs, chart seam/depth fixes, inspect-sound warming and release of a stale milk sky override. Native pin/tag and qcbuild unchanged; runtime acceptance/deployment tracked separately.
 # Patch 1298 (CSQC only): TAS workshop remembers its tab on reopen; old timeline pages still invalidate. Native pin/tag and qcbuild unchanged.
 # Patch 1170: separate transport drop/disconnect from weapon_drop; no Native/API/recorder/movement/timeout change. Qualified actual Native520/MENU6f preserved; main's pending native work is separate.
@@ -29,7 +30,7 @@ commit   9d0a294bd0d60f4f119b3b4c9e79747cf4fbf429
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1299
-patch    1300
+patch    1302
 # Patch 1299 (engine common/pm_source.c): existing gravity carry observation admits finite nonnegative normalized jump offsets through the actual native takeoff origin. Movement, recorder/API and ranking policy unchanged. Clean Windows/ARM builds and native/platform controls pass; dual Windows native deployment verified, Pi blocked by current recorder preservation, as recorded in tools/p1299-gravity.md.
 # Patches 1255/1257 (engine sv_ccmds.c pm_dettest mover-12 lines; renderer gl_mindist 2, viewmodels keep 1): installs tag patch-1257, which merges patch-1260. QC needs neither.
 # Patches 1248-1252 (engine com_bih.c/pm_source.c/pmove.h/sv_user.c + hl2 plugin + engine shader keyword + QC): mover 12 reports a prop piece's real contact plane (no crease snags; lobby engine p1248-pi LIVE 3 Nov 06:10Z, installs tag patch-1251); sprp v10@72 flags at offset 64; lit warp faces keep lightmaps and Source brush tints draw (QC Color input); opaque fake skies depthpush -2; env_laser beams (CSQC). QC needs none of it: older engines just do not show the tint or the fixes.

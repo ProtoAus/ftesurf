@@ -39,6 +39,20 @@ normal-play/edit loop must also be checked beyond the 128-tick/warm-history limi
 Signing/account workflow, physical mouse details and P1298 reopen behavior are
 not confirmed merely because Lex tried other parts of the workshop.
 
+## P1302 holiday props / mist (NOT deployed; candidate check pending)
+Owner approved the Kenney choice (including trees/gifts) and agent-selected
+provisional maps; that is asset/design acceptance, not rendered placement/perf.
+After safe candidate installation, check Christmas/Frost/Bluewinter starts:
+1. Snowmen, trees and gifts sit on flat floors, don't block the run line and are
+   not inside walls. They have no collision; Display Info > Holiday decorations
+   turns them off. Final map/placement preferences can change later.
+2. Mist is opt-in/defaultOFF. Enable Light mist (r_mist1) only for the check:
+   small wisps near selected lights, not full-screen grey fog. Move/turn through
+   the scene; compare off/on and report any hitch or material-error square.
+3. Actual comparative frame-time/renderer checks are pending, not delegated to
+   'looks fine'. Do not claim zero FPS cost from this manual visual check. Leave
+   mist off if it feels costly; r_mist0 submits no fields.
+
 ## P1295 chat commands, P1296 reflections, P1297 segmented runs (both installs and every lobby, 4 Nov 18:21Z)
 1. On a lobby map with bonuses, type each of !b3, /b 3, /b3 and !B3 in chat: each takes you to bonus 3, and none
    shows up in the global chat room. !s2 and /s 2 should go to stage 2.
@@ -47,7 +61,10 @@ not confirmed merely because Lex tried other parts of the workshop.
 3. Your profile: "maps finished" and the completion bars no longer count maps you only have a segmented time on;
    "maps with a time" still lists them, and its "N of M finished" leaves them out.
 
-## P1300 ramp wear / inspect / default sky (NOT deployed; acceptance pending)
+## P1300 ramp wear / inspect / default sky (candidate provenance/acceptance pending)
+Owner, 4 Nov continuation: ramp seam artifacts "seem to went away" on the running
+build. Record as manual observation only, not a P1300-attributed shader/depth or
+frame-time pass; do not spend more work on seam repair unless it recurs.
 Source/build and offline mask controls only until the shared renderer rig is
 available. Do not treat these as owner-confirmed fixes or instructions for an
 already installed build. Once the candidate is qualified and installed:

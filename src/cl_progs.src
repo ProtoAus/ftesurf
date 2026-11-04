@@ -68,6 +68,8 @@ client/cl_emit.qc
 client/cl_rampwear.qc
 // P1286: the snow event's falling snow; before cl_main.qc, which calls Snow_Init and Snow_Frame.
 client/cl_snow.qc
+// P1302: static holiday props and hard-capped GPU mist.
+client/cl_winter.qc
 // Build 66.  A FIFTH independent walk of the same entity lump -- the decals,
 // sprites, fog and emitters are the other four, and no one of the five reads
 // another.  env_soundscape: the entity Source maps actually use for ambience,

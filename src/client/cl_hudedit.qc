@@ -649,6 +649,10 @@ string(string id, float row) HE_OptDef =
 		                     "|Text the map puts on screen (stage names, hints, credits).";
 		if (row == 10) return "hud_mapfx|Map screen effects|t||"
 		                     "|The map's screen fades and camera shakes.";
+		if (row == 11) return "r_winter_props|Holiday decorations|t||"
+		                     "|Static snowmen, trees and gifts on selected event maps. No collision or gameplay changes.";
+		if (row == 12) return "r_mist|Light mist|t||"
+		                     "|Small shader-animated wisps near selected lights. Hard caps on distance, size, visible fields and overdraw; off disables all mist drawing.";
 		return "";
 	}
 
