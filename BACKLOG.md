@@ -1,5 +1,20 @@
 # BACKLOG.md
 
+## P1279/P1280 (4 Nov): review residuals (display only)
+- P1280: one sample at two bhop_ceaseless spots (-2400 1860, -2563 1785) traces 1248-1516 world lights (~10 ms; 86 at
+  spawn). The shared sample halves those frames with the hands, a rate cap cannot remove them, and a dim-light cut
+  does not either (below 1e-4 loses 2.5% of the visible light and still traces 420). Claimed as P1283.
+- P1280: r_modellight_seq does not hash the plugin's hl2_lt_* cvars, so toggling one while standing still keeps the
+  viewmodel's (and, since Patch 105, a still prop's) old light until it moves.
+- P1280: split-screen views would share one viewmodel sample (none in this game).
+- P1279: a save made during a replay is marked after Watch_Stop, so it carries your live segment column, jump state,
+  position and (now) zero, not the replay body's; loading it reads energy from your pre-replay zero until a zone.
+- P1279: a zone download or publish during a replay restores ui_anchor_zone as an index into the old zone table
+  (spectate's hold has the same gap).
+- P1279: `replay window <leg>` and scrubbing back to the start do not re-run HUD_AnchorSeg; the zone last latched stays.
+- P1279: not determined whether a KSF import's track (from the bonus number) always matches the local zone track
+  numbering on linked ports; if not, the replay reads from its own jumps (the console says so).
+
 ## Lex's map list of 3 Nov (P1268-P1274): review residuals
 - P1268: a model's held-back translucent meshes draw in NEAREST, after every BLEND batch, so translucent things
   in front of such a model (world glass, sprites, particles) are drawn under them. The pane itself has had this

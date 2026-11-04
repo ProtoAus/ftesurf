@@ -21,6 +21,14 @@
 
 ## next
 
+### P1280 CS:GO hands no longer cost frame rate
+- The knife, CS:GO arms and sleeve each worked out the map's light at your eye every frame; they now share one look-up, refreshed up to 60 times a second (r_viewmodel_lightrate; 0 = every frame). bhop_ceaseless, hands out, moving: 462 to 628 fps.
+- The plain-leather gloves (Specialist, Sporty, Slick, Motorcycle and others) no longer draw almost black.
+- r_drawviewmodel 0 hides the knife and the hands, as it does any other view model.
+
+### P1279 Replays measure energy from their start zone
+- A replay's energy readout is measured from the start zone of the track or stage it plays, instead of from a jump when the replay begins outside that zone. Closing a replay gives you back your own zero.
+
 ### P1281 Faster water and glass at high frame rates
 - Water and glass reflections are redrawn about 144 times a second instead of every frame (turned with your view in between, and redrawn at once if you move or turn far). At 200-300 fps on surf_eternity's glass that is about 40% more frames; at or below 144 fps nothing changes. r_capturerate sets the rate (0: every frame).
 

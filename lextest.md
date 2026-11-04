@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P1279/P1280 CS:GO hands and replay energy (both installs: exe b89fde71, csprogs ac10e21b; lobbies deploy/p1280-hands (cs 5266984f))
+1. Knife with CS:GO hands, walking about: the hands should now cost about what the knife alone does. bhop_ceaseless
+   measured 462 -> 628 fps moving with the hands. Your Desktop copy gets the exe half with the next release.
+2. Two spots on bhop_ceaseless (and surf_voyager beside its movers) still drop single frames to ~10 ms: one light
+   look-up there checks ~1,500 lights. That is P1283, next.
+3. The plain gloves (Specialist, Sporty, Slick, Motorcycle...) show leather, not near-black (lobbies too).
+4. A replay on a map with zones: E reads from the replay's start zone, without "from jump". Close it: your own E
+   reading is as it was before you opened it.
+5. `r_viewmodel_lightrate` (default 60) is the refresh rate; 0 = every frame.
+
 ## P1277 fewer shader stutters (both installs: exe b9fb1679 patch-1277; your Desktop copy with the next release)
 1. Nothing to set: it is on (`r_glsl_warm 1`). The game writes ftesurf/data/glslwarm.txt as you play.
 2. Where it shows: after an update, a map's first run can still hitch once where a new shader appears. From the
