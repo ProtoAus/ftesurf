@@ -450,11 +450,13 @@ float(float i, vector rp, float width, float draw) MC_Row =
 	who = argv(1); name = uri_unescape(argv(2)); text = uri_unescape(argv(3));
 	if (!strcmp(who, mc_me)) name = "You";
 	// P996: "* ..." in the room is a board line surfd said for the player (social.announce).
+	// P1291: drawn as the in-game chat draws one (cl_chat.qc): their picture (who is the *ahash mark), then the
+	// green line, no "board" title; nothing in the picture's square until it has loaded.
 	if (argv(0) == "-")              // the public room, not a message
 	if (substring(text, 0, 2) == "* ")
 	{
-		if (draw) sui_text(rp, SZ_LABEL, "board", COL_DIM, 1, 0);
-		return MC_NAME_H + MC_GAP + ui_para(rp + [0, MC_NAME_H], width - 20, SZ_LABEL, MC_PITCH,
+		if (draw) MP_Draw(rp, MC_PITCH, who, 1);
+		return MC_GAP + ui_para(rp + [MC_PITCH + 4, 0], width - 24 - MC_PITCH, SZ_LABEL, MC_PITCH,
 		       MC_Plain(strcat(name, " ", substring(text, 2, -1))), SUI_THEME_GOOD, draw);
 	}
 	if (draw)
