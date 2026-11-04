@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1301 smooth view under a roof (both installs: exe 09bb2fac; your Desktop copy with the next release)
+Load surf_classics save 3 on a lobby (or anywhere you fly fast with your head against a sloping roof): the view
+should glide down with the roof, not shudder. Also jump straight up into a flat roof: it should still sit still,
+as P917 made it. Rig, your save and settings: the drawn eye's frame-to-frame jerk 0.58 -> 0.05 units (feet 0.05).
+
 ## TAS owner feedback — 4 Nov 2026: tested, usability NOT accepted
 
 Lex tried the existing TAS tools. Confirmed useful in his trial: left/right

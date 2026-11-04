@@ -1,5 +1,10 @@
 # BACKLOG.md
 
+## P1301 roof eye blend (5 Nov): review residuals (display only)
+- At a roof STEP (not a slope) the blended eye drops up to one tick late (P917 rose up to one tick early on the way out); with the 62-unit hull it can sit about 2 units into the lower roof for part of a tick. A render-position trace would settle it; not seen in play.
+- A frame that runs no prediction pass and no extrapolation reads the previous frame's global pmove for the roof inputs (P917's, mostly QW demo playback); P1301 adds the kept eye as one more trigger, now behind its feet check.
+- The positive-crouch handling (an unclipped end bounds the limit from below) is by construction, not measured.
+
 ## Lobby deploys keep shipping the wrong compiler and skipping codes.txt (4 Nov, P1295)
 - A deploy run from C:\FTESurf compiles with its fteqcc 7ccb93d1, which miscompiles cl_viewmodel's setproperty(227), and nothing appends the new csprogs to tasrevd codes.txt (30 Oct P1118, 4 Nov P1298). build.ps1 -Pi could refuse a compiler whose progs stamp is not git-7809, and append the csprogs sha256 to codes.txt over the same ssh.
 

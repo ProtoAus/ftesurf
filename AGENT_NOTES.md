@@ -1,5 +1,16 @@
 # AGENT_NOTES.md
 
+## P1301 roof eye blends between ticks (5 Nov; ftesurf-2b, root C:/FTESurf-worktrees/roofeye-1301-20261104T1843Z)
+- Engine patch-1301 (cl_pred.c only) on engine main; both installs' client exe 09bb2fac (fteqwsv64 and plugins untouched,
+  P1299's). Lobbies need nothing: the view is client-only.
+- With Lex's cl_maxfps 1000 / cl_netfps 66.67 the frame LERPS the feet between two ticks (cl_predtrace f varies,
+  extrap 0); P917 pinned the eye to the newer tick's roof limit, so a sloping roof stepped once per tick.
+- Measure the rendered eye with cl_predtrace's new last columns: drawn eye = simorg z + crouchr + vhr. The older
+  vh/crouch columns are taken before the roof rewrite and CL_CalcCrouch. The row's seq is cl.movesequence (last
+  sent), not the blended tick, so judge smoothness by the eye's second difference, not by seq boundaries.
+- Arm: artifacts/roofarm.py (dedicated + UDP client, Lex's lobby save copied to the server's non-lobby
+  data/saves/<map>/save003; `cmd sl_goto 3` already places you, sl_load re-places), roofread.py, runroof.sh.
+
 ## P1302 holiday content / bounded mist (4 Nov continuation)
 
 Native IQM props avoid OBJ's runtime vertex deduplication/material ambiguity.

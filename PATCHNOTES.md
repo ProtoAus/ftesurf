@@ -21,6 +21,9 @@
 
 ## next
 
+### P1301 Smooth view under a sloping roof
+- With your head against a sloping roof the lowered view now follows the roof smoothly instead of stepping down in small jumps many times a second, for example flying fast under a descending ceiling.
+
 ### P1302 Holiday props and lightweight mist preview
 - Snowmen, snowy decorated trees and gifts are available on provisional Christmas, Frost and Bluewinter layouts. Decorations are visual-only and can be disabled in Display Info.
 - Optional light mist uses shader-animated wisps with strict size, range, draw and coverage caps. It defaults off until moving-view performance is qualified; enable Light mist in Display Info to preview it.
