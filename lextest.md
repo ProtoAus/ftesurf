@@ -70,7 +70,7 @@
    with no "board" line above it. The picture can take a second to appear.
 2. In game: the same line from another lobby reads "[everyone] Name set a new personal best ..." all in green, no "board".
 
-## P1290 landing sound (lobbies live 5 Nov; both installs: csprogs b1cb665b)
+## P1290 landing sound (lobbies live 4 Nov; both installs: csprogs b1cb665b)
 1. With `cl_game_sfx 1`: drop from a height onto a floor. You should hear a loud footstep of that floor (concrete,
    metal...), not the grunt-like fall-damage sound. `gameaudio_info` prints the last sound played.
 
