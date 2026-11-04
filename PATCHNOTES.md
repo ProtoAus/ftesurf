@@ -21,6 +21,15 @@
 
 ## next
 
+### P1289 Replays: energy after scrubbing back and from replay saves
+- Scrubbing a replay backwards measures energy from the zone the run had reached by then, not the last one passed, and a hand-set zero stays put.
+- A save made while watching a replay keeps that replay's energy zero when you load it, instead of your own.
+
+### P1283 No more lighting dips at light-heavy spots
+- Models (your knife and hands, other players, moving props) no longer re-check every map light each frame: they remember which lights they can see and re-check a few each frame, brightest first.
+- Walking through bhop_ceaseless's light-dense area: 1% low 137 to about 380 fps, stutters 175 to almost none. surf_voyager's moving asteroids no longer stutter.
+- hl2_lt_vcache 0 turns it off.
+
 ### P1284 No hitch when a new part of a map comes into view
 - Every map used to rebuild its lighting, unchanged, the first time each surface came into view, because the light
   setting the server sends just after a load looked different from the one the map was built with. On big maps

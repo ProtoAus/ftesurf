@@ -26,20 +26,24 @@
 - The probes sit in CSQC's collision grid (sv_gameplayfix_nolinknonsolid 1); a box over 16 cells joins the
   overflow list every CSQC trace walks (skipped at the SOLID_NOT test).
 
-## P1279/P1280 (4 Nov): review residuals (display only)
-- P1280: one sample at two bhop_ceaseless spots (-2400 1860, -2563 1785) traces 1248-1516 world lights (~10 ms; 86 at
-  spawn). The shared sample halves those frames with the hands, a rate cap cannot remove them, and a dim-light cut
-  does not either (below 1e-4 loses 2.5% of the visible light and still traces 420). Claimed as P1283.
-- P1280: r_modellight_seq does not hash the plugin's hl2_lt_* cvars, so toggling one while standing still keeps the
-  viewmodel's (and, since Patch 105, a still prop's) old light until it moves.
+## P1279/P1280 (4 Nov): review residuals (display only) -- most fixed by P1283/P1289
+- FIXED P1283: a sample at two bhop_ceaseless spots traced 1248-1516 world lights (~10 ms).
+- FIXED P1289: r_modellight_seq now hashes hl2_lt_occlusion/blend/illumpos, hl2_cubelight, hl2_lt_vcache.
+- FIXED P1289: a save made in a replay loads with the replay leg's zero (viewzero.txt, by place).
+- FIXED P1289: a restored anchor's zone index is re-checked against the floor after a zone download/publish.
+- FIXED P1289: a backward seek restores the zone the replay body had latched by then.
 - P1280: split-screen views would share one viewmodel sample (none in this game).
-- P1279: a save made during a replay is marked after Watch_Stop, so it carries your live segment column, jump state,
-  position and (now) zero, not the replay body's; loading it reads energy from your pre-replay zero until a zone.
-- P1279: a zone download or publish during a replay restores ui_anchor_zone as an index into the old zone table
-  (spectate's hold has the same gap).
-- P1279: `replay window <leg>` and scrubbing back to the start do not re-run HUD_AnchorSeg; the zone last latched stays.
-- P1279: not determined whether a KSF import's track (from the bonus number) always matches the local zone track
-  numbering on linked ports; if not, the replay reads from its own jumps (the console says so).
+- P1279: KSF bonus N = local track N, checked on 1 import (surf_monolith bonus 4); linked ports not surveyed.
+- P1289: the stage-window floor (Watch_AnchorBase in Watch_StageWindow) is not measured; viewzero.txt lines outlive
+  their saves (128 kept) and match by place only, so a later demoted row within a unit of one takes its zero.
+
+## P1283 light cache (4 Nov): residuals (display only)
+- A still model first lit where many lights are new keeps an estimate until its re-sample settles it (1-2 s).
+- Callers within 64qu share a slot's answers; a frame with several views gets the 1 ms trace budget each.
+- r_modellight_cache 2 stands aside on Source maps while hl2_lt_vcache is on (answers refine); use
+  hl2_lt_vcache 0 to prove a cache bug there.
+- The dip survey's other classes are not this patch: mid-run permutation compiles (P1277/P1282) and first-view
+  lightmap rebuilds (P1284); one surf_voyager replay frame of 18 ms on the ship build is not yet placed.
 
 ## Lex's map list of 3 Nov (P1268-P1274): review residuals
 - P1268: a model's held-back translucent meshes draw in NEAREST, after every BLEND batch, so translucent things
@@ -62,7 +66,7 @@
 ## P1277 frame pacing (4 Nov): other stalls found, and warm-list residuals
 - surf_monolith lightmap rebuilds (~85 ms a run): fixed by P1284, first-view rebuilds on every map.
 - surf_boreas, the first view of a portal or water surface: GLR_DrawPortal -> GLBE_GenerateBatchTextures, ~30 ms once.
-- surf_voyager model lighting beside movers: R_CalcModelLighting -> VBSP_LightPointValues -> VBSP_AddWorldLightCube ->
+- FIXED P1283 (stutters 377 -> 5 on the osku replay): surf_voyager model lighting beside movers: R_CalcModelLighting -> VBSP_LightPointValues -> VBSP_AddWorldLightCube ->
   VBSP_WorldLightVisible (BIH traces), 8-13 ms.
 - Opening a replay (Watch_Open parses the .rec in CSQC): 80-380 ms, before playback, not mid-run.
 - P1282's starter list (ftesurf/glsl/warmseed.txt) covers 24 maps and the knife's default arms and glove.

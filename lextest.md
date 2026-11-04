@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1283 lighting dips, P1289 replay energy (both installs: exe 23ec25b6, plugin d8b18216, csprogs 05fb419a; lobbies cs f1ba05b8)
+1. bhop_ceaseless with the CS:GO hands, walking through the light-heavy area near the start (and surf_voyager by
+   its moving asteroids): no hitches. Rig: 1% low 137 -> ~380 fps, 175 stutters -> 0-28.
+2. Lighting should look the same: models remember which lights they see and refresh a few a frame. If a model's
+   light looks wrong for a second after a teleport, that is the refresh catching up; `hl2_lt_vcache 0` turns it off.
+3. A replay: pause it, scrub back (left arrow) -- E reads from the zone the run had reached then.
+4. Save while watching a replay (save key), close it, load that save: E reads from the replay's zone, not yours.
+5. Your Desktop copy gets the engine half with the next release; the lobbies have the replay part now.
+
 ## P1279/P1280 CS:GO hands and replay energy (both installs: exe b89fde71, csprogs ac10e21b; lobbies deploy/p1280-hands (cs 5266984f))
 1. Knife with CS:GO hands, walking about: the hands should now cost about what the knife alone does. bhop_ceaseless
    measured 462 -> 628 fps moving with the hands. Your Desktop copy gets the exe half with the next release.
