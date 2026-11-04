@@ -169,6 +169,10 @@
   Superseded by the line below.
 - LOBBY QC deploy/p1291-chat 314a49ae (P1291 chat board lines, client QC, on deploy/p1290-land) LIVE 4 Nov 08:02Z:
   qw 45d4be3a (unchanged), cs 4f1726c0 (.prev 348f07bb), codes.txt appended (.pre1291; installs' 9b46683c too).
+  Superseded by the line below.
+- LOBBY QC deploy/p1286-snow ffc54bca (P1286 snow event, client QC, on deploy/p1291-chat) LIVE 4 Nov ~08:50Z:
+  qw 45d4be3a (unchanged), cs d0c63e39 (.prev 4f1726c0), codes.txt appended (.pre1286; installs' a8b1a818 too).
+  Players draw it only with the new assets (glsl, scripts/snow.shader, models/snow, the snowmask bakes).
   NEXT LOBBY QC STACKS ON IT.
 - Pi: agent-work/chatfair-1206-57e27fa4 and chatsave-1200-57e27fa4 are in the live surfd drop-in's
   ReadWritePaths and its preflight writes into each: deleting them stops surfd starting.
