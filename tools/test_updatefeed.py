@@ -111,12 +111,84 @@ class PublisherTests(unittest.TestCase):
         previous = (self.root / 'both/update.json').read_bytes()
         self.build(previous=previous, previous_objects=self.root / 'both/objects')
         m = feed.verify((self.root / 'feed/update.json').read_bytes(), KEY)
-        self.assertEqual(len([f for f in m['files'] if f['platform'] == 'linux64']), 5)
+        # P1294: what Linux installs is its own entries and the shared "all" ones
+        self.assertEqual(len([f for f in m['files'] if f['platform'] in ('linux64', 'all')]), 5)
         self.assertEqual(m['exec_by_platform']['linux64']['cmd'], 'ftesurf64')
         objects = feed.verify_objects(self.root / 'feed/objects', m)
         self.assertEqual(len((self.root / 'feed/objects.txt').read_text().splitlines()), len(objects))
         linux_exe = next(f for f in m['files'] if f['path'] == 'ftesurf64')
         self.assertEqual(feed.object_bytes(self.root / 'feed/objects', linux_exe['hash'], linux_exe['size']), b'ftesurf64\n')
+
+    def both(self, name='both'):
+        linux = stage(self.root / 'linux', 'linux64')
+        feed.build({'win64': self.win, 'linux64': linux}, self.root / name, '0.1.24',
+                   ['https://dl.proto.bar/ftesurf/update'], SEED, KEY)
+        return feed.verify((self.root / name / 'update.json').read_bytes(), KEY), linux
+
+    def test_shared_files_listed_once_as_all(self):
+        # P1294: identical bytes and exec flag on both platforms -> one "all" entry; the executables stay native
+        m, _ = self.both()
+        by = {(f['path'], f['platform']) for f in m['files']}
+        for shared in ('default.fmf', 'ftesurf/menu.dat', 'ftesurf/csprogs.dat', 'ftesurf/qwprogs.dat'):
+            self.assertIn((shared, 'all'), by)
+            self.assertNotIn((shared, 'win64'), by)
+            self.assertNotIn((shared, 'linux64'), by)
+        self.assertIn(('ftesurf64.exe', 'win64'), by)
+        self.assertIn(('ftesurf64', 'linux64'), by)
+        self.assertEqual(len(m['files']), 6)
+        for platform in ('win64', 'linux64'):
+            self.assertEqual(len([f for f in m['files'] if f['platform'] in (platform, 'all')]), 5)
+        self.assertEqual(feed.platforms(m), {'win64', 'linux64'})
+
+    def test_differing_bytes_or_exec_stay_native(self):
+        linux = stage(self.root / 'linux', 'linux64')
+        (linux / 'ftesurf/menu.dat').write_bytes(b'linux menu\n')        # same path, other bytes
+        (self.win / 'ftesurf.sh').write_bytes(b'#!/bin/sh\n')            # same bytes, exec only on Linux
+        (linux / 'ftesurf.sh').write_bytes(b'#!/bin/sh\n')
+        feed.build({'win64': self.win, 'linux64': linux}, self.root / 'diff', '0.1.24',
+                   ['https://dl.proto.bar/ftesurf/update'], SEED, KEY)
+        m = feed.verify((self.root / 'diff/update.json').read_bytes(), KEY)
+        by = {(f['path'], f['platform']): f for f in m['files']}
+        self.assertIn(('ftesurf/menu.dat', 'win64'), by)
+        self.assertIn(('ftesurf/menu.dat', 'linux64'), by)
+        self.assertNotIn(('ftesurf/menu.dat', 'all'), by)
+        self.assertFalse(by[('ftesurf.sh', 'win64')]['exec'])
+        self.assertTrue(by[('ftesurf.sh', 'linux64')]['exec'])
+        self.assertNotIn(('ftesurf.sh', 'all'), by)
+
+    def test_all_overlapping_a_native_entry_is_refused(self):
+        # the launcher's "overlapping platform entries": an "all" and a native entry would install two versions
+        m, _ = self.both()
+        shared = next(f for f in m['files'] if f['platform'] == 'all')
+        for bad in (dict(m, files=m['files'] + [dict(shared, platform='win64')]),
+                    dict(m, files=m['files'] + [dict(shared, platform='all', path='ftesurf/gfx/x.png'),
+                                                dict(shared, platform='all', path='ftesurf/gfx/X.png')])):
+            with self.assertRaisesRegex(ValueError, 'duplicate update path'):
+                feed.validate(bad)
+
+    def test_all_only_feed_is_refused(self):
+        m, _ = self.both()
+        only = dict(m, files=[dict(f, platform='all') for f in m['files'] if f['path'] != 'ftesurf64'])
+        with self.assertRaises(ValueError):
+            feed.validate(only)
+
+    def test_windows_only_release_after_a_merged_feed(self):
+        # a retained Linux keeps its copies of the old "all" entries; nothing overlaps
+        m, _ = self.both()
+        self.build(previous=(self.root / 'both/update.json').read_bytes(), previous_objects=self.root / 'both/objects')
+        n = feed.verify((self.root / 'feed/update.json').read_bytes(), KEY)
+        feed.validate(n)
+        for platform in ('win64', 'linux64'):
+            got = sorted(f['path'] for f in n['files'] if f['platform'] in (platform, 'all'))
+            self.assertEqual(len(got), 5, platform)
+        self.assertEqual(feed.platforms(n), {'win64', 'linux64'})
+
+    def test_shared_bytes_count_once_toward_the_limit(self):
+        m, _ = self.both()
+        listed = sum(f['size'] for f in m['files'])
+        per_platform = sum(f['size'] for f in m['files'] if f['platform'] in ('win64', 'all')) + \
+            sum(f['size'] for f in m['files'] if f['platform'] in ('linux64', 'all'))
+        self.assertLess(listed, per_platform)
 
     def test_missing_or_corrupt_retained_objects_fail_before_feed(self):
         linux = stage(self.root / 'linux', 'linux64')

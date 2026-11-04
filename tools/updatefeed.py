@@ -95,31 +95,60 @@ def validate(payload: dict) -> dict[str, int]:
     files = payload.get("files")
     if not isinstance(files, list) or not files or len(files) > 8192:
         raise ValueError("invalid update file set")
-    objects, paths = {}, {}
+    objects = {}
     for f in files:
         platform = f.get("platform")
         p, h, size = f.get("path"), f.get("hash"), f.get("size")
-        if (platform not in ("win64", "linux64") or not isinstance(p, str) or not managed(p)
+        if (platform not in ("all", "win64", "linux64") or not isinstance(p, str) or not managed(p)
                 or not isinstance(h, str) or not re.fullmatch(r"[0-9a-f]{64}", h)
                 or type(size) is not int or not 0 <= size <= 32 * 1024 * 1024
                 or type(f.get("exec")) is not bool):
             raise ValueError("invalid update file descriptor")
-        platform_paths = paths.setdefault(platform, set())
-        if p.lower() in platform_paths:
-            raise ValueError("duplicate update path")
-        platform_paths.add(p.lower())
         if h in objects and objects[h] != size:
             raise ValueError("inconsistent object size")
         objects[h] = size
+    # The launchers sum every entry, "all" ones once (ftesurf_update.rs validate).
     if sum(f["size"] for f in files) > 160 * 1024 * 1024:
         raise ValueError("feed exceeds small-install limits")
-    for platform, names in paths.items():
+    native = platforms(payload)
+    if not native:
+        raise ValueError("invalid update file set")
+    for platform in sorted(native):
+        # P1294: what this platform installs is its own entries and the "all" ones; a path once among them, as
+        # the launcher's "overlapping platform entries" check (an "all" and a native entry would install two).
+        names = set()
+        for f in files:
+            if f["platform"] in ("all", platform):
+                if f["path"].lower() in names:
+                    raise ValueError("duplicate update path")
+                names.add(f["path"].lower())
         exe = "ftesurf64.exe" if platform == "win64" else "ftesurf64"
         if not {exe, "default.fmf", "ftesurf/menu.dat", "ftesurf/csprogs.dat", "ftesurf/qwprogs.dat"} <= names:
             raise ValueError("feed missing required updater file")
         if payload.get("exec_by_platform", {}).get(platform) != {"cmd": exe, "args": ["-manifest", "default.fmf"]}:
             raise ValueError("invalid platform executable")
     return objects
+
+
+def platforms(payload: dict) -> set[str]:
+    """The platforms a feed installs: every native entry's (an "all" entry serves those, not a platform of its own)."""
+    return {f["platform"] for f in payload["files"]} - {"all"}
+
+
+def merge_shared(files: list[dict]) -> list[dict]:
+    """P1294: a path both platforms carry with the same bytes and exec flag is listed once, as "all"."""
+    groups: dict[str, list[dict]] = {}
+    for f in files:
+        groups.setdefault(f["path"].lower(), []).append(f)
+    out = []
+    for group in groups.values():
+        a, b = (group + [None, None])[:2]
+        if (len(group) == 2 and {a["platform"], b["platform"]} == {"win64", "linux64"} and a["path"] == b["path"]
+                and a["hash"] == b["hash"] and a["size"] == b["size"] and a["exec"] == b["exec"]):
+            out.append(dict(a, platform="all"))
+        else:
+            out.extend(group)
+    return out
 
 
 def object_bytes(root: Path, h: str, size: int) -> bytes:
@@ -155,7 +184,7 @@ def check_publication(feed: Path, receipt: Path, version: str, previous: Path,
     if expected_previous == "none":
         if previous.exists() or previous.is_symlink():
             raise ValueError("first feed refuses an existing published feed")
-        if {f["platform"] for f in payload["files"]} != {"win64", "linux64"}:
+        if platforms(payload) != {"win64", "linux64"}:
             raise ValueError("first feed requires both supported platforms")
     else:
         if not re.fullmatch(r"[0-9a-f]{64}", expected_previous):
@@ -167,7 +196,7 @@ def check_publication(feed: Path, receipt: Path, version: str, previous: Path,
         validate(old)
         if tuple(map(int, payload["version"].split('.'))) <= tuple(map(int, old["version"].split('.'))):
             raise ValueError("update version must advance (no rollback or same-version replacement)")
-        if not {f["platform"] for f in old["files"]} <= {f["platform"] for f in payload["files"]}:
+        if not platforms(old) <= platforms(payload):
             raise ValueError("update dropped a supported platform")
 
 
@@ -188,7 +217,8 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
     files = []
     # A Windows-only release must not drop the previous Linux installation's entries.
     if old is not None:
-        files.extend(f for f in old["files"] if f["platform"] not in stages)
+        for q in sorted(platforms(old) - set(stages)):
+            files.extend(dict(f, platform=q) for f in old["files"] if f["platform"] in (q, "all"))
     executables = dict(old.get("exec_by_platform", {})) if old is not None else {}
     omitted = []
     for platform, stage in stages.items():
@@ -228,6 +258,7 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
             if required.lower() not in paths:
                 raise ValueError(f"stage missing required updater file: {required}")
         executables[platform] = {"cmd": exe, "args": ["-manifest", "default.fmf"]}
+    files = merge_shared(files)
     payload = {"schema": 2, "hash_algo": "blake2b-256", "game": "ftesurf", "channel": "stable",
                "version": version, "object_layout": "objects/{h0h1}/{hash}", "mirrors": mirrors,
                "files": sorted(files, key=lambda f: (f["path"], f["platform"])),

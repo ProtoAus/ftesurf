@@ -66,6 +66,8 @@ def main():
     ap.add_argument('--tree', type=Path, required=True)
     ap.add_argument('--engine-release', type=Path, required=True)
     ap.add_argument('--progs', type=Path, required=True)
+    ap.add_argument('--shared', action='store_true',
+                    help='P1294: publish the other platform too, so shared files are "all" entries')
     a = ap.parse_args()
     posix = os.name == 'posix'
     exe = 'ftesurf64' if posix else 'ftesurf64.exe'
@@ -117,7 +119,14 @@ def main():
         nonlocal serial
         serial += 1
         output = root / f'feed-{serial}'
-        updatefeed.build({platform: stage}, output, version, [base], seed)
+        stages = {platform: stage}
+        if a.shared:    # the same files under the other platform's engine name: all but the engine merge to "all"
+            other = root / f'stage-other-{serial}'
+            shutil.copytree(stage, other)
+            other_exe = 'ftesurf64.exe' if posix else 'ftesurf64'
+            (other / exe).rename(other / other_exe)
+            stages['win64' if posix else 'linux64'] = other
+        updatefeed.build(stages, output, version, [base], seed)
         for obj in (output / 'objects').glob('*/*'):
             dest = http / 'objects' / obj.parent.name / obj.name
             dest.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(obj, dest)
@@ -132,7 +141,7 @@ def main():
         shutil.copytree(control, dest)
         (dest / '.ftesurf-updater').mkdir()
         (dest / '.ftesurf-updater/consent').write_text(str(permission) + '\n')
-        (dest / '.ftesurf-updater/state.json').write_text(json.dumps({'version': '0.1.24', 'files': {f['path']: f['hash'] for f in bm['files']}}))
+        (dest / '.ftesurf-updater/state.json').write_text(json.dumps({'version': '0.1.24', 'files': {f['path']: f['hash'] for f in bm['files'] if f['platform'] in (platform, 'all')}}))
         (dest / '.ftesurf-updater/installed.json').write_text(baseline)
         (dest / 'ftesurf/data').mkdir(parents=True, exist_ok=True)
         (dest / 'ftesurf/data/consent.txt').write_text('version 1\n')
