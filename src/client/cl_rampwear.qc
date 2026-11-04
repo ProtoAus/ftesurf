@@ -1,5 +1,6 @@
 // FTESurf P1278: ramp wear. tools/rampwear.py bakes, per map, the ridden ramps' triangles
-// (data/rampwear/<map>.txt) and their mask (textures/rampwear/<map>.png) from replays; this draws
+// (gfx/rampwear/<map>.txt) and their mask (gfx/rampwear/<map>.png; P1293: gfx/ is a path every launcher
+// updates) from replays; this draws
 // them as polygons with glsl/ftesurf_rampwear.glsl and a multiply blend, so the ramp's own lighting
 // carries it. Polygons, not a model entity: one map-sized OBJ entity was never drawn (P1278 notes).
 // The normal rides in the vertex colour. r_rampwear 0 hides it; r_rampwear_dirt / r_rampwear_scratch
@@ -59,13 +60,13 @@ void() RampWear_Load =
 	rw_map = strzone(mname);
 	if (mname == "")
 		return;
-	fh = fopen(sprintf("data/rampwear/%s.txt", mname), FILE_READ);
+	fh = fopen(sprintf("gfx/rampwear/%s.txt", mname), FILE_READ);
 	if (fh < 0)
 		return;
 	line = fgets(fh);
 	if (tokenize(line) != 5 || argv(0) != "rampwear" || argv(1) != "1")
 	{
-		print(sprintf("^3rampwear: data/rampwear/%s.txt: not a version 1 file\n", mname));
+		print(sprintf("^3rampwear: gfx/rampwear/%s.txt: not a version 1 file\n", mname));
 		fclose(fh);
 		return;
 	}
@@ -118,7 +119,7 @@ void() RampWear_Load =
 	rw_alloc = TRUE;
 	// exactvertex: plain `vertex` scales by identitylighting (HDR exposure), and the colour is a normal.
 	// $nosrgb: the mask is data, not colour.
-	shaderforname(rw_shader, sprintf("{\npolygonoffset\nsort decal\n{\nprogram ftesurf_rampwear\nblendfunc filter\nclampmap $nosrgb:textures/rampwear/%s.png\nrgbgen exactvertex\nalphagen vertex\n}\n}\n", mname));
+	shaderforname(rw_shader, sprintf("{\npolygonoffset\nsort decal\n{\nprogram ftesurf_rampwear\nblendfunc filter\nclampmap $nosrgb:gfx/rampwear/%s.png\nrgbgen exactvertex\nalphagen vertex\n}\n}\n", mname));
 	print(sprintf("rampwear: %s, %g surfaces, %g triangles\n", mname, rw_n, rw_ntri));
 };
 
