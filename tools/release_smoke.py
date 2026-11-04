@@ -94,7 +94,7 @@ def smoke(receipt, root, distro):
         install = root / platform
         install.mkdir()
         (install / ('WOS-Launcher.exe' if platform == 'win64' else 'WOS-Launcher')).write_bytes(data)
-        files = [f for f in payload['files'] if f['platform'] == platform]
+        files = [f for f in payload['files'] if f['platform'] in (platform, 'all')]   # P1294: shared entries too
         zone = next(f['path'] for f in files if f['path'].startswith('ftesurf/maps/zones/local/') and f['path'].endswith('.json'))
         sentinels = {'ftesurf/ftesurf.cfg': b'// synthetic release smoke settings\n',
                      'ftesurf/data/release-smoke-sentinel.txt': b'synthetic player-data sentinel\n',
