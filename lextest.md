@@ -25,6 +25,10 @@
    reading is as it was before you opened it.
 5. `r_viewmodel_lightrate` (default 60) is the refresh rate; 0 = every frame.
 
+**0.1.39 is out (4 Nov ~11:55Z).** Everything under P1268-P1292 in PATCHNOTES ## 0.1.39 (not the TAS P1154/P1161).
+Update your Desktop copy through WOS-Launcher, then check from there. Ramp wear and the Christmas snow masks now live
+under gfx/ (P1293); the lobbies and both installs read them there.
+
 ## P1284 no hitch at new areas, P1282 starter shaders (both installs: exe 9eb7aed8 patch-1284; your Desktop copy with the next release)
 1. surf_monolith, surf_demise or surf_boreas: surf into parts of the map you have not seen yet this load. The small
    freeze as a new area appears should be gone; the lighting should look exactly as before.

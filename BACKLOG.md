@@ -71,6 +71,18 @@
   mask still cuts same-area geometry behind a sky face at r_sky_forcedepth_scale's distance there, where
   Source shows it whole. Our vised walk area-culls area-0 leaves, which Source does not.
 
+## 0.1.39 release (4 Nov): residuals
+- The update feed is 117 of the launchers' 160 MiB (P1294 lists shared files once); ramp wear alone is 25 MB a
+  platform (23 maps of RGBA atlases + triangle text). Smaller bakes, or downloading them on demand like zones, before
+  the next big asset set.
+- A Windows-only release after a merged feed lists each shared file it changes twice (new win64, old linux64);
+  updatefeed's limit check refuses it past ~43 MiB of changed shared content (fails safe).
+- tools/test_ingame_update.py is stale against both engines: its cold-recovery rejection expects text the 0.1.38/0.1.39
+  updater does not print ("Invalid recovery tuple"), and main's menu no longer applies an update from the probe alone
+  (state stays "available"). Its first six cases pass on both engines, with and without --shared.
+- A future third platform: "all" means every platform to the launcher (manifest.rs wanted()); merge_shared would
+  need to compare all of them.
+
 ## P1277 frame pacing (4 Nov): other stalls found, and warm-list residuals
 - surf_monolith lightmap rebuilds (~85 ms a run): fixed by P1284, first-view rebuilds on every map.
 - surf_boreas, the first view of a portal or water surface: GLR_DrawPortal -> GLBE_GenerateBatchTextures, ~30 ms once.

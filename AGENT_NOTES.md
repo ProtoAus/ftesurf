@@ -1,5 +1,18 @@
 # AGENT_NOTES.md
 
+## 0.1.39 release (4 Nov; ftesurf-2b, root C:/FTESurf-worktrees/release0139-20261104T1033Z)
+- Shipped paths must be managed by the update policy that players' launchers carry (ftesurf_update.rs managed(),
+  mirrored in tools/updatefeed.py and engine qkupdate.c). A feed naming any other path is refused WHOLE by every
+  installed launcher, and the feed never updates the launcher. New asset folders go under gfx/, glsl/, particles/,
+  scripts/, models/ or sound/ (P1293 moved ramp wear and snow masks to gfx/). The preflight's UNMANAGED line is this.
+- The launchers also refuse a feed whose entries sum past 160 MiB. Before P1294 every file was listed per platform;
+  0.1.38 was 155 MiB. Now shared files are "all" entries (0.1.39: 117 MiB). Proof: tools/test_update_launcher_shared.py
+  with the real 0.1.38/0.1.39 launchers, Windows and WSL; test_ingame_update.py --shared with both engines.
+- The release tree's ## next must list only what ships, one line a point, 250 at most: the notes parser skips
+  continuation lines silently (releaselib.ps1), so a wrapped point ships cut after its first line.
+- release.ps1's 96 MB stage ceiling (-MaxTotalMB) is a tripwire, not the feed limit: raise it when the growth is
+  the new content (0.1.39: 128).
+
 ## P1282/P1284 starter warm list, first-view lightmaps (4 Nov; root C:/FTESurf-worktrees/pacing1277-2b)
 - P1284's cause, from the hitch probe's lightmap counters (probe branch p1277-hitchprobe: each slow frame's
   rebuilds by cause, and the first rebuild's style with its cached and current light and colour key):
