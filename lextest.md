@@ -1,5 +1,33 @@
 # lextest.md — things waiting on a human
 
+## TAS owner feedback — 4 Nov 2026: tested, usability NOT accepted
+
+Lex tried the existing TAS tools. Confirmed useful in his trial: left/right
+movement controls, auto strafe for air speed gain, and advancing frames. This is
+manual feedback for those observed interactions, not an all-map or optimizer pass.
+
+Reported problems/requests:
+- Could not readily play a normal line, pause and recalculate the earlier line;
+  recalculate itself was not tried, so no claim that its implementation failed.
+- Current gain-oriented turning was not sharp enough to stay on the tested ramp.
+  Wants a directional-key layout and fine faster/slower turning relative to the
+  gain-oriented reference; exact angle snaps are not the main use case.
+- Wants all captured ticks visible, with that tick's control settings restored
+  when seeking/backing; also wants to inspect ticks from other runs.
+- On ground with forward+right and the assist, observed roughly 275 versus an
+  expected maximum near 289. Map, effective rules, ground/contact state and exact
+  measurements are not yet captured; do not record this as a verified cap/bug fix.
+- Longer-term: start/jump/air/ramp sections, seek to section boundaries and
+  improve a ramp/air section while reaching the following ramp well.
+
+Plan only: [human-first workflow](tools/plan-tas-human-workflow.md). No new screen,
+turn multiplier, full-history edit path or ground fix is installed by that plan.
+Next small owner acceptance when a prototype exists: one familiar ramp, choose
+A/D, tune turn amount, step, rewind and check the settings come back. The full
+normal-play/edit loop must also be checked beyond the 128-tick/warm-history limit.
+Signing/account workflow, physical mouse details and P1298 reopen behavior are
+not confirmed merely because Lex tried other parts of the workshop.
+
 ## P1295 chat commands, P1296 reflections, P1297 segmented runs (both installs and every lobby, 4 Nov 18:21Z)
 1. On a lobby map with bonuses, type each of !b3, /b 3, /b3 and !B3 in chat: each takes you to bonus 3, and none
    shows up in the global chat room. !s2 and /s 2 should go to stage 2.
@@ -1055,7 +1083,10 @@ confirmation or genuine ranked-run acceptance is inferred from the instrumented
 native five-case control/subject checks. No new speed/dwell threshold; full
 future-state commitment coverage remains open. tools/p1075-command-fence.md records delivery.
 
-**P1074 -- TAS workshop/constant-direction help (owner check pending):** Installed
+**P1074 -- TAS workshop/constant-direction help (owner tried 4 Nov; redesign requested):**
+See the dated TAS feedback above: selected movement/air-assist/stepping interactions
+were useful, but overall usability was not accepted; unobserved checks below
+remain pending. Installed
 both Windows roles2026-10-27T21:54:07Z; each actual installed client/server passes
 7socket mouse/cursor/authoring/rewind checks, not rendered acceptance. With the
 matching local native/server/client, use `cl_threadedphysics 0`, walk out of the

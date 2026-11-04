@@ -6,6 +6,13 @@ not a claim that later-delivered editor or signing features are still absent. Fo
 reconciled implemented/pending split and continuation point, see
 [the current TAS status](tas-status.md) (4 November 2026).
 
+**Owner direction after hands-on use, 4 November:** prioritize the
+[human-first surf workflow](plan-tas-human-workflow.md): normal play -> pause ->
+revise an earlier line, arrow-layout movement, fine gain-relative turn control,
+full tick history/restored settings, then ground gain and ramp/airtime sections.
+This is a new implementation plan, not a shipped redesign. Existing public
+submission/board prerequisites remain, but must not displace this local UX work.
+
 ## Goal and acceptance
 
 Let players slow movement, step exact physics ticks, branch and edit input timelines,

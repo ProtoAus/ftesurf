@@ -71,6 +71,20 @@ collector is created; real hours/attempts remain unfinished requested work.
 
 Full staged plan and acceptance: [tools/plan-tas.md](tools/plan-tas.md).
 **Current delivery map and resume point (4 Nov): [tools/tas-status.md](tools/tas-status.md).**
+
+**Human-first redesign requested after Lex's hands-on test, 4 Nov (UNBUILT):**
+[tools/plan-tas-human-workflow.md](tools/plan-tas-human-workflow.md). Prioritize
+normal play -> pause -> revise/recalculate an earlier interval; a forward/left/
+back/right pad; independently adjustable gain-relative turning with fine control;
+complete captured tick browsing and restored settings on seek/back/load. Ground
+prestrafe needs a real ground objective (the existing assist is air-only); later
+add start/jump/air/ramp sections, exact Start/End seeking and constrained section
+improvement that boards the next ramp rather than merely maximizing exit speed.
+Keep useful manual A/D, air assistance and frame stepping. Check the interface
+with Lex on one ramp early; do not let backend work or a perfect harness replace
+this local usability goal. Full-history and state correctness are substantive
+native/project work, not a promise fulfilled by a cosmetic UI patch.
+
 The local editor is substantially implemented: P1052/P1055/P1061 practice, pause,
 step and retained rewind; P1065/P1074/P1077 input editing/workshop/undo-redo;
 P1082/P1110 saved and portable legal-start projects; P1087 comparison ghosts;
