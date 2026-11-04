@@ -4,8 +4,12 @@
 
 Implemented in an isolated source tree and QC-compiled; offline bake controls
 pass. **NOT fully runtime-qualified, NOT deployed.** The original rendered control
-ran after waiting 544 seconds at the existing 60-second quiet / 4 GiB free-memory
-gate. Subject remained blocked at that same gate and its verified owned waiter
+ran after waiting 544 seconds at the helper's 20-second quiet / 4 GiB free-memory
+gate. Correction on source reread, 4 Nov continuation: the earlier '60-second'
+claim was wrong; the borrowed file actually set QUIET=20. The three checks are
+functional evidence only, never a numerical performance or 60-second-gate pass.
+The current guard was separately fixed to60 for P1302. P1300's subject remained
+blocked at the old gate and its verified owned waiter
 was stopped without child processes or an owned gate left behind. The negative
 producer is confirmed; subject qualification remains paused, not passed.
 Do not equate the build with a visual, audio, frame-time or lobby acceptance pass.

@@ -1,5 +1,58 @@
 # lextest.md — things waiting on a human
 
+## TAS owner feedback — 4 Nov 2026: tested, usability NOT accepted
+
+Lex tried the existing TAS tools. Confirmed useful in his trial: left/right
+movement controls, auto strafe for air speed gain, and advancing frames. This is
+manual feedback for those observed interactions, not an all-map or optimizer pass.
+Later on 4 Nov, Lex approved the proposed redesign direction ("looks really good")
+and requested crouched strafes plus automatic vertical look along movement while
+retaining left/right view-angle control. This is plan approval, not acceptance of
+an implemented redesign, a crouch-physics claim or a new in-game camera test.
+
+Reported problems/requests:
+- Could not readily play a normal line, pause and recalculate the earlier line;
+  recalculate itself was not tried, so no claim that its implementation failed.
+- Current gain-oriented turning was not sharp enough to stay on the tested ramp.
+  Wants a directional-key layout and fine faster/slower turning relative to the
+  gain-oriented reference; exact angle snaps are not the main use case.
+- Wants all captured ticks visible, with that tick's control settings restored
+  when seeking/backing; also wants to inspect ticks from other runs.
+- On ground with forward+right and the assist, observed roughly 275 versus an
+  expected maximum near 289. Map, effective rules, ground/contact state and exact
+  measurements are not yet captured; do not record this as a verified cap/bug fix.
+- Longer-term: start/jump/air/ramp sections, seek to section boundaries and
+  improve a ramp/air section while reaching the following ramp well.
+- Follow-up: handle crouched strafing; "less airaccelerate or something" is the
+  owner's hypothesis, not a measured rule. Source inspection shows this mover's
+  duck input crop is ground-only; actual stance/contact/transitions still need
+  matched movement controls during implementation.
+- Follow-up: automatic vertical aim should look upwards when climbing a ramp and
+  downwards while falling. Horizontal yaw matters most and stays independent;
+  smoothing, manual override and seek-restored settings need owner comfort checks.
+
+Plan only: [human-first workflow](tools/plan-tas-human-workflow.md). No new screen,
+turn multiplier, full-history edit path or ground fix is installed by that plan.
+Next small owner acceptance when a prototype exists: one familiar ramp, choose
+A/D, tune turn amount, step, rewind and check the settings come back. The full
+normal-play/edit loop must also be checked beyond the 128-tick/warm-history limit.
+Signing/account workflow, physical mouse details and P1298 reopen behavior are
+not confirmed merely because Lex tried other parts of the workshop.
+
+## P1302 holiday props / mist (NOT deployed; candidate check pending)
+Owner approved the Kenney choice (including trees/gifts) and agent-selected
+provisional maps; that is asset/design acceptance, not rendered placement/perf.
+After safe candidate installation, check Christmas/Frost/Bluewinter starts:
+1. Snowmen, trees and gifts sit on flat floors, don't block the run line and are
+   not inside walls. They have no collision; Display Info > Holiday decorations
+   turns them off. Final map/placement preferences can change later.
+2. Mist is opt-in/defaultOFF. Enable Light mist (r_mist1) only for the check:
+   small wisps near selected lights, not full-screen grey fog. Move/turn through
+   the scene; compare off/on and report any hitch or material-error square.
+3. Actual comparative frame-time/renderer checks are pending, not delegated to
+   'looks fine'. Do not claim zero FPS cost from this manual visual check. Leave
+   mist off if it feels costly; r_mist0 submits no fields.
+
 ## P1295 chat commands, P1296 reflections, P1297 segmented runs (both installs and every lobby, 4 Nov 18:21Z)
 1. On a lobby map with bonuses, type each of !b3, /b 3, /b3 and !B3 in chat: each takes you to bonus 3, and none
    shows up in the global chat room. !s2 and /s 2 should go to stage 2.
@@ -8,7 +61,10 @@
 3. Your profile: "maps finished" and the completion bars no longer count maps you only have a segmented time on;
    "maps with a time" still lists them, and its "N of M finished" leaves them out.
 
-## P1300 ramp wear / inspect / default sky (NOT deployed; acceptance pending)
+## P1300 ramp wear / inspect / default sky (candidate provenance/acceptance pending)
+Owner, 4 Nov continuation: ramp seam artifacts "seem to went away" on the running
+build. Record as manual observation only, not a P1300-attributed shader/depth or
+frame-time pass; do not spend more work on seam repair unless it recurs.
 Source/build and offline mask controls only until the shared renderer rig is
 available. Do not treat these as owner-confirmed fixes or instructions for an
 already installed build. Once the candidate is qualified and installed:
@@ -1055,7 +1111,10 @@ confirmation or genuine ranked-run acceptance is inferred from the instrumented
 native five-case control/subject checks. No new speed/dwell threshold; full
 future-state commitment coverage remains open. tools/p1075-command-fence.md records delivery.
 
-**P1074 -- TAS workshop/constant-direction help (owner check pending):** Installed
+**P1074 -- TAS workshop/constant-direction help (owner tried 4 Nov; redesign requested):**
+See the dated TAS feedback above: selected movement/air-assist/stepping interactions
+were useful, but overall usability was not accepted; unobserved checks below
+remain pending. Installed
 both Windows roles2026-10-27T21:54:07Z; each actual installed client/server passes
 7socket mouse/cursor/authoring/rewind checks, not rendered acceptance. With the
 matching local native/server/client, use `cl_threadedphysics 0`, walk out of the

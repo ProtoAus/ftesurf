@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## P1302 holiday content / bounded mist (4 Nov continuation)
+
+Native IQM props avoid OBJ's runtime vertex deduplication/material ambiguity.
+Kenney Holiday Kit2.0 inspected CC0 archive is hash-pinned by holiday_assets.py;
+right-handed(z,x,y) Y-up conversion and normal/UV data have offline controls.
+The 12-puff mist includes two unindexed bounds vertices so shader-opened geometry
+is inside native bounds. Explicit literal precache_model for mist is required to
+avoid fteqcc F210; variable setmodel alone compiled with a new warning. Corrected
+build has only the baseline two F333 VF227 warnings. Five offline tests pass;
+none is an actual GPU/shader/FPS pass. A300s bounded shared quiet/4096MiB wait
+expired before launching the subject; mist remains opt-in/default0.
+Rereading the borrowed rig_wait.py exposed QUIET=20 despite old prose saying60.
+Original P1300's three stale-sky checks remain functional evidence, not a60s or
+numerical timing claim. The owned guard now really uses60, checks free memory
+again at launch and fails closed at a deadline; no missing-owner lock reaping.
+No held gate/child was left. Scope/caps/resume acceptance: tools/p1302-winter.md.
+
 ## P1295-P1297 chat variants, reflections 60/s, segmented is not completed (4 Nov; ftesurf-2b, root C:/FTESurf-worktrees/chatcap-1295-20261104T1723Z)
 - Lobbies 18:21Z (fleet empty): deploy/p1295-chatcmd 85254ea5 = pi.dev's P1298 main + P1295/P1296, fteqcc c24ede65,
   qw dc1fbdbb, cs f4f6f0e9 (.prev 52b4c337/517849e5). NEXT LOBBY QC STACKS ON IT (main has P1299/P1300 since).

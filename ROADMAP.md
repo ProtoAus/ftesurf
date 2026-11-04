@@ -2,8 +2,12 @@
 
 ## Christmas environment and cosmetics — requested 4 Nov 2026
 
-The falling-snow event exists (P1286); the following additions are requested,
-NOT implemented by the ramp/knife/sky follow-up P1300. Snow cover is already
+The falling-snow event exists (P1286). P1302 implements a small licensed native
+prop set and opt-in/capped shader mist; renderer/performance acceptance remains
+pending, so this is NOT an all-effects-complete or default-on performance claim.
+Provisional maps chosen with owner permission: surf_christmas, surf_frost and
+surf_bluewinter. The final event list can be changed later. Remaining additions
+below were NOT implemented by the ramp/knife/sky follow-up P1300. Snow cover is already
 reserved to ftesurf-e2 under P1287: coordinate that work rather than shipping a
 second competing world-shader override.
 
@@ -16,13 +20,15 @@ second competing world-shader override.
   decision. Water/lava coverage, transparent sorting, moving surfaces and
   recognizability each need an in-game check.
 - Santa hat: small original/licensed model plus a real inventory definition and
-  server-owned event entitlement. No client self-grants; choose event dates and
-  whether the gift is permanently retained before activating the grant.
+  server-owned event entitlement. Owner confirmed the gift is PERMANENT for
+  people who play during the event. No client self-grants or web-only claims;
+  leave activation OFF until the actual event should start.
 - Snowmen: licensed candidate FOUND: [Kenney Holiday Kit](https://kenney.nl/assets/holiday-kit)
   (bundled CC0 license checked), snowman 892 triangles / top-hat variant 1110.
-  These are asset candidates, NOT converted/placed/deployed models; the black
-  top hat is not the requested Santa hat. Still need per-map placement records,
-  editor preview and a hard visible-instance cap. Source/provenance:
+  P1302 converts these plus two trees and two gifts to native IQMs and adds
+  bounded sidecar placement records on the three provisional maps. Actual
+  renderer/placement acceptance and deployment remain pending; the black top
+  hat is not the requested Santa hat. Source/provenance:
   [tools/winter-assets.md](tools/winter-assets.md).
 - Winter audio: licensed/original outside wind and sheltered ambience, selected
   from the existing sky/roof mask, crossfaded without per-frame file loads. Add
@@ -44,9 +50,10 @@ Acceptance: event-off is unchanged; cold asset loads occur before play, not on
 first inspect/first flake/first thunder. Compare moving-view frame-time tails
 against effect-off on the target hardware, and inspect indoor leaks, seams,
 transparent ordering and night/bright-map readability. No performance claim from
-a successful compile or a static screenshot. Needed owner choices: extra map
-list/placement preferences, Christmas grant dates/retention and desired ambience
-assets/style. Optional original low-poly hat/snowman avoids third-party licensing.
+a successful compile or a static screenshot. Owner allowed provisional map choices
+and confirmed permanent Santa ownership, so those are NOT blockers. Final map
+preferences and desired ambience/style can follow; actual event activation still
+needs the intended dates. P1302 mist remains opt-in/default0 until qualified.
 
 ## Linked-profile playtime and main/bonus attempts — requested 1 Nov 2026
 
@@ -71,6 +78,24 @@ collector is created; real hours/attempts remain unfinished requested work.
 
 Full staged plan and acceptance: [tools/plan-tas.md](tools/plan-tas.md).
 **Current delivery map and resume point (4 Nov): [tools/tas-status.md](tools/tas-status.md).**
+
+**Human-first redesign requested after Lex's hands-on test, 4 Nov (UNBUILT):**
+[tools/plan-tas-human-workflow.md](tools/plan-tas-human-workflow.md). Prioritize
+normal play -> pause -> revise/recalculate an earlier interval; a forward/left/
+back/right pad; independently adjustable gain-relative turning with fine control;
+complete captured tick browsing and restored settings on seek/back/load. Lex
+approved the design direction and added crouched strafing/duck transitions plus
+optional vertical aim following travel (climb up/fall down, without taking yaw
+control). Use actual stance/mover rules, not an assumed crouch air-acceleration
+penalty; keep view-only pitch distinct from explicitly recorded input pitch. Ground
+prestrafe needs a real ground objective (the existing assist is air-only); later
+add start/jump/air/ramp sections, exact Start/End seeking and constrained section
+improvement that boards the next ramp rather than merely maximizing exit speed.
+Keep useful manual A/D, air assistance and frame stepping. Check the interface
+with Lex on one ramp early; do not let backend work or a perfect harness replace
+this local usability goal. Full-history and state correctness are substantive
+native/project work, not a promise fulfilled by a cosmetic UI patch.
+
 The local editor is substantially implemented: P1052/P1055/P1061 practice, pause,
 step and retained rewind; P1065/P1074/P1077 input editing/workshop/undo-redo;
 P1082/P1110 saved and portable legal-start projects; P1087 comparison ghosts;

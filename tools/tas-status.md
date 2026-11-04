@@ -5,6 +5,14 @@ this page summarizes delivery rather than replacing the original acceptance crit
 There is no single honest completion percentage: a useful local editor exists,
 but its public ranked-submission path is not qualified.
 
+**Owner feedback, 4 Nov:** the existing editor is too low-level for practical
+surf-line authoring. Directional movement, air assistance and stepping were
+useful, but this is NOT human usability acceptance. The requested redesign is
+[planned here](plan-tas-human-workflow.md); it is not implemented or deployed.
+Lex subsequently approved that design direction and added crouched strafing and
+optional vertical look following travel, independent of the main yaw control.
+This is plan approval only; crouch movement and camera feel remain to validate.
+
 ## Implemented
 
 | Area | Delivered scope | Important limit / reference |
@@ -36,24 +44,36 @@ A code/test result is not proof of the current owner client or live fleet.
 2. **Stage 6.4: public TAS board/filter and contributor presentation.** Enable only
    after service-derived finish/time and TAS-only admission are qualified. Human
    and segmented admission must remain unchanged.
-3. **Broader editor/solver work.** Range/invalid-tail presentation, branch browsing,
-   longer/general interval and route optimization, dynamic-world coverage and
-   streamed-history editing remain separate work; bounded existing features do
-   not imply they are done. See the TAS sections of [BACKLOG](../BACKLOG.md).
-4. **Owner acceptance.** Timeline feel, camera/input, signing/account workflow and
-   broader real-map behavior still need the specific checks in
-   [lextest.md](../lextest.md). Do not turn an automated screenshot into an owner
-   confirmation.
+3. **Human-first editor, now the owner's local priority.** Normal play/pause and
+   earlier-line recalculation, arrow-layout independent movement/turn controls,
+   fine gain-relative turn rate, whole-run tick browsing and per-tick recipe
+   restoration are requested work, including actual crouch/duck-transition handling
+   and optional Follow travel pitch with manual override. Ground prestrafe and
+   later ramp/airtime navigation/constrained optimization need distinct models
+   and validation.
+   [The redesign plan](plan-tas-human-workflow.md) includes capability limits for
+   other runs; it does not pretend a position-only import contains exact inputs.
+   Dynamic-world, streamed-history and general-route limits remain explicit;
+   bounded existing features do not imply this work is done.
+4. **Owner acceptance.** Lex tried the workshop and requested substantial usability
+   changes; useful individual controls are recorded in [lextest.md](../lextest.md),
+   not a whole-editor pass. Camera/input details, signing/account workflow and
+   broader real-map cases remain unconfirmed. Reported ~275 versus expected ~289
+   ground speed is an owner observation, not a measured regression/maximum.
 
 ## Resume here
 
-Continue the canonical-source prerequisite for 6.3 using today's inspected
-service/source/mount state. The historical privileged-setup failure is evidence
-of that attempt, not proof that the same restriction still applies. Recheck
-capabilities before asking for another owner action; capability availability
-alone is not source qualification. Keep public acceptance disabled until the
-full source-to-native-replay boundary is demonstrated. Preserve the held queue,
-its original failures and source history when integrating current main.
+Follow [the human-first plan](plan-tas-human-workflow.md) for the next local
+editor work: small owner layout/ramp check, controller/recipe-state slice, then
+the complete normal-play/full-history edit loop. A rearranged128-tick demo is
+not completion of that workflow. Public source/queue work stays separate and
+preserved; it is not a dependency for improving the controller.
 
-In parallel, the local editor remains usable through `tas menu`, `tas timeline`,
+When returning to 6.3, inspect today's source/service/mount state, not the old
+failed-setup assumptions. Recheck capabilities at the real boundary; capability
+availability alone is not source qualification. Preserve the held queue, original
+failures and source history. Public acceptance stays disabled until qualified.
+
+The EXISTING editor remains accessible through `tas menu`, `tas timeline`,
 `tas project ...` and `tas shared`; it remains assisted practice, not ranked TAS.
+The new screen, gain multiplier and full-history workflow are not there yet.

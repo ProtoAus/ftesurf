@@ -287,6 +287,12 @@ __pycache__/
 #  fonts negation below can take effect.  It is not a dead line -- do not delete.
 /ftesurf/gfx/*
 !/ftesurf/gfx/fonts/
+# P1302: authored/provisional holiday placements, not downloaded map data.
+!/ftesurf/gfx/winter/
+/ftesurf/gfx/winter/*
+!/ftesurf/gfx/winter/surf_christmas.txt
+!/ftesurf/gfx/winter/surf_frost.txt
+!/ftesurf/gfx/winter/surf_bluewinter.txt
 # The selectable crosshairs ship in release archives (Patch 986: 4 replaced 3 in the cycle).
 !/ftesurf/gfx/crosshairs/
 /ftesurf/gfx/crosshairs/*
