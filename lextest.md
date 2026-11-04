@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P1304 Santa hat — pending, not visually accepted
+
+Backend ownership/authority/preservation controls pass; no native hat screenshot
+or moving-view measurement yet. Event remains OFF, so ordinary players should
+not receive an early gift. Once the candidate is installed, use an operator-granted
+test hat (not a client self-grant) and make these small checks:
+- Open the inventory: third cell is a red/white Santa icon; equip it, then the
+  party crown. Only one headwear shows; aura remains independent.
+- Check the profile preview and another player's standing/crouched body: brim
+  sits on the head, bent cone/pompom are visible, no ERROR art or clipping spike.
+- Reconnect/event-off: the earned hat remains owned, with the selected equipment
+  retained. Backend persistence is automated; this is the UI observation only.
+- Turn/look/move with hats visible: report any obvious hitch or visual issue.
+  Owner feel is valid for that observation, not a numerical MAX-FPS claim.
+
 ## P1301 smooth view under a roof (both installs: exe 09bb2fac; your Desktop copy with the next release)
 Load surf_classics save 3 on a lobby (or anywhere you fly fast with your head against a sloping roof): the view
 should glide down with the roof, not shudder. Also jump straight up into a flat roof: it should still sit still,

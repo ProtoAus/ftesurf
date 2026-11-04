@@ -113,7 +113,7 @@ function accountRow(a) {
       action: (c.roles & bit) ? "remove-role" : "add-role", value});
     kit.appendChild(button);
   }
-  for (const [id, label] of [[1, "Ice outline"], [2, "Party hat"]]) {
+  for (const [id, label] of [[1, "Ice outline"], [2, "Party hat"], [3, "Santa hat"]]) {
     const owned = c.items.some(i => i.id === id);
     const button = el("button", "", (owned ? "Revoke " : "Give ") + label);
     Object.assign(button.dataset, {sid: a.steamid, inventory: "1", name: a.name,

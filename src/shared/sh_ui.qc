@@ -16,6 +16,39 @@ vector(float colour) sui_inventory_colour =
 	return '0.7 0.85 0.45';
 };
 
+// P1304: use the current SUI frame in both VMs (the menu's grid is nested).
+void(vector p, vector colour) sui_inventory_vertex =
+{
+	sui_transform_point(p);
+	R_PolygonVertex(p, '0 0 0', colour, 1);
+};
+
+// Fixed red/white Santa icon shared by the client and menu inventories.
+void(vector at, float cell) sui_inventory_santa =
+{
+	local float i, t;
+	local vector p;
+	R_BeginPolygon("", 1024, TRUE); // DRAWFLAG_TWOSIDED; MENU has no named constant
+	sui_inventory_vertex(at + [cell * 0.22, cell * 0.65], '0.8 0.08 0.12');
+	sui_inventory_vertex(at + [cell * 0.62, cell * 0.18], '1 0.16 0.2');
+	sui_inventory_vertex(at + [cell * 0.8, cell * 0.65], '0.8 0.08 0.12');
+	R_EndPolygon();
+	R_BeginPolygon("", 1024, TRUE);
+	sui_inventory_vertex(at + [cell * 0.18, cell * 0.61], '1 1 1');
+	sui_inventory_vertex(at + [cell * 0.82, cell * 0.61], '1 1 1');
+	sui_inventory_vertex(at + [cell * 0.82, cell * 0.76], '1 1 1');
+	sui_inventory_vertex(at + [cell * 0.18, cell * 0.76], '1 1 1');
+	R_EndPolygon();
+	R_BeginPolygon("", 1024, TRUE);
+	for (i = 0; i < 8; i = i + 1)
+	{
+		t = i * (6.2831853 / 8);
+		p = at + [cell * (0.62 + cos(t) * 0.075), cell * (0.18 + sin(t) * 0.075)];
+		sui_inventory_vertex(p, '1 1 1');
+	}
+	R_EndPolygon();
+};
+
 /*
   The palette (Patch 606): one dark slate ramp and seven pastel accents, read by
   every restyled panel in both VMs. The ImGui scoreboard provider carries the

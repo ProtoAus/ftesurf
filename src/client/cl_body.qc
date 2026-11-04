@@ -240,7 +240,7 @@ float() Body_Predraw =
 	else
 		self.pb_trailok = FALSE;
 	kit = Inv_Public(self.pb_slot - 1);
-	Inv_Draw(self, kit_y, kit_z, duck == 1);
+	Inv_Draw(self, kit_y, kit_z, duck == 1, Inv_SantaFlag(self.pb_slot - 1));
 	return PREDRAW_AUTOADD;
 };
 

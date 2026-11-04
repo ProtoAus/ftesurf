@@ -203,6 +203,7 @@ void() CSQC_WorldLoaded =
 	// 464 maps and had never drawn anything.  cl_emit.qc.
 	Emit_LoadFromWorld();
 	Winter_Load();                 // P1302: bounded map setup only
+	Inv_SantaLoad();               // P1304: warm model/entity, never equip-time disk I/O
 	Sun_LoadForMap();               // Patch 874
 	Ropes_LoadForMap();
 

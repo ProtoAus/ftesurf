@@ -702,7 +702,7 @@ void(entity g) Av_GhostDress =
 	local vector kit;
 	Av_Dress(g);
 	kit = Inv_Public(player_localnum);
-	Inv_Draw(g, kit_y, kit_z, !strcmp(g.model, "models/player_duck.iqm"));
+	Inv_Draw(g, kit_y, kit_z, !strcmp(g.model, "models/player_duck.iqm"), Inv_SantaFlag(player_localnum));
 };
 
 /*
@@ -733,7 +733,7 @@ float(vector pos, string s) Av_Head =
   there is none at the stage -- and fullbrights what is left, so the body
   reads as its colour rather than as whatever light a void has.
 */
-void(vector rpos, vector rsz, vector kit) Av_Preview =
+void(vector rpos, vector rsz, vector kit, float santa) Av_Preview =
 {
 	local vector cam, look, org;
 
@@ -789,7 +789,7 @@ void(vector rpos, vector rsz, vector kit) Av_Preview =
 	setproperty(VF_AFOV, 36);       // Patch 663: the body fills the card's column
 	addentity(av_prev);
 	Inv_GlowReset();
-	Inv_Draw(av_prev, kit_y, kit_z, FALSE);
+	Inv_Draw(av_prev, kit_y, kit_z, FALSE, santa);
 	renderscene();
 	Inv_GlowPass(FALSE);            // P1230: the aura in the card, no world to test against
 };
@@ -962,7 +962,7 @@ void() Av_SelfMark =
 
 void(vector scr) Av_Draw =
 {
-	local vector p, sz, tv, bv, kit;
+	local vector p, sz, tv, bv, kit, winter;
 	local float kitw, namew, badgew;
 	local float i, x, y, y0, sw, fx, want, got, eff, askt, pad, tsz, ttl, hint, sc, me;
 	local float hh, pic, fw, fh, lw, slh, stop, segw, tabh, segs, lit, stripw, striph, chw, link, fr_slot;
@@ -1042,7 +1042,11 @@ void(vector scr) Av_Draw =
 	fr_target = me ? "" : Friends_ProfileTarget(av_other);
 	if (me) kit = Inv_Public(player_localnum);
 	else kit = fr_slot >= 0 ? Inv_Public(fr_slot) : ((pf_state == PFS_OK) ? pf_cosmetics : '0 0 0');
-	Inv_Panel([p_x + sz_x + pad, p_y], kitw, hint, me, kit, pf_inventory, pf_state == PFS_OK && pf_inventory_known);
+	winter = [pf_ownsanta, 0, 0];
+	if (me) winter_y = Inv_SantaFlag(player_localnum);
+	else if (fr_slot >= 0) winter_y = Inv_SantaFlag(fr_slot);
+	else if (pf_state == PFS_OK) winter_y = pf_santa;
+	Inv_Panel([p_x + sz_x + pad, p_y], kitw, hint, me, kit, pf_inventory, pf_state == PFS_OK && pf_inventory_known, winter);
 	if (me)
 	{
 		nm = getplayerkeyvalue(player_localnum, "name");
@@ -1336,7 +1340,7 @@ void(vector scr) Av_Draw =
 		Av_PaintPanel([px, p_y + sz_y - pad - ph], pw, psw, slh);
 
 		// ---- the body, standing on the card beside its controls
-		Av_Preview([px, y0], [pw, p_y + sz_y - pad * 2 - ph - y0], kit);
+		Av_Preview([px, y0], [pw, p_y + sz_y - pad * 2 - ph - y0], kit, winter_y);
 	}
 
 	// The search's list, LAST: over everything, and the element sui answers for.

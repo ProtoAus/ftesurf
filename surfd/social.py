@@ -759,6 +759,9 @@ def register(app, d):
                         out.append({"token": r["token"], "invalid": 1})
                         continue
                     sid = s["steamid"]
+                    # P1304: only this authenticated in-game roster path earns the
+                    # permanent event gift. Web/profile/inventory reads cannot.
+                    inventory.grant_christmas_presence(db, sid, now)
                     friends = friend_rows(db, sid, now, d.lobby_ttl)
                     body = json.dumps(friends, ensure_ascii=False, separators=(",", ":"))
                     revision = hashlib.sha256(body.encode("utf-8")).hexdigest()
@@ -785,7 +788,8 @@ def register(app, d):
                     row = dict(token=r["token"], hash=revision, messages=messages)
                     if r.get("inventory") == 1:
                         inventory.ensure(db, sid)
-                        row["inventory"] = inventory.snapshot(db, sid)
+                        row["inventory"] = inventory.for_wire(inventory.snapshot(db, sid),
+                                                              r.get("inventory_version") == 2)
                     if "rack" in r:
                         row["room"], row["rack"] = room_since(db, sid, r["rack"], node, now)
                     if r.get("hash", "") != revision:
@@ -899,7 +903,8 @@ def register(app, d):
             return reply({"inventory": 1, "ok": 0, "error": str(error)}, 400)
         except sqlite3.Error:
             return reply({"inventory": 1, "ok": 0, "error": "Inventory unavailable"}, 503)
-        return reply(dict(inventory=1, ok=1, **value))
+        return reply(dict(inventory=1, ok=1, **inventory.for_wire(
+            value, request.form.get("inventory_version") == "2")))
 
     @app.post("/api/social/action")
     def action():

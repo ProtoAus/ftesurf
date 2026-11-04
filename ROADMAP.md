@@ -3,8 +3,11 @@
 ## Christmas environment and cosmetics — requested 4 Nov 2026
 
 The falling-snow event exists (P1286). P1302 implements a small licensed native
-prop set and opt-in/capped shader mist; renderer/performance acceptance remains
-pending, so this is NOT an all-effects-complete or default-on performance claim.
+prop set and opt-in/capped shader mist. P1304 implements the original Santa model,
+real inventory cell and permanently earned trusted-lobby gift; backend preservation
+and authority controls pass. Hat appearance/deployment and renderer/performance
+acceptance remain pending, so this is NOT an all-effects-complete or default-on
+performance claim. Christmas gift activation is still OFF pending event dates.
 Provisional maps chosen with owner permission: surf_christmas, surf_frost and
 surf_bluewinter. The final event list can be changed later. Remaining additions
 below were NOT implemented by the ramp/knife/sky follow-up P1300. Snow cover is already
@@ -19,10 +22,6 @@ second competing world-shader override.
   contents, collisions, movement or damage rules without a separate gameplay
   decision. Water/lava coverage, transparent sorting, moving surfaces and
   recognizability each need an in-game check.
-- Santa hat: small original/licensed model plus a real inventory definition and
-  server-owned event entitlement. Owner confirmed the gift is PERMANENT for
-  people who play during the event. No client self-grants or web-only claims;
-  leave activation OFF until the actual event should start.
 - Snowmen: licensed candidate FOUND: [Kenney Holiday Kit](https://kenney.nl/assets/holiday-kit)
   (bundled CC0 license checked), snowman 892 triangles / top-hat variant 1110.
   P1302 converts these plus two trees and two gifts to native IQMs and adds

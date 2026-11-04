@@ -1674,6 +1674,11 @@ def migrate():
                                "\nPRAGMA user_version=26;\nCOMMIT;")
             version = 26
 
+        # P1304: optional component schema1, not a core-format bump. Prior
+        # service generations can ignore these tables without losing gifts or
+        # weakening their newer-core-schema refusal. Creation/stamp is atomic.
+        inventory.ensure_event_schema(conn)
+
         verdict_metrics(conn)
         gone = accounts.links_now(conn)
         conn.commit()

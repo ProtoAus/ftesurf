@@ -109,7 +109,7 @@ string(string token, string hash, string ack, string activity, string rack) Soci
 {
 	// uri_escape has an 8192-byte output limit. Encode each bounded row,
 	// never the complete 64-player snapshot (which exceeds that limit).
-	return uri_escape(sprintf("{\"token\":\"%s\",\"hash\":\"%s\",\"ack\":%s,\"activity\":\"%s\",\"rack\":%s,\"inventory\":1}",
+	return uri_escape(sprintf("{\"token\":\"%s\",\"hash\":\"%s\",\"ack\":%s,\"activity\":\"%s\",\"rack\":%s,\"inventory\":1,\"inventory_version\":2}",
 	                         token, hash, ack != "" ? ack : "0", activity, rack != "" ? rack : "-1"));
 };
 

@@ -21,6 +21,10 @@
 
 ## next
 
+### P1304 A permanent Christmas Santa hat
+- A small red-and-white Santa hat has its own inventory cell and shares the headwear slot with the party crown; your aura stays independent.
+- Linked players present on a trusted lobby during the enabled Christmas event earn the hat permanently. It is not auto-equipped, survives event end, and cannot be claimed from a web or menu visit. Event activation is off until its dates are chosen.
+
 ### P1301 Smooth view under a sloping roof
 - With your head against a sloping roof the lowered view now follows the roof smoothly instead of stepping down in small jumps many times a second, for example flying fast under a descending ceiling.
 

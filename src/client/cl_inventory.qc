@@ -1,7 +1,10 @@
 /* Account inventory and procedural cosmetics. Only the lobby publishes *kit.
    The ice halo is depth-tested per pixel against the scene: no wallhack (P1230, Inv_GlowPass).
    Shaders travel in CSQC; the crown's texture is models/party_crown.png, with polygons without it. */
-float inv_ready, inv_revision, inv_roles, inv_own1, inv_own2, inv_colour, inv_eq1, inv_eq2, inv_wait;
+float inv_ready, inv_revision, inv_roles, inv_own1, inv_own2, inv_own3, inv_colour, inv_eq1, inv_eq2, inv_eq3, inv_wait, inv_proto_sent;
+entity inv_santa_ent;
+float inv_santa_ok;
+void() Inv_SantaLoad;
 string inv_who;
 entity inv_shell;
 float inv_shader;
@@ -13,11 +16,12 @@ void() Inv_Init =
 	registercommand("inventory");
 	registercommand("inventory_clear");
 	registercommand("inventory_state");
+	Inv_SantaLoad();                 // warm the tiny fixed asset, never first-equip disk I/O
 };
 
 void() Inv_Clear =
 {
-	inv_ready = inv_roles = inv_own1 = inv_own2 = inv_eq1 = inv_eq2 = inv_wait = 0;
+	inv_ready = inv_roles = inv_own1 = inv_own2 = inv_own3 = inv_eq1 = inv_eq2 = inv_eq3 = inv_wait = inv_proto_sent = 0;
 	if (inv_who != "") strunzone(inv_who);
 	inv_who = "";
 };
@@ -34,6 +38,16 @@ vector(float slot) Inv_Public =
 	return result;
 };
 
+float(float slot) Inv_SantaFlag =
+{
+	local vector kit;
+	local float santa;
+	kit = Inv_Public(slot);
+	if (!(kit_x & 1)) return 0;
+	santa = stof(Gfx_Field(getplayerkeyvalue(slot, "*kit"), 3, " "));
+	return (santa == 1);
+};
+
 float() Inv_Valid =
 {
 	return inv_ready && inv_who != "" && !strcmp(inv_who, getplayerkeyvalue(player_localnum, "*ahash"));
@@ -42,30 +56,41 @@ float() Inv_Valid =
 float(float count) Inv_ConsoleCommand =
 {
 	local string command, who;
-	local float revision, roles, own1, own2, colour, eq1, eq2;
+	local float revision, roles, own1, own2, own3, colour, eq1, eq2, eq3;
 	command = argv(0);
 	if (!strcmp(command, "inventory_clear")) { Inv_Clear(); return TRUE; }
 	if (!strcmp(command, "inventory_state"))
 	{
-		if (count != 9) return TRUE;
+		if (count != 9 && count != 11) return TRUE;
 		who = argv(1); revision = stof(argv(2)); roles = stof(argv(3));
 		own1 = stof(argv(4)); own2 = stof(argv(5)); colour = stof(argv(6)); eq1 = stof(argv(7)); eq2 = stof(argv(8));
+		own3 = eq3 = 0;
+		if (count == 11) { own3 = stof(argv(9)); eq3 = stof(argv(10)); }
 		if (strcmp(who, getplayerkeyvalue(player_localnum, "*ahash")) || strlen(who) != 8) return TRUE;
 		if (revision < 0 || revision > 16777215 || revision != floor(revision)) return TRUE;
 		if (Inv_Valid() && revision < inv_revision) return TRUE;
 		if (roles < 1 || roles > 7 || roles != floor(roles)) return TRUE;
-		if ((own1 != 0 && own1 != 1) || (own2 != 0 && own2 != 1)) return TRUE;
-		if ((eq1 != 0 && eq1 != 1) || (eq2 != 0 && eq2 != 1) || eq1 > own1 || eq2 > own2) return TRUE;
+		if ((own1 != 0 && own1 != 1) || (own2 != 0 && own2 != 1) || (own3 != 0 && own3 != 1)) return TRUE;
+		if ((eq1 != 0 && eq1 != 1) || (eq2 != 0 && eq2 != 1) || (eq3 != 0 && eq3 != 1)) return TRUE;
+		if (eq1 > own1 || eq2 > own2 || eq3 > own3 || (eq2 && eq3)) return TRUE;
 		if (colour < 0 || colour > 11 || colour != floor(colour)) return TRUE;
 		if (inv_who != "") strunzone(inv_who);
 		inv_who = strzone(who);
-		inv_revision = revision; inv_roles = roles; inv_own1 = own1; inv_own2 = own2;
-		inv_colour = colour; inv_eq1 = eq1; inv_eq2 = eq2; inv_ready = TRUE; inv_wait = 0;
+		inv_revision = revision; inv_roles = roles; inv_own1 = own1; inv_own2 = own2; inv_own3 = own3;
+		inv_colour = colour; inv_eq1 = eq1; inv_eq2 = eq2; inv_eq3 = eq3; inv_ready = TRUE; inv_wait = 0;
+		if (count == 11) inv_proto_sent = TRUE;
+		if (!inv_proto_sent)
+		{
+			inv_proto_sent = TRUE;
+			// Existing command, non-equip shape: old servers silently ignore it.
+			localcmd("cmd inventory_equip cap 2\n");
+		}
 		return TRUE;
 	}
 	if (strcmp(command, "inventory")) return FALSE;
 	print(sprintf("Inventory: ready %g revision %.0f owned %g/%g equipped %g/%g hat colour %g\n",
 	              Inv_Valid(), inv_revision, inv_own1, inv_own2, inv_eq1, inv_eq2, inv_colour));
+	print(sprintf("Inventory: Santa owned %g equipped %g asset %g\n", inv_own3, inv_eq3, inv_santa_ok));
 	return TRUE;
 };
 
@@ -111,7 +136,7 @@ void(vector at, float cell, float bsz, float on) Inv_Badge =
 	sui_text(at + [bsz * 0.5, (bh - bsz) * 0.5 + bsz * FONT_CAPDROP], [bsz, bsz], s, on ? SUI_THEME_GOOD : SUI_THEME_DIM, 1, 0);
 };
 
-void(vector p, float width, float textsize, float editable, vector publickit, vector publicitems, float publicknown) Inv_Panel =
+void(vector p, float width, float textsize, float editable, vector publickit, vector publicitems, float publicknown, vector winter) Inv_Panel =
 {
 	local float cell, gap, i, j, x, owned, on, item, ready;
 	local vector at, colour;
@@ -125,8 +150,8 @@ void(vector p, float width, float textsize, float editable, vector publickit, ve
 	{
 		at = p + [gap + (i % 4) * (cell + gap), textsize * 2 + gap + floor(i / 4) * (cell + gap)];
 		item = i + 1;
-		owned = editable ? (ready && (i == 0 ? inv_own1 : (i == 1 ? inv_own2 : 0))) : (publicknown ? (i == 0 ? publicitems_x : (i == 1 ? publicitems_y : 0)) : (i == 0 ? publickit_y : (i == 1 ? publickit_z : 0)));
-		on = editable ? (i == 0 ? inv_eq1 : inv_eq2) : (i == 0 ? publickit_y : (i == 1 ? publickit_z : 0));
+		owned = editable ? (ready && (i == 0 ? inv_own1 : (i == 1 ? inv_own2 : (i == 2 ? inv_own3 : 0)))) : (publicknown ? (i == 0 ? publicitems_x : (i == 1 ? publicitems_y : (i == 2 ? winter_x : 0))) : (i == 0 ? publickit_y : (i == 1 ? publickit_z : (i == 2 ? winter_y : 0))));
+		on = editable ? (i == 0 ? inv_eq1 : (i == 1 ? inv_eq2 : (i == 2 ? inv_eq3 : 0))) : (i == 0 ? publickit_y : (i == 1 ? publickit_z : (i == 2 ? winter_y : 0)));
 		id = sprintf("inv_slot%g", i);
 		if (owned) sui_action_element(at, [cell, cell], id, sui_noop);
 		sui_roundbox(at, [cell, cell], max(3, textsize * 0.4), (owned && on) ? SUI_THEME_SELECTED : SUI_THEME_WELL, 1);
@@ -137,6 +162,7 @@ void(vector p, float width, float textsize, float editable, vector publickit, ve
 			sui_roundbox(at + [cell * 0.28, cell * 0.18], [cell * 0.44, cell * 0.55], cell * 0.18, colour, 0.85);
 			sui_roundbox(at + [cell * 0.34, cell * 0.24], [cell * 0.32, cell * 0.43], cell * 0.12, SUI_THEME_WELL, 1);
 		}
+		else if (i == 2) sui_inventory_santa(at, cell);
 		else
 		{
 			sui_roundbox(at + [cell * 0.18, cell * 0.46], [cell * 0.64, cell * 0.28], 0, colour * 0.85, 1);
@@ -151,7 +177,7 @@ void(vector p, float width, float textsize, float editable, vector publickit, ve
 			}
 		}
 		Inv_Badge(at, cell, Font_Px(textsize * 0.8), on);
-		label = i == 0 ? "Ice aura" : "Paper party crown";
+		label = i == 0 ? "Ice aura" : (i == 1 ? "Paper party crown" : "Santa hat (permanent event gift)");
 		sui_tooltip_for(id, strcat(label, editable ? (on ? ": click to unequip" : ": click to equip") : (on ? ": equipped (read-only)" : ": owned (read-only)")), 2);
 		if (editable && owned && sui_is_released(id) && cltime >= inv_wait)
 		{
@@ -525,10 +551,39 @@ void(entity body, float hat, float duck) Inv_Hat =
 	}
 };
 
+// P1304: original low-poly Santa, one native mesh pass. All asset I/O and entity
+// creation happens at setup; draw reuses the warmed entity for every wearer.
+void() Inv_SantaLoad =
+{
+	inv_santa_ok = -1;
+	if (!Snow_Exists("models/christmas/santa.iqm") || !Snow_Exists("models/christmas/santa.png")) return;
+	shaderforname("models/christmas/santa", "{\nnopicmip\n{\nmap models/christmas/santa.png\nrgbgen lightingdiffuse\n}\n}\n");
+	precache_model("models/christmas/santa.iqm");
+	if (inv_santa_ent)
+	if (strcmp(inv_santa_ent.classname, "inventory_santa")) inv_santa_ent = world;
+	if (!inv_santa_ent) { inv_santa_ent = spawn(); inv_santa_ent.classname = "inventory_santa"; }
+	setmodel(inv_santa_ent, "models/christmas/santa.iqm");
+	inv_santa_ent.scale = 1;
+	inv_santa_ent.colormod = '1 1 1';
+	inv_santa_ent.effects = EF_NOSHADOW;
+	inv_santa_ok = 1;
+};
+
+void(entity body, float duck) Inv_SantaHat =
+{
+	if (inv_santa_ok != 1 || !inv_santa_ent) return;
+	if (strcmp(inv_santa_ent.classname, "inventory_santa")) return;
+	inv_santa_ent.origin = body.origin + [0, 0, duck ? 45 : 62];
+	inv_santa_ent.angles = [0, body.angles_y, 0];
+	inv_santa_ent.alpha = body.alpha > 0 ? body.alpha : 1;
+	inv_santa_ent.renderflags = body.renderflags;
+	addentity(inv_santa_ent);
+};
+
 // The preview queues its own wearer; nothing the 3D view left behind belongs in its pass.
 void() Inv_GlowReset = { inv_glown = 0; };
 
-void(entity body, float outline, float hat, float duck) Inv_Draw =
+void(entity body, float outline, float hat, float duck, float santa) Inv_Draw =
 {
 	if (outline)
 	{
@@ -547,6 +602,7 @@ void(entity body, float outline, float hat, float duck) Inv_Draw =
 		else
 			Inv_Shells(body);
 	}
-	if (hat >= 1 && hat <= 12)
+	if (santa == 1) Inv_SantaHat(body, duck);
+	else if (hat >= 1 && hat <= 12)
 		Inv_Hat(body, hat, duck);
 };

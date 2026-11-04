@@ -72,7 +72,7 @@ vector pf_f_scr;                // the screen the field was last drawn on
 string pf_name, pf_handle;
 vector pf_cosmetics;
 vector pf_inventory;                 // owned aura, owned crown, saved crown colour
-float pf_inventory_known, pf_play_known, pf_play_seconds;
+float pf_inventory_known, pf_play_known, pf_play_seconds, pf_ownsanta, pf_santa;
 float pf_on_play_known, pf_on_play_seconds, pf_on_attempts;
 float  pf_src, pf_n, pf_maps, pf_last, pf_wr, pf_wrc, pf_top10, pf_av, pf_total, pf_t;
 float  pf_bt_ours, pf_bt_mom, pf_bt_ksf;
@@ -471,7 +471,7 @@ void(string who) Profile_Show =
 	pf_name = "";
 	pf_cosmetics = '0 0 0';
 	pf_inventory = '0 0 0';
-	pf_inventory_known = pf_play_known = pf_play_seconds = 0;
+	pf_inventory_known = pf_play_known = pf_play_seconds = pf_ownsanta = pf_santa = 0;
 	pf_handle = "";
 	pf_ksfstate = 0;
 	pf_ksfskip = 0;
@@ -746,15 +746,18 @@ void(string bdy) Profile_Parse =
 	pf_cosmetics = [bound(0, json_get_float(json_find_object_child(c, "roles")), 7),
 	                bound(0, json_get_float(json_find_object_child(c, "outline")), 1),
 	                bound(0, json_get_float(json_find_object_child(c, "hat")), 12)];
+	pf_santa = (json_get_float(json_find_object_child(c, "santa")) == 1);
 	items = json_find_object_child(c, "items");
 	pf_inventory_known = (items != 0i);
 	pf_inventory = '0 0 0';
+	pf_ownsanta = 0;
 	n = json_get_length(items);       // MENU min's varargs do not promote integers
 	for (i = 0; i < min(16, n); i = i + 1)
 	{
 		row = json_get_child_at_index(items, i);
 		item = json_get_float(json_find_object_child(row, "id"));
 		if (item == 1) pf_inventory_x = 1;
+		if (item == 3) pf_ownsanta = 1;
 		if (item == 2)
 		{
 			pf_inventory_y = 1;

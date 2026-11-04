@@ -131,9 +131,9 @@ void(vector size, string nm) MStats_InvDraw =
 	for (i = 0; i < 16; i = i + 1)
 	{
 		at = [16 + (i % 4) * (cell + gap), 64 + floor(i / 4) * (cell + gap)];
-		owned = pf_inventory_known ? (i == 0 ? pf_inventory_x : (i == 1 ? pf_inventory_y : 0))
-		                           : (i == 0 ? pf_cosmetics_y : (i == 1 ? pf_cosmetics_z : 0));
-		on = i == 0 ? pf_cosmetics_y : (i == 1 ? pf_cosmetics_z : 0);
+		owned = pf_inventory_known ? (i == 0 ? pf_inventory_x : (i == 1 ? pf_inventory_y : (i == 2 ? pf_ownsanta : 0)))
+		                           : (i == 0 ? pf_cosmetics_y : (i == 1 ? pf_cosmetics_z : (i == 2 ? pf_santa : 0)));
+		on = i == 0 ? pf_cosmetics_y : (i == 1 ? pf_cosmetics_z : (i == 2 ? pf_santa : 0));
 		sui_roundbox(at, [cell, cell], 6, (owned && on) ? SUI_THEME_SELECTED : SUI_THEME_WELL, 1);
 		if (!owned || pf_state != PFS_OK) continue;
 		colour = i == 0 ? '0.4 0.83 1' : sui_inventory_colour(pf_inventory_known ? pf_inventory_z : pf_cosmetics_z - 1);
@@ -142,6 +142,7 @@ void(vector size, string nm) MStats_InvDraw =
 			sui_roundbox(at + [cell * 0.28, cell * 0.18], [cell * 0.44, cell * 0.55], cell * 0.18, colour, 0.85);
 			sui_roundbox(at + [cell * 0.34, cell * 0.24], [cell * 0.32, cell * 0.43], cell * 0.12, SUI_THEME_WELL, 1);
 		}
+		else if (i == 2) sui_inventory_santa(at, cell);
 		else
 		{
 			sui_fill(at + [cell * 0.18, cell * 0.46], [cell * 0.64, cell * 0.28], colour * 0.85, 1, 0);
@@ -162,7 +163,7 @@ void(vector size, string nm) MStats_InvDraw =
 		MStats_Badge(at, cell, on);
 		id = sprintf("ms_inv%g", i);
 		sui_action_element(at, [cell, cell], id, sui_noop);
-		sui_tooltip_for(id, strcat(i == 0 ? "Ice aura" : "Paper party crown", on ? ": equipped" : ": owned"), 2);
+		sui_tooltip_for(id, strcat(i == 0 ? "Ice aura" : (i == 1 ? "Paper party crown" : "Santa hat (permanent event gift)"), on ? ": equipped" : ": owned"), 2);
 	}
 	note = (pf_state != PFS_OK) ? "Loading..." : (pf_inventory_known ? "Owned items (read-only)" : "Owned items unavailable; equipped items only");
 	sui_text([16, h - 36], SZ_LABEL, ui_fit_text(note, w - 32, SZ_LABEL), COL_DIM, 1, 0);
@@ -241,5 +242,6 @@ void() MStats_Probe =
 	              pf_rn ? bufstr_get(pf_bmap, 0) : "--"));
 	print(sprintf("ui_stats: inventory window %g known %g owned %g/%g equipped %g/%g\n",
 	              ms_inv, pf_inventory_known, pf_inventory_x, pf_inventory_y, pf_cosmetics_y, pf_cosmetics_z > 0));
+	print(sprintf("ui_stats: Santa owned %g equipped %g\n", pf_ownsanta, pf_santa));
 	print(sprintf("ui_stats: back %g board %s\n", ms_back, (ms_bmap != "") ? ms_bmap : "--"));
 };
