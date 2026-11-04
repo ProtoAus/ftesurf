@@ -38,6 +38,8 @@ test hat (not a client self-grant) and make these small checks:
   Owner feel is valid for that observation, not a numerical MAX-FPS claim.
 
 ## P1301 smooth view under a roof (both installs: exe 09bb2fac; your Desktop copy with the next release)
+OWNER CONFIRMED 2026-11-05: "fixed!" (the reported surf_classics save 3 stutter). The flat-roof recheck
+below was not separately reported.
 Load surf_classics save 3 on a lobby (or anywhere you fly fast with your head against a sloping roof): the view
 should glide down with the roof, not shudder. Also jump straight up into a flat roof: it should still sit still,
 as P917 made it. Rig, your save and settings: the drawn eye's frame-to-frame jerk 0.58 -> 0.05 units (feet 0.05).
