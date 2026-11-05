@@ -11,10 +11,14 @@ look different from a match? A quick yes/no on that one panel is sufficient for
 readability only, not byte-integrity, performance, authenticity or wider coverage.
 No new capture, verdict or automatic historical-skip retry is implied.
 
-## P1329 historical TAS controls — candidate checked, owner feel pending
+## P1329 historical TAS controls — installed, owner feel pending
 
-No owner confirmation or live deployment is claimed by this entry. After the
-matching progs are installed, on a disposable local practice line: play normally,
+Installed BOTH Windows and ALL12lobbies5Nov2026UTC; exact qualified programs,
+predecessors and native/config preservation checked. Installed-byte dedicated
+smoke passes; no owner feel or genuine-device Sign confirmation is claimed.
+Quick check requested: author8ticks Right+Duck, then8Left withoutDuck; Back8
+should restore Right+Duck rather than the latest draft. This is still PENDING.
+For the broader check, on a disposable local practice line: play normally,
 `tas pause`, then `tas menu`. Make a short Forward+Left guide span with one turn
 amount/duck setting, then a different Right/hold span. Seek back to the first:
 are its buttons, turn amount and vertical-look choice recognisably restored?

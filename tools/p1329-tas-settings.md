@@ -68,7 +68,10 @@ event to make its final grant durable. The revision service uses the matching v4
 reader and validates every declared-supply format against its known parent's
 actual rows, including v4. Metadata remains hash-bound but earns no input credit;
 base-save and legal-start timelines remain different domains. Reader/service
-support must be installed before clients emit v4 uploads. The isolated installer
+support must be installed before clients emit v4 uploads. Normal in-game sharing
+still requires an exact legal-start v3 header before uploading statements/body;
+local v4 files cannot enter that path, so local-editor rollout is independent of
+the API upgrade. Do not remove this guard or call v4 portable. The isolated installer
 also ships both profile modules now imported by accounts; its actual temporary
 release import check prevents depending on the surrounding checkout. Native
 body/authority gates, movement, recorder formats and QC Build number are
@@ -131,9 +134,39 @@ unchanged; no native C, pin or tag change belongs to P1329.
   default sweep of legacy kept-save prefixes is blocked by an unchanged access
   denial; its permissions/data were not altered and that sweep is not claimed.
 
-These checks are not owner feel acceptance, genuine-device Sign, cold/shared-world
-replay qualification, arbitrary command timing or a completed constrained solver.
-Human acceptance is in lextest.md. Build/review/deployment provenance is recorded
-separately; this document does not turn an unshipped build into a live patch.
+## Deployment — 5 November 2026 UTC
+
+The final publication programs are byte-identical to the qualified mover/parser
+builds. Compiler/runtime inputs did not change in service-only commit e69806b0;
+paired engine79dafa90 changes documentation only, not native code/pins/tags.
+
+- BOTH Windows: all six progs/symbol files per install and their `.prev` hashes
+  match the exact transaction;24current/prior-prev code preimages retained,
+  23native/config hashes unchanged. New CSQC caches seeded with the existing tool;
+  no pending downloads removed. An installed-byte real dedicated-socket smoke
+  passes7checks; its owned client/server both quit normally code0.
+- ALL12lobbies: progs-only QW5e8cd6d1 / CS1ca3a29c,12new native/plugin epochs
+  checked; native images/configuration/backend generation unchanged. All8actual
+  recorder parts and180complete resume payload/state members captured and each
+  rehashed ONBOX/OFFBOX before staging/restarts. Actual locked JIT FD/actor checks
+  passed. Postflight preserves all47525old protected paths, zero changed/missing.
+- The outer SSH caller timed out after240s; original on-box prepare/activation
+  receipts completed successfully. Read-only reconciliation verified those same
+  12new actors, destination/predecessor hashes and released lock. No swaps or
+  restarts repeated; the failed caller transport remains a failed transport.
+- The shipped CSQC hash was append-registered in the existing TAS code catalogue,
+  preserving every prior byte/code, without a service restart.
+- The standalone API reader upgrade is reviewed/tested/published but NOT deployed:
+  the existing account needs owner sudo authentication. Its old v3 service remains
+  compatible with the unchanged portable-v3 game path. Native/config/data/shader
+  files are not promotion targets. No full Windows-data-hash claim is made; the
+  separately recorded unreadable old kept-save prefix remains untouched.
+
+## Remaining limits
+
+These checks and delivery are not owner feel acceptance, genuine-device Sign,
+cold/shared-world replay qualification, arbitrary command timing or a completed
+section/next-ramp solver. Human acceptance remains pending in lextest.md. Local
+v4 settings do not confer portability, body authority or public-board eligibility.
 The earlier unpublished reservation 1325 was replaced by the fresh 1329 claim;
 original evidence retains its original labels and timestamps.
