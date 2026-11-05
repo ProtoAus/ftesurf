@@ -264,6 +264,8 @@ $ShipGameFiles = @(
     'ftesurf/models/ftesurf/muzzle.md3'
     # P1286: the snow event's flake field (tools/snowflakes.py); the models glob does not recurse.
     'ftesurf/models/snow/flakes.iqm'
+    # P1302 CC0 holiday meshes keep their original license beside the palette.
+    'ftesurf/models/christmas/LICENSE-Kenney.txt'
 )
 $ShipGlobs = @(
     # cfg\ top level only -- test\ (663 per-patch fixtures) is a subdirectory
@@ -336,6 +338,15 @@ $ShipGlobs = @(
     # them are not part of the install.  LAST, so shipguard's --mutate indices for
     # the thirteen above (quoted in its docstring and AGENTS.md) do not move.
     @{ Path = 'ftesurf/gfx/env';        Filter = 'xray*.jpg' }
+    # P1302-P1319 runtime-only winter media. These are non-recursive: no source
+    # archives, bake reports, personal settings or .prev files belong here.
+    @{ Path = 'ftesurf/models/christmas'; Filter = '*.iqm' }
+    @{ Path = 'ftesurf/models/christmas'; Filter = '*.png' }
+    @{ Path = 'ftesurf/models/gibs/winterweather'; Filter = '*.iqm' }
+    @{ Path = 'ftesurf/gfx/weather';    Filter = '*.png' }
+    @{ Path = 'ftesurf/gfx/weather';    Filter = '*.roof' }
+    @{ Path = 'ftesurf/gfx/winter';     Filter = '*.txt' }
+    @{ Path = 'ftesurf/sound/winter';   Filter = '*.wav' }
 )
 
 # =============================================================================

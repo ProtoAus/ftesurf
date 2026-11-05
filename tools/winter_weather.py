@@ -26,6 +26,12 @@ MAX_ICE_TRI = 8192
 MAX_ROOF = 65536
 
 
+def roof_header(name, x, y, step, width, height, sky_triangles, ice_triangles):
+    """The ten-token Weather_Load contract shared by both map producers."""
+    return (f'weather 1 {name} {x:g} {y:g} {step:g} {width} {height} '
+            f'{sky_triangles} {ice_triangles}\n')
+
+
 def kind(flags, texture, normal):
     if flags & (0x80 | 0x200):
         return None
@@ -237,7 +243,7 @@ def main():
         weather = a.gamedir / 'gfx/weather'
         weather.mkdir(parents=True, exist_ok=True)
         x, y, step, w, h = dims
-        header = f'weather 1 {name} {x:g} {y:g} {step:g} {w} {h} {len(triangle["sky"])} {len(triangle["ice"])}\n'
+        header = roof_header(name, x, y, step, w, h, len(triangle['sky']), len(triangle['ice']))
         (weather / (name + '.roof')).write_bytes(header.encode('ascii') + heights.tobytes())
         print(f'{name}: sky {len(triangle["sky"])}tri, ice {len(triangle["ice"])}tri, roof {w}x{h}; BSP {hashlib.sha256(path.read_bytes()).hexdigest()}')
 

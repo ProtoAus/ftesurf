@@ -9,6 +9,7 @@ import unittest
 import numpy as np
 from PIL import Image
 from winter_theme import conservative_roof
+from winter_weather import roof_header
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -36,6 +37,18 @@ def fixture(path, wide=False, cyclic=False):
     path.write_bytes(data)
 
 class WinterThemeTests(unittest.TestCase):
+    def test_roof_header_matches_current_weather_reader(self):
+        header=roof_header('surf_colin_blaster_69000',-57504,-34416,512,256,128,1542,270)
+        self.assertEqual(header.split(),['weather','1','surf_colin_blaster_69000',
+                         '-57504','-34416','512','256','128','1542','270'])
+        self.assertTrue(header.endswith('\n'))
+        # The original producer output really fails the actual reader's gate.
+        old='wxroof 1 surf_colin_blaster_69000 -57504 -34416 512 256 128'
+        self.assertNotEqual(len(old.split()),10)
+        qc=(ROOT/'src/client/cl_weather.qc').read_text()
+        self.assertIn('if (n != 10)',qc)
+        self.assertIn('strcmp(argv(0), "weather")',qc)
+
     def test_thin_roof_survives_bounded_audio_reduction(self):
         h=np.full((32,32),-1024.);h[1,1]=128
         r=conservative_roof(h)

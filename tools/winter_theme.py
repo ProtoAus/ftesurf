@@ -19,7 +19,7 @@ import wave
 from PIL import Image, ImageFilter
 from rampwear import Bsp
 from holiday_assets import iqm
-from winter_weather import MOM_MAPS
+from winter_weather import MOM_MAPS, meshes as weather_meshes, roof_header
 from winter_placements import records
 
 MAP = 'surf_colin_blaster_69000'
@@ -125,7 +125,9 @@ def main():
     # by MAX, not coarse centre sampling: thin real roofs cannot disappear.
     # This is intentionally conservative near roof edges; visuals still use fine32.
     reduced=conservative_roof(heights)
-    header=f'wxroof 1 {a.map} {x0:g} {y0:g} {cell*16:g} {reduced.shape[1]} {reduced.shape[0]}\n'
+    _, weather_triangles=weather_meshes(b)
+    header=roof_header(a.map,x0,y0,cell*16,reduced.shape[1],reduced.shape[0],
+                       len(weather_triangles['sky']),len(weather_triangles['ice']))
     roof.write_bytes(header.encode('ascii')+reduced.astype('<f4').tobytes())
     def exposed(p):
         ix,iy=int((p[0]-x0)//cell),int((p[1]-y0)//cell)

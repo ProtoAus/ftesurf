@@ -21,10 +21,14 @@
 
 ## next
 
+### P1324 Complete winter downloads
+- Fresh installs now include the winter/Santa models, weather audio and map-specific media, with the holiday asset license retained.
+- Fixed Colin's baked weather header being rejected, restoring its sky, ice and sheltered-audio setup without changing terrain or roof coverage.
+
 ### P1323 Named input templates for local TAS
 - Save a named selection of captured input, then preview its keys and view angles onto an equal-length selection in another compatible local attempt. Inputs after the selection stay available; Keep, Discard and Undo/Redo retain the original.
 - Templates reuse recorded input, not a saved world or a newly optimized route. Supported current-run replay is still required; ramp sections and the next-ramp solver remain in progress.
-- Recipe name typing keeps chat shortcuts in the field and releases movement safely across focus changes. A held name key cannot get rebound by a later key-capture panel. Existing or unreadable unfinished templates are preserved rather than overwritten.
+- Recipe name typing keeps chat shortcuts in the field and releases movement safely on focus changes. A held name key cannot be rebound by a later key-capture panel. Existing or unreadable unfinished templates are preserved rather than overwritten.
 
 ### P1321 Fewer false prediction-error alerts after resets
 - Reduced false prediction-error popups when several resets are sent in quick succession over a higher-latency connection. Movement and the underlying diagnostic history are unchanged.
@@ -67,7 +71,7 @@
 - Winter shader variants join the loading-time warm list rather than deliberately waiting for the first mist puff or storm.
 
 ### P1308 Independent TAS surf controls
-- TAS practice gets a movement-key pad, independent auto strafe, fine gentler/sharper turning, held jump/crouch and optional view-only vertical travel following. Recent authored warm ticks restore their control settings; the full captured-run editor is still being built.
+- TAS practice gets a movement-key pad, independent auto strafe, fine turning, held jump/crouch and optional view-only vertical following. Recent warm ticks restore their control settings; the full captured-run editor is still being built.
 - TAS turning preserves fractional/negative yaw instead of repeatedly corrupting its cached heading. Ground and crouched-ground guidance use the real mover rules rather than the old air-only preset.
 
 ### P1307 Ramp marks across client updates
