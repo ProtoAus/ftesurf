@@ -8,13 +8,21 @@
 entity wi_props[WI_PROPS], wi_mist[WI_MIST];
 float wi_nprop, wi_nmist, wi_drawprop, wi_drawmist, wi_area;
 string wi_map;
-float wi_colin;
+float wi_colin, wi_snowsteps;
 entity wi_grass, wi_caps;
 .float wi_radius;
 
 float() Winter_ThemeActive =
 {
 	return (wi_colin && cvar("r_colin_winter") != 0);
+};
+
+string(string texture, float step) Winter_Footstep =
+{
+	if (!Winter_ThemeActive() || wi_snowsteps != 4) return "";
+	// Only the grass actually covered by this map's authored snow, not all floors.
+	if (strstrofs(strtolower(texture), "grass", 0) < 0) return "";
+	return sprintf("winter/snow%g.wav", 1 + (step & 3));
 };
 .vector wi_source;
 
@@ -56,7 +64,7 @@ void() Winter_Clear =
 		if (!strcmp(wi_grass.classname, "winter_surface")) remove(wi_grass);
 	if (wi_caps)
 		if (!strcmp(wi_caps.classname, "winter_surface")) remove(wi_caps);
-	wi_grass = wi_caps = world; wi_colin = FALSE;
+	wi_grass = wi_caps = world; wi_colin = wi_snowsteps = 0;
 	wi_nprop = wi_nmist = wi_drawprop = wi_drawmist = wi_area = 0;
 };
 
@@ -75,10 +83,12 @@ entity(string group, string path, float zbase, float zrange) Winter_Surface =
 	if (!(fabs(zbase) <= 262144 && zrange >= 1 && zrange <= 524288)) return world;
 	if (!Snow_Exists(path) || !Snow_Exists("gfx/weather/snow-grain.png")) return world;
 	grassflag = !strcmp(group, "grass") ? "#GRASS=1" : "";
-	definition = sprintf("{\ncull none\ndepthpush -2\nsort decal\nnomipmaps\nnopicmip\n{\nprogram ftesurf_snowcover_v1#ZBASE=%.3f#ZRANGE=%.3f%s\nclampmap $nosrgb:$nearest:gfx/snowmask/%s.png\nmap $nosrgb:gfx/weather/snow-grain.png\nrgbgen entity\n}\n}\n", zbase, zrange, grassflag, wi_map);
+	definition = sprintf("{\ncull none\ndepthpush -2\nsort decal\nnomipmaps\nnopicmip\n{\nprogram ftesurf_snowcover_v2#ZBASE=%.3f#ZRANGE=%.3f%s\nclampmap $nosrgb:$nearest:gfx/snowmask/%s.png\nmap $nosrgb:gfx/weather/snow-grain.png\nrgbgen entity\n}\n}\n", zbase, zrange, grassflag, wi_map);
 	e = spawn(); e.classname = "winter_surface";
+	// IQM precache registers its material. Never let its missing-name fallback win
+	// the shader cache before the definition: use a distinct runtime name FIRST.
+	e.forceshader = shaderforname(strcat("ftesurf_colin_snow_v2_", group), definition);
 	precache_model(path); setmodel(e, path);
-	e.forceshader = shaderforname(strcat("ftesurf_colin_snow_", group), definition);
 	e.effects = EF_FULLBRIGHT | EF_NOSHADOW; e.colormod = '1 1 1'; e.scale = e.alpha = 1;
 	return e;
 };
@@ -86,7 +96,7 @@ entity(string group, string path, float zbase, float zrange) Winter_Surface =
 void() Winter_Load =
 {
 	local filestream f;
-	local string line, mname, model;
+	local string line, mname, model, path;
 	local float n, kind, radius, i, ok, traces, yaw;
 	local vector pos, colour, source;
 	local entity e;
@@ -114,6 +124,18 @@ void() Winter_Load =
 	// Missing media must not opt older clients into unclipped automatic snow.
 	if (wi_colin)
 		if (!Snow_Exists(sprintf("gfx/snowmask/%s.png", mname)) || !Snow_Exists(sprintf("gfx/snowmask/%s.txt", mname))) wi_colin = FALSE;
+	if (wi_colin)
+	{
+		for (i = 1; i <= 4; i = i + 1)
+		{
+			path = sprintf("winter/snow%g.wav", i);
+			if (Snow_Exists(strcat("sound/", path)))
+			{
+				precache_sound(path);
+				wi_snowsteps = wi_snowsteps + 1;
+			}
+		}
+	}
 	// Fixed record AND trace caps bound bad local files. Missing assets skip, never error-art.
 	traces = 0;
 	for (i = 0; i < 128; i = i + 1)
@@ -244,6 +266,6 @@ float(string command) Winter_ConsoleCommand =
 {
 	if (strcmp(command, "winter_info")) return FALSE;
 	print(sprintf("winter: %s loaded props %g mist %g; submitted props %g mist %g area %.4f\n", wi_map, wi_nprop, wi_nmist, wi_drawprop, wi_drawmist, wi_area));
-	print(sprintf("winter: Colin theme %g grass %g caps %g; r_colin_winter 0 disables its automatic extras\n", Winter_ThemeActive(), wi_grass != world, wi_caps != world));
+	print(sprintf("winter: Colin theme %g grass %g caps %g snow footsteps %g/4; r_colin_winter 0 disables automatic extras\n", Winter_ThemeActive(), wi_grass != world, wi_caps != world, wi_snowsteps));
 	return TRUE;
 };

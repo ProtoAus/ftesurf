@@ -7,6 +7,8 @@
 
 float() Winter_ThemeActive; // later winter module: cached, map-specific opt-out
 entity snow_ent;
+float snow_active;
+float() Snow_ReplacementActive = { return snow_active; };
 string snow_map;
 string snow_shader;         // "" while the map has no mask
 string snow_maskz;          // the mask's "z0 zrange 1" for the shader
@@ -99,6 +101,7 @@ void() Snow_Lost =
 void() Snow_Frame =
 {
 	local float want, mask;
+	snow_active = FALSE;
 
 	if (serverkey("map") != snow_map)
 		Snow_Load();
@@ -131,4 +134,5 @@ void() Snow_Frame =
 	}
 	setorigin(snow_ent, getproperty(VF_ORIGIN));
 	addentity(snow_ent);
+	snow_active = TRUE; // only a submitted, installed replacement suppresses map snowfall
 };

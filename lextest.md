@@ -16,6 +16,31 @@ name containing T with T bound to chat: it should stay in the name, not open cha
 Synthetic input-chain and owned-window native binding handoffs passed; actual
 hardware feel is still unconfirmed.
 
+## P1320 paused-save discard guard — optional real-account check pending
+
+Installed BOTH Windows11:02UTC and ALL12lobbies11:11UTC5Nov. On the next normal
+use of a DISPOSABLE paused run, does the existing !continue / !discard workflow
+still feel normal on your own account? Do not switch keys or risk a valued save
+for this check. The52assertion synthetic/native dedicated matrix passed; actual
+cryptographic account-proof and full gameplay timer acceptance were not claimed.
+No human confirmation recorded. This is a small follow-up, not new raw capture.
+
+## P1319 snow and ramp-depth correction — small owner check pending
+
+Owner5Nov confirmed Colin's Christmas models are present, but its snow appears
+purple/from underneath rather than covering grass; ramp dirt still z-fights while
+surfing. These are manual failures of P1317/P1315, not passing acceptance.
+Corrected client/media installed BOTH Windows10:47UTC; all12current lobby
+processes retain that exact client as verified read-only11:14UTC, alongside the
+newer peer P1320 server. After client restart/reconnect, walk across ONE Colin snowy-grass patch: white snow seen from above and quiet
+crunches even when walking? Ride ONE familiar ramp: are the marks stable now?
+`winter_info` reports4/4snow footsteps. `r_colin_winter 0` is the scoped comparison.
+On Frost, `r_weather 1` means sky/clouds, cool map light, wind and occasional
+lightning/thunder, NOT falling snow; `r_weather_test 1` gives an immediate acting
+check. Our falling-snow switch is `r_snow`; while its replacement actually draws,
+new native type3 flakes stop (old transient flakes expire). With `r_snow 0`,
+native snowfall returns. No native look/sound/ride/FPS pass yet.
+
 ## P1318 first-view lightmap hitch — owner feel check pending
 
 Installed in both actual Windows primary clients5Nov09:13UTC. On the next client
@@ -35,7 +60,8 @@ storm/ice/audio/mist should be present by its automatic map-only theme. Does any
 prop sit wrong, any roofed/ridden surface get bad coverage, or FPS feel worse?
 `winter_info`/`weather_info` identify loaded components. `r_colin_winter 0` is the
 comparison/opt-out; independently enabled options remain active. No confirmation
-or numerical FPS recorded yet. Event hat earning remains date-gated, unchanged.
+or numerical FPS recorded yet. Subsequent owner feedback confirms props only,
+with snow/grass failure now tracked in P1319 above. Event hat earning stays unchanged.
 
 ## P1315 winter corrections — fixes deployed, owner acceptance pending
 

@@ -15,6 +15,7 @@ import struct
 import subprocess
 import sys
 import numpy as np
+import wave
 from PIL import Image, ImageFilter
 from rampwear import Bsp
 from holiday_assets import iqm
@@ -69,6 +70,35 @@ def displacement(b, poly, index):
 
 def area(poly):
     return sum(np.linalg.norm(np.cross(poly[i]-poly[0],poly[i+1]-poly[0]))*.5 for i in range(1,len(poly)-1))
+
+
+def clockwise_triangles(vertices, triangles):
+    """Match FTE's IQM front faces AFTER float32 storage, not OBJ conventions."""
+    p=np.asarray([v[0] for v in vertices],dtype=np.float32)
+    n=np.asarray([v[2] for v in vertices],dtype=np.float32)
+    result=[]
+    for a,b,c in triangles:
+        facing=float(np.dot(np.cross(p[b]-p[a],p[c]-p[a]),n[a]+n[b]+n[c]))
+        if abs(facing)<=0.0001: continue
+        result.append((a,c,b) if facing>0 else (a,b,c))
+    return result
+
+
+def snow_audio(out):
+    """Original quiet procedural snow crunch, no sampled/licensed third-party PCM."""
+    out.mkdir(parents=True,exist_ok=True)
+    rate=22050;rng=np.random.default_rng(1319)
+    for i in range(1,5):
+        size=int(rate*(0.27+0.025*i));t=np.arange(size)/rate
+        noise=rng.normal(size=size)
+        soft=np.convolve(noise,np.ones(5)/5,mode='same')
+        grains=np.maximum(0,np.sin(t*(125+13*i))+rng.normal(0,.5,size))
+        signal=(soft*.7+noise*.3)*(.3+.7*grains)*(1-np.exp(-t*200))*np.exp(-t*(13+i))
+        signal*=np.minimum((size/rate-t)*100,1);signal-=signal.mean()
+        signal*=.6/max(float(np.abs(signal).max()),1e-9)
+        with wave.open(str(out/f'snow{i}.wav'),'wb') as f:
+            f.setnchannels(1);f.setsampwidth(2);f.setframerate(rate)
+            f.writeframes((signal*32767).astype('<i2').tobytes())
 
 
 def conservative_roof(heights, block=16):
@@ -130,8 +160,10 @@ def main():
                 if edge_clear>=40 and exposed(p): candidates.append(tuple(p))
     if counts['grass_faces']!=103: raise ValueError('inspected map changed or real grass not processed')
     for group,cap in [('grass',2048),('caps',8192)]:
+        triangles[group]=clockwise_triangles(vertices[group],triangles[group])
         if not 0<len(triangles[group])<=cap:raise ValueError(f'{group} geometry budget: {len(triangles[group])}/{cap}')
         p=out/'models/gibs/winterweather'/f'{a.map}-{group}.iqm';p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(iqm(a.map+'-'+group,vertices[group],triangles[group],'ftesurf_colin_snow_'+group))
+    snow_audio(out/'sound/winter')
     entities=b.lump(0)[0].decode('latin1');spawn=[]
     for block in re.findall(r'\{[^{}]*\}',entities):
         e=dict(re.findall(r'"([^"\n]*)"\s*"([^"\n]*)"',block))
