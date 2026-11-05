@@ -155,9 +155,14 @@ files; 7,422 passed independent SHA/length checks, but 113 regular two-link file
 were explicitly deferred, so that historical transaction is NOT a complete pass.
 Metadata-only investigation found all 113 paired with the existing canonical
 backend stage store, consistent with P395's documented retention behavior. The
-narrow optional `StageStore` compatibility is separately qualified above; its
-renewed review/publication/real-data acceptance remain pending. No link is removed
-and no arbitrary-hardlink gate is relaxed to repaint the original transaction.
+narrow optional `StageStore` compatibility was then independently cleared by two
+whole-feature reviews and published as `410063dd`. Exact installed source and 26
+artifact pins passed a new actual observation at 2026-11-05 21:32:00 UTC: all
+7,535 files / 2,095,635,847 bytes independently length/SHA verified, including
+113 explained stage pairs; zero deferrals or pending mismatches, both rsync exits
+zero. The original partial observation and previous code/configuration remain
+retained. No link was removed or arbitrary-hardlink gate relaxed. This is a
+per-file copy observation, not a coherent global instant or hostile-host proof.
 
 Scheduled acceptance remains pending. A least-privilege fixture S4U registration
 was refused with Access denied; an exact task query proved no task remained.

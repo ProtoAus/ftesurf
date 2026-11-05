@@ -130,8 +130,9 @@
 - `tools/evidence-backup.ps1` uses standardrsync, private Windows ACLs, versioned
   no-delete copies and an opaque/read-only SHA256 index. No Pi overwrite/repair,
   capture/verdict/schema/ranking/game/backend change. `tools/evidence-backup.md`.
-  Published directory/deadlinefix reviews clear; actualfirstcopy PARTIAL. Explained
-  stage-store compatibility separately qualified; review/adoption/scheduling pending.
+  Published410063dd/exactinstalled + explicitknownStageStore: actual21:32UTC
+  7535files/2095635847bytes FULLSHA+length/113knownpairs/0deferred/pending/bothrsync0.
+  Twofreshwholefeature reviews clear; originalfirstPARTIAL retained. SchedulingOPEN.
 - Keep rsync/SSH on SAME MSYS runtime. NativeSSH text smoke can pass while its
   rsync inherited descriptors fail; blockingIO did notfix it. Git's separate
   MSYS SSH produced dup()failure. Existing MSYS SSH+EXISTING explicit identity/
@@ -163,6 +164,9 @@
   No arbitrary/third/run-scope/wronginode/symlinkadmission or exclusiveownerclaim.
   ActualLinux15/0/0; Windowsdefaultrefusal/knownpair/aliasoldmtimeedit+history/
   wrongnamespacebeforetransport ACTED. No resync without understanding firstfault.
+  Newactualcomplete observation follows the classified/reviewed/qualified source
+  adoption, NOTregrading original. Previouscode/config/partialobservation retained;
+  no sourceunlink/repair/newcapture/game/backend action or globalsnapshotclaim.
 - Windows limitedS4U registration in the tested context was AccessDenied; exact
   taskquery proved ABSENT. Owneradmin/UACstep needed, no silentinteractive/SYSTEM
   fallback or password/key changes. Standalonecopy NOTblocked. Taskconfiguration
