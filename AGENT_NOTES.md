@@ -1,5 +1,24 @@
 # AGENT_NOTES.md
 
+## Paused-slot discard ownership and omitted QC arguments (P1320, 5 Nov 2026)
+
+- Put the existing ownership predicate at the shared offered-slot discard seam,
+  before wiping/archiving or clearing its offer. Re-adopt and re-read metadata on
+  every attempt; an unavailable header does not authorize deletion. Notification
+  state suppresses repeated notices, never caches authorization. Existing expiry,
+  parked replacement and cross-lobby claim paths are separate contracts.
+- In the actual fixture, omitted optional float arguments retained old VM
+  parameter values: the quiet reporter suppressed the first refusal and pending
+  polling repeated chat. Use REQUIRED booleans at every internal caller here;
+  do not infer an omitted optional QC argument is zero.
+- Drain the CLIENT's initial step acknowledgement before starting a client-chat
+  silence window. Waiting only for the server log included the original notice
+  in that window and produced a false flood assertion. Retain both failures;
+  final actual dedicated matrix has52checks/0failures with16reset arms, live
+  pending/mismatch/matching transitions and byte-identical posted evidence.
+  Synthetic account dependencies are not a real cryptographic-proof test.
+
+
 ## P1315/P1317 winter corrections and selected Colin delivery (5 Nov2026)
 
 - Owner-selected surf_colin_blaster_69000 has103actual grass faces, baked into

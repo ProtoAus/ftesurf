@@ -21,6 +21,9 @@
 
 ## next
 
+### P1320 Keep paused runs safe during ownership checks
+- A paused run stays intact while ownership is unavailable or belongs to another game key. Starting or finishing a fresh run now uses the same discard checks as the manual command, without repeating the warning every frame.
+
 ### P1318 Smoother first views
 - Fixed an unnecessary first-view lightmap rebuild that could hitch when a new area or water reflection first appeared, without reducing lighting quality.
 
