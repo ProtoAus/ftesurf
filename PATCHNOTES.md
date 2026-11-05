@@ -21,6 +21,9 @@
 
 ## next
 
+### P1321 Fewer false prediction-error alerts after resets
+- Reduced false prediction-error popups when several resets are sent in quick succession over a higher-latency connection. Movement and the underlying diagnostic history are unchanged.
+
 ### P1320 Keep paused runs safe during ownership checks
 - A paused run stays intact while ownership is unavailable or belongs to another game key. Starting or finishing a fresh run now uses the same discard checks as the manual command, without repeating the warning every frame.
 

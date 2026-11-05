@@ -26,6 +26,22 @@
   corpus:545prior records/168views byte-exact plus1new parsed clean,344REC7VIEW
   faults retained, NOTclean. tools/p1322-simcheck-selection.md holds delivery state.
 
+## P1321 expected-reset report history (5 Nov2026)
+
+- An unpredicted request's correction can arrive after a second request. One
+  `PE_Expect` slot loses the older still-valid expectation. Keep a bounded history
+  and test EACH request against the unchanged bounds; return its own reason and
+  clear on map reset. This changes report classification, not native error history
+  or movement. Exact helper bodies pass23actual-QC-VM checks with the acting legacy
+  loss control and unexcused/expired/map/eviction controls.
+- A CPU-only QC fixture needs no Source map: an image lacking a VBSP loader cannot
+  act the test. One existing Quake1 BSP is adequate for pure helper execution.
+  `log_name` alone writes to the game root; do not assume a `logs/` directory.
+  Read the actual retained pass before repeating a completed actor for a reader.
+- `c24ede65` is the qualified compiler's SHA256 PREFIX, NOT an engine Git ref.
+  The known7ccb93d1 source-tree binary is not a shipping fallback. Bind the exact
+  compiler input from the working producer; preserve it read-only in the owned
+  task and requalify compiler-dependent outputs. See tools/p1321-prederr-history.md.
 
 ## Paused-slot discard ownership and omitted QC arguments (P1320, 5 Nov 2026)
 
