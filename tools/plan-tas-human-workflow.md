@@ -4,9 +4,10 @@ Requested by Lex after trying the existing workshop, 4 November 2026.
 **Status: work in progress, 6 November 2026.** The controller foundation, full
 captured local line and P1323 literal input templates are installed BOTH Windows
 and all 12 lobbies; exact receiver/source evidence and limits are in
-[the input-template qualification](p1323-tas-recipes.md). Historical local control
-settings now have an implemented, runtime-checked P1329 candidate; its review and
-live delivery are separate in [the settings contract](p1329-tas-settings.md).
+[the input-template qualification](p1323-tas-recipes.md). P1329 historical local
+control settings are also reviewed, runtime-checked and installed BOTH Windows
+and all12lobbies. Qualification, delivery and still-pending owner acceptance are
+separate in [the settings contract](p1329-tas-settings.md).
 Contact sections and the constrained next-ramp solver remain unfinished. The
 complete workflow below is NOT delivered.
 This changes the local-editor priority in [the original TAS plan](plan-tas.md),
