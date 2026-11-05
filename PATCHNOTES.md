@@ -21,6 +21,9 @@
 
 ## next
 
+### P1333 Optional current-file check in replay review
+- Admin replay review can explicitly check current files while keeping saved historical comparison results unchanged. Unavailable checks are reported separately rather than presented as a match.
+
 ### P1332 Snow rendering and snappier lightning
 - Fixed black snow on Colin by correcting texture and baked-light bindings. The existing shallow snow caps remain cosmetic and do not change terrain collision.
 - Lightning strokes and the dark gaps between them are three times quicker, preserving their brightness and the thunder after each burst.

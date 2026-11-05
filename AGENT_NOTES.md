@@ -125,6 +125,28 @@
   Installed namespace helper requires a plain direct-child generation root;
   old and new roots are LIVEdependencies, never disposable test scratch.
 
+## Owner-requested similarity current-file check (P1333,5Nov2026)
+
+- Default authenticated review still never rereads historical sources. An explicit
+  pair action reuses session/same-origin/CSRF controls, existing path resolution
+  and captured A/B orientation; legacy/skips/invalid/off-panel captures do no IO.
+  Two regular FDs, each storedlength+1 <=16MiB+1,64KiBchunks, EOF/metadata/hash
+  checks; fixed matches/differs/unavailable states only, no currentSHA/path export.
+  Cooperative2second admission, NOThardkernelIO/globalbound/authenticity/coherent
+  instant. No DML/schema/history/backfill/newcapture/verdict/badge/collectorchange.
+- Testsession at default / does NOTcarry /admin-scoped cookie. Two tokenfixture
+  failures retained; boundeddiagnostic copied the existing realpage token flow,
+  no CSRFpolicy change. Guard refusals are existing400(staleCSRF)/403(origin).
+  Windows25/0/1POSIXskip, Linux25/0/5Node-absentDOMskips: realWindowsDOMclick/post
+  plus actualLinuxFIFO, realbyte/EOF/extra-byte/oldmtime/mutation/noDML controls.
+  ThreeVMbuild0warnings/bothinstallsheld,reader949/0,corpus548REC168VIEW344/7faults
+  unchanged. Exactunchangedprefeatureadmin ALSOreproduces twoexisting UDPscript
+  assertions; preserve, don'trepair/claimwhole-suiteclean. Corpushelper omitted
+  tools/importpath once, fixedonlythatseam. ActualLinuxfulladmin passes after
+  exactmissingpublicboard.html fixtureinput; retainfirst404. No productrepair.
+  Reviews/deployment/humanreadability pending. Historicalskip remeasurement is a separate unfinished historypolicy.
+  tools/p1333-similarity-current.md; pendinghumancheck lextest.md.
+
 ## Private off-box evidence operator tooling (5Nov2026)
 
 - `tools/evidence-backup.ps1` uses standardrsync, private Windows ACLs, versioned

@@ -62,6 +62,7 @@ import re
 import secrets
 import shutil
 import sqlite3
+import stat
 import subprocess
 import threading
 import time
@@ -146,6 +147,8 @@ QUERY_MAX = 64
 VERDICTS_SHOWN = 200
 SIM_PAIRS_SHOWN = 25
 SIM_SQL_STEPS = 1000000
+SIM_CURRENT_BYTES = 16 * 1024 * 1024  # Per side, matching the existing collector cap.
+SIM_CURRENT_SECONDS = 2.0             # Cooperative admission, not a disk/kernel timeout.
 ASSOCIATIONS_SHOWN = 25
 ASSOCIATION_SQL_STEPS = 100000
 JOURNAL_METRICS_MAX = 8192
@@ -569,6 +572,77 @@ def similarity_for(conn, rid, *, own_read_budget=False, max_sql_steps=None):
         item['source_state'] = ('captured' if item['sources'] is not None else
                                 'legacy_unbound' if r['source_capture'] in ('', b'') else 'unavailable')
         out['pairs'].append(item)
+    return out
+
+
+def _current_source(path, expected, deadline):
+    """One bounded current buffer; fixed states only, no paths/digests projected."""
+    if expected['bytes'] > SIM_CURRENT_BYTES:
+        return 'unavailable'
+    fd = None
+    try:
+        if time.monotonic() >= deadline:
+            return 'unavailable'
+        fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)
+                     | getattr(os, 'O_NONBLOCK', 0) | getattr(os, 'O_BINARY', 0))
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode):
+            return 'unavailable'
+        digest = hashlib.sha256()
+        length = 0
+        eof = False
+        while length <= expected['bytes']:
+            if time.monotonic() >= deadline:
+                return 'unavailable'
+            data = os.read(fd, min(65536, expected['bytes'] + 1 - length))
+            if not data:
+                eof = True
+                break
+            digest.update(data)
+            length += len(data)
+        after = os.fstat(fd)
+        identity = lambda s: (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns,
+                              s.st_ctime_ns, s.st_nlink)
+        if identity(before) != identity(after):
+            return 'unavailable'
+        return ('matches' if eof and length == expected['bytes']
+                and digest.hexdigest() == expected['sha256'] else 'differs')
+    except (OSError, ValueError, OverflowError):
+        return 'unavailable'
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def similarity_current(conn, rid, pair_id, replay_file, *, own_read_budget=False):
+    """Explicit owner request only; never stores/recompares an historical result."""
+    from simcheck import ReadBudget, ReadLimit, _read
+    deadline = time.monotonic() + SIM_CURRENT_SECONDS
+    out = {'pair_id': pair_id, 'state': 'unavailable', 'a': 'unavailable',
+           'b': 'unavailable', 'at': int(time.time()), 'historical_unchanged': True}
+    historical = similarity_for(conn, rid, own_read_budget=own_read_budget)
+    pair = next((p for p in historical['pairs'] if p['id'] == pair_id), None)
+    if pair is None or pair['sources'] is None:
+        return out  # Legacy, skips, invalid captures and off-panel IDs do no file IO.
+    budget = ReadBudget(conn, SIM_SQL_STEPS) if own_read_budget else None
+    try:
+        rows = _read(conn, 'SELECT id,map_dir,track,leg,leaf,kind FROM replays'
+                     ' WHERE id IN (?,?)', (pair['a_id'], pair['b_id']), budget)
+    except ReadLimit:
+        return out
+    by_id = {r['id']: r for r in rows}
+    for side in ('a', 'b'):
+        row = by_id.get(pair[side + '_id'])
+        if row is None or time.monotonic() >= deadline:
+            continue
+        try:
+            path, _why = replay_file(row)
+            if path is not None:
+                out[side] = _current_source(path, pair['sources'][side], deadline)
+        except (OSError, ValueError, TypeError):
+            pass
+    if 'unavailable' not in (out['a'], out['b']):
+        out['state'] = 'matches' if out['a'] == out['b'] == 'matches' else 'differs'
     return out
 
 
@@ -1828,6 +1902,22 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 "watch": ["map %s" % row["map_dir"], "board_replay %d" % rid,
                           "replay online %d" % rid],
             })
+
+        @bp.post("/api/run/<int:rid>/sources")
+        @control
+        def run_current_sources(rid):
+            # File work is opt-in and uses the SAME session/origin/CSRF guard as controls.
+            raw = request.form.get('pair', '')
+            if not RID_TEXT.fullmatch(raw):
+                raise AdminError('pair must be an observation id')
+            conn = db_connect()
+            try:
+                return similarity_current(conn, rid, int(raw), replay_file,
+                                          own_read_budget=True)
+            except sqlite3.Error:
+                raise AdminError('source consistency unavailable', 503)
+            finally:
+                conn.close()
 
         @bp.get("/api/run/<int:rid>/path")
         def run_path(rid):
