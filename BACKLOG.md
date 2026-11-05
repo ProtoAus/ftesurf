@@ -1,7 +1,6 @@
 # BACKLOG.md
 
 ## Prediction report metadata / replay-start tails (P1321 investigation residuals)
-- Native site: `cl_pred.c:CL_PredictMove` diagnostic ring command fields read `from.cmd`, selected before packet-frame to acknowledged-move-frame conversion and using a player-number index. Falsifier: distinct command lengths/buttons/angles plus a nonzero player slot/local seat; the marked ring row must equal the acknowledged outframe's command for THAT seat. Do not infer a movement fault from these unqualified metadata fields or change prediction math to repair a reporter.
 - Viewer site: `cl_watch.qc:Watch_Frame` / deferred line rebuild. Garden's full-view first/repeat captures retain an opening hitch; those lows include replay startup, not only active gameplay. Falsifier: same frozen full route preloaded/paused/seek0 before timing,2x/1x/2x rendering controls and a profile that assigns the cost. The settled diagnostic is pending RAM headroom; do not regrade the original full-view captures or claim a body-only/lighting fix from them.
 
 ## P1309 winter weather preview: explicit coverage residuals
@@ -2796,6 +2795,10 @@ Fixed items are removed; remaining reader contracts need acting controls.
 
 ## reccheck's default sweep stops at one unreadable file (P740)
 
+- P1326 verification reproduced the default save-prefix PermissionError; no ACLs
+  or player data were changed. The supported positional-file `data/runs` scope
+  completed:546 recordings,351 faults with the unchanged reader and stable input
+  size/mtime. This is not a clean corpus or a completed save-prefix sweep.
 - Site: `tools/reccheck.py:read_lines`. On 2026-10-16 the default selector read
   268 save prefixes beside `ftesurf/data/runs`; one raised PermissionError
   (cause unconfirmed, likely the running game holding it) and the default CLI

@@ -731,6 +731,20 @@ Scope, actual build/control limits and resume checks: tools/p1300-visuals.md.
   SCR_LoadingPump redraws only in GLSCR_UpdateScreen's loading branch; its guards are in the journal.
   Left (BACKLOG): the hl2 plugin's world load, the entity lump parse and the shader reload still stall.
 
+## P1326 native prediction-report command identity
+
+With only one eligible incoming snapshot, `CL_PredictMovePNum` can leave
+`to.cmd` null and fall back to packet/player-slot indexing before converting
+endpoint identities to acknowledged moves. Do NOT change prediction math to
+repair those diagnostic fields. The report now independently selects the
+acknowledged outframe/local seat and checks its sequence tag. The source-bound
+25-case fixture has 11 baseline failures and zero after the fix. Poison BOTH
+the destination and the selected stale seat: an all-zero selected command made
+an earlier stale-slot test pass even with the guard removed. The corrected
+unguarded mutant fails only that stale case. This is metadata/compile evidence,
+not full live-network or movement acceptance; use `tools/test_prederr_cmd.py`
+in the engine tree with an explicitly owned `--output` directory.
+
 ## P1238 prederror reports and the mispredictions they found (3 Nov)
 - LIVE 3 Nov 02:52Z (forced restart, announced in every lobby's chat 10 s ahead through surfd's
   rcon.py on the Pi: artifacts/pi1238/announce.py in the task root): deploy/p1238-prederr 760b2dfe

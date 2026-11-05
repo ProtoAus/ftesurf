@@ -21,6 +21,9 @@
 
 ## next
 
+### P1326 More reliable prediction-report input details
+- Fixed command timing, buttons and movement inputs being attributed to the wrong command in some prediction-error reports. This improves diagnostics; it does not change movement.
+
 ## 0.1.40 2026-11-05
 
 ### P1324 Complete winter downloads
