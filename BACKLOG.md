@@ -1,5 +1,9 @@
 # BACKLOG.md
 
+## Boreas first-traversal graphics hitch (5 Nov, P1311 investigation)
+- `GLBE_GenerateBatchTextures` / first-view graphics resources are candidates, NOT an established cause. The cached39.540s Boreas main replay has a repeatable39-40ms first-traversal gfx frame with original and expanded known shader coverage; second traversal worst6.7-7.4ms. No all-shaders-ready claim: a known entry can still compile lazily after the warm budget.
+- Falsifier: on the exact pinned native/content and same camera route, time shader compilation separately from capture target allocation, clear, recursive draw and restoration; reduce the acted expensive phase without reducing render scale/capture quality or changing movement. The retained local probe has not completed its native build/run because the unchanged4GiB headroom gate refused. Source/evidence: tools/p1311-map-prewarm.md.
+
 ## P1309 winter weather preview: explicit coverage residuals
 - `tools/winter_weather.py:meshes`: Christmas's6306sky triangles exceed conservative4096cap; hold that sky ONLY, not ice/audio. Falsifier for a later exact simplification/budget decision: native portal boundaries and moving-view control, no filling non-sky gaps or silently raising the cap.
 - `surfaces`: world-model upward static liquid faces only; brush entities/moving liquids and actual lava-map appearance remain untested. Falsifier: a chosen event map with these surfaces, correct frost/sorting plus unchanged contents/movement/damage.

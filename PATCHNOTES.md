@@ -21,6 +21,10 @@
 
 ## next
 
+### P1311 More map shaders in the loading warm-up
+- Three additional shader variants used in Boreas and Demise join the loading-time warm list, without changing image quality or your saved settings.
+- This expands first-visit coverage; it does not remove every first-use hitch or make busy map views cost the same to render.
+
 ### P1309 Optional winter weather preview
 - An opt-in winter preview adds crossfaded outdoor/sheltered wind, delayed thunder and a short sky-only flash with lightning. It stays off pending moving-view checks.
 - Frost and Christmas have provisional static liquid frost layers. Contents, collision, movement and lava damage are unchanged; this does not make liquids safe to walk on.

@@ -1,5 +1,28 @@
 # AGENT_NOTES.md
 
+## P1311 Boreas/Demise warm coverage and remaining first-use hitch (5 Nov 2026)
+
+- Owner's actual rig: i9-9900K / RTX2080SUPER /16GiB. Existing p1277 replay arm reused in
+  C:/FTESurf-worktrees/lows-20261104T2339Z-01a1a8e6; immutable binary/content inputs after
+  a peer native update between the first two fixtures. No driver-cache purge/salt or saved-config changes.
+- Primary archived r_renderscale2 and desktop/fullscreen settings produce actual1920x1200 output;
+  launch -window/1920x1080 did NOT override the later archived settings. Inspect the screenshot.
+- Two Boreas variants (water/refract) and one Demise animated/fog variant were not in the shipped
+  seed. P1311 adds only these three, not all historical entries from the owner's per-PC list.
+  Expanded-seed fixtures had no per-PC list and learned no new variants on two traversals each.
+  Absence of a new learned file is NOT proof of zero runtime compiles: known seed entries can
+  still be deferred by the existing2second budget or created after its warm sweep.
+- Boreas first-pass39-40ms gfx hitch remains with the expanded seed; warmed repeats worst6.7-7.4ms.
+  Cause unresolved: do not call it a shader/FBO/lightmap fix from the phase alone. Local capture
+  setup/clear/draw timings are retained as PROBE ONLY, not compiled/qualified/deployed.
+- Demise scalar1 diagnostic beats scalar2, but the scalar2 return arm drifted substantially.
+  This is a quality-changing diagnostic, not a no-cost numerical improvement claim or owner acceptance.
+- Test memory gate remains>=4000MiB and60seconds quiet; several waits refused below it and held
+  no rig lock. Native probe initially failed on the EMPTY canonical libs cache, then on absent system
+  opus/speex headers. The complete prior pacing dependency cache + proper UCRT PATH passes a header
+  preflight; full probe build/run remains blocked by headroom. Preserve failures, don't disable codecs.
+- No new player data/evidence semantics, native pin/tag, QC Build or public release change.
+
 ## P1309 optional weather — source/data, native acceptance pending (4 Nov 2026)
 
 - Existing Snow/Winter helpers are NOT interchangeable signatures: Winter_Finite
