@@ -21,6 +21,8 @@
 
 ## next
 
+## 0.1.40 2026-11-05
+
 ### P1324 Complete winter downloads
 - Fresh installs now include the winter/Santa models, weather audio and map-specific media, with the holiday asset license retained.
 - Fixed Colin's baked weather header being rejected, restoring its sky, ice and sheltered-audio setup without changing terrain or roof coverage.
