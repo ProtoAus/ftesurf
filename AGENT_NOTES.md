@@ -1,5 +1,40 @@
 # AGENT_NOTES.md
 
+## P1315/P1317 winter corrections and selected Colin delivery (5 Nov2026)
+
+- Owner-selected surf_colin_blaster_69000 has103actual grass faces, baked into
+  376grass-snow+3986exposed-cap triangles,16distributed holiday props, fine32 snow,
+  bounded storm/ice/mist/wind/audio. Cosmetic only; `r_colin_winter 0` removes
+  automatic extras without writing separate saved global options. Human placement,
+  ridden-save2/close mist/weather appearance and FPS are still PENDING, not passes.
+- Strata v25 collision node48/leaf56v2/leafbrush32/brushside16 records must follow
+  native layouts. Legacy stride caused a real bounded timeout; fix the SAME roof
+  reader with index/cycle refusal. Audio512-unit max reduction of actual fine32
+  heights preserves thin roofs but is conservative near edges; never promote its
+  coarse scaffolding as the visual mask. Missing media never auto-enables unclipped
+  snow. Renderer-restart callback reuses cold Winter/Weather loading to replace
+  freed force-shader handles. Two new static surface draws, no added frame traces.
+- Actual qualified/published source a79d2ec9 excludes unrelated pending main/native
+  candidates; functional feature delta matches08d49bb9. Windows08:05:22Z:92hashes,
+  both caches seeded,32native/config/old-fine-mask preimages unchanged. Pi08:59:22Z:
+  single paired progs-only ALL12/0 update,53runtime assets,46638old protected paths
+  unchanged+3new; native/plugin/backend/config preserved, `.prev` retained. Catalog
+  56->57 preserves old bytes, no backend restart. Actual direct health200/12.
+- Full pre-restart resume evidence is not "parts plus filenames": archive payload,
+  ms/state sidecars, stat metadata and exact cleanup-source context, read ALL members
+  ON/OFFBOX, then consume that binding at the real locked boundary. This delivery
+  preserved8parts/2821850bytes+180resume files/226269873bytes. The13launch-derived
+  actor FD census includes the complete resume namespace, including a new deleted
+  unknown-name FD positive control. No blanket exclusion, automatic restore or old
+  failure regrading. Effective expiry cvar was not measured: NO exact expiry claim.
+- Optional anonymous checksum observer failed twice (status1024 truncates late
+  fields, getinfo returned only its header). Keep those failures, stop that protocol
+  approach, use actual producer/hash/process/data proof and independent health;
+  do not repeat a healthy deployment or relabel a failed reader as a checksum pass.
+  Native look/feel remains a small owner check, not a growing test framework.
+- Public provenance: tools/p1317-colin-winter.md; human-only checks: lextest.md.
+  Raw source/evidence/player preimages and operational module details stay private.
+
 ## P1318 startup lightmap-cache marker, not shader compilation (5 Nov)
 
 - The P1311 Boreas residual is a false cached_dlight flag. At fresh-process map load

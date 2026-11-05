@@ -60,7 +60,37 @@ model/roof +2fine32mask) by full hashes. Source media contains the authored prop
 manifest, original snow grain and snow shader. Existing dual-Windows publisher
 accepts only those typed fine32 exceptions and protects all old fine-mask hashes.
 
-All destination/source/cache/catalog/fleet claims require actual producer
-receipts, not this document. Full parts AND resume preimages must be captured
+## Actual delivery — 5 Nov2026
+
+- Qualified/source-published commit `a79d2ec91fc66a3d7750c0eb7f6319d29ea0a494`
+  (`winter-visuals-1317-qualified`) contains ONLY the P1315/P1317 visual deltas
+  on the fleet-qualified base. Functional patch identity matches main feature
+  `08d49bb9`; main merge `df0179dd` and journal merge `ee92a6794` were pushed.
+- Both Windows installs: actual publisher UTC `2026-11-05T08:05:22.6798973Z`,
+  all92destination hashes exact;20native/config+12old fine-mask files unchanged.
+  Both client download-cache seeds `fb96bebd.dat` match frozen CSQC SHA256
+  `93ada3708121bb55e03ea908cbcb5c110933ece064beba7184171f1b3233d9e8`.
+- Pi: final single progs-only activation `2026-11-05T08:59:22.680947+00:00`,
+  ALL12restarted/0skipped,53explicit runtime media/data files read back, backend/
+  native/plugin/config unchanged. QW bytes were already identical.46638old
+  protected paths unchanged,3new files, no protected change/loss. `.prev` progs
+  and previous media remain. No menu/default.cfg/client-local warmseed shipment.
+- Before ANY canonical stage/restart,8parts/2821850bytes AND complete180resume
+  payload/ms/state files/226269873bytes plus stat metadata/cleanup source were
+  archived and every member rehashed ON/OFFBOX. The locked action boundary
+  consumed this full proof with12actual native actors+1backend actor; no open
+  parts/resume FD. Synthetic positive/new-deleted-resume-FD, change and alias
+  controls acted; no general-filewriter-audit or exact-expiry claim. No old-data
+  restore, old failure regrading, blanket exclusions or extra healthy restart.
+- Existing client-code catalog56->57, prior bytes retained, no backend restart.
+  Independent direct health HTTP200: `ok=true,lobbies=12`. Original failed
+  anonymous checksum observations remain failures: status1024-byte late-key
+  truncation and empty getinfo body; no served-checksum/native-frame pass inferred
+  from them and no deployment repeated. Actual producer/hash/process/data/health
+  proof is separate. Native appearance, sound, placement, save2 and numerical FPS
+  remain pending in lextest.md; no "looks right" or MAX-FPS measurement invented.
+
+All destination/source/cache/catalog/fleet claims above come from actual producer
+receipts; raw data and preimages remain private. Full parts AND resume preimages must be captured
 before the FINAL combined Pi restart; no healthy double rollout of1315 then1317,
 old-data restore, skipped-unit blanket pause, or original-failure regrading.
