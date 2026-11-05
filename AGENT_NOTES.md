@@ -303,6 +303,20 @@
   preflight; full probe build/run remains blocked by headroom. Preserve failures, don't disable codecs.
 - No new player data/evidence semantics, native pin/tag, QC Build or public release change.
 
+## P1332 native snow binding (5 Nov 2026)
+
+Owner P1327 feedback: black grass despite passing isolated GLSL pixel controls.
+Those inject textures/gl_Color directly and do NOT test FTE's material binding.
+Native Shaderpass_ClampMap does NOT call Shaderpass_DefineMap; using it before
+map in a program leaves one slot, overwrites roof0 and leaves snow1 unbound.
+Use `map $clamp:$nosrgb:$nearest:roof` then the albedo map. Also request #usemods
+(or !!fixed) so GenerateColourMods runs BEFORE BE_Program_Set_Attributes.
+Exactvertex + vertex alpha can bind existing IQM colours directly without a CPU
+expansion or another lighting scale. Use a new runtime shader key after changing
+bindings. Actual native parser function control: tools/test_winter_binding.py;
+image I/O is stubbed, not native gameplay. Flash appearance human-confirmed;
+black-snow/cap placement remains a human retest, no numerical timing/FPS claim.
+
 ## P1327 lit snow and owner weather pitfalls (5 Nov 2026)
 
 - A visible textured shader is not necessarily lit: the old fullbright snow
