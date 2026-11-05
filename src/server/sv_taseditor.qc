@@ -1,8 +1,16 @@
 // Full captured input lines; execution remains the project's <=128-row chunks.
 // A preview is not a saved revision, signature, or an original-packet timing claim.
-.float tase_preview, tase_serial, tase_next, tase_originaltime;
+.float tase_preview, tase_serial, tase_next, tase_originaltime, tase_complete, tase_previewrequest;
 .float tase_history, tase_count, tase_cursor;
-.string tase_original, tase_name, tase_histname;
+.float tase_operation, tase_opcursor, tase_oprequest;
+.string tase_original, tase_name, tase_histname, tase_target;
+
+void(entity e) SV_TASEditorClearOperation =
+{
+	if (e.tase_target) strunzone(e.tase_target);
+	e.tase_target = "";
+	e.tase_operation = e.tase_opcursor = e.tase_oprequest = 0;
+};
 
 void(entity e) SV_TASEditorReset =
 {
@@ -10,8 +18,10 @@ void(entity e) SV_TASEditorReset =
 	if (e.tase_name) strunzone(e.tase_name);
 	if (e.tase_histname) strunzone(e.tase_histname);
 	if (e.tase_history > 0) buf_del(e.tase_history);
+	SV_TASEditorClearOperation(e);
 	e.tase_original = e.tase_name = e.tase_histname = "";
 	e.tase_preview = e.tase_serial = e.tase_next = e.tase_originaltime = 0;
+	e.tase_complete = e.tase_previewrequest = 0;
 	e.tase_history = e.tase_count = e.tase_cursor = 0;
 };
 
@@ -20,13 +30,50 @@ void(entity e) SV_TASEditorClearPreview =
 	if (e.tase_original) strunzone(e.tase_original);
 	if (e.tase_name) strunzone(e.tase_name);
 	e.tase_original = e.tase_name = "";
-	e.tase_preview = e.tase_originaltime = 0;
+	e.tase_preview = e.tase_originaltime = e.tase_complete = e.tase_previewrequest = 0;
+};
+
+float(entity e) SV_TASEditorFinished =
+{
+	return (e.tasp_on && !e.tasp_load && !e.run_tas_pending &&
+		e.tasp_serial == e.rec_rec_serial && e.tasp_synced == e.tasp_filehead &&
+		SV_TimerTicks(e) == e.tasp_filehead && (e.tasp_result == 1 || e.tasp_result == 2));
 };
 
 void(entity e) SV_TASEditorFrame =
 {
+	local float s;
 	if (e.tase_serial)
 	if (e.tase_serial != e.rec_rec_serial) { SV_TASEditorReset(e); return; }
+	if (e.tase_preview)
+	{
+		if (e.tasp_load || e.tasp_serial != e.rec_rec_serial || SV_TimerTicks(e) != e.tasp_filehead)
+			e.tase_complete = 0;
+		if (e.tase_previewrequest > 0 && e.tase_previewrequest == e.run_tas_req)
+		if (SV_TASEditorFinished(e)) e.tase_complete = 1;
+	}
+	if (!e.tase_operation || !e.tase_oprequest || e.tasp_load || e.run_tas_pending) return;
+	s = SV_TASPSlot(e);
+	if (s && e.run_tas_req == e.tase_oprequest && !strcmp(tasp_revsha[s], e.tase_target) && SV_TASEditorFinished(e))
+	{
+		if (e.tase_operation == 1) SV_TASEditorClearPreview(e);
+		else e.tase_cursor = e.tase_opcursor;
+		SV_TASEditorClearOperation(e);
+	}
+	else
+	{
+		// Keep the exact target and cursor for a retry; never acknowledge a partial rollback.
+		e.tase_oprequest = 0;
+		sprint(e, PRINT_HIGH, "tas editor: retained replay stopped; retry Discard/Undo/Redo from a supported paused body\n");
+	}
+};
+
+// Recovery may restore a finished attempt; normal input editing still needs TS_RUNNING.
+float(entity e) SV_TASEditorReady =
+{
+	if (!e.run_tas_incap || !checkbuiltin(tas_input) || !checkbuiltin(tas_tape)) return FALSE;
+	if (!e.run_tas_mode || !e.run_tas_paused || e.run_tas_pending || e.run_tas_replaystate == TAS_TAPE_ACTIVE) return FALSE;
+	return SV_TASCanPause(e);
 };
 
 // Explicit pause owns this disk checkpoint. Ordinary play itself writes no TAS project.
@@ -42,13 +89,21 @@ float(entity e) SV_TASEditorRows =
 {
 	local float s, head;
 	s = SV_TASPSlot(e);
-	if (!s || !e.tasp_on || e.tasp_legal || e.tasp_serial != e.rec_rec_serial) return FALSE;
-	if (e.rec_rec_stream || e.tasp_load) return FALSE;
-	head = SV_TimerTicks(e);
-	if (head > e.tasp_synced)
+	if (!s || !e.tasp_on || e.tasp_legal || e.rec_rec_stream) return FALSE;
+	if (e.tase_preview || e.tase_operation)
 	{
-		if (!SV_TASPHarvest(e, s, head)) return FALSE;
-		e.tasp_n = max(e.tasp_n, head - e.tasp_base);
+		// A stopped transaction retains its WHOLE line; never append live inputs to it.
+		if (e.tasp_native_serial != e.rec_rec_serial) return FALSE;
+	}
+	else
+	{
+		if (e.tasp_serial != e.rec_rec_serial || e.tasp_load) return FALSE;
+		head = SV_TimerTicks(e);
+		if (head > e.tasp_synced)
+		{
+			if (!SV_TASPHarvest(e, s, head)) return FALSE;
+			e.tasp_n = max(e.tasp_n, head - e.tasp_base);
+		}
 	}
 	return (e.tasp_n > 0 && e.tasp_n <= TASP_MAX && tasp_buf[s] != 0);
 };
@@ -65,12 +120,17 @@ float(entity e) SV_TASEditorSameInputs =
 
 float(entity e, float serial, float head, float request) SV_TASEditorBound =
 {
+	SV_TASEditorFrame(e);
 	if (serial != e.rec_rec_serial || head != SV_TimerTicks(e) || request != e.run_tas_req)
 	{
 		sprint(e, PRINT_HIGH, "tas editor: stale body/line page; refresh before changing anything\n");
 		return FALSE;
 	}
-	if (e.tasp_load || !SV_TASInputReady(e)) return FALSE;
+	if (e.tasp_load || !SV_TASEditorReady(e))
+	{
+		sprint(e, PRINT_HIGH, "tas editor: recovery needs a living supported paused body, no hold/fault/queued work; original retained\n");
+		return FALSE;
+	}
 	return TRUE;
 };
 
@@ -100,30 +160,71 @@ float(entity e, string sha, string stop, float first, float last, float field, f
 	SV_TASProjectLoadChecked(e, name, stop, sha, first, last, field, value);
 	tpr_pathover = "";
 	strunzone(path); strunzone(name);
-	return (e.run_tas_req > before && e.tasp_on && (e.tasp_load || e.tasp_result == 1 || e.tasp_result == 2));
+	if (e.run_tas_req > before) e.tase_serial = e.rec_rec_serial;
+	return (e.run_tas_req > before && e.tasp_on && (e.tasp_load || e.tasp_result == 1 || e.tasp_result == 2 || e.tasp_result == 4));
 };
 
 float(entity e) SV_TASEditorFreeze =
 {
-	local float s, head;
-	if (e.tase_preview) { sprint(e, PRINT_HIGH, "tas editor: Keep or Discard this preview first\n"); return FALSE; }
+	local float s, head, i;
+	local string expected;
+	if (e.tase_preview || e.tase_operation) { sprint(e, PRINT_HIGH, "tas editor: finish the retained transaction first\n"); return FALSE; }
+	if (!SV_TASInputReady(e)) return FALSE;
 	head = SV_TimerTicks(e);
-	if (e.tasp_on && head < e.tasp_base + e.tasp_n)
+	if (e.tasp_on)
 	{
-		sprint(e, PRINT_HIGH, "tas editor: replay the captured line to its head before creating a new preview\n");
-		return FALSE;
+		if (!SV_TASEditorRows(e)) return FALSE;
+		if (head < e.tasp_base || head > e.tasp_base + e.tasp_n) return FALSE;
 	}
-	SV_TASProjectSave(e, "", FALSE);
+	// Reuse the WHOLE immutable identity even at an earlier body cursor. A
+	// bookkeeping-only save would detach history or truncate the retained future.
+	if (!SV_TASEditorSameInputs(e) || e.tasp_filehead != e.tasp_base + e.tasp_n)
+	{
+		if (e.tasp_on)
+		if (head != e.tasp_base + e.tasp_n || e.tasp_synced != head) return FALSE;
+		SV_TASProjectSave(e, "", FALSE);
+		if (!e.tasp_saveok) return FALSE;
+	}
 	s = SV_TASPSlot(e);
 	if (!s || !e.tasp_on || e.tasp_legal || e.tasp_serial != e.rec_rec_serial ||
-		e.tasp_filehead != head || e.tasp_synced != head || e.tasp_native_token <= 0) return FALSE;
-	if (!e.tasp_saveok || !SV_TASEditorHashOK(tasp_revsha[s])) return FALSE;
-	return SV_TASPKeep(SV_TASPPath(tasp_name[s]), tasp_revsha[s], FALSE, FALSE);
+		e.tasp_filehead != e.tasp_base + e.tasp_n || e.tasp_synced != head || e.tasp_native_token <= 0) return FALSE;
+	if (!SV_TASEditorHashOK(tasp_revsha[s])) return FALSE;
+	if (!SV_TASPKeptOK(e, tasp_revsha[s]))
+	{
+		if (!SV_TASPKeep(SV_TASPPath(tasp_name[s]), tasp_revsha[s], FALSE, FALSE)) return FALSE;
+		if (!SV_TASPKeptOK(e, tasp_revsha[s])) return FALSE;
+	}
+	if (e.tase_count > 0)
+	{
+		i = e.tase_cursor > 0 ? (e.tase_cursor - 1) * 2 + 1 : 0;
+		expected = bufstr_get(e.tase_history, i);
+		if (strcmp(e.tase_histname, tasp_name[s]) || strcmp(expected, tasp_revsha[s]))
+		{
+			buf_del(e.tase_history); e.tase_history = e.tase_count = e.tase_cursor = 0;
+			sprint(e, PRINT_HIGH, "tas editor: new captured baseline; old history detached explicitly, revisions retained\n");
+		}
+	}
+	return TRUE;
+};
+
+// Keep transaction targets until execution, not just placement/admission, succeeds.
+float(entity e, string sha, float operation, float cursor) SV_TASEditorReplay =
+{
+	local float before, ok;
+	local string target;
+	target = strzone(sha);
+	SV_TASEditorClearOperation(e);
+	e.tase_target = target; e.tase_operation = operation; e.tase_opcursor = cursor;
+	before = e.run_tas_req;
+	ok = SV_TASEditorLoad(e, target, "", 0, 0, 0, 0);
+	if (e.run_tas_req > before) e.tase_oprequest = e.run_tas_req;
+	if (!ok) sprint(e, PRINT_HIGH, "tas editor: retained replay not completed; original/target retained for retry\n");
+	return ok;
 };
 
 void(entity e, float first, float last, float field, float value) SV_TASEditorPreview =
 {
-	local float s, elapsed;
+	local float s, elapsed, before;
 	local string sha, name;
 	if (!SV_TASEditorRows(e)) return;
 	if (first < e.tasp_base + 1 || last < first || last > e.tasp_base + e.tasp_n)
@@ -134,32 +235,49 @@ void(entity e, float first, float last, float field, float value) SV_TASEditorPr
 	s = SV_TASPSlot(e);
 	sha = strzone(tasp_revsha[s]); name = strzone(tasp_name[s]);
 	elapsed = SV_TimerElapsed(e);
+	SV_TASEditorClearPreview(e);
+	e.tase_original = sha; e.tase_name = name;
+	e.tase_preview = 1; e.tase_serial = e.rec_rec_serial;
+	e.tase_originaltime = elapsed;
+	before = e.run_tas_req;
 	if (SV_TASEditorLoad(e, sha, "", first, last, field, value))
-	{
-		SV_TASEditorClearPreview(e);
-		e.tase_original = sha; e.tase_name = name;
-		e.tase_preview = 1; e.tase_serial = e.rec_rec_serial;
-		e.tase_originaltime = elapsed;
 		sprint(e, PRINT_HIGH, "tas editor: PREVIEW only; original revision retained. Keep or Discard after replay\n");
-	}
-	else { strunzone(sha); strunzone(name); }
+	else sprint(e, PRINT_HIGH, "tas editor: preview stopped/not started; original retained for Discard from a supported paused body\n");
+	if (e.run_tas_req > before) e.tase_previewrequest = e.run_tas_req;
 };
 
 void(entity e) SV_TASEditorKeep =
 {
 	local float s, i;
 	local string before, after;
+	SV_TASEditorFrame(e);
 	if (!e.tase_preview || !SV_TASEditorRows(e)) return;
-	if (SV_TimerTicks(e) != e.tasp_base + e.tasp_n || e.tasp_load)
+	if (!e.tase_complete || e.tase_operation || e.tasp_serial != e.rec_rec_serial ||
+		SV_TimerTicks(e) != e.tasp_filehead || e.tasp_load)
 	{
 		sprint(e, PRINT_HIGH, "tas editor: preview did not finish; original retained, Discard remains available\n"); return;
 	}
 	s = SV_TASPSlot(e);
 	if (strcmp(tasp_name[s], e.tase_name)) return;
 	before = strzone(e.tase_original);
-	SV_TASProjectSave(e, "", FALSE);
-	if (!e.tasp_saveok || !e.tasp_on || !strcmp(tasp_revsha[s], before)) { strunzone(before); return; }
+	// A failed hash retention may have written the working revision already.
+	// Retry that SAME identity rather than saving another bookkeeping-only child.
+	if (!SV_TASEditorSameInputs(e) || e.tasp_filehead != SV_TimerTicks(e))
+	{
+		SV_TASProjectSave(e, "", FALSE);
+		if (!e.tasp_saveok) { strunzone(before); return; }
+	}
+	if (!e.tasp_on || !strcmp(tasp_revsha[s], before))
+	{
+		sprint(e, PRINT_HIGH, "tas editor: no changed input revision to Keep; Discard retains the original\n");
+		strunzone(before); return;
+	}
 	after = strzone(tasp_revsha[s]);
+	if (!SV_TASPKeep(SV_TASPPath(tasp_name[s]), after, FALSE, FALSE) || !SV_TASPKeptOK(e, after))
+	{
+		sprint(e, PRINT_HIGH, "tas editor: Keep NOT committed: immutable candidate unavailable; retry Keep or Discard, original retained\n");
+		strunzone(before); strunzone(after); return;
+	}
 	if (strcmp(e.tase_histname, tasp_name[s]))
 	{
 		if (e.tase_history > 0) buf_del(e.tase_history);
@@ -168,7 +286,11 @@ void(entity e) SV_TASEditorKeep =
 		e.tase_histname = strzone(tasp_name[s]);
 	}
 	if (e.tase_history <= 0) e.tase_history = buf_create_ex("string", 0);
-	if (e.tase_history > 0)
+	if (e.tase_history <= 0)
+	{
+		sprint(e, PRINT_HIGH, "tas editor: Keep NOT committed: history allocation failed; original retained\n");
+		strunzone(before); strunzone(after); return;
+	}
 	{
 		if (e.tase_cursor == 8)
 		{
@@ -190,31 +312,34 @@ void(entity e) SV_TASEditorDiscard =
 	local string sha;
 	if (!e.tase_preview) return;
 	sha = strzone(e.tase_original);
-	if (SV_TASEditorLoad(e, sha, "", 0, 0, 0, 0))
-	{
-		SV_TASEditorClearPreview(e);
-		sprint(e, PRINT_HIGH, "tas editor: DISCARDED; replaying the unchanged original revision\n");
-	}
+	if (SV_TASEditorReplay(e, sha, 1, e.tase_cursor))
+		sprint(e, PRINT_HIGH, "tas editor: Discard replaying the unchanged original; recovery remains until completion\n");
 	strunzone(sha);
 };
 
 void(entity e, float redo) SV_TASEditorHistory =
 {
-	local float s, i;
+	local float s, i, cursor;
 	local string sha, expected;
 	if (e.tase_preview) { sprint(e, PRINT_HIGH, "tas editor: Keep or Discard first\n"); return; }
 	if (e.tase_history <= 0 || (!redo && e.tase_cursor < 1) || (redo && e.tase_cursor >= e.tase_count)) return;
 	s = SV_TASPSlot(e);
 	if (!s || strcmp(tasp_name[s], e.tase_histname)) return;
-	i = (redo ? e.tase_cursor : e.tase_cursor - 1) * 2;
-	expected = bufstr_get(e.tase_history, i + (redo ? 0 : 1));
-	if (strcmp(expected, tasp_revsha[s])) { sprint(e, PRINT_HIGH, "tas editor: history detached; nothing moved\n"); return; }
-	sha = strzone(bufstr_get(e.tase_history, i + (redo ? 1 : 0)));
-	if (SV_TASEditorLoad(e, sha, "", 0, 0, 0, 0))
+	if (e.tase_operation)
 	{
-		e.tase_cursor = e.tase_cursor + (redo ? 1 : -1);
-		sprint(e, PRINT_HIGH, redo ? "tas editor: REDO replaying retained revision\n" : "tas editor: UNDO replaying retained revision\n");
+		if (e.tase_operation != 2 + redo) return;
+		sha = strzone(e.tase_target); cursor = e.tase_opcursor;
 	}
+	else
+	{
+		i = (redo ? e.tase_cursor : e.tase_cursor - 1) * 2;
+		expected = bufstr_get(e.tase_history, i + (redo ? 0 : 1));
+		if (strcmp(expected, tasp_revsha[s])) { sprint(e, PRINT_HIGH, "tas editor: history detached; nothing moved\n"); return; }
+		sha = strzone(bufstr_get(e.tase_history, i + (redo ? 1 : 0)));
+		cursor = e.tase_cursor + (redo ? 1 : -1);
+	}
+	if (SV_TASEditorReplay(e, sha, 2 + redo, cursor))
+		sprint(e, PRINT_HIGH, redo ? "tas editor: REDO replaying retained revision\n" : "tas editor: UNDO replaying retained revision\n");
 	strunzone(sha);
 };
 
@@ -226,22 +351,29 @@ void(entity e, float first, float tag) SV_TASEditorPage =
 	s = SV_TASPSlot(e);
 	if (!s || Lobby_Active() || time < e.run_tas_pagenext) return;
 	e.run_tas_pagenext = time + 0.15;
+	SV_TASEditorFrame(e);
 	body = SV_TimerTicks(e); base = max(0, body - TAS_TAPE_MAX); head = body;
 	status = flags = originaltime = candidatetime = 0;
 	ok = SV_TASEditorRows(e);
 	if (ok) { base = e.tasp_base; head = base + e.tasp_n; flags = 1; }
-	if (!SV_TASInputReady(e) || head <= base) status = 1;
-	if (e.tasp_native_token > 0)
+	if (!SV_TASEditorReady(e) || head <= base) status = 1;
+	if (e.tasp_native_serial == e.rec_rec_serial && e.tasp_native_token > 0)
 	if (checkbuiltin(tas_rewind))
 	if (tas_rewind(e, e.tasp_native_slot, e.tasp_native_token, 1) == 1) flags = flags | 2;
 	if (e.tase_preview)
 	{
 		flags = flags | 4;
-		if (!e.tasp_load && body == head)
+		if (ok && e.tase_complete && !e.tase_operation && !e.tasp_load && body == head && e.tasp_serial == e.rec_rec_serial)
 		{
 			flags = flags | 8;
 			originaltime = e.tase_originaltime; candidatetime = SV_TimerElapsed(e);
 		}
+		else if (!e.tasp_load) flags = flags | 16;
+	}
+	if (e.tase_operation)
+	{
+		if (e.tase_oprequest > 0) flags = flags | 32;
+		else flags = flags | 16;
 	}
 	if (!first) first = max(base + 1, head - TAS_PAGE_ROWS + 1);
 	first = bound(base + 1, first, max(base + 1, head));
@@ -323,6 +455,12 @@ void(entity e, float argc) SV_TASEditorCommand =
 	if (!FS_TASNumber(argv(argc-1))) goto bad;
 	request = fs_tas_number;
 	if (!SV_TASEditorBound(e, serial, head, request)) { strunzone(action); return; }
+	if (e.tase_operation)
+	if ((e.tase_operation == 1 && strcmp(action, "discard2")) ||
+		(e.tase_operation == 2 && strcmp(action, "undo2")) || (e.tase_operation == 3 && strcmp(action, "redo2")))
+	{
+		sprint(e, PRINT_HIGH, "tas editor: retry the retained Discard/Undo/Redo before another edit\n"); strunzone(action); return;
+	}
 	if (time < e.tase_next) { sprint(e, PRINT_HIGH, "tas editor: wait for the previous action\n"); strunzone(action); return; }
 	e.tase_next = time + 0.35;
 	if (!strcmp(action, "preview2")) SV_TASEditorPreview(e, first, last, field, value);

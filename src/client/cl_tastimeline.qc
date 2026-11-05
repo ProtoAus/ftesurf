@@ -135,7 +135,7 @@ void(float extended) TASTimeline_ReadEvent =
 	take = (tag == tast_tag && tasu_open && LT_StatsAreMine() && numclientseats <= 1);
 	good = (n <= TAS_PAGE_ROWS && status == 0 && first > base && linehead >= first &&
 		base >= 0 && head >= 0 && head < 16000000 && linehead < 16000000 &&
-		first + n - 1 <= linehead && undo <= 8 && redo <= 8 && flags <= 15 &&
+		first + n - 1 <= linehead && undo <= 8 && redo <= 8 && flags <= 63 &&
 		originaltime >= 0 && originaltime <= 1000000 && candidatetime >= 0 && candidatetime <= 1000000);
 	// Always consume the whole message, including a stale or refused answer.
 	for (i = 0; i < n; i = i + 1)
@@ -338,8 +338,8 @@ void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw 
 	else if (Profile_Chip("tast_bits",at+[tsz*10,0,0],chip,tast_value ? "Held" : "Released",tsz,tast_value)) tast_value = !tast_value;
 	at_y = at_y + row + hint;
 	if (Profile_Chip("tast_apply",at,chip,tast_v2 ? "Preview line" : "Recalculate",tsz,current && !(tast_flags & 4))) TASTimeline_Apply();
-	if (Profile_Chip("tast_undo",at+[(width+6)/3,0,0],chip,sprintf("Undo (%.0f)",tast_undo),tsz,current && tast_undo>0)) TASTimeline_History(FALSE);
-	if (Profile_Chip("tast_redo",at+[(width+6)*2/3,0,0],chip,sprintf("Redo (%.0f)",tast_redo),tsz,current && tast_redo>0)) TASTimeline_History(TRUE);
+	if (Profile_Chip("tast_undo",at+[(width+6)/3,0,0],chip,sprintf("Undo (%.0f)",tast_undo),tsz,current && tast_undo>0 && !(tast_flags & 4))) TASTimeline_History(FALSE);
+	if (Profile_Chip("tast_redo",at+[(width+6)*2/3,0,0],chip,sprintf("Redo (%.0f)",tast_redo),tsz,current && tast_redo>0 && !(tast_flags & 4))) TASTimeline_History(TRUE);
 	at_y = at_y + row + hint;
 	if (tast_v2)
 	{
@@ -347,10 +347,15 @@ void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw 
 		if (Profile_Chip("tast_seek",at,chip,"Seek before",tsz,current && !(tast_flags & 4)))
 			TASTimeline_Action("seek2",max(tast_base,tast_selected-1));
 		if (Profile_Chip("tast_seekhead",at+[(width+6)/4,0,0],chip,"Replay head",tsz,current && !(tast_flags & 4))) TASTimeline_Action("seek2",tast_head);
-		if (Profile_Chip("tast_keep",at+[(width+6)/2,0,0],chip,"Keep",tsz,current && (tast_flags & 4))) TASTimeline_Action("keep2",0);
+		if (Profile_Chip("tast_keep",at+[(width+6)/2,0,0],chip,"Keep",tsz,current && (tast_flags & 8))) TASTimeline_Action("keep2",0);
 		if (Profile_Chip("tast_discard",at+[(width+6)*3/4,0,0],chip,"Discard",tsz,current && (tast_flags & 4))) TASTimeline_Action("discard2",0);
 		at_y = at_y + row + hint; chip = [(width-12)/3,row,0];
-		if (tast_flags & 8) label = sprintf("Preview end: %+0.3f s vs original. Original retained.",tast_candidatetime-tast_originaltime);
+		if (tast_flags & 8) label = "Preview complete. Original retained; shared world is not rewound.";
+		else if (tast_flags & 16)
+		{
+			if (tast_flags & 4) label = "Preview stopped/not complete. Original retained: Discard from a supported paused body.";
+			else label = "Retained replay stopped. Retry the same Undo/Redo from a supported paused body.";
+		}
 		else label = "Native tick replay; packet timing can differ. Shared world is not rewound.";
 		sui_text(at,[hint,hint],label,SUI_THEME_DIM,1,0); at_y = at_y + hint*1.6;
 	}
@@ -375,6 +380,7 @@ void(vector at, float width, float tsz, float hint, float row) TASProject_Draw =
 		else if (tasp_cl_result == 1) label = strcat(label, "reproduced exactly");
 		else if (tasp_cl_result == 2) label = strcat(label, sprintf("DIVERGED at %.0f", tasp_cl_devtick));
 		else if (tasp_cl_result == 3) label = strcat(label, "load stopped");
+		else if (tasp_cl_result == 4) label = strcat(label, "partial seek; future retained, only visited checkpoints checked");
 		else label = strcat(label, "saved");
 	}
 	sui_text(at,[hint,hint],label,tasp_cl_result == 2 ? SUI_THEME_ACCENT : SUI_THEME_DIM,1,0);

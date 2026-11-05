@@ -20,40 +20,71 @@ file-hash-bound, same-session native base is probed before historical placement.
 The explicitly selected immutable saved pair supplies its recorder prefix; a
 stale live-ring prefix mark is not treated as authority after a cut, nor are the
 existing rewind prefix checks weakened. Preview preserves its frozen original;
-Keep writes a child, Discard restores it, and eight hash-bound undo/redo pairs
-retain revisions. The advanced project/checkpoint/sign/legacy solver tools have
-their own Project tab; Shared retains its existing tab index.
+Keep writes a child only after verifying its hash-addressed retention. Eight
+undo/redo pairs retain revisions. A no-change freeze reuses its immutable identity,
+including at an earlier body cursor; it does not save away the retained future or
+insert a hidden parent between history endpoints. A genuinely new captured
+baseline explicitly detaches incompatible history, without deleting revisions.
 
-Cold or expired native state, unsupported recording/context, remote authority
-and shared-world changes must not be represented as an exact native seek.
-Initial capture is buffered REC13/14 only, not REC15 or streamed REC14. Shared
-world state is not rewound. Human input whose authoring recipe was not retained
-is labelled recorded input/recipe unknown, not inferred from the current draft.
+Interrupted execution detaches append/progress, not ownership of the unchanged
+native recovery base. Original/target handles survive failed or cancelled replays.
+Discard and history cursor changes settle after actual replay completion, not
+placement admission; a failed retained operation keeps its exact retry target.
+Stopped previews cannot be Kept or labelled complete. Partial seeks have their own
+result and claim only visited checkpoints, not full-run reproduction. The preview
+hint does not present packet/carry timing differences as route-time improvements.
+
+The advanced project/checkpoint/sign/legacy solver tools have their own Project
+tab; Shared retains its existing tab index. Cold or expired native state,
+unsupported recording/context, remote authority and shared-world changes must not
+be represented as an exact native seek. Initial capture is buffered REC13/14 only,
+not REC15 or streamed REC14. Shared world state is not rewound. Human input whose
+authoring recipe was not retained is labelled recorded input/recipe unknown, not
+inferred from the current draft.
 
 ## Evidence so far - explicit limits
 
-A matched predecessor-source Windows dedicated localhost fixture passed thirty
-actual checks: ordinary Forward starts an unassisted recording, explicit Pause
-marks TAS without synthetic grants, an unchanged full native replay matches all
-stored body/velocity checkpoints, and the original file bytes remain exact. A
-first-input yaw change actually changes the native trajectory; Discard, Keep,
-Undo and Redo act on real rows and preserve the immutable original. Seeking to
-body tick zero retains the full future extent; Replay head executes it; Play
-leaves no queued synthetic work and does not clear TAS ancestry. Actual GUI
-screenshots were read. All three QC VMs compiled with zero warnings.
+Initial predecessor-source short-fixture evidence and its original failures are
+retained. The published P1310/P1312 code was then integrated and a fresh FULL
+Windows native build at f1fe93dd7d5c7754bb8a148e736cf685075694c2 / patch-1314
+succeeded through the existing NoDeploy entrypoint: all three QC VMs zero warnings;
+74 pre-existing native warning lines, no new native warnings. The native binary
+embeds the tag, and its actual pm_selftest command subsequently acted and reported
+all checks passed through the existing guarded/ready console bridge. Unsupported
+standalone GUI-PE/console-wrapper attempts are retained, not test passes.
 
-The tested short fixture is NOT proof of long history, warm-ring expiry, cold
-restoration, all recipes, arbitrary worlds, numerical timing or fleet deployment.
-Long straight-ahead fixture attempts restarted; attempted gravity overrides did
-not change the recorded profile. An unsupported camera command and a completion-
-page/navigation race were preserved as failures, not promoted to passes. Client
-page requests now coalesce under the existing rate limit instead of dropping a
-navigation click. A side-input edit that changed commands but not trajectory is
-not used as the physics actuation proof; the yaw edit supplies that control.
+The fresh paired native/QC fixture passed an extended sequence of 91 individual
+acting/preservation checks before its final observer combined two rate-gated
+commands and missed Pause. Those completed checks include a real archive-create
+ACL denial, failed Keep retaining preview/history, exact ACL restoration, retry
+of the SAME candidate hash, two successive Undo and Redo operations, Discard
+without a hidden identity hop, branching without deleting old revisions, nine
+commits bounded to eight pairs, and all eight retained Undo operations. Its
+original overall failure receipt remains FAILED; the observer was corrected,
+not the failed observation regraded or the passed history cases rerun blindly.
 
-These receipts predate integration of the published P1310/P1312 observer-only
-commits. Owned source bytes were restored exactly after fast-forwarding those
-commits, but their old binary is NOT a build of the integrated source. Fresh full
-native/QC build, source/evidence reviews, reader/corpus preservation and exact-
-source delivery are pending. This document makes no deployed/current-build or
-full-project completion claim. QC Build 89 remains unchanged.
+A separate cancellation arm passed 36 checks: the candidate had ACTUALLY consumed
+native grants but had not completed; Play aborted it; re-pausing exposed a stopped
+preview, Keep refused it, and Discard replayed its unchanged original natively.
+The original archive and history counts survived. The first observer's rejected
+Keep required a fresh page binding before Discard; that failure is also retained.
+
+The subsequent partial-cursor arm passed 35 checks, including no-edit exact
+checkpoint/grant/byte controls, physically different yaw preview, Keep/Discard/
+Undo/Redo, explicit partial seek, preview FROM that earlier body cursor without
+losing the future, exact Discard, Replay head and resumed TAS ancestry with no
+queued work. Actual screenshots were read; the controls fit their panel.
+Reader suite: 949 checks, zero failures. Paired current RUNS selector: 544 inputs,
+351 fault reports in BOTH published-parent reader and candidate, identical
+findings and stable input/sidecar bytes; no increase. Existing faults are not
+relabelled clean, and SAVES was not read or repaired by that sweep.
+
+These are short, buffered15ms local fixtures, NOT long/warm-ring/cold/all-recipe/
+arbitrary-world/numerical-timing or owner-feel acceptance. Straight-ahead long
+fixture attempts restarted; attempted gravity overrides did not change the
+recorded profile. No such attempt is a long-history pass. Two initial independent
+reviews found the history/recovery/retention/partial-result issues above; corrected
+source needs fresh independent review. The source must include the subsequently
+published P1313 retry policy before promotion. Exact-source clean build/delivery
+and the full remaining project stay in scope. No deployed or full-project
+completion claim. QC Build 89 remains unchanged.

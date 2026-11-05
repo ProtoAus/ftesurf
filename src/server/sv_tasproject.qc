@@ -1,6 +1,6 @@
 // P1082: TAS projects. A project = one ordinary TAS save (its base) + every input after it.
-// Loading re-simulates from that save; checkpoint states say whether it reproduced. The engine
-// keeps the connection's sub-tick ms carry into a replay, which QC cannot set (BACKLOG).
+// Loading re-simulates from that save; checkpoint states say whether it reproduced.
+// Exact native state is transient: a cold body-only save is not a complete mover base.
 #define TASP_VERSION 2          // P1090: 2 adds `supply`; 1 still loads
 #define TASP_LEGAL 3            // P1100: a legal start (`start`, `startat`) in place of a base save
 #define TASP_MAX 96000          // ticks after the base, about 24 minutes at 15 ms
@@ -21,7 +21,7 @@ string tasp_parsha[FS_MAXPLAYERS + 1];   // P1090: that revision's parentsha, ""
 float *tasp_pbuf[FS_MAXPLAYERS + 1];     // P1090: that revision's own rows (tasp_pbase, tasp_pn)
 .float tasp_on, tasp_n, tasp_cap, tasp_base, tasp_baseid, tasp_rev, tasp_serial, tasp_synced;
 .float tasp_lasthead, tasp_filehead, tasp_ncp, tasp_load, tasp_stop, tasp_chead, tasp_cbase;
-.float tasp_native_slot, tasp_native_token; // transient exact base, never saved/signed authority
+.float tasp_native_slot, tasp_native_token, tasp_native_serial; // recovery ownership, not replay progress
 .float tasp_saveok;            // this invocation, not an old successful revision
 .float tasp_ccount, tasp_cpi, tasp_dev, tasp_devtick, tasp_result, tasp_next;
 .vector tasp_bo, tasp_bv;      // the base tick's exact origin and velocity (state.txt rounds)
@@ -105,7 +105,7 @@ void(entity e) SV_TASProjectReset =
 	s = SV_TASPSlot(e);
 	e.tasp_on = e.tasp_load = e.tasp_n = e.tasp_cap = e.tasp_ncp = e.tasp_ccount = 0;
 	e.tasp_result = e.tasp_dev = e.tasp_devtick = 0;
-	e.tasp_native_slot = e.tasp_native_token = e.tasp_saveok = 0;
+	e.tasp_native_slot = e.tasp_native_token = e.tasp_native_serial = e.tasp_saveok = 0;
 	e.tasp_line = e.tasp_linemt = -1;
 	e.tasp_cut = 16000001; e.tasp_gen = e.tasp_parentrev = 0;
 	e.tasp_supa = e.tasp_supb = e.tasp_signed = e.tasp_pn = e.tasp_lineserial = e.tasp_made = 0;
@@ -789,7 +789,13 @@ void(entity e) SV_TASProjectDrive =
 		e.tasp_load = 0;
 		if (e.tasp_legal) e.tasp_serial = -1;   // its line is the session's (SV_TASProjectSaveLegal), not this attempt's
 		e.tasp_result = e.tasp_devtick ? 2 : 1;
-		if (e.tasp_devtick)
+		if (head < e.tasp_base + e.tasp_n)
+		{
+			e.tasp_result = 4; // successful partial seek, NOT full checkpoint reproduction
+			sprint(e, PRINT_HIGH, sprintf("tas project: seeked %s to tick %.0f; future retained, only visited checkpoints checked; paused\n",
+				tasp_name[s], head + (e.tasp_legal ? e.tasp_lstartat : 0)));
+		}
+		else if (e.tasp_devtick)
 			sprint(e, PRINT_HIGH, sprintf("tas project: loaded %s to tick %.0f; DIVERGED from its saved states at tick %.0f (max %.4f); paused\n",
 				tasp_name[s], head + (e.tasp_legal ? e.tasp_lstartat : 0), e.tasp_devtick + (e.tasp_legal ? e.tasp_lstartat : 0), e.tasp_dev));
 		else
@@ -1187,7 +1193,7 @@ float(entity e, string sha) SV_TASPKeptOK =
 	local float ok;
 	tpr_pathover = strzone(SV_TASPRevPath(sha, "tasp"));
 	ok = SV_TASPRead(e, "", FALSE);
-	if (ok) ok = (tpr_h == sha);
+	if (ok) ok = !strcmp(tpr_h, sha);
 	SV_TASPReadFree();
 	strunzone(tpr_pathover); tpr_pathover = "";
 	return ok;
@@ -1357,7 +1363,7 @@ void(entity e, string name, float force) SV_TASProjectSave =
 			e.tasp_rev = prev; strunzone(name); strunzone(parent); SV_TASProjectEvent(e); return;
 		}
 		e.tasp_baseid = id; e.tasp_bo = bo; e.tasp_bv = bv;
-		e.tasp_native_slot = ns; e.tasp_native_token = nt;
+		e.tasp_native_slot = ns; e.tasp_native_token = nt; e.tasp_native_serial = e.rec_rec_serial;
 		if (fork) e.tasp_parentrev = prev;   // only once the new project exists
 		if (tasp_hash[s]) strunzone(tasp_hash[s]);
 		tasp_hash[s] = strzone(hash);
@@ -1503,7 +1509,8 @@ void(entity e, string name, string cpname, string expected, float first, float l
 	// A disk position/velocity is not the private Source mover state. Use only
 	// the transient token bound when THIS unchanged base was captured.
 	ns = e.tasp_native_slot; nt = e.tasp_native_token;
-	warm = (!e.tasp_legal && e.tasp_serial == e.rec_rec_serial &&
+	// Abort detaches append/progress, not ownership of this unchanged recovery base.
+	warm = (!e.tasp_legal && e.tasp_native_serial == e.rec_rec_serial &&
 		e.tasp_base == tpr_base && !strcmp(tasp_hash[s], tpr_hash) && nt > 0 &&
 		e.run_tas_mode && e.run_tas_paused);
 	// The immutable saved pair owns this recording prefix, not an old dense
@@ -1554,7 +1561,10 @@ void(entity e, string name, string cpname, string expected, float first, float l
 	e.vbsp_bhop_on = world; e.vbsp_bhop_since = 0;
 	SV_TASHistoryReset(e);
 	SV_TASProjectReset(e);
-	if (warm) { e.tasp_native_slot = ns; e.tasp_native_token = nt; }
+	if (warm)
+	{
+		e.tasp_native_slot = ns; e.tasp_native_token = nt; e.tasp_native_serial = e.rec_rec_serial;
+	}
 	SV_TASMark(e);
 	e.run_tas_mode = TRUE;
 	e.run_tas_paused = TRUE; e.run_tas_pending = 0; e.run_tas_fault = 0;
