@@ -37,7 +37,9 @@ policy, QC Build-number or release change. The broader provenance bank is partia
 - All90 modern six-map rows match; all72 available old-fleet shared rows match.
   Historical verifier results remain identical (known legacy HOLDs, gravity PASS).
 - Reader suite949PASS. Corpus:541 recordings,341 existing structural faults;
-  source inventory, bytes and findings unchanged, not a clean-corpus claim.
+  source inventory, bytes and findings unchanged, not a clean-corpus claim. This
+  historical recursive REC-only scope is not the exact current RUNS/paired-VIEW
+  domain; see the separate counts and same-byte control in P1310.
 - Original fixture/header/stamp/scope/parser/transport failures are retained.
 
 ## Actual delivery — 4 November 2026, UTC
@@ -48,6 +50,13 @@ client, dedicated server and five plugins (14 files). Current predecessors are
 the guarded activation boundary. Both actual installed dedicated binaries pass
 1,557/1,557. The first occupied-boundary refusal remains recorded; the process
 exited naturally before the same transaction resumed. No process was killed.
+
+**Receiver correction recorded at P1310:** the secondary client receiver above
+was optional `C:/FTEQuake/ftesurf64.exe`, NOT primary `fteqw64.exe`. The dedicated,
+plugin and alias measurements remain valid, but do not prove that primary client
+was updated then. P1308 subsequently installed the actual primary pair; P1310
+updates that correct mapping and preserves the optional alias. Historical raw
+receipts/cold results are not relabelled. See `tools/p1310-gravity-shallow.md`.
 
 **Pi,21:34:09:** qualified ARM native server/HL2 pair on all12lobbies. No programs,
 configs, assets, tools, backend code/state, schema or ranking-policy deployment.
