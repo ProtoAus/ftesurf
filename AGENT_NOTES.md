@@ -125,6 +125,31 @@
   Installed namespace helper requires a plain direct-child generation root;
   old and new roots are LIVEdependencies, never disposable test scratch.
 
+## Private off-box evidence operator tooling (5Nov2026)
+
+- `tools/evidence-backup.ps1` uses standardrsync, private Windows ACLs, versioned
+  no-delete copies and an opaque/read-only SHA256 index. No Pi overwrite/repair,
+  capture/verdict/schema/ranking/game/backend change. `tools/evidence-backup.md`.
+  Source/acting controls qualified; initial actualdata/reviews/scheduling pending.
+- Keep rsync/SSH on SAME MSYS runtime. NativeSSH text smoke can pass while its
+  rsync inherited descriptors fail; blockingIO did notfix it. Git's separate
+  MSYS SSH produced dup()failure. Existing MSYS SSH+EXISTING explicit identity/
+  knownhost paths works; no copiedkeys, newtrust, VM or globalpackageinstall.
+  Nativeprofile paths containbackslashes: POSIXshlex silentlyremoves them.
+  Import inspectors need ACTUALportable/MSYS lookup PATH; output can mix C:/
+  and backslash leaves. Backslash-only regex initiallymissed sharedDLL pins;
+  original6pin cohort retained, corrected26pins without binarychange.
+- ActualLinuxIndexer9/0/0; real whole-entrypoint late/zero copies, same-size edit
+  with restoredmtime/oldversion, deletedfake source retained, changedlatepart,
+  exactSHA/privateACL; artifact mismatch/share contention beforetransport;
+  actingtimeout/birthcleanup and Windows casealias/reservedname before rsync.
+  Original PATH/literal/descriptor/pin capture failures retained, not passes.
+- Windows limitedS4U registration in the tested context was AccessDenied; exact
+  taskquery proved ABSENT. Owneradmin/UACstep needed, no silentinteractive/SYSTEM
+  fallback or password/key changes. Standalonecopy NOTblocked. Taskconfiguration
+  hourly/StartWhenAvailable/noWake is NOTactualscheduled acceptance/alwayson.
+  Mutablepartials/latearrivals mean bytechange isn'tguilt/restorepermission.
+
 ## Store-only similarity bounded rotation (P1322,5Nov2026)
 
 - Boolean cursor ORDER BY forces a full eligible-candidate sort before LIMIT.
