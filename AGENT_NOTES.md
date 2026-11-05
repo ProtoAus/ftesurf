@@ -1,5 +1,28 @@
 # AGENT_NOTES.md
 
+## P1311 Boreas/Demise warm coverage and remaining first-use hitch (5 Nov 2026)
+
+- Owner's actual rig: i9-9900K / RTX2080SUPER /16GiB. Existing p1277 replay arm reused in
+  C:/FTESurf-worktrees/lows-20261104T2339Z-01a1a8e6; immutable binary/content inputs after
+  a peer native update between the first two fixtures. No driver-cache purge/salt or saved-config changes.
+- Primary archived r_renderscale2 and desktop/fullscreen settings produce actual1920x1200 output;
+  launch -window/1920x1080 did NOT override the later archived settings. Inspect the screenshot.
+- Two Boreas variants (water/refract) and one Demise animated/fog variant were not in the shipped
+  seed. P1311 adds only these three, not all historical entries from the owner's per-PC list.
+  Expanded-seed fixtures had no per-PC list and learned no new variants on two traversals each.
+  Absence of a new learned file is NOT proof of zero runtime compiles: known seed entries can
+  still be deferred by the existing2second budget or created after its warm sweep.
+- Boreas first-pass39-40ms gfx hitch remains with the expanded seed; warmed repeats worst6.7-7.4ms.
+  Cause unresolved: do not call it a shader/FBO/lightmap fix from the phase alone. Local capture
+  setup/clear/draw timings are retained as PROBE ONLY, not compiled/qualified/deployed.
+- Demise scalar1 diagnostic beats scalar2, but the scalar2 return arm drifted substantially.
+  This is a quality-changing diagnostic, not a no-cost numerical improvement claim or owner acceptance.
+- Test memory gate remains>=4000MiB and60seconds quiet; several waits refused below it and held
+  no rig lock. Native probe initially failed on the EMPTY canonical libs cache, then on absent system
+  opus/speex headers. The complete prior pacing dependency cache + proper UCRT PATH passes a header
+  preflight; full probe build/run remains blocked by headroom. Preserve failures, don't disable codecs.
+- No new player data/evidence semantics, native pin/tag, QC Build or public release change.
+
 ## P1309 optional weather — source/data, native acceptance pending (4 Nov 2026)
 
 - Existing Snow/Winter helpers are NOT interchangeable signatures: Winter_Finite
@@ -8939,6 +8962,42 @@ script rather than passing it as an argument, where `ps` would show it.
   we already hold for the same run.
 
 ## Pi operations (public lobbies)
+
+- **P1309 occupied-mid-rollout completion (5 Nov).** A positive-empty start can
+  become11restarted/1occupied-skip. Preserve that original failed transaction;
+  do not rerun activation or restart healthy units to get a green receipt.
+  Complete only the exact skipped unit once it is empty, with canonical hashes,
+  expected11new+1old epochs, still-exact ALL-part ONBOX/OFFBOX archive and fresh13
+  declared-actor/FD proofs at the short locked boundary. Other occupied units
+  need not disconnect if untouched. Record the separate one-unit completion,
+  unchanged old-path checks and any new files; no original failure regrading,
+  data restoration, force or general writer-closure claim. This does not recover
+  P1308's missing resume metadata or waive its future complete-preimage rule.
+  Warmseed is client-local: omit it from Pi runtime-media promotion rather than
+  clobber a newer published Windows shader-warm update with an older snapshot.
+
+- **P1308 strict old-path failure after successful component rollout (5 Nov).**
+  Source59/tag1308 and QW/CS reached all12new actors with exact native/plugin,
+  target/.prev, config and backend guards, no force. All8actual recorder payloads
+  (2821850bytes) were individually rehashed ONBOX/OFFBOX before any staging and
+  strict13actor/FD checks repeated at the locked boundary. Caller240s timed out;
+  READ-ONLY receipt inspection found all12restarts already complete and lock
+  released. The actual postflight FAILED over3resume paths, not the transport:
+  run.rec/ms.txt/state.txt missing and one new evidence recording. Inventory
+  values are `{sha256:...}`, not bare strings: compare the actual inner digest.
+  New evidence bytes match the old resume recording EXACTLY. SV_MsWipeDir makes
+  this move for posted runs; worldspawn SV_MsSweep expires slots. Metadata was
+  not archived, so do not assert exact expiry retrospectively. Preserve the failed
+  guard, no resume-tree exclusion, older-state restoration, healthy restart or
+  downgrade. Future old-path claims need a complete resume preimage/cleanup
+  predicate as well as recorder-part closure. Part archives do not cover ms/state.
+- **P1308 compiler-baseline correction (5 Nov).** Canonical src/fteqcc64.exe still
+  hashes7ccb93d1 and emits the known two setproperty227 F333 miscompilations. They
+  are not a safe fleet baseline just because an earlier local control used it:
+  P1307's qualified live programs used c24ede65 (git-7809), zero warnings. Read-only
+  copy of that exact binary into this task's private src preserves canonical tools;
+  recompile/requalify affected programs and append their SHA256 to tasrevd codes,
+  not the folded-MD4 cache name. Corrected generation is pending at this checkpoint.
 
 - **P1168 current-cohort resolution and component scope (1 Nov2026).** Failure
   to match32 local artifacts did NOT prove the live pair lacked provenance. The

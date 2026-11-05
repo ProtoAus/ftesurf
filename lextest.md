@@ -5,8 +5,10 @@
 Small mist check requested: on Frost, `r_mist 1`; is mist visible near lights,
 and does turning/moving still feel smooth? No confirmation yet; default staysOFF.
 Weather source/data and all3 zero-warning QC builds pass, NOT native rendering.
-After actual candidate delivery, set `r_weather 1` BEFORE loading Frost, not in
-a timed line. Check the water frost/shine, then `r_weather_test 1` for one sky-only
+Both Windows on-disk/caches updated00:24Z5Nov; Pi all12current actors verified
+01:20Z after11+one separately completed occupied skip, no healthy repeat restart.
+Reconnect/reload to select newCSQC. Set `r_weather 1` BEFORE loading Frost,
+not in a timed line. Check the water frost/shine, then `r_weather_test 1` for one sky-only
 flash/fork followed by delayed thunder. Cross a roof edge for wind crossfade.
 `r_weather_flash 0` removes flashing; `r_weather_audio 0` removes only this layer;
 `r_weather 0` is the immediate control. Report clipping/sorting, odd volume or a

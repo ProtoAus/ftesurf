@@ -112,6 +112,57 @@ this is not a clean-corpus claim. Earlier recursive selection/old341 expectation
 failures remain preserved privately. A separate all-SAVES observation refused at
 a protected unreadable historical fixture; no data or permissions were changed.
 
+## Actual delivery — 4/5 Nov2026
+
+Source: engine0591e841f1505f3e6fe14c76203d4951aa06b839/tagpatch-1308;
+QC b796f9509de8740e6f5a2795f3fac753b4b0e81a. No release/Build decision.
+
+- Clean tagged Windows full build:74existing normalized native warnings,0NEW;
+  QCC SV0/CL2known-bad-compilerF333/MENU0. Those two are NOT an acceptable fleet
+  baseline: local7ccb was stale while P1307 used qualifiedc24/git-7809. Compiler-
+  corrected controller-only generation now compiles all3 VMs0warnings and passes
+  all21 real dedicated/socket/GUI checks. It is qualified for Pi handoff, NOT yet
+  promoted. Native qualification remains separate.
+  ARM source-identical build:17existing warnings,
+  0NEW;1557 actual clean native self-tests pass. Production mover source equals
+  the already-qualified P1306 bank/platform source; no fresh probe campaign or
+  new all-map/numerical-performance claim is implied.
+- Both Windows installs23:50:35Z4Nov:28exact targets (14native,12DAT/LNO,2cache),
+ 18261 config/player-data/non-target-alias hashes unchanged;52 predecessor and
+  prior-prev files archived/rehashed. No game process killed or owner CFG edited.
+  Installed primary core actor12checks pass. Installed secondary GUI20assertions
+  pass; subsequent optional screenshot collides with an immutable old name, so
+  that original observer failure remains retained rather than called a full pass.
+- Pi paired2native+QW/CS delivery5Nov: all12 original new actor births/native
+  hashes and plugin mappings qualified;0skipped/NO FORCE. Eight actual recorder
+  payloads,2821850bytes, individually rehashed ONBOX+OFFBOX before ANY canonical
+  stage; strict13actor/FD checks repeat at the locked execution boundary. The
+  contribution-code catalog53->54 appends the exact CSQC SHA256 preserving every
+  prior byte. Folded-MD4 download-cache names are NOT contribution-code hashes.
+- **Strict Pi old-data postflight FAILED.** All4 installed targets and.prev are
+  exact; config/backend unchanged, lock released. Of46355old protected paths,
+  three files in one resume disappeared and one evidence record appeared. Its
+  bytes hash EXACTLY to the old resume run.rec; existing SV_MsWipeDir preserves
+  posted recordings this way, and worldspawn SV_MsSweep expires old slots. The
+  two small ms/state preimages were not archived, so their precise expiry state
+  cannot be retrospectively proved. Do not relabel the guard pass, exclude the
+  resume tree, restore older player state, rerun healthy lobbies or claim missing
+  metadata recovered. No data repair/rollback was done. Subsequent read-only
+  observation confirms all12 same new actors, all4 target/predecessor pairs and
+  positive-empty status; this is component/runtime evidence, not old-data PASS.
+
+A later READ-ONLY full12-file check confirms both Windows installs already
+advanced to the peer's newer published P1309 source5458009d/c24 generation,
+including this controller. These were NOT overwritten with older programs.
+The qualified controller-only c24 correction has no weather asset dependency;
+it is available for coordination with the independently-qualified P1310 native
+Pi lane. No P1308 maintenance gate remains or blanket preparation pause applies.
+A fresh adopter must take actual current predecessors/epochs and complete resume
+preimages, not reuse stale volatile proof or relabel the old failure.
+
+Raw parts, actor identities, metadata and predecessor archives remain private in
+owned task roots. Human feel and full editor acceptance remain separate.
+
 ## Still in scope for the full requested editor
 
 Complete normal-play capture beyond128/the warm ring; indexed full timeline and

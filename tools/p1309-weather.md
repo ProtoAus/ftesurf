@@ -92,5 +92,47 @@ acceptance is welcome for what they actually observe, not a numerical claim.
 Full-world snow accumulation is the independently reserved P1287 workstream,
 NOT implemented or replaced here. Event gift dates remain a separate decision.
 
-Installation/provenance is recorded separately after actual delivery; a clean
-compile or this document alone is not an installation claim.
+## Actual delivery / current limit
+
+- Product/source is committed and pushed: QC `5458009d57ed13c99733a0794dd561cfb9496d59`,
+  engine journal `abb3073070142aefc72b2b0687c013e1edc5d89f`. The published P1308
+  controller source and human confirmations were preserved during integration;
+  combined SV/CL/MENU compile with zero warnings using the exact c24 compiler.
+  P1308's native pin/tag is retained; this task did NOT rebuild/change native.
+- BOTH Windows installs updated **2026-11-05 00:24:06Z**: 98 destination records
+  (3VMs+3LNOs+28source-media+15generated-data per install), all hash-read back.
+  Twenty actual native/config hashes unchanged. Original fine falling-snow masks
+  untouched. Both caches seeded as `47f0508b.dat` with the committed non-deleting
+  helper; actual cache/program hashes rechecked, no native process launched.
+- Exact final CS identity admitted while retaining every old catalog byte;
+  no backend restart/generation swap. This is code admission, not ranking proof.
+- **Pi P1309 delivered, all12 current actors verified by 01:20:11Z5Nov.** The
+  first bounded preparation correctly refused an occupied fleet before mutation.
+  At a real quiet boundary, all8 current recorder payloads (2,821,850bytes) were
+  archived/rehashed ONBOX+OFFBOX before ANY canonical stage/restart, with the
+  strict13 declared-actor FD scope. This is NOT a general file-writer audit or
+  recovery of any historical missing payload.
+- 42 runtime-only media files installed/read back **01:01:28Z**; client-local
+  warmseed explicitly excluded. Published P1311's expanded warm seed was already
+  exact on BOTH Windows installs; preserved, not replaced by the older snapshot.
+- Paired QQ-only activation **01:08:01Z** restarted11 and correctly skipped one
+  newly occupied lobby. Its strict skip failure is RETAINED, not relabelled PASS:
+  all46,392 pre-existing protected paths, native/config/backend unchanged.
+- Scoped completion **01:20:11Z** restarted ONLY remaining lobby8 after it emptied;
+  other lobbies did not need to disconnect. The SAME archive still matched ALL
+  current parts; fresh13actor/FD proofs checked at the short execution boundary.
+  All12 final actor epochs verified; zero repeated healthy restarts/swaps/force or
+  data restoration. All46,398 paths existing at that boundary unchanged;6new
+  paths retained, not deleted. Native/config/backend preserved, sweep lock gone.
+  Original failure plus separate one-lobby completion receipts remain private.
+- Reconnect/reload the map to select the new CSQC. Native appearance/audio/FPS
+  still needs the small owner check below; status/hash readiness is not that pass.
+- The actual pair includes published P1308's controller with qualified c24 and
+  zero warnings. Do not replace it with an older controller-only correction and
+  lose weather. This does NOT recover P1308's historical resume-metadata loss,
+  regrade that failed guard or claim the separate P1310 native promotion done.
+
+Native appearance/audio/cold/moving-view acceptance is still PENDING; defaultOFF.
+The separately owned P1287 full-world snow cover remains reserved; Santa earning
+activation still needs the actual event dates. This is not an all-features-done
+or numerical performance claim.

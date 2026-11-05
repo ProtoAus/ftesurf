@@ -46,13 +46,22 @@ is explicitly updated, with seven finite/invalid-setting assertions added.
 
 ## Current state
 
-Local native source `175b27c091b69fba6863d3b882fd71018fa5c615`, tag `patch-1312`,
+Qualified native source `175b27c091b69fba6863d3b882fd71018fa5c615`, tag `patch-1312`,
 is committed without private hooks. Clean tagged platform qualification is
-complete. Journal/declaration-only updates do not rebuild or move the source tag.
-Independent read-only review permission is pending; no such review is claimed.
-P1312 has NOT been published, installed or deployed. Windows remains the qualified
-P1310 primary-client/server/plugin pair; NanoPi remains the peer P1308 predecessor.
-P1310 archive-only Pi readiness has eight source-bound closed recording parts
-individually verified on/offbox, but no canonical stage/swap/restart. A peer's
-original preservation failure remains unwaived; this genuine new source feature
-is NOT a renamed retry, replacement failure receipt or permission to bypass it.
+complete. TWO fresh independent reviews, source/physics and recorded-evidence/
+consumers/acting controls, found no blocking issues. Neither claims full-bank,
+arbitrary-world/compiler/writer closure or fleet/human ranked acceptance.
+Journal/declaration-only merges preserve published P1311 warm coverage and P1308
+handoff without rebuilding or moving the frozen source tag.
+
+Actual installation is separate: Windows remains qualified P1310 primary-client/
+server/plugins; NanoPi remains P1308. P1312 delivery is pending. Earlier P1310
+archive-only readiness has eight source-bound closed recording parts individually
+verified on/offbox, no canonical stage/swap/restart. The published TAS handoff now
+explains the original strict preservation failure: expiry swept one old resume,
+retaining its recording, but two metadata preimages were not archived. That failure
+is UNWAIVED; no repair/restore/restart is used to regrade it. There is no retained
+maintenance gate. A genuine fresh adopter must bind actual current epochs/programs
+and archive complete current resume preimages before stage, retain exact on/offbox
+recording-member checks and strict postflight. This new source is not a renamed
+failed transaction or permission to bypass any preservation/promotion guard.

@@ -1,10 +1,18 @@
 # BACKLOG.md
 
+## Boreas first-traversal graphics hitch (5 Nov, P1311 investigation)
+- `GLBE_GenerateBatchTextures` / first-view graphics resources are candidates, NOT an established cause. The cached39.540s Boreas main replay has a repeatable39-40ms first-traversal gfx frame with original and expanded known shader coverage; second traversal worst6.7-7.4ms. No all-shaders-ready claim: a known entry can still compile lazily after the warm budget.
+- Falsifier: on the exact pinned native/content and same camera route, time shader compilation separately from capture target allocation, clear, recursive draw and restoration; reduce the acted expensive phase without reducing render scale/capture quality or changing movement. The retained local probe has not completed its native build/run because the unchanged4GiB headroom gate refused. Source/evidence: tools/p1311-map-prewarm.md.
+
 ## P1309 winter weather preview: explicit coverage residuals
 - `tools/winter_weather.py:meshes`: Christmas's6306sky triangles exceed conservative4096cap; hold that sky ONLY, not ice/audio. Falsifier for a later exact simplification/budget decision: native portal boundaries and moving-view control, no filling non-sky gaps or silently raising the cap.
 - `surfaces`: world-model upward static liquid faces only; brush entities/moving liquids and actual lava-map appearance remain untested. Falsifier: a chosen event map with these surfaces, correct frost/sorting plus unchanged contents/movement/damage.
 - `Weather_Outside`:128-unit existing roof-clipper grid, no prop/displacement/turned-mover acoustic occlusion. Falsifier: walk under a prop-only roof or across a thin edge and listen; don't claim this coarse artist cache is physical acoustic simulation.
 - Bluewinter has no eligible world sky/liquid and is skipped. Falsifier for adding it: an actual acting geometry/exposure source, not an all-zero/no-file success. Native visual/audio/FPS acceptance belongs in lextest.md; preview defaultsOFF.
+
+## P1308 native promotion: worldspawn resume cleanup versus old-path guard (5 Nov)
+- Site: `sv_resume.qc:SV_MsSweep/SV_MsWipeDir` and strict Pi promotion's protected-before/after inventory. All12P1308 actors restarted correctly, but one resume's run.rec/ms.txt/state.txt disappeared; new evidence recording hashes byte-identically to old run.rec. The two metadata preimages were not archived. Existing cleanup is consistent with this delta; exact old expiry metadata is not retrospectively known. Original transaction remains FAILED, no data restored/restart repeated, no gate held.
+- Falsifier: own fixture with an expired posted resume versus non-expired control; restart/worldspawn must ACT, exact recording evidence and metadata disposition measured. Before a future promotion that claims full old-path preservation, qualify/capture complete resume state as well as recorder parts, and explicitly handle expected cleanup without blanket exclusions or relabelling this failure. Do not reconstruct missing player metadata speculatively.
 
 ## P1301 roof eye blend (5 Nov): review residuals (display only)
 - At a roof STEP (not a slope) the blended eye drops up to one tick late (P917 rose up to one tick early on the way out); with the 62-unit hull it can sit about 2 units into the lower roof for part of a tick. A render-position trace would settle it; not seen in play.
