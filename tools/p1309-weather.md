@@ -92,5 +92,32 @@ acceptance is welcome for what they actually observe, not a numerical claim.
 Full-world snow accumulation is the independently reserved P1287 workstream,
 NOT implemented or replaced here. Event gift dates remain a separate decision.
 
-Installation/provenance is recorded separately after actual delivery; a clean
-compile or this document alone is not an installation claim.
+## Actual delivery / current limit
+
+- Product/source is committed and pushed: QC `5458009d57ed13c99733a0794dd561cfb9496d59`,
+  engine journal `abb3073070142aefc72b2b0687c013e1edc5d89f`. The published P1308
+  controller source and human confirmations were preserved during integration;
+  combined SV/CL/MENU compile with zero warnings using the exact c24 compiler.
+  P1308's native pin/tag is retained; this task did NOT rebuild/change native.
+- BOTH Windows installs updated **2026-11-05 00:24:06Z**: 98 destination records
+  (3VMs+3LNOs+28source-media+15generated-data per install), all hash-read back.
+  Twenty actual native/config hashes unchanged. Original fine falling-snow masks
+  untouched. Both caches seeded as `47f0508b.dat` with the committed non-deleting
+  helper; actual cache/program hashes rechecked, no native process launched.
+- Exact final CS identity admitted while retaining every old catalog byte;
+  no backend restart/generation swap. This is code admission, not ranking proof.
+- **Pi P1309 NOT delivered yet.** The SAME strict progs-only preparation routine
+  observed one connected client and refused after its bounded wait, BEFORE any
+  part archive, canonical media/progs staging or restart. Do not repeat that
+  unchanged wait, weaken the empty/FD/data-preservation checks, or repeat the
+  already-successful P1307 transaction. New source scope43media/QQ2 is prepared
+  privately for a real quiet boundary. A brief disconnect was requested, not
+  new deployment permission. The old fleet remains intact.
+- Until that swap, a lobby can still select its old CSQC. A native smoke check of
+  the on-disk P1309 preview needs a fresh LOCAL map load, or the completed lobby
+  update; don't report an unknown-cvar old-VM check as a feature failure.
+
+Native appearance/audio/cold/moving-view acceptance is still PENDING; defaultOFF.
+The separately owned P1287 full-world snow cover remains reserved; Santa earning
+activation still needs the actual event dates. This is not an all-features-done
+or numerical performance claim.
