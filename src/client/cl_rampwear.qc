@@ -9,7 +9,7 @@
 string rw_map;                  // the map the overlay was looked up for
 string rw_shader;               // its shader name, "" when the map has none
 float  rw_n;                    // surfaces
-float  rw_ntri;
+float  rw_ntri, rw_lift;
 vector *rw_cen;                 // per surface: centre, radius, first triangle, triangles
 float  *rw_rad;
 float  *rw_first;
@@ -25,6 +25,7 @@ void() RampWear_Init =
 	registercvar("r_rampwear_scratch", "1.5", 0);
 	registercvar("r_rampwear_distance", "12000", CVAR_ARCHIVE);
 	registercvar("r_rampwear_shine", "0.15", CVAR_ARCHIVE);
+	registercvar("r_rampwear_lift", "2", CVAR_ARCHIVE); // real world-unit clearance; reload/reconnect applies
 	registercvar("r_rampwear_debug", "0", 0);     // 1: show the mask itself
 };
 
@@ -77,6 +78,7 @@ void() RampWear_Load =
 		fclose(fh);
 		return;
 	}
+	rw_lift = bound(0, cvar("r_rampwear_lift"), 8);
 	rw_cen   = memalloc(sizeof(vector) * ns);
 	rw_rad   = memalloc(sizeof(float) * ns);
 	rw_first = memalloc(sizeof(float) * ns);
@@ -95,7 +97,7 @@ void() RampWear_Load =
 			if (skip)
 				continue;
 			rw_cen[s] = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
-			rw_rad[s] = stof(argv(4)) + 0.75;
+			rw_rad[s] = stof(argv(4)) + rw_lift;
 			rw_first[s] = t;
 			rw_cnt[s] = 0;
 			s = s + 1;
@@ -109,9 +111,10 @@ void() RampWear_Load =
 			}
 			rw_nrm[t] = [stof(argv(16)), stof(argv(17)), stof(argv(18))];
 			// A real normal lift, once at load, not just driver-dependent depthpush.
-			// Both modern and legacy paths clear the ridden ramp at grazing angles.
+			// Owner confirmed0.75 still fights while surfing. Default2, bounded
+			// diagnostic control; identical real clearance in modern/legacy paths.
 			for (j = 0; j < 3; j = j + 1)
-				rw_pos[t * 3 + j] = rw_pos[t * 3 + j] + normalize(rw_nrm[t]) * 0.75;
+				rw_pos[t * 3 + j] = rw_pos[t * 3 + j] + normalize(rw_nrm[t]) * rw_lift;
 			rw_cnt[s - 1] = rw_cnt[s - 1] + 1;
 			t = t + 1;
 		}
@@ -125,14 +128,14 @@ void() RampWear_Load =
 	fh = fopen("glsl/ftesurf_rampwear_v2.glsl", FILE_READ);
 	modern = (fh >= 0);
 	if (modern) fclose(fh);
-	rw_shader = strzone(sprintf("ftesurf_rampwear_%s/%s", modern ? "v2" : "legacy", mname));
+	rw_shader = strzone(sprintf("ftesurf_rampwear_%s/%s", modern ? "v2_lift2" : "legacy_lift2", mname));
 	rw_alloc = TRUE;
 	// exactvertex: vertex colour encodes a normal, not HDR-scaled brightness.
 	// $nosrgb: mask data; no cross-chart mips or grazing-angle slope bias.
 	shaderforname(rw_shader, sprintf("{\ndepthpush -2\nnomipmaps\nnopicmip\nsort decal\n{\nprogram %s\nblendfunc %s\nclampmap $nosrgb:gfx/rampwear/%s.png\nrgbgen exactvertex\nalphagen vertex\n}\n}\n",
 	              modern ? "ftesurf_rampwear_v2" : "ftesurf_rampwear",
 	              modern ? "gl_dst_color gl_src_color" : "gl_dst_color gl_zero", mname));
-	print(sprintf("rampwear: %s, %g surfaces, %g triangles\n", mname, rw_n, rw_ntri));
+	print(sprintf("rampwear: %s, %g surfaces, %g triangles, real lift %.2f units\n", mname, rw_n, rw_ntri, rw_lift));
 	print(sprintf("rampwear: shader %s\n", modern ? "v2" : "legacy (new asset not installed)"));
 };
 

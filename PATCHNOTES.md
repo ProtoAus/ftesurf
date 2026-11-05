@@ -21,6 +21,11 @@
 
 ## next
 
+### P1319 Snow-facing and ramp-mark corrections
+- Colin's snowy grass and exposed snow caps use the intended white-snow material and outward faces instead of cached purple fallback/undersides. Walking on its snowy grass adds quiet crunches without enabling all game sounds.
+- Our installed falling snow replaces new map-native snow emissions while active; disabling it restores the map's snow. Rain and other map effects are unchanged.
+- Ramp marks sit 2 units above the ridden surface instead of 0.75, retaining the small constant depth bias. Native surfing acceptance is still pending.
+
 ### P1317 Colin Christmas theme
 - surf_colin_blaster_69000 has authored snowy grass and exposed snow caps, distributed snowmen/trees/gifts, falling snow, cosmetic ice, storm sky, light mist and winter audio. Collision and liquid damage are unchanged.
 - Its automatic theme can be disabled with the Display Info checkbox or r_colin_winter 0; individual snow/weather/prop options remain separate. Other maps keep their existing defaults.

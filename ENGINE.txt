@@ -1,4 +1,5 @@
 # The engine build this QuakeC requires.
+# Patch 1319 (QC/shader/assets): register distinct snow material before IQM precache; correct actual float32 front-face winding, remove degenerate snow triangles, add quiet scoped snowy-grass walking sounds; submitted replacement snow suppresses only new native type3 flakes; real ramp-mark lift defaults2units. No native pin/tag/qcbuild, movement/collision/evidence change. GPU/mesh/PCM/3VM controls pass; native look/sound/ride/FPS pending. tools/p1319-winter-correction.md.
 # Patch 1317 (QC/assets/tools): authored surf_colin_blaster_69000 Christmas theme: real snowy grass/exposed caps,16 distributed props, fine32 falling snow, ice/storm/wind, scoped opt-out; native-matching Strata roof parser with bounded traversal. Cosmetic only; no native pin/tag/qcbuild or event-earning change.
 # Patch 1315 (QC/shader/assets): outward Christmas IQM faces, continuous close mist, real 0.75-unit ramp-wear normal lift, late-map weather recovery and persistent storm sky/reversible cool lighting. No native pin/tag/qcbuild change. Native moving-view/save2 acceptance remains separate.
 # Patch 1313 (SSQC only): retry keeps restored movement but an unsafe fresh armed start in its own box uses the existing practice funnel. Continuing running retries and direct Multi-Session restores are unchanged. No new capture/API/format/flag/tier/policy/native pin/tag/qcbuild. Qualification and limits: tools/p1313-retry-practice.md.
@@ -40,7 +41,7 @@ commit   175b27c091b69fba6863d3b882fd71018fa5c615
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1312
-patch    1317
+patch    1319
 # Patches 1305/1306 (engine common/pm_source.c): faithful existing gravity-use observation across finite native jump configurations and stock postures. Movement, capture/API/format and ranking policy unchanged. Clean Windows/ARM, acting controls and dual Windows/all12Pi native delivery verified; actual ranked/full-bank acceptance separate. Windows source7ae5d53b2 includes published P1301; Pi source76acc7c6b/tagpatch-1306 has identical mover/server inputs. Details and corrected old-manifest selector diagnosis: tools/p1306-gravity-context.md.
 # Patch 1299: initial finite nonnegative normalized-offset extension; full native delivery now superseded by the qualified 1305/1306 set. Historical proof and correction in tools/p1299-gravity.md.
 # Patches 1255/1257 (engine sv_ccmds.c pm_dettest mover-12 lines; renderer gl_mindist 2, viewmodels keep 1): installs tag patch-1257, which merges patch-1260. QC needs neither.
