@@ -1,12 +1,11 @@
-# P1319 - durable historical input recipes
+# P1321 - durable historical input recipes
 
 This is one component of `plan-tas-human-workflow.md`, not completion of the
 human-first editor. Implemented and locally exercised; review and deployment are
 still pending. P1314's separately frozen artifacts are not silently replaced by
-this working source. Earlier private receipts used the provisional label P1317;
-the unpublished component was renumbered when the commit-time audit found a
-separate winter feature using that number. Those receipts are not renamed or
-silently reissued.
+this working source. Earlier private receipts used provisional labels P1317 and P1319; commit-time
+audits found separate published winter features using those numbers. The
+unpublished component is now P1321; old receipts are not renamed or reissued.
 
 ## Use
 
@@ -93,11 +92,25 @@ procedural intent beyond the existing qualified live metadata remains in scope.
   that sequence, while release without the repeat stays unclaimed. The recipe
   now observes keyboard scans 1..511 by direct indexing in 2 KiB of VM memory,
   independently of chat's bounded list. Unsupported scans are never acquired;
-  failed allocation does not retry mid-hold. The combined corrected 19-control
+  a null allocation result does not retry mid-hold (a native allocation error
+  can abort CSQC). The combined corrected 19-control
   arm repeats saturation/recovery, proves a genuinely fresh field press still
   acts, and re-runs the ordinary input/name/chat/Windows-stage checks above.
   All 19 pass. This remains synthetic input-chain coverage, not a new claim of
   hardware movement, VM-reload continuity or executed allocation failure.
+- A later two-reader pass found native-menu observation gaps and a repeated
+  owned key entering a later key-capture panel. The untreated arm has three
+  acting setup passes and four predicted failures. An actual owned-window native
+  +binding remains held after the old handler eats its release; the correction
+  runs the stored -binding. The repeated name key keeps its actual binding and
+  a genuinely new key then completes capture instead; its next fresh pair is
+  not eaten by a stranded latch. All seven corrected controls pass. Native F
+  keys are not acquired. Internally owned releases still stop later QC handlers,
+  but the outer entry forwards them to native stored-release processing: CSQC
+  can miss an original press. The combined 19-control input/name/occupancy arm
+  passes again with that native-return distinction. Window messages are synthetic,
+  not physical-device or signing evidence. Native key-path source is unchanged;
+  this does not qualify the whole older fixture binary as the declared P1318.
 - A 10-control source-only arm saves an eight-row historical tail. Its engine
   processes stop. A separate 20-control fresh-process/current-base arm reads that
   saved reference, applies it to an earlier span, actually replays the full head,

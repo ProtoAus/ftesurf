@@ -166,12 +166,13 @@ float(float evtype, float scanx, float chary) TASTimeline_RecipeInput =
 	{
 		if (focused || owned)
 			sui_text_event(evtype,scanx,chary,"tastr_name",tast_recipe_name,tast_recipe_caret);
-		return owned; // never strand the engine's stored gameplay release
+		return owned; // stop later QC consumers; outer entry preserves native releases
 	}
 	if (!focused) return FALSE;
 	if (scanx)
 	{
 		if (scanx <= 0 || scanx >= TAS_RECIPE_SCANS || scanx != floor(scanx)) return FALSE;
+		if (scanx >= K_F1 && scanx <= K_F12) return FALSE; // native-menu binds, not editing
 		if (!tast_recipe_keys) return FALSE; // failed allocation never retries mid-hold
 		if (tast_recipe_fresh != scanx + 1 && tast_recipe_keys[scanx] != 2) return FALSE;
 		tast_recipe_keys[scanx] = 2;
@@ -191,6 +192,16 @@ float(float evtype, float scanx, float chary) TASTimeline_RecipeInput =
 		TASTimeline_RecipeName(substring(tast_recipe_name,0,32));
 		tast_recipe_caret = min(tast_recipe_caret,32);
 	}
+	return TRUE;
+};
+
+// An existing owner keeps repeated downs too, before another panel can acquire them.
+float(float scanx, float chary) TASTimeline_RecipeRepeat =
+{
+	if (!tast_recipe_keys) return FALSE;
+	if (scanx <= 0 || scanx >= TAS_RECIPE_SCANS || scanx != floor(scanx)) return FALSE;
+	if (tast_recipe_keys[scanx] != 2) return FALSE;
+	if (TASTimeline_RecipeHasFocus()) TASTimeline_RecipeInput(IE_KEYDOWN,scanx,chary);
 	return TRUE;
 };
 

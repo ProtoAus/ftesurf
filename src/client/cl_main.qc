@@ -1455,6 +1455,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	*/
 	Vote_Track(evtype, scanx);      // Patch 372: observes only -- the draft below swallows key-ups
 	MPad_Track(evtype, scanx, chary);   // Patch 390: observes only -- the draft swallows deltas
+	if (evtype == IE_KEYDOWN)
+		if (TASTimeline_RecipeRepeat(scanx, chary)) return TRUE;
 	if (evtype == IE_KEYUP)
 		if (TASTimeline_RecipeInput(evtype, scanx, chary)) return TRUE;
 	if (evtype == IE_KEYUP)
@@ -1778,6 +1780,9 @@ float(float evtype, float scanx, float chary, float devid) CL_InputEvent =
 	// passive-key path (F1 taking a cursor) pairs the same way.
 	if (took && bit && evtype == IE_KEYDOWN)
 		cl_btn_taken = cl_btn_taken | bit;
+	// Stop later QC handlers, not native stored releases: CSQC can miss the
+	// original press behind a native menu or read-only console.
+	if (evtype == IE_KEYUP && tast_recipe_released) return FALSE;
 	return took;
 };
 

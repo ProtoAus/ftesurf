@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1319 named TAS input templates - pending after installation
+## P1321 named TAS input templates - pending after installation
 
 After matching native/progs installation, play/pause a short familiar line, select
 a small Timeline span and open Project. Type a recipe name, Save selected input,
@@ -13,7 +13,8 @@ feature neither substitutes scripted signing nor clears that acceptance.
 Small keyboard check: on flat ground, hold W, focus the recipe name, release W,
 close the panel and resume. It must not keep walking from a latched bind. Type a
 name containing T with T bound to chat: it should stay in the name, not open chat.
-Synthetic input-chain replies passed; actual hardware feel is still unconfirmed.
+Synthetic input-chain and owned-window native binding handoffs passed; actual
+hardware feel is still unconfirmed.
 
 ## P1318 first-view lightmap hitch — owner feel check pending
 

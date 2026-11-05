@@ -21,10 +21,10 @@
 
 ## next
 
-### P1319 Named input templates for local TAS
+### P1321 Named input templates for local TAS
 - Save a named selection of captured input, then preview its keys and view angles onto an equal-length selection in another compatible local attempt. Inputs after the selection stay available; Keep, Discard and Undo/Redo retain the original.
 - Templates reuse recorded input, not a saved world or a newly optimized route. Supported current-run replay is still required; ramp sections and the next-ramp solver remain in progress.
-- Recipe name typing keeps chat shortcuts in the field and pairs its own key releases across focus changes. Existing or unreadable unfinished templates are preserved rather than overwritten.
+- Recipe name typing keeps chat shortcuts in the field and releases movement safely across focus changes. A held name key cannot get rebound by a later key-capture panel. Existing or unreadable unfinished templates are preserved rather than overwritten.
 
 ### P1318 Smoother first views
 - Fixed an unnecessary first-view lightmap rebuild that could hitch when a new area or water reflection first appeared, without reducing lighting quality.

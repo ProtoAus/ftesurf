@@ -1,6 +1,6 @@
 # AGENT_NOTES.md
 
-## P1319 named-input validation and corpus observer pitfalls (5 Nov 2026)
+## P1321 named-input validation and corpus observer pitfalls (5 Nov 2026)
 
 - Independent source review caught three pre-shipment defects: unowned key-ups
   strand the engine's stored release; a focused name must get typing before chat
@@ -10,13 +10,20 @@
   read-denied/write-accessible stage with exact ACL restoration. This is Windows
   CSQC-chain/namespace coverage, NOT hardware movement, genuine signing or a
   new POSIX overwrite reproduction. Keep owned releases across tab/blur/close,
-  and do not adopt pre-focus auto-repeat. A second review caught the bounded
+  and do not adopt an observed pre-focus auto-repeat. A second review caught the bounded
   observer's full-to-free recovery: it inserts an omitted repeat as apparently
   fresh. Untreated9/1 acts that case; corrected19/0 combines it with ordinary
   input/chat/name/Windows-stage checks and a fresh-field positive control.
   Recipe tracking now indexes scans1..511 in2KiB VM memory; unsupported scans
-  are never acquired and allocation failure never retries mid-hold. This is not
-  device provenance, VM-reload continuity or executed allocation-failure proof.
+  are never acquired. A null allocation result latches disabled; a native
+  allocation error can abort CSQC. Neither path is executed OOM coverage.
+  A third review caught native-menu observation gaps and later-capture repeat
+  theft. The owned-window native +binding control actually stays held untreated;
+  the corrected7/0 handoff arm executes its stored -binding, blocks the repeated
+  owned key from capture and actually captures a fresh key instead. Owned ups
+  stop later QC handlers but return false to native stored-release processing;
+  a first-observed down is not native freshness. Combined19/0 also passes with
+  those native-return expectations. Hardware and VM-reload remain unmeasured.
   The conservative import occupancy helper now guards
   its own native capabilities so another caller cannot treat lookup failure as
   absence. Check BOTH final and .new before freeze/write.
