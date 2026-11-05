@@ -5,8 +5,9 @@
 Owner5Nov confirmed Colin's Christmas models are present, but its snow appears
 purple/from underneath rather than covering grass; ramp dirt still z-fights while
 surfing. These are manual failures of P1317/P1315, not passing acceptance.
-After the corrected build is actually installed and the client restarted/reconnected:
-walk across ONE Colin snowy-grass patch: white snow seen from above and quiet
+Corrected client/media installed BOTH Windows10:47UTC; all12current lobby
+processes retain that exact client as verified read-only11:14UTC, alongside the
+newer peer P1320 server. After client restart/reconnect, walk across ONE Colin snowy-grass patch: white snow seen from above and quiet
 crunches even when walking? Ride ONE familiar ramp: are the marks stable now?
 `winter_info` reports4/4snow footsteps. `r_colin_winter 0` is the scoped comparison.
 On Frost, `r_weather 1` means sky/clouds, cool map light, wind and occasional

@@ -57,5 +57,48 @@ without waiting. It is NOT the falling-snow switch (`r_snow`). `weather_info` an
 `winter_info` report loaded components. Native manual check stays in lextest.md;
 no numerical FPS or owner appearance/sound/ride pass is claimed.
 
-Deployment/provenance will be recorded after actual publication. No native
-engine binary, pin/tag, QC Build, player config/data or evidence format change.
+## Actual delivery5Nov2026
+
+Public feature `2468a105`, journal `8af388411`; isolated qualified source
+`dacf00d8b870f838ca5f5ea07ef24555321ca48f` published on the existing qualified
+branch. Its functional files match the feature exactly; metadata retains the
+qualified native/API base rather than importing unrelated newer native work.
+All3VM clean build0warnings using the inspected c24ede65 compiler.
+
+Both Windows installs published at10:47UTC:102explicit destinations verified,
+32native/config/old-fine paths unchanged. Both exact client caches are seeded
+under advertised folded-MD4 `3dbd1053`. Later P1320 advanced only four server
+program/symbol destinations together; the98remaining destinations, including
+our corrected client/media and both caches, still match. Do NOT recopy old server
+programs over that newer work.
+
+Client SHA256:
+`06585861c9afaf6ae6db1ee05151814d35f9532691cf8dca2eb23ccbdd4b6b12`.
+
+The Pi's58explicit media files published with strict parts/backend preservation.
+Exact client admission appended57->58, preserving every prior catalog byte;
+no backend restart. Before ANY canonical stage/restart, all8current parts
+(2,821,850bytes) and180complete resume payload/sidecar files (226,269,873bytes)
+were captured and individually rehashed ON/OFFBOX with source/stat context.
+No guessed expiry, restoration, ignored namespace or failure regrading.
+
+Original paired-program transaction swapped the exact pair and verified5empty
+lobby restarts, then FAILED on a later status timeout. Retain that failure.
+The existing remaining-only completion seam refused a transient unclassified
+nonactor FD denial; no remaining restart was requested. A later strict preflight
+then detected concurrent P1320 server advancement and stopped, again without a
+restart request. Do NOT rerun the original rollout, restore an old server or
+repeat healthy restarts to make this receipt pass.
+
+Independent read-only end-state check at11:14:14UTC: all12actual lobby epochs
+are newer than preparation, exact corrected client current, all58media hashes
+match, native/config/backend unchanged, direct health HTTP200/ok/lobbies12.
+ALL46,766original protected entries remain byte-identical, with8new paths.
+Both Windows installs and The Pi now use peer P1320 server hash `121eabc12b53…`
+while retaining our exact client. This is current end-state evidence, NOT a
+relabeled pass of our failed original transaction or a claim we restarted all12.
+
+Native look/sound/ride/FPS is still owner-pending. No native engine binary,
+pin/tag, QC Build, player config/data or evidence format change by this feature.
+Private raw histories/preimages remain private; owned source/evidence roots are
+retained for the small manual follow-up, not left as unexplained build copies.
