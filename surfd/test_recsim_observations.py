@@ -83,6 +83,37 @@ class Observations(unittest.TestCase):
         self.assertIsNone(projected['metrics'])
         self.assertEqual(projected['reason'], 'malformed move input')
 
+    def test_unmodelled_recording_is_a_distinct_unmeasured_observation(self):
+        self.a.write_text(recording().replace('FTESURF-REC 9', 'FTESURF-REC 13'))
+        stored, projected = self.collect()
+        self.assertEqual((stored['verdict'], stored['compared']), ('skip', 0))
+        self.assertEqual(stored['reason'], 'recording clock model unavailable')
+        self.assertEqual(stored['skip_code'], 'unmodelled')
+        self.assertIn(stored['source_capture'], ('', None))
+        self.assertEqual(projected['skip_code'], 'unmodelled')
+        self.assertEqual(projected['reason'], 'recording clock model unavailable')
+        self.assertIsNone(projected['metrics'])
+        summary = self.sim.summary(self.c)
+        self.assertEqual((summary['state'], summary['pairs'], summary['compared'], summary['skipped']), ('available', 1, 0, 1))
+        self.assertEqual(summary['skip_codes'], {'unmodelled': 1})
+        self.assertEqual(summary['notable'], 0)
+        self.assertIsNone(summary['same_max'])
+        self.assertIsNone(summary['cross_max'])
+        self.assertIsNone(summary['unknown_max'])
+
+    def test_old_malformed_observation_is_not_reclassified_by_a_get(self):
+        stored, _ = self.collect()
+        self.c.execute("UPDATE sims SET verdict='skip',match=0,compared=0,skip_code='malformed',reason='inclusive viewing-clock format is not modelled' WHERE id=?", (stored['id'],))
+        self.c.commit()
+        before = dict(self.c.execute('SELECT * FROM sims WHERE id=?', (stored['id'],)).fetchone())
+        with mock.patch.object(self.sim, '_recsim', side_effect=AssertionError('GET must not read the source')):
+            reply = self.client.get('/admin/api/run/%d' % self.aid)
+        self.assertEqual(reply.status_code, 200)
+        projected = reply.get_json()['similarity']['pairs'][0]
+        self.assertEqual((projected['skip_code'], projected['reason']), ('malformed', 'malformed move input'))
+        self.assertIsNone(projected['metrics'])
+        self.assertEqual(dict(self.c.execute('SELECT * FROM sims WHERE id=?', (stored['id'],)).fetchone()), before)
+
     def test_measured_zero_item_two(self):
         self.b.write_text(recording(other=True))
         stored, projected = self.collect()

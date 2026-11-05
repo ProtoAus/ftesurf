@@ -61,13 +61,48 @@ class Parsing(Fixture):
         self.assertIsNone(rs.parse_rec(str(self.a)))
 
     def test_sv_timer_viewclock_format_is_explicitly_unsupported(self):
-        for version in (12, 13):
+        for version in (12, 13, 14, 16):
             with self.subTest(version=version):
                 self.a.write_text(recording().replace('FTESURF-REC 9',
                                                       'FTESURF-REC %d' % version))
                 self.assertIsNone(rs.parse_rec(str(self.a)))
-                self.assertEqual(rs.compare_paths(str(self.a), str(self.b))[0],
-                                 'malformed input')
+                verdict, detail = rs.compare_paths(str(self.a), str(self.b),
+                                                    max_bytes=8192, max_moves=100)
+                self.assertEqual(verdict, 'unmodelled recording')
+                self.assertEqual(detail, 'recording clock model unavailable')
+                with self.assertRaises(rs.UnmodelledRec):
+                    rs.parse_rec(str(self.a), strict=True)
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    self.assertEqual(rs.cmd_one(argparse.Namespace(a=str(self.a), b=str(self.b), min_len=50)), 1)
+                self.assertIn('not compared: recording clock model unavailable', output.getvalue())
+                self.assertNotIn('match   ', output.getvalue())
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    self.assertEqual(rs.cmd_census(argparse.Namespace(root=str(self.root), limit=0)), 0)
+                self.assertIn('SKIPPED unmodelled: 1', output.getvalue())
+                self.assertNotIn('SKIPPED malformed', output.getvalue())
+                self.assertIn('with `in` rows: 1', output.getvalue())
+
+    def test_supported_native_comparison_and_bad_witness_keep_their_meaning(self):
+        from test_held_readers import recording as native_recording
+        for version in (13, 15):
+            with self.subTest(version=version):
+                data = native_recording(version=version)
+                self.a.write_bytes(data); self.b.write_bytes(data)
+                verdict, detail = rs.compare_paths(str(self.a), str(self.b), min_len=1,
+                                                    max_bytes=65536, max_moves=100)
+                self.assertEqual((verdict, detail['match'], detail['compared']), ('compared', 1.0, 3))
+                self.assertEqual(detail['sources']['version'], 1)
+                self.assertEqual(detail['sources']['a']['bytes'], len(data))
+                self.assertEqual(detail['sources']['a'], detail['sources']['b'])
+                self.assertIn(b'hseal ', data)
+                broken = data.replace(b'hseal ', b'hbroken ', 1)
+                self.assertNotEqual(broken, data)
+                self.a.write_bytes(broken)
+                verdict, detail = rs.compare_paths(str(self.a), str(self.b), min_len=1,
+                                                    max_bytes=65536, max_moves=100)
+                self.assertEqual((verdict, detail), ('malformed input', 'malformed required move-stream input'))
 
     def test_each_malformed_required_row_abstains(self):
         for position in (0, 40, 79):

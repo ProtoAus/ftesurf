@@ -497,6 +497,7 @@ SIM_SKIP_LABELS = {
     'too_short': 'too short to compare', 'same_file': 'same source file',
     'malformed': 'malformed move input', 'no_opportunities': 'no comparison opportunities',
     'source_limit': 'source ingestion limit', 'peer_unresolved': 'peer unresolved',
+    'unmodelled': 'recording clock model unavailable',
     'unknown': 'unjudgeable (detail withheld)',
 }
 

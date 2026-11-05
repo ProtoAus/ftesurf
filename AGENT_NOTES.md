@@ -1,5 +1,36 @@
 # AGENT_NOTES.md
 
+## P1334 unsupported similarity model is not malformed (source candidate)
+
+- The reader already refuses unmodelled viewing-clock formats. Keep that refusal
+  and empty metrics; do not call unsupported data malformed or a measured zero.
+  Use UnmodelledRec (compatible refusal superclass), a fixed compare skip/code and
+  fixed authenticated label. Ordinary/native eligibility, source caps, bytes and
+  comparison math stay unchanged; legacy stored malformed rows stay historical.
+- Existing standalone pair/census entrypoints have their own strict-parser catches;
+  classify the typed refusal there too, not only compare_paths. A supported native
+  structural companion must actually compare/capture and a changed witness must
+  still refuse as malformed. This is not native replay or hardware evidence.
+- Initial native negative fixture replaced absent hclose, then expected absent
+  hseed; both failures retained. Inspect actual grammar before another mutation:
+  current native schema uses hseal. Assert presence AND changed bytes, then malformed
+  refusal acts without changing product logic. No new test wrapper/clock model.
+- Initial four unsupported-version and one collector falsifiers fail against
+  unchanged implementation. Windows/Linux focused30reader+7observations pass;
+  threeVM0warnings/Windows11native-progs hashes held, reader949/0. Fresh corpus
+  548REC178VIEW344/7faults:716exact old reports reused under unchanged core reader/
+  support,10newviews actuallyparsed/clean. Initial10new-input refusal retained,
+  not waived. Each platform309 counted unittest cases across34related invocations:
+  TWO existing single connection-count assertions fail identically in pristine
+  prefeature94ce7bb9 WHOLE-source controls. Windows7platformskips versus Linux6Node
+  skips; not a clean full-suite pass. BACKLOG records the untouched handle gap;
+  do not change unrelated ownership to satisfy this patch. Two whole-feature reviews
+  and deployment pending; tools/p1334-similarity-unmodelled.md. Runtime admin/
+  simcheck are collectors84; canonical census/recsim.py is OUTSIDE that seal and
+  needs separate exact source/installed-hash provenance and rollback, never a false
+  guard-origin claim. No automatic historical retry,
+  schema/new raw field, detector/threshold/rank, engine pin/tag/qcbuild change.
+
 ## Surf smoothness / frametime / noclip-void audit (6 Nov 2026; investigation only)
 
 - Read current refs, not canonical source: at this task start canonical mod was77

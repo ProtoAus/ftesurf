@@ -170,6 +170,14 @@ class MalformedRec(ValueError):
     """A required move-stream value cannot be read safely."""
 
 
+class UnmodelledRec(MalformedRec):
+    """Unsupported clock model, not a finding of malformed input.
+
+    Keep the common refusal superclass for strict parser callers; comparison
+    entrypoints distinguish this abstention before genuinely malformed input.
+    """
+
+
 # Capability marker for collectors that must never fall back to unbounded reads.
 BOUNDED_INPUT_VERSION = 1
 SOURCE_CAPTURE_VERSION = 1
@@ -229,7 +237,7 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
                     except (IndexError, ValueError):
                         r.ver = 0
                     if r.ver >= 12 and r.ver not in heldmeta.NATIVE_VERSIONS:
-                        raise MalformedRec("inclusive viewing-clock format is not modelled")
+                        raise UnmodelledRec("inclusive viewing-clock format is not modelled")
                     if r.ver in heldmeta.NATIVE_VERSIONS:
                         if lineno != 1:
                             raise MalformedRec("native held recording must start at the first byte")
@@ -289,7 +297,7 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
         try:
             native_data = data if data is not None else "".join(rec_native).encode("utf-8")
             if not heldmeta.is_native_recording(native_data, r.ver):
-                raise MalformedRec("inclusive viewing-clock format is not modelled")
+                raise UnmodelledRec("inclusive viewing-clock format is not modelled")
             heldmeta.parse_recording(native_data)
         except heldmeta.Malformed as exc:
             raise MalformedRec("native held metadata: %s" % exc) from exc
@@ -427,6 +435,7 @@ SKIP_SAME_FILE = "same file"
 SKIP_MALFORMED = "malformed input"
 SKIP_NO_OPPORTUNITIES = "no comparison opportunities"
 SKIP_SOURCE_LIMIT = "source limit"
+SKIP_UNMODELLED = "unmodelled recording"
 
 
 def compare_paths(path_a, path_b, min_len=MIN_LEN, max_bytes=None, max_moves=None):
@@ -483,6 +492,8 @@ def compare_paths(path_a, path_b, min_len=MIN_LEN, max_bytes=None, max_moves=Non
             r = parse_rec(p, strict=True, max_bytes=max_bytes, max_moves=max_moves)
         except SourceLimit as exc:
             return SKIP_SOURCE_LIMIT, str(exc)
+        except UnmodelledRec:
+            return SKIP_UNMODELLED, "recording clock model unavailable"
         except MalformedRec:
             return SKIP_MALFORMED, "malformed required move-stream input"
         except (PermissionError, OSError) as e:
@@ -548,6 +559,9 @@ def cmd_census(args):
         except OSError:
             unavailable["unreadable"] += 1
             continue
+        except UnmodelledRec:
+            unavailable["unmodelled"] += 1
+            continue
         except MalformedRec:
             unavailable["malformed"] += 1
             continue
@@ -578,6 +592,9 @@ def cmd_census(args):
 def cmd_one(args):
     try:
         a, b = parse_rec(args.a, strict=True), parse_rec(args.b, strict=True)
+    except UnmodelledRec:
+        print('not compared: recording clock model unavailable')
+        return 1
     except MalformedRec:
         print('not compared: malformed required move-stream input')
         return 1

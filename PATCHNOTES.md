@@ -21,6 +21,9 @@
 
 ## next
 
+### P1334 Clearer unavailable replay comparisons
+- Replay review now distinguishes an unsupported recording model from malformed input. Both remain unjudged rather than being shown as a measured zero; saved historical results are left unchanged.
+
 ### P1333 Optional current-file check in replay review
 - Admin replay review can explicitly check current files while keeping saved historical comparison results unchanged. Unavailable checks are reported separately rather than presented as a match.
 
