@@ -520,10 +520,14 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
                   file=sys.stderr)
     if last_attempt is None:
         return 0, 0, 0
-    # Peer checkpoint and observations commit together, including an all-failed
-    # admission with no observations. No file work holds this write transaction.
+    # Own only this short flush, even on an autocommit connection. A reader may
+    # have opened a caller transaction after the entry check: never borrow it.
     inserted = []
-    with conn:
+    _idle(conn)
+    conn.execute("BEGIN " + (conn.isolation_level or "DEFERRED"))
+    try:
+        # Checkpoint acquires the write lock before the final two-orientation
+        # recheck. File comparisons never hold it; historical rows stay untouched.
         _checkpoint(conn, "peer", last_attempt, a_id)
         sql = (
             "INSERT OR IGNORE INTO sims (a_id, b_id, map, track, leg, tier,"
@@ -532,8 +536,17 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
             " tick_a, tick_b, at, source_capture) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
         # Count only this flush's additions, not overlap or trigger writes.
         for f in found:
+            a, b = f[0][:2]
+            if conn.execute("SELECT 1 FROM sims WHERE (a_id=? AND b_id=?)"
+                            " OR (a_id=? AND b_id=?) LIMIT 1", (a, b, b, a)).fetchone():
+                continue
             if conn.execute(sql, f[0]).rowcount == 1:
                 inserted.append(f)
+        conn.execute("COMMIT")
+    except BaseException:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
     skipped = sum(1 for f in inserted if not f[1])
     notable = sum(1 for f in inserted if f[1] and f[2] >= NOTABLE)
     return len(inserted), skipped, notable
