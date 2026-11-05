@@ -32,7 +32,49 @@ function Assert-Private([string]$Path, [string]$Sid, [bool]$Protected = $false) 
 		}
 	}
 }
+function Assert-ManagedDirectory([string]$Path, [bool]$Create = $false) {
+	$full = [IO.Path]::GetFullPath($Path).TrimEnd('\')
+	if ($full -ne $root -and -not $full.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) {
+		throw 'Managed directory outside archive'
+	}
+	$currentPath = $root
+	$relative = [IO.Path]::GetRelativePath($root, $full)
+	$parts = @('')
+	if ($relative -ne '.') { $parts += $relative.Split('\') }
+	foreach ($part in $parts) {
+		if ($part) { $currentPath = Join-Path $currentPath $part }
+		$item = Get-Item -LiteralPath $currentPath -Force -ErrorAction SilentlyContinue
+		if ($null -eq $item) {
+			if (-not $Create) { throw 'Managed directory missing' }
+			[void][IO.Directory]::CreateDirectory($currentPath) # Parent checked in previous iteration.
+			$item = Get-Item -LiteralPath $currentPath -Force
+		}
+		Assert-NoReparse $currentPath
+		if ($item -isnot [IO.DirectoryInfo]) { throw 'Managed path is not a directory' }
+		Assert-Private $currentPath $sid
+	}
+}
+function Assert-ManagedTree([string]$Path) {
+	Assert-ManagedDirectory $Path
+	$pendingDirectories = [Collections.Generic.Stack[string]]::new()
+	$pendingDirectories.Push($Path)
+	while ($pendingDirectories.Count) {
+		$directory = $pendingDirectories.Pop()
+		Assert-ManagedDirectory $directory
+		foreach ($item in Get-ChildItem -LiteralPath $directory -Force) {
+			Assert-NoReparse $item.FullName # Refuse BEFORE descending into a junction.
+			Assert-Private $item.FullName $sid
+			if ($item -is [IO.DirectoryInfo]) { $pendingDirectories.Push($item.FullName) }
+		}
+	}
+}
+function Wait-OwnedTask($Task, [Diagnostics.Stopwatch]$Clock) {
+	$remaining = [int][Math]::Ceiling(([double]$cfg.TimeoutSeconds * 1000) - $Clock.Elapsed.TotalMilliseconds)
+	if ($remaining -le 0 -or -not $Task.Wait($remaining)) { throw 'Owned copy process deadline; no complete-copy claim' }
+}
 function Write-Json([string]$Path, $Value) {
+	Assert-ManagedDirectory ([IO.Path]::GetDirectoryName($Path))
+	if (Test-Path -LiteralPath $Path) { Assert-NoReparse $Path; Assert-Private $Path $sid }
 	$temp = $Path + '.new-' + [guid]::NewGuid().ToString('N')
 	[IO.File]::WriteAllText($temp, ($Value | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
 	[IO.File]::Move($temp, $Path, $true)
@@ -62,20 +104,29 @@ function Invoke-PrivateProcess([string]$Exe, [string[]]$Arguments, [string]$Labe
 	$output = [IO.File]::Open($outPath, 'CreateNew', 'Write', 'Read')
 	$errors = $null
 	$started = $false
+	$stdin = $null
 	try {
 		$errors = [IO.File]::Open($errPath, 'CreateNew', 'Write', 'Read')
 		$started = $process.Start()
 		if (-not $started) { throw 'Owned copy process did not start' }
+		$clock = [Diagnostics.Stopwatch]::StartNew()
 		try { $process.PriorityClass = 'BelowNormal' } catch { if (-not $process.HasExited) { throw } }
 		$outCopy = $process.StandardOutput.BaseStream.CopyToAsync($output)
 		$errCopy = $process.StandardError.BaseStream.CopyToAsync($errors)
-		if ($InputText) { $process.StandardInput.Write($InputText) }
-		$process.StandardInput.Close()
-		if (-not $process.WaitForExit([int]$cfg.TimeoutSeconds * 1000)) {
-			$process.Kill() # Only this owned process handle, NEVER a PID/tree search.
+		$stdin = $process.StandardInput.BaseStream
+		if ($InputText) {
+			$bytes = [Text.UTF8Encoding]::new($false).GetBytes($InputText)
+			$inputCopy = $stdin.WriteAsync($bytes, 0, $bytes.Length)
+			Wait-OwnedTask $inputCopy $clock
+		}
+		# Direct unbuffered pipe bytes: no synchronous StreamWriter flush before the deadline.
+		$stdin.Dispose()
+		$remaining = [int][Math]::Ceiling(([double]$cfg.TimeoutSeconds * 1000) - $clock.Elapsed.TotalMilliseconds)
+		if ($remaining -le 0 -or -not $process.WaitForExit($remaining)) {
 			throw 'Owned copy process deadline; no complete-copy claim'
 		}
-		if (-not $outCopy.Wait(10000) -or -not $errCopy.Wait(10000)) { throw 'Output closure deadline' }
+		Wait-OwnedTask $outCopy $clock
+		Wait-OwnedTask $errCopy $clock
 		$output.Flush($true)
 		$errors.Flush($true)
 		return @{ Code = $process.ExitCode; Out = $outPath; Err = $errPath }
@@ -86,6 +137,7 @@ function Invoke-PrivateProcess([string]$Exe, [string[]]$Arguments, [string]$Labe
 				[void]$process.WaitForExit(10000)
 			}
 		} finally {
+			if ($null -ne $stdin) { $stdin.Dispose() }
 			$output.Dispose()
 			if ($null -ne $errors) { $errors.Dispose() }
 			$process.Dispose()
@@ -120,6 +172,11 @@ try {
 		throw 'Archive ownership marker missing'
 	}
 	$safeRoot = $true
+	# Validate existing managed roots AND subtrees before any transport or raw diagnostics.
+	foreach ($managed in @('logs', 'current', 'history')) {
+		$path = Join-Path $root $managed
+		if (Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue) { Assert-ManagedTree $path }
+	}
 	if ($cfg.Host -notmatch '^[A-Za-z0-9_][A-Za-z0-9_.-]*@[A-Za-z0-9][A-Za-z0-9.:-]*$') { throw 'Invalid existing SSH target' }
 	if ($cfg.Synthetic) {
 		if ($cfg.Source -notmatch '^/srv/nvme/agent-work/[A-Za-z0-9_/-]+/evidence-copy/source$') { throw 'Synthetic source scope refused' }
@@ -162,7 +219,7 @@ try {
 	if ($drive.AvailableFreeSpace -lt [long]$cfg.ReserveBytes) { throw 'Archive reserve exhausted, no automatic pruning' }
 	$tag = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffffffZ') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
 	$run = Join-Path $root ('logs\' + $tag)
-	[void][IO.Directory]::CreateDirectory($run)
+	Assert-ManagedDirectory $run $true
 	$env:PATH = $cfg.MsysBin + ';' + $env:PATH
 	$env:MSYS2_ARG_CONV_EXCL = '*'
 	$env:MSYS_NO_PATHCONV = '1'
@@ -192,18 +249,15 @@ try {
 	}
 	if ($sourceBytes -gt $cfg.MaxBytes -or $drive.AvailableFreeSpace -lt ($sourceBytes + [long]$cfg.ReserveBytes)) { throw 'Copy space/allowance insufficient; no automatic prune' }
 	$current = Join-Path $root 'current'
-	[void][IO.Directory]::CreateDirectory($current)
-	foreach ($existing in Get-ChildItem -LiteralPath $current -Recurse -Force) {
-		if ($existing.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Archive payload reparse refused' }
-		Assert-Private $existing.FullName $sid
-	}
+	Assert-ManagedDirectory $current $true
+	Assert-ManagedTree $current
 	$rsh = ($cfg.SshArgv | ForEach-Object { Quote-Rsh $_ }) -join ' '
 	$codes = @()
 	foreach ($scope in @('runs', 'evidence')) {
 		$destination = Join-Path $current $scope
-		[void][IO.Directory]::CreateDirectory($destination)
+		Assert-ManagedDirectory $destination $true
 		$history = Join-Path $root ('history\' + $tag + '\' + $scope)
-		[void][IO.Directory]::CreateDirectory($history)
+		Assert-ManagedDirectory $history $true
 		$rsyncArgs = @('-rtpc', '--no-owner', '--no-group', '--no-links', '--no-specials', '--no-devices',
 			'--chmod=Du=rwx,Dgo=,Fu=rw,Fgo=', '--backup', ('--backup-dir=' + (Msys-Path $history)),
 			('--bwlimit=' + $cfg.BandwidthKiB), '--rsync-path=nice -n 10 ionice -c 3 rsync',
@@ -212,6 +266,9 @@ try {
 		$codes += $copy.Code
 		if ($copy.Code -notin @(0, 24)) { throw 'Rsync failed; original private diagnostic retained, no complete-copy claim' }
 	}
+	Assert-ManagedTree $current
+	Assert-ManagedTree (Join-Path $root 'history')
+	Assert-ManagedTree $run
 	$local = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
 	foreach ($file in Get-ChildItem -LiteralPath $current -File -Recurse -Force) {
 		if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Copied payload reparse refused' }

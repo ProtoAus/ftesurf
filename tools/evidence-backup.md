@@ -10,6 +10,9 @@ This tooling is not a native/QC patch and does not restart games or the backend.
 
 - A new destination gets its `OWNER.md` **before** data. Its protected Windows
   DACL allows only the owner SID and SYSTEM; configuration and payload are checked.
+  Existing `logs`, `current` and `history` roots, ancestors within the archive and
+  subtrees are checked for reparses/private ACLs before transport. New directory
+  components are checked before content; historical payload privacy is checked too.
   Never place the archive in a web-served/public/shared directory.
 - Source directories are exactly `runs` and `evidence`, not the whole install,
   player-key directory, map library or dependency cache. The source index opens
@@ -70,8 +73,10 @@ The private `<archive>/config.json` contains:
 
 These are operator copying allowances, **not** detector thresholds or recording
 limits. Index deadlines/entry/read checks are cooperative, not hard global
-CPU/RSS/IO guarantees. The local observer kills only its owned process handle on
-failure; never search/kill arbitrary process IDs or another session's tree.
+CPU/RSS/IO guarantees. One local child clock covers asynchronous stdin delivery,
+process waiting and output-copy waiting, including pipe backpressure. Cleanup kills
+only its owned process handle on failure; never search/kill arbitrary process IDs
+or another session's tree. This is not a hard kernel/disk or remote-process bound.
 
 Verify configuration privacy, actual DLL origins and hashes, plus a small acting
 copy/old-version/ACL control **before** copying real data. Artifact mismatch fails
@@ -120,11 +125,21 @@ old edited versions and removed-source copies, verify private payload ACLs and
 full SHA256, reject mismatched artifacts/real share contention before transport,
 and observe an acting child timeout without advancing the last completed copy.
 The timeout's source actor is later checked by PID **and birth**, not blindly killed.
+The review-fixed source separately rejects junctions at all three managed roots and
+an unexpected grant on an empty log parent before transport/diagnostics. An owned
+local actor never reads a 4MiB stdin body, emits a witness and sleeps for 120 seconds;
+the wrapper returns in about three seconds, the exact actor is already gone and
+the writer lease is reacquired. This proves the exercised backpressure boundary,
+not hard global IO or remote cancellation. Final-source ordinary input/zero arrival,
+same-size restored-mtime edits, exact record/partial history and removed-source
+retention also acted (eight observed files, ten retained, 26 bound artifacts).
 Original transport/literal/path/pin-capture failures remain diagnostic history,
 not feature passes. No numerical detector-performance claim follows from these.
 
-**At initial source qualification:** two independent reviews, publication, a real
-player-data first copy and actual scheduled acceptance are pending. A least-
+**Before first real-data use:** the first two whole-feature reviews blocked on
+managed-directory checks and synchronous stdin outside the deadline. Both seams
+are fixed and their synthetic falsifiers acted; renewed whole-feature review,
+publication, a real-data first copy and scheduled acceptance remain pending. A least-
 privilege fixture S4U registration was refused with Access denied; an exact task
 query proved no task remained. Standalone copying is independent of that OS
 permission. This is preservation tooling, not completion of an anti-cheat plan.

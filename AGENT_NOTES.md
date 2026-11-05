@@ -130,7 +130,7 @@
 - `tools/evidence-backup.ps1` uses standardrsync, private Windows ACLs, versioned
   no-delete copies and an opaque/read-only SHA256 index. No Pi overwrite/repair,
   capture/verdict/schema/ranking/game/backend change. `tools/evidence-backup.md`.
-  Source/acting controls qualified; initial actualdata/reviews/scheduling pending.
+  Review-fixed acting controls qualified; finalreview/actualdata/scheduling pending.
 - Keep rsync/SSH on SAME MSYS runtime. NativeSSH text smoke can pass while its
   rsync inherited descriptors fail; blockingIO did notfix it. Git's separate
   MSYS SSH produced dup()failure. Existing MSYS SSH+EXISTING explicit identity/
@@ -144,6 +144,15 @@
   exactSHA/privateACL; artifact mismatch/share contention beforetransport;
   actingtimeout/birthcleanup and Windows casealias/reservedname before rsync.
   Original PATH/literal/descriptor/pin capture failures retained, not passes.
+- Wholefeature reviews caught two real seams: checking children misses current/
+  logs/history roots themselves (junctions/explicitACL); synchronousstdin before
+  WaitForExit bypasses its timeout under backpressure. Check managed roots/parents/
+  trees beforetransport and createdcomponents beforecontent, includinghistory.
+  Direct pipe WriteAsync + SAMEabsolute child clock coversinput/process/outputwait.
+  Real3rootjunction/emptybroadlogs refusals; 4MiB no-reader/120secondactor ACTED,
+  wrapper returned~3seconds/exactactor gone/lease reacquired; normalinput/zero/edit/
+  partialhistory/removedsource finalsource8observed10retained/26pins alsoACTED.
+  Not hardkernelIO/remote cancellation. Original reviews/failures/cohorts retained.
 - Windows limitedS4U registration in the tested context was AccessDenied; exact
   taskquery proved ABSENT. Owneradmin/UACstep needed, no silentinteractive/SYSTEM
   fallback or password/key changes. Standalonecopy NOTblocked. Taskconfiguration
