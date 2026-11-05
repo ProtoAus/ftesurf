@@ -25,6 +25,9 @@
 - Supported local TAS practice can keep the captured input line visible while seeking earlier, preview a change without replacing its original, then Keep or Discard it and Undo or Redo retained edits.
 - Timeline keeps the main editing controls together; project, checkpoint, signing and legacy speed-search tools move to a separate Project tab. Ramp sections and the next-ramp-constrained solver are still in progress.
 
+### P1313 Retry keeps momentum and the right start status
+- A fresh retry carrying extra ground speed is shown as practice without changing your saved movement. Falls, upward pushes and continuing a running attempt keep their saved status.
+
 ### P1311 More map shaders in the loading warm-up
 - Three additional shader variants used in Boreas and Demise join the loading-time warm list, without changing image quality or your saved settings.
 - This expands first-visit coverage; it does not remove every first-use hitch or make busy map views cost the same to render.

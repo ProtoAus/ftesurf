@@ -6149,25 +6149,6 @@ below is the collection side and the rules that still only note.
   after about a second -- `run_t_hopped` is never set at all, and the re-entry still
   launders everything. See the "cheapest prespeed route" entry at the top of this
   section: that is the gesture people actually use, and 445 does not touch it.
-- **The retry placement is a second copy of the start-box velocity restore, with no
-  gate on it at all.** `SV_SaveApplyState`'s retry branch places the body from the
-  file's `origin`/`velocity` (sv_saveloc.qc:1194-1210) and restores the flags
-  verbatim (:1395) -- no SV_TimerStitched, no SL_RowSpeed test, no SV_ZoneStartAt
-  test, no `sl_voided` check, no demoted re-scan. Patch 442 hardened SL_RowSpeed,
-  which has exactly one caller: the SV_SaveLocLoad gate. So: re-enter your own start
-  box while RUNNING (with `run_rearmstops 1` SV_TimerTryArm re-arms without zeroing
-  velocity), `retry` there, and the restart hands back ARMED + clean + that velocity,
-  up to `sv_maxvelocity`. Prespeed injection into a clean armed attempt, repeatable.
-  Its only brake is that `retry` refuses with more than one player on the lobby.
-  Patch 441 review. **STILL OPEN, AND IT IS NOW THE FIRST THING TO CLOSE IN THIS
-  FAMILY.** The previous version of this line said Patch 443 "turned the hopped-start
-  rule back on for the restored ARM, so the chain the entry above describes is judged
-  now" -- FALSE, round 4 withdrew that half and `SV_SaveApplyState` still sets
-  `run_t_startok = TRUE` for every restore. Patch 445 then closed the OTHER two
-  prerequisites the withdrawal named (the save format carries `hopped`, and an arm no
-  longer forgives), which leaves this entry as the single remaining reason judging a
-  restored arm is pointless: the velocity the placement hands back is read by no gate
-  on the retry path at all, and the rule does not speak to a player who never jumps.
 - **SL_RowGrounded's three residuals, and one of them is that a refusal leaves no
   artifact.** Patch 443 closed the airborne-row hole (the gate asked about SPEED and
   never about SUPPORT); what it does NOT do is the mover's last two steps. The probe

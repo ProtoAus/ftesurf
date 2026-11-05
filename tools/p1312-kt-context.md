@@ -54,14 +54,37 @@ arbitrary-world/compiler/writer closure or fleet/human ranked acceptance.
 Journal/declaration-only merges preserve published P1311 warm coverage and P1308
 handoff without rebuilding or moving the frozen source tag.
 
-Actual installation is separate: Windows remains qualified P1310 primary-client/
-server/plugins; NanoPi remains P1308. P1312 delivery is pending. Earlier P1310
-archive-only readiness has eight source-bound closed recording parts individually
-verified on/offbox, no canonical stage/swap/restart. The published TAS handoff now
-explains the original strict preservation failure: expiry swept one old resume,
-retaining its recording, but two metadata preimages were not archived. That failure
-is UNWAIVED; no repair/restore/restart is used to regrade it. There is no retained
-maintenance gate. A genuine fresh adopter must bind actual current epochs/programs
-and archive complete current resume preimages before stage, retain exact on/offbox
-recording-member checks and strict postflight. This new source is not a renamed
-failed transaction or permission to bypass any preservation/promotion guard.
+Actual installation is separate: BOTH Windows primary client/server/plugin sets
+now run exact P1312: **14** destinations and `.prev` verified, **18,273** protected
+config/program/data/non-target-alias paths unchanged, **28** older predecessors
+archived and individually rehashed. Installed dedicated tests **1,578/0 each**;
+no owner process killed, no VM/config/data/backend deployed and no GUI/human pass
+claimed. P1313 later performs its separate four-target Windows SSQC-only delivery;
+the P1312 native bytes stay unchanged.
+
+Actual NanoPi paired delivery **2026-11-05 04:48:48 UTC**: native source175/tag1312
+server/HL2 and reviewed QQ486e65bd QW/CS, four exact hashes and `.prev`. All twelve
+required empty lobbies restart to verified new executable epochs/mapped plugin
+inodes, zero skipped. All **46,488** current protected data files retain exact
+bytes; zero changed/missing/new files. Backend generation/unit/OPEN descriptor and
+actor/**156** runtime files stay unchanged. Later04:53:05 verification finds the
+same twelve responsive epochs and exact installed/predecessor hashes. No player
+force/drop, backend/config/menu payload, data restoration or retained gate.
+
+Before ANY canonical stage, the additional complete current resume domain is
+archived together with all eight native-namespace/suffix recorder parts: **180**
+resume files including metadata, **188** total members/**229,091,723** source bytes.
+Each member is rehashed on-box AND offbox; fresh strict13 declared native/backend
+actor FD/birth/namespace checks run before stage and at the locked activation
+boundary. Protected PAM/SSH NONactor limits remain explicit, NOT general writer
+closure. The current-map screen found no expired slot under configured14days; no
+expiry setting is changed. Eight native/QC predecessor/prior-prev files are also
+individually rehashed offbox. Post-delivery544/712 raw-record/view byte and three
+parser-blob identity checks support unchanged prior344REC/7VIEW classifications,
+not a new full parse, clean-corpus, SAVES, native-phase or human/ranked acceptance.
+
+Earlier P1310 archive-only readiness and the peer's original expiry/preservation
+failure remain UNWAIVED: two metadata preimages were not archived then. Complete
+CURRENT preimages and exact actor/source binding fix that seam for this genuinely
+new qualified source; they do not recover old data, rename the failed transaction
+or bypass any preservation/promotion guard. See tools/p1313-retry-practice.md.

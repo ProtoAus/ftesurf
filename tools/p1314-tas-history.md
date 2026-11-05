@@ -84,7 +84,9 @@ arbitrary-world/numerical-timing or owner-feel acceptance. Straight-ahead long
 fixture attempts restarted; attempted gravity overrides did not change the
 recorded profile. No such attempt is a long-history pass. Two initial independent
 reviews found the history/recovery/retention/partial-result issues above; corrected
-source needs fresh independent review. The source must include the subsequently
-published P1313 retry policy before promotion. Exact-source clean build/delivery
+source needs fresh independent review. The subsequently published P1313 retry
+policy and native journal are retained; its native change is documentation-only,
+so no native code dependency of the qualified f1fe93dd binary changed. The merged
+QC still requires a clean build/relevant runtime recheck. Exact-source delivery
 and the full remaining project stay in scope. No deployed or full-project
 completion claim. QC Build 89 remains unchanged.
