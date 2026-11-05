@@ -54,8 +54,12 @@ arbitrary-world/compiler/writer closure or fleet/human ranked acceptance.
 Journal/declaration-only merges preserve published P1311 warm coverage and P1308
 handoff without rebuilding or moving the frozen source tag.
 
-Actual installation is separate: Windows remains qualified P1310 primary-client/
-server/plugins; NanoPi remains P1308. P1312 delivery is pending. Earlier P1310
+Actual installation is separate: BOTH Windows primary client/server/plugin sets
+now run exact P1312: **14** destinations and `.prev` verified, **18,273** protected
+config/program/data/non-target-alias paths unchanged, **28** older predecessors
+archived and individually rehashed. Installed dedicated tests **1,578/0 each**;
+no owner process killed, no VM/config/data/backend deployed and no GUI/human pass
+claimed. NanoPi remains P1308; native delivery there is pending. Earlier P1310
 archive-only readiness has eight source-bound closed recording parts individually
 verified on/offbox, no canonical stage/swap/restart. The published TAS handoff now
 explains the original strict preservation failure: expiry swept one old resume,

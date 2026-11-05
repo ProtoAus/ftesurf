@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1313 retry start status — pending after matching server update
+
+Small check when available: retry a fast armed start. Your saved momentum should
+be kept, but the start should show practice; an ordinary low-speed start should
+still be clean. Separately retry an already-running attempt: its saved status
+and movement should continue rather than becoming practice just for retrying.
+Production-function/disk/latch controls are not native map_restart, held-jump
+phase, end-to-end ranked-finish or human acceptance. No such pass is invented.
+
 ## P1309 weather / P1302 mist — pending native look, audio and feel
 
 Small mist check requested: on Frost, `r_mist 1`; is mist visible near lights,

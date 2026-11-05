@@ -21,6 +21,9 @@
 
 ## next
 
+### P1313 Retry keeps momentum and the right start status
+- A fast fresh retry start is shown as practice without changing your saved movement. Continuing a running attempt keeps its saved status.
+
 ### P1311 More map shaders in the loading warm-up
 - Three additional shader variants used in Boreas and Demise join the loading-time warm list, without changing image quality or your saved settings.
 - This expands first-visit coverage; it does not remove every first-use hitch or make busy map views cost the same to render.
