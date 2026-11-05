@@ -5,8 +5,9 @@
 Owner confirms the earlier Colin snow is plain/fullbright and sees no caps. That
 is real negative acceptance, not a pass of P1319's in-game appearance. New source
 uses mounted snowfloor001a/003a with baked actual face light, uneven2..5unit caps
-and exposed rims. After actual delivery and a full client restart: does one nearby
-snowy grass patch have visible texture/shadow, and can you see a snowy ledge rim?
+and exposed rims. Installed BOTH Windows5Nov18:11UTC and ALL12lobbies18:25UTC.
+After a full client restart: does one nearby snowy grass patch have visible
+texture/shadow, and can you see a snowy ledge rim?
 Please give one location/screenshot if a specific expected cap is still absent.
 Walk on that grass: does the mounted CS:S crunch sound right? No new physics.
 
