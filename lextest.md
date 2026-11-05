@@ -1,6 +1,35 @@
 # lextest.md — things waiting on a human
 
+## P1329 historical TAS controls — candidate checked, owner feel pending
+
+No owner confirmation or live deployment is claimed by this entry. After the
+matching progs are installed, on a disposable local practice line: play normally,
+`tas pause`, then `tas menu`. Make a short Forward+Left guide span with one turn
+amount/duck setting, then a different Right/hold span. Seek back to the first:
+are its buttons, turn amount and vertical-look choice recognisably restored?
+Step1 should keep that saved requested aim until you deliberately retarget with
+local look. Does closing/reopening the panel to aim feel natural, without stuck
+keys or the camera fighting you? Preview a tiny raw edit, Discard, then Keep and
+Undo/Redo: the original should remain available, and only an edited literal tick
+should lose its saved turning recipe. Basic usability/feel still needs this human
+check; simulated widgets and native counter/body checks do not substitute for it.
+Contact sections/next-ramp constrained solving remain a separate unfinished phase.
+
+## P1330 prediction reports — pending actual installation and owner check
+
+NOT confirmed. After the corrected native client and phase-priority server are
+actually installed, use that declared development client (not an older Desktop
+release). On Original, take a few ordinary saves while moving in the air. Does
+it visibly snap or show an error alert? Send any new report; it must be nativev2
+with saved replay seed/mode/part/tick provenance. Test TAS controls-off and noclip
+separately if convenient. Do not infer all old reports are fixed from no alert.
+No blanket save/TAS/noclip mute was added; neither movement formulas nor Native
+error counters changed. Old11save cases lack the data needed for causal closure.
+
 ## P1332 black snow fix and quicker flashes — owner check pending
+
+Installed BOTH Windows5Nov19:05UTC and ALL12lobbies19:13UTC, exact qualified
+client9b2ba43a4470/f6ead0e677f1. Reconnect to load this client; no media change.
 
 Owner observed after P1327: Colin snowy grass is BLACK; asks whether snow relief
 should be visible. This fails native snow appearance, not the earlier isolated

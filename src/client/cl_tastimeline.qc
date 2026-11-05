@@ -12,6 +12,7 @@ float *tast_recipe_keys; // 0 up, 1 other-held, 2 recipe-owned; survives focus c
 float tast_recipe_fresh, tast_recipe_released, tast_recipe_keyfail;
 // P1082 project status, from the server's event 51.
 string tasp_cl_name;
+void() TASUI_ReadIntent;
 float tasp_cl_rev, tasp_cl_base, tasp_cl_head, tasp_cl_load, tasp_cl_stop, tasp_cl_result;
 float tasp_cl_dev, tasp_cl_devtick, tasp_cl_ncp, tasp_cl_next, tasp_cl_asked;
 // P1090: the current revision's statement fields, and whether it is signed.
@@ -23,6 +24,11 @@ string(string sha, string parent, string mapcrc, float from, float to) tasrev_si
 
 void(float first) TASTimeline_Request;
 string(string old) TASProject_Keep = { if (old) strunzone(old); return strzone(readstring()); };
+void() TASProject_IntentRequest =
+{
+	if (tasp_cl_name != "") localcmd("p1 cmd tas project event\n");
+};
+
 void() TASProject_Event =
 {
 	local float was;
@@ -35,6 +41,7 @@ void() TASProject_Event =
 	tasp_cl_sha = TASProject_Keep(tasp_cl_sha); tasp_cl_parsha = TASProject_Keep(tasp_cl_parsha);
 	tasp_cl_mapcrc = TASProject_Keep(tasp_cl_mapcrc);
 	tasp_cl_supa = readlong(); tasp_cl_supb = readlong(); tasp_cl_signed = readbyte(); tasp_cl_made = readbyte();
+	TASUI_ReadIntent();
 	if (was && !tasp_cl_load && tasu_open && TASUI_UsesTimeline(tasu_tab)) TASTimeline_Request(0);
 };
 

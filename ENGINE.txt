@@ -1,4 +1,6 @@
 # The engine build this QuakeC requires.
+# Patch 1329 (QC/tools only): hash-bound optional local TAS settings restore controls after seek/history and preserve requested aim, settings-only re-authoring, no-op rows and pending Follow. Version4 base,4096ranges/96000inputs; no body/authority/credit. Three VMs0warnings, real dedicated65 and9focused VM falsifiers pass within documented limits. Valid reserved claim1329 retained while higher published1332 remains the patch maximum; native pin/tag/qcbuild unchanged. Deployment/owner feel and section solver remain separate. tools/p1329-tas-settings.md.
+# Patch 1330: existing Source phase stat gets bounded priority; nativev2 reports save event-time replay anchor/carry/mode/counts, and the reader no longer infers missing packets/nonexecution/simulated time from sparse samples. No physics formula, recorder/verifier/policy or qcbuild change. Historical event cause remains unresolved; tools/p1330-prederr-phase.md.
 # Patch 1332 (client only): repair native snow sampler/vertex-colour binding and use a distinct material cache key; speed lightning pulses, gaps and fade by3 without changing stroke count, brightness shape or post-burst thunder. No media/native/QW/menu/backend/physics/evidence/Build change. tools/p1332-snow-binding-flashes.md.
 # Patch 1328 (backend only): participating similarity collectors acquire nonblocking host-local DB ownership before admission; persistent empty sidecar, no SQLite write lock during comparisons. Same/reverse first-winner flush remains for nonparticipants. Windows235/0/6knownskips, Linux235/0/0 and real80-opportunity crash/retry controls; reader949/0,548record corpus unchanged344REC/7VIEWfaults. No schema/capture/threshold/default/ranking/native pin/tag/qcbuild change. Two reviews clear; actual backend12f7e30e accepted5Nov18:38UTC,83other files/44schema/8identity preserved,health12. tools/p1328-simcheck-ownership.md.
 # Patch 1327 (client/assets only): real mounted Source snow albedo and baked face lighting, 2..5unit exposed cap rims, mounted CS:S snow steps; owner weather WAVs become mono64kbps native Vorbis, randomized3..6flash bursts precede thunder, repeat/interval/loop controls. No new native pin/tag/Build, physics/evidence/backend change. GPU/mesh/audio/3VM controls pass; native appearance/sound/FPS pending. tools/p1327-lit-snow-weather.md.
@@ -39,7 +41,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   d6c185c12fc32267b8944313e69b96ecb5ac5950
+commit   538de9265cefaf411c3091f9bf62e766aaec483e
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -51,7 +53,7 @@ commit   d6c185c12fc32267b8944313e69b96ecb5ac5950
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
-tag      patch-1326
+tag      patch-1330
 patch    1332
 # Patches 1305/1306 (engine common/pm_source.c): faithful existing gravity-use observation across finite native jump configurations and stock postures. Movement, capture/API/format and ranking policy unchanged. Clean Windows/ARM, acting controls and dual Windows/all12Pi native delivery verified; actual ranked/full-bank acceptance separate. Windows source7ae5d53b2 includes published P1301; Pi source76acc7c6b/tagpatch-1306 has identical mover/server inputs. Details and corrected old-manifest selector diagnosis: tools/p1306-gravity-context.md.
 # Patch 1299: initial finite nonnegative normalized-offset extension; full native delivery now superseded by the qualified 1305/1306 set. Historical proof and correction in tools/p1299-gravity.md.

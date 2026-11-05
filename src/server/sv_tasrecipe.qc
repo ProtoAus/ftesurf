@@ -23,14 +23,18 @@ float(entity e, float *rows, float base, float count, float first, float last) S
 	return TRUE;
 };
 
-void(float *rows, float base, float first, float last) SV_TASRecipePaste =
+void(entity e, float *rows, float base, float first, float last) SV_TASRecipePaste =
 {
-	local float i, j, target;
+	local float i, j, target, changed;
 	for (i = 0; i < tasr_count; i = i + 1)
 	{
-		target = (first + i - base - 1) * TAS_INPUT_STRIDE;
+		target = (first + i - base - 1) * TAS_INPUT_STRIDE; changed = FALSE;
 		for (j = 0; j < TAS_INPUT_STRIDE; j = j + 1)
+		{
+			if (rows[target+j] != tasr_rows[i*TAS_INPUT_STRIDE+j]) changed = TRUE;
 			rows[target+j] = tasr_rows[i*TAS_INPUT_STRIDE+j];
+		}
+		if (changed) SV_TASIInvalidate(e,first+i,first+i);
 	}
 };
 

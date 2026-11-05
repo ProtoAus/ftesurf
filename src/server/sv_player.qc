@@ -24,6 +24,8 @@ void(entity e) SV_TASProjectTouch;
 void(entity e) SV_TASEditorReset;
 void(entity e) SV_TASEditorFrame;
 void(entity e) SV_TASEditorCapture;
+void(entity e) SV_TASIFlush;
+void(entity e, float count, float ticket) SV_TASIArm;
 
 /*
   THE BOARD TELEMETRY BLOCK USED TO LIVE HERE AND NOW LIVES IN sv_timer.qc.
@@ -1446,7 +1448,9 @@ float(entity e, float count, float ticket) SV_TASStepReady =
 		sprint(e, PRINT_HIGH, "tas: step queue/counter limit reached\n");
 		return FALSE;
 	}
-	return SV_TASCanPause(e);
+	if (!SV_TASCanPause(e)) return FALSE;
+	SV_TASIFlush(e);
+	return TRUE;
 };
 
 // Call only immediately after successful validation in this same VM transaction.
@@ -1457,6 +1461,7 @@ void(entity e, float count, float ticket) SV_TASQueueSteps =
 	if (!e.run_tas_paused) e.run_tas_seen = e.run_tas_done;
 	e.run_tas_paused = TRUE;
 	SV_RewindTASHead(e);
+	SV_TASIArm(e, count, ticket);
 	e.run_tas_req = ticket;
 	e.run_tas_pending = e.run_tas_pending + count;
 	sprint(e, PRINT_HIGH, sprintf("tas: request %.0f queued %.0f; pending %.0f, completed %.0f\n",
@@ -1482,6 +1487,7 @@ void(entity e, float argc) SV_TASCommand =
 	// Escape controls are never stranded behind the diagnostic rate limit.
 	if (argc == 2 && (!strcmp(action, "off") || !strcmp(action, "play")))
 	{
+		SV_TASIFlush(e);
 		SV_TASOptStop(e, "TAS play/off");  // here too: a spectate hold skips its frame
 		SV_TASCancel(e);
 		if (!strcmp(action, "off"))

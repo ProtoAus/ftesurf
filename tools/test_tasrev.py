@@ -176,6 +176,62 @@ def v3_selftest():
     return ok and got == 'refused'
 
 
+def intent_selftest():
+    """P1329: optional, hash-bound settings are data, not input-row credit."""
+    header = ['tasproject 4', 'map test', 'mapcrc 12345678', 'zonecrc 12345678',
+              'pmpin pmsrcver=11', 'assist tas', 'origin local', 'saved 2026-11-06T00:00:00',
+              'revision 1', 'supply 11 14', 'base 1 %s 10' % ('ab' * 32),
+              'baseat 0 0 0 0 0 0', 'head 14']
+    recipe = 'intent 11 12 4 0.25 1 450 -450 0 -910 16384 0 2'
+    rows = ['i 450 -450 0 -910 16384 0 2'] * 4
+    def build(meta=(), h=header, tail=rows):
+        return ('\n'.join(h + list(meta) + tail + ['end 4']) + '\n').encode('ascii')
+    parent = tasrev.parse(build())
+    declared = tasrev.parse(build([recipe]))
+    assert parent['intents'] == [] and declared['intents'][0][:2] == (11, 12)
+    assert parent['h'] != declared['h'] and tasrev.changed_ticks(declared, parent) == []
+    childhead = header[:9] + ['parentsha ' + parent['h'], 'supply none'] + header[10:]
+    assert tasrev.check_supply(tasrev.parse(build([recipe], childhead)), parent) == []
+    legacy = list(header); legacy[0] = 'tasproject 2'
+    assert tasrev.parse(build(h=legacy))['intents'] == []
+    legal = list(header); legal[0] = 'tasproject 3'; legal[9] = 'supply 1 4'
+    legal[10] = 'start 0'; legal[-1:] = ['startat 2', 'head 4']
+    assert tasrev.parse(build(h=legal))['intents'] == []
+    good = [recipe, 'intent 14 14 5 2 0 -450 0 0 16202 -32768 0 0']
+    assert len(tasrev.parse(build(good))['intents']) == 2
+    # Keep malformed shapes and bounded values independent of the good control.
+    unsupported = list(legal); unsupported[0] = 'tasproject 5'
+    bad = [build([recipe], legacy), build([recipe, recipe]), build(h=unsupported),
+           build(['intent 3 4 ' + ' '.join(recipe.split()[3:])],legal),
+           build([], tail=rows[:1] + [recipe] + rows[1:])]
+    bad += [build([recipe.replace('11 12', r, 1)]) for r in ('10 12','11 15','12 11','0 1')]
+    bad += [build([recipe + ' 0']), build([' '.join(recipe.split()[:-1])]),
+            build([recipe.replace(' ', '  ', 1)])]
+    for field, values in {3:['0','6','1.5'], 4:['-1','nan','inf','4.00000048','1e-6'],
+                          5:['2','0.5'], 6:['451','0.5'], 8:['1'], 9:['16203'],
+                          10:['32768'], 11:['1'], 12:['8','0.5']}.items():
+        for value in values:
+            words = recipe.split(); words[field] = value
+            bad.append(build([' '.join(words)]))
+    large = list(header); large[9] = 'supply 11 4110'; large[-1] = 'head 4110'
+    ranges = ['intent %d %d 4 %d 0 450 0 0 0 0 0 0' % (11+i,11+i,i%2)
+              for i in range(tasrev.INTENT_MAX_RANGES+1)]
+    def bounded_case(r):
+        return build(r,large,rows[:1]*4100).replace(b'end 4\n',b'end 4100\n')
+    assert len(tasrev.parse(bounded_case(ranges[:-1]))['intents']) == tasrev.INTENT_MAX_RANGES
+    bad.append(bounded_case(ranges))
+    for data in bad:
+        try:
+            tasrev.parse(data)
+        except tasrev.Refused:
+            continue
+        raise AssertionError('accepted malformed intent')
+    tiny = recipe.split(); tiny[4] = '%.9g' % tasrev.f32('0.000001')
+    assert tasrev.parse(build([' '.join(tiny)]))['intents'][0][3] == tasrev.f32('0.000001')
+    print('ok   intent       optional v4, legacy unknown/v5 refused, hash-bound/no credit, %d refusals' % len(bad))
+    return True
+
+
 def chain_selftest():
     """P1090 review 3: R (base 21) -> Q (base 131, no changes) -> Z (base 21: R's rows for 22..100,
     then 10 ticks of its own). Z must not be credited with R's rows below Q's base."""
@@ -190,7 +246,7 @@ def chain_selftest():
 
 
 def main(argv):
-    if not chain_selftest() or not v3_selftest():
+    if not chain_selftest() or not v3_selftest() or not intent_selftest():
         return 1
     data = Path(argv[1]).read_bytes()
     h, stated = tasrev.revhash(data)

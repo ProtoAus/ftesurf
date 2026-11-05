@@ -864,6 +864,24 @@ Scope, actual build/control limits and resume checks: tools/p1300-visuals.md.
   SCR_LoadingPump redraws only in GLSCR_UpdateScreen's loading branch; its guards are in the journal.
   Left (BACKLOG): the hl2 plugin's world load, the entity lump parse and the shader reload still stall.
 
+## P1330 report provenance and Source phase scheduling
+
+A comparison ring is NOT a packet/ACK journal; gaps/absent comparisons do not
+prove loss. Frozen SV rows are bounded and body/mode is sampled at the next
+PreThink: absence is not nonexecution, kind0 is not uniquely loss-fill, and
+summed input-piece duration is not simulated time. Pre-P1326 input fields remain
+unqualified. The v2 reader preserves legacy data and prints those limitations.
+Nativev2 appends8fields to the first25: cmdvalid/predvalid/predpm/seedseq/seedcarry/
+phasehit/parts/ticks. The seed is the FIRST replay anchor; counts accumulate to
+the saved prediction, not just its final command. Capture at prediction creation,
+never look up a newer phase at dump time. Hit0 also covers unsupported/neutral/
+missing tags; it does NOT establish stat pressure. Invalid/reset provenance clears.
+Replacement stats share32resend slots. Numeric pressure can defer phase179 until
+its tag is superseded. Source-advertised priority retains the same byte/slot/
+seat/pending/resend limits; it cannot guarantee a full packet or later shared seat.
+Source/wire fixtures prove this scheduling weakness, NOT the cause or repair of
+historical save-time corrections. Follow-up: tools/p1330-prederr-phase.md.
+
 ## P1326 native prediction-report command identity
 
 With only one eligible incoming snapshot, `CL_PredictMovePNum` can leave

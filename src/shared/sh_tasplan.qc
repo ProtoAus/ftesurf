@@ -23,6 +23,19 @@ string(float mode) FS_TASPlanName =
 	return "live";
 };
 
+// Saved float32 amounts may need exponent notation. Accept only the exact
+// %.9g round-trip form in addition to the existing plain-decimal grammar.
+float(string text) FS_TASPlanAmount =
+{
+	if (strlen(text) < 1 || strlen(text) > 32) return FALSE;
+	if (!FS_TASNumber(text))
+	{
+		fs_tas_number = stof(text);
+		if (strcmp(text,sprintf("%.9g",fs_tas_number))) return FALSE;
+	}
+	return (fs_tas_number >= 0 && fs_tas_number <= 4);
+};
+
 float(float argc) FS_TASPlanRead =
 {
 	local float next;
@@ -34,7 +47,7 @@ float(float argc) FS_TASPlanRead =
 	if (fs_tasp_mode >= TAS_PLAN_GUIDE)
 	{
 		if ((!next && argc != 10) || (next && argc != 11 && argc != 12)) return FALSE;
-		if (!FS_TASNumber(argv(next ? 9 : 8))) return FALSE;
+		if (!FS_TASPlanAmount(argv(next ? 9 : 8))) return FALSE;
 		fs_tasp_amount = fs_tas_number;
 		if (fs_tasp_amount < 0 || fs_tasp_amount > 4) return FALSE;
 		if (!FS_TASNumber(argv(next ? 10 : 9))) return FALSE;
