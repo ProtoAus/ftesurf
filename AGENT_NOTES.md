@@ -144,8 +144,21 @@
   assertions; preserve, don'trepair/claimwhole-suiteclean. Corpushelper omitted
   tools/importpath once, fixedonlythatseam. ActualLinuxfulladmin passes after
   exactmissingpublicboard.html fixtureinput; retainfirst404. No productrepair.
-  Reviews/deployment/humanreadability pending. Historicalskip remeasurement is a separate unfinished historypolicy.
-  tools/p1333-similarity-current.md; pendinghumancheck lextest.md.
+  Two independent whole-feature reviews clear with stated limits. Backend-only
+  generation5bf3bda3b6c69bbc5ef63624ab88984dbc9b8b49 DELIVERED22:45:40UTC;
+  actual12f7 predecessor+ONLYadmin.py/admin_run.html, other82runtime/guards held.
+  Both CLOSED real candidates+6closure negatives pass; synthetic owner POST200
+  primary/404fallback,401/400/403 refusals. Actual156bound origins/5ROpins/2RO
+  runtimes/RWdata/44tables/8identities/default-env-byte preimage preserved; core26/
+  event1 held,4cron/MOMactive, SAMEdata fallback. Historical backup BEFORE closure.
+  PrimaryOPEN/old+fallbackCLOSED/no reservation; publichealth200/directory12 and
+  live anonymousPOST401. Do not forge a production session for manual acceptance.
+  Initial observer guessed `ok` after successful activation0; read actual `active`
+  result, run readonlyaudit ONLY, never repeat healthycutover. Guessed directory
+  path404 fixed to canonical /lobbies.json. Prior failure logs remain unchanged.
+  Retain ALL production/rollback/namespace/history roots, not disposable scratch.
+  Humanreadability pending. Historicalskip remeasurement is a separate unfinished
+  historypolicy. tools/p1333-similarity-current.md; pendinghumancheck lextest.md.
 
 ## Private off-box evidence operator tooling (5Nov2026)
 

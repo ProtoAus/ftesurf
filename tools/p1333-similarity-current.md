@@ -59,8 +59,39 @@ requested check, not authenticity, guilt, a coherent global instant or forever.
   corpus import omitted its existing tools/ search path;
   the small wrapper seam was fixed without changing the reader or its findings.
 
-At this source checkpoint, independent whole-feature reviews and actual backend
-delivery remain pending. Human review
-readability remains unconfirmed. Historical skip remeasurement and wider fleet/
-whole-invocation hard bounds remain separate gaps, not closed by this feature.
+## Delivered backend — 5 Nov 2026,22:45:40UTC
+
+Two fresh independent whole-feature reviews cleared the frozen implementation
+and evidence with stated limits. Public feature `45a74b88e1570e34563df6e17e6ae9f79dc6921c`
+preserves published peer work. Backend-only source generation
+`5bf3bda3b6c69bbc5ef63624ab88984dbc9b8b49` is the actual live predecessor
+`12f7e30e43392db850a732ab9817aa4031ed57f3` plus ONLY the two reviewed runtime
+files, admin.py and templates/admin_run.html. The other82 runtime files and the
+existing guard, dispatcher, launch config and external origins are unchanged;
+no unrelated game or peer runtime source was shipped.
+
+Both real CLOSED candidate processes passed qualification with six negative
+closure controls. Synthetic-fixture login/POST returned200 on the primary and404
+on the rollback; the primary refused anonymous401, bad-CSRF400 and cross-origin403.
+That acted HTTP check uses a missing pair, not a claim of reading real-player files.
+The exact-byte/mutation cases remain the focused source tests above.
+
+The protected installer and one cutover succeeded. Read-only post-audit checked
+156 bound origins, actual five read-only pins/two read-only runtimes/mutable data,
+all44 existing table schemas/non-churn counts and eight identity-table digests.
+Core26/event1 unchanged, default environment bytes unchanged, primaryOPEN and
+fallback/predecessorCLOSED; all four cron routes and MOM requester are active.
+The new private historical DB snapshot was taken BEFORE the live maintenance
+interval. Rollback uses the SAME current data, never an old DB restore. Required
+production and rollback roots/history are retained, no installer reservation left.
+Live anonymous POST401, public health200/ok and directory200/twelve lobbies pass.
+No production owner session was forged; real-account panel readability is pending.
+
+The first post-activation observer guessed an `ok` result key; the activation
+itself had already returned0. The corrected read-only reader passed; no repeated
+cutover/restart. A guessed public directory URL also failed; the canonical
+/lobbies.json reader passed without touching runtime state. Failures retained.
+
+Human readability and historical skip remeasurement remain unconfirmed/separate;
+wider fleet/whole-invocation hard bounds are not closed by this feature.
 No native code, engine pin/tag, qcbuild, protocol or evidence format change.

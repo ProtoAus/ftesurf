@@ -1,10 +1,11 @@
 # lextest.md — things waiting on a human
 
-## P1333 current-file consistency — source candidate, owner readability pending
+## P1333 current-file consistency — deployed, owner readability pending
 
-NOT deployed or human-confirmed at this entry's source checkpoint. After the
-matching backend is live, open one captured pair in an authenticated run's Stored
-similarity observations and click `Check current files (this pair)` once. Are A
+Backend installed 5 Nov 2026 at22:45:40UTC; guarded namespace/source hashes,
+data preservation and public health checked. NOT human-confirmed. Open one
+captured pair in an authenticated run's Stored similarity observations and click
+`Check current files (this pair)` once. Are A
 and B's current-file states understandable, while the historical rows compared,
 scores and capture labels stay visible and unchanged? Does unavailable clearly
 look different from a match? A quick yes/no on that one panel is sufficient for
