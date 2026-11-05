@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1330 prediction reports — pending actual installation and owner check
+
+NOT confirmed. After the corrected native client and phase-priority server are
+actually installed, use that declared development client (not an older Desktop
+release). On Original, take a few ordinary saves while moving in the air. Does
+it visibly snap or show an error alert? Send any new report; it must be nativev2
+with saved replay seed/mode/part/tick provenance. Test TAS controls-off and noclip
+separately if convenient. Do not infer all old reports are fixed from no alert.
+No blanket save/TAS/noclip mute was added; neither movement formulas nor Native
+error counters changed. Old11save cases lack the data needed for causal closure.
+
 ## P1327 lit snow/cap rims, Source steps and storm audio — owner check pending
 
 Owner confirms the earlier Colin snow is plain/fullbright and sees no caps. That

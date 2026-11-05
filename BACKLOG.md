@@ -1,4 +1,11 @@
 # BACKLOG.md
+- Site: `CL_PredictSourcePhase`/`SV_UpdateClientStats` save-time one-tick corrections.
+  P1330 fixes a demonstrated phase scheduling weakness and captures the missing
+  event-time replay seed/mode/counts; oldv1reports cannot establish their cause.
+  Falsifier: matched quiet/stat-pressure in-air save, compare a NEWv2 saved anchor
+  and native part/tick count with bounded SV observations. Missing samples are
+  unknown, not lost packets. Keep historical save/TAS/noclip cases unresolved
+  rather than blanketmuting controls. Human check pending in lextest.md.
 
 ## r_frametime exact-cache defects and censored stalls (6 Nov audit; not fixed)
 - Site: engine `cl_screen.c:R_FrameTime_Sample/Drop/Rebuild/Over`. Expiry rebuild already includes the appended frame, then inserts it again; capacity eviction does not invalidate cached slow frames until time expiry. Literal production-C falsifiers reproduce retained400/610ms -> cache610/610/400 and an evicted900ms frame still reported over65,536 retained0.5ms frames. This affects exact worst/overflow ranks; do not claim every ordinary histogram low is wrong.

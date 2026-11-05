@@ -21,6 +21,9 @@
 
 ## next
 
+### P1330 Better prediction timing diagnostics
+- Command-tagged timing updates take priority over routine stat changes when space is available. Prediction reports now retain the timing seed and movement-step counts used to make the prediction, with clearer handling of incomplete evidence.
+
 ### P1327 Textured, lit snow and storm previews
 - Colin's snow uses the mounted Source snow textures and baked map lighting instead of a fullbright white layer. Exposed caps gain shallow, uneven depth and visible edge rims; collision is unchanged.
 - Snow-covered grass uses mounted Counter-Strike: Source snow footsteps, with Momentum's snow steps as a fallback.
