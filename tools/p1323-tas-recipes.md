@@ -1,9 +1,9 @@
 # P1323 - durable historical input recipes
 
 This is one component of `plan-tas-human-workflow.md`, not completion of the
-human-first editor. Implemented and locally exercised; review and deployment are
-still pending. P1314's separately frozen artifacts are not silently replaced by
-this working source. Earlier private receipts used provisional labels P1317, P1319 and P1321. Separate
+human-first editor. Independently reviewed, qualified and installed BOTH Windows
+and all 12 lobbies on 5 November 2026. Owner feel and genuine-device hosted Sign
+remain pending. Earlier private receipts used provisional labels P1317, P1319 and P1321. Separate
 winter and expected-reset features already claimed those numbers; a full
 149-worktree journal/test census establishes P1323. Old receipts keep their
 original labels and are not reissued; the reviewed product code is unchanged.
@@ -65,8 +65,9 @@ procedural intent beyond the existing qualified live metadata remains in scope.
 
 - All three VMs compile with zero warnings. This feature changes no native C or
   evidence grammar and retains the published base's native requirement/pin. The
-  checks below use the P1314 TAS interface; whole-native deployment binding to
-  the latest published renderer build is a separate requirement.
+  checks below use the P1314 TAS interface. Actual installed primary clients
+  retain published P1318; the qualified P1314 dedicated/plugin dependency is
+  activated separately, with equivalent server/input source, not relabelled P1318.
 - A 14-control same-line arm saves a mixed-key historical selection, changes the
   live draft, actually replays the saved input rather than that draft, and
   executes Discard while preserving original bytes and monotone counters.
@@ -124,9 +125,9 @@ procedural intent beyond the existing qualified live metadata remains in scope.
   source selection, every future row remains identical, and the target base is
   retained instead of importing the expired source base. Wrong count, missing
   recipe and invalid name explicitly refuse without native/body/project change.
-- The recorder reader suite completes **949 checks, zero failed**. The current
-  runs-only corpus has the same 544 input/paired-view byte sets and identical
-  per-record findings as the retained control. Both stored finding sets contain
+- The recorder reader suite completes **949 checks, zero failed**. The retained
+  runs-only regression arm used the same 544 input/paired-view byte sets and
+  identical per-record findings as its control. Both stored finding sets contain
   **352 entries**; the older summary's 351 is not its stored finding total. An
   initial scalar/list-order comparison failed and is retained. Comparing by
   record path confirms zero changed findings; it does not make the corpus clean
@@ -145,9 +146,34 @@ format/gate/setup seams are fixed, and the smaller actually saved source span av
 turning this feature into a long-run harness campaign. No old receipt is upgraded.
 
 Two fresh independent source/evidence reviews found no blocking issues in the
-final native-routing and QC/data-preservation correction. Installation is the
-next step, not a claimed pass here. Owner workflow/feel acceptance and genuine
-hosted real-device Sign remain explicitly pending in `lextest.md`.
-Long-history, variable-command timing,
+final native-routing and QC/data-preservation correction.
+
+## Installed receiver provenance — 5 November 2026 UTC
+
+QC source `8ae5dbbb7a0a2ec5e5653f619a00bf6e3412efca` was published before
+promotion; this includes the exact published expected-reset and resume guards.
+BOTH Windows activated at **12:53:44Z**: six VM/symbol targets and the qualified
+P1314 dedicated/five-plugin dependency per install, **24 exact targets** total.
+Actual primary P1318 clients stayed unchanged. All current/prior-prev preimages
+were retained, every target/.prev pair checked, and **18,483** existing protected
+config/data/content files stayed unchanged through the actual installed
+client18/server14/plugin14 seven-control receiver check at **13:05:56Z**.
+
+The Pi activated native/server-plugin plus the same QQ pair at **13:58:37Z**.
+Before any canonical staging/restart, **8 actual recorder parts and 180 complete
+saved-resume payload/metadata files** were individually rehashed ONBOX and OFFBOX.
+The short locked boundary rechecked all 13 declared actors/births/FD closure and
+the active backend's 156 source files. All 12 lobbies were empty at their restart;
+none skipped, no PiForce. Exact targets/.prev and all 12 live native/plugin pairs
+passed. **46,856** existing protected files were unchanged at transaction
+postflight; the lock was released. At **14:05:25Z**, one player had reconnected.
+The backend generation/source did not change. The existing code catalog only
+appended this reviewed client hash, retaining every prior byte. No release,
+qcbuild bump, general filewriter audit or restoration/expiry waiver is implied.
+Earlier failed preservation transactions remain failed; their receipts are not
+upgraded by this successful full-preimage delivery.
+
+Owner workflow/feel acceptance and genuine hosted real-device Sign remain
+explicitly pending in `lextest.md`. Long-history, variable-command timing,
 procedural intent, cold-world replay, sections and constrained route optimization
 are not established by these bounded local checks.
