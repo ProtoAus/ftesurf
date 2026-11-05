@@ -1,6 +1,6 @@
 # AGENT_NOTES.md
 
-## P1321 named-input validation and corpus observer pitfalls (5 Nov 2026)
+## P1323 named-input validation and corpus observer pitfalls (5 Nov 2026)
 
 - Independent source review caught three pre-shipment defects: unowned key-ups
   strand the engine's stored release; a focused name must get typing before chat

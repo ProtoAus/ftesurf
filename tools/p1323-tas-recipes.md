@@ -1,11 +1,12 @@
-# P1321 - durable historical input recipes
+# P1323 - durable historical input recipes
 
 This is one component of `plan-tas-human-workflow.md`, not completion of the
 human-first editor. Implemented and locally exercised; review and deployment are
 still pending. P1314's separately frozen artifacts are not silently replaced by
-this working source. Earlier private receipts used provisional labels P1317 and P1319; commit-time
-audits found separate published winter features using those numbers. The
-unpublished component is now P1321; old receipts are not renamed or reissued.
+this working source. Earlier private receipts used provisional labels P1317, P1319 and P1321. Separate
+winter and expected-reset features already claimed those numbers; a full
+149-worktree journal/test census establishes P1323. Old receipts keep their
+original labels and are not reissued; the reviewed product code is unchanged.
 
 ## Use
 

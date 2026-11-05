@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1321 named TAS input templates - pending after installation
+## P1323 named TAS input templates - pending after installation
 
 After matching native/progs installation, play/pause a short familiar line, select
 a small Timeline span and open Project. Type a recipe name, Save selected input,
