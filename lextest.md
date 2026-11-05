@@ -2,8 +2,9 @@
 
 ## P1318 first-view lightmap hitch — owner feel check pending
 
-After the updated client is installed and restarted, try the first Boreas run,
-particularly its late water-reflection area: is the repeatable brief freeze gone,
+Installed in both actual Windows primary clients5Nov09:13UTC. On the next client
+start, try the first Boreas run, particularly its late water-reflection area:
+is the repeatable brief freeze gone,
 and does the lighting look unchanged? A quick first Demise run is useful too.
 Automated replay/census and inspected pictures are not owner feel acceptance;
 other occasional stalls and scene-dependent FPS remain possible. No manual pass

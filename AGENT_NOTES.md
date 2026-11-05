@@ -23,9 +23,15 @@
   Preserve old raw logs/stamps; no redating/relabeling. The first manual metadata
   command omitted standard build.ps1's --tags; changed version compiler flags also
   need a full rebuild, not an incremental relink. No product Makefile defect claimed.
-- Final clean build, uninstrumented two-map checks, exact primary client pair and
-  rollback provenance: tools/p1318-lightmap-first-view.md. No QC/server/plugin,
-  backend, data, settings or release deployment is part of the client-only fix.
+- Final manual trial exposed the other existing build pitfall: resolving git
+  AFTER prepending MSYS PATH falsely stamps the clean CRLF tree dirty. Resolve
+  absolute inspected Windows Git before PATH mutation, as standard build.ps1 does.
+  Require the exact clean embedded stamp, not a substring that accepts -dirty.
+- Final native8383/1318 built36old/zeroNEW warnings; dual ACTUAL primary clients
+  activated09:13UTC, each actual exe ran its replay fixture. Boreas reflection
+  worst9.51ms;58non-target native/progs/owner-config hashes exact after both runs.
+  Full provenance/limits/rollback: tools/p1318-lightmap-first-view.md. No QC/server/
+  plugin/backend/data/settings/release deployment. Owner feel remains pending.
 
 ## P1311 Boreas/Demise warm coverage and remaining first-use hitch (5 Nov 2026)
 

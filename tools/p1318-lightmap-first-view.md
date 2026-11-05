@@ -1,21 +1,19 @@
 # P1318 — avoid false startup dynamic-lightmap invalidation
 
-## State
+## Implemented, verified, published and installed
 
 Engine source **3a64ae747654c152c556777e8a686008c3719aa1**, annotated
-**patch-1318**, is published. The renderer fix is implemented and verified by
-acted diagnostics and an uninstrumented prepublication candidate. **The final
-1318-stamped binary and dual Windows activation are pending:** the unchanged
-4000MiB memory gate refused after available RAM fell to260–1043MiB. No process
-was stopped and no safety gate was weakened. No final installed-native claim.
+**patch-1318**, is published. The clean final client is installed in both actual
+Windows primary locations and both actual executables completed fresh replay
+checks. Owner feel acceptance remains pending; this is not universal stability.
 
 ## Root cause and minimal change
 
 At fresh-process map load, both an untouched surface's `dlightframe` and the
-renderer light counter are0. Equality wrongly sets `cached_dlight`; first
-visibility then rebuilds static lightmaps to remove a light that never existed.
-Boreas' first late-route water reflection rebuilt647faces:44.79ms, zero style
-changes and zero live CPU lightmap lights. This is not shader compilation.
+renderer light counter are zero. Equality wrongly sets `cached_dlight`; first
+visibility rebuilds static lightmaps to remove a light that never existed.
+Boreas' first late-route water reflection rebuilt **647 faces / 44.79 ms**, with
+zero style changes and zero live CPU lightmap lights. This is not shader compilation.
 
 Require a nonzero surface marker when caching that equality. R_PushDlights
 increments the counter before marking real lights. Every nonzero-marker case
@@ -24,81 +22,100 @@ shader, movement, recorder, protocol or QC Build change.
 
 ## Acted controls
 
-- Same frozen Boreas viewer route: control647false dynamic-light rebuilds;
-  instrumented subject0. Subject rendered-frame worst6.64/7.64ms over two passes,
-  rather than the control's roughly40–50ms first reflection.
--36-case marker matrix changes only0/0. Real injected Source GPU light visibly
-  appears and expires: world ROI mean absolute RGB difference before/live54.23,
-  before/removed0.00071. Pictures inspected; no residual glow observed.
+- Same frozen Boreas viewer route: control 647 false dynamic-light rebuilds;
+  instrumented subject zero. Subject rendered-frame worst 6.64/7.64 ms over two
+  passes, rather than the control's roughly 40–50 ms first reflection.
+- A 36-case marker matrix changes only 0/0. Real injected Source GPU light visibly
+  appears and expires: world ROI mean absolute RGB difference before/live 54.23,
+  before/removed 0.00071. Pictures inspected; no residual glow observed.
 - Source VBSP has no CPU MarkLights callback. Its zero CPU-light counts are NOT
   a positive CPU-light regression. Nonzero CPU-marker behavior is unchanged by
   inspection/matrix, not claimed as an executed Quake CPU-lightmap scenario.
 - Instrumentation is local only. Matching symbols retained per binary; all
-  diagnostic code removed before the clean candidate build.
+  diagnostic code removed before either clean candidate or final native build.
 
-## Clean candidate, not universal stability
+## Uninstrumented checks and limits
 
 Prepublication candidate **1e8638c5c**, SHA256
 `3e068bc8b54082e64755019bf905923fbd558e300e76eb687d845b423b8e8057`,
-was built in a clean isolated worktree:36existing warnings, **zero NEW** warning
-messages against the retained full native control. No diagnostic marker strings.
+completed two traversals per map and inspected screenshots:
 
 | Route | Pass | Average FPS | 1% low | 0.1% low | Worst frame |
 |---|---:|---:|---:|---:|---:|
-| Boreas | first |497|240|159|25.81ms |
-| Boreas | repeat |500|248|200|7.18ms |
-| Demise | first |393|254|190|7.69ms |
-| Demise | repeat |390|242|148|24.78ms |
+| Boreas | first | 497 | 240 | 159 | 25.81 ms |
+| Boreas | repeat | 500 | 248 | 200 | 7.18 ms |
+| Demise | first | 393 | 254 | 190 | 7.69 ms |
+| Demise | repeat | 390 | 242 | 148 | 24.78 ms |
 
-These are two complete replay traversals per map, not an all-map or numerical
-causal percentage claim. The specific647-face first-reflection hitch is removed;
-other spikes remain. Demise's repeat worst is at playback entry. Replay-open
-parsing/allocation stalls must not be conflated with mid-run drawing. Both final
-route screenshots were inspected. A missing test-menu ui_close command and an
-existing empty model-directory warning remain in the log; routes completed.
+After final installation, **each actual primary executable**, not a renamed test
+copy, ran with an owned `-basedir`/`-nohome` fixture and exited normally:
 
-Actual output1920x1200; scalar2, capture60/half0, GLSL warming1, uncapped,
-idle0/vsync0/yield1 explicitly set. No driver-cache purge. Frozen content/plugin
-and replay paths reused; screenshot/logging outside measured traversals. Tests
-use imported bookmark replays, not evidence of a native ranked/movement verdict.
+| Actual receiver | Route | Average FPS | 1% low | 0.1% low | Worst frame |
+|---|---|---:|---:|---:|---:|
+| C:/FTESurf/ftesurf64.exe | Boreas | 447 | 209 | 167 | 9.51 ms |
+| C:/FTEQuake/fteqw64.exe | Demise | 369 | 205 | 159 | 10.83 ms |
+
+The final Boreas worst is at the same late reflection camera, now 9.51 ms rather
+than the repeatable roughly 40–50 ms control. These are not all-map or causal
+whole-FPS percentage claims. Other spikes remain; candidate Demise's repeat worst
+was at playback entry. Replay-open parsing/allocation stalls must not be conflated
+with mid-run drawing. The existing empty model-directory warning and unavailable
+fixture ui_close command remain; scenes/replay completion and expected native
+stamp acted. No new product runtime error was found.
+
+Actual output 1920x1200; scalar 2, capture 60/half 0, GLSL warming 1, uncapped,
+idle 0/vsync 0/yield 1 explicitly set. No driver-cache purge. Frozen content/plugin
+and replay paths reused; screenshots/logging outside measured traversals. Tests
+use imported bookmark replays, not a native ranked/movement verdict. Background
+load varied; do not turn these rows into a universal performance percentage.
 No automatic native-resolution, AA, frame-cap or saved-settings change.
 
-## Numbering and build provenance
+## Build and Windows activation — 5 November 2026 UTC
 
-The earlier1317 reservation collided with the concurrent published Christmas
-asset patch. Renderer1317 was NEVER published or installed. Final feature is
-**1318 only**; preserve old raw logs/stamps, do not relabel or redate them.
-From that candidate to1318, executable source semantics are unchanged; the source
-comment and publication/version metadata changed. The peer integration changes
-only ENGINE_PATCHES.md on the native side. Final metadata still requires an
-actual clean rebuild, not binary string editing or an incremental relink.
+Final native stamp: **git-8383-patch-1318-0-g3a64ae747**, no dirty suffix.
+Client SHA256:
+`55040dc1820171f00d50d5863218a263b6285d83f7b5de0893e9629d814c2194`.
+Clean isolated source, full native `m-rel` rebuild, two jobs, existing complete
+UCRT codec cache and standard build.ps1 Windows-Git/source-date metadata:
+**36 existing warnings / zero NEW** against the retained full native control.
+No diagnostic marker strings in the final image.
 
-The first manual metadata command omitted standard build.ps1's `--tags`; changing
-the version compiler flags also failed to invalidate existing objects. Failed
-artifacts are retained. Standard `--tags`/source-date stamping and full `m-rel`
-recompilation are the correction, not a product Makefile defect claim.
+At **09:13:08–09:13:09 UTC**, reused the existing build.ps1 Deploy/Ok helpers on
+ONLY `C:/FTESurf/ftesurf64.exe` and `C:/FTEQuake/fteqw64.exe`. Both destination
+hashes match the final artifact. Both `.prev` files equal exact P1312 predecessor
+SHA256 `2b8735018e018e9ae8540a981e0c44c716514acf47bba2a8f2e708ef438544b3`.
+Current and older `.prev` preimages were separately archived and rehashed before
+copying. All **58 protected non-target native/progs/owner-config files** were
+unchanged across activation AND after both actual receiver checks.
 
-## Exact remaining delivery
+No optional client alias, QC program, dedicated server, plugin, configuration,
+player data, backend, lobby or release was deployed. Published P1314 server-side
+native source is already part of the inspected engine parent; this does not
+activate its separate QC feature or perform a dedicated/server deployment.
+Rollback is the exact primary pair's `.prev`, with older history additionally
+retained under `artifacts/p1318-activation/`; never restore unrelated player data.
 
-Build the inspected tag with the existing native m-rel target, same complete
-UCRT codec cache/flags, two jobs, standard source stamp and full rebuild; require
-the unchanged memory/rig gate, correct embedded1318 source stamp and no probe.
-Then use the standard build.ps1 Deploy helper on ONLY the actual primary pair:
-`C:/FTESurf/ftesurf64.exe` and `C:/FTEQuake/fteqw64.exe`. Preserve current/older.prev
-preimages; verify destination hashes and live behavior. Optional client aliases,
-QC programs, dedicated servers, plugins, configs, player data, backend and lobbies
-are not this patch's ship set. Published P1314 server-side native source is already
-part of the inspected engine parent; no separate dedicated/server deployment.
+## Preserved failures, numbering and readiness limits
 
-Both current primary clients remain exact P1312 bytes, SHA256
-`2b8735018e018e9ae8540a981e0c44c716514acf47bba2a8f2e708ef438544b3`.
-No client activation or rollback file has been changed by this renderer work.
+The earlier 1317 reservation collided with the concurrent published Christmas
+asset patch. Renderer 1317 was NEVER published or installed. Final feature is
+**1318 only**; old raw logs/stamps were not relabelled or redated. Native executable
+source differs from that validated candidate only in a comment; final version
+metadata was genuinely recompiled, not edited into a binary.
 
-Local evidence/retention root:
+The manual build path initially omitted standard `--tags`; changed version
+compiler flags also needed a full rebuild. A later trial selected MSYS Git after
+PATH mutation and falsely stamped a clean CRLF checkout dirty. The final build
+uses the absolute inspected Windows Git before compiler PATH mutation, as the
+standard build already requires. Failed artifacts retained; no Makefile defect
+claimed. The unchanged 4000 MiB/quiet/rig gates refused low-memory or busy windows;
+RAM later recovered and both final build and runtime checks passed normally.
+No owner/peer process was stopped and no gate was weakened.
+
+Local evidence/rollback retention root:
 `C:/FTESurf-worktrees/lows-20261104T2339Z-01a1a8e6/`.
-`artifacts/boreas-lmprobe`, `boreas-lmfixed`, `p1317-client`, `p1317-clean` retain
-acted controls, matching symbols, failed metadata build, clean outputs and images.
-Paired source worktrees/cache retained for the blocked final build; not abandoned.
-P1311's known-shader seed was already delivered separately to both installs.
-Its2second budget and late-created programs still prevent an all-shaders-ready
-guarantee. Owner feel acceptance remains pending in lextest.md.
+Acted controls, matching symbols, failure records, final build, activation receipt
+and receiver summaries remain under `artifacts/`. P1311's known-shader seed was
+already delivered separately to both installs. Its two-second budget and
+late-created programs still prevent an all-shaders-ready guarantee. Owner feel
+acceptance remains pending in lextest.md.
