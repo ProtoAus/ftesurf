@@ -30,14 +30,15 @@ complete pair coverage, source freshness/legacy remeasurement or calibration.
   pair. An independent SQLite writer commits during comparison, outside a read
   transaction. Exact compared-buffer hash capture and orientation preserved.
 -217unittest cases run,0failures/errors,4known Windows SQLite/platform skips;
-  separate legacy similarity script exits0 on the same unchanged source.
+  Linux Python3.11 runs the same217cases with0failures/errors/skips. Separate
+  legacy similarity scripts exit0 on both hosts with the same module bytes.
 - New controls cover large source and peer selection, exact old-query order across
  48source/peer cursor/limit combinations, negative and deleted cursor positions,
   reverse stored-pair exclusion, actual low-budget second-range interruption with
   no partial result/advance, no unnecessary wrap, and legacy read-only schema.
 - The prior peer-cap fixture depended on the removed full sort to exhaust its
   allowance. It now uses genuinely sparse eligibility and an actual readable
-  selected peer: the same budget still interrupts, and its high-budget native
+  selected peer: the same budget still interrupts, and its high-budget real-reader
   positive still measures80opportunities. Neither gate nor allowance was relaxed.
 - Fresh reader949checks/0failures. Current corpus546records retains344faulted
   records and7faulted views: NOTclean. Prior545record/168view bytes unchanged;
@@ -46,12 +47,17 @@ complete pair coverage, source freshness/legacy remeasurement or calibration.
 Initial test-fixture API/required-column/cursor-argument errors and a script-only
 module discovery error are retained, not product failures or passing controls.
 The initial reader observer deadline120s expired; the same source completed949/0
-in136.6s under300s with direct private log capture. No timeout regraded as pass.
+in136.6s under300s with direct private log capture. Initial Linux verification
+packaging omitted the reader's existing heldmeta dependency; supplying that exact
+committed dependency made the same source217/0/0. No failure regraded as pass.
 
 ## Delivery state
 
-Implementation and local qualification complete. Independent clean-commit reviews,
-Linux/runtime qualification and actual guarded backend-only deployment are separate
-steps; no deployment claimed by this initial note. Use the current collectors84
+Implementation, Windows and Linux source qualification complete. Read-only live
+preflight confirms the active collectors84 module is EXACTLY the acting old source,
+and the specific existing namespace/service permissions are available without
+password prompts. No namespace, service, live fence, cron or player DB changed.
+Independent clean-commit reviews, frozen-runtime qualification and actual guarded
+backend-only deployment remain separate; no deployment claimed by this initial note. Use the current collectors84
 family on its actual installed base; do not ship main's unrelated work or add
 previously inherited sealed modules to public Git. Keep a same-database fallback.

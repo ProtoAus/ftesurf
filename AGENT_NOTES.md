@@ -17,7 +17,9 @@
 - test_simcheck.py exits as a script, so unittest discovery reports SystemExit0
   as an import error. Use its existing script entrypoint separately, not a
   product fix or blanket skip of similarity modules. Final217cases0failures/
-  errors,4known Windows skips; Linux zero-skip qualification remains separate.
+  errors,4known Windows skips; Linux3.11same217cases0failures/errors/skips and
+  legacy script0. First sparse Linux archive missed tools/heldmeta.py; include
+  that actual committed reader dependency, not a new reader or copied install.
 - Reader949subprocess-backed checks took136.6s here:120sobserver timeout was a
   real observer failure, not reader failure/pass. Direct owned log under300s
   completed949/0; don't repeat it without a changed dependency. Current546record
