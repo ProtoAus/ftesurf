@@ -6726,6 +6726,19 @@ publicly WITH its fix, not before it.
 
 ### Similarity collector operational limits (P546–548, P551–553)
 
+- **P1316, 5 Nov:** Pair exclusion must be rechecked in BOTH orientations after
+  the short flush acquires write ownership, not only before file comparison.
+  An explicit SQL transaction also matters on legacy autocommit; recheck caller
+  idleness after reader callbacks and preserve configured isolation. Run the
+  real-two-connection/parser `test_simcheck_overlap.py` controls. This is not a
+  work reservation, global unordered uniqueness or historical deduplication.
+  The existing `test_simcheck.py` is an executable that exits0 during import:
+  run the existing similarity programs standalone, not unittest discovery.
+  Linux3.11 provides typed SQLite cases that Windows3.10 skips. Reader tests also
+  require the exact committed `src/server/sv_timer.qc` static-contract dependency.
+  A read changes atime on some Windows paths: whole `os.stat_result` equality is
+  not source-byte instability; preserve the failed observation and compare bytes,
+  identity, size, mtime and ctime rather than silently regrading it.
 - `simcheck.summary` distinguishes missing/error (counters unavailable), empty
   (measured zero), and available. Its read-only log line explicitly states no
   sample or unavailable; it never repairs/migrates a missing table.
