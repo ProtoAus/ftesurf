@@ -5,6 +5,7 @@
 // from under its roofs; r_snow_indoor 1 ignores the mask (snow everywhere, e.g. a map with no sky).
 // r_snow_debug 1 colours each flake by the mask height it read and hides none.
 
+float() Winter_ThemeActive; // later winter module: cached, map-specific opt-out
 entity snow_ent;
 string snow_map;
 string snow_shader;         // "" while the map has no mask
@@ -102,7 +103,7 @@ void() Snow_Frame =
 	if (serverkey("map") != snow_map)
 		Snow_Load();
 	want = cvar("r_snow");
-	want = ((want >= 2) || (want >= 1 && Snow_InList(cvar_string("r_snow_maps"), snow_map)));   // = binds tighter than ||
+	want = ((want >= 2) || (want >= 1 && Snow_InList(cvar_string("r_snow_maps"), snow_map)) || Winter_ThemeActive());   // = binds tighter than ||
 	if (!want)
 		return;
 	if (!snow_have)

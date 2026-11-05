@@ -1,14 +1,21 @@
 // P1302: static CC0 holiday props and bounded GPU mist, on explicit per-map manifests.
 // Mist is an impostor, not volumetric simulation. No per-frame particles, traces,
 // light queries, readbacks, depth captures or allocations. See tools/winter-assets.md.
-#define WI_PROPS 12
+#define WI_PROPS 16
 #define WI_MIST 16
 #define WI_VISIBLE_MIST 4
 #define WI_AREA_BUDGET 0.12
 entity wi_props[WI_PROPS], wi_mist[WI_MIST];
 float wi_nprop, wi_nmist, wi_drawprop, wi_drawmist, wi_area;
 string wi_map;
+float wi_colin;
+entity wi_grass, wi_caps;
 .float wi_radius;
+
+float() Winter_ThemeActive =
+{
+	return (wi_colin && cvar("r_colin_winter") != 0);
+};
 .vector wi_source;
 
 string(float kind) Winter_Model =
@@ -25,6 +32,7 @@ string(float kind) Winter_Model =
 void() Winter_Init =
 {
 	registercvar("r_winter_props", "1", CVAR_ARCHIVE);
+	registercvar("r_colin_winter", "1", CVAR_ARCHIVE); // authored single-map theme; no global cvar writes
 	registercvar("r_mist", "0", CVAR_ARCHIVE); // opt-in until the moving-view budget is qualified
 	registercommand("winter_info");
 };
@@ -44,12 +52,35 @@ void() Winter_Clear =
 		if (!strcmp(wi_mist[i].classname, "winter_mist")) remove(wi_mist[i]);
 		wi_mist[i] = world;
 	}
+	if (wi_grass)
+		if (!strcmp(wi_grass.classname, "winter_surface")) remove(wi_grass);
+	if (wi_caps)
+		if (!strcmp(wi_caps.classname, "winter_surface")) remove(wi_caps);
+	wi_grass = wi_caps = world; wi_colin = FALSE;
 	wi_nprop = wi_nmist = wi_drawprop = wi_drawmist = wi_area = 0;
 };
 
 float(vector v) Winter_Finite =
 {
 	return (fabs(v_x) <= 262144 && fabs(v_y) <= 262144 && fabs(v_z) <= 262144);
+};
+
+entity(string group, string path, float zbase, float zrange) Winter_Surface =
+{
+	local entity e;
+	local string grassflag, definition;
+	if (strcmp(wi_map, "surf_colin_blaster_69000")) return world;
+	if (strcmp(group, "grass") && strcmp(group, "caps")) return world;
+	if (strcmp(path, sprintf("models/gibs/winterweather/%s-%s.iqm", wi_map, group))) return world;
+	if (!(fabs(zbase) <= 262144 && zrange >= 1 && zrange <= 524288)) return world;
+	if (!Snow_Exists(path) || !Snow_Exists("gfx/weather/snow-grain.png")) return world;
+	grassflag = !strcmp(group, "grass") ? "#GRASS=1" : "";
+	definition = sprintf("{\ncull none\ndepthpush -2\nsort decal\nnomipmaps\nnopicmip\n{\nprogram ftesurf_snowcover_v1#ZBASE=%.3f#ZRANGE=%.3f%s\nclampmap $nosrgb:$nearest:gfx/snowmask/%s.png\nmap $nosrgb:gfx/weather/snow-grain.png\nrgbgen entity\n}\n}\n", zbase, zrange, grassflag, wi_map);
+	e = spawn(); e.classname = "winter_surface";
+	precache_model(path); setmodel(e, path);
+	e.forceshader = shaderforname(strcat("ftesurf_colin_snow_", group), definition);
+	e.effects = EF_FULLBRIGHT | EF_NOSHADOW; e.colormod = '1 1 1'; e.scale = e.alpha = 1;
+	return e;
 };
 
 void() Winter_Load =
@@ -79,6 +110,10 @@ void() Winter_Load =
 	if (n == 3)
 	if (!strcmp(argv(0), "winter") && !strcmp(argv(1), "1") && !strcmp(argv(2), mname)) ok = TRUE;
 	if (!ok) { fclose(f); return; }
+	wi_colin = !strcmp(mname, "surf_colin_blaster_69000");
+	// Missing media must not opt older clients into unclipped automatic snow.
+	if (wi_colin)
+		if (!Snow_Exists(sprintf("gfx/snowmask/%s.png", mname)) || !Snow_Exists(sprintf("gfx/snowmask/%s.txt", mname))) wi_colin = FALSE;
 	// Fixed record AND trace caps bound bad local files. Missing assets skip, never error-art.
 	traces = 0;
 	for (i = 0; i < 128; i = i + 1)
@@ -88,7 +123,14 @@ void() Winter_Load =
 		if (!line) break;
 		n = tokenize(line);
 		if (n < 1) continue;
-		if (!strcmp(argv(0), "prop") && n == 7 && wi_nprop < WI_PROPS)
+		if (!strcmp(argv(0), "surface") && n == 5)
+		{
+			if (!strcmp(argv(1), "grass") && !wi_grass)
+				wi_grass = Winter_Surface(argv(1), argv(2), stof(argv(3)), stof(argv(4)));
+			if (!strcmp(argv(1), "caps") && !wi_caps)
+				wi_caps = Winter_Surface(argv(1), argv(2), stof(argv(3)), stof(argv(4)));
+		}
+		else if (!strcmp(argv(0), "prop") && n == 7 && wi_nprop < WI_PROPS)
 		{
 			kind = stof(argv(1));
 			model = Winter_Model(kind);
@@ -158,11 +200,16 @@ void() Winter_Frame =
 	local entity e;
 	if (strcmp(wi_map, serverkey("map"))) Winter_Load();
 	wi_drawprop = wi_drawmist = wi_area = 0;
+	if (Winter_ThemeActive())
+	{
+		if (wi_grass) addentity(wi_grass);
+		if (wi_caps) addentity(wi_caps);
+	}
 	if (!wi_nprop && !wi_nmist) return;
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
 	forward = v_forward;
-	if (cvar("r_winter_props") > 0)
+	if (cvar("r_winter_props") > 0 || Winter_ThemeActive())
 	for (i = 0; i < wi_nprop; i = i + 1)
 	{
 		e = wi_props[i];
@@ -171,7 +218,8 @@ void() Winter_Frame =
 		addentity(e);
 		wi_drawprop = wi_drawprop + 1;
 	}
-	if (cvar("r_mist") <= 0) return;
+	if (cvar("r_mist") <= 0)
+		if (!Winter_ThemeActive()) return;
 	for (i = 0; i < wi_nmist; i = i + 1)
 	{
 		if (wi_drawmist >= WI_VISIBLE_MIST) break;
@@ -196,5 +244,6 @@ float(string command) Winter_ConsoleCommand =
 {
 	if (strcmp(command, "winter_info")) return FALSE;
 	print(sprintf("winter: %s loaded props %g mist %g; submitted props %g mist %g area %.4f\n", wi_map, wi_nprop, wi_nmist, wi_drawprop, wi_drawmist, wi_area));
+	print(sprintf("winter: Colin theme %g grass %g caps %g; r_colin_winter 0 disables its automatic extras\n", Winter_ThemeActive(), wi_grass != world, wi_caps != world));
 	return TRUE;
 };

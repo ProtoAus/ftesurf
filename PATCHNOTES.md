@@ -21,6 +21,10 @@
 
 ## next
 
+### P1317 Colin Christmas theme
+- surf_colin_blaster_69000 has authored snowy grass and exposed snow caps, distributed snowmen/trees/gifts, falling snow, cosmetic ice, storm sky, light mist and winter audio. Collision and liquid damage are unchanged.
+- Its automatic theme can be disabled with the Display Info checkbox or r_colin_winter 0; individual snow/weather/prop options remain separate. Other maps keep their existing defaults.
+
 ### P1315 Winter rendering corrections
 - Christmas props face outwards, and light mist becomes more visible without abruptly disappearing up close. Close fields shrink smoothly to retain their coverage budget.
 - Ramp dirt sits slightly above the surface to reduce flicker while riding and at grazing angles.

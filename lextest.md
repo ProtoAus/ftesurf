@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P1317 Colin full Christmas pass — native acceptance pending
+
+After actual combined deployment/client restart, load surf_colin_blaster_69000:
+snowy grass/exposed caps and snowmen/trees/gifts through the route, falling snow,
+storm/ice/audio/mist should be present by its automatic map-only theme. Does any
+prop sit wrong, any roofed/ridden surface get bad coverage, or FPS feel worse?
+`winter_info`/`weather_info` identify loaded components. `r_colin_winter 0` is the
+comparison/opt-out; independently enabled options remain active. No confirmation
+or numerical FPS recorded yet. Event hat earning remains date-gated, unchanged.
+
 ## P1315 winter corrections — owner failures confirmed, correction pending
 
 Owner5Nov confirmed: Christmas models look inside-out; mist is minimal and pops
