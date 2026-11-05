@@ -16,8 +16,14 @@ This tooling is not a native/QC patch and does not restart games or the backend.
   Never place the archive in a web-served/public/shared directory.
 - Source directories are exactly `runs` and `evidence`, not the whole install,
   player-key directory, map library or dependency cache. The source index opens
-  regular single-link files with nofollow/nonblocking openat traversal. Aliases,
-  unreadable/changed files and exhausted allowances are explicit, not green.
+  regular single-link files with nofollow/nonblocking openat traversal by default.
+  Optional `StageStore` admits only the existing P395 stage-retention pair:
+  `evidence/<map>/<leaf>.rec`, exactly two links, and a second nofollow descriptor
+  at the identical map/leaf in the declared backend store. Both descriptors must
+  match device/inode/link-count/size/mtime/ctime before and after hashing. Arbitrary,
+  third, run-directory and unbound links remain deferred. This observes existing
+  bytes, not exclusive ownership, a verdict or authority to unlink either name.
+  Unreadable/changed files and exhausted allowances are explicit, not green.
 - No `--delete`, `--inplace`, reverse sync or Pi repair. Existing off-box versions
   move into `history/<transaction>/<scope>` before a changed copy replaces them.
   A file no longer observed on the Pi is retained, not deleted off-box.
@@ -62,6 +68,7 @@ The private `<archive>/config.json` contains:
 | `Host` | Existing SSH `user@host`; no passwords or key material |
 | `Synthetic` | False for live source; true only for owned agent-work fixtures |
 | `Source` | Live `/srv/nvme/ftesurf-server/game/ftesurf/data` |
+| `StageStore` | Optional explicit `/srv/nvme/surfd/data/evidence`; otherwise hardlinks remain deferred. Synthetic scope only permits the owned source sibling `kept/evidence`. |
 | `Script`, `Indexer` | Inspected installed paths to these two source files |
 | `Rsync`, `MsysBin` | Verified executable and existing compatible MSYS directory |
 | `SshArgv` | Same-runtime SSH argv with existing strict trust/identity references |
@@ -116,10 +123,16 @@ password request, credential change, host-key bypass or another wrapper chain.
 
 ## Qualified scope and current limits
 
-Source controls: actual POSIX nine tests/zero failures/skips cover real read,
+Source controls: actual POSIX fifteen tests/zero failures/skips cover real read,
 unchanged source identity/bytes, zero file, same-size/restored-mtime edit,
 symlink/hardlink/FIFO, concurrent mutation, unreadable subtree, byte/entry/deadline
-allowances and alias/escape refusal. Every negative has acting ordinary controls.
+allowances and alias/escape refusal. Six added cases cover the explained stage
+pair/default refusal, missing/wrong inode, third link, wrong scope, store aliases
+and an acting mutation through the retained alias. Every negative has acting
+ordinary controls. The Windows whole entrypoint also exercised default refusal,
+explicit pair/ordinary/zero success, an alias edit with restored mtime and exact
+old-stage history, and wrong-namespace refusal before transport (nine source,
+eleven retained, one explained pair, 26 pins).
 Actual Windows/MSYS/SSH whole-entrypoint controls copy late arrivals, retain both
 old edited versions and removed-source copies, verify private payload ACLs and
 full SHA256, reject mismatched artifacts/real share contention before transport,
@@ -136,10 +149,17 @@ retention also acted (eight observed files, ten retained, 26 bound artifacts).
 Original transport/literal/path/pin-capture failures remain diagnostic history,
 not feature passes. No numerical detector-performance claim follows from these.
 
-**Before first real-data use:** the first two whole-feature reviews blocked on
-managed-directory checks and synchronous stdin outside the deadline. Both seams
-are fixed and their synthetic falsifiers acted; renewed whole-feature review,
-publication, a real-data first copy and scheduled acceptance remain pending. A least-
-privilege fixture S4U registration was refused with Access denied; an exact task
-query proved no task remained. Standalone copying is independent of that OS
-permission. This is preservation tooling, not completion of an anti-cheat plan.
+**Real-data boundary:** two renewed whole-feature reviews cleared the directory/
+stdin fixes, and that tooling was published. The first actual copy retained 7,535
+files; 7,422 passed independent SHA/length checks, but 113 regular two-link files
+were explicitly deferred, so that historical transaction is NOT a complete pass.
+Metadata-only investigation found all 113 paired with the existing canonical
+backend stage store, consistent with P395's documented retention behavior. The
+narrow optional `StageStore` compatibility is separately qualified above; its
+renewed review/publication/real-data acceptance remain pending. No link is removed
+and no arbitrary-hardlink gate is relaxed to repaint the original transaction.
+
+Scheduled acceptance remains pending. A least-privilege fixture S4U registration
+was refused with Access denied; an exact task query proved no task remained.
+Standalone copying is independent of that OS permission. This is preservation
+tooling, not completion of an anti-cheat plan.

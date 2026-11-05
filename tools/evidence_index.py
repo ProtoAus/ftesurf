@@ -37,10 +37,18 @@ def _identity(value):
             value.st_mtime_ns, value.st_ctime_ns)
 
 
-def snapshot(root, max_files, max_bytes, max_seconds):
+def snapshot(root, max_files, max_bytes, max_seconds, stage_store=None):
     root = Path(root)
     if not root.is_absolute() or root.resolve(strict=True) != root:
         raise ValueError('source root must be canonical, not a symlink alias')
+    store = None
+    if stage_store is not None:
+        store = Path(stage_store)
+        if (not store.is_absolute() or store.name != 'evidence'
+                or store.resolve(strict=True) != store or not store.is_dir()
+                or store.is_relative_to(root) or root.is_relative_to(store)
+                or os.path.samefile(store, root / 'evidence')):
+            raise ValueError('stage store must be a separate canonical evidence directory')
     if type(max_files) is not int or type(max_bytes) is not int:
         raise ValueError('integer copy budgets required')
     if (max_files <= 0 or max_bytes <= 0 or isinstance(max_seconds, bool)
@@ -80,13 +88,29 @@ def snapshot(root, max_files, max_bytes, max_seconds):
                 check()
                 path = Path(parent) / filename
                 relative = path.relative_to(root).as_posix()
-                fd = None
+                fd = stage_fd = None
+                known_stage_link = False
                 try:
                     fd = _open_relative(root, relative)
                     before = os.fstat(fd)
-                    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+                    if not stat.S_ISREG(before.st_mode):
                         deferred.append(dict(rel=relative, reason='not-single-regular-file'))
                         continue
+                    if before.st_nlink != 1:
+                        parts = PurePosixPath(relative).parts
+                        if (store is None or before.st_nlink != 2 or len(parts) != 3
+                                or parts[0] != 'evidence' or not parts[-1].endswith('.rec')):
+                            deferred.append(dict(rel=relative, reason='not-single-regular-file'))
+                            continue
+                        # P395 keeps the same <map>/<leaf> in the backend store.
+                        # Hold BOTH nofollow descriptors; no unexplained/third alias is admitted.
+                        stage_fd = _open_relative(store.parent, relative)
+                        stage_before = os.fstat(stage_fd)
+                        if (not stat.S_ISREG(stage_before.st_mode)
+                                or _identity(before) != _identity(stage_before)):
+                            deferred.append(dict(rel=relative, reason='unbound-stage-link'))
+                            continue
+                        known_stage_link = True
                     digest = hashlib.sha256()
                     length = 0
                     while True:
@@ -99,14 +123,21 @@ def snapshot(root, max_files, max_bytes, max_seconds):
                         check()
                         digest.update(block)
                     after = os.fstat(fd)
-                    if _identity(before) != _identity(after) or length != before.st_size:
+                    if (_identity(before) != _identity(after) or length != before.st_size
+                            or (stage_fd is not None
+                                and _identity(before) != _identity(os.fstat(stage_fd)))):
                         deferred.append(dict(rel=relative, reason='changed-during-read'))
                         continue
-                    files.append(dict(rel=relative, bytes=length,
-                                      sha256=digest.hexdigest(), mtime_ns=before.st_mtime_ns))
+                    row = dict(rel=relative, bytes=length,
+                               sha256=digest.hexdigest(), mtime_ns=before.st_mtime_ns)
+                    if known_stage_link:
+                        row['known_stage_link'] = True  # Copy observation, not a verdict/ownership claim.
+                    files.append(row)
                 except OSError as error:
                     deferred.append(dict(rel=relative, reason=type(error).__name__))
                 finally:
+                    if stage_fd is not None:
+                        os.close(stage_fd)
                     if fd is not None:
                         os.close(fd)
     return dict(version=1, per_file_observations_not_global_instant=True,
@@ -119,5 +150,5 @@ if __name__ == '__main__':
     if not isinstance(request, dict):
         raise SystemExit('Use evidence-backup.ps1; REQUEST is supplied through stdin')
     result = snapshot(request['root'], request['max_files'], request['max_bytes'],
-                      request['max_seconds'])
+                      request['max_seconds'], request.get('stage_store'))
     print(json.dumps(result, ensure_ascii=True, separators=(',', ':')))

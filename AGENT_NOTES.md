@@ -130,7 +130,8 @@
 - `tools/evidence-backup.ps1` uses standardrsync, private Windows ACLs, versioned
   no-delete copies and an opaque/read-only SHA256 index. No Pi overwrite/repair,
   capture/verdict/schema/ranking/game/backend change. `tools/evidence-backup.md`.
-  Review-fixed acting controls qualified; finalreview/actualdata/scheduling pending.
+  Published directory/deadlinefix reviews clear; actualfirstcopy PARTIAL. Explained
+  stage-store compatibility separately qualified; review/adoption/scheduling pending.
 - Keep rsync/SSH on SAME MSYS runtime. NativeSSH text smoke can pass while its
   rsync inherited descriptors fail; blockingIO did notfix it. Git's separate
   MSYS SSH produced dup()failure. Existing MSYS SSH+EXISTING explicit identity/
@@ -153,6 +154,15 @@
   wrapper returned~3seconds/exactactor gone/lease reacquired; normalinput/zero/edit/
   partialhistory/removedsource finalsource8observed10retained/26pins alsoACTED.
   Not hardkernelIO/remote cancellation. Original reviews/failures/cohorts retained.
+- FIRSTrealcopy7535retained/7422SHAverified/113deferred/CompleteFalse/bothrsync0;
+  wholearchive8402objects0broadgrants/reparse. Originalobservation retained. ALL113
+  regularnlink2 exactinode twins in canonical backendKEEP_DIR, existingP395stage
+  retention (surfd._keep_file), NOTjunk to unlink. Defaultsinglelink refusal is
+  retained. ExplicitStageStore supports ONLYevidence/<map>/<leaf>.rec, EXACT2links,
+  separatecanonicalstore/same relativeleaf, BOTHnofollowFDidentities before/after.
+  No arbitrary/third/run-scope/wronginode/symlinkadmission or exclusiveownerclaim.
+  ActualLinux15/0/0; Windowsdefaultrefusal/knownpair/aliasoldmtimeedit+history/
+  wrongnamespacebeforetransport ACTED. No resync without understanding firstfault.
 - Windows limitedS4U registration in the tested context was AccessDenied; exact
   taskquery proved ABSENT. Owneradmin/UACstep needed, no silentinteractive/SYSTEM
   fallback or password/key changes. Standalonecopy NOTblocked. Taskconfiguration

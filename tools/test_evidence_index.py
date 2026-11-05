@@ -31,7 +31,8 @@ class EvidenceIndexTests(unittest.TestCase):
 
     def run_index(self, **kwargs):
         return subject.snapshot(self.root, kwargs.get('files', 100),
-                                kwargs.get('bytes', 4096), kwargs.get('seconds', 10))
+                                kwargs.get('bytes', 4096), kwargs.get('seconds', 10),
+                                kwargs.get('stage_store'))
 
     def test_real_read_exact_and_no_source_byte_or_identity_change(self):
         before = {p: subject._identity(p.stat()) for p in self.root.rglob('*') if p.is_file()}
@@ -120,6 +121,99 @@ class EvidenceIndexTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     self.run_index(seconds=1)
             self.assertEqual(read.call_count, 0)
+
+    def stage_pair(self, scope='evidence'):
+        temporary = tempfile.TemporaryDirectory(prefix='stage-store-', dir=os.environ['EVIDENCE_TEST_ROOT'])
+        self.addCleanup(temporary.cleanup)
+        store = Path(temporary.name) / 'evidence'
+        (store / 'map').mkdir(parents=True)
+        (self.root / scope / 'map').mkdir()
+        source = self.root / scope / 'map/stage.rec'
+        source.write_bytes(self.data)
+        kept = store / 'map/stage.rec'
+        os.link(source, kept)
+        return store, source, kept
+
+    def test_known_stage_pair_reads_exact_bytes_only_with_explicit_store(self):
+        store, source, kept = self.stage_pair()
+        before = subject._identity(source.stat())
+        default = self.run_index()
+        self.assertIn('evidence/map/stage.rec', {x['rel'] for x in default['deferred']})
+        with patch.object(subject.os, 'read', wraps=os.read) as acted:
+            result = self.run_index(stage_store=store)
+        self.assertGreater(acted.call_count, 0)
+        self.assertEqual(result['deferred'], [])
+        row = next(x for x in result['files'] if x['rel'] == 'evidence/map/stage.rec')
+        self.assertTrue(row['known_stage_link'])
+        self.assertEqual(row['sha256'], hashlib.sha256(self.data).hexdigest())
+        self.assertEqual(before, subject._identity(source.stat()))
+        self.assertEqual(before, subject._identity(kept.stat()))
+
+    def test_known_stage_store_wrong_inode_is_not_an_explained_link(self):
+        store, source, kept = self.stage_pair()
+        kept.unlink()
+        kept.write_bytes(self.data)
+        os.link(source, store.parent / 'unknown-alias')
+        result = self.run_index(stage_store=store)
+        self.assertIn('runs/a.rec', {x['rel'] for x in result['files']})
+        self.assertIn(dict(rel='evidence/map/stage.rec', reason='unbound-stage-link'), result['deferred'])
+        kept.unlink()
+        missing = self.run_index(stage_store=store)
+        self.assertIn(dict(rel='evidence/map/stage.rec', reason='FileNotFoundError'), missing['deferred'])
+        self.assertIn('runs/a.rec', {x['rel'] for x in missing['files']})
+
+    def test_stage_third_link_remains_deferred(self):
+        store, source, _kept = self.stage_pair()
+        os.link(source, store.parent / 'third-link')
+        result = self.run_index(stage_store=store)
+        self.assertEqual(source.stat().st_nlink, 3)
+        self.assertIn('evidence/map/stage.rec', {x['rel'] for x in result['deferred']})
+        self.assertIn('runs/a.rec', {x['rel'] for x in result['files']})
+
+    def test_stage_exception_does_not_admit_runs_aliases(self):
+        store, _source, _kept = self.stage_pair('runs')
+        result = self.run_index(stage_store=store)
+        self.assertIn('runs/map/stage.rec', {x['rel'] for x in result['deferred']})
+        self.assertIn('runs/a.rec', {x['rel'] for x in result['files']})
+
+    def test_stage_store_root_and_component_aliases_refused(self):
+        store, source, kept = self.stage_pair()
+        for bad in (self.root / 'evidence', self.root):
+            with self.assertRaises(ValueError):
+                self.run_index(stage_store=bad)
+        alias_parent = store.parent / 'alias-root'
+        alias_parent.mkdir()
+        alias = alias_parent / 'evidence'
+        alias.symlink_to(store, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            self.run_index(stage_store=alias)
+        directory = store / 'map'
+        directory.rename(store / 'elsewhere')
+        directory.symlink_to(store / 'elsewhere', target_is_directory=True)
+        result = self.run_index(stage_store=store)
+        self.assertIn('evidence/map/stage.rec', {x['rel'] for x in result['deferred']})
+        self.assertEqual(source.read_bytes(), self.data)
+
+    def test_mutation_through_known_stage_alias_acts_and_defers(self):
+        store, source, kept = self.stage_pair()
+        original = os.read
+        inode = source.stat().st_ino
+        changed = False
+
+        def read(fd, count):
+            nonlocal changed
+            data = original(fd, count)
+            if data and os.fstat(fd).st_ino == inode and not changed:
+                changed = True
+                with kept.open('ab') as stream:
+                    stream.write(b'late')
+            return data
+
+        with patch.object(subject.os, 'read', side_effect=read):
+            result = self.run_index(stage_store=store)
+        self.assertTrue(changed)
+        self.assertIn(dict(rel='evidence/map/stage.rec', reason='changed-during-read'), result['deferred'])
+        self.assertIn('runs/a.rec', {x['rel'] for x in result['files']})
 
     def test_alias_root_and_parent_escape_are_refused(self):
         alias = self.root / 'alias'

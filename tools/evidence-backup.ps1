@@ -181,6 +181,15 @@ try {
 	if ($cfg.Synthetic) {
 		if ($cfg.Source -notmatch '^/srv/nvme/agent-work/[A-Za-z0-9_/-]+/evidence-copy/source$') { throw 'Synthetic source scope refused' }
 	} elseif ($cfg.Source -ne '/srv/nvme/ftesurf-server/game/ftesurf/data') { throw 'Live source scope refused' }
+	$stageStore = $null
+	if ($cfg.ContainsKey('StageStore')) {
+		if ($cfg.StageStore) {
+			$expectedStore = '/srv/nvme/surfd/data/evidence'
+			if ($cfg.Synthetic) { $expectedStore = $cfg.Source.Substring(0, $cfg.Source.Length - '/source'.Length) + '/kept/evidence' }
+			if ($cfg.StageStore -cne $expectedStore) { throw 'Stage store outside existing declared namespace' }
+			$stageStore = $cfg.StageStore
+		}
+	}
 	if ($cfg.TimeoutSeconds -lt 1 -or $cfg.TimeoutSeconds -gt 1800 -or
 		$cfg.MaxFiles -lt 1 -or $cfg.MaxFiles -gt 100000 -or $cfg.MaxBytes -lt 1 -or
 		$cfg.BandwidthKiB -lt 1 -or $cfg.ReserveBytes -lt 1) { throw 'Invalid operator copy budgets' }
@@ -230,7 +239,7 @@ try {
 		Write-Output 'Existing noninteractive transport acted; no evidence copied.'
 		return
 	}
-	$request = @{ root = $cfg.Source; max_files = [int]$cfg.MaxFiles; max_bytes = [long]$cfg.MaxBytes; max_seconds = [int]$cfg.TimeoutSeconds } | ConvertTo-Json -Compress
+	$request = @{ root = $cfg.Source; max_files = [int]$cfg.MaxFiles; max_bytes = [long]$cfg.MaxBytes; max_seconds = [int]$cfg.TimeoutSeconds; stage_store = $stageStore } | ConvertTo-Json -Compress
 	$literal = ConvertTo-Json -InputObject $request -Compress
 	$program = "import json`nREQUEST = json.loads($literal)`n" + [IO.File]::ReadAllText($cfg.Indexer)
 	$indexRun = Invoke-PrivateProcess $cfg.SshArgv[0] (@($cfg.SshArgv | Select-Object -Skip 1) + @($cfg.Host, 'nice -n 10 ionice -c 3 python3 -I -B -')) 'source-index' $program
