@@ -7,7 +7,8 @@
 
 float *tasi_rows[FS_MAXPLAYERS + 1];
 float *tasi_live[FS_MAXPLAYERS + 1];
-.float tasi_cap, tasi_known, tasi_live_n, tasi_live_serial;
+.float tasi_cap, tasi_known, tasi_live_n, tasi_live_serial, tasi_dirty;
+float(float x) SV_TASPZ;
 .float tasi_pending, tasi_serial, tasi_gen, tasi_request, tasi_count;
 .float tasi_done, tasi_head, tasi_ordinal, tasi_mode, tasi_amount, tasi_follow, tasi_bits;
 .vector tasi_moves, tasi_angles;
@@ -23,7 +24,7 @@ void(entity e) SV_TASIReset =
 	if (!s) return;
 	if (tasi_rows[s]) memfree(tasi_rows[s]);
 	tasi_rows[s] = __NULL__;
-	e.tasi_cap = e.tasi_known = 0;
+	e.tasi_cap = e.tasi_known = e.tasi_dirty = 0;
 };
 
 float(entity e, float count) SV_TASIEnsure =
@@ -185,21 +186,29 @@ void(entity e) SV_TASIFlush =
 // old intent unless this exact native source ordinal belongs to a proven grant.
 void(entity e, float tick, float ordinal) SV_TASIHarvest =
 {
-	local float s, i, j, b, target, known;
+	local float s, i, j, b, target, known, lo, hi;
 
 	s = SV_TASPSlot(e);
 	if (!s || e.taslg_on || e.tasp_legal || tick <= e.tasp_base || tick > e.tasp_base + TASP_MAX) return;
 	target = (tick - e.tasp_base - 1) * TASI_STRIDE;
 	b = 0; known = FALSE;
 	if (e.tasi_live_serial == e.rec_rec_serial && tasi_live[s])
-	for (i = e.tasi_live_n - 1; i >= 0; i = i - 1)
 	{
-		b = i * TASI_LIVE_STRIDE;
-		if (ordinal > tasi_live[s][b+2]) break;
-		if (ordinal < tasi_live[s][b+1]) continue;
-		if (tasi_live[s][b] != e.rec_rec_serial) break;
-		if (tick - tasi_live[s][b+3] != ordinal - tasi_live[s][b+1]) break;
-		known = TRUE; break;
+		// Native ordinals increase even when the logical body is rewound.
+		// Bound work for long literal gaps between up to4096 authored spans.
+		lo = 0; hi = e.tasi_live_n - 1;
+		while (lo <= hi)
+		{
+			i = floor((lo+hi)*.5); b = i * TASI_LIVE_STRIDE;
+			if (ordinal < tasi_live[s][b+1]) hi = i - 1;
+			else if (ordinal > tasi_live[s][b+2]) lo = i + 1;
+			else
+			{
+				if (tasi_live[s][b] == e.rec_rec_serial)
+				if (tick - tasi_live[s][b+3] == ordinal - tasi_live[s][b+1]) known = TRUE;
+				break;
+			}
+		}
 	}
 	if (!known)
 	{
@@ -208,12 +217,17 @@ void(entity e, float tick, float ordinal) SV_TASIHarvest =
 		if (tasi_rows[s][target] > 0)
 		{
 			tasi_rows[s][target] = 0; e.tasi_known = e.tasi_known - 1;
+			e.tasi_dirty = TRUE;
 		}
 		return;
 	}
 	if (!SV_TASIEnsure(e, tick - e.tasp_base)) return;
 	if (!tasi_rows[s][target]) e.tasi_known = e.tasi_known + 1;
-	for (j = 0; j < TASI_DATA; j = j + 1) tasi_rows[s][target+j] = tasi_live[s][b+5+j];
+	for (j = 0; j < TASI_DATA; j = j + 1)
+	{
+		if (tasi_rows[s][target+j] != tasi_live[s][b+5+j]) e.tasi_dirty = TRUE;
+		tasi_rows[s][target+j] = tasi_live[s][b+5+j];
+	}
 	tasi_rows[s][target+TASI_DATA] = 2; // locally observed recipe, still no authority
 };
 
@@ -232,6 +246,8 @@ void(entity e) SV_TASIWire =
 		b = (tick - e.tasp_base - 1) * TASI_STRIDE;
 		if (tasi_rows[s][b] > 0) known = tasi_rows[s][b+TASI_DATA];
 	}
+	if (e.run_tas_paused && !e.run_tas_pending && e.run_tas_seen == e.run_tas_done &&
+		e.run_tas_replaystate != TAS_TAPE_ACTIVE && e.run_tas_replaystate != TAS_TAPE_STAGING)
 	if (e.tasi_viewserial != e.rec_rec_serial || e.tasi_viewhead != tick || e.tasi_viewrequest != e.run_tas_req)
 	{
 		e.tasi_viewserial = e.rec_rec_serial; e.tasi_viewhead = tick; e.tasi_viewrequest = e.run_tas_req;
@@ -310,6 +326,7 @@ void(entity e, float first, float last) SV_TASIInvalidate =
 		if (tasi_rows[s][b] > 0)
 		{
 			tasi_rows[s][b] = 0; e.tasi_known = e.tasi_known - 1;
+			e.tasi_dirty = TRUE;
 		}
 	}
 };
@@ -348,11 +365,12 @@ float(filestream file, entity e, float s) SV_TASIEmit =
 			if (!same) break;
 			last = last + 1;
 		}
+		for (j = 0; j < TASI_DATA; j = j + 1) tasi_out[j] = SV_TASPZ(tasi_rows[s][b+j]);
 		line = sprintf("intent %.0f %.0f %.0f %.9g %.0f %g %g",
-			e.tasp_base+i+1,e.tasp_base+last+1,tasi_rows[s][b],tasi_rows[s][b+1],
-			tasi_rows[s][b+2],tasi_rows[s][b+3],tasi_rows[s][b+4]);
-		fputs(file,strcat(line,sprintf(" %g %.0f %.0f %.0f %.0f\n",tasi_rows[s][b+5],
-			tasi_rows[s][b+6],tasi_rows[s][b+7],tasi_rows[s][b+8],tasi_rows[s][b+9])));
+			e.tasp_base+i+1,e.tasp_base+last+1,tasi_out[0],tasi_out[1],
+			tasi_out[2],tasi_out[3],tasi_out[4]);
+		fputs(file,strcat(line,sprintf(" %g %.0f %.0f %.0f %.0f\n",tasi_out[5],
+			tasi_out[6],tasi_out[7],tasi_out[8],tasi_out[9])));
 		i = last;
 	}
 	return TRUE;

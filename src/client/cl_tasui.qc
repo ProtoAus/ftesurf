@@ -18,7 +18,7 @@ float tasu_intent_mode, tasu_intent_amount, tasu_intent_follow, tasu_intent_bits
 vector tasu_intent_moves, tasu_intent_angles;
 float tasu_intent_revision, tasu_intent_seen, tasu_intent_next;
 vector tasu_intent_view;
-float tasu_intent_viewvalid, tasu_intent_viewhead, tasu_intent_viewrequest, tasu_intent_viewserial;
+float tasu_intent_viewvalid, tasu_intent_viewhead, tasu_intent_viewrequest;
 float tasu_camera_ready, tasu_camera_pitch, tasu_camera_time, tasu_camera_tick;
 float tasu_camera_raw, tasu_camera_override;
 vector tasu_camera_feet;
@@ -112,13 +112,6 @@ void() TASUI_FromServer =
 		tasu_mode = tasu_intent_mode; tasu_amount = tasu_intent_amount; tasu_follow = tasu_intent_follow;
 		tasu_forward = tasu_intent_moves_x; tasu_side = tasu_intent_moves_y; tasu_bits = tasu_intent_bits;
 		tasu_pitch = bound(-89,tasu_intent_angles_x,89); tasu_yaw = tasu_intent_angles_y;
-		if (!tasu_intent_viewvalid || tasu_intent_viewhead != tasu_intent_head ||
-			tasu_intent_viewrequest != tasu_intent_request || tasu_intent_viewserial != tasu_intent_serial)
-		{
-			tasu_intent_view = getproperty(VF_CL_VIEWANGLES);
-			tasu_intent_viewvalid = TRUE; tasu_intent_viewhead = tasu_intent_head;
-			tasu_intent_viewrequest = tasu_intent_request; tasu_intent_viewserial = tasu_intent_serial;
-		}
 	}
 	tasu_dirty = FALSE;
 };
@@ -126,7 +119,7 @@ void() TASUI_FromServer =
 void() TASUI_Close =
 {
 	tasu_open = FALSE;
-	tasu_intent_source = tasu_intent_revision = tasu_intent_seen = 0;
+	tasu_intent_source = tasu_intent_revision = tasu_intent_seen = tasu_intent_viewvalid = 0;
 	TASTimeline_Reset();
 	sui_reset_actions(); sui_tooltip_reset();
 	UI_CursorRelease(UIC_TAS);
@@ -145,6 +138,13 @@ void() TASUI_Sync =
 	bits = getstatf(STAT_FS_TASPLANBITS);
 	changed = (mode != tasu_servermode || amount != tasu_serveramount || follow != tasu_serverfollow ||
 		moves != tasu_servermove || angles != tasu_serverangles || bits != tasu_serverbits);
+	// Anchor at the body/stat acknowledgement, before an asynchronous recipe
+	// arrives. Importing metadata must not erase a local turn made meanwhile.
+	if (!tasu_intent_viewvalid || head != tasu_intent_viewhead || request != tasu_intent_viewrequest)
+	{
+		tasu_intent_view = getproperty(VF_CL_VIEWANGLES); tasu_intent_viewvalid = TRUE;
+		tasu_intent_viewhead = head; tasu_intent_viewrequest = request;
+	}
 	if (head != tasu_head || request != tasu_request)
 	{
 		tasu_dirty = FALSE;
@@ -199,8 +199,6 @@ void(float count) TASUI_Send =
 	{
 		print("tas: wait for steps/replay, or Play to cancel\n"); return;
 	}
-	if (tasu_dirty && tasu_mode >= TAS_PLAN_MANUAL && tasu_mode < TAS_PLAN_GUIDE)
-		tasu_mode = tasu_mode == TAS_PLAN_MANUAL ? TAS_PLAN_HOLD : TAS_PLAN_GUIDE;
 	if (!tasu_advanced)
 	{
 		view = getproperty(VF_CL_VIEWANGLES);
@@ -228,6 +226,15 @@ void(float v) TASUI_Pitch = { tasu_pitch = v; tasu_dirty = TRUE; };
 void(float v) TASUI_Yaw = { tasu_yaw = v; tasu_dirty = TRUE; };
 void(float v) TASUI_Amount = { tasu_amount = bound(0,rint(v*1000)/1000,4); tasu_dirty = TRUE; };
 void(float v) TASUI_Count = { tasu_count = bound(1,rint(v),TAS_TAPE_MAX); };
+void() TASUI_Follow =
+{
+	if (tasu_mode < TAS_PLAN_GUIDE)
+	{
+		print("tas: choose HOLD or gain GUIDE explicitly before changing vertical follow; legacy movement is unchanged\n");
+		return;
+	}
+	tasu_follow = !tasu_follow; tasu_dirty = TRUE; TASUI_Send(0);
+};
 void(float bit) TASUI_Bit =
 {
 	if (tasu_bits & bit) tasu_bits = tasu_bits - bit;
@@ -350,7 +357,7 @@ void(vector scr) TASUI_Draw =
 	sui_text(at,[hint,hint],"Gentler < 1.00 gain reference > sharper; not a route solver.",SUI_THEME_MUTED,1,0);
 	at_y = at_y+hint*1.7;
 	if (Profile_Chip("tasu_follow",at,[width,row,0],tasu_follow?"Vertical look: Follow travel (view only)":"Vertical look: Manual",tsz,tasu_follow))
-		{ tasu_follow=!tasu_follow; tasu_dirty=TRUE; TASUI_Send(0); }
+		TASUI_Follow();
 	at_y = at_y+row+hint;
 	WPU_Slider("tasu_count","Step ticks",at,width,tasu_count,'1 128 127',TASUI_Count,tsz);
 	at_y = at_y+tsz*2.2; small=[(width-18)/4,row,0];

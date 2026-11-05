@@ -7,7 +7,7 @@
 void(entity e) SV_TASShareCancel;
 void(entity e, float argc) SV_TASShareCommand;
 float(entity e, float *rows, float base, float count, float first, float last) SV_TASRecipeFits;
-void(float *rows, float base, float first, float last) SV_TASRecipePaste;
+void(entity e, float *rows, float base, float first, float last) SV_TASRecipePaste;
 
 #define TASP_CPMAX 48           // checkpoints kept: auto, the head, named
 #define TASP_CPEVERY 256        // auto spacing, doubled until about 32 fit
@@ -1244,6 +1244,7 @@ void(entity e, float s) SV_TASPParentKeep =
 	if (tasp_pbuf[s]) memfree(tasp_pbuf[s]);
 	tasp_pbuf[s] = 0;
 	e.tasp_pn = 0; e.tasp_lineserial = e.rec_rec_serial;   // the lineage holds without the rows
+	e.tasi_dirty = FALSE; // this immutable revision owns the current metadata too
 	n = e.tasp_n * TAS_INPUT_STRIDE;
 	nb = (float*)memalloc(max(1, n) * 4);
 	if (!nb)
@@ -1459,6 +1460,7 @@ void(entity e, string name, float force) SV_TASProjectSave =
 void(entity e, string name, string cpname, string expected, float first, float last, float field, float value) SV_TASProjectLoadChecked =
 {
 	local float s, row, r, stop, k, named, bad, warm, ns, nt;
+	local float original[TAS_INPUT_STRIDE];
 	local vector d, dv;
 
 	s = SV_TASPSlot(e);
@@ -1641,10 +1643,15 @@ void(entity e, string name, string cpname, string expected, float first, float l
 	SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE, FALSE);
 	if (first > 0)
 	{
-		SV_TASIInvalidate(e,first,last);
-		if (field == TAS_RECIPE_FIELD) SV_TASRecipePaste(tasp_buf[s],e.tasp_base,first,last);
+		if (field == TAS_RECIPE_FIELD) SV_TASRecipePaste(e,tasp_buf[s],e.tasp_base,first,last);
 		else for (k = first; k <= last; k = k + 1)
-			SV_TASInputChange(tasp_buf[s], (k - e.tasp_base - 1) * TAS_INPUT_STRIDE, field, value);
+		{
+			row = (k - e.tasp_base - 1) * TAS_INPUT_STRIDE;
+			for (r = 0; r < TAS_INPUT_STRIDE; r = r + 1) original[r] = tasp_buf[s][row+r];
+			SV_TASInputChange(tasp_buf[s],row,field,value);
+			for (r = 0; r < TAS_INPUT_STRIDE; r = r + 1)
+			if (original[r] != tasp_buf[s][row+r]) { SV_TASIInvalidate(e,k,k); break; }
+		}
 		e.tasp_signed = e.tasp_made = 0; // original hash is a parent, never a signature on this preview
 	}
 	// A body that was not in TAS mode could not have the rows checked before the load.

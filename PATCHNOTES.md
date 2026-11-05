@@ -24,6 +24,7 @@
 ### P1329 Bring back the controls used at an earlier TAS tick
 - Seeking a local TAS line now restores its saved movement, jump/duck, turning and vertical-look settings instead of showing the latest draft everywhere. Preview, Discard and Undo/Redo keep the right settings with each line.
 - A new step keeps the restored requested aim until you deliberately change your local view. Editing raw inputs marks only the changed ticks as having no saved turning preset; older literal recordings stay honest about missing settings.
+- Re-authoring the same key presses keeps your new turning settings through previews. No-op edits retain known settings, and quiet refreshes no longer overwrite a queued vertical-look choice.
 
 ### P1326 More reliable prediction-report input details
 - Fixed command timing, buttons and movement inputs being attributed to the wrong command in some prediction-error reports. This improves diagnostics; it does not change movement.

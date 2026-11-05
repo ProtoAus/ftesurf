@@ -40,7 +40,8 @@ zero up/roll, signed angle words (pitch -16202..16202, yaw -32768..32767), and h
 bits 0..7. There are at most 4096 ranges and the existing 96000-input cap remains.
 An excessive-range save fails without replacing the previous revision. Canonical
 float32 exponent notation is accepted for turn amount only; other console-number
-grammars are unchanged.
+grammars are unchanged. Saved numeric zero has one spelling, including when a
+valid console argument originally supplied negative zero.
 
 The ranges participate in the existing revision hash. Supply, changed-row credit
 and contribution checks still count actual input rows, not metadata changes.
@@ -52,10 +53,15 @@ cannot manufacture a known recipe. The packet describes only the current local
 body context. No signature is generated automatically.
 
 Preview preserves the original file; Discard/Keep/Undo/Redo replay the respective
-metadata with the line. Raw edits clear settings only on affected ticks, rather
-than guessing a generator for the new literal row. Quiet panel refreshes have a
-separate bounded gate so an open panel cannot consume the user's project-command
-rate allowance. Native body/authority gates, movement, recorder formats and QC
+metadata with the line. Re-authored settings make the working revision dirty even
+if its seven raw input values do not change. Raw edits and template pastes clear
+settings only where input values actually differ; no-op rows retain their known
+settings. Literal-gap lookup uses bounded binary search over ordered native
+ordinal spans, not a full history scan per input. Quiet panel refreshes have a
+separate bounded gate and cannot overwrite a pending grant's vertical-follow
+choice. Metadata arrival does not reset the local-view anchor established at the
+body/stat acknowledgement. Legacy movement stays explicitly selected: a view-only
+Follow click cannot silently convert it to gain GUIDE. Native body/authority gates, movement, recorder formats and QC
 Build number are unchanged; no native C, pin or tag change belongs to P1329.
 
 ## Verification
@@ -77,6 +83,17 @@ Build number are unchanged; no native C, pin or tag change belongs to P1329.
   The combined scenario has 65 assertions. Probe files are created only in the
   owned fixture and removed with a matching-byte guard; filesystem hash refresh,
   not a server restart, makes externally written probes visible.
+- Follow-up literal-production-function checks in the real QC VM: seven acting
+  baseline failures become passes for pending Follow in both directions,
+  metadata-only baseline retention, mixed raw/template no-op preservation, legacy
+  Follow ownership and a local turn between stat acknowledgement and metadata.
+  A 30000-input literal gap before 4096 authored ranges triggers the old VM's
+  actual runaway limit; binary lookup completes and retains all ranges. Native
+  negative-zero emission is canonicalized. These nine focused checks use
+  synthetic state/stat/view sources, not genuine body/grant/device acceptance;
+  the minimal fixture's owned-process stops are not normal gameplay-exit passes.
+  The full 65-assertion dedicated workflow also passes on the corrected build;
+  both of its actual game processes quit normally with code0.
 - Existing Python revision-chain, supply, legacy and new optional-metadata tests
   pass, including metadata-only hash changes with no input-row credit.
 - Mandatory recorder tests: 949 checks, zero failures. The primary install's

@@ -178,7 +178,7 @@ float(entity e) SV_TASEditorFreeze =
 	}
 	// Reuse the WHOLE immutable identity even at an earlier body cursor. A
 	// bookkeeping-only save would detach history or truncate the retained future.
-	if (!SV_TASEditorSameInputs(e) || e.tasp_filehead != e.tasp_base + e.tasp_n)
+	if (e.tasi_dirty || !SV_TASEditorSameInputs(e) || e.tasp_filehead != e.tasp_base + e.tasp_n)
 	{
 		if (e.tasp_on)
 		if (head != e.tasp_base + e.tasp_n || e.tasp_synced != head) return FALSE;
@@ -262,7 +262,7 @@ void(entity e) SV_TASEditorKeep =
 	before = strzone(e.tase_original);
 	// A failed hash retention may have written the working revision already.
 	// Retry that SAME identity rather than saving another bookkeeping-only child.
-	if (!SV_TASEditorSameInputs(e) || e.tasp_filehead != SV_TimerTicks(e))
+	if (e.tasi_dirty || !SV_TASEditorSameInputs(e) || e.tasp_filehead != SV_TimerTicks(e))
 	{
 		SV_TASProjectSave(e, "", FALSE);
 		if (!e.tasp_saveok) { strunzone(before); return; }
@@ -473,7 +473,7 @@ void(entity e, float argc) SV_TASEditorCommand =
 		i = SV_TASPSlot(e);
 		if (i && !e.tase_preview && SV_TASEditorRows(e) && first >= e.tasp_base && first <= e.tasp_base + e.tasp_n)
 		{
-			if (!SV_TASEditorSameInputs(e))
+			if (e.tasi_dirty || !SV_TASEditorSameInputs(e))
 			{
 				if (!SV_TASEditorFreeze(e)) { strunzone(action); return; }
 			}
