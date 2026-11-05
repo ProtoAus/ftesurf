@@ -21,6 +21,8 @@ string tasp_parsha[FS_MAXPLAYERS + 1];   // P1090: that revision's parentsha, ""
 float *tasp_pbuf[FS_MAXPLAYERS + 1];     // P1090: that revision's own rows (tasp_pbase, tasp_pn)
 .float tasp_on, tasp_n, tasp_cap, tasp_base, tasp_baseid, tasp_rev, tasp_serial, tasp_synced;
 .float tasp_lasthead, tasp_filehead, tasp_ncp, tasp_load, tasp_stop, tasp_chead, tasp_cbase;
+.float tasp_native_slot, tasp_native_token; // transient exact base, never saved/signed authority
+.float tasp_saveok;            // this invocation, not an old successful revision
 .float tasp_ccount, tasp_cpi, tasp_dev, tasp_devtick, tasp_result, tasp_next;
 .vector tasp_bo, tasp_bv;      // the base tick's exact origin and velocity (state.txt rounds)
 .float tasp_line;              // recorder line after tick tasp_synced's `in` row, -1 unknown
@@ -103,6 +105,7 @@ void(entity e) SV_TASProjectReset =
 	s = SV_TASPSlot(e);
 	e.tasp_on = e.tasp_load = e.tasp_n = e.tasp_cap = e.tasp_ncp = e.tasp_ccount = 0;
 	e.tasp_result = e.tasp_dev = e.tasp_devtick = 0;
+	e.tasp_native_slot = e.tasp_native_token = e.tasp_saveok = 0;
 	e.tasp_line = e.tasp_linemt = -1;
 	e.tasp_cut = 16000001; e.tasp_gen = e.tasp_parentrev = 0;
 	e.tasp_supa = e.tasp_supb = e.tasp_signed = e.tasp_pn = e.tasp_lineserial = e.tasp_made = 0;
@@ -671,7 +674,9 @@ float(entity e, float s, float last) SV_TASPHarvest =
 		}
 		if (i >= n) { tasp_why = sprintf("the recording has no input for tick %.0f", t + 1); return FALSE; }
 		argc = tokenize(l);
-		if (argc != 12 || (stof(argv(11)) & 8)) { tasp_why = sprintf("tick %.0f is not one whole recorded move", t + 1); return FALSE; }
+		if (argc != 12) { tasp_why = sprintf("tick %.0f has a malformed recorded move", t + 1); return FALSE; }
+		// Flag8 is another part of one packet, not proof of a fractional move.
+		// The actual native move ordinal must still advance exactly once per row.
 		if (mt >= 0 && stof(argv(2)) != mt + 1) { tasp_why = sprintf("the recorded moves do not line up at tick %.0f", t + 1); return FALSE; }
 		mt = stof(argv(2));
 		b = (t - e.tasp_base) * TAS_INPUT_STRIDE;
@@ -1098,6 +1103,11 @@ float(entity e, float head) SV_TASPOldestBase =
 	local float k, idx, b, t, prev, best, bestb;
 	m = rw_slot[num_for_edict(e)];
 	if (!m) return -1;
+	// Ordinary rows already live in the recorder. A single exact native base is
+	// sufficient; harvest still proves every intervening recorded input/cut.
+	if (e.rw_playtoken && e.rw_playbase <= head && head - e.rw_playbase <= TASP_MAX)
+	if (SV_RewindFindTick(e, e.rw_playbase))
+	if (SV_RewindWarmReady(e)) return e.rw_playbase;
 	best = -1; bestb = -1; prev = head + 1;
 	for (k = 0; k < e.rw_n; k = k + 1)
 	{
@@ -1241,12 +1251,13 @@ void(entity e) SV_TASPSupplyNote =
 // `name` is a zoned copy owned by the caller ("" = the attached project's).
 void(entity e, string name, float force) SV_TASProjectSave =
 {
-	local float s, head, attached, B, id, t, exists, oldidx, row, fork, prev, oldrev, legalline;
+	local float s, head, attached, B, id, t, exists, oldidx, row, fork, prev, oldrev, legalline, ns, nt;
 	local filestream f;
 	local float *m;
 	local string hash, parent;
 	local vector bo, bv;
 
+	e.tasp_saveok = 0;
 	s = SV_TASPSlot(e);
 	if (!s || !SV_TASPLocalOnly(e) || !SV_TASInputReady(e)) return;
 	if (e.tasp_load) { sprint(e, PRINT_HIGH, "tas project: a load is still running\n"); return; }
@@ -1304,6 +1315,12 @@ void(entity e, string name, float force) SV_TASProjectSave =
 			sprint(e, PRINT_HIGH, "tas project: no retained exact tick to start a project from\n");
 			strunzone(name); return;
 		}
+		ns = nt = 0;
+		if (SV_RewindFindTick(e, B))
+		if (tas_rewind(e, rw_native_slot, rw_native_token, 1) == 1)
+		{
+			ns = rw_native_slot; nt = rw_native_token;
+		}
 		m = rw_slot[s];
 		bo = [m[rw_statebase+1], m[rw_statebase+2], m[rw_statebase+3]];
 		bv = [m[rw_statebase+4], m[rw_statebase+5], m[rw_statebase+6]];
@@ -1340,6 +1357,7 @@ void(entity e, string name, float force) SV_TASProjectSave =
 			e.tasp_rev = prev; strunzone(name); strunzone(parent); SV_TASProjectEvent(e); return;
 		}
 		e.tasp_baseid = id; e.tasp_bo = bo; e.tasp_bv = bv;
+		e.tasp_native_slot = ns; e.tasp_native_token = nt;
 		if (fork) e.tasp_parentrev = prev;   // only once the new project exists
 		if (tasp_hash[s]) strunzone(tasp_hash[s]);
 		tasp_hash[s] = strzone(hash);
@@ -1374,6 +1392,7 @@ void(entity e, string name, float force) SV_TASProjectSave =
 		sprint(e, PRINT_HIGH, "tas project: cannot write the project file\n");
 		e.tasp_rev = oldrev; e.tasp_on = 0; SV_TASProjectEvent(e); return;
 	}
+	e.tasp_saveok = 1;
 	e.tasp_on = 1; e.tasp_synced = head; e.tasp_lasthead = head; e.tasp_filehead = head;
 	e.tasp_result = 0; e.tasp_dev = e.tasp_devtick = 0;
 	e.tasp_cut = 16000001; e.tasp_gen = e.rec_rec_gen;
@@ -1395,9 +1414,9 @@ void(entity e, string name, float force) SV_TASProjectSave =
 };
 
 // Names are zoned copies owned by the caller.
-void(entity e, string name, string cpname) SV_TASProjectLoad =
+void(entity e, string name, string cpname, string expected, float first, float last, float field, float value) SV_TASProjectLoadChecked =
 {
-	local float s, row, r, stop, k, named, bad;
+	local float s, row, r, stop, k, named, bad, warm, ns, nt;
 	local vector d, dv;
 
 	s = SV_TASPSlot(e);
@@ -1420,10 +1439,32 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 		sprint(e, PRINT_HIGH, sprintf("tas project: cannot load %s: %s; nothing changed\n", name, tpr_why));
 		return;
 	}
+	if (expected != "" && strcmp(expected, tpr_h))
+	{
+		sprint(e, PRINT_HIGH, "tas project: source revision changed; nothing moved\n");
+		SV_TASPReadFree(); return;
+	}
+	if (first > 0)
+	if (tpr_ver == TASP_LEGAL || !FS_TASEditValue(field, value) || first < tpr_base + 1 ||
+		last < first || last > tpr_base + tpr_n || first != floor(first) || last != floor(last))
+	{
+		sprint(e, PRINT_HIGH, "tas project: unsupported historical edit range; nothing moved\n");
+		SV_TASPReadFree(); return;
+	}
 	// P1100: a legal start has no base save; it never takes the base-save path below.
 	if (tpr_ver == TASP_LEGAL) { SV_TASLegalLoad(e, name, cpname); return; }
 	stop = tpr_base + tpr_n;
-	if (cpname != "")
+	if (!strcmp(substring(cpname, 0, 1), "@"))
+	{
+		if (!FS_TASNumber(substring(cpname, 1, -1))) { SV_TASPReadFree(); return; }
+		stop = fs_tas_number;
+		if (stop < tpr_base || stop > tpr_base + tpr_n || stop != floor(stop))
+		{
+			sprint(e, PRINT_HIGH, "tas project: seek outside the captured line; nothing moved\n");
+			SV_TASPReadFree(); return;
+		}
+	}
+	else if (cpname != "")
 	{
 		k = SV_TASPNameIndex(tpr_cpnames, cpname);
 		stop = -1; named = 0;
@@ -1459,17 +1500,45 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 		SV_TASPReadFree(); return;
 	}
 	if (!SV_SaveLocRate(e)) { SV_TASPReadFree(); return; }
+	// A disk position/velocity is not the private Source mover state. Use only
+	// the transient token bound when THIS unchanged base was captured.
+	ns = e.tasp_native_slot; nt = e.tasp_native_token;
+	warm = (!e.tasp_legal && e.tasp_serial == e.rec_rec_serial &&
+		e.tasp_base == tpr_base && !strcmp(tasp_hash[s], tpr_hash) && nt > 0 &&
+		e.run_tas_mode && e.run_tas_paused);
+	// The immutable saved pair owns this recording prefix, not an old dense
+	// row's live-buffer mark after a cut. Keep SV_RewindWarmReady/CutOK strict.
+	if (warm) warm = (tas_rewind(e, ns, nt, 1) == 1);
+	if ((first > 0 || expected != "") && !warm)
+	{
+		sprint(e, PRINT_HIGH, "tas project: complete live native base unavailable; historical edit refused\n");
+		SV_TASPReadFree(); return;
+	}
 	// P1110: ended before this load's tape exists (the session's end cancels a tape, and a v3 load's frees its project).
 	if (e.taslg_on) SV_TASLegalEnd(e, "a base-save project was loaded");
 	SV_TASCancel(e);
-	e.rec_sl_index = row;
-	SV_SaveLocGo(e);
-	if (FS_SlopOp(e.rec_sl_slop) != SLOP_LOADED || !e.rec_sl_hold)
+	e.rec_sl_index = row; // SV_TASGo loads the selected saved pair, never an implicit last slot
+	if (warm)
 	{
-		sprint(e, PRINT_HIGH, "tas project: the base save did not load\n");
-		SV_TASPReadFree(); return;
+		if (!SV_TASGo(e, ns, nt))
+		{
+			sprint(e, PRINT_HIGH, "tas project: exact live base refused; not replaying\n");
+			SV_TASPReadFree(); return;
+		}
+		sprint(e, PRINT_HIGH, "tas project: exact live native base restored; shared world is not rewound\n");
 	}
-	SV_SaveLocRelease(e);
+	else
+	{
+		e.rec_sl_index = row;
+		SV_SaveLocGo(e);
+		if (FS_SlopOp(e.rec_sl_slop) != SLOP_LOADED || !e.rec_sl_hold)
+		{
+			sprint(e, PRINT_HIGH, "tas project: the base save did not load\n");
+			SV_TASPReadFree(); return;
+		}
+		SV_SaveLocRelease(e);
+		sprint(e, PRINT_HIGH, "tas project: cold base placement; complete live native state is unavailable, replay may diverge\n");
+	}
 	d = e.origin - tpr_bo; dv = e.velocity - tpr_bv;
 	if (SV_TimerTicks(e) != tpr_base || e.run_t_state != TS_RUNNING || !(e.run_t_flags & TF_RECORDING) ||
 		fabs(d_x) > 0.0002 || fabs(d_y) > 0.0002 || fabs(d_z) > 0.0002 ||
@@ -1485,6 +1554,7 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 	e.vbsp_bhop_on = world; e.vbsp_bhop_since = 0;
 	SV_TASHistoryReset(e);
 	SV_TASProjectReset(e);
+	if (warm) { e.tasp_native_slot = ns; e.tasp_native_token = nt; }
 	SV_TASMark(e);
 	e.run_tas_mode = TRUE;
 	e.run_tas_paused = TRUE; e.run_tas_pending = 0; e.run_tas_fault = 0;
@@ -1514,12 +1584,23 @@ void(entity e, string name, string cpname) SV_TASProjectLoad =
 	SV_TASPReadFree();
 	SV_TASPParentKeep(e, s);
 	SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE, FALSE);
+	if (first > 0)
+	{
+		for (k = first; k <= last; k = k + 1)
+			SV_TASInputChange(tasp_buf[s], (k - e.tasp_base - 1) * TAS_INPUT_STRIDE, field, value);
+		e.tasp_signed = e.tasp_made = 0; // original hash is a parent, never a signature on this preview
+	}
 	// A body that was not in TAS mode could not have the rows checked before the load.
 	bad = SV_TASPValidate(e, tasp_buf[s], e.tasp_n);
 	if (bad) { SV_TASPAbort(e, sprintf("input row %.0f refused by the engine", bad)); return; }
 	sprint(e, PRINT_HIGH, sprintf("tas project: loading %s rev %.0f from tick %.0f to %.0f\n", name, e.tasp_rev, e.tasp_base, stop));
 	SV_TASProjectEvent(e);
 	SV_TASProjectDrive(e);   // first chunk now: the release above settled the frame
+};
+
+void(entity e, string name, string cpname) SV_TASProjectLoad =
+{
+	SV_TASProjectLoadChecked(e, name, cpname, "", 0, 0, 0, 0);
 };
 
 // A project's row count from its header (`base` and `head` come within the first lines), or

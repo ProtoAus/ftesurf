@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P1314 captured local TAS line — pending, candidate not installed yet
+
+After the matching local native/progs candidate is actually installed: play a
+familiar short line normally for about three seconds, then `tas pause` and
+`tas menu`, Timeline. Browse an earlier input, preview a small yaw change, then
+Discard and Play. Does the earlier line stay available and does this feel like
+editing the run you just played, without unexpected movement or losing the
+original? Please name the map if it fails. This is a small workflow/feel check,
+not a numerical timing or deterministic-replay measurement. Thirty short isolated
+machine checks are not owner acceptance; long routes, recipe history, ramp
+sections and next-ramp solver acceptance remain unconfirmed/in progress.
+
 ## P1309 weather / P1302 mist — pending native look, audio and feel
 
 Small mist check requested: on Frost, `r_mist 1`; is mist visible near lights,

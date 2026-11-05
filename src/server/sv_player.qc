@@ -21,6 +21,9 @@ void(entity e) SV_TASLegalFrame;
 void(entity e) SV_TASOptReset;
 void(entity e, string why) SV_TASOptStop;
 void(entity e) SV_TASProjectTouch;
+void(entity e) SV_TASEditorReset;
+void(entity e) SV_TASEditorFrame;
+void(entity e) SV_TASEditorCapture;
 
 /*
   THE BOARD TELEMETRY BLOCK USED TO LIVE HERE AND NOW LIVES IN sv_timer.qc.
@@ -299,6 +302,7 @@ void() ClientConnect =
 	self.run_ts_used = SV_TimeScaleConnectTaint(self);
 	SV_TASHistoryReset(self);
 	SV_TASProjectReset(self);
+	SV_TASEditorReset(self);
 	SV_TASOptReset(self);
 	self.run_tas_mode = self.run_tas_next = 0;
 	self.run_tas_used = SV_TASConnectTaint(self);
@@ -955,6 +959,7 @@ void() PlayerPostThink =
 	SV_RewindSample(self);          // Patch 477: the recent past a rewind saves from
 	SV_TASReplayFrame(self, TRUE);  // completion only after clock/recorder/retained head settle
 	SV_TASProjectFrame(self);       // P1082: the next load chunk; a non-TAS rewind detaches
+	SV_TASEditorFrame(self);
 	SV_TASOptFrame(self);           // P1088: the optimizer's next candidate
 	SV_TASLegalFrame(self);         // P1100: the start's tick, a legal back's next chunk
 	SV_WatchFrame(self);            // ...and the replay/rewind pin holds no speed
@@ -1461,6 +1466,7 @@ void(entity e, float count, float ticket) SV_TASQueueSteps =
 #include "sv_tasinput.qc"
 #include "sv_tasplan.qc"
 #include "sv_tasproject.qc"
+#include "sv_taseditor.qc"
 #include "sv_tasshare.qc"
 #include "sv_tasoptimize.qc"
 #include "sv_taslegal.qc"
@@ -1501,6 +1507,9 @@ void(entity e, float argc) SV_TASCommand =
 	if (!strcmp(action, "optimize")) { SV_TASOptCommand(e, argc); return; }
 	if (!strcmp(action, "project") || !strcmp(action, "cp")) { SV_TASProjectCommand(e, argc); return; }
 	if (!strcmp(action, "inputs")) { SV_TASInputs(e, argc); return; }
+	if (!strcmp(action, "page2") || !strcmp(action, "preview2") || !strcmp(action, "seek2") ||
+		!strcmp(action, "keep2") || !strcmp(action, "discard2") || !strcmp(action, "undo2") || !strcmp(action, "redo2"))
+	{ SV_TASEditorCommand(e, argc); return; }
 	if (!strcmp(action, "page")) { SV_TASTimelinePage(e, argc); return; }
 	if (!strcmp(action, "slice")) { SV_TASTimelineSlice(e, argc); return; }
 	if (!strcmp(action, "undo") || !strcmp(action, "redo"))
@@ -1564,6 +1573,8 @@ void(entity e, float argc) SV_TASCommand =
 			e.run_tas_planpitch, e.run_tas_planyaw, e.run_tas_planbits, e.run_tas_planair));
 		sprint(e, PRINT_HIGH, sprintf("tas: timeline tick %.0f hull %.9g eye %.9g duck %.0f\n",
 			SV_TimerTicks(e), e.maxs_z - e.mins_z, e.view_ofs_z, (e.pmove_flags & PMF_DUCKED) ? 1 : 0));
+		sprint(e, PRINT_HIGH, sprintf("tas: play history base %.0f available %.0f format %.0f stream %.0f; local buffered inputs after that base only\n",
+			e.rw_playbase, e.rw_playtoken > 0, e.rec_rec_ver, e.rec_rec_stream));
 		if (e.taslg_on)
 			sprint(e, PRINT_HIGH, sprintf("tas: legal start zone %.0f tick %.0f logged %.0f started %.0f valid %.0f\n",
 				e.taslg_zone, e.taslg_n, e.taslg_len, e.taslg_startat, SV_TASLegalValid(e)));
@@ -1577,6 +1588,7 @@ void(entity e, float argc) SV_TASCommand =
 		if (!e.run_tas_paused) e.run_tas_seen = e.run_tas_done;
 		e.run_tas_paused = TRUE;
 		SV_RewindTASHead(e);
+		SV_TASEditorCapture(e);
 		sprint(e, PRINT_HIGH, "tas: movement paused; tas step/back [1..128] or tas play; shared world continues\n");
 		return;
 	}

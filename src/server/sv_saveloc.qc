@@ -3576,6 +3576,7 @@ void(entity e) SV_SaveLocCreate =
 // reader of m[b+..] are unchanged; read only where the dense ring has nothing.
 #define RW_SLOWEVERY 64         // ~1 s at 0.015
 #define RW_SLOWCAP   1800       // ~29 minutes past the dense two; +0.85 MB a running player
+#define RW_PLAYBASE  (RW_CAP + RW_SLOWCAP) // one private live-play anchor, not another ring
 #define RW_STATEBASE 10
 #define RW_STATECOLS 60         // Patch 840: 55-64 the slow-clock state
 #define RW_NATIVEBASE (RW_STATEBASE + RW_STATECOLS) // P1061: token, native dense slot
@@ -3600,6 +3601,7 @@ float  *rw_slot[FS_MAXPLAYERS + 1];  // memalloc'd per slot on first use, kept
 .float rw_last;                 // ticks of the last sample
 .float rw_st;                   // run state at the last call
 .float rw_sn, rw_shead, rw_sbkt;    // P1006: the slow rows held, next write, last bucket
+.float rw_playbase, rw_playtoken, rw_playserial; // one exact base bound to this recording
 vector rw_o, rw_v;              // SV_RewindFind's answer
 float  rw_pit, rw_yaw, rw_dk, rw_t;
 string sl_sharefrom;            // Patch 777: set around a create for another player's save
@@ -3610,6 +3612,7 @@ void(entity e) SV_RewindReset =
 {
 	e.rw_n = e.rw_head = e.rw_last = e.rw_st = 0;
 	e.rw_sn = e.rw_shead = 0;
+	e.rw_playbase = e.rw_playtoken = e.rw_playserial = 0;
 	e.rw_sbkt = -1;
 	if (e.rw_names > 0)
 		buf_del(e.rw_names);
@@ -3629,6 +3632,28 @@ void(entity e) SV_RewindReset =
 	*/
 	e.rw_goid = 0;
 	e.rw_goseq = 0;
+};
+
+// A backwards cut restarts the dense ring, NOT this attempt's separate base.
+// Real reset/disconnect/new recording retains SV_RewindReset's full-wipe contract.
+void(entity e) SV_RewindResetClock =
+{
+	local float token, base, serial;
+	local string name;
+	token = base = serial = 0; name = "";
+	if (e.rw_playtoken && e.rw_playserial == e.rec_rec_serial)
+	{
+		token = e.rw_playtoken; base = e.rw_playbase; serial = e.rw_playserial;
+		if (e.rw_names > 0) name = strzone(bufstr_get(e.rw_names, RW_PLAYBASE));
+	}
+	SV_RewindReset(e);
+	if (token > 0)
+	{
+		e.rw_playtoken = token; e.rw_playbase = base; e.rw_playserial = serial;
+		e.rw_names = buf_create_ex("string", 0);
+		if (e.rw_names > 0) bufstr_set(e.rw_names, RW_PLAYBASE, name);
+	}
+	if (name) strunzone(name);
 };
 
 // Per packet, after the timer.  A new run, or a clock that went back (a load),
@@ -3693,7 +3718,7 @@ void(entity e, float i) SV_RewindSlowCopy =
 
 void(entity e) SV_RewindSample =
 {
-	local float s, i, t, st;
+	local float s, i, t, st, j, k, token;
 	local float *m;
 
 	st = e.run_t_state;
@@ -3705,7 +3730,7 @@ void(entity e) SV_RewindSample =
 	t = SV_TimerTicks(e);
 	if (t < e.rw_last)
 	{
-		SV_RewindReset(e);
+		SV_RewindResetClock(e);
 		e.rw_st = st;               // or the next packet resets it again as a new run
 	}
 	if (e.rw_n && t - e.rw_last < ((e.run_tas_mode && e.run_tas_rwcap) ? 1 : RW_EVERY))
@@ -3714,7 +3739,7 @@ void(entity e) SV_RewindSample =
 	if (s < 1 || s > FS_MAXPLAYERS)
 		return;
 	if (!rw_slot[s])
-		rw_slot[s] = memalloc(sizeof(float) * (RW_CAP + RW_SLOWCAP) * RW_STRIDE);
+		rw_slot[s] = memalloc(sizeof(float) * (RW_PLAYBASE + 1) * RW_STRIDE);
 	if (!rw_slot[s])                // PF_memalloc returns 0 under developer
 		return;
 	m = rw_slot[s];
@@ -3730,6 +3755,23 @@ void(entity e) SV_RewindSample =
 	m[i + 8] = e.v_angle_y;
 	m[i + 9] = (e.pmove_flags & PMF_DUCKED) ? 1 : 0;
 	SV_RewindStateSample(e, i);
+	// One read-only movement base for play-first editing. Never a new human journal,
+	// a lobby allocation, an authored input, or a change to this attempt's flags.
+	if (!e.rw_playtoken && !e.run_tas_mode && !e.rec_rec_stream && e.rec_rec_ver >= 13 && e.rec_rec_ver <= 14 && e.run_tas_rwcap)
+	if (!cvar("lobby_enable"))
+	if (checkbuiltin(tas_rewind))
+	{
+		token = tas_rewind(e, RW_CAP, 0, 3);
+		if (token > 0)
+		{
+			j = RW_PLAYBASE * RW_STRIDE;
+			for (k = 0; k < RW_STRIDE; k = k + 1) m[j+k] = m[i+k];
+			m[j+RW_NATIVEBASE] = token; m[j+RW_NATIVEBASE+1] = RW_CAP;
+			if (e.rw_names > 0)
+				bufstr_set(e.rw_names, RW_PLAYBASE, bufstr_get(e.rw_names, i / RW_STRIDE));
+			e.rw_playbase = t; e.rw_playtoken = token; e.rw_playserial = e.rec_rec_serial;
+		}
+	}
 	if (!e.rw_sn || floor(t / RW_SLOWEVERY) != e.rw_sbkt)
 		SV_RewindSlowCopy(e, i);
 	e.rw_head = (e.rw_head + 1) % RW_CAP;
@@ -3864,9 +3906,11 @@ float(entity e, float t) SV_RewindFindTick =
 
 	rw_native_slot = rw_native_token = 0;
 	if (!(t >= 0 && t < 16000000 && floor(t) == t)) return FALSE;
-	b = SV_RewindSelectRead(e, t, '0 0 0', FALSE);
+	if (e.rw_playtoken && t == e.rw_playbase) b = RW_PLAYBASE * RW_STRIDE;
+	else b = SV_RewindSelectRead(e, t, '0 0 0', FALSE);
 	if (b < 0) return FALSE;
 	m = rw_slot[num_for_edict(e)];
+	if (!m) return FALSE;
 	if (m[b] != t || m[b+33] != e.rec_rec_serial || m[b+RW_NATIVEBASE] <= 0) return FALSE;
 	if (!checkbuiltin(tas_rewind)) return FALSE;
 	if (!tas_rewind(e, m[b+RW_NATIVEBASE+1], m[b+RW_NATIVEBASE], 1)) return FALSE;

@@ -1,7 +1,9 @@
 // The table is a view, not a source of authority. Server binds every GUI edit.
 float tast_tag, tast_serial, tast_head, tast_request, tast_first, tast_n, tast_status;
 float tast_undo, tast_redo, tast_selected, tast_from, tast_to, tast_field, tast_value;
-float tast_next;
+float tast_next, tast_bodyhead, tast_base, tast_flags, tast_v2;
+float tast_originaltime, tast_candidatetime, tast_wantrefresh, tast_refreshat, tast_pick;
+float tast_pagepending, tast_pagefirst;
 float tast_rows[TAS_PAGE_ROWS * 7]; // present, forward, side, up, pitch word, yaw word, buttons
 // P1082 project status, from the server's event 51.
 string tasp_cl_name;
@@ -85,7 +87,8 @@ float(float argc, float seat) TASProject_ConsoleCommand =
 void() TASTimeline_Reset =
 {
 	tast_tag = tast_tag + 1; // invalidate an in-flight page, including close/map change
-	tast_n = tast_undo = tast_redo = 0;
+	tast_n = tast_undo = tast_redo = tast_flags = tast_v2 = tast_wantrefresh = tast_pick = 0;
+	tast_pagepending = tast_pagefirst = 0;
 	tasp_cl_asked = FALSE;  // ask for project status on the next open
 };
 
@@ -98,7 +101,12 @@ float() TASTimeline_Current =
 
 void(float first) TASTimeline_Request =
 {
-	if (cltime < tast_next) return;
+	if (cltime < tast_next)
+	{
+		// Coalesce navigation while a completion page is in flight; never drop a click.
+		tast_pagepending = 1; tast_pagefirst = first; return;
+	}
+	tast_pagepending = 0;
 	tast_next = cltime + 0.3;
 	if (!LT_StatsAreMine() || numclientseats > 1 || cvar("cl_threadedphysics") ||
 		getstatf(STAT_FS_TASINPUT) != 1)
@@ -108,20 +116,27 @@ void(float first) TASTimeline_Request =
 	}
 	tast_tag = tast_tag + 1;
 	if (tast_tag > 16000000) tast_tag = 1;
-	tast_n = tast_undo = tast_redo = 0;
-	localcmd(sprintf("p1 cmd tas page %.0f %.0f\n", first, tast_tag));
+	tast_n = tast_undo = tast_redo = tast_wantrefresh = 0;
+	localcmd(sprintf("p1 cmd tas page2 %.0f %.0f\n", first, tast_tag));
 };
 
 void() TASTimeline_ImportValue;
 
-void() TASTimeline_Event =
+void(float extended) TASTimeline_ReadEvent =
 {
 	local float tag, serial, head, request, first, status, n, undo, redo, i, j, present, v, good, take;
+	local float base, linehead, flags, originaltime, candidatetime, keeprange;
+	flags = originaltime = candidatetime = 0;
 	tag = readlong(); serial = readlong(); head = readlong(); request = readlong(); first = readlong();
+	base = max(0, head - TAS_TAPE_MAX); linehead = head;
+	if (extended) { base = readlong(); linehead = readlong(); }
 	status = readbyte(); n = readbyte(); undo = readbyte(); redo = readbyte();
+	if (extended) { flags = readbyte(); originaltime = readfloat(); candidatetime = readfloat(); }
 	take = (tag == tast_tag && tasu_open && LT_StatsAreMine() && numclientseats <= 1);
-	good = (n <= TAS_PAGE_ROWS && status == 0 && first >= 1 && head >= first &&
-		head < 16000000 && first + n - 1 <= head && undo <= 8 && redo <= 8);
+	good = (n <= TAS_PAGE_ROWS && status == 0 && first > base && linehead >= first &&
+		base >= 0 && head >= 0 && head < 16000000 && linehead < 16000000 &&
+		first + n - 1 <= linehead && undo <= 8 && redo <= 8 && flags <= 15 &&
+		originaltime >= 0 && originaltime <= 1000000 && candidatetime >= 0 && candidatetime <= 1000000);
 	// Always consume the whole message, including a stale or refused answer.
 	for (i = 0; i < n; i = i + 1)
 	{
@@ -139,16 +154,24 @@ void() TASTimeline_Event =
 		}
 	}
 	if (!take) return;
-	tast_serial = serial; tast_head = head; tast_request = request; tast_first = first;
+	keeprange = (serial == tast_serial && tast_from > base && tast_from <= tast_to && tast_to <= linehead);
+	tast_serial = serial; tast_bodyhead = head; tast_head = linehead; tast_base = base;
+	tast_v2 = extended; tast_flags = flags;
+	tast_originaltime = originaltime; tast_candidatetime = candidatetime;
+	tast_request = request; tast_first = first;
 	tast_n = good ? n : 0; tast_status = status;
 	tast_undo = good ? undo : 0; tast_redo = good ? redo : 0;
 	tast_selected = first + max(0, tast_n - 1);
-	tast_from = tast_to = tast_selected;
+	if (tast_pick >= first && tast_pick < first + tast_n) tast_selected = tast_pick;
+	if (!keeprange) tast_from = tast_to = tast_selected;
 	if (!tast_field) tast_field = 2;
 	if (good && n > 0) TASTimeline_ImportValue();
 	print(sprintf("tas timeline: page %.0f rows %.0f head %.0f serial %.0f request %.0f undo %.0f redo %.0f\n",
 		tast_first, tast_n, tast_head, tast_serial, tast_request, tast_undo, tast_redo));
 };
+
+void() TASTimeline_Event = { TASTimeline_ReadEvent(FALSE); };
+void() TASTimeline_Event2 = { TASTimeline_ReadEvent(TRUE); };
 
 float(float tick) TASTimeline_Select =
 {
@@ -184,19 +207,38 @@ void() TASTimeline_Apply =
 		print("tas timeline: refresh the paused head before editing\n");
 		return;
 	}
-	line = sprintf("p1 cmd tas slice %.0f %.0f %s %.13f", tast_from, tast_to,
+	if (tast_v2)
+	if (!(tast_flags & 2) || (tast_flags & 4))
+	{
+		print("tas timeline: complete live base required; Keep/Discard an active preview first\n"); return;
+	}
+	line = sprintf("p1 cmd tas %s %.0f %.0f %s %.13f", tast_v2 ? "preview2" : "slice", tast_from, tast_to,
 		FS_TASEditName(tast_field), tast_value);
-	localcmd(strcat(line, sprintf(" %.0f %.0f %.0f\n", tast_serial, tast_head, tast_request)));
+	localcmd(strcat(line, sprintf(" %.0f %.0f %.0f\n", tast_serial, tast_bodyhead, tast_request)));
 	tast_n = 0; // disable a second click before a server acknowledgement
+	tast_wantrefresh = 1; tast_refreshat = cltime + 0.6;
+};
+
+void(string action, float tick) TASTimeline_Action =
+{
+	if (!TASTimeline_Current() || !tast_v2 || !(tast_flags & 2)) return;
+	if (!strcmp(action, "seek2"))
+		localcmd(sprintf("p1 cmd tas seek2 %.0f %.0f %.0f %.0f\n", tick, tast_serial, tast_bodyhead, tast_request));
+	else
+		localcmd(sprintf("p1 cmd tas %s %.0f %.0f %.0f\n", action, tast_serial, tast_bodyhead, tast_request));
+	tast_pick = tast_selected; tast_n = 0;
+	tast_wantrefresh = 1; tast_refreshat = cltime + 0.6;
 };
 
 void(float redo) TASTimeline_History =
 {
 	if (!TASTimeline_Current()) return;
 	if ((!redo && tast_undo < 1) || (redo && tast_redo < 1)) return;
-	localcmd(sprintf("p1 cmd tas %s %.0f %.0f %.0f\n", redo ? "redo" : "undo",
-		tast_serial, tast_head, tast_request));
-	tast_n = 0;
+	if (tast_v2)
+	if (!(tast_flags & 2) || (tast_flags & 4)) return;
+	localcmd(sprintf("p1 cmd tas %s %.0f %.0f %.0f\n", tast_v2 ? (redo ? "redo2" : "undo2") : (redo ? "redo" : "undo"),
+		tast_serial, tast_bodyhead, tast_request));
+	tast_n = 0; tast_wantrefresh = 1; tast_refreshat = cltime + 0.6;
 };
 
 void(float value) TASTimeline_Value =
@@ -224,17 +266,35 @@ string() TASCompare_Text =
 		(tasc_dt >= 0) ? "+" : "", tasc_dt, (tasc_ds >= 0) ? "+" : "", tasc_ds);
 };
 
+void(float value) TASTimeline_Goto =
+{
+	tast_pick = bound(tast_base + 1, rint(value), max(tast_base + 1, tast_head));
+	TASTimeline_Request(max(tast_base + 1, tast_pick - 3));
+};
+
 void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw =
 {
 	local float i, b, tick, current;
 	local vector chip, range;
 	local string label;
+	if (tast_pagepending && cltime >= tast_next) TASTimeline_Request(tast_pagefirst);
+	if (tast_wantrefresh && cltime >= tast_refreshat && !tasp_cl_load)
+	if (getstatf(STAT_FS_TASPAUSE) == 1 && getstatf(STAT_FS_TASPENDING) == 0)
+		TASTimeline_Request(tast_pick > 0 ? max(tast_base + 1, tast_pick - 3) : 0);
 	current = TASTimeline_Current(); chip = [(width-18)/4,row,0];
-	if (Profile_Chip("tast_prev",at,chip,"< 8",tsz,FALSE)) TASTimeline_Request(max(1,tast_first-8));
+	if (Profile_Chip("tast_prev",at,chip,"< 8",tsz,FALSE)) TASTimeline_Request(max(tast_base+1,tast_first-8));
 	if (Profile_Chip("tast_next",at+[(width+6)/4,0,0],chip,"8 >",tsz,FALSE)) TASTimeline_Request(tast_first+8);
 	if (Profile_Chip("tast_latest",at+[(width+6)/2,0,0],chip,"Latest",tsz,FALSE)) TASTimeline_Request(0);
 	if (Profile_Chip("tast_refresh",at+[(width+6)*3/4,0,0],chip,"Refresh",tsz,FALSE)) TASTimeline_Request(tast_first);
 	at_y = at_y + row + hint;
+	if (tast_head > tast_base + 1)
+	{
+		WPU_Slider("tast_scrub", "Browse tick", at, width, tast_selected,
+			[tast_base+1,tast_head,max(1,tast_head-tast_base-1)], TASTimeline_Goto, tsz);
+		at_y = at_y + row + hint;
+	}
+	sui_text(at,[hint,hint],sprintf("Captured %.0f..%.0f | body %.0f | recorded input, recipe unknown",tast_base+1,tast_head,tast_bodyhead),SUI_THEME_DIM,1,0);
+	at_y = at_y + hint*1.6;
 	sui_text(at,[hint,hint],"Tick | Forward / Side / Up | Pitch / Yaw | Jump Duck Walk",SUI_THEME_DIM,1,0);
 	at_y = at_y + hint*1.6;
 	for (i = 0; i < tast_n; i = i + 1)
@@ -262,8 +322,10 @@ void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw 
 	sui_text(at,[hint,hint],sprintf("Selected %.0f | range %.0f..%.0f | head %.0f",tast_selected,tast_from,tast_to,tast_head),SUI_THEME_DIM,1,0);
 	at_y = at_y + hint*1.6; chip = [(width-12)/3,row,0];
 	if (Profile_Chip("tast_single",at,chip,"Single",tsz,FALSE)) tast_from = tast_to = tast_selected;
-	if (Profile_Chip("tast_from",at+[(width+6)/3,0,0],chip,"From here",tsz,FALSE)) tast_from = min(tast_selected,tast_to);
-	if (Profile_Chip("tast_to",at+[(width+6)*2/3,0,0],chip,"To here",tsz,FALSE)) tast_to = max(tast_selected,tast_from);
+	if (Profile_Chip("tast_from",at+[(width+6)/3,0,0],chip,"From here",tsz,FALSE))
+	{ tast_from = tast_selected; tast_to = max(tast_to,tast_from); }
+	if (Profile_Chip("tast_to",at+[(width+6)*2/3,0,0],chip,"To here",tsz,FALSE))
+	{ tast_to = tast_selected; tast_from = min(tast_from,tast_to); }
 	at_y = at_y + row + hint;
 	if (Profile_Chip("tast_field",at,[tsz*9,row,0],FS_TASEditName(tast_field),tsz,TRUE))
 	{
@@ -275,10 +337,33 @@ void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw 
 	if (tast_field <= 5) WPU_Slider("tast_value","Value",at+[tsz*10,0,0],width-tsz*10,tast_value,range,TASTimeline_Value,tsz);
 	else if (Profile_Chip("tast_bits",at+[tsz*10,0,0],chip,tast_value ? "Held" : "Released",tsz,tast_value)) tast_value = !tast_value;
 	at_y = at_y + row + hint;
-	if (Profile_Chip("tast_apply",at,chip,"Recalculate",tsz,current)) TASTimeline_Apply();
+	if (Profile_Chip("tast_apply",at,chip,tast_v2 ? "Preview line" : "Recalculate",tsz,current && !(tast_flags & 4))) TASTimeline_Apply();
 	if (Profile_Chip("tast_undo",at+[(width+6)/3,0,0],chip,sprintf("Undo (%.0f)",tast_undo),tsz,current && tast_undo>0)) TASTimeline_History(FALSE);
 	if (Profile_Chip("tast_redo",at+[(width+6)*2/3,0,0],chip,sprintf("Redo (%.0f)",tast_redo),tsz,current && tast_redo>0)) TASTimeline_History(TRUE);
 	at_y = at_y + row + hint;
+	if (tast_v2)
+	{
+		chip = [(width-18)/4,row,0];
+		if (Profile_Chip("tast_seek",at,chip,"Seek before",tsz,current && !(tast_flags & 4)))
+			TASTimeline_Action("seek2",max(tast_base,tast_selected-1));
+		if (Profile_Chip("tast_seekhead",at+[(width+6)/4,0,0],chip,"Replay head",tsz,current && !(tast_flags & 4))) TASTimeline_Action("seek2",tast_head);
+		if (Profile_Chip("tast_keep",at+[(width+6)/2,0,0],chip,"Keep",tsz,current && (tast_flags & 4))) TASTimeline_Action("keep2",0);
+		if (Profile_Chip("tast_discard",at+[(width+6)*3/4,0,0],chip,"Discard",tsz,current && (tast_flags & 4))) TASTimeline_Action("discard2",0);
+		at_y = at_y + row + hint; chip = [(width-12)/3,row,0];
+		if (tast_flags & 8) label = sprintf("Preview end: %+0.3f s vs original. Original retained.",tast_candidatetime-tast_originaltime);
+		else label = "Native tick replay; packet timing can differ. Shared world is not rewound.";
+		sui_text(at,[hint,hint],label,SUI_THEME_DIM,1,0); at_y = at_y + hint*1.6;
+	}
+	label = TASCompare_Text();
+	if (label != "") sui_text(at,[hint,hint],label,SUI_THEME_DIM,1,0);
+};
+
+void(vector at, float width, float tsz, float hint, float row) TASProject_Draw =
+{
+	local float current;
+	local vector chip;
+	local string label;
+	current = TASTimeline_Current(); chip = [(width-12)/3,row,0];
 	// P1082: the project row. The server answers each button in the console too.
 	if (!tasp_cl_asked) { tasp_cl_asked = TRUE; localcmd("p1 cmd tas project event\n"); }
 	if (tasp_cl_name == "") label = "Project: none. Save project keeps these inputs and a base save on disk.";
@@ -315,7 +400,9 @@ void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw 
 		sui_text(at,[hint,hint],label,(tasc_ok && tasc_dt > 0) ? SUI_THEME_ACCENT : SUI_THEME_DIM,1,0);
 		at_y = at_y + hint*1.6;
 	}
-	// P1088: the server searches a constant turn for exit speed over the next 32 ticks.
+	// Kept as an advanced legacy tool, NOT the constrained section solver.
+	sui_text(at,[hint,hint],"Legacy speed search: no next-ramp constraint, not route-safe.",SUI_THEME_ACCENT,1,0);
+	at_y = at_y + hint*1.6;
 	if (Profile_Chip("topt_left",at,chip,"Best turn left (32)",tsz,FALSE) && cltime >= tasp_cl_next && current)
 	{
 		tasp_cl_next = cltime + 0.5; localcmd("p1 cmd tas optimize 32 left\n");
@@ -361,6 +448,8 @@ float(float argc, float seat) TASTimeline_ConsoleCommand =
 	{
 		print(sprintf("tas timeline view: rows %.0f selected %.0f range %.0f..%.0f field %s value %.13f current %g\n",
 			tast_n,tast_selected,tast_from,tast_to,FS_TASEditName(tast_field),tast_value,TASTimeline_Current()));
+		print(sprintf("tas timeline extent: base %.0f head %.0f body %.0f flags %.0f v2 %.0f undo %.0f redo %.0f\n",
+			tast_base,tast_head,tast_bodyhead,tast_flags,tast_v2,tast_undo,tast_redo));
 		for (i = 0; i < tast_n; i = i + 1)
 		{
 			b = i*7;
@@ -386,11 +475,15 @@ float(float argc, float seat) TASTimeline_ConsoleCommand =
 		if (!strcmp(action,"refresh")) { TASTimeline_Request(tast_first); return TRUE; }
 		if (!strcmp(action,"latest")) { TASTimeline_Request(0); return TRUE; }
 		if (!strcmp(action,"apply")) { TASTimeline_Apply(); return TRUE; }
+		if (!strcmp(action,"keep")) { TASTimeline_Action("keep2",0); return TRUE; }
+		if (!strcmp(action,"discard")) { TASTimeline_Action("discard2",0); return TRUE; }
+		if (!strcmp(action,"seek")) { TASTimeline_Action("seek2",max(tast_base,tast_selected-1)); return TRUE; }
+		if (!strcmp(action,"head")) { TASTimeline_Action("seek2",tast_head); return TRUE; }
 		if (!strcmp(action,"undo")) { TASTimeline_History(FALSE); return TRUE; }
 		if (!strcmp(action,"redo")) { TASTimeline_History(TRUE); return TRUE; }
 		if (!strcmp(action,"single")) { tast_from = tast_to = tast_selected; return TRUE; }
-		if (!strcmp(action,"from")) { tast_from = min(tast_selected,tast_to); return TRUE; }
-		if (!strcmp(action,"to")) { tast_to = max(tast_selected,tast_from); return TRUE; }
+		if (!strcmp(action,"from")) { tast_from = tast_selected; tast_to = max(tast_to,tast_from); return TRUE; }
+		if (!strcmp(action,"to")) { tast_to = tast_selected; tast_from = min(tast_from,tast_to); return TRUE; }
 		if (!strcmp(action,"compare"))  // P1087, for arms: the line, its ghost and the deltas
 		{
 			b = LN_B(LN_S_TASREF);
@@ -403,6 +496,15 @@ float(float argc, float seat) TASTimeline_ConsoleCommand =
 				project(rg_pos[0] + '0 0 36')));
 			return TRUE;
 		}
+	}
+	if (argc == 4 && !strcmp(action,"goto"))
+	{
+		if (!FS_TASNumber(argv(3))) goto bad;
+		tick = fs_tas_number;
+		if (tick <= tast_base || tick > tast_head || tick != floor(tick)) goto bad;
+		tast_pick = tick;
+		TASTimeline_Request(max(tast_base+1,tick-3));
+		return TRUE;
 	}
 	if (argc == 4 && !strcmp(action,"select"))
 	{
