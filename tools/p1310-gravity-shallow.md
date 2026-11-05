@@ -71,8 +71,14 @@ optional alias. Earlier receipts are retained rather than relabelled.
 Exact-source ARM qualification is complete. P1310 NanoPi promotion is **pending**
 while another workstream reconciles its existing preservation handoff. No P1310
 lobby swap/restart, backend generation change or recorder restoration has been
-performed. Existing failure evidence and live peer processes are left untouched.
-This step-specific deployment block does not pause independent source work.
+performed. At **01:03 UTC**, archive-only preparation bound the published P1308
+native predecessor to the exact P1310 candidate: eight closed recording parts
+(2,821,850 bytes) individually rehashed on/offbox and 156 current backend files
+matched within the strict 13 native/backend actors. This is not general writer
+closure or a waiver of the peer's preservation failure. No canonical stage, swap,
+restart or data restoration occurred; real execution still requires fresh checks.
+Existing failure evidence and live peer processes are left untouched. The
+step-specific deployment block did not pause independent source qualification.
 
 The owner's earlier normal-run report is recorded as human observation, not an
 invented ranked verdict or numerical measurement. Ranked current-program finish,
