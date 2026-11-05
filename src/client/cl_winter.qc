@@ -19,11 +19,18 @@ float() Winter_ThemeActive =
 
 string(string texture, float step) Winter_Footstep =
 {
-	if (!Winter_ThemeActive() || wi_snowsteps != 4) return "";
-	// Only the grass actually covered by this map's authored snow, not all floors.
+	local float pick;
+	if (!Winter_ThemeActive() || wi_snowsteps <= 0) return "";
 	if (strstrofs(strtolower(texture), "grass", 0) < 0) return "";
-	return sprintf("winter/snow%g.wav", 1 + (step & 3));
+	if (wi_snowsteps == 6)
+	{
+		pick = 1 + 2 * floor(random() * 3) + (step & 1);
+		return sprintf("player/footsteps/snow%g.wav", pick); // mounted CS:S
+	}
+	return sprintf("player/footsteps/snow/snow_%02.0f.wav", 1 + floor(random() * 12)); // Momentum fallback
 };
+
+vector() Weather_SnowTint;
 .vector wi_source;
 
 string(float kind) Winter_Model =
@@ -76,20 +83,21 @@ float(vector v) Winter_Finite =
 entity(string group, string path, float zbase, float zrange) Winter_Surface =
 {
 	local entity e;
-	local string grassflag, definition;
+	local string grassflag, definition, albedo;
 	if (strcmp(wi_map, "surf_colin_blaster_69000")) return world;
 	if (strcmp(group, "grass") && strcmp(group, "caps")) return world;
-	if (strcmp(path, sprintf("models/gibs/winterweather/%s-%s.iqm", wi_map, group))) return world;
+	if (strcmp(path, sprintf("models/gibs/winterweather/%s-%s-lit.iqm", wi_map, group))) return world;
 	if (!(fabs(zbase) <= 262144 && zrange >= 1 && zrange <= 524288)) return world;
-	if (!Snow_Exists(path) || !Snow_Exists("gfx/weather/snow-grain.png")) return world;
+	if (!Snow_Exists(path) || !Snow_Exists("glsl/ftesurf_snowcover_v3.glsl")) return world;
 	grassflag = !strcmp(group, "grass") ? "#GRASS=1" : "";
-	definition = sprintf("{\ncull none\ndepthpush -2\nsort decal\nnomipmaps\nnopicmip\n{\nprogram ftesurf_snowcover_v2#ZBASE=%.3f#ZRANGE=%.3f%s\nclampmap $nosrgb:$nearest:gfx/snowmask/%s.png\nmap $nosrgb:gfx/weather/snow-grain.png\nrgbgen entity\n}\n}\n", zbase, zrange, grassflag, wi_map);
+	albedo = !strcmp(group, "grass") ? "materials/nature/snowfloor001a.vtf" : "materials/nature/snowfloor003a.vtf";
+	definition = sprintf("{\ncull none\ndepthpush -2\nsort decal\n{\nprogram ftesurf_snowcover_v3#ZBASE=%.3f#ZRANGE=%.3f%s\nclampmap $nosrgb:$nearest:gfx/snowmask/%s.png\nmap %s\nrgbgen vertex\n}\n}\n", zbase, zrange, grassflag, wi_map, albedo);
 	e = spawn(); e.classname = "winter_surface";
 	// IQM precache registers its material. Never let its missing-name fallback win
 	// the shader cache before the definition: use a distinct runtime name FIRST.
-	e.forceshader = shaderforname(strcat("ftesurf_colin_snow_v2_", group), definition);
+	e.forceshader = shaderforname(strcat("ftesurf_colin_snow_v3_", group), definition);
 	precache_model(path); setmodel(e, path);
-	e.effects = EF_FULLBRIGHT | EF_NOSHADOW; e.colormod = '1 1 1'; e.scale = e.alpha = 1;
+	e.effects = EF_NOSHADOW; e.colormod = '1 1 1'; e.scale = e.alpha = 1; // baked actual map light
 	return e;
 };
 
@@ -126,14 +134,28 @@ void() Winter_Load =
 		if (!Snow_Exists(sprintf("gfx/snowmask/%s.png", mname)) || !Snow_Exists(sprintf("gfx/snowmask/%s.txt", mname))) wi_colin = FALSE;
 	if (wi_colin)
 	{
-		for (i = 1; i <= 4; i = i + 1)
+		for (i = 1; i <= 6; i = i + 1)
 		{
-			path = sprintf("winter/snow%g.wav", i);
-			if (Snow_Exists(strcat("sound/", path)))
+			path = sprintf("player/footsteps/snow%g.wav", i);
+			if (Snow_Exists(strcat("sound/", path))) wi_snowsteps = wi_snowsteps + 1;
+		}
+		if (wi_snowsteps == 6)
+		{
+			for (i = 1; i <= 6; i = i + 1) precache_sound(sprintf("player/footsteps/snow%g.wav", i));
+		}
+		else
+		{
+			wi_snowsteps = 0;
+			for (i = 1; i <= 12; i = i + 1)
 			{
-				precache_sound(path);
-				wi_snowsteps = wi_snowsteps + 1;
+				path = sprintf("player/footsteps/snow/snow_%02.0f.wav", i);
+				if (Snow_Exists(strcat("sound/", path))) wi_snowsteps = wi_snowsteps + 1;
 			}
+			if (wi_snowsteps == 12)
+			{
+				for (i = 1; i <= 12; i = i + 1) precache_sound(sprintf("player/footsteps/snow/snow_%02.0f.wav", i));
+			}
+			else wi_snowsteps = 0;
 		}
 	}
 	// Fixed record AND trace caps bound bad local files. Missing assets skip, never error-art.
@@ -224,8 +246,8 @@ void() Winter_Frame =
 	wi_drawprop = wi_drawmist = wi_area = 0;
 	if (Winter_ThemeActive())
 	{
-		if (wi_grass) addentity(wi_grass);
-		if (wi_caps) addentity(wi_caps);
+		if (wi_grass) { wi_grass.colormod = Weather_SnowTint(); addentity(wi_grass); }
+		if (wi_caps) { wi_caps.colormod = Weather_SnowTint(); addentity(wi_caps); }
 	}
 	if (!wi_nprop && !wi_nmist) return;
 	eye = getproperty(VF_ORIGIN);
@@ -266,6 +288,6 @@ float(string command) Winter_ConsoleCommand =
 {
 	if (strcmp(command, "winter_info")) return FALSE;
 	print(sprintf("winter: %s loaded props %g mist %g; submitted props %g mist %g area %.4f\n", wi_map, wi_nprop, wi_nmist, wi_drawprop, wi_drawmist, wi_area));
-	print(sprintf("winter: Colin theme %g grass %g caps %g snow footsteps %g/4; r_colin_winter 0 disables automatic extras\n", Winter_ThemeActive(), wi_grass != world, wi_caps != world, wi_snowsteps));
+	print(sprintf("winter: Colin theme %g grass %g caps %g mounted snow footsteps %g (6 CSS / 12 Momentum); r_colin_winter 0 disables automatic extras\n", Winter_ThemeActive(), wi_grass != world, wi_caps != world, wi_snowsteps));
 	return TRUE;
 };

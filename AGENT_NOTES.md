@@ -1,5 +1,31 @@
 # AGENT_NOTES.md
 
+## Surf smoothness / frametime / noclip-void audit (6 Nov 2026; investigation only)
+
+- Read current refs, not canonical source: at this task start canonical mod was77
+  commits stale and engine1419 stale. Clean inspected mod2882f0a9/engined6c185c12
+  used. Installed client55040dc1 matches retained P1318 identity; sampler source
+  is byte-identical across that reported installed source and audited engine ref.
+- Literal sampler/statistics C, deterministic clock, GCC16.1.0/O2/Wall/Wextra,
+  zero diagnostics: expiry rebuild duplicates newest slow frame; capacity eviction
+  leaves stale exact worst. >1000ms intervals vanish, including a1501ms stimulus.
+  Ordinary histogram lows are still quantized, not all invalid. Reproducible
+  diagnostic `tools/audit_frametime.py` records exact source/body hashes and acted
+  expiry/capacity/sample-count witnesses. This is NOT a native/GPU benchmark.
+- Void mode is not effects-free: all-visible PVS plus fog/OpenGL portal handling
+  does not gate native props/particles/decals or current QC snow/weather/overlays.
+  Historical zero-entity surf_666 comments are not a current-map guarantee.
+  Suppression A/B must retain identical forced world visibility; r_voidvis0/1
+  changes the world and cannot isolate effects. Preserve structural displacement/
+  bmodel/skyroom policy and particle lifetime/reentry; no blanket cvar toggle.
+- Do not re-fix P1318's false first-view lightmap rebuild or claim all shaders are
+  ready from no new warm-list entry. Two-second budget, late programs/reloads and
+  uploads/driver-first-draw remain distinct readiness layers. Reused route evidence
+  is historical; no new four-map test, product change or deployment in this audit.
+- Full citations, semantics, CPU outputs and remaining acceptance:
+  `tools/frametime-smoothness-audit.md`. Bugs in BACKLOG, requested unbuilt policy
+  in ROADMAP. Owned root `C:/FTESurf-worktrees/smooth-20261106T0004Z-a7f2`.
+
 ## P1323 named-input validation and corpus observer pitfalls (5 Nov 2026)
 
 - Complete preservation walks must supply a raising `os.walk(onerror=...)`:

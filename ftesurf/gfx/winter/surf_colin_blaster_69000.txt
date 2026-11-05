@@ -1,7 +1,7 @@
 winter 1 surf_colin_blaster_69000
 // Map-specific snow material replacement, exposed caps, provisional safe grass-edge props.
-surface grass models/gibs/winterweather/surf_colin_blaster_69000-grass.iqm -30113 44962
-surface caps models/gibs/winterweather/surf_colin_blaster_69000-caps.iqm -30113 44962
+surface grass models/gibs/winterweather/surf_colin_blaster_69000-grass-lit.iqm -30113 44962
+surface caps models/gibs/winterweather/surf_colin_blaster_69000-caps-lit.iqm -30113 44962
 prop 2 -33382.4 -21811.2 -20159.5 0 1
 prop 3 65385.6 10048 7936.5 137 0.9
 prop 5 13212.2 -3632.64 -5567.5 274 1

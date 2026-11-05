@@ -14,6 +14,26 @@ with preparation complete before timer start, separately count late compile,
 allocation/upload and draw stalls; test a deliberate missing permutation and an
 exhausted budget. Ordinary scene cost and OS scheduling are not readiness passes.
 Evidence/limits: tools/p1311-map-prewarm.md and tools/p1318-lightmap-first-view.md.
+6 Nov independent audit confirms this remains partial; deferred-work telemetry
+should distinguish eligible/pending/budget-hit/late compile from absence of a
+new learned entry. Measurement and native/QC limits:
+[tools/frametime-smoothness-audit.md](tools/frametime-smoothness-audit.md).
+
+## BSP-only noclip-void rendering — requested 6 Nov 2026, unbuilt
+
+Owner expects entities/particles/effects suppressed outside the map in noclip,
+with structural BSP still visible. Current mode forces world visibility; with
+`r_voidfog 1` it suppresses the normal blended global-fog path, and OpenGL also
+suppresses cluster-1 portal recursion. It does NOT suppress all scene producers.
+Share the final primary-camera predicate across QC/native submission; skip props
+before lighting and suppress existing particles/overlays as well as new emission.
+Keep world/displacements and explicitly settle structural bmodels/3D skyroom
+policy so doors/ramps/glass are not accidentally deleted. Do not freeze particle
+lifetimes, mutate owner settings or leak primary-view state into recursive views.
+Acceptance: acted same-view suppression-only off/on (same full-world vis), stable
+structural meshes, absent unwanted pixels/work, indoor/falling/recursive/reentry
+controls. Final owner map/pose/aim and runtime dominant cost are not yet measured.
+Source audit and falsifier: tools/frametime-smoothness-audit.md; defects in BACKLOG.
 
 ## Christmas environment and cosmetics — requested 4 Nov 2026
 

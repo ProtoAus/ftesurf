@@ -347,6 +347,7 @@ $ShipGlobs = @(
     @{ Path = 'ftesurf/gfx/weather';    Filter = '*.roof' }
     @{ Path = 'ftesurf/gfx/winter';     Filter = '*.txt' }
     @{ Path = 'ftesurf/sound/winter';   Filter = '*.wav' }
+    @{ Path = 'ftesurf/sound/winter';   Filter = '*.ogg' }
 )
 
 # =============================================================================
