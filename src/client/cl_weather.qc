@@ -249,18 +249,19 @@ void() Weather_Frame =
 	{
 		if (time >= wx_nextflash)
 		{
-			duration = 0.05 + Weather_Noise(time + wx_flashesleft * 31) * 0.1;
+			// P1332: 3x faster pulse and gap; matched fade keeps the same brightness.
+			duration = (0.05 + Weather_Noise(time + wx_flashesleft * 31) * 0.1) / 3;
 			wx_flash = time + duration; wx_flashcount = wx_flashcount + 1;
 			wx_flashesleft = wx_flashesleft - 1;
 			if (wx_flashesleft > 0)
-				wx_nextflash = wx_flash + 0.06 + Weather_Noise(time + 83) * 0.28;
+				wx_nextflash = wx_flash + (0.06 + Weather_Noise(time + 83) * 0.28) / 3;
 			else
 				wx_thunderat = wx_flash + 0.8 + Weather_Noise(time + 17) * 2.3;
 		}
 	}
 	if (wx_sky)
 	{
-		pulse = bound(0, (wx_flash - time) / 0.12, 1);
+		pulse = bound(0, (wx_flash - time) / 0.04, 1);
 		wx_sky.colormod = wx_boltaxis;
 		wx_sky.alpha = 0.65 + pulse * bound(0, cvar("r_weather_flash"), 0.25) * 1.4;
 		addentity(wx_sky); // persistent moving storm clouds; flashes are additional

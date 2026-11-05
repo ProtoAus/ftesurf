@@ -21,6 +21,10 @@
 
 ## next
 
+### P1332 Snow rendering and snappier lightning
+- Fixed black snow on Colin by correcting texture and baked-light bindings. The existing shallow snow caps remain cosmetic and do not change terrain collision.
+- Lightning strokes and the dark gaps between them are three times quicker, preserving their brightness and the thunder after each burst.
+
 ### P1327 Textured, lit snow and storm previews
 - Colin's snow uses the mounted Source snow textures and baked map lighting instead of a fullbright white layer. Exposed caps gain shallow, uneven depth and visible edge rims; collision is unchanged.
 - Snow-covered grass uses mounted Counter-Strike: Source snow footsteps, with Momentum's snow steps as a fallback.
