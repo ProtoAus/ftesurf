@@ -8963,6 +8963,29 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+- **P1308 strict old-path failure after successful component rollout (5 Nov).**
+  Source59/tag1308 and QW/CS reached all12new actors with exact native/plugin,
+  target/.prev, config and backend guards, no force. All8actual recorder payloads
+  (2821850bytes) were individually rehashed ONBOX/OFFBOX before any staging and
+  strict13actor/FD checks repeated at the locked boundary. Caller240s timed out;
+  READ-ONLY receipt inspection found all12restarts already complete and lock
+  released. The actual postflight FAILED over3resume paths, not the transport:
+  run.rec/ms.txt/state.txt missing and one new evidence recording. Inventory
+  values are `{sha256:...}`, not bare strings: compare the actual inner digest.
+  New evidence bytes match the old resume recording EXACTLY. SV_MsWipeDir makes
+  this move for posted runs; worldspawn SV_MsSweep expires slots. Metadata was
+  not archived, so do not assert exact expiry retrospectively. Preserve the failed
+  guard, no resume-tree exclusion, older-state restoration, healthy restart or
+  downgrade. Future old-path claims need a complete resume preimage/cleanup
+  predicate as well as recorder-part closure. Part archives do not cover ms/state.
+- **P1308 compiler-baseline correction (5 Nov).** Canonical src/fteqcc64.exe still
+  hashes7ccb93d1 and emits the known two setproperty227 F333 miscompilations. They
+  are not a safe fleet baseline just because an earlier local control used it:
+  P1307's qualified live programs used c24ede65 (git-7809), zero warnings. Read-only
+  copy of that exact binary into this task's private src preserves canonical tools;
+  recompile/requalify affected programs and append their SHA256 to tasrevd codes,
+  not the folded-MD4 cache name. Corrected generation is pending at this checkpoint.
+
 - **P1168 current-cohort resolution and component scope (1 Nov2026).** Failure
   to match32 local artifacts did NOT prove the live pair lacked provenance. The
   completed noclip owner's CURRENT/DELIVERY-FINAL already bound it to c79ee297 /
