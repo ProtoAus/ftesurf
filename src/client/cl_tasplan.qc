@@ -15,6 +15,8 @@ float(float argc, float seat) CL_TASPlanCommand =
 			print(sprintf("tas menu: open %g claims %g frames %g draft %s native %g tab %g\n", tasu_open, UI_CursorHeld(), tasu_frames, FS_TASPlanName(tasu_mode), getstatf(STAT_FS_TASPLANCAP), tasu_tab));
 			print(sprintf("tas menu draft: f%g s%g pitch%.13f yaw%.13f bits%g amount%.9g follow%g\n",
 				tasu_forward, tasu_side, tasu_pitch, tasu_yaw, tasu_bits, tasu_amount, tasu_follow));
+			print(sprintf("tas menu intent: source%g mode%g serial%.0f head%.0f request%.0f\n",
+				tasu_intent_source,tasu_mode,tasu_intent_serial,tasu_intent_head,tasu_intent_request));
 			if (numclientseats == 1 && LT_StatsAreMine())
 			{
 				camangles = getproperty(VF_ANGLES); rawangles = getproperty(VF_CL_VIEWANGLES);

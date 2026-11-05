@@ -12,6 +12,13 @@ float tasu_tab;
 var float tasu_head = -1, tasu_servermode = -1, tasu_serveramount = -1, tasu_serverfollow = -1;
 vector tasu_servermove, tasu_serverangles;
 float tasu_serverbits;
+var float tasu_request = -1;
+float tasu_intent_source, tasu_intent_serial, tasu_intent_head, tasu_intent_request;
+float tasu_intent_mode, tasu_intent_amount, tasu_intent_follow, tasu_intent_bits;
+vector tasu_intent_moves, tasu_intent_angles;
+float tasu_intent_revision, tasu_intent_seen, tasu_intent_next;
+vector tasu_intent_view;
+float tasu_intent_viewvalid, tasu_intent_viewhead, tasu_intent_viewrequest, tasu_intent_viewserial;
 float tasu_camera_ready, tasu_camera_pitch, tasu_camera_time, tasu_camera_tick;
 float tasu_camera_raw, tasu_camera_override;
 vector tasu_camera_feet;
@@ -24,6 +31,7 @@ float(float evtype, float scanx, float chary) TASTimeline_RecipeInput;
 void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw;
 void(vector at, float width, float tsz, float hint, float row) TASProject_Draw;
 void() TASProject_SignPress;
+void() TASProject_IntentRequest;
 void(vector at, float width, float tsz, float hint, float row) TASShare_Draw;
 void(float offset, string sha) TASShare_Request;
 float(float argc, float seat) TASShare_ConsoleCommand;
@@ -45,11 +53,50 @@ void() TASUI_FromView =
 	tasu_yaw = a_y - 360 * floor((a_y + 180) / 360);
 };
 
+float() TASUI_IntentCurrent =
+{
+	return (tasu_intent_revision > 0 && tasu_intent_head == getstatf(STAT_FS_TIMERTICKS) &&
+		tasu_intent_request == getstatf(STAT_FS_TASREQUEST) && !getstatf(STAT_FS_TASPENDING) &&
+		getstatf(STAT_FS_TASREPLAY) != TAS_TAPE_ACTIVE && getstatf(STAT_FS_TASREPLAY) != TAS_TAPE_STAGING);
+};
+
+// Paired local-project packet tail. Saved recipes are input-only declarations,
+// not a signature, native body state or permission to issue a step.
+void() TASUI_ReadIntent =
+{
+	local float i, ok;
+	local float value[10];
+
+	tasu_intent_serial = readlong(); tasu_intent_head = readlong();
+	tasu_intent_request = readlong(); tasu_intent_source = readbyte();
+	if (tasu_intent_source)
+	{
+		for (i = 0; i < 10; i = i + 1) value[i] = readfloat();
+		ok = (tasu_intent_source >= 1 && tasu_intent_source <= 2 &&
+			value[0] >= TAS_PLAN_MANUAL && value[0] <= TAS_PLAN_HOLD && value[0] == floor(value[0]) &&
+			value[1] >= 0 && value[1] <= 4 && (value[2] == 0 || value[2] == 1) &&
+			value[3] >= -450 && value[3] <= 450 && value[3] == floor(value[3]) &&
+			value[4] >= -450 && value[4] <= 450 && value[4] == floor(value[4]) && value[5] == 0 &&
+			value[6] >= -16202 && value[6] <= 16202 && value[6] == floor(value[6]) &&
+			value[7] >= -32768 && value[7] <= 32767 && value[7] == floor(value[7]) && value[8] == 0 &&
+			value[9] >= 0 && value[9] <= 7 && value[9] == floor(value[9]));
+		if (!ok) tasu_intent_source = 0;
+		else
+		{
+			tasu_intent_mode = value[0]; tasu_intent_amount = value[1]; tasu_intent_follow = value[2];
+			tasu_intent_moves = [value[3],value[4],value[5]];
+			tasu_intent_angles = [value[6],value[7],value[8]] * (360/65536);
+			tasu_intent_bits = value[9];
+		}
+	}
+	tasu_intent_revision = tasu_intent_revision + 1;
+};
+
 void() TASUI_FromServer =
 {
 	local float mode;
 	mode = getstatf(STAT_FS_TASPLANMODE);
-	tasu_mode = (mode == TAS_PLAN_GUIDE || mode == TAS_PLAN_LEFT || mode == TAS_PLAN_RIGHT) ? TAS_PLAN_GUIDE : TAS_PLAN_HOLD;
+	tasu_mode = (mode >= TAS_PLAN_MANUAL && mode <= TAS_PLAN_HOLD) ? mode : TAS_PLAN_HOLD;
 	tasu_forward = getstatf(STAT_FS_TASPLANFORWARD);
 	tasu_side = getstatf(STAT_FS_TASPLANSIDE);
 	tasu_bits = getstatf(STAT_FS_TASPLANBITS);
@@ -60,12 +107,26 @@ void() TASUI_FromServer =
 	tasu_pitch = bound(-89, tasu_pitch - 360 * floor((tasu_pitch + 180) / 360), 89);
 	tasu_yaw = getstatf(STAT_FS_TASPLANYAW);
 	tasu_yaw = tasu_yaw - 360 * floor((tasu_yaw + 180) / 360);
+	if (TASUI_IntentCurrent() && tasu_intent_source)
+	{
+		tasu_mode = tasu_intent_mode; tasu_amount = tasu_intent_amount; tasu_follow = tasu_intent_follow;
+		tasu_forward = tasu_intent_moves_x; tasu_side = tasu_intent_moves_y; tasu_bits = tasu_intent_bits;
+		tasu_pitch = bound(-89,tasu_intent_angles_x,89); tasu_yaw = tasu_intent_angles_y;
+		if (!tasu_intent_viewvalid || tasu_intent_viewhead != tasu_intent_head ||
+			tasu_intent_viewrequest != tasu_intent_request || tasu_intent_viewserial != tasu_intent_serial)
+		{
+			tasu_intent_view = getproperty(VF_CL_VIEWANGLES);
+			tasu_intent_viewvalid = TRUE; tasu_intent_viewhead = tasu_intent_head;
+			tasu_intent_viewrequest = tasu_intent_request; tasu_intent_viewserial = tasu_intent_serial;
+		}
+	}
 	tasu_dirty = FALSE;
 };
 
 void() TASUI_Close =
 {
 	tasu_open = FALSE;
+	tasu_intent_source = tasu_intent_revision = tasu_intent_seen = 0;
 	TASTimeline_Reset();
 	sui_reset_actions(); sui_tooltip_reset();
 	UI_CursorRelease(UIC_TAS);
@@ -73,23 +134,39 @@ void() TASUI_Close =
 
 void() TASUI_Sync =
 {
-	local float head, mode, amount, follow, changed, bits;
+	local float head, mode, amount, follow, changed, bits, request;
 	local vector moves, angles;
 	if (numclientseats > 1 || !LT_StatsAreMine()) return;
 	head = getstatf(STAT_FS_TIMERTICKS); mode = getstatf(STAT_FS_TASPLANMODE);
+	request = getstatf(STAT_FS_TASREQUEST);
 	amount = getstatf(STAT_FS_TASPLANAMOUNT); follow = getstatf(STAT_FS_TASPITCHFOLLOW);
 	moves = [getstatf(STAT_FS_TASPLANFORWARD), getstatf(STAT_FS_TASPLANSIDE), 0];
 	angles = [getstatf(STAT_FS_TASPLANPITCH), getstatf(STAT_FS_TASPLANYAW), 0];
 	bits = getstatf(STAT_FS_TASPLANBITS);
 	changed = (mode != tasu_servermode || amount != tasu_serveramount || follow != tasu_serverfollow ||
 		moves != tasu_servermove || angles != tasu_serverangles || bits != tasu_serverbits);
-	if (head != tasu_head)
+	if (head != tasu_head || request != tasu_request)
 	{
 		tasu_dirty = FALSE;
 		TASUI_FromServer();
 	}
-	else if (changed && !tasu_dirty) TASUI_FromServer();
-	tasu_head = head; tasu_servermode = mode; tasu_serveramount = amount; tasu_serverfollow = follow;
+	else if (!tasu_dirty)
+	{
+		if (TASUI_IntentCurrent())
+		{
+			if (tasu_intent_seen != tasu_intent_revision) TASUI_FromServer();
+		}
+		else if (changed) TASUI_FromServer();
+	}
+	if (tasu_open && !TASUI_IntentCurrent() && !getstatf(STAT_FS_TASPENDING) &&
+		getstatf(STAT_FS_TASREPLAY) != TAS_TAPE_ACTIVE && cltime >= tasu_intent_next)
+	{
+		tasu_intent_next = cltime + .3;
+		TASProject_IntentRequest();
+	}
+	tasu_intent_seen = tasu_intent_revision;
+	tasu_head = head; tasu_request = request;
+	tasu_servermode = mode; tasu_serveramount = amount; tasu_serverfollow = follow;
 	tasu_servermove = moves; tasu_serverangles = angles; tasu_serverbits = bits;
 };
 
@@ -114,6 +191,7 @@ void() TASUI_Mouse =
 void(float count) TASUI_Send =
 {
 	local string line;
+	local vector view;
 	if (cltime < tasu_nextclick) return;
 	if (getstatf(STAT_FS_TASPLANCAP) < TAS_GUIDE_CAP) { print("tas: these controls need the updated native engine/server\n"); return; }
 	if (getstatf(STAT_FS_TASPAUSE) != 1) { print("tas: press Pause first\n"); return; }
@@ -121,13 +199,26 @@ void(float count) TASUI_Send =
 	{
 		print("tas: wait for steps/replay, or Play to cancel\n"); return;
 	}
-	if (!tasu_advanced) TASUI_FromView();
+	if (tasu_dirty && tasu_mode >= TAS_PLAN_MANUAL && tasu_mode < TAS_PLAN_GUIDE)
+		tasu_mode = tasu_mode == TAS_PLAN_MANUAL ? TAS_PLAN_HOLD : TAS_PLAN_GUIDE;
+	if (!tasu_advanced)
+	{
+		view = getproperty(VF_CL_VIEWANGLES);
+		// Effective guide yaw is not its requested yaw. Preserve the saved
+		// request until the player actually changes their local mouse view.
+		if (TASUI_IntentCurrent() && tasu_intent_source && tasu_intent_viewvalid)
+		{
+			if (view != tasu_intent_view) TASUI_FromView();
+		}
+		else TASUI_FromView();
+	}
 	tasu_nextclick = cltime + .3;
 	line = sprintf("tas %s %s %g %g %.13f %.13f %g", count ? "next" : "plan",
 		FS_TASPlanName(tasu_mode), tasu_forward, tasu_side, tasu_pitch, tasu_yaw, tasu_bits);
 	if (count) line = strcat(line,sprintf(" %g",count));
-	line = strcat(line,sprintf(" %.6f %g\n",tasu_amount,tasu_follow));
-	tasu_dirty = FALSE;
+	if (tasu_mode >= TAS_PLAN_GUIDE) line = strcat(line,sprintf(" %.9g %g",tasu_amount,tasu_follow));
+	line = strcat(line,"\n");
+	tasu_dirty = (count == 0);
 	localcmd(line);
 };
 
@@ -242,7 +333,10 @@ void(vector scr) TASUI_Draw =
 	if (Profile_Chip("tasu_clear",at+[(width+6)*2/3,0,0],chip,"Clear keys",tsz,FALSE))
 		{ tasu_forward=tasu_side=tasu_bits=0; tasu_dirty=TRUE; }
 	at_y = at_y+row+hint;
-	if (Profile_Chip("tasu_auto",at,[width,row,0],tasu_mode == TAS_PLAN_GUIDE ? "Auto strafe ON - direction follows Left / Right" : "Auto strafe OFF - your movement and aim",tsz,tasu_mode == TAS_PLAN_GUIDE))
+	label = tasu_mode == TAS_PLAN_GUIDE ? "Auto strafe ON - direction follows Left / Right" : "Auto strafe OFF - your movement and aim";
+	if (tasu_mode == TAS_PLAN_LEFT) label = "Legacy LEFT preset - click for gain guide";
+	if (tasu_mode == TAS_PLAN_RIGHT) label = "Legacy RIGHT preset - click for gain guide";
+	if (Profile_Chip("tasu_auto",at,[width,row,0],label,tsz,tasu_mode == TAS_PLAN_GUIDE))
 		{ tasu_mode = tasu_mode == TAS_PLAN_GUIDE ? TAS_PLAN_HOLD : TAS_PLAN_GUIDE; tasu_dirty=TRUE; }
 	at_y = at_y+row+hint;
 	WPU_Slider("tasu_amount","Turn amount",at,width,tasu_amount,'0 4 4000',TASUI_Amount,tsz);
@@ -270,6 +364,11 @@ void(vector scr) TASUI_Draw =
 	if (getstatf(STAT_FS_TASPLANAIR)==2) label="Last step: ground gain guide (actual crouch crop)";
 	if (getstatf(STAT_FS_TASPLANCAP)<TAS_GUIDE_CAP) label="Update the native server for these controls.";
 	sui_text(at,[hint,hint],label,SUI_THEME_DIM,1,0); at_y=at_y+hint*1.7;
+	if (tasu_dirty) label = "New draft; the tick's stored recipe is unchanged";
+	else if (TASUI_IntentCurrent() && tasu_intent_source)
+		label = tasu_intent_source == 2 ? "Authored recipe (input-only, no approval)" : "Saved recipe (input-only, no approval)";
+	else label = "Literal input: generator unknown; controls above are a draft";
+	sui_text(at,[hint,hint],label,SUI_THEME_MUTED,1,0); at_y=at_y+hint*1.7;
 	if (Profile_Chip("tasu_advanced",at,[width,row,0],tasu_advanced?"Hide advanced":"Advanced: exact aim, analog input, mouse",hint,tasu_advanced)) tasu_advanced=!tasu_advanced;
 	at_y=at_y+row+hint;
 	if (tasu_advanced)

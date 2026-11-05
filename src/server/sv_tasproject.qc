@@ -58,6 +58,13 @@ string tpr_hash, tpr_parent, tpr_cpnames, tpr_why;
 float tasp_hflags;
 string tasp_why;
 
+float(entity e) SV_TASPSlot;
+float(string tok, float lo, float hi, float whole) SV_TASPNum;
+float(string t, float lo, float hi) SV_TASPFloat;
+float(float deg) SV_TASPWord;
+float(entity e, float s, float last) SV_TASPHarvest;
+#include "sv_tasintent.qc"
+
 float(entity e) SV_TASPSlot =
 {
 	local float s;
@@ -95,6 +102,7 @@ void(entity e) SV_TASProjectReset =
 	local float s;
 	SV_TASShareCancel(e);
 	s = SV_TASPSlot(e);
+	SV_TASIReset(e);
 	e.tasp_on = e.tasp_load = e.tasp_n = e.tasp_cap = e.tasp_ncp = e.tasp_ccount = 0;
 	e.tasp_result = e.tasp_dev = e.tasp_devtick = 0;
 	e.tasp_native_slot = e.tasp_native_token = e.tasp_native_serial = e.tasp_saveok = 0;
@@ -118,6 +126,7 @@ void(entity e) SV_TASProjectReset =
 
 void() SV_TASPReadFree =
 {
+	SV_TASIReadFree();
 	if (tpr_buf) memfree(tpr_buf);
 	if (tpr_cp) memfree(tpr_cp);
 	tpr_buf = 0; tpr_cp = 0;
@@ -231,8 +240,9 @@ string(string line) SV_TASPCanon =
 };
 
 float tpr_rank;
-#define TASP_RANKCP 16          // the two keys that repeat
-#define TASP_RANKI 17
+#define TASP_RANKCP 16          // checkpoint, optional intent and input repeat
+#define TASP_RANKINTENT 17
+#define TASP_RANKI 18
 float(string k) SV_TASPKeyRank =
 {
 	if (k == "tasproject") return 0; if (k == "map") return 1; if (k == "mapcrc") return 2;
@@ -242,8 +252,10 @@ float(string k) SV_TASPKeyRank =
 	// P1100: `start` takes base's rank (a file has one or the other); `startat` sits before head.
 	if (k == "base" || k == "start") return 12; if (k == "baseat") return 13; if (k == "startat") return 14;
 	if (k == "head") return 15;
-	if (k == "cp") return TASP_RANKCP; if (k == "i") return TASP_RANKI; if (k == "end") return 18;
-	if (k == "revsha") return 19;
+	if (k == "cp") return TASP_RANKCP;
+	if (!strcmp(k, "intent")) return TASP_RANKINTENT;
+	if (k == "i") return TASP_RANKI; if (k == "end") return 19;
+	if (k == "revsha") return 20;
 	return -1;
 };
 
@@ -296,7 +308,7 @@ float(string l, string k, float argc) SV_TASPLineCanon =
 	}
 	if (p == 32) return FALSE;
 	r = SV_TASPKeyRank(k);
-	if (r < 0 || r < tpr_rank || (r == tpr_rank && r != TASP_RANKCP && r != TASP_RANKI)) return FALSE;
+	if (r < 0 || r < tpr_rank || (r == tpr_rank && r != TASP_RANKCP && r != TASP_RANKINTENT && r != TASP_RANKI)) return FALSE;
 	tpr_rank = r;
 	if (k == "assist") return (l == "assist tas");
 	if (k == "origin") return (l == "origin local");
@@ -330,6 +342,13 @@ float(string l, string k, float argc) SV_TASPLineCanon =
 	{
 		for (i = 1; i < argc; i = i + 1) if (!SV_TASPCanonNum(argv(i), FALSE)) return FALSE;
 		return (argc == 7);
+	}
+	if (!strcmp(k, "intent"))
+	{
+		if (argc != 13) return FALSE;
+		for (i = 1; i < 13; i = i + 1)
+			if (!SV_TASPCanonNum(argv(i), i != 4)) return FALSE;
+		return TRUE;
 	}
 	whole = (k == "tasproject" || k == "revision" || k == "head" || k == "i" || k == "end");
 	if (whole)
@@ -377,6 +396,14 @@ float(entity e, string name, float identity) SV_TASPRead =
 			strunzone(tpr_h); tpr_h = z;
 		}
 		argc = tokenize(l);         // SV_TASPCanon tokenized its own copy
+		if (!strcmp(k, "intent"))
+		{
+			if (!SV_TASVersionIntent(ver) || (have & 12) != 12 || n)
+				{ tpr_why = "intent before its header or after inputs"; break; }
+			if (!SV_TASIReadRange(tpr_base,tpr_size,argc))
+				{ tpr_why = "bad, overlapping or out-of-bounds intent range"; break; }
+			continue;
+		}
 		if (k == "i")
 		{
 			if (argc != 8 || !tpr_buf || n >= tpr_size) { tpr_why = "bad input row"; break; }
@@ -414,7 +441,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 		if (k == "assist") { have = have | 256; continue; }   // hashed, so required (P1089 review 3)
 		if (k == "tasproject")
 		{
-			if (argc != 2 || (argv(1) != "1" && argv(1) != ftos(TASP_VERSION) && argv(1) != ftos(TASP_LEGAL))) { tpr_why = "unknown project version"; break; }
+			if (argc != 2 || (argv(1) != "1" && argv(1) != ftos(TASP_VERSION) && argv(1) != ftos(TASP_LEGAL) && argv(1) != "4")) { tpr_why = "unknown project version"; break; }
 			ver = stof(argv(1)); have = have | 1; continue;
 		}
 		if (k == "parentsha") { tpr_parsha = strzone(argv(1)); continue; }
@@ -451,14 +478,14 @@ float(entity e, string name, float identity) SV_TASPRead =
 		if (k == "start")
 		{
 			// P1100: start <zone> -- placed at that start zone's destination; ticks count from it.
-			if (ver != TASP_LEGAL || argc != 2 || (have & 4) || !SV_TASPNum(argv(1), 0, 255, TRUE)) { tpr_why = "bad legal start"; break; }
+			if (!SV_TASVersionLegal(ver) || argc != 2 || (have & 4) || !SV_TASPNum(argv(1), 0, 255, TRUE)) { tpr_why = "bad legal start"; break; }
 			tpr_zone = fs_tas_number; tpr_base = 0;
 			have = have | 4;
 			continue;
 		}
 		if (k == "startat")
 		{
-			if (ver != TASP_LEGAL || argc != 2 || (have & 1024) || !SV_TASPNum(argv(1), 0, TASP_MAX, TRUE)) { tpr_why = "bad start tick"; break; }
+			if (!SV_TASVersionLegal(ver) || argc != 2 || (have & 1024) || !SV_TASPNum(argv(1), 0, TASP_MAX, TRUE)) { tpr_why = "bad start tick"; break; }
 			tpr_startat = fs_tas_number;
 			have = have | 1024;
 			continue;
@@ -466,7 +493,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 		if (k == "base")
 		{
 			// base <save folder id> <state.txt sha256> <tick>
-			if (ver == TASP_LEGAL) { tpr_why = "a base save in a legal-start file"; break; }
+			if (SV_TASVersionLegal(ver)) { tpr_why = "a base save in a legal-start file"; break; }
 			if (argc != 4 || (have & 4) || !SV_TASPNum(argv(1), 1, 99999, TRUE)) { tpr_why = "bad base"; break; }
 			tpr_baseid = fs_tas_number;
 			if (strlen(argv(2)) != 64) { tpr_why = "bad base hash"; break; }
@@ -493,7 +520,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 			if (i < 6) { tpr_why = "bad base state"; break; }
 			tpr_bo = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
 			tpr_bv = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
-			if (ver == TASP_LEGAL && tpr_bv != '0 0 0') { tpr_why = "a legal start is placed standing still"; break; }
+			if (SV_TASVersionLegal(ver) && tpr_bv != '0 0 0') { tpr_why = "a legal start is placed standing still"; break; }
 			have = have | 16;
 			continue;
 		}
@@ -528,13 +555,13 @@ float(entity e, string name, float identity) SV_TASPRead =
 	if (tpr_why == "" && ver >= 2 && tpr_parsha == "")
 	if (tpr_supa != tpr_base + 1 || tpr_supb != tpr_base + n) tpr_why = "a root's supply is not all of its ticks";
 	if (ver == 1) tpr_supa = -1;
-	if (tpr_why == "" && ver == TASP_LEGAL && !(have & 1024)) tpr_why = "missing start tick";
-	if (tpr_why == "" && ver == TASP_LEGAL && tpr_startat > n) tpr_why = "the start tick is past the head";
+	if (tpr_why == "" && SV_TASVersionLegal(ver) && !(have & 1024)) tpr_why = "missing start tick";
+	if (tpr_why == "" && SV_TASVersionLegal(ver) && tpr_startat > n) tpr_why = "the start tick is past the head";
 	tpr_ver = ver;
 	if (tpr_why == "" && tpr_ncp > 0)
 	if (tpr_cp[0] <= tpr_base || tpr_cp[(tpr_ncp - 1) * TASP_CPSTRIDE] > tpr_base + n)
 		tpr_why = "checkpoint outside the project";
-	if (tpr_why == "" && e.run_tas_mode == 1 && e.run_tas_used == 1 && ver != TASP_LEGAL)
+	if (tpr_why == "" && e.run_tas_mode == 1 && e.run_tas_used == 1 && !SV_TASVersionLegal(ver))
 	{
 		i = SV_TASPValidate(e, tpr_buf, n);
 		if (i) tpr_why = sprintf("input row %.0f refused by the engine", i);
@@ -550,6 +577,9 @@ void(entity e) SV_TASProjectEvent =
 	local float s;
 	s = SV_TASPSlot(e);
 	if (!s || Lobby_Active()) return;   // a lobby's csprogs may predate event 51
+	SV_TASIFlush(e);
+	if (e.tasp_on && !e.tasp_load && !e.tasp_legal && e.tasp_serial == e.rec_rec_serial)
+		SV_TASPHarvest(e,s,SV_TimerTicks(e));
 	WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET);
 	WriteByte(MSG_MULTICAST, TAS_EV_PROJECT);
 	WriteString(MSG_MULTICAST, e.tasp_on ? tasp_name[s] : "");
@@ -570,6 +600,7 @@ void(entity e) SV_TASProjectEvent =
 	WriteLong(MSG_MULTICAST, e.tasp_supb);
 	WriteByte(MSG_MULTICAST, e.tasp_signed);
 	WriteByte(MSG_MULTICAST, e.tasp_made);
+	SV_TASIWire(e);
 	msg_entity = e;
 	multicast('0 0 0', SH_MC_ONE);
 };
@@ -693,6 +724,7 @@ float(entity e, float s, float last) SV_TASPHarvest =
 				if (!w) { tasp_why = sprintf("the recording and the engine disagree about tick %.0f", t); return FALSE; }
 			}
 		}
+		SV_TASIHarvest(e, t, mt);
 		e.tasp_synced = t; e.tasp_line = i; e.tasp_linemt = mt;
 		if (t - e.tasp_base > e.tasp_n) e.tasp_n = t - e.tasp_base;
 	}
@@ -918,10 +950,12 @@ void(entity e, float s, float head) SV_TASPCheckpoints =
   the twin surfd uses; keep the two in step.
 */
 // P1089: every line of a revision but its revsha, as the reader requires them.
-void(filestream f, entity e, float s, string parent) SV_TASPEmit =
+float(filestream f, entity e, float s, string parent) SV_TASPEmit =
 {
 	local float i, b, nm;
-	fputs(f, sprintf("tasproject %.0f\n", e.tasp_legal ? TASP_LEGAL : TASP_VERSION));
+	nm = e.tasp_legal ? TASP_LEGAL : TASP_VERSION;
+	if (!e.tasp_legal && e.tasi_known > 0) nm = 4;
+	fputs(f, sprintf("tasproject %.0f\n", nm));
 	fputs(f, sprintf("map %s\n", mapname));
 	fputs(f, sprintf("mapcrc %s\n", infokey(world, "*mapcrc")));
 	fputs(f, sprintf("zonecrc %s\n", zone_crc));
@@ -958,6 +992,7 @@ void(filestream f, entity e, float s, string parent) SV_TASPEmit =
 			SV_TASPZ(tasp_cp[s][b+5]), SV_TASPZ(tasp_cp[s][b+6]), SV_TASPZ(tasp_cp[s][b+7])));
 		if (tasp_cp[s][b+1]) nm = nm + 1;
 	}
+	if (!SV_TASIEmit(f,e,s)) return FALSE;
 	for (i = 0; i < e.tasp_n; i = i + 1)
 	{
 		b = i * TAS_INPUT_STRIDE;
@@ -966,6 +1001,7 @@ void(filestream f, entity e, float s, string parent) SV_TASPEmit =
 		fputs(f, sprintf("%.0f %.0f %.0f\n", SV_TASPZ(tasp_buf[s][b+4]), SV_TASPZ(tasp_buf[s][b+5]), SV_TASPZ(tasp_buf[s][b+6])));
 	}
 	fputs(f, sprintf("end %.0f\n", e.tasp_n));
+	return TRUE;
 };
 
 // P1089 review 2: an empty identity value would end its line in a space the reader refuses.
@@ -1046,7 +1082,12 @@ float(entity e, float s, string name, string parent) SV_TASPWrite =
 	}
 	f = fopen(tmp, FILE_WRITE);
 	if (f < 0) { strunzone(tmp); strunzone(real); return FALSE; }
-	SV_TASPEmit(f, e, s, parent);
+	if (!SV_TASPEmit(f, e, s, parent))
+	{
+		fclose(f); fremove(tmp);
+		sprint(e,PRINT_HIGH,"tas project: more than 4096 settings ranges; previous revision retained\n");
+		strunzone(tmp); strunzone(real); return FALSE;
+	}
 	fclose(f);
 	tpr_pathover = tmp;
 	if (!SV_TASPRead(e, name, TRUE))
@@ -1447,7 +1488,7 @@ void(entity e, string name, string cpname, string expected, float first, float l
 	}
 	if (first > 0)
 	{
-		bad = (tpr_ver == TASP_LEGAL || first < tpr_base + 1 || last < first ||
+		bad = (SV_TASVersionLegal(tpr_ver) || first < tpr_base + 1 || last < first ||
 			last > tpr_base + tpr_n || first != floor(first) || last != floor(last));
 		if (!bad)
 		{
@@ -1461,7 +1502,7 @@ void(entity e, string name, string cpname, string expected, float first, float l
 		}
 	}
 	// P1100: a legal start has no base save; it never takes the base-save path below.
-	if (tpr_ver == TASP_LEGAL) { SV_TASLegalLoad(e, name, cpname); return; }
+	if (SV_TASVersionLegal(tpr_ver)) { SV_TASLegalLoad(e, name, cpname); return; }
 	stop = tpr_base + tpr_n;
 	if (!strcmp(substring(cpname, 0, 1), "@"))
 	{
@@ -1588,6 +1629,7 @@ void(entity e, string name, string cpname, string expected, float first, float l
 	e.tasp_signed = SV_TASPSignedFor(tasp_revsha[s]);
 	e.tasp_made = SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s], "made"));
 	e.tasp_n = tpr_n; e.tasp_cap = tpr_size; e.tasp_ncp = tpr_ncp; e.tasp_rev = tpr_rev;
+	SV_TASIAdopt(e);
 	e.tasp_base = tpr_base; e.tasp_baseid = tpr_baseid; e.tasp_bo = tpr_bo; e.tasp_bv = tpr_bv;
 	e.tasp_on = 1; e.tasp_load = 1; e.tasp_stop = stop; e.tasp_cpi = 0;
 	e.tasp_serial = e.rec_rec_serial; e.tasp_synced = tpr_base; e.tasp_lasthead = tpr_base;
@@ -1599,6 +1641,7 @@ void(entity e, string name, string cpname, string expected, float first, float l
 	SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE, FALSE);
 	if (first > 0)
 	{
+		SV_TASIInvalidate(e,first,last);
 		if (field == TAS_RECIPE_FIELD) SV_TASRecipePaste(tasp_buf[s],e.tasp_base,first,last);
 		else for (k = first; k <= last; k = k + 1)
 			SV_TASInputChange(tasp_buf[s], (k - e.tasp_base - 1) * TAS_INPUT_STRIDE, field, value);
@@ -1937,6 +1980,13 @@ void(entity e, float argc) SV_TASProjectCommand =
 {
 	local string action, sub, a1, a2, a3, a4, a5;
 	if (!SV_TASPSlot(e)) return;
+	// Quiet read-only panel refreshes must not consume the user's command gate.
+	if (argc == 3 && !strcmp(argv(1),"project") && !strcmp(argv(2),"event"))
+	{
+		if (time < e.tasi_eventnext) return;
+		e.tasi_eventnext = time + .25;
+		SV_TASProjectEvent(e); return;
+	}
 	if (time < e.tasp_next)
 	{
 		sprint(e, PRINT_HIGH, "tas project: one request at a time; try again\n");

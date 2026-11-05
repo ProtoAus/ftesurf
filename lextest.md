@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P1329 historical TAS controls — candidate checked, owner feel pending
+
+No owner confirmation or live deployment is claimed by this entry. After the
+matching progs are installed, on a disposable local practice line: play normally,
+`tas pause`, then `tas menu`. Make a short Forward+Left guide span with one turn
+amount/duck setting, then a different Right/hold span. Seek back to the first:
+are its buttons, turn amount and vertical-look choice recognisably restored?
+Step1 should keep that saved requested aim until you deliberately retarget with
+local look. Does closing/reopening the panel to aim feel natural, without stuck
+keys or the camera fighting you? Preview a tiny raw edit, Discard, then Keep and
+Undo/Redo: the original should remain available, and only an edited literal tick
+should lose its saved turning recipe. Basic usability/feel still needs this human
+check; simulated widgets and native counter/body checks do not substitute for it.
+Contact sections/next-ramp constrained solving remain a separate unfinished phase.
+
 ## P1323 named TAS input templates — installed, owner check pending
 
 Installed BOTH Windows5Nov12:53UTC and ALL12lobbies13:58UTC; actual primary

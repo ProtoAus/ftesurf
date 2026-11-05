@@ -1,12 +1,14 @@
 # Human-first surf TAS editor
 
 Requested by Lex after trying the existing workshop, 4 November 2026.
-**Status: work in progress, 5 November 2026.** The controller foundation, full
+**Status: work in progress, 6 November 2026.** The controller foundation, full
 captured local line and P1323 literal input templates are installed BOTH Windows
 and all 12 lobbies; exact receiver/source evidence and limits are in
-[the input-template qualification](p1323-tas-recipes.md). Historical procedural
-settings restoration, contact sections and the constrained next-ramp solver
-remain unfinished. The complete workflow below is NOT delivered.
+[the input-template qualification](p1323-tas-recipes.md). Historical local control
+settings now have an implemented, runtime-checked P1329 candidate; its review and
+live delivery are separate in [the settings contract](p1329-tas-settings.md).
+Contact sections and the constrained next-ramp solver remain unfinished. The
+complete workflow below is NOT delivered.
 This changes the local-editor priority in [the original TAS plan](plan-tas.md),
 not its assisted ancestry, contribution or verified-board requirements.
 Owner observations are recorded separately in [lextest.md](../lextest.md).
@@ -266,20 +268,26 @@ restored by the qualified movement-history path, not trusted from this recipe.
 Store both that recipe and the ACTUAL executed commands. Commands remain the
 replay truth; an assistant algorithm update must not silently rewrite old work.
 
-At cursor T (state AFTER tick T), show the outgoing settings for T+1 when they
-exist. Show the selected historical row's own settings separately. Back/seek,
-project load, branch switch and Undo/Redo must restore this state consistently.
+P1329 uses the completed tick T's known settings in Controls, consistent with
+native warm back/seek. New steps inherit that recipe until an explicit edit or
+local look change. Timeline row T+1 remains the next input, not a second name for
+these controls. Selecting a raw row without seeking does not restore its recipe.
+A separate outgoing-T+1/selected-row procedural display remains proposed UX, not
+implemented behavior. Back/seek, project load, branch switch and Undo/Redo restore
+the implemented completed-tick state consistently.
 
 For physical-play rows that never had a recipe, display **Recorded input** with
 its observed keys/aim; do not invent an old 1.00x helper setting. Turning those
 rows into an assisted interval is an explicit edit. New ticks after the old head
 inherit the last applicable recipe, visibly.
 
-Prefer a revision-bound, validated editor-metadata sidecar if it can preserve
-existing project/signature compatibility. Metadata must not confer evidence or
-contribution credit; mismatched/missing metadata falls back to recorded inputs.
-Any actual schema/hash/signature change needs its own contract review and
-migration, not an incidental UI-format bump.
+P1329 deliberately uses optional hash-bound ranges in a new version4 local base
+project, rather than a mutable unbound sidecar. Legacy versions1/2/3 retain their
+existing hashes and literal/unknown semantics; legal-start3 and literal templates
+do not gain invented procedural settings. Unsupported version5 is refused.
+Metadata confers no body, native permission, evidence or input-row contribution
+credit. The schema/hash contract and limits are explicit in the settings document;
+this is not an incidental UI-format bump or a new signing authority.
 
 ## 5. A timeline for other runs
 
