@@ -16,6 +16,23 @@ Native/cold/moving-view MAX-FPS remains pending, not inferred from source caps o
 an install. Keep4096MiB/quiet launch guard; don't repeat an unchanged blocked wait.
 Owner observations are valid for what was seen/heard/felt, not numeric FPS.
 
+## P1308 TAS controller — pending; not yet owner-accepted
+
+Once the matching native/progs candidate is installed, take a small familiar
+ramp in local TAS practice. `tas pause`, then `tas menu`: identify A/D/W/back,
+select A or D (and W+D), and compare1.00x with1.10/1.20x. Does sharper turn help
+stay on the chosen line without an unwanted initial angle jump? Does horizontal
+view/steering behave as expected when stepping? Try held Duck and release it.
+Toggle Follow travel: comfortable up on climb, level near apex, down on fall;
+manual vertical look should override it without disturbing horizontal aim.
+This is a short feel/readability check, not a request for a long test route.
+
+Isolated machine controls passed, including scoped15ms standing289.5414 and
+fully crouched97.8939 ground curves; this is NOT a reproduction of Lex's earlier
+unspecified W+D/map/275 case. That exact setup, physical mouse comfort and the
+complete normal-play/full-history workflow remain unconfirmed. Do not mark the
+approved mockup or these automated checks as owner acceptance.
+
 ## P1307 ramp asset pairing / extra maps — pending, not visually accepted
 
 A small local Frost look was already requested; no owner confirmation yet.
@@ -28,16 +45,15 @@ contracts. Source/mathematics and QC compile checks do not establish native shad
 execution, no-hitch or numerical MAX-FPS. The8024-triangle Christmas overlay is
 staged, not default-shipped pending its moving-view check. Props are separate.
 
-## P1305/P1306 native update — one normal ranked finish pending
+## P1305/P1306 native update — owner normal run performed
 
-Both Windows installs and all12Pi lobbies have the qualified native pair.
-Automated native/physics and cold current-CSQC/board checks pass; the isolated
-cold clients had unaccepted terms/no-zone maps and submitted no ranked run.
-On your usual account and a familiar zoned map, finish one normal legal line and
-confirm it submits and returns the normal ranked result (or report the rejection).
-This is pending human integration acceptance, not detector calibration, a claim
-that the whole anti-cheat bank is complete, or permission to collect new raw input.
-No need to repeat a long test route or change your settings.
+Owner reported "I did a normal run" on4Nov2026 after the dual Windows/all12Pi
+native update. Record that as human-observed normal-run completion; a ranked
+submission/result was not separately stated, so that outcome is not invented.
+Automated native/physics and cold current-CSQC/board checks also pass; those
+isolated clients had unaccepted terms/no-zone maps and submitted no ranked run.
+Neither observation establishes detector calibration, full anti-cheat-bank
+completion or permission to collect new raw input. No repeat run requested.
 
 ## P1304 Santa hat — pending, not visually accepted
 
@@ -55,6 +71,8 @@ test hat (not a client self-grant) and make these small checks:
   Owner feel is valid for that observation, not a numerical MAX-FPS claim.
 
 ## P1301 smooth view under a roof (both installs: exe 09bb2fac; your Desktop copy with the next release)
+OWNER CONFIRMED 2026-11-05: "fixed!" (the reported surf_classics save 3 stutter). The flat-roof recheck
+below was not separately reported.
 Load surf_classics save 3 on a lobby (or anywhere you fly fast with your head against a sloping roof): the view
 should glide down with the roof, not shudder. Also jump straight up into a flat roof: it should still sit still,
 as P917 made it. Rig, your save and settings: the drawn eye's frame-to-frame jerk 0.58 -> 0.05 units (feet 0.05).

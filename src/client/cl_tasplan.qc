@@ -1,8 +1,9 @@
 // Included after cl_main's active-seat request counters; GUI uses this channel too.
 float(float argc, float seat) CL_TASPlanCommand =
 {
-	local float count, ticket, next;
+	local float count, ticket, next, human;
 	local string line;
+	local vector camangles, rawangles;
 	if (!strcmp(argv(1), "shared")) return TASShare_ConsoleCommand(argc,seat);
 	if (!strcmp(argv(1), "timeline")) return TASTimeline_ConsoleCommand(argc,seat);
 	if (!strcmp(argv(1), "project") || !strcmp(argv(1), "cp")) return TASProject_ConsoleCommand(argc,seat);
@@ -12,8 +13,14 @@ float(float argc, float seat) CL_TASPlanCommand =
 		else if (argc == 3 && !strcmp(argv(2), "status"))
 		{
 			print(sprintf("tas menu: open %g claims %g frames %g draft %s native %g tab %g\n", tasu_open, UI_CursorHeld(), tasu_frames, FS_TASPlanName(tasu_mode), getstatf(STAT_FS_TASPLANCAP), tasu_tab));
-			print(sprintf("tas menu draft: f%g s%g pitch%.13f yaw%.13f bits%g\n",
-				tasu_forward, tasu_side, tasu_pitch, tasu_yaw, tasu_bits));
+			print(sprintf("tas menu draft: f%g s%g pitch%.13f yaw%.13f bits%g amount%.9g follow%g\n",
+				tasu_forward, tasu_side, tasu_pitch, tasu_yaw, tasu_bits, tasu_amount, tasu_follow));
+			if (numclientseats == 1 && LT_StatsAreMine())
+			{
+				camangles = getproperty(VF_ANGLES); rawangles = getproperty(VF_CL_VIEWANGLES);
+				print(sprintf("tas menu camera: pitch%.9g yaw%.9g rawpitch%.9g rawyaw%.9g ready%g\n",
+					camangles_x, camangles_y, rawangles_x, rawangles_y, tasu_camera_ready));
+			}
 		}
 		else print("tas: menu | menu status\n");
 		return TRUE;
@@ -30,8 +37,10 @@ float(float argc, float seat) CL_TASPlanCommand =
 	}
 	next = !strcmp(argv(1), "next");
 	if (!next && strcmp(argv(1), "plan")) return FALSE;
-	if ((!next && argc != 8) || (next && argc != 9) || !FS_TASPlanRead(argc)) goto bad;
-	if (getstatf(STAT_FS_TASPLANCAP) < TAS_PLAN_CAP)
+	if (!FS_TASPlanRead(argc)) goto bad;
+	human = (fs_tasp_mode >= TAS_PLAN_GUIDE);
+	if ((!next && argc != (human ? 10 : 8)) || (next && argc != (human ? 11 : 9))) goto bad;
+	if (getstatf(STAT_FS_TASPLANCAP) < (human ? TAS_GUIDE_CAP : TAS_PLAN_CAP))
 	{
 		print("tas: next-input authoring needs the updated native engine/server\n");
 		return TRUE;
@@ -55,10 +64,15 @@ float(float argc, float seat) CL_TASPlanCommand =
 	line = sprintf("p%g cmd tas %s %s %g %g %s %s", seat + 1, argv(1), FS_TASPlanName(fs_tasp_mode),
 		fs_tasp_move_x, fs_tasp_move_y, argv(5), argv(6));
 	line = strcat(line, sprintf(" %g", fs_tasp_bits));
-	if (next) line = strcat(line, sprintf(" %g %.0f", count, ticket));
+	if (human)
+	{
+		if (next) line = strcat(line, sprintf(" %g %s %s %.0f", count, argv(9), argv(10), ticket));
+		else line = strcat(line, sprintf(" %s %s", argv(8), argv(9)));
+	}
+	else if (next) line = strcat(line, sprintf(" %g %.0f", count, ticket));
 	localcmd(strcat(line, "\n"));
 	return TRUE;
 :bad
-	print("tas: menu | mouse [on/off/status] | plan mode forward side pitch yaw bits | next mode forward side pitch yaw bits count; mode=live/manual/left/right, bits=jump1+duck2+walk4\n");
+	print("tas: menu | mouse [on/off/status] | plan mode forward side pitch yaw bits | next mode forward side pitch yaw bits count; mode=live/manual/left/right; guide/hold add amount follow(0/1); bits=jump1+duck2+walk4\n");
 	return TRUE;
 };

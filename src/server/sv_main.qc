@@ -328,6 +328,8 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_TASPLANYAW, EV_FLOAT, run_tas_planyaw);
 	clientstat(STAT_FS_TASPLANBITS, EV_FLOAT, run_tas_planbits);
 	clientstat(STAT_FS_TASPLANAIR,  EV_FLOAT,  run_tas_planair);
+	clientstat(STAT_FS_TASPLANAMOUNT, EV_FLOAT, run_tas_planamount);
+	clientstat(STAT_FS_TASPITCHFOLLOW, EV_FLOAT, run_tas_pitchfollow);
 	clientstat(STAT_FS_STYLE,       EV_FLOAT,  run_style);
 
 	/*

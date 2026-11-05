@@ -1969,6 +1969,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// Patch 385: the spectate camera, after the bodies it reads and before
 	// everything below that reads VF_ORIGIN.
 	Spec_Frame();
+	TASUI_Camera(); // view-only pitch; subsequent real save/correction wins
 	SaveLoc_Camera();               // Patch 430: a load drawn before its reply
 	// Patch 870: env_shake moves the camera only, never the body.
 	{
