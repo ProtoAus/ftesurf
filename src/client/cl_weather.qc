@@ -65,7 +65,7 @@ void() Weather_Load =
 	local int bytes;
 	local string line, path, native;
 	Weather_Free();
-	wx_enabled = (cvar("r_weather") != 0);
+	wx_enabled = (cvar("r_weather") != 0 || Winter_ThemeActive());
 	wx_map = strzone(serverkey("map"));
 	if (!wx_enabled) return;
 	// Like CL_RenderMapFrame: WorldLoaded can precede THIS world's live key.
@@ -78,7 +78,7 @@ void() Weather_Load =
 	{
 		wx_pending = TRUE; wx_retry = time + 0.25; return;
 	}
-	allowed = FALSE;
+	allowed = !strcmp(wx_map, "surf_colin_blaster_69000");
 	n = tokenize(cvar_string("r_weather_maps"));
 	for (i = 0; i < n; i = i + 1)
 		if (!strcmp(argv(i), wx_map)) allowed = TRUE;
@@ -192,7 +192,7 @@ void() Weather_Frame =
 {
 	local float enabled, dt, outside, vol, outvol, invol, step, pulse, targetout, targetin;
 	local vector eye;
-	enabled = (cvar("r_weather") != 0);
+	enabled = (cvar("r_weather") != 0 || Winter_ThemeActive());
 	if (!enabled)
 	{
 		if (wx_enabled) Weather_Free();
@@ -274,6 +274,6 @@ float(string command) Weather_ConsoleCommand =
 	if (strcmp(command, "weather_info")) return FALSE;
 	print(sprintf("weather: %s ready %g pending %g sky %g ice %g\n", wx_map, wx_ready, wx_pending, wx_sky != world, wx_ice != world));
 	print(sprintf("weather: audio %g tint %g outside %.2f\n", wx_audio, wx_tinted, wx_outside));
-	print("weather: r_weather_test 1 fires the next flash/thunder now; r_weather 0 restores map lighting\n");
+	print("weather: r_weather_test 1 fires flash/thunder; r_weather 0 restores lighting (also r_colin_winter 0 on Colin)\n");
 	return TRUE;
 };

@@ -652,7 +652,9 @@ string(string id, float row) HE_OptDef =
 		if (row == 11) return "r_winter_props|Holiday decorations|t||"
 		                     "|Static snowmen, trees and gifts on selected event maps. No collision or gameplay changes.";
 		if (row == 12) return "r_mist|Light mist|t||"
-		                     "|Small shader-animated wisps near selected lights. Hard caps on distance, size, visible fields and overdraw; off disables all mist drawing.";
+		                     "|Small shader wisps near selected lights. The authored Colin Christmas theme can also enable its bounded mist.";
+		if (row == 13) return "r_colin_winter|Colin Christmas theme|t||"
+		                     "|Only surf_colin_blaster_69000: snowy grass and exposed caps, falling snow, storm sky, winter audio and light mist. Off removes automatic extras; your separate weather/snow/prop switches still work. Cosmetic only.";
 		return "";
 	}
 
