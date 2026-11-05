@@ -244,7 +244,7 @@ float(float argc, float seat) TASShare_ConsoleCommand =
 		}
 		TASShare_Request(0,"");
 		if (!tasu_open) TASUI_Toggle(seat);
-		tasu_tab = 2; return TRUE;
+		tasu_tab = TAS_TAB_SHARED; return TRUE;
 	}
 	if (!TASShare_Allowed()) return TRUE;
 	if (!isserver()) { print("tas share/open: host this game locally first\n"); return TRUE; }

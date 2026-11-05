@@ -12,6 +12,14 @@ not a numerical timing or deterministic-replay measurement. Thirty short isolate
 machine checks are not owner acceptance; long routes, recipe history, ramp
 sections and next-ramp solver acceptance remain unconfirmed/in progress.
 
+Small separate Project check after installation: host a local game, play/pause
+and make one locally supplied edit/Keep. Save it, then Project (not Timeline),
+use the real mouse to press Sign once. Does it change to Signed and retain the
+expected revision, parent and tick-range statement? Reopen Project and try one
+Checkpoint without visiting Timeline. Console or scripted clicks must not sign.
+The device-operated positive Sign has NOT been performed or accepted by the
+agent; the isolated dedicated-server test only verifies the non-device refusal.
+
 ## P1313 retry start status — pending after matching server update
 
 Small check when available: retry an armed start carrying extra horizontal speed.

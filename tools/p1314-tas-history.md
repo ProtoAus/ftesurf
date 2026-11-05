@@ -79,6 +79,24 @@ Reader suite: 949 checks, zero failures. Paired current RUNS selector: 544 input
 findings and stable input/sidecar bytes; no increase. Existing faults are not
 relabelled clean, and SAVES was not read or repaired by that sweep.
 
+Project integration corrections use named tab constants for entry, drawing and
+device-press dispatch. Timeline and Project share the pending-page pump; entering
+or reopening Project requests its own current paused-body binding without needing
+a Timeline visit. A partial seek also displays any divergence already observed in
+its visited prefix, with a distinct result line instead of claiming reproduction.
+A fresh socket fixture completed 13 controls, including direct Project entry,
+actual Checkpoint creation, throttled close/reopen and another Checkpoint, plus
+an empty non-device Sign probe. Its overall receipt remains FAILED because the
+new external expected-state fixture was not yet visible to the engine VFS. Two
+earlier observer failures (unready widgets and a rate-gated list query) are also
+retained, not upgraded to passes. After the existing server fs_flush acknowledged
+the new owned test file, a separate 11-control arm passed: deliberate checkpoint
+mismatch, stop before full head, partial result with nonzero deviation, explicit
+visited-prefix DIVERGED/not-full diagnostic, read actual Project pixels, unchanged
+original project bytes. No whole-transaction pass is inferred from partial arms.
+The real-device hosted Sign/retained-statement positive check is still pending
+with the owner; scripted GUI events and the empty probe do not attest it.
+
 These are short, buffered15ms local fixtures, NOT long/warm-ring/cold/all-recipe/
 arbitrary-world/numerical-timing or owner-feel acceptance. Straight-ahead long
 fixture attempts restarted; attempted gravity overrides did not change the

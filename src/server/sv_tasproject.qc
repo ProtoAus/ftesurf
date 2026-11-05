@@ -794,6 +794,9 @@ void(entity e) SV_TASProjectDrive =
 			e.tasp_result = 4; // successful partial seek, NOT full checkpoint reproduction
 			sprint(e, PRINT_HIGH, sprintf("tas project: seeked %s to tick %.0f; future retained, only visited checkpoints checked; paused\n",
 				tasp_name[s], head + (e.tasp_legal ? e.tasp_lstartat : 0)));
+			if (e.tasp_devtick)
+				sprint(e, PRINT_HIGH, sprintf("tas project: partial seek visited prefix DIVERGED at tick %.0f (max %.4f); not full reproduction\n",
+					e.tasp_devtick + (e.tasp_legal ? e.tasp_lstartat : 0), e.tasp_dev));
 		}
 		else if (e.tasp_devtick)
 			sprint(e, PRINT_HIGH, sprintf("tas project: loaded %s to tick %.0f; DIVERGED from its saved states at tick %.0f (max %.4f); paused\n",

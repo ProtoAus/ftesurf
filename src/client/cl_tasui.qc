@@ -1,4 +1,9 @@
 // Human surf controller. Drafts never confer authority or mutate evidence.
+#define TAS_TAB_CONTROLS 0
+#define TAS_TAB_TIMELINE 1
+#define TAS_TAB_SHARED 2
+#define TAS_TAB_PROJECT 3
+#define TAS_TAB_COUNT 4
 float tasu_open, tasu_nextclick, tasu_frames, tasu_advanced, tasu_dirty;
 var float tasu_mode = TAS_PLAN_HOLD;
 float tasu_forward, tasu_side, tasu_pitch, tasu_yaw, tasu_bits;
@@ -14,12 +19,22 @@ vector() HUD_Feet;
 vector() HUD_LiveVel;
 void() TASTimeline_Reset;
 void(float first) TASTimeline_Request;
+void() TASTimeline_Pump;
 void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw;
 void(vector at, float width, float tsz, float hint, float row) TASProject_Draw;
 void() TASProject_SignPress;
 void(vector at, float width, float tsz, float hint, float row) TASShare_Draw;
 void(float offset, string sha) TASShare_Request;
 float(float argc, float seat) TASShare_ConsoleCommand;
+
+float(float tab) TASUI_UsesTimeline = { return (tab == TAS_TAB_TIMELINE || tab == TAS_TAB_PROJECT); };
+
+void(float tab) TASUI_SelectTab =
+{
+	tasu_tab = bound(TAS_TAB_CONTROLS, floor(tab), TAS_TAB_PROJECT);
+	if (TASUI_UsesTimeline(tasu_tab)) TASTimeline_Request(0);
+	else if (tasu_tab == TAS_TAB_SHARED) TASShare_Request(0, "");
+};
 
 void() TASUI_FromView =
 {
@@ -86,7 +101,7 @@ void(float seat) TASUI_Toggle =
 	TASUI_Sync();
 	tasu_nextclick = tasu_frames = 0;
 	tasu_open = TRUE; sui_reset_actions(); UI_CursorClaim(UIC_TAS);
-	if (tasu_tab == 1) TASTimeline_Request(0);
+	TASUI_SelectTab(tasu_tab);
 };
 
 void() TASUI_Mouse =
@@ -189,16 +204,13 @@ void(vector scr) TASUI_Draw =
 	if (Profile_Chip("tasu_close",pos+[size_x-pad-row,pad*.6,0],[row,row,0],"X",tsz,FALSE))
 		{ TASUI_Close(); sui_end(); Font_Set(oldfont); return; }
 	at = pos+[pad,tsz*3,0]; chip = [(width-18)/4,row,0];
-	for (i=0;i<4;i=i+1)
+	for (i=0;i<TAS_TAB_COUNT;i=i+1)
 	{
-		label = i == 0 ? "Controls" : (i == 1 ? "Timeline" : (i == 2 ? "Shared" : "Project"));
+		label = i == TAS_TAB_CONTROLS ? "Controls" : (i == TAS_TAB_TIMELINE ? "Timeline" : (i == TAS_TAB_SHARED ? "Shared" : "Project"));
 		if (Profile_Chip(sprintf("tasu_tab%g",i),at+[i*(width+6)/4,0,0],chip,label,tsz,tasu_tab==i))
-		{
-			tasu_tab=i;
-			if (i==1) TASTimeline_Request(0);
-			if (i==2) TASShare_Request(0,"");
-		}
+			TASUI_SelectTab(i);
 	}
+	if (TASUI_UsesTimeline(tasu_tab)) TASTimeline_Pump();
 	at_y = at_y+row+hint; chip = [(width-12)/3,row,0];
 	paused = (getstatf(STAT_FS_TASPAUSE) == 1);
 	sui_text(at,[hint,hint],sprintf("%s | tick %.0f | queued %.0f | ASSISTED / PRACTICE",paused?"PAUSED":"PLAYING",getstatf(STAT_FS_TIMERTICKS),getstatf(STAT_FS_TASPENDING)),SUI_THEME_DIM,1,0);
@@ -209,10 +221,10 @@ void(vector scr) TASUI_Draw =
 	if (Profile_Chip("tasu_off",at+[(width+6)*2/3,0,0],chip,"Controls off",tsz,FALSE))
 		{ localcmd("tas off\n"); TASUI_Close(); sui_end(); Font_Set(oldfont); return; }
 	at_y = at_y+row+hint;
-	if (tasu_tab)
+	if (tasu_tab != TAS_TAB_CONTROLS)
 	{
-		if (tasu_tab==2) TASShare_Draw(at,width,tsz,hint,row);
-		else if (tasu_tab==3) TASProject_Draw(at,width,tsz,hint,row);
+		if (tasu_tab == TAS_TAB_SHARED) TASShare_Draw(at,width,tsz,hint,row);
+		else if (tasu_tab == TAS_TAB_PROJECT) TASProject_Draw(at,width,tsz,hint,row);
 		else TASTimeline_Draw(at,width,tsz,hint,row);
 		sui_end(); Font_Set(oldfont); return;
 	}
@@ -280,7 +292,7 @@ float(float evtype, float scanx, float chary, float devid) TASUI_Input =
 	if (scanx==K_MOUSE1 || scanx==K_MOUSE2)
 	{
 		if (evtype==IE_KEYDOWN) _sui_mouse_move(_cursor_position,FALSE);
-		if (evtype==IE_KEYDOWN && scanx==K_MOUSE1 && tasu_tab==1 && sui_is_hovered("tasp_sign")) TASProject_SignPress();
+		if (evtype==IE_KEYDOWN && scanx==K_MOUSE1 && tasu_tab==TAS_TAB_PROJECT && sui_is_hovered("tasp_sign")) TASProject_SignPress();
 		sui_input_event(evtype,scanx,chary,devid); return TRUE;
 	}
 	return FALSE;

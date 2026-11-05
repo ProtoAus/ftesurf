@@ -30,7 +30,7 @@ void() TASProject_Event =
 	tasp_cl_sha = TASProject_Keep(tasp_cl_sha); tasp_cl_parsha = TASProject_Keep(tasp_cl_parsha);
 	tasp_cl_mapcrc = TASProject_Keep(tasp_cl_mapcrc);
 	tasp_cl_supa = readlong(); tasp_cl_supb = readlong(); tasp_cl_signed = readbyte(); tasp_cl_made = readbyte();
-	if (was && !tasp_cl_load && tasu_open && tasu_tab) TASTimeline_Request(0);  // show the loaded head
+	if (was && !tasp_cl_load && tasu_open && TASUI_UsesTimeline(tasu_tab)) TASTimeline_Request(0);
 };
 
 // P1090: called on the press itself (TASUI_Input): the engine signs only while a device's key
@@ -272,15 +272,20 @@ void(float value) TASTimeline_Goto =
 	TASTimeline_Request(max(tast_base + 1, tast_pick - 3));
 };
 
+// Shared by Timeline and Project; both pages need a current paused-body binding.
+void() TASTimeline_Pump =
+{
+	if (tast_pagepending && cltime >= tast_next) TASTimeline_Request(tast_pagefirst);
+	if (tast_wantrefresh && cltime >= tast_refreshat && !tasp_cl_load)
+	if (getstatf(STAT_FS_TASPAUSE) == 1 && getstatf(STAT_FS_TASPENDING) == 0)
+		TASTimeline_Request(tast_pick > 0 ? max(tast_base + 1, tast_pick - 3) : 0);
+};
+
 void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw =
 {
 	local float i, b, tick, current;
 	local vector chip, range;
 	local string label;
-	if (tast_pagepending && cltime >= tast_next) TASTimeline_Request(tast_pagefirst);
-	if (tast_wantrefresh && cltime >= tast_refreshat && !tasp_cl_load)
-	if (getstatf(STAT_FS_TASPAUSE) == 1 && getstatf(STAT_FS_TASPENDING) == 0)
-		TASTimeline_Request(tast_pick > 0 ? max(tast_base + 1, tast_pick - 3) : 0);
 	current = TASTimeline_Current(); chip = [(width-18)/4,row,0];
 	if (Profile_Chip("tast_prev",at,chip,"< 8",tsz,FALSE)) TASTimeline_Request(max(tast_base+1,tast_first-8));
 	if (Profile_Chip("tast_next",at+[(width+6)/4,0,0],chip,"8 >",tsz,FALSE)) TASTimeline_Request(tast_first+8);
@@ -374,17 +379,26 @@ void(vector at, float width, float tsz, float hint, float row) TASProject_Draw =
 	if (tasp_cl_name == "") label = "Project: none. Save project keeps these inputs and a base save on disk.";
 	else
 	{
-		label = sprintf("Project %s rev %.0f | ticks %.0f..%.0f | %.0f checkpoints | ", tasp_cl_name, tasp_cl_rev,
+		label = sprintf("Project %s rev %.0f | ticks %.0f..%.0f | %.0f checkpoints", tasp_cl_name, tasp_cl_rev,
 			tasp_cl_base, tasp_cl_head, tasp_cl_ncp);
-		if (tasp_cl_load) label = strcat(label, sprintf("loading to %.0f", tasp_cl_stop));
-		else if (tasp_cl_result == 1) label = strcat(label, "reproduced exactly");
-		else if (tasp_cl_result == 2) label = strcat(label, sprintf("DIVERGED at %.0f", tasp_cl_devtick));
-		else if (tasp_cl_result == 3) label = strcat(label, "load stopped");
-		else if (tasp_cl_result == 4) label = strcat(label, "partial seek; future retained, only visited checkpoints checked");
-		else label = strcat(label, "saved");
 	}
-	sui_text(at,[hint,hint],label,tasp_cl_result == 2 ? SUI_THEME_ACCENT : SUI_THEME_DIM,1,0);
+	sui_text(at,[hint,hint],label,SUI_THEME_DIM,1,0);
 	at_y = at_y + hint*1.6;
+	if (tasp_cl_name != "")
+	{
+		if (tasp_cl_load) label = sprintf("Loading to %.0f", tasp_cl_stop);
+		else if (tasp_cl_result == 1) label = "Reproduced every saved checkpoint exactly";
+		else if (tasp_cl_result == 2) label = sprintf("DIVERGED at %.0f (max %.4f)", tasp_cl_devtick,tasp_cl_dev);
+		else if (tasp_cl_result == 3) label = "Load stopped";
+		else if (tasp_cl_result == 4)
+		{
+			if (tasp_cl_devtick > 0) label = sprintf("Partial seek: visited prefix DIVERGED at %.0f (max %.4f); future retained",tasp_cl_devtick,tasp_cl_dev);
+			else label = "Partial seek: only visited checkpoints checked; future retained";
+		}
+		else label = "Saved";
+		sui_text(at,[hint,hint],label,(tasp_cl_result == 2 || (tasp_cl_result == 4 && tasp_cl_devtick > 0)) ? SUI_THEME_ACCENT : SUI_THEME_DIM,1,0);
+		at_y = at_y + hint*1.6;
+	}
 	if (Profile_Chip("tasp_save",at,chip,"Save project",tsz,FALSE) && cltime >= tasp_cl_next)
 	{
 		tasp_cl_next = cltime + 0.5; localcmd("p1 cmd tas project save\n");
@@ -447,7 +461,7 @@ float(float argc, float seat) TASTimeline_ConsoleCommand =
 	if (argc == 2)
 	{
 		if (!tasu_open) TASUI_Toggle(0);
-		if (tasu_open) { tasu_tab = 1; TASTimeline_Request(0); }
+		if (tasu_open) TASUI_SelectTab(TAS_TAB_TIMELINE);
 		return TRUE;
 	}
 	if (argc == 3 && !strcmp(action,"status"))
