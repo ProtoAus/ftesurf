@@ -110,7 +110,12 @@ procedural intent beyond the existing qualified live metadata remains in scope.
   can miss an original press. The combined 19-control input/name/occupancy arm
   passes again with that native-return distinction. Window messages are synthetic,
   not physical-device or signing evidence. Native key-path source is unchanged;
-  this does not qualify the whole older fixture binary as the declared P1318.
+  this does not relabel the whole older fixture binary as P1318. The clean
+  merged candidate was then checked against the actual published P1318 primary
+  client: all seven controls pass again. Both installed primary client hashes
+  match the published P1318 receiver proof. Dedicated P1314 source differs from
+  P1318 only in an unused client-renderer file; its already-qualified server
+  support is a deployment dependency where the dedicated install is still P1312.
 - A 10-control source-only arm saves an eight-row historical tail. Its engine
   processes stop. A separate 20-control fresh-process/current-base arm reads that
   saved reference, applies it to an earlier span, actually replays the full head,
@@ -138,7 +143,10 @@ normal input batch. The validation call is corrected, the same actor's
 format/gate/setup seams are fixed, and the smaller actually saved source span avoids
 turning this feature into a long-run harness campaign. No old receipt is upgraded.
 
-Owner workflow/feel acceptance and genuine hosted real-device Sign remain
-explicitly pending in `lextest.md`. Long-history, variable-command timing,
+Two fresh independent source/evidence reviews found no blocking issues in the
+final native-routing and QC/data-preservation correction. Installation is the
+next step, not a claimed pass here. Owner workflow/feel acceptance and genuine
+hosted real-device Sign remain explicitly pending in `lextest.md`.
+Long-history, variable-command timing,
 procedural intent, cold-world replay, sections and constrained route optimization
 are not established by these bounded local checks.
