@@ -61,7 +61,10 @@ ordinal spans, not a full history scan per input. Quiet panel refreshes have a
 separate bounded gate and cannot overwrite a pending grant's vertical-follow
 choice. Metadata arrival does not reset the local-view anchor established at the
 body/stat acknowledgement. Legacy movement stays explicitly selected: a view-only
-Follow click cannot silently convert it to gain GUIDE. Native body/authority gates, movement, recorder formats and QC
+Follow click cannot silently convert it to gain GUIDE. Settled intent is flushed
+before save serialization and before editor row/dirty comparisons, after command
+arguments are owned. A closed workshop must not depend on polling or a post-save
+event to make its final grant durable. Native body/authority gates, movement, recorder formats and QC
 Build number are unchanged; no native C, pin or tag change belongs to P1329.
 
 ## Verification
@@ -94,6 +97,12 @@ Build number are unchanged; no native C, pin or tag change belongs to P1329.
   the minimal fixture's owned-process stops are not normal gameplay-exit passes.
   The full 65-assertion dedicated workflow also passes on the corrected build;
   both of its actual game processes quit normally with code0.
+- Closed-workshop real dedicated control/subject:21 checks each. The old code
+  loses the last settled HOLD declaration on direct save/native reload and on
+  metadata-only freeze/seek; an explicit pre-save event acts as a positive
+  control. The subject retains both declarations, reloads the actual native file,
+  preserves all seven raw values and earns no input supply. Neither run opens
+  the workshop; both real client/server pairs quit normally with code0.
 - Existing Python revision-chain, supply, legacy and new optional-metadata tests
   pass, including metadata-only hash changes with no input-row credit.
 - Mandatory recorder tests: 949 checks, zero failures. The primary install's

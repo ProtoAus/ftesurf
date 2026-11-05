@@ -90,6 +90,9 @@ float(entity e) SV_TASEditorRows =
 	local float s, head;
 	s = SV_TASPSlot(e);
 	if (!s || !e.tasp_on || e.tasp_legal || e.rec_rec_stream) return FALSE;
+	// All callers have copied/parsed command arguments. Flush may tokenize;
+	// its dirty/backfill result must precede row and immutable-identity checks.
+	SV_TASIFlush(e);
 	if (e.tase_preview || e.tase_operation)
 	{
 		// A stopped transaction retains its WHOLE line; never append live inputs to it.

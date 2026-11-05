@@ -1350,6 +1350,9 @@ void(entity e, string name, float force) SV_TASProjectSave =
 	if (!SV_TASPIdentityOK(e)) return;   // before a base save exists (P1089 review 4)
 	if (!SV_SaveLocRate(e)) return;
 	name = strzone(name);
+	// Publish the last settled recipe before harvesting/writing its rows, not
+	// in the post-save event. Caller arguments and this name are already owned.
+	SV_TASIFlush(e);
 	if (!attached)
 	{
 		B = SV_TASPOldestBase(e, head);
