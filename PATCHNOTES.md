@@ -25,6 +25,9 @@
 - Fixed black snow on Colin by correcting texture and baked-light bindings. The existing shallow snow caps remain cosmetic and do not change terrain collision.
 - Lightning strokes and the dark gaps between them are three times quicker, preserving their brightness and the thunder after each burst.
 
+### P1330 Better prediction timing diagnostics
+- Command-tagged timing updates take priority over routine stat changes when space is available. Prediction reports now retain the timing seed and movement-step counts used to make the prediction, with clearer handling of incomplete evidence.
+
 ### P1329 Bring back the controls used at an earlier TAS tick
 - Seeking a local TAS line now restores its saved movement, jump/duck, turning and vertical-look settings instead of showing the latest draft everywhere. Preview, Discard and Undo/Redo keep the right settings with each line.
 - A new step keeps the restored requested aim until you deliberately change your local view. Editing raw inputs marks only the changed ticks as having no saved turning preset; older literal recordings stay honest about missing settings.
