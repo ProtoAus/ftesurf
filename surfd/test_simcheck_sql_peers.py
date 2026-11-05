@@ -41,6 +41,11 @@ class SqlPeers(unittest.TestCase):
     def test_costly_peer_read_has_no_partial_admission_and_releases_handler(self):
         self.conn.executemany("INSERT INTO replays VALUES (?,'synthetic',0,0,'run','','s')",
                               [(i,) for i in range(4,2004)])
+        # Sparse eligibility still costs real VM work after indexed rotation;
+        # do not rely on the removed full sort merely to exhaust the budget.
+        self.conn.execute("UPDATE replays SET kind='stage' WHERE id BETWEEN 2 AND 2002")
+        self.paths[2003] = self.root/'2003.rec'
+        self.paths[2003].write_bytes(self.data[2])
         self.conn.commit()
         resolved=[]; old=self.sf.replay_file
         self.sf.replay_file=lambda row:(resolved.append(row['id']) or old(row))

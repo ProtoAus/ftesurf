@@ -1,5 +1,30 @@
 # AGENT_NOTES.md
 
+## Store-only similarity bounded rotation (P1322,5Nov2026)
+
+- Boolean cursor ORDER BY forces a full eligible-candidate sort before LIMIT.
+  Actual50000-row synthetic/default1million-selected-VM control returned no
+  candidate/admission/result; high-allowance same actual reader80comparison ACTED.
+  Two disjoint ascending ID ranges around the same cursor avoid that sort;
+  stop without partial selection if a necessary wrap read exhausts the allowance.
+  These two reads are NOT a snapshot/reservation/completion or global hard budget.
+- Keep real cap controls costly AFTER optimization. The older peer-cap test
+  exhausted its allowance only due to the removed sort. Sparse ineligible IDs
+  followed by an actual mapped/readable peer retain a real interrupt and80-op
+  positive without weakening limits. Existing fixture replay_file uses self.paths,
+  not a guessed filename. Read the real helper signature: _advance(after_id,
+  source_id=0); use keywords in cursor fixtures. Retained initial fixture errors.
+- test_simcheck.py exits as a script, so unittest discovery reports SystemExit0
+  as an import error. Use its existing script entrypoint separately, not a
+  product fix or blanket skip of similarity modules. Final217cases0failures/
+  errors,4known Windows skips; Linux zero-skip qualification remains separate.
+- Reader949subprocess-backed checks took136.6s here:120sobserver timeout was a
+  real observer failure, not reader failure/pass. Direct owned log under300s
+  completed949/0; don't repeat it without a changed dependency. Current546record
+  corpus:545prior records/168views byte-exact plus1new parsed clean,344REC7VIEW
+  faults retained, NOTclean. tools/p1322-simcheck-selection.md holds delivery state.
+
+
 ## Paused-slot discard ownership and omitted QC arguments (P1320, 5 Nov 2026)
 
 - Put the existing ownership predicate at the shared offered-slot discard seam,
