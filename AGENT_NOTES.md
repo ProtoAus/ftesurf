@@ -8963,6 +8963,19 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+- **P1309 occupied-mid-rollout completion (5 Nov).** A positive-empty start can
+  become11restarted/1occupied-skip. Preserve that original failed transaction;
+  do not rerun activation or restart healthy units to get a green receipt.
+  Complete only the exact skipped unit once it is empty, with canonical hashes,
+  expected11new+1old epochs, still-exact ALL-part ONBOX/OFFBOX archive and fresh13
+  declared-actor/FD proofs at the short locked boundary. Other occupied units
+  need not disconnect if untouched. Record the separate one-unit completion,
+  unchanged old-path checks and any new files; no original failure regrading,
+  data restoration, force or general writer-closure claim. This does not recover
+  P1308's missing resume metadata or waive its future complete-preimage rule.
+  Warmseed is client-local: omit it from Pi runtime-media promotion rather than
+  clobber a newer published Windows shader-warm update with an older snapshot.
+
 - **P1308 strict old-path failure after successful component rollout (5 Nov).**
   Source59/tag1308 and QW/CS reached all12new actors with exact native/plugin,
   target/.prev, config and backend guards, no force. All8actual recorder payloads
