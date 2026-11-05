@@ -21,6 +21,11 @@
 
 ## next
 
+### P1315 Winter rendering corrections
+- Christmas props face outwards, and light mist becomes more visible without abruptly disappearing up close. Close fields shrink smoothly to retain their coverage budget.
+- Ramp dirt sits slightly above the surface to reduce flicker while riding and at grazing angles.
+- Enabled winter weather adds a persistent moving storm sky and reversible cool map lighting, recovers a late map-name update, and offers an immediate lightning check.
+
 ### P1314 Preview edits to a captured local TAS line
 - Supported local TAS practice can keep the captured input line visible while seeking earlier, preview a change without replacing its original, then Keep or Discard it and Undo or Redo retained edits.
 - Timeline keeps the main editing controls together; project, checkpoint, signing and legacy speed-search tools move to a separate Project tab. Ramp sections and the next-ramp-constrained solver are still in progress.

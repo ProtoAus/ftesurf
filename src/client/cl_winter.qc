@@ -154,7 +154,7 @@ void() Winter_Load =
 void() Winter_Frame =
 {
 	local vector eye, d, forward;
-	local float i, dist, score;
+	local float i, dist, score, share;
 	local entity e;
 	if (strcmp(wi_map, serverkey("map"))) Winter_Load();
 	wi_drawprop = wi_drawmist = wi_area = 0;
@@ -178,12 +178,15 @@ void() Winter_Frame =
 		e = wi_mist[i];
 		d = e.origin - eye;
 		dist = vlen(d);
-		if (dist < 192 || dist > 1100 || d * forward < -e.wi_radius) continue;
-		// Conservative projected-coverage proxy; caps cumulative blended overdraw.
-		// It is a guard, not a measured GPU time or a screen-percentage promise.
-		score = 4 * (e.wi_radius / dist) * (e.wi_radius / dist);
-		if (wi_area + score > WI_AREA_BUDGET) continue;
-		wi_area = wi_area + score;
+		if (dist > 1100 || d * forward < -e.wi_radius) continue;
+		// Allocate a continuous projected-size share instead of dropping an
+		// entire field at192/277 units. Each of4 fields retains its own share;
+		// approaching one cannot abruptly evict the next light's mist.
+		score = 4 * (e.wi_radius / max(32, dist)) * (e.wi_radius / max(32, dist));
+		share = min(score, WI_AREA_BUDGET / WI_VISIBLE_MIST);
+		e.scale = e.wi_radius * sqrt(share / max(0.000001, score));
+		e.alpha = 1;
+		wi_area = wi_area + share;
 		addentity(e);
 		wi_drawmist = wi_drawmist + 1;
 	}

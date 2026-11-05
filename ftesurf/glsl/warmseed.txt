@@ -227,7 +227,7 @@ b vmt/lightmapped#ENVFROMNORM#ENVSRCMASK#ENVSRCSPEC#ENVTINT=0.350000,0.350000,0.
 10 knife_glove
 0 ftesurf_ice_v1
 20 ftesurf_ice_v1
-0 ftesurf_weather_sky_v1
+0 ftesurf_weather_sky_v2
 0 ftesurf_mist
 20 ftesurf_mist
 120 vmt/animated#ENVSRCMASK#ENVSRCSPEC#COLOR=0.025000,0.025000,0.025000#ANIMRATE=24.000000#warp
