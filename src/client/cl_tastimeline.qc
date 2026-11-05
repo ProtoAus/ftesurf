@@ -7,6 +7,7 @@ float tast_pagepending, tast_pagefirst;
 float tast_rows[TAS_PAGE_ROWS * 7]; // present, forward, side, up, pitch word, yaw word, buttons
 string tast_recipe_name;
 float tast_recipe_caret, tast_recipe_focus;
+float tast_recipe_keys[CHAT_DN]; // consumed presses; survive focus/tab/close until release
 // P1082 project status, from the server's event 51.
 string tasp_cl_name;
 float tasp_cl_rev, tasp_cl_base, tasp_cl_head, tasp_cl_load, tasp_cl_stop, tasp_cl_result;
@@ -110,20 +111,57 @@ void(string name) TASTimeline_RecipeName =
 	tast_recipe_name = copy; tast_recipe_caret = strlen(copy);
 };
 
+float() TASTimeline_RecipeHasFocus =
+{
+	if (!tasu_open || tasu_tab != TAS_TAB_PROJECT || UI_CursorHeld() != UIC_TAS || chat_typing)
+		tast_recipe_focus = FALSE;
+	return tast_recipe_focus;
+};
+
 float(float evtype, float scanx, float chary) TASTimeline_RecipeInput =
 {
-	if (!tasu_open || tasu_tab != TAS_TAB_PROJECT) { tast_recipe_focus = FALSE; return FALSE; }
-	if (!tast_recipe_focus) return FALSE;
+	local float i, owned, free, known, focused;
+	focused = TASTimeline_RecipeHasFocus();
 	if (scanx == K_MOUSE1 || scanx == K_MOUSE2)
 	{
-		if (evtype == IE_KEYDOWN)
+		if (focused && evtype == IE_KEYDOWN)
 		if (!sui_is_hovered("tastr_name")) tast_recipe_focus = FALSE;
 		return FALSE;
 	}
 	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP) return FALSE;
+	owned = 0; free = -1;
+	for (i = 0; i < CHAT_DN; i = i + 1)
+	{
+		if (scanx && tast_recipe_keys[i] == scanx) owned = i + 1;
+		if (!tast_recipe_keys[i]) free = i;
+	}
+	if (evtype == IE_KEYUP)
+	{
+		if (focused || owned)
+			sui_text_event(evtype,scanx,chary,"tastr_name",tast_recipe_name,tast_recipe_caret);
+		if (owned) tast_recipe_keys[owned - 1] = 0;
+		return (owned != 0); // never strand the engine's stored gameplay release
+	}
+	if (!focused) return FALSE;
+	if (scanx)
+	{
+		// Chat_Track observes every press before this handler. An untracked key
+		// (observer capacity) cannot establish a fresh press. This is UI pairing,
+		// never device provenance or permission to sign.
+		known = FALSE;
+		for (i = 0; i < CHAT_DN; i = i + 1)
+			if (chat_dn[i] == scanx) known = TRUE;
+		if (!known) return TRUE;
+		if (chat_rep && !owned) return FALSE; // repeat of a pre-focus gameplay press
+		if (!owned)
+		{
+			if (free < 0) return TRUE;
+			tast_recipe_keys[free] = scanx;
+		}
+	}
 	if (scanx == K_ESCAPE || scanx == K_ENTER || scanx == K_KP_ENTER)
 	{
-		if (evtype == IE_KEYDOWN) tast_recipe_focus = FALSE;
+		tast_recipe_focus = FALSE;
 		return TRUE;
 	}
 	if (chary >= 65 && chary <= 90) chary = chary+32;

@@ -22,7 +22,10 @@ silently reissued.
 Names use 1..32 lowercase letters, digits, `_` or `-`. Typing uppercase folds it
 to lowercase. Enter/Escape releases the name field; another Escape closes the
 panel. There are at most 64 templates per map. Saving refuses an existing name
-or retained unfinished write rather than silently overwriting it.
+or retained unfinished write rather than silently overwriting it. Both the final
+and staged names require confirmed absence in the uncached write namespace;
+unreadable files, lookup errors or unavailable metadata readers refuse before
+freeze/write. Saving assumes no concurrent external writer in that namespace.
 
 The console accessibility equivalent is `tas timeline recipe save <name>` or
 `tas timeline recipe apply <name>`, using the current bound Timeline selection.
@@ -60,8 +63,10 @@ procedural intent beyond the existing qualified live metadata remains in scope.
 
 ## Verification
 
-- All three VMs compile with zero warnings. No native C code or evidence grammar
-  changed; the native requirement/pin remains P1314.
+- All three VMs compile with zero warnings. This feature changes no native C or
+  evidence grammar and retains the published base's native requirement/pin. The
+  checks below use the P1314 TAS interface; whole-native deployment binding to
+  the latest published renderer build is a separate requirement.
 - A 14-control same-line arm saves a mixed-key historical selection, changes the
   live draft, actually replays the saved input rather than that draft, and
   executes Discard while preserving original bytes and monotone counters.
@@ -69,6 +74,19 @@ procedural intent beyond the existing qualified live metadata remains in scope.
   through the normal client input chain: edit the name, Escape without closing
   Project, Save/Preview/Discard. The actual captured image was read. This is UI
   functionality, not real-device signing attestation or owner feel acceptance.
+- Independent review found release ownership, chat-key priority and unreadable
+  staged-file occupancy defects before shipment. The untreated input arm has
+  eight passing setup controls and four predicted failures. The corrected
+  16-control arm forwards a pre-focus gameplay repeat/release, retains owned A
+  and Escape releases after tab/blur, types a name containing the chat-bound T
+  without opening chat, and actually saves that exact name. A higher-priority
+  chat draft clears name focus. This measures synthetic CSQC-chain replies, not
+  hardware-held movement or device signing. The same arm proves a read-denied
+  but write-accessible owned Windows stage refuses at the metadata preflight,
+  preserving its bytes, native state, body and working file; its exact ACL is
+  restored. POSIX-specific overwrite reproduction and concurrent external
+  writers are not established by that Windows arm. The guarded metadata helper
+  is the existing conservative import interface, not a new file-open fallback.
 - A 10-control source-only arm saves an eight-row historical tail. Its engine
   processes stop. A separate 20-control fresh-process/current-base arm reads that
   saved reference, applies it to an earlier span, actually replays the full head,
@@ -89,8 +107,11 @@ message; a recipe-padding run incorrectly asked for the separate >128-row
 experiment; a test decoder incorrectly assumed an explicit tick column; the
 first native validation caller inverted the first-bad-row return contract; an
 Undo probe hit the existing action gate; and an overlong ordinary run returned
-to its start before saving. The validation call is corrected, the same actor's
-format/gate seams are fixed, and the smaller actually saved source span avoids
+to its start before saving. A later ownership probe passed its first 12 controls but looked
+for the wrong saved name: it rendered an empty field between clearing and typing,
+which reinstated the default. Its receipt remains failed; clear/type now uses one
+normal input batch. The validation call is corrected, the same actor's
+format/gate/setup seams are fixed, and the smaller actually saved source span avoids
 turning this feature into a long-run harness campaign. No old receipt is upgraded.
 
 Owner workflow/feel acceptance and genuine hosted real-device Sign remain

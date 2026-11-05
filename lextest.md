@@ -10,6 +10,10 @@ A synthetic-widget check passed but is not owner feel acceptance. These template
 copy captured inputs, not procedural optimal-strafe intent or the shared world.
 The separate genuine-device hosted Sign check below is still unperformed; this
 feature neither substitutes scripted signing nor clears that acceptance.
+Small keyboard check: on flat ground, hold W, focus the recipe name, release W,
+close the panel and resume. It must not keep walking from a latched bind. Type a
+name containing T with T bound to chat: it should stay in the name, not open chat.
+Synthetic input-chain replies passed; actual hardware feel is still unconfirmed.
 
 ## P1317 Colin full Christmas pass — native acceptance pending
 

@@ -1,6 +1,7 @@
 // Named input templates reference retained rows, never the source project's body.
 float *tasr_rows;
 float tasr_count;
+float(string path) SV_TASShareOccupied; // shared uncached write-namespace absence check
 
 void() SV_TASRecipeFree =
 {
@@ -116,9 +117,9 @@ void(entity e, string name, float first, float last) SV_TASRecipeSave =
 		sprint(e, PRINT_HIGH, "tas recipe: select an existing captured span\n"); return;
 	}
 	path = strzone(SV_TASRecipePath(name)); tmp = strzone(strcat(path,".new"));
-	if (SV_TASPFileIs(path) || SV_TASPFileIs(tmp))
+	if (SV_TASShareOccupied(path) || SV_TASShareOccupied(tmp))
 	{
-		sprint(e, PRINT_HIGH, "tas recipe: name or retained unfinished write exists; choose another name\n");
+		sprint(e, PRINT_HIGH, "tas recipe: name or retained unfinished write occupied, or absence unconfirmed; nothing written\n");
 		strunzone(path); strunzone(tmp); return;
 	}
 	search = search_begin(sprintf("data/tasproj/%s/recipes/*.tasr",mapname),FS_NAMESORT,TRUE);

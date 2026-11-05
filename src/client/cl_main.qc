@@ -1456,6 +1456,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	Vote_Track(evtype, scanx);      // Patch 372: observes only -- the draft below swallows key-ups
 	MPad_Track(evtype, scanx, chary);   // Patch 390: observes only -- the draft swallows deltas
 	if (evtype == IE_KEYUP)
+		if (TASTimeline_RecipeInput(evtype, scanx, chary)) return TRUE;
+	if (evtype == IE_KEYUP)
 	if (Timer_ResumeInputKey(evtype, scanx)) // owned releases; observers still saw both edges
 		return TRUE;
 	if (KC_CaptureEvent(evtype, scanx, chary, devid))   // Patch 762: a key being bound takes any key
@@ -1469,6 +1471,9 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP)
 	if (HUD_EditInputEvent(evtype, scanx, chary, devid))
 		return TRUE;
+	// A focused name gets typing before chat binds, not the whole TAS panel.
+	if (evtype == IE_KEYDOWN)
+		if (TASTimeline_RecipeInput(evtype, scanx, chary)) return TRUE;
 	if (Chat_InputEvent(evtype, scanx, chary, devid))
 		return TRUE;
 
@@ -1797,11 +1802,12 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 	{
 		if (chary < 32 || chary > 126)
 			return TRUE;                // the fields are ASCII
-		if (TASTimeline_RecipeInput(IE_KEYDOWN,0,chary)) return TRUE;
+		TASTimeline_RecipeHasFocus(); // abandon stale focus if chat/another cursor owns it
 		if (HUD_EditPaste(chary)) return TRUE;   // Patch 901: the ghost offset field
 		if (Account_Paste(chary)) return TRUE;
 		if (Chat_Paste(chary)) return TRUE;
 		if (ZoneEdit_Paste(chary)) return TRUE;
+		if (TASTimeline_RecipeInput(IE_KEYDOWN,0,chary)) return TRUE;
 		if (Profile_Paste(chary)) return TRUE;
 		Av_Paste(chary);
 		return TRUE;

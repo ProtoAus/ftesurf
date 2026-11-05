@@ -24,6 +24,7 @@
 ### P1319 Named input templates for local TAS
 - Save a named selection of captured input, then preview its keys and view angles onto an equal-length selection in another compatible local attempt. Inputs after the selection stay available; Keep, Discard and Undo/Redo retain the original.
 - Templates reuse recorded input, not a saved world or a newly optimized route. Supported current-run replay is still required; ramp sections and the next-ramp solver remain in progress.
+- Recipe name typing keeps chat shortcuts in the field and pairs its own key releases across focus changes. Existing or unreadable unfinished templates are preserved rather than overwritten.
 
 ### P1317 Colin Christmas theme
 - surf_colin_blaster_69000 has authored snowy grass and exposed snow caps, distributed snowmen/trees/gifts, falling snow, cosmetic ice, storm sky, light mist and winter audio. Collision and liquid damage are unchanged.

@@ -296,7 +296,7 @@ float(float evtype, float scanx, float chary, float devid) TASUI_Input =
 		if (evtype==IE_KEYDOWN && scanx==K_MOUSE1 && tasu_tab==TAS_TAB_PROJECT && sui_is_hovered("tasp_sign")) TASProject_SignPress();
 		sui_input_event(evtype,scanx,chary,devid); return TRUE;
 	}
-	if (TASTimeline_RecipeInput(evtype,scanx,chary)) return TRUE;
+	// Keyboard name ownership runs before chat in CL_InputChain, including closed-panel ups.
 	if (evtype==IE_KEYDOWN && scanx==K_ESCAPE) { TASUI_Close(); return TRUE; }
 	return FALSE;
 };
