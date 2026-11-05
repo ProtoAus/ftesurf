@@ -96,7 +96,7 @@ SKIP_CODES = {
     "unreadable": "unreadable", "no sample rows": "no_rows",
     "too short": "too_short", "same file": "same_file",
     "malformed input": "malformed", "no comparison opportunities": "no_opportunities",
-    "source limit": "source_limit",
+    "source limit": "source_limit", "unmodelled recording": "unmodelled",
 }
 KNOWN_SKIP_CODES = frozenset(SKIP_CODES.values()) | {"peer_unresolved", "unknown"}
 
