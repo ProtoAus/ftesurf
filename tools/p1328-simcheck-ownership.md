@@ -75,6 +75,32 @@ existing tools import path; corrected caller, unchanged reader/helpers.
 
 ## Delivery state
 
-Source and acting controls qualified. Independent review/publication and guarded
-backend-only delivery are still pending; this document does not claim deployment.
-The current live P1322 runtime and its rollback/history remain untouched.
+Two fresh independent source/evidence reviews are clear. Reviewed source73fc4581
+and journalc69750b6 published through25a8b01d/6f87af77a, preserving concurrent
+published P1327 work. Qualified generation12f7e30e43392db850a732ab9817aa4031ed57f3
+is based on ACTUAL55370fb6 with ONLYsimcheck.py changed. Main's peer QC/assets
+are not deployment inputs.
+
+Actual primary accepted5Nov2026at18:38:22UTC; read-only closure audit18:38:24UTC.
+Other83runtime files and156bound origins unchanged; guard/dispatch/gunicorn config/
+three external origins exact.44existing table schema/nonchurn counts and8identity
+hashes preserved at the closed boundary. Private1366130688-byte historical backup
+retained, NOTrestored; fallback uses exact prior553code on SAMElive database.
+OldCLOSED/currentOPEN/fallbackCLOSED,4cron rebound/MOMactive; shared installer
+ingress restored and own token released. Actual5ROpins/2ROruntimes/RWfilesystem
+preflight passed. No default-env byte preimage was captured, so no unchanged-env
+bytes claim. No native/QC/lobby deployment.
+
+18:48UTCnormal-operation readback observed the persistent canonical empty sidecar:
+0bytes,0600,single-link,correct owner,mtime18:40; no manual collector or lock probe
+was run to manufacture that evidence. This does NOTclaim a real-fleet comparison
+count or complete coverage.18:49:42UTChealth12/all12actual template units active.
+A receipt retrieval initially guessed ROOT instead of ROOT/ops; a separate unit
+reader guessed nonexistent unit names. Both original observer failures remain;
+correct exact readers proved the facts, with NOrepeat activation/restart.
+
+The installed helper requires a plain direct-child generation root; the already
+live P1322 root could not be overwritten or nested. Both old and new roots remain
+LIVE namespace/history dependencies, never disposable scratch. Broader admission
+completion, freshness, hard global resources, calibration and owner acceptance
+remain partial; this is one delivered workstream, not whole-plan completion.

@@ -114,7 +114,16 @@
 - Windows235/0/6knownskips, Linux235/0/0/legacy0, reader949/0. Corpus548retains
   344faultedREC/7faultedVIEW, prior546REC/168VIEWbytes exact+2new actual clean REC.
   This is NOTclean, hard-global-budget, completecoverage, freshness or calibration.
-  Source proof only until the P1328 delivery receipt is recorded.
+  Actual backend12f7e30e accepted5Nov18:38:22UTC on actual55370fb6; onlysimcheck,
+  other83runtime/156bound origins exact,44existing schema/nonchurn and8identity
+  hashes preserved. Same-data fallback and private historical1366130688-byte DB
+  retained/NOrestore; oldCLOSED/newOPEN/fallbackCLOSED,4cron/MOMactive,5ROpins/
+  2ROruntimes/RWfilesystem proved.18:48canonical sidecar0bytes/0600/singlelink/owner
+  observed after normal activity, no forced collector/lock probe.18:49health12/
+  all12actual ftesurf@N.service units active. Wrong ROOTvsops receipt path and
+  guessed unit-name observer failures retained; NOrepeat activation/restart.
+  Installed namespace helper requires a plain direct-child generation root;
+  old and new roots are LIVEdependencies, never disposable test scratch.
 
 ## Store-only similarity bounded rotation (P1322,5Nov2026)
 
