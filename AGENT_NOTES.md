@@ -10,8 +10,14 @@
   read-denied/write-accessible stage with exact ACL restoration. This is Windows
   CSQC-chain/namespace coverage, NOT hardware movement, genuine signing or a
   new POSIX overwrite reproduction. Keep owned releases across tab/blur/close,
-  and do not adopt pre-focus auto-repeat. Reuse Chat_Track's bounded observations,
-  not as device provenance. The conservative import occupancy helper now guards
+  and do not adopt pre-focus auto-repeat. A second review caught the bounded
+  observer's full-to-free recovery: it inserts an omitted repeat as apparently
+  fresh. Untreated9/1 acts that case; corrected19/0 combines it with ordinary
+  input/chat/name/Windows-stage checks and a fresh-field positive control.
+  Recipe tracking now indexes scans1..511 in2KiB VM memory; unsupported scans
+  are never acquired and allocation failure never retries mid-hold. This is not
+  device provenance, VM-reload continuity or executed allocation-failure proof.
+  The conservative import occupancy helper now guards
   its own native capabilities so another caller cannot treat lookup failure as
   absence. Check BOTH final and .new before freeze/write.
 - Clear/type a name in one input batch in the observer: drawing an empty name

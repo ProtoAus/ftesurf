@@ -7,7 +7,9 @@ float tast_pagepending, tast_pagefirst;
 float tast_rows[TAS_PAGE_ROWS * 7]; // present, forward, side, up, pitch word, yaw word, buttons
 string tast_recipe_name;
 float tast_recipe_caret, tast_recipe_focus;
-float tast_recipe_keys[CHAT_DN]; // consumed presses; survive focus/tab/close until release
+#define TAS_RECIPE_SCANS 512 // keyboard domain; other scans are never acquired
+float *tast_recipe_keys; // 0 up, 1 other-held, 2 recipe-owned; survives focus changes
+float tast_recipe_fresh, tast_recipe_released, tast_recipe_keyfail;
 // P1082 project status, from the server's event 51.
 string tasp_cl_name;
 float tasp_cl_rev, tasp_cl_base, tasp_cl_head, tasp_cl_load, tasp_cl_stop, tasp_cl_result;
@@ -111,6 +113,36 @@ void(string name) TASTimeline_RecipeName =
 	tast_recipe_name = copy; tast_recipe_caret = strlen(copy);
 };
 
+// Observe before every early input consumer. Direct indexing cannot lose a held
+// keyboard scan when another bounded observer fills. This is not device provenance.
+void(float evtype, float scanx) TASTimeline_RecipeTrack =
+{
+	local float i;
+	tast_recipe_fresh = tast_recipe_released = 0;
+	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP) return;
+	if (scanx <= 0 || scanx >= TAS_RECIPE_SCANS || scanx != floor(scanx)) return;
+	if (!tast_recipe_keys)
+	{
+		if (tast_recipe_keyfail) return;
+		tast_recipe_keys = memalloc(TAS_RECIPE_SCANS * sizeof(float));
+		if (!tast_recipe_keys) { tast_recipe_keyfail = TRUE; return; }
+		for (i = 0; i < TAS_RECIPE_SCANS; i = i + 1) tast_recipe_keys[i] = 0;
+	}
+	if (evtype == IE_KEYDOWN)
+	{
+		if (!tast_recipe_keys[scanx])
+		{
+			tast_recipe_fresh = scanx + 1;
+			tast_recipe_keys[scanx] = 1;
+		}
+	}
+	else
+	{
+		if (tast_recipe_keys[scanx] == 2) tast_recipe_released = scanx + 1;
+		tast_recipe_keys[scanx] = 0;
+	}
+};
+
 float() TASTimeline_RecipeHasFocus =
 {
 	if (!tasu_open || tasu_tab != TAS_TAB_PROJECT || UI_CursorHeld() != UIC_TAS || chat_typing)
@@ -120,7 +152,7 @@ float() TASTimeline_RecipeHasFocus =
 
 float(float evtype, float scanx, float chary) TASTimeline_RecipeInput =
 {
-	local float i, owned, free, known, focused;
+	local float owned, focused;
 	focused = TASTimeline_RecipeHasFocus();
 	if (scanx == K_MOUSE1 || scanx == K_MOUSE2)
 	{
@@ -129,35 +161,20 @@ float(float evtype, float scanx, float chary) TASTimeline_RecipeInput =
 		return FALSE;
 	}
 	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP) return FALSE;
-	owned = 0; free = -1;
-	for (i = 0; i < CHAT_DN; i = i + 1)
-	{
-		if (scanx && tast_recipe_keys[i] == scanx) owned = i + 1;
-		if (!tast_recipe_keys[i]) free = i;
-	}
+	owned = (scanx > 0 && scanx < TAS_RECIPE_SCANS && tast_recipe_released == scanx + 1);
 	if (evtype == IE_KEYUP)
 	{
 		if (focused || owned)
 			sui_text_event(evtype,scanx,chary,"tastr_name",tast_recipe_name,tast_recipe_caret);
-		if (owned) tast_recipe_keys[owned - 1] = 0;
-		return (owned != 0); // never strand the engine's stored gameplay release
+		return owned; // never strand the engine's stored gameplay release
 	}
 	if (!focused) return FALSE;
 	if (scanx)
 	{
-		// Chat_Track observes every press before this handler. An untracked key
-		// (observer capacity) cannot establish a fresh press. This is UI pairing,
-		// never device provenance or permission to sign.
-		known = FALSE;
-		for (i = 0; i < CHAT_DN; i = i + 1)
-			if (chat_dn[i] == scanx) known = TRUE;
-		if (!known) return TRUE;
-		if (chat_rep && !owned) return FALSE; // repeat of a pre-focus gameplay press
-		if (!owned)
-		{
-			if (free < 0) return TRUE;
-			tast_recipe_keys[free] = scanx;
-		}
+		if (scanx <= 0 || scanx >= TAS_RECIPE_SCANS || scanx != floor(scanx)) return FALSE;
+		if (!tast_recipe_keys) return FALSE; // failed allocation never retries mid-hold
+		if (tast_recipe_fresh != scanx + 1 && tast_recipe_keys[scanx] != 2) return FALSE;
+		tast_recipe_keys[scanx] = 2;
 	}
 	if (scanx == K_ESCAPE || scanx == K_ENTER || scanx == K_KP_ENTER)
 	{

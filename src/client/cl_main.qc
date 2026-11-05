@@ -1715,6 +1715,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputEvent =
 
 	Watch_Track(evtype, scanx, chary); // Observes releases even when an earlier panel takes them.
 	Rewind_Track(evtype, scanx, chary); // Patch 477: ahead of every handler that may take a press
+	TASTimeline_RecipeTrack(evtype, scanx); // lossless supported-domain key pairing, not provenance
 	Chat_Track(evtype, scanx);      // round 25: and which presses are repeats, for the draft
 
 	// Patch 617: the Steam link box, ahead of everything, and ONLY for an event

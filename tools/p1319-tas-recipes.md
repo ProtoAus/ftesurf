@@ -87,6 +87,17 @@ procedural intent beyond the existing qualified live metadata remains in scope.
   restored. POSIX-specific overwrite reproduction and concurrent external
   writers are not established by that Windows arm. The guarded metadata helper
   is the existing conservative import interface, not a new file-open fallback.
+- Follow-up source review found a remaining full-to-free observer transition:
+  the bounded chat observer could insert a previously omitted gameplay repeat
+  and make it look fresh. An untreated 9-pass/1-failure control actually reproduces
+  that sequence, while release without the repeat stays unclaimed. The recipe
+  now observes keyboard scans 1..511 by direct indexing in 2 KiB of VM memory,
+  independently of chat's bounded list. Unsupported scans are never acquired;
+  failed allocation does not retry mid-hold. The combined corrected 19-control
+  arm repeats saturation/recovery, proves a genuinely fresh field press still
+  acts, and re-runs the ordinary input/name/chat/Windows-stage checks above.
+  All 19 pass. This remains synthetic input-chain coverage, not a new claim of
+  hardware movement, VM-reload continuity or executed allocation failure.
 - A 10-control source-only arm saves an eight-row historical tail. Its engine
   processes stop. A separate 20-control fresh-process/current-base arm reads that
   saved reference, applies it to an earlier span, actually replays the full head,
