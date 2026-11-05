@@ -231,6 +231,21 @@ def _read(conn, sql, parameters=(), read_budget=None):
         cursor.close()
 
 
+def _rotated_rows(conn, sql, parameters, column, after, limit, read_budget):
+    """Fixed internal SQL: ascending upper IDs, then disjoint lower/equal wrap.
+
+    Keep LIMIT index-friendly instead of sorting every eligible candidate by a
+    boolean expression. A failed wrap read returns no partial selection. These
+    separate reads are not a snapshot, completion record or work reservation.
+    """
+    rows = _read(conn, sql + " AND " + column + " > ? ORDER BY " + column + " LIMIT ?",
+                 (*parameters, after, limit), read_budget)
+    if len(rows) < limit:
+        rows += _read(conn, sql + " AND " + column + " <= ? ORDER BY " + column + " LIMIT ?",
+                      (*parameters, after, limit - len(rows)), read_budget)
+    return rows
+
+
 class _PairBudget:
     def __init__(self, maximum, seconds):
         self.remaining = maximum
@@ -477,15 +492,14 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
     # Stored pairs must not occupy the bounded candidate window. Historical
     # observations use either orientation, so exclude both before LIMIT.
     after = _cursor(conn, "peer", a_id, read_budget=read_budget)
-    peers = _read(conn,
+    peers = _rotated_rows(conn,
         "SELECT p.* FROM replays p WHERE p.map = ? AND p.track = ? AND p.leg = ?"
         " AND p.kind = 'run' AND p.id != ?"
         " AND NOT EXISTS (SELECT 1 FROM sims s"
         "     WHERE (s.a_id = ? AND s.b_id = p.id)"
-        "        OR (s.a_id = p.id AND s.b_id = ?))"
-        " ORDER BY (p.id > ?) DESC, p.id LIMIT ?",
-        (row["map"], row["track"], row["leg"], a_id, a_id, a_id,
-         after, limit_peers), read_budget)
+        "        OR (s.a_id = p.id AND s.b_id = ?))",
+        (row["map"], row["track"], row["leg"], a_id, a_id, a_id),
+        "p.id", after, limit_peers, read_budget)
     if not peers:
         return 0, 0, 0
     pa, w = _row_path(surfd, row)
@@ -583,9 +597,9 @@ def pending(conn, limit=50, read_budget=None):
     if limit == 0:
         return []
     after = _cursor(conn, "source", read_budget=read_budget)
-    return _read(conn,
-        "SELECT r.* FROM replays r WHERE " + _PENDING_WHERE
-        + " ORDER BY (r.id > ?) DESC, r.id LIMIT ?", (after, limit), read_budget)
+    return _rotated_rows(conn,
+        "SELECT r.* FROM replays r WHERE " + _PENDING_WHERE, (),
+        "r.id", after, limit, read_budget)
 
 
 def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
