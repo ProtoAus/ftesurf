@@ -24,6 +24,11 @@
 ### P1320 Keep paused runs safe during ownership checks
 - A paused run stays intact while ownership is unavailable or belongs to another game key. Starting or finishing a fresh run now uses the same discard checks as the manual command, without repeating the warning every frame.
 
+### P1319 Snow-facing and ramp-mark corrections
+- Colin's snowy grass and exposed snow caps use the intended white-snow material and outward faces instead of cached purple fallback/undersides. Walking on its snowy grass adds quiet crunches without enabling all game sounds.
+- Our installed falling snow replaces new map-native snow emissions while active; disabling it restores the map's snow. Rain and other map effects are unchanged.
+- Ramp marks sit 2 units above the ridden surface instead of 0.75, retaining the small constant depth bias. Native surfing acceptance is still pending.
+
 ### P1318 Smoother first views
 - Fixed an unnecessary first-view lightmap rebuild that could hitch when a new area or water reflection first appeared, without reducing lighting quality.
 

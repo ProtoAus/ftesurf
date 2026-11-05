@@ -2054,9 +2054,9 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	  pass, so emitting after it would land a frame late.  VF_ORIGIN is already
 	  final here, which is what the distance cull reads.
 	*/
+	Snow_Frame();                   // P1319: know whether replacement ACTED before map precipitation
 	Emit_Frame();
 	RampWear_Frame();               // P1278: its own map latch, whatever vbsp_emit says
-	Snow_Frame();                   // P1286
 	Winter_Frame();                 // P1302: capped props/mist, no per-frame traces
 	Weather_Frame();                // P1309: one optional frost mesh, transient sky flash
 	Paint_Frame();                  // Patch 772: the camera is final; the world pass draws it

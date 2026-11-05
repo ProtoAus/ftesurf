@@ -2880,6 +2880,8 @@ float(vector p, float i) Emit_PrecipIn =
 	return TRUE;
 };
 
+float() Snow_ReplacementActive;
+
 void(vector eye, float ft) Emit_PrecipFrame =
 {
 	local float i, j, n, top, centre, pass, spd, radius, rate, tried;
@@ -2927,6 +2929,9 @@ void(vector eye, float ft) Emit_PrecipFrame =
 			pr_rthr = PR_RAIN_BUDGET / pr_rdemand;
 	}
 
+	// Rain/other map effects stay native. Only stop new type3 snow while the
+	// installed replacement was submitted; existing short-lived flakes expire.
+	if (Snow_ReplacementActive()) { pr_nact = 0; pr_sacc = 0; return; }
 	// ---- snowfall: one manager for all of it
 	if (!pr_snow)
 		return;

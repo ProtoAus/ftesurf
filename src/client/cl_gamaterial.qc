@@ -423,12 +423,17 @@ int(string texture) GM_Material =
 	return at;
 };
 
+string(string texture, float step) Winter_Footstep;
+float gm_snowstep;
+float() GM_IsSnowFootstep = { return gm_snowstep; };
+
 string(vector org, float step) GM_Sound =
 {
 	local int at, side, choice;
 	local float near;
 	local vector p, clipped, ofwd, oright, oup;
-	local string texture;
+	local string texture, winterwave;
+	gm_snowstep = FALSE;
 	texture = "";
 	traceline(org + '0 0 4', org - '0 0 72', MOVE_NOMONSTERS, world);
 	// Collision names are16bytes; render names retain the full cubemap VMT path.
@@ -478,6 +483,13 @@ string(vector org, float step) GM_Sound =
 	gm_lasttex = gm_mats[at * GM_FIELDS];
 	gm_lastprop = gm_mats[at * GM_FIELDS + 1i];
 	gm_lastsource = gm_mats[at * GM_FIELDS + 2i];
+	winterwave = Winter_Footstep(texture, step);
+	if (strlen(winterwave))
+	{
+		gm_snowstep = TRUE;
+		gm_lastprop = "snow"; gm_lastsource = "authored Colin winter";
+		return winterwave;
+	}
 	side = (int)step % 2i; choice = ((int)step / 2i) % 2i;
 	return gm_mats[at * GM_FIELDS + 3i + side * 2i + choice];
 };
