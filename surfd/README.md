@@ -816,8 +816,10 @@ wording. Review never rereads source files, executes comparisons or migrates old
 schemas; no public badge/ranking route consumes capture. Run the reader, collector
 and admin `*_sources.py` controls explicitly; the shipper does not discover them.
 
-The read-only summary aggregates one snapshot into at most 13 fixed category/
-identity result rows, instead of materializing all observations in Python. Counts,
+The read-only summary aggregates one snapshot into a fixed category/identity
+result-row ceiling of `len(KNOWN_SKIP_CODES) + 1 + 3`: recognized skip categories,
+one legacy-unknown category and three compared-identity buckets. It does not
+materialize all observations in Python. Counts,
 maxima, notable attention labels and missing/empty/error distinctions are unchanged.
 SQLite still scans the sample. Dry-run grants summary an independent selected-read
 VM allowance, including metadata and aggregate fetching. Exhaustion returns a

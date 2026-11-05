@@ -53,8 +53,13 @@ operation and cannot make an old unbound observation retroactively bound.
   source controls reproduce BOTH on Windows and Linux. No changed budget or
   unrelated connection code was used to obtain a pass. These are not clean
   full-suite results; attribution work is recorded in BACKLOG.md.
-- Windows has7 explicit platform skips; Linux has6 Node-dependent skips. The
-  real POSIX FIFO/ownership controls run on Linux, not silently passed on Windows.
+- Windows has7 explicit platform skips; Linux has7 Node-dependent skips. Each
+  platform therefore has300 passing,2 failing and7 skipped counted unittest cases.
+  The real POSIX FIFO/ownership controls run on Linux, not silently passed on Windows.
+  The first aggregate incorrectly counted6 Linux skips because it inspected skips
+  only in `OK` summaries; the failed budget program also skipped one Node case.
+  Corrected accounting uses both `OK` and `FAILED` terminal summaries without
+  rerunning tests or altering any raw result. The original aggregate is retained.
 - Existing pwsh7 NoDeploy build compiled all3VMs with0warnings. Eleven selected
   native/progs hashes across both Windows installs stayed exact; no game swap.
 - Required core reader949checks/0failed. Fresh corpus548REC178VIEW remains344/7

@@ -22,8 +22,10 @@
   support,10newviews actuallyparsed/clean. Initial10new-input refusal retained,
   not waived. Each platform309 counted unittest cases across34related invocations:
   TWO existing single connection-count assertions fail identically in pristine
-  prefeature94ce7bb9 WHOLE-source controls. Windows7platformskips versus Linux6Node
-  skips; not a clean full-suite pass. BACKLOG records the untouched handle gap;
+  prefeature94ce7bb9 WHOLE-source controls. Windows7platformskips and Linux7Node
+  skips; each platform300pass/2fail/7skip, not a clean full-suite pass. Initial
+  Linux aggregate missed the skip in FAILED(failures=1,skipped=1); count BOTH
+  OK/FAILED summary lines, preserve raw logs/original aggregate, no rerun/regrade. BACKLOG records the untouched handle gap;
   do not change unrelated ownership to satisfy this patch. Two whole-feature reviews
   and deployment pending; tools/p1334-similarity-unmodelled.md. Runtime admin/
   simcheck are collectors84; canonical census/recsim.py is OUTSIDE that seal and
