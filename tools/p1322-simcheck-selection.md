@@ -51,13 +51,49 @@ in136.6s under300s with direct private log capture. Initial Linux verification
 packaging omitted the reader's existing heldmeta dependency; supplying that exact
 committed dependency made the same source217/0/0. No failure regraded as pass.
 
-## Delivery state
+## Delivery — 5 November 2026
 
-Implementation, Windows and Linux source qualification complete. Read-only live
-preflight confirms the active collectors84 module is EXACTLY the acting old source,
-and the specific existing namespace/service permissions are available without
-password prompts. No namespace, service, live fence, cron or player DB changed.
-Independent clean-commit reviews, frozen-runtime qualification and actual guarded
-backend-only deployment remain separate; no deployment claimed by this initial note. Use the current collectors84
-family on its actual installed base; do not ship main's unrelated work or add
-previously inherited sealed modules to public Git. Keep a same-database fallback.
+Both fresh independent source/evidence reviews completed without findings. Public
+feature publication b5e688ca preserves concurrent published work. Actual qualified
+backend source `55370fb603c326af1f23791b65399e79d7184f5d` (published branch
+`backend-gen-p1322`) applies ONLY this exact module delta to the previous actual
+live966781a4 base. Main's unrelated work was NOT deployed, and the two previously
+inherited sealed modules remain frozen inherited bytes, never added to public Git.
+
+- Both actual frozen84-file primary and same-data fallback cohorts qualified in
+  CLOSED fences with real fixture gunicorn processes, core schema26, six negative
+  controls and correct accepted-OPEN/drained-CLOSED lifecycle.
+- At12:38:28UTC the guarded backend-only cutover accepted the primary. Only
+  simcheck.py changes; the other83runtime files, three control/config files and
+  three declared external origins remain exact. Four cron routes rebound and
+  foreground MOMrequests is active. Old fence CLOSED/new primary OPEN/fallback
+  CLOSED. No game program, native image or lobby restart.
+- Existing44table schema/nonchurn counts and eight identity-table hashes preserved
+  at the closed cutover boundary, including existing event/activity/inventory
+  components. Consistent1,358,684,160-byte historical private backup retained;
+  fallback uses the SAME live database. No old data restoration or schema upgrade.
+- Actual service namespace verified: five immutable pins and both runtimes RO;
+  state/data/log roots RW; create/fsync/rename/unlink preflight passed. The existing
+  protected installer restored the shared ingress and released only its own token.
+  No maintenance reservation remains. Keep the active runtime root while any
+  namespace/launcher/cron/process references it: it is NOT disposable scratch.
+- Read-only12:38:33UTC audit verified156bound files/origins, declared route remaps,
+  exact runtime/control/external closure and healthy primary. Initial health had
+  one discovered lobby during startup; at12:40:34UTC fresh direct health reports
+  ok=true/lobbies12 and all12actual lobby units are active. No healthy redeploy.
+- Normal collector follow-up verifies all four exact-generation cron bindings;
+  two existing logs had post-cutover writes. No extra collector/receipt job or
+  raw capture was manually run. This is not a live50000-row performance result or
+  complete fleet pair-coverage claim.
+
+The first packaging precheck rejected inherited setgid directory mode2700 against
+its exact0700contract. Only the verified owned, not-yet-live top directory was
+set0700; no recursive permission change or predecessor change. An initial receipt
+readback used the wrong filename after a SUCCESSFUL namespace install; the actual
+producer's namespace-complete/attempt records proved restoration/release. Neither
+failure was bypassed, called a pass, or followed by a repeat healthy installation.
+
+No unchanged-byte claim is made for an unrecorded default env-file preimage.
+Work reservation, global hard limits, snapshot consistency, freshness/legacy
+remeasurement, wider calibration and the deferred general writer audit remain
+separate open work; this patch completes only the bounded-selection gap above.

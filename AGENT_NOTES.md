@@ -25,6 +25,24 @@
   completed949/0; don't repeat it without a changed dependency. Current546record
   corpus:545prior records/168views byte-exact plus1new parsed clean,344REC7VIEW
   faults retained, NOTclean. tools/p1322-simcheck-selection.md holds delivery state.
+- DELIVERED5Nov12:38:28UTC actual qualified55370fb6 on prior actual966781a4;
+  collector84 onlysimcheck changes/83exact, guard/dispatch/config/external3 exact.
+  Both frozen84-file cohorts real fixture gunicorn/sixnegative controls pass.
+ 44existing tables/schema/nonchurn counts and8identity hashes unchanged at closed
+  cutover. Historical1.358GBPRIVATE backup retained, rollback SAMEdata only.
+  Actual5ROpins/2ROruntimes/RWfilesystem preflight,156bound origins,4cron and
+  MOMactive; oldCLOSED/newOPEN/fallbackCLOSED. No VM/native/lobby deployment.
+  Startup health1 discovered lobby is not fleet loss: fresh12:40:34UTC health12
+  and12actual active units, no repeat restart. Normal cron4 exact generation,
+ 2post-cutover log writes, no extra collector job or raw capture run.
+- Backend guard root MUST be a single plain TOPname under agent-work, not the
+  nested phase folder. Inherited setgid gave own root2700, exact contract needs
+ 0700: chmod ONLYverified own not-yet-live TOP, do not weaken guard or recurse.
+  Namespace producer writes namespace-complete.json/namespace-attempts.jsonl,
+  not guessed namespace-install.json. Wrong readback after SUCCESSFUL install
+  does not justify rerunning installer: actual records proved slot restoration/
+  own token release. Active TOPtaskroot is now a live runtime/namespace/cron
+  dependency and MUSTbe retained; previous P1320 disposable-root notes superseded.
 
 ## P1321 expected-reset report history (5 Nov2026)
 
