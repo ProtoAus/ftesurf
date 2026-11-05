@@ -74,7 +74,9 @@ def convert_obj(text, scale=48):
                     vertices.append((positions[p - 1], texcoords[uv - 1], normals[n - 1]))
                 face.append(dedup[key])
             for i in range(1, len(face) - 1):
-                triangles.append((face[0], face[i], face[i + 1]))
+                # FTE's alias/IQM front faces use clockwise indices. OBJ is CCW;
+                # retain outward normals and UVs, reverse ONLY the triangle winding.
+                triangles.append((face[0], face[i + 1], face[i]))
     if any(not math.isfinite(v) for p, uv, n in vertices for v in (*p, *uv, *n)):
         raise ValueError('nonfinite mesh')
     return vertices, triangles

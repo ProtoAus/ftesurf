@@ -19,7 +19,7 @@ void main()
 	vec4 vp = m_modelview * vec4(p, 1.0);
 	float scale = length(m_model[0].xyz);
 	// Smoothly disappear before a puff can fill the lens. Never grow to screen size.
-	fade = smoothstep(160.0, 280.0, length(vp.xyz));
+	fade = smoothstep(4.0, 32.0, length(vp.xyz));
 	fade *= 1.0 - smoothstep(900.0, 1100.0, length(vp.xyz));
 	vp.xy += (v_texcoord - 0.5) * scale * 0.6;
 	tc = v_texcoord;
@@ -34,7 +34,7 @@ void main()
 	float edge = max(0.0, 1.0 - dot(q, q));
 	float n = texture2D(s_noise, tc * 1.7 + noiseoff).r;
 	n *= texture2D(s_noise, tc * 3.1 - noiseoff * 0.7).r;
-	float a = edge * edge * smoothstep(0.12, 0.38, n) * fade * 0.11;
+	float a = edge * edge * smoothstep(0.12, 0.38, n) * fade * 0.22;
 	gl_FragColor = fog4(vec4(e_colourident.rgb, a * e_colourident.a));
 }
 #endif

@@ -2882,6 +2882,7 @@ float(string cmd) CSQC_ConsoleCommand =
 	// parse, and those two have different fixes.
 	if (Emit_ConsoleCommand(cmd))
 		return TRUE;
+	if (Weather_ConsoleCommand(cmd)) return TRUE;
 	if (Winter_ConsoleCommand(cmd))
 		return TRUE;
 

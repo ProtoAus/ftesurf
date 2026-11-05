@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P1315 winter corrections — owner failures confirmed, correction pending
+
+Owner5Nov confirmed: Christmas models look inside-out; mist is minimal and pops
+away close; Frost weather shows no sky/lighting; ridden ramp dirt z-fights like
+save2. These observations are real manual failures, not invented measured FPS.
+After actual corrected deployment and a convenient client restart (cached models/
+shaders): Frost, outside a timed run, `r_mist 1`, approach a light; does it remain
+visible smoothly? `r_weather 1`, `weather_info`, `r_weather_test 1`: storm clouds,
+cooler lighting, flash/bolt and delayed thunder? OFF should restore lighting.
+Inspect one snowman/tree and ride save2's ramp for face/depth corrections. No pass
+yet. Report just the remaining wrong case, not a full regression campaign.
+
 ## P1313 retry start status — pending after matching server update
 
 Small check when available: retry an armed start carrying extra horizontal speed.

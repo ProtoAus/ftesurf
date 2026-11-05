@@ -21,6 +21,11 @@
 
 ## next
 
+### P1315 Winter rendering corrections
+- Christmas props face outwards, and light mist becomes more visible without abruptly disappearing up close. Close fields shrink smoothly to retain their coverage budget.
+- Ramp dirt sits slightly above the surface to reduce flicker while riding and at grazing angles.
+- Enabled winter weather adds a persistent moving storm sky and reversible cool map lighting, recovers a late map-name update, and offers an immediate lightning check.
+
 ### P1313 Retry keeps momentum and the right start status
 - A fresh retry carrying extra ground speed is shown as practice without changing your saved movement. Falls, upward pushes and continuing a running attempt keep their saved status.
 
