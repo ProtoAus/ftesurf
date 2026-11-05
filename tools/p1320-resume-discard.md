@@ -43,8 +43,45 @@ for exactly344faulted recordings; the added record is clean. The older parsed
 snapshot also retains its classifications for539byte-identical records. No
 player file was modified by these checks.
 
-## Delivery
+## Delivery — 5 November 2026
 
-Implementation, isolated runtime qualification and full build complete.
-Independent reviews, publication and destination/live verification are recorded
-separately; no deployment is claimed by this initial note.
+Two fresh independent source/evidence reviews completed. Source review caught
+one stale product patch field; it now reads1320, without moving native pins/tags
+or qcbuild. Main publication85451a39 includes the reviewed code plus that metadata
+correction, preserving concurrent published work.
+
+Actual runtime is the separately published qualified source
+`53040f2338fcf892fc53ee105836a28eafc8a306` (branch
+`p1320-resume-qualified`): only the exact reviewed resume-module delta and patch
+metadata on the previously deployed a79d2ec9 base. The final clean build again
+compiled all3VMs with0warnings. Main's separate TAS/native candidate was NOT
+shipped. A peer's newer client program was preserved, not replaced by our older
+client artifact. Only server QC destinations were promoted.
+
+- BOTH Windows installs: qwprogs.dat plus its symbols at11:02:10UTC; all4targets
+  hash-verified, immediate predecessors exact in.prev, older.prev archived and
+  individually rehashed.18,319protected native/client/menu/config/data files
+  unchanged through that transaction. No game/process was killed.
+- NanoPi: exact qwprogs.dat at11:11:52UTC, all12lobbies restarted/0skipped after
+  fresh positive-empty checks. All46,772old protected data files unchanged/0new;
+  configs, client/menu, native/plugin and the active backend generation/process/
+  files unchanged. Existing.prev plus archived prior.prev retain rollback history.
+- Before ANYcanonical Pi stage/restart: all8actual recorder parts and180complete
+  resume files individually rehashed ON/OFFBOX, with source/cleanup context;
+  locked just-in-time13actor/birth/FD closure consumed those actual preimages.
+  This scoped operational check is NOT a general file-writer audit.
+- Read-only live verification11:15:27UTC: all12actual new actor identities/images,
+  exact server QC/.prev, backend/config/program bindings, healthHTTP200 with
+  ok=true/lobbies12, and no QC-fault marker in each new actor's retained journal.
+  Final four Windows destination hashes also exact. No repeat swap/restart.
+
+An initial UDP preflight timeout and observer source-quoting error remain failed
+observations, not deployment failures or reasons to restart healthy servers.
+The bounded24reply diagnostic and subsequent real activation checks supplied
+fresh positive evidence. Initial inbound-path and overbroad client-program CAS
+errors were corrected at their actual seams BEFORE any corresponding mutation;
+only the conflicting server receivers were coordinated.
+
+Normal real-account save/continue/discard remains a small human follow-up, not a
+claimed pass or a blocker manufactured from the sufficient controlled matrix.
+No real account switching, valuable paused save, or new collection is required.

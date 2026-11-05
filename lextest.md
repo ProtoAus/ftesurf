@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1320 paused-save discard guard — optional real-account check pending
+
+Installed BOTH Windows11:02UTC and ALL12lobbies11:11UTC5Nov. On the next normal
+use of a DISPOSABLE paused run, does the existing !continue / !discard workflow
+still feel normal on your own account? Do not switch keys or risk a valued save
+for this check. The52assertion synthetic/native dedicated matrix passed; actual
+cryptographic account-proof and full gameplay timer acceptance were not claimed.
+No human confirmation recorded. This is a small follow-up, not new raw capture.
+
 ## P1319 snow and ramp-depth correction — small owner check pending
 
 Owner5Nov confirmed Colin's Christmas models are present, but its snow appears
