@@ -125,6 +125,54 @@
   Installed namespace helper requires a plain direct-child generation root;
   old and new roots are LIVEdependencies, never disposable test scratch.
 
+## Private off-box evidence operator tooling (5Nov2026)
+
+- `tools/evidence-backup.ps1` uses standardrsync, private Windows ACLs, versioned
+  no-delete copies and an opaque/read-only SHA256 index. No Pi overwrite/repair,
+  capture/verdict/schema/ranking/game/backend change. `tools/evidence-backup.md`.
+  Published410063dd/exactinstalled + explicitknownStageStore: actual21:32UTC
+  7535files/2095635847bytes FULLSHA+length/113knownpairs/0deferred/pending/bothrsync0.
+  Twofreshwholefeature reviews clear; originalfirstPARTIAL retained. SchedulingOPEN.
+- Keep rsync/SSH on SAME MSYS runtime. NativeSSH text smoke can pass while its
+  rsync inherited descriptors fail; blockingIO did notfix it. Git's separate
+  MSYS SSH produced dup()failure. Existing MSYS SSH+EXISTING explicit identity/
+  knownhost paths works; no copiedkeys, newtrust, VM or globalpackageinstall.
+  Nativeprofile paths containbackslashes: POSIXshlex silentlyremoves them.
+  Import inspectors need ACTUALportable/MSYS lookup PATH; output can mix C:/
+  and backslash leaves. Backslash-only regex initiallymissed sharedDLL pins;
+  original6pin cohort retained, corrected26pins without binarychange.
+- ActualLinuxIndexer9/0/0; real whole-entrypoint late/zero copies, same-size edit
+  with restoredmtime/oldversion, deletedfake source retained, changedlatepart,
+  exactSHA/privateACL; artifact mismatch/share contention beforetransport;
+  actingtimeout/birthcleanup and Windows casealias/reservedname before rsync.
+  Original PATH/literal/descriptor/pin capture failures retained, not passes.
+- Wholefeature reviews caught two real seams: checking children misses current/
+  logs/history roots themselves (junctions/explicitACL); synchronousstdin before
+  WaitForExit bypasses its timeout under backpressure. Check managed roots/parents/
+  trees beforetransport and createdcomponents beforecontent, includinghistory.
+  Direct pipe WriteAsync + SAMEabsolute child clock coversinput/process/outputwait.
+  Real3rootjunction/emptybroadlogs refusals; 4MiB no-reader/120secondactor ACTED,
+  wrapper returned~3seconds/exactactor gone/lease reacquired; normalinput/zero/edit/
+  partialhistory/removedsource finalsource8observed10retained/26pins alsoACTED.
+  Not hardkernelIO/remote cancellation. Original reviews/failures/cohorts retained.
+- FIRSTrealcopy7535retained/7422SHAverified/113deferred/CompleteFalse/bothrsync0;
+  wholearchive8402objects0broadgrants/reparse. Originalobservation retained. ALL113
+  regularnlink2 exactinode twins in canonical backendKEEP_DIR, existingP395stage
+  retention (surfd._keep_file), NOTjunk to unlink. Defaultsinglelink refusal is
+  retained. ExplicitStageStore supports ONLYevidence/<map>/<leaf>.rec, EXACT2links,
+  separatecanonicalstore/same relativeleaf, BOTHnofollowFDidentities before/after.
+  No arbitrary/third/run-scope/wronginode/symlinkadmission or exclusiveownerclaim.
+  ActualLinux15/0/0; Windowsdefaultrefusal/knownpair/aliasoldmtimeedit+history/
+  wrongnamespacebeforetransport ACTED. No resync without understanding firstfault.
+  Newactualcomplete observation follows the classified/reviewed/qualified source
+  adoption, NOTregrading original. Previouscode/config/partialobservation retained;
+  no sourceunlink/repair/newcapture/game/backend action or globalsnapshotclaim.
+- Windows limitedS4U registration in the tested context was AccessDenied; exact
+  taskquery proved ABSENT. Owneradmin/UACstep needed, no silentinteractive/SYSTEM
+  fallback or password/key changes. Standalonecopy NOTblocked. Taskconfiguration
+  hourly/StartWhenAvailable/noWake is NOTactualscheduled acceptance/alwayson.
+  Mutablepartials/latearrivals mean bytechange isn'tguilt/restorepermission.
+
 ## Store-only similarity bounded rotation (P1322,5Nov2026)
 
 - Boolean cursor ORDER BY forces a full eligible-candidate sort before LIMIT.
