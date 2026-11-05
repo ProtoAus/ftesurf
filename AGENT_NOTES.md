@@ -896,6 +896,16 @@ seat/pending/resend limits; it cannot guarantee a full packet or later shared se
 Source/wire fixtures prove this scheduling weakness, NOT the cause or repair of
 historical save-time corrections. Follow-up: tools/p1330-prederr-phase.md.
 
+Native8417/P1330 delivered BOTH Windows5Nov20:04UTC and all12NanoPi lobbies
+22:25UTC. ARM1578/0, phase44/0, six-map90rows and existing legacy4 unchanged
+outcomes; actual P1314 predecessor90rows also acted. Native2 rollout preserved
+current P1329 programs/config/backend and all47,542protected files, after complete
+8parts/180resume ON/OFFBOX member readbacks. Do not reuse an older server-program
+source context just to finish native-only delivery: the old preflight correctly
+refused a genuine cohort change; exact newly published receiver/source records
+resolved it without restoring old programs or regrading the refusal. Separate
+GPU-only lane remains memory-blocked, not a new FPS/gameplay acceptance claim.
+
 ## P1326 native prediction-report command identity
 
 With only one eligible incoming snapshot, `CL_PredictMovePNum` can leave

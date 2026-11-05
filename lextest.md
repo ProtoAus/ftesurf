@@ -19,11 +19,13 @@ should lose its saved turning recipe. Basic usability/feel still needs this huma
 check; simulated widgets and native counter/body checks do not substitute for it.
 Contact sections/next-ramp constrained solving remain a separate unfinished phase.
 
-## P1330 prediction reports — pending actual installation and owner check
+## P1330 prediction reports — installed, owner check pending
 
-NOT confirmed. After the corrected native client and phase-priority server are
-actually installed, use that declared development client (not an older Desktop
-release). On Original, take a few ordinary saves while moving in the air. Does
+Native8417/P1330 installed BOTH Windows5Nov20:04UTC and ALL12lobbies22:25UTC.
+The lobby update was native-only: current P1329 programs/configs/backend stayed
+unchanged. Owner checks below are NOT confirmed. Use this development client
+(not an older Desktop release). On Original, take a few ordinary saves while
+moving in the air. Does
 it visibly snap or show an error alert? Send any new report; it must be nativev2
 with saved replay seed/mode/part/tick provenance. Test TAS controls-off and noclip
 separately if convenient. Do not infer all old reports are fixed from no alert.

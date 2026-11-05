@@ -60,6 +60,40 @@ ack-seat identity marker; old data is not regraded by a new native executable.
 - Failed fetch/read/unsupported schema returns failure even when older local
   reports remain. An empty/ungraded ring is not a successful analysis.
 
+## Delivery — 5 November 2026 UTC
+
+The inspected native source is `538de9265cefaf411c3091f9bf62e766aaec483e`,
+clean stamp `git-8417-patch-1330-0-g538de9265`. Both Windows installs received the
+matching native/plugin files at **20:04 UTC**. Their ten destinations were
+rehashed after the lobby rollout and still matched the qualified cohort.
+All twelve NanoPi lobbies received the native server/HL2 pair at
+**22:25:25 UTC**; every new server actor and mapped plugin inode was verified.
+This was a **native-only** update: current P1329 programs, configs and the active
+backend were preserved, not rebuilt or replaced.
+
+Before any canonical staging or restart, all **8 recorder-part files** and all
+**180 resume payload/metadata files** were individually read back on-box and
+off-box. The locked runtime check covered twelve native actors and the backend
+actor. After rollout, all **47,542 protected files** were byte/metadata exact,
+with zero changed, missing or new protected files. The coupled native `.prev`
+pair remains, and the deployment lock was released. No automatic verifier
+downgrade after restart or player-data restoration was used.
+
+ARM validation passed native selftest **1578/0**, phase/wire **44/0**, all
+**90 rows across six dedicated maps**, and four existing archived verifier
+cases with unchanged expected outcomes (two PASS, two HOLD). The actual P1314
+native predecessor independently produced the same 90 map rows. A missing
+fixture input and an obsolete server-program preflight were retained as
+failures, not regraded; only the corrected dependency was refreshed. Native
+compiler warnings did not increase on either architecture.
+
+This is development-fleet delivery, not a new release or QC Build-number change.
+The separate GPU-only force-gate lane remains ungraded: the last check had
+2.68 GiB free RAM against its measured 4 GiB minimum, with no game running. The
+source-level phase/ring cost results are not a surf_garden FPS claim. Owner
+save/load, TAS-transition and normal in-game acceptance remain pending in
+`lextest.md`; old reports have not been declared fixed by these checks.
+
 ## Verification and remaining limits
 
 - Production replacement-stat branch/helper compiled in a bounded wire decoder:
