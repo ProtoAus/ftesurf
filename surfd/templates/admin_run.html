@@ -208,7 +208,7 @@ async function getJSON(url) {
   if (r.status === 401) { location.href = "/admin/login"; return {ok: false, error: "logged out"}; }
   try { return await r.json(); } catch (e) { return {ok: false, error: "bad reply (" + r.status + ")"}; }
 }
-async function post(path, fields) {
+async function post(path, fields, onReply) {
   const body = new URLSearchParams(Object.assign({csrf: CSRF}, fields));
   let r, j;
   try {
@@ -216,7 +216,8 @@ async function post(path, fields) {
   } catch (e) { toast("network error: " + e.message, false); return false; }
   if (r.status === 401) { location.href = "/admin/login"; return false; }
   try { j = await r.json(); } catch (e) { toast("bad reply from surfd", false); return false; }
-  toast(j.ok ? (j.message || "done") : (j.error || "failed"), !!j.ok);
+  if (j.ok && onReply) onReply(j.message);
+  toast(j.ok ? (typeof j.message === "string" ? j.message : "done") : (j.error || "failed"), !!j.ok);
   return !!j.ok;
 }
 
@@ -494,6 +495,20 @@ function renderSimilarity(value) {
                   el("dt", "", name + " source bytes"), el("dd", "mono", String(source.bytes)));
       }
       panel.append(dl);
+      const current = el("p", "muted", "No current-file check requested. Historical measurements remain unchanged.");
+      const check = el("button", "", "Check current files (this pair)");
+      check.type = "button";
+      check.onclick = async () => {
+        check.disabled = true;
+        current.textContent = "Checking existing files within the source budget...";
+        try {
+          const ok = await post("/admin/api/run/" + RID + "/sources", {pair: String(pair.id)}, result => {
+            current.textContent = currentSourceText(result);
+          });
+          if (!ok) current.textContent = "Current-file check unavailable (request refused or failed).";
+        } finally { check.disabled = false; }
+      };
+      panel.append(check, current);
     } else {
       panel.append(el("p", "muted", pair.source_state === "legacy_unbound"
         ? "source-byte provenance unavailable (legacy/unbound observation)"
@@ -501,6 +516,14 @@ function renderSimilarity(value) {
     }
     box.append(panel);
   }
+}
+
+function currentSourceText(result) {
+  const labels = {matches: "read bytes match the historical buffer", differs: "read bytes differ from the historical buffer", unavailable: "unavailable (not a match)"};
+  if (!result || !labels[result.a] || !labels[result.b]) return "Current-file check unavailable.";
+  return "Requested current-file consistency check at " + fmtDate(result.at) +
+    ": A " + labels[result.a] + "; B " + labels[result.b] +
+    ". Historical measurements unchanged; not authenticity, a verdict or a coherent global instant.";
 }
 
 function renderKey(j) {
