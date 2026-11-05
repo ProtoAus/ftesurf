@@ -8,6 +8,9 @@ float wx_cell, wx_enabled, wx_ready, wx_audio, wx_audio_on;
 entity wx_sky, wx_ice, wx_out, wx_in, wx_thunder;
 float wx_outplay, wx_inplay, wx_outvol, wx_invol, wx_sentout, wx_sentin;
 float wx_clock, wx_next, wx_flash, wx_thunderat, wx_outside;
+float wx_pending, wx_retry, wx_tinted;
+string wx_style;
+vector wx_stylecolour;
 
 float(float x) Weather_Finite =
 {
@@ -29,11 +32,17 @@ void() Weather_Free =
 	if (wx_sky) remove(wx_sky);
 	if (wx_ice) remove(wx_ice);
 	if (wx_roof) memfree(wx_roof);
+	if (wx_tinted)
+	{
+		// Never restore a previous map's style over the newly loaded world.
+		if (!strcmp(wx_map, serverkey("map"))) lightstyle(0, wx_style, wx_stylecolour);
+		strunzone(wx_style); wx_style = ""; wx_tinted = FALSE;
+	}
 	if (strlen(wx_map)) strunzone(wx_map);
 	wx_map = "";
 	wx_roof = 0;
 	wx_out = wx_in = wx_thunder = wx_sky = wx_ice = world;
-	wx_enabled = wx_ready = wx_audio = wx_audio_on = wx_outplay = wx_inplay = 0;
+	wx_enabled = wx_ready = wx_audio = wx_audio_on = wx_outplay = wx_inplay = wx_pending = 0;
 	wx_outvol = wx_invol = wx_sentout = wx_sentin = wx_flash = wx_thunderat = 0;
 };
 
@@ -47,24 +56,35 @@ void() Weather_Init =
 	registercvar("r_weather_ice_shine", "0.12", CVAR_ARCHIVE);
 	registercvar("r_weather_flash", "0.12", CVAR_ARCHIVE); // 0 disables flashes, not thunder
 	registercvar("r_weather_test", "0"); // local visual/audio test, never an entitlement
+	registercommand("weather_info");
 };
 
 void() Weather_Load =
 {
 	local float fh, n, i, allowed, w, h, sky, ice;
 	local int bytes;
-	local string line, path;
+	local string line, path, native;
 	Weather_Free();
-	wx_enabled = (cvar("r_weather") != 0);
+	wx_enabled = (cvar("r_weather") != 0 || Winter_ThemeActive());
 	wx_map = strzone(serverkey("map"));
 	if (!wx_enabled) return;
-	allowed = FALSE;
+	// Like CL_RenderMapFrame: WorldLoaded can precede THIS world's live key.
+	native = mapname;
+	if (!strcmp(substring(native, 0, 5), "maps/")) native = substring(native, 5, -1);
+	n = strlen(native);
+	if (n >= 4)
+		if (!strcasecmp(substring(native, n - 4, 4), ".bsp")) native = substring(native, 0, n - 4);
+	if (!strlen(wx_map) || strcasecmp(native, wx_map))
+	{
+		wx_pending = TRUE; wx_retry = time + 0.25; return;
+	}
+	allowed = !strcmp(wx_map, "surf_colin_blaster_69000");
 	n = tokenize(cvar_string("r_weather_maps"));
 	for (i = 0; i < n; i = i + 1)
 		if (!strcmp(argv(i), wx_map)) allowed = TRUE;
-	if (!allowed) return;
+	if (!allowed) { print(sprintf("weather: %s not enabled in r_weather_maps\n", wx_map)); return; }
 	fh = fopen(sprintf("gfx/weather/%s.roof", wx_map), FILE_READ);
-	if (fh < 0) return;
+	if (fh < 0) { print(sprintf("weather: missing gfx/weather/%s.roof\n", wx_map)); return; }
 	line = fgets(fh);
 	n = tokenize(line);
 	if (n != 10) { fclose(fh); return; }
@@ -83,17 +103,17 @@ void() Weather_Load =
 	fclose(fh);
 	if (sky > 0)
 	{
-		if (Snow_Exists("glsl/ftesurf_weather_sky_v1.glsl"))
+		if (Snow_Exists("glsl/ftesurf_weather_sky_v2.glsl"))
 		{
 			if (Snow_Exists("gfx/weather/lightning.png"))
 			{
 				path = sprintf("models/gibs/winterweather/%s-sky.iqm", wx_map);
 				if (Snow_Exists(path))
 				{
-					shaderforname("ftesurf_weather_sky_v1", "{\ndepthpush -2\ncull none\nsort decal\n{\nprogram ftesurf_weather_sky_v1\nclampmap $nosrgb:gfx/weather/lightning.png\nblendfunc gl_src_alpha gl_one\nrgbgen entity\nalphagen entity\n}\n}\n");
 					precache_model(path); wx_sky = spawn(); setmodel(wx_sky, path);
+					wx_sky.forceshader = shaderforname("ftesurf_weather_sky_v2", "{\ndepthpush -2\ncull none\nsort decal\n{\nprogram ftesurf_weather_sky_v2\nclampmap $nosrgb:gfx/weather/lightning.png\nmap $nosrgb:models/christmas/mist-noise.png\nblendfunc blend\nrgbgen entity\nalphagen entity\n}\n}\n");
 					wx_sky.effects = EF_FULLBRIGHT | EF_NOSHADOW;
-					wx_sky.colormod = '1 1 1'; wx_sky.alpha = 0.000001; wx_sky.scale = 1;
+					wx_sky.colormod = '1 1 1'; wx_sky.alpha = 0.65; wx_sky.scale = 1;
 				}
 			}
 		}
@@ -126,7 +146,15 @@ void() Weather_Load =
 		precache_sound("winter/thunder-out.wav"); precache_sound("winter/thunder-in.wav");
 		wx_out = spawn(); wx_in = spawn(); wx_thunder = spawn();
 	}
-	wx_clock = time; wx_next = time + 30 + Weather_Noise(time) * 40;
+	// One reversible base-style tint, not dynamic lights/shadows or per-frame
+	// lightmap changes. Preserve the map's brightness/animation and restore OFF.
+	if (checkbuiltin(getlightstyle))
+	{
+		wx_style = strzone(getlightstyle(0, wx_stylecolour));
+		lightstyle(0, wx_style, [wx_stylecolour_x * 0.78, wx_stylecolour_y * 0.86, wx_stylecolour_z]);
+		wx_tinted = TRUE;
+	}
+	wx_clock = time; wx_next = time + 8 + Weather_Noise(time) * 8;
 	wx_ready = TRUE;
 	print(sprintf("weather: %s assets sky %g / ice %g tris, audio %g; %g roof cells (opt-in, visual only)\n", wx_map, wx_sky ? sky : 0, wx_ice ? ice : 0, wx_audio, w * h));
 };
@@ -164,7 +192,7 @@ void() Weather_Frame =
 {
 	local float enabled, dt, outside, vol, outvol, invol, step, pulse, targetout, targetin;
 	local vector eye;
-	enabled = (cvar("r_weather") != 0);
+	enabled = (cvar("r_weather") != 0 || Winter_ThemeActive());
 	if (!enabled)
 	{
 		if (wx_enabled) Weather_Free();
@@ -172,6 +200,8 @@ void() Weather_Frame =
 	}
 	// CSQC_WorldLoaded is authoritative; don't allocate a map tempstring per frame.
 	if (enabled != wx_enabled) Weather_Load();
+	if (wx_pending)
+		if (time >= wx_retry) Weather_Load();
 	if (!wx_ready) return;
 	eye = getproperty(VF_ORIGIN);
 	dt = bound(0, time - wx_clock, 0.1);
@@ -192,12 +222,9 @@ void() Weather_Frame =
 	}
 	if (wx_sky)
 	{
-		if (time < wx_flash)
-		{
-			pulse = bound(0, (wx_flash - time) / 0.12, 1);
-			wx_sky.alpha = pulse * bound(0, cvar("r_weather_flash"), 0.25);
-			if (wx_sky.alpha > 0) addentity(wx_sky);
-		}
+		pulse = bound(0, (wx_flash - time) / 0.12, 1);
+		wx_sky.alpha = 0.65 + pulse * bound(0, cvar("r_weather_flash"), 0.25) * 1.4;
+		addentity(wx_sky); // persistent moving storm clouds; flashes are additional
 	}
 	if (wx_ice)
 		if (cvar("r_weather_ice")) addentity(wx_ice);
@@ -240,4 +267,13 @@ void() Weather_Frame =
 				sound(wx_thunder, CHAN_VOICE, outside > 0.5 ? "winter/thunder-out.wav" : "winter/thunder-in.wav", bound(0, vol * (outside > 0.5 ? 3 : 1.4), 0.9), ATTN_NONE, 100, SOUNDFLAG_NOSPACIALISE);
 		}
 	}
+};
+
+float(string command) Weather_ConsoleCommand =
+{
+	if (strcmp(command, "weather_info")) return FALSE;
+	print(sprintf("weather: %s ready %g pending %g sky %g ice %g\n", wx_map, wx_ready, wx_pending, wx_sky != world, wx_ice != world));
+	print(sprintf("weather: audio %g tint %g outside %.2f\n", wx_audio, wx_tinted, wx_outside));
+	print("weather: r_weather_test 1 fires flash/thunder; r_weather 0 restores lighting (also r_colin_winter 0 on Colin)\n");
+	return TRUE;
 };

@@ -25,6 +25,15 @@
 - Save a named selection of captured input, then preview its keys and view angles onto an equal-length selection in another compatible local attempt. Inputs after the selection stay available; Keep, Discard and Undo/Redo retain the original.
 - Templates reuse recorded input, not a saved world or a newly optimized route. Supported current-run replay is still required; ramp sections and the next-ramp solver remain in progress.
 
+### P1317 Colin Christmas theme
+- surf_colin_blaster_69000 has authored snowy grass and exposed snow caps, distributed snowmen/trees/gifts, falling snow, cosmetic ice, storm sky, light mist and winter audio. Collision and liquid damage are unchanged.
+- Its automatic theme can be disabled with the Display Info checkbox or r_colin_winter 0; individual snow/weather/prop options remain separate. Other maps keep their existing defaults.
+
+### P1315 Winter rendering corrections
+- Christmas props face outwards, and light mist becomes more visible without abruptly disappearing up close. Close fields shrink smoothly to retain their coverage budget.
+- Ramp dirt sits slightly above the surface to reduce flicker while riding and at grazing angles.
+- Enabled winter weather adds a persistent moving storm sky and reversible cool map lighting, recovers a late map-name update, and offers an immediate lightning check.
+
 ### P1314 Preview edits to a captured local TAS line
 - Supported local TAS practice can keep the captured input line visible while seeking earlier, preview a change without replacing its original, then Keep or Discard it and Undo or Redo retained edits.
 - Timeline keeps the main editing controls together; project, checkpoint, signing and legacy speed-search tools move to a separate Project tab. Ramp sections and the next-ramp-constrained solver are still in progress.

@@ -11,6 +11,28 @@ copy captured inputs, not procedural optimal-strafe intent or the shared world.
 The separate genuine-device hosted Sign check below is still unperformed; this
 feature neither substitutes scripted signing nor clears that acceptance.
 
+## P1317 Colin full Christmas pass — native acceptance pending
+
+After actual combined deployment/client restart, load surf_colin_blaster_69000:
+snowy grass/exposed caps and snowmen/trees/gifts through the route, falling snow,
+storm/ice/audio/mist should be present by its automatic map-only theme. Does any
+prop sit wrong, any roofed/ridden surface get bad coverage, or FPS feel worse?
+`winter_info`/`weather_info` identify loaded components. `r_colin_winter 0` is the
+comparison/opt-out; independently enabled options remain active. No confirmation
+or numerical FPS recorded yet. Event hat earning remains date-gated, unchanged.
+
+## P1315 winter corrections — owner failures confirmed, correction pending
+
+Owner5Nov confirmed: Christmas models look inside-out; mist is minimal and pops
+away close; Frost weather shows no sky/lighting; ridden ramp dirt z-fights like
+save2. These observations are real manual failures, not invented measured FPS.
+After actual corrected deployment and a convenient client restart (cached models/
+shaders): Frost, outside a timed run, `r_mist 1`, approach a light; does it remain
+visible smoothly? `r_weather 1`, `weather_info`, `r_weather_test 1`: storm clouds,
+cooler lighting, flash/bolt and delayed thunder? OFF should restore lighting.
+Inspect one snowman/tree and ride save2's ramp for face/depth corrections. No pass
+yet. Report just the remaining wrong case, not a full regression campaign.
+
 ## P1314 captured local TAS line — pending, candidate not installed yet
 
 After the matching local native/progs candidate is actually installed: play a

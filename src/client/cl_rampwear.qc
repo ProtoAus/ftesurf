@@ -95,7 +95,7 @@ void() RampWear_Load =
 			if (skip)
 				continue;
 			rw_cen[s] = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
-			rw_rad[s] = stof(argv(4));
+			rw_rad[s] = stof(argv(4)) + 0.75;
 			rw_first[s] = t;
 			rw_cnt[s] = 0;
 			s = s + 1;
@@ -108,6 +108,10 @@ void() RampWear_Load =
 				rw_st[t * 3 + j]  = [stof(argv(4 + j * 5)), stof(argv(5 + j * 5)), 0];
 			}
 			rw_nrm[t] = [stof(argv(16)), stof(argv(17)), stof(argv(18))];
+			// A real normal lift, once at load, not just driver-dependent depthpush.
+			// Both modern and legacy paths clear the ridden ramp at grazing angles.
+			for (j = 0; j < 3; j = j + 1)
+				rw_pos[t * 3 + j] = rw_pos[t * 3 + j] + normalize(rw_nrm[t]) * 0.75;
 			rw_cnt[s - 1] = rw_cnt[s - 1] + 1;
 			t = t + 1;
 		}

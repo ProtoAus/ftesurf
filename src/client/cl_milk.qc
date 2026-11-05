@@ -190,6 +190,8 @@ void(string rendererdescription) CSQC_RendererRestarted =
 	HC_Lost();                      // Patch 871
 	Inv_GlowLost();                 // P1230: the aura's and crown's materials and targets
 	Snow_Lost();                    // P1286: the map's snow shader
+	Winter_Load();                  // P1317: rebuild terrain force-shader handles after vid_restart
+	Weather_Load();                 // same cold path, also replaces sky/ice force-shader handles
 };
 
 // P1235: before clearscene.  A 2D draw into a target leaves the scene time on realtime

@@ -37,6 +37,9 @@ class Bsp:
         if self.d[:4] != b"VBSP":
             raise SystemExit("%s: not a Source BSP" % path)
 
+    def lump_version(self, i):
+        return struct.unpack_from('<i', self.d, 8 + 16 * i + 8)[0]
+
     def lump(self, i):
         o, n = struct.unpack_from("<ii", self.d, 8 + 16 * i)
         b = self.d[o:o + n]
@@ -62,7 +65,13 @@ def main():
 
     planes = np.frombuffer(bsp.lump(1), dtype=np.dtype([("n", "<f4", 3), ("d", "<f4"), ("t", "<i4")]))
     brushes = np.frombuffer(bsp.lump(18), dtype=np.dtype([("first", "<i4"), ("num", "<i4"), ("contents", "<i4")]))
-    sides = np.frombuffer(bsp.lump(19), dtype=np.dtype([("plane", "<u2"), ("texinfo", "<i2"), ("disp", "<i2"), ("bevel", "<i2")]))
+    # Match native Strata v25 layouts (mod_vbsp.c), not guessed version strides.
+    wide_sides = bsp.lump_version(19) == 1
+    if bsp.lump_version(19) not in (0, 1):
+        raise ValueError('unsupported brushside version')
+    side_dtype = np.dtype({'names':['plane','texinfo','disp','bevel'],
+        'formats':['<u4','<i4','<i4','u1'], 'offsets':[0,4,8,12], 'itemsize':16}) if wide_sides else np.dtype([('plane','<u2'),('texinfo','<i2'),('disp','<i2'),('bevel','<i2')])
+    sides = np.frombuffer(bsp.lump(19), dtype=side_dtype)
     texinfo = bsp.lump(6)
     texdata = bsp.lump(2)
     strtab = struct.unpack_from("<%di" % (len(bsp.lump(44)) // 4), bsp.lump(44))
@@ -83,18 +92,37 @@ def main():
     models = bsp.lump(14)
     nodes = bsp.lump(5)
     leafs = bsp.lump(10)
-    leafbrush = struct.unpack_from("<%dH" % (len(bsp.lump(17)) // 2), bsp.lump(17))
-    leafsize = 56 if struct.unpack_from("<i", bsp.d, 8 + 16 * 10 + 8)[0] == 0 else 32   # lump version 0 carries ambient light
+    if bsp.lump_version(17) not in (0, 1) or bsp.lump_version(5) not in (0, 1) or bsp.lump_version(10) not in (0, 1, 2):
+        raise ValueError('unsupported collision tree version')
+    wide_refs = bsp.lump_version(17) == 1
+    refsize, reffmt = (4, 'I') if wide_refs else (2, 'H')
+    leafbrush = struct.unpack_from('<%d%s' % (len(bsp.lump(17)) // refsize, reffmt), bsp.lump(17))
+    nodesize = 48 if bsp.lump_version(5) == 1 else 32
+    leafsize = 56 if bsp.lump_version(10) in (0, 2) else 32
+    leafoffset, leaffmt = (44, '<II') if bsp.lump_version(10) == 2 else (24, '<HH')
+    if len(nodes) % nodesize or len(leafs) % leafsize:
+        raise ValueError('collision tree stride mismatch')
 
     def model_brushes(m):
-        out, stack = set(), [struct.unpack_from("<i", models, 48 * m + 36)[0]]
+        out, visited = set(), set()
+        stack = [struct.unpack_from('<i', models, 48 * m + 36)[0]]
         while stack:
             n = stack.pop()
             if n < 0:
-                f, c = struct.unpack_from("<HH", leafs, leafsize * (-1 - n) + 24)
+                leaf = -1 - n
+                if leaf >= len(leafs) // leafsize:
+                    raise ValueError('leaf index outside collision tree')
+                f, c = struct.unpack_from(leaffmt, leafs, leafsize * leaf + leafoffset)
+                if f + c > len(leafbrush):
+                    raise ValueError('leaf brush range outside lump')
                 out.update(leafbrush[f:f + c])
             else:
-                stack.extend(struct.unpack_from("<2i", nodes, 32 * n + 4))
+                if n in visited or n >= len(nodes) // nodesize:
+                    raise ValueError('cyclic/out-of-range collision tree; refusing unbounded walk')
+                visited.add(n)
+                stack.extend(struct.unpack_from('<2i', nodes, nodesize * n + 4))
+        if any(i >= len(brushes) for i in out):
+            raise ValueError('brush reference outside lump')
         return out
 
     work = [(b, (0.0, 0.0, 0.0)) for b in sorted(model_brushes(0))]
