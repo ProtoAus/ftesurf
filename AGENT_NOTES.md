@@ -17,6 +17,22 @@
   final actual dedicated matrix has52checks/0failures with16reset arms, live
   pending/mismatch/matching transitions and byte-identical posted evidence.
   Synthetic account dependencies are not a real cryptographic-proof test.
+- Final main85451a39 retains concurrent published work; actual SSQC-only qualified
+  runtime53040f23 is P1320 on deployed a79d2ec9, not main's separate TAS/native
+  candidate. BOTH Windows4server VM/symbol targets exact11:02UTC,18319protected
+  files unchanged. Pi ONLYqwprogs.dat11:11UTC: all12restart/0skip,46772olddata
+  unchanged/0new, active backend/native/config/peerCS preserved.188actual archived
+  parts/resume members individually ON/OFFBOX verified and strict13actor JIT.
+  Current peer CSQC can advance independently: coordinate ONLYQWdat/lno, snapshot
+  and protect the actual newer CSQC, never copy a stale client program. Original
+  broad-CAS refusal retained before any mutation. Existing generic promoter's
+  exact P1320 SSQC-only role set was narrowed with explicit qualified-source and
+  full-resume requirements, not a blanket gate waiver.
+- A transient first UDP timeout is unknown readiness, never empty. Bounded
+  diagnostic24/24valid replies then actual fresh positive-empty activation pass;
+  no protocol fallback. No healthy redeploy after observer quoting failure. Live
+  postflight11:15UTC checked12new actors/images,exactVM/.prev,health12, noQCfault
+  marker in new-actor journals and unchanged backend/configs. tools/p1320-resume-discard.md.
 
 
 ## P1315/P1317 winter corrections and selected Colin delivery (5 Nov2026)
