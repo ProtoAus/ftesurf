@@ -10,6 +10,10 @@
 - `Weather_Outside`:128-unit existing roof-clipper grid, no prop/displacement/turned-mover acoustic occlusion. Falsifier: walk under a prop-only roof or across a thin edge and listen; don't claim this coarse artist cache is physical acoustic simulation.
 - Bluewinter has no eligible world sky/liquid and is skipped. Falsifier for adding it: an actual acting geometry/exposure source, not an all-zero/no-file success. Native visual/audio/FPS acceptance belongs in lextest.md; preview defaultsOFF.
 
+## P1308 native promotion: worldspawn resume cleanup versus old-path guard (5 Nov)
+- Site: `sv_resume.qc:SV_MsSweep/SV_MsWipeDir` and strict Pi promotion's protected-before/after inventory. All12P1308 actors restarted correctly, but one resume's run.rec/ms.txt/state.txt disappeared; new evidence recording hashes byte-identically to old run.rec. The two metadata preimages were not archived. Existing cleanup is consistent with this delta; exact old expiry metadata is not retrospectively known. Original transaction remains FAILED, no data restored/restart repeated, no gate held.
+- Falsifier: own fixture with an expired posted resume versus non-expired control; restart/worldspawn must ACT, exact recording evidence and metadata disposition measured. Before a future promotion that claims full old-path preservation, qualify/capture complete resume state as well as recorder parts, and explicitly handle expected cleanup without blanket exclusions or relabelling this failure. Do not reconstruct missing player metadata speculatively.
+
 ## P1301 roof eye blend (5 Nov): review residuals (display only)
 - At a roof STEP (not a slope) the blended eye drops up to one tick late (P917 rose up to one tick early on the way out); with the 62-unit hull it can sit about 2 units into the lower roof for part of a tick. A render-position trace would settle it; not seen in play.
 - A frame that runs no prediction pass and no extrapolation reads the previous frame's global pmove for the roof inputs (P917's, mostly QW demo playback); P1301 adds the kept eye as one more trigger, now behind its feet check.

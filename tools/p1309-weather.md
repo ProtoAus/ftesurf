@@ -127,6 +127,10 @@ NOT implemented or replaced here. Event gift dates remain a separate decision.
   Original failure plus separate one-lobby completion receipts remain private.
 - Reconnect/reload the map to select the new CSQC. Native appearance/audio/FPS
   still needs the small owner check below; status/hash readiness is not that pass.
+- The actual pair includes published P1308's controller with qualified c24 and
+  zero warnings. Do not replace it with an older controller-only correction and
+  lose weather. This does NOT recover P1308's historical resume-metadata loss,
+  regrade that failed guard or claim the separate P1310 native promotion done.
 
 Native appearance/audio/cold/moving-view acceptance is still PENDING; defaultOFF.
 The separately owned P1287 full-world snow cover remains reserved; Santa earning
