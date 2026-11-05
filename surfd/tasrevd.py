@@ -502,7 +502,9 @@ def create_app(store, account_db, codes_file, clock=time.time):
             prow = db.execute('SELECT base, rows, version FROM revisions WHERE sha = ?', (parent,)).fetchone() if parent else None
             if prow is not None and legal(prow['version']) != legal(info['version']):
                 return fail('Revision refused: a legal start and a base save count ticks from different places', 400)
-            if prow is not None and info['version'] in ('2', '3'):
+            if prow is not None and info['version'] != '1':
+                # Every declared-supply format, including v4 settings, must
+                # match actual changed rows. Metadata alone supplies nothing.
                 # tools/tasrev.py check_supply over the stored rows: the changed ticks after the parent's base.
                 ch = [t for a, z in intersect(diff_ranges(rows, info['base'], bytes(prow['rows']), prow['base']),
                                               [[max(prow['base'], info['base']) + 1, info['base'] + len(info['rows'])]])

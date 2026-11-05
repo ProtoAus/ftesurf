@@ -249,5 +249,20 @@ class Chain(unittest.TestCase):
             t.check_chain(Path(d))
 
 
+class CurrentClosure(unittest.TestCase):
+    def test_current_service_files_import_without_the_checkout(self):
+        if os.geteuid() == 0:
+            import pwd
+            try:
+                pwd.getpwnam('proto')
+            except KeyError:
+                self.skipTest('root import probe requires the configured proto identity')
+        source = Path(__file__).resolve().parents[1]
+        blobs = {dest: (source / src).read_bytes() for src, dest in t.FILES.items()}
+        # Unlike Upgrade's modelled subprocess, exercise the actual current
+        # import closure in the installer's isolated temporary release.
+        t.check_imports(blobs)
+
+
 if __name__ == '__main__':
     unittest.main()

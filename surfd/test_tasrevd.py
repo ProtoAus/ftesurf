@@ -38,6 +38,18 @@ def revision(base, rows, parent=None, supply=None, mp='bhop_eazy', baseat='0 0 6
     return body + ('revsha %s\n' % h).encode(), h
 
 
+def settings_revision(base, rows, parent=None, supply=None, amount='0.5'):
+    """Canonical v4 BASE fixture: settings declarations never supply raw inputs."""
+    body, _ = revision(base, rows, parent=parent, supply=supply)
+    lines = body.decode('ascii').splitlines()[:-1]
+    lines[0] = 'tasproject 4'
+    at = next(i for i, line in enumerate(lines) if line.startswith('i '))
+    lines.insert(at, 'intent %d %d 5 %s 0 320 0 0 0 0 0 0' % (base + 1, base + len(rows), amount))
+    data = ('\n'.join(lines) + '\n').encode('ascii')
+    h = tr.revhash(data)[0]
+    return data + ('revsha %s\n' % h).encode('ascii'), h
+
+
 def legal_revision(rows, parent=None, supply=None, startat=3):
     """P1100: canonical version 3 bytes and their hash; rows are ticks 1.. from the placement."""
     head = len(rows)
@@ -128,6 +140,58 @@ class Service(unittest.TestCase):
         self.put_st(statement(BOB, hb, ha, 31, 35)); self.put_rev(b)
         self.put_st(statement(CAROL, hc, hb, 33, 33)); self.put_rev(c)   # Carol's key is not linked
         self.assertEqual(self.credit(hc), [(21, 30, SID_A), (31, 32, SID_B), (33, 33, SID_A), (34, 35, SID_B), (36, 40, SID_A)])
+
+    def test_settings_only_revisions_preserve_raw_credit_and_hash_binding(self):
+        rows = [row(t) for t in range(21, 41)]
+        a, ha = revision(20, rows)
+        b, hb = settings_revision(20, rows, parent=ha)
+        c, hc = settings_revision(20, rows, parent=hb, amount='0.75')
+        self.put_st(statement(ALICE, ha, None, 21, 40))
+        for body, h in [(a, ha), (b, hb), (c, hc)]:
+            self.assertEqual(self.put_rev(body)['ok'], 1)
+            self.assertEqual(self.credit(h), [(21, 40, SID_A)])
+        self.assertEqual(len({ha, hb, hc}), 3)
+        self.assertEqual(self.c.get('/api/tasrev/rev/%s/file' % hc).data, c)
+        with svc.connect(self.store) as db:
+            digests = {r[0] for r in db.execute('SELECT inputs FROM revisions')}
+        self.assertEqual(len(digests), 1)
+        tampered = b.replace(b'5 0.5 0 320', b'5 0.75 0 320')
+        self.assertIn('hash', self.put_rev(tampered)['error'])
+
+    def test_settings_revision_supply_must_match_actual_parent_rows(self):
+        rows = [row(t) for t in range(21, 41)]
+        a, ha = revision(20, rows)
+        self.assertEqual(self.put_rev(a)['ok'], 1)
+        changed = [row(t, 9) if t == 31 else row(t) for t in range(21, 41)]
+        good, hg = settings_revision(20, changed, parent=ha, supply=(31, 31))
+        self.put_st(statement(BOB, hg, ha, 31, 31))
+        self.assertEqual(self.put_rev(good)['ok'], 1)
+        self.assertEqual(self.credit(hg), [(21, 30, 'unsigned'), (31, 31, SID_B), (32, 40, 'unsigned')])
+        for values, supply in [(rows, (21, 40)), (changed, (21, 40)), (changed, None)]:
+            with self.subTest(supply=supply, changed=values != rows):
+                bad, _ = settings_revision(20, values, parent=ha, supply=supply)
+                self.assertIn('supply', self.put_rev(bad).get('error', ''))
+
+    def test_settings_revision_and_legal_start_are_not_one_line(self):
+        rows = [row(t) for t in range(1, 21)]
+        a, ha = legal_revision(rows)
+        b, hb = settings_revision(0, rows, parent=ha)
+        self.assertEqual(self.put_rev(a)['ok'], 1)
+        self.assertIn('different places', self.put_rev(b)['error'])
+        c, hc = settings_revision(0, rows)
+        d, hd = legal_revision(rows, parent=hc)
+        self.assertEqual(self.put_rev(c)['ok'], 1)
+        self.assertIn('different places', self.put_rev(d)['error'])
+
+    def test_settings_revision_unknown_ancestry_resolves_without_new_credit(self):
+        rows = [row(t) for t in range(21, 41)]
+        a, ha = revision(20, rows)
+        b, hb = settings_revision(20, rows, parent=ha)
+        self.assertEqual(self.put_rev(b)['ok'], 1)
+        self.assertEqual(self.credit(hb), [(21, 40, 'unknown-ancestry')])
+        self.put_st(statement(ALICE, ha, None, 21, 40))
+        self.assertEqual(self.put_rev(a)['ok'], 1)
+        self.assertEqual(self.credit(hb), [(21, 40, SID_A)])
 
     def test_a_legal_start_child_is_supply_checked_and_credited(self):
         a, ha = legal_revision([row(t) for t in range(1, 21)])
