@@ -1,4 +1,5 @@
 # The engine build this QuakeC requires.
+# Patch 1310 (native observation only): accepted shallow full-walk gravity/body use follows the existing native domain; no movement, capture/API/format/flag/tier/ranking-policy or qcbuild change. Clean Windows/ARM controls and actual primary dual-Windows delivery verified; NanoPi handoff pending. Source, receiver correction and limits: tools/p1310-gravity-shallow.md.
 # Patch 1309 (QC/shader/content only): opt-in cached-roof winter wind/thunder, native sky-portal flash/bolt and static liquid frost. Strict mesh caps, existing loading-time warm list and collision-excluded cosmetic model prefix; no global sky/world/physics change. Defaults OFF pending native appearance/MAX-FPS checks. Native pin/tag and qcbuild unchanged by this patch.
 # Patch 1308 (native/QC): independent TAS movement and held bits, supported ground/air gain guidance with fine turning, precise signed yaw cache, bound warm recipe settings and own-body view-only travel pitch. Full captured-line/section workflow remains in progress; no qcbuild bump. Final build/review/deployment provenance: tools/p1308-tas-controller.md.
 # Patch 1307 (QC/assets only): separate legacy/full and v2/half ramp-shader ABIs, choose matching blend and distinct material cache keys at map load. Old assets retain legacy mode; no added per-frame I/O/pass/sample/trace. More provisional replay bakes are separate generated content. Native pin/tag and qcbuild unchanged.
@@ -21,7 +22,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   0591e841f1505f3e6fe14c76203d4951aa06b839
+commit   f09c6b4c556870ca5fafe703a750c8dc10717621
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -33,8 +34,8 @@ commit   0591e841f1505f3e6fe14c76203d4951aa06b839
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
-tag      patch-1308
-patch    1309
+tag      patch-1310
+patch    1310
 # Patches 1305/1306 (engine common/pm_source.c): faithful existing gravity-use observation across finite native jump configurations and stock postures. Movement, capture/API/format and ranking policy unchanged. Clean Windows/ARM, acting controls and dual Windows/all12Pi native delivery verified; actual ranked/full-bank acceptance separate. Windows source7ae5d53b2 includes published P1301; Pi source76acc7c6b/tagpatch-1306 has identical mover/server inputs. Details and corrected old-manifest selector diagnosis: tools/p1306-gravity-context.md.
 # Patch 1299: initial finite nonnegative normalized-offset extension; full native delivery now superseded by the qualified 1305/1306 set. Historical proof and correction in tools/p1299-gravity.md.
 # Patches 1255/1257 (engine sv_ccmds.c pm_dettest mover-12 lines; renderer gl_mindist 2, viewmodels keep 1): installs tag patch-1257, which merges patch-1260. QC needs neither.
