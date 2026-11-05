@@ -59,6 +59,10 @@ def main():
     assert 'preview >= 2' in qc and 'missing audio must not stall later visual bursts' in qc
     assert 'lightstyle(' not in qc.split('void() Weather_StartBurst =',1)[1] # no hot lightmap writes
     assert 'EF_NOSHADOW; e.colormod' in winter and 'player/footsteps/snow%g.wav' in winter and 'for (i = 1; i <= 6;' in winter
+    surface=winter.split(' Winter_Surface =',1)[1].split('void() Winter_Load',1)[0]
+    assert '#usemods#' in surface and 'rgbgen exactvertex' in surface and 'alphagen vertex' in surface
+    assert 'clampmap ' not in surface.split('definition = sprintf',1)[1] and 'map $clamp:$nosrgb:$nearest:' in surface
+    assert 'ftesurf_colin_snow_v4_' in surface and 'EF_FULLBRIGHT' not in surface
     assert "@{ Path = 'ftesurf/sound/winter';   Filter = '*.ogg' }" in release
     result['timeline_guards']='source-structural ONLY; native preview/counters remain manual'
     g=GL()

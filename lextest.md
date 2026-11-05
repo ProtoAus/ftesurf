@@ -11,7 +11,21 @@ separately if convenient. Do not infer all old reports are fixed from no alert.
 No blanket save/TAS/noclip mute was added; neither movement formulas nor Native
 error counters changed. Old11save cases lack the data needed for causal closure.
 
-## P1327 lit snow/cap rims, Source steps and storm audio — owner check pending
+## P1332 black snow fix and quicker flashes — owner check pending
+
+Installed BOTH Windows5Nov19:05UTC and ALL12lobbies19:13UTC, exact qualified
+client9b2ba43a4470/f6ead0e677f1. Reconnect to load this client; no media change.
+
+Owner observed after P1327: Colin snowy grass is BLACK; asks whether snow relief
+should be visible. This fails native snow appearance, not the earlier isolated
+GPU arithmetic control. Flash appearance looks good (human confirmed), but
+strokes/gaps are too slow. P1332 corrects actual native sampler and baked-colour
+binding, keeps the shallow cosmetic caps/collision and speeds pulse/gap/fade by3.
+After delivery/reconnect, is that SAME grass patch visibly snowy rather than
+black, can you see a nearby cap rim, and are flashes now quick enough? No native
+FPS, measured timing, footstep or loop acceptance inferred from this feedback.
+
+## P1327 lit snow/cap rims, Source steps and storm audio — prior owner check
 
 Owner confirms the earlier Colin snow is plain/fullbright and sees no caps. That
 is real negative acceptance, not a pass of P1319's in-game appearance. New source

@@ -114,7 +114,16 @@
 - Windows235/0/6knownskips, Linux235/0/0/legacy0, reader949/0. Corpus548retains
   344faultedREC/7faultedVIEW, prior546REC/168VIEWbytes exact+2new actual clean REC.
   This is NOTclean, hard-global-budget, completecoverage, freshness or calibration.
-  Source proof only until the P1328 delivery receipt is recorded.
+  Actual backend12f7e30e accepted5Nov18:38:22UTC on actual55370fb6; onlysimcheck,
+  other83runtime/156bound origins exact,44existing schema/nonchurn and8identity
+  hashes preserved. Same-data fallback and private historical1366130688-byte DB
+  retained/NOrestore; oldCLOSED/newOPEN/fallbackCLOSED,4cron/MOMactive,5ROpins/
+  2ROruntimes/RWfilesystem proved.18:48canonical sidecar0bytes/0600/singlelink/owner
+  observed after normal activity, no forced collector/lock probe.18:49health12/
+  all12actual ftesurf@N.service units active. Wrong ROOTvsops receipt path and
+  guessed unit-name observer failures retained; NOrepeat activation/restart.
+  Installed namespace helper requires a plain direct-child generation root;
+  old and new roots are LIVEdependencies, never disposable test scratch.
 
 ## Store-only similarity bounded rotation (P1322,5Nov2026)
 
@@ -302,6 +311,20 @@
   opus/speex headers. The complete prior pacing dependency cache + proper UCRT PATH passes a header
   preflight; full probe build/run remains blocked by headroom. Preserve failures, don't disable codecs.
 - No new player data/evidence semantics, native pin/tag, QC Build or public release change.
+
+## P1332 native snow binding (5 Nov 2026)
+
+Owner P1327 feedback: black grass despite passing isolated GLSL pixel controls.
+Those inject textures/gl_Color directly and do NOT test FTE's material binding.
+Native Shaderpass_ClampMap does NOT call Shaderpass_DefineMap; using it before
+map in a program leaves one slot, overwrites roof0 and leaves snow1 unbound.
+Use `map $clamp:$nosrgb:$nearest:roof` then the albedo map. Also request #usemods
+(or !!fixed) so GenerateColourMods runs BEFORE BE_Program_Set_Attributes.
+Exactvertex + vertex alpha can bind existing IQM colours directly without a CPU
+expansion or another lighting scale. Use a new runtime shader key after changing
+bindings. Actual native parser function control: tools/test_winter_binding.py;
+image I/O is stubbed, not native gameplay. Flash appearance human-confirmed;
+black-snow/cap placement remains a human retest, no numerical timing/FPS claim.
 
 ## P1327 lit snow and owner weather pitfalls (5 Nov 2026)
 

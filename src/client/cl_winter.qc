@@ -91,11 +91,13 @@ entity(string group, string path, float zbase, float zrange) Winter_Surface =
 	if (!Snow_Exists(path) || !Snow_Exists("glsl/ftesurf_snowcover_v3.glsl")) return world;
 	grassflag = !strcmp(group, "grass") ? "#GRASS=1" : "";
 	albedo = !strcmp(group, "grass") ? "materials/nature/snowfloor001a.vtf" : "materials/nature/snowfloor003a.vtf";
-	definition = sprintf("{\ncull none\ndepthpush -2\nsort decal\n{\nprogram ftesurf_snowcover_v3#ZBASE=%.3f#ZRANGE=%.3f%s\nclampmap $nosrgb:$nearest:gfx/snowmask/%s.png\nmap %s\nrgbgen vertex\n}\n}\n", zbase, zrange, grassflag, wi_map, albedo);
+	// clampmap does not advance a program's sampler list; use two map entries.
+	// #usemods enables native colour binding, exactvertex avoids a second relight.
+	definition = sprintf("{\ncull none\ndepthpush -2\nsort decal\n{\nprogram ftesurf_snowcover_v3#usemods#ZBASE=%.3f#ZRANGE=%.3f%s\nrgbgen exactvertex\nalphagen vertex\nmap $clamp:$nosrgb:$nearest:gfx/snowmask/%s.png\nmap %s\n}\n}\n", zbase, zrange, grassflag, wi_map, albedo);
 	e = spawn(); e.classname = "winter_surface";
 	// IQM precache registers its material. Never let its missing-name fallback win
 	// the shader cache before the definition: use a distinct runtime name FIRST.
-	e.forceshader = shaderforname(strcat("ftesurf_colin_snow_v3_", group), definition);
+	e.forceshader = shaderforname(strcat("ftesurf_colin_snow_v4_", group), definition);
 	precache_model(path); setmodel(e, path);
 	e.effects = EF_NOSHADOW; e.colormod = '1 1 1'; e.scale = e.alpha = 1; // baked actual map light
 	return e;

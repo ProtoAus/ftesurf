@@ -71,8 +71,14 @@ ack-seat identity marker; old data is not regraded by a new native executable.
 - Existing acknowledged-command regression25/0, including poisoned stale tag.
 - Reader15tests/0 versus12legacy failures. Existing real legacy reports retain
   their numeric/context/SV rows and original errors; unsupported conclusions go.
-- Changed native client/server units pass actual build-flag syntax checks.
-  Full tagged builds, installation and live/owner acceptance are separate facts.
+- Two independent frozen-source reviews clear. Full tagged Windows native build
+  is clean git-8417-patch-1330-0-g538de9265 (the Makefile uses HEADcount+29).
+  Seven matching native/plugin outputs are frozen;74existing native warnings
+  unchanged with zero additions/removals; all3QC VMs0warnings. NoDeploy leaves
+  all19340old installed paths exact, zero new paths, and13shared dependency
+  sentinels exact. Initial caller MSYS argv-exclusion failure retained and fixed
+  only at that environment boundary with an acting compiler control.
+  Installation, ARM qualification and live/owner acceptance remain separate.
 
 No blanket save/TAS/noclip reporting suppression was added. Old save corrections
 remain causally unresolved; control-transition context alone is not a general

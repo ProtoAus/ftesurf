@@ -21,6 +21,10 @@
 
 ## next
 
+### P1332 Snow rendering and snappier lightning
+- Fixed black snow on Colin by correcting texture and baked-light bindings. The existing shallow snow caps remain cosmetic and do not change terrain collision.
+- Lightning strokes and the dark gaps between them are three times quicker, preserving their brightness and the thunder after each burst.
+
 ### P1330 Better prediction timing diagnostics
 - Command-tagged timing updates take priority over routine stat changes when space is available. Prediction reports now retain the timing seed and movement-step counts used to make the prediction, with clearer handling of incomplete evidence.
 
