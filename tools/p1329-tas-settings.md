@@ -64,8 +64,15 @@ body/stat acknowledgement. Legacy movement stays explicitly selected: a view-onl
 Follow click cannot silently convert it to gain GUIDE. Settled intent is flushed
 before save serialization and before editor row/dirty comparisons, after command
 arguments are owned. A closed workshop must not depend on polling or a post-save
-event to make its final grant durable. Native body/authority gates, movement, recorder formats and QC
-Build number are unchanged; no native C, pin or tag change belongs to P1329.
+event to make its final grant durable. The revision service uses the matching v4
+reader and validates every declared-supply format against its known parent's
+actual rows, including v4. Metadata remains hash-bound but earns no input credit;
+base-save and legal-start timelines remain different domains. Reader/service
+support must be installed before clients emit v4 uploads. The isolated installer
+also ships both profile modules now imported by accounts; its actual temporary
+release import check prevents depending on the surrounding checkout. Native
+body/authority gates, movement, recorder formats and QC Build number are
+unchanged; no native C, pin or tag change belongs to P1329.
 
 ## Verification
 
@@ -103,6 +110,17 @@ Build number are unchanged; no native C, pin or tag change belongs to P1329.
   control. The subject retains both declarations, reloads the actual native file,
   preserves all seven raw values and earns no input supply. Neither run opens
   the workshop; both real client/server pairs quit normally with code0.
+- Revision service suite:37 tests pass, including v4 metadata-only inherited
+  credit and identical input digests, hash tampering refusal, exact/wide/missing
+  supply declarations, legacy-parent transitions, late ancestry and legal/base
+  separation. Three known-parent supply cases act as failures before the service
+  format gate is extended. API size/storage/rate budgets are unchanged; the local
+  96000-input cap is not a promise that every file fits the existing upload budget.
+- On the NanoPi, the same37service tests and21installer tests pass. An actual
+  isolated-release import fails with the previous six-file installer, then passes
+  with both accounts profile dependencies included. The upgrade targets only the
+  TAS service: main-backend/lobby/nginx configuration and TAS state/code-list
+  paths are unchanged. These are unit/import checks, not live-upgrade evidence.
 - Existing Python revision-chain, supply, legacy and new optional-metadata tests
   pass, including metadata-only hash changes with no input-row credit.
 - Mandatory recorder tests: 949 checks, zero failures. The primary install's

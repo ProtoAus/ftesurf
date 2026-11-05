@@ -52,7 +52,9 @@ NGINX = '''location ^~ /api/tasrev/ {
 }
 ''' % PORT
 FILES = {'surfd/tasrevd.py': 'tasrevd.py', 'surfd/tasrevd_wsgi.py': 'tasrevd_wsgi.py',
-         'surfd/accounts.py': 'accounts.py', 'surfd/steam.py': 'steam.py',   # accounts imports steam
+         'surfd/accounts.py': 'accounts.py', 'surfd/steam.py': 'steam.py',
+         # accounts imports both profile queue modules, even in this isolated service.
+         'surfd/ksfprofile.py': 'ksfprofile.py', 'surfd/momprofile.py': 'momprofile.py',
          'tools/tasrev.py': 'tools/tasrev.py', 'tools/ed25519.py': 'tools/ed25519.py'}
 HEX64 = re.compile('[0-9a-f]{64}')
 
