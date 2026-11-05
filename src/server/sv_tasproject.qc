@@ -6,6 +6,8 @@
 #define TASP_MAX 96000          // ticks after the base, about 24 minutes at 15 ms
 void(entity e) SV_TASShareCancel;
 void(entity e, float argc) SV_TASShareCommand;
+float(entity e, float *rows, float base, float count, float first, float last) SV_TASRecipeFits;
+void(float *rows, float base, float first, float last) SV_TASRecipePaste;
 
 #define TASP_CPMAX 48           // checkpoints kept: auto, the head, named
 #define TASP_CPEVERY 256        // auto spacing, doubled until about 32 fit
@@ -64,17 +66,7 @@ float(entity e) SV_TASPSlot =
 	return s;
 };
 
-float(string n) SV_TASPNameOK =
-{
-	local float i, c;
-	if (strlen(n) < 1 || strlen(n) > 32) return FALSE;
-	for (i = 0; i < strlen(n); i = i + 1)
-	{
-		c = str2chr(n, i);
-		if (!((c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95 || c == 45)) return FALSE;
-	}
-	return TRUE;
-};
+float(string n) SV_TASPNameOK = { return FS_TASRecipeNameOK(n); };
 
 string(string n) SV_TASPPath = { return sprintf("data/tasproj/%s/%s.tasp", mapname, n); };
 
@@ -205,7 +197,7 @@ float(string tok, float lo, float hi, float whole) SV_TASPNum =
 	return TRUE;
 };
 
-// Native rows need current TAS-body admission, not an earlier checkpoint pool.
+// Current-body decode admission only: first bad row (1-based), or zero if valid.
 float(entity e, float *buf, float n) SV_TASPValidate =
 {
 	local float i, b;
@@ -1454,11 +1446,19 @@ void(entity e, string name, string cpname, string expected, float first, float l
 		SV_TASPReadFree(); return;
 	}
 	if (first > 0)
-	if (tpr_ver == TASP_LEGAL || !FS_TASEditValue(field, value) || first < tpr_base + 1 ||
-		last < first || last > tpr_base + tpr_n || first != floor(first) || last != floor(last))
 	{
-		sprint(e, PRINT_HIGH, "tas project: unsupported historical edit range; nothing moved\n");
-		SV_TASPReadFree(); return;
+		bad = (tpr_ver == TASP_LEGAL || first < tpr_base + 1 || last < first ||
+			last > tpr_base + tpr_n || first != floor(first) || last != floor(last));
+		if (!bad)
+		{
+			if (field == TAS_RECIPE_FIELD) bad = !SV_TASRecipeFits(e,tpr_buf,tpr_base,tpr_n,first,last);
+			else bad = !FS_TASEditValue(field,value);
+		}
+		if (bad)
+		{
+			sprint(e, PRINT_HIGH, "tas project: unsupported historical edit range; nothing moved\n");
+			SV_TASPReadFree(); return;
+		}
 	}
 	// P1100: a legal start has no base save; it never takes the base-save path below.
 	if (tpr_ver == TASP_LEGAL) { SV_TASLegalLoad(e, name, cpname); return; }
@@ -1599,7 +1599,8 @@ void(entity e, string name, string cpname, string expected, float first, float l
 	SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE, FALSE);
 	if (first > 0)
 	{
-		for (k = first; k <= last; k = k + 1)
+		if (field == TAS_RECIPE_FIELD) SV_TASRecipePaste(tasp_buf[s],e.tasp_base,first,last);
+		else for (k = first; k <= last; k = k + 1)
 			SV_TASInputChange(tasp_buf[s], (k - e.tasp_base - 1) * TAS_INPUT_STRIDE, field, value);
 		e.tasp_signed = e.tasp_made = 0; // original hash is a parent, never a signature on this preview
 	}

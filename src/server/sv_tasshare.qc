@@ -129,6 +129,8 @@ float(string path) SV_TASShareOccupied =
 {
 	local float f;
 	local searchhandle h;
+	if (!checkbuiltin(tsh_pathstatus) || !checkbuiltin(tsh_fexists) || !checkbuiltin(tsh_location))
+		return TRUE; // absence cannot be established without all metadata readers
 	if (tsh_pathstatus(path) != 0) return TRUE; // occupied OR metadata error
 	if (tsh_fexists(path)) return TRUE;
 	if (strcmp(tsh_location(path,2),"")) return TRUE;

@@ -1455,6 +1455,10 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	*/
 	Vote_Track(evtype, scanx);      // Patch 372: observes only -- the draft below swallows key-ups
 	MPad_Track(evtype, scanx, chary);   // Patch 390: observes only -- the draft swallows deltas
+	if (evtype == IE_KEYDOWN)
+		if (TASTimeline_RecipeRepeat(scanx, chary)) return TRUE;
+	if (evtype == IE_KEYUP)
+		if (TASTimeline_RecipeInput(evtype, scanx, chary)) return TRUE;
 	if (evtype == IE_KEYUP)
 	if (Timer_ResumeInputKey(evtype, scanx)) // owned releases; observers still saw both edges
 		return TRUE;
@@ -1469,6 +1473,9 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP)
 	if (HUD_EditInputEvent(evtype, scanx, chary, devid))
 		return TRUE;
+	// A focused name gets typing before chat binds, not the whole TAS panel.
+	if (evtype == IE_KEYDOWN)
+		if (TASTimeline_RecipeInput(evtype, scanx, chary)) return TRUE;
 	if (Chat_InputEvent(evtype, scanx, chary, devid))
 		return TRUE;
 
@@ -1710,6 +1717,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputEvent =
 
 	Watch_Track(evtype, scanx, chary); // Observes releases even when an earlier panel takes them.
 	Rewind_Track(evtype, scanx, chary); // Patch 477: ahead of every handler that may take a press
+	TASTimeline_RecipeTrack(evtype, scanx); // lossless supported-domain key pairing, not provenance
 	Chat_Track(evtype, scanx);      // round 25: and which presses are repeats, for the draft
 
 	// Patch 617: the Steam link box, ahead of everything, and ONLY for an event
@@ -1772,6 +1780,9 @@ float(float evtype, float scanx, float chary, float devid) CL_InputEvent =
 	// passive-key path (F1 taking a cursor) pairs the same way.
 	if (took && bit && evtype == IE_KEYDOWN)
 		cl_btn_taken = cl_btn_taken | bit;
+	// Stop later QC handlers, not native stored releases: CSQC can miss the
+	// original press behind a native menu or read-only console.
+	if (evtype == IE_KEYUP && tast_recipe_released) return FALSE;
 	return took;
 };
 
@@ -1797,10 +1808,12 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 	{
 		if (chary < 32 || chary > 126)
 			return TRUE;                // the fields are ASCII
+		TASTimeline_RecipeHasFocus(); // abandon stale focus if chat/another cursor owns it
 		if (HUD_EditPaste(chary)) return TRUE;   // Patch 901: the ghost offset field
 		if (Account_Paste(chary)) return TRUE;
 		if (Chat_Paste(chary)) return TRUE;
 		if (ZoneEdit_Paste(chary)) return TRUE;
+		if (TASTimeline_RecipeInput(IE_KEYDOWN,0,chary)) return TRUE;
 		if (Profile_Paste(chary)) return TRUE;
 		Av_Paste(chary);
 		return TRUE;

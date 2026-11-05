@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## P1323 named TAS input templates - pending after installation
+
+After matching native/progs installation, play/pause a short familiar line, select
+a small Timeline span and open Project. Type a recipe name, Save selected input,
+and Preview named recipe; Discard it and resume. Is name focus/Enter/Escape clear,
+and can you return to playing without stuck movement or losing the future line?
+A synthetic-widget check passed but is not owner feel acceptance. These templates
+copy captured inputs, not procedural optimal-strafe intent or the shared world.
+The separate genuine-device hosted Sign check below is still unperformed; this
+feature neither substitutes scripted signing nor clears that acceptance.
+Small keyboard check: on flat ground, hold W, focus the recipe name, release W,
+close the panel and resume. It must not keep walking from a latched bind. Type a
+name containing T with T bound to chat: it should stay in the name, not open chat.
+Synthetic input-chain and owned-window native binding handoffs passed; actual
+hardware feel is still unconfirmed.
+
 ## P1321 expected-reset report history — small owner check pending
 
 After the corrected client is delivered, on an ordinary higher-latency connection

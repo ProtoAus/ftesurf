@@ -20,6 +20,7 @@ vector() HUD_LiveVel;
 void() TASTimeline_Reset;
 void(float first) TASTimeline_Request;
 void() TASTimeline_Pump;
+float(float evtype, float scanx, float chary) TASTimeline_RecipeInput;
 void(vector at, float width, float tsz, float hint, float row) TASTimeline_Draw;
 void(vector at, float width, float tsz, float hint, float row) TASProject_Draw;
 void() TASProject_SignPress;
@@ -287,13 +288,15 @@ void(vector scr) TASUI_Draw =
 float(float evtype, float scanx, float chary, float devid) TASUI_Input =
 {
 	if (!tasu_open) return FALSE;
-	if (evtype==IE_KEYDOWN && scanx==K_ESCAPE) { TASUI_Close(); return TRUE; }
 	if (evtype==IE_MOUSEABS) { sui_input_event(evtype,scanx,chary,devid); return TRUE; }
 	if (scanx==K_MOUSE1 || scanx==K_MOUSE2)
 	{
 		if (evtype==IE_KEYDOWN) _sui_mouse_move(_cursor_position,FALSE);
+		TASTimeline_RecipeInput(evtype,scanx,chary);
 		if (evtype==IE_KEYDOWN && scanx==K_MOUSE1 && tasu_tab==TAS_TAB_PROJECT && sui_is_hovered("tasp_sign")) TASProject_SignPress();
 		sui_input_event(evtype,scanx,chary,devid); return TRUE;
 	}
+	// Keyboard name ownership runs before chat in CL_InputChain, including closed-panel ups.
+	if (evtype==IE_KEYDOWN && scanx==K_ESCAPE) { TASUI_Close(); return TRUE; }
 	return FALSE;
 };

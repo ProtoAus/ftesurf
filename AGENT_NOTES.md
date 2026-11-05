@@ -1,5 +1,56 @@
 # AGENT_NOTES.md
 
+## P1323 named-input validation and corpus observer pitfalls (5 Nov 2026)
+
+- Independent source review caught three pre-shipment defects: unowned key-ups
+  strand the engine's stored release; a focused name must get typing before chat
+  binds, but not before an existing draft/higher editor; fopen failure is not
+  confirmed path absence. Untreated8/4; corrected16/0 uses existing key/widget
+  probes, actually saves a name containing chat-bound T, and checks an owned
+  read-denied/write-accessible stage with exact ACL restoration. This is Windows
+  CSQC-chain/namespace coverage, NOT hardware movement, genuine signing or a
+  new POSIX overwrite reproduction. Keep owned releases across tab/blur/close,
+  and do not adopt an observed pre-focus auto-repeat. A second review caught the bounded
+  observer's full-to-free recovery: it inserts an omitted repeat as apparently
+  fresh. Untreated9/1 acts that case; corrected19/0 combines it with ordinary
+  input/chat/name/Windows-stage checks and a fresh-field positive control.
+  Recipe tracking now indexes scans1..511 in2KiB VM memory; unsupported scans
+  are never acquired. A null allocation result latches disabled; a native
+  allocation error can abort CSQC. Neither path is executed OOM coverage.
+  A third review caught native-menu observation gaps and later-capture repeat
+  theft. The owned-window native +binding control actually stays held untreated;
+  the corrected7/0 handoff arm executes its stored -binding, blocks the repeated
+  owned key from capture and actually captures a fresh key instead. Owned ups
+  stop later QC handlers but return false to native stored-release processing;
+  a first-observed down is not native freshness. Combined19/0 also passes with
+  those native-return expectations. Hardware and VM-reload remain unmeasured.
+  The conservative import occupancy helper now guards
+  its own native capabilities so another caller cannot treat lookup failure as
+  absence. Check BOTH final and .new before freeze/write.
+- Clear/type a name in one input batch in the observer: drawing an empty name
+  between two commands reinstates line1. A12-control partial observer saved the
+  actual line1-prefixed name, not the expected filename; retain it as failed.
+
+- `SV_TASPValidate` returns the first BAD row (one-based), or zero on success;
+  it is not a success boolean. A positive fresh-base template falsifier caught
+  an inverted caller before delivery. Native decode admission does not move a body.
+- Canonical `.tasp` `i` lines have seven values after `i`; their ticks are implicit
+  consecutive rows after the base. There is no explicit tick column or per-usercmd
+  duration. A selected source tail must be decoded relative to its own base,
+  then copied into the current target's equal-length span, never import its base.
+- Existing typed editor actions share250ms and recipe actions350ms gates. A
+  rapid raw `undo2` immediately after Keep can be refused correctly. Respect the
+  same gate in the actor rather than treating a silent/late observer as a pass.
+- A longer physical fixture run can re-enter its start and stop recording even
+  after an earlier `cmd timer` proved running. Native supported/base-available
+  status alone is NOT a paused running attempt. The saved eight-row source tail
+  and fresh target prove cross-base future preservation without a long-run rig.
+- Corpus comparisons must key stored findings by record path, not depend on
+  selector concatenation order. The retained P1314 stored findings contain352
+  fault entries, despite its summary reporting351; this change's same544 input/view
+  byte sets reproduce the exact per-record findings and352 entries. Preserve the
+  old summary and failed comparison; do not repair player data or call it clean.
+
 ## Store-only similarity bounded rotation (P1322,5Nov2026)
 
 - Boolean cursor ORDER BY forces a full eligible-candidate sort before LIMIT.

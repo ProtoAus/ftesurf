@@ -1,4 +1,18 @@
 // P1065: console numbers are plain decimals, never stof's malformed=>zero.
+#define TAS_RECIPE_FIELD 9       // internal full-row template transform, not a typed field
+
+float(string name) FS_TASRecipeNameOK =
+{
+	local float i, c;
+	if (strlen(name) < 1 || strlen(name) > 32) return FALSE;
+	for (i = 0; i < strlen(name); i = i + 1)
+	{
+		c = str2chr(name,i);
+		if (!((c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95 || c == 45)) return FALSE;
+	}
+	return TRUE;
+};
+
 float fs_tas_number;
 float(string text) FS_TASNumber =
 {
@@ -44,6 +58,7 @@ string(float field) FS_TASEditName =
 	if (field == 6) return "jump";
 	if (field == 7) return "duck";
 	if (field == 8) return "walk";
+	if (field == TAS_RECIPE_FIELD) return "template";
 	return "unchanged";
 };
 
