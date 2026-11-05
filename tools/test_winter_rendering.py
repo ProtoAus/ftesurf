@@ -35,10 +35,12 @@ class WinterRenderingTests(unittest.TestCase):
 
     def test_geometry_lift_not_only_driver_depth_bias(self):
         qc=(ROOT/'src/client/cl_rampwear.qc').read_text()
-        self.assertIn('rw_pos[t * 3 + j] + normalize(rw_nrm[t]) * 0.75', qc)
+        self.assertIn('rw_pos[t * 3 + j] + normalize(rw_nrm[t]) * rw_lift', qc)
+        self.assertIn('"r_rampwear_lift", "2"', qc)
+        self.assertIn('rw_rad[s] = stof(argv(4)) + rw_lift;', qc)
         for n in [(0,0,1),(.8,0,.6),(0,-.6,.8)]:
-            lifted=tuple(x*.75 for x in n)
-            self.assertAlmostEqual(sum(x*y for x,y in zip(n,lifted)), .75)
+            lifted=tuple(x*2 for x in n)
+            self.assertAlmostEqual(sum(x*y for x,y in zip(n,lifted)), 2)
 
     def test_weather_has_late_identity_retry_and_persistent_sky(self):
         qc=(ROOT/'src/client/cl_weather.qc').read_text()

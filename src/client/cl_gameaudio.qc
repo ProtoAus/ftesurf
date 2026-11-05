@@ -79,17 +79,40 @@ float(vector feet) GA_Water =
 	return level;
 };
 
-float(vector feet, float water, float volume) GA_Foot =
+float() Winter_ThemeActive;
+float() GM_IsSnowFootstep;
+
+float(vector feet, float water, float volume, float onlysnow) GA_Foot =
 {
 	local float emitted;
 	local int pick;
-	if (!ga_css || volume <= 0 || cvar("cl_game_sfx") <= 0) return FALSE;
+	local string wave;
+	if (volume <= 0) return FALSE;
+	if (!Winter_ThemeActive())
+		if (!ga_css || cvar("cl_game_sfx") <= 0) return FALSE;
 	// Coalesce a step/landing followed immediately by the jump-contact edge.
 	if (time - ga_footat < 0.12) { ga_merged = ga_merged + 1; return FALSE; }
 	pick = (int)(ga_footvariant % 2);
 	if (random() < 0.5) pick += 2i;
-	if (water) emitted = GA_Play(sprintf("player/footsteps/slosh%g.wav", ga_variant), volume);
-	else emitted = GA_Play(GM_Sound(feet, (float)pick), volume);
+	if (water)
+	{
+		if (onlysnow) return FALSE;
+		emitted = GA_Play(sprintf("player/footsteps/slosh%g.wav", ga_variant), volume);
+	}
+	else
+	{
+		wave = GM_Sound(feet, (float)pick);
+		if (GM_IsSnowFootstep())
+		{
+			if (cvar("cl_game_sfx") > 0) volume = volume * cvar("cl_game_sfx");
+			emitted = GA_Emit(wave, volume);
+		}
+		else
+		{
+			if (onlysnow) return FALSE;
+			emitted = GA_Play(wave, volume);
+		}
+	}
 	if (emitted)
 	{
 		ga_footvariant = (ga_footvariant + 1) % 2;
@@ -110,7 +133,7 @@ void() GA_Frame =
 	local vector feet, vel, delta;
 	local float grounded, water, speed, swimspeed, jumpseq, jumped, volume, ducked, landvol;
 
-	if (cvar("cl_game_sfx") <= 0 || !LT_StatsAreMine() || rec_gh_on || rec_wt_on ||
+	if ((cvar("cl_game_sfx") <= 0 && !Winter_ThemeActive()) || !LT_StatsAreMine() || rec_gh_on || rec_wt_on ||
 	    getstatf(STAT_FS_SPEC) || rw_on || getstatf(STAT_FS_MOVETYPE) != MOVETYPE_WALK)
 	{
 		ga_valid = FALSE;
@@ -156,7 +179,7 @@ void() GA_Frame =
 	// The authoritative edge survives a land+jump between render samples.
 	if (jumped && water < 2)
 	{
-		if (GA_Foot(feet, water, 0.35 + 0.25 * bound(0, speed / 250, 1))) ga_jumps = ga_jumps + 1;
+		if (GA_Foot(feet, water, 0.35 + 0.25 * bound(0, speed / 250, 1), FALSE)) ga_jumps = ga_jumps + 1;
 		ga_stride = 0;
 		ga_stepat = time + 0.18;
 	}
@@ -168,7 +191,7 @@ void() GA_Frame =
 		if (ga_vel_z < -580) landvol = 1;
 		else if (ga_vel_z < -350) landvol = max(volume, 0.85);
 		else landvol = volume;
-		if (GA_Foot(feet, water, landvol)) ga_lands = ga_lands + 1;
+		if (GA_Foot(feet, water, landvol, FALSE)) ga_lands = ga_lands + 1;
 		ga_stepat = time + 0.15;
 	}
 	delta_z = 0;
@@ -178,12 +201,12 @@ void() GA_Frame =
 			ga_swims = ga_swims + 1;
 		ga_stepat = time + 0.65;
 	}
-	else if (grounded && volume > 0)
+	else if (grounded && (volume > 0 || Winter_ThemeActive()))
 	{
 		ga_stride = ga_stride + vlen(delta);
 		if (ga_stride >= 86 && time >= ga_stepat)
 		{
-			if (GA_Foot(feet, water, volume)) ga_steps = ga_steps + 1;
+			if (GA_Foot(feet, water, max(volume, 0.18), volume <= 0)) ga_steps = ga_steps + 1;
 			ga_stride = 0;
 			ga_stepat = time + 0.18;
 		}
