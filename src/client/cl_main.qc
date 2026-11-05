@@ -203,6 +203,7 @@ void() CSQC_WorldLoaded =
 	// 464 maps and had never drawn anything.  cl_emit.qc.
 	Emit_LoadFromWorld();
 	Winter_Load();                 // P1302: bounded map setup only
+	Weather_Load();                // P1309: opt-in, cached geometry/roof/audio only
 	Inv_SantaLoad();               // P1304: warm model/entity, never equip-time disk I/O
 	Sun_LoadForMap();               // Patch 874
 	Ropes_LoadForMap();
@@ -422,6 +423,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	RampWear_Init();                // P1278
 	Snow_Init();                    // P1286
 	Winter_Init();                  // P1302
+	Weather_Init();                 // P1309
 	Snds_RegisterCvars();           // build 66, env_soundscape
 	GA_Register();                 // local movement Foley from mounted CSS
 	MA_Register();                 // opt-in local altitude tone and A/D drums
@@ -924,7 +926,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	print("FTESurf CSQC loaded\n");
 };
 
-void() CSQC_Shutdown = { TASUI_Close(); TASShare_Reset(); TimeScale_PredictRelease(); TimeScale_ThreadRelease(); MA_Shutdown(); Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
+void() CSQC_Shutdown = { Weather_Free(); TASUI_Close(); TASShare_Reset(); TimeScale_PredictRelease(); TimeScale_ThreadRelease(); MA_Shutdown(); Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
 
 /*
   Forced view angles from the server -- svc_setangle, its relative form, and
@@ -2055,6 +2057,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	RampWear_Frame();               // P1278: its own map latch, whatever vbsp_emit says
 	Snow_Frame();                   // P1286
 	Winter_Frame();                 // P1302: capped props/mist, no per-frame traces
+	Weather_Frame();                // P1309: one optional frost mesh, transient sky flash
 	Paint_Frame();                  // Patch 772: the camera is final; the world pass draws it
 	Share_Frame();                  // Patch 777: the pick reads the same camera
 	Archive_ClientFrame();

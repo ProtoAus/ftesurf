@@ -1,5 +1,32 @@
 # AGENT_NOTES.md
 
+## P1309 optional weather — source/data, native acceptance pending (4 Nov 2026)
+
+- Existing Snow/Winter helpers are NOT interchangeable signatures: Winter_Finite
+  takes a VECTOR; weather uses its own scalar finite bound. Native fullbright is
+  `effects = EF_FULLBRIGHT | EF_NOSHADOW`, NOT nonexistent RF_FULLBRIGHT. An early
+  unknown enum caused downstream blank include/trail errors; fixing OUR first
+  error removed the cascade. Do not repair untouched trail/rewind code for it.
+- Native binary file read is already declared: one fread into capped memalloc
+  after fgets consumes the small text header. CPU roof data is little-endian F32,
+  max256x256; no large QC globals/token loops. Target Windows/ARM are little-endian.
+- Keep submitted sound gain separate from evolving gain: at high FPS each step
+  can be below the update threshold. Comparing only consecutive steps would leave
+  the loop stuck quiet. Last-submitted gain accumulates the delta correctly.
+- Native default sv_prop_hull_exclude already includes models/gibs/. New visual
+  weather IQMs use models/gibs/winterweather/ to avoid useless convex decomposition;
+  do NOT change the live worker-read cvar. Custom user exclusion lists can differ.
+- Frost570sky/234ice; Christmas1103ice,6306sky HELD by4096cap; Bluewinter0eligible
+  and skipped. Conservative source caps are NOT a measured frame-time budget.
+- Producer's gfx/snowmask PNGs are COARSE128-unit scaffolding for CPU audio LUTs.
+  DO NOT SHIP THEM over existing fine32-unit falling-snow masks. Only weather
+  roof/IQM paths plus original PCM/PNGs/shaders/warm list are delivery candidates.
+- Native sky has no invented sky-colour uniform. Actual portal mesh depth-test
+  preserves Milk/default skies without global override. One sparse original bolt
+  texture rides the SAME draw, not an extra fullscreen pass/procedural pixel noise.
+- Existing loading-time warm list adds base/fog ice+mist and sky. Cold no-hitch,
+  native appearance/audio and moving-view FPS are PENDING; weather/mist defaultOFF.
+
 ## P1305/P1306 native observation and active-cohort discovery (4 Nov 2026)
 
 Both Windows installs and all12Pi native/plugin pairs are delivered; exact source,

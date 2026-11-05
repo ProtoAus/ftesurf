@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## P1309 weather / P1302 mist — pending native look, audio and feel
+
+Small mist check requested: on Frost, `r_mist 1`; is mist visible near lights,
+and does turning/moving still feel smooth? No confirmation yet; default staysOFF.
+Weather source/data and all3 zero-warning QC builds pass, NOT native rendering.
+After actual candidate delivery, set `r_weather 1` BEFORE loading Frost, not in
+a timed line. Check the water frost/shine, then `r_weather_test 1` for one sky-only
+flash/fork followed by delayed thunder. Cross a roof edge for wind crossfade.
+`r_weather_flash 0` removes flashing; `r_weather_audio 0` removes only this layer;
+`r_weather 0` is the immediate control. Report clipping/sorting, odd volume or a
+hitch. Lava still harms; the provisional bakes contain water, so an actual lava
+look remains untested. Christmas sky is cap-held; Bluewinter has no weather mesh.
+Native/cold/moving-view MAX-FPS remains pending, not inferred from source caps or
+an install. Keep4096MiB/quiet launch guard; don't repeat an unchanged blocked wait.
+Owner observations are valid for what was seen/heard/felt, not numeric FPS.
+
 ## P1307 ramp asset pairing / extra maps — pending, not visually accepted
 
 A small local Frost look was already requested; no owner confirmation yet.

@@ -21,6 +21,12 @@
 
 ## next
 
+### P1309 Optional winter weather preview
+- An opt-in winter preview adds crossfaded outdoor/sheltered wind, delayed thunder and a short sky-only flash with lightning. It stays off pending moving-view checks.
+- Frost and Christmas have provisional static liquid frost layers. Contents, collision, movement and lava damage are unchanged; this does not make liquids safe to walk on.
+- Sky lightning is previewed on Frost. Christmas's larger sky mesh is held out by the sizing cap; Bluewinter has no eligible world sky/liquid mesh.
+- Winter shader variants join the loading-time warm list rather than deliberately waiting for the first mist puff or storm.
+
 ### P1307 Ramp marks across client updates
 - Ramp marks keep their intended brightness when client files update at different times; older shader files retain the previous rendering mode.
 - Additional existing replays drive provisional ramp-mark bakes for Frost, Simple and Garden. The much larger Christmas overlay stays staged until its moving-view cost is checked.

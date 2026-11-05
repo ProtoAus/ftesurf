@@ -1,5 +1,11 @@
 # BACKLOG.md
 
+## P1309 winter weather preview: explicit coverage residuals
+- `tools/winter_weather.py:meshes`: Christmas's6306sky triangles exceed conservative4096cap; hold that sky ONLY, not ice/audio. Falsifier for a later exact simplification/budget decision: native portal boundaries and moving-view control, no filling non-sky gaps or silently raising the cap.
+- `surfaces`: world-model upward static liquid faces only; brush entities/moving liquids and actual lava-map appearance remain untested. Falsifier: a chosen event map with these surfaces, correct frost/sorting plus unchanged contents/movement/damage.
+- `Weather_Outside`:128-unit existing roof-clipper grid, no prop/displacement/turned-mover acoustic occlusion. Falsifier: walk under a prop-only roof or across a thin edge and listen; don't claim this coarse artist cache is physical acoustic simulation.
+- Bluewinter has no eligible world sky/liquid and is skipped. Falsifier for adding it: an actual acting geometry/exposure source, not an all-zero/no-file success. Native visual/audio/FPS acceptance belongs in lextest.md; preview defaultsOFF.
+
 ## P1301 roof eye blend (5 Nov): review residuals (display only)
 - At a roof STEP (not a slope) the blended eye drops up to one tick late (P917 rose up to one tick early on the way out); with the 62-unit hull it can sit about 2 units into the lower roof for part of a tick. A render-position trace would settle it; not seen in play.
 - A frame that runs no prediction pass and no extrapolation reads the previous frame's global pmove for the roof inputs (P917's, mostly QW demo playback); P1301 adds the kept eye as one more trigger, now behind its feet check.

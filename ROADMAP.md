@@ -13,16 +13,19 @@ Provisional maps chosen with owner permission: surf_christmas, surf_frost and
 surf_bluewinter. The final event list can be changed later. Remaining additions
 below were NOT implemented by the ramp/knife/sky follow-up P1300. Snow cover is already
 reserved to ftesurf-e2 under P1287: coordinate that work rather than shipping a
-second competing world-shader override.
+second competing world-shader override. P1309 now implements the optional
+cached-roof audio / portal lightning / static liquid frost preview below, with
+zero-warning QC and offline positive controls. It is NOT native-accepted or
+installed merely because it compiled; default staysOFF. Details: tools/p1309-weather.md.
 
 - Accumulation: bake static sky-exposed upward surfaces/ledge caps per map;
   add hand-selected sheltered corners/rooms only on nominated maps. Use mesh
   or material masks, no runtime snow physics, full-map voxelization or per-frame
   roof traces. Preserve visibility/collision and show effect-off controls.
-- Frozen water/lava: an event-only visual ice/frost skin. Do NOT change liquid
-  contents, collisions, movement or damage rules without a separate gameplay
-  decision. Water/lava coverage, transparent sorting, moving surfaces and
-  recognizability each need an in-game check.
+- Frozen water/lava: P1309 adds an opt-in static upward world-liquid coat, one
+  mesh with a lava flag and cheap view highlight. Actual Frost234/Christmas1103
+  water triangles prepared. Contents/collisions/movement/damage unchanged;
+  coverage/sorting/movers and a real lava-map look still need native checks.
 - Snowmen: licensed candidate FOUND: [Kenney Holiday Kit](https://kenney.nl/assets/holiday-kit)
   (bundled CC0 license checked), snowman 892 triangles / top-hat variant 1110.
   P1302 converts these plus two trees and two gifts to native IQMs and adds
@@ -30,20 +33,22 @@ second competing world-shader override.
   renderer/placement acceptance remains pending despite candidate installation; the black top
   hat is not the requested Santa hat. Source/provenance:
   [tools/winter-assets.md](tools/winter-assets.md).
-- Winter audio: licensed/original outside wind and sheltered ambience, selected
-  from the existing sky/roof mask, crossfaded without per-frame file loads. Add
-  nearby/distant thunder with delayed playback and preloaded sounds.
-- Sky lightning: sky-only flash plus a few short bolt ribbons, not a full-world
-  relight or reflection rebuild. Respect reduced-flash/off settings; verify that
-  visualizer and map/default skies both return to their prior state.
+- Winter audio: P1309 original preloaded PCM outside/sheltered wind and delayed
+  outside/muffled thunder, crossfaded from capped bulk-read roof LUT without
+  per-frame file loads/traces or existing soundscape mutation. Native audio pending.
+- Sky lightning: P1309 one actual portal mesh, baked sparse fork on the SAME draw,
+  short capped/off-able flash; no full-world relight/capture/global sky override.
+  Frost570tri acts in source data; Christmas6306tri held by4096cap, Bluewinter no
+  eligible geometry. Milk/default sky and native frame-time checks remain pending.
 - Atmospheric smoke/mist/light shafts: independently authored, bounded billboard
   or slice approximation near selected emitters/lights, distance/PVS culled and
   capped for overdraw. No full-level volumetric simulation, per-particle dynamic
   light query or reflection capture. The linked Admer456/halflife-smoke README
   uses Valve SDK terms limited to modified Valve games on Half-Life; do not port
   its implementation into FTE without a compatible license grant.
-- More demo coverage: provisional maps approved; use the existing bounded
-  collector for genuinely NEW inputs. Five real local-replay bakes now INSTALLED
+- More demo coverage: provisional maps approved. Optional additional fresh
+  inputs use the existing bounded collector; fresh-online downloads were not an
+  original delivery requirement. Five real local-replay bakes now INSTALLED
   on both Windows/Pi use315 replay instances:Colin77,Classics370,Frost2,Simple125,
   Garden41. These are NOT newly downloaded demos or unique players. Christmas10
   also baked but its8024tri (one-ring5840) overlay stays staged for moving-view
