@@ -81,7 +81,27 @@ Private local fixture identities/logs are NOT public export inputs.
 
 ## Delivery
 
-Pending: commit inspected asset-only change, copy only the committed warm seed
-to both Windows gamedirs, retain exact predecessors, and verify destination
-hashes. No engine/progs/config/backend or lobby swap is needed for this
-client-local data file. Native probe remains separate and must not be shipped.
+Implemented and pushed: mod feature `a326b27c`, integrated without losing the
+published P1310 native provenance at `5866339a`; engine journal `d9c0a54ba`.
+
+Installed **only** the committed seed from `5866339a` at
+2026-11-05T00:43:51Z into BOTH:
+- `C:/FTESurf/ftesurf/glsl/warmseed.txt`
+- `C:/FTEQuake/ftesurf/glsl/warmseed.txt`
+
+Both SHA256:
+`eeaa4a9b368fd96b7940d98e7f04c887fdc540066b22aa527bbd8d26e387529f`.
+Both predecessors were the exact already-published P1309 seed, SHA256
+`16035db3e310e61239545306bba9795d30ff03fb3191e90b0e6aaf87510531a3`;
+all its weather records remain intact. Exact rollback copies and UTC receipt are
+under task `artifacts/seed-preimages/` and `artifacts/seed-delivery.json`.
+Fourteen actual executable/plugin/progs/config files hashed unchanged across
+the 0.13-second file transaction. The owned rig lock was released immediately.
+
+Destination bytes are verified; isolated route behavior was verified as above.
+A fresh actual-install client restart/behavior check remains pending headroom
+or owner confirmation. The loader reads its seed once per process, so restart
+the client when convenient; a map change in an already-running client need not
+reread the file. No process was killed/restarted, and no engine, progs, settings,
+backend, lobby or release files were deployed. Native probe remains separate
+and must not be shipped. The larger first-use hitch remains open, not fixed.
