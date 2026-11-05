@@ -1,5 +1,20 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
+## Strict pre-run map readiness — partial, requested 4 Nov 2026
+
+Owner asked whether shaders/assets can all be prepared before a run. P1311 seeds
+three missing permutations on Boreas/Demise; P1318 removes the separate false
+first-view lightmap rebuild and is installed. Neither is a universal readiness
+contract: native GLSL warming has a two-second budget, and late-created programs,
+resources and driver work can still be deferred. No settings/quality downgrade.
+A stricter mode remains unbuilt: first define the finite material/permutation/
+resource closure and failure/timeout behavior rather than removing bounds and
+risking an unbounded load. Falsifier: fresh-client first traversal of those routes,
+with preparation complete before timer start, separately count late compile,
+allocation/upload and draw stalls; test a deliberate missing permutation and an
+exhausted budget. Ordinary scene cost and OS scheduling are not readiness passes.
+Evidence/limits: tools/p1311-map-prewarm.md and tools/p1318-lightmap-first-view.md.
+
 ## Christmas environment and cosmetics — requested 4 Nov 2026
 
 The falling-snow event exists (P1286). P1302 implements a small licensed native
