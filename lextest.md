@@ -2,6 +2,9 @@
 
 ## P1332 black snow fix and quicker flashes — owner check pending
 
+Installed BOTH Windows5Nov19:05UTC and ALL12lobbies19:13UTC, exact qualified
+client9b2ba43a4470/f6ead0e677f1. Reconnect to load this client; no media change.
+
 Owner observed after P1327: Colin snowy grass is BLACK; asks whether snow relief
 should be visible. This fails native snow appearance, not the earlier isolated
 GPU arithmetic control. Flash appearance looks good (human confirmed), but

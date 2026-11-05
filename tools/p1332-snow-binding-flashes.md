@@ -58,9 +58,20 @@ ordinary interval and post-final thunder0.8..3.1s remain unchanged.
 
 ## Delivery and next small owner check
 
-Deployment provenance will be appended after actual guarded client-only delivery.
-Use the released-native/API-qualified tree, preserve held native/QW/menu/backend,
-owner config, media and player data. Ordinary beta delivery, NOT a new release.
+Delivered5Nov2026: feature `d231e515f979493ea1864e7d8004785ab2d41d2c`,
+qualified `9b2ba43a4470e7e3ca9880847dd2739df7a4b722` on the released native/API
+base. BOTH Windows19:05:06UTC: client DAT/LNO only,4targets exact,41protected
+native/server/menu/config/fine-mask paths unchanged at publication; both caches
+seeded as b11ea2a0.dat. No runtime media delta.
+
+ALL12lobbies19:13:56UTC: original client-only transaction exit0,12new epochs,
+zero skipped. Independent readback19:14:35UTC verified exact current epochs,
+client/predecessor and held native/server/menu/backend; previous8media remain
+exact. All47,452pre-existing protected runtime entries unchanged; direct
+health200/ok/lobbies12 and maintenance-lock release verified. Fresh source/stat-
+bound current preimages were verified ON/OFFBOX before canonical staging.
+No second activation/recovery restart, native/server/menu/backend/media/config/
+physics/evidence/Build change. Ordinary beta delivery, NOT a published release.
 
 After delivery/reconnect: is the SAME Colin grass patch visibly snowy rather than
 black, is a nearby cap rim visible, and are flashes now quick enough? Existing
