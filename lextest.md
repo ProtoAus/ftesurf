@@ -15,6 +15,40 @@ should lose its saved turning recipe. Basic usability/feel still needs this huma
 check; simulated widgets and native counter/body checks do not substitute for it.
 Contact sections/next-ramp constrained solving remain a separate unfinished phase.
 
+## P1332 black snow fix and quicker flashes — owner check pending
+
+Installed BOTH Windows5Nov19:05UTC and ALL12lobbies19:13UTC, exact qualified
+client9b2ba43a4470/f6ead0e677f1. Reconnect to load this client; no media change.
+
+Owner observed after P1327: Colin snowy grass is BLACK; asks whether snow relief
+should be visible. This fails native snow appearance, not the earlier isolated
+GPU arithmetic control. Flash appearance looks good (human confirmed), but
+strokes/gaps are too slow. P1332 corrects actual native sampler and baked-colour
+binding, keeps the shallow cosmetic caps/collision and speeds pulse/gap/fade by3.
+After delivery/reconnect, is that SAME grass patch visibly snowy rather than
+black, can you see a nearby cap rim, and are flashes now quick enough? No native
+FPS, measured timing, footstep or loop acceptance inferred from this feedback.
+
+## P1327 lit snow/cap rims, Source steps and storm audio — prior owner check
+
+Owner confirms the earlier Colin snow is plain/fullbright and sees no caps. That
+is real negative acceptance, not a pass of P1319's in-game appearance. New source
+uses mounted snowfloor001a/003a with baked actual face light, uneven2..5unit caps
+and exposed rims. Installed BOTH Windows5Nov18:11UTC and ALL12lobbies18:25UTC.
+After a full client restart: does one nearby snowy grass patch have visible
+texture/shadow, and can you see a snowy ledge rim?
+Please give one location/screenshot if a specific expected cap is still absent.
+Walk on that grass: does the mounted CS:S crunch sound right? No new physics.
+
+Look at the sky on Frost/Colin, then `r_weather 1; r_weather_test 2` repeats bursts
+about8seconds apart. Expect3..6randomly spaced strokes, THEN the supplied thunder.
+`r_weather_test 0` stops preview (ordinary storm timing remains); `r_weather_interval 10`
+shortens ordinary intervals. `r_weather_flash 0` disables flash brightness.
+`r_weather_loop rain` / `r_weather_loop snow` chooses the owner's ambient recording
+(audio only); `r_weather_audio 0` silences all our weather. Does it sound seamless,
+and is thunder after the final flash? Originals unchanged, compressed monoVorbis.
+Actual GPU/mesh/audio-data checks are not a native visual/listening/FPS pass.
+
 ## P1323 named TAS input templates — installed, owner check pending
 
 Installed BOTH Windows5Nov12:53UTC and ALL12lobbies13:58UTC; actual primary

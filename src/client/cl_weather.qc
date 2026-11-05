@@ -9,8 +9,9 @@ entity wx_sky, wx_ice, wx_out, wx_in, wx_thunder;
 float wx_outplay, wx_inplay, wx_outvol, wx_invol, wx_sentout, wx_sentin;
 float wx_clock, wx_next, wx_flash, wx_thunderat, wx_outside;
 float wx_pending, wx_retry, wx_tinted;
+float wx_flashesleft, wx_nextflash, wx_burstid, wx_previewnext, wx_flashcount, wx_thundercount, wx_loopmode;
 string wx_style;
-vector wx_stylecolour;
+vector wx_stylecolour, wx_boltaxis;
 
 float(float x) Weather_Finite =
 {
@@ -44,6 +45,14 @@ void() Weather_Free =
 	wx_out = wx_in = wx_thunder = wx_sky = wx_ice = world;
 	wx_enabled = wx_ready = wx_audio = wx_audio_on = wx_outplay = wx_inplay = wx_pending = 0;
 	wx_outvol = wx_invol = wx_sentout = wx_sentin = wx_flash = wx_thunderat = 0;
+	wx_flashesleft = wx_nextflash = wx_burstid = wx_previewnext = wx_flashcount = wx_thundercount = wx_loopmode = 0;
+	wx_boltaxis = '1 0.5 0.5';
+};
+
+vector() Weather_SnowTint =
+{
+	if (wx_tinted) return '0.78 0.86 1';
+	return '1 1 1';
 };
 
 void() Weather_Init =
@@ -55,7 +64,9 @@ void() Weather_Init =
 	registercvar("r_weather_ice", "1", CVAR_ARCHIVE);
 	registercvar("r_weather_ice_shine", "0.12", CVAR_ARCHIVE);
 	registercvar("r_weather_flash", "0.12", CVAR_ARCHIVE); // 0 disables flashes, not thunder
-	registercvar("r_weather_test", "0"); // local visual/audio test, never an entitlement
+	registercvar("r_weather_interval", "60", CVAR_ARCHIVE); // seconds, bounded5..900 with jitter
+	registercvar("r_weather_loop", "snow", CVAR_ARCHIVE); // snow or rain, audio only
+	registercvar("r_weather_test", "0"); //1 once,2 repeat preview;0 stops preview
 	registercommand("weather_info");
 };
 
@@ -103,7 +114,7 @@ void() Weather_Load =
 	fclose(fh);
 	if (sky > 0)
 	{
-		if (Snow_Exists("glsl/ftesurf_weather_sky_v2.glsl"))
+		if (Snow_Exists("glsl/ftesurf_weather_sky_v3.glsl"))
 		{
 			if (Snow_Exists("gfx/weather/lightning.png"))
 			{
@@ -111,7 +122,7 @@ void() Weather_Load =
 				if (Snow_Exists(path))
 				{
 					precache_model(path); wx_sky = spawn(); setmodel(wx_sky, path);
-					wx_sky.forceshader = shaderforname("ftesurf_weather_sky_v2", "{\ndepthpush -2\ncull none\nsort decal\n{\nprogram ftesurf_weather_sky_v2\nclampmap $nosrgb:gfx/weather/lightning.png\nmap $nosrgb:models/christmas/mist-noise.png\nblendfunc blend\nrgbgen entity\nalphagen entity\n}\n}\n");
+					wx_sky.forceshader = shaderforname("ftesurf_weather_sky_v3", "{\ndepthpush -2\ncull none\nsort decal\n{\nprogram ftesurf_weather_sky_v3\nclampmap $nosrgb:gfx/weather/lightning.png\nmap $nosrgb:models/christmas/mist-noise.png\nblendfunc blend\nrgbgen entity\nalphagen entity\n}\n}\n");
 					wx_sky.effects = EF_FULLBRIGHT | EF_NOSHADOW;
 					wx_sky.colormod = '1 1 1'; wx_sky.alpha = 0.65; wx_sky.scale = 1;
 				}
@@ -136,14 +147,13 @@ void() Weather_Load =
 		}
 	}
 	wx_audio = TRUE;
-	if (!Snow_Exists("sound/winter/wind-out.wav")) wx_audio = FALSE;
-	if (!Snow_Exists("sound/winter/wind-in.wav")) wx_audio = FALSE;
-	if (!Snow_Exists("sound/winter/thunder-out.wav")) wx_audio = FALSE;
-	if (!Snow_Exists("sound/winter/thunder-in.wav")) wx_audio = FALSE;
+	if (!Snow_Exists("sound/winter/rainloop.ogg")) wx_audio = FALSE;
+	if (!Snow_Exists("sound/winter/snowloop.ogg")) wx_audio = FALSE;
+	if (!Snow_Exists("sound/winter/thunder.ogg")) wx_audio = FALSE;
 	if (wx_audio)
 	{
-		precache_sound("winter/wind-out.wav"); precache_sound("winter/wind-in.wav");
-		precache_sound("winter/thunder-out.wav"); precache_sound("winter/thunder-in.wav");
+		precache_sound("winter/rainloop.ogg"); precache_sound("winter/snowloop.ogg");
+		precache_sound("winter/thunder.ogg");
 		wx_out = spawn(); wx_in = spawn(); wx_thunder = spawn();
 	}
 	// One reversible base-style tint, not dynamic lights/shadows or per-frame
@@ -188,9 +198,25 @@ float(entity e, string wave, float volume, float playing) Weather_Loop =
 	return TRUE;
 };
 
+void() Weather_StartBurst =
+{
+	local float yaw;
+	local vector angles;
+	wx_burstid = wx_burstid + 1;
+	wx_flashesleft = 3 + floor(Weather_Noise(time + wx_burstid * 13) * 4);
+	wx_nextflash = time; wx_thunderat = 0;
+	wx_next = time + bound(5, cvar("r_weather_interval"), 900) * (0.65 + Weather_Noise(time + 71) * 0.7);
+	wx_previewnext = time + 8;
+	// Cache a WORLD direction at event start, not a bolt that follows the camera.
+	angles = getproperty(VF_ANGLES);
+	yaw = (angles_y + Weather_Noise(time + 39) * 70 - 35) * (M_PI / 180);
+	wx_boltaxis = [0.5 + 0.5 * cos(yaw), 0.5 + 0.5 * sin(yaw), 0.5];
+};
+
 void() Weather_Frame =
 {
-	local float enabled, dt, outside, vol, outvol, invol, step, pulse, targetout, targetin;
+	local float enabled, dt, outside, vol, outvol, invol, step, pulse, targetout, targetin, preview, duration, mode;
+	local string wave;
 	local vector eye;
 	enabled = (cvar("r_weather") != 0 || Winter_ThemeActive());
 	if (!enabled)
@@ -205,30 +231,48 @@ void() Weather_Frame =
 	if (!wx_ready) return;
 	eye = getproperty(VF_ORIGIN);
 	dt = bound(0, time - wx_clock, 0.1);
-	if (time < wx_clock) { wx_next = time + 30; wx_flash = wx_thunderat = 0; }
+	if (time < wx_clock) { wx_next = time + 8; wx_flash = wx_thunderat = wx_flashesleft = wx_previewnext = 0; }
 	wx_clock = time;
 	outside = Weather_Outside(eye);
 	wx_outside = outside;
 	vol = bound(0, cvar("r_weather_volume"), 0.35);
-	if (cvar("r_weather_test"))
+	preview = cvar("r_weather_test");
+	if (preview == 1)
 	{
-		wx_next = time; cvar_set("r_weather_test", "0");
+		Weather_StartBurst(); cvar_set("r_weather_test", "0");
 	}
-	if (time >= wx_next)
+	else if (wx_flashesleft <= 0 && wx_thunderat <= 0)
 	{
-		wx_flash = time + 0.12;
-		wx_thunderat = time + 0.9 + Weather_Noise(time + 17) * 2.3;
-		wx_next = time + 35 + Weather_Noise(time + 71) * 45;
+		if ((preview >= 2 && time >= wx_previewnext) || time >= wx_next) Weather_StartBurst();
+	}
+	if (wx_flashesleft > 0)
+	{
+		if (time >= wx_nextflash)
+		{
+			// P1332: 3x faster pulse and gap; matched fade keeps the same brightness.
+			duration = (0.05 + Weather_Noise(time + wx_flashesleft * 31) * 0.1) / 3;
+			wx_flash = time + duration; wx_flashcount = wx_flashcount + 1;
+			wx_flashesleft = wx_flashesleft - 1;
+			if (wx_flashesleft > 0)
+				wx_nextflash = wx_flash + (0.06 + Weather_Noise(time + 83) * 0.28) / 3;
+			else
+				wx_thunderat = wx_flash + 0.8 + Weather_Noise(time + 17) * 2.3;
+		}
 	}
 	if (wx_sky)
 	{
-		pulse = bound(0, (wx_flash - time) / 0.12, 1);
+		pulse = bound(0, (wx_flash - time) / 0.04, 1);
+		wx_sky.colormod = wx_boltaxis;
 		wx_sky.alpha = 0.65 + pulse * bound(0, cvar("r_weather_flash"), 0.25) * 1.4;
 		addentity(wx_sky); // persistent moving storm clouds; flashes are additional
 	}
 	if (wx_ice)
 		if (cvar("r_weather_ice")) addentity(wx_ice);
-	if (!wx_audio) return;
+	if (!wx_audio)
+	{
+		if (wx_thunderat > 0 && time >= wx_thunderat) wx_thunderat = 0;
+		return; // missing audio must not stall later visual bursts
+	}
 	wx_out.origin = wx_in.origin = wx_thunder.origin = eye;
 	if (!cvar("r_weather_audio") || vol <= 0)
 	{
@@ -241,6 +285,14 @@ void() Weather_Frame =
 		wx_thunderat = 0;
 		return;
 	}
+	mode = !strcasecmp(cvar_string("r_weather_loop"), "rain") ? 2 : 1;
+	wave = mode == 2 ? "winter/rainloop.ogg" : "winter/snowloop.ogg";
+	if (wx_loopmode != mode)
+	{
+		stopsound(wx_out, CHAN_BODY); stopsound(wx_in, CHAN_BODY);
+		wx_outplay = wx_inplay = 0; wx_sentout = wx_sentin = -1;
+		wx_loopmode = mode;
+	}
 	wx_audio_on = TRUE;
 	targetout = vol * (0.18 + 0.82 * outside);
 	targetin = vol * 0.65 * (1 - outside);
@@ -249,12 +301,12 @@ void() Weather_Frame =
 	invol = wx_invol + bound(-step, targetin - wx_invol, step);
 	if (fabs(outvol - wx_sentout) >= 0.002 || (!wx_outplay && outvol > 0.002) || (wx_outplay && outvol <= 0.002))
 	{
-		wx_outplay = Weather_Loop(wx_out, "winter/wind-out.wav", outvol, wx_outplay);
+		wx_outplay = Weather_Loop(wx_out, wave, outvol, wx_outplay);
 		wx_sentout = outvol;
 	}
 	if (fabs(invol - wx_sentin) >= 0.002 || (!wx_inplay && invol > 0.002) || (wx_inplay && invol <= 0.002))
 	{
-		wx_inplay = Weather_Loop(wx_in, "winter/wind-in.wav", invol, wx_inplay);
+		wx_inplay = Weather_Loop(wx_in, wave, invol, wx_inplay);
 		wx_sentin = invol;
 	}
 	wx_outvol = outvol; wx_invol = invol;
@@ -262,9 +314,9 @@ void() Weather_Frame =
 	{
 		if (time >= wx_thunderat)
 		{
-			wx_thunderat = 0;
+			wx_thunderat = 0; wx_thundercount = wx_thundercount + 1;
 			if (vol > 0)
-				sound(wx_thunder, CHAN_VOICE, outside > 0.5 ? "winter/thunder-out.wav" : "winter/thunder-in.wav", bound(0, vol * (outside > 0.5 ? 3 : 1.4), 0.9), ATTN_NONE, 100, SOUNDFLAG_NOSPACIALISE);
+				sound(wx_thunder, CHAN_VOICE, "winter/thunder.ogg", bound(0, vol * (outside > 0.5 ? 3 : 1.4), 0.9), ATTN_NONE, 100, SOUNDFLAG_NOSPACIALISE);
 		}
 	}
 };
@@ -274,6 +326,8 @@ float(string command) Weather_ConsoleCommand =
 	if (strcmp(command, "weather_info")) return FALSE;
 	print(sprintf("weather: %s ready %g pending %g sky %g ice %g\n", wx_map, wx_ready, wx_pending, wx_sky != world, wx_ice != world));
 	print(sprintf("weather: audio %g tint %g outside %.2f\n", wx_audio, wx_tinted, wx_outside));
-	print("weather: r_weather_test 1 fires flash/thunder; r_weather 0 restores lighting (also r_colin_winter 0 on Colin)\n");
+	print(sprintf("weather: burst %g flashes %g thunder %g remaining %g interval %gs loop %s\n", wx_burstid, wx_flashcount, wx_thundercount, wx_flashesleft, bound(5, cvar("r_weather_interval"), 900), wx_loopmode == 2 ? "rain" : "snow"));
+	print("weather: r_weather_test 1 once / 2 repeat / 0 stops preview; r_weather_interval seconds; r_weather_loop snow|rain (audio only)\n");
+	print("weather: r_weather 0 restores lighting (also r_colin_winter 0 on Colin)\n");
 	return TRUE;
 };

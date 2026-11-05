@@ -88,6 +88,43 @@
   byte sets reproduce the exact per-record findings and352 entries. Preserve the
   old summary and failed comparison; do not repair player data or call it clean.
 
+## Participating collector ownership (P1328,5Nov2026)
+
+- Observation uniqueness is not unique work: actual nested reverse participant
+  measured80twice before one flush won. Nonblocking canonical-DB OS ownership
+  now guards direct/pass entrypoints; already-owned internal rows must not acquire
+  it again. Keep atomic first-winner flushes for old/nonparticipating callers.
+- The EMPTY `<db>.simcheck.lock` sidecar is persistent. NEVERunlink on release:
+  waiters could then lock an old inode while a new caller locks a replacement.
+  Linuxflock/Windowsbyte-range handles close on exit; noninheritable descriptors
+  and real child crash-after-read/before-flush controls qualify finite recovery.
+  Busy means no admission; no SQLite transaction spans comparison. Same-host
+  trusted cooperative callers only, not a fence against arbitrary host writers.
+- Lock unknown/unsafe metadata abstains, never compares unlocked: single-link DB,
+  zero regular sidecar, POSIXowner/private mode, same named/opened inode before/
+  after acquisition. No truncation/chmod of an existing file. O_NONBLOCK prevents
+  opening a FIFO from waiting for a peer. Windows actually locks beyond empty EOF;
+  no padding/player content needed. Read-only/disabled/caller-owned paths do not
+  create it. Anonymous DB fallback is conservatively scoped to this module import.
+- Pass fault injections now target already-owned `_compare_run`; old/reversed
+  nonparticipant controls intentionally bypass ONLYscheduling, not atomic flush.
+  `test_simcheck_*.py` avoids the script-only legacy module's SystemExit0. Preserve
+  original failed discovery/seam assertions rather than erasing them. A corpus
+  importlib caller must include the existing tools import path for heldmeta.
+- Windows235/0/6knownskips, Linux235/0/0/legacy0, reader949/0. Corpus548retains
+  344faultedREC/7faultedVIEW, prior546REC/168VIEWbytes exact+2new actual clean REC.
+  This is NOTclean, hard-global-budget, completecoverage, freshness or calibration.
+  Actual backend12f7e30e accepted5Nov18:38:22UTC on actual55370fb6; onlysimcheck,
+  other83runtime/156bound origins exact,44existing schema/nonchurn and8identity
+  hashes preserved. Same-data fallback and private historical1366130688-byte DB
+  retained/NOrestore; oldCLOSED/newOPEN/fallbackCLOSED,4cron/MOMactive,5ROpins/
+  2ROruntimes/RWfilesystem proved.18:48canonical sidecar0bytes/0600/singlelink/owner
+  observed after normal activity, no forced collector/lock probe.18:49health12/
+  all12actual ftesurf@N.service units active. Wrong ROOTvsops receipt path and
+  guessed unit-name observer failures retained; NOrepeat activation/restart.
+  Installed namespace helper requires a plain direct-child generation root;
+  old and new roots are LIVEdependencies, never disposable test scratch.
+
 ## Store-only similarity bounded rotation (P1322,5Nov2026)
 
 - Boolean cursor ORDER BY forces a full eligible-candidate sort before LIMIT.
@@ -274,6 +311,42 @@
   opus/speex headers. The complete prior pacing dependency cache + proper UCRT PATH passes a header
   preflight; full probe build/run remains blocked by headroom. Preserve failures, don't disable codecs.
 - No new player data/evidence semantics, native pin/tag, QC Build or public release change.
+
+## P1332 native snow binding (5 Nov 2026)
+
+Owner P1327 feedback: black grass despite passing isolated GLSL pixel controls.
+Those inject textures/gl_Color directly and do NOT test FTE's material binding.
+Native Shaderpass_ClampMap does NOT call Shaderpass_DefineMap; using it before
+map in a program leaves one slot, overwrites roof0 and leaves snow1 unbound.
+Use `map $clamp:$nosrgb:$nearest:roof` then the albedo map. Also request #usemods
+(or !!fixed) so GenerateColourMods runs BEFORE BE_Program_Set_Attributes.
+Exactvertex + vertex alpha can bind existing IQM colours directly without a CPU
+expansion or another lighting scale. Use a new runtime shader key after changing
+bindings. Actual native parser function control: tools/test_winter_binding.py;
+image I/O is stubbed, not native gameplay. Flash appearance human-confirmed;
+black-snow/cap placement remains a human retest, no numerical timing/FPS claim.
+
+## P1327 lit snow and owner weather pitfalls (5 Nov 2026)
+
+- A visible textured shader is not necessarily lit: the old fullbright snow
+  produced identical bright/dark GPU pixels. Stored IQM_COLOR plus `rgbgen vertex`
+  and actual map-light multiplication provide an acted light/dark control. Remove
+  EF_FULLBRIGHT for these meshes; native placement/look still needs owner review.
+- Strata maps use72-byte HDR faces and RGBExp32 samples; preserve the legacy
+  56-byte/LDR path. Sample the actual face lightmap, not generic ambient alone.
+  The produced model has normalized UBYTE colour; sampled and fallback counts
+  are distinct. Nonzero cap depth/exposed boundary skirts are not collision.
+- Momentum's bundled HL2 pack has nature/snowfloor001a/003a; mounted CS:S has
+  player/footsteps/snow1..6. Reference mounted material/audio, do not repackage
+  Valve bytes. Source VTF7.6 AXC/Zstd support already exists in this renderer.
+- This native build has disk Vorbis, NOT disk Opus; voice Opus is a different
+  path. Use mono64kbps Ogg Vorbis for the supplied weather loops/thunder without
+  adding a decoder/native deployment. Bind originals and inspect decoded PCM;
+  file compression does not prove audible loop seams or native sound acceptance.
+- `r_weather_test 2` repeats3..6stroke bursts; test0 stops preview, not ordinary
+  storms. Thunder is scheduled after the final stroke. Cached world direction
+  replaces a GPU clock-based unrelated bolt axis. Timeline tests are structural,
+  not measured native scheduling/listening/FPS. Proof: tools/p1327-lit-snow-weather.md.
 
 ## P1309 optional weather — source/data, native acceptance pending (4 Nov 2026)
 
