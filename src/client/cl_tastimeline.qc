@@ -5,6 +5,8 @@ float tast_next, tast_bodyhead, tast_base, tast_flags, tast_v2;
 float tast_originaltime, tast_candidatetime, tast_wantrefresh, tast_refreshat, tast_pick;
 float tast_pagepending, tast_pagefirst;
 float tast_rows[TAS_PAGE_ROWS * 7]; // present, forward, side, up, pitch word, yaw word, buttons
+string tast_recipe_name;
+float tast_recipe_caret, tast_recipe_focus;
 // P1082 project status, from the server's event 51.
 string tasp_cl_name;
 float tasp_cl_rev, tasp_cl_base, tasp_cl_head, tasp_cl_load, tasp_cl_stop, tasp_cl_result;
@@ -90,6 +92,7 @@ void() TASTimeline_Reset =
 	tast_n = tast_undo = tast_redo = tast_flags = tast_v2 = tast_wantrefresh = tast_pick = 0;
 	tast_pagepending = tast_pagefirst = 0;
 	tasp_cl_asked = FALSE;  // ask for project status on the next open
+	tast_recipe_focus = FALSE;
 };
 
 float() TASTimeline_Current =
@@ -97,6 +100,43 @@ float() TASTimeline_Current =
 	return (tast_n > 0 && !tast_status && getstatf(STAT_FS_TASREQUEST) == tast_request &&
 		getstatf(STAT_FS_TASPAUSE) == 1 && getstatf(STAT_FS_TASPENDING) == 0 &&
 		LT_StatsAreMine() && numclientseats <= 1);
+};
+
+void(string name) TASTimeline_RecipeName =
+{
+	local string copy;
+	copy = strzone(name);
+	if (tast_recipe_name) strunzone(tast_recipe_name);
+	tast_recipe_name = copy; tast_recipe_caret = strlen(copy);
+};
+
+float(float evtype, float scanx, float chary) TASTimeline_RecipeInput =
+{
+	if (!tasu_open || tasu_tab != TAS_TAB_PROJECT) { tast_recipe_focus = FALSE; return FALSE; }
+	if (!tast_recipe_focus) return FALSE;
+	if (scanx == K_MOUSE1 || scanx == K_MOUSE2)
+	{
+		if (evtype == IE_KEYDOWN)
+		if (!sui_is_hovered("tastr_name")) tast_recipe_focus = FALSE;
+		return FALSE;
+	}
+	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP) return FALSE;
+	if (scanx == K_ESCAPE || scanx == K_ENTER || scanx == K_KP_ENTER)
+	{
+		if (evtype == IE_KEYDOWN) tast_recipe_focus = FALSE;
+		return TRUE;
+	}
+	if (chary >= 65 && chary <= 90) chary = chary+32;
+	if (chary >= 32 && chary != 127)
+	if (!((chary >= 97 && chary <= 122) || (chary >= 48 && chary <= 57) || chary == 95 || chary == 45))
+		return TRUE;
+	sui_text_event(evtype,scanx,chary,"tastr_name",tast_recipe_name,tast_recipe_caret);
+	if (strlen(tast_recipe_name) > 32)
+	{
+		TASTimeline_RecipeName(substring(tast_recipe_name,0,32));
+		tast_recipe_caret = min(tast_recipe_caret,32);
+	}
+	return TRUE;
 };
 
 void(float first) TASTimeline_Request =
@@ -228,6 +268,24 @@ void(string action, float tick) TASTimeline_Action =
 		localcmd(sprintf("p1 cmd tas %s %.0f %.0f %.0f\n", action, tast_serial, tast_bodyhead, tast_request));
 	tast_pick = tast_selected; tast_n = 0;
 	tast_wantrefresh = 1; tast_refreshat = cltime + 0.6;
+};
+
+void(float save) TASTimeline_Recipe =
+{
+	local string line;
+	if (!TASTimeline_Current() || !tast_v2 || !(tast_flags & 2) || (tast_flags & 4) || (tast_flags & 16))
+	{
+		print("tas recipe: refresh a complete paused line and settle the previous edit first\n"); return;
+	}
+	if (!FS_TASRecipeNameOK(tast_recipe_name))
+	{
+		print("tas recipe: name uses 1..32 lowercase letters, digits, _ or -\n"); return;
+	}
+	line = sprintf("p1 cmd tas %s %s %.0f %.0f %.0f %.0f %.0f\n",save ? "recipesave2" : "recipeapply2",
+		tast_recipe_name,tast_from,tast_to,tast_serial,tast_bodyhead,tast_request);
+	localcmd(line);
+	tast_recipe_focus = FALSE; tast_pick = tast_selected; tast_n = 0;
+	tast_wantrefresh = 1; tast_refreshat = cltime+0.6;
 };
 
 void(float redo) TASTimeline_History =
@@ -449,6 +507,29 @@ void(vector at, float width, float tsz, float hint, float row) TASProject_Draw =
 	else label = current ? "Warm input history; the shared world is NOT rewound." :
 		"Refresh after execution. Undo keeps eight edits; a project keeps them on disk.";
 	sui_text(at,[hint,hint],label,SUI_THEME_MUTED,1,0);
+	at_y = at_y+row+hint;
+	sui_text(at,[hint,hint],sprintf("Named input recipe | selected span %.0f..%.0f | fixed map ticks",tast_from,tast_to),SUI_THEME_DIM,1,0);
+	at_y = at_y+hint*1.6;
+	if (!tast_recipe_name) TASTimeline_RecipeName("line1");
+	sui_text_metrics(ceil(row*0.45),[tsz,tsz]);
+	sui_text_input("tastr_name",at,[width,row,0],tast_recipe_name,tast_recipe_caret);
+	if (sui_is_held("tastr_name") || sui_is_clicked("tastr_name"))
+	{
+		Profile_Unfocus(); tast_recipe_focus = TRUE; sui_field_focus("tastr_name");
+	}
+	Profile_FieldLook("tastr_name",at,[width,row,0],tsz,tast_recipe_name,tast_recipe_caret,
+		"Recipe name: a-z 0-9 _ -",tast_recipe_focus,row*0.5,ceil(row*0.45));
+	at_y = at_y+row+hint; chip = [(width-6)/2,row,0];
+	if (Profile_Chip("tastr_save",at,chip,"Save selected input",tsz,current && !(tast_flags & 4))) TASTimeline_Recipe(TRUE);
+	if (Profile_Chip("tastr_apply",at+[(width+6)/2,0,0],chip,"Preview named recipe",tsz,current && !(tast_flags & 4))) TASTimeline_Recipe(FALSE);
+	at_y = at_y+row+hint;
+	if (tast_flags & 4)
+	{
+		if (Profile_Chip("tastr_keep",at,chip,"Keep recipe preview",tsz,current && (tast_flags & 8))) TASTimeline_Action("keep2",0);
+		if (Profile_Chip("tastr_discard",at+[(width+6)/2,0,0],chip,"Discard recipe preview",tsz,current)) TASTimeline_Action("discard2",0);
+		at_y = at_y+row+hint;
+	}
+	sui_text(at,[hint,hint],"Select the span in Timeline. Recipes supply keys, not a body or signing authority.",SUI_THEME_DIM,1,0);
 };
 
 // Console accessibility also drives the actual table actions in socket checks.
@@ -489,6 +570,13 @@ float(float argc, float seat) TASTimeline_ConsoleCommand =
 		print(sprintf("sha %s supply %.0f..%.0f signed %g engine %g made %g\n", substring(tasp_cl_sha, 0, 8),
 			tasp_cl_supa, tasp_cl_supb, tasp_cl_signed, checkbuiltin(tasrev_sign), tasp_cl_made));
 		return TRUE;
+	}
+	if (argc == 5 && !strcmp(action,"recipe"))
+	{
+		if (!FS_TASRecipeNameOK(argv(4))) goto bad;
+		if (strcmp(argv(3),"save") && strcmp(argv(3),"apply")) goto bad;
+		b = !strcmp(argv(3),"save");
+		TASTimeline_RecipeName(argv(4)); TASTimeline_Recipe(b); return TRUE;
 	}
 	if (argc == 3)
 	{
@@ -543,6 +631,6 @@ float(float argc, float seat) TASTimeline_ConsoleCommand =
 		return TRUE;
 	}
 :bad
-	print("tas timeline: status | refresh/latest | select tick | single/from/to | field name value | apply | undo/redo\n");
+	print("tas timeline: status | refresh/latest | select tick | single/from/to | field name value | apply | undo/redo | recipe save/apply name\n");
 	return TRUE;
 };

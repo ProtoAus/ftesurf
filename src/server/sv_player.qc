@@ -1467,6 +1467,7 @@ void(entity e, float count, float ticket) SV_TASQueueSteps =
 #include "sv_tasplan.qc"
 #include "sv_tasproject.qc"
 #include "sv_taseditor.qc"
+#include "sv_tasrecipe.qc"
 #include "sv_tasshare.qc"
 #include "sv_tasoptimize.qc"
 #include "sv_taslegal.qc"
@@ -1507,6 +1508,8 @@ void(entity e, float argc) SV_TASCommand =
 	if (!strcmp(action, "optimize")) { SV_TASOptCommand(e, argc); return; }
 	if (!strcmp(action, "project") || !strcmp(action, "cp")) { SV_TASProjectCommand(e, argc); return; }
 	if (!strcmp(action, "inputs")) { SV_TASInputs(e, argc); return; }
+	if (!strcmp(action,"recipesave2") || !strcmp(action,"recipeapply2"))
+	{ SV_TASRecipeCommand(e,argc); return; }
 	if (!strcmp(action, "page2") || !strcmp(action, "preview2") || !strcmp(action, "seek2") ||
 		!strcmp(action, "keep2") || !strcmp(action, "discard2") || !strcmp(action, "undo2") || !strcmp(action, "redo2"))
 	{ SV_TASEditorCommand(e, argc); return; }

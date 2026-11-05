@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1319 named TAS input templates - pending after installation
+
+After matching native/progs installation, play/pause a short familiar line, select
+a small Timeline span and open Project. Type a recipe name, Save selected input,
+and Preview named recipe; Discard it and resume. Is name focus/Enter/Escape clear,
+and can you return to playing without stuck movement or losing the future line?
+A synthetic-widget check passed but is not owner feel acceptance. These templates
+copy captured inputs, not procedural optimal-strafe intent or the shared world.
+The separate genuine-device hosted Sign check below is still unperformed; this
+feature neither substitutes scripted signing nor clears that acceptance.
+
 ## P1314 captured local TAS line — pending, candidate not installed yet
 
 After the matching local native/progs candidate is actually installed: play a

@@ -21,6 +21,10 @@
 
 ## next
 
+### P1319 Named input templates for local TAS
+- Save a named selection of captured input, then preview its keys and view angles onto an equal-length selection in another compatible local attempt. Inputs after the selection stay available; Keep, Discard and Undo/Redo retain the original.
+- Templates reuse recorded input, not a saved world or a newly optimized route. Supported current-run replay is still required; ramp sections and the next-ramp solver remain in progress.
+
 ### P1314 Preview edits to a captured local TAS line
 - Supported local TAS practice can keep the captured input line visible while seeking earlier, preview a change without replacing its original, then Keep or Discard it and Undo or Redo retained edits.
 - Timeline keeps the main editing controls together; project, checkpoint, signing and legacy speed-search tools move to a separate Project tab. Ramp sections and the next-ramp-constrained solver are still in progress.

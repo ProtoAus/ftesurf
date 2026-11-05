@@ -1,5 +1,27 @@
 # AGENT_NOTES.md
 
+## P1319 named-input validation and corpus observer pitfalls (5 Nov 2026)
+
+- `SV_TASPValidate` returns the first BAD row (one-based), or zero on success;
+  it is not a success boolean. A positive fresh-base template falsifier caught
+  an inverted caller before delivery. Native decode admission does not move a body.
+- Canonical `.tasp` `i` lines have seven values after `i`; their ticks are implicit
+  consecutive rows after the base. There is no explicit tick column or per-usercmd
+  duration. A selected source tail must be decoded relative to its own base,
+  then copied into the current target's equal-length span, never import its base.
+- Existing typed editor actions share250ms and recipe actions350ms gates. A
+  rapid raw `undo2` immediately after Keep can be refused correctly. Respect the
+  same gate in the actor rather than treating a silent/late observer as a pass.
+- A longer physical fixture run can re-enter its start and stop recording even
+  after an earlier `cmd timer` proved running. Native supported/base-available
+  status alone is NOT a paused running attempt. The saved eight-row source tail
+  and fresh target prove cross-base future preservation without a long-run rig.
+- Corpus comparisons must key stored findings by record path, not depend on
+  selector concatenation order. The retained P1314 stored findings contain352
+  fault entries, despite its summary reporting351; this change's same544 input/view
+  byte sets reproduce the exact per-record findings and352 entries. Preserve the
+  old summary and failed comparison; do not repair player data or call it clean.
+
 ## P1311 Boreas/Demise warm coverage and remaining first-use hitch (5 Nov 2026)
 
 - Owner's actual rig: i9-9900K / RTX2080SUPER /16GiB. Existing p1277 replay arm reused in
