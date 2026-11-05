@@ -67,10 +67,10 @@ class Contention(unittest.TestCase):
                 blocker.execute('BEGIN EXCLUSIVE')
             return original(row)
         self.sf.replay_file = resolve
-        original_compare = sc.compare_run
+        original_compare = sc._compare_run
         def one_peer(*args, **kw):
             return original_compare(*args, limit_peers=1, **kw)
-        with mock.patch.object(sc, 'compare_run', side_effect=one_peer):
+        with mock.patch.object(sc, '_compare_run', side_effect=one_peer):
             result = sc.similarity_step(self.conn, self.sf, tools_dir=str(fixture.ROOT/'tools'))
         self.assertEqual(result[:2], (1, 1))
         self.assertIn(NOTE, result[2])

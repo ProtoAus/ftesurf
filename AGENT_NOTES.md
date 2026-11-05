@@ -62,6 +62,34 @@
   byte sets reproduce the exact per-record findings and352 entries. Preserve the
   old summary and failed comparison; do not repair player data or call it clean.
 
+## Participating collector ownership (P1328,5Nov2026)
+
+- Observation uniqueness is not unique work: actual nested reverse participant
+  measured80twice before one flush won. Nonblocking canonical-DB OS ownership
+  now guards direct/pass entrypoints; already-owned internal rows must not acquire
+  it again. Keep atomic first-winner flushes for old/nonparticipating callers.
+- The EMPTY `<db>.simcheck.lock` sidecar is persistent. NEVERunlink on release:
+  waiters could then lock an old inode while a new caller locks a replacement.
+  Linuxflock/Windowsbyte-range handles close on exit; noninheritable descriptors
+  and real child crash-after-read/before-flush controls qualify finite recovery.
+  Busy means no admission; no SQLite transaction spans comparison. Same-host
+  trusted cooperative callers only, not a fence against arbitrary host writers.
+- Lock unknown/unsafe metadata abstains, never compares unlocked: single-link DB,
+  zero regular sidecar, POSIXowner/private mode, same named/opened inode before/
+  after acquisition. No truncation/chmod of an existing file. O_NONBLOCK prevents
+  opening a FIFO from waiting for a peer. Windows actually locks beyond empty EOF;
+  no padding/player content needed. Read-only/disabled/caller-owned paths do not
+  create it. Anonymous DB fallback is conservatively scoped to this module import.
+- Pass fault injections now target already-owned `_compare_run`; old/reversed
+  nonparticipant controls intentionally bypass ONLYscheduling, not atomic flush.
+  `test_simcheck_*.py` avoids the script-only legacy module's SystemExit0. Preserve
+  original failed discovery/seam assertions rather than erasing them. A corpus
+  importlib caller must include the existing tools import path for heldmeta.
+- Windows235/0/6knownskips, Linux235/0/0/legacy0, reader949/0. Corpus548retains
+  344faultedREC/7faultedVIEW, prior546REC/168VIEWbytes exact+2new actual clean REC.
+  This is NOTclean, hard-global-budget, completecoverage, freshness or calibration.
+  Source proof only until the P1328 delivery receipt is recorded.
+
 ## Store-only similarity bounded rotation (P1322,5Nov2026)
 
 - Boolean cursor ORDER BY forces a full eligible-candidate sort before LIMIT.

@@ -49,12 +49,15 @@ and stores nothing -- it does not fall back to a second parser.
 """
 
 from contextlib import contextmanager
+import errno
 import json
 import math
 import os
 import re
 import sqlite3
+import stat
 import sys
+import threading
 import time
 
 # --------------------------------------------------------------------------
@@ -171,6 +174,89 @@ def _database_busy(exc):
 
 
 _BUSY_NOTE = "sims unavailable: database busy (coverage not measured)"
+
+
+_MEMORY_COLLECTOR = threading.Lock()
+_COLLECTOR_BUSY = "sims collector busy (not admitted; coverage not measured)"
+_COLLECTOR_UNAVAILABLE = "sims unavailable: collector lock unavailable (coverage not measured)"
+
+
+class CollectorLockUnavailable(Exception):
+    """Cannot establish participating collector ownership; do not run unlocked."""
+
+
+def _try_collector_lock(fd):
+    try:
+        if os.name == "nt":
+            import msvcrt
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        elif os.name == "posix":
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        else:
+            raise CollectorLockUnavailable()
+    except OSError as exc:
+        if exc.errno in (errno.EACCES, errno.EAGAIN):
+            return False
+        raise
+    return True
+
+
+@contextmanager
+def collector_ownership(conn):
+    """Nonblocking host-local ownership, never a SQLite write transaction.
+
+    The empty sidecar is persistent: unlinking it can split owners across inodes.
+    Kernel ownership ends when the last owning handle closes, including on exit.
+    Standard single-link on-disk DBs share a canonical path; unsupported aliases
+    abstain. Anonymous DBs conservatively serialize within this imported module.
+    This is cooperative scheduling, not a cross-host or untrusted-writer fence.
+    """
+    database = next((r[2] for r in _read(conn, "PRAGMA database_list")
+                     if r[1] == "main"), None)
+    if database is None:
+        raise CollectorLockUnavailable()
+    if not database:
+        acquired = _MEMORY_COLLECTOR.acquire(blocking=False)
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                _MEMORY_COLLECTOR.release()
+        return
+    fd = None
+    try:
+        try:
+            database = os.path.normcase(os.path.realpath(database))
+            dbstat = os.stat(database)
+            if not stat.S_ISREG(dbstat.st_mode) or dbstat.st_nlink != 1:
+                raise CollectorLockUnavailable()
+            path = database + ".simcheck.lock"
+            flags = (os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+                     | getattr(os, "O_NONBLOCK", 0))
+            fd = os.open(path, flags, 0o600)
+            opened = os.fstat(fd)
+            named = os.stat(path, follow_symlinks=False)
+            if (not stat.S_ISREG(opened.st_mode) or not stat.S_ISREG(named.st_mode)
+                    or opened.st_nlink != 1 or opened.st_size != 0
+                    or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)):
+                raise CollectorLockUnavailable()
+            if os.name == "posix":
+                if opened.st_uid != os.geteuid() or stat.S_IMODE(opened.st_mode) & 0o077:
+                    raise CollectorLockUnavailable()
+            acquired = _try_collector_lock(fd)
+            if acquired:
+                named = os.stat(path, follow_symlinks=False)
+                if (not stat.S_ISREG(named.st_mode) or named.st_nlink != 1
+                        or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)):
+                    raise CollectorLockUnavailable()
+        except (OSError, ImportError):
+            raise CollectorLockUnavailable() from None
+        yield acquired
+    finally:
+        if fd is not None:
+            os.close(fd)  # also releases the kernel lock; NEVER unlink the sidecar
 
 
 class ReadLimit(Exception):
@@ -450,7 +536,28 @@ def _pair_result(rs, surfd, row, peer, pa, now):
 
 def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
                 diagnostics=None, budget=None, read_budget=None, reader=None):
-    """Compare one replays row against the other run-kind rows on its map/leg.
+    """Compare under nonblocking participating-collector ownership of this DB."""
+    _limit("limit_peers", limit_peers)
+    if limit_peers == 0:
+        return 0, 0, 0
+    _idle(conn)
+    try:
+        with collector_ownership(conn) as acquired:
+            if not acquired:
+                if diagnostics is not None:
+                    diagnostics["collector_busy"] = diagnostics.get("collector_busy", 0) + 1
+                return 0, 0, 0
+            return _compare_run(surfd, conn, row, now, limit_peers, tools_dir,
+                                diagnostics, budget, read_budget, reader)
+    except CollectorLockUnavailable:
+        if diagnostics is not None:
+            diagnostics["collector_unavailable"] = diagnostics.get("collector_unavailable", 0) + 1
+        return 0, 0, 0
+
+
+def _compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
+                 diagnostics=None, budget=None, read_budget=None, reader=None):
+    """Caller owns collector scheduling; compare one replays row against the other run-kind rows on its map/leg.
 
     -> (stored, skipped, notable).  Stores one `sims` row per pair examined, so a
     re-run is a no-op on the UNIQUE (a_id, b_id) constraint rather than a second
@@ -604,7 +711,34 @@ def pending(conn, limit=50, read_budget=None):
 
 def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
                     max_pairs=MAX_PAIRS, max_seconds=MAX_SECONDS, read_budget=None):
-    """The sweep's entry point.  -> (pairs stored, notable, note).
+    """One nonblocking participating collector per DB; limits remain cooperative."""
+    _limit("limit", limit)
+    _limit("max_pairs", max_pairs)
+    if not math.isfinite(max_seconds):
+        raise ValueError("max_seconds must be finite")
+    if limit == 0 or max_pairs == 0 or max_seconds <= 0:
+        return 0, 0, ""
+    if conn.in_transaction:
+        return 0, 0, "sims unavailable: active caller transaction (coverage not measured)"
+    budget = _PairBudget(max_pairs, max_seconds)
+    try:
+        with collector_ownership(conn) as acquired:
+            if not acquired:
+                return 0, 0, _COLLECTOR_BUSY
+            return _similarity_step(conn, surfd, limit, now, tools_dir, max_pairs,
+                                    max_seconds, read_budget, budget)
+    except CollectorLockUnavailable:
+        return 0, 0, _COLLECTOR_UNAVAILABLE
+    except sqlite3.Error as exc:
+        if _database_busy(exc):
+            return 0, 0, _BUSY_NOTE
+        return 0, 0, "similarity step failed: %r" % exc
+
+
+def _similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
+                     max_pairs=MAX_PAIRS, max_seconds=MAX_SECONDS, read_budget=None,
+                     budget=None):
+    """The sweep's owned-collector implementation.  -> (pairs stored, notable, note).
 
     `tools_dir` is the CALLER's resolved tools directory (sweep passes its TOOLS).
     Passing it rather than re-deriving it here is the point: a default is policy,
@@ -634,7 +768,8 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         return 0, 0, ""
     if conn.in_transaction:
         return 0, 0, "sims unavailable: active caller transaction (coverage not measured)"
-    budget = _PairBudget(max_pairs, max_seconds)
+    if budget is None:
+        budget = _PairBudget(max_pairs, max_seconds)
     rs, why = _recsim(tools_dir)
     if rs is None:
         return 0, 0, "similarity skipped: %s" % why
@@ -657,7 +792,7 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
             # Advance admitted sources even if resolution/comparison later fails.
             # Commit before comparison so no file work holds a write transaction.
             _advance(conn, "source", row["id"])
-            s, k, n = compare_run(surfd, conn, row, now=now, tools_dir=tools_dir,
+            s, k, n = _compare_run(surfd, conn, row, now=now, tools_dir=tools_dir,
                                   diagnostics=diagnostics, budget=budget,
                                   read_budget=read_budget, reader=rs)
         except ReadLimit:
