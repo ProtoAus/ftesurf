@@ -22,7 +22,7 @@
 ## next
 
 ### P1313 Retry keeps momentum and the right start status
-- A fast fresh retry start is shown as practice without changing your saved movement. Continuing a running attempt keeps its saved status.
+- A fresh retry carrying extra ground speed is shown as practice without changing your saved movement. Falls, upward pushes and continuing a running attempt keep their saved status.
 
 ### P1311 More map shaders in the loading warm-up
 - Three additional shader variants used in Boreas and Demise join the loading-time warm list, without changing image quality or your saved settings.

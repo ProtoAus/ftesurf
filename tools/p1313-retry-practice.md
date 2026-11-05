@@ -2,46 +2,56 @@
 
 ## Boundary
 
-A retry deliberately restores movement. That is not permission for a fast restored
-armed start to become a fresh clean attempt. Use the existing practice eligibility
-rule, not a velocity clamp or guessed reconstruction of saved jump phase.
+Retry deliberately restores saved movement. It must not make a fast fresh armed
+start clean merely because the world restarted. Apply the existing reset rule,
+not a clamp or a guessed reconstruction of saved jump phase.
 
-Only after successful `SV_RetryApply` placement, an ARMED player still within its
-own start-box group is checked with the existing `SV_TimerNotFast` walk/jump limits.
-An unsafe fresh arm goes through `SV_TimerPractice`, retaining body and flags and
-making the existing dirty/practice state sticky. Multi-region and configured
-hull-band occupancy use the same existing `SV_ZoneInBox` semantics as the timer.
+After successful `SV_RetryApply` placement ONLY, an ARMED player still within its
+own box group uses `SV_TimerFast`: the existing horizontal reset-speed rule,
+including any latched carrier. It goes through `SV_TimerPractice`, retaining the
+body and old bits while setting standard dirty/practice state. Configured hull
+bands and connected regions use the existing `SV_ZoneInBox` timer semantics.
 Running retries, positions outside the armed box and direct Multi-Session-style
-restores do not pass this new wrapper-only guard. Ordinary low-speed/normal-jump
-arms remain eligible. No change to `run_t_startok`, saved phase or movement.
+restores do not pass this wrapper-only guard.
 
-No new captured signal, native/API/format/flag/tier/ranking-policy or QC Build.
-The public native source/tag remain the separately qualified P1312; this is SSQC.
+Vertical motion alone is NOT prespeed. Existing reset protection intentionally
+ignores saved falls and upward pushes and also covers bhop maps whose hop rule is
+off. This does not turn a hop/strict-mode switch into a horizontal reset bypass,
+or introduce a new vertical cap. `run_class 0` bisects class wording, not ranking
+rules; an unsafe horizontal reset still gets its ordinary practice mark.
 
-## Verified so far
+No movement/startok repair, new captured signal, native/API/format/flag/tier/
+ranking-policy or QC Build. Native source/tag remain separately qualified P1312.
 
-- Retained untouched published module and candidate run through the actual retry
-  wrapper, writer/reader, consumed latch and state-file deletion. Twelve explicit
-  state/body cases distinguish the five formerly missing practice marks from walk/
-  jump boundaries, running/outside-box/direct restore and existing status controls.
-  The candidate marks all five and preserves exact origin/velocity and prior bits.
-- Existing five normal-load plus fourteen grant/EOF controls remain unchanged.
-- The fleet-qualified `c24`/git-7809 compiler repeats both counterparts; all three
-  VMs pass the actual `build.ps1 -NoDeploy` entrypoint with **zero warnings**.
-  The older local `7ccb` results remain historical, not the fleet toolchain. The
-  first external counter-module include-path failure is retained; the existing
-  source-local control seam was fixed, not another numbered wrapper introduced.
-- Mandatory reader suite **949/0**. The exact three-glob RUNS sweep has **544**
-  inputs and retains every old byte and paired classification: **344** faulted
-  recording reports and **7** faulted views. No fault-count increase, clean-corpus
-  or SAVES claim; the fixture writes only its private test data.
-- Private original vectors, raw results, recipe/compiler/native identities and
-  exact build outputs stay private. The fixture uses synthetic explicit entities;
-  it is NOT a real native map_restart, held-jump/dwell, ranked finish or human pass.
+## Acting checks and correction
+
+- Exact published untreated module, rejected initial candidate and corrected
+  candidate use the actual writer/reader/retry wrapper, consumed latch and
+  state-file deletion. **22** explicit cases preserve exact origin/velocity and
+  old bits across walk boundaries, running/outside/direct restore, prior status,
+  hull bands, connected regions, hop/strict modes and classification-word mode.
+- The untouched module misses **nine** intended horizontal reset marks. The
+  rejected load-forgiveness-based candidate makes **four** false vertical-only
+  marks. The corrected candidate has **zero missing and zero false marks**.
+  Original reviews, failed predictions and raw counterparts remain retained.
+- Existing **five** normal-load and **fourteen** grant/EOF controls stay unchanged.
+  The fleet-qualified `c24`/git-7809 compiler runs these arms; actual corrected
+  `build.ps1 -NoDeploy` builds all three VMs with **zero warnings**. Historical
+  `7ccb` results and the first external-module include refusal are not regraded.
+- Corrected reader suite **949/0**. A fresh exact-domain byte/source check reuses
+  earlier paired RUNS **544** classifications only after verifying ALL recording/
+  view bytes and all three reader/helper/test blobs are identical: **344** faulted
+  recording reports, **7** faulted views. This is valid unchanged-input evidence
+  reuse, NOT a claimed new full reparse. No fault increase, clean-corpus or SAVES
+  claim. Actual deployment-boundary observations remain separate.
+- Synthetic explicit entities are NOT a real native map_restart, held-jump/dwell,
+  ranked finish or human pass. Original private vectors/recipes and raw logs stay
+  private, including the source-based adjudication of the first review concerns.
 
 ## Current state
 
-Local candidate, not published or installed. Fresh independent whole-feature
-source/state and recorded-consequence reviews remain pending. Actual deployment is
-recorded separately; no old-data failure or passed test is rerun/regraded to promote. Small human check is
-pending in lextest.md; broader saved-phase/native bank coverage remains partial.
+Corrected local candidate, not published or installed. Initial source review
+blocked the broader predicate; evidence review had no blocking finding. A bounded
+independent delta re-review of the corrected rule is pending, not silently waived.
+Actual deployment is recorded separately. Pending human check is in lextest.md;
+broader saved-phase/native-bank coverage remains partial.

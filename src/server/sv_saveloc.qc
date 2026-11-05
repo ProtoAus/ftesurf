@@ -6424,10 +6424,11 @@ void(entity e) SV_RetryApply =
 	}
 
 	// P1313: keep the restored speed, not a fresh clean arm carrying it.
-	// Use the existing start-box and walk/jump limits; running retries and
-	// direct Multi-Session restores do not pass this armed retry guard.
+	// Use the existing horizontal reset rule, including bhop modes, not the
+	// load-forgiveness proof: a saved fall or upward push is not prespeed.
+	// Running retries and direct Multi-Session restores stay outside it.
 	if (e.run_t_state == TS_ARMED)
-	if (!SV_TimerNotFast(e))
+	if (SV_TimerFast(e))
 	if (SV_ZoneInBox(e.run_t_armzone, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e)))
 		SV_TimerPractice(e);
 

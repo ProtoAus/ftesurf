@@ -2,9 +2,10 @@
 
 ## P1313 retry start status — pending after matching server update
 
-Small check when available: retry a fast armed start. Your saved momentum should
-be kept, but the start should show practice; an ordinary low-speed start should
-still be clean. Separately retry an already-running attempt: its saved status
+Small check when available: retry an armed start carrying extra horizontal speed.
+Your saved momentum should be kept, but the start should show practice; an ordinary
+low-speed start or vertical-only fall/push should keep its prior status.
+Separately retry an already-running attempt: its saved status
 and movement should continue rather than becoming practice just for retrying.
 Production-function/disk/latch controls are not native map_restart, held-jump
 phase, end-to-end ranked-finish or human acceptance. No such pass is invented.
