@@ -26,6 +26,9 @@
 - Templates reuse recorded input, not a saved world or a newly optimized route. Supported current-run replay is still required; ramp sections and the next-ramp solver remain in progress.
 - Recipe name typing keeps chat shortcuts in the field and releases movement safely across focus changes. A held name key cannot get rebound by a later key-capture panel. Existing or unreadable unfinished templates are preserved rather than overwritten.
 
+### P1321 Fewer false prediction-error alerts after resets
+- Reduced false prediction-error popups when several resets are sent in quick succession over a higher-latency connection. Movement and the underlying diagnostic history are unchanged.
+
 ### P1320 Keep paused runs safe during ownership checks
 - A paused run stays intact while ownership is unavailable or belongs to another game key. Starting or finishing a fresh run now uses the same discard checks as the manual command, without repeating the warning every frame.
 

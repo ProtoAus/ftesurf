@@ -16,6 +16,15 @@ name containing T with T bound to chat: it should stay in the name, not open cha
 Synthetic input-chain and owned-window native binding handoffs passed; actual
 hardware feel is still unconfirmed.
 
+## P1321 expected-reset report history — small owner check pending
+
+After the corrected client is delivered, on an ordinary higher-latency connection
+try two quick restart/stage-jump requests. The known reset corrections should not
+produce a prediction-error report popup. Do not manufacture faults or risk a run
+for this check. The exact compiled helper logic passes23positive/negative checks;
+this is not yet a live-network or human confirmation. Deployment remains pending
+in tools/p1321-prederr-history.md until its receipt is recorded.
+
 ## P1320 paused-save discard guard — optional real-account check pending
 
 Installed BOTH Windows11:02UTC and ALL12lobbies11:11UTC5Nov. On the next normal

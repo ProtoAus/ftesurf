@@ -7,6 +7,7 @@
   Timers are cltime: `time` stops with the server.
 */
 #define PE_RING      96
+#define PE_EXPECT    16
 #define PE_CHUNK     800
 #define PE_MAXCHUNKS 400
 
@@ -28,8 +29,10 @@ float  pe_tseq[TG_MAX];         // last seq a mirror trigger fired, for enter-on
 float  pe_name_err, pe_name_seq; // the last report written: its worst line
 float  pe_box_pending;          // a report written during an upload gets its box after it
 float  pe_join_t;               // P1238: cltime of the last map start
-float  pe_exp_t, pe_exp_seq;    // P1238: an unpredicted move this client asked for, and its command
-string pe_exp_why;              //        what it was (a literal)
+float  pe_exp_t[PE_EXPECT], pe_exp_seq[PE_EXPECT];
+string pe_exp_reason[PE_EXPECT]; // literal reasons; no zoned strings owned here
+float  pe_exp_n, pe_exp_next;    // P1321: bounded history, not just the newest pending reset
+string pe_exp_why;              // the reason belonging to the matching request
 
 void() PE_RegisterCvars =
 {
@@ -62,19 +65,37 @@ void(float i, float seq) PE_TrigFired =
 	pe_tseq[i] = seq;
 };
 
+// P1321: a second request can precede the first request's delayed correction.
+void(float when, float seq, string why) PE_ExpectAt =
+{
+	pe_exp_t[pe_exp_next] = when;
+	pe_exp_seq[pe_exp_next] = seq;
+	pe_exp_reason[pe_exp_next] = why;
+	pe_exp_next = pe_exp_next + 1;
+	if (pe_exp_next >= PE_EXPECT)
+		pe_exp_next = 0;
+	pe_exp_n = min(pe_exp_n + 1, PE_EXPECT);
+};
+
+void() PE_ResetExpected =
+{
+	pe_exp_n = 0;
+	pe_exp_next = 0;
+};
+
 // P1238: the client asked the server for a move it does not predict (goto_spawn, a reset sent as a
 // plain command); the snap that answers it is that move, not a misprediction.
 void(string why) PE_Expect =
 {
-	pe_exp_t = cltime;
-	pe_exp_seq = clientcommandframe;
-	pe_exp_why = why;
+	PE_ExpectAt(cltime, clientcommandframe, why);
+	PE_Note(sprintf("expect at cltime %.3f: %s", cltime, why));
 };
 
 void() PE_MapReset =
 {
 	local float i;
 	pe_join_t = cltime;
+	PE_ResetExpected();
 	for (i = 0; i < TG_MAX; i = i + 1)
 		pe_tseq[i] = 0;
 	PE_Note(sprintf("map %s", mapname));
@@ -119,6 +140,7 @@ void(string stem) PE_WriteContext =
 	if (f < 0)
 		return;
 	fputs(f, "FTESURF-PREDCTX 1\n");
+	fputs(f, sprintf("reporter P1321 fs_wop \"%s\" expected %g of %g\n", serverkey("fs_wop"), pe_exp_n, PE_EXPECT));
 	fputs(f, sprintf("map %s\nserver %s\nlocal %s\nworst %.2f at seq %.0f\n", serverkey("map"), serverkey("ip"),
 	                 strftime(TRUE, "%Y-%m-%d %H:%M:%S"), pe_err, pe_errseq));
 	fputs(f, sprintf("cvars cl_netfps %s rate %s cl_maxfps %s cl_prederror %s cl_triggers %s cl_warpop %s\n",
@@ -194,16 +216,30 @@ float(vector srv) PE_ServerTele =
 	return FALSE;
 };
 
-// P1238: an error within a second (and two pings) of a move PE_Expect noted, at or after its command.
+// P1321: keep P1238's bounds for EACH request; a newer request must not overwrite an older one.
+float(float seq, float now, float ping, float netfps) PE_ExpectedAt =
+{
+	local float i, slot;
+	for (i = 1; i <= pe_exp_n; i = i + 1)
+	{
+		slot = pe_exp_next - i;
+		if (slot < 0)
+			slot = slot + PE_EXPECT;
+		if (now >= pe_exp_t[slot] && now - pe_exp_t[slot] < 1 + 2 * ping
+		    && seq >= pe_exp_seq[slot] - 2 && seq <= pe_exp_seq[slot] + ceil(ping * netfps) + 8)
+		{
+			pe_exp_why = pe_exp_reason[slot];
+			return TRUE;
+		}
+	}
+	return FALSE;
+};
+
 float(float seq) PE_Expected =
 {
 	local float ping;
-	if (!pe_exp_t)
-		return FALSE;
 	ping = min(stof(getplayerkeyvalue(player_localnum, "ping")) / 1000, 1);
-	// The move lands about half a round trip of commands after the one it was asked on.
-	return cltime - pe_exp_t < 1 + 2 * ping && seq >= pe_exp_seq - 2
-	       && seq <= pe_exp_seq + ceil(ping * cvar("cl_netfps")) + 8;
+	return PE_ExpectedAt(seq, cltime, ping, cvar("cl_netfps"));
 };
 
 void() PE_Frame =

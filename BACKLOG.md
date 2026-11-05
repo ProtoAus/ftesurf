@@ -1,5 +1,9 @@
 # BACKLOG.md
 
+## Prediction report metadata / replay-start tails (P1321 investigation residuals)
+- Native site: `cl_pred.c:CL_PredictMove` diagnostic ring command fields read `from.cmd`, selected before packet-frame to acknowledged-move-frame conversion and using a player-number index. Falsifier: distinct command lengths/buttons/angles plus a nonzero player slot/local seat; the marked ring row must equal the acknowledged outframe's command for THAT seat. Do not infer a movement fault from these unqualified metadata fields or change prediction math to repair a reporter.
+- Viewer site: `cl_watch.qc:Watch_Frame` / deferred line rebuild. Garden's full-view first/repeat captures retain an opening hitch; those lows include replay startup, not only active gameplay. Falsifier: same frozen full route preloaded/paused/seek0 before timing,2x/1x/2x rendering controls and a profile that assigns the cost. The settled diagnostic is pending RAM headroom; do not regrade the original full-view captures or claim a body-only/lighting fix from them.
+
 ## P1309 winter weather preview: explicit coverage residuals
 - `tools/winter_weather.py:meshes`: Christmas's6306sky triangles exceed conservative4096cap; hold that sky ONLY, not ice/audio. Falsifier for a later exact simplification/budget decision: native portal boundaries and moving-view control, no filling non-sky gaps or silently raising the cap.
 - `surfaces`: world-model upward static liquid faces only; brush entities/moving liquids and actual lava-map appearance remain untested. Falsifier: a chosen event map with these surfaces, correct frost/sorting plus unchanged contents/movement/damage.
