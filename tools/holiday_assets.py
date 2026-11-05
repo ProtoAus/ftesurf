@@ -19,7 +19,7 @@ SELECTION = ('snowman', 'snowman-hat', 'tree-decorated-snow', 'tree-snow-a',
 MATERIAL = 'models/christmas/holiday'
 
 
-def iqm(name, vertices, triangles, material=MATERIAL):
+def iqm(name, vertices, triangles, material=MATERIAL, colours=None):
     """Static position/UV/normal mesh. No animation/pose or per-frame CPU work."""
     if not vertices or len(vertices) > 65535 or not triangles:
         raise ValueError('invalid static mesh size')
@@ -27,21 +27,30 @@ def iqm(name, vertices, triangles, material=MATERIAL):
     text += b'\0' * (-len(text) % 4)
     off_mesh = 124 + len(text)
     off_va = off_mesh + 24
-    off_pos = off_va + 60
+    nva = 3 + (colours is not None)
+    off_pos = off_va + 20 * nva
     pos = b''.join(struct.pack('<3f', *p) for p, uv, n in vertices)
     uv = b''.join(struct.pack('<2f', *uv) for p, uv, n in vertices)
     norm = b''.join(struct.pack('<3f', *n) for p, uv, n in vertices)
     off_uv, off_norm = off_pos + len(pos), off_pos + len(pos) + len(uv)
-    off_tri = off_norm + len(norm)
+    colour = b''
+    if colours is not None:
+        if len(colours) != len(vertices):
+            raise ValueError('vertex light count mismatch')
+        colour = bytes(max(0, min(255, round(x * 255))) for c in colours for x in (*c[:3], 1))
+    off_colour = off_norm + len(norm)
+    off_tri = off_colour + len(colour)
     tri = b''.join(struct.pack('<3I', *t) for t in triangles)
     size = off_tri + len(tri)
     header = b'INTERQUAKEMODEL\0' + struct.pack('<27I',
-        2, size, 0, len(text), 124, 1, off_mesh, 3, len(vertices), off_va,
+        2, size, 0, len(text), 124, 1, off_mesh, nva, len(vertices), off_va,
         len(triangles), off_tri, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
     mesh = struct.pack('<6I', 1, len(name.encode()) + 2, 0, len(vertices), 0, len(triangles))
     va = b''.join(struct.pack('<5I', kind, 0, 7, count, off)
                   for kind, count, off in [(0, 3, off_pos), (1, 2, off_uv), (2, 3, off_norm)])
-    data = header + text + mesh + va + pos + uv + norm + tri
+    if colours is not None:
+        va += struct.pack('<5I', 6, 0, 1, 4, off_colour) # IQM_COLOR, normalized UBYTE
+    data = header + text + mesh + va + pos + uv + norm + colour + tri
     assert len(data) == size
     return data
 

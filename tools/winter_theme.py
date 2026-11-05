@@ -19,6 +19,7 @@ import wave
 from PIL import Image, ImageFilter
 from rampwear import Bsp
 from holiday_assets import iqm
+from snow_lighting import FaceLights
 from winter_weather import MOM_MAPS, meshes as weather_meshes, roof_header
 from winter_placements import records
 
@@ -132,7 +133,7 @@ def main():
     def exposed(p):
         ix,iy=int((p[0]-x0)//cell),int((p[1]-y0)//cell)
         return 0<=ix<w and 0<=iy<h and p[2]+3>=heights[iy,ix]
-    vertices={'grass':[],'caps':[]}; triangles={'grass':[],'caps':[]}; counts=collections.Counter(); candidates=[]
+    vertices={'grass':[],'caps':[]}; triangles={'grass':[],'caps':[]}; colours={'grass':[],'caps':[]}; edges=collections.defaultdict(list); counts=collections.Counter(); candidates=[]; lighting=FaceLights(b)
     for face,flags,material,normal,poly,disp in world_faces(b):
         if flags&(2|4|128|512) or any(x in material for x in ('tools/','water','lava','grate','glass','ice2')): continue
         grass='grass' in material
@@ -151,21 +152,38 @@ def main():
             if not grass and not any(exposed(p) for p in [centre,*polygon]): counts['roofed_rejected']+=1;continue
             group='grass' if grass else 'caps'; base=len(vertices[group]); counts[group+'_polys']+=1
             for p in polygon:
-                p=p+n*.35
-                vertices[group].append((tuple(p),((p[0]-x0)/(w*cell),(p[1]-y0)/(h*cell)),tuple(n)))
+                depth=.75 if grass else 3.5+1.5*math.sin(p[0]*.012+p[1]*.014)
+                q=p+n*depth
+                vertices[group].append((tuple(q),((q[0]-x0)/(w*cell),(q[1]-y0)/(h*cell)),tuple(n)))
+                colours[group].append(lighting.sample(face,p))
             for i in range(1,len(polygon)-1):triangles[group].append((base,base+i+1,base+i))
+            if not grass:
+                for i in range(len(polygon)):
+                    j=(i+1)%len(polygon);key=tuple(sorted(tuple(round(float(v),3) for v in p) for p in (polygon[i],polygon[j])))
+                    edges[key].append((base+i,base+j,polygon[i],polygon[j],centre,n))
         if grass and normal[2]>.97 and area(poly)>4096:
             centre=sum(poly)/len(poly)
             for corner in poly:
                 p=corner*.6+centre*.4
                 edge_clear=min(np.linalg.norm(np.cross(np.r_[poly[(j+1)%len(poly)][:2]-poly[j][:2],0],np.r_[p[:2]-poly[j][:2],0]))/max(.001,np.linalg.norm(poly[(j+1)%len(poly)][:2]-poly[j][:2])) for j in range(len(poly)))
                 if edge_clear>=40 and exposed(p): candidates.append(tuple(p))
+    for candidates_at_edge in edges.values():
+        if len(candidates_at_edge)!=1:continue # no doubled internal skirts
+        ia,ib,a0,b0,centre,n=candidates_at_edge[0];d=b0-a0;side=np.array([d[1],-d[0],0.0]);length=float(np.linalg.norm(side))
+        if length<.01:continue
+        side/=length
+        if np.dot(side,(a0+b0)*.5-centre)<0:side=-side
+        base=len(vertices['caps'])
+        for old,p,top in [(ia,a0,True),(ib,b0,True),(ib,b0,False),(ia,a0,False)]:
+            q=vertices['caps'][old][0] if top else tuple(p+n*.25)
+            vertices['caps'].append((q,((q[0]-x0)/(w*cell),(q[1]-y0)/(h*cell)),tuple(side)))
+            colours['caps'].append(colours['caps'][old]*.72)
+        triangles['caps'].extend([(base,base+1,base+2),(base,base+2,base+3)]);counts['cap_boundary_skirts']+=1
     if counts['grass_faces']!=103: raise ValueError('inspected map changed or real grass not processed')
-    for group,cap in [('grass',2048),('caps',8192)]:
+    for group,cap in [('grass',2048),('caps',18000)]:
         triangles[group]=clockwise_triangles(vertices[group],triangles[group])
         if not 0<len(triangles[group])<=cap:raise ValueError(f'{group} geometry budget: {len(triangles[group])}/{cap}')
-        p=out/'models/gibs/winterweather'/f'{a.map}-{group}.iqm';p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(iqm(a.map+'-'+group,vertices[group],triangles[group],'ftesurf_colin_snow_'+group))
-    snow_audio(out/'sound/winter')
+        p=out/'models/gibs/winterweather'/f'{a.map}-{group}-lit.iqm';p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(iqm(a.map+'-'+group,vertices[group],triangles[group],'ftesurf_colin_snow_'+group,colours[group]))
     entities=b.lump(0)[0].decode('latin1');spawn=[]
     for block in re.findall(r'\{[^{}]*\}',entities):
         e=dict(re.findall(r'"([^"\n]*)"\s*"([^"\n]*)"',block))
@@ -181,7 +199,7 @@ def main():
         selected.append(chosen);candidates=[p for p in candidates if not np.array_equal(p,chosen)]
     existing=(Path(__file__).resolve().parents[1]/'ftesurf/gfx/winter'/f'{a.map}.txt')
     lines=['winter 1 '+a.map,'// Map-specific snow material replacement, exposed caps, provisional safe grass-edge props.']
-    for group in ('grass','caps'):lines.append(f'surface {group} models/gibs/winterweather/{a.map}-{group}.iqm {z0:g} {zr:g}')
+    for group in ('grass','caps'):lines.append(f'surface {group} models/gibs/winterweather/{a.map}-{group}-lit.iqm {z0:g} {zr:g}')
     for i,p in enumerate(selected):
         scale=.9 if ASSETS[i%len(ASSETS)].startswith('tree') else 1
         lines.append('prop %s %g %g %g %g %g'%(ASSET_IDS[i%len(ASSET_IDS)],p[0],p[1],p[2]+.5,(i*137)%360,scale))
@@ -192,7 +210,7 @@ def main():
     weather=out/'gfx/weather';weather.mkdir(parents=True,exist_ok=True)
     gen=Path(__file__).resolve().parents[1]/'ftesurf/gfx/weather/snow-grain.png';gen.parent.mkdir(parents=True,exist_ok=True)
     noise=np.random.default_rng(1316).integers(210,256,(128,128),dtype=np.uint8);Image.fromarray(noise).filter(ImageFilter.GaussianBlur(.35)).save(gen)
-    report={'map':a.map,'bsp_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'fine_mask_cell':cell,'audio_roof':'conservative512 max of exactfine32','mask_dimensions':[w,h],'counts':dict(counts),'triangles':{k:len(v) for k,v in triangles.items()},'props':len(selected),'prop_positions':[list(p) for p in selected],'collision_changes':False,'steep_ride_surfaces_excluded':True,'native_appearance_fps':'PENDING'}
+    report={'map':a.map,'bsp_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'fine_mask_cell':cell,'audio_roof':'conservative512 max of exactfine32','mask_dimensions':[w,h],'counts':dict(counts),'triangles':{k:len(v) for k,v in triangles.items()},'props':len(selected),'prop_positions':[list(p) for p in selected],'collision_changes':False,'steep_ride_surfaces_excluded':True,'lighting':{'source':lighting.source,'sampled':lighting.sampled,'ambient_fallback':lighting.ambient,'linear_RGB_percentiles':np.percentile(np.asarray(colours['grass']+colours['caps']),[0,50,100],axis=0).tolist()},'cap_depth_units':[2,5],'native_appearance_fps':'PENDING'}
     (out/'theme-report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report))
 
 if __name__=='__main__':main()

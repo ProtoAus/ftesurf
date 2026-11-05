@@ -20,6 +20,8 @@ def mesh(path):
     data=path.read_bytes();h=struct.unpack_from('<27I',data,16);arrays={}
     for i in range(h[7]):
         kind,flags,fmt,size,off=struct.unpack_from('<5I',data,h[9]+i*20)
+        if kind not in (0,2):continue
+        assert fmt==7 and size==3
         arrays[kind]=np.frombuffer(data,dtype='<f4',count=h[8]*size,offset=off).reshape(-1,size)
     t=np.frombuffer(data,dtype='<u4',count=h[10]*3,offset=h[11]).reshape(-1,3)
     p=arrays[0][t];n=arrays[2][t].sum(1)
@@ -30,8 +32,9 @@ def mesh(path):
 def sources(path,grass):
     body='\n'.join(l for l in path.read_text().splitlines() if not l.startswith('!!') and not l.startswith('#include'))
     defs='#version 110\n#define ZBASE -100.0\n#define ZRANGE 200.0\n'+('#define GRASS 1\n' if grass else '')
-    vs=defs+'#define VERTEX_SHADER\n#define v_position gl_Vertex\n#define v_texcoord gl_MultiTexCoord0.st\n#define v_normal gl_Normal\n#define ftetransform ftransform\n'+body
-    fs=defs+'#define FRAGMENT_SHADER\nuniform sampler2D s_roof,s_grain;uniform vec4 e_colourident;\n'+body
+    common='uniform vec4 e_colourident,e_colour;uniform vec3 e_eyepos;uniform float e_time;\n'
+    vs=defs+'#define VERTEX_SHADER\n#define v_position gl_Vertex\n#define v_texcoord gl_MultiTexCoord0.st\n#define v_normal gl_Normal\n#define v_colour gl_Color\n#define ftetransform ftransform\n'+common+body
+    fs=defs+'#define FRAGMENT_SHADER\nuniform sampler2D s_roof,s_grain,s_snow,s_bolt,s_cloud;\n'+common+body
     return vs,fs
 
 def program(g,path,grass):
@@ -41,17 +44,18 @@ def program(g,path,grass):
     ok=C.c_int();g.fn('glGetProgramiv',None,UINT,UINT,C.POINTER(C.c_int))(p,0x8B82,C.byref(ok));assert ok.value,'production program link failed'
     g.fn('glUseProgram',None,UINT)(p)
     loc=g.fn('glGetUniformLocation',C.c_int,UINT,C.c_char_p)
-    for name,index in [('s_roof',0),('s_grain',1)]:g.fn('glUniform1i',None,C.c_int,C.c_int)(loc(p,name.encode()),index)
+    for name,index in [('s_roof',0),('s_grain',1),('s_snow',1),('s_bolt',0),('s_cloud',1)]:g.fn('glUniform1i',None,C.c_int,C.c_int)(loc(p,name.encode()),index)
     g.fn('glUniform4f',None,C.c_int,FLOAT,FLOAT,FLOAT,FLOAT)(loc(p,b'e_colourident'),1,1,1,1)
+    g.fn('glUniform4f',None,C.c_int,FLOAT,FLOAT,FLOAT,FLOAT)(loc(p,b'e_colour'),1,1,1,1)
     g.fn('glDeleteShader',None,UINT)(v);g.fn('glDeleteShader',None,UINT)(f)
     return p
 
-def render(g,p,roof,cw=True):
+def render(g,p,roof,cw=True,light=1.0,albedo=.5):
     n=32;g.fn('glViewport',None,C.c_int,C.c_int,C.c_int,C.c_int)(0,0,n,n)
     g.fn('glClearColor',None,FLOAT,FLOAT,FLOAT,FLOAT)(0,0,0,0);g.fn('glClear',None,UINT)(0x4000)
     g.fn('glUseProgram',None,UINT)(p);textures=(UINT*2)()
     g.fn('glGenTextures',None,C.c_int,C.c_void_p)(2,textures)
-    for unit,value in [(0,[roof,0,0,1]),(1,[.5,.5,.5,1])]:
+    for unit,value in [(0,[roof,0,0,1]),(1,[albedo,albedo,albedo,1])]:
         g.fn('glActiveTexture',None,UINT)(0x84C0+unit)
         g.fn('glBindTexture',None,UINT,UINT)(0x0DE1,textures[unit])
         for prop in [0x2800,0x2801]:g.fn('glTexParameteri',None,UINT,UINT,C.c_int)(0x0DE1,prop,0x2600)
@@ -65,6 +69,7 @@ def render(g,p,roof,cw=True):
     normal=g.fn('glNormal3f',None,FLOAT,FLOAT,FLOAT);texcoord=g.fn('glTexCoord2f',None,FLOAT,FLOAT)
     vertex=g.fn('glVertex3f',None,FLOAT,FLOAT,FLOAT);error=g.fn('glGetError',UINT)
     setup_error=error();assert setup_error==0,('setup',hex(setup_error))
+    g.fn('glColor4f',None,FLOAT,FLOAT,FLOAT,FLOAT)(light,light,light,1)
     begin(0x0004);normal(0,0,1)
     positions=[(-.9,-.9),(-.9,.9),(.9,-.9)]
     if not cw:positions.reverse()
