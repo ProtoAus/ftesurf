@@ -1,10 +1,12 @@
 # Human-first surf TAS editor
 
 Requested by Lex after trying the existing workshop, 4 November 2026.
-**Status: work in progress.** The P1308 controller foundation is implemented and
-has isolated native/UI controls; final combined-source qualification/deployment
-and owner feel are tracked in [the controller checkpoint](p1308-tas-controller.md).
-The complete normal-play/full-history/section workflow below is NOT delivered.
+**Status: work in progress, 5 November 2026.** The controller foundation, full
+captured local line and P1323 literal input templates are installed BOTH Windows
+and all 12 lobbies; exact receiver/source evidence and limits are in
+[the input-template qualification](p1323-tas-recipes.md). Historical procedural
+settings restoration, contact sections and the constrained next-ramp solver
+remain unfinished. The complete workflow below is NOT delivered.
 This changes the local-editor priority in [the original TAS plan](plan-tas.md),
 not its assisted ancestry, contribution or verified-board requirements.
 Owner observations are recorded separately in [lextest.md](../lextest.md).
@@ -43,7 +45,7 @@ cause. The exact ground rules/state and a reproducible example remain to capture
 10. Optional automatic vertical aim: look up when climbing and down when falling,
     without taking over the important left/right yaw control.
 
-## 2. What the existing implementation does, and does not do
+## 2. Inspected baseline on 4 November (not current delivery status)
 
 Source inspected: QC origin/main3b132f12; native published origin/main6924bf32.
 The canonical native checkout is on older historical source, so its absence of

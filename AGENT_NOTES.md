@@ -2,6 +2,17 @@
 
 ## P1323 named-input validation and corpus observer pitfalls (5 Nov 2026)
 
+- Complete preservation walks must supply a raising `os.walk(onerror=...)`:
+  its default silently omits unreadable directories. An owned non-root canary
+  reproduced omission, corrected part/inventory walks refused PermissionError,
+  and restored-permission positive enumerations acted:5/0. No live fixture modes
+  changed. Full resume preimages include metadata, not just body payloads.
+- Receiver provenance is role-specific: primary client18 was retained, while
+  qualified dedicated/plugin14 supplies the equivalent server/input source.
+  P1323 delivery retained8parts+180complete resume files ON/OFFBOX before staging,
+  then verified all12live pairs and46856old protected files unchanged. Use
+  receipt UTC, not local log-name time (this Windows console is UTC+11).
+
 - Independent source review caught three pre-shipment defects: unowned key-ups
   strand the engine's stored release; a focused name must get typing before chat
   binds, but not before an existing draft/higher editor; fopen failure is not

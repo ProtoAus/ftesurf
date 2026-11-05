@@ -1,8 +1,10 @@
 # lextest.md — things waiting on a human
 
-## P1323 named TAS input templates - pending after installation
+## P1323 named TAS input templates — installed, owner check pending
 
-After matching native/progs installation, play/pause a short familiar line, select
+Installed BOTH Windows5Nov12:53UTC and ALL12lobbies13:58UTC; actual primary
+clients stay18, dedicated/plugin dependency14. No human confirmation yet.
+On a short disposable practice line, play/pause, select
 a small Timeline span and open Project. Type a recipe name, Save selected input,
 and Preview named recipe; Discard it and resume. Is name focus/Enter/Escape clear,
 and can you return to playing without stuck movement or losing the future line?
@@ -22,8 +24,10 @@ After the corrected client is delivered, on an ordinary higher-latency connectio
 try two quick restart/stage-jump requests. The known reset corrections should not
 produce a prediction-error report popup. Do not manufacture faults or risk a run
 for this check. The exact compiled helper logic passes23positive/negative checks;
-this is not yet a live-network or human confirmation. Deployment remains pending
-in tools/p1321-prederr-history.md until its receipt is recorded.
+this is not yet a live-network or human confirmation. The exact published helper
+shipped with P1323 to BOTH Windows and ALL12lobbies5Nov12:53/13:58UTC;
+receiver provenance is in tools/p1323-tas-recipes.md.
+The real-network/human check is still pending.
 
 ## P1320 paused-save discard guard — optional real-account check pending
 
@@ -84,9 +88,11 @@ cooler lighting, flash/bolt and delayed thunder? OFF should restore lighting.
 Inspect one snowman/tree and ride save2's ramp for face/depth corrections. No pass
 yet. Report just the remaining wrong case, not a full regression campaign.
 
-## P1314 captured local TAS line — pending, candidate not installed yet
+## P1314 captured local TAS line — installed, owner check pending
 
-After the matching local native/progs candidate is actually installed: play a
+Qualified14dedicated/plugins plus current TAS progs shipped with P1323 to BOTH
+Windows and ALL12lobbies5Nov12:53/13:58UTC; actual primary clients remain18.
+No human confirmation yet. On a disposable practice line, play a
 familiar short line normally for about three seconds, then `tas pause` and
 `tas menu`, Timeline. Browse an earlier input, preview a small yaw change, then
 Discard and Play. Does the earlier line stay available and does this feel like
