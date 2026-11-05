@@ -1,5 +1,32 @@
 # AGENT_NOTES.md
 
+## P1318 startup lightmap-cache marker, not shader compilation (5 Nov)
+
+- The P1311 Boreas residual is a false cached_dlight flag. At fresh-process map load
+  both markers are0; cached_dlight=(0==0) makes unseen static faces look previously
+  dynamically lit. First reflection rebuilds647faces /44.79ms with0style changes and
+  0live CPU lights. A nonzero-surface-marker guard removes it, leaving real-marker
+  comparisons and all lighting math unchanged. R_PushDlights increments first.
+- Native sampler/census acted, not an absence-only pass. It is the existing P1277
+  probe adapted to175b27c09; exact symbols retained per binary. Never deploy it.
+- Short fixed-view smoke was INVALID: p1277arm cmds kind is supported only WITHOUT
+  rec. With rec it fell into drive, including an in-timing screenshot. Preserve
+  that failure; use the known-good viewer path. Renderer/profiler startup cvars
+  must be set after initialization, not assumed registered in the earliest cfg.
+- Source VBSP has NO CPU MarkLights callback. Injected real dynamic light still
+  visibly acts and expires; CPU counts remain0by design. Do not call that an acted
+  CPU-light regression. World ROI lit difference54.23 /removed0.00071 RGB levels;
+  the36-case marker matrix preserves every nonzero case. Pictures inspected.
+- Some large sampled frames are replay-open parsing/allocations, not mid-run draw
+  stalls. Separate them; do not claim every sampled203/280ms frame was this bug.
+- Final feature1318 replaces an UNPUBLISHED1317 number collision with Christmas.
+  Preserve old raw logs/stamps; no redating/relabeling. The first manual metadata
+  command omitted standard build.ps1's --tags; changed version compiler flags also
+  need a full rebuild, not an incremental relink. No product Makefile defect claimed.
+- Final clean build, uninstrumented two-map checks, exact primary client pair and
+  rollback provenance: tools/p1318-lightmap-first-view.md. No QC/server/plugin,
+  backend, data, settings or release deployment is part of the client-only fix.
+
 ## P1311 Boreas/Demise warm coverage and remaining first-use hitch (5 Nov 2026)
 
 - Owner's actual rig: i9-9900K / RTX2080SUPER /16GiB. Existing p1277 replay arm reused in

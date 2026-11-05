@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1318 first-view lightmap hitch — owner feel check pending
+
+After the updated client is installed and restarted, try the first Boreas run,
+particularly its late water-reflection area: is the repeatable brief freeze gone,
+and does the lighting look unchanged? A quick first Demise run is useful too.
+Automated replay/census and inspected pictures are not owner feel acceptance;
+other occasional stalls and scene-dependent FPS remain possible. No manual pass
+has been reported yet. Provenance: tools/p1318-lightmap-first-view.md.
+
 ## P1317 Colin full Christmas pass — native acceptance pending
 
 After actual combined deployment/client restart, load surf_colin_blaster_69000:

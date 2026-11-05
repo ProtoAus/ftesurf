@@ -21,6 +21,9 @@
 
 ## next
 
+### P1318 Smoother first views
+- Fixed an unnecessary first-view lightmap rebuild that could hitch when a new area or water reflection first appeared, without reducing lighting quality.
+
 ### P1317 Colin Christmas theme
 - surf_colin_blaster_69000 has authored snowy grass and exposed snow caps, distributed snowmen/trees/gifts, falling snow, cosmetic ice, storm sky, light mist and winter audio. Collision and liquid damage are unchanged.
 - Its automatic theme can be disabled with the Display Info checkbox or r_colin_winter 0; individual snow/weather/prop options remain separate. Other maps keep their existing defaults.
