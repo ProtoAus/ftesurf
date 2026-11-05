@@ -21,6 +21,12 @@
 
 ## next
 
+### P1327 Textured, lit snow and storm previews
+- Colin's snow uses the mounted Source snow textures and baked map lighting instead of a fullbright white layer. Exposed caps gain shallow, uneven depth and visible edge rims; collision is unchanged.
+- Snow-covered grass uses mounted Counter-Strike: Source snow footsteps, with Momentum's snow steps as a fallback.
+- Weather uses the owner's rain/snow loops and thunder, compressed to small mono64kbps Vorbis files. Choose the ambient loop without changing map precipitation.
+- Lightning fires randomized multi-flash bursts before the thunder. Added repeat-preview and storm-interval controls, with no dynamic lights or per-frame lightmap updates.
+
 ### P1326 More reliable prediction-report input details
 - Fixed command timing, buttons and movement inputs being attributed to the wrong command in some prediction-error reports. This improves diagnostics; it does not change movement.
 
