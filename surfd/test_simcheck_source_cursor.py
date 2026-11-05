@@ -79,7 +79,8 @@ class SourceCursorTests(fixture.PendingTests):
             self.assertFalse(conn.in_transaction)
             raise RuntimeError('synthetic row error')
 
-        with mock.patch.object(simcheck, 'compare_run', side_effect=fail):
+        # Fault the already-owned comparison, not the public lock wrapper.
+        with mock.patch.object(simcheck, '_compare_run', side_effect=fail):
             for _ in range(3):
                 self.assertIn('1 row failed', self.step()[2])
                 self.restart()

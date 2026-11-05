@@ -82,7 +82,33 @@ base `ftesurf/particles` is absent. That is not a feature/codec success or a bro
 pass. Targeted new selector/signed-path checks are recorded separately. No release
 was requested; ordinary build delivery is not a prepared/published release.
 
-Deployment/source/artifact provenance will be appended after actual delivery.
-Qualified build must preserve the inspected released native/API base; ship only
-client and owned media, not newer peer native/server/menu work. No native pins,
-QC Build, backend generation, player data/config or evidence semantics changed.
+## Delivered — 5 November 2026
+
+Feature source `446fe4ee7f28dcbef17cf79723caacc6abfe99b7` is published on main.
+Inspected runtime qualification `2f7ececcf76656d2aec1eaeef8fd76adc90f9901`
+(`winter-snow-1327-qualified`) retains the released `9b8b66b3` native/API base,
+not newer peer native pins. Its three-VM build has zero warnings; the byte-matched
+client hash is `0dcee70e132d0204bee0489e1ff37897bcc75ffbb6f61322a5b310ca88dc9633`.
+Server/menu outputs were build controls ONLY, never deployment inputs.
+
+BOTH Windows installs: guarded client DAT/LNO plus eight exact changed media
+files each (20 targets total), 18:11:42UTC. All41protected native/config/fine-mask/
+server/menu paths were unchanged at publication. Both current client caches are
+seeded as `c8e11d20.dat`; originals of all three owner WAVs remain byte-identical.
+The first abbreviated-SHA argument refusal is retained; no files were staged by
+that call. The same guarded publisher passed with the full inspected SHA.
+
+ALL12lobbies: original transaction completed 18:25:28UTC, exact client plus eight
+media files, twelve new epochs, zero skipped. Independent readback verified those
+same epochs, client/predecessor/media hashes and direct health200/ok/lobbies12.
+All47,420pre-existing protected runtime entries remained unchanged; native,
+server/menu, config and backend generation were preserved. Maintenance lock
+released. The caller's180second observation timed out, but read-only follow-up
+found the ORIGINAL producer still running and then its successful final receipt;
+no second activation, recovery restart, or historical failure regrading occurred.
+
+No native pins, QC Build, backend generation, player data/config or evidence
+semantics changed; this is ordinary beta delivery, NOT a published release.
+Owner native appearance, cap placement, CS:S footstep sound, seamless loops,
+flash/thunder timing and FPS remain unconfirmed; see lextest.md. Offline GPU and
+structural checks are not substituted for that small actual-game acceptance.

@@ -87,12 +87,12 @@ class SqlPeers(unittest.TestCase):
 
     def test_step_reports_peer_query_limit_once_without_source_prose(self):
         obj=controls.budget(self.conn,1000000)
-        original=sc.compare_run; calls=[]
+        original=sc._compare_run; calls=[]
         def peers(*args,**kwargs):
             calls.append(1)
             if obj is not None: obj.remaining=0
             return original(*args,**kwargs)
-        with mock.patch.object(sc,'compare_run',side_effect=peers):
+        with mock.patch.object(sc,'_compare_run',side_effect=peers):
             out=sc.similarity_step(self.conn,self.sf,tools_dir=str(fixture.ROOT/'tools'),
                                   max_seconds=30,**controls.options(sc.similarity_step,obj))
         self.assertEqual(out[:2],(0,0))

@@ -73,7 +73,9 @@ class Overlap(fixture.AtomicFlush):
                         return value
                     row = writer.execute('SELECT * FROM replays WHERE id=?',
                                          (peer,)).fetchone()
-                    result = sc.compare_run(self.sf, writer, row, limit_peers=1,
+                    # Model an older/nonparticipating writer: bypass ONLY the
+                    # new scheduler, not the existing atomic observation flush.
+                    result = sc._compare_run(self.sf, writer, row, limit_peers=1,
                         reader=SimpleNamespace(compare_paths=reverse_compare))
                     self.assertEqual(result, (1, 1, 0) if skip else (1, 0, 1))
                     winners[peer] = dict(writer.execute(
@@ -100,7 +102,7 @@ class Overlap(fixture.AtomicFlush):
                     (peer,)).fetchone())
         return out
 
-    def test_reverse_collector_wins_without_duplicate_observation(self):
+    def test_nonparticipating_reverse_collector_wins_without_duplicate_observation(self):
         self.assertEqual(self.reverse_overlap((2,)), (1, 0, 1))
 
     def test_reverse_skip_is_not_overwritten_or_counted_as_own_skip(self):
