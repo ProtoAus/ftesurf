@@ -50,8 +50,12 @@ ranking-policy or QC Build. Native source/tag remain separately qualified P1312.
 
 ## Current state
 
-Corrected local candidate, not published or installed. Initial source review
-blocked the broader predicate; evidence review had no blocking finding. A bounded
-independent delta re-review of the corrected rule is pending, not silently waived.
-Actual deployment is recorded separately. Pending human check is in lextest.md;
-broader saved-phase/native-bank coverage remains partial.
+Corrected code `94e37cf8` is committed; two independent bounded delta reviews,
+source/state and recorded consequences, found no blocking issue. The source
+reviewer explicitly clears the original BLOCK: the vertical finding is fixed,
+the proposed mode gate is withdrawn under the verified existing reset contract,
+and the original classification-off assertion is corrected. The evidence reviewer
+withdraws acceptance of the old vertical predicate and approves only this delta.
+Original reviews and failed predictions remain retained, not silently waived.
+Actual program deployment is still pending and recorded separately. Pending human
+check is in lextest.md; broader saved-phase/native-bank coverage stays partial.
