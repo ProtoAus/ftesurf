@@ -38,6 +38,74 @@
   byte sets reproduce the exact per-record findings and352 entries. Preserve the
   old summary and failed comparison; do not repair player data or call it clean.
 
+## P1315/P1317 winter corrections and selected Colin delivery (5 Nov2026)
+
+- Owner-selected surf_colin_blaster_69000 has103actual grass faces, baked into
+  376grass-snow+3986exposed-cap triangles,16distributed holiday props, fine32 snow,
+  bounded storm/ice/mist/wind/audio. Cosmetic only; `r_colin_winter 0` removes
+  automatic extras without writing separate saved global options. Human placement,
+  ridden-save2/close mist/weather appearance and FPS are still PENDING, not passes.
+- Strata v25 collision node48/leaf56v2/leafbrush32/brushside16 records must follow
+  native layouts. Legacy stride caused a real bounded timeout; fix the SAME roof
+  reader with index/cycle refusal. Audio512-unit max reduction of actual fine32
+  heights preserves thin roofs but is conservative near edges; never promote its
+  coarse scaffolding as the visual mask. Missing media never auto-enables unclipped
+  snow. Renderer-restart callback reuses cold Winter/Weather loading to replace
+  freed force-shader handles. Two new static surface draws, no added frame traces.
+- Actual qualified/published source a79d2ec9 excludes unrelated pending main/native
+  candidates; functional feature delta matches08d49bb9. Windows08:05:22Z:92hashes,
+  both caches seeded,32native/config/old-fine-mask preimages unchanged. Pi08:59:22Z:
+  single paired progs-only ALL12/0 update,53runtime assets,46638old protected paths
+  unchanged+3new; native/plugin/backend/config preserved, `.prev` retained. Catalog
+  56->57 preserves old bytes, no backend restart. Actual direct health200/12.
+- Full pre-restart resume evidence is not "parts plus filenames": archive payload,
+  ms/state sidecars, stat metadata and exact cleanup-source context, read ALL members
+  ON/OFFBOX, then consume that binding at the real locked boundary. This delivery
+  preserved8parts/2821850bytes+180resume files/226269873bytes. The13launch-derived
+  actor FD census includes the complete resume namespace, including a new deleted
+  unknown-name FD positive control. No blanket exclusion, automatic restore or old
+  failure regrading. Effective expiry cvar was not measured: NO exact expiry claim.
+- Optional anonymous checksum observer failed twice (status1024 truncates late
+  fields, getinfo returned only its header). Keep those failures, stop that protocol
+  approach, use actual producer/hash/process/data proof and independent health;
+  do not repeat a healthy deployment or relabel a failed reader as a checksum pass.
+  Native look/feel remains a small owner check, not a growing test framework.
+- Public provenance: tools/p1317-colin-winter.md; human-only checks: lextest.md.
+  Raw source/evidence/player preimages and operational module details stay private.
+
+## P1318 startup lightmap-cache marker, not shader compilation (5 Nov)
+
+- The P1311 Boreas residual is a false cached_dlight flag. At fresh-process map load
+  both markers are0; cached_dlight=(0==0) makes unseen static faces look previously
+  dynamically lit. First reflection rebuilds647faces /44.79ms with0style changes and
+  0live CPU lights. A nonzero-surface-marker guard removes it, leaving real-marker
+  comparisons and all lighting math unchanged. R_PushDlights increments first.
+- Native sampler/census acted, not an absence-only pass. It is the existing P1277
+  probe adapted to175b27c09; exact symbols retained per binary. Never deploy it.
+- Short fixed-view smoke was INVALID: p1277arm cmds kind is supported only WITHOUT
+  rec. With rec it fell into drive, including an in-timing screenshot. Preserve
+  that failure; use the known-good viewer path. Renderer/profiler startup cvars
+  must be set after initialization, not assumed registered in the earliest cfg.
+- Source VBSP has NO CPU MarkLights callback. Injected real dynamic light still
+  visibly acts and expires; CPU counts remain0by design. Do not call that an acted
+  CPU-light regression. World ROI lit difference54.23 /removed0.00071 RGB levels;
+  the36-case marker matrix preserves every nonzero case. Pictures inspected.
+- Some large sampled frames are replay-open parsing/allocations, not mid-run draw
+  stalls. Separate them; do not claim every sampled203/280ms frame was this bug.
+- Final feature1318 replaces an UNPUBLISHED1317 number collision with Christmas.
+  Preserve old raw logs/stamps; no redating/relabeling. The first manual metadata
+  command omitted standard build.ps1's --tags; changed version compiler flags also
+  need a full rebuild, not an incremental relink. No product Makefile defect claimed.
+- Final manual trial exposed the other existing build pitfall: resolving git
+  AFTER prepending MSYS PATH falsely stamps the clean CRLF tree dirty. Resolve
+  absolute inspected Windows Git before PATH mutation, as standard build.ps1 does.
+  Require the exact clean embedded stamp, not a substring that accepts -dirty.
+- Final native8383/1318 built36old/zeroNEW warnings; dual ACTUAL primary clients
+  activated09:13UTC, each actual exe ran its replay fixture. Boreas reflection
+  worst9.51ms;58non-target native/progs/owner-config hashes exact after both runs.
+  Full provenance/limits/rollback: tools/p1318-lightmap-first-view.md. No QC/server/
+  plugin/backend/data/settings/release deployment. Owner feel remains pending.
+
 ## P1311 Boreas/Demise warm coverage and remaining first-use hitch (5 Nov 2026)
 
 - Owner's actual rig: i9-9900K / RTX2080SUPER /16GiB. Existing p1277 replay arm reused in
@@ -6737,6 +6805,19 @@ publicly WITH its fix, not before it.
 
 ### Similarity collector operational limits (P546–548, P551–553)
 
+- **P1316, 5 Nov:** Pair exclusion must be rechecked in BOTH orientations after
+  the short flush acquires write ownership, not only before file comparison.
+  An explicit SQL transaction also matters on legacy autocommit; recheck caller
+  idleness after reader callbacks and preserve configured isolation. Run the
+  real-two-connection/parser `test_simcheck_overlap.py` controls. This is not a
+  work reservation, global unordered uniqueness or historical deduplication.
+  The existing `test_simcheck.py` is an executable that exits0 during import:
+  run the existing similarity programs standalone, not unittest discovery.
+  Linux3.11 provides typed SQLite cases that Windows3.10 skips. Reader tests also
+  require the exact committed `src/server/sv_timer.qc` static-contract dependency.
+  A read changes atime on some Windows paths: whole `os.stat_result` equality is
+  not source-byte instability; preserve the failed observation and compare bytes,
+  identity, size, mtime and ctime rather than silently regrading it.
 - `simcheck.summary` distinguishes missing/error (counters unavailable), empty
   (measured zero), and available. Its read-only log line explicitly states no
   sample or unavailable; it never repairs/migrates a missing table.

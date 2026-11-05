@@ -15,9 +15,20 @@ close the panel and resume. It must not keep walking from a latched bind. Type a
 name containing T with T bound to chat: it should stay in the name, not open chat.
 Synthetic input-chain replies passed; actual hardware feel is still unconfirmed.
 
+## P1318 first-view lightmap hitch — owner feel check pending
+
+Installed in both actual Windows primary clients5Nov09:13UTC. On the next client
+start, try the first Boreas run, particularly its late water-reflection area:
+is the repeatable brief freeze gone,
+and does the lighting look unchanged? A quick first Demise run is useful too.
+Automated replay/census and inspected pictures are not owner feel acceptance;
+other occasional stalls and scene-dependent FPS remain possible. No manual pass
+has been reported yet. Provenance: tools/p1318-lightmap-first-view.md.
+
 ## P1317 Colin full Christmas pass — native acceptance pending
 
-After actual combined deployment/client restart, load surf_colin_blaster_69000:
+Actually installed BOTH Windows08:05Z and ALL12lobbies08:59Z5Nov. After a client
+restart, load surf_colin_blaster_69000:
 snowy grass/exposed caps and snowmen/trees/gifts through the route, falling snow,
 storm/ice/audio/mist should be present by its automatic map-only theme. Does any
 prop sit wrong, any roofed/ridden surface get bad coverage, or FPS feel worse?
@@ -25,13 +36,13 @@ prop sit wrong, any roofed/ridden surface get bad coverage, or FPS feel worse?
 comparison/opt-out; independently enabled options remain active. No confirmation
 or numerical FPS recorded yet. Event hat earning remains date-gated, unchanged.
 
-## P1315 winter corrections — owner failures confirmed, correction pending
+## P1315 winter corrections — fixes deployed, owner acceptance pending
 
 Owner5Nov confirmed: Christmas models look inside-out; mist is minimal and pops
 away close; Frost weather shows no sky/lighting; ridden ramp dirt z-fights like
 save2. These observations are real manual failures, not invented measured FPS.
-After actual corrected deployment and a convenient client restart (cached models/
-shaders): Frost, outside a timed run, `r_mist 1`, approach a light; does it remain
+Corrections installed BOTH Windows and ALL12lobbies5Nov with P1317. After a
+convenient client restart (cached models/shaders): Frost, outside a timed run, `r_mist 1`, approach a light; does it remain
 visible smoothly? `r_weather 1`, `weather_info`, `r_weather_test 1`: storm clouds,
 cooler lighting, flash/bolt and delayed thunder? OFF should restore lighting.
 Inspect one snowman/tree and ride save2's ramp for face/depth corrections. No pass

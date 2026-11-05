@@ -22,9 +22,18 @@ current actors01:20Z. Original11+1occupied skip remains FAILED/retained; ONLY th
 remaining empty lobby completed separately, no healthy repeat restart. Native/
 config/backend/olddata preserved; client-local newer warmseed preserved/excluded
 from Pi. No numericalFPS/nativevisual acceptance yet. Details: tools/p1309-weather.md.
+P1315 corrects holiday winding, close mist, late weather identity/persistent sky
+and ridden decal depth. P1317 adds owner-selected surf_colin_blaster_69000's
+complete cosmetic theme: actual snowy grass/exposed caps,16distributed props,
+fine32 snowfall/roof, storm/ice/mist/audio. BOTH Windows08:05Z and final single
+ALL12/0 Pi08:59Z5Nov actually deployed; native/config/backend/data preserved.
+`r_colin_winter 0` is its map-only opt-out. This does not replace P1287's general
+world-shader work or supply a native appearance/FPS pass; owner check remains.
+Current provenance: tools/p1317-colin-winter.md.
 
-- Accumulation: bake static sky-exposed upward surfaces/ledge caps per map;
-  add hand-selected sheltered corners/rooms only on nominated maps. Use mesh
+- Accumulation: P1317 implements Colin's103grass faces and bounded sky-exposed
+  cap meshes with fine32 roof clipping. Other maps remain future map-specific
+  coverage; add hand-selected sheltered corners/rooms only on nominated maps. Use mesh
   or material masks, no runtime snow physics, full-map voxelization or per-frame
   roof traces. Preserve visibility/collision and show effect-off controls.
 - Frozen water/lava: P1309 adds an opt-in static upward world-liquid coat, one

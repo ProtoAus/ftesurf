@@ -47,11 +47,29 @@ source/pin/tag and QC Build are unchanged by P1316; published P1314/P1315 are re
   blocking counterexample. The reviewed implementation/tests remain byte-identical
   through published-upstream integration. Actual three-VM c24 NoDeploy compilation
   reports zero warnings; no native build/deployment is implied.
-- Publication and guarded backend delivery remain **pending** until separately
-  recorded. Original Windows discovery failure, 120-second reader timeout and
-  Linux missing-test-dependency abort are retained, not regraded. The legacy
-  executable test exits successfully at import and is not a unittest-discovery
-  module; its printed checks never made that discovery invocation green.
+- Implementation published as QC `c6fdd9eb` / journal `ee4f8eb6`. Backend acceptance
+  **2026-11-05 08:11:57 UTC**: live generation
+  `966781a4bf2764c67780120bea789ad21ffcd8dd`, based on the actual prior generation
+  `02a56b32f0d0414a0a42cb421cee30d488704951` with **only simcheck.py changed** among
+  the 84 runtime files. No unrelated public-game delta or peer WIP was deployed.
+- Both real guarded candidate cohorts passed fresh fixture handoff/closed-state
+  checks and six acting negative controls. The actual staged runtime writer also
+  passed all 17 synthetic controls. Production measured five read-only pins,
+  two read-only runtime trees and writable mutable roots, retained core26/event1,
+  all 44 existing schema tables and eight account-identity digests, and preserved
+  non-churn row counts. The primary is OPEN; four cron routes and MOM processing
+  resumed. Health/source/fence/profile audit read back **08:26:14 UTC**.
+- Guard, dispatcher, gunicorn configuration and three external converter bindings
+  are unchanged. Declared route arguments differ only at the intended runtime/
+  control roots. A default-environment byte preimage was not independently captured,
+  so no unchanged-environment-bytes claim is made. Same-database fallback using
+  the previous runtime is prepared; the historical private backup is **not a data
+  restore**. No Windows VM/native deployment or lobby restart was needed.
+- Original Windows discovery failure, 120-second reader timeout and Linux missing-
+  dependency abort remain retained, not regraded. Post-audit env/port assumptions
+  were corrected against actual contracts without reactivation or a healthy restart.
+  The legacy executable test exits successfully at import and is not a unittest-
+  discovery module; its printed checks never made that discovery invocation green.
 
 This is store-only diagnostic consistency. It does not establish complete fleet
 coverage, work reservation, a hard whole-job time/RSS/SQL bound, current-source
