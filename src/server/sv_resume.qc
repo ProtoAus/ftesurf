@@ -22,6 +22,7 @@
 .float  run_ms_want;    // connected since the last offer check
 .float  run_ms_offer;   // a paused run on this map is on offer
 .float  run_ms_warned;  // told a fresh run will drop it
+.float  run_ms_dropwhy; // last discard refusal reported; never an ownership grant
 .float  run_ms_noteat;  // when to say a kept slot cannot resume (after CSQC can show chat)
 .float  run_ms_kept;    // the offer is a slot accept refuses: kept for !discard only
 .float  run_ms_keyed;   // *resume carries something
@@ -566,6 +567,7 @@ void(entity e) SV_MsCheck =
 
 	e.run_ms_offer = FALSE;
 	e.run_ms_warned = FALSE;
+	e.run_ms_dropwhy = 0;
 	if (!cvar("run_resume"))
 		return;
 	if (SV_MsKey(e) == "")
@@ -611,12 +613,38 @@ void(entity e) SV_MsOffer =
 	SV_MsCheck(e);
 };
 
-void(entity e, string why) SV_MsDiscardOffer =
+float(entity e, float quiet) SV_MsForeign;
+void(entity e, string why, float explicit) SV_MsDiscardOffer =
 {
+	local float foreign;
+
 	if (!e.run_ms_offer)
 		return;
 	SV_MsAdopt(e);
-	SV_MsReadMeta(SV_MsPath(e, "ms.txt"));
+	if (!SV_MsReadMeta(SV_MsPath(e, "ms.txt")))
+	{
+		if (explicit || e.run_ms_dropwhy != 3)
+			sprint(e, PRINT_CHAT, "^5resume:^7 the paused run could not be checked. "
+			       "Its files stay where they are\n");
+		e.run_ms_dropwhy = 3;
+		return;
+	}
+	// Every caller rechecks ownership; only the repeated notice is cached.
+	foreign = SV_MsForeign(e, TRUE);
+	if (foreign)
+	{
+		if (explicit || e.run_ms_dropwhy != foreign)
+		{
+			if (foreign == 2)
+				sprint(e, PRINT_CHAT, "^5resume:^7 the leaderboard is still checking this game. "
+				       "The paused run stays where it is\n");
+			else
+				SV_MsForeign(e, FALSE);
+		}
+		e.run_ms_dropwhy = foreign;
+		return;
+	}
+	e.run_ms_dropwhy = 0;
 	SV_MsWipe(e, "ms.txt");
 	e.run_ms_offer = FALSE;
 	SV_MsKeySet(e, "");
@@ -667,7 +695,7 @@ void(entity e) SV_MsCountdown =
 // flight -- Account_Busy, bounded by ACCT_RQLIFE); nothing is said, the caller
 // waits.  1 = refused, and said.
 float(entity e) Account_Busy;
-float(entity e) SV_MsForeign =
+float(entity e, float quiet) SV_MsForeign =
 {
 	if (ms_key == "")
 		return FALSE;
@@ -680,6 +708,8 @@ float(entity e) SV_MsForeign =
 	if (Account_ProvenKey(e) == "")
 	if (!Account_UnprovenSettled(e) || Account_Busy(e))
 		return 2;
+	if (quiet)
+		return TRUE;
 	if (Account_ProvenKey(e) != "")
 	{
 		sprint(e, PRINT_CHAT, "^5resume:^7 that run was paused by a game with another key. "
@@ -743,7 +773,7 @@ void(entity e) SV_MsAccept =
 	// Patch 629: a paused run is offered on the guid, which is not a secret.
 	// While the board is by account, one parked under a key is picked up only
 	// by a connection that has proved that key; the slot stays as it is.
-	foreign = SV_MsForeign(e);
+	foreign = SV_MsForeign(e, FALSE);
 	if (foreign == 2)
 	{
 		// P1004: the Yes stands until the check answers (SV_MsFrame), and the card
@@ -1295,12 +1325,12 @@ void(entity e) SV_MsFrame =
 					       "into this one -- ^5!resume^7 goes back to it\n", grace));
 			}
 			if (SV_TimerElapsed(e) >= grace)
-				SV_MsDiscardOffer(e, "a new run went on");
+				SV_MsDiscardOffer(e, "a new run went on", FALSE);
 		}
 		else if (e.run_t_state == TS_FINISHED)
 		{
 			if (e.run_ms_warned)
-				SV_MsDiscardOffer(e, "a new run finished");
+				SV_MsDiscardOffer(e, "a new run finished", FALSE);
 		}
 	}
 	else if (e.run_ms_keyed)
@@ -1316,6 +1346,7 @@ void(entity e) SV_MsConnect =
 	e.run_ms_offer = FALSE;
 	e.run_ms_pendat = e.run_ms_pendsince = 0;
 	e.run_ms_warned = FALSE;
+	e.run_ms_dropwhy = 0;
 	e.run_ms_noteat = 0;
 	e.run_ms_kept = FALSE;
 	e.run_ms_phase = MS_NONE;
@@ -1355,8 +1386,6 @@ void() SV_MsShutdown =
 
 void(entity e) SV_MsDiscardCmd =
 {
-	local float foreign;
-
 	if (e.run_ms_phase)
 		return;
 	if (!e.run_ms_offer)
@@ -1364,16 +1393,7 @@ void(entity e) SV_MsDiscardCmd =
 		sprint(e, PRINT_CHAT, "^5resume:^7 no paused run on this map\n");
 		return;
 	}
-	// Patch 629: nor dropped by a game that could not pick it up.
-	foreign = 0;
-	if (SV_MsReadMeta(SV_MsPath(e, "ms.txt")))
-		foreign = SV_MsForeign(e);
-	if (foreign == 2)
-		sprint(e, PRINT_CHAT, "^5resume:^7 the leaderboard is still checking this game. "
-		       "Try again in a moment\n");
-	if (foreign)
-		return;
-	SV_MsDiscardOffer(e, "you dropped it");
+	SV_MsDiscardOffer(e, "you dropped it", TRUE);
 };
 
 // worldspawn: slots on this map past run_resume_days.
