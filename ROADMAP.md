@@ -17,9 +17,11 @@ second competing world-shader override. P1309 now implements the optional
 cached-roof audio / portal lightning / static liquid frost preview below, with
 zero-warning QC and offline positive controls. It is NOT native-accepted or
 installed merely because it compiled; default staysOFF. NOW actually installed
-BOTH Windows00:24Z5Nov (98hash-verified records); Pi1309refused before archive/stage/
-restart with1client connected. Source43media/QQ2 ready for a real quiet boundary,
-not a waived guard or repeat of successful1307. Details: tools/p1309-weather.md.
+BOTH Windows00:24Z5Nov (98hash-verified records), Pi42runtimeassets01:01Z and all12
+current actors01:20Z. Original11+1occupied skip remains FAILED/retained; ONLY the
+remaining empty lobby completed separately, no healthy repeat restart. Native/
+config/backend/olddata preserved; client-local newer warmseed preserved/excluded
+from Pi. No numericalFPS/nativevisual acceptance yet. Details: tools/p1309-weather.md.
 
 - Accumulation: bake static sky-exposed upward surfaces/ledge caps per map;
   add hand-selected sheltered corners/rooms only on nominated maps. Use mesh

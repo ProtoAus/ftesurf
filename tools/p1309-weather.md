@@ -106,16 +106,27 @@ NOT implemented or replaced here. Event gift dates remain a separate decision.
   helper; actual cache/program hashes rechecked, no native process launched.
 - Exact final CS identity admitted while retaining every old catalog byte;
   no backend restart/generation swap. This is code admission, not ranking proof.
-- **Pi P1309 NOT delivered yet.** The SAME strict progs-only preparation routine
-  observed one connected client and refused after its bounded wait, BEFORE any
-  part archive, canonical media/progs staging or restart. Do not repeat that
-  unchanged wait, weaken the empty/FD/data-preservation checks, or repeat the
-  already-successful P1307 transaction. New source scope43media/QQ2 is prepared
-  privately for a real quiet boundary. A brief disconnect was requested, not
-  new deployment permission. The old fleet remains intact.
-- Until that swap, a lobby can still select its old CSQC. A native smoke check of
-  the on-disk P1309 preview needs a fresh LOCAL map load, or the completed lobby
-  update; don't report an unknown-cvar old-VM check as a feature failure.
+- **Pi P1309 delivered, all12 current actors verified by 01:20:11Z5Nov.** The
+  first bounded preparation correctly refused an occupied fleet before mutation.
+  At a real quiet boundary, all8 current recorder payloads (2,821,850bytes) were
+  archived/rehashed ONBOX+OFFBOX before ANY canonical stage/restart, with the
+  strict13 declared-actor FD scope. This is NOT a general file-writer audit or
+  recovery of any historical missing payload.
+- 42 runtime-only media files installed/read back **01:01:28Z**; client-local
+  warmseed explicitly excluded. Published P1311's expanded warm seed was already
+  exact on BOTH Windows installs; preserved, not replaced by the older snapshot.
+- Paired QQ-only activation **01:08:01Z** restarted11 and correctly skipped one
+  newly occupied lobby. Its strict skip failure is RETAINED, not relabelled PASS:
+  all46,392 pre-existing protected paths, native/config/backend unchanged.
+- Scoped completion **01:20:11Z** restarted ONLY remaining lobby8 after it emptied;
+  other lobbies did not need to disconnect. The SAME archive still matched ALL
+  current parts; fresh13actor/FD proofs checked at the short execution boundary.
+  All12 final actor epochs verified; zero repeated healthy restarts/swaps/force or
+  data restoration. All46,398 paths existing at that boundary unchanged;6new
+  paths retained, not deleted. Native/config/backend preserved, sweep lock gone.
+  Original failure plus separate one-lobby completion receipts remain private.
+- Reconnect/reload the map to select the new CSQC. Native appearance/audio/FPS
+  still needs the small owner check below; status/hash readiness is not that pass.
 
 Native appearance/audio/cold/moving-view acceptance is still PENDING; defaultOFF.
 The separately owned P1287 full-world snow cover remains reserved; Santa earning
