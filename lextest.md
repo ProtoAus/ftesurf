@@ -83,8 +83,12 @@ still guide a destination, without retained snow trails, and do normal lighting,
 props/glows/weather return without missing geometry or a wipe? Ordinary falling
 and normal Tensor2 sky/glow appearance remain separate, unconfirmed cases.
 Prior images and exact predicate tests are not owner confirmation or a general
-FPS/loading guarantee. Final unprofiled timing and fresh served-client graphical
-smoke remain separately pending; no numerical improvement is claimed.
+FPS/loading guarantee. P1351 natives installed BOTH Windows6Nov18:09UTC. Fresh
+local candidate Tensor2 first/repeat capture and final-native Ceaseless boundary
+slices/geometry controls are in tools/p1351-pacing-results.md; they do not supply
+this human feel/appearance acceptance or a causal final performance improvement.
+Broader/fresh remote-served-client acceptance remains separate. No new owner
+confirmation has been received: this check is still PENDING.
 
 ## P1335 Christmas master/defaults and close ramp dirt — installed, human check pending
 

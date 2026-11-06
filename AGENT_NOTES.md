@@ -2,8 +2,10 @@
 
 ## P1351 activation closure and late work (6 Nov; ready-20261106T1706Z-01a1b1d2)
 
-Engine c28dcf9bd/tagpatch-1351 is committed/pushed; Windows delivery is separately
-pending. tools/p1351-mapreadiness.md defines the narrow closure and exclusions.
+Engine c28dcf9bd/tagpatch-1351 and QC0de32b5b are committed/pushed. Clean final
+P1351 natives delivered BOTH Windows at2026-11-06T18:09:25Z:10native targets and
+.prev hashes verified; installed clients return clean1351/c28dcf9bd. QC/symbol/
+owner-config hashes preserved; no Pi/backend/data/release swap. tools/p1351-mapreadiness.md defines the narrow closure and exclusions.
 Full isolated native build plus three QC passes succeeds;32 literal-source C
 controls pass (including actual engine-bound NaN/-Inf budget behavior). Initial build signature race and a detached hidden-pwsh MSYS make
 stall remain retained. Six owned make handles had no compiler/linker child and
@@ -26,11 +28,38 @@ invalidated activation. Eight failed registered image lookups keep Tensor2
 Late telemetry does not write files. This is NOT server timer admission or a
 universal loading/route/residency guarantee. Fresh first-use/repeat route capture
 completed16windows/950sampled seconds with positive advancing-replay controls,
-no idle exclusions/capacity eviction and no competing game. Segmented dumps
+no idle exclusions/capacity eviction and no competitor at pre/post snapshots
+(not proof of continuous host isolation). Segmented dumps
 leave replay-time gaps: do not call it uninterrupted full-route coverage or
 aggregate per-window percentiles/tail means into a whole-route percentile. This
 is warm-state characterization, NOT a measured product performance improvement.
-Separate trace/string attribution is pending. Owner void-transition confirmation remains pending.
+Separate ordinary Tensor2 attribution admitted after headroom recovered: eye
+traceline/trace-output bridge2.637655s of2.710361s SkyTest inclusive (97.3%), QC
+prefix0.046053s (1.7%), body0.026653s. Eye and prefix helpers acted; room helper
+did not. These are profiled aggregate seconds, NOT calls or ms/frame/FPS.
+qclib copies/reset counters before printing the sorted dump, so later print
+latency is excluded. Native World_Move vs cs_settracevars/world/packet-brush
+split remains unresolved; do not world-only-away door semantics. Exact results
+and cohort/gap caveats: tools/p1351-pacing-results.md. Owner void-transition
+confirmation remains pending.
+
+Fresh final-native/normal-QC Ceaseless out/back twice passed positive predicates:
+out active1/cluster-1/4158meshes shapeac51cd15; in active0/cluster399/164meshes
+shape2699c989, consistent first/repeat. First-out worst29.65ms vs repeat8.76ms;
+synthetic4.2s slices are not a causal P1348-vs1351 improvement or owner feel.
+Original boundary start refused: small overlay omitted shipped zone JSON. Keep
+failed log, fix preparation by copying ONLY unchanged Ceaseless local JSON, then
+retry same harness. Tensor2 evidence remains explicitly zoneless/sidecar-less,
+not silently regraded. All normal runtime progs equal BOTH installed progs.
+Owned actors/rig released; do not remove a later peer's shared rig.lock.
+
+Cleanup guard pitfall: `[DateTime]"...Z"` converts to local Kind while
+LastWriteTimeUtc has UTC wall fields; normalize via DateTimeOffset.UtcDateTime.
+A corrected flat-object whitelist then found nested output and stopped before
+any delete. After two infra-only failures stop that cleanup route; retain exact
+owned output paths with a reason instead of recursively deleting unknown files.
+Root OWNER.md/artifacts/cleanup-refusal.md records retention; shared libs junction
+is never a cleanup target.
 
 ## P1350 contact identity, recovery abstention and reader boundaries
 

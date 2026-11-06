@@ -38,7 +38,13 @@ excluded. Strict start admission and complete material-fallback closure remain
 unbuilt. Fresh first-use/repeat capture completed16windows/950sampled seconds,
 with moving-replay controls and no idle/capacity exclusions. Segmented dumps
 leave replay-time gaps; this is neither uninterrupted whole-route coverage nor
-a causal product before/after improvement. No universal loading guarantee.
+a causal product before/after improvement. Final-native Ceaseless out/back twice
+also passed predicate/geometry controls; owner feel/appearance remains pending.
+Separate Tensor2 attribution places97.3% of SkyTest inclusive profile time in
+the native eye-trace/trace-output bridge, not QC prefix work. New late material
+variants still compile after activation. Exact results/caveats and remaining
+closure/query falsifiers: [tools/p1351-pacing-results.md](tools/p1351-pacing-results.md)
+and BACKLOG.md. No universal loading guarantee.
 
 ## Christmas environment and cosmetics — requested 4 Nov 2026
 

@@ -1,5 +1,26 @@
 # Surf loading, frame-time statistics and noclip-void audit — 6 Nov 2026
 
+## Continuation status — P1345/P1348/P1351
+
+The original read-only audit below is historical, not the current implementation
+state. P1345/P1348 subsequently corrected frame reports and map-only overview
+state; see p1345-smoothness.md and p1348-overview-state.md. P1351 implements a
+bounded activation closure and late compile/image diagnostics, now installed in
+both Windows installs. It is NOT strict server start admission or universal
+residency: [p1351-mapreadiness.md](p1351-mapreadiness.md). Release0.1.41 and its
+frozen workspace were not rebuilt or republished.
+
+Fresh unprofiled first-use/repeat capture completed16windows/950sampled seconds,
+with exact raw dumps and no idle/capacity exclusions. Pause/dump gaps advance
+replay time: not uninterrupted475s moving-route coverage. Repeat was not
+consistently faster (352.45vs338.88sample-weighted fps; worst40.49vs14.43ms), so
+no final product improvement is established. Telemetry positively counted11
+additional shader compiles/108.503ms after the initial check; late MIPFADE/water/
+environment-mask variants appeared in large first-use hitch windows. Full
+results, cohort/camera caveats, delivery provenance and attribution status:
+[p1351-pacing-results.md](p1351-pacing-results.md). Owner void-transition
+confirmation is still pending in lextest.md.
+
 ## Scope and source identity
 
 Investigation, not a delivered performance patch. Three independent read-only
