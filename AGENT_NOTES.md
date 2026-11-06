@@ -1,5 +1,23 @@
 # AGENT_NOTES.md
 
+## P1347 KSF acquisition and source-bound follow-up delivery
+
+- A paired-deployment preservation context describes the PREDECESSOR SSQC, not
+  the replacement it installed. Reusing it for a later CSQC-only swap correctly
+  refused the held program hash before any live stage/restart. Derive a fresh
+  current context from actual compilation provenance and complete source bytes;
+  retain the original refusal/context, never just replace its old hash/date.
+- K.catalog_step already saves full map metadata beside each catalogue page.
+  A fresh full walk under ordinary admission/cache lock confirmed955provider maps
+  and the same43tier7/8 scope; an accumulated historical name was retained rather
+  than purged. Cache totals and a CURRENT provider list are different counts.
+- An operator must not spin forever on non-current advertised replays. Report
+  ordinary unblock eligibility separately: null-ID PB, valid rank page and the
+  existing asked-page deferral. Stop only when boards/eligible downloads and DUE
+  binding refreshes are accounted for; unavailable/deferred/conversion gaps stay
+  explicit and G.current/PB authority remain unchanged. Seven actual predicate
+  classifications/four terminal controls plus a read-only live census acted.
+
 ## P1339 requested atlas caches and native material readiness
 
 - Windows Python `subprocess` text-mode STDIN is not an exact Git patch pipe:

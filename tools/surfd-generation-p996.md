@@ -1,13 +1,20 @@
 # Backend generation swap: P996 (25 Oct 2026) -- the procedure as run
 
-> **Historical P996 procedure below; not the current live tuple.** P1346 was
-> activated 6 November 2026 at11:10:06UTC as generation
-> `40bd0587a63cff0f784f24864752f1c4e84a9198`, collectors84-v1/schema26.
-> Exact scope, live verification and current-data rollback are recorded in
-> [p1346-simcheck-recovery.md](p1346-simcheck-recovery.md). Its production root
-> `/srv/nvme/agent-work/ac-resume-20261106-0254` and CLOSED compatibility
-> `rollback-runtime`/`control` are retained dependencies, not scratch cleanup
-> targets. Do not replay the pre-systemd P996 cutover or restore an old database.
+> **Historical P996 procedure below; not the current live tuple.** P1347 was
+> activated 6 November 2026 at11:24:42UTC as generation
+> `53b94a926f2a0089cb20e3b5b21808e61fd70a79`, collectors84-v1/schema26.
+> Runtime `/srv/nvme/agent-work/ksf78-20261106T1020Z/runtime`, admission `state/`
+> under that root; actual launcher/manifest subsequently verified OPEN. The SAME
+> root retains CLOSED `rollback-runtime` and `control` for predecessor
+> `40bd0587a63cff0f784f24864752f1c4e84a9198`. These are production/rollback
+> dependencies, not scratch cleanup targets. Rollback uses CURRENT data through
+> the qualified guarded route, never an old database or manual fence reopening.
+> See [p1347-ksf-audit.md](p1347-ksf-audit.md) for pacing/control delivery and limits.
+> Earlier P1346 activation/current-data rollback remain recorded in
+> [p1346-simcheck-recovery.md](p1346-simcheck-recovery.md); its original
+> `/srv/nvme/agent-work/ac-resume-20261106-0254` root is also retained history.
+> Read the actual current launcher before operations: later generations may
+> supersede this dated record. Do not replay the pre-systemd P996 cutover.
 
 Lex, 25 Oct: "do it, and change the note to publish lobbies, we're in beta, and people can just
 reconnect." Live backend now: generation `806d1484e0fbaecdf25e6e45c0ae5ece894e1304` (branch

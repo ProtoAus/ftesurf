@@ -1,12 +1,13 @@
 # lextest.md — things waiting on a human
 
-## P1347 KSF fetch — manual check pending after deployment
+## P1347 KSF fetch — deployed6Nov, manual check pending
 
-Open a KSF leaderboard, select a stage or bonus and a direction, and click Fetch KSF.
-Does the queued/background message make sense and is the button easy to find?
-The request is asynchronous: refresh/reopen later for times and available replays.
-Automated pointer tests passed for both VMs; this is NOT owner confirmation or a
-claim that KSF provides a replay for every time. Existing host cooldowns stay binding.
+In a joined lobby or the map-menu KSF leaderboard, select a stage or bonus and a
+direction, then click Fetch KSF. Is the button easy to find and does the
+queued/background message make sense? Refresh/reopen later for times and available
+replays; the request is asynchronous and KSF does not provide a replay for every time.
+Both Windows installs and all12lobbies updated; no owner confirmation yet.
+Automated evidence and acquisition limits: tools/p1347-ksf-audit.md.
 
 ## P1343 relative teleports — deployed6Nov, human check pending
 
