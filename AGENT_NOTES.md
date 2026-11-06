@@ -37,6 +37,22 @@
   Public qualification: tools/p1335-tas-sections.md. Native14acting control,
   20browser,58metadata and31widget assertions have normal quit0 pairs. This is
   manual phase4 foundation, NOT contact proposals/section-solver completion.
+- Refresh must obtain Project metadata BEFORE its sections2 page: an unsaved
+  legacy CP edit can change server ncp without body/hash. Keeping the ncp guard
+  but refreshing only its dependent page permanently rejects every new page.
+  Existing TASProject_IntentRequest provides the authoritative quiet event.
+- The metadata writer emits parent=current-name/previous-revision; sync the owned
+  local parent name only AFTER success, or the following ordinary save reuses an
+  old/empty name with the new revision. Recompute made/signed per CHILD hash before
+  ProjectEvent, using the same helpers as ordinary save, never inherited flags.
+  Actual old24/control vs corrected24/subject acts refresh and ordinary-save bugs;
+  literal success-tail six checks cover SYNTHETIC flags/parent, not signing.
+  Minimal VM completes checks but own spawned PID needs stopping after its quit
+  deadline during later map setup (exit1); this is NOT a world pass. Full game
+  pairs quit0. Do not expand the optional VM fixture to simulate the whole map.
+- tas menu TOGGLES closed: after marker setup, open tas sections before a Timeline
+  goto. A first review-control fixture omitted this open and its goto vanished;
+  preserve that failed setup, do not interpret silence as product behavior.
 - Required corpus scope is data/runs (parts/paired views), not the separately
   access-denied legacy kept-save prefix. Existing351faults are NOT zero; compare
   no increase, preserve bytes/ACLs, and parse newly added view inputs explicitly.

@@ -42,7 +42,8 @@ head produces no empty trailing section. The existing 48-checkpoint storage cap
 and project input cap remain; pages contain at most four rows.
 
 Page data is a view bound to its request tag, record serial, actual body tick,
-request, retained extent, revision hash and checkpoint count. Mutations also bind
+request, retained extent, revision hash and checkpoint count. Refresh asks for the
+authoritative project metadata first, including unsaved legacy checkpoint edits. Mutations also bind
 an existing endpoint's name/tick and the current revision. They require a complete
 unchanged local input baseline, retain the original immutable revision, and use
 the existing typed temp/read-back/rename writer. New or moved marker poses come
@@ -56,7 +57,9 @@ historical input-save guard and local-v4/portable-v3 sharing distinction remain.
 An undo branch may replace only the same writer's known immutable history, not
 an unrelated newer named revision. A failed write restores the previous RAM
 marker map and keeps the immutable original; the existing writer's retained
-complete-stage recovery on final rename errors is unchanged.
+complete-stage recovery on final rename errors is unchanged. A successful marker
+write synchronizes its emitted local parent name and recomputes made/signed
+indicators for the new hash before publishing it, not from the parent revision.
 
 The existing single scan-ownership/repeat/release editor handles both name fields
 with separate drafts/carets. Tab changes blur focus without clearing held-key
@@ -86,13 +89,29 @@ tag, QC Build, backend API or public admission policy changes.
   independent recipe field/save, marker-draft retention and fault-free mover.
   The captured panel was inspected for readable controls, bounded rows and no
   clipping; this is not owner appearance/feel acceptance.
-- Each actual dedicated pair quits normally with code0. The supplied states are
-  isolated fixtures, not proof of arbitrary maps, genuine devices or signatures.
+- Independent whole-feature review found three consistency bugs, corrected before
+  rollout. An actual old-code control24 reproduces Refresh stuck after an unsaved
+  checkpoint and loss of the marker-emitted local parent on a following ordinary
+  save. Corrected dedicated subject24 recovers with ordinary Refresh and keeps
+  the exact parent pair, full raw/settings rows, immutable original and paused
+  body/grant counters. Both normal dedicated pairs quit with code0.
+- Literal production success-tail VM checks: five relevant old assertions fail
+  while an unchanged hash/head invariant passes; all six corrected assertions
+  pass. Explicitly synthetic helper results verify parent-name/event ordering and
+  per-child made/signed flags in both directions. No made/signature file is
+  fabricated, no genuine-device signing is claimed. These minimal VM fixtures
+  complete function checks but require stopping only their own spawned processes
+  after the quit deadline during later map setup (exit1), not a normal game pass.
+  Actual dedicated workflow acceptance comes from the separate normal pairs.
+- Each full actual dedicated pair quits normally with code0. The supplied states
+  are isolated fixtures, not proof of arbitrary maps, genuine devices/signatures.
+  Final frozen whole-feature re-review/publication/deployment remain pending.
 - Mandatory recorder tests:949 checks, zero failures. Required primary runs/parts
   sweep:548 recordings/parts and178 views, existing faulty-entry count remains351
   on unchanged bytes. Ten additional views are actually parsed clean; all726
-  inventory members remain unchanged. This is no increase, not a clean corpus. The separate broader legacy kept-save
-  prefix denial remains unchanged and unclaimed; no data or ACL was repaired.
+  inventory members remain unchanged. This is no increase, not a clean corpus.
+  The separate broader legacy kept-save prefix denial remains unchanged and
+  unclaimed; no data or ACL was repaired.
 - Strict canonical read-back caught a missing internal name-list terminator in
   the first producer. The producer was fixed, not the validator. Reader refusal
   now identifies its line number without relaxing the format.

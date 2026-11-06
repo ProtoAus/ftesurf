@@ -36,6 +36,8 @@ void(float offset) TASSections_Request =
 	tass_tag = tass_tag+1;
 	if (tass_tag > 16000000) tass_tag = 1;
 	tass_ready = FALSE; tass_chosen = -1; tass_offset = offset; tass_next = cltime+.5;
+	// Legacy unsaved CP edits can change the count without changing the body/hash.
+	TASProject_IntentRequest();
 	localcmd(sprintf("p1 cmd tas sections2 %.0f %.0f %.0f %.0f %.0f\n",
 		offset,tass_tag,tast_serial,tast_bodyhead,tast_request));
 };

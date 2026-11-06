@@ -164,6 +164,9 @@ void(entity e, float argc) SV_TASMarkersCommand =
 	work = (float*)0; // the slot now owns it
 	if (oldcp) memfree((void*)oldcp);
 	if (oldnames) strunzone(oldnames);
+	// Match the local parent emitted by the successful write, never on rollback.
+	if (tasp_parent[s]) strunzone(tasp_parent[s]);
+	tasp_parent[s] = strzone(name);
 	e.tasp_filehead = fullhead;
 	// Synced/lasthead stay at the ACTUAL body, not the future metadata horizon.
 	SV_TASPParentKeep(e,s);
@@ -172,6 +175,8 @@ void(entity e, float argc) SV_TASMarkersCommand =
 	if (kept)
 		kept = SV_TASEditorHistoryPush(e,before,tasp_revsha[s]);
 	if (!kept) sprint(e,PRINT_HIGH,"tas marker: saved; new immutable history unavailable, previous original retained\n");
+	e.tasp_made = SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s],"made"));
+	e.tasp_signed = SV_TASPSignedFor(tasp_revsha[s]);
 	sprint(e,PRINT_HIGH,sprintf("tas marker: saved %s; complete inputs %.0f..%.0f, body %.0f, supply none\n",
 		op == 1 ? replacement : old,e.tasp_base+1,fullhead,body));
 	SV_TASProjectEvent(e);
