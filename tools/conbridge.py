@@ -444,7 +444,9 @@ class Session:
         mark = self.engines[key].size()
         for line in lines:
             self.engines[key].send(line)
-        r = self.wait(key, pattern, mark, 10)
+        # Menu/map startup can still be working after the ready echo. Keep the
+        # guard and its remaining global boot deadline, not an unrelated 10s cap.
+        r = self.wait(key, pattern, mark, max(0, self.deadline - time.monotonic()))
         if r['verdict'] == 'exited':            # the engine's own last line, not this check's
             raise Boot(f'{key} died during start: {self.why(r)}')
         if r['verdict'] != 'match':
@@ -460,8 +462,7 @@ class Session:
             raise Boot(f'the server never logged the connection: {self.why(r)}')
         # The join lines are behind a lobby setting, and the server QC answers cmd viewpos
         # BEFORE the spawn with an unplaced body (measured: 0 0 0 twice, then the spawn point
-        # 4 s later). So ask until the body is somewhere.
-        zero = None
+        # 4 s later). Cold maps can take longer; share the global boot budget.
         while True:
             clmark = cl.size()
             cl.send('cmd viewpos')
@@ -471,8 +472,7 @@ class Session:
                 if placed(r['line']):
                     self.spawn = r['line']
                     break
-                zero = zero or now
-                if now - zero >= 10:
+                if now >= self.deadline:
                     self.spawn = 'NOT PROVEN, the body is still at the origin: ' + r['line']
                     break
                 time.sleep(0.5)                 # an answer is instant; do not flood the console
