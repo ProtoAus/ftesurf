@@ -27,6 +27,10 @@
 ### P1340 Developer export and dump safety
 - Hardened developer export/dump handling and made failed outputs report failure instead of silently succeeding.
 
+### P1339 Downloadable replay-baked ramp atlases
+- Request a map's prebaked wear/scratch atlas with rampwear_download, then enable marks or dirt separately. Larger atlases are verified and cached without increasing the engine's remote-picture limit; both effects still default off.
+- Expanded replay inputs for Story/Event ramp baking and moved the unchanged snowflake model alongside the Christmas assets.
+
 ### P1337 Safer developer-tool commands
 - Hardened developer-tool command handling while keeping normal local developer workflows available.
 

@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1339 replay-baked ramp atlases - human appearance check pending
+
+After the P1339 deployment receipt is complete, on a familiar prepared map use
+`rampwear_download`, then `r_rampwear 1` (and dirt separately if wanted). Are the
+scratches dense enough and visible well beyond the old short throw distance?
+Both effects still default off; a download alone must not enable either one.
+The snowflake model move is byte-identical; no new snow appearance/FPS claim.
+Native download/hash/material checks are automation, NOT owner visual acceptance.
+
 ## P1341 teleport carrier parity — delivered6Nov, human check pending
 
 BOTH Windows CS/symbols05:09:58UTC and ALL12lobbies CS-only05:06:06UTC;

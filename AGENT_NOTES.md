@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## P1339 requested atlas caches and native material readiness
+
+- A QC `fopen("gfx/...")` write is sandboxed into `data/gfx/...`; a renderer
+  material must use that physical `data/` name. A successful binary write/hash
+  does not prove the original unprefixed material can load it.
+- `resourcestatus(RESTYPE_TEXTURE,0,name)` calls Image_FindTexture with flags0.
+  A custom no-sRGB/clamped texture has different flags and can return UNKNOWN
+  while its real material is valid. Do not gate its first draw on that lookup;
+  query `drawgetimagesize` on the actual custom material. Both original native
+  failures and the corrected positive/refusal controls are retained for P1339.
+- Bulk atlas inputs are `<map>.inputs.json` in the supplied root; no-input maps
+  need explicit empty lists. Missing-list guards must run before output creation.
+  NoDeploy progs come from the PRINTED isolated output, not gamedir defaults.
+  Source labels alone do not merge disjoint converted clips; only a readable,
+  map/game/hash-bound complete original can supersede its covered KSF clips.
+
+
 ## P1336 manual TAS section metadata and name ownership
 
 - Manual intervals are completed body [a,b] and input rows [a+1,b]. Name-at-head

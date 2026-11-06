@@ -1,4 +1,4 @@
-// FTESurf P1286: the snow event's falling snow. One entity on the eye draws models/snow/flakes.iqm
+// FTESurf P1286: the snow event's falling snow. One entity on the eye draws models/christmas/flakes.iqm
 // (tools/snowflakes.py); glsl/ftesurf_snow.glsl moves every flake, so the CPU cost is this entity.
 // r_snow 0 off, 1 on the event's maps (r_snow_maps), 2 on every map. A map with a sky mask
 // (tools/snowmask.py: gfx/snowmask/<map>.txt + gfx/snowmask/<map>.png, P1293) keeps the flakes out
@@ -7,6 +7,7 @@
 
 float() Winter_ThemeActive; // later winter module: cached, map-specific opt-out
 entity snow_ent;
+string snow_model;
 float snow_active;
 float() Snow_ReplacementActive = { return snow_active; };
 string snow_map;
@@ -112,18 +113,21 @@ void() Snow_Frame =
 		return;
 	if (!snow_have)
 	{
-		snow_have = Snow_Exists("models/snow/flakes.iqm") ? 1 : -1;
+		snow_model = "models/christmas/flakes.iqm";
+		if (!Snow_Exists(snow_model))
+			snow_model = "models/snow/flakes.iqm"; // older content / rollback
+		snow_have = Snow_Exists(snow_model) ? 1 : -1;
 		if (snow_have < 0)
-			print("snow: models/snow/flakes.iqm is not installed; no snow\n");
+			print("snow: models/christmas/flakes.iqm is not installed; no snow\n");
 	}
 	if (snow_have < 0)
 		return;
 	if (!snow_ent)
 	{
-		precache_model("models/snow/flakes.iqm");
+		precache_model(snow_model);
 		snow_ent = spawn();
 		snow_ent.classname = "snow";
-		setmodel(snow_ent, "models/snow/flakes.iqm");
+		setmodel(snow_ent, snow_model);
 		snow_ent.effects = EF_NOSHADOW;
 	}
 	mask = (snow_shader != "" && !cvar("r_snow_indoor"));

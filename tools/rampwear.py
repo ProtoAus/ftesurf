@@ -22,8 +22,12 @@ is the steep one (0.05 < nz < 0.7) whose plane sits the hull's support offset be
 Only the world model's faces and the displacements: a brush entity may move; static props are
 not read."""
 import argparse
+import base64
 import collections
 import glob
+import hashlib
+import json
+from pathlib import Path
 import lzma
 import math
 import os
@@ -35,6 +39,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import momreplay  # noqa: E402
 import rampinfer  # noqa: E402
+import rampwear_replays  # noqa: E402
 
 MOMENTUM = r'C:\Program Files (x86)\Steam\steamapps\common\Momentum Mod Playtest\momentum'
 HULL = 16.0             # player half width
@@ -345,10 +350,21 @@ class Events:
                         yield k
 
 
-def bake_replay(path, grid, ev, stats):
+def bake_replay(path, grid, ev, stats, mapname=None, seen=None):
     try:
-        r = momreplay.parse(path)
-    except Exception as ex:     # an unreadable replay is counted, never fatal
+        if mapname is None:  # existing offline callers; CLI binds every input
+            r = momreplay.parse(path)
+        else:
+            data, identity, kind = rampwear_replays.capture(path, mapname)
+            if seen is not None:
+                if identity in seen:
+                    stats['duplicates'] += 1
+                    return
+            r = rampwear_replays.decode(path, data, kind)
+            if seen is not None:
+                seen.add(identity)
+            stats['decoded_' + kind] += 1
+    except Exception as ex:     # counted, never substituted for a different map
         stats['unreadable'] += 1
         stats['unreadable_' + type(ex).__name__] += 1
         return
@@ -364,14 +380,18 @@ def bake_replay(path, grid, ev, stats):
     nair = sum(ok)
     falls = collections.Counter(int(math.floor((t[i - 1].vz - t[i].vz) * 100 + 0.5)) for i in range(1, len(t)) if ok[i])
     falls = {k: c for k, c in falls.items() if 1 <= k <= rampinfer.HMAX}
-    if not falls:
-        stats['nofall'] += 1
-        return
-    top = max(falls.values())
-    if nair < rampinfer.MINAIR or top / nair < rampinfer.MINSHARE:     # rampinfer.infer's UNAVAILABLE
-        stats['unavailable'] += 1
-        return
-    step = min(k for k, c in falls.items() if c == top) / 100.0
+    recorded = r.get('recorded_contacts', False)
+    if recorded:
+        step = r.get('gravity', 800.0) * dt
+    else:
+        if not falls:
+            stats['nofall'] += 1
+            return
+        top = max(falls.values())
+        if nair < rampinfer.MINAIR or top / nair < rampinfer.MINSHARE:
+            stats['unavailable'] += 1
+            return
+        step = min(k for k, c in falls.items() if c == top) / 100.0
     stats['replays'] += 1
     prev = None             # support point of the previous tick's placed contact
     was = False             # the previous tick was a contact, placed or not: no arrival
@@ -380,7 +400,7 @@ def bake_replay(path, grid, ev, stats):
         contact = False
         if ok[i]:
             rr = (b.vz - a.vz) + step
-            contact = rr > rampinfer.EPS and not (rr > rampinfer.FLAT * step and math.hypot(b.vx - a.vx, b.vy - a.vy) < rampinfer.FLATH)
+            contact = bool(b.flags & rampinfer.F_RAMP) if recorded else (rr > rampinfer.EPS and not (rr > rampinfer.FLAT * step and math.hypot(b.vx - a.vx, b.vy - a.vy) < rampinfer.FLATH))
         if not contact:
             prev, was = None, False
             continue
@@ -517,7 +537,9 @@ def pack(charts, maxw):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     ap.add_argument('--map', required=True)
-    ap.add_argument('--replays', help='glob of .mtv files (default: Momentum momtv/*/<map>/*.mtv)')
+    ap.add_argument('--replays', help='glob of recordings (default: Momentum momtv/*/<map>/*.mtv)')
+    ap.add_argument('--replay-list', type=Path, help='JSON list of additional input paths; private provenance stays private')
+    ap.add_argument('--report', type=Path, help='aggregate coverage/provenance JSON; no player identifiers')
     ap.add_argument('--bsp', help='default: Momentum maps/<map>.bsp')
     ap.add_argument('--gamedir', default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ftesurf'))
     ap.add_argument('--texel', type=float, default=8.0, help='units per mask texel')
@@ -526,16 +548,30 @@ def main():
     ap.add_argument('--dry', action='store_true')
     a = ap.parse_args()
 
-    bsp = Bsp(a.bsp or os.path.join(MOMENTUM, 'maps', a.map + '.bsp'))
+    bsp_path = Path(a.bsp or os.path.join(MOMENTUM, 'maps', a.map + '.bsp'))
+    bsp = Bsp(bsp_path)
     charts, ndisp = load_charts(bsp)
     grid = Grid([f for c in charts for f in c.facets])
     ev = Events()
     files = sorted(glob.glob(a.replays or os.path.join(MOMENTUM, 'momtv', '*', a.map, '*.mtv')))
+    if a.replay_list:
+        additional = json.loads(a.replay_list.read_text(encoding='utf-8'))
+        if not isinstance(additional, list) or not all(isinstance(p, str) for p in additional):
+            ap.error('--replay-list must be a JSON list of paths')
+        files += sorted(additional)
+    files = list(dict.fromkeys(files))
     if not files:
+        if a.report:
+            a.report.parent.mkdir(parents=True, exist_ok=True)
+            a.report.write_text(json.dumps({'map': a.map, 'status': 'no_replays', 'input_files': 0,
+                'unique_sources': 0, 'counts': {}, 'bsp_sha256': hashlib.sha256(bsp_path.read_bytes()).hexdigest(),
+                'native_verification_NOTclaimed': True}, indent=2) + '\n', encoding='utf-8')
         raise SystemExit('no replays for %s' % a.map)
-    stats = collections.Counter()
-    for fn in files:
-        bake_replay(fn, grid, ev, stats)
+    selected = rampwear_replays.prefer_originals(files, a.map)
+    stats, seen = collections.Counter(), set()
+    stats['converted_clips_covered_by_raw_originals'] = len(files) - len(selected)
+    for fn in selected:
+        bake_replay(fn, grid, ev, stats, a.map, seen)
     used = [c for c in charts if c.hits >= a.minhits]
     # the rest of a ridden ramp: steep surfaces sharing a vertex with a drawn one, a.grow rings out
     vkey = lambda v: (round(v[0]), round(v[1]), round(v[2]))
@@ -558,6 +594,12 @@ def main():
         if k.startswith('unreadable_'):
             print('unreadable replays:', k[11:], stats[k])
     if not used:
+        if a.report:
+            a.report.parent.mkdir(parents=True, exist_ok=True)
+            a.report.write_text(json.dumps({'map': a.map, 'status': 'no_placed_contacts', 'input_files': len(files),
+                'unique_sources': len(seen), 'counts': dict(stats),
+                'bsp_sha256': hashlib.sha256(bsp_path.read_bytes()).hexdigest(),
+                'native_verification_NOTclaimed': True}, indent=2) + '\n', encoding='utf-8')
         raise SystemExit('nothing to draw')
 
     texel = a.texel
@@ -595,7 +637,7 @@ def main():
     #   c <cx> <cy> <cz> <radius> <triangles>             a surface, its triangles follow
     #   t <x y z s t> x3 <nx ny nz>                       s, t in the atlas, t from the top; n the surface's frame
     ex, ey = pos[('empty',)]
-    lines = ['rampwear 1 %s %d %d' % (a.map, len(used) + len(plain), sum(len(c.tris) for c in used + plain))]
+    lines = []  # v2 header follows the final PNG's content hash
     for c in used + plain:
         if c.key in painted:
             p = painted[c.key]
@@ -615,11 +657,32 @@ def main():
     from PIL import Image
     ddir = tdir = os.path.join(a.gamedir, 'gfx', 'rampwear')    # P1293: a launcher-managed path
     os.makedirs(ddir, exist_ok=True)
-    with open(os.path.join(ddir, a.map + '.txt'), 'w', newline='\n') as fh:
+    png_path = Path(tdir) / (a.map + '.png')
+    Image.fromarray(img, 'RGBA').save(png_path)
+    atlas = hashlib.sha256(png_path.read_bytes()).hexdigest()
+    # ASCII transport lets existing uri_get + bounded binary fwrite cache large
+    # PNGs without changing FTE's global remote-picture download security limit.
+    encoded = base64.b64encode(png_path.read_bytes())
+    encoded_sha = hashlib.sha256(encoded).hexdigest()
+    hashed = Path(tdir) / (a.map + '.' + atlas + '.png')
+    hashed.write_bytes(png_path.read_bytes())
+    Path(str(hashed) + '.b64').write_bytes(encoded)
+    nt = sum(len(c.tris) for c in used + plain)
+    lines.insert(0, 'rampwear 2 %s %d %d %s %s %d %d' % (a.map, len(used) + len(plain), nt, atlas, encoded_sha, W, H))
+    txt_path = Path(ddir) / (a.map + '.txt')
+    with txt_path.open('w', newline='\n') as fh:
         fh.write('\n'.join(lines) + '\n')
-    Image.fromarray(img, 'RGBA').save(os.path.join(tdir, a.map + '.png'))
-    print('wrote', os.path.join(ddir, a.map + '.txt'), 'and', os.path.join(tdir, a.map + '.png'),
-          '(%d triangles)' % sum(len(c.tris) for c in used + plain))
+    if a.report:
+        report = {'map': a.map, 'bsp_sha256': hashlib.sha256(bsp_path.read_bytes()).hexdigest(),
+                  'input_files': len(files), 'unique_sources': len(seen), 'counts': dict(stats),
+                  'surfaces': len(used) + len(plain), 'triangles': nt, 'atlas_size': [W, H],
+                  'atlas_sha256': atlas, 'atlas_base64_sha256': encoded_sha, 'atlas_bytes': png_path.stat().st_size,
+                  'deduplication': 'identical recordings only; foreign clips retain their scope',
+                  'geometry_sha256': hashlib.sha256(txt_path.read_bytes()).hexdigest(),
+                  'status': 'ready', 'native_verification_NOTclaimed': True}
+        a.report.parent.mkdir(parents=True, exist_ok=True)
+        a.report.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+    print('wrote', txt_path, 'and', png_path, '(%d triangles)' % nt)
 
 
 if __name__ == '__main__':

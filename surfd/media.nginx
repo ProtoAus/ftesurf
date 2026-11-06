@@ -19,4 +19,22 @@ location ~ "^/ftesurf/media/thumbs/(?<ftethumb>[0-9a-f-]{36})\.jpg$" {
     autoindex off;
     disable_symlinks if_not_owner;
 }
+# P1339: cosmetic replay-baked assets only, never arbitrary gamedir/player data.
+location ~ "^/ftesurf/media/rampwear/(?<fterampmap>[a-z0-9_-]{1,64})\.txt$" {
+    root /srv/nvme/ftesurf-site/media/rampwear;
+    try_files /$fterampmap.txt =404;
+    default_type text/plain;
+    add_header Cache-Control "no-cache";
+    autoindex off;
+    disable_symlinks if_not_owner;
+}
+location ~ "^/ftesurf/media/rampwear/(?<fterampatlas>[a-z0-9_-]{1,64}\.[0-9a-f]{64}\.png)(?<fterampencoded>\.b64)?$" {
+    root /srv/nvme/ftesurf-site/media/rampwear;
+    try_files /$fterampatlas$fterampencoded =404;
+    types { image/png png; text/plain b64; }
+    default_type application/octet-stream;
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    autoindex off;
+    disable_symlinks if_not_owner;
+}
 location /ftesurf/media/ { return 404; }     # plain prefix: ^~ would hide the regex above

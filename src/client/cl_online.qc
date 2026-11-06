@@ -1939,11 +1939,19 @@ string(float track, float leg, string style) Online_KsfState =
 	return ok_state;
 };
 
+float() RampWear_Allowed =
+{
+	if (ui_consent_ver < FS_TERMS_ONLINE)
+	if (cvar("rec_terms") < FS_TERMS_ONLINE) return FALSE;
+	return TRUE;
+};
+
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
 	local string fn;
 	local int kr;
 
+	if (RampWear_Reply(reqid, responsecode, resourcebody)) return;
 	if (TASShare_Reply(reqid, responsecode, resourcebody)) return;
 	if (ok_req)
 	if (reqid == ok_req)
