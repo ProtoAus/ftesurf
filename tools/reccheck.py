@@ -1330,6 +1330,9 @@ def _check_rec(r, path, verbose=False, *, data=None):
                 in_badshape += 1
                 continue
             try:
+                # Native numeric tokens have neither digit separators nor Unicode digits.
+                if any(not x.isascii() or "_" in x for x in tok[1:]):
+                    raise ValueError("non-native numeric spelling")
                 pk, mt = int(tok[1]), int(tok[2])
                 carry = file_float(tok[3])
                 ang = [file_float(x) for x in tok[7:10]]

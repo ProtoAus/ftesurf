@@ -1,5 +1,25 @@
 # AGENT_NOTES.md
 
+## P1356 required-input numeric spelling (6 Nov2026)
+
+- Recsim intentionally uses int(float(token)); fractional truncation is tested
+  compatibility, not a reason to substitute strict integer parsing. Admit ASCII
+  numeric spellings without Python-only digit separators before those conversions.
+  The full checker's ordinary input branch retains its own int/float/precision
+  rules. Its is_int rejects plus and bounds length128: NOT an equivalent helper.
+- Existing test_reccheck.build is safe to import without running main and supplies
+  an otherwise clean grammar fixture. Its input-angle exponent diagnostic already
+  exists; do not demand it vanish while testing lexical admission. Native13/15
+  framing can reject corrupt ordinary tokens before held_status exists; keep a
+  clean acted control and do not invent sealed status after early refusal.
+- `test_simcheck.py` is a successful standalone that exits at import. Use
+  `test_simcheck_*.py` for unittest discovery, then treat standalone results
+  separately. Six Windows SQLite/POSIX skips still need actual Linux controls.
+- Canonical reader modules are outside runtime84/external3. Swapping a host file
+  does not prove namespace visibility/import origin, and two CAS replacements are
+  not group-atomic. Keep both originals and restore both on partial promotion.
+  Source evidence and delivery status: tools/p1356-input-numbers.md.
+
 ## P1355 bounded local solver: measured interface seams (6 Nov 2026)
 
 Qualification and actual remaining limits: tools/p1355-tas-solve.md.
