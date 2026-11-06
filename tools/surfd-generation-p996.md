@@ -1,5 +1,14 @@
 # Backend generation swap: P996 (25 Oct 2026) -- the procedure as run
 
+> **Historical P996 procedure below; not the current live tuple.** P1346 was
+> activated 6 November 2026 at11:10:06UTC as generation
+> `40bd0587a63cff0f784f24864752f1c4e84a9198`, collectors84-v1/schema26.
+> Exact scope, live verification and current-data rollback are recorded in
+> [p1346-simcheck-recovery.md](p1346-simcheck-recovery.md). Its production root
+> `/srv/nvme/agent-work/ac-resume-20261106-0254` and CLOSED compatibility
+> `rollback-runtime`/`control` are retained dependencies, not scratch cleanup
+> targets. Do not replay the pre-systemd P996 cutover or restore an old database.
+
 Lex, 25 Oct: "do it, and change the note to publish lobbies, we're in beta, and people can just
 reconnect." Live backend now: generation `806d1484e0fbaecdf25e6e45c0ae5ece894e1304` (branch
 `backend-gen-p996` = live c35fd034 + P996's surfd.py/social.py), root

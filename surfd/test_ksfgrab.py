@@ -362,7 +362,7 @@ class Tests(unittest.TestCase):
             raise urllib.error.HTTPError('public', 429, 'refused', {}, io.BytesIO())
         with patch.object(G.time, 'sleep') as sleep:
             self.assertEqual(G.tick(self.cache, download=refused), (1, 0))
-            sleep.assert_called_once_with(3.0)
+            sleep.assert_called_once_with(G.DEMO_DELAY)
             self.assertEqual(G.tick(self.cache, download=refused), (0, 0))
         self.assertEqual(len(calls), 1)
         self.assertEqual(self.parks(), ['.refused', G.PARK])   # P1117 review: an HTTP refusal parks the crawl too
@@ -819,7 +819,7 @@ class Tests(unittest.TestCase):
             self.assertEqual(G.tick(self.cache, maximum=24, download=broken), (G.FILESTREAK, 0))
         state = K._load(os.path.join(self.cache, 'demos.json'))
         self.assertEqual((len(calls), self.parks(), state['failed']),
-                         (G.FILESTREAK, ['.refused', G.PARK], {}))
+                         (G.FILESTREAK, [G.PARK], {}))
 
     # P1247: a new converter asks the old one's Unconvertible set-asides again.
     def test_p1247_a_new_converter_asks_its_set_asides_again(self):
@@ -1472,7 +1472,7 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
                                    download=lambda f:self.fail('zero budget downloaded')),(0,0))
             self.assertEqual(G.tick(self.cache,maximum=1,
                                    download=lambda f:(calls.append(f),binary())[1]),(1,1))
-            sleep.assert_called_once_with(3.0)
+            sleep.assert_called_once_with(G.DEMO_DELAY)
         self.assertEqual(calls,[rows[0]['file']])
         self.assertEqual(self.conn.execute('SELECT replay_id FROM runs WHERE player=?',
                                           (G.candidate('surf_test',0,0,rows[0])['player'],)).fetchone()[0],rid)
@@ -1708,6 +1708,88 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
             self.stage_map()
             self.assertEqual(G.tick(self.cache, download=lambda f: stage), (1, 1))
         self.assertTrue(G.ready(self.conn, G.candidate('surf_test', 3, 0, self.r, 4)))
+
+    def test_missing_files_never_become_a_host_rate_limit(self):
+        self.many(5)
+        for code in (404, 410):
+            for name in ('.refused', G.PARK, 'demos.json'):
+                (Path(self.cache)/name).unlink(missing_ok=True)
+            def missing(file):
+                raise urllib.error.HTTPError('public', code, 'gone', {}, io.BytesIO())
+            with self.subTest(code=code), patch.object(G.time, 'sleep') as sleep:
+                self.assertEqual(G.tick(self.cache, maximum=6, download=missing), (5, 0))
+                self.assertEqual(self.parks(), [])
+                state = K._load(os.path.join(self.cache, 'demos.json'))
+                self.assertEqual(len(state['failed']), 5)
+                self.assertEqual(state['filestreak'], {})
+                self.assertTrue(all(c.args == (G.DEMO_DELAY,) for c in sleep.call_args_list))
+
+    def test_server_errors_back_off_replays_not_healthy_boards(self):
+        self.many(4)
+        base = int(time.time())
+        def broken(file):
+            raise urllib.error.HTTPError('public', 500, 'broken', {}, io.BytesIO())
+        for n, when in ((1, base), (2, base + 61)):
+            with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=when):
+                self.assertEqual(G.tick(self.cache, maximum=6, download=broken), (G.FILESTREAK, 0))
+            park = K._load(os.path.join(self.cache, G.PARK))
+            self.assertEqual((self.parks(), park['kind'], park['n']), ([G.PARK], 'transient', n))
+            self.assertEqual(park['until'], when + 60 * 2 ** (n - 1))
+            with patch.object(G.time, 'time', return_value=when + 1), patch.object(G.time, 'sleep') as sleep:
+                self.assertEqual(G.tick(self.cache, download=lambda f: self.fail('park bypassed')), (0, 0))
+                sleep.assert_not_called()
+        with patch.object(G.time, 'time', return_value=base + 182), patch.object(G.time, 'sleep') as sleep:
+            asked, linked = G.tick(self.cache, maximum=6, download=lambda f: binary())
+        self.assertGreater(asked, 0)
+        self.assertEqual(asked, linked)
+        self.assertEqual(self.parks(), [])
+        self.assertGreater(sleep.call_args_list[0].args[0], G.DEMO_DELAY)
+
+    def test_retry_after_and_real_rate_limits_remain_binding(self):
+        self.many(1)
+        base = int(time.time())
+        for code, seconds in ((503, 90), (429, K.COOLDOWN + 600)):
+            for name in ('.refused', G.PARK, 'demos.json'):
+                (Path(self.cache)/name).unlink(missing_ok=True)
+            def refusing(file):
+                raise urllib.error.HTTPError('public', code, 'busy', {'Retry-After': str(seconds)}, io.BytesIO())
+            with self.subTest(code=code), patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=base):
+                self.assertEqual(G.tick(self.cache, download=refusing), (1, 0))
+                park = K._load(os.path.join(self.cache, G.PARK))
+                self.assertEqual(park['until'], base + seconds)
+                self.assertEqual(set(self.parks()), {G.PARK, '.refused'} if code == 429 else {G.PARK})
+                self.assertEqual(G.tick(self.cache, download=lambda f: self.fail('early retry')), (0, 0))
+                if code == 429:
+                    self.assertEqual(K._load(os.path.join(self.cache, '.refused'))['until'], base + seconds)
+
+    def test_backoff_starts_after_the_failed_exchange(self):
+        self.many(1)
+        base = int(time.time())
+        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=base) as clock:
+            def slow_failure(file):
+                clock.return_value = base + 240
+                raise urllib.error.HTTPError('public', 503, 'busy', {}, io.BytesIO())
+            self.assertEqual(G.tick(self.cache, download=slow_failure), (1, 0))
+        park = K._load(os.path.join(self.cache, G.PARK))
+        self.assertEqual((park['at'], park['until']), (base + 240, base + 300))
+
+    def test_retry_after_http_dates_and_invalid_headers(self):
+        from email.utils import formatdate
+        now = int(time.time())
+        for value, seconds in ((formatdate(now + 120, usegmt=True), 120), ('20', 20),
+                               ('-5', 0), ('garbage', 0), ('9' * 1000, 0)):
+            e = urllib.error.HTTPError('public', 503, 'busy', {'Retry-After': value}, io.BytesIO())
+            self.assertEqual(G.retry_after(e, now), seconds, value[:40])
+
+    def test_existing_host_park_is_not_shortened_by_new_policy(self):
+        self.many(1)
+        now = int(time.time())
+        park = Path(self.cache)/G.PARK
+        K._save(str(park), dict(at=now-10, until=now+K.COOLDOWN, n=1, why='previous host refusal'))
+        before = park.read_bytes()
+        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=now):
+            self.assertEqual(G.tick(self.cache, download=lambda f: self.fail('existing park bypassed')), (0, 0))
+        self.assertEqual(park.read_bytes(), before)
 
     def test_one_broken_file_is_set_aside_not_the_host(self):
         rows = self.many(5)

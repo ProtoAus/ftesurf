@@ -27,6 +27,10 @@
 - The overview only accepts already-loaded structural models; unloaded decorative models cannot slip through the brush exception.
 - Zone editing still processes clicks and drag releases at the current aim in the void, without drawing editor world overlays.
 
+### P1347 Fetch KSF boards and gentler replay retries
+- Added Fetch KSF buttons to the in-game and map leaderboards for the selected course and direction; available replays follow in the background.
+- Made KSF replay fetching gentler: missing files no longer stall the whole importer, and temporary replay-server errors use targeted retries while genuine rate limits remain protected.
+
 ### P1345 Smoother noclip overview and accurate frame reports
 - Outside-map noclip skips decorative props and effects while keeping the map and structural brushes visible. Normal in-map rendering settings are unchanged.
 - Fixed a first-exit rendering stall caused by cosmetic prop lighting returning inside reflections. Recursive reflections now keep the selected map-only policy.

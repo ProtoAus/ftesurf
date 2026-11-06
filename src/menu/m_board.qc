@@ -146,7 +146,7 @@ float(string s) Mlb_TabOf =
 string() Mlb_Source =
 {
 	if (mlb_tab == MLB_T_ALL) return "All games: World of Surf, Momentum Mod, KSF";
-	if (mlb_tab == MLB_T_KSF) return "KSF (ksf.surf), Counter-Strike: Source -- times only";
+	if (mlb_tab == MLB_T_KSF) return "KSF (ksf.surf): times and available replays";
 	if (mlb_tab == MLB_T_MOM) return "Momentum Mod's own leaderboard, imported";
 	return "ranked runs on World of Surf's public lobbies";
 };
@@ -694,7 +694,7 @@ void() Mlb_KsfMore =
 {
 	local string url;
 	if (!mlb_open || cvar("rec_terms") < FS_TERMS_ONLINE) return;
-	if (!strcmp(cvar_string("lobby_dir"), "") || !strcmp(mlb_style, "segmented")) return;
+	if (!strcmp(cvar_string("lobby_dir"), "") || FS_BoardSegmented(mlb_style)) return;
 	if (time < mlb_kafter) return;
 	if (mlb_kreq && time < mlb_kdead) return;
 	mlb_kreq = Lob_NextReq(); mlb_kdead = time + MLB_DEADLINE; mlb_kafter = time + 10;
@@ -1335,7 +1335,7 @@ void(vector p, float w) Mlb_DrawBody =
 void(vector screensize) Mlb_Draw =
 {
 	local vector p, sz, ls, rp, lp, lsz;
-	local float w, h, x, t, k, ly, rw, tr, dlr, dr, nw, idx, cw, closeit, sidew, lx, on, hot, c;
+	local float w, h, x, t, k, ly, rw, tr, dlr, dr, nw, idx, cw, closeit, sidew, lx, on, hot, c, ksffetch;
 	local string s, id;
 
 	if (!mlb_open)
@@ -1353,27 +1353,36 @@ void(vector screensize) Mlb_Draw =
 
 	// Closed at the end: the rows below still read the buffers a close frees.
 	closeit = FALSE;
+	ksffetch = (mlb_tab == MLB_T_KSF && !FS_BoardSegmented(mlb_style));
+	if (ksffetch && w >= 640)
+	if (ui_button("mlb_ksmore", [w - 354, 12], [112, 30], "Fetch KSF")) Mlb_KsfMore();
 	if (ui_button("mlb_jumpme", [w - 234, 12], [126, 30], "Jump to me")) Mlb_JumpToMe();
 	if (ui_button("mlb_close", [w - 100, 12], [84, 30], "close"))
 		closeit = TRUE;
 
-	sui_text([16, 14], SZ_HEAD, ui_fit_text(mlb_map, w - 266, SZ_HEAD), COL_ACCENT, 1, 0);
+	sui_text([16, 14], SZ_HEAD, ui_fit_text(mlb_map, w - ((ksffetch && w >= 640) ? 386 : 266), SZ_HEAD), COL_ACCENT, 1, 0);
 	s = sprintf("%s / %s / %s", Mlb_TabName(mlb_tab), Mlb_LegName(mlb_track, mlb_leg), FS_BoardStyleName(mlb_style));
 	sui_text([16, 38], '12 12 0', ui_fit_text(s, w - 32, '12 12 0'), COL_DIM, 1, 0);
 
 	// The games, in the in-game filter's order: every game, then each one.
+	ly = 56;
+	if (ksffetch && w < 640)
+	{
+		if (ui_button("mlb_ksmore", [16, ly], [112, 30], "Fetch KSF")) Mlb_KsfMore();
+		ly = ly + 38;
+	}
 	x = 16;
 	for (k = 0; k < MLB_NTABS; k = k + 1)
 	{
 		t = Mlb_TabAt(k);
 		id = strcat("mlb_tab", ftos(t));
-		x = x + ui_chip([x, 56], id, Mlb_TabLabel(t), t == mlb_tab) + CHIP_GAP;
+		x = x + ui_chip([x, ly], id, Mlb_TabLabel(t), t == mlb_tab) + CHIP_GAP;
 		if (sui_is_released(id))
 			Mlb_SetTab(t);
 	}
 
 	x = 16;
-	ly = 56 + CHIP_H + 8;
+	ly = ly + CHIP_H + 8;
 	for (t = 0; t < 4; t = t + 1)
 	{
 		id = strcat("mlb_style", ftos(t));
@@ -1500,6 +1509,13 @@ void(vector screensize) Mlb_Draw =
 	}
 
 	s = mlb_jumpnote != "" ? mlb_jumpnote : Mlb_Source();
+	if (mlb_kstate != "" && time < mlb_kafter + 10)
+	{
+		if (mlb_kreq && time > mlb_kdead)
+			s = "KSF request timed out; try again";
+		else
+			s = sprintf("KSF: %s. Up to 100 times; available replays follow. Reopen later.", mlb_kstate);
+	}
 	x = w - 16;
 	if (mlb_state == MLBS_OK)
 	{
