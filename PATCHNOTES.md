@@ -21,6 +21,9 @@
 
 ## next
 
+### P1337 Safer developer-tool commands
+- Hardened developer-tool command handling while keeping normal local developer workflows available.
+
 ### P1336 Name and navigate TAS sections
 - A new Sections tab splits the complete captured local line at your named markers. Select a section's inputs or replay to its start or end without losing the later line.
 - Add, rename, move or remove manual boundaries while paused. Marker edits save the full retained run, even from an earlier body; Undo/Redo keeps the original revisions.

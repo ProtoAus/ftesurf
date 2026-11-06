@@ -1,4 +1,5 @@
 # The engine build this QuakeC requires.
+# Patch 1337 validates developer-tool command provenance and compiler argument bounds. Trusted local paths remain supported; no movement, recording, policy or QC Build change. See tools/p1337-developer-command-validation.md.
 # Patch 1335 (client/defaults only): r_christmas0 gates seasonal snow/weather/audio/decorations; ramp marks0/dirt0; replace ignored depthpush with supported polygonoffset1 and tiny live-reloadable lift. Preserve individual preferences and current P1329/P1330 APIs. No native/QW/menu/backend/media/physics/evidence/Build change. tools/p1335-christmas-ramp-defaults.md.
 # Patch 1336 (QC only): manual full-line TAS section browser and bound add/rename/move/remove; metadata saves preserve retained future, original and authored settings with no input supply/body grant. Shared name owner and separate drafts. ThreeVM0warnings; historical14/20/58/31+24/24+6synthetic checks. Cumulative marker-read bound: old48000control VMfault; corrected22+58normal and16synthetic budget checks. Oversized edits refuse intact; no genuine-signature claim. Reader949/0, corpus548REC178VIEW351existingfaults unchanged. Two final whole-feature reviews clear; renumber-only before publication, delivery pending; no contact detector, solver, native pin/tag/qcbuild or public-admission change. tools/p1336-tas-sections.md.
 # Patch 1334 (diagnostic readers/backend only): unsupported recording clock models now yield a distinct unmodelled skip, not malformed input. Collector and authenticated review retain skip/no metrics, while valid comparisons and real malformed input keep their existing meanings. Legacy observations are not rewritten or automatically retried. No clock model expansion, raw capture/format/schema, thresholds/enforcement, native pin/tag/qcbuild change. Windows/Linux focused30reader+7collector/history pass, reader949/0, threeVM0warnings, corpus548REC178VIEW344/7faults held. Broader related tests retain two exact prefeature-baseline connection-count failures; not a clean full suite. Two fresh whole-feature re-reviews clear after retained-log skip-accounting/README corrections. Backend9150481f plus separately namespace-visible canonical reader DELIVERED6Nov00:19:37UTC;156sealed origins/44tables/8identities/env/core26/event1 held, SAMEdata fallback/oldreader kept. Interrupted helper transaction repaired/resumed without oldDBrestore; cron/MOMactive, collector lockreleased, health200/directory12. tools/p1334-similarity-unmodelled.md.
@@ -45,7 +46,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   538de9265cefaf411c3091f9bf62e766aaec483e
+commit   7d1bafa959e0017cd47f73cb2036be3b31e7d73b
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -57,8 +58,8 @@ commit   538de9265cefaf411c3091f9bf62e766aaec483e
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
-tag      patch-1330
-patch    1336
+tag      patch-1337
+patch    1337
 # Patches 1305/1306 (engine common/pm_source.c): faithful existing gravity-use observation across finite native jump configurations and stock postures. Movement, capture/API/format and ranking policy unchanged. Clean Windows/ARM, acting controls and dual Windows/all12Pi native delivery verified; actual ranked/full-bank acceptance separate. Windows source7ae5d53b2 includes published P1301; Pi source76acc7c6b/tagpatch-1306 has identical mover/server inputs. Details and corrected old-manifest selector diagnosis: tools/p1306-gravity-context.md.
 # Patch 1299: initial finite nonnegative normalized-offset extension; full native delivery now superseded by the qualified 1305/1306 set. Historical proof and correction in tools/p1299-gravity.md.
 # Patches 1255/1257 (engine sv_ccmds.c pm_dettest mover-12 lines; renderer gl_mindist 2, viewmodels keep 1): installs tag patch-1257, which merges patch-1260. QC needs neither.
