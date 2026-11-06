@@ -44,8 +44,17 @@ complete empty reserved-tag0 contacts reply. Seek/edit/history/template actions
 also clear the cache before dispatch: a failed Go cannot become current merely
 because an unchanged Timeline page returns. Template/share reads add no positive
 proof. A real legacy source reproduces reader/UI cache defects with47 acting
-checks. The latest canonical-open corrections compile cleanly; candidate cache
-runtime remains pending the unchanged4GiB/60s-quiet resource gate.
+checks. The latest canonical-open corrections compile cleanly. After the unchanged
+4GiB/60s-quiet gate cleared, old open-control b6c545e5 acted37/37 checks and current
+d035 passed65/65 real dedicated-socket checks. Failed Go/template syntax/hash reads
+and binder/share opens clear server proof and client view without manual refresh;
+restored bytes alone cannot resurrect proof. Genuine strict canonical readback
+automatically recovers the complete view. Wrong target-count and readable
+nonportable-share refusals preserve valid proof. Original/future bytes and
+native/body/request counters stay exact; no upload or added credit. Both arms
+release input and stop their own client/server with rc0; no owner process is
+terminated. Two independent final whole-feature source reviews clear all28 paths.
+This is scoped runtime acceptance, not owner comfort or deployment.
 
 These are proposals, **not a section solver result**. A constrained next-ramp
 solver and broader optimization remain work in progress in
@@ -96,8 +105,11 @@ Old engines report **native contact metadata unavailable**, not an empty air map
 
 ## Qualification to date
 
-Implemented and verified in an isolated real dedicated-socket Windows actor;
-final tagged-source/review/deployment provenance is a separate delivery boundary.
+Implemented and verified in an isolated real dedicated-socket Windows actor.
+Final native code/tag/pin is2f5c35c6b; current QQd035 includes published0.1.41/menu90
+and preserves the published1345-1349 changes. Clean Windows FULL native/three-VM
+and ARM qualification plus two final whole-feature source reviews are complete.
+Live deployment and owner acceptance remain separate delivery boundaries.
 
 - Supported `build.ps1 -Engine -Full -NoDeploy`: successful native build, all
   three QCC VMs zero warnings; no compiler warnings in modified native files.

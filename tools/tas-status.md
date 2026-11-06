@@ -62,8 +62,11 @@ complete source-bound maps and a separate Observed contacts browser. An actual
 static BSP ramp, earlier navigation/metadata-only retag, native helper suite and
 changed-input preview/Discard restoration are isolated-qualified. Old native
 absence is explicit; unsupported/gap/no-ramp states are not guessed air. Final
-clean tagged-source build, whole-feature reviews and deployment remain separate
-gates. This is an observation foundation, not best-found section solving.
+clean tagged-source Windows FULL/three-VM and ARM1608/0 builds, two independent
+whole-feature source reviews and current real-client cache acceptance are complete:
+old open-control37/37 acts and production65/65 passes with original/counters exact.
+Deployment remains a separate gate. This is an observation foundation, not
+best-found section solving.
 
 The API reader upgrade is reviewed/tested/published but still needs the owner's
 root-authenticated standalone TAS-service upgrade. This does **not** block local
@@ -80,7 +83,8 @@ Source, qualification, deployment and human acceptance are separate evidence.
 
 1. **Human-plan phase 4 delivery/acceptance.** P1350's native contact proposals,
    full-source browser and metadata/preview invalidation are implemented and
-   isolated-qualified; finish the tagged build/review/deployment gates above.
+   isolated-qualified; tagged builds, both final reviews and current real-client
+   checks pass. Finish deployment and the owner acceptance described above.
    Keep manual boundaries explicit and static-world scope honest. Real moving/
    unsupported scenes and owner comfort are not supplied by helper tests.
 2. **Human-plan phase 5: constrained section/next-ramp solving.** Existing bounded
