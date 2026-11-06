@@ -29,7 +29,23 @@ checks do not prove a network exploit or complete native/compiler/parser audit.
 
 ## Delivery state
 
-Source functional checks passed; exact clean stamped platform qualification and
-native-only delivery are recorded separately when completed. Existing runtime
-programs, owner settings, data and unrelated optional executable aliases must
-remain unchanged. Do not infer deployment from a source commit or build.
+Exact clean stamped qualification passed on Windows and ARM. At 6 November
+2026 03:38:33 UTC, the existing native-only Deploy helper updated both Windows
+installs' ten supported destinations. All ten destination hashes and their
+immediate `.prev` predecessors match; prior destination/`.prev` preimages remain
+retained. The shared rig lock is released; no owner process was killed.
+
+A client started after the copy, and the initial final-inventory idle gate
+refused; that refusal is retained. Once genuinely idle, a read-only postflight
+finished without redeploying. All 19,331 other pre-existing non-target paths are
+unchanged, with no new outside paths; the only three concurrent differences are
+shared AGENTS.md, AGENT_NOTES.md and lextest.md documentation. Those peer changes
+were not reverted or claimed as ours. All qualified frozen images and the ten
+installed destinations/previous images remain exact. No owner config/data or
+optional executable alias changed. No manual in-game acceptance is claimed.
+
+The ARM server/plugin pair is qualified and frozen, not lobby-deployed. A fresh
+13-actor recorder/resume inspection found an open preserved-namespace descriptor
+and changing preservation state. The normal warning/countdown restart policy does
+not waive those safety dependencies. No live maintenance gate is held. Do not
+infer fleet deployment from a source commit, build or Windows delivery.
