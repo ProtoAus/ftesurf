@@ -1,6 +1,6 @@
 # P1355 experimental bounded local section search
 
-**Runtime qualified; publication/deployment recorded separately below.** Final
+**Published and installed BOTH Windows/all12 lobbies,6November UTC.** Final
 fair-baseline22production helpers and37real dedicated-socket checks pass.
 This does not complete the human-first TAS plan or establish owner acceptance.
 
@@ -102,5 +102,30 @@ pin/tag or Build bump; preserve the published native1353 dependency.
 
 ## Publication / deployment
 
-Pending the inspected clean feature commit and exact-artifact promotion. No solver
-installation is inferred from a build or a test. Human acceptance remains pending.
+Inspected runtime source `c489d56a95f6f4535b3857cd46500598c3844b04` is published.
+It preserves the published P1356 diagnostic-reader work without deploying those
+backend/tools or changing the P1353 native pin/tag/Build89. Final clean QC build
+`bcf06d1d` compiles all3VMs0warnings; its compiler inputs (`src`, VERSION and
+flags) are identical at c489. All3DATs are byte-identical to the actual37control
+subject. Both corrected independent review lenses clear that exact runtime diff.
+
+- **BOTH Windows,22:02:04Z:** all14 scoped DAT/LNO/client-cache targets match;
+  all18656 protected originals, including native binaries/config/player data,
+  remain unchanged.24 current/prior-prev preimages archived; ordinary.prev kept.
+- **ALL12 lobbies,22:14:58Z:** both exact QW/CS files and predecessors verified;
+  all12 new actor births/native hashes rechecked against the live directory.
+  All48617 protected originals unchanged; native binaries, configs and active
+  backend generation/files preserved. The two Windows installs and lobby
+  processes retain their existing native binaries; no old test-native promoted.
+- All8 actual recorder parts and183 complete resume payload/metadata members
+  captured and individually rehashed ONBOX/OFFBOX before any canonical stage or
+  restart; locked JIT namespace/actor/FD checks passed. Shipped CSQC catalog77
+  retains all76 prior entries. Sweep lock released; rollback/preimage evidence
+  retained privately. No data restore or historical rewrite.
+
+The Windows parent deadline expired after all14 promotions; read-only postflight
+verified the existing transaction. The Pi SSH deadline expired after its on-box
+activation completed; readback consumed that successful receipt. Neither repeated
+swaps/restarts nor turned a transport timeout into a product pass. Human two-ramp
+acceptance, changed-winner/history, >128selected rows, finish context and a
+clean-cache downloaded-lobby-client smoke remain unverified. No release requested.

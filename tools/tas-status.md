@@ -29,7 +29,8 @@ camera/input feel remains pending in [lextest.md](../lextest.md).
 | Human-first local controller | Normal play → Pause; independent movement, yaw/gain and duck controls; optional Follow travel pitch | Owner feel and broader ramp/ground cases still need acceptance; [human plan](plan-tas-human-workflow.md) |
 | Full captured local line | Browse/seek/recalculate retained earlier inputs, preview and recover the original; named literal templates | Captured native-base projects, bounded input capacity; not position-only or arbitrary streamed imports; [P1323](p1323-tas-recipes.md) |
 | Historical local settings | Completed-tick movement/turn/duck/Follow settings restore on seek, survive closed-panel save/reload and history operations | Local v4 only; missing/legacy intent stays unknown, not guessed; [P1329](p1329-tas-settings.md) |
-| Observed local sections | Passive native contact maps, complete exact-source face browsing and retained-line start/end navigation | Both Windows/all12 lobbies deployed6November; static profile, not constrained solving or owner acceptance; [P1350](p1350-tas-contacts.md) |
+| Observed local sections | Passive native contact maps, complete exact-source face browsing and retained-line start/end navigation | Both Windows/all12 lobbies deployed6November; static profile and owner acceptance limits; [P1350](p1350-tas-contacts.md) |
+| Experimental local section search | Bounded nine-candidate selected-input to later-face/arrival-region search, full-future preview and exact Original recovery | Both Windows/all12 lobbies deployed6November; best found only, no measured speed improvement or owner acceptance; [P1355](p1355-tas-solve.md) |
 | Server replay foundation | Operator-only bounded legal-start verifier | Qualified 15 ms fixture profile, not public admission; [runner contract](tasverify.md) |
 | Canonical-content foundation | Native VFS source inventory, epoch/lease and binding checks | Components, not complete production source qualification; [source contract](tas-native-source.md) |
 
@@ -88,8 +89,10 @@ pass: fair baseline, all9 native candidates, complete future, real GUI Cancel,
 stale job isolation and exact Original input/settings recovery. Independent review
 fixes also prove optimizer exclusion and restored preview status after reopening. Baseline was best;
 no invented improvement or input credit. All3VMs compile0warnings. This is initial
-bounded-search qualification, not full two-ramp acceptance. Publication/deployment
-are separate states in [qualification](p1355-tas-solve.md).
+bounded-search qualification, not full two-ramp acceptance. Published runtime
+c489d56a is installed BOTH Windows22:02Z/all12lobbies22:14Z6November, with exact
+hashes, current native/config/backend preservation and full recorder/resume
+preimages checked. Details and limits remain in [qualification](p1355-tas-solve.md).
 
 ## Still unfinished
 
@@ -100,10 +103,14 @@ are separate states in [qualification](p1355-tas-solve.md).
    downloaded-client smoke and owner acceptance described above.
    Keep manual boundaries explicit and static-world scope honest. Real moving/
    unsupported scenes and owner comfort are not supplied by helper tests.
-2. **Human-plan phase 5: constrained section/next-ramp solving.** Existing bounded
-   optimizers are not this feature. Real ramp/air candidates must satisfy contact
-   and arrival constraints, reject a fast missed ramp, preserve the original on
-   cancel/failure, and label results best **found**, not globally fastest.
+2. **Human-plan phase 5: useful constrained section/next-ramp solving.** P1355's
+   initial bounded local face/arrival-region search is now installed, not merely
+   an endpoint optimizer.22helper/37native checks qualify its scoped goal,
+   full-future/cancel/recovery behavior. A useful familiar two-ramp result, changed
+   winner/history, long selection, natural finish and broader real ramp/air
+   comparisons remain unverified. Baseline was best in the actual control; no
+   measured speed improvement or global-optimum claim. Tune the next change from
+   the small owner pilot instead of another broad proof-framework campaign.
 3. **Stage 6.3: public submission and verified TAS board writer.** The approved
    runtime registry needs protected canonical sources, complete effective
    map/zone/dependency identities, alias/writer controls and real-map replay
@@ -120,9 +127,12 @@ are separate states in [qualification](p1355-tas-solve.md).
 
 ## Resume here
 
-Finish P1336 manual-section delivery, then continue the
-[human-first plan](plan-tas-human-workflow.md) with actual-contact proposals and
-constrained next-ramp work. Keep the delivered play/pause/full-captured-line/settings loop intact.
+P1336/P1350 sections and the initial P1355 search are installed. Next obtain the
+small familiar two-ramp owner check in lextest.md and a concrete ground-prestrafe
+reproduction; use observed gaps to continue the
+[human-first plan](plan-tas-human-workflow.md), preserving the delivered
+play/pause/full-captured-line/settings loop. Clean-cache downloaded-client smoke
+and the explicit long-selection/changed-winner/finish cases remain unverified.
 A rearranged128-tick demonstration, one passing build or this deployment is not
 whole-project completion. Dynamic-world, streamed-history, physical-device and
 general-route limits remain explicit.

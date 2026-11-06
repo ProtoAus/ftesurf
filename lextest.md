@@ -1,9 +1,9 @@
 # lextest.md — things waiting on a human
 
-## P1355 bounded local section search -- check after rollout
+## P1355 bounded local section search -- BOTH Windows/all12 lobbies installed6Nov
 
-Please do not look for the new search button until the deployment is confirmed.
-Then one small familiar two-ramp check: capture a disposable line and Pause;
+Installed22:02Z Windows/22:14Z lobbies; scoped hashes and preservation verified.
+One small familiar two-ramp check: capture a disposable line and Pause;
 Inputs > From/To selects an earlier interval; Sections > Observed contacts chooses
 its later face/search button. Is the goal/progress/result understandable? Cancel
 one run, open the input preview and Discard: do the complete future, settings and

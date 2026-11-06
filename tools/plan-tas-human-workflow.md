@@ -20,7 +20,12 @@ both independent reviews and actual current real-client cache checks pass; BOTH
 Windows installs and all12 lobbies are deployed. Owner two-ramp acceptance and a
 resource-gated downloaded-client smoke remain pending in
 [the contact qualification](p1350-tas-contacts.md). The constrained next-ramp
-solver remains unfinished. The complete workflow below is NOT delivered.
+solver now has an initial P1355 experimental bounded face/arrival-region search:
+22production helpers/37real-client controls pass, both final review lenses clear,
+and BOTH Windows/all12lobbies are installed6November. Baseline was best; useful
+owner two-ramp results, long selections/changed-winner/finish cases and broader
+route goals remain unverified. See [P1355 qualification](p1355-tas-solve.md).
+The complete workflow below is NOT delivered.
 This changes the local-editor priority in [the original TAS plan](plan-tas.md),
 not its assisted ancestry, contribution or verified-board requirements.
 Owner observations are recorded separately in [lextest.md](../lextest.md).
