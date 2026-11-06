@@ -1,4 +1,5 @@
 // Local manual metadata only. No supplied pose, input credit or movement grant.
+void(entity e, string before, string after) SV_TASContactSpansRetag;
 float(string path) SV_TASMarkerSize =
 {
 	local filestream f;
@@ -202,6 +203,8 @@ void(entity e, float argc) SV_TASMarkersCommand =
 	SV_TASPParentKeep(e,s);
 	kept = SV_TASPKeep(SV_TASPPath(name),tasp_revsha[s],FALSE,FALSE);
 	if (kept) kept = SV_TASPKeptOK(e,tasp_revsha[s]);
+	// Expected is the request-bound unchanged line, before any metadata freeze.
+	if (kept) SV_TASContactSpansRetag(e,expected,tasp_revsha[s]);
 	if (kept)
 		kept = SV_TASEditorHistoryPush(e,before,tasp_revsha[s]);
 	if (!kept) sprint(e,PRINT_HIGH,"tas marker: saved; new immutable history unavailable, previous original retained\n");

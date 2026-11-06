@@ -321,6 +321,7 @@ client/cl_weaponui.qc
 client/cl_tasui.qc
 client/cl_tastimeline.qc
 // Sections reuse the timeline's body binding and single-owner name editor.
+client/cl_tascontacts.qc
 client/cl_tassections.qc
 // Shared transport policy must precede both TAS directory callers.
 shared/sh_tasdirectory.qc

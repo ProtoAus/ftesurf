@@ -26,6 +26,8 @@ void(entity e) SV_TASEditorFrame;
 void(entity e) SV_TASEditorCapture;
 void(entity e) SV_TASIFlush;
 void(entity e, float count, float ticket) SV_TASIArm;
+void(entity e) SV_TASContactsObserve;
+void(entity e) SV_TASContactSpansFree;
 
 /*
   THE BOARD TELEMETRY BLOCK USED TO LIVE HERE AND NOW LIVES IN sv_timer.qc.
@@ -305,6 +307,7 @@ void() ClientConnect =
 	SV_TASHistoryReset(self);
 	SV_TASProjectReset(self);
 	SV_TASEditorReset(self);
+	SV_TASContactSpansFree(self);
 	SV_TASOptReset(self);
 	self.run_tas_mode = self.run_tas_next = 0;
 	self.run_tas_used = SV_TASConnectTaint(self);
@@ -395,6 +398,7 @@ void() ClientConnect =
 
 void() ClientDisconnect =
 {
+	SV_TASContactSpansFree(self);
 	SV_TASShareCancel(self);           // callbacks/deferred opens belong to this connection
 	SV_PeClose(self);                  // Patch 1195: a report still uploading
 	SV_PeForget(self);                 // P1238: its command ring
@@ -538,6 +542,7 @@ void() PlayerPreThink =
 	SV_PeCmd(self);                     // P1238: the last command's row, this one's context
 	SV_HeldCheck(self);
 	SV_VsVelPost(self);                 // P1205: the previous command's VScript velocity write
+	SV_TASContactsObserve(self);        // previous completed native contact, never this command's intent
 	SV_NoColRestore();                  // P1193: lent again at the end of this function
 	self.svpm_phase_lo = input_cmd_sequence_lo;
 	self.svpm_phase_hi = input_cmd_sequence_hi;
@@ -945,6 +950,7 @@ void() PlayerPostThink =
 	SV_MonolithB4Frame(self);  // downstream exit velocity precedes state/sample
 	SV_RecState(self);	// BUILD 87: the packet's last move, before its sample
 	SV_TimerFrame(self);
+	SV_TASContactsObserve(self);        // packet-final move, after the counted clock settles
 	// Packet-scoped latches, including every early return inside the timer.
 	self.run_bhop_launch_zone = self.run_bhop_launch_denied = 0;
 	self.run_pushed = self.run_jumpcmd = FALSE;
@@ -1475,6 +1481,7 @@ void(entity e, float count, float ticket) SV_TASQueueSteps =
 #include "sv_tassections.qc"
 // Marker snapshots reuse full-line freeze/history without a movement grant.
 #include "sv_tasmarkers.qc"
+#include "sv_tascontacts.qc"
 #include "sv_tasrecipe.qc"
 #include "sv_tasshare.qc"
 #include "sv_tasoptimize.qc"
@@ -1504,6 +1511,7 @@ void(entity e, float argc) SV_TASCommand =
 			sprint(e, PRINT_HIGH, "tas: playing; queued steps cancelled, TAS ancestry retained\n");
 		return;
 	}
+	if (!strcmp(action, "contacts")) { SV_TASContactsCommand(e, argc); return; }
 	if (e.tasp_load && strcmp(action, "status") && strcmp(action, "project"))
 	{
 		sprint(e, PRINT_HIGH, "tas: a project load is running; wait, or tas play/off to stop it\n");

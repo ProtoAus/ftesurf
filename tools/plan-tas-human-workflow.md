@@ -12,9 +12,13 @@ P1336's manual section browser, bound endpoint navigation and safe full-tail
 marker edits are implemented and isolated-qualified. Oversized synchronous
 metadata saves now refuse intact under a conservative cumulative-read budget;
 long-line browsing/storage is unchanged. Two final whole-feature reviews cleared
-the corrected code; delivery is pending. See [the manual-section qualification](p1336-tas-sections.md). Actual
-contact proposals and the constrained next-ramp solver remain unfinished. The
-complete workflow below is NOT delivered.
+the corrected code. P1336 is published and its BOTH-Windows install was verified;
+lobby delivery and owner acceptance are separate. See
+[the manual-section qualification](p1336-tas-sections.md). P1344 adds implemented,
+isolated-qualified source-bound native contact proposals and a separate Observed
+contacts view; final tagged build/review/delivery remain gates in
+[the contact qualification](p1344-tas-contacts.md). The constrained next-ramp
+solver remains unfinished. The complete workflow below is NOT delivered.
 This changes the local-editor priority in [the original TAS plan](plan-tas.md),
 not its assisted ancestry, contribution or verified-board requirements.
 Owner observations are recorded separately in [lextest.md](../lextest.md).

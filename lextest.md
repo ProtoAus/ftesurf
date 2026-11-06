@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P1344 observed TAS contacts -- implemented, delivery/owner check pending
+
+Once installed, one small local check: play a disposable two-ramp line, Pause,
+open Sections > Observed contacts and use Go to start/end on one face. Is that
+small panel readable, do repeated clicks act naturally, and does the later line
+remain available? Manual markers should stay separate; a ramp can have multiple
+observed faces and No ramp observed does not mean guaranteed air. If convenient,
+try the same short line crouched; this is actual human geometry/control feedback,
+not measured acceleration or a claim that unsupported moving ramps work.
+Change an early input, preview, then Discard: the complete original line/map
+should return. Automated native, source-preservation and typed navigation checks
+passed; one earlier real-widget positive is not repeated-click/comfort acceptance.
+No owner confirmation has been received. Native observations are not yet a
+constrained next-ramp solver or a public verified TAS submission path.
+
 ## P1339 replay-baked ramp atlases - human appearance check pending
 
 After the P1339 deployment receipt is complete, on a familiar prepared map use

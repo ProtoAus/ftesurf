@@ -179,6 +179,9 @@
 #define TAS_EV_SECTIONS 53    // own manual checkpoint intervals, requested only
 #define TAS_SECTION_ROWS 4
 #define TAS_SECTION_MAX 49    // 48 checkpoint boundaries plus the retained tail
+#define TAS_EV_CONTACTS 54   // own source-bound observed spans; no input/pose authority
+#define TAS_CONTACT_ROWS 4
+#define TAS_CONTACT_MAX 4096
 #define TAS_PAGE_ROWS 8
 #define TAS_TAPE_STAGING 1
 #define TAS_TAPE_ACTIVE 2

@@ -1,4 +1,5 @@
-// Named checkpoint intervals, not detected ramps or a solver verdict.
+// Manual markers and observed contacts stay explicit, neither is a solver verdict.
+float tass_observed;
 float tass_tag, tass_ready, tass_serial, tass_body, tass_request, tass_base, tass_head;
 float tass_offset, tass_total, tass_n, tass_ncp, tass_next, tass_chosen;
 float tass_start[TAS_SECTION_ROWS], tass_end[TAS_SECTION_ROWS];
@@ -7,6 +8,7 @@ string tass_names[TAS_SECTION_ROWS], tass_sha;
 void() TASSections_Reset =
 {
 	local float i;
+	TASContacts_Reset();
 	tass_tag = tass_tag+1;
 	if (tass_tag > 16000000) tass_tag = 1;
 	tass_ready = tass_n = tass_total = tass_offset = tass_next = 0;
@@ -23,6 +25,7 @@ void() TASSections_Reset =
 
 float() TASSections_Current =
 {
+	if (tass_observed) return FALSE;
 	return (tass_ready && TASTimeline_Current() && tast_v2 && (tast_flags & 2) &&
 		tass_body == getstatf(STAT_FS_TIMERTICKS) && tass_serial == tast_serial && tass_body == tast_bodyhead && tass_request == tast_request &&
 		tass_base == tast_base && tass_head == tast_head && tass_ncp == tasp_cl_ncp &&
@@ -92,6 +95,7 @@ void() TASSections_Event =
 void() TASSections_Pump =
 {
 	if (tasu_tab != TAS_TAB_SECTIONS || !TASTimeline_Current()) return;
+	if (tass_observed) { TASContacts_Pump(); return; }
 	if (!TASSections_Current() && cltime >= tass_next) TASSections_Request(tass_offset);
 };
 
@@ -152,7 +156,7 @@ void(float op, float row) TASSections_Mark =
 	tast_n = 0; tast_wantrefresh = cltime+.6;
 };
 
-void(vector at, float width, float tsz, float hint, float row) TASSections_Draw =
+void(vector at, float width, float tsz, float hint, float row) TASSections_DrawManual =
 {
 	local float i;
 	local vector chip;
@@ -199,12 +203,60 @@ void(vector at, float width, float tsz, float hint, float row) TASSections_Draw 
 	sui_text(at,[hint,hint],"Marker edits auto-save ALL retained inputs; Undo/Redo replay revisions.",SUI_THEME_MUTED,1,0);
 };
 
+void(float observed) TASSections_Mode =
+{
+	TASTimeline_NameBlur(); tass_observed = observed;
+	TASSections_Reset(); TASTimeline_Request(0);
+};
+
+void(vector at, float width, float tsz, float hint, float row) TASSections_Draw =
+{
+	local vector chip;
+	chip = [(width-6)/2,row,0];
+	if (Profile_Chip("tass_manual",at,chip,"Manual markers",tsz,!tass_observed)) TASSections_Mode(FALSE);
+	if (Profile_Chip("tass_observed",at+[(width+6)/2,0,0],chip,"Observed contacts",tsz,tass_observed)) TASSections_Mode(TRUE);
+	at_y = at_y+row+hint;
+	if (tass_observed) TASContacts_Draw(at,width,tsz,hint,row);
+	else TASSections_DrawManual(at,width,tsz,hint,row);
+};
+
 float(float argc, float seat) TASSections_ConsoleCommand =
 {
 	local string action;
 	local float i, row;
 	if (seat != 0 || numclientseats > 1) { print("tas sections: one local seat only\n"); return TRUE; }
 	action = argv(2);
+	if (argc == 3 && (!strcmp(action,"observed") || !strcmp(action,"manual")))
+	{
+		TASSections_Mode(!strcmp(action,"observed"));
+		if (!tasu_open) TASUI_Toggle(0);
+		if (tasu_open) TASUI_SelectTab(TAS_TAB_SECTIONS);
+		return TRUE;
+	}
+	if (argc == 3 && !strcmp(action,"status") && tass_observed) { TASContacts_Status(); return TRUE; }
+	if (argc == 3 && !strcmp(action,"refresh") && tass_observed) { TASContacts_Reset(); TASTimeline_Request(0); return TRUE; }
+	if (tass_observed)
+	{
+		if (argc == 3 && !strcmp(action,"next"))
+		{
+			if (TASContacts_Current() && tact_offset+tact_n < tact_total) TASContacts_Request(tact_offset+TAS_CONTACT_ROWS);
+			return TRUE;
+		}
+		if (argc == 3 && !strcmp(action,"previous"))
+		{
+			if (TASContacts_Current() && tact_offset > 0) TASContacts_Request(max(0,tact_offset-TAS_CONTACT_ROWS));
+			return TRUE;
+		}
+		if (argc == 4)
+		{
+			if (!FS_TASNumber(argv(3))) goto bad;
+			row = fs_tas_number-tact_offset-1;
+			if (!TASContacts_Current() || row < 0 || row >= tact_n || row != floor(row)) goto bad;
+			if (!strcmp(action,"select")) { TASContacts_Action(row,0); return TRUE; }
+			if (!strcmp(action,"start")) { TASContacts_Action(row,1); return TRUE; }
+			if (!strcmp(action,"end")) { TASContacts_Action(row,2); return TRUE; }
+		}
+	}
 	if (argc == 2)
 	{
 		if (!tasu_open) TASUI_Toggle(0);

@@ -13526,11 +13526,13 @@ string(entity e) SV_TickReport =
 	               ct, st, st - ct, e.run_t_frzticks, e.run_t_frzsec, rate, which);
 };
 
+void(entity e) SV_TASContactsObserve; // derived only; implementation follows in sv_player
 void(entity e, float ticks) SV_TimerFinish =
 {
 	local float pb, ispb, i, base, tag, leg;
 	local string what;              // build 57: a stage run's finish names its stage
 
+	SV_TASContactsObserve(e);       // last complete sample before recorder/state teardown
 	e.run_t_state = TS_FINISHED;
 	e.run_t_ticks = ticks;
 

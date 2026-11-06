@@ -21,6 +21,10 @@
 
 ## next
 
+### P1344 Native contact sections for local TAS lines
+- Browse observed ramp faces separately from your manual markers, and jump to their input ranges without losing the rest of your line.
+- Keep complete observations across safe marker-only edits; changed previews stay separate and Discard restores the original map. This is not yet an automatic next-ramp solver.
+
 ### P1341 No stale boost after velocity-reset teleports
 - Fixed predicted push velocity surviving teleports that reset or redirect velocity. Keep-velocity and landmark teleports still preserve their intended speed, and a later push still works.
 
