@@ -21,6 +21,9 @@
 
 ## next
 
+### P1342 Smoother short save chains and correct release speed
+- Two or three rapid save steps in either direction can now be predicted. Fixed releases using a previous save's velocity; unknown destinations are not guessed.
+
 ### P1341 No stale boost after velocity-reset teleports
 - Fixed predicted push velocity surviving teleports that reset or redirect velocity. Keep-velocity and landmark teleports still preserve their intended speed, and a later push still works.
 

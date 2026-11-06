@@ -419,8 +419,6 @@
   reproduced locally (eternity, 40 ms). The excusal also hides their data.
 - Lex's 0.2 s eternity snap (284 u; the server ran ~6 of 13 commands) is not explained: a 0.2 s
   loss is replayed exactly in the arm. The next report with == server rows will show it.
-- Chained save steps beyond +-1 of the acked cursor are sent blind (now excused): publish +-2/3
-  rows in STAT_FS_WOPCUR to predict them.
 - TG_NoteServerTele records only TG_TELE (not demoted relative teleports) and at most 32.
 - Server: trigger_teleport_relative never sets vbsp_io_solid, so an Enable not preceded by a
   Disable makes it SOLID_BSP and drawn (sv_entities.qc ~2966). P1190's PVS eye covers only

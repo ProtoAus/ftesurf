@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1342 short save chains/release — delivery pending, human check pending
+
+Hold a save, step next/previous2or3times quickly, release. These short chains
+should predict and use the actual destination's speed; compare single-step and
+first/last recovery. Longer unpublished destinations can still arrive server-
+authoritatively and must not guess old release speed. Actual QC VM43/0 vs18baseline
+failures, main THREE-VM0warnings; not human/native-network physics acceptance.
+
 ## P1339 replay-baked ramp atlases - human appearance check pending
 
 After the P1339 deployment receipt is complete, on a familiar prepared map use
