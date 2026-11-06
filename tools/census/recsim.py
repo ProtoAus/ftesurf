@@ -274,6 +274,9 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
                 if len(f) < 11:
                     raise MalformedRec("malformed input row")
                 try:
+                    # Keep legacy truncation, but not Python-only numeral spellings.
+                    if any(not x.isascii() or "_" in x for x in (f[2], f[4], f[5], f[6], f[10])):
+                        raise ValueError("non-native numeric spelling")
                     mt = int(float(f[2]))
                     move = (int(float(f[4])), int(float(f[5])), int(float(f[6])))
                     btn = int(float(f[10]))
