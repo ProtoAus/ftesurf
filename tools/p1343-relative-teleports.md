@@ -52,9 +52,14 @@ preservation, native/menu/config/backend identity and restored join capacities
 verified. Source/program hashes, exact controls and limits are recorded in
 [p1342-save-release.md](p1342-save-release.md). No native engine/build/release bump.
 
-Graphical served-code/download/render smoke is blocked, NOT passed:4-GiB game
-gate observed2719MiB free. No game launched. Native collision/PVS/feel still needs
-acceptance. A small human check remains pending: a familiar relative teleport
+Cold native served-code/UI smoke passed6Nov10:28:42UTC after RAM was freed,
+with unchanged4096-MiB game gate,66seconds quiet/minimum5212MiB. A fresh client
+fetched exact Pi CS01815ce0, drew the board (cols9/type14), reached completion and
+exited0 with no detected QC runtime errors. Screenshot inspected: readable HUD/
+scoreboard empty-state, not populated rows or textured-world correctness. Copied
+rig retired, unique proof retained, own lock released; no rebuild/deploy/restart.
+This does NOT establish relative teleport collision/PVS/feel. Those and a small
+human check remain pending: a familiar relative teleport
 (for example surf_4am) should pass through after enable/toggle and land at the
 same place; lookahead should avoid an unnecessary destination flash. Record actual
 feedback in lextest.md, not measured performance or historical-report closure.
