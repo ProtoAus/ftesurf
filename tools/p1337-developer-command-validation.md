@@ -35,10 +35,14 @@ installs' ten supported destinations. All ten destination hashes and their
 immediate `.prev` predecessors match; prior destination/`.prev` preimages remain
 retained. The shared rig lock is released; no owner process was killed.
 
-A client started after the copy, and the final protected-inventory idle gate
-refused. Full non-target postflight and installed-runtime acceptance therefore
-remain pending; do not redeploy or invent a preservation pass. No QC/data/config
-or optional alias change was requested by this native-only operation.
+A client started after the copy, and the initial final-inventory idle gate
+refused; that refusal is retained. Once genuinely idle, a read-only postflight
+finished without redeploying. All 19,331 other pre-existing non-target paths are
+unchanged, with no new outside paths; the only three concurrent differences are
+shared AGENTS.md, AGENT_NOTES.md and lextest.md documentation. Those peer changes
+were not reverted or claimed as ours. All qualified frozen images and the ten
+installed destinations/previous images remain exact. No owner config/data or
+optional executable alias changed. No manual in-game acceptance is claimed.
 
 The ARM server/plugin pair is qualified and frozen, not lobby-deployed. A fresh
 13-actor recorder/resume inspection found an open preserved-namespace descriptor
