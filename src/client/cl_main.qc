@@ -2403,6 +2403,7 @@ float(string cmd) CSQC_ConsoleCommand =
 	// next thing to run is very likely a command.  Nothing real is nested here.
 	cl_input_real = FALSE;
 	cmdargc = tokenize(cmd);
+	if (RampWear_Command(cmdargc)) return TRUE;
 	if (GA_Command()) return TRUE;
 	if (MA_Command()) return TRUE;
 	if (VM_ConsoleCommand()) return TRUE;

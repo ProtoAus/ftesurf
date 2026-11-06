@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""P1286: write ftesurf/models/snow/flakes.iqm, the snow event's flake field.
+"""P1286: write ftesurf/models/christmas/flakes.iqm, the snow event's flake field.
 
 Every flake is one triangle whose three vertices share ONE position (its seed) and carry corners
 (0,0) (2,0) (0,2); the vertex shader (glsl/ftesurf_snow.glsl) moves the seed, wraps it into a box round
@@ -23,7 +23,7 @@ IQM_POSITION, IQM_TEXCOORD, IQM_FLOAT = 0, 1, 7
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--groups", type=int, default=4)
-    ap.add_argument("--out", default=str(Path(__file__).resolve().parent.parent / "ftesurf/models/snow/flakes.iqm"))
+    ap.add_argument("--out", default=str(Path(__file__).resolve().parent.parent / "ftesurf/models/christmas/flakes.iqm"))
     a = ap.parse_args()
     rnd = random.Random(1286)
     nflk = a.groups * PER
