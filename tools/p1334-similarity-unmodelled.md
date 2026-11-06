@@ -68,9 +68,54 @@ operation and cannot make an old unbound observation retroactively bound.
   strict sweep refused the new inputs; this failure is retained, not waived or
   called a clean scan before parsing them. No volatile or changed old reports.
 
-Two fresh whole-feature reviews and actual guarded backend/tool delivery remain
-pending at this source checkpoint. The two runtime modules belong to collectors84;
-the canonical census/recsim.py helper does NOT belong to that guard's sealed origins.
-It needs its own exact source/installed-hash binding, short collector coordination
-and rollback. Do not claim an unsealed helper is guard-qualified, or implementation
-is deployment. Historical observations and default-read behavior stay unchanged.
+## Delivered - 6 Nov 2026,00:19:37UTC
+
+The first independent round found the Linux skip undercount and stale README row
+literal. Those documentation/accounting errors were corrected with unchanged
+product/test bytes and no reruns. Two fresh independent whole-feature re-reviews
+then cleared the complete12-path change, with the explicit suite/human limits.
+Reviewed feature source3012555ce627b69443234df2ea92716d76c36f7a and engine journal
+81d5af9db96184187cf0093cd6b7a2d9926fc6c3 were published by exact inspected SHA.
+
+Actual backend-only source9150481fa48de38cdfde9cc6c605a130fcb5492a is the prior
+live5bf3bda3 plus ONLYadmin.py,simcheck.py and tools/census/recsim.py. Other82runtime
+files/guard/dispatcher/config/external3 origins are unchanged. The two runtime
+modules belong to collectors84; the canonical census/recsim.py helper does NOT
+belong to that seal. It was separately installed by exact old/new byte CAS under
+the existing participating-collector resource, with old-reader beforeimage kept.
+Its SHA was checked through the actual backend process's namespace, configured
+tools path matched, and heldmeta stayed exact. This is not helper guard attestation.
+
+Both real CLOSED generations passed six integrity-refusal controls and authenticated
+synthetic missing-pair POST200/anonymous401/CSRF400/cross-origin403; the exact pure
+projection distinguishes primary's new label from the prior label. Separately,
+actual CAS-function controls prove install/restore and foreign-byte/symlink/hardlink
+refusal, including the otherwise-idempotent desired-byte case. Initial controller
+fixture dependency/import failures remain recorded; no production data was used.
+
+The first promotion was interrupted by a private operations-helper variable error
+in namespace(pid,manifest,...), after starting the primary; it restored the old
+reader but also blocked fallback acceptance at the same check. All admissions were
+closed and MOM stopped during repair. The parameter was corrected; an initial
+resume's guessed alias failed before mutation. The same inspected transaction
+then resumed the EXISTING acceptance/cron/MOM/audit gates with exact source hashes,
+not a fresh root, skipped gate, old database restore or regraded passing launch.
+Both failed launches and original logs remain retained. This is not claimed as an
+uninterrupted or single-pass rollout. Lobbies/native engines/VMs were not swapped.
+
+Accepted00:19:37UTC; read-only audit00:19:38 checked156 sealed origins, actual five
+ROpins/two ROruntimes/RWdata, all44 table schemas/nonchurn counts/eight identity
+hashes and unchanged environment bytes. Core26/event1 held. PrimaryOPEN, old and
+fallbackCLOSED; four cron routes/MOM requester active. Backup preceded the live
+gate, was retained as historical, and was NEVER restored. Same-current-data code
+rollback must be coupled with the retained old reader under the same exact resource.
+Collector resource was released and its persistent zero-byte single-link sidecar
+was acquired/released again without unlinking. No installer reservation remains.
+
+Live anonymous source POST401/public health200ok/directory200twelve pass. One old
+pair actually re-read by the installed reader now returns unmodelled/no metrics;
+its stored observation stayed unchanged. It remains a current-file diagnostic,
+NOT a durable historical rewrite/backfill, model implementation or new guilt score.
+P1333 owner readability is still pending; no production owner session was forged.
+Required production/fallback/namespace/history roots and exact helper rollback
+bytes are retained. The overall anti-cheat plan is not completed by this patch.

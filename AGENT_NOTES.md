@@ -57,7 +57,22 @@
   access-denied legacy kept-save prefix. Existing351faults are NOT zero; compare
   no increase, preserve bytes/ACLs, and parse newly added view inputs explicitly.
 
-## P1334 unsupported similarity model is not malformed (source candidate)
+## Similarity SQL-budget fixtures: distinguish schema probe from request (6Nov)
+
+- `surfd.connect()` intentionally opens/closes a separate mode=ro schema-refusal
+  probe BEFORE its request connection (surfd.py:885, admin.py:1837/1880 at fix).
+  Source-only acted close trace proves TWO DISTINCT handles, first no installed
+  panel callback; second callbackinstalled/cleared. Do not remove this ahead-WAL
+  safeguard to satisfy old len(after)==1, or merely change that literal to2.
+- Budget/probe fixtures now independently mark the URI probe and each handle's
+  had-budget/active state, require EXACTLY [(probe,no budget,inactive),
+  (request,had budget,inactive)] and both real post-clear SQL sums match before.
+  Actual SQLite interruption, recovery, borrowed callback, unchanged DB, error and
+  anonymous controls kept. Windows7/7pass; Linux7run/6pass/1existingNode skip.
+  Original P1334 failure logs/results stay historical, not retroactively green.
+  Only2testfiles/docs changed, NO production ownership/code/patch/schema/deploy.
+
+## P1334 unsupported similarity model is not malformed (delivered6Nov00:19UTC)
 
 - The reader already refuses unmodelled viewing-clock formats. Keep that refusal
   and empty metrics; do not call unsupported data malformed or a measured zero.
@@ -83,11 +98,26 @@
   skips; each platform300pass/2fail/7skip, not a clean full-suite pass. Initial
   Linux aggregate missed the skip in FAILED(failures=1,skipped=1); count BOTH
   OK/FAILED summary lines, preserve raw logs/original aggregate, no rerun/regrade. BACKLOG records the untouched handle gap;
-  do not change unrelated ownership to satisfy this patch. Two whole-feature reviews
-  and deployment pending; tools/p1334-similarity-unmodelled.md. Runtime admin/
-  simcheck are collectors84; canonical census/recsim.py is OUTSIDE that seal and
-  needs separate exact source/installed-hash provenance and rollback, never a false
-  guard-origin claim. No automatic historical retry,
+  do not change unrelated ownership to satisfy this patch. Two fresh WHOLE
+  re-reviews clear after counting FAILED-summary skips and fixing README row bound.
+  Runtime9150481fa48de38cdfde9cc6c605a130fcb5492a +separate canonicalreader
+  DELIVERED6Nov00:19:37UTC/audit00:19:38:156sealedorigins/44tables/8identities/env/
+  core26event1 held; actual5ROpins/2ROruntimes/RWdata, old+fallbackCLOSED/newOPEN,
+  cron4/MOMactive. Reader actualprocessnamespacehash exact, heldmeta unchanged,
+  explicitOUTSIDEcollectors84/external3 (not a guardseal). Oldreader+SAMEdata
+  rollback kept. Liveanon401/health200/directory12, persistent0byte0600sidecar
+  acquired/released/nlink1. Oneactual oldpairnowunmodelled, originalrowunchanged.
+  PrivateCAS harness first lacked unchanged g.sync_dir, fixed fixture dependency;
+  label-only isolated import lacked inventory, preserved failure and SAMEfixture
+  resumed with exact AST pure projection, new process epochs/receipts, no freshcopy.
+  Initialpromotion helper used m inside namespace(...,manifest,...); oldreader
+  restored, both launches blocked beforeacceptance, allgatesCLOSED/MOMstopped.
+  Correct that parameter, derive canonical alias names/unit/acceptance from actual
+  existing helper, not guesses. Failed first resume's guessed alias aborted BEFORE
+  changes. Exactexisting main acceptance-tail resumed same inspected transaction;
+  no newroot/oldDBrestore/gate weakening. All original failures retained. Never
+  repeat a healthyaccepted activation merely to repair a reader/observer. Required
+  production/namespace/history roots/oldreader retained; tools/p1334-similarity-unmodelled.md. No automatic historical retry,
   schema/new raw field, detector/threshold/rank, engine pin/tag/qcbuild change.
 
 ## Surf smoothness / frametime / noclip-void audit (6 Nov 2026; investigation only)
