@@ -68,6 +68,13 @@ was repeated. A later idle, read-only postflight completed with all destination,
 outside the copy set. QC programs, configs, player data and other aliases were
 not shipped. This does not claim fresh graphical, FPS or owner-feel acceptance.
 
+At 17:23 UTC a separate P1350 rollout superseded those Windows images. Its
+published native source `2f5c35c6b4008fc6a21965dfd3b6c7b6b0c21784` descends from the
+P1349 integration, and both complete P1349 product-source files are byte-identical.
+Read-only verification bound all ten current native targets to that successor's
+qualified hashes and the P1349 images now preserved in `.prev`. The earlier
+successful delivery remains historical evidence; no downgrade was performed.
+
 The ARM transaction reached actual guarded preparation. Eight recorder parts and
 183 complete current-resume preimages were individually verified on and off box,
 as were all four current native/plugin and prior-`.prev` images before canonical
@@ -106,6 +113,9 @@ no preserved-namespace handles were open and the read was stable. The original
 on/off-box archive and all four predecessor images were reverified. This later
 observation does not reconstruct either earlier refusal, reset the failed
 transaction, establish a future safe window, or authorize replay. No same-baseline
-recovery interface or allowance has been used. A separately explicit, single-use,
-proof-bound recovery decision remains necessary before Pi mutation; retain the
-original failed receipts, baseline, archives and retirement history.
+recovery interface or allowance has been used. The original failed transaction
+must not be replayed; retain its failed receipts, baseline, archives and retirement
+history. A separate successor rollout is being prepared by the P1350 workstream;
+its completion is not yet evidence here, and this workstream must not compete
+with or overwrite its newer qualified native/VM set. Reassess that successor's
+actual delivery before requesting an otherwise unnecessary P1349-only recovery.
