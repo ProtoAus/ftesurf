@@ -21,6 +21,9 @@
 
 ## next
 
+### P1340 Developer export and dump safety
+- Hardened developer export/dump handling and made failed outputs report failure instead of silently succeeding.
+
 ### P1337 Safer developer-tool commands
 - Hardened developer-tool command handling while keeping normal local developer workflows available.
 
