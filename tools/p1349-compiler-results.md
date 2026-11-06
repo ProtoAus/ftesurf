@@ -47,14 +47,35 @@ performance, visual/feel acceptance, or whole native-audit completion.
 
 ## Delivery status
 
-**Source published; P1349 has not replaced either live native component.**
+**P1349 fixes delivered to BOTH Windows installs and all twelve Pi lobbies on
+6 November 2026; current images are the newer qualified P1350 successor.**
 
-Integrated Windows qualification remains blocked by the unchanged 4 GiB physical
-free-memory gate. The postflight execution-boundary reading was 3,017 MiB. Earlier
-Windows images are not a substitute because they omit the newer public client
-fixes. No owner processes were terminated and no resource check was weakened.
+A later execution boundary recovered above the unchanged 4 GiB physical-memory
+gate. The exact existing clean FullNative/NoDeploy procedure then built source
+`8e389dc4beabd8247e888dbf243e11d7b3ebbbaf`; no earlier incomplete client image was
+substituted. Complete raw-log comparison retains the same 74 native warnings and
+two known nonshipped QC F333 warnings, with no new diagnostic sites. All seven
+native outputs were frozen with their actual integrated version. Both executables
+passed 1,578 native checks and reached the unavailable-decompiler handler.
 
-The ARM transaction reached actual guarded preparation. Eight recorder parts and
+The existing guarded native-only copy updated the ten actual build-procedure
+targets across `C:\FTESurf` and `C:\FTEQuake`, preserving every destination's
+predecessor in `.prev` and retaining prior-`.prev` preimages separately. A game
+started after the copy and blocked the final inventory; that wrapper failure is
+retained, not mislabeled a clean transaction. No process was killed and no copy
+was repeated. A later idle, read-only postflight completed with all destination,
+`.prev` and frozen hashes exact and zero changed, missing or new protected files
+outside the copy set. QC programs, configs, player data and other aliases were
+not shipped. This does not claim fresh graphical, FPS or owner-feel acceptance.
+
+At 17:23 UTC a separate P1350 rollout superseded those Windows images. Its
+published native source `2f5c35c6b4008fc6a21965dfd3b6c7b6b0c21784` descends from the
+P1349 integration, and both complete P1349 product-source files are byte-identical.
+Read-only verification bound all ten current native targets to that successor's
+qualified hashes and the P1349 images now preserved in `.prev`. The earlier
+successful delivery remains historical evidence; no downgrade was performed.
+
+The original P1349 ARM transaction reached actual guarded preparation. Eight recorder parts and
 183 complete current-resume preimages were individually verified on and off box,
 as were all four current native/plugin and prior-`.prev` images before canonical
 staging. Twelve real announcement transports succeeded, followed by a measured
@@ -85,3 +106,25 @@ reconstruct the original refusal. No recovery allowance was consumed and no
 same-baseline recovery was implemented or attempted. A controlled closed-recorder
 handoff and explicitly approved fresh preservation context are needed before
 another rollout; the failed transaction and every original archive remain intact.
+
+At 17:18 UTC a new read-only observation again matched the original complete
+parts/resume namespace, canonical images, actor identities and backend bindings;
+no preserved-namespace handles were open and the read was stable. The original
+on/off-box archive and all four predecessor images were reverified. This later
+observation does not reconstruct either earlier refusal, reset the failed
+transaction, establish a future safe window, or authorize replay. No same-baseline
+recovery interface or allowance has been used. The original failed transaction
+must not be replayed; retain its failed receipts, baseline, archives and retirement
+history. A separate qualified P1350 native/VM rollout subsequently delivered the
+unchanged P1349 product corrections, so no P1349-only recovery was needed.
+
+The successor's actual Pi activation/postflight receipt at 17:33:46 UTC records
+all twelve lobby restarts, zero skips, 48,466 pre-existing protected paths with
+zero changed or missing, and three new files retained. Configs and the active
+backend generation/files remained unchanged, and the canonical sweep lock was
+released. Independent read-only checks matched all four canonical successor
+payloads, all twelve running server hashes and all twelve mapped paired-plugin
+inodes. This is successor delivery evidence, not a successful replay of the
+original failed P1349 transaction. Do not downgrade the successor or remove the
+original failure, archive, custody and retirement evidence. No whole native-audit,
+filesystem-failure, graphical, performance or owner-feel acceptance is implied.
