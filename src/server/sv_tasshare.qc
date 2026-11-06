@@ -302,7 +302,11 @@ void(entity e, float argc) SV_TASShareCommand =
 		}
 		if (!SV_RecIsHex(sha,64)) { sprint(e, PRINT_HIGH, "tas share: save a project revision first\n"); return; }
 		f = fopen(SV_TASPRevPath(sha,"tasp"),FILE_READ);
-		if (f < 0) { sprint(e, PRINT_HIGH,"tas share: saved revision is not readable; no upload started\n"); return; }
+		if (f < 0)
+		{
+			SV_TASPKeptResult(e,sha,FALSE);
+			sprint(e, PRINT_HIGH,"tas share: saved revision is not readable; no upload started\n"); return;
+		}
 		portable = !strcmp(fgets(f),"tasproject 3"); fclose(f);
 		// Base-save projects are host-local; async metadata reads must not invoke
 		// their native tape validator outside a client-command context.

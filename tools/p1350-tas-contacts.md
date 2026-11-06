@@ -30,7 +30,9 @@ no bound map: freshness alone is not an observation-validity bit.
 Both cached reuse and fresh binding require the exact SHA's successful canonical
 immutable readback. Observed ordinary/template/share syntax or expected-hash
 failures invalidate that exact source; unrelated range/eligibility refusals do not.
-Existence alone cannot recover it. Ordinary load reuses its first
+A failed canonical open in binding or share preflight also revokes its exact proof.
+Restored/openable bytes alone cannot recover it; a readable but nonportable base
+project's share refusal does not revoke otherwise good proof. Ordinary load reuses its first
 strict read. Unknown proof queues one read-only Think invocation, separate from
 the load's VM budget; page requests never perform that second whole-file read.
 The UI shows an empty pending state and retries finitely without manual Refresh.
@@ -41,8 +43,9 @@ Newly obtained, rejected or recovered proof invalidates that actor's cache throu
 complete empty reserved-tag0 contacts reply. Seek/edit/history/template actions
 also clear the cache before dispatch: a failed Go cannot become current merely
 because an unchanged Timeline page returns. Template/share reads add no positive
-proof. These follow-up cache corrections compile cleanly; their native old/new
-checks remain blocked by the unchanged4GiB/60s-quiet resource gate.
+proof. A real legacy source reproduces reader/UI cache defects with47 acting
+checks. The latest canonical-open corrections compile cleanly; candidate cache
+runtime remains pending the unchanged4GiB/60s-quiet resource gate.
 
 These are proposals, **not a section solver result**. A constrained next-ramp
 solver and broader optimization remain work in progress in
@@ -98,6 +101,10 @@ final tagged-source/review/deployment provenance is a separate delivery boundary
 
 - Supported `build.ps1 -Engine -Full -NoDeploy`: successful native build, all
   three QCC VMs zero warnings; no compiler warnings in modified native files.
+- Current clean native code2f5c35c6b passes ARM1608/0 numeric checks, including30
+  observer cases: the historical20 plus ten actual stuck-search/witness controls.
+  The corresponding Windows FULL/three-VM build adds no own warning sites. These
+  numeric checks do not replace real-client acceptance of the later QC cache fixes.
 - Existing `pm_selftest` and all 20 production observer helper cases act/pass
   after the supported post-review native/QC build.
   Disabled/no-contact, world index zero, nonworld, invalid indices, distinct

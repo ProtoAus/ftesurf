@@ -84,7 +84,11 @@ float(entity e) SV_TASContactSpansBind =
 		SV_TASPKeptQueue(e);
 		return FALSE;
 	}
-	if (!SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s],"tasp"))) return FALSE;
+	if (!SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s],"tasp")))
+	{
+		SV_TASPKeptResult(e,tasp_revsha[s],FALSE);
+		return FALSE;
+	}
 	if (e.tasc_boundrows > 0 && e.tasc_boundbase == e.tasp_base && e.tasc_boundhead == head)
 		if (!strcmp(tasc_sha[s],tasp_revsha[s])) return TRUE;
 	if (!e.tasc_ready || e.tasc_frozen || e.tasc_spanfailed || e.tasc_spanrows <= 0) return FALSE;
