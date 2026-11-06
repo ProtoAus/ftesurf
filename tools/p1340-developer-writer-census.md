@@ -39,7 +39,32 @@ whole-engine/parser proof, calibration result or manual game acceptance is claim
 
 ## Delivery
 
-Exact clean outputs are frozen. Source publication and native-only Windows/Pi
-activation provenance are recorded separately; do not infer deployment from this
-qualification. Existing configs/data/runtime programs and unrelated optional
-executable aliases must remain unchanged.
+Product source `7e271da76fc40e6e41e15cd8f90dedb0c9f9eccf`, annotated tag
+`patch-1340`; engine-pin companion `b543bee1`. Exact clean outputs are frozen;
+the later delivery-journal commit is documentation, not a different binary.
+
+- **Both Windows installs, 6 November 04:55 UTC:** all ten native/plugin targets
+  and their `.prev` hashes verified; 19,334 previous non-target paths unchanged,
+  no new paths outside the approved target/staging set, no owner client killed.
+  The original pre-mutation process refusal is retained; the same payload resumed
+  only after its original identities and preimages were still exact.
+- **All twelve Pi lobbies, 05:43:48 UTC:** every port warned with the default
+  ten-second countdown, then twelve new verified native process epochs and mapped
+  plugin inodes, none skipped. Before any canonical stage, eight recorder parts
+  and 183 complete current resume preimages were individually rehashed on- and
+  off-box, and the strict thirteen-declared-actor FD/birth/namespace check repeated
+  under the short canonical sweep lock. All 47,758 previously inventoried protected
+  data paths stayed unchanged; eleven new files were retained. Configs, unshipped
+  programs and the actual backend launch/files stayed unchanged; lock released.
+  `.prev` and all four native predecessor/prior-prev rollback files retained and
+  independently verified off-box. No data restoration or backend generation swap.
+- **05:59 UTC read-only postflight:** all twelve live native/plugin pairs and
+  current/previous destinations still exact; backend active descriptor, configs
+  and unshipped programs exact. Both Windows installs' ten current/previous pairs
+  also rechecked exact. No repeated restart or swap to manufacture acceptance.
+
+This is the finite census and recorded deployment boundary, not general process/
+file-writer closure, complete evidence-fleet coverage, parser safety or human
+acceptance. No VM/config/backend shipment, new capture/policy, Build or release.
+Original refusals and immutable source/artifacts/archive/rollback history remain
+retained. Do not rebuild or redeploy a healthy cohort from documentation HEAD.
