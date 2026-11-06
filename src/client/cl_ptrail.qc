@@ -165,6 +165,21 @@ void(float id) PTrail_Cut =
 		ptr_meta[id * PT_META + PM_CUT] = TRUE;
 };
 
+// P1345: visual histories gathered while hidden must never appear on reentry.
+void() PTrail_Overview =
+{
+	local float id, m;
+
+	if (!ptr_meta)
+		return;
+	for (id = 0; id < PT_SLOTS; id = id + 1)
+	{
+		m = id * PT_META;
+		ptr_meta[m + PM_N] = 0;
+		ptr_meta[m + PM_CUT] = TRUE;
+	}
+};
+
 void(float id) PTrail_DrawOne =
 {
 	local float m, n, h, k, i, b, t, age, life, open, now;

@@ -409,7 +409,7 @@ void() APW_Resolve =
   never fades.
 */
 .float lod_min2, lod_max2;
-float  vbsp_lod_n;
+float  vbsp_lod_n, vbsp_lod_overview;
 
 float() LOD_Predraw =
 {
@@ -427,6 +427,33 @@ float() LOD_Predraw =
 	else
 		self.alpha = (self.lod_max2 - d2) / (self.lod_max2 - self.lod_min2);
 	return PREDRAW_AUTOADD;
+};
+
+// P1345: overview skips arbitrary predraws, not authored brush visibility.
+void(float overview) LOD_OverviewFrame =
+{
+	local entity e, oldself;
+
+	if (!overview && !vbsp_lod_overview)
+		return;
+	oldself = self;
+	e = find(world, classname, "vbsp_lod");
+	while (e)
+	{
+		if (overview)
+		{
+			self = e;
+			if (LOD_Predraw() == PREDRAW_NEXT)
+				e.drawmask = 0;
+			else
+				e.drawmask = MASK_ENGINE;
+		}
+		else
+			e.drawmask = MASK_ENGINE; // once on exit, so native predraw can run again
+		e = find(e, classname, "vbsp_lod");
+	}
+	self = oldself;
+	vbsp_lod_overview = overview;
 };
 
 void(string mdl, string sorg, string sdd, string smin, string smax) LOD_Spawn =
@@ -490,7 +517,7 @@ void() Portal_Clear =
 		remove(e);
 		e = n;
 	}
-	vbsp_lod_n = 0;
+	vbsp_lod_n = vbsp_lod_overview = 0;
 	e = findchain(classname, "vbsp_apwindow");
 	while (e)
 	{

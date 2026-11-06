@@ -71,9 +71,16 @@ report's proven cause. No measured bandwidth/FPS claim.
 - All8recorder parts and183complete resume files captured and independently
   rehashed ON/OFFBOX before staging/restart; all bytes still exact after restart.
   No archive restoration, player-data cleanup or verifier downgrade.
-- Graphical served-client/download/render smoke NOT run:4-GiB game gate observed
-  only2719MiB free, so no game arm launched. This does not invalidate file/actor/
-  data verification; native packet/render/feel and human acceptance remain pending.
+- Cold native served-client/UI smoke completed10:28:42UTC after the owner freed
+  RAM:66seconds quiet, minimum5212MiB before launch (4096-MiB gate unchanged).
+  Existing pi_lobby_smoke.py used clean frozen c9151699assets and unchanged deployed
+  native/plugins/menu; no local CS/cache. Fresh download366ab819.dat hashes EXACTLY
+  to Pi CS01815ce0below; client exit0, completion marker, last board cols9/type14,
+  no detected QC runtime errors. Screenshot inspected: readable HUD/scoreboard in
+  no-zone/no-times empty-state, NOT populated rankings or textured-world acceptance.
+  Own copied rig retired after preserving/hash-verifying unique proof; rig lock
+  released. No rebuild/deploy/restart. Rapid-save release, packet ordering, native
+  collision/PVS/feel and actual human acceptance remain unverified.
 
 Runtime source lineage (public commits, not a rebuild after review):
 - Windows published19b83fd8d5888ab4083d2e09a1d24ee90a4e1542, compiled

@@ -1,8 +1,9 @@
-# P1347: native contact observations for full-line TAS sections
+# P1350: native contact observations for full-line TAS sections
 
-Unpublished prototype1344 is renumbered forward while preserving published
-P1345 native and P1346 backend work. Historical helper/test IDs retain1344;
-this is one product patch, not a second contact protocol or input authority.
+Unpublished prototype1344/1347 is renumbered forward after the exact published
+P1347 KSF conflict, preserving published P1345-P1348 code and receipts. Historical
+helper/test IDs retain their1344/1347 source labels; this is one product patch,
+not a second contact protocol or input authority.
 
 ## What this adds
 

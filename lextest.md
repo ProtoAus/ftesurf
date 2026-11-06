@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1347 observed TAS contacts -- implemented, delivery/owner check pending
+## P1350 observed TAS contacts -- implemented, delivery/owner check pending
 
 Once installed, one small local check: play a disposable two-ramp line, Pause,
 open Sections > Observed contacts and use Go to start/end on one face. Is that
@@ -14,6 +14,14 @@ should return. Automated native, source-preservation and typed navigation checks
 passed; one earlier real-widget positive is not repeated-click/comfort acceptance.
 No owner confirmation has been received. Native observations are not yet a
 constrained next-ramp solver or a public verified TAS submission path.
+
+## P1347 KSF fetch — manual check pending after deployment
+
+Open a KSF leaderboard, select a stage or bonus and a direction, and click Fetch KSF.
+Does the queued/background message make sense and is the button easy to find?
+The request is asynchronous: refresh/reopen later for times and available replays.
+Automated pointer tests passed for both VMs; this is NOT owner confirmation or a
+claim that KSF provides a replay for every time. Existing host cooldowns stay binding.
 
 ## P1343 relative teleports — deployed6Nov, human check pending
 
@@ -57,6 +65,21 @@ speed? A later pad must still boost normally. Actual QC VM42/0 versus baseline
 NOT closure of historical save/load reports; no popup/report is required for the
 small feel check and no whole-stream replay is requested.
 
+## P1345/P1348 smoother map-only noclip — candidate, not deployed or human-confirmed
+
+Owner report6Nov: a brief rendering pause on inside-to-void crossings, slight on
+each crossing and worst on the first noclip out. This is the regression target,
+not a camera-jump report or candidate acceptance. The candidate targets the
+rendering stall; owner confirmation after installation remains pending.
+
+After installation, one quick Ceaseless check: noclip outside the map, use the
+remaining map shape to choose a destination, then fly back inside. Is navigation
+quick, with no retained snow trails, and do normal props/glows/weather return
+without missing geometry or a wipe? Ordinary falling must not enter map-only
+mode. A short normal Tensor2 pass should retain the familiar sky/glow appearance.
+Native prior-closure images and exact predicate tests are not owner confirmation
+or a general FPS/loading guarantee. Final unprofiled timing is separately pending.
+
 ## P1335 Christmas master/defaults and close ramp dirt — installed, human check pending
 
 BOTH Windows installed6Nov02:50UTC, current-pair D911/CSP117d627ace2d plus
@@ -87,7 +110,7 @@ buttons and separate name draft readable and natural, with the later line still
 visible? For Move here, seek first, then reselect the endpoint and move it. Does
 switching to Project and back leave typing/gameplay keys unstuck? A quick comment
 on this one panel is enough for basic feel; automatic/native widget checks do not
-supply human acceptance. P1344 adds separate native contact proposals; next-ramp
+supply human acceptance. P1350 adds separate native contact proposals; next-ramp
 solving remains unbuilt, not hidden behind these manual markers.
 
 ## P1333 current-file consistency — deployed, owner readability pending

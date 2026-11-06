@@ -180,7 +180,7 @@ float(float z) ZoneEdit_SpawnDest;
 string ze_tdname[ZE_TDMAX];
 vector() ZoneEdit_HandleCol;
 void() ZoneEdit_EditBegin;
-void() ZoneEdit_EditFrame;
+void(float draw) ZoneEdit_EditFrame;
 void() ZoneEdit_DragCancel;
 string() ZoneEdit_EditLine;
 float(float top) ZoneEdit_Height;
@@ -1180,7 +1180,7 @@ void(vector a, vector b, float bottom, float top, vector col, float alpha) ZoneE
 // In the world pass, after Zone_Draw (cl_main.qc): the whole table whatever zone_draw
 // says, the selected zone, and the box being placed.  The aim is taken HERE, in the
 // frame it is drawn in, and a click the input handler asked for is answered here.
-void() ZoneEdit_Draw3D =
+void(float draw) ZoneEdit_Draw3D =
 {
 	local float z, g;
 	local vector eye, c, lc;
@@ -1204,8 +1204,11 @@ void() ZoneEdit_Draw3D =
 	// Every zone, whatever zone_draw, its type switches and its distance say (Zone_Draw may
 	// have drawn some already: a second pass over a line changes nothing you can see).
 	eye = getproperty(VF_ORIGIN);
-	for (z = 0; z < zone_count; z = z + 1)
-		Zone_DrawOne(z, (z == ze_sel) ? '1 1 1' : zone_cv_typecol[zone_type[z]], 1, eye);
+	if (draw)
+	{
+		for (z = 0; z < zone_count; z = z + 1)
+			Zone_DrawOne(z, (z == ze_sel) ? '1 1 1' : zone_cv_typecol[zone_type[z]], 1, eye);
+	}
 	if (ui_ze_state < ZE_A)
 		return;
 
@@ -1217,11 +1220,11 @@ void() ZoneEdit_Draw3D =
 	}
 	if (ze_cursor)
 	{
-		if (ze_poly) ZoneEdit_PolygonGhost();
+		if (draw && ze_poly) ZoneEdit_PolygonGhost();
 		return;
 	}
 	ZoneEdit_Aim();
-	if (ui_ze_state == ZE_E) { ZoneEdit_EditFrame(); return; }
+	if (ui_ze_state == ZE_E) { ZoneEdit_EditFrame(draw); return; }
 	if (ui_ze_state == ZE_H)
 		ze_h = ZoneEdit_Height(ze_a_z + ZoneEdit_Pull());
 	if (ze_back)
@@ -1237,6 +1240,8 @@ void() ZoneEdit_Draw3D =
 	}
 	if (ui_ze_state < ZE_A)
 		return;
+
+	if (!draw) return;
 
 	// The aim: a small cross on the floor at the snapped point, in the snap's colour; a corner
 	// gets a diamond round it (P1197, which also outlines the map surface the snap reads).

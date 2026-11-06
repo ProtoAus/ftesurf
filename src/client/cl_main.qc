@@ -164,6 +164,7 @@ void() CL_RenderMapFrame =
 
 void() CSQC_WorldLoaded =
 {
+	cl_scene_worldonly = FALSE;
 	TASUI_Close();
 	TASShare_Reset();
 
@@ -1836,7 +1837,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 {
 	local vector scr, wp_baseview;
-	local float navfocus;
+	local float navfocus, worldonly;
 
 	TimeScale_ViewSeats();
 	scr = [vwidth, vheight];
@@ -1984,16 +1985,20 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	Spec_Frame();
 	TASUI_Camera(); // view-only pitch; subsequent real save/correction wins
 	SaveLoc_Camera();               // Patch 430: a load drawn before its reply
-	// Patch 870: env_shake moves the camera only, never the body.
+	// P1345: an existing overview must not shake; an indoor shake can cross its boundary.
+	worldonly = CL_SceneWorldOnly();
+	if (!worldonly)
 	{
 		local vector mmsh;
 		mmsh = MapMsg_ShakeOffset();
 		if (mmsh != '0 0 0')
 		{
 			setproperty(VF_ORIGIN, getproperty(VF_ORIGIN) + mmsh);
-			setproperty(VF_ANGLES, getproperty(VF_ANGLES) + [0, 0, mmsh_x * 0.5]);   // roll only (view_effects.cpp:324)
+			setproperty(VF_ANGLES, getproperty(VF_ANGLES) + [0, 0, mmsh_x * 0.5]); // P870: view-only roll
+			worldonly = CL_SceneWorldOnly(); // post-transform eye agrees with native gates
 		}
 	}
+	cl_scene_worldonly = worldonly;
 
 	/*
 	  The map's 3D skybox, if it has one.  See cl_decals.qc for where the
@@ -2028,51 +2033,53 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		setproperty(skprop, vbsp_skyroom_pos + skeye * (1 / sksc), '0 0 0', 0, sksc);
 	}
 
-	RG_DrawBodies();                // Patch 746: the race ghosts, with the scene's other bodies
-	Prox_Frame();                   // Patch 810: before addentities, which calls Prox_Delta
+	if (!worldonly)
+		RG_DrawBodies();            // P746: capture/state still advances above.
+	LOD_OverviewFrame(worldonly);   // P1345: retain authored LOD visibility without effects predraws.
+	Prox_Frame();                   // P810: before addentities/Prox_Delta, even in the overview.
 	addentities(MASK_ENGINE | MASK_VIEWMODEL);
-	VM_Frame();                    // effective watched setup, never observer preferences
-	WP_Frame();                    // after the final camera, view-relative model
-	WP_ScopeView();                // camera-only zoom, never input/shot direction
+	VM_Frame();                    // P1348: nonvisual preference/profile sync stays active.
+	if (worldonly)
+		WP_OverviewFrame();         // discard hidden bursts, recoil and inspect events.
+	else
+	{
+		WP_Frame();                // after the final camera, view-relative model
+		WP_ScopeView();            // camera-only zoom, never input/shot direction
+	}
 
 	// Zones go in BEFORE renderscene: R_BeginPolygon queues into the scene,
 	// and the default shader is depth-tested, so this is what makes a zone
 	// behind a wall correctly disappear behind it.
-	Zone_Draw();
-	PTrail_DrawAll();                // Patch 772: after the predraws that feed it
-	ZoneEdit_Draw3D();              // Patch 669: the editor's own lines, and its aim, in the same window
+	if (!worldonly)
+	{
+		Zone_Draw();
+		PTrail_DrawAll();           // P772: after the predraws that feed it
+	}
+	ZoneEdit_Draw3D(!worldonly); // P1348: maintain input/drag without submitting overlays
+	if (!worldonly)
+	{
+		Sprite_Draw();
+		Sun_Draw();                // P874: same depth-tested world pass
+		Ropes_Draw();
+		if (rec_wt_on)
+			Watch_Path();
+		Ev_Draw();                 // labels remain a separate HUD pass
 
-	// The map's sprites, in the same window and for the same reason -- these are
-	// world objects, and one behind a wall has to be hidden by it.  Costs one
-	// string compare on the frames where there is nothing to draw.
-	Sprite_Draw();
-	Sun_Draw();                     // Patch 874: in the world pass, as the sprites
-	Ropes_Draw();
-
-	// The replay's path, for exactly the same reason and through exactly the
-	// same primitive -- a route that drew over the walls would be unreadable.
-	if (rec_wt_on)
-		Watch_Path();
-
-	// Build 54.  The entity/trigger inspector's volumes, here for the same
-	// reason as the three above -- they are world outlines and a box behind a
-	// wall should be behind it.  Its LABELS are 2D and are drawn after
-	// renderscene by Ev_Labels; this pass queues them.  Costs one float test on
-	// the frames it is off, which is nearly all of them.
-	Ev_Draw();
-
-	/*
-	  Build 49.  Also before renderscene, but for a different reason than the
-	  three above: particles are drawn INSIDE renderscene by the engine's own
-	  pass, so emitting after it would land a frame late.  VF_ORIGIN is already
-	  final here, which is what the distance cull reads.
-	*/
-	Snow_Frame();                   // P1319: know whether replacement ACTED before map precipitation
-	Emit_Frame();
-	RampWear_Frame();               // P1278: its own map latch, whatever vbsp_emit says
-	Winter_Frame();                 // P1302: capped props/mist, no per-frame traces
-	Weather_Frame();                // P1309: one optional frost mesh, transient sky flash
-	Paint_Frame();                  // Patch 772: the camera is final; the world pass draws it
+		// P49: emit before renderscene's particle pass, with the final camera.
+		Weather_Resume();
+		Snow_Frame();              // P1319: replacement must act before map precipitation
+		Emit_Frame();
+		RampWear_Frame();
+		Winter_Frame();
+		Weather_Frame();
+		Paint_Frame();
+	}
+	else
+	{
+		snow_active = FALSE;
+		PTrail_Overview();
+		Weather_Suspend();        // no delayed thunder/flash on leaving the overview
+	}
 	Share_Frame();                  // Patch 777: the pick reads the same camera
 	Archive_ClientFrame();
 	SaveSync_Frame();               // Patch 811
@@ -2097,16 +2104,22 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	RG_Pin();                       // Patch 746: the ghosts' highlights, the same 2D pass
 
 	// Patch 467.  The sky's camera and user data (its passes ran before clearscene, P1235).
-	MilkSky_Frame();
+	if (!worldonly) MilkSky_Frame();
 
 	// Cosmetic shot punch lives ONLY in the main scene, never input/aim/sidecars.
 	wp_baseview = getproperty(VF_ANGLES);
-	if (wp_kick != 0) setproperty(VF_ANGLES, wp_baseview + [wp_kick, 0, 0]);
-	Inv_GlowPre();                  // P1230: keeps this view's depth for the aura's pass
+	if (!worldonly)
+	{
+		if (wp_kick != 0) setproperty(VF_ANGLES, wp_baseview + [wp_kick, 0, 0]);
+		Inv_GlowPre();              // P1230: keeps this view's depth for the aura's pass
+	}
 	renderscene();
-	Inv_GlowPass(TRUE);             // ...with the angles the scene was drawn at
-	if (wp_kick != 0) setproperty(VF_ANGLES, wp_baseview);
-	if (notmenu) WP_ScopeDraw(scr); // CSS mask under HUD/windows, no weapon crosshair
+	if (!worldonly)
+	{
+		Inv_GlowPass(TRUE);
+		if (wp_kick != 0) setproperty(VF_ANGLES, wp_baseview);
+		if (notmenu) WP_ScopeDraw(scr);
+	} // CSS mask under HUD/windows, no weapon crosshair
 
 	// Headless self-check (see menu/m_main.qc's ui_bootcheck).  Reports the
 	// two things that can silently blank the whole HUD: `notmenu` arriving
@@ -2129,7 +2142,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		// Patch 606: the UI style for every 2D panel this frame, including the
 		// HUD-stack menus that draw outside a sui bracket.
 		sui_style_hud(scr);
-		MapMsg_DrawFade(scr);           // Patch 870: env_fade, under every panel
+		if (!worldonly) MapMsg_DrawFade(scr); // P870: no map effects over the overview
 
 		/*
 		  Patch 270.  NM_Frame samples the engine's received-delta counters and
@@ -2211,17 +2224,15 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  It is still before Timer_Draw and the replay chrome, so the panels you
 		  actually read stay on top of the line.
 		*/
-		if (rec_wt_on)
-			Watch_Path2D();
-		Scores_LinesDraw();     // Patch 433: the board's ticked lines
-		Trail_Draw();           // Patch 475: and your own run, as it happens
-		RG_DrawLines();         // Patch 746: where each race ghost is on its line
-		// Patch 451: the marks' labels, queued by both passes above.  Text drawn
-		// inside them does not appear at all -- they are a stream of deferred
-		// polygon batches -- so it is drawn here, the slot Ev_Labels uses below
-		// and for the same reason.
-		// Patch 661: the names are queued with the numbers and placed with them.
-		LineGraph_WorldLabels();
+		if (!worldonly)
+		{
+			if (rec_wt_on)
+				Watch_Path2D();
+			Scores_LinesDraw(); // P433: deferred world lines, before their labels.
+			Trail_Draw();
+			RG_DrawLines();
+			LineGraph_WorldLabels();
+		}
 		Line_FrameEnd();
 
 		/*
@@ -2231,12 +2242,13 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  flush the batch.  Their positions were projected in Ev_Draw, before
 		  renderscene, while the view matrix was set.
 		*/
-		Ev_Labels();
-		PlayerLabels_Draw(scr);
-		RG_Tags(scr);           // Patch 749: the race ghosts' names
-
-		// Patch 331: the hover card, same pass and same reason -- it is 2D.
-		Ev_CardDraw();
+		if (!worldonly)
+		{
+			Ev_Labels();
+			PlayerLabels_Draw(scr);
+			RG_Tags(scr);
+			Ev_CardDraw(); // P331: world hover card, not the ordinary HUD.
+		}
 
 		// Both read stats only, so they are drawn from here rather than from
 		// HUD_Draw: neither is part of the strafe/board layout chain and

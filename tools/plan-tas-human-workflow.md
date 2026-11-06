@@ -14,10 +14,10 @@ metadata saves now refuse intact under a conservative cumulative-read budget;
 long-line browsing/storage is unchanged. Two final whole-feature reviews cleared
 the corrected code. P1336 is published and its BOTH-Windows install was verified;
 lobby delivery and owner acceptance are separate. See
-[the manual-section qualification](p1336-tas-sections.md). P1347 adds implemented,
+[the manual-section qualification](p1336-tas-sections.md). P1350 adds implemented,
 isolated-qualified source-bound native contact proposals and a separate Observed
-contacts view; final tagged build/review/delivery remain gates in
-[the contact qualification](p1347-tas-contacts.md). The constrained next-ramp
+contacts view; final merged tagged build/review/delivery remain gates in
+[the contact qualification](p1350-tas-contacts.md). The constrained next-ramp
 solver remains unfinished. The complete workflow below is NOT delivered.
 This changes the local-editor priority in [the original TAS plan](plan-tas.md),
 not its assisted ancestry, contribution or verified-board requirements.

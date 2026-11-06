@@ -545,6 +545,18 @@ float() WP_KnifeTexturePending =
 	return TRUE;
 };
 
+// P1348: discard hidden presentation events, not VM preference/profile synchronization.
+void() WP_OverviewFrame =
+{
+	wp_weapon = 0;
+	wp_ready = wp_drawing = wp_motionvalid = FALSE;
+	wp_until = wp_flashuntil = wp_burstleft = wp_burstat = 0;
+	wp_kick = wp_kickvel = wp_zoom = wp_scopepending = wp_ownzoom = wp_rezoomat = 0;
+	wp_restorezoom = FALSE;
+	wp_sequence = VM_Event();
+	vm_pendinginspect = FALSE;
+};
+
 void() WP_Frame =
 {
 	local float w, seq, kind, file;

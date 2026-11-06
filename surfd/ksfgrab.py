@@ -8,6 +8,7 @@ No network from HTTP handlers. A tick scans <=2 x SCAN board files and downloads
 """
 import hashlib
 import http.client
+from email.utils import parsedate_to_datetime
 import json
 import os
 from pathlib import Path
@@ -39,7 +40,10 @@ MAX_QUEUE = 256
 MAX_RECOVER = 2
 MAX_FAILED = 8192          # P1240: ~5% of files refuse conversion; at 24 a tick 7-day tombstones pass 2048
 MAX_PROVENANCE = 16 << 10
-FILESTREAK = 3             # Patch 896: this many file-level failures in a day, in a row, are the host's
+FILESTREAK = 3             # Repeated broken bodies/500s pause the replay lane, not healthy boards.
+DEMO_DELAY = 6.0           # Gentle default: at most ten new replay requests/minute, no bursts.
+TRANSIENT_BACKOFF = 60
+TRANSIENT_MAX = 30 * 60
 # P1240 review 2: ksfreplay_info.inspect's refusals before any bookmark is read say "not a whole
 # replay" -- a 200 page, a body cut short, a format not read here -- which a later download can
 # cure, so they strike as before; only a replay's own content is Unconvertible.
@@ -291,6 +295,22 @@ def discover(cache, state, conn, prio=()):
         state.pop('overflow_board', None)
         state.pop('overflow_cursor', None)
     return [(key, job, name) for _, key, job, name in overflow]
+
+
+def retry_after(error, now):
+    """Honor upstream seconds/HTTP-date without logging its headers or URL."""
+    value = str((getattr(error, 'headers', None) or {}).get('Retry-After', '')).strip()
+    if re.fullmatch(r'[0-9]{1,10}', value):
+        return int(value)
+    if len(value) > 128:
+        return 0
+    try:
+        when = parsedate_to_datetime(value)
+        if when.tzinfo is None:
+            return 0
+        return max(0, int(when.timestamp() - now + 0.999))
+    except (ValueError, TypeError, OverflowError):
+        return 0
 
 
 def fetch(file):
@@ -632,7 +652,10 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                         dirty = False   # a fairness move above is saved at the tick's end
                         continue
                     # Sleep before FIRST request: the board crawler just acted.
-                    time.sleep(max(3.0, delay))
+                    spacing = max(DEMO_DELAY, delay)
+                    if dpark.get('kind') == 'transient':
+                        spacing = max(spacing, min(60, DEMO_DELAY * 2 ** min(int(dpark.get('n') or 0), 3)))
+                    time.sleep(spacing)
                     made += 1
                     asked = True
                     data = transport(download, job['file'])
@@ -650,51 +673,53 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                     state['failed'].pop(key, None)
                     jobs.pop(key, None)
             except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
-                # Refusal belongs to the HOST, not whichever demo happened to be asked: every
-                # non-2xx, redirect or network failure stops this tick, and parks downloads --
-                # except (Patch 896) a failure only a file can have: 404/500, or a body broken
-                # after the headers. surf_ab's and then surf_kultur's replays break mid-body on
-                # every ask (21 Oct), and parking for each such file stalled every map's demos
-                # for days. That file is set aside 7 days; FILESTREAK of them in a row is the host.
-                # P1247: the tick goes on to the next file (it ended here, ~1.7% of downloads).
+                # Missing leaves are not a rate limit. Known broken files remain set aside;
+                # repeated 500/broken bodies and other 5xx back off this endpoint briefly.
+                # Genuine refusals/429 still park both lanes, honoring Retry-After.
+                now = int(time.time())   # Back off from the failed exchange, not this tick's start.
                 code = getattr(e, 'code', 0)
-                own = code in (404, 500) or isinstance(getattr(e, 'reason', None), BodyBroken)
+                missing = code in (404, 410)
+                own = code == 500 or isinstance(getattr(e, 'reason', None), BodyBroken)
                 run = state.get('filestreak') if isinstance(state.get('filestreak'), dict) else {}
                 at = run.get('at') if type(run.get('at')) is int else 0
                 held = [k for k in (run.get('keys') if isinstance(run.get('keys'), list) else [])
                         if isinstance(k, str)] if 0 <= now - at <= 86400 else []
-                if own and len(held) + 1 < FILESTREAK:
+                if missing or (own and len(held) + 1 < FILESTREAK):
                     if key in state['failed'] or len(state['failed']) < MAX_FAILED:
                         state['failed'][key] = now + 7 * 86400
                         jobs.pop(key, None)
                     else:
                         job.update(retry=now + 7 * 86400, terminal=True)
-                    state['filestreak'] = dict(at=now, keys=held + [key])
+                    state['filestreak'] = {} if missing else dict(at=now, keys=held + [key])
                     print('KSF demo set aside: network %d on its own file (%d in a row)'
                           % (code, len(held) + 1))
                     continue
-                # The host's -- and so was a run of file-looking failures that reached
-                # FILESTREAK, so the files it set aside go back to the queue.
+                # A run of file-looking failures may be temporary; return its files
+                # to discovery rather than treating every file as permanently missing.
                 if own:
                     for k in held:
                         state['failed'].pop(k, None)
                 state['filestreak'] = {}
                 # A park long over does not double the next (P1117 review).
                 old = int(dpark.get('until') or 0)
-                n = (int(dpark.get('n') or 0) if now - old < K.COOLDOWN_MAX else 0) + 1
-                base = K.QUIET_COOLDOWN if code == 0 and not own else K.COOLDOWN
-                wait = min(base * 2 ** min(n - 1, 8), K.COOLDOWN_MAX)
+                transient = own or 500 <= code <= 599
+                kind = 'transient' if transient else 'host'
+                same = dpark.get('kind', 'host') == kind
+                n = (int(dpark.get('n') or 0) if same and now - old < K.COOLDOWN_MAX else 0) + 1
+                base = TRANSIENT_BACKOFF if transient else (K.QUIET_COOLDOWN if code == 0 else K.COOLDOWN)
+                cap = TRANSIENT_MAX if transient else K.COOLDOWN_MAX
+                wait = max(min(base * 2 ** min(n - 1, 8), cap), retry_after(e, now))
                 K._save(os.path.join(cache, PARK),
-                        dict(at=now, until=now + wait, n=n, why='demo network %d' % code))
-                if code:
+                        dict(at=now, until=now + wait, n=n, kind=kind, why='demo network %d' % code))
+                if code and not transient:
                     # An HTTP refusal is the host's: the crawl parks too, as before P1117.
                     cn = int(park.get('n') or 0) + 1
-                    cwait = min(K.COOLDOWN * 2 ** min(cn - 1, 8), K.COOLDOWN_MAX)
+                    cwait = max(min(K.COOLDOWN * 2 ** min(cn - 1, 8), K.COOLDOWN_MAX), retry_after(e, now))
                     K._save(os.path.join(cache, '.refused'),
                             dict(at=now, until=now + cwait, n=cn, why='demo network %d' % code))
                 job['retry'] = now + wait
-                print('KSF demos refused: network %d; demos parked %d min%s'
-                      % (code, wait // 60, ', the crawl too' if code else ''))
+                print('KSF demos backing off: network %d; demos parked %d min%s'
+                      % (code, wait // 60, ', the crawl too' if code and not transient else ''))
                 break
             except Unconvertible as e:
                 # P1240: set aside at the first refusal. Three strikes a day apart cost three

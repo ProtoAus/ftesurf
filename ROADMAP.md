@@ -18,22 +18,13 @@ Evidence/limits: tools/p1311-map-prewarm.md and tools/p1318-lightmap-first-view.
 should distinguish eligible/pending/budget-hit/late compile from absence of a
 new learned entry. Measurement and native/QC limits:
 [tools/frametime-smoothness-audit.md](tools/frametime-smoothness-audit.md).
-
-## BSP-only noclip-void rendering — requested 6 Nov 2026, unbuilt
-
-Owner expects entities/particles/effects suppressed outside the map in noclip,
-with structural BSP still visible. Current mode forces world visibility; with
-`r_voidfog 1` it suppresses the normal blended global-fog path, and OpenGL also
-suppresses cluster-1 portal recursion. It does NOT suppress all scene producers.
-Share the final primary-camera predicate across QC/native submission; skip props
-before lighting and suppress existing particles/overlays as well as new emission.
-Keep world/displacements and explicitly settle structural bmodels/3D skyroom
-policy so doors/ramps/glass are not accidentally deleted. Do not freeze particle
-lifetimes, mutate owner settings or leak primary-view state into recursive views.
-Acceptance: acted same-view suppression-only off/on (same full-world vis), stable
-structural meshes, absent unwanted pixels/work, indoor/falling/recursive/reentry
-controls. Final owner map/pose/aim and runtime dominant cost are not yet measured.
-Source audit and falsifier: tools/frametime-smoothness-audit.md; defects in BACKLOG.
+P1345 implements accurate frame reports/map-only noclip and targets the demonstrated
+recursive-reflection prop-lighting stall; P1348 corrects review-found state leaks.
+Tools/p1345-smoothness.md and tools/p1348-overview-state.md retain exact controls,
+normal builds, original rejected images, refused GPU admission and acceptance limits.
+This does NOT complete the broader readiness/late-work contract above. Finite
+closure and failure/timeout policy remain to be settled before adding a strict
+start barrier; numerical cold/normal-route qualification remains resource-blocked.
 
 ## Christmas environment and cosmetics — requested 4 Nov 2026
 

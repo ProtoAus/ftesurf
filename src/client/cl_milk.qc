@@ -177,6 +177,7 @@ void() MilkSky_WorldLoaded =
 
 void(string rendererdescription) CSQC_RendererRestarted =
 {
+	cl_scene_worldonly = FALSE;
 	Milk_Invalidate();
 	MilkSky_ThumbnailClose();
 	ms_thumb_next = ms_palette_next = 0;
@@ -200,6 +201,14 @@ void() MilkSky_Passes =
 {
 	local float now, q, s;
 
+	// P1345: previous final-view latch; no optional feedback GPU work in a settled overview.
+	if (cl_scene_worldonly)
+	{
+		ms_ground = pmove_onground;
+		ms_vz = pmove_vel_z;
+		ms_shock = 0;
+		return;
+	}
 	if (cvar_string("r_skybox") != "milk" || !Milk_Supported())
 	{
 		if (ms_thumb_file >= 0)

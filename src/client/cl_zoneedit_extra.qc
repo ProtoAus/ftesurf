@@ -1241,7 +1241,7 @@ void() ZoneEdit_EditPick =
 };
 
 // The edit state's draw pass, after ZoneEdit_Aim: clicks, the drag, then the handles.
-void() ZoneEdit_EditFrame =
+void(float draw) ZoneEdit_EditFrame =
 {
 	local float z, n, first;
 	local vector a, b;
@@ -1269,6 +1269,8 @@ void() ZoneEdit_EditFrame =
 	else ZoneEdit_Hover();
 	if (ze_drop) ZoneEdit_DragDrop();
 	z = ze_sel;                         // a drop renumbers the table (ZoneEdit_Touch)
+
+	if (!draw) return;
 
 	// The lit side face, filled in the world; corners, edges and rings are ZoneEdit_Handles2D's.
 	if (ze_hk == ZEH_SIDE && ze_hi < zone_npts[z])

@@ -57,7 +57,7 @@ BOTH-Windows install/runtime check passed; lobby delivery and owner acceptance
 are not claimed by that evidence. Provisional P1335 was renumbered before
 publication without a runtime source change.
 
-[P1347](p1347-tas-contacts.md) now adds passive native world-ramp observations,
+[P1350](p1350-tas-contacts.md) now adds passive native world-ramp observations,
 complete source-bound maps and a separate Observed contacts browser. An actual
 static BSP ramp, earlier navigation/metadata-only retag, native helper suite and
 changed-input preview/Discard restoration are isolated-qualified. Old native
@@ -78,7 +78,7 @@ Source, qualification, deployment and human acceptance are separate evidence.
 
 ## Still unfinished
 
-1. **Human-plan phase 4 delivery/acceptance.** P1347's native contact proposals,
+1. **Human-plan phase 4 delivery/acceptance.** P1350's native contact proposals,
    full-source browser and metadata/preview invalidation are implemented and
    isolated-qualified; finish the tagged build/review/deployment gates above.
    Keep manual boundaries explicit and static-world scope honest. Real moving/
