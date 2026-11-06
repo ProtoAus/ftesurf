@@ -47,8 +47,8 @@ performance, visual/feel acceptance, or whole native-audit completion.
 
 ## Delivery status
 
-**Integrated Windows native update delivered to BOTH installs on 6 November
-2026 at 17:14:20 UTC; Pi native activation remains blocked.**
+**P1349 fixes delivered to BOTH Windows installs and all twelve Pi lobbies on
+6 November 2026; current images are the newer qualified P1350 successor.**
 
 A later execution boundary recovered above the unchanged 4 GiB physical-memory
 gate. The exact existing clean FullNative/NoDeploy procedure then built source
@@ -75,7 +75,7 @@ Read-only verification bound all ten current native targets to that successor's
 qualified hashes and the P1349 images now preserved in `.prev`. The earlier
 successful delivery remains historical evidence; no downgrade was performed.
 
-The ARM transaction reached actual guarded preparation. Eight recorder parts and
+The original P1349 ARM transaction reached actual guarded preparation. Eight recorder parts and
 183 complete current-resume preimages were individually verified on and off box,
 as were all four current native/plugin and prior-`.prev` images before canonical
 staging. Twelve real announcement transports succeeded, followed by a measured
@@ -115,7 +115,16 @@ observation does not reconstruct either earlier refusal, reset the failed
 transaction, establish a future safe window, or authorize replay. No same-baseline
 recovery interface or allowance has been used. The original failed transaction
 must not be replayed; retain its failed receipts, baseline, archives and retirement
-history. A separate successor rollout is being prepared by the P1350 workstream;
-its completion is not yet evidence here, and this workstream must not compete
-with or overwrite its newer qualified native/VM set. Reassess that successor's
-actual delivery before requesting an otherwise unnecessary P1349-only recovery.
+history. A separate qualified P1350 native/VM rollout subsequently delivered the
+unchanged P1349 product corrections, so no P1349-only recovery was needed.
+
+The successor's actual Pi activation/postflight receipt at 17:33:46 UTC records
+all twelve lobby restarts, zero skips, 48,466 pre-existing protected paths with
+zero changed or missing, and three new files retained. Configs and the active
+backend generation/files remained unchanged, and the canonical sweep lock was
+released. Independent read-only checks matched all four canonical successor
+payloads, all twelve running server hashes and all twelve mapped paired-plugin
+inodes. This is successor delivery evidence, not a successful replay of the
+original failed P1349 transaction. Do not downgrade the successor or remove the
+original failure, archive, custody and retirement evidence. No whole native-audit,
+filesystem-failure, graphical, performance or owner-feel acceptance is implied.
