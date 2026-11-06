@@ -1,8 +1,5 @@
 # BACKLOG.md
 
-## Existing replay budget fixtures count an extra SQLite close (P1334 qualification)
-- Site: `surfd/test_admin_similarity_budget.py:test_actual_api_interrupts_recovers_and_clears_owned_handler` and `test_admin_similarity_probe.py:test_actual_api_budget_acts_at_initial_schema_probe_and_tears_down`. Both reach real interruption/teardown controls, then expect exactly one connection close and observe two. This reproduces at the same assertions in an exact pristine pre-P1334 whole-source control (`94ce7bb9`), not just the changed admin file. Do not weaken the expectation or alter unrelated connection ownership to make this patch pass; the broader related-suite result is not clean.
-- Falsifier: attribute both handles/callers in the unchanged real request, establish which owns the budget and that its handler is cleared before close, then retain the second handle's independent state/teardown. An unexplained second close is not permission to skip either existing assertion. No product cause or P1333 regression attribution established.
 - Site: `CL_PredictSourcePhase`/`SV_UpdateClientStats` save-time one-tick corrections.
   P1330 fixes a demonstrated phase scheduling weakness and captures the missing
   event-time replay seed/mode/counts; oldv1reports cannot establish their cause.

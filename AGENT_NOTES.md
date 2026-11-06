@@ -1,5 +1,20 @@
 # AGENT_NOTES.md
 
+## Similarity SQL-budget fixtures: distinguish schema probe from request (6Nov)
+
+- `surfd.connect()` intentionally opens/closes a separate mode=ro schema-refusal
+  probe BEFORE its request connection (surfd.py:885, admin.py:1837/1880 at fix).
+  Source-only acted close trace proves TWO DISTINCT handles, first no installed
+  panel callback; second callbackinstalled/cleared. Do not remove this ahead-WAL
+  safeguard to satisfy old len(after)==1, or merely change that literal to2.
+- Budget/probe fixtures now independently mark the URI probe and each handle's
+  had-budget/active state, require EXACTLY [(probe,no budget,inactive),
+  (request,had budget,inactive)] and both real post-clear SQL sums match before.
+  Actual SQLite interruption, recovery, borrowed callback, unchanged DB, error and
+  anonymous controls kept. Windows7/7pass; Linux7run/6pass/1existingNode skip.
+  Original P1334 failure logs/results stay historical, not retroactively green.
+  Only2testfiles/docs changed, NO production ownership/code/patch/schema/deploy.
+
 ## P1334 unsupported similarity model is not malformed (delivered6Nov00:19UTC)
 
 - The reader already refuses unmodelled viewing-clock formats. Keep that refusal

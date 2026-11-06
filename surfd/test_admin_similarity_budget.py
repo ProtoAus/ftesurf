@@ -24,12 +24,17 @@ class SimilarityBudget(ObservationFixture):
 
     def test_actual_api_interrupts_recovers_and_clears_owned_handler(self):
         before = self.prepare()
+        before_sum = self.c.execute('SELECT SUM(id) FROM sims').fetchone()[0]
         traced, callbacks, slots, after = [], [], [], []
         connect = sqlite3.connect
 
         class Connection(sqlite3.Connection):
+            active = had_budget = False
+
             def set_progress_handler(self, handler, interval):
-                slots.append((handler is not None, interval))
+                self.active = handler is not None
+                self.had_budget = self.had_budget or self.active
+                slots.append((self.active, interval))
                 if handler is not None:
                     def tick():
                         value = handler()
@@ -40,11 +45,13 @@ class SimilarityBudget(ObservationFixture):
 
             def close(self):
                 # Actual SQL on the still-open owned handle proves callback teardown.
-                after.append(self.execute('SELECT SUM(id) FROM sims').fetchone()[0])
+                after.append((self.schema_probe, self.had_budget, self.active,
+                              self.execute('SELECT SUM(id) FROM sims').fetchone()[0]))
                 super().close()
 
         def tracked(*a, **kw):
             conn = connect(*a, **dict(kw, factory=Connection))
+            conn.schema_probe = bool(kw.get('uri') and '?mode=ro' in str(a[0]))
             conn.set_trace_callback(traced.append)
             return conn
 
@@ -55,7 +62,10 @@ class SimilarityBudget(ObservationFixture):
         self.assertTrue(any('FROM sims WHERE a_id=' in sql for sql in traced), traced)
         self.assertIn(1, callbacks)  # real SQLite VM interruption, not a mocked exception
         self.assertEqual(slots[-1], (False, 0))
-        self.assertEqual(len(after), 1)
+        # connect() first refuses ahead schemas through a separate RO handle.
+        self.assertEqual([r[:3] for r in after],
+                         [(True, False, False), (False, True, False)])
+        self.assertEqual([r[3] for r in after], [before_sum, before_sum])
         self.assertEqual(s['state'], 'read_limit')
         self.assertFalse(s['available'])
         self.assertEqual(s['pairs'], [])

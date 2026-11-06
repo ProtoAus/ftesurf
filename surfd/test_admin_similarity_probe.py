@@ -12,14 +12,16 @@ class SimilarityProbe(ObservationFixture):
     def test_actual_api_budget_acts_at_initial_schema_probe_and_tears_down(self):
         self.pair(1000, compared=80)
         before = tuple(self.c.iterdump())
+        before_sum = self.c.execute('SELECT SUM(id) FROM sims').fetchone()[0]
         connect = sqlite3.connect
         statements, callbacks, slots, after = [], [], [], []
 
         class Connection(sqlite3.Connection):
-            active = False
+            active = had_budget = False
 
             def set_progress_handler(self, handler, interval):
                 self.active = handler is not None
+                self.had_budget = self.had_budget or self.active
                 slots.append((self.active, interval))
                 if handler is not None:
                     def tick():
@@ -30,11 +32,13 @@ class SimilarityProbe(ObservationFixture):
                 return super().set_progress_handler(None, 0)
 
             def close(self):
-                after.append(self.execute('SELECT SUM(id) FROM sims').fetchone()[0])
+                after.append((self.schema_probe, self.had_budget, self.active,
+                              self.execute('SELECT SUM(id) FROM sims').fetchone()[0]))
                 super().close()
 
         def tracked(*args, **kw):
             c = connect(*args, **dict(kw, factory=Connection))
+            c.schema_probe = bool(kw.get('uri') and '?mode=ro' in str(args[0]))
             c.set_trace_callback(lambda sql: statements.append((sql, c.active)))
             return c
 
@@ -47,7 +51,10 @@ class SimilarityProbe(ObservationFixture):
         self.assertFalse(any('table_info(sims)' in sql for sql, active in statements))
         self.assertFalse(any('FROM sims WHERE' in sql for sql, active in statements))
         self.assertEqual(slots[-1], (False, 0))
-        self.assertEqual(len(after), 1)  # actual SQL still works on the cleared slot
+        # The RO ahead-schema refusal probe never owns the request's callback.
+        self.assertEqual([r[:3] for r in after],
+                         [(True, False, False), (False, True, False)])
+        self.assertEqual([r[3] for r in after], [before_sum, before_sum])
         limited = value['similarity']
         self.assertEqual((limited['state'], limited['available'], limited['pairs'], limited['more']),
                          ('read_limit', False, [], False))
