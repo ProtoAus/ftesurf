@@ -9,9 +9,9 @@
                                   retain native outputs, touch neither install
    .\build.ps1 -Pi        QC, then qwprogs.dat + csprogs.dat to the NanoPi and
                           every ACTIVE lobby restarted -- the set is asked of
-                          systemd, never written down here.  Refused while anyone is
-                          on a lobby; -PiForce overrides.  -PiHost/-PiGame
-                          name the Pi and its gamedir.
+                          systemd, never written down here.  Warns every lobby,
+                          waits 10 seconds, then restarts even with players on.
+                          -PiHost/-PiGame name the Pi and its gamedir.
 
  WHY THE DUAL DEPLOY IS NOT OPTIONAL
  -----------------------------------
@@ -38,18 +38,21 @@
  (and after the engine deploy, with -Engine), in this order:
 
    1. Reads surfd's http://<host>:8084/lobbies.json, <host> being the host half
-      of $PiHost, and REFUSES if any lobby has players, because step 5 drops
-      every one of them.  It refuses too when the directory cannot be read, and
-      when the directory carries no row for one of the five lobbies step 5
+      of $PiHost, and reports who will be dropped by step 5. It refuses when
+      the directory cannot be read or carries no row for an active lobby step 5
       restarts -- A LOBBY THE DIRECTORY CANNOT SEE IS NOT AN EMPTY LOBBY: the
       panel's flush button empties the table outright, a surfd restart or a new
       DB starts empty, and a lobby whose heartbeats are being refused ages out
       of the table after LOBBY_TTL (30 s) while it is up and full of players.
-      Only a row for each of the five, every one reading 0 players, means
-      nobody is on.  -PiForce overrides all three.
+      Only a row for every active lobby, all reading 0 players, means nobody
+      is on. -PiForce explicitly overrides unknown/missing directory status;
+      it is NOT required just because players are connected.
    2. scp's each file to <name>.new beside the live one in $PiGame.
    3. Hashes both .new files on the Pi (sha256sum).  One that is not the local
       file's hash stops the deploy here, with the live files untouched.
+      Then warns EVERY lobby (tools/lobby_announce.py, one hashed rcon say per
+      port) and waits -PiWarnSeconds (10), even if the initial count was zero.
+      Warning transport failure refuses before the swap; no unannounced restart.
    4. In ONE ssh command: keeps the live pair as <name>.prev, mv -f's both .new
       files into place, and hashes the result.
    5. Runs `sudo -n /usr/bin/systemctl restart ftesurf@N` for every lobby the Pi
@@ -57,9 +60,6 @@
       before step 1, never a list written down here), one ssh each so every unit
       keeps its own exit code and message.  A failure is reported and the rest
       still restart; the script fails at the end.
-      P1243: when -PiForce let it past players (or past not knowing), every
-      lobby's chat is told first (tools/lobby_announce.py on the Pi, one rcon
-      `say` per port) and the restart waits -PiWarnSeconds (10).
 
  WHY STEP 4 IS A RENAME, AND BOTH FILES IN ONE COMMAND.  scp writes into its
  target in place.  A lobby that loads csprogs.dat while it is half-copied -- a
@@ -495,8 +495,9 @@ if ($Pi) {
         Ok ("{0}  sha256 {1}  {2} bytes" -f $n, $local[$n], (Get-Item -LiteralPath $path).Length)
     }
 
-    # 1. Nobody on.  The counts are the lobbies' own heartbeats, so they are at
-    #    most lobby_master_rate (5 s) old -- read once, just before uploading.
+    # 1. Report occupancy, refusing unknown/missing status unless explicitly forced.
+    #    Known players get the normal warning/countdown, not a refusal. Counts are
+    #    at most lobby_master_rate (5 s) old -- read once, just before uploading.
     #
     #    A MISSING ROW IS NOT AN EMPTY LOBBY, so "nobody is on" needs positive
     #    evidence for every unit step 5 restarts: a row for each of $lobbies,
@@ -510,7 +511,6 @@ if ($Pi) {
     #    so a short list refuses exactly like an unreachable directory.
     Step "Pi: who is on"
     $dirUrl = "http://${piAddr}:8084/lobbies.json"
-    $warn   = $false                    # P1243: -PiForce went past players, or past not knowing
     $busy   = $null                     # $null = could not tell; @() = no row has players
     $noRow  = @()                       # lobbies step 5 restarts that have no row at all
     try {
@@ -536,16 +536,6 @@ if ($Pi) {
             throw "cannot tell whether anyone is on a lobby, so nothing was deployed.  Check surfd, or pass -PiForce."
         }
         Write-Host "    -PiForce: deploying without knowing who is on" -ForegroundColor Yellow
-        $warn = $true
-    } elseif ($busy.Count -gt 0) {
-        foreach ($l in $busy) {
-            Write-Host ("    {0} on {1}: {2}/{3} players" -f $l.name, $l.map, $l.players, $l.max) -ForegroundColor Yellow
-        }
-        if (-not $PiForce) {
-            throw ("players are on a lobby and -Pi restarts all {0}, so nothing was deployed.  Wait for 0 players, or pass -PiForce." -f $lobbies.Count)
-        }
-        Write-Host "    -PiForce: deploying anyway -- everyone above is dropped" -ForegroundColor Yellow
-        $warn = $true
     } elseif ($noRow.Count -gt 0) {
         foreach ($l in $noRow) {
             Write-Host ("    no row for ftesurf@{0} (port {1}) -- it may be up and full" -f $l.Unit, $l.Port) -ForegroundColor Yellow
@@ -557,9 +547,16 @@ if ($Pi) {
                    "heart-beating -- a newly added unit needs its sudoers grant and a systemctl enable -- or pass -PiForce.")
         }
         Write-Host "    -PiForce: deploying without knowing who is on the lobbies above" -ForegroundColor Yellow
-        $warn = $true
-    } else {
-        Ok ("nobody on any lobby (a row for each of the {0}, all 0 players)" -f $lobbies.Count)
+    }
+    if ($null -ne $busy) {
+        if ($busy.Count -gt 0) {
+            foreach ($l in $busy) {
+                Write-Host ("    {0} on {1}: {2}/{3} players" -f $l.name, $l.map, $l.players, $l.max) -ForegroundColor Yellow
+            }
+            Ok "players connected -- warning/countdown before the normal restart"
+        } elseif ($noRow.Count -eq 0) {
+            Ok ("nobody on any lobby (a row for each of the {0}, all 0 players)" -f $lobbies.Count)
+        }
     }
 
     # 2. Upload beside the live files.  Bare names from their own directory, so
@@ -589,6 +586,29 @@ if ($Pi) {
     }
     Ok "both .new files hash to this build"
 
+    # 3b. Warn AFTER upload/hash checks, BEFORE any live swap or restart.
+    #     Always warn: players may have joined after step 1. One say per port.
+    #     Explicit -PiWarnSeconds 0 skips the warning; the default is 10 seconds.
+    if ($PiWarnSeconds -gt 0) {
+        Step "Pi: warn every lobby, then wait $PiWarnSeconds s"
+        $ann  = Join-Path $SurfDir 'tools\lobby_announce.py'
+        $text = "^3Server update:^7 this lobby restarts in $PiWarnSeconds seconds -- rejoin in about a minute"
+        $dest = ('{0}/../lobby_announce.py' -f $PiGame)
+        Push-Location (Split-Path $ann)
+        try { $r = PiNative 'scp' ($sshOpts + @('-q', 'lobby_announce.py', ('{0}:{1}' -f $PiHost, $dest))) }
+        finally { Pop-Location }
+        if ($r.Code -ne 0) {
+            throw "could not copy lobby_announce.py (exit $($r.Code)) -- no live swap or restart"
+        }
+        $ports = ($lobbies | ForEach-Object { $_.Port }) -join ' '
+        $r = PiNative 'ssh' ($sshOpts + @($PiHost, ("python3 -I {0} --text '{1}' {2}" -f $dest, $text, $ports)))
+        $r.Out | ForEach-Object { Write-Host "    $_" }
+        if ($r.Code -ne 0) {
+            throw "warning transport failed (exit $($r.Code)) -- no live swap or restart"
+        }
+        Start-Sleep -Seconds $PiWarnSeconds
+    }
+
     # 4. THE SWAP -- one command, two renames.  See the header for why.
     Step "Pi: swap"
     $swap = ('cd {0}' +
@@ -606,30 +626,6 @@ if ($Pi) {
         }
     }
     Ok "live qwprogs.dat and csprogs.dat are this build (previous pair kept as .prev)"
-
-    # 4b. P1243: tell the players a forced restart is about to drop, then give them the seconds.
-    #     surfd's rcon.py does the sending (tools/lobby_announce.py); a warning that fails is
-    #     reported and the deploy goes on -- the progs are already swapped.
-    if ($warn -and $PiWarnSeconds -gt 0) {
-        Step "Pi: warn every lobby, then wait $PiWarnSeconds s"
-        $ann  = Join-Path $SurfDir 'tools\lobby_announce.py'
-        $text = "^3Server update:^7 this lobby restarts in $PiWarnSeconds seconds -- rejoin in about a minute"
-        $dest = ('{0}/../lobby_announce.py' -f $PiGame)
-        Push-Location (Split-Path $ann)
-        try { $r = PiNative 'scp' ($sshOpts + @('-q', 'lobby_announce.py', ('{0}:{1}' -f $PiHost, $dest))) }
-        finally { Pop-Location }
-        if ($r.Code -ne 0) {
-            Write-Host "    could not copy lobby_announce.py (exit $($r.Code)) -- restarting without a warning" -ForegroundColor Yellow
-        } else {
-            $ports = ($lobbies | ForEach-Object { $_.Port }) -join ' '
-            $r = PiNative 'ssh' ($sshOpts + @($PiHost, ("python3 -I {0} --text '{1}' {2}" -f $dest, $text, $ports)))
-            $r.Out | ForEach-Object { Write-Host "    $_" }
-            if ($r.Code -ne 0) {
-                Write-Host "    the warning did not reach every lobby (exit $($r.Code)); waiting anyway" -ForegroundColor Yellow
-            }
-            Start-Sleep -Seconds $PiWarnSeconds
-        }
-    }
 
     # 5. Restart every active lobby.  NO .service SUFFIX -- sudo matches the grant
     #    literally, see the header.  -n: a missing grant fails, it never prompts.

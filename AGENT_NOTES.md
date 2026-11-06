@@ -1057,11 +1057,21 @@ Scope, actual build/control limits and resume checks: tools/p1300-visuals.md.
 - Fallback cohort in lexlist-1232/control is 64f0b0f4; P1229's root lexlist-1229 and the dead retry
   root lexlist-1231b are CLOSED and unreferenced.
 
-## P1244 loading screen, P1243 deploy warning (3 Nov)
-- P1243: build.ps1 -Pi -PiForce, when it goes past players (or past not knowing), runs
-  tools/lobby_announce.py on the Pi after the swap (surfd's rcon.py, one hashed say per port) and waits
-  -PiWarnSeconds (10). The engine blocks an rcon source for 24 h past 15 packets/30 s/port, shared with
-  zonepub and the admin panel: one say per port per deploy.
+## P1244 loading screen, P1243 deploy warning (3 Nov; policy updated 6 Nov)
+- Lex, 6 Nov: normal build.ps1 -Pi warns every active lobby, waits -PiWarnSeconds
+  (default 10), then restarts even with players on. No -PiForce for known occupancy.
+  Warn even after an initial zero count: players can join during upload. Warning
+  transport runs AFTER upload/hash verification but BEFORE the live swap, and a
+  transport error refuses without a swap/restart. Sending is not proof each player
+  read the chat. Explicit -PiWarnSeconds 0 remains an opt-out. Unknown/missing
+  directory status still refuses unless explicitly overridden by -PiForce; a busy
+  row cannot hide another active unit's missing row. tools/test_pi_restart.ps1
+  executes the actual source blocks with mocked transport/sleep: 10 controls pass
+  (occupied, empty, missing, occupied+missing, unknown, force, and transport faults).
+  No new product patch/Build bump: this changes deployment tooling/policy only.
+- tools/lobby_announce.py uses surfd's rcon.py, one hashed say per port. The engine
+  blocks an rcon source for 24 h past 15 packets/30 s/port, shared with zonepub and
+  the admin panel: one say per port per deploy.
 - P1244 menu: src/menu/m_loading.qc. FTE calls m_drawloading under the plaque only; before it (the
   connection stage) m_draw runs, so m_draw draws the screen while scr_loadingstep != "" (engine
   P1244 cvar; empty on older engines, which get the screen under the plaque without steps). The
@@ -9857,12 +9867,14 @@ corrected12unit readback and cold CSQC hash/drawn-board proof acted. No raw comm
   than trusting the file: from `/srv/nvme/surfd`, `rcon.Rcon("127.0.0.1", port,
   pw).execute([cvar])` with `pw` read from `surfd.env` inside the script and
   never printed (loopback only, 8 packets per 30 s per port).
-- Deploy server progs with `./build.ps1 -Pi` (refuses while players are
-  connected, scp's both .new files, hash-verifies on the Pi, swaps in ONE ssh
-  command keeping `.prev`, restarts every active lobby); menu.dat stays local.
-  `-PiForce` overrides the refusal — beta phase, and the connected player is
-  usually the reporter; say so when you use it. Lex, 25 Oct 2026: publish to the
-  lobbies even with players on -- they can just reconnect.
+- Deploy server progs with `./build.ps1 -Pi`: scp both .new files, hash-verify,
+  warn every active lobby and wait 10 seconds, swap in ONE ssh command keeping
+  `.prev`, then restart every active lobby; menu.dat stays local. Lex, 6 Nov 2026:
+  warning/countdown/restart is the DEFAULT even with players on, not an empty-only
+  wait. `-PiForce` still explicitly overrides unknown/missing directory status.
+  Warning transport failure refuses before swap. Recorder/resume preimages and
+  actual actor/dependency checks remain mandatory for their applicable rollout.
+  Lex, 25 Oct 2026: publish to the lobbies even with players on -- they can reconnect.
 - Backend generations (P996, 25 Oct): a code-only swap is a new guard root beside
   the live one, candidate -> receipt -> reopen, then close the old fence, rebind
   stubs/run.sh/cron and restart momrequests.service. tools/surfd-generation-p996.md

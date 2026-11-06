@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """lobby_announce.py -- say one line in every lobby's chat (P1243), run ON the Pi.
 
-build.ps1 -Pi -PiForce copies this beside the gamedir and runs it before a restart that drops
-players.  It uses surfd's own rcon client (rcon.py: hashed password, loopback only, refuses `;`,
+build.ps1 -Pi copies this beside the gamedir and runs it before every restart, followed by
+its default 10-second grace period (also when players are connected; no -PiForce needed).  It uses surfd's own rcon client (rcon.py: hashed password, loopback only, refuses `;`,
 quotes, `$` and control characters) with the password from surfd.env, and sends ONE `say` per
 port: the engine blocks a source for 24 h past 15 rcon packets in 30 s on a port, and zonepub and
 the admin panel spend from that budget too.  A lobby that does not answer is reported, not retried.
