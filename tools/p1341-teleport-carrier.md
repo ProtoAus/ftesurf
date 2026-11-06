@@ -37,7 +37,33 @@ report threshold/suppression, backend, native pin/tag or QC Build change.
 This is functional helper/adapter-contract evidence, NOT a full native network
 replay, measured correction distance, historical cause or owner-feel acceptance.
 The native consumer itself is unchanged and is not executed by this QC fixture.
-Delivery and human checks are separate; deployment is pending at this checkpoint.
+Two independent product reviews found no introduced movement defect. The evidence
+review found two driver weaknesses (numbered-warning-only detection and count-only
+grading); both were fixed,21actual-function guard controls pass, and independent
+closure review confirms them closed. Movement source/builds stayed unchanged.
+
+## Delivered6November2026UTC
+
+- Main feature305df2a5 (published via174dbe12) and Pi component68597668 on approved
+  C4: COMPLETE changed trigger module and driver are identical. Do not cross-pair
+  newer main TAS code with the Pi's preserved server profile.
+- ALL12lobbies05:06:06UTC: CS7fda354387f3, QW5e8 unchanged,12new actors/0skips;
+  original join capacities restored. Owner-approved warning,10-second grace and
+  normal disconnect preceded activation.8recorder parts and183resume members
+  individually archived/rehashed on/offbox BEFORE stage/restart;47,752old
+  protected paths, configs, backend and native/plugin hashes preserved. .prev and
+  exact original predecessor/prior-prev bytes retained; no automatic downgrade.
+- BOTH Windows05:09:58UTC: CS0a3a6b762b4b and symbols only, four targets and .prev
+  verified; both content-addressed caches seeded. Server/menu/native/config/data
+  not deployed.19,346old protected entries unchanged. Outer wrapper timed out
+  AFTER successful copies; read-only receipts proved completion, then the missing
+  preservation check completed separately. No swaps/restarts repeated and no
+  rig/maintenance gate remains. Original failure/timeout retained privately.
+- Actual fresh lobby client downloaded CS7fda354387f3 from the public lobby;
+  board drew, no QC error, screenshot inspected. This is download/render smoke,
+  NOT teleport physics/owner-feel or a historical save/load-cause proof.
+
+Human acceptance below is still pending; no report/popup suppression was added.
 
 ## Reproduce
 
@@ -45,7 +71,7 @@ Run tools/p1341carrier.py with --compiler, --server and --pak paths to an existi
 qualified fteqcc executable, dedicated-server executable and id1/pak0.pak, plus
 --out pointing to a NEW directory under an owned task root. It never writes an
 install and stops only its own child handle. Default --source is this checkout;
---source can select the prefeature checkout and --expect-failures8 proves the
+--source can select the prefeature checkout and --expect-failures 8 proves the
 acting control. Preserve logs/source hashes rather than recycling an output path.
 
 ## Small manual acceptance
