@@ -162,6 +162,60 @@ class ReportReader(unittest.TestCase):
         self.assertIn('SV body/mode sampled at next PreThink', text)
         self.assertIn('server counters (not window-local): packet stalls 63', text)
 
+    def test_clean_local_v2_snapshot_keeps_valid_metadata_without_error_claim(self):
+        path = self.root / 'manual.txt'
+        extra = [1, 1, 0, 12, .014, 1, 2, 2]
+        values = native(13, .015, extra=extra).split()
+        values[TRIAGE.RING_COLS.index('fwd')] = '120'
+        path.write_text('FTESURF-PREDRING 2\n# command_identity ack-seat-tag-v1\n'
+                        + ' '.join(values) + '\n', encoding='utf8')
+        result, text = self.run_report(path)
+        self.assertTrue(result)
+        self.assertIn('no disagreement above eps 1 in retained ring', text)
+        self.assertIn('errors outside these retained position comparisons are unknown', text)
+        self.assertIn('inputs move 120 0 0', text)
+        self.assertIn('saved prediction: pm 0, seed seq 12 carry 14.000000 ms', text)
+        self.assertNotIn('disagreement starts', text)
+        self.assertNotIn('worst:', text)
+
+    def test_sub_epsilon_snapshot_is_not_reported_as_a_disagreement(self):
+        result, text = self.run_report(self.report(rows=[native(12, 0, .5), native(13, .015, .9)]))
+        self.assertTrue(result)
+        self.assertIn('no disagreement above eps 1 in retained ring', text)
+        self.assertIn('largest 0.900 units', text)
+        self.assertNotIn('disagreement starts', text)
+        self.assertNotIn('worst:', text)
+
+    def test_exact_epsilon_snapshot_is_not_reported_as_a_disagreement(self):
+        result, text = self.run_report(self.report(rows=[native(12, 0), native(13, .015, 1)]))
+        self.assertTrue(result)
+        self.assertIn('no disagreement above eps 1 in retained ring', text)
+        self.assertIn('largest 1.000 units', text)
+        self.assertNotIn('disagreement starts', text)
+
+    def test_clean_unknown_prediction_does_not_fabricate_metadata(self):
+        extra = [0] * 8
+        result, text = self.run_report(self.report(version=2, rows=[native(13, 0, extra=extra)], marker=True))
+        self.assertTrue(result)
+        self.assertIn('no disagreement above eps 1 in retained ring', text)
+        self.assertIn('inputs(unqualified)', text)
+        self.assertNotIn('saved prediction:', text)
+
+    def test_just_above_epsilon_still_reports_the_disagreement(self):
+        result, text = self.run_report(self.report(rows=[native(12, 0), native(13, .015, 1.001)]))
+        self.assertTrue(result)
+        self.assertIn('disagreement starts at seq 13', text)
+        self.assertIn('worst: seq 13', text)
+        self.assertNotIn('no disagreement above eps', text)
+
+    def test_named_clean_row_cannot_hide_another_retained_error(self):
+        path = self.report(rows=[native(12, 0), native(13, .015, 9)], context='worst 0 at seq 12')
+        result, text = self.run_report(path)
+        self.assertTrue(result)
+        self.assertIn('worst: seq 13 off by 9.0', text)
+        self.assertIn('disagreement starts at seq 13', text)
+        self.assertNotIn('no disagreement above eps', text)
+
     def test_local_ring_and_context_pair_still_read(self):
         path = self.root / 'local.txt'
         path.write_text('FTESURF-PREDRING 1\n' + native(12, 0) + '\n' + native(13, .015, 9), encoding='utf8')

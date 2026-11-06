@@ -17,6 +17,11 @@ before interpreting them. Native v2 adds event-time prediction provenance withou
 Usage:
     python tools/prederr_triage.py REPORT [REPORT ...]
     python tools/prederr_triage.py --fetch DIR      # copy the lobbies' data/prederr/ here, then read it
+
+For a local snapshot without an error popup, run `prederr_dump boomer_check.txt`
+in the game console, then read ftesurf/data/prederr/boomer_check.txt with this tool.
+That captures retained comparisons locally; it does not upload a report.
+No above-epsilon difference describes only those rows, not earlier/future errors.
 """
 import argparse
 import math
@@ -209,6 +214,19 @@ def err(r):
     return math.dist((r["px"], r["py"], r["pz"]), (r["sx"], r["sy"], r["sz"]))
 
 
+def print_comparison(r, mark, binding):
+    inputs = "inputs" if binding and r.get("cmdvalid") == 1 else "inputs(unqualified)"
+    print("   %s seq %5d err %8.2f  pred %9.1f %9.1f %9.1f  srv %9.1f %9.1f %9.1f  pvz %7.1f "
+          "gnd %d/%d pm %d  %s move %d %d %d btn %d" % (
+              mark, r["seq"], err(r), r["px"], r["py"], r["pz"], r["sx"], r["sy"], r["sz"], r["pvz"],
+              r["pground"], r["sground"], r["pmtype"], inputs, r["fwd"], r["side"], r["up"], r["buttons"]))
+    if r.get("predvalid") == 1:
+        print("       saved prediction: pm %d, seed seq %d carry %.6f ms, phase hit %d, parts %d ticks %d" % (
+            r["predpm"], r["seedseq"], r["seedcarry"] * 1000, r["phasehit"], r["parts"], r["ticks"]))
+        if r["predpm"] != r["pmtype"]:
+            print("       movement-mode boundary observed; not automatically expected or excused")
+
+
 def triage(path, eps, window, around):
     head, ctx, rows, sv = load(path)
     print("=" * 78)
@@ -220,7 +238,16 @@ def triage(path, eps, window, around):
     if not rows:
         print("  no valid ring rows for the declared schema; report not graded")
         return False
+    print("  ring: %d rows, seq %d..%d, %.1f s" % (len(rows), rows[0]["seq"], rows[-1]["seq"],
+                                                   rows[-1]["t"] - rows[0]["t"]))
     worst = max(rows, key=err)
+    if err(worst) <= eps:
+        print("  no disagreement above eps %.3g in retained ring (largest %.3f units)" % (eps, err(worst)))
+        print("  diagnostic snapshot only; errors outside these retained position comparisons are unknown")
+        print("  last retained comparisons:")
+        for r in (rows[-around:] if around > 0 else []):
+            print_comparison(r, " ", binding)
+        return True
     # The line the report was made for (header "client <stem> worst N seq S"), not an excused one
     # elsewhere in the ring (P1238).
     m = next((re.search(r"worst [\d.]+ (?:at )?seq (\d+)", l) for l in head + ctx
@@ -233,8 +260,6 @@ def triage(path, eps, window, around):
     first = wi
     while first > 0 and err(rows[first - 1]) > eps:
         first -= 1
-    print("  ring: %d rows, seq %d..%d, %.1f s" % (len(rows), rows[0]["seq"], rows[-1]["seq"],
-                                                   rows[-1]["t"] - rows[0]["t"]))
     print("  worst: seq %d off by %.1f (predicted %.1f %.1f %.1f, server %.1f %.1f %.1f)" % (
         worst["seq"], err(worst), worst["px"], worst["py"], worst["pz"], worst["sx"], worst["sy"], worst["sz"]))
     print("  disagreement starts at seq %d (%d retained comparisons before the worst, eps %.1f)" % (
@@ -244,16 +269,7 @@ def triage(path, eps, window, around):
     print("  rows around the start:")
     for r in rows[max(0, first - around):min(len(rows), wi + around + 1)]:
         mark = "*" if r is worst else (">" if r is rows[first] else " ")
-        inputs = "inputs" if binding and r.get("cmdvalid") == 1 else "inputs(unqualified)"
-        print("   %s seq %5d err %8.2f  pred %9.1f %9.1f %9.1f  srv %9.1f %9.1f %9.1f  pvz %7.1f "
-              "gnd %d/%d pm %d  %s move %d %d %d btn %d" % (
-                  mark, r["seq"], err(r), r["px"], r["py"], r["pz"], r["sx"], r["sy"], r["sz"], r["pvz"],
-                  r["pground"], r["sground"], r["pmtype"], inputs, r["fwd"], r["side"], r["up"], r["buttons"]))
-        if r.get("predvalid") == 1:
-            print("       saved prediction: pm %d, seed seq %d carry %.6f ms, phase hit %d, parts %d ticks %d" % (
-                r["predpm"], r["seedseq"], r["seedcarry"] * 1000, r["phasehit"], r["parts"], r["ticks"]))
-            if r["predpm"] != r["pmtype"]:
-                print("       movement-mode boundary observed; not automatically expected or excused")
+        print_comparison(r, mark, binding)
     lo, hi = rows[first]["seq"] - window * 70, worst["seq"] + 20
     print("  context (seq %d..%d):" % (lo, hi))
     for line in ctx:

@@ -1139,8 +1139,9 @@ in the engine tree with an explicitly owned `--output` directory.
   input_cmd_* globals are cleared after PreThink. The client marks a report at its first bad line
   (sendevent "pe_mk" -> CSEv_pe_mk_f; FTE appends the arg types to the name); the lobby freezes 512
   rows 1.6 s later and writes them, then "== client", before the client's chunks. Server frames
-  over 50 ms are listed as "stall". tools/prederr_triage.py prints the GAP (no server packet for
-  N s), "server ran N of M commands", NEVER RAN, and uses the report's own worst line.
+  over 50 ms are listed as "stall". The original P1238 reader described a GAP as no server packet
+  and printed NEVER RAN. Those conclusions were retired in P1330: comparison rows are selective,
+  SV rows bounded, and missing rows do not prove packet loss or command nonexecution.
 - Measured (arms in C:/FTESurf-worktrees/prederr1238-20261103/arms, net_fakeloss): a 0.45 s
   blackout loses every command (sv_user.c replays lost commands only when fewer than 20 packets
   are lost, as copies of the last); a 0.2 s one is replayed exactly, no error. A server
@@ -1360,6 +1361,12 @@ Root: C:\FTESurf-worktrees\skyroom1202-20261102T0620Z.
 - Client: the engine's ring (cl_pred.c, first-pass server-against-predicted rows, reset per connection)
   is dumped by `prederr_dump <name>.txt` to data/prederr/ (newest 120 files kept); CSQC writes
   <stem>_ctx.txt beside it. Old engines have no prederr_dump: CSQC does nothing (pe_ok).
+- Manual snapshots need no error popup: `prederr_dump boomer_check.txt` writes the native ring
+  locally, without a CSQC context file or upload. Read `data/prederr/boomer_check.txt` with
+  `tools/prederr_triage.py`. A ring whose largest positional difference is at or below `--eps`
+  is a diagnostic snapshot, not a disagreement start. Valid native-v2 provenance remains visible;
+  unknown inputs stay unqualified. This does NOT rule out errors outside the retained rows.
+  Regression: `tools/test_prederr_triage.py` covers zero/below/equal/above-epsilon controls.
 - Lobby: F6 uploads in sendevent chunks (CSEv_pe_fs), one per `prederr_ack`; the lobbies' shared
   gamedir gets data/prederr/<map>_<utc>_p<port>_s<slot>.txt, streamed (FS_FILE_WRITESTREAM).
   Caps: 400 x 1 KB chunks whatever the client declares; 3 per connection per map, 20 s apart;
