@@ -45,7 +45,36 @@ fleet-coverage guarantee, and it does not cover nonparticipating collectors.
 
 ## Delivery
 
-Verified source implementation; publication and the existing guarded backend
-generation cutover are pending. This document must record their actual outcome,
-not equate a passing test or staged candidate with live delivery. No VM/native
-binary, engine pin/tag, QC Build or release change is part of this patch.
+**Deployed and verified on 6 November 2026 at 18:36:12 UTC.** Public source and
+serving generation: `9b6cb7c0c48a14994fd08f6012643f668514153c`; engine journal:
+`9ae0fea60d8dfcb6e2b9e2823f90697d5be74543`.
+
+The existing guarded code-only backend generation route replaced exactly
+`simcheck.py` in the actual serving 84-file profile; the other 83 frozen files,
+separately bound reader and helpers remained unchanged. Both primary and
+same-data rollback cohorts passed the real CLOSED candidate checks, including
+acted feature/control metadata behavior and existing authentication/source guards.
+The actual cutover preserved all 44 pre-existing table schemas, eight identity
+table digests and protected non-churn counts; 156 bound-file checks passed.
+All four cron routes and the managed importer were rebound through the guarded
+launcher. The service is healthy, primary admission is OPEN and fallback CLOSED.
+The shared installer input was restored exactly and its reservation removed.
+
+Fourteen targeted tests subsequently passed against the actual serving module,
+using only owned synthetic SQLite/files and genuine 80-opportunity comparisons.
+No production collection or historical reread was invoked for that fixture.
+The original missing-input/predecessor-template staging refusals remain recorded;
+same immutable archive/closed fence bytes were verified before completing the
+stage without reinitialization. A postflight health observer first used the wrong
+port; that refusal remains recorded, and only the read-only observation was
+completed through the actual service endpoint. No healthy activation/test was
+repeated to hide a wrapper failure.
+
+Active runtime: `/srv/nvme/agent-work/ac-cursor-20261106T1747Z/runtime`, primary
+fence `state/` under that root. The same root retains `rollback-runtime` and
+CLOSED `control/` for exact predecessor generation
+`53b94a926f2a0089cb20e3b5b21808e61fd70a79`. These paths and the namespace pins are
+runtime dependencies, not disposable scratch. Rollback uses **current data**
+through the existing guarded route; the historical backup is not a restore input.
+No lobby/game process, native/VM binary, engine pin/tag, QC Build, release,
+collector/capture policy, identity or verdict history changed in this patch.

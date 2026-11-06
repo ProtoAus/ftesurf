@@ -1,5 +1,30 @@
 # AGENT_NOTES.md
 
+## P1352 similarity cursor retirement and scoped deployment (6 Nov 2026)
+
+- `sim_cursor` source slot0 is source rotation, slot1 interrupted admission and
+  slot2 orphan peer-cursor maintenance. Do not repurpose these slots or reset
+  peer positions to hide a budget/partial failure. The64slot indexed cleanup is
+  not a global live-cursor, memory, wall-time or fleet-coverage bound.
+- Source absence must be rechecked in the actual metadata DELETE, not inferred
+  from an earlier selection. A second SQLite connection can restore the replay
+  between them. Deletion and maintenance position need one explicit transaction
+  even when `isolation_level=None`; a failed checkpoint must restore deletions.
+- `surfd/test_simcheck.py` is an existing standalone program with a successful
+  top-level `SystemExit(0)`. Importing it in unittest discovery reports a loader
+  error even after its68checks act. Run it as a program; do not repair untouched
+  product code or call a segmented correction an uninterrupted clean suite.
+- Derive a backend staging predecessor from the inspected serving manifest, not
+  an inherited task-root literal. After an offline stage refusal, keep its
+  archive/failure and original CLOSED fence bytes. Completing the remaining
+  stage requires exact archived files, source/launcher binding, no prior final
+  wrappers, CLOSED manifests, no candidate/authorization and nonblocking
+  exclusive admission/controller locks; never reinitialize a fence to proceed.
+- Use the actual service endpoint for a postflight. A successful unrelated HTTP
+  response on another local port is not backend health. Keep observer failures;
+  finish only the read-only checks, never repeat a healthy generation activation.
+
+
 ## P1351 activation closure and late work (6 Nov; ready-20261106T1706Z-01a1b1d2)
 
 Engine c28dcf9bd/tagpatch-1351 and QC0de32b5b are committed/pushed. Clean final

@@ -1,5 +1,16 @@
 # Backend generation swap: P996 (25 Oct 2026) -- the procedure as run
 
+> **Current P1352 tuple, verified 6 November 2026 at18:42 UTC:** generation
+> `9b6cb7c0c48a14994fd08f6012643f668514153c`, collectors84-v1/schema26; exactly
+> `simcheck.py` changed, other83 frozen runtime files and separate reader unchanged.
+> Activated18:36:12UTC through the existing guarded route;44schemas/eightidentity
+> digests/non-churn counts preserved,156bound-file checks and14installed feature
+> tests pass. Health is good, primaryOPEN/fallbackCLOSED, shared installer restored.
+> Runtime `/srv/nvme/agent-work/ac-cursor-20261106T1747Z/runtime`, primary `state/`;
+> retain SAMEroot's `rollback-runtime`/CLOSED `control` for53b94a926f current-data
+> rollback, with its installed namespace pins. Do not delete runtime dependencies
+> or restore an old DB. See [p1352-simcheck-cursors.md](p1352-simcheck-cursors.md).
+>
 > **Historical P996 procedure below; not the current live tuple.** P1347 was
 > activated 6 November 2026 at11:24:42UTC as generation
 > `53b94a926f2a0089cb20e3b5b21808e61fd70a79`, collectors84-v1/schema26.
