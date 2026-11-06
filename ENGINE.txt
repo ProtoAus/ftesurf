@@ -1,4 +1,5 @@
 # The engine build this QuakeC requires.
+# Patch 1347: visible KSF board fetch controls; gentler replay pacing, targeted transient retries and Retry-After handling.
 # Patch 1343: relative teleports preserve BSPTRIGGER/invisibility on Enable, share center+offset point in touch/PVS/report paths, and reject quieting when ANY predicted ordinary/relative teleport shares the destination. Actual QC VM24/0 vs7baseline failures; no threshold/format/native/backend/Build change. Full network/physics/feel and historical causes not claimed. tools/p1343-relative-teleports.md.
 # Patch 1342: predict +/-3 through optional bounded stat207 COMPLETE C+actual-held-speed+4rows (D42). Settled release uses actual held speed, NOT a refused load's cursor; unproven is BLIND. Validate every D/C numeric token with existing finite decimal codec. Metadata31/release29/relative24=84/0; added17checks expose12failures in initial candidate. No native, authoritative load/release, evidence/save format, threshold/Build change. Both THREE-VM builds0warnings; renewed review/deploy pending; tools/p1342-save-release.md.
 # P1341 delivered6Nov2026UTC: ALL12lobbies CS7fda354387f3 at05:06:06, BOTH Windows CS0a3a6b762b4b/symbols at05:09:58. Server/native/config/backend/data preserved; capacities restored; served-code/render smoke passed. Two product reviews,21driver guards and independent closure; human teleport-feel still pending. Source305df2a5/main,68597668/Pi component.
@@ -65,7 +66,7 @@ commit   7e271da76fc40e6e41e15cd8f90dedb0c9f9eccf
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1340
-patch    1343
+patch    1347
 # Patches 1305/1306 (engine common/pm_source.c): faithful existing gravity-use observation across finite native jump configurations and stock postures. Movement, capture/API/format and ranking policy unchanged. Clean Windows/ARM, acting controls and dual Windows/all12Pi native delivery verified; actual ranked/full-bank acceptance separate. Windows source7ae5d53b2 includes published P1301; Pi source76acc7c6b/tagpatch-1306 has identical mover/server inputs. Details and corrected old-manifest selector diagnosis: tools/p1306-gravity-context.md.
 # Patch 1299: initial finite nonnegative normalized-offset extension; full native delivery now superseded by the qualified 1305/1306 set. Historical proof and correction in tools/p1299-gravity.md.
 # Patches 1255/1257 (engine sv_ccmds.c pm_dettest mover-12 lines; renderer gl_mindist 2, viewmodels keep 1): installs tag patch-1257, which merges patch-1260. QC needs neither.

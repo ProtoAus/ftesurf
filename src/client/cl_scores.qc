@@ -2855,6 +2855,15 @@ string() Scores_CountLine =
 // The footer's left sentence: the count, or for four seconds what the LINE heading did.
 string() Scores_FootLine =
 {
+	local string state;
+
+	if (Scores_IsOnline() && Scores_ImpState() == SB_IMP_KSF && cltime < ok_after + 10)
+	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
+	{
+		state = Online_KsfState(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_StyleOf());
+		if (state != "")
+			return sprintf("KSF: %s. Up to 100 more times; available replays follow in background. Refresh later.", state);
+	}
 	if (!Scores_IsOnline() && rec_sb_ksfstyle != 0)
 		return "Local directions are not recorded yet; use Normal";
 	if (rec_sb_note)
@@ -3329,7 +3338,7 @@ void(vector scr) Scores_Draw =
 	local vector p, sz, rp, rs, lp;
 	local float scale, bs, pad, w, h, x0, y0, sidew, tabh, chiph, chipw, segw, listh, n, vh;
 	local float ytabs, yhead, ylist, yfoot, yc, x, idx, on, hot, pick, native, online;
-	local float roomw, have, need, floorw, ow, tablew, rows, chrome, step, px, legh, stylew;
+	local float roomw, have, need, floorw, ow, tablew, rows, chrome, step, px, legh, stylew, fetchw;
 	local string s, rid;
 
 	if (!rec_sb_open && !sc_held)
@@ -3389,6 +3398,9 @@ void(vector scr) Scores_Draw =
 		Scores_Type(px);
 		pad   = rec_sb_szrow;           // every ladder rung is even: its halves are whole pixels
 		chipw = ceil(rec_sb_cw * 8.5);
+		fetchw = 0;
+		if (Scores_IsOnline() && Scores_ImpState() == SB_IMP_KSF && !FS_BoardSegmented(Scores_StyleOf()))
+			fetchw = ceil(stringwidth("Fetch KSF", TRUE, [sb_szui, sb_szui]) + pad * 1.5) + 6;
 		// P724: the row's mono em can shrink below the UI label's 12px floor.
 		// Measure the shared formatter in the actual label face/size.
 		sidew = stringwidth("TRACK  * suggested", TRUE, [rec_sb_szhead, rec_sb_szhead]);
@@ -3406,7 +3418,7 @@ void(vector scr) Scores_Draw =
 		// table needs: its inner width is the table's plus 1.5 pad and the sidebar.
 		// (Patch 635: or Online's filter and its refresh chip, when that is wider.)
 		floorw = segw * n + pad
-		       + max((chipw + 6) * 4 - 6, Scores_FilterW() + ceil(pad * 0.75) + chipw)
+		       + max((chipw + 6) * 4 - 6, Scores_FilterW() + ceil(pad * 0.75) + chipw + fetchw)
 		       - (pad * 1.5 + sidew);
 
 		sb_colon[SBK_TAG]  = TRUE;
@@ -3593,6 +3605,12 @@ void(vector scr) Scores_Draw =
 		if (Scores_Chip("sb_tref", [x, yc], [chipw, chiph], "refresh", FALSE))
 			Online_Fetch(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
 			             Scores_TierOf(), Scores_StyleOf());
+		if (fetchw > 0)
+		{
+			x = x - fetchw;
+			if (Scores_Chip("sb_ksmore", [x, yc], [fetchw - 6, chiph], "Fetch KSF", FALSE))
+				Online_KsfMore(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_StyleOf());
+		}
 	}
 
 	// Patch 635: the filter, on Online, left of the refresh chip.

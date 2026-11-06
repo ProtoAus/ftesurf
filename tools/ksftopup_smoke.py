@@ -5,6 +5,7 @@ No public requests, install swaps, owner accounts/data or shared log names.
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -48,13 +49,18 @@ def main():
                        "flags,node,runid,submitted,replay_id) VALUES('surf_dune',0,0,'ksf',?,?,?,?,100,?,?,"
                        "'ksf','',1,0)", (style,str(76561197960265729+i),name,ms//10,ms,0))
     db.close()
+    terms = re.search(r'^#define FS_TERMS_ONLINE\s+(\d+)',
+                      (ROOT/'src/shared/sh_defs.qc').read_text(), re.M).group(1)
     consent = out/'consent.txt'
-    consent.write_text('version 5\n// synthetic local fixture consent, not owner acceptance\n')
+    consent.write_text('FTESURF-CONSENT 1\nversion '+terms+'\n// synthetic local fixture only\n')
+    cfg = out/'input.cfg'
+    cfg.write_text(re.sub(r'(?m)^set rec_terms \d+$', 'set rec_terms '+terms,
+                         (ROOT/'ftesurf/cfg/test/p1347ksffetch.cfg').read_text()))
     server = make_server('127.0.0.1', 19869, S.app)
     worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
     try:
         cmd = [sys.executable,str(ROOT/'tools/runlines_smoke.py'),
-               str(ROOT/'ftesurf/cfg/test/p699ksf.cfg'), '--output-dir',str(out),
+               str(cfg), '--output-dir',str(out),
                '--mount','--dedicated','--port','27617','--timeout','130',
                '--put','data/consent.txt='+str(consent)]
         for flag, file in [('--ssqc','qwprogs.dat'),('--csqc','csprogs.dat'),('--mqc','menu.dat')]:
@@ -79,7 +85,14 @@ def main():
     text = next(out.glob('ftesurf-runlines-*/ftesurf/logs/runlines_smoke.log')).read_text(errors='replace')
     assert 'scores: KSF top-up queued (code 202)' in text
     assert 'board: KSF top-up queued (code 202)' in text
-    print('PASS acting Forward/SW/HSW/BW GETs; CSQC SW and menu HSW POSTs; durable style-isolated queues')
+    assert 'sui_hover [sb_ksmore]' in text, 'visible CSQC button did not act'
+    assert 'sui_probe: no control [sb_ksmore]' in text, 'non-KSF/segmented control missing'
+    assert 'ui_hover: no control [mlb_ksmore]' in text, 'menu segmented control missing'
+    boxes = re.findall(r'ui_element \d+ \[mlb_ksmore\] ([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)', text)
+    assert len(boxes) >= 2, 'wide/narrow menu button missing'
+    assert all(float(x) >= 0 and float(w) > 0 for x, y, w, h in boxes), boxes
+    print('PASS actual Fetch KSF pointer clicks in both VMs; Forward/SW/HSW/BW GETs; '
+          'CSQC SW/menu HSW POSTs; durable style-isolated queues; unsupported controls hidden')
     print('Screenshots retained in', out)
 
 

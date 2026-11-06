@@ -1912,6 +1912,7 @@ float(float track, float leg, string style) Online_KsfMore =
 {
 	local string url, dir;
 	if (!Online_MomAllowed()) return FALSE;
+	if (FS_BoardSegmented(style)) return FALSE;
 	if (cltime < ok_after) return FALSE;
 	if (ok_req && cltime < ok_dead) return FALSE;
 	dir = cvar_string("lobby_dir");
@@ -1925,7 +1926,12 @@ float(float track, float leg, string style) Online_KsfMore =
 	ok_dead = cltime + OB_DEADLINE;
 	ok_after = cltime + 10;
 	strunzone(ok_state); ok_state = strzone("asking");
-	if (uri_get(url, ok_req, "application/json", "{}")) return TRUE;
+	if (uri_get(url, ok_req, "application/json", "{}"))
+	{
+		// A real board view also gives advertised replays the normal mapwant priority.
+		Online_Fetch(track, leg, OB_TIER_KSF, style);
+		return TRUE;
+	}
 	ok_req = 0;
 	strunzone(ok_state); ok_state = strzone("failed");
 	return FALSE;

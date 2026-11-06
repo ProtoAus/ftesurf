@@ -21,6 +21,8 @@
 
 ## next
 
+- Added Fetch KSF buttons to the in-game and map leaderboards for the selected course and direction; available replays follow in the background.
+- Made KSF replay fetching gentler: missing files no longer stall the whole importer, and temporary replay-server errors use targeted retries while genuine rate limits remain protected.
 ### P1343 Relative teleport parity
 - Relative teleports stay invisible pass-through triggers when enabled and preload their destination like ordinary teleports. Prediction reports now distinguish server-only relative snaps without hiding same-destination prediction errors.
 

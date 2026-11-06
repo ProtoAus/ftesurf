@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1347 KSF fetch — manual check pending after deployment
+
+Open a KSF leaderboard, select a stage or bonus and a direction, and click Fetch KSF.
+Does the queued/background message make sense and is the button easy to find?
+The request is asynchronous: refresh/reopen later for times and available replays.
+Automated pointer tests passed for both VMs; this is NOT owner confirmation or a
+claim that KSF provides a replay for every time. Existing host cooldowns stay binding.
+
 ## P1343 relative teleports — deployed6Nov, human check pending
 
 A familiar relative teleport (e.g. surf_4am) should remain invisible/pass-through after an
