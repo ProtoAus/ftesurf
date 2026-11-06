@@ -7,13 +7,34 @@ modified. The native consumer is inspected, not executed; no real-network claim.
 from pathlib import Path
 import argparse, hashlib, json, re, shutil, socket, struct, subprocess
 
+BASELINE_FAILURES = frozenset({
+    b"mode1 client queues carrier clear", b"mode2 client queues carrier clear",
+    b"mode3 client queues carrier clear", b"noclip alone still clears on teleport",
+    b"clear discards earlier push queue", b"push after clear does not sum old push",
+    b"push after clear replaces unarmed AddOutput", b"relative clear also preserves later push",
+})
+
+def compiler_warnings(log):
+    return [line for line in log.splitlines()
+            if re.search(rb"warning", line, re.I)
+            and not re.fullmatch(rb"\s*Done\.\s+0 warnings\s*", line, re.I)]
+
+def grade_runtime(logs, expected_failures):
+    results = re.findall(rb"P1341 RESULT checks=(\d+) failures=(\d+)", logs)
+    assert expected_failures in (0, 8)
+    assert results and all(int(checks) == 42 and int(failed) == expected_failures
+                           for checks, failed in results), ("runtime result", results)
+    labels = frozenset(re.findall(rb"P1341 FAIL: ([^\r\n]+)", logs))
+    assert labels == (BASELINE_FAILURES if expected_failures else frozenset()), ("failure labels", labels)
+    return results
+
 p = argparse.ArgumentParser()
 p.add_argument("--source", type=Path, default=Path(__file__).resolve().parents[1])
 p.add_argument("--out", type=Path, required=True)
 p.add_argument("--compiler", type=Path, required=True)
 p.add_argument("--server", type=Path, required=True)
 p.add_argument("--pak", type=Path, required=True)
-p.add_argument("--expect-failures", type=int, default=0)
+p.add_argument("--expect-failures", type=int, choices=(0, 8), default=0)
 a = p.parse_args()
 OUT = a.out.resolve()
 assert not OUT.exists(), "Keep original evidence immutable"
@@ -190,7 +211,7 @@ compiler = a.compiler.resolve()
 r = subprocess.run([str(compiler), "-srcfile", "progs.src"], cwd=OUT / "src", capture_output=True, timeout=30)
 (OUT / "compile.log").write_bytes(r.stdout + r.stderr)
 assert r.returncode == 0, "QC compile failed; preserved compile.log"
-assert not re.search(rb"(?i)warning [A-Z]?\d*:", r.stdout + r.stderr), "Unit QC has warnings"
+assert not compiler_warnings(r.stdout + r.stderr), "Unit QC has warnings; preserved compile.log"
 exe = OUT / "fteqwsv64.exe"
 shutil.copy2(a.server, exe)
 with a.pak.open("rb") as pak:
@@ -215,6 +236,5 @@ with (OUT / "process.log").open("wb") as log:
 logs = b"\n".join(f.read_bytes() for f in (OUT / "ftesurf").rglob("*.log")) + (OUT / "process.log").read_bytes()
 (OUT / "combined.log").write_bytes(logs)
 assert code == 0, ("owned server exit", code)
-results = re.findall(rb"P1341 RESULT checks=(\d+) failures=(\d+)", logs)
-assert results and all(int(n) == a.expect_failures for _, n in results), ("runtime result", results)
+results = grade_runtime(logs, a.expect_failures)
 print("Actual QC VM checks/failures:", results[0][0].decode(), results[0][1].decode(), "; process exit0; native/network acceptance NOT claimed")
