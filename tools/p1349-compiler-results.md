@@ -74,5 +74,14 @@ Both operational-review findings were fixed and independently rechecked: warning
 freshness at each individual rename/restart boundary and enforced four-image
 OFFBOX custody before staging. Their acting synthetic controls are separate from
 the actual transfer, announcement and refusal evidence. Backend, configs and live
-VM payloads were not changed by P1349. A verified, explicitly linked recovery—not
-a renamed or blind replay—remains necessary for ARM activation.
+VM payloads were not changed by P1349.
+
+A subsequent read-only prerequisite check found nine parts against the archived
+eight, one open preserved-namespace descriptor, and a snapshot changing during
+the read. All four canonical images and thirteen actor identities still matched;
+the 183 complete resume rows also matched. A later diagnostic saw no open
+namespace handle, which does not establish a stable eligibility window or
+reconstruct the original refusal. No recovery allowance was consumed and no
+same-baseline recovery was implemented or attempted. A controlled closed-recorder
+handoff and explicitly approved fresh preservation context are needed before
+another rollout; the failed transaction and every original archive remain intact.
