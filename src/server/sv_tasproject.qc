@@ -364,16 +364,33 @@ float(string l, string k, float argc) SV_TASPLineCanon =
 // P1089: tpr_h is the revision hash over the canonical lines (SV_TASPCanon); tpr_pathover
 // reads another path (the writer's .new file) in place of the project's.
 string tpr_h, tpr_pathover;
+// A marker command may nest several strict reads. Budget actual bytes, including
+// settings/token lengths, before each parse; zero remaining is still LIMITED.
+#define TASP_MARKER_READBYTES 1440000
+float tasp_markerread, tasp_markerleft;
+float(float bytes) SV_TASPMarkerCharge =
+{
+	if (!tasp_markerread) return TRUE;
+	if (bytes < 0 || bytes > tasp_markerleft)
+	{
+		tpr_why = "marker validation budget exhausted; original retained";
+		return FALSE;
+	}
+	tasp_markerleft = tasp_markerleft-bytes;
+	return TRUE;
+};
+
 float(entity e, string name, float identity) SV_TASPRead =
 {
 	local filestream f;
 	local string l, k, pin, hash, parent, names, z;
-	local float argc, n, i, b, have, ended, named, ver;
+	local float argc, n, i, b, have, ended, named, ver, line;
 
 	SV_TASPReadFree();
 	tpr_rev = tpr_base = tpr_baseid = tpr_parentrev = 0; tpr_why = "";
 	f = fopen((tpr_pathover != "") ? tpr_pathover : SV_TASPPath(name), FILE_READ);
 	if (f < 0) { tpr_why = "no such project on this map"; return FALSE; }
+	if (!SV_TASPMarkerCharge(fsize(f))) { fclose(f); return FALSE; }
 	tpr_cp = (float*)memalloc(TASP_CPMAX * TASP_CPSTRIDE * 4);
 	if (!tpr_cp) { fclose(f); tpr_why = "out of memory"; return FALSE; }
 	have = ended = n = ver = 0;
@@ -383,11 +400,16 @@ float(entity e, string name, float identity) SV_TASPRead =
 	tpr_rank = -1;
 	if (tpr_h) strunzone(tpr_h);
 	tpr_h = strzone(strtolower(digest_hex("SHA256", "FTESURF-TASREV-CANON 1")));
+	line = 0;
 	while ((l = fgets(f)) != "")
 	{
+		line = line+1;
 		argc = tokenize(l);
 		k = argv(0);
-		if (argc < 1 || !SV_TASPLineCanon(l, k, argc)) { tpr_why = "not a file the game wrote (P1089 canonical form)"; break; }
+		if (argc < 1 || !SV_TASPLineCanon(l, k, argc))
+		{
+			tpr_why = sprintf("not a file the game wrote (P1089 canonical form), line %.0f",line); break;
+		}
 		if (ended && k != "revsha") { tpr_why = "data after end"; break; }
 		z = SV_TASPCanon(l);
 		if (z != "")

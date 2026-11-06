@@ -249,9 +249,36 @@ void(entity e, float first, float last, float field, float value) SV_TASEditorPr
 	if (e.run_tas_req > before) e.tase_previewrequest = e.run_tas_req;
 };
 
-void(entity e) SV_TASEditorKeep =
+// Shared by input Keep and metadata-only marker revisions. Replay stays explicit.
+float(entity e, string before, string after) SV_TASEditorHistoryPush =
 {
 	local float s, i;
+	s = SV_TASPSlot(e);
+	if (!s) return FALSE;
+	if (strcmp(e.tase_histname, tasp_name[s]))
+	{
+		if (e.tase_history > 0) buf_del(e.tase_history);
+		e.tase_history = e.tase_count = e.tase_cursor = 0;
+		if (e.tase_histname) strunzone(e.tase_histname);
+		e.tase_histname = strzone(tasp_name[s]);
+	}
+	if (e.tase_history <= 0) e.tase_history = buf_create_ex("string", 0);
+	if (e.tase_history <= 0) return FALSE;
+	if (e.tase_cursor == 8)
+	{
+		for (i = 0; i < 14; i = i + 1)
+			bufstr_set(e.tase_history, i, bufstr_get(e.tase_history, i+2));
+		e.tase_cursor = 7;
+	}
+	bufstr_set(e.tase_history, e.tase_cursor * 2, before);
+	bufstr_set(e.tase_history, e.tase_cursor * 2 + 1, after);
+	e.tase_cursor = e.tase_cursor + 1; e.tase_count = e.tase_cursor;
+	return TRUE;
+};
+
+void(entity e) SV_TASEditorKeep =
+{
+	local float s;
 	local string before, after;
 	SV_TASEditorFrame(e);
 	if (!e.tase_preview || !SV_TASEditorRows(e)) return;
@@ -281,29 +308,10 @@ void(entity e) SV_TASEditorKeep =
 		sprint(e, PRINT_HIGH, "tas editor: Keep NOT committed: immutable candidate unavailable; retry Keep or Discard, original retained\n");
 		strunzone(before); strunzone(after); return;
 	}
-	if (strcmp(e.tase_histname, tasp_name[s]))
-	{
-		if (e.tase_history > 0) buf_del(e.tase_history);
-		e.tase_history = e.tase_count = e.tase_cursor = 0;
-		if (e.tase_histname) strunzone(e.tase_histname);
-		e.tase_histname = strzone(tasp_name[s]);
-	}
-	if (e.tase_history <= 0) e.tase_history = buf_create_ex("string", 0);
-	if (e.tase_history <= 0)
+	if (!SV_TASEditorHistoryPush(e,before,after))
 	{
 		sprint(e, PRINT_HIGH, "tas editor: Keep NOT committed: history allocation failed; original retained\n");
 		strunzone(before); strunzone(after); return;
-	}
-	{
-		if (e.tase_cursor == 8)
-		{
-			for (i = 0; i < 14; i = i + 1)
-				bufstr_set(e.tase_history, i, bufstr_get(e.tase_history, i+2));
-			e.tase_cursor = 7;
-		}
-		bufstr_set(e.tase_history, e.tase_cursor * 2, before);
-		bufstr_set(e.tase_history, e.tase_cursor * 2 + 1, after);
-		e.tase_cursor = e.tase_cursor + 1; e.tase_count = e.tase_cursor;
 	}
 	strunzone(before); strunzone(after);
 	SV_TASEditorClearPreview(e);

@@ -1,6 +1,6 @@
 # TAS project: current status and continuation
 
-Status reconciled 5 November 2026 UTC (6 November locally). Start with
+Status reconciled 6 November 2026 UTC. Start with
 [the full plan](plan-tas.md); this page summarizes delivery, not a replacement
 for its acceptance criteria. There is no honest single completion percentage:
 the local authoring loop is substantially delivered, while contact-aware section
@@ -40,6 +40,23 @@ SSH timeout is retained; the on-box activation succeeded and was reconciled
 read-only, without repeating swaps/restarts. See the qualification for scope.
 This is deployment evidence, not owner usability or genuine-device signing.
 
+### Implemented manual sections, pending delivery
+
+[P1336](p1336-tas-sections.md) adds a full-retained-line Sections tab with manual
+endpoint naming, input-range selection and bound start/end navigation. Add,
+rename, move-to-current-body and remove save the complete raw/settings line even
+while paused earlier. Original revisions, no-input-supply semantics and the
+ordinary partial-save guard remain. A conservative cumulative byte budget now
+refuses oversized synchronous marker saves intact; storage/browser limits remain
+unchanged. Actual old48000-row control18 exhausts the VM AFTER read/load/browser
+baseline; corrected22 safely refuses, stays responsive and saves a short edit on
+that same server. Corrected metadata58 and16synthetic budget-helper checks pass;
+earlier widgets31/panel inspection remain separate evidence. Two final independent
+whole-feature reviews cleared the corrected code; publication and BOTH-Windows/
+lobby delivery are pending. Provisional P1335 was renumbered before publication
+without a runtime source change. This is the manual foundation, not contact detection
+or best-found solving; P1329 remains the current installed authoring feature.
+
 The API reader upgrade is reviewed/tested/published but still needs the owner's
 root-authenticated standalone TAS-service upgrade. This does **not** block local
 editing: normal in-game sharing explicitly accepts only legal-start v3 projects,
@@ -53,10 +70,11 @@ Source, qualification, deployment and human acceptance are separate evidence.
 
 ## Still unfinished
 
-1. **Human-plan phase 4: sections and navigation.** Named checkpoints exist, but
-   the human-first section browser/manual marker workflow and actual-contact ramp
-   proposals are not delivered. Start with explicit manual boundaries; do not
-   label a ramp merely from `FL_ONGROUND`, proximity or speed.
+1. **Human-plan phase 4: contact-aware sections.** P1336's manual browser and
+   marker workflow is implemented/isolated-qualified, with review/delivery still
+   pending above. Actual-contact ramp proposals remain unimplemented. Keep manual
+   boundaries explicit; do not label a ramp merely from `FL_ONGROUND`, proximity
+   or speed.
 2. **Human-plan phase 5: constrained section/next-ramp solving.** Existing bounded
    optimizers are not this feature. Real ramp/air candidates must satisfy contact
    and arrival constraints, reject a fast missed ramp, preserve the original on
@@ -77,9 +95,9 @@ Source, qualification, deployment and human acceptance are separate evidence.
 
 ## Resume here
 
-Continue the [human-first plan](plan-tas-human-workflow.md) with manual sections
-and navigation, followed by actual-contact proposals and constrained next-ramp
-work. Keep the delivered play/pause/full-captured-line/settings loop intact.
+Finish P1336 manual-section delivery, then continue the
+[human-first plan](plan-tas-human-workflow.md) with actual-contact proposals and
+constrained next-ramp work. Keep the delivered play/pause/full-captured-line/settings loop intact.
 A rearranged128-tick demonstration, one passing build or this deployment is not
 whole-project completion. Dynamic-world, streamed-history, physical-device and
 general-route limits remain explicit.

@@ -21,6 +21,12 @@
 
 ## next
 
+### P1336 Name and navigate TAS sections
+- A new Sections tab splits the complete captured local line at your named markers. Select a section's inputs or replay to its start or end without losing the later line.
+- Add, rename, move or remove manual boundaries while paused. Marker edits save the full retained run, even from an earlier body; Undo/Redo keeps the original revisions.
+- Marker names have their own text field, with safe held-key handoff to gameplay and the existing recipe editor. These are manual sections, not automatic ramp detection or a fastest-route solver.
+- Oversized marker edits stop safely with the full saved line intact instead of exhausting the game server. Long lines can still be browsed; synchronous marker saving has a conservative size limit.
+
 ### P1335 Optional Christmas effects and closer ramp dirt
 - Added a Christmas effects master switch, off by default, in Display Info and as r_christmas. It gates seasonal weather, snow, ambience and decorations while keeping individual effect settings.
 - Ramp marks and dirt are now off by default. Enabled dirt sits much closer to ramps, using depth bias instead of a visibly floating layer; lift adjustments apply live.

@@ -1,5 +1,83 @@
 # AGENT_NOTES.md
 
+## P1336 manual TAS section metadata and name ownership
+
+- Manual intervals are completed body [a,b] and input rows [a+1,b]. Name-at-head
+  has no empty tail. Full retained extent and current body are separate. A
+  Timeline input picker cannot select head+1 to seek after the last row: use the
+  existing section Go-to-End / bound seek2 endpoint, not a fabricated row.
+- Existing SV_TASProjectSave already REFUSES an ordinary partial save that would
+  cut the captured future. Preserve this guard. Metadata-only marker writes use
+  the complete frozen raw line, retained CPs and unchanged authored settings,
+  supply NONE and no execution grant. Never temporarily fake body/head/pose to
+  convince the ordinary input-save path that it reached a future endpoint.
+- Freeze/Rows/Read tokenize. Own all command names/hash/numbers before them.
+  SV_TASPRead takes a project NAME, not SV_TASPPath(name); the latter double-prefixes
+  the namespace and safely refuses. Its path override is separately owned/reset.
+  Internal CP name lists MUST end in semicolon: a join lacking the final one
+  made NameAt return an empty last name. Typed canonical read-back correctly
+  refused; fix producer, not validation. Refusal now includes its line number.
+- Staged CP pointer/names/revision/supply roll back on writer failure; immutable
+  original stays. A blocked owned .new stage acts as the negative, and the same
+  normal writer works after verified fixture restoration. Removing the last
+  marker's name retains its real full-head snapshot. Undo's newer named working
+  file may differ from active node: only a known retained node in this editor's
+  own history permits the new branch; unrelated named-file changes still refuse.
+- Both recipe/marker fields use the SAME scan owner/repeat/release code, separate
+  draft/caret and widget ids. Blur on tab switch without clearing owned scans;
+  old native ups still forward. sui_text_input takes BOTH text/caret as inout:
+  dispatch to the actual globals, not disposable local copies. Fresh marker and
+  recipe keys, already-held gameplay repeats, cross-tab releases and real widget
+  saves act in the native31-check case; owner feel remains separate.
+- fteqcc parses float *a, *b as a shared pointer type plus another star on b;
+  use separate pointer declarations. memfree((void*)p) avoids pointer warnings.
+  sprintf's format occupies one of EIGHT TOTAL vararg slots: at most seven
+  interpolated values. Split the marker command, do not drop its final binding.
+- Bare tas cp / cmd tas cp print usage, not the list; use cmd tas cp list.
+  Public qualification: tools/p1336-tas-sections.md. Qualified under provisional
+  P1335, renumbered before publication to avoid an existing reservation; no runtime
+  source change, final whole-feature reviews clear on the qualified code. Native14acting control,
+  20browser,58metadata and31widget assertions have normal quit0 pairs. This is
+  manual phase4 foundation, NOT contact proposals/section-solver completion.
+- Refresh must obtain Project metadata BEFORE its sections2 page: an unsaved
+  legacy CP edit can change server ncp without body/hash. Keeping the ncp guard
+  but refreshing only its dependent page permanently rejects every new page.
+  Existing TASProject_IntentRequest provides the authoritative quiet event.
+- The metadata writer emits parent=current-name/previous-revision; sync the owned
+  local parent name only AFTER success, or the following ordinary save reuses an
+  old/empty name with the new revision. Recompute made/signed per CHILD hash before
+  ProjectEvent, using the same helpers as ordinary save, never inherited flags.
+  Actual old24/control vs corrected24/subject acts refresh and ordinary-save bugs;
+  literal success-tail six checks cover SYNTHETIC flags/parent, not signing.
+  Minimal VM completes checks but own spawned PID needs stopping after its quit
+  deadline during later map setup (exit1); this is NOT a world pass. Full game
+  pairs quit0. Do not expand the optional VM fixture to simulate the whole map.
+- tas menu TOGGLES closed: after marker setup, open tas sections before a Timeline
+  goto. A first review-control fixture omitted this open and its goto vanished;
+  preserve that failed setup, do not interpret silence as product behavior.
+- Repeated strict project reads share the ONE command VM budget. Actual48000-row
+  authored local plan reads/loads/browses, but old marker18control then runs away
+  and ONLY the owned test server exits1. Do not raise VM limits or truncate data.
+  Preflight named/original sizes plus child reserve; marker-only actual-byte budget
+  covers EVERY nested strict read, including repair/branch/stage/final checks.
+  Zero remaining stays active; clear on ALL exits. Dirty input/settings must be
+  saved/reverted before Freeze, not implicitly saved inside metadata transaction.
+  New22 safely refuses then accepts a short edit on SAME live server, normal0;
+  new58rollback/history passes.16literal helper size checks are NOT body proof.
+- Socket actor extensions must use its EXISTING send(line,target) and conbridge
+  call(args,packet), not the separate CLI wrapper's call(mode,**kwargs). Page
+  snapshots expose retained extent as head, not last. check_supply returns the
+  CHANGED-TICK LIST, not boolean success. Read helper signatures before use.
+  Public project load accepts real CP NAMES, not internal @tick; use an existing
+  real captured CP/prefix, never a fabricated future pose. External loose files
+  need source-reviewed fs_flush per P1103 notes, not a restart/new filename.
+  Preserve strict-producer, namespace, cache, RPC/schema and wait-pattern failures;
+  do not count them as acted product cases. Expected old runaway is NOT normal0
+  and latest-receipt fixture gates must verify its exact own log/ended state.
+- Required corpus scope is data/runs (parts/paired views), not the separately
+  access-denied legacy kept-save prefix. Existing351faults are NOT zero; compare
+  no increase, preserve bytes/ACLs, and parse newly added view inputs explicitly.
+
 ## Similarity SQL-budget fixtures: distinguish schema probe from request (6Nov)
 
 - `surfd.connect()` intentionally opens/closes a separate mode=ro schema-refusal
