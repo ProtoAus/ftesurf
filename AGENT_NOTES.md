@@ -34,6 +34,46 @@
   another session. No group/world access widening or source change is needed.
 
 
+## P1353 delivery: exact inputs versus volatile boundaries (6 Nov 2026)
+
+- Completed dual Windows/all12lobby delivery and limits are in
+  `tools/p1353-reported-bugs.md`. No owner confirmation or Build/release bump.
+  The earlier prose's full c24 compiler hash was a transcription error: use the
+  actual retained qualified-compiler/UI receipts, not a remembered prefix/suffix.
+  Those original receipts and the final compiler agree; no compiler replacement
+  or unsafe7ccb qualification was needed to correct the prose/expected literal.
+- A full ARM fixture needs the declared **base-game** content mounts as well as
+  gamedir content. Linking only gamedir maps omits momentum/cstrike/hl2/placeholders.
+  Keep the first missing-map failure. The768MiB address-space cap used for GCC is
+  compile-only: the observed live headless processes reserve about3GiB virtual
+  address space despite much smaller resident sets. Applying that cap to runtime
+  causes an artificial OOM. Use the existing serialized full-content route with
+  actual memory headroom; this is not a universal RAM/performance claim.
+- Standard HL2 generation changed only `mat_vmt_progs.h`'s generator-path comment.
+  Exact substitution must reproduce the WHOLE Git header; do not accept arbitrary
+  generated-source differences. All other exported source bytes remain checked.
+- A peer's already-published backend generation changed while full archives were
+  copied off-box. Preserve the original pre-stage refusal and actor-bound archive
+  inventories. An explicit fresh boundary may bind only the changed backend when
+  its original actor is retired, the new OPEN/unpinned profile is fully inspected,
+  every archived part/resume identity/byte/metadata still agrees, and actual
+  native/backend FD closure passes. Do not edit the archived PID, redate proofs,
+  refresh source artifacts or skip the locked check. The narrow refresh guard has
+  one acting read-only positive and two refusal controls; original data evidence
+  and native/QW/CS inputs stay unchanged.
+- File format14/15 is not movement pin12. Use the actual record magic/approved
+  reference, not a guessed format or abbreviated map name. The documented Pin7
+  case is `surf_colin_blaster_69000` with its archived QW context. Latest-world
+  Voyager's physent HOLD remains a HOLD; the archived-context PASS is not current
+  admission. No recording-format or collector change belongs to these UI fixes.
+- Service stdout is the existing `serverN.log`, not journalctl's empty unit log.
+  `journalctl --since @epoch` accepts the boundary where this host rejects an ISO
+  timestamp with timezone suffix. Actual boot controls require BOTH `Loaded progs
+  qwprogs.dat` and `======== FTESurf Initialized ========` in the current boot,
+  bound to the actual PID/birth/stdout inode. Append-only logs are observations,
+  not immutable artifact inputs: do not call an empty log a pass or overwrite an
+  earlier observer failure when the log appends.
+
 ## P1352 similarity cursor retirement and scoped deployment (6 Nov 2026)
 
 - `sim_cursor` source slot0 is source rotation, slot1 interrupted admission and
