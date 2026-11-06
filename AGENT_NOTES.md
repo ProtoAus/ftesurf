@@ -2,6 +2,13 @@
 
 ## P1339 requested atlas caches and native material readiness
 
+- Windows Python `subprocess` text-mode STDIN is not an exact Git patch pipe:
+  measured `A\nB\n` becomes CRLF, while bytes input preserves LF. A correct
+  `git apply --cached` hunk was refused before staging; exact-byte diff capture
+  AND stdin fixed it. Inspect the empty/refused index, preserve peer receipts,
+  and bare-commit only the exact inspected cached diff; don't restage whole files
+  to hide a transport/EOL error.
+
 - Current main and deployed Pi are DIFFERENT valid client profiles. P1339 main
   ECB6d2c3 uses clMain's current interfaces; compatible Pi445abb4c preserves the
   deployed P1341/68597668 interfaces. Do not replace a whole cl_main/menu/server
