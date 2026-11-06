@@ -5570,6 +5570,30 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+**P1342/P1343 save-chain and relative-teleport controls (6Nov2026).** Exact QC
+helpers run in actual dedicated CPU VM: window22/release21, baseline10/8 intended
+failures; relative24, baseline7; subjects0 and compiler0warnings. Optional stat207
+D is a COMPLETE coherent C snapshot plus bounded +-2/3 rows, not an appendage to
+whatever C arrived most recently; extra-only changes must invalidate D. Tokenize
+is shared scratch state: retain outer row data before decoding quoted inner C.
+Release must replay the coherent cursor row or explicitly go blind, never reuse
+a prior load speed. Relative Enable needs BOTH saved BSPTRIGGER solidity and
+EF_NODRAW ownership (generic Enable previously cleared hiding). Shared point
+helpers do not replace collision/floor-lift, native PVS or human acceptance.
+Server-only relative quieting must reject ANY predicted same-point ordinary OR
+relative candidate; merely caching relative points can hide a real error.
+See tools/p1342-save-release.md and tools/p1343-relative-teleports.md.
+
+The mandatory primary RUNS sweep's actual predeployment baseline was548 runs,
+351fault count incl paired views, with the reader EXACT prework source;949 reader
+unit checks passed. Do not assume a historical corpus is fault-free or repair
+unrelated fixtures. The requirement is no INCREASE on the same domain. A default
+saves expansion hit an existing permission-protected fixture; preserve that
+failure/fixture and scope the required runs-only invocation explicitly. A single
+transient UDP27593 bind WinError10013 had no endpoint/exclusion and a bounded
+probe then succeeded; resume the SAME compiled prelaunch artifact at the real
+launch boundary, not a numbered wrapper/copy or a weaker result assertion.
+
 **Reader transport and clock fields — P1143, 31 Oct 2026.** Expanding 528 absolute
 recording paths into Windows CreateProcess argv failed with WinError206 before
 the reader started. Invoke the SAME existing `reccheck.main` with its exact

@@ -397,13 +397,18 @@ void(entity e) SV_TpEyeDetach =
 	e.tp_eye = world;
 };
 
+float(entity t) SV_TpIsTele =
+{
+	return (t.touch == trigger_teleport_touch || t.touch == trigger_teleport_relative_touch);
+};
+
 void() SV_TpChain =
 {
 	local entity t;
 
 	tp_chain = world;
 	for (t = nextent(world); t; t = nextent(t))
-		if (t.touch == trigger_teleport_touch)
+		if (SV_TpIsTele(t))
 		{
 			t.tp_next = tp_chain;
 			tp_chain = t;
@@ -440,7 +445,9 @@ void(entity e) SV_TpEyeThink =
 	bd = 999999999;
 	for (t = tp_chain; t; t = t.tp_next)
 	{
-		if (wasfreed(t) || t.touch != trigger_teleport_touch || t.solid == SOLID_NOT)
+		if (wasfreed(t))
+			continue;
+		if (!SV_TpIsTele(t) || t.solid == SOLID_NOT)
 			continue;
 		if (SV_Key2(t.StartDisabled, t.startdisabled))
 			continue;
@@ -467,15 +474,24 @@ void(entity e) SV_TpEyeThink =
 	org = '0 0 0';
 	if (best != world)
 	{
-		tgt = SV_TpDest(best, e);
-		if (tgt != "")              // find("") returns client slot 0 (Patch 881)
-			d = find(world, targetname, tgt);
-		if (d != world)
+		if (best.touch == trigger_teleport_relative_touch)
 		{
-			org = d.origin;
+			org = SV_RelTelePoint(best);
 			have = TRUE;
-			e.tp_eye_hold = time + 1;
 		}
+		else
+		{
+			tgt = SV_TpDest(best, e);
+			if (tgt != "")          // find("") returns client slot 0 (Patch 881)
+				d = find(world, targetname, tgt);
+			if (d != world)
+			{
+				org = d.origin;
+				have = TRUE;
+			}
+		}
+		if (have)
+			e.tp_eye_hold = time + 1;
 	}
 	z = -1;
 	if (cvar("sv_tp_pvs") == 2)

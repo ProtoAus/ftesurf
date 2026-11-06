@@ -211,6 +211,11 @@ float(vector srv) PE_ServerTele =
 					if (vlen(tt_org[d] - tg_sod[i]) < 2)
 						return FALSE;
 				}
+				else if (tg_kind[j] == TG_RELTELE)
+				{
+					if (vlen(TG_RelTelePoint(j) - tg_sod[i]) < 2)
+						return FALSE;
+				}
 			return TRUE;
 		}
 	return FALSE;

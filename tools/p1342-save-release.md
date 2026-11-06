@@ -36,14 +36,17 @@ stat delivery/queue/rate stubs.43checks total:
 - Release21: baseline8intended failures, subject0. Includes full queued step/release/
   apply integration for extended2/3 chains, stale separate speed, known/unknown/
   refused/legacy/recovery/backstop/missing-ring/queue-full/free-mode controls.
-Both compiler0warnings, server exit0. Main standard THREE-VM NoDeploy build0warnings.
+Both compiler0warnings, server exit0. BOTH main/Pi-profile standard THREE-VM
+NoDeploy builds0warnings.
 Initial pointer-declaration and sent-cursor fixture setup failures retained; no
 warning waived. Earlier smaller fixtures are retained history, not current totals.
 
 This is source-helper/state evidence, NOT full native packet/physics or proof of
 a historical report's cause. Engine stat strings support65536-byte read buffers
 and existing reliable string transport; no measured bandwidth/FPS claim is made.
-Independent reviews, Pi-profile build and paired deployment remain pending here.
+Reader949checks pass. Primary RUNS548/351fault-count incl views is the actual
+predeployment baseline (reader exactly prework source), not a fault-free claim.
+Independent reviews, native packet smoke and paired deployment remain pending.
 Human acceptance in lextest.md: hold a save, step next/previous2or3times quickly
 and release; compare single-step and first/last recovery. Unknown longer chains
 may still arrive server-authoritatively; old-save release speed must not apply.

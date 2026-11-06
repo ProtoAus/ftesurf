@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1343 relative teleports — delivery pending, human check pending
+
+A familiar relative teleport (e.g. surf_4am) should remain invisible/pass-through after an
+enable/toggle, land at the same place and avoid an unnecessary destination flash.
+Actual helper VM24/0 vs7baseline failures is not native PVS/physics/feel or measured
+performance acceptance. Report threshold stays2units; predicted same-point
+ordinary/relative errors must remain eligible rather than quietly excused.
+
 ## P1342 short save chains/release — delivery pending, human check pending
 
 Hold a save, step next/previous2or3times quickly, release. These short chains

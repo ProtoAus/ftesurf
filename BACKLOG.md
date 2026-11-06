@@ -419,10 +419,9 @@
   reproduced locally (eternity, 40 ms). The excusal also hides their data.
 - Lex's 0.2 s eternity snap (284 u; the server ran ~6 of 13 commands) is not explained: a 0.2 s
   loss is replayed exactly in the arm. The next report with == server rows will show it.
-- TG_NoteServerTele records only TG_TELE (not demoted relative teleports) and at most 32.
-- Server: trigger_teleport_relative never sets vbsp_io_solid, so an Enable not preceded by a
-  Disable makes it SOLID_BSP and drawn (sv_entities.qc ~2966). P1190's PVS eye covers only
-  trigger_teleport_touch, so a relative teleport's destination entities pop in.
+- TG_NoteServerTele's ordinary/relative destination registry is still bounded at32 (P1343 fixes
+  relative coverage/ambiguity, not that cap). Falsifier: >32distinct demoted destinations in one
+  map and a later server-only snap to an omitted point; not yet measured/reproduced.
 - The server row ring is one strbuf of formatted rows per player (3 sprintfs a command); keep raw
   numbers and format on upload if lobby CPU ever matters. Sequence floats pass 2^24 after ~70 h.
 
