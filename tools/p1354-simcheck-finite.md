@@ -44,7 +44,44 @@ whole-flush rollback rather than being swallowed as a pair failure.
   during real comparison, and a deliberate SQLite trigger still rolls back the
   entire short flush. No live collection or player data is used by these tests.
 
-ARM regression, independent clean-source review, publication and guarded backend
-cutover are pending. A passing source test is not a live-delivery claim. This is
-one finite availability/metadata-correctness repair, not a hard total resource,
-fleet-completeness, nonparticipant, authenticity, hardware or enforcement proof.
+## Actual publication and delivery
+
+**Deployed6November2026 at20:16:38UTC.** Public source and serving generation
+`bf9c7b306bce2c8f538fcf13cc0c3be48e719005`; engine journal
+`d3dfefb21231d28761ff56a23cfe99f7caec780b`.
+
+Two differently-lensed independent reviews of the clean frozen source found no
+blockers. ARM270unitcases/0skips and68standalone checks pass, with all1301supplied
+Git-source files exact before/after. Reader949checks pass; stable548REC/178VIEW
+corpus retains351existing faults, with reader/heldmeta identical to prefeature.
+These are invocation totals, not whole-product or unique authored coverage.
+
+The existing guarded84-file generation route changed only `simcheck.py`; the
+other83frozen runtime files and separately bound reader stayed unchanged. Both
+actual CLOSED primary/rollback candidates ran real80-opportunity NaN/infinity
+controls, existing authentication/source guards and six acted guard negatives.
+Cutover preserved44schemas, eightidentity-table digests and protectednonchurn
+counts;156bound-file checks pass. Fourcron routes and the managed importer are
+rebound. Realhealth is good, primaryOPEN/fallbackCLOSED. The shared installer input
+was restored exactly and its reservation removed.
+
+Ten tests then passed against the actual installed module using only owned
+synthetic SQLite/files, not production collection/history. The original source-
+provenance literal refusal and missing launcher-digest alias remain recorded.
+The alias was recovered from the ORIGINAL captured156-file map, not a refreshed
+preimage; same archive and four original CLOSED fence/manifest bytes stayed exact
+through guarded stage completion, without reinitialization. ARM's pre-execution
+inherited-setgid refusal remains recorded; only four UID/inode/OWNER-bound owned
+directories had that bit cleared, with no access widening or source mutation.
+
+Required runtime: `/srv/nvme/agent-work/ac-next-20261106T1916Z-01a1/runtime`, with
+primary `state/` and installed namespace pins. Keep the same root's
+`rollback-runtime`/CLOSED `control/` for exact predecessor9b6cb7c0 current-data
+rollback. These are active dependencies, not disposable scratch. The historical
+private DB backup is NOT a restore input. No lobby/game/native/VM/Build/release
+was changed by this backend deployment.
+
+This is finite-output availability validation, not a general type/range or
+reader-contract validator. Finite legacy rates can still be unprojectable by the
+admin UI, as before. No full resource/fleet/nonparticipant/authenticity/hardware
+or enforcement proof, threshold decision or historical rewrite is claimed.

@@ -1,5 +1,29 @@
 # AGENT_NOTES.md
 
+## P1354 finite output and bounded preparation recovery (6 Nov2026)
+
+- SQLite `INSERT OR IGNORE` can silently omit a NaN-bound NOTNULL value; do not
+  infer whole-flush rollback from a non-finite upstream scalar. Actual80-row
+  controls disproved that initial prediction. Infinity can persist separately.
+  Collector finite validation uses existing pair-failed availability semantics,
+  not a low score/player finding. Finite alone is not a full type/range contract
+  or guarantee the existing admin projection can show a value.
+- A zero-match offset tie in the existing80-row fixture selects-4, leaving76real
+  opportunities. Assert actual populations, not guessed80 or nonexistent constants.
+- Private backend `source_provenance` is an exact supported input-contract tag,
+  not free-form feature prose. Capture every consumer-required launcher alias
+  before staging. The actual launcher hash is already in the frozen backend file
+  map; recover only that original digest, never refresh/re-date a stale preimage.
+- After the missing-alias refusal, the same prepared archive, all156predecessor
+  files and four original CLOSED fence/manifest bytes were verified before the
+  existing guarded finish-staging path completed. No fence reset/new attempt root
+  or reinitialized nonce/epoch is acceptable. Preserve the original refusal.
+- New private scratch directories can inherit setgid02700 despite mkdir0700.
+  Inspect exact UID/type/link/inode/OWNER binding before clearing that bit on
+  specifically owned root/test/home/tmp paths; never blanket-chmod a parent or
+  another session. No group/world access widening or source change is needed.
+
+
 ## P1352 similarity cursor retirement and scoped deployment (6 Nov 2026)
 
 - `sim_cursor` source slot0 is source rotation, slot1 interrupted admission and

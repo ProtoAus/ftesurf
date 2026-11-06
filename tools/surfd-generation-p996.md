@@ -1,6 +1,18 @@
 # Backend generation swap: P996 (25 Oct 2026) -- the procedure as run
 
-> **Current P1352 tuple, verified 6 November 2026 at18:42 UTC:** generation
+> **Current P1354 tuple, verified6November2026 after20:16:38UTC cutover:**
+> `bf9c7b306bce2c8f538fcf13cc0c3be48e719005`, collectors84-v1/schema26; exactly
+> `simcheck.py` changed, other83runtime bytes and canonical reader unchanged.
+> Both CLOSED cohorts and real80-opportunity NaN/Inf controls pass;44schemas,
+> eightidentity digests/protected counts and156bindings preserved;10actualinstalled
+> module tests pass. ActualhealthOK, primaryOPEN/fallbackCLOSED, installer restored.
+> REQUIRED `/srv/nvme/agent-work/ac-next-20261106T1916Z-01a1/runtime` and `state/`,
+> same root's `rollback-runtime`/CLOSED `control/`, wrappers and namespace pins.
+> Current-data rollback to9b6cb7c0, neveroldDBrestore. See
+> [p1354-simcheck-finite.md](p1354-simcheck-finite.md). Dated state; inspect actual
+> serving tuple before future operations, not this note alone.
+>
+> **Historical P1352 tuple, verified 6 November 2026 at18:42 UTC:** generation
 > `9b6cb7c0c48a14994fd08f6012643f668514153c`, collectors84-v1/schema26; exactly
 > `simcheck.py` changed, other83 frozen runtime files and separate reader unchanged.
 > Activated18:36:12UTC through the existing guarded route;44schemas/eightidentity
