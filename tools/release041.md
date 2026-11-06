@@ -30,8 +30,11 @@ Public page: https://proto.bar/ftesurf/
 
 Prepared candidate SHA256:
 `0cac4638aadb25cfc37633a757a61a8bda70b28c774cc4a891807baee4753383`.
-Public release-receipt SHA256:
+Prepared build-receipt SHA256:
 `2596dafd3ba16e84ced2e1daa63b4846990d72b965e204c65fc7728302a0082d`.
+Public `version.json` omits that receipt's tool/host field, as intended. Its bytes
+match the sealed site JSON exactly; SHA256:
+`285175afb1aa872380c54c022193c89841ee0f8bc7961fac6307675c3097c783`.
 Signed update-feed SHA256:
 `39eb63a06f2de3ae65e890af3e9292d6202b24e73e87fd68a2c55047e3b5b262`.
 Previous feed:
