@@ -21,6 +21,9 @@
 
 ## next
 
+### P1341 No stale boost after velocity-reset teleports
+- Fixed predicted push velocity surviving teleports that reset or redirect velocity. Keep-velocity and landmark teleports still preserve their intended speed, and a later push still works.
+
 ### P1337 Safer developer-tool commands
 - Hardened developer-tool command handling while keeping normal local developer workflows available.
 

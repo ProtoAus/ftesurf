@@ -191,6 +191,7 @@ float  tg_lastoffset, predmove_offset; // P924: increasing means a split continu
 float  tg_teleseq;              // Patch 611: ...and of the last one a teleport was predicted on (cl_trail.qc)
 float  tg_pusharmed;
 vector tg_pushvec;
+float  tg_carrier_cleared;      // a later push replaces this command's carrier clear
 vector tg_pmins, tg_pmaxs;      // last hook's hull, for trig_here
 
 // load census, for trig_dump
@@ -1560,6 +1561,20 @@ float(entity trig, vector o0, vector o1) TG_Overlaps =
   the server's copy, and a client that wrote them would be writing them
   twice.
 */
+// Mirror SV_ClearCarrier, including an earlier push in this touch pass.
+void() TG_ClearCarrier =
+{
+	if (!tg_bvel_ok)
+		return;
+	tg_pusharmed = 0;
+	tg_pushvec = '0 0 0';
+	predmove_basevel = '0 0 0';
+	predmove_bvfired = 0;
+	predmove_bvset = '0 0 0';
+	predmove_bvsetflag = 1;
+	tg_carrier_cleared = 1;
+};
+
 float(float i, float seq) TG_FireTeleport =
 {
 	local float drow, mrow, snapang, hs, vmode;
@@ -1648,6 +1663,8 @@ float(float i, float seq) TG_FireTeleport =
 		makevectors(tt_ang[drow]);
 		predmove_vel = v_forward * hs;
 	}
+	if (vmode == 1 || vmode == 2 || vmode == 3)
+		TG_ClearCarrier();
 	return 1;
 };
 
@@ -1685,11 +1702,7 @@ float(float i, float seq) TG_FireRelTele =
 	predmove_vel = '0 0 0';
 	predmove_onground = 0;
 	tg_teleseq = seq;
-	if (tg_bvel_ok)
-	{
-		predmove_bvset = '0 0 0';       // SV_ClearCarrier: the held carrier is zero from here
-		predmove_bvsetflag = 1;
-	}
+	TG_ClearCarrier();
 	return 1;
 };
 
@@ -1754,6 +1767,13 @@ float(float i, float seq) TG_FirePush =
 		predmove_org = predmove_org + '0 0 1';
 	}
 
+	// The native adapter applies bvset after the push queue. Do not let an
+	// earlier teleport's clear erase a later push; the server arms it anew.
+	if (tg_carrier_cleared)
+	{
+		predmove_bvsetflag = 0;
+		tg_carrier_cleared = 0;
+	}
 	tg_pushvec   = push;
 	tg_pusharmed = 1;
 	predmove_basevel = push;
@@ -1991,6 +2011,7 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 	*/
 	tg_pusharmed = 0;
 	tg_pushvec   = '0 0 0';
+	tg_carrier_cleared = 0;
 
 	// The sweep's bounding box, for the cheap reject.  org1 is latched
 	// BEFORE any fire: a teleport rewrites predmove_org mid-pass and the
