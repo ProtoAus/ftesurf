@@ -1,12 +1,13 @@
 # lextest.md — things waiting on a human
 
-## P1335 Christmas master/defaults and close ramp dirt — Windows installed, lobby/check pending
+## P1335 Christmas master/defaults and close ramp dirt — installed, human check pending
 
 BOTH Windows installed6Nov02:50UTC, current-pair D911/CSP117d627ace2d plus
-exact defaultcfg hunk; client caches seeded. Lobbies remain old5e8/1ca: one
-connected client blocked the safe window (exit75, no stage/restart). Do not
-judge this feature using that older downloaded lobby client. Resume guarded
-rollout once empty/current-pair identity is checked; no repeat approval needed.
+exact defaultcfg hunk; client caches seeded. ALL12lobbies installed6Nov03:37UTC,
+Pi-compatible C4/CSPb7d67c223057 with native/server/backend unchanged. Normal
+warning and10-second grace preceded disconnect/save and required preimages;
+all12new actors and served/downloaded CS hash verified. Board draws, no QC error.
+Earlier occupied-window refusals remain historical, not delivery evidence.
 
 Owner's positive P1332 response ("epic") is recorded as general visual feedback,
 not measured FPS/timing or a detailed cap/footstep acceptance. Requested changes:
