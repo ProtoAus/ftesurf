@@ -2,8 +2,11 @@
 
 ## P1339 replay-baked ramp atlases - human appearance check pending
 
-After the P1339 deployment receipt is complete, on a familiar prepared map use
-`rampwear_download`, then `r_rampwear 1` (and dirt separately if wanted). Are the
+Installed6Nov2026UTC: BOTHWindows07:11, ALL12Pi07:38;100/114map triples
+published,14explicit coverage gaps. Native transport/material/largest-mesh and
+fresh served-CS smoke pass; no owner visual/feel/FPS acceptance yet.
+On a familiar prepared map use `rampwear_download`, then `r_rampwear 1`
+(and dirt separately if wanted). Are the
 scratches dense enough and visible well beyond the old short throw distance?
 Both effects still default off; a download alone must not enable either one.
 The snowflake model move is byte-identical; no new snow appearance/FPS claim.
