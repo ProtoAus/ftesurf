@@ -1,8 +1,9 @@
 # lextest.md — things waiting on a human
 
-## P1350 observed TAS contacts -- implemented, delivery/owner check pending
+## P1350 observed TAS contacts -- BOTH Windows/all12 lobbies deployed6Nov; owner check pending
 
-Once installed, one small local check: play a disposable two-ramp line, Pause,
+Installed17:23Z Windows/17:33Z lobbies; exact hash/data/native actor checks pass.
+One small local check: play a disposable two-ramp line, Pause,
 open Sections > Observed contacts and use Go to start/end on one face. Is that
 small panel readable, do repeated clicks act naturally, and does the later line
 remain available? Manual markers should stay separate; a ramp can have multiple

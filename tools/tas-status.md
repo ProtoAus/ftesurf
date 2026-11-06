@@ -29,6 +29,7 @@ camera/input feel remains pending in [lextest.md](../lextest.md).
 | Human-first local controller | Normal play → Pause; independent movement, yaw/gain and duck controls; optional Follow travel pitch | Owner feel and broader ramp/ground cases still need acceptance; [human plan](plan-tas-human-workflow.md) |
 | Full captured local line | Browse/seek/recalculate retained earlier inputs, preview and recover the original; named literal templates | Captured native-base projects, bounded input capacity; not position-only or arbitrary streamed imports; [P1323](p1323-tas-recipes.md) |
 | Historical local settings | Completed-tick movement/turn/duck/Follow settings restore on seek, survive closed-panel save/reload and history operations | Local v4 only; missing/legacy intent stays unknown, not guessed; [P1329](p1329-tas-settings.md) |
+| Observed local sections | Passive native contact maps, complete exact-source face browsing and retained-line start/end navigation | Both Windows/all12 lobbies deployed6November; static profile, not constrained solving or owner acceptance; [P1350](p1350-tas-contacts.md) |
 | Server replay foundation | Operator-only bounded legal-start verifier | Qualified 15 ms fixture profile, not public admission; [runner contract](tasverify.md) |
 | Canonical-content foundation | Native VFS source inventory, epoch/lease and binding checks | Components, not complete production source qualification; [source contract](tas-native-source.md) |
 
@@ -40,7 +41,7 @@ SSH timeout is retained; the on-box activation succeeded and was reconciled
 read-only, without repeating swaps/restarts. See the qualification for scope.
 This is deployment evidence, not owner usability or genuine-device signing.
 
-### Manual sections published; native observations implemented, delivery gates pending
+### Manual sections and native observations published and deployed
 
 [P1336](p1336-tas-sections.md) adds a full-retained-line Sections tab with manual
 endpoint naming, input-range selection and bound start/end navigation. Add,
@@ -53,8 +54,8 @@ baseline; corrected22 safely refuses, stays responsive and saves a short edit on
 that same server. Corrected metadata58 and16synthetic budget-helper checks pass;
 earlier widgets31/panel inspection remain separate evidence. Two final independent
 whole-feature reviews cleared the corrected code. P1336 is published and its
-BOTH-Windows install/runtime check passed; lobby delivery and owner acceptance
-are not claimed by that evidence. Provisional P1335 was renumbered before
+BOTH-Windows install/runtime check passed; P1350 now also carries those reviewed
+manual sections to all12 lobbies. Owner acceptance remains separate. Provisional P1335 was renumbered before
 publication without a runtime source change.
 
 [P1350](p1350-tas-contacts.md) now adds passive native world-ramp observations,
@@ -65,8 +66,9 @@ absence is explicit; unsupported/gap/no-ramp states are not guessed air. Final
 clean tagged-source Windows FULL/three-VM and ARM1608/0 builds, two independent
 whole-feature source reviews and current real-client cache acceptance are complete:
 old open-control37/37 acts and production65/65 passes with original/counters exact.
-Deployment remains a separate gate. This is an observation foundation, not
-best-found section solving.
+Both Windows installs and all12 lobbies are deployed; downloaded-client smoke
+and owner two-ramp acceptance remain pending. This is an observation foundation,
+not best-found section solving.
 
 The API reader upgrade is reviewed/tested/published but still needs the owner's
 root-authenticated standalone TAS-service upgrade. This does **not** block local
@@ -84,7 +86,8 @@ Source, qualification, deployment and human acceptance are separate evidence.
 1. **Human-plan phase 4 delivery/acceptance.** P1350's native contact proposals,
    full-source browser and metadata/preview invalidation are implemented and
    isolated-qualified; tagged builds, both final reviews and current real-client
-   checks pass. Finish deployment and the owner acceptance described above.
+   checks pass and BOTH Windows/all12 lobbies are deployed. Finish the bounded
+   downloaded-client smoke and owner acceptance described above.
    Keep manual boundaries explicit and static-world scope honest. Real moving/
    unsupported scenes and owner comfort are not supplied by helper tests.
 2. **Human-plan phase 5: constrained section/next-ramp solving.** Existing bounded

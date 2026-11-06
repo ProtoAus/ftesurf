@@ -103,13 +103,35 @@ source, range, counts, finite geometry and current preview state. Neither a
 client page nor a manual marker grants native work or authorizes another source.
 Old engines report **native contact metadata unavailable**, not an empty air map.
 
+## Deployment — 6 November 2026
+
+Published QQ1ce78b41/native8302c314c journal, native code/tag2f5c35c6b. Exact frozen
+qualified bytes deployed to BOTH Windows installs at17:23:49Z:28 targets match,
+52 predecessor/prior-prev members archived,18642 protected files unchanged and
+no process killed. At17:33:46Z the paired ARM/QW/CS promotion restarted all12
+positive-empty lobbies; each new native executable and mapped HL2 plugin inode
+matched the qualified output. No skipped units or protected loss/change among
+48466 files; configs and the active backend generation remained exact. Ordinary
+predecessors remain under `.prev`; required exact rollback preimages are retained.
+
+Before ANY canonical stage/restart, all8 actual recorder parts and all183 complete
+resume members/metadata were individually rehashed in ONBOX and OFFBOX archives;
+locked just-in-time actor/namespace/FD checks repeated before activation. The
+existing code catalog admitted only this shipped CSQC hash, preserving all prior
+bytes (74 ->75 codes); no backend/service redeploy or data restore. The sweep
+lock was released immediately after the transaction. A subsequent native-client
+lobby-download smoke did not obtain the unchanged4GiB/quiet60s admission window;
+that execution remains pending, not a pass. Owner two-ramp UI acceptance is also
+pending. This patch is observation/navigation, NOT a constrained section solver.
+
 ## Qualification to date
 
 Implemented and verified in an isolated real dedicated-socket Windows actor.
 Final native code/tag/pin is2f5c35c6b; current QQd035 includes published0.1.41/menu90
 and preserves the published1345-1349 changes. Clean Windows FULL native/three-VM
 and ARM qualification plus two final whole-feature source reviews are complete.
-Live deployment and owner acceptance remain separate delivery boundaries.
+Both Windows installs and all12 lobbies are deployed as recorded below. Owner
+acceptance and a downloaded-client lobby smoke remain separate boundaries.
 
 - Supported `build.ps1 -Engine -Full -NoDeploy`: successful native build, all
   three QCC VMs zero warnings; no compiler warnings in modified native files.
