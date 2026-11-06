@@ -83,9 +83,10 @@ Source, qualification, deployment and human acceptance are separate evidence.
 
 ### Experimental bounded local solver — P1355
 
-Actual22production helpers and34real dedicated-socket goal/cancel/recovery checks
+Actual22production helpers and37real dedicated-socket goal/cancel/recovery checks
 pass: fair baseline, all9 native candidates, complete future, real GUI Cancel,
-stale job isolation and exact Original input/settings recovery. Baseline was best;
+stale job isolation and exact Original input/settings recovery. Independent review
+fixes also prove optimizer exclusion and restored preview status after reopening. Baseline was best;
 no invented improvement or input credit. All3VMs compile0warnings. This is initial
 bounded-search qualification, not full two-ramp acceptance. Publication/deployment
 are separate states in [qualification](p1355-tas-solve.md).

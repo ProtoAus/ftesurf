@@ -1,7 +1,7 @@
 # P1355 experimental bounded local section search
 
 **Runtime qualified; publication/deployment recorded separately below.** Final
-fair-baseline22production helpers and34real dedicated-socket checks pass.
+fair-baseline22production helpers and37real dedicated-socket checks pass.
 This does not complete the human-first TAS plan or establish owner acceptance.
 
 ## Explicit scope
@@ -39,11 +39,11 @@ original first. Local v4 intent remains nonportable.
 
 ## Actual evidence and preserved failures
 
-- Real dedicated socket **34/34**: unchanged baseline/all9 candidates ACT, exact
+- Final real dedicated socket **37/37**: unchanged baseline/all9 candidates ACT, exact
   authored-work accounting, full future, actual GUI complete-preview flag,
   immutable original and exact saved current inputs/settings/future after Discard.
   Baseline was best: Keep invents no revision/credit/work; canonical supply none.
-- The SAME34control includes genuine source-bound GUI Cancel of active job2,
+- The SAME37control includes genuine source-bound GUI Cancel of active job2,
   stale job1 cannot cancel job2, cancelled Keep stays disabled, actual full
   original Discard finishes, and operation/preview clear rather than hang.
 - Actual21 production helper checks include all72 compact masks against the
@@ -58,7 +58,7 @@ original first. Local v4 intent remains nonportable.
   Baseline production helpers and a22nd control now cover eligible400/31 versus
   target-only300/35, outside-window1000/20 and invalid count. This is synthetic
   predicate coverage, not fabricated native movement. **Actual22helpers pass with
-  0failed; all34real native controls also pass on that final source.** Earlier
+  0failed; all37real native controls also pass on that final source.** Earlier
   failures and21-helper receipts remain historical, not relabeled.
 - Current source integrates published P1351-1353 (QC5b3ac8ac/native09262667d),
   retaining their pin/tag/Build and every own WIP patch before integration. All3
@@ -68,6 +68,18 @@ original first. Local v4 intent remains nonportable.
   remain preserved. After the owner freed RAM, the SAME prepared control acted;
   all own processes quit0 and the exact owned gate released. No peer process
   killed or threshold relaxed. Admission refusals are not product passes.
+
+- Two independent review rounds identified/fixed competing endpoint-optimizer
+  admission and missing status on workshop reopen. Final dispatch uses the EXISTING
+  optimizer/load gate, before solver mutation. Reopened preview requests status
+  at0.6s cadence, without requesting forbidden contact proposals. Actual old
+  optimizer admission + same-batch solver refusal preserve body/source/no preview;
+  actual workshop close/reopen automatically restores the ready result and its
+  preview/recovery button. No blocking findings in both corrected-round reviews.
+- Retain the initial undeclared-field compiler refusal and the driver's immediate
+  status oracle timeout. Correct placement and observable Pause acknowledgement
+  fix those seams; neither first failure is counted as a pass. Existing verifier
+  regression suite949checks/0failed; its code is unchanged by the two fixes.
 
 ## Remaining acceptance / short owner check after installation
 

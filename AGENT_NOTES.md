@@ -3,8 +3,15 @@
 ## P1355 bounded local solver: measured interface seams (6 Nov 2026)
 
 Qualification and actual remaining limits: tools/p1355-tas-solve.md.
-Actual22production helpers and34real-client controls pass, including the final
-fair-baseline probe, real GUI Cancel and exact recovered original.
+Actual22production helpers and37real-client controls pass, including the final
+fair-baseline probe, real GUI Cancel and exact recovered original. Two independent
+review rounds caught/fixed a solve2 dispatcher bypass of endpoint optimizer
+ownership and missing preview status after workshop reopen. Use the EXISTING
+sv_player optimizer gate: a solver-local topt_on reference fails declaration order.
+Status polling precedes preview proposal refusal but updates its0.6s deadline;
+proposal eligibility stays unchanged. Actual same-batch optimizer/solve exclusion
+and close/reopen/preview recovery controls act; initial compile/actor oracle
+failures remain retained, not relabeled.
 - Freeze retains/validates the whole source but does NOT initialize Preview's
   original/name/time. Reuse actual Preview initialization before a checked load.
 - Raw plan masks are compact jump1/duck2/walk4 (0..7), NOT QC BTN_DUCK8. Old20

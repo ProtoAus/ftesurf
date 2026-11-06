@@ -11,7 +11,7 @@ normal resume return? If convenient use more than128selected inputs. Baseline
 best/no improvement is a valid honest result. Only Keep a genuinely changed
 completed winner; check Undo/Redo if one occurs. No fastest-route claim is made.
 
-No owner confirmation. Actual native34/34 covers all9/full future/real UI
+No owner confirmation. Actual native37/37 covers optimizer exclusion/reopened preview and all9/full future/real UI
 Cancel/stale-job/exact Original recovery on the final22helper/fair-baseline source;
 all3VMs compile0warnings. This is basic runtime qualification, not whole-workflow
 or human acceptance. Deployment is recorded separately in tools/p1355-tas-solve.md.

@@ -1545,7 +1545,6 @@ void(entity e, float argc) SV_TASCommand =
 			}
 		}
 	}
-	if (!strcmp(action,"solve2")) { SV_TASSolveCommand(e,argc); return; }
 	if (!strcmp(action, "contacts")) { SV_TASContactsCommand(e, argc); return; }
 	if (e.tasp_load && strcmp(action, "status") && strcmp(action, "project"))
 	{
@@ -1557,6 +1556,8 @@ void(entity e, float argc) SV_TASCommand =
 		sprint(e, PRINT_HIGH, "tas: the optimizer is running; tas play or tas off stops it\n");
 		return;
 	}
+	// Mutating search admission shares the existing exclusive-work gate.
+	if (!strcmp(action,"solve2")) { SV_TASSolveCommand(e,argc); return; }
 	if (!strcmp(action, "optimize")) { SV_TASOptCommand(e, argc); return; }
 	if (!strcmp(action, "project") || !strcmp(action, "cp")) { SV_TASProjectCommand(e, argc); return; }
 	if (!strcmp(action, "inputs")) { SV_TASInputs(e, argc); return; }

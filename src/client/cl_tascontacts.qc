@@ -27,14 +27,17 @@ float() TASContacts_Current =
 
 void(float offset) TASContacts_Request =
 {
-	if (!TASTimeline_Current() || !tast_v2 || !(tast_flags & 2) || (tast_flags & 4)) return;
+	if (!TASTimeline_Current() || !tast_v2) return;
+	// Reopening a retained preview still needs status, not new proposals.
+	tact_next = cltime+.6;
+	localcmd("p1 cmd tas solvestatus2\n");
+	if (!(tast_flags & 2) || (tast_flags & 4)) return;
 	if (offset < 0 || offset >= TAS_CONTACT_MAX || offset != floor(offset)) return;
 	tact_tag = tact_tag+1;
 	if (tact_tag > 16000000) tact_tag = 1;
-	tact_ready = FALSE; tact_offset = offset; tact_next = cltime+.6;
+	tact_ready = FALSE; tact_offset = offset;
 	tact_attempts = tact_attempts+1;
 	TASProject_IntentRequest();
-	localcmd("p1 cmd tas solvestatus2\n");
 	localcmd(sprintf("p1 cmd tas contacts page %.0f %.0f %.0f %.0f %.0f\n",
 		offset,tact_tag,tast_serial,tast_bodyhead,tast_request));
 };
