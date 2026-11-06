@@ -62,7 +62,7 @@ rendering/audio shutdown, edge-on stability, occluder bleed or FPS acceptance.
 
 ## Deployment / owner check
 
-## Installed Windows; lobby step blocked by occupancy (6 November UTC)
+## Installed Windows and all lobbies (6 November UTC)
 
 Feature `c4cfebabe7df2eaef1aebdb2663cd4b8393d487f` is published on
 winter-defaults-1335-qualified. Main `d911930d4524022e937a7fa216c0a32829b8222c`
@@ -88,16 +88,22 @@ unchanged against current shared-config preimages. Initial CRLF expectation
 refused without rollback; actual original and resulting files were both LF,
 and exact-byte comparison with the LF hunk passed. Archived player cfg untouched.
 
-Lobby rollout is NOT deployed: existing90second empty-window prepare exited75,
-readyfalse/clients1/no archive, canonical stage or restart. Do not bypass its
-writer/data-preservation gate. Pending package is C4/b7d67c22 for the STILL-LIVE
-old5e8/1ca pair, not Windows D911/117/66. If the lobby pair advances, refresh that
-dependency/source proof BEFORE staging; do not overwrite a new peer program.
-No new current run/resume archive is claimed or old-cohort archive reused.
+Pi delivery completed6Nov03:37:10UTC: original Pi-compatible C4/CSPb7d67c223057;
+QW/native/config/backend unchanged,12new actors,0skips. User's6Nov policy makes
+warning/countdown/restart default even when occupied. A bounded runtime-only
+join hold allowed normal disconnect AFTER10seconds, final save/closed-writer
+capture, all-member ON/OFF-box verification, then guarded promotion. All12join
+capacities restored; no maintenance gate. Pre-warning captures and original
+occupied-window refusals retained. Local180second SSH wait expired but on-Pi
+activation completed; read-only observation verified receipt and actors, with
+NO repeated swap/restart or relabelled timeout. Protected47680files unchanged.
+Fresh no-local-CS lobby client downloaded exact b7d67 hash, board drew, no QC
+error, screenshot inspected. This is not human Christmas/dirt acceptance.
+DO NOT cross-pair this Pi QW with newer Windows CSP; current-pair guard remains.
 
 No native pins/tag, QW/menu/backend, media, movement, recording/evidence,
-QC Build or public release changed by this task. Exact safe lobby window and
-native visual acceptance remain; independent Windows/source work is finished.
+QC Build or public release changed by this task. Fleet delivery is complete;
+native visual acceptance remains manual.
 
 Small owner check after delivery: Christmas0 must stop seasonal snow/sky/audio/
 props even if r_weather1/r_snow2/preview2 were set;1 should restore selected
