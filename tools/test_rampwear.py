@@ -74,7 +74,9 @@ class RampWearTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(modern).hexdigest(), '7c61c929b87764a1b656831d390a62b6b8182d47c37266ea9153b0c1729a8668')
         qc = (root / 'src/client/cl_rampwear.qc').read_text()
         self.assertIn('fopen("glsl/ftesurf_rampwear_v2.glsl", FILE_READ)', qc)
-        self.assertIn('modern ? "v2" : "legacy"', qc)  # distinct cached material keys too
+        self.assertIn('modern ? "v2_close" : "legacy_close"', qc)  # fresh depth-bias cache keys
+        self.assertIn('polygonoffset 1', qc)
+        self.assertNotIn('\\ndepthpush ', qc)
         self.assertIn('modern ? "ftesurf_rampwear_v2" : "ftesurf_rampwear"', qc)
         self.assertIn('modern ? "gl_dst_color gl_src_color" : "gl_dst_color gl_zero"', qc)
         self.assertNotIn('fopen(', qc.split('void() RampWear_Frame =', 1)[1])

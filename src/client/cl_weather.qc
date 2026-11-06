@@ -76,7 +76,7 @@ void() Weather_Load =
 	local int bytes;
 	local string line, path, native;
 	Weather_Free();
-	wx_enabled = (cvar("r_weather") != 0 || Winter_ThemeActive());
+	wx_enabled = (cvar("r_christmas") != 0 && (cvar("r_weather") != 0 || Winter_ThemeActive()));
 	wx_map = strzone(serverkey("map"));
 	if (!wx_enabled) return;
 	// Like CL_RenderMapFrame: WorldLoaded can precede THIS world's live key.
@@ -218,7 +218,7 @@ void() Weather_Frame =
 	local float enabled, dt, outside, vol, outvol, invol, step, pulse, targetout, targetin, preview, duration, mode;
 	local string wave;
 	local vector eye;
-	enabled = (cvar("r_weather") != 0 || Winter_ThemeActive());
+	enabled = (cvar("r_christmas") != 0 && (cvar("r_weather") != 0 || Winter_ThemeActive()));
 	if (!enabled)
 	{
 		if (wx_enabled) Weather_Free();

@@ -21,6 +21,10 @@
 
 ## next
 
+### P1335 Optional Christmas effects and closer ramp dirt
+- Added a Christmas effects master switch, off by default, in Display Info and as r_christmas. It gates seasonal weather, snow, ambience and decorations while keeping individual effect settings.
+- Ramp marks and dirt are now off by default. Enabled dirt sits much closer to ramps, using depth bias instead of a visibly floating layer; lift adjustments apply live.
+
 ### P1334 Clearer unavailable replay comparisons
 - Replay review now distinguishes an unsupported recording model from malformed input. Both remain unjudged rather than being shown as a measured zero; saved historical results are left unchanged.
 

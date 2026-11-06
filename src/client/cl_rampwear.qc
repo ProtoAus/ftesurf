@@ -20,12 +20,12 @@ vector *rw_nrm;                 // per triangle
 
 void() RampWear_Init =
 {
-	registercvar("r_rampwear", "1", 0);
-	registercvar("r_rampwear_dirt", "1", 0);
+	registercvar("r_rampwear", "0", 0);
+	registercvar("r_rampwear_dirt", "0", 0);
 	registercvar("r_rampwear_scratch", "1.5", 0);
 	registercvar("r_rampwear_distance", "12000", CVAR_ARCHIVE);
 	registercvar("r_rampwear_shine", "0.15", CVAR_ARCHIVE);
-	registercvar("r_rampwear_lift", "2", CVAR_ARCHIVE); // real world-unit clearance; reload/reconnect applies
+	registercvar("r_rampwear_lift", "0.03125", CVAR_ARCHIVE); // tiny clearance; live changes reload once
 	registercvar("r_rampwear_debug", "0", 0);     // 1: show the mask itself
 };
 
@@ -78,7 +78,7 @@ void() RampWear_Load =
 		fclose(fh);
 		return;
 	}
-	rw_lift = bound(0, cvar("r_rampwear_lift"), 8);
+	rw_lift = bound(0, cvar("r_rampwear_lift"), 0.125); // bounds old archived lift2 too
 	rw_cen   = memalloc(sizeof(vector) * ns);
 	rw_rad   = memalloc(sizeof(float) * ns);
 	rw_first = memalloc(sizeof(float) * ns);
@@ -110,9 +110,9 @@ void() RampWear_Load =
 				rw_st[t * 3 + j]  = [stof(argv(4 + j * 5)), stof(argv(5 + j * 5)), 0];
 			}
 			rw_nrm[t] = [stof(argv(16)), stof(argv(17)), stof(argv(18))];
-			// A real normal lift, once at load, not just driver-dependent depthpush.
-			// Owner confirmed0.75 still fights while surfing. Default2, bounded
-			// diagnostic control; identical real clearance in modern/legacy paths.
+			// Tiny real normal lift once at load; native polygonoffset below supplies
+			// raster separation. Old0.75/2unit workaround used ignored depthpush.
+			// Identical bounded clearance in modern/legacy paths; no collision change.
 			for (j = 0; j < 3; j = j + 1)
 				rw_pos[t * 3 + j] = rw_pos[t * 3 + j] + normalize(rw_nrm[t]) * rw_lift;
 			rw_cnt[s - 1] = rw_cnt[s - 1] + 1;
@@ -128,11 +128,12 @@ void() RampWear_Load =
 	fh = fopen("glsl/ftesurf_rampwear_v2.glsl", FILE_READ);
 	modern = (fh >= 0);
 	if (modern) fclose(fh);
-	rw_shader = strzone(sprintf("ftesurf_rampwear_%s/%s", modern ? "v2_lift2" : "legacy_lift2", mname));
+	rw_shader = strzone(sprintf("ftesurf_rampwear_%s/%s", modern ? "v2_close" : "legacy_close", mname));
 	rw_alloc = TRUE;
 	// exactvertex: vertex colour encodes a normal, not HDR-scaled brightness.
-	// $nosrgb: mask data; no cross-chart mips or grazing-angle slope bias.
-	shaderforname(rw_shader, sprintf("{\ndepthpush -2\nnomipmaps\nnopicmip\nsort decal\n{\nprogram %s\nblendfunc %s\nclampmap $nosrgb:gfx/rampwear/%s.png\nrgbgen exactvertex\nalphagen vertex\n}\n}\n",
+	// $nosrgb: mask data; no cross-chart mips. Native polygonoffset supplies
+	// raster separation; depthpush is not an FTE shader keyword.
+	shaderforname(rw_shader, sprintf("{\npolygonoffset 1\nnomipmaps\nnopicmip\nsort decal\n{\nprogram %s\nblendfunc %s\nclampmap $nosrgb:gfx/rampwear/%s.png\nrgbgen exactvertex\nalphagen vertex\n}\n}\n",
 	              modern ? "ftesurf_rampwear_v2" : "ftesurf_rampwear",
 	              modern ? "gl_dst_color gl_src_color" : "gl_dst_color gl_zero", mname));
 	print(sprintf("rampwear: %s, %g surfaces, %g triangles, real lift %.2f units\n", mname, rw_n, rw_ntri, rw_lift));
@@ -145,9 +146,10 @@ void() RampWear_Frame =
 	local float i, t, e, j, reach;
 	local vector eye, fwd, d, col;
 
-	if (serverkey("map") != rw_map)
+	if (!cvar("r_rampwear")) return;
+	if (strcmp(serverkey("map"), rw_map) || (rw_alloc && bound(0, cvar("r_rampwear_lift"), 0.125) != rw_lift))
 		RampWear_Load();
-	if (!rw_n || !cvar("r_rampwear"))
+	if (!rw_n)
 		return;
 	eye = getproperty(VF_ORIGIN);
 	reach = bound(1024, cvar("r_rampwear_distance"), 24000);

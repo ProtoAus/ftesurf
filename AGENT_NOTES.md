@@ -458,6 +458,24 @@
   preflight; full probe build/run remains blocked by headroom. Preserve failures, don't disable codecs.
 - No new player data/evidence semantics, native pin/tag, QC Build or public release change.
 
+## P1335 seasonal master and ramp-depth bias (6 Nov local)
+
+Native gl_shader.c has polygonoffset, NOT depthpush. Shader_PolygonOffset sets
+unit=-25*m and factor=-0.05; the previous ramp depthpush string did nothing.
+Use actual native parser controls, not a guessed Quake3 keyword. Tiny geometric
+lift plus supported raster offset avoids visibly detached dirt; grazing/edge
+flicker and occluder bleed still require the small owner check, not an FPS claim.
+Bound old archived lift2 values without editing player ftesurf.cfg; live lift
+changes may reload the ramp mesh once, not every frame or when disabled.
+Christmas master must gate BOTH Weather_Load and Frame, forced Snow_Frame,
+Colin automatic theme and Winter_Frame; off must clear pending sound/thunder.
+Do not only change r_weather default0 while Colin auto can still bypass it.
+Client default.cfg may have another session's uncommitted work: preserve it and
+apply ONLY the exact new cosmetic-default hunk; never ship a whole older config.
+Current live API advanced to P1329/P1330; old9b2 qualification would downgrade
+that work. Rebase runtime qualification on inspected current source, not an old
+owned worktree just because it was last used. Historical receipts stay historical.
+
 ## P1332 native snow binding (5 Nov 2026)
 
 Owner P1327 feedback: black grass despite passing isolated GLSL pixel controls.

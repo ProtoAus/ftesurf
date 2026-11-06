@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P1335 Christmas master/defaults and close ramp dirt — pending delivery/check
+
+Owner's positive P1332 response ("epic") is recorded as general visual feedback,
+not measured FPS/timing or a detailed cap/footstep acceptance. Requested changes:
+seasonal effects behind a Christmas cvar, ramp marks/dirt off by default, dirt
+closer without z-fighting. Fresh defaults master0/marks0/dirt0. After delivery:
+`r_christmas 1` restores the selected seasonal theme;0 must stop weather/audio/
+snow/props even with r_weather1/r_snow2/preview2 set. On one familiar ramp, enable
+`r_rampwear 1; r_rampwear_dirt 1`: is the dirt no longer visibly detached, without
+edge-on shimmer or drawing through nearby occluders? Default lift0.03125, old
+saved values capped0.125; try changing lift live. Restore marks/dirt0 when done.
+Keep this small actual-game check separate from native-parser/math controls.
+
 ## P1333 current-file consistency — deployed, owner readability pending
 
 Backend installed 5 Nov 2026 at22:45:40UTC; guarded namespace/source hashes,

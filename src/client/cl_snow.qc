@@ -102,6 +102,7 @@ void() Snow_Frame =
 {
 	local float want, mask;
 	snow_active = FALSE;
+	if (!cvar("r_christmas")) return;
 
 	if (serverkey("map") != snow_map)
 		Snow_Load();

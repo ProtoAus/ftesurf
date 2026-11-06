@@ -650,11 +650,14 @@ string(string id, float row) HE_OptDef =
 		if (row == 10) return "hud_mapfx|Map screen effects|t||"
 		                     "|The map's screen fades and camera shakes.";
 		if (row == 11) return "r_winter_props|Holiday decorations|t||"
-		                     "|Static snowmen, trees and gifts on selected event maps. No collision or gameplay changes.";
+		                     "|Snowmen, trees and gifts on selected event maps when Christmas effects is on. No collision or gameplay changes.";
 		if (row == 12) return "r_mist|Light mist|t||"
 		                     "|Small shader wisps near selected lights. The authored Colin Christmas theme can also enable its bounded mist.";
 		if (row == 13) return "r_colin_winter|Colin Christmas theme|t||"
-		                     "|Only surf_colin_blaster_69000: snowy grass and exposed caps, falling snow, storm sky, winter audio and light mist. Off removes automatic extras; your separate weather/snow/prop switches still work. Cosmetic only.";
+		                     "|With Christmas effects on, automatically add Colin's snowy grass/caps, snow, storm sky, audio and mist. Off leaves the separate effect switches in control. Cosmetic only.";
+		if (row == 14) return "r_christmas|Christmas effects|t|||Master for seasonal snow, storm sky, lightning, ambience and decorations. Off by default; existing effect preferences are kept.";
+		if (row == 15) return "r_rampwear|Ramp marks|t|||Cosmetic scratches on baked ramps. Off by default; dirt has its own strength below.";
+		if (row == 16) return "r_rampwear_dirt|Ramp dirt|c|0 0.5 1|off;half;full|Dirt strength when Ramp marks is on. Off by default; surfaces stay close using raster depth bias.";
 		return "";
 	}
 

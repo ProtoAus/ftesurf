@@ -14,7 +14,7 @@ entity wi_grass, wi_caps;
 
 float() Winter_ThemeActive =
 {
-	return (wi_colin && cvar("r_colin_winter") != 0);
+	return (cvar("r_christmas") != 0 && wi_colin && cvar("r_colin_winter") != 0);
 };
 
 string(string texture, float step) Winter_Footstep =
@@ -46,6 +46,7 @@ string(float kind) Winter_Model =
 
 void() Winter_Init =
 {
+	registercvar("r_christmas", "0", CVAR_ARCHIVE); // master gate; per-effect settings remain intact
 	registercvar("r_winter_props", "1", CVAR_ARCHIVE);
 	registercvar("r_colin_winter", "1", CVAR_ARCHIVE); // authored single-map theme; no global cvar writes
 	registercvar("r_mist", "0", CVAR_ARCHIVE); // opt-in until the moving-view budget is qualified
@@ -246,6 +247,7 @@ void() Winter_Frame =
 	local entity e;
 	if (strcmp(wi_map, serverkey("map"))) Winter_Load();
 	wi_drawprop = wi_drawmist = wi_area = 0;
+	if (!cvar("r_christmas")) return;
 	if (Winter_ThemeActive())
 	{
 		if (wi_grass) { wi_grass.colormod = Weather_SnowTint(); addentity(wi_grass); }
