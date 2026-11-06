@@ -68,6 +68,56 @@ game = root / 'g'
 (game / 'one.cfg').write_text(OWNER)
 (root / 'default.fmf').write_text('FTEMANIFEST 1\nGAME "X"\nMAINCONFIG one\nset sv_mintic 0.015\n')
 
+# -- boot guard reads share the whole boot budget, not a fresh ten-second limit ---------
+for remaining, expected in [(40, 40), (-5, 0)]:
+    sess = cb.Session(ns(name='budget'))
+    sess.deadline = 100 + remaining
+    sent, waits = [], []
+    sess.engines['cl'] = argparse.Namespace(size=lambda: 17, send=sent.append)
+    sess.wait = lambda key, pattern, mark, seconds: (waits.append(seconds) or {'verdict': 'match'})
+    real_time = cb.time
+    try:
+        cb.time = argparse.Namespace(monotonic=lambda: 100)
+        sess.expect('cl', ['run_resume'], '^guard$', 'guard failed')
+        check(f'boot guard uses remaining budget {remaining}',
+              waits == [expected] and sent == ['run_resume'], str(waits))
+        sess.wait = lambda *args: {'verdict': 'timeout'}
+        sess.why = lambda result: 'deliberate missing guard'
+        try:
+            sess.expect('cl', ['run_resume'], '^guard$', 'guard failed')
+            check('missing boot guard still refuses', False)
+        except cb.Boot as e:
+            check('missing boot guard still refuses', 'guard failed' in str(e))
+    finally:
+        cb.time = real_time
+
+# A pre-spawn zero reply is not a spawn; a cold map may take longer than 10s.
+for late_spawn in [True, False]:
+    sess = cb.Session(ns(name='spawn-budget', keep_menu=True))
+    sess.deadline, sess.port = 150, 27580
+    clock, samples = [100], []
+    engine = argparse.Namespace(size=lambda: 0, send=lambda line: None)
+    sess.engines = {'cl': engine, 'sv': engine}
+    sess.wait = lambda *args: {'verdict': 'match'}
+    def spawn_poll(*args):
+        clock[0] += 6
+        line = 'setpos 1 2 3 0 0 0' if late_spawn and clock[0] >= 124 else 'setpos 0 0 0 0 0 0'
+        samples.append(line)
+        return {'verdict': 'match', 'line': line}
+    sess.poll = spawn_poll
+    real_time = cb.time
+    try:
+        cb.time = argparse.Namespace(monotonic=lambda: clock[0], sleep=lambda seconds: None)
+        sess.connect()
+        if late_spawn:
+            check('spawn after 18s of zero replies still proves placement',
+                  sess.spawn == 'setpos 1 2 3 0 0 0' and clock[0] == 124, sess.spawn)
+        else:
+            check('zero body remains unproven at the global boot deadline',
+                  sess.spawn.startswith('NOT PROVEN') and 150 <= clock[0] < 156, str(clock))
+    finally:
+        cb.time = real_time
+
 # -- an engine that never reads its stdin: the pipe takes ~4 KB, then a write blocks ------
 eng = idle('x.log')
 t0, sent, err = time.monotonic(), 0, ''
