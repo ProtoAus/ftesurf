@@ -2561,7 +2561,9 @@ float(vector eye, vector p, float st) Sprite_SkyTest =
 			return SKY_ROOM;
 	}
 	traceline(eye, p, MOVE_NOMONSTERS, world);
-	if (trace_fraction < 1 && substring(strtolower(trace_surfacename), 0, 4) == "sky/")
+	// P1345: QC && is eager; misses need no name work, hits need no prefix allocation.
+	if (trace_fraction < 1)
+	if (strncmp(strtolower(trace_surfacename), "sky/", 4) == 0)
 	if ((1 - trace_fraction) * vlen(p - eye) >= 64)
 		return SKY_BEHIND;
 	return SKY_CLEAR;
