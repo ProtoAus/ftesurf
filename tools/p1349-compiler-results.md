@@ -47,12 +47,26 @@ performance, visual/feel acceptance, or whole native-audit completion.
 
 ## Delivery status
 
-**Source published; P1349 has not replaced either live native component.**
+**Integrated Windows native update delivered to BOTH installs on 6 November
+2026 at 17:14:20 UTC; Pi native activation remains blocked.**
 
-Integrated Windows qualification remains blocked by the unchanged 4 GiB physical
-free-memory gate. The postflight execution-boundary reading was 3,017 MiB. Earlier
-Windows images are not a substitute because they omit the newer public client
-fixes. No owner processes were terminated and no resource check was weakened.
+A later execution boundary recovered above the unchanged 4 GiB physical-memory
+gate. The exact existing clean FullNative/NoDeploy procedure then built source
+`8e389dc4beabd8247e888dbf243e11d7b3ebbbaf`; no earlier incomplete client image was
+substituted. Complete raw-log comparison retains the same 74 native warnings and
+two known nonshipped QC F333 warnings, with no new diagnostic sites. All seven
+native outputs were frozen with their actual integrated version. Both executables
+passed 1,578 native checks and reached the unavailable-decompiler handler.
+
+The existing guarded native-only copy updated the ten actual build-procedure
+targets across `C:\FTESurf` and `C:\FTEQuake`, preserving every destination's
+predecessor in `.prev` and retaining prior-`.prev` preimages separately. A game
+started after the copy and blocked the final inventory; that wrapper failure is
+retained, not mislabeled a clean transaction. No process was killed and no copy
+was repeated. A later idle, read-only postflight completed with all destination,
+`.prev` and frozen hashes exact and zero changed, missing or new protected files
+outside the copy set. QC programs, configs, player data and other aliases were
+not shipped. This does not claim fresh graphical, FPS or owner-feel acceptance.
 
 The ARM transaction reached actual guarded preparation. Eight recorder parts and
 183 complete current-resume preimages were individually verified on and off box,
@@ -85,3 +99,13 @@ reconstruct the original refusal. No recovery allowance was consumed and no
 same-baseline recovery was implemented or attempted. A controlled closed-recorder
 handoff and explicitly approved fresh preservation context are needed before
 another rollout; the failed transaction and every original archive remain intact.
+
+At 17:18 UTC a new read-only observation again matched the original complete
+parts/resume namespace, canonical images, actor identities and backend bindings;
+no preserved-namespace handles were open and the read was stable. The original
+on/off-box archive and all four predecessor images were reverified. This later
+observation does not reconstruct either earlier refusal, reset the failed
+transaction, establish a future safe window, or authorize replay. No same-baseline
+recovery interface or allowance has been used. A separately explicit, single-use,
+proof-bound recovery decision remains necessary before Pi mutation; retain the
+original failed receipts, baseline, archives and retirement history.
