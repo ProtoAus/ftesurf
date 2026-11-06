@@ -5576,8 +5576,14 @@ failures; relative24, baseline7; subjects0 and compiler0warnings. Optional stat2
 D is a COMPLETE coherent C snapshot plus bounded +-2/3 rows, not an appendage to
 whatever C arrived most recently; extra-only changes must invalidate D. Tokenize
 is shared scratch state: retain outer row data before decoding quoted inner C.
-Release must replay the coherent cursor row or explicitly go blind, never reuse
-a prior load speed. Relative Enable needs BOTH saved BSPTRIGGER solidity and
+Review caught that a coherent cursor is NOT the held row after rejected load
+validation: Step and Load advance the cursor before full validation. Settled
+release now uses actual-held validity/velocity in SAME D42 snapshot, not cursor
+or independent stale HOLDVEL; C-only/unproven is BLIND. Non-rate-refused pending
+loads may still speculate. Existing strict finite decimal codec rejects every
+outer/embedded numeric error before extension validity.17added tests expose12
+failures in original candidate; metadata31/release29/relative24 now84/0. Production
+server Step/Release act; validation callback is explicitly stubbed, not file IO. Relative Enable needs BOTH saved BSPTRIGGER solidity and
 EF_NODRAW ownership (generic Enable previously cleared hiding). Shared point
 helpers do not replace collision/floor-lift, native PVS or human acceptance.
 Server-only relative quieting must reject ANY predicted same-point ordinary OR

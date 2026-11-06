@@ -299,11 +299,27 @@ float(vector o, vector a, vector v) SV_WopCurSig =
 void(entity e) SV_WarpOpCur =
 {
 	local string s, chain;
-	local float sig, k;
+	local vector holdvel;
+	local float sig, k, held, blk, base;
+
+	held = FALSE;
+	holdvel = '0 0 0';
+	if (e.rec_sl_hold)
+	if (rec_sl_vel)
+	{
+		blk = SL_Blk(e);
+		base = SL_Base(blk);
+		if (e.rec_sl_holdrow >= base && e.rec_sl_holdrow < base + rec_sl_nb[blk])
+		{
+			held = TRUE;
+			holdvel = rec_sl_vel[e.rec_sl_holdrow];
+		}
+	}
 	sig = e.wop_ack + e.rec_sl_index * 4099.5 + e.rec_sl_count * 77.25 + e.rec_sl_ack * 0.37
 	      + SV_WopCurSig(e.rec_sl_curorg, e.rec_sl_curang, e.rec_sl_curvel)
 	      + 2 * SV_WopCurSig(e.wop_norg, e.wop_nang, e.wop_nvel) + 3 * SV_WopCurSig(e.wop_porg, e.wop_pang, e.wop_pvel)
 	      + 5 * SV_WopCurSig(e.wop_forg, e.wop_fang, e.wop_fvel) + 7 * SV_WopCurSig(e.wop_lorg, e.wop_lang, e.wop_lvel);
+	sig = sig + held * 31.7 + 23 * SV_WopCurSig('0 0 0', '0 0 0', holdvel);
 	for (k = 0; k < 4; k = k + 1)
 		sig = sig + (11 + 2 * k) * SV_WopCurSig(wop_xorg[k], wop_xang[k], wop_xvel[k]);
 	if (e.wop_cur != "" && sig == e.wop_csig && time - e.wop_ct < 1 && time >= e.wop_ct)
@@ -321,7 +337,7 @@ void(entity e) SV_WarpOpCur =
 		if (e.wop_cur != "") strunzone(e.wop_cur);
 		e.wop_cur = strzone(s);
 	}
-	chain = strcat("D \"", s, "\" ");
+	chain = strcat("D \"", s, sprintf("\" %g %.9g %.9g %.9g ", held, holdvel_x, holdvel_y, holdvel_z));
 	for (k = 0; k < 4; k = k + 1)
 		chain = strcat(chain, SV_WopCurRow(wop_xorg[k], wop_xang[k], wop_xvel[k]));
 	if (strlen(chain) > WOPCHAIN_MAX)
