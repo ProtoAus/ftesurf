@@ -13,7 +13,7 @@
 !!cvar3f r_snow_maskz
 !!cvarf r_snow_debug
 
-// FTESurf P1286: the snow event's flakes. models/snow/flakes.iqm is seeds only (tools/snowflakes.py):
+// FTESurf P1286: the snow event's flakes. models/christmas/flakes.iqm is seeds only (tools/snowflakes.py):
 // each flake is one position and three corners. Here it falls, sways and drifts by e_time, wraps into a
 // box round e_origin (cl_snow.qc keeps the entity on the eye), and its corners open into a
 // camera-facing triangle that holds the round flake -- no CPU per flake. The sky mask

@@ -263,7 +263,7 @@ $ShipGameFiles = @(
     # Reproducible original quad; texture comes only from the mounted CSS install.
     'ftesurf/models/ftesurf/muzzle.md3'
     # P1286: the snow event's flake field (tools/snowflakes.py); the models glob does not recurse.
-    'ftesurf/models/snow/flakes.iqm'
+    'ftesurf/models/christmas/flakes.iqm'
     # P1302 CC0 holiday meshes keep their original license beside the palette.
     'ftesurf/models/christmas/LICENSE-Kenney.txt'
 )
