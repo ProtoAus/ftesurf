@@ -18,9 +18,12 @@ or human acceptance. Deployment is recorded separately in tools/p1355-tas-solve.
 Changed-winner history, long selections and finish-specific context remain open.
 
 
-## P1353 reported fixes — candidate verified; rollout and owner checks pending
+## P1353 reported fixes — BOTH Windows/all12 lobbies deployed6Nov; owner check pending
 
-After the installed-version/hash check, please try these small checks:
+Both Windows installs verified19:47UTC; all12lobbies verified20:30UTC, with final
+native/plugin/process/cache readback20:35UTC. Exact source, hashes, acting controls
+and data preservation: `tools/p1353-reported-bugs.md`. No owner confirmation yet.
+Please try these small checks on the installed version:
 - `bhop_goldsrc2`, slot 015 at 1:01.070: move through the old illusionary correction spot. Does the 16-unit snap stop?
 - Hide board paths but leave their labels enabled. At a ramp boarding, is the separate energy-change row readable beneath the main contact information?
 - In the zone editor, aim near an invisible player-clip corner/edge and toggle geometry snapping: it should change to grid snapping on the same face. Do the teleport destination names look crisp?

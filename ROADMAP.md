@@ -45,6 +45,31 @@ the native eye-trace/trace-output bridge, not QC prefix work. New late material
 variants still compile after activation. Exact results/caveats and remaining
 closure/query falsifiers: [tools/p1351-pacing-results.md](tools/p1351-pacing-results.md)
 and BACKLOG.md. No universal loading guarantee.
+6 Nov matched five-map first/repeat windows now cover Boreas, Demise, Garden,
+Ceaseless and the first60s of Tensor2. Separate moving pixel/sky-query controls
+identify different bottlenecks; Ceaseless retains a251.64ms first-use render
+hitch unexplained by measured compile time. This is diagnosis, not strict start
+admission or a performance patch: `tools/map-lows-water-diagnosis.md`.
+
+## Lower-rate water with stable sideways appearance — requested 6 Nov 2026
+
+Garden bonus1's open pit is the visual target. User requires a real total
+performance win over current nominal60, including CPU overhead; reducing capture
+count or moving cost into correction is not sufficient. Current reuse corrects
+rotation, not translation. A water-plane warp is not scene-depth parallax.
+
+A default-off adaptive20/8-unit prototype exists only in the isolated task
+source: motion can refresh early, with the existing nominal60 age floor. Native
+build/logic controls and a corrected in-room390u/s camera-only comparison pass,
+but moving average479/475FPS does not beat normal60's480/470 beyond observed
+spread; the stationary view is effectively identical484/485. Capture CPU work
+falls without removing the dominant GPU scene cost. No product commit/default,
+installation, deployment, parallax fix or visual acceptance is claimed. Evidence:
+`tools/map-lows-water-diagnosis.md`. A worthwhile correction remains unbuilt as
+an accepted product feature; any later candidate must first demonstrate equal
+appearance and a meaningful end-to-end win, then obtain the small pool-edge
+fixed-aim sideways owner check. Do not ship depth/reprojection infrastructure
+or lower quality merely to claim20Hz.
 
 ## Christmas environment and cosmetics — requested 4 Nov 2026
 

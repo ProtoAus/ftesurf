@@ -1,7 +1,8 @@
 # P1353: reported prediction, label, zone-editor and texture fixes
 
 Engine source/tag: `09262667df5afe01a9487809ebc868cd56caca4c` / `patch-1353`.
-QC source is the feature commit containing this document. Build number unchanged.
+QC build source: `5b3ac8ace326e5a6a074e8e5422ac6ea7f74cf23`.
+Later receipt-only commits do not change these artifacts. Build number unchanged.
 
 ## Changes
 
@@ -42,11 +43,14 @@ Public task evidence: `C:/FTESurf-worktrees/bugs6-01a1b058/artifacts/` and the b
 logs in its parent. No private player identities, raw rollout inventories or
 preservation archives belong in this public report.
 
-- Supported `build.ps1 -Engine -Full -NoDeploy` native base, then rebuilt changed
-  targets. Final candidate uses qualified compiler SHA256
-  `c24ede65e98b88a69c28b64afb163943a3d826108558f21f1ca4cefeeb1cc731`:
-  all three VMs compile with **zero warnings**. The inherited native
-  `PF_resourcestatus` address warning is not repaired as unrelated work.
+- Final clean-commit `build.ps1 -Engine -Full -NoDeploy` completes. Qualified
+  compiler SHA256 is
+  `c24ede65af01d6c7e20d5d1dbd2190a9295a38fb0e109843f75e52166da22f74`:
+  all three VMs compile with **zero warnings**. This corrects the earlier full-hash
+  transcription; retained `qualified-compiler.json` and `qualified-ui-summary.json`
+  already identify these actual bytes. The full Windows rebuild has 74 inherited
+  native compiler warnings, no new warning sites. The sole warning in a modified
+  unit is the unchanged `PF_resourcestatus` address warning.
 - `tools/p1353_skin.c` has ten independent constant-bit expectations. On actual
   AArch64, all five original negative inputs become zero; corrected values pass
   all ten and leave the five nonnegative controls unchanged, including 2^31.
@@ -79,11 +83,66 @@ preservation archives belong in this public report.
   Source was advanced to include the published P1350–P1352 changes before final
   qualification; no unrelated canonical dirty work is included.
 
-## Delivery state and limits
+## Clean-commit qualification and delivery — 6 November 2026 UTC
 
-Feature source is verified; exact clean-commit Windows/ARM qualification and
-ordinary dual-install/fleet rollout are the next execution steps, not yet claimed
-by this source receipt. Deployment evidence will be appended after actual hash,
-process, dependency and data-preservation readbacks. Owner feel/visual confirmation
-is pending in `lextest.md`. No Build/release, new evidence signal, detector policy,
-backend generation or owner-data/config change is requested or claimed.
+- **Windows, 19:47:25 UTC:** both installs updated using the existing deployment
+  transaction. All **28 targets** match the frozen artifacts. All **18,642 protected
+  files** are unchanged; **52 predecessor/prior-prev preimages** are archived.
+  No game process was killed. The shared released dependency cache was read-only:
+  all **1,399 input hashes** still match after the full build.
+- **ARM:** 1,131 Git-blob source members verified before the standard native/server
+  and matching HL2-plugin build. Its generated shader header differs only in the
+  generator-path comment; exact substitution reproduces the Git header. Both
+  Windows and ARM run **1,608 numeric checks, zero failures**. All **90 named
+  physics rows across six maps** match bit-for-bit, including acting prop,
+  rotating/wrapped-prop and Sedona ride controls.
+- The documented archived-VM **Pin7** reference passes **9,194 ticks / 9,192 rows**;
+  Voyager passes **4,418 / 4,418**. These are historical reader controls, not
+  latest-world admission. The latest-VM Voyager attempt's 52-row physent HOLD is
+  retained, not regraded. No modern recording-format/admission change is claimed.
+- **Lobbies, 20:30:04 UTC:** paired server/HL2/QW/CS promotion; **12 restarted,
+  zero skipped**. Full players-and-spectators status proved all empty. Before any
+  role staging/restart, all **8 recorder parts** and **183 resume-domain members**
+  were archived on-box and individually verified off-box, including resume state
+  metadata and cleanup context. All **48,556 protected files** are unchanged;
+  zero missing/changed or new protected files. Configurations are unchanged.
+- An independently published backend generation changed during archive transfer.
+  The original guard refused **before role staging**. Original actor-bound
+  inventories/archives were preserved unchanged; a separate fresh closure proves
+  the original actor retired, data identities/bytes/metadata still match, and
+  current native/backend actors have no recorder/resume FD open. The exact guard
+  has an acting read-only positive and two refusal controls. Only the backend
+  boundary binding was refreshed; no native-pinned handoff was bypassed.
+- Final readback at **20:35:19 UTC** verifies all four canonical hashes, all
+  **12 actual native process hashes**, **12 loaded HL2 plugin inodes**, directory
+  and full status replies, and the unchanged current backend generation. The
+  canonical sweep lock is released. No menu VM was shipped to a lobby. A later
+  read-only smoke finds both actual current-boot QW load/initialization markers on
+  all **12 process/stdout bindings**, with **zero VM/fatal errors**. Initial
+  journal/timestamp/marker/log-append observer failures remain retained; empty or
+  wrongly matched logs were never counted as passes.
+- CSQC cache **`226f4924.dat`** is seeded on both installs and the Pi. Its SHA256
+  matches the shipped CSQC. The existing contribution-code catalog received one
+  additive hash (**75 → 76**); all prior bytes are preserved. No service restart,
+  detector-policy change, historical regrading or backend generation activation
+  was performed for that catalog append.
+
+### Installed artifact fingerprints
+
+| Artifact | SHA256 |
+| --- | --- |
+| Windows client / `ftesurf64.exe` | `14a9c9bb029a1506b08e16b538671efd0b9dd65175b57c42c637117eeb97361a` |
+| Windows dedicated server | `ceb706a5d6a7471a82886bc29661e2f242041b8fd5f888cf838546fe53066e52` |
+| ARM dedicated server | `7ae9b6509be357b1b13c76894df139df51a75f384bbbfbfe413b69cb9afe231a` |
+| ARM HL2 plugin | `2aad7f3b94268106e851bf83ede3421b32e1ee3a32be91c8c26f29ac4a2b4cb8` |
+| `qwprogs.dat` | `aa92900514f44e407b122838c51f9ee82a7c87df09f0cc7510222451ac565d17` |
+| `csprogs.dat` | `09fec3b5fc10f31f737ef830aaf588b61fe573c2b5f1e35e288c933ef1b06deb` |
+
+Original unqualified compiler, invocation, missing-content, compile-only memory-cap
+and preparation-boundary failures remain retained. None is an uninterrupted-clean
+claim. Full raw rollout inventories, player identities, archives and rollback
+preimages remain private.
+
+Owner feel/visual confirmation remains pending in `lextest.md`; automation is not
+owner acceptance, measured performance or all-GPU coverage. No Build/release bump,
+recorder grammar, collector or mover-policy change is part of this patch.

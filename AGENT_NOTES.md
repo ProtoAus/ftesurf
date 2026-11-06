@@ -28,6 +28,80 @@ fair-baseline probe, real GUI Cancel and exact recovered original.
   acceptance. Preserve initial failures/partial results; do not relabel old tests.
 
 
+## Five-map lows and Garden b1 water experiment (6 Nov; lowwater-20261106T1910Z-01a1b1d2)
+
+- Frozen normal P1351 control,1920x1200/scale2/flatwater0, yields matched first/repeat moving replay windows on all five maps, including newly fetched build-matched Ceaseless77. These are uncapped render-loop samples, not display-present/live-input measurements or later native qualification. Seeds/fixture-learned history and driver cache remain; first traversal is not purged cold cache. Exact tails and controls: `tools/map-lows-water-diagnosis.md`.
+- Separate12s moving2x/1x/no-sky-rays2x/2x controls distinguish causes. Tensor2's1%240/243->428 with sky rays disabled (DIAGNOSTIC ONLY), barely251 with quarter pixels, confirms persistent native trace/bridge CPU cost. Garden/Demise respond much more to pixels: Garden has substantial3D-sky/transparency GPU cost, Demise's sampled dominant GPU pass is world rendering (its3D-sky pass is zero). Do not generalize Tensor2's target, ship disabled traces/quality reductions, or add nested inclusive VM times. Native collision versus packet-brush scan versus trace-output publication remains unseparated; exact BIH caching already exists.
+- Ceaseless first251.64ms frame has251.475ms in the gfx breadcrumb, versus only4.151ms cumulative late GLSL compile work; repeat worst11.11ms. Trailing budget does not attribute that earlier frame. Driver first-draw/upload/allocation/client work and host scheduling remain unknown; do not label every gfx stall shader compile. Extra native split refused RAM before launch.
+- Garden b1 `zone_goto 11 0 20` body(-15920,1440,4608) is above the pool. Default noclip1040u/s makes2s/4s/2s sideways travel leave its y352..2528room; relative paths drift and can change void/fallback capture ownership. Reject those timings. Server `pm_noclipspeed 1.5` gives390u/s; per-arm warp and the same path stay inside. It is a camera-only render experiment, NOT a running/recording physics qualification; walking preflight hit the ledge.
+- Corrected full-water nominal60/20-adaptive/20-plain moving arms reduce capture CPU self about0.08->0.05->0.027ms/mainview but do not establish a meaningful total FPS win; scene GPU remains~2ms. Prototype stays default-off/unpromoted in owned scratch, not installed. Current scheduler eligibility0.75/rate means labels60/20 are not literalHz; counters are consistent with~75/~45/~26capture-pairs/s in these views. Capture counts alone fail the owner's performance requirement.
+- Existing admission retries reuse actor-free cases only, preserving refusals and full4096MiB/60s gate. A competing native actor invalidated initial Tensor2; quiet-host remeasurement passes independently without regrading it. Own clangd parent/PID/creation was verified before stopping ONLY that LSP to release memory; no owner/peer process stopped and no threshold weakened. All owned native actors quit and gates released. Do not leave the full disposable build unexplained; OWNER/checkpoint and source/binary/evidence manifests retain exact state.
+
+
+## P1354 finite output and bounded preparation recovery (6 Nov2026)
+
+- SQLite `INSERT OR IGNORE` can silently omit a NaN-bound NOTNULL value; do not
+  infer whole-flush rollback from a non-finite upstream scalar. Actual80-row
+  controls disproved that initial prediction. Infinity can persist separately.
+  Collector finite validation uses existing pair-failed availability semantics,
+  not a low score/player finding. Finite alone is not a full type/range contract
+  or guarantee the existing admin projection can show a value.
+- A zero-match offset tie in the existing80-row fixture selects-4, leaving76real
+  opportunities. Assert actual populations, not guessed80 or nonexistent constants.
+- Private backend `source_provenance` is an exact supported input-contract tag,
+  not free-form feature prose. Capture every consumer-required launcher alias
+  before staging. The actual launcher hash is already in the frozen backend file
+  map; recover only that original digest, never refresh/re-date a stale preimage.
+- After the missing-alias refusal, the same prepared archive, all156predecessor
+  files and four original CLOSED fence/manifest bytes were verified before the
+  existing guarded finish-staging path completed. No fence reset/new attempt root
+  or reinitialized nonce/epoch is acceptable. Preserve the original refusal.
+- New private scratch directories can inherit setgid02700 despite mkdir0700.
+  Inspect exact UID/type/link/inode/OWNER binding before clearing that bit on
+  specifically owned root/test/home/tmp paths; never blanket-chmod a parent or
+  another session. No group/world access widening or source change is needed.
+
+
+## P1353 delivery: exact inputs versus volatile boundaries (6 Nov 2026)
+
+- Completed dual Windows/all12lobby delivery and limits are in
+  `tools/p1353-reported-bugs.md`. No owner confirmation or Build/release bump.
+  The earlier prose's full c24 compiler hash was a transcription error: use the
+  actual retained qualified-compiler/UI receipts, not a remembered prefix/suffix.
+  Those original receipts and the final compiler agree; no compiler replacement
+  or unsafe7ccb qualification was needed to correct the prose/expected literal.
+- A full ARM fixture needs the declared **base-game** content mounts as well as
+  gamedir content. Linking only gamedir maps omits momentum/cstrike/hl2/placeholders.
+  Keep the first missing-map failure. The768MiB address-space cap used for GCC is
+  compile-only: the observed live headless processes reserve about3GiB virtual
+  address space despite much smaller resident sets. Applying that cap to runtime
+  causes an artificial OOM. Use the existing serialized full-content route with
+  actual memory headroom; this is not a universal RAM/performance claim.
+- Standard HL2 generation changed only `mat_vmt_progs.h`'s generator-path comment.
+  Exact substitution must reproduce the WHOLE Git header; do not accept arbitrary
+  generated-source differences. All other exported source bytes remain checked.
+- A peer's already-published backend generation changed while full archives were
+  copied off-box. Preserve the original pre-stage refusal and actor-bound archive
+  inventories. An explicit fresh boundary may bind only the changed backend when
+  its original actor is retired, the new OPEN/unpinned profile is fully inspected,
+  every archived part/resume identity/byte/metadata still agrees, and actual
+  native/backend FD closure passes. Do not edit the archived PID, redate proofs,
+  refresh source artifacts or skip the locked check. The narrow refresh guard has
+  one acting read-only positive and two refusal controls; original data evidence
+  and native/QW/CS inputs stay unchanged.
+- File format14/15 is not movement pin12. Use the actual record magic/approved
+  reference, not a guessed format or abbreviated map name. The documented Pin7
+  case is `surf_colin_blaster_69000` with its archived QW context. Latest-world
+  Voyager's physent HOLD remains a HOLD; the archived-context PASS is not current
+  admission. No recording-format or collector change belongs to these UI fixes.
+- Service stdout is the existing `serverN.log`, not journalctl's empty unit log.
+  `journalctl --since @epoch` accepts the boundary where this host rejects an ISO
+  timestamp with timezone suffix. Actual boot controls require BOTH `Loaded progs
+  qwprogs.dat` and `======== FTESurf Initialized ========` in the current boot,
+  bound to the actual PID/birth/stdout inode. Append-only logs are observations,
+  not immutable artifact inputs: do not call an empty log a pass or overwrite an
+  earlier observer failure when the log appends.
+
 ## P1352 similarity cursor retirement and scoped deployment (6 Nov 2026)
 
 - `sim_cursor` source slot0 is source rotation, slot1 interrupted admission and

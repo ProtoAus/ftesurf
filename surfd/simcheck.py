@@ -587,6 +587,9 @@ def _pair_result(rs, surfd, row, peer, pa, now):
         prefix, offset, compared = d["prefix"], d["offset"], d["compared"]
         ma, mb = d["moves_a"], d["moves_b"]
         ta, tb = d["tickrate_a"], d["tickrate_b"]
+        # NaN can vanish under INSERT OR IGNORE; infinities cannot be projected.
+        if not all(math.isfinite(v) for v in (match, cover, ta, tb)):
+            raise ValueError("non-finite comparison metric")
         who_a, who_b = d["who_a"], d["who_b"]
         same = 1 if d["same_who"] else 0
         snapshot = source_capture(d.get("sources"))
