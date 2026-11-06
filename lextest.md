@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1341 teleport carrier parity — delivery pending, human check pending
+
+After delivery, one familiar push-fed velocity-reset teleport: does its exit avoid
+the old boost/snap, while keep-velocity/landmark transitions still preserve speed?
+A later pad must still boost normally. Actual QC VM42/0 vs baseline8failures is
+helper evidence, not live-network or human feel acceptance. Historical save/load
+reports are NOT closed. No popup or whole-stream replay requested.
+
 ## P1335 Christmas master/defaults and close ramp dirt — pending delivery/check
 
 Owner's positive P1332 response ("epic") is recorded as general visual feedback,

@@ -21,6 +21,9 @@
 
 ## next
 
+### P1341 No stale boost after velocity-reset teleports
+- Fixed predicted push velocity surviving teleports that reset or redirect velocity. Keep-velocity and landmark teleports still preserve their intended speed, and a later push still works.
+
 ### P1335 Optional Christmas effects and closer ramp dirt
 - Added a Christmas effects master switch, off by default, in Display Info and as r_christmas. It gates seasonal weather, snow, ambience and decorations while keeping individual effect settings.
 - Ramp marks and dirt are now off by default. Enabled dirt sits much closer to ramps, using depth bias instead of a visibly floating layer; lift adjustments apply live.
