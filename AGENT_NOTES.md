@@ -17,6 +17,11 @@
   binding refreshes are accounted for; unavailable/deferred/conversion gaps stay
   explicit and G.current/PB authority remain unchanged. Seven actual predicate
   classifications/four terminal controls plus a read-only live census acted.
+- Fixed-tier `/api/board` declares source on its envelope; per-row `tr` is optional
+  for mixed/profile results. `/api/replay` deliberately serves text/plain plus
+  X-Surfd-Replay, not application/octet-stream. Read the contracts before making
+  smoke predicates; matching envelope/selected tuple and named HTTP206 text body
+  proved actual delivery without changing the server to satisfy test assumptions.
 
 ## P1339 requested atlas caches and native material readiness
 

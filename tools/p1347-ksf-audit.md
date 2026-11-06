@@ -137,6 +137,12 @@ segmented categories do not show it; narrow menu layouts use a separate row.
   Screenshot inspected: empty/no-zone `surf_kitsune`, terms unaccepted. This is
   served-code/render evidence, **not** a populated live KSF click, geometry, owner
   consent, playback acceptance or a performance measurement.
+- Separate live API check **14:05:13Z**: `surf_sidistic` main/FW returned 10 rows
+  (five linked replays); `surf_hades2` stage1/SW returned six rows. An existing
+  KSF replay returned HTTP206, 8,192 text bytes and its matching replay-handle
+  header. This proves populated selected scopes/local file transfer, not playback.
+  Initial test assumptions about per-row source/MIME were refused and corrected
+  against the existing route contract, without changing the product or server.
 - No converter/recording/ranking/schema/native pin/tag/Build or release change.
   Newer published peer P1348/P1349 work was not built or deployed by this task.
 
