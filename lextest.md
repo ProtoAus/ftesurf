@@ -13,8 +13,10 @@ ordinary/relative errors must remain eligible rather than quietly excused.
 Hold a save, step next/previous2or3times quickly, release. These short chains
 should predict and use the actual destination's speed; compare single-step and
 first/last recovery. Longer unpublished destinations can still arrive server-
-authoritatively and must not guess old release speed. Actual QC VM43/0 vs18baseline
-failures, main THREE-VM0warnings; not human/native-network physics acceptance.
+authoritatively and must not guess old release speed. Metadata31/release29 helpers
+pass, plus relative24 (84total);17review checks exposed12initial-candidate failures.
+Validation refusal is a synthetic callback with real server step/release, not full
+file IO. This is not human/native-network physics acceptance; do not damage saves.
 
 ## P1339 replay-baked ramp atlases - human appearance check pending
 
