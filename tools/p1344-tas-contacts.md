@@ -17,6 +17,11 @@ preview is not a current observation map: Keep/Discard remains explicit, and
 Discard can restore the original complete map and source. Missing observations
 can be rebuilt with the explicitly labelled **Replay unchanged to retained
 head** action; this visibly moves the body and existing Play cancels it.
+Literal raw-input edits also invalidate the map when there is no authored intent
+metadata. A transient raw-change flag is maintained at actual mutation/harvest
+boundaries and cleared only with a new retained parent snapshot; pages do not
+synchronously scan an entire long line. A fresh reply is allowed to say there is
+no bound map: freshness alone is not an observation-validity bit.
 
 These are proposals, **not a section solver result**. A constrained next-ramp
 solver and broader optimization remain work in progress in
@@ -27,7 +32,10 @@ solver and broader optimization remain work in progress in
 Three optional output-only QC vectors expose schema/kind/plane distance, normal
 and actual hull sweep endpoint. This endpoint is not a surface position or a
 portable pose. The observer records the chosen StepMove path, not a rejected
-speculative branch. It does not change movement calculations, input credit,
+speculative branch. Recovery keeps the existing movement-normal substitution,
+but reports unsupported geometry rather than pairing a potentially synthetic
+normal with the new trace's unrelated distance/entity. It does not change
+movement calculations, input credit,
 recorder/evidence grammar, portable state or submission authority.
 
 Kinds are deliberately limited:
@@ -64,19 +72,27 @@ final tagged-source/review/deployment provenance is a separate delivery boundary
 
 - Supported `build.ps1 -Engine -Full -NoDeploy`: successful native build, all
   three QCC VMs zero warnings; no compiler warnings in modified native files.
-- Existing `pm_selftest` and all 17 production observer helper cases act/pass.
+- Existing `pm_selftest` and all 20 production observer helper cases act/pass
+  after the supported post-review native/QC build.
   Disabled/no-contact, world index zero, nonworld, invalid indices, distinct
   planes, invalid normal/distance, output clearing and observer closure are
-  exercised through the actual helper.
+  exercised through the actual helper. Recovery has an old normal-only
+  qualifying control, production abstention, and unchanged movement-trace bytes.
 - Real static BSP surf ramp: positive physical/logical clocks, finite native
   normal/plane/endpoint and held-step dedup. Whole-source rows exactly partition
   the saved input range; cached final geometry agrees with the native sample.
 - Actual earlier start/end navigation retains future inputs and map extent.
   A manual marker while earlier retains the complete map under its new actual
-  immutable revision, with original immutable bytes unchanged (28 checks).
+  immutable revision, with original immutable bytes unchanged (29 post-review
+  checks).
 - An actually changed raw yaw replays natively and diverges; client current
   observations and server binding refuse that preview. Discard restores the
   full original contact map and exact source identity/bytes (24 checks).
+- A separate completely literal line (no authored intent) reproduces the old
+  changed-yaw cached-map bug (29 control checks). The fixed path retains complete
+  maps on unchanged cold and warm replay, but a genuinely changed working raw
+  yaw gets a fresh empty UNBOUND view and server binding refusal (29 checks).
+  Original immutable bytes remain exact. This is not just a preview-flag test.
 - Acting old-native control moves/records normally but explicitly reports the
   observation capability unavailable. Earlier original-line marker and widget
   positive controls remain supporting evidence, not owner feel acceptance.
@@ -88,7 +104,13 @@ checks the real current binding without bypassing it. A diagnostic reader once
 read the header before the last reliable row arrived; the existing following
 status response now marks completion on the same ordered stream. A lower-FPS
 attempt did **not** produce a multistep arm because the client normalizes command
-cadence. That attempt is not live unsupported-scene acceptance.
+cadence. That attempt is not live unsupported-scene acceptance. The literal arm
+also initially lacked an exact normal-play warm prefix; its existing cold loader
+now establishes one. A plain project load can close stale UI, so Sections reopens
+it. A later test initially confused fresh-reply `current` with bound-map validity;
+the actual reply already had flags2/no rows. The corrected assertion checks the
+bound bit and empty map, and separately proves server refusal. Failed attempts
+remain failed receipts, not regraded passes.
 
 No claim yet of live moving-world/ladder coverage, whole-map ramp extraction,
 owner comfort, real-device control feel, globally optimal solving or public TAS

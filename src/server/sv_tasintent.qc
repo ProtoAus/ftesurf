@@ -318,6 +318,8 @@ void(entity e, float first, float last) SV_TASIInvalidate =
 {
 	local float s, i, b;
 
+	// Callers changed actual raw inputs, even when there is no intent row.
+	e.tasp_rawdirty = TRUE;
 	s = SV_TASPSlot(e);
 	if (!s || !tasi_rows[s]) return;
 	for (i = max(first, e.tasp_base+1); i <= min(last, e.tasp_base+e.tasi_cap); i = i + 1)

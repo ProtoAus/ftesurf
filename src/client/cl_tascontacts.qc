@@ -77,6 +77,7 @@ void() TASContacts_Event =
 		if (i == n-1 && offset+n == total && last != head) good = FALSE;
 		if (kind == 1)
 		{
+			if (values[2] <= .01 || values[2] >= .7) good = FALSE;
 			if (fabs(values[0]*values[0]+values[1]*values[1]+values[2]*values[2]-1) > .002) good = FALSE;
 			for (j = 0; j < 3; j = j+1)
 				if (values[4+j] > values[7+j]) good = FALSE;

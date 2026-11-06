@@ -72,6 +72,10 @@ float(entity e) SV_TASContactSpansBind =
 	local float s, head;
 	s = SV_TASPSlot(e);
 	if (!s || !e.tasp_on || e.tasp_legal || e.tasp_load || e.tase_preview || e.tase_operation || e.tasi_dirty) return FALSE;
+	if (!SV_TASEditorRows(e)) return FALSE;
+	// Recheck AFTER harvesting: legacy literal edits have no intent dirty bit.
+	// This gate precedes cached reuse AND fresh-map binding.
+	if (e.tasp_rawdirty || e.tasi_dirty || !tasp_pbuf[s]) return FALSE;
 	head = e.tasp_base+e.tasp_n;
 	if (e.tasp_filehead != head || e.tasp_pn != e.tasp_n || e.tasp_pbase != e.tasp_base) return FALSE;
 	if (!SV_TASEditorHashOK(tasp_revsha[s])) return FALSE;

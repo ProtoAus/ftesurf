@@ -25,6 +25,7 @@ float *tasp_pbuf[FS_MAXPLAYERS + 1];     // P1090: that revision's own rows (tas
 .float tasp_lasthead, tasp_filehead, tasp_ncp, tasp_load, tasp_stop, tasp_chead, tasp_cbase;
 .float tasp_native_slot, tasp_native_token, tasp_native_serial; // recovery ownership, not replay progress
 .float tasp_saveok;            // this invocation, not an old successful revision
+.float tasp_rawdirty;          // transient: raw working rows changed since the retained parent snapshot
 .float tasp_ccount, tasp_cpi, tasp_dev, tasp_devtick, tasp_result, tasp_next;
 .vector tasp_bo, tasp_bv;      // the base tick's exact origin and velocity (state.txt rounds)
 .float tasp_line;              // recorder line after tick tasp_synced's `in` row, -1 unknown
@@ -105,7 +106,7 @@ void(entity e) SV_TASProjectReset =
 	SV_TASIReset(e);
 	e.tasp_on = e.tasp_load = e.tasp_n = e.tasp_cap = e.tasp_ncp = e.tasp_ccount = 0;
 	e.tasp_result = e.tasp_dev = e.tasp_devtick = 0;
-	e.tasp_native_slot = e.tasp_native_token = e.tasp_native_serial = e.tasp_saveok = 0;
+	e.tasp_native_slot = e.tasp_native_token = e.tasp_native_serial = e.tasp_saveok = e.tasp_rawdirty = 0;
 	e.tasp_line = e.tasp_linemt = -1;
 	e.tasp_cut = 16000001; e.tasp_gen = e.tasp_parentrev = 0;
 	e.tasp_supa = e.tasp_supb = e.tasp_signed = e.tasp_pn = e.tasp_lineserial = e.tasp_made = 0;
@@ -687,7 +688,7 @@ void(entity e, float line, float branch) SV_TASPAnchorLine =
 // last are also checked against the engine's own capture where the ring kept a row.
 float(entity e, float s, float last) SV_TASPHarvest =
 {
-	local float t, i, n, b, argc, w, mt, oldest;
+	local float t, i, j, n, b, argc, w, mt, oldest;
 	local string l;
 	local vector meta, mv, an, bits;
 
@@ -730,6 +731,11 @@ float(entity e, float s, float last) SV_TASPHarvest =
 		tasp_buf[s][b+4] = SV_TASPWord(stof(argv(8)));
 		tasp_buf[s][b+5] = SV_TASPWord(stof(argv(9)));
 		tasp_buf[s][b+6] = stof(argv(10));
+		// Constant work per harvested row, including literal unknown inputs.
+		// Contact pages must not scan an entire long line synchronously.
+		if (tasp_pbuf[s] && e.tasp_pbase == e.tasp_base && t-e.tasp_base < e.tasp_pn)
+		for (j = 0; j < TAS_INPUT_STRIDE; j = j + 1)
+			if (tasp_buf[s][b+j] != tasp_pbuf[s][b+j]) e.tasp_rawdirty = TRUE;
 		t = t + 1; i = i + 1;
 		if ((t - e.tasp_base) % 16 == 0 || t == last)
 		if (t >= oldest)
@@ -1266,7 +1272,7 @@ void(entity e, float s) SV_TASPParentKeep =
 	if (tasp_pbuf[s]) memfree(tasp_pbuf[s]);
 	tasp_pbuf[s] = 0;
 	e.tasp_pn = 0; e.tasp_lineserial = e.rec_rec_serial;   // the lineage holds without the rows
-	e.tasi_dirty = FALSE; // this immutable revision owns the current metadata too
+	e.tasi_dirty = e.tasp_rawdirty = FALSE; // immutable revision owns current metadata AND raw rows
 	n = e.tasp_n * TAS_INPUT_STRIDE;
 	nb = (float*)memalloc(max(1, n) * 4);
 	if (!nb)

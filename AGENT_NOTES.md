@@ -1,5 +1,29 @@
 # AGENT_NOTES.md
 
+## P1344 contact identity, recovery abstention and reader boundaries
+
+- A ramp-recovery trace substitutes only its normal; the replacement can be
+  averaged/synthetic. Never publish that normal with the trace's unrelated
+  distance/entity as an actual BSP plane. Keep the mover substitution unchanged
+  and mark this chosen path unsupported. The production helper has a qualifying
+  old normal-only control, recovery refusal and byte-identical trace control;
+  initialize test trace padding explicitly before comparing bytes.
+- `tasi_dirty` only covers authored intent, not all literal raw edits. Track raw
+  working changes at mutation/harvest boundaries, clear with the retained parent
+  snapshot, and recheck AFTER Rows/Harvest before both cached and fresh binding.
+  Do not add an unbounded full-line equality scan to a page/frame callback.
+- A contact reply's `current` means fresh body/request, not bound observations.
+  Flags2/zero rows is a correct fresh unavailable map. Assert bound bit separately.
+  Normal play retains a cold whole-line base, not arbitrary exact warm prefixes;
+  use the real saved source loader before legacy warm edits. A plain load may
+  close stale UI; reopen Sections rather than waiting for a shut panel's Latest.
+- Reader suite output is `949 checks, 0 failed`, not unittest's Ran/OK format.
+  Corpus CLI already joins paired views with record reset context. Passing them
+  again standalone produced356 instead of351 by double-checking without that
+  context. Correct sweep:548records +168paired views +10explicit unpaired views,
+  all726member hashes stable;558entrypoint files/351existing faults. Preserve
+  the wrong invocation, not its count as a product regression or clean pass.
+
 ## P1339 requested atlas caches and native material readiness
 
 - A QC `fopen("gfx/...")` write is sandboxed into `data/gfx/...`; a renderer
