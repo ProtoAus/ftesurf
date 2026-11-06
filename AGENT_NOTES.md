@@ -53,6 +53,25 @@
 - tas menu TOGGLES closed: after marker setup, open tas sections before a Timeline
   goto. A first review-control fixture omitted this open and its goto vanished;
   preserve that failed setup, do not interpret silence as product behavior.
+- Repeated strict project reads share the ONE command VM budget. Actual48000-row
+  authored local plan reads/loads/browses, but old marker18control then runs away
+  and ONLY the owned test server exits1. Do not raise VM limits or truncate data.
+  Preflight named/original sizes plus child reserve; marker-only actual-byte budget
+  covers EVERY nested strict read, including repair/branch/stage/final checks.
+  Zero remaining stays active; clear on ALL exits. Dirty input/settings must be
+  saved/reverted before Freeze, not implicitly saved inside metadata transaction.
+  New22 safely refuses then accepts a short edit on SAME live server, normal0;
+  new58rollback/history passes.16literal helper size checks are NOT body proof.
+- Socket actor extensions must use its EXISTING send(line,target) and conbridge
+  call(args,packet), not the separate CLI wrapper's call(mode,**kwargs). Page
+  snapshots expose retained extent as head, not last. check_supply returns the
+  CHANGED-TICK LIST, not boolean success. Read helper signatures before use.
+  Public project load accepts real CP NAMES, not internal @tick; use an existing
+  real captured CP/prefix, never a fabricated future pose. External loose files
+  need source-reviewed fs_flush per P1103 notes, not a restart/new filename.
+  Preserve strict-producer, namespace, cache, RPC/schema and wait-pattern failures;
+  do not count them as acted product cases. Expected old runaway is NOT normal0
+  and latest-receipt fixture gates must verify its exact own log/ended state.
 - Required corpus scope is data/runs (parts/paired views), not the separately
   access-denied legacy kept-save prefix. Existing351faults are NOT zero; compare
   no increase, preserve bytes/ACLs, and parse newly added view inputs explicitly.

@@ -9,7 +9,9 @@ control settings are also reviewed, runtime-checked and installed BOTH Windows
 and all12lobbies. Qualification, delivery and still-pending owner acceptance are
 separate in [the settings contract](p1329-tas-settings.md).
 P1335's manual section browser, bound endpoint navigation and safe full-tail
-marker edits are implemented and isolated-qualified, with review/delivery still
+marker edits are implemented and isolated-qualified. Oversized synchronous
+metadata saves now refuse intact under a conservative cumulative-read budget;
+long-line browsing/storage is unchanged. Final re-review/delivery is still
 pending; see [the manual-section qualification](p1335-tas-sections.md). Actual
 contact proposals and the constrained next-ramp solver remain unfinished. The
 complete workflow below is NOT delivered.

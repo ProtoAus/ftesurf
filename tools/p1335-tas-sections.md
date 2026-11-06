@@ -67,6 +67,24 @@ ownership. Native key releases remain forwarded. The original recipe widget and
 save path remain available. No native C, movement, evidence format, engine pin,
 tag, QC Build, backend API or public admission policy changes.
 
+### Synchronous save limit
+
+The 96000-input storage/browser limit is unchanged, but a marker edit is not an
+unbounded bulk rewrite. A marker transaction preflights the named and immutable
+file sizes and reserves two projected child reads. Every nested strict read then
+charges its actual opened-stream bytes against a conservative 1440000-byte
+cumulative allowance, including authored settings and long tokens. Extra branch
+or repair reads consume the same allowance; stage/child reserve is rechecked
+before RAM checkpoint staging. Zero remaining never disables the limiter.
+Ordinary non-marker reading is unchanged, and every marker exit clears the scope.
+
+An oversized edit explicitly refuses with the original retained; it does not
+truncate the line or raise the VM limit. Unsaved input/settings changes must be
+saved or reverted first, so Freeze cannot insert an implicit save into the
+transaction. This intentionally means some long, otherwise readable projects
+cannot yet have their marker metadata rewritten synchronously. Bounded staged
+bulk editing is not claimed complete.
+
 ## Verification
 
 - All three actual QC VMs compile with zero new warnings.
@@ -103,9 +121,24 @@ tag, QC Build, backend API or public admission policy changes.
   complete function checks but require stopping only their own spawned processes
   after the quit deadline during later map setup (exit1), not a normal game pass.
   Actual dedicated workflow acceptance comes from the separate normal pairs.
-- Each full actual dedicated pair quits normally with code0. The supplied states
-  are isolated fixtures, not proof of arbitrary maps, genuine devices/signatures.
-  Final frozen whole-feature re-review/publication/deployment remain pending.
+- A further whole-feature review found the repeated-read VM-budget risk. An
+  actual old-code control18 first strictly reads, natively loads a real captured
+  checkpoint and browses a 48000-row local authored plan; its marker command then
+  causes a recorded VM runaway and only its owned test server exits1. The plan's
+  future is explicitly authored, not captured/device evidence; no fake future
+  pose or signature is supplied. Corrected actual22 safely refuses before named/
+  immutable bytes, RAM names or body/grants change, remains responsive, then
+  accepts a short marker on the SAME live server. Normal exit0 both processes.
+  Corrected metadata58 rerun covers typed failure/rollback and own history branch.
+- Sixteen literal production budget-helper checks pass with synthetic file sizes:
+  exact/over boundary, optional branch, different named/original size, missing
+  original, settings bytes, negative size, zero remaining and default scope-off.
+  This is helper evidence only; its own minimal fixture is stopped after the
+  later map-setup quit deadline, not a normal world/device acceptance claim.
+- Earlier full dedicated pairs and corrected22/58 quit normally with code0; the
+  explicit old runaway control is the exception above. Supplied states do not
+  prove arbitrary maps, genuine devices/signatures. Final frozen whole-feature
+  re-review/publication/deployment remain pending.
 - Mandatory recorder tests:949 checks, zero failures. Required primary runs/parts
   sweep:548 recordings/parts and178 views, existing faulty-entry count remains351
   on unchanged bytes. Ten additional views are actually parsed clean; all726

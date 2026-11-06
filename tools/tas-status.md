@@ -1,6 +1,6 @@
 # TAS project: current status and continuation
 
-Status reconciled 5 November 2026 UTC (6 November locally). Start with
+Status reconciled 6 November 2026 UTC. Start with
 [the full plan](plan-tas.md); this page summarizes delivery, not a replacement
 for its acceptance criteria. There is no honest single completion percentage:
 the local authoring loop is substantially delivered, while contact-aware section
@@ -46,9 +46,13 @@ This is deployment evidence, not owner usability or genuine-device signing.
 endpoint naming, input-range selection and bound start/end navigation. Add,
 rename, move-to-current-body and remove save the complete raw/settings line even
 while paused earlier. Original revisions, no-input-supply semantics and the
-ordinary partial-save guard remain. Actual dedicated metadata58/widget31 checks
-pass; the native panel was inspected. Final review, publication and BOTH-Windows/
-lobby delivery are pending. This is the manual foundation, not contact detection
+ordinary partial-save guard remain. A conservative cumulative byte budget now
+refuses oversized synchronous marker saves intact; storage/browser limits remain
+unchanged. Actual old48000-row control18 exhausts the VM AFTER read/load/browser
+baseline; corrected22 safely refuses, stays responsive and saves a short edit on
+that same server. Corrected metadata58 and16synthetic budget-helper checks pass;
+earlier widgets31/panel inspection remain separate evidence. Final re-review,
+publication and BOTH-Windows/lobby delivery are pending. This is the manual foundation, not contact detection
 or best-found solving; P1329 remains the current installed authoring feature.
 
 The API reader upgrade is reviewed/tested/published but still needs the owner's

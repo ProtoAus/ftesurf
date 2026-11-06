@@ -1,4 +1,29 @@
 // Local manual metadata only. No supplied pose, input credit or movement grant.
+float(string path) SV_TASMarkerSize =
+{
+	local filestream f;
+	local float bytes;
+	f = fopen(path,FILE_READ);
+	if (f < 0) return 0;
+	bytes = fsize(f); fclose(f);
+	return max(0,bytes);
+};
+
+// Reserve normal named/original/stage/child reads before the FIRST strict parse.
+// Optional branch/repair reads also consume the scoped reader budget; recheck the
+// stage+child reserve before staging metadata. No implicit input save in Freeze.
+float(string name, string sha) SV_TASMarkerBudget =
+{
+	local float named, original, child;
+	named = SV_TASMarkerSize(SV_TASPPath(name));
+	original = SV_TASMarkerSize(SV_TASPRevPath(sha,"tasp"));
+	if (original <= 0) original = named;
+	child = max(named,original)+8192;
+	if (named+original+2*child > TASP_MARKER_READBYTES) return 0;
+	tasp_markerread = TRUE; tasp_markerleft = TASP_MARKER_READBYTES;
+	return child;
+};
+
 void(entity e, float *cp, float row, float tick) SV_TASMarkerBody =
 {
 	local float b;
@@ -12,7 +37,7 @@ void(entity e, float argc) SV_TASMarkersCommand =
 {
 	local float op, expectedtick, serial, body, request, s, fullhead;
 	local float i, j, b, n, named, selected, ordinal, target, inserted, tick, pose;
-	local float oldn, oldrev, oldparentrev, olda, oldb, kept;
+	local float oldn, oldrev, oldparentrev, olda, oldb, kept, childbytes;
 	local float *work;
 	local float *oldcp;
 	local string old, replacement, expected, name, before, oldnames, acc, label, seen;
@@ -47,6 +72,10 @@ void(entity e, float argc) SV_TASMarkersCommand =
 	if (!s) goto refused;
 	if (strcmp(expected,tasp_revsha[s])) goto stale;
 	name = strzone(tasp_name[s]);
+	if (e.tasi_dirty || e.tasp_filehead != e.tasp_base+e.tasp_n) goto refused;
+	childbytes = SV_TASMarkerBudget(name,expected);
+	if (!childbytes) goto budget;
+	if (!SV_TASEditorSameInputs(e)) goto refused;
 	// Do not overwrite a different current named revision from another writer.
 	if (!SV_TASPRead(e,name,TRUE))
 	{
@@ -64,6 +93,7 @@ void(entity e, float argc) SV_TASMarkersCommand =
 		if (!SV_TASPKeptOK(e,seen)) goto refused;
 	}
 	if (!SV_TASEditorFreeze(e)) goto done;
+	if (tasp_markerleft < 2*childbytes) goto budget;
 	if (!SV_TASEditorSameInputs(e)) goto refused;
 	fullhead = e.tasp_base+e.tasp_n;
 	if (body < e.tasp_base || body > fullhead || e.tasp_filehead != fullhead) goto refused;
@@ -189,11 +219,14 @@ void(entity e, float argc) SV_TASMarkersCommand =
 	sprint(e,PRINT_HIGH,"tas marker: endpoint already unchanged\n"); goto done;
 :stale
 	sprint(e,PRINT_HIGH,"tas marker: stale revision or endpoint; Refresh before editing\n"); goto done;
+:budget
+	sprint(e,PRINT_HIGH,"tas marker: project too large for one synchronous marker edit; original retained\n"); goto done;
 :refused
 	sprint(e,PRINT_HIGH,"tas marker: complete unchanged local line required; original retained\n"); goto done;
 :bad
 	sprint(e,PRINT_HIGH,"tas marker: invalid bound metadata request\n");
 :done
+	tasp_markerread = FALSE; tasp_markerleft = 0;
 	if (work) memfree((void*)work);
 	if (old) strunzone(old);
 	if (replacement) strunzone(replacement);
