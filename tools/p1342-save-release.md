@@ -3,50 +3,57 @@
 ## Problem / change
 
 Only current/neighbor/first/last save rows were published, so two or three rapid
-steps could not be predicted. Release then reused wop_loadvel from a previous
-row. Separately, atomic cursor updates could outrun the numeric HOLDVEL stats.
+steps could not be predicted. Release reused a previous load speed; independent
+HOLDVEL stats could be older than a cursor update. Independent review then found
+that even a coherent cursor is NOT proof of the held row: a failed state-file
+load advances the cursor while the authoritative hold remains on the old row.
 
-Publish four more rows (+2,-2,+3,-3) through optional stat207. Its bounded D string
-contains the COMPLETE original C snapshot as one quoted token plus four rows:
-38outer tokens,50inner C tokens, hard1400-byte cap. New clients prefer that whole
-snapshot, never a new separately arriving C plus old extra rows. Old C and numeric
-stats are unchanged for older clients/servers. Extra-only row changes participate
-in the serializer's signature and refresh D even when the original C is unchanged.
-No new engine wire type/native build, evidence/run/save format or raw capture.
-Payload is bounded to four extra rows, never a full999-save dump. The cap is
-checked before publishing; oversized/malformed/missing extensions fall back without
-inventing a partial row. Beyond +-3 (unless original first/last/current/neighbor
-covers it), prediction remains explicitly unknown rather than guessed.
+Optional stat207 contains COMPLETE quoted C50, actual-held validity/velocity,
+and four extra rows (+2,-2,+3,-3):42outer tokens, hard1400-byte cap. Clients select
+that WHOLE snapshot, never combine a newer C with an older D. Old C/numeric
+interfaces remain. Extra-only and held-only changes participate in refresh even
+when C is unchanged. Existing decimal/float32-finite codec validates EVERY numeric
+outer/embedded component; wrong structure, invalid hold flag, junk/NaN/infinity/
+overflow or an oversize extension rejects D, retaining legacy rows but no extras.
+No truncation/partial-row guess and never a full999-save dump.
 
-Resolve a release row through existing WarpOp_Row replay; use its coherent speed
-or existing BLIND semantics if that destination/list is unknown. Preserve legacy
-held-stat fallback, refused steps, queue-full/backstop and missing-ring behavior.
-No threshold/quiet-period change: unknown release truthfully uses the existing
-blind-operation classification; known releases remain predicted.
+Pending non-rate-refused loads/steps use existing virtual-row replay (and can
+still be corrected if the server refuses validation). Once answered, release uses
+ACTUAL held speed from the same D snapshot, NOT the selected cursor. A C-only
+settled hold or missing/unproven held state is BLIND; numeric-only legacy fallback
+remains. Rate-refused pending ops do not retarget the hold. Queue-full/backstop,
+missing-ring, unknown rows and already-free replay behavior remain.
+
+No native engine/wire type, evidence/run/save format, authoritative load/release
+semantics, threshold/quiet-period, raw capture, backend, Build or release change.
+Beyond+-3 remains unknown unless an original current/neighbor/first/last covers it.
 
 ## Acting verification
 
-Actual dedicated CPU-only QC VM compiles EXACT production server row selection/
-serializer and client decoder/row/step/release/apply helpers with explicit synthetic
-stat delivery/queue/rate stubs.43checks total:
-- Window22: baseline10intended failures, subject0. Includes actual server formatter,
-  legacy C50, D38/cap, both directions at2/3, wrapping/small lists, delayed D vs C,
-  full-snapshot preference, malformed inner/outer data, empty/missing rows, stale
-  list ack, and extra-only updates while C stays unchanged.
-- Release21: baseline8intended failures, subject0. Includes full queued step/release/
-  apply integration for extended2/3 chains, stale separate speed, known/unknown/
-  refused/legacy/recovery/backstop/missing-ring/queue-full/free-mode controls.
-Both compiler0warnings, server exit0. BOTH main/Pi-profile standard THREE-VM
-NoDeploy builds0warnings.
-Initial pointer-declaration and sent-cursor fixture setup failures retained; no
-warning waived. Earlier smaller fixtures are retained history, not current totals.
+Actual dedicated CPU-only QC VM, exact production helpers and explicit synthetic
+stat/queue/rate/validation dependencies:
+- Metadata31/0: production formatter/decoder, legacy C50, complete D42/cap,
+  bidirectional2/3, wrapping/small lists, C/D ordering, extra-only AND held-only
+  refresh, no-hold transition, stale list ack, malformed structure and same-shape
+  junk/NaN/infinity/overflow/inner numeric/invalid flag refusal.
+- Release29/0: full queued step/release/apply, known/unknown/refused/legacy/recovery,
+  backstop/ring/full/free controls; production server step and release execute.
+  A validation callback explicitly refuses/accepts (NOT full state-file IO):
+  cursor advances while old hold persists, then acknowledged release matches
+  actual server600 rather than cursor700. Accepted retarget/thaw also act.
+- Relative24/0 remains byte-identical helper coverage (P1343), total84/0.
 
-This is source-helper/state evidence, NOT full native packet/physics or proof of
-a historical report's cause. Engine stat strings support65536-byte read buffers
-and existing reliable string transport; no measured bandwidth/FPS claim is made.
-Reader949checks pass. Primary RUNS548/351fault-count incl views is the actual
-predeployment baseline (reader exactly prework source), not a fault-free claim.
-Independent reviews, native packet smoke and paired deployment remain pending.
-Human acceptance in lextest.md: hold a save, step next/previous2or3times quickly
-and release; compare single-step and first/last recovery. Unknown longer chains
-may still arrive server-authoritatively; old-save release speed must not apply.
+The17 added review checks expose12failures in the ORIGINAL67-check candidate:
+metadata31/8 and release29/4 before correction, both0 after; compiler0warnings,
+server exit0. Original43 baseline18failures and relative24 baseline7 are retained
+historical controls, not added together across different baselines. Original
+candidate/reviews/fixtures/failures retained; no regrading or warning waiver.
+
+Both post-fix standard THREE-VM NoDeploy builds have0warnings. Renewed independent
+review, paired deployment and native served-code/render smoke remain pending. Reader949passed; primary RUNS548/351fault
+count incl paired views is the real predeployment baseline, reader exactly prework
+source, NOT fault-free. Final count must not increase. This is helper/state evidence,
+not full packet/collision/PVS/feel or a historical report's proven cause. No
+measured bandwidth/FPS claim. Human acceptance in lextest.md: hold a save, step
+next/previous2or3times quickly and release; compare single-step/first/last recovery.
+Do not damage/delete real saves to manufacture a validation failure.
