@@ -1,4 +1,5 @@
 # The engine build this QuakeC requires.
+# Patch 1349: required compiler output/debug failures take the existing error/unwind path; an unavailable optional decompiler refuses safely. No recording, comparison-policy, VM-layout or Build change. Native component provenance and limits: tools/p1349-compiler-results.md.
 # Patch 1348: current-scene overview lightmap/epoch guards retain cache/realtime rules; require loaded packet brushes, discard hidden weapon feedback and keep VM profile synchronization active. Corrects review findings before deployment; no physics/wire/recording-format or Build change. tools/p1348-overview-state.md. Published1345 source/tag remains immutable, not a qualified promotion target.
 # Patch 1345 (native/CSQC): exact raw frame diagnostics and map-only noclip; recursive reflections retain the selected parent policy, avoiding cold cosmetic-prop lighting at void entry. Structural BSP/reflections, authored LOD visibility, normal lighting and query cadence stay intact. Full normal c24ede65 builds and source-bound native controls pass; final unprofiled feel is pending, not a performance pass. tools/p1345-smoothness.md records delivery separately. No physics/wire/recording-format or QC Build change.
 # Patch 1347: visible KSF board fetch controls; gentler replay pacing, targeted transient retries and Retry-After handling.
@@ -55,7 +56,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   1355c256a758f01be88280c1bc03d8b81f92709b
+commit   8e389dc4beabd8247e888dbf243e11d7b3ebbbaf
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -67,8 +68,8 @@ commit   1355c256a758f01be88280c1bc03d8b81f92709b
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
-tag      patch-1348
-patch    1348
+tag      patch-1349
+patch    1349
 # Patches 1305/1306 (engine common/pm_source.c): faithful existing gravity-use observation across finite native jump configurations and stock postures. Movement, capture/API/format and ranking policy unchanged. Clean Windows/ARM, acting controls and dual Windows/all12Pi native delivery verified; actual ranked/full-bank acceptance separate. Windows source7ae5d53b2 includes published P1301; Pi source76acc7c6b/tagpatch-1306 has identical mover/server inputs. Details and corrected old-manifest selector diagnosis: tools/p1306-gravity-context.md.
 # Patch 1299: initial finite nonnegative normalized-offset extension; full native delivery now superseded by the qualified 1305/1306 set. Historical proof and correction in tools/p1299-gravity.md.
 # Patches 1255/1257 (engine sv_ccmds.c pm_dettest mover-12 lines; renderer gl_mindist 2, viewmodels keep 1): installs tag patch-1257, which merges patch-1260. QC needs neither.
