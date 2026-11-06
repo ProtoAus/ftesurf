@@ -21,6 +21,12 @@
 
 ## next
 
+### P1343 Relative teleport parity
+- Relative teleports stay invisible pass-through triggers when enabled and preload their destination like ordinary teleports. Prediction reports now distinguish server-only relative snaps without hiding same-destination prediction errors.
+
+### P1342 Short save chains and consistent release speed
+- Rapid next/previous save chains now predict two or three steps ahead. Letting go uses the held save's speed, or waits for the server when that destination is not known, rather than applying the previous save's speed.
+
 ### P1341 No stale boost after velocity-reset teleports
 - Fixed predicted push velocity surviving teleports that reset or redirect velocity. Keep-velocity and landmark teleports still preserve their intended speed, and a later push still works.
 

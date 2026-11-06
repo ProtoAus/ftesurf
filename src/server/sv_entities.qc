@@ -2978,7 +2978,13 @@ void(entity t, float on) SV_IOEnable =
 			t.solid = t.vbsp_io_solid;	// Patch 892: a zone-tool box (SOLID_NOT behind an unknown filter)
 		if (t.vbsp_sp_kind && t.solid != SOLID_NOT)
 			SV_SpDrop(t);				// Patch 860: never solid while moving
-		t.effects = t.effects - (t.effects & EF_NODRAW);
+		if (t.solid == SOLID_BSPTRIGGER)
+		{
+			t.effects = t.effects | EF_NODRAW; // clip triggers do not become visible on Enable
+			t.vbsp_rmhide = FALSE;            // invisibility belongs to the trigger, not Alpha
+		}
+		else
+			t.effects = t.effects - (t.effects & EF_NODRAW);
 		if (t.vbsp_slide_skin && t.solid != SOLID_NOT)
 			t.skin = t.vbsp_slide_skin;
 	}
@@ -8193,6 +8199,11 @@ void() trigger_gravity =
   the floor).
 ===========================================================================
 */
+vector(entity t) SV_RelTelePoint =
+{
+	return (t.absmin + t.absmax) * 0.5 + t.teleportoffset;
+};
+
 void() trigger_teleport_relative_touch =
 {
 	local entity bp;
@@ -8237,7 +8248,7 @@ void() trigger_teleport_relative_touch =
 
 	// absmin/absmax are symmetric about the model centre, so their midpoint is
 	// WorldSpaceCenter; no hull alignment, origins are at the feet on both sides.
-	p = (self.absmin + self.absmax) * 0.5 + self.teleportoffset;
+	p = SV_RelTelePoint(self);
 	// Lift 1 only if resting there is solid (surf_excavation lands exactly on
 	// its floor); if that is solid too, keep Source's point.
 	tracebox(p, other.mins, other.maxs, p, TRUE, other);
@@ -8304,6 +8315,7 @@ void() trigger_teleport_relative =
 	SV_BindInvisibleBrush();
 	self.movetype = MOVETYPE_NONE;
 	self.solid = SOLID_BSPTRIGGER;
+	self.vbsp_io_solid = SOLID_BSPTRIGGER; // Enable before any Disable must preserve the clip trigger
 	self.touch = trigger_teleport_relative_touch;
 	vbsp_reltele_n = vbsp_reltele_n + 1;
 };
