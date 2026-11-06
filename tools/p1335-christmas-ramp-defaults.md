@@ -50,8 +50,8 @@ rendering/audio shutdown, edge-on stability, occluder bleed or FPS acceptance.
   old v2/legacy expectation also predates the prior lift2 key. No shader bytes
   changed and no ABI/blend check weakened.
 - Existing actual native sampler/colour/3xfaster-flash controls pass unchanged.
-  Current-main THREE-VM working build0warnings. Clean exact-commit qualification
-  and guarded delivery are recorded below after execution.
+  Current-main THREE-VM working build0warnings. Clean exact-commit C4 and D911
+  qualifications each0warnings; dependency/promotion details below.
 - Source baseline inspected current5ec8a9d5899eb255cfc7baa8e5e172d928b14616:
   live P1329CS1ca3a29c/QW5e8cd6d1 and P1330 native APIs. Never deploy the prior
   9b2-qualified tree, which would remove newer published peer features.
@@ -62,10 +62,42 @@ rendering/audio shutdown, edge-on stability, occluder bleed or FPS acceptance.
 
 ## Deployment / owner check
 
-Pending guarded client-only qualification and deployment. No native pins/tag,
-QW/menu/backend, media, movement, recording/evidence, QC Build or public release
-change. Pi must use a safe current empty/closed-writer window; occupancy blocks
-that step, not independent Windows/source work. No old-cohort archive reuse.
+## Installed Windows; lobby step blocked by occupancy (6 November UTC)
+
+Feature `c4cfebabe7df2eaef1aebdb2663cd4b8393d487f` is published on
+winter-defaults-1335-qualified. Main `d911930d4524022e937a7fa216c0a32829b8222c`
+merges it with concurrently published P1336; both features/notes retained and
+patch maximum1336 preserved. Initial non-fast-forward refusal and old-base/
+PowerShell-quote failures retained, never claimed as candidate qualification.
+
+During preparation another session advanced BOTH Windows to QW66a6dcd1 /
+CSb639d68f (P1336), while lobbies still run QW5e8cd6d1 /CS1ca3a29c (P1329).
+The predecessor guard refused the original C4/b7d67c22 Windows candidate BEFORE
+staging. Do not simply rebaseline that candidate and downgrade the newly live
+pair. Instead clean-build D911: QW66a6dcd1 EXACTLY matches the new live server;
+our five seasonal/ramp modules EXACTLY match C4. Other VMs are controls only.
+
+BOTH Windows installed6Nov02:50:08UTC: ONLY client DAT/LNO,4targets exact,
+41protected paths unchanged. CSP117d627ace2dff49c1400a9d4c426b940ba18d7959827f56b5a8c72adcec11cf;
+both caches e760cdcc.dat seeded. Known-source client catalog64->65 preserves
+all previous rows for this installed Windows body, without a backend restart.
+Source D911 contains committed P1336 code
+because that pair was already installed, not an unapproved peer-work release.
+Two exact4line cosmetic-default insertions separately verified ALL other bytes
+unchanged against current shared-config preimages. Initial CRLF expectation
+refused without rollback; actual original and resulting files were both LF,
+and exact-byte comparison with the LF hunk passed. Archived player cfg untouched.
+
+Lobby rollout is NOT deployed: existing90second empty-window prepare exited75,
+readyfalse/clients1/no archive, canonical stage or restart. Do not bypass its
+writer/data-preservation gate. Pending package is C4/b7d67c22 for the STILL-LIVE
+old5e8/1ca pair, not Windows D911/117/66. If the lobby pair advances, refresh that
+dependency/source proof BEFORE staging; do not overwrite a new peer program.
+No new current run/resume archive is claimed or old-cohort archive reused.
+
+No native pins/tag, QW/menu/backend, media, movement, recording/evidence,
+QC Build or public release changed by this task. Exact safe lobby window and
+native visual acceptance remain; independent Windows/source work is finished.
 
 Small owner check after delivery: Christmas0 must stop seasonal snow/sky/audio/
 props even if r_weather1/r_snow2/preview2 were set;1 should restore selected

@@ -1,6 +1,12 @@
 # lextest.md — things waiting on a human
 
-## P1335 Christmas master/defaults and close ramp dirt — pending delivery/check
+## P1335 Christmas master/defaults and close ramp dirt — Windows installed, lobby/check pending
+
+BOTH Windows installed6Nov02:50UTC, current-pair D911/CSP117d627ace2d plus
+exact defaultcfg hunk; client caches seeded. Lobbies remain old5e8/1ca: one
+connected client blocked the safe window (exit75, no stage/restart). Do not
+judge this feature using that older downloaded lobby client. Resume guarded
+rollout once empty/current-pair identity is checked; no repeat approval needed.
 
 Owner's positive P1332 response ("epic") is recorded as general visual feedback,
 not measured FPS/timing or a detailed cap/footstep acceptance. Requested changes:
