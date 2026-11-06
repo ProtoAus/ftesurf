@@ -258,6 +258,8 @@ __pycache__/
 !/ftesurf/sound/ftesurf/board_bong.wav
 !/ftesurf/sound/ftesurf/board_bell.wav
 !/ftesurf/models/
+# Generated authored snow mesh is seeded by the release asset procedure.
+/ftesurf/models/snow/*.iqm
 !/ftesurf/textures/
 /ftesurf/textures/*
 !/ftesurf/textures/no_texture.png

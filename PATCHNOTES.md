@@ -29,6 +29,8 @@
 ### P1349 Reliable developer compiler results
 - Compiler output and requested debug-file failures now stop compilation instead of returning success. An unavailable decompiler reports its missing capability safely.
 
+## 0.1.41 2026-11-06
+
 ### P1348 Correct overview state on exit
 - Leaving map-only noclip keeps normal dynamic lighting intact, including cached and realtime-lighting policies.
 - Hidden weapon bursts, recoil and scope feedback are discarded rather than replayed on exit. Viewmodel preferences and watched profiles still update while hidden.
