@@ -1231,10 +1231,23 @@ void(float s0) TG_IOCommit =
 
 // P1238: a teleport the mirror leaves to the server lands the body on its destination a round trip
 // late; keep where, so the prederror rules can tell that snap from a misprediction.
+vector(float i) TG_RelTelePoint =
+{
+	return (tg_ent[i].absmin + tg_ent[i].absmax) * 0.5 + tg_reloff[i];
+};
+
 void(float i) TG_NoteServerTele =
 {
 	local float d;
-	if (tg_kind[i] != TG_TELE || tg_landmark[i] != "" || tg_sod_n >= TG_SOD_MAX)
+	if (tg_sod_n >= TG_SOD_MAX)
+		return;
+	if (tg_kind[i] == TG_RELTELE)
+	{
+		tg_sod[tg_sod_n] = TG_RelTelePoint(i);
+		tg_sod_n = tg_sod_n + 1;
+		return;
+	}
+	if (tg_kind[i] != TG_TELE || tg_landmark[i] != "")
 		return;
 	d = TT_Find(tg_target[i]);
 	if (d < 0)
@@ -1683,7 +1696,7 @@ float(float i, float seq) TG_FireRelTele =
 	if (tg_flags[i] && !(tg_flags[i] & TG_SF_TELE_CLIENTS))
 		return 0;
 	TG_IOEdge(i, seq);
-	p = (tg_ent[i].absmin + tg_ent[i].absmax) * 0.5 + tg_reloff[i];
+	p = TG_RelTelePoint(i);
 	// As a hull: player clip too, and not cl_sprites' occluder copies (the server's server-side brush
 	// entities have no copy here either).  The cl_lines.qc probe idiom.
 	if (!tg_relprobe)

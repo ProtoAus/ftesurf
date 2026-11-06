@@ -57,6 +57,10 @@ float  wop_rellast, wop_loadlast;   // P1238: the last release and load commands
 float  wop_c_ok, wop_c_ack, wop_c_idx, wop_c_cnt, wop_c_slack;
 vector wop_c_org[5], wop_c_ang[5], wop_c_vel[5];   // cursor, next, prev, first, last
 string wop_c_src;
+float wop_x_ok, wop_x_held;
+vector wop_x_holdvel;             // actual held row, which can differ from a refused load's cursor
+string wop_x_src, wop_x_cur;
+vector wop_x_org[4], wop_x_ang[4], wop_x_vel[4]; // +2,-2,+3,-3 from the same C snapshot
 float  wop_relat;
 
 // Patch 759: STAT_FS_WOPLEGS parsed -- stage N at N - 1, bonus N at WOP_STAGES + N - 1.
@@ -131,11 +135,60 @@ float() WarpOp_Idx = { return wop_c_ok ? wop_c_idx : getstatf(STAT_FS_SAVEINDEX)
 float() WarpOp_Cnt = { return wop_c_ok ? wop_c_cnt : getstatf(STAT_FS_SAVECOUNT); };
 
 // CSQC_Input_Frame (it tokenizes): STAT_FS_WOPCUR into the cache when it changes.
+// D carries the complete old C snapshot as one quoted token plus four rows.
+// Prefer that whole snapshot: independently arriving C must never mix with D.
+void() WarpOp_Chain =
+{
+	local string s;
+	local float n, i, b, limit;
+
+	s = getstats(STAT_FS_WOPCHAIN);
+	if (!strcmp(s, wop_x_src))
+		return;
+	if (wop_x_src != "") strunzone(wop_x_src);
+	if (wop_x_cur != "") strunzone(wop_x_cur);
+	wop_x_src = strzone(s);
+	wop_x_cur = "";
+	wop_x_ok = FALSE;
+	if (strlen(s) > WOPCHAIN_MAX)
+		return;
+	n = tokenize(s);
+	if (n != 42)
+		return;
+	if (strcmp(argv(0), "D"))
+		return;
+	limit = stof("3.4028234663852886e38");
+	for (i = 2; i < n; i = i + 1)
+		if (!Watch_OwnViewNumber(argv(i), limit))
+			return;
+	wop_x_held = stof(argv(2));
+	if (wop_x_held != 0 && wop_x_held != 1)
+		return;
+	wop_x_holdvel = [stof(argv(3)), stof(argv(4)), stof(argv(5))];
+	wop_x_cur = strzone(argv(1));
+	for (i = 0; i < 4; i = i + 1)
+	{
+		b = 6 + i * 9;
+		wop_x_org[i] = [stof(argv(b)), stof(argv(b + 1)), stof(argv(b + 2))];
+		wop_x_ang[i] = [stof(argv(b + 3)), stof(argv(b + 4)), stof(argv(b + 5))];
+		wop_x_vel[i] = [stof(argv(b + 6)), stof(argv(b + 7)), stof(argv(b + 8))];
+	}
+	if (tokenize(wop_x_cur) != 50)
+		return;
+	if (strcmp(argv(0), "C"))
+		return;
+	for (i = 1; i < 50; i = i + 1)
+		if (!Watch_OwnViewNumber(argv(i), limit))
+			return;
+	wop_x_ok = TRUE;
+};
+
 void() WarpOp_Cur =
 {
 	local string s;
 	local float r;
-	s = getstats(STAT_FS_WOPCUR);
+	WarpOp_Chain();
+	s = wop_x_ok ? wop_x_cur : getstats(STAT_FS_WOPCUR);
 	if (!strcmp(s, wop_c_src))
 		return;
 	if (wop_c_src != "")
@@ -202,6 +255,7 @@ float(float op, vector org, vector vel, vector ang, float duck) WarpOp_Queue =
 #define WOPP_LIST      1            // a load or step: the cursor stats are from before it
 #define WOPP_MOVE      2            // anything but a release: `!r`'s leg may move under it
 #define WOPP_BLINDLOAD 3            // a blind load: its row's speed is not known here
+#define WOPP_HOLDROW   4            // a pending load/step not known to be rate-refused
 
 // An unanswered op of the kind asked about.
 float(float what) WarpOp_Pending =
@@ -221,6 +275,9 @@ float(float what) WarpOp_Pending =
 			return TRUE;
 		if (what == WOPP_BLINDLOAD && op == WOP_LOAD && wop_blind[i] == WOPB_BLIND)
 			return TRUE;
+		if (what == WOPP_HOLDROW && wop_blind[i] != WOPB_REFUSED)
+			if (op == WOP_LOAD || (op >= WOP_NEXT && op <= WOP_LAST))
+				return TRUE;
 	}
 	return FALSE;
 };
@@ -237,6 +294,19 @@ float(float op, float idx, float cnt) WarpOp_StepIdx =
 	if (op == WOP_LAST)
 		return cnt;
 	return idx;                         // WOP_LOAD: the cursor row
+};
+
+float(float idx, float cnt, float delta) WarpOp_Offset =
+{
+	local float op;
+	op = (delta < 0) ? WOP_PREV : WOP_NEXT;
+	if (delta < 0) delta = -delta;
+	while (delta > 0)
+	{
+		idx = WarpOp_StepIdx(op, idx, cnt);
+		delta = delta - 1;
+	}
+	return idx;
 };
 
 /*
@@ -307,7 +377,19 @@ float(float op) WarpOp_Row =
 	else if (idx == cnt)
 		b = 3;
 	else
+	{
+		if (!wop_c_ok || !wop_x_ok)
+			return FALSE;
+		for (b = 0; b < 4; b = b + 1)
+			if (idx == WarpOp_Offset(i0, cnt, ((b < 2) ? 2 : 3) * ((b & 1) ? -1 : 1)))
+			{
+				wop_tgorg = wop_x_org[b];
+				wop_tgang = wop_x_ang[b];
+				wop_tgvel = wop_x_vel[b];
+				return (wop_tgorg != '0 0 0');
+			}
 		return FALSE;
+	}
 	if (wop_c_ok)
 	{
 		wop_tgorg = wop_c_org[b + 1];
@@ -536,16 +618,32 @@ float(float op, float rep) WarpOp_Step =
 float() WarpOp_Release =
 {
 	local vector v;
+	local float blind;
 
-	v = wop_loadvel;
-	if (getstatf(STAT_FS_HOLD))
-	if (!WarpOp_Pending(WOPP_LIST))
-		v = [getstatf(STAT_FS_HOLDVEL), getstatf(STAT_FS_HOLDVEL + 1), getstatf(STAT_FS_HOLDVEL + 2)];
 	if (!wop_seq)
 		return FALSE;
+	v = wop_loadvel;
+	blind = FALSE;
+	// A refused load advances the cursor without retargeting the hold. Only
+	// pending non-refused loads/steps may predict a new row; otherwise use the
+	// actual held speed in the SAME snapshot, never the cursor or stale HOLDVEL.
+	if (WarpOp_Pending(WOPP_HOLDROW))
+	{
+		blind = !WarpOp_Row(WOP_LOAD);
+		if (!blind)
+			v = wop_tgvel;
+	}
+	else if (wop_c_ok)
+	{
+		blind = !(wop_x_ok && wop_x_held && wop_c_slack == getstatf(STAT_FS_SLACK));
+		if (!blind)
+			v = wop_x_holdvel;
+	}
+	else if (getstatf(STAT_FS_HOLD))
+		v = [getstatf(STAT_FS_HOLDVEL), getstatf(STAT_FS_HOLDVEL + 1), getstatf(STAT_FS_HOLDVEL + 2)];
 	if (!WarpOp_Queue(WOP_RELEASE, '0 0 0', v, '0 0 0', 0))
 		return FALSE;
-	if (WarpOp_Pending(WOPP_BLINDLOAD))
+	if (blind || WarpOp_Pending(WOPP_BLINDLOAD))
 		wop_blind[wop_slot] = WOPB_BLIND;   // Patch 759: that load's speed is not known here
 	wop_relseq = -1;
 	wop_relat = 0;

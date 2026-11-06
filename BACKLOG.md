@@ -1,5 +1,9 @@
 # BACKLOG.md
 
+## P1339 Story/Event atlas coverage and KSF top-up (100/114 ready)
+- Sites: `tools/rampwear.py:load_charts/touched`, `rampwear_batch.py:prebake`, upstream CSS66 board/demo acquisition. Four maps have no local inputs and ten have no contacts on currently supported static geometry; names/limits in `tools/p1339-ramp-atlas.md`. All-category/tail KSF capture is incomplete after HTTP500; obey the CURRENT shared park/lock/pacing, never bypass its cooldown or call uncrawled categories absent.
+- Falsifier: current-map-bound original poses MUST positively touch actual supported geometry, against an acting world/displacement control, before a nonempty atlas counts. Axiom/BoardThis bounded height offsets and conservative static-brush-origin controls still have zero touches; this is NOT proof all ramps move, no ramps exist, or the map has no demos. Resolve actual geometry/recorded coordinates or obtain matching inputs, then validate real native drawing and publish only nonempty hashed assets. No invented marks/guessed mover transforms or empty-mask completion.
+
 - Site: `CL_PredictSourcePhase`/`SV_UpdateClientStats` save-time one-tick corrections.
   P1330 fixes a demonstrated phase scheduling weakness and captures the missing
   event-time replay seed/mode/counts; oldv1reports cannot establish their cause.
@@ -419,12 +423,9 @@
   reproduced locally (eternity, 40 ms). The excusal also hides their data.
 - Lex's 0.2 s eternity snap (284 u; the server ran ~6 of 13 commands) is not explained: a 0.2 s
   loss is replayed exactly in the arm. The next report with == server rows will show it.
-- Chained save steps beyond +-1 of the acked cursor are sent blind (now excused): publish +-2/3
-  rows in STAT_FS_WOPCUR to predict them.
-- TG_NoteServerTele records only TG_TELE (not demoted relative teleports) and at most 32.
-- Server: trigger_teleport_relative never sets vbsp_io_solid, so an Enable not preceded by a
-  Disable makes it SOLID_BSP and drawn (sv_entities.qc ~2966). P1190's PVS eye covers only
-  trigger_teleport_touch, so a relative teleport's destination entities pop in.
+- TG_NoteServerTele's ordinary/relative destination registry is still bounded at32 (P1343 fixes
+  relative coverage/ambiguity, not that cap). Falsifier: >32distinct demoted destinations in one
+  map and a later server-only snap to an omitted point; not yet measured/reproduced.
 - The server row ring is one strbuf of formatted rows per player (3 sprintfs a command); keep raw
   numbers and format on upload if lobby CPU ever matters. Sequence floats pass 2^24 after ~70 h.
 

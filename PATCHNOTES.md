@@ -25,6 +25,12 @@
 - Browse observed ramp faces separately from your manual markers, and jump to their input ranges without losing the rest of your line.
 - Keep complete observations across safe marker-only edits; changed previews stay separate and Discard restores the original map. This is not yet an automatic next-ramp solver.
 
+### P1343 Relative teleport parity
+- Relative teleports stay invisible pass-through triggers when enabled and preload their destination like ordinary teleports. Prediction reports now distinguish server-only relative snaps without hiding same-destination prediction errors.
+
+### P1342 Smoother short save chains and correct release speed
+- Two or three rapid save steps in either direction can now be predicted. Fixed releases using a previous save's velocity; unknown destinations are not guessed.
+
 ### P1341 No stale boost after velocity-reset teleports
 - Fixed predicted push velocity surviving teleports that reset or redirect velocity. Keep-velocity and landmark teleports still preserve their intended speed, and a later push still works.
 

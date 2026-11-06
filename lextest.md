@@ -15,10 +15,31 @@ passed; one earlier real-widget positive is not repeated-click/comfort acceptanc
 No owner confirmation has been received. Native observations are not yet a
 constrained next-ramp solver or a public verified TAS submission path.
 
+## P1343 relative teleports — delivery pending, human check pending
+
+A familiar relative teleport (e.g. surf_4am) should remain invisible/pass-through after an
+enable/toggle, land at the same place and avoid an unnecessary destination flash.
+Actual helper VM24/0 vs7baseline failures is not native PVS/physics/feel or measured
+performance acceptance. Report threshold stays2units; predicted same-point
+ordinary/relative errors must remain eligible rather than quietly excused.
+
+## P1342 short save chains/release — delivery pending, human check pending
+
+Hold a save, step next/previous2or3times quickly, release. These short chains
+should predict and use the actual destination's speed; compare single-step and
+first/last recovery. Longer unpublished destinations can still arrive server-
+authoritatively and must not guess old release speed. Metadata31/release29 helpers
+pass, plus relative24 (84total);17review checks exposed12initial-candidate failures.
+Validation refusal is a synthetic callback with real server step/release, not full
+file IO. This is not human/native-network physics acceptance; do not damage saves.
+
 ## P1339 replay-baked ramp atlases - human appearance check pending
 
-After the P1339 deployment receipt is complete, on a familiar prepared map use
-`rampwear_download`, then `r_rampwear 1` (and dirt separately if wanted). Are the
+Installed6Nov2026UTC: BOTHWindows07:11, ALL12Pi07:38;100/114map triples
+published,14explicit coverage gaps. Native transport/material/largest-mesh and
+fresh served-CS smoke pass; no owner visual/feel/FPS acceptance yet.
+On a familiar prepared map use `rampwear_download`, then `r_rampwear 1`
+(and dirt separately if wanted). Are the
 scratches dense enough and visible well beyond the old short throw distance?
 Both effects still default off; a download alone must not enable either one.
 The snowflake model move is byte-identical; no new snow appearance/FPS claim.
@@ -57,17 +78,18 @@ edge-on shimmer or drawing through nearby occluders? Default lift0.03125, old
 saved values capped0.125; try changing lift live. Restore marks/dirt0 when done.
 Keep this small actual-game check separate from native-parser/math controls.
 
-## P1336 manual TAS sections -- delivery pending, not human-confirmed
+## P1336 manual TAS sections -- BOTH Windows installed, owner check pending
 
-After installation, one small local check: play a disposable line, Pause, open
+Published and BOTH-Windows installed/runtime-qualified6Nov2026; lobby delivery
+is a separate boundary. No owner confirmation received. One small local check: play a disposable line, Pause, open
 Sections, type a name and Add here. Go earlier, add a second marker, then choose
 Marker on an existing endpoint and rename it. Are the four navigation/edit
 buttons and separate name draft readable and natural, with the later line still
 visible? For Move here, seek first, then reselect the endpoint and move it. Does
 switching to Project and back leave typing/gameplay keys unstuck? A quick comment
 on this one panel is enough for basic feel; automatic/native widget checks do not
-supply human acceptance. Automatic contact sections and next-ramp solving are
-still unbuilt, not hidden behind these manual markers.
+supply human acceptance. P1344 adds separate native contact proposals; next-ramp
+solving remains unbuilt, not hidden behind these manual markers.
 
 ## P1333 current-file consistency — deployed, owner readability pending
 

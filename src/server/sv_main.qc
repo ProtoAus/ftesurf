@@ -499,6 +499,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_WOPLEGS + 5,    EV_STRING, wop_legs5);
 	clientstat(STAT_FS_WOPACK,         EV_FLOAT, wop_ack);
 	clientstat(STAT_FS_WOPCUR,         EV_STRING, wop_cur);           // P1238
+	clientstat(STAT_FS_WOPCHAIN,       EV_STRING, wop_chain);         // P1342: exact-C-bound +2/-2/+3/-3
 	clientstat(STAT_FS_SAVEROOT,       EV_STRING, sl_rootstat);
 	clientstat(STAT_FS_SOURCEPHASE,    EV_STRING, svpm_phase_stat);
 	clientstat(STAT_FS_SLACK,          EV_FLOAT, rec_sl_ack);

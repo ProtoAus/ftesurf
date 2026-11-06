@@ -159,6 +159,10 @@
 // each), one string: the engine sends at most 32 changed stats a packet, lowest index first, so
 // WOPACK (177) could trail SAVEINDEX (62) and the rows, and a step was counted twice.
 #define STAT_FS_WOPCUR 204
+// P1342: D "<exact C string>" + actual-held validity/velocity + four rows (+2,-2,+3,-3),42tokens.
+// Optional: old clients/servers keep C and numeric fallbacks; no save/run format change.
+#define STAT_FS_WOPCHAIN 207
+#define WOPCHAIN_MAX 1400
 #define STAT_FS_TASPLANAMOUNT 205
 #define STAT_FS_TASPITCHFOLLOW 206
 #define TAS_PLAN_LIVE 0

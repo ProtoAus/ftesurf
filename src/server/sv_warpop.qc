@@ -19,6 +19,7 @@
 .float wop_lo, wop_hi;           // the last op's command
 .float wop_ack;                  // Patch 759: the same, one number (STAT_FS_WOPACK)
 .string wop_cur;                 // P1238: STAT_FS_WOPCUR, zoned (SV_WarpOpCur)
+.string wop_chain;               // P1342: optional exact-C-bound extra rows, zoned
 .float  wop_csig, wop_ct;        // ...a cheap signature of what it carries, and when it was last built
 float  wop_live;                 // fs_wop published
 
@@ -154,14 +155,21 @@ vector(float r) SV_WarpOpRow =
 
 // Every command: the rows SV_SaveLocStep/First/Last would load from this cursor.
 // SV_SaveLocSync has just set rec_sl_count and the cursor (0 when saves are off).
+vector wop_xorg[4], wop_xang[4], wop_xvel[4]; // scratch for this publish only
 void(entity e) SV_WarpOpRows =
 {
-	local float blk, base, cnt, i;
+	local float blk, base, cnt, i, j, delta;
 
 	e.wop_norg = '0 0 0';
 	e.wop_porg = '0 0 0';
 	e.wop_forg = '0 0 0';
 	e.wop_lorg = '0 0 0';
+	for (i = 0; i < 4; i = i + 1)
+	{
+		wop_xorg[i] = '0 0 0';
+		wop_xang[i] = '0 0 0';
+		wop_xvel[i] = '0 0 0';
+	}
 	blk = SL_Blk(e);
 	cnt = e.rec_sl_count;
 	if (!rec_sl_org || cnt < 1 || cnt > rec_sl_nb[blk] || e.rec_sl_index < 1 || e.rec_sl_index > cnt)
@@ -181,6 +189,16 @@ void(entity e) SV_WarpOpRows =
 	e.wop_lorg = SV_WarpOpRow(base + cnt - 1);
 	e.wop_lang = wop_rowang;
 	e.wop_lvel = wop_rowvel;
+	for (j = 0; j < 4; j = j + 1)
+	{
+		delta = ((j < 2) ? 2 : 3) * ((j & 1) ? -1 : 1);
+		i = e.rec_sl_index + delta;
+		while (i < 1) i = i + cnt;
+		while (i > cnt) i = i - cnt;
+		wop_xorg[j] = SV_WarpOpRow(base + i - 1);
+		wop_xang[j] = wop_rowang;
+		wop_xvel[j] = wop_rowvel;
+	}
 };
 
 void(entity e, .string f, float bit, string s) SV_WarpOpLegSet =
@@ -280,12 +298,30 @@ float(vector o, vector a, vector v) SV_WopCurSig =
 // once a second so a signature that collided cannot leave the string stale for longer.
 void(entity e) SV_WarpOpCur =
 {
-	local string s;
-	local float sig;
+	local string s, chain;
+	local vector holdvel;
+	local float sig, k, held, blk, base;
+
+	held = FALSE;
+	holdvel = '0 0 0';
+	if (e.rec_sl_hold)
+	if (rec_sl_vel)
+	{
+		blk = SL_Blk(e);
+		base = SL_Base(blk);
+		if (e.rec_sl_holdrow >= base && e.rec_sl_holdrow < base + rec_sl_nb[blk])
+		{
+			held = TRUE;
+			holdvel = rec_sl_vel[e.rec_sl_holdrow];
+		}
+	}
 	sig = e.wop_ack + e.rec_sl_index * 4099.5 + e.rec_sl_count * 77.25 + e.rec_sl_ack * 0.37
 	      + SV_WopCurSig(e.rec_sl_curorg, e.rec_sl_curang, e.rec_sl_curvel)
 	      + 2 * SV_WopCurSig(e.wop_norg, e.wop_nang, e.wop_nvel) + 3 * SV_WopCurSig(e.wop_porg, e.wop_pang, e.wop_pvel)
 	      + 5 * SV_WopCurSig(e.wop_forg, e.wop_fang, e.wop_fvel) + 7 * SV_WopCurSig(e.wop_lorg, e.wop_lang, e.wop_lvel);
+	sig = sig + held * 31.7 + 23 * SV_WopCurSig('0 0 0', '0 0 0', holdvel);
+	for (k = 0; k < 4; k = k + 1)
+		sig = sig + (11 + 2 * k) * SV_WopCurSig(wop_xorg[k], wop_xang[k], wop_xvel[k]);
 	if (e.wop_cur != "" && sig == e.wop_csig && time - e.wop_ct < 1 && time >= e.wop_ct)
 		return;
 	e.wop_csig = sig;
@@ -296,11 +332,21 @@ void(entity e) SV_WarpOpCur =
 	           SV_WopCurRow(e.wop_porg, e.wop_pang, e.wop_pvel),
 	           SV_WopCurRow(e.wop_forg, e.wop_fang, e.wop_fvel),
 	           SV_WopCurRow(e.wop_lorg, e.wop_lang, e.wop_lvel));
-	if (!strcmp(e.wop_cur, s))
-		return;
-	if (e.wop_cur != "")
-		strunzone(e.wop_cur);
-	e.wop_cur = strzone(s);
+	if (strcmp(e.wop_cur, s))
+	{
+		if (e.wop_cur != "") strunzone(e.wop_cur);
+		e.wop_cur = strzone(s);
+	}
+	chain = strcat("D \"", s, sprintf("\" %g %.9g %.9g %.9g ", held, holdvel_x, holdvel_y, holdvel_z));
+	for (k = 0; k < 4; k = k + 1)
+		chain = strcat(chain, SV_WopCurRow(wop_xorg[k], wop_xang[k], wop_xvel[k]));
+	if (strlen(chain) > WOPCHAIN_MAX)
+		chain = "";                     // no truncation or partial-row prediction
+	if (strcmp(e.wop_chain, chain))
+	{
+		if (e.wop_chain != "") strunzone(e.wop_chain);
+		e.wop_chain = (chain != "") ? strzone(chain) : "";
+	}
 };
 
 void(entity e) SV_WarpOpPublish =
@@ -367,13 +413,18 @@ void(entity e) SV_TpEyeDetach =
 	e.tp_eye = world;
 };
 
+float(entity t) SV_TpIsTele =
+{
+	return (t.touch == trigger_teleport_touch || t.touch == trigger_teleport_relative_touch);
+};
+
 void() SV_TpChain =
 {
 	local entity t;
 
 	tp_chain = world;
 	for (t = nextent(world); t; t = nextent(t))
-		if (t.touch == trigger_teleport_touch)
+		if (SV_TpIsTele(t))
 		{
 			t.tp_next = tp_chain;
 			tp_chain = t;
@@ -410,7 +461,9 @@ void(entity e) SV_TpEyeThink =
 	bd = 999999999;
 	for (t = tp_chain; t; t = t.tp_next)
 	{
-		if (wasfreed(t) || t.touch != trigger_teleport_touch || t.solid == SOLID_NOT)
+		if (wasfreed(t))
+			continue;
+		if (!SV_TpIsTele(t) || t.solid == SOLID_NOT)
 			continue;
 		if (SV_Key2(t.StartDisabled, t.startdisabled))
 			continue;
@@ -437,15 +490,24 @@ void(entity e) SV_TpEyeThink =
 	org = '0 0 0';
 	if (best != world)
 	{
-		tgt = SV_TpDest(best, e);
-		if (tgt != "")              // find("") returns client slot 0 (Patch 881)
-			d = find(world, targetname, tgt);
-		if (d != world)
+		if (best.touch == trigger_teleport_relative_touch)
 		{
-			org = d.origin;
+			org = SV_RelTelePoint(best);
 			have = TRUE;
-			e.tp_eye_hold = time + 1;
 		}
+		else
+		{
+			tgt = SV_TpDest(best, e);
+			if (tgt != "")          // find("") returns client slot 0 (Patch 881)
+				d = find(world, targetname, tgt);
+			if (d != world)
+			{
+				org = d.origin;
+				have = TRUE;
+			}
+		}
+		if (have)
+			e.tp_eye_hold = time + 1;
 	}
 	z = -1;
 	if (cvar("sv_tp_pvs") == 2)

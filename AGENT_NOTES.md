@@ -26,6 +26,24 @@
 
 ## P1339 requested atlas caches and native material readiness
 
+- Windows Python `subprocess` text-mode STDIN is not an exact Git patch pipe:
+  measured `A\nB\n` becomes CRLF, while bytes input preserves LF. A correct
+  `git apply --cached` hunk was refused before staging; exact-byte diff capture
+  AND stdin fixed it. Inspect the empty/refused index, preserve peer receipts,
+  and bare-commit only the exact inspected cached diff; don't restage whole files
+  to hide a transport/EOL error.
+
+- Current main and deployed Pi are DIFFERENT valid client profiles. P1339 main
+  ECB6d2c3 uses clMain's current interfaces; compatible Pi445abb4c preserves the
+  deployed P1341/68597668 interfaces. Do not replace a whole cl_main/menu/server
+  family to add one feature. Both source histories are published and reach main;
+  receipts in tools/p1339-ramp-atlas.md identify each, not one shared binary.
+- A local SSH180s timeout did NOT mean the remote activation failed. Read-only
+  observation found the successful terminal receipt/all12new actors after its
+  postflight completed; NEVER replay a swap/restart on an ambiguous timeout.
+  Valid offbox8part/183resume archives were reused with live namespace/FD/actor
+  checks, not redated. All47848protected originals held, capacities restored.
+
 - A QC `fopen("gfx/...")` write is sandboxed into `data/gfx/...`; a renderer
   material must use that physical `data/` name. A successful binary write/hash
   does not prove the original unprefixed material can load it.
@@ -5593,6 +5611,36 @@ return_to is path-sensitive. No public/canonical switch follows from local mocks
 Commands, both-platform controls, findings and remaining gates: tools/p707sitepaths.md.
 
 ## Run and test
+
+**P1342/P1343 save-chain and relative-teleport controls (6Nov2026).** Exact QC
+helpers run in actual dedicated CPU VM: window22/release21, baseline10/8 intended
+failures; relative24, baseline7; subjects0 and compiler0warnings. Optional stat207
+D is a COMPLETE coherent C snapshot plus bounded +-2/3 rows, not an appendage to
+whatever C arrived most recently; extra-only changes must invalidate D. Tokenize
+is shared scratch state: retain outer row data before decoding quoted inner C.
+Review caught that a coherent cursor is NOT the held row after rejected load
+validation: Step and Load advance the cursor before full validation. Settled
+release now uses actual-held validity/velocity in SAME D42 snapshot, not cursor
+or independent stale HOLDVEL; C-only/unproven is BLIND. Non-rate-refused pending
+loads may still speculate. Existing strict finite decimal codec rejects every
+outer/embedded numeric error before extension validity.17added tests expose12
+failures in original candidate; metadata31/release29/relative24 now84/0. Production
+server Step/Release act; validation callback is explicitly stubbed, not file IO. Relative Enable needs BOTH saved BSPTRIGGER solidity and
+EF_NODRAW ownership (generic Enable previously cleared hiding). Shared point
+helpers do not replace collision/floor-lift, native PVS or human acceptance.
+Server-only relative quieting must reject ANY predicted same-point ordinary OR
+relative candidate; merely caching relative points can hide a real error.
+See tools/p1342-save-release.md and tools/p1343-relative-teleports.md.
+
+The mandatory primary RUNS sweep's actual predeployment baseline was548 runs,
+351fault count incl paired views, with the reader EXACT prework source;949 reader
+unit checks passed. Do not assume a historical corpus is fault-free or repair
+unrelated fixtures. The requirement is no INCREASE on the same domain. A default
+saves expansion hit an existing permission-protected fixture; preserve that
+failure/fixture and scope the required runs-only invocation explicitly. A single
+transient UDP27593 bind WinError10013 had no endpoint/exclusion and a bounded
+probe then succeeded; resume the SAME compiled prelaunch artifact at the real
+launch boundary, not a numbered wrapper/copy or a weaker result assertion.
 
 **Reader transport and clock fields — P1143, 31 Oct 2026.** Expanding 528 absolute
 recording paths into Windows CreateProcess argv failed with WinError206 before

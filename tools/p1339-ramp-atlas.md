@@ -5,8 +5,9 @@
 The actual Story/Event roster contains 114 unique maps. The completed bake
 currently has 100 nonempty atlases, 10 maps with contacts not placed on the
 supported static mesh, and four without available local inputs. Empty/error
-results are NOT atlases or full-coverage passes. Final publication/deployment
-provenance is recorded below when performed; preparation is not deployment.
+results are NOT atlases or full-coverage passes. The 100 ready map triples are
+published, both Windows client installs and all 12 lobby clients are updated.
+The explicit 14 gaps remain; this is NOT a claim of complete 114-map coverage.
 
 Use every available local recording/Momentum input, plus retained or downloaded
 CSS66 KSF originals. Cosmetic readers preserve original bytes, bind map/game/hash,
@@ -17,6 +18,9 @@ The additional capture retained 4,799 unique KSF originals; nine were newly
 fetched, including inputs for two formerly uncovered maps. Upstream HTTP500
 stopped the bounded, shared-lock/paced fetch and established the normal park.
 Uncrawled categories/tails and pending originals remain incomplete, not absent.
+Final read-only check found the shared demo park active until6Nov11:16:49UTC;
+no request/park modification was made. A future capture must recheck actual state,
+not infer permission from that historical expiry.
 
 ## Client use
 
@@ -55,8 +59,10 @@ not arbitrary game/player files. No raw replay or private provenance is publishe
   RESTYPE_TEXTURE queries flags0 and misses no-sRGB/clamped images: inspect the
   actual custom material rather than deadlocking its first draw on that lookup.
 - All 100 ready triples pass the ACTUAL client bounds and both content hashes.
-  Largest PNG: 5,128,368 bytes; largest mesh: 17,833 triangles. Native acceptance
-  of these largest cases remains a distinct check, not implied by the small case.
+  Largest PNG: 5,128,368 bytes; largest mesh: 17,833 triangles. A separate native
+  surf_classics test passes all14 controls with its 5,007,077-byte2048x4096 PNG
+  and that largest mesh. The absolute-largest PNG has destination/hash/bounds
+  verification; do not relabel it as a separately observed native render.
 - Authority readers are unchanged: reccheck949/0; explicit runs-only corpus
   548 recordings /351 existing REC+paired-VIEW faults, unchanged from baseline.
   No SAVES, new authenticity, evidence-format or clean-corpus claim.
@@ -71,7 +77,11 @@ surf_axiom, surf_board_this, surf_cyberwave, surf_dragon, surf_hunty,
 surf_kitsune2, surf_lovetunnel, surf_lt_omnific, surf_progress, surf_spacemonkeys.
 These are not proof of missing gameplay ramps. Check actual map build/mesh and
 recorded coordinates before extending supported geometry; never fill them with
-fake contacts or count an empty mask as complete coverage.
+fake contacts or count an empty mask as complete coverage. Bounded diagnostic
+Axiom375KSF/BoardThis483native poses still have zero world touches at tested
+height offsets through +/-72; conservative unparented/enabled/untargeted brush
+origin transforms also give zero. Those controls are NOT bakes or proof that all
+unplaced ramps move. Open follow-up/falsifier is in BACKLOG.md.
 
 ## Snow model
 
@@ -89,5 +99,37 @@ No snow appearance or measured FPS change is claimed by this byte-identical move
 
 ## Deployment receipt
 
-Pending current-source/Pi-component qualification and exact guarded deployment.
-Do not infer fleet state from source, a successful build, or prepared assets.
+- Public cosmetic aliases and immutable files: 100maps/300files, all destination
+  hashes verified; every target lobby BSP hash matches the bake's BSP. Atomic
+  metadata aliases retain their preimages; old hashed media remain cache-safe.
+- BOTH Windows: CS `ecb6d2c3d61254d931fb2a9ddc14f90efb072be283e3761c64edea8cabeb0d46`
+  and matching symbols/new model. Protected originals18592/144 unchanged;
+  no owner process stop or config/player-data write. Source `2d82c278` on the
+  current main profile. This is intentionally NOT the Pi client profile.
+- ALL12Pi: CS `445abb4cf43c32beb8b1e27dc78f2e09d77838bdb235c80ffb5baf9e365f6238`,
+  compatible source `9debcfc9` on deployed P1341Pi base `68597668`. SSQC remains
+  `5e8cd6d16538a60818bc1072fdd37a350c29324518b94602e03981d4228d6416`;
+  native/plugin/menu/config/backend generation/files held. Activation receipt
+  UTC2026-11-06T07:38:06Z: all12epochs replaced; 47848protected originals have
+  zero changed/missing entries. ALL8recorder parts and ALL183resume entries
+  independently archived/hashed offbox before stage/restart. Original lobby
+  capacities restored, sweep lock released. Normal known-CS admission appended
+  only the two qualified client hashes; no backend restart or policy change.
+- Last transport wrapper timed out at180s while remote postflight continued.
+  Its failure is retained. Later read-only observation found the actual successful
+  activation receipt/all12new epochs; NO repeated swap/restart or downgrade.
+  Earlier missing-input/source-registration refusals and restore-log collision
+  remain history. Fixed exact seams, reused valid archives, kept safety gates.
+- A fresh live-lobby client with NO local CS downloaded checksum1da02511 exactly
+  matching445abb4c; board9cols/type14 drew, screenshot inspected, noQCerror,
+  natural exit0. The fresh fixture had no local zone data and its screenshot
+  does not accept world textures, populated board data or ramp/snow appearance.
+  Local dedicated main and Pi-profile tests are separate evidence.
+- New Christmas model is verified at BOTHWindows and Pi. Windows legacy copies
+  retained; the old Pi legacy path was absent, not invented or deleted. Source
+  rename is byte-identical. No human snow/marks/FPS acceptance is implied.
+
+Known rollback: current Pi `.prev` plus immutable private preimages; revert only
+this CS through the same actor/data-preservation gates, never restore player data
+or downgrade a potentially generating fleet. Web aliases have CAS preimages;
+retain their immutable media. No release, native pin/tag or QC Build move.
