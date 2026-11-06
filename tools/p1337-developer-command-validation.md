@@ -29,7 +29,19 @@ checks do not prove a network exploit or complete native/compiler/parser audit.
 
 ## Delivery state
 
-Source functional checks passed; exact clean stamped platform qualification and
-native-only delivery are recorded separately when completed. Existing runtime
-programs, owner settings, data and unrelated optional executable aliases must
-remain unchanged. Do not infer deployment from a source commit or build.
+Exact clean stamped qualification passed on Windows and ARM. At 6 November
+2026 03:38:33 UTC, the existing native-only Deploy helper updated both Windows
+installs' ten supported destinations. All ten destination hashes and their
+immediate `.prev` predecessors match; prior destination/`.prev` preimages remain
+retained. The shared rig lock is released; no owner process was killed.
+
+A client started after the copy, and the final protected-inventory idle gate
+refused. Full non-target postflight and installed-runtime acceptance therefore
+remain pending; do not redeploy or invent a preservation pass. No QC/data/config
+or optional alias change was requested by this native-only operation.
+
+The ARM server/plugin pair is qualified and frozen, not lobby-deployed. A fresh
+13-actor recorder/resume inspection found an open preserved-namespace descriptor
+and changing preservation state. The normal warning/countdown restart policy does
+not waive those safety dependencies. No live maintenance gate is held. Do not
+infer fleet deployment from a source commit, build or Windows delivery.
