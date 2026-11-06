@@ -15,13 +15,14 @@ passed; one earlier real-widget positive is not repeated-click/comfort acceptanc
 No owner confirmation has been received. Native observations are not yet a
 constrained next-ramp solver or a public verified TAS submission path.
 
-## P1347 KSF fetch — manual check pending after deployment
+## P1347 KSF fetch — deployed6Nov, manual check pending
 
-Open a KSF leaderboard, select a stage or bonus and a direction, and click Fetch KSF.
-Does the queued/background message make sense and is the button easy to find?
-The request is asynchronous: refresh/reopen later for times and available replays.
-Automated pointer tests passed for both VMs; this is NOT owner confirmation or a
-claim that KSF provides a replay for every time. Existing host cooldowns stay binding.
+In a joined lobby or the map-menu KSF leaderboard, select a stage or bonus and a
+direction, then click Fetch KSF. Is the button easy to find and does the
+queued/background message make sense? Refresh/reopen later for times and available
+replays; the request is asynchronous and KSF does not provide a replay for every time.
+Both Windows installs and all12lobbies updated; no owner confirmation yet.
+Automated evidence and acquisition limits: tools/p1347-ksf-audit.md.
 
 ## P1343 relative teleports — deployed6Nov, human check pending
 
@@ -65,20 +66,24 @@ speed? A later pad must still boost normally. Actual QC VM42/0 versus baseline
 NOT closure of historical save/load reports; no popup/report is required for the
 small feel check and no whole-stream replay is requested.
 
-## P1345/P1348 smoother map-only noclip — candidate, not deployed or human-confirmed
+## P1345/P1348 smoother map-only noclip — deployed6Nov, human check pending
+
+Both Windows installs verified13:40:56UTC6Nov2026; all12lobbies verified13:51:33UTC.
+Main2f2f3946/CSa45e87ee5133, compatible Pi490280cc/CS2d70a779b200;
+normal native1355c256a/tagpatch-1348, no probes; tools/p1348-overview-state.md.
 
 Owner report6Nov: a brief rendering pause on inside-to-void crossings, slight on
-each crossing and worst on the first noclip out. This is the regression target,
-not a camera-jump report or candidate acceptance. The candidate targets the
-rendering stall; owner confirmation after installation remains pending.
+each crossing and worst on the first noclip out. That is the regression target,
+not a camera-jump report or acceptance. Owner confirmation remains PENDING.
 
-After installation, one quick Ceaseless check: noclip outside the map, use the
-remaining map shape to choose a destination, then fly back inside. Is navigation
-quick, with no retained snow trails, and do normal props/glows/weather return
-without missing geometry or a wipe? Ordinary falling must not enter map-only
-mode. A short normal Tensor2 pass should retain the familiar sky/glow appearance.
-Native prior-closure images and exact predicate tests are not owner confirmation
-or a general FPS/loading guarantee. Final unprofiled timing is separately pending.
+One quick check, preferably Ceaseless: noclip out and back TWICE. Is the first
+pause reduced and are repeated crossings smooth? Can the remaining map shape
+still guide a destination, without retained snow trails, and do normal lighting,
+props/glows/weather return without missing geometry or a wipe? Ordinary falling
+and normal Tensor2 sky/glow appearance remain separate, unconfirmed cases.
+Prior images and exact predicate tests are not owner confirmation or a general
+FPS/loading guarantee. Final unprofiled timing and fresh served-client graphical
+smoke remain separately pending; no numerical improvement is claimed.
 
 ## P1335 Christmas master/defaults and close ramp dirt — installed, human check pending
 
