@@ -4,7 +4,7 @@ string wx_map;
 float *wx_roof;
 int wx_width, wx_height;
 vector wx_min;
-float wx_cell, wx_enabled, wx_ready, wx_audio, wx_audio_on;
+float wx_cell, wx_enabled, wx_ready, wx_audio, wx_audio_on, wx_suspended;
 entity wx_sky, wx_ice, wx_out, wx_in, wx_thunder;
 float wx_outplay, wx_inplay, wx_outvol, wx_invol, wx_sentout, wx_sentin;
 float wx_clock, wx_next, wx_flash, wx_thunderat, wx_outside;
@@ -42,6 +42,7 @@ void() Weather_Free =
 	if (strlen(wx_map)) strunzone(wx_map);
 	wx_map = "";
 	wx_roof = 0;
+	wx_suspended = FALSE;
 	wx_out = wx_in = wx_thunder = wx_sky = wx_ice = world;
 	wx_enabled = wx_ready = wx_audio = wx_audio_on = wx_outplay = wx_inplay = wx_pending = 0;
 	wx_outvol = wx_invol = wx_sentout = wx_sentin = wx_flash = wx_thunderat = 0;
@@ -211,6 +212,37 @@ void() Weather_StartBurst =
 	angles = getproperty(VF_ANGLES);
 	yaw = (angles_y + Weather_Noise(time + 39) * 70 - 35) * (M_PI / 180);
 	wx_boltaxis = [0.5 + 0.5 * cos(yaw), 0.5 + 0.5 * sin(yaw), 0.5];
+};
+
+// P1345: skip rendering/emission without freezing a pending lightning event.
+void() Weather_Suspend =
+{
+	if (wx_outplay) { stopsound(wx_out, CHAN_BODY); wx_outplay = FALSE; }
+	if (wx_inplay) { stopsound(wx_in, CHAN_BODY); wx_inplay = FALSE; }
+	if (wx_thunder && !wx_suspended) stopsound(wx_thunder, CHAN_VOICE);
+	if (wx_tinted && !wx_suspended)
+	{
+		if (!strcmp(wx_map, serverkey("map"))) lightstyle(0, wx_style, wx_stylecolour);
+		// Keep ownership of the zoned style; Free still restores/unzones it.
+	}
+	wx_suspended = TRUE;
+	wx_outvol = wx_invol = wx_sentout = wx_sentin = 0;
+	wx_clock = time;
+	wx_next = time + bound(5, cvar("r_weather_interval"), 900) * (0.65 + Weather_Noise(time + 71) * 0.7);
+	wx_previewnext = time + 8;
+	wx_flash = wx_thunderat = wx_flashesleft = wx_nextflash = 0;
+};
+
+void() Weather_Resume =
+{
+	if (!wx_suspended)
+		return;
+	wx_suspended = FALSE;
+	if (wx_tinted)
+	{
+		if (!strcmp(wx_map, serverkey("map")))
+			lightstyle(0, wx_style, [wx_stylecolour_x * 0.78, wx_stylecolour_y * 0.86, wx_stylecolour_z]);
+	}
 };
 
 void() Weather_Frame =

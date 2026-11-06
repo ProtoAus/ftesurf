@@ -365,6 +365,8 @@ void() Prox_Frame =
 	if (serverkey("map") != prox_map)
 		Prox_LoadForMap();
 	prox_mode = cvar("vbsp_proximity");
+	if (cl_scene_worldonly)
+		prox_mode = 0; // P1345: native structural brush fallback, no distance fade in overview.
 	if (cvar("vbsp_proximity_debug"))
 	{
 		print(sprintf("proximity: mode %g, last frame %g callbacks, %g drawn, %g faded out, measured from %v, %g listened\n",
