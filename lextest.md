@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1344 observed TAS contacts -- implemented, delivery/owner check pending
+## P1347 observed TAS contacts -- implemented, delivery/owner check pending
 
 Once installed, one small local check: play a disposable two-ramp line, Pause,
 open Sections > Observed contacts and use Go to start/end on one face. Is that
@@ -15,23 +15,22 @@ passed; one earlier real-widget positive is not repeated-click/comfort acceptanc
 No owner confirmation has been received. Native observations are not yet a
 constrained next-ramp solver or a public verified TAS submission path.
 
-## P1343 relative teleports — delivery pending, human check pending
+## P1343 relative teleports — deployed6Nov, human check pending
 
 A familiar relative teleport (e.g. surf_4am) should remain invisible/pass-through after an
 enable/toggle, land at the same place and avoid an unnecessary destination flash.
-Actual helper VM24/0 vs7baseline failures is not native PVS/physics/feel or measured
-performance acceptance. Report threshold stays2units; predicted same-point
-ordinary/relative errors must remain eligible rather than quietly excused.
+Both Windows installs and all12lobbies updated; no owner confirmation yet.
+This asks about native visibility/feel, not measured performance or a historical
+report's proven cause. Automated evidence/limits: tools/p1343-relative-teleports.md.
 
-## P1342 short save chains/release — delivery pending, human check pending
+## P1342 short save chains/release — deployed6Nov, human check pending
 
-Hold a save, step next/previous2or3times quickly, release. These short chains
-should predict and use the actual destination's speed; compare single-step and
-first/last recovery. Longer unpublished destinations can still arrive server-
-authoritatively and must not guess old release speed. Metadata31/release29 helpers
-pass, plus relative24 (84total);17review checks exposed12initial-candidate failures.
-Validation refusal is a synthetic callback with real server step/release, not full
-file IO. This is not human/native-network physics acceptance; do not damage saves.
+Hold a save, step next/previous2or3times quickly, release. Any flicker, snapback or
+wrong-speed kick? Compare single-step and first/last recovery if convenient.
+Longer unpublished destinations can still arrive server-authoritatively and must
+not guess old release speed. Both Windows installs and all12lobbies updated;
+small owner check requested6Nov, not yet confirmed. Do not damage/delete saves
+for a refusal test. Automated evidence/limits: tools/p1342-save-release.md.
 
 ## P1339 replay-baked ramp atlases - human appearance check pending
 

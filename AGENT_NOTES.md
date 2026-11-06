@@ -1,6 +1,24 @@
 # AGENT_NOTES.md
 
-## P1344 contact identity, recovery abstention and reader boundaries
+## P1347 contact identity, recovery abstention and reader boundaries
+
+- Unpublished1344 was renumbered forward after published1345/1346; retain exact
+  historical test IDs/artifacts without relabelling their source. New native
+  integration must preserve the current renderer/protocol headers and use FULL.
+- Native ramp classification uses absolute normal-z, fixed lower.1 and an
+  inclusive configured standable ceiling. A positive-only hardcoded .01/.7
+  decoder is NOT the producer contract. Synthetic signed/boundary/configured
+  pages test decoding, not actual collision geometry; wall/zero remain negative.
+- Failed immutable readback must block BOTH retag and later fresh map binding.
+  File existence is not a positive validation witness. Maintain an exact-SHA
+  transient proof at strict save/load/readback boundaries and reset it with the
+  project; pages only compare it. Actual invalid retained-child control exposes
+  the old bypass, corrected subject refuses without native work/original edits.
+- An intentional retained fault leaves a unique valid working child WITHOUT a
+  valid immutable counterpart. The owned socket actor may preserve/park ONLY
+  that latest stopped declared fault child's exact strict-canonical hash-matched
+  source, with path/checksum/owner mapping and all revisions/base retained. Do
+  not generalize to arbitrary unbacked files or delete unique source for slots.
 
 - A ramp-recovery trace substitutes only its normal; the replacement can be
   averaged/synthetic. Never publish that normal with the trace's unrelated

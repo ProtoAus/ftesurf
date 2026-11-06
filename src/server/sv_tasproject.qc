@@ -19,6 +19,7 @@ float *tasp_cp[FS_MAXPLAYERS + 1];
 string tasp_name[FS_MAXPLAYERS + 1], tasp_hash[FS_MAXPLAYERS + 1];
 string tasp_parent[FS_MAXPLAYERS + 1], tasp_cpnames[FS_MAXPLAYERS + 1];
 string tasp_revsha[FS_MAXPLAYERS + 1];   // P1089: this lineage's last saved/loaded revision hash
+string tasp_keptsha[FS_MAXPLAYERS + 1];  // successful strict retained readback, not mere file existence
 string tasp_parsha[FS_MAXPLAYERS + 1];   // P1090: that revision's parentsha, "" for a root
 float *tasp_pbuf[FS_MAXPLAYERS + 1];     // P1090: that revision's own rows (tasp_pbase, tasp_pn)
 .float tasp_on, tasp_n, tasp_cap, tasp_base, tasp_baseid, tasp_rev, tasp_serial, tasp_synced;
@@ -122,7 +123,8 @@ void(entity e) SV_TASProjectReset =
 	if (tasp_cpnames[s]) strunzone(tasp_cpnames[s]);
 	if (tasp_revsha[s]) strunzone(tasp_revsha[s]);
 	if (tasp_parsha[s]) strunzone(tasp_parsha[s]);
-	tasp_name[s] = tasp_hash[s] = tasp_parent[s] = tasp_cpnames[s] = tasp_revsha[s] = tasp_parsha[s] = "";
+	if (tasp_keptsha[s]) strunzone(tasp_keptsha[s]);
+	tasp_name[s] = tasp_hash[s] = tasp_parent[s] = tasp_cpnames[s] = tasp_revsha[s] = tasp_parsha[s] = tasp_keptsha[s] = "";
 };
 
 void() SV_TASPReadFree =
@@ -1254,12 +1256,19 @@ float(string sha) SV_TASPSignedFor =
 // The kept copy reads back strictly as this revision.
 float(entity e, string sha) SV_TASPKeptOK =
 {
-	local float ok;
+	local float ok, s;
 	tpr_pathover = strzone(SV_TASPRevPath(sha, "tasp"));
 	ok = SV_TASPRead(e, "", FALSE);
 	if (ok) ok = !strcmp(tpr_h, sha);
 	SV_TASPReadFree();
 	strunzone(tpr_pathover); tpr_pathover = "";
+	s = SV_TASPSlot(e);
+	if (s)
+	if (ok || !strcmp(tasp_keptsha[s],sha))
+	{
+		if (tasp_keptsha[s]) strunzone(tasp_keptsha[s]);
+		tasp_keptsha[s] = ok ? strzone(sha) : "";
+	}
 	return ok;
 };
 
@@ -1473,6 +1482,8 @@ void(entity e, string name, float force) SV_TASProjectSave =
 	SV_TASPParentKeep(e, s);
 	if (!SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE, FALSE))
 		sprint(e, PRINT_HIGH, "tas project: could not keep this revision under its hash; Sign will try again\n");
+	else if (!SV_TASPKeptOK(e,tasp_revsha[s]))
+		sprint(e, PRINT_HIGH, "tas project: saved, but retained readback failed; no source-bound observations\n");
 	// Only the host's own client marks a revision as made here (a guest's save shares this folder).
 	if (strstrofs(infokey(e, "ip"), "LoopBack", 0) >= 0 && !SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s], "made")))
 	{
@@ -1671,7 +1682,8 @@ void(entity e, string name, string cpname, string expected, float first, float l
 	e.tasp_gen = e.rec_rec_gen; e.tasp_parentrev = tpr_parentrev;
 	SV_TASPReadFree();
 	SV_TASPParentKeep(e, s);
-	SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE, FALSE);
+	if (SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE, FALSE))
+		SV_TASPKeptOK(e,tasp_revsha[s]);
 	if (first > 0)
 	{
 		if (field == TAS_RECIPE_FIELD) SV_TASRecipePaste(e,tasp_buf[s],e.tasp_base,first,last);

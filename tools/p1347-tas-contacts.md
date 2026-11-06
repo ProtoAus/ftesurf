@@ -1,4 +1,8 @@
-# P1344: native contact observations for full-line TAS sections
+# P1347: native contact observations for full-line TAS sections
+
+Unpublished prototype1344 is renumbered forward while preserving published
+P1345 native and P1346 backend work. Historical helper/test IDs retain1344;
+this is one product patch, not a second contact protocol or input authority.
 
 ## What this adds
 
@@ -22,6 +26,10 @@ metadata. A transient raw-change flag is maintained at actual mutation/harvest
 boundaries and cleared only with a new retained parent snapshot; pages do not
 synchronously scan an entire long line. A fresh reply is allowed to say there is
 no bound map: freshness alone is not an observation-validity bit.
+Both cached reuse and fresh binding also require the exact SHA's successful
+strict immutable readback. Save/load/readback boundaries maintain this transient
+proof; an observed failure invalidates that source, and existence alone cannot
+recover it. Page/frame callbacks only compare keys, not rescan a long file.
 
 These are proposals, **not a section solver result**. A constrained next-ramp
 solver and broader optimization remain work in progress in
@@ -43,6 +51,11 @@ Kinds are deliberately limited:
 - World ramp face: a committed qualifying world-plane collision.
 - No observed ramp: **not** an inferred airborne/grounded state.
 - Nonworld or gap/unsupported: no ramp/free-flight guess is supplied.
+
+Native classification uses `abs(normal.z) >= .1` with an inclusive configured
+standable ceiling. The decoder accepts signed native normals, checks finite
+unit geometry and the fixed lower bound, and does not invent a positive-only
+`.7` ceiling that is absent from this packet. Wall/zero normals still refuse.
 
 Live samples and separately retained full-line spans have bounded allocation and
 4096-row capacity. Capacity/allocation or missing native support refuses a
@@ -93,6 +106,17 @@ final tagged-source/review/deployment provenance is a separate delivery boundary
   maps on unchanged cold and warm replay, but a genuinely changed working raw
   yaw gets a fresh empty UNBOUND view and server binding refusal (29 checks).
   Original immutable bytes remain exact. This is not just a preview-flag test.
+- Test-only server variants reproduce signed/boundary-normal rejection and an
+  actual strict retained-file readback failure followed by erroneous fresh
+  binding (32 control checks). The corrected decoder/cache passes35 checks:
+  signed, inclusive and configured-band normals accepted; wall/zero refused;
+  failed immutable revision stays unbound on server and client, original bytes
+  unchanged. Synthetic packets are decoder contracts, not collision witnesses.
+  Both temporary injection hooks are removed from production source.
+- Uninstrumented corrected production checks pass metadata28/literal29/preview25
+  plus22 checks including a48000-row load and intact oversized-edit refusal.
+  These are pre-integration checks; merged/tagged-source and live delivery remain
+  separate gates, not inferred from test counts.
 - Acting old-native control moves/records normally but explicitly reports the
   observation capability unavailable. Earlier original-line marker and widget
   positive controls remain supporting evidence, not owner feel acceptance.

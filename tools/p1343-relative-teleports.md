@@ -41,10 +41,20 @@ candidates refuse quieting, while a different relative destination is not falsel
 ambiguous. Point helpers are used by the real touch paths; the fixture does NOT
 execute teleport collision physics or real PVS network visibility.
 
-Both main/Pi-profile standard three-VM NoDeploy builds have0warnings. Reader949
-checks pass; mandatory primary RUNS548/351fault-count incl paired views is the
-actual predeployment baseline, not fault-free. Reader matches prework source.
-Independent reviews, native smoke and paired deployment remain pending here. Small owner check after delivery: a familiar relative teleport (for example
-surf_4am) should still pass through after enable/toggle and land at the same place;
-lookahead should avoid an unnecessary destination flash. Record actual human
+Both main/Pi-profile standard three-VM NoDeploy builds have0warnings. Both
+independent rechecks closed runtime findings. Reader949checks passed on unchanged
+source; final mandatory primary RUNS548/351fault results, including paired views,
+equal the real predeployment baseline, NOT fault-free.
+
+Delivered6Nov2026UTC to BOTH Windows installs (verified09:17) and ALL12Pi lobbies
+(activated09:33). New actors, paired program/.prev hashes, complete recorder/resume
+preservation, native/menu/config/backend identity and restored join capacities
+verified. Source/program hashes, exact controls and limits are recorded in
+[p1342-save-release.md](p1342-save-release.md). No native engine/build/release bump.
+
+Graphical served-code/download/render smoke is blocked, NOT passed:4-GiB game
+gate observed2719MiB free. No game launched. Native collision/PVS/feel still needs
+acceptance. A small human check remains pending: a familiar relative teleport
+(for example surf_4am) should pass through after enable/toggle and land at the
+same place; lookahead should avoid an unnecessary destination flash. Record actual
 feedback in lextest.md, not measured performance or historical-report closure.

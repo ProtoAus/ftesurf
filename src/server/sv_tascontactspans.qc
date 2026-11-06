@@ -79,6 +79,7 @@ float(entity e) SV_TASContactSpansBind =
 	head = e.tasp_base+e.tasp_n;
 	if (e.tasp_filehead != head || e.tasp_pn != e.tasp_n || e.tasp_pbase != e.tasp_base) return FALSE;
 	if (!SV_TASEditorHashOK(tasp_revsha[s])) return FALSE;
+	if (strcmp(tasp_keptsha[s],tasp_revsha[s])) return FALSE;
 	if (!SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s],"tasp"))) return FALSE;
 	if (e.tasc_boundrows > 0 && e.tasc_boundbase == e.tasp_base && e.tasc_boundhead == head)
 		if (!strcmp(tasc_sha[s],tasp_revsha[s])) return TRUE;
@@ -110,7 +111,7 @@ void(entity e, string before, string after) SV_TASContactSpansRetag =
 	if (!SV_TASEditorHashOK(after) || strcmp(tasc_sha[s],before)) return;
 	if (e.tasi_dirty || e.tase_preview || e.tasp_filehead != e.tasp_base+e.tasp_n) return;
 	if (e.tasc_boundbase != e.tasp_base || e.tasc_boundhead != e.tasp_base+e.tasp_n) return;
-	if (strcmp(tasp_revsha[s],after)) return;
+	if (strcmp(tasp_revsha[s],after) || strcmp(tasp_keptsha[s],after)) return;
 	kept = strzone(after);
 	if (tasc_sha[s]) strunzone(tasc_sha[s]);
 	tasc_sha[s] = kept;

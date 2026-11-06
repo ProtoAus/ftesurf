@@ -49,11 +49,50 @@ server exit0. Original43 baseline18failures and relative24 baseline7 are retaine
 historical controls, not added together across different baselines. Original
 candidate/reviews/fixtures/failures retained; no regrading or warning waiver.
 
-Both post-fix standard THREE-VM NoDeploy builds have0warnings. Renewed independent
-review, paired deployment and native served-code/render smoke remain pending. Reader949passed; primary RUNS548/351fault
-count incl paired views is the real predeployment baseline, reader exactly prework
-source, NOT fault-free. Final count must not increase. This is helper/state evidence,
-not full packet/collision/PVS/feel or a historical report's proven cause. No
-measured bandwidth/FPS claim. Human acceptance in lextest.md: hold a save, step
-next/previous2or3times quickly and release; compare single-step/first/last recovery.
-Do not damage/delete real saves to manufacture a validation failure.
+Both post-fix standard THREE-VM NoDeploy builds have0warnings. Both independent
+rechecks closed prior runtime findings; their remaining stale shared D38 comment
+was corrected to D42 in both profiles, with exact same-line comment equivalence.
+Reader949checks passed on the byte-identical reader (reused, not redated). The final
+mandatory primary RUNS sweep, including paired views, remains548files/351fault
+results: equal to the actual predeployment baseline, NOT fault-free. The existing
+permission-protected optional save fixture was not altered or treated as a pass.
+This is helper/state evidence, not full packet/collision/PVS/feel or a historical
+report's proven cause. No measured bandwidth/FPS claim.
+
+## Delivered6Nov2026UTC
+
+- BOTH Windows installs verified09:17:07: QW/CS DAT+LNO,8destinations total;
+  current/prior-prev preimages retained, new .prev hashes verified, all19340
+  non-target paths exact. No native/menu/config/data deployment.
+- ALL12Pi lobbies activated09:33:10: paired QW+CS,12new actor epochs and mapped
+  native/plugin identity verified,0skipped. All47924protected paths exact,
+  native/menu/config/backend unchanged.10-second chat warning/grace preceded
+  normal disconnect/restart; every original join capacity verified restored.
+- All8recorder parts and183complete resume files captured and independently
+  rehashed ON/OFFBOX before staging/restart; all bytes still exact after restart.
+  No archive restoration, player-data cleanup or verifier downgrade.
+- Graphical served-client/download/render smoke NOT run:4-GiB game gate observed
+  only2719MiB free, so no game arm launched. This does not invalidate file/actor/
+  data verification; native packet/render/feel and human acceptance remain pending.
+
+Runtime source lineage (public commits, not a rebuild after review):
+- Windows published19b83fd8d5888ab4083d2e09a1d24ee90a4e1542, compiled
+  38b75a6fa10bb892c529cbafed3e461ea9391f3b. Later changes are one same-line
+  protocol comment and a published receipt-only merge; whole src tree equality
+  across that merge verified. P1339 atlas work preserved, not downgraded.
+- Pi component218721aaa436dd88d8c3f09663e990f91037ac20 on
+  deploy/p1343-warp-relative, compiledfb57a3ebe783b48a4f597b322c0a00c9530c24ed;
+  only the same-line protocol comment differs. Source-bound admission passed.
+- Compiler SHA256c24ede65af01d6c7e20d5d1dbd2190a9295a38fb0e109843f75e52166da22f74.
+
+Program SHA256:
+| Profile | Program | SHA256 |
+|---|---|---|
+| Windows | qwprogs.dat | bd250d057f984eef3bdddb8867715799861be1621d42579189df8a7985bf4e7b |
+| Windows | csprogs.dat | feccba214e0b27b2f837722550f6cc31d3a4fa97edd84ab78d06dbee0d3a811f |
+| Pi | qwprogs.dat | e7b8a26bc0383c75e12256511c5f2759b28c77d8a4346353d5250c96ccc3046f |
+| Pi | csprogs.dat | 01815ce013010293cd7f11c5797cb791d43bf04153573802919bbee34c5f9bf5 |
+
+Small owner check requested, not confirmed: hold a save, step next/previous2or3
+quickly and release; compare single-step/first/last recovery if convenient. Record
+actual feedback in lextest.md. Do not damage/delete saves for a refusal test.
