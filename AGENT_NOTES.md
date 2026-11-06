@@ -2,6 +2,24 @@
 
 ## P1339 requested atlas caches and native material readiness
 
+- Windows Python `subprocess` text-mode STDIN is not an exact Git patch pipe:
+  measured `A\nB\n` becomes CRLF, while bytes input preserves LF. A correct
+  `git apply --cached` hunk was refused before staging; exact-byte diff capture
+  AND stdin fixed it. Inspect the empty/refused index, preserve peer receipts,
+  and bare-commit only the exact inspected cached diff; don't restage whole files
+  to hide a transport/EOL error.
+
+- Current main and deployed Pi are DIFFERENT valid client profiles. P1339 main
+  ECB6d2c3 uses clMain's current interfaces; compatible Pi445abb4c preserves the
+  deployed P1341/68597668 interfaces. Do not replace a whole cl_main/menu/server
+  family to add one feature. Both source histories are published and reach main;
+  receipts in tools/p1339-ramp-atlas.md identify each, not one shared binary.
+- A local SSH180s timeout did NOT mean the remote activation failed. Read-only
+  observation found the successful terminal receipt/all12new actors after its
+  postflight completed; NEVER replay a swap/restart on an ambiguous timeout.
+  Valid offbox8part/183resume archives were reused with live namespace/FD/actor
+  checks, not redated. All47848protected originals held, capacities restored.
+
 - A QC `fopen("gfx/...")` write is sandboxed into `data/gfx/...`; a renderer
   material must use that physical `data/` name. A successful binary write/hash
   does not prove the original unprefixed material can load it.

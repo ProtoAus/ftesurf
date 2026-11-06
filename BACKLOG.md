@@ -1,5 +1,9 @@
 # BACKLOG.md
 
+## P1339 Story/Event atlas coverage and KSF top-up (100/114 ready)
+- Sites: `tools/rampwear.py:load_charts/touched`, `rampwear_batch.py:prebake`, upstream CSS66 board/demo acquisition. Four maps have no local inputs and ten have no contacts on currently supported static geometry; names/limits in `tools/p1339-ramp-atlas.md`. All-category/tail KSF capture is incomplete after HTTP500; obey the CURRENT shared park/lock/pacing, never bypass its cooldown or call uncrawled categories absent.
+- Falsifier: current-map-bound original poses MUST positively touch actual supported geometry, against an acting world/displacement control, before a nonempty atlas counts. Axiom/BoardThis bounded height offsets and conservative static-brush-origin controls still have zero touches; this is NOT proof all ramps move, no ramps exist, or the map has no demos. Resolve actual geometry/recorded coordinates or obtain matching inputs, then validate real native drawing and publish only nonempty hashed assets. No invented marks/guessed mover transforms or empty-mask completion.
+
 - Site: `CL_PredictSourcePhase`/`SV_UpdateClientStats` save-time one-tick corrections.
   P1330 fixes a demonstrated phase scheduling weakness and captures the missing
   event-time replay seed/mode/counts; oldv1reports cannot establish their cause.
