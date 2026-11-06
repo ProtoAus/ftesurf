@@ -427,6 +427,11 @@ CREATE INDEX IF NOT EXISTS sims_b ON sims (b_id);
 """
 
 
+# Source slot0 rotates admissions; slot1 retains the one interrupted admission.
+# This is scheduling metadata in the existing table, never an observation or a
+# schema/history migration. Older collectors ignore slot1 on rollback.
+_SOURCE_INFLIGHT = 1
+
 CURSOR_SQL = """
 CREATE TABLE IF NOT EXISTS sim_cursor (
     scope TEXT NOT NULL CHECK(scope IN ('source', 'peer')),
@@ -467,6 +472,28 @@ def _advance(conn, scope, after_id, source_id=0):
     _idle(conn)
     with conn:
         _checkpoint(conn, scope, after_id, source_id)
+
+
+def _source_admit(conn, source_id):
+    """Atomically rotate and reserve before file work, including autocommit DBs."""
+    _idle(conn)
+    conn.execute("BEGIN " + (conn.isolation_level or "DEFERRED"))
+    try:
+        _checkpoint(conn, "source", source_id)
+        _checkpoint(conn, "source", source_id, _SOURCE_INFLIGHT)
+        conn.execute("COMMIT")
+    except BaseException:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
+
+
+def _source_done(conn, source_id):
+    """Clear only this handled admission; interrupts leave it for the next owner."""
+    _idle(conn)
+    with conn:
+        conn.execute("DELETE FROM sim_cursor WHERE scope='source' AND source_id=?"
+                     " AND after_id=?", (_SOURCE_INFLIGHT, source_id))
 
 
 def ensure_schema(conn):
@@ -693,20 +720,43 @@ def pending_count(conn, limit=1000000, read_budget=None):
     return rows[0][0]
 
 
+def _pending_sources(conn, limit, read_budget):
+    """One indexed recovery lookup, then the existing bounded keyset rotation."""
+    after, inflight = 0, None
+    if _read(conn, "SELECT 1 FROM sqlite_master WHERE name='sim_cursor'",
+             read_budget=read_budget):
+        cursors = _read(conn, "SELECT source_id,after_id FROM sim_cursor"
+                        " WHERE scope='source' AND source_id IN (0,?)",
+                        (_SOURCE_INFLIGHT,), read_budget)
+        for slot, value in cursors:
+            if slot == _SOURCE_INFLIGHT:
+                inflight = value
+            else:
+                after = value
+    recovered = []
+    sql, args = "SELECT r.* FROM replays r WHERE " + _PENDING_WHERE, ()
+    if inflight is not None:
+        recovered = _read(conn, sql + " AND r.id=?", (inflight,), read_budget)
+        sql, args = sql + " AND r.id!=?", (inflight,)
+    remaining = limit - len(recovered)
+    if remaining:
+        recovered += _rotated_rows(conn, sql, args, "r.id", after, remaining,
+                                   read_budget)
+    return recovered, inflight
+
+
 def pending(conn, limit=50, read_budget=None):
-    """Eligible sources after the last admitted ID first, then wrap ascending.
+    """Recover an unfinished eligible source first, then rotate/wrap admissions.
 
     Observations suppress only their own pairs; admission state is not evidence.
-    Reads never advance/create state. Rotating finite source fixtures prevents an
-    unavailable oldest source monopolizing later passes, not full fleet coverage.
+    Reads never advance/create/clear state. Handled unavailable/failed/limited
+    attempts still rotate, so one unavailable source cannot monopolize passes.
+    Interrupted work gets a bounded retry, not exactly-once/full-fleet coverage.
     """
     _limit("limit", limit)
     if limit == 0:
         return []
-    after = _cursor(conn, "source", read_budget=read_budget)
-    return _rotated_rows(conn,
-        "SELECT r.* FROM replays r WHERE " + _PENDING_WHERE, (),
-        "r.id", after, limit, read_budget)
+    return _pending_sources(conn, limit, read_budget)[0]
 
 
 def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
@@ -775,7 +825,11 @@ def _similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         return 0, 0, "similarity skipped: %s" % why
     try:
         ensure_schema(conn)
-        rows = pending(conn, limit, read_budget=read_budget)
+        rows, inflight = _pending_sources(conn, limit, read_budget)
+        if not rows and inflight is not None and budget.available():
+            # A removed/completed source is no longer eligible. Read-only pending
+            # never clears state; only the current collector owner does so here.
+            _source_done(conn, inflight)
     except ReadLimit:
         return 0, 0, "sims SQL read limit reached (coverage not measured)"
     except Exception as exc:
@@ -788,27 +842,45 @@ def _similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
     for row in rows:
         if not budget.available():
             break
+        admitted = read_limited = False
+        result = None
         try:
-            # Advance admitted sources even if resolution/comparison later fails.
-            # Commit before comparison so no file work holds a write transaction.
-            _advance(conn, "source", row["id"])
+            # Both scheduling checkpoints commit before comparison; no file work
+            # holds a write transaction. A crash/BaseException keeps the marker.
+            _source_admit(conn, row["id"])
+            admitted = True
             s, k, n = _compare_run(surfd, conn, row, now=now, tools_dir=tools_dir,
                                   diagnostics=diagnostics, budget=budget,
                                   read_budget=read_budget, reader=rs)
+            result = (s, k, n)
         except ReadLimit:
-            break
+            read_limited = True
         except Exception as exc:
             if _database_busy(exc):
                 database_busy = True
-                break  # no retry or further admission on a contended connection
+                break  # retain recovery state; no admission on contention
             print("simcheck: replay %s failed: %r" % (row["id"], exc),
                   file=sys.stderr)
             failed += 1
-            continue
-        stored += s
-        skipped += k
-        notable += n
-        if read_budget is not None and read_budget.exhausted:
+        if not admitted:
+            break  # failed atomic admission must not retire prior recovery state
+        if result is not None:
+            stored += result[0]
+            skipped += result[1]
+            notable += result[2]
+        try:
+            # Normal abstention/failure/limit is handled, not a pending crash.
+            # Clear after counting committed rows, never in a BaseException finally.
+            _source_done(conn, row["id"])
+        except Exception as exc:
+            if _database_busy(exc):
+                database_busy = True
+            else:
+                print("simcheck: replay %s completion failed: %r" % (row["id"], exc),
+                      file=sys.stderr)
+                failed += 1
+            break  # preserve the marker without hiding already committed results
+        if read_limited or (read_budget is not None and read_budget.exhausted):
             break
     note = ""
     if stored:
