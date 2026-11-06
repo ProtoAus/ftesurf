@@ -21,6 +21,10 @@
 
 ## next
 
+### P1355 Experimental local section search
+- Select earlier inputs and a later observed ramp face to try nine bounded turn/crouch candidates against its arrival region, then preview the complete retained future. Results are best found, not a global fastest route.
+- Progress and Cancel stay tied to your own source and search. Keep waits for complete replay; Discard restores the original full line, settings and future without inventing input credit.
+
 - Fix decorative-brush prediction corrections on the NanoPi lobbies.
 - Keep board-run labels visible with board paths hidden, and show boarding energy change beneath the main contact label.
 - Snap zone-editor geometry to invisible player-clip faces shown by surf_view, and sharpen teleport destination names.

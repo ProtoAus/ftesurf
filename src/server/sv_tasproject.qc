@@ -9,6 +9,9 @@ void(entity e, float argc) SV_TASShareCommand;
 void(entity e, string sha) SV_TASContactsInvalidate;
 float(entity e, float *rows, float base, float count, float first, float last) SV_TASRecipeFits;
 void(entity e, float *rows, float base, float first, float last) SV_TASRecipePaste;
+float(entity e, float *rows, float base, float count, float first, float last, float candidate) SV_TASSolveFits;
+void(entity e, float *rows, float base, float first, float last, float candidate) SV_TASSolvePaste;
+void(entity e) SV_TASContactsLiveBegin;
 
 #define TASP_CPMAX 48           // checkpoints kept: auto, the head, named
 #define TASP_READ_PASSIVE 2     // strict canonical metadata only; NEVER live-body admission
@@ -1634,6 +1637,7 @@ void(entity e, string name, string cpname, string expected, float first, float l
 		if (!bad)
 		{
 			if (field == TAS_RECIPE_FIELD) bad = !SV_TASRecipeFits(e,tpr_buf,tpr_base,tpr_n,first,last);
+			else if (field == TAS_SOLVE_FIELD) bad = !SV_TASSolveFits(e,tpr_buf,tpr_base,tpr_n,first,last,value);
 			else bad = !FS_TASEditValue(field,value);
 		}
 		if (bad)
@@ -1784,6 +1788,7 @@ void(entity e, string name, string cpname, string expected, float first, float l
 	if (first > 0)
 	{
 		if (field == TAS_RECIPE_FIELD) SV_TASRecipePaste(e,tasp_buf[s],e.tasp_base,first,last);
+		else if (field == TAS_SOLVE_FIELD) SV_TASSolvePaste(e,tasp_buf[s],e.tasp_base,first,last,value);
 		else for (k = first; k <= last; k = k + 1)
 		{
 			row = (k - e.tasp_base - 1) * TAS_INPUT_STRIDE;
@@ -1794,6 +1799,9 @@ void(entity e, string name, string cpname, string expected, float first, float l
 		}
 		e.tasp_signed = e.tasp_made = 0; // original hash is a parent, never a signature on this preview
 	}
+	// Establish the solver's baseline clock BEFORE its first native command.
+	// A late gen-change observer must not silently drop the interval's first tick.
+	if (field == TAS_SOLVE_FIELD) SV_TASContactsLiveBegin(e);
 	// A body that was not in TAS mode could not have the rows checked before the load.
 	bad = SV_TASPValidate(e, tasp_buf[s], e.tasp_n);
 	if (bad) { SV_TASPAbort(e, sprintf("input row %.0f refused by the engine", bad)); return; }

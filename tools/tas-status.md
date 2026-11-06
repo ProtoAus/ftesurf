@@ -81,6 +81,15 @@ Earlier dated stage paragraphs in the original plan keep their historical scope.
 A statement that a later stage was then unbuilt is not today's overall status.
 Source, qualification, deployment and human acceptance are separate evidence.
 
+### Experimental bounded local solver — P1355
+
+Actual22production helpers and34real dedicated-socket goal/cancel/recovery checks
+pass: fair baseline, all9 native candidates, complete future, real GUI Cancel,
+stale job isolation and exact Original input/settings recovery. Baseline was best;
+no invented improvement or input credit. All3VMs compile0warnings. This is initial
+bounded-search qualification, not full two-ramp acceptance. Publication/deployment
+are separate states in [qualification](p1355-tas-solve.md).
+
 ## Still unfinished
 
 1. **Human-plan phase 4 delivery/acceptance.** P1350's native contact proposals,

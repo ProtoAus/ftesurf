@@ -1,5 +1,33 @@
 # AGENT_NOTES.md
 
+## P1355 bounded local solver: measured interface seams (6 Nov 2026)
+
+Qualification and actual remaining limits: tools/p1355-tas-solve.md.
+Actual22production helpers and34real-client controls pass, including the final
+fair-baseline probe, real GUI Cancel and exact recovered original.
+- Freeze retains/validates the whole source but does NOT initialize Preview's
+  original/name/time. Reuse actual Preview initialization before a checked load.
+- Raw plan masks are compact jump1/duck2/walk4 (0..7), NOT QC BTN_DUCK8. Old20
+  helpers passed an invalid34/42 oracle; actual native crouch row1 correctly
+  refused it. Corrected production checks cover all72 masks against the existing
+  SV_TASInputChange duck field, and all9 native candidates ACT.
+- .tasp identity is the canonical hash CHAIN, not whole-file SHA256. Reuse the
+  existing tools/tasrev.py revhash, require computed == stated, and refresh the
+  actual current source/page. The native refusal of the driver's wrong domain
+  was correct; do not weaken product guards to satisfy that driver.
+- The failed-preview Keep lock must allow the existing retained Discard operation
+  to finish. Real GUI Cancel, stale search ID and full original recovery ACT;
+  both preview and operation actually clear, not a static-review assumption.
+- The baseline only learns its region point at target. Retain bounded17 native
+  samples, then score with the SAME first-qualified-in-window predicate as every
+  candidate; otherwise an unchanged candidate could invent an earlier/better
+  sample that the baseline discarded. No second baseline/native budget expansion.
+- Real static-fixture baseline was best. Keep correctly invents no revision or
+  credit; exact saved input/settings/future and canonical supply none pass. This
+  is not faster-route, >128 selected-row, changed-winner history or owner two-ramp
+  acceptance. Preserve initial failures/partial results; do not relabel old tests.
+
+
 ## P1352 similarity cursor retirement and scoped deployment (6 Nov 2026)
 
 - `sim_cursor` source slot0 is source rotation, slot1 interrupted admission and

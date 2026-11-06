@@ -184,6 +184,7 @@
 #define TAS_SECTION_ROWS 4
 #define TAS_SECTION_MAX 49    // 48 checkpoint boundaries plus the retained tail
 #define TAS_EV_CONTACTS 54   // own source-bound observed spans; no input/pose authority
+#define TAS_EV_SOLVE 55      // own bounded-search progress; never input/pose authority
 #define TAS_CONTACT_ROWS 4
 #define TAS_CONTACT_MAX 4096
 #define TAS_PAGE_ROWS 8
@@ -194,6 +195,7 @@
 #define TAS_TAPE_FAULT 5
 #include "sh_tasinput.qc"
 #include "sh_tasplan.qc"
+#include "sh_tassolve.qc"
 #define AS_NONE    0           // not armed
 #define AS_ARMED   1           // a clean start
 #define AS_HOPPED  2           // a hopped start: land, below run_rearmspeed, to re-arm

@@ -1,5 +1,23 @@
 # lextest.md — things waiting on a human
 
+## P1355 bounded local section search -- check after rollout
+
+Please do not look for the new search button until the deployment is confirmed.
+Then one small familiar two-ramp check: capture a disposable line and Pause;
+Inputs > From/To selects an earlier interval; Sections > Observed contacts chooses
+its later face/search button. Is the goal/progress/result understandable? Cancel
+one run, open the input preview and Discard: do the complete future, settings and
+normal resume return? If convenient use more than128selected inputs. Baseline
+best/no improvement is a valid honest result. Only Keep a genuinely changed
+completed winner; check Undo/Redo if one occurs. No fastest-route claim is made.
+
+No owner confirmation. Actual native34/34 covers all9/full future/real UI
+Cancel/stale-job/exact Original recovery on the final22helper/fair-baseline source;
+all3VMs compile0warnings. This is basic runtime qualification, not whole-workflow
+or human acceptance. Deployment is recorded separately in tools/p1355-tas-solve.md.
+Changed-winner history, long selections and finish-specific context remain open.
+
+
 ## P1353 reported fixes — candidate verified; rollout and owner checks pending
 
 After the installed-version/hash check, please try these small checks:

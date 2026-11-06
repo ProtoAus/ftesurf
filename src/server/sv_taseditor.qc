@@ -1,5 +1,7 @@
 // Full captured input lines; execution remains the project's <=128-row chunks.
 // A preview is not a saved revision, signature, or an original-packet timing claim.
+float(entity e) SV_TASSolveBlocking;
+void(entity e) SV_TASSolveReset;
 .float tase_preview, tase_serial, tase_next, tase_originaltime, tase_complete, tase_previewrequest;
 .float tase_history, tase_count, tase_cursor;
 .float tase_operation, tase_opcursor, tase_oprequest;
@@ -14,6 +16,7 @@ void(entity e) SV_TASEditorClearOperation =
 
 void(entity e) SV_TASEditorReset =
 {
+	SV_TASSolveReset(e);
 	if (e.tase_original) strunzone(e.tase_original);
 	if (e.tase_name) strunzone(e.tase_name);
 	if (e.tase_histname) strunzone(e.tase_histname);
@@ -27,6 +30,7 @@ void(entity e) SV_TASEditorReset =
 
 void(entity e) SV_TASEditorClearPreview =
 {
+	SV_TASSolveReset(e);
 	if (e.tase_original) strunzone(e.tase_original);
 	if (e.tase_name) strunzone(e.tase_name);
 	e.tase_original = e.tase_name = "";
@@ -45,6 +49,7 @@ void(entity e) SV_TASEditorFrame =
 	local float s;
 	if (e.tase_serial)
 	if (e.tase_serial != e.rec_rec_serial) { SV_TASEditorReset(e); return; }
+	if (SV_TASSolveBlocking(e)) { e.tase_complete = FALSE; return; }
 	if (e.tase_preview)
 	{
 		if (e.tasp_load || e.tasp_serial != e.rec_rec_serial || SV_TimerTicks(e) != e.tasp_filehead)

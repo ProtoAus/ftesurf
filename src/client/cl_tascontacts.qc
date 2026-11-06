@@ -34,6 +34,7 @@ void(float offset) TASContacts_Request =
 	tact_ready = FALSE; tact_offset = offset; tact_next = cltime+.6;
 	tact_attempts = tact_attempts+1;
 	TASProject_IntentRequest();
+	localcmd("p1 cmd tas solvestatus2\n");
 	localcmd(sprintf("p1 cmd tas contacts page %.0f %.0f %.0f %.0f %.0f\n",
 		offset,tact_tag,tast_serial,tast_bodyhead,tast_request));
 };
@@ -142,6 +143,8 @@ void() TASContacts_Status =
 		print(sprintf("tas observation %.0f: body %.0f..%.0f kind %.0f\n",tact_offset+i+1,tact_start[i],tact_end[i],tact_kind[i]));
 };
 
+#include "cl_tassolve.qc"
+
 void(vector at, float width, float tsz, float hint, float row) TASContacts_Draw =
 {
 	local float i;
@@ -157,6 +160,7 @@ void(vector at, float width, float tsz, float hint, float row) TASContacts_Draw 
 			if (Profile_Chip("tact_next",at+[(width+6)*2/3,0,0],chip,"Next",tsz,FALSE)) TASContacts_Request(tact_offset+TAS_CONTACT_ROWS);
 	}
 	at_y = at_y+row+hint;
+	at_y = at_y+TASSolve_Draw(at,width,hint,row);
 	if (tast_v2 && (tast_flags & 4))
 	{
 		sui_text(at,[hint,hint],"Keep/Discard the candidate before showing current proposals.",SUI_THEME_MUTED,1,0);
@@ -186,6 +190,8 @@ void(vector at, float width, float tsz, float hint, float row) TASContacts_Draw 
 	sui_text(at,[hint,hint],sprintf("Observed %.0f..%.0f of %.0f | body %.0f; full source to %.0f",
 		tact_offset+1,tact_offset+tact_n,tact_total,tact_body,tact_head),SUI_THEME_TEXT,1,0);
 	at_y = at_y+hint*2;
+	sui_text(at,[hint,hint],"Solve: choose earlier input ticks in Inputs, then a later target face below (maximum1024 edited ticks).",SUI_THEME_MUTED,1,0);
+	at_y = at_y+hint*1.8;
 	for (i = 0; i < tact_n; i = i+1)
 	{
 		label = tact_kind[i] == 1 ? "World ramp face" : (tact_kind[i] == 0 ? "Transit: no ramp observed" : (tact_kind[i] == 2 ? "Non-world: unsupported" : "Gap/unsupported"));
@@ -202,6 +208,11 @@ void(vector at, float width, float tsz, float hint, float row) TASContacts_Draw 
 		if (Profile_Chip(sprintf("tact_start%g",i),at+[(width+6)/3,0,0],chip,"Go to start",hint,FALSE)) TASContacts_Action(i,1);
 		if (Profile_Chip(sprintf("tact_end%g",i),at+[(width+6)*2/3,0,0],chip,"Go to end",hint,FALSE)) TASContacts_Action(i,2);
 		at_y = at_y+row+hint;
+		if (tact_kind[i] == 1)
+		{
+			if (Profile_Chip(sprintf("tact_solve%g",i),at,[width,row,0],"Solve selected earlier inputs to this face",hint,FALSE)) TASSolve_Start(i);
+			at_y = at_y+row+hint;
+		}
 	}
 	sui_text(at,[hint,hint],"Observations are read-only proposals. Use Manual markers for your own boundaries/names.",SUI_THEME_MUTED,1,0);
 };

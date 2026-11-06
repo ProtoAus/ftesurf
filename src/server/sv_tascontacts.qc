@@ -4,6 +4,7 @@
 .vector run_tas_contactplane;
 .vector run_tas_contactpoint;
 
+void(entity e, float tick, float kind, vector normal, float distance, vector point) SV_TASSolveObserve;
 // Live diagnostic only. Revision-bound full-line proposals are separate.
 .float tasc_ready, tasc_serial, tasc_gen, tasc_native, tasc_tick, tasc_done;
 .float tasc_samples, tasc_gaps, tasc_ramps, tasc_frozen;
@@ -71,10 +72,12 @@ void(entity e) SV_TASContactsObserve =
 	{
 		e.tasc_gaps = e.tasc_gaps + max(1, max(delta, logical));
 		SV_TASContactSpan(e,tick-logical,tick,3,'0 0 0',0,'0 0 0');
+		SV_TASSolveObserve(e,tick,3,'0 0 0',0,'0 0 0');
 		return;
 	}
 	e.tasc_samples = min(TASP_MAX, e.tasc_samples + 1);
 	SV_TASContactSpan(e,tick-1,tick,info_y,e.run_tas_contactplane,info_z,e.run_tas_contactpoint);
+	SV_TASSolveObserve(e,tick,info_y,e.run_tas_contactplane,info_z,e.run_tas_contactpoint);
 	if (info_y >= 2)
 	{
 		e.tasc_gaps = e.tasc_gaps + 1;

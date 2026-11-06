@@ -7,6 +7,7 @@ float tast_pagepending, tast_pagefirst;
 float tast_rows[TAS_PAGE_ROWS * 7]; // present, forward, side, up, pitch word, yaw word, buttons
 string tast_recipe_name, tast_marker_name;
 void() TASContacts_Reset; // contacts compile after this shared action dispatcher
+void() TASSolve_Reset;
 float tast_recipe_caret, tast_marker_caret, tast_recipe_focus;
 #define TAS_RECIPE_SCANS 512 // keyboard domain; other scans are never acquired
 float *tast_recipe_keys; // 0 up, 1 other-held, 2 recipe-owned; survives focus changes
@@ -99,6 +100,7 @@ float(float argc, float seat) TASProject_ConsoleCommand =
 
 void() TASTimeline_Reset =
 {
+	TASSolve_Reset();
 	TASSections_Reset();
 	tast_tag = tast_tag + 1; // invalidate an in-flight page, including close/map change
 	tast_n = tast_undo = tast_redo = tast_flags = tast_v2 = tast_wantrefresh = tast_pick = 0;

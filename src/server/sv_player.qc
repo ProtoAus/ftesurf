@@ -16,6 +16,7 @@ void(entity e) SV_TASProjectReset;
 void(entity e) SV_TASShareCancel;
 void(entity e) SV_TASProjectFrame;
 void(entity e) SV_TASOptFrame;
+void(entity e) SV_TASSolveFrame;
 void(entity e) SV_TASLegalLog;
 void(entity e) SV_TASLegalFrame;
 void(entity e) SV_TASOptReset;
@@ -889,6 +890,7 @@ void() PlayerPostThink =
 		if (self.run_tas_done == self.run_tas_seen)
 		{
 			SV_TASOptFrame(self);   // P1088: its backs and tapes start on idle paused frames
+			SV_TASSolveFrame(self); // full-source search also advances while paused
 			SV_TASLegalFrame(self); // P1100: likewise a legal back's replay
 			return;
 		}
@@ -969,6 +971,7 @@ void() PlayerPostThink =
 	SV_TASProjectFrame(self);       // P1082: the next load chunk; a non-TAS rewind detaches
 	SV_TASEditorFrame(self);
 	SV_TASOptFrame(self);           // P1088: the optimizer's next candidate
+	SV_TASSolveFrame(self);
 	SV_TASLegalFrame(self);         // P1100: the start's tick, a legal back's next chunk
 	SV_WatchFrame(self);            // ...and the replay/rewind pin holds no speed
 
@@ -1483,6 +1486,8 @@ void(entity e, float count, float ticket) SV_TASQueueSteps =
 #include "sv_tasmarkers.qc"
 #include "sv_tascontacts.qc"
 #include "sv_tasrecipe.qc"
+#include "sv_tassolve.qc"
+#include "sv_tassolvetest.qc"
 #include "sv_tasshare.qc"
 #include "sv_tasoptimize.qc"
 #include "sv_taslegal.qc"
@@ -1497,6 +1502,7 @@ void(entity e, float argc) SV_TASCommand =
 	// Escape controls are never stranded behind the diagnostic rate limit.
 	if (argc == 2 && (!strcmp(action, "off") || !strcmp(action, "play")))
 	{
+		SV_TASSolveCancel(e,"TAS play/off");
 		SV_TASIFlush(e);
 		SV_TASOptStop(e, "TAS play/off");  // here too: a spectate hold skips its frame
 		SV_TASCancel(e);
@@ -1511,6 +1517,35 @@ void(entity e, float argc) SV_TASCommand =
 			sprint(e, PRINT_HIGH, "tas: playing; queued steps cancelled, TAS ancestry retained\n");
 		return;
 	}
+	if (!strcmp(action,"solvetest2") && argc == 2)
+	{
+		if (SV_TASPLocalOnly(e)) SV_TASSolveSelftest();
+		return;
+	}
+	if (!strcmp(action,"solvestatus2") && argc == 2) { SV_TASSolveEvent(e); return; }
+	if (!strcmp(action,"solvecancel2"))
+	{
+		if (argc == 5)
+		if (FS_TASNumber(argv(2)))
+		{
+			count = fs_tas_number;
+			if (FS_TASNumber(argv(3)))
+			if (count == e.tsol_serial && fs_tas_number == e.tsol_id && !strcmp(argv(4),e.tsol_sha))
+				SV_TASSolveCancel(e,"Cancelled by author");
+		}
+		return;
+	}
+	if (e.tsol_on)
+	{
+		if (strcmp(action,"contacts") && strcmp(action,"page2"))
+		{
+			if (strcmp(action,"project") || argc != 3 || (strcmp(argv(2),"event") && strcmp(argv(2),"status")))
+			{
+				sprint(e,PRINT_HIGH,"tas solve: search active; Cancel/Play/Discard first; nothing else queued\n"); return;
+			}
+		}
+	}
+	if (!strcmp(action,"solve2")) { SV_TASSolveCommand(e,argc); return; }
 	if (!strcmp(action, "contacts")) { SV_TASContactsCommand(e, argc); return; }
 	if (e.tasp_load && strcmp(action, "status") && strcmp(action, "project"))
 	{
