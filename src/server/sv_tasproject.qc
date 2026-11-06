@@ -6,6 +6,7 @@
 #define TASP_MAX 96000          // ticks after the base, about 24 minutes at 15 ms
 void(entity e) SV_TASShareCancel;
 void(entity e, float argc) SV_TASShareCommand;
+void(entity e, string sha) SV_TASContactsInvalidate;
 float(entity e, float *rows, float base, float count, float first, float last) SV_TASRecipeFits;
 void(entity e, float *rows, float base, float first, float last) SV_TASRecipePaste;
 
@@ -104,10 +105,13 @@ float() SV_TASPCount =
 
 void(entity e, string sha, float ok) SV_TASPKeptResult =
 {
-	local float s;
+	local float s, changed;
 	local string copy;
 	s = SV_TASPSlot(e);
 	if (!s || strlen(sha) != 64) return;
+	if (ok)
+		changed = (strcmp(tasp_keptsha[s],sha) || !strcmp(tasp_badsha[s],sha));
+	else changed = (!strcmp(tasp_keptsha[s],sha) || strcmp(tasp_badsha[s],sha));
 	copy = strzone(sha);
 	if (ok)
 	{
@@ -127,6 +131,8 @@ void(entity e, string sha, float ok) SV_TASPKeptResult =
 		if (tasp_badsha[s]) strunzone(tasp_badsha[s]);
 		tasp_badsha[s] = copy;
 	}
+	// Proof changes can leave every ordinary body/source key unchanged.
+	if (changed) SV_TASContactsInvalidate(e,copy);
 };
 
 void(entity e) SV_TASPKeptCancel =

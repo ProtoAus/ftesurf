@@ -28,14 +28,21 @@ boundaries and cleared only with a new retained parent snapshot; pages do not
 synchronously scan an entire long line. A fresh reply is allowed to say there is
 no bound map: freshness alone is not an observation-validity bit.
 Both cached reuse and fresh binding require the exact SHA's successful canonical
-immutable readback. Observed ordinary syntax or expected-hash failures invalidate
-that source; existence alone cannot recover it. Ordinary load reuses its first
+immutable readback. Observed ordinary/template/share syntax or expected-hash
+failures invalidate that exact source; unrelated range/eligibility refusals do not.
+Existence alone cannot recover it. Ordinary load reuses its first
 strict read. Unknown proof queues one read-only Think invocation, separate from
 the load's VM budget; page requests never perform that second whole-file read.
 The UI shows an empty pending state and retries finitely without manual Refresh.
 The task checks canonical file identity only: it cannot admit native inputs,
 restore a body, change the original, or confer time/evidence credit. Native live
 command-context and restore checks remain mandatory and unchanged.
+Newly obtained, rejected or recovered proof invalidates that actor's cache through a
+complete empty reserved-tag0 contacts reply. Seek/edit/history/template actions
+also clear the cache before dispatch: a failed Go cannot become current merely
+because an unchanged Timeline page returns. Template/share reads add no positive
+proof. These follow-up cache corrections compile cleanly; their native old/new
+checks remain blocked by the unchanged4GiB/60s-quiet resource gate.
 
 These are proposals, **not a section solver result**. A constrained next-ramp
 solver and broader optimization remain work in progress in

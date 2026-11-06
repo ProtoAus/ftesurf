@@ -1,3 +1,22 @@
+// Reserved tag0 invalidates this one actor's cache, even if body/SHA did not move.
+// Keep the complete empty-page shape: older readers consume then ignore tag0.
+void(entity e, string sha) SV_TASContactsInvalidate =
+{
+	local float s;
+	s = SV_TASPSlot(e);
+	if (!s) return;
+	if (strcmp(tasp_revsha[s],sha))
+		if (strcmp(tasc_sha[s],sha)) return;
+	WriteByte(MSG_MULTICAST,SVC_CGAMEPACKET); WriteByte(MSG_MULTICAST,TAS_EV_CONTACTS);
+	WriteLong(MSG_MULTICAST,0); WriteLong(MSG_MULTICAST,0);
+	WriteLong(MSG_MULTICAST,0); WriteLong(MSG_MULTICAST,0);
+	WriteLong(MSG_MULTICAST,0); WriteLong(MSG_MULTICAST,0);
+	WriteString(MSG_MULTICAST,""); WriteByte(MSG_MULTICAST,0);
+	WriteShort(MSG_MULTICAST,0); WriteShort(MSG_MULTICAST,0);
+	WriteByte(MSG_MULTICAST,0); WriteString(MSG_MULTICAST,"");
+	msg_entity = e; multicast(e.origin,MULTICAST_ONE_R);
+};
+
 // Own revision-bound observations, through the existing editor body binding.
 void(entity e, float argc) SV_TASContactsPage =
 {

@@ -59,11 +59,12 @@ float(entity e) SV_TASShareBody =
 	ok = SV_TASPRead(e, "shared", FALSE);
 	tpr_pathover = "";
 	ok = (ok && !strcmp(tpr_h, e.tsh_sha));
+	if (!ok) SV_TASPKeptResult(e,e.tsh_sha,FALSE);
 	if (ok && strcmp(tpr_parsha,"")) e.tsh_parent = strzone(tpr_parsha);
 	SV_TASPReadFree();
 	if (!ok) { strunzone(path); return FALSE; }
 	f = fopen(path, FILE_READ); strunzone(path);
-	if (f < 0) return FALSE;
+	if (f < 0) { SV_TASPKeptResult(e,e.tsh_sha,FALSE); return FALSE; }
 	b = buf_create(); bytes = rows = 0;
 	while ((line = fgets(f)))
 	{

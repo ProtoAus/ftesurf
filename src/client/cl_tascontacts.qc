@@ -91,6 +91,14 @@ void() TASContacts_Event =
 			tact_normal[i] = [values[0],values[1],values[2]]; tact_distance[i] = values[3];
 		}
 	}
+	// Server-side reads may reject/recover a source without changing body keys.
+	// Consume the WHOLE packet before handling this reserved empty-page signal.
+	if (!tag)
+	{
+		if (good && !serial && !body && !request && !base && !head && !flags &&
+			!offset && !total && !n && !strlen(sha) && !strlen(note)) TASContacts_Reset();
+		strunzone(sha); strunzone(note); return;
+	}
 	if (!take || !good)
 	{
 		if (take) tact_ready = FALSE;

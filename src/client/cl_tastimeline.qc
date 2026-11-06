@@ -6,6 +6,7 @@ float tast_originaltime, tast_candidatetime, tast_wantrefresh, tast_refreshat, t
 float tast_pagepending, tast_pagefirst;
 float tast_rows[TAS_PAGE_ROWS * 7]; // present, forward, side, up, pitch word, yaw word, buttons
 string tast_recipe_name, tast_marker_name;
+void() TASContacts_Reset; // contacts compile after this shared action dispatcher
 float tast_recipe_caret, tast_marker_caret, tast_recipe_focus;
 #define TAS_RECIPE_SCANS 512 // keyboard domain; other scans are never acquired
 float *tast_recipe_keys; // 0 up, 1 other-held, 2 recipe-owned; survives focus changes
@@ -372,6 +373,7 @@ void() TASTimeline_Apply =
 	}
 	line = sprintf("p1 cmd tas %s %.0f %.0f %s %.13f", tast_v2 ? "preview2" : "slice", tast_from, tast_to,
 		FS_TASEditName(tast_field), tast_value);
+	TASContacts_Reset();
 	localcmd(strcat(line, sprintf(" %.0f %.0f %.0f\n", tast_serial, tast_bodyhead, tast_request)));
 	tast_n = 0; // disable a second click before a server acknowledgement
 	tast_wantrefresh = 1; tast_refreshat = cltime + 0.6;
@@ -380,6 +382,7 @@ void() TASTimeline_Apply =
 void(string action, float tick) TASTimeline_Action =
 {
 	if (!TASTimeline_Current() || !tast_v2 || !(tast_flags & 2)) return;
+	TASContacts_Reset(); // a failed source read can leave ALL binding keys unchanged
 	if (!strcmp(action, "seek2"))
 		localcmd(sprintf("p1 cmd tas seek2 %.0f %.0f %.0f %.0f\n", tick, tast_serial, tast_bodyhead, tast_request));
 	else
@@ -401,6 +404,7 @@ void(float save) TASTimeline_Recipe =
 	}
 	line = sprintf("p1 cmd tas %s %s %.0f %.0f %.0f %.0f %.0f\n",save ? "recipesave2" : "recipeapply2",
 		tast_recipe_name,tast_from,tast_to,tast_serial,tast_bodyhead,tast_request);
+	TASContacts_Reset();
 	localcmd(line);
 	tast_recipe_focus = FALSE; tast_pick = tast_selected; tast_n = 0;
 	tast_wantrefresh = 1; tast_refreshat = cltime+0.6;
@@ -412,6 +416,7 @@ void(float redo) TASTimeline_History =
 	if ((!redo && tast_undo < 1) || (redo && tast_redo < 1)) return;
 	if (tast_v2)
 	if (!(tast_flags & 2) || (tast_flags & 4)) return;
+	TASContacts_Reset();
 	localcmd(sprintf("p1 cmd tas %s %.0f %.0f %.0f\n", tast_v2 ? (redo ? "redo2" : "undo2") : (redo ? "redo" : "undo"),
 		tast_serial, tast_bodyhead, tast_request));
 	tast_n = 0; tast_wantrefresh = 1; tast_refreshat = cltime + 0.6;

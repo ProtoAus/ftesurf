@@ -73,10 +73,13 @@ float(entity e, string name) SV_TASRecipeRead =
 	tpr_pathover = "";
 	if (!ok)
 	{
+		SV_TASPKeptResult(e,hash,FALSE);
 		sprint(e, PRINT_HIGH, sprintf("tas recipe: retained input source refused (%s); nothing moved\n",tpr_why));
 		goto bad;
 	}
-	if (strcmp(tpr_h,hash) || first < tpr_base+1 || last > tpr_base+tpr_n || last-first+1 > TASP_MAX) goto bad;
+	if (strcmp(tpr_h,hash)) { SV_TASPKeptResult(e,hash,FALSE); goto bad; }
+	// A template range/native eligibility refusal is NOT a corrupt source.
+	if (first < tpr_base+1 || last > tpr_base+tpr_n || last-first+1 > TASP_MAX) goto bad;
 	tasr_count = last-first+1;
 	tasr_rows = (float*)memalloc(tasr_count*TAS_INPUT_STRIDE*4);
 	if (!tasr_rows) goto bad;

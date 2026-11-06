@@ -23,6 +23,16 @@
   proof for restoring/admitting inputs. Pending bit16 is an empty reply and retries
   finitely in CSQC. Real fullcap and failed ordinary-read controls ACTED; exact
   originals and body/grants remain unchanged.
+- Canonical template/share reads are failure witnesses too: revoke their exact
+  cached SHA on parse/hash rejection, NOT on later range/eligibility refusal and
+  do not manufacture positive proof. Server unbound does not prove UI abstained:
+  an old contact page can become current after failed Go's unchanged Timeline
+  refresh. Clear contacts before shared source-sensitive actions AND notify the
+  relevant actor on server-side initial proof/rejection/recovery, including console
+  paths. Initial success must notify even with an EMPTY badsha: finite pending
+  retries can already be exhausted when validation finally completes. Reservedtag0 retains the COMPLETE empty page shape so older clients consume and
+  ignore it; new clients parse the whole packet before reset. New correction is
+  compile-only pending unchanged4GiB/60s-quiet admission, not a native pass.
 - An intentional retained fault leaves a unique valid working child WITHOUT a
   valid immutable counterpart. The owned socket actor may preserve/park ONLY
   that latest stopped declared fault child's exact strict-canonical hash-matched
