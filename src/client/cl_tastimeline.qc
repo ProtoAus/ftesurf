@@ -5,8 +5,8 @@ float tast_next, tast_bodyhead, tast_base, tast_flags, tast_v2;
 float tast_originaltime, tast_candidatetime, tast_wantrefresh, tast_refreshat, tast_pick;
 float tast_pagepending, tast_pagefirst;
 float tast_rows[TAS_PAGE_ROWS * 7]; // present, forward, side, up, pitch word, yaw word, buttons
-string tast_recipe_name;
-float tast_recipe_caret, tast_recipe_focus;
+string tast_recipe_name, tast_marker_name;
+float tast_recipe_caret, tast_marker_caret, tast_recipe_focus;
 #define TAS_RECIPE_SCANS 512 // keyboard domain; other scans are never acquired
 float *tast_recipe_keys; // 0 up, 1 other-held, 2 recipe-owned; survives focus changes
 float tast_recipe_fresh, tast_recipe_released, tast_recipe_keyfail;
@@ -98,6 +98,7 @@ float(float argc, float seat) TASProject_ConsoleCommand =
 
 void() TASTimeline_Reset =
 {
+	TASSections_Reset();
 	tast_tag = tast_tag + 1; // invalidate an in-flight page, including close/map change
 	tast_n = tast_undo = tast_redo = tast_flags = tast_v2 = tast_wantrefresh = tast_pick = 0;
 	tast_pagepending = tast_pagefirst = 0;
@@ -118,6 +119,47 @@ void(string name) TASTimeline_RecipeName =
 	copy = strzone(name);
 	if (tast_recipe_name) strunzone(tast_recipe_name);
 	tast_recipe_name = copy; tast_recipe_caret = strlen(copy);
+};
+
+void(string name) TASTimeline_MarkerName =
+{
+	local string copy;
+	copy = strzone(name);
+	if (tast_marker_name) strunzone(tast_marker_name);
+	tast_marker_name = copy; tast_marker_caret = strlen(copy);
+};
+
+void() TASTimeline_NameBlur =
+{
+	tast_recipe_focus = FALSE;
+	sui_field_focus(""); // do NOT clear the held scan owner or its pending releases
+};
+
+void(float evtype, float scanx, float chary) TASTimeline_NameEvent =
+{
+	if (tasu_tab == TAS_TAB_SECTIONS)
+		sui_text_event(evtype,scanx,chary,"tass_name",tast_marker_name,tast_marker_caret);
+	else sui_text_event(evtype,scanx,chary,"tastr_name",tast_recipe_name,tast_recipe_caret);
+};
+
+void(vector at, float width, float tsz, float row, float marker) TASTimeline_NameField =
+{
+	local float caret;
+	local string id, value;
+	if (!marker && !tast_recipe_name) TASTimeline_RecipeName("line1");
+	id = marker ? "tass_name" : "tastr_name";
+	sui_text_metrics(ceil(row*.45),[tsz,tsz]);
+	// The widget owns inout updates, including mouse caret and accepted paste.
+	if (marker) sui_text_input(id,at,[width,row,0],tast_marker_name,tast_marker_caret);
+	else sui_text_input(id,at,[width,row,0],tast_recipe_name,tast_recipe_caret);
+	value = marker ? tast_marker_name : tast_recipe_name;
+	caret = marker ? tast_marker_caret : tast_recipe_caret;
+	if (sui_is_held(id) || sui_is_clicked(id))
+	{
+		Profile_Unfocus(); tast_recipe_focus = TRUE; sui_field_focus(id);
+	}
+	Profile_FieldLook(id,at,[width,row,0],tsz,value,caret,
+		marker ? "Marker name: a-z 0-9 _ -" : "Recipe name: a-z 0-9 _ -",tast_recipe_focus,row*.5,ceil(row*.45));
 };
 
 // Observe before every early input consumer. Direct indexing cannot lose a held
@@ -152,27 +194,30 @@ void(float evtype, float scanx) TASTimeline_RecipeTrack =
 
 float() TASTimeline_RecipeHasFocus =
 {
-	if (!tasu_open || tasu_tab != TAS_TAB_PROJECT || UI_CursorHeld() != UIC_TAS || chat_typing)
+	if (!tasu_open || (tasu_tab != TAS_TAB_PROJECT && tasu_tab != TAS_TAB_SECTIONS) || UI_CursorHeld() != UIC_TAS || chat_typing)
 		tast_recipe_focus = FALSE;
+	if (tasu_tab == TAS_TAB_SECTIONS)
+	if (!TASSections_Current()) tast_recipe_focus = FALSE;
 	return tast_recipe_focus;
 };
 
 float(float evtype, float scanx, float chary) TASTimeline_RecipeInput =
 {
 	local float owned, focused;
+	local string id;
 	focused = TASTimeline_RecipeHasFocus();
+	id = tasu_tab == TAS_TAB_SECTIONS ? "tass_name" : "tastr_name";
 	if (scanx == K_MOUSE1 || scanx == K_MOUSE2)
 	{
 		if (focused && evtype == IE_KEYDOWN)
-		if (!sui_is_hovered("tastr_name")) tast_recipe_focus = FALSE;
+		if (!sui_is_hovered(id)) tast_recipe_focus = FALSE;
 		return FALSE;
 	}
 	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP) return FALSE;
 	owned = (scanx > 0 && scanx < TAS_RECIPE_SCANS && tast_recipe_released == scanx + 1);
 	if (evtype == IE_KEYUP)
 	{
-		if (focused || owned)
-			sui_text_event(evtype,scanx,chary,"tastr_name",tast_recipe_name,tast_recipe_caret);
+		if (focused || owned) TASTimeline_NameEvent(evtype,scanx,chary);
 		return owned; // stop later QC consumers; outer entry preserves native releases
 	}
 	if (!focused) return FALSE;
@@ -186,19 +231,19 @@ float(float evtype, float scanx, float chary) TASTimeline_RecipeInput =
 	}
 	if (scanx == K_ESCAPE || scanx == K_ENTER || scanx == K_KP_ENTER)
 	{
-		tast_recipe_focus = FALSE;
+		TASTimeline_NameBlur();
 		return TRUE;
 	}
 	if (chary >= 65 && chary <= 90) chary = chary+32;
 	if (chary >= 32 && chary != 127)
 	if (!((chary >= 97 && chary <= 122) || (chary >= 48 && chary <= 57) || chary == 95 || chary == 45))
 		return TRUE;
-	sui_text_event(evtype,scanx,chary,"tastr_name",tast_recipe_name,tast_recipe_caret);
-	if (strlen(tast_recipe_name) > 32)
+	TASTimeline_NameEvent(evtype,scanx,chary);
+	if (tasu_tab == TAS_TAB_SECTIONS)
 	{
-		TASTimeline_RecipeName(substring(tast_recipe_name,0,32));
-		tast_recipe_caret = min(tast_recipe_caret,32);
+		if (strlen(tast_marker_name) > 32) TASTimeline_MarkerName(substring(tast_marker_name,0,32));
 	}
+	else if (strlen(tast_recipe_name) > 32) TASTimeline_RecipeName(substring(tast_recipe_name,0,32));
 	return TRUE;
 };
 
@@ -542,7 +587,7 @@ void(vector at, float width, float tsz, float hint, float row) TASProject_Draw =
 	if (Profile_Chip("tasp_cp",at+[(width+6)*2/3,0,0],chip,"Checkpoint",tsz,FALSE) && cltime >= tasp_cl_next)
 	if (current)
 	{
-		tasp_cl_next = cltime + 0.5; localcmd(sprintf("p1 cmd tas cp add cp%.0f\n", tast_head));
+		tasp_cl_next = cltime + 0.5; localcmd(sprintf("p1 cmd tas cp add cp%.0f\n", tast_bodyhead));
 	}
 	at_y = at_y + row + hint;
 	label = TASCompare_Text();
@@ -583,15 +628,7 @@ void(vector at, float width, float tsz, float hint, float row) TASProject_Draw =
 	at_y = at_y+row+hint;
 	sui_text(at,[hint,hint],sprintf("Named input recipe | selected span %.0f..%.0f | fixed map ticks",tast_from,tast_to),SUI_THEME_DIM,1,0);
 	at_y = at_y+hint*1.6;
-	if (!tast_recipe_name) TASTimeline_RecipeName("line1");
-	sui_text_metrics(ceil(row*0.45),[tsz,tsz]);
-	sui_text_input("tastr_name",at,[width,row,0],tast_recipe_name,tast_recipe_caret);
-	if (sui_is_held("tastr_name") || sui_is_clicked("tastr_name"))
-	{
-		Profile_Unfocus(); tast_recipe_focus = TRUE; sui_field_focus("tastr_name");
-	}
-	Profile_FieldLook("tastr_name",at,[width,row,0],tsz,tast_recipe_name,tast_recipe_caret,
-		"Recipe name: a-z 0-9 _ -",tast_recipe_focus,row*0.5,ceil(row*0.45));
+	TASTimeline_NameField(at,width,tsz,row,FALSE);
 	at_y = at_y+row+hint; chip = [(width-6)/2,row,0];
 	if (Profile_Chip("tastr_save",at,chip,"Save selected input",tsz,current && !(tast_flags & 4))) TASTimeline_Recipe(TRUE);
 	if (Profile_Chip("tastr_apply",at+[(width+6)/2,0,0],chip,"Preview named recipe",tsz,current && !(tast_flags & 4))) TASTimeline_Recipe(FALSE);

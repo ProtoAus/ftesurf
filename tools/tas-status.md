@@ -40,6 +40,17 @@ SSH timeout is retained; the on-box activation succeeded and was reconciled
 read-only, without repeating swaps/restarts. See the qualification for scope.
 This is deployment evidence, not owner usability or genuine-device signing.
 
+### Implemented manual sections, pending delivery
+
+[P1335](p1335-tas-sections.md) adds a full-retained-line Sections tab with manual
+endpoint naming, input-range selection and bound start/end navigation. Add,
+rename, move-to-current-body and remove save the complete raw/settings line even
+while paused earlier. Original revisions, no-input-supply semantics and the
+ordinary partial-save guard remain. Actual dedicated metadata58/widget31 checks
+pass; the native panel was inspected. Final review, publication and BOTH-Windows/
+lobby delivery are pending. This is the manual foundation, not contact detection
+or best-found solving; P1329 remains the current installed authoring feature.
+
 The API reader upgrade is reviewed/tested/published but still needs the owner's
 root-authenticated standalone TAS-service upgrade. This does **not** block local
 editing: normal in-game sharing explicitly accepts only legal-start v3 projects,
@@ -53,10 +64,11 @@ Source, qualification, deployment and human acceptance are separate evidence.
 
 ## Still unfinished
 
-1. **Human-plan phase 4: sections and navigation.** Named checkpoints exist, but
-   the human-first section browser/manual marker workflow and actual-contact ramp
-   proposals are not delivered. Start with explicit manual boundaries; do not
-   label a ramp merely from `FL_ONGROUND`, proximity or speed.
+1. **Human-plan phase 4: contact-aware sections.** P1335's manual browser and
+   marker workflow is implemented/isolated-qualified, with review/delivery still
+   pending above. Actual-contact ramp proposals remain unimplemented. Keep manual
+   boundaries explicit; do not label a ramp merely from `FL_ONGROUND`, proximity
+   or speed.
 2. **Human-plan phase 5: constrained section/next-ramp solving.** Existing bounded
    optimizers are not this feature. Real ramp/air candidates must satisfy contact
    and arrival constraints, reject a fast missed ramp, preserve the original on
@@ -77,9 +89,9 @@ Source, qualification, deployment and human acceptance are separate evidence.
 
 ## Resume here
 
-Continue the [human-first plan](plan-tas-human-workflow.md) with manual sections
-and navigation, followed by actual-contact proposals and constrained next-ramp
-work. Keep the delivered play/pause/full-captured-line/settings loop intact.
+Finish P1335 manual-section review/delivery, then continue the
+[human-first plan](plan-tas-human-workflow.md) with actual-contact proposals and
+constrained next-ramp work. Keep the delivered play/pause/full-captured-line/settings loop intact.
 A rearranged128-tick demonstration, one passing build or this deployment is not
 whole-project completion. Dynamic-world, streamed-history, physical-device and
 general-route limits remain explicit.

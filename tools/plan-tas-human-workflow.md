@@ -8,7 +8,10 @@ and all 12 lobbies; exact receiver/source evidence and limits are in
 control settings are also reviewed, runtime-checked and installed BOTH Windows
 and all12lobbies. Qualification, delivery and still-pending owner acceptance are
 separate in [the settings contract](p1329-tas-settings.md).
-Contact sections and the constrained next-ramp solver remain unfinished. The
+P1335's manual section browser, bound endpoint navigation and safe full-tail
+marker edits are implemented and isolated-qualified, with review/delivery still
+pending; see [the manual-section qualification](p1335-tas-sections.md). Actual
+contact proposals and the constrained next-ramp solver remain unfinished. The
 complete workflow below is NOT delivered.
 This changes the local-editor priority in [the original TAS plan](plan-tas.md),
 not its assisted ancestry, contribution or verified-board requirements.

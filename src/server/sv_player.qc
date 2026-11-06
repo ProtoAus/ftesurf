@@ -1472,6 +1472,9 @@ void(entity e, float count, float ticket) SV_TASQueueSteps =
 #include "sv_tasplan.qc"
 #include "sv_tasproject.qc"
 #include "sv_taseditor.qc"
+#include "sv_tassections.qc"
+// Marker snapshots reuse full-line freeze/history without a movement grant.
+#include "sv_tasmarkers.qc"
 #include "sv_tasrecipe.qc"
 #include "sv_tasshare.qc"
 #include "sv_tasoptimize.qc"
@@ -1514,6 +1517,8 @@ void(entity e, float argc) SV_TASCommand =
 	if (!strcmp(action, "optimize")) { SV_TASOptCommand(e, argc); return; }
 	if (!strcmp(action, "project") || !strcmp(action, "cp")) { SV_TASProjectCommand(e, argc); return; }
 	if (!strcmp(action, "inputs")) { SV_TASInputs(e, argc); return; }
+	if (!strcmp(action,"sections2")) { SV_TASSectionsCommand(e,argc); return; }
+	if (!strcmp(action,"marker2")) { SV_TASMarkersCommand(e,argc); return; }
 	if (!strcmp(action,"recipesave2") || !strcmp(action,"recipeapply2"))
 	{ SV_TASRecipeCommand(e,argc); return; }
 	if (!strcmp(action, "page2") || !strcmp(action, "preview2") || !strcmp(action, "seek2") ||

@@ -6,6 +6,7 @@ float(float argc, float seat) CL_TASPlanCommand =
 	local vector camangles, rawangles;
 	if (!strcmp(argv(1), "shared")) return TASShare_ConsoleCommand(argc,seat);
 	if (!strcmp(argv(1), "timeline")) return TASTimeline_ConsoleCommand(argc,seat);
+	if (!strcmp(argv(1), "sections")) return TASSections_ConsoleCommand(argc,seat);
 	if (!strcmp(argv(1), "project") || !strcmp(argv(1), "cp")) return TASProject_ConsoleCommand(argc,seat);
 	if (!strcmp(argv(1), "menu"))
 	{

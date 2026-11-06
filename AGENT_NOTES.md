@@ -1,5 +1,46 @@
 # AGENT_NOTES.md
 
+## P1335 manual TAS section metadata and name ownership
+
+- Manual intervals are completed body [a,b] and input rows [a+1,b]. Name-at-head
+  has no empty tail. Full retained extent and current body are separate. A
+  Timeline input picker cannot select head+1 to seek after the last row: use the
+  existing section Go-to-End / bound seek2 endpoint, not a fabricated row.
+- Existing SV_TASProjectSave already REFUSES an ordinary partial save that would
+  cut the captured future. Preserve this guard. Metadata-only marker writes use
+  the complete frozen raw line, retained CPs and unchanged authored settings,
+  supply NONE and no execution grant. Never temporarily fake body/head/pose to
+  convince the ordinary input-save path that it reached a future endpoint.
+- Freeze/Rows/Read tokenize. Own all command names/hash/numbers before them.
+  SV_TASPRead takes a project NAME, not SV_TASPPath(name); the latter double-prefixes
+  the namespace and safely refuses. Its path override is separately owned/reset.
+  Internal CP name lists MUST end in semicolon: a join lacking the final one
+  made NameAt return an empty last name. Typed canonical read-back correctly
+  refused; fix producer, not validation. Refusal now includes its line number.
+- Staged CP pointer/names/revision/supply roll back on writer failure; immutable
+  original stays. A blocked owned .new stage acts as the negative, and the same
+  normal writer works after verified fixture restoration. Removing the last
+  marker's name retains its real full-head snapshot. Undo's newer named working
+  file may differ from active node: only a known retained node in this editor's
+  own history permits the new branch; unrelated named-file changes still refuse.
+- Both recipe/marker fields use the SAME scan owner/repeat/release code, separate
+  draft/caret and widget ids. Blur on tab switch without clearing owned scans;
+  old native ups still forward. sui_text_input takes BOTH text/caret as inout:
+  dispatch to the actual globals, not disposable local copies. Fresh marker and
+  recipe keys, already-held gameplay repeats, cross-tab releases and real widget
+  saves act in the native31-check case; owner feel remains separate.
+- fteqcc parses float *a, *b as a shared pointer type plus another star on b;
+  use separate pointer declarations. memfree((void*)p) avoids pointer warnings.
+  sprintf's format occupies one of EIGHT TOTAL vararg slots: at most seven
+  interpolated values. Split the marker command, do not drop its final binding.
+- Bare tas cp / cmd tas cp print usage, not the list; use cmd tas cp list.
+  Public qualification: tools/p1335-tas-sections.md. Native14acting control,
+  20browser,58metadata and31widget assertions have normal quit0 pairs. This is
+  manual phase4 foundation, NOT contact proposals/section-solver completion.
+- Required corpus scope is data/runs (parts/paired views), not the separately
+  access-denied legacy kept-save prefix. Existing351faults are NOT zero; compare
+  no increase, preserve bytes/ACLs, and parse newly added view inputs explicitly.
+
 ## P1334 unsupported similarity model is not malformed (source candidate)
 
 - The reader already refuses unmodelled viewing-clock formats. Keep that refusal

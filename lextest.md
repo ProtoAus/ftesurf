@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P1335 manual TAS sections -- review/delivery pending, not human-confirmed
+
+After installation, one small local check: play a disposable line, Pause, open
+Sections, type a name and Add here. Go earlier, add a second marker, then choose
+Marker on an existing endpoint and rename it. Are the four navigation/edit
+buttons and separate name draft readable and natural, with the later line still
+visible? For Move here, seek first, then reselect the endpoint and move it. Does
+switching to Project and back leave typing/gameplay keys unstuck? A quick comment
+on this one panel is enough for basic feel; automatic/native widget checks do not
+supply human acceptance. Automatic contact sections and next-ramp solving are
+still unbuilt, not hidden behind these manual markers.
+
 ## P1333 current-file consistency — deployed, owner readability pending
 
 Backend installed 5 Nov 2026 at22:45:40UTC; guarded namespace/source hashes,

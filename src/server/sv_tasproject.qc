@@ -368,7 +368,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 {
 	local filestream f;
 	local string l, k, pin, hash, parent, names, z;
-	local float argc, n, i, b, have, ended, named, ver;
+	local float argc, n, i, b, have, ended, named, ver, line;
 
 	SV_TASPReadFree();
 	tpr_rev = tpr_base = tpr_baseid = tpr_parentrev = 0; tpr_why = "";
@@ -383,11 +383,16 @@ float(entity e, string name, float identity) SV_TASPRead =
 	tpr_rank = -1;
 	if (tpr_h) strunzone(tpr_h);
 	tpr_h = strzone(strtolower(digest_hex("SHA256", "FTESURF-TASREV-CANON 1")));
+	line = 0;
 	while ((l = fgets(f)) != "")
 	{
+		line = line+1;
 		argc = tokenize(l);
 		k = argv(0);
-		if (argc < 1 || !SV_TASPLineCanon(l, k, argc)) { tpr_why = "not a file the game wrote (P1089 canonical form)"; break; }
+		if (argc < 1 || !SV_TASPLineCanon(l, k, argc))
+		{
+			tpr_why = sprintf("not a file the game wrote (P1089 canonical form), line %.0f",line); break;
+		}
 		if (ended && k != "revsha") { tpr_why = "data after end"; break; }
 		z = SV_TASPCanon(l);
 		if (z != "")
