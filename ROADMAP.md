@@ -7,9 +7,10 @@ three missing permutations on Boreas/Demise; P1318 removes the separate false
 first-view lightmap rebuild and is installed. Neither is a universal readiness
 contract: native GLSL warming has a two-second budget, and late-created programs,
 resources and driver work can still be deferred. No settings/quality downgrade.
-A stricter mode remains unbuilt: first define the finite material/permutation/
-resource closure and failure/timeout behavior rather than removing bounds and
-risking an unbounded load. Falsifier: fresh-client first traversal of those routes,
+A strict server start barrier remains unbuilt. P1351 below defines a conservative
+loading-boundary closure and finite failure/timeout behavior; a complete material/
+fallback dependency graph is still missing. Do not remove bounds and risk an
+unbounded load. Falsifier: fresh-client first traversal of those routes,
 with preparation complete before timer start, separately count late compile,
 allocation/upload and draw stalls; test a deliberate missing permutation and an
 exhausted budget. Ordinary scene cost and OS scheduling are not readiness passes.
@@ -22,9 +23,22 @@ P1345 implements accurate frame reports/map-only noclip and targets the demonstr
 recursive-reflection prop-lighting stall; P1348 corrects review-found state leaks.
 Tools/p1345-smoothness.md and tools/p1348-overview-state.md retain exact controls,
 normal builds, original rejected images, refused GPU admission and acceptance limits.
-This does NOT complete the broader readiness/late-work contract above. Finite
-closure and failure/timeout policy remain to be settled before adding a strict
-start barrier; numerical cold/normal-route qualification remains resource-blocked.
+P1351 implements a named bounded activation closure: registered server/CSQC/
+viewweapon model slots, current-registration file images (not render targets),
+and known supported permutations of active shader/pass programs. A shared soft
+budget leaves explicit pending/failure/unrequested counts; fallback is not ready.
+`r_mapready_info` records late compile/image completion work and invalidation.
+Full native/QC build,32 source controls and real Tensor2/socket controls pass;
+eight failed registered image lookups correctly keep Tensor2 incomplete. See
+[tools/p1351-mapreadiness.md](tools/p1351-mapreadiness.md).
+This is informational at activation, NOT a strict server timer/start barrier.
+Future registrations, unremembered permutations, fixed-emulation programs,
+render targets/audio/driver first-draw and full dependency/route coverage remain
+excluded. Strict start admission and complete material-fallback closure remain
+unbuilt. Fresh first-use/repeat capture completed16windows/950sampled seconds,
+with moving-replay controls and no idle/capacity exclusions. Segmented dumps
+leave replay-time gaps; this is neither uninterrupted whole-route coverage nor
+a causal product before/after improvement. No universal loading guarantee.
 
 ## Christmas environment and cosmetics — requested 4 Nov 2026
 

@@ -1,5 +1,37 @@
 # AGENT_NOTES.md
 
+## P1351 activation closure and late work (6 Nov; ready-20261106T1706Z-01a1b1d2)
+
+Engine c28dcf9bd/tagpatch-1351 is committed/pushed; Windows delivery is separately
+pending. tools/p1351-mapreadiness.md defines the narrow closure and exclusions.
+Full isolated native build plus three QC passes succeeds;32 literal-source C
+controls pass (including actual engine-bound NaN/-Inf budget behavior). Initial build signature race and a detached hidden-pwsh MSYS make
+stall remain retained. Six owned make handles had no compiler/linker child and
+stopped progressing; stop only exact owned handles and use the SAME supported
+build synchronously, which completed. Do not mint build wrappers/workspaces to
+work around it. Generated mat_vmt_progs.h changed only its source-path banner;
+retain that diff, restore only the verified own generated label, never stage it.
+
+`COM_HasWork` excludes executing workers: resource readiness polls actual model/
+image states and pumps one main-thread completion per deadline check. Notloaded
+resources are incomplete/unrequested, NOT executing work to spin on. Count shared
+programs and supported-permutation aliases once; base fallback is failed, not
+ready. Known closure uses a clamped2s soft budget; synchronous driver calls,
+prior reload/history I/O/traversal are not preemptible/bounded by that clock.
+
+Real Tensor2/socket smoke warmed61 known permutations. Zero budget left pending
+work, later drawing added6 compiles plus image completion, and changing PBR
+invalidated activation. Eight failed registered image lookups keep Tensor2
+**incomplete**; optional probe/fallback dependency resolution remains unfinished.
+Late telemetry does not write files. This is NOT server timer admission or a
+universal loading/route/residency guarantee. Fresh first-use/repeat route capture
+completed16windows/950sampled seconds with positive advancing-replay controls,
+no idle exclusions/capacity eviction and no competing game. Segmented dumps
+leave replay-time gaps: do not call it uninterrupted full-route coverage or
+aggregate per-window percentiles/tail means into a whole-route percentile. This
+is warm-state characterization, NOT a measured product performance improvement.
+Separate trace/string attribution is pending. Owner void-transition confirmation remains pending.
+
 ## P1350 contact identity, recovery abstention and reader boundaries
 
 - Unpublished1344/1347 was renumbered1350 after exact published1347 KSF conflict

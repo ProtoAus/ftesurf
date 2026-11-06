@@ -21,6 +21,10 @@
 
 ## next
 
+### P1351 Bounded map preparation and honest readiness diagnostics
+- Loading briefly waits for known pending resources and remembered shader work, with explicit timeout and failure diagnostics instead of an unbounded wait.
+- Developer diagnostics identify shader compilation and image work that happens after loading. This is not a promise that every future resource is already resident.
+
 ### P1350 Native contact sections for local TAS lines
 - Browse observed ramp faces separately from your manual markers, and jump to their input ranges without losing the rest of your line.
 - Keep complete observations across safe marker-only edits; changed previews stay separate and Discard restores the original map. This is not yet an automatic next-ramp solver.
