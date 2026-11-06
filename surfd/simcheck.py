@@ -431,6 +431,8 @@ CREATE INDEX IF NOT EXISTS sims_b ON sims (b_id);
 # This is scheduling metadata in the existing table, never an observation or a
 # schema/history migration. Older collectors ignore slot1 on rollback.
 _SOURCE_INFLIGHT = 1
+_SOURCE_CURSOR_RETIRE = 2        # independent metadata cleanup, not admission
+_CURSOR_RETIRE_LIMIT = 64
 
 CURSOR_SQL = """
 CREATE TABLE IF NOT EXISTS sim_cursor (
@@ -494,6 +496,41 @@ def _source_done(conn, source_id):
     with conn:
         conn.execute("DELETE FROM sim_cursor WHERE scope='source' AND source_id=?"
                      " AND after_id=?", (_SOURCE_INFLIGHT, source_id))
+
+
+def _retire_peer_cursors(conn, limit=_CURSOR_RETIRE_LIMIT, read_budget=None):
+    """Examine a bounded indexed window; remove only absent sources' peer state.
+
+    This is scheduling metadata, never a replay or stored observation. A separate
+    position crosses live windows and survives reopen. Recheck source absence in
+    the DELETE, then commit deletion and position together even on autocommit.
+    """
+    _limit("cursor retirement limit", limit)
+    if limit == 0:
+        return 0
+    _idle(conn)
+    after = _cursor(conn, "source", _SOURCE_CURSOR_RETIRE, read_budget)
+    rows = _rotated_rows(conn, "SELECT source_id FROM sim_cursor WHERE scope='peer'",
+                         (), "source_id", after, min(limit, _CURSOR_RETIRE_LIMIT),
+                         read_budget)
+    if not rows:
+        return 0
+    ids = tuple(row[0] for row in rows)
+    conn.execute("BEGIN " + (conn.isolation_level or "DEFERRED"))
+    try:
+        cursor = conn.execute(
+            "DELETE FROM sim_cursor WHERE scope='peer' AND source_id IN ("
+            + ",".join("?" for _ in ids) + ") AND NOT EXISTS"
+            " (SELECT 1 FROM replays WHERE replays.id=sim_cursor.source_id)", ids)
+        retired = cursor.rowcount
+        cursor.close()
+        _checkpoint(conn, "source", ids[-1], _SOURCE_CURSOR_RETIRE)
+        conn.execute("COMMIT")
+        return retired
+    except BaseException:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
 
 
 def ensure_schema(conn):
@@ -823,8 +860,11 @@ def _similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
     rs, why = _recsim(tools_dir)
     if rs is None:
         return 0, 0, "similarity skipped: %s" % why
+    retired = 0
     try:
         ensure_schema(conn)
+        if budget.available():
+            retired = _retire_peer_cursors(conn, read_budget=read_budget)
         rows, inflight = _pending_sources(conn, limit, read_budget)
         if not rows and inflight is not None and budget.available():
             # A removed/completed source is no longer eligible. Read-only pending
@@ -887,6 +927,8 @@ def _similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         note = "sims +%d" % stored
         if skipped:
             note += " (%d unjudgeable)" % skipped
+    if retired:
+        note = (note + " " if note else "") + "sims retired %d orphan peer cursors" % retired
     unavailable = []
     if diagnostics["source_unavailable"]:
         unavailable.append("%d source unavailable" % diagnostics["source_unavailable"])
