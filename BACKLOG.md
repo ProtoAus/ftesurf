@@ -425,8 +425,6 @@
 - Server: trigger_teleport_relative never sets vbsp_io_solid, so an Enable not preceded by a
   Disable makes it SOLID_BSP and drawn (sv_entities.qc ~2966). P1190's PVS eye covers only
   trigger_teleport_touch, so a relative teleport's destination entities pop in.
-- TG_FireTeleport never clears the carrier for VelocityMode 1-3, though the server does
-  (sv_entities.qc ~7792).
 - The server row ring is one strbuf of formatted rows per player (3 sprintfs a command); keep raw
   numbers and format on upload if lobby CPU ever matters. Sequence floats pass 2^24 after ~70 h.
 

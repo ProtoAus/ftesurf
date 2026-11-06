@@ -1,8 +1,12 @@
 # lextest.md — things waiting on a human
 
-## P1341 teleport carrier parity — delivery pending, human check pending
+## P1341 teleport carrier parity — delivered6Nov, human check pending
 
-After delivery, one familiar push-fed velocity-reset teleport: does its exit avoid
+ALL12lobbies CS-only05:06:06UTC, original join capacities restored; QW5e8 and
+native/backend/config/data preserved. BOTH Windows CS/symbols05:09:58UTC.
+Fresh served-code/render smoke passes, not teleport-physics/feel acceptance.
+
+One familiar push-fed velocity-reset teleport: does its exit avoid
 the old boost/snap, while keep-velocity/landmark transitions still preserve speed?
 A later pad must still boost normally. Actual QC VM42/0 vs baseline8failures is
 helper evidence, not live-network or human feel acceptance. Historical save/load

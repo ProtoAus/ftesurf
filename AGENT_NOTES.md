@@ -6043,6 +6043,16 @@ all necessary fixture preconditions when acceleration is the acceptance claim.
 
 ## Boundaries and interfaces
 
+**P1341 ordered carrier clear (6Nov2026).** Successful non-landmark ordinary
+VelocityMode1-3 teleports mirror SV_ClearCarrier; mode0/landmark and rejection
+paths do not. Native applies queued push BEFORE BVSET, whose overwrite does NOT
+reset armed. Consume has reset armed before touch: clear BOTH QC accumulator and
+pending push-fire, then queue zero. A later continuous push must cancel that zero
+and arm anew; once-push stays a direct impulse. Reset the command-local clear
+marker each post pass. Actual production helpers42/0 vs baseline8failures; this
+is NOT a full native/network/feel or historical-save cause proof. Driver grading
+must require42checks and exact8baseline labels, and catch unnumbered warnings.
+
 - Server QC is authoritative (saveloc lists, timer/zones, heartbeat, board
   submits). Client QC renders/predicts. Menu QC is offline UI + directory.
 - **PlayerPreThink is per USERCMD; PlayerPostThink is per PACKET.** The engine
