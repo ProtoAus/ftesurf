@@ -1,8 +1,10 @@
-# P1335: manual sections for the complete local TAS line
+# P1336: manual sections for the complete local TAS line
 
-Status: implemented and qualified in an isolated real dedicated game; final
-review, publication and deployment are pending. This is the manual foundation
-of human-plan phase 4, not automatic ramp detection or section solving.
+Status: implemented, isolated-qualified and cleared by two final independent
+whole-feature reviews. Publication/deployment are pending. Qualification used
+provisional P1335; the feature was renumbered before publication to avoid an
+existing reservation, with no runtime source change. This is the manual
+foundation of human-plan phase 4, not automatic ramp detection or section solving.
 
 ## Use
 
@@ -137,8 +139,9 @@ bulk editing is not claimed complete.
   later map-setup quit deadline, not a normal world/device acceptance claim.
 - Earlier full dedicated pairs and corrected22/58 quit normally with code0; the
   explicit old runaway control is the exception above. Supplied states do not
-  prove arbitrary maps, genuine devices/signatures. Final frozen whole-feature
-  re-review/publication/deployment remain pending.
+  prove arbitrary maps, genuine devices/signatures. Two final independent
+  whole-feature reviews of the corrected qualified code report no findings;
+  publication/deployment remain pending.
 - Mandatory recorder tests:949 checks, zero failures. Required primary runs/parts
   sweep:548 recordings/parts and178 views, existing faulty-entry count remains351
   on unchanged bytes. Ten additional views are actually parsed clean; all726

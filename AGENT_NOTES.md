@@ -1,6 +1,6 @@
 # AGENT_NOTES.md
 
-## P1335 manual TAS section metadata and name ownership
+## P1336 manual TAS section metadata and name ownership
 
 - Manual intervals are completed body [a,b] and input rows [a+1,b]. Name-at-head
   has no empty tail. Full retained extent and current body are separate. A
@@ -34,7 +34,9 @@
   sprintf's format occupies one of EIGHT TOTAL vararg slots: at most seven
   interpolated values. Split the marker command, do not drop its final binding.
 - Bare tas cp / cmd tas cp print usage, not the list; use cmd tas cp list.
-  Public qualification: tools/p1335-tas-sections.md. Native14acting control,
+  Public qualification: tools/p1336-tas-sections.md. Qualified under provisional
+  P1335, renumbered before publication to avoid an existing reservation; no runtime
+  source change, final whole-feature reviews clear on the qualified code. Native14acting control,
   20browser,58metadata and31widget assertions have normal quit0 pairs. This is
   manual phase4 foundation, NOT contact proposals/section-solver completion.
 - Refresh must obtain Project metadata BEFORE its sections2 page: an unsaved

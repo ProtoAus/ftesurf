@@ -21,7 +21,7 @@
 
 ## next
 
-### P1335 Name and navigate TAS sections
+### P1336 Name and navigate TAS sections
 - A new Sections tab splits the complete captured local line at your named markers. Select a section's inputs or replay to its start or end without losing the later line.
 - Add, rename, move or remove manual boundaries while paused. Marker edits save the full retained run, even from an earlier body; Undo/Redo keeps the original revisions.
 - Marker names have their own text field, with safe held-key handoff to gameplay and the existing recipe editor. These are manual sections, not automatic ramp detection or a fastest-route solver.

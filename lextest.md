@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1335 manual TAS sections -- review/delivery pending, not human-confirmed
+## P1336 manual TAS sections -- delivery pending, not human-confirmed
 
 After installation, one small local check: play a disposable line, Pause, open
 Sections, type a name and Add here. Go earlier, add a second marker, then choose

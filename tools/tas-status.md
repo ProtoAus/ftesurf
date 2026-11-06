@@ -42,7 +42,7 @@ This is deployment evidence, not owner usability or genuine-device signing.
 
 ### Implemented manual sections, pending delivery
 
-[P1335](p1335-tas-sections.md) adds a full-retained-line Sections tab with manual
+[P1336](p1336-tas-sections.md) adds a full-retained-line Sections tab with manual
 endpoint naming, input-range selection and bound start/end navigation. Add,
 rename, move-to-current-body and remove save the complete raw/settings line even
 while paused earlier. Original revisions, no-input-supply semantics and the
@@ -51,8 +51,10 @@ refuses oversized synchronous marker saves intact; storage/browser limits remain
 unchanged. Actual old48000-row control18 exhausts the VM AFTER read/load/browser
 baseline; corrected22 safely refuses, stays responsive and saves a short edit on
 that same server. Corrected metadata58 and16synthetic budget-helper checks pass;
-earlier widgets31/panel inspection remain separate evidence. Final re-review,
-publication and BOTH-Windows/lobby delivery are pending. This is the manual foundation, not contact detection
+earlier widgets31/panel inspection remain separate evidence. Two final independent
+whole-feature reviews cleared the corrected code; publication and BOTH-Windows/
+lobby delivery are pending. Provisional P1335 was renumbered before publication
+without a runtime source change. This is the manual foundation, not contact detection
 or best-found solving; P1329 remains the current installed authoring feature.
 
 The API reader upgrade is reviewed/tested/published but still needs the owner's
@@ -68,7 +70,7 @@ Source, qualification, deployment and human acceptance are separate evidence.
 
 ## Still unfinished
 
-1. **Human-plan phase 4: contact-aware sections.** P1335's manual browser and
+1. **Human-plan phase 4: contact-aware sections.** P1336's manual browser and
    marker workflow is implemented/isolated-qualified, with review/delivery still
    pending above. Actual-contact ramp proposals remain unimplemented. Keep manual
    boundaries explicit; do not label a ramp merely from `FL_ONGROUND`, proximity
@@ -93,7 +95,7 @@ Source, qualification, deployment and human acceptance are separate evidence.
 
 ## Resume here
 
-Finish P1335 manual-section review/delivery, then continue the
+Finish P1336 manual-section delivery, then continue the
 [human-first plan](plan-tas-human-workflow.md) with actual-contact proposals and
 constrained next-ramp work. Keep the delivered play/pause/full-captured-line/settings loop intact.
 A rearranged128-tick demonstration, one passing build or this deployment is not
