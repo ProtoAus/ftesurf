@@ -42,6 +42,21 @@ speed? A later pad must still boost normally. Actual QC VM42/0 versus baseline
 NOT closure of historical save/load reports; no popup/report is required for the
 small feel check and no whole-stream replay is requested.
 
+## P1345/P1348 smoother map-only noclip — candidate, not deployed or human-confirmed
+
+Owner report6Nov: a brief rendering pause on inside-to-void crossings, slight on
+each crossing and worst on the first noclip out. This is the regression target,
+not a camera-jump report or candidate acceptance. The candidate targets the
+rendering stall; owner confirmation after installation remains pending.
+
+After installation, one quick Ceaseless check: noclip outside the map, use the
+remaining map shape to choose a destination, then fly back inside. Is navigation
+quick, with no retained snow trails, and do normal props/glows/weather return
+without missing geometry or a wipe? Ordinary falling must not enter map-only
+mode. A short normal Tensor2 pass should retain the familiar sky/glow appearance.
+Native prior-closure images and exact predicate tests are not owner confirmation
+or a general FPS/loading guarantee. Final unprofiled timing is separately pending.
+
 ## P1335 Christmas master/defaults and close ramp dirt — installed, human check pending
 
 BOTH Windows installed6Nov02:50UTC, current-pair D911/CSP117d627ace2d plus

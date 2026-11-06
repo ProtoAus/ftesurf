@@ -5618,6 +5618,81 @@ transient UDP27593 bind WinError10013 had no endpoint/exclusion and a bounded
 probe then succeeded; resume the SAME compiled prelaunch artifact at the real
 launch boundary, not a numbered wrapper/copy or a weaker result assertion.
 
+### Forced-void rendering controls — P1345 candidate, 6 Nov 2026
+
+Suppressing a producer is not proof its pixels disappeared. In the isolated
+Anubis check, snow-on/late/producer-disabled captures retained identical white
+pixel masks in uncovered void background. The later primary-view color clear
+kept all3maps visible and removed snow pixels; a fixed Anubis crop went442->0.
+That is prior-closure pixel evidence, not Ceaseless speed or latest-base acceptance.
+Keep the original failed observation separate from submissions and FPS acceptance.
+`R_Clear` runs before viewport setup, and GL viewport does not bound `glClear`.
+Whole-target clears must exclude native `r_secondaryview` insets as well as other
+seats, stereo eyes and unrelated named targets. `GL_ForceDepthWritable` restores
+RGBA writes too; inspect actual state helpers rather than assuming a stale mask.
+
+Native `InfoForPoint` output pointers are NOT generally nullable: VBSP writes
+area, cluster AND contents unconditionally. Supply storage even for unused
+outputs; a permissive CPU stub can otherwise falsely qualify a crashing caller.
+Keep the strict callback-contract control and selected production-body hashes.
+Also inspect rendered diagnostics before restoring the refdef: a post-pop world
+census can be zero despite a real drawn scene. Exact shape counts are still not
+a geometry checksum or a visual preservation pass. Printed eye coordinates can
+vary one float32 ULP without meaningful movement; pre-register any bounded
+rounding tolerance and reject changed world counts or competing game processes.
+Never retroactively accept a rejected timing window by changing its reader.
+
+A loaded brush model does not mean its `predraw` only creates effects. Ceaseless
+has198 `func_lod` entities whose authored distance rejection lives in LOD_Predraw;
+skipping that callback expanded overview census19->217 while static-world hash
+stayed identical. Preserve narrow visibility ownership, not arbitrary predraws.
+If QC temporarily hides entities by zero drawmask, restore eligibility on exit:
+a zero mask otherwise prevents native predraw from ever being reached again.
+
+`profile_csqc` first enables; later calls PRINT/RESET, not toggle off. A0.5s
+snapshot missed the end of a long synchronous profile and falsely reported no
+CSQC_UpdateView. Recover the already-retained completed log; do not rerun a good
+sample for a reader failure. Delimit printing by an exact command-end marker,
+and put unprofiled timing BEFORE profiler activation. An instrumented/print-stalled
+budget is not an FPS control, even when its geometry census is still useful.
+The normal Tensor2 profile attributes most QC self time to Sprite_SkyTest, but
+tracing and name work are not separately measured. A bounded prefix comparison
+must retain native lowercase: direct ASCII strncasecmp need not preserve Unicode
+folding. Keep ray budget/cadence,16-unit eye cache and door invalidation intact.
+
+First-void attribution subsequently found exact cold prop lighting/BIH traces
+inside recursive reflections. The parent's explicit RDF_WORLDONLY policy had
+been unconditionally cleared there. Retain an EXISTING bit in positive recursive
+children; fresh primary/named scenes still clear/rederive it. Keep the raw query
+view-local and normal exact lighting unchanged. Actual reset-body1280controls act.
+Same source-bound native subject has no armed12ms boundary sample; instrumented
+attribution is not product FPS or proof of no smaller hitches. Lazy-compile hook
+lacks a positive native control, so P0 cannot prove universal no-compilation.
+
+Scope the debug census to primary STANDARD screen candidates BEFORE culling;
+it is not a rendered-model total. Nested passes must neither overwrite it nor
+increment its rejected count. Actual fragments432controls distinguish legacy
+nested overwrite. Final normal/unprofiled admission REFUSED below4GiB with no
+owned game/lock retained; do not repeat marginal loops or weaken60s/4GiB guards.
+Use a small actual owner check for visual feel, keeping numerical claims pending.
+Canonical7ccb's two F333227 miscompilations are not a safe fleet baseline. Use
+qualified c24ede65 read-only in owned source; all THREE VMs0warnings, canonical
+tools untouched. Historical Pi source9debcfc9/CS445abb4c was superseded by
+P1342/P1343 source218721aa/CS01815ce0/QWe7b8a26b during preparation. HASH prefix is
+not source identity. Re-check actual deployed predecessor before composition;
+never roll current warp/save APIs back to an old compatible profile. Main API
+is different. P1348 rebase preserves current QW/menu/source exactly.
+
+Fresh reviews caught persistent lightmap-policy/epoch leakage, zero-initialized
+unloaded mod_brush acceptance, frozen hidden weapon feedback and paused VM sync.
+Do NOT reset r_dlightlightmaps blindly in R_PushDlights: cache/realtime overrides
+also own it. Restore original base assignment; advance epoch and test current
+RDF policy separately for marking AND RGB/luminance rebuilds. Loaded packet
+brushes only; keep VM_Frame active and consume/discard hidden WP presentation.
+Literal production controls1102: old743failures, corrected0, both compiles0warnings.
+Original1345 images are rejected controls, not fleet/catalog candidates. See
+`tools/p1348-overview-state.md`; no GPU/animation/FPS pass inferred from C stubs.
+
 **Reader transport and clock fields — P1143, 31 Oct 2026.** Expanding 528 absolute
 recording paths into Windows CreateProcess argv failed with WinError206 before
 the reader started. Invoke the SAME existing `reccheck.main` with its exact

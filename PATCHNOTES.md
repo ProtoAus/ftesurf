@@ -21,6 +21,17 @@
 
 ## next
 
+### P1348 Correct overview state on exit
+- Leaving map-only noclip keeps normal dynamic lighting intact, including cached and realtime-lighting policies.
+- Hidden weapon bursts, recoil and scope feedback are discarded rather than replayed on exit. Viewmodel preferences and watched profiles still update while hidden.
+- The overview only accepts already-loaded structural models; unloaded decorative models cannot slip through the brush exception.
+- Zone editing still processes clicks and drag releases at the current aim in the void, without drawing editor world overlays.
+
+### P1345 Smoother noclip overview and accurate frame reports
+- Outside-map noclip skips decorative props and effects while keeping the map and structural brushes visible. Normal in-map rendering settings are unchanged.
+- Fixed a first-exit rendering stall caused by cosmetic prop lighting returning inside reflections. Recursive reflections now keep the selected map-only policy.
+- Frame reports retain long stalls and disclose sampling exclusions. Explicit reports calculate exact raw percentiles and tail averages; live estimates are labelled.
+
 ### P1343 Relative teleport parity
 - Relative teleports stay invisible pass-through triggers when enabled and preload their destination like ordinary teleports. Prediction reports now distinguish server-only relative snaps without hiding same-destination prediction errors.
 
