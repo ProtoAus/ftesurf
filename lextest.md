@@ -51,20 +51,24 @@ speed? A later pad must still boost normally. Actual QC VM42/0 versus baseline
 NOT closure of historical save/load reports; no popup/report is required for the
 small feel check and no whole-stream replay is requested.
 
-## P1345/P1348 smoother map-only noclip — candidate, not deployed or human-confirmed
+## P1345/P1348 smoother map-only noclip — deployed6Nov, human check pending
+
+Both Windows installs verified13:40:56UTC6Nov2026; all12lobbies verified13:51:33UTC.
+Main2f2f3946/CSa45e87ee5133, compatible Pi490280cc/CS2d70a779b200;
+normal native1355c256a/tagpatch-1348, no probes; tools/p1348-overview-state.md.
 
 Owner report6Nov: a brief rendering pause on inside-to-void crossings, slight on
-each crossing and worst on the first noclip out. This is the regression target,
-not a camera-jump report or candidate acceptance. The candidate targets the
-rendering stall; owner confirmation after installation remains pending.
+each crossing and worst on the first noclip out. That is the regression target,
+not a camera-jump report or acceptance. Owner confirmation remains PENDING.
 
-After installation, one quick Ceaseless check: noclip outside the map, use the
-remaining map shape to choose a destination, then fly back inside. Is navigation
-quick, with no retained snow trails, and do normal props/glows/weather return
-without missing geometry or a wipe? Ordinary falling must not enter map-only
-mode. A short normal Tensor2 pass should retain the familiar sky/glow appearance.
-Native prior-closure images and exact predicate tests are not owner confirmation
-or a general FPS/loading guarantee. Final unprofiled timing is separately pending.
+One quick check, preferably Ceaseless: noclip out and back TWICE. Is the first
+pause reduced and are repeated crossings smooth? Can the remaining map shape
+still guide a destination, without retained snow trails, and do normal lighting,
+props/glows/weather return without missing geometry or a wipe? Ordinary falling
+and normal Tensor2 sky/glow appearance remain separate, unconfirmed cases.
+Prior images and exact predicate tests are not owner confirmation or a general
+FPS/loading guarantee. Final unprofiled timing and fresh served-client graphical
+smoke remain separately pending; no numerical improvement is claimed.
 
 ## P1335 Christmas master/defaults and close ramp dirt — installed, human check pending
 
