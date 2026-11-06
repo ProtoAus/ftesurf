@@ -10,6 +10,7 @@ float(entity e, float *rows, float base, float count, float first, float last) S
 void(entity e, float *rows, float base, float first, float last) SV_TASRecipePaste;
 
 #define TASP_CPMAX 48           // checkpoints kept: auto, the head, named
+#define TASP_READ_PASSIVE 2     // strict canonical metadata only; NEVER live-body admission
 #define TASP_CPEVERY 256        // auto spacing, doubled until about 32 fit
 #define TASP_CPSTRIDE 8         // tick, named, origin xyz, velocity xyz
 #define TASP_FILES 64           // projects per map
@@ -19,7 +20,8 @@ float *tasp_cp[FS_MAXPLAYERS + 1];
 string tasp_name[FS_MAXPLAYERS + 1], tasp_hash[FS_MAXPLAYERS + 1];
 string tasp_parent[FS_MAXPLAYERS + 1], tasp_cpnames[FS_MAXPLAYERS + 1];
 string tasp_revsha[FS_MAXPLAYERS + 1];   // P1089: this lineage's last saved/loaded revision hash
-string tasp_keptsha[FS_MAXPLAYERS + 1];  // successful strict retained readback, not mere file existence
+string tasp_keptsha[FS_MAXPLAYERS + 1];  // canonical retained readback, NOT live-body admission
+string tasp_badsha[FS_MAXPLAYERS + 1];   // do not auto-retry a known failed revision on every page
 string tasp_parsha[FS_MAXPLAYERS + 1];   // P1090: that revision's parentsha, "" for a root
 float *tasp_pbuf[FS_MAXPLAYERS + 1];     // P1090: that revision's own rows (tasp_pbase, tasp_pn)
 .float tasp_on, tasp_n, tasp_cap, tasp_base, tasp_baseid, tasp_rev, tasp_serial, tasp_synced;
@@ -27,6 +29,7 @@ float *tasp_pbuf[FS_MAXPLAYERS + 1];     // P1090: that revision's own rows (tas
 .float tasp_native_slot, tasp_native_token, tasp_native_serial; // recovery ownership, not replay progress
 .float tasp_saveok;            // this invocation, not an old successful revision
 .float tasp_rawdirty;          // transient: raw working rows changed since the retained parent snapshot
+.entity tasp_kepttask;         // one owned read-only validation think, separate VM invocation
 .float tasp_ccount, tasp_cpi, tasp_dev, tasp_devtick, tasp_result, tasp_next;
 .vector tasp_bo, tasp_bv;      // the base tick's exact origin and velocity (state.txt rounds)
 .float tasp_line;              // recorder line after tick tasp_synced's `in` row, -1 unknown
@@ -99,9 +102,49 @@ float() SV_TASPCount =
 	return n;
 };
 
+void(entity e, string sha, float ok) SV_TASPKeptResult =
+{
+	local float s;
+	local string copy;
+	s = SV_TASPSlot(e);
+	if (!s || strlen(sha) != 64) return;
+	copy = strzone(sha);
+	if (ok)
+	{
+		if (tasp_keptsha[s]) strunzone(tasp_keptsha[s]);
+		tasp_keptsha[s] = copy;
+		if (!strcmp(tasp_badsha[s],copy))
+		{
+			strunzone(tasp_badsha[s]); tasp_badsha[s] = "";
+		}
+	}
+	else
+	{
+		if (!strcmp(tasp_keptsha[s],copy))
+		{
+			strunzone(tasp_keptsha[s]); tasp_keptsha[s] = "";
+		}
+		if (tasp_badsha[s]) strunzone(tasp_badsha[s]);
+		tasp_badsha[s] = copy;
+	}
+};
+
+void(entity e) SV_TASPKeptCancel =
+{
+	local entity task;
+	task = e.tasp_kepttask; e.tasp_kepttask = world;
+	if (task != world)
+	if (task.owner == e && !strcmp(task.classname,"tas_retained_check"))
+	{
+		if (task.message) strunzone(task.message);
+		remove(task);
+	}
+};
+
 void(entity e) SV_TASProjectReset =
 {
 	local float s;
+	SV_TASPKeptCancel(e);
 	SV_TASShareCancel(e);
 	s = SV_TASPSlot(e);
 	SV_TASIReset(e);
@@ -124,7 +167,8 @@ void(entity e) SV_TASProjectReset =
 	if (tasp_revsha[s]) strunzone(tasp_revsha[s]);
 	if (tasp_parsha[s]) strunzone(tasp_parsha[s]);
 	if (tasp_keptsha[s]) strunzone(tasp_keptsha[s]);
-	tasp_name[s] = tasp_hash[s] = tasp_parent[s] = tasp_cpnames[s] = tasp_revsha[s] = tasp_parsha[s] = tasp_keptsha[s] = "";
+	if (tasp_badsha[s]) strunzone(tasp_badsha[s]);
+	tasp_name[s] = tasp_hash[s] = tasp_parent[s] = tasp_cpnames[s] = tasp_revsha[s] = tasp_parsha[s] = tasp_keptsha[s] = tasp_badsha[s] = "";
 };
 
 void() SV_TASPReadFree =
@@ -363,7 +407,9 @@ float(string l, string k, float argc) SV_TASPLineCanon =
 };
 
 // Parse a project into tpr_*. Untrusted: every value is bounded; FALSE leaves tpr_why.
-// `identity` also requires and compares the map, zone and movement-rule lines.
+// identity1 additionally checks map/zone/rules and live native row admission;
+// identity0 retains current-body decode, identity2 is canonical-only passive readback.
+// Passive results may bind derived annotations, NEVER restore or authorize inputs.
 // P1089: tpr_h is the revision hash over the canonical lines (SV_TASPCanon); tpr_pathover
 // reads another path (the writer's .new file) in place of the project's.
 string tpr_h, tpr_pathover;
@@ -486,18 +532,18 @@ float(entity e, string name, float identity) SV_TASPRead =
 		if (k == "map") { if (argc != 2 || argv(1) != mapname) { tpr_why = "made on another map"; break; } have = have | 2; continue; }
 		if (k == "mapcrc")
 		{
-			if (identity && (argc != 2 || argv(1) != infokey(world, "*mapcrc"))) { tpr_why = "the map file changed"; break; }
+			if (identity == TRUE && (argc != 2 || argv(1) != infokey(world, "*mapcrc"))) { tpr_why = "the map file changed"; break; }
 			have = have | 32; continue;
 		}
 		if (k == "zonecrc")
 		{
 			z = (argc >= 2) ? argv(1) : "";
-			if (identity && (argc > 2 || z != zone_crc)) { tpr_why = "the zones changed"; break; }
+			if (identity == TRUE && (argc > 2 || z != zone_crc)) { tpr_why = "the zones changed"; break; }
 			have = have | 64; continue;
 		}
 		if (k == "pmpin")
 		{
-			if (identity && (pin == "" || substring(l, 6, -1) != pin)) { tpr_why = "the movement rules changed"; break; }
+			if (identity == TRUE && (pin == "" || substring(l, 6, -1) != pin)) { tpr_why = "the movement rules changed"; break; }
 			have = have | 128; continue;
 		}
 		if (k == "start")
@@ -572,7 +618,7 @@ float(entity e, string name, float identity) SV_TASPRead =
 	fclose(f);
 	if (tpr_why == "" && !ended) tpr_why = "incomplete file (no end line)";
 	if (tpr_why == "" && ((have & 31) != 31 || !(have & 256))) tpr_why = "missing header lines";
-	if (tpr_why == "" && identity && (have & 224) != 224) tpr_why = "missing map, zone or movement-rule line";
+	if (tpr_why == "" && identity == TRUE && (have & 224) != 224) tpr_why = "missing map, zone or movement-rule line";
 	// P1090: what the writer writes -- a root supplies every tick, a child a span inside it.
 	if (tpr_why == "" && ver >= 2 && !(have & 512)) tpr_why = "missing supply line";
 	if (tpr_why == "" && tpr_supa > 0)
@@ -586,6 +632,9 @@ float(entity e, string name, float identity) SV_TASPRead =
 	if (tpr_why == "" && tpr_ncp > 0)
 	if (tpr_cp[0] <= tpr_base || tpr_cp[(tpr_ncp - 1) * TASP_CPSTRIDE] > tpr_base + n)
 		tpr_why = "checkpoint outside the project";
+	// Think has no native host_client/sv_player command context. Passive reads
+	// prove ONLY canonical file identity; all restore/admission reads keep this gate.
+	if (identity != TASP_READ_PASSIVE)
 	if (tpr_why == "" && e.run_tas_mode == 1 && e.run_tas_used == 1 && !SV_TASVersionLegal(ver))
 	{
 		i = SV_TASPValidate(e, tpr_buf, n);
@@ -1254,22 +1303,62 @@ float(string sha) SV_TASPSignedFor =
 };
 
 // The kept copy reads back strictly as this revision.
-float(entity e, string sha) SV_TASPKeptOK =
+float(entity e, string sha, float passive) SV_TASPKeptRead =
 {
-	local float ok, s;
+	local float ok;
+	if (e.tasp_kepttask != world)
+		if (!strcmp(e.tasp_kepttask.message,sha)) SV_TASPKeptCancel(e);
 	tpr_pathover = strzone(SV_TASPRevPath(sha, "tasp"));
-	ok = SV_TASPRead(e, "", FALSE);
-	if (ok) ok = !strcmp(tpr_h, sha);
+	ok = SV_TASPRead(e, "", passive ? TASP_READ_PASSIVE : FALSE);
+	if (ok)
+		if (strcmp(tpr_h,sha)) { ok = FALSE; tpr_why = "retained revision hash mismatch"; }
+	if (!ok) sprint(e,PRINT_HIGH,sprintf("tas retained check failed: %s\n",tpr_why));
 	SV_TASPReadFree();
 	strunzone(tpr_pathover); tpr_pathover = "";
-	s = SV_TASPSlot(e);
-	if (s)
-	if (ok || !strcmp(tasp_keptsha[s],sha))
-	{
-		if (tasp_keptsha[s]) strunzone(tasp_keptsha[s]);
-		tasp_keptsha[s] = ok ? strzone(sha) : "";
-	}
+	SV_TASPKeptResult(e,sha,ok);
 	return ok;
+};
+
+float(entity e, string sha) SV_TASPKeptOK =
+{
+	return SV_TASPKeptRead(e,sha,FALSE);
+};
+
+// Native Event_Think starts its own VM budget. Never add a second whole-file
+// parse to Save/Load or a page callback; one task per actor/source, read only.
+void() SV_TASPKeptThink =
+{
+	local entity e;
+	local string sha;
+	local float s, take;
+	e = self.owner; sha = self.message; self.message = "";
+	s = SV_TASPSlot(e); take = FALSE;
+	if (s)
+	if (e.tasp_kepttask == self)
+	{
+		e.tasp_kepttask = world;
+		take = (e.tasp_on && !strcmp(tasp_revsha[s],sha));
+	}
+	remove(self);
+	if (take) SV_TASPKeptRead(e,sha,TRUE);
+	if (sha) strunzone(sha);
+};
+
+void(entity e) SV_TASPKeptQueue =
+{
+	local float s;
+	local entity task;
+	s = SV_TASPSlot(e);
+	if (!s) return;
+	if (strlen(tasp_revsha[s]) != 64 || !strcmp(tasp_badsha[s],tasp_revsha[s])) return;
+	if (e.tasp_kepttask != world)
+	{
+		if (!strcmp(e.tasp_kepttask.message,tasp_revsha[s])) return;
+		SV_TASPKeptCancel(e);
+	}
+	task = spawn(); task.classname = "tas_retained_check"; task.owner = e;
+	task.message = strzone(tasp_revsha[s]); task.think = SV_TASPKeptThink;
+	task.nextthink = time + .01; e.tasp_kepttask = task;
 };
 
 // The slot's buffer becomes the current revision's own rows. The copy is installed only once
@@ -1482,8 +1571,7 @@ void(entity e, string name, float force) SV_TASProjectSave =
 	SV_TASPParentKeep(e, s);
 	if (!SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE, FALSE))
 		sprint(e, PRINT_HIGH, "tas project: could not keep this revision under its hash; Sign will try again\n");
-	else if (!SV_TASPKeptOK(e,tasp_revsha[s]))
-		sprint(e, PRINT_HIGH, "tas project: saved, but retained readback failed; no source-bound observations\n");
+
 	// Only the host's own client marks a revision as made here (a guest's save shares this folder).
 	if (strstrofs(infokey(e, "ip"), "LoopBack", 0) >= 0 && !SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s], "made")))
 	{
@@ -1501,7 +1589,7 @@ void(entity e, string name, float force) SV_TASProjectSave =
 // Names are zoned copies owned by the caller.
 void(entity e, string name, string cpname, string expected, float first, float last, float field, float value) SV_TASProjectLoadChecked =
 {
-	local float s, row, r, stop, k, named, bad, warm, ns, nt;
+	local float s, row, r, stop, k, named, bad, warm, ns, nt, readkept;
 	local float original[TAS_INPUT_STRIDE];
 	local vector d, dv;
 
@@ -1522,14 +1610,17 @@ void(entity e, string name, string cpname, string expected, float first, float l
 	if (!SV_TASCanPause(e)) return;
 	if (!SV_TASPRead(e, name, TRUE))
 	{
+		SV_TASPKeptResult(e,expected,FALSE);
 		sprint(e, PRINT_HIGH, sprintf("tas project: cannot load %s: %s; nothing changed\n", name, tpr_why));
 		return;
 	}
 	if (expected != "" && strcmp(expected, tpr_h))
 	{
+		SV_TASPKeptResult(e,expected,FALSE);
 		sprint(e, PRINT_HIGH, "tas project: source revision changed; nothing moved\n");
 		SV_TASPReadFree(); return;
 	}
+	readkept = (tpr_pathover != "" && !strcmp(tpr_pathover,SV_TASPRevPath(tpr_h,"tasp")));
 	if (first > 0)
 	{
 		bad = (SV_TASVersionLegal(tpr_ver) || first < tpr_base + 1 || last < first ||
@@ -1682,8 +1773,8 @@ void(entity e, string name, string cpname, string expected, float first, float l
 	e.tasp_gen = e.rec_rec_gen; e.tasp_parentrev = tpr_parentrev;
 	SV_TASPReadFree();
 	SV_TASPParentKeep(e, s);
-	if (SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE, FALSE))
-		SV_TASPKeptOK(e,tasp_revsha[s]);
+	SV_TASPKeep(SV_TASPPath(name), tasp_revsha[s], FALSE, FALSE);
+	if (readkept) SV_TASPKeptResult(e,tasp_revsha[s],TRUE);
 	if (first > 0)
 	{
 		if (field == TAS_RECIPE_FIELD) SV_TASRecipePaste(e,tasp_buf[s],e.tasp_base,first,last);

@@ -21,9 +21,10 @@
 
 ## next
 
-### P1347 Native contact sections for local TAS lines
+### P1350 Native contact sections for local TAS lines
 - Browse observed ramp faces separately from your manual markers, and jump to their input ranges without losing the rest of your line.
 - Keep complete observations across safe marker-only edits; changed previews stay separate and Discard restores the original map. This is not yet an automatic next-ramp solver.
+- Validate large saved lines without a second full read in the load command; pending observation pages retry automatically and failed sources stay unbound.
 
 ### P1343 Relative teleport parity
 - Relative teleports stay invisible pass-through triggers when enabled and preload their destination like ordinary teleports. Prediction reports now distinguish server-only relative snaps without hiding same-destination prediction errors.

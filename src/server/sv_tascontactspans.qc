@@ -79,7 +79,11 @@ float(entity e) SV_TASContactSpansBind =
 	head = e.tasp_base+e.tasp_n;
 	if (e.tasp_filehead != head || e.tasp_pn != e.tasp_n || e.tasp_pbase != e.tasp_base) return FALSE;
 	if (!SV_TASEditorHashOK(tasp_revsha[s])) return FALSE;
-	if (strcmp(tasp_keptsha[s],tasp_revsha[s])) return FALSE;
+	if (strcmp(tasp_keptsha[s],tasp_revsha[s]))
+	{
+		SV_TASPKeptQueue(e);
+		return FALSE;
+	}
 	if (!SV_TASPFileIs(SV_TASPRevPath(tasp_revsha[s],"tasp"))) return FALSE;
 	if (e.tasc_boundrows > 0 && e.tasc_boundbase == e.tasp_base && e.tasc_boundhead == head)
 		if (!strcmp(tasc_sha[s],tasp_revsha[s])) return TRUE;
@@ -141,6 +145,9 @@ void(entity e) SV_TASContactSpansStatus =
 	s = SV_TASPSlot(e);
 	sprint(e,PRINT_HIGH,sprintf("tas contact spans: bound%.0f liveRows%.0f failed%.0f base%.0f head%.0f rows%.0f\n",
 		bound,e.tasc_spanrows,e.tasc_spanfailed,e.tasc_boundbase,e.tasc_boundhead,e.tasc_boundrows));
+	if (s) sprint(e,PRINT_HIGH,sprintf("tas retained check: pending%.0f checked%.0f failed%.0f\n",
+		e.tasp_kepttask != world,strlen(tasp_keptsha[s]) == 64 && !strcmp(tasp_keptsha[s],tasp_revsha[s]),
+		strlen(tasp_badsha[s]) == 64 && !strcmp(tasp_badsha[s],tasp_revsha[s])));
 	if (!bound || !s)
 	{
 		sprint(e,PRINT_HIGH,"tas contact spans: no complete source-bound cache; save the whole settled line or analyze it, never infer missing samples\n");

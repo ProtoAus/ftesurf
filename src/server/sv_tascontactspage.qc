@@ -27,11 +27,14 @@ void(entity e, float argc) SV_TASContactsPage =
 	bound = SV_TASContactSpansBind(e);
 	flags = total = 0;
 	sha = tasp_revsha[s];
+	if (!bound && e.tasp_kepttask != world)
+		if (!strcmp(e.tasp_kepttask.message,sha)) flags = flags | 16;
 	if (e.run_tas_contactinfo_x == 1) flags = flags | 2;
 	if (e.tasc_spanfailed) flags = flags | 8;
 	note = "No whole-source observations. Replay unchanged to the retained head, then Refresh.";
 	if (!(flags & 2)) note = "Native contact metadata unavailable; no ramp proposals inferred.";
 	else if (flags & 8) note = "Observation capacity/allocation reached; original inputs retained, no complete cache claimed.";
+	if (flags & 16) note = "Validating saved input source; no proposals until strict readback completes.";
 	if (bound)
 	{
 		flags = flags | 1;

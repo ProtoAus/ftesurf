@@ -48,7 +48,7 @@ void() TASContacts_Event =
 	base = readlong(); head = readlong(); sha = strzone(readstring()); flags = readbyte();
 	offset = readshort(); total = readshort(); n = readbyte(); note = strzone(readstring());
 	take = (tag == tact_tag && tasu_open && tasu_tab == TAS_TAB_SECTIONS && LT_StatsAreMine() && numclientseats <= 1);
-	good = (base >= 0 && body >= base && head >= body && head < 16000000 && flags <= 15 &&
+	good = (base >= 0 && body >= base && head >= body && head < 16000000 && flags <= 31 &&
 		total >= 0 && total <= TAS_CONTACT_MAX && offset >= 0 && n <= TAS_CONTACT_ROWS &&
 		n == min(TAS_CONTACT_ROWS,total-offset) && strlen(note) <= 160);
 	if (!total && (offset || n)) good = FALSE;
@@ -101,7 +101,8 @@ void() TASContacts_Event =
 	tact_sha = sha; tact_note = note;
 	tact_serial = serial; tact_body = body; tact_request = request;
 	tact_base = base; tact_head = head; tact_flags = flags;
-	tact_offset = offset; tact_total = total; tact_n = n; tact_ready = TRUE; tact_attempts = 0;
+	tact_offset = offset; tact_total = total; tact_n = n; tact_ready = TRUE;
+	if (!(flags & 16)) tact_attempts = 0;
 	print(sprintf("tas observations: page %.0f rows %.0f total %.0f base %.0f head %.0f current %g\n",
 		tact_offset,tact_n,tact_total,tact_base,tact_head,TASContacts_Current()));
 };
@@ -109,7 +110,8 @@ void() TASContacts_Event =
 void() TASContacts_Pump =
 {
 	if (!TASTimeline_Current()) return;
-	if (!TASContacts_Current() && cltime >= tact_next && tact_attempts < 2) TASContacts_Request(tact_offset);
+	if ((!TASContacts_Current() || (tact_flags & 16)) && cltime >= tact_next && tact_attempts < 4)
+		TASContacts_Request(tact_offset);
 };
 
 void(float row, float action) TASContacts_Action =

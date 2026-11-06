@@ -1,6 +1,6 @@
 # AGENT_NOTES.md
 
-## P1347 contact identity, recovery abstention and reader boundaries
+## P1350 contact identity, recovery abstention and reader boundaries
 
 - Unpublished1344 was renumbered forward after published1345/1346; retain exact
   historical test IDs/artifacts without relabelling their source. New native
@@ -12,8 +12,16 @@
 - Failed immutable readback must block BOTH retag and later fresh map binding.
   File existence is not a positive validation witness. Maintain an exact-SHA
   transient proof at strict save/load/readback boundaries and reset it with the
-  project; pages only compare it. Actual invalid retained-child control exposes
-  the old bypass, corrected subject refuses without native work/original edits.
+  project. Ordinary syntax/expected-hash failure must invalidate prior proof too;
+  restoring bytes/existence alone is NOT recovery. Ordinary load reuses its first
+  strict read: a second full96000-row parser in that invocation exhausts100M VM
+  instructions even though either pass alone succeeds. Unknown proof queues ONE
+  separate Think invocation; pages only compare keys. Native row admission needs
+  real host_client/sv_player context, absent in Think: use canonical-only passive
+  readback for annotation identity, NEVER forge/relax native context or use this
+  proof for restoring/admitting inputs. Pending bit16 is an empty reply and retries
+  finitely in CSQC. Real fullcap and failed ordinary-read controls ACTED; exact
+  originals and body/grants remain unchanged.
 - An intentional retained fault leaves a unique valid working child WITHOUT a
   valid immutable counterpart. The owned socket actor may preserve/park ONLY
   that latest stopped declared fault child's exact strict-canonical hash-matched
