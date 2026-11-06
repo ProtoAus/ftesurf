@@ -132,11 +132,10 @@ float(float s) LG_Ib    = { if (s == lv_slot) return ln_n[s] - 1; return ln_ib[s
 
 // Patch 1236: read once a frame by LineGraph_WorldLabels and LineGraph_Prepare, not per call:
 // || does not short-circuit, so every slot asked read hud_lines_board (~75 lookups a frame).
-float lg_cv_watch, lg_cv_board;
+float lg_cv_watch;
 void() LineGraph_ReadCvars =
 {
 	lg_cv_watch = (cvar("hud_watch_path") > 0);
-	lg_cv_board = (cvar("hud_lines_board") > 0);
 };
 
 // Any line slot (Patch 661: a name is asked for past the graph's eleven).
@@ -145,7 +144,7 @@ float(float s) LineGraph_Available =
 	if (LN_TRAIL(s)) return (s == lv_slot);
 	if (s == 0) return (rec_wt_open && ln_on[0] && lg_cv_watch);
 	if (s >= LN_S_GHOST) return FALSE;          // Patch 746: the ghost's own, no board row
-	return (sb_ln_st[LN_BOARDINDEX(s)] == SBL_ON && ln_on[s] && (lg_open || lg_cv_board));
+	return (sb_ln_st[LN_BOARDINDEX(s)] == SBL_ON && ln_on[s]);
 };
 
 vector(float s) LineGraph_Colour =
@@ -2319,7 +2318,7 @@ void(float s, vector at, vector aw, float pw) LineGraph_NameQueue =
 void() LineGraph_WorldLabels =
 {
 	local float s, i, j, k, n, b, d, e, best, stride, bi, f, sz, f0, dir, us, ulo, uhi, ci, cbest, ia, ib, pw;
-	local float board, names, cap, far, walk, fine, every, farb;
+	local float names, cap, far, walk, fine, every, farb;
 	local vector at, p0, seg, aw, vs;
 	local string nm;
 	LineGraph_ReadCvars();          // Patch 1236: the frame's, before the early return
@@ -2337,14 +2336,12 @@ void() LineGraph_WorldLabels =
 	lg_lab_sz = sz;
 	vs = getproperty(VF_SCREENVSIZE);
 	lgl_ahead = (cvar("hud_watch_path_ahead") > 0);
-	board = lg_cv_board;
 	// A name is looked for among up to 256 samples of its line; past eight names
 	// they share 2048, so sixty-four lines cost what eight did.
 	// (lg_lab_on is 2 here for "wants a name": one asking of each slot, not two.)
 	names = 0;
 	for (s = 0; s < LN_SLOTS; s = s + 1)
 		if (!LN_TRAIL(s))                   // the player's own trail needs no name
-		if (s == 0 || board)
 		if (ln_on[s])                       // Patch 1236: Available needs it here; skips the call per empty slot
 		if (LineGraph_Available(s))
 		{

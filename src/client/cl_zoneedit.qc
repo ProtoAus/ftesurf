@@ -66,6 +66,10 @@
 #define ZEB_WDN   8
 #define ZEB_ENTER 16
 
+// Optional native collision geometry; old engines retain render-surface snapping.
+vector(vector point, vector normal, float vertex) getworldbrushfacepoint = #0;
+entity ze_aimprobe;
+
 #define ZE_REACH  16384             // how far the aim is traced
 #define ZE_MINH   16                // a zone is at least this tall
 #define ZE_MAXH   16384             // and at most this
@@ -850,12 +854,23 @@ vector(vector v) ZoneEdit_SnapV =
 void(vector eye, vector fwd) ZoneEdit_AimFrom =
 {
 	local float w;
+	local entity pass;
 
 	ze_eye = eye;
 	ze_fwd = fwd;
 	w = getproperty(VF_SIZE_X);
 	ze_pxtan = ((w > 0) ? w : 640) * 0.5 / tan(bound(10, getproperty(VF_FOVX), 170) * M_PI / 360);
-	traceline(eye, eye + fwd * ZE_REACH, MOVE_NOMONSTERS, world);
+	pass = world;
+	if (checkbuiltin(getworldbrushfacepoint))
+	{
+		if (!ze_aimprobe)
+		{
+			ze_aimprobe = spawn();
+			ze_aimprobe.hitcontentsmaski = CONTENTBITS_POINTSOLID | CONTENTBIT_PLAYERCLIP;
+		}
+		pass = ze_aimprobe;
+	}
+	traceline(eye, eye + fwd * ZE_REACH, MOVE_NOMONSTERS, pass);
 	ze_hitok = (trace_fraction < 1 && !trace_startsolid);
 	ze_raw = trace_endpos;
 	ze_hitz = ze_raw_z;

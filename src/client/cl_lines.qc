@@ -47,6 +47,7 @@
 #define LN_B(s)    (ln_base[s])
 #define LN_C(s)    (ln_capn[s])
 #define LN_TRAIL(s) ((s) >= LN_S_TRAIL && (s) < LN_S_MORE)
+#define LN_BOARD(s) ((s) > 0 && (s) < LN_S_GHOST && !LN_TRAIL(s))
 #define LN_POOLED(s) ((s) > 0 && !LN_TRAIL(s) && (s) != LN_S_GHR)
 #define LN_ALIGN   512          // LN_CHUNK * LN_GROUP: a region owns whole chunks and groups
 #define LN_FMAX    160          // free regions the pool keeps apart
@@ -155,6 +156,8 @@ float  *ln_evh;                 // horizontal speed there, u/s
 float  *ln_e2;                  // v . v, 3D: the energy term, minus the height
 float  *ln_ez;                  // vz, signed
 float  *ln_eh;                  // P1001: the energy's height (ln_ep's z but for a ramp touchdown)
+float  *ln_eb2;                 // boarding sample's v.v; -1 when no air-to-ramp pair exists
+float  ln_evpost2;
 float  ln_evpre, ln_evpre_z;    // P1001: the next mark's numbers are the previous sample's
 float  *ln_ei;                  // the sample it came from, counted by this slot
 float  *ln_ec;                  // the clock of the sample the classifier's edge fell on
@@ -287,6 +290,7 @@ float  ln_mkrank;               // ... and the place among them of the one being
 float  ln_mkpx, ln_mkgap, ln_declutter;
 // Line widths, px, read once a frame: the replay's, the board's, your own run's.
 float  ln_wpx, ln_wpxb, ln_wpxt;
+float  ln_boardpaths;            // board stroke visibility, independent of labels
 
 // The numbers (Patch 451), read once a frame.  ln_grav is the reader's, not one
 // baked in at load: the same file watched on a different sv_gravity is a
@@ -319,6 +323,7 @@ float  *ln_lab_a;
 float  *ln_lab_w;
 vector ln_labelpos, ln_labelscreen;
 string ln_lab_t[LN_LABMAX];     // a global array, not allocated: these are temp strings, held a frame
+string ln_lab_t2[LN_LABMAX];    // a boarding delta below that mark's other information
 float  ln_lab_n;
 /*
   Patch 661: A LABEL STAYS AT ITS OWN MARK (hud_lines_declutter 0, the default).
@@ -701,6 +706,7 @@ void() Line_Alloc =
 	ln_e2   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
 	ln_ez   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
 	ln_eh   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
+	ln_eb2  = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
 	// The ordinal is the mark's identity.  Two samples can share a `t` (a file
 	// records one per packet, and a held clock repeats it -- both bhop fixtures
 	// carry such a pair), so time does not identify a sample and a reader that
@@ -1229,6 +1235,7 @@ void(float i, float j) Line_EvSwap =
 	f = ln_e2[i];   ln_e2[i]  = ln_e2[j];   ln_e2[j]  = f;
 	f = ln_ez[i];   ln_ez[i]  = ln_ez[j];   ln_ez[j]  = f;
 	f = ln_eh[i];   ln_eh[i]  = ln_eh[j];   ln_eh[j]  = f;
+	f = ln_eb2[i];  ln_eb2[i] = ln_eb2[j];  ln_eb2[j] = f;
 	f = ln_ei[i];   ln_ei[i]  = ln_ei[j];   ln_ei[j]  = f;
 	f = ln_ec[i];   ln_ec[i]  = ln_ec[j];   ln_ec[j]  = f;
 };
@@ -1263,6 +1270,7 @@ void(float s, float k, float sub, float t, vector o, vector v, float si, float t
 					ln_e2[b + j]  = ln_e2[b + i];
 					ln_ez[b + j]  = ln_ez[b + i];
 					ln_eh[b + j]  = ln_eh[b + i];
+					ln_eb2[b + j] = ln_eb2[b + i];
 					j = j + 1;
 				}
 			ln_evn[s] = n = j;
@@ -1286,6 +1294,7 @@ void(float s, float k, float sub, float t, vector o, vector v, float si, float t
 	ln_e2[b + n]  = v * v;
 	ln_ez[b + n]  = v_z;
 	ln_eh[b + n]  = ln_evpre ? ln_evpre_z : o_z;
+	ln_eb2[b + n] = ln_evpre ? ln_evpost2 : -1;
 	ln_ei[b + n]  = si;
 	ln_ec[b + n]  = tc;
 	ln_evn[s] = n + 1;
@@ -1714,6 +1723,7 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 		if (k == SEG_RAMP && ln_pkind[s] == SEG_AIR && !stitch)
 		{
 			ln_evpre = TRUE;
+			ln_evpost2 = v * v;
 			ln_evpre_z = ln_po[s] * '0 0 1';    // an array element is not swizzleable
 			Line_Ev(s, LN_E_LAND, ln_pkind[s] * 4 + k, t, o, ln_pv[s]);
 			ln_evpre = FALSE;                   // Line_EvAt can return before reading it
@@ -2737,7 +2747,7 @@ void() Line_Rank =
 		f = Watch_PathMode();
 		demo = (f == 1 || f == 2);
 	}
-	board = cvar("hud_lines_board");
+	board = (ln_boardpaths || ln_numon || cvar("hud_linegraph_labels") > 0);
 	// Patch 649: who is ranked and on what time, and a sum that moves when any of it does.
 	// With sixty-five slots the pairing below is 4,225 turns, so it is done on a change
 	// and not every frame.
@@ -2844,6 +2854,7 @@ void() Line_ViewFrame =
 	ln_wpx  = cvar("hud_watch_path_px");
 	ln_wpxb = cvar("hud_watch_path_px_board");
 	ln_wpxt = cvar("hud_watch_path_px_trail");
+	ln_boardpaths = (cvar("hud_lines_board") > 0);
 	Line_Width(ln_wpx);
 	ln_reveal = bound(0, cvar("hud_lines_reveal"), 1);
 	ln_eye = getproperty(VF_ORIGIN);
@@ -3312,7 +3323,7 @@ float(vector lp, float lw) Line_ClaimSpan =
 	return TRUE;
 };
 
-float(vector p, float w) Line_LabelOccupied =
+float(vector p, float w, float h) Line_LabelOccupied =
 {
 	local float i;
 	local vector other;
@@ -3320,7 +3331,8 @@ float(vector p, float w) Line_LabelOccupied =
 	for (i = 0; i < ln_lab_n; i = i + 1)
 	{
 		other = ln_lab_p[i];
-		if (fabs(p_y - other_y) >= ln_labsz + 3 * ln_px)
+		if (p_y >= other_y + ln_lab_h[i] + 3 * ln_px
+		 || p_y + h + 3 * ln_px <= other_y)
 			continue;
 		if (p_x < other_x + ln_lab_w[i] + 3 * ln_px &&
 		    p_x + w + 3 * ln_px > other_x)
@@ -3343,6 +3355,7 @@ float(vector p, string t, vector c, float a, float w, float h, float d, float ke
 	}
 	ln_lab_p[ln_lab_n] = p;
 	ln_lab_t[ln_lab_n] = t;
+	ln_lab_t2[ln_lab_n] = "";
 	ln_lab_c[ln_lab_n] = c;
 	ln_lab_a[ln_lab_n] = a;
 	ln_lab_w[ln_lab_n] = w;
@@ -3357,7 +3370,7 @@ float(vector p, string t, vector c, float a, float w, float h, float d, float ke
 // hud_lines_declutter 2 moves nearby labels into bounded vertical lanes rather
 // than losing them to the overlap grid. In an impossibly dense view the fallback
 // overprints; the renderer's explicit label-cap counter still applies.
-void(vector p, float w) Line_LabelPlace =
+void(vector p, float w, float h) Line_LabelPlace =
 {
 	local float lane, dy;
 	local vector q;
@@ -3368,14 +3381,14 @@ void(vector p, float w) Line_LabelPlace =
 	for (lane = 0; lane < 16; lane = lane + 1)
 	{
 		q = p;
-		dy = ceil(lane / 2) * (ln_labsz + 3 * ln_px);
+		dy = ceil(lane / 2) * (h + 3 * ln_px);
 		if (lane & 1)
 			q_y = p_y + dy;
 		else
 			q_y = p_y - dy;
-		if (q_y < 0 || q_y + ln_labsz > ln_labelscreen_y)
+		if (q_y < 0 || q_y + h > ln_labelscreen_y)
 			continue;
-		if (!Line_LabelOccupied(q, w))
+		if (!Line_LabelOccupied(q, w, h))
 		{
 			ln_labelpos = q;
 			return;
@@ -3566,11 +3579,24 @@ float(float s, float e) Line_LandIsHop =
   sit over its dashes.  Walked from the mark list rather than from the points:
   the LOD stride skips points, and a mark on a skipped one must still draw.
 */
+// Sample-to-sample energy change at boarding; the main row keeps its pre-contact value.
+string(float s, float e) Line_BoardLabel =
+{
+	local float b, de;
+	local vector p;
+
+	b = s * LN_EVCAP + e;
+	if (!ln_numenergy || ln_eb2[b] < 0) return "";
+	p = ln_ep[b];
+	de = p_z - ln_eh[b] + (ln_eb2[b] - ln_e2[b]) / (2 * ln_grav);
+	return strcat("boarding ", HUD_SeqDelTight(de, Strafe_EquivSpeed(de, ln_grav), ln_units, ln_names));
+};
+
 void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Marks =
 {
-	local float b, n, e, k, k2, al, t0, t1, lw, f0, d, la;
+	local float b, n, e, k, k2, al, t0, t1, lw, f0, d, la, lh;
 	local vector p, c, q, lp;
-	local string lab;
+	local string lab, boardlab;
 
 	if (!ln_mkon)
 		return;
@@ -3658,12 +3684,22 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 			{
 				lp = q + [6 * ln_px, 0 - (ln_labsz + 4) * ln_px, 0];
 				lw = stringwidth(lab, TRUE, [ln_labsz, ln_labsz]);
-				Line_LabelPlace(lp, lw);
+				lh = ln_labsz;
+				boardlab = Line_BoardLabel(s, e);
+				if (boardlab != "")
+				{
+					lw = max(lw, stringwidth(boardlab, TRUE, [ln_labsz, ln_labsz]));
+					lh = ln_labsz * 2 + 2 * ln_px;
+				}
+				Line_LabelPlace(lp, lw, lh);
 				lp = ln_labelpos;
 				if (Line_ClaimSpan(lp, lw))
 				{
-					if (Line_LabelQueue(lp, lab, '1 1 1', la, lw, ln_labsz, d, n + e))
+					if (Line_LabelQueue(lp, lab, '1 1 1', la, lw, lh, d, n + e))
+					{
+						ln_lab_t2[ln_lab_n - 1] = boardlab;
 						ln_nlab = ln_nlab + 1;
+					}
 				}
 				else
 					lab = "";
@@ -3755,7 +3791,7 @@ float(float s, float ia, float ib, float tplay, vector phead, float ahead) Line_
 */
 void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 {
-	local float b, i, ib, c, st, ce, k, j, ia, al, g, ge, d0, d1, wpx;
+	local float b, i, ib, c, st, ce, k, j, ia, al, g, ge, d0, d1, wpx, stroke;
 	local vector p0, p1;
 
 	if (!ln_on[s])
@@ -3799,11 +3835,14 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 
 	ln_rn = 0;
 	ln_hp = FALSE;
-	i = ia;
+	// Ghosts explicitly override the width and still own their path switch.
+	stroke = (!LN_BOARD(s) || ln_boardpaths || ln_pxover > 0);
+	i = stroke ? ia : ib + 1;
 	st = 1;
 	c = 0;
 	ce = -1;
 	ge = -1;
+	if (stroke)
 	if (ln_nat)
 	if (Line_Native(s, ia, ib, tplay, phead, ahead))
 		i = ib + 1;                 // the engine drew it: nothing left for the loop
@@ -3868,8 +3907,8 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	}
 	Line_RunEnd();
 
-	// The teleports: a square at each end and a faint dashed line between.
-	for (k = 0; k < ln_bkn[s]; k = k + 1)
+	// The teleports belong to the path, not its independently enabled labels.
+	for (k = 0; stroke && k < ln_bkn[s]; k = k + 1)
 	{
 		j = ln_bk[s * LN_BKCAP + k];
 		if (j <= ia || j > ib)
@@ -4062,7 +4101,12 @@ void() Line_FrameEnd =
 		for (i = 0; i < ln_lab_n; i = i + 1)
 			if (ln_lab_a[i] > 0)
 			if (!ln_lab_k[i])
+			{
 				HUD_Text(ln_lab_p[i], ln_lab_t[i], ln_labsz, ln_lab_c[i], ln_lab_a[i]);
+				if (ln_lab_t2[i] != "")
+					HUD_Text(ln_lab_p[i] + [0, ln_labsz + 2 * ln_px, 0], ln_lab_t2[i],
+					         ln_labsz, ln_lab_c[i], ln_lab_a[i]);
+			}
 		Font_Set(f0);
 		// A line's name (cl_linegraph.qc): its own face, and the row's picture.
 		for (i = 0; i < ln_lab_n; i = i + 1)

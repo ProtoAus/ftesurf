@@ -1798,7 +1798,8 @@ float() Scores_LinesOn =
 // the 2D pass will use (see Watch_Path).
 void() Scores_LinesPin =
 {
-	if (!cvar("hud_lines_board"))
+	if (!cvar("hud_lines_board") && !cvar("hud_lines_nums")
+	 && !cvar("hud_linegraph_labels"))
 		return;
 	if (!Scores_LinesOn())
 		return;
@@ -1811,7 +1812,8 @@ void() Scores_LinesDraw =
 {
 	local float i, ahead, n;
 
-	if (!cvar("hud_lines_board"))
+	if (!cvar("hud_lines_board") && !cvar("hud_lines_nums")
+	 && !cvar("hud_linegraph_labels"))
 		return;
 	n = 0;
 	for (i = 0; i < SB_LNMAX; i = i + 1)

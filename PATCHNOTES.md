@@ -21,6 +21,10 @@
 
 ## next
 
+- Fix decorative-brush prediction corrections on the NanoPi lobbies.
+- Keep board-run labels visible with board paths hidden, and show boarding energy change beneath the main contact label.
+- Snap zone-editor geometry to invisible player-clip faces shown by surf_view, and sharpen teleport destination names.
+- Improve point-filtered cutout textures at grazing angles without blurring their close-up pixel detail.
 ### P1351 Bounded map preparation and honest readiness diagnostics
 - Loading briefly waits for known pending resources and remembered shader work, with explicit timeout and failure diagnostics instead of an unbounded wait.
 - Developer diagnostics identify shader compilation and image work that happens after loading. This is not a promise that every future resource is already resident.

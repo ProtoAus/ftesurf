@@ -147,7 +147,7 @@ float(vector raw) ZoneEdit_WorldSurf =
 // on that plane at p.  A wall, a ledge or another slope there makes p a real corner or edge.
 float(vector p, vector nm) ZoneEdit_FlatOn =
 {
-	traceline(p + nm * 4, p - nm * 4, MOVE_NOMONSTERS, world);
+	traceline(p + nm * 4, p - nm * 4, MOVE_NOMONSTERS, ze_aimprobe ? ze_aimprobe : world);
 	return (!trace_startsolid && trace_fraction < 1 && trace_plane_normal * nm > 0.999 &&
 	        fabs(trace_fraction - 0.5) < 0.01);
 };
@@ -166,7 +166,7 @@ float(vector v, vector nm) ZoneEdit_RealCorner =
 
 void(vector eye, vector fwd, vector raw) ZoneEdit_Snap =
 {
-	local float s, n, i, d, bv, be, kv, ke, reach;
+	local float s, n, i, d, bv, be, kv, ke, reach, clip;
 	local vector v, w, q, pv, pe, zp, nm, mid, ev, ew, gp;
 
 	bv = be = ZE_SNAPPX * ui_cv_scale;
@@ -174,14 +174,30 @@ void(vector eye, vector fwd, vector raw) ZoneEdit_Snap =
 	pv = pe = ev = ew = mid = '0 0 0';
 	reach = max(32, vlen(raw - eye) * 0.2);
 	gp = [ze_hit_x, ze_hit_y, raw_z];   // the grid's point, at the aim's height
+	nm = trace_plane_normal;
 	s = ZoneEdit_WorldSurf(raw);
 	n = (s >= 0) ? getsurfacenumpoints(world, s) : 0;
 	if (n && getsurfacenumtriangles(world, s) != n - 2)
 		n = 0;                          // not a ring: a displacement's grid is not corners
+	clip = FALSE;
+	if (!n && trace_ent == world)
+	if (checkbuiltin(getworldbrushfacepoint))
+	{
+		v = getworldbrushfacepoint(raw, nm, -1);
+		if (v_x >= 3 && v_x <= 64) { n = v_x; clip = TRUE; }
+	}
 	for (i = 0; i < n; i = i + 1)
 	{
-		v = getsurfacepoint(world, s, i);
-		w = getsurfacepoint(world, s, (i + 1) % n);
+		if (clip)
+		{
+			v = getworldbrushfacepoint(raw, nm, i);
+			w = getworldbrushfacepoint(raw, nm, (i + 1) % n);
+		}
+		else
+		{
+			v = getsurfacepoint(world, s, i);
+			w = getsurfacepoint(world, s, (i + 1) % n);
+		}
 		mid = mid + v * (1 / n);
 		if (vlen(v - raw) <= reach)
 		{
@@ -199,7 +215,7 @@ void(vector eye, vector fwd, vector raw) ZoneEdit_Snap =
 	}
 	if (n)
 	{
-		nm = normalize(getsurfacenormal(world, s));
+		if (!clip) nm = normalize(getsurfacenormal(world, s));
 		if (kv && !ZoneEdit_RealCorner(pv, nm)) kv = ZES_NONE;
 		if (ke)
 		{
@@ -1525,8 +1541,12 @@ void(vector p, float yaw, string label, vector eye, vector fwd, vector col, floa
 		ZoneEdit_Square(p + '0 0 36' + d * 40, eye, fwd, col, s * 1.5, TRUE);
 	}
 	if (label == "" || (p + '0 0 76' - eye) * fwd < 8) return;
-	sp = project(p + '0 0 76'); sp_z = 0;
-	drawstring(sp - [stringwidth(label, TRUE, [rsz, rsz]) * 0.5, rsz], label, [rsz, rsz], col, 1, 0);
+	rsz = Font_Px(rsz);
+	sp = project(p + '0 0 76');
+	sp_x = rint(sp_x - stringwidth(label, TRUE, [rsz, rsz]) * 0.5);
+	sp_y = rint(sp_y - rsz);
+	sp_z = 0;
+	drawstring(sp, label, [rsz, rsz], col, 1, 0);
 };
 
 void(float rsz) ZoneEdit_Spawns2D =

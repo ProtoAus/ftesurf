@@ -6521,6 +6521,8 @@ float(string cmd) Watch_ConsoleCommand =
 			                      ep_x, ep_y, ep_z,
 			                      ln_evh[b + i], ln_e2[b + i], ln_ez[b + i]),
 			              ln_ec[b + i], ln_eh[b + i]));
+			if (ln_eb2[b + i] >= 0)
+				print(sprintf("lnb %g %.4f %s\n", i, ln_eb2[b + i], Line_BoardLabel(sl, i)));
 			// Its numbers as the draw pass would write them (the last frame's
 			// switches): a camera shows a few marks, this is every one.
 			print(sprintf("lnml %g \"%s\"\n", i, Line_Label(sl, i)));

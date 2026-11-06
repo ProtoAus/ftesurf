@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P1353 reported fixes — candidate verified; rollout and owner checks pending
+
+After the installed-version/hash check, please try these small checks:
+- `bhop_goldsrc2`, slot 015 at 1:01.070: move through the old illusionary correction spot. Does the 16-unit snap stop?
+- Hide board paths but leave their labels enabled. At a ramp boarding, is the separate energy-change row readable beneath the main contact information?
+- In the zone editor, aim near an invisible player-clip corner/edge and toggle geometry snapping: it should change to grid snapping on the same face. Do the teleport destination names look crisp?
+- `surf_dragonfall`, slot 003: look along the cutout floor from the side, then close up. Is the distant pattern steadier while the nearby pixels stay sharp?
+
+No owner confirmation yet. Agent runtime checks include dedicated board-label on/off, 32 numeric boarding deltas, actual clip corners/grid controls, and the recreated Dragonfall view with an unchanged magnified pixel crop. These are not measured performance, all-GPU or owner-feel acceptance. Older Intel anisotropic-point behavior remains untested; factor 1 is the existing anisotropy opt-out. No Build/release requested.
+
 ## P1350 observed TAS contacts -- BOTH Windows/all12 lobbies deployed6Nov; owner check pending
 
 Installed17:23Z Windows/17:33Z lobbies; exact hash/data/native actor checks pass.
