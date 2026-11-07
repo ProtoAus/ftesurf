@@ -21,6 +21,9 @@
 
 ## next
 
+### P1362 Tiny ramp surfaces
+- Tiny ramp faces no longer invalidate a whole map's downloaded marks.
+
 ### P1361 Background diagnostic scheduling
 - Background diagnostics avoid starting new source work once their cooperative time budget is reached. Work already in progress still finishes normally.
 

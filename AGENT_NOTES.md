@@ -1,5 +1,24 @@
 # AGENT_NOTES.md
 
+## Full-source ramp asset qualification (P1360/P1362, 7 Nov2026)
+
+- Read `cl_rampwear.qc`'s ACTUAL grammar: positive chart radius,32768charts,
+  131072triangles, UV0..1 and normal-length bounds, not a remembered vertex cap.
+  Sinsane2 exported43positive tiny radii as0.0 (`%.1f`); its old asset already
+  had40. The unchanged reader correctly refused the whole map. P1362 floors the
+  writer at0.1; same frozen source changes only43radius tokens. Native visual/FPS
+  acceptance is separate from file/HTTP qualification.
+- A cached raw body is not a complete raw input: its map/game/digest sidecar is
+  a separate required dependency. Body-only recovery plus a known-body skip
+  suppressed154new KSF sidecars. Recover exact retained bindings, verify the
+  actual `css66` tag/schema, and rebake only affected maps; never label those
+  FileNotFoundError entries as upstream absence. Keep failed export archives.
+- `rampwear_batch.py` returns1 for declared no-input/no-contact gaps; inspect
+  `batch-complete.json` and reject `bake_failed`/limits rather than guessing from
+  shell status or globbing only `surf_*` (the roster includes `bhop_futile`).
+  Two atlas transports exceeded the client's6MiB limit; coarser texels preserved
+  exact world geometry. Console texel prints are rounded, not exact old settings.
+
 ## GPU transition endpoint rejection (7 Nov 2026)
 
 - Acting Boreas SEAMLESS/BLENDMOD/BUMP2 terrain has many exact blend endpoints,

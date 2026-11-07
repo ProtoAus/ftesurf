@@ -646,7 +646,7 @@ def main():
         else:       # dirt only: every corner on the empty block's centre
             st = [((ex + 4.0) / W, (ey + 4.0) / H)] * len(c.verts)
         cen = [sum(v[i] for v in c.verts) / len(c.verts) for i in range(3)]
-        rad = max(math.dist(cen, v) for v in c.verts)
+        rad = max(0.1, max(math.dist(cen, v) for v in c.verts)) # .1f must remain positive for the client validator
         lines.append('c %.1f %.1f %.1f %.1f %d' % (cen[0], cen[1], cen[2], rad, len(c.tris)))
         for (i0, i1, i2) in c.tris:     # the chart's frame normal on every triangle: one pattern frame a surface
             lines.append('t ' + ' '.join('%.3f %.3f %.3f %.5f %.5f' % (c.verts[k] + st[k]) for k in (i0, i1, i2)) +

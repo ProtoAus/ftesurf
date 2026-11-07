@@ -791,7 +791,7 @@
         }
       ],
       "exact_course_input_held": false,
-      "map_bake_status": "no_replays",
+      "map_bake_status": "ready",
       "cosmetic_course_input_and_map_ready": false
     },
     {
@@ -1143,7 +1143,7 @@
         }
       ],
       "exact_course_input_held": false,
-      "map_bake_status": "no_replays",
+      "map_bake_status": "ready",
       "cosmetic_course_input_and_map_ready": false
     },
     {
@@ -1190,9 +1190,9 @@
           "row": 39
         }
       ],
-      "exact_course_input_held": false,
+      "exact_course_input_held": true,
       "map_bake_status": "ready",
-      "cosmetic_course_input_and_map_ready": false
+      "cosmetic_course_input_and_map_ready": true
     },
     {
       "map": "surf_facility",
@@ -1598,8 +1598,8 @@
         }
       ],
       "exact_course_input_held": true,
-      "map_bake_status": "no_placed_contacts",
-      "cosmetic_course_input_and_map_ready": false
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
     },
     {
       "map": "surf_goliath",
@@ -1614,8 +1614,8 @@
         }
       ],
       "exact_course_input_held": true,
-      "map_bake_status": "no_placed_contacts",
-      "cosmetic_course_input_and_map_ready": false
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
     },
     {
       "map": "surf_goliath",
@@ -1630,8 +1630,8 @@
         }
       ],
       "exact_course_input_held": true,
-      "map_bake_status": "no_placed_contacts",
-      "cosmetic_course_input_and_map_ready": false
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
     },
     {
       "map": "surf_goliath",
@@ -1646,8 +1646,8 @@
         }
       ],
       "exact_course_input_held": true,
-      "map_bake_status": "no_placed_contacts",
-      "cosmetic_course_input_and_map_ready": false
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
     },
     {
       "map": "surf_hades2",
@@ -1726,7 +1726,7 @@
         }
       ],
       "exact_course_input_held": false,
-      "map_bake_status": "no_replays",
+      "map_bake_status": "ready",
       "cosmetic_course_input_and_map_ready": false
     },
     {
@@ -2078,8 +2078,8 @@
         }
       ],
       "exact_course_input_held": true,
-      "map_bake_status": "no_placed_contacts",
-      "cosmetic_course_input_and_map_ready": false
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
     },
     {
       "map": "surf_kairo",
@@ -3326,7 +3326,7 @@
         }
       ],
       "exact_course_input_held": false,
-      "map_bake_status": "not_baked",
+      "map_bake_status": "no_replays",
       "cosmetic_course_input_and_map_ready": false
     },
     {
@@ -4475,95 +4475,95 @@
   ],
   "coverage_definition": "held exact-map bonus recording and a ready whole-map bake; not proof every bonus ramp surface was touched or a playability verdict",
   "summary": {
-    "utc": "2026-11-07T05:41:54.543563+00:00",
+    "utc": "2026-11-07T07:53:57.878327+00:00",
     "target_maps": 307,
-    "bakes_ready": 241,
+    "bakes_ready": 249,
     "priority_maps": 173,
-    "priority_maps_ready": 124,
+    "priority_maps_ready": 129,
     "priority_bonuses": 278,
-    "priority_bonus_inputs_available": 195,
-    "priority_input_and_map_ready": 186,
+    "priority_bonus_inputs_available": 196,
+    "priority_input_and_map_ready": 192,
     "popular_main_maps": 100,
-    "popular_main_maps_ready": 92
+    "popular_main_maps_ready": 94
   },
   "popular_main_definition": "top 100 maps by held main-board run count, all sources/directions; not measured play telemetry",
   "maps": {
     "bhop_futile": {
-      "status": "no_replays",
-      "unique_sources": 0,
-      "placed_contacts": 0,
-      "surfaces": 0
+      "status": "ready",
+      "unique_sources": 35,
+      "placed_contacts": 9563,
+      "surfaces": 13
     },
     "surf_1998": {
       "status": "ready",
-      "unique_sources": 74,
-      "placed_contacts": 11306,
+      "unique_sources": 129,
+      "placed_contacts": 18327,
       "surfaces": 41
     },
     "surf_4am": {
       "status": "ready",
-      "unique_sources": 159,
-      "placed_contacts": 91633,
-      "surfaces": 758
+      "unique_sources": 436,
+      "placed_contacts": 306036,
+      "surfaces": 860
     },
     "surf_666": {
       "status": "ready",
-      "unique_sources": 139,
-      "placed_contacts": 113245,
-      "surfaces": 609
+      "unique_sources": 402,
+      "placed_contacts": 361368,
+      "surfaces": 694
     },
     "surf_8bit": {
       "status": "ready",
-      "unique_sources": 25,
-      "placed_contacts": 18152,
-      "surfaces": 497
+      "unique_sources": 60,
+      "placed_contacts": 35389,
+      "surfaces": 525
     },
     "surf_ab": {
       "status": "ready",
-      "unique_sources": 317,
-      "placed_contacts": 193090,
-      "surfaces": 781
+      "unique_sources": 637,
+      "placed_contacts": 338054,
+      "surfaces": 790
     },
     "surf_abandoned": {
       "status": "ready",
-      "unique_sources": 4,
-      "placed_contacts": 1435,
-      "surfaces": 329
+      "unique_sources": 6,
+      "placed_contacts": 1779,
+      "surfaces": 338
     },
     "surf_ace": {
       "status": "ready",
-      "unique_sources": 118,
-      "placed_contacts": 31978,
-      "surfaces": 171
+      "unique_sources": 296,
+      "placed_contacts": 101368,
+      "surfaces": 199
     },
     "surf_aesthetic": {
       "status": "ready",
-      "unique_sources": 48,
-      "placed_contacts": 22382,
-      "surfaces": 145
+      "unique_sources": 141,
+      "placed_contacts": 91253,
+      "surfaces": 178
     },
     "surf_aether": {
       "status": "ready",
-      "unique_sources": 11,
-      "placed_contacts": 6558,
-      "surfaces": 470
+      "unique_sources": 32,
+      "placed_contacts": 19432,
+      "surfaces": 506
     },
     "surf_affliction": {
       "status": "ready",
-      "unique_sources": 37,
-      "placed_contacts": 10073,
-      "surfaces": 867
+      "unique_sources": 115,
+      "placed_contacts": 28772,
+      "surfaces": 1020
     },
     "surf_agony": {
       "status": "ready",
-      "unique_sources": 10,
-      "placed_contacts": 2030,
+      "unique_sources": 22,
+      "placed_contacts": 4407,
       "surfaces": 26
     },
     "surf_aircontrol": {
       "status": "ready",
-      "unique_sources": 14,
-      "placed_contacts": 8416,
+      "unique_sources": 42,
+      "placed_contacts": 24305,
       "surfaces": 111
     },
     "surf_airflow": {
@@ -4574,9 +4574,9 @@
     },
     "surf_amaro": {
       "status": "ready",
-      "unique_sources": 2,
-      "placed_contacts": 722,
-      "surfaces": 28
+      "unique_sources": 10,
+      "placed_contacts": 4525,
+      "surfaces": 93
     },
     "surf_android_ksf": {
       "status": "ready",
@@ -4585,34 +4585,34 @@
       "surfaces": 539
     },
     "surf_andromeda": {
-      "status": "no_placed_contacts",
-      "unique_sources": 31,
-      "placed_contacts": 0,
-      "surfaces": 0
+      "status": "ready",
+      "unique_sources": 112,
+      "placed_contacts": 803,
+      "surfaces": 29
     },
     "surf_anoobis": {
       "status": "ready",
-      "unique_sources": 135,
-      "placed_contacts": 38812,
-      "surfaces": 698
+      "unique_sources": 308,
+      "placed_contacts": 92050,
+      "surfaces": 734
     },
     "surf_antagonist": {
       "status": "ready",
-      "unique_sources": 61,
-      "placed_contacts": 31832,
+      "unique_sources": 352,
+      "placed_contacts": 403637,
       "surfaces": 253
     },
     "surf_antagonist2": {
       "status": "ready",
-      "unique_sources": 31,
-      "placed_contacts": 11867,
-      "surfaces": 365
+      "unique_sources": 127,
+      "placed_contacts": 161496,
+      "surfaces": 741
     },
     "surf_anubis": {
       "status": "ready",
-      "unique_sources": 26,
-      "placed_contacts": 4174,
-      "surfaces": 342
+      "unique_sources": 94,
+      "placed_contacts": 33484,
+      "surfaces": 731
     },
     "surf_anything": {
       "status": "no_replays",
@@ -4622,33 +4622,33 @@
     },
     "surf_anzchamps": {
       "status": "ready",
-      "unique_sources": 102,
-      "placed_contacts": 913,
-      "surfaces": 22
+      "unique_sources": 242,
+      "placed_contacts": 1725,
+      "surfaces": 25
     },
     "surf_apollo": {
       "status": "ready",
-      "unique_sources": 70,
-      "placed_contacts": 24122,
-      "surfaces": 366
+      "unique_sources": 164,
+      "placed_contacts": 56179,
+      "surfaces": 406
     },
     "surf_aquaflow": {
       "status": "ready",
-      "unique_sources": 11,
-      "placed_contacts": 18,
+      "unique_sources": 35,
+      "placed_contacts": 66,
       "surfaces": 21
     },
     "surf_arcade": {
       "status": "ready",
-      "unique_sources": 24,
-      "placed_contacts": 202,
+      "unique_sources": 72,
+      "placed_contacts": 601,
       "surfaces": 2
     },
     "surf_artois": {
       "status": "ready",
-      "unique_sources": 125,
-      "placed_contacts": 3428,
-      "surfaces": 145
+      "unique_sources": 314,
+      "placed_contacts": 9897,
+      "surfaces": 147
     },
     "surf_asrown": {
       "status": "no_replays",
@@ -4658,15 +4658,15 @@
     },
     "surf_assail": {
       "status": "ready",
-      "unique_sources": 20,
-      "placed_contacts": 8448,
-      "surfaces": 365
+      "unique_sources": 77,
+      "placed_contacts": 37267,
+      "surfaces": 383
     },
     "surf_aura": {
       "status": "ready",
-      "unique_sources": 143,
-      "placed_contacts": 51820,
-      "surfaces": 725
+      "unique_sources": 329,
+      "placed_contacts": 129099,
+      "surfaces": 762
     },
     "surf_axil": {
       "status": "ready",
@@ -4676,57 +4676,57 @@
     },
     "surf_axiom": {
       "status": "no_placed_contacts",
-      "unique_sources": 38,
+      "unique_sources": 239,
       "placed_contacts": 0,
       "surfaces": 0
     },
     "surf_ballzilla": {
       "status": "ready",
-      "unique_sources": 4,
-      "placed_contacts": 2354,
-      "surfaces": 160
+      "unique_sources": 11,
+      "placed_contacts": 4851,
+      "surfaces": 166
     },
     "surf_beginner": {
       "status": "ready",
-      "unique_sources": 80,
-      "placed_contacts": 23178,
+      "unique_sources": 217,
+      "placed_contacts": 64736,
       "surfaces": 280
     },
     "surf_beginner2": {
       "status": "ready",
-      "unique_sources": 116,
-      "placed_contacts": 33261,
-      "surfaces": 853
+      "unique_sources": 268,
+      "placed_contacts": 79639,
+      "surfaces": 855
     },
     "surf_beginner_hell": {
       "status": "ready",
-      "unique_sources": 35,
-      "placed_contacts": 22175,
-      "surfaces": 385
+      "unique_sources": 89,
+      "placed_contacts": 36664,
+      "surfaces": 394
     },
     "surf_benevolent": {
       "status": "ready",
-      "unique_sources": 35,
-      "placed_contacts": 10148,
-      "surfaces": 514
+      "unique_sources": 98,
+      "placed_contacts": 28253,
+      "surfaces": 536
     },
     "surf_beyer2": {
       "status": "ready",
-      "unique_sources": 19,
-      "placed_contacts": 9670,
-      "surfaces": 625
+      "unique_sources": 55,
+      "placed_contacts": 26188,
+      "surfaces": 726
     },
     "surf_beyond": {
       "status": "no_placed_contacts",
-      "unique_sources": 89,
+      "unique_sources": 173,
       "placed_contacts": 0,
       "surfaces": 0
     },
     "surf_blackheart": {
       "status": "ready",
-      "unique_sources": 28,
-      "placed_contacts": 3875,
-      "surfaces": 134
+      "unique_sources": 63,
+      "placed_contacts": 10634,
+      "surfaces": 160
     },
     "surf_board_this": {
       "status": "no_replays",
@@ -4736,33 +4736,33 @@
     },
     "surf_borderlands": {
       "status": "ready",
-      "unique_sources": 84,
-      "placed_contacts": 58093,
+      "unique_sources": 209,
+      "placed_contacts": 150163,
       "surfaces": 71
     },
     "surf_borderlands_h": {
       "status": "ready",
-      "unique_sources": 32,
-      "placed_contacts": 35107,
-      "surfaces": 68
+      "unique_sources": 95,
+      "placed_contacts": 71626,
+      "surfaces": 87
     },
     "surf_boreas": {
-      "status": "no_placed_contacts",
-      "unique_sources": 18,
-      "placed_contacts": 0,
-      "surfaces": 0
+      "status": "ready",
+      "unique_sources": 601,
+      "placed_contacts": 121,
+      "surfaces": 180
     },
     "surf_botanica": {
       "status": "ready",
-      "unique_sources": 118,
-      "placed_contacts": 53001,
-      "surfaces": 630
+      "unique_sources": 300,
+      "placed_contacts": 160850,
+      "surfaces": 749
     },
     "surf_breach": {
       "status": "ready",
-      "unique_sources": 9,
-      "placed_contacts": 3051,
-      "surfaces": 368
+      "unique_sources": 22,
+      "placed_contacts": 8088,
+      "surfaces": 506
     },
     "surf_brutalist": {
       "status": "ready",
@@ -4772,39 +4772,39 @@
     },
     "surf_bugs": {
       "status": "ready",
-      "unique_sources": 43,
-      "placed_contacts": 19532,
-      "surfaces": 286
+      "unique_sources": 118,
+      "placed_contacts": 33869,
+      "surfaces": 306
     },
     "surf_calycate": {
       "status": "ready",
-      "unique_sources": 11,
-      "placed_contacts": 7538,
-      "surfaces": 595
+      "unique_sources": 27,
+      "placed_contacts": 14966,
+      "surfaces": 607
     },
     "surf_calycate2": {
       "status": "ready",
-      "unique_sources": 8,
-      "placed_contacts": 7059,
-      "surfaces": 938
+      "unique_sources": 21,
+      "placed_contacts": 16473,
+      "surfaces": 996
     },
     "surf_calzone": {
       "status": "ready",
-      "unique_sources": 68,
-      "placed_contacts": 2175,
+      "unique_sources": 135,
+      "placed_contacts": 4121,
       "surfaces": 39
     },
     "surf_cannonball": {
       "status": "ready",
-      "unique_sources": 13,
-      "placed_contacts": 9346,
-      "surfaces": 224
+      "unique_sources": 34,
+      "placed_contacts": 23478,
+      "surfaces": 227
     },
     "surf_castle": {
       "status": "ready",
-      "unique_sources": 5,
-      "placed_contacts": 4370,
-      "surfaces": 242
+      "unique_sources": 12,
+      "placed_contacts": 9187,
+      "surfaces": 250
     },
     "surf_cavemissile_fix": {
       "status": "ready",
@@ -4826,9 +4826,9 @@
     },
     "surf_cement": {
       "status": "ready",
-      "unique_sources": 51,
-      "placed_contacts": 31295,
-      "surfaces": 321
+      "unique_sources": 143,
+      "placed_contacts": 63708,
+      "surfaces": 324
     },
     "surf_chaos_fix": {
       "status": "no_replays",
@@ -4838,20 +4838,20 @@
     },
     "surf_chasm": {
       "status": "ready",
-      "unique_sources": 16,
-      "placed_contacts": 6260,
+      "unique_sources": 53,
+      "placed_contacts": 21915,
       "surfaces": 197
     },
     "surf_chateau": {
       "status": "ready",
-      "unique_sources": 17,
-      "placed_contacts": 5329,
-      "surfaces": 63
+      "unique_sources": 71,
+      "placed_contacts": 19391,
+      "surfaces": 69
     },
     "surf_chungus_fungus": {
       "status": "ready",
-      "unique_sources": 7,
-      "placed_contacts": 26085,
+      "unique_sources": 8,
+      "placed_contacts": 26535,
       "surfaces": 227
     },
     "surf_cinnamon_fix": {
@@ -4862,33 +4862,33 @@
     },
     "surf_citypop": {
       "status": "ready",
-      "unique_sources": 49,
-      "placed_contacts": 18057,
-      "surfaces": 822
+      "unique_sources": 119,
+      "placed_contacts": 46039,
+      "surfaces": 874
     },
     "surf_classics": {
       "status": "ready",
-      "unique_sources": 222,
-      "placed_contacts": 231630,
-      "surfaces": 4409
+      "unique_sources": 506,
+      "placed_contacts": 508187,
+      "surfaces": 4505
     },
     "surf_classics2": {
       "status": "ready",
-      "unique_sources": 114,
-      "placed_contacts": 120995,
-      "surfaces": 2448
+      "unique_sources": 266,
+      "placed_contacts": 272545,
+      "surfaces": 2519
     },
     "surf_classics3": {
       "status": "ready",
-      "unique_sources": 309,
-      "placed_contacts": 59584,
-      "surfaces": 840
+      "unique_sources": 791,
+      "placed_contacts": 140196,
+      "surfaces": 932
     },
     "surf_colin_blaster_69000": {
       "status": "ready",
-      "unique_sources": 133,
-      "placed_contacts": 101294,
-      "surfaces": 319
+      "unique_sources": 271,
+      "placed_contacts": 232209,
+      "surfaces": 321
     },
     "surf_concretejungle_fix": {
       "status": "no_replays",
@@ -4898,69 +4898,69 @@
     },
     "surf_corruption": {
       "status": "ready",
-      "unique_sources": 67,
-      "placed_contacts": 38023,
-      "surfaces": 1394
+      "unique_sources": 228,
+      "placed_contacts": 119183,
+      "surfaces": 1761
     },
     "surf_crimson": {
       "status": "ready",
-      "unique_sources": 4,
-      "placed_contacts": 1469,
-      "surfaces": 122
+      "unique_sources": 10,
+      "placed_contacts": 4332,
+      "surfaces": 128
     },
     "surf_cyberwave": {
       "status": "no_placed_contacts",
-      "unique_sources": 18,
+      "unique_sources": 49,
       "placed_contacts": 0,
       "surfaces": 0
     },
     "surf_damnation": {
-      "status": "no_replays",
-      "unique_sources": 0,
-      "placed_contacts": 0,
-      "surfaces": 0
+      "status": "ready",
+      "unique_sources": 8,
+      "placed_contacts": 6615,
+      "surfaces": 265
     },
     "surf_deathstar": {
       "status": "ready",
-      "unique_sources": 41,
-      "placed_contacts": 11384,
-      "surfaces": 541
+      "unique_sources": 112,
+      "placed_contacts": 27610,
+      "surfaces": 564
     },
     "surf_deity_ksf": {
       "status": "ready",
-      "unique_sources": 25,
-      "placed_contacts": 36798,
-      "surfaces": 517
+      "unique_sources": 53,
+      "placed_contacts": 85766,
+      "surfaces": 533
     },
     "surf_demise": {
       "status": "ready",
-      "unique_sources": 50,
-      "placed_contacts": 1569,
-      "surfaces": 86
+      "unique_sources": 433,
+      "placed_contacts": 3439,
+      "surfaces": 98
     },
     "surf_deoa": {
       "status": "ready",
-      "unique_sources": 41,
-      "placed_contacts": 22377,
-      "surfaces": 1056
+      "unique_sources": 89,
+      "placed_contacts": 43485,
+      "surfaces": 1067
     },
     "surf_devil": {
       "status": "ready",
-      "unique_sources": 54,
-      "placed_contacts": 5909,
-      "surfaces": 108
+      "unique_sources": 176,
+      "placed_contacts": 20928,
+      "surfaces": 116
     },
     "surf_disaster": {
       "status": "ready",
-      "unique_sources": 9,
-      "placed_contacts": 5691,
-      "surfaces": 474
+      "unique_sources": 25,
+      "placed_contacts": 14719,
+      "surfaces": 491
     },
     "surf_doomsday": {
       "status": "ready",
-      "unique_sources": 48,
-      "placed_contacts": 31974,
-      "surfaces": 147
+      "unique_sources": 132,
+      "placed_contacts": 65595,
+      "surfaces": 150
     },
     "surf_dova": {
       "status": "ready",
@@ -4970,44 +4970,44 @@
     },
     "surf_dragon": {
       "status": "no_placed_contacts",
-      "unique_sources": 25,
+      "unique_sources": 66,
       "placed_contacts": 0,
       "surfaces": 0
     },
     "surf_dune": {
       "status": "ready",
-      "unique_sources": 89,
-      "placed_contacts": 600,
-      "surfaces": 53
+      "unique_sources": 254,
+      "placed_contacts": 663,
+      "surfaces": 55
     },
     "surf_earthmover": {
       "status": "ready",
-      "unique_sources": 57,
-      "placed_contacts": 33816,
-      "surfaces": 331
+      "unique_sources": 159,
+      "placed_contacts": 102953,
+      "surfaces": 339
     },
     "surf_ebony": {
       "status": "ready",
-      "unique_sources": 17,
-      "placed_contacts": 11966,
-      "surfaces": 585
+      "unique_sources": 48,
+      "placed_contacts": 30483,
+      "surfaces": 591
     },
     "surf_echo": {
       "status": "ready",
-      "unique_sources": 12,
-      "placed_contacts": 2671,
-      "surfaces": 91
+      "unique_sources": 40,
+      "placed_contacts": 8832,
+      "surfaces": 94
     },
     "surf_elysium4": {
       "status": "ready",
-      "unique_sources": 33,
-      "placed_contacts": 39103,
-      "surfaces": 945
+      "unique_sources": 72,
+      "placed_contacts": 71177,
+      "surfaces": 950
     },
     "surf_enlightened_ksf": {
       "status": "ready",
-      "unique_sources": 5,
-      "placed_contacts": 4324,
+      "unique_sources": 8,
+      "placed_contacts": 6550,
       "surfaces": 231
     },
     "surf_eon": {
@@ -5018,27 +5018,27 @@
     },
     "surf_epicube": {
       "status": "ready",
-      "unique_sources": 11,
-      "placed_contacts": 4818,
-      "surfaces": 628
+      "unique_sources": 29,
+      "placed_contacts": 11384,
+      "surfaces": 789
     },
     "surf_epiphany": {
       "status": "ready",
-      "unique_sources": 55,
-      "placed_contacts": 17159,
-      "surfaces": 697
+      "unique_sources": 161,
+      "placed_contacts": 91101,
+      "surfaces": 747
     },
     "surf_era": {
       "status": "ready",
-      "unique_sources": 12,
-      "placed_contacts": 16920,
-      "surfaces": 838
+      "unique_sources": 28,
+      "placed_contacts": 94299,
+      "surfaces": 908
     },
     "surf_eryr": {
       "status": "ready",
-      "unique_sources": 29,
-      "placed_contacts": 34939,
-      "surfaces": 185
+      "unique_sources": 78,
+      "placed_contacts": 52487,
+      "surfaces": 189
     },
     "surf_eryr2_fix": {
       "status": "no_replays",
@@ -5048,93 +5048,93 @@
     },
     "surf_ethereal": {
       "status": "ready",
-      "unique_sources": 35,
-      "placed_contacts": 18,
-      "surfaces": 6
+      "unique_sources": 84,
+      "placed_contacts": 21,
+      "surfaces": 41
     },
     "surf_eunoia": {
       "status": "ready",
-      "unique_sources": 13,
-      "placed_contacts": 6546,
-      "surfaces": 210
+      "unique_sources": 38,
+      "placed_contacts": 18124,
+      "surfaces": 249
     },
     "surf_excavation": {
       "status": "ready",
-      "unique_sources": 73,
-      "placed_contacts": 67840,
-      "surfaces": 329
+      "unique_sources": 196,
+      "placed_contacts": 111445,
+      "surfaces": 338
     },
     "surf_executioner": {
       "status": "ready",
-      "unique_sources": 8,
-      "placed_contacts": 5336,
-      "surfaces": 211
+      "unique_sources": 21,
+      "placed_contacts": 13639,
+      "surfaces": 237
     },
     "surf_exonic": {
       "status": "ready",
-      "unique_sources": 25,
-      "placed_contacts": 15485,
-      "surfaces": 329
+      "unique_sources": 49,
+      "placed_contacts": 40716,
+      "surfaces": 408
     },
     "surf_extremex2_5": {
-      "status": "no_replays",
-      "unique_sources": 0,
-      "placed_contacts": 0,
-      "surfaces": 0
+      "status": "ready",
+      "unique_sources": 19,
+      "placed_contacts": 3846,
+      "surfaces": 284
     },
     "surf_ezclap": {
       "status": "ready",
-      "unique_sources": 33,
-      "placed_contacts": 24030,
-      "surfaces": 194
+      "unique_sources": 75,
+      "placed_contacts": 42562,
+      "surfaces": 200
     },
     "surf_fabas": {
       "status": "ready",
-      "unique_sources": 19,
-      "placed_contacts": 27910,
-      "surfaces": 228
+      "unique_sources": 65,
+      "placed_contacts": 70346,
+      "surfaces": 260
     },
     "surf_facility": {
       "status": "ready",
-      "unique_sources": 20,
-      "placed_contacts": 11417,
-      "surfaces": 171
+      "unique_sources": 71,
+      "placed_contacts": 37773,
+      "surfaces": 215
     },
     "surf_fiellu": {
       "status": "ready",
-      "unique_sources": 31,
-      "placed_contacts": 10712,
-      "surfaces": 702
+      "unique_sources": 130,
+      "placed_contacts": 46889,
+      "surfaces": 756
     },
     "surf_forgotten": {
       "status": "ready",
-      "unique_sources": 60,
-      "placed_contacts": 19641,
-      "surfaces": 375
+      "unique_sources": 168,
+      "placed_contacts": 54931,
+      "surfaces": 410
     },
     "surf_fornax": {
       "status": "ready",
-      "unique_sources": 76,
-      "placed_contacts": 1854,
+      "unique_sources": 227,
+      "placed_contacts": 4094,
       "surfaces": 36
     },
     "surf_fortum": {
       "status": "ready",
-      "unique_sources": 30,
-      "placed_contacts": 246,
+      "unique_sources": 80,
+      "placed_contacts": 248,
       "surfaces": 29
     },
     "surf_frost": {
       "status": "ready",
-      "unique_sources": 48,
-      "placed_contacts": 22124,
-      "surfaces": 363
+      "unique_sources": 128,
+      "placed_contacts": 43596,
+      "surfaces": 415
     },
     "surf_fruits": {
       "status": "ready",
-      "unique_sources": 51,
-      "placed_contacts": 10536,
-      "surfaces": 641
+      "unique_sources": 123,
+      "placed_contacts": 24229,
+      "surfaces": 666
     },
     "surf_fruits2": {
       "status": "no_replays",
@@ -5156,15 +5156,15 @@
     },
     "surf_garden": {
       "status": "ready",
-      "unique_sources": 226,
-      "placed_contacts": 79846,
-      "surfaces": 963
+      "unique_sources": 513,
+      "placed_contacts": 267177,
+      "surfaces": 982
     },
     "surf_garden_h": {
       "status": "ready",
-      "unique_sources": 56,
-      "placed_contacts": 52626,
-      "surfaces": 807
+      "unique_sources": 148,
+      "placed_contacts": 84552,
+      "surfaces": 907
     },
     "surf_gary_barlow": {
       "status": "no_replays",
@@ -5180,51 +5180,51 @@
     },
     "surf_gigapede": {
       "status": "ready",
-      "unique_sources": 50,
-      "placed_contacts": 9487,
-      "surfaces": 239
+      "unique_sources": 141,
+      "placed_contacts": 27481,
+      "surfaces": 241
     },
     "surf_gloomy": {
       "status": "ready",
-      "unique_sources": 43,
-      "placed_contacts": 4466,
+      "unique_sources": 111,
+      "placed_contacts": 11910,
       "surfaces": 321
     },
     "surf_goliath": {
-      "status": "no_placed_contacts",
-      "unique_sources": 85,
-      "placed_contacts": 0,
-      "surfaces": 0
+      "status": "ready",
+      "unique_sources": 261,
+      "placed_contacts": 31,
+      "surfaces": 8
     },
     "surf_guitar_hi": {
       "status": "ready",
-      "unique_sources": 12,
-      "placed_contacts": 4483,
-      "surfaces": 574
+      "unique_sources": 32,
+      "placed_contacts": 9906,
+      "surfaces": 601
     },
     "surf_hades2": {
       "status": "ready",
-      "unique_sources": 152,
-      "placed_contacts": 202480,
-      "surfaces": 145
+      "unique_sources": 549,
+      "placed_contacts": 605082,
+      "surfaces": 151
     },
     "surf_happyhands5": {
       "status": "ready",
-      "unique_sources": 13,
-      "placed_contacts": 17860,
-      "surfaces": 515
+      "unique_sources": 40,
+      "placed_contacts": 33211,
+      "surfaces": 563
     },
     "surf_happyhug": {
-      "status": "no_replays",
-      "unique_sources": 0,
-      "placed_contacts": 0,
-      "surfaces": 0
+      "status": "ready",
+      "unique_sources": 11,
+      "placed_contacts": 39155,
+      "surfaces": 543
     },
     "surf_helloworld": {
       "status": "ready",
-      "unique_sources": 33,
-      "placed_contacts": 1008,
-      "surfaces": 19
+      "unique_sources": 183,
+      "placed_contacts": 3113,
+      "surfaces": 25
     },
     "surf_hero": {
       "status": "no_replays",
@@ -5234,13 +5234,13 @@
     },
     "surf_highlands": {
       "status": "ready",
-      "unique_sources": 44,
-      "placed_contacts": 58720,
-      "surfaces": 378
+      "unique_sources": 100,
+      "placed_contacts": 86043,
+      "surfaces": 380
     },
     "surf_holiday": {
       "status": "no_placed_contacts",
-      "unique_sources": 26,
+      "unique_sources": 57,
       "placed_contacts": 0,
       "surfaces": 0
     },
@@ -5252,21 +5252,21 @@
     },
     "surf_hotwheels": {
       "status": "ready",
-      "unique_sources": 21,
-      "placed_contacts": 1143,
-      "surfaces": 110
+      "unique_sources": 52,
+      "placed_contacts": 3889,
+      "surfaces": 113
     },
     "surf_hourglass": {
       "status": "ready",
-      "unique_sources": 14,
-      "placed_contacts": 15458,
-      "surfaces": 912
+      "unique_sources": 83,
+      "placed_contacts": 92551,
+      "surfaces": 1031
     },
     "surf_how2surf": {
       "status": "ready",
-      "unique_sources": 33,
-      "placed_contacts": 12466,
-      "surfaces": 319
+      "unique_sources": 89,
+      "placed_contacts": 25595,
+      "surfaces": 321
     },
     "surf_huh": {
       "status": "no_replays",
@@ -5276,33 +5276,33 @@
     },
     "surf_hunty": {
       "status": "no_placed_contacts",
-      "unique_sources": 32,
+      "unique_sources": 95,
       "placed_contacts": 0,
       "surfaces": 0
     },
     "surf_illumination": {
       "status": "ready",
-      "unique_sources": 22,
-      "placed_contacts": 4944,
-      "surfaces": 254
+      "unique_sources": 65,
+      "placed_contacts": 14341,
+      "surfaces": 277
     },
     "surf_illumination2": {
       "status": "ready",
-      "unique_sources": 37,
-      "placed_contacts": 1482,
+      "unique_sources": 97,
+      "placed_contacts": 4327,
       "surfaces": 28
     },
     "surf_illusion": {
       "status": "ready",
-      "unique_sources": 18,
-      "placed_contacts": 6213,
-      "surfaces": 66
+      "unique_sources": 53,
+      "placed_contacts": 15988,
+      "surfaces": 77
     },
     "surf_indecisive": {
       "status": "ready",
-      "unique_sources": 6,
-      "placed_contacts": 1311,
-      "surfaces": 24
+      "unique_sources": 19,
+      "placed_contacts": 4118,
+      "surfaces": 25
     },
     "surf_inferno": {
       "status": "no_replays",
@@ -5312,21 +5312,21 @@
     },
     "surf_innokia": {
       "status": "no_placed_contacts",
-      "unique_sources": 12,
+      "unique_sources": 20,
       "placed_contacts": 0,
       "surfaces": 0
     },
     "surf_island": {
       "status": "ready",
-      "unique_sources": 3,
-      "placed_contacts": 2424,
-      "surfaces": 432
+      "unique_sources": 9,
+      "placed_contacts": 7200,
+      "surfaces": 450
     },
     "surf_ivory": {
       "status": "ready",
-      "unique_sources": 12,
-      "placed_contacts": 4551,
-      "surfaces": 441
+      "unique_sources": 36,
+      "placed_contacts": 13852,
+      "surfaces": 449
     },
     "surf_izded": {
       "status": "no_replays",
@@ -5348,39 +5348,39 @@
     },
     "surf_journeys": {
       "status": "ready",
-      "unique_sources": 16,
-      "placed_contacts": 5795,
-      "surfaces": 420
+      "unique_sources": 47,
+      "placed_contacts": 17001,
+      "surfaces": 445
     },
     "surf_joutsenlaulu": {
       "status": "ready",
-      "unique_sources": 20,
-      "placed_contacts": 19886,
-      "surfaces": 990
+      "unique_sources": 54,
+      "placed_contacts": 42113,
+      "surfaces": 1216
     },
     "surf_jumble": {
-      "status": "no_placed_contacts",
-      "unique_sources": 60,
-      "placed_contacts": 0,
-      "surfaces": 0
+      "status": "ready",
+      "unique_sources": 163,
+      "placed_contacts": 15,
+      "surfaces": 3
     },
     "surf_kaaba": {
       "status": "ready",
-      "unique_sources": 23,
-      "placed_contacts": 31178,
-      "surfaces": 118
+      "unique_sources": 58,
+      "placed_contacts": 50899,
+      "surfaces": 126
     },
     "surf_kairo": {
       "status": "ready",
-      "unique_sources": 16,
-      "placed_contacts": 42,
-      "surfaces": 8
+      "unique_sources": 74,
+      "placed_contacts": 254,
+      "surfaces": 13
     },
     "surf_kepler": {
       "status": "ready",
-      "unique_sources": 183,
-      "placed_contacts": 7820,
-      "surfaces": 233
+      "unique_sources": 465,
+      "placed_contacts": 19916,
+      "surfaces": 280
     },
     "surf_kismet": {
       "status": "no_replays",
@@ -5390,21 +5390,21 @@
     },
     "surf_kitsune": {
       "status": "ready",
-      "unique_sources": 116,
-      "placed_contacts": 55286,
+      "unique_sources": 277,
+      "placed_contacts": 158517,
       "surfaces": 648
     },
     "surf_kitsune2": {
       "status": "no_placed_contacts",
-      "unique_sources": 63,
+      "unique_sources": 161,
       "placed_contacts": 0,
       "surfaces": 0
     },
     "surf_kloakk": {
       "status": "ready",
-      "unique_sources": 28,
-      "placed_contacts": 977,
-      "surfaces": 188
+      "unique_sources": 76,
+      "placed_contacts": 3180,
+      "surfaces": 193
     },
     "surf_korn": {
       "status": "no_replays",
@@ -5414,21 +5414,21 @@
     },
     "surf_kultur": {
       "status": "ready",
-      "unique_sources": 95,
-      "placed_contacts": 10717,
-      "surfaces": 34
+      "unique_sources": 235,
+      "placed_contacts": 23815,
+      "surfaces": 42
     },
     "surf_kvas": {
       "status": "ready",
-      "unique_sources": 46,
-      "placed_contacts": 17509,
-      "surfaces": 455
+      "unique_sources": 137,
+      "placed_contacts": 58908,
+      "surfaces": 474
     },
     "surf_lax": {
       "status": "ready",
-      "unique_sources": 44,
-      "placed_contacts": 46910,
-      "surfaces": 1353
+      "unique_sources": 113,
+      "placed_contacts": 87909,
+      "surfaces": 1554
     },
     "surf_leesriize_ksf": {
       "status": "no_replays",
@@ -5438,163 +5438,163 @@
     },
     "surf_leet_xl_beta7z": {
       "status": "ready",
-      "unique_sources": 18,
-      "placed_contacts": 5222,
-      "surfaces": 532
+      "unique_sources": 37,
+      "placed_contacts": 10877,
+      "surfaces": 840
     },
     "surf_legends": {
       "status": "ready",
-      "unique_sources": 11,
-      "placed_contacts": 3263,
-      "surfaces": 249
+      "unique_sources": 26,
+      "placed_contacts": 6637,
+      "surfaces": 315
     },
     "surf_leidenfrost": {
       "status": "ready",
-      "unique_sources": 8,
-      "placed_contacts": 3462,
-      "surfaces": 340
+      "unique_sources": 20,
+      "placed_contacts": 7659,
+      "surfaces": 392
     },
     "surf_lessons": {
       "status": "ready",
-      "unique_sources": 48,
-      "placed_contacts": 12003,
-      "surfaces": 1065
+      "unique_sources": 114,
+      "placed_contacts": 22613,
+      "surfaces": 1159
     },
     "surf_life_of_cow": {
       "status": "ready",
-      "unique_sources": 30,
-      "placed_contacts": 5758,
+      "unique_sources": 78,
+      "placed_contacts": 9029,
       "surfaces": 236
     },
     "surf_loentra": {
       "status": "ready",
-      "unique_sources": 6,
-      "placed_contacts": 3736,
-      "surfaces": 492
+      "unique_sources": 14,
+      "placed_contacts": 10786,
+      "surfaces": 553
     },
     "surf_lore": {
       "status": "ready",
-      "unique_sources": 53,
-      "placed_contacts": 29765,
-      "surfaces": 547
+      "unique_sources": 136,
+      "placed_contacts": 60527,
+      "surfaces": 556
     },
     "surf_lovetunnel": {
       "status": "no_placed_contacts",
-      "unique_sources": 10,
+      "unique_sources": 21,
       "placed_contacts": 0,
       "surfaces": 0
     },
     "surf_loweffort": {
       "status": "ready",
-      "unique_sources": 26,
-      "placed_contacts": 40905,
-      "surfaces": 330
+      "unique_sources": 62,
+      "placed_contacts": 54672,
+      "surfaces": 378
     },
     "surf_loweffort2": {
       "status": "ready",
-      "unique_sources": 43,
-      "placed_contacts": 51825,
-      "surfaces": 365
+      "unique_sources": 116,
+      "placed_contacts": 76304,
+      "surfaces": 437
     },
     "surf_lt_omnific": {
       "status": "no_placed_contacts",
-      "unique_sources": 97,
+      "unique_sources": 226,
       "placed_contacts": 0,
       "surfaces": 0
     },
     "surf_lux": {
       "status": "ready",
-      "unique_sources": 11,
-      "placed_contacts": 5693,
-      "surfaces": 813
+      "unique_sources": 31,
+      "placed_contacts": 15547,
+      "surfaces": 1046
     },
     "surf_mdrn": {
       "status": "ready",
-      "unique_sources": 12,
-      "placed_contacts": 6205,
-      "surfaces": 340
+      "unique_sources": 40,
+      "placed_contacts": 21437,
+      "surfaces": 388
     },
     "surf_me": {
       "status": "ready",
-      "unique_sources": 110,
-      "placed_contacts": 43382,
-      "surfaces": 1306
+      "unique_sources": 778,
+      "placed_contacts": 853895,
+      "surfaces": 1549
     },
     "surf_medley": {
       "status": "ready",
-      "unique_sources": 48,
-      "placed_contacts": 45460,
-      "surfaces": 829
+      "unique_sources": 109,
+      "placed_contacts": 77483,
+      "surfaces": 912
     },
     "surf_memories": {
       "status": "ready",
-      "unique_sources": 30,
-      "placed_contacts": 25686,
-      "surfaces": 278
+      "unique_sources": 78,
+      "placed_contacts": 38452,
+      "surfaces": 281
     },
     "surf_mesa": {
       "status": "ready",
-      "unique_sources": 6,
-      "placed_contacts": 7183,
-      "surfaces": 1419
+      "unique_sources": 27,
+      "placed_contacts": 37485,
+      "surfaces": 1691
     },
     "surf_mesa_mine": {
       "status": "ready",
-      "unique_sources": 8,
-      "placed_contacts": 6443,
-      "surfaces": 1124
+      "unique_sources": 20,
+      "placed_contacts": 13049,
+      "surfaces": 1165
     },
     "surf_mesa_revo": {
       "status": "ready",
-      "unique_sources": 6,
-      "placed_contacts": 7314,
-      "surfaces": 1194
+      "unique_sources": 13,
+      "placed_contacts": 14944,
+      "surfaces": 1214
     },
     "surf_midsommar": {
       "status": "ready",
-      "unique_sources": 26,
-      "placed_contacts": 1631,
-      "surfaces": 77
+      "unique_sources": 66,
+      "placed_contacts": 2169,
+      "surfaces": 82
     },
     "surf_minuet": {
       "status": "ready",
-      "unique_sources": 4,
-      "placed_contacts": 4109,
-      "surfaces": 1146
+      "unique_sources": 11,
+      "placed_contacts": 11147,
+      "surfaces": 1342
     },
     "surf_mom": {
       "status": "ready",
-      "unique_sources": 34,
-      "placed_contacts": 9656,
-      "surfaces": 219
+      "unique_sources": 91,
+      "placed_contacts": 23727,
+      "surfaces": 223
     },
     "surf_monkeys": {
       "status": "ready",
-      "unique_sources": 53,
-      "placed_contacts": 5981,
-      "surfaces": 133
+      "unique_sources": 123,
+      "placed_contacts": 14703,
+      "surfaces": 134
     },
     "surf_monkeys2": {
       "status": "no_placed_contacts",
-      "unique_sources": 16,
+      "unique_sources": 40,
       "placed_contacts": 0,
       "surfaces": 0
     },
     "surf_monolith": {
       "status": "ready",
-      "unique_sources": 206,
-      "placed_contacts": 59551,
-      "surfaces": 907
+      "unique_sources": 410,
+      "placed_contacts": 101882,
+      "surfaces": 926
     },
     "surf_n_turf": {
       "status": "ready",
-      "unique_sources": 98,
-      "placed_contacts": 47753,
-      "surfaces": 785
+      "unique_sources": 233,
+      "placed_contacts": 122626,
+      "surfaces": 838
     },
     "surf_nebula": {
       "status": "no_placed_contacts",
-      "unique_sources": 13,
+      "unique_sources": 36,
       "placed_contacts": 0,
       "surfaces": 0
     },
@@ -5606,104 +5606,104 @@
     },
     "surf_neoteric": {
       "status": "ready",
-      "unique_sources": 37,
-      "placed_contacts": 38634,
-      "surfaces": 331
+      "unique_sources": 97,
+      "placed_contacts": 68288,
+      "surfaces": 344
     },
     "surf_nesquik": {
       "status": "ready",
-      "unique_sources": 52,
-      "placed_contacts": 39066,
-      "surfaces": 1279
+      "unique_sources": 134,
+      "placed_contacts": 80572,
+      "surfaces": 1311
     },
     "surf_network2008_final": {
       "status": "ready",
-      "unique_sources": 25,
-      "placed_contacts": 9685,
-      "surfaces": 659
+      "unique_sources": 56,
+      "placed_contacts": 21030,
+      "surfaces": 660
     },
     "surf_nightmare": {
       "status": "ready",
-      "unique_sources": 18,
-      "placed_contacts": 13006,
-      "surfaces": 528
+      "unique_sources": 30,
+      "placed_contacts": 35278,
+      "surfaces": 563
     },
     "surf_not_so_disaster": {
       "status": "ready",
-      "unique_sources": 20,
-      "placed_contacts": 11699,
-      "surfaces": 856
+      "unique_sources": 55,
+      "placed_contacts": 29288,
+      "surfaces": 868
     },
     "surf_not_so_quick": {
       "status": "ready",
-      "unique_sources": 30,
-      "placed_contacts": 15561,
-      "surfaces": 285
+      "unique_sources": 99,
+      "placed_contacts": 82442,
+      "surfaces": 309
     },
     "surf_not_so_sinister": {
       "status": "ready",
-      "unique_sources": 23,
-      "placed_contacts": 11768,
-      "surfaces": 758
+      "unique_sources": 107,
+      "placed_contacts": 36447,
+      "surfaces": 795
     },
     "surf_not_so_zen": {
       "status": "ready",
-      "unique_sources": 12,
-      "placed_contacts": 4594,
-      "surfaces": 612
+      "unique_sources": 14,
+      "placed_contacts": 9059,
+      "surfaces": 918
     },
     "surf_nuclear": {
       "status": "ready",
-      "unique_sources": 36,
-      "placed_contacts": 30834,
-      "surfaces": 1578
+      "unique_sources": 108,
+      "placed_contacts": 82876,
+      "surfaces": 1866
     },
     "surf_nyx": {
       "status": "ready",
-      "unique_sources": 14,
-      "placed_contacts": 362,
-      "surfaces": 153
+      "unique_sources": 37,
+      "placed_contacts": 2006,
+      "surfaces": 199
     },
     "surf_olivia": {
       "status": "ready",
-      "unique_sources": 28,
-      "placed_contacts": 2342,
-      "surfaces": 190
+      "unique_sources": 156,
+      "placed_contacts": 12533,
+      "surfaces": 204
     },
     "surf_orthodox": {
       "status": "ready",
-      "unique_sources": 93,
-      "placed_contacts": 56954,
-      "surfaces": 2577
+      "unique_sources": 277,
+      "placed_contacts": 165090,
+      "surfaces": 2598
     },
     "surf_our": {
       "status": "ready",
-      "unique_sources": 16,
-      "placed_contacts": 7118,
-      "surfaces": 706
+      "unique_sources": 48,
+      "placed_contacts": 21657,
+      "surfaces": 759
     },
     "surf_overgrowth": {
       "status": "ready",
-      "unique_sources": 31,
-      "placed_contacts": 47390,
-      "surfaces": 1946
+      "unique_sources": 82,
+      "placed_contacts": 77028,
+      "surfaces": 2080
     },
     "surf_overgrowth2": {
       "status": "ready",
-      "unique_sources": 36,
-      "placed_contacts": 210211,
-      "surfaces": 1591
+      "unique_sources": 84,
+      "placed_contacts": 262437,
+      "surfaces": 1619
     },
     "surf_palais": {
       "status": "ready",
-      "unique_sources": 3,
-      "placed_contacts": 1850,
+      "unique_sources": 9,
+      "placed_contacts": 5631,
       "surfaces": 106
     },
     "surf_palm": {
       "status": "ready",
-      "unique_sources": 12,
-      "placed_contacts": 5807,
+      "unique_sources": 28,
+      "placed_contacts": 11132,
       "surfaces": 133
     },
     "surf_pancake": {
@@ -5720,27 +5720,27 @@
     },
     "surf_pantheon": {
       "status": "ready",
-      "unique_sources": 51,
-      "placed_contacts": 11634,
-      "surfaces": 491
+      "unique_sources": 120,
+      "placed_contacts": 26210,
+      "surfaces": 516
     },
     "surf_papertown": {
       "status": "ready",
-      "unique_sources": 16,
-      "placed_contacts": 13769,
+      "unique_sources": 35,
+      "placed_contacts": 21727,
       "surfaces": 130
     },
     "surf_paradigm": {
       "status": "ready",
-      "unique_sources": 13,
-      "placed_contacts": 5986,
-      "surfaces": 252
+      "unique_sources": 37,
+      "placed_contacts": 17290,
+      "surfaces": 259
     },
     "surf_pls": {
       "status": "ready",
-      "unique_sources": 96,
-      "placed_contacts": 36240,
-      "surfaces": 956
+      "unique_sources": 295,
+      "placed_contacts": 115157,
+      "surfaces": 1037
     },
     "surf_polonia": {
       "status": "no_replays",
@@ -5750,39 +5750,39 @@
     },
     "surf_polygon": {
       "status": "ready",
-      "unique_sources": 33,
-      "placed_contacts": 21021,
+      "unique_sources": 75,
+      "placed_contacts": 39081,
       "surfaces": 253
     },
     "surf_pools": {
       "status": "ready",
-      "unique_sources": 15,
-      "placed_contacts": 502,
+      "unique_sources": 61,
+      "placed_contacts": 1898,
       "surfaces": 130
     },
     "surf_premium": {
       "status": "ready",
-      "unique_sources": 40,
-      "placed_contacts": 251,
+      "unique_sources": 107,
+      "placed_contacts": 631,
       "surfaces": 8
     },
     "surf_progress": {
       "status": "no_placed_contacts",
-      "unique_sources": 23,
+      "unique_sources": 53,
       "placed_contacts": 0,
       "surfaces": 0
     },
     "surf_prosurf": {
       "status": "ready",
-      "unique_sources": 84,
-      "placed_contacts": 48230,
-      "surfaces": 285
+      "unique_sources": 236,
+      "placed_contacts": 144919,
+      "surfaces": 288
     },
     "surf_pyzire": {
       "status": "ready",
-      "unique_sources": 17,
-      "placed_contacts": 4179,
-      "surfaces": 177
+      "unique_sources": 60,
+      "placed_contacts": 13876,
+      "surfaces": 189
     },
     "surf_queen_of_the_ween": {
       "status": "no_replays",
@@ -5798,56 +5798,56 @@
     },
     "surf_quirky": {
       "status": "ready",
-      "unique_sources": 32,
-      "placed_contacts": 9901,
-      "surfaces": 401
+      "unique_sources": 81,
+      "placed_contacts": 25918,
+      "surfaces": 433
     },
     "surf_r-ne": {
       "status": "ready",
-      "unique_sources": 51,
-      "placed_contacts": 25222,
-      "surfaces": 627
+      "unique_sources": 124,
+      "placed_contacts": 55293,
+      "surfaces": 691
     },
     "surf_race": {
       "status": "ready",
-      "unique_sources": 49,
-      "placed_contacts": 17741,
-      "surfaces": 976
+      "unique_sources": 135,
+      "placed_contacts": 42105,
+      "surfaces": 1117
     },
     "surf_radiant": {
       "status": "ready",
-      "unique_sources": 22,
-      "placed_contacts": 9321,
-      "surfaces": 586
+      "unique_sources": 79,
+      "placed_contacts": 30913,
+      "surfaces": 626
     },
     "surf_ravine": {
       "status": "ready",
-      "unique_sources": 22,
-      "placed_contacts": 180,
-      "surfaces": 156
+      "unique_sources": 55,
+      "placed_contacts": 364,
+      "surfaces": 174
     },
     "surf_rebel_scaz": {
       "status": "ready",
-      "unique_sources": 12,
-      "placed_contacts": 2425,
-      "surfaces": 1024
+      "unique_sources": 34,
+      "placed_contacts": 6341,
+      "surfaces": 1097
     },
     "surf_reprise": {
       "status": "ready",
-      "unique_sources": 10,
-      "placed_contacts": 3983,
-      "surfaces": 1868
+      "unique_sources": 28,
+      "placed_contacts": 9749,
+      "surfaces": 1936
     },
     "surf_resource": {
       "status": "ready",
-      "unique_sources": 33,
-      "placed_contacts": 23868,
-      "surfaces": 108
+      "unique_sources": 88,
+      "placed_contacts": 37707,
+      "surfaces": 110
     },
     "surf_reverie": {
       "status": "ready",
-      "unique_sources": 8,
-      "placed_contacts": 4421,
+      "unique_sources": 16,
+      "placed_contacts": 8788,
       "surfaces": 225
     },
     "surf_revolution_fix": {
@@ -5858,9 +5858,9 @@
     },
     "surf_rise": {
       "status": "ready",
-      "unique_sources": 73,
-      "placed_contacts": 31654,
-      "surfaces": 185
+      "unique_sources": 198,
+      "placed_contacts": 87994,
+      "surfaces": 192
     },
     "surf_rocco_v2": {
       "status": "no_replays",
@@ -5870,45 +5870,45 @@
     },
     "surf_rookie": {
       "status": "ready",
-      "unique_sources": 190,
-      "placed_contacts": 59209,
-      "surfaces": 1130
+      "unique_sources": 456,
+      "placed_contacts": 155545,
+      "surfaces": 1143
     },
     "surf_rubiks_cube": {
       "status": "ready",
-      "unique_sources": 30,
-      "placed_contacts": 2081,
-      "surfaces": 36
+      "unique_sources": 78,
+      "placed_contacts": 6183,
+      "surfaces": 78
     },
     "surf_runewords": {
       "status": "ready",
-      "unique_sources": 34,
-      "placed_contacts": 35722,
-      "surfaces": 1875
+      "unique_sources": 88,
+      "placed_contacts": 64184,
+      "surfaces": 2062
     },
     "surf_runewords2": {
       "status": "ready",
-      "unique_sources": 38,
-      "placed_contacts": 39390,
-      "surfaces": 782
+      "unique_sources": 105,
+      "placed_contacts": 65186,
+      "surfaces": 832
     },
     "surf_runewords2_lod": {
       "status": "ready",
-      "unique_sources": 22,
-      "placed_contacts": 5774,
-      "surfaces": 272
+      "unique_sources": 61,
+      "placed_contacts": 14313,
+      "surfaces": 281
     },
     "surf_ruse": {
       "status": "ready",
-      "unique_sources": 152,
-      "placed_contacts": 118053,
-      "surfaces": 497
+      "unique_sources": 372,
+      "placed_contacts": 222254,
+      "surfaces": 503
     },
     "surf_salient": {
       "status": "ready",
-      "unique_sources": 21,
-      "placed_contacts": 12086,
-      "surfaces": 1510
+      "unique_sources": 65,
+      "placed_contacts": 41679,
+      "surfaces": 1666
     },
     "surf_salient2": {
       "status": "no_replays",
@@ -5918,45 +5918,45 @@
     },
     "surf_sanctuary": {
       "status": "ready",
-      "unique_sources": 36,
-      "placed_contacts": 24040,
-      "surfaces": 732
+      "unique_sources": 91,
+      "placed_contacts": 53752,
+      "surfaces": 819
     },
     "surf_sandtrap": {
       "status": "ready",
-      "unique_sources": 13,
-      "placed_contacts": 6078,
-      "surfaces": 388
+      "unique_sources": 41,
+      "placed_contacts": 18200,
+      "surfaces": 529
     },
     "surf_sandtrap2": {
       "status": "ready",
-      "unique_sources": 56,
-      "placed_contacts": 21958,
-      "surfaces": 443
+      "unique_sources": 271,
+      "placed_contacts": 79906,
+      "surfaces": 452
     },
     "surf_santorini": {
       "status": "ready",
-      "unique_sources": 46,
-      "placed_contacts": 2164,
+      "unique_sources": 145,
+      "placed_contacts": 6297,
       "surfaces": 116
     },
     "surf_satellite": {
       "status": "no_placed_contacts",
-      "unique_sources": 5,
+      "unique_sources": 11,
       "placed_contacts": 0,
       "surfaces": 0
     },
     "surf_saturday": {
       "status": "ready",
-      "unique_sources": 10,
-      "placed_contacts": 5977,
-      "surfaces": 83
+      "unique_sources": 29,
+      "placed_contacts": 16684,
+      "surfaces": 97
     },
     "surf_school": {
       "status": "ready",
-      "unique_sources": 48,
-      "placed_contacts": 12214,
-      "surfaces": 906
+      "unique_sources": 120,
+      "placed_contacts": 27607,
+      "surfaces": 1069
     },
     "surf_second": {
       "status": "no_replays",
@@ -5966,9 +5966,9 @@
     },
     "surf_sedona": {
       "status": "ready",
-      "unique_sources": 38,
-      "placed_contacts": 4877,
-      "surfaces": 657
+      "unique_sources": 117,
+      "placed_contacts": 16205,
+      "surfaces": 883
     },
     "surf_selenka": {
       "status": "no_replays",
@@ -5984,14 +5984,14 @@
     },
     "surf_seraph": {
       "status": "ready",
-      "unique_sources": 7,
-      "placed_contacts": 4805,
-      "surfaces": 475
+      "unique_sources": 20,
+      "placed_contacts": 13427,
+      "surfaces": 516
     },
     "surf_serenity": {
       "status": "ready",
-      "unique_sources": 25,
-      "placed_contacts": 35243,
+      "unique_sources": 68,
+      "placed_contacts": 56177,
       "surfaces": 113
     },
     "surf_shambles": {
@@ -6002,39 +6002,39 @@
     },
     "surf_shape": {
       "status": "ready",
-      "unique_sources": 14,
-      "placed_contacts": 10580,
-      "surfaces": 115
+      "unique_sources": 70,
+      "placed_contacts": 55551,
+      "surfaces": 120
     },
     "surf_shibboleth": {
       "status": "ready",
-      "unique_sources": 86,
-      "placed_contacts": 31788,
+      "unique_sources": 252,
+      "placed_contacts": 110790,
       "surfaces": 286
     },
     "surf_shodan": {
       "status": "ready",
-      "unique_sources": 109,
-      "placed_contacts": 39886,
-      "surfaces": 1196
+      "unique_sources": 290,
+      "placed_contacts": 103044,
+      "surfaces": 1358
     },
     "surf_shoria": {
       "status": "ready",
-      "unique_sources": 21,
-      "placed_contacts": 7995,
-      "surfaces": 664
+      "unique_sources": 159,
+      "placed_contacts": 72334,
+      "surfaces": 701
     },
     "surf_sidistic": {
       "status": "ready",
-      "unique_sources": 3,
-      "placed_contacts": 5866,
-      "surfaces": 407
+      "unique_sources": 9,
+      "placed_contacts": 18162,
+      "surfaces": 483
     },
     "surf_simpsons2": {
       "status": "ready",
-      "unique_sources": 92,
-      "placed_contacts": 26669,
-      "surfaces": 369
+      "unique_sources": 199,
+      "placed_contacts": 68376,
+      "surfaces": 415
     },
     "surf_sinister": {
       "status": "no_replays",
@@ -6044,99 +6044,99 @@
     },
     "surf_sinister_evil": {
       "status": "ready",
-      "unique_sources": 30,
-      "placed_contacts": 71446,
+      "unique_sources": 82,
+      "placed_contacts": 93997,
       "surfaces": 185
     },
     "surf_sinsane": {
       "status": "ready",
-      "unique_sources": 5,
-      "placed_contacts": 2880,
-      "surfaces": 585
+      "unique_sources": 18,
+      "placed_contacts": 10071,
+      "surfaces": 704
     },
     "surf_sinsane2": {
       "status": "ready",
-      "unique_sources": 17,
-      "placed_contacts": 14620,
-      "surfaces": 1120
+      "unique_sources": 38,
+      "placed_contacts": 43888,
+      "surfaces": 1239
     },
     "surf_sirena": {
       "status": "ready",
-      "unique_sources": 30,
-      "placed_contacts": 11059,
-      "surfaces": 306
+      "unique_sources": 89,
+      "placed_contacts": 106978,
+      "surfaces": 494
     },
     "surf_skipalot": {
       "status": "ready",
-      "unique_sources": 17,
-      "placed_contacts": 1095,
+      "unique_sources": 40,
+      "placed_contacts": 3240,
       "surfaces": 22
     },
     "surf_smol": {
       "status": "ready",
-      "unique_sources": 6,
-      "placed_contacts": 716,
-      "surfaces": 31
+      "unique_sources": 32,
+      "placed_contacts": 73805,
+      "surfaces": 42
     },
     "surf_sodacity": {
       "status": "ready",
-      "unique_sources": 55,
-      "placed_contacts": 8981,
-      "surfaces": 275
+      "unique_sources": 132,
+      "placed_contacts": 21694,
+      "surfaces": 330
     },
     "surf_sofia": {
       "status": "ready",
-      "unique_sources": 18,
-      "placed_contacts": 6222,
-      "surfaces": 621
+      "unique_sources": 51,
+      "placed_contacts": 16237,
+      "surfaces": 710
     },
     "surf_spacejam": {
       "status": "ready",
-      "unique_sources": 33,
-      "placed_contacts": 12197,
-      "surfaces": 833
+      "unique_sources": 81,
+      "placed_contacts": 24526,
+      "surfaces": 849
     },
     "surf_spacemonkeys": {
       "status": "no_placed_contacts",
-      "unique_sources": 12,
+      "unique_sources": 29,
       "placed_contacts": 0,
       "surfaces": 0
     },
     "surf_spaceracer": {
       "status": "ready",
-      "unique_sources": 23,
-      "placed_contacts": 6737,
-      "surfaces": 409
+      "unique_sources": 55,
+      "placed_contacts": 16271,
+      "surfaces": 411
     },
     "surf_spectra": {
       "status": "ready",
-      "unique_sources": 29,
-      "placed_contacts": 18712,
-      "surfaces": 506
+      "unique_sources": 96,
+      "placed_contacts": 70703,
+      "surfaces": 534
     },
     "surf_starvald": {
       "status": "ready",
-      "unique_sources": 15,
-      "placed_contacts": 9517,
-      "surfaces": 218
+      "unique_sources": 40,
+      "placed_contacts": 26109,
+      "surfaces": 219
     },
     "surf_stitched": {
       "status": "ready",
-      "unique_sources": 15,
-      "placed_contacts": 10376,
-      "surfaces": 424
+      "unique_sources": 39,
+      "placed_contacts": 46751,
+      "surfaces": 538
     },
     "surf_stonework3": {
       "status": "ready",
-      "unique_sources": 24,
-      "placed_contacts": 20764,
-      "surfaces": 1004
+      "unique_sources": 71,
+      "placed_contacts": 65921,
+      "surfaces": 1147
     },
     "surf_stonks": {
       "status": "ready",
-      "unique_sources": 18,
-      "placed_contacts": 5243,
-      "surfaces": 23
+      "unique_sources": 48,
+      "placed_contacts": 12766,
+      "surfaces": 27
     },
     "surf_strike": {
       "status": "no_replays",
@@ -6146,87 +6146,87 @@
     },
     "surf_summit": {
       "status": "ready",
-      "unique_sources": 62,
-      "placed_contacts": 24808,
-      "surfaces": 635
+      "unique_sources": 158,
+      "placed_contacts": 64205,
+      "surfaces": 995
     },
     "surf_sunday": {
       "status": "ready",
-      "unique_sources": 32,
-      "placed_contacts": 35670,
+      "unique_sources": 77,
+      "placed_contacts": 61387,
       "surfaces": 303
     },
     "surf_sundown": {
       "status": "ready",
-      "unique_sources": 5,
-      "placed_contacts": 6532,
-      "surfaces": 455
+      "unique_sources": 11,
+      "placed_contacts": 13023,
+      "surfaces": 463
     },
     "surf_sunnyhappylove": {
       "status": "ready",
-      "unique_sources": 15,
-      "placed_contacts": 5057,
-      "surfaces": 685
+      "unique_sources": 45,
+      "placed_contacts": 15084,
+      "surfaces": 723
     },
     "surf_surreal": {
       "status": "ready",
-      "unique_sources": 39,
-      "placed_contacts": 74,
+      "unique_sources": 161,
+      "placed_contacts": 391,
       "surfaces": 1
     },
     "surf_synada": {
       "status": "ready",
-      "unique_sources": 11,
-      "placed_contacts": 6154,
-      "surfaces": 294
+      "unique_sources": 36,
+      "placed_contacts": 20079,
+      "surfaces": 309
     },
     "surf_technique": {
       "status": "ready",
-      "unique_sources": 49,
-      "placed_contacts": 15,
+      "unique_sources": 131,
+      "placed_contacts": 31,
       "surfaces": 3
     },
     "surf_tendies": {
       "status": "ready",
-      "unique_sources": 38,
-      "placed_contacts": 18688,
+      "unique_sources": 115,
+      "placed_contacts": 63466,
       "surfaces": 538
     },
     "surf_tensor2": {
       "status": "ready",
-      "unique_sources": 111,
-      "placed_contacts": 79596,
-      "surfaces": 368
+      "unique_sources": 332,
+      "placed_contacts": 256204,
+      "surfaces": 371
     },
     "surf_theme": {
       "status": "ready",
-      "unique_sources": 49,
-      "placed_contacts": 39301,
-      "surfaces": 441
+      "unique_sources": 127,
+      "placed_contacts": 67071,
+      "surfaces": 506
     },
     "surf_themeless": {
       "status": "ready",
-      "unique_sources": 29,
-      "placed_contacts": 7517,
-      "surfaces": 606
+      "unique_sources": 77,
+      "placed_contacts": 17895,
+      "surfaces": 705
     },
     "surf_thesteve": {
       "status": "ready",
-      "unique_sources": 33,
-      "placed_contacts": 44580,
-      "surfaces": 459
+      "unique_sources": 90,
+      "placed_contacts": 87389,
+      "surfaces": 479
     },
     "surf_trance": {
       "status": "ready",
-      "unique_sources": 8,
-      "placed_contacts": 2624,
-      "surfaces": 354
+      "unique_sources": 20,
+      "placed_contacts": 5351,
+      "surfaces": 355
     },
     "surf_trihard": {
       "status": "ready",
-      "unique_sources": 36,
-      "placed_contacts": 48684,
-      "surfaces": 1073
+      "unique_sources": 91,
+      "placed_contacts": 103516,
+      "surfaces": 1185
     },
     "surf_unraveled": {
       "status": "no_replays",
@@ -6236,9 +6236,9 @@
     },
     "surf_utopia": {
       "status": "ready",
-      "unique_sources": 7,
-      "placed_contacts": 5211,
-      "surfaces": 1203
+      "unique_sources": 291,
+      "placed_contacts": 263325,
+      "surfaces": 1558
     },
     "surf_valpect": {
       "status": "no_replays",
@@ -6248,21 +6248,21 @@
     },
     "surf_vegetables": {
       "status": "ready",
-      "unique_sources": 34,
-      "placed_contacts": 6681,
-      "surfaces": 1335
+      "unique_sources": 103,
+      "placed_contacts": 23784,
+      "surfaces": 1619
     },
     "surf_void": {
       "status": "ready",
-      "unique_sources": 5,
-      "placed_contacts": 2331,
-      "surfaces": 233
+      "unique_sources": 15,
+      "placed_contacts": 6989,
+      "surfaces": 265
     },
     "surf_voyager": {
       "status": "ready",
-      "unique_sources": 15,
-      "placed_contacts": 10726,
-      "surfaces": 715
+      "unique_sources": 45,
+      "placed_contacts": 31466,
+      "surfaces": 716
     },
     "surf_warped": {
       "status": "no_replays",
@@ -6272,51 +6272,51 @@
     },
     "surf_whiteout": {
       "status": "ready",
-      "unique_sources": 79,
-      "placed_contacts": 14,
-      "surfaces": 55
+      "unique_sources": 185,
+      "placed_contacts": 117,
+      "surfaces": 72
     },
     "surf_whoknows": {
       "status": "ready",
-      "unique_sources": 9,
-      "placed_contacts": 8366,
+      "unique_sources": 24,
+      "placed_contacts": 20710,
       "surfaces": 212
     },
     "surf_whoknows2": {
       "status": "ready",
-      "unique_sources": 7,
-      "placed_contacts": 4972,
-      "surfaces": 278
+      "unique_sources": 20,
+      "placed_contacts": 13844,
+      "surfaces": 285
     },
     "surf_whynot": {
       "status": "ready",
-      "unique_sources": 31,
-      "placed_contacts": 33483,
-      "surfaces": 79
+      "unique_sources": 81,
+      "placed_contacts": 82120,
+      "surfaces": 95
     },
     "surf_wizard": {
       "status": "ready",
-      "unique_sources": 40,
-      "placed_contacts": 79204,
-      "surfaces": 1143
+      "unique_sources": 95,
+      "placed_contacts": 100628,
+      "surfaces": 1204
     },
     "surf_yellow": {
       "status": "ready",
-      "unique_sources": 15,
-      "placed_contacts": 4980,
-      "surfaces": 229
+      "unique_sources": 46,
+      "placed_contacts": 16117,
+      "surfaces": 349
     },
     "surf_zae": {
       "status": "ready",
-      "unique_sources": 45,
-      "placed_contacts": 16269,
-      "surfaces": 335
+      "unique_sources": 114,
+      "placed_contacts": 33816,
+      "surfaces": 376
     },
     "surf_zen2": {
       "status": "ready",
-      "unique_sources": 95,
-      "placed_contacts": 81947,
-      "surfaces": 384
+      "unique_sources": 339,
+      "placed_contacts": 177760,
+      "surfaces": 393
     },
     "surf_zeonine": {
       "status": "no_replays",
@@ -6326,9 +6326,60 @@
     },
     "surf_zoomathon": {
       "status": "ready",
-      "unique_sources": 15,
-      "placed_contacts": 51125,
-      "surfaces": 304
+      "unique_sources": 48,
+      "placed_contacts": 164929,
+      "surfaces": 318
     }
+  },
+  "source_inventory": {
+    "snapshot_utc": "2026-11-07T06:59:05Z",
+    "held_input_files_supplied": 30800,
+    "held_input_kinds": {
+      "raw_ksf": 10240,
+      "raw_momentum": 16147,
+      "normalized_momentum": 3814,
+      "normalized_covered_by_full_momentum": 14424,
+      "normalized_run": 598,
+      "normalized_covered_by_full_ksf": 10240,
+      "normalized_ksf": 1
+    },
+    "unreadable_input_entries": 938,
+    "unreadable_classes": {
+      "unreadable_ValueError": 926,
+      "unreadable_FormatError": 12
+    },
+    "qualification": "all regenerated sets satisfy actual client counts/radius/UV/normal bounds, file/digest and decoded-image limits; not native visual/FPS/run verification",
+    "gap_counts": {
+      "no_replays": 43,
+      "no_placed_contacts": 15
+    },
+    "ordinary_bonus_interest_requests": {
+      "unique_boards": 83,
+      "retry_after_honored": true,
+      "http_counts": {
+        "202": 69,
+        "404": 14
+      },
+      "retry_results": [
+        {
+          "map": "surf_warped",
+          "bonus": 2,
+          "http": 202
+        },
+        {
+          "map": "surf_warped",
+          "bonus": 3,
+          "http": 202
+        },
+        {
+          "map": "surf_zeonine",
+          "bonus": 2,
+          "http": 202
+        }
+      ],
+      "utc": "2026-11-07T06:46:42Z",
+      "meaning": "request acknowledgement/known-leg availability, not completed replay acquisition"
+    },
+    "staging_repair": "154 missing raw sidecars were our cache/salvage mistake, not upstream absence; same frozen bindings recovered and14affected maps rebaked; final missing-sidecar failures0"
   }
 }

@@ -3,8 +3,9 @@
 ## Feature and scope
 
 One whole-map replay-baked atlas per map, including available main, stage and
-bonus recordings. Reuses P1339's unchanged baker, geometry format, shader and
-bounded SHA256-checked on-request cache. `r_rampwear` remains opt-in; no atlases
+bonus recordings. Reuses P1339's geometry format, shader and bounded
+SHA256-checked on-request cache. P1362 fixes only the baker's tiny-radius
+serialization; it does not relax the client. `r_rampwear` remains opt-in; no atlases
 are added to game packages. No native pin/tag, VM, physics, recording/evidence
 semantics or QC Build change.
 
@@ -27,20 +28,20 @@ measured play telemetry. The union resolves to307map names.
 
 ## Verified asset inventory
 
-- 241 ready whole-map bakes; every published candidate passes exact map binding,
- finite geometry/counts, client surface/triangle/file/encoded-size bounds,
- PNG dimensions, SHA256 and strict base64 round-trip checks.
-- 92/100 popular main maps and 124/173 priority maps have a ready atlas.
-- 195/278 priority bonuses have a held exact-course input; 186 also have a ready map
- atlas. This conjunction is explicitly NOT proof every ramp on that bonus was
- painted.
-- The exact frozen coverage is `p1360-rampwear-coverage.json`:66requested maps
- remain missing-input/no-placed-contact gaps. Do not count an absent file, an
- unreadable input or no-contact bake as a pass. Existing served assets are not
- removed when a refreshed bake has a gap.
-- 241 validated file sets total 483,884,196 raw bytes before HTTP text compression.
- Raw/player-bearing input bytes and path inventories stay private. Public assets
- contain only cosmetic geometry and atlas data, not a native-verification claim.
+- **249 ready whole-map bakes**. Every candidate passes exact map binding and the
+ ACTUAL client bounds: positive radii, at most32768charts/131072triangles,
+ finite positions, unit-range UVs and normal-length tolerance,32MiB geometry,
+ 6MiB encoded transport, PNG dimensions, SHA256 and strict base64 round-trip.
+- **94/100** popular main maps and **129/173** priority maps have a ready atlas.
+- **196/278** priority bonuses have an indexed held exact-course input; **192**
+ also have a ready map atlas. This conservative conjunction is NOT proof every
+ ramp on that bonus was painted; full recordings can touch additional surfaces.
+- `p1360-rampwear-coverage.json` preserves **58** explicit requested-map gaps:
+ 43without replay inputs and15without placed contacts. Existing served assets
+ are not removed merely because a refreshed bake has a gap.
+- The249 validated sets total **704,161,490 raw bytes** before HTTP compression.
+ Raw/player-bearing input bytes and path inventories stay private. These are
+ cosmetic assets, not native run verification or measured play/FPS evidence.
 
 ## Implementation
 
@@ -75,6 +76,23 @@ keep the current disk fallback. No raw recording can enter these groups.
  regression, all3ramp formats, gzip response metadata and decoded hashes,
  signed HEAD, byte-range206, private/listing/missing refusals, source replacement,
  dead-gateway fallback; all29acting checks pass, owned processes exited.
+- Full originals exposed two oversized encoded atlases: Classics6,722,004bytes
+ and Overgrowth2 6,837,296bytes, both above6,291,456. Coarser texels reduced them
+ to4,974,776/5,101,536bytes; exact world XYZ/normal/chart-structure hashes match.
+ Console texel values were rounded, not exact old numeric settings. No surfaces
+ or client limits were dropped/raised to pass.
+- The earlier delivery qualifier omitted the actual positive-radius predicate.
+ Consumer-source inspection found Sinsane2's43radii serialized as0.0; its retained
+ predecessor already had40. P1362 changes exactly those43tokens to0.1, with every
+ header/other chart/triangle/UV/normal/image token identical. All249final sets
+ now pass the actual predicate. Earlier weak-check output/refused bytes remain.
+- A late source exporter reused `a` for argparse and fstat, failing before its
+ manifest. The failed archive was retained. Body-only salvage then exposed a
+ second staging error: known-body caching suppressed154required raw sidecars.
+ Those are OUR FileNotFoundError failures, not absent upstream recordings. The
+ exact retained bindings were recovered, the exporter corrected, and only14
+ affected maps rebaked. Final missing-sidecar failures:0. Batch exit1 for explicit
+ no-input/no-contact gaps is the documented partial result, not `bake_failed`.
 - The first R2 preparation exposed credentials loaded from rclone rather than
  inline keys, then an SSH PATH without rclone. The same state/failed row was
  repaired by reusing the existing qualified mirror binary. No failed transaction
@@ -108,17 +126,34 @@ no-store, gzip decoded hashes, raw PNG hash, byte-range206, unchanged map/zone
 routes and private/missing/listing refusals pass. The unrelated globe/chat MIME
 warnings point to untouched snippets and were not repaired as part of this task.
 
-The first source pass selected a small set per course/style. The user asked for
-ALL recordings possible, so an all-original expansion is running before final
-completion:30,636held bound input files, including10,086rawKSF and16,137rawMomTV
-full recordings, converted fallbacks only where originals are absent, plus598
-native controls. All4,676local MomTV files also remain default bake inputs.
-There is NO per-course/rank/style cap in this expanded snapshot. Ordinary paced
-missing-bonus requests use the existing public importer queue; queued is not a
-completed download or painted surface. Final coverage/size counts remain pending.
+The first pass selected a small set per course/style. The final full-source
+snapshot at **06:59:05UTC7Nov** supplies **30,800held input files**:10,240rawKSF
+and16,147rawMomTV originals,3,814Momentum/1KSF converted fallbacks only where
+originals are absent, plus598native cosmetic inputs. All4,676local MomTV files
+remain default bake inputs too. There is NO per-course/rank/style cap. The
+existing reader rejects938entries (926ValueError/12FormatError); those are NOT
+counted as successfully used recordings. This is a frozen availability snapshot,
+not a promise that every upstream recording ever created was discoverable.
 
-The existing on-demand client needs no rebuild/restart for added assets. Native
-appearance/FPS, every bonus surface and owner visual acceptance remain unclaimed.
+Ordinary paced missing-bonus interest:83unique boards,69acknowledged202 and14
+unknown to the cached KSF leg inventory. Three429s were retried only after their
+Retry-After window. Acknowledged/queued is not downloaded or painted; unknown
+cached legs are not proof no replay exists. The ordinary importer retains its
+locks, pacing/backoff and preservation rules; an attempted normal tick correctly
+refused while its existing worker held the lock. No guard was bypassed.
+
+Expanded data was first published07:23:35UTC (741files,247sets). Its transport
+sync completed07:37:23UTC, but that receipt is NOT client-format acceptance:
+Sinsane2 was restored only to our exact retained predecessor during the radius
+repair. The final **249 qualified sets** include the corrected radius and paired
+source inputs. Their corrective publication and public HTTP checks are pending
+below; do not confuse this staged qualification with completed delivery.
+
+The existing on-demand client needs no rebuild/restart for added assets. On the
+current map, `rampwear_download` explicitly refreshes a copy already tried in this
+session; `r_rampwear 1` enables the opt-in effect. Normal consent/download controls
+remain. Native appearance/FPS, every bonus surface and owner visual acceptance
+remain unclaimed.
 
 Evidence roots: `C:/FTESurf-worktrees/rampmarks-01a1b058` and the paired private
 root; NanoPi `/srv/nvme/agent-work/rampmarks-01a1b058`. Retained runtime/rollback
