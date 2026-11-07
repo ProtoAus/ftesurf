@@ -1,20 +1,18 @@
 # BACKLOG.md
 
-## Lobbies run without data/mapmeta.txt, so a map's ruleset comes from its name (P1367, 7 Nov)
+## Five bhop_ maps keep Momentum's mode, so their timer starts on leaving the box (P1369, 7 Nov)
 
-- The Pi's game/ftesurf/data has no mapmeta.txt, so SV_ApplyGamemode (engine sv_phys.c) falls back to
-  the name prefix; installs ship the file (release.ps1). Of the Pi's 2256 maps, 14 resolve to a
-  different mode on the two; with mode_bhop.cfg the only mode file, 10 change ruleset. P1367 gave
-  ahop_coast a map cfg. Still different: agtricks, df_cavernish, df_yungstrafe08, kz_bkz_goldbhop_v2
-  (bhop rules locally, base on lobbies) and bhop_badwater, bhop_odyssey, bhop_nightmare,
-  bhop_ytt_cruma, bhop_canals (Momentum files them under ahop/climb/defrag: base locally, bhop on
-  lobbies). Shipping mapmeta.txt to the Pi also changes the lobbies' published tiers. Owner decision.
-- The map cfg cannot set the mode, so ahop_coast's lobby still publishes gamemode `ahop`: its run starts
-  on leaving the box (sv_timer.qc run_t_bhopjump reads serverkey gamemode), an install's on the jump,
-  and both post to one board with nothing in the .rec saying which. mapmeta.txt on the Pi fixes both.
-- Local only: a zone-editor settings file saying Surf on ahop_coast now gives 100 Hz with its own air
+- The Pi has the installs' data/mapmeta.txt since P1369, so lobbies and installs pick the same mode.
+  Lex: every bhop map runs 100 tick, airaccelerate 1000. The five bhop_ maps the index files elsewhere
+  (badwater, odyssey: ahop; nightmare, ytt_cruma: climb-16; canals: df-vq3) get that from
+  cfg/maps/map_<map>.cfg, which cannot set the mode: their gamemode stays Momentum's and the timer
+  starts on leaving the box (sv_timer.qc run_t_bhopjump), on lobbies and installs alike (lobbies started
+  them on the jump before). The jump needs the mode itself: engine (bhop_ name over mapmeta) or QC.
+- Nothing deploys mapmeta.txt to the Pi (build.ps1 -Pi copies progs; the release ships installs). After
+  a tools/mapmeta.py regeneration copy it up and re-count bhop_ rows filed elsewhere (5 of 522 on 7 Nov):
+  each new one needs a map cfg.
+- Local only: a zone-editor settings file saying Surf on one of the five gives 100 Hz with its own air
   accel (the map cfg loads after it and the editor overrides air accel only).
-- Check: `movement` on a lobby and on an install for one listed map; the mode lines differ.
 
 ## Momentum's uphill slope fix in ClipVelocity is not ported (P1367 investigation, 7 Nov)
 

@@ -21,6 +21,12 @@
 
 ## next
 
+### P1369 Lobbies use the same map list as your game; every bhop map runs 100 tick
+- The lobbies now read each map's Momentum mode, tier and stage count from the same list your installed game uses, so a map plays by the same rules online and offline, and lobbies show the tier.
+- agtricks, df_cavernish, df_yungstrafe08 and kz_bkz_goldbhop_v2 run bhop rules on the lobbies now (100 tick, air acceleration 1000, timer starts on the jump), as they already did offline.
+- bhop_badwater, bhop_canals, bhop_nightmare, bhop_odyssey and bhop_ytt_cruma run 100 tick and air acceleration 1000 offline too. Their timer starts when you leave the start box, online and offline.
+- ahop_coast's lobby timer now starts on the jump, as it does offline.
+
 ### P1367 Your own replays look the right way, goto, ahop_coast
 - Watching your own lobby replay no longer shows the view turning before you do. The camera was ahead of your body by your ping (a third of a second for many players); it now lines up.
 - Players who leave a lobby no longer stay behind in the player list as "unnamed".

@@ -1,5 +1,14 @@
 # AGENT_NOTES.md
 
+## P1369 lobbies get mapmeta.txt; five bhop_ map rulesets (7 Nov 2026; ftesurf-3a)
+
+- LIVE 7 Nov ~11:50Z: Pi game/ftesurf/data/mapmeta.txt = the installs' file (5e6c978d). Nothing deploys
+  it, so copy it after a mapmeta.py regeneration. cfg/maps/map_bhop_{badwater,canals,nightmare,odyssey,
+  ytt_cruma}.cfg; map_ahop_coast.cfg removed. Record: tools/p1369-mapmeta.md.
+- To check a ruleset on a live lobby: surfd's rcon.py (password in surfd.env, 15 packets/30 s per port),
+  `fs_flush` after adding a file, `map <m>` on an EMPTY lobby, then `movement`. The `map`'s own load
+  lines reached neither serverN.log nor the rcon reply.
+
 ## P1367 own-replay view lead, lobby ghosts, "!player", goto (7 Nov 2026; ftesurf-3a, root lexlist-20261107-3a)
 
 - LIVE 7 Nov 10:20Z: all 12 lobbies (qw db38fe13, cs e897d49c, main fc179a38 = pi.dev's P1366 +
@@ -8,7 +17,7 @@
 - An own online replay's .view is joined by STAT_FS_TIMERTICKS as RECEIVED, so it sits one RTT early;
   the owner (Pi LAN) never sees it. Measure with the lobby's uploads: game/ftesurf/data/evidence/<map>/
   <runid>.view against the .rec under data/runs/<map>/<leg>/ whose header says `runid <id>`.
-- The Pi has no data/mapmeta.txt: lobby modes come from the map name (BACKLOG lists the 10 splits).
+- The Pi had no data/mapmeta.txt until P1369 (lobby modes came from the map name).
 - Developer-only engine prints (SETINFO, PF_ForceInfoKey) reach a log only with `log_developer 1`;
   `conbridge send "-forward"` is eaten as an option (`send -- "-forward"`); a file added under data/
   after start needs `fs_flush`.

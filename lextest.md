@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1369 lobbies use mapmeta.txt, bhop maps 100 tick -- LIVE on 12 lobbies 7 Nov; owner check pending
+
+- On a lobby, `movement` on agtricks or df_cavernish says "bhop ... from mapmeta"; on bhop_badwater it says
+  "ahop ... from mapmeta" and "per-map: cfg/maps/map_bhop_badwater.cfg" (pm_ticrate 0.01, airaccel 1000).
+- A lobby's HUD now shows the map's tier and stage count, as offline.
+- bhop_badwater/canals/nightmare/odyssey/ytt_cruma: the timer starts on leaving the box (Momentum files
+  them as ahop/climb/defrag), online and offline. Say if you want the jump, like the other bhop maps.
+
 ## P1367 own replays, lobby ghosts, goto, ahop_coast -- LIVE (12 lobbies + both installs, 7 Nov); owner check pending
 
 Measured in an isolated rig against a control build of main (tools/p1367-lexlist.md). Yours to
