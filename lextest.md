@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1378 sky swarms, P1380 pixel sign, P1382 missing-texture names, P1383 lobby noclip speed -- reviewed 8 Nov (4 rounds); delivery in tools/p1378-p1383.md; owner check pending
+## P1378 sky swarms, P1380 pixel sign, P1382 missing-texture names, P1383 lobby noclip speed -- LIVE (12 lobbies + Pi engine + both installs, 7 Nov ~16:34Z); owner check pending
 
 - surf_centipedes: look up at the sky from the stages. The skull swarms fly along their loops (one lap is about
   three minutes). Your game moves them itself; the lobby sends nothing for it.

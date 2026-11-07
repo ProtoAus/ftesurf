@@ -12,7 +12,9 @@
   client locally (homedir) or it crawls over UDP.
 - fteqcc: `local float *a, *b;` makes b a float**: one pointer per line.
 - The Pi engine is p1383-arm (p1371-arm + P1383), not main; next Pi build bases on p1383-arm.
-- Delivery (Pi swap, lobby QC, installs, hashes): tools/p1378-p1383.md.
+- LIVE 7 Nov ~16:34Z: Pi fteqw-svarm64 204625a9 (.prev 632ceca2), qw 413fcc31 / cs e281c22e (main c4bbfd62)
+  on 12 lobbies and both installs (exe 674e62fa / sv 92327da4 / hl2 503fbb48, engine 9b4142baf patch-1383).
+  Next lobby QC base: main at or after c4bbfd62; next Pi engine base: p1383-arm. Record: tools/p1378-p1383.md.
 
 ## P1379 boardarchive.py (8 Nov 2026; ftesurf-3a)
 
