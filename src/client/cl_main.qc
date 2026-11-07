@@ -1409,6 +1409,7 @@ float(float scanx) CL_ButtonBit =
   prederr while you scroll (steady flight at a synced speed does not).  Clamped
   0.25x (crawl for placement) to 16x.
 */
+float nc_wheel_v, nc_wheel_t;      // P1383: the last speed the wheel set, and when
 float(float scanx) Noclip_Wheel =
 {
 	local float ns, ms;
@@ -1420,8 +1421,11 @@ float(float scanx) Noclip_Wheel =
 	if (getstatf(STAT_FS_MOVETYPE) != MOVETYPE_NOCLIP)
 		return FALSE;
 
-	// P1383: the speed the server is flying this player at (P1383 servers tell each client its own).
+	// P1383: the speed the server is flying this player at (P1383 servers tell each client its own);
+	// notches inside a round trip step from this client's own last value (review 2).
 	ns = serverkeyfloat("pm_noclipspeed");
+	if (cltime - nc_wheel_t < 2 && nc_wheel_v > 0)
+		ns = nc_wheel_v;
 	if (ns <= 0)
 		ns = cvar("pm_noclipspeed");
 	if (ns <= 0)                                // the engine's own fallback
@@ -1433,6 +1437,8 @@ float(float scanx) Noclip_Wheel =
 	// P1383: userinfo `ncspeed` is this player's speed on a P1383 server, a lobby included; a game
 	// this process hosts also gets the cvar, which is all an older engine reads.
 	localcmd(sprintf("setinfo ncspeed %s\n", ftos(ns)));
+	nc_wheel_v = ns;
+	nc_wheel_t = cltime;
 	if (!strncmp(serverkey("ip"), "QLoopBack", 9))
 		cvar_set("pm_noclipspeed", ftos(ns));
 
