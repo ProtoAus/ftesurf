@@ -1,0 +1,1 @@
+P1391 claimed by ftesurf-3a (Claude Code session 5e4b2e2d) 2026-11-08. Lex: an F3 report panel (subject with presets, body with hint text, screenshot preview, auto-filled map/save/position/settings) sent to surfd, with an admin page to read, sort and delete reports.

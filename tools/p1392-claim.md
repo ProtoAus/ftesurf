@@ -1,0 +1,1 @@
+P1392 claimed by ftesurf-3a (Claude Code session 5e4b2e2d) 2026-11-08. Lex: a keyboard tab in the keybind menu -- a drawn keyboard with each key's bind, the bind list beside it, and placing a bind by clicking a key.
