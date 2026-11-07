@@ -18,6 +18,11 @@ every reader names its tiers, so nothing lists or ranks a parked row, and ban, u
 working inside the family.  Imported tiers (momentum, ksf, ...) never move.  Replay ids do not change,
 so verdicts, reviews and receipts stay linked and a restore is exact.
 
+REVIEWS MADE WHILE PARKED.  surfd's stage maintenance (restage) works on live tiers only, so a replay
+cleared or approved while its map was parked keeps that run's stage times hidden ("<tier>@<runid>")
+after a restore.  restore names every such run: re-review it once in the admin panel.  The reverse (a
+reject made while parked) is put right by the sweeper's restage_rejected within one pass.
+
 NOTHING IS DELETED.  archive refuses a label that already holds rows of the map; restore refuses while
 live rows exist unless they are parked first under --park-live-as.  So no board slot ever collides
 (the runs key holds the tier).  A dry run unless --apply; each applied operation is one
@@ -37,7 +42,7 @@ BAN = "banned:"                 # accounts.BAN_TIER
 MODE = "mode:"
 WOS = ("ranked", "community")   # surfd.TIERS
 LABEL_OK = re.compile(r"[a-z0-9][a-z0-9-]{0,15}\Z")
-MAP_OK = re.compile(r"[a-z0-9_.\-]{1,64}\Z")
+MAP_OK = re.compile(r"[a-z0-9_.+\-]{1,64}\Z")   # surfd _MAPNAME_OK's set, lowercased
 DEFAULT_DB = "/srv/nvme/surfd/data/surfd.db"
 
 
@@ -185,6 +190,33 @@ def restore(conn, mapname, label, park_live_as, apply):
     return 0, msg
 
 
+# surfd.py _REJECTED_SQL and _run_rejected: a current reject on a bound recording of the run.
+_RUN_REJECTED = ("SELECT 1 FROM replays p WHERE p.map = ? AND p.track = ? AND p.player = ? AND p.runid = ?"
+                 " AND p.bound = 1 AND EXISTS (SELECT 1 FROM reviews w WHERE w.replay_id = p.id"
+                 " AND w.decision = 'reject' AND w.at >= p.submitted) LIMIT 1")
+
+
+def stage_mismatch(conn, mapname):
+    """Runs whose live stage rows disagree with their current reviews: (hidden but not rejected,
+    shown but rejected), each a list of (track, player, runid)."""
+    hidden, shown = set(), set()
+    for track, tier, player, runid in conn.execute(
+            "SELECT track, tier, player, runid FROM runs WHERE map = ? AND leg > 0", (mapname,)):
+        _, t = _unban(tier)
+        base, sep, run = t.partition("@")
+        if base not in WOS or t.startswith(MODE):
+            continue
+        if sep:
+            key = (track, player, run)
+            if conn.execute(_RUN_REJECTED, (mapname,) + key).fetchone() is None:
+                hidden.add(key)
+        elif "^" not in t and runid not in ("", "-"):
+            key = (track, player, runid)
+            if conn.execute(_RUN_REJECTED, (mapname,) + key).fetchone() is not None:
+                shown.add(key)
+    return sorted(hidden), sorted(shown)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", default=DEFAULT_DB)
@@ -205,7 +237,10 @@ def main(argv=None):
         if lab is not None and not LABEL_OK.match(lab):
             print("bad label %r: [a-z0-9-], at most 16" % lab); return 2
     conn = connect(a.db)
+    log = None
     try:
+        if a.cmd != "list" and a.apply:     # opened first: an applied change is never left unlogged
+            log = open(os.path.join(os.path.dirname(os.path.abspath(a.db)), "boardarchive.log"), "a")
         if a.cmd == "list":
             for k, (r, p) in sorted(summary(conn, mapname).items()):
                 print("%-32s %6d rows %6d recordings" % (k, r, p))
@@ -214,13 +249,23 @@ def main(argv=None):
             code, msg = archive(conn, mapname, a.label, a.apply)
         else:
             code, msg = restore(conn, mapname, a.label, a.park_live_as, a.apply)
+        if code == 0 and log is not None:
+            log.write("%s %s %s %s\n" % (datetime.datetime.now(datetime.timezone.utc)
+                                          .strftime("%Y-%m-%dT%H:%M:%SZ"), a.cmd, mapname, msg))
+            log.flush()
         print(msg)
-        if code == 0 and a.apply:
-            with open(os.path.join(os.path.dirname(os.path.abspath(a.db)), "boardarchive.log"), "a") as fh:
-                fh.write("%s %s %s %s\n" % (datetime.datetime.now(datetime.timezone.utc)
-                                            .strftime("%Y-%m-%dT%H:%M:%SZ"), a.cmd, mapname, msg))
+        if code == 0 and a.cmd == "restore" and a.apply:
+            hidden, shown = stage_mismatch(conn, mapname)
+            for track, player, run in hidden:
+                print("  stage times of run %s (%s, track %d) are hidden with no current reject:"
+                      " re-review its replay once to show them" % (run, player, track))
+            for track, player, run in shown:
+                print("  stage times of run %s (%s, track %d) are shown under a current reject:"
+                      " the sweeper re-hides them within one pass" % (run, player, track))
         return code
     finally:
+        if log is not None:
+            log.close()
         conn.close()
 
 
