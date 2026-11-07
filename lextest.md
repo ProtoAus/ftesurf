@@ -5,13 +5,15 @@
 - surf_centipedes: walk into the spawn room's trigger (or `cmd ent_fire explain_text Display` with sv_cheats):
   "Press E (+use) in any startzone to toggle the pixel shader" is sharp at its real font size, not resized.
 
-## P1384 save loads the same at any ping -- owner check pending (lobbies once deployed)
+## P1384 save loads the same at any ping, long saves without the freeze -- LIVE (12 lobbies + both installs, 8 Nov); owner check pending
 
 - On a lobby, save mid-run and tap the load key: the run-up into the save starts on the press and you
   go when the lead-in ends (1 s by default); no "Loading save" first. Ask markbeaton54 (or anyone far
   from the Pi) whether it still feels stuttery. Measured at 0/150/300 ms added ping: start on the press
   frame, tap released at 1.01 s each time (it was 1.05/1.19/1.34 s). tools/p1384-saveinstant.md.
 - hud_edit > Save & load > Lead-in 0: a tap lets you go at once at any ping.
+- Load your longest save (bhop_monster_jam save 12, or a long bhop_ceaseless one) twice: no third-of-a-second
+  freeze any more (a few hundredths at most); with hud_trail 1 the run line comes back about a second after.
 
 ## P1378 sky swarms, P1380 pixel sign, P1382 missing-texture names, P1383 lobby noclip speed -- LIVE (12 lobbies + Pi engine + both installs, 7 Nov ~16:34Z); OWNER CONFIRMED 8 Nov: sky moves, Shift+wheel works on lobbies
 

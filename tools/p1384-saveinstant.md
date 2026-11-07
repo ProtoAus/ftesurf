@@ -102,3 +102,11 @@ on the step press and the view goes to the stepped save (two steps of 150-340 u 
 held body, then the predicted step), the same at every ping; control main: a late travel at 0.17 s
 and another at 0.57 s at 150 ms. A held step now gets no travel even on a LAN (its answer reads as
 pending a frame: WarpOp_StepPending); before, a LAN step got one.
+
+## Delivery
+
+LIVE 8 Nov 2026 (main e52e01da, fteqcc c24ede65): build.ps1 -Pi, 10 s warning (one player on Lobby 5),
+all 12 lobbies restarted on qwprogs 711089de / csprogs 993e0e3f (sha256); live serverinfo on lobbies
+1, 6 and 12: fs_savelead 2, *csprogs 0x6aa33429, *csprogssize 0x734d56. tasrevd codes.txt 85 -> 86
+lines (backup codes.txt.pre1384). Both Windows installs: qwprogs 711089de, csprogs 993e0e3f, menu
+ed59a330 (unchanged), .prev kept; downloads/csprogsvers/6aa33429.dat seeded in both.
