@@ -51,8 +51,7 @@ void() Trk_ClReload =
 	Trk_ClLoad();
 	for (t = find(world, classname, "trk_train"); t; t = find(t, classname, "trk_train"))
 		if (Trk_Walk(t, t.trkc_tgt))
-		if (!t.trk_faced)
-			Trk_FaceStart(t);
+			Trk_FaceStart(t);           // again: a stale lump's facing is not the server's
 };
 
 float() Trk_TrainPredraw =
