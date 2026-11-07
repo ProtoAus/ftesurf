@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1402 flat water for new installs, surf_view planes with edges -- owner check pending
+
+- Your C:\FTESurf copy (surf_view_style was still 1): on the next start the console says "surf_view/ent_view:
+  translucent planes with edges now"; surf_view and ent_view show see-through planes with outlines.
+- A fresh install (or `exec cfg/default.cfg` in a test copy): the Water row reads Flat sheet. Your own
+  Full reflect stays. Flat and dithered measured the same (7 saves, within about 5% either way).
+
 ## P1394 speed-loop teleports, P1396 teleport name case, P1397 noclip reports -- LIVE (12 lobbies + both installs, 8 Nov); owner check pending
 
 - surf_perennial: ride the speedloops. Each loop should carry you through without a jump back a

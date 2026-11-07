@@ -59,18 +59,18 @@ void() Gfx_WaterSupport =
 	if (cvar("hl2_water") == 5)
 	{
 		// Patch 1020: an archived 5 on an older client or plugin (which clamps it to 4).
-		cvar_set("hl2_water", "3");
+		cvar_set("hl2_water", "0");
 		localcmd("flushshaders\n");
-		print("Water: Screen-space needs an updated OpenGL client/plugin; using Dithered and rebuilding shaders.\n");
+		print("Water: Screen-space needs an updated OpenGL client/plugin; using Flat sheet and rebuilding shaders.\n");
 	}
 	if (!ui_gfx_waterbudget)
 	if (cvar("hl2_water") == 4)
 	{
 		// An archived 4 can reach the BSP generator before downloaded CSQC.
 		// Old natives lack the live-policy flag: rebuild that cached material.
-		cvar_set("hl2_water", "3");
+		cvar_set("hl2_water", "0");
 		localcmd("flushshaders\n");
-		print("Water: Budget needs an updated OpenGL client/plugin; using Dithered and rebuilding shaders.\n");
+		print("Water: Budget needs an updated OpenGL client/plugin; using Flat sheet and rebuilding shaders.\n");
 	}
 };
 

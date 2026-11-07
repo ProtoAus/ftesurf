@@ -21,6 +21,10 @@
 
 ## next
 
+### P1402 New defaults: flat water, see-through surf_view
+- A new install's water is the flat transparent sheet instead of the dithered one: they cost the same, and the flat one is cleaner to look through. Settings you already chose are kept.
+- surf_view and ent_view draw see-through planes with outlines by default. If you never changed the old dithered look, it switches once (the console says so); surf_view_style picks another.
+
 ### P1398 Moving things are cheaper to light
 - Props that move (surf_centipedes' skull swarms in the sky, things riding tracks, other players) look up the map's light about once a second instead of every frame, and fade smoothly to each new value, so the light never steps. surf_centipedes' stage starts went from under 200 fps to 460-920 at the default settings. r_modellight_moverate sets how many times a second; 0 is every frame.
 

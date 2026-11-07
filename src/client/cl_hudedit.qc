@@ -2450,6 +2450,13 @@ void() HE_MigrateDefaults =
 		}
 		localcmd("seta r_video_rev 1376\n");
 	}
+	// Patch 1402: configs still on surf_view's old dithered default take translucent planes with edges (Lex)
+	if (strstrofs(cvar_description("surf_view_style"), "Patch 1201") >= 0 && cvar("r_video_rev") < 1402)
+	{
+		if (HE_MoveOne("surf_view_style", 1, "3"))
+			print("surf_view/ent_view: translucent planes with edges now (surf_view_style 3; 1 was dither with edges)\n");
+		localcmd("seta r_video_rev 1402\n");
+	}
 	registercvar("hud_layout_rev", "0", CVAR_ARCHIVE);
 	/*
 	  Patch 898: Lex's layout of 21 Oct for every setting still on the default it replaced.  The
