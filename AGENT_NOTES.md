@@ -1,5 +1,20 @@
 # AGENT_NOTES.md
 
+## P1371 zone-file gamemode, bhop_ maps bhop, zone_edit tiers (8 Nov 2026; ftesurf-3a, root mapmeta-20261107-3a)
+
+- Engine SV_ApplyGamemodeModes: local map settings > sv_gamemode > zone file "gamemode" (1 or 2 only,
+  compared as a 32-bit float like QC) > mapmeta, where a bhop_ map in a non-bhop category is bhop
+  (src "bhop_ name") > name. Record: tools/p1371-modetier.md.
+- The Pi's server is built from engine patch-1353 + P1371 only (branch p1371-arm), not main: the lobbies
+  ran patch-1353 (pi.dev, 6 Nov), and main's later engine work is client-side. Kit and gate overlay:
+  /srv/nvme/agent-work/p1371-3a (764 canonical blobs checked on the Pi; pm_dettest identical to live).
+  The previous Pi build tree /srv/nvme/p349build is stale (5 Oct): look at the live binary's stamp first.
+- `git ls-tree` paths can hold spaces (plugins/irc/raw codes.txt): split manifests on the tab.
+- A second `build.ps1 -Engine` can stamp `-dirty`: the first build regenerates plugins/hl2/mat_vmt_progs.h
+  with the generator's path in its banner. Restore it before building (content is identical).
+- zone_edit Map properties: the zone file's mode changes only on a Surf/Bhop click (the local settings file
+  always carries a gamemode line, a guess included). tools/p841editor.py greps the speed-cap note text.
+
 ## P1369 lobbies get mapmeta.txt; five bhop_ map rulesets (7 Nov 2026; ftesurf-3a)
 
 - LIVE 7 Nov ~11:50Z: Pi game/ftesurf/data/mapmeta.txt = the installs' file (5e6c978d). Nothing deploys

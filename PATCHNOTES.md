@@ -28,10 +28,15 @@
 ### P1372 Historical warm saves keep recording
 - Newly created saves from a live rewind retain the recorder state needed to keep recording after a warm load. Existing incomplete saves and old cold-rewind duration errors are unchanged.
 
+### P1371 Bhop maps start on the jump; the zone editor sets mode and tiers
+- Every map named bhop_ plays as a bhop map: 100 tick, air acceleration 1000 and the timer starting on the jump, including the five that Momentum lists under other modes.
+- The zone editor's Map properties can set a map's mode for the lobbies (click Surf or Bhop) and its Momentum and KSF tiers. Save settings, Save zones, then Publish saved; lobbies use them from their next map load.
+- The HUD and scoreboard show a tier set in the zone editor.
+
 ### P1369 Lobbies use the same map list as your game; every bhop map runs 100 tick
 - The lobbies now read each map's Momentum mode, tier and stage count from the same list your installed game uses, so a map plays by the same rules online and offline, and lobbies show the tier.
 - agtricks, df_cavernish, df_yungstrafe08 and kz_bkz_goldbhop_v2 run bhop rules on the lobbies now (100 tick, air acceleration 1000, timer starts on the jump), as they already did offline.
-- bhop_badwater, bhop_canals, bhop_nightmare, bhop_odyssey and bhop_ytt_cruma run 100 tick and air acceleration 1000 offline too. Their timer starts when you leave the start box, online and offline.
+- bhop_badwater, bhop_canals, bhop_nightmare, bhop_odyssey and bhop_ytt_cruma run 100 tick and air acceleration 1000 offline too.
 - ahop_coast's lobby timer now starts on the jump, as it does offline.
 
 ### P1367 Your own replays look the right way, goto, ahop_coast

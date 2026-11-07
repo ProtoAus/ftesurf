@@ -1,18 +1,21 @@
 # BACKLOG.md
 
-## Five bhop_ maps keep Momentum's mode, so their timer starts on leaving the box (P1369, 7 Nov)
+## A zone file's mode (P1371) changes a board's rules without the board knowing (8 Nov)
 
-- The Pi has the installs' data/mapmeta.txt since P1369, so lobbies and installs pick the same mode.
-  Lex: every bhop map runs 100 tick, airaccelerate 1000. The five bhop_ maps the index files elsewhere
-  (badwater, odyssey: ahop; nightmare, ytt_cruma: climb-16; canals: df-vq3) get that from
-  cfg/maps/map_<map>.cfg, which cannot set the mode: their gamemode stays Momentum's and the timer
-  starts on leaving the box (sv_timer.qc run_t_bhopjump), on lobbies and installs alike (lobbies started
-  them on the jump before). The jump needs the mode itself: engine (bhop_ name over mapmeta) or QC.
-- Nothing deploys mapmeta.txt to the Pi (build.ps1 -Pi copies progs; the release ships installs). After
-  a tools/mapmeta.py regeneration copy it up and re-count bhop_ rows filed elsewhere (5 of 522 on 7 Nov):
-  each new one needs a map cfg.
-- Local only: a zone-editor settings file saying Surf on one of the five gives 100 Hz with its own air
-  accel (the map cfg loads after it and the editor overrides air accel only).
+- Ranked rows key on (map, track, leg, tier, style, player) (surfd.py ~1256). A zone admin publishing a
+  "gamemode" moves a map between surf and bhop physics and start rules, with older rows left on the same
+  board. Runs record `gamemode`, `startrule`, `tickrate` and pmpin since P1371; surfd compares none of
+  them with the board's current rule. The verifier is unaffected (it replays each run's own pmpin and
+  movetickrate, sv_ccmds.c pm_verify).
+- zone_crc covers neither the mode nor the tiers: zonepub's crc completion/refusal and the client's
+  Zone_WantsServer cannot see a mode- or tier-only publish, and a zoner editing an older copy republishes
+  without another zoner's mode (as P841's maxVelocity already can). zonepub.validate does not check the
+  three keys (the engine and QC ignore bad values with a warning).
+- Personal bests are raw ticks (sv_timer.qc best.pb, cl_lobbytime.qc lobby.pb): a mode change that moves
+  the tick rate makes old PBs compare and draw wrongly. The menu's ui_map_tick cannot see a zone file's
+  mode (it has the bhop_ rule since P1371).
+- Nothing deploys data/mapmeta.txt to the Pi (P1369; build.ps1 -Pi copies progs, the release ships
+  installs): copy it after a tools/mapmeta.py regeneration.
 
 ## Momentum's uphill slope fix in ClipVelocity is not ported (P1367 investigation, 7 Nov)
 

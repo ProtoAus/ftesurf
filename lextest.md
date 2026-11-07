@@ -19,6 +19,16 @@ save, not an old file missing recorder metadata. Controlled ordinary warm cases
 pass; the owner's original zero-clock case is not generally reproduced/fixed.
 Existing cold-cut duration errors and full TAS continuation remain unqualified.
 
+## P1371 bhop maps start on the jump; zone_edit mode and tiers -- owner check pending
+
+- bhop_badwater (or bhop_canals, nightmare, odyssey, ytt_cruma) on a lobby: the run starts on your jump out
+  of the start, 100 Hz; `movement` says "bhop ... from bhop_ name".
+- Hosted game, zone editor, Map properties: under Surf/Bhop a line says what the lobbies run (zone file).
+  Click Bhop on a surf map you zone, set Momentum tier and KSF tier, Save settings, Save zones, reload:
+  `movement` says "bhop ... from zone file" and the HUD shows "MOM tier N | KSF tier N". Publish saved
+  sends the same to the lobbies (applies at their next map load).
+- Look at the panel once: the two tier rows and the lobbies line under the mode fit and read clearly.
+
 ## P1369 lobbies use mapmeta.txt, bhop maps 100 tick -- LIVE on 12 lobbies 7 Nov; owner check pending
 
 - On a lobby, `movement` on agtricks or df_cavernish says "bhop ... from mapmeta"; on bhop_badwater it says
