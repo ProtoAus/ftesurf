@@ -83,4 +83,4 @@ of the prefix; the IP is never shown).
   includes (`sites-enabled/*`), so the backup loads as a second play.proto.bar server and is ignored
   ("conflicting server name" warnings; the live file sorts first). Harmless as it stands; moving it
   out needs root (owner step in lextest).
-
+  Lex moved it to /etc/nginx/ at 21:15Z; nginx -t clean of the conflict, routes recheck 400/302/200.

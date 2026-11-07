@@ -13,8 +13,7 @@
 
 ## P1391 F3 report panel, P1392 keyboard tab -- LIVE (12 lobbies + both installs + report service, 8 Nov); owner check pending
 
-- One tidy-up for you on the Pi (the installer left its backup where nginx reads it):
-  `sudo mv /etc/nginx/sites-enabled/play.proto.bar.conf.pre-p1391-20261107T211215Z /etc/nginx/ && sudo nginx -t && sudo systemctl reload nginx`
+- (Done 7 Nov 21:15Z: the installer's site backup moved out of sites-enabled; nginx warns no more.)
 - /admin/reports already holds one test report from me ("Install check from Claude (delete me)").
 - In a game press F3: the panel opens with a screenshot of the moment. Pick "Bad rendering", type a
   line, Send. It should say "sent -- thank you!" and close. Then open play.proto.bar/admin/reports
