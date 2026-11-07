@@ -165,8 +165,9 @@ float ze_history, zh_scroll;        // P1180: the published-zones page (cl_zonep
 string ze_text;
 float ze_values[MAPSET_COUNT];
 float ze_cap_open;                  // P841: the Speed cap the panel opened with
-float ze_mode_open;                 // P1371: the mode the panel opened with
-float ze_tier_m, ze_tier_k;         // P1371: staged Momentum / KSF tier, 0 = none
+float ze_mode_stage;                // P1371: Save settings puts ze_mode in the zone file
+float ze_tier_m, ze_tier_k;         // P1371: Momentum / KSF tier in the panel, 0 = none
+float ze_tier_m_open, ze_tier_k_open; // P1371: the tiers the panel opened with
 float *ze_field_keys;
 
 float() ZoneEdit_PolygonValid;
@@ -1337,7 +1338,7 @@ string(string id) ZoneEdit_Tip =
 	if (id == "ze_hback") return "Return to the zone tools. Nothing is loaded unless you clicked a version.";
 	if (id == "ze_dimapply") return "Apply the typed value to the selected zone. Enter does the same; Esc cancels. Nothing is written until Save zones.";
 	if (id == "ze_rl") return "Discard unsaved zone edits and read this map's zones again. Your saved local file takes priority; use Discard local file to stop using that override.";
-	if (id == "ze_fg") return "Delete this map's saved local zone override and reload the underlying zones. Unsaved zone edits are lost too. Map properties are separate and are not removed.";
+	if (id == "ze_fg") return "Delete this map's saved local zone override and reload the underlying zones. Unsaved zone edits are lost too, and so are the mode and tiers saved in that file; the local map settings file is separate and stays.";
 	if (id == "ze_settings") return "Edit this map's Surf/Bhop mode, speed cap, gravity, air acceleration and its Momentum and KSF tiers. Save settings and reload the hosted map to apply them. The mode, speed cap and tiers also go in the zone file, so Publish sends them to the lobbies; gravity and air acceleration stay local.";
 	if (id == "ze_look") return "Give the mouse back to aiming and flying without closing the editor. Mouse2 returns the cursor to this window; V toggles noclip.";
 	if (id == "ze_cl") return "Close the editor without saving. Unsaved zone edits stay in memory until the map changes; reopen the editor to continue or save them.";

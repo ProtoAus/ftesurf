@@ -500,17 +500,17 @@ void(float mode) ZoneEdit_SettingMode =
 	if (!ze_settings || (mode != 1 && mode != 2)) return;
 	ze_field = -1; sui_text_unfocus();
 	ze_mode = mode; ze_values[2] = mode == 2 ? 1000 : 150;
+	ze_mode_stage = TRUE;
 	ZoneEdit_Note(mode == 2 ? "Bhop staged: 100 Hz / air accel 1000; save & reload" : "Surf staged: 66.67 Hz / air accel 150; save & reload");
 };
 
 void() ZoneEdit_SettingsOpen =
 {
-	local float i, fh, n, bytes;
+	local float i, fh, n, bytes, filemode;
 	local string line;
 	for (i = 0; i < MAPSET_COUNT; i = i + 1) ze_values[i] = cvar(MapSet_Name(i));
 	ze_mode = cvar("pm_ticrate") < 0.012 ? 2 : 1;
-	if (zone_mode == 1 || zone_mode == 2) ze_mode = zone_mode;     // P1371
-	ze_tier_m = zone_tier_mom; ze_tier_k = zone_tier_ksf;
+	filemode = 0;
 	bytes = 0; fh = fopen(MapSet_Path(ze_map), FILE_READ);
 	if (fh >= 0)
 	{
@@ -521,7 +521,7 @@ void() ZoneEdit_SettingsOpen =
 			n = tokenize(line);
 			if (n != 2) continue;
 			if (strcmp(argv(0), "gamemode") == 0)
-			if (strcmp(argv(1), "1") == 0 || strcmp(argv(1), "2") == 0) ze_mode = stof(argv(1));
+			if (strcmp(argv(1), "1") == 0 || strcmp(argv(1), "2") == 0) ze_mode = filemode = stof(argv(1));
 			for (i = 0; i < MAPSET_COUNT; i = i + 1)
 				if (strcmp(argv(0), MapSet_Name(i)) == 0)
 				if (MapSet_Valid(i, stof(argv(1)))) ze_values[i] = stof(argv(1));
@@ -530,7 +530,19 @@ void() ZoneEdit_SettingsOpen =
 	}
 	ze_settings = TRUE; ze_field = ze_dim = -1; ze_history = FALSE;
 	ze_cap_open = ze_values[0];
-	ze_mode_open = ze_mode;
+	// P1371: the panel shows the mode Publish would send. The zone file's wins; a local file's
+	// mode with none in the zone file (chosen before there were zones) is staged on Save.
+	ze_mode_stage = FALSE;
+	if (zone_mode == 1 || zone_mode == 2)
+	{
+		ze_mode = zone_mode;
+		if (filemode && filemode != zone_mode)
+			ZoneEdit_Note(sprintf("The zone file says %s; your local settings say %s", zone_mode == 2 ? "Bhop" : "Surf",
+			                      filemode == 2 ? "Bhop" : "Surf"));
+	}
+	else if (filemode)
+		ze_mode_stage = TRUE;
+	ze_tier_m = ze_tier_m_open = zone_tier_mom; ze_tier_k = ze_tier_k_open = zone_tier_ksf;
 	if (sui_text_has_focus("ze_value")) sui_text_unfocus();
 };
 
@@ -610,6 +622,7 @@ void() ZoneEdit_SettingsSave =
 	local string path, part, backup, line;
 	if (!ZoneEdit_MayWrite()) { ZoneEdit_Note("Remote command refused: use the panel button"); return; }
 	if (ze_map == "" || strcmp(ze_map, zone_mapname) != 0) return;
+	if (!ze_settings) { ZoneEdit_Note("Open Map properties first"); return; }     // P1371: no stale panel values
 	if (ze_field >= 0) { ZoneEdit_SettingApply(); if (ze_field >= 0) return; }
 	for (i = 0; i < MAPSET_COUNT; i = i + 1)
 		if (!MapSet_Valid(i, ze_values[i])) { ZoneEdit_Note("Invalid value; settings not saved"); return; }
@@ -659,19 +672,18 @@ void() ZoneEdit_SettingsSave =
 		zone_maxvel = ze_values[0];
 		ze_dirty = staged = TRUE;
 	}
-	// P1371: the mode on the same terms (only one picked here); tiers are zone-only, so any change.
-	if (zone_count > 0)
-	{
-		if (ze_mode != ze_mode_open && ze_mode != zone_mode) { zone_mode = ze_mode; ze_dirty = staged = TRUE; }
-		if (ze_tier_m != zone_tier_mom) { zone_tier_mom = ze_tier_m; ze_dirty = staged = TRUE; }
-		if (ze_tier_k != zone_tier_ksf) { zone_tier_ksf = ze_tier_k; ze_dirty = staged = TRUE; }
-	}
 	if (zone_count > 0)             // with no zones yet the edit stays pending for the next save
-	{
 		ze_cap_open = ze_values[0];
-		ze_mode_open = ze_mode;
-	}
-	if (staged || (ze_dirty && zone_maxvel == ze_values[0]))
+	// P1371: mode and tiers, only as set in this panel, go straight into the table's zone-file
+	// fields, zones or not: Save zones writes them whenever the table has zones.
+	if (ze_mode_stage && ze_mode != zone_mode) { zone_mode = ze_mode; staged = TRUE; }
+	if (ze_tier_m != ze_tier_m_open) { zone_tier_mom = ze_tier_m; staged = TRUE; }
+	if (ze_tier_k != ze_tier_k_open) { zone_tier_ksf = ze_tier_k; staged = TRUE; }
+	ze_mode_stage = FALSE; ze_tier_m_open = ze_tier_m; ze_tier_k_open = ze_tier_k;
+	if (staged && zone_count > 0) ze_dirty = TRUE;
+	if (staged && zone_count <= 0)
+		ZoneEdit_Note("Saved locally; mode and tiers go in the zone file once it has zones (Save zones, Publish saved)");
+	else if (staged || (ze_dirty && zone_maxvel == ze_values[0]))
 		ZoneEdit_Note("Saved locally; mode, speed cap and tiers reach lobbies with the zones: Save zones, then Publish saved");
 	else
 		ZoneEdit_Note("Saved locally; reload the hosted map to apply");

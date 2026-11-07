@@ -193,7 +193,7 @@ string zone_mapname;                // what the tables were built for
 float  zone_overflow;               // hit a cap on this map
 float  zone_maxvel;                 // P841: the file's maxVelocity, 0 = none; not in zone_crc.
                                     // The server's cap comes from the engine (sv_phys.c).
-float  zone_mode;                   // P1371: "gamemode", a Momentum id (1 surf, 2 bhop), 0 = none.
+float  zone_mode;                   // P1371: "gamemode", 1 surf or 2 bhop (zone_edit's choice), 0 = none.
                                     // The engine picks the ruleset from it (sv_phys.c); not hashed.
 float  zone_tier_mom, zone_tier_ksf; // P1371: "momentumTier" / "ksfTier" 1..10, 0 = none; display only
 float  zone_stamped;                // P1181: has Momentum's dataTimestamp, which our editor never writes
@@ -1529,8 +1529,8 @@ float(string text, string path, float src) Zone_LoadJsonText =
 		zone_maxvel = json_get_float(json_find_object_child(root, "maxVelocity"));
 	if (!(zone_maxvel >= 1 && zone_maxvel <= 100000))
 		zone_maxvel = 0;
-	// P1371: the engine reads "gamemode" the same way (sv_phys.c SV_ZoneRulesetFile, ids 1..13).
-	zone_mode = Zone_JsonId(root, "gamemode", 13);
+	// P1371: the engine reads "gamemode" the same way (sv_phys.c SV_ZoneRulesetFile: 1 or 2 only).
+	zone_mode = Zone_JsonId(root, "gamemode", 2);
 	zone_tier_mom = Zone_JsonId(root, "momentumTier", 10);
 	zone_tier_ksf = Zone_JsonId(root, "ksfTier", 10);
 

@@ -1396,7 +1396,8 @@ float(string nm) ui_isgamemode =
 
   THE RULE IS THE ENGINE'S, IN THE ENGINE'S ORDER: mapmeta's gamemode id where
   the map has one, else the name prefix (SV_MapMetaLookup then
-  SV_GamemodeFromName).  Ids 2 and 3 are bhop and bhop-hl1 and BOTH end at
+  SV_GamemodeFromName); since P1371 a bhop_ map is bhop whatever the index says.
+  A zone file's "gamemode" (P1371, zone_edit) is not visible here (BACKLOG).  Ids 2 and 3 are bhop and bhop-hl1 and BOTH end at
   cfg/mode_bhop.cfg -- there is no mode_bhop-hl1.cfg, so 3 falls through to its
   category, which is bhop (SV_GamemodeCategory).
 
@@ -1420,7 +1421,7 @@ float(float row) ui_map_tick =
 
 	// "-" and a missing row both stof to 0, and there is no gamemode 0.
 	mode = stof(bufstr_get(ms_modev, row));
-	if (!mode)
+	if (mode != 3)
 		if (substring(strtolower(bufstr_get(ms_name, row)), 0, 5) == "bhop_")
 			mode = 2;
 

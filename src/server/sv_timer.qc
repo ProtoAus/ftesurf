@@ -3102,12 +3102,17 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             1036, or a Momentum import).  Teleports and doors differ
                             between the two (2shiny2shuckle's stage-2 door), so
                             it says which boards a run is comparable on.
-    startrule <jump|leave>  Patch 1371.  When the run clock started: on the jump
-                            out of the start zone (gamemode bhop/bhop-hl1,
-                            run_t_bhopjump) or on leaving it.  Absent: not
-                            recorded; a zone file or a bhop_ name can move a map
-                            between the two, so it says which boards a run is
-                            comparable on.
+    startrule <jump|leave>  Patch 1371.  The map's start rule, not this run's
+                            start: jump = the clock starts at a qualifying jump
+                            in the start zone, or on leaving it when none
+                            qualified (gamemode bhop/bhop-hl1, run_t_bhopjump);
+                            leave = on leaving it.  Absent: not recorded.
+    gamemode <name|->       Patch 1371.  serverinfo gamemode as the engine
+                            resolved it at map load (sv_phys.c: sv_gamemode, the
+                            zone file, mapmeta, the name); - = base ruleset.  A
+                            zone file can move a map between modes, and a board
+                            row holds neither this nor startrule, so it says
+                            which rules a run was timed under.
     filtermatch 1           Patch 1367.  filter_activator_name matched as Source's
                             CFilterName: "!player" is any player, other names
                             case-insensitive with `*` ending a prefix.  Absent:
@@ -5775,6 +5780,7 @@ void(entity e) SV_RecOpen =
 	SV_RecPut(e, strcat("contexts ", (vbsp_ctx_on && vbsp_io_on) ? "1" : "0"));     // Patch 1036, additive
 	SV_RecPut(e, "filtermatch 1");     // Patch 1367, additive
 	SV_RecPut(e, strcat("startrule ", run_t_bhopjump ? "jump" : "leave"));     // Patch 1371, additive
+	SV_RecPut(e, strcat("gamemode ", serverkey("gamemode") != "" ? serverkey("gamemode") : "-"));     // Patch 1371, additive
 	/*
 	  BUILD 76: WHICH OF THE TWO CLOCKS TIMED THIS RUN.  `counted` or `sampled`.
 
