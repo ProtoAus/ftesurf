@@ -1952,11 +1952,14 @@ float() RampWear_Allowed =
 	return TRUE;
 };
 
+float(float reqid, float code, string body) Report_Reply;   // P1391, cl_report.qc
+
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
 	local string fn;
 	local int kr;
 
+	if (Report_Reply(reqid, responsecode, resourcebody)) return;
 	if (RampWear_Reply(reqid, responsecode, resourcebody)) return;
 	if (TASShare_Reply(reqid, responsecode, resourcebody)) return;
 	if (ok_req)

@@ -173,6 +173,7 @@ void() CSQC_WorldLoaded =
 	MA_Reset();
 	LineGraph_Reset();
 	Trail_Reset();
+	Report_Init();                  // P1391: F3 opens the report panel unless F3 is bound
 	RG_Reset();                     // Patch 746: and the race ghost's two PB slots
 	MapMsg_Reset();                 // Patch 870: no text or fade carried across a map change
 	Trail_RequestReset();
@@ -443,6 +444,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Spec_RegisterCvars();           // Patch 385, spectate
 	MPad_RegisterCvars();           // Patch 390, the mouse pad
 	KC_Register();                  // Patch 762, config_menu and the key hints
+	Report_RegisterCvars();         // P1391, the report panel (F3)
 	HE_MigrateDefaults();           // Patch 641: after every HUD registration above
 	Ev_Register();                  // build 54, the trigger/entity inspector
 	ZoneEdit_Register();            // Patch 669, the zone editor
@@ -1482,6 +1484,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		return TRUE;
 	if (KC_CaptureEvent(evtype, scanx, chary, devid))   // Patch 762: a key being bound takes any key
 		return TRUE;
+	if (Report_InputEvent(evtype, scanx, chary, devid))  // P1391: while open every press is the panel's
+		return TRUE;
 	// A release of the editor's press is still its own after closing/changing modes.
 	if (evtype == IE_KEYUP)
 		if (ZoneEdit_InputEvent(evtype, scanx, chary, devid)) return TRUE;
@@ -1827,6 +1831,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 		if (chary < 32 || chary > 126)
 			return TRUE;                // the fields are ASCII
 		TASTimeline_RecipeHasFocus(); // abandon stale focus if chat/another cursor owns it
+		if (Report_Paste(chary)) return TRUE;    // P1391
 		if (HUD_EditPaste(chary)) return TRUE;   // Patch 901: the ghost offset field
 		if (Account_Paste(chary)) return TRUE;
 		if (Chat_Paste(chary)) return TRUE;
@@ -2392,6 +2397,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		*/
 		HUD_EditDraw(scr);
 		KC_Draw(scr);                   // Patch 762: closes itself if another panel takes the mouse
+		Report_Draw(scr);               // P1391: likewise
 		HUD_EditRoundTest(scr);     // Patch 642's arm; draws only while asked
 
 		// The save-lock hold's deadman.  Here rather than inside SaveLoc_Draw
@@ -2720,6 +2726,8 @@ float(string cmd) CSQC_ConsoleCommand =
 		return Gfx_Console();
 	if (argv(0) == "config_menu")      // Patch 762
 		return KC_Console();
+	if (Report_Console())           // P1391: `report`
+		return TRUE;
 
 	// Patch 372.  `vote key <scan> <0|1>` runs the whole input chain, so a harness
 	// proves the handlers' ORDER, which cl_vote.qc's own handles cannot reach.

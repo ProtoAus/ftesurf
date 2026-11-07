@@ -335,4 +335,6 @@ shared/sh_tasdirectory.qc
 client/cl_tasshare.qc
 // Patch 1195: prederror reports; cl_triggers/cl_chat/cl_warpop call it through prototypes.
 client/cl_prederr.qc
+// P1391: the report panel. After cl_keycfg.qc (KC_Button, KC_TextW) and cl_prederr.qc (PE_Local).
+client/cl_report.qc
 client/cl_main.qc
