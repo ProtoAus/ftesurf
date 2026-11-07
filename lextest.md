@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1372 new historical warm save -- owner check pending
+
+Delivery status is in tools/p1372-warm-stream.md. Create ONE NEW save from your
+current run's rewind cursor, then hold-load it: does the body match that cursor,
+keep its nonzero timer and continue recording when released? Test a newly made
+save, not an old file missing recorder metadata. Controlled ordinary warm cases
+pass; the owner's original zero-clock case is not generally reproduced/fixed.
+Existing cold-cut duration errors and full TAS continuation remain unqualified.
+
 ## P1369 lobbies use mapmeta.txt, bhop maps 100 tick -- LIVE on 12 lobbies 7 Nov; owner check pending
 
 - On a lobby, `movement` on agtricks or df_cavernish says "bhop ... from mapmeta"; on bhop_badwater it says

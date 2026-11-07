@@ -1202,11 +1202,14 @@ From the two independent reviews of 28 Oct. Every case stays TAS-flagged; none r
   open the workshop from a key while holding MOUSE2 (`+jump`) and the jump stays held,
   feeding a Live-keys Advance. Pass releases through unless the press was ours.
 
-## Historical REC14 streamed rewind state
+## Historical REC14 streamed rewind state -- remaining qualification
 
-- Sites: `SV_RewindWriteState` / `SV_RecRewindStream`; ordinary non-TAS rewind
-  callers still need historical mover-command state in their streamed snapshots.
-  The snapshot omits `recmc`/`recmcv`, which current-format stream restore requires.
+- Sites: `SV_RewindWriteState` / `SV_RecRewindStream`. P1372 captures/writes the
+  selected snapshot's recorder metadata for NEW historical streamed saves. Ordinary
+  warm standing/crouched, actual client cursor/save/load and recording continuation
+  pass; baseline ACTS but loses recording after load. Its saved clock was NOT zero.
+  Existing incomplete saves, the owner's original zero-clock reproduction, varying
+  nonzero native counter tuples and the full TAS/unavailable-state arms remain open.
 - P1066 protects TAS edit/replay and tick-back by refusing before mutation; this
   does not implement general historical stream restoration.
 - Falsifier: a current-format streamed running attempt rewinds to an exact warm

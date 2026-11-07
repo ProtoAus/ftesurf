@@ -8883,6 +8883,16 @@ See `tools/OFFRAMP_CONTACT.md`; private diagnostic builds NEVER ship.
 
 ## Rewind (Patch 477)
 
+P1372 controlled warm-save finding (7 Nov): a positive saved clock does NOT prove
+recording reattached. Frozen P1366 ACTED on STREAM, kept its positive clock, then
+reported recording0 after load; the complete selected-row metadata subject kept
+recording1. Preserve the falsified zero-clock prediction. Earlier buffered arms
+had not exercised that path: bare +rec_stream before registration was not an acting
+setter; +set rec_stream1 was. A live GUI rewind also needs its ordinary second-T
+confirmation. Use actual client hold/load to leave browsing, not raw server load
+while its client browser remains open. These controls do not qualify old cold-cut
+duration, full TAS, varying nonzero counter tuples or the owner's original case.
+
 P1118: normal loading must bind selected-row identity, existing view-clock
 validation and application to ONE byte/row-confirmed buffered state before
 Spec/Watch/recorder/body changes. A precheck followed by reopening the file is

@@ -21,6 +21,9 @@
 
 ## next
 
+### P1372 Historical warm saves keep recording
+- Newly created saves from a live rewind retain the recorder state needed to keep recording after a warm load. Existing incomplete saves and old cold-rewind duration errors are unchanged.
+
 ### P1369 Lobbies use the same map list as your game; every bhop map runs 100 tick
 - The lobbies now read each map's Momentum mode, tier and stage count from the same list your installed game uses, so a map plays by the same rules online and offline, and lobbies show the tier.
 - agtricks, df_cavernish, df_yungstrafe08 and kz_bkz_goldbhop_v2 run bhop rules on the lobbies now (100 tick, air acceleration 1000, timer starts on the jump), as they already did offline.

@@ -3594,7 +3594,9 @@ void(entity e) SV_SaveLocCreate =
 #define RW_SLOWCAP   1800       // ~29 minutes past the dense two; +0.85 MB a running player
 #define RW_PLAYBASE  (RW_CAP + RW_SLOWCAP) // one private live-play anchor, not another ring
 #define RW_STATEBASE 10
-#define RW_STATECOLS 60         // Patch 840: 55-64 the slow-clock state
+#define RW_MCBASE    69         // selected REC14 recorder/mouse-command ledger, not live head
+#define RW_MCCAP     (RW_MCBASE + 9)
+#define RW_STATECOLS (RW_MCCAP + 1 - RW_STATEBASE)
 #define RW_NATIVEBASE (RW_STATEBASE + RW_STATECOLS) // P1061: token, native dense slot
 #define RW_SPLITBASE (RW_NATIVEBASE + 2)
 #define RW_CPBASE    (RW_SPLITBASE + FS_MAXSPLITS)

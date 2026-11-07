@@ -57,6 +57,17 @@ void(entity e, float b) SV_RewindStateSample =
 	m[b+66] = SV_ViewSeconds(e);
 	m[b+67] = e.rec_rec_views;
 	m[b+68] = e.rec_rec_parks;
+	// Same tuple as SV_RecSaveKeys, captured with THIS row before the head moves.
+	m[b+RW_MCBASE] = e.rec_mc_n;
+	m[b+RW_MCBASE+1] = e.rec_mc_bad;
+	m[b+RW_MCBASE+2] = e.rec_mc_badrow;
+	m[b+RW_MCBASE+3] = e.rec_mc_sup;
+	m[b+RW_MCBASE+4] = e.rec_mc_ring_x;
+	m[b+RW_MCBASE+5] = e.rec_mc_ring_y;
+	m[b+RW_MCBASE+6] = e.rec_mc_read_x;
+	m[b+RW_MCBASE+7] = e.rec_mc_read_y;
+	m[b+RW_MCBASE+8] = e.rec_mc_read_z;
+	m[b+RW_MCCAP] = 1;
 	m[b+RW_NATIVEBASE] = m[b+RW_NATIVEBASE+1] = 0;
 	if (e.run_tas_mode && e.run_tas_rwcap)
 	if (b < RW_CAP * RW_STRIDE)
@@ -194,8 +205,12 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	}
 	bytes = ((int)m[b+52] << 16i) | (int)m[b+53];
 	if (stream)
-	if (bytes <= 0i || bytes > FS_RECCOPY_MAX)
-		return FALSE;
+	{
+		if (bytes <= 0i || bytes > FS_RECCOPY_MAX)
+			return FALSE;
+		if (m[b+35] >= 14 && m[b+RW_MCCAP] != 1)
+			return FALSE; // no queue/file mutation or borrowed current-head ledger
+	}
 	path = SL_RecPath(id);
 	if (bytes > 0i)
 	{
@@ -295,6 +310,11 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	if (bytes > 0i)
 	{
 		fputs(f, sprintf("recbytes %s\nrecstream %d %d %d\n", itos(bytes), m[b+35], m[b+36], m[b+37]));
+		if (m[b+35] >= 14)
+		{
+			fputs(f, sprintf("recmc %d %d %d %d\n", m[b+RW_MCBASE], m[b+RW_MCBASE+1], m[b+RW_MCBASE+2], m[b+RW_MCBASE+3]));
+			fputs(f, sprintf("recmcv %.10g %.10g %.10g %.10g %d\n", m[b+RW_MCBASE+4], m[b+RW_MCBASE+5], m[b+RW_MCBASE+6], m[b+RW_MCBASE+7], m[b+RW_MCBASE+8]));
+		}
 		fputs(f, sprintf("recrows %d %d %d %d\n", m[b+38], m[b+39], m[b+40], m[b+41]));
 		fputs(f, sprintf("recstate %d %d %d %d\n", m[b+42], m[b+43], m[b+44], m[b+45]));
 		fputs(f, sprintf("recsess %d %d\n", m[b+46], m[b+47]));
