@@ -5891,6 +5891,19 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+- **P1358 cold prop-lighting tails (7Nov2026).** Ceaseless's first-route
+  PrepareFrame231ms was231ms in22 new exact static-prop light solves, not PVS/
+  world/shader setup. `HL2_CalcModelLighting` redundantly solved the raw cube for
+  Values and Cube; exact unsuppressed reuse keeps all72 native cube comparisons
+  bit-identical. Never share the approximate/dynamic or baked-suppressed paths.
+  Cold-lighting ABBA MUST force a rendered opposite reuse-control value before
+  each arm; merely writing1 twice leaves the second on arm warm and falsely
+  improves its tails. Assets/world were prewarmed, lighting reset, not first-ever
+  loading. Clean14s worst249->67ms and1%123-124->188-194FPS are partial-route
+  results, not typical warmed lows or elimination of all hitches. Public source,
+  limits and delivery status: `tools/p1358-prop-cube-reuse.md`. Keep the original
+  five-map baseline unchanged; do not fold new cold/warm workloads into one table.
+
 **P1342/P1343 save-chain and relative-teleport controls (6Nov2026).** Exact QC
 helpers run in actual dedicated CPU VM: window22/release21, baseline10/8 intended
 failures; relative24, baseline7; subjects0 and compiler0warnings. Optional stat207

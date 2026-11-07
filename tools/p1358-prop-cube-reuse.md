@@ -61,10 +61,47 @@ slower frames advance the replay farther, grouping later new-prop solves into
 larger bursts. 0.1% tails here contain only9-10 frames. Do not extrapolate this
 short partial route to whole-map, warmed/GPU, player-specific or installed FPS.
 
-## Clean committed build / comparison / delivery
+## Clean committed build and comparison
 
-PENDING: exact committed native+three-VM build, clean native cold-lighting ABBA,
-source publication and guarded dual-Windows native-only activation/hash/rollback
-readback. No actual installed VM/config/cache/player-data replacement, Pi/backend
-restart, release or QC Build bump is needed for this client-renderer-only change.
+Exact source/tag above rebuilt through the existing `src/build.ps1 -Engine -Full
+-NoDeploy -Jobs8 -FteRoot <clean engine>` entrypoint, paired QC build source
+`2ec6ec8e863072f07316212e37ae5cfcd1cc3fae` (metadata/docs only). Three VMs each
+compile0warnings. Native74existing compiler warnings have EXACTLY the control's
+normalized filename/message multiset: no new signatures or increased counts.
+Clean full client SHA256:
+`36e22f63f8030e0c6cc76d6478d37e419c9a44be6de87da0e82d8abcb62b488e`.
+
+The full clean, UNINSTRUMENTED tagged product repeats the matched14s cold-lighting
+ABBA above, with default1357 grid guard1 retained, same assets/frozen programs,
+normal64rays/scale2 and identical rendered cold-state resets for all4arms:
+
+| Clean arm | Average FPS | 1% low | 0.1% low | Worst frame ms |
+| --- | --- | --- | --- | --- |
+| Off-a |695 |123 |17 |248.95 |
+| On-a |708 |194 |34 |67.04 |
+| On-b |704 |188 |33 |66.63 |
+| Off-b |698 |124 |17 |248.33 |
+
+Same partial-route, small-tail and prewarmed-assets limits apply. This is a
+lighting-cache first-traversal test, not typical warmed Ceaseless lows; do not
+replace the historical five-map baseline or claim all remaining hitches fixed.
+All arms have positive replay motion and0/1 witnesses. Final native tag/defaults
+and normal64-ray witnesses pass. Native source/tag pushed7Nov2026UTC.
+
+Preserve the early RAM-admission refusal (no game started; unchanged4096MiB/60s
+gate). Only this session's ancestry-verified LSP workers were released to restore
+headroom; no owner/peer game or other session process was killed. Also retain the
+incremental build's identity failure: correct new lighting DLL, but unchanged
+engine objects carried1357's stamp. The new lightweight1358 tag was not used by
+default git-describe. Converted ONLY our then-unpublished tag to annotated at the
+same source SHA and used the previous working FULL build path; native client and
+server byte checks then confirmed the exact1358 stamp before the new immutable
+full-build capture. No identity gate relaxation, source edit or regraded failure.
+The old partial-build captures and immutable inputs remain separate.
+
+## Actual delivery boundary
+
+PENDING: guarded dual-Windows native-only activation/hash/rollback readback.
+No actual installed VM/config/cache/player-data replacement, Pi/backend restart,
+release or QC Build bump is needed for this client-renderer-only change.
 Human prop-lighting appearance/feel acceptance remains pending, not invented.
