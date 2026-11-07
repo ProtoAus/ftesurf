@@ -259,6 +259,7 @@ float  tf_ctxmode;              // Patch 1037: TF_EvalD as if the server judges 
 float  tf_rtmode;               // P1405: judge filter_activator_name against tf_rtname (the lobby's *tn)
 string tf_rtname;
 string tg_myname;               // P1405: *tn, read once per predicted command
+float  tg_tnlive;               // P1405: serverinfo fs_tn is "1", read with it
 float  tg_c_fname;              // P1405: triggers kept behind a name filter, judged per touch
 float  tg_ctx_live;             // serverinfo fs_contexts is not "0", read each frame
 float  tg_grav_srv;             // P1211: serverinfo fs_grav is "1" (the server's engine applies gravity per command)
@@ -2031,7 +2032,10 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 	if (!tg_n) return;
 	tg_cv_debug = cvar("cl_trigdebug");
 	if (tg_c_fname)
+	{
 		tg_myname = getplayerkeyvalue(player_localnum, "*tn");   // P1405
+		tg_tnlive = (serverkey("fs_tn") == "1");                 // a lobby without it: the server's, as before
+	}
 
 	if (seq < tg_lastseq || (seq == tg_lastseq && predmove_offset <= tg_lastoffset))
 		TG_ChainStart(seq);
@@ -2109,6 +2113,8 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 			continue;                   // Patch 1037: the server judges its filter on contexts
 		if (tg_ent[i].tg_fname)
 		{
+			if (!tg_tnlive)
+				continue;
 			tf_rtmode = 1;              // P1405: the name the lobby last published
 			tf_ctxmode = 1;
 			tf_rtname = tg_myname;
@@ -2590,7 +2596,7 @@ void() Trig_LoadForMap =
 		// P1405: a verdict that turns only on the player's name is judged per touch against the lobby's *tn
 		// (contexts judged as the server would, so a context part keeps it the server's). Events, slots whose
 		// own rows the mirror replays, zone boxes and lobbies without names stay the server's.
-		if (r == TFR_UNKNOWN && !tf_over && serverkey("fs_tn") == "1")
+		if (r == TFR_UNKNOWN && !tf_over)   // fs_tn is read per touch: it can arrive after a changelevel's load
 		if (!tg_ent[i].tg_isbox && tg_kind[i] != TG_EVENT && !TG_IOSource(i))
 		{
 			tf_rtmode = 1;
