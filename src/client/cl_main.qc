@@ -691,6 +691,9 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	  whole gain is latency; none of it is frame cost.
 	*/
 	registercvar("vbsp_glare_adaptive", "8");
+	// P1373 (cl_sprites.qc): an eye jump past this many units drops every glare's answer; 0 keeps them.
+	registercvar("vbsp_glare_jump", "256");
+	registercvar("vbsp_glare_check", "0");
 
 	/*
 	  BUILD 61 -- SPEND RAYS TO A DEADLINE, NOT TO A QUOTA PER FRAME.

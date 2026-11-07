@@ -223,6 +223,21 @@ float  spr_gvis[SPR_MAX];               // last trace: 1 = centre point visible
 float  spr_glare[SPR_MAX];              // 0..1, ramped toward spr_gvis
 float  spr_gtraced[SPR_MAX];            // 0 = never traced; else the visit count
 float  spr_gnext;                       // round-robin cursor for the trace budget
+// P1373: answers only change when traced, and a glare outside the view is not traced, so after a
+// teleport one turned to later drew its old place's answer, through a wall, until the cursor came
+// round. An eye jump past vbsp_glare_jump hides every glare and marks each traced answer stale
+// (spr_gvis -1: target 0) until it is traced from here. The sweep keeps its ray budget:
+// a 4x burst after each jump cost Tensor2's 1% low 225/239 -> 184/174 fps over 24 teleports.
+vector spr_geye;                        // last frame's eye
+float  spr_gspeed;                      // and its speed, u/s
+float  spr_gjlast;                      // last frame was a jump: this one only records the new speed
+float  clframetime;                     // also cl_watch.qc's; the engine's host_frametime, bound by name
+float  spr_gjumps;                      // jumps seen (vbsp_glare_check)
+vector spr_gpr, spr_gpu;                // this frame's view right/up, for the check's corners
+float  spr_gchk, spr_gwall, spr_gwallf, spr_gchkf, spr_gframes;  // vbsp_glare_check: on; walled glares; frames with one; this frame's; frames
+float  spr_gepoch;                      // jumps since boot; never reset
+float  *spr_gep;                        // the epoch each glare was last traced in
+float  spr_gstale;                      // vbsp_glare_check: walled glares drawn on an answer from before the last jump
 
 /*
   P1218: Source draws sprites and shafts from the PVS; these polygons have none, and the
@@ -1974,7 +1989,7 @@ void(vector a, vector b, vector c, vector d, string mat, float flags,
 */
 void() Sprite_Glare =
 {
-	local float  i, n, budget, decay, target, step, back;
+	local float  i, n, budget, decay, target, step, back, jmp, spd;
 	local vector eye, d;
 	// BUILD 58: the proxy rays.
 	local float  rays, hits, off;
@@ -2059,6 +2074,8 @@ void() Sprite_Glare =
 	fwd = v_forward;
 	pr = v_right;
 	pu = v_up;
+	spr_gpr = pr;
+	spr_gpu = pu;
 
 	/*
 	  BUILD 59 -- DO NOT SPEND RAYS ON GLARES THAT CANNOT PRODUCE A PIXEL.
@@ -2209,6 +2226,34 @@ void() Sprite_Glare =
 		spr_gquota = vmax;
 	}
 
+	// A jump is also a step change in speed (1.5x last frame's + 1500 u/s): a hitch, a low frame rate or a
+	// 4x replay moves far in a frame at a steady speed, while a 300-unit block reset at 30 fps is 9000 u/s.
+	// Over clframetime, the real frame: CSQC's frametime is the interpolation clock, packet-stepped online.
+	jmp = cvar("vbsp_glare_jump");
+	spd = vlen(eye - spr_geye) / max(clframetime, 0.0001);
+	// The frame after a jump is not tested: a new steady speed (a replay switched to 4x, play after a
+	// pause) would otherwise beat the stale one every frame. A teleport on that very frame is missed.
+	if (spr_gjlast)
+		spr_gjlast = FALSE;
+	else if (vlen(eye - spr_geye) > ((jmp > 0) ? jmp : 256) && spd > spr_gspeed * 1.5 + 1500)
+	{
+		spr_gjlast = TRUE;
+		spr_gjumps = spr_gjumps + 1;    // counted with the reset off too, for vbsp_glare_check
+		spr_gepoch = spr_gepoch + 1;
+		if (jmp > 0)
+		{
+			for (i = 0; i < spr_n; i = i + 1)
+			{
+				spr_glare[i] = 0;
+				if (spr_gtraced[i])
+					spr_gvis[i] = -1;
+			}
+		}
+	}
+	spr_geye = eye;
+	spr_gspeed = spd;
+	if (!spr_gep)
+		spr_gep = memalloc(sizeof(float) * SPR_MAX);
 	n = 0;
 	visits = 0;
 	wrapped = FALSE;
@@ -2405,9 +2450,10 @@ void() Sprite_Glare =
 		*/
 		had = spr_gtraced[i];                   // 0 = this is its first ever answer
 		spr_gtraced[i] = had + 1;               // one visit; never reset, see the decl
+		spr_gep[i] = spr_gepoch;
 
 		docorners = (rays > 1);
-		if (docorners && !hits && adapt > 0 && had >= 1 && spr_gvis[i] <= 0)
+		if (docorners && !hits && adapt > 0 && had >= 1 && spr_gvis[i] <= 0)	// P1373: a stale -1 too
 		{
 			// due when count == index (mod adapt+1).  `m` is set once per frame.
 			if ((spr_gtraced[i] - floor(spr_gtraced[i] / m) * m)
@@ -2417,6 +2463,7 @@ void() Sprite_Glare =
 			{
 				docorners = FALSE;              // centre blocked, and it was blocked before
 				spr_gcheap = spr_gcheap + 1;
+				spr_gvis[i] = 0;                // P1373: a stale answer, centre blocked from here: the same bound
 			}
 		}
 
@@ -2451,7 +2498,7 @@ void() Sprite_Glare =
 		}
 		else if (rays == 1)
 			spr_gvis[i] = hits;        // no corners exist to skip; always a full answer
-		// else: the cheap path took 0 and left spr_gvis alone, which already IS 0.
+		// else: the cheap path took 0 and wrote it (a stale -1 included).
 		//
 		// spr_gtraced was incremented once, above, on every one of these paths --
 		// it counts VISITS, not answers, so nothing is written back here.  The
@@ -2532,7 +2579,7 @@ void() Sprite_Glare =
 		  including the ones behind walls -- which is exactly the artefact this
 		  whole function exists to remove.
 		*/
-		target = spr_gtraced[i] ? spr_gvis[i] : 0;
+		target = (spr_gtraced[i] && spr_gvis[i] > 0) ? spr_gvis[i] : 0;	// P1373: -1 is stale
 
 		if (spr_glare[i] < target)
 		{
@@ -2545,6 +2592,37 @@ void() Sprite_Glare =
 			if (spr_glare[i] < target) spr_glare[i] = target;
 		}
 	}
+};
+
+// P1373 vbsp_glare_check: a glare drawn this frame whose five proxy rays (Sprite_Glare's shape) are all blocked
+// now, i.e. drawn through a wall. Costs five rays per drawn glare; 2 prints the totals and resets.
+void(float i, vector eye) Sprite_GlareCheck =
+{
+	local vector d, aim;
+	local float back, off, k;
+	local entity pass;
+
+	d = spr_org[i] - eye;
+	back = glowp_backoff[spr_pset[i]];
+	aim = (vlen(d) > back) ? spr_org[i] - normalize(d) * back : spr_org[i];
+	off = back * 0.70710678;
+	pass = spr_gskip[i];
+	if (pass == world)
+		pass = spr_gtracer;
+	for (k = 0; k < 5; k = k + 1)
+	{
+		if (k == 0) traceline(eye, aim, MOVE_NOMONSTERS, pass);
+		if (k == 1) traceline(eye, aim + (spr_gpr + spr_gpu) * off, MOVE_NOMONSTERS, pass);
+		if (k == 2) traceline(eye, aim + (spr_gpr - spr_gpu) * off, MOVE_NOMONSTERS, pass);
+		if (k == 3) traceline(eye, aim - (spr_gpr - spr_gpu) * off, MOVE_NOMONSTERS, pass);
+		if (k == 4) traceline(eye, aim - (spr_gpr + spr_gpu) * off, MOVE_NOMONSTERS, pass);
+		if (trace_fraction >= 1)
+			return;
+	}
+	spr_gwall = spr_gwall + 1;
+	spr_gchkf = spr_gchkf + 1;      // per frame, folded into spr_gwallf by Sprite_Draw
+	if (spr_gep[i] < spr_gepoch)
+		spr_gstale = spr_gstale + 1;    // its answer was traced before the last jump
 };
 
 // P1218: the sky state of one sprite (i < spr_n) or beam (i - spr_n), from this eye.
@@ -2732,6 +2810,20 @@ void() Sprite_Draw =
 	ub = cvar("vbsp_sprite_under_rays");
 	if (useglare_on)
 		Sprite_Glare();
+	if (spr_gchkf > 0)
+		spr_gwallf = spr_gwallf + 1;    // last frame drew one through a wall
+	spr_gchkf = 0;
+	spr_gchk = useglare_on ? cvar("vbsp_glare_check") : 0;
+	if (spr_gchk >= 2)
+	{
+		print(sprintf("vbsp_glare_check: %g glares drawn with every proxy ray blocked (%g on an answer from before the last eye jump), in %g of %g frames; %g eye jumps (vbsp_glare_jump %g)\n",
+		              spr_gwall, spr_gstale, spr_gwallf, spr_gframes, spr_gjumps, cvar("vbsp_glare_jump")));
+		spr_gwall = spr_gwallf = spr_gframes = spr_gjumps = spr_gstale = 0;
+		cvar_set("vbsp_glare_check", "1");
+		spr_gchk = 1;
+	}
+	if (spr_gchk)
+		spr_gframes = spr_gframes + 1;
 
 	dbg = cvar("vbsp_sprite_debug");
 	if (dbg)
@@ -2909,6 +3001,8 @@ void() Sprite_Draw =
 				}
 				if (glare < 1)
 					g_fading = g_fading + 1;
+				if (spr_gchk)
+					Sprite_GlareCheck(i, eye);
 				flags = flags | DRAWFLAG_NODEPTHTEST;
 			}
 			else
@@ -3074,6 +3168,8 @@ void() Sprite_Draw =
 		}
 		if (glare < 1)
 			g_fading = g_fading + 1;
+		if (spr_gchk)
+			Sprite_GlareCheck(i, eye);
 
 		/*
 		  The distance ramp, c_lightglow.cpp:36-47.  This is the half of the
