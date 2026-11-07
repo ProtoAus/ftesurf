@@ -1,5 +1,13 @@
 # AGENT_NOTES.md
 
+## P1379 boardarchive.py (8 Nov 2026; ftesurf-3a)
+
+- After a map's mode changes, its old WOS times are archived by hand on the Pi:
+  `cd /srv/nvme/surfd && python3 -I boardarchive.py archive --map M --label surf [--apply]`, restore with
+  `restore --map M --label surf [--park-live-as bhop] --apply`. Tiers "mode:<label>:" (inside "banned:").
+  Standalone sqlite: never import surfd on the Pi (surfd.py there is a guarded-generation stub).
+  Record: tools/p1379-boardarchive.md.
+
 ## P1376 video defaults, P1373 glare reset on eye jumps (8 Nov 2026; ftesurf-1d, root lows2-20261107-opus)
 
 - vid_multisample applies at once on any engine with P1260 (scene MSAA target, gl_backend.c MSAA_Samples

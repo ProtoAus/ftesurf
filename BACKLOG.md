@@ -23,9 +23,9 @@
 
 - Ranked rows key on (map, track, leg, tier, style, player) (surfd.py ~1256). A zone admin publishing a
   "gamemode" moves a map between surf and bhop physics and start rules, with older rows left on the same
-  board. Runs record `gamemode`, `startrule`, `tickrate` and pmpin since P1371; surfd compares none of
-  them with the board's current rule. The verifier is unaffected (it replays each run's own pmpin and
-  movetickrate, sv_ccmds.c pm_verify).
+  board. P1379: surfd/boardarchive.py archives/restores a map's WOS times on purpose (owner's choice;
+  automatic detection failed review, tools/p1379-boardarchive.md). Parked rows still count in Story,
+  the people directory (up to an hour) and admin ban/stage counts. The verifier is unaffected.
 - zone_crc covers neither the mode nor the tiers: zonepub's crc completion/refusal and the client's
   Zone_WantsServer cannot see a mode- or tier-only publish, and a zoner editing an older copy republishes
   without another zoner's mode (as P841's maxVelocity already can). zonepub.validate does not check the
