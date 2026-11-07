@@ -926,6 +926,7 @@ void(float t) SaveSync_Event =
 			fremove(strcat(SaveSync_There(id), "run.view"));
 			fremove(strcat(SaveSync_There(id), "seq.txt"));
 			fremove(strcat(SaveSync_There(id), "trail.txt"));
+			SaveLead_Forget();      // P1384
 			c = SaveSync_FindHere(o, p, y, FALSE);
 			if (c >= 0)
 			if (!SaveSync_CopyPic(strcat(SaveSync_Here(ss_cid[c]), "trail.txt"), strcat(SaveSync_There(id), "trail.txt"), o))

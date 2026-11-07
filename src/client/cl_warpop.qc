@@ -636,8 +636,9 @@ float() WarpOp_Release =
 	// pending non-refused loads/steps may predict a new row; otherwise use the
 	// actual held speed in the SAME snapshot, never the cursor or stale HOLDVEL.
 	// P1384: a predicted load not yet acknowledged is still the hold, past WarpOp_Unanswered's
-	// 1 s too: a 1 s lead-in let go at a round trip over 1 s otherwise went blind.
-	if (wop_loadpred && !WarpOp_LoadAnswered() && !WarpOp_Pending(WOPP_STEP))
+	// 1 s too: a 1 s lead-in let go at a round trip over 1 s otherwise went blind. Not after any
+	// step in this hold, which may have moved it (an aged or refused one included).
+	if (wop_loadpred && !rec_sl_heldstep && !WarpOp_LoadAnswered())
 		v = wop_loadvel;
 	else if (WarpOp_Pending(WOPP_HOLDROW))
 	{
@@ -683,6 +684,7 @@ void() WarpOp_PracticeReturnCancel =
 	}
 	rec_sl_holding = rec_sl_holdkey = rec_sl_holdrep = rec_sl_holdseen = 0;
 	rec_sl_holdang_ok = rec_sl_wophold = rec_sl_pv_on = rec_sl_upwait = rec_sl_pred = 0;   // P1227 review 1
+	rec_sl_leadans = rec_sl_leadhad = 0;    // P1384
 	rec_sl_holdack = rec_sl_holdackat = 0;
 	Trail_RequestReset();          // do not dispatch an old deferred save/load
 };
@@ -785,6 +787,9 @@ float() WarpOp_LoadLead =
 		SaveLead_Press(wop_tgorg, wop_tgang);
 	return TRUE;
 };
+
+// P1384: a step not yet answered (SaveLead_Begin starts no travel under it).
+float() WarpOp_StepPending = { return WarpOp_Pending(WOPP_STEP); };
 
 // P1227: the load's command has reached the server and been answered (SaveLoc_LeadDone).
 float() WarpOp_LoadAnswered =

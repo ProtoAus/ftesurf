@@ -9,6 +9,7 @@ float sl_lead_next, sl_lead_finalfrom, sl_lead_pending, sl_lead_seq, sl_lead_id;
 float sl_lead_early;            // P1384: 1 from the press, 2 bound to the server's load, 3 its pose checked
 vector sl_lead_target, sl_lead_angles, sl_lead_tail;
 float sl_pic_buf, sl_pic_ticks; // P1384: the tail of one save's picture, so a press reads no file
+float sl_ev_seq, sl_ev_id, sl_ev_pic; // P1384: a load event that came before the ack of its command
 string sl_pic_path;
 
 void() SaveLead_Clear =
@@ -122,7 +123,16 @@ void(float seq, float id, float pic) SaveLead_Begin =
 {
 	local float mine;
 
-	if (rec_sl_leadans && !SaveLoc_LoadAnswered()) return;
+	sl_ev_seq = 0;
+	if (rec_sl_leadans && !SaveLoc_LoadAnswered())
+	{
+		// Kept: a stat can beat the ack (cl_parse.c skips it on an invalid delta); SaveLead_Camera
+		// takes it once the ack covers the load and no newer event has come.
+		sl_ev_seq = seq;
+		sl_ev_id = id;
+		sl_ev_pic = pic;
+		return;
+	}
 	mine = rec_sl_leadans;
 	rec_sl_leadans = FALSE;
 	if (mine && sl_lead_early == 1 && sl_lead_buf >= 1 && id == sl_lead_id)
@@ -137,7 +147,8 @@ void(float seq, float id, float pic) SaveLead_Begin =
 	if (!pic) return;
 	if (pic < 0) { SaveLead_NoPath(); return; }
 	if (!SaveLead_Ready()) return;
-	if (cltime - rec_sl_leadt0 > SL_LEAD_LATE) return;
+	if (cltime - (mine ? rec_sl_leadt0 : rec_sl_stept0) > SL_LEAD_LATE) return;
+	if (WarpOp_StepPending()) return;      // the body is going on to another save
 	if (tr_raw < 1 || buf_getsize(tr_raw) < 2) { SaveLead_NoPath(); return; }
 	// Copy NOW: later HOLD/endpoint stats must never retry against mutable tr_raw.
 	if (!SaveLead_Copy(tr_raw, bound(0, cvar("cl_sl_leadin"), 2))) { SaveLead_Clear(); return; }
@@ -316,6 +327,13 @@ float() SaveLead_Camera =
 	local string row;
 
 	sl_lead_applied = FALSE;
+	if (sl_ev_seq && rec_sl_leadans && SaveLoc_LoadAnswered())
+	{
+		t = sl_ev_seq;
+		sl_ev_seq = 0;
+		if (getstatf(STAT_FS_SLSEQ) == t)
+			SaveLead_Begin(t, sl_ev_id, sl_ev_pic);
+	}
 	if (sl_lead_buf < 1) return FALSE;
 	// P1384: a press's travel has no seq until the server's load event binds it.
 	if (!SaveLead_Ready() || (sl_lead_early != 1 && getstatf(STAT_FS_SLSEQ) != sl_lead_seq))

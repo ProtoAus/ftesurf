@@ -142,7 +142,9 @@ float rec_sl_upwait;             // P1227: its key is up; the release waits for 
 float rec_sl_pred;               // P1384: its load rode a predicted command: the release needs no answer
 float rec_sl_leadans;            // P1384: the next load event is this press's answer (SaveLead_Begin)
 float rec_sl_leadhad;            // P1384: this press's travel started on the press
-float rec_sl_leadt0;             // P1384: the press an answer-started travel is late against (load or step)
+float rec_sl_leadt0;             // P1384: the load press its own answer is late against
+float rec_sl_stept0;             // P1384: the last step pressed while held, for its answer
+float rec_sl_heldstep;           // P1384: a step was pressed during this hold (WarpOp_Release)
 float rec_sl_holdrep;            // a repeat has been observed for THIS hold
 
 #define SL_HOLD_DEADMAN 1.5
@@ -354,6 +356,7 @@ void() SaveLoc_PredictLoad =
 
 void() SaveLead_Clear;
 void(float seq, float id, float pic) SaveLead_Begin;
+float() WarpOp_StepPending;
 void(vector org, vector ang) SaveLead_Press;     // P1384
 void(float id, float ticks, float raw, float last) SaveLead_Remember;
 void() SaveLead_Forget;
@@ -419,8 +422,18 @@ void(string c, float rep) SaveLoc_Step =
 {
 	local float op;
 
+	// P1384: a held step moves the body to another save: the travel into the last one ends now, and
+	// the press (not a key repeat, which may send nothing) is what its answer is late against.
 	if (rec_sl_holding)
-		rec_sl_leadt0 = cltime;     // P1384: its load event's travel is late against this press
+	{
+		rec_sl_heldstep = TRUE;
+		if (!rep)
+		{
+			SaveLead_Clear();
+			rec_sl_leadans = FALSE;
+			rec_sl_stept0 = cltime;
+		}
+	}
 
 	op = WOP_NEXT;
 	if (c == "sl_prev")
@@ -578,11 +591,17 @@ void() SaveLoc_Idle = { SaveLoc_Release(); rec_sl_refkey = 0; rec_sl_8held = 0; 
   not standing at -- and a second copy of a save-lock key path is exactly what
   sl_loadlast was.  See the header.
 */
+// P1384: this press's latches (SaveLead_Begin), set after its commands: SaveLoc_Cmd can let go of
+// a rewind countdown's hold (Rewind_Abandon -> SaveLoc_Release), which clears them.
+void() SaveLoc_LeadLatch =
+{
+	rec_sl_leadans = TRUE;
+	rec_sl_leadhad = rec_sl_heldstep = FALSE;
+	rec_sl_leadt0 = cltime;
+};
+
 void(float scan) SaveLoc_LoadKey =
 {
-	rec_sl_leadans = TRUE;          // P1384
-	rec_sl_leadhad = FALSE;
-	rec_sl_leadt0 = cltime;
 	// Patch 753: predicted at one command; the camera anticipation and the
 	// count-based refusal below are for the old pair of stringcmds.
 	if (WarpOp_Load())
@@ -595,6 +614,7 @@ void(float scan) SaveLoc_LoadKey =
 		rec_sl_holdseen = rec_sl_holdt0 = cltime;
 		rec_sl_upwait   = FALSE;
 		rec_sl_holdrep  = FALSE;
+		SaveLoc_LeadLatch();
 		rec_sl_pred     = WarpOp_LoadLead();    // after rec_sl_holding: SaveLead_Ready reads it
 		return;
 	}
@@ -613,6 +633,7 @@ void(float scan) SaveLoc_LoadKey =
 	rec_sl_holdseen = rec_sl_holdt0 = cltime;
 	rec_sl_upwait   = FALSE;
 	rec_sl_holdrep  = FALSE;
+	SaveLoc_LeadLatch();
 	if (rec_sl_pv_on && rec_sl_pv_t0 == cltime)
 		SaveLead_Press(rec_sl_pv_org, rec_sl_pv_ang);   // P1384: this press's SaveLoc_PredictLoad
 };

@@ -22,13 +22,24 @@ float tr_eref, tr_erefok;
 float  tr_catching, tr_catchi;  // the line is behind tr_raw; the next row it has not taken
 vector tr_catchv;               // the last recorded sample's velocity: Trail_Take's break test
 
+// A catch dropped before it finished: the slot's points are unbuilt, so it is cleared, not drawn.
+void() Trail_CatchDrop =
+{
+	if (!tr_catching)
+		return;
+	tr_catching = FALSE;
+	ln_holdslot = 0;
+	Line_Clear(tr_live);
+};
+
 void() Trail_RawClear =
 {
 	if (tr_raw >= 1)
 		buf_del(tr_raw);
 	tr_raw = buf_create_ex("string", 0);
 	tr_stitch = tr_practice = FALSE;
-	tr_catching = FALSE;
+	tr_catching = FALSE;            // the callers Line_Begin the slot right after
+	ln_holdslot = 0;
 };
 
 // One raw row into the live line, nothing else (Trail_Take keeps the sample counters).
@@ -44,8 +55,9 @@ float(string s) Trail_CatchFeed =
 	return TRUE;
 };
 
-// Up to `rows` more of tr_raw into the line. A bad row is passed over (Trail_Load used to stop
-// there: only a damaged file has one).
+// Up to `rows` more of tr_raw into the line, which is held (ln_holdslot) until it is whole: one
+// Line_End then, as each Line_End repaints the slot and unbuilt points draw one by one. A bad
+// middle row is passed over (Trail_Load stops at a cut last one).
 void(float rows) Trail_Catch =
 {
 	local float n, end;
@@ -55,8 +67,10 @@ void(float rows) Trail_Catch =
 	end = min(n, tr_catchi + rows);
 	for (; tr_catchi < end; tr_catchi = tr_catchi + 1)
 		Trail_CatchFeed(bufstr_get(tr_raw, tr_catchi));
-	if (tr_catchi >= n)
-		tr_catching = FALSE;
+	if (tr_catchi < n)
+		return;
+	tr_catching = FALSE;
+	ln_holdslot = 0;
 	Line_End(tr_live);
 };
 
@@ -77,6 +91,7 @@ void() Trail_CatchStart =
 	}
 	tr_catchi = 0;
 	tr_catching = (n > 0);
+	ln_holdslot = tr_catching ? tr_live + 1 : 0;
 	Trail_Catch(TR_CATCH);
 	if (!n)
 		Line_End(tr_live);
@@ -303,7 +318,7 @@ void(float id, float ticks) Trail_Save =
 float(float id, float ticks) Trail_Load =
 {
 	local float f, tick, saved, i, argc, timed, endt;
-	local string s;
+	local string s, last;
 	f = fopen(Trail_SavePath(id), FILE_READ);
 	if (f < 0)
 		return FALSE;
@@ -325,6 +340,7 @@ float(float id, float ticks) Trail_Load =
 	tr_contbrk = FALSE;
 	endt = timed ? ticks * tick : 99999999;
 	endt = Trail_RawClock(endt);
+	last = "";
 	for (i = 0; i < LN_CAP * 4; i = i + 1)
 	{
 		s = fgets(f);
@@ -338,9 +354,18 @@ float(float id, float ticks) Trail_Load =
 		}
 		if (stof(s) > endt)
 			break;
-		bufstr_set(tr_raw, i, s);
+		if (i)
+			bufstr_set(tr_raw, i - 1, last);
+		last = s;
 	}
 	fclose(f);
+	// One row behind: a crash mid-write leaves the last row cut, and it is kept only if it parses.
+	if (i)
+	{
+		argc = tokenize(last);
+		if (argc == 14 || argc == 15)
+			bufstr_set(tr_raw, i - 1, last);
+	}
 	Trail_CatchStart();             // P1384: the line takes these rows over the next frames
 	tr_since = 0;
 	tr_builds = tr_builds + 1;

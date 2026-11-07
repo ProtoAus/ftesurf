@@ -203,6 +203,7 @@ float  *ln_step;       // build decimation: keep every step-th sample
 float  *ln_skip;
 float  *ln_pbrk;       // a break carried from a dropped sample
 float  *ln_on;
+float  ln_holdslot;             // P1384: slot + 1 being rebuilt (Trail_Catch): neither painted nor drawn
 float  *ln_ia;     // the shown index range
 float  *ln_ib;
 float  *ln_lo;     // its speed range
@@ -2935,7 +2936,7 @@ void() Line_ViewFrame =
 	dirty = (ln_cmown != ln_ccown || ln_cmoth != ln_ccoth);
 	rd = (ln_slo != ln_cslo || ln_shi != ln_cshi);
 	for (s = 0; s < LN_SLOTS; s = s + 1)
-		if (ln_on[s])
+		if (ln_on[s] && s + 1 != ln_holdslot)
 		{
 			m = Line_Mode(s);
 			c = (LN_TRAIL(s)) ? LN_OWNCOL : ((s >= LN_S_GHOST) ? LN_GHOSTCOL : ln_rk[s]);
@@ -2959,7 +2960,7 @@ void() Line_ViewFrame =
 	// the eight static board colour caches on every arrival. Contact/energy
 	// retain their existing whole-slot classifiers rather than guessing a kind.
 	for (s = LN_S_TRAIL; s < LN_S_MORE; s = s + 1)
-		if (ln_n[s] > ln_published[s])
+		if (ln_n[s] > ln_published[s] && s + 1 != ln_holdslot)
 			Line_Paint(s, ln_cmown, ln_published[s]);
 	// Patch 645: the frame's half of lines_draw's block (Line_Native has the slot's).
 	if (ln_nat)
@@ -3794,6 +3795,8 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	local float b, i, ib, c, st, ce, k, j, ia, al, g, ge, d0, d1, wpx, stroke;
 	local vector p0, p1;
 
+	if (s + 1 == ln_holdslot)
+		return;
 	if (!ln_on[s])
 		if (!LN_TRAIL(s) || ln_n[s] < 2)
 			return;

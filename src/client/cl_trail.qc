@@ -142,7 +142,7 @@ void() Trail_Reset =
 	tr_kept = tr_kfrom = tr_emit = 0;
 	if (tr_raw >= 1)
 		buf_del(tr_raw);
-	tr_raw = tr_stitch = tr_slseq = tr_practice = tr_catching = 0;
+	tr_raw = tr_stitch = tr_slseq = tr_practice = tr_catching = ln_holdslot = 0;
 	tr_timedgo_ack = tr_saveack = tr_rep_ack = tr_rep_go = 0;
 	Trail_ReplayClear();
 };
@@ -157,6 +157,7 @@ void() Trail_Open =
 
 	Trail_Init();
 	Trail_TASDrop();
+	Trail_CatchDrop();              // P1384
 	t = tr_live;
 	tr_live = tr_prev;
 	tr_prev = t;
@@ -409,6 +410,8 @@ float(float f, float t, float riding) Trail_Take =
 		tr_contbrk = FALSE;
 		tr_stagefrom = t;
 	}
+	if (tr_catching && buf_getsize(tr_raw) >= LN_CAP * 4)
+		Trail_Settle();                     // Trail_Record keeps no more rows to catch up from
 	if (!tr_catching)                       // P1384: else Trail_Catch feeds the recorded row
 		Line_Point(tr_live, o, v, fl, t, brk, tr_stitch, [yaw, nrm_z, wsh * nrm]);
 	tr_catchv = v;
@@ -504,7 +507,6 @@ void() Trail_Frame =
 	if (sq != tr_slseq)
 	if (!CL_SaveEventsWait())
 	{
-		Trail_Settle();             // P1384: the event reads and rebuilds the whole line
 		tr_slseq = sq;
 		op = FS_SlopOp(getstatf(STAT_FS_SLOP));
 		id = FS_SlopId(getstatf(STAT_FS_SLOP));
