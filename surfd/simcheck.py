@@ -263,6 +263,10 @@ class ReadLimit(Exception):
     """No complete result is available within the selected SQL read allowance."""
 
 
+class ReadDeadline(ReadLimit):
+    """The selected read reached its scoped monotonic deadline, not its VM cap."""
+
+
 class ReadBudget:
     """Explicit connection-owner opt-in; owns the progress-handler slot per read.
 
@@ -277,14 +281,22 @@ class ReadBudget:
         self.conn = conn
         self.remaining = steps
         self.exhausted = False
+        self.deadline = None
 
     def rows(self, sql, parameters=()):
         if self.remaining <= 0:
             self.exhausted = True
             raise ReadLimit()
+        if self.deadline is not None and time.monotonic() >= self.deadline:
+            raise ReadDeadline()
         quantum = min(1000, self.remaining)
         self.remaining -= quantum
+        timed_out = False
         def progress():
+            nonlocal timed_out
+            if self.deadline is not None and time.monotonic() >= self.deadline:
+                timed_out = True
+                return 1
             if self.remaining < quantum:
                 self.exhausted = True
                 return 1
@@ -296,6 +308,8 @@ class ReadBudget:
             cursor = self.conn.execute(sql, parameters)
             return cursor.fetchall()
         except sqlite3.OperationalError:
+            if timed_out:
+                raise ReadDeadline() from None
             if self.exhausted:
                 raise ReadLimit() from None
             raise
@@ -303,6 +317,22 @@ class ReadBudget:
             if cursor is not None:
                 cursor.close()
             self.conn.set_progress_handler(None, 0)
+
+
+@contextmanager
+def _read_deadline(conn, read_budget, deadline):
+    """Scope the pass deadline to the explicitly owned selected-read budget."""
+    if read_budget is None:
+        yield
+        return
+    if read_budget.conn is not conn:
+        raise ValueError("SQL read budget belongs to another connection")
+    previous = read_budget.deadline
+    read_budget.deadline = deadline if previous is None else min(previous, deadline)
+    try:
+        yield
+    finally:
+        read_budget.deadline = previous
 
 
 def _read(conn, sql, parameters=(), read_budget=None):
@@ -692,6 +722,10 @@ def _compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
             have = _read(conn,
                 "SELECT id FROM sims WHERE (a_id = ? AND b_id = ?) OR (a_id = ? AND b_id = ?)",
                 (a_id, pr["id"], pr["id"], a_id), read_budget)
+        except ReadDeadline:
+            if budget is not None:
+                budget.time_exhausted = True
+            break  # flush prior results; this peer was never admitted
         except ReadLimit:
             break  # flush prior results; this peer was never admitted
         if have:
@@ -818,8 +852,9 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         with collector_ownership(conn) as acquired:
             if not acquired:
                 return 0, 0, _COLLECTOR_BUSY
-            return _similarity_step(conn, surfd, limit, now, tools_dir, max_pairs,
-                                    max_seconds, read_budget, budget)
+            with _read_deadline(conn, read_budget, budget.deadline):
+                return _similarity_step(conn, surfd, limit, now, tools_dir, max_pairs,
+                                        max_seconds, read_budget, budget)
     except CollectorLockUnavailable:
         return 0, 0, _COLLECTOR_UNAVAILABLE
     except sqlite3.Error as exc:
@@ -842,10 +877,11 @@ def _similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
     `limit` bounds selected source rows; `max_pairs` independently bounds admitted
     new pair attempts across all of them. Zero disables before loading support.
     Each comparison source is bounded by bytes and moves. `max_seconds` stops
-    new row/pair admission cooperatively using a monotonic clock; in-flight work
-    finishes and normal results flush. Loader/schema/query time counts too.
-    An explicit owner ReadBudget interrupts selected SQL reads as whole queries,
-    preserving prior comparisons. This is not a hard timeout, an overall RSS bound or
+    new row/pair admission cooperatively using a monotonic clock; comparisons
+    finish and normal results flush. Loader/schema/query time counts too.
+    An explicit owner ReadBudget also observes that deadline at selected SQL VM
+    callbacks, interrupting whole reads while preserving prior comparisons.
+    This is not a hard timeout, an overall RSS bound or
     complete/fair pair coverage.
 
     A fault here is printed and never stops the verification, exactly as the
@@ -878,6 +914,8 @@ def _similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
             # A removed/completed source is no longer eligible. Read-only pending
             # never clears state; only the current collector owner does so here.
             _source_done(conn, inflight)
+    except ReadDeadline:
+        return 0, 0, "sims time limit reached (selected SQL read interrupted; coverage not measured)"
     except ReadLimit:
         return 0, 0, "sims SQL read limit reached (coverage not measured)"
     except Exception as exc:
@@ -901,6 +939,9 @@ def _similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
                                   diagnostics=diagnostics, budget=budget,
                                   read_budget=read_budget, reader=rs)
             result = (s, k, n)
+        except ReadDeadline:
+            read_limited = True
+            budget.time_exhausted = True
         except ReadLimit:
             read_limited = True
         except Exception as exc:

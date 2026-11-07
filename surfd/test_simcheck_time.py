@@ -33,6 +33,31 @@ class ElapsedBudget(CollectorAvailability):
         stored,notable,note=self.step()
         self.assertGreater(stored,0)  # untouched row acts on next pass
 
+    def test_stricter_owned_sql_deadline_preserves_completed_comparison_and_flush(self):
+        def slow(a, b, **kw):
+            result = self.compare(a, b, **kw)
+            self.elapsed += 2.
+            return result
+        self.reader.compare_paths.side_effect = slow
+        reads = simcheck.ReadBudget(self.conn, 1000000)
+        reads.deadline = .5
+        stored, notable, note = simcheck.similarity_step(
+            self.conn, self.surfd, max_seconds=10., read_budget=reads)
+        self.assertEqual((stored, notable, len(self.compared)), (1, 1, 1))
+        self.assertEqual(self.conn.execute('SELECT compared FROM sims').fetchone()[0], 80)
+        self.assertIn('time limit reached', note)
+        self.assertNotIn('SQL read limit', note)
+        self.assertFalse(reads.exhausted)
+        self.assertEqual(reads.deadline, .5)
+        self.assertFalse(self.conn.in_transaction)
+        calls = []
+        self.conn.set_progress_handler(lambda: calls.append(1) or 0, 1)
+        try:
+            self.assertEqual(self.conn.execute('SELECT 42').fetchone()[0], 42)
+            self.assertTrue(calls)
+        finally:
+            self.conn.set_progress_handler(None, 0)
+
     def test_unresolved_primaries_stop_new_rows_at_deadline(self):
         def resolve(row):
             self.resolved.append(row['id']);self.elapsed+=.5

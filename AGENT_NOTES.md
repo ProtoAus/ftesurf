@@ -18,6 +18,25 @@
 - zone_edit Map properties: the zone file's mode changes only on a Surf/Bhop click (the local settings file
   always carries a gamemode line, a guess included). tools/p841editor.py greps the speed-cap note text.
 
+## P1377 selected SQL deadline: preserve the actual execution boundary (7 Nov 2026)
+
+- The existing owner ReadBudget can observe the collector deadline at selected VM
+  callbacks. This is not cancellation of I/O, UDFs, writes, flushes or total pass
+  time/RSS. Keep time and VM causes separate, prior tighter scope restored, and
+  completed observations on their existing atomic flush path.
+- Normal retirement slot2 precedes the long pending SELECT. A preservation fixture
+  must prepare that actual scheduling boundary before its snapshot; do not remove
+  legitimate retirement or call it partial evidence. Observe a real callback with
+  ample instructions, not just the later cooperative admission stop.
+- `-B` does NOT disable explicit `py_compile.compile`: the stale-bytecode positive
+  deliberately creates one PYC, including under a global cache prefix. The30-program
+  bank also left three known test-created home DBs after child exit. Preserve the
+  failed global-empty observer, prove exact provenance and retire only those owned
+  files/empty directories; do not rerun passed banks or blanket-clean a temp root.
+- Reusing an ARM generated packet must replace its embedded payload assignments,
+  not prepend new ones which an older assignment then shadows. Retain setup errors
+  and old small overlays; verify actual current source hashes after correction.
+
 ## P1369 lobbies get mapmeta.txt; five bhop_ map rulesets (7 Nov 2026; ftesurf-3a)
 
 - LIVE 7 Nov ~11:50Z: Pi game/ftesurf/data/mapmeta.txt = the installs' file (5e6c978d). Nothing deploys
