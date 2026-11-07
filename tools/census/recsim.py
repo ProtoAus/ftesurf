@@ -263,11 +263,11 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
                 elif line.startswith("begin"):
                     body = True
                 continue
-            # Own the new keyword before parsing payload: whitespace variants
-            # and even a bare malformed fzin must not vanish as unknown records.
+            # Own both input keywords before parsing payload: whitespace variants
+            # and bare malformed rows must not vanish as unknown records.
             tag = line.split(None, 1)[:1]
             excluded = tag == ["fzin"]
-            if line.startswith("in ") or excluded:
+            if tag == ["in"] or excluded:
                 if excluded and r.ver not in (11, 12, *heldmeta.NATIVE_VERSIONS):
                     raise MalformedRec("excluded-clock input requires format 11 or 12")
                 if max_moves is not None and len(r.moves) >= max_moves:

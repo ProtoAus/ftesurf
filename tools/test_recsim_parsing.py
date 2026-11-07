@@ -1,6 +1,7 @@
 """Move-stream parser: malformed files abstain, valid conversions stay unchanged."""
 import argparse
 import contextlib
+import hashlib
 import importlib.util
 import io
 import os
@@ -40,6 +41,56 @@ class Parsing(Fixture):
         self.assertEqual([len(r.mt), len(r.moves), len(r.btns)], [80]*3)
         verdict, detail = rs.compare_paths(str(self.a), str(self.b))
         self.assertEqual((verdict, detail['match'], detail['compared']), ('compared', 1.0, 80))
+
+    def test_ordinary_keyword_malformed_payload_is_not_dropped(self):
+        verdict, detail = rs.compare_paths(str(self.a), str(self.b), max_bytes=8192, max_moves=100)
+        self.assertEqual((verdict, detail['matched'], detail['compared'], detail['match']),
+                         ('compared', 80, 80, 1.0))
+        original = recording().splitlines()
+        for payload in ('in 0', 'in', 'in\tbad'):
+            with self.subTest(payload=repr(payload)):
+                rows = original.copy(); rows[-1] = payload
+                self.assertEqual([i for i, pair in enumerate(zip(original, rows)) if pair[0] != pair[1]], [83])
+                self.a.write_text('\n'.join(rows) + '\n', encoding='ascii')
+                buffers = [p.read_bytes() for p in (self.a, self.b)]
+                verdict, detail = rs.compare_paths(str(self.a), str(self.b), max_bytes=8192, max_moves=100)
+                if verdict == 'compared':
+                    # Acting legacy control: a known bad row must not become a measured prefix.
+                    self.assertEqual((detail['matched'], detail['compared'], detail['match']), (79, 79, 1.0))
+                    self.assertEqual((detail['moves_a'], detail['moves_b']), (79, 80))
+                    self.assertEqual(detail['sources']['version'], 1)
+                    for label, path, raw in zip(('a', 'b'), (self.a, self.b), buffers):
+                        self.assertEqual(detail['sources'][label],
+                                         {'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)})
+                        self.assertEqual(path.read_bytes(), raw)
+                self.assertEqual(verdict, 'malformed input', 'KNOWN_INPUT_ROW_MUST_NOT_BECOME_MEASURED_PREFIX')
+                self.assertIsInstance(detail, str)
+                self.assertIsNone(rs.parse_rec(str(self.a)))
+
+    def test_ordinary_keyword_whitespace_and_unknown_records_keep_their_meaning(self):
+        original = recording().splitlines()
+        variants = []
+        for prefix in ('in ', 'in\t', ' \tin\t'):
+            rows = original.copy(); rows[-1] = prefix + original[-1][3:]
+            variants.append('\n'.join(rows) + '\n')
+        for keyword in ('input', 'inert', 'in-extra'):
+            variants.append(recording() + keyword + ' unknown payload\n')
+        for text in variants:
+            with self.subTest(last_row=text.splitlines()[-1]):
+                self.a.write_text(text, encoding='ascii')
+                r = rs.parse_rec(str(self.a))
+                self.assertEqual([len(r.mt), len(r.moves), len(r.btns)], [80]*3)
+                self.assertEqual((r.mt[-1], r.moves[-1], r.btns[-1]), (79, (79, 2, 0), 1))
+                buffers = [p.read_bytes() for p in (self.a, self.b)]
+                verdict, detail = rs.compare_paths(str(self.a), str(self.b), max_bytes=8192, max_moves=100)
+                self.assertEqual((verdict, detail['offset'], detail['matched'], detail['compared'], detail['match']),
+                                 ('compared', 0, 80, 80, 1.0))
+                self.assertEqual((detail['prefix'], detail['cover']), (80, 1.0))
+                self.assertEqual(detail['sources']['version'], 1)
+                for label, path, raw in zip(('a', 'b'), (self.a, self.b), buffers):
+                    self.assertEqual(detail['sources'][label],
+                                     {'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)})
+                    self.assertEqual(path.read_bytes(), raw)
 
     def test_release_keyword_whitespace_and_malformed_payload_are_not_dropped(self):
         base = recording().replace('FTESURF-REC 9', 'FTESURF-REC 11')
