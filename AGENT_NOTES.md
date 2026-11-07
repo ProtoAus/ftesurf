@@ -5913,6 +5913,26 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+- **Minimal reader overlays still need their source-contract dependencies (P1359).**
+  The focused/held reader fixtures import `surfd/test_sweep.py`, and the full
+  recording checker suite reads `src/server/sv_timer.qc`. A flat tools-only
+  packet failed before qualification. Complete the SAME owned source overlay
+  from its inspected Git source, retain loader refusals and verify every input
+  hash; do not call those refusals feature passes. Actual installed-path selectors
+  are `RECSIM_SOURCE`, `RECCHECK` and `SIMCHECK_SOURCE`; assert module `__file__`
+  resolves to those targets rather than assuming an invented environment name acts.
+- **Smoke PowerShell ReplaceFile's null binding before target swaps (P1359).**
+  A three-argument `File.Replace` with PowerShell `$null` bound an empty backup
+  pathname and refused before the first swap. On owned files the explicit
+  `[IO.File]::Replace(staged,target,[NullString]::Value,$false)` overload acts.
+  Preserve the refusal and original staged/backup bytes; continue only after
+  exact target/stage/backup and metadata readback, never by discarding a transaction.
+- **Definition-only reuse is not global-dependency proof.** A selected Python
+  function compiled but failed on a nonempty inventory because its module-level
+  literal was not bound. Bind exact constants from the pinned producer, check
+  nested global dependencies, and ACT the nonempty control before resource holds.
+  Syntax or an empty fixture alone cannot qualify that path.
+
 - **P1358 cold prop-lighting tails (7Nov2026).** Ceaseless's first-route
   PrepareFrame231ms was231ms in22 new exact static-prop light solves, not PVS/
   world/shader setup. `HL2_CalcModelLighting` redundantly solved the raw cube for

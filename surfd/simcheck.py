@@ -868,7 +868,9 @@ def _similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         ensure_schema(conn)
         if budget.available():
             retired = _retire_peer_cursors(conn, read_budget=read_budget)
-        rows, inflight = _pending_sources(conn, limit, read_budget)
+        rows, inflight = [], None
+        if budget.available():
+            rows, inflight = _pending_sources(conn, limit, read_budget)
         if not rows and inflight is not None and budget.available():
             # A removed/completed source is no longer eligible. Read-only pending
             # never clears state; only the current collector owner does so here.

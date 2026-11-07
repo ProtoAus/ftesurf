@@ -130,6 +130,38 @@ class CursorRetirement(unittest.TestCase):
         self.conn.commit()
         self.assertEqual(tuple(self.conn.iterdump()), before)
 
+    def traced_step(self, now, loader=None, retirement=None):
+        statements, entries = [], []
+        original = sc._pending_sources
+        def pending(*args, **kwargs):
+            entries.append(now[0])
+            return original(*args, **kwargs)
+        if loader is None:
+            loader = lambda *args: (fixture.rs, 'fixture')
+        if retirement is None:
+            retirement = sc._retire_peer_cursors
+        self.conn.set_trace_callback(statements.append)
+        try:
+            with mock.patch.object(sc.time, 'monotonic', side_effect=lambda: now[0]), \
+                    mock.patch.object(sc, '_recsim', side_effect=loader), \
+                    mock.patch.object(sc, '_retire_peer_cursors', side_effect=retirement), \
+                    mock.patch.object(sc, '_pending_sources', side_effect=pending):
+                out = sc.similarity_step(self.conn, self.sf, limit=1,
+                                         max_pairs=1, max_seconds=1)
+        finally:
+            self.conn.set_trace_callback(None)
+        selects = [s for s in statements if s.startswith('SELECT r.* FROM replays r')]
+        return out, entries, selects
+
+    def test_fresh_preparation_selects_and_compares_before_deadline(self):
+        out, entries, selects = self.traced_step([100.0])
+        self.assertEqual(entries, [100.0])  # deadline is 101
+        self.assertTrue(selects)
+        self.assertEqual(out[:2], (1, 1))
+        self.assertEqual(self.conn.execute('SELECT compared FROM sims').fetchone()[0], 80)
+        self.assertNotIn('time limit', out[2])
+        self.assertEqual({i: p.read_bytes() for i, p in self.paths.items()}, self.data)
+
     def test_expired_loader_cannot_admit_cleanup(self):
         self.orphan(999)
         before = tuple(self.conn.iterdump())
@@ -137,11 +169,63 @@ class CursorRetirement(unittest.TestCase):
         def loader(*args):
             now[0] = 102.0
             return fixture.rs, 'fixture'
-        with mock.patch.object(sc.time, 'monotonic', side_effect=lambda: now[0]), \
-                mock.patch.object(sc, '_recsim', side_effect=loader):
-            out = sc.similarity_step(self.conn, self.sf, max_seconds=1)
-        self.assertIn('time limit reached', out[2])
+        out, entries, selects = self.traced_step(now, loader=loader)
+        self.assertEqual(out[:2], (0, 0))
+        self.assertIn('time limit reached (cooperative; 0 attempted; coverage not measured)', out[2])
         self.assertEqual(tuple(self.conn.iterdump()), before)
+        self.assertEqual((entries, selects), ([], []))
+        now[0] = 100.0
+        fresh, entries, selects = self.traced_step(now)
+        self.assertEqual(fresh[:2], (1, 1))
+        self.assertEqual(entries, [100.0])
+        self.assertTrue(selects)
+        self.assertNotIn(999, self.peers())
+        self.assertEqual(self.conn.execute('SELECT compared FROM sims').fetchone()[0], 80)
+        self.assertEqual({i: p.read_bytes() for i, p in self.paths.items()}, self.data)
+
+    def test_expiry_during_admitted_retirement_preserves_cleanup_and_recovery(self):
+        row = self.conn.execute('SELECT * FROM replays WHERE id=1').fetchone()
+        self.assertEqual(sc.compare_run(self.sf, self.conn, row, limit_peers=1,
+                                       reader=fixture.rs), (1, 0, 1))
+        old = tuple(self.conn.execute('SELECT * FROM sims').fetchone())
+        sc._source_admit(self.conn, 1)
+        positions = [tuple(r) for r in self.conn.execute(
+            "SELECT * FROM sim_cursor ORDER BY scope,source_id")]
+        replays = [tuple(r) for r in self.conn.execute('SELECT * FROM replays ORDER BY id')]
+        self.orphan(999)
+        now, retired = [100.0], []
+        original = sc._retire_peer_cursors
+        def retirement(*args, **kwargs):
+            count = original(*args, **kwargs)
+            retired.append(count)
+            self.assertFalse(self.conn.in_transaction)
+            now[0] = 102.0
+            return count
+        out, entries, selects = self.traced_step(now, retirement=retirement)
+        self.assertEqual(retired, [1])
+        self.assertEqual(out[:2], (0, 0))
+        self.assertIn('sims retired 1 orphan peer cursors', out[2])
+        self.assertIn('time limit reached (cooperative; 0 attempted; coverage not measured)', out[2])
+        self.reopen()  # deletion and maintenance checkpoint actually committed
+        self.assertNotIn(999, self.peers())
+        self.assertEqual(sc._cursor(self.conn, 'source', sc._SOURCE_CURSOR_RETIRE), 999)
+        self.assertEqual([tuple(r) for r in self.conn.execute(
+            "SELECT * FROM sim_cursor WHERE NOT(scope='source' AND source_id=2)"
+            " ORDER BY scope,source_id")], positions)
+        self.assertEqual(tuple(self.conn.execute('SELECT * FROM sims').fetchone()), old)
+        self.assertEqual([tuple(r) for r in self.conn.execute('SELECT * FROM replays ORDER BY id')], replays)
+        self.assertEqual((entries, selects), ([], []))
+        now[0] = 100.0
+        fresh, entries, selects = self.traced_step(now)
+        self.assertEqual(fresh[:2], (1, 1))
+        self.assertEqual(entries, [100.0])
+        self.assertTrue(selects)
+        self.assertEqual([tuple(r) for r in self.conn.execute(
+            'SELECT a_id,b_id,compared FROM sims ORDER BY id')], [(1, 2, 80), (1, 3, 80)])
+        self.assertEqual(tuple(self.conn.execute('SELECT * FROM sims WHERE id=1').fetchone()), old)
+        self.assertIsNone(self.conn.execute("SELECT after_id FROM sim_cursor"
+                                            " WHERE scope='source' AND source_id=1").fetchone())
+        self.assertEqual({i: p.read_bytes() for i, p in self.paths.items()}, self.data)
 
     def test_real_sql_read_interrupt_keeps_whole_window_unchanged(self):
         self.orphan(*range(100, 200))
