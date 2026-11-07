@@ -41,8 +41,8 @@
 
 ## surf_centipedes after P1398 (8 Nov)
 
-- Stage 1's start still runs 340 fps against 655-770 with r_drawentities 0 (main view, not the sky).
-  Profile it at r_modellight_moverate 30: artifacts/run_prof_centi.py in the lows2 root.
+- Stage 1's start runs 465-576 fps at r_modellight_moverate 1 against 655-770 with r_drawentities 0
+  (main view, not the sky). Profile it: artifacts/run_prof_centi.py in the lows2 root.
 
 ## The window's multisampled pixel format duplicates P1260's scene target (8 Nov)
 
