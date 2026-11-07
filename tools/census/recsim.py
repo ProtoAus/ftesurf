@@ -73,6 +73,7 @@ Usage:
 """
 import argparse
 import collections
+import copy
 import glob
 import io
 import locale
@@ -862,7 +863,7 @@ def cmd_pairs(args):
         print("  NOTHING COMPARABLE: either no map+leg holds two real runs, or"
               " every pair fell below min_len.")
 
-    # POSITIVE pairs: each file against a re-reading of itself with a SHIFTED
+    # POSITIVE pairs: each acquired recording against a copy with a SHIFTED
     # TICK EPOCH, which is what one performance recorded twice actually produces
     # -- the same move stream, a different absolute tick, a different header
     # nonce, different file bytes.  A byte-identical copy is NOT the interesting
@@ -871,7 +872,7 @@ def cmd_pairs(args):
     sample = [p for p in list(recs) if recs[p] and is_real(p)][:args.max]
     for p in sample:
         a = recs[p]
-        b = parse_rec(p)
+        b = copy.copy(a)
         # A re-submission of one performance: the SAME move stream, a different
         # absolute tick epoch, a different header nonce, different file bytes.
         # Shifting the epoch is what makes this a positive for the ALIGNMENT

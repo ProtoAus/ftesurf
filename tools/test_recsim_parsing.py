@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 SOURCE = Path(os.environ.get('RECSIM_SOURCE', Path(__file__).parent / 'census/recsim.py'))
 spec = importlib.util.spec_from_file_location('recsim_under_test', SOURCE)
@@ -34,6 +35,20 @@ class Fixture(unittest.TestCase):
         self.tmp.cleanup()
         self.assertFalse(self.root.exists())
 
+    def small_real_pair(self):
+        self.a = self.root / 'data/runs/synthetic/main/a.rec'
+        self.a.parent.mkdir(parents=True)
+        self.b = self.a.with_name('b.rec')
+        self.a.write_text(recording(), encoding='utf-8')
+        other = recording().replace('in 79 79 0 79 2 ', 'in 79 79 0 78 2 ', 1)
+        self.assertNotEqual(other, recording())
+        self.b.write_text(other, encoding='utf-8')
+        verdict, detail = rs.compare_paths(str(self.a), str(self.b))
+        self.assertEqual((verdict, detail['matched'], detail['compared']), ('compared', 79, 80))
+        output = self.pairs_output()
+        self.assertIn('NEGATIVE pairs (different runs, same map+leg): 1', output)
+        self.assertIn('POSITIVE pairs (same recording, shifted tick epoch): 2', output)
+
     def large_pair(self):
         self.a = self.root / 'data/runs/synthetic/main/a.rec'
         self.a.parent.mkdir(parents=True)
@@ -57,6 +72,54 @@ class Parsing(Fixture):
         self.assertEqual([len(r.mt), len(r.moves), len(r.btns)], [80]*3)
         verdict, detail = rs.compare_paths(str(self.a), str(self.b))
         self.assertEqual((verdict, detail['match'], detail['compared']), ('compared', 1.0, 80))
+
+    def test_pairs_malformed_acquisition_keeps_valid_group(self):
+        self.small_real_pair()
+        malformed = recording().replace('in 40 40 0 40 ', 'in 40 40 0 4_ ', 1)
+        self.assertNotEqual(malformed, recording())
+        bad = self.a.with_name('c.rec')
+        bad.write_text(malformed, encoding='utf-8')
+        before = {p: p.read_bytes() for p in (self.a, self.b, bad)}
+        with self.assertRaises(rs.MalformedRec):
+            rs.parse_rec(str(bad), strict=True)
+        self.assertIsNone(rs.parse_rec(str(bad)))
+        self.assertIn((str(bad), 'malformed input row'), rs.SKIPPED)
+        output = self.pairs_output()
+        self.assertIn('fixtures excluded by name): 2 in 1 map/leg groups', output)
+        self.assertIn('NEGATIVE pairs (different runs, same map+leg): 1', output)
+        self.assertIn('POSITIVE pairs (same recording, shifted tick epoch): 2', output)
+        self.assertEqual({p: p.read_bytes() for p in before}, before)
+
+    def test_pairs_positive_uses_acquired_stream_without_reread(self):
+        self.small_real_pair()
+        before = {p: p.read_bytes() for p in (self.a, self.b)}
+        original = rs.parse_rec
+        reads, acquired, snapshots, removed = {}, {}, {}, []
+        def read(path):
+            reads[path] = reads.get(path, 0) + 1
+            if reads[path] > 1:
+                Path(path).unlink()
+                removed.append(path)
+            result = original(path)
+            if result is not None:
+                acquired[path] = result
+                snapshots[path] = tuple(result.mt), tuple(result.moves)
+            return result
+        try:
+            with mock.patch.object(rs, 'parse_rec', side_effect=read):
+                output = self.pairs_output()
+        except AttributeError as exc:
+            self.assertIn('NoneType', str(exc))
+            self.assertEqual(reads[str(self.a)], 2)
+            self.assertEqual(removed, [str(self.a)])
+            self.fail('POSITIVE_CONTROL_REREAD_LOST_ALREADY_ACQUIRED_INPUT')
+        self.assertEqual(reads, {str(self.a): 1, str(self.b): 1})
+        self.assertEqual(removed, [])
+        self.assertIn('NEGATIVE pairs (different runs, same map+leg): 1', output)
+        self.assertIn('POSITIVE pairs (same recording, shifted tick epoch): 2', output)
+        for path, result in acquired.items():
+            self.assertEqual((tuple(result.mt), tuple(result.moves)), snapshots[path])
+        self.assertEqual({p: p.read_bytes() for p in before}, before)
 
     def test_pairs_large_identical_copy_is_still_deduplicated(self):
         raw = self.large_pair()
