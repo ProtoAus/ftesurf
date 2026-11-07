@@ -1,0 +1,6333 @@
+{
+  "source": "https://docs.google.com/spreadsheets/d/1Hft-1XdK7lge5WWqP5hrNsSUJw_Ss2PS-t-c3CTawpQ",
+  "sheet_sha256": "091911e4dbcb7421b36207c9033fef51307d2b47a1bd5e5588b942ab553d4188",
+  "aliases": {
+    "surf_android": "surf_android_ksf",
+    "surf_cavemissile": "surf_cavemissile_fix",
+    "surf_enlightened": "surf_enlightened_ksf",
+    "surf_pandemonium": "surf_pandemonium_njv",
+    "surf_revolution": "surf_revolution_fix"
+  },
+  "bonuses": [
+    {
+      "map": "surf_666",
+      "bonus": 6,
+      "mentions": [
+        {
+          "sheet_map": "surf_666",
+          "category": "unit",
+          "label": "666 b6",
+          "tier_or_style": "A Tier",
+          "row": 67
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_abandoned",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_abandoned",
+          "category": "to_be_added",
+          "label": "abandoned b4",
+          "tier_or_style": "Unit",
+          "row": 4
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_agony",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_agony",
+          "category": "unit",
+          "label": "agony b1",
+          "tier_or_style": "S Tier",
+          "row": 37
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_airflow",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_airflow",
+          "category": "unit",
+          "label": "airflow b1",
+          "tier_or_style": "B Tier",
+          "row": 98
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_amaro",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_amaro",
+          "category": "unit",
+          "label": "amaro b1",
+          "tier_or_style": "B Tier",
+          "row": 99
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_android_ksf",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_android",
+          "category": "to_be_added",
+          "label": "android b3",
+          "tier_or_style": "Strafe",
+          "row": 5
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_anoobis",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_anoobis",
+          "category": "unit",
+          "label": "anoobis b1",
+          "tier_or_style": "S Tier",
+          "row": 29
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_antagonist",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_antagonist",
+          "category": "to_be_added",
+          "label": "antagonist b2",
+          "tier_or_style": "Unit",
+          "row": 6
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_anubis",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_anubis",
+          "category": "to_be_added",
+          "label": "anubis b4",
+          "tier_or_style": "Unit",
+          "row": 7
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_anything",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_anything",
+          "category": "to_be_added",
+          "label": "anything b1",
+          "tier_or_style": "Unit",
+          "row": 8
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_anything",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_anything",
+          "category": "to_be_added",
+          "label": "anything b2",
+          "tier_or_style": "Unit",
+          "row": 9
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_asrown",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_asrown",
+          "category": "unit",
+          "label": "asrown b1",
+          "tier_or_style": "C Tier",
+          "row": 130
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_assail",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_assail",
+          "category": "unit",
+          "label": "assail b4",
+          "tier_or_style": "X Tier",
+          "row": 14
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_axil",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_axil",
+          "category": "to_be_added",
+          "label": "axil b2",
+          "tier_or_style": "Unit",
+          "row": 10
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_axiom",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_axiom",
+          "category": "unit",
+          "label": "axiom b4",
+          "tier_or_style": "X Tier",
+          "row": 27
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "no_placed_contacts",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_beginner2",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_beginner2",
+          "category": "to_be_added",
+          "label": "beginner2 b2",
+          "tier_or_style": "Unit",
+          "row": 11
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_beginner_hell",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_beginner_hell",
+          "category": "strafe",
+          "label": "beginner_hell b1",
+          "tier_or_style": "A Tier",
+          "row": 24
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_benevolent",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_benevolent",
+          "category": "unit",
+          "label": "benevolent b1",
+          "tier_or_style": "C Tier",
+          "row": 125
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_beyer2",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_beyer2",
+          "category": "unit",
+          "label": "beyer2 b1",
+          "tier_or_style": "C Tier",
+          "row": 117
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_beyond",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_beyond",
+          "category": "to_be_added",
+          "label": "beyond b3 (unzoned)",
+          "tier_or_style": "Unit",
+          "row": 12
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_placed_contacts",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_breach",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_breach",
+          "category": "to_be_added",
+          "label": "breach b4",
+          "tier_or_style": "Unit",
+          "row": 13
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_brutalist",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_brutalist",
+          "category": "to_be_added",
+          "label": "brutalist b1",
+          "tier_or_style": "Unit",
+          "row": 14
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_bugs",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_bugs",
+          "category": "unit",
+          "label": "bugs b4",
+          "tier_or_style": "X Tier",
+          "row": 15
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_bugs",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_bugs",
+          "category": "to_be_added",
+          "label": "bugs b5",
+          "tier_or_style": "Strafe",
+          "row": 15
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_bugs",
+      "bonus": 6,
+      "mentions": [
+        {
+          "sheet_map": "surf_bugs",
+          "category": "to_be_added",
+          "label": "bugs b6",
+          "tier_or_style": "Unit/Strafe",
+          "row": 16
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_cannonball",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_cannonball",
+          "category": "unit",
+          "label": "cannonball b1",
+          "tier_or_style": "A Tier",
+          "row": 57
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_cannonball",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_cannonball",
+          "category": "unit",
+          "label": "cannonball b2",
+          "tier_or_style": "X Tier",
+          "row": 17
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_cavemissile_fix",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_cavemissile",
+          "category": "to_be_added",
+          "label": "cavemissile b3",
+          "tier_or_style": "Unit",
+          "row": 17
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_cavity",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_cavity",
+          "category": "to_be_added",
+          "label": "cavity b1",
+          "tier_or_style": "Strafe",
+          "row": 18
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_celestial",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_celestial",
+          "category": "strafe",
+          "label": "celestial b2",
+          "tier_or_style": "S Tier",
+          "row": 11
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_cement",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_cement",
+          "category": "to_be_added",
+          "label": "cement b1",
+          "tier_or_style": "Unit",
+          "row": 19
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_cement",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_cement",
+          "category": "to_be_added",
+          "label": "cement b2",
+          "tier_or_style": "Unit",
+          "row": 20
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_cement",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_cement",
+          "category": "to_be_added",
+          "label": "cement b3",
+          "tier_or_style": "Unit",
+          "row": 21
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_cement",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_cement",
+          "category": "to_be_added",
+          "label": "cement b4",
+          "tier_or_style": "Unit",
+          "row": 22
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_cement",
+      "bonus": 6,
+      "mentions": [
+        {
+          "sheet_map": "surf_cement",
+          "category": "unit",
+          "label": "cement b6",
+          "tier_or_style": "S Tier",
+          "row": 41
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_chasm",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_chasm",
+          "category": "unit",
+          "label": "chasm b4",
+          "tier_or_style": "C Tier",
+          "row": 120
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_chateau",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_chateau",
+          "category": "unit",
+          "label": "chateau b1",
+          "tier_or_style": "B Tier",
+          "row": 91
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_chungus_fungus",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_chungus_fungus",
+          "category": "to_be_added",
+          "label": "chungus_fungus b3",
+          "tier_or_style": "Strafe",
+          "row": 23
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_chungus_fungus",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_chungus_fungus",
+          "category": "to_be_added",
+          "label": "chungus_fungus b4",
+          "tier_or_style": "Unit",
+          "row": 24
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_chungus_fungus",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_chungus_fungus",
+          "category": "to_be_added",
+          "label": "chungus_fungus b5",
+          "tier_or_style": "Strafe",
+          "row": 25
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_cinnamon_fix",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_cinnamon_fix",
+          "category": "unit",
+          "label": "cinnamon_fix b1",
+          "tier_or_style": "A Tier",
+          "row": 85
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_concretejungle_fix",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_concretejungle_fix",
+          "category": "to_be_added",
+          "label": "concretejungle_fix b2",
+          "tier_or_style": "Unit",
+          "row": 26
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_concretejungle_fix",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_concretejungle_fix",
+          "category": "to_be_added",
+          "label": "concretejungle_fix b3",
+          "tier_or_style": "Unit",
+          "row": 27
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_concretejungle_fix",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_concretejungle_fix",
+          "category": "to_be_added",
+          "label": "concretejungle_fix b4",
+          "tier_or_style": "Unit",
+          "row": 28
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_corruption",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_corruption",
+          "category": "unit",
+          "label": "corruption b1",
+          "tier_or_style": "S Tier",
+          "row": 33
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_corruption",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_corruption",
+          "category": "strafe",
+          "label": "corruption b5",
+          "tier_or_style": "A Tier",
+          "row": 21
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_corruption",
+      "bonus": 6,
+      "mentions": [
+        {
+          "sheet_map": "surf_corruption",
+          "category": "unit",
+          "label": "corruption b6",
+          "tier_or_style": "A Tier",
+          "row": 58
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_crimson",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_crimson",
+          "category": "to_be_added",
+          "label": "crimson b3",
+          "tier_or_style": "Unit",
+          "row": 29
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_damnation",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_damnation",
+          "category": "to_be_added",
+          "label": "damnation b3",
+          "tier_or_style": "Unit",
+          "row": 30
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_disaster",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_disaster",
+          "category": "to_be_added",
+          "label": "disaster b1",
+          "tier_or_style": "Unit",
+          "row": 31
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_dova",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_dova",
+          "category": "unit",
+          "label": "dova b2",
+          "tier_or_style": "C Tier",
+          "row": 135
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_earthmover",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_earthmover",
+          "category": "to_be_added",
+          "label": "earthmover b2",
+          "tier_or_style": "Unit",
+          "row": 32
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_ebony",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_ebony",
+          "category": "to_be_added",
+          "label": "ebony b1",
+          "tier_or_style": "Unit",
+          "row": 33
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_ebony",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_ebony",
+          "category": "to_be_added",
+          "label": "ebony b3",
+          "tier_or_style": "Unit",
+          "row": 34
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_ebony",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_ebony",
+          "category": "to_be_added",
+          "label": "ebony b4",
+          "tier_or_style": "Unit",
+          "row": 35
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_elysium4",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_elysium4",
+          "category": "to_be_added",
+          "label": "elysium4 b1",
+          "tier_or_style": "Unit",
+          "row": 36
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_elysium4",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_elysium4",
+          "category": "to_be_added",
+          "label": "elysium4 b3",
+          "tier_or_style": "Strafe",
+          "row": 37
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_enlightened_ksf",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_enlightened",
+          "category": "unit",
+          "label": "enlightened b3",
+          "tier_or_style": "S Tier",
+          "row": 54
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_eon",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_eon",
+          "category": "unit",
+          "label": "eon b1",
+          "tier_or_style": "C Tier",
+          "row": 136
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_eon",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_eon",
+          "category": "unit",
+          "label": "eon b2",
+          "tier_or_style": "C Tier",
+          "row": 124
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_epicube",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_epicube",
+          "category": "to_be_added",
+          "label": "epicube b1",
+          "tier_or_style": "Unit/Strafe",
+          "row": 38
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_epiphany",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_epiphany",
+          "category": "unit",
+          "label": "epiphany b2",
+          "tier_or_style": "S Tier",
+          "row": 53
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_era",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_era",
+          "category": "unit",
+          "label": "era b1",
+          "tier_or_style": "S Tier",
+          "row": 28
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_eryr",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_eryr",
+          "category": "unit",
+          "label": "eryr b3",
+          "tier_or_style": "C Tier",
+          "row": 123
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_eryr2_fix",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_eryr2_fix",
+          "category": "unit",
+          "label": "eryr2_fix b2",
+          "tier_or_style": "B Tier",
+          "row": 106
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_eryr2_fix",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_eryr2_fix",
+          "category": "unit",
+          "label": "eryr2_fix b3",
+          "tier_or_style": "A Tier",
+          "row": 84
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_eunoia",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_eunoia",
+          "category": "unit",
+          "label": "eunoia b3",
+          "tier_or_style": "A Tier",
+          "row": 56
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_executioner",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_executioner",
+          "category": "to_be_added",
+          "label": "executioner b1",
+          "tier_or_style": "Unit",
+          "row": 39
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_exonic",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_exonic",
+          "category": "to_be_added",
+          "label": "exonic b2",
+          "tier_or_style": "Unit",
+          "row": 40
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_exonic",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_exonic",
+          "category": "strafe",
+          "label": "exonic b3",
+          "tier_or_style": "Y Tier",
+          "row": 5
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_extremex2_5",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_extremex2_5",
+          "category": "to_be_added",
+          "label": "extremex2_5 b1",
+          "tier_or_style": "Strafe",
+          "row": 41
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_ezclap",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_ezclap",
+          "category": "unit",
+          "label": "ezclap b1",
+          "tier_or_style": "A Tier",
+          "row": 88
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_fabas",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_fabas",
+          "category": "to_be_added",
+          "label": "fabas b2",
+          "tier_or_style": "Strafe",
+          "row": 42
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_fabas",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_fabas",
+          "category": "unit",
+          "label": "fabas b4",
+          "tier_or_style": "S Tier",
+          "row": 39
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_facility",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_facility",
+          "category": "unit",
+          "label": "facility b1",
+          "tier_or_style": "A Tier",
+          "row": 75
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_facility",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_facility",
+          "category": "unit",
+          "label": "facility b3",
+          "tier_or_style": "S Tier",
+          "row": 47
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_facility",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_facility",
+          "category": "unit",
+          "label": "facility b4",
+          "tier_or_style": "X Tier",
+          "row": 12
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_fiellu",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_fiellu",
+          "category": "unit",
+          "label": "fiellu b2",
+          "tier_or_style": "S Tier",
+          "row": 35
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_fiellu",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_fiellu",
+          "category": "unit",
+          "label": "fiellu b4",
+          "tier_or_style": "Y Tier",
+          "row": 6
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_fornax",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_fornax",
+          "category": "to_be_added",
+          "label": "fornax b2",
+          "tier_or_style": "Unit",
+          "row": 43
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_fornax",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_fornax",
+          "category": "to_be_added",
+          "label": "fornax b3",
+          "tier_or_style": "Unit",
+          "row": 44
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_fornax",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_fornax",
+          "category": "unit",
+          "label": "fornax b4",
+          "tier_or_style": "Y Tier",
+          "row": 7
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_frost",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_frost",
+          "category": "unit",
+          "label": "frost b4",
+          "tier_or_style": "B Tier",
+          "row": 90
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_fungus",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_fungus",
+          "category": "to_be_added",
+          "label": "fungus b1",
+          "tier_or_style": "Unit",
+          "row": 45
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_fungus",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_fungus",
+          "category": "strafe",
+          "label": "fungus b4",
+          "tier_or_style": "A Tier",
+          "row": 22
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_funhouse2",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_funhouse2",
+          "category": "to_be_added",
+          "label": "funhouse2 b4",
+          "tier_or_style": "Unit",
+          "row": 46
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_funhouse2",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_funhouse2",
+          "category": "to_be_added",
+          "label": "funhouse2 b5",
+          "tier_or_style": "Unit",
+          "row": 47
+        },
+        {
+          "sheet_map": "surf_funhouse2",
+          "category": "to_be_added",
+          "label": "funhouse2 b5",
+          "tier_or_style": "Strafe",
+          "row": 48
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_funhouse2",
+      "bonus": 6,
+      "mentions": [
+        {
+          "sheet_map": "surf_funhouse2",
+          "category": "to_be_added",
+          "label": "funhouse2 b6",
+          "tier_or_style": "Unit",
+          "row": 49
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_funhouse2",
+      "bonus": 7,
+      "mentions": [
+        {
+          "sheet_map": "surf_funhouse2",
+          "category": "to_be_added",
+          "label": "funhouse2 b7",
+          "tier_or_style": "Unit",
+          "row": 50
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_garden_h",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_garden_h",
+          "category": "to_be_added",
+          "label": "garden_h b3",
+          "tier_or_style": "Strafe",
+          "row": 51
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_gary_barlow",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_gary_barlow",
+          "category": "to_be_added",
+          "label": "gary_barlow b1",
+          "tier_or_style": "Unit",
+          "row": 52
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_gary_barlow",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_gary_barlow",
+          "category": "to_be_added",
+          "label": "gary_barlow b2",
+          "tier_or_style": "Unit",
+          "row": 53
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_germania",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_germania",
+          "category": "strafe",
+          "label": "germania b1",
+          "tier_or_style": "S Tier",
+          "row": 13
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_gigapede",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_gigapede",
+          "category": "to_be_added",
+          "label": "gigapede b3",
+          "tier_or_style": "Unit/Strafe",
+          "row": 55
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_gigapede",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_gigapede",
+          "category": "unit",
+          "label": "gigapede b4",
+          "tier_or_style": "Y Tier",
+          "row": 4
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_gigapede",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_gigapede",
+          "category": "unit",
+          "label": "gigapede b5",
+          "tier_or_style": "X Tier",
+          "row": 9
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_gigapede",
+      "bonus": 6,
+      "mentions": [
+        {
+          "sheet_map": "surf_gigapede",
+          "category": "strafe",
+          "label": "gigapede b6",
+          "tier_or_style": "X Tier",
+          "row": 8
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_gloomy",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_gloomy",
+          "category": "to_be_added",
+          "label": "gloomy b1",
+          "tier_or_style": "Unit/Strafe",
+          "row": 54
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_goliath",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_goliath",
+          "category": "unit",
+          "label": "goliath b1",
+          "tier_or_style": "B Tier",
+          "row": 102
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "no_placed_contacts",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_goliath",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_goliath",
+          "category": "unit",
+          "label": "goliath b2",
+          "tier_or_style": "A Tier",
+          "row": 65
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "no_placed_contacts",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_goliath",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_goliath",
+          "category": "unit",
+          "label": "goliath b3",
+          "tier_or_style": "A Tier",
+          "row": 61
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "no_placed_contacts",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_goliath",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_goliath",
+          "category": "unit",
+          "label": "goliath b4",
+          "tier_or_style": "X Tier",
+          "row": 24
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "no_placed_contacts",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_hades2",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_hades2",
+          "category": "unit",
+          "label": "hades2 b3",
+          "tier_or_style": "B Tier",
+          "row": 89
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_hades2",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_hades2",
+          "category": "unit",
+          "label": "hades2 b4",
+          "tier_or_style": "X Tier",
+          "row": 16
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_happyhands5",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_happyhands5",
+          "category": "to_be_added",
+          "label": "happyhands5 b1",
+          "tier_or_style": "Unit",
+          "row": 56
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_happyhands5",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_happyhands5",
+          "category": "to_be_added",
+          "label": "happyhands5 b2",
+          "tier_or_style": "Unit",
+          "row": 57
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_happyhug",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_happyhug",
+          "category": "strafe",
+          "label": "happyhug b1",
+          "tier_or_style": "S Tier",
+          "row": 17
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_helloworld",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_helloworld",
+          "category": "to_be_added",
+          "label": "helloworld b1",
+          "tier_or_style": "Unit",
+          "row": 58
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_helloworld",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_helloworld",
+          "category": "to_be_added",
+          "label": "helloworld b3",
+          "tier_or_style": "Unit",
+          "row": 59
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_hero",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_hero",
+          "category": "to_be_added",
+          "label": "hero b5",
+          "tier_or_style": "Strafe",
+          "row": 60
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_highlands",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_highlands",
+          "category": "unit",
+          "label": "highlands b3",
+          "tier_or_style": "S Tier",
+          "row": 52
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_highlands",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_highlands",
+          "category": "unit",
+          "label": "highlands b4",
+          "tier_or_style": "X Tier",
+          "row": 18
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_hollow",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_hollow",
+          "category": "unit",
+          "label": "hollow b2",
+          "tier_or_style": "A Tier",
+          "row": 66
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_hotwheels",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_hotwheels",
+          "category": "to_be_added",
+          "label": "hotwheels b5",
+          "tier_or_style": "Strafe",
+          "row": 61
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_hotwheels",
+      "bonus": 8,
+      "mentions": [
+        {
+          "sheet_map": "surf_hotwheels",
+          "category": "to_be_added",
+          "label": "hotwheels b8",
+          "tier_or_style": "Unit",
+          "row": 62
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_huh",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_huh",
+          "category": "unit",
+          "label": "huh b3",
+          "tier_or_style": "B Tier",
+          "row": 110
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_huh",
+      "bonus": 6,
+      "mentions": [
+        {
+          "sheet_map": "surf_huh",
+          "category": "unit",
+          "label": "huh b6",
+          "tier_or_style": "A Tier",
+          "row": 77
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_illumination",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_illumination",
+          "category": "to_be_added",
+          "label": "illumination b3",
+          "tier_or_style": "Strafe",
+          "row": 63
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_illumination2",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_illumination2",
+          "category": "unit",
+          "label": "illumination2 b3",
+          "tier_or_style": "C Tier",
+          "row": 134
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_illusion",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_illusion",
+          "category": "to_be_added",
+          "label": "illusion b3",
+          "tier_or_style": "Unit",
+          "row": 64
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_inferno",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_inferno",
+          "category": "strafe",
+          "label": "inferno b2",
+          "tier_or_style": "S Tier",
+          "row": 9
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_innokia",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_innokia",
+          "category": "unit",
+          "label": "innokia b3",
+          "tier_or_style": "B Tier",
+          "row": 97
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "no_placed_contacts",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_izded",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_izded",
+          "category": "unit",
+          "label": "izded b2",
+          "tier_or_style": "B Tier",
+          "row": 113
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_jaqen",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_jaqen",
+          "category": "unit",
+          "label": "jaqen b3",
+          "tier_or_style": "B Tier",
+          "row": 92
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_jaqen2",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_jaqen2",
+          "category": "unit",
+          "label": "jaqen2 b1",
+          "tier_or_style": "C Tier",
+          "row": 119
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_jaqen2",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_jaqen2",
+          "category": "unit",
+          "label": "jaqen2 b2",
+          "tier_or_style": "B Tier",
+          "row": 93
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_jaqen2",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_jaqen2",
+          "category": "unit",
+          "label": "jaqen2 b3",
+          "tier_or_style": "A Tier",
+          "row": 73
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_journeys",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_journeys",
+          "category": "unit",
+          "label": "journeys b3",
+          "tier_or_style": "C Tier",
+          "row": 137
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_jumble",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_jumble",
+          "category": "unit",
+          "label": "jumble b2",
+          "tier_or_style": "S Tier",
+          "row": 44
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "no_placed_contacts",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_kairo",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_kairo",
+          "category": "unit",
+          "label": "kairo b1",
+          "tier_or_style": "A Tier",
+          "row": 59
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_kairo",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_kairo",
+          "category": "unit",
+          "label": "kairo b3",
+          "tier_or_style": "B Tier",
+          "row": 103
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_kairo",
+      "bonus": 6,
+      "mentions": [
+        {
+          "sheet_map": "surf_kairo",
+          "category": "strafe",
+          "label": "kairo b6",
+          "tier_or_style": "A Tier",
+          "row": 26
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_kismet",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_kismet",
+          "category": "to_be_added",
+          "label": "kismet b2",
+          "tier_or_style": "Unit",
+          "row": 65
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_kloakk",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_kloakk",
+          "category": "to_be_added",
+          "label": "kloakk b1",
+          "tier_or_style": "Unit",
+          "row": 66
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_korn",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_korn",
+          "category": "to_be_added",
+          "label": "korn b2",
+          "tier_or_style": "Unit",
+          "row": 67
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_korn",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_korn",
+          "category": "to_be_added",
+          "label": "korn b3",
+          "tier_or_style": "Unit",
+          "row": 68
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_kultur",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_kultur",
+          "category": "to_be_added",
+          "label": "kultur b1",
+          "tier_or_style": "Unit",
+          "row": 69
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_kultur",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_kultur",
+          "category": "to_be_added",
+          "label": "kultur b3",
+          "tier_or_style": "Unit/Strafe",
+          "row": 70
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_kvas",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_kvas",
+          "category": "unit",
+          "label": "kvas b4",
+          "tier_or_style": "X Tier",
+          "row": 11
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_lax",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_lax",
+          "category": "to_be_added",
+          "label": "lax b1",
+          "tier_or_style": "Unit",
+          "row": 71
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_leesriize_ksf",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_leesriize_ksf",
+          "category": "to_be_added",
+          "label": "leesriize_ksf b3",
+          "tier_or_style": "Unit",
+          "row": 72
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_life_of_cow",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_life_of_cow",
+          "category": "unit",
+          "label": "life_of_cow b1",
+          "tier_or_style": "A Tier",
+          "row": 72
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_loentra",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_loentra",
+          "category": "to_be_added",
+          "label": "loentra b1",
+          "tier_or_style": "Strafe",
+          "row": 73
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_loentra",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_loentra",
+          "category": "to_be_added",
+          "label": "loentra b2",
+          "tier_or_style": "Strafe",
+          "row": 74
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_loweffort",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_loweffort",
+          "category": "unit",
+          "label": "loweffort b1",
+          "tier_or_style": "S Tier",
+          "row": 31
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_mdrn",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_mdrn",
+          "category": "unit",
+          "label": "mdrn b2",
+          "tier_or_style": "B Tier",
+          "row": 116
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_mdrn",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_mdrn",
+          "category": "unit",
+          "label": "mdrn b4",
+          "tier_or_style": "X Tier",
+          "row": 19
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_medley",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_medley",
+          "category": "to_be_added",
+          "label": "medley b3",
+          "tier_or_style": "Strafe",
+          "row": 75
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_medley",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_medley",
+          "category": "unit",
+          "label": "medley b4",
+          "tier_or_style": "Y Tier",
+          "row": 5
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_memories",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_memories",
+          "category": "unit",
+          "label": "memories b2",
+          "tier_or_style": "B Tier",
+          "row": 95
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_midsommar",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_midsommar",
+          "category": "to_be_added",
+          "label": "midsommar b1",
+          "tier_or_style": "Unit",
+          "row": 76
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_midsommar",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_midsommar",
+          "category": "unit",
+          "label": "midsommar b2",
+          "tier_or_style": "S Tier",
+          "row": 48
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_midsommar",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_midsommar",
+          "category": "strafe",
+          "label": "midsommar b4",
+          "tier_or_style": "S Tier",
+          "row": 16
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_monkeys2",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_monkeys2",
+          "category": "unit",
+          "label": "monkeys2 b4",
+          "tier_or_style": "S Tier",
+          "row": 45
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "no_placed_contacts",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_nebula",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_nebula",
+          "category": "unit",
+          "label": "nebula b3",
+          "tier_or_style": "B Tier",
+          "row": 112
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "no_placed_contacts",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_neoplasma",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_neoplasma",
+          "category": "strafe",
+          "label": "neoplasma b2",
+          "tier_or_style": "A Tier",
+          "row": 20
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_neoteric",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_neoteric",
+          "category": "unit",
+          "label": "neoteric b1",
+          "tier_or_style": "A Tier",
+          "row": 63
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_nesquik",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_nesquik",
+          "category": "strafe",
+          "label": "nesquik b5",
+          "tier_or_style": "A Tier",
+          "row": 19
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_nesquik",
+      "bonus": 6,
+      "mentions": [
+        {
+          "sheet_map": "surf_nesquik",
+          "category": "unit",
+          "label": "nesquik b6",
+          "tier_or_style": "S Tier",
+          "row": 42
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_nightmare",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_nightmare",
+          "category": "strafe",
+          "label": "nightmare b1",
+          "tier_or_style": "S Tier",
+          "row": 14
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_not_so_disaster",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_not_so_disaster",
+          "category": "unit",
+          "label": "not_so_disaster b2",
+          "tier_or_style": "D Tier",
+          "row": 139
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_not_so_disaster",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_not_so_disaster",
+          "category": "unit",
+          "label": "not_so_disaster b3",
+          "tier_or_style": "A Tier",
+          "row": 81
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_not_so_disaster",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_not_so_disaster",
+          "category": "unit",
+          "label": "not_so_disaster b4",
+          "tier_or_style": "B Tier",
+          "row": 94
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_not_so_quick",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_not_so_quick",
+          "category": "unit",
+          "label": "not_so_quick b1",
+          "tier_or_style": "A Tier",
+          "row": 62
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_not_so_quick",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_not_so_quick",
+          "category": "unit",
+          "label": "not_so_quick b2",
+          "tier_or_style": "C Tier",
+          "row": 118
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_not_so_quick",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_not_so_quick",
+          "category": "unit",
+          "label": "not_so_quick b4",
+          "tier_or_style": "A Tier",
+          "row": 78
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_not_so_quick",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_not_so_quick",
+          "category": "unit",
+          "label": "not_so_quick b5",
+          "tier_or_style": "B Tier",
+          "row": 115
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_not_so_quick",
+      "bonus": 6,
+      "mentions": [
+        {
+          "sheet_map": "surf_not_so_quick",
+          "category": "unit",
+          "label": "not_so_quick b6",
+          "tier_or_style": "A Tier",
+          "row": 76
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_not_so_zen",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_not_so_zen",
+          "category": "unit",
+          "label": "not_so_zen b3",
+          "tier_or_style": "A Tier",
+          "row": 79
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_not_so_zen",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_not_so_zen",
+          "category": "strafe",
+          "label": "not_so_zen b5",
+          "tier_or_style": "X Tier",
+          "row": 7
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_not_so_zen",
+      "bonus": 6,
+      "mentions": [
+        {
+          "sheet_map": "surf_not_so_zen",
+          "category": "unit",
+          "label": "not_so_zen b6",
+          "tier_or_style": "B Tier",
+          "row": 100
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_orthodox",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_orthodox",
+          "category": "to_be_added",
+          "label": "orthodox b3",
+          "tier_or_style": "Unit",
+          "row": 77
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_orthodox",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_orthodox",
+          "category": "to_be_added",
+          "label": "orthodox b4",
+          "tier_or_style": "Unit",
+          "row": 78
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_our",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_our",
+          "category": "unit",
+          "label": "our b3",
+          "tier_or_style": "A Tier",
+          "row": 82
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_our",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_our",
+          "category": "unit",
+          "label": "our b4",
+          "tier_or_style": "S Tier",
+          "row": 32
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_overgrowth2",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_overgrowth2",
+          "category": "to_be_added",
+          "label": "overgrowth2 b1",
+          "tier_or_style": "Strafe",
+          "row": 79
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_overgrowth2",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_overgrowth2",
+          "category": "to_be_added",
+          "label": "overgrowth2 b2",
+          "tier_or_style": "Strafe",
+          "row": 80
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_palm",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_palm",
+          "category": "unit",
+          "label": "palm b1",
+          "tier_or_style": "C Tier",
+          "row": 131
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_pancake",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_pancake",
+          "category": "unit",
+          "label": "pancake b1",
+          "tier_or_style": "C Tier",
+          "row": 126
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_pandemonium_njv",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_pandemonium",
+          "category": "unit",
+          "label": "pandemonium b1",
+          "tier_or_style": "D Tier",
+          "row": 140
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_pandemonium_njv",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_pandemonium_njv",
+          "category": "to_be_added",
+          "label": "pandemonium_njv b2",
+          "tier_or_style": "Strafe",
+          "row": 81
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_papertown",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_papertown",
+          "category": "unit",
+          "label": "papertown b3",
+          "tier_or_style": "A Tier",
+          "row": 87
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_papertown",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_papertown",
+          "category": "unit",
+          "label": "papertown b5",
+          "tier_or_style": "S Tier",
+          "row": 55
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_paradigm",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_paradigm",
+          "category": "to_be_added",
+          "label": "paradigm b1",
+          "tier_or_style": "Unit",
+          "row": 82
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_pls",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_pls",
+          "category": "unit",
+          "label": "pls b4",
+          "tier_or_style": "S Tier",
+          "row": 34
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_pls",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_pls",
+          "category": "to_be_added",
+          "label": "pls b5",
+          "tier_or_style": "Strafe",
+          "row": 84
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_pls",
+      "bonus": 6,
+      "mentions": [
+        {
+          "sheet_map": "surf_pls",
+          "category": "to_be_added",
+          "label": "pls b6",
+          "tier_or_style": "Strafe",
+          "row": 85
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_pls",
+      "bonus": 8,
+      "mentions": [
+        {
+          "sheet_map": "surf_pls",
+          "category": "to_be_added",
+          "label": "pls b8",
+          "tier_or_style": "Strafe",
+          "row": 86
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_pls",
+      "bonus": 9,
+      "mentions": [
+        {
+          "sheet_map": "surf_pls",
+          "category": "unit",
+          "label": "pls b9",
+          "tier_or_style": "B Tier",
+          "row": 101
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_pls",
+      "bonus": 10,
+      "mentions": [
+        {
+          "sheet_map": "surf_pls",
+          "category": "unit",
+          "label": "pls b10",
+          "tier_or_style": "S Tier",
+          "row": 38
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_pls",
+      "bonus": 11,
+      "mentions": [
+        {
+          "sheet_map": "surf_pls",
+          "category": "to_be_added",
+          "label": "pls b11 (unzoned) (broken momentum)",
+          "tier_or_style": "Unit",
+          "row": 83
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_polonia",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_polonia",
+          "category": "to_be_added",
+          "label": "polonia b2",
+          "tier_or_style": "Unit",
+          "row": 87
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_polygon",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_polygon",
+          "category": "to_be_added",
+          "label": "polygon b2",
+          "tier_or_style": "Strafe",
+          "row": 88
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_polygon",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_polygon",
+          "category": "to_be_added",
+          "label": "polygon b3",
+          "tier_or_style": "Strafe",
+          "row": 89
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_polygon",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_polygon",
+          "category": "strafe",
+          "label": "polygon b4",
+          "tier_or_style": "C Tier",
+          "row": 29
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_premium",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_premium",
+          "category": "to_be_added",
+          "label": "premium b2",
+          "tier_or_style": "Unit",
+          "row": 90
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_prosurf",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_prosurf",
+          "category": "strafe",
+          "label": "prosurf b4",
+          "tier_or_style": "Y Tier",
+          "row": 4
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_pyzire",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_pyzire",
+          "category": "unit",
+          "label": "pyzire b4",
+          "tier_or_style": "X Tier",
+          "row": 26
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_queen_of_the_ween",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_queen_of_the_ween",
+          "category": "strafe",
+          "label": "queen_of_the_ween b2",
+          "tier_or_style": "A Tier",
+          "row": 18
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_queen_of_the_ween",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_queen_of_the_ween",
+          "category": "strafe",
+          "label": "queen_of_the_ween b3",
+          "tier_or_style": "A Tier",
+          "row": 27
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_quickie_fix",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_quickie_fix",
+          "category": "unit",
+          "label": "quickie_fix b3",
+          "tier_or_style": "D Tier",
+          "row": 141
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_quickie_fix",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_quickie_fix",
+          "category": "unit",
+          "label": "quickie_fix b5",
+          "tier_or_style": "B Tier",
+          "row": 111
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_quirky",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_quirky",
+          "category": "unit",
+          "label": "quirky b4",
+          "tier_or_style": "S Tier",
+          "row": 50
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_radiant",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_radiant",
+          "category": "unit",
+          "label": "radiant b3",
+          "tier_or_style": "X Tier",
+          "row": 25
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_radiant",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_radiant",
+          "category": "unit",
+          "label": "radiant b4",
+          "tier_or_style": "X Tier",
+          "row": 22
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_resource",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_resource",
+          "category": "unit",
+          "label": "resource b4",
+          "tier_or_style": "B Tier",
+          "row": 108
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_revolution_fix",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_revolution",
+          "category": "strafe",
+          "label": "revolution b3",
+          "tier_or_style": "S Tier",
+          "row": 12
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "not_baked",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_rise",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_rise",
+          "category": "to_be_added",
+          "label": "rise b4",
+          "tier_or_style": "Unit",
+          "row": 92
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_rocco_v2",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_rocco_v2",
+          "category": "strafe",
+          "label": "rocco_v2 b2",
+          "tier_or_style": "A Tier",
+          "row": 25
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_rubiks_cube",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_rubiks_cube",
+          "category": "unit",
+          "label": "rubiks_cube b1",
+          "tier_or_style": "A Tier",
+          "row": 70
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_runewords",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_runewords",
+          "category": "unit",
+          "label": "runewords b4",
+          "tier_or_style": "B Tier",
+          "row": 96
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_runewords2",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_runewords2",
+          "category": "unit",
+          "label": "runewords2 b4",
+          "tier_or_style": "A Tier",
+          "row": 83
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_runewords2",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_runewords2",
+          "category": "unit",
+          "label": "runewords2 b5",
+          "tier_or_style": "B Tier",
+          "row": 109
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_runewords2_lod",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_runewords2_lod",
+          "category": "to_be_added",
+          "label": "runewords2_lod b4",
+          "tier_or_style": "Unit",
+          "row": 91
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_ruse",
+      "bonus": 9,
+      "mentions": [
+        {
+          "sheet_map": "surf_ruse",
+          "category": "to_be_added",
+          "label": "ruse b9",
+          "tier_or_style": "Strafe",
+          "row": 93
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_salient",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_salient",
+          "category": "unit",
+          "label": "salient b2",
+          "tier_or_style": "A Tier",
+          "row": 74
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_salient2",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_salient2",
+          "category": "unit",
+          "label": "salient2 b2",
+          "tier_or_style": "A Tier",
+          "row": 64
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_sanctuary",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_sanctuary",
+          "category": "unit",
+          "label": "sanctuary b3",
+          "tier_or_style": "X Tier",
+          "row": 13
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_sandtrap",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_sandtrap",
+          "category": "unit",
+          "label": "sandtrap b3",
+          "tier_or_style": "A Tier",
+          "row": 71
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_sandtrap2",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_sandtrap2",
+          "category": "unit",
+          "label": "sandtrap2 b4",
+          "tier_or_style": "S Tier",
+          "row": 51
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_saturday",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_saturday",
+          "category": "unit",
+          "label": "saturday b2",
+          "tier_or_style": "S Tier",
+          "row": 36
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_second",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_second",
+          "category": "unit",
+          "label": "second b1",
+          "tier_or_style": "D Tier",
+          "row": 138
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_selenka",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_selenka",
+          "category": "to_be_added",
+          "label": "selenka b1",
+          "tier_or_style": "Strafe",
+          "row": 94
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_selenka",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_selenka",
+          "category": "unit",
+          "label": "selenka b2",
+          "tier_or_style": "C Tier",
+          "row": 132
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_sequoia_fix",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_sequoia_fix",
+          "category": "to_be_added",
+          "label": "sequoia_fix b1",
+          "tier_or_style": "Unit",
+          "row": 95
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_seraph",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_seraph",
+          "category": "unit",
+          "label": "seraph b1",
+          "tier_or_style": "B Tier",
+          "row": 114
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_serenity",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_serenity",
+          "category": "unit",
+          "label": "serenity b3",
+          "tier_or_style": "C Tier",
+          "row": 128
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_shambles",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_shambles",
+          "category": "to_be_added",
+          "label": "shambles b2",
+          "tier_or_style": "Unit",
+          "row": 96
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_shibboleth",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_shibboleth",
+          "category": "unit",
+          "label": "shibboleth b4 (1/2)",
+          "tier_or_style": "X Tier",
+          "row": 10
+        },
+        {
+          "sheet_map": "surf_shibboleth",
+          "category": "strafe",
+          "label": "shibboleth b4 (2/2)",
+          "tier_or_style": "S Tier",
+          "row": 10
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_shodan",
+      "bonus": 6,
+      "mentions": [
+        {
+          "sheet_map": "surf_shodan",
+          "category": "to_be_added",
+          "label": "shodan b6",
+          "tier_or_style": "Unit",
+          "row": 97
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_shodan",
+      "bonus": 8,
+      "mentions": [
+        {
+          "sheet_map": "surf_shodan",
+          "category": "to_be_added",
+          "label": "shodan b8",
+          "tier_or_style": "Unit/Strafe",
+          "row": 98
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_shodan",
+      "bonus": 9,
+      "mentions": [
+        {
+          "sheet_map": "surf_shodan",
+          "category": "unit",
+          "label": "shodan b9",
+          "tier_or_style": "A Tier",
+          "row": 68
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_shodan",
+      "bonus": 10,
+      "mentions": [
+        {
+          "sheet_map": "surf_shodan",
+          "category": "unit",
+          "label": "shodan b10",
+          "tier_or_style": "X Tier",
+          "row": 20
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_shoria",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_shoria",
+          "category": "unit",
+          "label": "shoria b1",
+          "tier_or_style": "C Tier",
+          "row": 122
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_sinister_evil",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_sinister_evil",
+          "category": "unit",
+          "label": "sinister_evil b1",
+          "tier_or_style": "A Tier",
+          "row": 86
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_sinister_evil",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_sinister_evil",
+          "category": "unit",
+          "label": "sinister_evil b2",
+          "tier_or_style": "A Tier",
+          "row": 80
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_sinsane",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_sinsane",
+          "category": "strafe",
+          "label": "sinsane b1",
+          "tier_or_style": "X Tier",
+          "row": 6
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_sinsane2",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_sinsane2",
+          "category": "to_be_added",
+          "label": "sinsane2 b1",
+          "tier_or_style": "Strafe",
+          "row": 99
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_sinsane2",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_sinsane2",
+          "category": "to_be_added",
+          "label": "sinsane2 b2",
+          "tier_or_style": "Strafe",
+          "row": 100
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_sinsane2",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_sinsane2",
+          "category": "unit",
+          "label": "sinsane2 b3",
+          "tier_or_style": "X Tier",
+          "row": 23
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_sinsane2",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_sinsane2",
+          "category": "unit",
+          "label": "sinsane2 b4",
+          "tier_or_style": "X Tier",
+          "row": 8
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_skipalot",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_skipalot",
+          "category": "to_be_added",
+          "label": "skipalot b1",
+          "tier_or_style": "Unit",
+          "row": 101
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_skipalot",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_skipalot",
+          "category": "unit",
+          "label": "skipalot b2",
+          "tier_or_style": "S Tier",
+          "row": 43
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_skipalot",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_skipalot",
+          "category": "strafe",
+          "label": "skipalot b4",
+          "tier_or_style": "B Tier",
+          "row": 28
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_smol",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_smol",
+          "category": "to_be_added",
+          "label": "smol b4",
+          "tier_or_style": "Unit",
+          "row": 102
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_spectra",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_spectra",
+          "category": "unit",
+          "label": "spectra b1",
+          "tier_or_style": "C Tier",
+          "row": 129
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_starvald",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_starvald",
+          "category": "to_be_added",
+          "label": "starvald b1",
+          "tier_or_style": "Unit",
+          "row": 103
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_starvald",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_starvald",
+          "category": "to_be_added",
+          "label": "starvald b2",
+          "tier_or_style": "Unit",
+          "row": 104
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_starvald",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_starvald",
+          "category": "to_be_added",
+          "label": "starvald b3",
+          "tier_or_style": "Unit",
+          "row": 105
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_starvald",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_starvald",
+          "category": "to_be_added",
+          "label": "starvald b4",
+          "tier_or_style": "Unit",
+          "row": 106
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_stitched",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_stitched",
+          "category": "unit",
+          "label": "stitched b1",
+          "tier_or_style": "X Tier",
+          "row": 21
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_strike",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_strike",
+          "category": "strafe",
+          "label": "strike b1",
+          "tier_or_style": "S Tier",
+          "row": 15
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_sunday",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_sunday",
+          "category": "to_be_added",
+          "label": "sunday b1",
+          "tier_or_style": "Unit",
+          "row": 107
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_sunday",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_sunday",
+          "category": "to_be_added",
+          "label": "sunday b3",
+          "tier_or_style": "Unit",
+          "row": 108
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_synada",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_synada",
+          "category": "unit",
+          "label": "synada b3",
+          "tier_or_style": "C Tier",
+          "row": 121
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_technique",
+      "bonus": 4,
+      "mentions": [
+        {
+          "sheet_map": "surf_technique",
+          "category": "unit",
+          "label": "technique b4",
+          "tier_or_style": "A Tier",
+          "row": 60
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_technique",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_technique",
+          "category": "unit",
+          "label": "technique b5",
+          "tier_or_style": "A Tier",
+          "row": 69
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_tendies",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_tendies",
+          "category": "to_be_added",
+          "label": "tendies b3",
+          "tier_or_style": "Unit",
+          "row": 109
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_tensor2",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_tensor2",
+          "category": "to_be_added",
+          "label": "tensor2 b1",
+          "tier_or_style": "Unit",
+          "row": 110
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_tensor2",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_tensor2",
+          "category": "to_be_added",
+          "label": "tensor2 b3",
+          "tier_or_style": "Unit",
+          "row": 111
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_tensor2",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_tensor2",
+          "category": "to_be_added",
+          "label": "tensor2 b5",
+          "tier_or_style": "Unit/Strafe",
+          "row": 112
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_tensor2",
+      "bonus": 6,
+      "mentions": [
+        {
+          "sheet_map": "surf_tensor2",
+          "category": "to_be_added",
+          "label": "tensor2 b6",
+          "tier_or_style": "Unit",
+          "row": 113
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_theme",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_theme",
+          "category": "to_be_added",
+          "label": "theme b3",
+          "tier_or_style": "Unit",
+          "row": 115
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_thesteve",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_thesteve",
+          "category": "to_be_added",
+          "label": "thesteve b1",
+          "tier_or_style": "Unit",
+          "row": 114
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_thesteve",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_thesteve",
+          "category": "unit",
+          "label": "thesteve b2",
+          "tier_or_style": "S Tier",
+          "row": 30
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_trihard",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_trihard",
+          "category": "unit",
+          "label": "trihard b1",
+          "tier_or_style": "C Tier",
+          "row": 133
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_unraveled",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_unraveled",
+          "category": "to_be_added",
+          "label": "unraveled b1",
+          "tier_or_style": "Unit",
+          "row": 116
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_valpect",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_valpect",
+          "category": "unit",
+          "label": "valpect b1",
+          "tier_or_style": "S Tier",
+          "row": 40
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_warped",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_warped",
+          "category": "strafe",
+          "label": "warped b1",
+          "tier_or_style": "A Tier",
+          "row": 23
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_warped",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_warped",
+          "category": "unit",
+          "label": "warped b2",
+          "tier_or_style": "S Tier",
+          "row": 46
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_warped",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_warped",
+          "category": "to_be_added",
+          "label": "warped b3",
+          "tier_or_style": "Unit",
+          "row": 117
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    },
+    {
+      "map": "surf_wizard",
+      "bonus": 1,
+      "mentions": [
+        {
+          "sheet_map": "surf_wizard",
+          "category": "unit",
+          "label": "wizard b1",
+          "tier_or_style": "B Tier",
+          "row": 107
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_wizard",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_wizard",
+          "category": "unit",
+          "label": "wizard b2",
+          "tier_or_style": "B Tier",
+          "row": 104
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_wizard",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_wizard",
+          "category": "unit",
+          "label": "wizard b3",
+          "tier_or_style": "B Tier",
+          "row": 105
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_zen2",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_zen2",
+          "category": "to_be_added",
+          "label": "zen2 b2",
+          "tier_or_style": "Strafe",
+          "row": 118
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_zen2",
+      "bonus": 3,
+      "mentions": [
+        {
+          "sheet_map": "surf_zen2",
+          "category": "unit",
+          "label": "zen2 b3",
+          "tier_or_style": "C Tier",
+          "row": 127
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_zen2",
+      "bonus": 5,
+      "mentions": [
+        {
+          "sheet_map": "surf_zen2",
+          "category": "unit",
+          "label": "zen2 b5",
+          "tier_or_style": "S Tier",
+          "row": 49
+        }
+      ],
+      "exact_course_input_held": true,
+      "map_bake_status": "ready",
+      "cosmetic_course_input_and_map_ready": true
+    },
+    {
+      "map": "surf_zeonine",
+      "bonus": 2,
+      "mentions": [
+        {
+          "sheet_map": "surf_zeonine",
+          "category": "to_be_added",
+          "label": "zeonine b2",
+          "tier_or_style": "Strafe",
+          "row": 119
+        }
+      ],
+      "exact_course_input_held": false,
+      "map_bake_status": "no_replays",
+      "cosmetic_course_input_and_map_ready": false
+    }
+  ],
+  "coverage_definition": "held exact-map bonus recording and a ready whole-map bake; not proof every bonus ramp surface was touched or a playability verdict",
+  "summary": {
+    "utc": "2026-11-07T05:41:54.543563+00:00",
+    "target_maps": 307,
+    "bakes_ready": 241,
+    "priority_maps": 173,
+    "priority_maps_ready": 124,
+    "priority_bonuses": 278,
+    "priority_bonus_inputs_available": 195,
+    "priority_input_and_map_ready": 186,
+    "popular_main_maps": 100,
+    "popular_main_maps_ready": 92
+  },
+  "popular_main_definition": "top 100 maps by held main-board run count, all sources/directions; not measured play telemetry",
+  "maps": {
+    "bhop_futile": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_1998": {
+      "status": "ready",
+      "unique_sources": 74,
+      "placed_contacts": 11306,
+      "surfaces": 41
+    },
+    "surf_4am": {
+      "status": "ready",
+      "unique_sources": 159,
+      "placed_contacts": 91633,
+      "surfaces": 758
+    },
+    "surf_666": {
+      "status": "ready",
+      "unique_sources": 139,
+      "placed_contacts": 113245,
+      "surfaces": 609
+    },
+    "surf_8bit": {
+      "status": "ready",
+      "unique_sources": 25,
+      "placed_contacts": 18152,
+      "surfaces": 497
+    },
+    "surf_ab": {
+      "status": "ready",
+      "unique_sources": 317,
+      "placed_contacts": 193090,
+      "surfaces": 781
+    },
+    "surf_abandoned": {
+      "status": "ready",
+      "unique_sources": 4,
+      "placed_contacts": 1435,
+      "surfaces": 329
+    },
+    "surf_ace": {
+      "status": "ready",
+      "unique_sources": 118,
+      "placed_contacts": 31978,
+      "surfaces": 171
+    },
+    "surf_aesthetic": {
+      "status": "ready",
+      "unique_sources": 48,
+      "placed_contacts": 22382,
+      "surfaces": 145
+    },
+    "surf_aether": {
+      "status": "ready",
+      "unique_sources": 11,
+      "placed_contacts": 6558,
+      "surfaces": 470
+    },
+    "surf_affliction": {
+      "status": "ready",
+      "unique_sources": 37,
+      "placed_contacts": 10073,
+      "surfaces": 867
+    },
+    "surf_agony": {
+      "status": "ready",
+      "unique_sources": 10,
+      "placed_contacts": 2030,
+      "surfaces": 26
+    },
+    "surf_aircontrol": {
+      "status": "ready",
+      "unique_sources": 14,
+      "placed_contacts": 8416,
+      "surfaces": 111
+    },
+    "surf_airflow": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_amaro": {
+      "status": "ready",
+      "unique_sources": 2,
+      "placed_contacts": 722,
+      "surfaces": 28
+    },
+    "surf_android_ksf": {
+      "status": "ready",
+      "unique_sources": 1,
+      "placed_contacts": 3897,
+      "surfaces": 539
+    },
+    "surf_andromeda": {
+      "status": "no_placed_contacts",
+      "unique_sources": 31,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_anoobis": {
+      "status": "ready",
+      "unique_sources": 135,
+      "placed_contacts": 38812,
+      "surfaces": 698
+    },
+    "surf_antagonist": {
+      "status": "ready",
+      "unique_sources": 61,
+      "placed_contacts": 31832,
+      "surfaces": 253
+    },
+    "surf_antagonist2": {
+      "status": "ready",
+      "unique_sources": 31,
+      "placed_contacts": 11867,
+      "surfaces": 365
+    },
+    "surf_anubis": {
+      "status": "ready",
+      "unique_sources": 26,
+      "placed_contacts": 4174,
+      "surfaces": 342
+    },
+    "surf_anything": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_anzchamps": {
+      "status": "ready",
+      "unique_sources": 102,
+      "placed_contacts": 913,
+      "surfaces": 22
+    },
+    "surf_apollo": {
+      "status": "ready",
+      "unique_sources": 70,
+      "placed_contacts": 24122,
+      "surfaces": 366
+    },
+    "surf_aquaflow": {
+      "status": "ready",
+      "unique_sources": 11,
+      "placed_contacts": 18,
+      "surfaces": 21
+    },
+    "surf_arcade": {
+      "status": "ready",
+      "unique_sources": 24,
+      "placed_contacts": 202,
+      "surfaces": 2
+    },
+    "surf_artois": {
+      "status": "ready",
+      "unique_sources": 125,
+      "placed_contacts": 3428,
+      "surfaces": 145
+    },
+    "surf_asrown": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_assail": {
+      "status": "ready",
+      "unique_sources": 20,
+      "placed_contacts": 8448,
+      "surfaces": 365
+    },
+    "surf_aura": {
+      "status": "ready",
+      "unique_sources": 143,
+      "placed_contacts": 51820,
+      "surfaces": 725
+    },
+    "surf_axil": {
+      "status": "ready",
+      "unique_sources": 1,
+      "placed_contacts": 159,
+      "surfaces": 3
+    },
+    "surf_axiom": {
+      "status": "no_placed_contacts",
+      "unique_sources": 38,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_ballzilla": {
+      "status": "ready",
+      "unique_sources": 4,
+      "placed_contacts": 2354,
+      "surfaces": 160
+    },
+    "surf_beginner": {
+      "status": "ready",
+      "unique_sources": 80,
+      "placed_contacts": 23178,
+      "surfaces": 280
+    },
+    "surf_beginner2": {
+      "status": "ready",
+      "unique_sources": 116,
+      "placed_contacts": 33261,
+      "surfaces": 853
+    },
+    "surf_beginner_hell": {
+      "status": "ready",
+      "unique_sources": 35,
+      "placed_contacts": 22175,
+      "surfaces": 385
+    },
+    "surf_benevolent": {
+      "status": "ready",
+      "unique_sources": 35,
+      "placed_contacts": 10148,
+      "surfaces": 514
+    },
+    "surf_beyer2": {
+      "status": "ready",
+      "unique_sources": 19,
+      "placed_contacts": 9670,
+      "surfaces": 625
+    },
+    "surf_beyond": {
+      "status": "no_placed_contacts",
+      "unique_sources": 89,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_blackheart": {
+      "status": "ready",
+      "unique_sources": 28,
+      "placed_contacts": 3875,
+      "surfaces": 134
+    },
+    "surf_board_this": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_borderlands": {
+      "status": "ready",
+      "unique_sources": 84,
+      "placed_contacts": 58093,
+      "surfaces": 71
+    },
+    "surf_borderlands_h": {
+      "status": "ready",
+      "unique_sources": 32,
+      "placed_contacts": 35107,
+      "surfaces": 68
+    },
+    "surf_boreas": {
+      "status": "no_placed_contacts",
+      "unique_sources": 18,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_botanica": {
+      "status": "ready",
+      "unique_sources": 118,
+      "placed_contacts": 53001,
+      "surfaces": 630
+    },
+    "surf_breach": {
+      "status": "ready",
+      "unique_sources": 9,
+      "placed_contacts": 3051,
+      "surfaces": 368
+    },
+    "surf_brutalist": {
+      "status": "ready",
+      "unique_sources": 1,
+      "placed_contacts": 12598,
+      "surfaces": 361
+    },
+    "surf_bugs": {
+      "status": "ready",
+      "unique_sources": 43,
+      "placed_contacts": 19532,
+      "surfaces": 286
+    },
+    "surf_calycate": {
+      "status": "ready",
+      "unique_sources": 11,
+      "placed_contacts": 7538,
+      "surfaces": 595
+    },
+    "surf_calycate2": {
+      "status": "ready",
+      "unique_sources": 8,
+      "placed_contacts": 7059,
+      "surfaces": 938
+    },
+    "surf_calzone": {
+      "status": "ready",
+      "unique_sources": 68,
+      "placed_contacts": 2175,
+      "surfaces": 39
+    },
+    "surf_cannonball": {
+      "status": "ready",
+      "unique_sources": 13,
+      "placed_contacts": 9346,
+      "surfaces": 224
+    },
+    "surf_castle": {
+      "status": "ready",
+      "unique_sources": 5,
+      "placed_contacts": 4370,
+      "surfaces": 242
+    },
+    "surf_cavemissile_fix": {
+      "status": "ready",
+      "unique_sources": 1,
+      "placed_contacts": 1004,
+      "surfaces": 379
+    },
+    "surf_cavity": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_celestial": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_cement": {
+      "status": "ready",
+      "unique_sources": 51,
+      "placed_contacts": 31295,
+      "surfaces": 321
+    },
+    "surf_chaos_fix": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_chasm": {
+      "status": "ready",
+      "unique_sources": 16,
+      "placed_contacts": 6260,
+      "surfaces": 197
+    },
+    "surf_chateau": {
+      "status": "ready",
+      "unique_sources": 17,
+      "placed_contacts": 5329,
+      "surfaces": 63
+    },
+    "surf_chungus_fungus": {
+      "status": "ready",
+      "unique_sources": 7,
+      "placed_contacts": 26085,
+      "surfaces": 227
+    },
+    "surf_cinnamon_fix": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_citypop": {
+      "status": "ready",
+      "unique_sources": 49,
+      "placed_contacts": 18057,
+      "surfaces": 822
+    },
+    "surf_classics": {
+      "status": "ready",
+      "unique_sources": 222,
+      "placed_contacts": 231630,
+      "surfaces": 4409
+    },
+    "surf_classics2": {
+      "status": "ready",
+      "unique_sources": 114,
+      "placed_contacts": 120995,
+      "surfaces": 2448
+    },
+    "surf_classics3": {
+      "status": "ready",
+      "unique_sources": 309,
+      "placed_contacts": 59584,
+      "surfaces": 840
+    },
+    "surf_colin_blaster_69000": {
+      "status": "ready",
+      "unique_sources": 133,
+      "placed_contacts": 101294,
+      "surfaces": 319
+    },
+    "surf_concretejungle_fix": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_corruption": {
+      "status": "ready",
+      "unique_sources": 67,
+      "placed_contacts": 38023,
+      "surfaces": 1394
+    },
+    "surf_crimson": {
+      "status": "ready",
+      "unique_sources": 4,
+      "placed_contacts": 1469,
+      "surfaces": 122
+    },
+    "surf_cyberwave": {
+      "status": "no_placed_contacts",
+      "unique_sources": 18,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_damnation": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_deathstar": {
+      "status": "ready",
+      "unique_sources": 41,
+      "placed_contacts": 11384,
+      "surfaces": 541
+    },
+    "surf_deity_ksf": {
+      "status": "ready",
+      "unique_sources": 25,
+      "placed_contacts": 36798,
+      "surfaces": 517
+    },
+    "surf_demise": {
+      "status": "ready",
+      "unique_sources": 50,
+      "placed_contacts": 1569,
+      "surfaces": 86
+    },
+    "surf_deoa": {
+      "status": "ready",
+      "unique_sources": 41,
+      "placed_contacts": 22377,
+      "surfaces": 1056
+    },
+    "surf_devil": {
+      "status": "ready",
+      "unique_sources": 54,
+      "placed_contacts": 5909,
+      "surfaces": 108
+    },
+    "surf_disaster": {
+      "status": "ready",
+      "unique_sources": 9,
+      "placed_contacts": 5691,
+      "surfaces": 474
+    },
+    "surf_doomsday": {
+      "status": "ready",
+      "unique_sources": 48,
+      "placed_contacts": 31974,
+      "surfaces": 147
+    },
+    "surf_dova": {
+      "status": "ready",
+      "unique_sources": 1,
+      "placed_contacts": 851,
+      "surfaces": 204
+    },
+    "surf_dragon": {
+      "status": "no_placed_contacts",
+      "unique_sources": 25,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_dune": {
+      "status": "ready",
+      "unique_sources": 89,
+      "placed_contacts": 600,
+      "surfaces": 53
+    },
+    "surf_earthmover": {
+      "status": "ready",
+      "unique_sources": 57,
+      "placed_contacts": 33816,
+      "surfaces": 331
+    },
+    "surf_ebony": {
+      "status": "ready",
+      "unique_sources": 17,
+      "placed_contacts": 11966,
+      "surfaces": 585
+    },
+    "surf_echo": {
+      "status": "ready",
+      "unique_sources": 12,
+      "placed_contacts": 2671,
+      "surfaces": 91
+    },
+    "surf_elysium4": {
+      "status": "ready",
+      "unique_sources": 33,
+      "placed_contacts": 39103,
+      "surfaces": 945
+    },
+    "surf_enlightened_ksf": {
+      "status": "ready",
+      "unique_sources": 5,
+      "placed_contacts": 4324,
+      "surfaces": 231
+    },
+    "surf_eon": {
+      "status": "ready",
+      "unique_sources": 8,
+      "placed_contacts": 2272,
+      "surfaces": 394
+    },
+    "surf_epicube": {
+      "status": "ready",
+      "unique_sources": 11,
+      "placed_contacts": 4818,
+      "surfaces": 628
+    },
+    "surf_epiphany": {
+      "status": "ready",
+      "unique_sources": 55,
+      "placed_contacts": 17159,
+      "surfaces": 697
+    },
+    "surf_era": {
+      "status": "ready",
+      "unique_sources": 12,
+      "placed_contacts": 16920,
+      "surfaces": 838
+    },
+    "surf_eryr": {
+      "status": "ready",
+      "unique_sources": 29,
+      "placed_contacts": 34939,
+      "surfaces": 185
+    },
+    "surf_eryr2_fix": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_ethereal": {
+      "status": "ready",
+      "unique_sources": 35,
+      "placed_contacts": 18,
+      "surfaces": 6
+    },
+    "surf_eunoia": {
+      "status": "ready",
+      "unique_sources": 13,
+      "placed_contacts": 6546,
+      "surfaces": 210
+    },
+    "surf_excavation": {
+      "status": "ready",
+      "unique_sources": 73,
+      "placed_contacts": 67840,
+      "surfaces": 329
+    },
+    "surf_executioner": {
+      "status": "ready",
+      "unique_sources": 8,
+      "placed_contacts": 5336,
+      "surfaces": 211
+    },
+    "surf_exonic": {
+      "status": "ready",
+      "unique_sources": 25,
+      "placed_contacts": 15485,
+      "surfaces": 329
+    },
+    "surf_extremex2_5": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_ezclap": {
+      "status": "ready",
+      "unique_sources": 33,
+      "placed_contacts": 24030,
+      "surfaces": 194
+    },
+    "surf_fabas": {
+      "status": "ready",
+      "unique_sources": 19,
+      "placed_contacts": 27910,
+      "surfaces": 228
+    },
+    "surf_facility": {
+      "status": "ready",
+      "unique_sources": 20,
+      "placed_contacts": 11417,
+      "surfaces": 171
+    },
+    "surf_fiellu": {
+      "status": "ready",
+      "unique_sources": 31,
+      "placed_contacts": 10712,
+      "surfaces": 702
+    },
+    "surf_forgotten": {
+      "status": "ready",
+      "unique_sources": 60,
+      "placed_contacts": 19641,
+      "surfaces": 375
+    },
+    "surf_fornax": {
+      "status": "ready",
+      "unique_sources": 76,
+      "placed_contacts": 1854,
+      "surfaces": 36
+    },
+    "surf_fortum": {
+      "status": "ready",
+      "unique_sources": 30,
+      "placed_contacts": 246,
+      "surfaces": 29
+    },
+    "surf_frost": {
+      "status": "ready",
+      "unique_sources": 48,
+      "placed_contacts": 22124,
+      "surfaces": 363
+    },
+    "surf_fruits": {
+      "status": "ready",
+      "unique_sources": 51,
+      "placed_contacts": 10536,
+      "surfaces": 641
+    },
+    "surf_fruits2": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_fungus": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_funhouse2": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_garden": {
+      "status": "ready",
+      "unique_sources": 226,
+      "placed_contacts": 79846,
+      "surfaces": 963
+    },
+    "surf_garden_h": {
+      "status": "ready",
+      "unique_sources": 56,
+      "placed_contacts": 52626,
+      "surfaces": 807
+    },
+    "surf_gary_barlow": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_germania": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_gigapede": {
+      "status": "ready",
+      "unique_sources": 50,
+      "placed_contacts": 9487,
+      "surfaces": 239
+    },
+    "surf_gloomy": {
+      "status": "ready",
+      "unique_sources": 43,
+      "placed_contacts": 4466,
+      "surfaces": 321
+    },
+    "surf_goliath": {
+      "status": "no_placed_contacts",
+      "unique_sources": 85,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_guitar_hi": {
+      "status": "ready",
+      "unique_sources": 12,
+      "placed_contacts": 4483,
+      "surfaces": 574
+    },
+    "surf_hades2": {
+      "status": "ready",
+      "unique_sources": 152,
+      "placed_contacts": 202480,
+      "surfaces": 145
+    },
+    "surf_happyhands5": {
+      "status": "ready",
+      "unique_sources": 13,
+      "placed_contacts": 17860,
+      "surfaces": 515
+    },
+    "surf_happyhug": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_helloworld": {
+      "status": "ready",
+      "unique_sources": 33,
+      "placed_contacts": 1008,
+      "surfaces": 19
+    },
+    "surf_hero": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_highlands": {
+      "status": "ready",
+      "unique_sources": 44,
+      "placed_contacts": 58720,
+      "surfaces": 378
+    },
+    "surf_holiday": {
+      "status": "no_placed_contacts",
+      "unique_sources": 26,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_hollow": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_hotwheels": {
+      "status": "ready",
+      "unique_sources": 21,
+      "placed_contacts": 1143,
+      "surfaces": 110
+    },
+    "surf_hourglass": {
+      "status": "ready",
+      "unique_sources": 14,
+      "placed_contacts": 15458,
+      "surfaces": 912
+    },
+    "surf_how2surf": {
+      "status": "ready",
+      "unique_sources": 33,
+      "placed_contacts": 12466,
+      "surfaces": 319
+    },
+    "surf_huh": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_hunty": {
+      "status": "no_placed_contacts",
+      "unique_sources": 32,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_illumination": {
+      "status": "ready",
+      "unique_sources": 22,
+      "placed_contacts": 4944,
+      "surfaces": 254
+    },
+    "surf_illumination2": {
+      "status": "ready",
+      "unique_sources": 37,
+      "placed_contacts": 1482,
+      "surfaces": 28
+    },
+    "surf_illusion": {
+      "status": "ready",
+      "unique_sources": 18,
+      "placed_contacts": 6213,
+      "surfaces": 66
+    },
+    "surf_indecisive": {
+      "status": "ready",
+      "unique_sources": 6,
+      "placed_contacts": 1311,
+      "surfaces": 24
+    },
+    "surf_inferno": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_innokia": {
+      "status": "no_placed_contacts",
+      "unique_sources": 12,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_island": {
+      "status": "ready",
+      "unique_sources": 3,
+      "placed_contacts": 2424,
+      "surfaces": 432
+    },
+    "surf_ivory": {
+      "status": "ready",
+      "unique_sources": 12,
+      "placed_contacts": 4551,
+      "surfaces": 441
+    },
+    "surf_izded": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_jaqen": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_jaqen2": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_journeys": {
+      "status": "ready",
+      "unique_sources": 16,
+      "placed_contacts": 5795,
+      "surfaces": 420
+    },
+    "surf_joutsenlaulu": {
+      "status": "ready",
+      "unique_sources": 20,
+      "placed_contacts": 19886,
+      "surfaces": 990
+    },
+    "surf_jumble": {
+      "status": "no_placed_contacts",
+      "unique_sources": 60,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_kaaba": {
+      "status": "ready",
+      "unique_sources": 23,
+      "placed_contacts": 31178,
+      "surfaces": 118
+    },
+    "surf_kairo": {
+      "status": "ready",
+      "unique_sources": 16,
+      "placed_contacts": 42,
+      "surfaces": 8
+    },
+    "surf_kepler": {
+      "status": "ready",
+      "unique_sources": 183,
+      "placed_contacts": 7820,
+      "surfaces": 233
+    },
+    "surf_kismet": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_kitsune": {
+      "status": "ready",
+      "unique_sources": 116,
+      "placed_contacts": 55286,
+      "surfaces": 648
+    },
+    "surf_kitsune2": {
+      "status": "no_placed_contacts",
+      "unique_sources": 63,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_kloakk": {
+      "status": "ready",
+      "unique_sources": 28,
+      "placed_contacts": 977,
+      "surfaces": 188
+    },
+    "surf_korn": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_kultur": {
+      "status": "ready",
+      "unique_sources": 95,
+      "placed_contacts": 10717,
+      "surfaces": 34
+    },
+    "surf_kvas": {
+      "status": "ready",
+      "unique_sources": 46,
+      "placed_contacts": 17509,
+      "surfaces": 455
+    },
+    "surf_lax": {
+      "status": "ready",
+      "unique_sources": 44,
+      "placed_contacts": 46910,
+      "surfaces": 1353
+    },
+    "surf_leesriize_ksf": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_leet_xl_beta7z": {
+      "status": "ready",
+      "unique_sources": 18,
+      "placed_contacts": 5222,
+      "surfaces": 532
+    },
+    "surf_legends": {
+      "status": "ready",
+      "unique_sources": 11,
+      "placed_contacts": 3263,
+      "surfaces": 249
+    },
+    "surf_leidenfrost": {
+      "status": "ready",
+      "unique_sources": 8,
+      "placed_contacts": 3462,
+      "surfaces": 340
+    },
+    "surf_lessons": {
+      "status": "ready",
+      "unique_sources": 48,
+      "placed_contacts": 12003,
+      "surfaces": 1065
+    },
+    "surf_life_of_cow": {
+      "status": "ready",
+      "unique_sources": 30,
+      "placed_contacts": 5758,
+      "surfaces": 236
+    },
+    "surf_loentra": {
+      "status": "ready",
+      "unique_sources": 6,
+      "placed_contacts": 3736,
+      "surfaces": 492
+    },
+    "surf_lore": {
+      "status": "ready",
+      "unique_sources": 53,
+      "placed_contacts": 29765,
+      "surfaces": 547
+    },
+    "surf_lovetunnel": {
+      "status": "no_placed_contacts",
+      "unique_sources": 10,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_loweffort": {
+      "status": "ready",
+      "unique_sources": 26,
+      "placed_contacts": 40905,
+      "surfaces": 330
+    },
+    "surf_loweffort2": {
+      "status": "ready",
+      "unique_sources": 43,
+      "placed_contacts": 51825,
+      "surfaces": 365
+    },
+    "surf_lt_omnific": {
+      "status": "no_placed_contacts",
+      "unique_sources": 97,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_lux": {
+      "status": "ready",
+      "unique_sources": 11,
+      "placed_contacts": 5693,
+      "surfaces": 813
+    },
+    "surf_mdrn": {
+      "status": "ready",
+      "unique_sources": 12,
+      "placed_contacts": 6205,
+      "surfaces": 340
+    },
+    "surf_me": {
+      "status": "ready",
+      "unique_sources": 110,
+      "placed_contacts": 43382,
+      "surfaces": 1306
+    },
+    "surf_medley": {
+      "status": "ready",
+      "unique_sources": 48,
+      "placed_contacts": 45460,
+      "surfaces": 829
+    },
+    "surf_memories": {
+      "status": "ready",
+      "unique_sources": 30,
+      "placed_contacts": 25686,
+      "surfaces": 278
+    },
+    "surf_mesa": {
+      "status": "ready",
+      "unique_sources": 6,
+      "placed_contacts": 7183,
+      "surfaces": 1419
+    },
+    "surf_mesa_mine": {
+      "status": "ready",
+      "unique_sources": 8,
+      "placed_contacts": 6443,
+      "surfaces": 1124
+    },
+    "surf_mesa_revo": {
+      "status": "ready",
+      "unique_sources": 6,
+      "placed_contacts": 7314,
+      "surfaces": 1194
+    },
+    "surf_midsommar": {
+      "status": "ready",
+      "unique_sources": 26,
+      "placed_contacts": 1631,
+      "surfaces": 77
+    },
+    "surf_minuet": {
+      "status": "ready",
+      "unique_sources": 4,
+      "placed_contacts": 4109,
+      "surfaces": 1146
+    },
+    "surf_mom": {
+      "status": "ready",
+      "unique_sources": 34,
+      "placed_contacts": 9656,
+      "surfaces": 219
+    },
+    "surf_monkeys": {
+      "status": "ready",
+      "unique_sources": 53,
+      "placed_contacts": 5981,
+      "surfaces": 133
+    },
+    "surf_monkeys2": {
+      "status": "no_placed_contacts",
+      "unique_sources": 16,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_monolith": {
+      "status": "ready",
+      "unique_sources": 206,
+      "placed_contacts": 59551,
+      "surfaces": 907
+    },
+    "surf_n_turf": {
+      "status": "ready",
+      "unique_sources": 98,
+      "placed_contacts": 47753,
+      "surfaces": 785
+    },
+    "surf_nebula": {
+      "status": "no_placed_contacts",
+      "unique_sources": 13,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_neoplasma": {
+      "status": "ready",
+      "unique_sources": 18,
+      "placed_contacts": 8641,
+      "surfaces": 1494
+    },
+    "surf_neoteric": {
+      "status": "ready",
+      "unique_sources": 37,
+      "placed_contacts": 38634,
+      "surfaces": 331
+    },
+    "surf_nesquik": {
+      "status": "ready",
+      "unique_sources": 52,
+      "placed_contacts": 39066,
+      "surfaces": 1279
+    },
+    "surf_network2008_final": {
+      "status": "ready",
+      "unique_sources": 25,
+      "placed_contacts": 9685,
+      "surfaces": 659
+    },
+    "surf_nightmare": {
+      "status": "ready",
+      "unique_sources": 18,
+      "placed_contacts": 13006,
+      "surfaces": 528
+    },
+    "surf_not_so_disaster": {
+      "status": "ready",
+      "unique_sources": 20,
+      "placed_contacts": 11699,
+      "surfaces": 856
+    },
+    "surf_not_so_quick": {
+      "status": "ready",
+      "unique_sources": 30,
+      "placed_contacts": 15561,
+      "surfaces": 285
+    },
+    "surf_not_so_sinister": {
+      "status": "ready",
+      "unique_sources": 23,
+      "placed_contacts": 11768,
+      "surfaces": 758
+    },
+    "surf_not_so_zen": {
+      "status": "ready",
+      "unique_sources": 12,
+      "placed_contacts": 4594,
+      "surfaces": 612
+    },
+    "surf_nuclear": {
+      "status": "ready",
+      "unique_sources": 36,
+      "placed_contacts": 30834,
+      "surfaces": 1578
+    },
+    "surf_nyx": {
+      "status": "ready",
+      "unique_sources": 14,
+      "placed_contacts": 362,
+      "surfaces": 153
+    },
+    "surf_olivia": {
+      "status": "ready",
+      "unique_sources": 28,
+      "placed_contacts": 2342,
+      "surfaces": 190
+    },
+    "surf_orthodox": {
+      "status": "ready",
+      "unique_sources": 93,
+      "placed_contacts": 56954,
+      "surfaces": 2577
+    },
+    "surf_our": {
+      "status": "ready",
+      "unique_sources": 16,
+      "placed_contacts": 7118,
+      "surfaces": 706
+    },
+    "surf_overgrowth": {
+      "status": "ready",
+      "unique_sources": 31,
+      "placed_contacts": 47390,
+      "surfaces": 1946
+    },
+    "surf_overgrowth2": {
+      "status": "ready",
+      "unique_sources": 36,
+      "placed_contacts": 210211,
+      "surfaces": 1591
+    },
+    "surf_palais": {
+      "status": "ready",
+      "unique_sources": 3,
+      "placed_contacts": 1850,
+      "surfaces": 106
+    },
+    "surf_palm": {
+      "status": "ready",
+      "unique_sources": 12,
+      "placed_contacts": 5807,
+      "surfaces": 133
+    },
+    "surf_pancake": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_pandemonium_njv": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_pantheon": {
+      "status": "ready",
+      "unique_sources": 51,
+      "placed_contacts": 11634,
+      "surfaces": 491
+    },
+    "surf_papertown": {
+      "status": "ready",
+      "unique_sources": 16,
+      "placed_contacts": 13769,
+      "surfaces": 130
+    },
+    "surf_paradigm": {
+      "status": "ready",
+      "unique_sources": 13,
+      "placed_contacts": 5986,
+      "surfaces": 252
+    },
+    "surf_pls": {
+      "status": "ready",
+      "unique_sources": 96,
+      "placed_contacts": 36240,
+      "surfaces": 956
+    },
+    "surf_polonia": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_polygon": {
+      "status": "ready",
+      "unique_sources": 33,
+      "placed_contacts": 21021,
+      "surfaces": 253
+    },
+    "surf_pools": {
+      "status": "ready",
+      "unique_sources": 15,
+      "placed_contacts": 502,
+      "surfaces": 130
+    },
+    "surf_premium": {
+      "status": "ready",
+      "unique_sources": 40,
+      "placed_contacts": 251,
+      "surfaces": 8
+    },
+    "surf_progress": {
+      "status": "no_placed_contacts",
+      "unique_sources": 23,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_prosurf": {
+      "status": "ready",
+      "unique_sources": 84,
+      "placed_contacts": 48230,
+      "surfaces": 285
+    },
+    "surf_pyzire": {
+      "status": "ready",
+      "unique_sources": 17,
+      "placed_contacts": 4179,
+      "surfaces": 177
+    },
+    "surf_queen_of_the_ween": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_quickie_fix": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_quirky": {
+      "status": "ready",
+      "unique_sources": 32,
+      "placed_contacts": 9901,
+      "surfaces": 401
+    },
+    "surf_r-ne": {
+      "status": "ready",
+      "unique_sources": 51,
+      "placed_contacts": 25222,
+      "surfaces": 627
+    },
+    "surf_race": {
+      "status": "ready",
+      "unique_sources": 49,
+      "placed_contacts": 17741,
+      "surfaces": 976
+    },
+    "surf_radiant": {
+      "status": "ready",
+      "unique_sources": 22,
+      "placed_contacts": 9321,
+      "surfaces": 586
+    },
+    "surf_ravine": {
+      "status": "ready",
+      "unique_sources": 22,
+      "placed_contacts": 180,
+      "surfaces": 156
+    },
+    "surf_rebel_scaz": {
+      "status": "ready",
+      "unique_sources": 12,
+      "placed_contacts": 2425,
+      "surfaces": 1024
+    },
+    "surf_reprise": {
+      "status": "ready",
+      "unique_sources": 10,
+      "placed_contacts": 3983,
+      "surfaces": 1868
+    },
+    "surf_resource": {
+      "status": "ready",
+      "unique_sources": 33,
+      "placed_contacts": 23868,
+      "surfaces": 108
+    },
+    "surf_reverie": {
+      "status": "ready",
+      "unique_sources": 8,
+      "placed_contacts": 4421,
+      "surfaces": 225
+    },
+    "surf_revolution_fix": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_rise": {
+      "status": "ready",
+      "unique_sources": 73,
+      "placed_contacts": 31654,
+      "surfaces": 185
+    },
+    "surf_rocco_v2": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_rookie": {
+      "status": "ready",
+      "unique_sources": 190,
+      "placed_contacts": 59209,
+      "surfaces": 1130
+    },
+    "surf_rubiks_cube": {
+      "status": "ready",
+      "unique_sources": 30,
+      "placed_contacts": 2081,
+      "surfaces": 36
+    },
+    "surf_runewords": {
+      "status": "ready",
+      "unique_sources": 34,
+      "placed_contacts": 35722,
+      "surfaces": 1875
+    },
+    "surf_runewords2": {
+      "status": "ready",
+      "unique_sources": 38,
+      "placed_contacts": 39390,
+      "surfaces": 782
+    },
+    "surf_runewords2_lod": {
+      "status": "ready",
+      "unique_sources": 22,
+      "placed_contacts": 5774,
+      "surfaces": 272
+    },
+    "surf_ruse": {
+      "status": "ready",
+      "unique_sources": 152,
+      "placed_contacts": 118053,
+      "surfaces": 497
+    },
+    "surf_salient": {
+      "status": "ready",
+      "unique_sources": 21,
+      "placed_contacts": 12086,
+      "surfaces": 1510
+    },
+    "surf_salient2": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_sanctuary": {
+      "status": "ready",
+      "unique_sources": 36,
+      "placed_contacts": 24040,
+      "surfaces": 732
+    },
+    "surf_sandtrap": {
+      "status": "ready",
+      "unique_sources": 13,
+      "placed_contacts": 6078,
+      "surfaces": 388
+    },
+    "surf_sandtrap2": {
+      "status": "ready",
+      "unique_sources": 56,
+      "placed_contacts": 21958,
+      "surfaces": 443
+    },
+    "surf_santorini": {
+      "status": "ready",
+      "unique_sources": 46,
+      "placed_contacts": 2164,
+      "surfaces": 116
+    },
+    "surf_satellite": {
+      "status": "no_placed_contacts",
+      "unique_sources": 5,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_saturday": {
+      "status": "ready",
+      "unique_sources": 10,
+      "placed_contacts": 5977,
+      "surfaces": 83
+    },
+    "surf_school": {
+      "status": "ready",
+      "unique_sources": 48,
+      "placed_contacts": 12214,
+      "surfaces": 906
+    },
+    "surf_second": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_sedona": {
+      "status": "ready",
+      "unique_sources": 38,
+      "placed_contacts": 4877,
+      "surfaces": 657
+    },
+    "surf_selenka": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_sequoia_fix": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_seraph": {
+      "status": "ready",
+      "unique_sources": 7,
+      "placed_contacts": 4805,
+      "surfaces": 475
+    },
+    "surf_serenity": {
+      "status": "ready",
+      "unique_sources": 25,
+      "placed_contacts": 35243,
+      "surfaces": 113
+    },
+    "surf_shambles": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_shape": {
+      "status": "ready",
+      "unique_sources": 14,
+      "placed_contacts": 10580,
+      "surfaces": 115
+    },
+    "surf_shibboleth": {
+      "status": "ready",
+      "unique_sources": 86,
+      "placed_contacts": 31788,
+      "surfaces": 286
+    },
+    "surf_shodan": {
+      "status": "ready",
+      "unique_sources": 109,
+      "placed_contacts": 39886,
+      "surfaces": 1196
+    },
+    "surf_shoria": {
+      "status": "ready",
+      "unique_sources": 21,
+      "placed_contacts": 7995,
+      "surfaces": 664
+    },
+    "surf_sidistic": {
+      "status": "ready",
+      "unique_sources": 3,
+      "placed_contacts": 5866,
+      "surfaces": 407
+    },
+    "surf_simpsons2": {
+      "status": "ready",
+      "unique_sources": 92,
+      "placed_contacts": 26669,
+      "surfaces": 369
+    },
+    "surf_sinister": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_sinister_evil": {
+      "status": "ready",
+      "unique_sources": 30,
+      "placed_contacts": 71446,
+      "surfaces": 185
+    },
+    "surf_sinsane": {
+      "status": "ready",
+      "unique_sources": 5,
+      "placed_contacts": 2880,
+      "surfaces": 585
+    },
+    "surf_sinsane2": {
+      "status": "ready",
+      "unique_sources": 17,
+      "placed_contacts": 14620,
+      "surfaces": 1120
+    },
+    "surf_sirena": {
+      "status": "ready",
+      "unique_sources": 30,
+      "placed_contacts": 11059,
+      "surfaces": 306
+    },
+    "surf_skipalot": {
+      "status": "ready",
+      "unique_sources": 17,
+      "placed_contacts": 1095,
+      "surfaces": 22
+    },
+    "surf_smol": {
+      "status": "ready",
+      "unique_sources": 6,
+      "placed_contacts": 716,
+      "surfaces": 31
+    },
+    "surf_sodacity": {
+      "status": "ready",
+      "unique_sources": 55,
+      "placed_contacts": 8981,
+      "surfaces": 275
+    },
+    "surf_sofia": {
+      "status": "ready",
+      "unique_sources": 18,
+      "placed_contacts": 6222,
+      "surfaces": 621
+    },
+    "surf_spacejam": {
+      "status": "ready",
+      "unique_sources": 33,
+      "placed_contacts": 12197,
+      "surfaces": 833
+    },
+    "surf_spacemonkeys": {
+      "status": "no_placed_contacts",
+      "unique_sources": 12,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_spaceracer": {
+      "status": "ready",
+      "unique_sources": 23,
+      "placed_contacts": 6737,
+      "surfaces": 409
+    },
+    "surf_spectra": {
+      "status": "ready",
+      "unique_sources": 29,
+      "placed_contacts": 18712,
+      "surfaces": 506
+    },
+    "surf_starvald": {
+      "status": "ready",
+      "unique_sources": 15,
+      "placed_contacts": 9517,
+      "surfaces": 218
+    },
+    "surf_stitched": {
+      "status": "ready",
+      "unique_sources": 15,
+      "placed_contacts": 10376,
+      "surfaces": 424
+    },
+    "surf_stonework3": {
+      "status": "ready",
+      "unique_sources": 24,
+      "placed_contacts": 20764,
+      "surfaces": 1004
+    },
+    "surf_stonks": {
+      "status": "ready",
+      "unique_sources": 18,
+      "placed_contacts": 5243,
+      "surfaces": 23
+    },
+    "surf_strike": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_summit": {
+      "status": "ready",
+      "unique_sources": 62,
+      "placed_contacts": 24808,
+      "surfaces": 635
+    },
+    "surf_sunday": {
+      "status": "ready",
+      "unique_sources": 32,
+      "placed_contacts": 35670,
+      "surfaces": 303
+    },
+    "surf_sundown": {
+      "status": "ready",
+      "unique_sources": 5,
+      "placed_contacts": 6532,
+      "surfaces": 455
+    },
+    "surf_sunnyhappylove": {
+      "status": "ready",
+      "unique_sources": 15,
+      "placed_contacts": 5057,
+      "surfaces": 685
+    },
+    "surf_surreal": {
+      "status": "ready",
+      "unique_sources": 39,
+      "placed_contacts": 74,
+      "surfaces": 1
+    },
+    "surf_synada": {
+      "status": "ready",
+      "unique_sources": 11,
+      "placed_contacts": 6154,
+      "surfaces": 294
+    },
+    "surf_technique": {
+      "status": "ready",
+      "unique_sources": 49,
+      "placed_contacts": 15,
+      "surfaces": 3
+    },
+    "surf_tendies": {
+      "status": "ready",
+      "unique_sources": 38,
+      "placed_contacts": 18688,
+      "surfaces": 538
+    },
+    "surf_tensor2": {
+      "status": "ready",
+      "unique_sources": 111,
+      "placed_contacts": 79596,
+      "surfaces": 368
+    },
+    "surf_theme": {
+      "status": "ready",
+      "unique_sources": 49,
+      "placed_contacts": 39301,
+      "surfaces": 441
+    },
+    "surf_themeless": {
+      "status": "ready",
+      "unique_sources": 29,
+      "placed_contacts": 7517,
+      "surfaces": 606
+    },
+    "surf_thesteve": {
+      "status": "ready",
+      "unique_sources": 33,
+      "placed_contacts": 44580,
+      "surfaces": 459
+    },
+    "surf_trance": {
+      "status": "ready",
+      "unique_sources": 8,
+      "placed_contacts": 2624,
+      "surfaces": 354
+    },
+    "surf_trihard": {
+      "status": "ready",
+      "unique_sources": 36,
+      "placed_contacts": 48684,
+      "surfaces": 1073
+    },
+    "surf_unraveled": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_utopia": {
+      "status": "ready",
+      "unique_sources": 7,
+      "placed_contacts": 5211,
+      "surfaces": 1203
+    },
+    "surf_valpect": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_vegetables": {
+      "status": "ready",
+      "unique_sources": 34,
+      "placed_contacts": 6681,
+      "surfaces": 1335
+    },
+    "surf_void": {
+      "status": "ready",
+      "unique_sources": 5,
+      "placed_contacts": 2331,
+      "surfaces": 233
+    },
+    "surf_voyager": {
+      "status": "ready",
+      "unique_sources": 15,
+      "placed_contacts": 10726,
+      "surfaces": 715
+    },
+    "surf_warped": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_whiteout": {
+      "status": "ready",
+      "unique_sources": 79,
+      "placed_contacts": 14,
+      "surfaces": 55
+    },
+    "surf_whoknows": {
+      "status": "ready",
+      "unique_sources": 9,
+      "placed_contacts": 8366,
+      "surfaces": 212
+    },
+    "surf_whoknows2": {
+      "status": "ready",
+      "unique_sources": 7,
+      "placed_contacts": 4972,
+      "surfaces": 278
+    },
+    "surf_whynot": {
+      "status": "ready",
+      "unique_sources": 31,
+      "placed_contacts": 33483,
+      "surfaces": 79
+    },
+    "surf_wizard": {
+      "status": "ready",
+      "unique_sources": 40,
+      "placed_contacts": 79204,
+      "surfaces": 1143
+    },
+    "surf_yellow": {
+      "status": "ready",
+      "unique_sources": 15,
+      "placed_contacts": 4980,
+      "surfaces": 229
+    },
+    "surf_zae": {
+      "status": "ready",
+      "unique_sources": 45,
+      "placed_contacts": 16269,
+      "surfaces": 335
+    },
+    "surf_zen2": {
+      "status": "ready",
+      "unique_sources": 95,
+      "placed_contacts": 81947,
+      "surfaces": 384
+    },
+    "surf_zeonine": {
+      "status": "no_replays",
+      "unique_sources": 0,
+      "placed_contacts": 0,
+      "surfaces": 0
+    },
+    "surf_zoomathon": {
+      "status": "ready",
+      "unique_sources": 15,
+      "placed_contacts": 51125,
+      "surfaces": 304
+    }
+  }
+}

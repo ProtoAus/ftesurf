@@ -21,6 +21,10 @@
 
 ## next
 
+### P1360 More optional ramp marks
+- Expand replay-baked ramp wear and boarding marks across popular maps and the priority bonus list. Each map has one optional atlas; unavailable recordings and unpainted geometry remain explicit gaps.
+- Add verified R2 delivery and smaller compressed text downloads with a local-server fallback. Marks remain opt-in and are not added to game packages.
+
 ### P1359 Recording diagnostic version numbers
 - Recording diagnostics now withhold similarity metrics for unsupported numeral notation in version numbers.
 

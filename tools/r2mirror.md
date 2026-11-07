@@ -1,6 +1,11 @@
 # R2 public-asset staging
 
-`r2mirror.py` uploads only allowlisted public map, zone and JPEG groups. It
+`r2mirror.py` uploads only allowlisted public asset groups. P1360 adds
+`ramp_geometry` (`<map>.txt`), `ramp_atlas` (`<map>.<64hex>.png`) and
+`ramp_encoded` (the same PNG's `.b64` transport), all below
+`ftesurf/media/rampwear/`. Point these groups ONLY at the public baked-asset
+directory, never a gamedir or recording/input directory. Use a dedicated state
+and `manifests/rampwear.json`; do not overwrite the maps manifest. It
 never deletes source/remote data, changes configs, opens a public bucket,
 restarts a service, or declares a CDN cutover. Native/imported recordings,
 evidence, database backups and credentials MUST NOT enter its public bucket.

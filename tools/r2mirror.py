@@ -24,6 +24,9 @@ FORMATS = {
     "mapshots": (r"[A-Za-z0-9_-]+\.jpg", "board/shot/", "image/jpeg"),
     "avatars": (r"[0-9a-f]{40}\.jpg", "avatars/", "image/jpeg"),
     "avatar_rgba": (r"[0-9a-f]{40}\.txt", "avatars/game/", "text/plain"),
+    "ramp_geometry": (r"[a-z0-9_-]{1,64}\.txt", "ftesurf/media/rampwear/", "text/plain"),
+    "ramp_atlas": (r"[a-z0-9_-]{1,64}\.[0-9a-f]{64}\.png", "ftesurf/media/rampwear/", "image/png"),
+    "ramp_encoded": (r"[a-z0-9_-]{1,64}\.[0-9a-f]{64}\.png\.b64", "ftesurf/media/rampwear/", "text/plain"),
 }
 
 
@@ -235,7 +238,7 @@ class Rclone:
 
 def upload_one(db, row, work, transport):
     with snapshot(row, work) as (body, sha):
-        suffix = Path(row["alias"]).suffix
+        suffix = ".png.b64" if row["group_name"] == "ramp_encoded" else Path(row["alias"]).suffix
         key = "objects/" + row["group_name"] + "/" + sha + suffix
         transport.put(body, key, sha, FORMATS[row["group_name"]][2])
         if transport.digest(key) != (sha, row["bytes"]):

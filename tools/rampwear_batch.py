@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bake every real Story/Event map, preserving per-map coverage and failures.
+"""Bake a frozen map library or real Story/Event roster, preserving coverage and failures.
 
 Input lists contain paths and belong in a private task root. Output reports are
 aggregates only. This does not download replays, alter a board or verify native
@@ -33,7 +33,9 @@ def maps_from_story(path):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--story', type=Path, required=True)
+    scope = p.add_mutually_exclusive_group(required=True)
+    scope.add_argument('--story', type=Path)
+    scope.add_argument('--maps', type=Path, help='JSON list of exact map names for a frozen library')
     p.add_argument('--inputs', type=Path, required=True)
     p.add_argument('--gamedir', type=Path, required=True)
     p.add_argument('--reports', type=Path, required=True)
@@ -42,19 +44,28 @@ def main():
     p.add_argument('--workers', type=int, default=2, choices=range(1, 9))
     p.add_argument('--timeout', type=int, default=3600)
     a = p.parse_args()
-    allmaps = maps_from_story(a.story)
+    if a.story:
+        allmaps = maps_from_story(a.story)
+    else:
+        allmaps = json.loads(a.maps.read_text(encoding='utf-8'))
+        if (not isinstance(allmaps, list) or not allmaps or
+                not all(isinstance(m, str) and re.fullmatch(r'[a-z0-9_-]{1,64}', m) for m in allmaps)):
+            p.error('--maps must be a nonempty JSON list of safe, exact map names')
+        allmaps = sorted(set(allmaps))
     maps = allmaps
     if a.only_maps:
         subset = json.loads(a.only_maps.read_text(encoding='utf-8'))
         if not isinstance(subset, list) or not all(isinstance(m, str) for m in subset) or not set(subset) <= set(allmaps):
-            p.error('--only-maps must be a subset of the actual Story/Event roster')
+            p.error('--only-maps must be a subset of the frozen input map scope')
         maps = sorted(set(subset))
     missing_inputs = [name for name in maps if not (a.inputs/(name+'.inputs.json')).is_file()]
     if missing_inputs:
         p.error('missing frozen replay-list(s) in --inputs: '+', '.join(missing_inputs))
     a.reports.mkdir(parents=True, exist_ok=True)
     a.gamedir.mkdir(parents=True, exist_ok=True)
-    plan = {'story_sha256': hashlib.sha256(a.story.read_bytes()).hexdigest(),
+    plan = {'scope_kind': 'story' if a.story else 'library',
+            'scope_sha256': hashlib.sha256((a.story or a.maps).read_bytes()).hexdigest(),
+            'story_sha256': hashlib.sha256(a.story.read_bytes()).hexdigest() if a.story else None,
             'baker_sha256': hashlib.sha256(a.baker.read_bytes()).hexdigest(),
             'maps': maps, 'full_roster_maps': allmaps, 'workers': a.workers, 'raw_provenance_NOTincluded': True}
     with (a.reports/'batch-plan.json').open('x') as f:

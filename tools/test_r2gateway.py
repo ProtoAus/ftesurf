@@ -69,6 +69,55 @@ class GatewayTests(unittest.TestCase):
             self.assertIn("objects/", h["Location"])
             self.assertEqual(parse_qs(urlsplit(h["Location"]).query)["X-Amz-Expires"], ["300"])
 
+    def test_ramp_assets_route_only_exact_public_names(self):
+        atlas = 'surf_case.' + 'a' * 64 + '.png'
+        for group, leaf in [('ramp_geometry', 'surf_case.txt'), ('ramp_atlas', atlas),
+                            ('ramp_encoded', atlas + '.b64')]:
+            self.seed(group, leaf, b'public-cosmetic-body')
+            path = '/ftesurf/media/rampwear/' + leaf
+            status, headers, _ = self.call(path)
+            self.assertEqual(status, '302 Found')
+            self.assertIn('objects/' + group + '/', headers['Location'])
+            (Path(self.sources[group]) / leaf).write_bytes(b'changed')
+            self.assertEqual(self.call(path)[0], '409 Conflict')
+        for leaf in ['../private.txt', 'private.rec', 'surf_case.png', 'surf_case.' + 'g' * 64 + '.png',
+                     'surf_case.' + 'a' * 64 + '.png.b64.extra']:
+            self.assertEqual(self.call('/ftesurf/media/rampwear/' + leaf)[0], '404 Not Found')
+
+    def test_separate_ramp_ledger_does_not_change_map_routes(self):
+        self.seed('ramp_geometry', 'surf_case.txt', b'geometry')
+        alternate = self.root / 'ramps.sqlite'
+        alternate.write_bytes(self.state.read_bytes())
+        self.app = g.Gateway(dict(self.config, ramp_state=str(alternate)), reachability=lambda key: True)
+        with contextlib.closing(sqlite3.connect(self.state)) as db:
+            db.execute("DELETE FROM assets WHERE group_name='ramp_geometry'")
+        self.assertEqual(self.call('/ftesurf/media/rampwear/surf_case.txt')[0], '302 Found')
+        self.assertEqual(self.call()[0], '302 Found')
+        alternate.unlink()
+        self.assertEqual(self.call('/ftesurf/media/rampwear/surf_case.txt')[0], '409 Conflict')
+        self.assertEqual(self.call()[0], '302 Found')
+
+    def test_ramp_gzip_round_trip_route_without_changing_map_policy(self):
+        import r2gzip
+        gz = self.root / 'ramps-gzip.sqlite'
+        with contextlib.closing(r2gzip.connect(gz)) as db:
+            for group, leaf, suffix in [('ramp_geometry', 'surf_case.txt', '.txt'),
+                                        ('ramp_encoded', 'surf_case.' + 'a' * 64 + '.png.b64', '.png.b64')]:
+                self.seed(group, leaf, b'geometry')
+                sha = hashlib.sha256(b'geometry').hexdigest()
+                key = 'objects/' + group + '/' + sha + suffix + '.gz'
+                db.execute("INSERT INTO gz(alias,sha,bytes,state,gz_key,gz_bytes) VALUES(?,?,?,'verified',?,?)",
+                           ('ftesurf/media/rampwear/' + leaf, sha, 8, key, 5))
+            db.commit()
+        self.app = g.Gateway(dict(self.config, ramp_gzip_state=str(gz)), reachability=lambda key: True)
+        self.ua = 'Mozilla/5.0'
+        for leaf in ['surf_case.txt', 'surf_case.' + 'a' * 64 + '.png.b64']:
+            path = '/ftesurf/media/rampwear/' + leaf
+            self.assertIn('.gz?', self.gzcall('gzip', path)[1]['Location'])
+            self.assertNotIn('.gz?', self.gzcall('gzip;q=0', path)[1]['Location'])
+            self.assertNotIn('.gz?', self.gzcall('gzip', path, rng='bytes=0-')[1]['Location'])
+        self.assertNotIn('.gz?', self.gzcall('gzip')[1]['Location'])
+
     def test_current_body_replacement_falls_back(self):
         self.assertEqual(self.call()[0], "302 Found")
         (Path(self.sources["maps"]) / "case_Map.bsp").write_bytes(b"new-body")

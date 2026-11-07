@@ -86,6 +86,22 @@ root and inspected source commit. This process is not a release driver.
    and test a fresh engine client. Check local fallback and board/lobby health.
    Keep timestamped receipt, code/config hashes and the original snippet.
 
+## Optional ramp library (P1360)
+
+The same gateway supports exact public ramp `.txt`, `<map>.<64hex>.png` and
+`.png.b64` paths. Add `ramp_geometry`, `ramp_atlas`, `ramp_encoded` groups pointing
+at the public baked assets, plus `ramp_state` and `ramp_gzip_state` for their
+separate readiness ledgers. Existing map/zone ledgers and client policy stay
+unchanged. Include the rendered `r2gateway.nginx` BEFORE `ftesurf-media.conf`;
+its old static ramp routes remain the rollback path. New routes retain local
+fallback on stale/missing/unverified bytes or gateway/R2 failure.
+
+`r2gzip.py` also compresses verified ramp geometry and base64 atlas transport;
+the PNG is already compressed. Ramp text may use gzip for any accepting client,
+never a Range request. Existing map gzip remains FTE-only. Companion bodies are
+fully downloaded and decompressed to the raw SHA256 before becoming ready.
+See `p1360-ramp-library.md` for measured coverage and actual deployment status.
+
 ## Verification
 
 All output roots must be NEW and below an OWNER.md ancestor. The first suite is

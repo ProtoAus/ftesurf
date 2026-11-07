@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gzip companions for r2mirror's verified map bodies (Patch 981).
+"""Gzip companions for r2mirror's verified map and ramp-geometry bodies.
 
 For each map r2mirror has verified, uploads objects/maps/<sha>.bsp.gz with
 Content-Encoding: gzip -- only where gzip saves at least --min-saving, since
@@ -47,7 +47,7 @@ def connect(path):
 def verified_maps(state):
     with contextlib.closing(m.connect(state, readonly=True)) as db:
         return db.execute("SELECT * FROM assets WHERE present=1 AND state='verified' "
-                          "AND group_name='maps' ORDER BY bytes, alias").fetchall()
+                          "AND group_name IN ('maps','ramp_geometry','ramp_encoded') ORDER BY bytes, alias").fetchall()
 
 
 class Rclone(m.Rclone):
@@ -55,7 +55,7 @@ class Rclone(m.Rclone):
         command = self.common + ["copyto", str(source), self.remote + "/" + key,
                                  "--bwlimit", self.upload_limit, "--metadata",
                                  "--metadata-set", "sha256=" + sha,
-                                 "--metadata-set", "content-type=application/octet-stream",
+                                 "--metadata-set", "content-type=" + ("text/plain" if key.startswith(("objects/ramp_geometry/", "objects/ramp_encoded/")) else "application/octet-stream"),
                                  "--metadata-set", "content-encoding=gzip",
                                  "--metadata-set", "cache-control=public, max-age=31536000, immutable",
                                  "--size-only", "--immutable"]
@@ -146,7 +146,8 @@ def one(db, row, work, transport, min_saving):
                     db.execute("INSERT OR REPLACE INTO gz (alias,sha,bytes,state,gz_bytes) VALUES (?,?,?,?,?)",
                                (row["alias"], sha, row["bytes"], "skip", gzbytes))
                 return "skip"
-            key = "objects/maps/" + sha + ".bsp.gz"
+            suffix = ".png.b64" if row["group_name"] == "ramp_encoded" else Path(row["alias"]).suffix
+            key = "objects/" + row["group_name"] + "/" + sha + suffix + ".gz"
             transport.put_gzip(gzpath, key, gzsha)
             stored, plain = transport.digest_both(key)
             if stored != (gzsha, gzbytes) or plain != (sha, row["bytes"]):

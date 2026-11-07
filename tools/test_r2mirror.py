@@ -87,6 +87,21 @@ class MirrorTests(unittest.TestCase):
         self.assertNotIn("manifests/public.json", self.t.objects)
         self.assertEqual({p[2] for p in self.t.puts[:-1]}, {"image/jpeg", "text/plain"})
 
+    def test_ramp_allowlist_and_compound_encoded_suffix(self):
+        ramps = self.root / 'ramps'
+        ramps.mkdir()
+        atlas = 'surf_case.' + 'a' * 64 + '.png'
+        for leaf in ('surf_case.txt', atlas, atlas + '.b64', 'private.rec', 'surf_case.png', atlas + '.part'):
+            (ramps / leaf).write_bytes(b'public-fixture')
+        m.scan(self.db, {'groups': {group: str(ramps) for group in ('ramp_geometry', 'ramp_atlas', 'ramp_encoded')}})
+        self.assertEqual(self.copy()[0], (3, 0))
+        doc = m.publish(self.db, self.work, self.t, 'manifests/rampwear.json')
+        self.assertEqual(set(doc['assets']), {'ftesurf/media/rampwear/' + leaf
+                                             for leaf in ('surf_case.txt', atlas, atlas + '.b64')})
+        encoded = doc['assets']['ftesurf/media/rampwear/' + atlas + '.b64']
+        self.assertEqual(encoded['key'], 'objects/ramp_encoded/' + encoded['sha256'] + '.png.b64')
+        self.assertTrue(doc['complete'])
+
     def test_manifest_path_is_allowlisted(self):
         p = self.root / "config.json"
         for bad in ("../private.json", "objects/maps/existing.bsp", "manifests/x.json\n"):

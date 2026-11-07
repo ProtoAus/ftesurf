@@ -28,6 +28,9 @@ FORMATS = {
     "maps": (r"/(?:ftesurf/)?maps/([A-Za-z0-9_-]+)\.bsp", "ftesurf/maps/", ".bsp"),
     "zones": (r"/ftesurf/maps/zones/local/([A-Za-z0-9_-]+)\.json", "ftesurf/maps/zones/local/", ".json"),
     "mapshots": (r"/board/shot/([A-Za-z0-9_-]+?)(?:\.jpg)?", "board/shot/", ".jpg"),
+    "ramp_geometry": (r"/ftesurf/media/rampwear/([a-z0-9_-]{1,64})\.txt", "ftesurf/media/rampwear/", ".txt"),
+    "ramp_atlas": (r"/ftesurf/media/rampwear/([a-z0-9_-]{1,64}\.[0-9a-f]{64})\.png", "ftesurf/media/rampwear/", ".png"),
+    "ramp_encoded": (r"/ftesurf/media/rampwear/([a-z0-9_-]{1,64}\.[0-9a-f]{64})\.png\.b64", "ftesurf/media/rampwear/", ".png.b64"),
 }
 
 
@@ -97,9 +100,12 @@ def accepts_gzip(header):
 class Gateway:
     def __init__(self, config, reachability=None):
         self.state = directory(Path(config["state"]).parent) / Path(config["state"]).name
+        self.ramp_state = None
+        if config.get("ramp_state"):
+            self.ramp_state = directory(Path(config["ramp_state"]).parent) / Path(config["ramp_state"]).name
         self.groups = {k: directory(v) for k, v in config["groups"].items()}
         if not self.groups or not set(self.groups) <= set(FORMATS):
-            raise ValueError("Only public maps/zones/mapshots are supported")
+            raise ValueError("Only allowlisted public asset groups are supported")
         credentials = Path(config["rclone_config"])
         directory(credentials.parent)
         if not regular(credentials):
@@ -120,6 +126,9 @@ class Gateway:
         self.gzip_state = None
         if config.get("gzip_state"):
             self.gzip_state = directory(Path(config["gzip_state"]).parent) / Path(config["gzip_state"]).name
+        self.ramp_gzip_state = None
+        if config.get("ramp_gzip_state"):
+            self.ramp_gzip_state = directory(Path(config["ramp_gzip_state"]).parent) / Path(config["ramp_gzip_state"]).name
         self.probe_lock = threading.Lock()
         self.probe_until = 0.0
         self.probe_ok = False
@@ -160,9 +169,10 @@ class Gateway:
     def ready_key(self, resolved):
         group, alias, source, suffix = resolved
         # No database creation, schema migration, write PRAGMA, or shared app import.
-        if not regular(self.state) or not regular(source):
+        state = (self.ramp_state or self.state) if group.startswith("ramp_") else self.state
+        if not regular(state) or not regular(source):
             return None
-        with contextlib.closing(sqlite3.connect(self.state.as_uri() + "?mode=ro", uri=True, timeout=0.25)) as db:
+        with contextlib.closing(sqlite3.connect(state.as_uri() + "?mode=ro", uri=True, timeout=0.25)) as db:
             db.row_factory = sqlite3.Row
             row = db.execute("SELECT * FROM assets WHERE alias=? AND present=1 AND state='verified'", (alias,)).fetchone()
         if not row or row["group_name"] != group or row["source"] != str(source):
@@ -179,25 +189,26 @@ class Gateway:
 
     def gzip_key(self, resolved, key, environ):
         """The verified gzip companion of `key`, if this request may have it."""
-        group, alias, _, _ = resolved
-        if group != "maps" or self.gzip_state is None or environ.get("HTTP_RANGE"):
+        group, alias, _, suffix = resolved
+        state = self.ramp_gzip_state if group in ("ramp_geometry", "ramp_encoded") else self.gzip_state
+        if group not in ("maps", "ramp_geometry", "ramp_encoded") or state is None or environ.get("HTTP_RANGE"):
             return None
-        if not environ.get("HTTP_USER_AGENT", "").startswith("FTE"):
+        if group == "maps" and not environ.get("HTTP_USER_AGENT", "").startswith("FTE"):
             return None
         if not accepts_gzip(environ.get("HTTP_ACCEPT_ENCODING", "")):
             return None
-        sha = key[len("objects/maps/"):-len(".bsp")]
+        sha = key[len("objects/" + group + "/"):-len(suffix)]
         try:
-            if not regular(self.gzip_state):
+            if not regular(state):
                 return None
-            with contextlib.closing(sqlite3.connect(self.gzip_state.as_uri() + "?mode=ro", uri=True,
+            with contextlib.closing(sqlite3.connect(state.as_uri() + "?mode=ro", uri=True,
                                                     timeout=0.25)) as db:
                 db.row_factory = sqlite3.Row
                 row = db.execute("SELECT * FROM gz WHERE alias=? AND sha=? AND state='verified'",
                                  (alias, sha)).fetchone()
         except (OSError, ValueError, sqlite3.Error):
             return None
-        want = "objects/maps/" + sha + ".bsp.gz"
+        want = key + ".gz"
         if not row or row["gz_key"] != want or not isinstance(row["gz_bytes"], int) or row["gz_bytes"] <= 0:
             return None
         return want

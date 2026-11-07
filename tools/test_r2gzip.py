@@ -73,6 +73,27 @@ class GzipTests(unittest.TestCase):
         self.assertEqual(p2[1], row["gz_sha"])
         p2[0].unlink()
 
+    def test_ramp_text_and_encoded_atlas_get_correct_verified_keys(self):
+        ramps = self.root / 'ramps'
+        ramps.mkdir()
+        leaves = [('ramp_geometry', 'surf_case.txt', '.txt'),
+                  ('ramp_encoded', 'surf_case.' + 'a' * 64 + '.png.b64', '.png.b64')]
+        for group, leaf, suffix in leaves:
+            (ramps / leaf).write_bytes(b'cosmetic-only ' * 3000)
+        with contextlib.closing(m.connect(self.state)) as db:
+            m.scan(db, {'groups': {group: str(ramps) for group, _, _ in leaves}})
+            for row in db.execute('SELECT * FROM assets').fetchall():
+                sha = hashlib.sha256(Path(row['source']).read_bytes()).hexdigest()
+                db.execute("UPDATE assets SET state='verified',sha=? WHERE alias=?", (sha, row['alias']))
+            db.commit()
+        t = Fake()
+        self.assertEqual(z.run(self.db, self.state, self.work, t, 0.10), (2, 0))
+        for group, leaf, suffix in leaves:
+            row = self.db.execute('SELECT * FROM gz WHERE alias=?', ('ftesurf/media/rampwear/' + leaf,)).fetchone()
+            self.assertEqual(row['state'], 'verified')
+            self.assertEqual(row['gz_key'], 'objects/' + group + '/' + row['sha'] + suffix + '.gz')
+            self.assertEqual(gzip.decompress(t.objects[row['gz_key']]), (ramps / leaf).read_bytes())
+
     def test_incompressible_map_is_skipped_not_uploaded(self):
         self.seed("surf_lzma.bsp", os.urandom(50000))
         t = Fake()

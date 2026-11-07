@@ -42,6 +42,8 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--mirror-config", type=Path, required=True)
     p.add_argument("--state", type=Path, required=True)
+    p.add_argument("--ramp-state", type=Path)
+    p.add_argument("--ramp-gzip-state", type=Path)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--nginx", type=Path, default=Path("/usr/sbin/nginx"))
     a = p.parse_args()
@@ -66,6 +68,22 @@ def main():
                 raise RuntimeError("Copied fixture hash mismatch")
             row.update(source=str(target), sig=g.signature(target.stat()))
             groups[group], rows[group] = str(dest), row
+    if a.ramp_state:
+        with contextlib.closing(sqlite3.connect(a.ramp_state.absolute().as_uri() + '?mode=ro', uri=True)) as db:
+            db.row_factory = sqlite3.Row
+            dest = root / 'ramps'
+            dest.mkdir()
+            for group in ('ramp_geometry', 'ramp_atlas', 'ramp_encoded'):
+                row = dict(db.execute("SELECT * FROM assets WHERE group_name=? AND present=1 AND state='verified' ORDER BY bytes LIMIT 1", (group,)).fetchone())
+                source = Path(row['source'])
+                if not g.regular(source) or row['sig'] != g.signature(source.stat()):
+                    raise RuntimeError('Chosen ramp fixture changed')
+                target = dest / source.name
+                shutil.copyfile(source, target)
+                if hashlib.sha256(target.read_bytes()).hexdigest() != row['sha']:
+                    raise RuntimeError('Copied ramp fixture hash mismatch')
+                row.update(source=str(target), sig=g.signature(target.stat()))
+                groups[group], rows[group] = str(dest), row
     state = root / "state.sqlite"
     with contextlib.closing(sqlite3.connect(state)) as db:
         db.execute("CREATE TABLE assets(alias TEXT PRIMARY KEY,group_name TEXT,source TEXT,sig TEXT,sha TEXT,object_key TEXT,bytes INTEGER,state TEXT,present INTEGER)")
@@ -74,12 +92,17 @@ def main():
             db.execute("INSERT INTO assets VALUES(?,?,?,?,?,?,?,?,?)", tuple(row[n] for n in names))
         db.commit()
     config = dict(original, groups=groups, state=str(state))
+    config.pop('ramp_state', None)
+    if a.ramp_gzip_state:
+        config['ramp_gzip_state'] = str(a.ramp_gzip_state.absolute())
     (root / "config.json").write_text(json.dumps(config))
     gateway_port, nginx_port = free_port(), free_port()
     while gateway_port == nginx_port:
         nginx_port = free_port()
     snippet = (Path(__file__).parent / "r2gateway.nginx").read_text().replace("@PORT@", str(gateway_port))
     snippet = snippet.replace("/srv/nvme/ftesurf-server/game/momentum", str(root)).replace("/srv/nvme/ftesurf-site/zones", groups["zones"])
+    if a.ramp_state:
+        snippet = snippet.replace('/srv/nvme/ftesurf-site/media/rampwear', str(root / 'ramps'))
     conf = "pid " + str(root / "nginx.pid") + ";\nerror_log " + str(root / "nginx.log") + " error;\nevents {}\nhttp { access_log off; limit_conn_zone $binary_remote_addr zone=ftesurf_maps:1m; server { listen 127.0.0.1:" + str(nginx_port) + ";\n" + snippet + "\nlocation / { return 404; } } }\n"
     (root / "nginx.conf").write_text(conf)
     env = dict(os.environ, R2GATEWAY_CONFIG=str(root / "config.json"))
@@ -126,6 +149,18 @@ def main():
             with urllib.request.urlopen(headers["Location"], timeout=30) as r:
                 blob = r.read()
                 check(r.status == 200 and hashlib.sha256(blob).hexdigest() == rows[group]["sha"], group + " R2 full GET hash")
+        if a.ramp_state:
+            import gzip
+            for group in ('ramp_geometry', 'ramp_atlas', 'ramp_encoded'):
+                path = '/' + rows[group]['alias']
+                status, h, _ = request(nginx_port, path, headers={'User-Agent': 'FTE-test', 'Accept-Encoding': 'gzip'})
+                check(status == 302 and h.get('X-R2-Route') == 'r2', group + ' actual nginx302')
+                with urllib.request.urlopen(h['Location'], timeout=30) as response:
+                    body = response.read()
+                    if a.ramp_gzip_state and group != 'ramp_atlas':
+                        check(response.headers.get('Content-Encoding') == 'gzip', group + ' gzip metadata')
+                        body = gzip.decompress(body)
+                    check(hashlib.sha256(body).hexdigest() == rows[group]['sha'], group + ' R2 full decoded hash')
         _, h, _ = request(nginx_port, map_path, "HEAD")
         with urllib.request.urlopen(urllib.request.Request(h["Location"], method="HEAD"), timeout=20) as r:
             check(r.status == 200 and int(r.headers["Content-Length"]) == rows["maps"]["bytes"], "signed HEAD reaches R2")
@@ -142,6 +177,13 @@ def main():
         check(status == 206 and body == changed[:4], "local fallback range206")
         (Path(groups["maps"]) / "new_unmirrored.bsp").write_bytes(b"new asset")
         check(request(nginx_port, "/maps/new_unmirrored.bsp")[2] == b"new asset", "unmirrored map stays available")
+        if a.ramp_state:
+            for group in ('ramp_geometry', 'ramp_atlas', 'ramp_encoded'):
+                path = '/' + rows[group]['alias']
+                changed_ramp = b'changed current cosmetic bytes'
+                Path(rows[group]['source']).write_bytes(changed_ramp)
+                status, h, body = request(nginx_port, path)
+                check(status == 200 and body == changed_ramp and h.get('X-R2-Route') == 'origin', group + ' stale asset uses disk')
         stop(gateway)
         for group, path in [("maps", map_path), ("zones", zone_path)]:
             status, h, body = request(nginx_port, path)
