@@ -50,8 +50,26 @@ void() Trk_ClReload =
 
 	Trk_ClLoad();
 	for (t = find(world, classname, "trk_train"); t; t = find(t, classname, "trk_train"))
+	{
 		if (Trk_Walk(t, t.trkc_tgt))
 			Trk_FaceStart(t);           // again: a stale lump's facing is not the server's
+		t.trk_placet = 0;
+	}
+};
+
+// The PVS leaves are taken at link time: relink once it has gone far enough to change them
+// (r_ignoreentpvs 0 culls by them; cl_proximity.qc keeps its links current the same way).
+.vector trkc_linko;
+void(entity e) Trk_Relink =
+{
+	local vector d;
+
+	d = e.origin - e.trkc_linko;
+	if (d * d > 64 * 64)
+	{
+		e.trkc_linko = e.origin;
+		setorigin(e, e.origin);
+	}
 };
 
 float() Trk_TrainPredraw =
@@ -63,6 +81,7 @@ float() Trk_TrainPredraw =
 	// frame showed as 0.6 ms of "World: walk, entities" on surf_centipedes.
 	self.origin = self.trk_wo;
 	self.angles = self.trk_wa;
+	Trk_Relink(self);
 	return PREDRAW_AUTOADD;
 };
 
@@ -124,6 +143,7 @@ void(entity e) Trk_NetTrain =
 		e.trk_t0 = t0;
 		e.trk_spd = spd;
 		e.trk_dir = dir;
+		e.trk_placet = 0;               // a new clock: place it again even if time is paused
 	}
 };
 
@@ -144,6 +164,7 @@ float() Trk_PropPredraw =
 	Trk_Place(p, time);
 	Trk_Ride(p, self.trkp_lo, self.trkp_la);
 	self.origin = trk_o;                // as Trk_TrainPredraw
+	Trk_Relink(self);
 	self.angles = trk_a;
 	self.frame1time = time;
 	self.trkp_drawn = TRUE;

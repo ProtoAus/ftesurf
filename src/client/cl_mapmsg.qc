@@ -225,14 +225,15 @@ void(vector scr) MapMsg_DrawText =
 			p_y = MapMsg_Pos(mp_y, n * sz * 1.2, scr_y) + i * sz * 1.2;
 			vis = bound(0, shown - base, strlen(line));
 			sv = bound(0, settled - base, vis);
-			p = _sui_pixel_align(p);            // a letter's pen offset is added to a whole-pixel line start
+			p = _sui_pixel_align(p);
 			if (sv > 0)
-				MapMsg_NativeText(p, substring(line, 0, sv), c, a);
+				drawstring(p, substring(line, 0, sv), mm_glyph, c, a, 0);
 			for (j = sv; j < vis; j = j + 1)
 			{
 				t = bound(0, (e - (base + j + 1) * fin) / max(0.001, fxt), 1);
-				MapMsg_NativeText(p + [Font_PenX(line, j, TRUE, mm_glyph), 0, 0],   // Patch 1236: where it settles
-				                  substring(line, j, 1), mm_col2[ch] * (1 - t) + c * t, a);
+				// Patch 1236: where it settles in the whole line, not re-rounded (it would hop when it settles)
+				drawstring(p + [Font_PenX(line, j, TRUE, mm_glyph), 0, 0], substring(line, j, 1), mm_glyph,
+				           mm_col2[ch] * (1 - t) + c * t, a, 0);
 			}
 			base = base + strlen(line);
 		}
