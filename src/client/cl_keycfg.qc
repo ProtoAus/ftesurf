@@ -1261,6 +1261,21 @@ string(string s, float w, float want, float lines) KC_Fit =
 	return a;
 };
 
+// Short words for engine and menu commands a key often carries (the table's rows have their own).
+string(string b) KC_CmdShort =
+{
+	if (b == "+showscores") return "scores";
+	if (b == "toggleconsole") return "console";
+	if (b == "togglemenu") return "menu";
+	if (b == "ui_journal") return "journal";
+	if (b == "fullscreen_toggle") return "fullscreen";
+	if (b == "messagemode" || b == "chat_open" || b == "chat_say") return "chat";
+	if (b == "messagemode2") return "team chat";
+	if (b == "+attack") return "attack";
+	if (b == "+use") return "use";
+	return b;
+};
+
 // The Keyboard tab's words, measured once per bind read (KC_Refresh) and scale, not per frame.
 void(float sc) KC_KbFit =
 {
@@ -1277,9 +1292,9 @@ void(float sc) KC_KbFit =
 			if (row >= 0)
 				t = KC_F(row, 6);
 			else if (kc_kbf[b + 6] == 2)
-				t = getkeybind(KC_LeftOf(kc_kbf[b + 4]));
+				t = KC_CmdShort(getkeybind(KC_LeftOf(kc_kbf[b + 4])));
 			else
-				t = getkeybind(kc_kbf[b + 4]);
+				t = KC_CmdShort(getkeybind(kc_kbf[b + 4]));
 			if (kc_kbf[b + 6] == 2)
 				t = strcat(t, " (as left)");
 		}
