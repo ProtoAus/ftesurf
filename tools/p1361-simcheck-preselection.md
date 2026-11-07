@@ -4,8 +4,8 @@
 
 Implemented, independently reviewed, published and source-qualified on Windows
 and ARM. Live backend installation remains pending; the actual-process namespace
-authentication gate is not waived. This does not supersede P1359's separately
-qualified reader artifacts or its pending NanoPi installation. No live helper,
+authentication gate is not waived. P1359's separately qualified reader update has
+now completed on the NanoPi, with fresh current-process/namespace acceptance. No live helper,
 backend, service, gate, namespace configuration or data was changed by this patch's
 source qualification or immutable-package preparation.
 
@@ -96,6 +96,8 @@ from these source results. Deployment will be recorded here when completed.
   live-current-data qualification. No PIDs, closures, clocks or authorizations
   are frozen into the immutable package; those must be observed at the actual
   execution boundary. Preparation must not leave maintenance gates held.
-- The required actual namespace authentication still blocks live cutover. This
-  record does not infer a live pass, deployment or recovery qualification from
-  source tests, independent review, package assembly or a host-only probe.
+- P1359's owner-authenticated helper update has completed; fresh current-process
+  readback7November07:02:30UTC confirms its actual namespace receipt and required
+  helpers. P1361's own exact-package CLOSED qualification and execution-boundary
+  namespace acceptance remain pending. P1359 authorization is not a P1361 token;
+  no live P1361 pass follows from source tests, review, assembly or a host probe.

@@ -2,12 +2,13 @@
 
 ## Status
 
-Implemented, independently reviewed and published. Both Windows reader installs
-and ARM source qualification are verified. NanoPi live helper installation is
-pending its required actual-process namespace authentication; P1356 helpers remain
-live there. No NanoPi fence, service, namespace configuration or database was
-changed by this patch's preparation. A passing source test is not a live-process,
-native-engine or fleet claim.
+Implemented, independently reviewed, published and installed on BOTH Windows
+installs and the NanoPi. Owner executed the reviewed authenticated helper update;
+the primary completed. Fresh7November07:02:30UTC readback binds the actual namespace
+acceptance receipt to the current process PID/birth/CWD, verifies destination
+hashes, OPEN admission, active backend/importer and health. Runtime84, namespace
+configuration and current database were preserved. Source, native-engine and
+whole-fleet claims remain separate.
 
 ## Root cause and change
 
@@ -47,7 +48,7 @@ P1356. View/ramp-special parsing and whole-header grammar are outside this patch
   hardcoded version12-versus10 assertion on the published control and candidate.
   The untouched check is retained, not repaired or called a native-pin pass.
 - Recording-reader suite: 949 checks, zero failures.
-- Current corpus: 554 REC and 178 VIEW files, including ten standalone views.
+- Source-time corpus: 554 REC and 178 VIEW files, including ten standalone views.
   Both checkers' entire output is identical; 351 existing faults remain unchanged.
   All swept raw input bytes are identical before/after. This is preservation,
   not a calibration, authenticity, or genuine-device measurement.
@@ -87,9 +88,21 @@ and acting controls. No installed state is inferred from source results alone.
   refusals remain retained. Previously passed arms were reused, not rerun to
   manufacture a clean uninterrupted invocation. All 15 staged source hashes and
   synthetic-fixture cleanup were verified.
-- NanoPi: the actual intended helper-only preflight reaches the required nsenter
-  operation and refuses missing authentication BEFORE any resource hold or live
-  mutation. Fresh readback confirms the same OPEN runtime, process and 158 bound
-  files, with both P1356 helpers unchanged. Host-only qualification is not actual
-  namespace acceptance. The pending update will keep the existing runtime84,
-  namespace configuration, cron routing and current database; no old DB restore.
+- NanoPi initial preflight: actual nsenter refused missing authentication BEFORE
+  any resource hold/live mutation; original refusal/readback evidence is retained.
+  It was not relabelled as namespace acceptance or bypassed.
+- NanoPi delivery: owner then authenticated and executed the reviewed primary
+  helper-only update. The guard actually reported CLOSED/draining then DRAINED;
+  it waited for cooperative work rather than printing continuous progress. The
+  primary completed without a fallback/recovery-failure artifact. BOTH actual
+  helpers match the reviewed candidate hashes and all13 installed-reader cases
+  pass, including module-origin assertions, CLI and collector controls.
+- Fresh completion audit7November07:02:30UTC: current service PID/birth/CWD matches
+  the actual default-namespace acceptance receipt; OPEN admission, backend and
+  importer active, health OK. Unchanged runtime84/namespace configuration/held
+  metadata helper and restored canonical launcher are verified. Current-data
+  cutover audit retains schema26/all44 tables and the eight identity digests;
+  no old database restore. Synthetic temporary fixtures are cleaned. The first
+  observer compared a projected pid/birth record to the full process record and
+  refused; corrected explicit PID/birth/CWD binding retained that refusal without
+  weakening identity or freshness.
