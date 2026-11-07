@@ -2915,6 +2915,10 @@ void() SV_NoColRestore =
 void(entity t, float on) SV_IOEnable =
 {
 	local float wasoff, act, same;
+	// P1387 review 2: Source's func_tracktrain has no Enable/Disable; a csprogs train made solid here
+	// would leave its hull at its spawn spot while it is drawn on its path.
+	if (t.SendEntity == SV_TrkSend)
+		return;
 	if (t == nocol_off)
 		SV_NoColRestore();        // P1193: I/O acts on the real solidity
 	wasoff = SV_Key2(t.StartDisabled, t.startdisabled);
@@ -11663,6 +11667,13 @@ void() SV_SpResolve =
 			for (q = e; q.vbsp_sp_parent; q = q.vbsp_sp_parent)
 				;
 			d = q.origin - e.origin;
+			// The engine turns a SOLID_NOT brush model's box by its angles (world.c, the passable-train
+			// patch): put the offset in its own axes so the turn lands it back on the root (review 2).
+			if (substring(e.model, 0, 1) == "*" && e.angles != '0 0 0')
+			{
+				makevectors(e.angles);
+				d = [d * v_forward, 0 - d * v_right, d * v_up];
+			}
 			setsize(e, d - '1 1 1' * q.vbsp_sp_reach, d + '1 1 1' * q.vbsp_sp_reach);
 			if (q.vbsp_sp_sky)
 				e.pvsflags = (e.vbsp_sp_pvs0 & 252) | PVSF_IGNOREPVS;

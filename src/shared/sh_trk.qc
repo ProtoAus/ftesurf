@@ -523,7 +523,7 @@ float(entity e, float t) Trk_SProfile =
 		if (t < e.trk_vt + dt)
 		{
 			trk_end = FALSE;
-			return e.trk_vs + Trk_VDist(l, e.trk_va, e.trk_vb, t - e.trk_vt);
+			return e.trk_vs + max(0, Trk_VDist(l, e.trk_va, e.trk_vb, t - e.trk_vt));
 		}
 		e.trk_vt = e.trk_vt + dt;
 		if (e.trk_vm < K - 1)
@@ -539,16 +539,23 @@ float(entity e, float t) Trk_SProfile =
 			if (e.trk_vper > 0)
 			{
 				// On the lap grid, so a client summing every segment and a server skipping laps agree
-				// after hours (review 1), then whole laps skipped.
+				// after hours (review 1); whole laps skipped, never backwards -- a lap's float32 sum can
+				// fall short of the period, putting the grid point just past t (review 2: the train
+				// then waits on the node for those milliseconds, the clamp below).
 				e.trk_vt = e.trk_vpt + e.trk_vper * floor((e.trk_vt - e.trk_vpt) / e.trk_vper + 0.5);
-				e.trk_vt = e.trk_vt + e.trk_vper * floor((t - e.trk_vt) / e.trk_vper);
+				e.trk_vt = e.trk_vt + e.trk_vper * max(0, floor((t - e.trk_vt) / e.trk_vper));
 			}
 			else if (e.trk_vlap == 2)
 				e.trk_vpt = e.trk_vt;
 			else if (e.trk_vlap == 3)
 			{
 				e.trk_vper = e.trk_vt - e.trk_vpt;
-				e.trk_vt = e.trk_vt + e.trk_vper * floor((t - e.trk_vt) / e.trk_vper);
+				if (e.trk_vper <= 0)
+				{
+					e.trk_vm = -1;          // a loop that takes no time: held, as at a dead end (review 2)
+					continue;
+				}
+				e.trk_vt = e.trk_vt + e.trk_vper * max(0, floor((t - e.trk_vt) / e.trk_vper));
 			}
 			jn = e.trk_k;
 		}
