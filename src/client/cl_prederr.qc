@@ -34,12 +34,29 @@ string pe_exp_reason[PE_EXPECT]; // literal reasons; no zoned strings owned here
 float  pe_exp_n, pe_exp_next;    // P1321: bounded history, not just the newest pending reset
 string pe_exp_why;              // the reason belonging to the matching request
 
+// P1403: one row per acknowledged snapshot, taken where prediction starts from it (the first command
+// after the ack, before its move): when, which command it acknowledged, the newest sent, its state.
+#define PE_AKS 512
+float  pe_ak_rt[PE_AKS], pe_ak_t[PE_AKS], pe_ak_ack[PE_AKS], pe_ak_sent[PE_AKS], pe_ak_gp[PE_AKS];
+vector pe_ak_org[PE_AKS], pe_ak_vel[PE_AKS];
+float  pe_ak_n;
+var float pe_ak_last = -1;
+
+// P1404: a report's commands replayed on a rig (tools/prederr_replay.py writes the file); the lobby
+// sets the recorded state before command pe_rp_s (pe_state, sv_cheats only), then each command
+// carries its row's angles, moves and buttons.
+#define PE_RPMAX 1024
+float  pe_rp_n, pe_rp_s, pe_rp_on;
+float  pe_rp_btn[PE_RPMAX], pe_rp_imp[PE_RPMAX];
+vector pe_rp_ang[PE_RPMAX], pe_rp_mv[PE_RPMAX];
+
 void() PE_RegisterCvars =
 {
 	registercvar("cl_prederr_report", "32", CVAR_ARCHIVE);   // units; 0 = no reports
 	registercvar("cl_prederr_ask", "1", CVAR_ARCHIVE);       // 0 = keep them locally, never ask
 	registercommand("prederr_ack");
 	registercommand("prederr_send");
+	registercommand("pe_replay");       // P1404
 	pe_ok = checkcommand("prederr_dump") == 1;
 	pe_count = cvar("cl_prederror_count");
 };
@@ -51,6 +68,24 @@ void(string s) PE_Note =
 	bufstr_set(pe_ring, pe_ring_n - floor(pe_ring_n / PE_RING) * PE_RING,
 	           sprintf("%.3f %.0f %s", time, clientcommandframe, strreplace("\r", " ", strreplace("\n", " | ", s))));
 	pe_ring_n = pe_ring_n + 1;
+};
+
+// P1403: CSQC_PredictPlayerPreMove on the chain's first command; predinput_* is the acknowledged state.
+void(float ack) PE_AckSnap =
+{
+	local float k;
+	if (ack == pe_ak_last)
+		return;
+	pe_ak_last = ack;
+	k = pe_ak_n - floor(pe_ak_n / PE_AKS) * PE_AKS;
+	pe_ak_rt[k]   = gettime(0);
+	pe_ak_t[k]    = time;
+	pe_ak_ack[k]  = ack;
+	pe_ak_sent[k] = clientcommandframe;
+	pe_ak_org[k]  = predinput_origin;
+	pe_ak_vel[k]  = predinput_velocity;
+	pe_ak_gp[k]   = predinput_onground + 2 * predinput_pmtype;
+	pe_ak_n = pe_ak_n + 1;
 };
 
 // Enter-only: a continuous push fires every command, and a replay repeats old seqs.
@@ -106,6 +141,8 @@ void() PE_MapReset =
 {
 	local float i;
 	pe_join_t = cltime;
+	pe_rp_on = FALSE;                   // P1404
+	pe_ak_last = -1;                    // P1403
 	PE_ResetExpected();
 	for (i = 0; i < TG_MAX; i = i + 1)
 		pe_tseq[i] = 0;
@@ -146,7 +183,8 @@ float() PE_Local =
 
 void(string stem) PE_WriteContext =
 {
-	local float f, i, i0;
+	local float f, i, i0, k;
+	local vector o, v;
 	f = fopen(strcat("data/prederr/", stem, "_ctx.txt"), FILE_WRITE);
 	if (f < 0)
 		return;
@@ -165,6 +203,18 @@ void(string stem) PE_WriteContext =
 	i0 = max(0, pe_ring_n - PE_RING);
 	for (i = i0; i < pe_ring_n; i = i + 1)
 		fputs(f, strcat(bufstr_get(pe_ring, i - floor(i / PE_RING) * PE_RING), "\n"));
+	// P1403. rt: gettime(0) of the frame that first predicted from it; t: CSQC time then.
+	fputs(f, "# acks: rt t ack sent org(3) vel(3) ground+2*pmtype\n");
+	i0 = max(0, pe_ak_n - PE_AKS);
+	for (i = i0; i < pe_ak_n; i = i + 1)
+	{
+		k = i - floor(i / PE_AKS) * PE_AKS;
+		o = pe_ak_org[k];
+		v = pe_ak_vel[k];
+		fputs(f, strcat(sprintf("%.4f %.3f %.0f %.0f ", pe_ak_rt[k], pe_ak_t[k], pe_ak_ack[k], pe_ak_sent[k]),
+		                sprintf("%.1f %.1f %.1f ", o_x, o_y, o_z),
+		                sprintf("%.1f %.1f %.1f %g\n", v_x, v_y, v_z, pe_ak_gp[k])));
+	}
 	fclose(f);
 };
 
@@ -421,9 +471,92 @@ void() PE_Send =
 	PE_SendNext();
 };
 
+// P1404: `pe_replay <file in data/prederr/>`. Line 1 "FTESURF-PEREPLAY 1", line 2 "start <report seq>
+// <origin> <velocity>" (the server's state before the first row), then one row per command:
+// "<report seq> <msec> <pitch> <yaw> <roll> <fwd> <side> <up> <buttons> <impulse>".
+void(string fn) PE_ReplayStart =
+{
+	local float f, lead;
+	local string ln;
+	local vector o, v;
+	if (serverkey("*cheats") != "ON")
+	{
+		print("pe_replay: only on a server with sv_cheats 1\n");
+		return;
+	}
+	f = fopen(strcat("data/prederr/", fn), FILE_READ);
+	if (f < 0)
+	{
+		print(sprintf("pe_replay: cannot open data/prederr/%s\n", fn));
+		return;
+	}
+	ln = fgets(f);
+	if (ln != "FTESURF-PEREPLAY 1" || tokenize(fgets(f)) < 8 || argv(0) != "start")
+	{
+		fclose(f);
+		print("pe_replay: not a replay file\n");
+		return;
+	}
+	o = [stof(argv(2)), stof(argv(3)), stof(argv(4))];
+	v = [stof(argv(5)), stof(argv(6)), stof(argv(7))];
+	pe_rp_n = 0;
+	for (ln = fgets(f); ln && pe_rp_n < PE_RPMAX; ln = fgets(f))
+	{
+		if (tokenize(ln) < 10)
+			continue;
+		pe_rp_ang[pe_rp_n] = [stof(argv(2)), stof(argv(3)), stof(argv(4))];
+		pe_rp_mv[pe_rp_n]  = [stof(argv(5)), stof(argv(6)), stof(argv(7))];
+		pe_rp_btn[pe_rp_n] = stof(argv(8));
+		pe_rp_imp[pe_rp_n] = stof(argv(9));
+		pe_rp_n = pe_rp_n + 1;
+	}
+	fclose(f);
+	if (!pe_rp_n)
+	{
+		print("pe_replay: no rows\n");
+		return;
+	}
+	lead = ceil(0.3 * cvar("cl_netfps")) + 2;   // the stringcmd reaches the lobby before that command
+	pe_rp_s = clientcommandframe + lead;
+	pe_rp_on = TRUE;
+	localcmd(sprintf("cmd pe_state %.0f %.3f %.3f %.3f %.3f %.3f %.3f\n", pe_rp_s, o_x, o_y, o_z, v_x, v_y, v_z));
+	print(sprintf("pe_replay: %g rows, state on command %.0f\n", pe_rp_n, pe_rp_s));
+};
+
+// CSQC_Input_Frame, first: idle until the state lands, then the rows. Warp ops (201 up) are left out:
+// the client predicts them from its own op state, which a raw impulse would not set.
+float() PE_ReplayInputFrame =
+{
+	local float r;
+	if (!pe_rp_on)
+		return FALSE;
+	r = clientcommandframe - pe_rp_s;
+	input_movevalues = '0 0 0';
+	input_buttons = 0;
+	if (r >= pe_rp_n)
+	{
+		pe_rp_on = FALSE;
+		print(sprintf("pe_replay: done at command %.0f\n", clientcommandframe));
+		return TRUE;
+	}
+	if (r < 0)
+		return TRUE;
+	input_angles     = pe_rp_ang[r];
+	input_movevalues = pe_rp_mv[r];
+	input_buttons    = pe_rp_btn[r];
+	if (pe_rp_imp[r] && pe_rp_imp[r] < 201)
+		input_impulse = pe_rp_imp[r];
+	return TRUE;
+};
+
 float(string cmd) PE_ConsoleCommand =
 {
 	tokenize(cmd);
+	if (argv(0) == "pe_replay")
+	{
+		PE_ReplayStart(argv(1));
+		return TRUE;
+	}
 	if (argv(0) == "prederr_send")
 	{
 		PE_Send();

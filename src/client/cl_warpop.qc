@@ -895,12 +895,18 @@ void(float op, float i) WarpOp_Apply =
 	}
 };
 
+void(float ack) PE_AckSnap;             // P1403, cl_prederr.qc
+
 // Every replay of every unacknowledged command.
 void(float seat, float seq, float seconds, float offset) CSQC_PredictPlayerPreMove =
 {
 	local float i;
 
 	wop_premove_t = cltime;
+	if (!seat)
+	if (offset == 0)
+	if (seq == servercommandframe + 1)
+		PE_AckSnap(servercommandframe);
 	tg_baseseq = seq;                // Patch 1025: cl_triggers.qc's ring check, before any warp
 	tg_baseorg = predinput_origin;
 	// P1238: the server sends movetype only when it changes (sv_ents.c SVFTE_DeltaCalcBits), so a lost

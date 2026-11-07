@@ -581,6 +581,7 @@ void() PlayerPreThink =
 	// Patch 753: first, where a stringcmd sent just before this command would run.
 	SV_WarpOpCommand();
 	SV_TimeScaleReturnCommand();
+	SV_PeStateApply(self);              // P1404: a rig replay's start (sv_cheats only)
 
 	// Patch 382: a held body (spectate) runs no move, so nothing here may write a
 	// row, a ride or a pin, cash out a carrier or hand the engine one.
@@ -2460,6 +2461,11 @@ void(string cmd) SV_ParseClientCommand =
 	  survives the rest of the attempt and is cleared by the next arm, so a run
 	  cannot be laundered by teleporting and then finishing.
 	*/
+	if (c == "pe_state")                // P1404, sv_prederr.qc
+	{
+		SV_PeStateCmd(self, cmdargc);
+		return;
+	}
 	if (c == "setpos")
 	{
 		if (cmdargc < 4)

@@ -1234,6 +1234,8 @@ void() CL_MoveToStandard =
 
 void() CSQC_Input_Frame =
 {
+	if (PE_ReplayInputFrame())      // P1404: a rig replaying a prederror report (sv_cheats only)
+		return;
 	GA_InputFrame();                // read-only walk intent for local Foley
 	// P1083: scale to the standard move size the server ranks on, keeping the
 	// direction. The engine sums a pad's stick onto held keys and scales it x360

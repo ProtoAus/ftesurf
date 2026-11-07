@@ -31,6 +31,46 @@ float  pe_lobby_n, pe_lobby_last;
 float  pe_hit_t[PE_SV_HITCHES], pe_hit_d[PE_SV_HITCHES];
 float  pe_hit_n, pe_rt_last;    // server frames longer than 50 ms: lobby-wide, newest PE_SV_HITCHES
 
+// P1404: a rig replay's start (cl_prederr.qc pe_replay), sv_cheats only: the state lands before the
+// first command at or past pe_st_seq, so the replayed rows start from the report's server state.
+.float  pe_st_seq;
+.vector pe_st_org, pe_st_vel;
+
+void(entity p, float argc) SV_PeStateCmd =
+{
+	if (cvar("sv_cheats") != 1)
+	{
+		sprint(p, PRINT_HIGH, "pe_state: needs sv_cheats 1\n");
+		return;
+	}
+	if (argc < 8)
+	{
+		sprint(p, PRINT_HIGH, "pe_state <command> <origin> <velocity>\n");
+		return;
+	}
+	p.pe_st_seq = stof(argv(1));
+	p.pe_st_org = [stof(argv(2)), stof(argv(3)), stof(argv(4))];
+	p.pe_st_vel = [stof(argv(5)), stof(argv(6)), stof(argv(7))];
+};
+
+// PlayerPreThink, before the move.
+void(entity p) SV_PeStateApply =
+{
+	local float seq;
+	if (!p.pe_st_seq)
+		return;
+	seq = input_cmd_sequence_hi * 65536 + input_cmd_sequence_lo;
+	if (seq < p.pe_st_seq)
+		return;
+	p.pe_st_seq = 0;
+	if (cvar("sv_cheats") != 1)
+		return;
+	setorigin(p, p.pe_st_org);
+	p.velocity = p.pe_st_vel;
+	p.flags = p.flags - (p.flags & FL_ONGROUND);
+	sprint(p, PRINT_HIGH, sprintf("pe_state: on command %.0f at %v vel %v\n", seq, p.origin, p.velocity));
+};
+
 // StartFrame: a server frame that started 50+ ms after the last one.
 void() SV_PeFrame =
 {
