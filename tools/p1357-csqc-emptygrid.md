@@ -91,14 +91,37 @@ These warmed runs do not measure loading or first-traversal hitch removal.
 Saved source-bound summaries and untouched native captures are retained under
 the owned lowsfix task root; the historical five-map report remains unchanged.
 
-## Delivery boundary
+## Actual dual-Windows delivery7Nov2026UTC
 
-Actual dual-Windows activation/hash/rollback verification is PENDING at this
-source checkpoint. Promotion must retain actual installed VMs, configs, aliases
-and player data unchanged; do not ship the older timing-control programs or the
-newly compiled latest-main programs merely to deliver a client-native change.
+Promoted02:25:54UTC through the previously qualified Windows transaction helper
+and the existing build-script Deploy function. Fourteen native destinations
+(seven per install), actual primary `C:/FTESurf/ftesurf64.exe` and secondary
+`C:/FTEQuake/fteqw64.exe`, exact to the clean full build. Every actual predecessor
+is retained in `.prev`; previous `.prev` bytes and destination preimages were
+archived and read back before mutation. No owner process was killed.
+
+Final02:35:36UTC readback confirms all14 destination/predecessor hashes and all
+18,937 protected files unchanged: actual installed VMs/LNO, version caches,
+configs, retained alternate aliases and player data. The older timing-control
+programs and the newly compiled latest-main programs were NOT deployed. Raw
+preservation inventories and the rollback archive remain private under the
+owned lowsfix evidence companion, not in public Git.
+
+Both ACTUAL installed clients and their matching installed HL2/ImGui DLL paths
+were then activated against the isolated owned dedicated socket/gamedir. Both
+report `patch-1357-0-g00b5400e4`, default `csqc_emptygrid`1, normal sky-ray64;
+both run a moving Tensor2 replay. Both ACTUAL installed dedicated servers pass
+`pm_selftest` (`all checks passed`). Clipboard and owned processes/rig lease were
+restored/released; this does not assert behavior of untested installed VM source.
+A first smoke observer read only conbridge's `--wait` match sentinel rather than
+its console: saved native output already proves identity/default. Preserve that
+reader failure; corrected log readback, no product modification or repeat deploy.
+An earlier Python3.10 hash-helper preflight refusal also occurred before mutation
+and was corrected in that same helper, not bypassed with a new transaction.
+
 The guard is compiled out of dedicated-server behavior; no NanoPi lobby restart,
 backend change, release or QC Build bump is required for this client-only fix.
+Owner Tensor2 glow visibility/feel check is requested but NOT yet confirmed.
 
 No first-use or GPU improvement is claimed here. Ceaseless's separate249ms
 frame was245.682ms in VBSP PrepareFrame and is still being localized.

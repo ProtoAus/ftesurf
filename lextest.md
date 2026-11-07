@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P1357 Tensor2 client query overhead — BOTH Windows installed7Nov
+
+Installed02:25UTC, both actual client/server/plugin activations and final hashes/
+18,937 protected-file readback verified02:35UTC. On the next launch, move along
+one familiar Tensor2 section with visible light glows: do they still appear and
+disappear correctly as the view changes? Any new popping or trace/feel issue?
+No visibility rays, quality settings, trace results, physics or VM programs were
+changed. No owner confirmation yet; this is the pending human-only appearance/
+feel check, not measured acceptance. Clean60s matched Tensor2 ABBA measured
+383-384 ->410 average and255 ->273-276 1% lows; that is not a whole-map, GPU or
+first-use hitch claim. Other maps do not show a consistent attributable gain.
+Evidence and scope: `tools/p1357-csqc-emptygrid.md`. No Pi swap/Build/release.
+
 ## P1355 bounded local section search -- BOTH Windows/all12 lobbies installed6Nov
 
 Installed22:02Z Windows/22:14Z lobbies; scoped hashes and preservation verified.
