@@ -2155,7 +2155,12 @@ float(entity f, entity act, float depth) SV_FilterPassesD =
 
 	if (f.classname == "filter_activator_name")
 	{
-		pass = (act.targetname == f.filtername);
+		// Source's CFilterName / NameMatches: "!player" is any player (ahop_coast's 23 teleports,
+		// 19 water resets and its doors), else case-insensitive with `*` ending a prefix.
+		if (!strcasecmp(f.filtername, "!player"))
+			pass = (act.classname == "player");
+		else
+			pass = SV_NamesMatch(f.filtername, act.targetname);
 		if (SV_Key2(f.Negated, f.negated))
 			pass = !pass;
 		return pass;

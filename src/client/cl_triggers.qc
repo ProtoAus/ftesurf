@@ -304,7 +304,11 @@ float(float r, float depth) TF_EvalD =
 	if (r < 0)
 		return TFR_PASS;                // missing filter: Source passes
 	if (tf_class[r] == "filter_activator_name")
-		return TFR_UNKNOWN;             // act.targetname is output state
+	{
+		if (strcasecmp(tf_filt[r], "!player"))
+			return TFR_UNKNOWN;         // act.targetname is output state
+		return tf_neg[r] ? TFR_FAIL : TFR_PASS;   // SV_FilterPassesD: any player
+	}
 	if (tf_class[r] == "filter_velocity")
 		return TFR_UNKNOWN;             // the player's speed
 	if (tf_class[r] == "filter_activator_team" || tf_class[r] == "filter_activator_class")

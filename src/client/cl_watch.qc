@@ -93,6 +93,7 @@ float  rec_wt_evfin;             // the finish row is in the split list
 */
 float  rec_wt_rec;
 float  rec_wt_view;
+float  rec_wt_vown;             // the view came from Watch_OnlineOwnView
 float  rec_wt_recn;              // lines in the .rec buffer
 float  rec_wt_viewn;
 float  rec_wt_rec0;              // first line after `begin`
@@ -679,6 +680,7 @@ void() Watch_Free =
 		buf_del(rec_wt_view);
 	rec_wt_rec  = 0;
 	rec_wt_view = 0;
+	rec_wt_vown = FALSE;
 	rec_wt_recn = rec_wt_viewn = 0;
 	if (rec_wt_inf)
 		memfree(rec_wt_inf);
@@ -1342,6 +1344,120 @@ void() Watch_ViewMap =
 };
 
 /*
+  An own online view's lead over the .rec.  Its tick column is STAT_FS_TIMERTICKS as it
+  ARRIVED, a round trip late, so every knot offset places a remote player's frames one
+  ping early: the camera turns before the body does, from t = 0 on.  Measured on the
+  lobby's uploaded views: 0 ms on the LAN, 225-435 ms for remote players (6-53 degrees
+  mean error, 0.1-0.7 once shifted).  Found by matching the view's angles to the .rec's
+  over -2 ticks .. WT_LAGMAX and taken out of every knot.
+*/
+#define WT_LAGP    64           // probes, spread over the knots
+#define WT_LAGMAX  1.2          // s of lead searched
+#define WT_LAGN    128          // candidate shifts (WT_LAGMAX at a 0.01 tick + 3)
+#define WT_LAGR    192          // .rec samples kept per probe (1.23 s at 100/s, with room)
+#define WT_LAGGAIN 0.5          // degrees the best shift must beat no shift by
+float  wt_lag_err[WT_LAGN], wt_lag_cnt[WT_LAGN];
+float  wt_lag_rt[WT_LAGR], wt_lag_ry[WT_LAGR], wt_lag_rp[WT_LAGR];
+float  rec_wt_vlag;             // s taken out of the knots (0: none)
+float  rec_wt_vlagp;            // probes it was judged on
+
+void() Watch_ViewLag =
+{
+	local float nd, d, j, jstep, T, py, pp, lo, hi, i, ix, n, t, k, f, c, y, e, best, bestd, zero;
+	local string s;
+
+	rec_wt_vlag = rec_wt_vlagp = 0;
+	if (rec_wt_vkn < 4 || rec_wt_tickrate <= 0)
+		return;
+	nd = floor(WT_LAGMAX / rec_wt_tickrate) + 3;
+	if (nd > WT_LAGN)
+		nd = WT_LAGN;
+	for (d = 0; d < nd; d = d + 1)
+	{
+		wt_lag_err[d] = 0;
+		wt_lag_cnt[d] = 0;
+	}
+
+	jstep = max(1, floor(rec_wt_vkn / WT_LAGP));
+	for (j = 0; j < rec_wt_vkn; j = j + jstep)
+	{
+		T = rec_wt_vkc0[j] - rec_wt_vkoff[j];
+		lo = T - 2 * rec_wt_tickrate;
+		hi = T + WT_LAGMAX + 2 * rec_wt_tickrate;
+		if (lo < 0 || hi > rec_wt_t1)
+			continue;
+		tokenize(bufstr_get(rec_wt_view, rec_wt_vkline[j]));
+		pp = stof(argv(WT_V_PITCH));
+		py = stof(argv(WT_V_YAW));
+
+		ix = 0;
+		for (i = 1; i < rec_wt_ixn; i = i + 1)
+			if (rec_wt_ixt[i] <= lo)
+				ix = i;
+		n = 0;
+		for (i = rec_wt_ixline[ix]; i < rec_wt_recn; i = i + 1)
+		{
+			s = bufstr_get(rec_wt_rec, i);
+			c = str2chr(s, 0);
+			if (c != 45 && (c < 48 || c > 57))
+				continue;
+			t = stof(s);
+			if (t < lo)
+				continue;
+			if (t > hi || n >= WT_LAGR)
+				break;
+			tokenize(s);
+			wt_lag_rt[n] = t;
+			wt_lag_rp[n] = stof(argv(WT_C_PITCH));
+			wt_lag_ry[n] = stof(argv(WT_C_YAW));
+			n = n + 1;
+		}
+		if (n < 2)
+			continue;
+
+		k = 0;
+		for (d = 0; d < nd; d = d + 1)
+		{
+			t = T + (d - 2) * rec_wt_tickrate;
+			while (k + 2 < n && wt_lag_rt[k + 1] <= t)
+				k = k + 1;
+			if (t < wt_lag_rt[k] || t > wt_lag_rt[k + 1])
+				continue;
+			f = 0;
+			if (wt_lag_rt[k + 1] > wt_lag_rt[k])
+				f = (t - wt_lag_rt[k]) / (wt_lag_rt[k + 1] - wt_lag_rt[k]);
+			y = wt_lag_ry[k] + Interp_Arc(wt_lag_ry[k], wt_lag_ry[k + 1]) * f;
+			e = fabs(Interp_Arc(y, py))
+			  + fabs(wt_lag_rp[k] + (wt_lag_rp[k + 1] - wt_lag_rp[k]) * f - pp);
+			wt_lag_err[d] = wt_lag_err[d] + e;
+			wt_lag_cnt[d] = wt_lag_cnt[d] + 1;
+		}
+		rec_wt_vlagp = rec_wt_vlagp + 1;
+	}
+	if (rec_wt_vlagp < 16 || wt_lag_cnt[2] < rec_wt_vlagp / 2)
+		return;
+
+	zero = wt_lag_err[2] / wt_lag_cnt[2];   // slot 2 is no shift
+	best = zero;
+	bestd = 2;
+	for (d = 0; d < nd; d = d + 1)
+		if (wt_lag_cnt[d] >= rec_wt_vlagp / 2)
+		if (wt_lag_err[d] / wt_lag_cnt[d] < best)
+		{
+			best = wt_lag_err[d] / wt_lag_cnt[d];
+			bestd = d;
+		}
+	if (zero - best < WT_LAGGAIN)
+		return;
+	rec_wt_vlag = (bestd - 2) * rec_wt_tickrate;
+	for (j = 0; j < rec_wt_vkn; j = j + 1)
+		rec_wt_vkoff[j] = rec_wt_vkoff[j] - rec_wt_vlag;
+	print(sprintf("replay: your per-frame view was %.0f ms ahead of the recording (your ping); "
+	              "aligned (%.1f to %.1f degrees over %g probes)\n",
+	              rec_wt_vlag * 1000, zero, best, rec_wt_vlagp));
+};
+
+/*
   Pass one counts the samples and collects the records; a second walk builds the
   seek index (every ixstep-th sample, one stof each) and reads t0, t1 and the
   sample width.  Patch 431: the per-sample tables moved to Watch_ScanRange, which
@@ -1907,6 +2023,9 @@ void() Watch_Scan =
 
 	rec_wt_vmapms = gettime(1);
 	Watch_ViewMap();
+	rec_wt_vlag = rec_wt_vlagp = 0;
+	if (rec_wt_vown)
+		Watch_ViewLag();
 	rec_wt_vmapms = (gettime(1) - rec_wt_vmapms) * 1000;
 
 	/*
@@ -4773,10 +4892,12 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 		buf = buf_create_ex("string", 0);
 	if (buf >= 1)
 	{
+		rec_wt_vown = FALSE;
 		if (!Watch_BufLoad(vp, buf))
 		{
 			buf_del(buf);
 			buf = Watch_OnlineOwnView(rec_wt_path, rec_wt_rec);
+			rec_wt_vown = (buf >= 1);
 		}
 		if (buf >= 1)
 		{
@@ -6364,6 +6485,9 @@ void() Watch_Status =
 		              rec_wt_vkover, rec_wt_vshort, rec_wt_vstall, rec_wt_vkstep * 1000));
 	else
 		print("  view none\n");
+	if (rec_wt_vown)
+		print(sprintf("  own online view: lead %.0f ms taken out (%g probes)\n",
+		              rec_wt_vlag * 1000, rec_wt_vlagp));
 	print(sprintf("  load %.0f ms  view map %.0f ms\n", rec_wt_loadms, rec_wt_vmapms));
 	print(sprintf("  now angles %s  fit %g  eye %.2f  view line %g (knot %g)\n",
 	              rec_wt_asrc ? "view" : "rec", rec_wt_fit, rec_wt_eyeh, rec_wt_vj,

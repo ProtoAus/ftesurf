@@ -21,6 +21,13 @@
 
 ## next
 
+### P1367 Your own replays look the right way, goto, ahop_coast
+- Watching your own lobby replay no longer shows the view turning before you do. The camera was ahead of your body by your ping (a third of a second for many players); it now lines up.
+- Players who leave a lobby no longer stay behind in the player list as "unnamed".
+- New goto command: goto (or goto spawn), goto main, goto start, goto s3, goto b1. goto_spawn still works.
+- ahop_coast's teleports, water resets and doors work, and it plays with bhop rules on the lobbies as in Momentum.
+- Name filters now match the way Source does (any case, trailing *), so checkpoint triggers on about 40 maps such as surf_autosave and bhop_kirous behave as their authors made them.
+
 ### P1366 Comparison bars and held-save travel
 - Compare speed and energy both at the same elapsed time and at the nearest point on the displayed reference. Centered bars keep the numeric differences visible.
 - Travel through the saved path into a held save, then return control at the saved point. Missing local paths safely keep the ordinary hold.

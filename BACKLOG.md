@@ -1,5 +1,35 @@
 # BACKLOG.md
 
+## Lobbies run without data/mapmeta.txt, so a map's ruleset comes from its name (P1367, 7 Nov)
+
+- The Pi's game/ftesurf/data has no mapmeta.txt, so SV_ApplyGamemode (engine sv_phys.c) falls back to
+  the name prefix; installs ship the file (release.ps1). Of the Pi's 2256 maps, 14 resolve to a
+  different mode on the two; with mode_bhop.cfg the only mode file, 10 change ruleset. P1367 gave
+  ahop_coast a map cfg. Still different: agtricks, df_cavernish, df_yungstrafe08, kz_bkz_goldbhop_v2
+  (bhop rules locally, base on lobbies) and bhop_badwater, bhop_odyssey, bhop_nightmare,
+  bhop_ytt_cruma, bhop_canals (Momentum files them under ahop/climb/defrag: base locally, bhop on
+  lobbies). Shipping mapmeta.txt to the Pi also changes the lobbies' published tiers. Owner decision.
+- Check: `movement` on a lobby and on an install for one listed map; the mode lines differ.
+
+## Momentum's uphill slope fix in ClipVelocity is not ported (P1367 investigation, 7 Nov)
+
+- mom_gamemovement.cpp ClipVelocity (sv_slope_fix, rngfix off): autobhop + jump held, standable
+  plane, out.z <= 140, moving into the slope and not gaining 2D speed -> out = (in.x, in.y, 0).
+  Ours (engine pm_source.c PMSrc_ClipVelocity) clips plainly; P176 ported only the CategorizePosition
+  half. Hand-computed: 400 u/s landing at vz -200 keeps 354 u/s on a 10 deg slope, 289 on 20 deg;
+  Momentum keeps 400. Owner report: uphill bhops on ahop_coast's displacements feel harder.
+- A mover change: needs a pmsrcver bump, verifier support for both versions, a client release for
+  prediction and evidence review. Not started. Falsifier: scripted uphill hops on a 10-25 deg
+  displacement printing each landing's horizontal speed before/after, current vs ported build.
+
+## tools/mapdeps.py reads commented-out .vmt lines (7 Nov)
+
+- vmt_refs (tools/mapdeps.py) does not skip `//` comments, so surf_ferros reports
+  lckd/dream_contest/dream_concrete_normal.vtf missing from a commented $bumpmap line; the engine
+  ignores it. Inflates `--audit`'s count of maps with unsupplied content; no dep line changes.
+- Related, not a bug: surf_ferros's luna_tag_0.mdl skins (lunatag2/ELDEN RING/...) ship in no pack,
+  no installed game VPK (399 read) and no map pakfile; surf_pride ships its own copy under another path.
+
 ## P1339 Story/Event atlas coverage and KSF top-up (100/114 ready)
 - Sites: `tools/rampwear.py:load_charts/touched`, `rampwear_batch.py:prebake`, upstream CSS66 board/demo acquisition. Four maps have no local inputs and ten have no contacts on currently supported static geometry; names/limits in `tools/p1339-ramp-atlas.md`. All-category/tail KSF capture is incomplete after HTTP500; obey the CURRENT shared park/lock/pacing, never bypass its cooldown or call uncrawled categories absent.
 - Falsifier: current-map-bound original poses MUST positively touch actual supported geometry, against an acting world/displacement control, before a nonempty atlas counts. Axiom/BoardThis bounded height offsets and conservative static-brush-origin controls still have zero touches; this is NOT proof all ramps move, no ramps exist, or the map has no demos. Resolve actual geometry/recorded coordinates or obtain matching inputs, then validate real native drawing and publish only nonempty hashed assets. No invented marks/guessed mover transforms or empty-mask completion.
@@ -1429,22 +1459,6 @@ From the two independent reviews of 28 Oct. Every case stays TAS-flagged; none r
 - Falsifier: preserve the ordinary zero-carry PASS control, and keep positive
   carry an explicit REFUSE until a separately reviewed, complete timing model
   can verify it. Do not silently drop the carry or manufacture physical input.
-
-## Intermittent departed player left as unnamed, not spectatable (owner, 21 Oct)
-
-- Surface not yet identified beyond the player/lobby list. Prior ordinary
-  disconnect/reuse controls did not reproduce it. A further single real abrupt
-  owned-client kill with timeout20/zombie2 ended with a fresh pinned Players
-  redraw and authoritative UDP both1. The pre-timeout retained connection is
-  legitimate, not a ghost. Slot reuse and connected literal `unnamed` remain
-  spectatable. Do not suppress names speculatively. Sites: cl_players PL_Count/
-  PL_Slot and engine CL_UpdateUserinfo/CL_ProcessUserInfo, or another roster.
-- Probe pitfall: `scores pin` toggles. Closed-board `pl_rows` is cached and was
-  explicitly NOT graded; only the actual post-timeout redraw is UI evidence.
-- Falsifier: capture the exact visible list while the departed row remains,
-  quit/crash/timeout type, slot/userid lifecycle, latest draw stamp and whether
-  the server still counts it. Crash/timeout now has one negative control, not
-  proof every intermittent path is fixed. No product/engine change claimed.
 
 Open bugs and follow-ups that someone found and did not fix. One entry each:
 what, where, how to check it, where it came from. Add what you find and leave;

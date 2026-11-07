@@ -1,4 +1,5 @@
 # The engine build this QuakeC requires.
+# Patch 1367 (QC + one map cfg): own online replay views shifted by their measured lead over the .rec (a ping; 225-435 ms remote, 0 LAN); lobby colour loop skips departed slots (no "unnamed" rows); filter_activator_name "!player" and Source NamesMatch; cfg/maps/map_ahop_coast.cfg bhop ruleset; `goto [spawn|start|main|sN|bN]`. No native/recorder/evidence/Build change.
 # Patch 1366 (QC only): independent comparison bars, bounded held-save visual travel and separate segmented local-best metadata. No native pin/tag, QC Build, recorder grammar or historical-save repair change. tools/p1366-compare-save.md.
 # Patch 1365 (data): the starter shader list gains 36 permutations Tensor2, Ceaseless, Boreas, Garden, Demise, Jumble and Dragon compile under full water/glass effects; first-play late compiles 27 -> 14 (Tensor2), 13 -> 5 (Ceaseless). No native/VM change. tools/p1363-lows-audit.md.
 # Patch 1364 (hl2 plugin, client): static-prop lighting solved once per map load before first sight (hl2_lt_prewarm), same values; Ceaseless first traversal 0.1% low 26 -> 231-240 fps. No VM/physics/evidence/Build change. tools/p1363-lows-audit.md.
@@ -85,7 +86,7 @@ commit   e7912dd9bac50a06070974bc0f4e3f418b855bae
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1364
-patch    1366
+patch    1367
 # Patch 1350 adds passive native contact annotations and source-bound local TAS Sections. Clean final FULL/native/three-VM builds and ARM1608/0 pass; two whole-feature reviews clear. Old canonical-open defects act37/37; current production65/65 real-client checks prove rejection/UI recovery and unchanged original/counters. Native input/restore gates stay unchanged. Published1345-1349 and0.1.41/menu90 preserved. Static fixed-step scope: tools/p1350-tas-contacts.md. BOTH Windows/all12 lobbies deployed6Nov with exact hashes, actor/plugin epochs and recorder/resume preimages; backend/config/data preserved. Downloaded-client smoke and owner acceptance remain pending.
 # Patches 1305/1306 (engine common/pm_source.c): faithful existing gravity-use observation across finite native jump configurations and stock postures. Movement, capture/API/format and ranking policy unchanged. Clean Windows/ARM, acting controls and dual Windows/all12Pi native delivery verified; actual ranked/full-bank acceptance separate. Windows source7ae5d53b2 includes published P1301; Pi source76acc7c6b/tagpatch-1306 has identical mover/server inputs. Details and corrected old-manifest selector diagnosis: tools/p1306-gravity-context.md.
 # Patch 1299: initial finite nonnegative normalized-offset extension; full native delivery now superseded by the qualified 1305/1306 set. Historical proof and correction in tools/p1299-gravity.md.

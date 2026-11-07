@@ -995,6 +995,64 @@ float(string text) WarpOp_Chat =
 	return WarpOp_Reset(WOP_BONUS1 + n - 1);
 };
 
+// `goto [spawn|start|main|sN|bN]` (Lex, 7 Nov): one command for the warps. Stages and
+// bonuses go through `!s N` / `!b N`, predicted where those are, else sent as that chat line.
+float(string w) WarpOp_Goto =
+{
+	local float n, i, c;
+	local string kind;
+
+	// Patch 845: the map's spawn entity, where joining puts you, not `!m`'s start zone.
+	// A respawn, so not predicted.
+	if (w == "" || w == "spawn")
+	{
+		PE_Expect("goto_spawn, a respawn");     // P1238
+		localcmd("cmd zone_spawn\n");
+		return TRUE;
+	}
+	if (w == "start")
+	{
+		localcmd("goto_start\n");
+		return TRUE;
+	}
+	if (w == "main" || w == "m")
+	{
+		if (!WarpOp_Chat("!m"))
+			localcmd("cmd say \"!m\"\n");
+		return TRUE;
+	}
+	kind = "";
+	if (substring(w, 0, 5) == "stage" || substring(w, 0, 5) == "bonus")
+	{
+		kind = substring(w, 0, 1);
+		w = substring(w, 5, strlen(w) - 5);
+	}
+	else if (substring(w, 0, 1) == "s" || substring(w, 0, 1) == "b")
+	{
+		kind = substring(w, 0, 1);
+		w = substring(w, 1, strlen(w) - 1);
+	}
+	n = 0;
+	if (kind != "" && w != "")
+	{
+		n = stof(w);
+		for (i = 0; i < strlen(w); i = i + 1)
+		{
+			c = str2chr(w, i);
+			if (c < '0' || c > '9')
+				n = 0;
+		}
+	}
+	if (n < 1)
+	{
+		print("goto: spawn (or just goto), start, main, s<N> for stage N, b<N> for bonus N -- e.g. goto s3, goto b1\n");
+		return TRUE;
+	}
+	if (!WarpOp_Chat(sprintf("!%s %g", kind, n)))
+		localcmd(sprintf("cmd say \"!%s %g\"\n", kind, n));
+	return TRUE;
+};
+
 float() WarpOp_Console =
 {
 	local float n;
@@ -1062,13 +1120,10 @@ float() WarpOp_Console =
 			localcmd("cmd zone_reset\n");
 		return TRUE;
 	}
-	// Patch 845: the map's spawn entity, where joining puts you, not `!m`'s start zone.
-	// A respawn, so not predicted.
 	if (argv(0) == "goto_spawn")
-	{
-		PE_Expect("goto_spawn, a respawn");     // P1238
-		localcmd("cmd zone_spawn\n");
-		return TRUE;
-	}
+		return WarpOp_Goto("spawn");
+	// "s 3" and "s3", "stage 3" and "stage3" read alike.
+	if (argv(0) == "goto")
+		return WarpOp_Goto(strtolower(strcat(argv(1), argv(2))));
 	return FALSE;
 };

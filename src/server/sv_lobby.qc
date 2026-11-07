@@ -1425,7 +1425,7 @@ float(entity e, float rank, float track) Lobby_AnnGate =
 void() Lobby_Frame =
 {
 	local entity av, nx, p;
-	local float  nfx, want, tc, tn;
+	local float  nfx, want, tc, tn, t;
 	local vector tv, bv;
 	local vector rgbv;
 
@@ -1608,6 +1608,15 @@ void() Lobby_Frame =
 		p = find(world, classname, "player");
 		while (p)
 		{
+			// A departed client's edict keeps classname "player". In its 2 s zombie window a
+			// forceinfokey still lands and the engine re-sends its emptied name as "unnamed"
+			// to everyone (sv_main.c SV_ExtractFromUserinfo), a row nothing clears.
+			t = clienttype(p);
+			if (t != CLIENTTYPE_REAL && t != CLIENTTYPE_BOT)
+			{
+				p = find(p, classname, "player");
+				continue;
+			}
 			p.lobby_colour = Lobby_ColourFor(p);
 
 			/*

@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P1367 own replays, lobby ghosts, goto, ahop_coast -- owner check pending
+
+Measured in an isolated rig against a control build of main (tools/p1367-lexlist.md). Yours to
+confirm in the real game once deployed:
+- Ask one remote player (Akatosh, tsbussn) to watch their own board replay: the camera should turn
+  with their body from the start zone on. The console says "your per-frame view was N ms ahead".
+  Your own replays are unchanged (you are on the Pi's LAN: 0 ms).
+- When somebody leaves a lobby, their row should go, not turn into "unnamed".
+- `goto`, `goto main`, `goto s3`, `goto b1`, `goto start` on a staged map; `goto_spawn` (your m) still works.
+- ahop_coast on a lobby: the first stage teleport and the water resets work; do uphill hops feel
+  closer to Momentum? (100 Hz and airaccelerate 1000 now; Momentum's uphill speed-keeping is still
+  missing, see BACKLOG.)
+- surf_autosave or bhop_kirous: their checkpoint triggers (filters named `ng*`, `state0*`) now fire.
+
 ## P1366 comparison bars and save travel -- BOTH Windows/12lobbies installed7Nov; owner check pending
 
 Installed and live/hash-verified09:52UTC; tools/p1366-compare-save.md. With a displayed
