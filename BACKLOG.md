@@ -28,8 +28,11 @@
   fopen/drawpic cannot see a fresh screenshot. cl_report.qc issues `fs_flush` once when the shot is
   not found: lookups scan until the next map rehashes it (measured: that load no slower). The engine
   fix is one call after the write; then the flush never fires.
-- reportd's admin page is reached at /admin/reports; surfd's admin nav has no link to it until the
-  next surfd generation (the guarded runtime cannot take template changes without one).
+- reportd's admin page is reached at /admin/reports; surfd's admin nav links it only from the next
+  surfd generation: P1401 (f2cbd3a6) changed surfd/templates/admin*.html, web/board.html and
+  web/board.css (all tabs on every page, a Log in pill), runtime files the guarded generation pins.
+  Not built on 8 Nov because pi.dev's ac-reader-next root was preparing a successor of the same
+  live d199 generation (a second one would collide). The next generation should carry those 8 files.
 - reportd floods: per-prefix caps (IPv4 /24, IPv6 /56) and a 300/day global cap; an attacker with
   many IPv6 prefixes can still use up the day's cap (a delete-by-source button clears them).
 
