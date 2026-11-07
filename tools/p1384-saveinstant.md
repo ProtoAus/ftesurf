@@ -57,11 +57,37 @@ the server had the load (300 ms, and lead-in 0) -- P1227's snap does not come ba
 path. One subject round (sub1 d0) had a 0.22 s frame stall mid-travel; its repeat (sub2) had none and
 control rounds had 0.10-0.13 s stalls: machine noise, not attributed.
 
+## The reload cost (owner asked, 8 Nov)
+
+Trail_Frame's SLOP_LOADED Trail_Load rebuilt the live line from the whole trail.txt in the answer's
+frame -- with a remote ping that is mid-travel. Bench (rig/bench_trail.py, hosted, gettime(1) ms) on
+Lex's own trails: 45835 rows (5.7 MB, bhop_monster_jam save012) 300-325 ms, 6416 rows (p90 of 482
+trails) 44-47 ms, 1358 rows (median) 10 ms; a press-time cache miss read 76-80 ms on the big one.
+Now Trail_Load and Trail_Trim fill tr_raw and the line catches up TR_CATCH (400) rows a frame,
+held from drawing until whole (ln_holdslot); Trail_Take only records meanwhile; Trail_Settle finishes
+it before rewind, a stop, a stage-box restart and at the raw cap. Bench after: Trail_Load 30-53 / 9-11 /
+3-4 ms, catch-up 277-287 ms over 114 frames (~2.5 ms a frame) for the big one, cache miss 3-4 ms (the
+file's last 96 KiB). Arm with a 45000-row picture (--bigpic) at 0/150 ms: control froze 318/296 ms
+mid-hold with a 60-63 u view lurch; subject one 38-39 ms frame, no lurch.
+
+## Reviews
+
+Three rounds (state/predicates, prediction/fairness, then the catch-up, then the round-2 diff).
+Fixed: a held step lost its travel (late test from the hold's press); a second travel after a short
+press travel; the first visibility eye reached the server before its hold; a press travel bound an
+earlier load's event; stale cached picture after a save sync; a 1 s lead-in let go at a round trip
+over 1 s released blind; the settle per save event brought the stall back; a cut last row zeroed the
+practice clock; per-frame repaints while catching; a load in a rewind countdown lost its latch; step
+key repeats kept the late clock fresh; a held step left the old travel running; the kept early event
+could be a step's. Prediction review: release-before-answer agrees tick for tick (load and release
+ride ordered usercmds); no new capability (a client can always send its release); the new stat
+carries only the player's own cursor folder. P1227's snap was measured on the hosted stringcmd path,
+which keeps its answer wait.
+
 ## Not done / limits
 
-- The SLOP_LOADED Trail_Load (the live line) still reads the save's whole trail file when the answer
-  lands; with a remote ping that is during the travel, not before it. Large pictures (5.7 MB, ~50k
-  rows on long bhop maps) can cost a frame there. Not measured; BACKLOG.
-- The server's visibility eye for the travel (rec_savepos) is accepted once its hold exists, so for
-  the first half round trip entities near the travel's start may be missing; the world draws.
+- Trail_Load still reads the file in one frame (30-53 ms at 45835 rows); BACKLOG.
+- The travel's visibility eye starts once the server's answer binds it, so for that round trip
+  entities near the travel's start may be missing; the world draws.
 - A load right behind an unanswered step, or a blind load, gets no travel (the late start is skipped).
+- The round-3 build's own arm round was stopped by the memory monitor before it ran (see Delivery).

@@ -28,6 +28,7 @@
 ### P1384 Loading a save is the same at any ping
 - With a lead-in set, the run-up into your save now starts the moment you press the load key, and a tap lets you go when the lead-in ends. Before, both waited for the server to answer, so on a distant lobby the view sat on the save, jumped back up your path and counted down from less than the lead-in.
 - A lead-in of 0 now lets you go on the tap itself, at any ping.
+- Loading a save with a long recorded path no longer freezes the game: on the longest saves (about 46,000 points) the freeze was a third of a second, now it is a few hundredths. Your run line comes back a moment after the load instead.
 
 ### P1383 Noclip speed on the lobbies
 - Shift + mouse wheel while noclipping now changes your flying speed on the lobbies too, not only in a private game. It changes only your own speed.

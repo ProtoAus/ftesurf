@@ -1,13 +1,18 @@
 # BACKLOG.md
 
-## A save load's trail file is read again while its travel runs (8 Nov, after P1384)
+## A save load still reads its whole trail file in one frame (8 Nov, after P1384)
 
-- P1384 starts the lead-in travel on the press from a cached picture tail, but Trail_Frame's SLOP_LOADED
-  still calls Trail_Load (cl_trailstate.qc), which reads and refeeds the whole trail.txt for the live
-  line when the answer lands -- mid-travel at a remote ping. Lex's largest pictures are 5.7 MB (~50k
-  rows: bhop_monster_jam save012, bhop_ceaseless save024). Cost unmeasured.
-- Falsifier: tools/p1384lead.py with a long run's save at 150 ms; frame gaps between held frames
-  against a short save's.
+- P1384 moved the live line's rebuild off the load's frame (Trail_Catch, 400 rows a frame), but
+  Trail_Load still reads every row of trail.txt into tr_raw at the answer: 30-53 ms for 45835 rows
+  (bhop_monster_jam save012), ~9 ms at the p90 picture, 3-4 ms at the median (rig/bench2 in the P1384
+  root). Reading across frames needs tr_raw readers (Trail_Save, Trim, TASKeep, RawIndex) to settle and
+  live samples queued behind the read.
+- A load at tr_raw's cap (LN_CAP*4 = 262144 rows, ~66 min) settles the whole catch on its first live
+  sample (~1.7 s, estimated from 6.6 us a row).
+- Render-only travel leftovers (P1384 review 3): a held step clears the travel before a refused or
+  fenced step is known; any held step makes a release at round trips over 1 s go blind (the server
+  corrects it); a travel's visibility eye starts only once the server's answer binds it.
+- Falsifier: tools/p1384lead.py --bigpic 45000 at 150 ms: the held frame gap at the answer.
 
 ## Water captures for more than one plane are redrawn every frame (8 Nov, after P1376)
 
