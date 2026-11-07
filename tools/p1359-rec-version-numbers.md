@@ -2,10 +2,12 @@
 
 ## Status
 
-Implemented and source-verified. Independent final review, publication, ARM
-qualification and installation are pending. The working P1356 deployment has not
-been changed by this patch's source checks. This document separates those states;
-a passing source test is not a live-process, native-engine or fleet claim.
+Implemented, independently reviewed and published. Both Windows reader installs
+and ARM source qualification are verified. NanoPi live helper installation is
+pending its required actual-process namespace authentication; P1356 helpers remain
+live there. No NanoPi fence, service, namespace configuration or database was
+changed by this patch's preparation. A passing source test is not a live-process,
+native-engine or fleet claim.
 
 ## Root cause and change
 
@@ -66,5 +68,28 @@ remain separate work. No historical scores are reclassified or backfilled.
 
 Delivery must preserve original helper bytes/metadata, bind the actual current
 runtime and namespace, retain current-data rollback, and verify destination hashes
-and acting controls. Publication and deployment evidence will be recorded here
-when completed; none is inferred from the source results above.
+and acting controls. No installed state is inferred from source results alone.
+
+## Delivery evidence — 7 November 2026
+
+- Public implementation `9aed683a86f3f800b3c0e26506274ff827ab1eef`;
+  engine ledger `f67cbeed8ffa255cf193790808586f682e47539d`. Two independent final
+  reviews cleared the frozen narrow source diff, with no must-fix findings.
+- Both Windows installs: four actual helper hashes and ACLs verified; original
+  files retained. Thirteen methods pass on EACH install with explicit module-path
+  assertions, real CLI and collector calls. Shared Git index unchanged. An initial
+  PowerShell null-string ReplaceFile refusal occurred before the first swap;
+  the same four staged artifacts/backups were verified and continued after an
+  isolated API smoke check, not discarded or replaced with another transaction.
+- ARM aarch64: 13 focused methods, eight parsing plus 15 held-reader methods, and
+  949 recording checks pass. The original small overlay was completed with two
+  missing source-only test dependencies; loader/ownership-marker/writer-contract
+  refusals remain retained. Previously passed arms were reused, not rerun to
+  manufacture a clean uninterrupted invocation. All 15 staged source hashes and
+  synthetic-fixture cleanup were verified.
+- NanoPi: the actual intended helper-only preflight reaches the required nsenter
+  operation and refuses missing authentication BEFORE any resource hold or live
+  mutation. Fresh readback confirms the same OPEN runtime, process and 158 bound
+  files, with both P1356 helpers unchanged. Host-only qualification is not actual
+  namespace acceptance. The pending update will keep the existing runtime84,
+  namespace configuration, cron routing and current database; no old DB restore.
