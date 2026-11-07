@@ -1,6 +1,6 @@
 # P1374 — own ordinary input keywords before payload validation
 
-Source/test acceptance at this boundary, not installation or live promotion.
+Source/test acceptance and separately recorded Windows delivery; no NanoPi promotion.
 
 ## Problem and change
 
@@ -64,11 +64,19 @@ prefix absent. Only three exact Windows test-created temporary homes were indivi
 retired after child exit; no player or unrelated data was cleaned up. Original
 observer/authoring failures are retained privately, not reclassified as passes.
 
-## Delivery limits
+## Dual-Windows delivery and limits
 
-P1370's15e reader and checker3eab/heldmetaA3f7 were the last confirmed dual-Windows
-installation before this source fix. P1374 installation must be recorded separately
-with inspected source, exact preimage/ACL/index and actual installed-path checks.
+Inspected clean source f1b9bc1d5c82249b4390297fd07918bbe93a830c supplies recsim
+ac915846fd5f6832f08d0684acdb9617491db1525c0dac19122355e42892ebf3.
+At2026-11-07T13:00:49Z final post-transaction readback, BOTH Windows installations
+contain those exact bytes. The existing guarded transaction first passed read-only
+preflight against P1370's exact owned15e preimages, then swapped only those two files.
+Each actual installed-path selection passed13numeric+6prefix+10parsing=29 cases;
+module paths were asserted, bytecode disabled/absent-prefix and temporary homes empty.
+Both15e originals/metadata remain available for rollback; ACLs, canonical source index
+and all four unchanged checker3eab/heldmetaA3f7 guards were verified. No failure or
+rollback occurred; no game/config/player-data/DB/process changes. This Windows-only
+observation is separate from source qualification or any NanoPi promotion.
 NanoPi reader changes remain serialized after P1368's actual owner cutover output,
 namespace/current-data proof and a freshly bound reader plan. No source review or
 synthetic result establishes that live state, a hard resource bound, genuine/current
