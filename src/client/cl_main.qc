@@ -1861,6 +1861,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	Account_Frame();                // Patch 615: here, not with the HUD, which a menu skips
 	StoryToast_Poll();               // medal mailbox advances even while a menu hides the HUD
 	PE_Frame();                     // Patch 1195: a prederror report is written even under a menu
+	Gfx_MissingReport();            // P1382: likewise
 	SteamPic_Frame();               // Patch 640
 
 	// Same lazy-reload idiom Zone_Draw uses: cheap string compare every frame,

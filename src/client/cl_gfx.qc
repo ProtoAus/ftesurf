@@ -27,6 +27,7 @@
 float ui_gfx_open;              // the menu is up
 float ui_gfx_page;              // 0-based; see the paging note below
 float ui_gfx_loadtime;          // cltime when this map's CSQC came up
+float ui_gfx_mmrsent;           // P1382: this map's missing-material report went (or was not due)
 float ui_gfx_waterbudget;       // LOCAL native renderer + loaded plugin capability
 float ui_gfx_waterscreen;       // Patch 1020: hl2_water 5 (screen-space) on this native renderer + plugin
 
@@ -91,9 +92,11 @@ void() Gfx_RegisterCvars =
 	// back on the next launch is the same defect the seta note on Gfx_Cycle
 	// describes, in miniature.
 	registercvar("fs_missingwarn", "1", CVAR_ARCHIVE);
+	registercvar("cl_matreport", "1", CVAR_ARCHIVE);    // P1382: 0 = no missing-material reports
 
 	// CSQC_Init runs once per map load, so this is the map's own zero.
 	ui_gfx_loadtime = cltime;
+	ui_gfx_mmrsent = FALSE;
 	Gfx_WaterSupport();
 };
 
@@ -118,6 +121,29 @@ void() Gfx_RegisterCvars =
   and a banner you cannot dismiss becomes a banner you stop reading -- which is
   the failure this is fixing, moved somewhere new.
 */
+/*
+  P1382: once a map, when materials on drawn faces or props did not resolve, tell the lobby what this
+  install could not find, so we can see what players are missing without asking them (sv_matreport.qc
+  stores it). Names and counts only: the map, the plugin's counts and first name, what fs_automount did,
+  the fs_addons.txt games that did not mount (engines from P1382); the lobby adds the engine (*ver). No paths.
+  Waits 6 s for the plugin's numbers to settle; never from a local game.
+*/
+void() Gfx_MissingReport =
+{
+	local string s;
+
+	if (ui_gfx_mmrsent || cltime - ui_gfx_loadtime < 6)
+		return;
+	ui_gfx_mmrsent = TRUE;
+	if (!cvar("cl_matreport") || cvar("hl2_unresolved_visible") < 1 || !strncmp(serverkey("ip"), "QLoopBack", 9))
+		return;
+	s = sprintf("missing %g visible %g first %s automount %g spec %s nogame %s",
+	            cvar("hl2_unresolved"), cvar("hl2_unresolved_visible"), cvar_string("hl2_unresolved_first"),
+	            cvar("fs_automount_state"), cvar_string("fs_automount_spec"),
+	            cvar_string("fs_addons_missing"));
+	sendevent("mmr", "s", substring(strreplace("\n", " ", s), 0, 900));
+};
+
 void(vector scr) Gfx_DrawMissing =
 {
 	local vector p;
@@ -178,9 +204,15 @@ void(vector scr) Gfx_DrawMissing =
 	HUD_TextC(p, sprintf("%g material%s did not resolve on this map",
 	                     n, (n == 1) ? "" : "s"),
 	          sz, '1.00 0.45 0.35', a);
-	HUD_TextC([p_x, p_y + sz * 1.4],
-	          sprintf("first: %s", cvar_string("hl2_unresolved_first")),
-	          sz * 0.85, '0.88 0.82 0.78', a * 0.9);
+	// P1382: an fs_addons.txt game that did not mount is the likelier cause (engines from P1382 say which).
+	if (cvar_string("fs_addons_missing") != "")
+		HUD_TextC([p_x, p_y + sz * 1.4],
+		          sprintf("not found on this PC: %s  (another drive?  console: fs_steamlibs)", cvar_string("fs_addons_missing")),
+		          sz * 0.85, '1.00 0.80 0.45', a * 0.9);
+	else
+		HUD_TextC([p_x, p_y + sz * 1.4],
+		          sprintf("first: %s", cvar_string("hl2_unresolved_first")),
+		          sz * 0.85, '0.88 0.82 0.78', a * 0.9);
 	HUD_TextC([p_x, p_y + sz * 2.6],
 	          "console:  hl2_missing  lists every one and says what each of them is.",
 	          sz * 0.72, '0.72 0.78 0.90', a * 0.85);
