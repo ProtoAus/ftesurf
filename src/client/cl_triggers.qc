@@ -197,6 +197,7 @@ vector tg_pmins, tg_pmaxs;      // last hook's hull, for trig_here
 // load census, for trig_dump
 float  tg_c_tele, tg_c_push, tg_c_speed, tg_c_filt, tg_c_dis, tg_c_over;
 float  tg_c_nodest;
+float  tg_c_casefix;                    // P1396: targets/landmarks repaired as SV_RepairTargetCase
 string tg_map;
 float  tg_needload;             // lump was not readable yet; Trig_Frame retries
 float  tg_hookseen;             // one-shot "hook alive" print, for tests
@@ -392,6 +393,24 @@ float(string s) TT_Find =
 		if (!strcmp(tt_name[i], s))
 			return i;
 	return -1;
+};
+
+// P1396: SV_TargetCaseFix's answer. The server rewrites every target and landmark that resolves to
+// nothing exactly, once after spawn, to the first name equal to it ignoring case (Patch 191); runtime
+// targets stay exact on both sides, so this runs at load, not in TT_Find.
+string(string want) TT_CaseFix =
+{
+	local float r;
+
+	if (want == "" || TT_Find(want) >= 0)
+		return want;
+	for (r = 0; r < tt_n; r = r + 1)
+		if (!strcasecmp(tt_name[r], want))
+		{
+			tg_c_casefix = tg_c_casefix + 1;
+			return tt_name[r];
+		}
+	return want;
 };
 
 /*
@@ -2480,6 +2499,15 @@ void() Trig_LoadForMap =
 
 	tf_team = (tf_ctspawn || !tf_tspawn) ? 3 : 2;
 
+	// P1396: surf_delight's floor teleports say "Start" for "start" (41 there, 1,168 in the library at
+	// Patch 191); unrepaired they never resolved here and every one snapped.
+	tg_c_casefix = 0;
+	for (i = 0; i < tg_n; i = i + 1)
+	{
+		tg_target[i]   = TT_CaseFix(tg_target[i]);
+		tg_landmark[i] = TT_CaseFix(tg_landmark[i]);
+	}
+
 	TG_ShapeBoxes();
 
 	// Filter resolution, after the walk.  A trigger whose verdict is not a
@@ -2560,8 +2588,8 @@ void() Trig_LoadForMap =
 
 	tg_map = serverkey("map");
 	if (cv_n) print(sprintf("conveyor: %g static ground carriers loaded\n", cv_n));
-	print(sprintf("trig: %s -- %g teleports, %g pushes, %g setspeeds predicted (%g zone-tool boxes)\n",
-	              tg_map, tg_c_tele, tg_c_push, tg_c_speed, tg_c_box));
+	print(sprintf("trig: %s -- %g teleports, %g pushes, %g setspeeds predicted (%g zone-tool boxes, %g names case-repaired)\n",
+	              tg_map, tg_c_tele, tg_c_push, tg_c_speed, tg_c_box, tg_c_casefix));
 	print(sprintf("trig: skipped %g filtered, %g startdisabled, %g over cap; "
 	              "%g filtered resolved static (%g left to the server while it judges contexts); "
 	              "%g targetname rows, %g filters\n",
