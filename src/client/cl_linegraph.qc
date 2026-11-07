@@ -354,7 +354,7 @@ void() LineGraph_LiveAlign =
 	lv_why = LVW_NORUN;
 	s = tr_live;
 	if (s < LN_S_TRAIL || !tr_on) return;       // Trail_Init has not run, or no run yet
-	if (ln_n[s] < 2) return;
+	if (ln_n[s] < 2 || tr_catching) return;     // P1384: not while the line catches up after a load
 	lv_why = LVW_PRACTICE;
 	if (tr_practice) return;                    // that clock is the wall's, from where a save was loaded
 	if (lv_gen != tr_gen)

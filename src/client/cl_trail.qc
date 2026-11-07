@@ -142,7 +142,7 @@ void() Trail_Reset =
 	tr_kept = tr_kfrom = tr_emit = 0;
 	if (tr_raw >= 1)
 		buf_del(tr_raw);
-	tr_raw = tr_stitch = tr_slseq = tr_practice = 0;
+	tr_raw = tr_stitch = tr_slseq = tr_practice = tr_catching = 0;
 	tr_timedgo_ack = tr_saveack = tr_rep_ack = tr_rep_go = 0;
 	Trail_ReplayClear();
 };
@@ -347,7 +347,7 @@ float() Trail_Pair =
 // One sample from kept frame f.  FALSE once the line has stopped.
 float(float f, float t, float riding) Trail_Take =
 {
-	local float fl, brk, b, c, dt, yaw;
+	local float fl, brk, b, c, dt, yaw, spd;
 	local vector o, v, nrm, wsh;
 
 	c = f & (TR_RING - 1);
@@ -384,13 +384,20 @@ float(float f, float t, float riding) Trail_Take =
 	brk = tr_stitch;
 	if (tr_nsamp > 0)
 	{
-		b = tr_live * LN_CAP + ln_n[tr_live] - 1;
 		dt = max(tr_tick, t - tr_lastt);
-		// A drawing discontinuity, never an authoritative .rec warp.
-		if (vlen(o - tr_lastp) > max(128, (ln_spd[b] + fabs(ln_vz[b])) * dt * 3 + 64))
+		// A drawing discontinuity, never an authoritative .rec warp. P1384: the line may be behind.
+		if (tr_catching)
+			spd = vlen([tr_catchv_x, tr_catchv_y, 0]) + fabs(tr_catchv_z);
+		else
+		{
+			b = tr_live * LN_CAP + ln_n[tr_live] - 1;
+			spd = ln_spd[b] + fabs(ln_vz[b]);
+		}
+		if (vlen(o - tr_lastp) > max(128, spd * dt * 3 + 64))
 			brk = TRUE;
 		if (brk && !tr_stitch && Trail_InBoundary(o))
 		{
+			Trail_Settle();
 			tr_stopped = TRUE;
 			Line_End(tr_live);
 			return FALSE; // never attach the reset destination to the rewind head
@@ -402,7 +409,9 @@ float(float f, float t, float riding) Trail_Take =
 		tr_contbrk = FALSE;
 		tr_stagefrom = t;
 	}
-	Line_Point(tr_live, o, v, fl, t, brk, tr_stitch, [yaw, nrm_z, wsh * nrm]);
+	if (!tr_catching)                       // P1384: else Trail_Catch feeds the recorded row
+		Line_Point(tr_live, o, v, fl, t, brk, tr_stitch, [yaw, nrm_z, wsh * nrm]);
+	tr_catchv = v;
 	tr_erefok = HUD_ZeroKnown();            // P1007: what the speedometer measured from
 	tr_eref = HUD_EnergyRef();
 	Trail_Record(o, v, fl, t, brk, tr_stitch, [yaw, nrm_z, wsh * nrm]);
@@ -412,7 +421,7 @@ float(float f, float t, float riding) Trail_Take =
 	tr_lastp = o;
 	tr_nsamp = tr_nsamp + 1;
 	tr_since = tr_since + 1;
-	if (tr_since >= TR_BUILD)
+	if (tr_since >= TR_BUILD && !tr_catching)
 	{
 		Line_End(tr_live);
 		tr_since = 0;
@@ -488,12 +497,14 @@ void() Trail_Frame =
 	tr_cv = cvar("hud_trail");
 
 	Trail_Keep();
+	Trail_Catch(TR_CATCH);          // P1384
 	st = getstatf(STAT_FS_TIMERSTATE);
 	sq = getstatf(STAT_FS_SLSEQ);
 	op = SLOP_NONE;
 	if (sq != tr_slseq)
 	if (!CL_SaveEventsWait())
 	{
+		Trail_Settle();             // P1384: the event reads and rebuilds the whole line
 		tr_slseq = sq;
 		op = FS_SlopOp(getstatf(STAT_FS_SLOP));
 		id = FS_SlopId(getstatf(STAT_FS_SLOP));
@@ -559,9 +570,8 @@ void() Trail_Frame =
 				tr_practicebase = tr_lastt;
 				tr_practiceat = cltime;
 			}
-			if (loaded || SaveLead_Early()) SaveLead_Begin(sq, id);     // P1384: a press's travel binds
-			else if (st == TS_ARMED) SaveLead_Clear(); // retained failed line is NOT this save's path
-			else SaveLead_NoPath();
+			// The retained failed line (a start reset) is NOT this save's path.
+			SaveLead_Begin(sq, id, loaded ? 1 : ((st == TS_ARMED) ? 0 : -1));
 		}
 	}
 	if (st == TS_RUNNING && tr_state != TS_RUNNING && op != SLOP_LOADED)
@@ -570,6 +580,7 @@ void() Trail_Frame =
 	{
 		// P1006: the same run left a stage box -- the line goes on, so rewind
 		// reaches back past the stage start.  Only an empty line starts afresh.
+		Trail_Settle();
 		if (tr_on && ln_n[tr_live] >= 2)
 		{
 			tr_stopped = FALSE;
@@ -604,7 +615,10 @@ void() Trail_Frame =
 	if (!tr_practice || (cltime >= tr_settle && Trail_InBoundary(pmove_org)))
 	{
 		if (!tr_stopped)
+		{
+			Trail_Settle();
 			Line_End(tr_live);
+		}
 		tr_stopped = TRUE;
 		tr_practice = FALSE;
 	}

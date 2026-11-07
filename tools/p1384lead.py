@@ -148,6 +148,8 @@ def grade(seg):
             if d > 30:                  # walking at 200 u/s moves the eye ~2 u a frame
                 jumps.append((round(r['t'] - t0, 3), round(d)))
         prev = r['cam']
+    gaps = [(round(b['t'] - t0, 3), round(b['t'] - a['t'], 3)) for a, b in zip(rows, rows[1:])
+            if b['t'] - a['t'] > 0.03]
     texts = []
     for r in held:
         k = re.sub(r'\d+ ms', 'N ms', r['txt'])
@@ -157,7 +159,7 @@ def grade(seg):
             'press_to_travel': None if travel is None else round(travel['t'] - t0, 4),
             'press_to_release': None if rel is None else round(rel['t'] - t0, 4),
             'max_eye_jump_held': round(jump, 1), 'eye_jumps_held': jumps, 'first_countdown': next((r['txt'] for r in held if 'ms' in r['txt']), None),
-            'texts': texts, 'prederr': len(re.findall(r'prederr: ', seg))}
+            'texts': texts, 'frame_gaps': gaps, 'prederr': len(re.findall(r'prederr: ', seg))}
 
 
 def main():
@@ -169,6 +171,8 @@ def main():
     ap.add_argument('--lead', default='1')
     ap.add_argument('--hold', action='store_true')
     ap.add_argument('--port', type=int, default=27621)
+    ap.add_argument('--bigpic', type=int, default=0,
+                    help='prepend this many synthetic rows to the saved trail.txt (a long picture)')
     a = ap.parse_args()
     a.out = a.out.resolve()
     R.owned(a.out)
@@ -218,8 +222,21 @@ def main():
             time.sleep(2.0)
             cl.send('+forward')                     # out of the box: the run starts
             time.sleep(2.0)
+            before = {p: p.stat().st_mtime for p in clb.glob('ftesurf/data/saves/**/trail.txt')}
             cl.send('sl_save')                      # on the run, moving
             time.sleep(1.0)
+            if a.bigpic:
+                new = [p for p in clb.glob('ftesurf/data/saves/**/trail.txt') if before.get(p) != p.stat().st_mtime]
+                assert len(new) == 1, new
+                lines = new[0].read_text(encoding='utf-8').splitlines()
+                tok = lines[1].split()
+                t0, x0 = float(tok[0]), float(tok[1])
+                pad = []
+                for k in range(a.bigpic, 0, -1):
+                    tok[0], tok[1] = '%.6f' % (t0 - k * 0.015), '%.6f' % (x0 - k * 0.5)
+                    pad.append(' '.join(tok))
+                new[0].write_text('\n'.join(lines[:1] + pad + lines[1:]) + '\n', encoding='utf-8')
+                report.setdefault('bigpic', []).append(len(pad) + len(lines) - 1)
             cl.send('-forward')
             time.sleep(2.0)
             cl.send('p1384_probe 1')

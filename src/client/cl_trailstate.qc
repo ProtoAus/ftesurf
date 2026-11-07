@@ -11,12 +11,75 @@ float tr_practice, tr_practicebase, tr_practiceat;
 // raw line when known (a 14-field line is an older file or a replay prefix).
 float tr_eref, tr_erefok;
 
+/*
+  P1384: a load or a trim fills tr_raw at once and the live line takes those rows over the next
+  frames (Trail_Catch from Trail_Frame), TR_CATCH a frame. Refeeding them all in the load's frame
+  was 300 ms for 45835 rows, 45 ms for 6416 (bhop_monster_jam save012, a p90 save; rig/bench1 in
+  the P1384 task root). While it catches up Trail_Take only records, so the rows stay in order;
+  Trail_Settle finishes it first wherever the whole line is read (rewind, a run's end).
+*/
+#define TR_CATCH 400            // ~2.6 ms of QC a frame at the measured 6.6 us a row
+float  tr_catching, tr_catchi;  // the line is behind tr_raw; the next row it has not taken
+vector tr_catchv;               // the last recorded sample's velocity: Trail_Take's break test
+
 void() Trail_RawClear =
 {
 	if (tr_raw >= 1)
 		buf_del(tr_raw);
 	tr_raw = buf_create_ex("string", 0);
 	tr_stitch = tr_practice = FALSE;
+	tr_catching = FALSE;
+};
+
+// One raw row into the live line, nothing else (Trail_Take keeps the sample counters).
+float(string s) Trail_CatchFeed =
+{
+	local float n;
+	n = tokenize(s);
+	if (n != 14 && n != 15)
+		return FALSE;
+	Line_Point(tr_live, [stof(argv(1)), stof(argv(2)), stof(argv(3))],
+	           [stof(argv(4)), stof(argv(5)), stof(argv(6))], stof(argv(7)), stof(argv(0)),
+	           stof(argv(8)), stof(argv(9)), [stof(argv(10)), stof(argv(11)), stof(argv(12))]);
+	return TRUE;
+};
+
+// Up to `rows` more of tr_raw into the line. A bad row is passed over (Trail_Load used to stop
+// there: only a damaged file has one).
+void(float rows) Trail_Catch =
+{
+	local float n, end;
+	if (!tr_catching)
+		return;
+	n = (tr_raw >= 1) ? buf_getsize(tr_raw) : 0;
+	end = min(n, tr_catchi + rows);
+	for (; tr_catchi < end; tr_catchi = tr_catchi + 1)
+		Trail_CatchFeed(bufstr_get(tr_raw, tr_catchi));
+	if (tr_catchi >= n)
+		tr_catching = FALSE;
+	Line_End(tr_live);
+};
+
+void() Trail_Settle = { Trail_Catch(LN_CAP * 4); };
+
+// The rows just put in tr_raw: counters from its last row, then the line starts catching up.
+void() Trail_CatchStart =
+{
+	local float n;
+	n = buf_getsize(tr_raw);
+	tr_nsamp = n;
+	tr_lastt = 0;
+	if (n > 0 && tokenize(bufstr_get(tr_raw, n - 1)) >= 14)
+	{
+		tr_lastt = stof(argv(0));
+		tr_lastp = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
+		tr_catchv = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
+	}
+	tr_catchi = 0;
+	tr_catching = (n > 0);
+	Trail_Catch(TR_CATCH);
+	if (!n)
+		Line_End(tr_live);
 };
 
 string(vector o, vector v, float fl, float t, float brk, float stitch, vector aux, float pitch) Trail_RawSample =
@@ -47,30 +110,6 @@ void(vector o, vector v, float fl, float t, float brk, float stitch, vector aux)
 float(float t) Trail_RawClock =
 {
 	return stof(sprintf("%.6f", t));
-};
-
-// One raw sample into the line and its live predecessor state.
-float(string s, float endt) Trail_Refeed =
-{
-	local float t, fl, brk, stitch, n;
-	local vector o, v, aux;
-	n = tokenize(s);
-	if (n != 14 && n != 15)
-		return FALSE;
-	t = stof(argv(0));
-	if (t > endt)
-		return FALSE;
-	o = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
-	v = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
-	fl = stof(argv(7));
-	brk = stof(argv(8));
-	stitch = stof(argv(9));
-	aux = [stof(argv(10)), stof(argv(11)), stof(argv(12))];
-	Line_Point(tr_live, o, v, fl, t, brk, stitch, aux);
-	tr_lastt = t;
-	tr_lastp = o;
-	tr_nsamp = tr_nsamp + 1;
-	return TRUE;
 };
 
 // Last sample at/before t on the nondecreasing clock, including duplicates.
@@ -157,15 +196,13 @@ void(float t) Trail_Trim =
 		return;
 	Line_Begin(tr_live);
 	Line_Tick(tr_live, tr_tick);
-	tr_nsamp = 0;
-	tr_lastt = 0;
 	tr_stagefrom = 0;               // P1006: a rebuilt line is shown whole until its next stage
 	tr_contbrk = FALSE;
 	t = Trail_RawClock(t);
 	for (i = 0; i < n; i = i + 1)
 	{
 		s = bufstr_get(tr_raw, i);
-		if (!Trail_Refeed(s, t))
+		if (stof(s) > t)
 			break;
 		bufstr_set(tmp, i, s);
 	}
@@ -173,7 +210,7 @@ void(float t) Trail_Trim =
 	if (tr_raw >= 1)
 		buf_del(tr_raw);
 	tr_raw = tmp;
-	Line_End(tr_live);
+	Trail_CatchStart();             // P1384
 	tr_since = 0;
 	tr_builds = tr_builds + 1;
 	tr_settle = cltime + TR_SETTLE;
@@ -284,8 +321,6 @@ float(float id, float ticks) Trail_Load =
 	tr_tick = tick;
 	Line_Begin(tr_live);
 	Line_Tick(tr_live, tick);
-	tr_nsamp = 0;
-	tr_lastt = 0;
 	tr_stagefrom = 0;               // P1006
 	tr_contbrk = FALSE;
 	endt = timed ? ticks * tick : 99999999;
@@ -295,12 +330,18 @@ float(float id, float ticks) Trail_Load =
 		s = fgets(f);
 		if (!strcmp(s, ""))
 			break;
-		if (!Trail_Refeed(s, endt))
+		if (!i)
+		{
+			argc = tokenize(s);
+			if (argc != 14 && argc != 15)
+				break;              // not a picture row: an empty picture, as before
+		}
+		if (stof(s) > endt)
 			break;
 		bufstr_set(tr_raw, i, s);
 	}
 	fclose(f);
-	Line_End(tr_live);
+	Trail_CatchStart();             // P1384: the line takes these rows over the next frames
 	tr_since = 0;
 	tr_builds = tr_builds + 1;
 	tr_settle = cltime + TR_SETTLE;

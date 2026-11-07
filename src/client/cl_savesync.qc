@@ -333,6 +333,7 @@ void() SaveSync_PicFrame =
 		if (!ss_pic_at[i] || cltime < ss_pic_at[i])
 			continue;
 		o = ss_pic_o[i];
+		SaveLead_Forget();          // P1384: a cached picture tail may be the file replaced here
 		if (ss_pic_to[i] > 0)
 			ok = SaveSync_CopyPic(strcat(SaveSync_There(ss_pic_from[i]), "trail.txt"),
 			                      strcat(SaveSync_Here(ss_pic_to[i]), "trail.txt"), o);
@@ -485,6 +486,7 @@ float(vector o, vector v, float p, float y, float d, float lid, float later) Sav
 	fremove(strcat(dir, "run.view"));
 	fremove(strcat(dir, "run.rec"));
 	fremove(strcat(dir, "trail.txt"));
+	SaveLead_Forget();              // P1384
 	fh = fopen(strcat(dir, "state.txt"), FILE_WRITE);
 	if (fh < 0)
 		return FALSE;

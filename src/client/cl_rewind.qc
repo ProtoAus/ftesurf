@@ -285,6 +285,7 @@ void() Rewind_Cursor =
 {
 	local float n, b, j, f, t;
 
+	Trail_Settle();                 // P1384: the whole line
 	n = ln_n[tr_live];
 	if (rw_tas)
 	{
@@ -369,6 +370,7 @@ float() Rewind_Open =
 
 	if (rw_on)
 		return FALSE;
+	Trail_Settle();                 // P1384
 	if (!tr_on || ln_n[tr_live] < 2)
 	{
 		print("^3rewind:^7 no run to rewind -- start one first\n");
@@ -775,6 +777,7 @@ void() Rewind_Camera =
 
 	if (!rw_on || rw_cd)
 		return;
+	Trail_Settle();                 // P1384
 	n = ln_n[tr_live];
 	if (n < 2)                      // round 16: the line restarted under a go in flight
 		return;

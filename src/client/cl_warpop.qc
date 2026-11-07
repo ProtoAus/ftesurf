@@ -635,7 +635,11 @@ float() WarpOp_Release =
 	// A refused load advances the cursor without retargeting the hold. Only
 	// pending non-refused loads/steps may predict a new row; otherwise use the
 	// actual held speed in the SAME snapshot, never the cursor or stale HOLDVEL.
-	if (WarpOp_Pending(WOPP_HOLDROW))
+	// P1384: a predicted load not yet acknowledged is still the hold, past WarpOp_Unanswered's
+	// 1 s too: a 1 s lead-in let go at a round trip over 1 s otherwise went blind.
+	if (wop_loadpred && !WarpOp_LoadAnswered() && !WarpOp_Pending(WOPP_STEP))
+		v = wop_loadvel;
+	else if (WarpOp_Pending(WOPP_HOLDROW))
 	{
 		blind = !WarpOp_Row(WOP_LOAD);
 		if (!blind)

@@ -140,6 +140,9 @@ float rec_sl_holdseen;           // cltime of the last down edge for the hold ke
 float rec_sl_holdt0;             // P1227: cltime the hold's load was pressed
 float rec_sl_upwait;             // P1227: its key is up; the release waits for SaveLoc_LeadDone
 float rec_sl_pred;               // P1384: its load rode a predicted command: the release needs no answer
+float rec_sl_leadans;            // P1384: the next load event is this press's answer (SaveLead_Begin)
+float rec_sl_leadhad;            // P1384: this press's travel started on the press
+float rec_sl_leadt0;             // P1384: the press an answer-started travel is late against (load or step)
 float rec_sl_holdrep;            // a repeat has been observed for THIS hold
 
 #define SL_HOLD_DEADMAN 1.5
@@ -350,9 +353,8 @@ void() SaveLoc_PredictLoad =
 };
 
 void() SaveLead_Clear;
-void(float seq, float id) SaveLead_Begin;
+void(float seq, float id, float pic) SaveLead_Begin;
 void(vector org, vector ang) SaveLead_Press;     // P1384
-float() SaveLead_Early;
 void(float id, float ticks, float raw, float last) SaveLead_Remember;
 void() SaveLead_Forget;
 void() SaveLead_NoPath;
@@ -417,6 +419,9 @@ void(string c, float rep) SaveLoc_Step =
 {
 	local float op;
 
+	if (rec_sl_holding)
+		rec_sl_leadt0 = cltime;     // P1384: its load event's travel is late against this press
+
 	op = WOP_NEXT;
 	if (c == "sl_prev")
 		op = WOP_PREV;
@@ -443,6 +448,7 @@ void() SaveLoc_Release =
 	if (!rec_sl_holding)
 		return;
 	SaveLead_Clear();
+	rec_sl_leadans = FALSE;
 	rec_sl_holding = FALSE;
 	rec_sl_upwait = FALSE;
 	rec_sl_holdkey = 0;
@@ -574,6 +580,9 @@ void() SaveLoc_Idle = { SaveLoc_Release(); rec_sl_refkey = 0; rec_sl_8held = 0; 
 */
 void(float scan) SaveLoc_LoadKey =
 {
+	rec_sl_leadans = TRUE;          // P1384
+	rec_sl_leadhad = FALSE;
+	rec_sl_leadt0 = cltime;
 	// Patch 753: predicted at one command; the camera anticipation and the
 	// count-based refusal below are for the old pair of stringcmds.
 	if (WarpOp_Load())
@@ -614,6 +623,14 @@ void(float scan) SaveLoc_LoadKey =
   speed a round trip early, and the view jumped ahead to where the server had the body
   (Lex, 3 Nov). An answer that never comes releases a second past the lead-in.
 */
+// P1384: the server has answered this hold's load press.
+float() SaveLoc_LoadAnswered =
+{
+	if (rec_sl_wophold)
+		return WarpOp_LoadAnswered();
+	return (rec_sl_holdack > 0 && getstatf(STAT_FS_SLACK) >= rec_sl_holdack);
+};
+
 float() SaveLoc_LeadDone =
 {
 	local float t, lead, answered;
@@ -624,10 +641,7 @@ float() SaveLoc_LeadDone =
 	if (!SaveLead_Done())
 		return FALSE;
 	// P1384: a predicted load and its release ride commands in order; the client already drew both.
-	if (rec_sl_wophold)
-		answered = rec_sl_pred || WarpOp_LoadAnswered();
-	else
-		answered = (rec_sl_holdack > 0 && getstatf(STAT_FS_SLACK) >= rec_sl_holdack);
+	answered = (rec_sl_wophold && rec_sl_pred) || SaveLoc_LoadAnswered();
 	return (answered || t >= lead + 1);
 };
 
@@ -636,11 +650,7 @@ string() SaveLoc_LeadText =
 	local float travel, left;
 
 	if (!rec_sl_holding || Spec_Active() || cvar("cl_sl_leadin") <= 0) return "";
-	if (rec_sl_wophold)
-	{
-		if (!rec_sl_pred && !WarpOp_LoadAnswered()) return "Loading save";
-	}
-	else if (rec_sl_holdack <= 0 || getstatf(STAT_FS_SLACK) < rec_sl_holdack)
+	if (!(rec_sl_wophold && rec_sl_pred) && !SaveLoc_LoadAnswered())
 		return "Loading save";
 	travel = SaveLead_Remaining();
 	if (travel < 0) return "Loading save";

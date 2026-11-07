@@ -57,7 +57,6 @@ float() SaveLead_Ready =
 	return (cvar("cl_sl_leadin") > 0 && rec_sl_holding && !rw_on && !rec_wt_on && !Spec_Active());
 };
 
-float() SaveLead_Early = { return sl_lead_early != 0; };
 
 void() SaveLead_NoPath =
 {
@@ -110,26 +109,37 @@ float(float src, float duration) SaveLead_Copy =
 	return (sl_lead_end - sl_lead_from >= 0.03);
 };
 
-// Copy NOW: later HOLD/endpoint stats must never retry against mutable tr_raw.
-void(float seq, float id) SaveLead_Begin =
+/*
+  Trail_Frame, on every load event. pic: 1 Trail_Load put this save's picture in tr_raw, 0 tr_raw
+  is the retained failed line (a start reset), -1 no picture.
+  P1384: while this hold's load is unanswered an event is an earlier load's and is left alone; the
+  press's own answer binds the press travel (the folder it was read from) or, when that travel has
+  run already, starts no second one. Any other start is late against the press (rec_sl_leadt0, the
+  load's or a held step's) and skipped past SL_LEAD_LATE: a round trip late, it jumped the view from
+  the save back up the path.
+*/
+void(float seq, float id, float pic) SaveLead_Begin =
 {
-	if (sl_lead_early)
+	local float mine;
+
+	if (rec_sl_leadans && !SaveLoc_LoadAnswered()) return;
+	mine = rec_sl_leadans;
+	rec_sl_leadans = FALSE;
+	if (mine && sl_lead_early == 1 && sl_lead_buf >= 1 && id == sl_lead_id)
 	{
-		// P1384: the press's travel goes on when the server loaded the folder it was read from.
-		if (sl_lead_buf >= 1 && sl_lead_early == 1 && id == sl_lead_id)
-		{
-			sl_lead_seq = seq;
-			sl_lead_early = 2;
-		}
-		else
-			SaveLead_Clear();
+		sl_lead_seq = seq;
+		sl_lead_early = 2;
+		PVS_Forget();           // the hold exists now: SV_SaveLeadEyeCmd took no earlier eye
 		return;
 	}
 	SaveLead_Clear();
+	if (mine && rec_sl_leadhad) return;
+	if (!pic) return;
+	if (pic < 0) { SaveLead_NoPath(); return; }
 	if (!SaveLead_Ready()) return;
-	// P1384: started a round trip after the press, it jumped the view from the save back up the path.
-	if (cltime - rec_sl_holdt0 > SL_LEAD_LATE) return;
+	if (cltime - rec_sl_leadt0 > SL_LEAD_LATE) return;
 	if (tr_raw < 1 || buf_getsize(tr_raw) < 2) { SaveLead_NoPath(); return; }
+	// Copy NOW: later HOLD/endpoint stats must never retry against mutable tr_raw.
 	if (!SaveLead_Copy(tr_raw, bound(0, cvar("cl_sl_leadin"), 2))) { SaveLead_Clear(); return; }
 	sl_lead_seq = seq;
 	sl_lead_id = id;
@@ -160,10 +170,12 @@ void(float id, float ticks, float raw, float last) SaveLead_Remember =
 	sl_pic_ticks = ticks;
 };
 
-// P1384: the last SL_LEAD_CAP rows of save id's picture at ticks, read as Trail_Load reads it.
+// P1384: the last SL_LEAD_CAP rows of save id's picture at ticks: Trail_Load's header test, then its
+// rows to the first past the save's clock or the first bad row.
 float(float id, float ticks) SaveLead_Cache =
 {
 	local float f, n, tick, timed, endt, ring, i, k;
+	local int sz;
 	local string p, s;
 
 	p = Trail_SavePath(id);
@@ -181,7 +193,16 @@ float(float id, float ticks) SaveLead_Cache =
 		return FALSE;
 	}
 	endt = Trail_RawClock(timed ? ticks * tick : 99999999);
+	// Only the last 96 KiB (~770 rows; SL_LEAD_CAP needs 512): the whole of a 5.7 MB picture was
+	// 80 ms on the press (bench1). Trail_Save writes no row past the save's clock, nor a bad one.
+	sz = fsize(f);
+	if (sz > 98304i)
+	{
+		fseek(f, sz - 98304i);
+		fgets(f);               // the rest of a cut row
+	}
 	ring = buf_create_ex("string", 0);
+	if (ring < 1) { fclose(f); return FALSE; }
 	n = 0;
 	for (i = 0; i < LN_CAP * 4; i += 1)
 	{
@@ -194,6 +215,7 @@ float(float id, float ticks) SaveLead_Cache =
 	}
 	fclose(f);
 	sl_pic_buf = buf_create_ex("string", 0);
+	if (sl_pic_buf < 1) { sl_pic_buf = 0; buf_del(ring); return FALSE; }
 	for (i = max(0, n - SL_LEAD_CAP); i < n; i += 1)
 		bufstr_set(sl_pic_buf, buf_getsize(sl_pic_buf), bufstr_get(ring, i - floor(i / SL_LEAD_CAP) * SL_LEAD_CAP));
 	buf_del(ring);
@@ -216,6 +238,9 @@ void(vector org, vector ang) SaveLead_Press =
 	if (serverkeyfloat("fs_savelead") < 2 || !SaveLead_Ready()) return;
 	id = getstatf(STAT_FS_SLCURID);
 	if (id < 1 || org == '0 0 0') return;
+	// The predicted row comes from the cursor string, which can lag the numeric stats a packet.
+	if (vlen(org - [getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1), getstatf(STAT_FS_SLORG + 2)]) > 1)
+		return;
 	if (!SaveLead_Cache(id, getstatf(STAT_FS_SAVETICKS))) return;     // no picture: the plain hold
 	if (!SaveLead_Copy(sl_pic_buf, bound(0, cvar("cl_sl_leadin"), 2))) { SaveLead_Clear(); return; }
 	if (vlen(sl_lead_tail - org) > 128)
@@ -232,7 +257,7 @@ void(vector org, vector ang) SaveLead_Press =
 	sl_lead_next = 1;
 	sl_lead_at = cltime;
 	sl_lead_until = cltime + sl_lead_end - sl_lead_from;
-	PVS_Forget();
+	rec_sl_leadhad = TRUE;
 };
 
 // P1384: a bound press travel against the server's loaded pose once it lands (a string stat can
@@ -349,6 +374,7 @@ float() SaveLead_Camera =
 	setproperty(VF_ORIGIN, p);
 	setproperty(VF_ANGLES, [aim_x, aim_y, 0]);
 	sl_lead_applied = TRUE; // HUD_Feet keeps the body's pre-override capture
-	PVS_PublishCmd(p, "rec_savepos");
+	if (sl_lead_early != 1)
+		PVS_PublishCmd(p, "rec_savepos");
 	return TRUE;
 };
