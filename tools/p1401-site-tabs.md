@@ -10,7 +10,7 @@ I need like a login button on the main site, or the leaderboard section; ensure 
 
 ## Delivery
 
-- LIVE 8 Nov ~08:20Z: /srv/nvme/ftesurf-site/static index.html, anticheat.html, zoning.html,
+- LIVE 7 Nov 21:43Z (8 Nov local): /srv/nvme/ftesurf-site/static index.html, anticheat.html, zoning.html,
   site.css edited in place by the same script that made the repo edit (backups `*.pre-p1401`
   beside them); reportd's templates/reportd_reports.html in place + HUP of its gunicorn master
   (backup in /srv/nvme/agent-work/report-1391-3a/). Checked: the three pages serve the pill,
