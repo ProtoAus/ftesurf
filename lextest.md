@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P1358 first-traversal prop lighting — BOTH Windows installed7Nov
+
+Installed03:46UTC; actual client aliases+matching DLLs, installed-server selftests
+and final14native/18,937protected-file readback verified03:50UTC. On the next
+launch, check one familiar Ceaseless section with lit static props: same colours/
+brightness, no new popping, and how does the first traversal feel? Tensor2's
+P1357 glow/visibility check below also remains pending;1358 includes that fix.
+No owner confirmation yet. Native72raw-cube bit matches and64caller/4mutant
+controls are not human visual acceptance. Clean14s lighting-cold1%123-124 ->
+188-194FPS and worst249 ->67ms are partial-route tests, NOT warmed typical lows,
+whole-map coverage or elimination of all hitches. No VM/config/data or Pi swap.
+Evidence and remaining limits: `tools/p1358-prop-cube-reuse.md`.
+
 ## P1357 Tensor2 client query overhead — BOTH Windows installed7Nov
 
 Installed02:25UTC, both actual client/server/plugin activations and final hashes/

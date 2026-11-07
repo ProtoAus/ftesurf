@@ -99,9 +99,31 @@ server byte checks then confirmed the exact1358 stamp before the new immutable
 full-build capture. No identity gate relaxation, source edit or regraded failure.
 The old partial-build captures and immutable inputs remain separate.
 
-## Actual delivery boundary
+## Actual dual-Windows delivery7Nov2026UTC
 
-PENDING: guarded dual-Windows native-only activation/hash/rollback readback.
+Promoted03:46:04UTC through the SAME previously qualified Windows transaction
+helper and existing build-script Deploy function. Fourteen native destinations,
+seven per install, exactly the full clean build. Actual client aliases are
+`C:/FTESurf/ftesurf64.exe` and `C:/FTEQuake/fteqw64.exe`; retained other aliases
+are protected rather than overwritten. Every actual1357 predecessor remains in
+`.prev`; all predecessor/prior-prev bytes were archived and read back before
+mutation. Both1357 and1358 rollback archives are retained privately.
+
+Final03:50:47UTC readback confirms all14 destination/predecessor hashes and all
+18,937 protected files unchanged, including actual installed VMs/LNO, version
+caches, configs, retained aliases and player data. Raw inventories are private.
+No compiled benchmark or latest-main VM was substituted. Engine source is76876c820;
+QC qualification source3b0f2e73 differs from the2ec6ec8e build only in docs.
+
+Both ACTUAL installed client aliases and matching loaded installed HL2/ImGui DLL
+paths were activated on the isolated owned dedicated socket/gamedir, with positive
+moving Tensor2 replay. Both report the exact1358tag and default grid/reuse controls1
+with normal64rays. Both ACTUAL installed dedicated servers pass `pm_selftest`
+(`all checks passed`). Owned processes/rig/clipboard were restored; no owner or
+peer game was killed. Runtime programs remain the frozenb8b0cda pair: this does
+NOT assert behavior or timing of different actual installed VM source.
+
 No actual installed VM/config/cache/player-data replacement, Pi/backend restart,
-release or QC Build bump is needed for this client-renderer-only change.
-Human prop-lighting appearance/feel acceptance remains pending, not invented.
+release or QC Build bump was performed or needed for this client-renderer-only
+change. Human prop-lighting appearance/feel acceptance is requested but PENDING.
+A remaining67ms cold-frame stall is explicit; no full hitch-elimination claim.
