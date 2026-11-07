@@ -94,10 +94,16 @@ surf_clavius_css, surf_palm_css; surf_dragon_css turned out baked (3133 props in
 
 ## Delivery status
 
-Engine `e7912dd9b` (tag `patch-1364`) and this report pushed 7 Nov. Not installed: the clean
-`-Engine -Full -NoDeploy` build of the tag was stopped by Claude Code's low-memory guard while
-other sessions ran, and is restarted only on the owner's word. The measurements above come
-from incremental builds of the same source.
+Engine `e7912dd9b` (tag `patch-1364`) and this report pushed 7 Nov. Installed 7 Nov 12:00Z
+on the owner's go into C:\FTESurf and C:\FTEQuake: a clean `-Engine -Full -NoDeploy` build of
+the tag (3.2 min, stamp `patch-1364-0-ge7912dd9b`; its only warnings in touched files are on
+upstream lines), 7 natives + glsl/warmseed.txt per install, predecessors as .prev and archived
+(task root artifacts/delivery-p1364), 18,959 cfg/progs/data files hashed unchanged. Smoke on
+those exact files, full effects: Tensor2 r4729 ABBA 362/364 -> 458/461 avg, 1% 203/211 ->
+250/250, 0.1% 128/126 -> 149/151; csqc_linewalk 2 compared 196,073 traces, 0 differed.
+Ceaseless r77 fresh launch: prewarm on 151 props in 341 ms at load, 0 in play, 0.1% low 200
+fps; off 103 props (323 ms) in play, 0.1% low 26. The Desktop release copy (0.1.41,
+patch-1348) gets it with the next release.
 
 ## Review
 

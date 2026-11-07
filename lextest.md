@@ -33,11 +33,11 @@ the correct point/stance and hand control back smoothly? cl_sl_leadin controls0.
 The reported Fiellu cursor placement, saved-zero-clock and old cold-boundary issues are
 NOT declared fixed by this UI patch; do not substitute this check for their falsifiers.
 
-## P1363/P1364/P1365 Tensor2 sprite traces, Ceaseless prop lighting, first-play shaders -- NOT YET INSTALLED; owner check pending
+## P1363/P1364/P1365 Tensor2 sprite traces, Ceaseless prop lighting, first-play shaders -- INSTALLED (both installs, 7 Nov 12:00Z); owner check pending
 
-Pushed 7 Nov; the clean full build for the installs was stopped by Claude Code's low-memory guard
-and waits for the owner's go. After install, two quick looks. Tensor2: ride one familiar section with light glows
-and light shafts; do the same glows show and hide as before (none missing, none popping
+C:\FTESurf and C:\FTEQuake run engine patch-1364-0-ge7912dd9b (exe 5d157ee5, hl2 bf1bfabd) and
+warmseed 86149e6e. The Desktop copy (0.1.41) gets it with the next release. Two quick looks.
+Tensor2: ride one familiar section with light glows and light shafts; do the same glows show and hide as before (none missing, none popping
 through the sky)? Ceaseless: load it fresh and do the first run; does the spot that used
 to hitch near 11-12 s feel smooth, and do the lit props look the same? Measured (full
 effects): Tensor2 +27-28% average and +22-24% on the 1% low; Ceaseless first traversal
