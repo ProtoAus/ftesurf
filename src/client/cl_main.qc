@@ -1834,6 +1834,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 		TASTimeline_RecipeHasFocus(); // abandon stale focus if chat/another cursor owns it
 		if (Report_Paste(chary)) return TRUE;    // P1391
 		if (HUD_EditPaste(chary)) return TRUE;   // Patch 901: the ghost offset field
+		if (KC_Paste(chary)) return TRUE;        // P1400: config_menu's text fields
 		if (Account_Paste(chary)) return TRUE;
 		if (Chat_Paste(chary)) return TRUE;
 		if (ZoneEdit_Paste(chary)) return TRUE;
@@ -2726,7 +2727,7 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (argv(0) == "gfx_menu")
 		return Gfx_Console();
 	if (argv(0) == "config_menu")      // Patch 762
-		return KC_Console();
+		return KC_Console(cmd);
 	if (Report_Console())           // P1391: `report`
 		return TRUE;
 

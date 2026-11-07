@@ -22,16 +22,22 @@
       config_menu place <id> <key>      what a click on a drawn key does with row <id> picked
       config_menu clearkey <key>        what a right-click on a drawn key does
       config_menu layout [caps]         the drawing's caps, names the engine lacks, the strip
+      config_menu custom [<command>]    Your own command + Enter: the pick (none: drop it)
+      config_menu editkey <key> [<cmd>] Selected key's Edit + Enter (no command: clear)
 
   Patch 1392, the Keyboard tab: a drawn keyboard and mouse, each cap showing its
   bind. With an action picked, a click puts it on the key (KC_Assign into a new
   slot, so it adds rather than replaces); a right-click binds the key to "".
   Right Shift/Ctrl/Alt, Win and Menu have negative QC key numbers (pr_clcmd.c
   MP_TranslateFTEtoQCCodes); only -1 means "no key" (KC_KeyOk).
+
+  Patch 1400: a typed command can be the pick (Your own command), the Selected
+  key box edits or clears a key's whole bind, and Tools and Game rows fill a
+  third column on both tabs (KC_Order).
 ===========================================================================
 */
 
-#define KC_N        27
+#define KC_N        40
 
 // FTE names it; #630 in the engine table. checkbuiltin-gated in KC_SetBind.
 void(float keynum, string bindcmd, optional float bindmap, optional float modifier) setkeybind = #0:setkeybind;
@@ -56,7 +62,7 @@ string(float i) KC_Def =
 	if (i == 10) return "gfx|Graphics|gfx_menu||x|Menus|gfx menu";
 	if (i == 11) return "keys|Key config|config_menu||k|Menus|keys menu";
 	if (i == 12) return "player|Player|player_edit|hud_player|p|Menus|player";   // Patch 806; 898 player_edit
-	if (i == 13) return "entview|Entity view|ent_cursor|ent_view||Menus|ent view";   // Patch 809; 898: MOUSE3 paints
+	if (i == 13) return "entview|Entity view|ent_view|||Tools|ent view";   // Patch 809; P1400 shown among Tools
 	if (i == 14) return "savemenu|Save menu|save_menu|saveloc_menu;mom_saveloc_close|z|Saves|save menu";
 	if (i == 15) return "save|Save|sl_save|mom_saveloc_create|1|Saves|save";
 	if (i == 16) return "load|Load (hold)|+sl_hold|sl_load;+mom_saveloc_current;mom_saveloc_current|2|Saves|load";
@@ -70,7 +76,33 @@ string(float i) KC_Def =
 	if (i == 24) return "noclip|Noclip|noclip||v|Run|noclip";
 	if (i == 25) return "paint|Paint (hold)|paint|+paint|MOUSE3|Run|paint";     // Patch 772; 898 on MOUSE3
 	if (i == 26) return "share|Share (look at a player)|share||f|Run|share";  // Patch 777
+	// P1400: tools and game keys. ESCAPE is the engine's own menu key (keys.c): never written.
+	if (i == 27) return "report|Report|report||F3|Tools|report";
+	if (i == 28) return "surfview|Surf view|surf_view|||Tools|surf view";
+	if (i == 29) return "entcursor|Entity inspector|ent_cursor|||Tools|inspect";
+	if (i == 30) return "zoneedit|Zone editor|zone_edit|||Tools|zones";
+	if (i == 31) return "linegraph|Run graph|linegraph|||Tools|run graph";
+	if (i == 32) return "ghost|Race ghost|ghost||g|Tools|ghost";
+	if (i == 33) return "scores|Scores (hold)|+showscores||TAB|Game|scores";
+	if (i == 34) return "chat|Chat|messagemode|chat_open||Game|chat";
+	if (i == 35) return "console|Console|toggleconsole||`|Game|console";
+	if (i == 36) return "menu|Main menu|togglemenu||ESCAPE|Game|menu";
+	if (i == 37) return "journal|Patch notes|ui_journal|ui_updates|F2|Game|notes";
+	if (i == 38) return "screenshot|Screenshot|screenshot||F9|Game|screenshot";
+	if (i == 39) return "fullscreen|Fullscreen|fullscreen_toggle|vid_toggle|F11|Game|fullscreen";
 	return "";
+};
+
+// P1400: the order both tabs list the rows in, three columns from KC_COL1 and KC_COL2. Row 13
+// keeps its id and index (the hint strip and old binds read them) but is listed with the tools.
+#define KC_COL1 13
+#define KC_COL2 26
+float(float n) KC_Order =
+{
+	if (n < 13) return n;
+	if (n < 28) return n + 1;
+	if (n == 28) return 13;
+	return n;
 };
 
 string(float i, float f) KC_F = { return Gfx_Field(KC_Def(i), f, "|"); };
@@ -125,16 +157,18 @@ vector kc_hl_scr;
 #define KC_TAB_ROWS 0
 #define KC_TAB_KEYS 1
 #define KC_KB_MAX   128
-#define KC_KB_F     7           // floats per cap: x y w h (key units), key, row (-1 none), bound (2: as left)
+#define KC_KB_F     8           // floats per cap: x y w h (key units), key, row (-1 none), bound (2: as left),
+                                // bind is the own command (P1400)
 #define KC_KB_S     4           // strings per cap: layout name, face, bind lines 1 and 2
-#define KC_KS_MAX   16          // the strip of bound keys off the drawing: key, chip width, row
+#define KC_KS_F     4
+#define KC_KS_MAX   16          // the strip of bound keys off the drawing: key, chip width, row, own command
 #define KC_SLOT_ADD 64          // past any row's keys: KC_Assign adds the key, replacing none
 #define KC_KB_U     24          // a key unit, in panel units
 #define KC_KB_UH    6.25        // the drawing's height in key units (26.5 wide)
 #define KC_KB_PW    652         // the tab's panel: 8 + 26.5 * 24 + 8
 #define KC_KB_PH    386
-#define KC_KB_COLW  201         // two action columns, then the info column
-#define KC_KB_LABW  86
+#define KC_KB_COLW  130         // three action columns, then the info column
+#define KC_KB_LABW  64
 #define KC_KB_INFW  210
 float  kc_tab;
 float  kc_gen;                  // bumped by a KC_Refresh that found a bind changed: the drawing's cache key
@@ -159,6 +193,21 @@ float  kc_ki_key, kc_ki_gen, kc_ki_w, kc_ki_font, kc_ki_row, kc_ki_capw;
 vector kc_ki_px;
 string kc_ki_name, kc_ki_cap, kc_ki_l1, kc_ki_l2;
 string kc_fit2;                 // KC_Fit's second line
+
+// P1400: a typed command as the pick, and the two text fields (Your own command, Edit key).
+#define KC_CUSTOM   -2          // kc_sel for the typed command
+#define KC_FLD_CMD  1
+#define KC_FLD_EDIT 2
+#define KC_FLD_MAX  127
+string kc_cmd;                  // the typed command once Entered; "" none
+string kc_ckeys;                // keys bound to exactly kc_cmd
+float  kc_ccnt;
+float  kc_fld;                  // the field with the keyboard; 0 none
+string kc_ctext, kc_etext;      // the fields' text
+float  kc_ccaret, kc_ecaret;
+float  kc_ekey;                 // the key the Edit field rebinds
+vector kc_cf_p, kc_cf_s, kc_ef_p, kc_ef_s;   // the fields as last drawn, for a click's focus
+float  *kc_fkeys;               // keys pressed into a field: their releases are eaten (QC key + 1024)
 
 void() KC_Register =
 {
@@ -264,6 +313,36 @@ string(string old, string s) KC_Rezone =
 	return strzone(s);
 };
 
+// P1400: the keys whose own bind is exactly the typed command (findkeysforcommandex also
+// takes "say hi" for "say", and Shift+ binds stringtokeynum refuses).
+void() KC_CmdKeys =
+{
+	local string all, k, s;
+	local float j, code, n;
+
+	s = "";
+	n = 0;
+	if (kc_cmd != "")
+	{
+		all = findkeysforcommandex(kc_cmd);
+		for (j = 0; j < 32; j = j + 1)
+		{
+			k = Gfx_Field(all, j, " ");
+			if (k == "")
+				break;
+			code = stringtokeynum(k);
+			if (!KC_KeyOk(code))
+				continue;
+			if (strcmp(getkeybind(code), kc_cmd))
+				continue;
+			s = (s == "") ? k : strcat(s, " ", k);
+			n = n + 1;
+		}
+	}
+	kc_ckeys = KC_Rezone(kc_ckeys, s);
+	kc_ccnt = n;
+};
+
 void() KC_Refresh =
 {
 	local float i, n, r;
@@ -300,6 +379,7 @@ void() KC_Refresh =
 		kc_hint = (h == "") ? "" : strzone(h);
 		kc_hl_at = -1;              // a command can change it inside one cltime: measure again
 	}
+	KC_CmdKeys();
 	kc_cacheat = cltime;
 };
 
@@ -446,11 +526,18 @@ float(float scan) KC_LeftOf =
 
 // The console and menu keys stay as they are: the panel cannot give them back (reset keys covers
 // only its own rows). Shift+Esc still opens the console (keys.c), but not with con_stayhidden 2.
+float(float scan) KC_IsKept =
+{
+	local string b;
+	b = getkeybind(scan);
+	return (scan == K_ESCAPE || b == "toggleconsole" || b == "togglemenu");
+};
+
 float(float scan) KC_KeyKept =
 {
 	local string b;
 	b = getkeybind(scan);
-	if (scan == K_ESCAPE || b == "toggleconsole" || b == "togglemenu")
+	if (KC_IsKept(scan))
 	{
 		KC_Say(sprintf("%s stays the %s key", KC_KeyLabel(keynumtostring(scan)),
 		               (b == "toggleconsole") ? "console" : "menu"));
@@ -498,12 +585,43 @@ void(float scan) KC_ClearKey =
 	KC_Changed();
 };
 
+// P1400: key `scan` now runs the typed command cmd; KC_Assign's report of what it was.
+void(string cmd, float scan) KC_AssignCmd =
+{
+	local string was, kn;
+	local float other;
+
+	if (cmd == "" || !KC_KeyOk(scan))
+		return;
+	kn = KC_KeyLabel(keynumtostring(scan));
+	was = getkeybind(scan);
+	if (was == "")
+	if (KC_KeyOk(KC_LeftOf(scan)))
+		was = getkeybind(KC_LeftOf(scan));
+	other = KC_RowOf(was);
+	KC_SetBind(scan, cmd);
+	if (was == "" || !strcmp(was, cmd))
+		kn = sprintf("%s: \"%s\"", kn, cmd);
+	else if (other >= 0)
+		kn = sprintf("%s: \"%s\" (was %s)", kn, cmd, KC_F(other, 1));
+	else
+		kn = sprintf("%s: \"%s\" (was \"%s\")", kn, cmd, was);
+	was = KC_PanelDigit(scan);
+	if (was != "")
+		kn = strcat(kn, "; with the save menu open it is ", was);
+	KC_Say(kn);
+	KC_Changed();
+};
+
 // A click on a drawn key: it gets the picked action, or is only read into the info box.
 void(float scan) KC_KeyClick =
 {
 	if (!KC_KeyOk(scan))
 		return;
 	kc_kb_key = scan;
+	if (kc_sel == KC_CUSTOM)
+	if (!KC_KeyKept(scan))
+		KC_AssignCmd(kc_cmd, scan);
 	if (kc_sel >= 0)
 	if (!KC_KeyKept(scan))
 		KC_Assign(kc_sel, KC_SLOT_ADD, scan);
@@ -520,6 +638,7 @@ void() KC_Reset =
 		{
 			k = stringtokeynum(Gfx_Field(kc_keys[i], j, " "));
 			if (KC_KeyOk(k))
+			if (!KC_IsKept(k))          // P1400: the console and menu keys are not the reset's
 				KC_SetBind(k, "");
 		}
 	for (i = 0; i < KC_N; i = i + 1)
@@ -530,7 +649,8 @@ void() KC_Reset =
 			k = stringtokeynum(Gfx_Field(d, j, " "));
 			if (!KC_KeyOk(k))
 				break;
-			KC_SetBind(k, KC_F(i, 2));
+			if (k != K_ESCAPE)
+				KC_SetBind(k, KC_F(i, 2));
 		}
 	}
 	KC_Say("every key back to its default");
@@ -562,11 +682,177 @@ void(float v) KC_SetSens =
 float(float v) KC_SensT = { return bound(0, log(max(v, KC_SENS_LO) / KC_SENS_LO) / log(KC_SENS_HI / KC_SENS_LO), 1); };
 float(float t) KC_SensV = { return KC_SENS_LO * pow(KC_SENS_HI / KC_SENS_LO, t); };
 
+/*
+  P1400: the Keyboard tab's two text fields. While one has the keyboard every key
+  is its (KC_CaptureEvent, ahead of the chat draft), Esc leaves it, and a key it
+  took has its release eaten even after it lets go, as hud_edit's field does.
+*/
+string(string was, string now) KC_Rezoned =
+{
+	if (!strcmp(was, now))
+		return was;
+	if (now != "")
+		now = strzone(now);
+	if (was != "")
+		strunzone(was);
+	return now;
+};
+
+float(float k) KC_FieldOwned =
+{
+	if (!kc_fkeys || k < -1024 || k >= 1024)
+		return FALSE;
+	return kc_fkeys[k + 1024];
+};
+
+void(float k, float v) KC_FieldOwn =
+{
+	if (k < -1024 || k >= 1024)
+		return;
+	if (!kc_fkeys)
+		kc_fkeys = memalloc(sizeof(float) * 2048);
+	kc_fkeys[k + 1024] = v;
+};
+
+// Leave the field: the typed command stays in its box; an edit is dropped.
+void() KC_FieldStop =
+{
+	if (kc_fld == KC_FLD_EDIT)
+	{
+		kc_etext = KC_Rezone(kc_etext, "");
+		kc_ecaret = 0;
+		kc_ekey = 0;
+	}
+	kc_fld = 0;
+	if (sui_field_focused() == "kc_cf" || sui_field_focused() == "kc_ef")
+		sui_text_unfocus();
+};
+
+void(float evtype, float scan, float char) KC_FieldKey =
+{
+	local string was;
+
+	if (kc_fld == KC_FLD_CMD)
+	{
+		was = kc_ctext;
+		sui_text_event(evtype, scan, char, "kc_cf", kc_ctext, kc_ccaret);
+		kc_ctext = KC_Rezoned(was, substring(kc_ctext, 0, KC_FLD_MAX));
+		kc_ccaret = min(kc_ccaret, strlen(kc_ctext));
+	}
+	else if (kc_fld == KC_FLD_EDIT)
+	{
+		was = kc_etext;
+		sui_text_event(evtype, scan, char, "kc_ef", kc_etext, kc_ecaret);
+		kc_etext = KC_Rezoned(was, substring(kc_etext, 0, KC_FLD_MAX));
+		kc_ecaret = min(kc_ecaret, strlen(kc_etext));
+	}
+};
+
+// One pasted character (cl_main.qc's IE_PASTE chain), for the field with the keyboard.
+float(float c) KC_Paste =
+{
+	if (!kc_open || !kc_fld || c < 32 || c > 126)
+		return FALSE;
+	KC_FieldKey(IE_KEYDOWN, 0, c);
+	return TRUE;
+};
+
+// A bind with a double quote would not survive cfg_save's quoting.
+float(string s) KC_CmdBad =
+{
+	if (strstrofs(s, "\"", 0) < 0)
+		return FALSE;
+	KC_Say("a double quote cannot go in a bind here");
+	return TRUE;
+};
+
+// Enter in Your own command, or `config_menu custom`: the command becomes the pick.
+void(string s) KC_CustomSet =
+{
+	s = strtrim(s);
+	if (KC_CmdBad(s))
+		return;
+	kc_ctext = KC_Rezoned(kc_ctext, s);
+	kc_ccaret = strlen(kc_ctext);
+	kc_cmd = KC_Rezone(kc_cmd, s);
+	kc_kb_gen = -1;                 // the caps' own-command marks are read again
+	KC_CmdKeys();
+	if (s == "")
+	{
+		if (kc_sel == KC_CUSTOM)
+			kc_sel = -1;
+	}
+	else
+	{
+		kc_sel = KC_CUSTOM;
+		KC_Say(sprintf("click keys to bind \"%s\" to them", s));
+	}
+	if (kc_fld == KC_FLD_CMD)
+		KC_FieldStop();
+};
+
+// Enter in the Edit field, or `config_menu editkey`: the key runs s; empty clears it.
+void(float key, string s) KC_EditKey =
+{
+	s = strtrim(s);
+	if (!KC_KeyOk(key))
+		return;
+	if (KC_KeyKept(key))
+		return;
+	if (KC_CmdBad(s))
+		return;
+	kc_kb_key = key;
+	if (s == "")
+		KC_ClearKey(key);
+	else
+		KC_AssignCmd(s, key);
+	if (kc_fld == KC_FLD_EDIT)
+		KC_FieldStop();
+};
+
+void(float key) KC_EditBegin =
+{
+	if (!KC_KeyOk(key))
+	{
+		KC_Say("click a key first");
+		return;
+	}
+	if (KC_KeyKept(key))
+		return;
+	KC_FieldStop();
+	kc_ekey = key;
+	kc_etext = KC_Rezone(kc_etext, getkeybind(key));
+	kc_ecaret = strlen(kc_etext);
+	kc_fld = KC_FLD_EDIT;
+	sui_field_focus("kc_ef");
+};
+
+// A press of Mouse 1: on a field it takes the keyboard; anywhere else the field lets go.
+void() KC_FieldClick =
+{
+	if (kc_tab != KC_TAB_KEYS)
+		return;
+	if (is_2dpoint_in_bbox(_cursor_position, kc_cf_p, kc_cf_s))
+	{
+		if (kc_fld != KC_FLD_CMD)
+			KC_FieldStop();
+		kc_fld = KC_FLD_CMD;
+		sui_field_focus("kc_cf");
+		return;
+	}
+	if (kc_fld == KC_FLD_EDIT)
+	if (is_2dpoint_in_bbox(_cursor_position, kc_ef_p, kc_ef_s))
+		return;
+	if (kc_fld)
+		KC_FieldStop();
+};
+
 void() KC_Close =
 {
 	if (!kc_open)
 		return;
 	kc_open = FALSE;
+	KC_FieldStop();
 	kc_cap_i = -1;
 	kc_armed = FALSE;
 	kc_sel = -1;                    // reopened later, a click only reads a key until one is picked
@@ -588,6 +874,7 @@ void(float t) KC_SetTab =
 	{
 		kc_cap_i = -1;
 		kc_armed = FALSE;
+		KC_FieldStop();
 		sui_tooltip_reset();
 	}
 	kc_tab = t;
@@ -706,7 +993,7 @@ void() KC_KbParse =
 	{
 		kc_kbf = memalloc(sizeof(float) * KC_KB_MAX * KC_KB_F);
 		kc_kbs = memalloc(sizeof(string) * KC_KB_MAX * KC_KB_S);
-		kc_ksq = memalloc(sizeof(float) * KC_KS_MAX * 3);
+		kc_ksq = memalloc(sizeof(float) * KC_KS_MAX * KC_KS_F);
 		kc_kss = memalloc(sizeof(string) * KC_KS_MAX);
 	}
 	c = 0;
@@ -820,6 +1107,9 @@ void() KC_KbScan =
 			}
 		}
 		kc_kbf[c * KC_KB_F + 5] = KC_RowOf(b);
+		kc_kbf[c * KC_KB_F + 7] = FALSE;
+		if (kc_cmd != "")
+			kc_kbf[c * KC_KB_F + 7] = !strcmp(b, kc_cmd);
 	}
 	n = 0;
 	kc_ks_all = 0;
@@ -837,8 +1127,11 @@ void() KC_KbScan =
 		kc_ks_all = kc_ks_all + 1;
 		if (n < KC_KS_MAX)
 		{
-			kc_ksq[n * 3] = q;
-			kc_ksq[n * 3 + 2] = KC_RowOf(b);
+			kc_ksq[n * KC_KS_F] = q;
+			kc_ksq[n * KC_KS_F + 2] = KC_RowOf(b);
+			kc_ksq[n * KC_KS_F + 3] = FALSE;
+			if (kc_cmd != "")
+				kc_ksq[n * KC_KS_F + 3] = !strcmp(b, kc_cmd);
 			n = n + 1;
 		}
 	}
@@ -857,7 +1150,7 @@ void(float caps) KC_KbReport =
 	kc_kb_gen = -1;                 // the strip's chips are measured again at the next draw
 	s = "";
 	for (i = 0; i < kc_ks_n; i = i + 1)
-		s = (s == "") ? keynumtostring(kc_ksq[i * 3]) : strcat(s, " ", keynumtostring(kc_ksq[i * 3]));
+		s = (s == "") ? keynumtostring(kc_ksq[i * KC_KS_F]) : strcat(s, " ", keynumtostring(kc_ksq[i * KC_KS_F]));
 	print(sprintf("config_menu: layout caps %g missing [%s] offboard %g [%s]\n", kc_kb_n, kc_kb_miss, kc_ks_all, s));
 	if (!caps)
 		return;
@@ -870,7 +1163,15 @@ void(float caps) KC_KbReport =
 	}
 };
 
-float() KC_Console =
+// The rest of the command line from argument n, or argument n alone when it is the last.
+string(string cmd, float n) KC_Tail =
+{
+	if (argv(n) == "" || argv(n + 1) == "")
+		return argv(n);
+	return substring(cmd, argv_start_index(n), -1);
+};
+
+float(string cmd) KC_Console =
 {
 	local string a;
 	local float i, s, k;
@@ -890,7 +1191,8 @@ float() KC_Console =
 		print(sprintf("config_menu: open %g capture %g/%g savepanel %g hold %g/%g ",
 		              kc_open, kc_cap_i, kc_cap_s, rec_sl_open, rec_sl_holding, rec_sl_holdkey));
 		print(sprintf("yawspeed %g sensitivity %g\n", cvar("cl_yawspeed"), cvar("sensitivity")));
-		print(sprintf("config_menu: tab %g picked %s\n", kc_tab, (kc_sel >= 0) ? KC_F(kc_sel, 0) : "-"));
+		print(sprintf("config_menu: tab %g picked %s field %g own [%s] keys [%s]\n", kc_tab,
+		              (kc_sel >= 0) ? KC_F(kc_sel, 0) : ((kc_sel == KC_CUSTOM) ? "own" : "-"), kc_fld, kc_cmd, kc_ckeys));
 		for (i = 0; i < KC_N; i = i + 1)
 			print(sprintf("config_menu: %-9s %-14s %-11s keys [%s]\n",
 			              KC_F(i, 0), KC_F(i, 1), KC_F(i, 2), kc_keys[i]));
@@ -920,6 +1222,21 @@ float() KC_Console =
 		KC_KbReport(argv(2) == "caps");
 		return TRUE;
 	}
+	if (a == "custom")
+	{
+		KC_CustomSet(KC_Tail(cmd, 2));
+		return TRUE;
+	}
+	if (a == "editkey")
+	{
+		KC_Refresh();
+		k = stringtokeynum(argv(2));
+		if (!KC_KeyOk(k))
+			print(sprintf("config_menu: no key called %s\n", argv(2)));
+		else
+			KC_EditKey(k, KC_Tail(cmd, 3));
+		return TRUE;
+	}
 	if (a == "clearkey")
 	{
 		KC_Refresh();
@@ -936,7 +1253,8 @@ float() KC_Console =
 	{
 		print("config_menu [status | hint | reset | yaw <v> | sens <v> | actions | keyboard |\n"
 		      "             bind <id> <key> [slot] | clear <id> [slot] | capture <id> [slot] |\n"
-		      "             place <id> <key> | clearkey <key> | layout [caps]]\n");
+		      "             place <id> <key> | clearkey <key> | layout [caps] |\n"
+		      "             custom [<command>] | editkey <key> [<command>]]\n");
 		return TRUE;
 	}
 	KC_Refresh();
@@ -990,10 +1308,38 @@ float() KC_Console =
 */
 float(float evtype, float scanx, float chary, float devid) KC_CaptureEvent =
 {
+	if (evtype == IE_KEYUP)
+	if (KC_FieldOwned(scanx))
+	{
+		KC_FieldOwn(scanx, FALSE);
+		if (kc_fld)
+			KC_FieldKey(evtype, scanx, chary);
+		return TRUE;
+	}
 	if (!kc_open)
 		return FALSE;
 	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP)
 		return FALSE;
+	// P1400: a text field takes every key but the mouse's (K_MOUSE1..10, the wheel: 512..523).
+	if (kc_fld && evtype == IE_KEYDOWN)
+	if (scanx < K_MOUSE1 || scanx > K_MOUSE1 + 11)
+	{
+		if (chat_rep && !KC_FieldOwned(scanx))
+			return TRUE;            // a repeat of a key held from before: neither typed nor its release taken
+		KC_FieldOwn(scanx, TRUE);
+		if (scanx == K_ESCAPE)
+			KC_FieldStop();
+		else if (scanx == K_ENTER || scanx == K_KP_ENTER)
+		{
+			if (kc_fld == KC_FLD_CMD)
+				KC_CustomSet(kc_ctext);
+			else
+				KC_EditKey(kc_ekey, kc_etext);
+		}
+		else
+			KC_FieldKey(evtype, scanx, chary);
+		return TRUE;
+	}
 	if (kc_eatkey != -1 && scanx == kc_eatkey)
 	{
 		if (evtype == IE_KEYUP)
@@ -1028,6 +1374,8 @@ float(float evtype, float scanx, float chary, float devid) KC_InputEvent =
 
 	if (scanx == K_MOUSE1)
 	{
+		if (evtype == IE_KEYDOWN)
+			KC_FieldClick();
 		sui_input_event(evtype, scanx, chary, devid);
 		return TRUE;
 	}
@@ -1255,15 +1603,23 @@ void(float i, vector pos, float labw, float chipw, float rh, float sc) KC_Row =
 	}
 };
 
-// Column c's next line: a heading where the group changes, then the row.
-float(float i, vector p, float y, float labw, float chipw, float colw, float rh, float sc) KC_ColumnRow =
+// True where the n-th listed row starts a column or a group: it gets a heading.
+float(float n) KC_NewGroup =
 {
-	if (i == 0 || strcmp(KC_F(i, 5), KC_F(i - 1, 5)))
+	if (n == 0 || n == KC_COL1 || n == KC_COL2)
+		return TRUE;
+	return strcmp(KC_F(KC_Order(n), 5), KC_F(KC_Order(n - 1), 5)) != 0;
+};
+
+// A column's next line: a heading where the group changes, then the n-th listed row.
+float(float n, vector p, float y, float labw, float chipw, float colw, float rh, float sc) KC_ColumnRow =
+{
+	if (KC_NewGroup(n))
 	{
-		KC_Heading([p_x, y, 0], colw, KC_F(i, 5), sc);
+		KC_Heading([p_x, y, 0], colw, KC_F(KC_Order(n), 5), sc);
 		y = y + rh;
 	}
-	KC_Row(i, [p_x, y, 0], labw, chipw, rh, sc);
+	KC_Row(KC_Order(n), [p_x, y, 0], labw, chipw, rh, sc);
 	return y + rh;
 };
 
@@ -1323,12 +1679,7 @@ string(string s, float w, float want, float lines) KC_Fit =
 // Short words for engine and menu commands a key often carries (the table's rows have their own).
 string(string b) KC_CmdShort =
 {
-	if (b == "+showscores") return "scores";
-	if (b == "toggleconsole") return "console";
-	if (b == "togglemenu") return "menu";
-	if (b == "ui_journal") return "journal";
-	if (b == "fullscreen_toggle") return "fullscreen";
-	if (b == "messagemode" || b == "chat_open" || b == "chat_say") return "chat";
+	if (b == "chat_say") return "chat";
 	if (b == "messagemode2") return "team chat";
 	if (b == "+attack") return "attack";
 	if (b == "+use") return "use";
@@ -1375,14 +1726,14 @@ void(float sc) KC_KbFit =
 	}
 	for (i = 0; i < kc_ks_n; i = i + 1)
 	{
-		row = kc_ksq[i * 3 + 2];
+		row = kc_ksq[i * KC_KS_F + 2];
 		if (row >= 0)
 			t = KC_F(row, 6);
 		else
-			t = getkeybind(kc_ksq[i * 3]);
-		s = strcat(KC_KeyLabel(keynumtostring(kc_ksq[i * 3])), ": ", KC_Fit(t, 70 * sc, 7 * sc, 1));
+			t = getkeybind(kc_ksq[i * KC_KS_F]);
+		s = strcat(KC_KeyLabel(keynumtostring(kc_ksq[i * KC_KS_F])), ": ", KC_Fit(t, 70 * sc, 7 * sc, 1));
 		kc_kss[i] = KC_Rezone(kc_kss[i], s);
-		kc_ksq[i * 3 + 1] = KC_TextW(s, 7 * sc) + 8 * sc;
+		kc_ksq[i * KC_KS_F + 1] = KC_TextW(s, 7 * sc) + 8 * sc;
 	}
 };
 
@@ -1491,6 +1842,8 @@ void(float c, vector o, float u, float sc) KC_Cap =
 	if (row >= 0)
 	if (row == kc_sel)
 		on = TRUE;
+	if (kc_sel == KC_CUSTOM)
+		on = kc_kbf[b + 7];
 
 	fill = SUI_THEME_CHIP;
 	lc = SUI_THEME_DIM;
@@ -1590,13 +1943,13 @@ void(vector pos, float w, float sc) KC_KbStrip =
 	}
 	for (i = 0; i < kc_ks_n; i = i + 1)
 	{
-		cw = kc_ksq[i * 3 + 1];
+		cw = kc_ksq[i * KC_KS_F + 1];
 		if (x + cw > pos_x + w - 34 * sc)
 			break;
-		code = kc_ksq[i * 3];
-		row = kc_ksq[i * 3 + 2];
+		code = kc_ksq[i * KC_KS_F];
+		row = kc_ksq[i * KC_KS_F + 2];
 		if (KC_KbChip(sprintf("kc_ks%g", i), [x, pos_y, 0], [cw, 11 * sc, 0], kc_kss[i], code,
-		              (row >= 0 && row == kc_sel), sc))
+		              (kc_sel == KC_CUSTOM) ? kc_ksq[i * KC_KS_F + 3] : (row >= 0 && row == kc_sel), sc))
 			KC_KeyClick(code);
 		x = x + cw + 3 * sc;
 	}
@@ -1641,6 +1994,7 @@ void(float key, float w, float sc) KC_KbInfoRead =
 	kc_ki_l2 = KC_Rezone(kc_ki_l2, kc_fit2);
 };
 
+// The legend on one line: picked, bound to something else, unbound.
 void(vector pos, float sc) KC_Legend =
 {
 	local float s, ty;
@@ -1648,73 +2002,151 @@ void(vector pos, float sc) KC_Legend =
 
 	glyph = sui_native_text_size(7 * sc);
 	s = 7 * sc;
-	ty = (10 * sc - glyph_y) * 0.5;
+	ty = pos_y + (10 * sc - glyph_y) * 0.5;
 	sui_roundbox([pos_x, pos_y + 1.5 * sc, 0], [s, s, 0], 1.5 * sc, SUI_THEME_ACCENT, 1);
-	sui_native_text([pos_x + s + 4 * sc, pos_y + ty, 0], "the picked action", 7 * sc, SUI_THEME_DIM, 1);
-	pos_y = pos_y + 10 * sc;
+	sui_native_text([pos_x + s + 3 * sc, ty, 0], "picked", 7 * sc, SUI_THEME_DIM, 1);
+	pos_x = pos_x + s + 3 * sc + KC_TextW("picked", 7 * sc) + 8 * sc;
 	sui_roundbox([pos_x, pos_y + 1.5 * sc, 0], [s, s, 0], 1.5 * sc, SUI_THEME_CHIP, 1);
-	sui_native_text([pos_x + s + 4 * sc, pos_y + ty, 0], "bound to something else", 7 * sc, SUI_THEME_DIM, 1);
-	pos_y = pos_y + 10 * sc;
+	sui_native_text([pos_x + s + 3 * sc, ty, 0], "bound elsewhere", 7 * sc, SUI_THEME_DIM, 1);
+	pos_x = pos_x + s + 3 * sc + KC_TextW("bound elsewhere", 7 * sc) + 8 * sc;
 	sui_style_box([pos_x, pos_y + 1.5 * sc, 0], [s, s, 0], 1.5 * sc, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
-	sui_native_text([pos_x + s + 4 * sc, pos_y + ty, 0], "unbound", 7 * sc, SUI_THEME_DIM, 1);
+	sui_native_text([pos_x + s + 3 * sc, ty, 0], "unbound", 7 * sc, SUI_THEME_DIM, 1);
 };
 
-// The right column: the picked action's keys, the key under the pointer, the legend.
-// Drawn after the caps so it reads this frame's kc_kb_hov.
+// P1400: a one-line text field (which: KC_FLD_CMD or KC_FLD_EDIT), scrolled to its caret.
+void(float which, vector pos, vector sz, string hint, float sc) KC_FieldDraw =
+{
+	local vector glyph, tp;
+	local float on, tw, room, scroll;
+	local string was, t;
+
+	glyph = sui_native_text_size(7 * sc);
+	on = (kc_fld == which);
+	sui_style_box(pos, sz, 2.5 * sc, SUI_THEME_WELL, on ? SUI_THEME_ACCENT : SUI_THEME_EDGE, 1);
+	room = sz_x - 6 * sc;
+	if (which == KC_FLD_CMD)
+	{
+		kc_cf_p = pos;
+		kc_cf_s = sz;
+		tw = KC_TextW(substring(kc_ctext, 0, kc_ccaret), 7 * sc);
+		scroll = max(0, tw - room);
+		sui_text_metrics(3 * sc - scroll, glyph);
+		was = kc_ctext;
+		sui_text_input("kc_cf", pos, sz, kc_ctext, kc_ccaret);
+		kc_ctext = KC_Rezoned(was, kc_ctext);
+		t = kc_ctext;
+		tw = KC_TextW(substring(t, 0, kc_ccaret), 7 * sc);
+	}
+	else
+	{
+		kc_ef_p = pos;
+		kc_ef_s = sz;
+		tw = KC_TextW(substring(kc_etext, 0, kc_ecaret), 7 * sc);
+		scroll = max(0, tw - room);
+		sui_text_metrics(3 * sc - scroll, glyph);
+		was = kc_etext;
+		sui_text_input("kc_ef", pos, sz, kc_etext, kc_ecaret);
+		kc_etext = KC_Rezoned(was, kc_etext);
+		t = kc_etext;
+		tw = KC_TextW(substring(t, 0, kc_ecaret), 7 * sc);
+	}
+	tp = [pos_x + 3 * sc, pos_y + (sz_y - glyph_y) * 0.5, 0];
+	drawsetcliparea(tp_x, pos_y, room + 1, sz_y);
+	if (t == "" && !on)
+		sui_native_text(tp, hint, 7 * sc, SUI_THEME_MUTED, 1);
+	else
+		sui_native_text(tp - [scroll, 0, 0], t, 7 * sc, SUI_THEME_TEXT, 1);
+	if (on)
+		drawfill(tp + [tw - scroll, -1, 0], [1, glyph_y + 2, 0], SUI_THEME_ACCENT, 1, 0);
+	drawresetcliparea();
+};
+
+// The right column: Your own command, the pick's keys, the key under the pointer with Edit
+// and Clear, the legend. Drawn after the caps so it reads this frame's kc_kb_hov.
 void(vector pos, float w, float sc) KC_KbInfo =
 {
-	local float i, x, y, line, code, cw, key, ch, sel;
-	local string k, lab;
+	local float i, x, y, line, code, cw, key, ch, sel, n, bx, dim;
+	local string k, lab, keys;
 	local vector glyph, c;
 
 	glyph = sui_native_text_size(7 * sc);
 	ch = 11 * sc;
 	sel = kc_sel;
-	if (sel >= 0)
+	KC_Heading(pos, w, "Your own command", sc);
+	KC_FieldDraw(KC_FLD_CMD, [pos_x, pos_y + 13 * sc, 0], [w, 12 * sc, 0], "type a command, then Enter", sc);
+
+	y = pos_y + 30 * sc;
+	keys = "";
+	n = 0;
+	if (sel == KC_CUSTOM)
 	{
-		KC_Heading(pos, w, strcat("Keys for ", KC_F(sel, 1)), sc);
-		x = pos_x;
-		y = pos_y + 13 * sc;
-		line = 0;
-		for (i = 0; i < kc_cnt[sel]; i = i + 1)
-		{
-			k = Gfx_Field(kc_keys[sel], i, " ");
-			lab = KC_KeyLabel(k);
-			cw = KC_TextW(lab, 7 * sc) + 8 * sc;
-			if (x + cw > pos_x + w)
-			{
-				if (line)
-					break;
-				line = 1;
-				x = pos_x;
-				y = y + ch + 2 * sc;
-			}
-			code = stringtokeynum(k);
-			if (KC_KbChip(sprintf("kc_kf%g", i), [x, y, 0], [cw, ch, 0], lab, code, TRUE, sc))
-			if (KC_KeyOk(code))
-				kc_kb_key = code;
-			x = x + cw + 3 * sc;
-		}
-		if (!kc_cnt[sel])
-			sui_native_text([pos_x, y + (ch - glyph_y) * 0.5, 0], "No key yet: click one below.", 7 * sc,
-			                SUI_THEME_MUTED, 1);
+		KC_Heading([pos_x, y, 0], w, KC_Fit(strcat("Keys for ", kc_cmd), w, 7 * sc, 1), sc);
+		keys = kc_ckeys;
+		n = kc_ccnt;
+	}
+	else if (sel >= 0)
+	{
+		KC_Heading([pos_x, y, 0], w, strcat("Keys for ", KC_F(sel, 1)), sc);
+		keys = kc_keys[sel];
+		n = kc_cnt[sel];
 	}
 	else
+		KC_Heading([pos_x, y, 0], w, "Keys for an action", sc);
+	x = pos_x;
+	y = y + 13 * sc;
+	line = 0;
+	for (i = 0; i < n; i = i + 1)
 	{
-		KC_Heading(pos, w, "Keys for an action", sc);
-		sui_native_text([pos_x, pos_y + 13 * sc + (ch - glyph_y) * 0.5, 0],
-		                "Pick an action, then click keys to place it.", 7 * sc, SUI_THEME_MUTED, 1);
+		k = Gfx_Field(keys, i, " ");
+		lab = KC_KeyLabel(k);
+		cw = KC_TextW(lab, 7 * sc) + 8 * sc;
+		if (x + cw > pos_x + w)
+		{
+			if (line)
+				break;
+			line = 1;
+			x = pos_x;
+			y = y + ch + 2 * sc;
+		}
+		code = stringtokeynum(k);
+		if (KC_KbChip(sprintf("kc_kf%g", i), [x, y, 0], [cw, ch, 0], lab, code, TRUE, sc))
+		if (KC_KeyOk(code))
+			kc_kb_key = code;
+		x = x + cw + 3 * sc;
 	}
+	if (sel == -1)
+		sui_native_text([pos_x, y + (ch - glyph_y) * 0.5, 0],
+		                "Pick an action, then click keys to place it.", 7 * sc, SUI_THEME_MUTED, 1);
+	else if (!n)
+		sui_native_text([pos_x, y + (ch - glyph_y) * 0.5, 0], "No key yet: click one below.", 7 * sc,
+		                SUI_THEME_MUTED, 1);
 
-	y = pos_y + 42 * sc;
+	y = pos_y + 71 * sc;
 	KC_Heading([pos_x, y, 0], w, "Selected key", sc);
 	y = y + 13 * sc;
 	sui_roundbox([pos_x, y, 0], [w, 50 * sc, 0], 3 * sc, SUI_THEME_WELL, 1);
+	// Edit and Clear act on the key last clicked: the pointer is on them, not on a key.
+	bx = pos_x + w - 63 * sc;
+	dim = (!KC_KeyOk(kc_kb_key) || KC_IsKept(kc_kb_key) || kc_fld == KC_FLD_EDIT);
+	if (KC_Button("kc_edit", [bx, y + 2 * sc, 0], [30 * sc, 11 * sc, 0], "Edit",
+	              dim ? SUI_THEME_WELL : SUI_THEME_CHIP, dim ? SUI_THEME_MUTED : SUI_THEME_DIM, sc))
+		KC_EditBegin(kc_kb_key);
+	if (KC_Button("kc_clr", [bx + 32 * sc, y + 2 * sc, 0], [30 * sc, 11 * sc, 0], "Clear",
+	              dim ? SUI_THEME_WELL : SUI_THEME_CHIP, dim ? SUI_THEME_MUTED : SUI_THEME_DIM, sc))
+	{
+		if (KC_KeyOk(kc_kb_key))
+			KC_ClearKey(kc_kb_key);
+		else
+			KC_Say("click a key first");
+	}
 	x = pos_x + 4 * sc;
 	y = y + 3 * sc;
 	key = kc_kb_hov;
 	if (!KC_KeyOk(key))
 		key = kc_kb_key;
+	if (kc_fld == KC_FLD_EDIT)
+		key = kc_ekey;
+	kc_ef_s = '0 0 0';
 	if (!KC_KeyOk(key))
 		sui_native_text([x, y, 0], "Point at a key to read its bind.", 7 * sc, SUI_THEME_MUTED, 1);
 	else
@@ -1725,7 +2157,12 @@ void(vector pos, float w, float sc) KC_KbInfo =
 			sui_native_text([x + kc_ki_capw + 5 * sc, y, 0], kc_ki_name, 7 * sc, SUI_THEME_MUTED, 1);
 		y = y + 10 * sc;
 		c = SUI_THEME_MUTED;
-		if (key == K_ESCAPE)
+		if (kc_fld == KC_FLD_EDIT)
+		{
+			lab = "Enter binds it, empty clears, Esc cancels";
+			c = SUI_THEME_FOCUS;
+		}
+		else if (key == K_ESCAPE)
 			lab = "the menu key: not placed here";
 		else if (kc_ki_row >= 0)
 		{
@@ -1741,12 +2178,17 @@ void(vector pos, float w, float sc) KC_KbInfo =
 			lab = "unbound";
 		sui_native_text([x, y, 0], lab, 7 * sc, c, 1);
 		y = y + 10 * sc;
-		if (kc_ki_l1 != "")
-			sui_native_text([x, y, 0], kc_ki_l1, 7 * sc, SUI_THEME_WARN, 1);
-		if (kc_ki_l2 != "")
-			sui_native_text([x, y + 10 * sc, 0], kc_ki_l2, 7 * sc, SUI_THEME_WARN, 1);
+		if (kc_fld == KC_FLD_EDIT)
+			KC_FieldDraw(KC_FLD_EDIT, [x - 2 * sc, y, 0], [w - 4 * sc, 12 * sc, 0], "", sc);
+		else
+		{
+			if (kc_ki_l1 != "")
+				sui_native_text([x, y, 0], kc_ki_l1, 7 * sc, SUI_THEME_WARN, 1);
+			if (kc_ki_l2 != "")
+				sui_native_text([x, y + 10 * sc, 0], kc_ki_l2, 7 * sc, SUI_THEME_WARN, 1);
+		}
 	}
-	KC_Legend([pos_x, pos_y + 112 * sc, 0], sc);
+	KC_Legend([pos_x, pos_y + 140 * sc, 0], sc);
 };
 
 // The Keyboard tab (Patch 1392). KC_Draw has done the closing checks and the bind read.
@@ -1785,21 +2227,22 @@ void(vector scr) KC_DrawKeys =
 	tab = KC_Header(p, panw, pad, sc);
 	top = p_y + 24 * sc;
 
-	// The actions, split into the Actions tab's two columns.
+	// The actions in the Actions tab's three columns and order.
 	y = top;
+	x = p_x + pad;
 	for (i = 0; i < KC_N; i = i + 1)
 	{
-		x = p_x + pad;
-		if (i >= 14)
-			x = x + (KC_KB_COLW + 12) * sc;
-		if (i == 14)
-			y = top;
-		if (i == 0 || i == 14 || strcmp(KC_F(i, 5), KC_F(i - 1, 5)))
+		if (i == KC_COL1 || i == KC_COL2)
 		{
-			KC_Heading([x, y, 0], KC_KB_COLW * sc, KC_F(i, 5), sc);
+			x = x + (KC_KB_COLW + 12) * sc;
+			y = top;
+		}
+		if (KC_NewGroup(i))
+		{
+			KC_Heading([x, y, 0], KC_KB_COLW * sc, KC_F(KC_Order(i), 5), sc);
 			y = y + 12 * sc;
 		}
-		KC_KbAction(i, [x, y, 0], KC_KB_COLW * sc, rh, sc);
+		KC_KbAction(KC_Order(i), [x, y, 0], KC_KB_COLW * sc, rh, sc);
 		y = y + rh;
 	}
 
@@ -1808,7 +2251,7 @@ void(vector scr) KC_DrawKeys =
 		KC_Cap(i, o, u, sc);
 	y = o_y + KC_KB_UH * u + 4 * sc;
 	KC_KbStrip([p_x + pad, y, 0], panw - pad * 2, sc);
-	KC_KbInfo([p_x + pad + (KC_KB_COLW * 2 + 24) * sc, top, 0], KC_KB_INFW * sc, sc);
+	KC_KbInfo([p_x + pad + (KC_KB_COLW * 3 + 36) * sc, top, 0], KC_KB_INFW * sc, sc);
 
 	y = y + 17 * sc;
 	bw = 64 * sc;
@@ -1818,6 +2261,16 @@ void(vector scr) KC_DrawKeys =
 	{
 		foot = kc_status;
 		footc = SUI_THEME_GOOD;
+	}
+	else if (kc_fld)
+	{
+		foot = "typing: Enter takes it, Esc leaves the box";
+		footc = SUI_THEME_FOCUS;
+	}
+	else if (kc_sel == KC_CUSTOM)
+	{
+		foot = sprintf("click a key to bind \"%s\" to it   right-click a key clears it   click an action to go back", kc_cmd);
+		footc = SUI_THEME_FOCUS;
 	}
 	else if (kc_sel >= 0)
 	{
@@ -1872,7 +2325,7 @@ void(vector scr) KC_Draw =
 
 	sc = ui_cv_scale;
 	if (sc <= 0) sc = 2;
-	fit = min(scr_x * 0.96 / 380, scr_y * 0.96 / 288);
+	fit = min(scr_x * 0.96 / 568, scr_y * 0.96 / 288);   // P1400: three columns (568 wide)
 	if (sc > fit)
 		sc = max(1, floor(fit * 2) / 2);
 
@@ -1882,7 +2335,7 @@ void(vector scr) KC_Draw =
 	chipw = 44 * sc;
 	colw  = labw + 2 * chipw + 6 * sc + 12 * sc;
 	gap   = 12 * sc;
-	panw  = pad * 2 + colw * 2 + gap;
+	panw  = pad * 2 + colw * 3 + gap * 2;
 	panh  = 6 * sc + 18 * sc + 18 * rh + 4 * sc + rh + 2 * sc + 4 * sc + 10 * sc + 6 * sc;
 	p = [floor((scr_x - panw) * 0.5), floor((scr_y - panh) * 0.5), 0];
 
@@ -1896,13 +2349,16 @@ void(vector scr) KC_Draw =
 	y = p_y + 24 * sc;
 	y0 = y;
 
-	// Left column: movement and the menus. Right: saves, the run, turning.
+	// Columns: movement and menus; saves, the run and turning; tools and game keys.
 	c0 = [p_x + pad, 0, 0];
 	c1 = [p_x + pad + colw + gap, 0, 0];
-	for (i = 0; i <= 13; i = i + 1)
+	for (i = 0; i < KC_COL1; i = i + 1)
 		y = KC_ColumnRow(i, c0, y, labw, chipw, colw, rh, sc);
 	y = y0;
-	for (i = 14; i < KC_N; i = i + 1)
+	for (i = KC_COL2; i < KC_N; i = i + 1)
+		y = KC_ColumnRow(i, c1 + [colw + gap, 0, 0], y, labw, chipw, colw, rh, sc);
+	y = y0;
+	for (i = KC_COL1; i < KC_COL2; i = i + 1)
 		y = KC_ColumnRow(i, c1, y, labw, chipw, colw, rh, sc);
 	KC_Heading([c1_x, y, 0], colw, "Turning and mouse", sc);
 	y = y + rh;
