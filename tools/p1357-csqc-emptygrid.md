@@ -123,5 +123,8 @@ The guard is compiled out of dedicated-server behavior; no NanoPi lobby restart,
 backend change, release or QC Build bump is required for this client-only fix.
 Owner Tensor2 glow visibility/feel check is requested but NOT yet confirmed.
 
-No first-use or GPU improvement is claimed here. Ceaseless's separate249ms
-frame was245.682ms in VBSP PrepareFrame and is still being localized.
+No first-use or GPU improvement is claimed for P1357. Subsequent P1358 localizes
+Ceaseless's separate first-use stall to exact static-prop lighting and removes
+the duplicate eligible raw-cube query; see `p1358-prop-cube-reuse.md`. Its clean
+matched cold-lighting comparison reduces ~249 ms to ~67 ms, not hitch elimination.
+That later result does not regrade this patch's warmed five-map comparisons.
