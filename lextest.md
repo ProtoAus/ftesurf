@@ -7,7 +7,7 @@
 - Zone editor: with a custom air acceleration saved, click the already-selected mode: the air
   acceleration stays.
 
-## P1376 video defaults, P1373 glows after teleports -- owner check pending
+## P1376 video defaults, P1373 glows after teleports -- LIVE (12 lobbies + both installs, 8 Nov 14:34Z); owner check pending
 
 - Tensor2: fail or take a stage teleport, then turn round. No glow from the old place should show through
   a wall; glows in view should fade in within a moment. (Measured: 24 scripted teleports, glows drawn
