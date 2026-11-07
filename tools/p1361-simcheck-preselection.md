@@ -2,11 +2,12 @@
 
 ## Status
 
-Implemented and source-qualified on Windows and ARM. Independent final review,
-publication and live backend installation are pending. This does not supersede
-P1359's separately qualified reader artifacts or its pending NanoPi installation.
-No live helper, backend, service, gate, namespace configuration or data was changed
-by this patch's source qualification.
+Implemented, independently reviewed, published and source-qualified on Windows
+and ARM. Live backend installation remains pending; the actual-process namespace
+authentication gate is not waived. This does not supersede P1359's separately
+qualified reader artifacts or its pending NanoPi installation. No live helper,
+backend, service, gate, namespace configuration or data was changed by this patch's
+source qualification or immutable-package preparation.
 
 ## Problem and change
 
@@ -75,5 +76,26 @@ pin/tag, VM or QC Build change. The backend artifact must come from the exact
 reviewed inspected source, preserve the guarded runtime's current-data rollback,
 and separately prove destination hashes and actual current-process bindings.
 Do not ship a peer-containing dirty canonical tree or infer live installation
-from these source results. Publication and deployment will be recorded here
-when completed.
+from these source results. Deployment will be recorded here when completed.
+
+## Publication and immutable preparation — 7 November 2026
+
+- Public implementation: `fb7ed790505cfdb9a232f777d3f7eda9c4c5fbe6`;
+  engine ledger: `6f883904a63cd5b4324a72a634b6d3304e29fc5d`. Independent final
+  code/evidence/public-claims review clears the frozen bytes with no blocker.
+  Validated product and regression-test hashes remain identical after rebasing
+  over unrelated published documentation. The exact owned cfg reservation was
+  retired only after the patch heading was published.
+- A private immutable collectors84-v1 runtime package is assembled with exactly
+  `simcheck.py` changed and all other83 runtime hashes preserved. Two inherited
+  frozen source files intentionally remain at the serving profile's older
+  versions; newer public files are not silently substituted. This follows the
+  existing code-only frozen-runtime-plus-reviewed-delta procedure, not wholesale
+  deployment of the current public checkout.
+- Package assembly is NOT exact-package CLOSED-cohort, service, namespace or
+  live-current-data qualification. No PIDs, closures, clocks or authorizations
+  are frozen into the immutable package; those must be observed at the actual
+  execution boundary. Preparation must not leave maintenance gates held.
+- The required actual namespace authentication still blocks live cutover. This
+  record does not infer a live pass, deployment or recovery qualification from
+  source tests, independent review, package assembly or a host-only probe.
