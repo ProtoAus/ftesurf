@@ -38,5 +38,30 @@ the existing lead-in, not these new pixels or every original clock/TAS case.
 
 ## Delivery
 
-Pending clean-commit build and ordinary exact-artifact dual Windows/Pi deployment.
-Menus, native binaries and owner configs are not targets. No release requested.
+Installed and live artifact/readback verified 7 Nov 2026, 13:20:46 UTC.
+Source 750e1323e09d780caf2f0b7717f5600f3ea03a30; engine journal
+d5b6b0d4baab9c71a7313cb1a257f9905cfbf569. Both inspected SHAs pushed.
+Clean-commit all-three-VM build: zero warnings. Production-entry rebuild matched
+the frozen artifacts byte for byte.
+
+Both Windows installs have exact QW/CS+LNO hashes. Owner menus, cfgs and native
+binaries stayed unchanged. Pi used ordinary build.ps1 -Pi with its default
+10-second warning/restart (2 players at preflight), no force. All 12 services are
+active and in the directory, each advertising exact client folded-MD4 0xd8d404ca,
+7509142 bytes. The .prev pair matches the actual immediate preflight.
+
+- qwprogs.dat SHA256: d2f8190353fbdeeed168e6cda2e4dff30b13834b86608f24a47fcdd38dfacb43
+- csprogs.dat SHA256: 9cf62ef135cc9a3fb6df2b1bc72df46e245a7862a05a575f464e0ee3491e0407
+
+All 190 enumerated current recorder/resume payloads (258806700 bytes) were captured
+off-box before restart and every archive member read back against its hash. Each
+capture was bounded to its opened FD size: possibly live prefixes, NOT a claim that
+all writers were closed or that this was a simultaneous full snapshot. Postflight
+189 captured prefixes match; one original pathname is absent and its old inode was
+not found under the gamedir data tree. That is not proof of loss: exact captured
+preimage is retained; no automatic restoration, deletion or player-data rewrite.
+
+Disk/live advertisement proof is not new client/pixel proof. Native remained
+unlaunched at the safety boundary above; the tiny owner countdown/editor check is
+pending. Prior lead-in approval is confirmed; new caption/readability approval is
+not invented. No backend, recording/evidence semantics or release change.

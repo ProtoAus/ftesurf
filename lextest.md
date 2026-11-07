@@ -1,8 +1,9 @@
 # lextest.md — things waiting on a human
 
-## P1375 centered save countdown / one editor -- new visual check pending
+## P1375 centered save countdown / one editor -- installed BOTH Windows/12 lobbies 7 Nov; visual check pending
 
-After delivery: tap-load one save with lead-in enabled. Is the small centered
+Installed/live artifact-readback verified 13:20 UTC; tools/p1375-save-countdown.md.
+Tap-load one save with lead-in enabled. Is the small centered
 millisecond countdown readable? Holding the key beyond it should say Release to
 play, not start the run early; a delayed answer says Loading save, not a guessed
 network ETA. hud_edit -> Save & load should have ONE Lead-in field, in ms.
