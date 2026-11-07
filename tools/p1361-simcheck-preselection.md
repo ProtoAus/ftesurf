@@ -2,12 +2,14 @@
 
 ## Status
 
-Implemented, independently reviewed, published and source-qualified on Windows
-and ARM. Live backend installation remains pending; the actual-process namespace
-authentication gate is not waived. P1359's separately qualified reader update has
-now completed on the NanoPi, with fresh current-process/namespace acceptance. No live helper,
-backend, service, gate, namespace configuration or data was changed by this patch's
-source qualification or immutable-package preparation.
+Implemented, independently reviewed, published, source-qualified on Windows and
+ARM, and delivered to the NanoPi backend. Owner authenticated and executed the
+reviewed guarded namespace installation and primary cutover. Fresh read-only
+completion audit at 7 November 2026 09:25:46 UTC binds the actual namespace receipt
+to the current process PID/birth/CWD and verifies the live material, OPEN health,
+cron/importer source and current-data preservation. P1359's reader pair remains
+unchanged. Source qualification, synthetic startup and actual delivery are
+separate evidence; no native-engine or whole-fleet claim follows.
 
 ## Problem and change
 
@@ -76,7 +78,8 @@ pin/tag, VM or QC Build change. The backend artifact must come from the exact
 reviewed inspected source, preserve the guarded runtime's current-data rollback,
 and separately prove destination hashes and actual current-process bindings.
 Do not ship a peer-containing dirty canonical tree or infer live installation
-from these source results. Deployment will be recorded here when completed.
+from these source results. Actual delivery is recorded below; fallback runtime
+material was qualified, but a production fallback was not invoked or claimed.
 
 ## Publication and immutable preparation — 7 November 2026
 
@@ -96,8 +99,49 @@ from these source results. Deployment will be recorded here when completed.
   live-current-data qualification. No PIDs, closures, clocks or authorizations
   are frozen into the immutable package; those must be observed at the actual
   execution boundary. Preparation must not leave maintenance gates held.
-- P1359's owner-authenticated helper update has completed; fresh current-process
-  readback7November07:02:30UTC confirms its actual namespace receipt and required
-  helpers. P1361's own exact-package CLOSED qualification and execution-boundary
-  namespace acceptance remain pending. P1359 authorization is not a P1361 token;
-  no live P1361 pass follows from source tests, review, assembly or a host probe.
+- P1359's owner-authenticated reader update was verified at 07:02:30 UTC. The
+  subsequent P1361 qualification and delivery below required their OWN acting
+  startup controls and fresh actual-process authorization, not a forwarded P1359
+  token or an inferred pass from assembly/host-only probes.
+
+## Exact-package qualification and actual delivery — 7 November 2026
+
+- Both exact candidate and current-core fallback profiles started as real CLOSED
+  synthetic candidates. Schema26, health/listener, inventory/playstats and protected
+  source-route authentication/CSRF/site controls acted. Each profile passed13
+  explicit-reader cases, accepted a receipt, reopened OPEN and drained CLOSED.
+  All owned processes/listeners and synthetic temporary files were cleaned up.
+  Original dependency/refusal and observer failures remain separately recorded;
+  the later continuation does not relabel the failed aggregate or claim
+  continuously immutable history for an exactly restored evidence file.
+- Independent operator review found and corrected interrupted-closer cleanup and
+  canonical metadata binding defects before execution. Thirteen narrow final-source
+  control-flow/metadata-CAS falsifiers passed; these are NOT application integration
+  tests. Actual noninteractive namespace preflight correctly refused missing sudo
+  authentication BEFORE holds, shared ingress or DB access. It was not bypassed.
+- Owner authenticated, installed the guarded namespace configuration and executed
+  the primary backend cutover. The operation actually closed/drained the selected
+  predecessor, stopped known actors, promoted owned canonical bindings, started
+  the CLOSED candidate and accepted its actual process/namespace/data receipt
+  before reopening. Normal launcher, four cron routes and importer were then bound
+  to the selected primary source. No lobbies were restarted and no P1359 reader
+  files were replaced by this backend-only operation.
+- Fresh completion audit at 09:25:46 UTC: current primary process PID/birth/CWD and
+  invocation match its production and actual default-reader namespace receipts;
+  all158 bound files, runtime84, external3, control pins and actual process-view
+  hashes match. Both runtime homes/control pins are read-only where required;
+  state/control/data/log directories remain writable. Admission OPEN, health OK,
+  canonical normal launcher and all four cron/importer source bindings verified.
+- SAME CURRENT database: schema26, all44 table keys, original file identity and
+  eight identity-table digests preserved across the cutover; allowed live-presence
+  churn remains distinct. Fresh readback still matches the cutover identity
+  digests. No old database restoration, new comparison policy or history rewrite.
+- Namespace shared ingress was exactly restored, its reservation removed, and
+  collector/activation/sweep resources released. No failure/recovery artifact or
+  active owned closer remains. The live runtime, namespace guard roots and rollback
+  material are retained as production infrastructure, not disposable scratch.
+
+These checks verify this primary delivery, not hard deadlines, general resource
+bounds, latency improvement, new hardware coverage, calibration, verdict policy
+or complete anti-cheat coverage. The128 ARM source cases,13-per-profile synthetic
+reader cases and actual primary namespace/data acceptance retain their own scopes.
