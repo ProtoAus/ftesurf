@@ -1,6 +1,11 @@
 # lextest.md — things waiting on a human
 
-## P1378 sky swarms, P1380 pixel sign, P1382 missing-texture names, P1383 lobby noclip speed -- LIVE (12 lobbies + Pi engine + both installs, 7 Nov ~16:34Z); owner check pending
+## P1385 crisp map text -- owner check pending
+
+- surf_centipedes: walk into the spawn room's trigger (or `cmd ent_fire explain_text Display` with sv_cheats):
+  "Press E (+use) in any startzone to toggle the pixel shader" is sharp at its real font size, not resized.
+
+## P1378 sky swarms, P1380 pixel sign, P1382 missing-texture names, P1383 lobby noclip speed -- LIVE (12 lobbies + Pi engine + both installs, 7 Nov ~16:34Z); OWNER CONFIRMED 8 Nov: sky moves, Shift+wheel works on lobbies
 
 - surf_centipedes: look up at the sky from the stages. The skull swarms fly along their loops (one lap is about
   three minutes). Your game moves them itself; the lobby sends nothing for it.

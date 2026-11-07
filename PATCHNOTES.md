@@ -21,6 +21,10 @@
 
 ## next
 
+### P1385 Map messages in crisp text
+- Messages a map puts on screen (like surf_centipedes' "Press E (+use) in any startzone" line) and its hint boxes are drawn at a real font size on whole pixels, so they are sharp instead of resized and blurry.
+- surf_centipedes' moving sky costs your game less each frame.
+
 ### P1383 Noclip speed on the lobbies
 - Shift + mouse wheel while noclipping now changes your flying speed on the lobbies too, not only in a private game. It changes only your own speed.
 
