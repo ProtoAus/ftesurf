@@ -548,9 +548,15 @@ string(string id, float row) HE_OptDef =
 
 	if (id == "compare")
 	{
-		if (row == 0) return "hud_compare_splits|Splits|t||"
+		if (row == 0) return "hud_compare_graph|Bar graphs|t||"
+		                     "|Signed centre-zero comparison bars. Green is better; numbers retain differences beyond the bar range. Off keeps the numeric table.";
+		if (row == 1) return "hud_compare_sync|Same elapsed time|t||"
+		                     "|Your speed and energy against the reference at the same time since each leg started. Independent of ghost offset and route distance.";
+		if (row == 2) return "hud_compare_point|Closest route point|t||"
+		                     "|Your speed, energy and time to get here against the reference near your current position.";
+		if (row == 3) return "hud_compare_splits|Splits|t||"
 		                     "|At each checkpoint and stage: your time, speed and energy over theirs, and the difference.";
-		if (row == 1) return "hud_compare_segs|Segments|t||"
+		if (row == 4) return "hud_compare_segs|Segments|t||"
 		                     "|At the end of each Segments row: your energy over theirs at that point, and the difference.";
 		return "";
 	}
@@ -730,10 +736,10 @@ string(string id, float row) HE_OptDef =
 
 	if (id == "saves")
 	{
-		if (row == 0) return "cl_sl_leadin|Load lead-in|c|0 0.1 0.25 0.5 1|none;100 ms;250 ms;0.5 s;1 s"
-		                     "|A load holds you at the save at least this long, even on a tap, and until the server has answered it.";
+		if (row == 0) return "cl_sl_leadin|Load travel lead-in|c|0 0.1 0.25 0.5 1 2|none;100 ms;250 ms;0.5 s;1 s;2 s"
+		                     "|A held load plays the end of its local saved path into the save, then hands control over after the load is answered. No saved path: hold at the save instead. This is a camera preview, not replayed movement.";
 		if (row == 1) return "cl_sl_leadin|Lead-in in ms|n|1000 0 2000|ms"
-		                     "|Click and type the lead-in in milliseconds, then Enter. 0 still waits for the server's answer.";
+		                     "|Click and type travel/hold duration in milliseconds, then Enter. Try 1000 for a visible lead-in. 0 still waits for the server's answer.";
 		return "";
 	}
 	if (id == "ghost")
@@ -830,7 +836,7 @@ string(string id) HE_Tip =
 	if (id == "labels")   return "What is written on the run lines: each run's name, and the numbers at its marks.";
 	if (id == "saves")    return "How a load from your saves (the load key) holds you before you move.";
 	if (id == "ghost")    return "A ghost of your PB, or of a ticked run, racing you from the moment you leave the start.";
-	if (id == "compare")  return "You against the ghost's line where you are: time to get here, speed and energy. Green is ahead.";
+	if (id == "compare")  return "Two comparisons to the same displayed reference: same elapsed time, and closest route point. Green is better; less time is ahead.";
 	if (id == "graph")    return "Speed over time for the runs whose LINE box is ticked on the leaderboard. On screen only while one is.";
 	if (id == "mouse")    return "Your keys and your mouse as turn. Replays and spectate show the player's.";
 	if (id == "chat")     return "The chat box: its size and how long chat stays. Open chat (your chat key) to select and copy.";
@@ -2300,12 +2306,14 @@ void() HE_ResetAll =
 	localcmd("seta hud_lines_order 4\nseta hud_linegraph_plots 3\n");
 	localcmd("seta hud_lines_demo -1\nseta hud_lines_demo_far -1\n");      // Patch 745
 	localcmd("seta hud_watch_path_fails 0\nseta hud_watch_skipfail 1\n");   // Patch 778
-	localcmd("seta hud_compare_splits 1\nseta hud_compare_segs 1\n");       // Patch 779
+	localcmd("seta hud_compare_splits 1\nseta hud_compare_segs 1\n");
+	localcmd("seta hud_compare_graph 1\nseta hud_compare_sync 1\nseta hud_compare_point 1\n");
+	localcmd("seta hud_compare_speed_range 500\nseta hud_compare_energy_range 500\nseta hud_compare_time_range 2\n");
 	localcmd("seta hud_ghost 3\nseta hud_ghost_sync 0\nseta hud_ghost_pb 1\nseta hud_ghost_lines 1\n"
 	         "seta hud_ghost_offset 0.5\nseta hud_ghost_alpha 0.25\nseta hud_ghost_dither 1\nseta hud_ghost_near 256\n"
 	         "seta hud_ghost_names 1\n");
 	localcmd("seta hud_chat 1\n");          // Patch 798: default.cfg never sets it
-	localcmd("seta cl_sl_leadin 0.1\n");    // P1227: only the game code registers it
+	localcmd("seta cl_sl_leadin 1\n"); // only the game code registers it
 	// Patch 824: the Chat pane's, literals for the same reason (only the game code registers them).
 	localcmd("seta hud_chat_size 20\nseta hud_chat_w 0.3\nseta hud_chat_rows 12\nseta hud_chat_full 1\n"
 	         "seta hud_chat_lines 6\nseta hud_chat_time 30\nseta hud_chat_bg 0.5\n");

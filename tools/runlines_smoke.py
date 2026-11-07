@@ -34,6 +34,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('cfg', type=pathlib.Path)
     ap.add_argument('--content', type=pathlib.Path, default=pathlib.Path('C:/FTESurf'))
+    ap.add_argument('--working-directory', type=pathlib.Path,
+                    help='Native process CWD, independent of minimal read-only content (default content)')
     ap.add_argument('--client', type=pathlib.Path, help='Explicit installed client for compatibility controls')
     ap.add_argument('--client-arg', action='append', default=[],
                     help='extra native client arguments, e.g. "+set rec_upload 0" for early-cvar controls')
@@ -60,6 +62,8 @@ def main():
                     help='with --dedicated: extra server arguments, e.g. "+set sv_minping 120"')
     ap.add_argument('--timeout', type=int, default=150)
     a = ap.parse_args()
+    if a.output_dir is not None:
+        pathlib.Path(a.output_dir).mkdir(parents=True, exist_ok=True)
     rig = pathlib.Path(tempfile.mkdtemp(prefix='ftesurf-runlines-', dir=a.output_dir))
     gd = rig / 'ftesurf'
     gd.mkdir()
@@ -149,12 +153,12 @@ def main():
             extra = [word for arg in a.server_arg for word in shlex.split(arg)]
             server = subprocess.Popen([str(a.server), *common, '+sv_public', '0',
                                        '-port', str(a.port), '+log_enable', '1', '+log_name',
-                                       'runlines_server', *extra, '+map', a.map], cwd=a.content,
+                                       'runlines_server', *extra, '+map', a.map], cwd=a.working_directory or a.content,
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         executable = a.client or a.content / 'ftesurf64.exe'
         client_extra = [word for arg in a.client_arg for word in shlex.split(arg)]
         client = subprocess.Popen([str(executable), *common, *client_extra, '-window',
-                                   '+exec', 'cfg/test/runlines_smoke.cfg'], cwd=a.content,
+                                   '+exec', 'cfg/test/runlines_smoke.cfg'], cwd=a.working_directory or a.content,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         client.wait(timeout=a.timeout)
         log = gd / 'logs/runlines_smoke.log'

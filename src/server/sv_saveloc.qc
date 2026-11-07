@@ -568,6 +568,10 @@ float(entity p) SV_MapMoveHeld =
   stale value can never be read back out of it.
 */
 .vector rec_sl_holdvel;
+.float rec_sl_leadeye;
+.float rec_sl_leaduntil;
+.string rec_sl_leadpose;          // zoned atomic loaded endpoint; never body/evidence authority
+void(entity e) SV_SaveLeadEyeDetach;
 
 /*
   Engine Patch 142.  Written by QC, consumed and cleared by the engine: it is
@@ -3147,12 +3151,24 @@ void(entity e) SV_SaveSyncDelAll;
 // One save/load event out to the client.  See STAT_FS_SLSEQ.
 void(entity e, float op, float id) SV_SaveLocEvent =
 {
-	local float r;
+	local float r, duck;
 	// FS_SlopPack, not a literal radix -- see STAT_FS_SLOP.  The three decoders
 	// are in three other files and one of them is in another VM.
 	e.rec_sl_slop = FS_SlopPack(op, id);
 	e.rec_sl_eventtag = e.rec_sl_requesttag;
 	e.rec_sl_slseq = e.rec_sl_slseq + 1;
+	if (strlen(e.rec_sl_leadpose)) strunzone(e.rec_sl_leadpose);
+	e.rec_sl_leadpose = "";
+	if (op == SLOP_LOADED)
+	{
+		duck = ((e.pmove_flags & PMF_DUCKED) != 0);
+		// Placement queues posture; pmove_flags still describes the abandoned body.
+		if (e.run_forceduck == FD_DUCK || e.run_forceduck == FD_STAND)
+			duck = (e.run_forceduck == FD_DUCK);
+		e.rec_sl_leadpose = strzone(strcat(sprintf("L %.0f %g ", e.rec_sl_slseq, id),
+			sprintf("%.9g %.9g %.9g %.9g %.9g %d", e.origin_x, e.origin_y, e.origin_z,
+			        e.v_angle_x, e.v_angle_y, duck)));
+	}
 	if (op == SLOP_SAVED && e.rec_sl_requesttag > 0)
 	{
 		r = SL_Base(SL_Blk(e)) + e.rec_sl_index - 1;
@@ -4400,6 +4416,8 @@ void(entity e, float n) SV_SaveLocLoad =
 	*/
 	if (e.rec_sl_hold)
 	{
+		SV_SaveLeadEyeDetach(e);
+		e.rec_sl_leaduntil = time + 5;
 		e.rec_sl_holdrow = r;
 		e.velocity = '0 0 0';
 
@@ -4598,6 +4616,7 @@ void(entity e, float n) SV_SaveLocLoad =
 */
 void(entity e) SV_SaveLocRelease =
 {
+	SV_SaveLeadEyeDetach(e);
 	if (!e.rec_sl_hold)
 		return;
 
@@ -4690,6 +4709,7 @@ void(entity e, float down) SV_SaveLocHold =
 		return;
 
 	e.rec_sl_hold    = TRUE;
+	e.rec_sl_leaduntil = time + 5; // only this genuine loaded hold may own a preview eye
 	e.rec_sl_holdrow = SL_Base(SL_Blk(e)) + e.rec_sl_index - 1;
 	e.rec_sl_holdmove = e.movetype;
 
@@ -5692,6 +5712,9 @@ void(entity e) SV_SaveLocHoldFrame =
 {
 	local vector o;
 
+	if (e.rec_sl_leadeye)
+	if (!e.rec_sl_hold || time >= e.rec_sl_leaduntil)
+		SV_SaveLeadEyeDetach(e);
 	if (!e.rec_sl_hold)
 		return;
 	SV_SaveLocAlloc();

@@ -21,6 +21,11 @@
 
 ## next
 
+### P1366 Comparison bars and held-save travel
+- Compare speed and energy both at the same elapsed time and at the nearest point on the displayed reference. Centered bars keep the numeric differences visible.
+- Travel through the saved path into a held save, then return control at the saved point. Missing local paths safely keep the ordinary hold.
+- Keep segmented local bests separate from clean personal bests, so a faster segmented result does not disappear behind a clean-run receipt.
+
 ### P1365 Fewer first-play shader stutters
 - Shaders that Tensor2, Ceaseless, Boreas, Garden, Demise and similar maps need with full water and glass effects are now prepared while the map loads, instead of the first time you see them.
 

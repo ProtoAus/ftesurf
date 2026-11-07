@@ -276,7 +276,7 @@ void() Results_RegisterCvars =
 void(float track, float leg, float ticks, float uncert,
      __inout float rank, __inout float of) Results_Rank =
 {
-	local float h, n, i, cut, dot, t, faster, total;
+	local float h, n, i, cut, dot, t, faster, total, flags;
 	local string fn, base, tagw;
 
 	rank = 0;
@@ -317,8 +317,11 @@ void(float track, float leg, float ticks, float uncert,
 		if (FS_TagFromName(tagw) != RT_LOBBY)   // build 57, stage T
 			continue;
 		if (FS_TagFromName(tagw) == RT_LOBBY)
-		if (((LT_FileFlags(fn) & TF_UNCERT) != 0) != (uncert != 0))
-			continue;
+		{
+			flags = LT_FileFlags(fn);
+			if (FS_RunClass(flags) != RC_CLEAN) continue;
+			if (((flags & TF_UNCERT) != 0) != (uncert != 0)) continue;
+		}
 
 		t = FS_NameTicks(base);
 		if (t <= 0)

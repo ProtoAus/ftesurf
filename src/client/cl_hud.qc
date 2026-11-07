@@ -2140,7 +2140,7 @@ vector() HUD_Feet =
 	  pmove_org is the body either way -- setproperty writes r_refdef.vieworg and
 	  never pv->simorg -- so the comparison below is body against body.
 	*/
-	if (rec_gh_on || spc_cam)           // Patch 385: spectate's camera too
+	if (rec_gh_on || spc_cam || sl_lead_applied) // detached eyes never become the body source
 		ref = rec_gh_bodyfeet;
 	else
 	{

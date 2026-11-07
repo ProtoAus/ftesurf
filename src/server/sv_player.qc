@@ -9,6 +9,32 @@
 ===========================================================================
 */
 
+// A save preview borrows the invisible visibility marker, never the player's body.
+void(entity e) SV_SaveLeadEyeDetach =
+{
+	if (!e.rec_sl_leadeye) return;
+	e.rec_sl_leadeye = FALSE;
+	if (!e.rec_wt_hold && !e.rec_gh_on && !e.run_sp_phase)
+		SV_ViewEyeDetach(e); // another camera mode owns the marker if it is active
+};
+
+void(entity e, float count) SV_SaveLeadEyeCmd =
+{
+	local vector org;
+
+	if (!e.run_inserver || strcmp(e.classname, "player")) return;
+	if (count == 1) { SV_SaveLeadEyeDetach(e); return; }
+	if (count != 4) return;
+	if (!e.rec_sl_hold || time >= e.rec_sl_leaduntil) return;
+	if (e.rec_wt_hold || e.rec_gh_on || e.run_sp_phase || e.run_ms_phase) return;
+	org = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
+	if (!(org_x >= -1000000 && org_x <= 1000000)) return;
+	if (!(org_y >= -1000000 && org_y <= 1000000)) return;
+	if (!(org_z >= -1000000 && org_z <= 1000000)) return;
+	e.rec_sl_leadeye = TRUE;
+	SV_ViewEyeAt(e, org);
+};
+
 .float  ftesurf_lastspawn;
 void(entity e, float settled) SV_TASReplayFrame;
 void(entity e) SV_TASHistoryReset;
@@ -437,6 +463,9 @@ void() ClientDisconnect =
 	self.run_own = FALSE;
 	SV_WatchRelease(self);              // Patch 477: or its view entity outlives the slot
 	SV_ViewEyeDetach(self);             // round 26: a ghost's too (the release returns without a pin)
+	self.rec_sl_hold = self.rec_sl_leadeye = self.rec_sl_leaduntil = 0; // revoke before edict reuse
+	if (strlen(self.rec_sl_leadpose)) strunzone(self.rec_sl_leadpose);
+	self.rec_sl_leadpose = "";
 	SV_TpEyeDetach(self);               // P1190
 	self.run_inserver = FALSE;          // round 27
 
@@ -529,6 +558,8 @@ void() SpectatorDisconnect =
 	Account_Disconnect(self);
 	VM_SVConnect(self);
 	SV_ViewEyeDetach(self);
+	if (strlen(self.rec_sl_leadpose)) strunzone(self.rec_sl_leadpose);
+	self.rec_sl_leadpose = "";
 };
 
 void() SpectatorThink = { Account_Think(self); };
@@ -2240,6 +2271,7 @@ void(string cmd) SV_ParseClientCommand =
 	  needs.  A player who is not watching and not ghosting has no eye to move,
 	  and SV_ViewEyeAt would otherwise spawn one that nothing ever removes.
 	*/
+	if (c == "rec_savepos") { SV_SaveLeadEyeCmd(self, cmdargc); return; }
 	if (c == "rec_watchpos")
 	{
 		// Patch 382: while spectating it claims the eye for SPEC_EYE_STALE; bare,

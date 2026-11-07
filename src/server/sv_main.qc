@@ -510,6 +510,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_SLSAVEACK,      EV_FLOAT, rec_sl_answer_tag);
 	clientstat(STAT_FS_SLSAVEOP,       EV_FLOAT, rec_sl_answer_op);
 	clientstat(STAT_FS_SLSAVETICK,     EV_FLOAT, rec_sl_answer_tick);
+	clientstat(STAT_FS_SLLEAD,         EV_STRING, rec_sl_leadpose);
 	clientstat(STAT_FS_PIN,            EV_FLOAT, rec_wt_pin);    // Patch 477
 
 	/*
@@ -566,6 +567,7 @@ void() worldspawn =
 	// P924: this progs declares input_cmd_later; clients may mirror sv_tickparts.
 	forceinfokey(world, "fs_tickparts", "1");
 	forceinfokey(world, "fs_sourcephase", "1");
+	forceinfokey(world, "fs_savelead", "1"); // bounded held-save presentation eye, not a watch pin
 	vbsp_conveyor_any = 0;
 	SV_MapTierInit();
 	// worldspawn is the first entity in the lump, so this zeroes the spawn

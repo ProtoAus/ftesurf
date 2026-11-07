@@ -229,7 +229,7 @@ void() SaveLoc_RegisterCvars =
 	registercommand("-sl_hold");    // the `-` form on release (keys.c:4199-4203)
 
 	registercvar("cl_slpredict", "1", CVAR_ARCHIVE);    // Patch 430: draw the load at once
-	registercvar("cl_sl_leadin", "0.1", CVAR_ARCHIVE);  // P1227: seconds a load holds you at least
+	registercvar("cl_sl_leadin", "1", CVAR_ARCHIVE); // visual pre-roll/minimum hold; existing preferences retained
 };
 
 /*
@@ -348,12 +348,19 @@ void() SaveLoc_PredictLoad =
 	rec_sl_pv_on  = TRUE;
 };
 
+void() SaveLead_Clear;
+void(float seq, float id) SaveLead_Begin;
+void() SaveLead_NoPath;
+float() SaveLead_Done;
+float() SaveLead_Camera;
+
 // CSQC_UpdateView, after clearscene and the spectate camera.
 void() SaveLoc_Camera =
 {
 	local float vh;
 	local vector vo, eye;
 
+	if (SaveLead_Camera()) return;
 	if (!rec_sl_pv_on)
 		return;
 	if (cltime - rec_sl_pv_t0 > SL_PV_TIMEOUT || Spec_Active() || rec_wt_on)
@@ -428,6 +435,7 @@ void() SaveLoc_Release =
 
 	if (!rec_sl_holding)
 		return;
+	SaveLead_Clear();
 	rec_sl_holding = FALSE;
 	rec_sl_upwait = FALSE;
 	rec_sl_holdkey = 0;
@@ -574,6 +582,7 @@ void(float scan) SaveLoc_LoadKey =
 		return;
 	}
 	rec_sl_wophold = FALSE;
+	SaveLead_Clear();
 	if (!Trail_RequestBusy())
 		SaveLoc_PredictLoad();          // queued saves can change the selected row
 	SaveLoc_Cmd("sl_load");
@@ -601,6 +610,8 @@ float() SaveLoc_LeadDone =
 	lead = bound(0, cvar("cl_sl_leadin"), 2);
 	if (t < lead)
 		return FALSE;
+	if (!SaveLead_Done())
+		return FALSE;
 	if (rec_sl_wophold)
 		answered = WarpOp_LoadAnswered();
 	else
@@ -622,13 +633,6 @@ void() SaveLoc_HoldFrame =
 	WarpOp_Frame();
 	if (!rec_sl_holding)
 		return;
-	if (rec_sl_upwait)
-	{
-		if (SaveLoc_LeadDone())
-			SaveLoc_Release();
-		return;
-	}
-
 	if (rec_sl_wophold && WarpOp_LoadRefused())
 	{
 		SaveLoc_Release();
@@ -645,6 +649,13 @@ void() SaveLoc_HoldFrame =
 			SaveLoc_Release();
 			return;
 		}
+	}
+	// Cancellation/hold loss is authoritative even during a tapped-load minimum wait.
+	if (rec_sl_upwait)
+	{
+		if (SaveLoc_LeadDone())
+			SaveLoc_Release();
+		return;
 	}
 	if (!rec_sl_holdrep)
 		return;                 // nothing has repeated, so silence proves nothing

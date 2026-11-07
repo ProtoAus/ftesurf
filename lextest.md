@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1366 comparison bars and save travel -- pending owner acceptance
+
+Delivery is recorded in tools/p1366-compare-save.md, not assumed here. With a displayed
+reference and hud_compare1, check the same-elapsed and closest-point bars are readable.
+Then tap and hold-load one familiar save with its local saved path: does travel end at
+the correct point/stance and hand control back smoothly? cl_sl_leadin controls0..2seconds;
+0 disables travel. One ordinary save/load is enough for this visual/feel check.
+26 actual helper assertions and server endpoint publication pass; no owner confirmation.
+The reported Fiellu cursor placement, saved-zero-clock and old cold-boundary issues are
+NOT declared fixed by this UI patch; do not substitute this check for their falsifiers.
+
 ## P1363/P1364/P1365 Tensor2 sprite traces, Ceaseless prop lighting, first-play shaders -- NOT YET INSTALLED; owner check pending
 
 Pushed 7 Nov; the clean full build for the installs was stopped by Claude Code's low-memory guard

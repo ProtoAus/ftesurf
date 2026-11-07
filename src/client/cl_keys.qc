@@ -66,6 +66,7 @@ float run_ps_release;            // the game is suppressing +forward right now
   SaveLoc_LoadKey / SaveLoc_Release, read by HUD_UpdateLatch and HUD_DrawDebug.
 */
 float rec_sl_holding;            // the load key is down, as of this frame
+float sl_lead_applied;           // this frame's detached render eye; HUD still reads captured body
 
 /*
   BUILD 24: THE REPLAY OVERRIDE, and it lives here for the same reason
@@ -222,7 +223,7 @@ void() PVS_Forget =
 	ui_pvs_at   = 0;
 };
 
-void(vector org) PVS_Publish =
+void(vector org, string command) PVS_PublishCmd =
 {
 	local float dt;
 
@@ -242,7 +243,12 @@ void(vector org) PVS_Publish =
 
 	// %g and not %.2f: a PVS lookup cannot tell the difference and the shorter
 	// string is the one that goes over the wire fifteen times a second.
-	localcmd(sprintf("cmd rec_watchpos %g %g %g\n", org_x, org_y, org_z));
+	localcmd(sprintf("cmd %s %g %g %g\n", command, org_x, org_y, org_z));
+};
+
+void(vector org) PVS_Publish =
+{
+	PVS_PublishCmd(org, "rec_watchpos");
 };
 
 #define FSK_FWD     0

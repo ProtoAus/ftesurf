@@ -1226,6 +1226,7 @@ string() SaveLoc_SaveCommand =
 
 void() SaveLoc_LoadContext =
 {
+	SaveLead_Clear(); // new load cancels the previous preview and visibility eye
 	if (rw_on)
 		Rewind_Abandon();
 	if (rec_wt_open)

@@ -23,7 +23,8 @@
 #define CMP_FAR    384          // further than this from the line: not comparable
 #define CMP_NEWRUN 0.25         // a clock this far below the last match's: a new attempt
 
-float  cmp_ok;                  // this frame's live match
+float  cmp_ok;                  // this frame's closest-point match
+float  cmp_syncok, cmp_syncs, cmp_synce; // independent same-elapsed reference
 float  cmp_dist;
 float  cmp_yt, cmp_ys, cmp_ye;  // you: leg time, speed, energy
 float  cmp_tt, cmp_ts, cmp_te;  // them, at the matched point
@@ -46,6 +47,12 @@ void() Cmp_RegisterCvars =
 	registercvar("hud_compare_size",   "0",      CVAR_ARCHIVE);
 	registercvar("hud_compare_splits", "1",      CVAR_ARCHIVE);
 	registercvar("hud_compare_segs",   "1",      CVAR_ARCHIVE);
+	registercvar("hud_compare_graph",  "1",      CVAR_ARCHIVE);
+	registercvar("hud_compare_sync",   "1",      CVAR_ARCHIVE);
+	registercvar("hud_compare_point",  "1",      CVAR_ARCHIVE);
+	registercvar("hud_compare_speed_range",  "500", CVAR_ARCHIVE);
+	registercvar("hud_compare_energy_range", "500", CVAR_ARCHIVE);
+	registercvar("hud_compare_time_range",   "2",   CVAR_ARCHIVE);
 	registercommand("compare");
 	cmp_lslot = cmp_cur = cmp_spfrom = -1;
 };
@@ -213,25 +220,57 @@ float(float s) Cmp_E =
 	return cmp_mz + (cmp_ms * cmp_ms + cmp_mvz * cmp_mvz) / (2 * Cmp_G(s));
 };
 
-// You and the line, here and now: this frame's choice only (a running clock).
+// Same start/leg elapsed clock, independent of the spatial cursor and ghost offset.
+// No extrapolation or invented sample while travelling across a teleport gap.
+float(float s, float anchor, float elapsed) Cmp_ClockSample =
+{
+	local float b, ia, ib, i, j, t, f;
+	local vector p0, p1;
+
+	b = LN_B(s);
+	ia = ln_ia[s]; ib = ln_ib[s];
+	if (!ln_on[s] || ib <= ia || elapsed < 0) return FALSE;
+	t = anchor + elapsed;
+	if (t < ln_t[b + ia] || t > ln_t[b + ib]) return FALSE;
+	i = bound(ia, Line_Find(s, t), ib);
+	j = max(ia, i - 1);
+	f = 1;
+	if (ln_t[b + i] > ln_t[b + j])
+		f = bound(0, (t - ln_t[b + j]) / (ln_t[b + i] - ln_t[b + j]), 1);
+	if (ln_brk[b + i] && f > 0 && f < 1) return FALSE;
+	p0 = ln_pos[b + j]; p1 = ln_pos[b + i];
+	cmp_ms = ln_spd[b + j] + (ln_spd[b + i] - ln_spd[b + j]) * f;
+	cmp_mvz = ln_vz[b + j] + (ln_vz[b + i] - ln_vz[b + j]) * f;
+	cmp_mz = p0_z + (p1_z - p0_z) * f;
+	return TRUE;
+};
+
+// Both comparisons use this frame's same anchored line, gravity and energy zero.
 float() Cmp_Live =
 {
 	local vector ss;
 
-	cmp_ok = FALSE;
+	cmp_ok = cmp_syncok = FALSE;
 	if (Cmp_Off() || rg_cmpslot < 0)
-		return FALSE;
-	if (!Cmp_Match(rg_cmpslot, rg_cmpanc, HUD_Feet()))
 		return FALSE;
 	ss = HUD_SplitSample();
 	cmp_yt = rg_now - rg_cmpam;
 	cmp_ys = ss_x;
 	cmp_ye = ss_y;
-	cmp_tt = cmp_mt - rg_cmpanc;
-	cmp_ts = cmp_ms;
-	cmp_te = Cmp_E(rg_cmpslot) - HUD_EnergyRef();
-	cmp_ok = TRUE;
-	return TRUE;
+	if (Cmp_ClockSample(rg_cmpslot, rg_cmpanc, cmp_yt))
+	{
+		cmp_syncs = cmp_ms;
+		cmp_synce = Cmp_E(rg_cmpslot) - HUD_EnergyRef();
+		cmp_syncok = TRUE;
+	}
+	if (Cmp_Match(rg_cmpslot, rg_cmpanc, HUD_Feet()))
+	{
+		cmp_tt = cmp_mt - rg_cmpanc;
+		cmp_ts = cmp_ms;
+		cmp_te = Cmp_E(rg_cmpslot) - HUD_EnergyRef();
+		cmp_ok = TRUE;
+	}
+	return (cmp_ok || cmp_syncok);
 };
 
 // As the Splits list names the row (Timer_DrawSplits).
@@ -391,8 +430,9 @@ void(float row) Cmp_Seg =
 	cmp_sgat = 0;
 	if (!cvar("hud_compare") || !cvar("hud_compare_segs"))
 		return;
-	if (!Cmp_Live())
-		return;
+	Cmp_Live();
+	if (!cmp_ok)
+		return; // Segments compare the same place, never the same-time fallback
 	cmp_sgk   = seq_kind[row];
 	cmp_sgsub = seq_sub[row];
 	cmp_sgy   = seq_eend[row] - seq_eref[row];
@@ -420,6 +460,67 @@ vector(float d, float secs) Cmp_Col =
 	if (d < (secs ? -0.005 : -0.5))
 		return TC_BEHIND;
 	return '0.65 0.67 0.72';
+};
+
+// Signed centre-zero bars: fixed scales, numeric value retained beyond saturation.
+float(vector p, float y, float sz, string label, float d, float range, float secs) Cmp_Bar =
+{
+	local float w, h, f, cx;
+	local vector col;
+
+	w = sz * 24;
+	h = max(2, sz * 0.3);
+	if (!(range > 0 && range < 1000000)) range = secs ? 2 : 500;
+	col = Cmp_Col(d, secs);
+	HUD_Text([p_x, y, 0], label, sz, '0.65 0.70 0.78', 1);
+	HUD_TextR([p_x + w, y, 0], strcat(Cmp_Diff(d, secs), secs ? " s" : ""), sz, col, 1);
+	y = y + sz * 1.05;
+	cx = p_x + w * 0.5;
+	drawfill([p_x, y, 0], [w, h, 0], '0.12 0.14 0.18', 0.9, 0);
+	f = bound(-1, d / range, 1) * w * 0.5;
+	if (f > 0) drawfill([cx, y, 0], [f, h, 0], col, 0.95, 0);
+	else if (f < 0) drawfill([cx + f, y, 0], [-f, h, 0], col, 0.95, 0);
+	drawfill([cx, y - 1, 0], [1, h + 2, 0], '0.7 0.74 0.8', 0.9, 0);
+	return y + h + sz * 0.4;
+};
+
+float(vector p, float y, float sz, float lh) Cmp_Graph =
+{
+	if (cvar("hud_compare_sync"))
+	{
+		HUD_Text([p_x, y, 0], "SAME ELAPSED TIME", sz, '0.65 0.85 1', 1);
+		y = y + lh;
+		if (cmp_syncok)
+		{
+			HUD_Text([p_x, y, 0], strcat("both at ", Time_MsString(Time_TickMs(cmp_yt, 1))), sz, '0.55 0.60 0.68', 0.9);
+			y = y + lh;
+			y = Cmp_Bar(p, y, sz, "speed (u/s)", rint(HUD_Round(cmp_ys)) - rint(HUD_Round(cmp_syncs)), cvar("hud_compare_speed_range"), FALSE);
+			y = Cmp_Bar(p, y, sz, "energy (e)", rint(HUD_Round(cmp_ye)) - rint(HUD_Round(cmp_synce)), cvar("hud_compare_energy_range"), FALSE);
+		}
+		else
+		{
+			HUD_Text([p_x, y, 0], "outside reference time", sz, '0.55 0.60 0.68', 0.9);
+			y = y + lh;
+		}
+		y = y + lh * 0.3;
+	}
+	if (cvar("hud_compare_point"))
+	{
+		HUD_Text([p_x, y, 0], "CLOSEST ROUTE POINT", sz, '0.65 0.85 1', 1);
+		y = y + lh;
+		if (cmp_ok)
+		{
+			y = Cmp_Bar(p, y, sz, "time gap", cmp_yt - cmp_tt, cvar("hud_compare_time_range"), TRUE);
+			y = Cmp_Bar(p, y, sz, "speed (u/s)", rint(HUD_Round(cmp_ys)) - rint(HUD_Round(cmp_ts)), cvar("hud_compare_speed_range"), FALSE);
+			y = Cmp_Bar(p, y, sz, "energy (e)", rint(HUD_Round(cmp_ye)) - rint(HUD_Round(cmp_te)), cvar("hud_compare_energy_range"), FALSE);
+		}
+		else
+		{
+			HUD_Text([p_x, y, 0], "off reference route", sz, '0.55 0.60 0.68', 0.9);
+			y = y + lh;
+		}
+	}
+	return y + lh * 0.3;
 };
 
 /*
@@ -539,16 +640,21 @@ void(vector scr) Cmp_Draw =
 	else
 		HUD_Text([p_x, y, 0], strcat("vs ", s), sz, '0.65 0.85 1.00', 1);
 	y = y + lh;
-	HUD_TextR([p_x + sz * CMP_CW * CMP_X2, y, 0], "time", sz, '0.55 0.60 0.68', 0.85);
-	HUD_TextR([p_x + sz * CMP_CW * CMP_X3, y, 0], "u/s", sz, '0.55 0.60 0.68', 0.85);
-	HUD_TextR([p_x + sz * CMP_CW * CMP_X4, y, 0], "e", sz, '0.55 0.60 0.68', 0.85);
-	y = y + lh * 1.2;
+	if (!live || !cvar("hud_compare_graph"))
+	{
+		HUD_TextR([p_x + sz * CMP_CW * CMP_X2, y, 0], "time", sz, '0.55 0.60 0.68', 0.85);
+		HUD_TextR([p_x + sz * CMP_CW * CMP_X3, y, 0], "u/s", sz, '0.55 0.60 0.68', 0.85);
+		HUD_TextR([p_x + sz * CMP_CW * CMP_X4, y, 0], "e", sz, '0.55 0.60 0.68', 0.85);
+		y = y + lh * 1.2;
+	}
 
-	if (live)
+	if (live && cvar("hud_compare_graph"))
+		y = Cmp_Graph(p, y, sz, lh);
+	else if (cmp_ok)
 	{
 		cmp_byt = cmp_yt;  cmp_bys = cmp_ys;  cmp_bye = cmp_ye;
 		cmp_btt = cmp_tt;  cmp_bts = cmp_ts;  cmp_bte = cmp_te;
-		y = Cmp_Block(p, y, sz, lh, "now");
+		y = Cmp_Block(p, y, sz, lh, "closest");
 	}
 	if (sp)
 	{
@@ -575,10 +681,18 @@ float(string cmd) Cmp_ConsoleCommand =
 		print(sprintf("compare: no live match (line slot %g, run clock %.3f)\n", rg_cmpslot, rg_now));
 	else
 	{
-		print(sprintf("compare: vs slot %g \"%s\" %.0f u off\n", rg_cmpslot,
-		              RG_SlotName(rg_cmpslot), cmp_dist));
-		print(sprintf("compare: now  you %.3f %.0f %.0f  them %.3f %.0f %.0f\n",
-		              cmp_yt, cmp_ys, cmp_ye, cmp_tt, cmp_ts, cmp_te));
+		if (cmp_ok)
+			print(sprintf("compare: vs slot %g \"%s\" %.0f u off\n", rg_cmpslot,
+			              RG_SlotName(rg_cmpslot), cmp_dist));
+		else
+			print(sprintf("compare: vs slot %g \"%s\" same-time only (no spatial match)\n",
+			              rg_cmpslot, RG_SlotName(rg_cmpslot)));
+		if (cmp_ok)
+			print(sprintf("compare: closest  you %.3f %.0f %.0f  them %.3f %.0f %.0f\n",
+			              cmp_yt, cmp_ys, cmp_ye, cmp_tt, cmp_ts, cmp_te));
+		if (cmp_syncok)
+			print(sprintf("compare: same-time %.3f  you %.0f %.0f  them %.0f %.0f\n",
+			              cmp_yt, cmp_ys, cmp_ye, cmp_syncs, cmp_synce));
 	}
 	if (cmp_spat > 0)
 		print(sprintf("compare: split %s  you %.3f %.0f %.0f  them %.3f %.0f %.0f\n",

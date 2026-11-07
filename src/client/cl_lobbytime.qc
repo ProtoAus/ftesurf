@@ -360,9 +360,9 @@ float(string fn) LT_FileFlags =
   one lobby.pb and the card's delta are measured against.  `uncert` picks the
   class; the flags header decides it (at most two files are opened).
 */
-float(string map, float track, float leg, float mine, float uncert) LT_BestOnLegC =
+float(string map, float track, float leg, float mine, float uncert, float rclass) LT_BestClassOnLeg =
 {
-	local float h, n, i, best, t, cut, dot;
+	local float h, n, i, best, t, cut, dot, flags;
 	local string fn, base, tagw;
 
 	if (map == "" || track < 0 || leg < 0)
@@ -403,13 +403,22 @@ float(string map, float track, float leg, float mine, float uncert) LT_BestOnLeg
 			continue;
 		if (mine > 0 && t == mine)
 			continue;
-		if (((LT_FileFlags(fn) & TF_UNCERT) != 0) != (uncert != 0))
+		flags = LT_FileFlags(fn);
+		if (FS_RunClass(flags) != rclass)
+			continue;
+		if (((flags & TF_UNCERT) != 0) != (uncert != 0))
 			continue;
 		if (best == 0 || t < best)
 			best = t;
 	}
 	search_end(h);
 	return best;
+};
+
+// Existing callers and lobby.pb remain CLEAN-only, independently of segmented PBs.
+float(string map, float track, float leg, float mine, float uncert) LT_BestOnLegC =
+{
+	return LT_BestClassOnLeg(map, track, leg, mine, uncert, RC_CLEAN);
 };
 
 // The certified best: what the card, the banner and lobby.pb measure against.
@@ -430,9 +439,9 @@ float(string map, float track, float leg, float mine) LT_BestOnLeg =
   the pruner matches its own, rather than by rebuilding the full path a second
   way.
 */
-void(string map, float track, float leg, string keep, float uncert) LT_Prune =
+void(string map, float track, float leg, string keep, float uncert, float rclass) LT_Prune =
 {
-	local float h, n, i, kl;
+	local float h, n, i, kl, flags;
 	local string fn;
 
 	h = search_begin(sprintf("%s*_%s.rec", FS_RunDir(map, track, leg),
@@ -449,8 +458,11 @@ void(string map, float track, float leg, string keep, float uncert) LT_Prune =
 		if (strlen(fn) >= kl)
 		if (substring(fn, strlen(fn) - kl, kl) == keep)
 			continue;               // the file just written
-		if (((LT_FileFlags(fn) & TF_UNCERT) != 0) != (uncert != 0))
-			continue;               // the other class keeps its own best
+		flags = LT_FileFlags(fn);
+		if (FS_RunClass(flags) != rclass)
+			continue;               // never prune the other run class
+		if (((flags & TF_UNCERT) != 0) != (uncert != 0))
+			continue;               // the other certification keeps its own best
 
 		fremove(fn);
 		dprint(sprintf("lobbytime: removed %s\n", fn));
@@ -555,10 +567,13 @@ void(string map, float track, float leg, float ticks) LT_PBWrite =
 */
 void(float track, float leg, float ticks, float flags) LT_Keep =
 {
-	local float prev, fh, tick, uncert;
+	local float prev, fh, tick, uncert, rclass;
 	local string map, dst, nm, kind;
 
 	if (track < 0 || leg < 0 || ticks <= 0)
+		return;
+	rclass = FS_RunClass(flags);
+	if (rclass != RC_CLEAN && rclass != RC_SEGMENT)
 		return;
 
 	map = serverkey("map");
@@ -567,10 +582,10 @@ void(float track, float leg, float ticks, float flags) LT_Keep =
 
 	tick = Timer_Tick();
 	uncert = (flags & TF_UNCERT) != 0;
-	prev = LT_BestOnLegC(map, track, leg, 0, uncert);
-	kind = "lobby best";
+	prev = LT_BestClassOnLeg(map, track, leg, 0, uncert, rclass);
+	kind = (rclass == RC_SEGMENT) ? "segmented lobby best" : "lobby best";
 	if (uncert)
-		kind = strcat("unranked best (", FS_CertWhy(flags), ")");
+		kind = strcat("unranked ", kind, " (", FS_CertWhy(flags), ")");
 
 	if (prev > 0)
 	if (ticks >= prev)
@@ -587,15 +602,19 @@ void(float track, float leg, float ticks, float flags) LT_Keep =
 	// mirror case -- a certified time equal to the unranked best -- overwrites
 	// it on purpose: certified supersedes.)
 	if (uncert)
-	if (LT_BestOnLegC(map, track, leg, 0, FALSE) == ticks)
+	if (LT_BestClassOnLeg(map, track, leg, 0, FALSE, rclass) == ticks)
 	{
 		print(sprintf("^7%s  %s  ^3not kept^7 -- equals your certified lobby best\n",
 		              Results_LegName(track, leg), Time_TickString(ticks, tick)));
 		return;
 	}
 
-	nm  = sprintf("%s_%s.rec", FS_RunStamp(ticks), FS_TagName(RT_LOBBY));
-	dst = FS_RunPath(map, track, leg, ticks, FS_TagName(RT_LOBBY), "rec");
+	// Distinct receipt basename: never overwrite a clean PB or a full local replay.
+	if (rclass == RC_SEGMENT)
+		nm = sprintf("%s_segment_%s.rec", FS_RunStamp(ticks), FS_TagName(RT_LOBBY));
+	else
+		nm = sprintf("%s_%s.rec", FS_RunStamp(ticks), FS_TagName(RT_LOBBY));
+	dst = strcat(FS_RunDir(map, track, leg), nm);
 
 	fh = fopen(dst, FILE_WRITE);
 	if (fh < 0)
@@ -685,13 +704,15 @@ void(float track, float leg, float ticks, float flags) LT_Keep =
 	// The .rec is the archive and lobby.pb is the summary the map picker reads,
 	// in that order: a summary written first would name a file that did not exist
 	// if the write below failed.
-	LT_Prune(map, track, leg, nm, uncert);
-	// lobby.pb stays certified.  A leg with no certified time drops its line,
-	// which an older build may have filled with an uncertified one.
-	if (!uncert)
-		LT_PBWrite(map, track, leg, ticks);
-	else if (LT_BestOnLegC(map, track, leg, 0, FALSE) == 0)
-		LT_PBWrite(map, track, leg, 0);
+	LT_Prune(map, track, leg, nm, uncert, rclass);
+	// lobby.pb is CLEAN/certified only. A segment never creates or drops its line.
+	if (rclass == RC_CLEAN)
+	{
+		if (!uncert)
+			LT_PBWrite(map, track, leg, ticks);
+		else if (LT_BestOnLegC(map, track, leg, 0, FALSE) == 0)
+			LT_PBWrite(map, track, leg, 0);
+	}
 
 	if (prev > 0)
 		print(sprintf("^2%s saved^7 -- %s, %s by ^2%s^7\n",
@@ -912,8 +933,7 @@ void() LT_Frame =
 		*/
 		if (leg == 0)
 		if (ticks > 0)
-		if (!(flags & TF_PRACTICE))
-		if (!(flags & TF_SHADOW))
+		if (FS_RunClass(flags) == RC_CLEAN || FS_RunClass(flags) == RC_SEGMENT)
 			LT_Keep(track, 0, ticks, flags);
 	}
 };

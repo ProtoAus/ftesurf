@@ -480,7 +480,7 @@ void() Trail_Sample =
 // Before clearscene, with the other per-frame readers.
 void() Trail_Frame =
 {
-	local float st, sq, op, id, saved;
+	local float st, sq, op, id, saved, loaded;
 
 	Trail_Init();
 	// Patch 745: hud_trail only hides the line.  It is recorded either way, so
@@ -507,6 +507,7 @@ void() Trail_Frame =
 		}
 		if (op == SLOP_LOADED)
 		{
+			loaded = FALSE;
 			// Patch 611: the server moved the body; its state is drawn from the
 			// next frame on (the engine applies a snapshot a frame after its stats).
 			tr_kfrom = clientcommandframe + 1;
@@ -548,7 +549,8 @@ void() Trail_Frame =
 				// P1087: a TAS go restores a tick of this run's own line and its save has no
 				// trail file (STAT_FS_SAVETICKS is the cursor's, not that tick): the clock-back
 				// trim below keeps the line to the restored tick, where it was emptied here.
-				if (!Trail_Load(id, saved))
+				loaded = Trail_Load(id, saved);
+				if (!loaded)
 				if (!Trail_TASGo(st) || tr_raw < 1)
 					Trail_Trim(-1); // never substitute another run's picture
 				tr_on = TRUE;
@@ -557,6 +559,9 @@ void() Trail_Frame =
 				tr_practicebase = tr_lastt;
 				tr_practiceat = cltime;
 			}
+			if (loaded) SaveLead_Begin(sq, id);
+			else if (st == TS_ARMED) SaveLead_Clear(); // retained failed line is NOT this save's path
+			else SaveLead_NoPath();
 		}
 	}
 	if (st == TS_RUNNING && tr_state != TS_RUNNING && op != SLOP_LOADED)
