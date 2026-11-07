@@ -1,0 +1,1 @@
+P1401 claimed by ftesurf-3a (Claude Code session 5e4b2e2d) 2026-11-08. Lex: every site page carries every tab -- the public pages (Overview, Leaderboard, Players, Zoning, Anti-Cheat) get a Log in button to the admin site, the leaderboard its missing Zoning tab, the admin pages a Reports tab and a way back to the site.
