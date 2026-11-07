@@ -11,11 +11,11 @@
   (the only visible change found in 20 views). r_waterwalls 0 and r_modellight_moverate 0 bring back the old way.
 - Lobbies are unaffected (client-only change); the Desktop copy gets it with the next release.
 
-## P1391 F3 report panel, P1392 keyboard tab -- LIVE in game (12 lobbies + both installs, 8 Nov); report service needs your one root step
+## P1391 F3 report panel, P1392 keyboard tab -- LIVE (12 lobbies + both installs + report service, 8 Nov); owner check pending
 
-- First, once, on the Pi: `sudo sh /srv/nvme/agent-work/report-1391-3a/install_reportd.sh` (starts
-  the report service and adds /api/report and /admin/reports to play.proto.bar; undoes itself on
-  any failure). Until then a sent report says "the service answered 404" and keeps your text.
+- One tidy-up for you on the Pi (the installer left its backup where nginx reads it):
+  `sudo mv /etc/nginx/sites-enabled/play.proto.bar.conf.pre-p1391-20261107T211215Z /etc/nginx/ && sudo nginx -t && sudo systemctl reload nginx`
+- /admin/reports already holds one test report from me ("Install check from Claude (delete me)").
 - In a game press F3: the panel opens with a screenshot of the moment. Pick "Bad rendering", type a
   line, Send. It should say "sent -- thank you!" and close. Then open play.proto.bar/admin/reports
   (logged in to the admin site): the report is there with the screenshot, map, position, save and

@@ -74,4 +74,13 @@ of the prefix; the IP is never shown).
   `sudo sh /srv/nvme/agent-work/report-1391-3a/install_reportd.sh` (unit pinned to 2e3333d5, start,
   answer check, nginx snippet + include after zonepub, nginx -t, reload; undoes on failure). Until
   then F3 reports answer "the service answered 404" and keep the draft.
+- reportd LIVE 7 Nov 21:12Z (UTC; 8 Nov local): Lex ran install_reportd.sh -- unit enabled and active
+  (source 2e3333d5, "admin on"), nginx snippet included after zonepub, nginx -t ok, reloaded. From
+  outside: POST /api/report {} -> 400 (reportd), GET -> 403, /admin/reports -> 302 to the login,
+  /lobbies.json 200. A report with a 92394-byte JPEG through https://play.proto.bar/api/report was
+  stored as report 1 ("Install check from Claude (delete me)"), shot file 0600.
+- Installer slip: it kept its backup of play.proto.bar.conf INSIDE sites-enabled/, which nginx
+  includes (`sites-enabled/*`), so the backup loads as a second play.proto.bar server and is ignored
+  ("conflicting server name" warnings; the live file sorts first). Harmless as it stands; moving it
+  out needs root (owner step in lextest).
 
