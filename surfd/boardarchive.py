@@ -200,8 +200,10 @@ def stage_mismatch(conn, mapname):
     """Runs whose live stage rows disagree with their current reviews: (hidden but not rejected,
     shown but rejected), each a list of (track, player, runid)."""
     hidden, shown = set(), set()
+    # Only stage rows with no recording of their own: the ones surfd's restage hides and shows.
     for track, tier, player, runid in conn.execute(
-            "SELECT track, tier, player, runid FROM runs WHERE map = ? AND leg > 0", (mapname,)):
+            "SELECT track, tier, player, runid FROM runs WHERE map = ? AND leg > 0 AND replay_id = 0",
+            (mapname,)):
         _, t = _unban(tier)
         base, sep, run = t.partition("@")
         if base not in WOS or t.startswith(MODE):
