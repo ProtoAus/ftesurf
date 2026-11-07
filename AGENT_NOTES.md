@@ -1,5 +1,15 @@
 # AGENT_NOTES.md
 
+## P1393 patch reservations include published claim files (7 Nov 2026 UTC)
+
+- Scan tracked `tools/pNNN-claim.md` reservations on current `origin/main` as well
+  as patch headings and registered-worktree untracked/ignored test claims. A
+  published claim can exist before its product or engine-diary entry exists.
+- Recheck before publication. If a parallel session publishes a conflicting
+  claim, preserve its ownership/history and the exact reviewed local commits;
+  withdraw only your unused reservation and renumber the unpublished metadata.
+  Do not force-push, discard peer changes or pretend the first claim was published.
+
 ## P1389 reader fixtures: storage-root ancestors matter (7 Nov 2026 UTC)
 
 - `tools/census/recsim.py::derive_leg` preserves legacy path identity by selecting

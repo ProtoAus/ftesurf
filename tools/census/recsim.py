@@ -709,7 +709,11 @@ def cmd_pairs(args):
         # either -- surfd already stores a whole-file sha256 as replays.sha, which
         # catches that case outright and needs no move-column comparison at all.
         try:
-            h = hashlib.sha256(open(p, "rb").read(1 << 20)).hexdigest()
+            digest = hashlib.sha256()
+            with open(p, "rb") as source:
+                for chunk in iter(lambda: source.read(1 << 20), b""):
+                    digest.update(chunk)
+            h = digest.hexdigest()
             h += ":%d" % os.path.getsize(p)
         except OSError:
             continue

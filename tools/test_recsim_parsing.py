@@ -34,6 +34,22 @@ class Fixture(unittest.TestCase):
         self.tmp.cleanup()
         self.assertFalse(self.root.exists())
 
+    def large_pair(self):
+        self.a = self.root / 'data/runs/synthetic/main/a.rec'
+        self.a.parent.mkdir(parents=True)
+        self.b = self.a.with_name('b.rec')
+        padding = b'# ' + b'x' * (1 << 20) + b'\n'
+        raw = recording().encode('ascii').replace(b'begin\n', b'begin\n' + padding, 1)
+        self.a.write_bytes(raw); self.b.write_bytes(raw)
+        return raw
+
+    def pairs_output(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(rs.cmd_pairs(argparse.Namespace(
+                root=str(self.a.parent), max=4, per_map=4, min_len=50)), 0)
+        return output.getvalue()
+
 
 class Parsing(Fixture):
     def test_valid_control(self):
@@ -41,6 +57,55 @@ class Parsing(Fixture):
         self.assertEqual([len(r.mt), len(r.moves), len(r.btns)], [80]*3)
         verdict, detail = rs.compare_paths(str(self.a), str(self.b))
         self.assertEqual((verdict, detail['match'], detail['compared']), ('compared', 1.0, 80))
+
+    def test_pairs_large_identical_copy_is_still_deduplicated(self):
+        raw = self.large_pair()
+        self.assertGreater(len(raw), 1 << 20)
+        for path in (self.a, self.b):
+            self.assertEqual(len(rs.parse_rec(str(path)).moves), 80)
+        verdict, detail = rs.compare_paths(str(self.a), str(self.b),
+                                            max_bytes=len(raw), max_moves=80)
+        self.assertEqual((verdict, detail['matched'], detail['compared']), ('compared', 80, 80))
+        self.assertEqual(detail['sources']['a'],
+                         {'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)})
+        self.assertEqual(detail['sources']['a'], detail['sources']['b'])
+        output = self.pairs_output()
+        self.assertIn('byte-identical duplicates skipped: 1', output)
+        self.assertIn('fixtures excluded by name): 1 in 1 map/leg groups', output)
+        self.assertIn('NEGATIVE pairs (different runs, same map+leg): 0', output)
+        self.assertIn('POSITIVE pairs (same recording, shifted tick epoch): 1', output)
+
+    def test_pairs_equal_size_shared_prefix_does_not_hide_a_different_tail(self):
+        raw = self.large_pair()
+        row = b'in 79 79 0 79 2 0 0 0 0 1\n'
+        self.assertEqual(raw.count(row), 1)
+        other = raw.replace(row, row.replace(b' 79 2 ', b' 78 2 '))
+        changes = [i for i, (a, b) in enumerate(zip(raw, other)) if a != b]
+        self.assertEqual(len(changes), 1)
+        self.assertGreaterEqual(changes[0], 1 << 20)
+        self.assertEqual(len(raw), len(other))
+        self.assertEqual(raw[:1 << 20], other[:1 << 20])
+        self.assertNotEqual(hashlib.sha256(raw).digest(), hashlib.sha256(other).digest())
+        self.b.write_bytes(other)
+        for path in (self.a, self.b):
+            self.assertEqual(len(rs.parse_rec(str(path)).moves), 80)
+        verdict, detail = rs.compare_paths(str(self.a), str(self.b),
+                                            max_bytes=len(raw), max_moves=80)
+        self.assertEqual((verdict, detail['matched'], detail['compared']), ('compared', 79, 80))
+        for label, data in (('a', raw), ('b', other)):
+            self.assertEqual(detail['sources'][label],
+                             {'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)})
+        output = self.pairs_output()
+        if 'byte-identical duplicates skipped: 1' in output:
+            self.assertIn('fixtures excluded by name): 1 in 1 map/leg groups', output)
+            self.assertIn('NEGATIVE pairs (different runs, same map+leg): 0', output)
+            self.assertIn('POSITIVE pairs (same recording, shifted tick epoch): 1', output)
+        self.assertIn('byte-identical duplicates skipped: 0', output,
+                      'A_SHARED_PREFIX_IS_NOT_WHOLE_FILE_IDENTITY')
+        self.assertIn('fixtures excluded by name): 2 in 1 map/leg groups', output)
+        self.assertIn('NEGATIVE pairs (different runs, same map+leg): 1', output)
+        self.assertIn('POSITIVE pairs (same recording, shifted tick epoch): 2', output)
+        self.assertEqual((self.a.read_bytes(), self.b.read_bytes()), (raw, other))
 
     def test_ordinary_keyword_malformed_payload_is_not_dropped(self):
         verdict, detail = rs.compare_paths(str(self.a), str(self.b), max_bytes=8192, max_moves=100)
