@@ -113,9 +113,10 @@ float(float src, float duration) SaveLead_Copy =
 /*
   Trail_Frame, on every load event. pic: 1 Trail_Load put this save's picture in tr_raw, 0 tr_raw
   is the retained failed line (a start reset), -1 no picture.
-  P1384: while this hold's load is unanswered an event is an earlier load's and is left alone; the
-  press's own answer binds the press travel (the folder it was read from) or, when that travel has
-  run already, starts no second one. Any other start is late against the press (rec_sl_leadt0, the
+  P1384: while this hold's load is unanswered an event is an earlier load's and is left alone (kept
+  in sl_ev_* only while a press travel waits to bind, for a stat that beat its ack); the press's own
+  answer binds the press travel (the folder it was read from) or, when that travel has run already,
+  starts no second one. Any other start is late against the press (rec_sl_leadt0, the
   load's or a held step's) and skipped past SL_LEAD_LATE: a round trip late, it jumped the view from
   the save back up the path.
 */
@@ -126,11 +127,15 @@ void(float seq, float id, float pic) SaveLead_Begin =
 	sl_ev_seq = 0;
 	if (rec_sl_leadans && !SaveLoc_LoadAnswered())
 	{
-		// Kept: a stat can beat the ack (cl_parse.c skips it on an invalid delta); SaveLead_Camera
-		// takes it once the ack covers the load and no newer event has come.
-		sl_ev_seq = seq;
-		sl_ev_id = id;
-		sl_ev_pic = pic;
+		// A stat can beat the ack (cl_parse.c skips it on an invalid delta): SaveLead_Camera takes
+		// it once the ack covers the load and no newer event has come. Only for a press travel
+		// with no step in flight before it (a step's event would be taken for the load's).
+		if (sl_lead_early == 1 && rec_sl_leadhad)
+		{
+			sl_ev_seq = seq;
+			sl_ev_id = id;
+			sl_ev_pic = pic;
+		}
 		return;
 	}
 	mine = rec_sl_leadans;
@@ -327,7 +332,9 @@ float() SaveLead_Camera =
 	local string row;
 
 	sl_lead_applied = FALSE;
-	if (sl_ev_seq && rec_sl_leadans && SaveLoc_LoadAnswered())
+	if (sl_ev_seq && (!rec_sl_leadans || sl_lead_early != 1))
+		sl_ev_seq = 0;                      // its press is gone (released, stepped, cancelled)
+	if (sl_ev_seq && SaveLoc_LoadAnswered())
 	{
 		t = sl_ev_seq;
 		sl_ev_seq = 0;

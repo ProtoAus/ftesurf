@@ -135,7 +135,7 @@ def grade(seg):
         # Down and up inside one frame: no rendered frame was held (lead-in 0 on a predicted load).
         return {'frames_held': 0, 'press_to_travel': None, 'press_to_release': 0.0 if 'run resumed' in seg else None,
                 'eye_jumps_held': [], 'texts': [], 'first_countdown': None,
-                'prederr': len(re.findall(r'prederr: ', seg))}
+                'prederr': len(re.findall(r'prederr: seq ', seg))}
     t0 = held[0]['t0']
     first = held[0]['t']
     travel = next((r for r in held if r['buf'] and not r['pend']), None)
@@ -159,7 +159,7 @@ def grade(seg):
             'press_to_travel': None if travel is None else round(travel['t'] - t0, 4),
             'press_to_release': None if rel is None else round(rel['t'] - t0, 4),
             'max_eye_jump_held': round(jump, 1), 'eye_jumps_held': jumps, 'first_countdown': next((r['txt'] for r in held if 'ms' in r['txt']), None),
-            'texts': texts, 'frame_gaps': gaps, 'prederr': len(re.findall(r'prederr: ', seg))}
+            'texts': texts, 'frame_gaps': gaps, 'prederr': len(re.findall(r'prederr: seq ', seg))}
 
 
 def main():
@@ -170,7 +170,10 @@ def main():
     ap.add_argument('--delays', default='0,150,300')
     ap.add_argument('--lead', default='1')
     ap.add_argument('--hold', action='store_true')
+    ap.add_argument('--step', action='store_true', help='rounds that save twice, hold-load the second '
+                    'and step back to the first (sl_prev) 0.4 s into the hold')
     ap.add_argument('--port', type=int, default=27621)
+    ap.add_argument('--set', action='append', default=[], help='an extra client cvar line, e.g. "hud_trail 1"')
     ap.add_argument('--bigpic', type=int, default=0,
                     help='prepend this many synthetic rows to the saved trail.txt (a long picture)')
     a = ap.parse_args()
@@ -208,15 +211,17 @@ def main():
         cl.wait('FTESurf CSQC loaded', timeout=120)
         time.sleep(4)
         for line in ('menu_restart; ui_close', 'cl_prederror 4', f'cl_sl_leadin {a.lead}', 'cl_forwardspeed 200',
-                     'rec_savelock 1', 'p1384_probe 0'):
+                     'rec_savelock 1', 'p1384_probe 0', *a.set):
             cl.send(line)
             time.sleep(0.3)
         time.sleep(1)
         rounds = [(int(d), False) for d in a.delays.split(',')]
         if a.hold:
             rounds += [(int(d), True) for d in a.delays.split(',')]
+        if a.step:
+            rounds = [(int(d), 'step') for d in a.delays.split(',')]
         for d, hold in rounds:
-            label = f'd{d}' + ('hold' if hold else 'tap')
+            label = f'd{d}' + ('step' if hold == 'step' else 'hold' if hold else 'tap')
             cl.send(f'cl_delay_packets {d}')
             cl.send(f'setpos {O[0]} {O[1]} {O[2]} 0 55 0')
             time.sleep(2.0)
@@ -237,12 +242,22 @@ def main():
                     pad.append(' '.join(tok))
                 new[0].write_text('\n'.join(lines[:1] + pad + lines[1:]) + '\n', encoding='utf-8')
                 report.setdefault('bigpic', []).append(len(pad) + len(lines) - 1)
+            if hold == 'step':
+                time.sleep(0.6)
+                cl.send('sl_save')                  # the second save, 0.6 s on: the cursor's
+                time.sleep(0.4)
             cl.send('-forward')
             time.sleep(2.0)
             cl.send('p1384_probe 1')
             off = len(cl.text())
             cl.send(f'echo P1384 MARK {label}')
-            if hold:
+            if hold == 'step':
+                cl.send('+sl_hold 50')
+                time.sleep(0.4)
+                cl.send('sl_prev')
+                time.sleep(2.1)
+                cl.send('-sl_hold 50')
+            elif hold:
                 cl.send('+sl_hold 50')
                 time.sleep(2.5)
                 cl.send('-sl_hold 50')
