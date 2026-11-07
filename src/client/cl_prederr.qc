@@ -212,8 +212,8 @@ void(string stem) PE_WriteContext =
 		o = pe_ak_org[k];
 		v = pe_ak_vel[k];
 		fputs(f, strcat(sprintf("%.4f %.3f %.0f %.0f ", pe_ak_rt[k], pe_ak_t[k], pe_ak_ack[k], pe_ak_sent[k]),
-		                sprintf("%.1f %.1f %.1f ", o_x, o_y, o_z),
-		                sprintf("%.1f %.1f %.1f %g\n", v_x, v_y, v_z, pe_ak_gp[k])));
+		                sprintf("%.3f %.3f %.3f ", o_x, o_y, o_z),          // a replay's start state
+		                sprintf("%.3f %.3f %.3f %g\n", v_x, v_y, v_z, pe_ak_gp[k])));
 	}
 	fclose(f);
 };

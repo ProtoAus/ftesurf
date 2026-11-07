@@ -13,7 +13,8 @@ Warp ops (impulse 201 up) are not replayed; the tool says when the span has one.
 Verdicts (three, because a replay that leaves the recorded path measures nothing):
   REPRODUCED      a prediction error of at least half the report's (and 8+ units) within 3 commands
                   of the worst command, the path having matched the report up to there
-  NOT REPRODUCED  the path matched (server origin within PATH_TOL of the report's) and no such error
+  NOT REPRODUCED  the path matched (server origin within PATH_TOL, velocity within VEL_TOL of the
+                  report's) and no such error
   CANNOT TELL     the replayed path left the report's before the worst command (or the state never
                   landed, or the rows were not all replayed)
 
@@ -24,18 +25,24 @@ import argparse, datetime, os, pathlib, re, shutil, socket, subprocess, sys, tim
 
 LOCK = pathlib.Path(r'C:\FTESurf-worktrees\rig.lock')
 PORT = 27931
-PATH_TOL = 4.0          # units: the replayed server origin against the report's
-SETTLE = 40             # commands after the state lands before an error counts
+PATH_TOL = 32.0         # units: the replayed server origin against the report's (one hull width)
+VEL_TOL = 10.0          # u/s: its velocity; a step or an edge offsets the origin, not the velocity
+SETTLE = 12             # commands after the state lands before an error counts (ping + margin)
 
 
 def parse(path):
-    rep = {'srv': {}, 'ring': {}, 'map': None, 'ping': None, 'worst': None, 'worst_seq': None,
+    rep = {'srv': {}, 'ring': {}, 'acks': {}, 'map': None, 'ping': None, 'worst': None, 'worst_seq': None,
            'netfps': '66.6667', 'maxfps': '1000'}
     sect = None
+    acks = False
     for ln in open(path, encoding='utf-8', errors='replace'):
         ln = ln.rstrip('\n')
         if ln.startswith('== '):
             sect = ln[3:].strip()
+            acks = False
+            continue
+        if ln.startswith('# acks:'):      # P1403: one row per acknowledged snapshot, full precision
+            acks = True
             continue
         if ln.startswith('map ') and rep['map'] is None:
             rep['map'] = ln.split()[1]
@@ -51,6 +58,9 @@ def parse(path):
         if ln.startswith('#') or not ln or not (ln[0].isdigit() or ln[0] == '-'):
             continue
         f = ln.split()
+        if acks and len(f) >= 11:
+            rep['acks'][int(f[2])] = {'org': tuple(map(float, f[4:7])), 'vel': tuple(map(float, f[7:10]))}
+            continue
         if sect == 'server' and len(f) >= 16:
             seq = int(f[3])
             rep['srv'][seq] = {'org': tuple(map(float, f[7:10])), 'vel': tuple(map(float, f[10:13])),
@@ -99,6 +109,10 @@ def plan(rep, a):
         rows.append((s, r, imp))
     if filled:
         print('note: %d of %d commands were not in the ring; their inputs are held/interpolated' % (filled, len(rows)))
+    if start - 1 in rep['acks']:     # P1403 rows carry the state to 0.001
+        st = rep['acks'][start - 1]
+        print('start state from the ack rows (full precision)')
+        return start, st['org'], st['vel'], rows
     return start, ring[start - 1]['sorg'], ring[start - 1]['svel'], rows
 
 
@@ -220,7 +234,7 @@ def grade(rep, rig, start, rows):
             continue
         errs.append((rs + shift, float(mm.group(2))))
     ring = rig / 'clhome' / 'ftesurf' / 'data' / 'prederr' / 'replay_ring.txt'
-    dev = {}
+    dev, vdev = {}, {}
     if ring.exists():
         for ln in open(ring, encoding='utf-8', errors='replace'):
             f = ln.split()
@@ -230,13 +244,15 @@ def grade(rep, rig, start, rows):
             r = rep['ring'].get(rseq)
             if r:
                 dev[rseq] = dist(tuple(map(float, f[5:8])), r['sorg'])
+                vdev[rseq] = dist(tuple(map(float, f[11:14])), r['svel'])
     w, worst = rep['worst_seq'], rep['worst']
     span = [s for s in sorted(dev) if s0 + SETTLE + shift <= s < w]
     if not span:
         return 'CANNOT TELL', out + ['no replayed server state to compare before the worst command']
-    first_bad = next((s for s in span if dev[s] > PATH_TOL), None)
-    out.append('path: %d commands compared before the worst, max deviation %.1f units%s' % (
-        len(span), max(dev[s] for s in span), '' if first_bad is None else ', first over %.0f at report command %d' % (PATH_TOL, first_bad)))
+    first_bad = next((s for s in span if dev[s] > PATH_TOL or vdev[s] > VEL_TOL), None)
+    out.append('path: %d commands compared before the worst, max deviation %.1f units / %.1f u/s%s' % (
+        len(span), max(dev[s] for s in span), max(vdev[s] for s in span),
+        '' if first_bad is None else ', first over %.0f units or %.0f u/s at report command %d' % (PATH_TOL, VEL_TOL, first_bad)))
     hits = [(s, e) for s, e in errs if abs(s - w) <= 3 and e >= max(8.0, 0.5 * worst)]
     out.append('errors after settling: ' + (', '.join('%d:%.1f' % (s, e) for s, e in errs[:12]) or 'none'))
     if hits:
@@ -251,7 +267,7 @@ def main():
     ap.add_argument('report', type=pathlib.Path)
     ap.add_argument('--rigroot', type=pathlib.Path)
     ap.add_argument('--progs', type=pathlib.Path, help='build dir with qwprogs.dat and csprogs.dat (P1404 or later)')
-    ap.add_argument('--before', type=int, default=200)
+    ap.add_argument("--before", type=int, default=60)
     ap.add_argument('--after', type=int, default=60)
     ap.add_argument('--start', type=int)
     ap.add_argument('--ping', type=int)
