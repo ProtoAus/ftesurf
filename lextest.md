@@ -19,7 +19,7 @@ save, not an old file missing recorder metadata. Controlled ordinary warm cases
 pass; the owner's original zero-clock case is not generally reproduced/fixed.
 Existing cold-cut duration errors and full TAS continuation remain unqualified.
 
-## P1371 bhop maps start on the jump; zone_edit mode and tiers -- owner check pending
+## P1371 bhop maps start on the jump; zone_edit mode and tiers -- LIVE (12 lobbies + both installs, 7 Nov 13:44Z); owner check pending
 
 - bhop_badwater (or bhop_canals, nightmare, odyssey, ytt_cruma) on a lobby: the run starts on your jump out
   of the start, 100 Hz; `movement` says "bhop ... from bhop_ name".

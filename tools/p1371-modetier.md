@@ -63,3 +63,21 @@ a gamemode line) and mixed sources; the mode now changes only on a click; float 
 medium/high; three low quirks left: the no-zones note can win over P841's when every zone was deleted;
 tiers compare with the panel's open value (a reload under an open panel can mark dirty for nothing);
 re-clicking the selected mode resets the local air accel to its preset (the note says so).
+
+## Delivery (8 Nov 2026 local / 7 Nov UTC)
+
+- FTESurf main f865ef83; engine main d260ac3fe (merge of eb36ba811 with P1372-P1375 records; tag
+  patch-1371 = eb36ba811); Pi branch p1371-arm ee74886df.
+- Windows: C:\FTEQuake 13:3xZ, C:\FTESurf 13:39:48Z (after Lex closed the game running from it): client
+  0fc47fd5 (ftesurf64.exe / fteqw64.exe), fteqwsv64 24760f79, qw 5f2c5837, cs 55ff57fa (+ .lno); .prev =
+  5d157ee5 / e40415cb / P1375's d2f81903 / 9cf62ef1; five map_bhop cfgs removed; csprogsvers 3291562a.dat.
+  Plugins untouched (hl2 bf1bfabd). menu.dat not installed (ui_map_tick rides the next release).
+- Pi 13:43:14Z: fteqw-svarm64 632ceca2 (.prev and .pre1371-20261107T134314Z = 7ae9b650), five map cfgs
+  removed; 13:44Z `build.ps1 -Pi` from a clean worktree at f865ef83 (c24ede65, 0 warnings): 2 players
+  warned, 12/12 restarted, qw 5f2c5837 / cs 55ff57fa (= the installs); 12/12 processes on 632ceca2; no QC
+  error; map loads read mapmeta. Lobby 12 (empty): `map bhop_badwater` -> "bhop on bhop_badwater, from
+  bhop_ name", pm_ticrate 0.01, airaccel 1000, serverinfo gamemode bhop; map put back.
+- tasrevd codes.txt 78 -> 81 (.pre1371): P1372's cs 1bc8b390 and P1375's 9cf62ef1 had not been appended
+  by their deploys; added with this one's 55ff57fa. csprogsvers 3291562a.dat seeded on the Pi.
+- Rollback: Pi `cp -p fteqw-svarm64.prev`, mv into place, and qw/cs .prev, then restart; never roll the
+  sweeper back past a pmsrcver it has seen (not changed here).

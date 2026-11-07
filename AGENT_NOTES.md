@@ -2,6 +2,9 @@
 
 ## P1371 zone-file gamemode, bhop_ maps bhop, zone_edit tiers (8 Nov 2026; ftesurf-3a, root mapmeta-20261107-3a)
 
+- LIVE 7 Nov 13:44Z: Pi fteqw-svarm64 632ceca2 (.prev 7ae9b650 = patch-1353), qw 5f2c5837 / cs 55ff57fa
+  (main f865ef83) on 12 lobbies and both installs (exe 0fc47fd5 / sv 24760f79). Next lobby QC base: main at
+  or after f865ef83; next Pi engine base: p1371-arm (or patch-1353 + P1371's sv_phys.c), not main.
 - Engine SV_ApplyGamemodeModes: local map settings > sv_gamemode > zone file "gamemode" (1 or 2 only,
   compared as a 32-bit float like QC) > mapmeta, where a bhop_ map in a non-bhop category is bhop
   (src "bhop_ name") > name. Record: tools/p1371-modetier.md.
