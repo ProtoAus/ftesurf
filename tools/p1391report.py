@@ -48,19 +48,23 @@ def main():
     ap.add_argument('--out', type=Path, required=True)
     ap.add_argument('--progs', type=Path, required=True)
     ap.add_argument('--port', type=int, default=18391)
+    ap.add_argument('--url', default='', help='send to this service instead of the local stand-in (e.g. a local reportd)')
     a = ap.parse_args()
     a.out = a.out.resolve()
     R.owned(a.out)
     a.out.mkdir(parents=True, exist_ok=False)
-    srv = http.server.ThreadingHTTPServer(('127.0.0.1', a.port), Stand)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    srv = None
+    if not a.url:
+        srv = http.server.ThreadingHTTPServer(('127.0.0.1', a.port), Stand)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = a.url or f'http://127.0.0.1:{a.port}/api/report'
     base = L.prepare(a.out, 'client', a.progs, a.progs / 'csprogs.dat')
     game = base / 'ftesurf'
     common = ['cfg_save_auto 0', 'con_savehistory 0', 'log_enable 1', 'log_dir logs', 'log_name probe',
               'log_readable 1', 'developer 0', 'set cl_idlefps 0', 'set cl_maxfps 100', 'set run_resume 0',
               'set lobby_dir ""', 'set lobby_master ""', 'set cl_run_upload 0', 'set cl_board_url ""',
               'set sv_public 0', 'set milk_enable 0', 'set update_autocheck 0',
-              f'set cl_report_url "http://127.0.0.1:{a.port}/api/report"', 'name "P1391 Arm"', f'map {L.MAP}']
+              f'set cl_report_url "{url}"', 'name "P1391 Arm"', f'map {L.MAP}']
     (game / 'probe.cfg').write_text('\n'.join(common) + '\n')
     R.take_lock('p1391 report arm (ftesurf-3a)')
     cl = None
@@ -110,7 +114,8 @@ def main():
         if cl is not None:
             cl.stop()
         R.drop_lock()
-        srv.shutdown()
+        if srv is not None:
+            srv.shutdown()
     log = (game / 'logs/probe.log').read_text(encoding='utf-8', errors='replace')
     res['fs_lines'] = [l[20:] for l in log.splitlines() if 'fs: maps/' in l]   # first load vs after fs_flush
     res['posts'] = len(GOT)

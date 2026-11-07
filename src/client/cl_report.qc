@@ -23,7 +23,9 @@
 #define RP_SUBJ_MAX  80
 #define RP_BODY_MAX  4000
 #define RP_SHOT_MAX  1468006        // 1.4 MiB: surfd takes 1.5 MiB decoded
-#define RP_LINES     96             // wrapped body lines kept
+#define RP_LINES     512            // wrapped body lines kept: RP_NL_MAX newlines + 4000 chars of wraps
+#define RP_NL_MAX    200            // newlines a body may hold
+#define RP_SEND_T    60             // seconds without an answer before Send works again
 #define RP_KN        8              // keys taken while open (their releases are the panel's)
 #define RP_IDLE      0
 #define RP_SENDING   1
@@ -35,12 +37,12 @@ string(void *data, int bytes) base64encode = #0:base64encode;   // pr_bgcmd.c; c
 float  rpo_open;                     // 0 closed, 1 the screenshot is being taken, 2 drawn
 float  rpo_waitn;                    // frames left before the panel draws (the shot reads the backbuffer)
 string rpo_shot;                     // gamedir path of this report's screenshot
-float  rpo_shotok, rpo_shotuse, rpo_shotat, rpo_flushed;
+float  rpo_shotok, rpo_shotuse, rpo_shotat, rpo_flushed, rpo_shotbig;
 string rpo_subj, rpo_body;
 float  rpo_cat;                      // 0 none, else 1..RP_NCAT
 float  rpo_focus;                    // 0 subject, 1 body
 float  rpo_caret, rpo_scroll;
-float  rpo_state, rpo_req, rpo_nextreq, rpo_closeat;
+float  rpo_state, rpo_req, rpo_nextreq, rpo_closeat, rpo_sentat, rpo_openat, rpo_shotn, rpo_lastcaret;
 string rpo_status;
 float  rpo_statusat, rpo_statusbad;
 vector rpo_ms;
@@ -75,13 +77,28 @@ string(float c) Rp_CatLabel =
 	return "";
 };
 
-string(string s) Rp_Json =
+// strreplace stops at a 4096-byte result (pr_bgcmd.c PF_strreplace), so a long body is escaped
+// 1000 characters at a time: an escape never spans pieces, and a piece at most doubles.
+string(string s) Rp_JsonPiece =
 {
 	s = strreplace("\\", "\\\\", s);
 	s = strreplace("\"", "\\\"", s);
 	s = strreplace("\n", "\\n", s);
 	s = strreplace("\t", " ", s);
 	return strreplace("\r", "", s);
+};
+
+string(string s) Rp_Json =
+{
+	local float i, n;
+	local string o;
+	n = strlen(s);
+	if (n <= 1000)
+		return Rp_JsonPiece(s);
+	o = "";
+	for (i = 0; i < n; i = i + 1000)
+		o = strcat(o, Rp_JsonPiece(substring(s, i, 1000)));
+	return o;
 };
 
 // Printable ASCII of a short server-supplied string (names, hostnames can carry Quake glyphs).
@@ -114,13 +131,13 @@ void(string s, float bad) Rp_Status =
 void(string s) Rp_SetSubj =
 {
 	if (rpo_subj != "") strunzone(rpo_subj);
-	rpo_subj = strzone(substring(s, 0, RP_SUBJ_MAX));
+	rpo_subj = (s == "") ? "" : strzone(substring(s, 0, RP_SUBJ_MAX));
 };
 
 void(string s) Rp_SetBody =
 {
 	if (rpo_body != "") strunzone(rpo_body);
-	rpo_body = strzone(substring(s, 0, RP_BODY_MAX));
+	rpo_body = (s == "") ? "" : strzone(substring(s, 0, RP_BODY_MAX));
 	rpo_wrapdirty = TRUE;
 };
 
@@ -128,14 +145,19 @@ void() Report_RegisterCvars =
 {
 	registercommand("report");
 	registercvar("cl_report_url", "https://play.proto.bar/api/report");
+	registercvar("_report_f3", "0", CVAR_ARCHIVE);
 	rpo_shotuse = TRUE;
 };
 
-// Once a map: F3 opens it unless the player has bound F3 to something.
+// F3 opens it unless the player has bound F3 to something. Once per config, not per map: a
+// player who unbinds F3 afterwards keeps it unbound.
 void() Report_Init =
 {
+	if (cvar("_report_f3"))
+		return;
 	if (getkeybind(K_F3) == "")
 		localcmd("bind f3 report\n");
+	localcmd("seta _report_f3 1\n");
 };
 
 /*
@@ -164,7 +186,8 @@ string() Report_Meta =
 	m = strcat(m, ",", Rp_KV("velocity", sprintf("%.0f %.0f %.0f (%.0f u/s)", v_x, v_y, v_z, vlen([v_x, v_y, 0]))));
 	m = strcat(m, ",", Rp_KV("timer", sprintf("%s, track %g stage %g, %.3f s", tst, getstatf(STAT_FS_TIMERTRACK),
 	                                         getstatf(STAT_FS_TIMERSEG) + 1,
-	                                         getstatf(STAT_FS_TIMERTICKS) * serverkeyfloat("pm_ticrate"))));
+	                                         getstatf(STAT_FS_TIMERTICKS) * ((serverkeyfloat("pm_ticrate") > 0)
+	                                         ? serverkeyfloat("pm_ticrate") : PM_TICK))));
 	m = strcat(m, ",", Rp_KV("save", sprintf("%g of %g (folder %g, ticks %g)", getstatf(STAT_FS_SAVEINDEX),
 	                                        getstatf(STAT_FS_SAVECOUNT), getstatf(STAT_FS_SLCURID),
 	                                        getstatf(STAT_FS_SAVETICKS))));
@@ -196,6 +219,7 @@ string() Report_Meta =
   Open, close, send.
 ===========================================================================
 */
+// TRUE: a release of a key the panel took, or a down of one it already holds (a repeat).
 float(float scanx, float down) Rp_Took =
 {
 	local float i, f;
@@ -220,6 +244,7 @@ void() Report_Close =
 	if (!rpo_open)
 		return;
 	rpo_open = 0;
+	rpo_closeat = 0;
 	for (i = 0; i < RP_KN; i = i + 1)
 		rpo_kd[i] = 0;
 	sui_tooltip_reset();
@@ -235,6 +260,11 @@ void() Report_Open =
 
 	if (rpo_open)
 		return;
+	if (rec_sb_open || rec_wt_open)
+	{
+		print("^3report^7: close the scoreboard or the replay first\n");
+		return;
+	}
 	if (UI_CursorHeld())
 	{
 		print("^3report^7: another panel has the mouse -- close it first\n");
@@ -243,12 +273,13 @@ void() Report_Open =
 	pre = cvar_string("scr_sshot_prefix");
 	dir = "";
 	for (i = strlen(pre) - 1; i >= 0; i = i - 1)
-		if (str2chr(pre, i) == '/')
+		if (str2chr(pre, i) == '/' || str2chr(pre, i) == '\\')
 		{
-			dir = substring(pre, 0, i + 1);
+			dir = strreplace("\\", "/", substring(pre, 0, i + 1));   // COM_SkipPath splits on both
 			break;
 		}
-	nm = sprintf("report_%s", strftime(FALSE, "%Y%m%d_%H%M%S"));
+	rpo_shotn = rpo_shotn + 1;          // drawpic caches by name: never reuse one this game
+	nm = sprintf("report_%s_%g", strftime(FALSE, "%Y%m%d_%H%M%S"), rpo_shotn);
 	q = cvar_string("scr_sshot_compression");
 	// 60 keeps a 1440p frame near 300 KB; the player's own setting comes straight back.
 	localcmd(sprintf("scr_sshot_compression 60\nscreenshot %s.jpg\nscr_sshot_compression \"%s\"\n", nm, q));
@@ -258,6 +289,8 @@ void() Report_Open =
 	rpo_shotat = cltime;
 	rpo_open = 1;
 	rpo_waitn = 2;
+	rpo_openat = cltime;
+	rpo_closeat = 0;
 	rpo_focus = (rpo_subj == "") ? 0 : 1;
 	rpo_caret = (rpo_focus ? strlen(rpo_body) : strlen(rpo_subj));
 	if (rpo_state == RP_SENT) rpo_state = RP_IDLE;
@@ -282,7 +315,7 @@ string() Rp_ShotB64 =
 	if (n < 4 || n > RP_SHOT_MAX)
 	{
 		fclose(f);
-		if (n > RP_SHOT_MAX) Rp_Status("the screenshot is too big to send; the report goes without it", TRUE);
+		if (n > RP_SHOT_MAX) rpo_shotbig = TRUE;
 		return "";
 	}
 	buf = memalloc(n);
@@ -307,6 +340,7 @@ void() Report_Send =
 		rpo_caret = strlen(rpo_subj);
 		return;
 	}
+	rpo_shotbig = FALSE;
 	shot = (rpo_shotuse && rpo_shotok) ? Rp_ShotB64() : "";
 	env = strcat("{\"v\":1,\"subject\":\"", Rp_Json(s), "\",\"category\":\"", Rp_CatId(rpo_cat), "\",\"body\":\"");
 	env = strcat(env, Rp_Json(rpo_body), "\",\"meta\":", Report_Meta(), ",\"shot\":\"");
@@ -321,7 +355,11 @@ void() Report_Send =
 		return;
 	}
 	rpo_state = RP_SENDING;
-	Rp_Status(shot != "" ? sprintf("sending (screenshot %.0f KB)...", strlen(shot) * 0.75 / 1024) : "sending...", FALSE);
+	rpo_sentat = cltime;
+	if (rpo_shotbig)
+		Rp_Status("sending without the screenshot: it is too big (over 1.4 MB)...", TRUE);
+	else
+		Rp_Status(shot != "" ? sprintf("sending (screenshot %.0f KB)...", strlen(shot) * 0.75 / 1024) : "sending...", FALSE);
 	print(sprintf("^5report^7: sent %g bytes to %s\n", strlen(env), cvar_string("cl_report_url")));
 };
 
@@ -345,7 +383,7 @@ float(float reqid, float code, string body) Report_Reply =
 		Rp_SetBody("");
 		rpo_cat = 0;
 		rpo_caret = 0;
-		rpo_closeat = cltime + 1.5;
+		rpo_closeat = (rpo_open == 2) ? cltime + 1.5 : 0;
 		print("^5report^7: received by the service\n");
 		return TRUE;
 	}
@@ -376,6 +414,15 @@ void(string s) Rp_FieldSet =
 	else Rp_SetSubj(s);
 };
 
+float(string f) Rp_Newlines =
+{
+	local float n, i;
+	n = 0;
+	for (i = strstrofs(f, "\n", 0); i >= 0; i = strstrofs(f, "\n", i + 1))
+		n = n + 1;
+	return n;
+};
+
 void(string ins) Rp_Insert =
 {
 	local string f;
@@ -385,6 +432,11 @@ void(string ins) Rp_Insert =
 	if (room <= 0)
 		return;
 	ins = substring(ins, 0, room);
+	if (rpo_focus && strstrofs(ins, "\n", 0) >= 0 && Rp_Newlines(f) >= RP_NL_MAX)
+	{
+		Rp_Status(sprintf("at most %g lines; join some up", RP_NL_MAX), TRUE);
+		return;
+	}
 	rpo_caret = bound(0, rpo_caret, strlen(f));
 	Rp_FieldSet(strcat(substring(f, 0, rpo_caret), ins, substring(f, rpo_caret, -1)));
 	rpo_caret = rpo_caret + strlen(ins);
@@ -466,6 +518,11 @@ void(float scanx, float chary) Rp_Key =
 	rpo_blink = cltime;
 	if (rpo_wrapdirty)
 		Rp_Wrap();
+	if (rpo_state == RP_SENDING)
+	{
+		Rp_Status("wait for this report to finish sending", TRUE);
+		return;
+	}
 
 	if (scanx == K_TAB)
 	{
@@ -522,7 +579,7 @@ void(float scanx, float chary) Rp_Key =
 			rpo_caret = Rp_ColAt(i, x);
 		return;
 	}
-	if (chary >= 32 && chary <= 126 && !ctrl)
+	if (chary >= 32 && chary <= 126 && (!ctrl || (ui_kmods & 12)))
 		Rp_Insert(chr2str(chary));
 };
 
@@ -530,6 +587,10 @@ float(float chary) Report_Paste =
 {
 	if (rpo_open != 2)
 		return FALSE;
+	if (rpo_state == RP_SENDING)
+		return TRUE;
+	if (chary == 10 && !rpo_focus)
+		chary = 32;                     // a pasted line break in the subject becomes a space
 	Rp_Insert(chr2str(chary));
 	return TRUE;
 };
@@ -557,7 +618,9 @@ float(float evtype, float scanx, float chary, float devid) Report_InputEvent =
 		Report_Close();                 // the draft stays for the next F3
 		return FALSE;
 	}
-	Rp_Took(scanx, TRUE);
+	if (Rp_Took(scanx, TRUE) && scanx != K_BACKSPACE && scanx != K_DEL && scanx != K_LEFTARROW
+	    && scanx != K_RIGHTARROW && scanx != K_UPARROW && scanx != K_DOWNARROW && chary < 32)
+		return TRUE;                    // a held key's repeat (editing keys and text repeat as typing)
 	if (scanx == K_MOUSE1)
 	{
 		sui_input_event(evtype, scanx, chary, devid);
@@ -565,7 +628,7 @@ float(float evtype, float scanx, float chary, float devid) Report_InputEvent =
 	}
 	if (rpo_open != 2)
 		return TRUE;
-	if (scanx == K_ESCAPE || getkeybind(scanx) == "report")
+	if (scanx == K_ESCAPE || (getkeybind(scanx) == "report" && cltime - rpo_openat > 1))
 	{
 		Report_Close();
 		return TRUE;
@@ -652,8 +715,9 @@ void(vector p, vector s, float sc) Rp_DrawBody =
 		Rp_Wrap();
 	rows = max(1, floor((s_y - pad * 2) / lh));
 	ci = Rp_LineOf(rpo_caret);
-	if (rpo_focus == 1)
+	if (rpo_focus == 1 && rpo_caret != rpo_lastcaret)
 	{
+		rpo_lastcaret = rpo_caret;
 		if (ci < rpo_scroll) rpo_scroll = ci;
 		if (ci >= rpo_scroll + rows) rpo_scroll = ci - rows + 1;
 	}
@@ -746,6 +810,12 @@ void(vector scr) Report_Draw =
 		if (rpo_waitn > 0)
 			return;
 		rpo_open = 2;
+	}
+	if (rpo_state == RP_SENDING && cltime - rpo_sentat > RP_SEND_T)
+	{
+		rpo_state = RP_IDLE;
+		rpo_req = 0;
+		Rp_Status("no answer from the report service; your report is still here -- try again", TRUE);
 	}
 	if (rpo_closeat && cltime >= rpo_closeat)
 	{

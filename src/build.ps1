@@ -197,7 +197,8 @@ if ($NoDeploy) {
 Push-Location $SrcDir
 try {
     foreach ($src in @('sv_progs.src', 'cl_progs.src', 'm_progs.src')) {
-        $qcArgs = @('-srcfile', $src)
+        # P1391: csprogs' string table passed the compiler's 2 MiB default (QCC_CopyString).
+        $qcArgs = @('-max_strings', '4194304', '-srcfile', $src)
         $controlSrc = $null
         if ($NoDeploy) {
             # This compiler's -o selects new-style QC input, and its old-style
@@ -210,7 +211,7 @@ try {
             $controlSrc = Join-Path $SrcDir ("build-nodeploy-" + [guid]::NewGuid().ToString('N') + '-' + $src)
             Set-Content -LiteralPath $controlSrc -Value $manifest -Encoding utf8
             Copy-Item -LiteralPath $controlSrc -Destination (Join-Path $NoDeployDir $src)
-            $qcArgs = @('-srcfile', (Split-Path $controlSrc -Leaf))
+            $qcArgs = @('-max_strings', '4194304', '-srcfile', (Split-Path $controlSrc -Leaf))
         }
         if ($src -eq 'm_progs.src') {
             # This is the compiled menu version, not an install-integrity verdict.

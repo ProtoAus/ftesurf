@@ -1828,6 +1828,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 	*/
 	if (evtype == IE_PASTE)
 	{
+		if (chary == 10 && Report_Paste(chary)) return TRUE;   // P1391: the report body keeps pasted lines
 		if (chary < 32 || chary > 126)
 			return TRUE;                // the fields are ASCII
 		TASTimeline_RecipeHasFocus(); // abandon stale focus if chat/another cursor owns it
