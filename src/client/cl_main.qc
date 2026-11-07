@@ -1420,14 +1420,21 @@ float(float scanx) Noclip_Wheel =
 	if (getstatf(STAT_FS_MOVETYPE) != MOVETYPE_NOCLIP)
 		return FALSE;
 
-	ns = cvar("pm_noclipspeed");
+	// P1383: the speed the server is flying this player at (P1383 servers tell each client its own).
+	ns = serverkeyfloat("pm_noclipspeed");
+	if (ns <= 0)
+		ns = cvar("pm_noclipspeed");
 	if (ns <= 0)                                // the engine's own fallback
 		ns = 4;
 	if (scanx == K_MWHEELUP) ns = ns * 1.1;
 	else                     ns = ns / 1.1;
 	ns = bound(0.25, ns, 16);
 	ns = floor(ns * 100 + 0.5) / 100;           // keep the stored value tidy
-	cvar_set("pm_noclipspeed", ftos(ns));
+	// P1383: userinfo `ncspeed` is this player's speed on a P1383 server, a lobby included; a game
+	// this process hosts also gets the cvar, which is all an older engine reads.
+	localcmd(sprintf("setinfo ncspeed %s\n", ftos(ns)));
+	if (!strncmp(serverkey("ip"), "QLoopBack", 9))
+		cvar_set("pm_noclipspeed", ftos(ns));
 
 	ms = cvar("sv_maxspeed");
 	if (ms > 0)
