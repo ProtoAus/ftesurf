@@ -10682,6 +10682,31 @@ void() func_movelinear       =
 .vector vbsp_trkr_lo, vbsp_trkr_la;     // its pose in the train's spawn frame
 float   vbsp_trk_n, vbsp_trkr_n;
 
+// P1378 review 2: the parents of entities that spawned away -- sprites, glows, particle systems, lasers,
+// path_tracks (removed, or stashed for a late spawn without their parentname) -- keep that parent still.
+hashtable vbsp_trk_gonetab;
+void(string pn) SV_TrkGone =
+{
+	local float c;
+
+	c = strstrofs(pn, ",", 0);
+	if (c >= 0)
+		pn = substring(pn, 0, c);
+	if (!vbsp_trk_gonetab)
+		vbsp_trk_gonetab = hash_createtab(256, EV_FLOAT);
+	hash_add(vbsp_trk_gonetab, strtolower(pn), 1, HASH_REPLACE);
+};
+
+float(entity e) SV_TrkHasGone =
+{
+	local float c;
+
+	c = 0;
+	if (vbsp_trk_gonetab && e.targetname != "")
+		c = hash_get(vbsp_trk_gonetab, strtolower(e.targetname), 0);
+	return c;
+};
+
 void() path_track =
 {
 	Trk_TableAdd(self.targetname, self.target, self.origin, self.spawnflags);
@@ -11550,27 +11575,37 @@ float(entity e) SV_TrkRiderOK =
 void() SV_TrkResolve =
 {
 	local entity e, p, q;
-	local float depth, direct, nfrozen;
+	local float depth, direct, nfrozen, ok;
 	local vector d, pf, pl, pu;
 
 	vbsp_trk_n = vbsp_trkr_n = nfrozen = 0;
 	if (!trk_pn)
 		return;
 	Trk_TableLink();
-	// Review 1: anything drawn under a train that cannot ride with it -- a func_rotating wheel, a sprite,
-	// a grandchild (129 children and 3 grandchildren in the library) -- would be left behind, so that
-	// train stays frozen with it, as everything was before.
+	// Reviews 1-2: anything parented under a train that is not a non-solid prop directly on it -- a
+	// trigger_teleport (29 in the library), a solid prop (24), a sprite (24), a laser (17), a particle
+	// system (10), wheels, a grandchild -- would be left behind, so that train stays frozen with it, as
+	// everything was before. Those that spawned away are in vbsp_trk_gonetab (CheckSpawn).
+	for (e = findfloat(world, vbsp_trk_cand, TRUE); e; e = findfloat(e, vbsp_trk_cand, TRUE))
+		if (SV_TrkHasGone(e))
+		{
+			e.vbsp_trk_cand = FALSE;
+			nfrozen = nfrozen + 1;
+			if (cvar("developer"))
+				print(sprintf("trk %s (%s): stays, something that spawned away rides it\n", e.model, e.targetname));
+		}
 	for (e = nextent(world); e; e = nextent(e))
 	{
-		if (!e.modelindex || e.parentname == "")
+		if (e.parentname == "")
 			continue;
+		ok = (SV_TrkRiderOK(e) && !SV_TrkHasGone(e));  // a rider carrying what spawned away cannot ride
 		direct = TRUE;
 		q = SV_TrkParent(e);
 		for (depth = 0; q && depth < 8; depth = depth + 1)
 		{
 			if (q.vbsp_trk_cand)
 			{
-				if (!direct || !SV_TrkRiderOK(e))
+				if (!direct || !ok)
 				{
 					q.vbsp_trk_cand = FALSE;
 					nfrozen = nfrozen + 1;
@@ -13881,10 +13916,17 @@ float(string cn, string pfx) SV_ClassPrefix =
 */
 void(void() spawnfunc) CheckSpawn =
 {
+	local entity e;
+	local string pn;
+
+	e = self;
+	pn = self.parentname;
 	if (spawnfunc)
 		spawnfunc();
 	else
 		remove(self);
+	if (pn != "" && wasfreed(e))
+		SV_TrkGone(pn);                 // P1378: csprogs or a late spawn draws it, so a train cannot see it
 };
 
 void() SV_OnEntityNoSpawnFunction =

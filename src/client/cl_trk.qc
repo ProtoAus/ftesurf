@@ -50,7 +50,9 @@ void() Trk_ClReload =
 
 	Trk_ClLoad();
 	for (t = find(world, classname, "trk_train"); t; t = find(t, classname, "trk_train"))
-		Trk_Walk(t, t.trkc_tgt);
+		if (Trk_Walk(t, t.trkc_tgt))
+		if (!t.trk_faced)
+			Trk_FaceStart(t);
 };
 
 float() Trk_TrainPredraw =

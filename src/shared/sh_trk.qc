@@ -344,6 +344,7 @@ void(entity e) Trk_FaceStart =
 	o = Trk_Point(e, 0);
 	d = Trk_Point(e, Trk_Wrap(e, l)) - o;
 	xy = sqrt(d_x * d_x + d_y * d_y);
+	e.trk_faced = TRUE;                     // straight up: its spawn angles, on every client alike
 	if (xy < 0.001)
 		return;
 	e.trk_alast_x = (e.trk_sflags & SF_TRACKTRAIN_NOPITCH) ? 0 : atan2(0 - d_z, xy) * (180 / M_PI);
