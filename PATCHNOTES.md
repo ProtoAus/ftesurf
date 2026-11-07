@@ -24,6 +24,16 @@
 ### P1398 Moving things are cheaper to light
 - Props that move (surf_centipedes' skull swarms in the sky, things riding tracks, other players) look up the map's light about once a second instead of every frame, and fade smoothly to each new value, so the light never steps. surf_centipedes' stage starts went from under 200 fps to 460-920 at the default settings. r_modellight_moverate sets how many times a second; 0 is every frame.
 
+### P1397 Noclip no longer files prediction reports
+- Turning noclip on or off in a lobby is no longer counted as a prediction error, so it no longer writes or offers a report.
+
+### P1396 Teleports whose names differ in capitals are predicted
+- About 1,000 teleports on 123 maps (surf_delight, surf_tycho, surf_prevail, surf_mesa_mine, surf_kitsune and others) spell their destination with different capitals than the destination itself. The server always took them; your game did not predict them, so each one sent you a moment late with a jump. They are predicted now.
+- surf_bossfight's intro drop is decided by the server alone and no longer files prediction reports.
+
+### P1394 Teleports that push you are predicted
+- Teleports that also give you a push as you enter (surf_perennial's speed loops, 63 teleports on 31 maps) are predicted again instead of being left to the server, which snapped you to the exit a moment late each time.
+
 ### P1386 Water walls and slopes share the view's reflection
 - With Full reflect water, walls and slopes of water, water seen from underneath, and water on moving parts of a map now use the same reflection and refraction as the main water you can see, as Source does, instead of each drawing the whole scene again every frame. bhop_ceaseless looking back at the start: 214 to about 450 fps. surf_affliction's lava channel: 8 to about 600. The picture is the same in nearly every view; r_waterwalls 0 brings back the old way.
 

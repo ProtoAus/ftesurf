@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1394 speed-loop teleports, P1396 teleport name case, P1397 noclip reports -- LIVE (12 lobbies + both installs, 8 Nov); owner check pending
+
+- surf_perennial: ride the speedloops. Each loop should carry you through without a jump back a
+  moment later (it snapped 3840 units each time).
+- surf_delight: fall onto the floor teleports; you should be sent to the start at once, not see the
+  floor for a moment first. Same on surf_prevail's tele1, surf_tycho, surf_kitsune.
+- surf_bossfight: the intro drop should not open the "send a prediction report?" box. Noclip on/off
+  mid-air: no report box either.
+- Not fixed: the one-command snaps at saves/loads/resets in a few reports (BACKLOG), and fiellu's
+  late teleport (could not make it happen here).
+
 ## P1386 water walls share the reflection, P1398 moving props' light -- installed in both installs (engine patch-1398, 8 Nov); owner check pending
 
 - bhop_ceaseless save 35 (looking back at the start) at Full reflect: around 450 fps where it was ~200.

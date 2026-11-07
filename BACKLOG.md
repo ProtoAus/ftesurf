@@ -1,5 +1,27 @@
 # BACKLOG.md
 
+## Warp ops land a command apart in some prederror reports (8 Nov, P1395 not demonstrated)
+
+- Native ring v2 rows: at one command the server's state for N equals its state for N-1 (surf_cozy
+  7 Nov 17:20/17:22 at a save and at a release, 30-67 units above 2100 u/s; surf_goliath 6 Nov), and
+  surf_shape 7 Nov 21:29 at a reset: one comparison at 6865 units, the client still where `!r` was
+  pressed and the server at the start. Both sides apply warp ops before the command's movement
+  (SV_WarpOpCommand in PlayerPreThink, WarpOp_Apply in PredictPlayerPreMove).
+- Not reproduced locally: four saves mid-air at 2500 u/s on surf_cozy with sv_minping 60 (arm p95 in
+  the P1394 root) ran and snapped nowhere. Suspect the snapshot's acknowledged command against the
+  commands the server has run when packets bunch; needs a lossy or jittered link (cl_delay_packets
+  is fixed delay, not jitter). Raw reports kept privately in the P1394 root's notes.
+- What would settle it: a client row per received snapshot (arrival time, acknowledged command);
+  reports keep inputs and velocities per command but no packet timing. And a replay that starts a rig
+  at a report row's server origin and velocity and feeds its recorded inputs (Lex, 8 Nov: arms so far
+  approximate a report's path by hand, which is why surf_fiellu's did not reproduce).
+
+## surf_fiellu: a teleport one command late at 2820 u/s (7 Nov reports, not demonstrated)
+
+- Two reports: the client fires the second of two overlapping teleports a command after the server.
+  Six passes along the report's path at three start offsets fire on the server's command in both the
+  live build and P1396. What the arm does not vary is where inside a tick the edge is crossed.
+
 ## Screenshots skip the engine's file index; the report panel flushes it (8 Nov, P1391)
 
 - SCR_ScreenShot writes through FS_OpenVFS without FS_FlushFSHashWritten (cl_screen.c), so QC
