@@ -1,5 +1,10 @@
 # P1402 -- flat water for new installs, surf_view planes with edges (8 Nov 2026)
 
+Delivery (8 Nov 22:20Z): build.ps1 -Pi from main 9edf6dfb (no src change since 37fb0a76's live build besides
+P1402; fteqcc c24ede65): nobody on any lobby, cs 3dbeb0c1 / qw 0a406f51 (unchanged), all 12 restarted, 0 QC errors.
+artifacts/deliver_qc1402.py: C:\FTESurf progs and both installs' default.cfg/defaultuser.cfg, protected files
+unchanged (delivery-p1402). tasrevd codes.txt 89 -> 90 (.pre1402); csprogsvers e05a6982 seeded in both installs.
+
 Lex, 8 Nov: "not yet [Full reflect] ... dithered and flat transparent plane performs the same, use flatplane
 instead. Can you make the ent_view and surf_view flat transparent planes with wireframe option as default too."
 

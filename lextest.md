@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1402 flat water for new installs, surf_view planes with edges -- owner check pending
+## P1402 flat water for new installs, surf_view planes with edges -- LIVE (12 lobbies + both installs, 8 Nov 22:20Z); owner check pending
 
 - Your C:\FTESurf copy (surf_view_style was still 1): on the next start the console says "surf_view/ent_view:
   translucent planes with edges now"; surf_view and ent_view show see-through planes with outlines.
