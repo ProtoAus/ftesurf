@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1386 water walls share the reflection, P1398 moving props' light -- installed in both installs (engine patch-1398, 8 Nov); owner check pending
+
+- bhop_ceaseless save 35 (looking back at the start) at Full reflect: around 450 fps where it was ~200.
+  The view should look the same as before.
+- surf_centipedes: stand at a stage start and look along it and up at the sky: 340-790 fps where it
+  was 150-450. The skulls still fly and are lit as before.
+- surf_affliction's lava channel, surf_quarantine, surf_desolate: no slideshow with Full reflect water.
+  surf_christmas' first slope: a thin strip at the far edge of the water looks slightly different
+  (the only visible change found in 20 views). r_waterwalls 0 and r_modellight_moverate 0 bring back the old way.
+- Lobbies are unaffected (client-only change); the Desktop copy gets it with the next release.
+
 ## P1391 F3 report panel, P1392 keyboard tab -- LIVE in game (12 lobbies + both installs, 8 Nov); report service needs your one root step
 
 - First, once, on the Pi: `sudo sh /srv/nvme/agent-work/report-1391-3a/install_reportd.sh` (starts

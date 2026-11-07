@@ -21,6 +21,12 @@
 
 ## next
 
+### P1398 Moving things are cheaper to light
+- Props that move (surf_centipedes' skull swarms in the sky, things riding tracks, other players) look up the map's light about 30 times a second instead of every frame. surf_centipedes' stage starts went from under 200 fps to 340-790 at the default settings. r_modellight_moverate sets the rate; 0 is every frame.
+
+### P1386 Water walls and slopes share the view's reflection
+- With Full reflect water, walls and slopes of water, water seen from underneath, and water on moving parts of a map now use the same reflection and refraction as the main water you can see, as Source does, instead of each drawing the whole scene again every frame. bhop_ceaseless looking back at the start: 214 to about 450 fps. surf_affliction's lava channel: 8 to about 600. The picture is the same in nearly every view; r_waterwalls 0 brings back the old way.
+
 ### P1392 Keyboard view in the key settings
 - The key configuration panel (K) has a Keyboard tab: a whole keyboard and mouse showing what every key does. Pick an action from the list, then click keys to put it on them; right-click a key to clear it. Keys bound to the action you picked light up.
 

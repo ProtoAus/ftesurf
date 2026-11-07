@@ -25,17 +25,24 @@
   corrects it); a travel's visibility eye starts only once the server's answer binds it.
 - Falsifier: tools/p1384lead.py --bigpic 45000 at 150 ms: the held frame gap at the answer.
 
-## Water captures for more than one plane are redrawn every frame (8 Nov, after P1376)
+## Water captures after P1386 (8 Nov): what is left
 
-- Site: gl_backend.c GLBE_CaptureKeep/be_capkeep (P1245/P1281): one kept plane and shared level-0
-  targets. bhop_ceaseless, save 35 view (3752 0 11552, pitch -19 yaw -179), 1x / MSAA 4 / reflection 2x /
-  hl2_water 2: r_capturelog shows reflect + refract for the level water (z 11456, 14 meshes) and for two
-  vertical water faces (y -2848, x -4896, one mesh each) every frame; r_viewstats 6 nested views a frame,
-  reflection 2.09 ms CPU / 837 draws; 192-217 fps against 430 looking away and 467 with hl2_water 3.
-- Candidates: non-level world water samples the level pair, as Source renders one water pair per view
-  (a visual change: compare screenshots of those faces), or a kept slot and targets per plane.
-- Falsifier: the same view's r_viewstats nested views near the look-away 0.34, with screenshots of the
-  vertical faces before and after.
+- FIXED P1386 (r_waterwalls 1): walls, slopes, undersides and brush-entity Water sample the view's chosen
+  pair; bhop_ceaseless save 35 214 -> 441 fps, 12 census views 2-48x (tools/p1386-p1398.md).
+- Left, pre-existing: a glass or portal capture that runs after a water keep in the same frame leaves
+  REFR kept (last frame's camera, drawn untransformed) beside a fresh REFL (review 2 of P1386). Site:
+  gl_backend.c GLBE_GenerateBatchTextures' be_capfixframe reset vs be_capkeep.kinds.
+- Left: views that still render 1-2 nested views a frame at r_waterwalls 1 -- ahop_coast wall view 1.98,
+  surf_fortum 1.06, surf_dynasty 1.00, bhop_ceaseless save 5 2.00 (others 0.3-0.7). r_capturelog 1 there.
+- Left, by design: the sharers are not in the capture's merged PVS (GLBE_WaterGather pass 2).
+- Full reflect (hl2_water 2) vs dither (3) at Lex's defaults after P1386, 39 of his saves on garden,
+  boreas, demise, hourglass, aesthetic, ceaseless: 0-27% lower avg where water shows, worst 378 avg /
+  218 1% low (boreas s9), on this PC. Whether 2 becomes the default is Lex's call.
+
+## surf_centipedes after P1398 (8 Nov)
+
+- Stage 1's start still runs 340 fps against 655-770 with r_drawentities 0 (main view, not the sky).
+  Profile it at r_modellight_moverate 30: artifacts/run_prof_centi.py in the lows2 root.
 
 ## The window's multisampled pixel format duplicates P1260's scene target (8 Nov)
 
