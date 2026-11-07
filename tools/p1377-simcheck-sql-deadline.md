@@ -80,7 +80,9 @@ upstream header-admission changes are not qualified by these SQL tests.
 
 Reviewed collector SHA256:
 `ebbb8d0fab50862e3093c2336ec2ab2b90da26926ec66284fbd801b7bf8f9c0d`.
-Installation and live provenance must be recorded separately. In particular the
-pending P1368 owner cutover must be proved before any fresh backend source candidate;
-never edit its sealed package or repeat healthy activation to deliver this feature.
+Installation and live provenance must be recorded separately. The owner completed
+P1368's prerequisite and its READ-ONLY actual-runtime audit passed at2026-11-07T14:29:19Z
+(see tools/p1368-simcheck-source-reader.md). That live collector is stillffed, NOT this
+ebbb source. This feature needs a fresh source-bound candidate; never edit P1368's
+serving package or repeat its healthy activation.
 Native pin/tag, VM and QC Build remain unchanged by P1377.

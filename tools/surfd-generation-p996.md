@@ -1,6 +1,16 @@
 # Backend generation swap: P996 (25 Oct 2026) -- the procedure as run
 
-> **Current P1354 tuple, verified6November2026 after20:16:38UTC cutover:**
+> **Current P1368 tuple, READ-ONLY completion verified7November2026 14:29:19UTC:**
+> accepted OPEN primary generation16fb0b54, collectorffed2432;84runtime/158declared
+> inputs exact, actual serving actor/namespace/mounts and canonical+fourcron+importer
+> bindings verified. Same schema26/44tables/currentDB, eight identity digests preserved;
+> no recovery/failure artifacts, activation leases released. Retain primary/fallback
+> fb7ed790 and all original receipts; rollback is code-only against CURRENT data.
+> ReaderBF99/3eab/A3f7 unchanged. Do not rerun healthy activation or modify this
+> immutable package. P1377ebbb is verified source but NOT this live generation;
+> it requires a fresh source-bound candidate. See tools/p1368-simcheck-source-reader.md.
+>
+> **Historical P1354 tuple, verified6November2026 after20:16:38UTC cutover:**
 > `bf9c7b306bce2c8f538fcf13cc0c3be48e719005`, collectors84-v1/schema26; exactly
 > `simcheck.py` changed, other83runtime bytes and canonical reader unchanged.
 > Both CLOSED cohorts and real80-opportunity NaN/Inf controls pass;44schemas,

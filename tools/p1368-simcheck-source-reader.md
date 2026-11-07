@@ -1,9 +1,9 @@
 # P1368 — selected reader source bytes, not timestamp bytecode
 
-Implemented, independently reviewed and verified on Windows and ARM. Publication
-and actual backend delivery are separate: the live P1361 generation is unchanged
-at this source-validation boundary. No stale-reader production incident is claimed;
-guarded routes already use an absent private bytecode-cache prefix.
+Implemented, independently reviewed and verified on Windows and ARM. Source
+acceptance below and actual backend delivery are separate; the latter is recorded
+under its own UTC boundary. No stale-reader production incident is claimed; guarded
+routes already use an absent private bytecode-cache prefix.
 
 ## Problem and change
 
@@ -60,6 +60,29 @@ inventory. Its351 existing faults remain344 REC and seven VIEW; all732 per-file
 report blocks match the previous multiset. Raw stdout order differs because the
 current explicit input list is globally sorted. No fault, stored observation or
 input was repaired, rewritten, regraded or silently omitted.
+
+## Actual primary backend delivery — 7 November 2026
+
+The owner executed the separately reviewed, four-source-hash-checked namespace
+installation and primary activation. A subsequent READ-ONLY completion audit at
+2026-11-07T14:29:19Z confirms the accepted OPEN primary generation16fb0b54 and actual
+collector `ffed2432` source. All84 runtime and158 declared inputs match their pinned
+material. Canonical launcher, four cron routes and the importer select this source;
+health, auth/protected-route and inventory method boundaries pass. The actual serving
+master PID/birth/invocation, saved namespace proof, live mount/inode flags and profile
+are bound together, not inferred from host-visible files or a synthetic candidate.
+
+The same current database remains schema26/44tables; the eight identity digests were
+preserved at cutover and still match this read-only audit. No restore/regrade/backfill
+occurred. Leases are released and no recovery/failure/observer-cleanup artifact exists.
+Primary and fallback materials, original receipts and prior code remain retained;
+fallbackfb7ed790 uses CURRENT data, never an old database restore. Do not repeat the
+healthy activation or edit its immutable serving package to ship another feature.
+
+Readers remain the prior P1359 BF99/3eab/A3f7 cohort; this core-only delivery is NOT
+P1370/P1374 reader delivery. P1377's later selected-SQL-deadline collector is likewise
+NOT included. Each subsequent change needs a fresh source-bound generation/reader
+plan and its own actual acceptance, not re-dated P1368 evidence or tier credit.
 
 ## Limits
 
