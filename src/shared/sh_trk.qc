@@ -39,6 +39,8 @@ float    *trk_r;                // its path_track, for TeleportToPathTrack
 .vector trk_alast;                          // facing; spawn angles until Trk_Pose faces it
 .float  trk_faced;
 .vector trk_wo, trk_wf, trk_wl, trk_wu;     // pose now (Trk_Place): origin, Source's basis
+.vector trk_wa;                             // ...and its angles
+.float  trk_placet;                         // the time trk_w* are for
 float   trk_end;                            // Trk_Wrap stopped at a dead end
 vector  trk_o, trk_a;
 vector  trk_bf, trk_bl, trk_bu;
@@ -385,11 +387,16 @@ vector(vector f, vector l, vector u) Trk_Angles =
 	return a * (180 / M_PI);
 };
 
+// Once per train per time: its riders all ask (P1385: 105 riders recomputed 35 poses ~140 times a frame).
 void(entity e, float t) Trk_Place =
 {
+	if (e.trk_placet == t && t > 0)
+		return;
+	e.trk_placet = t;
 	Trk_Pose(e, t);
 	Trk_Basis(trk_a);
 	e.trk_wo = trk_o;
+	e.trk_wa = trk_a;
 	e.trk_wf = trk_bf;
 	e.trk_wl = trk_bl;
 	e.trk_wu = trk_bu;

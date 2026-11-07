@@ -59,8 +59,10 @@ float() Trk_TrainPredraw =
 	if (!self.trk_n || (self.effects & EF_NODRAW))
 		return PREDRAW_NEXT;
 	Trk_Place(self, time);
-	setorigin(self, trk_o);
-	self.angles = trk_a;
+	// P1385: a field write, not setorigin: these are SOLID_NOT and only drawn, and relinking ~140 a
+	// frame showed as 0.6 ms of "World: walk, entities" on surf_centipedes.
+	self.origin = self.trk_wo;
+	self.angles = self.trk_wa;
 	return PREDRAW_AUTOADD;
 };
 
@@ -141,7 +143,7 @@ float() Trk_PropPredraw =
 		return self.trkp_drawn ? PREDRAW_AUTOADD : PREDRAW_NEXT;    // a killed train leaves it where it was
 	Trk_Place(p, time);
 	Trk_Ride(p, self.trkp_lo, self.trkp_la);
-	setorigin(self, trk_o);
+	self.origin = trk_o;                // as Trk_TrainPredraw
 	self.angles = trk_a;
 	self.frame1time = time;
 	self.trkp_drawn = TRUE;
