@@ -3108,8 +3108,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             qualified (gamemode bhop/bhop-hl1, run_t_bhopjump);
                             leave = on leaving it.  Absent: not recorded.
     gamemode <name|->       Patch 1371.  serverinfo gamemode as the engine
-                            resolved it at map load (sv_phys.c: sv_gamemode, the
-                            zone file, mapmeta, the name); - = base ruleset.  A
+                            resolved it at map load (sv_phys.c: a hosted game's
+                            map settings, sv_gamemode, the zone file, mapmeta,
+                            the name); - = base ruleset.  A
                             zone file can move a map between modes, and a board
                             row holds neither this nor startrule, so it says
                             which rules a run was timed under.
