@@ -1,0 +1,1 @@
+P1400 claimed by ftesurf-3a (Claude Code session 5e4b2e2d) 2026-11-08. Lex: the key panel's Keyboard tab -- type your own command (an action of your own, and a selected key's bind), and more tools in the list (surf_view, ent_view, report, zone editor, line graph, scores, chat, console, journal, screenshot...).
