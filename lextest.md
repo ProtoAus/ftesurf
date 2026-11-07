@@ -29,6 +29,17 @@
   (the only visible change found in 20 views). r_waterwalls 0 and r_modellight_moverate 0 bring back the old way.
 - Lobbies are unaffected (client-only change); the Desktop copy gets it with the next release.
 
+## P1400 key panel: your own commands, Edit/Clear, Tools and Game rows -- LIVE (12 lobbies + both installs, 8 Nov); owner check pending
+
+- K, Keyboard tab: click "Your own command", type e.g. `say hi`, Enter; click a key: it lights up and
+  the bottom line says what it was. Press it in game.
+- Click any key, then Edit: its bind is in the box; change it, Enter. Clear unbinds it. Esc and the
+  console key refuse (by design).
+- Actions tab: a third column, Tools and Game. Report (F3), Surf view, Entity view... Does it fit and
+  read well at your resolution? (Measured only at 1920x1111 here; at 1280x720 it is ~1136x590 px by
+  arithmetic.)
+- Typed keys never leak to the game while a box has focus; the backtick cannot be typed (engine).
+
 ## P1391 F3 report panel, P1392 keyboard tab -- LIVE (12 lobbies + both installs + report service, 8 Nov); owner check pending
 
 - (Done 7 Nov 21:15Z: the installer's site backup moved out of sites-enabled; nginx warns no more.)

@@ -21,6 +21,12 @@
 
 ## next
 
+### P1400 Type your own binds; more actions in the key settings
+- The Keyboard tab (K) has a "Your own command" box: type any console command, press Enter, then click keys to put it on them. The keys already running it light up.
+- Click a key, then Edit to change what it runs (Enter saves, an empty box clears it, Esc cancels) or Clear to unbind it.
+- New actions in both tabs: Report, Surf view, Entity view, Entity inspector, Zone editor, Run graph and Race ghost under Tools; Scores, Chat, Console, Main menu, Patch notes, Screenshot and Fullscreen under Game.
+- Esc and your last console key can't be cleared or taken from the panel, so you can't lock yourself out; reset keys puts the console back on its usual key.
+
 ### P1402 New defaults: flat water, see-through surf_view
 - A new install's water is the flat transparent sheet instead of the dithered one: they cost the same, and the flat one is cleaner to look through. Settings you already chose are kept.
 - surf_view and ent_view draw see-through planes with outlines by default. If you never changed the old dithered look, it switches once (the console says so); surf_view_style picks another.
