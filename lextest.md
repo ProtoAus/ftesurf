@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P1391 F3 report panel, P1392 keyboard tab -- owner check pending (8 Nov)
+
+- In a game press F3: the panel opens with a screenshot of the moment. Pick "Bad rendering", type a
+  line, Send. It should say "sent -- thank you!" and close. Then open play.proto.bar/admin/reports
+  (logged in to the admin site): the report is there with the screenshot, map, position, save and
+  settings; sort by a column, open it, delete it.
+- Esc keeps your text for the next F3; cancel throws it away.
+- K, then the Keyboard tab: every key shows its bind. Click an action (e.g. Jump), click a key: it
+  lights up and does that now; right-click clears it. Does the layout read well at your resolution?
+
 ## P1387 spinners/sliders in csprogs, P1388 track speeds, P1390 surf_colony sky -- LIVE (12 lobbies + both installs, 7 Nov ~19:44Z); owner check pending
 
 - surf_santorini: the windmill sails turn smoothly. surf_voyager: the asteroids drift without stepping.

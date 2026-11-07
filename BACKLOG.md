@@ -1,5 +1,16 @@
 # BACKLOG.md
 
+## Screenshots skip the engine's file index; the report panel flushes it (8 Nov, P1391)
+
+- SCR_ScreenShot writes through FS_OpenVFS without FS_FlushFSHashWritten (cl_screen.c), so QC
+  fopen/drawpic cannot see a fresh screenshot. cl_report.qc issues `fs_flush` once when the shot is
+  not found: lookups scan until the next map rehashes it (measured: that load no slower). The engine
+  fix is one call after the write; then the flush never fires.
+- reportd's admin page is reached at /admin/reports; surfd's admin nav has no link to it until the
+  next surfd generation (the guarded runtime cannot take template changes without one).
+- reportd floods: per-prefix caps (IPv4 /24, IPv6 /56) and a 300/day global cap; an attacker with
+  many IPv6 prefixes can still use up the day's cap (a delete-by-source button clears them).
+
 ## A save load still reads its whole trail file in one frame (8 Nov, after P1384)
 
 - P1384 moved the live line's rebuild off the load's frame (Trail_Catch, 400 rows a frame), but

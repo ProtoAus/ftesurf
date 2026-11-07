@@ -21,6 +21,12 @@
 
 ## next
 
+### P1392 Keyboard view in the key settings
+- The key configuration panel (K) has a Keyboard tab: a whole keyboard and mouse showing what every key does. Pick an action from the list, then click keys to put it on them; right-click a key to clear it. Keys bound to the action you picked light up.
+
+### P1391 Report a problem (F3)
+- Press F3 to send a report: pick a subject (Poor performance, Bad rendering, Bug, Map or zones, Feature request, Other) or type your own, say what happened, and send. A screenshot of the moment you pressed F3 goes with it, plus the map, your position and save, frame rate, settings and game version, so you don't have to type those. Esc closes it and keeps your text for next time.
+
 ### P1390 surf_colony's sky
 - The headcrab canisters in surf_colony's sky now fly round their routes instead of hanging still.
 
