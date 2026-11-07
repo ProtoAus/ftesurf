@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1387 spinners/sliders in csprogs, P1388 track speeds, P1390 surf_colony sky -- in review (8 Nov)
+## P1387 spinners/sliders in csprogs, P1388 track speeds, P1390 surf_colony sky -- LIVE (12 lobbies + both installs, 7 Nov ~19:44Z); owner check pending
 
 - surf_santorini: the windmill sails turn smoothly. surf_voyager: the asteroids drift without stepping.
   bhop_lost_world_v2: its turning props (56 spinners, 40 props on them) move as before.

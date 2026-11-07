@@ -35,6 +35,8 @@
 - A map changed by `rcon map` sends that spawn's server prints to the rcon client (its log), not the
   server log: put the map in the server cfg when its resolve lines are the evidence.
 - `cmd spdump` (sv_cheats) + tools/spcmp.py diff server and csprogs poses/train clocks at one server time.
+- P1387/P1388/P1390 LIVE 7 Nov ~19:44Z: qw 0a406f51 / cs 67a29de3 (main 9ea43a6c) on 12 lobbies and both
+  installs; engine unchanged. Next lobby QC base: main at or after its record commit.
 - Rig traps met: a server rig without cfg/default.cfg runs QW physics (noclip = spectator flight at
   sv_spectatormaxspeed): exec the game's default.cfg before measuring movement. A headless client
   (vid_renderer headless) never runs CSQC_UpdateView, so nothing hooked there acts. A client on an isolated
