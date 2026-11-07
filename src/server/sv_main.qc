@@ -186,8 +186,8 @@ void() StartFrame =
 		// materialising outputs needs every entity on the map to exist.
 		SV_BrushRenderAll();        // P844: before the window panes, which hide theirs
 		SV_PortalWindowsActivate();
-		SV_TrkResolve();            // P1378: before the sky marks and OnMapSpawn's inputs
 		SV_SkyRoomAll();            // P1202: before the I/O build, whose OnMapSpawn may SetAnimation
+		SV_TrkResolve();            // P1378: before OnMapSpawn's inputs; P1390: after the sky marks
 		SV_EntityIOBuild();
 
 		SV_EntityReport();

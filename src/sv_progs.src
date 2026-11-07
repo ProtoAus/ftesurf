@@ -3,6 +3,7 @@
 defs/sv_defs.qc
 shared/sh_defs.qc
 shared/sh_trk.qc            // P1378: tracktrain paths, shared with cl_trk.qc
+shared/sh_spin.qc           // P1387: Patch 860 motion, shared with cl_spin.qc
 shared/sh_vsvel.qc          // P1205: VScript velocity grammar, shared with cl_triggers.qc
 shared/sh_time.qc
 shared/sh_chatcmd.qc        // P1295: chat warp commands as typed

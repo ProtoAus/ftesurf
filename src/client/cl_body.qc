@@ -333,6 +333,8 @@ void() CSQC_Ent_Remove =
 		strunzone(self.em_npeff);           // Patch 1028; the emitters go with the map
 	if (self.trkc_tgt)
 		strunzone(self.trkc_tgt);           // P1378
+	if (self.trkc_nm)
+		strunzone(self.trkc_nm);            // P1390
 	if (self.pb_head)
 		Body_Free(self);
 	remove(self);
@@ -699,6 +701,8 @@ void(float isnew) CSQC_Ent_Update =
 			Trk_NetTrain(self);
 		else if (f == ENTWIRE_TRKPROP)
 			Trk_NetProp(self);
+		else if (f == ENTWIRE_SPSTATE)
+			Sp_NetState(self);
 		else if (f == ENTWIRE_PORTALSTATE)
 		{
 			self.pb_portalwire = TRUE;

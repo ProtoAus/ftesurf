@@ -21,6 +21,15 @@
 
 ## next
 
+### P1390 surf_colony's sky
+- The headcrab canisters in surf_colony's sky now fly round their routes instead of hanging still.
+
+### P1388 Trains keep the map's speeds
+- Trains and other things that run on tracks speed up and slow down where the map says (surf_christmas2's sky, bhop_collective's screens), instead of keeping one speed the whole way.
+
+### P1387 Spinning scenery moved by your game
+- Spinning and sliding scenery (windmills, asteroids, fans and what rides on them) is moved by your game from a clock the lobby sends once, instead of the lobby updating it 20 times a second, so it turns smoothly.
+
 ### P1385 Map messages in crisp text
 - Messages a map puts on screen (like surf_centipedes' "Press E (+use) in any startzone" line) and its hint boxes are drawn at a real font size on whole pixels, so they are sharp instead of resized and blurry.
 - surf_centipedes' moving sky costs your game less each frame.

@@ -39,6 +39,7 @@
 #define ENTWIRE_LASERSTATE 4    // P1256: an env_laser's TurnOn/TurnOff/Toggle
 #define ENTWIRE_TRKSTATE 5      // P1378: a passable func_tracktrain's clock (sh_trk.qc)
 #define ENTWIRE_TRKPROP 6       // P1378: a prop riding one
+#define ENTWIRE_SPSTATE 7       // P1387: a Patch 860 mover csprogs poses (sv_entities.qc SV_SpSend)
 
 // --- hulls ------------------------------------------------------------------
 // Source puts the player origin AT THE FEET, unlike Quake's centred origin.

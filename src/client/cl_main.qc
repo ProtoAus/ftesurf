@@ -381,6 +381,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	SaveLoc_RegisterCvars();
 	WarpOp_RegisterCvars();         // Patch 753: goto_start, goto_spawn, cl_warpop
 	PE_RegisterCvars();             // Patch 1195: prederror reports
+	registercommand("sp_dump");     // P1387: the server's `cmd spdump` asks for it
 	Gfx_RegisterCvars();
 	Vote_RegisterCvars();           // Patch 372: the vote box
 	Watch_RegisterCvars();
@@ -2438,6 +2439,7 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (VM_ConsoleCommand()) return TRUE;
 	if (WP_Command()) return TRUE;
 	if (Timer_ResumeCommand()) return TRUE;     // P1004
+	if (Sp_Command()) return TRUE;              // P1387
 	if (!strcmp(argv(0), "ent_fire"))
 	{
 		tsseat = getproperty(VF_ACTIVESEAT);   // the seat that typed it is the activator

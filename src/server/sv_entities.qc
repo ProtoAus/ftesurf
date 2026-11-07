@@ -1334,9 +1334,7 @@ void(entity src, string name, entity act) SV_FireOutput;
 float(entity t, string in, string pm) SV_RotButtonInput;
 float(entity e, string lk) SV_RotButtonOutputKnown;
 //Patch 860: decorative motion, defined after momentary_rot_button below.
-#define SPK_ROT     1
-#define SPK_LIN     2
-#define SPK_FOLLOW  3
+// SPK_ROT / SPK_LIN / SPK_FOLLOW: sh_spin.qc (P1387: csprogs reads them too).
 .float  fanfriction;        // map key, percent (bmodels.cpp:533)
 .float  movedistance;       // map key
 .float  vbsp_sp_cand;       // set at spawn: SPK_ROT / SPK_LIN might move
@@ -1345,6 +1343,9 @@ float(entity e, string lk) SV_RotButtonOutputKnown;
 float   vbsp_sp_resolved, vbsp_sp_nextt;    // per map, SV_EntityReset
 void() SV_SpWake;
 void(entity e) SV_SpDrop;
+float(entity to, float sf) SV_SpSend;     // P1387: a mover csprogs draws
+void(entity t) SV_SpKillKids;
+void(entity e) SV_SpPlace;
 float(entity t, string in, string pm) SV_SpinInput;
 float(entity e, string lk) SV_SpinOutputKnown;
 //P1378: passable tracktrains, defined beside func_tracktrain below.
@@ -4618,7 +4619,9 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	if (SV_TrkInput(t, in, pm))
 		return;
 	if (SV_SpinInput(t, in, pm))
-		return;
+		return;                         // sends its clock
+	if (t.SendEntity == SV_SpSend)
+		t.SendFlags = t.SendFlags | 1;  // P1387: any other input may change its look
 	if (t.classname == "info_particle_system")
 		if (SV_PsysInput(t, in))
 			return;
@@ -4649,6 +4652,7 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	{
 		if (t.SendEntity == SV_TrkSend)
 			SV_TrkKillRiders(t);        // P1378: Source removes a parent's children with it
+		SV_SpKillKids(t);               // P1387
 		remove(t);
 		return;
 	}
@@ -10677,6 +10681,7 @@ void() func_movelinear       =
 .float  wheels;             // map key: facing look-ahead (trains.cpp m_length)
 .float  orientationtype;    // map key: 0 faces down the path once, else along it
 .float  startspeed;         // map key: max speed (m_maxSpeed)
+.float  velocitytype;       // P1388 map key: 0 instant, 1 linear blend, 2 ease in/out
 .float  vbsp_trk_cand;
 .entity vbsp_trkr_par;      // a rider's train
 .vector vbsp_trkr_lo, vbsp_trkr_la;     // its pose in the train's spawn frame
@@ -10709,7 +10714,19 @@ float(entity e) SV_TrkHasGone =
 
 void() path_track =
 {
-	Trk_TableAdd(self.targetname, self.target, self.origin, self.spawnflags);
+	local float p0, pn, pt;
+	local string rec, lk;
+
+	// P1390: its outputs are already in vbsp_io_raw ("key\tvalue\n", SV_EntityIOBuild's blob).
+	lk = "";
+	for (p0 = 0; lk == "" && (pn = strstrofs(self.vbsp_io_raw, "\n", p0)) >= 0; p0 = pn + 1)
+	{
+		rec = substring(self.vbsp_io_raw, p0, pn - p0);
+		pt = strstrofs(rec, "\t", 0);
+		if (pt > 0 && !strcasecmp(substring(rec, 0, pt), "onpass"))
+			lk = Trk_PassLink(substring(rec, pt + 1, -1));
+	}
+	Trk_TableAdd(self.targetname, self.target, self.origin, self.spawnflags, self.speed, lk);
 	remove(self);
 };
 
@@ -10737,10 +10754,12 @@ float(entity to, float sf) SV_TrkSend =
 		WriteFloat(MSG_ENTITY, self.trk_a0_y);
 		WriteFloat(MSG_ENTITY, self.trk_a0_z);
 		WriteString(MSG_ENTITY, self.target);
+		WriteString(MSG_ENTITY, self.targetname);       // P1390: whose OnPass jumps it takes
 		WriteFloat(MSG_ENTITY, self.trk_height);
 		WriteFloat(MSG_ENTITY, self.trk_wheels);
 		WriteByte(MSG_ENTITY, self.trk_orient);
 		WriteFloat(MSG_ENTITY, self.trk_sflags);
+		WriteByte(MSG_ENTITY, self.trk_vmode);          // P1388
 		WriteFloat(MSG_ENTITY, self.effects);       // review 1: rendermode, Disable and Alpha/Color inputs
 		WriteFloat(MSG_ENTITY, self.alpha);
 		WriteFloat(MSG_ENTITY, self.colormod_x);
@@ -10799,9 +10818,16 @@ float(entity t, string in, string pm) SV_TrkInput =
 
 	if (t.SendEntity != SV_TrkSend)
 		return FALSE;
+	// Review 1: decided before the re-anchor, which with P1388's profile is not the same motion re-expressed.
+	if (in != "startforward" && in != "startbackward" && in != "stop" && in != "resume" && in != "toggle"
+	    && in != "reverse" && in != "setspeed" && in != "setspeedreal" && in != "setspeeddir"
+	    && in != "setspeeddiraccel" && in != "teleporttopathtrack")
+		return FALSE;
 	// trains.cpp:1330-1560. SetSpeed is immediate here (velocitytype's accel is not modelled).
 	t.trk_s0 = Trk_S(t, time);
 	t.trk_t0 = time;
+	if (t.trk_spd)
+		t.trk_spd = trk_vnow;           // P1388: the speed its path_tracks had given it by now
 	if (trk_end && t.trk_spd)
 	{
 		t.trk_old = t.trk_spd;          // DeadEnd (trains.cpp:2384): stopped there since
@@ -11189,6 +11215,13 @@ float(entity e, string lk) SV_RotButtonOutputKnown =
 .vector vbsp_sp_lorg, vbsp_sp_lang;     // spawn pose in the parent's spawn frame
 .vector vbsp_sp_wo, vbsp_sp_wf, vbsp_sp_wl, vbsp_sp_wu;    // world pose, this frame
 .vector vbsp_sp_axis;       // rot: Source's m_vecMoveAng; lin: unit dir in the parent frame
+.float  vbsp_sp_cl;         // P1387: csprogs draws it from its clock (the chain is non-solid throughout)
+.float  vbsp_sp_srv;        // P1387: something the server still writes needs this one's pose
+.float  vbsp_sp_pvs0;       // P1387: pvsflags before it went to csprogs
+.float  vbsp_sp_reach;      // P1387: how far it and what rides it reach from its origin
+.float  vbsp_sp_sky;        // P1387: it or something riding it is the 3D sky's (always sent)
+.float  vbsp_sp_keep;       // P1387: on a root: the whole chain stays server-written
+.float  vbsp_sp_dropping;   // P1387: inside SV_SpDrop
 // func_rotating: angle th0 at t0, speed w0 heading for wt (deg/s, signed); ramp rates
 // up/dn in deg/s^2, 0 without ACCDCC.  A stop at the start orientation clamps at stopat.
 .float  vbsp_sp_th0, vbsp_sp_t0, vbsp_sp_w0, vbsp_sp_wt;
@@ -11226,54 +11259,14 @@ vector(vector f, vector l, vector u) SV_SpAngles =
 	return a * (180 / M_PI);
 };
 
-// Angle at time t; leaves the speed then in vbsp_sp_wnow.  ACCDCC's SpinUpMove /
-// SpinDownMove / ReverseMove (bmodels.cpp:902-1000) as continuous ramps.
+// Angle at time t; leaves the speed then in vbsp_sp_wnow (P1387: sh_spin.qc's Sp_Theta, which csprogs shares).
 float(entity e, float t) SV_SpRotTheta =
 {
-	local float dt, w, wt, th, a, seg, rate;
+	local float th;
 
-	dt = max(0, t - e.vbsp_sp_t0);
-	w = e.vbsp_sp_w0;
-	wt = e.vbsp_sp_wt;
-	th = e.vbsp_sp_th0;
-	if (e.vbsp_sp_dn && w * wt < 0)
-	{
-		seg = fabs(w) / e.vbsp_sp_dn;
-		if (dt < seg)
-		{
-			a = (w > 0) ? -e.vbsp_sp_dn : e.vbsp_sp_dn;
-			vbsp_sp_wnow = w + a * dt;
-			return th + w * dt + 0.5 * a * dt * dt;
-		}
-		th = th + 0.5 * w * seg;
-		dt = dt - seg;
-		w = 0;
-	}
-	if (w != wt)
-	{
-		rate = (fabs(wt) > fabs(w)) ? e.vbsp_sp_up : e.vbsp_sp_dn;
-		if (rate)
-		{
-			seg = fabs(wt - w) / rate;
-			if (dt < seg)
-			{
-				a = (wt > w) ? rate : -rate;
-				vbsp_sp_wnow = w + a * dt;
-				return th + w * dt + 0.5 * a * dt * dt;
-			}
-			th = th + 0.5 * (w + wt) * seg;
-			dt = dt - seg;
-		}
-		w = wt;
-	}
-	th = th + w * dt;
-	vbsp_sp_wnow = w;
-	if (e.vbsp_sp_stopping)
-	if ((w > 0 && th >= e.vbsp_sp_stopat) || (w < 0 && th <= e.vbsp_sp_stopat))
-	{
-		vbsp_sp_wnow = 0;
-		return e.vbsp_sp_stopat;
-	}
+	th = Sp_Theta(e.vbsp_sp_th0, e.vbsp_sp_w0, e.vbsp_sp_wt, e.vbsp_sp_up, e.vbsp_sp_dn,
+	              e.vbsp_sp_stopping, e.vbsp_sp_stopat, t - e.vbsp_sp_t0);
+	vbsp_sp_wnow = sp_wnow;
 	return th;
 };
 
@@ -11312,16 +11305,7 @@ void(entity e, float s) SV_SpRotTarget =
 
 float(entity e) SV_SpLinPos =
 {
-	local float p;
-
-	if (!e.vbsp_sp_dir)
-		return e.vbsp_sp_pos;
-	p = e.vbsp_sp_pos + e.vbsp_sp_dir * e.speed * (time - e.vbsp_sp_t0) / e.movedistance;
-	if (e.vbsp_sp_dir > 0 && p > e.vbsp_sp_ideal)
-		p = e.vbsp_sp_ideal;
-	if (e.vbsp_sp_dir < 0 && p < e.vbsp_sp_ideal)
-		p = e.vbsp_sp_ideal;
-	return p;
+	return Sp_LinPos(e.vbsp_sp_pos, e.vbsp_sp_dir, e.speed, time - e.vbsp_sp_t0, e.movedistance, e.vbsp_sp_ideal);
 };
 
 float(entity e) SV_SpLinEta =
@@ -11368,10 +11352,83 @@ void(entity e) SV_SpRotUse =
 	SV_SpRotTarget(e, vbsp_sp_wnow ? 0 : e.vbsp_sp_max);	// RotatingUse, bmodels.cpp:1153
 };
 
+entity(entity e) SV_SpRoot =
+{
+	while (e.vbsp_sp_parent)
+		e = e.vbsp_sp_parent;
+	return e;
+};
+
+/*
+  P1387: a mover in a chain that is non-solid throughout is a CSQC entity (ENTWIRE_SPSTATE): its kind,
+  spawn-frame pose, parent and look once, its clock again only when something changes it; csprogs
+  (cl_spin.qc) poses it every frame with sh_spin.qc's functions. Logic stays here -- inputs, arrival
+  outputs, the START_ON use -- and its edict is never written.
+*/
+float(entity to, float sf) SV_SpSend =
+{
+	local entity p;
+
+	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
+	WriteByte(MSG_ENTITY, ENTWIRE_SPSTATE);
+	WriteByte(MSG_ENTITY, sf & 3);
+	if (sf & 1)
+	{
+		p = self.vbsp_sp_parent;
+		if (p && !p.vbsp_sp_cl)
+			p = world;
+		WriteByte(MSG_ENTITY, self.vbsp_sp_kind);
+		WriteShort(MSG_ENTITY, self.modelindex);
+		WriteEntity(MSG_ENTITY, p);
+		WriteFloat(MSG_ENTITY, self.vbsp_sp_lorg_x);
+		WriteFloat(MSG_ENTITY, self.vbsp_sp_lorg_y);
+		WriteFloat(MSG_ENTITY, self.vbsp_sp_lorg_z);
+		WriteFloat(MSG_ENTITY, self.vbsp_sp_lang_x);
+		WriteFloat(MSG_ENTITY, self.vbsp_sp_lang_y);
+		WriteFloat(MSG_ENTITY, self.vbsp_sp_lang_z);
+		WriteFloat(MSG_ENTITY, self.vbsp_sp_axis_x);
+		WriteFloat(MSG_ENTITY, self.vbsp_sp_axis_y);
+		WriteFloat(MSG_ENTITY, self.vbsp_sp_axis_z);
+		WriteFloat(MSG_ENTITY, self.movedistance);
+		WriteFloat(MSG_ENTITY, self.startposition);
+		WriteByte(MSG_ENTITY, self.skin);
+		WriteFloat(MSG_ENTITY, self.scale);
+		WriteShort(MSG_ENTITY, self.frame);
+		WriteFloat(MSG_ENTITY, self.alpha);
+		WriteFloat(MSG_ENTITY, self.effects);
+		WriteFloat(MSG_ENTITY, self.colormod_x);
+		WriteFloat(MSG_ENTITY, self.colormod_y);
+		WriteFloat(MSG_ENTITY, self.colormod_z);
+	}
+	if (sf & 2)
+	{
+		if (self.vbsp_sp_kind == SPK_ROT)
+		{
+			WriteFloat(MSG_ENTITY, self.vbsp_sp_th0);
+			WriteFloat(MSG_ENTITY, self.vbsp_sp_t0);
+			WriteFloat(MSG_ENTITY, self.vbsp_sp_w0);
+			WriteFloat(MSG_ENTITY, self.vbsp_sp_wt);
+			WriteFloat(MSG_ENTITY, self.vbsp_sp_up);
+			WriteFloat(MSG_ENTITY, self.vbsp_sp_dn);
+			WriteByte(MSG_ENTITY, self.vbsp_sp_stopping);
+			WriteFloat(MSG_ENTITY, self.vbsp_sp_stopat);
+		}
+		else if (self.vbsp_sp_kind == SPK_LIN)
+		{
+			WriteFloat(MSG_ENTITY, self.vbsp_sp_pos);
+			WriteFloat(MSG_ENTITY, self.vbsp_sp_ideal);
+			WriteChar(MSG_ENTITY, self.vbsp_sp_dir);
+			WriteFloat(MSG_ENTITY, self.speed);
+			WriteFloat(MSG_ENTITY, self.vbsp_sp_t0);
+		}
+	}
+	return TRUE;
+};
+
 void() SV_SpResolve =
 {
 	local entity e, p, q;
-	local float c, more, nturn, nslide, nfollow, f;
+	local float c, more, nturn, nslide, nfollow, f, dd, ncl;
 	local string pn;
 	local vector pf, pl, pu, d;
 
@@ -11548,7 +11605,73 @@ void() SV_SpResolve =
 			dprint(sprintf("spin %s (#%g): follows %s (%s)\n", e.model, num_for_edict(e), p.model, e.parentname));
 		}
 	}
-	dprint(sprintf("spin: %g turn, %g slide, %g follow\n", nturn, nslide, nfollow));
+	// P1387: a chain non-solid throughout is drawn by csprogs (SV_SpSend); anything solid in it keeps the
+	// chain here as before. What the server still writes needs its ancestors' poses here (vbsp_sp_srv).
+	// Review 1: the whole chain, not the part above its first solid member (csprogs' exact time over the
+	// engine's 20 Hz lerp would make the server-written part trail). Also kept: a chain where an
+	// ambient_generic sounds from a member that travels -- a sound follows only an ordinary entity
+	// (snd_dma.c:2776, lerpents), so on csprogs it would stay where the edict spawned.
+	ncl = 0;
+	for (e = nextent(world); e; e = nextent(e))
+		if (e.vbsp_sp_depth && e.solid != SOLID_NOT)
+			SV_SpRoot(e).vbsp_sp_keep = TRUE;
+	for (q = find(world, classname, "ambient_generic"); q; q = find(q, classname, "ambient_generic"))
+	{
+		pn = SV_KeyS2(q.SourceEntityName, q.sourceentityname);
+		if (pn != "")
+		{
+			e = SV_FindByName(pn, world);
+			if (e.vbsp_sp_depth && (e.vbsp_sp_parent || e.vbsp_sp_kind == SPK_LIN))
+				SV_SpRoot(e).vbsp_sp_keep = TRUE;
+		}
+	}
+	for (dd = 1; dd <= vbsp_sp_maxdepth; dd = dd + 1)
+		for (e = findfloat(world, vbsp_sp_depth, dd); e; e = findfloat(e, vbsp_sp_depth, dd))
+		{
+			p = e.vbsp_sp_parent;
+			e.vbsp_sp_cl = !SV_SpRoot(e).vbsp_sp_keep;
+			if (e.vbsp_sp_cl)
+			{
+				e.SendEntity = SV_SpSend;
+				e.SendFlags = 3;
+				e.vbsp_sp_pvs0 = e.pvsflags;
+				ncl = ncl + 1;
+			}
+		}
+	// Sent by the PVS as before, not always (that put all 96 of bhop_lost_world_v2's in every client's
+	// frame: +0.11 ms). Every member of a chain gets one box -- round its root, as far as anything in the
+	// chain reaches -- so a rider is sent exactly when what it rides is; a 3D-sky mark on one sends all.
+	for (dd = vbsp_sp_maxdepth; dd >= 1; dd = dd - 1)
+		for (e = findfloat(world, vbsp_sp_depth, dd); e; e = findfloat(e, vbsp_sp_depth, dd))
+			if (e.vbsp_sp_cl)
+			{
+				e.vbsp_sp_reach = max(e.vbsp_sp_reach, max(vlen(e.vbsp_sp_mins0), vlen(e.vbsp_sp_maxs0)));
+				if (e.vbsp_sp_kind == SPK_LIN)
+					e.vbsp_sp_reach = e.vbsp_sp_reach + e.movedistance;   // the slide carries its riders
+				if ((e.vbsp_sp_pvs0 & 3) == PVSF_IGNOREPVS)
+					e.vbsp_sp_sky = TRUE;
+				p = e.vbsp_sp_parent;
+				if (p)
+				{
+					p.vbsp_sp_reach = max(p.vbsp_sp_reach, vlen(e.vbsp_sp_lorg) + e.vbsp_sp_reach);
+					p.vbsp_sp_sky = p.vbsp_sp_sky || e.vbsp_sp_sky;
+				}
+			}
+	for (e = nextent(world); e; e = nextent(e))
+		if (e.vbsp_sp_cl)
+		{
+			for (q = e; q.vbsp_sp_parent; q = q.vbsp_sp_parent)
+				;
+			d = q.origin - e.origin;
+			setsize(e, d - '1 1 1' * q.vbsp_sp_reach, d + '1 1 1' * q.vbsp_sp_reach);
+			if (q.vbsp_sp_sky)
+				e.pvsflags = (e.vbsp_sp_pvs0 & 252) | PVSF_IGNOREPVS;
+		}
+	for (e = nextent(world); e; e = nextent(e))
+		if (e.vbsp_sp_depth && !e.vbsp_sp_cl && (e.vbsp_sp_draw || e.vbsp_sp_kind == SPK_FOLLOW))
+			for (p = e; p && !p.vbsp_sp_srv; p = p.vbsp_sp_parent)
+				p.vbsp_sp_srv = TRUE;
+	dprint(sprintf("spin: %g turn, %g slide, %g follow (%g drawn by csprogs)\n", nturn, nslide, nfollow, ncl));
 };
 
 // First frame after the lump (sv_main.qc), before the I/O build fires OnMapSpawn.
@@ -11567,15 +11690,41 @@ entity(entity e) SV_TrkParent =
 	return SV_FindByName(pn, world);
 };
 
-float(entity e) SV_TrkRiderOK =
+// P1390: a solid prop rides too when train t carries P1202's 3D-sky mark and the prop does, or spawned
+// beside it (surf_colony's in-wall canister got no mark of its own). Its hull stays where it spawned,
+// where nothing reaches.
+float(entity e) SV_TrkSpawnSees =
 {
-	return (e.solid == SOLID_NOT && e.model != "" && substring(e.classname, 0, 5) == "prop_");
+	local entity s;
+	local string cn;
+
+	for (s = nextent(world); s; s = nextent(s))
+	{
+		cn = s.classname;
+		if (cn == "info_player_start" || cn == "info_player_deathmatch" || cn == "info_player_terrorist"
+		    || cn == "info_player_counterterrorist" || cn == "info_player_teamspawn")
+		if (checkpvs(s.origin + '0 0 64', e))
+			return TRUE;
+	}
+	return FALSE;
+};
+
+float(entity e, entity t) SV_TrkRiderOK =
+{
+	if (e.model == "" || substring(e.classname, 0, 5) != "prop_")
+		return FALSE;
+	if (e.solid == SOLID_NOT)
+		return TRUE;
+	if (!t.vbsp_skyent)
+		return FALSE;
+	// Review 1: a prop P1202 left unmarked may be one a spawn sees: SV_SkyRoomAll's spawn test, again.
+	return (e.vbsp_skyent || (vlen(e.origin - t.origin) < 512 && !SV_TrkSpawnSees(e)));
 };
 
 void() SV_TrkResolve =
 {
 	local entity e, p, q;
-	local float depth, direct, nfrozen, ok;
+	local float depth, direct, nfrozen, ok, i;
 	local vector d, pf, pl, pu;
 
 	vbsp_trk_n = vbsp_trkr_n = nfrozen = 0;
@@ -11598,13 +11747,13 @@ void() SV_TrkResolve =
 	{
 		if (e.parentname == "")
 			continue;
-		ok = (SV_TrkRiderOK(e) && !SV_TrkHasGone(e));  // a rider carrying what spawned away cannot ride
 		direct = TRUE;
 		q = SV_TrkParent(e);
 		for (depth = 0; q && depth < 8; depth = depth + 1)
 		{
 			if (q.vbsp_trk_cand)
 			{
+				ok = (SV_TrkRiderOK(e, q) && !SV_TrkHasGone(e));  // a rider carrying what spawned away cannot ride
 				if (!direct || !ok)
 				{
 					q.vbsp_trk_cand = FALSE;
@@ -11621,7 +11770,7 @@ void() SV_TrkResolve =
 	}
 	for (e = findfloat(world, vbsp_trk_cand, TRUE); e; e = findfloat(e, vbsp_trk_cand, TRUE))
 	{
-		if (!Trk_Walk(e, e.target))
+		if (!Trk_Walk(e, e.target, e.targetname))
 			continue;					// no path_track at its target: frozen, as before
 		vbsp_trk_n = vbsp_trk_n + 1;
 		// Spawn (trains.cpp:2646): max speed, else the speed, else 100. Find puts it on its first
@@ -11629,10 +11778,27 @@ void() SV_TrkResolve =
 		e.trk_max = fabs(e.startspeed);
 		if (!e.trk_max)
 			e.trk_max = fabs(e.speed) ? fabs(e.speed) : 100;
-		e.trk_spd = fabs(e.speed);
+		e.trk_max = min(e.trk_max, 100000);  // P1388 review 2: the profile's logs want finite speeds
+		e.trk_spd = min(fabs(e.speed), e.trk_max);
 		e.trk_dir = (e.speed < 0) ? -1 : 1;
 		e.trk_s0 = 0;
 		e.trk_t0 = time;
+		// P1388: velocitytype 1/2 blend toward each path_track's speed; otherwise a node's speed is taken on
+		// arrival only under No User Control -- the first one's too, Find's ArriveAtNode.
+		e.trk_vmode = 0;
+		for (i = 0; i < e.trk_n; i = i + 1)
+			if (trk_pspd[trk_r[e.trk_i0 + i]])
+				e.trk_vmode = 1;
+		if (e.trk_vmode)
+		{
+			if (e.velocitytype == 1 || e.velocitytype == 2)
+				e.trk_vmode = e.velocitytype + 1;
+			else if (!(e.spawnflags & SF_TRACKTRAIN_NOCONTROL))
+				e.trk_vmode = 0;
+			if (e.spawnflags & SF_TRACKTRAIN_NOCONTROL)
+			if (trk_pspd[trk_r[e.trk_i0]])
+				e.trk_spd = trk_pspd[trk_r[e.trk_i0]];
+		}
 		e.trk_height = e.height;
 		e.trk_wheels = e.wheels;
 		e.trk_orient = e.orientationtype;
@@ -11658,10 +11824,10 @@ void() SV_TrkResolve =
 	// riding train, placed in its spawn frame as SV_SpResolve places a follower.
 	for (e = nextent(world); e; e = nextent(e))
 	{
-		if (e.parentname == "" || !SV_TrkRiderOK(e))
+		if (e.parentname == "")
 			continue;
 		p = SV_TrkParent(e);
-		if (!p.trk_n || p.SendEntity != SV_TrkSend)
+		if (!p.trk_n || p.SendEntity != SV_TrkSend || !SV_TrkRiderOK(e, p))
 			continue;
 		Trk_Basis(p.trk_a0);
 		pf = trk_bf;
@@ -11685,10 +11851,109 @@ void() SV_TrkResolve =
 
 // Back where it spawned and out of the driver: it went solid, so its collision is
 // the frozen one again (SV_IOEnable, SV_SpWrite).
+// P1387: back to ordinary networking at its spawn pose (never written), with whatever rides on it.
+void(entity e) SV_SpUncl =
+{
+	local entity q, p;
+
+	e.vbsp_sp_cl = FALSE;
+	e.SendEntity = __NULL__;
+	e.pvsflags = e.vbsp_sp_pvs0;
+	setsize(e, e.vbsp_sp_mins0, e.vbsp_sp_maxs0);
+	for (q = nextent(world); q; q = nextent(q))
+		if (q.vbsp_sp_cl)
+			for (p = q.vbsp_sp_parent; p; p = p.vbsp_sp_parent)
+				if (p == e)
+				{
+					SV_SpUncl(q);
+					break;
+				}
+};
+
+void(entity e) SV_SpPlaceChain =
+{
+	if (e.vbsp_sp_parent)
+		SV_SpPlaceChain(e.vbsp_sp_parent);
+	SV_SpPlace(e);
+};
+
+// `cmd spdump` (sv_cheats): every csprogs-posed mover as the server would place it now, and the asker's
+// csprogs asked for the same time (cl_spin.qc Sp_Command), so an arm can diff the two.
+void(entity pl) SV_SpDump =
+{
+	local entity e;
+
+	if (!cvar("sv_cheats"))
+	{
+		sprint(pl, PRINT_HIGH, "^3spdump needs sv_cheats 1\n");
+		return;
+	}
+	for (e = nextent(world); e; e = nextent(e))
+		if (e.vbsp_sp_cl)
+		{
+			SV_SpPlaceChain(e);
+			print(sprintf("spdump #%g o %.3f %.3f %.3f", num_for_edict(e), e.vbsp_sp_wo_x, e.vbsp_sp_wo_y, e.vbsp_sp_wo_z));
+			print(sprintf(" f %.4f %.4f %.4f", e.vbsp_sp_wf_x, e.vbsp_sp_wf_y, e.vbsp_sp_wf_z));
+			print(sprintf(" l %.4f %.4f %.4f", e.vbsp_sp_wl_x, e.vbsp_sp_wl_y, e.vbsp_sp_wl_z));
+			print(sprintf(" vis %g\n", checkpvs(pl.origin + pl.view_ofs, e)));     // sent to the asker by PVS
+		}
+		else if (e.vbsp_sp_depth || e.vbsp_sp_wrote)    // server-written: where its edict is
+			print(sprintf("spdump srv #%g %s o %v a %v\n", num_for_edict(e), e.targetname, e.origin, e.angles));
+	for (e = nextent(world); e; e = nextent(e))
+		if (e.SendEntity == SV_TrkSend)     // P1388: the trains' clocks too
+		{
+			print(sprintf("spdump trk #%g s %.3f v %.3f m %g", num_for_edict(e), Trk_S(e, time), trk_vnow, e.trk_vmode));
+			print(sprintf(" clock %.3f %.3f %.3f %g %s\n", e.trk_s0, e.trk_t0, e.trk_spd, e.trk_dir, e.model));
+		}
+	print(sprintf("spdump end %.3f\n", time));
+	stuffcmd(pl, sprintf("sp_dump %.3f\n", time));
+};
+
+// P1387: a Kill leaves the parent's children where they are (UTIL_Remove unlinks them), placed now while
+// the parent still can be. Review 1: a turning or sliding child keeps going from there -- its own turn or
+// slide comes out of the frame it keeps, and a slide's axis goes into the world frame -- where SV_SpPlace's
+// freed-parent branch (other removals) adds it twice.
+void(entity t) SV_SpKillKids =
+{
+	local entity e;
+	local vector ax;
+
+	if (!t.vbsp_sp_depth)
+		return;
+	for (e = nextent(world); e; e = nextent(e))
+		if (e.vbsp_sp_depth && e.vbsp_sp_parent == t)
+		{
+			SV_SpPlaceChain(e);
+			e.vbsp_sp_lorg = e.vbsp_sp_wo;
+			e.vbsp_sp_lang = SV_SpAngles(e.vbsp_sp_wf, e.vbsp_sp_wl, e.vbsp_sp_wu);
+			if (e.vbsp_sp_kind == SPK_ROT)
+				e.vbsp_sp_lang = e.vbsp_sp_lang - e.vbsp_sp_axis * SV_SpRotTheta(e, time);
+			else if (e.vbsp_sp_kind == SPK_LIN)
+			{
+				ax = t.vbsp_sp_wf * e.vbsp_sp_axis_x + t.vbsp_sp_wl * e.vbsp_sp_axis_y + t.vbsp_sp_wu * e.vbsp_sp_axis_z;
+				e.vbsp_sp_axis = ax;
+				e.vbsp_sp_lorg = e.vbsp_sp_lorg - ax * (e.movedistance * (SV_SpLinPos(e) - e.startposition));
+			}
+			e.vbsp_sp_parent = world;
+			if (e.vbsp_sp_cl)
+				e.SendFlags = e.SendFlags | 1;
+		}
+};
+
 void(entity e) SV_SpDrop =
 {
+	if (e.vbsp_sp_dropping)
+		return;                         // SV_SpKillKids places e again, and its SV_SpWrite lands here
+	if (e.vbsp_sp_cl)
+	{
+		SV_SpUncl(SV_SpRoot(e));        // review 1: the whole chain, as SV_SpResolve keeps one with a solid member
+		SV_SpWake();                    // its server-written members move from now
+	}
 	if (!e.vbsp_sp_draw && e.vbsp_sp_kind != SPK_FOLLOW)
 		return;							// its own edict never moves: nothing to undo
+	e.vbsp_sp_dropping = TRUE;
+	SV_SpKillKids(e);                   // review 2: what rides it stays where it is (it goes back to spawn)
+	e.vbsp_sp_dropping = FALSE;
 	if (e.vbsp_sp_wrote)
 	{
 		e.vbsp_sp_wrote = FALSE;
@@ -11799,6 +12064,7 @@ void(entity e) SV_SpPlace =
 	e.vbsp_sp_wf = vbsp_sp_bf;
 	e.vbsp_sp_wl = vbsp_sp_bl;
 	e.vbsp_sp_wu = vbsp_sp_bu;
+	if (!e.vbsp_sp_cl)                  // P1387: csprogs poses it
 	if (e.vbsp_sp_draw || e.vbsp_sp_kind == SPK_FOLLOW)
 		SV_SpWrite(e, o, a);
 };
@@ -11816,6 +12082,8 @@ void() SV_SpFrame =
 		{
 			e.vbsp_sp_useat = 0;
 			SV_SpRotUse(e);
+			if (e.vbsp_sp_cl)
+				e.SendFlags = e.SendFlags | 2;
 		}
 		if (e.vbsp_sp_stopping)
 		{
@@ -11843,10 +12111,14 @@ void() SV_SpFrame =
 	}
 	for (d = 1; d <= vbsp_sp_maxdepth; d = d + 1)
 		for (e = findfloat(world, vbsp_sp_depth, d); e; e = findfloat(e, vbsp_sp_depth, d))
-			SV_SpPlace(e);
+			if (!e.vbsp_sp_cl || e.vbsp_sp_srv)
+				SV_SpPlace(e);
 
+	// 20 times a second only while something the server writes moves (P1387: csprogs poses the rest);
+	// otherwise just for the events -- a START_ON use, an arrival's outputs, the one-turn anchor -- however
+	// far off (review 1: a slow slide's end past an hour used to be dropped).
 	moving = FALSE;
-	next = time + 0.05;
+	next = time + 1000000000;
 	for (e = findfloat(world, vbsp_sp_kind, SPK_ROT); e; e = findfloat(e, vbsp_sp_kind, SPK_ROT))
 	{
 		if (!e.vbsp_sp_depth)
@@ -11858,7 +12130,12 @@ void() SV_SpFrame =
 		}
 		SV_SpRotTheta(e, time);
 		if (vbsp_sp_wnow || e.vbsp_sp_wt)
-			moving = TRUE;
+		{
+			if (!e.vbsp_sp_cl || e.vbsp_sp_srv)
+				moving = TRUE;
+			else
+				next = min(next, e.vbsp_sp_t0 + 61);
+		}
 	}
 	for (e = findfloat(world, vbsp_sp_kind, SPK_LIN); e; e = findfloat(e, vbsp_sp_kind, SPK_LIN))
 	{
@@ -11868,13 +12145,16 @@ void() SV_SpFrame =
 			next = time;
 		if (e.vbsp_sp_dir)
 		{
-			moving = TRUE;
+			if (!e.vbsp_sp_cl || e.vbsp_sp_srv)
+				moving = TRUE;
 			eta = SV_SpLinEta(e);
 			next = min(next, eta);
 		}
 	}
+	if (moving)
+		next = min(next, time + 0.05);
 	next = max(next, time);
-	vbsp_sp_nextt = (moving || next == time) ? next : 0;
+	vbsp_sp_nextt = (next < time + 1000000000) ? max(next, 0.001) : 0;     // 0 is asleep (SV_SpWake)
 };
 
 // No driver edict: one spawned while the map loads renumbers every entity after it,
@@ -11975,6 +12255,8 @@ float(entity t, string in, string pm) SV_SpinInput =
 	}
 	else
 		return FALSE;
+	if (t.vbsp_sp_cl)
+		t.SendFlags = t.SendFlags | 2;  // P1387: its new clock
 	if (t.vbsp_sp_depth)
 		SV_SpWake();
 	return TRUE;

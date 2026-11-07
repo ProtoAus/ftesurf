@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1387 spinners/sliders in csprogs, P1388 track speeds, P1390 surf_colony sky -- in review (8 Nov)
+
+- surf_santorini: the windmill sails turn smoothly. surf_voyager: the asteroids drift without stepping.
+  bhop_lost_world_v2: its turning props (56 spinners, 40 props on them) move as before.
+- surf_christmas2: the sky trains start slowly and speed up along their tracks (35 up to 1250 u/s).
+- surf_colony: look into the sky: the headcrab canisters fly round their two routes.
+
 ## P1385 crisp map text -- LIVE (12 lobbies + both installs, 7 Nov 17:24Z); owner check pending
 
 - surf_centipedes: walk into the spawn room's trigger (or `cmd ent_fire explain_text Display` with sv_cheats):

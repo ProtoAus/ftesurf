@@ -17,7 +17,14 @@
 
 - Decorative motion belongs in csprogs (owner, 8 Nov): a server-written mover set always-sent in a 3D sky cost
   9-12 KB/s a client (QW deltas resend until acked, so halving the writes did not halve the bytes); P1378 sends
-  a clock once (sh_trk.qc). Patch 860's rotators/sliders/followers are still server-written (a follow-up).
+  a clock once (sh_trk.qc). P1387 does the same for Patch 860's non-solid rotators/sliders/followers
+  (sh_spin.qc, cl_spin.qc); P1388/P1390 add path_track speeds and OnPass loops (tools/p1387-p1390.md).
+- SSQC builtin #532 is MVDSV's precache_vwep_model, not `log` (csqc's #532 is log): a server `log()` prints
+  "PF_precache_vwep_model: bad string" with a QC stack and returns junk. Grep arm logs for `<qwprogs.dat>`
+  and "bad string", not only PR_RunError. Server/client shared math uses Trk_Ln (sh_trk.qc).
+- A map changed by `rcon map` sends that spawn's server prints to the rcon client (its log), not the
+  server log: put the map in the server cfg when its resolve lines are the evidence.
+- `cmd spdump` (sv_cheats) + tools/spcmp.py diff server and csprogs poses/train clocks at one server time.
 - Rig traps met: a server rig without cfg/default.cfg runs QW physics (noclip = spectator flight at
   sv_spectatormaxspeed): exec the game's default.cfg before measuring movement. A headless client
   (vid_renderer headless) never runs CSQC_UpdateView, so nothing hooked there acts. A client on an isolated

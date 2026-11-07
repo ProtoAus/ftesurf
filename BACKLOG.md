@@ -766,11 +766,16 @@
 
 ## P1378 tracktrains: what is not modelled (8 Nov 2026)
 
-- Per-path_track `speed` (32 passable trains on 8 maps keep the train's own speed), path_track OnPass/
-  OnTeleport and the train's own outputs, `bank`, velocitytype accel (src/shared/sh_trk.qc header).
-  Falsifier: bhop_collective / surf_christmas2 trains change speed at the node that says so.
-- surf_colony's sky canisters loop by OnPass TeleportToPathTrack + OnTeleport StartForward and are
-  solid 6, so they stay frozen (Patch 860 never moves collision).
+- Per-path_track `speed`: P1388 (tools/p1387-p1390.md). Still not: backward motion keeps one speed,
+  Disable Train nodes (none in the library), the 0.1 s LookAhead lead on arrival, SetSpeedDirAccel's ramp.
+- OnPass TeleportToPathTrack on the train: P1390 walks it as a jump (surf_colony). Still not: other
+  OnPass/OnTeleport outputs and the train's own outputs (nothing fires them), `bank`.
+- surf_colony's solid sky canisters ride (P1390: P1202's sky mark, hull left in place).
+- P1388 departures from Source: a segment whose start node has no speed blends linearly from the speed at
+  its start (Source re-blends from the live speed each tick); an OnPass TeleportToPathTrack destination
+  gets no ArriveAtNode in Source, but instant mode (1) applies its speed here.
+- P1387: clients without CSQC see csprogs-drawn movers at their spawn pose (as P1378's trains); qwprogs
+  and csprogs must be deployed together (the wire has no version).
 - A train with anything drawn under it that cannot ride (kz_bhop_yonkoma: a trigger_teleport, a
   minecart's func_rotating wheels) stays frozen whole. Falsifier for a fix: the wheels turn on the
   moving cart and the trigger moves with its train (a gameplay change: review it as one).

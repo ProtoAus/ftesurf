@@ -6,6 +6,7 @@
 */
 string trk_clmap;               // the map the path table was read for
 .string trkc_tgt;               // a train's first path_track (zoned; the entity goes with the map)
+.string trkc_nm;                // P1390: its name (zoned), for its path_tracks' OnPass jumps
 .float  trkp_par;               // a rider's train, as a server entity number
 .entity trkp_pent;              // ...found
 .vector trkp_lo, trkp_la;       // its pose in the train's spawn frame
@@ -15,7 +16,7 @@ string trk_clmap;               // the map the path table was read for
 // a map change can still show the previous lump for a moment).
 void() Trk_ClLoad =
 {
-	local string tok, key, cn, nm, tgt, sorg, sfl;
+	local string tok, key, cn, nm, tgt, sorg, sfl, sspd, lk, rk;
 
 	Trk_TableReset();
 	if (trk_clmap)
@@ -26,19 +27,23 @@ void() Trk_ClLoad =
 	{
 		if (tok != "{")
 			continue;
-		cn = nm = tgt = sorg = sfl = "";
+		cn = nm = tgt = sorg = sfl = sspd = lk = "";
 		while ((key = getentitytoken()) != "" && key != "}")
 		{
 			tok = getentitytoken();
+			rk = key;
 			key = strtolower(key);
 			if      (key == "classname")  cn = tok;
 			else if (key == "targetname") nm = tok;
 			else if (key == "target")     tgt = tok;
 			else if (key == "origin")     sorg = tok;
 			else if (key == "spawnflags") sfl = tok;
+			else if (key == "speed")      sspd = tok;
+			else if (key == "onpass" && lk == "" && substring(rk, 0, 2) == "On")    // as the server keeps outputs
+				lk = Trk_PassLink(tok);
 		}
 		if (cn == "path_track")
-			Trk_TableAdd(nm, tgt, stov(sorg), stof(sfl));
+			Trk_TableAdd(nm, tgt, stov(sorg), stof(sfl), stof(sspd), lk);
 	}
 	Trk_TableLink();
 };
@@ -51,7 +56,7 @@ void() Trk_ClReload =
 	Trk_ClLoad();
 	for (t = find(world, classname, "trk_train"); t; t = find(t, classname, "trk_train"))
 	{
-		if (Trk_Walk(t, t.trkc_tgt))
+		if (Trk_Walk(t, t.trkc_tgt, t.trkc_nm))
 			Trk_FaceStart(t);           // again: a stale lump's facing is not the server's
 		t.trk_placet = 0;
 	}
@@ -89,7 +94,7 @@ void(entity e) Trk_NetTrain =
 {
 	local float sf, mi, s0, t0, spd, dir;
 	local vector o0, a0;
-	local string tgt;
+	local string tgt, nm;
 
 	sf = readbyte();
 	if (sf & TRK_SF_ID)
@@ -102,10 +107,12 @@ void(entity e) Trk_NetTrain =
 		a0_y = readfloat();
 		a0_z = readfloat();
 		tgt = readstring();
+		nm = readstring();
 		e.trk_height = readfloat();
 		e.trk_wheels = readfloat();
 		e.trk_orient = readbyte();
 		e.trk_sflags = readfloat();
+		e.trk_vmode = readbyte();           // P1388
 		e.effects = readfloat();
 		e.alpha = readfloat();
 		e.colormod_x = readfloat();
@@ -117,6 +124,7 @@ void(entity e) Trk_NetTrain =
 				Trk_ClReload();
 			e.classname = "trk_train";
 			e.trkc_tgt = strzone(tgt);
+			e.trkc_nm = strzone(nm);
 			e.trk_o0 = o0;
 			e.trk_a0 = a0;
 			e.trk_alast = a0;
@@ -124,7 +132,7 @@ void(entity e) Trk_NetTrain =
 			setmodelindex(e, mi);
 			e.drawmask = MASK_ENGINE;
 			e.predraw = Trk_TrainPredraw;
-			if (!Trk_Walk(e, tgt))
+			if (!Trk_Walk(e, tgt, nm))
 				Trk_ClReload();
 			if (e.trk_n)
 				Trk_FaceStart(e);
