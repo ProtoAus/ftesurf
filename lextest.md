@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1367 own replays, lobby ghosts, goto, ahop_coast -- owner check pending
+## P1367 own replays, lobby ghosts, goto, ahop_coast -- LIVE (12 lobbies + both installs, 7 Nov); owner check pending
 
 Measured in an isolated rig against a control build of main (tools/p1367-lexlist.md). Yours to
 confirm in the real game once deployed:

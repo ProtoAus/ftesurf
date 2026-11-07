@@ -27,6 +27,12 @@
   prediction and evidence review. Not started. Falsifier: scripted uphill hops on a 10-25 deg
   displacement printing each landing's horizontal speed before/after, current vs ported build.
 
+## .rec header reads capped at 32 lines in cl_scores.qc (P1367 review, 7 Nov)
+
+- cl_scores.qc:559 reads a header's first 32 lines (cl_online/onlinecache read 64). A rig cheat.rec with
+  every optional key has `flags` at line 27 and `begin` at 31: five more header keys and `flags` falls
+  out of that read. Check: count header lines of a fresh recording before adding a key.
+
 ## tools/mapdeps.py reads commented-out .vmt lines (7 Nov)
 
 - vmt_refs (tools/mapdeps.py) does not skip `//` comments, so surf_ferros reports

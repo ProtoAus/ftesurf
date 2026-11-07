@@ -1,5 +1,18 @@
 # AGENT_NOTES.md
 
+## P1367 own-replay view lead, lobby ghosts, "!player", goto (7 Nov 2026; ftesurf-3a, root lexlist-20261107-3a)
+
+- LIVE 7 Nov 10:20Z: all 12 lobbies (qw db38fe13, cs e897d49c, main fc179a38 = pi.dev's P1366 +
+  P1367, fteqcc c24ede65; cs appended to codes.txt; Pi cfg/maps/map_ahop_coast.cfg) and both Windows
+  installs (menu untouched). Next lobby QC base: main at or after fc179a38.
+- An own online replay's .view is joined by STAT_FS_TIMERTICKS as RECEIVED, so it sits one RTT early;
+  the owner (Pi LAN) never sees it. Measure with the lobby's uploads: game/ftesurf/data/evidence/<map>/
+  <runid>.view against the .rec under data/runs/<map>/<leg>/ whose header says `runid <id>`.
+- The Pi has no data/mapmeta.txt: lobby modes come from the map name (BACKLOG lists the 10 splits).
+- Developer-only engine prints (SETINFO, PF_ForceInfoKey) reach a log only with `log_developer 1`;
+  `conbridge send "-forward"` is eaten as an option (`send -- "-forward"`); a file added under data/
+  after start needs `fs_flush`.
+
 ## P1363-P1365 lows: trace walk, prop prewarm, starter shaders (7 Nov 2026)
 
 - Measure at the profile the owner plays: the Desktop copy is `r_renderscale 1`, MSAA 4,

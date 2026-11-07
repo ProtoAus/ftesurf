@@ -75,6 +75,17 @@ Rig on surf_colin_blaster_69000, each answered by the server's own line: s3 "!s 
 and bare "goto_spawn: back at the map's spawn", b1/b 2 "!b -- bonus 1/2", main "!m -- start of the
 map", start "!r -- stage 1", stage 3 = s3; `goto xyz` prints the usage line.
 
+## Delivery (7 Nov 2026)
+
+- FTESurf main fc179a38 (P1367 + review 1), engine main d84f6b7de (ENGINE_PATCHES entry only).
+- Lobbies 10:19Z: `build.ps1 -Pi` from the clean worktree at fc179a38 (fteqcc c24ede65, 0 warnings):
+  12 found, 1 player warned with the countdown, all 12 restarted; Pi qwprogs db38fe13, csprogs
+  e897d49c (= the rig-tested build), .prev = P1366's 1eb11259 / 11b41993; map_ahop_coast.cfg
+  bda7f387 copied to game/ftesurf/cfg/maps; csprogs sha256 appended to tasrevd codes.txt. No QC
+  error in server1/4/12 after restart.
+- Windows: both installs qw db38fe13 / cs e897d49c (+ .lno), .prev = 1eb11259 / 11b41993, menu.dat
+  untouched (5d4b0a03), cfg/maps/map_ahop_coast.cfg, csprogsvers 419d9521 seeded.
+
 ## surf_ferros materials
 
 Not a game fault: luna_tag_0.mdl's two skins (lunatag2/ELDEN RING/NORMAL AND USABLE/AET001_0{20,78}_A)
