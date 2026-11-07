@@ -137,7 +137,9 @@ vector kc_hl_scr;
 #define KC_KB_LABW  86
 #define KC_KB_INFW  210
 float  kc_tab;
-float  kc_gen;                  // bumped by every KC_Refresh: the drawing's cache key
+float  kc_gen;                  // bumped by a KC_Refresh that found a bind changed: the drawing's cache key
+float() KC_KbSig;
+float(float scan) KC_LeftOf;
 float  kc_sel;                  // the picked action; -1 none
 float  kc_kb_key;               // the key last clicked; 0 none
 float  kc_kb_hov;               // the key under the pointer at the last draw; 0 none
@@ -267,7 +269,9 @@ void() KC_Refresh =
 	local float i, n, r;
 	local string s, h;
 
-	kc_gen = kc_gen + 1;
+	// The Keyboard tab rebuilds its 510-key scan on kc_gen: only for a changed bind (KC_KbSig).
+	if (!kc_open || KC_KbSig())
+		kc_gen = kc_gen + 1;
 	for (i = 0; i < KC_N; i = i + 1)
 	{
 		s = KC_Find(i);
@@ -300,7 +304,18 @@ void() KC_Refresh =
 };
 
 // A bind changed: read the table again now, not at the next half second.
-void() KC_Changed = { kc_dirty = TRUE; kc_cacheat = 0; KC_Refresh(); };
+// A console verb with the panel closed saves at once: KC_Close (which saves) never runs for it.
+void() KC_Changed =
+{
+	kc_dirty = TRUE;
+	kc_cacheat = 0;
+	KC_Refresh();
+	if (!kc_open)
+	{
+		kc_dirty = FALSE;
+		localcmd("cfg_save\n");
+	}
+};
 
 void(float scan, string b) KC_SetBind =
 {
@@ -375,6 +390,9 @@ void(float i, float s, float scan) KC_Assign =
 	if (kn == "")
 		return;
 	was = getkeybind(scan);
+	if (was == "")
+	if (KC_KeyOk(KC_LeftOf(scan)))
+		was = getkeybind(KC_LeftOf(scan));     // it followed the left key; it no longer does
 	other = KC_RowOf(was);
 	old = Gfx_Field(kc_keys[i], s, " ");
 	if (old != "")
@@ -426,6 +444,21 @@ float(float scan) KC_LeftOf =
 	return 0;
 };
 
+// The console and menu keys stay as they are: the panel cannot give them back (reset keys covers
+// only its own rows). Shift+Esc still opens the console (keys.c), but not with con_stayhidden 2.
+float(float scan) KC_KeyKept =
+{
+	local string b;
+	b = getkeybind(scan);
+	if (scan == K_ESCAPE || b == "toggleconsole" || b == "togglemenu")
+	{
+		KC_Say(sprintf("%s stays the %s key", KC_KeyLabel(keynumtostring(scan)),
+		               (b == "toggleconsole") ? "console" : "menu"));
+		return TRUE;
+	}
+	return FALSE;
+};
+
 // A right-click on a drawn key: bound to "", as KC_Clear does.
 void(float scan) KC_ClearKey =
 {
@@ -435,11 +468,8 @@ void(float scan) KC_ClearKey =
 	if (!KC_KeyOk(scan))
 		return;
 	kn = KC_KeyLabel(keynumtostring(scan));
-	if (scan == K_ESCAPE)
-	{
-		KC_Say("Esc stays the menu key");
+	if (KC_KeyKept(scan))
 		return;
-	}
 	was = getkeybind(scan);
 	if (was == "")
 	{
@@ -456,9 +486,15 @@ void(float scan) KC_ClearKey =
 	r = KC_RowOf(was);
 	KC_SetBind(scan, "");
 	if (r >= 0)
-		KC_Say(sprintf("%s cleared from %s", kn, KC_F(r, 1)));
+		was = KC_F(r, 1);
 	else
-		KC_Say(sprintf("%s cleared (was \"%s\")", kn, was));
+		was = sprintf("\"%s\"", was);
+	// "" on a right modifier is no bind to the engine: it now does what the left one does.
+	r = KC_LeftOf(scan);
+	if (KC_KeyOk(r) && getkeybind(r) != "")
+		KC_Say(sprintf("%s no longer %s: it now does what %s does", kn, was, KC_KeyLabel(keynumtostring(r))));
+	else
+		KC_Say(sprintf("%s cleared (was %s)", kn, was));
 	KC_Changed();
 };
 
@@ -468,12 +504,8 @@ void(float scan) KC_KeyClick =
 	if (!KC_KeyOk(scan))
 		return;
 	kc_kb_key = scan;
-	if (scan == K_ESCAPE)
-	{
-		KC_Say("Esc stays the menu key");
-		return;
-	}
 	if (kc_sel >= 0)
+	if (!KC_KeyKept(scan))
 		KC_Assign(kc_sel, KC_SLOT_ADD, scan);
 };
 
@@ -537,6 +569,7 @@ void() KC_Close =
 	kc_open = FALSE;
 	kc_cap_i = -1;
 	kc_armed = FALSE;
+	kc_sel = -1;                    // reopened later, a click only reads a key until one is picked
 	sui_tooltip_reset();
 	sui_reset_actions();            // a slider held through ESC would drag on the next open
 	UI_CursorRelease(UIC_KEYCFG);
@@ -736,6 +769,32 @@ float(float code) KC_KbHas =
 		if (kc_kbf[c * KC_KB_F + 4] == code)
 			return TRUE;
 	return FALSE;
+};
+
+// TRUE when any key's bind differs from the last call: two Adler sums of crc16 over keys 2..511
+// (KC_KbScan's range), cheap beside the scan and its text fitting, which only run on a change.
+float kc_siga, kc_sigb;
+float() KC_KbSig =
+{
+	local float k, a, b;
+	local string t;
+	a = 1;
+	b = 0;
+	for (k = 2; k < 512; k = k + 1)
+	{
+		t = getkeybind((k < 128) ? k : -k);
+		if (t == "")
+			continue;
+		a = a + crc16(FALSE, t) + k;
+		a = a - floor(a / 65521) * 65521;
+		b = b + a;
+		b = b - floor(b / 65521) * 65521;
+	}
+	if (a == kc_siga && b == kc_sigb)
+		return FALSE;
+	kc_siga = a;
+	kc_sigb = b;
+	return TRUE;
 };
 
 // Each cap's bind and row, and the bound keys the drawing lacks. Engine keys 2..511: below 128
@@ -1486,7 +1545,7 @@ void(float c, vector o, float u, float sc) KC_Cap =
 		if (1.5 * sc + lh * 3 <= sz_y)
 			sui_native_text([pos_x + 2 * sc, pos_y + 1.5 * sc + lh * 2, 0], t, 6 * sc, fg, 1);
 	}
-	if (sui_is_released(id))
+	if (sui_is_clicked(id))         // released over this cap: a press dragged away binds nothing
 		KC_KeyClick(code);
 };
 
@@ -1509,7 +1568,7 @@ float(string id, vector pos, vector sz, string label, float code, float on, floa
 	glyph = sui_native_text_size(7 * sc);
 	sui_native_text([pos_x + 4 * sc, pos_y + (sz_y - glyph_y) * 0.5, 0], label, 7 * sc,
 	                on ? SUI_THEME_WELL : SUI_THEME_TEXT, 1);
-	return sui_is_released(id);
+	return sui_is_clicked(id);
 };
 
 // Bound keys the drawing has no cap for (joystick, aux, Mouse 6+...), as many as fit.
