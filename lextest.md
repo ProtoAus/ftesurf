@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1385 crisp map text -- owner check pending
+## P1385 crisp map text -- LIVE (12 lobbies + both installs, 7 Nov 17:24Z); owner check pending
 
 - surf_centipedes: walk into the spawn room's trigger (or `cmd ent_fire explain_text Display` with sv_cheats):
   "Press E (+use) in any startzone to toggle the pixel shader" is sharp at its real font size, not resized.

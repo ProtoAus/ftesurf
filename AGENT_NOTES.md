@@ -15,6 +15,8 @@
 - LIVE 7 Nov ~16:34Z: Pi fteqw-svarm64 204625a9 (.prev 632ceca2), qw 413fcc31 / cs e281c22e (main c4bbfd62)
   on 12 lobbies and both installs (exe 674e62fa / sv 92327da4 / hl2 503fbb48, engine 9b4142baf patch-1383).
   Next lobby QC base: main at or after c4bbfd62; next Pi engine base: p1383-arm. Record: tools/p1378-p1383.md.
+- P1385 (native map text + P1378 perf follow-up) LIVE 7 Nov 17:24Z: qw 1c756bed / cs 96e45654 (main 422b738d) on 12
+  lobbies and both installs. Next lobby QC base: main at or after 422b738d.
 
 ## P1379 boardarchive.py (8 Nov 2026; ftesurf-3a)
 
