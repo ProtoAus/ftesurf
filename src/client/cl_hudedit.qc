@@ -2431,6 +2431,25 @@ void() HE_MigrateDefaults =
 			print("reflections: water and glass are redrawn 60 times a second now (r_capturerate 60)\n");
 		localcmd("seta r_capturerate_rev 1296\n");
 	}
+	// FTESurf Patch 1376: Lex's video defaults of 7 Nov (default.cfg), only for a config still on Patch 898's 2x:
+	// one stepped down to 1 or 1.5 was a slower GPU's choice, and gains no MSAA. Gated on the engine's own
+	// r_reflectmultisample (P1276) by its description: default.cfg's set creates one with none on an engine
+	// without it (cmd.c:4411), and set/seta clear CVAR_TYPEFLAG_ENGINE on a real one (cmd.c:4443).
+	// P1260's scene target reads vid_multisample every frame, so all three apply at once.
+	registercvar("r_video_rev", "0", CVAR_ARCHIVE);
+	if (strstrofs(cvar_description("r_reflectmultisample"), "Patch 1276") >= 0 && cvar("r_video_rev") < 1376)
+	{
+		if (HE_Still("r_renderscale", 2))
+		{
+			HE_MoveOne("r_renderscale", 2, "1");
+			print("display: drawn at your screen's size now, not twice it (r_renderscale 1)\n");
+			if (HE_MoveOne("vid_multisample", 0, "4") || HE_MoveOne("vid_multisample", 1, "4"))   // 1 is off too
+				print("display: 4x anti-aliasing instead (vid_multisample 4)\n");
+			if (HE_MoveOne("r_reflectmultisample", -1, "2"))
+				print("reflections: 2x anti-aliasing in water and glass (r_reflectmultisample 2)\n");
+		}
+		localcmd("seta r_video_rev 1376\n");
+	}
 	registercvar("hud_layout_rev", "0", CVAR_ARCHIVE);
 	/*
 	  Patch 898: Lex's layout of 21 Oct for every setting still on the default it replaced.  The

@@ -47,7 +47,7 @@ float ui_gfx_waterscreen;       // Patch 1020: hl2_water 5 (screen-space) on thi
   from ten settings to twenty-six and cost four more keystrokes, which is the
   whole point of having paged rather than found a tenth key.
 */
-#define GFX_ROWS     31         // highest row index (Patch 898 added Render scale)
+#define GFX_ROWS     33         // highest row index (Patch 1376 added the two MSAA rows)
 #define GFX_PER_PAGE 6          // digits 1..6; 7 reloads, 8/9 page, 0 closes
 
 void() Gfx_WaterSupport =
@@ -441,8 +441,11 @@ string(float row) Gfx_Def =
 	if (row == 28) return "vbsp_emit|Map particles|0 1|Off;On|";
 	if (row == 29) return "vbsp_sun|Sun|0 1|Off;On|";       // Patch 874, cl_sun.qc
 	if (row == 30) return "vbsp_ropes|Ropes|0 1|Off;On|";   // cl_ropes.qc
-	// Patch 898: new installs draw at 2x; the step down for a slower GPU.  Live, the next frame.
+	// Patch 898's 2x was the default until Patch 1376 made it 1x with MSAA.  Live, the next frame.
 	if (row == 31) return "r_renderscale|Render scale|1 1.5 2|1x;1.5x;2x|";
+	// Patch 1376: P1260's scene target and P1276's capture target read these every frame.
+	if (row == 32) return "vid_multisample|Anti-aliasing|0 2 4 8|Off;2x;4x;8x|";
+	if (row == 33) return "r_reflectmultisample|Reflection AA|-1 0 2 4|As screen;Off;2x;4x|";
 
 	return "";
 };
