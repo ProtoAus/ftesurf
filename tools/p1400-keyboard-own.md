@@ -28,6 +28,6 @@ want to include other tools/options like ent_view surf_view 'report menu' stuff 
 
 - LIVE 7 Nov 22:27Z (8 Nov local): 12 lobbies restarted (nobody on), csprogs b7917bba (qw unchanged
   0a406f51), main 9af1f2bc; codes.txt 90 -> 91 (.pre1400). C:\FTESurf installed (.prev beside each
-  file, csprogsvers 165db981 seeded). C:\FTEQuake: see the commit that records it.
+  file, csprogsvers 165db981 seeded); C:\FTEQuake the same under rig.lock (b8 paused its queue).
 - Limits: the backtick never reaches CSQC (cannot be typed); panel binds run at the insecure level
   (bindlevel 30), so a typed command that needs more may save but not run.
