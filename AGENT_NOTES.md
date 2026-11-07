@@ -10188,6 +10188,16 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+P1372 progs rollout preservation (7 Nov): captured/read back ALL189current parts/
+resume payloads off-box before restart, bounded to each opened FD's size. An active
+prefix is not a closed-writer or simultaneous snapshot claim. Afterward188prefixes
+matched and one old parts pathname was absent. Read-only inode tracing found the
+moved file: its full3271864byte captured prefix differed ONLY at the flags header
+line. Keep exact old preimage; do not label a path rename/header update as data loss,
+restore over newer data, broadly exclude parts, or repeat a healthy restart. Native
+client smoke separately remained RAM-blocked; served hash advertisement is not a
+fresh downloaded-client/board proof. See tools/p1372-warm-stream.md.
+
 - **P1366 live capability reader (7 Nov).** The ordinary QW UDP `status` response
   was1029bytes including its envelope and omitted fs_tickparts/fs_sourcephase/
   fs_savelead AND client checksum keys. That omission did not mean the running

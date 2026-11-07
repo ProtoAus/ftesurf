@@ -2,7 +2,8 @@
 
 ## P1372 new historical warm save -- owner check pending
 
-Delivery status is in tools/p1372-warm-stream.md. Create ONE NEW save from your
+BOTH Windows/12lobbies installed and artifact/readback verified7Nov12:48UTC;
+full fresh-client smoke RAM-blocked, tools/p1372-warm-stream.md. Create ONE NEW save from your
 current run's rewind cursor, then hold-load it: does the body match that cursor,
 keep its nonzero timer and continue recording when released? Test a newly made
 save, not an old file missing recorder metadata. Controlled ordinary warm cases

@@ -59,5 +59,34 @@ weaken4096MiB or steal the slot. This is reuse of still-valid scoped source/runt
 proof plus a clean integration build, NOT a claim that the new native arm passed.
 Full TAS/nonzero-counter/unavailable-mutation/owner gates above remain explicit.
 
-Pending clean-commit artifact build, exact-SHA publication and dual Windows/Pi
-promotion. No delivery, owner acceptance, cold-cut repair or TAS completion implied.
+Installed and live artifact/readback verified7Nov2026 12:48:20UTC. Product source
+f627975a0a80c8b8c32ed6daae66f100ed0f2957; engine journal95232f066f4e80d7a65bdf159336938157c8ba49.
+Both inspected SHAs pushed. Clean source built all3VMs/0warnings; production-entry
+rebuild was byte-identical to the frozen artifacts.
+
+BOTH Windows installs have exact QW/CS+LNO hashes. Menus, owner cfgs and native
+binaries are deliberately NOT targets and remained byte-identical. Pi used the
+normal build.ps1 -Pi self-root route; one player was present at preflight, default
+10second warning/no force, all12active services/directory and fresh actor epochs.
+All12full serverinfo replies advertise exact client folded-MD4 0x4c3fab67 /7507870bytes.
+Destination SHA256:
+
+- qwprogs.dat:5a78282b7f44a66a7a1f79a4839c86f137246200ef67223e52244853812e906c
+- csprogs.dat:1bc8b390d1f61bac076fcfb3c8b79cd36f100499858d63865a1e480a2b82ae3f
+
+The .prev pair matches the ACTUAL immediate preflight. Before restart, all189
+current recorder/resume payloads (247512012bytes) were captured off-box and every
+archive member read back against its captured hash. Live files were bounded to
+individual open-FD sizes: this is preserved current payload/prefix evidence, NOT
+an inference that all writers were closed or a simultaneous complete data snapshot.
+Postflight188captured prefixes match; the remaining original path moved with the
+same inode and its entire3271864byte captured prefix differs ONLY at the flags
+header line, consistent with stream archival. Exact old preimage remains retained;
+no data restoration/deletion or rewriting of owner saves was performed.
+
+Fresh cold-client connect/download/board smoke is NOT complete: at its actual
+boundary12:47:26UTC RAM2581MiB, games0/no peer gate, below unchanged4096MiB. Disk,
+live advertisement and actor proof do not substitute for that missing client check.
+A tiny NEW owner rewind/save/hold-load check was requested immediately after delivery;
+still pending, not accepted. General original zero-clock, old incomplete saves,
+cold-cut duration and TAS completion remain unclaimed. No backend/release change.
