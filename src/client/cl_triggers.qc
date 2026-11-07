@@ -162,9 +162,10 @@ float  tg_tspeed[TG_MAX];
 vector tg_pushdir[TG_MAX];
 vector tg_reloff[TG_MAX];       // P1238: trigger_teleport_relative's teleportoffset
 entity tg_relprobe;             // ...and the hull probe its lift traces with
-#define TG_SOD_MAX  32
+#define TG_SOD_MAX  64                  // P1396: landmark rows share it now
 vector tg_sod[TG_SOD_MAX];      // P1238: destinations of teleports demoted to server-only (prederror rules)
 vector tg_sodlm[TG_SOD_MAX];    // P1396: that teleport's landmark, when tg_sodl
+vector tg_sodmin[TG_SOD_MAX], tg_sodmax[TG_SOD_MAX];   // P1396: its trigger's box, when tg_sodl
 float  tg_sodl[TG_SOD_MAX];
 float  tg_sod_n;
 float  tg_speed[TG_MAX];
@@ -1289,8 +1290,10 @@ void(float i) TG_NoteServerTele =
 		m = TT_Find(tg_landmark[i]);
 	if (m >= 0)
 	{
-		tg_sodl[tg_sod_n]  = 1;
-		tg_sodlm[tg_sod_n] = tt_org[m];
+		tg_sodl[tg_sod_n]   = 1;
+		tg_sodlm[tg_sod_n]  = tt_org[m];
+		tg_sodmin[tg_sod_n] = tg_bmin[i];   // before the demotion inverts it
+		tg_sodmax[tg_sod_n] = tg_bmax[i];
 	}
 	tg_sod[tg_sod_n] = tt_org[d];
 	tg_sod_n = tg_sod_n + 1;
@@ -2516,10 +2519,11 @@ void() Trig_LoadForMap =
 	// Patch 191); unrepaired they never resolved here and every one snapped.
 	tg_c_casefix = 0;
 	for (i = 0; i < tg_n; i = i + 1)
-	{
-		tg_target[i]   = TT_CaseFix(tg_target[i]);
-		tg_landmark[i] = TT_CaseFix(tg_landmark[i]);
-	}
+		if (tg_kind[i] == TG_TELE)          // other kinds keep the last map's strings
+		{
+			tg_target[i]   = TT_CaseFix(tg_target[i]);
+			tg_landmark[i] = TT_CaseFix(tg_landmark[i]);
+		}
 
 	TG_ShapeBoxes();
 

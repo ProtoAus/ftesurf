@@ -206,9 +206,26 @@ void() PE_SendStop =
 		PE_BoxOpen();
 };
 
+// P1396: the predicted body is at that trigger, as the server's was when it touched (the move's end).
+float(vector p, vector b0, vector b1) PE_AtTrigger =
+{
+	local vector mn, mx;
+	mn = tg_pmins;
+	mx = tg_pmaxs;
+	if (mn == '0 0 0' && mx == '0 0 0')
+	{
+		mn = '-16 -16 0';
+		mx = '16 16 62';
+	}
+	mn = p + mn - '32 32 32';
+	mx = p + mx + '32 32 32';
+	return !(mn_x > b1_x || mn_y > b1_y || mn_z > b1_z || mx_x < b0_x || mx_y < b0_y || mx_z < b0_z);
+};
+
 // P1238: the server put the body on the destination of a teleport the mirror left to it, and no
 // teleport the mirror still predicts lands there (one it missed would land there too). P1396: a
-// landmark teleport's landing is measured from the predicted body, which is where the server's was.
+// landmark teleport's landing is measured from the predicted body, which is where the server's was,
+// and only at its own trigger: the offset alone matches a predicted teleport fired early (review).
 float(vector srv, vector pred) PE_ServerTele =
 {
 	local float i, j, d, m;
@@ -217,7 +234,11 @@ float(vector srv, vector pred) PE_ServerTele =
 	{
 		at = tg_sod[i];
 		if (tg_sodl[i])
+		{
+			if (!PE_AtTrigger(pred, tg_sodmin[i], tg_sodmax[i]))
+				continue;
 			at = at + (pred - tg_sodlm[i]);
+		}
 		if (vlen(srv - at) >= 2)
 			continue;
 		for (j = 0; j < tg_n; j = j + 1)
