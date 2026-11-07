@@ -736,10 +736,8 @@ string(string id, float row) HE_OptDef =
 
 	if (id == "saves")
 	{
-		if (row == 0) return "cl_sl_leadin|Load travel lead-in|c|0 0.1 0.25 0.5 1 2|none;100 ms;250 ms;0.5 s;1 s;2 s"
-		                     "|A held load plays the end of its local saved path into the save, then hands control over after the load is answered. No saved path: hold at the save instead. This is a camera preview, not replayed movement.";
-		if (row == 1) return "cl_sl_leadin|Lead-in in ms|n|1000 0 2000|ms"
-		                     "|Click and type travel/hold duration in milliseconds, then Enter. Try 1000 for a visible lead-in. 0 still waits for the server's answer.";
+		if (row == 0) return "cl_sl_leadin|Lead-in|n|1000 0 2000|ms"
+		                     "|Click and type 0..2000 milliseconds, then Enter. A saved path travels into the held save; without one, hold at the save instead. The center countdown shows when it is ready; keep the load key down to stay held. 0 disables the lead-in, not the wait for the server's answer.";
 		return "";
 	}
 	if (id == "ghost")

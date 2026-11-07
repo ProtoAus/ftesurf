@@ -24,6 +24,14 @@ float() SaveLead_Done =
 	return (cltime >= sl_lead_until);
 };
 
+// Negative means the travel clock has not started; never invent an ACK ETA.
+float() SaveLead_Remaining =
+{
+	if (sl_lead_buf < 1) return 0;
+	if (sl_lead_pending) return -1;
+	return max(0, sl_lead_until - cltime);
+};
+
 // A finite visual row, not evidence and not a movement instruction.
 float(string row) SaveLead_Row =
 {

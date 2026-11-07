@@ -21,6 +21,10 @@
 
 ## next
 
+### P1375 Save-load countdown
+- A small centered millisecond countdown shows the remaining save-load lead-in. Waiting for a server answer says Loading save; keeping the load key held says Release to play once ready.
+- Save & load in hud_edit has one Lead-in field in milliseconds, rather than two controls for the same setting. Your existing value is kept.
+
 ### P1372 Historical warm saves keep recording
 - Newly created saves from a live rewind retain the recorder state needed to keep recording after a warm load. Existing incomplete saves and old cold-rewind duration errors are unchanged.
 

@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1375 centered save countdown / one editor -- new visual check pending
+
+After delivery: tap-load one save with lead-in enabled. Is the small centered
+millisecond countdown readable? Holding the key beyond it should say Release to
+play, not start the run early; a delayed answer says Loading save, not a guessed
+network ETA. hud_edit -> Save & load should have ONE Lead-in field, in ms.
+No acceptance of these NEW visuals yet; prior lead-in approval is recorded below.
+
 ## P1372 new historical warm save -- owner check pending
 
 BOTH Windows/12lobbies installed and artifact/readback verified7Nov12:48UTC;
@@ -32,14 +40,17 @@ confirm in the real game once deployed:
   box, and Momentum's uphill speed-keeping is still missing: both in BACKLOG.)
 - surf_autosave or bhop_kirous: their checkpoint triggers (filters named `ng*`, `state0*`) now fire.
 
-## P1366 comparison bars and save travel -- BOTH Windows/12lobbies installed7Nov; owner check pending
+## P1366 comparison bars and save travel -- lead-in OWNER APPROVED 7 Nov; comparison readability pending
 
 Installed and live/hash-verified09:52UTC; tools/p1366-compare-save.md. With a displayed
 reference and hud_compare1, check the same-elapsed and closest-point bars are readable.
 Then tap and hold-load one familiar save with its local saved path: does travel end at
 the correct point/stance and hand control back smoothly? cl_sl_leadin controls0..2seconds;
 0 disables travel. One ordinary save/load is enough for this visual/feel check.
-26 actual helper assertions and server endpoint publication pass; no owner confirmation.
+26 actual helper assertions and server endpoint publication pass. Owner explicitly
+confirmed: "Yep! lead in works!" and "It works! I approbe" (7 Nov). Record this as
+manual approval of the observed save-load lead-in, not measured performance,
+comparison-bar acceptance, the original zero-clock case or full TAS qualification.
 The reported Fiellu cursor placement, saved-zero-clock and old cold-boundary issues are
 NOT declared fixed by this UI patch; do not substitute this check for their falsifiers.
 

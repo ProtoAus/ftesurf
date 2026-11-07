@@ -352,6 +352,7 @@ void() SaveLead_Clear;
 void(float seq, float id) SaveLead_Begin;
 void() SaveLead_NoPath;
 float() SaveLead_Done;
+float() SaveLead_Remaining;
 float() SaveLead_Camera;
 
 // CSQC_UpdateView, after clearscene and the spectate camera.
@@ -617,6 +618,25 @@ float() SaveLoc_LeadDone =
 	else
 		answered = (rec_sl_holdack > 0 && getstatf(STAT_FS_SLACK) >= rec_sl_holdack);
 	return (answered || t >= lead + 1);
+};
+
+string() SaveLoc_LeadText =
+{
+	local float travel, left;
+
+	if (!rec_sl_holding || Spec_Active() || cvar("cl_sl_leadin") <= 0) return "";
+	if (rec_sl_wophold)
+	{
+		if (!WarpOp_LoadAnswered()) return "Loading save";
+	}
+	else if (rec_sl_holdack <= 0 || getstatf(STAT_FS_SLACK) < rec_sl_holdack)
+		return "Loading save";
+	travel = SaveLead_Remaining();
+	if (travel < 0) return "Loading save";
+	left = max(bound(0, cvar("cl_sl_leadin"), 2) - (cltime - rec_sl_holdt0), travel);
+	if (left > 0) return sprintf("%.0f ms", ceil(left * 1000));
+	if (!SaveLoc_LeadDone()) return "Loading save";
+	return rec_sl_upwait ? "" : "Release to play";
 };
 
 void() SaveLoc_KeyUp =
@@ -1020,7 +1040,16 @@ void(vector scr) SaveLoc_Draw =
 {
 	local vector p;
 	local float sc, w, h, lsz, y, locked, fresh, armed, total, hh, count, idx;
+	local string lead;
 
+	lead = SaveLoc_LeadText();
+	if (lead != "")
+	{
+		Font_Set(ui_font_ui);
+		HUD_TextC([scr_x * 0.5, scr_y * 0.5 + 16 * ui_cv_scale, 0], lead,
+		          Font_Px(9 * ui_cv_scale), SUI_THEME_TEXT, 0.95);
+		Font_Reset();
+	}
 	if (!rec_sl_open)
 		return;
 	if (!cvar("rec_savelock"))
