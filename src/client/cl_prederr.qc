@@ -47,7 +47,7 @@ var float pe_ak_last = -1;
 // carries its row's angles, moves and buttons.
 #define PE_RPMAX 1024
 float  pe_rp_n, pe_rp_s, pe_rp_on, pe_rp_auto;
-float  pe_rp_btn[PE_RPMAX], pe_rp_imp[PE_RPMAX];
+float  pe_rp_btn[PE_RPMAX], pe_rp_imp[PE_RPMAX], pe_rp_ms[PE_RPMAX];
 vector pe_rp_ang[PE_RPMAX], pe_rp_mv[PE_RPMAX];
 
 void() PE_RegisterCvars =
@@ -530,6 +530,7 @@ void(string fn) PE_ReplayStart =
 		pe_rp_ang[pe_rp_n] = [stof(argv(2)), stof(argv(3)), stof(argv(4))];
 		pe_rp_mv[pe_rp_n]  = [stof(argv(5)), stof(argv(6)), stof(argv(7))];
 		pe_rp_btn[pe_rp_n] = stof(argv(8));
+		pe_rp_ms[pe_rp_n]  = stof(argv(1));
 		pe_rp_imp[pe_rp_n] = stof(argv(9));
 		pe_rp_n = pe_rp_n + 1;
 	}
@@ -579,6 +580,10 @@ float() PE_ReplayInputFrame =
 	input_angles     = pe_rp_ang[r];
 	input_movevalues = pe_rp_mv[r];
 	input_buttons    = pe_rp_btn[r];
+	// the recorded duration: a rig frame hitch made 50 ms commands (cs_get_input_state reads it back once a
+	// command; usercmd msec is a float here, a byte on the wire, and 15/1000*1000 comes back as 15.0)
+	if (pe_rp_ms[r] > 0)
+		input_timelength = pe_rp_ms[r] / 1000;
 	if (pe_rp_imp[r] && pe_rp_imp[r] < 201)
 		input_impulse = pe_rp_imp[r];
 	return TRUE;
