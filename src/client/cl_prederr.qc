@@ -207,28 +207,39 @@ void() PE_SendStop =
 };
 
 // P1238: the server put the body on the destination of a teleport the mirror left to it, and no
-// teleport the mirror still predicts lands there (one it missed would land there too).
-float(vector srv) PE_ServerTele =
+// teleport the mirror still predicts lands there (one it missed would land there too). P1396: a
+// landmark teleport's landing is measured from the predicted body, which is where the server's was.
+float(vector srv, vector pred) PE_ServerTele =
 {
-	local float i, j, d;
+	local float i, j, d, m;
+	local vector at, p;
 	for (i = 0; i < tg_sod_n; i = i + 1)
-		if (vlen(srv - tg_sod[i]) < 2)
-		{
-			for (j = 0; j < tg_n; j = j + 1)
-				if (tg_kind[j] == TG_TELE)
-				{
-					d = TT_Find(tg_target[j]);
-					if (d >= 0)
-					if (vlen(tt_org[d] - tg_sod[i]) < 2)
-						return FALSE;
-				}
-				else if (tg_kind[j] == TG_RELTELE)
-				{
-					if (vlen(TG_RelTelePoint(j) - tg_sod[i]) < 2)
-						return FALSE;
-				}
-			return TRUE;
-		}
+	{
+		at = tg_sod[i];
+		if (tg_sodl[i])
+			at = at + (pred - tg_sodlm[i]);
+		if (vlen(srv - at) >= 2)
+			continue;
+		for (j = 0; j < tg_n; j = j + 1)
+			if (tg_kind[j] == TG_TELE)
+			{
+				d = TT_Find(tg_target[j]);
+				if (d < 0)
+					continue;
+				p = tt_org[d];
+				m = (tg_landmark[j] != "") ? TT_Find(tg_landmark[j]) : -1;
+				if (m >= 0)
+					p = p + (pred - tt_org[m]);
+				if (vlen(p - at) < 2)
+					return FALSE;
+			}
+			else if (tg_kind[j] == TG_RELTELE)
+			{
+				if (vlen(TG_RelTelePoint(j) - at) < 2)
+					return FALSE;
+			}
+		return TRUE;
+	}
 	return FALSE;
 };
 
@@ -261,7 +272,7 @@ float(float seq) PE_Expected =
 void() PE_Frame =
 {
 	local float c, n, e, s;
-	local vector srv;
+	local vector srv, pred;
 	if (!pe_ok)
 		return;
 	c = cvar("cl_prederror_count");
@@ -272,6 +283,7 @@ void() PE_Frame =
 		e = (n >= 9) ? stof(argv(2)) : 0;
 		s = stof(argv(1));             // P1238: kept, the calls below may tokenize
 		srv = (n >= 9) ? stov(sprintf("%s %s %s", argv(6), argv(7), argv(8))) : '0 0 0';
+		pred = (n >= 9) ? stov(sprintf("%s %s %s", argv(3), argv(4), argv(5))) : '0 0 0';
 		PE_Note(strcat("prederr ", cvar_string("cl_prederror_last")));
 		if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && PE_Local())
 			PE_Note("not reported: this PC hosts the game, so nothing is predicted");
@@ -283,7 +295,7 @@ void() PE_Frame =
 		         && (rec_gh_on || Spec_Active() || rec_wt_on || rw_on))
 			PE_Note("not reported: ghost, spectating, watching or rewinding (nothing is predicted)");
 		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && n >= 9
-		         && PE_ServerTele(srv))
+		         && PE_ServerTele(srv, pred))
 			PE_Note("not reported: a teleport only the server runs (its trigger is filtered or gated)");
 		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && cvar("cl_predict_qchook")
 		         && !PE_Predicting())

@@ -164,6 +164,8 @@ vector tg_reloff[TG_MAX];       // P1238: trigger_teleport_relative's teleportof
 entity tg_relprobe;             // ...and the hull probe its lift traces with
 #define TG_SOD_MAX  32
 vector tg_sod[TG_SOD_MAX];      // P1238: destinations of teleports demoted to server-only (prederror rules)
+vector tg_sodlm[TG_SOD_MAX];    // P1396: that teleport's landmark, when tg_sodl
+float  tg_sodl[TG_SOD_MAX];
 float  tg_sod_n;
 float  tg_speed[TG_MAX];
 float  tg_onceseq[TG_MAX];      // SF_PUSH_ONCE: -1 unarmed, else the sequence it fired on
@@ -1265,20 +1267,31 @@ vector(float i) TG_RelTelePoint =
 
 void(float i) TG_NoteServerTele =
 {
-	local float d;
+	local float d, m;
 	if (tg_sod_n >= TG_SOD_MAX)
 		return;
+	tg_sodl[tg_sod_n] = 0;
 	if (tg_kind[i] == TG_RELTELE)
 	{
 		tg_sod[tg_sod_n] = TG_RelTelePoint(i);
 		tg_sod_n = tg_sod_n + 1;
 		return;
 	}
-	if (tg_kind[i] != TG_TELE || tg_landmark[i] != "")
+	if (tg_kind[i] != TG_TELE)
 		return;
 	d = TT_Find(tg_target[i]);
 	if (d < 0)
 		return;
+	// P1396: a landmark lands at destination + (body - landmark), so keep both (surf_bossfight's intro
+	// shaft is 14 filtered landmark teleports); an unresolved landmark lands as a plain one, as TG_FireTeleport.
+	m = -1;
+	if (tg_landmark[i] != "")
+		m = TT_Find(tg_landmark[i]);
+	if (m >= 0)
+	{
+		tg_sodl[tg_sod_n]  = 1;
+		tg_sodlm[tg_sod_n] = tt_org[m];
+	}
 	tg_sod[tg_sod_n] = tt_org[d];
 	tg_sod_n = tg_sod_n + 1;
 };
