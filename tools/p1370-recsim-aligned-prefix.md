@@ -80,3 +80,23 @@ reader fix. Any helper installation must preserve the inspected current tuple,
 player data and stored observations, use the existing guarded reader procedure,
 and record actual destination hashes/default-caller behavior separately. Source
 publication is not deployment.
+
+### Windows delivery — 7 Nov2026,12:11UTC
+
+The exact clean inspected source6848f729 was installed by the existing Windows
+reader transaction, narrowed to this ONE file in BOTH `C:/FTESurf/tools/census/`
+and `C:/FTEQuake/tools/census/`. Destination bytes equal source15e19bf4. Both exact
+BF99 preimages are retained with original timestamps/ACL; replacement ACL and
+source-path index stayed unchanged. No native/game process, configuration, player
+data, other source, checker or metadata helper was changed.
+
+Actual installed paths each passed13 numeric-reader cases plus all six Opportunities
+cases, not just a working-tree source rerun. Absent private bytecode prefix plus-B
+prevents stale-cache selection; both owned fixture tmp roots are empty afterward.
+Checker3eab465a and heldmetaA3f73a0c remained exact in both installs. This19-case
+per-install proof is distinct from the current-checkerA221 bank/corpus above.
+
+NanoPi installation of this reader is **not claimed**. It remains serialized after
+P1368's actual owner cutover output/current proof and a freshly bound reader plan.
+These Windows explicit-path checks do not establish default backend namespace,
+Linux installation, genuine/current-mode coverage or whole-fleet acceptance.
