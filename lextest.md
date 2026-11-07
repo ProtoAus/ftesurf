@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1381 personal bests across a mode change, zone_edit quirks -- owner check pending
+## P1381 personal bests across a mode change, zone_edit quirks -- LIVE (12 lobbies + both installs, 7 Nov ~14:45Z); owner check pending
 
 - Nothing to see unless a map you have times on changes mode. Then the console says once that best.pb
   "was counted at N Hz ... compared as durations", and the first slower run is not called a new best.

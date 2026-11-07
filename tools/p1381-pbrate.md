@@ -34,3 +34,12 @@ P1381 pb 0:45.000 (+ the load notice), best 4400. Collision: certified 0002000_l
 `lobbytime keep 0 0 2000 512`: the first cut overwrote it (flags 0 -> 512, certified best gone); the fix
 refuses and the file is untouched. zone_edit: local airaccel 120, re-click Surf: file still 120, Surf
 staged. QC 0 warnings (fteqcc c24ede65). Two review rounds; left items in BACKLOG (P1371 entry).
+
+## Delivery (8 Nov local / 7 Nov ~14:45Z)
+
+- Lobbies: `build.ps1 -Pi` from a clean worktree at main a3334ff2 (on ftesurf-1d's P1376/P1373 deploy):
+  qw 0795c83a / cs ba19b605 (.prev = 1d's 5f2c5837 / a3d7aef3), 1 player warned, 12/12 restarted, 0 QC
+  errors in server1-12; Pi engine unchanged (632ceca2, P1371). tasrevd codes.txt 82 -> 83 (.pre1381);
+  csprogsvers d6c8a764.dat seeded on the Pi.
+- Installs: C:\FTESurf and C:\FTEQuake qw/cs/.lno = the same build (.prev = 1d's), csprogsvers seeded;
+  menu and cfgs untouched.
