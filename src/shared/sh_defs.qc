@@ -581,6 +581,7 @@
 #define STAT_FS_SLSAVEOP       114  // its SAVED op/id, or NONE on refusal
 #define STAT_FS_SLSAVETICK     115  // its saved visual cutoff, independent of the current row
 #define STAT_FS_SLLEAD         117  // atomic loaded seq/id/origin/aim/duck for render-only save travel
+#define STAT_FS_SLCURID        208  // P1384: the cursor save's folder number; its travel starts on the press
 #define STAT_FS_PIN            111  // Patch 477: the rewind's open serial while its pin is held, -serial once refused or let go, else 0
 // Patch 753: what a predicted warp op will do (cl_warpop.qc, SV_WarpOpPublish).
 #define STAT_FS_WOPR           120  // + 121, 122 -- `!r`'s destination

@@ -384,6 +384,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_SLSEQ,       EV_FLOAT,  rec_sl_slseq);
 	clientstat(STAT_FS_SLOP,        EV_FLOAT,  rec_sl_slop);
 	clientstat(STAT_FS_SAVETICKS,   EV_FLOAT,  rec_sl_savetick);
+	clientstat(STAT_FS_SLCURID,     EV_FLOAT,  rec_sl_curid);      // P1384
 
 	/*
 	  Build 30.  The parked velocity, so the HUD can print what the save is
@@ -568,7 +569,7 @@ void() worldspawn =
 	// P924: this progs declares input_cmd_later; clients may mirror sv_tickparts.
 	forceinfokey(world, "fs_tickparts", "1");
 	forceinfokey(world, "fs_sourcephase", "1");
-	forceinfokey(world, "fs_savelead", "1"); // bounded held-save presentation eye, not a watch pin
+	forceinfokey(world, "fs_savelead", "2"); // bounded held-save presentation eye, not a watch pin; 2: STAT_FS_SLCURID
 	vbsp_conveyor_any = 0;
 	SV_MapTierInit(FALSE);
 	// worldspawn is the first entity in the lump, so this zeroes the spawn

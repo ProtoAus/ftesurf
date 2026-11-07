@@ -236,7 +236,10 @@ void(float id, float ticks) Trail_Save =
 		if (!observed)
 			observed = (tr_saveack > 0 && getstatf(STAT_FS_SLTRAILTAG) == tr_saveack);
 		if (observed)
+		{
 			fremove(Trail_SavePath(id)); // invalidate only an observed new save
+			SaveLead_Forget();
+		}
 		Trail_ReplayClear();
 		return;
 	}
@@ -256,6 +259,7 @@ void(float id, float ticks) Trail_Save =
 		fputs(f, strcat(s, "\n"));
 	}
 	fclose(f);
+	SaveLead_Remember(id, ticks, raw, i - 1);  // P1384
 	Trail_ReplayClear();
 };
 

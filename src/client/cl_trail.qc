@@ -559,7 +559,7 @@ void() Trail_Frame =
 				tr_practicebase = tr_lastt;
 				tr_practiceat = cltime;
 			}
-			if (loaded) SaveLead_Begin(sq, id);
+			if (loaded || SaveLead_Early()) SaveLead_Begin(sq, id);     // P1384: a press's travel binds
 			else if (st == TS_ARMED) SaveLead_Clear(); // retained failed line is NOT this save's path
 			else SaveLead_NoPath();
 		}

@@ -139,6 +139,7 @@ float rec_sl_holdkey;            // the scancode that started it
 float rec_sl_holdseen;           // cltime of the last down edge for the hold key
 float rec_sl_holdt0;             // P1227: cltime the hold's load was pressed
 float rec_sl_upwait;             // P1227: its key is up; the release waits for SaveLoc_LeadDone
+float rec_sl_pred;               // P1384: its load rode a predicted command: the release needs no answer
 float rec_sl_holdrep;            // a repeat has been observed for THIS hold
 
 #define SL_HOLD_DEADMAN 1.5
@@ -350,6 +351,10 @@ void() SaveLoc_PredictLoad =
 
 void() SaveLead_Clear;
 void(float seq, float id) SaveLead_Begin;
+void(vector org, vector ang) SaveLead_Press;     // P1384
+float() SaveLead_Early;
+void(float id, float ticks, float raw, float last) SaveLead_Remember;
+void() SaveLead_Forget;
 void() SaveLead_NoPath;
 float() SaveLead_Done;
 float() SaveLead_Remaining;
@@ -402,6 +407,7 @@ float() WarpOp_Load;
 float() WarpOp_Release;
 float() WarpOp_LoadRefused;
 float() WarpOp_LoadAnswered;
+float() WarpOp_LoadLead;
 void() WarpOp_Frame;
 float(float op, float rep) WarpOp_Step;
 
@@ -580,9 +586,11 @@ void(float scan) SaveLoc_LoadKey =
 		rec_sl_holdseen = rec_sl_holdt0 = cltime;
 		rec_sl_upwait   = FALSE;
 		rec_sl_holdrep  = FALSE;
+		rec_sl_pred     = WarpOp_LoadLead();    // after rec_sl_holding: SaveLead_Ready reads it
 		return;
 	}
 	rec_sl_wophold = FALSE;
+	rec_sl_pred = FALSE;
 	SaveLead_Clear();
 	if (!Trail_RequestBusy())
 		SaveLoc_PredictLoad();          // queued saves can change the selected row
@@ -596,6 +604,8 @@ void(float scan) SaveLoc_LoadKey =
 	rec_sl_holdseen = rec_sl_holdt0 = cltime;
 	rec_sl_upwait   = FALSE;
 	rec_sl_holdrep  = FALSE;
+	if (rec_sl_pv_on && rec_sl_pv_t0 == cltime)
+		SaveLead_Press(rec_sl_pv_org, rec_sl_pv_ang);   // P1384: this press's SaveLoc_PredictLoad
 };
 
 /*
@@ -613,8 +623,9 @@ float() SaveLoc_LeadDone =
 		return FALSE;
 	if (!SaveLead_Done())
 		return FALSE;
+	// P1384: a predicted load and its release ride commands in order; the client already drew both.
 	if (rec_sl_wophold)
-		answered = WarpOp_LoadAnswered();
+		answered = rec_sl_pred || WarpOp_LoadAnswered();
 	else
 		answered = (rec_sl_holdack > 0 && getstatf(STAT_FS_SLACK) >= rec_sl_holdack);
 	return (answered || t >= lead + 1);
@@ -627,7 +638,7 @@ string() SaveLoc_LeadText =
 	if (!rec_sl_holding || Spec_Active() || cvar("cl_sl_leadin") <= 0) return "";
 	if (rec_sl_wophold)
 	{
-		if (!WarpOp_LoadAnswered()) return "Loading save";
+		if (!rec_sl_pred && !WarpOp_LoadAnswered()) return "Loading save";
 	}
 	else if (rec_sl_holdack <= 0 || getstatf(STAT_FS_SLACK) < rec_sl_holdack)
 		return "Loading save";

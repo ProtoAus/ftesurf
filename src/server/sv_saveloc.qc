@@ -496,6 +496,7 @@ float(entity e, float r) SL_RowGrounded =
 .float rw_goseq;                // next one replaces (SV_RewindDropGo)
 .float rw_pin;                  // the pin is the rewind's (`rec_watch 1 rw`), not a replay's
 .float rec_sl_savetick;          // the cursor slot's stored run clock
+.float rec_sl_curid;             // P1384: its folder number (STAT_FS_SLCURID), 0 for none
 
 /*
   HOLD.
@@ -3097,7 +3098,7 @@ void(entity e) SV_SaveLocSync =
 	{
 		e.rec_sl_count = 0;
 		e.rec_sl_index = 0;
-		e.rec_sl_savetick = 0;
+		e.rec_sl_savetick = e.rec_sl_curid = 0;
 		e.rec_sl_curorg = '0 0 0';
 		e.rec_sl_curang = '0 0 0';
 		e.rec_sl_curvel = '0 0 0';
@@ -3126,7 +3127,7 @@ void(entity e) SV_SaveLocSync =
 	if (cnt > 0 && e.rec_sl_auto)
 		e.rec_sl_index = cnt;
 
-	e.rec_sl_savetick = 0;
+	e.rec_sl_savetick = e.rec_sl_curid = 0;
 	e.rec_sl_curorg = '0 0 0';
 	e.rec_sl_curang = '0 0 0';
 	e.rec_sl_curvel = '0 0 0';
@@ -3134,6 +3135,7 @@ void(entity e) SV_SaveLocSync =
 		if (e.rec_sl_index <= cnt)
 		{
 			e.rec_sl_savetick = rec_sl_tick[base + e.rec_sl_index - 1];
+			e.rec_sl_curid = rec_sl_id[base + e.rec_sl_index - 1];
 			e.rec_sl_curorg = rec_sl_org[base + e.rec_sl_index - 1];
 			e.rec_sl_curvel = rec_sl_vel[base + e.rec_sl_index - 1];
 			e.rec_sl_curang = [rec_sl_pit[base + e.rec_sl_index - 1],

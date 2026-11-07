@@ -25,6 +25,10 @@
 - Messages a map puts on screen (like surf_centipedes' "Press E (+use) in any startzone" line) and its hint boxes are drawn at a real font size on whole pixels, so they are sharp instead of resized and blurry.
 - surf_centipedes' moving sky costs your game less each frame.
 
+### P1384 Loading a save is the same at any ping
+- With a lead-in set, the run-up into your save now starts the moment you press the load key, and a tap lets you go when the lead-in ends. Before, both waited for the server to answer, so on a distant lobby the view sat on the save, jumped back up your path and counted down from less than the lead-in.
+- A lead-in of 0 now lets you go on the tap itself, at any ping.
+
 ### P1383 Noclip speed on the lobbies
 - Shift + mouse wheel while noclipping now changes your flying speed on the lobbies too, not only in a private game. It changes only your own speed.
 

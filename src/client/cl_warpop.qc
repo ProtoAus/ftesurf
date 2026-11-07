@@ -49,6 +49,7 @@ float  wop_premove_t;           // cltime the engine last ran the pre-move hook
 float  wop_inputt;              // cltime WarpOp_InputFrame last ran (not under cl_threadedphysics)
 float  wop_heldmode;            // the mode a predicted load held from; its release returns to it
 float  wop_loadseq;             // the last load's command, for the refusal check
+float  wop_loadpred, wop_loadsteps; // P1384: it was predicted; a step was still unanswered before it
 float  wop_loadackat;
 vector wop_loadvel;
 float  wop_relseq;              // the release's command (-1 queued) until the server lets go
@@ -257,6 +258,7 @@ float(float op, vector org, vector vel, vector ang, float duck) WarpOp_Queue =
 #define WOPP_MOVE      2            // anything but a release: `!r`'s leg may move under it
 #define WOPP_BLINDLOAD 3            // a blind load: its row's speed is not known here
 #define WOPP_HOLDROW   4            // a pending load/step not known to be rate-refused
+#define WOPP_STEP      5            // P1384: a pending step (a load leaves the cursor where it is)
 
 // An unanswered op of the kind asked about.
 float(float what) WarpOp_Pending =
@@ -275,6 +277,8 @@ float(float what) WarpOp_Pending =
 		if (what == WOPP_LIST && (op == WOP_LOAD || (op >= WOP_NEXT && op <= WOP_LAST)))
 			return TRUE;
 		if (what == WOPP_BLINDLOAD && op == WOP_LOAD && wop_blind[i] == WOPB_BLIND)
+			return TRUE;
+		if (what == WOPP_STEP && op >= WOP_NEXT && op <= WOP_LAST)
 			return TRUE;
 		if (what == WOPP_HOLDROW && wop_blind[i] != WOPB_REFUSED)
 			if (op == WOP_LOAD || (op >= WOP_NEXT && op <= WOP_LAST))
@@ -530,6 +534,7 @@ float() WarpOp_Load =
 	// otherwise a hold the server still reports is not ours to stack on.
 	relpending = (wop_relseq != 0);
 	wop_relseq = 0;                     // a new hold: the last release's backstop is moot
+	wop_loadpred = FALSE;
 	if (!WarpOp_Able() || Trail_RequestBusy())
 		return FALSE;
 	if (getstatf(STAT_FS_HOLD) && !relpending)
@@ -542,6 +547,7 @@ float() WarpOp_Load =
 	// Patch 759: after any load or step still unanswered.  Sent in order either
 	// way; unpredicted (blind) when its row is not published or the server's
 	// bucket would refuse it, and the server's answer corrects it as before.
+	wop_loadsteps = WarpOp_Pending(WOPP_STEP);
 	blind = WarpOp_Row(WOP_LOAD) ? 0 : WOPB_BLIND;
 	charged = WarpOp_Charge();
 	if (!charged)
@@ -553,6 +559,7 @@ float() WarpOp_Load =
 		return FALSE;
 	}
 	wop_blind[wop_slot] = blind;
+	wop_loadpred = !blind;
 	wop_loadvel = wop_tgvel;
 	wop_loadseq = -1;
 	wop_loadackat = 0;
@@ -671,7 +678,7 @@ void() WarpOp_PracticeReturnCancel =
 		rec_sl_refseen = cltime;
 	}
 	rec_sl_holding = rec_sl_holdkey = rec_sl_holdrep = rec_sl_holdseen = 0;
-	rec_sl_holdang_ok = rec_sl_wophold = rec_sl_pv_on = rec_sl_upwait = 0;   // P1227 review 1
+	rec_sl_holdang_ok = rec_sl_wophold = rec_sl_pv_on = rec_sl_upwait = rec_sl_pred = 0;   // P1227 review 1
 	rec_sl_holdack = rec_sl_holdackat = 0;
 	Trail_RequestReset();          // do not dispatch an old deferred save/load
 };
@@ -762,6 +769,17 @@ float() WarpOp_LoadRefused =
 	if (!wop_loadackat)
 		wop_loadackat = cltime;
 	return (!getstatf(STAT_FS_HOLD) && cltime - wop_loadackat > 0.3);
+};
+
+// P1384: SaveLoc_LoadKey, right after WarpOp_Load: TRUE when that load was predicted, whose travel
+// then starts now from the row it predicted (wop_tgorg/tgang, still WarpOp_Row's answer).
+float() WarpOp_LoadLead =
+{
+	if (!wop_loadpred)
+		return FALSE;
+	if (!wop_loadsteps)
+		SaveLead_Press(wop_tgorg, wop_tgang);
+	return TRUE;
 };
 
 // P1227: the load's command has reached the server and been answered (SaveLoc_LeadDone).

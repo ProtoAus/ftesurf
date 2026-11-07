@@ -1,5 +1,14 @@
 # BACKLOG.md
 
+## A save load's trail file is read again while its travel runs (8 Nov, after P1384)
+
+- P1384 starts the lead-in travel on the press from a cached picture tail, but Trail_Frame's SLOP_LOADED
+  still calls Trail_Load (cl_trailstate.qc), which reads and refeeds the whole trail.txt for the live
+  line when the answer lands -- mid-travel at a remote ping. Lex's largest pictures are 5.7 MB (~50k
+  rows: bhop_monster_jam save012, bhop_ceaseless save024). Cost unmeasured.
+- Falsifier: tools/p1384lead.py with a long run's save at 150 ms; frame gaps between held frames
+  against a short save's.
+
 ## Water captures for more than one plane are redrawn every frame (8 Nov, after P1376)
 
 - Site: gl_backend.c GLBE_CaptureKeep/be_capkeep (P1245/P1281): one kept plane and shared level-0
