@@ -21,6 +21,9 @@
 
 ## next
 
+### P1359 Recording diagnostic version numbers
+- Recording diagnostics now withhold similarity metrics for unsupported numeral notation in version numbers.
+
 - Reduce first-traversal static-prop lighting stalls without changing the lighting or visibility quality.
 ### P1357 Lower client collision-query overhead
 - Reduce CPU overhead from light-visibility queries, particularly on Tensor2, without changing light visibility, ray budgets or rendering quality.

@@ -232,8 +232,12 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
                 rec_native.append(line)
             if not body:
                 if line.startswith("FTESURF-REC"):
+                    fields = line.split()
+                    if len(fields) > 1:
+                        if not fields[1].isascii() or "_" in fields[1]:
+                            raise MalformedRec("non-native recording version spelling")
                     try:
-                        r.ver = int(line.split()[1])
+                        r.ver = int(fields[1])
                     except (IndexError, ValueError):
                         r.ver = 0
                     if r.ver >= 12 and r.ver not in heldmeta.NATIVE_VERSIONS:

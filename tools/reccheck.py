@@ -750,6 +750,8 @@ def _check_rec(r, path, verbose=False, *, data=None):
         r.fault("first line is not 'FTESURF-REC <version>': %r" % lines[0][:60])
         return r
     try:
+        if not magic[1].isascii() or "_" in magic[1]:
+            raise ValueError("non-native recording version spelling")
         ver = int(magic[1])
     except ValueError:
         r.fault("version is not a number: %r" % magic[1])

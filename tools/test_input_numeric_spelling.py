@@ -1,4 +1,4 @@
-"""Required input numbers use native spelling, not Python-only numeral syntax."""
+"""Ordinary REC version/input numbers exclude Python-only numeral syntax."""
 import argparse
 import contextlib
 import importlib.util
@@ -124,10 +124,12 @@ class Similarity(Fixture):
         sc = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(sc)
         bad = mutate(recording().splitlines(), 40, 4, lambda s: "0_" + s)
+        header_bad = recording().replace("FTESURF-REC 9", "FTESURF-REC 0_9", 1)
         for text, verdict, code, compared, notable in (
                 (recording(), "compared", "", 80, 1),
                 (recording(other=True), "compared", "", None, 0),
-                (bad, "skip", "malformed", 0, 0)):
+                (bad, "skip", "malformed", 0, 0),
+                (header_bad, "skip", "malformed", 0, 0)):
             with self.subTest(verdict=verdict, code=code, notable=notable):
                 self.a.write_text(text, encoding="utf-8")
                 with contextlib.closing(sqlite3.connect(":memory:")) as conn:
@@ -162,15 +164,109 @@ class Similarity(Fixture):
                                          (0, 1, 0, {"malformed": 1}))
 
     def test_pair_cli_withholds_metrics(self):
-        self.a.write_text(mutate(recording().splitlines(), 40, 4,
-                                 lambda s: "0_" + s), encoding="utf-8")
-        output = io.StringIO()
-        args = argparse.Namespace(a=str(self.a), b=str(self.b), min_len=50)
-        with contextlib.redirect_stdout(output):
-            result = rs.cmd_one(args)
-        self.assertEqual(result, 1)
-        self.assertIn("not compared: malformed required move-stream input", output.getvalue())
-        self.assertNotIn("match   ", output.getvalue())
+        for text in (mutate(recording().splitlines(), 40, 4, lambda s: "0_" + s),
+                     recording().replace("FTESURF-REC 9", "FTESURF-REC 0_9", 1)):
+            with self.subTest(header=text.startswith("FTESURF-REC 0_9")):
+                self.a.write_text(text, encoding="utf-8")
+                before = self.a.read_bytes(), self.b.read_bytes()
+                output = io.StringIO()
+                args = argparse.Namespace(a=str(self.a), b=str(self.b), min_len=50)
+                with contextlib.redirect_stdout(output):
+                    result = rs.cmd_one(args)
+                self.assertEqual(result, 1)
+                self.assertIn("not compared: malformed required move-stream input", output.getvalue())
+                self.assertNotIn("match   ", output.getvalue())
+                self.assertEqual((self.a.read_bytes(), self.b.read_bytes()), before)
+
+
+class Header(Fixture):
+    def test_python_only_version_refuses_before_version_zero_fallback(self):
+        normal = recording()
+        for token in ("0_9", "９", "٩"):
+            text = normal.replace("FTESURF-REC 9", "FTESURF-REC " + token, 1)
+            for cap in (None, 65536):
+                with self.subTest(token=token, cap=cap):
+                    self.b.write_text(normal, encoding="utf-8")
+                    self.assert_unavailable(text, cap)
+                    self.a.write_text(normal, encoding="utf-8")
+                    self.b.write_text(text, encoding="utf-8")
+                    self.assertEqual(self.pair(cap),
+                                     ("malformed input", "malformed required move-stream input"))
+        self.b.write_text(normal, encoding="utf-8")
+        repeated = normal.replace("\nbegin\n", "\nFTESURF-REC 0_9\nbegin\n", 1)
+        self.assertNotEqual(repeated, normal)
+        for cap in (None, 65536):
+            with self.subTest(repeated=True, cap=cap):
+                self.assert_unavailable(repeated, cap)
+
+    def test_ascii_version_compatibility_and_dispatch(self):
+        full = "\n".join(grammar.build(packets=80)) + "\n"
+        for token in ("9", "009", "+9", "+009"):
+            self.a.write_text(recording().replace("FTESURF-REC 9",
+                                                  "FTESURF-REC " + token, 1), encoding="utf-8")
+            for cap in (None, 65536):
+                with self.subTest(token=token, cap=cap):
+                    verdict, detail = self.pair(cap)
+                    self.assertEqual((verdict, detail["match"], detail["compared"]),
+                                     ("compared", 1.0, 80))
+            report = rc.check_rec("synthetic.rec", data=full.replace(
+                "FTESURF-REC 9", "FTESURF-REC " + token, 1).encode("utf-8"))
+            self.assertEqual((report.faults, report.info["version"], report.info["inputs"]),
+                             ([], 9, 80))
+        for token in ("12", "14", "16", "+0016"):
+            self.a.write_text(recording().replace("FTESURF-REC 9",
+                                                  "FTESURF-REC " + token, 1), encoding="utf-8")
+            self.assertEqual(self.pair(),
+                             ("unmodelled recording", "recording clock model unavailable"))
+        self.a.write_text(recording().replace("FTESURF-REC 9", "FTESURF-REC -9", 1),
+                          encoding="utf-8")
+        parsed = rs.parse_rec(str(self.a), strict=True, max_bytes=65536, max_moves=100)
+        self.assertEqual((parsed.ver, len(parsed.moves)), (-9, 80))
+        for token in ("16", "+0016", "-9"):
+            report = rc.check_rec("synthetic.rec", data=full.replace(
+                "FTESURF-REC 9", "FTESURF-REC " + token, 1).encode("utf-8"))
+            self.assertTrue(any("unknown version" in fault for fault in report.faults))
+
+    def test_checker_version_faults_before_version_or_held_status(self):
+        full = "\n".join(grammar.build(packets=80)) + "\n"
+        for token in ("0_9", "９", "٩"):
+            data = full.replace("FTESURF-REC 9", "FTESURF-REC " + token, 1).encode("utf-8")
+            for captured in (False, True):
+                with self.subTest(token=token, captured=captured):
+                    self.a.write_bytes(data)
+                    report = rc.check_rec(str(self.a), data=data) if captured else rc.check_rec(str(self.a))
+                    self.assertFalse(report.ok)
+                    self.assertTrue(any("version is not a number" in fault for fault in report.faults))
+                    self.assertNotIn("version", report.info)
+                    self.assertNotIn("held_status", report.info)
+                    self.assertEqual(self.a.read_bytes(), data)
+
+    def test_native_header_refusal_and_exact_framing_remain_distinct(self):
+        for version in (13, 15):
+            for release in (False, True):
+                normal = native_recording(version=version, fzin=release)
+                self.a.write_bytes(normal)
+                self.b.write_bytes(normal)
+                verdict, detail = self.pair(min_len=1)
+                self.assertEqual((verdict, detail["match"], detail["compared"]),
+                                 ("compared", 1.0, 3))
+                for token in ("0_" + str(version), str(version).translate(FULLWIDTH)):
+                    data = normal.replace(("FTESURF-REC %d" % version).encode(),
+                                          ("FTESURF-REC " + token).encode("utf-8"), 1)
+                    self.a.write_bytes(data)
+                    with self.subTest(version=version, release=release, token=token):
+                        self.assertEqual(self.pair(min_len=1),
+                                         ("malformed input", "malformed required move-stream input"))
+                        report = rc.check_rec(str(self.a), data=data)
+                        self.assertFalse(report.ok)
+                        self.assertNotIn("version", report.info)
+                        self.assertNotIn("held_status", report.info)
+                alternate = normal.replace(("FTESURF-REC %d" % version).encode(),
+                                           ("FTESURF-REC +0%d" % version).encode(), 1)
+                self.a.write_bytes(alternate)
+                self.assertEqual(self.pair(min_len=1),
+                                 ("malformed input", "malformed required move-stream input"))
+                self.assertFalse(rc.check_rec(str(self.a), data=alternate).ok)
 
 
 class Checker(unittest.TestCase):
