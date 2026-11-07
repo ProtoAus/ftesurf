@@ -60,3 +60,18 @@ of the prefix; the IP is never shown).
 - An attacker with many IPv6 prefixes can still use up a day's global cap (BACKLOG).
 - surfd's admin nav has no link to /admin/reports until the next surfd generation.
 - The report-time fs_flush stays until the engine indexes screenshots (BACKLOG).
+
+## Delivery (8 Nov 2026)
+
+- Game code LIVE from main 2e3333d5 (fteqcc c24ede65, -max_strings 4194304): build.ps1 -Pi, nobody
+  on, 12/12 lobbies restarted on qwprogs 0a406f51 / csprogs 61771392 (sha256); serverinfo *csprogs
+  0xa36cd845 size 0x757b36. tasrevd codes.txt 87 -> 88 (.pre1391). Both installs the same (menu
+  ed59a330 unchanged), csprogsvers/a36cd845.dat seeded.
+- reportd staged, NOT yet running: /srv/nvme/ftesurf-ops/reportd/app (reportd.py 2ce39a3f, wsgi
+  50a887af, templates), state /srv/nvme/ftesurf-ops/reportd-state (0700). Smoke on the Pi (Flask/
+  Werkzeug 2.2.2, gunicorn 20.1, temp state, 127.0.0.1:18095): admin on, a report stored, 401/302
+  without a login; stopped and removed. The root step is Lex's:
+  `sudo sh /srv/nvme/agent-work/report-1391-3a/install_reportd.sh` (unit pinned to 2e3333d5, start,
+  answer check, nginx snippet + include after zonepub, nginx -t, reload; undoes on failure). Until
+  then F3 reports answer "the service answered 404" and keep the draft.
+

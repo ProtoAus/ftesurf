@@ -1,7 +1,10 @@
 # lextest.md — things waiting on a human
 
-## P1391 F3 report panel, P1392 keyboard tab -- owner check pending (8 Nov)
+## P1391 F3 report panel, P1392 keyboard tab -- LIVE in game (12 lobbies + both installs, 8 Nov); report service needs your one root step
 
+- First, once, on the Pi: `sudo sh /srv/nvme/agent-work/report-1391-3a/install_reportd.sh` (starts
+  the report service and adds /api/report and /admin/reports to play.proto.bar; undoes itself on
+  any failure). Until then a sent report says "the service answered 404" and keeps your text.
 - In a game press F3: the panel opens with a screenshot of the moment. Pick "Bad rendering", type a
   line, Send. It should say "sent -- thank you!" and close. Then open play.proto.bar/admin/reports
   (logged in to the admin site): the report is there with the screenshot, map, position, save and
