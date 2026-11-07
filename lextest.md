@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P1363/P1364/P1365 Tensor2 sprite traces, Ceaseless prop lighting, first-play shaders -- NOT YET INSTALLED; owner check pending
+
+Pushed 7 Nov; the clean full build for the installs was stopped by Claude Code's low-memory guard
+and waits for the owner's go. After install, two quick looks. Tensor2: ride one familiar section with light glows
+and light shafts; do the same glows show and hide as before (none missing, none popping
+through the sky)? Ceaseless: load it fresh and do the first run; does the spot that used
+to hitch near 11-12 s feel smooth, and do the lit props look the same? Measured (full
+effects): Tensor2 +27-28% average and +22-24% on the 1% low; Ceaseless first traversal
+0.1% low 26 -> 231-240 fps, worst frame no longer ~70 ms. Exactness is measured (0
+differing traces in 1.67 M checked); how it looks and feels is yours to confirm.
+`tools/p1363-lows-audit.md`.
+
 ## P1360/P1362 priority ramp marks -- owner appearance check pending
 
 Final249qualified sets are published (provenance in `tools/p1360-ramp-library.md`).

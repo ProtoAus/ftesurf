@@ -21,6 +21,15 @@
 
 ## next
 
+### P1365 Fewer first-play shader stutters
+- Shaders that Tensor2, Ceaseless, Boreas, Garden, Demise and similar maps need with full water and glass effects are now prepared while the map loads, instead of the first time you see them.
+
+### P1364 Prop lighting prepared before you play
+- Static prop lighting is worked out when a map loads, so new props no longer cause a stutter the first time they come into view. On Ceaseless the first run no longer hitches near the 11 second mark.
+
+### P1363 Faster light glow checks
+- Light glows and shafts check the sky far faster on maps with many of them: about 25% higher frame rate on Tensor2, with identical results.
+
 ### P1362 Tiny ramp surfaces
 - Tiny ramp faces no longer invalidate a whole map's downloaded marks.
 

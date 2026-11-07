@@ -1,5 +1,27 @@
 # AGENT_NOTES.md
 
+## P1363-P1365 lows: trace walk, prop prewarm, starter shaders (7 Nov 2026)
+
+- Measure at the profile the owner plays: the Desktop copy is `r_renderscale 1`, MSAA 4,
+  `hl2_water 2`; the dev install's cfg (scale 2, water 0) was Sol's profile. At scale 1
+  Tensor2 is CPU-bound (GPU 0.28 ms), so scale-2 GPU numbers do not describe its lows.
+- A CSQC trace cost was the bounding-box grid walk (~1,860 cells a Tensor2 sky ray), the
+  whole overflow list (362 entities there) and full traces into brush entities the ray never
+  met, not BSP traversal. `csqc_linewalk_stats` prints cells, overflow list classes, entity
+  traces and skips; `csqc_linewalk 2` runs both walks and counts differing trace_t fields.
+  Exactness rests on SOLID_BSP/SOLID_PORTAL CSQC entities being placed by
+  setorigin/setsize/setmodel: a new one moved by direct field writes breaks it.
+- `hl2_lt_prewarm` runs once per map load. A cold-lighting arm made by toggling
+  `hl2_lt_reusecube` (P1358's method) no longer exercises it: test a fresh launch per arm and
+  grade `hl2_lt_prewarm_info`'s "solved in the frame that first drew them" count.
+- Starter-list gaps: run the maps with an empty `data/glslwarm.txt`, diff the learned file
+  against `glsl/warmseed.txt` by (hex perm, program), and grade `r_mapready_info`'s late
+  compile COUNT; its ms is tiny once this PC's driver cache holds the program.
+- Rig traps met here: conbridge refuses console lines over 240 bytes (exec a cfg instead);
+  `r_frametime_dump`/`r_budget_dump` overwrite the clipboard (save and restore it); the
+  stack-scan "inclusive" sampler is noisy (stale return addresses), so trust SELF shares
+  and A/B toggles over it. Driver scripts: `C:/FTESurf-worktrees/lows2-20261107-opus/artifacts`.
+
 ## Full-source ramp asset qualification (P1360/P1362, 7 Nov2026)
 
 - Read `cl_rampwear.qc`'s ACTUAL grammar: positive chart radius,32768charts,
