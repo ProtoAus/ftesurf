@@ -337,10 +337,13 @@ float(entity e, float n) SV_TimerTeleported;
 // velocity -- which is the property that makes the forgiveness safe to hand out.
 void(entity e, string why) SV_TimerForgiveHop;
 
+void(float zones) SV_MapTierInit;  // sv_maptier.qc
+
 void() SV_ZoneLoad =
 {
 	local entity p;
 	local float ok;
+	local string gm;
 
 	p = find(world, classname, "player");
 	while (p)
@@ -405,6 +408,14 @@ void() SV_ZoneLoad =
 	if (fabs(zone_maxvel - cvar("sv_maxvelocity")) > 0.001)
 		print(sprintf("^3zones: %s asks maxVelocity %g, this server runs sv_maxvelocity %g\n",
 		              mapname, zone_maxvel, cvar("sv_maxvelocity")));
+	// P1371: likewise the mode (the engine's answer is serverinfo gamemode); a hosted game's
+	// map settings or a pinned sv_gamemode outrank the zone file there on purpose.
+	gm = serverkey("gamemode");
+	if ((zone_mode == 1 && gm != "surf") || (zone_mode == 2 && gm != "bhop"))
+		print(sprintf("^3zones: %s asks gamemode %g, this server runs %s\n", mapname, zone_mode,
+		              gm != "" ? gm : "the base ruleset"));
+	if (zone_tier_mom > 0 || zone_tier_ksf > 0)
+		SV_MapTierInit(TRUE);
 
 	// The timer's tables hang off the same load, and for the same reason:
 	// this is the first point at which the map is known and its entities

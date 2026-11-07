@@ -129,15 +129,18 @@ string() ZonePub_Where =
 	return ip;
 };
 
-// P1081: the saved file, loaded over the table, gives back the same count, crc and speed cap.
+// P1081: the saved file, loaded over the table, gives back the same count, crc and speed cap
+// (P1371: and mode and tiers).
 float() ZonePub_Matches =
 {
 	local string was;
-	local float n, mv, ok, same;
+	local float n, mv, ok, same, gm, tm, tk;
 	was = strzone(zone_crc); n = zone_count; mv = zone_maxvel;
+	gm = zone_mode; tm = zone_tier_mom; tk = zone_tier_ksf;
 	ok = Zone_LoadJson(strcat("data/maps/zones/local/", ze_map, ".json"), ZSRC_LOCAL);
 	if (ok) Zone_Hash();
-	same = (ok && zone_count == n && strcmp(zone_crc, was) == 0 && zone_maxvel == mv);
+	same = (ok && zone_count == n && strcmp(zone_crc, was) == 0 && zone_maxvel == mv
+	        && zone_mode == gm && zone_tier_mom == tm && zone_tier_ksf == tk);
 	strunzone(was);
 	if (!ok)
 	{

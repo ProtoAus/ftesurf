@@ -509,6 +509,8 @@ void() ZoneEdit_SettingsOpen =
 	local string line;
 	for (i = 0; i < MAPSET_COUNT; i = i + 1) ze_values[i] = cvar(MapSet_Name(i));
 	ze_mode = cvar("pm_ticrate") < 0.012 ? 2 : 1;
+	if (zone_mode == 1 || zone_mode == 2) ze_mode = zone_mode;     // P1371
+	ze_tier_m = zone_tier_mom; ze_tier_k = zone_tier_ksf;
 	bytes = 0; fh = fopen(MapSet_Path(ze_map), FILE_READ);
 	if (fh >= 0)
 	{
@@ -528,6 +530,7 @@ void() ZoneEdit_SettingsOpen =
 	}
 	ze_settings = TRUE; ze_field = ze_dim = -1; ze_history = FALSE;
 	ze_cap_open = ze_values[0];
+	ze_mode_open = ze_mode;
 	if (sui_text_has_focus("ze_value")) sui_text_unfocus();
 };
 
@@ -552,11 +555,26 @@ float(float c) ZoneEdit_Paste =
 	return TRUE;
 };
 
+// P1371: fields past the MapSet ones are the two tiers.
+float(float i) ZoneEdit_PropValue =
+{
+	if (i == MAPSET_COUNT) return ze_tier_m;
+	if (i == MAPSET_COUNT + 1) return ze_tier_k;
+	return ze_values[i];
+};
+
+string(float i) ZoneEdit_PropLabel =
+{
+	if (i == MAPSET_COUNT) return "Momentum tier";
+	if (i == MAPSET_COUNT + 1) return "KSF tier";
+	return MapSet_Label(i);
+};
+
 void(float i) ZoneEdit_SettingEdit =
 {
 	ze_field = i;
 	if (ze_text != "") strunzone(ze_text);
-	ze_text = strzone(ZoneEdit_Num(ze_values[i])); ze_caret = strlen(ze_text);
+	ze_text = strzone(ZoneEdit_Num(ZoneEdit_PropValue(i))); ze_caret = strlen(ze_text);
 	sui_field_focus("ze_value");
 };
 
@@ -565,6 +583,18 @@ void() ZoneEdit_SettingApply =
 	local float v;
 	if (ze_field < 0) return;
 	v = stof(ze_text);
+	if (ze_field >= MAPSET_COUNT)
+	{
+		if (!MapSet_Number(ze_text) || !(v >= 0 && v <= 10) || v != floor(v))
+		{
+			ZoneEdit_Note("Enter a whole tier from 1 to 10, or 0 for none");
+			return;
+		}
+		if (ze_field == MAPSET_COUNT) ze_tier_m = v; else ze_tier_k = v;
+		ze_field = -1; sui_text_unfocus();
+		ZoneEdit_Note("Tier staged; Save settings, then Save zones and Publish saved");
+		return;
+	}
 	if (!MapSet_Number(ze_text) || !MapSet_Valid(ze_field, v))
 	{
 		ZoneEdit_Note(sprintf("Enter a number from %g to %g", MapSet_Min(ze_field), MapSet_Max(ze_field)));
@@ -576,7 +606,7 @@ void() ZoneEdit_SettingApply =
 
 void() ZoneEdit_SettingsSave =
 {
-	local float fh, i, ok;
+	local float fh, i, ok, staged;
 	local string path, part, backup, line;
 	if (!ZoneEdit_MayWrite()) { ZoneEdit_Note("Remote command refused: use the panel button"); return; }
 	if (ze_map == "" || strcmp(ze_map, zone_mapname) != 0) return;
@@ -621,17 +651,28 @@ void() ZoneEdit_SettingsSave =
 	print(sprintf("zone_edit: settings saved %s maxvelocity %g\n", MapSet_Path(ze_map), ze_values[0]));
 	// P841: the speed cap is the zone file's maxVelocity too, so Publish carries it -- only a
 	// value edited in this panel: the field opens on the local cvar or an old settings file.
+	staged = FALSE;
 	if (zone_count > 0)
 	if (ze_values[0] != ze_cap_open)
 	if (ze_values[0] != zone_maxvel)
 	{
 		zone_maxvel = ze_values[0];
-		ze_dirty = TRUE;
+		ze_dirty = staged = TRUE;
+	}
+	// P1371: the mode on the same terms (only one picked here); tiers are zone-only, so any change.
+	if (zone_count > 0)
+	{
+		if (ze_mode != ze_mode_open && ze_mode != zone_mode) { zone_mode = ze_mode; ze_dirty = staged = TRUE; }
+		if (ze_tier_m != zone_tier_mom) { zone_tier_mom = ze_tier_m; ze_dirty = staged = TRUE; }
+		if (ze_tier_k != zone_tier_ksf) { zone_tier_ksf = ze_tier_k; ze_dirty = staged = TRUE; }
 	}
 	if (zone_count > 0)             // with no zones yet the edit stays pending for the next save
+	{
 		ze_cap_open = ze_values[0];
-	if (ze_dirty && zone_maxvel == ze_values[0])
-		ZoneEdit_Note(sprintf("Saved locally; speed cap %g reaches lobbies with the zones: Save zones, then Publish saved", zone_maxvel));
+		ze_mode_open = ze_mode;
+	}
+	if (staged || (ze_dirty && zone_maxvel == ze_values[0]))
+		ZoneEdit_Note("Saved locally; mode, speed cap and tiers reach lobbies with the zones: Save zones, then Publish saved");
 	else
 		ZoneEdit_Note("Saved locally; reload the hosted map to apply");
 };
@@ -651,17 +692,18 @@ void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw =
 	if (ZoneEdit_Button([p_x + 8, y], [w * 0.48 - 8, rowh], "ze_mode_surf", "Surf", tsz, ze_mode == 1 ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingMode(1);
 	if (ZoneEdit_Button([p_x + w * 0.5, y], [w * 0.48 - 8, rowh], "ze_mode_bhop", "Bhop", tsz, ze_mode == 2 ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingMode(2);
 	y = y + rowh;
-	ZoneEdit_Text([p_x + 8, y + 4], tsz, ze_mode == 2 ? "100 Hz  /  preset air accel 1000" : "66.67 Hz  /  preset air accel 150", ZEC_DIM);
+	ZoneEdit_Text([p_x + 8, y + 4], tsz, ze_mode == 2 ? "100 Hz  /  air accel 1000  /  timer on the jump" : "66.67 Hz  /  air accel 150  /  timer leaving the start", ZEC_DIM);
 	y = y + rowh * 1.4;
-	for (i = 0; i < MAPSET_COUNT; i = i + 1)
+	for (i = 0; i < MAPSET_COUNT + 2; i = i + 1)
 	{
 		id = sprintf("ze_ms%g", i);
 		tip = ZoneEdit_Tip(id);
 		sui_action_element([p_x + 8, y], [w * 0.56 - 8, rowh - 3], sprintf("ze_msl%g", i), sui_noop);
 		if (ze_cursor) sui_tooltip_for(sprintf("ze_msl%g", i), tip, ui_cv_scale);
-		ZoneEdit_Text([p_x + 8, y + 6], tsz, MapSet_Label(i), ZEC_TEXT);
+		ZoneEdit_Text([p_x + 8, y + 6], tsz, ZoneEdit_PropLabel(i), ZEC_TEXT);
 		if (ZoneEdit_Button([p_x + w * 0.56, y], [w * 0.40, rowh - 3], id,
-			ftos(ze_values[i]), tsz, ze_field == i ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingEdit(i);
+			(i >= MAPSET_COUNT && ZoneEdit_PropValue(i) == 0) ? "-" : ftos(ZoneEdit_PropValue(i)),
+			tsz, ze_field == i ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingEdit(i);
 		y = y + rowh;
 	}
 	if (ze_field >= 0)
@@ -684,7 +726,7 @@ void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw =
 	y = y + rowh;
 	ZoneEdit_Text([p_x + 8, y + 4], tsz, "Defaults: ground movement stays map-authored", ZEC_DIM);
 	y = y + rowh;
-	ZoneEdit_Text([p_x + 8, y + 4], tsz, "Lobbies: the speed cap only, with Save zones + Publish", ZEC_DIM);
+	ZoneEdit_Text([p_x + 8, y + 4], tsz, "Lobbies: mode, speed cap, tiers, with Save zones + Publish", ZEC_DIM);
 };
 
 void(vector p) ZoneEdit_DragStart =

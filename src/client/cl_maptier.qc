@@ -65,7 +65,8 @@ string(float track, float leg, float compact, float unknown) MapTier_Text =
 	row = MapTier_Row(track, leg);
 	src = MapTier_Field(row, 3);
 	mt = 0;
-	if (!strcmp(src, "rank") || !strcmp(src, "sugg"))
+	// P1371: "zone" is a zoner's tier from the published zone file (sv_maptier.qc).
+	if (!strcmp(src, "rank") || !strcmp(src, "sugg") || !strcmp(src, "zone"))
 		mt = MapTier_Number(MapTier_Field(row, 2));
 	kt = MapTier_Number(MapTier_Field(row, 4));
 	unit = MapTier_Letter(MapTier_Field(row, 5));

@@ -569,7 +569,7 @@ void() worldspawn =
 	forceinfokey(world, "fs_sourcephase", "1");
 	forceinfokey(world, "fs_savelead", "1"); // bounded held-save presentation eye, not a watch pin
 	vbsp_conveyor_any = 0;
-	SV_MapTierInit();
+	SV_MapTierInit(FALSE);
 	// worldspawn is the first entity in the lump, so this zeroes the spawn
 	// tallies before anything counts into them -- and re-arms the report.
 	// Both matter across a map change: these are globals and they persist.

@@ -193,6 +193,9 @@ string zone_mapname;                // what the tables were built for
 float  zone_overflow;               // hit a cap on this map
 float  zone_maxvel;                 // P841: the file's maxVelocity, 0 = none; not in zone_crc.
                                     // The server's cap comes from the engine (sv_phys.c).
+float  zone_mode;                   // P1371: "gamemode", a Momentum id (1 surf, 2 bhop), 0 = none.
+                                    // The engine picks the ruleset from it (sv_phys.c); not hashed.
+float  zone_tier_mom, zone_tier_ksf; // P1371: "momentumTier" / "ksfTier" 1..10, 0 = none; display only
 float  zone_stamped;                // P1181: has Momentum's dataTimestamp, which our editor never writes
 string zone_crc;                    // build 81: 8 hex of sha256 over the BUILT
                                     // table, "" until Zone_Hash runs.  See it.
@@ -458,6 +461,7 @@ void() Zone_Clear =
 	zone_source = ZSRC_NONE;
 	zone_overflow = FALSE;
 	zone_maxvel = 0;
+	zone_mode = zone_tier_mom = zone_tier_ksf = 0;
 	zone_stamped = FALSE;           // P1215: a table not from a stamped file (BSP zones, a new one) is not
 
 	// Build 81: the hash describes the table that just went away.  Released
@@ -1492,6 +1496,18 @@ float(string path, float src) Zone_LoadJson =
 	return Zone_LoadJsonText(text, path, src);
 };
 
+// P1371: an integral number in 1..top, else 0 (absent, a string, a fraction, out of range).
+float(int root, string key, float top) Zone_JsonId =
+{
+	local int n;
+	local float v;
+	n = json_find_object_child(root, key);
+	if (json_get_value_type(n) != 1i) return 0;
+	v = json_get_float(n);
+	if (v >= 1 && v <= top && v == floor(v)) return v;
+	return 0;
+};
+
 // P815: the bytes already in hand (an upload hashes exactly what it sends).
 float(string text, string path, float src) Zone_LoadJsonText =
 {
@@ -1513,6 +1529,10 @@ float(string text, string path, float src) Zone_LoadJsonText =
 		zone_maxvel = json_get_float(json_find_object_child(root, "maxVelocity"));
 	if (!(zone_maxvel >= 1 && zone_maxvel <= 100000))
 		zone_maxvel = 0;
+	// P1371: the engine reads "gamemode" the same way (sv_phys.c SV_ZoneRulesetFile, ids 1..13).
+	zone_mode = Zone_JsonId(root, "gamemode", 13);
+	zone_tier_mom = Zone_JsonId(root, "momentumTier", 10);
+	zone_tier_ksf = Zone_JsonId(root, "ksfTier", 10);
 
 	tracks = json_find_object_child(root, "tracks");
 

@@ -165,6 +165,8 @@ float ze_history, zh_scroll;        // P1180: the published-zones page (cl_zonep
 string ze_text;
 float ze_values[MAPSET_COUNT];
 float ze_cap_open;                  // P841: the Speed cap the panel opened with
+float ze_mode_open;                 // P1371: the mode the panel opened with
+float ze_tier_m, ze_tier_k;         // P1371: staged Momentum / KSF tier, 0 = none
 float *ze_field_keys;
 
 float() ZoneEdit_PolygonValid;
@@ -647,6 +649,12 @@ float(string path) ZoneEdit_WriteFile =
 	fputs(f, "{\"formatVersion\":1,");
 	if (zone_maxvel > 0)            // P841: the map's speed cap, which a published file carries
 		fputs(f, sprintf("\"maxVelocity\":%s,", ZoneEdit_Num(zone_maxvel)));
+	if (zone_mode > 0)              // P1371: the mode and tiers ride the same way
+		fputs(f, sprintf("\"gamemode\":%g,", zone_mode));
+	if (zone_tier_mom > 0)
+		fputs(f, sprintf("\"momentumTier\":%g,", zone_tier_mom));
+	if (zone_tier_ksf > 0)
+		fputs(f, sprintf("\"ksfTier\":%g,", zone_tier_ksf));
 	fputs(f, "\"tracks\":{\"main\":");
 	ZoneEdit_WriteTrack(f, 0);
 	fputs(f, ",\"bonuses\":[");
@@ -1330,16 +1338,18 @@ string(string id) ZoneEdit_Tip =
 	if (id == "ze_dimapply") return "Apply the typed value to the selected zone. Enter does the same; Esc cancels. Nothing is written until Save zones.";
 	if (id == "ze_rl") return "Discard unsaved zone edits and read this map's zones again. Your saved local file takes priority; use Discard local file to stop using that override.";
 	if (id == "ze_fg") return "Delete this map's saved local zone override and reload the underlying zones. Unsaved zone edits are lost too. Map properties are separate and are not removed.";
-	if (id == "ze_settings") return "Edit local Surf/Bhop presets, speed cap, gravity and air acceleration for this map. Save settings and reload the hosted map to apply them. The speed cap also goes in the zone file, so Publish sends it to the lobbies; the rest stay local.";
+	if (id == "ze_settings") return "Edit this map's Surf/Bhop mode, speed cap, gravity, air acceleration and its Momentum and KSF tiers. Save settings and reload the hosted map to apply them. The mode, speed cap and tiers also go in the zone file, so Publish sends them to the lobbies; gravity and air acceleration stay local.";
 	if (id == "ze_look") return "Give the mouse back to aiming and flying without closing the editor. Mouse2 returns the cursor to this window; V toggles noclip.";
 	if (id == "ze_cl") return "Close the editor without saving. Unsaved zone edits stay in memory until the map changes; reopen the editor to continue or save them.";
-	if (id == "ze_mode_surf") return "Stage Surf mode: 66.67 Hz physics and air acceleration 150. Keeps your chosen speed cap and gravity. Save settings and reload your hosted map to apply.";
-	if (id == "ze_mode_bhop") return "Stage Bhop mode: 100 Hz physics and air acceleration 1000. Keeps your chosen speed cap and gravity. Save settings and reload your hosted map to apply.";
+	if (id == "ze_mode_surf") return "Stage Surf mode: 66.67 Hz physics, air acceleration 150, and the timer starts when you leave the start zone. Keeps your chosen speed cap and gravity. Save settings and reload your hosted map to apply; Save zones and Publish saved sets it on the lobbies.";
+	if (id == "ze_mode_bhop") return "Stage Bhop mode: 100 Hz physics, air acceleration 1000, and the timer starts on the jump out of the start zone. Keeps your chosen speed cap and gravity. Save settings and reload your hosted map to apply; Save zones and Publish saved sets it on the lobbies.";
 	if (id == "ze_ms0") return "Speed cap: limits movement velocity, not ordinary walking speed. Higher values allow faster surfing or bhopping. Enter 1 to 100000; Apply stages the value, Save settings and map reload make it active locally. It is also the zone file's maxVelocity: Save zones and Publish saved to set it on the lobbies.";
 	if (id == "ze_ms1") return "Gravity: downward acceleration in map units per second squared. Lower values give longer, higher jumps. Enter 1 to 10000; this map's saved setting applies only after a hosted map reload.";
 	if (id == "ze_ms2") return "Air acceleration: how strongly movement input changes your velocity while airborne. Surf presets 150; Bhop presets 1000. Enter 0 to 10000; save and reload the hosted map to apply.";
+	if (id == "ze_ms3") return "Momentum tier: this map's difficulty on Momentum Mod's 1 to 10 scale, shown on the HUD and scoreboard. Enter 0 to leave it to Momentum's own list. It goes in the zone file: Save settings, Save zones, then Publish saved shows it on the lobbies.";
+	if (id == "ze_ms4") return "KSF tier: this map's difficulty on KSF's scale (1 to 10), shown beside the Momentum tier. Enter 0 to leave it to the shipped list. It goes in the zone file: Save settings, Save zones, then Publish saved shows it on the lobbies.";
 	if (id == "ze_msapply") return "Validate the number and stage it in this properties panel. Enter does the same. This does not save to disk or change the active physics yet.";
-	if (id == "ze_mssave") return "Save this map's mode and three numeric properties locally, including the active text field. Requires a hosted map reload to apply. A changed speed cap is also staged in the zones; nothing is uploaded until Publish saved.";
+	if (id == "ze_mssave") return "Save this map's mode and three numeric properties locally, including the active text field. Requires a hosted map reload to apply. A changed mode, speed cap or tier is also staged in the zones; nothing is uploaded until Publish saved.";
 	if (id == "ze_msback") return "Return to the zone tools without saving properties. Use Save settings first: reopening properties reads the saved values, not your unsaved changes.";
 	if (id == "ze_t0") return "Show the main course. Tracks have separate starts, stages, checkpoints and finishes.";
 	if (substring(id, 0, 4) == "ze_t") return "Show a bonus course. A +b tab is the next unused bonus track; select it and add zones to build that course.";
@@ -1949,6 +1959,7 @@ void() ZoneEdit_Status =
 	              (zone_crc != "") ? zone_crc : "-"));
 	print(sprintf("zone_edit: cursor %g polygon %g corners %g window %g %g\n", ze_cursor, ze_poly, ze_np, ze_window_x, ze_window_y));
 	print(sprintf("zone_edit: first list row %g\n", ze_scroll));
+	print(sprintf("zone_edit: file mode %g speed cap %g tiers %g %g\n", zone_mode, zone_maxvel, zone_tier_mom, zone_tier_ksf));
 	print(sprintf("zone_edit: track %g sel %g grid %g snap %g source %s\n", ze_track, ze_sel, ze_grid,
 	              ze_snap, Zone_SourceName(zone_source)));
 	print(sprintf("zone_edit: placing type %g seg %g cp %g a %g %g %g", ze_ntype, ze_nseg, ze_ncp,
@@ -2186,8 +2197,8 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 	else if (a == "resetspawn") ZoneEdit_ResetSpawn();
 	else if (a == "setting")
 	{
-		for (z = 0; z < MAPSET_COUNT; z = z + 1)
-			if (strcmp(argv(2), MapSet_Name(z)) == 0)
+		for (z = 0; z < MAPSET_COUNT + 2; z = z + 1)     // P1371: then momentumTier, ksfTier
+			if (strcmp(argv(2), z < MAPSET_COUNT ? MapSet_Name(z) : (z == MAPSET_COUNT ? "momentumTier" : "ksfTier")) == 0)
 			{
 				ZoneEdit_SettingEdit(z); strunzone(ze_text); ze_text = strzone(argv(3));
 				ZoneEdit_SettingApply(); break;
