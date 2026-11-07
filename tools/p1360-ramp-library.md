@@ -146,8 +146,29 @@ Expanded data was first published07:23:35UTC (741files,247sets). Its transport
 sync completed07:37:23UTC, but that receipt is NOT client-format acceptance:
 Sinsane2 was restored only to our exact retained predecessor during the radius
 repair. The final **249 qualified sets** include the corrected radius and paired
-source inputs. Their corrective publication and public HTTP checks are pending
-below; do not confuse this staged qualification with completed delivery.
+source inputs. Corrective generation `f20bf9b33c92c2eb`, source
+`ade32eb035cd8ba89c0d8052a450b4e58eff1820`, published only11changed map sets
+(33files:9replaced manifests/2new) at **08:00:22UTC**. **250map manifests LIVE**:
+249newly qualified sets plus1older retained asset. Destination hashes of ALL
+249sets/747files matched at08:01:57. The complete qualified index SHA256 is
+`fc59535950d31b2da6ce44bba09c5c5143c0ca14090ffaf5b6f7b202123ededb`.
+
+Corrective R2 refresh completed **08:02:55UTC**. Status08:09:26:all1,440allowlisted
+raw bodies verified (595PNG,595base64,250geometry),845verified gzip companions,
+0errors; these counts include retained hash-named history, NOT a single client
+bulk download. The actual client `RW_BASE` is **play.proto.bar**. All9required
+public HTTP checks there completed08:07:02:raw/gzip geometry for Sinsane2,
+Happyhug and Overgrowth2; gzip base64/decoded PNG, raw PNG, raw byte-range206,
+and signed no-store R2 redirects throughout. An EXTRA non-contract proto.bar
+probe then returned404; that original dual-host controller failure is retained,
+not called a pass or silently relabelled. Consumer-source inspection confirms
+play.proto.bar is the game URL, and the9completed actual-host checks are reused
+without repeating them just to fix the test's overbroad host scope.
+
+The engine documentation commit is `b34b3021bdb054ad19ea39aefdea5ac9bf01be2d`.
+Native pins/VM installs/qcbuild89 remain unchanged. Ordinary origin fallback,
+previous manifests and immutable packs/indices remain available; Sinsane2's
+predecessor has invalid zero radii and is history, NOT a valid native fallback.
 
 The existing on-demand client needs no rebuild/restart for added assets. On the
 current map, `rampwear_download` explicitly refreshes a copy already tried in this

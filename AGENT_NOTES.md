@@ -18,6 +18,11 @@
   shell status or globbing only `surf_*` (the roster includes `bhop_futile`).
   Two atlas transports exceeded the client's6MiB limit; coarser texels preserved
   exact world geometry. Console texel prints are rounded, not exact old settings.
+- HTTP target scope comes from the consumer: ramp `RW_BASE` is play.proto.bar,
+  not the board's proto.bar. Nine actual-host R2/hash/gzip/range checks completed
+  before an extra proto.bar probe404. Preserve that overall controller failure,
+  qualify only its proved completed actual-host arms, and don't rerun passed
+  requests merely to repair an overbroad alias assumption.
 
 ## GPU transition endpoint rejection (7 Nov 2026)
 

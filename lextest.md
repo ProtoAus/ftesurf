@@ -1,10 +1,11 @@
 # lextest.md — things waiting on a human
 
-## P1360 priority ramp marks -- owner appearance check pending
+## P1360/P1362 priority ramp marks -- owner appearance check pending
 
-After the asset publication recorded in `tools/p1360-ramp-library.md`, enable
-`r_rampwear 1` and check one familiar ramp on Gigapede bonus4 (or Android KSF
-bonus3). Do the wear/scuff tracks sit on the ramp, without floating, heavy dark
+Final249qualified sets are published (provenance in `tools/p1360-ramp-library.md`).
+On the current map use `rampwear_download` to refresh an already-tried copy, then
+`r_rampwear 1`. Check one familiar ramp on Gigapede bonus4 (or Android KSF
+bonus3; Sinsane2/Happyhug are useful if already there). Do the wear/scuff tracks sit on the ramp, without floating, heavy dark
 blocks or missing textures? Keep this to one short visual check. No owner
 confirmation yet; file/hash/HTTP checks do not prove appearance or FPS. Marks
 remain opt-in and missing-course/surface coverage is not claimed complete.
