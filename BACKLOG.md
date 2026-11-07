@@ -1,5 +1,24 @@
 # BACKLOG.md
 
+## Water captures for more than one plane are redrawn every frame (8 Nov, after P1376)
+
+- Site: gl_backend.c GLBE_CaptureKeep/be_capkeep (P1245/P1281): one kept plane and shared level-0
+  targets. bhop_ceaseless, save 35 view (3752 0 11552, pitch -19 yaw -179), 1x / MSAA 4 / reflection 2x /
+  hl2_water 2: r_capturelog shows reflect + refract for the level water (z 11456, 14 meshes) and for two
+  vertical water faces (y -2848, x -4896, one mesh each) every frame; r_viewstats 6 nested views a frame,
+  reflection 2.09 ms CPU / 837 draws; 192-217 fps against 430 looking away and 467 with hl2_water 3.
+- Candidates: non-level world water samples the level pair, as Source renders one water pair per view
+  (a visual change: compare screenshots of those faces), or a kept slot and targets per plane.
+- Falsifier: the same view's r_viewstats nested views near the look-away 0.34, with screenshots of the
+  vertical faces before and after.
+
+## The window's multisampled pixel format duplicates P1260's scene target (8 Nov)
+
+- vid_multisample also requests a multisampled window (renderer.c:2750 -> gl_vidnt.c pixel format) while
+  P1260 draws the scene into its own MSAA target; P1376 makes 4 the default for everyone. Cost unmeasured
+  on integrated GPUs. Falsifier: GPU time and memory with the window format single-sampled and the scene
+  target kept, same edges in a 1:1 crop.
+
 ## A zone file's mode (P1371) changes a board's rules without the board knowing (8 Nov)
 
 - Ranked rows key on (map, track, leg, tier, style, player) (surfd.py ~1256). A zone admin publishing a

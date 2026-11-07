@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1376 video defaults, P1373 glows after teleports -- owner check pending
+
+- Tensor2: fail or take a stage teleport, then turn round. No glow from the old place should show through
+  a wall; glows in view should fade in within a moment. (Measured: 24 scripted teleports, glows drawn
+  through a wall on a pre-teleport answer ~23,000 -> 0; no frame-time cost. tools/p1376-p1373.md.)
+- Your copies: C:\FTESurf was on r_renderscale 2, so the first map load moves it to 1x, 4x MSAA, 2x
+  reflection MSAA (three console lines). The Desktop copy already had 1x and MSAA 4 and keeps its saved
+  r_reflectmultisample 0: type `r_reflectmultisample 2` there (or Reflection AA in the graphics menu,
+  Display page) if you want reflections at 2x as well.
+- New players' water still defaults to Dithered (no reflections); say if Full reflect should be the default.
+
 ## P1375 centered save countdown / one editor -- installed BOTH Windows/12 lobbies 7 Nov; visual check pending
 
 Installed/live artifact-readback verified 13:20 UTC; tools/p1375-save-countdown.md.

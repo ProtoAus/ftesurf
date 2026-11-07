@@ -1,5 +1,24 @@
 # AGENT_NOTES.md
 
+## P1376 video defaults, P1373 glare reset on eye jumps (8 Nov 2026; ftesurf-1d, root lows2-20261107-opus)
+
+- vid_multisample applies at once on any engine with P1260 (scene MSAA target, gl_backend.c MSAA_Samples
+  reads it every frame); the window's pixel format still takes it at startup (renderer.c:2750), a second
+  multisampled buffer (BACKLOG). r_reflectmultisample is P1276.
+- Sprite_Glare traces only glares in the view cone: an answer survives untouched while out of view, so any
+  eye discontinuity (teleport, spectate switch, replay scrub) needs its own invalidation. P1373 marks
+  answers stale (-1) instead of bursting rays: a 4x burst put Tensor2's 1% low 225/239 -> 184/174.
+  vbsp_glare_check 1/2 counts glares drawn while all five proxy rays are blocked, and the subset drawn on
+  a pre-jump answer; artifacts/run_glare_tele.py (root) is the scripted-teleport arm (stages 1-8 of
+  surf_tensor2's info_teleport_destinations, full turn after each). Without the subset the count is
+  dominated by the designed 50 ms fade-outs and cannot see the bug.
+- Source map entity lumps can be LZMA ("LZMA" magic, then actual size, lzma size, 5 props bytes):
+  lzma.LZMADecompressor(FORMAT_RAW, LZMA1 filter from props).decompress(data, max_length=actual).
+- Ceaseless "looking back at the start" (save 35, 3752 0 11552, -19 -179): 6 water captures every frame
+  (level water plus two vertical water faces each capture reflect+refract), past r_capturerate, because
+  be_capkeep holds one plane and the level-0 targets are shared (BACKLOG). ~200 fps vs ~430-470 with
+  hl2_water 3 or looking away, at 1x / MSAA 4 / reflection MSAA 2.
+
 ## P1371 zone-file gamemode, bhop_ maps bhop, zone_edit tiers (8 Nov 2026; ftesurf-3a, root mapmeta-20261107-3a)
 
 - LIVE 7 Nov 13:44Z: Pi fteqw-svarm64 632ceca2 (.prev 7ae9b650 = patch-1353), qw 5f2c5837 / cs 55ff57fa

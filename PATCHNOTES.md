@@ -21,6 +21,14 @@
 
 ## next
 
+### P1376 New default picture: your screen's size with anti-aliasing
+- The game now draws at your screen's own size with 4x anti-aliasing, and water and glass reflections with 2x, instead of drawing at twice the size and shrinking it. Edges stay smooth for far less work on the graphics card.
+- If your settings were still on the old default, they move once to the new one (the console says so). If you had already lowered Render scale for a slower PC, nothing changes.
+- The graphics menu's Display page has two new rows, Anti-aliasing and Reflection AA, beside Render scale.
+
+### P1373 Light glows after a teleport
+- After a fail or a stage teleport, light glows from where you were no longer show through walls for a moment when you turn towards them. Glows you can see from the new place fade back in within a moment.
+
 ### P1375 Save-load countdown
 - A small centered millisecond countdown shows the remaining save-load lead-in. Waiting for a server answer says Loading save; keeping the load key held says Release to play once ready.
 - Save & load in hud_edit has one Lead-in field in milliseconds, rather than two controls for the same setting. Your existing value is kept.
