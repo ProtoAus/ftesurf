@@ -1227,6 +1227,30 @@ float(string cmd) KC_Console =
 		KC_CustomSet(KC_Tail(cmd, 2));
 		return TRUE;
 	}
+	if (a == "focus")               // arm: what a click on the field (cmd) or Edit (edit <key>) does
+	{
+		KC_Refresh();
+		if (argv(2) == "edit")
+			KC_EditBegin(stringtokeynum(argv(3)));
+		else if (kc_tab == KC_TAB_KEYS)
+		{
+			KC_FieldStop();
+			kc_fld = KC_FLD_CMD;
+			sui_field_focus("kc_cf");
+		}
+		print(sprintf("config_menu: field %g\n", kc_fld));
+		return TRUE;
+	}
+	if (a == "click")               // arm: a click on a key with the current pick
+	{
+		KC_Refresh();
+		k = stringtokeynum(argv(2));
+		if (!KC_KeyOk(k))
+			print(sprintf("config_menu: no key called %s\n", argv(2)));
+		else
+			KC_KeyClick(k);
+		return TRUE;
+	}
 	if (a == "editkey")
 	{
 		KC_Refresh();
