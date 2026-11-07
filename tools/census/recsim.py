@@ -421,7 +421,8 @@ def prefix_len(a, b, d=0):
     long contiguous run, chance agreement is short and scattered."""
     sa, sb = stream(a), stream(b)
     n = 0
-    i, j = 0, d
+    # Like best_offset, skip the leading rows outside the aligned overlap.
+    i, j = max(0, -d), max(0, d)
     while i < len(sa) and 0 <= j < len(sb):
         if sa[i] != sb[j]:
             break
