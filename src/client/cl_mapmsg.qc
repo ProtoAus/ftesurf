@@ -145,15 +145,34 @@ float(float f, float w, float tot) MapMsg_Pos =
 	return bound(0, v, max(0, tot - w));
 };
 
+// P1385: the text is drawn with the face's pixels=1 slot at a baked pixel size, on whole pixels, as
+// sui_native_text does: the virtual slot resampled it ("a weird font size that scales weirdly", Lex,
+// surf_centipedes' spawn text).
+float mm_oldfont;
+vector mm_glyph;
+void() MapMsg_NativeBegin =
+{
+	mm_oldfont = drawfont;
+	drawfont = Font_NativeSlot(drawfont);
+};
+
+void(vector p, string s, vector c, float a) MapMsg_NativeText =
+{
+	drawstring(_sui_pixel_align(p), s, mm_glyph, c, a, 0);
+};
+
 void(vector scr) MapMsg_DrawText =
 {
 	local float ch, e, a, sz, w, n, shown, settled, i, j, base, vis, sv, fin, fxt, ft, t;
 	local vector p, c, mp;
 	local string s, line;
 
-	sz = Font_Px(13 * ui_cv_scale);
 	p = '0 0 0';
+	sui_style_hud(scr);
 	Font_Set(ui_font_ui);
+	MapMsg_NativeBegin();
+	mm_glyph = sui_native_text_size(13 * ui_cv_scale);
+	sz = mm_glyph_y;
 	for (ch = 0; ch < MM_CHANNELS; ch = ch + 1)
 	{
 		if (!mm_t0[ch])
@@ -200,23 +219,25 @@ void(vector scr) MapMsg_DrawText =
 		for (i = 0; i < n; i = i + 1)
 		{
 			line = argv(i);
-			w = stringwidth(line, TRUE, [sz, sz]);
+			w = stringwidth(line, TRUE, mm_glyph);
 			mp = mm_pos[ch];
 			p_x = MapMsg_Pos(mp_x, w, scr_x);
 			p_y = MapMsg_Pos(mp_y, n * sz * 1.2, scr_y) + i * sz * 1.2;
 			vis = bound(0, shown - base, strlen(line));
 			sv = bound(0, settled - base, vis);
+			p = _sui_pixel_align(p);            // a letter's pen offset is added to a whole-pixel line start
 			if (sv > 0)
-				HUD_TextDraw(p, substring(line, 0, sv), sz, c, a);
+				MapMsg_NativeText(p, substring(line, 0, sv), c, a);
 			for (j = sv; j < vis; j = j + 1)
 			{
 				t = bound(0, (e - (base + j + 1) * fin) / max(0.001, fxt), 1);
-				HUD_TextDraw(p + [Font_PenX(line, j, TRUE, [sz, sz]), 0, 0],   // Patch 1236: where it settles
-				             substring(line, j, 1), sz, mm_col2[ch] * (1 - t) + c * t, a);
+				MapMsg_NativeText(p + [Font_PenX(line, j, TRUE, mm_glyph), 0, 0],   // Patch 1236: where it settles
+				                  substring(line, j, 1), mm_col2[ch] * (1 - t) + c * t, a);
 			}
 			base = base + strlen(line);
 		}
 	}
+	drawfont = mm_oldfont;
 	Font_Reset();
 };
 
@@ -229,14 +250,18 @@ void(vector scr) MapMsg_DrawHint =
 	if (!mm_hint_t0 || cltime >= mm_hint_t1)
 		return;
 	a = bound(0, (cltime - mm_hint_t0) / 0.2, 1) * bound(0, (mm_hint_t1 - cltime) / 0.3, 1);
+	sui_style_hud(scr);
 	Font_Set(ui_font_ui);
-	sz = Font_Px(9 * ui_cv_scale);
+	MapMsg_NativeBegin();
+	mm_glyph = sui_native_text_size(9 * ui_cv_scale);
+	sz = mm_glyph_y;
 	pad = 8 * ui_cv_scale;
 	s = Chat_Fit(mm_hint, scr_x * 0.6, sz);
-	w = stringwidth(s, TRUE, [sz, sz]) + pad * 2;
+	w = stringwidth(s, TRUE, mm_glyph) + pad * 2;
 	p = [(scr_x - w) * 0.5, scr_y * 0.72, 0];
 	_sui_round_draw(p, [w, sz + pad * 1.6, 0], 5 * ui_cv_scale, SUI_THEME_PANEL, 0.85 * a);
-	HUD_TextDraw(p + [pad, pad * 0.8, 0], s, sz, SUI_THEME_TEXT, a);
+	MapMsg_NativeText(p + [pad, pad * 0.8, 0], s, SUI_THEME_TEXT, a);
+	drawfont = mm_oldfont;
 	Font_Reset();
 };
 
