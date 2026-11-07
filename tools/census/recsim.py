@@ -246,7 +246,7 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
                         if lineno != 1:
                             raise MalformedRec("native held recording must start at the first byte")
                         rec_native.append(line)
-                elif line.startswith("map "):
+                elif line.split(None, 1)[:1] == ["map"]:
                     f = line.split()
                     if len(f) < 2:
                         raise MalformedRec("malformed map header")

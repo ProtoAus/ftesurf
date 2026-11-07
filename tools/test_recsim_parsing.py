@@ -92,6 +92,61 @@ class Parsing(Fixture):
                                      {'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)})
                     self.assertEqual(path.read_bytes(), raw)
 
+    def test_map_keyword_missing_payload_abstains_instead_of_path_fallback(self):
+        self.a = self.root / 'data/runs/path_map/main/a.rec'
+        self.a.parent.mkdir(parents=True)
+        original = recording().encode('ascii')
+        for header in (b'map', b'map\t', b' \tmap\t '):
+            with self.subTest(header=header):
+                raw = original.replace(b'map synthetic', header)
+                self.assertEqual(raw.splitlines()[2:], original.splitlines()[2:])
+                self.a.write_bytes(raw)
+                verdict, detail = rs.compare_paths(str(self.a), str(self.b), max_bytes=8192, max_moves=100)
+                if verdict == 'compared':
+                    # Acting counterfactual: all 80 moves and captured bytes survived.
+                    self.assertEqual((detail['matched'], detail['compared'], detail['prefix'], detail['cover']),
+                                     (80, 80, 80, 1.0))
+                    self.assertEqual(detail['sources']['a'],
+                                     {'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)})
+                    self.assertEqual(rs.derive_leg(str(self.a), rs.parse_rec(str(self.a))), ('path_map', 'main'))
+                self.assertEqual(self.a.read_bytes(), raw)
+                self.assertEqual((verdict, detail), ('malformed input', 'malformed required move-stream input'))
+                self.assertIsNone(rs.parse_rec(str(self.a)))
+                with self.assertRaises(rs.MalformedRec):
+                    rs.parse_rec(str(self.a), strict=True)
+
+    def test_map_keyword_whitespace_identity_and_absent_unknown_controls(self):
+        self.a = self.root / 'data/runs/path_map/main/a.rec'
+        self.a.parent.mkdir(parents=True)
+        self.b = self.a.with_name('b.rec')
+        original = recording().encode('ascii')
+        cases = [(header, ('synthetic', '')) for header in
+                 (b'map synthetic', b'map\tsynthetic', b' \tmap\t synthetic')]
+        cases += [(header, ('path_map', 'main')) for header in
+                  (None, b'mapfoo synthetic', b'mapper synthetic')]
+        for header, identity in cases:
+            with self.subTest(header=header):
+                raw = original.replace(b'map synthetic\n', b'' if header is None else header + b'\n')
+                self.a.write_bytes(raw); self.b.write_bytes(raw)
+                verdict, detail = rs.compare_paths(str(self.a), str(self.b), max_bytes=8192, max_moves=100)
+                self.assertEqual((verdict, detail['matched'], detail['compared'], detail['prefix'], detail['cover']),
+                                 ('compared', 80, 80, 80, 1.0))
+                self.assertEqual((detail['moves_a'], detail['moves_b'], detail['sources']['version']), (80, 80, 1))
+                for label, path in (('a', self.a), ('b', self.b)):
+                    self.assertEqual(detail['sources'][label],
+                                     {'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)})
+                    self.assertEqual(path.read_bytes(), raw)
+                r = rs.parse_rec(str(self.a))
+                self.assertEqual(rs.derive_leg(str(self.a), r), identity)
+                self.assertEqual(r.map, 'synthetic' if identity[0] == 'synthetic' else '')
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    self.assertEqual(rs.cmd_census(argparse.Namespace(root=str(self.a.parent), limit=0)), 0)
+                self.assertIn('with `in` rows: 2', output.getvalue())
+                self.assertIn('map/leg groups: 1, of which 1 hold >1 comparable run', output.getvalue())
+                self.assertIn('comparable PAIRS available: 1', output.getvalue())
+                self.assertIn(identity[0], output.getvalue())
+
     def test_release_keyword_whitespace_and_malformed_payload_are_not_dropped(self):
         base = recording().replace('FTESURF-REC 9', 'FTESURF-REC 11')
         original = base.splitlines()[44]
