@@ -10,8 +10,8 @@ confirm in the real game once deployed:
 - When somebody leaves a lobby, their row should go, not turn into "unnamed".
 - `goto`, `goto main`, `goto s3`, `goto b1`, `goto start` on a staged map; `goto_spawn` (your m) still works.
 - ahop_coast on a lobby: the first stage teleport and the water resets work; do uphill hops feel
-  closer to Momentum? (100 Hz and airaccelerate 1000 now; Momentum's uphill speed-keeping is still
-  missing, see BACKLOG.)
+  closer to Momentum? (100 Hz and airaccelerate 1000 now; the lobby timer still starts on leaving the
+  box, and Momentum's uphill speed-keeping is still missing: both in BACKLOG.)
 - surf_autosave or bhop_kirous: their checkpoint triggers (filters named `ng*`, `state0*`) now fire.
 
 ## P1366 comparison bars and save travel -- BOTH Windows/12lobbies installed7Nov; owner check pending

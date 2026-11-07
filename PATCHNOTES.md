@@ -25,7 +25,7 @@
 - Watching your own lobby replay no longer shows the view turning before you do. The camera was ahead of your body by your ping (a third of a second for many players); it now lines up.
 - Players who leave a lobby no longer stay behind in the player list as "unnamed".
 - New goto command: goto (or goto spawn), goto main, goto start, goto s3, goto b1. goto_spawn still works.
-- ahop_coast's teleports, water resets and doors work, and it plays with bhop rules on the lobbies as in Momentum.
+- ahop_coast's teleports, water resets and doors work, and the lobbies run it at Momentum's bhop tick rate and air acceleration.
 - Name filters now match the way Source does (any case, trailing *), so checkpoint triggers on about 40 maps such as surf_autosave and bhop_kirous behave as their authors made them.
 
 ### P1366 Comparison bars and held-save travel

@@ -1452,9 +1452,10 @@ void() Watch_ViewLag =
 	rec_wt_vlag = (bestd - 2) * rec_wt_tickrate;
 	for (j = 0; j < rec_wt_vkn; j = j + 1)
 		rec_wt_vkoff[j] = rec_wt_vkoff[j] - rec_wt_vlag;
-	print(sprintf("replay: your per-frame view was %.0f ms ahead of the recording (your ping); "
+	print(sprintf("replay: your per-frame view was %.0f ms %s the recording (your ping); "
 	              "aligned (%.1f to %.1f degrees over %g probes)\n",
-	              rec_wt_vlag * 1000, zero, best, rec_wt_vlagp));
+	              fabs(rec_wt_vlag) * 1000, (rec_wt_vlag < 0) ? "behind" : "ahead of",
+	              zero, best, rec_wt_vlagp));
 };
 
 /*

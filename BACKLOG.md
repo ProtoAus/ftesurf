@@ -9,6 +9,11 @@
   (bhop rules locally, base on lobbies) and bhop_badwater, bhop_odyssey, bhop_nightmare,
   bhop_ytt_cruma, bhop_canals (Momentum files them under ahop/climb/defrag: base locally, bhop on
   lobbies). Shipping mapmeta.txt to the Pi also changes the lobbies' published tiers. Owner decision.
+- The map cfg cannot set the mode, so ahop_coast's lobby still publishes gamemode `ahop`: its run starts
+  on leaving the box (sv_timer.qc run_t_bhopjump reads serverkey gamemode), an install's on the jump,
+  and both post to one board with nothing in the .rec saying which. mapmeta.txt on the Pi fixes both.
+- Local only: a zone-editor settings file saying Surf on ahop_coast now gives 100 Hz with its own air
+  accel (the map cfg loads after it and the editor overrides air accel only).
 - Check: `movement` on a lobby and on an install for one listed map; the mode lines differ.
 
 ## Momentum's uphill slope fix in ClipVelocity is not ported (P1367 investigation, 7 Nov)

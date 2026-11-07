@@ -56,7 +56,11 @@ NamesMatch (case-insensitive, `*` ends a prefix). Both server and client (cl_tri
 Rig, setpos into C0103_teleport's middle (-13957 4772 -13456): subject lands at the
 landmark-relative -895 -15319 -12655.09 (server row); control stays at -13957 4772, falls to -13580.9.
 Library census (2206 Momentum maps): "!player" 1 map (ahop_coast); `*` filters 29 maps (ng*, ng0*,
-state0*: checkpoint systems); case-only matches 14 maps. Those filters never matched before.
+state0*: checkpoint systems); case-only matches 14 maps. Those filters never matched before, so
+those maps now play as in Source (bhop_kirous's negated state gates, surf_autosave's bonus chain,
+bhop_nipple/murder/pokemans_xd block teleports). New recordings carry `filtermatch 1` (additive key;
+reccheck knows it). Review 2 also found: the lobby still publishes gamemode `ahop`, so ahop_coast's
+timer starts on leaving the box there and on the jump on installs (BACKLOG, with the mapmeta decision).
 
 Ruleset: the Pi has no data/mapmeta.txt, so `ahop_` gave mode ahop, which has no file: base ruleset
 (Pi server12.log: "ahop_coast is ahop (name), base ruleset"). Momentum indexes it bhop (mode 2).
@@ -76,3 +80,4 @@ map", start "!r -- stage 1", stage 3 = s3; `goto xyz` prints the usage line.
 Not a game fault: luna_tag_0.mdl's two skins (lunatag2/ELDEN RING/NORMAL AND USABLE/AET001_0{20,78}_A)
 are in no pack, no installed VPK (399 read, 1.24 M entries), no loose file and no map pakfile;
 the message is right. No reporting channel added: mapdeps already predicts this offline.
+- Review-fix arm (rebased build, qw db38fe13 / cs e897d49c): `cmdlist goto` lists goto; a flagged bonus-1 finish wrote cheat.rec with `filtermatch 1` after `contexts 1`; reccheck 0 faults, no unknown-key note (main's reccheck: one note). test_reccheck 949 checks, 0 failed.

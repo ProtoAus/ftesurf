@@ -80,6 +80,7 @@ void() WarpOp_RegisterCvars =
 	registercommand("goto_start");
 	registercommand("reset");
 	registercommand("goto_spawn");
+	registercommand("goto");
 	registercommand("startmark");
 	registercommand("mom_start_mark_set");
 };
