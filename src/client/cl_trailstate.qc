@@ -55,9 +55,10 @@ float(string s) Trail_CatchFeed =
 	return TRUE;
 };
 
-// Up to `rows` more of tr_raw into the line, which is held (ln_holdslot) until it is whole: one
-// Line_End then, as each Line_End repaints the slot and unbuilt points draw one by one. A bad
-// middle row is passed over (Trail_Load stops at a cut last one).
+// Up to `rows` more of tr_raw into the line, held (ln_holdslot) until it is whole: unbuilt
+// points draw one by one and a Line_End repaints the slot, so it is neither painted nor drawn
+// meanwhile. Line_End runs every step (it builds from its watermark): one at the end over 45834
+// rows was a 46-52 ms frame. A bad middle row is passed over (Trail_Load stops at a cut last one).
 void(float rows) Trail_Catch =
 {
 	local float n, end;
@@ -67,11 +68,11 @@ void(float rows) Trail_Catch =
 	end = min(n, tr_catchi + rows);
 	for (; tr_catchi < end; tr_catchi = tr_catchi + 1)
 		Trail_CatchFeed(bufstr_get(tr_raw, tr_catchi));
+	Line_End(tr_live);
 	if (tr_catchi < n)
 		return;
 	tr_catching = FALSE;
 	ln_holdslot = 0;
-	Line_End(tr_live);
 };
 
 void() Trail_Settle = { Trail_Catch(LN_CAP * 4); };

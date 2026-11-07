@@ -90,4 +90,15 @@ which keeps its answer wait.
 - The travel's visibility eye starts once the server's answer binds it, so for that round trip
   entities near the travel's start may be missing; the world draws.
 - A load right behind an unanswered step, or a blind load, gets no travel (the late start is skipped).
-- The round-3 build's own arm round was stopped by the memory monitor before it ran (see Delivery).
+
+## Final build, measured (rig/round3b.out, subbig3, subfix3 in the task root)
+
+Same rig. Taps and holds at 0/150/300 ms: travel on the press frame, release 1.01-1.02 s / 2.51-2.53 s,
+no eye jumps, no frame gaps, no prederr. Lead-in 0: released inside the press frame at 0 and 300 ms.
+45000-row picture with hud_trail 1: one 39-41 ms frame at the answer (the file read), no other gap
+(holding the whole Line_End to the end of the catch had made a 46-52 ms frame there; it now builds a
+step at a time while held). Held step (two saves, hold the second, sl_prev at 0.4 s): the travel ends
+on the step press and the view goes to the stepped save (two steps of 150-340 u in consecutive frames:
+held body, then the predicted step), the same at every ping; control main: a late travel at 0.17 s
+and another at 0.57 s at 150 ms. A held step now gets no travel even on a LAN (its answer reads as
+pending a frame: WarpOp_StepPending); before, a LAN step got one.
