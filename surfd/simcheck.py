@@ -375,7 +375,10 @@ def _recsim(tools_dir=None):
         import importlib.util
         spec = importlib.util.spec_from_file_location("_recsim_mod", path)
         mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
+        # -B prevents cache writes, not timestamp-valid stale bytecode reads.
+        with open(path, 'rb') as source:
+            code = compile(source.read(), path, 'exec', dont_inherit=True)
+        exec(code, mod.__dict__)
     except Exception as exc:
         return None, "importing %s failed: %r" % (path, exc)
     if not hasattr(mod, "compare_paths"):

@@ -1,5 +1,7 @@
 """One actual reader load per enabled pass; replacements are next-pass state."""
+import os
 from pathlib import Path
+import py_compile
 import unittest
 from unittest import mock
 
@@ -71,6 +73,40 @@ class PassReader(unittest.TestCase):
                                             tools_dir=str(self.tools)), (1,0,1))
         self.assertEqual(self.loads, ['before','after'])
         self.assertEqual(self.calls, ['before','after'])
+
+    def test_next_pass_uses_source_after_timestamp_valid_bytecode_replacement(self):
+        first = self.code + b"\nREVISION = 'alpha'\n"
+        second = self.code + b"\nREVISION = 'bravo'\n"
+        self.assertEqual(len(first), len(second))
+        self.target.write_bytes(first)
+        self.after = second
+        stamp = (self.target.stat().st_mtime_ns // 1_000_000_000) * 1_000_000_000
+        os.utime(self.target, ns=(stamp, stamp))
+        cached = Path(py_compile.compile(str(self.target), doraise=True,
+                      invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP))
+        bytecode = cached.read_bytes()
+        self.assertEqual(int.from_bytes(bytecode[4:8], 'little'), 0)
+        self.assertEqual(int.from_bytes(bytecode[8:12], 'little'), (stamp // 1_000_000_000) & 0xffffffff)
+        self.assertEqual(int.from_bytes(bytecode[12:16], 'little'), len(first))
+        before = self.target.stat()
+        with mock.patch.object(sc, '_recsim', side_effect=self.load):
+            self.assertEqual(self.step()[:2], (3,3))
+            self.assertEqual(self.calls, ['alpha']*3)
+            self.assertEqual(self.loads, ['alpha'])
+            old_rows = [tuple(row) for row in self.conn.execute('SELECT * FROM sims ORDER BY id')]
+            self.assertEqual(self.target.read_bytes(), second)
+            os.utime(self.target, ns=(stamp, stamp))
+            after = self.target.stat()
+            self.assertEqual((after.st_size, after.st_mtime_ns), (before.st_size, before.st_mtime_ns))
+            self.assertEqual(cached.read_bytes(), bytecode)
+            self.conn.execute("INSERT INTO replays VALUES(4,'synthetic',0,0,'run','ranked','synthetic')")
+            self.conn.commit(); self.paths[4] = self.root/'4.rec'
+            self.paths[4].write_bytes(fixture.source())
+            self.assertEqual(self.step()[:2], (3,3))
+            for row in old_rows:
+                self.assertEqual(tuple(self.conn.execute('SELECT * FROM sims WHERE id=?', (row[0],)).fetchone()), row)
+        self.assertEqual(self.calls, ['alpha']*3+['bravo']*3)
+        self.assertEqual(self.loads, ['alpha', 'bravo'])
 
     def test_disabled_pass_has_no_load_or_database_mutation(self):
         before = tuple(self.conn.iterdump())
