@@ -80,6 +80,8 @@ float(string map, float track, float leg, float mine) LT_BestOnLeg;
 // Patch 355: the same, per class (certified / uncertified), and a file's flags.
 float(string map, float track, float leg, float mine, float uncert) LT_BestOnLegC;
 float(string fn) LT_FileFlags;
+float lt_file_rate;                 // P1381: set by LT_FileFlags (cl_lobbytime.qc): the file's tickrate, 0 = none
+float(float t, float rate) LT_AtTick;
 float() LT_Keeps;               // Patch 361: this disk keeps this server's times
 
 float  ui_bn_cardat;            // Patch 361: the card waits for the banner until this cltime (cl_banner.qc)
@@ -326,6 +328,10 @@ void(float track, float leg, float ticks, float uncert,
 		t = FS_NameTicks(base);
 		if (t <= 0)
 			continue;                       // unstamped: last, cheat
+		// P1381: a lobby file (already opened for its flags) by duration at its own rate. A local
+		// file stays raw: this runs at stage boundaries mid-run and must open nothing more (review).
+		if (FS_TagFromName(tagw) == RT_LOBBY)
+			t = LT_AtTick(t, lt_file_rate);
 
 		total = total + 1;
 		if (t < ticks)

@@ -8231,8 +8231,10 @@ void() SV_PBLoad =
 	local string line, w;
 	local float n, a, b, c;
 	local float ver, shifted;       // build 57: the file's version; a v1 stage key was moved
+	local float rate, i;            // P1381: the tick rate the file's numbers were counted at
 
 	SV_PBClear();
+	rate = 0;
 
 	/*
 	  PATCH 270, STAGE 2.  A lobby loads no personal bests at all.
@@ -8264,6 +8266,12 @@ void() SV_PBLoad =
 		if (argv(0) == "FTESURF-PB")
 		{
 			ver = stof(argv(1));
+			continue;
+		}
+		if (n >= 2)
+		if (argv(0) == "rate")      // P1381; older builds skip it (fewer than four words)
+		{
+			rate = stof(argv(1));
 			continue;
 		}
 		if (n < 4)
@@ -8301,6 +8309,22 @@ void() SV_PBLoad =
 			run_pb_cp[a * FS_MAXCPS + b] = c;
 	}
 	fclose(f);
+
+	// P1381: a file counted at another tick rate (the map's mode moved, e.g. a zone file's
+	// gamemode, P1371) is compared as durations, to this map's nearest tick. No rate line =
+	// written before P1381: read as this map's rate, as before.
+	if (rate > 0 && run_t_tick > 0 && fabs(rate - run_t_tick) > 0.0000001)
+	{
+		for (i = 0; i < FS_MAXTRACKS * FS_MAXSPLITS; i = i + 1)
+		{
+			if (run_pb_ticks[i] > 0) run_pb_ticks[i] = floor(run_pb_ticks[i] * rate / run_t_tick + 0.5);
+			if (run_pb_split[i] > 0) run_pb_split[i] = floor(run_pb_split[i] * rate / run_t_tick + 0.5);
+		}
+		for (i = 0; i < FS_MAXTRACKS * FS_MAXCPS; i = i + 1)
+			if (run_pb_cp[i] > 0) run_pb_cp[i] = floor(run_pb_cp[i] * rate / run_t_tick + 0.5);
+		print(sprintf("^3timer:^7 %s was counted at %g Hz and this map runs %g Hz: its times are "
+		              "compared as durations (to the nearest tick)\n", SV_PBPath(), 1 / rate, 1 / run_t_tick));
+	}
 
 	/*
 	  BUILD 57: THE NOTICE IS ABOUT THE FOLDERS, AND IT MUST NOT GO QUIET WHEN THE
@@ -8460,6 +8484,7 @@ void() SV_PBSave =
 	*/
 	fputs(f, "FTESURF-PB 3\n");
 	fputs(f, sprintf("# %s  %s\n", mapname, strftime(TRUE, "%Y-%m-%d %H:%M")));
+	fputs(f, sprintf("rate %.9g\n", run_t_tick));    // P1381: what the numbers below count
 
 	// best: s is the LEG (0 the full run, k stage k), which is the table's own key.
 	for (t = 0; t < FS_MAXTRACKS; t = t + 1)

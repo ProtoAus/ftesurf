@@ -329,20 +329,24 @@ float(float word) LT_StageFlags =
   improvement test below refuses anyway.
 */
 // A lobby file's `flags` header value (LT_Keep has always written one), or 0.
+// P1381: lt_file_rate (declared in cl_results.qc, which compiles first) is the last file's tickrate.
 float(string fn) LT_FileFlags =
 {
 	local float fh, i, f;
 	local string ln;
 
+	lt_file_rate = 0;
 	fh = fopen(fn, FILE_READ);
 	if (fh < 0)
 		return 0;
 	f = 0;
-	for (i = 0; i < 16; i = i + 1)          // the header is ~12 lines
+	for (i = 0; i < 16; i = i + 1)          // the header is ~12 lines; LT_Keep writes tickrate first
 	{
 		ln = fgets(fh);
 		if (!ln)
 			break;
+		if (substring(ln, 0, 9) == "tickrate ")
+			lt_file_rate = stof(substring(ln, 9, -1));
 		if (substring(ln, 0, 6) == "flags ")
 		{
 			f = stof(substring(ln, 6, -1));
@@ -351,6 +355,17 @@ float(string fn) LT_FileFlags =
 	}
 	fclose(fh);
 	return f;
+};
+
+// P1381: ticks counted at `rate`, as this server's ticks (nearest), so a leg whose tick rate
+// moved (a mode change) is compared by duration. 0 or the same rate: unchanged.
+float(float t, float rate) LT_AtTick =
+{
+	local float tick;
+	tick = Timer_Tick();
+	if (rate > 0 && tick > 0 && fabs(rate - tick) > 0.0000001)
+		return floor(t * rate / tick + 0.5);
+	return t;
 };
 
 /*
@@ -401,13 +416,17 @@ float(string map, float track, float leg, float mine, float uncert, float rclass
 		t = FS_NameTicks(base);
 		if (t <= 0)
 			continue;
-		if (mine > 0 && t == mine)
-			continue;
 		flags = LT_FileFlags(fn);
+		// `mine` is the file just written, at this server's rate (P1381: the same stamp at
+		// another rate is another time).
+		if (mine > 0 && t == mine)
+		if (lt_file_rate <= 0 || fabs(lt_file_rate - Timer_Tick()) < 0.0000001)
+			continue;
 		if (FS_RunClass(flags) != rclass)
 			continue;
 		if (((flags & TF_UNCERT) != 0) != (uncert != 0))
 			continue;
+		t = LT_AtTick(t, lt_file_rate);
 		if (best == 0 || t < best)
 			best = t;
 	}
@@ -540,8 +559,8 @@ void(string map, float track, float leg, float ticks) LT_PBWrite =
 	fputs(fh, "FTESURF-PB 2\n");
 	fputs(fh, sprintf("# %s  lobby times  %s\n", map,
 	                  strftime(TRUE, "%Y-%m-%d %H:%M")));
-	if (ticks > 0)                  // 0: drop this leg's line (LT_Keep)
-		fputs(fh, sprintf("best %d %d %d\n", track, leg, ticks));
+	if (ticks > 0)                  // 0: drop this leg's line (LT_Keep); P1381: + its tick rate
+		fputs(fh, sprintf("best %d %d %d %.9g\n", track, leg, ticks, Timer_Tick()));
 
 	// fgets returns the line without its newline, so each one is put back.
 	n = buf_getsize(buf);
@@ -597,24 +616,32 @@ void(float track, float leg, float ticks, float flags) LT_Keep =
 		return;
 	}
 
-	// Both classes share the <ticks>_lobby.rec name, so an unranked time equal
-	// to the certified best would overwrite it: the certified one stands.  (The
-	// mirror case -- a certified time equal to the unranked best -- overwrites
-	// it on purpose: certified supersedes.)
-	if (uncert)
-	if (LT_BestClassOnLeg(map, track, leg, 0, FALSE, rclass) == ticks)
-	{
-		print(sprintf("^7%s  %s  ^3not kept^7 -- equals your certified lobby best\n",
-		              Results_LegName(track, leg), Time_TickString(ticks, tick)));
-		return;
-	}
-
 	// Distinct receipt basename: never overwrite a clean PB or a full local replay.
 	if (rclass == RC_SEGMENT)
 		nm = sprintf("%s_segment_%s.rec", FS_RunStamp(ticks), FS_TagName(RT_LOBBY));
 	else
 		nm = sprintf("%s_%s.rec", FS_RunStamp(ticks), FS_TagName(RT_LOBBY));
 	dst = strcat(FS_RunDir(map, track, leg), nm);
+
+	// Both classes share the <ticks>_lobby.rec name, so an unranked time over a
+	// certified file would overwrite it: the certified one stands.  (The mirror
+	// case -- a certified time over the unranked file -- overwrites it on purpose:
+	// certified supersedes.)  P1381: the file itself, not the best by duration,
+	// because a name collides on its raw stamp whatever rate each was counted at.
+	if (uncert)
+	{
+		fh = fopen(dst, FILE_READ);
+		if (fh >= 0)
+		{
+			fclose(fh);
+			if (!(LT_FileFlags(dst) & TF_UNCERT))
+			{
+				print(sprintf("^7%s  %s  ^3not kept^7 -- your certified lobby time has this tick count (one file per count)\n",
+				              Results_LegName(track, leg), Time_TickString(ticks, tick)));
+				return;
+			}
+		}
+	}
 
 	fh = fopen(dst, FILE_WRITE);
 	if (fh < 0)

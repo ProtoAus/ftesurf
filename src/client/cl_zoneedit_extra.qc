@@ -499,9 +499,12 @@ void(float mode) ZoneEdit_SettingMode =
 {
 	if (!ze_settings || (mode != 1 && mode != 2)) return;
 	ze_field = -1; sui_text_unfocus();
-	ze_mode = mode; ze_values[2] = mode == 2 ? 1000 : 150;
+	if (mode != ze_mode)            // P1381: re-clicking the selected mode keeps a custom air accel
+		ze_values[2] = mode == 2 ? 1000 : 150;
+	ze_mode = mode;
 	ze_mode_stage = TRUE;           // P1371: a click is the only way the zone file's mode changes
-	ZoneEdit_Note(mode == 2 ? "Bhop staged, for the lobbies too: 100 Hz / air accel 1000; save & reload" : "Surf staged, for the lobbies too: 66.67 Hz / air accel 150; save & reload");
+	ZoneEdit_Note(sprintf("%s staged, lobbies too (%s Hz, its preset); local air accel %g; save & reload",
+	                      mode == 2 ? "Bhop" : "Surf", mode == 2 ? "100" : "66.67", ze_values[2]));
 };
 
 void() ZoneEdit_SettingsOpen =
@@ -670,15 +673,16 @@ void() ZoneEdit_SettingsSave =
 	// fields, zones or not: Save zones writes them whenever the table has zones.
 	mtstaged = FALSE;
 	if (ze_mode_stage && ze_mode != zone_mode) { zone_mode = ze_mode; mtstaged = TRUE; }
-	if (ze_tier_m != ze_tier_m_open) { zone_tier_mom = ze_tier_m; mtstaged = TRUE; }
-	if (ze_tier_k != ze_tier_k_open) { zone_tier_ksf = ze_tier_k; mtstaged = TRUE; }
+	if (ze_tier_m != ze_tier_m_open && ze_tier_m != zone_tier_mom) { zone_tier_mom = ze_tier_m; mtstaged = TRUE; }
+	if (ze_tier_k != ze_tier_k_open && ze_tier_k != zone_tier_ksf) { zone_tier_ksf = ze_tier_k; mtstaged = TRUE; }
 	ze_mode_stage = FALSE; ze_tier_m_open = ze_tier_m; ze_tier_k_open = ze_tier_k;
 	if (mtstaged && zone_count > 0) ze_dirty = TRUE;
-	if (mtstaged && zone_count <= 0)
-		ZoneEdit_Note("Saved locally; mode and tiers go in the zone file once it has zones (Save zones, Publish saved)");
-	else if (ze_dirty && zone_maxvel == ze_values[0])     // P841's wording, which tools/p841editor.py reads
+	if (ze_dirty && zone_maxvel == ze_values[0])     // P841's wording, which tools/p841editor.py reads
 		ZoneEdit_Note(sprintf("Saved locally; speed cap %g reaches lobbies with the zones%s: Save zones, then Publish saved",
-		                      zone_maxvel, mtstaged ? ", with the mode and tiers" : ""));
+		                      zone_maxvel, !mtstaged ? "" : (zone_count > 0 ? ", with the mode and tiers"
+		                      : "; the mode and tiers go in once it has zones")));
+	else if (mtstaged && zone_count <= 0)
+		ZoneEdit_Note("Saved locally; mode and tiers go in the zone file once it has zones (Save zones, Publish saved)");
 	else if (mtstaged)
 		ZoneEdit_Note("Saved locally; the mode and tiers reach lobbies with the zones: Save zones, then Publish saved");
 	else
