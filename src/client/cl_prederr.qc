@@ -46,7 +46,7 @@ var float pe_ak_last = -1;
 // sets the recorded state before command pe_rp_s (pe_state, sv_cheats only), then each command
 // carries its row's angles, moves and buttons.
 #define PE_RPMAX 1024
-float  pe_rp_n, pe_rp_s, pe_rp_on;
+float  pe_rp_n, pe_rp_s, pe_rp_on, pe_rp_auto;
 float  pe_rp_btn[PE_RPMAX], pe_rp_imp[PE_RPMAX];
 vector pe_rp_ang[PE_RPMAX], pe_rp_mv[PE_RPMAX];
 
@@ -57,6 +57,7 @@ void() PE_RegisterCvars =
 	registercommand("prederr_ack");
 	registercommand("prederr_send");
 	registercommand("pe_replay");       // P1404
+	registercvar("pe_replay_auto", "");  // P1404: a file to replay once in the map (tools/prederr_replay.py)
 	pe_ok = checkcommand("prederr_dump") == 1;
 	pe_count = cvar("cl_prederror_count");
 };
@@ -68,6 +69,8 @@ void(string s) PE_Note =
 	bufstr_set(pe_ring, pe_ring_n - floor(pe_ring_n / PE_RING) * PE_RING,
 	           sprintf("%.3f %.0f %s", time, clientcommandframe, strreplace("\r", " ", strreplace("\n", " | ", s))));
 	pe_ring_n = pe_ring_n + 1;
+	if (pe_rp_on)                       // P1404: the replay driver grades the report decision too
+		print(sprintf("pe note %.0f: %s\n", clientcommandframe, s));
 };
 
 // P1403: CSQC_PredictPlayerPreMove on the chain's first command; predinput_* is the acknowledged state.
@@ -76,6 +79,8 @@ void(float ack) PE_AckSnap =
 	local float k;
 	if (ack == pe_ak_last)
 		return;
+	if (pe_ak_last < 0)
+		pe_join_t = cltime;             // the first moments run from the first snapshot (surf_4am: 20 s load)
 	pe_ak_last = ack;
 	k = pe_ak_n - floor(pe_ak_n / PE_AKS) * PE_AKS;
 	pe_ak_rt[k]   = gettime(0);
@@ -197,6 +202,7 @@ void(string stem) PE_WriteContext =
 	                 cvar_string("cl_prederror"), cvar_string("cl_triggers"), cvar_string("cl_warpop")));
 	fputs(f, sprintf("ping %s pl %s\n", getplayerkeyvalue(player_localnum, "ping"),
 	                 getplayerkeyvalue(player_localnum, "pl")));   // P1238: packet loss %
+	fputs(f, sprintf("activator name \"%s\"\n", getplayerkeyvalue(player_localnum, "*tn")));   // P1405
 	fputs(f, sprintf("csprogs crc %s size %s local %g qchook %s\n", serverkey("*csprogs"),
 	                 serverkey("*csprogssize"), PE_Local(), cvar_string("cl_predict_qchook")));   // P1207
 	fputs(f, "# context: time seq what (server prints, mirror triggers, gates, warp ops, prederr lines)\n");
@@ -294,6 +300,8 @@ float(vector srv, vector pred) PE_ServerTele =
 		for (j = 0; j < tg_n; j = j + 1)
 			if (tg_kind[j] == TG_TELE)
 			{
+				if (tg_ent[j].tg_fname)
+					continue;           // P1405: fires only on the published name; a stale one is the server's
 				d = TT_Find(tg_target[j]);
 				if (d < 0)
 					continue;
@@ -340,10 +348,23 @@ float(float seq) PE_Expected =
 	return PE_ExpectedAt(seq, cltime, ping, cvar("cl_netfps"));
 };
 
+void(string fn) PE_ReplayStart;
+
 void() PE_Frame =
 {
 	local float c, n, e, s;
 	local vector srv, pred;
+	local string rp;
+	if (pe_ak_last >= 0 && cltime > pe_join_t + 4 && !pe_rp_on)   // past "the first moments" (3 s)
+	{
+		rp = cvar_string("pe_replay_auto");
+		if (rp != "")
+		{
+			PE_ReplayStart(rp);
+			pe_rp_auto = pe_rp_on;
+			cvar_set("pe_replay_auto", "");
+		}
+	}
 	if (!pe_ok)
 		return;
 	c = cvar("cl_prederror_count");
@@ -476,8 +497,8 @@ void() PE_Send =
 // "<report seq> <msec> <pitch> <yaw> <roll> <fwd> <side> <up> <buttons> <impulse>".
 void(string fn) PE_ReplayStart =
 {
-	local float f, lead;
-	local string ln;
+	local float f, lead, n;
+	local string ln, nm;
 	local vector o, v;
 	if (serverkey("*cheats") != "ON")
 	{
@@ -491,7 +512,8 @@ void(string fn) PE_ReplayStart =
 		return;
 	}
 	ln = fgets(f);
-	if (ln != "FTESURF-PEREPLAY 1" || tokenize(fgets(f)) < 8 || argv(0) != "start")
+	n = tokenize(fgets(f));
+	if (ln != "FTESURF-PEREPLAY 1" || n < 8 || argv(0) != "start")
 	{
 		fclose(f);
 		print("pe_replay: not a replay file\n");
@@ -499,6 +521,7 @@ void(string fn) PE_ReplayStart =
 	}
 	o = [stof(argv(2)), stof(argv(3)), stof(argv(4))];
 	v = [stof(argv(5)), stof(argv(6)), stof(argv(7))];
+	nm = strzone((n >= 9) ? argv(8) : "");   // P1405: the activator name, if the report has one
 	pe_rp_n = 0;
 	for (ln = fgets(f); ln && pe_rp_n < PE_RPMAX; ln = fgets(f))
 	{
@@ -513,14 +536,18 @@ void(string fn) PE_ReplayStart =
 	fclose(f);
 	if (!pe_rp_n)
 	{
+		strunzone(nm);
 		print("pe_replay: no rows\n");
 		return;
 	}
-	lead = ceil(0.3 * cvar("cl_netfps")) + 2;   // the stringcmd reaches the lobby before that command
+	// the stringcmd reaches the lobby before that command, a reliable already in flight included
+	lead = ceil((0.3 + 2 * stof(getplayerkeyvalue(player_localnum, "ping")) / 1000) * cvar("cl_netfps")) + 2;
 	pe_rp_s = clientcommandframe + lead;
 	pe_rp_on = TRUE;
-	localcmd(sprintf("cmd pe_state %.0f %.3f %.3f %.3f %.3f %.3f %.3f\n", pe_rp_s, o_x, o_y, o_z, v_x, v_y, v_z));
-	print(sprintf("pe_replay: %g rows, state on command %.0f\n", pe_rp_n, pe_rp_s));
+	localcmd(strcat(sprintf("cmd pe_state %.0f %.3f %.3f %.3f %.3f %.3f %.3f", pe_rp_s, o_x, o_y, o_z, v_x, v_y, v_z),
+	                (nm != "") ? sprintf(" \"%s\"\n", nm) : "\n"));
+	print(sprintf("pe_replay: %g rows, state on command %.0f, name \"%s\"\n", pe_rp_n, pe_rp_s, nm));
+	strunzone(nm);
 };
 
 // CSQC_Input_Frame, first: idle until the state lands, then the rows. Warp ops (201 up) are left out:
@@ -530,6 +557,12 @@ float() PE_ReplayInputFrame =
 	local float r;
 	if (!pe_rp_on)
 		return FALSE;
+	if (serverkey("*cheats") != "ON")   // turned off mid-replay
+	{
+		pe_rp_on = FALSE;
+		print("pe_replay: stopped, cheats are off\n");
+		return FALSE;
+	}
 	r = clientcommandframe - pe_rp_s;
 	input_movevalues = '0 0 0';
 	input_buttons = 0;
@@ -537,6 +570,8 @@ float() PE_ReplayInputFrame =
 	{
 		pe_rp_on = FALSE;
 		print(sprintf("pe_replay: done at command %.0f\n", clientcommandframe));
+		if (pe_rp_auto)                 // the driver's run: its ring, then out
+			localcmd("waitms 1500\nprederr_dump replay_ring.txt\nwaitms 800\necho PEREPLAY END\nquit\n");
 		return TRUE;
 	}
 	if (r < 0)

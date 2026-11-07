@@ -896,6 +896,7 @@ void(float op, float i) WarpOp_Apply =
 };
 
 void(float ack) PE_AckSnap;             // P1403, cl_prederr.qc
+float pe_pm_seq, pe_pm_off;             // P1403: the last replayed command and piece, for the chain start
 
 // Every replay of every unacknowledged command.
 void(float seat, float seq, float seconds, float offset) CSQC_PredictPlayerPreMove =
@@ -903,10 +904,15 @@ void(float seat, float seq, float seconds, float offset) CSQC_PredictPlayerPreMo
 	local float i;
 
 	wop_premove_t = cltime;
+	// P1403: a chain starts where the command goes back (TG_ChainStart's test); its base is the snapshot it
+	// replays from, so predinput_* is that state (servercommandframe can already name a newer one, review).
 	if (!seat)
-	if (offset == 0)
-	if (seq == servercommandframe + 1)
-		PE_AckSnap(servercommandframe);
+	{
+		if (seq < pe_pm_seq || (seq == pe_pm_seq && offset <= pe_pm_off))
+			PE_AckSnap(seq - 1);
+		pe_pm_seq = seq;
+		pe_pm_off = offset;
+	}
 	tg_baseseq = seq;                // Patch 1025: cl_triggers.qc's ring check, before any warp
 	tg_baseorg = predinput_origin;
 	// P1238: the server sends movetype only when it changes (sv_ents.c SVFTE_DeltaCalcBits), so a lost

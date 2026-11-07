@@ -567,6 +567,8 @@ void() SpectatorThink = { Account_Think(self); };
 void() SV_TimeScaleReturnCommand; // sv_practicereturn.qc: decoded clean-start fence
 void(entity e, float blocked) SV_TimeScaleReturnCancel;
 
+void() SV_PeStateApply;                 // P1404, below SV_SetPosSelf
+
 void() PlayerPreThink =
 {
 	local float speedmod, speedcap;
@@ -581,7 +583,7 @@ void() PlayerPreThink =
 	// Patch 753: first, where a stringcmd sent just before this command would run.
 	SV_WarpOpCommand();
 	SV_TimeScaleReturnCommand();
-	SV_PeStateApply(self);              // P1404: a rig replay's start (sv_cheats only)
+	SV_PeStateApply();                  // P1404: a rig replay's start (sv_cheats only)
 
 	// Patch 382: a held body (spectate) runs no move, so nothing here may write a
 	// row, a ride or a pin, cash out a carrier or hand the engine one.
@@ -901,6 +903,7 @@ void() PlayerPostThink =
 
 	SV_HeldCheck(self);
 	SV_NoColPost(self);                 // P1193: before anything else traces
+	SV_PeNameSync(self);                // P1405: the client's name filters
 	SV_VsVelPost(self);                 // P1205: a VScript velocity write from this command's touches
 	SV_SourcePhaseClear(self);
 	self.svpm_phase_stat = strzone(sprintf("%.0f:%.0f:%.0f:%.9g", num_for_edict(self), self.svpm_phase_lo, self.svpm_phase_hi, self.run_movecarry));
@@ -1150,6 +1153,28 @@ void(vector org, float haveang, vector ang) SV_SetPosSelf =
 		self.fixangle = TRUE;
 	}
 	SV_RewindWarped(self, was);     // Patch 477: last, it tokenizes
+};
+
+// P1404: a rig replay's start (sv_prederr.qc pe_state), PlayerPreThink before the move, sv_cheats only:
+// setpos's placement (releases, taint, carrier, timer warp), then the recorded velocity, no jump edge.
+void() SV_PeStateApply =
+{
+	local float seq;
+	if (!self.pe_st_seq)
+		return;
+	seq = input_cmd_sequence_hi * 65536 + input_cmd_sequence_lo;
+	if (seq < self.pe_st_seq)
+		return;
+	self.pe_st_seq = 0;
+	if (cvar("sv_cheats") != 1)
+		return;
+	SV_SetPosSelf(self.pe_st_org, FALSE, '0 0 0');
+	self.velocity = self.pe_st_vel;
+	self.flags = self.flags - (self.flags & FL_ONGROUND);
+	self.run_wasground = FALSE;
+	if (self.pe_st_name != "")
+		self.targetname = self.pe_st_name;  // P1405: the name the report's player had
+	sprint(self, PRINT_HIGH, sprintf("pe_state: on command %.0f at %v vel %v\n", seq, self.origin, self.velocity));
 };
 
 /*
@@ -2432,6 +2457,12 @@ void(string cmd) SV_ParseClientCommand =
 		return;
 	}
 
+	if (c == "pe_state")                // P1404: a rig replay's start, sv_cheats only (sv_prederr.qc)
+	{
+		SV_PeStateCmd(self, cmdargc);
+		return;
+	}
+
 	/*
 	  setpos -- put me exactly there.
 
@@ -2461,11 +2492,6 @@ void(string cmd) SV_ParseClientCommand =
 	  survives the rest of the attempt and is cleared by the next arm, so a run
 	  cannot be laundered by teleporting and then finishing.
 	*/
-	if (c == "pe_state")                // P1404, sv_prederr.qc
-	{
-		SV_PeStateCmd(self, cmdargc);
-		return;
-	}
 	if (c == "setpos")
 	{
 		if (cmdargc < 4)

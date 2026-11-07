@@ -256,6 +256,10 @@ void(float why, string cls, string name) TG_Skip =
 #define TFR_UNKNOWN 1
 #define TFR_FAIL    0
 float  tf_ctxmode;              // Patch 1037: TF_EvalD as if the server judges contexts (1) or not (0)
+float  tf_rtmode;               // P1405: judge filter_activator_name against tf_rtname (the lobby's *tn)
+string tf_rtname;
+string tg_myname;               // P1405: *tn, read once per predicted command
+float  tg_c_fname;              // P1405: triggers kept behind a name filter, judged per touch
 float  tg_ctx_live;             // serverinfo fs_contexts is not "0", read each frame
 float  tg_grav_srv;             // P1211: serverinfo fs_grav is "1" (the server's engine applies gravity per command)
 float  tf_n, tf_over;
@@ -310,7 +314,14 @@ float(float r, float depth) TF_EvalD =
 	if (tf_class[r] == "filter_activator_name")
 	{
 		if (strcasecmp(tf_filt[r], "!player"))
-			return TFR_UNKNOWN;         // act.targetname is output state
+		{
+			if (!tf_rtmode)
+				return TFR_UNKNOWN;     // act.targetname is output state
+			pass = TF_NamesMatch(tf_filt[r], tf_rtname);   // P1405: SV_FilterPassesD on the published name
+			if (tf_neg[r])
+				pass = !pass;
+			return pass ? TFR_PASS : TFR_FAIL;
+		}
 		return tf_neg[r] ? TFR_FAIL : TFR_PASS;   // SV_FilterPassesD: any player
 	}
 	if (tf_class[r] == "filter_velocity")
@@ -581,6 +592,7 @@ void(string why) PE_Expect;     // P1238
 .float tg_sspartoffset;          // EveryTick's last applied part within tg_ssinseq
 .float tg_seenoff;               // Patch 1025: predmove_offset of the last touch (tick parts)
 .float tg_fctx;                  // Patch 1037: passes only while the server ignores contexts
+.float tg_fname;                 // P1405: its filter turns on the player's name; judged per touch
 #define TG_RING     64          // Patch 1025: commands of tg_io_in kept per slot
 float  *tg_inring;              // [(slot * TG_RING + seq % TG_RING) * 2] = in after seq, [+1] = seq
 float  *tg_orgring;             // [(seq % TG_RING) * 4] = predicted origin after seq, [+3] = seq
@@ -2016,6 +2028,8 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 	if (!cvar("cl_triggers")) return;
 	if (!tg_n) return;
 	tg_cv_debug = cvar("cl_trigdebug");
+	if (tg_c_fname)
+		tg_myname = getplayerkeyvalue(player_localnum, "*tn");   // P1405
 
 	if (seq < tg_lastseq || (seq == tg_lastseq && predmove_offset <= tg_lastoffset))
 		TG_ChainStart(seq);
@@ -2091,6 +2105,17 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 			continue;
 		if (tg_ent[i].tg_fctx && tg_ctx_live)
 			continue;                   // Patch 1037: the server judges its filter on contexts
+		if (tg_ent[i].tg_fname)
+		{
+			tf_rtmode = 1;              // P1405: the name the lobby last published
+			tf_ctxmode = 1;
+			tf_rtname = tg_myname;
+			hit = TF_EvalD(TF_Find(tg_filt[i]), 0);
+			tf_rtmode = 0;
+			tf_ctxmode = 0;
+			if (hit != TFR_PASS)
+				continue;
+		}
 
 		// The server's gate: a disabled trigger_teleport returns at its
 		// StartDisabled check before the IO touch, and a disabled push or
@@ -2201,6 +2226,7 @@ void() Trig_LoadForMap =
 	tg_hookseen = 0;
 	tg_c_tele = tg_c_push = tg_c_speed = 0;
 	tg_c_filt = tg_c_dis = tg_c_over = tg_c_nodest = 0;
+	tg_c_fname = 0;                 // P1405
 	tg_c_filtok = 0;
 	tg_c_fctx = 0;
 	tg_ctx_live = (serverkey("fs_contexts") != "0");    // Patch 1037: the first replay precedes Trig_Frame
@@ -2559,6 +2585,26 @@ void() Trig_LoadForMap =
 			tg_c_filtok = tg_c_filtok + 1;
 			continue;
 		}
+		// P1405: a verdict that turns only on the player's name is judged per touch against the lobby's *tn
+		// (contexts judged as the server would, so a context part keeps it the server's). Events, slots whose
+		// own rows the mirror replays, zone boxes and lobbies without names stay the server's.
+		if (r == TFR_UNKNOWN && !tf_over && serverkey("fs_tn") == "1")
+		if (!tg_ent[i].tg_isbox && tg_kind[i] != TG_EVENT && !TG_IOSource(i))
+		{
+			tf_rtmode = 1;
+			tf_ctxmode = 1;
+			tf_rtname = "";
+			r = TF_EvalD(TF_Find(tg_filt[i]), 0);
+			tf_rtmode = 0;
+			tf_ctxmode = 0;
+			if (r != TFR_UNKNOWN)
+			{
+				tg_ent[i].tg_fname = TRUE;
+				tg_c_fname = tg_c_fname + 1;
+				TG_NoteServerTele(i);   // a snap on a stale name is the server's (PE_ServerTele)
+				continue;
+			}
+		}
 		TG_NoteServerTele(i);           // P1238
 		if (tg_kind[i] == TG_TELE || tg_kind[i] == TG_RELTELE)
 			tg_c_tele = tg_c_tele - 1;
@@ -2605,8 +2651,8 @@ void() Trig_LoadForMap =
 
 	tg_map = serverkey("map");
 	if (cv_n) print(sprintf("conveyor: %g static ground carriers loaded\n", cv_n));
-	print(sprintf("trig: %s -- %g teleports, %g pushes, %g setspeeds predicted (%g zone-tool boxes, %g names case-repaired)\n",
-	              tg_map, tg_c_tele, tg_c_push, tg_c_speed, tg_c_box, tg_c_casefix));
+	print(sprintf("trig: %s -- %g teleports, %g pushes, %g setspeeds predicted (%g zone-tool boxes, %g names case-repaired, %g name-filtered)\n",
+	              tg_map, tg_c_tele, tg_c_push, tg_c_speed, tg_c_box, tg_c_casefix, tg_c_fname));
 	print(sprintf("trig: skipped %g filtered, %g startdisabled, %g over cap; "
 	              "%g filtered resolved static (%g left to the server while it judges contexts); "
 	              "%g targetname rows, %g filters\n",
