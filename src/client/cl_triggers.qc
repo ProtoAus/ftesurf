@@ -552,6 +552,7 @@ float  tg_c_event, tg_c_iodem, tg_c_sdok, tg_c_ioown, tg_c_iogated, tg_c_fctx;
 .float tg_netgate, tg_netready, tg_neton;
 // Patch 1195: cl_prederr.qc, later in cl_progs.src (cl_chat and cl_warpop use these too).
 void(string s) PE_Note;
+void(string msg) PE_ServerPrint;      // P1397, cl_prederr.qc
 void(float i, float seq) PE_TrigFired;
 void() PE_MapReset;
 void(string why) PE_Expect;     // P1238
@@ -790,8 +791,11 @@ float(float o) TG_IOBvelOK =
 		return FALSE;
 	if (io_src[o] < 0)
 		return FALSE;	// nested: QC's || does not short-circuit, and [-1] aborts the VM
-	if (tg_kind[io_src[o]] != TG_EVENT)
-		return FALSE;	// a push re-arms over it, a teleport clears the carrier after it
+	// A push re-arms over it. A teleport keeps the write unless its VelocityMode 1-3 clears the carrier,
+	// which TG_FireTeleport does after the outputs, as the server (P1394: surf_perennial's speedloops,
+	// landmark teleports with OnStartTouch basevelocity, were demoted whole: 3840-unit snaps).
+	if (tg_kind[io_src[o]] != TG_EVENT && tg_kind[io_src[o]] != TG_TELE)
+		return FALSE;
 	return io_ev[o] == EV_START || io_ev[o] == EV_END || io_ev[o] == EV_JUMP;
 };
 

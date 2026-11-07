@@ -91,6 +91,17 @@ void(string why) PE_Expect =
 	PE_Note(sprintf("expect at cltime %.3f: %s", cltime, why));
 };
 
+// P1397: the lobby's own "noclip ON/OFF" (sv_player.qc) comes with the movement mode it just switched,
+// which this client learns only from the server; the snap a command either side of it is that switch.
+void(string msg) PE_ServerPrint =
+{
+	if (msg == "noclip ON\n" || msg == "noclip OFF\n")
+	{
+		PE_ExpectAt(cltime, servercommandframe - 2, "noclip turned on or off");
+		PE_Note(sprintf("expect at cltime %.3f: noclip turned on or off", cltime));
+	}
+};
+
 void() PE_MapReset =
 {
 	local float i;
