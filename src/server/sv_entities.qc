@@ -1349,7 +1349,9 @@ float(entity t, string in, string pm) SV_SpinInput;
 float(entity e, string lk) SV_SpinOutputKnown;
 //P1378: passable tracktrains, defined beside func_tracktrain below.
 float(entity t, string in, string pm) SV_TrkInput;
+float(entity to, float sf) SV_TrkSend;
 float(entity to, float sf) SV_TrkPropSend;
+void(entity t) SV_TrkKillRiders;
 
 //Patch 256: logic_timer is defined near the other I/O endpoints at the bottom
 //of the file, but SV_IOEnable has to re-arm one and SV_ApplyInput has to
@@ -4605,6 +4607,11 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	if (!strcmp(t.classname, "linked_portal_door"))
 		if (SV_PortalInput(t, in, pm, act))
 			return;
+	// P1378: csprogs draws these from what was sent; any input may change how they look.
+	if (t.SendEntity == SV_TrkPropSend)
+		t.SendFlags = 1;
+	else if (t.SendEntity == SV_TrkSend)
+		t.SendFlags = t.SendFlags | TRK_SF_ID;
 	if (SV_RotButtonInput(t, in, pm))
 		return;
 	if (t.trk_n)
@@ -4638,7 +4645,13 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		}
 		return;
 	}
-	if (in == "kill")           { remove(t);                            return; }
+	if (in == "kill")
+	{
+		if (t.SendEntity == SV_TrkSend)
+			SV_TrkKillRiders(t);        // P1378: Source removes a parent's children with it
+		remove(t);
+		return;
+	}
 	if (t.vbsp_skyent == 2)	// P1202: only a non-solid 3D-skybox prop animates (props are static elsewhere)
 	if (in == "setanimation" || in == "setdefaultanimation")
 	{
@@ -4648,8 +4661,6 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 			SV_SkyAnim(t, pm);
 		else
 			t.vbsp_defanim = strcat(pm);
-		if (t.SendEntity == SV_TrkPropSend)
-			t.SendFlags = 1;            // P1378: csprogs draws this rider
 		return;
 	}
 	if (in == "enable")         { SV_IOEnable(t, TRUE);                 return; }
@@ -10705,6 +10716,11 @@ float(entity to, float sf) SV_TrkSend =
 		WriteFloat(MSG_ENTITY, self.trk_wheels);
 		WriteByte(MSG_ENTITY, self.trk_orient);
 		WriteFloat(MSG_ENTITY, self.trk_sflags);
+		WriteFloat(MSG_ENTITY, self.effects);       // review 1: rendermode, Disable and Alpha/Color inputs
+		WriteFloat(MSG_ENTITY, self.alpha);
+		WriteFloat(MSG_ENTITY, self.colormod_x);
+		WriteFloat(MSG_ENTITY, self.colormod_y);
+		WriteFloat(MSG_ENTITY, self.colormod_z);
 	}
 	if (sf & TRK_SF_CLOCK)
 	{
@@ -10740,15 +10756,33 @@ float(entity to, float sf) SV_TrkPropSend =
 	return TRUE;
 };
 
+void(entity t) SV_TrkKillRiders =
+{
+	local entity e, n;
+
+	for (e = nextent(world); e; e = n)
+	{
+		n = nextent(e);
+		if (e.SendEntity == SV_TrkPropSend && e.vbsp_trkr_par == t)
+			remove(e);
+	}
+};
+
 float(entity t, string in, string pm) SV_TrkInput =
 {
-	local float v, i;
+	local float v, i, c;
 
 	if (t.SendEntity != SV_TrkSend)
 		return FALSE;
 	// trains.cpp:1330-1560. SetSpeed is immediate here (velocitytype's accel is not modelled).
 	t.trk_s0 = Trk_S(t, time);
 	t.trk_t0 = time;
+	if (trk_end && t.trk_spd)
+	{
+		t.trk_old = t.trk_spd;          // DeadEnd (trains.cpp:2384): stopped there since
+		t.trk_spd = 0;
+	}
+	v = t.trk_spd;
 	if (in == "startforward" || in == "startbackward")
 	{
 		t.trk_dir = (in == "startforward") ? 1 : -1;
@@ -10771,15 +10805,15 @@ float(entity t, string in, string pm) SV_TrkInput =
 		t.trk_spd = bound(0, stof(pm), t.trk_max);
 	else if (in == "setspeeddir" || in == "setspeeddiraccel")
 	{
-		v = stof(pm);
-		t.trk_dir = (v >= 0) ? 1 : -1;
-		t.trk_spd = bound(0, fabs(v), 1) * t.trk_max;
+		i = stof(pm);
+		t.trk_dir = (i >= 0) ? 1 : -1;
+		t.trk_spd = bound(0, fabs(i), 1) * t.trk_max;
 	}
 	else if (in == "teleporttopathtrack")
 	{
-		v = Trk_Find(pm);
+		c = Trk_Find(pm);
 		for (i = 0; i < t.trk_n; i = i + 1)
-			if (trk_r[t.trk_i0 + i] == v)
+			if (trk_r[t.trk_i0 + i] == c)
 			{
 				t.trk_s0 = trk_s[t.trk_i0 + i];
 				break;
@@ -10787,6 +10821,8 @@ float(entity t, string in, string pm) SV_TrkInput =
 	}
 	else
 		return FALSE;
+	if (v && !t.trk_spd && in != "stop")
+		t.trk_old = v;                  // SetSpeed to 0 is Stop(), which keeps the speed for Resume
 	t.SendFlags = t.SendFlags | TRK_SF_CLOCK;
 	if (SV_DevOn())
 		dprint(sprintf("trk %s: %s, %g u/s from %g\n", t.targetname, in, t.trk_spd * t.trk_dir, t.trk_s0));
@@ -11491,17 +11527,63 @@ void() SV_SpResolve =
 };
 
 // First frame after the lump (sv_main.qc), before the I/O build fires OnMapSpawn.
-void() SV_TrkResolve =
+// The first entity of e's parentname ("name,attachment" too), as SetParent finds it.
+entity(entity e) SV_TrkParent =
 {
-	local entity e, p;
 	local string pn;
 	local float c;
+
+	pn = e.parentname;
+	if (pn == "")
+		return world;
+	c = strstrofs(pn, ",", 0);
+	if (c >= 0)
+		pn = substring(pn, 0, c);
+	return SV_FindByName(pn, world);
+};
+
+float(entity e) SV_TrkRiderOK =
+{
+	return (e.solid == SOLID_NOT && e.model != "" && substring(e.classname, 0, 5) == "prop_");
+};
+
+void() SV_TrkResolve =
+{
+	local entity e, p, q;
+	local float depth, direct, nfrozen;
 	local vector d, pf, pl, pu;
 
-	vbsp_trk_n = vbsp_trkr_n = 0;
+	vbsp_trk_n = vbsp_trkr_n = nfrozen = 0;
 	if (!trk_pn)
 		return;
 	Trk_TableLink();
+	// Review 1: anything drawn under a train that cannot ride with it -- a func_rotating wheel, a sprite,
+	// a grandchild (129 children and 3 grandchildren in the library) -- would be left behind, so that
+	// train stays frozen with it, as everything was before.
+	for (e = nextent(world); e; e = nextent(e))
+	{
+		if (!e.modelindex || e.parentname == "")
+			continue;
+		direct = TRUE;
+		q = SV_TrkParent(e);
+		for (depth = 0; q && depth < 8; depth = depth + 1)
+		{
+			if (q.vbsp_trk_cand)
+			{
+				if (!direct || !SV_TrkRiderOK(e))
+				{
+					q.vbsp_trk_cand = FALSE;
+					nfrozen = nfrozen + 1;
+					if (cvar("developer"))
+						print(sprintf("trk %s (%s): stays, %s %s cannot ride it\n", q.model, q.targetname,
+							e.classname, e.model));
+				}
+				break;
+			}
+			direct = FALSE;
+			q = SV_TrkParent(q);
+		}
+	}
 	for (e = findfloat(world, vbsp_trk_cand, TRUE); e; e = findfloat(e, vbsp_trk_cand, TRUE))
 	{
 		if (!Trk_Walk(e, e.target))
@@ -11523,6 +11605,7 @@ void() SV_TrkResolve =
 		e.trk_o0 = e.origin;
 		e.trk_a0 = e.angles;
 		e.trk_alast = e.angles;
+		Trk_FaceStart(e);
 		e.SendEntity = SV_TrkSend;
 		e.SendFlags = TRK_SF_ID | TRK_SF_CLOCK;
 		e.pvsflags = (e.pvsflags & 252) | PVSF_IGNOREPVS;   // csprogs moves it: send it wherever it is
@@ -11531,18 +11614,18 @@ void() SV_TrkResolve =
 				e.trk_n, e.trk_len, (e.trk_k >= 0) ? " round" : "", e.trk_spd * e.trk_dir));
 	}
 	if (!vbsp_trk_n)
+	{
+		if (nfrozen)
+			print(sprintf("trk: %g passable tracktrains kept frozen with what cannot ride them\n", nfrozen));
 		return;
+	}
 	// Riders: non-solid props whose parent (the first entity of that name, as SetParent finds it) is a
 	// riding train, placed in its spawn frame as SV_SpResolve places a follower.
 	for (e = nextent(world); e; e = nextent(e))
 	{
-		if (e.parentname == "" || e.solid != SOLID_NOT || e.model == "" || substring(e.classname, 0, 5) != "prop_")
+		if (e.parentname == "" || !SV_TrkRiderOK(e))
 			continue;
-		pn = e.parentname;
-		c = strstrofs(pn, ",", 0);
-		if (c >= 0)
-			pn = substring(pn, 0, c);	// "name,attachment"
-		p = SV_FindByName(pn, world);
+		p = SV_TrkParent(e);
 		if (!p.trk_n || p.SendEntity != SV_TrkSend)
 			continue;
 		Trk_Basis(p.trk_a0);
@@ -11561,8 +11644,8 @@ void() SV_TrkResolve =
 		e.pvsflags = (e.pvsflags & 252) | PVSF_IGNOREPVS;
 		vbsp_trkr_n = vbsp_trkr_n + 1;
 	}
-	print(sprintf("trk: %g passable tracktrains ride their path_tracks in csprogs, %g props with them\n",
-	              vbsp_trk_n, vbsp_trkr_n));
+	print(sprintf("trk: %g passable tracktrains ride their path_tracks in csprogs, %g props with them (%g kept frozen)\n",
+	              vbsp_trk_n, vbsp_trkr_n, nfrozen));
 };
 
 // Back where it spawned and out of the driver: it went solid, so its collision is

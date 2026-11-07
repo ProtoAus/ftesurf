@@ -55,7 +55,7 @@ void() Trk_ClReload =
 
 float() Trk_TrainPredraw =
 {
-	if (!self.trk_n)
+	if (!self.trk_n || (self.effects & EF_NODRAW))
 		return PREDRAW_NEXT;
 	Trk_Place(self, time);
 	setorigin(self, trk_o);
@@ -84,8 +84,15 @@ void(entity e) Trk_NetTrain =
 		e.trk_wheels = readfloat();
 		e.trk_orient = readbyte();
 		e.trk_sflags = readfloat();
+		e.effects = readfloat();
+		e.alpha = readfloat();
+		e.colormod_x = readfloat();
+		e.colormod_y = readfloat();
+		e.colormod_z = readfloat();
 		if (e.classname != "trk_train")     // the server may send an identity again: walk once
 		{
+			if (strcmp(trk_clmap, serverkey("map")))
+				Trk_ClReload();
 			e.classname = "trk_train";
 			e.trkc_tgt = strzone(tgt);
 			e.trk_o0 = o0;
@@ -95,10 +102,10 @@ void(entity e) Trk_NetTrain =
 			setmodelindex(e, mi);
 			e.drawmask = MASK_ENGINE;
 			e.predraw = Trk_TrainPredraw;
-			if (strcmp(trk_clmap, serverkey("map")))
-				Trk_ClLoad();
 			if (!Trk_Walk(e, tgt))
 				Trk_ClReload();
+			if (e.trk_n)
+				Trk_FaceStart(e);
 			if (cvar("developer"))
 				print(sprintf("trk(cl): %s rides %g path_tracks from %s, %g units%s\n", e.model, e.trk_n, tgt,
 					e.trk_len, (e.trk_k >= 0) ? " round" : ""));

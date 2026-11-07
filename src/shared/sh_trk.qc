@@ -331,6 +331,27 @@ void(entity e, float t) Trk_Pose =
 	e.trk_faced = TRUE;
 };
 
+// Find's facing (trains.cpp:2536): at the first path_track, `wheels` forward whatever the speed's sign.
+// orientationtype 0 keeps it; call once at setup on both sides, so every client agrees (review 1).
+void(entity e) Trk_FaceStart =
+{
+	local float l, xy;
+	local vector o, d;
+
+	if (e.trk_sflags & SF_TRACKTRAIN_FIXEDORIENT)
+		return;
+	l = (e.trk_wheels > 0) ? e.trk_wheels : 100;
+	o = Trk_Point(e, 0);
+	d = Trk_Point(e, Trk_Wrap(e, l)) - o;
+	xy = sqrt(d_x * d_x + d_y * d_y);
+	if (xy < 0.001)
+		return;
+	e.trk_alast_x = (e.trk_sflags & SF_TRACKTRAIN_NOPITCH) ? 0 : atan2(0 - d_z, xy) * (180 / M_PI);
+	e.trk_alast_y = atan2(d_y, d_x) * (180 / M_PI);
+	e.trk_alast_z = 0;
+	e.trk_faced = TRUE;
+};
+
 // Source's AngleMatrix columns (forward, left, up) and MatrixAngles, as sv_entities.qc SV_SpBasis/SV_SpAngles.
 void(vector a) Trk_Basis =
 {
