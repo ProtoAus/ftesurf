@@ -11,6 +11,8 @@ class PrioritiesTests(unittest.TestCase):
         self.doc = p.parse(self.raw)
 
     def test_all_sheet_cells_and_split_course_mentions_are_kept(self):
+        self.assertEqual(self.doc['sheet_lf_sha256'], '277f985229cf288bbac56925737e5116976559afaa7ceb615e0f42f2e1eb83d1')
+        self.assertEqual(p.parse(self.raw.replace(b'\r\n', b'\n'))['sheet_lf_sha256'], self.doc['sheet_lf_sha256'])
         self.assertEqual(len(self.doc['bonuses']), 278)
         self.assertEqual(sum(len(b['mentions']) for b in self.doc['bonuses']), 280)
         self.assertEqual(len({b['map'] for b in self.doc['bonuses']}), 173)

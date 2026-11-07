@@ -9,8 +9,12 @@ are added to game packages. No native pin/tag, VM, physics, recording/evidence
 semantics or QC Build change.
 
 Owner's source: <https://docs.google.com/spreadsheets/d/1Hft-1XdK7lge5WWqP5hrNsSUJw_Ss2PS-t-c3CTawpQ>.
-Frozen `rampwear-priorities.csv` SHA256:
+Retained HTTP CSV bytes SHA256 (CRLF):
 `091911e4dbcb7421b36207c9033fef51307d2b47a1bd5e5588b942ab553d4188`.
+Repository `rampwear-priorities.csv` SHA256 (policy-normalized LF):
+`277f985229cf288bbac56925737e5116976559afaa7ceb615e0f42f2e1eb83d1`.
+Only line endings differ; the parser records both byte and canonical-LF hashes.
+The raw HTTP snapshot is retained, not silently relabelled as repository bytes.
 The parser preserves all280mentions /278distinct bonuses and both split-course
 classifications. Explicit installed-revision names reduce174sheet map names to
 173physical map names; it NEVER bakes a different revision's replay against a
@@ -57,9 +61,16 @@ keep the current disk fallback. No raw recording can enter these groups.
 
 - Qualified c24ede65 compiler: all3VMs build with0warnings using the documented
  `build.ps1 -Jobs 8 -NoDeploy`; both real Windows installs untouched by this build.
-- Windows: 23 mirror, 22 gateway, 9 gzip, 3 priority, 4 raster, 3 cosmetic replay-reader tests
+- Windows: 25 mirror, 22 gateway, 11 gzip, 3 priority, 4 raster, 3 cosmetic replay-reader tests
  pass. One POSIX-only gateway symlink case is skipped on Windows, not a pass.
- ARM mirror/gateway/gzip: 23/22/9 pass with no skips, including the actual link refusal.
+ ARM mirror/gateway/gzip: 25/22/11 pass with no skips, including the actual link refusal.
+ The optional bounded transfer workers overlap transports (a two-party barrier
+ proves they acted), retain a single ledger/process lock and per-worker SQLite
+ connections, and still reject corrupt bodies/invalid worker bounds. Default1
+ preserves serial behavior; per-worker rate limits must budget aggregate load.
+ Initial new gzip concurrency tests had only one seeded row and an ineffective
+ fake-corruption attribute; those FAILED fixtures/logs are retained. Corrected
+ two-row/actual-body-corruption controls pass unchanged readiness assertions.
 - Actual ARM unprivileged nginx/gunicorn and actual R2 preflight: public map/zone
  regression, all3ramp formats, gzip response metadata and decoded hashes,
  signed HEAD, byte-range206, private/listing/missing refusals, source replacement,
@@ -86,9 +97,26 @@ HTTP hashes after activation, not merely upload status.
 
 ## Delivery and acceptance status
 
-Source/asset/transport verification above is complete. Publication and live
-cutover are not claimed here yet. This account cannot change/reload root-owned
-nginx; prepare a predecessor-hash-guarded snippet and retain its exact rollback.
+First wave is DELIVERED, not the whole requested end state. At05:52:03UTC7Nov,
+723files for241fresh bakes were destination-hash verified:144new maps and97
+refreshed manifests, with3older-only assets retained. **244map manifests LIVE**.
+Actual public geometry GET/hash checks passed for Gigapede, Android KSF,
+Beginner, Tensor2 and Hades2. Gateway code/config was installed05:55:13UTC from
+67bd89e1. Owner ran the guarded root nginx activation06:05:27UTC; the inspected
+predecessor and rollback are retained. Actual public3-format R2 redirects,
+no-store, gzip decoded hashes, raw PNG hash, byte-range206, unchanged map/zone
+routes and private/missing/listing refusals pass. The unrelated globe/chat MIME
+warnings point to untouched snippets and were not repaired as part of this task.
+
+The first source pass selected a small set per course/style. The user asked for
+ALL recordings possible, so an all-original expansion is running before final
+completion:30,636held bound input files, including10,086rawKSF and16,137rawMomTV
+full recordings, converted fallbacks only where originals are absent, plus598
+native controls. All4,676local MomTV files also remain default bake inputs.
+There is NO per-course/rank/style cap in this expanded snapshot. Ordinary paced
+missing-bonus requests use the existing public importer queue; queued is not a
+completed download or painted surface. Final coverage/size counts remain pending.
+
 The existing on-demand client needs no rebuild/restart for added assets. Native
 appearance/FPS, every bonus surface and owner visual acceptance remain unclaimed.
 

@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 
 import r2mirror as m
@@ -101,6 +102,41 @@ class MirrorTests(unittest.TestCase):
         encoded = doc['assets']['ftesurf/media/rampwear/' + atlas + '.b64']
         self.assertEqual(encoded['key'], 'objects/ramp_encoded/' + encoded['sha256'] + '.png.b64')
         self.assertTrue(doc['complete'])
+
+    def test_parallel_workers_act_and_keep_one_ledger(self):
+        self.seed()
+        (self.maps / 'surf_second.bsp').write_bytes(b'VBSP-second')
+        m.scan(self.db, self.config)
+        barrier, lock = threading.Barrier(2), threading.Lock()
+        active, peak = [0], [0]
+
+        def overlap():
+            with lock:
+                active[0] += 1
+                peak[0] = max(peak[0], active[0])
+            barrier.wait(timeout=10)  # serial execution cannot pass this control
+            with lock:
+                active[0] -= 1
+
+        self.t.after_put = overlap
+        self.assertEqual(self.copy(workers=2)[0], (2, 0))
+        self.assertEqual(peak[0], 2)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM assets WHERE state='verified'").fetchone()[0], 2)
+        self.assertFalse(list(self.work.glob('body-*.part')))
+
+    def test_parallel_errors_remain_errors_and_worker_bounds_refuse(self):
+        self.seed()
+        (self.maps / 'surf_second.bsp').write_bytes(b'VBSP-second')
+        m.scan(self.db, self.config)
+        for workers in (0, 9):
+            with self.assertRaises(ValueError):
+                self.copy(workers=workers)
+        self.assertEqual(self.t.puts, [])
+        self.t.fail = True
+        result, output = self.copy(workers=2)
+        self.assertEqual(result, (2, 2))
+        self.assertNotIn('SECRET', output)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM assets WHERE state='error'").fetchone()[0], 2)
 
     def test_manifest_path_is_allowlisted(self):
         p = self.root / "config.json"

@@ -65,7 +65,7 @@ class Rclone(m.Rclone):
 
     def digest_both(self, key):
         """(sha, size) of the stored bytes and of what they gunzip to, in one read."""
-        command = self.common + ["cat", self.remote + "/" + key]
+        command = self.common + ["cat", self.remote + "/" + key, "--bwlimit", self.download_limit]
         raw, size, plain, plain_size = hashlib.sha256(), 0, hashlib.sha256(), 0
         inflate = zlib.decompressobj(16 + zlib.MAX_WBITS)
         with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as p:
@@ -169,10 +169,11 @@ def status(db):
             "raw_bytes": r["raw"] or 0, "gzip_bytes": r["gz"] or 0}
 
 
-def run(db, state, work, transport, min_saving, limit=None, only=None):
+def run(db, state, work, transport, min_saving, limit=None, only=None, workers=1):
     attempted = failed = 0
+    rows = []
     for row in verified_maps(state):
-        if limit is not None and attempted >= limit:
+        if limit is not None and len(rows) >= limit:
             break
         if only and row["alias"] != only:
             continue
@@ -181,14 +182,14 @@ def run(db, state, work, transport, min_saving, limit=None, only=None):
         if before and (before["state"] in ("verified", "skip") or
                        (before["state"] == "error" and time.time() - before["tried"] < RETRY)):
             continue                    # a failure waits RETRY, so it cannot starve the pass
+        rows.append(row)
+    for row, _, error in m.row_results(db, rows, workers, lambda connection, row: one(connection, row, work, transport, min_saving)):
         attempted += 1
-        try:
-            one(db, row, work, transport, min_saving)
-        except (OSError, m.TransferError, subprocess.SubprocessError) as exc:
+        if error:
             failed += 1
             with db:
                 db.execute("INSERT OR REPLACE INTO gz (alias,sha,bytes,state,error,tried) VALUES (?,?,?,?,?,?)",
-                           (row["alias"], row["sha"], row["bytes"], "error", type(exc).__name__, time.time()))
+                           (row["alias"], row["sha"], row["bytes"], "error", error, time.time()))
         print(json.dumps({"utc": m.utc(), "event": "gzip", "alias": row["alias"],
                           "attempted": attempted, "failed": failed, **status(db)}), flush=True)
     return attempted, failed
@@ -202,10 +203,13 @@ def main():
     p.add_argument("--work", required=True, help="Owned private directory: this tool's state and lock")
     p.add_argument("--min-saving", type=float, default=0.10)
     p.add_argument("--limit", type=int)
+    p.add_argument("--workers", type=int, default=1, help="1..8 bounded workers; rate limits apply PER worker")
     p.add_argument("--only", help="one alias, e.g. ftesurf/maps/surf_x.bsp")
     a = p.parse_args()
     if not 0 < a.min_saving < 1 or (a.limit is not None and a.limit < 0):
         p.error("min-saving must be in (0,1), limit nonnegative")
+    if not 1 <= a.workers <= 8:
+        p.error("workers must be in 1..8")
     os.umask(0o077)
     work = m.check_directory(a.work)
     config = m.load_config(a.config)
@@ -218,7 +222,7 @@ def main():
             for part in list(work.glob("body-*.part")) + list(work.glob("gz-*.part")):
                 if time.time() - part.stat().st_mtime > 3600:
                     part.unlink(missing_ok=True)
-            _, failed = run(db, a.state, work, Rclone(config), a.min_saving, a.limit, a.only)
+            _, failed = run(db, a.state, work, Rclone(config), a.min_saving, a.limit, a.only, a.workers)
         print(json.dumps({"utc": m.utc(), "event": "pass", **status(db)}), flush=True)
         return int(bool(failed))
 

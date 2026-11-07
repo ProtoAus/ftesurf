@@ -1,6 +1,7 @@
 {
   "source": "https://docs.google.com/spreadsheets/d/1Hft-1XdK7lge5WWqP5hrNsSUJw_Ss2PS-t-c3CTawpQ",
   "sheet_sha256": "091911e4dbcb7421b36207c9033fef51307d2b47a1bd5e5588b942ab553d4188",
+  "sheet_lf_sha256": "277f985229cf288bbac56925737e5116976559afaa7ceb615e0f42f2e1eb83d1",
   "aliases": {
     "surf_android": "surf_android_ksf",
     "surf_cavemissile": "surf_cavemissile_fix",

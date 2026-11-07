@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import sqlite3
 import unittest
+import threading
 
 import r2gzip as z
 import r2mirror as m
@@ -93,6 +94,38 @@ class GzipTests(unittest.TestCase):
             self.assertEqual(row['state'], 'verified')
             self.assertEqual(row['gz_key'], 'objects/' + group + '/' + row['sha'] + suffix + '.gz')
             self.assertEqual(gzip.decompress(t.objects[row['gz_key']]), (ramps / leaf).read_bytes())
+
+    def test_parallel_companions_act_and_keep_digest_gates(self):
+        self.seed('surf_a.bsp', b'first-body ' * 20000)
+        self.seed('surf_b.bsp', b'second-body ' * 20000)
+        barrier = threading.Barrier(2)
+
+        class Parallel(Fake):
+            def put_gzip(self, source, key, sha):
+                super().put_gzip(source, key, sha)
+                barrier.wait(timeout=10)  # proves two transport calls overlap
+
+        t = Parallel()
+        self.assertEqual(z.run(self.db, self.state, self.work, t, 0.10, workers=2), (2, 0))
+        self.assertEqual(z.status(self.db)['gzip'], 2)
+        self.assertFalse(list(self.work.glob('*.part')))
+
+    def test_parallel_corrupt_bodies_cannot_become_ready(self):
+        self.seed('surf_a.bsp', b'first-body ' * 20000)
+        self.seed('surf_b.bsp', b'second-body ' * 20000)
+        for workers in (0, 9):
+            with self.assertRaises(ValueError):
+                z.run(self.db, self.state, self.work, Fake(), 0.10, workers=workers)
+
+        class Corrupt(Fake):
+            def put_gzip(self, source, key, sha):
+                super().put_gzip(source, key, sha)
+                self.objects[key] = gzip.compress(b'wrong remote body')
+
+        t = Corrupt()
+        self.assertEqual(z.run(self.db, self.state, self.work, t, 0.10, workers=2), (2, 2))
+        self.assertEqual(z.status(self.db)['gzip'], 0)
+        self.assertEqual(z.status(self.db)['errors'], 2)
 
     def test_incompressible_map_is_skipped_not_uploaded(self):
         self.seed("surf_lzma.bsp", os.urandom(50000))

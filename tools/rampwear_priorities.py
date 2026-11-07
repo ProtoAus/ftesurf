@@ -41,6 +41,7 @@ def parse(raw):
     if not bonuses:
         raise ValueError('empty bonus sheet')
     return {'source': SOURCE, 'sheet_sha256': hashlib.sha256(raw).hexdigest(),
+            'sheet_lf_sha256': hashlib.sha256(raw.replace(b'\r\n', b'\n')).hexdigest(),
             'aliases': ALIASES, 'bonuses': [bonuses[key] for key in sorted(bonuses)]}
 
 

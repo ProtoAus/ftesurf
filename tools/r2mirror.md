@@ -10,6 +10,15 @@ never deletes source/remote data, changes configs, opens a public bucket,
 restarts a service, or declares a CDN cutover. Native/imported recordings,
 evidence, database backups and credentials MUST NOT enter its public bucket.
 
+`run --workers N` supports 1..8 transport workers (default1, unchanged serial
+behavior). The single process writer lock remains; each worker uses its own
+connection to the SAME inspected ledger and stages at most one source body.
+The gzip companion CLI supports the same option. Upload and optional
+`download_limit` apply PER worker: budget aggregate bandwidth explicitly, e.g.
+4workers with `upload_limit: "768K"`, `download_limit: "3M"` cap upload at3MiB/s
+and verification reads at12MiB/s. This is configuration, not measured throughput.
+The default download limit `"0"` preserves the previous unlimited read behavior.
+
 ## Layout and safety
 
 Use an owned private task root, outside web-served directories, following

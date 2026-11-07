@@ -7,6 +7,7 @@ The catalogue contains no local paths. A successful upload is not a CDN cutover.
 """
 import argparse
 import contextlib
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -162,7 +163,7 @@ def current(row):
 
 @contextlib.contextmanager
 def snapshot(row, work):
-    """Capture one regular source handle; stage at most one asset, not the library."""
+    """Capture one regular source handle; stage at most one asset per worker."""
     fd, name = tempfile.mkstemp(prefix="body-", suffix=".part", dir=work)
     path = Path(name)
     try:
@@ -198,6 +199,7 @@ class Rclone:
     def __init__(self, config):
         self.remote = config["remote"]
         self.upload_limit = config.get("upload_limit", "3M")
+        self.download_limit = config.get("download_limit", "0")
         self.common = [config.get("rclone", "rclone"), "--config", config["rclone_config"],
                        "--bind", "0.0.0.0", "--log-level", "ERROR", "--contimeout", "15s",
                        "--timeout", "1m", "--retries", "2", "--low-level-retries", "2",
@@ -217,7 +219,7 @@ class Rclone:
             raise TransferError("Upload failed")
 
     def digest(self, key):
-        command = self.common + ["cat", self.remote + "/" + key]
+        command = self.common + ["cat", self.remote + "/" + key, "--bwlimit", self.download_limit]
         sha, size = hashlib.sha256(), 0
         with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as p:
             try:
@@ -250,7 +252,40 @@ def upload_one(db, row, work, transport):
                        "error='' WHERE alias=? AND sig=?", (sha, key, utc(), row["alias"], row["sig"]))
 
 
-def copy_pending(db, work, transport, group=None, limit=None):
+def row_results(db, rows, workers, action):
+    """Bounded transport overlap; each worker owns its SQLite connection.
+
+    The caller still holds the existing process writer lock. Keep default serial
+    behavior and never create a replacement ledger if the inspected one vanishes.
+    """
+    if not 1 <= workers <= 8:
+        raise ValueError('workers must be in 1..8')
+
+    def perform(connection, row):
+        try:
+            return row, action(connection, row), None
+        except (OSError, TransferError, subprocess.SubprocessError) as exc:
+            return row, None, type(exc).__name__  # never transport messages/URLs
+
+    if workers == 1:
+        for row in rows:
+            yield perform(db, row)
+        return
+    filename = next(r[2] for r in db.execute('PRAGMA database_list') if r[1] == 'main')
+    if not filename:
+        raise ValueError('parallel workers require a file-backed ledger')
+    uri = Path(filename).absolute().as_uri() + '?mode=rw'
+
+    def task(row):
+        with contextlib.closing(sqlite3.connect(uri, uri=True, timeout=30)) as connection:
+            connection.row_factory = sqlite3.Row
+            return perform(connection, row)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        yield from pool.map(task, rows)
+
+
+def copy_pending(db, work, transport, group=None, limit=None, workers=1):
     sql = "SELECT * FROM assets WHERE present=1 AND state='pending'"
     args = []
     if group:
@@ -261,16 +296,14 @@ def copy_pending(db, work, transport, group=None, limit=None):
         sql += " LIMIT ?"
         args.append(limit)
     attempted = failed = 0
-    for row in db.execute(sql, args).fetchall():
+    rows = db.execute(sql, args).fetchall()
+    for row, _, error in row_results(db, rows, workers, lambda connection, row: upload_one(connection, row, work, transport)):
         attempted += 1
-        try:
-            upload_one(db, row, work, transport)
-        except (OSError, TransferError, subprocess.SubprocessError) as exc:
+        if error:
             failed += 1
-            # Never persist transport stdout, signed URLs, exception messages or paths.
             with db:
                 db.execute("UPDATE assets SET state='error',error=? WHERE alias=?",
-                           (type(exc).__name__, row["alias"]))
+                           (error, row["alias"]))
         print(json.dumps({"utc": utc(), "event": "body", "attempted": attempted,
                           "failed": failed, **status(db)}), flush=True)
     return attempted, failed
@@ -338,10 +371,13 @@ def main():
     p.add_argument("--work", required=True, help="Owned, private scratch/state directory")
     p.add_argument("--group", choices=sorted(FORMATS))
     p.add_argument("--limit", type=int)
+    p.add_argument("--workers", type=int, default=1, help="1..8 bounded workers; rate limits apply PER worker")
     p.add_argument("--watch", type=int, default=0, help="Repeat after this many seconds; 0 is one pass")
     a = p.parse_args()
     if a.limit is not None and a.limit < 0 or a.watch < 0:
         p.error("Limit/watch must be nonnegative")
+    if not 1 <= a.workers <= 8:
+        p.error("workers must be in 1..8")
     os.umask(0o077)
     work = check_directory(a.work)
     config = load_config(a.config)
@@ -358,7 +394,7 @@ def main():
             while True:
                 scan(db, config)
                 if a.command == "run":
-                    _, failed = copy_pending(db, work, transport, a.group, a.limit)
+                    _, failed = copy_pending(db, work, transport, a.group, a.limit, a.workers)
                     publish(db, work, transport, config.get("manifest", "manifests/public.json"))
                     print(json.dumps({"utc": utc(), "event": "catalogue", **status(db)}), flush=True)
                 else:
