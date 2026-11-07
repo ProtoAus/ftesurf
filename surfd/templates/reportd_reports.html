@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>FTESurf admin - reports</title>
+{% include "_admin_style.html" %}
+<style>
+  main.split { max-width:1800px; display:grid; gap:1rem; align-items:start;
+               grid-template-columns:minmax(0, 1fr); }
+  @media (min-width: 1100px) {
+    main.split.open { grid-template-columns:minmax(0, 1fr) minmax(24rem, 36rem); }
+    #detail { position:sticky; top:4.2rem; max-height:calc(100vh - 5.4rem); overflow:auto; }
+  }
+  th[data-sort] { cursor:pointer; user-select:none; white-space:nowrap; }
+  th[data-sort]:hover { color:#d8dde4; }
+  th[aria-sort=ascending]::after { content:" \25B2"; }
+  th[aria-sort=descending]::after { content:" \25BC"; }
+  tr.unseen td { font-weight:700; color:#e8edf4; }
+  tr.open td { background:#242932; }
+  td.subj { min-width:14rem; }
+  td.subj .muted { display:block; font-weight:400; white-space:nowrap; overflow:hidden;
+                   text-overflow:ellipsis; max-width:24rem; }
+  .shot img { display:block; max-width:100%; height:auto; border:1px solid #262b33;
+              border-radius:6px; }
+  .body { white-space:pre-wrap; overflow-wrap:anywhere; background:#0f1114;
+          border:1px solid #262b33; border-radius:6px; padding:.6rem .7rem; font-size:.83rem; }
+  table.meta td:first-child { color:#8b94a2; white-space:nowrap; width:1%; }
+  table.meta td { overflow-wrap:anywhere; vertical-align:top; }
+</style>
+</head>
+<body>
+<header>
+  <h1>FTESurf admin</h1>
+  <nav class="nav"><a href="/admin/">Fleet</a><a href="/admin/maps">Maps</a><a href="/admin/runs">Runs</a><a href="/admin/accounts">Accounts</a><a href="/admin/reports" aria-current="page">Reports <span class="pill info" id="navunseen" hidden></span></a></nav>
+  <span class="spacer"></span>
+  <form method="post" action="/admin/logout" style="margin:0">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">Sign out</button>
+  </form>
+</header>
+
+<main class="split">
+  <div class="card">
+    <h2>Reports <span class="muted" style="font-weight:400" id="summary"></span></h2>
+    <div class="tabs" id="chips" style="margin-top:.6rem"></div>
+    <div class="row" style="margin-bottom:.6rem">
+      <input type="text" id="q" placeholder="search subject, text, player or map"
+             maxlength="100" spellcheck="false" autocomplete="off">
+      <button id="delsel" class="danger" disabled>Delete selected</button>
+    </div>
+    <div class="scroll">
+      <table id="reports"><thead><tr>
+        <th><input type="checkbox" id="pickall" aria-label="select every listed report"></th>
+        <th data-sort="at">time</th><th data-sort="subject">subject</th>
+        <th data-sort="category">category</th><th data-sort="player">player</th>
+        <th data-sort="map">map</th><th data-sort="server">server</th>
+        <th data-sort="build">build</th><th data-sort="source" title="network the report came from (opaque)">source</th><th>shot</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <div class="row"><button id="more" hidden>Show more</button></div>
+  </div>
+  <div class="card" id="detail" hidden></div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const CSRF = {{ csrf | tojson }};
+const CATEGORIES = {{ categories | tojson }};
+const CAT_CLS = {bug: "down", perf: "warn", render: "info", map: "info", feature: "up"};
+const COLS = 10, PAGE = 100;
+
+let sort = "at", dir = "desc", category = "", source = "", q = "", offset = 0, seq = 0;
+let openId = 0, maxId = 0, busy = false, counts = {};
+const picked = new Set();
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = String(text);
+  return e;
+}
+function pill(word, cls) { return el("span", "pill " + (cls || ""), word); }
+function toast(msg, ok) {
+  const d = el("div", ok ? "ok" : "bad", msg);
+  document.getElementById("toast").appendChild(d);
+  setTimeout(() => d.remove(), ok ? 4000 : 9000);
+}
+function utc(t) { return new Date(t * 1000).toISOString().slice(0, 19).replace("T", " ") + " UTC"; }
+function ago(t) {
+  const s = Math.max(0, Date.now() / 1000 - t);
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + " min ago";
+  if (s < 86400) return Math.floor(s / 3600) + " h ago";
+  return Math.floor(s / 86400) + " d ago";
+}
+function size(n) { return n >= 1048576 ? (n / 1048576).toFixed(2) + " MiB" : Math.ceil(n / 1024) + " KiB"; }
+
+function readHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  sort = ["at", "subject", "category", "player", "map", "server", "build", "source"].includes(h.get("sort"))
+    ? h.get("sort") : "at";
+  dir = h.get("dir") === "asc" || h.get("dir") === "desc" ? h.get("dir") : (sort === "at" ? "desc" : "asc");
+  category = CATEGORIES.concat(["none"]).includes(h.get("category")) ? h.get("category") : "";
+  source = /^[0-9a-f]{8}$/.test(h.get("source") || "") ? h.get("source") : "";
+  q = (h.get("q") || "").slice(0, 100);
+  document.getElementById("q").value = q;
+}
+function writeHash() {
+  const h = new URLSearchParams({sort, dir});
+  if (category) h.set("category", category);
+  if (source) h.set("source", source);
+  if (q) h.set("q", q);
+  history.replaceState(null, "", "#" + h);
+}
+
+function renderCounts() {
+  const box = document.getElementById("chips");
+  box.replaceChildren();
+  for (const c of [""].concat(CATEGORIES, ["none"])) {
+    const b = el("button", c === category ? "primary" : "",
+                 (c || "all") + " " + (counts[c || "all"] || 0));
+    b.dataset.cat = c;
+    if (c === "none") b.title = "reports sent without a category";
+    box.appendChild(b);
+  }
+  if (source) {
+    const b = el("button", "primary", "source " + source + " ×");
+    b.dataset.unsource = "1";
+    b.title = "show every source";
+    box.appendChild(b);
+  }
+  const badge = document.getElementById("navunseen");
+  badge.textContent = String(counts.unseen || 0);
+  badge.hidden = !counts.unseen;
+}
+function renderHeads() {
+  for (const th of document.querySelectorAll("#reports th[data-sort]"))
+    th.setAttribute("aria-sort", th.dataset.sort !== sort ? "none"
+                    : dir === "asc" ? "ascending" : "descending");
+}
+function renderPicked() {
+  const b = document.getElementById("delsel");
+  b.textContent = picked.size ? "Delete selected (" + picked.size + ")" : "Delete selected";
+  b.disabled = busy || !picked.size;
+  const boxes = document.querySelectorAll("#reports tbody input[data-pick]");
+  document.getElementById("pickall").checked =
+    boxes.length > 0 && Array.from(boxes).every(x => x.checked);
+}
+
+function reportRow(r) {
+  const tr = el("tr", "link" + (r.seen ? "" : " unseen") + (r.id === openId ? " open" : ""));
+  tr.dataset.id = r.id;
+  const box = el("input");
+  box.type = "checkbox";
+  box.checked = picked.has(r.id);
+  box.dataset.pick = r.id;
+  box.setAttribute("aria-label", "select report " + r.id);
+  const pick = el("td");
+  pick.appendChild(box);
+  const when = el("td", "nowrap", ago(r.at));
+  when.title = utc(r.at);
+  const subj = el("td", "subj", r.subject);
+  subj.appendChild(el("span", "muted", r.snippet + (r.body_len > r.snippet.length ? "…" : "")));
+  const cat = el("td");
+  cat.appendChild(r.category ? pill(r.category, CAT_CLS[r.category]) : el("span", "muted", "-"));
+  tr.append(pick, when, subj, cat, el("td", "nowrap", r.player || "-"),
+            el("td", "mono", r.map || "-"), el("td", "nowrap", r.server || "-"),
+            el("td", "mono nowrap", r.build || "-"), el("td", "mono", r.source),
+            el("td", "nowrap", r.has_shot ? size(r.shot_bytes) : "-"));
+  return tr;
+}
+
+async function load(append) {
+  const my = ++seq;
+  const qs = new URLSearchParams({sort, dir, category, source, q, limit: String(PAGE),
+                                  offset: String(append ? offset : 0)});
+  let r, j;
+  try {
+    r = await fetch("/admin/reports/api/list?" + qs, {credentials: "same-origin"});
+    if (r.status === 401) { location.href = "/admin/login"; return; }
+    j = await r.json();
+  } catch (e) { toast("could not load reports: " + e.message, false); return; }
+  if (my !== seq) return;                  // a newer request owns the table
+  if (!j.ok) { toast(j.error || "failed", false); return; }
+  counts = j.counts;
+  renderCounts();
+  renderHeads();
+  const tb = document.querySelector("#reports tbody");
+  if (!append) { tb.replaceChildren(); picked.clear(); maxId = 0; }   // never act on rows not shown
+  for (const row of j.rows) { tb.appendChild(reportRow(row)); maxId = Math.max(maxId, row.id); }
+  if (!tb.children.length) {
+    const tr = el("tr"), td = el("td", "empty", "no reports in this view");
+    td.colSpan = COLS; tr.appendChild(td); tb.appendChild(tr);
+  }
+  offset = j.offset + j.rows.length;
+  document.getElementById("more").hidden = offset >= j.total;
+  document.getElementById("summary").textContent = "— " + (counts.all || 0) + " reports, " +
+    (counts.unseen || 0) + " unseen" + (category || source || q ? ", " + j.total + " in this view" : "");
+  renderPicked();
+}
+
+function closeDetail() {
+  openId = 0;
+  const d = document.getElementById("detail");
+  d.hidden = true;
+  d.replaceChildren();
+  document.querySelector("main").classList.remove("open");
+  for (const tr of document.querySelectorAll("#reports tr.open")) tr.classList.remove("open");
+}
+
+function showDetail(r) {
+  const d = document.getElementById("detail");
+  d.replaceChildren();
+  const h = el("h2", "", r.subject);
+  if (r.category) h.appendChild(pill(r.category, CAT_CLS[r.category]));
+  const dl = el("dl");
+  for (const [k, v] of [["report", "#" + r.id], ["time", utc(r.at) + " (" + ago(r.at) + ")"],
+                        ["player", r.player], ["map", r.map], ["server", r.server],
+                        ["build", r.build], ["source", r.source + " (" + r.from_source + " stored)"]])
+    dl.append(el("dt", "", k), el("dd", k === "map" || k === "build" ? "mono" : "", v || "-"));
+  const meta = el("table", "meta"), keys = Object.keys(r.meta || {});
+  for (const k of keys) {
+    const v = r.meta[k];
+    const tr = el("tr");
+    tr.append(el("td", "mono", k),
+              el("td", "mono", v !== null && typeof v === "object" ? JSON.stringify(v) : String(v)));
+    meta.appendChild(tr);
+  }
+  let shot = el("p", "empty", "no screenshot");
+  if (r.has_shot) {
+    shot = el("a", "shot");
+    shot.href = "/admin/reports/shot/" + r.id + ".jpg";
+    shot.target = "_blank";
+    shot.rel = "noopener";
+    shot.title = "open full size in a new tab";
+    const img = el("img");
+    img.src = shot.href;
+    img.alt = "screenshot sent with report " + r.id;
+    shot.appendChild(img);
+  }
+  const del = el("button", "danger", "Delete this report");
+  del.dataset.del = r.id;
+  const only = el("button", "", "Only this source");
+  only.dataset.only = r.source;
+  const flood = el("button", "danger", "Delete all " + r.from_source + " from this source");
+  flood.dataset.deltag = r.source;
+  flood.dataset.count = r.from_source;
+  const close = el("button", "", "Close");
+  close.dataset.close = "1";
+  const actions = el("div", "row");
+  actions.append(del, only, flood, close);
+  d.append(h, dl, el("h3", "", "Text"), el("div", "body", r.body || "(no text)"),
+           el("h3", "", "Details"), keys.length ? meta : el("p", "empty", "none sent"),
+           el("h3", "", "Screenshot"), shot, actions);
+  d.hidden = false;
+  document.querySelector("main").classList.add("open");
+  if (window.innerWidth < 1100) d.scrollIntoView({block: "start"});    // stacked below the list
+}
+
+async function openReport(id) {
+  openId = id;
+  for (const tr of document.querySelectorAll("#reports tbody tr[data-id]"))
+    tr.classList.toggle("open", Number(tr.dataset.id) === id);
+  let r, j;
+  try {
+    r = await fetch("/admin/reports/api/item/" + id, {credentials: "same-origin"});
+    if (r.status === 401) { location.href = "/admin/login"; return; }
+    j = await r.json();
+  } catch (e) { toast("could not load report " + id + ": " + e.message, false); return; }
+  if (openId !== id) return;
+  if (!j.ok) { toast(j.error || "failed", false); closeDetail(); return; }
+  maxId = Math.max(maxId, j.report.id);
+  showDetail(j.report);
+  const tr = document.querySelector('#reports tbody tr[data-id="' + id + '"]');
+  if (!j.report.was_seen) {
+    if (tr) tr.classList.remove("unseen");
+    counts.unseen = Math.max(0, (counts.unseen || 0) - 1);
+    renderCounts();
+    document.getElementById("summary").textContent =
+      document.getElementById("summary").textContent.replace(/\d+ unseen/, counts.unseen + " unseen");
+  }
+}
+
+async function remove(ids, tag, count) {
+  if (busy || (!ids.length && !tag)) return;
+  const what = tag ? "all " + count + " reports from source " + tag
+    : ids.length === 1 ? "report #" + ids[0] : ids.length + " reports";
+  if (!confirm("Delete " + what + " and the screenshots? This cannot be undone.")) return;
+  busy = true;
+  renderPicked();
+  let j = null;
+  try {
+    // upto: a source delete takes only reports this page had loaded, not later arrivals.
+    const body = new URLSearchParams(tag ? {csrf: CSRF, tag, upto: String(maxId)}
+                                         : {csrf: CSRF, ids: ids.join(",")});
+    const r = await fetch("/admin/reports/api/" + (tag ? "delete_tag" : "delete"),
+                          {method: "POST", body, credentials: "same-origin"});
+    if (r.status === 401) { location.href = "/admin/login"; return; }
+    j = await r.json();
+    toast(j.ok ? (j.message || "deleted") : (j.error || "failed"), !!j.ok);
+  } catch (e) { toast("could not reach surfd: " + e.message, false); }
+  if (j && j.ok) {
+    for (const id of ids) picked.delete(id);
+    if (tag || ids.includes(openId)) closeDetail();
+    if (tag) { picked.clear(); if (source === tag) { source = ""; writeHash(); } }
+  }
+  busy = false;
+  await load(false);
+}
+
+document.getElementById("chips").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-cat], button[data-unsource]");
+  if (!b) return;
+  if (b.dataset.unsource) source = "";
+  else category = b.dataset.cat;
+  writeHash();
+  load(false);
+});
+document.querySelector("#reports thead").addEventListener("click", ev => {
+  const th = ev.target.closest("th[data-sort]");
+  if (!th) return;
+  if (th.dataset.sort === sort) dir = dir === "asc" ? "desc" : "asc";
+  else { sort = th.dataset.sort; dir = sort === "at" ? "desc" : "asc"; }
+  writeHash();
+  load(false);
+});
+document.getElementById("pickall").addEventListener("change", ev => {
+  for (const box of document.querySelectorAll("#reports tbody input[data-pick]")) {
+    box.checked = ev.target.checked;
+    if (box.checked) picked.add(Number(box.dataset.pick));
+    else picked.delete(Number(box.dataset.pick));
+  }
+  renderPicked();
+});
+document.querySelector("#reports tbody").addEventListener("click", ev => {
+  const box = ev.target.closest("input[data-pick]");
+  if (box) {
+    if (box.checked) picked.add(Number(box.dataset.pick));
+    else picked.delete(Number(box.dataset.pick));
+    renderPicked();
+    return;
+  }
+  const tr = ev.target.closest("tr[data-id]");
+  if (tr) openReport(Number(tr.dataset.id));
+});
+document.getElementById("detail").addEventListener("click", ev => {
+  const b = ev.target.closest("button");
+  if (!b) return;
+  if (b.dataset.del) remove([Number(b.dataset.del)]);
+  else if (b.dataset.deltag) remove([], b.dataset.deltag, b.dataset.count);
+  else if (b.dataset.only) { source = b.dataset.only; writeHash(); load(false); }
+  else if (b.dataset.close) closeDetail();
+});
+document.getElementById("delsel").addEventListener("click", () => remove(Array.from(picked)));
+document.getElementById("more").addEventListener("click", () => load(true));
+let typing = 0;
+document.getElementById("q").addEventListener("input", ev => {
+  clearTimeout(typing);
+  typing = setTimeout(() => { q = ev.target.value.trim(); writeHash(); load(false); }, 250);
+});
+window.addEventListener("hashchange", () => { readHash(); load(false); });
+
+readHash();
+load(false);
+</script>
+</body>
+</html>

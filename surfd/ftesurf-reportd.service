@@ -1,0 +1,30 @@
+# P1391 player reports (reportd.py). Code: reportd.py, reportd_wsgi.py,
+# templates/reportd_reports.html and templates/_admin_style.html in
+# /srv/nvme/ftesurf-ops/reportd/app, a real directory (no symlink): an update
+# replaces files there and sends HUP to the gunicorn master. The state dir must
+# exist, owned proto 0700; proto must be able to read surfd.env (secret, hash,
+# proxies). The installer writes the inspected commit into REPORTD_SOURCE.
+[Unit]
+Description=FTESurf player reports (reportd)
+After=network.target
+
+[Service]
+User=proto
+Group=proto
+UMask=0077
+WorkingDirectory=/srv/nvme/ftesurf-ops/reportd/app
+ExecStart=/usr/bin/python3 -m gunicorn --bind 127.0.0.1:8095 --workers 1 --threads 4 --timeout 30 --access-logfile /dev/null reportd_wsgi:app
+Environment="REPORTD_STATE=/srv/nvme/ftesurf-ops/reportd-state"
+Environment="SURFD_ENV=/srv/nvme/surfd/surfd.env"
+Environment="REPORTD_SOURCE=unset"
+ExecReload=/bin/kill -HUP $MAINPID
+MemoryMax=256M
+Restart=on-failure
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/srv/nvme/ftesurf-ops/reportd-state
+
+[Install]
+WantedBy=multi-user.target

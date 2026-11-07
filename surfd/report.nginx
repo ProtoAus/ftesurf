@@ -1,0 +1,42 @@
+# P1391 player reports -> reportd on 127.0.0.1:8095 (reportd.py,
+# ftesurf-reportd.service). Kept for the record; installed separately.
+# zone=surfdhid (12 r/m per address, install_board_endpoint.sh) is shared with
+# /api/hid. reportd refuses past 2 MiB itself too.
+
+location = /api/report {
+    limit_req zone=surfdhid burst=4 nodelay;
+    limit_req_status 429;
+    client_max_body_size 2m;
+    limit_except POST { deny all; }
+    proxy_pass http://127.0.0.1:8095/api/report;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 20s;
+    proxy_send_timeout 20s;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    add_header Cache-Control "no-store" always;
+}
+
+# The owner's pages: the longer prefix beats admin.nginx's /admin and ^~ keeps
+# regex locations out, so these never reach surfd. reportd checks surfd's own
+# session cookie (same secret, name and path).
+location ^~ /admin/reports {
+    client_max_body_size 16k;
+    proxy_pass http://127.0.0.1:8095;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 20s;
+    proxy_send_timeout 20s;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    add_header Cache-Control "no-store" always;
+}
