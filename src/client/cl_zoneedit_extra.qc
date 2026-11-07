@@ -611,7 +611,7 @@ void() ZoneEdit_SettingApply =
 
 void() ZoneEdit_SettingsSave =
 {
-	local float fh, i, ok, staged;
+	local float fh, i, ok, mtstaged;
 	local string path, part, backup, line;
 	if (!ZoneEdit_MayWrite()) { ZoneEdit_Note("Remote command refused: use the panel button"); return; }
 	if (ze_map == "" || strcmp(ze_map, zone_mapname) != 0) return;
@@ -657,27 +657,30 @@ void() ZoneEdit_SettingsSave =
 	print(sprintf("zone_edit: settings saved %s maxvelocity %g\n", MapSet_Path(ze_map), ze_values[0]));
 	// P841: the speed cap is the zone file's maxVelocity too, so Publish carries it -- only a
 	// value edited in this panel: the field opens on the local cvar or an old settings file.
-	staged = FALSE;
 	if (zone_count > 0)
 	if (ze_values[0] != ze_cap_open)
 	if (ze_values[0] != zone_maxvel)
 	{
 		zone_maxvel = ze_values[0];
-		ze_dirty = staged = TRUE;
+		ze_dirty = TRUE;
 	}
 	if (zone_count > 0)             // with no zones yet the edit stays pending for the next save
 		ze_cap_open = ze_values[0];
 	// P1371: mode and tiers, only as set in this panel, go straight into the table's zone-file
 	// fields, zones or not: Save zones writes them whenever the table has zones.
-	if (ze_mode_stage && ze_mode != zone_mode) { zone_mode = ze_mode; staged = TRUE; }
-	if (ze_tier_m != ze_tier_m_open) { zone_tier_mom = ze_tier_m; staged = TRUE; }
-	if (ze_tier_k != ze_tier_k_open) { zone_tier_ksf = ze_tier_k; staged = TRUE; }
+	mtstaged = FALSE;
+	if (ze_mode_stage && ze_mode != zone_mode) { zone_mode = ze_mode; mtstaged = TRUE; }
+	if (ze_tier_m != ze_tier_m_open) { zone_tier_mom = ze_tier_m; mtstaged = TRUE; }
+	if (ze_tier_k != ze_tier_k_open) { zone_tier_ksf = ze_tier_k; mtstaged = TRUE; }
 	ze_mode_stage = FALSE; ze_tier_m_open = ze_tier_m; ze_tier_k_open = ze_tier_k;
-	if (staged && zone_count > 0) ze_dirty = TRUE;
-	if (staged && zone_count <= 0)
+	if (mtstaged && zone_count > 0) ze_dirty = TRUE;
+	if (mtstaged && zone_count <= 0)
 		ZoneEdit_Note("Saved locally; mode and tiers go in the zone file once it has zones (Save zones, Publish saved)");
-	else if (staged || (ze_dirty && zone_maxvel == ze_values[0]))
-		ZoneEdit_Note("Saved locally; mode, speed cap and tiers reach lobbies with the zones: Save zones, then Publish saved");
+	else if (ze_dirty && zone_maxvel == ze_values[0])     // P841's wording, which tools/p841editor.py reads
+		ZoneEdit_Note(sprintf("Saved locally; speed cap %g reaches lobbies with the zones%s: Save zones, then Publish saved",
+		                      zone_maxvel, mtstaged ? ", with the mode and tiers" : ""));
+	else if (mtstaged)
+		ZoneEdit_Note("Saved locally; the mode and tiers reach lobbies with the zones: Save zones, then Publish saved");
 	else
 		ZoneEdit_Note("Saved locally; reload the hosted map to apply");
 };
