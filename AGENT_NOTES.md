@@ -1,5 +1,18 @@
 # AGENT_NOTES.md
 
+## P1389 reader fixtures: storage-root ancestors matter (7 Nov 2026 UTC)
+
+- `tools/census/recsim.py::derive_leg` preserves legacy path identity by selecting
+  the FIRST `runs`, `momentum`, `evidence`, `online` or `saves` component when the
+  recording omits its map header. A synthetic `data/runs/<map>/<leg>` path is not
+  isolated if its temporary parent already contains one of those components.
+- A dual-install smoke placed TMP under `task/evidence/tmp`: the earlier `evidence`
+  component shadowed the intended inner `data/runs`, failing three absent/unknown-
+  header controls while the malformed-header cases passed. The same exact source
+  passed all 12 parsing methods under `task/tmp`. Put fixture TMP/TEMP/TMPDIR outside
+  reserved storage-root ancestors; keep evidence logs separate. Do not change the
+  legacy identity function or weaken assertions to repair a fixture-layout error.
+
 ## P1378-P1383 tracktrains in csprogs, VTF clamp/mips, missing-game names + reports, lobby noclip speed (8 Nov 2026; ftesurf-b8, root lexbugs-20261108-b8)
 
 - Decorative motion belongs in csprogs (owner, 8 Nov): a server-written mover set always-sent in a 3D sky cost
