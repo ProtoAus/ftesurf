@@ -11,11 +11,12 @@ command after it (cl_prederr.qc pe_replay; the lobby side is sv_prederr.qc pe_st
 Warp ops (impulse 201 up) are not replayed; the tool says when the span has one.
 
 Verdicts (three, because a replay that leaves the recorded path measures nothing):
-  REPRODUCED      a prediction error of at least half the report's (and 8+ units) within 3 commands
-                  of the worst command, the path having matched the report up to there. With
-                  "(expected: ...)" when today's client files it under a not-reported rule.
-  NOT REPRODUCED  the path matched (server origin within PATH_TOL, velocity within VEL_TOL of the
-                  report's) and no such error
+  REPRODUCED      a prediction error of 8+ units within 3 commands of the worst command ("(smaller)"
+                  when under half the report's), the server path having matched the report up to
+                  there and at the error. "(expected: ...)" when today's client files it under a
+                  not-reported rule.
+  NOT REPRODUCED  the server path matched (origin within PATH_TOL, velocity within VEL_TOL of the
+                  report's) before and at the worst command, and no such error
   CANNOT TELL     the replayed path left the report's before the worst command (or the state never
                   landed, or the rows were not all replayed)
 
@@ -32,7 +33,7 @@ SETTLE = 12             # commands after the state lands before an error counts 
 
 
 def parse(path):
-    rep = {'srv': {}, 'ring': {}, 'acks': {}, 'name': None, 'map': None, 'ping': None, 'worst': None, 'worst_seq': None,
+    rep = {'srv': {}, 'ring': {}, 'acks': {}, 'name': None, 'names': {}, 'fs_tn': None, 'map': None, 'ping': None, 'worst': None, 'worst_seq': None,
            'netfps': '66.6667', 'maxfps': '1000'}
     sect = None
     acks = False
@@ -50,9 +51,11 @@ def parse(path):
         m = re.match(r'client \S+ worst (\S+) seq (\d+)', ln)
         if m:
             rep['worst'], rep['worst_seq'] = float(m.group(1)), int(m.group(2))
-        m = re.match(r'activator name "(.*)"$', ln)     # P1405 reports
+        m = re.match(r'activator name "(.*?)"(?: fs_tn "(.*?)")?$', ln)     # P1405 reports
         if m:
-            rep['name'] = m.group(1)
+            rep['name'], rep['fs_tn'] = m.group(1), m.group(2)
+        if ln.startswith('names '):
+            rep['names'] = dict((int(g), n) for g, n in re.findall(r'(\d+) "([^"]*)"', ln))
         m = re.match(r'ping (\d+)', ln)
         if m and rep['ping'] is None:
             rep['ping'] = int(m.group(1))
@@ -66,7 +69,8 @@ def parse(path):
             continue
         f = ln.split()
         if acks and len(f) >= 11:
-            rep['acks'][int(f[2])] = {'org': tuple(map(float, f[4:7])), 'vel': tuple(map(float, f[7:10]))}
+            rep['acks'][int(f[2])] = {'org': tuple(map(float, f[4:7])), 'vel': tuple(map(float, f[7:10])),
+                                      'gen': int(float(f[11])) if len(f) > 11 else None}
             continue
         if sect == 'server' and len(f) >= 16:
             seq = int(f[3])
@@ -85,14 +89,20 @@ def dist(a, b):
     return sum((x - y) ** 2 for x, y in zip(a, b)) ** 0.5
 
 
+def settle(rep):
+    # the restored state and name reach the client a round trip after the state lands (sv_minping = ping)
+    return max(SETTLE, int(2 * (rep['ping'] or 0) / 15.0) + 6)
+
+
 def plan(rep, a):
     ring = rep['ring']
     if not ring or rep['worst_seq'] is None:
         raise SystemExit('report has no ring or no worst line')
     w = rep['worst_seq']
     lo = min(ring)
-    start = a.start if a.start is not None else max(lo + 1, w - a.before)
-    if start + SETTLE > w:
+    rep['settle'] = settle(rep)
+    start = a.start if a.start is not None else max(lo + 1, w - max(a.before, rep['settle'] + 48))
+    if start + rep['settle'] > w:
         raise SystemExit('CANNOT TELL: the error is at command %d, %d after the recording starts: no lead-in to replay'
                          % (w, w - lo))
     while start - 1 not in ring and start - 1 > lo:   # the ring skipped it: start a command earlier
@@ -123,9 +133,17 @@ def plan(rep, a):
         raise SystemExit('CANNOT TELL: no ring rows from command %d' % start)
     if filled:
         print('note: %d of %d commands were not in the ring; their inputs are held/interpolated' % (filled, len(rows)))
+    rep['start_name'] = None
+    if rep['fs_tn'] is not None and rep['fs_tn'] != '1':
+        print('note: the lobby did not publish names (fs_tn "%s"): name filters were the server\'s' % rep['fs_tn'])
     if start - 1 in rep['acks']:     # P1403 rows carry the state to 0.001
         st = rep['acks'][start - 1]
         print('start state from the ack rows (full precision)')
+        g = st.get('gen')
+        if g is not None and g in rep['names']:
+            rep['start_name'] = rep['names'][g]
+        elif g is not None:
+            print('note: the name in effect at the start (generation %d) is older than the report keeps' % g)
         return start, st['org'], st['vel'], rows
     return start, ring[start - 1]['sorg'], ring[start - 1]['svel'], rows
 
@@ -244,22 +262,23 @@ def grade(rep, rig, start, rows):
     errs = []
     for mm in re.finditer(r'prederr: seq (\d+) origin off by ([\d.]+) \(predicted', txt):
         rs = int(mm.group(1))
-        if rs >= land + SETTLE:
+        if rs >= land + rep['settle']:
             errs.append((rs + shift, float(mm.group(2))))
     ring = rig / 'clhome' / 'ftesurf' / 'data' / 'prederr' / 'replay_ring.txt'
-    dev, vdev = {}, {}
+    dev, vdev, have = {}, {}, set()
     if ring.exists():
         for ln in open(ring, encoding='utf-8', errors='replace'):
             f = ln.split()
             if len(f) < 25 or not f[1].isdigit():
                 continue
             rseq = int(f[1]) + shift
+            have.add(rseq)       # the replay measured this command
             r = rep['ring'].get(rseq)
             if r:
                 dev[rseq] = dist(tuple(map(float, f[5:8])), r['sorg'])
                 vdev[rseq] = dist(tuple(map(float, f[11:14])), r['svel'])
     w, worst = rep['worst_seq'], rep['worst']
-    span = [x for x in sorted(dev) if land + SETTLE + shift <= x < w]
+    span = [x for x in sorted(dev) if land + rep['settle'] + shift <= x < w]
     if not span:
         return 'CANNOT TELL', out + ['no replayed server state to compare before the worst command']
     first_bad = next((x for x in span if dev[x] > PATH_TOL or vdev[x] > VEL_TOL), None)
@@ -270,6 +289,12 @@ def grade(rep, rig, start, rows):
     why = {}                          # report seq -> today's report decision for its error
     for mm in re.finditer(r'pe note \d+: prederr \d+ (\d+) [\d.]+[^\n]*\n[^\n]*pe note \d+: (not reported: [^\n]*)', txt):
         why[int(mm.group(1)) + shift] = mm.group(2)
+    at = [x for x in range(w, w + 4) if x in dev]          # what the rig's server did at the error
+    at_bad = [x for x in at if dev[x] > PATH_TOL or vdev[x] > VEL_TOL]
+    if first_bad is None and (len(at) < 2 or at_bad):
+        return 'CANNOT TELL', out + ['the rig\'s server did not do what the report\'s did at the error (%s)' % (
+            'compared %d of 4 commands' % len(at) if len(at) < 2 else
+            'command %d off by %.1f units / %.1f u/s' % (at_bad[0], dev[at_bad[0]], vdev[at_bad[0]]))]
     hits = sorted(((x, e) for x, e in errs if abs(x - w) <= 3 and e >= 8.0), key=lambda t: -t[1])
     if hits and (first_bad is None or first_bad >= hits[0][0] - 1):
         h, e = hits[0]
@@ -280,7 +305,7 @@ def grade(rep, rig, start, rows):
         warps = [x for x, _, imp in rows if imp >= 201 and x <= first_bad]
         return 'CANNOT TELL', out + ['the replay left the recorded path before the error' +
                                      (' (a warp op at report command %d is not replayed)' % warps[-1] if warps else '')]
-    near = [x for x in range(w - 3, w + 4) if x in dev]
+    near = [x for x in range(w - 3, w + 4) if x in have]   # the report's own ring may skip some
     if not done or len(near) < 5:
         return 'CANNOT TELL', out + ['nothing measured at the worst command (%d of 7 rows around it%s)' % (
             len(near), '' if done else ', replay unfinished')]
@@ -313,9 +338,9 @@ def main():
     if rig.exists():
         raise SystemExit('rig exists: %s' % rig)
     rig.mkdir(parents=True)
-    write_replay(rig / 'replay.rpl', start, org, vel, rows, rep['name'])
-    if rep['name'] is None:
-        print('note: the report predates P1405: the player\'s name (for name filters) is not restored')
+    write_replay(rig / 'replay.rpl', start, org, vel, rows, rep.get('start_name'))
+    if rep.get('start_name') is None:
+        print('note: the player\'s name at the start is not known (report predates the name rows): not restored')
     if a.plan:
         print('wrote', rig / 'replay.rpl')
         return

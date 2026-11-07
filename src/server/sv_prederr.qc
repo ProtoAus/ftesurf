@@ -38,17 +38,13 @@ float  pe_hit_n, pe_rt_last;    // server frames longer than 50 ms: lobby-wide, 
 .string pe_st_name;                 // P1405: the activator name the report recorded ("" none)
 
 // P1405: each player's targetname as infokey *tn, so the client judges name filters itself (maps rename
-// the player with AddOutput: stage-nexus teleports, bhop block resets). Checked once a packet.
-.string pe_tn;
+// the player with AddOutput: stage-nexus teleports, bhop block resets). Checked once a packet against the
+// key itself: star keys outlive a changelevel or map_restart, which clears the edict (review 2).
 float   pe_tn_live;
 void(entity p) SV_PeNameSync =
 {
-	if (p.targetname == p.pe_tn)
-		return;
-	if (p.pe_tn != "")
-		strunzone(p.pe_tn);
-	p.pe_tn = (p.targetname == "") ? "" : strzone(p.targetname);
-	forceinfokey(p, "*tn", p.targetname);
+	if (infokey(p, "*tn") != p.targetname)
+		forceinfokey(p, "*tn", p.targetname);
 };
 
 void(entity p, float argc) SV_PeStateCmd =

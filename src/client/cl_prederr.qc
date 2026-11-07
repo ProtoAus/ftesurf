@@ -41,6 +41,13 @@ float  pe_ak_rt[PE_AKS], pe_ak_t[PE_AKS], pe_ak_ack[PE_AKS], pe_ak_sent[PE_AKS],
 vector pe_ak_org[PE_AKS], pe_ak_vel[PE_AKS];
 float  pe_ak_n;
 var float pe_ak_last = -1;
+// P1405: the published name (*tn) per ack row, as a generation into the last 8 names (0 = never renamed),
+// so a replay restores the name in effect where it starts (review 2: the header's is 1.5 s after the error).
+float  pe_ak_gen[PE_AKS];
+float  pe_nm_gen;
+string pe_nm_cur;
+string pe_nm_name[8];
+float  pe_nm_g[8];
 
 // P1404: a report's commands replayed on a rig (tools/prederr_replay.py writes the file); the lobby
 // sets the recorded state before command pe_rp_s (pe_state, sv_cheats only), then each command
@@ -76,7 +83,8 @@ void(string s) PE_Note =
 // P1403: CSQC_PredictPlayerPreMove on the chain's first command; predinput_* is the acknowledged state.
 void(float ack) PE_AckSnap =
 {
-	local float k;
+	local float k, g;
+	local string nm;
 	if (ack == pe_ak_last)
 		return;
 	if (pe_ak_last < 0)
@@ -90,6 +98,16 @@ void(float ack) PE_AckSnap =
 	pe_ak_org[k]  = predinput_origin;
 	pe_ak_vel[k]  = predinput_velocity;
 	pe_ak_gp[k]   = predinput_onground + 2 * predinput_pmtype;
+	nm = getplayerkeyvalue(player_localnum, "*tn");
+	if (nm != pe_nm_cur)
+	{
+		pe_nm_gen = pe_nm_gen + 1;
+		g = pe_nm_gen - floor(pe_nm_gen / 8) * 8;
+		pe_nm_name[g] = strzone(nm);
+		pe_nm_g[g] = pe_nm_gen;
+		pe_nm_cur = pe_nm_name[g];
+	}
+	pe_ak_gen[k]  = pe_nm_gen;
 	pe_ak_n = pe_ak_n + 1;
 };
 
@@ -202,7 +220,13 @@ void(string stem) PE_WriteContext =
 	                 cvar_string("cl_prederror"), cvar_string("cl_triggers"), cvar_string("cl_warpop")));
 	fputs(f, sprintf("ping %s pl %s\n", getplayerkeyvalue(player_localnum, "ping"),
 	                 getplayerkeyvalue(player_localnum, "pl")));   // P1238: packet loss %
-	fputs(f, sprintf("activator name \"%s\"\n", getplayerkeyvalue(player_localnum, "*tn")));   // P1405
+	fputs(f, sprintf("activator name \"%s\" fs_tn \"%s\"\n", getplayerkeyvalue(player_localnum, "*tn"),
+	                 serverkey("fs_tn")));   // P1405; fs_tn "" = a lobby that does not publish names
+	fputs(f, "names 0 \"\"");                // the ack rows' last column: generation -> name
+	for (i = 0; i < 8; i = i + 1)
+		if (pe_nm_g[i] > 0)
+			fputs(f, sprintf(" %g \"%s\"", pe_nm_g[i], pe_nm_name[i]));
+	fputs(f, "\n");
 	fputs(f, sprintf("csprogs crc %s size %s local %g qchook %s\n", serverkey("*csprogs"),
 	                 serverkey("*csprogssize"), PE_Local(), cvar_string("cl_predict_qchook")));   // P1207
 	fputs(f, "# context: time seq what (server prints, mirror triggers, gates, warp ops, prederr lines)\n");
@@ -210,7 +234,7 @@ void(string stem) PE_WriteContext =
 	for (i = i0; i < pe_ring_n; i = i + 1)
 		fputs(f, strcat(bufstr_get(pe_ring, i - floor(i / PE_RING) * PE_RING), "\n"));
 	// P1403. rt: gettime(0) of the frame that first predicted from it; t: CSQC time then.
-	fputs(f, "# acks: rt t ack sent org(3) vel(3) ground+2*pmtype\n");
+	fputs(f, "# acks: rt t ack sent org(3) vel(3) ground+2*pmtype namegen\n");
 	i0 = max(0, pe_ak_n - PE_AKS);
 	for (i = i0; i < pe_ak_n; i = i + 1)
 	{
@@ -219,7 +243,7 @@ void(string stem) PE_WriteContext =
 		v = pe_ak_vel[k];
 		fputs(f, strcat(sprintf("%.4f %.3f %.0f %.0f ", pe_ak_rt[k], pe_ak_t[k], pe_ak_ack[k], pe_ak_sent[k]),
 		                sprintf("%.3f %.3f %.3f ", o_x, o_y, o_z),          // a replay's start state
-		                sprintf("%.3f %.3f %.3f %g\n", v_x, v_y, v_z, pe_ak_gp[k])));
+		                sprintf("%.3f %.3f %.3f %g %g\n", v_x, v_y, v_z, pe_ak_gp[k], pe_ak_gen[k])));
 	}
 	fclose(f);
 };
@@ -314,6 +338,8 @@ float(vector srv, vector pred) PE_ServerTele =
 			}
 			else if (tg_kind[j] == TG_RELTELE)
 			{
+				if (tg_ent[j].tg_fname)
+					continue;
 				if (vlen(TG_RelTelePoint(j) - at) < 2)
 					return FALSE;
 			}

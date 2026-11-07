@@ -343,6 +343,8 @@ float(float r, float depth) TF_EvalD =
 	// trigger is the server's.  When it does not, it fails open, and so does this.
 	if (tf_class[r] == "filter_activator_context")
 		return tf_ctxmode ? TFR_UNKNOWN : TFR_PASS;
+	if (tf_class[r] == "filter_momentum_progress" && tf_rtmode)
+		return TFR_UNKNOWN;             // P1405: the server judges run_prognum; a name AND it stays the server's
 	if (tf_class[r] != "filter_multi")
 		return TFR_PASS;                // unimplemented class: fail open
 
