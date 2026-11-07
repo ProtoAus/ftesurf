@@ -21,6 +21,10 @@
 
 ## next
 
+### P1381 Personal bests survive a mode change
+- When a map moves between surf and bhop, your local best and your lobby times on it are compared by time, not by tick count, so a slower run no longer counts as a new best (or a faster one as not).
+- Zone editor: clicking the mode that is already selected keeps your custom air acceleration, and a tier you did not change is not sent again.
+
 ### P1376 New default picture: your screen's size with anti-aliasing
 - The game now draws at your screen's own size with 4x anti-aliasing, and water and glass reflections with 2x, instead of drawing at twice the size and shrinking it. Edges stay smooth for far less work on the graphics card.
 - If your settings were still on the old default, they move once to the new one (the console says so). If you had already lowered Render scale for a slower PC, nothing changes.

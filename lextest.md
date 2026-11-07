@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1381 personal bests across a mode change, zone_edit quirks -- owner check pending
+
+- Nothing to see unless a map you have times on changes mode. Then the console says once that best.pb
+  "was counted at N Hz ... compared as durations", and the first slower run is not called a new best.
+- Zone editor: with a custom air acceleration saved, click the already-selected mode: the air
+  acceleration stays.
+
 ## P1376 video defaults, P1373 glows after teleports -- owner check pending
 
 - Tensor2: fail or take a stage teleport, then turn round. No glow from the old place should show through

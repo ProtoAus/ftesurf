@@ -30,9 +30,12 @@
   Zone_WantsServer cannot see a mode- or tier-only publish, and a zoner editing an older copy republishes
   without another zoner's mode (as P841's maxVelocity already can). zonepub.validate does not check the
   three keys (the engine and QC ignore bad values with a warning).
-- Personal bests are raw ticks (sv_timer.qc best.pb, cl_lobbytime.qc lobby.pb): a mode change that moves
-  the tick rate makes old PBs compare and draw wrongly. The menu's ui_map_tick cannot see a zone file's
-  mode (it has the bhop_ rule since P1371).
+- P1381 made personal bests rate-aware (best.pb `rate`, lobby times by each file's tickrate). Left: the
+  card's rank still counts LOCAL _pb/_run files by raw stamp (it runs at stage boundaries and must open
+  nothing); a best.pb rewrite keeps the converted values (one tick of drift on a rate round trip, and an
+  older build at the other rate misreads a converted file); a certified lobby time over an unranked file
+  of the same stamp at another rate still supersedes it (the old policy, now able to drop a faster time).
+  m_main.qc ui_map_tick has had no caller since P1062 (no PB column): its essay is not about anything shown.
 - Nothing deploys data/mapmeta.txt to the Pi (P1369; build.ps1 -Pi copies progs, the release ships
   installs): copy it after a tools/mapmeta.py regeneration.
 
