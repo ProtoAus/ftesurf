@@ -1,0 +1,1 @@
+P1384 claimed by ftesurf-3a (Claude Code session 5e4b2e2d) 2026-11-08. Lex/markbeaton54: a save load with lead-in waits a round trip before its travel and release; make it start on the key press, the same at any ping. QC (cl_savelead.qc, cl_saveloc.qc, cl_trail.qc, server stat for the cursor save's slot id).
