@@ -355,3 +355,9 @@ footer p { margin: 0 0 7px; }
 .linkbox .installs li { padding: 6px 0; border-top: 1px solid var(--line); }
 .linkbox .installs code { color: var(--text); }
 .linkbox .installs a { margin-left: 10px; }
+
+/* P1401: the Log in button beside Download, quieter than it. */
+.pill + .pill { margin-left: -14px; }
+.pill-quiet { background: transparent; color: var(--text-2, #9aa4b2); box-shadow: inset 0 0 0 1px var(--line, #2a3240); }
+.pill-quiet:hover { background: transparent; color: var(--text, #fff); box-shadow: inset 0 0 0 1px var(--text-2, #9aa4b2); }
+@media (max-width: 420px) { .pill + .pill { margin-left: -6px; } }
