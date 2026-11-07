@@ -173,6 +173,8 @@ vector kc_hl_scr;
 float  kc_tab;
 float  kc_gen;                  // bumped by a KC_Refresh that found a bind changed: the drawing's cache key
 float() KC_KbSig;
+float(string id) KC_RowId;
+float(float scan) KC_KeyKept;
 float(float scan) KC_LeftOf;
 float  kc_sel;                  // the picked action; -1 none
 float  kc_kb_key;               // the key last clicked; 0 none
@@ -469,6 +471,8 @@ void(float i, float s, float scan) KC_Assign =
 	kn = keynumtostring(scan);
 	if (kn == "")
 		return;
+	if (KC_KeyKept(scan))
+		return;
 	was = getkeybind(scan);
 	if (was == "")
 	if (KC_KeyOk(KC_LeftOf(scan)))
@@ -479,7 +483,11 @@ void(float i, float s, float scan) KC_Assign =
 	{
 		ok = stringtokeynum(old);
 		if (KC_KeyOk(ok) && ok != scan)
+		{
+			if (KC_KeyKept(ok))
+				return;
 			KC_SetBind(ok, "");
+		}
 	}
 	KC_SetBind(scan, KC_F(i, 2));
 	if (other >= 0 && other != i)
@@ -504,7 +512,7 @@ void(float i, float s) KC_Clear =
 	if (old == "")
 		return;
 	ok = stringtokeynum(old);
-	if (!KC_KeyOk(ok))
+	if (!KC_KeyOk(ok) || KC_KeyKept(ok))
 		return;
 	KC_SetBind(ok, "");
 	KC_Say(sprintf("%s cleared from %s", KC_KeyLabel(old), KC_F(i, 1)));
@@ -524,23 +532,25 @@ float(float scan) KC_LeftOf =
 	return 0;
 };
 
-// The console and menu keys stay as they are: the panel cannot give them back (reset keys covers
-// only its own rows). Shift+Esc still opens the console (keys.c), but not with con_stayhidden 2.
+// Escape (the engine's menu key whatever its bind, keys.c) and the LAST console key stay: a spare
+// console or menu key is an ordinary key. Shift+Esc opens the console, but not with con_stayhidden 2.
 float(float scan) KC_IsKept =
 {
-	local string b;
-	b = getkeybind(scan);
-	return (scan == K_ESCAPE || b == "toggleconsole" || b == "togglemenu");
+	local float r;
+	if (scan == K_ESCAPE)
+		return TRUE;
+	if (getkeybind(scan) != "toggleconsole")
+		return FALSE;
+	r = KC_RowId("console");
+	return (r < 0 || kc_cnt[r] <= 1);
 };
 
 float(float scan) KC_KeyKept =
 {
-	local string b;
-	b = getkeybind(scan);
 	if (KC_IsKept(scan))
 	{
 		KC_Say(sprintf("%s stays the %s key", KC_KeyLabel(keynumtostring(scan)),
-		               (b == "toggleconsole") ? "console" : "menu"));
+		               (scan == K_ESCAPE) ? "menu" : "console"));
 		return TRUE;
 	}
 	return FALSE;
@@ -637,8 +647,7 @@ void() KC_Reset =
 		for (j = 0; j < kc_cnt[i]; j = j + 1)
 		{
 			k = stringtokeynum(Gfx_Field(kc_keys[i], j, " "));
-			if (KC_KeyOk(k))
-			if (!KC_IsKept(k))          // P1400: the console and menu keys are not the reset's
+			if (KC_KeyOk(k) && k != K_ESCAPE)   // ` is the console row's default, rebound below
 				KC_SetBind(k, "");
 		}
 	for (i = 0; i < KC_N; i = i + 1)
@@ -723,6 +732,8 @@ void() KC_FieldStop =
 		kc_ecaret = 0;
 		kc_ekey = 0;
 	}
+	if (kc_fld)
+		sui_keys_forget();          // a Shift held while typing would stay held for the next field
 	kc_fld = 0;
 	if (sui_field_focused() == "kc_cf" || sui_field_focused() == "kc_ef")
 		sui_text_unfocus();
@@ -736,14 +747,20 @@ void(float evtype, float scan, float char) KC_FieldKey =
 	{
 		was = kc_ctext;
 		sui_text_event(evtype, scan, char, "kc_cf", kc_ctext, kc_ccaret);
-		kc_ctext = KC_Rezoned(was, substring(kc_ctext, 0, KC_FLD_MAX));
+		if (strlen(kc_ctext) > KC_FLD_MAX && strlen(kc_ctext) > strlen(was))
+			kc_ctext = was;
+		else
+			kc_ctext = KC_Rezoned(was, kc_ctext);
 		kc_ccaret = min(kc_ccaret, strlen(kc_ctext));
 	}
 	else if (kc_fld == KC_FLD_EDIT)
 	{
 		was = kc_etext;
 		sui_text_event(evtype, scan, char, "kc_ef", kc_etext, kc_ecaret);
-		kc_etext = KC_Rezoned(was, substring(kc_etext, 0, KC_FLD_MAX));
+		if (strlen(kc_etext) > KC_FLD_MAX && strlen(kc_etext) > strlen(was))
+			kc_etext = was;         // only growth past the limit is refused
+		else
+			kc_etext = KC_Rezoned(was, kc_etext);
 		kc_ecaret = min(kc_ecaret, strlen(kc_etext));
 	}
 };
@@ -812,6 +829,8 @@ void(float key, string s) KC_EditKey =
 
 void(float key) KC_EditBegin =
 {
+	if (!kc_open || kc_tab != KC_TAB_KEYS)
+		return;
 	if (!KC_KeyOk(key))
 	{
 		KC_Say("click a key first");
@@ -853,6 +872,7 @@ void() KC_Close =
 		return;
 	kc_open = FALSE;
 	KC_FieldStop();
+	sui_keys_forget();
 	kc_cap_i = -1;
 	kc_armed = FALSE;
 	kc_sel = -1;                    // reopened later, a click only reads a key until one is picked
@@ -899,6 +919,8 @@ void() KC_Open =
 		return;
 	}
 	kc_open = TRUE;
+	KC_FieldStop();
+	sui_keys_forget();
 	kc_cap_i = -1;
 	kc_eatkey = -1;
 	kc_armed = FALSE;
@@ -1229,6 +1251,8 @@ float(string cmd) KC_Console =
 	}
 	if (a == "focus")               // arm: what a click on the field (cmd) or Edit (edit <key>) does
 	{
+		KC_Open();
+		KC_SetTab(KC_TAB_KEYS);
 		KC_Refresh();
 		if (argv(2) == "edit")
 			KC_EditBegin(stringtokeynum(argv(3)));

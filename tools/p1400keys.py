@@ -157,6 +157,42 @@ def main():
         b6 = binds(cl)
         res['tool_cleared'] = {k: b6.get(k) for k in ('HOME',)}
 
+        # 4. Review fixes: the Actions tab keeps Escape and the last console key; a spare console
+        # or menu key is ordinary; reset clears a spare console key; a long bind survives Edit.
+        off = len(cl.text())
+        for c in ('config_menu clear console 0', 'config_menu clear menu 0', 'config_menu bind menu M 0',
+                  'config_menu bind jump ESCAPE 1'):
+            cl.send(c)
+            time.sleep(0.5)
+        b7 = binds(cl)
+        res['kept_after_actions'] = {k: b7.get(k) for k in ('ESCAPE', 'M')}
+        res['console_keys_after_actions'] = sorted(k for k, v in b7.items() if v == 'toggleconsole')
+        cl.send('config_menu bind menu N 1')
+        cl.send('config_menu bind console H 1')
+        time.sleep(0.8)
+        b8 = binds(cl)
+        res['spares'] = {k: b8.get(k) for k in ('N', 'H')}
+        cl.send('config_menu clearkey N')
+        time.sleep(0.5)
+        b9 = binds(cl)
+        res['spare_menu_cleared'] = {k: b9.get(k) for k in ('N',)}
+        cl.send('config_menu reset')
+        time.sleep(1)
+        b10 = binds(cl)
+        res['after_reset'] = {k: b10.get(k) for k in ('H', 'ESCAPE', 'F3', 'G')}
+        res['console_keys_after_reset'] = sorted(k for k, v in b10.items() if v == 'toggleconsole')
+        longb = 'echo ' + 'abcdefghij' * 14           # 145 characters
+        cl.send(f'bind INS "{longb}"')
+        time.sleep(0.5)
+        cl.send('config_menu focus edit INS')
+        time.sleep(0.6)
+        tap('end')
+        type_('zz')
+        tap('enter')
+        b11 = binds(cl)
+        res['long_bind_kept'] = (b11.get('INS') == longb, len(b11.get('INS') or ''))
+        cl.send('bind INS ""')
+        res['fix_lines'] = lines(off)
         cl.send('config_menu actions')
         time.sleep(1.5)
         cl.send('screenshot p1400_actions.png')
