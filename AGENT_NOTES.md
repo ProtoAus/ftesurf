@@ -1,5 +1,27 @@
 # AGENT_NOTES.md
 
+## GPU transition endpoint rejection (7 Nov 2026)
+
+- Acting Boreas SEAMLESS/BLENDMOD/BUMP2 terrain has many exact blend endpoints,
+  but explicit-gradient unused-layer skipping was slower: original 448-452 vs
+  prototype 358-359 average FPS, 1% lows 248-269 vs 228-232. Reversed-order original
+  recovered throughput; world GPU end snapshots roughly doubled. Do not infer
+  speed from fewer GLSL fetches or assign unmeasured register/divergence shares.
+  Live cvar 0 has a different branch/register footprint: keep an IMMUTABLE original
+  DLL and the SAME client as independent control. Report/scope/pixels/disposition:
+  `tools/gpu-transition-endpoint-results.md`. Rejected source was never shipped.
+- MASKLT cutouts must retain the original path unless gradients are safely taken
+  before alpha discard. A varying endpoint branch needs explicit gradients taken
+  before that branch. Diagnostic early-return heatmaps bypass normal fog/shading:
+  never turn them into a shipping client capability.
+- Native frame dump header is `frametime over ... s, ... frames`, not an invented
+  `r_frametime:` line. Three initial replay traces span milliseconds, not the whole
+  window. Collect paused end traces AFTER metric dumps (before condump), check
+  seek+duration, and prove actual rendered-camera motion, not only a moving ghost.
+  Retain both raw condumps before a later launch if a reader fails on the first;
+  valid native timing data can have narrower acceptance than the failed pipeline.
+  Never insert the end-trace wait before the FPS dump or hide/regrade the failure.
+
 ## P1356 required-input numeric spelling (6 Nov2026)
 
 - Recsim intentionally uses int(float(token)); fractional truncation is tested
