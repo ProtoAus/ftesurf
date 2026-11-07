@@ -1347,6 +1347,9 @@ void() SV_SpWake;
 void(entity e) SV_SpDrop;
 float(entity t, string in, string pm) SV_SpinInput;
 float(entity e, string lk) SV_SpinOutputKnown;
+//P1378: passable tracktrains, defined beside func_tracktrain below.
+float(entity t, string in, string pm) SV_TrkInput;
+float(entity to, float sf) SV_TrkPropSend;
 
 //Patch 256: logic_timer is defined near the other I/O endpoints at the bottom
 //of the file, but SV_IOEnable has to re-arm one and SV_ApplyInput has to
@@ -4604,6 +4607,9 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 			return;
 	if (SV_RotButtonInput(t, in, pm))
 		return;
+	if (t.trk_n)
+	if (SV_TrkInput(t, in, pm))
+		return;
 	if (SV_SpinInput(t, in, pm))
 		return;
 	if (t.classname == "info_particle_system")
@@ -4642,6 +4648,8 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 			SV_SkyAnim(t, pm);
 		else
 			t.vbsp_defanim = strcat(pm);
+		if (t.SendEntity == SV_TrkPropSend)
+			t.SendFlags = 1;            // P1378: csprogs draws this rider
 		return;
 	}
 	if (in == "enable")         { SV_IOEnable(t, TRUE);                 return; }
@@ -10648,7 +10656,142 @@ void() func_movelinear       =
 		SV_SpWake();
 	}
 };
-void() func_tracktrain       = { SV_SpawnPassableBrush(SF_TRACKTRAIN_PASSABLE); };
+/*
+  P1378: a passable func_tracktrain rides its path_tracks and the non-solid props parented to it ride
+  along -- in csprogs (cl_trk.qc), from a clock this sends once and again only when an input changes
+  it (sh_trk.qc has the census and what is not modelled). Nothing here moves an edict. A solid train
+  stays frozen. path_track has no other use here, so its edict still goes at spawn, as the catch-all
+  removed it (no renumbering), after its keys join the path table.
+*/
+.float  wheels;             // map key: facing look-ahead (trains.cpp m_length)
+.float  orientationtype;    // map key: 0 faces down the path once, else along it
+.float  startspeed;         // map key: max speed (m_maxSpeed)
+.float  vbsp_trk_cand;
+.entity vbsp_trkr_par;      // a rider's train
+.vector vbsp_trkr_lo, vbsp_trkr_la;     // its pose in the train's spawn frame
+float   vbsp_trk_n, vbsp_trkr_n;
+
+void() path_track =
+{
+	Trk_TableAdd(self.targetname, self.target, self.origin, self.spawnflags);
+	remove(self);
+};
+
+void() func_tracktrain =
+{
+	SV_SpawnPassableBrush(SF_TRACKTRAIN_PASSABLE);
+	if (wasfreed(self))
+		return;
+	if (self.solid == SOLID_NOT && self.target != "")
+		self.vbsp_trk_cand = TRUE;
+};
+
+float(entity to, float sf) SV_TrkSend =
+{
+	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
+	WriteByte(MSG_ENTITY, ENTWIRE_TRKSTATE);
+	WriteByte(MSG_ENTITY, sf & (TRK_SF_ID | TRK_SF_CLOCK));
+	if (sf & TRK_SF_ID)
+	{
+		WriteShort(MSG_ENTITY, self.modelindex);
+		WriteFloat(MSG_ENTITY, self.trk_o0_x);
+		WriteFloat(MSG_ENTITY, self.trk_o0_y);
+		WriteFloat(MSG_ENTITY, self.trk_o0_z);
+		WriteFloat(MSG_ENTITY, self.trk_a0_x);
+		WriteFloat(MSG_ENTITY, self.trk_a0_y);
+		WriteFloat(MSG_ENTITY, self.trk_a0_z);
+		WriteString(MSG_ENTITY, self.target);
+		WriteFloat(MSG_ENTITY, self.trk_height);
+		WriteFloat(MSG_ENTITY, self.trk_wheels);
+		WriteByte(MSG_ENTITY, self.trk_orient);
+		WriteFloat(MSG_ENTITY, self.trk_sflags);
+	}
+	if (sf & TRK_SF_CLOCK)
+	{
+		WriteFloat(MSG_ENTITY, self.trk_s0);
+		WriteFloat(MSG_ENTITY, self.trk_t0);
+		WriteFloat(MSG_ENTITY, self.trk_spd);
+		WriteChar(MSG_ENTITY, self.trk_dir);
+	}
+	return TRUE;
+};
+
+float(entity to, float sf) SV_TrkPropSend =
+{
+	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
+	WriteByte(MSG_ENTITY, ENTWIRE_TRKPROP);
+	WriteByte(MSG_ENTITY, 1);
+	WriteEntity(MSG_ENTITY, self.vbsp_trkr_par);
+	WriteFloat(MSG_ENTITY, self.vbsp_trkr_lo_x);
+	WriteFloat(MSG_ENTITY, self.vbsp_trkr_lo_y);
+	WriteFloat(MSG_ENTITY, self.vbsp_trkr_lo_z);
+	WriteFloat(MSG_ENTITY, self.vbsp_trkr_la_x);
+	WriteFloat(MSG_ENTITY, self.vbsp_trkr_la_y);
+	WriteFloat(MSG_ENTITY, self.vbsp_trkr_la_z);
+	WriteShort(MSG_ENTITY, self.modelindex);
+	WriteByte(MSG_ENTITY, self.skin);
+	WriteFloat(MSG_ENTITY, self.scale);
+	WriteShort(MSG_ENTITY, self.frame);
+	WriteFloat(MSG_ENTITY, self.alpha);
+	WriteFloat(MSG_ENTITY, self.effects);
+	WriteFloat(MSG_ENTITY, self.colormod_x);
+	WriteFloat(MSG_ENTITY, self.colormod_y);
+	WriteFloat(MSG_ENTITY, self.colormod_z);
+	return TRUE;
+};
+
+float(entity t, string in, string pm) SV_TrkInput =
+{
+	local float v, i;
+
+	if (t.SendEntity != SV_TrkSend)
+		return FALSE;
+	// trains.cpp:1330-1560. SetSpeed is immediate here (velocitytype's accel is not modelled).
+	t.trk_s0 = Trk_S(t, time);
+	t.trk_t0 = time;
+	if (in == "startforward" || in == "startbackward")
+	{
+		t.trk_dir = (in == "startforward") ? 1 : -1;
+		t.trk_spd = t.trk_max;
+	}
+	else if (in == "stop")
+	{
+		t.trk_old = t.trk_spd;
+		t.trk_spd = 0;
+	}
+	else if (in == "resume")
+		t.trk_spd = t.trk_old;
+	else if (in == "toggle")
+		t.trk_spd = t.trk_spd ? 0 : t.trk_max;
+	else if (in == "reverse")
+		t.trk_dir = 0 - t.trk_dir;
+	else if (in == "setspeed")
+		t.trk_spd = bound(0, stof(pm), 1) * t.trk_max;
+	else if (in == "setspeedreal")
+		t.trk_spd = bound(0, stof(pm), t.trk_max);
+	else if (in == "setspeeddir" || in == "setspeeddiraccel")
+	{
+		v = stof(pm);
+		t.trk_dir = (v >= 0) ? 1 : -1;
+		t.trk_spd = bound(0, fabs(v), 1) * t.trk_max;
+	}
+	else if (in == "teleporttopathtrack")
+	{
+		v = Trk_Find(pm);
+		for (i = 0; i < t.trk_n; i = i + 1)
+			if (trk_r[t.trk_i0 + i] == v)
+			{
+				t.trk_s0 = trk_s[t.trk_i0 + i];
+				break;
+			}
+	}
+	else
+		return FALSE;
+	t.SendFlags = t.SendFlags | TRK_SF_CLOCK;
+	if (SV_DevOn())
+		dprint(sprintf("trk %s: %s, %g u/s from %g\n", t.targetname, in, t.trk_spd * t.trk_dir, t.trk_s0));
+	return TRUE;
+};
 void() func_tanktrain        = { SV_SpawnPassableBrush(SF_TRACKTRAIN_PASSABLE); };
 void() func_train            = { SV_SpawnPassableBrush(SF_TRACKTRAIN_PASSABLE); };
 void() button_target         = { func_wall(); };
@@ -11345,6 +11488,81 @@ void() SV_SpResolve =
 		}
 	}
 	dprint(sprintf("spin: %g turn, %g slide, %g follow\n", nturn, nslide, nfollow));
+};
+
+// First frame after the lump (sv_main.qc), before the I/O build fires OnMapSpawn.
+void() SV_TrkResolve =
+{
+	local entity e, p;
+	local string pn;
+	local float c;
+	local vector d, pf, pl, pu;
+
+	vbsp_trk_n = vbsp_trkr_n = 0;
+	if (!trk_pn)
+		return;
+	Trk_TableLink();
+	for (e = findfloat(world, vbsp_trk_cand, TRUE); e; e = findfloat(e, vbsp_trk_cand, TRUE))
+	{
+		if (!Trk_Walk(e, e.target))
+			continue;					// no path_track at its target: frozen, as before
+		vbsp_trk_n = vbsp_trk_n + 1;
+		// Spawn (trains.cpp:2646): max speed, else the speed, else 100. Find puts it on its first
+		// path_track at once; Next moves it while the speed is not 0.
+		e.trk_max = fabs(e.startspeed);
+		if (!e.trk_max)
+			e.trk_max = fabs(e.speed) ? fabs(e.speed) : 100;
+		e.trk_spd = fabs(e.speed);
+		e.trk_dir = (e.speed < 0) ? -1 : 1;
+		e.trk_s0 = 0;
+		e.trk_t0 = time;
+		e.trk_height = e.height;
+		e.trk_wheels = e.wheels;
+		e.trk_orient = e.orientationtype;
+		e.trk_sflags = e.spawnflags;
+		e.trk_o0 = e.origin;
+		e.trk_a0 = e.angles;
+		e.trk_alast = e.angles;
+		e.SendEntity = SV_TrkSend;
+		e.SendFlags = TRK_SF_ID | TRK_SF_CLOCK;
+		e.pvsflags = (e.pvsflags & 252) | PVSF_IGNOREPVS;   // csprogs moves it: send it wherever it is
+		if (cvar("developer"))     // not SV_DevOn: lobbies would log every train at each map
+			print(sprintf("trk %s (%s): rides %g path_tracks, %g units%s, at %g u/s\n", e.model, e.targetname,
+				e.trk_n, e.trk_len, (e.trk_k >= 0) ? " round" : "", e.trk_spd * e.trk_dir));
+	}
+	if (!vbsp_trk_n)
+		return;
+	// Riders: non-solid props whose parent (the first entity of that name, as SetParent finds it) is a
+	// riding train, placed in its spawn frame as SV_SpResolve places a follower.
+	for (e = nextent(world); e; e = nextent(e))
+	{
+		if (e.parentname == "" || e.solid != SOLID_NOT || e.model == "" || substring(e.classname, 0, 5) != "prop_")
+			continue;
+		pn = e.parentname;
+		c = strstrofs(pn, ",", 0);
+		if (c >= 0)
+			pn = substring(pn, 0, c);	// "name,attachment"
+		p = SV_FindByName(pn, world);
+		if (!p.trk_n || p.SendEntity != SV_TrkSend)
+			continue;
+		Trk_Basis(p.trk_a0);
+		pf = trk_bf;
+		pl = trk_bl;
+		pu = trk_bu;
+		d = e.origin - p.trk_o0;
+		e.vbsp_trkr_lo = [d * pf, d * pl, d * pu];
+		Trk_Basis(e.angles);
+		e.vbsp_trkr_la = Trk_Angles([trk_bf * pf, trk_bf * pl, trk_bf * pu],
+		                             [trk_bl * pf, trk_bl * pl, trk_bl * pu],
+		                             [trk_bu * pf, trk_bu * pl, trk_bu * pu]);
+		e.vbsp_trkr_par = p;
+		e.SendEntity = SV_TrkPropSend;
+		e.SendFlags = 1;
+		e.pvsflags = (e.pvsflags & 252) | PVSF_IGNOREPVS;
+		vbsp_trkr_n = vbsp_trkr_n + 1;
+	}
+	print(sprintf("trk: %g passable tracktrains ride their path_tracks in csprogs, %g props with them\n",
+	              vbsp_trk_n, vbsp_trkr_n));
 };
 
 // Back where it spawned and out of the driver: it went solid, so its collision is

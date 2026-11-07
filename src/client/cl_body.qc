@@ -331,6 +331,8 @@ void() CSQC_Ent_Remove =
 		Trig_NetState(self.pb_trigmodel, 0, 0);
 	if (self.em_npeff)
 		strunzone(self.em_npeff);           // Patch 1028; the emitters go with the map
+	if (self.trkc_tgt)
+		strunzone(self.trkc_tgt);           // P1378
 	if (self.pb_head)
 		Body_Free(self);
 	remove(self);
@@ -693,6 +695,10 @@ void(float isnew) CSQC_Ent_Update =
 			self.las_neton = readbyte();
 			Laser_Net(self);
 		}
+		else if (f == ENTWIRE_TRKSTATE)
+			Trk_NetTrain(self);
+		else if (f == ENTWIRE_TRKPROP)
+			Trk_NetProp(self);
 		else if (f == ENTWIRE_PORTALSTATE)
 		{
 			self.pb_portalwire = TRUE;

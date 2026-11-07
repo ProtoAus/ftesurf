@@ -2,6 +2,7 @@
 
 defs/cl_defs.qc
 shared/sh_defs.qc
+shared/sh_trk.qc            // P1378: tracktrain paths, shared with sv_entities.qc
 shared/sh_vsvel.qc          // P1205: VScript velocity grammar, shared with sv_entities.qc
 shared/sh_time.qc
 shared/sh_chatcmd.qc        // P1295: chat warp commands as typed
@@ -217,6 +218,7 @@ client/cl_paint.qc
 // before cl_players.qc, cl_scores.qc and cl_main.qc, which call Body_*.
 // Embedded material must precede Body_Predraw's viewer-local proximity fade.
 client/cl_playerfade.qc
+client/cl_trk.qc              // P1378: before cl_body.qc, whose CSQC_Ent_Update reads its wire
 client/cl_body.qc
 client/cl_playerlabels.qc
 client/cl_players.qc
