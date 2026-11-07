@@ -750,17 +750,26 @@
   kept); surf_fast_css has its main track only. Both are on the zoning worklist's
   attached list.
 
+## P1378 tracktrains: what is not modelled (8 Nov 2026)
+
+- Per-path_track `speed` (32 passable trains on 8 maps keep the train's own speed), path_track OnPass/
+  OnTeleport and the train's own outputs, `bank`, velocitytype accel (src/shared/sh_trk.qc header).
+  Falsifier: bhop_collective / surf_christmas2 trains change speed at the node that says so.
+- surf_colony's sky canisters loop by OnPass TeleportToPathTrack + OnTeleport StartForward and are
+  solid 6, so they stay frozen (Patch 860 never moves collision).
+- A train with anything drawn under it that cannot ride (kz_bhop_yonkoma: a trigger_teleport, a
+  minecart's func_rotating wheels) stays frozen whole. Falsifier for a fix: the wheels turn on the
+  moving cart and the trigger moves with its train (a gameplay change: review it as one).
+- Riders keep the look they were sent; only an input resends it (no generic field-change hook).
+- Any parented child that is not a non-solid prop keeps its train frozen, including harmless ones
+  (info_target, ambient_generic; review 3). A narrower list would move more trains.
+
 ## Noclip follow-up after owner-confirmed P1156 (investigation; not fixed)
 
 - Slow flight: native `cl_pred.c:CL_SourcePracticeContext` admits only PM_NORMAL,
   so noclip never receives the slow-camera history fix. Falsifier: actual own
   noclip below1 must render smoothly while normal walk/duck remains unchanged;
   do not apply `view.c:V_SourcePracticeEye` roof clipping to collision-free flight.
-- Lobby wheel: `src/client/cl_main.qc:Noclip_Wheel` writes server-owned
-  `pm_noclipspeed`; the private/listen server shares it, a remote lobby does not.
-  Falsifier: one lobby player's Shift+wheel changes that player's authoritative
-  and predicted noclip speed, not a global server cvar or another player's speed;
-  walking inputs/physics and run/evidence semantics must remain unchanged.
 - Above-cap HUD at timescale<1: owner reports speedometer/energy flicker above3500
   on a map capped3500. Asked whether noclip-only or ordinary air/surf too. Source
   `PMSrc_CheckVelocity` correctly clamps EACH axis; legal diagonal speed exceeds

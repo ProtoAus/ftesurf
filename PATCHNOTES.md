@@ -21,6 +21,19 @@
 
 ## next
 
+### P1383 Noclip speed on the lobbies
+- Shift + mouse wheel while noclipping now changes your flying speed on the lobbies too, not only in a private game. It changes only your own speed.
+
+### P1382 Missing textures: what is not found, and a report
+- When a map shows missing (pink and black) textures because a game it takes them from was not found on your PC, the message now names that game (for example Counter-Strike Source or Half-Life 2) instead of saying the map is broken. If it is installed on another drive, type fs_steamlibs in the console.
+- Once a map, the game tells the lobby which textures were missing and which games were not found, so missing content can be fixed without asking you. No file paths are sent; cl_matreport 0 turns it off.
+
+### P1380 Pixel-art map textures
+- Pixel-art signs no longer show slivers of their neighbours at the edges, and stay even rather than jagged when seen from further away (surf_centipedes' title).
+
+### P1378 Things that fly along a track now move
+- Things a map sends flying along a track, like surf_centipedes' swarms in the 3D sky, now move. Your game moves them itself, so they cost the lobby nothing.
+
 ### P1381 Personal bests survive a mode change
 - When a map moves between surf and bhop, your local best and your lobby times on it are compared by time, not by tick count, so a slower run no longer counts as a new best (or a faster one as not).
 - Zone editor: clicking the mode that is already selected keeps your custom air acceleration, and a tier you did not change is not sent again.

@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P1378 sky swarms, P1380 pixel sign, P1382 missing-texture names, P1383 lobby noclip speed -- reviewed 8 Nov (4 rounds); delivery in tools/p1378-p1383.md; owner check pending
+
+- surf_centipedes: look up at the sky from the stages. The skull swarms fly along their loops (one lap is about
+  three minutes). Your game moves them itself; the lobby sends nothing for it.
+- surf_centipedes spawn: the "surf_centipedes" title has no slivers of other letters at its ends and its strokes
+  look even (needs the new engine: both dev installs; the Desktop copy at the next release).
+- Missing textures (new engine): a map that needs a game you do not have mounted names it under the banner
+  ("not found on this PC: ...  console: fs_steamlibs") instead of saying the map is broken. Markbeaton54 can run
+  `fs_steamlibs` and `fs_steamlibs add <his SteamLibrary folder>`. Reports from players land on the Pi in
+  game/ftesurf/data/matreport/ (one line per player per map).
+- Lobby noclip: noclip on any lobby, hold Shift and roll the wheel: the console says the new speed and you
+  actually fly faster/slower; other players' speed is untouched.
+
 ## P1381 personal bests across a mode change, zone_edit quirks -- LIVE (12 lobbies + both installs, 7 Nov ~14:45Z); owner check pending
 
 - Nothing to see unless a map you have times on changes mode. Then the console says once that best.pb

@@ -1,5 +1,19 @@
 # AGENT_NOTES.md
 
+## P1378-P1383 tracktrains in csprogs, VTF clamp/mips, missing-game names + reports, lobby noclip speed (8 Nov 2026; ftesurf-b8, root lexbugs-20261108-b8)
+
+- Decorative motion belongs in csprogs (owner, 8 Nov): a server-written mover set always-sent in a 3D sky cost
+  9-12 KB/s a client (QW deltas resend until acked, so halving the writes did not halve the bytes); P1378 sends
+  a clock once (sh_trk.qc). Patch 860's rotators/sliders/followers are still server-written (a follow-up).
+- Rig traps met: a server rig without cfg/default.cfg runs QW physics (noclip = spectator flight at
+  sv_spectatormaxspeed): exec the game's default.cfg before measuring movement. A headless client
+  (vid_renderer headless) never runs CSQC_UpdateView, so nothing hooked there acts. A client on an isolated
+  -homedir reads fs_addons.txt from the homedir: copy one in or no Steam game mounts. Serve the csprogs to the
+  client locally (homedir) or it crawls over UDP.
+- fteqcc: `local float *a, *b;` makes b a float**: one pointer per line.
+- The Pi engine is p1383-arm (p1371-arm + P1383), not main; next Pi build bases on p1383-arm.
+- Delivery (Pi swap, lobby QC, installs, hashes): tools/p1378-p1383.md.
+
 ## P1379 boardarchive.py (8 Nov 2026; ftesurf-3a)
 
 - After a map's mode changes, its old WOS times are archived by hand on the Pi:
