@@ -21,6 +21,9 @@
 
 ## next
 
+### P1357 Lower client collision-query overhead
+- Reduce CPU overhead from light-visibility queries, particularly on Tensor2, without changing light visibility, ray budgets or rendering quality.
+
 ### P1355 Experimental local section search
 - Select earlier inputs and a later observed ramp face to try nine bounded turn/crouch candidates against its arrival region, then preview the complete retained future. Results are best found, not a global fastest route.
 - Progress and Cancel stay tied to your own source and search. Keep waits for complete replay; Discard restores the original full line, settings and future without inventing input credit.
