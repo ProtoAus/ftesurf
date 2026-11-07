@@ -10156,6 +10156,15 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+- **P1366 live capability reader (7 Nov).** The ordinary QW UDP `status` response
+  was1029bytes including its envelope and omitted fs_tickparts/fs_sourcephase/
+  fs_savelead AND client checksum keys. That omission did not mean the running
+  progs lacked them: full `serverinfo` through the existing bounded loopback rcon
+  client returned2529bytes and all keys. Check the real information surface,
+  not a truncated packet. All12lobbies then advertised fs_savelead1 plus the
+  exact installed client folded-MD4/size. Reuse surfd/rcon.py, read credentials
+  inside the remote script, never print them, and preserve the per-port budget.
+
 - **P1309 occupied-mid-rollout completion (5 Nov).** A positive-empty start can
   become11restarted/1occupied-skip. Preserve that original failed transaction;
   do not rerun activation or restart healthy units to get a green receipt.

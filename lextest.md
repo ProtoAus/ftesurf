@@ -1,8 +1,8 @@
 # lextest.md — things waiting on a human
 
-## P1366 comparison bars and save travel -- pending owner acceptance
+## P1366 comparison bars and save travel -- BOTH Windows/12lobbies installed7Nov; owner check pending
 
-Delivery is recorded in tools/p1366-compare-save.md, not assumed here. With a displayed
+Installed and live/hash-verified09:52UTC; tools/p1366-compare-save.md. With a displayed
 reference and hud_compare1, check the same-elapsed and closest-point bars are readable.
 Then tap and hold-load one familiar save with its local saved path: does travel end at
 the correct point/stance and hand control back smoothly? cl_sl_leadin controls0..2seconds;

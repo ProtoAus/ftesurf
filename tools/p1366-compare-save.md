@@ -53,5 +53,22 @@ for one ordinary held save and graph readability is pending in lextest.md.
 
 ## Delivery
 
-Pending clean-commit build, inspected-SHA publication, dual Windows promotion and
-Pi progs rollout with destination/live hash and UTC proof. No release is requested.
+Installed and live-verified7Nov2026 09:52:30UTC. Source3414778fcddf9c24961c01676037a83bed1a319e;
+engine documentationaea48d6b481746fd93e2d6035d3dfe875afcda9a. Both inspected SHAs
+pushed to main. Clean commit built all3VMs/0warnings; production-entry rebuild was
+byte-identical to the frozen artifacts. No native binaries were changed.
+
+Both Windows installs have all6matching DAT/LNO hashes; protected owner cfg/native
+bytes are unchanged. Pi used build.ps1 -Pi with the default10second warning, no force,
+and all12restarts succeeded. Destination SHA256:
+
+- qwprogs.dat:1eb112596714dd57ad3d5a7ece319e318229de91e431f224833700ec30efef93
+- csprogs.dat:11b419936cb5255c8a86f599c576e26123e0281c3b03d8a9bf06e3292633db57
+
+All12active services reappear in the directory. Full live serverinfo on EVERY lobby
+advertises fs_savelead1 and the exact client folded-MD4 0x14cd41a1 / size0x720cd6.
+The ordinary QW status packet truncates these trailing keys; its omission is not a
+runtime absence, so the final proof used the existing bounded loopback rcon client.
+The previous Pi pair is preserved as .prev and matches the preflight hashes. No
+backend generation swap or release was needed. Human visual/feel acceptance remains
+pending; the excluded historical recorder/cursor/clock work is NOT deployed.
