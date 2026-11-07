@@ -66,8 +66,31 @@
 
 ## surf_centipedes after P1398 (8 Nov)
 
-- Stage 1's start runs 465-576 fps at r_modellight_moverate 1 against 655-770 with r_drawentities 0
-  (main view, not the sky). Profile it: artifacts/run_prof_centi.py in the lows2 root.
+- Stage 1 (8 Nov, after P1398 follow-up): 440-576 fps; profiled, no bug. Main-thread samples: driver 27%,
+  CSQC 11% (QC UpdateView/HUD 0.50 ms), VBSP_RecursiveWorldNode 8%, Surf_RenderDynamicLightmaps 6%; 3D sky
+  0.74 ms (0.35 world walk + ~0.4 the swarms). r_viewstats' 3D-sky "draw calls" (2,478) count the runs inside
+  glMultiDrawElements (toolsskybox: one batch of 3,761 faces), not API calls.
+
+## Frame pacing under an fps cap (8 Nov, Lex: "at 100 fps the 0.1% lows were ~80")
+
+- bhop_ceaseless save 35, cl_maxfps 100, Lex's settings, 12 s each (artifacts/run_pacing.py): the pacer's waits
+  hit their targets (sys_framepacing_stats actual - requested 0 us at mode 2); present-to-present (`frametimes`)
+  p50 9.98 / p99 10.9-11.2 / p99.9 11.4-12.9 ms. The spread is render-time variance: frames START on the grid
+  and present when done (no vsync), so a frame with a capture redraw (r_capturerate 60) presents ~1-2 ms late;
+  r_capturerate 0 (uniform work) p99 10.64. Mode 0 p99.9 13.9; mode 4 (swap held to the grid) p99 10.42 but a
+  frame that misses its slot waits a whole one: p99.9 19.7 ms.
+- Every mode also shows a rare swap stall: frametimes max 26-30 ms about once per 12 s while r_frametime
+  (sampled before the swap) never exceeds ~13 ms -- the time is inside the buffer swap (windowed, unfocused
+  rig window: DWM?). Not measured in exclusive fullscreen.
+- Candidate: a predictive frame start -- start each frame at slot - (recent p95 render time + margin) and hold
+  the swap to the slot: mode 4's flat cadence without its extra frame of latency or whole-slot misses.
+
+## 0.1%-low survey (8 Nov, started)
+
+- artifacts/run_lowsurvey.py: each map's best board replay from a fresh map load, Lex's settings, 35 s
+  (survey-all.txt: 60 maps -- 40 with replays in Lex's board cache, 20 heavy candidates from /api/board).
+  So far: surf_tensor2 462 avg / 264 1% / 196 0.1%, surf_garden 568 / 320 / 201. Heavy maps with no replay
+  (eternity, vestige, voyager, lost_world_v2, affliction, waterworks...) need a scripted route instead.
 
 ## The window's multisampled pixel format duplicates P1260's scene target (8 Nov)
 
