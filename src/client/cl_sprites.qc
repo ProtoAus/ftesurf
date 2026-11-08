@@ -526,6 +526,8 @@ float  xp_live;                           // P1435: cl_explode.qc's live particl
 void() Explode_LoadForMap;               // cl_explode.qc
 float(vector eye, vector fwd) Explode_Draw;
 void(entity e) Explode_FxNet;
+float  vbsp_fish_seen;                    // P1436: func_fish_pool in the lump
+void() Fish_LoadForMap;                  // cl_fish.qc
 .float fx_ncls, fx_ntnc, fx_non, fx_nfire;  // P1430: ENTWIRE_FXSTATE as cl_body.qc reads it
 // P1431: env_sprite and the spotlights a map switches.  Kept in the tables, hidden, and matched to the
 // server's state (ENTWIRE_FXSTATE2) on class, origin and name crc.  A template's member is drawn from the lump
@@ -1640,6 +1642,7 @@ void() Sprite_LoadForMap =
 	vbsp_ebm_seen = 0;
 	vbsp_fx_seen = 0;
 	vbsp_xp_seen = 0;
+	vbsp_fish_seen = 0;
 	opened = FALSE;
 
 	/*
@@ -1866,6 +1869,8 @@ void() Sprite_LoadForMap =
 			vbsp_fx_seen = vbsp_fx_seen + 1;
 		else if (cn == "env_explosion")
 			vbsp_xp_seen = vbsp_xp_seen + 1;
+		else if (cn == "func_fish_pool")
+			vbsp_fish_seen = vbsp_fish_seen + 1;
 	}
 
 	beam_spot_n = beam_n;
@@ -1880,6 +1885,7 @@ void() Sprite_LoadForMap =
 	Laser_LoadForMap(spr_want_las);
 	Fx_LoadForMap(spr_want_las);           // P1430: under vbsp_lasers too
 	Explode_LoadForMap();                  // P1435: vbsp_explosions is read when one goes off
+	Fish_LoadForMap();                     // P1436: under vbsp_fish
 	for (net = find(world, classname, "fx_net"); net; net = find(net, classname, "fx_net"))
 		if (net.fx_ncls == FX_CLS_SPRITE || net.fx_ncls == FX_CLS_SPOT)
 			Sprite_FxNet(net);         // P1431: states that arrived before this load
