@@ -322,7 +322,7 @@ void() Share_Frame =
 {
 	local entity p, e;
 
-	p = find(world, classname, "player");
+	p = SV_PlNext(world);
 	while (p)
 	{
 		if (p.sh_from)
@@ -334,7 +334,7 @@ void() Share_Frame =
 			if (e != world)
 				sprint(e, PRINT_HIGH, sprintf("^7share: %s did not answer\n", p.netname));
 		}
-		p = find(p, classname, "player");
+		p = SV_PlNext(p);
 	}
 };
 

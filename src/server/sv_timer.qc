@@ -6712,7 +6712,7 @@ void() SV_HeldFrame =
 	local entity e;
 
 	e = world;
-	while ((e = find(e, classname, "player")))
+	while ((e = SV_PlNext(e)))
 		SV_HeldPump(e);
 };
 

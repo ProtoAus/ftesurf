@@ -515,17 +515,17 @@ void() Pose_Frame =
 	if (!lobby_on || !lobby_avatars)
 		return;
 
-	p = find(world, classname, "player");
+	p = SV_PlNext(world);
 	while (p)
 	{
 		p.pb_specn = 0;
 		if (p.pb_dwatch)
 		if (p.pb_dwatch.classname != "player" || !p.pb_dwatch.lobby_av)
 			p.pb_dwatch = world;
-		p = find(p, classname, "player");
+		p = SV_PlNext(p);
 	}
 	spec = 0;
-	p = find(world, classname, "player");
+	p = SV_PlNext(world);
 	while (p)
 	{
 		w = p.pb_watch;
@@ -549,7 +549,7 @@ void() Pose_Frame =
 				w.lobby_av.SendFlags = w.lobby_av.SendFlags | PB_STATE;
 			}
 		}
-		p = find(p, classname, "player");
+		p = SV_PlNext(p);
 	}
 
 	n = 0;
@@ -600,25 +600,25 @@ void() Pose_SpecBy =
 		return;
 	pb_specby_next = time + 0.25;
 
-	p = find(world, classname, "player");
+	p = SV_PlNext(world);
 	while (p)
 	{
 		s = "";
 		if (lobby_on && lobby_avatars && p.pb_specn > 0)
 		{
-			w = find(world, classname, "player");
+			w = SV_PlNext(world);
 			while (w)
 			{
 				if (w.pb_watch == p && w != p)
 				if (clienttype(w) == CLIENTTYPE_REAL || clienttype(w) == CLIENTTYPE_BOT)
 					s = (s == "") ? ftos(num_for_edict(w)) : strcat(s, " ", ftos(num_for_edict(w)));
-				w = find(w, classname, "player");
+				w = SV_PlNext(w);
 			}
 		}
 		if (clienttype(p) == CLIENTTYPE_REAL || clienttype(p) == CLIENTTYPE_BOT)
 		if (strcmp(s, infokey(p, "*specby")))
 			forceinfokey(p, "*specby", s);
-		p = find(p, classname, "player");
+		p = SV_PlNext(p);
 	}
 };
 

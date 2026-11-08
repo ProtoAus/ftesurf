@@ -203,7 +203,7 @@ void(entity e, string command, float count) VM_SVCommand =
 void() VM_SVFrame =
 {
 	local entity e, source;
-	e = find(world, classname, "player");
+	e = SV_PlNext(world);
 	while (e)
 	{
 		if (e.vm_publishdirty && time >= e.vm_publishnext)
@@ -227,7 +227,7 @@ void() VM_SVFrame =
 		}
 		if (e.vm_ready && e.vm_dirty && !e.vm_waitack && !e.vm_req && time >= e.vm_quiet)
 			VM_SVSave(e);
-		e = find(e, classname, "player");
+		e = SV_PlNext(e);
 	}
 };
 

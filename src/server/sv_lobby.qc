@@ -636,12 +636,12 @@ float(entity p, float idx) Lobby_ColourTaken =
 {
 	local entity o;
 
-	o = find(world, classname, "player");
+	o = SV_PlNext(world);
 	while (o)
 	{
 		if (o != p && o.lobby_colour == idx)
 			return TRUE;
-		o = find(o, classname, "player");
+		o = SV_PlNext(o);
 	}
 	return FALSE;
 };
@@ -1531,7 +1531,7 @@ void() Lobby_Frame =
 	// Dimensions are cheap and must track the cvar live -- see the essay on
 	// Lobby_ApplyDimensions.  Done for every player whether or not the lobby
 	// is on, because turning the lobby OFF has to put them back.
-	p = find(world, classname, "player");
+	p = SV_PlNext(world);
 	while (p)
 	{
 		Lobby_ApplyDimensions(p);
@@ -1554,7 +1554,7 @@ void() Lobby_Frame =
 		if (time >= p.lobby_ann_due)
 			Lobby_AnnJoin(p);               // Patch 371: after the colour pass published tc
 
-		p = find(p, classname, "player");
+		p = SV_PlNext(p);
 	}
 
 	if (lobby_on != lobby_was_on)
@@ -1605,7 +1605,7 @@ void() Lobby_Frame =
 		lobby_colcheck = time + ((time < lobby_colfast) ? 0.25 : 1);
 
 		nfx = 0;
-		p = find(world, classname, "player");
+		p = SV_PlNext(world);
 		while (p)
 		{
 			// A departed client's edict keeps classname "player". In its 2 s zombie window a
@@ -1614,7 +1614,7 @@ void() Lobby_Frame =
 			t = clienttype(p);
 			if (t != CLIENTTYPE_REAL && t != CLIENTTYPE_BOT)
 			{
-				p = find(p, classname, "player");
+				p = SV_PlNext(p);
 				continue;
 			}
 			p.lobby_colour = Lobby_ColourFor(p);
@@ -1796,7 +1796,7 @@ void() Lobby_Frame =
 				Lobby_ApplyFX(p.lobby_av, p);
 				Pose_Look(p.lobby_av, p);
 			}
-			p = find(p, classname, "player");
+			p = SV_PlNext(p);
 		}
 	}
 
@@ -2159,13 +2159,13 @@ float() Lobby_PlayerCount =
 	local float n, t;
 
 	n = 0;
-	p = find(world, classname, "player");
+	p = SV_PlNext(world);
 	while (p)
 	{
 		t = clienttype(p);
 		if (t == CLIENTTYPE_REAL || t == CLIENTTYPE_BOT)
 			n = n + 1;
-		p = find(p, classname, "player");
+		p = SV_PlNext(p);
 	}
 	return n;
 };
@@ -2340,7 +2340,7 @@ void() Lobby_Heartbeat =
 		  heartbeat logs only on a change: every frame would be 66 lines a
 		  second of the same sentence.
 		*/
-		pl = find(world, classname, "player");
+		pl = SV_PlNext(world);
 		if (!pl)
 		{
 			if (!lobby_run_waiting)

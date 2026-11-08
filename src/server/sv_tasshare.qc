@@ -341,7 +341,7 @@ void() SV_TASShareFrame =
 {
 	local entity e;
 	local string name, sha;
-	for (e = world; (e = find(e, classname, "player")); )
+	for (e = world; (e = SV_PlNext(e)); )
 	{
 		if (!strcmp(e.tsh_loadname,"")) continue;
 		if (!e.run_inserver) { SV_TASShareCancel(e); continue; }

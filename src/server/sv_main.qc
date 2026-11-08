@@ -162,6 +162,7 @@ void() EndFrame =
 
 void() StartFrame =
 {
+	sv_plok = FALSE;                // P1406: no stale chain while the lump work below runs
 	SV_ClockServerFrame();          // Patch 840: the server's own frame gap
 	SV_PeFrame();                   // P1238: server frame stalls for prederror reports
 	SV_NoColRestore();              // P1193: entity physics sees the barrier solid
@@ -207,7 +208,9 @@ void() StartFrame =
 		  instead.  See the essay in sv_zones.qc.
 		*/
 		zone_entsready = TRUE;
+		SV_PlStrayScan();            // P1406: after SV_LateSpawnAll
 	}
+	SV_PlChainBuild();              // P1406: after SV_LateSpawnAll, the last spawner of a "player"
 	if (vbsp_sp_nextt)
 	if (time >= vbsp_sp_nextt)
 		SV_SpFrame();               // Patch 860: decorative movers, no edict of their own
@@ -265,6 +268,7 @@ void() StartFrame =
 	*/
 	Lobby_Cycle();
 	Vote_Frame();                   // Patch 372: reads the deadline just set; publishes last
+	sv_plok = FALSE;
 };
 
 /*

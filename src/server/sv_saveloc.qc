@@ -6043,7 +6043,7 @@ void() SV_SaveLocFrame =
 	SV_SaveLocAlloc();
 	first = next = world;
 	p = world;
-	while ((p = find(p, classname, "player")))
+	while ((p = SV_PlNext(p)))
 	{
 		if (!p.rec_sl_delall)
 			continue;

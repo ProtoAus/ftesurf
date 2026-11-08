@@ -68,13 +68,13 @@ float(entity skip) Vote_LiveBut =
 	local float n;
 
 	n = 0;
-	p = find(world, classname, "player");
+	p = SV_PlNext(world);
 	while (p)
 	{
 		if (p != skip)
 		if (Vote_IsLive(p))
 			n = n + 1;
-		p = find(p, classname, "player");
+		p = SV_PlNext(p);
 	}
 	return n;
 };
@@ -85,12 +85,12 @@ float() Vote_Live =
 	local float n;
 
 	n = 0;
-	p = find(world, classname, "player");
+	p = SV_PlNext(world);
 	while (p)
 	{
 		if (Vote_IsLive(p))
 			n = n + 1;
-		p = find(p, classname, "player");
+		p = SV_PlNext(p);
 	}
 	return n;
 };
@@ -252,7 +252,7 @@ float() Vote_Tally =
 	for (i = 0; i < VOTE_MAX; i = i + 1)
 		vote_cnt[i] = 0;
 	v = 0;
-	p = find(world, classname, "player");
+	p = SV_PlNext(world);
 	while (p)
 	{
 		if (Vote_IsLive(p))
@@ -263,7 +263,7 @@ float() Vote_Tally =
 			vote_cnt[p.vote_pick - 1] = vote_cnt[p.vote_pick - 1] + 1;
 			v = v + 1;
 		}
-		p = find(p, classname, "player");
+		p = SV_PlNext(p);
 	}
 	return v;
 };
@@ -284,11 +284,11 @@ void() Vote_RtvClear =
 	local entity p;
 
 	vote_rtvgo = FALSE;
-	p = find(world, classname, "player");
+	p = SV_PlNext(world);
 	while (p)
 	{
 		p.vote_rtv = FALSE;
-		p = find(p, classname, "player");
+		p = SV_PlNext(p);
 	}
 };
 
@@ -298,13 +298,13 @@ float() Vote_RtvCount =
 	local float n;
 
 	n = 0;
-	p = find(world, classname, "player");
+	p = SV_PlNext(world);
 	while (p)
 	{
 		if (Vote_IsLive(p))
 		if (p.vote_rtv)
 			n = n + 1;
-		p = find(p, classname, "player");
+		p = SV_PlNext(p);
 	}
 	return n;
 };
@@ -579,7 +579,7 @@ void() Vote_Publish =
 		forceinfokey(world, "vote", sprintf("%g %g %.1f %g", vote_id, lobby_vt_kind, vote_end, vote_n));
 
 	// Each player's own pick, so their panel shows what the server holds.
-	p = find(world, classname, "player");
+	p = SV_PlNext(world);
 	while (p)
 	{
 		v = 0;
@@ -592,7 +592,7 @@ void() Vote_Publish =
 			p.vote_pkpub = v;
 			forceinfokey(p, "*vpick", v ? sprintf("%g %g", p.vote_pickid, p.vote_pick) : "");
 		}
-		p = find(p, classname, "player");
+		p = SV_PlNext(p);
 	}
 };
 
