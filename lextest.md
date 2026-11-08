@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1413 frame pacing under a cap -- installed in both installs (engine patch-1413, 8 Nov); owner check pending
+
+- With a cap (`cl_maxfps 100`) and `r_frametime 1`: the graph should be near flat and the 1% figure close to 100
+  (bhop_ceaseless measured 1% low 85-92 against 70-84 before). The graph now times frames as they reach the screen.
+- `sys_framepacing_stats` says "mode 5 pacing"; `sys_framepacing 1` is the old pacing to compare. Say if input
+  feels later at your cap: `sys_framepacing_quantile 90` starts frames later (less input lag, a few more late
+  frames).
+- Your usual cl_maxfps 0: nothing changes. The Desktop copy gets it with the next release.
+
 ## P1401 site navigation -- LIVE (public pages + backend, 8 Nov); owner visual check pending
 
 - On https://proto.bar/worldofsurf/board/: Zoning and Log in are present (HTTP checked).

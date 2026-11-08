@@ -169,8 +169,10 @@
 - Every mode also shows a rare swap stall: frametimes max 26-30 ms about once per 12 s while r_frametime
   (sampled before the swap) never exceeds ~13 ms -- the time is inside the buffer swap (windowed, unfocused
   rig window: DWM?). Not measured in exclusive fullscreen.
-- Candidate: a predictive frame start -- start each frame at slot - (recent p95 render time + margin) and hold
-  the swap to the slot: mode 4's flat cadence without its extra frame of latency or whole-slot misses.
+- Done: P1413 sys_framepacing 5 (tools/p1413-pacing.md), present p99 10.1-10.4 ms at cap 100. Left: the 0.1%
+  -- about 3 frames per 30 s whose render ran 6-9 ms against ~3 (p99.9 10.9-12.9), unprofiled; only an earlier
+  start (mode 4, ~7 ms more input age) hides them. Driver-forced vsync detection (swap median > 1 ms) is
+  untested: windowed, vid_vsync 1 did not block the swap; needs exclusive fullscreen on a fixed-refresh display.
 
 ## 0.1%-low survey (8 Nov, started)
 
