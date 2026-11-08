@@ -4337,6 +4337,8 @@ float(entity t, string in, string pm, entity act) SV_MapMsgInput;   // Patch 870
 
 float(entity to, float changed) SV_PsysSend =
 {
+	if (self.tpl_fxi)
+		return SV_TplFxSend(to, changed);   // P1432: a template's copy (SV_PsysInput sets this sender)
 	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
 	WriteByte(MSG_ENTITY, ENTWIRE_PSYSSTATE2);
 	WriteFloat(MSG_ENTITY, self.origin_x);
@@ -5093,6 +5095,7 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	if (SV_SmallInput(t, in, pm, act))       // P1428: breakable health, prop skins (after the resends)
 		return;
 	if (t.classname == "info_particle_system")
+	if (!(t.tpl_fxi && in == "kill"))   // P1432: Kill removes a copy (below), not only stops it
 		if (SV_PsysInput(t, in))
 			return;
 	if (t.classname == "point_worldtext")
@@ -14719,7 +14722,7 @@ void(void() spawnfunc) CheckSpawn =
 		tio = self.tpl_io;
 		// P1432: an unparented env_sprite only. The stash keeps no parentname for SV_TplTakes to read, and
 		// another stashed class stays out as before (a templated filter would stay in trigger prediction).
-		if (pn == "" && SV_FxClass(self) == FX_CLS_SPRITE)
+		if (pn == "" && (SV_FxClass(self) == FX_CLS_SPRITE || self.classname == "info_particle_system"))
 			nlate = (vbsp_late_buf > 0) ? buf_getsize(vbsp_late_buf) : 0;
 	}
 	if (spawnfunc)

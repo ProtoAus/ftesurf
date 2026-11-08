@@ -331,6 +331,8 @@ void() CSQC_Ent_Remove =
 		Trig_NetState(self.pb_trigmodel, 0, 0);
 	if (self.classname == "tplfx_net")
 		Sprite_TplGone(self);               // P1432
+	if (self.classname == "tplps_net")
+		Emit_TplGone(self);
 	if (self.em_npeff)
 		strunzone(self.em_npeff);           // Patch 1028; the emitters go with the map
 	if (self.trkc_tgt)
@@ -661,7 +663,7 @@ void(entity b) Body_ReadState =
 
 void(float isnew) CSQC_Ent_Update =
 {
-	local float f, st, dd;
+	local float f, st, dd, fr;
 
 	f = readbyte();
 	if (f & ENTWIRE_TYPED)
@@ -767,10 +769,9 @@ void(float isnew) CSQC_Ent_Update =
 			Wt_Net(self);
 		}
 		else if (f == ENTWIRE_TPLFX)
-		{	// P1432: a template's copy of a lump-drawn effect (cl_sprites.qc Sprite_TplNet)
-			self.classname = "tplfx_net";
+		{	// P1432: a template's copy of a lump-drawn effect (cl_sprites.qc Sprite_TplNet, cl_emit.qc Emit_TplNet)
 			if (isnew)
-				self.tfx_gen = -1;
+				self.tfx_gen = self.tps_gen = -1;
 			dd = readbyte();
 			if (dd)
 			{
@@ -787,7 +788,29 @@ void(float isnew) CSQC_Ent_Update =
 				self.angles_z = readfloat();
 			}
 			self.tfx_on = readbyte();
-			Sprite_TplNet(self, dd);
+			if (self.tfx_cls == FX_CLS_PSYS)
+			{	// then ENTWIRE_PSYSSTATE2's start count and fresh flag, read as that branch reads them
+				self.classname = "tplps_net";
+				st = readbyte();
+				fr = readbyte();
+				if (isnew)
+					self.tps_fire = fr ? 1 : 0;
+				else
+				{
+					fr = st - self.tps_starts;
+					if (fr < 0)
+						fr = fr + 256;
+					self.tps_fire = min(fr, 3);
+				}
+				self.tps_starts = st;
+				Emit_TplNet(self, dd);
+				self.tps_fire = 0;      // a reload places it again, never with the burst
+			}
+			else
+			{
+				self.classname = "tplfx_net";
+				Sprite_TplNet(self, dd);
+			}
 		}
 		else if (f == ENTWIRE_LASERSTATE)
 		{

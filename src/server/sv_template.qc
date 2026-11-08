@@ -215,9 +215,17 @@ void(entity e) SV_TplRun =
 	}
 	e.vbsp_io_raw = "";
 	if (e.tpl_fxi)
-	{	// SV_FxInput switches it from here
-		e.vbsp_fx_cls = SV_FxClass(e);
-		e.vbsp_fx_on = SV_FxStartOn(e, e.vbsp_fx_cls);
+	{	// SV_FxInput switches a sprite from here, SV_PsysInput a particle system
+		if (e.classname == "info_particle_system")
+		{
+			e.vbsp_fx_cls = FX_CLS_PSYS;
+			e.vbsp_psys_on = SV_PsysOn(e);  // start_active: no sender yet
+		}
+		else
+		{
+			e.vbsp_fx_cls = SV_FxClass(e);
+			e.vbsp_fx_on = SV_FxStartOn(e, e.vbsp_fx_cls);
+		}
 		e.SendEntity = SV_FxSend;
 		e.SendFlags = LAS_SF_ID | LAS_SF_STATE;
 		e.pvsflags = PVSF_IGNOREPVS;
@@ -261,7 +269,14 @@ float(entity to, float changed) SV_TplFxSend =
 		WriteFloat(MSG_ENTITY, self.angles_y);
 		WriteFloat(MSG_ENTITY, self.angles_z);
 	}
-	WriteByte(MSG_ENTITY, self.vbsp_fx_on);
+	if (self.vbsp_fx_cls != FX_CLS_PSYS)
+	{
+		WriteByte(MSG_ENTITY, self.vbsp_fx_on);
+		return TRUE;
+	}
+	WriteByte(MSG_ENTITY, self.vbsp_psys_on);   // then ENTWIRE_PSYSSTATE2's start count and fresh flag
+	WriteByte(MSG_ENTITY, self.vbsp_psys_starts & 255);
+	WriteByte(MSG_ENTITY, (self.vbsp_psys_starts > 0 && time - self.vbsp_psys_fired < 1) ? 1 : 0);
 	return TRUE;
 };
 
@@ -318,7 +333,7 @@ float(entity p, vector morg, vector mang) SV_TplInstance =
 		e.parentname = q.tpl_pparent;
 		e.model = q.tpl_pmodel;
 		e.tpl_pclass = e.tpl_pname = e.tpl_pparent = e.tpl_pmodel = "";
-		if (SV_FxClass(e) == FX_CLS_SPRITE)
+		if (SV_FxClass(e) == FX_CLS_SPRITE || e.classname == "info_particle_system")
 		{
 			e.tpl_fxi = TRUE;
 			e.tpl_morg = q.origin;
@@ -546,8 +561,9 @@ float(entity e) SV_TplTakes =
 		case "func_tanktrain": case "func_door": case "func_door_rotating": case "func_rot_button":
 		case "momentary_rot_button": case "func_plat": case "func_platrot":
 			return FALSE;
-		// P1432: the client draws these from the lump and has no per-copy instance of them (env_sprite has)
-		case "info_particle_system": case "env_laser": case "env_beam": case "point_tesla":
+		// P1432: the client draws these from the lump and has no per-copy instance of them (env_sprite and
+		// info_particle_system have: ENTWIRE_TPLFX)
+		case "env_laser": case "env_beam": case "point_tesla":
 		case "point_spotlight": case "beam_spotlight":
 			return FALSE;
 	}

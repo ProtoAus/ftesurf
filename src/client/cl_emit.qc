@@ -3376,6 +3376,235 @@ void(entity e) Emit_FxNet =
 		}
 };
 
+/*
+  P1432: one info_particle_system's emitters -- Emit_LoadForMap's EK_PSYS arm, moved here so a template's
+  copy can make its own (Emit_TplNet). Appends at em_n; returns how many it added, -1 with no bake line.
+*/
+float(string mname, string effname, vector org, vector ang, float disabled, float pchild, string why) Emit_PsysAt =
+{
+	local float ps, psfirst, j, tj, rate, dist, eff, jit;
+	local vector bmin, vel;
+
+	ps = (effname == "") ? -1 : Emit_PsysFind(effname);
+	if (ps < 0)
+		return -1;
+	makevectors(ang);                   // Emit_PsysVel turns the velocity by it
+	psfirst = em_n;
+	// BUILD 53: the box centre moves the origin (a rain sheet 1000
+	// above its entity on tensor2, a glow 456 below its on boreas),
+	// the entity's angles rotate the velocity -- see Emit_PsysVel --
+	// and the .pcf's isotropic random_speed rides em_jit.
+	bmin = org + ps_ofs[ps];
+	vel  = Emit_PsysVel(ps);
+	jit  = ps_jit[ps];
+	rate = ps_rate[ps];
+	if (ps_bcnt[ps] > 0)
+		rate = 1;               // P1416: past Emit_Add's rate test; Emit_BurstMark zeroes it
+	if (ps_trail[ps])
+	{
+		rate = ps_trate[ps];
+		Emit_TrailHandles(ps, mname);
+	}
+	dist = ps_dist[ps];
+	// UNDERSCORE, NOT A DOT.  A dot would send this back through the
+	// auto-load path Emit_PsysLoad exists to avoid; with no dot the
+	// effect is found by plain name out of what we exec'd
+	// (p_script.c:649-660).  tools/pcf.py names the blocks to match.
+	eff  = particleeffectnum(strcat(mname, "_", effname));
+	if (!em_psprobe)
+		em_psprobe = eff;
+	// The one number that separates "we never looked it up" from "the
+	// cfg did not parse": an unresolved handle emits nothing and is
+	// otherwise completely silent.  The velocity is printed because it
+	// is the rotation's only headless witness: boreas' snow must read
+	// '0 0 -384' jit 384, not '-384 0 0'.
+	dprint(sprintf("emit: psys %s_%s -> handle %g rate %g dist %g vel %v jit %g\n",
+	               mname, effname, eff, rate, dist, vel, jit));
+
+	/*
+	  CHILDREN.  A .pcf system's children start with it, at the same
+	  control point (particles.h:1550-1554 hands every child the same
+	  orientation).  tools/pcf.py writes one extra index line per
+	  parent->child link, tagged with the parent's name in the last
+	  column, and each becomes its own emitter here at the same entity.
+	  Counted in em_child so Emit_List's residual can add them back --
+	  they are created without ever being "seen".
+	*/
+	if (pchild || ps_bcnt[ps] >= 0)   // P1416: a one-shot's children are part of it
+	for (j = 0; j < ps_n; j = j + 1)
+	{
+		if (ps_parent[j] != effname)
+			continue;
+		tj = Emit_Add(org + ps_ofs[j], org + ps_ofs[j], Emit_PsysVel(j), ps_jit[j],
+		         (ps_bcnt[j] > 0) ? 1 : (ps_trail[j] ? ps_trate[j] : ps_rate[j]), 1, ps_dist[j],
+		         particleeffectnum(strcat(mname, "_", ps_name[j])), EK_PSYS);
+		if (tj >= 0)
+			Emit_PsysShape(tj, j);
+		if (tj >= 0)
+		if (ps_bcnt[j] > 0)
+			Emit_BurstMark(tj, j);
+		if (tj >= 0)
+		if (ps_trail[j])
+		{
+			Emit_TrailHandles(j, mname);
+			Emit_TrailMark(tj, ps_trate[j], j);
+		}
+		em_child = em_child + 1;
+		dprint(sprintf("emit: psys %s_%s child of %s rate %g\n",
+		               mname, ps_name[j], effname, ps_rate[j]));
+	}
+	j = -1;                             // P1416: a container -- its children are the effect
+	if (ps_bcnt[ps] != 0)
+		j = Emit_Add(bmin, bmin, vel, jit, rate, 1, dist, eff, EK_PSYS);
+	if (j >= 0)
+	if (ps_bcnt[ps] > 0)
+		Emit_BurstMark(j, ps);
+	// Patch 1028: every emitter the system started, its children too when the parent was refused.
+	for (tj = psfirst; tj < em_n; tj = tj + 1)
+	{
+		em_psorg[tj] = org;
+		em_psidx[tj] = ps;
+		em_stop[tj] = disabled;
+		if (!disabled)
+			Emit_BurstFire(tj, 1, why);     // returns at once on a rate emitter
+	}
+	if (j >= 0)
+	{
+		Emit_PsysShape(j, ps);
+		if (ps_trail[ps])
+			Emit_TrailMark(j, rate, ps);
+	}
+	return em_n - psfirst;
+};
+
+/*
+  P1432: a template's copies of an info_particle_system (ENTWIRE_TPLFX, class FX_CLS_PSYS). The walk keeps
+  each member's effect, lump origin and name; a copy makes that system's emitters at its own pose. A removed
+  copy's emitters stop and wait for the next copy of the same member, which writes over them in place: the
+  same system makes the same emitters (vbsp_emit_psys_children latched per load in em_tplchild).
+*/
+#define TPLE_MAX 32
+string tple_eff[TPLE_MAX];
+vector tple_org[TPLE_MAX];
+float  tple_tnc[TPLE_MAX];
+float  tple_n, tple_over, tple_skip;
+#define TPLR_MAX 64
+float  tplr_first[TPLR_MAX], tplr_cnt[TPLR_MAX], tplr_k[TPLR_MAX], tplr_used[TPLR_MAX];
+float  tplr_n, em_gen, em_tplchild;
+.float  tps_r, tps_gen, tps_fire, tps_starts;   // its emitter range in tplr_*; the starts it brings (cl_body.qc)
+.vector tps_porg, tps_pang;
+
+void(entity e) Emit_TplGone =
+{
+	local float i, r;
+
+	if (e.tps_gen != em_gen || e.tps_r < 0)
+		return;
+	r = e.tps_r;
+	for (i = tplr_first[r]; i < tplr_first[r] + tplr_cnt[r]; i = i + 1)
+	{
+		em_stop[i] = TRUE;              // what it emitted lives out its life
+		em_bpend[i] = 0;
+	}
+	tplr_used[r] = FALSE;
+	e.tps_r = -1;
+};
+
+// Its state, as Emit_PsysNet applies ENTWIRE_PSYSSTATE2's.
+void(entity e) Emit_TplState =
+{
+	local float i, r;
+
+	r = e.tps_r;
+	for (i = tplr_first[r]; i < tplr_first[r] + tplr_cnt[r]; i = i + 1)
+	{
+		em_stop[i] = !e.tfx_on;
+		if (!e.tfx_on)
+			em_bpend[i] = 0;
+		else
+		{
+			Emit_BurstFire(i, e.tps_fire, "server start");
+			if (em_bpers[i])
+				em_bactive = TRUE;
+		}
+	}
+	if (cvar("developer"))
+		print(sprintf("tplfx: #%g emitters %g+%g on %g, %g start(s)\n", e.entnum, tplr_first[r], tplr_cnt[r],
+		              e.tfx_on, e.tps_fire));
+};
+
+void(entity e, float id) Emit_TplNet =
+{
+	local float k, r, n, keep, live, child, norate;
+
+	if (e.tps_gen == em_gen && e.tps_r >= 0)
+	{
+		if (!id || (e.origin == e.tps_porg && e.angles == e.tps_pang))
+		{
+			Emit_TplState(e);
+			return;
+		}
+		Emit_TplGone(e);                // a new pose: placed again below
+	}
+	if (e.tfx_cls != FX_CLS_PSYS || !em_mins || vbsp_em_map == "" || vbsp_em_map != serverkey("map"))
+	{
+		if (cvar("developer"))
+			print(sprintf("tplfx: #%g class %g waits for the emitter load\n", e.entnum, e.tfx_cls));
+		return;                         // Emit_LoadForMap places it
+	}
+	e.tps_gen = em_gen;
+	e.tps_r = -1;
+	for (k = 0; k < tple_n; k = k + 1)
+		if (tple_tnc[k] == e.tfx_mtnc && vlen(tple_org[k] - e.tfx_morg) < 0.1)
+			break;
+	if (k >= tple_n)
+	{
+		if (cvar("developer"))
+			print(sprintf("tplfx: #%g matches none of %g template particle systems (member at %v, name crc %g)\n",
+			              e.entnum, tple_n, e.tfx_morg, e.tfx_mtnc));
+		return;
+	}
+	for (r = 0; r < tplr_n; r = r + 1)
+		if (!tplr_used[r] && tplr_k[r] == k)
+			break;
+	if (r >= tplr_n && tplr_n >= TPLR_MAX)
+	{
+		if (cvar("developer"))
+			print(sprintf("tplfx: #%g: %g copies of template particle systems at once, no more\n", e.entnum, TPLR_MAX));
+		return;
+	}
+	keep = em_n;
+	if (r < tplr_n)
+		em_n = tplr_first[r];
+	live = em_live[EK_PSYS];            // the load's report counts the map's own systems
+	child = em_child;
+	norate = em_norate[EK_PSYS];
+	n = Emit_PsysAt(vbsp_em_map, tple_eff[k], e.origin, e.angles, TRUE, em_tplchild, "server start");
+	em_live[EK_PSYS] = live;
+	em_child = child;
+	em_norate[EK_PSYS] = norate;
+	if (n < 0)
+		n = 0;
+	if (r < tplr_n && n != tplr_cnt[r])
+		print(sprintf("^1tplfx: #%g made %g emitters over a range of %g\n", e.entnum, n, tplr_cnt[r]));
+	if (r >= tplr_n)
+	{
+		tplr_first[r] = keep;
+		tplr_cnt[r] = n;
+		tplr_k[r] = k;
+		tplr_n = tplr_n + 1;
+	}
+	em_n = max(keep, em_n);
+	tplr_used[r] = TRUE;
+	e.tps_r = r;
+	e.tps_porg = e.origin;
+	e.tps_pang = e.angles;
+	if (cvar("developer"))
+		print(sprintf("tplfx: #%g template particle system %g (%s) -> emitters %g+%g at %v\n", e.entnum, k,
+		              tple_eff[k], tplr_first[r], tplr_cnt[r], e.origin));
+	Emit_TplState(e);
+};
+
 void() Emit_LoadForMap =
 {
 	local string tok, key, cn, mdl, scol, mname;
@@ -3399,12 +3628,12 @@ void() Emit_LoadForMap =
 	local float  firesize, maxdelay, magnitude, traillen, mspeed;
 	local float  ssize, esize, jetlen, spread, initst, basesp, sph;
 	local float  initkey, stype, rollsp, stopped, vc;          // P1433
-	local string tn;
+	local string tn, tparent;
 	local vector lt;
 	local string smat;
 	local float  i, k, bucket, eff, kind, jit, burst;
 	local string effname;
-	local float  ps, j, pchild, opened, fcls, tj, ptype, ramt, psfirst;
+	local float  ps, j, pchild, opened, fcls, ptype, ramt;
 	local entity net;
 
 	Emit_Alloc();
@@ -3420,6 +3649,8 @@ void() Emit_LoadForMap =
 		em_ratemax = EM_RATE_MAX;
 
 	em_n = 0;
+	em_gen = em_gen + 1;                // P1432: a template copy's emitters went with them
+	tplr_n = 0;
 	em_trn = 0;
 	em_trmade = em_trlife = em_trsolid = em_trshort = em_trfar = 0;
 	em_psprobe = em_psfixes = em_psfixrun = 0;
@@ -3571,7 +3802,11 @@ void() Emit_LoadForMap =
 
 	probe = spawn();
 	opened = FALSE;
-
+	for (k = 0; k < tple_n; k = k + 1)  // P1432: the last load's template members
+		strunzone(tple_eff[k]);
+	tple_n = tple_over = tple_skip = 0;
+	em_tplchild = pchild;
+	Tpl_ClLoad(FALSE);                  // walks the lump itself: before this walk starts
 	getentitytoken(0);
 	while ((tok = getentitytoken()) != "")
 	{
@@ -3585,14 +3820,13 @@ void() Emit_LoadForMap =
 		smin = smax = lmin = lmax = fall = 0;
 		look = -1;
 		ps = -1;
-		psfirst = 0;
 		alpha = 255;
 		spawnflags = disabled = 0;
 		density = freq = current = 0;
 		firesize = maxdelay = magnitude = traillen = mspeed = 0;
 		ssize = esize = jetlen = basesp = sph = 0;
 		spread = -1;            // P1433: unwritten (env_steam's default is 15; the smokestack's <= 0 test still holds)
-		smat = tn = "";
+		smat = tn = tparent = "";
 		initkey = stype = stopped = 0;
 		rollsp = 8;
 		initst = 1;             // env_smokestack's default is ON; 2378 of 2443
@@ -3661,6 +3895,7 @@ void() Emit_LoadForMap =
 			else if (key == "smokematerial") smat = strtolower(tok);
 			else if (key == "initialstate")  { initst = stof(tok); initkey = TRUE; }
 			else if (key == "targetname")    tn = tok;                // P1433
+			else if (key == "parentname")    tparent = tok;           // P1432
 			else if (key == "type")          stype = stof(tok);
 			else if (key == "rollspeed")     rollsp = stof(tok);
 			else if (key == "preciptype")    ptype = stof(tok);
@@ -3688,6 +3923,24 @@ void() Emit_LoadForMap =
 
 		em_seen[kind] = em_seen[kind] + 1;
 		em_any = em_any + 1;
+		if (kind == EK_PSYS)
+		{	// P1432: a template's member -- kept for the copies the server spawns (Emit_TplNet)
+			if (Tpl_ClCopied(tn, tparent))
+			if (tple_n >= TPLE_MAX)
+				tple_over = tple_over + 1;
+			else
+			{
+				tple_eff[tple_n] = strzone(effname);
+				tple_org[tple_n] = org;
+				tple_tnc[tple_n] = crc16(TRUE, tn);
+				tple_n = tple_n + 1;
+			}
+			if (Tpl_ClMember(tn, tparent))
+			{
+				tple_skip = tple_skip + 1;
+				continue;               // the server took it out of the map
+			}
+		}
 
 		/*
 		  The per-class cvars are NOT consulted here, deliberately.  Filtering
@@ -4177,108 +4430,13 @@ void() Emit_LoadForMap =
 				Emit_RopeAt(effname, org);	// before the no-psys exit: a rope has no psys line
 				Emit_OrbitAt(effname, org, ang, disabled);   // P1263: nor an orbit
 			}
-			ps = (effname == "") ? -1 : Emit_PsysFind(effname);
-			if (ps < 0)
-			{
+			if (Emit_PsysAt(mname, effname, org, ang, disabled, pchild, "map start") < 0)
 				em_off[kind] = em_off[kind] + 1;
-				continue;
-			}
-			psfirst = em_n;
-			// BUILD 53: the box centre moves the origin (a rain sheet 1000
-			// above its entity on tensor2, a glow 456 below its on boreas),
-			// the entity's angles rotate the velocity -- see Emit_PsysVel --
-			// and the .pcf's isotropic random_speed rides em_jit.
-			// makevectors(ang) ran above, before the class branches.
-			bmin = bmax = org + ps_ofs[ps];
-			vel  = Emit_PsysVel(ps);
-			jit  = ps_jit[ps];
-			burst = 1;
-			rate = ps_rate[ps];
-			if (ps_bcnt[ps] > 0)
-				rate = 1;               // P1416: past Emit_Add's rate test; Emit_BurstMark zeroes it
-			if (ps_trail[ps])
-			{
-				rate = ps_trate[ps];
-				Emit_TrailHandles(ps, mname);
-			}
-			dist = ps_dist[ps];
-			// UNDERSCORE, NOT A DOT.  A dot would send this back through the
-			// auto-load path Emit_PsysLoad exists to avoid; with no dot the
-			// effect is found by plain name out of what we exec'd
-			// (p_script.c:649-660).  tools/pcf.py names the blocks to match.
-			eff  = particleeffectnum(strcat(mname, "_", effname));
-			if (!em_psprobe)
-				em_psprobe = eff;
-			// The one number that separates "we never looked it up" from "the
-			// cfg did not parse": an unresolved handle emits nothing and is
-			// otherwise completely silent.  The velocity is printed because it
-			// is the rotation's only headless witness: boreas' snow must read
-			// '0 0 -384' jit 384, not '-384 0 0'.
-			dprint(sprintf("emit: psys %s_%s -> handle %g rate %g dist %g vel %v jit %g\n",
-			               mname, effname, eff, rate, dist, vel, jit));
-
-			/*
-			  CHILDREN.  A .pcf system's children start with it, at the same
-			  control point (particles.h:1550-1554 hands every child the same
-			  orientation).  tools/pcf.py writes one extra index line per
-			  parent->child link, tagged with the parent's name in the last
-			  column, and each becomes its own emitter here at the same entity.
-			  Counted in em_child so Emit_List's residual can add them back --
-			  they are created without ever being "seen".
-			*/
-			if (pchild || ps_bcnt[ps] >= 0)   // P1416: a one-shot's children are part of it
-			for (j = 0; j < ps_n; j = j + 1)
-			{
-				if (ps_parent[j] != effname)
-					continue;
-				tj = Emit_Add(org + ps_ofs[j], org + ps_ofs[j], Emit_PsysVel(j), ps_jit[j],
-				         (ps_bcnt[j] > 0) ? 1 : (ps_trail[j] ? ps_trate[j] : ps_rate[j]), 1, ps_dist[j],
-				         particleeffectnum(strcat(mname, "_", ps_name[j])), kind);
-				if (tj >= 0)
-					Emit_PsysShape(tj, j);
-				if (tj >= 0)
-				if (ps_bcnt[j] > 0)
-					Emit_BurstMark(tj, j);
-				if (tj >= 0)
-				if (ps_trail[j])
-				{
-					Emit_TrailHandles(j, mname);
-					Emit_TrailMark(tj, ps_trate[j], j);
-				}
-				em_child = em_child + 1;
-				dprint(sprintf("emit: psys %s_%s child of %s rate %g\n",
-				               mname, ps_name[j], effname, ps_rate[j]));
-			}
+			continue;
 		}
-
-		// Nested, not &&: QC evaluates both sides, and ps is stale for other kinds.
-		j = -2;
-		if (kind == EK_PSYS)
-		if (ps_bcnt[ps] == 0)
-			j = -1;                     // P1416: a container -- its children are the effect
-		if (j == -2)
-			j = Emit_Add(bmin, bmax, vel, jit, rate, burst, dist, eff, kind);
-		if (kind == EK_PSYS)
-		if (j >= 0)
-		if (ps_bcnt[ps] > 0)
-			Emit_BurstMark(j, ps);
-		// Patch 1028: every emitter the system started, its children too when the parent was refused.
-		if (kind == EK_PSYS)
-			for (tj = psfirst; tj < em_n; tj = tj + 1)
-			{
-				em_psorg[tj] = org;
-				em_psidx[tj] = ps;
-				em_stop[tj] = disabled;
-				if (!disabled)
-					Emit_BurstFire(tj, 1, "map start");     // returns at once on a rate emitter
-			}
+		j = Emit_Add(bmin, bmax, vel, jit, rate, burst, dist, eff, kind);
 		if (j >= 0)
 		{
-			if (ps >= 0)
-				Emit_PsysShape(j, ps);
-			if (ps >= 0)
-			if (ps_trail[ps])
-				Emit_TrailMark(j, rate, ps);
 			if (look >= 0)
 				em_life[j] = (lmin + lmax) * 0.5;
 			em_sph[j] = sph;
@@ -4339,6 +4497,14 @@ void() Emit_LoadForMap =
 	for (net = find(world, classname, "fx_net"); net; net = find(net, classname, "fx_net"))
 		if (net.fx_ncls == FX_CLS_STEAM || net.fx_ncls == FX_CLS_SPARK || net.fx_ncls == FX_CLS_FIRE)
 			Emit_FxNet(net);           // P1433: states that arrived before this load
+	for (net = find(world, classname, "tplps_net"); net; net = find(net, classname, "tplps_net"))
+	{	// P1432: copies that arrived before this load, or held emitters of the last
+		net.tps_gen = -1;
+		Emit_TplNet(net, TRUE);
+	}
+	if (tple_skip || tple_over)
+		print(sprintf("emit: %g template particle systems drawn per copy%s\n", tple_skip,
+		              tple_over ? sprintf(", %g past %g not drawn", tple_over, TPLE_MAX) : ""));
 
 	// The shared effect set.  The build 51b essay above says why it is exec'd
 	// from here and not from cfg/default.cfg.
