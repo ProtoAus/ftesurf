@@ -40,6 +40,7 @@
 #define ENTWIRE_TRKSTATE 5      // P1378: a passable func_tracktrain's clock (sh_trk.qc)
 #define ENTWIRE_TRKPROP 6       // P1378: a prop riding one
 #define ENTWIRE_SPSTATE 7       // P1387: a Patch 860 mover csprogs poses (sv_entities.qc SV_SpSend)
+#define ENTWIRE_PSYSSTATE2 8    // P1416: ENTWIRE_PSYSSTATE plus a start count and a fresh flag
 
 // --- hulls ------------------------------------------------------------------
 // Source puts the player origin AT THE FEET, unlike Quake's centred origin.

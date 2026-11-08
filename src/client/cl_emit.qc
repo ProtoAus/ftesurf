@@ -190,6 +190,17 @@ float  *em_srad;                //   shell: outward speed
 float  *em_stop;                // EK_PSYS only, Patch 1028: stopped (start_active 0, or the server's Stop)
 vector *em_psorg;               //   the system's entity origin, which the server's state names
 float  *em_psidx;               //   its .pcf system (ps_*), the parent's for a child; -1 = none
+// P1416: a one-shot (burst row): particles a start fires (0 = a rate emitter), its spurt length
+// (0 = at once), start delay, particles still to place, the spurt's accumulator, and when it may begin.
+float  *em_bcnt;
+float  *em_bdur;
+float  *em_bdel;
+float  *em_bpend;
+float  *em_bacc;
+float  *em_bnext;
+float  em_bactive;              // some emitter has particles pending
+float  em_bfired;               // starts fired this map, for emit_list,
+float  em_bfsrv;                //   of them by the server's Start
 float  em_n;
 
 void() Emit_Alloc =
@@ -220,6 +231,12 @@ void() Emit_Alloc =
 	em_stop  = memalloc(sizeof(float) * EM_MAX);
 	em_psorg = memalloc(sizeof(vector) * EM_MAX);
 	em_psidx = memalloc(sizeof(float) * EM_MAX);
+	em_bcnt  = memalloc(sizeof(float) * EM_MAX);
+	em_bdur  = memalloc(sizeof(float) * EM_MAX);
+	em_bdel  = memalloc(sizeof(float) * EM_MAX);
+	em_bpend = memalloc(sizeof(float) * EM_MAX);
+	em_bacc  = memalloc(sizeof(float) * EM_MAX);
+	em_bnext = memalloc(sizeof(float) * EM_MAX);
 };
 void() Emit_AllocLife;
 
@@ -405,6 +422,10 @@ vector *ps_tbox;         //   half the spawn box,
 vector *ps_tspread;      //   half the speed's range (local frame),
 float *ps_tgrav;        //   gravity, half a streak's length (0: 0.05 s of travel),
 float *ps_thalf;
+float *ps_bcnt;                 // P1416: a burst row's count (0 = a container), -1 on a psys row,
+float *ps_bdur;                 //   its spurt length
+float *ps_bdel;                 //   and start delay
+float  ps_bursts;
 float *ps_tfx;                  //   and [PS_MAX * TRAIL_N] its blocks by life
 
 // P1411: the per-system tables live in memalloc, not globals: at PS_MAX 256 csprogs ran out of globals.
@@ -430,6 +451,9 @@ void() Emit_PsAlloc =
 	ps_tspread = memalloc(sizeof(vector) * PS_MAX);
 	ps_tgrav = memalloc(sizeof(float) * PS_MAX);
 	ps_thalf = memalloc(sizeof(float) * PS_MAX);
+	ps_bcnt = memalloc(sizeof(float) * PS_MAX);
+	ps_bdur = memalloc(sizeof(float) * PS_MAX);
+	ps_bdel = memalloc(sizeof(float) * PS_MAX);
 };
 float  ps_n;
 float  ps_links;                // how many of ps_n are child links
@@ -503,6 +527,7 @@ void() Emit_PsysFree =
 		}
 	ps_zoned = FALSE;
 	ps_n = 0;
+	ps_bursts = 0;
 	ps_links = 0;
 	Emit_TrailForget();
 	if (rp_zoned)
@@ -1055,7 +1080,7 @@ void(float ps, string mname) Emit_TrailHandles =
 // the same trap the mins/maxs note in Emit_LoadForMap records.
 void(string mname) Emit_PsysLoad =
 {
-	local float fh, i, n, over, trails;
+	local float fh, i, n, over, trails, isb;
 	local string l;
 
 	Emit_PsysFree();
@@ -1093,7 +1118,8 @@ void(string mname) Emit_PsysLoad =
 			Emit_OrbitNote();
 		if (n < 10)
 			continue;
-		if (argv(0) != "psys" || argv(1) != mname)
+		isb = (argv(0) == "burst" && n >= 29);    // P1416: a psys row plus count, duration, delay
+		if ((argv(0) != "psys" && !isb) || argv(1) != mname)
 			continue;
 		if (ps_n >= PS_MAX)
 		{
@@ -1105,6 +1131,14 @@ void(string mname) Emit_PsysLoad =
 		ps_vel[ps_n]  = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
 		ps_dist[ps_n] = stof(argv(9));
 		ps_trail[ps_n] = 0;
+		ps_bcnt[ps_n] = -1;
+		if (isb)
+		{
+			ps_bcnt[ps_n] = stof(argv(26));
+			ps_bdur[ps_n] = stof(argv(27));
+			ps_bdel[ps_n] = stof(argv(28));
+			ps_bursts = ps_bursts + 1;
+		}
 		// The build-53 columns.  Absent on an older bake: no offset, nothing
 		// in the world frame, no jitter, no parent -- what build 52 read.
 		ps_ofs[ps_n]  = '0 0 0';
@@ -2528,6 +2562,8 @@ float(vector bmin, vector bmax, vector vel, float jit, float rate, float burst,
 	em_drop[i]  = 0;
 	em_trail[i] = 0;
 	em_shape[i] = 0;
+	em_bcnt[i]  = 0;
+	em_bpend[i] = 0;
 	em_stop[i]  = 0;
 	em_psidx[i] = -1;
 
@@ -3190,6 +3226,34 @@ void() Emit_DropFires =
 .string em_npeff;
 .float  em_npon;
 
+// P1416: emitter i is system ps's one-shot.  Its rate is zeroed so the budgeted passes leave it alone.
+void(float i, float ps) Emit_BurstMark =
+{
+	em_bcnt[i] = ps_bcnt[ps];
+	em_bdur[i] = ps_bdur[ps];
+	em_bdel[i] = ps_bdel[ps];
+	em_rate[i] = 0;
+};
+
+// A start: queue the burst (at most three deep) for Emit_Frame's burst pass.
+void(float i, float times, string why) Emit_BurstFire =
+{
+	if (em_bcnt[i] <= 0 || times <= 0)
+		return;
+	em_bpend[i] = min(em_bpend[i] + em_bcnt[i] * times, em_bcnt[i] * 3);
+	em_bnext[i] = cltime + em_bdel[i];
+	em_bacc[i] = 0;
+	em_bactive = TRUE;
+	em_bfired = em_bfired + 1;
+	if (why == "server start")
+		em_bfsrv = em_bfsrv + 1;
+	if (em_psidx[i] >= 0)
+		dprint(sprintf("emit: burst %s x%g at %v (%s)\n", ps_name[em_psidx[i]], em_bcnt[i], em_mid[i], why));
+};
+
+.float  em_npstarts;            // P1416: the server's start count, as last read
+.float  em_npfire;              //   and the starts this update brings (consumed by Emit_PsysNet)
+
 void(entity e) Emit_PsysNet =
 {
 	local float i, ps;
@@ -3206,7 +3270,13 @@ void(entity e) Emit_PsysNet =
 	for (i = 0; i < em_n; i = i + 1)
 		if (em_psidx[i] == ps)
 		if (vlen(em_psorg[i] - e.origin) < 0.1)
+		{
 			em_stop[i] = !e.em_npon;
+			if (!e.em_npon)
+				em_bpend[i] = 0;
+			else
+				Emit_BurstFire(i, e.em_npfire, "server start");
+		}
 	if (cvar("developer") >= 2)      // one line per system: 97 a press on bhop_ceaseless
 	dprint(sprintf("emit: psys %s at %v %s by the server\n", e.em_npeff, e.origin,
 	               e.em_npon ? "started" : "stopped"));
@@ -3260,6 +3330,7 @@ void() Emit_LoadForMap =
 	pr_rmade = pr_rroof = pr_rsky = pr_rsolid = pr_rshort = pr_rlife = pr_smade = pr_ssolid = pr_sfull = 0;
 	em_any = 0;
 	em_frozen = em_clamped = em_over = em_child = 0;
+	em_bfired = em_bfsrv = em_bactive = 0;
 	em_flwant = em_flmask = 0;
 	em_flwhy = Emit_FlameWhy();
 	em_smwhy = Emit_SmokeWhy();
@@ -3958,6 +4029,8 @@ void() Emit_LoadForMap =
 			jit  = ps_jit[ps];
 			burst = 1;
 			rate = ps_rate[ps];
+			if (ps_bcnt[ps] > 0)
+				rate = 1;               // P1416: past Emit_Add's rate test; Emit_BurstMark zeroes it
 			if (ps_trail[ps])
 			{
 				rate = ps_trate[ps];
@@ -3988,16 +4061,19 @@ void() Emit_LoadForMap =
 			  Counted in em_child so Emit_List's residual can add them back --
 			  they are created without ever being "seen".
 			*/
-			if (pchild)
+			if (pchild || ps_bcnt[ps] >= 0)   // P1416: a one-shot's children are part of it
 			for (j = 0; j < ps_n; j = j + 1)
 			{
 				if (ps_parent[j] != effname)
 					continue;
 				tj = Emit_Add(org + ps_ofs[j], org + ps_ofs[j], Emit_PsysVel(j), ps_jit[j],
-				         ps_trail[j] ? ps_trate[j] : ps_rate[j], 1, ps_dist[j],
+				         (ps_bcnt[j] > 0) ? 1 : (ps_trail[j] ? ps_trate[j] : ps_rate[j]), 1, ps_dist[j],
 				         particleeffectnum(strcat(mname, "_", ps_name[j])), kind);
 				if (tj >= 0)
 					Emit_PsysShape(tj, j);
+				if (tj >= 0)
+				if (ps_bcnt[j] > 0)
+					Emit_BurstMark(tj, j);
 				if (tj >= 0)
 				if (ps_trail[j])
 				{
@@ -4010,7 +4086,17 @@ void() Emit_LoadForMap =
 			}
 		}
 
-		j = Emit_Add(bmin, bmax, vel, jit, rate, burst, dist, eff, kind);
+		// Nested, not &&: QC evaluates both sides, and ps is stale for other kinds.
+		j = -2;
+		if (kind == EK_PSYS)
+		if (ps_bcnt[ps] == 0)
+			j = -1;                     // P1416: a container -- its children are the effect
+		if (j == -2)
+			j = Emit_Add(bmin, bmax, vel, jit, rate, burst, dist, eff, kind);
+		if (kind == EK_PSYS)
+		if (j >= 0)
+		if (ps_bcnt[ps] > 0)
+			Emit_BurstMark(j, ps);
 		// Patch 1028: every emitter the system started, its children too when the parent was refused.
 		if (kind == EK_PSYS)
 			for (tj = psfirst; tj < em_n; tj = tj + 1)
@@ -4018,6 +4104,8 @@ void() Emit_LoadForMap =
 				em_psorg[tj] = org;
 				em_psidx[tj] = ps;
 				em_stop[tj] = disabled;
+				if (!disabled)
+					Emit_BurstFire(tj, 1, "map start");     // returns at once on a rate emitter
 			}
 		if (j >= 0)
 		{
@@ -4178,11 +4266,32 @@ vector(float i) Emit_PointIn =
   path and it carries a fixed set of scalars, not "entity #713 turned on" -- so
   honouring those would be a different feature with a different wire format.
 */
+// One EK_PSYS particle: its spawn volume placed from the index's shape (Patch 1012), else the
+// r_part block's own spawnorg around the box centre.
+void(float i, vector v) Emit_PsysSpawn =
+{
+	local vector o, sa;
+
+	if (em_shape[i] == 2)
+	{	// Patch 1012: on the shell, moving out at its radial speed
+		o = Emit_ShellDir(em_sb[i]);
+		sa = em_sa[i];
+		pointparticles(em_eff[i], em_mid[i] + o * (sa_x + random() * (sa_y - sa_x)), v + o * em_srad[i], 1);
+	}
+	else if (em_shape[i] == 1)
+		pointparticles(em_eff[i], Emit_PointIn(i), v, 1);
+	else
+		pointparticles(em_eff[i], em_mid[i], v, 1);
+};
+
+#define EM_BURST_FRAME  128     // P1416: particles one burst places a frame (secretroom fires 2000)
+#define EM_BURST_TOTAL  1024    //   and all bursts together
+
 void() Emit_Frame =
 {
 	local float i, n, ft, thr, budget, dscale, d, lights, lit, k, mdem, under;
 	local float wdust, wember, wbubble, wfire, wspark, wsmoke, wstack, wpsys, wunder;
-	local vector eye, v, o, sa;
+	local vector eye, v;
 	local vector jn, jr, jf;
 	local float ja, jl;
 
@@ -4484,18 +4593,7 @@ void() Emit_Frame =
 				if (em_trail[i])
 					Emit_TrailDrop(i);
 				else if (em_kind[i] == EK_PSYS)
-				{
-					if (em_shape[i] == 2)
-					{	// Patch 1012: on the shell, moving out at its radial speed
-						o = Emit_ShellDir(em_sb[i]);
-						sa = em_sa[i];
-						pointparticles(em_eff[i], em_mid[i] + o * (sa_x + random() * (sa_y - sa_x)), v + o * em_srad[i], 1);
-					}
-					else if (em_shape[i] == 1)
-						pointparticles(em_eff[i], Emit_PointIn(i), v, 1);
-					else
-						pointparticles(em_eff[i], em_mid[i], v, 1);
-				}
+					Emit_PsysSpawn(i, v);
 				else if (em_eff[i] < 0)
 				{
 					// -1 to -4 are the size classes, -5 to -8 the same with smoke.
@@ -4561,6 +4659,51 @@ void() Emit_Frame =
 		}
 
 		i = i + 1;
+	}
+
+	// P1416: one-shot bursts -- an event, so outside the budget, but capped a frame.  Out of range or
+	// with vbsp_emit_psys off a burst is dropped, as a rate emitter's spawns are.
+	if (!em_bactive)
+		return;
+	em_bactive = FALSE;
+	lit = EM_BURST_TOTAL;           // reused: what the bursts may still place this frame
+	for (i = 0; i < em_n; i = i + 1)
+	{
+		if (em_bpend[i] < 1)
+			continue;
+		em_bactive = TRUE;
+		if (cltime < em_bnext[i])
+			continue;
+		if (!wpsys)
+		{
+			em_bpend[i] = 0;
+			continue;
+		}
+		if (dscale > 0)
+		if (vlen(em_mid[i] - eye) - em_rad[i] > em_dist[i] * dscale)
+		{
+			em_bpend[i] = 0;
+			continue;
+		}
+		if (em_bdur[i] > 0)
+		{	// a timed spurt: its count spread over its duration
+			em_bacc[i] = em_bacc[i] + em_bcnt[i] / em_bdur[i] * ft;
+			n = floor(min(em_bacc[i], em_bpend[i]));
+			em_bacc[i] = em_bacc[i] - n;
+		}
+		else
+			n = floor(em_bpend[i]);
+		n = min(n, EM_BURST_FRAME, lit);
+		em_bpend[i] = em_bpend[i] - n;
+		lit = lit - n;
+		while (n > 0)
+		{
+			v = em_vel[i] + Emit_RandDir() * em_jit[i];
+			if (vlen(v) < 0.01)
+				v = '0 0 1';
+			Emit_PsysSpawn(i, v);
+			n = n - 1;
+		}
 	}
 };
 
@@ -4799,6 +4942,9 @@ void() Emit_List =
 	{
 		print(sprintf("  psys: %g baked system(s) + %g child link(s) for %s, first %s\n",
 		              ps_n - ps_links, ps_links, vbsp_em_map, ps_name[0]));
+		if (ps_bursts)
+			print(sprintf("  psys: %g one-shot row(s); %g burst(s) fired this map, %g by the server's Start\n",
+			              ps_bursts, em_bfired, em_bfsrv));
 	}
 };
 

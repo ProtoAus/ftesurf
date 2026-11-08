@@ -659,7 +659,7 @@ void(entity b) Body_ReadState =
 
 void(float isnew) CSQC_Ent_Update =
 {
-	local float f;
+	local float f, st, dd;
 
 	f = readbyte();
 	if (f & ENTWIRE_TYPED)
@@ -672,7 +672,7 @@ void(float isnew) CSQC_Ent_Update =
 			self.pb_trigon = readbyte();
 			Trig_NetState(self.pb_trigmodel, 1, self.pb_trigon);
 		}
-		else if (f == ENTWIRE_PSYSSTATE)
+		else if (f == ENTWIRE_PSYSSTATE || f == ENTWIRE_PSYSSTATE2)
 		{
 			self.classname = "emit_psysnet";
 			self.origin_x = readfloat();
@@ -682,7 +682,25 @@ void(float isnew) CSQC_Ent_Update =
 				strunzone(self.em_npeff);
 			self.em_npeff = strzone(readstring());
 			self.em_npon = readbyte();
+			self.em_npfire = 0;
+			if (f == ENTWIRE_PSYSSTATE2)
+			{	// P1416: a first sight fires only a start the server calls fresh (not one from
+				// before this client looked); after that, each new start fires once (at most three).
+				st = readbyte();
+				dd = readbyte();
+				if (isnew)
+					self.em_npfire = dd ? 1 : 0;
+				else
+				{
+					dd = st - self.em_npstarts;
+					if (dd < 0)
+						dd = dd + 256;
+					self.em_npfire = min(dd, 3);
+				}
+				self.em_npstarts = st;
+			}
 			Emit_PsysNet(self);
+			self.em_npfire = 0;     // the map-load walk reapplies the state, never the burst
 		}
 		else if (f == ENTWIRE_LASERSTATE)
 		{

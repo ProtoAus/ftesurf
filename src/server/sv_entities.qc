@@ -4280,18 +4280,23 @@ float(entity t, string in, string pm, entity act) SV_MapMsgInput;   // Patch 870
   re-created after the lump (SV_LateStash, Patch 865), so no later solid is renumbered.
 */
 .float  vbsp_psys_on;
+.float  vbsp_psys_starts;       // P1416: Start inputs, and when the last one came
+.float  vbsp_psys_fired;
 .string start_active;           // a string: absent is on, as cl_emit.qc's walk reads it
 .string effect_name;
 
 float(entity to, float changed) SV_PsysSend =
 {
 	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
-	WriteByte(MSG_ENTITY, ENTWIRE_PSYSSTATE);
+	WriteByte(MSG_ENTITY, ENTWIRE_PSYSSTATE2);
 	WriteFloat(MSG_ENTITY, self.origin_x);
 	WriteFloat(MSG_ENTITY, self.origin_y);
 	WriteFloat(MSG_ENTITY, self.origin_z);
 	WriteString(MSG_ENTITY, self.effect_name);
 	WriteByte(MSG_ENTITY, self.vbsp_psys_on);
+	WriteByte(MSG_ENTITY, self.vbsp_psys_starts & 255);
+	// Fresh: a client seeing this system for the first time fires only a start made just now.
+	WriteByte(MSG_ENTITY, (self.vbsp_psys_starts > 0 && time - self.vbsp_psys_fired < 1) ? 1 : 0);
 	return TRUE;
 };
 
@@ -4312,14 +4317,18 @@ float(entity t, string in) SV_PsysInput =
 	local float on;
 
 	if (in == "start")
+	{
 		on = TRUE;
+		t.vbsp_psys_starts = t.vbsp_psys_starts + 1;
+		t.vbsp_psys_fired = time;
+	}
 	else if (in == "stop" || in == "stopplayendcap" || in == "destroyimmediately" || in == "kill")
 		on = FALSE;
 	else
 		return FALSE;
 	if (cvar("developer") >= 2)     // one line per system: 97 a press on bhop_ceaseless
 		dprint(sprintf("psys %s at %v: %s, %s\n", t.effect_name, t.origin, in, on ? "on" : "off"));
-	if (t.SendEntity && on == t.vbsp_psys_on)
+	if (t.SendEntity && on == t.vbsp_psys_on && in != "start")   // P1416: every Start is news (a burst fires again)
 		return TRUE;
 	t.vbsp_psys_on = on;
 	t.SendEntity = SV_PsysSend;

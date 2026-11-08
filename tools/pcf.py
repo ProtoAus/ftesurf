@@ -139,7 +139,7 @@ def pcfs_in_map(bsp):
 def pairs_of(blocks, runtime):
     """P1263: bake's blocks and runtime rows side by side; a rope (Patch 791) has a row and no block."""
     it = iter(blocks)
-    return [(None if ("rope" in rt or "orbit" in rt) else next(it), rt) for rt in runtime]
+    return [(None if ("rope" in rt or "orbit" in rt or rt.get("container")) else next(it), rt) for rt in runtime]
 
 
 def kv_tokens(text):
@@ -229,6 +229,9 @@ RENDERER_TYPE = {
 # it was refused as "not a continuous emitter" and its boost strip drew nothing).
 EMIT_DEFAULT = 100.0
 PS_MAX = 512            # src/client/cl_emit.qc: psys lines a client keeps a map (P1411)
+# P1416: a one-shot system with no decay operator keeps its particles until it stops (a glow
+# sprite); baked as this lifetime, in seconds.
+PERSIST_DIE = 3600.0
 
 
 # Same rule for the system's "maximum draw distance" (100000 when absent). Read as 0, cl_emit.qc
@@ -462,6 +465,16 @@ def translate_orbit(d, e, content):
 def translate(d, e, unknown, mapname, content=None):
     """One DmeParticleSystemDefinition -> (cfg block text, runtime fields)."""
     name = e.name
+    # P1416: no emitter of its own, only children (explosion_tnt, fireworks): a count-0 burst row,
+    # so the client finds it and starts the children with it.
+    if not ops(d, e, "emitters") and ops(d, e, "children"):
+        kids = [d.elements[c.get("child")].name for c in ops(d, e, "children")
+                if c.get("child") is not None and c.get("child") >= 0]
+        return None, dict(name=name, rate=0.0, vel=[0.0, 0.0, 0.0], wvel=[0.0, 0.0, 0.0],
+                          ofs=[0.0, 0.0, 0.0], jit=0.0, maxp=0, die=0.0, maxdist=draw_distance(e),
+                          shape=None, nominal=0.0, children=kids, trail=None,
+                          look="container: its children carry the effect", burst=(0.0, 0.0, 0.0),
+                          container=True)
     rend = ops(d, e, "renderers")
     if rend and rend[0].get("functionName") == "render_rope":
         return translate_rope(d, e, content)
@@ -484,6 +497,16 @@ def translate(d, e, unknown, mapname, content=None):
     die_hi = float(lt.get("lifetime_max", die_lo)) if lt else 1.0
     if die_hi < die_lo:
         die_lo, die_hi = die_hi, die_lo
+    # P1416: a one-shot -- an instantaneous emitter, or a continuous one with an emission_duration
+    # (a timed spurt) -- fires when the system starts.  Without a decay operator Source never kills
+    # its particles, so they stay until the system stops.
+    em1 = find(d, e, "emitters", "emit_continuously")
+    ie = find(d, e, "emitters", "emit_instantaneously")
+    spurt = bool(em1 and float(em1.get("emission_duration", 0) or 0) > 0)
+    oneshot = spurt or (ie is not None and em1 is None)
+    persist = oneshot and not any("decay" in (o.get("functionName") or "").lower() for o in ops(d, e, "operators"))
+    if persist:
+        die_lo = die_hi = PERSIST_DIE
     if die_hi <= 0:
         raise Untranslated("lifetime is zero")
 
@@ -974,7 +997,22 @@ def translate(d, e, unknown, mapname, content=None):
     maxp = float(e.get("max_particles", 0) or 0)
     ceiling = maxp / die_hi if maxp > 0 else nominal
     rate = min(nominal, ceiling) if nominal > 0 else 0.0
-    if rate <= 0:
+    burst = None                                # P1416: (count, duration, delay) -> a burst row
+    if nominal > 0 and spurt:
+        dur = float(em.get("emission_duration"))
+        cnt = (nominal if persist else rate) * dur      # the ceiling is alive/lifetime: no lifetime here
+        if persist and maxp > 0:
+            cnt = min(cnt, maxp)
+        burst = (cnt, dur, float(em.get("emission_start_time", 0) or 0))
+        rate = 0.0
+    elif rate <= 0 and ie is not None and em is None:
+        n_hi = float(ie.get("num_to_emit", 100) or 0)
+        n_lo = float(ie.get("num_to_emit_minimum", -1) or -1)
+        cnt = (n_lo + n_hi) * 0.5 if 0 <= n_lo <= n_hi else n_hi
+        if maxp > 0:
+            cnt = min(cnt, maxp)
+        burst = (cnt, 0.0, float(ie.get("emission_start_time", 0) or 0))
+    if rate <= 0 and not (burst and burst[0] >= 1):
         raise Untranslated("not a continuous emitter (rate 0)")
 
     # ---- look
@@ -1185,7 +1223,7 @@ def translate(d, e, unknown, mapname, content=None):
     # a pixel is still a line.  `stretchfactor -n` is a fixed half-length, read
     # only by the batched draw that shader's sort selects (R_AddTSparkParticle).
     trail = None
-    if rend and rend[0].get("functionName") == "render_sprite_trail" and mat.lower() in TRAIL_BLENDED:
+    if rend and rend[0].get("functionName") == "render_sprite_trail" and mat.lower() in TRAIL_BLENDED and not burst:
         lmax = float(rend[0].get("max length", 2000.0))
         slow = max(0.0, sum(v * v for v in basevel) ** 0.5 - sum(v * v for v in spread) ** 0.5)
         half = lmax * 0.5 if slow * 0.1 >= lmax else 0.0
@@ -1235,7 +1273,7 @@ def translate(d, e, unknown, mapname, content=None):
 
     rt = dict(name=name, rate=rate, vel=basevel, wvel=worldvel, ofs=ofs,
               jit=jit, maxp=int(maxp), die=die_hi, maxdist=maxdist, shape=shape,
-              nominal=nominal, children=children, trail=trail, look=look)
+              nominal=nominal, children=children, trail=trail, look=look, burst=burst)
     return "\n".join(L), rt
 
 
@@ -1369,16 +1407,21 @@ def main():
     # names a parent is an extra emitter started with that parent.
     # Stand-alone lines first, so Emit_PsysFind (first match by name) lands on
     # one with no parent tag.
+    # P1416: a one-shot is a `burst` row -- the same 26 words, then count, duration (0 = all at
+    # once) and start delay.  Clients before P1416 read only `psys` and skip it.
     def psline(rt, parent):
         sh = rt.get("shape") or [0] + [0.0] * 7
-        return ("psys %s %s %.4g %.6g %.6g %.6g %d %.4g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %s"
+        line = ("%s %s %s %.4g %.6g %.6g %.6g %d %.4g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %s"
                 " %d %.6g %.6g %.6g %.4g %.4g %.4g %.6g") % (
-            mapname, rt["name"], rt["rate"],
+            "burst" if rt.get("burst") else "psys", mapname, rt["name"], rt["rate"],
             rt["vel"][0], rt["vel"][1], rt["vel"][2],
             rt["maxp"], rt["die"], rt["maxdist"],
             rt["ofs"][0], rt["ofs"][1], rt["ofs"][2],
             rt["wvel"][0], rt["wvel"][1], rt["wvel"][2], rt["jit"], parent,
             sh[0], sh[1], sh[2], sh[3], sh[4], sh[5], sh[6], sh[7])
+        if rt.get("burst"):
+            line += " %.4g %.4g %.4g" % tuple(rt["burst"])
+        return line
 
     byname = dict((rt["name"], rt) for rt in runtime)
     edges = []
@@ -1421,8 +1464,8 @@ def main():
                 t["spread"][0], t["spread"][1], t["spread"][2], t["grav"],
                 TRAIL_N, TRAIL_T0, TRAIL_RATIO, t["half"]))
 
-    print("%s: %d systems translated, %d skipped, %d child links" % (
-        mapname, len(runtime), len(skipped), len(edges)))
+    print("%s: %d systems translated (%d of them one-shot bursts), %d skipped, %d child links" % (
+        mapname, len(runtime), len([1 for rt in runtime if rt.get("burst")]), len(skipped), len(edges)))
     for n, why in skipped:
         print("   skipped %-24s %s" % (n, why))
     for parent, rt in edges:
