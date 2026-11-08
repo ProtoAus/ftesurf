@@ -514,6 +514,7 @@ float(vector eye, vector fwd, float maxdist) Fx_Draw;
 // ------------------------------------------------------------------ counters
 string vbsp_spr_map;                      // lazy-reload latch, as the decals use
 float  spr_want_spr, spr_want_beam, spr_want_glow, spr_want_las;   // Patch 894: the cvars as the last load read them
+float  spr_want_fish;                   // P1436
 // P1252: env_laser, counted per laser (a laser with several targets is several beam entries)
 float  vbsp_las_seen, vbsp_las_n, vbsp_las_off, vbsp_las_notgt;
 float  vbsp_las_parent, vbsp_las_moving, vbsp_las_nomat, vbsp_las_over;
@@ -1559,6 +1560,7 @@ void() Sprite_LoadForMap =
 	spr_want_beam = wantbeam;
 	spr_want_glow = wantglow;
 	spr_want_las = cvar("vbsp_lasers");
+	spr_want_fish = cvar("vbsp_fish");
 
 	Sprite_FreeMaterials();
 	/*
@@ -2944,7 +2946,8 @@ void() Sprite_Draw =
 	if (serverkey("map") != vbsp_spr_map)
 		Sprite_LoadForMap();
 	else if (cvar("vbsp_sprites") != spr_want_spr || cvar("vbsp_spotlights") != spr_want_beam ||
-	         cvar("vbsp_lightglow") != spr_want_glow || cvar("vbsp_lasers") != spr_want_las)
+	         cvar("vbsp_lightglow") != spr_want_glow || cvar("vbsp_lasers") != spr_want_las ||
+	         cvar("vbsp_fish") != spr_want_fish)
 		Sprite_LoadForMap();    // Patch 894: live, without a map reload
 
 	/*
