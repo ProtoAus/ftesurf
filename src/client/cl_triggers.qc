@@ -2422,18 +2422,19 @@ void() Trig_LoadForMap =
 		// over a thousand unwired multiples.
 		else if (cn == "trigger_multiple" && io_n > pend0)
 			kind = TG_EVENT;
-		if (!kind)
-		{
-			for (r = pend0; r < io_n; r = r + 1)
-				io_src[r] = (!strcmp(cn, "logic_auto")) ? -3 : -1;
-			continue;
-		}
 		// P1425: a template's member is not in the server's map until a ForceSpawn makes a copy, and a copy
-		// is the server's alone: predicting the lump's would snap back every touch (cl_tplskip.qc).
+		// is the server's alone: predicting the lump's would snap back every touch, and a member logic_auto
+		// fires no OnMapSpawn there (cl_tplskip.qc).
 		if (Tpl_ClMember(tname, tparent))
 		{
 			for (r = pend0; r < io_n; r = r + 1)
 				io_src[r] = -1;
+			continue;
+		}
+		if (!kind)
+		{
+			for (r = pend0; r < io_n; r = r + 1)
+				io_src[r] = (!strcmp(cn, "logic_auto")) ? -3 : -1;
 			continue;
 		}
 

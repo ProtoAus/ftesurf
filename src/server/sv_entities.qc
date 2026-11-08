@@ -6536,7 +6536,7 @@ void() SV_EntityIOBuild =
 	*/
 	for (e = nextent(world); e; e = nextent(e))
 	{
-		if (!e.vbsp_io_out || e.classname == "tpl_proto")      // P1425: an instance links itself
+		if (!e.vbsp_io_out || e.classname == "tpl_proto" || e.tpl_instof)   // P1425: a copy links itself
 			continue;
 		for (o = e.vbsp_io_out; o; o = o.vbsp_io_next)
 		{

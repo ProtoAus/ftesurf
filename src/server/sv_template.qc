@@ -142,21 +142,31 @@ void(entity e, vector torg, vector tang, vector morg, vector mang) SV_TplPlace =
 };
 
 /*
-  A killed entity's output edicts (Kill, sv_entities.qc). Each goes once a delayed fire it started has
-  run -- Source's event queue fires those after the caller is gone, with no caller -- and none is
-  linked to the dead entity any more, so "!self" in such a fire resolves to nothing. Without this a
+  A killed entity's output edicts (Kill, sv_entities.qc). Each goes once no delayed fire it started is
+  pending -- Source's event queue fires those after the caller is gone, with no caller, so "!self" in
+  one resolves to nothing here too. Their links stay: SV_FireOutputBody may be walking this chain (a
+  row that Kills its own source, then the rows after it, which Source still fires). Without this a
   template's Kill-then-ForceSpawn cycle (bhop_4muddz, every use) left them all, edicts without end.
 */
+void() SV_IOOrphanThink =
+{
+	// A vbsp_iodelay row points its .owner here; a player-clocked one (SV_PcEligible) can outlast world time.
+	if (findentity(world, owner, self))
+	{
+		self.nextthink = time + 0.5;
+		return;
+	}
+	remove(self);
+};
+
 void(entity t) SV_IOOrphan =
 {
-	local entity o, nx, p;
+	local entity o, p;
 
-	for (o = t.vbsp_io_out; o; o = nx)
+	for (o = t.vbsp_io_out; o; o = o.vbsp_io_next)
 	{
-		nx = o.vbsp_io_next;
 		o.owner = world;
-		o.vbsp_io_next = world;
-		o.think = SUB_Remove;
+		o.think = SV_IOOrphanThink;
 		o.nextthink = time + max(0, o.vbsp_io_delay) + 0.1;
 	}
 	t.vbsp_io_out = world;
@@ -360,9 +370,8 @@ void(entity m, vector org, vector ang) SV_TplMakerSpawn =
 			dprint(sprintf("^3env_entity_maker %s: no point_template named %s\n", m.targetname, m.tpl_maker));
 		return;
 	}
-	// Copies a maker has alive, capped: an AutoSpawn maker of non-solid members stacks one every 0.5 s in Source
-	// too, but there the map's movers Kill them on arrival, and a mover that cannot run here (surf_classics3's
-	// func_movelinear) never would.
+	// Copies a maker has alive, capped -- a backstop: the copy blocks its maker until it moves (above), and a
+	// mover that cannot run here never moves away.
 	local float alive;
 	local entity c;
 	alive = 0;
@@ -381,10 +390,16 @@ void(entity m, vector org, vector ang) SV_TplMakerSpawn =
 		return;
 	m.tpl_inst = tpl_count;
 	m.tpl_cur = tpl_lastfirst;
-	if (m.tpl_vmin == '0 0 0' && tpl_lastfirst && !wasfreed(tpl_lastfirst))
+	if (tpl_lastfirst && !wasfreed(tpl_lastfirst))
 	{
-		m.tpl_vmin = tpl_lastfirst.absmin - tpl_lastfirst.origin;
-		m.tpl_vmax = tpl_lastfirst.absmax - tpl_lastfirst.origin;
+		// env_entity_maker.cpp:173: "Assume it'll block us" -- until the copy moves or goes.
+		m.tpl_blk = tpl_lastfirst;
+		m.tpl_blkorg = tpl_lastfirst.origin;
+		if (m.tpl_vmin == '0 0 0' && m.tpl_vmax == '0 0 0')
+		{
+			m.tpl_vmin = tpl_lastfirst.mins;
+			m.tpl_vmax = tpl_lastfirst.maxs;
+		}
 	}
 	SV_FireOutput(m, "OnEntitySpawned", m);
 	if (m.spawnflags & SF_MAKER_AUTOSPAWN)
@@ -463,6 +478,12 @@ float(entity t, string in, string pm, entity act, entity caller) SV_TplInput =
 float(entity e) SV_TplTakes =
 {
 	if (e.solid == SOLID_BSP || e.solid == SOLID_BBOX || e.solid == SOLID_SLIDEBOX || e.parentname != "")
+		return FALSE;
+	// A brush that is not a trigger may turn solid later (StartDisabled func_brush, func_wall_toggle, Enable
+	// makes any brush SOLID_BSP: SV_IOEnable), and areaportals sit in a list built at load.
+	if (substring(e.model, 0, 1) == "*" && substring(e.classname, 0, 8) != "trigger_")
+		return FALSE;
+	if (e.vbsp_io_solid == SOLID_BSP)
 		return FALSE;
 	if (e.SendEntity == SV_SpSend || e.SendEntity == SV_TrkSend || e.SendEntity == SV_TrkPropSend ||
 	    e.SendEntity == SV_PsysSend || e.SendEntity == SV_LaserSend || e.SendEntity == SV_PortalSend)
