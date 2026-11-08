@@ -19,6 +19,15 @@ the movement stays the same as Momentum." Full measured write-up: BACKLOG.md (P1
   main 45fb397d; every lobby booted with 0 QC errors; codes.txt 93 -> 94 (.pre1406). Both installs
   (C:\FTESurf, C:\FTEQuake under rig.lock), .prev beside each file, csprogsvers 6af51682 seeded.
 
+## Follow-up (same day): three server cuts LIVE
+
+prederror rows formatted only when a report freezes them (22.9 -> 3.1 us/tick), the Archive/PlayStats/
+Account walks read StartFrame's connection chain (9.5 -> 2.3 us/tick), 30 per-frame registercvar calls
+run once per progs load. Check builds 0 differences, mutants all differ; review clean. LIVE 8 Nov:
+12 lobbies (empty), qw 63fa2880, cs unchanged fa957ba9, main 08616203; both installs (rig.lock).
+Not done: mover culling (needs engine help: reflection/portal views reuse QC's entity list, and poses
+carry history); slower sky test dropped (one sprite a frame late in 1 of 334,628 sprite-frames).
+
 ## Left (BACKLOG has the detail)
 
 Server, exact: SV_PeRow's three sprintfs per command; acct_here walks (Archive_Frame, PlayStats_Frame,
