@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1430 point_tesla arcs -- (see delivery); owner check pending
+## P1430 point_tesla arcs -- LIVE 8 Nov (lobbies + both installs, cs a94e4f5a); owner check pending
 
 - surf_y: blue, red and green electric arcs crackle around the spawn room from map start. surf_quasar_final,
   surf_canisius: teslas near spawn. Say if arcs look too thick, too many, or spark where nothing should.

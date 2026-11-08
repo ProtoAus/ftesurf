@@ -46,6 +46,13 @@ over 60 s sparked every frame); re-jitter every frame, fade, the 8-unit end gap,
 drawing from the origin, drawing on a miss, tapering, drawing a constant no-end beam; Fx_Net resetting the
 schedule; the double count on a material failure; the walk on every map; distant sources tracing.
 
+## Delivery
+
+- LIVE 8 Nov ~23:45 local: 12 lobbies (one player on #10, warned; 0 QC errors) qw e49f4a34 + cs a94e4f5a from
+  main bbd9fb59; both installs the same (.prev 53744f28 / 190d9980, .pre1430); csprogsvers dfe3bb01 on the Pi
+  and both installs; codes.txt 102 -> 103 (.pre1430). The client half is in csprogs: players have it from the
+  lobbies now.
+
 ## Left
 
 - A tesla's sound (m_SoundName), its hit glow and sparks, m_SourceEntityName, parented teslas (56, declined).
