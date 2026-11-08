@@ -38,8 +38,10 @@ calibration. The existing reader programs separately exercise real comparisons.
 - Read-only required runs sweep: 559 recordings + 169 views, 728 acquired
   buffers, 351 pre-existing file faults (no increase over prior 351). The dataset
   grew since P1399; historical byte identity is not claimed. No raw copies kept.
-  The first unintended saves expansion refused an owner-protected save; it was
-  not skipped or regraded. The required runs-only sweep completed separately.
+  The first unintended saves expansion selected an existing kept-save directory
+  named `run.rec` and failed at open; it was not skipped or regraded. A later
+  metadata-only check confirmed the shape, not an ACL/UAC blocker. The required
+  runs-only sweep completed separately.
 - The complete module AST outside `cmd_pairs` is identical to the predecessor.
   No parser/metric/recorder semantics, native pin/tag, VM or QC Build change.
 
