@@ -187,7 +187,7 @@ def manifest_pcfs(z, mapname, names):
 # ------------------------------------------------------------- the translator
 # Operators this understands.  Anything absent is reported, never assumed.
 KNOWN = {
-    "emit_continuously", "emit_instantaneously",
+    "emit_continuously", "emit_instantaneously", "emit noise",
     "Lifetime Random", "Radius Random", "Alpha Random", "Color Random",
     "Rotation Random", "Rotation Spin Roll", "Radius Scale", "Movement Rotate Particle Around Axis",
     "Velocity Random", "Velocity Noise", "random force",
@@ -964,6 +964,13 @@ def translate(d, e, unknown, mapname, content=None):
     # ---- rate, capped by the particle ceiling (see the header)
     em = find(d, e, "emitters", "emit_continuously")
     nominal = float(em.get("emission_rate", EMIT_DEFAULT)) if em else 0.0
+    nz = None if em else find(d, e, "emitters", "emit noise")
+    if nz and float(nz.get("emission_duration", 0) or 0) <= 0:
+        # P1411: a rate that wanders between minimum and maximum (63 library systems, 27 placed
+        # and started), baked at its middle with a negative minimum read as 0.
+        lo = float(nz.get("emission minimum", 0) or 0)
+        hi = float(nz.get("emission maximum", 100) or 0)
+        nominal = max(0.0, (max(lo, 0.0) + hi) * 0.5)
     maxp = float(e.get("max_particles", 0) or 0)
     ceiling = maxp / die_hi if maxp > 0 else nominal
     rate = min(nominal, ceiling) if nominal > 0 else 0.0
