@@ -40,6 +40,13 @@ reversed roll; the CS:S fallback sound's 85 dB falloff. Admitted in the file's h
 (every client gets every explosion, drawn within 8000 units), material passes rather than a depth sort, grey
 smoke where the light lookup gives nothing, no pitch on the fallback sound.
 
+## Delivery
+
+- LIVE 9 Nov ~05:00 local: 12 lobbies (nobody on; warned; 0 QC errors) qw 23bcf6b5 + cs 0fe650c4 from main
+  beccbabf (P1433 + P1435 + P1436 in one build); both installs the same (.prev dd2b7fa2 / a90ec502, .pre1436);
+  csprogsvers f2c58ee3 on the Pi and both installs; codes.txt 104 -> 105 (.pre1436). The client half is in
+  csprogs: players have it from the lobbies.
+
 ## Left
 
 - Parented env_explosions (51 are point_template members on 2 maps, all parented -- 3a's census) are declined;

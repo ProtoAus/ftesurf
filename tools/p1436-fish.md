@@ -33,6 +33,13 @@ relinks only after a 32-unit move; the client sample is taken at the step's star
 moving position every frame); all pools' sight checks fell in one frame; spawn timers had expired at load (the
 clock arrives later); panic from the camera rather than the predicted origin; vbsp_fish now reloads live.
 
+## Delivery
+
+- LIVE 9 Nov ~05:00 local: 12 lobbies (nobody on; warned; 0 QC errors) qw 23bcf6b5 + cs 0fe650c4 from main
+  beccbabf (P1433 + P1435 + P1436 in one build); both installs the same (.prev dd2b7fa2 / a90ec502, .pre1436);
+  csprogsvers f2c58ee3 on the Pi and both installs; codes.txt 104 -> 105 (.pre1436). The client half is in
+  csprogs: players have it from the lobbies.
+
 ## Left
 
 - Frame cost on surf_garden_css not measured (estimated from the trace counts: ~5k Avoid and ~4k sight traces a

@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1433/P1435/P1436 steam, fires, sparks, explosions, fish -- owner check pending
+## P1433/P1435/P1436 steam, fires, sparks, explosions, fish -- LIVE 9 Nov (lobbies + both installs, cs 0fe650c4); owner check pending
 
 - surf_sluice2: white steam pours down from four ceiling vents (around -500 13600). bhop_rpg: the map
   turns a red and a blue steam jet on and off. bhop_maya: two explosions (around 1030 2410) when the map sets them off,
