@@ -775,10 +775,11 @@ def cmd_pairs(args):
         neg.sort(reverse=True)
         pfs = [n[0] for n in neg]
         fr = sorted(n[1] for n in neg)
+        # Nearest-rank p99: ceil(0.99 * n), including small samples.
+        p99 = (99 * len(fr) + 99) // 100 - 1
         print("  MATCH (agreement over compared rows) -- THE DISCRIMINATOR:")
         print("      max %.4f  p99 %.4f  median %.4f  min %.4f"
-              % (fr[-1], fr[max(0, int(len(fr) * 0.01) - 1)],
-                 fr[len(fr) // 2], fr[0]))
+              % (fr[-1], fr[p99], fr[len(fr) // 2], fr[0]))
         print("  cover (exact contiguous prefix / the LONGER run) -- diagnostic:")
         print("      max %.4f  median %.4f"
               % (pfs[0], pfs[len(pfs) // 2]))

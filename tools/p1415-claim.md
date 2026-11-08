@@ -1,0 +1,1 @@
+P1415 claimed by parent pi session01a1, 2026-11-08: existing recsim cmd_pairs p99 upper-tail diagnostic only. Actual unchanged cmd_pairs synthetic100/101/two-sample baselines fail with four positive controls passing. No parser/metric/collector/threshold/ranking/new raw/native pin/tag/Build change.
