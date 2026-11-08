@@ -3836,7 +3836,7 @@ The beam over the end-room circle is drawn: a soft white column from the pit to 
 ceiling, brightest low and fading upward, like Momentum's (surf_boreas0000). It is a
 Source "rope" effect; `vbsp_emit_ropes 0` turns it off. The big pink glow at its base and
 the floating specks are still off (child particles; BACKLOG). csprogs + the surf_boreas
-particle bake. Installs 2026-10-18T11:56:48Z (csprogs 75b75a77; C:\FTESurftesurf
+particle bake. Installs 2026-10-18T11:56:48Z (csprogs 75b75a77; C:\FTESurf\ftesurf
 particles/surf_boreas.cfg 0d1f6cd7); lobbies 2026-10-18T12:36Z (all 12, csprogs 75b75a77).
 
 "Beam ok / too wide / too narrow / too bright". Verdict PENDING.
