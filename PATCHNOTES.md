@@ -21,6 +21,16 @@
 
 ## next
 
+### P1428 Look triggers and map minigames
+- Triggers that fire when you look at something for a moment now work (21 maps), including their timeouts.
+- Map minigames that read your keys (game_ui, 20 maps: bowling, races) now get your movement and attack keys. They do not freeze you in place yet.
+- Breakable walls that a map damages through outputs break when their health runs out, and props that change skin through outputs now change.
+
+### P1425 Things maps spawn on an event now appear when they should
+- Entities a map spawns from a template (130 maps: checkpoint teleporters, collectibles, buttons) are no longer there from the start; they appear when the map spawns them, as often as it does.
+- bhop_4muddz and similar maps: the teleporter you get at a checkpoint works every time instead of only once.
+- Map outputs aimed at names ending in * (any name starting with that) now reach their targets (54 maps).
+
 ### P1426 Beams between points
 - The laser and electric beams maps run between two points now draw (env_beam: about 1,200 on 90 maps), switched on and off by the map; striking beams flash as they do in Source.
 

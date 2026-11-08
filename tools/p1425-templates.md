@@ -57,10 +57,14 @@ edicts, the "outputs" marker breaking SV_SpRawSelfOnly/path_track, IsPlayerLooki
 !caller, filter members stashed into the next map, OnJump, client prediction of removed triggers, solid
 copies vs SV_RecSim_Run, rotator riders, numbering -- all fixed in b4d5b065 (above). Kept: a member a class's
 own spawn function removes (CS weapons) still counts for OnEntitySpawned, as Source's CreateInstance does.
-Round 2: see below.
+Round 2 (one reviewer, the fixes): Kill's orphaning cut the rows after a self-Kill, a copy spawned from
+OnMapSpawn linked into the OnJump chain twice, the new copy did not block its maker, brushes that turn solid
+later were taken, player-clocked delayed rows could outlive their output edict, a member logic_auto's
+OnMapSpawn was still predicted -- fixed in 37e34053. Round 3: no defect; its latent note (a copy removed
+without Kill relinked into the OnJump chain) closed in fe3954f3.
 
 ## Not done
 
-- Freeze of solid members to runtime copies (kept static, see above); templates of movers stay static.
+- Solid, parented, mover and non-trigger brush members are not templated (kept as they were, above).
 - The client draws lump effects (sprites, sprite trails) of template members from load; b8's effect walkers
   take Tpl_ClMember next (P1426/P1430).
