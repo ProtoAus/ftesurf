@@ -215,8 +215,16 @@ void(entity e) SV_TplRun =
 	for (o = e.vbsp_io_out; o; o = o.vbsp_io_next)
 		if (o.vbsp_io_name == "onjump")
 		{
-			e.vbsp_onjump_next = vbsp_onjump_head;      // SV_EntityIOBuild's OnJump chain
-			vbsp_onjump_head = e;
+			// Not if it is in already: a copy removed without Kill (a trigger_once, a break) stays linked, and
+			// this edict may be its reused slot -- linking it again would close the chain into a loop.
+			for (nx = vbsp_onjump_head; nx; nx = nx.vbsp_onjump_next)
+				if (nx == e)
+					break;
+			if (!nx)
+			{
+				e.vbsp_onjump_next = vbsp_onjump_head;  // SV_EntityIOBuild's OnJump chain
+				vbsp_onjump_head = e;
+			}
 			break;
 		}
 };
