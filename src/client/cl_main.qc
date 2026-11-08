@@ -642,7 +642,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	  1.25  default: 25% slack on the tangent, so turning has margin before a
 	        glare needs its first trace.
 
-	  P1422: the cone circumscribes the drawn view (VF_FOV); the sky test uses it
+	  P1422: the cone circumscribes the drawn view (unproject); the sky test uses it
 	  too, at 1.25 (cl_sprites.qc Sprite_ConeTan).
 	*/
 	registercvar("vbsp_glare_cull", "1.25");

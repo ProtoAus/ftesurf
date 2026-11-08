@@ -261,6 +261,7 @@ float  spr_skynext;                     // cursor over sprites then beams
 vector spr_skyeye;                      // last frame's eye; a jump retests everything
 float  spr_skyburst;                    // tests left at 4x after a jump
 float  spr_skycarry;                    // P1422: the fraction of a ray left from the last frame
+float  spr_glowext;                     // P1422: the largest glow's half-diagonal at GLOW_OVERLAYDIST
 vector *spr_skyat;                      // P1242: the eye each sprite then beam was last traced from
 float  spr_skysolidgen, spr_skysolidseen; // P1242: bumped by cl_portal.qc when a door's collision changes
 float  spr_skyhid;                      // skipped last frame (vbsp_sprite_debug)
@@ -968,6 +969,7 @@ void(vector org, vector ang, float hw, float hh, vector col, float alpha,
 	spr_alpha[i] = alpha;
 	spr_hw[i]    = hw;
 	spr_hh[i]    = hh;
+	spr_glowext  = max(spr_glowext, sqrt(hw * hw + hh * hh));
 	/*
 	  Cull radius ZERO, and deliberately.  The quad is drawn 100 units from the
 	  eye, not at spr_org, so its world extent there says nothing about what it
@@ -1525,6 +1527,7 @@ void() Sprite_LoadForMap =
 	*/
 	Sprite_LoadOccluders();
 	spr_n = beam_n = beam_spot_n = 0;
+	spr_glowext = 0;
 	if (spr_under)
 		for (mat = 0; mat < SPR_MAX; mat = mat + 1)
 			spr_under[mat] = spr_utime[mat] = 0;   // Patch 847: positions are reused
@@ -1992,6 +1995,15 @@ void(vector a, vector b, vector c, vector d, string mat, float flags,
 // engine's own projection (unproject applies scr_fov_mode and the aspect; VF_FOV reads 0 here, as the view's fov
 // is the approximate one until it renders, and the old cone from `fov` on a square screen missed the edges of a
 // 21:9 screen and of fov modes 1 and 3). 0 -- nothing culled -- when a corner is 89+ degrees off `fwd`.
+// P1422: the cosine a glow's direction must stay above to be cullable: the cone plus the largest glow's own half
+// diagonal (its quad sits GLOW_OVERLAYDIST out; surf_tensor2's 65x35 glows are 0.64 rad).
+float(float t) Sprite_GlowCos =
+{
+	local float h;
+	h = sqrt(GLOW_OVERLAYDIST * GLOW_OVERLAYDIST + spr_glowext * spr_glowext);
+	return (GLOW_OVERLAYDIST - t * spr_glowext) / (h * sqrt(1 + t * t));	// cos(atan(t) + atan(ext/dist))
+};
+
 float(float margin, vector fwd) Sprite_ConeTan =
 {
 	local vector mn, sz, eye, p;
@@ -2172,7 +2184,7 @@ void() Sprite_Glare =
 	  already said.  That is the adaptive path below, added in build 60.
 
 	  P1422: the cone circumscribes the view actually drawn (Sprite_ConeTan, from
-	  VF_FOV). The square-from-`fov` cone that stood here missed the edges of a
+	  unproject). The square-from-`fov` cone that stood here missed the edges of a
 	  21:9 screen under scr_fov_mode 4 and of fov modes 1 and 3.
 
 	  vbsp_glare_cull is the margin ITSELF, not a boolean: 0 disables the cull
@@ -2185,7 +2197,7 @@ void() Sprite_Glare =
 	maxdist = cvar("vbsp_sprite_dist");
 	tanx = (docull > 0) ? Sprite_ConeTan(docull, fwd) : 0;	// P1422: the drawn view's own cone, not a square from `fov`
 	slope = sqrt(1 + tanx * tanx);
-	glowcos = (0.825336 - tanx * 0.564642) / slope;
+	glowcos = Sprite_GlowCos(tanx);
 
 	// ---- the amortised trace: `budget` RAYS per frame, round-robin ----------
 	/*
@@ -2676,8 +2688,8 @@ float(vector eye, vector p, float st) Sprite_SkyTest =
 // P1422: vbsp_sprite_skyrays is rays per 60th of a second, never more a frame than before (a per-frame count
 // traced 14,000 a second at 220 fps: surf_fairy 222 fps, 338 with the test off), and a sprite out of view or
 // past vbsp_sprite_dist spends none -- it draws nothing whatever its verdict (Sprite_ConeTan's cone, margin 1.25;
-// the sphere test allows for the cone's slope). A glow is a quad 100 units out along its direction, up to ~34
-// degrees across, with no distance cull: judged by angle with that margin. Beams are long, so their centre says
+// the sphere test allows for the cone's slope). A glow is a quad GLOW_OVERLAYDIST out along its direction with no
+// distance cull: judged by angle, the margin the map's largest glow (Sprite_GlowCos). Beams are long, so their centre says
 // little about whether they are on screen: always tested. The test is inline here and in Sprite_Glare: one QC
 // call per visit cost ~4% on surf_fairy.
 void(vector eye) Sprite_SkyTick =
@@ -2695,7 +2707,7 @@ void(vector eye) Sprite_SkyTick =
 	fwd = v_forward;
 	tanx = (cvar("vbsp_sprite_skycull") > 0) ? Sprite_ConeTan(1.25, fwd) : 0;
 	slope = sqrt(1 + tanx * tanx);
-	glowcos = (0.825336 - tanx * 0.564642) / slope;	// cos(cone + 0.6 rad)
+	glowcos = Sprite_GlowCos(tanx);
 	maxdist = cvar("vbsp_sprite_dist");
 	if (spr_skyburst > 0)
 	{
@@ -2764,7 +2776,7 @@ void(vector eye) Sprite_SkyTick =
 	}
 };
 
-// P1422 vbsp_sprite_debug: the sprites within 30 degrees of the view axis (on screen whatever Sprite_Unseen says):
+// P1422 vbsp_sprite_debug: the sprites within 30 degrees of the view axis (on screen whatever the view test says):
 // how many are hidden behind the sky, how many verdicts were traced 16+ units from this eye (or never), and how many
 // a fresh trace contradicts on drawn-or-hidden. Settled, the last must be 0 with the cull on and off.
 string(vector eye, vector fwd) Sprite_SkyAxisCensus =
