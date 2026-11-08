@@ -4482,6 +4482,16 @@ float(entity t, float cls) SV_FxStartOn =
 	return (t.spawnflags & 1) != 0;
 };
 
+// A fire with fuel, its time up: out, and gone for good.
+void() SV_FxFireOut =
+{
+	if (!self.vbsp_fx_on)
+		return;
+	self.vbsp_fx_on = FALSE;
+	self.vbsp_fx_dead = TRUE;
+	self.SendFlags = self.SendFlags | LAS_SF_STATE;
+};
+
 void() SV_FxKeep =
 {
 	if (self.targetname == "")
@@ -4489,7 +4499,7 @@ void() SV_FxKeep =
 		remove(self);               // nothing can address it: the client draws it from the lump
 		return;
 	}
-	SV_LateStash("targetname origin spawnflags m_bOn vbsp_fx_init");
+	SV_LateStash("targetname origin spawnflags m_bOn vbsp_fx_init health StartDisabled startdisabled");
 };
 
 void() point_tesla = { SV_FxKeep(); };
@@ -4503,6 +4513,8 @@ float(entity t, string in) SV_FxInput =
 	if (t.vbsp_fx_dead)
 		return TRUE;
 	on = t.SendEntity ? t.vbsp_fx_on : SV_FxStartOn(t, cls);
+	if (!t.SendEntity)
+		t.vbsp_fx_dis = (t.StartDisabled || t.startdisabled);  // P1433: env_fire's InputStartFire waits for Enable
 	ev = FALSE;
 	if (in == "kill")
 	{
@@ -4572,10 +4584,24 @@ float(entity t, string in) SV_FxInput =
 		if (in == "startfire")
 		{
 			if (!t.vbsp_fx_dis)
+			if (!on)
+			{
 				on = TRUE;
+				if (!(t.spawnflags & 1) && t.health > 0)
+				{	// fuel: burns `health` seconds, goes out and is removed (SF_FIRE_DIE_PERMANENT)
+					t.think = SV_FxFireOut;
+					t.nextthink = time + t.health + 1;
+				}
+			}
 		}
 		else if (in == "extinguish" || in == "extinguishtemporary")
+		{
 			on = FALSE;
+			if (t.health > 0 && !(t.spawnflags & 1))
+				t.vbsp_fx_dead = TRUE;  // a fire with fuel dies for good when it goes out
+			if (in == "extinguish")
+				t.spawnflags = t.spawnflags - (t.spawnflags & 1);  // InputExtinguish clears SF_FIRE_INFINITE
+		}
 		else if (in == "disable")
 		{
 			on = FALSE;

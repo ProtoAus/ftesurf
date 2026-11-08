@@ -192,6 +192,7 @@ float  *em_stop;                // EK_PSYS only, Patch 1028: stopped (start_acti
 float  *em_tnc;                 // P1433: steam, spark and fire: the name's crc (-1 unnamed), for ENTWIRE_FXSTATE2
 vector *em_korg;                //   and the lump origin (a fire's em_mid may have dropped to the floor)
 float  em_fxwait;               //   named ones that start off and wait for the map
+vector em_eye;                  //   the last frame's eye
 vector *em_psorg;               //   the system's entity origin, which the server's state names
 float  *em_psidx;               //   its .pcf system (ps_*), the parent's for a child; -1 = none
 // P1416: a one-shot (burst row): particles a start fires (0 = a rate emitter), its spurt length
@@ -2246,7 +2247,7 @@ void() Emit_AllocLife =
   is the material's DX7 fallback, grey at ~131 of 255, so the colour is scaled
   up to land on rendercolor, the flat colour Source's DX8 ParticleSphere draws.
 */
-#define STK_MAX  16
+#define STK_MAX  32       // P1433: steam shares the table (surf_kz_mix_journeys: 13+ looks before light)
 string sp_look[STK_MAX];         // "ssize esize life r g b renderamt basespread spreadspeed", strzoned
 float *sp_fx;                   // [STK_MAX] handles
 float  sp_n;
@@ -2271,13 +2272,13 @@ void(float i) Emit_StackDefine =
 		sp_bs[i] = stof(argv(7));
 		sp_sv[i] = stof(argv(8));
 		s = sprintf("r_part %s\n{\ntexture \"materials/particle/particle_smokegrenade.vtf\"\ntype normal\nblend blendalpha\nscalefactor 1\nscale %g\nrotationstart 0 360\nrotationspeed %g %g\n",
-		            nm, ss * 5.657, -stof(argv(10)), stof(argv(10)));
+		            nm, ss * 5.657, -stof(argv(10)) * 57.29578, stof(argv(10)) * 57.29578);   // Source's roll is radians
 		s = strcat(s, sprintf("rgb %s %s %s\nalpha 0\ndie %g\ncount 1\nspawnmode ball\nspawnorg 0\nveladd 1\nrampmode lerp\n",
 		            argv(3), argv(4), argv(5), life));
 		for (k = 0; k < 12; k = k + 1)
 		{
-			t = k / 11;
-			s = strcat(s, sprintf("ramp %s %s %s %g %g\n", argv(3), argv(4), argv(5), sin(t * 3.1415927) * amt,
+			t = k / 12;                 // FTE puts entry k at k/12 of the life and holds the last
+			s = strcat(s, sprintf("ramp %s %s %s %g %g\n", argv(3), argv(4), argv(5), sin(k / 11 * 3.1415927) * amt,
 			                      (ss + (es - ss) * t * life) * 5.657));
 		}
 		localcmd(strcat(s, "}\n"));
@@ -3337,9 +3338,11 @@ void(float i) Emit_SparkOnce =
 {
 	local float n;
 	local vector v;
-	if (!cvar("vbsp_emit_spark"))
+	if (!cvar("vbsp_emit") || !cvar("vbsp_emit_spark"))
 		return;
-	for (n = em_burst[i]; n > 0; n = n - 1)
+	if (vlen(em_mid[i] - em_eye) > em_dist[i] * max(0.1, cvar("vbsp_emit_dist")))
+		return;
+	for (n = min(em_burst[i], 256); n > 0; n = n - 1)      // two of Emit_Frame's EM_BURST_FRAME
 	{
 		v = em_vel[i] + Emit_RandDir() * em_jit[i];
 		if (vlen(v) < 0.01)
@@ -3697,6 +3700,7 @@ void() Emit_LoadForMap =
 		if (disabled)
 		if (kind != EK_PSYS)
 		if (!(frozen && kind == EK_DUST && dm_why == ""))
+		if (!(kind == EK_FIRE && tn != ""))      // P1433: fire.cpp lights START_ON whatever StartDisabled says
 		{
 			em_off[kind] = em_off[kind] + 1;
 			continue;
@@ -4062,11 +4066,16 @@ void() Emit_LoadForMap =
 			lt = getlight(org + normalize(vel) * jetlen * 0.5) * (1 / 255);
 			if (vc)
 				cvar_set("hl2_lt_vcache", ftos(vc));
+			if (lt == '0 0 0')
+				lt = '0.5 0.5 0.5';     // no answer (cl_ropes.qc does the same)
 			if (spawnflags & 1)
 				lt = lt + col;          // SF_EMISSIVE
 			else
 				lt = [lt_x * col_x, lt_y * col_y, lt_z * col_z];
-			lt = [rint(min(1, lt_x) * 4) * 63.75, rint(min(1, lt_y) * 4) * 63.75, rint(min(1, lt_z) * 4) * 63.75];
+			k = max(lt_x, max(lt_y, lt_z));
+			if (k > 1)
+				lt = lt * (1 / k);      // renormalised by the brightest channel, not clamped (keeps the hue)
+			lt = [rint(lt_x * 4) * 63.75, rint(lt_y * 4) * 63.75, rint(lt_z * 4) * 63.75];
 			sph = Emit_StackLook(strcat(sprintf("%g %g %g %g %g %g ", ssize, esize, jetlen / spd, lt_x, lt_y, lt_z),
 			                            sprintf("%g 0 %g steam %g", ramt, spread, rollsp)));   // sprintf takes eight
 		}
@@ -4579,6 +4588,7 @@ void() Emit_Frame =
 		ft = 0.25;                      // a hitch is not a licence to emit
 
 	eye = getproperty(VF_ORIGIN);
+	em_eye = eye;                   // P1433: Emit_SparkOnce's cull
 	Emit_PrecipFrame(eye, ft);
 	dscale = cvar("vbsp_emit_dist");
 	budget = cvar("vbsp_emit_budget");
