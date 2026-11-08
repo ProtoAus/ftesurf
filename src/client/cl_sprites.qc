@@ -260,6 +260,7 @@ float  beam_sky[BEAM_MAX];
 float  spr_skynext;                     // cursor over sprites then beams
 vector spr_skyeye;                      // last frame's eye; a jump retests everything
 float  spr_skyburst;                    // tests left at 4x after a jump
+float  spr_skycarry;                    // P1422: the fraction of a ray left from the last frame
 vector *spr_skyat;                      // P1242: the eye each sprite then beam was last traced from
 float  spr_skysolidgen, spr_skysolidseen; // P1242: bumped by cl_portal.qc when a door's collision changes
 float  spr_skyhid;                      // skipped last frame (vbsp_sprite_debug)
@@ -2651,16 +2652,30 @@ float(vector eye, vector p, float st) Sprite_SkyTest =
 // is traced again only once the eye is 16 units from where it was last traced; with fewer sprites
 // than vbsp_sprite_skyrays every one was traced every frame (surf_garden, 17: ~0.45 ms a frame).
 // Rays still cap the traces a frame, and at most 256 are looked at a frame.
+// P1422: vbsp_sprite_skyrays is rays per 60th of a second, never more a frame than before (a per-frame count
+// traced 14,000 a second at 220 fps: surf_fairy 222 fps, 338 with the test off), and a sprite out of view or
+// past vbsp_sprite_dist spends none -- it draws nothing whatever its verdict (Sprite_Glare's cone and margin).
+// Beams are long, so their centre says little about whether they are on screen: always tested.
 void(vector eye) Sprite_SkyTick =
 {
-	local float i, k, n, rays, look, st;
-	local vector d;
+	local float i, k, n, rays, look, st, tanx, fovx, zc, maxdist, docull;
+	local vector d, fwd;
 
 	n = spr_n + beam_n;
 	if (vlen(eye - spr_skyeye) > 256)
 		spr_skyburst = n;
 	spr_skyeye = eye;
-	rays = cvar("vbsp_sprite_skyrays");
+	spr_skycarry = spr_skycarry + cvar("vbsp_sprite_skyrays") * min(clframetime * 60, 1);
+	rays = floor(spr_skycarry);
+	spr_skycarry = spr_skycarry - rays;
+	fwd = v_forward;
+	fovx = cvar("fov");
+	if (fovx <= 0 || fovx >= 180)
+		fovx = 90;
+	fovx = fovx * 0.5 * 0.0174532925;
+	tanx = (sin(fovx) / cos(fovx)) * 1.41421356 * 1.25;
+	maxdist = cvar("vbsp_sprite_dist");
+	docull = cvar("vbsp_sprite_skycull") > 0;
 	if (spr_skyburst > 0)
 	{
 		rays = rays * 4;
@@ -2697,6 +2712,17 @@ void(vector eye) Sprite_SkyTick =
 			if (d * d < 256)
 				continue;
 		}
+		if (i < spr_n && docull && st != SKY_UNTESTED)
+		{	// P1422: the view test (Sprite_Glare's); an untested sprite is drawn, so every one gets a first verdict
+			d = spr_org[i] - eye;
+			zc = fwd * d;
+			if (zc < -spr_rad[i])
+				continue;
+			if (maxdist > 0 && vlen(d) - spr_rad[i] > maxdist)
+				continue;
+			if (zc > 0 && vlen(d - fwd * zc) - spr_rad[i] > zc * tanx)
+				continue;
+		}
 		spr_skyat[i] = eye;
 		rays = rays - 1;
 		if (i < spr_n)
@@ -2704,6 +2730,31 @@ void(vector eye) Sprite_SkyTick =
 		else
 			beam_sky[i - spr_n] = Sprite_SkyTest(eye, beam_org[i - spr_n], st);
 	}
+};
+
+// P1422 vbsp_sprite_debug: sprites within 30 degrees of the view axis -- on screen whatever the view test in
+// Sprite_SkyTick says -- and how many have a sky verdict and how many it hides.
+string(vector eye, vector fwd) Sprite_SkyAxisCensus =
+{
+	local float i, n, tested, behind;
+	local vector d;
+	n = 0;
+	tested = 0;
+	behind = 0;
+	for (i = 0; i < spr_n; i = i + 1)
+	{
+		d = spr_org[i] - eye;
+		if (vlen(d) < 1)
+			continue;
+		if (normalize(d) * fwd < 0.866)
+			continue;
+		n = n + 1;
+		if (spr_sky[i] != SKY_UNTESTED)
+			tested = tested + 1;
+		if (spr_sky[i] == SKY_BEHIND)
+			behind = behind + 1;
+	}
+	return sprintf("  sky verdicts within 30 degrees of the view axis: %g sprites, %g tested, %g behind the sky\n", n, tested, behind);
 };
 
 void() Sprite_Draw =
@@ -2875,6 +2926,7 @@ void() Sprite_Draw =
 		              underon, cvar("vbsp_sprite_under_rays"), spr_under_n, spr_utraced));
 		print(sprintf("  behind the sky (vbsp_sprite_skyrays %g): %g skipped last frame\n",
 		              cvar("vbsp_sprite_skyrays"), spr_skyhid));
+		print(Sprite_SkyAxisCensus(eye, fwd));
 		print(sprintf("  lasers (vbsp_lasers %g): %g of %g kept at load as %g beam entries, %g drawn last frame\n",
 		              spr_want_las, vbsp_las_n, vbsp_las_seen, beam_n - beam_spot_n, las_drawn));
 		for (m = 0; m < sprmat_n; m = m + 1)
