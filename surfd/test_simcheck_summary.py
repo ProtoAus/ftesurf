@@ -1,5 +1,6 @@
 """Bound Python summary results without changing stored sample semantics."""
 import sqlite3
+import sys
 import unittest
 
 import simcheck
@@ -89,6 +90,52 @@ class SummaryTests(unittest.TestCase):
         out = simcheck.summary(self.conn)
         self.assertEqual((out['same_n'], out['cross_n'], out['unknown_n']), (4, 4, 8))
         self.assertEqual(out['notable'], 8)  # skips are not notable zero scores
+
+    def test_nonfinite_compared_match_withholds_whole_sample(self):
+        for a,b,same in [('a','a',1),('a','b',0),('','b',0)]:
+            for bad in (float('inf'),-float('inf')):
+                with self.subTest(a=a,b=b,bad=bad):
+                    self.conn.execute('DELETE FROM sims');self.rows=[]
+                    self.add(match=bad,same=same,a=a,b=b)
+                    self.add(match=0.6,same=same,a=a,b=b)  # masks -Inf from MAX
+                    self.add(match=0.99,same=not same,a='other',b='other')
+                    self.conn.commit();before=tuple(self.conn.iterdump())
+                    self.assertEqual(self.conn.execute('SELECT match FROM sims WHERE a_id=1').fetchone()[0],bad)
+                    self.conn.sample_results=[]
+                    value=simcheck.summary(self.conn);line=simcheck.summary_line(self.conn)
+                    self.assertEqual(tuple(self.conn.iterdump()),before)
+                    self.assertEqual(len(self.conn.sample_results),2)  # one sample each
+                    self.assertTrue(all(n<=len(simcheck.KNOWN_SKIP_CODES)+1+3
+                                        for n in self.conn.sample_results))
+                    self.assertEqual(value['state'],'nonfinite')
+                    self.assertTrue(all(v is None for k,v in value.items() if k!='state'))
+                    self.assertEqual(line,'sims: unavailable (non-finite stored match; sample not measured)')
+                    self.conn.execute('DELETE FROM sims WHERE a_id=1');self.conn.commit()
+                    self.assertEqual(simcheck.summary(self.conn),reference(self.rows[1:]))
+
+    def test_numeric_infinity_is_not_masked_by_legacy_text_extrema(self):
+        self.add(match=0.5,same=1)
+        self.add(match=float('inf'),same=1)
+        self.add(match='legacy-text',same=1)
+        self.conn.commit();before=tuple(self.conn.iterdump())
+        self.assertEqual(self.conn.execute('SELECT MAX(match) FROM sims').fetchone()[0],'legacy-text')
+        value=simcheck.summary(self.conn)
+        self.assertEqual(tuple(self.conn.iterdump()),before)
+        self.assertEqual(value['state'],'nonfinite')
+        self.assertTrue(all(v is None for k,v in value.items() if k!='state'))
+
+    def test_skip_nonfinite_and_finite_match_contract_stay_available(self):
+        self.add('skip',match=float('inf'),code='too_short')
+        self.add(match=0.0,same=1)
+        self.add(match=-sys.float_info.max,same=0)
+        self.add(match=sys.float_info.max,a='',b='')
+        self.conn.commit();before=tuple(self.conn.iterdump())
+        self.check_reference()
+        value=simcheck.summary(self.conn)
+        self.assertEqual((value['pairs'],value['compared'],value['skipped'],value['notable']), (4,3,1,1))
+        self.assertEqual(value['same_max'],0.0)
+        self.assertNotIn('unavailable',simcheck.summary_line(self.conn))
+        self.assertEqual(tuple(self.conn.iterdump()),before)
 
     def test_arbitrary_unknown_codes_collapse_without_prose_projection(self):
         for i in range(500):

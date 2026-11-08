@@ -3,6 +3,7 @@
 import importlib
 import json
 import logging
+import math
 import os
 import shutil
 import subprocess
@@ -92,6 +93,44 @@ class Similarity(unittest.TestCase):
         self.c.execute('DROP TABLE sims');self.c.commit()
         s=self.detail()['similarity'];self.assertFalse(s['available']);self.assertEqual(s['pairs'],[])
         self.assertIsNone(self.c.execute("SELECT 1 FROM sqlite_master WHERE name='sims'").fetchone())
+
+    def similarity_history(self):
+        tables=('sims','verdicts','reviews','replays','runs')
+        return ({t:[tuple(r) for r in self.c.execute('SELECT * FROM '+t)] for t in tables},
+                [tuple(r) for r in self.c.execute('SELECT * FROM sqlite_master ORDER BY type,name')])
+
+    def test_stored_finite_and_zero_summary_controls(self):
+        import simcheck
+        self.pair(100)
+        for match in (0.75,0.0):
+            with self.subTest(match=match):
+                self.c.execute('UPDATE sims SET match=?',(match,));self.c.commit()
+                before=self.similarity_history()
+                pair=self.detail()['similarity']['pairs'][0]
+                value=simcheck.summary(self.c);line=simcheck.summary_line(self.c)
+                self.assertEqual(pair['metrics']['match'],match)
+                self.assertEqual(pair['metrics']['compared'],80)
+                self.assertEqual((value['state'],value['pairs'],value['compared'],value['same_n'],
+                                  value['same_max'],value['notable']),('available',1,1,1,match,0))
+                self.assertIn('same-identity max %.4f (n=1)'%match,line)
+                self.assertEqual(self.similarity_history(),before)
+
+    def test_stored_nonfinite_match_is_not_a_numeric_summary(self):
+        import simcheck
+        self.pair(100)
+        self.c.execute('UPDATE sims SET match=?',(float('inf'),));self.c.commit()
+        stored=self.c.execute('SELECT verdict,compared,match FROM sims').fetchone()
+        self.assertEqual((stored['verdict'],stored['compared']),('compared',80))
+        self.assertEqual(stored['match'],float('inf'))  # premise actually stored
+        before=self.similarity_history()
+        pair=self.detail()['similarity']['pairs'][0]
+        value=simcheck.summary(self.c);line=simcheck.summary_line(self.c)
+        self.assertEqual(self.similarity_history(),before)
+        self.assertIsNone(pair['metrics'])
+        maximum=value['same_max']
+        self.assertTrue(maximum is None or math.isfinite(maximum),
+                        'nonfinite stored MATCH measured by summary: %r; %s'%(value,line))
+        self.assertNotIn('AT OR OVER',line)
 
     def test_real_collector_skip_prose_is_projected_without_history_change(self):
         # Synthetic marker filenames, never actual player identifiers.

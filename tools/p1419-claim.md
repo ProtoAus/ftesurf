@@ -1,0 +1,1 @@
+P1419 claimed by session01a1 for offline stored-summary numeric-infinity availability. Earlier local1417 label voluntarily relinquished to preserve published peer1417/1418 reservations; code34627 qualified32Windows/9ARM unchanged, original nominal operator root/evidence retained, not rerun/redated. No native pin/tag/QC Build/default backend promotion.

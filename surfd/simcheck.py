@@ -1036,12 +1036,19 @@ def summary(conn, read_budget=None):
             "   WHEN " + code + " IN (" + ",".join("?" for _ in known) + ")"
             "     THEN " + code + " ELSE 'unknown' END AS category,"
             " COUNT(*) AS n, MAX(match) AS maximum,"
-            " SUM(CASE WHEN verdict = 'compared' AND match >= ? THEN 1 ELSE 0 END) AS notable"
-            " FROM sims GROUP BY bucket, category", (*known, NOTABLE), read_budget)
+            " SUM(CASE WHEN verdict = 'compared' AND match >= ? THEN 1 ELSE 0 END) AS notable,"
+            " MAX(CASE WHEN verdict = 'compared' AND typeof(match) IN ('real','integer')"
+            "   AND (match > ? OR match < ?) THEN 1 ELSE 0 END) AS nonfinite"
+            " FROM sims GROUP BY bucket, category",
+            (*known, NOTABLE, sys.float_info.max, -sys.float_info.max), read_budget)
     except ReadLimit:
         return dict.fromkeys(out, None) | {"state": "limited"}
     except Exception as exc:
         return dict.fromkeys(out, None) | {"state": "busy" if _database_busy(exc) else "error"}
+    # Flag numeric infinities per row: legacy TEXT can mask numeric extrema.
+    # Withhold the whole sample, not a filtered subset or a measured zero.
+    if any(r["nonfinite"] for r in rows):
+        return dict.fromkeys(out, None) | {"state": "nonfinite"}
     if rows:
         out["state"] = "available"
     for r in rows:
@@ -1069,6 +1076,8 @@ def summary_line(conn, read_budget=None):
         return "sims: unavailable (table missing)"
     if s["state"] == "error":
         return "sims: unavailable (query error)"
+    if s["state"] == "nonfinite":
+        return "sims: unavailable (non-finite stored match; sample not measured)"
     if not s["pairs"]:
         return "sims: no pairs stored yet"
     parts = ["%d pairs, %d compared, %d unjudgeable" % (s["pairs"], s["compared"],

@@ -44,6 +44,19 @@ class SqlSummary(unittest.TestCase):
         self.assertEqual(out,sc.summary(self.conn))
         self.assertEqual((out['pairs'],out['compared'],out['skipped']),(1000,800,200))
 
+    def test_nonfinite_withholding_clears_budget_and_limit_stays_distinct(self):
+        self.seed(1)
+        self.conn.execute('UPDATE sims SET match=?',(float('inf'),));self.conn.commit()
+        before=tuple(self.conn.iterdump())
+        value=self.summary(100000)
+        self.assertEqual(value['state'],'nonfinite')
+        self.assertTrue(all(v is None for k,v in value.items() if k!='state'))
+        self.assertEqual(self.conn.handlers[-1],(False,0))
+        self.assertEqual(self.summary(1)['state'],'limited')
+        self.assertEqual(self.conn.handlers[-1],(False,0))
+        self.assertEqual(tuple(self.conn.iterdump()),before)
+        self.assertEqual(self.conn.execute('SELECT 6*7').fetchone()[0],42)
+
     def test_metadata_exhaustion_is_limited_not_missing_or_error(self):
         self.seed(1)
         self.assertEqual(self.summary(1)['state'],'limited')
