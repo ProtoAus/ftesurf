@@ -20,9 +20,15 @@ void(entity pl, int bit) SV_LookOnce =
 {
 	if (!(self.spawnflags & SF_TRIGGERLOOK_FIREONCE))
 		return;
-	// Patch 270's trigger_once rule: in a lobby the trigger is spent for this player, not removed.
+	// Patch 270's trigger_once rule: spent for this player, not removed -- and out of the touch masks, or the
+	// next sweep fires an OnEndTouch at a player still inside (trigger_multiple_touch's once arm).
 	if (bit)
-		self.vbsp_once_done = self.vbsp_once_done | bit;
+	{
+		self.vbsp_once_done  = self.vbsp_once_done | bit;
+		self.vbsp_touch_in   = self.vbsp_touch_in   & ~bit;
+		self.vbsp_touch_seen = self.vbsp_touch_seen & ~bit;
+		self.vbsp_touch_out  = self.vbsp_touch_out  & ~bit;
+	}
 	else
 		remove(self);
 };
@@ -166,11 +172,13 @@ void(entity g) SV_GuiOff =
 	g.gui_x = g.gui_y = g.gui_a = g.gui_a2 = 0;
 };
 
-void(entity g, float was, float now, float bit, string down, string up, entity pl) SV_GuiEdge =
+// TRUE when the fire let go of the game_ui (the think stops there).
+float(entity g, float was, float now, float bit, string down, string up, entity pl) SV_GuiEdge =
 {
 	if (!((was ^ now) & bit))
-		return;
+		return FALSE;
 	SV_GuiFire(g, (now & bit) ? down : up, pl);
+	return g.gui_pl != pl;
 };
 
 // CGameUI::Think, every frame while a player holds it.
@@ -181,7 +189,7 @@ void() SV_GuiThink =
 	local vector to;
 
 	pl = self.gui_pl;
-	if (!pl || wasfreed(pl) || pl.classname != "player" || pl.health <= 0)
+	if (!pl || wasfreed(pl) || pl.classname != "player" || pl.health <= 0 || clienttype(pl) == CLIENTTYPE_DISCONNECTED)
 	{
 		SV_GuiOff(self);
 		return;
@@ -205,23 +213,24 @@ void() SV_GuiThink =
 	}
 	now = SV_GuiKeys(pl);
 	was = self.gui_last & 63;
-	SV_GuiEdge(self, was, now, GUI_RIGHT, "PressedMoveRight", "UnpressedMoveRight", pl);
-	SV_GuiEdge(self, was, now, GUI_LEFT, "PressedMoveLeft", "UnpressedMoveLeft", pl);
-	SV_GuiEdge(self, was, now, GUI_FWD, "PressedForward", "UnpressedForward", pl);
-	SV_GuiEdge(self, was, now, GUI_BACK, "PressedBack", "UnpressedBack", pl);
-	SV_GuiEdge(self, was, now, GUI_ATTACK, "PressedAttack", "UnpressedAttack", pl);
-	SV_GuiEdge(self, was, now, GUI_ATTACK2, "PressedAttack2", "UnpressedAttack2", pl);
+	// The new keys first: an output fired below may let go of this game_ui (de_nam's napalm_ui wires
+	// PressedAttack to its own Deactivate), and then nothing after it fires.
+	self.gui_last = now | (pl.button5 ? 64 : 0) | (pl.button2 ? 128 : 0);
+	if (SV_GuiEdge(self, was, now, GUI_RIGHT, "PressedMoveRight", "UnpressedMoveRight", pl)) return;
+	if (SV_GuiEdge(self, was, now, GUI_LEFT, "PressedMoveLeft", "UnpressedMoveLeft", pl)) return;
+	if (SV_GuiEdge(self, was, now, GUI_FWD, "PressedForward", "UnpressedForward", pl)) return;
+	if (SV_GuiEdge(self, was, now, GUI_BACK, "PressedBack", "UnpressedBack", pl)) return;
+	if (SV_GuiEdge(self, was, now, GUI_ATTACK, "PressedAttack", "UnpressedAttack", pl)) return;
+	if (SV_GuiEdge(self, was, now, GUI_ATTACK2, "PressedAttack2", "UnpressedAttack2", pl)) return;
 	// The axes: right/forward win over left/back, as m_nButtons is tested in that order.
 	v = (now & GUI_RIGHT) ? 1 : ((now & GUI_LEFT) ? -1 : 0);
-	if (v != self.gui_x) { self.gui_x = v; SV_GuiValue(self, "XAxis", v, pl); }
+	if (v != self.gui_x) { self.gui_x = v; SV_GuiValue(self, "XAxis", v, pl); if (self.gui_pl != pl) return; }
 	v = (now & GUI_FWD) ? 1 : ((now & GUI_BACK) ? -1 : 0);
-	if (v != self.gui_y) { self.gui_y = v; SV_GuiValue(self, "YAxis", v, pl); }
+	if (v != self.gui_y) { self.gui_y = v; SV_GuiValue(self, "YAxis", v, pl); if (self.gui_pl != pl) return; }
 	v = (now & GUI_ATTACK) ? 1 : 0;
-	if (v != self.gui_a) { self.gui_a = v; SV_GuiValue(self, "AttackAxis", v, pl); }
+	if (v != self.gui_a) { self.gui_a = v; SV_GuiValue(self, "AttackAxis", v, pl); if (self.gui_pl != pl) return; }
 	v = (now & GUI_ATTACK2) ? 1 : 0;
 	if (v != self.gui_a2) { self.gui_a2 = v; SV_GuiValue(self, "Attack2Axis", v, pl); }
-	// +use / +jump held at activation must be released first, as Source's m_afButtonPressed is an edge.
-	self.gui_last = now | (pl.button5 ? 64 : 0) | (pl.button2 ? 128 : 0);
 };
 
 void() game_ui =
@@ -261,17 +270,24 @@ float(entity t, string in, string pm, entity act) SV_GuiInput =
 // The census's small ones (tools/census/entgap-20261108.md): health on breakables, skins on props.
 float(entity t, string in, string pm, entity act) SV_SmallInput =
 {
+	local float v;
+
 	if (t.classname == "func_breakable")
 	if (in == "sethealth" || in == "addhealth" || in == "removehealth")
 	{
-		if (in == "sethealth")
-			t.health = stof(pm);
-		else if (in == "addhealth")
-			t.health = t.health + fabs(stof(pm));
-		else
-			t.health = t.health - fabs(stof(pm));
-		if (t.health <= 0)
-			SV_BreakableBreak(t, act);  // UpdateHealth: at or below zero it breaks
+		v = stof(pm);
+		v = (v < 0) ? ceil(v) : floor(v);   // FIELD_INTEGER
+		if (in == "addhealth")
+			v = t.health + v;
+		else if (in == "removehealth")
+			v = t.health - v;
+		// func_break.cpp UpdateHealth: nothing unless it changes; OnHealthChanged; at or below zero it breaks.
+		if (v == t.health)
+			return TRUE;
+		t.health = v;
+		SV_FireOutput(t, "OnHealthChanged", act);
+		if (!wasfreed(t) && t.health <= 0)
+			SV_BreakableBreak(t, act);
 		return TRUE;
 	}
 	if (in == "skin" && substring(t.classname, 0, 5) == "prop_")
