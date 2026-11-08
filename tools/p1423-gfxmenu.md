@@ -42,3 +42,9 @@ Build: fteqcc 73f9a1a4 (P1412), 0 warnings x3.
 
 Review (one round, code only, one reviewer): no defect. Noted: a hand-typed rate below 0.5 reads "Every frame"
 (Gfx_Index shows the nearest value; hl2_propdist 1000 reads "Unlimited" the same way) -- left as is.
+
+## Delivery
+
+LIVE 8 Nov ~19:50 local: 12 lobbies (build.ps1 -Pi from main 0acd8d76; one occupied lobby warned) qw e1190bdf
+(unchanged) + cs 0f0b5ae6, 0 QC errors in server1-12.log; codes.txt 98 -> 99 (.pre1423); both installs' csprogs
+0f0b5ae6 (.prev 1de415d0), csprogsvers e6683f8a seeded in both. Players' own games get it with release 0.1.42.
