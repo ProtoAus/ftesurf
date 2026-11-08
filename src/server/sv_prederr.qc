@@ -31,6 +31,24 @@ float  pe_lobby_n, pe_lobby_last;
 float  pe_hit_t[PE_SV_HITCHES], pe_hit_d[PE_SV_HITCHES];
 float  pe_hit_n, pe_rt_last;    // server frames longer than 50 ms: lobby-wide, newest PE_SV_HITCHES
 
+// P1406 follow-up: a client slot's ring keeps each row's 16 numbers and makes the text only when
+// SV_PeSnap freezes it (three sprintfs a command were most of PlayerPreThink's prederror cost).
+// Slots past FS_MAXPLAYERS keep the text ring (pe_rb).
+#define PE_RAWW        16
+.float pe_rr;                   // this player's rows are in pe_raw[slot] (0 = none; clears with pe_rb)
+float  *pe_raw[FS_MAXPLAYERS];  // PE_SV_ROWS x PE_RAWW floats a slot, memalloc'd at its first row
+
+string(entity p, float i) SV_PeRowText =
+{
+	local float *r;
+	local float k;
+	r = pe_raw[num_for_edict(p) - 1];
+	k = (i - floor(i / PE_SV_ROWS) * PE_SV_ROWS) * PE_RAWW;
+	return strcat(sprintf("%.3f %.3f %g %.0f %g %g %g ", r[k], r[k + 1], r[k + 2], r[k + 3], r[k + 4], r[k + 5], r[k + 6]),
+	              sprintf("%.2f %.2f %.2f %.1f %.1f %.1f ", r[k + 7], r[k + 8], r[k + 9], r[k + 10], r[k + 11], r[k + 12]),
+	              sprintf("%g %g %g", r[k + 13], r[k + 14], r[k + 15]));
+};
+
 // P1404: a rig replay's start (cl_prederr.qc pe_replay), sv_cheats only: the state lands before the
 // first command at or past pe_st_seq, so the replayed rows start from the report's server state.
 .float  pe_st_seq;
@@ -91,7 +109,7 @@ void(entity p) SV_PeSnap =
 {
 	local float i, i0, b;
 	p.pe_mk_due = 0;
-	if (!p.pe_rb)
+	if (!p.pe_rb && !p.pe_rr)
 		return;
 	if (p.pe_sb)
 		buf_del(p.pe_sb - 1);
@@ -99,7 +117,10 @@ void(entity p) SV_PeSnap =
 	p.pe_sb = b + 1;
 	i0 = max(0, p.pe_rn - PE_SV_ROWS);
 	for (i = i0; i < p.pe_rn; i = i + 1)
-		bufstr_add(b, bufstr_get(p.pe_rb - 1, i - floor(i / PE_SV_ROWS) * PE_SV_ROWS), TRUE);
+		if (p.pe_rr)
+			bufstr_add(b, SV_PeRowText(p, i), TRUE);
+		else
+			bufstr_add(b, bufstr_get(p.pe_rb - 1, i - floor(i / PE_SV_ROWS) * PE_SV_ROWS), TRUE);
 	p.pe_sn = p.pe_rn - i0;
 	p.pe_sn_seq = p.pe_mk_seq;
 	p.pe_sn_t = p.pe_mk_t;
@@ -109,8 +130,38 @@ void(entity p) SV_PeSnap =
 // the == server header line.
 void(entity p) SV_PeRow =
 {
-	local float b;
+	local float b, slot, k;
+	local float *r;
 	p.pe_cpend = FALSE;
+	slot = num_for_edict(p) - 1;
+	if (slot >= 0 && slot < FS_MAXPLAYERS)
+	{
+		if (!pe_raw[slot])
+			pe_raw[slot] = memalloc(sizeof(float) * PE_SV_ROWS * PE_RAWW);
+		p.pe_rr = TRUE;
+		r = pe_raw[slot];
+		k = (p.pe_rn - floor(p.pe_rn / PE_SV_ROWS) * PE_SV_ROWS) * PE_RAWW;
+		r[k] = p.pe_ct;
+		r[k + 1] = p.pe_crt;
+		r[k + 2] = p.pe_ck;
+		r[k + 3] = p.pe_cs;
+		r[k + 4] = p.pe_cm;
+		r[k + 5] = p.pe_cp;
+		r[k + 6] = p.pe_co;
+		r[k + 7] = p.origin_x;
+		r[k + 8] = p.origin_y;
+		r[k + 9] = p.origin_z;
+		r[k + 10] = p.velocity_x;
+		r[k + 11] = p.velocity_y;
+		r[k + 12] = p.velocity_z;
+		r[k + 13] = p.movetype;
+		r[k + 14] = (p.flags & FL_ONGROUND) ? 1 : 0;
+		r[k + 15] = p.pe_ci;
+		p.pe_rn = p.pe_rn + 1;
+		if (p.pe_mk_due && time >= p.pe_mk_due)
+			SV_PeSnap(p);
+		return;
+	}
 	if (!p.pe_rb)
 		p.pe_rb = buf_create() + 1;
 	b = p.pe_rb - 1;
@@ -163,7 +214,7 @@ void(entity p) SV_PeForget =
 		buf_del(p.pe_rb - 1);
 	if (p.pe_sb)
 		buf_del(p.pe_sb - 1);
-	p.pe_rb = p.pe_rn = p.pe_sb = p.pe_sn = p.pe_mk_due = p.pe_cpend = 0;
+	p.pe_rb = p.pe_rn = p.pe_sb = p.pe_sn = p.pe_mk_due = p.pe_cpend = p.pe_rr = 0;
 };
 
 // The frozen ring, if it is this report's: its mark within 1000 commands of the worst line.
