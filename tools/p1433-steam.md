@@ -46,4 +46,10 @@ cs a90ec502. Pixel diffs every 2nd px; the HUD chat line alone is ~500.
 
 ## Left
 
+- Sparks were never SEEN in the rig, SparkOnce or StartSpark, and neither was `emit_test spark` or `emit_test fire`
+  (tools/spk4.cfg: 0 px) although the effects exist (particleeffectquery) and r_part_sparks is 1; the rig's
+  client runs from C:\FTEQuake with -nosound and the particle set copied in, while steam and env_fire's flames
+  (r_part blocks this file writes at load) draw. So particles/ftesurf.cfg's effects do not show in this rig at
+  all; whether they show in a real install is an owner check (lextest). Pre-dates P1433: start-on sparks use the
+  same path.
 - Extinguish's fade, Source's spark sound and glow (SF_SPARK_GLOW), the steam heat wave, env_firesource.

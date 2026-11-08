@@ -21,6 +21,16 @@
 
 ## next
 
+### P1436 Fish swim
+- Fish pools now have fish (28 maps, about 1,300 fish): they school, wander round their pool and dart away when you come close.
+
+### P1435 Explosions
+- Explosions a map sets off now happen (47 maps): a fireball with smoke, embers and flying sparks, the explosion sound, and a scorch mark where it went off.
+
+### P1433 Steam, sparks and fires maps switch
+- Steam jets are drawn (95 maps), and maps can turn them on and off.
+- Fires and sparks a map starts, stops or sets off on an event now do so, including fires that burn out.
+
 ### P1431 Lights and sprites maps switch
 - Sprites and spotlights a map switches on, off or toggles now do so (about 1,000 on 100+ maps): checkpoint sparkles that appear when you reach them, light shows like surf_orbion's rings of spotlights. Ones that start hidden were never drawn before.
 

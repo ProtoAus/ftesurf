@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1433/P1435/P1436 steam, fires, sparks, explosions, fish -- owner check pending
+
+- surf_sluice2: white steam pours down from four ceiling vents (around -500 13600). bhop_rpg: the map
+  turns a red and a blue steam jet on and off. bhop_maya: two explosions (around 1030 2410) when the map sets them off,
+  with a boom and a scorch mark. surf_garden_css: fish swimming in the ponds; swim close and they dart off.
+- PLEASE CHECK SPARKS: bhop_depot: the map sparks spark1 (around -15534 -12064 153) every few seconds; do you see it? In the test rig no
+  spark effect drew at all (not only the new ones), so this says whether sparks work in a real install.
+
 ## P1431 switched sprites and spotlights -- LIVE 9 Nov (lobbies + both installs, cs a90ec502); owner check pending
 
 - surf_orbion: the spotlight rings around the start corridor switch on and off in a pattern (the map's light
