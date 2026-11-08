@@ -21,6 +21,9 @@
 
 ## next
 
+### P1410 Clicking the game window no longer presses your mouse bind
+- When the game is in the background, the click that brings it to the front now does nothing in the game. Before, it also pressed whatever Mouse 1 or Mouse 2 is bound to -- with duck on a mouse button, clicking back into the window mid-run ducked you and could wreck the run.
+
 ### P1414 Joining a lobby that is changing map works at high ping
 - Asking for a map no lobby is running switches a lobby to it and puts you there. With a slow connection (around 400 ms) the game used to give up and say the server never came live, even though the lobby had switched; now it waits for the switch properly, for up to 45 seconds.
 
