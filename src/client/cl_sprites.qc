@@ -1586,19 +1586,30 @@ void(entity e, float id) Sprite_TplNet =
 		if (!id)
 		{
 			spr_hide[e.tfx_slot] = !e.tfx_on;
+			if (cvar("developer"))
+				print(sprintf("tplfx: #%g entry %g on %g\n", e.entnum, e.tfx_slot, e.tfx_on));
 			return;
 		}
 		Sprite_TplGone(e);
 	}
 	if (e.tfx_cls != FX_CLS_SPRITE || !spr_free || vbsp_spr_map == "" || vbsp_spr_map != serverkey("map"))
+	{
+		if (cvar("developer"))
+			print(sprintf("tplfx: #%g class %g waits for the sprite load\n", e.entnum, e.tfx_cls));
 		return;                         // Sprite_LoadForMap places it
+	}
 	e.tfx_gen = spr_gen;
 	e.tfx_slot = -1;
 	for (k = 0; k < tpls_n; k = k + 1)
 		if (tpls_tnc[k] == e.tfx_mtnc && vlen(tpls_org[k] - e.tfx_morg) < 0.1)
 			break;
 	if (k >= tpls_n)
+	{
+		if (cvar("developer"))
+			print(sprintf("tplfx: #%g matches none of %g template sprites (member at %v, name crc %g)\n",
+			              e.entnum, tpls_n, e.tfx_morg, e.tfx_mtnc));
 		return;                         // not loaded: vbsp_sprites 0, or no material
+	}
 	keep = spr_n;
 	for (i = 0; i < keep; i = i + 1)
 		if (spr_free[i])
@@ -1608,6 +1619,9 @@ void(entity e, float id) Sprite_TplNet =
 	Sprite_Add(e.origin, e.angles, tpls_kind[k], tpls_mat[k], tpls_scale[k], tpls_col[k], tpls_alpha[k], tpls_add[k]);
 	ok = (spr_n == i + 1);
 	spr_n = max(keep, spr_n);
+	if (cvar("developer"))
+		print(sprintf("tplfx: #%g template sprite %g -> entry %g of %g at %v, on %g%s\n", e.entnum, k, i, spr_n,
+		              e.origin, e.tfx_on, ok ? "" : " (Sprite_Add declined)"));
 	if (!ok)
 		return;
 	spr_free[i] = 0;
