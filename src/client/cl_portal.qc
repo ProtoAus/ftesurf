@@ -409,6 +409,7 @@ void() APW_Resolve =
   never fades.
 */
 .float lod_min2, lod_max2;
+.vector lod_ctr;                // P1406: the box centre, set once by LOD_Spawn (nothing moves one)
 float  vbsp_lod_n, vbsp_lod_overview;
 
 float() LOD_Predraw =
@@ -416,10 +417,10 @@ float() LOD_Predraw =
 	local vector d;
 	local float d2;
 
-	d = getproperty(VF_ORIGIN) - (self.origin + (self.mins + self.maxs) * 0.5);
-	d2 = d * d;
 	if (self.lod_max2 < 0)
 		return PREDRAW_AUTOADD;
+	d = getproperty(VF_ORIGIN) - self.lod_ctr;
+	d2 = d * d;
 	if (d2 >= self.lod_max2)
 		return PREDRAW_NEXT;
 	if (d2 <= self.lod_min2)
@@ -487,6 +488,7 @@ void(string mdl, string sorg, string sdd, string smin, string smax) LOD_Spawn =
 	e.classname = "vbsp_lod";
 	setmodel(e, mdl);
 	setorigin(e, stov(sorg));
+	e.lod_ctr = e.origin + (e.mins + e.maxs) * 0.5;
 	if (mx <= 0)
 		e.lod_max2 = -1;		// both unset or non-positive: no fade (Source returns 255)
 	else
