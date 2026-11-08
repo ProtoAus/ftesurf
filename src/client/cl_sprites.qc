@@ -537,6 +537,13 @@ float  wt_n;                              // P1438: cl_wtext.qc's texts (Sprite_
 void() Wt_LoadForMap;                    // cl_wtext.qc
 float(vector eye, vector fwd, float maxdist) Wt_Draw;
 void(entity e) Wt_Net;
+float  vbsp_ov_seen_n, vbsp_sh_seen_n;    // P1439: env_screenoverlay, env_shooter in the lump
+float  sh_busy, gib_live;                 // P1439: cl_shooter.qc's running shooters and live gibs (the early exit)
+void() Ov_LoadForMap;                    // cl_overlay.qc
+void(entity e) Ov_FxNet;
+void() Sh_LoadForMap;                    // cl_shooter.qc
+void(entity e) Sh_FxNet;
+float() Sh_Frame;
 .float fx_ncls, fx_ntnc, fx_non, fx_nfire;  // P1430: ENTWIRE_FXSTATE as cl_body.qc reads it
 // P1431: env_sprite and the spotlights a map switches.  Kept in the tables, hidden, and matched to the
 // server's state (ENTWIRE_FXSTATE2) on class, origin and name crc.  A template's member is drawn from the lump
@@ -1654,6 +1661,7 @@ void() Sprite_LoadForMap =
 	vbsp_xp_seen = 0;
 	vbsp_fish_seen = 0;
 	vbsp_wt_seen = 0;
+	vbsp_ov_seen_n = vbsp_sh_seen_n = 0;
 	opened = FALSE;
 
 	/*
@@ -1884,6 +1892,10 @@ void() Sprite_LoadForMap =
 			vbsp_fish_seen = vbsp_fish_seen + 1;
 		else if (cn == "point_worldtext")
 			vbsp_wt_seen = vbsp_wt_seen + 1;
+		else if (cn == "env_screenoverlay")
+			vbsp_ov_seen_n = vbsp_ov_seen_n + 1;
+		else if (cn == "env_shooter")
+			vbsp_sh_seen_n = vbsp_sh_seen_n + 1;
 	}
 
 	beam_spot_n = beam_n;
@@ -1900,6 +1912,8 @@ void() Sprite_LoadForMap =
 	Explode_LoadForMap();                  // P1435: vbsp_explosions is read when one goes off
 	Fish_LoadForMap();                     // P1436: under vbsp_fish
 	Wt_LoadForMap();                       // P1438: vbsp_worldtext is read when drawing
+	Ov_LoadForMap();                       // P1439
+	Sh_LoadForMap();                       // P1439
 	for (net = find(world, classname, "fx_net"); net; net = find(net, classname, "fx_net"))
 		if (net.fx_ncls == FX_CLS_SPRITE || net.fx_ncls == FX_CLS_SPOT)
 			Sprite_FxNet(net);         // P1431: states that arrived before this load
@@ -2981,7 +2995,7 @@ void() Sprite_Draw =
 		Sprite_LoadForMap();
 	}
 
-	if (!spr_n && !beam_n && !fx_n && !xp_live && !wt_n)
+	if (!spr_n && !beam_n && !fx_n && !xp_live && !wt_n && !sh_busy && !gib_live)
 		return;
 
 	eye = getproperty(VF_ORIGIN);
@@ -3545,6 +3559,7 @@ void() Sprite_Draw =
 	drawn = drawn + Fx_Draw(eye, fwd, maxdist);             // P1430: tesla and env_beam arcs
 	drawn = drawn + Explode_Draw(eye, fwd);                 // P1435
 	drawn = drawn + Wt_Draw(eye, fwd, maxdist);             // P1438
+	drawn = drawn + Sh_Frame();                             // P1439: env_shooter's gibs
 
 	if (dbg)
 	{

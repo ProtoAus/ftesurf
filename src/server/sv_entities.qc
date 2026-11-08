@@ -4465,6 +4465,10 @@ float(entity t) SV_FxClass =
 			return FX_CLS_FIRE;
 		case "env_explosion":
 			return FX_CLS_EXPLODE;
+		case "env_screenoverlay":
+			return FX_CLS_OVERLAY;
+		case "env_shooter":
+			return FX_CLS_SHOOTER;
 	}
 	return 0;
 };
@@ -4481,8 +4485,8 @@ float(entity t, float cls) SV_FxStartOn =
 		return (t.spawnflags & 64) != 0;    // SF_SPARK_START_ON
 	if (cls == FX_CLS_FIRE)
 		return (t.spawnflags & 4) != 0;     // SF_FIRE_START_ON
-	if (cls == FX_CLS_EXPLODE)
-		return FALSE;                       // events only
+	if (cls == FX_CLS_EXPLODE || cls == FX_CLS_OVERLAY || cls == FX_CLS_SHOOTER)
+		return FALSE;                       // events, or a state of their own
 	return (t.spawnflags & 1) != 0;
 };
 
@@ -4581,6 +4585,58 @@ float(entity t, string in, string pm) SV_WtInput =
 	return TRUE;
 };
 
+// P1439: env_screenoverlay (env_screenoverlay.cpp).  On the effect-state wire as FX_CLS_OVERLAY: on = 0 after
+// StopOverlays, else 128 if active plus the wanted overlay + 1; StartOverlays is the event.
+.float vbsp_ov_act, vbsp_ov_des, vbsp_ov_stop;
+
+void(entity t) SV_OvSend =
+{
+	t.vbsp_fx_cls = FX_CLS_OVERLAY;
+	t.vbsp_fx_on = t.vbsp_ov_stop ? 0 : ((t.vbsp_ov_act ? 128 : 0) + t.vbsp_ov_des + 1);
+	t.SendFlags = t.SendEntity ? LAS_SF_STATE : (LAS_SF_STATE | LAS_SF_ID);
+	t.SendEntity = SV_FxSend;
+	t.pvsflags = PVSF_IGNOREPVS;
+};
+
+float(entity t, string in, string pm) SV_OvInput =
+{
+	local entity o;
+	if (t.vbsp_fx_dead)
+		return TRUE;
+	if (in == "startoverlays")
+	{	// and every other overlay goes inactive (SetActive false; what is shown stays)
+		t.vbsp_ov_act = TRUE;
+		t.vbsp_ov_stop = FALSE;
+		t.vbsp_fx_ev = t.vbsp_fx_ev + 1;
+		t.vbsp_fx_evt = time;
+		for (o = find(world, classname, "env_screenoverlay"); o; o = find(o, classname, "env_screenoverlay"))
+			if (o != t && o.SendEntity && o.vbsp_ov_act && !o.vbsp_fx_dead)
+			{
+				o.vbsp_ov_act = FALSE;
+				SV_OvSend(o);
+			}
+	}
+	else if (in == "stopoverlays")
+	{
+		t.vbsp_ov_act = FALSE;
+		t.vbsp_ov_stop = TRUE;
+	}
+	else if (in == "switchoverlay")
+	{
+		t.vbsp_ov_des = bound(0, fabs(floor(stof(pm)) - 1), 9);
+		t.vbsp_ov_stop = FALSE;
+	}
+	else if (in == "kill")
+	{
+		t.vbsp_ov_act = FALSE;
+		t.vbsp_fx_dead = TRUE;
+	}
+	else
+		return FALSE;
+	SV_OvSend(t);
+	return TRUE;
+};
+
 // A non-repeatable env_explosion, 0.3 s after its last Explode (explode.cpp Smoke).
 void() SV_FxExplodeGone = { self.vbsp_fx_dead = TRUE; };
 
@@ -4610,8 +4666,8 @@ float(entity t, string in) SV_FxInput =
 {
 	local float on, ev, cls;
 	cls = SV_FxClass(t);
-	if (!cls)
-		return FALSE;
+	if (!cls || cls == FX_CLS_OVERLAY)
+		return FALSE;                   // P1439: an overlay's inputs are SV_OvInput's (its on byte is its own)
 	if (t.vbsp_fx_dead)
 		return TRUE;
 	on = t.SendEntity ? t.vbsp_fx_on : SV_FxStartOn(t, cls);
@@ -4680,6 +4736,12 @@ float(entity t, string in) SV_FxInput =
 		}
 		else
 			return FALSE;
+	}
+	else if (cls == FX_CLS_SHOOTER)
+	{	// env_shooter (effects.cpp InputShoot): the client runs ShootThink
+		if (in != "shoot")
+			return FALSE;
+		ev = TRUE;
 	}
 	else if (cls == FX_CLS_EXPLODE)
 	{	// env_explosion (explode.cpp InputExplode); without SF_ENVEXPLOSION_REPEATABLE it is removed after
@@ -5020,6 +5082,9 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 			return;
 	if (t.classname == "point_worldtext")
 		if (SV_WtInput(t, in, pm))      // P1438
+			return;
+	if (t.classname == "env_screenoverlay")
+		if (SV_OvInput(t, in, pm))      // P1439
 			return;
 	if (SV_FxInput(t, in))          // P1430: point_tesla; P1431: env_sprite, the spotlights
 		return;
@@ -7177,6 +7242,8 @@ void() env_steam                        = { SV_FxKeep(); };     // P1433: drawn 
 void() env_steamjet                     = { SV_FxKeep(); };
 void() env_explosion                    = { SV_FxKeep(); };     // P1435: drawn by cl_explode.qc
 void() point_worldtext                  = { SV_FxKeep(); };     // P1438: drawn by cl_wtext.qc
+void() env_screenoverlay                = { SV_FxKeep(); };     // P1439: drawn by cl_overlay.qc
+void() env_shooter                      = { SV_FxKeep(); };     // P1439: cl_shooter.qc
 
 /*
   Build 51 adds a third, under the same rule.

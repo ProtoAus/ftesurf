@@ -54,6 +54,8 @@
 #define FX_CLS_SPARK    6       // P1433: env_spark
 #define FX_CLS_FIRE     7       // P1433: env_fire
 #define FX_CLS_EXPLODE  8       // P1435: env_explosion (cl_explode.qc)
+#define FX_CLS_OVERLAY  9       // P1439: env_screenoverlay (cl_overlay.qc); on = 0 stopped, else 128 active + overlay + 1
+#define FX_CLS_SHOOTER  10      // P1439: env_shooter (cl_shooter.qc)
 
 // --- hulls ------------------------------------------------------------------
 // Source puts the player origin AT THE FEET, unlike Quake's centred origin.

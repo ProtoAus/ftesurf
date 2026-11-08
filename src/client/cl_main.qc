@@ -509,6 +509,8 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	registercvar("vbsp_explosions", "1", CVAR_ARCHIVE); // P1435: env_explosion (cl_explode.qc)
 	registercvar("vbsp_fish", "1", CVAR_ARCHIVE);       // P1436: func_fish_pool (cl_fish.qc)
 	registercvar("vbsp_worldtext", "1", CVAR_ARCHIVE);  // P1438: point_worldtext (cl_wtext.qc)
+	registercvar("vbsp_overlays_screen", "1", CVAR_ARCHIVE); // P1439: env_screenoverlay (cl_overlay.qc)
+	registercvar("vbsp_shooters", "1", CVAR_ARCHIVE);   // P1439: env_shooter (cl_shooter.qc)
 	/*
 	  BUILD 54 -- env_lightglow, the third switch and the newest class.
 
@@ -2183,6 +2185,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		// Patch 606: the UI style for every 2D panel this frame, including the
 		// HUD-stack menus that draw outside a sui bracket.
 		sui_style_hud(scr);
+		if (!worldonly) Ov_Draw(scr);         // P1439: env_screenoverlay, under env_fade
 		if (!worldonly) MapMsg_DrawFade(scr); // P870: no map effects over the overview
 
 		/*
