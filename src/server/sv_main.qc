@@ -49,6 +49,7 @@ float sv_mv_gravity, sv_mv_accelerate, sv_mv_airaccelerate;
 float sv_mv_friction, sv_mv_stopspeed;	// sv_mv_maxspeed is in sv_defs.qc
 float sv_mv_said;	// P977: these start at 0 each map, so a 0 was never published
 
+float mv_cvreg;
 void() SV_UpdateMovementServerInfo =
 {
 	local float g, a, aa, f, ss, ms;
@@ -148,8 +149,12 @@ void() SV_UpdateMovementServerInfo =
 	// 0, so nothing was broken -- but a verification run still logged
 	// "Created QC Cvar lobby_enable", and a rule that is only followed where it
 	// currently happens to matter is not a rule.
-	registercvar("lobby_enable",    "0");
-	registercvar("lobby_retrigger", "1");
+	if (!mv_cvreg)                  // P1406 follow-up: once, see Lobby_Frame
+	{
+		registercvar("lobby_enable",    "0");
+		registercvar("lobby_retrigger", "1");
+		mv_cvreg = TRUE;
+	}
 	vbsp_retrigger = cvar("lobby_enable") && cvar("lobby_retrigger");
 };
 
@@ -160,6 +165,7 @@ void() EndFrame =
 	SV_TimerFinishFrame();
 };
 
+float sf_cvreg;
 void() StartFrame =
 {
 	sv_plok = sv_acok = FALSE;      // P1406: no stale chain while the lump work below runs
@@ -227,14 +233,18 @@ void() StartFrame =
 	Lobby_Frame();
 	// Patch 865: the test shot (SV_ShootFrame), off on a lobby unless lobby_shoot.
 	// Registered beside the read: StartFrame runs before worldspawn's registrations.
-	registercvar("run_shoot", "1");
-	registercvar("lobby_shoot", "0");
+	if (!sf_cvreg)                  // P1406 follow-up: once, see Lobby_Frame
+	{
+		registercvar("run_shoot", "1");
+		registercvar("lobby_shoot", "0");
+		registercvar("lobby_mapedits", "0");
+		registercvar("run_momtriggers", "1");
+		sf_cvreg = TRUE;
+	}
 	vbsp_shoot_ok = (cvar("run_shoot") && (!lobby_on || cvar("lobby_shoot")));
-	registercvar("lobby_mapedits", "0");
 	vbsp_mapedit_ok = (!lobby_on || cvar("lobby_mapedits"));
 	// Patch 869: Momentum's bhop-control triggers (multihop, onehop, progress,
 	// reversespeed, userinput); 0 makes them inert.
-	registercvar("run_momtriggers", "1");
 	vbsp_momtrig = (cvar("run_momtriggers") != 0);   // 0 or 1: saves read -1 as "no key"
 	Pose_Frame();                   // Patch 383: spectator counts and the publish gap
 	Pose_SpecBy();                  // Patch 429: who watches whom, after the counts

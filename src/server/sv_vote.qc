@@ -40,9 +40,13 @@ float  vote_nomseqn, vote_pubat, vote_dirty;
 string vote_opt[VOTE_MAX];      // zoned map names; the Extend row has none
 float  vote_cnt[VOTE_MAX];
 
+float vote_cvreg;
 void() Vote_Cvars =
 {
-	// Beside the read: StartFrame precedes worldspawn (Lobby_Frame's essay).
+	// Beside the read: StartFrame precedes worldspawn (Lobby_Frame's essay).  P1406 follow-up: once, as there.
+	if (vote_cvreg)
+		return;
+	vote_cvreg = TRUE;
 	registercvar("lobby_vote", "1");
 	registercvar("lobby_vote_start", "180");
 	registercvar("lobby_vote_time", "25");

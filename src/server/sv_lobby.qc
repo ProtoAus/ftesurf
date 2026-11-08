@@ -1422,6 +1422,7 @@ float(entity e, float rank, float track) Lobby_AnnGate =
 	return TRUE;
 };
 
+float lobby_cvreg;
 void() Lobby_Frame =
 {
 	local entity av, nx, p;
@@ -1459,17 +1460,23 @@ void() Lobby_Frame =
 	  Same trap as run_starthop_strict (sv_timer.qc:5867-5895) and as vbsp_mp in
 	  sv_main.qc.  Third time in this tree; register beside the read.
 	*/
-	registercvar("lobby_enable",    "0");
-	registercvar("lobby_nocollide", "0");
-	registercvar("lobby_avatars",   "1");
-	registercvar("lobby_av_rate",   "0");     // Patch 383: 0 = every moved tick; the legacy path reads <= 0 as 15
-	registercvar("lobby_av_stream", "1");     // Patch 383: 0 = the engine-entity avatar, pre-383
-	registercvar("lobby_av_budget", "24000"); // Patch 383: bytes/s of bodies per viewer; caps the gap
-	registercvar("lobby_av_alpha",  "1");
-	registercvar("lobby_av_self",   "0");
-	registercvar("lobby_av_colors", "1");
-	registercvar("lobby_av_fx",     "1");
-	registercvar("lobby_av_fxmax",  "-1");    // Patch 457: <0 = no cap, 0 = none
+	// P1406 follow-up: once a progs load.  registercvar on an existing cvar does nothing (PF_registercvar),
+	// and QC-created cvars die only in Cvar_GamedirChange, after SV_UnspawnServer has unloaded these progs
+	// and with them this latch (fs.c).  The other per-frame registrations latch the same way.
+	if (!lobby_cvreg)
+	{
+		registercvar("lobby_enable",    "0");
+		registercvar("lobby_nocollide", "0");
+		registercvar("lobby_avatars",   "1");
+		registercvar("lobby_av_rate",   "0");     // Patch 383: 0 = every moved tick; the legacy path reads <= 0 as 15
+		registercvar("lobby_av_stream", "1");     // Patch 383: 0 = the engine-entity avatar, pre-383
+		registercvar("lobby_av_budget", "24000"); // Patch 383: bytes/s of bodies per viewer; caps the gap
+		registercvar("lobby_av_alpha",  "1");
+		registercvar("lobby_av_self",   "0");
+		registercvar("lobby_av_colors", "1");
+		registercvar("lobby_av_fx",     "1");
+		registercvar("lobby_av_fxmax",  "-1");    // Patch 457: <0 = no cap, 0 = none
+	}
 	/*
 	  BUILD 64: the board probe, registered here so it EXISTS at 0 rather than
 	  being auto-created by the first cvar() read.  registercvar declines a name
@@ -1478,7 +1485,9 @@ void() Lobby_Frame =
 	  features in this tree already.  The default is 0 and must stay 0: this is
 	  a deliberate, operator-typed action.
 	*/
-	registercvar("lobby_run_probe", "0");
+	if (!lobby_cvreg)
+		registercvar("lobby_run_probe", "0");
+	lobby_cvreg = TRUE;
 
 	lobby_on        = cvar("lobby_enable");
 	lobby_nocollide = cvar("lobby_nocollide");
@@ -3483,6 +3492,7 @@ void(float per, string nxt) Lobby_CycleGo =
 	}
 };
 
+float cyc_cvreg;
 void() Lobby_Cycle =
 {
 	local float  per, left, hold, lvl;
@@ -3491,9 +3501,13 @@ void() Lobby_Cycle =
 	// Registered beside the read, for the reason spelled out at length in
 	// Lobby_Frame: this runs on a StartFrame that precedes worldspawn, so a
 	// registration anywhere else is declined and the default never lands.
-	registercvar("lobby_maps",  "");
-	registercvar("lobby_cycle", "0");
-	registercvar("lobby_cycle_hold", "7200");
+	if (!cyc_cvreg)                 // P1406 follow-up: once, see Lobby_Frame
+	{
+		registercvar("lobby_maps",  "");
+		registercvar("lobby_cycle", "0");
+		registercvar("lobby_cycle_hold", "7200");
+		cyc_cvreg = TRUE;
+	}
 
 	per = cvar("lobby_cycle");
 	if (per <= 0)
