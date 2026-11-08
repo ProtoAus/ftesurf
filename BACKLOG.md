@@ -24,12 +24,10 @@
   the trigger mirror ~7,500 (CSQC_PredictPlayerMove 3,583, TG_IOEndSweep 2,118, TG_ChainStart 1,760);
   Sprite_SkyTest re-traces once a frame while flying (P1242's 16-unit step; ~30 us of profiler time).
 - Server per tick (profile_ssqc, one player): StartFrame's find(classname "player") walks were most of it
-  (P1406 chain: StartFrame 132 -> 88 us of profiler time; sv_perfdump below). Left: SV_PeRow formats a
-  prederror ring row per usercmd (three sprintf + strcat + bufstr_set, ~14 us profiled per command, scales
-  with players x 66/s); Archive_Frame, PlayStats_Frame and Account_SelfFrame walk findfloat(acct_here) every
-  frame (~10 us; acct_here is set at ClientConnect, before the classname, so the player chain is not their
-  answer -- a chain of their own would be); Lobby_Frame re-registers 16 cvars every frame; SV_SpFrame
-  13 us, SV_TpEyeThink 13 us (20 Hz).
+  (P1406 chain: StartFrame 132 -> 88 us of profiler time; sv_perfdump below). SV_PeRow, the acct_here
+  walks and the per-frame registercvar calls: the P1406 follow-up below. Left: Lobby_Frame itself, 33 us of
+  profiler time a tick with lobby.cfg and two clients after the follow-up (124 instructions: its cost is
+  the builtins it calls per player); SV_SpFrame 13 us, SV_TpEyeThink 13 us (20 Hz).
 - P1406 measured (sv_perfdump per SV_Frame, mean +- sd of 18 s windows, A/B alternating processes; r54's first
   window dropped: a focus event cut its flight). One client: QC StartFrame base 134+-16 (8), chain walked
   with find() 92+-18 (4) and 87+-17 (5, the next batch), final client-slot walk 61+-4 (4). lobby.cfg plus a
@@ -50,11 +48,35 @@
   call, return and alpha compared: 0 of 5,799,310 differ (435,804 in the fade branch); its mutant (centre
   0.01 u off) 57,151 differ. pm_verify does not run StartFrame's walkers or the predraw, so it is
   not a check for either.
-- Left on purpose (behaviour or Lex's call): posing only the movers in view (draws the same, but their origins
-  would stop updating off screen); a coarser sky-test cadence; an owned-slot list for TG_IOEndSweep and
-  TG_ChainStart (~3,500 instructions a frame, exact by construction, but prediction-mirror code wants a
-  prederror-level check first); lazily formatted SV_PeRow rows. Client frame time moved by none of this within
-  rig noise: whole-machine swings of ~10% between processes move every r_budget row together.
+- P1406 follow-up (branch p1406b-server; lobby.cfg, dedicated server + 2 clients, flight): SV_PeRow keeps
+  each row's numbers and formats only when SV_PeSnap freezes the ring; Archive_Frame, PlayStats_Frame and
+  Account_SelfFrame read an acct_here chain built in P1406's client-slot walk (SV_AcNext); 30 per-frame
+  registercvar calls (Lobby_Frame 12, Vote_Cvars 9, StartFrame 4, Lobby_Cycle 3, SV_UpdateMovementServerInfo
+  2) run once a progs load. profile_ssqc, profiler us a tick, one window each: SV_PeRow 22.9 -> 3.1
+  (PlayerPreThink total 101.7 -> 87.3), Archive_Frame 6.8 -> 0.8, PlayStats_Frame 2.7 -> 0.9 (chain build
+  +0.3, SV_AcNext 0.3), Vote_Cvars 2.2 -> 0.1, Lobby_Cycle 0.9 -> 0.4, Lobby_Frame 34.8 -> 33.0; StartFrame
+  total 106.9 -> 91.9. sv_perfdump QC StartFrame 89+-4 -> 83+-8 us (4 windows each: within ~2 sd).
+  Check builds: main's row text against SV_PeRowText 0 of 4,714 rows differ (mutant, one column at %.2f:
+  4,261 of 4,261); SV_AcNext against findfloat 0 of 15,537 (mutant dropping edict 2: 3,448 of 11,111 once the
+  second client joined); every latched name still exists 0 of 3,210 frames missing (detector control, a name
+  nothing registers: 2,971 of 2,971).
+- Mover culling (Lex: "if it works and looks the same"): not done. It cannot be shown pixel-identical in every
+  view from QC: the scene's entity list is built once in CSQC_UpdateView and reused by the water/glass
+  reflection and portal cameras the renderer picks afterwards, and nothing in CSQC says whether a map has any;
+  and a pose is not a pure function of the clock: Sp_Place re-anchors a turning mover's phase every 60 s
+  (stored, float-rounded) and a train stood vertical keeps its last facing (trk_alast), so skipped frames
+  change later poses. A gate on the eye's and the sky camera's PVS would be exact only on maps without those
+  views. Needs the engine: a predraw per view, or a "drawn in any view" bit. What it would save: the movers'
+  ~10,700 QC instructions a frame on surf_voyager.
+- Sky-test cadence (Lex's condition: no visible step): dropped. Test-only build running P1242's 16-unit
+  cadence and a shadow at a coarser step side by side and comparing every sprite's verdict every frame:
+  surf_voyager's flight never flipped a verdict (0 of 82,809 sprite-frames at 64 u: the route cannot fail);
+  surf_garden in noclip circles (6 flips): 32 u differed in 1 of 334,628 sprite-frames (traces 2,635 -> 1,360),
+  64 u in 4 of 369,495 (2,652 -> 714). A verdict a frame late is a sprite drawn or hidden a frame late.
+- Left on purpose: an owned-slot list for TG_IOEndSweep and TG_ChainStart (~3,500 instructions a frame,
+  exact by construction, but prediction-mirror code wants a prederror-level check first). Client frame time
+  moved by none of P1406 within rig noise: whole-machine swings of ~10% between processes move every r_budget
+  row together.
 
 ## Warp ops land a command apart in some prederror reports (8 Nov, P1395 not demonstrated)
 
