@@ -519,6 +519,7 @@ float  vbsp_las_seen, vbsp_las_n, vbsp_las_off, vbsp_las_notgt;
 float  vbsp_las_parent, vbsp_las_moving, vbsp_las_nomat, vbsp_las_over;
 // P1426: env_beam, through the laser path
 float  vbsp_fx_tesla, vbsp_fx_arc, vbsp_fx_skip;   // P1430, counted by cl_fx.qc
+float  vbsp_fx_seen;                      // P1430: point_tesla in the lump (the walk below counts them)
 float  fx_n;                              // P1430: cl_fx.qc's arc sources (Sprite_Draw's early exit reads it)
 float  vbsp_ebm_seen, vbsp_ebm_n, vbsp_ebm_off, vbsp_ebm_arc, vbsp_ebm_skip, vbsp_ebm_noise;   // not vbsp_beam_*: the shafts'
 float  las_drawn;                         // laser beams drawn last frame (vbsp_sprite_debug)
@@ -1586,6 +1587,7 @@ void() Sprite_LoadForMap =
 	vbsp_glow_seen = vbsp_glow_off = vbsp_glow_n = 0;
 	vbsp_las_seen = 0;
 	vbsp_ebm_seen = 0;
+	vbsp_fx_seen = 0;
 	opened = FALSE;
 
 	/*
@@ -1797,6 +1799,8 @@ void() Sprite_LoadForMap =
 			vbsp_las_seen = vbsp_las_seen + 1;
 		else if (cn == "env_beam")
 			vbsp_ebm_seen = vbsp_ebm_seen + 1;
+		else if (cn == "point_tesla")
+			vbsp_fx_seen = vbsp_fx_seen + 1;
 	}
 
 	beam_spot_n = beam_n;
