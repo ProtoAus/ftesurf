@@ -1,0 +1,5799 @@
+{
+ "maps": 2204,
+ "unreadable": [],
+ "spawnfuncs": 133,
+ "inputs_handled": 100,
+ "outputs_handled": 58,
+ "classes": [
+  {
+   "class": "light_environment",
+   "maps": 1772,
+   "ents": 2181,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "Bhop_Mukiology",
+    "agtricks",
+    "ahop_coast",
+    "ahop_trick_or_treat"
+   ]
+  },
+  {
+   "class": "water_lod_control",
+   "maps": 1217,
+   "ents": 1436,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "agtricks",
+    "ahop_coast",
+    "bhop_101xp",
+    "bhop_2020_aux"
+   ]
+  },
+  {
+   "class": "filter_damage_type",
+   "maps": 1132,
+   "ents": 1404,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "Bhop_Mukiology",
+    "bhop_2020_aux",
+    "bhop_2flocci2furious",
+    "bhop_3d"
+   ]
+  },
+  {
+   "class": "game_player_equip",
+   "maps": 632,
+   "ents": 1432,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_1n5an3",
+    "bhop_2flocci2furious",
+    "bhop_angst",
+    "bhop_avantasia"
+   ]
+  },
+  {
+   "class": "light_spot",
+   "maps": 615,
+   "ents": 41840,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "ahop_coast",
+    "bhop_1derland",
+    "bhop_2020_aux",
+    "bhop_2flocci2furious"
+   ]
+  },
+  {
+   "class": "env_tonemap_controller",
+   "maps": 545,
+   "ents": 569,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "ahop_coast",
+    "ahop_trick_or_treat",
+    "bhop_1n5an3",
+    "bhop_2006isback"
+   ]
+  },
+  {
+   "class": "point_servercommand",
+   "maps": 308,
+   "ents": 345,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_HeLL",
+    "bhop_amor",
+    "bhop_arcane",
+    "bhop_arcane_v1"
+   ]
+  },
+  {
+   "class": "point_viewcontrol",
+   "maps": 248,
+   "ents": 280,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_3d",
+    "bhop_alt_spacement",
+    "bhop_alvo",
+    "bhop_angst"
+   ]
+  },
+  {
+   "class": "shadow_control",
+   "maps": 226,
+   "ents": 237,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "ahop_coast",
+    "ahop_trick_or_treat",
+    "bhop_1n5an3",
+    "bhop_3d"
+   ]
+  },
+  {
+   "class": "info_ladder",
+   "maps": 208,
+   "ents": 834,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "ahop_coast",
+    "bhop_2flocci2furious",
+    "bhop_HaddocK",
+    "bhop_addict"
+   ]
+  },
+  {
+   "class": "trigger_hurt",
+   "maps": 189,
+   "ents": 1604,
+   "brush": 1604,
+   "sv_literal": false,
+   "examples": [
+    "bhop_arcane",
+    "bhop_arcane_v1",
+    "bhop_cooksassistant",
+    "bhop_strafe_comjump2"
+   ]
+  },
+  {
+   "class": "point_template",
+   "maps": 158,
+   "ents": 816,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "ahop_coast",
+    "bhop_3muddz",
+    "bhop_4matan",
+    "bhop_4muddz"
+   ]
+  },
+  {
+   "class": "point_tesla",
+   "maps": 151,
+   "ents": 1255,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_benchpressed",
+    "bhop_contamination",
+    "bhop_crash_egypt",
+    "bhop_enlightened2"
+   ]
+  },
+  {
+   "class": "env_cascade_light",
+   "maps": 119,
+   "ents": 122,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_98sync",
+    "bhop_alien_ruins",
+    "bhop_alien_sewers",
+    "bhop_altissia"
+   ]
+  },
+  {
+   "class": "env_beam",
+   "maps": 107,
+   "ents": 1696,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_anomalous",
+    "bhop_canals",
+    "bhop_communityjump",
+    "bhop_dimensions"
+   ]
+  },
+  {
+   "class": "point_clientcommand",
+   "maps": 99,
+   "ents": 104,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_angst",
+    "bhop_aperture_kinetic_lab",
+    "bhop_avantasia",
+    "bhop_badges2"
+   ]
+  },
+  {
+   "class": "env_steam",
+   "maps": 95,
+   "ents": 927,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_angst",
+    "bhop_avantasia",
+    "bhop_canals",
+    "bhop_circlejerk"
+   ]
+  },
+  {
+   "class": "player_weaponstrip",
+   "maps": 88,
+   "ents": 98,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_2flocci2furious",
+    "bhop_angst",
+    "bhop_badges2",
+    "bhop_cutekittenz"
+   ]
+  },
+  {
+   "class": "env_entity_maker",
+   "maps": 81,
+   "ents": 447,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "ahop_coast",
+    "bhop_4muddz",
+    "bhop_adrino",
+    "bhop_angst"
+   ]
+  },
+  {
+   "class": "weapon_hegrenade",
+   "maps": 80,
+   "ents": 468,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_4matan",
+    "bhop_4muddz",
+    "bhop_arcane_v1",
+    "bhop_eazy_v2"
+   ]
+  },
+  {
+   "class": "weapon_awp",
+   "maps": 78,
+   "ents": 248,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_addict_V2",
+    "bhop_amor",
+    "bhop_arcane_v1",
+    "bhop_eazy_v2"
+   ]
+  },
+  {
+   "class": "filter_momentum_surface_collision",
+   "maps": 72,
+   "ents": 114,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_arcane",
+    "bhop_badges",
+    "bhop_badges_mini",
+    "bhop_blossom2"
+   ]
+  },
+  {
+   "class": "weapon_knife",
+   "maps": 71,
+   "ents": 913,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_badges2",
+    "bhop_inmomentum_gfl_final",
+    "bhop_lego",
+    "bhop_null_fix"
+   ]
+  },
+  {
+   "class": "weapon_m249",
+   "maps": 66,
+   "ents": 129,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_arcane_v1",
+    "bhop_eazy_v2",
+    "surf_81st_network",
+    "surf_Rebel_Resistance_Revamp"
+   ]
+  },
+  {
+   "class": "phys_motor",
+   "maps": 60,
+   "ents": 592,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "ahop_coast",
+    "bhop_badges2",
+    "bhop_cheesemania",
+    "bhop_epiphany2"
+   ]
+  },
+  {
+   "class": "trigger_momentum_timer_start",
+   "maps": 60,
+   "ents": 79,
+   "brush": 79,
+   "sv_literal": true,
+   "examples": [
+    "surf_420",
+    "surf_a",
+    "surf_ab_css",
+    "surf_agony_css"
+   ]
+  },
+  {
+   "class": "trigger_momentum_timer_stop",
+   "maps": 60,
+   "ents": 79,
+   "brush": 79,
+   "sv_literal": true,
+   "examples": [
+    "surf_420",
+    "surf_a",
+    "surf_ab_css",
+    "surf_agony_css"
+   ]
+  },
+  {
+   "class": "weapon_deagle",
+   "maps": 55,
+   "ents": 344,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_HeLL",
+    "bhop_arcane_v1",
+    "bhop_eazy_v2",
+    "bhop_inmomentum_gfl_final"
+   ]
+  },
+  {
+   "class": "weapon_ak47",
+   "maps": 55,
+   "ents": 251,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_amor",
+    "bhop_exodus",
+    "bhop_exodus_fix",
+    "bhop_thc_gold"
+   ]
+  },
+  {
+   "class": "env_explosion",
+   "maps": 48,
+   "ents": 412,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_exodus",
+    "bhop_exodus_fix",
+    "bhop_maya",
+    "bhop_monster_jam"
+   ]
+  },
+  {
+   "class": "weapon_m4a1",
+   "maps": 48,
+   "ents": 236,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_amor",
+    "bhop_arcane_v1",
+    "bhop_thc_gold",
+    "de_nam"
+   ]
+  },
+  {
+   "class": "weapon_smokegrenade",
+   "maps": 41,
+   "ents": 115,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_fruits2",
+    "surf_6",
+    "surf_aether_css",
+    "surf_akai_final"
+   ]
+  },
+  {
+   "class": "weapon_scout",
+   "maps": 39,
+   "ents": 156,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_amor",
+    "bhop_arcane_v1",
+    "bhop_dtt_advi",
+    "bhop_larena"
+   ]
+  },
+  {
+   "class": "weapon_m3",
+   "maps": 34,
+   "ents": 156,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_amor",
+    "bhop_badges",
+    "surf_Rebel_Resistance_Revamp",
+    "surf_boring"
+   ]
+  },
+  {
+   "class": "weapon_flashbang",
+   "maps": 34,
+   "ents": 98,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_arcane_v1",
+    "bhop_fruits2",
+    "mg_nightterrors",
+    "mg_remsopor_encore"
+   ]
+  },
+  {
+   "class": "point_camera",
+   "maps": 33,
+   "ents": 56,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_backrooms",
+    "kz_bhop_yonkoma",
+    "surf_Rebel_Resistance_Revamp",
+    "surf_awp_sk337_v3"
+   ]
+  },
+  {
+   "class": "env_wind",
+   "maps": 30,
+   "ents": 35,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_angst",
+    "bhop_bowling",
+    "bhop_cw",
+    "bhop_depot"
+   ]
+  },
+  {
+   "class": "func_fish_pool",
+   "maps": 28,
+   "ents": 216,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_circlejerk",
+    "bhop_friendsjump",
+    "bhop_ivy",
+    "bhop_sina"
+   ]
+  },
+  {
+   "class": "postprocess_controller",
+   "maps": 28,
+   "ents": 30,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "kz_iripino",
+    "surf_angelinaaa",
+    "surf_fuchnut",
+    "surf_greek"
+   ]
+  },
+  {
+   "class": "env_firesource",
+   "maps": 26,
+   "ents": 275,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_murder",
+    "bhop_voyage",
+    "mg_dreamscraper",
+    "mg_nightterrors"
+   ]
+  },
+  {
+   "class": "point_worldtext",
+   "maps": 24,
+   "ents": 560,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_2shiny2shuckle",
+    "bhop_alien_sewers",
+    "bhop_bowling",
+    "bhop_canals"
+   ]
+  },
+  {
+   "class": "weapon_sg550",
+   "maps": 21,
+   "ents": 62,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_arcane_v1",
+    "surf_81st_network",
+    "surf_Rebel_Resistance_Revamp",
+    "surf_akai_final"
+   ]
+  },
+  {
+   "class": "trigger_look",
+   "maps": 21,
+   "ents": 38,
+   "brush": 38,
+   "sv_literal": false,
+   "examples": [
+    "bhop_4muddz",
+    "bhop_endo",
+    "bhop_fruits2",
+    "bhop_lost_world_v2"
+   ]
+  },
+  {
+   "class": "info_observer_point",
+   "maps": 20,
+   "ents": 45,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_2020_aux",
+    "bhop_challenjour_fix",
+    "jump_academy2_rc7",
+    "rj_beef"
+   ]
+  },
+  {
+   "class": "game_ui",
+   "maps": 20,
+   "ents": 26,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_avantasia",
+    "bhop_bowling",
+    "bhop_vixen",
+    "de_nam"
+   ]
+  },
+  {
+   "class": "env_texturetoggle",
+   "maps": 17,
+   "ents": 97,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_avantasia",
+    "bhop_curse",
+    "bhop_floodwaters",
+    "bhop_goldsrc2"
+   ]
+  },
+  {
+   "class": "weapon_glock",
+   "maps": 16,
+   "ents": 151,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_3muddz",
+    "bhop_4matan",
+    "bhop_4muddz",
+    "bhop_badges_mini"
+   ]
+  },
+  {
+   "class": "game_weapon_manager",
+   "maps": 15,
+   "ents": 99,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_dull",
+    "bhop_inmomentum_gfl_final",
+    "bhop_lego",
+    "bhop_murder"
+   ]
+  },
+  {
+   "class": "weapon_mp5navy",
+   "maps": 15,
+   "ents": 92,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_Rebel_Resistance_Revamp",
+    "surf_akai_final",
+    "surf_dynasty_css",
+    "surf_elites_v2"
+   ]
+  },
+  {
+   "class": "light_dynamic",
+   "maps": 15,
+   "ents": 80,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_aux_a9",
+    "bhop_collective",
+    "bhop_curse",
+    "bhop_fruits2"
+   ]
+  },
+  {
+   "class": "weapon_p90",
+   "maps": 15,
+   "ents": 66,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_arcane_v1",
+    "bhop_badges",
+    "bhop_dream_gauntlet",
+    "bhop_eazy_v2"
+   ]
+  },
+  {
+   "class": "weapon_tmp",
+   "maps": 14,
+   "ents": 113,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_arcane_v1",
+    "surf_aether_css",
+    "surf_crzyfrog_reloaded",
+    "surf_dynasty_css"
+   ]
+  },
+  {
+   "class": "trigger_momentum_timer_stage",
+   "maps": 13,
+   "ents": 67,
+   "brush": 67,
+   "sv_literal": true,
+   "examples": [
+    "surf_a",
+    "surf_concretejungle_fix",
+    "surf_helium_fix",
+    "surf_hope_css"
+   ]
+  },
+  {
+   "class": "weapon_aug",
+   "maps": 11,
+   "ents": 57,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_akai_final",
+    "surf_crzyfrog_reloaded",
+    "surf_diminsion",
+    "surf_dynasty_css"
+   ]
+  },
+  {
+   "class": "game_score",
+   "maps": 11,
+   "ents": 56,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_anthropomorphic",
+    "surf_deceptive_final",
+    "surf_elements_beta3",
+    "surf_insignia_b1"
+   ]
+  },
+  {
+   "class": "weapon_xm1014",
+   "maps": 11,
+   "ents": 24,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_arcane_v1",
+    "bhop_badges",
+    "surf_Rebel_Resistance_Revamp",
+    "surf_akai_final"
+   ]
+  },
+  {
+   "class": "env_entity_dissolver",
+   "maps": 11,
+   "ents": 12,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_canisius2_fix",
+    "surf_concept",
+    "surf_elements_beta3",
+    "surf_euphoria"
+   ]
+  },
+  {
+   "class": "ai_changetarget",
+   "maps": 10,
+   "ents": 66,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_akai_final",
+    "surf_catalyst",
+    "surf_construction",
+    "surf_freaky"
+   ]
+  },
+  {
+   "class": "weapon_elite",
+   "maps": 10,
+   "ents": 33,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_arcane_v1",
+    "bhop_eazy_v2",
+    "surf_crystal",
+    "surf_dynasty_css"
+   ]
+  },
+  {
+   "class": "trigger_capture_area",
+   "maps": 10,
+   "ents": 29,
+   "brush": 29,
+   "sv_literal": false,
+   "examples": [
+    "bhop_upward",
+    "jump_academy2_rc7",
+    "rj_bolt",
+    "rj_doom"
+   ]
+  },
+  {
+   "class": "weapon_g3sg1",
+   "maps": 10,
+   "ents": 25,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_arcane_v1",
+    "surf_81st_network",
+    "surf_akai_final",
+    "surf_compact"
+   ]
+  },
+  {
+   "class": "env_screenoverlay",
+   "maps": 10,
+   "ents": 11,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_2shiny2shuckle",
+    "kz_bhop_yonkoma",
+    "mg_remsopor_encore",
+    "surf_ab"
+   ]
+  },
+  {
+   "class": "info_null",
+   "maps": 9,
+   "ents": 135,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "df_sdc-uk_26",
+    "surf_angst",
+    "surf_angst_css",
+    "surf_compulsive"
+   ]
+  },
+  {
+   "class": "env_shooter",
+   "maps": 9,
+   "ents": 22,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_lost_world_v2",
+    "mg_dreamscraper",
+    "mg_iwishiwastomgreen",
+    "mg_nightterrors"
+   ]
+  },
+  {
+   "class": "math_colorblend",
+   "maps": 9,
+   "ents": 19,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_classics",
+    "surf_classics_css",
+    "surf_elements_beta3",
+    "surf_euphoria"
+   ]
+  },
+  {
+   "class": "team_control_point",
+   "maps": 9,
+   "ents": 13,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "rj_bolt",
+    "rj_doom",
+    "rj_lion",
+    "rj_sitood"
+   ]
+  },
+  {
+   "class": "env_projectedtexture",
+   "maps": 9,
+   "ents": 10,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_aperture_kinetic_lab",
+    "bhop_badges2",
+    "bhop_distraction",
+    "bhop_p06"
+   ]
+  },
+  {
+   "class": "env_global",
+   "maps": 9,
+   "ents": 10,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_compulsive_njv",
+    "surf_compulsive_njv_h",
+    "surf_euphoria",
+    "surf_map_h"
+   ]
+  },
+  {
+   "class": "weapon_galil",
+   "maps": 8,
+   "ents": 73,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_aether_css",
+    "surf_akai_final",
+    "surf_crzyfrog_reloaded",
+    "surf_dynasty_css"
+   ]
+  },
+  {
+   "class": "weapon_mac10",
+   "maps": 8,
+   "ents": 46,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_arcane_v1",
+    "surf_akai_final",
+    "surf_crzyfrog_reloaded",
+    "surf_elites_v2"
+   ]
+  },
+  {
+   "class": "phys_thruster",
+   "maps": 8,
+   "ents": 33,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "kz_bhop_yonkoma",
+    "surf_ny_advance",
+    "surf_ny_advance_css",
+    "surf_ny_superhappiest_b3"
+   ]
+  },
+  {
+   "class": "weapon_usp",
+   "maps": 8,
+   "ents": 22,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_badges2",
+    "bhop_inmomentum_gfl_final",
+    "bhop_murder",
+    "surf_2012_beta12"
+   ]
+  },
+  {
+   "class": "weapon_ump45",
+   "maps": 8,
+   "ents": 15,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_arcane_v1",
+    "bhop_infog",
+    "surf_akai_final",
+    "surf_dynasty_css"
+   ]
+  },
+  {
+   "class": "multi_manager",
+   "maps": 8,
+   "ents": 8,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_004_fix",
+    "surf_diminsion",
+    "surf_oompa_loompa_css",
+    "surf_sewers"
+   ]
+  },
+  {
+   "class": "point_devshot_camera",
+   "maps": 7,
+   "ents": 54,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_dustbowl",
+    "bhop_orgrimmar",
+    "surf_legends",
+    "surf_legends_css"
+   ]
+  },
+  {
+   "class": "weapon_sg552",
+   "maps": 7,
+   "ents": 42,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_akai_final",
+    "surf_dynasty_css",
+    "surf_elites_v2",
+    "surf_graphia_css"
+   ]
+  },
+  {
+   "class": "trigger_momentum_timer_checkpoint",
+   "maps": 7,
+   "ents": 38,
+   "brush": 38,
+   "sv_literal": true,
+   "examples": [
+    "df_parkourushi",
+    "surf_axiom_css",
+    "surf_hydrogen",
+    "surf_ofrenda_css"
+   ]
+  },
+  {
+   "class": "phys_constraint",
+   "maps": 7,
+   "ents": 12,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "ahop_coast",
+    "bhop_badwater",
+    "bhop_odyssey",
+    "bhop_upward"
+   ]
+  },
+  {
+   "class": "phys_ballsocket",
+   "maps": 7,
+   "ents": 11,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_exodus",
+    "bhop_exodus_fix",
+    "bhop_lost_world_v2",
+    "surf_loves_spliff"
+   ]
+  },
+  {
+   "class": "team_control_point_master",
+   "maps": 7,
+   "ents": 7,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "jump_academy2_rc7",
+    "rj_sitood",
+    "surf_1969",
+    "surf_commune_again_beta5"
+   ]
+  },
+  {
+   "class": "env_physexplosion",
+   "maps": 6,
+   "ents": 111,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_exodus",
+    "bhop_exodus_fix",
+    "kz_bhop_yonkoma",
+    "surf_pandemonium_njv"
+   ]
+  },
+  {
+   "class": "weapon_fiveseven",
+   "maps": 6,
+   "ents": 59,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_badges",
+    "bhop_inmomentum_gfl_final",
+    "surf_akai_final",
+    "surf_dynasty_css"
+   ]
+  },
+  {
+   "class": "weapon_famas",
+   "maps": 6,
+   "ents": 31,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_arcane_v1",
+    "surf_akai_final",
+    "surf_crzyfrog_reloaded",
+    "surf_dynasty_css"
+   ]
+  },
+  {
+   "class": "fog_volume",
+   "maps": 6,
+   "ents": 15,
+   "brush": 15,
+   "sv_literal": true,
+   "examples": [
+    "bhop_dimensions",
+    "bhop_frigpx",
+    "bhop_hyperion",
+    "bhop_pandora"
+   ]
+  },
+  {
+   "class": "tf_gamerules",
+   "maps": 6,
+   "ents": 6,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_2020_aux",
+    "bhop_upward",
+    "jump_academy2_rc7",
+    "rj_sitood"
+   ]
+  },
+  {
+   "class": "ammo_buckshot",
+   "maps": 5,
+   "ents": 32,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_Rebel_Resistance_Revamp",
+    "surf_rebel_resistance_final11",
+    "surf_rebel_resistance_final2",
+    "surf_rebel_resistance_final3"
+   ]
+  },
+  {
+   "class": "trigger_vphysics_motion",
+   "maps": 5,
+   "ents": 10,
+   "brush": 10,
+   "sv_literal": false,
+   "examples": [
+    "bhop_dtt_advi",
+    "bhop_endo",
+    "bhop_exodus",
+    "bhop_exodus_fix"
+   ]
+  },
+  {
+   "class": "filter_momentum_timer_progress",
+   "maps": 5,
+   "ents": 9,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_aperture_kinetic_lab",
+    "bhop_greenbox",
+    "bhop_monster_jam",
+    "surf_aircontrol"
+   ]
+  },
+  {
+   "class": "point_hurt",
+   "maps": 5,
+   "ents": 9,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_catalyst",
+    "surf_catalyst2",
+    "surf_catalyst2_css",
+    "surf_euphoria"
+   ]
+  },
+  {
+   "class": "ammo_338mag",
+   "maps": 4,
+   "ents": 1191,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_rebel_resistance_final11",
+    "surf_rebel_resistance_final2",
+    "surf_rebel_resistance_final3",
+    "surf_rr_reloaded_light"
+   ]
+  },
+  {
+   "class": "ammo_556mm",
+   "maps": 4,
+   "ents": 1191,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_rebel_resistance_final11",
+    "surf_rebel_resistance_final2",
+    "surf_rebel_resistance_final3",
+    "surf_rr_reloaded_light"
+   ]
+  },
+  {
+   "class": "ammo_762mm",
+   "maps": 4,
+   "ents": 1191,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_rebel_resistance_final11",
+    "surf_rebel_resistance_final2",
+    "surf_rebel_resistance_final3",
+    "surf_rr_reloaded_light"
+   ]
+  },
+  {
+   "class": "ammo_556mm_box",
+   "maps": 4,
+   "ents": 32,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_Rebel_Resistance_Revamp",
+    "surf_rebel_resistance_final11",
+    "surf_rebel_resistance_final2",
+    "surf_rebel_resistance_final3"
+   ]
+  },
+  {
+   "class": "trigger_softbarrier",
+   "maps": 4,
+   "ents": 21,
+   "brush": 21,
+   "sv_literal": false,
+   "examples": [
+    "bhop_challenjour",
+    "bhop_cooksassistant",
+    "kz_slidebober",
+    "surf_beyond2"
+   ]
+  },
+  {
+   "class": "propper_model",
+   "maps": 4,
+   "ents": 17,
+   "brush": 3,
+   "sv_literal": false,
+   "examples": [
+    "surf_gloomy_css",
+    "surf_lax_css",
+    "surf_nebula_css",
+    "surf_rocco_v2"
+   ]
+  },
+  {
+   "class": "env_splash",
+   "maps": 4,
+   "ents": 12,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_canals",
+    "bhop_duck",
+    "surf_prismatic_ksf",
+    "surf_redemption_b1"
+   ]
+  },
+  {
+   "class": "phys_lengthconstraint",
+   "maps": 4,
+   "ents": 9,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "kz_bhop_yonkoma",
+    "kz_cellblock",
+    "surf_binx",
+    "surf_loves_spliff"
+   ]
+  },
+  {
+   "class": "env_surface_teleport",
+   "maps": 4,
+   "ents": 6,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_2shiny2shuckle",
+    "bhop_frigpx",
+    "bhop_ithyphallophobia",
+    "surf_4plar"
+   ]
+  },
+  {
+   "class": "weapon_p228",
+   "maps": 4,
+   "ents": 5,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_akai_final",
+    "surf_dynasty_css",
+    "surf_elites_v2",
+    "surf_sluice_final"
+   ]
+  },
+  {
+   "class": "ammo_9mm",
+   "maps": 4,
+   "ents": 4,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_Rebel_Resistance_Revamp",
+    "surf_rebel_resistance_final11",
+    "surf_rebel_resistance_final2",
+    "surf_rebel_resistance_final3"
+   ]
+  },
+  {
+   "class": "env_blood",
+   "maps": 3,
+   "ents": 22,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_era",
+    "surf_exile",
+    "surf_spaceracer"
+   ]
+  },
+  {
+   "class": "item_healthkit_small",
+   "maps": 3,
+   "ents": 15,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_blackout",
+    "surf_nameless",
+    "what_is_this"
+   ]
+  },
+  {
+   "class": "item_ammopack_medium",
+   "maps": 3,
+   "ents": 15,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_blackout",
+    "surf_nameless",
+    "what_is_this"
+   ]
+  },
+  {
+   "class": "filter_momentum_collectibles",
+   "maps": 3,
+   "ents": 13,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_cooksassistant",
+    "bhop_flything",
+    "surf_sedona"
+   ]
+  },
+  {
+   "class": "item_ammopack_small",
+   "maps": 3,
+   "ents": 11,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_blackout",
+    "surf_nameless",
+    "what_is_this"
+   ]
+  },
+  {
+   "class": "item_healthkit_medium",
+   "maps": 3,
+   "ents": 11,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_blackout",
+    "surf_nameless",
+    "what_is_this"
+   ]
+  },
+  {
+   "class": "logic_measure_movement",
+   "maps": 3,
+   "ents": 10,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "kz_bhop_yonkoma",
+    "surf_spaceship_ksf",
+    "surf_velocity"
+   ]
+  },
+  {
+   "class": "env_particlelight",
+   "maps": 3,
+   "ents": 8,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_epiphany",
+    "bhop_inmomentum",
+    "bhop_inmomentum_gfl_final"
+   ]
+  },
+  {
+   "class": "trigger_remove",
+   "maps": 3,
+   "ents": 6,
+   "brush": 6,
+   "sv_literal": false,
+   "examples": [
+    "bhop_badges2",
+    "bhop_p06",
+    "surf_domain"
+   ]
+  },
+  {
+   "class": "filter_activator_tfteam",
+   "maps": 3,
+   "ents": 6,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_blackout",
+    "surf_commune_again_beta5",
+    "what_is_this"
+   ]
+  },
+  {
+   "class": "trigger_playermovement",
+   "maps": 3,
+   "ents": 5,
+   "brush": 4,
+   "sv_literal": false,
+   "examples": [
+    "bhop_challenjour_fix",
+    "bhop_jago",
+    "surf_fire_eye"
+   ]
+  },
+  {
+   "class": "phys_keepupright",
+   "maps": 3,
+   "ents": 5,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "kz_bhop_yonkoma",
+    "surf_pavilion",
+    "surf_psi_fixed"
+   ]
+  },
+  {
+   "class": "info_camera_link",
+   "maps": 3,
+   "ents": 4,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_backrooms",
+    "kz_bhop_yonkoma",
+    "surf_lt_unicorn"
+   ]
+  },
+  {
+   "class": "momentum_weapon_spawner",
+   "maps": 3,
+   "ents": 3,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_exceptional",
+    "df_elco-gbparadise",
+    "df_gpl-strangeland"
+   ]
+  },
+  {
+   "class": "math_vector",
+   "maps": 3,
+   "ents": 3,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_greenbox",
+    "bhop_whitebox",
+    "surf_tropic2"
+   ]
+  },
+  {
+   "class": "env_muzzleflash",
+   "maps": 3,
+   "ents": 3,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_concept",
+    "surf_s_t_a_t_i_o_n",
+    "surf_the_gloaming_css"
+   ]
+  },
+  {
+   "class": "ai_speechfilter",
+   "maps": 3,
+   "ents": 3,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_gigapede_css",
+    "surf_sequoia",
+    "surf_sinsane_ksf"
+   ]
+  },
+  {
+   "class": "zone_allowbhop",
+   "maps": 2,
+   "ents": 51,
+   "brush": 51,
+   "sv_literal": false,
+   "examples": [
+    "surf_kitsune2",
+    "surf_offskill"
+   ]
+  },
+  {
+   "class": "env_instructor_hint",
+   "maps": 2,
+   "ents": 28,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_mom_training_beta",
+    "bhop_whitebox"
+   ]
+  },
+  {
+   "class": "func_static",
+   "maps": 2,
+   "ents": 13,
+   "brush": 13,
+   "sv_literal": true,
+   "examples": [
+    "df_ori-dorado",
+    "df_sdc-uk_26"
+   ]
+  },
+  {
+   "class": "env_dustpuff",
+   "maps": 2,
+   "ents": 9,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_canals",
+    "surf_awp_sk337_v3"
+   ]
+  },
+  {
+   "class": "item_ammopack_full",
+   "maps": 2,
+   "ents": 7,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "rj_beef",
+    "surf_nameless"
+   ]
+  },
+  {
+   "class": "item_defuser",
+   "maps": 2,
+   "ents": 7,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_prime_time_r3vamp",
+    "surf_rebel_resistance_final11"
+   ]
+  },
+  {
+   "class": "phys_hinge",
+   "maps": 2,
+   "ents": 5,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "ahop_coast",
+    "kz_bhop_yonkoma"
+   ]
+  },
+  {
+   "class": "func_stoptimer",
+   "maps": 2,
+   "ents": 5,
+   "brush": 5,
+   "sv_literal": true,
+   "examples": [
+    "kz_bhop_goldhop",
+    "kz_cellblock"
+   ]
+  },
+  {
+   "class": "skybox_swapper",
+   "maps": 2,
+   "ents": 4,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_2shiny2shuckle",
+    "bhop_go2australia"
+   ]
+  },
+  {
+   "class": "filter_tf_class",
+   "maps": 2,
+   "ents": 4,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "jump_academy2_rc7",
+    "rj_doom"
+   ]
+  },
+  {
+   "class": "point_velocitysensor",
+   "maps": 2,
+   "ents": 4,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_quarantine",
+    "surf_tropic2"
+   ]
+  },
+  {
+   "class": "func_overbounce",
+   "maps": 2,
+   "ents": 3,
+   "brush": 3,
+   "sv_literal": true,
+   "examples": [
+    "df_ash",
+    "df_momentum_training"
+   ]
+  },
+  {
+   "class": "item_teamflag",
+   "maps": 2,
+   "ents": 3,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "rj_sitood",
+    "what_is_this"
+   ]
+  },
+  {
+   "class": "logic_eventlistener",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_2shiny2shuckle",
+    "surf_centipedes"
+   ]
+  },
+  {
+   "class": "math_remap",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_badwater",
+    "surf_commune_too_beta5"
+   ]
+  },
+  {
+   "class": "game_gib_manager",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_maya",
+    "surf_era"
+   ]
+  },
+  {
+   "class": "phys_ragdollconstraint",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_mine",
+    "bhop_waterfall_ez"
+   ]
+  },
+  {
+   "class": "info_momentum_map",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_mom_training_beta",
+    "surf_mom_training"
+   ]
+  },
+  {
+   "class": "env_zoom",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_mom_training_beta",
+    "surf_perihelion"
+   ]
+  },
+  {
+   "class": "env_smoketrail",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_pharma",
+    "mg_dreamscraper"
+   ]
+  },
+  {
+   "class": "func_setcoursenames",
+   "maps": 2,
+   "ents": 2,
+   "brush": 2,
+   "sv_literal": true,
+   "examples": [
+    "kz_bhop_goldhop",
+    "kz_cellblock"
+   ]
+  },
+  {
+   "class": "env_player_surface_trigger",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_ab",
+    "surf_ab_css"
+   ]
+  },
+  {
+   "class": "editor_text",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_expel",
+    "surf_technical"
+   ]
+  },
+  {
+   "class": "env_ambient_light",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_fantasy",
+    "surf_triggered_fix"
+   ]
+  },
+  {
+   "class": "point_playermoveconstraint",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_flow",
+    "surf_flow_ksf"
+   ]
+  },
+  {
+   "class": "game_zone_player",
+   "maps": 2,
+   "ents": 2,
+   "brush": 2,
+   "sv_literal": true,
+   "examples": [
+    "surf_ny_superhappiest_b3",
+    "surf_sandman_v2"
+   ]
+  },
+  {
+   "class": "env_firesensor",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_shoria",
+    "surf_shoria_css"
+   ]
+  },
+  {
+   "class": "material_modify_control",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_solace",
+    "surf_solace_css"
+   ]
+  },
+  {
+   "class": "env_viewpunch",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_surreal",
+    "surf_surreal_css"
+   ]
+  },
+  {
+   "class": "env_screeneffect",
+   "maps": 2,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_syria",
+    "surf_syria_css"
+   ]
+  },
+  {
+   "class": "light_rt",
+   "maps": 1,
+   "ents": 122,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_aberrant"
+   ]
+  },
+  {
+   "class": "logic_multicompare",
+   "maps": 1,
+   "ents": 48,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_liberation"
+   ]
+  },
+  {
+   "class": "env_sprite_clientside",
+   "maps": 1,
+   "ents": 27,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_aperture_kinetic_lab"
+   ]
+  },
+  {
+   "class": "comment",
+   "maps": 1,
+   "ents": 22,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_mom_training_beta"
+   ]
+  },
+  {
+   "class": "mom_replay_playback",
+   "maps": 1,
+   "ents": 20,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "df_momentum_training"
+   ]
+  },
+  {
+   "class": "info_ladder_dismount",
+   "maps": 1,
+   "ents": 10,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "ahop_coast"
+   ]
+  },
+  {
+   "class": "ammo_50ae",
+   "maps": 1,
+   "ents": 10,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_rr_reloaded_light"
+   ]
+  },
+  {
+   "class": "game_intro_viewpoint",
+   "maps": 1,
+   "ents": 9,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "what_is_this"
+   ]
+  },
+  {
+   "class": "target_delay",
+   "maps": 1,
+   "ents": 7,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "df_precision2"
+   ]
+  },
+  {
+   "class": "player_speed",
+   "maps": 1,
+   "ents": 7,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "df_sdc-uk_26"
+   ]
+  },
+  {
+   "class": "func_ladderendpoint",
+   "maps": 1,
+   "ents": 6,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "ahop_coast"
+   ]
+  },
+  {
+   "class": "prop_portal",
+   "maps": 1,
+   "ents": 6,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_aperture_kinetic_lab"
+   ]
+  },
+  {
+   "class": "target_teleporter",
+   "maps": 1,
+   "ents": 6,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "df_sdc-uk_26"
+   ]
+  },
+  {
+   "class": "phys_constraintsystem",
+   "maps": 1,
+   "ents": 6,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "kz_bhop_yonkoma"
+   ]
+  },
+  {
+   "class": "item_healthkit_full",
+   "maps": 1,
+   "ents": 6,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_nameless"
+   ]
+  },
+  {
+   "class": "target_score",
+   "maps": 1,
+   "ents": 5,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "df_parkourushi"
+   ]
+  },
+  {
+   "class": "momentum_powerup_haste",
+   "maps": 1,
+   "ents": 5,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "df_yungstrafe08"
+   ]
+  },
+  {
+   "class": "trigger_apply_impulse",
+   "maps": 1,
+   "ents": 5,
+   "brush": 5,
+   "sv_literal": false,
+   "examples": [
+    "surf_colony"
+   ]
+  },
+  {
+   "class": "vgui_movie_display",
+   "maps": 1,
+   "ents": 4,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_aperture_kinetic_lab"
+   ]
+  },
+  {
+   "class": "func_slick",
+   "maps": 1,
+   "ents": 4,
+   "brush": 4,
+   "sv_literal": false,
+   "examples": [
+    "df_yungstrafe08"
+   ]
+  },
+  {
+   "class": "physics_cannister",
+   "maps": 1,
+   "ents": 4,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_paranoid_enigma"
+   ]
+  },
+  {
+   "class": "weapon_c4",
+   "maps": 1,
+   "ents": 4,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_prime_time_r3vamp"
+   ]
+  },
+  {
+   "class": "func_starttimer",
+   "maps": 1,
+   "ents": 3,
+   "brush": 3,
+   "sv_literal": true,
+   "examples": [
+    "kz_cellblock"
+   ]
+  },
+  {
+   "class": "trigger_add_tf_player_condition",
+   "maps": 1,
+   "ents": 3,
+   "brush": 3,
+   "sv_literal": false,
+   "examples": [
+    "surf_nameless"
+   ]
+  },
+  {
+   "class": "func_useableladder",
+   "maps": 1,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "ahop_coast"
+   ]
+  },
+  {
+   "class": "filter_player_held",
+   "maps": 1,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_aperture_kinetic_lab"
+   ]
+  },
+  {
+   "class": "phys_pulleyconstraint",
+   "maps": 1,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "kz_bhop_yonkoma"
+   ]
+  },
+  {
+   "class": "dispenser_touch_trigger",
+   "maps": 1,
+   "ents": 2,
+   "brush": 2,
+   "sv_literal": true,
+   "examples": [
+    "surf_blackout"
+   ]
+  },
+  {
+   "class": "mapobj_cart_dispenser",
+   "maps": 1,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_blackout"
+   ]
+  },
+  {
+   "class": "weapon_momentum_grenade",
+   "maps": 1,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "triggertests"
+   ]
+  },
+  {
+   "class": "weapon_momentum_pistol",
+   "maps": 1,
+   "ents": 2,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "triggertests"
+   ]
+  },
+  {
+   "class": "func_capturezone",
+   "maps": 1,
+   "ents": 2,
+   "brush": 2,
+   "sv_literal": true,
+   "examples": [
+    "what_is_this"
+   ]
+  },
+  {
+   "class": "point_entity_finder",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_2shiny2shuckle"
+   ]
+  },
+  {
+   "class": "func_detail_blocker",
+   "maps": 1,
+   "ents": 1,
+   "brush": 1,
+   "sv_literal": false,
+   "examples": [
+    "bhop_4colors"
+   ]
+  },
+  {
+   "class": "env_microphone",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_aperture_kinetic_lab"
+   ]
+  },
+  {
+   "class": "func_instance_io_proxy",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_aperture_kinetic_lab"
+   ]
+  },
+  {
+   "class": "env_fire_trail",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_arcane_v1"
+   ]
+  },
+  {
+   "class": "math_mod",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_bowling"
+   ]
+  },
+  {
+   "class": "info_lighting_relative",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_canals"
+   ]
+  },
+  {
+   "class": "trigger_proximity",
+   "maps": 1,
+   "ents": 1,
+   "brush": 1,
+   "sv_literal": false,
+   "examples": [
+    "bhop_exceptional"
+   ]
+  },
+  {
+   "class": "logic_convar",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_flything"
+   ]
+  },
+  {
+   "class": "cycler",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_goldsrc2"
+   ]
+  },
+  {
+   "class": "game_ragdoll_manager",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_maya"
+   ]
+  },
+  {
+   "class": "logic_console",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_mom_training_beta"
+   ]
+  },
+  {
+   "class": "filter_momentum_player_state",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_mom_training_beta"
+   ]
+  },
+  {
+   "class": "trigger_wind",
+   "maps": 1,
+   "ents": 1,
+   "brush": 1,
+   "sv_literal": false,
+   "examples": [
+    "bhop_waterfall_ez"
+   ]
+  },
+  {
+   "class": "logic_datadesc_accessor",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_whitebox"
+   ]
+  },
+  {
+   "class": "math_expression",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "bhop_whitebox"
+   ]
+  },
+  {
+   "class": "target_kill",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "df_gpl-strangeland"
+   ]
+  },
+  {
+   "class": "info_player_intermission",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "df_parkourushi"
+   ]
+  },
+  {
+   "class": "item_enviro",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "df_precision2"
+   ]
+  },
+  {
+   "class": "weapon_rocketlauncher",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "df_precision2"
+   ]
+  },
+  {
+   "class": "trigger_jumppad",
+   "maps": 1,
+   "ents": 1,
+   "brush": 1,
+   "sv_literal": false,
+   "examples": [
+    "df_precision2"
+   ]
+  },
+  {
+   "class": "info_defrag_bonus",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "df_yungstrafe08"
+   ]
+  },
+  {
+   "class": "game_end",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "mg_dreamscraper"
+   ]
+  },
+  {
+   "class": "gibshooter",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "mg_nightterrors"
+   ]
+  },
+  {
+   "class": "trigger_portal_cleanser",
+   "maps": 1,
+   "ents": 1,
+   "brush": 1,
+   "sv_literal": false,
+   "examples": [
+    "noneuclidean"
+   ]
+  },
+  {
+   "class": "weapon_portalgun",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "noneuclidean"
+   ]
+  },
+  {
+   "class": "commentary_auto",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_agony_css"
+   ]
+  },
+  {
+   "class": "light_directional",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_colum_up"
+   ]
+  },
+  {
+   "class": "env_entity_igniter",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_crystal"
+   ]
+  },
+  {
+   "class": "env_message",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_elites_v2"
+   ]
+  },
+  {
+   "class": "point_push",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_forbidden_tomb4"
+   ]
+  },
+  {
+   "class": "info_intermission",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_liberation"
+   ]
+  },
+  {
+   "class": "unknown_entity",
+   "maps": 1,
+   "ents": 1,
+   "brush": 1,
+   "sv_literal": false,
+   "examples": [
+    "surf_masonry"
+   ]
+  },
+  {
+   "class": "entity",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_mushroom_ksf"
+   ]
+  },
+  {
+   "class": "item_kevlar",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_network_2009"
+   ]
+  },
+  {
+   "class": "logic_branch_listener",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_ori_l"
+   ]
+  },
+  {
+   "class": "func_detai",
+   "maps": 1,
+   "ents": 1,
+   "brush": 1,
+   "sv_literal": false,
+   "examples": [
+    "surf_pure"
+   ]
+  },
+  {
+   "class": "info_overlay_accessor",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_sh"
+   ]
+  },
+  {
+   "class": "point_gamestats_counter",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "surf_tempest2"
+   ]
+  },
+  {
+   "class": "weapon_momentum_sniper",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "triggertests"
+   ]
+  },
+  {
+   "class": "weapon_momentum_rifle",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "triggertests"
+   ]
+  },
+  {
+   "class": "weapon_momentum_shotgun",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "triggertests"
+   ]
+  },
+  {
+   "class": "weapon_momentum_lmg",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "triggertests"
+   ]
+  },
+  {
+   "class": "weapon_momentum_smg",
+   "maps": 1,
+   "ents": 1,
+   "brush": 0,
+   "sv_literal": false,
+   "examples": [
+    "triggertests"
+   ]
+  }
+ ],
+ "outputs": [
+  {
+   "output": "onplayerpickup",
+   "maps": 61,
+   "n": 421
+  },
+  {
+   "output": "onentityspawned",
+   "maps": 34,
+   "n": 312
+  },
+  {
+   "output": "onmultinewround",
+   "maps": 11,
+   "n": 29
+  },
+  {
+   "output": "onhurtplayer",
+   "maps": 10,
+   "n": 99
+  },
+  {
+   "output": "onmultinewmap",
+   "maps": 10,
+   "n": 26
+  },
+  {
+   "output": "oncapteam1",
+   "maps": 7,
+   "n": 12
+  },
+  {
+   "output": "oncapteam2",
+   "maps": 6,
+   "n": 11
+  },
+  {
+   "output": "onawakened",
+   "maps": 5,
+   "n": 13
+  },
+  {
+   "output": "onloadgame",
+   "maps": 5,
+   "n": 12
+  },
+  {
+   "output": "onplayeruse",
+   "maps": 5,
+   "n": 9
+  },
+  {
+   "output": "onhurt",
+   "maps": 4,
+   "n": 10
+  },
+  {
+   "output": "onmotionenabled",
+   "maps": 3,
+   "n": 18
+  },
+  {
+   "output": "ontakedamage",
+   "maps": 3,
+   "n": 13
+  },
+  {
+   "output": "onused",
+   "maps": 3,
+   "n": 6
+  },
+  {
+   "output": "onstart",
+   "maps": 2,
+   "n": 10
+  },
+  {
+   "output": "ontimeout",
+   "maps": 2,
+   "n": 6
+  },
+  {
+   "output": "ongety",
+   "maps": 2,
+   "n": 4
+  },
+  {
+   "output": "ongetx",
+   "maps": 2,
+   "n": 3
+  },
+  {
+   "output": "onlessthanorequalto",
+   "maps": 2,
+   "n": 3
+  },
+  {
+   "output": "oneventfired",
+   "maps": 2,
+   "n": 2
+  },
+  {
+   "output": "onmaptransition",
+   "maps": 2,
+   "n": 2
+  },
+  {
+   "output": "ongreaterthanorequalto",
+   "maps": 2,
+   "n": 2
+  },
+  {
+   "output": "onequal",
+   "maps": 1,
+   "n": 96
+  },
+  {
+   "output": "onlighton",
+   "maps": 1,
+   "n": 12
+  },
+  {
+   "output": "ontouchedbyentity",
+   "maps": 1,
+   "n": 12
+  },
+  {
+   "output": "onalltrue",
+   "maps": 1,
+   "n": 11
+  },
+  {
+   "output": "onchangelevel",
+   "maps": 1,
+   "n": 7
+  },
+  {
+   "output": "onanimationbegun",
+   "maps": 1,
+   "n": 6
+  },
+  {
+   "output": "onextinguished",
+   "maps": 1,
+   "n": 5
+  },
+  {
+   "output": "onanimationdone",
+   "maps": 1,
+   "n": 4
+  },
+  {
+   "output": "onoutofworld",
+   "maps": 1,
+   "n": 4
+  },
+  {
+   "output": "onphysgunpickup",
+   "maps": 1,
+   "n": 3
+  },
+  {
+   "output": "onteleport",
+   "maps": 1,
+   "n": 3
+  },
+  {
+   "output": "onfoundentity",
+   "maps": 1,
+   "n": 2
+  },
+  {
+   "output": "onbackgroundmap",
+   "maps": 1,
+   "n": 2
+  },
+  {
+   "output": "ondeath",
+   "maps": 1,
+   "n": 1
+  },
+  {
+   "output": "onproxyrelay1",
+   "maps": 1,
+   "n": 1
+  },
+  {
+   "output": "onplayerteleportfromme",
+   "maps": 1,
+   "n": 1
+  },
+  {
+   "output": "oncase17",
+   "maps": 1,
+   "n": 1
+  },
+  {
+   "output": "onfacinglookat",
+   "maps": 1,
+   "n": 1
+  },
+  {
+   "output": "onbeginfade",
+   "maps": 1,
+   "n": 1
+  }
+ ],
+ "inputs": [
+  {
+   "input": "setbloomscale",
+   "maps": 503,
+   "n": 547,
+   "targets": [
+    [
+     "env_tonemap_controller",
+     540
+    ],
+    [
+     "?",
+     5
+    ],
+    [
+     "!!self",
+     2
+    ]
+   ],
+   "examples": [
+    "ahop_coast",
+    "ahop_trick_or_treat",
+    "bhop_1n5an3",
+    "bhop_2020_aux"
+   ]
+  },
+  {
+   "input": "setautoexposuremax",
+   "maps": 487,
+   "n": 522,
+   "targets": [
+    [
+     "env_tonemap_controller",
+     515
+    ],
+    [
+     "?",
+     5
+    ],
+    [
+     "!!self",
+     2
+    ]
+   ],
+   "examples": [
+    "ahop_coast",
+    "ahop_trick_or_treat",
+    "bhop_1n5an3",
+    "bhop_2006isback"
+   ]
+  },
+  {
+   "input": "setautoexposuremin",
+   "maps": 481,
+   "n": 514,
+   "targets": [
+    [
+     "env_tonemap_controller",
+     509
+    ],
+    [
+     "?",
+     5
+    ]
+   ],
+   "examples": [
+    "ahop_coast",
+    "ahop_trick_or_treat",
+    "bhop_1n5an3",
+    "bhop_2006isback"
+   ]
+  },
+  {
+   "input": "use",
+   "maps": 186,
+   "n": 1757,
+   "targets": [
+    [
+     "game_player_equip",
+     1472
+    ],
+    [
+     "?",
+     282
+    ],
+    [
+     "trigger_teleport",
+     1
+    ],
+    [
+     "info_teleport_destination",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_2flocci2furious",
+    "bhop_cutekittenz",
+    "bhop_dragon",
+    "bhop_dream_gauntlet"
+   ]
+  },
+  {
+   "input": "settonemaprate",
+   "maps": 159,
+   "n": 167,
+   "targets": [
+    [
+     "env_tonemap_controller",
+     162
+    ],
+    [
+     "?",
+     3
+    ],
+    [
+     "!!self",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_alwaystranslucent",
+    "bhop_aperture_kinetic_lab",
+    "bhop_dimensions",
+    "bhop_disarray"
+   ]
+  },
+  {
+   "input": "forcespawn",
+   "maps": 130,
+   "n": 819,
+   "targets": [
+    [
+     "point_template",
+     467
+    ],
+    [
+     "env_entity_maker",
+     311
+    ],
+    [
+     "?",
+     30
+    ],
+    [
+     "!!self",
+     11
+    ]
+   ],
+   "examples": [
+    "ahop_coast",
+    "bhop_3muddz",
+    "bhop_4matan",
+    "bhop_4muddz"
+   ]
+  },
+  {
+   "input": "strip",
+   "maps": 92,
+   "n": 438,
+   "targets": [
+    [
+     "player_weaponstrip",
+     353
+    ],
+    [
+     "?",
+     85
+    ]
+   ],
+   "examples": [
+    "bhop_2flocci2furious",
+    "bhop_cutekittenz",
+    "bhop_dragon",
+    "bhop_dream_gauntlet"
+   ]
+  },
+  {
+   "input": "setparent",
+   "maps": 70,
+   "n": 369,
+   "targets": [
+    [
+     "env_spritetrail",
+     189
+    ],
+    [
+     "env_sprite",
+     90
+    ],
+    [
+     "prop_dynamic",
+     16
+    ],
+    [
+     "func_brush",
+     14
+    ]
+   ],
+   "examples": [
+    "bhop_bowling",
+    "bhop_collective",
+    "bhop_contamination",
+    "bhop_crash_egypt"
+   ]
+  },
+  {
+   "input": "lighton",
+   "maps": 62,
+   "n": 455,
+   "targets": [
+    [
+     "point_spotlight",
+     455
+    ]
+   ],
+   "examples": [
+    "bhop_angst",
+    "bhop_arcane_v1",
+    "bhop_fruits2",
+    "bhop_inmomentum"
+   ]
+  },
+  {
+   "input": "explode",
+   "maps": 47,
+   "n": 200,
+   "targets": [
+    [
+     "env_explosion",
+     178
+    ],
+    [
+     "env_physexplosion",
+     15
+    ],
+    [
+     "physics_cannister",
+     4
+    ],
+    [
+     "?",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_exodus",
+    "bhop_exodus_fix",
+    "bhop_monster_jam",
+    "de_nam"
+   ]
+  },
+  {
+   "input": "lightoff",
+   "maps": 46,
+   "n": 318,
+   "targets": [
+    [
+     "point_spotlight",
+     316
+    ],
+    [
+     "?",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_angst",
+    "bhop_arcane_v1",
+    "bhop_fruits2",
+    "kz_bhop_yonkoma"
+   ]
+  },
+  {
+   "input": "showsprite",
+   "maps": 38,
+   "n": 246,
+   "targets": [
+    [
+     "env_sprite",
+     187
+    ],
+    [
+     "env_sprite_oriented",
+     32
+    ],
+    [
+     "env_spritetrail",
+     20
+    ],
+    [
+     "!!self",
+     4
+    ]
+   ],
+   "examples": [
+    "bhop_4muddz",
+    "bhop_4pilfkcab",
+    "bhop_angst",
+    "bhop_avantasia"
+   ]
+  },
+  {
+   "input": "activate",
+   "maps": 37,
+   "n": 132,
+   "targets": [
+    [
+     "ai_changetarget",
+     53
+    ],
+    [
+     "phys_thruster",
+     32
+    ],
+    [
+     "game_ui",
+     26
+    ],
+    [
+     "?",
+     8
+    ]
+   ],
+   "examples": [
+    "bhop_avantasia",
+    "bhop_bowling",
+    "bhop_lost_world_v2",
+    "bhop_vixen"
+   ]
+  },
+  {
+   "input": "hidesprite",
+   "maps": 34,
+   "n": 364,
+   "targets": [
+    [
+     "env_sprite",
+     279
+    ],
+    [
+     "env_sprite_oriented",
+     53
+    ],
+    [
+     "?",
+     28
+    ],
+    [
+     "!!self",
+     4
+    ]
+   ],
+   "examples": [
+    "bhop_4muddz",
+    "bhop_4pilfkcab",
+    "bhop_angst",
+    "bhop_avantasia"
+   ]
+  },
+  {
+   "input": "forcespawnatentityorigin",
+   "maps": 33,
+   "n": 647,
+   "targets": [
+    [
+     "env_entity_maker",
+     632
+    ],
+    [
+     "?",
+     15
+    ]
+   ],
+   "examples": [
+    "bhop_4muddz",
+    "bhop_adrino",
+    "bhop_angst",
+    "bhop_bowling"
+   ]
+  },
+  {
+   "input": "skin",
+   "maps": 25,
+   "n": 199,
+   "targets": [
+    [
+     "prop_dynamic",
+     178
+    ],
+    [
+     "?",
+     12
+    ],
+    [
+     "prop_dynamic_override",
+     8
+    ],
+    [
+     "info_teleport_destination",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_angst",
+    "bhop_avantasia",
+    "bhop_badwater",
+    "bhop_cooksassistant"
+   ]
+  },
+  {
+   "input": "sparkonce",
+   "maps": 24,
+   "n": 100,
+   "targets": [
+    [
+     "env_spark",
+     98
+    ],
+    [
+     "?",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_aperture_kinetic_lab",
+    "bhop_cheesemania",
+    "bhop_collective",
+    "bhop_depot"
+   ]
+  },
+  {
+   "input": "dospark",
+   "maps": 23,
+   "n": 100,
+   "targets": [
+    [
+     "point_tesla",
+     98
+    ],
+    [
+     "?",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_fruits2",
+    "surf_2012_beta12",
+    "surf_81st_network",
+    "surf_b_r_o_x_x_x"
+   ]
+  },
+  {
+   "input": "deactivate",
+   "maps": 19,
+   "n": 117,
+   "targets": [
+    [
+     "phys_thruster",
+     60
+    ],
+    [
+     "game_ui",
+     48
+    ],
+    [
+     "env_bubbles",
+     5
+    ],
+    [
+     "?",
+     4
+    ]
+   ],
+   "examples": [
+    "bhop_avantasia",
+    "bhop_bowling",
+    "bhop_vixen",
+    "de_nam"
+   ]
+  },
+  {
+   "input": "settextureindex",
+   "maps": 17,
+   "n": 454,
+   "targets": [
+    [
+     "env_texturetoggle",
+     452
+    ],
+    [
+     "?",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_avantasia",
+    "bhop_floodwaters",
+    "bhop_make_your_way_home",
+    "bhop_pokemans_xd"
+   ]
+  },
+  {
+   "input": "startfire",
+   "maps": 16,
+   "n": 64,
+   "targets": [
+    [
+     "env_fire",
+     64
+    ]
+   ],
+   "examples": [
+    "bhop_fruits2",
+    "bhop_monster_jam",
+    "surf_anthropomorphic",
+    "surf_elements_beta3"
+   ]
+  },
+  {
+   "input": "enablemotion",
+   "maps": 14,
+   "n": 45,
+   "targets": [
+    [
+     "func_physbox_multiplayer",
+     18
+    ],
+    [
+     "func_physbox",
+     16
+    ],
+    [
+     "prop_physics_override",
+     4
+    ],
+    [
+     "prop_physics",
+     4
+    ]
+   ],
+   "examples": [
+    "bhop_angst",
+    "bhop_canals",
+    "kz_bhop_yonkoma",
+    "mg_dreamscraper"
+   ]
+  },
+  {
+   "input": "setparentattachment",
+   "maps": 13,
+   "n": 279,
+   "targets": [
+    [
+     "env_spritetrail",
+     133
+    ],
+    [
+     "env_sprite",
+     74
+    ],
+    [
+     "!!self",
+     65
+    ],
+    [
+     "func_rotating",
+     3
+    ]
+   ],
+   "examples": [
+    "bhop_crash_egypt",
+    "bhop_depot",
+    "bhop_dream_gauntlet",
+    "bhop_exodus"
+   ]
+  },
+  {
+   "input": "sethealth",
+   "maps": 13,
+   "n": 39,
+   "targets": [
+    [
+     "!!activator",
+     32
+    ],
+    [
+     "func_breakable",
+     4
+    ],
+    [
+     "?",
+     1
+    ],
+    [
+     "func_physbox",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_2020_aux",
+    "bhop_upward",
+    "kz_bhop_yonkoma",
+    "rj_lion"
+   ]
+  },
+  {
+   "input": "stripweaponsandsuit",
+   "maps": 13,
+   "n": 31,
+   "targets": [
+    [
+     "player_weaponstrip",
+     27
+    ],
+    [
+     "?",
+     4
+    ]
+   ],
+   "examples": [
+    "bhop_badges2",
+    "bhop_crash_egypt",
+    "bhop_lego",
+    "bhop_null_fix"
+   ]
+  },
+  {
+   "input": "startspark",
+   "maps": 13,
+   "n": 19,
+   "targets": [
+    [
+     "env_spark",
+     19
+    ]
+   ],
+   "examples": [
+    "de_nam",
+    "surf_amplitude_apex",
+    "surf_concept",
+    "surf_happyhands2"
+   ]
+  },
+  {
+   "input": "dissolve",
+   "maps": 11,
+   "n": 181,
+   "targets": [
+    [
+     "env_entity_dissolver",
+     181
+    ]
+   ],
+   "examples": [
+    "surf_canisius2_fix",
+    "surf_concept",
+    "surf_elements_beta3",
+    "surf_euphoria"
+   ]
+  },
+  {
+   "input": "togglesprite",
+   "maps": 11,
+   "n": 166,
+   "targets": [
+    [
+     "env_sprite",
+     165
+    ],
+    [
+     "env_sprite_oriented",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_communityjump",
+    "bhop_fps_max",
+    "bhop_fps_max_sr",
+    "bhop_inmomentum"
+   ]
+  },
+  {
+   "input": "clearparent",
+   "maps": 11,
+   "n": 34,
+   "targets": [
+    [
+     "func_brush",
+     12
+    ],
+    [
+     "!!activator",
+     12
+    ],
+    [
+     "env_spritetrail",
+     6
+    ],
+    [
+     "point_spotlight",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_badwater",
+    "bhop_exodus",
+    "bhop_exodus_fix",
+    "bhop_upward"
+   ]
+  },
+  {
+   "input": "settonemappercentbrightpixels",
+   "maps": 11,
+   "n": 13,
+   "targets": [
+    [
+     "env_tonemap_controller",
+     13
+    ]
+   ],
+   "examples": [
+    "bhop_aperture_kinetic_lab",
+    "surf_greek",
+    "surf_greek_ksf",
+    "surf_kz_protraining_smooth"
+   ]
+  },
+  {
+   "input": "applyscore",
+   "maps": 10,
+   "n": 87,
+   "targets": [
+    [
+     "game_score",
+     87
+    ]
+   ],
+   "examples": [
+    "surf_anthropomorphic",
+    "surf_deceptive_final",
+    "surf_elements_beta3",
+    "surf_insignia_b1"
+   ]
+  },
+  {
+   "input": "setcamera",
+   "maps": 10,
+   "n": 24,
+   "targets": [
+    [
+     "func_monitor",
+     16
+    ],
+    [
+     "info_camera_link",
+     8
+    ]
+   ],
+   "examples": [
+    "bhop_backrooms",
+    "surf_Rebel_Resistance_Revamp",
+    "surf_lt_omnific",
+    "surf_lt_omnific_css"
+   ]
+  },
+  {
+   "input": "settonemappercenttarget",
+   "maps": 10,
+   "n": 12,
+   "targets": [
+    [
+     "env_tonemap_controller",
+     12
+    ]
+   ],
+   "examples": [
+    "surf_greek",
+    "surf_greek_ksf",
+    "surf_kz_protraining_smooth",
+    "surf_merge"
+   ]
+  },
+  {
+   "input": "stopspark",
+   "maps": 9,
+   "n": 34,
+   "targets": [
+    [
+     "env_spark",
+     33
+    ],
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_badwater",
+    "bhop_odyssey",
+    "de_nam",
+    "surf_amplitude_apex"
+   ]
+  },
+  {
+   "input": "shoot",
+   "maps": 8,
+   "n": 20,
+   "targets": [
+    [
+     "env_shooter",
+     19
+    ],
+    [
+     "gibshooter",
+     1
+    ]
+   ],
+   "examples": [
+    "mg_dreamscraper",
+    "mg_iwishiwastomgreen",
+    "mg_nightterrors",
+    "surf_b_r_o_x_x_x"
+   ]
+  },
+  {
+   "input": "stopoverlays",
+   "maps": 7,
+   "n": 30,
+   "targets": [
+    [
+     "env_screenoverlay",
+     29
+    ],
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_2shiny2shuckle",
+    "mg_remsopor_encore",
+    "surf_ab",
+    "surf_ab_css"
+   ]
+  },
+  {
+   "input": "startoverlays",
+   "maps": 7,
+   "n": 14,
+   "targets": [
+    [
+     "env_screenoverlay",
+     14
+    ]
+   ],
+   "examples": [
+    "bhop_2shiny2shuckle",
+    "mg_remsopor_encore",
+    "surf_ab",
+    "surf_ab_css"
+   ]
+  },
+  {
+   "input": "wake",
+   "maps": 7,
+   "n": 13,
+   "targets": [
+    [
+     "func_physbox",
+     9
+    ],
+    [
+     "prop_dynamic_override",
+     2
+    ],
+    [
+     "?",
+     1
+    ],
+    [
+     "prop_physics_multiplayer",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_canals",
+    "bhop_recharge",
+    "mg_remsopor_encore",
+    "surf_anthropomorphic"
+   ]
+  },
+  {
+   "input": "setblueteamrespawnwavetime",
+   "maps": 7,
+   "n": 11,
+   "targets": [
+    [
+     "tf_gamerules",
+     8
+    ],
+    [
+     "?",
+     3
+    ]
+   ],
+   "examples": [
+    "bhop_2020_aux",
+    "bhop_badwater",
+    "bhop_dustbowl",
+    "bhop_odyssey"
+   ]
+  },
+  {
+   "input": "killhierarchy",
+   "maps": 7,
+   "n": 11,
+   "targets": [
+    [
+     "!!activator",
+     2
+    ],
+    [
+     "weapon_m3",
+     2
+    ],
+    [
+     "weapon_deagle",
+     2
+    ],
+    [
+     "!!self",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_fps_max",
+    "bhop_fps_max_sr",
+    "surf_lt_unicorn",
+    "surf_proximity_final"
+   ]
+  },
+  {
+   "input": "setredteamrespawnwavetime",
+   "maps": 6,
+   "n": 12,
+   "targets": [
+    [
+     "tf_gamerules",
+     9
+    ],
+    [
+     "?",
+     3
+    ]
+   ],
+   "examples": [
+    "bhop_2020_aux",
+    "bhop_badwater",
+    "bhop_odyssey",
+    "bhop_upward"
+   ]
+  },
+  {
+   "input": "enablecollision",
+   "maps": 6,
+   "n": 10,
+   "targets": [
+    [
+     "prop_dynamic",
+     8
+    ],
+    [
+     "prop_dynamic_override",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_badwater",
+    "bhop_upward",
+    "surf_era",
+    "surf_instantdeath"
+   ]
+  },
+  {
+   "input": "ignite",
+   "maps": 6,
+   "n": 6,
+   "targets": [
+    [
+     "!!activator",
+     5
+    ],
+    [
+     "env_entity_igniter",
+     1
+    ]
+   ],
+   "examples": [
+    "surf_crystal",
+    "surf_exocube",
+    "surf_exocube_h",
+    "surf_kawaii"
+   ]
+  },
+  {
+   "input": "incrementtextureindex",
+   "maps": 5,
+   "n": 54,
+   "targets": [
+    [
+     "env_texturetoggle",
+     53
+    ],
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_avantasia",
+    "bhop_goldsrc2",
+    "kz_anubis",
+    "kz_bkz_goldbhop_v2"
+   ]
+  },
+  {
+   "input": "callscriptfunction",
+   "maps": 5,
+   "n": 39,
+   "targets": [
+    [
+     "logic_script",
+     34
+    ],
+    [
+     "?",
+     4
+    ],
+    [
+     "!!activator",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_aperture_kinetic_lab",
+    "surf_1024",
+    "surf_carbon",
+    "surf_carbon_css"
+   ]
+  },
+  {
+   "input": "sethaste",
+   "maps": 5,
+   "n": 35,
+   "targets": [
+    [
+     "!!player",
+     23
+    ],
+    [
+     "!!activator",
+     11
+    ],
+    [
+     "info_player_start",
+     1
+    ]
+   ],
+   "examples": [
+    "df_ash",
+    "df_parkourushi",
+    "df_precision2",
+    "df_sdc-uk_26"
+   ]
+  },
+  {
+   "input": "enablealternatepath",
+   "maps": 5,
+   "n": 18,
+   "targets": [
+    [
+     "path_track",
+     18
+    ]
+   ],
+   "examples": [
+    "bhop_backrooms",
+    "bhop_collective",
+    "mg_dreamscraper",
+    "surf_classics2"
+   ]
+  },
+  {
+   "input": "setparentattachmentmaintainoffset",
+   "maps": 5,
+   "n": 13,
+   "targets": [
+    [
+     "env_sprite",
+     11
+    ],
+    [
+     "?",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_badwater",
+    "bhop_exodus",
+    "bhop_exodus_fix",
+    "bhop_upward"
+   ]
+  },
+  {
+   "input": "disablepath",
+   "maps": 5,
+   "n": 9,
+   "targets": [
+    [
+     "path_track",
+     9
+    ]
+   ],
+   "examples": [
+    "bhop_badwater",
+    "bhop_upward",
+    "surf_commune_beta11",
+    "surf_lt_omnific"
+   ]
+  },
+  {
+   "input": "stoptimer",
+   "maps": 5,
+   "n": 9,
+   "targets": [
+    [
+     "func_stoptimer",
+     5
+    ],
+    [
+     "?",
+     4
+    ]
+   ],
+   "examples": [
+    "bhop_ytt_cruma",
+    "kz_bhop_goldhop",
+    "kz_cellblock",
+    "surf_kz_mix_journeys"
+   ]
+  },
+  {
+   "input": "hurt",
+   "maps": 5,
+   "n": 9,
+   "targets": [
+    [
+     "point_hurt",
+     9
+    ]
+   ],
+   "examples": [
+    "surf_catalyst",
+    "surf_catalyst2",
+    "surf_catalyst2_css",
+    "surf_euphoria"
+   ]
+  },
+  {
+   "input": "setredteamgoalstring",
+   "maps": 5,
+   "n": 5,
+   "targets": [
+    [
+     "?",
+     4
+    ],
+    [
+     "tf_gamerules",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_badwater",
+    "bhop_dustbowl",
+    "bhop_odyssey",
+    "bhop_upward"
+   ]
+  },
+  {
+   "input": "setblueteamgoalstring",
+   "maps": 5,
+   "n": 5,
+   "targets": [
+    [
+     "?",
+     4
+    ],
+    [
+     "tf_gamerules",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_badwater",
+    "bhop_dustbowl",
+    "bhop_odyssey",
+    "bhop_upward"
+   ]
+  },
+  {
+   "input": "removeweapon",
+   "maps": 4,
+   "n": 124,
+   "targets": [
+    [
+     "!!player",
+     98
+    ],
+    [
+     "!!activator",
+     26
+    ]
+   ],
+   "examples": [
+    "df_ash",
+    "df_parkourushi",
+    "df_precision2",
+    "df_sdc-uk_26"
+   ]
+  },
+  {
+   "input": "setdamageboost",
+   "maps": 4,
+   "n": 26,
+   "targets": [
+    [
+     "!!player",
+     18
+    ],
+    [
+     "!!activator",
+     8
+    ]
+   ],
+   "examples": [
+    "df_ash",
+    "df_parkourushi",
+    "df_precision2",
+    "df_sdc-uk_26"
+   ]
+  },
+  {
+   "input": "addcollectible",
+   "maps": 4,
+   "n": 20,
+   "targets": [
+    [
+     "!!activator",
+     12
+    ],
+    [
+     "!!player",
+     8
+    ]
+   ],
+   "examples": [
+    "bhop_cooksassistant",
+    "bhop_flything",
+    "surf_sedona",
+    "surf_sedona_css"
+   ]
+  },
+  {
+   "input": "extinguish",
+   "maps": 4,
+   "n": 20,
+   "targets": [
+    [
+     "env_fire",
+     20
+    ]
+   ],
+   "examples": [
+    "bhop_fruits2",
+    "bhop_monster_jam",
+    "surf_elements_beta3",
+    "surf_fruits2"
+   ]
+  },
+  {
+   "input": "disablealternatepath",
+   "maps": 4,
+   "n": 17,
+   "targets": [
+    [
+     "path_track",
+     17
+    ]
+   ],
+   "examples": [
+    "bhop_backrooms",
+    "bhop_collective",
+    "surf_classics2",
+    "surf_classics2_css"
+   ]
+  },
+  {
+   "input": "setmodelscale",
+   "maps": 4,
+   "n": 12,
+   "targets": [
+    [
+     "prop_dynamic_override",
+     6
+    ],
+    [
+     "prop_dynamic",
+     4
+    ],
+    [
+     "!!self",
+     1
+    ],
+    [
+     "!!activator",
+     1
+    ]
+   ],
+   "examples": [
+    "surf_board_this",
+    "surf_board_this_fix",
+    "surf_halloween_tf2",
+    "surf_nameless"
+   ]
+  },
+  {
+   "input": "fire",
+   "maps": 4,
+   "n": 10,
+   "targets": [
+    [
+     "player_speed",
+     7
+    ],
+    [
+     "env_muzzleflash",
+     3
+    ]
+   ],
+   "examples": [
+    "df_sdc-uk_26",
+    "surf_concept",
+    "surf_s_t_a_t_i_o_n",
+    "surf_the_gloaming_css"
+   ]
+  },
+  {
+   "input": "clearcollectibles",
+   "maps": 4,
+   "n": 7,
+   "targets": [
+    [
+     "!!activator",
+     7
+    ]
+   ],
+   "examples": [
+    "bhop_cooksassistant",
+    "bhop_flything",
+    "surf_sedona",
+    "surf_sedona_css"
+   ]
+  },
+  {
+   "input": "setplaybackrate",
+   "maps": 4,
+   "n": 7,
+   "targets": [
+    [
+     "prop_dynamic",
+     7
+    ]
+   ],
+   "examples": [
+    "bhop_exodus",
+    "bhop_exodus_fix",
+    "noneuclidean",
+    "surf_ori_l"
+   ]
+  },
+  {
+   "input": "setparameter0",
+   "maps": 4,
+   "n": 7,
+   "targets": [
+    [
+     "",
+     7
+    ]
+   ],
+   "examples": [
+    "bhop_greenbox",
+    "bhop_greybox",
+    "bhop_tealbox",
+    "bhop_whitebox"
+   ]
+  },
+  {
+   "input": "disablecollision",
+   "maps": 4,
+   "n": 6,
+   "targets": [
+    [
+     "prop_dynamic",
+     6
+    ]
+   ],
+   "examples": [
+    "bhop_upward",
+    "surf_instantdeath",
+    "surf_lt_omnific",
+    "surf_lt_omnific_css"
+   ]
+  },
+  {
+   "input": "startanimsequence",
+   "maps": 4,
+   "n": 6,
+   "targets": [
+    [
+     "material_modify_control",
+     4
+    ],
+    [
+     "?",
+     2
+    ]
+   ],
+   "examples": [
+    "surf_clavius",
+    "surf_clavius_css",
+    "surf_solace",
+    "surf_solace_css"
+   ]
+  },
+  {
+   "input": "enablepath",
+   "maps": 4,
+   "n": 5,
+   "targets": [
+    [
+     "path_track",
+     5
+    ]
+   ],
+   "examples": [
+    "bhop_miku_v2",
+    "surf_commune_beta11",
+    "surf_lt_omnific",
+    "surf_lt_omnific_css"
+   ]
+  },
+  {
+   "input": "setblueteamrole",
+   "maps": 4,
+   "n": 4,
+   "targets": [
+    [
+     "?",
+     3
+    ],
+    [
+     "tf_gamerules",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_badwater",
+    "bhop_dustbowl",
+    "bhop_odyssey",
+    "bhop_upward"
+   ]
+  },
+  {
+   "input": "setredteamrole",
+   "maps": 4,
+   "n": 4,
+   "targets": [
+    [
+     "?",
+     3
+    ],
+    [
+     "tf_gamerules",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_badwater",
+    "bhop_dustbowl",
+    "bhop_odyssey",
+    "bhop_upward"
+   ]
+  },
+  {
+   "input": "setbodygroup",
+   "maps": 3,
+   "n": 1742,
+   "targets": [
+    [
+     "prop_dynamic",
+     1742
+    ]
+   ],
+   "examples": [
+    "bhop_crash_egypt",
+    "surf_surreal",
+    "surf_surreal_css"
+   ]
+  },
+  {
+   "input": "setcells",
+   "maps": 3,
+   "n": 80,
+   "targets": [
+    [
+     "!!activator",
+     76
+    ],
+    [
+     "!!player",
+     4
+    ]
+   ],
+   "examples": [
+    "df_elco-gbparadise",
+    "df_precision2",
+    "df_sdc-uk_26"
+   ]
+  },
+  {
+   "input": "giveweapon",
+   "maps": 3,
+   "n": 30,
+   "targets": [
+    [
+     "!!player",
+     17
+    ],
+    [
+     "!!activator",
+     13
+    ]
+   ],
+   "examples": [
+    "df_ash",
+    "df_precision2",
+    "df_sdc-uk_26"
+   ]
+  },
+  {
+   "input": "setrockets",
+   "maps": 3,
+   "n": 16,
+   "targets": [
+    [
+     "!!player",
+     8
+    ],
+    [
+     "!!activator",
+     8
+    ]
+   ],
+   "examples": [
+    "df_ash",
+    "df_precision2",
+    "df_sdc-uk_26"
+   ]
+  },
+  {
+   "input": "emitblood",
+   "maps": 3,
+   "n": 9,
+   "targets": [
+    [
+     "env_blood",
+     9
+    ]
+   ],
+   "examples": [
+    "surf_era",
+    "surf_exile",
+    "surf_spaceracer"
+   ]
+  },
+  {
+   "input": "starttimer",
+   "maps": 3,
+   "n": 7,
+   "targets": [
+    [
+     "?",
+     4
+    ],
+    [
+     "func_starttimer",
+     3
+    ]
+   ],
+   "examples": [
+    "bhop_ytt_cruma",
+    "kz_bhop_goldhop",
+    "kz_cellblock"
+   ]
+  },
+  {
+   "input": "setoff",
+   "maps": 3,
+   "n": 6,
+   "targets": [
+    [
+     "point_camera",
+     4
+    ],
+    [
+     "?",
+     2
+    ]
+   ],
+   "examples": [
+    "surf_lt_omnific",
+    "surf_lt_omnific_css",
+    "surf_lt_unicorn"
+   ]
+  },
+  {
+   "input": "stopeffect",
+   "maps": 3,
+   "n": 3,
+   "targets": [
+    [
+     "?",
+     3
+    ]
+   ],
+   "examples": [
+    "surf_syria",
+    "surf_syria_again",
+    "surf_syria_css"
+   ]
+  },
+  {
+   "input": "givedfweapon",
+   "maps": 2,
+   "n": 73,
+   "targets": [
+    [
+     "!!activator",
+     73
+    ]
+   ],
+   "examples": [
+    "df_cityrocket",
+    "df_elco-gbparadise"
+   ]
+  },
+  {
+   "input": "endhint",
+   "maps": 2,
+   "n": 50,
+   "targets": [
+    [
+     "env_instructor_hint",
+     30
+    ],
+    [
+     "?",
+     20
+    ]
+   ],
+   "examples": [
+    "bhop_mom_training_beta",
+    "bhop_whitebox"
+   ]
+  },
+  {
+   "input": "showhint",
+   "maps": 2,
+   "n": 45,
+   "targets": [
+    [
+     "env_instructor_hint",
+     45
+    ]
+   ],
+   "examples": [
+    "bhop_mom_training_beta",
+    "bhop_whitebox"
+   ]
+  },
+  {
+   "input": "sleep",
+   "maps": 2,
+   "n": 40,
+   "targets": [
+    [
+     "prop_physics_override",
+     33
+    ],
+    [
+     "func_physbox",
+     7
+    ]
+   ],
+   "examples": [
+    "bhop_crash_egypt",
+    "mg_nightterrors"
+   ]
+  },
+  {
+   "input": "extinguishtemporary",
+   "maps": 2,
+   "n": 11,
+   "targets": [
+    [
+     "env_fire",
+     11
+    ]
+   ],
+   "examples": [
+    "surf_lodypreview",
+    "surf_smart"
+   ]
+  },
+  {
+   "input": "setcolor",
+   "maps": 2,
+   "n": 9,
+   "targets": [
+    [
+     "point_spotlight",
+     6
+    ],
+    [
+     "env_sun",
+     3
+    ]
+   ],
+   "examples": [
+    "bhop_mom_training_beta",
+    "surf_froots2"
+   ]
+  },
+  {
+   "input": "capturecurrentcp",
+   "maps": 2,
+   "n": 8,
+   "targets": [
+    [
+     "?",
+     4
+    ],
+    [
+     "trigger_capture_area",
+     4
+    ]
+   ],
+   "examples": [
+    "bhop_badwater",
+    "bhop_upward"
+   ]
+  },
+  {
+   "input": "setowner",
+   "maps": 2,
+   "n": 8,
+   "targets": [
+    [
+     "?",
+     8
+    ]
+   ],
+   "examples": [
+    "bhop_badwater",
+    "bhop_upward"
+   ]
+  },
+  {
+   "input": "addteamtime",
+   "maps": 2,
+   "n": 6,
+   "targets": [
+    [
+     "?",
+     6
+    ]
+   ],
+   "examples": [
+    "bhop_badwater",
+    "bhop_upward"
+   ]
+  },
+  {
+   "input": "setposy",
+   "maps": 2,
+   "n": 6,
+   "targets": [
+    [
+     "game_text",
+     6
+    ]
+   ],
+   "examples": [
+    "bhop_greenbox",
+    "bhop_tealbox"
+   ]
+  },
+  {
+   "input": "setrequiredobservertarget",
+   "maps": 2,
+   "n": 4,
+   "targets": [
+    [
+     "?",
+     2
+    ],
+    [
+     "tf_gamerules",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_badwater",
+    "bhop_upward"
+   ]
+  },
+  {
+   "input": "setdensity",
+   "maps": 2,
+   "n": 4,
+   "targets": [
+    [
+     "func_smokevolume",
+     4
+    ]
+   ],
+   "examples": [
+    "bhop_exodus",
+    "bhop_exodus_fix"
+   ]
+  },
+  {
+   "input": "setonandturnothersoff",
+   "maps": 2,
+   "n": 4,
+   "targets": [
+    [
+     "point_camera",
+     4
+    ]
+   ],
+   "examples": [
+    "surf_lt_omnific",
+    "surf_lt_omnific_css"
+   ]
+  },
+  {
+   "input": "getformattedvalue",
+   "maps": 2,
+   "n": 3,
+   "targets": [
+    [
+     "",
+     3
+    ]
+   ],
+   "examples": [
+    "bhop_greybox",
+    "bhop_whitebox"
+   ]
+  },
+  {
+   "input": "setroundrespawnfreezeenabled",
+   "maps": 2,
+   "n": 2,
+   "targets": [
+    [
+     "tf_gamerules",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_2020_aux",
+    "surf_ravine_csgo"
+   ]
+  },
+  {
+   "input": "toggleenabled",
+   "maps": 2,
+   "n": 2,
+   "targets": [
+    [
+     "env_soundscape_triggerable",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_ivy",
+    "bhop_recharge"
+   ]
+  },
+  {
+   "input": "strikeonce",
+   "maps": 2,
+   "n": 2,
+   "targets": [
+    [
+     "env_beam",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_lost_world_v2",
+    "surf_concept"
+   ]
+  },
+  {
+   "input": "zoom",
+   "maps": 2,
+   "n": 2,
+   "targets": [
+    [
+     "env_zoom",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_mom_training_beta",
+    "surf_perihelion"
+   ]
+  },
+  {
+   "input": "unzoom",
+   "maps": 2,
+   "n": 2,
+   "targets": [
+    [
+     "env_zoom",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_mom_training_beta",
+    "surf_perihelion"
+   ]
+  },
+  {
+   "input": "setstalemateontimelimit",
+   "maps": 2,
+   "n": 2,
+   "targets": [
+    [
+     "tf_gamerules",
+     1
+    ],
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_upward",
+    "what_is_this"
+   ]
+  },
+  {
+   "input": "spotlighttexture",
+   "maps": 2,
+   "n": 2,
+   "targets": [
+    [
+     "env_projectedtexture",
+     2
+    ]
+   ],
+   "examples": [
+    "surf_agony",
+    "surf_agony_css"
+   ]
+  },
+  {
+   "input": "setdamagerfilter",
+   "maps": 2,
+   "n": 2,
+   "targets": [
+    [
+     "!!activator",
+     2
+    ]
+   ],
+   "examples": [
+    "surf_happyhands4",
+    "surf_happyhands4_css"
+   ]
+  },
+  {
+   "input": "countplayersinzone",
+   "maps": 2,
+   "n": 2,
+   "targets": [
+    [
+     "game_zone_player",
+     2
+    ]
+   ],
+   "examples": [
+    "surf_ny_superhappiest_b3",
+    "surf_sandman_v2"
+   ]
+  },
+  {
+   "input": "setstagefilter",
+   "maps": 2,
+   "n": 2,
+   "targets": [
+    [
+     "!!activator",
+     2
+    ]
+   ],
+   "examples": [
+    "surf_overgrowth2",
+    "surf_overgrowth2_css"
+   ]
+  },
+  {
+   "input": "viewpunch",
+   "maps": 2,
+   "n": 2,
+   "targets": [
+    [
+     "env_viewpunch",
+     2
+    ]
+   ],
+   "examples": [
+    "surf_surreal",
+    "surf_surreal_css"
+   ]
+  },
+  {
+   "input": "removedfweapon",
+   "maps": 1,
+   "n": 300,
+   "targets": [
+    [
+     "!!activator",
+     300
+    ]
+   ],
+   "examples": [
+    "df_elco-gbparadise"
+   ]
+  },
+  {
+   "input": "setmessage",
+   "maps": 1,
+   "n": 40,
+   "targets": [
+    [
+     "point_worldtext",
+     40
+    ]
+   ],
+   "examples": [
+    "bhop_flything"
+   ]
+  },
+  {
+   "input": "setglowdisabled",
+   "maps": 1,
+   "n": 11,
+   "targets": [
+    [
+     "prop_dynamic_glow",
+     6
+    ],
+    [
+     "?",
+     5
+    ]
+   ],
+   "examples": [
+    "bhop_mom_training_beta"
+   ]
+  },
+  {
+   "input": "setspeedforwardmodifier",
+   "maps": 1,
+   "n": 11,
+   "targets": [
+    [
+     "?",
+     11
+    ]
+   ],
+   "examples": [
+    "bhop_upward"
+   ]
+  },
+  {
+   "input": "setactivatedstate",
+   "maps": 1,
+   "n": 10,
+   "targets": [
+    [
+     "prop_portal",
+     10
+    ]
+   ],
+   "examples": [
+    "bhop_aperture_kinetic_lab"
+   ]
+  },
+  {
+   "input": "setcomparevaluecompare",
+   "maps": 1,
+   "n": 10,
+   "targets": [
+    [
+     "logic_compare",
+     10
+    ]
+   ],
+   "examples": [
+    "bhop_bowling"
+   ]
+  },
+  {
+   "input": "giveweaponbyslot",
+   "maps": 1,
+   "n": 10,
+   "targets": [
+    [
+     "!!activator",
+     10
+    ]
+   ],
+   "examples": [
+    "df_momentum_training"
+   ]
+  },
+  {
+   "input": "removeweaponbyslot",
+   "maps": 1,
+   "n": 10,
+   "targets": [
+    [
+     "!!activator",
+     10
+    ]
+   ],
+   "examples": [
+    "df_momentum_training"
+   ]
+  },
+  {
+   "input": "fizzle",
+   "maps": 1,
+   "n": 8,
+   "targets": [
+    [
+     "prop_portal",
+     8
+    ]
+   ],
+   "examples": [
+    "bhop_aperture_kinetic_lab"
+   ]
+  },
+  {
+   "input": "setlocalorigin",
+   "maps": 1,
+   "n": 8,
+   "targets": [
+    [
+     "func_brush",
+     8
+    ]
+   ],
+   "examples": [
+    "bhop_redbox"
+   ]
+  },
+  {
+   "input": "x",
+   "maps": 1,
+   "n": 7,
+   "targets": [
+    [
+     "info_teleport_destination",
+     7
+    ]
+   ],
+   "examples": [
+    "slide_kzbr_hasty2"
+   ]
+  },
+  {
+   "input": "setglowenabled",
+   "maps": 1,
+   "n": 6,
+   "targets": [
+    [
+     "prop_dynamic_glow",
+     6
+    ]
+   ],
+   "examples": [
+    "bhop_mom_training_beta"
+   ]
+  },
+  {
+   "input": "disablemotion",
+   "maps": 1,
+   "n": 6,
+   "targets": [
+    [
+     "func_physbox",
+     4
+    ],
+    [
+     "func_physbox_multiplayer",
+     1
+    ],
+    [
+     "!!activator",
+     1
+    ]
+   ],
+   "examples": [
+    "kz_bhop_yonkoma"
+   ]
+  },
+  {
+   "input": "seton",
+   "maps": 1,
+   "n": 6,
+   "targets": [
+    [
+     "point_camera",
+     6
+    ]
+   ],
+   "examples": [
+    "surf_lt_unicorn"
+   ]
+  },
+  {
+   "input": "setthinknull",
+   "maps": 1,
+   "n": 5,
+   "targets": [
+    [
+     "game_text",
+     5
+    ]
+   ],
+   "examples": [
+    "bhop_mom_training_beta"
+   ]
+  },
+  {
+   "input": "applyimpulse",
+   "maps": 1,
+   "n": 5,
+   "targets": [
+    [
+     "trigger_apply_impulse",
+     5
+    ]
+   ],
+   "examples": [
+    "surf_colony"
+   ]
+  },
+  {
+   "input": "setlocalangles",
+   "maps": 1,
+   "n": 4,
+   "targets": [
+    [
+     "func_brush",
+     4
+    ]
+   ],
+   "examples": [
+    "bhop_redbox"
+   ]
+  },
+  {
+   "input": "setmaxdensity",
+   "maps": 1,
+   "n": 4,
+   "targets": [
+    [
+     "?",
+     4
+    ]
+   ],
+   "examples": [
+    "surf_epithet"
+   ]
+  },
+  {
+   "input": "setscriptoverlaymaterial",
+   "maps": 1,
+   "n": 4,
+   "targets": [
+    [
+     "!!activator",
+     4
+    ]
+   ],
+   "examples": [
+    "surf_race_final"
+   ]
+  },
+  {
+   "input": "disabledraw",
+   "maps": 1,
+   "n": 3,
+   "targets": [
+    [
+     "env_sprite",
+     3
+    ]
+   ],
+   "examples": [
+    "bhop_bowling"
+   ]
+  },
+  {
+   "input": "spawndust",
+   "maps": 1,
+   "n": 3,
+   "targets": [
+    [
+     "env_dustpuff",
+     3
+    ]
+   ],
+   "examples": [
+    "surf_awp_sk337_v3"
+   ]
+  },
+  {
+   "input": "startrecording",
+   "maps": 1,
+   "n": 2,
+   "targets": [
+    [
+     "?",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_aperture_kinetic_lab"
+   ]
+  },
+  {
+   "input": "enableshadow",
+   "maps": 1,
+   "n": 2,
+   "targets": [
+    [
+     "func_wall_toggle",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_harmony"
+   ]
+  },
+  {
+   "input": "modifyspeed 1",
+   "maps": 1,
+   "n": 2,
+   "targets": [
+    [
+     "player_speedmod",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_pharma"
+   ]
+  },
+  {
+   "input": "disableandendtouch",
+   "maps": 1,
+   "n": 2,
+   "targets": [
+    [
+     "trigger_hurt",
+     2
+    ]
+   ],
+   "examples": [
+    "bhop_vixen"
+   ]
+  },
+  {
+   "input": "setbfgrockets",
+   "maps": 1,
+   "n": 2,
+   "targets": [
+    [
+     "!!player",
+     2
+    ]
+   ],
+   "examples": [
+    "df_sdc-uk_26"
+   ]
+  },
+  {
+   "input": "showmessage",
+   "maps": 1,
+   "n": 2,
+   "targets": [
+    [
+     "env_message",
+     2
+    ]
+   ],
+   "examples": [
+    "surf_elites_v2"
+   ]
+  },
+  {
+   "input": "setscale",
+   "maps": 1,
+   "n": 2,
+   "targets": [
+    [
+     "env_sprite",
+     2
+    ]
+   ],
+   "examples": [
+    "surf_lodypreview"
+   ]
+  },
+  {
+   "input": "settargetname",
+   "maps": 1,
+   "n": 2,
+   "targets": [
+    [
+     "!!activator",
+     2
+    ]
+   ],
+   "examples": [
+    "surf_orbion"
+   ]
+  },
+  {
+   "input": "setbloomsaturation",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "env_tonemap_controller",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_2006isback"
+   ]
+  },
+  {
+   "input": "findentity",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "point_entity_finder",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_2shiny2shuckle"
+   ]
+  },
+  {
+   "input": "--- drop 1 ---",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_angst"
+   ]
+  },
+  {
+   "input": "--- drop 1  end ---",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_angst"
+   ]
+  },
+  {
+   "input": "--- song ---",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_angst"
+   ]
+  },
+  {
+   "input": "--- drop 2 start ---",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_angst"
+   ]
+  },
+  {
+   "input": "--- end ---",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_angst"
+   ]
+  },
+  {
+   "input": "testentity",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "filter_velocity",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_aperture_kinetic_lab"
+   ]
+  },
+  {
+   "input": "silentdissolve",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "!!activator",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_aperture_kinetic_lab"
+   ]
+  },
+  {
+   "input": "stoprecording",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_aperture_kinetic_lab"
+   ]
+  },
+  {
+   "input": "setmod",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "math_mod",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_bowling"
+   ]
+  },
+  {
+   "input": "modfloat",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "math_mod",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_bowling"
+   ]
+  },
+  {
+   "input": "enabledraw",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "env_sprite",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_bowling"
+   ]
+  },
+  {
+   "input": "save",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_canals"
+   ]
+  },
+  {
+   "input": "togglealternatepath",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "path_track",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_collective"
+   ]
+  },
+  {
+   "input": "getx",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "math_vector",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_greenbox"
+   ]
+  },
+  {
+   "input": "gety",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "math_vector",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_greenbox"
+   ]
+  },
+  {
+   "input": "disabled",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "env_soundscape_triggerable",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_hologram"
+   ]
+  },
+  {
+   "input": "senddevmsg",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "logic_console",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_mom_training_beta"
+   ]
+  },
+  {
+   "input": "settextcolor 0 255 0",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "game_text",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_pit"
+   ]
+  },
+  {
+   "input": "setentityname",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "!!activator",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_purplebox"
+   ]
+  },
+  {
+   "input": "setangles",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "!!activator",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_quiet2"
+   ]
+  },
+  {
+   "input": "setteam",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_upward"
+   ]
+  },
+  {
+   "input": "setactive",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_upward"
+   ]
+  },
+  {
+   "input": "setinput0",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "math_expression",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_whitebox"
+   ]
+  },
+  {
+   "input": "setinput1",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "math_expression",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_whitebox"
+   ]
+  },
+  {
+   "input": "eval",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "math_expression",
+     1
+    ]
+   ],
+   "examples": [
+    "bhop_whitebox"
+   ]
+  },
+  {
+   "input": "setgrenades",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "!!activator",
+     1
+    ]
+   ],
+   "examples": [
+    "df_precision2"
+   ]
+  },
+  {
+   "input": "endgame",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "game_end",
+     1
+    ]
+   ],
+   "examples": [
+    "mg_dreamscraper"
+   ]
+  },
+  {
+   "input": "addhealth",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "!!activator",
+     1
+    ]
+   ],
+   "examples": [
+    "surf_catalyst"
+   ]
+  },
+  {
+   "input": "switchoverlay",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "surf_centipedes"
+   ]
+  },
+  {
+   "input": "setanimationnoreset",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "prop_dynamic_override",
+     1
+    ]
+   ],
+   "examples": [
+    "surf_era"
+   ]
+  },
+  {
+   "input": "!use",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "?",
+     1
+    ]
+   ],
+   "examples": [
+    "surf_jenocide"
+   ]
+  },
+  {
+   "input": "splash",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "env_splash",
+     1
+    ]
+   ],
+   "examples": [
+    "surf_redemption_b1"
+   ]
+  },
+  {
+   "input": "setdamagfilter",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "!!activator",
+     1
+    ]
+   ],
+   "examples": [
+    "surf_sc_colours"
+   ]
+  },
+  {
+   "input": "setmeasuretarget",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "logic_measure_movement",
+     1
+    ]
+   ],
+   "examples": [
+    "surf_spaceship_ksf"
+   ]
+  },
+  {
+   "input": "setlocalvelocity",
+   "maps": 1,
+   "n": 1,
+   "targets": [
+    [
+     "!!player",
+     1
+    ]
+   ],
+   "examples": [
+    "surf_tropic2"
+   ]
+  }
+ ]
+}
