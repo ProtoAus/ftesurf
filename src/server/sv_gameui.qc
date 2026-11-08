@@ -86,6 +86,8 @@ void() trigger_look_touch =
 		return;
 	self.vbsp_look_tot = -1;
 	self.vbsp_look_tout = 0;            // Trigger's SetThink(NULL): no timeout after it fired
+	if (cvar("developer"))
+		dprint(sprintf("trigger_look %s: OnTrigger after %g s looking\n", self.model, self.LookTime));
 	SV_FireOutput(self, "OnTrigger", other);
 	SV_LookOnce(other, bit);
 };
@@ -132,10 +134,18 @@ float(entity pl) SV_GuiKeys =
 	return b;
 };
 
+// The subject says what it fired (developer 1; tools/p1428-gameplay.md grades on it).
+void(entity g, string out, entity pl) SV_GuiFire =
+{
+	if (cvar("developer"))
+		dprint(sprintf("game_ui %s: %s %s\n", g.targetname, out, vbsp_io_value));
+	SV_FireOutput(g, out, pl);
+};
+
 void(entity g, string out, float v, entity pl) SV_GuiValue =
 {
 	vbsp_io_value = ftos(v);
-	SV_FireOutput(g, out, pl);
+	SV_GuiFire(g, out, pl);
 };
 
 void(entity g) SV_GuiOff =
@@ -148,7 +158,7 @@ void(entity g) SV_GuiOff =
 	g.gui_pl = world;
 	g.gui_last = 0;
 	g.nextthink = 0;
-	SV_FireOutput(g, "PlayerOff", pl);
+	SV_GuiFire(g, "PlayerOff", pl);
 	SV_GuiValue(g, "XAxis", 0, pl);
 	SV_GuiValue(g, "YAxis", 0, pl);
 	SV_GuiValue(g, "AttackAxis", 0, pl);
@@ -160,7 +170,7 @@ void(entity g, float was, float now, float bit, string down, string up, entity p
 {
 	if (!((was ^ now) & bit))
 		return;
-	SV_FireOutput(g, (now & bit) ? down : up, pl);
+	SV_GuiFire(g, (now & bit) ? down : up, pl);
 };
 
 // CGameUI::Think, every frame while a player holds it.
@@ -241,7 +251,7 @@ float(entity t, string in, string pm, entity act) SV_GuiInput =
 	if (t.gui_pl && t.gui_pl != pl)
 		return TRUE;                    // another player holds it
 	t.gui_pl = pl;
-	SV_FireOutput(t, "PlayerOn", pl);
+	SV_GuiFire(t, "PlayerOn", pl);
 	// m_bForceUpdate: the keys held now are the baseline, not presses.
 	t.gui_last = SV_GuiKeys(pl) | (pl.button5 ? 64 : 0) | (pl.button2 ? 128 : 0);
 	t.nextthink = time;
