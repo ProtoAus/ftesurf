@@ -20,10 +20,10 @@ Verdicts (three, because a replay that leaves the recorded path measures nothing
   CANNOT TELL     the replayed path left the report's before the worst command (or the state never
                   landed, or the rows were not all replayed)
 
-The rig: fteqwsv64 + one windowed client from C:/FTEQuake (or --clexe), under C:/FTESurf-worktrees/rig.lock,
+The rig: fteqwsv64 + one windowed client, C:/FTEQuake/fteqw64.exe (or --clexe), under C:/FTESurf-worktrees/rig.lock,
 in RIGROOT/<report stem>/. Nothing is written outside RIGROOT.
 """
-import argparse, datetime, os, pathlib, re, shutil, socket, subprocess, sys, time
+import argparse, datetime, hashlib, os, pathlib, re, shutil, socket, subprocess, sys, time
 
 LOCK = pathlib.Path(r'C:\FTESurf-worktrees\rig.lock')
 PORT = 27931
@@ -219,13 +219,14 @@ def run(rep, a, rig, rows):
                                   '+exec', 'cfg/test/arm.cfg'], cwd=str(rig), stdout=out, stderr=subprocess.STDOUT)
             time.sleep(10)
             clexe = str(a.clexe)
-            if a.clexe.name != 'ftesurf64.exe' or a.clexe.parent != pathlib.Path(r'C:\FTEQuake'):
+            if a.clexe.name != 'fteqw64.exe' or a.clexe.parent != pathlib.Path(r'C:\FTEQuake'):
                 cd = rig / 'clbin'
                 cd.mkdir()
                 shutil.copyfile(a.clexe, cd / 'fteqw64.exe')
                 for d in a.clexe.parent.glob('fteplug_*.dll'):
                     shutil.copyfile(d, cd / d.name)
                 clexe = str(cd / 'fteqw64.exe')
+            print('client %s sha256 %s' % (clexe, hashlib.sha256(open(clexe, 'rb').read()).hexdigest()[:8]))
             c = subprocess.Popen([clexe, '-basedir', r'C:\FTEQuake', '-homedir', str(ch), '-nosound', '-window',
                                   '-width', '960', '-height', '540', '+set', 'cfg_save_auto', '0',
                                   '+log_enable', '1', '+log_name', 'cl', '+exec', 'cfg/test/cl.cfg'],
@@ -336,7 +337,8 @@ def main():
     ap.add_argument('--after', type=int, default=60)
     ap.add_argument('--start', type=int)
     ap.add_argument('--ping', type=int)
-    ap.add_argument('--clexe', type=pathlib.Path, default=pathlib.Path(r'C:\FTEQuake\ftesurf64.exe'))
+    # P1411: fteqw64.exe is that install's live client; its ftesurf64.exe was a stale 5 Nov build.
+    ap.add_argument('--clexe', type=pathlib.Path, default=pathlib.Path(r'C:\FTEQuake\fteqw64.exe'))
     ap.add_argument('--plan', action='store_true', help='write the replay file and stop')
     a = ap.parse_args()
     rep = parse(a.report)
