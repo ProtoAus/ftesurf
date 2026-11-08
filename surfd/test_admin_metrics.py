@@ -67,6 +67,22 @@ def case_api():
         check('API: bounded typed snapshot or explicit unknown', reply.get_json()['receipt'].get('journal_metrics'), expected)
         check('API: journal/signature/angles unchanged',
               tuple(reply.get_json()['receipt'][k] for k in ('journal','verdict','angles')), ('OK','VALID','OK'))
+    for key in ('legacy_keys', 'kbd_nohandle', 'legacy_presses', 'kbdobserve_changes',
+                'kbdobserve', 'legacy_keys_partial'):
+        values = ((True, False) if key == 'legacy_keys_partial' else
+                  (-1, 0, 1) if key == 'kbdobserve' else (0, 3, 10**12))
+        for value in values:
+            snap = {'version': 1, 'metrics': {key: value}}
+            c.execute('UPDATE receipts SET journal_metrics=?', (json.dumps(snap),)); c.commit()
+            check('API: input observation retained', client.get(route).get_json()['receipt']['journal_metrics'], snap)
+        invalid = ((0, 1, 'true') if key == 'legacy_keys_partial' else
+                   (-2, 2, True, 1.0, '1') if key == 'kbdobserve' else
+                   (-1, True, 1.0, '1', 10**12 + 1))
+        for value in invalid:
+            c.execute('UPDATE receipts SET journal_metrics=?',
+                      (json.dumps({'version': 1, 'metrics': {key: value}}),)); c.commit()
+            check('API: invalid input observation unavailable',
+                  client.get(route).get_json()['receipt']['journal_metrics'], None)
     after = anon.get('/api/board?map=bhop_eazy').get_json()
     after.pop('t')
     check('API: public board unchanged', after, before)
@@ -111,7 +127,16 @@ console.log(JSON.stringify({text:flat(nodes.rcpt),summary}));
                                        'identity_yaw_exclusions':{'seed':1},'join_checked':4}},
                  'yaw judged frames5'),
                 ({'version':1,'metrics':{'touchpad':0}}, 'accepted touchpad reports (journal span)0'),
-                ({'version':1,'metrics':{'touchpad':6}}, 'accepted touchpad reports (journal span)6')):
+                ({'version':1,'metrics':{'touchpad':6}}, 'accepted touchpad reports (journal span)6'),
+                ({'version':1,'metrics':{'legacy_keys':0,'kbd_nohandle':0,'kbdobserve':1}},
+                 'uncorroborated legacy key presses (NOTE only)0'),
+                ({'version':1,'metrics':{'legacy_keys':3,'kbd_nohandle':2,'kbdobserve':1}},
+                 'uncorroborated legacy key presses (NOTE only)3'),
+                ({'version':1,'metrics':{'legacy_keys_partial':True,'kbdobserve':0,'kbdobserve_changes':1,
+                                       'legacy_presses':4}},
+                 'Partial keyboard observation; any reported key counts cover observed spans only.'),
+                ({'version':1,'metrics':{'kbdobserve':-1}},
+                 'unavailable (not in stored snapshot)')):
             receipt = dict(journal_metrics=snap, journal='FAULT', journal_reason='<img> & <script>bad</script>',
                            verdict='VALID', angles='OK', pub='key', at=1, identity_bound=True)
             p = subprocess.run(['node',path,json.dumps(receipt)],capture_output=True,text=True)
@@ -121,6 +146,16 @@ console.log(JSON.stringify({text:flat(nodes.rcpt),summary}));
             check('DOM: snapshot/unknown displayed',phrase in result['text'],True)
             check('DOM: content FAULT never changes signature summary',result['summary'],False)
             check('DOM: diagnostic prose stays literal','<img> & <script>bad</script>' in result['text'],True)
+            if snap:
+                if snap['metrics'].get('legacy_keys_partial') is True:
+                    check('DOM: mouse total not partial-key subtotal',
+                          'uncorroborated legacy mouse presses (NOTE only)4' in result['text'], True)
+                check('DOM: diagnostics not player findings',
+                      'Uncorroborated input is a diagnostic, not proof of cheating.' in result['text'], True)
+                if 'legacy_keys' not in snap['metrics']:
+                    check('DOM: no invented whole-journal key total',
+                          'uncorroborated legacy key presses (NOTE only)unavailable (not in stored snapshot)'
+                          in result['text'], True)
             if snap and 'identity_yaw_judged' in snap['metrics']:
                 check('DOM: measured zero remains zero','identity yaw mouse frames0' in result['text'],True)
                 check('DOM: exclusion ledger/denominator visible',

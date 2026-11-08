@@ -85,6 +85,44 @@ def case_touchpad_count():
             restore_game(rc)
 
 
+def case_keyboard_observations():
+    from test_journal_snapshots import keyboard_journal, INPUT_METRICS
+    for options, expected in (
+            ({'keys': 3, 'nohandle': 2, 'presses': 4},
+             {'kbdobserve': 1, 'legacy_keys': 3, 'kbd_nohandle': 2, 'legacy_presses': 4}),
+            ({}, {'kbdobserve': 1, 'legacy_keys': 0, 'kbd_nohandle': 0, 'legacy_presses': 0}),
+            ({'state': -1}, {'kbdobserve': -1, 'legacy_presses': 0}),
+            ({'state': None}, {'legacy_presses': 0}),
+            ({'keys': 3, 'changes': (0, 1)},
+             {'kbdobserve': 1, 'kbdobserve_changes': 2, 'legacy_keys_partial': True,
+              'legacy_presses': 0}),
+            ({'keys': 0, 'malformed': 'y 0 invalid 0'}, {'kbdobserve': 1}),
+            ({'keys': 3, 'malformed': 'o 0 invalid'}, {'kbdobserve': 1})):
+        s, sw, c, now, rc, rp = setup()
+        try:
+            with open(rp[:-5] + '.view', 'rb') as f:
+                view = f.read()
+            suite.make_receipt(s.EVIDENCE_DIR, os.path.basename(rp)[:-5],
+                               hid=keyboard_journal(**options).encode(), view=view,
+                               age=now - 2*s.EVIDENCE_SETTLE)
+            ctl = observation(rc, rp)
+            check('keys: real signature CONTROL ACTS', ctl.ok, True)
+            check('keys: full receipt step ACTS', sw.receipt_step(c, now=now), (1, 0))
+            check('keys: stored count/availability exact',
+                  {k: v for k, v in snapshot(c)['metrics'].items() if k in INPUT_METRICS}, expected)
+            check('keys: independent identity ACTS', snapshot(c)['metrics']['identity_judged'], 5)
+            check('keys: diagnostics never accuse; existing faults retained',
+                  (row(c)['journal'], row(c)['verdict'], row(c)['angles']),
+                  ('FAULT' if options.get('malformed') else 'OK', 'VALID', 'OK'))
+            saved = row(c)
+            with mock.patch.object(rc, 'join_journal', wraps=rc.join_journal) as acted:
+                got = sw.receipt_step(c, now=now + 60)
+            check('keys: no historical reread/backfill', (got, acted.call_count, row(c)),
+                  ((0, 0), 0, saved))
+        finally:
+            restore_game(rc)
+
+
 def case_migration():
     s, sw, c, now, rc, rp = setup()
     try:
@@ -209,7 +247,7 @@ def main():
 
     try:
         with mock.patch.object(suite, 'fresh', side_effect=tracked_fresh):
-            for case in (case_full_and_no_backfill, case_touchpad_count, case_migration,
+            for case in (case_full_and_no_backfill, case_touchpad_count, case_keyboard_observations, case_migration,
                          case_late_journal_and_io, case_partial_history, case_late_view_and_identity):
                 try:
                     case()

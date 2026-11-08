@@ -374,7 +374,13 @@ function renderRun(j) {
         identity_judged: "union judged frames", identity_yaw_judged: "yaw judged frames",
         identity_pitch_judged: "pitch judged frames", join_windows: "counts-join windows",
         join_checked: "counts-join checked windows",
-        touchpad: "accepted touchpad reports (journal span)"};
+        touchpad: "accepted touchpad reports (journal span)",
+        legacy_presses: "uncorroborated legacy mouse presses (NOTE only)",
+        legacy_keys: "uncorroborated legacy key presses (NOTE only)",
+        kbd_nohandle: "handle-less keyboard reports",
+        kbdobserve: "key observer at begin (-1 unavailable; 0 off; 1 on)",
+        kbdobserve_changes: "key observer changes",
+        legacy_keys_partial: "partial key observation"};
       for (const [name, value] of Object.entries(c.journal_metrics.metrics).sort()) {
         const text = typeof value === "object"
           ? Object.entries(value).sort().map(([k, v]) => k + ": " + v).join(", ") || "none"
@@ -385,6 +391,13 @@ function renderRun(j) {
       if (!Object.prototype.hasOwnProperty.call(c.journal_metrics.metrics, "touchpad"))
         metrics.append(el("dt", "", labels.touchpad),
                        el("dd", "muted", "unavailable (not in stored snapshot)"));
+      for (const name of ["legacy_keys", "kbd_nohandle", "legacy_presses"])
+        if (!Object.prototype.hasOwnProperty.call(c.journal_metrics.metrics, name))
+          metrics.append(el("dt", "", labels[name]),
+                         el("dd", "muted", "unavailable (not in stored snapshot)"));
+      if (c.journal_metrics.metrics.legacy_keys_partial === true)
+        panel.append(el("p", "muted", "Partial keyboard observation; any reported key counts cover observed spans only."));
+      panel.append(el("p", "muted", "Uncorroborated input is a diagnostic, not proof of cheating."));
       if (!Object.keys(c.journal_metrics.metrics).length)
         panel.append(el("span", "muted", "reader ran; no numeric measurements available"));
       panel.append(metrics);

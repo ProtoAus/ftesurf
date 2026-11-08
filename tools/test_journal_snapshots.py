@@ -29,6 +29,33 @@ def touchpad_journal(count=6):
     return j.end(touchpad=count, padreports=count * 7 if count >= 0 else -1)
 
 
+def keyboard_journal(state=1, keys=0, nohandle=0, changes=(), truncated=False, presses=0,
+                     malformed=None):
+    """Existing observer records plus an independently acting mouse identity."""
+    j = Journal(kbdobserve=state)
+    yaw = 90.0
+    for i in range(6):
+        j.frame(4000 + i)
+        j.mouse(2, 0)
+        yaw += j.k * 2
+        j.view(2, 0, 10.0, yaw)
+    for change in changes:
+        j.observe(change)
+    if keys or nohandle:
+        j.legacykey(keys, nohandle)
+    if presses:
+        j.legacypress(presses)
+    if malformed is not None:
+        j.lines.append(malformed)
+    if truncated:
+        j.truncate()
+    return j.end()
+
+
+INPUT_METRICS = {'legacy_presses', 'legacy_keys', 'kbd_nohandle', 'kbdobserve',
+                 'kbdobserve_changes', 'legacy_keys_partial'}
+
+
 class JournalSnapshots(unittest.TestCase):
     def test_measured_zero_and_each_axis(self):
         for counts in ([(2, 0)] * 6, [(0, 2)] * 6, [(0, 0)] * 6):
@@ -52,7 +79,8 @@ class JournalSnapshots(unittest.TestCase):
                               (Journal(mfilter=1).end(), 'BLIND')):
             h, r = run(text), receipt_for(text)
             self.assertEqual(r.journal, verdict)
-            self.assertEqual(r.journal_metrics, rcptcheck.journal_snapshot(h.info))
+            self.assertEqual(r.journal_metrics,
+                             rcptcheck.journal_snapshot(h.info, input_complete=not h.faults))
             self.assertNotIn('identity_blind', r.journal_metrics['metrics'])
         self.assertNotIn('identity_mouse_frames', r.journal_metrics['metrics'])
 
@@ -93,6 +121,68 @@ class JournalSnapshots(unittest.TestCase):
         for value in (0, 6, 10**12):
             snap = rcptcheck.journal_snapshot({'touchpad': value})
             self.assertEqual(snap['metrics'], {'touchpad': value})
+
+    def test_input_observations_preserve_counts_and_availability(self):
+        cases = (
+            ({}, {'kbdobserve': 1, 'legacy_keys': 0, 'kbd_nohandle': 0, 'legacy_presses': 0}),
+            ({'keys': 3, 'nohandle': 2, 'presses': 4},
+             {'kbdobserve': 1, 'legacy_keys': 3, 'kbd_nohandle': 2, 'legacy_presses': 4}),
+            ({'state': None}, {'legacy_presses': 0}),
+            ({'state': -1}, {'kbdobserve': -1, 'legacy_presses': 0}),
+            ({'state': 0}, {'kbdobserve': 0, 'legacy_presses': 0}),
+            ({'changes': (0, 1), 'keys': 3},
+             {'kbdobserve': 1, 'kbdobserve_changes': 2, 'legacy_keys_partial': True,
+              'legacy_presses': 0}),
+            ({'state': 0, 'changes': (1,), 'keys': 2},
+             {'kbdobserve': 0, 'kbdobserve_changes': 1, 'legacy_keys_partial': True,
+              'legacy_presses': 0}),
+            ({'truncated': True, 'keys': 3},
+             {'kbdobserve': 1, 'legacy_keys': 3, 'kbd_nohandle': 0,
+              'legacy_keys_partial': True, 'legacy_presses': 0}),
+        )
+        for options, expected in cases:
+            with self.subTest(options=options):
+                text = keyboard_journal(**options)
+                h, r = run(text), receipt_for(text)
+                self.assertTrue(h.ok, h.faults)
+                self.assertEqual(h.info['identity_judged'], 5)  # control ACTED
+                self.assertEqual({k: v for k, v in h.info.items() if k in INPUT_METRICS}, expected)
+                self.assertEqual({k: v for k, v in r.journal_metrics['metrics'].items()
+                                  if k in INPUT_METRICS}, expected)
+                self.assertEqual(r.journal, 'OK')  # uncorroborated is NOT a fault
+                self.assertEqual(json.loads(json.dumps(r.journal_metrics)), r.journal_metrics)
+
+    def test_faulted_input_totals_are_unavailable_not_zero(self):
+        # A skipped malformed record can leave reader counters at zero (or at a
+        # surviving subtotal). Neither is a complete observation of this file.
+        for record in ('y 0 invalid 0', 'y 0 1', 'o 0 invalid', 'o invalid 0'):
+            for keys in (0, 3):
+                with self.subTest(record=record, keys=keys):
+                    text = keyboard_journal(keys=keys, presses=4, malformed=record)
+                    h, r = run(text), receipt_for(text)
+                    self.assertTrue(h.faults)  # existing rejection ACTED
+                    self.assertEqual(h.info['identity_judged'], 5)
+                    self.assertEqual(r.journal, 'FAULT')
+                    self.assertEqual({k: v for k, v in r.journal_metrics['metrics'].items()
+                                      if k in INPUT_METRICS}, {'kbdobserve': 1})
+
+    def test_input_snapshot_types_and_bounds(self):
+        for key in ('legacy_keys', 'kbd_nohandle', 'legacy_presses', 'kbdobserve_changes'):
+            for value in (-1, True, 1.0, '1', float('nan'), float('inf'), 10**12 + 1, 10**1000):
+                with self.subTest(key=key, value=repr(value)):
+                    self.assertEqual(rcptcheck.journal_snapshot({key: value})['metrics'], {})
+            for value in (0, 3, 10**12):
+                self.assertEqual(rcptcheck.journal_snapshot({key: value})['metrics'], {key: value})
+        for value in (-1, 0, 1):
+            self.assertEqual(rcptcheck.journal_snapshot({'kbdobserve': value})['metrics'],
+                             {'kbdobserve': value})
+        for value in (-2, 2, True, 1.0, '1', 10**1000):
+            self.assertEqual(rcptcheck.journal_snapshot({'kbdobserve': value})['metrics'], {})
+        for value in (True, False):
+            self.assertEqual(rcptcheck.journal_snapshot({'legacy_keys_partial': value})['metrics'],
+                             {'legacy_keys_partial': value})
+        for value in (0, 1, 'true', None):
+            self.assertEqual(rcptcheck.journal_snapshot({'legacy_keys_partial': value})['metrics'], {})
 
     def test_allowlist_and_finite_values(self):
         info = dict(identity_mouse_frames=0, identity_mouse_pct=float('nan'),

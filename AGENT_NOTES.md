@@ -6984,6 +6984,16 @@ must require42checks and exact8baseline labels, and catch unnumbered warnings.
 
 ## Anti-cheat and run evidence
 
+P1434 measured8November2026: a malformed diagnostic/observer record may fault and
+be skipped while hidcheck still reports zero or a surviving input subtotal. A
+content FAULT is not proof that every reported numeric total is complete. New
+receipt input-count fields are conservatively withheld on any journal content
+fault; initial observer state and original partial flag/identity/join/verdicts
+remain unchanged. Raw malformed zero/subtotal controls failed8times and signed
+storage2times before the guard. Partial-key UI wording must qualify KEY counts,
+not whole-journal mouse totals or identity opportunities; the combined keyboard
+partial + mouse4 executed-DOM control protects that boundary. No policy credit.
+
 P1128: ModifySpeed's immediate status check compares old effective finite scalar
 (default/nonpositive means1) to the existing normalized input. ALWAYS snapshot
 the new property's source and write its scalar, even if equal; never turn this

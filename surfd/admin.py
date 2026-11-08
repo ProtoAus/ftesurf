@@ -470,7 +470,8 @@ def receipt_metrics(raw):
                 or not isinstance(snap["metrics"], dict) or len(snap["metrics"]) > 64):
             return None
         for key, value in snap["metrics"].items():
-            if not re.fullmatch(r"(?:identity_|join_)[a-z_]{1,48}|view_records|frames_not_governed|touchpad", key):
+            if not re.fullmatch(r"(?:identity_|join_)[a-z_]{1,48}|view_records|frames_not_governed|touchpad"
+                                r"|legacy_presses|legacy_keys|kbd_nohandle|kbdobserve|kbdobserve_changes|legacy_keys_partial", key):
                 return None
             if key in ("identity_yaw_exclusions", "identity_pitch_exclusions"):
                 if not isinstance(value, dict) or len(value) > 32:
@@ -478,10 +479,13 @@ def receipt_metrics(raw):
                 if any(not re.fullmatch(r"[a-z_]{1,48}", k) or type(v) is not int
                        or not 0 <= v <= 10**12 for k, v in value.items()):
                     return None
-            elif key == "join_declared_transform_profile":
+            elif key in ("join_declared_transform_profile", "legacy_keys_partial"):
                 if type(value) is not bool:
                     return None
-            elif key == "touchpad":
+            elif key == "kbdobserve":
+                if type(value) is not int or value not in (-1, 0, 1):
+                    return None
+            elif key in ("touchpad", "legacy_presses", "legacy_keys", "kbd_nohandle", "kbdobserve_changes"):
                 if type(value) is not int or not 0 <= value <= 10**12:
                     return None
             elif type(value) not in (int, float) or not 0 <= value <= 10**12:

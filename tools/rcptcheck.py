@@ -75,7 +75,7 @@ JOURNAL_EXCLUSIONS = frozenset((
 ))
 
 
-def journal_snapshot(info):
+def journal_snapshot(info, *, input_complete=True):
     """Versioned, bounded public-safe measurements; never copy HID prose/IDs."""
     def number(v):
         return type(v) in (int, float) and v >= 0 and math.isfinite(v)
@@ -91,9 +91,18 @@ def journal_snapshot(info):
         if isinstance(info.get(key), dict):
             metrics[key] = {k: v for k, v in sorted(info[key].items())
                             if k in JOURNAL_EXCLUSIONS and number(v)}
-    key = "join_declared_transform_profile"
-    if type(info.get(key)) is bool:
-        metrics[key] = info[key]
+    # Input corroboration is diagnostic only. Preserve the reader's availability
+    # and partial-span qualifier, never manufacture a whole-journal zero.
+    for key in ("legacy_presses", "legacy_keys", "kbd_nohandle", "kbdobserve_changes"):
+        value = info.get(key)
+        if input_complete and type(value) is int and 0 <= value <= 10**12:
+            metrics[key] = value
+    value = info.get("kbdobserve")
+    if type(value) is int and value in (-1, 0, 1):
+        metrics["kbdobserve"] = value
+    for key in ("join_declared_transform_profile", "legacy_keys_partial"):
+        if type(info.get(key)) is bool:
+            metrics[key] = info[key]
     return {"version": 1, "metrics": metrics}
 
 
@@ -664,7 +673,10 @@ def join_journal(r):
         r.journal = ""
         r.note("the journal content check did not run (%r)" % exc)
         return
-    r.journal_metrics = journal_snapshot(h.info)
+    # A rejected/skipped diagnostic record may leave zero or a subtotal in the
+    # reader's counters. Withhold new input totals conservatively on any fault;
+    # existing identity/join observations and all verdict decisions stay intact.
+    r.journal_metrics = journal_snapshot(h.info, input_complete=not h.faults)
     r.journal_detail = (h.info.get("identity") or "")
     pitch = h.info.get("identity_pitch")
     if pitch:
