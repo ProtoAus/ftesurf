@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1416 one-shot map effects -- LIVE (lobbies + your C:\FTESurf install, 8 Nov); owner check pending
+
+- bhop_angst: step onto the spawn booster -- a green puff at its top each time it launches you.
+- kz_bhop_badg3s, bhop_badges2: badge pops and the glowing zone markers; bhop_recharge: fireworks.
+- Say if an effect plays twice, never stops, or a glow that should be there is missing.
+- surf_tensor2 / surf_boreas kept their older bakes on purpose: say if you want them rebaked (rain/snow
+  would change slightly; I would show before/after first).
+
 ## P1411 map particle effects on 118 more maps -- LIVE (lobbies + your C:\FTESurf install, 8 Nov); owner check pending
 
 - bhop_aberrant: cyan squares rise off the floor at spawn (the map's own effect; it drew nothing before).

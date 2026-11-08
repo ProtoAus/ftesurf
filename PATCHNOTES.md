@@ -21,6 +21,9 @@
 
 ## next
 
+### P1416 Map effects that fire on an event
+- Particle effects a map plays when something happens now show: booster and teleport bursts, fireworks, badge pops, and glows a button switches on. About 200 of them on 29 maps, fired when the map starts them, as in Source.
+
 ### P1413 Steadier frames with an fps cap
 - With an fps cap (cl_maxfps / fps_max), each frame now starts just early enough to be ready and is shown exactly on time, instead of starting on time and being shown whenever it finishes. At a 100 fps cap, 99% of frames now land within 0.1-0.4 ms of 10 ms (before, 1-3 ms late was common). Input is read about 3-6 ms before the frame shows, far less than the old swap-holding mode (sys_framepacing 4). sys_framepacing 1 brings back the old pacing; uncapped, with vsync on, or on D3D/Vulkan nothing changes.
 - The frame-time graph (r_frametime) now times frames when they reach the screen.
