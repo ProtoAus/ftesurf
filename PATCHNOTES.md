@@ -21,6 +21,10 @@
 
 ## next
 
+### P1422 Faster maps with lots of glows and sprites
+- On maps full of glows and sprites (surf_fairy, surf_jumble...) the check that hides sprites behind the sky now does a fixed amount of work per second, and only for sprites you can see: surf_fairy went from about 225 to about 300 fps.
+- At 60 fps or below the check works as before. Glares on very wide screens, or with an unusual FOV mode, no longer freeze at the screen edges.
+
 ## 0.1.42 2026-11-08
 
 ### P1423 Graphics menu: option numbers, Movers and Mover light

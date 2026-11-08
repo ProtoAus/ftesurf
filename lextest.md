@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1422 sprite sky test -- installed in both installs and the lobbies (8 Nov); owner check pending
+
+- surf_fairy at your settings: about 300 fps where it was about 225; glows, glares and sprites look the same.
+- Sprites that sit behind the sky (outside the map) stay hidden; turn around quickly after a teleport -- at most a
+  glimpse (measured: 3 of 195 for under 30 ms).
+- vbsp_sprite_skycull 0 is the old checking, for a side-by-side.
+
 ## P1417/P1421 engine + P1418 crash reports -- engine in both installs, QC on the lobbies (8 Nov); owner check pending
 
 - Nothing to do unless the game closes with an error. Then, the next time you join a lobby, a box "Game closed
