@@ -1,5 +1,17 @@
 # BACKLOG.md
 
+## P1434 receipt diagnostics — backend activation pending (8 Nov)
+
+- Site: captured receipt snapshot / authenticated admin detail. Source8e4978c4 is
+  reviewed and Windows+isolatedARM verified; both Windows reader cohorts installed.
+  Live backend is unchanged: activation needs the existing source-bound generation
+  and privileged service-namespace installation unavailable to this SSH account.
+  Do not overwrite an admitted runtime or change its pins in place. Falsifier:
+  qualify the exact fresh candidate/reader cohort, preserve CURRENT data and prove
+  valid-zero/partial/malformed-unavailable controls on the installed guarded path;
+  authenticate review, preserve public policy/history and record actual activation.
+  tools/p1434-input-observations.md records verification, delivery and limits.
+
 ## P1424 injected-keystroke counter -- follow-ups (8 Nov; engine patch-1424, installed both installs)
 
 - hidcheck's opt-in-raw-keyboard exemption reads the grant (rawkbds>0), but the grant counts ENUMERATED keyboards,

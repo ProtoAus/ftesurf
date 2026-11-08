@@ -44,8 +44,11 @@ The existing genuine-keyboard manual check remains pending in lextest.md.
 
 ## Delivery status
 
-Source/platform verification and installed delivery are distinct. Final receipts
-are recorded below when completed. The actual backend is an immutable admitted
+Source/platform verification and installed delivery are distinct. Product source
+is published as QC8e4978c4; the engine's documentation-only entry is81695faef.
+Both independent re-reviews are CLEAR after correcting their findings.
+
+The actual backend is an immutable admitted
 system-service generation with source-bound reader/namespace pins. A fresh guarded
 candidate and privileged system-service namespace installation are required; do
 not copy these files over the admitted runtime, bypass the fence or restore data.
@@ -53,4 +56,23 @@ not copy these files over the admitted runtime, bypass the fence or restore data
 Read-only preflight on8November2026 confirms the SSH account has no noninteractive
 privilege and the system drop-in is not writable. This blocks actual backend
 activation, not source work or isolated ARM qualification. No live maintenance
-gate, process, reader, database, stored observation or lobby has been modified.
+gate, process, backend reader, database, stored observation or lobby has been modified.
+
+### ARM qualification and Windows reader delivery — 8 November 2026
+
+- Isolated ARM Python3.11.2 qualification completed17:12:10UTC using an archive
+  of the clean published source (SHA256b9e9085f06e1b8b828453573b3a7be62f11a15431c492550a4c9f2120fd67489).
+  Snapshot12 tests, signed storage/lifecycle and authenticated API, receipt268 and
+  HID307 checks pass. Node is absent on ARM: its DOM check explicitly SKIPS;
+  the actual renderer execution passed on Windows, not ARM or a live browser.
+- At17:13:00UTC both Windows installs' four reader modules match exact inspected
+  commit blobs; the second install retains three replaced-file rollback copies
+  with suffix.pre-p1434-8e4978c4. The already exact crypto module was unchanged.
+  Each installed reader cohort then passed all12 snapshot controls, including
+  signed-byte/digest, malformed-record, measured-zero, unavailable and partial
+  cases. This qualifies installed local readers, not native keyboard hardware.
+- No engine executable, plugin, progs, owner config, game process or player data
+  changed. No historical record is reinterpreted automatically or old row backfilled.
+- The authenticated web feature is NOT deployed. It remains blocked on privileged
+  source-bound backend-generation/reader namespace installation. The old primary
+  remains active; no gate was acquired or left closed and no restart attempted.
