@@ -951,6 +951,13 @@ is never a cleanup target.
   The known7ccb93d1 source-tree binary is not a shipping fallback. Bind the exact
   compiler input from the working producer; preserve it read-only in the owned
   task and requalify compiler-dependent outputs. See tools/p1321-prederr-history.md.
+- P1412 (8 Nov): fteqcc 73f9a1a4 (`git-8545-patch-1398-3-g600bcd24e`, clean, zlib static) at
+  C:\FTESurf-worktrees\compilersteqcc64-p1412-73f9a1a4.exe is a drop-in for c24ede65 (all three
+  progs byte-identical but the version string) and adds -Fomitarraydefs; build.ps1 probes for it and
+  passes it for cl_progs.src only (csprogs 8.05 -> 4.94 MB, code sections identical). Copy it into
+  your worktree's src/ as fteqcc64.exe. qwprogs/menu never get the flag. The offline QC VM finds arrays
+  by `name[0]`: build its input with -KeepArrayDefs. Tools that run fteqcc on cl_progs.src themselves
+  (p840clock, p1384lead, test_ui_theme, board_feedback_smoke) pass neither this nor -max_strings.
 
 ## Paused-slot discard ownership and omitted QC arguments (P1320, 5 Nov 2026)
 
