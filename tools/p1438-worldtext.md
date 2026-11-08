@@ -44,6 +44,12 @@ bhop_2shiny2shuckle's countdown, so the wire gained WT_SET_* flags and the field
 vbsp_sprite_dist, so the cost followed the map's glyphs (1436 on bhop_2shiny2shuckle), not what is in view; an
 empty SetMessage leaked a zone string (freed now by a flag, as strzone("") compares equal to "").
 
+## Delivery
+
+- LIVE 9 Nov ~05:35 local: 12 lobbies (nobody on; warned; 0 QC errors) qw 145fca3c + cs cb462abf from main
+  19849648; both installs the same (.prev 23bcf6b5 / 0fe650c4, .pre1438); csprogsvers b54dc279 on the Pi and both
+  installs; codes.txt 105 -> 106 (.pre1438).
+
 ## Left
 
 - Parented texts (19) are declined; texts behind walls in the view cone still draw (no PVS test).

@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1438 point_worldtext -- owner check pending
+## P1438 point_worldtext -- LIVE 9 Nov (lobbies + both installs, cs cb462abf); owner check pending
 
 - bhop_bowling: "ROUND 1" and "LEVEL 1" on the walls. bhop_flything: "Runs started" with a counter that goes up
   each run. Momentum's training maps (surf_mom_training, bhop_mom_training_beta): the tutorial hints. Say if any
