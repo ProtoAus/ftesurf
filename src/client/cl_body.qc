@@ -329,6 +329,8 @@ void() CSQC_Ent_Remove =
 	}
 	if (self.pb_trigwire)
 		Trig_NetState(self.pb_trigmodel, 0, 0);
+	if (self.classname == "tplfx_net")
+		Sprite_TplGone(self);               // P1432
 	if (self.em_npeff)
 		strunzone(self.em_npeff);           // Patch 1028; the emitters go with the map
 	if (self.trkc_tgt)
@@ -763,6 +765,29 @@ void(float isnew) CSQC_Ent_Update =
 			if (self.wt_nset & WT_SET_SIZE)
 				self.wt_nsize = readfloat();
 			Wt_Net(self);
+		}
+		else if (f == ENTWIRE_TPLFX)
+		{	// P1432: a template's copy of a lump-drawn effect (cl_sprites.qc Sprite_TplNet)
+			self.classname = "tplfx_net";
+			if (isnew)
+				self.tfx_gen = -1;
+			dd = readbyte();
+			if (dd)
+			{
+				self.tfx_cls = readbyte();
+				self.tfx_morg_x = readfloat();
+				self.tfx_morg_y = readfloat();
+				self.tfx_morg_z = readfloat();
+				self.tfx_mtnc = readfloat();
+				self.origin_x = readfloat();
+				self.origin_y = readfloat();
+				self.origin_z = readfloat();
+				self.angles_x = readfloat();
+				self.angles_y = readfloat();
+				self.angles_z = readfloat();
+			}
+			self.tfx_on = readbyte();
+			Sprite_TplNet(self, dd);
 		}
 		else if (f == ENTWIRE_LASERSTATE)
 		{

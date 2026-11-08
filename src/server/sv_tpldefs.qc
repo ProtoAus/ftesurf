@@ -23,6 +23,11 @@
 .entity tpl_chain;          // an instance's members while it is built
 .entity tpl_by;             // a spawned entity: the env_entity_maker that made it
 
+.float  tpl_fxi;            // P1432: a copy of a member the client draws from the lump (env_sprite)...
+.vector tpl_morg;           // ...and that member's lump origin and name crc, which the client finds its keys by
+.float  tpl_mtnc;
+strbuf  tpl_lrec, tpl_lio;  // P1432: the captures of entities SV_LateStash set aside, by stash line
+
 strbuf  tpl_raws;           // the members' outputs as the map wrote them, one per prototype
 float   tpl_built;          // SV_TplBuild ran: no more capture
 float   tpl_count;          // Source's g_iCurrentTemplateInstance (&0001 ... &9999)
@@ -31,3 +36,4 @@ void(entity e) SV_TplCapture;
 float(entity t, string in, string pm, entity act, entity caller) SV_TplInput;
 void(entity t) SV_IOOrphan;
 void() SV_TplBuild;
+float(entity to, float changed) SV_TplFxSend;

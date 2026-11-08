@@ -17,6 +17,10 @@
   their output edicts (copyentity) and runs each class's spawn function. A spawn costs about 0.5 ms
   (one trigger) to 1.6 ms (bhop_crash_egypt's fruit, three entities and their outputs), nearly all
   of it the engine's edict allocation (70 us each); tools/p1425-templates.md.
+
+  P1432: a member SV_LateStash sets aside keeps its capture (CheckSpawn, SV_LateSpawnAll). The client draws
+  an env_sprite from the lump, so a copy of one sends the member's origin and name with its own pose
+  (ENTWIRE_TPLFX) and cl_sprites.qc draws it from that member's keys; tools/p1432-tplfx.md.
 */
 
 #define SF_TPL_DONTREMOVE       1
@@ -210,6 +214,14 @@ void(entity e) SV_TplRun =
 		return;
 	}
 	e.vbsp_io_raw = "";
+	if (e.tpl_fxi)
+	{	// SV_FxInput switches it from here
+		e.vbsp_fx_cls = SV_FxClass(e);
+		e.vbsp_fx_on = SV_FxStartOn(e, e.vbsp_fx_cls);
+		e.SendEntity = SV_FxSend;
+		e.SendFlags = LAS_SF_ID | LAS_SF_STATE;
+		e.pvsflags = PVSF_IGNOREPVS;
+	}
 	if (e.classname != "func_brush" && e.rendermode && substring(e.model, 0, 1) == "*")
 		SV_BrushRenderState(e);
 	for (o = e.vbsp_io_out; o; o = o.vbsp_io_next)
@@ -227,6 +239,30 @@ void(entity e) SV_TplRun =
 			}
 			break;
 		}
+};
+
+// P1432: ENTWIRE_TPLFX, through SV_FxSend -- the identity once, then the on state.
+float(entity to, float changed) SV_TplFxSend =
+{
+	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
+	WriteByte(MSG_ENTITY, ENTWIRE_TPLFX);
+	WriteByte(MSG_ENTITY, (changed & LAS_SF_ID) ? 1 : 0);
+	if (changed & LAS_SF_ID)
+	{
+		WriteByte(MSG_ENTITY, self.vbsp_fx_cls);
+		WriteFloat(MSG_ENTITY, self.tpl_morg_x);
+		WriteFloat(MSG_ENTITY, self.tpl_morg_y);
+		WriteFloat(MSG_ENTITY, self.tpl_morg_z);
+		WriteFloat(MSG_ENTITY, self.tpl_mtnc);
+		WriteFloat(MSG_ENTITY, self.origin_x);
+		WriteFloat(MSG_ENTITY, self.origin_y);
+		WriteFloat(MSG_ENTITY, self.origin_z);
+		WriteFloat(MSG_ENTITY, self.angles_x);
+		WriteFloat(MSG_ENTITY, self.angles_y);
+		WriteFloat(MSG_ENTITY, self.angles_z);
+	}
+	WriteByte(MSG_ENTITY, self.vbsp_fx_on);
+	return TRUE;
 };
 
 string(float n) SV_TplSuffix =
@@ -282,6 +318,12 @@ float(entity p, vector morg, vector mang) SV_TplInstance =
 		e.parentname = q.tpl_pparent;
 		e.model = q.tpl_pmodel;
 		e.tpl_pclass = e.tpl_pname = e.tpl_pparent = e.tpl_pmodel = "";
+		if (SV_FxClass(e) == FX_CLS_SPRITE)
+		{
+			e.tpl_fxi = TRUE;
+			e.tpl_morg = q.origin;
+			e.tpl_mtnc = crc16(TRUE, q.tpl_pname);
+		}
 		e.tpl_pnext = world;
 		e.vbsp_onjump_next = world;
 		e.vbsp_io_out = tail = world;
@@ -503,6 +545,10 @@ float(entity e) SV_TplTakes =
 		case "func_rotating": case "func_movelinear": case "func_tracktrain": case "func_train":
 		case "func_tanktrain": case "func_door": case "func_door_rotating": case "func_rot_button":
 		case "momentary_rot_button": case "func_plat": case "func_platrot":
+			return FALSE;
+		// P1432: the client draws these from the lump and has no per-copy instance of them (env_sprite has)
+		case "info_particle_system": case "env_laser": case "env_beam": case "point_tesla":
+		case "point_spotlight": case "beam_spotlight":
 			return FALSE;
 	}
 	return TRUE;

@@ -546,13 +546,24 @@ void(entity e) Sh_FxNet;
 float() Sh_Frame;
 .float fx_ncls, fx_ntnc, fx_non, fx_nfire;  // P1430: ENTWIRE_FXSTATE as cl_body.qc reads it
 // P1431: env_sprite and the spotlights a map switches.  Kept in the tables, hidden, and matched to the
-// server's state (ENTWIRE_FXSTATE2) on class, origin and name crc.  A template's member is drawn from the lump
-// in its start state as before: SV_LateStash removes the edict inside its spawn, so P1425 never captures one.
+// server's state (ENTWIRE_FXSTATE2) on class, origin and name crc.  A template's member is not drawn from the
+// lump: each copy the server spawns is (P1432, Sprite_TplNet).
 float  *spr_hide;                         // [SPR_MAX] (one pointer a line: fteqcc reads "*a, *b" as float**)
 float  *spr_tnc;                          // -1 = unnamed
 float  *beam_hide;                        // [BEAM_MAX], the shafts (i < beam_spot_n)
 float  *beam_tnc;
 float  vbsp_spr_hid;
+// P1432: env_sprite members of a template (cl_tplskip.qc), kept as Sprite_Add's arguments; a copy the server
+// spawns (ENTWIRE_TPLFX, matched on the member's origin and name crc) is added at its own pose.
+#define TPLS_MAX 64
+vector tpls_org[TPLS_MAX], tpls_ang[TPLS_MAX], tpls_col[TPLS_MAX];
+float  tpls_tnc[TPLS_MAX], tpls_kind[TPLS_MAX], tpls_mat[TPLS_MAX], tpls_scale[TPLS_MAX];
+float  tpls_alpha[TPLS_MAX], tpls_add[TPLS_MAX], tpls_pset[TPLS_MAX];
+float  tpls_n;
+float  *spr_free;                         // [SPR_MAX] a removed copy's entry, hidden, for the next copy
+float  spr_gen;                           // Sprite_LoadForMap's count: a copy's entry from an older load is gone
+.float tfx_cls, tfx_mtnc, tfx_on, tfx_slot, tfx_gen;
+.vector tfx_morg;
 
 // P1431: a server state for an env_sprite (ShowSprite/HideSprite/ToggleSprite) or a spotlight (LightOn/LightOff).
 void(entity e) Sprite_FxNet =
@@ -1553,6 +1564,64 @@ void() Sprite_ResolveSkips =
   are the raw keys, not the keys times a view-dependent factor.
 ===========================================================================
 */
+// P1432: a copy's instance goes (removed, or a new identity).
+void(entity e) Sprite_TplGone =
+{
+	if (e.tfx_gen == spr_gen && e.tfx_slot >= 0 && spr_free)
+	{
+		spr_hide[e.tfx_slot] = 1;
+		spr_free[e.tfx_slot] = 1;
+	}
+	e.tfx_slot = -1;
+};
+
+// P1432: ENTWIRE_TPLFX -- place the copy (id: its identity came with this update) or switch it.
+void(entity e, float id) Sprite_TplNet =
+{
+	local float k, i, keep, ok;
+
+	if (e.tfx_gen == spr_gen && e.tfx_slot >= 0)
+	{
+		if (!id)
+		{
+			spr_hide[e.tfx_slot] = !e.tfx_on;
+			return;
+		}
+		Sprite_TplGone(e);
+	}
+	if (e.tfx_cls != FX_CLS_SPRITE || !spr_free || vbsp_spr_map == "" || vbsp_spr_map != serverkey("map"))
+		return;                         // Sprite_LoadForMap places it
+	e.tfx_gen = spr_gen;
+	e.tfx_slot = -1;
+	for (k = 0; k < tpls_n; k = k + 1)
+		if (tpls_tnc[k] == e.tfx_mtnc && vlen(tpls_org[k] - e.tfx_morg) < 0.1)
+			break;
+	if (k >= tpls_n)
+		return;                         // not loaded: vbsp_sprites 0, or no material
+	keep = spr_n;
+	for (i = 0; i < keep; i = i + 1)
+		if (spr_free[i])
+			break;
+	spr_n = i;
+	spra_pset = tpls_pset[k];
+	Sprite_Add(e.origin, e.angles, tpls_kind[k], tpls_mat[k], tpls_scale[k], tpls_col[k], tpls_alpha[k], tpls_add[k]);
+	ok = (spr_n == i + 1);
+	spr_n = max(keep, spr_n);
+	if (!ok)
+		return;
+	spr_free[i] = 0;
+	spr_hide[i] = !e.tfx_on;
+	spr_tnc[i] = -1;                    // switched by its own wire, not ENTWIRE_FXSTATE2
+	spr_gvis[i] = spr_glare[i] = 0;
+	spr_gtraced[i] = FALSE;
+	spr_sky[i] = SKY_UNTESTED;
+	if (spr_under)
+		spr_under[i] = spr_utime[i] = 0;
+	if (spr_gep)
+		spr_gep[i] = 0;
+	e.tfx_slot = i;
+};
+
 void() Sprite_LoadForMap =
 {
 	local string tok, key, cn, map, model, srendercolor;
@@ -1560,7 +1629,7 @@ void() Sprite_LoadForMap =
 	local float  scale, renderamt, rendermode, spawnflags, framerate, renderfx;
 	local float  splen, spwid, ignoresolid;
 	local float  opened, wantspr, wantbeam, mat, alpha, additive, named, hide, n0;
-	local string tn;
+	local string tn, tparent;
 	local entity net;
 	local float  glowh, glowv, gmin, gmax, gouter, gproxy, wantglow;
 
@@ -1636,10 +1705,13 @@ void() Sprite_LoadForMap =
 	vbsp_spr_seen = vbsp_spr_off = vbsp_spr_nomat = vbsp_spr_over = 0;
 	vbsp_beam_seen = vbsp_beam_off = 0;
 	vbsp_spr_hid = 0;
+	tpls_n = 0;
+	spr_gen = spr_gen + 1;
 	if (!spr_hide)
 	{
 		spr_hide = memalloc(sizeof(float) * SPR_MAX);
 		spr_tnc = memalloc(sizeof(float) * SPR_MAX);
+		spr_free = memalloc(sizeof(float) * SPR_MAX);
 		beam_hide = memalloc(sizeof(float) * BEAM_MAX);
 		beam_tnc = memalloc(sizeof(float) * BEAM_MAX);
 	}
@@ -1647,6 +1719,7 @@ void() Sprite_LoadForMap =
 	{	// every entry, glows included, starts shown and unnamed
 		spr_hide[n0] = 0;
 		spr_tnc[n0] = -1;
+		spr_free[n0] = 0;
 	}
 	for (n0 = 0; n0 < BEAM_MAX; n0 = n0 + 1)
 	{
@@ -1671,6 +1744,7 @@ void() Sprite_LoadForMap =
 	*/
 	Glow_ParamSet(0, 0, 0, 0);
 
+	Tpl_ClLoad(FALSE);                  // P1432: before the walk (it resets the lump tokens)
 	getentitytoken(0);
 	while ((tok = getentitytoken()) != "")
 	{
@@ -1687,7 +1761,7 @@ void() Sprite_LoadForMap =
 		spawnflags = 0;
 		splen = spwid = ignoresolid = 0;
 		named = FALSE;
-		tn = "";
+		tn = tparent = "";
 		// BUILD 54.  The FGD's own defaults for env_lightglow (base.fgd:1198),
 		// so a map that omits a key gets what Hammer showed its author.
 		glowh = glowv = 30;
@@ -1717,6 +1791,7 @@ void() Sprite_LoadForMap =
 			else if (key == "spawnflags")  spawnflags = stof(tok);
 			else if (key == "framerate")   framerate = stof(tok);
 			else if (key == "targetname")  { tn = tok; named = (tok != ""); }
+			else if (key == "parentname")  tparent = tok;
 			// The library writes both spellings of each of these three, so both
 			// are read: 1.9% of point_spotlights write "hdrcolorscale" and 0.5%
 			// write "ignoresolid" against the FGD's capitalised forms.
@@ -1808,6 +1883,21 @@ void() Sprite_LoadForMap =
 			// the set is meaningful; the three zeros keep it one table.
 			spra_pset = Glow_ParamSet(0, 0, 0, gproxy);
 
+			if (tpls_n < TPLS_MAX && Tpl_ClMember(tn, tparent))
+			{	// P1432: drawn where the server spawns a copy (Sprite_TplNet)
+				tpls_org[tpls_n] = org;
+				tpls_ang[tpls_n] = ang;
+				tpls_col[tpls_n] = col;
+				tpls_tnc[tpls_n] = crc16(TRUE, tn);
+				tpls_kind[tpls_n] = (cn == "env_sprite_oriented") ? SPRK_ORIENTED : SPRK_BILLBOARD;
+				tpls_mat[tpls_n] = mat;
+				tpls_scale[tpls_n] = scale;
+				tpls_alpha[tpls_n] = alpha;
+				tpls_add[tpls_n] = additive;
+				tpls_pset[tpls_n] = spra_pset;
+				tpls_n = tpls_n + 1;
+				continue;
+			}
 			n0 = spr_n;
 			Sprite_Add(org, ang,
 			           (cn == "env_sprite_oriented") ? SPRK_ORIENTED : SPRK_BILLBOARD,
@@ -1917,6 +2007,11 @@ void() Sprite_LoadForMap =
 	for (net = find(world, classname, "fx_net"); net; net = find(net, classname, "fx_net"))
 		if (net.fx_ncls == FX_CLS_SPRITE || net.fx_ncls == FX_CLS_SPOT)
 			Sprite_FxNet(net);         // P1431: states that arrived before this load
+	for (net = find(world, classname, "tplfx_net"); net; net = find(net, classname, "tplfx_net"))
+	{	// P1432: copies that arrived before this load, or held an entry of the last
+		net.tfx_gen = -1;
+		Sprite_TplNet(net, TRUE);
+	}
 
 	// BUILD 54.  Needs both walks finished: the occluders exist and the sprites
 	// have been read.  Neither ever moves, so the answer is a load-time constant.
@@ -1942,9 +2037,9 @@ void() Sprite_LoadForMap =
 	{
 		if (!wantspr)
 			print(sprintf("sprites: %g found, none drawn (vbsp_sprites 0)\n", vbsp_spr_seen));
-		else if (vbsp_spr_off + vbsp_spr_nomat + vbsp_spr_over)
-			print(sprintf("sprites: %g of %g drawn (%g off, %g no material, %g over cap)\n",
-			              spr_n - vbsp_glow_n, vbsp_spr_seen, vbsp_spr_off, vbsp_spr_nomat, vbsp_spr_over));
+		else if (vbsp_spr_off + vbsp_spr_nomat + vbsp_spr_over + tpls_n)
+			print(sprintf("sprites: %g of %g drawn (%g off, %g no material, %g over cap, %g template members)\n",
+			              spr_n - vbsp_glow_n, vbsp_spr_seen, vbsp_spr_off, vbsp_spr_nomat, vbsp_spr_over, tpls_n));
 		else
 			print(sprintf("sprites: %g of %g drawn\n", spr_n - vbsp_glow_n, vbsp_spr_seen));
 		if (wantspr && vbsp_spr_hid)

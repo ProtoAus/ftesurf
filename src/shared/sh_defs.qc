@@ -43,6 +43,7 @@
 #define ENTWIRE_PSYSSTATE2 8    // P1416: ENTWIRE_PSYSSTATE plus a start count and a fresh flag
 #define ENTWIRE_FXSTATE 9       // P1430: a look-only effect's class, on state and event count (cl_fx.qc)
 #define ENTWIRE_FXSTATE2 10     // P1431: the same with the identity on a first send only (P1430 recordings keep 9)
+#define ENTWIRE_TPLFX 11        // P1432: a template's copy of a lump-drawn effect: its member, its pose, on
 #define ENTWIRE_WTEXT 12        // P1438: a point_worldtext's Enable/Disable and SetMessage (cl_wtext.qc); 11 is P1432's
 #define WT_SET_MSG 1            // P1438: which of ENTWIRE_WTEXT's optional fields follow
 #define WT_SET_COL 2

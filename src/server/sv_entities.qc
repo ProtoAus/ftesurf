@@ -2079,10 +2079,23 @@ void() SV_LateSpawnAll =
 		e.solid = SOLID_NOT;
 		e.movetype = MOVETYPE_NONE;
 		setorigin(e, e.origin);
+		if (tpl_lrec > 0)
+		{	// P1432: CheckSpawn's capture, for SV_TplBuild
+			if (bufstr_get(tpl_lrec, i) != "")
+				e.tpl_rec = strzone(bufstr_get(tpl_lrec, i));
+			if (bufstr_get(tpl_lio, i) != "")
+				e.tpl_io = strzone(bufstr_get(tpl_lio, i));
+		}
 	}
 	dprint(sprintf("late spawn: %g point entities re-created after the lump; team %g\n", n, vbsp_map_team));
 	buf_del(vbsp_late_buf);
 	vbsp_late_buf = 0;
+	if (tpl_lrec > 0)
+	{
+		buf_del(tpl_lrec);
+		buf_del(tpl_lio);
+		tpl_lrec = tpl_lio = 0;
+	}
 };
 
 void() filter_activator_team  = { SV_LateStash("targetname filterteam Negated negated"); };
@@ -4429,6 +4442,8 @@ void() env_laser =
 
 float(entity to, float changed) SV_FxSend =
 {
+	if (self.tpl_fxi)
+		return SV_TplFxSend(to, changed);   // P1432: a template's copy, drawn where it was spawned
 	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
 	WriteByte(MSG_ENTITY, ENTWIRE_FXSTATE2);
 	WriteByte(MSG_ENTITY, (changed & LAS_SF_ID) ? 1 : 0);
@@ -5086,6 +5101,7 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	if (t.classname == "env_screenoverlay")
 		if (SV_OvInput(t, in, pm))      // P1439
 			return;
+	if (!(t.tpl_fxi && in == "kill"))   // P1432: a copy is removed, and its client instance with it
 	if (SV_FxInput(t, in))          // P1430: point_tesla; P1431: env_sprite, the spotlights
 		return;
 	if (t.classname == "env_laser" || t.classname == "env_beam")
@@ -14690,15 +14706,18 @@ void(void() spawnfunc) CheckSpawn =
 {
 	local entity e;
 	local string pn, trec, tio;
+	local float nlate;
 
 	e = self;
 	pn = self.parentname;
 	trec = tio = "";
+	nlate = -1;
 	if (!tpl_built && self.targetname != "")
 	{
 		SV_TplCapture(self);            // P1425: a point_template later in the lump may name it
 		trec = self.tpl_rec;
 		tio = self.tpl_io;
+		nlate = (vbsp_late_buf > 0) ? buf_getsize(vbsp_late_buf) : 0;
 	}
 	if (spawnfunc)
 		spawnfunc();
@@ -14706,6 +14725,17 @@ void(void() spawnfunc) CheckSpawn =
 		remove(self);
 	if (wasfreed(e))
 	{
+		// P1432: set aside by SV_LateStash -- its capture goes to the edict SV_LateSpawnAll makes of it
+		if (nlate >= 0 && vbsp_late_buf > 0 && buf_getsize(vbsp_late_buf) > nlate)
+		{
+			if (tpl_lrec <= 0)
+			{
+				tpl_lrec = buf_create();
+				tpl_lio = buf_create();
+			}
+			bufstr_set(tpl_lrec, nlate, trec);
+			bufstr_set(tpl_lio, nlate, tio);
+		}
 		if (trec != "")
 			strunzone(trec);
 		if (tio != "")
