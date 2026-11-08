@@ -269,7 +269,7 @@ void() Sh_LoadForMap =
 // Runs the shooters and moves the gibs; called from Sprite_Draw (before renderscene).  Returns live gibs.
 float() Sh_Frame =
 {
-	local float i, k, dt, n, sp;
+	local float i, k, dt, n, sp, sp0;
 	local vector v, p, nrm;
 	local entity e;
 
@@ -311,6 +311,8 @@ float() Sh_Frame =
 		e = gib_e[k];
 		if (time > gib_die[k])
 		{	// strict remove: gone at once
+			if (cvar("vbsp_fx_debug"))
+				print(sprintf("gib: %g removed at z %.1f%s\n", k, e.origin_z, gib_rest[k] ? ", at rest" : ""));
 			gib_die[k] = 0;
 			e.drawmask = 0;
 			continue;
@@ -325,6 +327,8 @@ float() Sh_Frame =
 			traceline(p, p + v * dt, MOVE_NOMONSTERS, world);
 			if (trace_allsolid)
 			{
+				if (cvar("vbsp_fx_debug"))
+					print(sprintf("gib: %g stuck at z %.1f, dt %g, speed %.1f\n", k, p_z, dt, vlen(v)));
 				gib_rest[k] = TRUE;
 				gib_av[k] = '0 0 0';
 				v = '0 0 0';
@@ -333,8 +337,12 @@ float() Sh_Frame =
 			{	// FLY_BOUNCE: the reflection times elasticity 0.25; under 30 u/s at rest, laid flat on a floor
 				nrm = trace_plane_normal;
 				p = trace_endpos + nrm * 0.5;
+				sp0 = vlen(v);
 				v = (v - nrm * (2 * (v * nrm))) * 0.25;
 				sp = vlen(v);
+				if (cvar("vbsp_fx_debug"))
+					print(sprintf("gib: %g bounces %.1f -> %.1f u/s, normal z %.2f, at z %.1f%s\n", k,
+					              sp0, sp, nrm_z, p_z, (sp < 30) ? ", rests" : ""));
 				if (sp < 30)
 				{
 					gib_rest[k] = TRUE;

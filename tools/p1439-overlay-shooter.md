@@ -33,8 +33,14 @@ C:\FTESurf-worktrees\xhair-20261108-b8 (tools/armsg.sh, ovl1.cfg, sht1.cfg, rigs
 
 - Review-1 build (build-nodeploy-b598853c): surf_ab again shown, held past its time, cleared (67629 / 0 / 428 px);
   mg_remsopor_encore overlay1 (debug/yuv, held -1): "overlay: debug/yuv not drawn", the screen unchanged but for
-  the map's swaying tree. The shooter's re-run (surf_era, for the review's gib physics) was stopped by Claude
-  Code's low-memory guard and is NOT measured.
+  the map's swaying tree.
+- Review-1 gib physics (surf_era fumo_shooter5: spawnflags 5, m_flGibLife 3, velocity 200; the gibs print each
+  bounce, rest and removal under vbsp_fx_debug; rigs/bm-sh3-new .. sh5-new, tools/armsi.sh, sht2.cfg): each gib
+  lands on the pit floor at ~1360 u/s and leaves it at a quarter of that (1359.8 -> 339.9, 335.0 -> 83.7, 84.5 ->
+  21.1), resting on the third bounce, normal z 1.00, at z 12288.5. In sh5 all 22 gibs past their life went at it
+  (strict remove): 17 at rest, 5 in their last small hop 0.1-4.6 u above the floor; none hung, none fell through.
+  The 5 were in the air across a screenshot's ~2 s stall: the flight steps at most 0.1 s a frame while the life
+  runs on the clock.
 
 ## Review
 
@@ -48,4 +54,5 @@ and strict ones go at once; a gib with no velocity hung in the air (a rest flag 
 bounces keep elasticity 0.25 (not friction 0.55) and rest under 30 u/s, laid flat on floors; m_flGibScale is not
 applied to model gibs; renderamt counts only with a render mode. Admitted in the headers: one overlay run at a
 time; StartOverlays on a nameless overlay still deactivates the others; a spent one-shot shooter is spent on each
-client separately.
+client separately; a gib in the air across a hitch longer than 0.1 s loses the rest of it (the step is capped, the
+life is not), so a strict one can go mid-hop.
