@@ -1,6 +1,7 @@
 # P1377 — selected similarity reads observe the pass deadline
 
-Source acceptance, not installed/live-backend or whole-resource-bound acceptance.
+Source and historical primary-delivery acceptance are complete for this bounded
+change. Neither establishes whole-resource bounds or today's runtime state.
 
 ## Change and contract
 
@@ -80,9 +81,22 @@ upstream header-admission changes are not qualified by these SQL tests.
 
 Reviewed collector SHA256:
 `ebbb8d0fab50862e3093c2336ec2ab2b90da26926ec66284fbd801b7bf8f9c0d`.
-Installation and live provenance must be recorded separately. The owner completed
-P1368's prerequisite and its READ-ONLY actual-runtime audit passed at2026-11-07T14:29:19Z
-(see tools/p1368-simcheck-source-reader.md). That live collector is stillffed, NOT this
-ebbb source. This feature needs a fresh source-bound candidate; never edit P1368's
-serving package or repeat its healthy activation.
+P1368's earlier read-only prerequisite audit passed at 2026-11-07 14:29:19 UTC
+(see tools/p1368-simcheck-source-reader.md); its then-serving `ffed` predecessor is
+historical, not an unfinished P1377 cutover. The owner subsequently completed the
+frozen source-bound P1377 activation chain. Read-only verification at
+**2026-11-07 16:31:02 UTC** confirmed the primary OPEN, selected `ebbb` source and
+actual default-reader path, the same 159 admitted bindings, actor/namespace/unit/
+launcher and four normal cron routes. Health and protected GET boundaries passed.
+The cutover retained the same schema26/44-table set and eight protected identity
+digests at its acceptance point; this does not freeze legitimately changing rows.
+
+The original sudo refusal occurred before shared mutation and remains retained;
+the owner's subsequent successful same-terminal chain resolved that permission.
+No recovery/failure artifacts or maintenance leases remained at completion. Do
+**not** repeat a healthy P1368/P1377 activation based on this document's former
+source-only wording. This records that historical completed delivery, not a fresh
+current-runtime observation or blanket proof for later reader/source changes.
+Retain production/namespace/cron/rollback source roots and their history; CLOSED
+or old PREPARED headings are not cleanup authority.
 Native pin/tag, VM and QC Build remain unchanged by P1377.

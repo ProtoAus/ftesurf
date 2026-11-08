@@ -164,7 +164,18 @@ zero. The original partial observation and previous code/configuration remain
 retained. No link was removed or arbitrary-hardlink gate relaxed. This is a
 per-file copy observation, not a coherent global instant or hostile-host proof.
 
-Scheduled acceptance remains pending. A least-privilege fixture S4U registration
-was refused with Access denied; an exact task query proved no task remained.
-Standalone copying is independent of that OS permission. This is preservation
-tooling, not completion of an anti-cheat plan.
+**Historical scheduled acceptance completed on 6 November 2026.** The owner
+completed normal UAC registration at 02:17 UTC; the actual same-owner limited-S4U
+run at 02:18 returned zero and produced a new complete observation at 02:20:04 UTC:
+7,535 files / 2,095,635,847 bytes, zero pending/deferred, both rsync exits zero and
+the empty writer lease released. The final read-only acceptance at 02:55 UTC
+verified the exact configured action, S4U/limited owner, matching artifacts and
+observation after scheduled start. The earlier 02:54 observer did **not** establish
+exact-action/new-observation acceptance; that incomplete check and the original
+Access-denied/no-task fixture remain retained, not relabelled as passes.
+
+Do **not** register or run the task again merely because an older handoff says
+pending. This is reused historical acceptance, not a fresh claim about today's
+task or an always-on service. The archive PC must still be available; immutable
+source repair/restore and pruning require separate approved policy. This remains
+preservation tooling, not completion of an anti-cheat plan.
