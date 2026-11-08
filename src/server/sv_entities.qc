@@ -4486,9 +4486,11 @@ float(entity t, float cls) SV_FxStartOn =
 	return (t.spawnflags & 1) != 0;
 };
 
-// P1438: a named point_worldtext's shown state and SetMessage's text, on ENTWIRE_WTEXT from its first input.
-.float vbsp_wt_on, vbsp_wt_set;
+// P1438: a named point_worldtext's shown state and what SetMessage / AddOutput changed (WT_SET_*), on
+// ENTWIRE_WTEXT from its first input.
+.float vbsp_wt_on, vbsp_wt_set, vbsp_wt_size;
 .string vbsp_wt_msg;
+.vector vbsp_wt_col;
 
 float(entity to, float changed) SV_WtSend =
 {
@@ -4504,15 +4506,33 @@ float(entity to, float changed) SV_WtSend =
 	}
 	WriteByte(MSG_ENTITY, self.vbsp_wt_on);
 	WriteByte(MSG_ENTITY, self.vbsp_wt_set);
-	if (self.vbsp_wt_set)
+	if (self.vbsp_wt_set & WT_SET_MSG)
 		WriteString(MSG_ENTITY, self.vbsp_wt_msg);
+	if (self.vbsp_wt_set & WT_SET_COL)
+	{
+		WriteByte(MSG_ENTITY, self.vbsp_wt_col_x);
+		WriteByte(MSG_ENTITY, self.vbsp_wt_col_y);
+		WriteByte(MSG_ENTITY, self.vbsp_wt_col_z);
+	}
+	if (self.vbsp_wt_set & WT_SET_SIZE)
+		WriteFloat(MSG_ENTITY, self.vbsp_wt_size);
 	return TRUE;
 };
 
-// Enable, Disable, Toggle, SetMessage; Kill hides it for good.
+void(entity t, string s) SV_WtMsg =
+{
+	if (t.vbsp_wt_set & WT_SET_MSG)
+		strunzone(t.vbsp_wt_msg);
+	t.vbsp_wt_msg = strzone(s);
+	t.vbsp_wt_set = t.vbsp_wt_set | WT_SET_MSG;
+};
+
+// Enable, Disable, Toggle, SetMessage, AddOutput of message/color/textsize (bhop_2shiny2shuckle's countdown,
+// bhop_floodwaters' colours); Kill hides it for good.
 float(entity t, string in, string pm) SV_WtInput =
 {
-	local float on;
+	local float on, sp;
+	local string k, v;
 	if (t.vbsp_fx_dead)
 		return TRUE;
 	on = t.SendEntity ? t.vbsp_wt_on : !(t.spawnflags & 1);
@@ -4523,11 +4543,29 @@ float(entity t, string in, string pm) SV_WtInput =
 	else if (in == "toggle")
 		on = !on;
 	else if (in == "setmessage")
-	{
-		if (t.vbsp_wt_set)
-			strunzone(t.vbsp_wt_msg);
-		t.vbsp_wt_msg = strzone(pm);
-		t.vbsp_wt_set = TRUE;
+		SV_WtMsg(t, pm);
+	else if (in == "addoutput")
+	{	// SV_IOAddOutput's split: key, a space, the value
+		sp = strstrofs(pm, " ", 0);
+		if (sp < 0)
+			return FALSE;
+		k = strtolower(SV_IOTrim(substring(pm, 0, sp)));
+		v = SV_IOTrim(substring(pm, sp + 1, -1));
+		if (k == "message")
+			SV_WtMsg(t, v);
+		else if (k == "color")
+		{
+			t.vbsp_wt_col = stov(v);
+			t.vbsp_wt_col = [bound(0, t.vbsp_wt_col_x, 255), bound(0, t.vbsp_wt_col_y, 255), bound(0, t.vbsp_wt_col_z, 255)];
+			t.vbsp_wt_set = t.vbsp_wt_set | WT_SET_COL;
+		}
+		else if (k == "textsize")
+		{
+			t.vbsp_wt_size = stof(v);
+			t.vbsp_wt_set = t.vbsp_wt_set | WT_SET_SIZE;
+		}
+		else
+			return FALSE;           // anything else is SV_IOAddOutput's
 	}
 	else if (in == "kill")
 	{

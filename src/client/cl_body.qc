@@ -747,12 +747,21 @@ void(float isnew) CSQC_Ent_Update =
 			}
 			self.fx_non = readbyte();
 			self.wt_nset = readbyte();
-			if (self.wt_nset)
-			{
-				if (self.wt_nmsg != "")
+			if (self.wt_nset & WT_SET_MSG)
+			{	// freed by the flag: strzone("") compares equal to ""
+				if (self.wt_nzoned)
 					strunzone(self.wt_nmsg);
 				self.wt_nmsg = strzone(readstring());
+				self.wt_nzoned = TRUE;
 			}
+			if (self.wt_nset & WT_SET_COL)
+			{
+				self.wt_ncol_x = readbyte();
+				self.wt_ncol_y = readbyte();
+				self.wt_ncol_z = readbyte();
+			}
+			if (self.wt_nset & WT_SET_SIZE)
+				self.wt_nsize = readfloat();
 			Wt_Net(self);
 		}
 		else if (f == ENTWIRE_LASERSTATE)

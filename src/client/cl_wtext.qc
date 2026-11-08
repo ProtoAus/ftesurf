@@ -9,7 +9,8 @@
   gap at 0.6; Momentum's training maps' titles centred over their subtitles: 0.45-0.56), the side off which way
   the text runs.  A font that does not resolve falls back to editor/worldtext, then Momentum's Roboto-Mono.
 
-  ENTWIRE_WTEXT (sv_entities.qc SV_WtSend) carries Enable/Disable/Toggle and SetMessage for a named one.
+  ENTWIRE_WTEXT (sv_entities.qc SV_WtSend) carries Enable/Disable/Toggle, SetMessage and AddOutput's message,
+  color and textsize for a named one.  Drawn when in the view cone and within vbsp_sprite_dist and ~400 x textsize.
 */
 
 #define WT_MAX        512       // the library's most on a map is 157 (bhop_2shiny2shuckle)
@@ -60,8 +61,13 @@ void(entity e) Wt_Net =
 		if (wt_tnc[i] != e.fx_ntnc || vlen(wt_org[i] - e.origin) > 0.1)
 			continue;
 		wt_on[i] = e.fx_non;
-		if (e.wt_nset)
+		if (e.wt_nset & WT_SET_MSG)
 			Wt_SetMsg(i, e.wt_nmsg);
+		if (e.wt_nset & WT_SET_COL)
+			wt_col[i] = e.wt_ncol * (1 / 255);
+		if (e.wt_nset & WT_SET_SIZE)
+		if (e.wt_nsize > 0)
+			wt_s[i] = e.wt_nsize;
 	}
 };
 
@@ -143,9 +149,9 @@ void() Wt_LoadForMap =
 };
 
 // Called from Sprite_Draw; returns the texts drawn.
-float(vector eye, vector fwd) Wt_Draw =
+float(vector eye, vector fwd, float maxdist) Wt_Draw =
 {
-	local float i, k, n, s, a, c, col, row, drawn, rad, x0;
+	local float i, k, n, s, a, c, col, row, drawn, rad, x0, len;
 	local vector o, r, u, mid, p, q, cl;
 	local string msg, mat;
 
@@ -167,10 +173,13 @@ float(vector eye, vector fwd) Wt_Draw =
 		u = wt_u[i];
 		mid = o + r * (n * a * 0.5) + u * (s * 0.5);
 		rad = n * a * 0.5 + s;
-		if (fwd * (mid - eye) < -rad)
-			continue;
-		if (vlen(mid - eye) - rad > s * 400)
+		len = vlen(mid - eye);
+		if (fwd * (mid - eye) < len * 0.259 - rad)
+			continue;                   // outside a 75-degree cone round the view (a 16:9 fov of 130 reaches 68 at its corners)
+		if (len - rad > s * 400)
 			continue;                   // under a couple of pixels tall
+		if (maxdist > 0 && len - rad > maxdist)
+			continue;
 		mat = sprmat_name[wt_mat[i]];
 		cl = wt_col[i];
 		for (k = 0; k < n; k = k + 1)

@@ -531,10 +531,11 @@ float  vbsp_fish_seen;                    // P1436: func_fish_pool in the lump
 void() Fish_LoadForMap;                  // cl_fish.qc
 float  vbsp_wt_seen;                      // P1438: point_worldtext in the lump
 float  wt_n;                              // P1438: cl_wtext.qc's texts (Sprite_Draw's early exit)
-.float wt_nset;                           // P1438: ENTWIRE_WTEXT as cl_body.qc reads it
+.float wt_nset, wt_nsize, wt_nzoned;      // P1438: ENTWIRE_WTEXT as cl_body.qc reads it
 .string wt_nmsg;
+.vector wt_ncol;
 void() Wt_LoadForMap;                    // cl_wtext.qc
-float(vector eye, vector fwd) Wt_Draw;
+float(vector eye, vector fwd, float maxdist) Wt_Draw;
 void(entity e) Wt_Net;
 .float fx_ncls, fx_ntnc, fx_non, fx_nfire;  // P1430: ENTWIRE_FXSTATE as cl_body.qc reads it
 // P1431: env_sprite and the spotlights a map switches.  Kept in the tables, hidden, and matched to the
@@ -3543,7 +3544,7 @@ void() Sprite_Draw =
 	drawn = drawn + Laser_Draw(eye, fwd, maxdist, skyon);   // P1252: adds its sky skips to spr_skyhid
 	drawn = drawn + Fx_Draw(eye, fwd, maxdist);             // P1430: tesla and env_beam arcs
 	drawn = drawn + Explode_Draw(eye, fwd);                 // P1435
-	drawn = drawn + Wt_Draw(eye, fwd);                      // P1438
+	drawn = drawn + Wt_Draw(eye, fwd, maxdist);             // P1438
 
 	if (dbg)
 	{

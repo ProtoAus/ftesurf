@@ -21,6 +21,9 @@
 
 ## next
 
+### P1438 Text in the world
+- Text that maps place in the world now shows (24 maps): signs, credits, tutorial hints, and counters and countdowns that change as the map runs.
+
 ### P1436 Fish swim
 - Fish pools now have fish (28 maps, about 1,300 fish): they school, wander round their pool and dart away when you come close.
 
