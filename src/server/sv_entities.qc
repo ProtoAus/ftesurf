@@ -1617,6 +1617,14 @@ void(string key, string value) ED_ParseUnknownEpair =
 	if (value == "")
 		return;
 
+	// P1425: point_template's Template01-16, env_entity_maker's EntityTemplate (sv_template.qc).
+	if (strtolower(substring(key, 0, 8)) == "template" && stof(substring(key, 8, -1)) >= 1)
+	{
+		self.tpl_names = strcat(self.tpl_names, value, "\n");
+		return;
+	}
+	if (!strcasecmp(key, "entitytemplate")) { self.tpl_maker = strcat(value); return; }
+
 	if (substring(key, 0, 2) == "On")
 	{
 		/*
@@ -1709,12 +1717,23 @@ void(string key, string value) ED_ParseUnknownEpair =
   matches several entities differing only in case is a map that is already
   ambiguous in Source, and guessing further would be inventing behaviour.
 */
+float(string q, string n) SV_NamesMatch;
+
 entity(string want, entity from) SV_FindByName =
 {
 	local entity d;
 
 	if (want == "")
 		return world;
+	// P1425: Source's NamesMatch (entitylist.cpp) takes a trailing '*' as "any name starting so"; 1,208
+	// outputs on 54 maps aim at one (bhop_4muddz's spawned teleporters are told to FireUser1 that way).
+	if (strstrofs(want, "*", 0) >= 0)
+	{
+		for (d = nextent(from); d; d = nextent(d))
+			if (d.targetname != "" && SV_NamesMatch(want, d.targetname))
+				return d;
+		return world;
+	}
 
 	d = find(from, targetname, want);
 	if (d)
@@ -3337,6 +3356,7 @@ float(string lk) SV_IOOutputKnown =
 {
 	// Build 37.
 	if (lk == "onmapspawn")   return TRUE;	// SV_EntityIOBuild, logic_auto
+	if (lk == "onentityspawned" || lk == "onentityfailedspawn") return TRUE;	// P1425 sv_template.qc
 	if (lk == "onnewgame")    return TRUE;	// SV_EntityIOBuild, logic_auto
 	if (lk == "onstarttouch") return TRUE;	// SV_TriggerIOTouch (x2 paths)
 	if (lk == "onendtouch")   return TRUE;	// SV_TriggerEndThink (x3 paths)
@@ -4629,6 +4649,9 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 
 	if (!strcmp(t.classname, "linked_portal_door"))
 		if (SV_PortalInput(t, in, pm, act))
+			return;
+	if (t.classname == "point_template" || t.classname == "env_entity_maker")
+		if (SV_TplInput(t, in, pm, act))     // P1425
 			return;
 	// P1378: csprogs draws these from what was sent; any input may change how they look.
 	if (t.SendEntity == SV_TrkPropSend)
@@ -6243,11 +6266,139 @@ void(entity pl) SV_UseFrame =
   buffer -- a nested call would clobber the record list mid-loop.  That is the
   kind of bug that produces a partial parse and no error.
 */
-void() SV_EntityIOBuild =
+// P1425: one entity's outputs from its .vbsp_io_raw (the map's, or a template instance's).
+void(entity e) SV_EntityIOBuildOne =
 {
-	local entity e, o, tail;
+	local entity o, tail;
 	local string rec, k, v, sep, lk;
 	local float  p0, pn, ptab, ntok;
+
+	tail = world;
+	p0 = 0;
+	while (1)
+	{
+		pn = strstrofs(e.vbsp_io_raw, "\n", p0);
+		if (pn < 0)
+			break;
+		rec = substring(e.vbsp_io_raw, p0, pn - p0);
+		p0 = pn + 1;
+
+		ptab = strstrofs(rec, "\t", 0);
+		if (ptab < 0)
+			continue;
+		k = substring(rec, 0, ptab);
+		v = substring(rec, ptab + 1, -1);
+
+		// Per value, not per map -- see the header.  ESC wins when present
+		// because a comma is legal INSIDE an ESC-separated parameter.
+		sep = ",";
+		if (strstrofs(v, vbsp_io_esc, 0) >= 0)
+			sep = vbsp_io_esc;
+
+		ntok = tokenizebyseparator(v, sep);
+		if (ntok < 2)
+			continue;				// no input name: nothing to fire
+
+		/*
+		  Build 63.  THE CEILING, and it exists because one map in the
+		  library kills the server without it.
+
+		  This loop spawns ONE EDICT PER DECLARED OUTPUT.  pr_maxedicts
+		  defaults to 131072 (engine/server/pr_cmds.c:76) and nothing in
+		  this game raises it; past that ED_Alloc calls Sys_Error
+		  ("no free edicts"), which is fatal and says nothing about why.
+
+		  bhop_miku_v2 is a music-sync map: 468 entities, and 416,366 of its
+		  416,464 outputs hang off ONE logic_relay driving a whole song of
+		  func_wall_toggle animation.  That is 3.2x the edict ceiling, so
+		  the map cannot load at all -- and could not before this build
+		  either.  This does not make it play; it makes it load, and makes
+		  it say what it dropped instead of dying.
+
+		  It is a 167x outlier and the number below is chosen against the
+		  rest of the library rather than against it: the next densest map
+		  is surf_forbidden_tomb4 at 2,494 outputs, and the MEDIAN map wires
+		  14.  32768 is therefore ~13x headroom over every other map in
+		  1315 while staying a quarter of the edict budget, leaving room for
+		  the vbsp_iodelay edicts SV_FireOutput spawns at runtime.
+		*/
+		if (vbsp_io_n >= VBSP_IO_MAXOUT)
+		{
+			vbsp_io_over_map = vbsp_io_over_map + 1;
+			if (SV_CensusAdd("output table full"))
+				dprint(sprintf("^1entity I/O: more than %g outputs on this map "
+				               "-- refusing the rest.  The map is playable but "
+				               "incomplete; see VBSP_IO_MAXOUT.\n",
+				               VBSP_IO_MAXOUT));
+			continue;
+		}
+
+		o = spawn();
+		o.classname    = "vbsp_output";
+		o.owner        = e;
+		o.vbsp_io_name   = strtolower(k);	//Patch 256: folded, see SV_FireOutput
+		o.vbsp_io_target = argv(0);
+		o.vbsp_io_input  = argv(1);
+		o.vbsp_io_param  = (ntok > 2) ? argv(2) : "";
+		o.vbsp_io_delay  = (ntok > 3) ? stof(argv(3)) : 0;
+		o.vbsp_io_times  = (ntok > 4) ? stof(argv(4)) : -1;
+
+		// Appended, not pushed: Source fires an entity's outputs in the
+		// order the map declares them, and two AddOutputs writing the same
+		// key in the wrong order is a different map.
+		if (tail)
+			tail.vbsp_io_next = o;
+		else
+			e.vbsp_io_out = o;
+		tail = o;
+		vbsp_io_n = vbsp_io_n + 1;
+
+		/*
+		  SAY WHICH OUTPUTS HAVE NO FIRING POINT.  This is a STATIC check
+		  against the list of names anything in this file actually fires,
+		  and it is the honest half of "reusable layer": an output we parse
+		  perfectly and never fire is invisible otherwise, and looks from
+		  the outside exactly like one we got wrong.
+
+		  bhop_futile has six OnJump (a Momentum output fired when the
+		  player jumps inside the trigger, wired to a basevelocity boost).
+
+		  THIS COMMENT USED TO SAY "FTE's Source pmove has no basevelocity
+		  concept at all".  THAT WAS WRONG, and it is corrected rather than
+		  quietly deleted because it was quoted onward into ENGINE_PATCHES.md
+		  and into the trigger_push essay below.  pm_source.c reads
+		  pmove.basevelocity in ELEVEN places -- the Z half-step in
+		  PMSrc_StartGravity and the add/subtract sandwiches around WalkMove
+		  and AirMove.  What was missing was a WRITER: the only one in the
+		  engine was Half-Life-specific, so for this game the field was
+		  permanently zero.  Engine Patch 240 adds one via .run_basevelocity,
+		  and this file now fires OnJump and honours AddOutput basevelocity.
+		*/
+		/*
+		  FTESurf Patch 256 added the second row: OnStartTouchAll and
+		  OnEndTouchAll (SV_TriggerIOTouch / SV_TriggerEndThink),
+		  OnLockedUse (SV_UseFrame), OnPass and OnFail (the TestActivator
+		  input in SV_ApplyInput), OnTimer (logic_timer).
+
+		  Build 63 moved the list itself up to SV_IOOutputKnown, where its
+		  hand-maintained-ness is written out at length and each name names
+		  its fire site.  The warning below is unchanged.
+		*/
+		lk = strtolower(k);
+		if (!SV_IOOutputKnown(lk) && !SV_RotButtonOutputKnown(e, lk) && !SV_SpinOutputKnown(e, lk))
+			if (SV_CensusAdd(strcat("output ", lk)))
+				dprint(sprintf("^3entity I/O: nothing fires '%s' -- %s's "
+				               "outputs on it are parsed and never run\n",
+				               k, e.classname));
+	}
+
+	e.vbsp_io_raw = "";				// the blob has done its job
+};
+
+void() SV_EntityIOBuild =
+{
+	local entity e, o;
+	local string k;
 
 	// Latched, not read per touch: SV_PassesFilter runs on every trigger touch
 	// of every frame, and a cvar lookup there would be the only cost this layer
@@ -6274,126 +6425,7 @@ void() SV_EntityIOBuild =
 		if (e.vbsp_io_raw == "")
 			continue;
 
-		tail = world;
-		p0 = 0;
-		while (1)
-		{
-			pn = strstrofs(e.vbsp_io_raw, "\n", p0);
-			if (pn < 0)
-				break;
-			rec = substring(e.vbsp_io_raw, p0, pn - p0);
-			p0 = pn + 1;
-
-			ptab = strstrofs(rec, "\t", 0);
-			if (ptab < 0)
-				continue;
-			k = substring(rec, 0, ptab);
-			v = substring(rec, ptab + 1, -1);
-
-			// Per value, not per map -- see the header.  ESC wins when present
-			// because a comma is legal INSIDE an ESC-separated parameter.
-			sep = ",";
-			if (strstrofs(v, vbsp_io_esc, 0) >= 0)
-				sep = vbsp_io_esc;
-
-			ntok = tokenizebyseparator(v, sep);
-			if (ntok < 2)
-				continue;				// no input name: nothing to fire
-
-			/*
-			  Build 63.  THE CEILING, and it exists because one map in the
-			  library kills the server without it.
-
-			  This loop spawns ONE EDICT PER DECLARED OUTPUT.  pr_maxedicts
-			  defaults to 131072 (engine/server/pr_cmds.c:76) and nothing in
-			  this game raises it; past that ED_Alloc calls Sys_Error
-			  ("no free edicts"), which is fatal and says nothing about why.
-
-			  bhop_miku_v2 is a music-sync map: 468 entities, and 416,366 of its
-			  416,464 outputs hang off ONE logic_relay driving a whole song of
-			  func_wall_toggle animation.  That is 3.2x the edict ceiling, so
-			  the map cannot load at all -- and could not before this build
-			  either.  This does not make it play; it makes it load, and makes
-			  it say what it dropped instead of dying.
-
-			  It is a 167x outlier and the number below is chosen against the
-			  rest of the library rather than against it: the next densest map
-			  is surf_forbidden_tomb4 at 2,494 outputs, and the MEDIAN map wires
-			  14.  32768 is therefore ~13x headroom over every other map in
-			  1315 while staying a quarter of the edict budget, leaving room for
-			  the vbsp_iodelay edicts SV_FireOutput spawns at runtime.
-			*/
-			if (vbsp_io_n >= VBSP_IO_MAXOUT)
-			{
-				vbsp_io_over_map = vbsp_io_over_map + 1;
-				if (SV_CensusAdd("output table full"))
-					dprint(sprintf("^1entity I/O: more than %g outputs on this map "
-					               "-- refusing the rest.  The map is playable but "
-					               "incomplete; see VBSP_IO_MAXOUT.\n",
-					               VBSP_IO_MAXOUT));
-				continue;
-			}
-
-			o = spawn();
-			o.classname    = "vbsp_output";
-			o.owner        = e;
-			o.vbsp_io_name   = strtolower(k);	//Patch 256: folded, see SV_FireOutput
-			o.vbsp_io_target = argv(0);
-			o.vbsp_io_input  = argv(1);
-			o.vbsp_io_param  = (ntok > 2) ? argv(2) : "";
-			o.vbsp_io_delay  = (ntok > 3) ? stof(argv(3)) : 0;
-			o.vbsp_io_times  = (ntok > 4) ? stof(argv(4)) : -1;
-
-			// Appended, not pushed: Source fires an entity's outputs in the
-			// order the map declares them, and two AddOutputs writing the same
-			// key in the wrong order is a different map.
-			if (tail)
-				tail.vbsp_io_next = o;
-			else
-				e.vbsp_io_out = o;
-			tail = o;
-			vbsp_io_n = vbsp_io_n + 1;
-
-			/*
-			  SAY WHICH OUTPUTS HAVE NO FIRING POINT.  This is a STATIC check
-			  against the list of names anything in this file actually fires,
-			  and it is the honest half of "reusable layer": an output we parse
-			  perfectly and never fire is invisible otherwise, and looks from
-			  the outside exactly like one we got wrong.
-
-			  bhop_futile has six OnJump (a Momentum output fired when the
-			  player jumps inside the trigger, wired to a basevelocity boost).
-
-			  THIS COMMENT USED TO SAY "FTE's Source pmove has no basevelocity
-			  concept at all".  THAT WAS WRONG, and it is corrected rather than
-			  quietly deleted because it was quoted onward into ENGINE_PATCHES.md
-			  and into the trigger_push essay below.  pm_source.c reads
-			  pmove.basevelocity in ELEVEN places -- the Z half-step in
-			  PMSrc_StartGravity and the add/subtract sandwiches around WalkMove
-			  and AirMove.  What was missing was a WRITER: the only one in the
-			  engine was Half-Life-specific, so for this game the field was
-			  permanently zero.  Engine Patch 240 adds one via .run_basevelocity,
-			  and this file now fires OnJump and honours AddOutput basevelocity.
-			*/
-			/*
-			  FTESurf Patch 256 added the second row: OnStartTouchAll and
-			  OnEndTouchAll (SV_TriggerIOTouch / SV_TriggerEndThink),
-			  OnLockedUse (SV_UseFrame), OnPass and OnFail (the TestActivator
-			  input in SV_ApplyInput), OnTimer (logic_timer).
-
-			  Build 63 moved the list itself up to SV_IOOutputKnown, where its
-			  hand-maintained-ness is written out at length and each name names
-			  its fire site.  The warning below is unchanged.
-			*/
-			lk = strtolower(k);
-			if (!SV_IOOutputKnown(lk) && !SV_RotButtonOutputKnown(e, lk) && !SV_SpinOutputKnown(e, lk))
-				if (SV_CensusAdd(strcat("output ", lk)))
-					dprint(sprintf("^3entity I/O: nothing fires '%s' -- %s's "
-					               "outputs on it are parsed and never run\n",
-					               k, e.classname));
-		}
-
-		e.vbsp_io_raw = "";				// the blob has done its job
+		SV_EntityIOBuildOne(e);
 	}
 
 	/*
@@ -6916,6 +6948,7 @@ void() SV_EntityReset =
 	vbsp_prop_nobox_n = 0;
 	vbsp_water_n = vbsp_reltele_n = 0;
 	vbsp_need_report = TRUE;
+	tpl_built = tpl_count = 0;      // P1425: CheckSpawn captures this map's named entities
 
 	// Both of these survive a map change, and vbsp_portal_first would survive it
 	// holding an edict from the LAST map -- which SV_OpenAllPortals would then
@@ -14230,14 +14263,28 @@ float(string cn, string pfx) SV_ClassPrefix =
 void(void() spawnfunc) CheckSpawn =
 {
 	local entity e;
-	local string pn;
+	local string pn, trec, tio;
 
 	e = self;
 	pn = self.parentname;
+	trec = tio = "";
+	if (!tpl_built && self.targetname != "")
+	{
+		SV_TplCapture(self);            // P1425: a point_template later in the lump may name it
+		trec = self.tpl_rec;
+		tio = self.tpl_io;
+	}
 	if (spawnfunc)
 		spawnfunc();
 	else
 		remove(self);
+	if (wasfreed(e))
+	{
+		if (trec != "")
+			strunzone(trec);
+		if (tio != "")
+			strunzone(tio);
+	}
 	if (pn != "" && wasfreed(e))
 		SV_TrkGone(pn);                 // P1378: csprogs or a late spawn draws it, so a train cannot see it
 };

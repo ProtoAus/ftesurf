@@ -14,7 +14,9 @@ shared/sh_portal.qc
 
 server/sv_plchain.qc        // P1406: StartFrame's player chain, before every walker
 server/sv_bank.qc
+server/sv_tpldefs.qc        // P1425: before sv_entities.qc (CheckSpawn, ED_ParseUnknownEpair)
 server/sv_entities.qc
+server/sv_template.qc       // P1425: point_template / env_entity_maker
 // P732: consumes entity pad fields, exposes lifecycle helpers to timer/player.
 server/sv_monolith.qc
 server/sv_zones.qc

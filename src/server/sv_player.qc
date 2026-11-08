@@ -2016,6 +2016,24 @@ void(string cmd) SV_ParseClientCommand =
 		return;
 	}
 
+	// P1425: `cmd ent_named <targetname>` (a trailing * matches as in outputs) -- what carries it (map data, ungated).
+	if (c == "ent_named")
+	{
+		local entity en;
+		local float nn;
+		nn = 0;
+		for (en = nextent(world); en; en = nextent(en))
+			if (en.targetname != "" && SV_NamesMatch(argv(1), en.targetname))
+			{
+				nn = nn + 1;
+				if (nn <= 16)
+					sprint(self, PRINT_HIGH, sprintf("ent_named %s: #%g %s '%s' %s solid %g at %v\n", argv(1),
+					       num_for_edict(en), en.classname, en.targetname, en.model, en.solid, en.origin));
+			}
+		sprint(self, PRINT_HIGH, sprintf("ent_named %s: %g\n", argv(1), nn));
+		return;
+	}
+
 	// What is holding me, right now.  See SV_Stuck.
 	if (c == "stuck")
 	{
