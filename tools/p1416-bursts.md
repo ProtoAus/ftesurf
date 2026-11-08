@@ -27,6 +27,13 @@ ftesurf-b8, 8 Nov 2026. Root C:\FTESurf-worktrees\xhair-20261108-b8 (bakes pbful
 - Bakes: 1797 burst rows on 122 maps; every pre-P1416 psys row survives unless its system is now a burst
   (287 of 287 names). One review (4 defects, all fixed in review 1).
 
+## Delivery
+
+- LIVE 8 Nov ~17:25 local: 12 lobbies (nobody on, 0 QC errors) qw c80f25c0 + cs 1014478d, fteqcc 73f9a1a4;
+  both installs the same (.prev 63fa2880 / 3a379a1b, .pre1416); csprogsvers 87a2cfc3 on the Pi and both
+  installs; codes.txt 96 -> 97 (.pre1416). Bakes in C:\FTESurftesurf only: 46 cfgs changed, index 7791
+  lines (1797 burst rows); the old index is in the root's backup/. Players get the bakes with the release.
+
 ## Open
 
 - surf_tensor2 and surf_boreas keep their installed bakes, which predate P1012's shapes (a rebake changes
