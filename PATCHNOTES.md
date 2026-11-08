@@ -21,6 +21,9 @@
 
 ## next
 
+### P1408 Five crosshairs
+- The crosshair setting (HUD editor) cycles five crosshairs and off: a new green plus, a small white dot and a magenta plus join the first two. Each draws at its own size.
+
 ### P1405 Teleports that check your name are predicted
 - Many maps rename you as you go (each stage, each bhop block) and send you back with teleports that check that name: falling into a stage's reset now takes you straight to the stage start instead of stopping at a hidden room and jumping a moment later. About 22,000 teleports on 577 maps.
 

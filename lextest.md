@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1408 crosshairs 1-5 -- LIVE (12 lobbies + both installs, 8 Nov); owner check pending
+
+- HUD editor, Crosshair: 1, 2, 3, 4, 5, off. 3 is your green 42 px plus at its native size, 4 the white
+  dot, 5 the magenta plus (its pixels are pure 255,0,255 -- say if that was meant to be another colour).
+- On an install without xhair5 (0.1.41 and older) slot 5 draws crosshair 1 until the next release.
+
 ## P1405 name-checked teleports predicted, P1403 report timing -- LIVE (12 lobbies + both installs, 8 Nov); owner check pending
 
 - surf_concretejungle: fall off stage 1 (or any stage). You should land at the stage start at once, not

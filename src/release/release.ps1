@@ -202,7 +202,7 @@ if ($BuildEngine -or $Bump) { $Build = $true }
 #  NOT derived from `git ls-files`.  git's allowlist is an allowlist for
 #  SOURCE: every build output here is deliberately gitignored, so a git-derived
 #  archive would be missing ftesurf64.exe, all three .dat, particles\ (7 files),
-#  gfx\crosshairs\ (4, precached by name in the QC), gfx\mapthumbs\ (6 atlases,
+#  gfx\crosshairs\ (5, precached by name in the QC), gfx\mapthumbs\ (6 atlases,
 #  29.3 MB) and data\map*.txt -- it would boot with no crosshairs, no map
 #  thumbnails and no fs_automount dependency list -- while ADDING 624
 #  cfg\test\ fixtures, src\, tools\ and surfd\.
@@ -286,9 +286,12 @@ $ShipGlobs = @(
     # move and still must: the Pi's run.sh execs it at boot.  lobby_local.cfg
     # stays denied by the unanchored tripwire below wherever it sits.
     @{ Path = 'ftesurf/cfg/lobby';      Filter = '*.cfg'; Deny = @('lobby_local.cfg') }
-    @{ Path = 'ftesurf/glsl';           Filter = '*' }
+    # P1408: snowcover/weather_sky v1-v2 are only the winter tests' "before" baselines (v3 ships).
+    @{ Path = 'ftesurf/glsl';           Filter = '*'; Deny = @('*.prev', 'ftesurf_snowcover_v1.glsl',
+        'ftesurf_snowcover_v2.glsl', 'ftesurf_weather_sky_v1.glsl', 'ftesurf_weather_sky_v2.glsl') }
     @{ Path = 'ftesurf/models';         Filter = '*' }
-    @{ Path = 'ftesurf/particles';      Filter = '*' }
+    # P1408: export.cfg is r_exportalleffects output (cfg/test/b56p) and ftesurf_src.cfg a test fixture.
+    @{ Path = 'ftesurf/particles';      Filter = '*'; Deny = @('export.cfg', 'ftesurf_src.cfg', '*.pre*') }
     # P1278 ramp wear (tools/rampwear.py) and P1286 snow masks (tools/snowmask.py), untracked like the particle
     # bakes; under gfx/ because installed launchers refuse a feed naming data/ or textures/ subfolders (P1293)
     @{ Path = 'ftesurf/gfx/rampwear';   Filter = '*.txt' }

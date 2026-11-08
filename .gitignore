@@ -295,13 +295,14 @@ __pycache__/
 !/ftesurf/gfx/winter/surf_christmas.txt
 !/ftesurf/gfx/winter/surf_frost.txt
 !/ftesurf/gfx/winter/surf_bluewinter.txt
-# The selectable crosshairs ship in release archives (Patch 986: 4 replaced 3 in the cycle).
+# The selectable crosshairs ship in release archives (P1408: 1-5, each its own slot).
 !/ftesurf/gfx/crosshairs/
 /ftesurf/gfx/crosshairs/*
 !/ftesurf/gfx/crosshairs/xhair1.png
 !/ftesurf/gfx/crosshairs/xhair2.png
 !/ftesurf/gfx/crosshairs/xhair3.png
 !/ftesurf/gfx/crosshairs/xhair4.png
+!/ftesurf/gfx/crosshairs/xhair5.png
 # Authored shared SUI chrome; no other UI files are implicitly publishable.
 !/ftesurf/gfx/ui/
 /ftesurf/gfx/ui/*

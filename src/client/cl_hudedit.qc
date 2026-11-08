@@ -639,8 +639,8 @@ string(string id, float row) HE_OptDef =
 		if (row == 3) return "hud_specby|Who's watching|t||"
 		                     "|List the players spectating you, under the map info.";
 		// 0 is off; the engine's own, -1, prints as the number and steps to 1.
-		if (row == 4) return "hud_crosshair|Crosshair|c|1 2 3 0|1;2;3;off"
-		                     "|Cycle the three crosshairs and off. 3 is the Counter-Strike: Source style.";
+		if (row == 4) return "hud_crosshair|Crosshair|c|1 2 3 4 5 0|1;2;3;4;5;off"
+		                     "|Cycle the five crosshairs and off.";
 		if (row == 5) return "hud_font_outline|Text|c|0 1 2|plain;outline;shadow"
 		                     "|Dark outline around the text drawn in the Google face, and a grey drop shadow behind it -- the timer and the speed take the shadow too. plain is the old look; outline skips the second pass.";
 		if (row == 6) return "hud_update|Number rate|c|-1 10 20 30 0|tick;10Hz;20Hz;30Hz;frame"

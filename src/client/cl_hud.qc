@@ -802,10 +802,12 @@ void() HUD_ReadCvars =
 	ui_cv_strafepos_x = cvar("hud_strafe_x");  ui_cv_strafepos_y = cvar("hud_strafe_y");
 };
 
-float hud_xh4;                          // Patch 986: xhair4's width; 0 = not in this install
+float hud_xhw[5];                       // P1408: xhair1-5's widths; 0 = not in this install
 void() HUD_RegisterCvars =
 {
 	local vector v;
+	local float i, fh;
+	local string pic;
 
 	ui_ehist_e = memalloc(sizeof(float) * EWIN);    // zeroed, as the arrays were
 	ui_ehist_t = memalloc(sizeof(float) * EWIN);
@@ -1305,8 +1307,8 @@ void() HUD_RegisterCvars =
 	                             is build 65's 0, moved out of the way; it is not
 	                             in the chip's cycle and is reachable only here.
 	                         0 = OFF.  No crosshair at all, ours or the engine's.
-	                         1/2/3 = gfx/crosshairs/xhair1|2|4.png (Patch 986: 4
-	                             replaced 3, which an older install keeps).
+	                         1-5 = gfx/crosshairs/xhair1-5.png (P1408; from Patch
+	                             986 until then 3 drew xhair4).
 	    hud_crosshair_size   pixels.  Pinned at 32 -- the files' native size, and
 	                         anything else is a real resample.  NOT multiplied by
 	                         hud_scale: a sight is not text.
@@ -1338,12 +1340,19 @@ void() HUD_RegisterCvars =
 	  exactly the frame they are looking at the thing that caused it.  Three 32x32
 	  RGBA textures is under 16 KB of VRAM for all of them.
 	*/
-	precache_pic("gfx/crosshairs/xhair1");
-	precache_pic("gfx/crosshairs/xhair2");
-	precache_pic("gfx/crosshairs/xhair3");
-	precache_pic("gfx/crosshairs/xhair4");
-	v = drawgetimagesize("gfx/crosshairs/xhair4");
-	hud_xh4 = v_x;
+	for (i = 1; i <= 5; i = i + 1)
+	{
+		pic = sprintf("gfx/crosshairs/xhair%g", i);
+		precache_pic(pic);
+		hud_xhw[i - 1] = 0;
+		fh = fopen(strcat(pic, ".png"), FILE_READ);   // drawgetimagesize sizes a missing pic as its checkerboard
+		if (fh >= 0)
+		{
+			fclose(fh);
+			v = drawgetimagesize(pic);
+			hud_xhw[i - 1] = v_x;
+		}
+	}
 };
 
 /*
@@ -3665,16 +3674,24 @@ string() HUD_MapStages =
   configured crosshair; only the ghost's detached camera suppresses it.
 ===========================================================================
 */
+// P1408: 1-5 as given; an install without that file (5 arrived after 0.1.41; lobbies serve this csprogs
+// to older releases) draws the first, and one without that either draws none, not a checkerboard.
+float(float n) HUD_CrosshairN =
+{
+	if (n < 1 || n > 5 || n != floor(n))
+		return 0;
+	if (hud_xhw[n - 1] > 0)
+		return n;
+	return (hud_xhw[0] > 0) ? 1 : 0;
+};
+
 string(float n) HUD_CrosshairPic =
 {
 	if (n == 1) return "gfx/crosshairs/xhair1";
 	if (n == 2) return "gfx/crosshairs/xhair2";
-	if (n == 3)
-	{
-		if (hud_xh4 > 0)
-			return "gfx/crosshairs/xhair4";
-		return "gfx/crosshairs/xhair3";     // an install from before the release that ships 4
-	}
+	if (n == 3) return "gfx/crosshairs/xhair3";
+	if (n == 4) return "gfx/crosshairs/xhair4";
+	if (n == 5) return "gfx/crosshairs/xhair5";
 	return "";
 };
 
@@ -3693,6 +3710,7 @@ void(vector scr) HUD_DrawCrosshair =
 	if (rec_gh_on)
 		return;
 
+	n = HUD_CrosshairN(n);
 	pic = HUD_CrosshairPic(n);
 	if (pic == "")
 		return;
@@ -3700,11 +3718,10 @@ void(vector scr) HUD_DrawCrosshair =
 	size = cvar("hud_crosshair_size");
 	if (size < 1)
 		size = 32;                  // the files' native size
-	// The cvar is sized for the 32 px files; xhair4 is 42 and keeps that ratio.
-	// Both put the sight's centre pixel at width/2 - 1, so they centre on the same pixel.
-	if (n == 3)
-	if (hud_xh4 > 0)
-		size = rint(size * hud_xh4 / 32);
+	// The cvar is sized for 32 px files; a wider one (xhair3 is 42) keeps that ratio. Each puts its
+	// centre pixel at width/2 - 1, so all centre on the same screen pixel.
+	if (hud_xhw[n - 1] > 0)
+		size = rint(size * hud_xhw[n - 1] / 32);
 
 	a = cvar("hud_crosshair_alpha");
 	if (a <= 0 || a > 1)
