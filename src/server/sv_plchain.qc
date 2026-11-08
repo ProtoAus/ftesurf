@@ -1,10 +1,11 @@
 /*
   P1406: StartFrame's per-frame functions each walked every edict with find(e, classname, "player")
-  (surf_voyager, ~1,500 edicts: most of StartFrame's QC time).  StartFrame now builds the chain once
-  and they read it through SV_PlNext; outside StartFrame SV_PlNext is find().  It is find()'s answer:
-  .classname "player" is written by PutClientInServer on a client edict and otherwise only by the
-  lump (spawn, SV_LateSpawnAll's restore, both before SV_PlStrayScan); AddOutput keeps it
-  (sv_entities.qc).  Test-only check build and mutants: P1406 in BACKLOG.md.
+  (surf_voyager, ~1,500 edicts: most of StartFrame's QC time).  StartFrame now chains the client
+  edicts named "player" once and they read it through SV_PlNext; outside StartFrame, or on a map
+  that names a non-client edict "player", SV_PlNext is find().  The same answer as find(): .classname
+  "player" is written by PutClientInServer on a client edict and otherwise only by the lump (spawn,
+  SV_LateSpawnAll's restore, both before SV_PlStrayScan); AddOutput keeps it (sv_entities.qc).  A new
+  writer of that classname must keep this true.  Check build and mutants: P1406 in BACKLOG.md.
 */
 .entity sv_plnext;
 entity  sv_plhead;
@@ -26,21 +27,16 @@ void() SV_PlChainBuild =
 {
 	local entity e, last;
 
-	sv_plhead = last = world;
-	// Client edicts are 1..sv.allocated_client_slots (PF_clienttype); nextent skips a freed one as find does.
 	if (sv_plstray)
-		e = find(world, classname, "player");
-	else
-		e = nextent(world);
-	for (; e; e = sv_plstray ? find(e, classname, "player") : nextent(e))
+		return;                     // such a map keeps find() everywhere (sv_plok stays FALSE)
+	sv_plhead = last = world;
+	// Client edicts are 1..sv.allocated_client_slots (PF_clienttype) and are never freed (ED_CanFree).
+	for (e = nextent(world); e; e = nextent(e))
 	{
-		if (!sv_plstray)
-		{
-			if (clienttype(e) == CLIENTTYPE_NOTACLIENT)
-				break;
-			if (e.classname != "player")
-				continue;
-		}
+		if (clienttype(e) == CLIENTTYPE_NOTACLIENT)
+			break;
+		if (e.classname != "player")
+			continue;
 		if (last)
 			last.sv_plnext = e;
 		else
@@ -52,14 +48,12 @@ void() SV_PlChainBuild =
 	sv_plok = TRUE;
 };
 
-// find(e, classname, "player").  A freed one is skipped as find() skips it (an IO Kill from
-// SV_SpFrame could only reach a map brush spawned with that classname).
+// find(e, classname, "player").
 entity(entity e) SV_PlNext =
 {
 	if (!sv_plok)
 		return find(e, classname, "player");
-	e = (e == world) ? sv_plhead : e.sv_plnext;
-	while (e && wasfreed(e))
-		e = e.sv_plnext;
-	return e;
+	if (e == world)
+		return sv_plhead;
+	return e.sv_plnext;
 };
