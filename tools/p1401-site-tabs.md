@@ -15,7 +15,11 @@ I need like a login button on the main site, or the leaderboard section; ensure 
   beside them); reportd's templates/reportd_reports.html in place + HUP of its gunicorn master
   (backup in /srv/nvme/agent-work/report-1391-3a/). Checked: the three pages serve the pill,
   /admin/reports answers 302 to the login, home page header looked at in headless Chrome.
-- NOT live: the leaderboard (surfd web/board.html, board.css) and surfd's admin templates. They are
+- Backend half LIVE 8 Nov 03:39:43Z: pi.dev's generation 28d1646b (root
+  /srv/nvme/agent-work/ac-reader-tabs-20261108T012932Z-01a1, "seven markup/CSS substitutions"), activated
+  by Lex; lobbies.json was 502 from ~03:38:30 to ~03:40:05Z during the swap. Checked: /worldofsurf/board/
+  serves the Zoning tab and the Log in pill.
+- (Before that) NOT live: the leaderboard (surfd web/board.html, board.css) and surfd's admin templates. They are
   in the guarded generation's pinned runtime; pi.dev had a successor root of the live generation in
   preparation (ac-reader-next-20261107T170730Z-01a1), so a second generation was not started.
   BACKLOG (screenshots/report entry) asks the next generation to carry them.

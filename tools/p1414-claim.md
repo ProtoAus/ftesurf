@@ -1,0 +1,1 @@
+P1414 claimed by ftesurf-3a (Claude Code session 5e4b2e2d) 2026-11-08. Player report (400 ms ping): a map no lobby runs switches a lobby but the menu never connects ('map change unsuccessful'); the menu's 1 s lobbies.json poll replaces each request before a slow reply lands, so every reply is dropped as stale and the 20 s wait expires.
