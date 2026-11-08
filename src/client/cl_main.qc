@@ -642,10 +642,8 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	  1.25  default: 25% slack on the tangent, so turning has margin before a
 	        glare needs its first trace.
 
-	  The cone is built from `fov` assuming a SQUARE screen, which makes it wider
-	  than any real widescreen frustum -- deliberately, because a cone that is
-	  too generous wastes a few rays and a cone that is too tight drops a glare
-	  that is on screen.  See the essay in Sprite_Glare.
+	  P1422: the cone circumscribes the drawn view (VF_FOV); the sky test uses it
+	  too, at 1.25 (cl_sprites.qc Sprite_ConeTan).
 	*/
 	registercvar("vbsp_glare_cull", "1.25");
 

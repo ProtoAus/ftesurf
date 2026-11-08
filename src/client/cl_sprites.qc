@@ -1988,6 +1988,34 @@ void(vector a, vector b, vector c, vector d, string mat, float flags,
   survived the depth test (glow_overlay.cpp:247-250).
 ===========================================================================
 */
+// P1422: the tangent of the cone through the corners of the view actually drawn, times `margin`, from the
+// engine's own projection (unproject applies scr_fov_mode and the aspect; VF_FOV reads 0 here, as the view's fov
+// is the approximate one until it renders, and the old cone from `fov` on a square screen missed the edges of a
+// 21:9 screen and of fov modes 1 and 3). 0 -- nothing culled -- when a corner is 89+ degrees off `fwd`.
+float(float margin, vector fwd) Sprite_ConeTan =
+{
+	local vector mn, sz, eye, p;
+	local float k, c, t, best;
+	mn = getproperty(VF_MIN);
+	sz = getproperty(VF_SIZE);
+	eye = getproperty(VF_ORIGIN);
+	if (sz_x <= 0 || sz_y <= 0)
+		return 0;
+	best = 0;
+	for (k = 0; k < 4; k = k + 1)
+	{
+		p = unproject([mn_x + ((k == 1 || k == 3) ? sz_x : 0), mn_y + ((k >= 2) ? sz_y : 0), 0.5]);
+		p = normalize(p - eye);
+		c = p * fwd;
+		if (c < 0.0175)
+			return 0;
+		t = sqrt(1 - c * c) / c;
+		if (t > best)
+			best = t;
+	}
+	return best * margin;
+};
+
 void() Sprite_Glare =
 {
 	local float  i, n, budget, decay, target, step, back, jmp, spd;
@@ -1996,7 +2024,7 @@ void() Sprite_Glare =
 	local float  rays, hits, off;
 	local vector pr, pu, aim;
 	// BUILD 59: the view cull.
-	local float  visits, docull, tanx, fovx, fovy, zc, xc, rad, maxdist;
+	local float  visits, docull, tanx, maxdist, slope, glowcos, zc;
 	local vector fwd;
 	// BUILD 60: the adaptive rays, and the measured sweep.
 	local float  adapt, docorners, had, m, wrapped;
@@ -2143,13 +2171,9 @@ void() Sprite_Glare =
 	  hidden, and each spends 5 rays to establish what the centre ray alone
 	  already said.  That is the adaptive path below, added in build 60.
 
-	  THE CONE IS DELIBERATELY TOO WIDE.  It is built from the horizontal fov
-	  with a SQUARE aspect -- i.e. as if the screen were as tall as it is wide.
-	  Every real widescreen is shorter than that, so the cone circumscribes the
-	  true frustum and cannot cull something on screen.  Reading the real aspect
-	  would be tighter and would also make this depend on vid_conwidth/conheight,
-	  which are not reliably set here; a cone that is too generous costs a few
-	  wasted rays, a cone that is too tight costs correctness.
+	  P1422: the cone circumscribes the view actually drawn (Sprite_ConeTan, from
+	  VF_FOV). The square-from-`fov` cone that stood here missed the edges of a
+	  21:9 screen under scr_fov_mode 4 and of fov modes 1 and 3.
 
 	  vbsp_glare_cull is the margin ITSELF, not a boolean: 0 disables the cull
 	  entirely (the build-58 behaviour, and the A/B), 1.0 is the exact
@@ -2159,17 +2183,9 @@ void() Sprite_Glare =
 	*/
 	docull = cvar("vbsp_glare_cull");
 	maxdist = cvar("vbsp_sprite_dist");
-	tanx = 0;
-	if (docull > 0)
-	{
-		fovx = cvar("fov");
-		if (fovx <= 0 || fovx >= 180)
-			fovx = 90;
-		fovy = fovx * 0.5 * 0.0174532925;       // half-fov in radians
-		// tan = sin/cos; sqrt(2) promotes the horizontal half-angle to the
-		// diagonal of a SQUARE frustum, which is the conservative choice above.
-		tanx = (sin(fovy) / cos(fovy)) * 1.41421356 * docull;
-	}
+	tanx = (docull > 0) ? Sprite_ConeTan(docull, fwd) : 0;	// P1422: the drawn view's own cone, not a square from `fov`
+	slope = sqrt(1 + tanx * tanx);
+	glowcos = (0.825336 - tanx * 0.564642) / slope;
 
 	// ---- the amortised trace: `budget` RAYS per frame, round-robin ----------
 	/*
@@ -2291,27 +2307,32 @@ void() Sprite_Glare =
 		  counterpart in the draw loop because the rasteriser does that clipping
 		  for free; here it has to be explicit.
 		*/
-		if (docull > 0)
-		{
-			rad = spr_rad[i];
-			zc = fwd * d;
-			if (zc < -rad)
-			{                       // behind the eye
-				spr_gcull = spr_gcull + 1;
-				continue;
-			}
-			if (maxdist > 0 && vlen(d) - rad > maxdist)
-			{                       // past the draw distance, so it is not drawn
-				spr_gcull = spr_gcull + 1;
-				continue;
-			}
-			// Outside the cone.  Only meaningful in front of the eye; a glare
-			// straddling the eye plane (-rad <= zc <= 0) is kept, because its
-			// distance from the axis says nothing useful there.
-			if (zc > 0)
+		if (tanx > 0)
+		{	// P1422: Sprite_SkyTick's view test, inline (see there)
+			if (spr_kind[i] == SPRK_GLOW)
 			{
-				xc = vlen(d - fwd * zc);        // distance from the view axis
-				if (xc - rad > zc * tanx)
+				if (d * fwd < glowcos * vlen(d))
+				{
+					spr_gcull = spr_gcull + 1;
+					continue;
+				}
+			}
+			else
+			{
+				zc = fwd * d;
+				if (zc < -spr_rad[i])
+				{
+					spr_gcull = spr_gcull + 1;
+					continue;
+				}
+				if (maxdist > 0)
+				if (vlen(d) - spr_rad[i] > maxdist)
+				{
+					spr_gcull = spr_gcull + 1;
+					continue;
+				}
+				if (zc > 0)
+				if (vlen(d - fwd * zc) - zc * tanx > spr_rad[i] * slope)
 				{
 					spr_gcull = spr_gcull + 1;
 					continue;
@@ -2654,11 +2675,14 @@ float(vector eye, vector p, float st) Sprite_SkyTest =
 // Rays still cap the traces a frame, and at most 256 are looked at a frame.
 // P1422: vbsp_sprite_skyrays is rays per 60th of a second, never more a frame than before (a per-frame count
 // traced 14,000 a second at 220 fps: surf_fairy 222 fps, 338 with the test off), and a sprite out of view or
-// past vbsp_sprite_dist spends none -- it draws nothing whatever its verdict (Sprite_Glare's cone and margin).
-// Beams are long, so their centre says little about whether they are on screen: always tested.
+// past vbsp_sprite_dist spends none -- it draws nothing whatever its verdict (Sprite_ConeTan's cone, margin 1.25;
+// the sphere test allows for the cone's slope). A glow is a quad 100 units out along its direction, up to ~34
+// degrees across, with no distance cull: judged by angle with that margin. Beams are long, so their centre says
+// little about whether they are on screen: always tested. The test is inline here and in Sprite_Glare: one QC
+// call per visit cost ~4% on surf_fairy.
 void(vector eye) Sprite_SkyTick =
 {
-	local float i, k, n, rays, look, st, tanx, fovx, zc, maxdist, docull;
+	local float i, k, n, rays, look, st, tanx, maxdist, slope, glowcos, zc;
 	local vector d, fwd;
 
 	n = spr_n + beam_n;
@@ -2669,13 +2693,10 @@ void(vector eye) Sprite_SkyTick =
 	rays = floor(spr_skycarry);
 	spr_skycarry = spr_skycarry - rays;
 	fwd = v_forward;
-	fovx = cvar("fov");
-	if (fovx <= 0 || fovx >= 180)
-		fovx = 90;
-	fovx = fovx * 0.5 * 0.0174532925;
-	tanx = (sin(fovx) / cos(fovx)) * 1.41421356 * 1.25;
+	tanx = (cvar("vbsp_sprite_skycull") > 0) ? Sprite_ConeTan(1.25, fwd) : 0;
+	slope = sqrt(1 + tanx * tanx);
+	glowcos = (0.825336 - tanx * 0.564642) / slope;	// cos(cone + 0.6 rad)
 	maxdist = cvar("vbsp_sprite_dist");
-	docull = cvar("vbsp_sprite_skycull") > 0;
 	if (spr_skyburst > 0)
 	{
 		rays = rays * 4;
@@ -2712,16 +2733,27 @@ void(vector eye) Sprite_SkyTick =
 			if (d * d < 256)
 				continue;
 		}
-		if (i < spr_n && docull && st != SKY_UNTESTED)
-		{	// P1422: the view test (Sprite_Glare's); an untested sprite is drawn, so every one gets a first verdict
+		// P1422: an untested sprite is drawn, so every one gets a first verdict wherever it is
+		if (i < spr_n && tanx > 0 && st != SKY_UNTESTED)
+		{
 			d = spr_org[i] - eye;
-			zc = fwd * d;
-			if (zc < -spr_rad[i])
-				continue;
-			if (maxdist > 0 && vlen(d) - spr_rad[i] > maxdist)
-				continue;
-			if (zc > 0 && vlen(d - fwd * zc) - spr_rad[i] > zc * tanx)
-				continue;
+			if (spr_kind[i] == SPRK_GLOW)
+			{
+				if (d * fwd < glowcos * vlen(d))
+					continue;
+			}
+			else
+			{
+				zc = fwd * d;
+				if (zc < -spr_rad[i])
+					continue;
+				if (maxdist > 0)
+				if (vlen(d) - spr_rad[i] > maxdist)
+					continue;
+				if (zc > 0)
+				if (vlen(d - fwd * zc) - zc * tanx > spr_rad[i] * slope)
+					continue;
+			}
 		}
 		spr_skyat[i] = eye;
 		rays = rays - 1;
@@ -2732,15 +2764,17 @@ void(vector eye) Sprite_SkyTick =
 	}
 };
 
-// P1422 vbsp_sprite_debug: sprites within 30 degrees of the view axis -- on screen whatever the view test in
-// Sprite_SkyTick says -- and how many have a sky verdict and how many it hides.
+// P1422 vbsp_sprite_debug: the sprites within 30 degrees of the view axis (on screen whatever Sprite_Unseen says):
+// how many are hidden behind the sky, how many verdicts were traced 16+ units from this eye (or never), and how many
+// a fresh trace contradicts on drawn-or-hidden. Settled, the last must be 0 with the cull on and off.
 string(vector eye, vector fwd) Sprite_SkyAxisCensus =
 {
-	local float i, n, tested, behind;
+	local float i, n, behind, stale, wrong, st;
 	local vector d;
 	n = 0;
-	tested = 0;
 	behind = 0;
+	stale = 0;
+	wrong = 0;
 	for (i = 0; i < spr_n; i = i + 1)
 	{
 		d = spr_org[i] - eye;
@@ -2749,12 +2783,24 @@ string(vector eye, vector fwd) Sprite_SkyAxisCensus =
 		if (normalize(d) * fwd < 0.866)
 			continue;
 		n = n + 1;
-		if (spr_sky[i] != SKY_UNTESTED)
-			tested = tested + 1;
-		if (spr_sky[i] == SKY_BEHIND)
+		st = spr_sky[i];
+		if (st == SKY_ROOM)
+			continue;
+		if (st == SKY_BEHIND)
 			behind = behind + 1;
+		if (st == SKY_UNTESTED || !spr_skyat)
+			stale = stale + 1;
+		else
+		{
+			d = eye - spr_skyat[i];
+			if (d * d >= 256)
+				stale = stale + 1;
+		}
+		if ((Sprite_SkyTest(eye, spr_org[i], st) == SKY_BEHIND) != (st == SKY_BEHIND))
+			wrong = wrong + 1;
 	}
-	return sprintf("  sky verdicts within 30 degrees of the view axis: %g sprites, %g tested, %g behind the sky\n", n, tested, behind);
+	return sprintf("  sky verdicts within 30 degrees of the view axis: %g sprites, %g behind the sky, %g stale, %g contradicted now (cone tan %g, skycull %g)\n",
+	               n, behind, stale, wrong, Sprite_ConeTan(1.25, fwd), cvar("vbsp_sprite_skycull"));
 };
 
 void() Sprite_Draw =
