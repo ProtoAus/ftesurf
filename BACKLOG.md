@@ -174,17 +174,29 @@
   start (mode 4, ~7 ms more input age) hides them. Driver-forced vsync detection (swap median > 1 ms) is
   untested: windowed, vid_vsync 1 did not block the swap; needs exclusive fullscreen on a fixed-refresh display.
 
-## 0.1%-low survey (8 Nov, started)
+## 0.1%-low survey (8 Nov, all 60 maps)
 
-- artifacts/run_lowsurvey.py: each map's best board replay from a fresh map load, Lex's settings, 35 s
-  (survey-all.txt: 60 maps -- 40 with replays in Lex's board cache, 20 heavy candidates from /api/board).
-  18 of 60 done (artifacts/survey-results.tsv), worst 0.1% first: surf_quarantine 51 (avg 593; one 83 ms hitch),
-  surf_fairy 52 (avg 214, 99 stutters, frames 15-33 ms along the route), surf_colony 83 (avg 316), surf_bossfight
-  91 (fixed by P1409 at r_blendsort 2), surf_shibboleth 96 (one 58 ms hitch), surf_jumble 138, surf_lux 140 (one
-  41 ms hitch), demise 179, boreas 180, beginner 188, tensor2 196, garden 201; the rest 204-288.
-  Leads: fairy and colony are heavy throughout (profile them); quarantine/shibboleth/lux/beginner are single long
-  frames on a first pass (first-traversal loading: check r_mapready_info). Heavy maps with no replay
-  (eternity, vestige, voyager, lost_world_v2, affliction, waterworks...) need a scripted route instead.
+- artifacts/run_lowsurvey.py -> survey2-results.tsv: each map's best board replay from a fresh load, 35 s, one build
+  for all (exe 824d41cc patch-1413, cs 3a379a1b = the lobbies' then), Lex's settings pinned per map (fullfx, MSAA 4,
+  reflection MSAA 2, r_blendsort 2). The fixture had lacked cfg/maps, gfx (rampwear, snowmask) and the P1411 bakes:
+  synced from C:\FTESurf first, so the first 18 rows were redone. 58 played (dragon_css, utopia: replay never opens).
+  Median map: 658 fps average, 0.1% low 221.
+- Worst average: fairy 209, jumble 337, pantheon 356, colony 370, mesa_revo 387, orgrimmar 439, hourglass 448.
+  Worst 0.1%: orgrimmar 37 (one 83 ms frame), nuclear 51 (54), tendies 61 (70), fairy 69, mesa_revo 76, pantheon
+  96, hourglass 107 (64), lovetunnel 117, colony 118.
+- The long single frames are first-play costs: orgrimmar and tendies in a new session had none (worst 6.5 and 8 ms).
+  Shader compiles and cold file reads both fit; the fixture's warm list grew 460 -> 844 entries over the survey.
+  The starter list (glsl/warmseed.txt, P1282) came from a patch-1284 exe and 41 of its maps never ran. Lead:
+  re-seed from these 58 maps on a current build, counting late compiles (r_mapready_info) on a first play with an
+  empty data/glslwarm.txt.
+- Slow-throughout maps (artifacts/run_twopass.py, r_budget 3; twopass/<map>-budget.txt) are all CPU-bound:
+  - fairy, jumble: cl_sprites 1.0-2.8 ms -> P1422 for the sky test (fairy 222 -> 303). Sprite_Glare is the next
+    ~0.46 ms on fairy (338 -> 400 with vbsp_glare 0): 40 rays a frame, the same per-frame scaling, but its response
+    time is the cost of normalising it (Lex's call).
+  - pantheon, colony, mesa_revo: CPU-side draw calls 0.85-1.47 ms; a third of pantheon's samples are in the NVIDIA
+    driver, half of that under BE_RenderMeshProgram (~0.7 us a draw, ~500-800 draws). Fewer draws is the lever.
+    colony also VBSP PrepareFrame 0.72 ms.
+  - Every map: ~0.5 ms of HUD QC (MPad, run lines, HUD) at the profiler's inflated rate.
 
 ## The window's multisampled pixel format duplicates P1260's scene target (8 Nov)
 
