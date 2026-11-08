@@ -38,3 +38,7 @@ One reviewer, code only. Fixed (7698c5f8): a disconnected holder kept a game_ui 
 clienttype now), fires after an output deactivated it mid-think, fire-once look triggers left in the touch
 masks (early OnEndTouch), UpdateHealth's sign / change guard / OnHealthChanged. Noted, as Source: one look
 timer per trigger, so two players in one look trigger share it.
+
+## Delivery
+
+LIVE with P1425 (tools/p1425-templates.md, Delivery): lobbies + both installs, qw 53744f28 / cs 190d9980.

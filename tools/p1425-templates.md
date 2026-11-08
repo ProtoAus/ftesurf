@@ -68,3 +68,10 @@ without Kill relinked into the OnJump chain) closed in fe3954f3.
 - Solid, parented, mover and non-trigger brush members are not templated (kept as they were, above).
 - The client draws lump effects (sprites, sprite trails) of template members from load; b8's effect walkers
   take Tpl_ClMember next (P1426/P1430).
+
+## Delivery
+
+LIVE 8 Nov ~22:55 local with P1428: 12 lobbies (build.ps1 -Pi from main bf6cf046; two occupied lobbies warned)
+qw 53744f28 / cs 190d9980, 0 QC errors in server1-12.log since the restart; codes.txt 101 -> 102 (.pre1425);
+both installs qw/cs (.prev = P1426's 91a462f4 / 6f716240), csprogsvers 7f0185bf seeded in both. Players' own
+games get it with the next release.
