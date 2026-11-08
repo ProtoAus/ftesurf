@@ -21,8 +21,7 @@
 #define FX_SEGS       10
 #define FX_MINI       0.015     // the shortest restrike: one server tick (StrikeTime < 0 makes it 0)
 #define FX_FAR        6000      // a source farther than this (past its radius) does not spark
-#define FX_CLS_TESLA  1         // ENTWIRE_FXSTATE classes (sh_defs.qc)
-#define FX_CLS_BEAMARC 2
+#define FX_CLS_BEAMARC 2        // client-only (sh_defs.qc has the wire's classes)
 
 float  *fx_cls;
 vector *fx_org;
@@ -364,7 +363,6 @@ void(float want) Fx_LoadForMap =
 };
 
 // ENTWIRE_FXSTATE (cl_body.qc): on, and the sparks the new events ask for.
-.float fx_ncls, fx_ntnc, fx_non, fx_nfire;
 
 float fx_dbg_t;
 
@@ -373,6 +371,11 @@ void(entity e) Fx_Net =
 	local float i, k;
 	if (cvar("vbsp_fx_debug"))
 		print(sprintf("fx: net class %g at %v name %g on %g fire %g (%g sources)\n", e.fx_ncls, e.origin, e.fx_ntnc, e.fx_non, e.fx_nfire, fx_n));
+	if (e.fx_ncls == FX_CLS_SPRITE || e.fx_ncls == FX_CLS_SPOT)
+	{
+		Sprite_FxNet(e);
+		return;
+	}
 	for (i = 0; i < fx_n; i = i + 1)
 	{
 		if (fx_cls[i] != e.fx_ncls || fx_tnc[i] != e.fx_ntnc || vlen(fx_korg[i] - e.origin) > 0.1)

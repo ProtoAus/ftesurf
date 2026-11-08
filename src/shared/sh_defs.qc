@@ -42,6 +42,9 @@
 #define ENTWIRE_SPSTATE 7       // P1387: a Patch 860 mover csprogs poses (sv_entities.qc SV_SpSend)
 #define ENTWIRE_PSYSSTATE2 8    // P1416: ENTWIRE_PSYSSTATE plus a start count and a fresh flag
 #define ENTWIRE_FXSTATE 9       // P1430: a look-only effect's class, on state and event count (cl_fx.qc)
+#define FX_CLS_TESLA    1       // its classes; 2 is cl_fx.qc's env_beam arc, which rides the laser wire
+#define FX_CLS_SPRITE   3       // P1431: env_sprite (cl_sprites.qc)
+#define FX_CLS_SPOT     4       // P1431: point_spotlight, beam_spotlight (cl_sprites.qc)
 
 // --- hulls ------------------------------------------------------------------
 // Source puts the player origin AT THE FEET, unlike Quake's centred origin.

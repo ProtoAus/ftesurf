@@ -521,14 +521,42 @@ float  vbsp_las_parent, vbsp_las_moving, vbsp_las_nomat, vbsp_las_over;
 float  vbsp_fx_tesla, vbsp_fx_arc, vbsp_fx_skip;   // P1430, counted by cl_fx.qc
 float  vbsp_fx_seen;                      // P1430: point_tesla in the lump (the walk below counts them)
 float  fx_n;                              // P1430: cl_fx.qc's arc sources (Sprite_Draw's early exit reads it)
+.float fx_ncls, fx_ntnc, fx_non, fx_nfire;  // P1430: ENTWIRE_FXSTATE as cl_body.qc reads it
+// P1431: env_sprite and the spotlights a map switches.  Kept in the tables, hidden, and matched to the
+// server's state (ENTWIRE_FXSTATE) on class, origin and name crc -- a template member on class and origin,
+// as a copy's name may carry the instance's "&0001".
+float  *spr_hide;                         // [SPR_MAX] (one pointer a line: fteqcc reads "*a, *b" as float**)
+float  *spr_tnc;                          // -1 = unnamed
+float  *spr_tplm;
+float  *beam_hide;                        // [BEAM_MAX], the shafts (i < beam_spot_n)
+float  *beam_tnc;
+float  *beam_tplm;
+float  vbsp_spr_hid, vbsp_beam_tpl, vbsp_spr_tpl;
+
+// P1431: a server state for an env_sprite (ShowSprite/HideSprite/ToggleSprite) or a spotlight (LightOn/LightOff).
+void(entity e) Sprite_FxNet =
+{
+	local float i, hide;
+	hide = !e.fx_non;
+	if (e.fx_ncls == FX_CLS_SPRITE)
+	{
+		for (i = 0; i < spr_n; i = i + 1)
+			if (spr_tnc[i] != -1 && (spr_tnc[i] == e.fx_ntnc || spr_tplm[i]) && vlen(spr_org[i] - e.origin) < 0.1)
+				spr_hide[i] = hide;
+		return;
+	}
+	for (i = 0; i < beam_spot_n; i = i + 1)
+		if (beam_tnc[i] != -1 && (beam_tnc[i] == e.fx_ntnc || beam_tplm[i]) && vlen(beam_org[i] - e.origin) < 0.1)
+			beam_hide[i] = hide;
+};
 float  vbsp_ebm_seen, vbsp_ebm_n, vbsp_ebm_off, vbsp_ebm_arc, vbsp_ebm_skip, vbsp_ebm_noise;   // not vbsp_beam_*: the shafts'
 float  las_drawn;                         // laser beams drawn last frame (vbsp_sprite_debug)
 float  vbsp_spr_seen;                     // sprite entities found, drawn or not
-float  vbsp_spr_off;                      // skipped: named and not "start on"
+float  vbsp_spr_off;                      // skipped: kRenderNone
 float  vbsp_spr_nomat;                    // skipped: the material did not resolve
 float  vbsp_spr_over;                     // skipped: hit SPR_MAX / BEAM_MAX
 float  vbsp_beam_seen;
-float  vbsp_beam_off;                     // skipped: the spotlight starts off
+float  vbsp_beam_off;                     // kept dark: the spotlight starts off (P1431)
 float  vbsp_trail_seen;                   // env_spritetrail, counted and declined
 float  vbsp_glow_seen;                    // env_lightglow found
 float  vbsp_glow_off;                     // ...skipped: vbsp_lightglow 0, or no size
@@ -1510,7 +1538,9 @@ void() Sprite_LoadForMap =
 	local vector org, ang, col;
 	local float  scale, renderamt, rendermode, spawnflags, framerate, renderfx;
 	local float  splen, spwid, ignoresolid;
-	local float  opened, wantspr, wantbeam, mat, alpha, additive, named;
+	local float  opened, wantspr, wantbeam, mat, alpha, additive, named, hide, tplm, n0;
+	local string tn, pn;
+	local entity net;
 	local float  glowh, glowv, gmin, gmax, gouter, gproxy, wantglow;
 
 	map = serverkey("map");
@@ -1583,6 +1613,26 @@ void() Sprite_LoadForMap =
 	glowp_n = glowp_over = 0;
 	vbsp_spr_seen = vbsp_spr_off = vbsp_spr_nomat = vbsp_spr_over = 0;
 	vbsp_beam_seen = vbsp_beam_off = 0;
+	vbsp_spr_hid = vbsp_spr_tpl = vbsp_beam_tpl = 0;
+	if (!spr_hide)
+	{
+		spr_hide = memalloc(sizeof(float) * SPR_MAX);
+		spr_tnc = memalloc(sizeof(float) * SPR_MAX);
+		spr_tplm = memalloc(sizeof(float) * SPR_MAX);
+		beam_hide = memalloc(sizeof(float) * BEAM_MAX);
+		beam_tnc = memalloc(sizeof(float) * BEAM_MAX);
+		beam_tplm = memalloc(sizeof(float) * BEAM_MAX);
+	}
+	for (n0 = 0; n0 < SPR_MAX; n0 = n0 + 1)
+	{	// every entry, glows included, starts shown and unnamed
+		spr_hide[n0] = spr_tplm[n0] = 0;
+		spr_tnc[n0] = -1;
+	}
+	for (n0 = 0; n0 < BEAM_MAX; n0 = n0 + 1)
+	{
+		beam_hide[n0] = beam_tplm[n0] = 0;
+		beam_tnc[n0] = -1;
+	}
 	vbsp_trail_seen = 0;
 	vbsp_glow_seen = vbsp_glow_off = vbsp_glow_n = 0;
 	vbsp_las_seen = 0;
@@ -1597,6 +1647,7 @@ void() Sprite_LoadForMap =
 	*/
 	Glow_ParamSet(0, 0, 0, 0);
 
+	Tpl_ClLoad(FALSE);          // P1425: before the walk (it resets the lump tokens)
 	getentitytoken(0);
 	while ((tok = getentitytoken()) != "")
 	{
@@ -1613,6 +1664,7 @@ void() Sprite_LoadForMap =
 		spawnflags = 0;
 		splen = spwid = ignoresolid = 0;
 		named = FALSE;
+		tn = pn = "";
 		// BUILD 54.  The FGD's own defaults for env_lightglow (base.fgd:1198),
 		// so a map that omits a key gets what Hammer showed its author.
 		glowh = glowv = 30;
@@ -1641,7 +1693,8 @@ void() Sprite_LoadForMap =
 			else if (key == "rendercolor") srendercolor = tok;
 			else if (key == "spawnflags")  spawnflags = stof(tok);
 			else if (key == "framerate")   framerate = stof(tok);
-			else if (key == "targetname")  named = (tok != "");
+			else if (key == "targetname")  { tn = tok; named = (tok != ""); }
+			else if (key == "parentname")  pn = tok;
 			// The library writes both spellings of each of these three, so both
 			// are read: 1.9% of point_spotlights write "hdrcolorscale" and 0.5%
 			// write "ignoresolid" against the FGD's capitalised forms.
@@ -1683,11 +1736,10 @@ void() Sprite_LoadForMap =
 			  reading the flag alone would blank half of every map; only 8.7%
 			  carry a targetname, so the real number turned off is small.
 			*/
-			if (named && !(spawnflags & 1))
-			{
-				vbsp_spr_off = vbsp_spr_off + 1;
-				continue;
-			}
+			hide = (named && !(spawnflags & 1));    // P1431: kept, hidden until ShowSprite
+			tplm = Tpl_ClMember(tn, pn);            // and a template's member until a copy says otherwise
+			if (tplm)
+				hide = TRUE;
 
 			// kRenderNone.  Source draws nothing; neither do we.
 			if (rendermode == 10)
@@ -1737,9 +1789,18 @@ void() Sprite_LoadForMap =
 			// the set is meaningful; the three zeros keep it one table.
 			spra_pset = Glow_ParamSet(0, 0, 0, gproxy);
 
+			n0 = spr_n;
 			Sprite_Add(org, ang,
 			           (cn == "env_sprite_oriented") ? SPRK_ORIENTED : SPRK_BILLBOARD,
 			           mat, scale, col, alpha, additive);
+			if (spr_n > n0)
+			{
+				spr_hide[n0] = hide;
+				spr_tnc[n0] = named ? crc16(TRUE, tn) : -1;
+				spr_tplm[n0] = tplm;
+				vbsp_spr_hid = vbsp_spr_hid + hide;
+				vbsp_spr_tpl = vbsp_spr_tpl + tplm;
+			}
 		}
 		else if (cn == "point_spotlight" || cn == "beam_spotlight")
 		{
@@ -1753,13 +1814,20 @@ void() Sprite_LoadForMap =
 			  the flag alone, and Activate (:262) only builds the beam if it is
 			  set.  3.3% of the library -- spawnflags 0 and 2 -- starts dark.
 			*/
-			if (!(spawnflags & 1))
-			{
-				vbsp_beam_off = vbsp_beam_off + 1;
-				continue;
-			}
-
+			hide = !(spawnflags & 1);               // P1431: kept dark until LightOn
+			tplm = Tpl_ClMember(tn, pn);
+			if (tplm)
+				hide = TRUE;
+			n0 = beam_n;
 			Beam_Add(org, ang, splen, spwid, ignoresolid, col);
+			if (beam_n > n0)
+			{
+				beam_hide[n0] = hide;
+				beam_tnc[n0] = named ? crc16(TRUE, tn) : -1;
+				beam_tplm[n0] = tplm;
+				vbsp_beam_off = vbsp_beam_off + hide;
+				vbsp_beam_tpl = vbsp_beam_tpl + tplm;
+			}
 		}
 		else if (cn == "env_spritetrail")
 			vbsp_trail_seen = vbsp_trail_seen + 1;
@@ -1814,6 +1882,9 @@ void() Sprite_LoadForMap =
 	// P1252: appended to the beam table after the shafts, so the sky test and the culls cover them.
 	Laser_LoadForMap(spr_want_las);
 	Fx_LoadForMap(spr_want_las);           // P1430: under vbsp_lasers too
+	for (net = find(world, classname, "fx_net"); net; net = find(net, classname, "fx_net"))
+		if (net.fx_ncls == FX_CLS_SPRITE || net.fx_ncls == FX_CLS_SPOT)
+			Sprite_FxNet(net);         // P1431: states that arrived before this load
 
 	// BUILD 54.  Needs both walks finished: the occluders exist and the sprites
 	// have been read.  Neither ever moves, so the answer is a load-time constant.
@@ -1844,6 +1915,9 @@ void() Sprite_LoadForMap =
 			              spr_n - vbsp_glow_n, vbsp_spr_seen, vbsp_spr_off, vbsp_spr_nomat, vbsp_spr_over));
 		else
 			print(sprintf("sprites: %g of %g drawn\n", spr_n - vbsp_glow_n, vbsp_spr_seen));
+		if (wantspr && vbsp_spr_hid)
+			print(sprintf("sprites: %g of them start hidden (%g template members) until the map shows them\n",
+			              vbsp_spr_hid, vbsp_spr_tpl));
 	}
 
 	if (vbsp_beam_seen)
@@ -1851,8 +1925,8 @@ void() Sprite_LoadForMap =
 		if (!wantbeam)
 			print(sprintf("spotlights: %g found, none drawn (vbsp_spotlights 0)\n", vbsp_beam_seen));
 		else if (vbsp_beam_off)
-			print(sprintf("spotlights: %g of %g drawn (%g start off)\n",
-			              beam_spot_n, vbsp_beam_seen, vbsp_beam_off));
+			print(sprintf("spotlights: %g of %g drawn, %g of them dark (%g template members) until the map turns them on\n",
+			              beam_spot_n, vbsp_beam_seen, vbsp_beam_off, vbsp_beam_tpl));
 		else
 			print(sprintf("spotlights: %g of %g drawn\n", beam_spot_n, vbsp_beam_seen));
 	}
@@ -2325,7 +2399,7 @@ void() Sprite_Glare =
 		// BUILD 54: env_lightglow joins this, and it is the same question for the
 		// same reason.  Everything additive except an ORIENTED sprite, which has
 		// a fixed world normal and is a tree or a sign rather than a flare.
-		if (!spr_add[i] || spr_kind[i] == SPRK_ORIENTED)
+		if (!spr_add[i] || spr_kind[i] == SPRK_ORIENTED || spr_hide[i])
 			continue;               // not a glare; see the essay
 
 		d = spr_org[i] - eye;
@@ -3061,7 +3135,7 @@ void() Sprite_Draw =
 
 		for (i = 0; i < spr_n; i = i + 1)
 		{
-			if (spr_mat[i] != m)
+			if (spr_mat[i] != m || spr_hide[i])
 				continue;
 			if (skyon && spr_sky[i] == SKY_BEHIND)
 			{
@@ -3412,6 +3486,8 @@ void() Sprite_Draw =
 	*/
 	for (i = 0; i < beam_spot_n; i = i + 1)
 	{
+		if (beam_hide[i])
+			continue;
 		if (skyon && beam_sky[i] == SKY_BEHIND)
 		{
 			skyhid = skyhid + 1;

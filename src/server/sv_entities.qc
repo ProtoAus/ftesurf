@@ -4419,50 +4419,125 @@ void() env_laser =
   an event count and, from the first input, sends them to every client (ENTWIRE_FXSTATE, matched there on
   class, origin and name).  point_tesla: TurnOn, TurnOff, DoSpark (one spark: an event).
 */
-#define FX_CLS_TESLA 1
 .float vbsp_fx_cls, vbsp_fx_on, vbsp_fx_ev, vbsp_fx_evt;
+.float vbsp_fx_copy;            // P1431: a template's copy (the client hides members until a copy's state)
 .string m_bOn;                  // point_tesla's start state: a field, so the stash keeps it
 
 float(entity to, float changed) SV_FxSend =
 {
 	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
 	WriteByte(MSG_ENTITY, ENTWIRE_FXSTATE);
-	WriteByte(MSG_ENTITY, self.vbsp_fx_cls);
-	WriteFloat(MSG_ENTITY, self.origin_x);
-	WriteFloat(MSG_ENTITY, self.origin_y);
-	WriteFloat(MSG_ENTITY, self.origin_z);
-	WriteFloat(MSG_ENTITY, crc16(TRUE, self.targetname));
+	WriteByte(MSG_ENTITY, (changed & LAS_SF_ID) ? 1 : 0);
+	if (changed & LAS_SF_ID)
+	{	// P1431: the identity once (surf_orbion's light show switches ~100 spotlights a second)
+		WriteByte(MSG_ENTITY, self.vbsp_fx_cls);
+		WriteFloat(MSG_ENTITY, self.origin_x);
+		WriteFloat(MSG_ENTITY, self.origin_y);
+		WriteFloat(MSG_ENTITY, self.origin_z);
+		WriteFloat(MSG_ENTITY, crc16(TRUE, self.targetname));
+	}
 	WriteByte(MSG_ENTITY, self.vbsp_fx_on);
 	WriteByte(MSG_ENTITY, self.vbsp_fx_ev & 255);
 	WriteByte(MSG_ENTITY, (self.vbsp_fx_ev > 0 && time - self.vbsp_fx_evt < 1) ? 1 : 0);
 	return TRUE;
 };
 
-void() point_tesla =
+// The wire class of a look-only effect's edict, 0 for anything else.
+float(entity t) SV_FxClass =
+{
+	switch (t.classname)
+	{
+		case "point_tesla":
+			return FX_CLS_TESLA;
+		case "env_sprite": case "env_sprite_oriented": case "env_glow":
+			return FX_CLS_SPRITE;
+		case "point_spotlight": case "beam_spotlight":
+			return FX_CLS_SPOT;
+	}
+	return 0;
+};
+
+// Source's start state.  A sprite's edict exists only when named, so Sprite.cpp's gate is its flag alone;
+// a spotlight's is SF_SPOTLIGHT_START_LIGHT_ON.
+float(entity t, float cls) SV_FxStartOn =
+{
+	if (cls == FX_CLS_TESLA)
+		return stof(t.m_bOn) != 0;
+	return (t.spawnflags & 1) != 0;
+};
+
+float(entity t, string in) SV_FxInput;
+
+void() SV_FxKeep =
 {
 	if (self.targetname == "")
 	{
 		remove(self);               // nothing can address it: the client draws it from the lump
 		return;
 	}
-	SV_LateStash("targetname origin m_bOn");
+	if (vbsp_late_respawn)
+	{	// P1425's copy, spawned after the lump: say it exists, in its start state
+		SV_LateStash("");
+		self.vbsp_fx_copy = TRUE;
+		SV_FxInput(self, "");
+		return;
+	}
+	SV_LateStash("targetname origin spawnflags m_bOn");
 };
 
+void() point_tesla = { SV_FxKeep(); };
+
+// in "" sends the current state (a template copy's first send).
 float(entity t, string in) SV_FxInput =
 {
-	local float on, ev;
-	if (t.classname != "point_tesla")
+	local float on, ev, cls;
+	cls = SV_FxClass(t);
+	if (!cls)
 		return FALSE;
-	on = t.SendEntity ? t.vbsp_fx_on : (stof(t.m_bOn) != 0);
+	on = t.SendEntity ? t.vbsp_fx_on : SV_FxStartOn(t, cls);
 	ev = FALSE;
-	if (in == "turnon")
-		on = TRUE;
-	else if (in == "turnoff" || in == "kill")
-		on = FALSE;
-	else if (in == "dospark")
-		ev = TRUE;
+	if (in == "kill")
+	{
+		on = FALSE;                 // the edict stays, so a late joiner learns it is gone ...
+		if (t.vbsp_fx_copy)
+		{	// ... except a copy: a member is hidden in the lump anyway
+			t.think = SUB_Remove;
+			t.nextthink = time + 1;
+		}
+	}
+	else if (in == "")
+		ev = FALSE;
+	else if (cls == FX_CLS_TESLA)
+	{
+		if (in == "turnon")
+			on = TRUE;
+		else if (in == "turnoff")
+			on = FALSE;
+		else if (in == "dospark")
+			ev = TRUE;
+		else
+			return FALSE;
+	}
+	else if (cls == FX_CLS_SPRITE)
+	{
+		if (in == "showsprite")
+			on = TRUE;
+		else if (in == "hidesprite")
+			on = FALSE;
+		else if (in == "togglesprite")
+			on = !on;
+		else
+			return FALSE;
+	}
 	else
-		return FALSE;
+	{
+		if (in == "lighton")
+			on = TRUE;
+		else if (in == "lightoff")
+			on = FALSE;
+		else
+			return FALSE;
+	}
 	if (t.SendEntity && on == t.vbsp_fx_on && !ev)
 		return TRUE;
 	if (ev)
@@ -4470,11 +4545,11 @@ float(entity t, string in) SV_FxInput =
 		t.vbsp_fx_ev = t.vbsp_fx_ev + 1;
 		t.vbsp_fx_evt = time;
 	}
-	t.vbsp_fx_cls = FX_CLS_TESLA;
+	t.vbsp_fx_cls = cls;
 	t.vbsp_fx_on = on;
+	t.SendFlags = t.SendEntity ? LAS_SF_STATE : (LAS_SF_STATE | LAS_SF_ID);
 	t.SendEntity = SV_FxSend;
 	t.pvsflags = PVSF_IGNOREPVS;
-	t.SendFlags = 1;
 	return TRUE;
 };
 
@@ -4756,7 +4831,7 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	if (t.classname == "info_particle_system")
 		if (SV_PsysInput(t, in))
 			return;
-	if (SV_FxInput(t, in))          // P1430: point_tesla
+	if (SV_FxInput(t, in))          // P1430: point_tesla; P1431: env_sprite, the spotlights
 		return;
 	if (t.classname == "env_laser" || t.classname == "env_beam")
 		if (SV_LaserInput(t, in))
@@ -6872,11 +6947,12 @@ void() info_overlay                     = { remove(self); };
   whole job is to be the honest statement of what is still missing, so the two
   that are missing stay in it.
 */
-void() env_sprite                       = { remove(self); };
-void() env_sprite_oriented              = { remove(self); };
-void() env_glow                         = { remove(self); };
-void() point_spotlight                  = { remove(self); };
-void() beam_spotlight                   = { remove(self); };
+// P1431: a named one stays for its inputs (SV_FxInput); the client draws them all from the lump.
+void() env_sprite                       = { SV_FxKeep(); };
+void() env_sprite_oriented              = { SV_FxKeep(); };
+void() env_glow                         = { SV_FxKeep(); };
+void() point_spotlight                  = { SV_FxKeep(); };
+void() beam_spotlight                   = { SV_FxKeep(); };
 
 /*
   Build 49.  The two POINT classes cl_emit.qc draws, stubbed under exactly the

@@ -705,11 +705,14 @@ void(float isnew) CSQC_Ent_Update =
 		else if (f == ENTWIRE_FXSTATE)
 		{	// P1430: as ENTWIRE_PSYSSTATE2's events -- on first sight only a fresh one fires
 			self.classname = "fx_net";
-			self.fx_ncls = readbyte();
-			self.origin_x = readfloat();
-			self.origin_y = readfloat();
-			self.origin_z = readfloat();
-			self.fx_ntnc = readfloat();
+			if (readbyte())         // P1431: the identity, on a first send only
+			{
+				self.fx_ncls = readbyte();
+				self.origin_x = readfloat();
+				self.origin_y = readfloat();
+				self.origin_z = readfloat();
+				self.fx_ntnc = readfloat();
+			}
 			self.fx_non = readbyte();
 			st = readbyte();
 			dd = readbyte();

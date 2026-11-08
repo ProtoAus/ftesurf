@@ -21,6 +21,9 @@
 
 ## next
 
+### P1431 Lights and sprites maps switch
+- Sprites and spotlights a map switches on, off or toggles now do so (about 1,000 on 100+ maps): checkpoint sparkles that appear when you reach them, light shows like surf_orbion's rings of spotlights. Ones that start hidden were never drawn before.
+
 ### P1430 Electric arcs
 - Tesla coils now spark (point_tesla, on 132 maps): jagged electric arcs out to the nearest walls, fired when the map switches them on or sparks them. Beams set to arc at random draw the same way.
 

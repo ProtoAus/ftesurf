@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1431 switched sprites and spotlights -- (see delivery); owner check pending
+
+- surf_orbion: the spotlight rings around the start corridor switch on and off in a pattern (the map's light
+  show). bhop_rpg: checkpoint sparkles appear when the map shows them. Say if any light or sprite is on that
+  should not be, or never comes on.
+
 ## P1430 point_tesla arcs -- LIVE 8 Nov (lobbies + both installs, cs a94e4f5a); owner check pending
 
 - surf_y: blue, red and green electric arcs crackle around the spawn room from map start. surf_quasar_final,
