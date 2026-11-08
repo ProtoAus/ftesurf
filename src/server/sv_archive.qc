@@ -387,7 +387,7 @@ void() Archive_Frame =
 	local float fh, i, pos, done, h;
 	local string data, line, path;
 	e = world;
-	while ((e = findfloat(e, acct_here, TRUE)))
+	while ((e = SV_AcNext(e)))
 	{
 		if (!e.ar_rows) continue;
 		if (strcmp(e.ar_identity, Archive_Identity(e))) { Archive_Reset(e); continue; }

@@ -92,7 +92,7 @@
 .string acct_name;              // the account's name as surfd made it safe, zoned
 .float  acct_last;              // when this player last sent a code
 .float  acct_hellos;
-.float  acct_here;              // ClientConnect has run for THIS connection
+// .acct_here (ClientConnect has run for THIS connection) is declared in sv_plchain.qc (P1406 follow-up).
 // Patch 629: the key surfd verified a proof from on THIS connection, zoned, or
 // "".  Sent with the run (sv_lobby.qc); surfd says whose account it is then.
 .string acct_pub;
@@ -229,7 +229,7 @@ void() Account_SelfFrame =
 	if (acct_mode == 1) return;         // a master that went away mid-map: by account until the next
 	if (time < acct_selfnext) return;
 	acct_selfnext = time + 2;
-	p = findfloat(world, acct_here, TRUE);
+	p = SV_AcNext(world);
 	while (p)
 	{
 		want = infokey(p, "_smark");
@@ -242,7 +242,7 @@ void() Account_SelfFrame =
 		}
 		else if (infokey(p, "*pself") != "")
 			Account_Mark(p, p.acct_who);
-		p = findfloat(p, acct_here, TRUE);
+		p = SV_AcNext(p);
 	}
 };
 

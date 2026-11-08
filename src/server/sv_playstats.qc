@@ -258,7 +258,7 @@ void() PlayStats_Frame =
 	local float now;
 	now = gettime(1);
 	e = world;
-	while ((e = findfloat(e, acct_here, TRUE)))
+	while ((e = SV_AcNext(e)))
 	{
 		if (now < e.ps_tick) continue;           // once a second per player
 		e.ps_tick = now + 1;

@@ -162,7 +162,7 @@ void() EndFrame =
 
 void() StartFrame =
 {
-	sv_plok = FALSE;                // P1406: no stale chain while the lump work below runs
+	sv_plok = sv_acok = FALSE;      // P1406: no stale chain while the lump work below runs
 	SV_ClockServerFrame();          // Patch 840: the server's own frame gap
 	SV_PeFrame();                   // P1238: server frame stalls for prederror reports
 	SV_NoColRestore();              // P1193: entity physics sees the barrier solid
@@ -268,7 +268,7 @@ void() StartFrame =
 	*/
 	Lobby_Cycle();
 	Vote_Frame();                   // Patch 372: reads the deadline just set; publishes last
-	sv_plok = FALSE;
+	sv_plok = sv_acok = FALSE;
 };
 
 /*
