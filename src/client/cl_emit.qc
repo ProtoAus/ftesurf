@@ -1055,18 +1055,19 @@ void(float ps, string mname) Emit_TrailHandles =
 // the same trap the mins/maxs note in Emit_LoadForMap records.
 void(string mname) Emit_PsysLoad =
 {
-	local float fh, i, n;
+	local float fh, i, n, over, trails;
 	local string l;
 
 	Emit_PsysFree();
 	Emit_PsAlloc();
+	over = trails = 0;
 
 	fh = fopen("data/mapparticles.txt", FILE_READ);
 	if (fh < 0)
 		return;                 // no baked particles anywhere; not an error
 
 	// Bounded rather than while(1): a truncated or garbage file must not be
-	// able to spin the client.  One file holds every map: P1411's 121 bakes are 5910 lines,
+	// able to spin the client.  One file holds every map: P1411's 122 bakes are 6094 lines,
 	// and the old 4096 bound silently dropped every map whose rows came after it.
 	for (i = 0; i < 65536; i = i + 1)
 	{
@@ -1077,7 +1078,11 @@ void(string mname) Emit_PsysLoad =
 		if (n == 16)
 		if (argv(0) == "trail")
 		if (argv(1) == mname)
+		if (trails < PS_MAX)    // each walks ps_n: unbounded, a crafted index trips the runaway check
+		{
+			trails = trails + 1;
 			Emit_TrailNote();
+		}
 		if (n == 25)
 		if (argv(0) == "rope")
 		if (argv(1) == mname)
@@ -1091,7 +1096,10 @@ void(string mname) Emit_PsysLoad =
 		if (argv(0) != "psys" || argv(1) != mname)
 			continue;
 		if (ps_n >= PS_MAX)
+		{
+			over = over + 1;
 			continue;               // not break: the trail lines come after
+		}
 		ps_name[ps_n] = strzone(argv(2));
 		ps_rate[ps_n] = stof(argv(3));
 		ps_vel[ps_n]  = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
@@ -1127,8 +1135,12 @@ void(string mname) Emit_PsysLoad =
 			ps_parent[ps_n] = strzone("");
 		ps_n = ps_n + 1;
 	}
+	if (i >= 65536 && fgets(fh))
+		print("^3emit: data/mapparticles.txt is longer than 65536 lines; the rest is not read\n");
 	fclose(fh);
 	ps_zoned = TRUE;
+	if (over)                   // P1411: both caps used to drop rows without a word
+		print(sprintf("^3emit: %s has %g psys rows past PS_MAX %g; dropped\n", mname, over, PS_MAX));
 
 	/*
 	  EXEC THE BAKED FILE OURSELVES rather than letting a dotted effect name
