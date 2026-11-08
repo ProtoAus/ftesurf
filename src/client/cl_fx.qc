@@ -376,6 +376,11 @@ void(entity e) Fx_Net =
 		Sprite_FxNet(e);
 		return;
 	}
+	if (e.fx_ncls == FX_CLS_EXPLODE)
+	{
+		Explode_FxNet(e);
+		return;
+	}
 	for (i = 0; i < fx_n; i = i + 1)
 	{
 		if (fx_cls[i] != e.fx_ncls || fx_tnc[i] != e.fx_ntnc || vlen(fx_korg[i] - e.origin) > 0.1)

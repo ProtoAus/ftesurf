@@ -49,6 +49,7 @@
 #define FX_CLS_STEAM    5       // P1433: env_steam, env_steamjet (cl_emit.qc)
 #define FX_CLS_SPARK    6       // P1433: env_spark
 #define FX_CLS_FIRE     7       // P1433: env_fire
+#define FX_CLS_EXPLODE  8       // P1435: env_explosion (cl_explode.qc)
 
 // --- hulls ------------------------------------------------------------------
 // Source puts the player origin AT THE FEET, unlike Quake's centred origin.

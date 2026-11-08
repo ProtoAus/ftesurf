@@ -4463,6 +4463,8 @@ float(entity t) SV_FxClass =
 			return FX_CLS_SPARK;
 		case "env_fire":
 			return FX_CLS_FIRE;
+		case "env_explosion":
+			return FX_CLS_EXPLODE;
 	}
 	return 0;
 };
@@ -4479,6 +4481,8 @@ float(entity t, float cls) SV_FxStartOn =
 		return (t.spawnflags & 64) != 0;    // SF_SPARK_START_ON
 	if (cls == FX_CLS_FIRE)
 		return (t.spawnflags & 4) != 0;     // SF_FIRE_START_ON
+	if (cls == FX_CLS_EXPLODE)
+		return FALSE;                       // events only
 	return (t.spawnflags & 1) != 0;
 };
 
@@ -4578,6 +4582,14 @@ float(entity t, string in) SV_FxInput =
 		}
 		else
 			return FALSE;
+	}
+	else if (cls == FX_CLS_EXPLODE)
+	{	// env_explosion (explode.cpp InputExplode); without SF_ENVEXPLOSION_REPEATABLE it is removed after
+		if (in != "explode")
+			return FALSE;
+		ev = TRUE;
+		if (!(t.spawnflags & 2))
+			t.vbsp_fx_dead = TRUE;
 	}
 	else
 	{	// env_fire (fire.cpp): Extinguish's fade time is not drawn, the fire goes out
@@ -7059,6 +7071,7 @@ void() env_fire                         = { SV_FxKeep(); };     // P1433: a name
 void() env_spark                        = { SV_FxKeep(); };
 void() env_steam                        = { SV_FxKeep(); };     // P1433: drawn by cl_emit.qc (EK_STEAM)
 void() env_steamjet                     = { SV_FxKeep(); };
+void() env_explosion                    = { SV_FxKeep(); };     // P1435: drawn by cl_explode.qc
 
 /*
   Build 51 adds a third, under the same rule.
