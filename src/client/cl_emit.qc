@@ -3342,6 +3342,8 @@ void(float i) Emit_SparkOnce =
 		return;
 	if (vlen(em_mid[i] - em_eye) > em_dist[i] * max(0.1, cvar("vbsp_emit_dist")))
 		return;
+	if (cvar("vbsp_fx_debug"))
+		print(sprintf("emit: spark once %g at %v: %g particles\n", i, em_mid[i], min(em_burst[i], 256)));
 	for (n = min(em_burst[i], 256); n > 0; n = n - 1)      // two of Emit_Frame's EM_BURST_FRAME
 	{
 		v = em_vel[i] + Emit_RandDir() * em_jit[i];
