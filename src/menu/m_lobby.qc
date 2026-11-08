@@ -109,6 +109,8 @@ float  lb_count;                // rows actually held, 0..LB_MAX
 float  lb_ready;                // a reply has been parsed at least once
 float  lb_next;                 // time of the next poll
 float  lb_req;                  // uri request id, so a stale reply is ignored
+float  lb_sent;                 // P1414: when lb_req went out; 0 when nothing is in flight
+#define LB_INFLIGHT 10
 float  lb_fail;                 // consecutive failures, for the backoff
 float lb_received, lb_ttl;       // directory freshness, not the poll schedule
 float  lb_lastcode;             // last status, so a broken poll logs once
@@ -621,7 +623,7 @@ void(string body) Lob_Parse =
   second, and connect when the row for that address actually reads the map we
   asked for.  The directory is the only witness both halves trust.
 */
-#define LJ_WAITCAP 20
+#define LJ_WAITCAP 45            // P1414: was 20; Pi switches measured 11-13 s, far players poll slower
 
 // How long to wait before giving up and playing locally.  Short, because the
 // player is looking at a button they just pressed and the fallback is a map
@@ -1270,6 +1272,7 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 
 	if (reqid != lb_req)
 		return;                     // a reply to a poll we have already replaced
+	lb_sent = 0;
 
 	/*
 	  SUCCESS IS 0 HERE, NOT 200.  PR_uri_get_callback2 (pr_bgcmd.c:6014):
@@ -1360,7 +1363,16 @@ void() Lob_Poll =
 		if (per > 60)
 			per = 60;
 	}
+	/*
+	  P1414: one poll in flight. The join wait asks every second, and at 400 ms ping a fresh
+	  HTTPS request takes ~2 s, so each reply landed after the next request had replaced
+	  lb_req and was dropped: the wait never saw the switch and gave up. LB_INFLIGHT bounds
+	  a request whose callback never comes.
+	*/
+	if (lb_sent && time - lb_sent < LB_INFLIGHT)
+		return;
 	lb_next = time + per;
+	lb_sent = time;
 
 	// SHARED WITH THE JOIN, see Lob_NextReq.  Was `lb_req + 1`; two independent
 	// counters in one VM with one callback collide the moment both are used.
