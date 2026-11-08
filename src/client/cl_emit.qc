@@ -158,7 +158,7 @@
 #define EK_PRECIP       9       // func_precipitation: not an emitter, see Emit_PrecipFrame
 #define EK_N            10
 
-#define PS_MAX         64       // baked systems per map.  tensor2 has 20.
+#define PS_MAX         512      // psys lines per map (P1411: surf_sidelines has 351)
 
 float  em_fx[EM_FX_N];          // particleeffectnum handles, taken once at init
 
@@ -387,24 +387,50 @@ string(float k) Emit_KindName =
   map's author asked for.
 ===========================================================================
 */
-string ps_name[PS_MAX];
-float  ps_rate[PS_MAX];
-vector ps_vel[PS_MAX];          // LOCAL frame: rotated by the entity's angles
-vector ps_ofs[PS_MAX];          // box centre, world, added to the entity origin
-vector ps_wvel[PS_MAX];         // WORLD frame: wind and terminal speed, unrotated
-float  ps_jit[PS_MAX];          // isotropic random_speed, for em_jit
-float  ps_shape[PS_MAX];        // Patch 1012: the spawn volume QC places (index columns 18-25)
-vector ps_sa[PS_MAX], ps_sb[PS_MAX];
-float  ps_srad[PS_MAX];
-string ps_parent[PS_MAX];       // "" on a stand-alone line; the parent's name on a child link
-float  ps_dist[PS_MAX];
-float  ps_trail[PS_MAX];        // a render_sprite_trail this file places drop by drop:
-float  ps_trate[PS_MAX];        //   the index's `trail` line.  Source's emission rate,
-vector ps_tbox[PS_MAX];         //   half the spawn box,
-vector ps_tspread[PS_MAX];      //   half the speed's range (local frame),
-float  ps_tgrav[PS_MAX];        //   gravity, half a streak's length (0: 0.05 s of travel),
-float  ps_thalf[PS_MAX];
+string *ps_name;
+float *ps_rate;
+vector *ps_vel;          // LOCAL frame: rotated by the entity's angles
+vector *ps_ofs;          // box centre, world, added to the entity origin
+vector *ps_wvel;         // WORLD frame: wind and terminal speed, unrotated
+float *ps_jit;          // isotropic random_speed, for em_jit
+float *ps_shape;        // Patch 1012: the spawn volume QC places (index columns 18-25)
+vector *ps_sa;
+vector *ps_sb;
+float *ps_srad;
+string *ps_parent;              // "" on a stand-alone line; the parent's name on a child link
+float *ps_dist;
+float *ps_trail;        // a render_sprite_trail this file places drop by drop:
+float *ps_trate;        //   the index's `trail` line.  Source's emission rate,
+vector *ps_tbox;         //   half the spawn box,
+vector *ps_tspread;      //   half the speed's range (local frame),
+float *ps_tgrav;        //   gravity, half a streak's length (0: 0.05 s of travel),
+float *ps_thalf;
 float *ps_tfx;                  //   and [PS_MAX * TRAIL_N] its blocks by life
+
+// P1411: the per-system tables live in memalloc, not globals: at PS_MAX 256 csprogs ran out of globals.
+void() Emit_PsAlloc =
+{
+	if (ps_name)
+		return;
+	ps_name = memalloc(sizeof(string) * PS_MAX);
+	ps_parent = memalloc(sizeof(string) * PS_MAX);
+	ps_rate = memalloc(sizeof(float) * PS_MAX);
+	ps_vel = memalloc(sizeof(vector) * PS_MAX);
+	ps_ofs = memalloc(sizeof(vector) * PS_MAX);
+	ps_wvel = memalloc(sizeof(vector) * PS_MAX);
+	ps_jit = memalloc(sizeof(float) * PS_MAX);
+	ps_shape = memalloc(sizeof(float) * PS_MAX);
+	ps_sa = memalloc(sizeof(vector) * PS_MAX);
+	ps_sb = memalloc(sizeof(vector) * PS_MAX);
+	ps_srad = memalloc(sizeof(float) * PS_MAX);
+	ps_dist = memalloc(sizeof(float) * PS_MAX);
+	ps_trail = memalloc(sizeof(float) * PS_MAX);
+	ps_trate = memalloc(sizeof(float) * PS_MAX);
+	ps_tbox = memalloc(sizeof(vector) * PS_MAX);
+	ps_tspread = memalloc(sizeof(vector) * PS_MAX);
+	ps_tgrav = memalloc(sizeof(float) * PS_MAX);
+	ps_thalf = memalloc(sizeof(float) * PS_MAX);
+};
 float  ps_n;
 float  ps_links;                // how many of ps_n are child links
 
@@ -1033,14 +1059,16 @@ void(string mname) Emit_PsysLoad =
 	local string l;
 
 	Emit_PsysFree();
+	Emit_PsAlloc();
 
 	fh = fopen("data/mapparticles.txt", FILE_READ);
 	if (fh < 0)
 		return;                 // no baked particles anywhere; not an error
 
 	// Bounded rather than while(1): a truncated or garbage file must not be
-	// able to spin the client, and the library's worst map is nowhere near this.
-	for (i = 0; i < 4096; i = i + 1)
+	// able to spin the client.  One file holds every map: P1411's 121 bakes are 5910 lines,
+	// and the old 4096 bound silently dropped every map whose rows came after it.
+	for (i = 0; i < 65536; i = i + 1)
 	{
 		l = fgets(fh);
 		if (!l)

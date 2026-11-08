@@ -228,7 +228,7 @@ RENDERER_TYPE = {
 # emission_rate defaults to 100 (bhop_ceaseless's purpleboost4 has an empty emitter; read as 0
 # it was refused as "not a continuous emitter" and its boost strip drew nothing).
 EMIT_DEFAULT = 100.0
-PS_MAX = 64             # src/client/cl_emit.qc: psys lines a client keeps a map
+PS_MAX = 512            # src/client/cl_emit.qc: psys lines a client keeps a map (P1411)
 
 
 # Same rule for the system's "maximum draw distance" (100000 when absent). Read as 0, cl_emit.qc

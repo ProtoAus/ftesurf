@@ -14,6 +14,7 @@ import zipfile
 import zlib
 
 MAX_FILE = 256 * 1024 * 1024
+MAX_PAK = 1024 * 1024 * 1024     # P1411: a BSP pak lump is a container (kz_bhop_badg3s: 440 MB); its entries keep MAX_FILE
 
 
 class ResourceError(ValueError):
@@ -180,7 +181,7 @@ class BspSource:
             offset, size, _version, compressed = struct.unpack_from('<4i', head, 8 + 40 * 16)
             if size == 0:
                 return
-            if compressed or size < 0 or offset < len(head) or size > MAX_FILE:
+            if compressed or size < 0 or offset < len(head) or size > MAX_PAK:
                 raise ResourceError('invalid/unsupported BSP pak lump')
             stream.seek(offset)
             raw = stream.read(size)
