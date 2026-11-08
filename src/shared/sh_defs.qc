@@ -43,6 +43,7 @@
 #define ENTWIRE_PSYSSTATE2 8    // P1416: ENTWIRE_PSYSSTATE plus a start count and a fresh flag
 #define ENTWIRE_FXSTATE 9       // P1430: a look-only effect's class, on state and event count (cl_fx.qc)
 #define ENTWIRE_FXSTATE2 10     // P1431: the same with the identity on a first send only (P1430 recordings keep 9)
+#define ENTWIRE_WTEXT 12        // P1438: a point_worldtext's Enable/Disable and SetMessage (cl_wtext.qc); 11 is P1432's
 #define FX_CLS_TESLA    1       // its classes; 2 is cl_fx.qc's env_beam arc, which rides the laser wire
 #define FX_CLS_SPRITE   3       // P1431: env_sprite (cl_sprites.qc)
 #define FX_CLS_SPOT     4       // P1431: point_spotlight, beam_spotlight (cl_sprites.qc)

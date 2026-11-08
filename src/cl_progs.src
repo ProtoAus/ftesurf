@@ -54,6 +54,7 @@ client/cl_lasers.qc
 client/cl_fx.qc             // P1430: arcs (point_tesla, env_beam with no end); before cl_body.qc
 client/cl_explode.qc        // P1435: env_explosion; prototypes in cl_sprites.qc
 client/cl_fish.qc           // P1436: func_fish_pool; prototype in cl_sprites.qc
+client/cl_wtext.qc          // P1438: point_worldtext; prototypes in cl_sprites.qc
 // Source fog (env_fog_controller / sky_camera): a third independent walk of the
 // same lump, reading nothing from the other two.  It has to sit BEFORE
 // cl_gfx.qc, which greys the "Map fog" row out using vbsp_fog_count, and before

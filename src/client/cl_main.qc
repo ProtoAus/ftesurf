@@ -507,6 +507,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	registercvar("vbsp_lasers", "1", CVAR_ARCHIVE);     // P1252: env_laser beams (cl_lasers.qc)
 	registercvar("vbsp_explosions", "1", CVAR_ARCHIVE); // P1435: env_explosion (cl_explode.qc)
 	registercvar("vbsp_fish", "1", CVAR_ARCHIVE);       // P1436: func_fish_pool (cl_fish.qc)
+	registercvar("vbsp_worldtext", "1", CVAR_ARCHIVE);  // P1438: point_worldtext (cl_wtext.qc)
 	/*
 	  BUILD 54 -- env_lightglow, the third switch and the newest class.
 

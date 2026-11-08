@@ -735,6 +735,26 @@ void(float isnew) CSQC_Ent_Update =
 				Fx_Net(self);
 			self.fx_nfire = 0;
 		}
+		else if (f == ENTWIRE_WTEXT)
+		{	// P1438: the identity on a first send only, then shown or not, then SetMessage's text if it has set one
+			self.classname = "wtext_net";
+			if (readbyte())
+			{
+				self.origin_x = readfloat();
+				self.origin_y = readfloat();
+				self.origin_z = readfloat();
+				self.fx_ntnc = readfloat();
+			}
+			self.fx_non = readbyte();
+			self.wt_nset = readbyte();
+			if (self.wt_nset)
+			{
+				if (self.wt_nmsg != "")
+					strunzone(self.wt_nmsg);
+				self.wt_nmsg = strzone(readstring());
+			}
+			Wt_Net(self);
+		}
 		else if (f == ENTWIRE_LASERSTATE)
 		{
 			self.classname = "laser_net";

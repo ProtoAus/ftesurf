@@ -4486,6 +4486,63 @@ float(entity t, float cls) SV_FxStartOn =
 	return (t.spawnflags & 1) != 0;
 };
 
+// P1438: a named point_worldtext's shown state and SetMessage's text, on ENTWIRE_WTEXT from its first input.
+.float vbsp_wt_on, vbsp_wt_set;
+.string vbsp_wt_msg;
+
+float(entity to, float changed) SV_WtSend =
+{
+	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
+	WriteByte(MSG_ENTITY, ENTWIRE_WTEXT);
+	WriteByte(MSG_ENTITY, (changed & LAS_SF_ID) ? 1 : 0);
+	if (changed & LAS_SF_ID)
+	{
+		WriteFloat(MSG_ENTITY, self.origin_x);
+		WriteFloat(MSG_ENTITY, self.origin_y);
+		WriteFloat(MSG_ENTITY, self.origin_z);
+		WriteFloat(MSG_ENTITY, crc16(TRUE, self.targetname));
+	}
+	WriteByte(MSG_ENTITY, self.vbsp_wt_on);
+	WriteByte(MSG_ENTITY, self.vbsp_wt_set);
+	if (self.vbsp_wt_set)
+		WriteString(MSG_ENTITY, self.vbsp_wt_msg);
+	return TRUE;
+};
+
+// Enable, Disable, Toggle, SetMessage; Kill hides it for good.
+float(entity t, string in, string pm) SV_WtInput =
+{
+	local float on;
+	if (t.vbsp_fx_dead)
+		return TRUE;
+	on = t.SendEntity ? t.vbsp_wt_on : !(t.spawnflags & 1);
+	if (in == "enable")
+		on = TRUE;
+	else if (in == "disable")
+		on = FALSE;
+	else if (in == "toggle")
+		on = !on;
+	else if (in == "setmessage")
+	{
+		if (t.vbsp_wt_set)
+			strunzone(t.vbsp_wt_msg);
+		t.vbsp_wt_msg = strzone(pm);
+		t.vbsp_wt_set = TRUE;
+	}
+	else if (in == "kill")
+	{
+		on = FALSE;
+		t.vbsp_fx_dead = TRUE;
+	}
+	else
+		return FALSE;
+	t.vbsp_wt_on = on;
+	t.SendFlags = t.SendEntity ? LAS_SF_STATE : (LAS_SF_STATE | LAS_SF_ID);
+	t.SendEntity = SV_WtSend;
+	t.pvsflags = PVSF_IGNOREPVS;
+	return TRUE;
+};
+
 // A non-repeatable env_explosion, 0.3 s after its last Explode (explode.cpp Smoke).
 void() SV_FxExplodeGone = { self.vbsp_fx_dead = TRUE; };
 
@@ -4922,6 +4979,9 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		return;
 	if (t.classname == "info_particle_system")
 		if (SV_PsysInput(t, in))
+			return;
+	if (t.classname == "point_worldtext")
+		if (SV_WtInput(t, in, pm))      // P1438
 			return;
 	if (SV_FxInput(t, in))          // P1430: point_tesla; P1431: env_sprite, the spotlights
 		return;
@@ -7078,6 +7138,7 @@ void() env_spark                        = { SV_FxKeep(); };
 void() env_steam                        = { SV_FxKeep(); };     // P1433: drawn by cl_emit.qc (EK_STEAM)
 void() env_steamjet                     = { SV_FxKeep(); };
 void() env_explosion                    = { SV_FxKeep(); };     // P1435: drawn by cl_explode.qc
+void() point_worldtext                  = { SV_FxKeep(); };     // P1438: drawn by cl_wtext.qc
 
 /*
   Build 51 adds a third, under the same rule.

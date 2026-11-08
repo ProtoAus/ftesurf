@@ -529,6 +529,13 @@ float(vector eye, vector fwd) Explode_Draw;
 void(entity e) Explode_FxNet;
 float  vbsp_fish_seen;                    // P1436: func_fish_pool in the lump
 void() Fish_LoadForMap;                  // cl_fish.qc
+float  vbsp_wt_seen;                      // P1438: point_worldtext in the lump
+float  wt_n;                              // P1438: cl_wtext.qc's texts (Sprite_Draw's early exit)
+.float wt_nset;                           // P1438: ENTWIRE_WTEXT as cl_body.qc reads it
+.string wt_nmsg;
+void() Wt_LoadForMap;                    // cl_wtext.qc
+float(vector eye, vector fwd) Wt_Draw;
+void(entity e) Wt_Net;
 .float fx_ncls, fx_ntnc, fx_non, fx_nfire;  // P1430: ENTWIRE_FXSTATE as cl_body.qc reads it
 // P1431: env_sprite and the spotlights a map switches.  Kept in the tables, hidden, and matched to the
 // server's state (ENTWIRE_FXSTATE2) on class, origin and name crc.  A template's member is drawn from the lump
@@ -1645,6 +1652,7 @@ void() Sprite_LoadForMap =
 	vbsp_fx_seen = 0;
 	vbsp_xp_seen = 0;
 	vbsp_fish_seen = 0;
+	vbsp_wt_seen = 0;
 	opened = FALSE;
 
 	/*
@@ -1873,6 +1881,8 @@ void() Sprite_LoadForMap =
 			vbsp_xp_seen = vbsp_xp_seen + 1;
 		else if (cn == "func_fish_pool")
 			vbsp_fish_seen = vbsp_fish_seen + 1;
+		else if (cn == "point_worldtext")
+			vbsp_wt_seen = vbsp_wt_seen + 1;
 	}
 
 	beam_spot_n = beam_n;
@@ -1888,6 +1898,7 @@ void() Sprite_LoadForMap =
 	Fx_LoadForMap(spr_want_las);           // P1430: under vbsp_lasers too
 	Explode_LoadForMap();                  // P1435: vbsp_explosions is read when one goes off
 	Fish_LoadForMap();                     // P1436: under vbsp_fish
+	Wt_LoadForMap();                       // P1438: vbsp_worldtext is read when drawing
 	for (net = find(world, classname, "fx_net"); net; net = find(net, classname, "fx_net"))
 		if (net.fx_ncls == FX_CLS_SPRITE || net.fx_ncls == FX_CLS_SPOT)
 			Sprite_FxNet(net);         // P1431: states that arrived before this load
@@ -2969,7 +2980,7 @@ void() Sprite_Draw =
 		Sprite_LoadForMap();
 	}
 
-	if (!spr_n && !beam_n && !fx_n && !xp_live)
+	if (!spr_n && !beam_n && !fx_n && !xp_live && !wt_n)
 		return;
 
 	eye = getproperty(VF_ORIGIN);
@@ -3532,6 +3543,7 @@ void() Sprite_Draw =
 	drawn = drawn + Laser_Draw(eye, fwd, maxdist, skyon);   // P1252: adds its sky skips to spr_skyhid
 	drawn = drawn + Fx_Draw(eye, fwd, maxdist);             // P1430: tesla and env_beam arcs
 	drawn = drawn + Explode_Draw(eye, fwd);                 // P1435
+	drawn = drawn + Wt_Draw(eye, fwd);                      // P1438
 
 	if (dbg)
 	{
