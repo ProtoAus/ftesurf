@@ -71,7 +71,10 @@ def build_probe(src, out):
     hook = '\tSaveLoc_Camera();               // Patch 430: a load drawn before its reply\n'
     assert t.count(hook) == 1
     f.write_bytes(t.replace(hook, hook + '\tif (cvar("p1384_probe")) P1384_Probe();   // ARM ONLY\n').encode())
-    r = subprocess.run([str(tree / 'src/fteqcc64.exe'), '-srcfile', 'cl_progs.src'], cwd=tree / 'src',
+    # Match build.ps1's P1391 string budget; the default 2 MiB cannot compile
+    # today's unchanged client, even before the probe is added.
+    r = subprocess.run([str(tree / 'src/fteqcc64.exe'), '-max_strings', '4194304',
+                        '-srcfile', 'cl_progs.src', '-Fomitarraydefs'], cwd=tree / 'src',
                        capture_output=True, text=True)
     (out / 'cs-build.log').write_text(r.stdout + r.stderr)
     warn = [l for l in (r.stdout + r.stderr).splitlines() if 'warning' in l.lower() and '0 warnings' not in l]
