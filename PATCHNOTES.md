@@ -21,6 +21,11 @@
 
 ## next
 
+### P1423 Graphics menu: option numbers, Movers and Mover light
+- The Source Renderer menu (gfx_menu) shows where each setting sits, like "Full reflect (6/6)": 1 is the fastest option, the last is the fullest. Water, Glass, Prop distance, Tool brushes and Reflection AA now step in that order.
+- New Movers row: Off hides the moving decorations (passing trains, swarms, spinning props you cannot touch) for speed; on surf_centipedes about 2.4 to 2.1 ms a frame. Moving things you can hit always show.
+- New Mover light row: how often moving props update their light, 1/s (default), 4/s or every frame. Every frame costs a lot on swarm maps; below once a second saves nothing, so that is the lowest.
+
 ### P1418 Crash reports you can send
 - If the game ever closes with an error, the next time you join a lobby a box offers to send the error and the last console lines (typed commands and anything naming a password or key are left out). F6 sends it; nothing is sent without that. ui_crash_report 0 turns the offer off.
 
