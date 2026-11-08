@@ -34,6 +34,9 @@
 ### P1412 Smaller client game code
 - The game code a lobby sends you is 3 MB smaller (8.0 MB to 4.9 MB), so joining after an update downloads faster. It runs exactly the same.
 
+### P1411 Map particle effects on 118 more maps
+- Maps that come with their own particle effects (glows, embers, waterfalls, rising shapes) now draw them on 122 maps instead of 4. Effects that only fire when something happens (a booster, a button, a teleport) are not drawn yet.
+
 ### P1409 Faster see-through surfaces with exact sorting
 - With r_blendsort 2 (see-through surfaces sorted back to front), maps with many glass or see-through faces no longer recompute every face's centre each frame: surf_bossfight went from about 280 to about 490 fps. The picture is the same. r_blendcache 0 brings back the old way.
 

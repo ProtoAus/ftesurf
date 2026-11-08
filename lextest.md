@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1411 map particle effects on 118 more maps -- LIVE (lobbies + your C:\FTESurf install, 8 Nov); owner check pending
+
+- bhop_aberrant: cyan squares rise off the floor at spawn (the map's own effect; it drew nothing before).
+- bhop_angst, surf_technical, surf_dune, bhop_rpg: fires, glows, waterfalls. Say if any effect draws as white
+  squares, is far too thick, or costs you frames (aberrant's spawn measured +0.44 ms a frame).
+- Not drawn yet: effects that fire on an event (boosters, badges, teleport bursts) -- the next patch.
+- vbsp_emit_psys 0 turns map particle effects off.
+
 ## P1413 frame pacing under a cap -- installed in both installs (engine patch-1413, 8 Nov); owner check pending
 
 - With a cap (`cl_maxfps 100`) and `r_frametime 1`: the graph should be near flat and the 1% figure close to 100
