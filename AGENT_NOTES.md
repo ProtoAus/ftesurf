@@ -10755,6 +10755,12 @@ corrected12unit readback and cold CSQC hash/drawn-board proof acted. No raw comm
   server QC `print()` does not reach the client's log at all (see the pitfall).
   It is also a temporary change to a public lobby: do it on one unit, say so in
   the entry, and put it back.
+- **Public status is not full capability readback (P1437, 8Nov2026).** All12
+  valid `status 7` replies had only1020..1022bytes of serverinfo and omitted
+  `fs_savelead`; the existing hashed loopback RCON `serverinfo` command returned
+  the actual value3 on every unit. Preserve the public-response observation,
+  use the existing full readback/client `serverkey()` for the capability, and
+  never grade an omitted late key as an old or absent QC implementation.
 - **`tools/pi_lobby_smoke.py` IS THE CLIENT CONNECT FROM AN ISOLATED RIG**
   (added 2026-10-10). It gives a fresh client NO csprogs, joins a lobby, and
   grades the file the engine downloaded against the build's hash, then that the

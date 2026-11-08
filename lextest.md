@@ -1,9 +1,9 @@
 # lextest.md — things waiting on a human
 
-## P1437 save-load consistency -- not deployed yet; owner check pending
+## P1437 save-load consistency -- LIVE 8 Nov UTC (both installs +12 lobbies); owner check pending
 
-- After deployment: tap and hold a save load with lead-in on, then step between two saves while holding. The travel should not snap briefly to the held view; releasing should keep the saved look direction. Try a rewind go after a failed run: its saved trail should remain.
-- Separate, still unproven: brushes sometimes remain invisible after a load until reconnect. If it recurs, note the map and position; try `r_ignorevis 1`, then restore `r_ignorevis 0`. Say whether the missing brushes return. A split-state camera test is NOT proof of this symptom or its cause.
+- With the matching deployed client/server pair: repeat the troublesome save several times, tap and hold a save load with lead-in on, then step between two saves while holding. The travel should not snap briefly to the held view; releasing should keep the saved look direction. Try a rewind go after a failed run: its saved trail should remain.
+- Separate, still unproven: brushes sometimes remain invisible after a load until reconnect. If it recurs, note the map and position; try `r_ignorevis 1`, then restore its previous value. Say whether the missing brushes return. A split-state camera test is NOT proof of this symptom or its cause.
 
 ## P1438 point_worldtext -- LIVE 9 Nov (lobbies + both installs, cs cb462abf); owner check pending
 

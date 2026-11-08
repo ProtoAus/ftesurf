@@ -63,8 +63,36 @@ validated by fteqcc/runtime, not by an empty LSP diagnostic list.
 
 ## Deployment
 
-Not deployed yet. Source verification, clean commit build, destination hashes and
-live behavior are separate gates. No release or Build bump is part of this task.
+Source `68679ee9` and engine journal `2af03bfe` are published. The clean source
+built all three VMs with zero warnings. The production-entry rebuild reproduced
+all six DAT/LNO artifacts byte-for-byte; QC Build 89 and native pins did not move.
+
+- Both Windows installs received matching QW/CS + LNO at
+  `2026-11-08T21:19:06Z`, retaining immediate `.prev` and prior predecessor history.
+  All 1,481 checked native/menu/config non-targets were unchanged.
+- The existing `build.ps1 -Pi` deployed that same QW/CS pair and restarted all
+  twelve lobbies, using the normal ten-second warning and no `-PiForce`.
+  Fresh status replies and hashed loopback `serverinfo` reads proved all twelve
+  actors live and advertising `fs_savelead=3` by `2026-11-08T22:00:41Z`.
+- QW SHA256: `ac44d5871ad69289aa847e74665b6f23b2c5d43ac59f04a4d56dd77af5dd7226`.
+  CS SHA256: `e7e4c69d6ab18ca4662decef49df152150f7b1fc0e569529052e435e1b3a5c79`.
+  Immediate Pi `.prev` files match the inspected predecessors. All 553 checked
+  native/menu/config/helper non-targets and the backend descriptor/actor stayed
+  unchanged; no backend activation or native deployment is implied.
+- Before any Pi canonical stage/restart, all 213 current recorder/resume/generated
+  predecessor archive members were individually rehashed on-box and off-box.
+  A fresh read-only post observation retained all 53,983 old data-file prefixes,
+  with zero observed appends, missing paths or changed prefixes. The thirteen
+  declared current actors had zero open preserved-domain FDs at that observation.
+  This is bounded operational preservation, not a general file-writer audit.
+
+The immediate post-restart status observer timed out. That failure is retained;
+subsequent fresh observations are separate evidence, not a regraded pass. No
+healthy lobby was restarted again and no player data was restored.
+
+The fresh-client download/render smoke was **not launched**: available Windows
+RAM was 2.368 GiB, below the existing 4 GiB guard. Served-cache download and actual
+owner feel remain pending. No release or Build bump is part of this task.
 
 ## Remaining owner checks
 
