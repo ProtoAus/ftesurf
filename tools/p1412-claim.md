@@ -1,0 +1,1 @@
+P1412 claimed by ftesurf-3a (Claude Code session 5e4b2e2d) 2026-11-08. Lex: compress the progs tables without slowing the game -- csprogs writes a named global def per array element (132k of 161k defs, 1.9 MB of the 2.24 MB string table); an opt-in compiler flag drops them for csprogs (no savegames), proven by byte-identical statements/globals.
