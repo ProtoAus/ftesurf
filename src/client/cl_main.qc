@@ -2179,6 +2179,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	}
 
 	Vote_Sync();                        // Patch 372: outside notmenu, so a vote opened under the console still raises the box
+	Ov_Think();                         // P1439: env_screenoverlay's run does not pause for a menu
 
 	if (notmenu)
 	{

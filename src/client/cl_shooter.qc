@@ -5,11 +5,15 @@
   each along the entity's forward scattered by m_flVariance on all three axes, at m_flVelocity; then a repeatable
   one (SF 1) re-arms and any other is gone.  A gib is shootmodel at its skin and scale, from gibangles; Simulation
   0 (point) spins at 100-200 / 100-300 degrees a second, 1 and 2 (physics, ragdoll) at gibanglevelocity x 0.1-1.
-  CGib flies MOVETYPE_FLYGRAVITY / FLY_BOUNCE at gibgravityscale, friction 0.55 on a bounce, resting on a floor
-  under 30 u/s, and goes after m_flGibLife (+-5%, 25 when 0), faded out over a second here.  Gibs are debris in
+  CGib flies MOVETYPE_FLYGRAVITY / FLY_BOUNCE at gibgravityscale: a bounce keeps the reflected velocity times
+  elasticity 0.25 (the entity's 1 x a surface's default, physics_main_shared.cpp), and under 30 u/s it rests, laid
+  flat on a floor (gib.cpp).  With SF 4 (strict remove) it goes at m_flGibLife (+-5%, 25 when 0) -- at once, as
+  DieThink in multiplayer; otherwise it stays (the ring recycles the oldest past GIB_MAX).  Gibs are debris in
   Source and never touch players, so nothing here is on the server.
 
-  Not drawn: sprite shootmodels, the flaming flag (SF 2), the material bounce sounds, body groups.
+  Not as Source: sprite shootmodels, the flaming flag (SF 2), the material bounce sounds and body groups are not
+  drawn; a spent one-shot shooter is spent on this client only (the server does not count gibs), so a client
+  that joins later fires on a later Shoot.
 */
 
 #define SH_MAX        64        // named env_shooters a map
@@ -47,6 +51,8 @@ vector *gib_av;
 float  *gib_die;
 float  *gib_grav;
 float  *gib_alpha;
+float  *gib_rest;
+string sh_loadmap;
 float  gib_cur, sh_last;
 float  vbsp_sh_n, vbsp_sh_skip, vbsp_sh_shots;
 
@@ -82,6 +88,7 @@ void() Sh_Alloc =
 	gib_die = memalloc(sizeof(float) * GIB_MAX);
 	gib_grav = memalloc(sizeof(float) * GIB_MAX);
 	gib_alpha = memalloc(sizeof(float) * GIB_MAX);
+	gib_rest = memalloc(sizeof(float) * GIB_MAX);
 };
 
 float(float a, float b) Sh_Rand = { return a + random() * (b - a); };
@@ -116,7 +123,7 @@ void(float i) Sh_Gib =
 	setorigin(e, sh_korg[i]);
 	e.angles = sh_gang[i];
 	e.skin = sh_skin[i];
-	e.scale = sh_scale[i];
+	e.scale = 1;                // m_flGibScale is never applied to a model gib
 	e.colormod = sh_col[i];
 	e.alpha = sh_alpha[i];
 	gib_alpha[g] = sh_alpha[i];
@@ -125,7 +132,8 @@ void(float i) Sh_Gib =
 		gib_av[g] = [Sh_Rand(100, 200), Sh_Rand(100, 300), 0];
 	else
 		gib_av[g] = [sh_gangv[i] * Sh_Rand(0.1, 1), sh_gangv[i] * Sh_Rand(0.1, 1), 0];
-	gib_die[g] = time + sh_life[i] * Sh_Rand(0.95, 1.05);
+	gib_die[g] = (sh_sf[i] & 4) ? time + sh_life[i] * Sh_Rand(0.95, 1.05) : time + 1000000;
+	gib_rest[g] = FALSE;
 	gib_grav[g] = sh_grav[i];
 };
 
@@ -154,9 +162,14 @@ void() Sh_LoadForMap =
 {
 	local string tok, key, cn, tn, pn, mdl, scol;
 	local vector org, ang, gang;
-	local float i, sf, gibs, vel, vari, life, delay, gangv, sim, skin, scl, grav, ramt;
+	local float i, sf, gibs, vel, vari, life, delay, gangv, sim, skin, scl, grav, ramt, rmode;
 
 	Sh_Alloc();
+	if (sh_n && sh_loadmap == serverkey("map"))
+		return;                 // a cvar toggle re-ran the load: keep the shooters and their gibs
+	if (sh_loadmap != "")
+		strunzone(sh_loadmap);
+	sh_loadmap = strzone(serverkey("map"));
 	for (i = 0; i < GIB_MAX; i = i + 1)
 	{
 		gib_die[i] = 0;
@@ -185,6 +198,7 @@ void() Sh_LoadForMap =
 		sf = gibs = vel = vari = life = delay = gangv = sim = skin = 0;
 		scl = grav = 1;
 		ramt = 255;
+		rmode = 0;
 		while ((key = getentitytoken()) != "" && key != "}")
 		{
 			tok = getentitytoken();
@@ -209,6 +223,7 @@ void() Sh_LoadForMap =
 			else if (key == "gibgravityscale")  grav = stof(tok);
 			else if (key == "rendercolor")      scol = tok;
 			else if (key == "renderamt")        ramt = stof(tok);
+			else if (key == "rendermode")       rmode = stof(tok);
 		}
 		if (cn != "env_shooter" || tn == "")
 			continue;
@@ -240,7 +255,7 @@ void() Sh_LoadForMap =
 		sh_sf[i] = sf;
 		sh_gone[i] = FALSE;
 		sh_col[i] = (scol != "") ? Sprite_ParseColor(scol) : '1 1 1';
-		sh_alpha[i] = bound(0, ramt, 255) / 255;
+		sh_alpha[i] = rmode ? bound(0, ramt, 255) / 255 : 1;     // renderamt counts only with a render mode
 		if (sh_alpha[i] <= 0)
 			sh_alpha[i] = 1;
 		sh_mdl[i] = strzone(mdl);
@@ -294,44 +309,47 @@ float() Sh_Frame =
 		if (gib_die[k] <= 0)
 			continue;
 		e = gib_e[k];
-		if (time > gib_die[k] + 1)
-		{
+		if (time > gib_die[k])
+		{	// strict remove: gone at once
 			gib_die[k] = 0;
-			e.alpha = 0;
 			e.drawmask = 0;
-			gib_live = gib_live - 1;
 			continue;
 		}
 		e.drawmask = MASK_ENGINE;
 		n = n + 1;
-		if (time > gib_die[k])
-			e.alpha = gib_alpha[k] * (1 - (time - gib_die[k]));
-		v = gib_v[k];
-		if (v != '0 0 0')
+		if (!gib_rest[k])
 		{
+			v = gib_v[k];
 			v_z = v_z - 800 * gib_grav[k] * dt;
 			p = e.origin;
 			traceline(p, p + v * dt, MOVE_NOMONSTERS, world);
 			if (trace_allsolid)
+			{
+				gib_rest[k] = TRUE;
+				gib_av[k] = '0 0 0';
 				v = '0 0 0';
+			}
 			else if (trace_fraction < 1)
-			{	// FLY_BOUNCE: reflect, friction 0.55; resting on a floor when slow
+			{	// FLY_BOUNCE: the reflection times elasticity 0.25; under 30 u/s at rest, laid flat on a floor
 				nrm = trace_plane_normal;
 				p = trace_endpos + nrm * 0.5;
-				v = (v - nrm * (2 * (v * nrm))) * 0.55;
+				v = (v - nrm * (2 * (v * nrm))) * 0.25;
 				sp = vlen(v);
-				if (nrm_z > 0.7 && sp < 30)
+				if (sp < 30)
 				{
+					gib_rest[k] = TRUE;
 					v = '0 0 0';
 					gib_av[k] = '0 0 0';
+					if (nrm_z > 0.7)
+						e.angles = [0, e.angles_y, 0];
 				}
 				setorigin(e, p);
 			}
 			else
 				setorigin(e, p + v * dt);
 			gib_v[k] = v;
+			e.angles = e.angles + gib_av[k] * dt;
 		}
-		e.angles = e.angles + gib_av[k] * dt;
 	}
 	gib_live = n;
 	return n;

@@ -8,7 +8,12 @@
   StartOverlays deactivates the map's other overlays without clearing what is shown.  The view has one overlay
   (FL_EDICT_ALWAYS: everyone sees it, as in Source multiplayer).
 
-  Refract, screenspace and post materials are not drawn: FTE would draw their texture flat over the screen.
+  Only shaders FTE draws as a picture with a $basetexture are shown (UnlitGeneric and kin): Refract, screen-space
+  and YUV ones would paste a flat texture -- or, with no base texture, solid white -- over the screen; such a step
+  shows nothing for its time and the run goes on.  A run advances whatever menu is up (Ov_Think, every frame).
+  Times are SendPropFloat's 11 bits over -1..63, rounded down.  Not as Source: one run at a time (a SwitchOverlay
+  on another overlay takes the view over), and StartOverlays on an overlay with no OverlayName1 still deactivates
+  the others (the server does not know the names).
   The state rides ENTWIRE_FXSTATE2 class FX_CLS_OVERLAY: on = 0 after StopOverlays, else 128 if active plus the
   wanted overlay + 1; StartOverlays is the event.
 */
@@ -31,29 +36,36 @@ float  ov_end;                  // when the current one ends, -1 never
 float  ov_think;
 string ov_mat;                  // the view's overlay (a sprmat stem), "" none
 float  vbsp_ov_n;
+string ov_loadmap;              // a reload on the same map (a cvar toggle) keeps the state
 
 // A material the view can show, as a sprmat index, or -1 (missing, or a screen-space shader drawn flat here).
 float(string nm) Ov_Mat =
 {
-	local string stem, l;
-	local float f, m, k;
+	local string stem, l, sh;
+	local float f, m, k, base;
 	stem = Sprite_MatStem(nm);
 	if (stem == "")
 		return -1;
 	f = fopen(strcat("materials/", stem, ".vmt"), FILE_READ);
-	if (f >= 0)
-	{	// the shader is the first line that says anything (a fixed budget: fgets' EOF and a blank line are both "")
-		l = "";
-		for (k = 0; k < 16; k = k + 1)
-		{
-			l = strtolower(strreplace("\"", "", strtrim(fgets(f))));
-			if (l != "" && substring(l, 0, 2) != "//")
-				break;
-		}
-		fclose(f);
-		if (strstrofs(l, "refract", 0) >= 0 || strstrofs(l, "screenspace", 0) >= 0 || strstrofs(l, "_post", 0) >= 0)
-			return -1;
+	if (f < 0)
+		return -1;
+	sh = "";
+	base = FALSE;
+	for (k = 0; k < 48; k = k + 1)
+	{	// a fixed budget: fgets' EOF and a blank line are both ""
+		l = strtolower(strreplace("\"", "", strtrim(fgets(f))));
+		if (l == "" || substring(l, 0, 2) == "//")
+			continue;
+		if (sh == "")
+			sh = l;             // the shader: the first line that says anything
+		if (strstrofs(l, "$basetexture", 0) >= 0)
+			base = TRUE;
 	}
+	fclose(f);
+	if (sh != "patch")
+	if (!base || (sh != "unlitgeneric" && sh != "vertexlitgeneric" && sh != "lightmappedgeneric" &&
+	              sh != "sprite" && sh != "unlittwotexture" && sh != "modulate"))
+		return -1;
 	m = Sprite_Material(stem, 0);
 	return m;
 };
@@ -73,10 +85,10 @@ void(float i) Ov_StartCurrent =
 	ov_end = (ov_time[i * OV_N + ov_cur] == -1) ? -1 : time + ov_time[i * OV_N + ov_cur];
 	m = Ov_Mat(nm);
 	if (m < 0)
-	{	// "couldn't find overlay": StopOverlays, which clears nothing here either
-		ov_think = FALSE;
+	{	// a screen effect FTE cannot draw (or missing): nothing for its time, then the run goes on
+		ov_mat = "";
 		if (cvar("vbsp_fx_debug"))
-			print(sprintf("overlay: %s not drawn (missing or screen-space)\n", nm));
+			print(sprintf("overlay: %s not drawn (missing or a screen effect)\n", nm));
 		return;
 	}
 	ov_mat = sprmat_name[m];
@@ -108,7 +120,8 @@ void(entity e) Ov_FxNet =
 		stop = (e.fx_non == 0);
 		ov_act[i] = (e.fx_non & 128) != 0;
 		if (!stop)
-			ov_des[i] = bound(0, (e.fx_non & 127) - 1, OV_N - 1);
+		if (ov_name[i * OV_N + bound(0, (e.fx_non & 127) - 1, OV_N - 1)] != "")
+			ov_des[i] = bound(0, (e.fx_non & 127) - 1, OV_N - 1);   // Source ignores a switch to an empty slot
 		if (ov_act[i] && ov_mat == "")
 		if (e.fx_nfire || !ov_was[i])
 		{	// StartOverlays
@@ -139,6 +152,11 @@ void() Ov_LoadForMap =
 	local float tm[OV_N];
 	local entity net;
 
+	if (ov_n && ov_loadmap == serverkey("map"))
+		return;                 // a cvar toggle re-ran the load: keep what is showing
+	if (ov_loadmap != "")
+		strunzone(ov_loadmap);
+	ov_loadmap = strzone(serverkey("map"));
 	for (i = 0; i < ov_n * OV_N; i = i + 1)
 		if (ov_name[i] != "")
 		{
@@ -194,7 +212,8 @@ void() Ov_LoadForMap =
 		for (k = 0; k < OV_N; k = k + 1)
 		{
 			ov_name[i * OV_N + k] = (nm[k] != "") ? strzone(nm[k]) : "";
-			ov_time[i * OV_N + k] = tm[k];
+			// SendPropFloat(11 bits, -1..63, SPROP_ROUNDDOWN)
+			ov_time[i * OV_N + k] = floor((bound(-1, tm[k], 63) + 1) / 64 * 2047) * 64 / 2047 - 1;
 		}
 		ov_n = ov_n + 1;
 	}
@@ -205,16 +224,23 @@ void() Ov_LoadForMap =
 			Ov_FxNet(net);      // states that arrived before this load (their start events spent)
 };
 
-// The view's overlay, over the world and under the HUD (cl_main.qc, beside MapMsg_DrawFade).
-void(vector scr) Ov_Draw =
+// ClientThink: the current one ran out, on to the next.  Every frame (cl_main.qc), menu or not.
+void() Ov_Think =
 {
 	if (ov_think && ov_ent >= 0)
 	if (ov_end != -1 && time > ov_end)
-	{	// ClientThink: the current one ran out, on to the next
+	{
 		ov_cur = ov_cur + 1;
 		Ov_StartCurrent(ov_ent);
 	}
-	if (ov_mat == "" || !cvar("vbsp_overlays_screen"))
+};
+
+// The view's overlay, over the world and under the HUD (cl_main.qc, beside MapMsg_DrawFade).
+void(vector scr) Ov_Draw =
+{
+	if (ov_mat == "")
+		return;
+	if (!cvar("vbsp_overlays_screen"))
 		return;
 	R_BeginPolygon(ov_mat, 0, TRUE);
 	R_PolygonVertex('0 0 0', '0 0 0', '1 1 1', 1);

@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1439 env_screenoverlay, env_shooter -- owner check pending
+
+- surf_ab: the oil-splat overlay when the map triggers it, gone when the map stops it. surf_era: the plush
+  shooters drop fumo plushies. Say if an overlay ever covers the screen with something solid or does not go away
+  when it should (Source keeps the last overlay up until the map stops it, and so does this).
+
 ## P1437 save-load consistency -- LIVE 8 Nov UTC (both installs +12 lobbies); owner check pending
 
 - With the matching deployed client/server pair: repeat the troublesome save several times, tap and hold a save load with lead-in on, then step between two saves while holding. The travel should not snap briefly to the held view; releasing should keep the saved look direction. Try a rewind go after a failed run: its saved trail should remain.

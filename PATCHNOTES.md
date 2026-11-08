@@ -21,6 +21,9 @@
 
 ## next
 
+### P1439 Screen overlays and shooters
+- Full-screen overlays maps put up (7 maps: oil splats, drug effects, flashes) now show, and shooters that fling props (8 maps: plushies, debris, shell casings) now fire.
+
 ### P1438 Text in the world
 - Text that maps place in the world now shows (24 maps): signs, credits, tutorial hints, and counters and countdowns that change as the map runs.
 
