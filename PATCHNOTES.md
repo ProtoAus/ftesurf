@@ -27,7 +27,8 @@
 - New Mover light row: how often moving props update their light, 1/s (default), 4/s or every frame. Every frame costs a lot on swarm maps; below once a second saves nothing, so that is the lowest.
 
 ### P1418 Crash reports you can send
-- If the game ever closes with an error, the next time you join a lobby a box offers to send the error and the last console lines (typed commands and anything naming a password or key are left out). F6 sends it; nothing is sent without that. ui_crash_report 0 turns the offer off.
+- If the game ever closes with an error, the next time you join a lobby a box offers to send the error and the last console lines (typed commands and anything naming a password or key are left out). F6 sends it; nothing is sent without that.
+- ui_crash_report 0 turns the offer off.
 
 ### P1417 A broken game file no longer closes the game
 - A map, model or texture file that claims an impossible size (over 2 GB) is now skipped with a console line naming it, instead of closing the game with a "BZ_Malloc: Failed on allocation" error.
@@ -36,14 +37,18 @@
 - Particle effects a map plays when something happens now show: booster and teleport bursts, fireworks, badge pops, and glows a button switches on. About 200 of them on 29 maps, fired when the map starts them, as in Source.
 
 ### P1413 Steadier frames with an fps cap
-- With an fps cap (cl_maxfps / fps_max), each frame now starts just early enough to be ready and is shown exactly on time, instead of starting on time and being shown whenever it finishes. At a 100 fps cap, 99% of frames now land within 0.1-0.4 ms of 10 ms (before, 1-3 ms late was common). Input is read about 3-6 ms before the frame shows, far less than the old swap-holding mode (sys_framepacing 4). sys_framepacing 1 brings back the old pacing; uncapped, with vsync on, or on D3D/Vulkan nothing changes.
+- With an fps cap (cl_maxfps / fps_max), each frame now starts just early enough to be ready and is shown exactly on time, instead of starting on time and being shown whenever it finishes.
+- At a 100 fps cap, 99% of frames now land within 0.1-0.4 ms of 10 ms (before, 1-3 ms late was common). Input is read about 3-6 ms before the frame shows, far less than the old swap-holding mode (sys_framepacing 4).
+- sys_framepacing 1 brings back the old pacing; uncapped, with vsync on, or on D3D/Vulkan nothing changes.
 - The frame-time graph (r_frametime) now times frames when they reach the screen.
 
 ### P1410 Clicking the game window no longer presses your mouse bind
-- When the game is in the background, the click that brings it to the front now does nothing in the game. Before, it also pressed whatever Mouse 1 or Mouse 2 is bound to -- with duck on a mouse button, clicking back into the window mid-run ducked you and could wreck the run.
+- When the game is in the background, the click that brings it to the front now does nothing in the game.
+- Before, it also pressed whatever Mouse 1 or Mouse 2 is bound to -- with duck on a mouse button, clicking back into the window mid-run ducked you and could wreck the run.
 
 ### P1414 Joining a lobby that is changing map works at high ping
-- Asking for a map no lobby is running switches a lobby to it and puts you there. With a slow connection (around 400 ms) the game used to give up and say the server never came live, even though the lobby had switched; now it waits for the switch properly, for up to 45 seconds.
+- Asking for a map no lobby is running switches a lobby to it and puts you there. With a slow connection (around 400 ms) the game used to give up and say the server never came live, even though the lobby had switched.
+- Now it waits for the switch properly, for up to 45 seconds.
 
 ### P1412 Smaller client game code
 - The game code a lobby sends you is 3 MB smaller (8.0 MB to 4.9 MB), so joining after an update downloads faster. It runs exactly the same.
@@ -52,13 +57,15 @@
 - Maps that come with their own particle effects (glows, embers, waterfalls, rising shapes) now draw them on 122 maps instead of 4. Effects that only fire when something happens (a booster, a button, a teleport) are not drawn yet.
 
 ### P1409 Faster see-through surfaces with exact sorting
-- With r_blendsort 2 (see-through surfaces sorted back to front), maps with many glass or see-through faces no longer recompute every face's centre each frame: surf_bossfight went from about 280 to about 490 fps. The picture is the same. r_blendcache 0 brings back the old way.
+- With r_blendsort 2 (see-through surfaces sorted back to front), maps with many glass or see-through faces no longer recompute every face's centre each frame: surf_bossfight went from about 280 to about 490 fps. The picture is the same.
+- r_blendcache 0 brings back the old way.
 
 ### P1408 Five crosshairs
 - The crosshair setting (HUD editor) cycles five crosshairs and off: a new green plus, a small white dot and a magenta plus join the first two. Each draws at its own size.
 
 ### P1405 Teleports that check your name are predicted
-- Many maps rename you as you go (each stage, each bhop block) and send you back with teleports that check that name: falling into a stage's reset now takes you straight to the stage start instead of stopping at a hidden room and jumping a moment later. About 22,000 teleports on 577 maps.
+- Many maps rename you as you go (each stage, each bhop block) and send you back with teleports that check that name.
+- Falling into a stage's reset now takes you straight to the stage start instead of stopping at a hidden room and jumping a moment later. About 22,000 teleports on 577 maps.
 
 ### P1403 Prediction reports carry packet timing
 - A prediction report now records when each update from the lobby arrived, so the remaining snaps around saves, loads and resets can be traced. Reports are no longer offered for the first moments after a slow map load.
@@ -74,26 +81,30 @@
 - surf_view and ent_view draw see-through planes with outlines by default. If you never changed the old dithered look, it switches once (the console says so); surf_view_style picks another.
 
 ### P1398 Moving things are cheaper to light
-- Props that move (surf_centipedes' skull swarms in the sky, things riding tracks, other players) look up the map's light about once a second instead of every frame, and fade smoothly to each new value, so the light never steps. surf_centipedes' stage starts went from under 200 fps to 460-920 at the default settings. r_modellight_moverate sets how many times a second; 0 is every frame.
+- Props that move (surf_centipedes' skull swarms in the sky, things riding tracks, other players) look up the map's light about once a second instead of every frame, and fade smoothly to each new value, so the light never steps.
+- surf_centipedes' stage starts went from under 200 fps to 460-920 at the default settings. r_modellight_moverate sets how many times a second; 0 is every frame.
 
 ### P1397 Noclip no longer files prediction reports
 - Turning noclip on or off in a lobby is no longer counted as a prediction error, so it no longer writes or offers a report.
 
 ### P1396 Teleports whose names differ in capitals are predicted
-- About 1,000 teleports on 123 maps (surf_delight, surf_tycho, surf_prevail, surf_mesa_mine, surf_kitsune and others) spell their destination with different capitals than the destination itself. The server always took them; your game did not predict them, so each one sent you a moment late with a jump. They are predicted now.
+- About 1,000 teleports on 123 maps (surf_delight, surf_tycho, surf_prevail, surf_mesa_mine, surf_kitsune and others) spell their destination with different capitals than the destination itself. The server always took them.
+- Your game did not predict them, so each one sent you a moment late with a jump. They are predicted now.
 - surf_bossfight's intro drop is decided by the server alone and no longer files prediction reports.
 
 ### P1394 Teleports that push you are predicted
 - Teleports that also give you a push as you enter (surf_perennial's speed loops, 63 teleports on 31 maps) are predicted again instead of being left to the server, which snapped you to the exit a moment late each time.
 
 ### P1386 Water walls and slopes share the view's reflection
-- With Full reflect water, walls and slopes of water, water seen from underneath, and water on moving parts of a map now use the same reflection and refraction as the main water you can see, as Source does, instead of each drawing the whole scene again every frame. bhop_ceaseless looking back at the start: 214 to about 450 fps. surf_affliction's lava channel: 8 to about 600. The picture is the same in nearly every view; r_waterwalls 0 brings back the old way.
+- With Full reflect water, walls and slopes of water, water seen from underneath, and water on moving parts of a map now use the same reflection and refraction as the main water you can see, as Source does.
+- Before, each drew the whole scene again every frame. bhop_ceaseless looking back at the start: 214 to about 450 fps. surf_affliction's lava channel: 8 to about 600. The picture is the same in nearly every view; r_waterwalls 0 brings back the old way.
 
 ### P1392 Keyboard view in the key settings
 - The key configuration panel (K) has a Keyboard tab: a whole keyboard and mouse showing what every key does. Pick an action from the list, then click keys to put it on them; right-click a key to clear it. Keys bound to the action you picked light up.
 
 ### P1391 Report a problem (F3)
-- Press F3 to send a report: pick a subject (Poor performance, Bad rendering, Bug, Map or zones, Feature request, Other) or type your own, say what happened, and send. A screenshot of the moment you pressed F3 goes with it, plus the map, your position and save, frame rate, settings and game version, so you don't have to type those. Esc closes it and keeps your text for next time.
+- Press F3 to send a report: pick a subject (Poor performance, Bad rendering, Bug, Map or zones, Feature request, Other) or type your own, say what happened, and send.
+- A screenshot of the moment you pressed F3 goes with it, plus the map, your position and save, frame rate, settings and game version, so you don't have to type those. Esc closes it and keeps your text for next time.
 
 ### P1390 surf_colony's sky
 - The headcrab canisters in surf_colony's sky now fly round their routes instead of hanging still.
@@ -109,7 +120,8 @@
 - surf_centipedes' moving sky costs your game less each frame.
 
 ### P1384 Loading a save is the same at any ping
-- With a lead-in set, the run-up into your save now starts the moment you press the load key, and a tap lets you go when the lead-in ends. Before, both waited for the server to answer, so on a distant lobby the view sat on the save, jumped back up your path and counted down from less than the lead-in.
+- With a lead-in set, the run-up into your save now starts the moment you press the load key, and a tap lets you go when the lead-in ends.
+- Before, both waited for the server to answer, so on a distant lobby the view sat on the save, jumped back up your path and counted down from less than the lead-in.
 - A lead-in of 0 now lets you go on the tap itself, at any ping.
 - Loading a save with a long recorded path no longer freezes the game: on the longest saves (about 46,000 points) the freeze was a third of a second, now it is a few hundredths. Your run line comes back a moment after the load instead.
 
@@ -117,7 +129,8 @@
 - Shift + mouse wheel while noclipping now changes your flying speed on the lobbies too, not only in a private game. It changes only your own speed.
 
 ### P1382 Missing textures: what is not found, and a report
-- When a map shows missing (pink and black) textures because a game it takes them from was not found on your PC, the message now names that game (for example Counter-Strike Source or Half-Life 2) instead of saying the map is broken. If it is installed on another drive, type fs_steamlibs in the console.
+- When a map shows missing (pink and black) textures because a game it takes them from was not found on your PC, the message now names that game (for example Counter-Strike Source or Half-Life 2) instead of saying the map is broken.
+- If it is installed on another drive, type fs_steamlibs in the console.
 - Once a map, the game tells the lobby which textures were missing and which games were not found, so missing content can be fixed without asking you. No file paths are sent; cl_matreport 0 turns it off.
 
 ### P1380 Pixel-art map textures
