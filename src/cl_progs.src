@@ -35,6 +35,8 @@ shared/sh_ui.qc
 // builtins only; client/cl_milk.qc (the sky) is its owner here.
 milk_sys.qc
 
+// P1437: coherent save events before every event consumer, including the board.
+client/cl_saveevent.qc
 client/cl_board.qc
 client/cl_keys.qc
 // AFTER cl_keys.qc and BEFORE cl_hud.qc.  Build 30.  The HUD keeps reporting the

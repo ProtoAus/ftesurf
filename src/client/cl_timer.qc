@@ -1278,7 +1278,11 @@ void() Timer_ResumeRows =
 float(float st) Timer_Stat =
 {
 	if (!spc_hud)
+	{
+		if (st == STAT_FS_SLSEQ) return SaveEvent_Seq();
+		if (st == STAT_FS_SLOP) return SaveEvent_Slop();
 		return getstatf(st);
+	}
 	if (st == STAT_FS_TIMERSTATE)   return spc_htstate;
 	if (st == STAT_FS_TIMERTICKS)   return floor(spc_hticks);
 	if (st == STAT_FS_TIMERSEG)     return spc_hseg;

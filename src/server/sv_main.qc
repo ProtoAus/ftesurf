@@ -584,7 +584,7 @@ void() worldspawn =
 	// P924: this progs declares input_cmd_later; clients may mirror sv_tickparts.
 	forceinfokey(world, "fs_tickparts", "1");
 	forceinfokey(world, "fs_sourcephase", "1");
-	forceinfokey(world, "fs_savelead", "2"); // bounded held-save presentation eye, not a watch pin; 2: STAT_FS_SLCURID
+	forceinfokey(world, "fs_savelead", "3"); // P1437: coherent E8 saved / L14 loaded capsules; 2 added STAT_FS_SLCURID
 	vbsp_conveyor_any = 0;
 	SV_MapTierInit(FALSE);
 	// worldspawn is the first entity in the lump, so this zeroes the spawn

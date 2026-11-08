@@ -536,12 +536,12 @@ void() SaveLoc_AngleEvents =
 {
 	local float seq, op;
 
-	seq = getstatf(STAT_FS_SLSEQ);
+	seq = SaveEvent_Seq();
 	if (seq == rec_sl_angseq)
 		return;
 	rec_sl_angseq = seq;
 
-	op = FS_SlopOp(getstatf(STAT_FS_SLOP));
+	op = FS_SlopOp(SaveEvent_Slop());
 	if (op == SLOP_LOADED)
 		rec_sl_holdang_ok = FALSE;
 };
@@ -557,6 +557,9 @@ void() SaveLoc_LockAngles =
 		return;
 	}
 
+	// A new raw event may already carry svc_setangle while its capsule waits.
+	// Do not overwrite that native angle with the preceding event's latch.
+	if (SaveEvent_Pending()) return;
 	if (!rec_sl_holdang_ok)
 	{
 		rec_sl_holdang = getproperty(VF_CL_VIEWANGLES);
@@ -570,6 +573,7 @@ void() SaveLoc_LockAngles =
 void() SaveLoc_InputFrame =
 {
 	SaveLoc_LockAngles();
+	if (SaveEvent_Pending()) return;
 	if (rec_sl_holding && rec_sl_holdang_ok)
 		input_angles = rec_sl_holdang;
 };

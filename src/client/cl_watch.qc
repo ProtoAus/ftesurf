@@ -5008,7 +5008,7 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	// pass borrows its save slot; rec_watch below transfers the server pin.
 	Spec_HandOver();
 	rec_wt_open   = TRUE;
-	rec_wt_slseq  = getstatf(STAT_FS_SLSEQ);
+	rec_wt_slseq  = SaveEvent_Seq();
 
 	// The passes that cost anything at load, and between them the reason both a
 	// scrub and a frame are cheap: the drawn curve and the segment column are
@@ -6029,10 +6029,10 @@ void(float navfocus) Watch_Frame =
 	rec_wt_on = FALSE;
 	if (!rec_wt_open)
 		return;
-	if (getstatf(STAT_FS_SLSEQ) != rec_wt_slseq)
+	if (SaveEvent_Seq() != rec_wt_slseq)
 	{
-		rec_wt_slseq = getstatf(STAT_FS_SLSEQ);
-		if (FS_SlopOp(getstatf(STAT_FS_SLOP)) == SLOP_LOADED)
+		rec_wt_slseq = SaveEvent_Seq();
+		if (FS_SlopOp(SaveEvent_Slop()) == SLOP_LOADED)
 		{
 			Watch_Stop();
 			return;

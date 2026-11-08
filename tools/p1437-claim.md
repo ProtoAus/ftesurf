@@ -9,8 +9,9 @@ that can lose an honest load's lead-in. Investigate reported missing func brushe
 without crediting a source suspicion or hiding culling globally. Existing native
 source, recorder/ranking/taint policy and player data stay intact. No QC Build bump.
 
-Frozen source-only reviews find delayed-HOLD cancellation and SLSEQ consumed
-before its SLOP payload; neither alone proves the persistent brush symptom. A real
-frozen8ac zero-delay dedicated baseline acts and is smooth (101held frames,
-1.0192second release, zero eye jumps/frame gaps/prederr). Split-state falsifiers
-and candidate proof are still pending; reservation is NOT a fix/deployment claim.
+The reservation is fulfilled by the implementation and acting state-boundary
+falsifiers documented in [p1437-save-events.md](p1437-save-events.md). Source,
+verification and deployment remain distinct; this claim is not a live-delivery
+receipt. Persistent invisible brushes remain unproven, not credited to a camera
+fix. Existing native pin/tag, evidence format, ranking/taint policy and Build stay
+unchanged.

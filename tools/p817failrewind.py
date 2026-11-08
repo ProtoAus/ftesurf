@@ -183,7 +183,7 @@ def grade_retry(sv, cl, svlog, control):
 
 
 def run(args, svroot, clroot, lobby):
-    common = lambda r: ["-basedir", str(r), "-manifest", str(r / "default.fmf")]
+    common = lambda r: ["-nohome", "-basedir", str(r), "-manifest", str(r / "default.fmf")]
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
         probe.bind(("127.0.0.1", args.port))
     server = subprocess.Popen([args.server, *common(svroot), "+sv_public", "0", "-port", str(args.port),

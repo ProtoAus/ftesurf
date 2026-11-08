@@ -11,6 +11,18 @@ vector sl_lead_target, sl_lead_angles, sl_lead_tail;
 float sl_pic_buf, sl_pic_ticks; // P1384: the tail of one save's picture, so a press reads no file
 float sl_ev_seq, sl_ev_id, sl_ev_pic; // P1384: a load event that came before the ack of its command
 string sl_pic_path;
+float sl_lead_holdseen, sl_lead_holdwait;
+
+float(float held) SaveLead_Held =
+{
+	if (held)
+	{
+		sl_lead_holdseen = TRUE;
+		return TRUE;
+	}
+	if (sl_lead_holdseen) return FALSE;
+	return (cltime < sl_lead_holdwait);
+};
 
 void() SaveLead_Clear =
 {
@@ -21,6 +33,7 @@ void() SaveLead_Clear =
 		PVS_Forget();
 	}
 	sl_lead_buf = sl_lead_n = sl_lead_until = sl_lead_next = sl_lead_pending = sl_lead_early = 0;
+	sl_lead_holdseen = sl_lead_holdwait = 0;
 	sl_lead_applied = FALSE;
 };
 
@@ -140,6 +153,10 @@ void(float seq, float id, float pic) SaveLead_Begin =
 	}
 	mine = rec_sl_leadans;
 	rec_sl_leadans = FALSE;
+	// The coherent load capsule can precede HOLD. A stale initial zero is
+	// allowed only within the existing one-second answer window, not forever.
+	sl_lead_holdseen = FALSE;
+	sl_lead_holdwait = cltime + 1;
 	if (mine && sl_lead_early == 1 && sl_lead_buf >= 1 && id == sl_lead_id)
 	{
 		sl_lead_seq = seq;
@@ -282,7 +299,7 @@ float() SaveLead_Check =
 {
 	local float i;
 
-	if (tokenize(getstats(STAT_FS_SLLEAD)) != 9 || strcmp(argv(0), "L")) return TRUE;
+	if (tokenize(getstats(STAT_FS_SLLEAD)) != 14 || strcmp(argv(0), "L")) return TRUE;
 	for (i = 1; i < 9; i += 1)
 		if (!Watch_OwnViewNumber(argv(i), 100000000)) return TRUE;
 	if (stof(argv(1)) != sl_lead_seq || stof(argv(2)) != sl_lead_id) return TRUE;
@@ -303,7 +320,7 @@ float(string pose, float held) SaveLead_TryStart =
 	local float i;
 
 	if (sl_lead_buf < 1 || !sl_lead_pending || !held) return FALSE;
-	if (tokenize(pose) != 9) return FALSE;
+	if (tokenize(pose) != 14) return FALSE;
 	if (strcmp(argv(0), "L")) return FALSE;
 	for (i = 1; i < 9; i += 1)
 		if (!Watch_OwnViewNumber(argv(i), 100000000)) return FALSE;
@@ -318,6 +335,7 @@ float(string pose, float held) SaveLead_TryStart =
 		return FALSE;
 	}
 	sl_lead_pending = 0;
+	sl_lead_holdseen = TRUE;
 	sl_lead_at = cltime;
 	sl_lead_until = cltime + sl_lead_end - sl_lead_from;
 	PVS_Forget();
@@ -338,12 +356,12 @@ float() SaveLead_Camera =
 	{
 		t = sl_ev_seq;
 		sl_ev_seq = 0;
-		if (getstatf(STAT_FS_SLSEQ) == t)
+		if (SaveEvent_Seq() == t)
 			SaveLead_Begin(t, sl_ev_id, sl_ev_pic);
 	}
 	if (sl_lead_buf < 1) return FALSE;
 	// P1384: a press's travel has no seq until the server's load event binds it.
-	if (!SaveLead_Ready() || (sl_lead_early != 1 && getstatf(STAT_FS_SLSEQ) != sl_lead_seq))
+	if (!SaveLead_Ready() || (sl_lead_early != 1 && SaveEvent_Seq() != sl_lead_seq))
 	{
 		SaveLead_Clear();
 		return FALSE;
@@ -360,7 +378,13 @@ float() SaveLead_Camera =
 	}
 	if (sl_lead_early == 2 && !SaveLead_Check())
 		return FALSE;
-	if ((sl_lead_early != 1 && !getstatf(STAT_FS_HOLD)) || cltime >= sl_lead_until)
+	if (sl_lead_early != 1)
+	if (!SaveLead_Held(getstatf(STAT_FS_HOLD)))
+	{
+		SaveLead_Clear();
+		return FALSE;
+	}
+	if (cltime >= sl_lead_until)
 	{
 		SaveLead_Clear();
 		return FALSE;

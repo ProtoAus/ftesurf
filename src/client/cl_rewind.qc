@@ -403,7 +403,7 @@ float() Rewind_Open =
 	rw_gosl = 0;
 	rec_rp_golines = 0;
 	rw_st0 = getstatf(STAT_FS_TIMERSTATE);
-	rw_seen = getstatf(STAT_FS_SLSEQ);
+	rw_seen = SaveEvent_Seq();
 	rw_ack = rw_cd = rw_dir = rw_leave = rw_pinseen = 0;
 	rw_openat = cltime;
 	rw_nativeok = FALSE;
@@ -445,7 +445,7 @@ float() Rewind_Open =
 	// read as a newer run and was refused (round 14).  SLSEQ: a save or load
 	// landing in the round trip changes the run too.
 	localcmd(sprintf("cmd rec_watch 1 rw %d %d %d %d\n", rw_serial, rw_st0,
-	                 getstatf(STAT_FS_TIMERTICKS), getstatf(STAT_FS_SLSEQ)));
+	                 getstatf(STAT_FS_TIMERTICKS), SaveEvent_Seq()));
 	return TRUE;
 };
 
@@ -504,7 +504,7 @@ void() Rewind_Go =
 		print("^3rewind: waiting for the pending save\n");
 		return;
 	}
-	rw_seq = getstatf(STAT_FS_SLSEQ);
+	rw_seq = SaveEvent_Seq();
 	rw_goi = floor(rw_i);
 	rw_gop = tr_cur_p;
 	rec_rp_golines = rec_rp_lines;
@@ -562,13 +562,19 @@ void() Rewind_Leave =
 */
 void() Rewind_Answer =
 {
+	// A covered command ACK does not make its split event capsule ready.
+	if (SaveEvent_Pending())
+	{
+		if ((cltime - rw_sentat) > RW_LOST) Rewind_Abandon();
+		return;
+	}
 	if (getstatf(STAT_FS_SLACK) < rw_ack)
 	{
 		if ((cltime - rw_sentat) > RW_LOST)
 			Rewind_Abandon();       // the count restarted under it: an observe or a rejoin
 		return;
 	}
-	if (getstatf(STAT_FS_SLSEQ) == rw_seq || FS_SlopOp(getstatf(STAT_FS_SLOP)) != SLOP_LOADED)
+	if (SaveEvent_Seq() == rw_seq || FS_SlopOp(SaveEvent_Slop()) != SLOP_LOADED)
 	{
 		rw_ack = 0;
 		if (rw_leave)
@@ -591,9 +597,9 @@ void() Rewind_Answer =
 	}
 	// Only the correlated save acknowledgement can label a native clock.
 	if (!rw_go_practice && rw_go_ticket > 0)
-	if (getstatf(STAT_FS_SLTRAILTAG) == rw_go_ticket)
+	if (SaveEvent_Tag() == rw_go_ticket)
 	{
-		rw_nativeticks = getstatf(STAT_FS_SAVETICKS);
+		rw_nativeticks = SaveEvent_Ticks();
 		rw_nativetick = serverkeyfloat("pm_ticrate");
 		rw_nativeok = (rw_nativeticks >= 0 && rw_nativetick > 0 && rw_reqtick > 0);
 	}
@@ -610,7 +616,7 @@ void() Rewind_Answer =
 	rw_ack = 0;
 	tr_cur_on = FALSE;
 	rw_cd  = cltime + max(0, cvar("hud_rewind_countdown"));
-	rw_gosl = getstatf(STAT_FS_SLSEQ);
+	rw_gosl = SaveEvent_Seq();
 };
 
 /*
@@ -625,8 +631,8 @@ float(float seq) Rewind_GoLoaded =
 	if (!rw_ack)
 	if (!rw_gosl || seq != rw_gosl)
 		return FALSE;
-	return vlen([getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1), getstatf(STAT_FS_SLORG + 2)]
-	            - rw_gop) <= RW_GONEAR;
+	// The current save cursor can move or be deleted before this event arrives.
+	return vlen(SaveEvent_Origin() - rw_gop) <= RW_GONEAR;
 };
 
 // Patch 817: open over the attempt a re-arm ended (the run back in its box): every
@@ -697,10 +703,10 @@ void(float navfocus) Rewind_Frame =
 	// sv_cheats is not): what is on screen is not where the body is (review
 	// round 2).  Our own S save is a SAVED event.  A warp is SV_RewindWarped's
 	// and the state check's below.
-	if (getstatf(STAT_FS_SLSEQ) != rw_seen)
+	if (SaveEvent_Seq() != rw_seen)
 	{
-		rw_seen = getstatf(STAT_FS_SLSEQ);
-		if (FS_SlopOp(getstatf(STAT_FS_SLOP)) == SLOP_LOADED)
+		rw_seen = SaveEvent_Seq();
+		if (FS_SlopOp(SaveEvent_Slop()) == SLOP_LOADED)
 		{
 			Rewind_Close();
 			return;

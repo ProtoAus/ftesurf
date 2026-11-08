@@ -370,6 +370,7 @@ void() TimeScale_ThreadRelease =
 
 void(float apilevel, string enginename, float engineversion) CSQC_Init =
 {
+	SaveEvent_Init();
 	Font_Init();
 	sui_style_init();
 	HUD_RegisterCvars();
@@ -1238,6 +1239,7 @@ void() CL_MoveToStandard =
 
 void() CSQC_Input_Frame =
 {
+	SaveEvent_Frame();          // P1437: publish only a seq-bound event capsule
 	if (PE_ReplayInputFrame())      // P1404: a rig replaying a prederror report (sv_cheats only)
 		return;
 	GA_InputFrame();                // read-only walk intent for local Foley
@@ -1874,6 +1876,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	local vector scr, wp_baseview;
 	local float navfocus, worldonly;
 
+	SaveEvent_Frame();          // input can run later; render events need it too
 	TimeScale_ViewSeats();
 	scr = [vwidth, vheight];
 

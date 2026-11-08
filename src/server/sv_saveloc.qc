@@ -3153,7 +3153,9 @@ void(entity e) SV_SaveSyncDelAll;
 // One save/load event out to the client.  See STAT_FS_SLSEQ.
 void(entity e, float op, float id) SV_SaveLocEvent =
 {
-	local float r, duck;
+	local float r, duck, base, saved;
+	local string event;
+	local vector savedorg;
 	// FS_SlopPack, not a literal radix -- see STAT_FS_SLOP.  The three decoders
 	// are in three other files and one of them is in another VM.
 	e.rec_sl_slop = FS_SlopPack(op, id);
@@ -3171,6 +3173,31 @@ void(entity e, float op, float id) SV_SaveLocEvent =
 			sprintf("%.9g %.9g %.9g %.9g %.9g %d", e.origin_x, e.origin_y, e.origin_z,
 			        e.v_angle_x, e.v_angle_y, duck)));
 	}
+	// P1437: the seq and all event payload fields travel as one string. Stats
+	// below can span different packets; the cursor's next refresh is too late.
+	saved = e.rec_sl_savetick;
+	savedorg = e.origin;
+	base = SL_Base(SL_Blk(e));
+	if (e.rec_sl_index >= 1)
+	if (e.rec_sl_index <= rec_sl_nb[SL_Blk(e)])
+	{
+		r = base + e.rec_sl_index - 1;
+		if (rec_sl_id[r] == id)
+		{
+			saved = rec_sl_tick[r];
+			savedorg = rec_sl_org[r];
+		}
+	}
+	event = sprintf("E %.0f %.0f %.0f %.0f", e.rec_sl_slseq, e.rec_sl_slop,
+	                saved, e.rec_sl_eventtag);
+	if (op == SLOP_SAVED)
+		event = strcat(event, sprintf(" %.9g %.9g %.9g", savedorg_x, savedorg_y, savedorg_z));
+	if (strlen(e.rec_sl_leadpose))
+	{
+		event = strcat(e.rec_sl_leadpose, " ", event);
+		strunzone(e.rec_sl_leadpose);
+	}
+	e.rec_sl_leadpose = strzone(event);
 	if (op == SLOP_SAVED && e.rec_sl_requesttag > 0)
 	{
 		r = SL_Base(SL_Blk(e)) + e.rec_sl_index - 1;

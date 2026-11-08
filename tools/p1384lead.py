@@ -56,21 +56,250 @@ void() P1384_Probe =
 '''
 
 
+SPLIT_PROBE = r'''
+// P1437 ARM ONLY: emulate independent numeric-stat arrival, NOT packet transport.
+float p1437_seq, p1437_until, p1437_arms, p1437_holdzeros, p1437_opstales, p1437_boundframes;
+float(float st) P1437_Stat =
+{
+	local float value, seq, mode;
+	value = getstatf(st);
+	mode = cvar("p1437_split_stats");
+	if (!mode || mode > 2) return value;
+	seq = getstatf(STAT_FS_SLSEQ);
+	if (seq != p1437_seq)
+	{
+		p1437_seq = seq;
+		p1437_until = 0;
+		if (FS_SlopOp(getstatf(STAT_FS_SLOP)) == SLOP_LOADED)
+		{
+			p1437_until = cltime + 0.12;
+			p1437_arms += 1;
+			print(sprintf("P1437 split seq %.0f mode %g at %.4f\n", seq, mode, cltime));
+		}
+	}
+	if (cltime < p1437_until)
+	{
+		if (st == STAT_FS_HOLD) { p1437_holdzeros += 1; return 0; }
+		if (mode >= 2 && st == STAT_FS_SLOP)
+		{
+			p1437_opstales += 1;
+			return FS_SlopPack(SLOP_SAVED, FS_SlopId(value));
+		}
+	}
+	return value;
+};
+void() P1437_Probe =
+{
+	local float ignored;
+	ignored = P1437_Stat(STAT_FS_SLOP); // stale op exists even if the product ignores it
+	if (sl_lead_early >= 2) p1437_boundframes += 1;
+	if (p1437_arms)
+		print(sprintf("P1437 acts %g holdzeros %g opstales %g bound %g\n",
+		              p1437_arms, p1437_holdzeros, p1437_opstales, p1437_boundframes));
+};
+'''
+
+
+CAPSULE_PROBE = r'''
+string p1437_lastpacket, p1437_holdpacket;
+float p1437_packetseq, p1437_packetuntil, p1437_packetarms, p1437_packetreads;
+float p1437_cursorarmed, p1437_cursorreported, p1437_godumped;
+float(float st) P1437_Cursor =
+{
+	local float value;
+	value = getstatf(st);
+	if (p1437_cursorarmed && st == STAT_FS_SLORG) value += 4096;
+	return value;
+};
+void() P1437_TrailProbe =
+{
+	local float n, f, i, sq;
+	n = 0;
+	if (tr_raw >= 1) n = buf_getsize(tr_raw);
+	if (P1437_PENDING)
+	{
+		print(sprintf("P1437 trail pending rows %g gen %g state %g\n", n, tr_gen, tr_state));
+		if (rw_ack > 0 && !p1437_godumped && n > 0)
+		{
+			f = fopen("logs/p1437-go-before.txt", FILE_WRITE);
+			if (f >= 0)
+			{
+				fputs(f, sprintf("%.9g\n", tr_tick));
+				for (i = 0; i < n; i += 1) fputs(f, strcat(bufstr_get(tr_raw, i), "\n"));
+				fclose(f);
+				p1437_godumped = TRUE;
+				print(sprintf("P1437 trail go dump rows %g\n", n));
+			}
+		}
+	}
+	sq = SaveEvent_Seq();
+	if (p1437_cursorarmed && !P1437_PENDING && p1437_cursorreported != sq)
+	{
+		p1437_cursorreported = sq;
+		print(sprintf("P1437 cursor coherent seq %g event %v cursor %v go %v\n", sq,
+		              P1437_ORIGIN, [P1437_Cursor(STAT_FS_SLORG), P1437_Cursor(STAT_FS_SLORG + 1), P1437_Cursor(STAT_FS_SLORG + 2)], rw_gop));
+	}
+};
+string(float st) P1437_String =
+{
+	local string value;
+	local float seq;
+	value = getstats(st);
+	seq = getstatf(STAT_FS_SLSEQ);
+	if (seq != p1437_packetseq)
+	{
+		p1437_packetseq = seq;
+		p1437_packetuntil = 0;
+		if (cvar("p1437_split_stats") >= 6 && FS_SlopOp(getstatf(STAT_FS_SLOP)) == SLOP_SAVED)
+		{
+			p1437_cursorarmed = TRUE;
+			print(sprintf("P1437 saved cursor arm seq %g offset 4096\n", seq));
+		}
+		if (FS_SlopOp(getstatf(STAT_FS_SLOP)) == SLOP_LOADED)
+		{
+			if (strlen(p1437_holdpacket)) strunzone(p1437_holdpacket);
+			p1437_holdpacket = strzone(p1437_lastpacket);
+			p1437_packetuntil = cltime + 0.12;
+			p1437_packetarms += 1;
+			if (cvar("p1437_split_stats") >= 6 && rw_ack > 0)
+			{
+				p1437_cursorarmed = TRUE;
+				print(sprintf("P1437 cursor arm seq %g offset 4096\n", seq));
+			}
+			print(sprintf("P1437 capsule arm %.0f at %.4f\n", seq, cltime));
+		}
+	}
+	if (cltime < p1437_packetuntil)
+	{
+		p1437_packetreads += 1;
+		return p1437_holdpacket;
+	}
+	if (strcmp(value, p1437_lastpacket))
+	{
+		if (strlen(p1437_lastpacket)) strunzone(p1437_lastpacket);
+		p1437_lastpacket = strzone(value);
+	}
+	return value;
+};
+void() P1437_Turn =
+{
+	if (!cvar("p1437_turn")) return;
+	cvar_set("p1437_turn", "0");
+	setproperty(VF_CL_VIEWANGLES, [13, 137, 0]);
+	input_angles = [13, 137, 0];
+	print("P1437 turn to 13 137 0\n");
+};
+void() P1437_AngleProbe =
+{
+	if (!p1437_packetarms) return;
+	print(sprintf("P1437 capsule acts %g reads %g\n", p1437_packetarms, p1437_packetreads));
+	print(sprintf("P1437 angle native %v latch %v pending %g capsule %s\n",
+	              getproperty(VF_CL_VIEWANGLES), rec_sl_holdang, P1437_PENDING,
+	              getstats(STAT_FS_SLLEAD)));
+};
+'''
+
+
 def sha(p):
     return hashlib.sha256(Path(p).read_bytes()).hexdigest()[:16]
 
 
-def build_probe(src, out):
+def build_probe(src, out, split_stats=0):
     tree = out / 'cstree'
     shutil.copytree(src, tree / 'src', ignore=shutil.ignore_patterns('*.dat', '*.lno', 'rig'))
     (tree / 'ftesurf').mkdir()
+    if split_stats:
+        for f in (tree / 'src/client').glob('*.qc'):
+            text = f.read_bytes().decode()
+            text = text.replace('getstatf(STAT_FS_HOLD)', 'P1437_Stat(STAT_FS_HOLD)')
+            text = text.replace('getstatf(STAT_FS_SLOP)', 'P1437_Stat(STAT_FS_SLOP)')
+            if split_stats >= 3:
+                text = text.replace('getstats(STAT_FS_SLLEAD)', 'P1437_String(STAT_FS_SLLEAD)')
+            if split_stats >= 6:
+                for st in ('STAT_FS_SLORG', 'STAT_FS_SLORG + 1', 'STAT_FS_SLORG + 2'):
+                    text = text.replace(f'getstatf({st})', f'P1437_Cursor({st})')
+            f.write_bytes(text.encode())
+        # Declare before all consumers without touching generated defs/*.qc.
+        (tree / 'src/client/p1437_split_proto.qc').write_bytes(
+            b'float(float st) P1437_Stat;\n' + (b'string(float st) P1437_String;\nvoid() P1437_TrailProbe;\n' if split_stats >= 3 else b'')
+            + (b'float(float st) P1437_Cursor;\n' if split_stats >= 6 else b''))
+        f = tree / 'src/cl_progs.src'
+        text = f.read_bytes()
+        entry = b'shared/sh_defs.qc\n'
+        assert text.count(entry) == 1
+        f.write_bytes(text.replace(entry, entry + b'client/p1437_split_proto.qc\n'))
+    if split_stats == 4:
+        # Negative control: the reviewed pre-fix pending fences, never product.
+        assert (tree / 'src/client/cl_saveevent.qc').is_file()
+        f = tree / 'src/client/cl_saveloc.qc'
+        text = f.read_text(); fence = '\tif (SaveEvent_Pending()) return;\n'
+        assert text.count(fence) == 2
+        f.write_text(text.replace(fence, ''))
+        f = tree / 'src/client/cl_replay.qc'
+        text = f.read_text(); fence = '\tif (!SaveEvent_Pending())\n'
+        assert text.count(fence) == 1
+        f.write_text(text.replace(fence, ''))
+        f = tree / 'src/client/cl_rewind.qc'
+        text = f.read_text()
+        fence = ('\tif (SaveEvent_Pending())\n\t{\n'
+                 '\t\tif ((cltime - rw_sentat) > RW_LOST) Rewind_Abandon();\n\t\treturn;\n\t}\n')
+        assert text.count(fence) == 1
+        f.write_text(text.replace(fence, ''))
+        f = tree / 'src/client/cl_board.qc'
+        text = f.read_text(); assert text.count('SaveEvent_Pending() || ') == 1
+        f.write_text(text.replace('SaveEvent_Pending() || ', ''))
+    if split_stats == 5:
+        f = tree / 'src/client/cl_trail.qc'; text = f.read_text()
+        fence = '\tif (SaveEvent_Pending()) return;\n'; assert text.count(fence) == 1
+        f.write_text(text.replace(fence, ''))
+    if split_stats == 6:
+        f = tree / 'src/client/cl_rewind.qc'; text = f.read_text()
+        old = 'return vlen(SaveEvent_Origin() - rw_gop) <= RW_GONEAR;'; assert text.count(old) == 1
+        text = text.replace(old, 'return vlen([P1437_Cursor(STAT_FS_SLORG), P1437_Cursor(STAT_FS_SLORG + 1), P1437_Cursor(STAT_FS_SLORG + 2)] - rw_gop) <= RW_GONEAR;')
+        f.write_text(text)
+        f = tree / 'src/client/cl_board.qc'; text = f.read_text()
+        old = 'seq_mk_aorg = SaveEvent_Origin();'; assert text.count(old) == 1
+        f.write_text(text.replace(old, 'seq_mk_aorg = [P1437_Cursor(STAT_FS_SLORG), P1437_Cursor(STAT_FS_SLORG + 1), P1437_Cursor(STAT_FS_SLORG + 2)];'))
+    if split_stats >= 3 and (tree / 'src/client/cl_saveevent.qc').is_file():
+        f = tree / 'src/client/cl_trail.qc'; text = f.read_text()
+        entry = '\tTrail_Catch(TR_CATCH);          // P1384\n'; assert text.count(entry) == 1
+        f.write_text(text.replace(entry, entry + '\tP1437_TrailProbe(); // ARM ONLY, before fallback state transitions\n'))
+        f = tree / 'src/client/cl_trailstate.qc'; text = f.read_text()
+        entry = 'void() Trail_RawClear =\n{\n'; assert text.count(entry) == 1
+        f.write_text(text.replace(entry, entry + '\tif (SaveEvent_Pending())\n\tif (tr_raw >= 1) print(sprintf("P1437 trail clear pending rows %g gen %g\\n", buf_getsize(tr_raw), tr_gen));\n'))
+        f = tree / 'src/client/cl_replay.qc'; text = f.read_text()
+        entry = 'void() Rec_ViewFailDrop =\n{\n'; assert text.count(entry) == 1
+        text = text.replace(entry, entry + '\tif (rec_fa_view >= 1) print(sprintf("P1437 prefix drop lines %g pending %g\\n", rec_fa_lines, SaveEvent_Pending()));\n')
+        entry = '\trec_fa_lines = rec_rp_lines;'; assert text.count(entry) == 1
+        text = text.replace(entry, entry + '\n\tprint(sprintf("P1437 prefix keep lines %g\\n", rec_fa_lines));')
+        entry = 'rec_rp_view = rec_fa_view;'; assert text.count(entry) == 2
+        text = text.replace(entry, entry + '\n\t\t\t\tprint(sprintf("P1437 prefix transfer lines %g pending %g\\n", rec_fa_lines, SaveEvent_Pending()));')
+        f.write_text(text)
     f = tree / 'src/client/cl_savelead.qc'
-    f.write_bytes(f.read_bytes() + PROBE.encode())
+    capsule = CAPSULE_PROBE.replace('P1437_PENDING', 'SaveEvent_Pending()' if (tree / 'src/client/cl_saveevent.qc').is_file() else '0')
+    has_origin = (tree / 'src/client/cl_saveevent.qc').is_file() and 'SaveEvent_Origin' in (tree / 'src/client/cl_saveevent.qc').read_text()
+    capsule = capsule.replace('P1437_ORIGIN', 'SaveEvent_Origin()' if has_origin else '[0, 0, 0]')
+    if not (tree / 'src/client/cl_saveevent.qc').is_file():
+        capsule = capsule.replace('SaveEvent_Seq()', 'getstatf(STAT_FS_SLSEQ)')
+    f.write_bytes(f.read_bytes() + PROBE.encode() + (SPLIT_PROBE.encode() if split_stats else b'')
+                  + (capsule.encode() if split_stats >= 3 else b''))
     f = tree / 'src/client/cl_main.qc'
     t = f.read_bytes().decode()
     hook = '\tSaveLoc_Camera();               // Patch 430: a load drawn before its reply\n'
     assert t.count(hook) == 1
-    f.write_bytes(t.replace(hook, hook + '\tif (cvar("p1384_probe")) P1384_Probe();   // ARM ONLY\n').encode())
+    t = t.replace(hook, hook + '\tif (cvar("p1384_probe")) P1384_Probe();   // ARM ONLY\n')
+    if split_stats:
+        t = t.replace(hook, hook + '\tif (cvar("p1384_probe")) P1437_Probe();   // ARM ONLY\n')
+    if split_stats >= 3:
+        t = t.replace(hook, hook + '\tif (cvar("p1384_probe")) P1437_AngleProbe();   // ARM ONLY\n')
+        entry = 'void() CSQC_Input_Frame =\n{\n'; assert t.count(entry) == 1
+        t = t.replace(entry, entry + '\tP1437_Turn(); // ARM ONLY\n')
+    init = 'void(float apilevel, string enginename, float engineversion) CSQC_Init =\n{\n'
+    assert t.count(init) == 1
+    t = t.replace(init, init + '\tregistercvar("p1384_probe", "0", 0);\n'
+                             f'\tregistercvar("p1437_split_stats", "{split_stats}", 0);\n'
+                             '\tregistercvar("p1437_turn", "0", 0);\n')
+    f.write_bytes(t.encode())
     # Match build.ps1's P1391 string budget; the default 2 MiB cannot compile
     # today's unchanged client, even before the probe is added.
     r = subprocess.run([str(tree / 'src/fteqcc64.exe'), '-max_strings', '4194304',
@@ -127,6 +356,25 @@ ROW = re.compile(r'P1384 t (\S+) t0 (\S+) hold (\S+) wop (\S+) buf (\S+) pend (\
 
 
 def grade(seg):
+    # Acting counters distinguish a disabled/non-reaching split from a pass.
+    acts = re.findall(r'P1437 acts (\d+) holdzeros (\d+) opstales (\d+) bound (\d+)', seg)
+    split = dict(split_arms=max((int(a[0]) for a in acts), default=0),
+                 split_holdzeros=max((int(a[1]) for a in acts), default=0),
+                 split_opstales=max((int(a[2]) for a in acts), default=0),
+                 split_boundframes=max((int(a[3]) for a in acts), default=0))
+    capsule = re.findall(r'P1437 capsule acts (\d+) reads (\d+)', seg)
+    angles = re.findall(r'P1437 angle native ([^\r\n]+?) latch ([^\r\n]+?) pending (\d+) capsule ([^\r\n]+)', seg)
+    errors = []
+    for native, _, pending, packet in angles:
+        fields = packet.split()
+        if pending == '1' and len(fields) == 14 and fields[0] == 'L':
+            got = [float(v) for v in native.split()]
+            target = [float(fields[6]), float(fields[7]), 0.0]
+            if len(got) == 3:
+                errors.append(max(abs((a-b+180) % 360-180) for a, b in zip(got, target)))
+    split.update(capsule_arms=max((int(a[0]) for a in capsule), default=0),
+                 capsule_reads=max((int(a[1]) for a in capsule), default=0),
+                 pending_angle_frames=len(errors), max_pending_angle_error=max(errors, default=0))
     rows = []
     for m in ROW.finditer(seg):
         g = m.groups()
@@ -138,7 +386,7 @@ def grade(seg):
         # Down and up inside one frame: no rendered frame was held (lead-in 0 on a predicted load).
         return {'frames_held': 0, 'press_to_travel': None, 'press_to_release': 0.0 if 'run resumed' in seg else None,
                 'eye_jumps_held': [], 'texts': [], 'first_countdown': None,
-                'prederr': len(re.findall(r'prederr: seq ', seg))}
+                'prederr': len(re.findall(r'prederr: seq ', seg)), **split}
     t0 = held[0]['t0']
     first = held[0]['t']
     travel = next((r for r in held if r['buf'] and not r['pend']), None)
@@ -162,7 +410,7 @@ def grade(seg):
             'press_to_travel': None if travel is None else round(travel['t'] - t0, 4),
             'press_to_release': None if rel is None else round(rel['t'] - t0, 4),
             'max_eye_jump_held': round(jump, 1), 'eye_jumps_held': jumps, 'first_countdown': next((r['txt'] for r in held if 'ms' in r['txt']), None),
-            'texts': texts, 'frame_gaps': gaps, 'prederr': len(re.findall(r'prederr: seq ', seg))}
+            'texts': texts, 'frame_gaps': gaps, 'prederr': len(re.findall(r'prederr: seq ', seg)), **split}
 
 
 def main():
@@ -175,6 +423,12 @@ def main():
     ap.add_argument('--hold', action='store_true')
     ap.add_argument('--step', action='store_true', help='rounds that save twice, hold-load the second '
                     'and step back to the first (sl_prev) 0.4 s into the hold')
+    ap.add_argument('--split-stats', type=int, choices=(0, 1, 2, 3, 4, 5, 6, 7), default=0,
+                    help='ARM ONLY: 1=HOLD lag; 2=also stale op; 3=capsule lag; '
+                         '4=old pending fences; 5=old trail transition; 6=mutable-cursor origin mutant; '
+                         '7=cursor displacement with fixed origin. State emulation, NOT transport.')
+    ap.add_argument('--turn-before-load', action='store_true',
+                    help='ARM ONLY with split3/4: distinct native angle before saved setangle')
     ap.add_argument('--port', type=int, default=27621)
     ap.add_argument('--set', action='append', default=[], help='an extra client cvar line, e.g. "hud_trail 1"')
     ap.add_argument('--bigpic', type=int, default=0,
@@ -189,7 +443,7 @@ def main():
     print('free physical %d MB, commit %d MB' % (phys, commit), flush=True)
     if phys < 1500 or commit < 2200:
         raise SystemExit('not enough free memory for a server and a client')
-    cs = build_probe(a.src, a.out)
+    cs = build_probe(a.src, a.out, a.split_stats)
     report = {'qwprogs': sha(a.progs / 'qwprogs.dat'), 'csprogs_probe': sha(cs), 'src': str(a.src),
               'client': sha(CONTENT / 'ftesurf64.exe'), 'server': sha('C:/FTEQuake/fteqwsv64.exe'),
               'lead': a.lead, 'taps': {}}
@@ -214,7 +468,7 @@ def main():
         cl.wait('FTESurf CSQC loaded', timeout=120)
         time.sleep(4)
         for line in ('menu_restart; ui_close', 'cl_prederror 4', f'cl_sl_leadin {a.lead}', 'cl_forwardspeed 200',
-                     'rec_savelock 1', 'p1384_probe 0', *a.set):
+                     'rec_savelock 1', 'p1384_probe 0', f'p1437_split_stats {a.split_stats}', *a.set):
             cl.send(line)
             time.sleep(0.3)
         time.sleep(1)
@@ -247,6 +501,9 @@ def main():
                 report.setdefault('bigpic', []).append(len(pad) + len(lines) - 1)
             if hold == 'step':
                 time.sleep(0.6)
+                if a.turn_before_load:
+                    cl.send('p1437_turn 1')  # row2 angle differs from the row1 stepped back to
+                    time.sleep(0.15)
                 cl.send('sl_save')                  # the second save, 0.6 s on: the cursor's
                 time.sleep(0.4)
             cl.send('-forward')
@@ -254,6 +511,10 @@ def main():
             cl.send('p1384_probe 1')
             off = len(cl.text())
             cl.send(f'echo P1384 MARK {label}')
+            if a.turn_before_load:
+                assert a.split_stats >= 3
+                cl.send('p1437_turn 1')
+                time.sleep(0.15)
             if hold == 'step':
                 cl.send('+sl_hold 50')
                 time.sleep(0.4)

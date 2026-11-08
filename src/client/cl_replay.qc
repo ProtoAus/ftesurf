@@ -1598,7 +1598,7 @@ float(float lines) Rec_ViewTrim =
 {
 	local float t, i, n;
 
-	t = getstatf(STAT_FS_SAVETICKS);
+	t = SaveEvent_Ticks();
 	if (rec_rp_deep)
 	{
 		if (t < 0)
@@ -1650,7 +1650,7 @@ void(float id) Rec_ViewSaved =
 	// would keep whole.  Nothing is removed either: this path can be another
 	// save's (a remote server's ids on this disk, a spectator's tracked player),
 	// and the row's own loads skip the sidecar (Rec_ViewSaveEvents).
-	if (getstatf(STAT_FS_SAVETICKS) < 0)
+	if (SaveEvent_Ticks() < 0)
 	{
 		dprint(sprintf("replay: no view prefix for %g (a rewind row)\n", id));
 		return;
@@ -1679,7 +1679,7 @@ void(float id) Rec_ViewSaved =
 	if (lines <= FS_VIEWHEAD)
 	{
 		dprint(sprintf("replay: view trim left nothing for %g (%g of %g, saveticks %g)\n",
-		               id, lines, rec_rp_lines, getstatf(STAT_FS_SAVETICKS)));
+		               id, lines, rec_rp_lines, SaveEvent_Ticks()));
 		return;
 	}
 
@@ -1875,13 +1875,13 @@ void() Rec_ViewSaveEvents =
 {
 	local float seq, op, id, k, i;
 
-	seq = getstatf(STAT_FS_SLSEQ);
+	seq = SaveEvent_Seq();
 	if (seq == rec_rp_slseq)
 		return;
 	if (CL_SaveEventsWait())
 		return;
 
-	op = getstatf(STAT_FS_SLOP);
+	op = SaveEvent_Slop();
 	id = FS_SlopId(op);
 	op = FS_SlopOp(op);
 
@@ -1931,7 +1931,7 @@ void() Rec_ViewSaveEvents =
 			else
 			{
 				if (Rewind_Cursoring())
-					rec_rp_deep = (getstatf(STAT_FS_SAVETICKS) + 1 < getstatf(STAT_FS_TIMERTICKS));
+					rec_rp_deep = (SaveEvent_Ticks() + 1 < getstatf(STAT_FS_TIMERTICKS));
 				Rec_ViewSaved(id);
 			}
 			rec_rp_deep = FALSE;
@@ -1945,7 +1945,7 @@ void() Rec_ViewSaveEvents =
 			// Patch 808: the rewind's resume row was never seen saved: its prefix is
 			// taken here, or the sidecar ran on from the head with the run's clock
 			// gone back to the cursor.
-			if (getstatf(STAT_FS_SAVETICKS) >= 0)
+			if (SaveEvent_Ticks() >= 0)
 			{
 				if (Rewind_GoLoaded(seq))
 				{
@@ -2276,7 +2276,8 @@ void() Rec_ViewFrame =
 	Rec_ViewSaveEvents();
 	// Patch 817: resumed above, or a new run -- once no event waits (CL_SaveEventsWait).
 	if (rec)
-	if (getstatf(STAT_FS_SLSEQ) == rec_rp_slseq)
+	if (!SaveEvent_Pending())
+	if (SaveEvent_Seq() == rec_rp_slseq)
 		Rec_ViewFailDrop();
 
 	/*

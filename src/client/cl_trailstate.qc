@@ -2,7 +2,7 @@
    Raw samples retain contact/stitch marks when a branch is rebuilt; copying
    only the decimated positions would keep abandoned glyphs and lose colours. */
 float tr_raw, tr_stitch, tr_slseq, tr_cur_flags;
-vector tr_cur_ang, tr_cur_vel;
+vector tr_cur_ang, tr_cur_vel, tr_loadorg;
 float tr_rep_raw, tr_rep_tick, tr_rep_end, tr_rep_ack, tr_rep_go, tr_saveack;
 float tr_req_wait;
 float tr_timedgo_ack, tr_go_visual_t, tr_rep_tracewant, tr_rep_tracegot, tr_ticket;
@@ -231,6 +231,10 @@ void(float t) Trail_Trim =
 	tr_builds = tr_builds + 1;
 	tr_settle = cltime + TR_SETTLE;
 	tr_stitch = TRUE;
+	if (FS_SlopOp(SaveEvent_Slop()) == SLOP_LOADED)
+		tr_loadorg = SaveEvent_Origin();
+	else
+		tr_loadorg = [getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1), getstatf(STAT_FS_SLORG + 2)];
 };
 
 // P1087: what a TAS go (back, edit, undo) cut off at t, kept as the comparison line; the
@@ -287,7 +291,7 @@ void(float id, float ticks) Trail_Save =
 		            FS_SlopOp(getstatf(STAT_FS_SLSAVEOP)) == SLOP_SAVED &&
 		            FS_SlopId(getstatf(STAT_FS_SLSAVEOP)) == id);
 		if (!observed)
-			observed = (tr_saveack > 0 && getstatf(STAT_FS_SLTRAILTAG) == tr_saveack);
+			observed = (tr_saveack > 0 && SaveEvent_Tag() == tr_saveack);
 		if (observed)
 		{
 			fremove(Trail_SavePath(id)); // invalidate only an observed new save

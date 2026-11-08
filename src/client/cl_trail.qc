@@ -376,8 +376,7 @@ float(float f, float t, float riding) Trail_Take =
 	  the body did.
 	*/
 	if (tr_stitch && cltime < tr_settle)
-	if (vlen(o - [getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1),
-	              getstatf(STAT_FS_SLORG + 2)]) > TR_JUMP)
+	if (vlen(o - tr_loadorg) > TR_JUMP)
 		return TRUE;                // load clock arrived ahead of the body
 	if (!tr_nsamp)
 		Line_Seed(tr_live, o, v, fl, t, yaw);
@@ -501,26 +500,30 @@ void() Trail_Frame =
 
 	Trail_Keep();
 	Trail_Catch(TR_CATCH);          // P1384
+	// A resumed timer may precede its load capsule. Preserve the old prefix
+	// and state until the coherent load can choose its trim/restore path.
+	if (SaveEvent_Pending()) return;
 	st = getstatf(STAT_FS_TIMERSTATE);
-	sq = getstatf(STAT_FS_SLSEQ);
+	sq = SaveEvent_Seq();
 	op = SLOP_NONE;
 	if (sq != tr_slseq)
 	if (!CL_SaveEventsWait())
 	{
 		tr_slseq = sq;
-		op = FS_SlopOp(getstatf(STAT_FS_SLOP));
-		id = FS_SlopId(getstatf(STAT_FS_SLOP));
-		saved = getstatf(STAT_FS_SAVETICKS);
-		if (op == SLOP_SAVED && getstatf(STAT_FS_SLTRAILTAG) != tr_req_wait)
+		op = FS_SlopOp(SaveEvent_Slop());
+		id = FS_SlopId(SaveEvent_Slop());
+		saved = SaveEvent_Ticks();
+		if (op == SLOP_SAVED && SaveEvent_Tag() != tr_req_wait)
 		{
 			tr_rep_tracewant = tr_rep_ack;
-			tr_rep_tracegot = getstatf(STAT_FS_SLTRAILTAG);
+			tr_rep_tracegot = SaveEvent_Tag();
 			if (tr_rep_raw < 1 || tr_rep_tracegot == tr_rep_ack)
 				Trail_Save(id, saved);
 		}
 		if (op == SLOP_LOADED)
 		{
 			loaded = FALSE;
+			tr_loadorg = SaveEvent_Origin();
 			// Patch 611: the server moved the body; its state is drawn from the
 			// next frame on (the engine applies a snapshot a frame after its stats).
 			tr_kfrom = clientcommandframe + 1;
@@ -531,12 +534,12 @@ void() Trail_Frame =
 			// An implicit go may reuse its previous id. It is a new prefix,
 			// never whatever picture a remote client's old file held there.
 			if (tr_timedgo_ack > 0)
-			if (getstatf(STAT_FS_SLTRAILTAG) == tr_timedgo_ack)
+			if (SaveEvent_Tag() == tr_timedgo_ack)
 			{
 				Trail_Trim((saved >= 0) ? saved * tr_tick : tr_go_visual_t);
 				Trail_Save(id, saved);
 			}
-			if (!tr_rep_go || getstatf(STAT_FS_SLTRAILTAG) != tr_rep_ack)
+			if (!tr_rep_go || SaveEvent_Tag() != tr_rep_ack)
 				Trail_ReplayClear();
 			if (tr_rep_raw >= 1)
 			{

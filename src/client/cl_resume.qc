@@ -94,7 +94,7 @@ float() Timer_ResumeLockAngles =
 {
 	local float seq, op, counting;
 	local string pre;
-	seq = getstatf(STAT_FS_SLSEQ);
+	seq = SaveEvent_Seq();
 	if (!ui_ms_holdseen)
 	{
 		ui_ms_holdseen = TRUE;
@@ -103,7 +103,7 @@ float() Timer_ResumeLockAngles =
 	else if (seq != ui_ms_holdseq)
 	{
 		ui_ms_holdseq = seq;
-		op = FS_SlopOp(getstatf(STAT_FS_SLOP));
+		op = FS_SlopOp(SaveEvent_Slop());
 		if (op == SLOP_RESUME) ui_ms_ignorecount = TRUE;
 	}
 	pre = substring(Timer_ResumeKey(), 0, 2);

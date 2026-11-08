@@ -1654,9 +1654,9 @@ float(float id, float t) Seq_HistMark =
 	seq_mk_ahave     = seqh_s[b + 15];
 	seq_mk_az        = seqh_s[b + 16];
 	seq_mk_azone     = seqh_s[b + 17];
-	// Where the row IS (the cursor save's origin), not where the column was taken:
-	// the restore's guards wait for the body within SEG_JUMPDIST of it.
-	seq_mk_aorg      = [getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1), getstatf(STAT_FS_SLORG + 2)];
+	// Where this row IS, not where the column was taken. A delayed load must
+	// use its endpoint, not a selection cursor that may already have moved.
+	seq_mk_aorg = SaveEvent_Origin();
 	for (i = 0; i < seq_mk_n; i = i + 1)
 	{
 		b = j * SEQH_W + SEQH_ROW + i * 10;
@@ -1760,9 +1760,9 @@ float() CL_SaveEventsWait =
 		return TRUE;
 	if (getstats(STAT_FS_SAVEROOT) != "")
 		return FALSE;
-	if (getstatf(STAT_FS_SLSEQ) != cl_rootwait)
-		dprint(sprintf("saves: event %g waits for its root\n", getstatf(STAT_FS_SLSEQ)));
-	cl_rootwait = getstatf(STAT_FS_SLSEQ);
+	if (SaveEvent_Seq() != cl_rootwait)
+		dprint(sprintf("saves: event %g waits for its root\n", SaveEvent_Seq()));
+	cl_rootwait = SaveEvent_Seq();
 	return TRUE;
 };
 
@@ -2009,7 +2009,7 @@ void() Seq_ViewZeroLoad =
 	fh = fopen(Seq_ViewZeroPath(), FILE_READ);
 	if (fh < 0)
 		return;
-	dest = [getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1), getstatf(STAT_FS_SLORG + 2)];
+	dest = SaveEvent_Origin();
 	best = 1;
 	found = FALSE;
 	jz = 0;
@@ -2376,13 +2376,13 @@ void() Seq_SaveEvents =
 {
 	local float seq, op, id, k;
 
-	seq = getstatf(STAT_FS_SLSEQ);
+	seq = SaveEvent_Seq();
 	if (seq == seq_slseq)
 		return;
 	if (CL_SaveEventsWait())
 		return;
 
-	op = getstatf(STAT_FS_SLOP);
+	op = SaveEvent_Slop();
 	id = FS_SlopId(op);
 	op = FS_SlopOp(op);
 
@@ -2414,12 +2414,12 @@ void() Seq_SaveEvents =
 			// a live save from the history too.
 			k = FALSE;
 			if (Rewind_Cursoring())
-			if (getstatf(STAT_FS_SAVETICKS) >= 0)
-			if (getstatf(STAT_FS_SAVETICKS) + 1 < getstatf(STAT_FS_TIMERTICKS) || Rewind_OverFail())
+			if (SaveEvent_Ticks() >= 0)
+			if (SaveEvent_Ticks() + 1 < getstatf(STAT_FS_TIMERTICKS) || Rewind_OverFail())
 				k = TRUE;
 			if (k)
 			{
-				if (Seq_HistMark(id, getstatf(STAT_FS_SAVETICKS)))
+				if (Seq_HistMark(id, SaveEvent_Ticks()))
 					Seq_WriteMk(id);
 				else
 				{
@@ -2428,7 +2428,7 @@ void() Seq_SaveEvents =
 						seq_mk_id = -1;
 				}
 			}
-			else if (getstatf(STAT_FS_SAVETICKS) >= 0)
+			else if (SaveEvent_Ticks() >= 0)
 				Seq_Write(id);
 			else if (seq_mk_id == id)
 				seq_mk_id = -1;
@@ -2449,7 +2449,7 @@ void() Seq_SaveEvents =
 			// Patch 477 review round 9: a demoted row (SAVETICKS -1) loads idle,
 			// and a rewind row's id is reused, so a snapshot on it is another
 			// save's -- nothing to put back, as Seq_Read with no file.
-			if (getstatf(STAT_FS_SAVETICKS) < 0)
+			if (SaveEvent_Ticks() < 0)
 			{
 				if (seq_mk_id == id)
 					seq_mk_id = -1;
@@ -2472,14 +2472,14 @@ void() Seq_SaveEvents =
 					fremove(Seq_Path(id));
 					if (seq_mk_id == id)
 						seq_mk_id = -1;
-					if (Seq_HistMark(id, getstatf(STAT_FS_SAVETICKS)))
+					if (Seq_HistMark(id, SaveEvent_Ticks()))
 						Seq_WriteMk(id);
 					else
 						Seq_Clear();
 				}
 				Seq_Read(id);
 				if (k)
-					Seq_HistCut(getstatf(STAT_FS_SAVETICKS));
+					Seq_HistCut(SaveEvent_Ticks());
 				else
 					Seq_HistClear(FALSE);
 			}
@@ -4011,7 +4011,7 @@ void(vector org, vector vel, float tele, float last, float n) Board_LiveMoved =
 
 	if (getstatf(STAT_FS_HOLD) || getstatf(STAT_FS_PIN) > 0)
 		seg_lv_quiet = cltime + SEG_RS_DEADLINE;
-	if (ui_rs_armed || cltime < seg_lv_quiet || getstatf(STAT_FS_SLSEQ) != seq_slseq)
+	if (ui_rs_armed || cltime < seg_lv_quiet || SaveEvent_Pending() || SaveEvent_Seq() != seq_slseq)
 	{
 		if (snap)
 		{

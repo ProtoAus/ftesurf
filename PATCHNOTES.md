@@ -24,6 +24,9 @@
 ### P1438 Text in the world
 - Text that maps place in the world now shows (24 maps): signs, credits, tutorial hints, and counters and countdowns that change as the map runs.
 
+### P1437 More consistent save loads
+- Save lead-in no longer snaps to the held view when load updates arrive separately. Rewind loads keep their saved trail and view, even if the selected save changes before the load is displayed.
+
 ### P1436 Fish swim
 - Fish pools now have fish (28 maps, about 1,300 fish): they school, wander round their pool and dart away when you come close.
 

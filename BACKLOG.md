@@ -1,5 +1,10 @@
 # BACKLOG.md
 
+## Save-load brush visibility and short post-release trail observation (P1437, 9 Nov)
+
+- Site: client scene after SaveLead_Camera/SaveLoc_Camera. Owner reports some func brushes remain invisible after a load until another load or reconnect. P1437's acting split-state camera/prefix fixes do not prove or resolve this persistent symptom. Falsifier: capture an affected map/position, distinguish `r_ignorevis 1` (restore 0) from missing draw submission, and compare the same brush before/after reconnect. No global culling workaround or asserted engine root cause.
+- Site: Trail_Frame after release in tools/p817failrewind.py. At explicit 100 fps/lead-in0, the 300 ms trail-growth check intermittently sees identical counts in BOTH untouched edef and candidate; later candidates can also pass it. Retain this baseline failure, not a universal fix claim. Falsifier: record body clock/position, HOLD/frozen state and sampled trail timestamps across that interval without changing the fixture's acceptance into a pass.
+
 ## P1434 receipt diagnostics — backend activation pending (8 Nov)
 
 - Site: captured receipt snapshot / authenticated admin detail. Source8e4978c4 is
