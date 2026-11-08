@@ -59,4 +59,9 @@ cs a90ec502. Pixel diffs every 2nd px; the HUD chat line alone is ~500.
   (r_part blocks this file writes at load) draw. So particles/ftesurf.cfg's effects do not show in this rig at
   all; whether they show in a real install is an owner check (lextest). Pre-dates P1433: start-on sparks use the
   same path.
+  Re-run 9 Nov (tools/armsj.sh, spk5-7.cfg; rigs/bm-sp5..sp7-new) with the client on basedir C:\FTESurf, the
+  installs' own exe (c61f874b, the same as ftesurf64.exe) and no copied set: spark1's SparkOnce (8 bursts of 27
+  printed, 120 u ahead, in view) and emit_test of ftesurf_fire / ftesurf_spark, of copies exec'd after the map
+  loaded, and of a copy textured effects/softglow all gave 0 px outside the HUD. No effect known to draw was fired
+  the same way, so this does not show they fail for players either -- still the owner check.
 - Extinguish's fade, Source's spark sound and glow (SF_SPARK_GLOW), the steam heat wave, env_firesource.
