@@ -1,6 +1,6 @@
 /*
   P1406: StartFrame's per-frame functions each walked every edict with find(e, classname, "player")
-  (surf_voyager, ~1,500 edicts: most of StartFrame's QC time).  StartFrame now chains the client
+  (surf_voyager: 774 edicts, most of StartFrame's QC time).  StartFrame now chains the client
   edicts named "player" once and they read it through SV_PlNext; outside StartFrame, or on a map
   that names a non-client edict "player", SV_PlNext is find().  The same answer as find(): .classname
   "player" is written by PutClientInServer on a client edict and otherwise only by the lump (spawn,

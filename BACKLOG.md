@@ -1,5 +1,61 @@
 # BACKLOG.md
 
+## Game-code frame cost on surf_voyager's flight (P1406, 8 Nov; branch p1406-gameperf, not deployed)
+
+- Rig PC, Lex's Desktop ftesurf.cfg (r_renderscale 1, MSAA 4, cl_maxfps 1000), 1920x1200 window, exe 9345821a /
+  server 3f76d70a (patch-1398), progs from this branch's own builds. Flight = `cmd zone_goto 0`, `+back` 600 ms,
+  run_startjitter 0 (the P492 recipe); r_budget over 16 s windows, two per process. Driver, logs and reports:
+  C:\FTESurf-worktrees\gameperf-20261108\artifacts (gpperf.py, agg.py, r*/report.json).
+- Base, dedicated server + UDP client (8 windows): 485 fps, CPU 1.87 ms; CSQC UpdateView/HUD 0.51, prediction
+  0.14, QC physics 0.015, entity setup 0.22, PrepareFrame 0.31, draws 0.27, swap 0.19, r_budget 0.28. The
+  server process: ~0.7 ms CPU per tick for one player (GetProcessTimes, 15.6 ms granularity); per SV_Frame
+  (sv_perfdump, 1 ms timer, so +-10 us a window) QC StartFrame 134 us, entity physics 45, snapshot build 218.
+  Hosted game (2 windows): 489 fps, UpdateView 0.475, prediction 0.125, server frames 0.085 per rendered frame.
+- Two corrections. P1266's "hands-free voyager" windows measured a player standing on the spawn platform (a bare
+  `kill` leaves the body there: its slowest frames all sit at one setpos); standing reads prediction 0.09 against
+  0.14 flying. And a hosted game runs the trigger mirror since P862 (cl_predict_listen 1):
+  CSQC_PredictPlayerMove is 3,570 QC instructions a frame hosted, 3,583 over UDP (profile_csqc); what still
+  returns while hosting is CSQC_PredictPlayerPreMove (warp ops, TG_PreMove: absent from the hosted profile)
+  and CSQC_PredictsHeld (pr_csqc.c at be087454f).
+- Where the QC goes (profile_csqc, one window per process; instructions a frame, flight): 53,250 in all,
+  ~0.16 ms of interpreter at ~3 ns each; the rest of the 0.51 ms is builtins (draws, text, traces). LOD_Predraw
+  7,441 (453 func_lods, every frame; P1406 -> 5,179); the csprogs movers (P1378/P1387: Sp_Place 3,437,
+  Trk_Ride 2,716, Trk_Angles 1,099, Sp_Predraw 1,135, Sp_Parent 988, ... ~10,700) pose every mover every frame;
+  the trigger mirror ~7,500 (CSQC_PredictPlayerMove 3,583, TG_IOEndSweep 2,118, TG_ChainStart 1,760);
+  Sprite_SkyTest re-traces once a frame while flying (P1242's 16-unit step; ~30 us of profiler time).
+- Server per tick (profile_ssqc, one player): StartFrame's find(classname "player") walks were most of it
+  (P1406 chain: StartFrame 132 -> 88 us of profiler time; sv_perfdump below). Left: SV_PeRow formats a
+  prederror ring row per usercmd (three sprintf + strcat + bufstr_set, ~14 us profiled per command, scales
+  with players x 66/s); Archive_Frame, PlayStats_Frame and Account_SelfFrame walk findfloat(acct_here) every
+  frame (~10 us; acct_here is set at ClientConnect, before the classname, so the player chain is not their
+  answer -- a chain of their own would be); Lobby_Frame re-registers 16 cvars every frame; SV_SpFrame
+  13 us, SV_TpEyeThink 13 us (20 Hz).
+- P1406 measured (sv_perfdump per SV_Frame, mean +- sd of 18 s windows, A/B alternating processes; r54's first
+  window dropped: a focus event cut its flight). One client: QC StartFrame base 134+-16 (8), chain walked
+  with find() 92+-18 (4) and 87+-17 (5, the next batch), final client-slot walk 61+-4 (4). lobby.cfg plus a
+  second client: base 149+-17 (6), find() chain 98+-6 (4). But StartFrame + entity physics + snapshot build
+  moved less: base 397+-28, find() chain 357-366, final 368+-33 (one client); lobby 419+-30 -> 365+-12. So
+  the find() chain's gain shows in the whole server frame (30-55 us, ~10%), the client-slot step's does not
+  (physics and snapshot rose by what StartFrame lost: the walk was warming the edicts they read; not
+  demonstrated either way). The server's process CPU (GetProcessTimes) did not resolve any of it. Client
+  rows: no resolvable change (the func_lod cut is ~2,300 instructions, ~7 us).
+- P1406 exactness: check builds (artifacts v_*, never shipped) that compute both answers on every call.
+  Chain, SV_PlNext against find(), dedicated server + 2 clients on lobby.cfg: first cut 0 of 99,293 differ,
+  its mutant (drops edict 2) 16,405 of 48,595 once the second client joined; final code 0 of 67,160. A map
+  that names a non-client edict "player" keeps find() (SV_PlStrayScan); that case could not be run: such an
+  edict (spawned where SV_LateSpawnAll restores one) killed the server at the first zone load in code P1406
+  does not touch (StartFrame > SV_ZoneLoad > SV_TimerMapInit > SV_SaveLocReset, which indexes rec_sl_nb by
+  its edict number: "Progs boundcheck failed. Value is 775. Must be 0<=value<33"), so base builds die the
+  same way; base itself was not run. Crafted maps only; not fixed. func_lod: old and new predraw on every
+  call, return and alpha compared: 0 of 5,799,310 differ (435,804 in the fade branch); its mutant (centre
+  0.01 u off) 57,151 differ. pm_verify does not run StartFrame's walkers or the predraw, so it is
+  not a check for either.
+- Left on purpose (behaviour or Lex's call): posing only the movers in view (draws the same, but their origins
+  would stop updating off screen); a coarser sky-test cadence; an owned-slot list for TG_IOEndSweep and
+  TG_ChainStart (~3,500 instructions a frame, exact by construction, but prediction-mirror code wants a
+  prederror-level check first); lazily formatted SV_PeRow rows. Client frame time moved by none of this within
+  rig noise: whole-machine swings of ~10% between processes move every r_budget row together.
+
 ## Warp ops land a command apart in some prederror reports (8 Nov, P1395 not demonstrated)
 
 - Native ring v2 rows: at one command the server's state for N equals its state for N-1 (surf_cozy
