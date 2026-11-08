@@ -46,6 +46,12 @@
 #define FX_CLS_TESLA    1       // its classes; 2 is cl_fx.qc's env_beam arc, which rides the laser wire
 #define FX_CLS_SPRITE   3       // P1431: env_sprite (cl_sprites.qc)
 #define FX_CLS_SPOT     4       // P1431: point_spotlight, beam_spotlight (cl_sprites.qc)
+#define FX_CLS_STEAM    5       // P1433: env_steam, env_steamjet (cl_emit.qc)
+#define FX_CLS_SPARK    6       // P1433: env_spark
+#define FX_CLS_FIRE     7       // P1433: env_fire
+#define FX_CLS_STEAM    5       // P1433: env_steam, env_steamjet (cl_emit.qc)
+#define FX_CLS_SPARK    6       // P1433: env_spark
+#define FX_CLS_FIRE     7       // P1433: env_fire
 
 // --- hulls ------------------------------------------------------------------
 // Source puts the player origin AT THE FEET, unlike Quake's centred origin.

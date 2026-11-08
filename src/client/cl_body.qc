@@ -729,7 +729,10 @@ void(float isnew) CSQC_Ent_Update =
 				self.fx_nfire = min(dd, 3);
 			}
 			self.em_npstarts = st;
-			Fx_Net(self);
+			if (self.fx_ncls == FX_CLS_STEAM || self.fx_ncls == FX_CLS_SPARK || self.fx_ncls == FX_CLS_FIRE)
+				Emit_FxNet(self);       // P1433: cl_emit.qc's emitters
+			else
+				Fx_Net(self);
 			self.fx_nfire = 0;
 		}
 		else if (f == ENTWIRE_LASERSTATE)

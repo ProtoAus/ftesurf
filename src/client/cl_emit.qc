@@ -156,7 +156,8 @@
 */
 #define EK_PSYS         8
 #define EK_PRECIP       9       // func_precipitation: not an emitter, see Emit_PrecipFrame
-#define EK_N            10
+#define EK_STEAM        10      // P1433: env_steam, a jet on the smokestack look (vbsp_emit_stack)
+#define EK_N            11
 
 #define PS_MAX         512      // psys lines per map (P1411: surf_sidelines has 351)
 
@@ -188,6 +189,9 @@ vector *em_sa;                  //   shell: distance min/max in _x/_y
 vector *em_sb;                  //   shell: the .pcf's distance_bias
 float  *em_srad;                //   shell: outward speed
 float  *em_stop;                // EK_PSYS only, Patch 1028: stopped (start_active 0, or the server's Stop)
+float  *em_tnc;                 // P1433: steam, spark and fire: the name's crc (-1 unnamed), for ENTWIRE_FXSTATE2
+vector *em_korg;                //   and the lump origin (a fire's em_mid may have dropped to the floor)
+float  em_fxwait;               //   named ones that start off and wait for the map
 vector *em_psorg;               //   the system's entity origin, which the server's state names
 float  *em_psidx;               //   its .pcf system (ps_*), the parent's for a child; -1 = none
 // P1416: a one-shot (burst row): particles a start fires (0 = a rate emitter), its spurt length
@@ -231,6 +235,8 @@ void() Emit_Alloc =
 	em_sb    = memalloc(sizeof(vector) * EM_MAX);
 	em_srad  = memalloc(sizeof(float) * EM_MAX);
 	em_stop  = memalloc(sizeof(float) * EM_MAX);
+	em_tnc   = memalloc(sizeof(float) * EM_MAX);
+	em_korg  = memalloc(sizeof(vector) * EM_MAX);
 	em_psorg = memalloc(sizeof(vector) * EM_MAX);
 	em_psidx = memalloc(sizeof(float) * EM_MAX);
 	em_bcnt  = memalloc(sizeof(float) * EM_MAX);
@@ -374,6 +380,7 @@ string(float k) Emit_KindName =
 	if (k == EK_SMOKE)  return "func_smokevolume";
 	if (k == EK_STACK)  return "env_smokestack";
 	if (k == EK_PRECIP) return "func_precipitation";
+	if (k == EK_STEAM)  return "env_steam";
 	return "info_particle_system";
 };
 
@@ -2258,6 +2265,25 @@ void(float i) Emit_StackDefine =
 	life = stof(argv(2));
 	amt = stof(argv(6)) / 255;
 	nm = sprintf("ftesurf_sp%g", i);
+	if (argv(9) == "steam")
+	{	// P1433: c_steamjet.cpp -- alpha sin(pi t) x renderamt, size FLerp(start, end, age in SECONDS)
+		// (Source's own quirk), a random roll; rgb is already the lit colour
+		sp_bs[i] = stof(argv(7));
+		sp_sv[i] = stof(argv(8));
+		s = sprintf("r_part %s\n{\ntexture \"materials/particle/particle_smokegrenade.vtf\"\ntype normal\nblend blendalpha\nscalefactor 1\nscale %g\nrotationstart 0 360\nrotationspeed %g %g\n",
+		            nm, ss * 5.657, -stof(argv(10)), stof(argv(10)));
+		s = strcat(s, sprintf("rgb %s %s %s\nalpha 0\ndie %g\ncount 1\nspawnmode ball\nspawnorg 0\nveladd 1\nrampmode lerp\n",
+		            argv(3), argv(4), argv(5), life));
+		for (k = 0; k < 12; k = k + 1)
+		{
+			t = k / 11;
+			s = strcat(s, sprintf("ramp %s %s %s %g %g\n", argv(3), argv(4), argv(5), sin(t * 3.1415927) * amt,
+			                      (ss + (es - ss) * t * life) * 5.657));
+		}
+		localcmd(strcat(s, "}\n"));
+		sp_fx[i] = particleeffectnum(nm);
+		return;
+	}
 	// FTE's quad is a diamond of half-diagonal scale/4 (p_script.c GL_DrawTexturedParticle);
 	// turned 45 degrees it is Source's square, half-side scale/5.657.
 	s = sprintf("r_part %s\n{\ntexture \"materials/particle/smokestackfallback.vtf\"\ntype normal\nblend blendalpha\nscalefactor 1\nscale %g\nscaledelta %g\nrotationstart 45\n",
@@ -2574,6 +2600,7 @@ float(vector bmin, vector bmax, vector vel, float jit, float rate, float burst,
 	em_bpers[i] = 0;
 	em_bplaced[i] = 0;
 	em_stop[i]  = 0;
+	em_tnc[i]   = -1;
 	em_psidx[i] = -1;
 
 	em_n = em_n + 1;
@@ -3302,6 +3329,48 @@ void(entity e) Emit_PsysNet =
 	               e.em_npon ? "started" : "stopped"));
 };
 
+vector() Emit_RandDir;
+vector(float i) Emit_PointIn;
+
+// P1433: one SparkOnce -- one burst of the emitter's own sparks, whatever its rate.
+void(float i) Emit_SparkOnce =
+{
+	local float n;
+	local vector v;
+	if (!cvar("vbsp_emit_spark"))
+		return;
+	for (n = em_burst[i]; n > 0; n = n - 1)
+	{
+		v = em_vel[i] + Emit_RandDir() * em_jit[i];
+		if (vlen(v) < 0.01)
+			v = '0 0 1';
+		pointparticles(em_fx[em_eff[i]], Emit_PointIn(i), v, 1);
+	}
+};
+
+// P1433: a server state for env_steam (TurnOn/TurnOff/Toggle), env_spark (StartSpark/StopSpark/ToggleSpark; SparkOnce
+// an event) or env_fire (StartFire/Extinguish/Disable), matched on kind, origin and name crc.
+void(entity e) Emit_FxNet =
+{
+	local float i, k, kind;
+	if (cvar("vbsp_fx_debug"))
+		print(sprintf("fx: net class %g at %v name %g on %g fire %g (%g emitters)\n", e.fx_ncls, e.origin, e.fx_ntnc, e.fx_non, e.fx_nfire, em_n));
+	if (!em_tnc)
+		return;
+	kind = EK_FIRE;
+	if (e.fx_ncls == FX_CLS_STEAM)
+		kind = EK_STEAM;
+	else if (e.fx_ncls == FX_CLS_SPARK)
+		kind = EK_SPARK;
+	for (i = 0; i < em_n; i = i + 1)
+		if (em_kind[i] == kind && em_tnc[i] == e.fx_ntnc && vlen(em_korg[i] - e.origin) < 0.1)
+		{
+			em_stop[i] = !e.fx_non;
+			for (k = 0; k < e.fx_nfire; k = k + 1)
+				Emit_SparkOnce(i);
+		}
+};
+
 void() Emit_LoadForMap =
 {
 	local string tok, key, cn, mdl, scol, mname;
@@ -3324,6 +3393,9 @@ void() Emit_LoadForMap =
 	local float  spawnflags, disabled, density, freq, current;
 	local float  firesize, maxdelay, magnitude, traillen, mspeed;
 	local float  ssize, esize, jetlen, spread, initst, basesp, sph;
+	local float  initkey, stype, rollsp, stopped, vc;          // P1433
+	local string tn;
+	local vector lt;
 	local string smat;
 	local float  i, k, bucket, eff, kind, jit, burst;
 	local string effname;
@@ -3350,6 +3422,7 @@ void() Emit_LoadForMap =
 	pr_rmade = pr_rroof = pr_rsky = pr_rsolid = pr_rshort = pr_rlife = pr_smade = pr_ssolid = pr_sfull = 0;
 	em_any = 0;
 	em_frozen = em_clamped = em_over = em_child = 0;
+	em_fxwait = 0;
 	em_bfired = em_bfsrv = em_bactive = 0;
 	em_flwant = em_flmask = 0;
 	em_flwhy = Emit_FlameWhy();
@@ -3512,8 +3585,11 @@ void() Emit_LoadForMap =
 		spawnflags = disabled = 0;
 		density = freq = current = 0;
 		firesize = maxdelay = magnitude = traillen = mspeed = 0;
-		ssize = esize = jetlen = spread = basesp = sph = 0;
-		smat = "";
+		ssize = esize = jetlen = basesp = sph = 0;
+		spread = -1;            // P1433: unwritten (env_steam's default is 15; the smokestack's <= 0 test still holds)
+		smat = tn = "";
+		initkey = stype = stopped = 0;
+		rollsp = 8;
 		initst = 1;             // env_smokestack's default is ON; 2378 of 2443
 		ptype = 0;
 		ramt = 255;
@@ -3578,7 +3654,10 @@ void() Emit_LoadForMap =
 			else if (key == "spreadspeed")   spread = stof(tok);
 			else if (key == "basespread")    basesp = stof(tok);     // Patch 1044
 			else if (key == "smokematerial") smat = strtolower(tok);
-			else if (key == "initialstate")  initst = stof(tok);
+			else if (key == "initialstate")  { initst = stof(tok); initkey = TRUE; }
+			else if (key == "targetname")    tn = tok;                // P1433
+			else if (key == "type")          stype = stof(tok);
+			else if (key == "rollspeed")     rollsp = stof(tok);
 			else if (key == "preciptype")    ptype = stof(tok);
 			else if (key == "renderamt")     ramt = stof(tok);
 		}
@@ -3598,6 +3677,7 @@ void() Emit_LoadForMap =
 		else if (cn == "env_smokestack")   kind = EK_STACK;
 		else if (cn == "info_particle_system") kind = EK_PSYS;
 		else if (cn == "func_precipitation") kind = EK_PRECIP;
+		else if (cn == "env_steam" || cn == "env_steamjet") kind = EK_STEAM;
 		if (kind < 0)
 			continue;
 
@@ -3629,7 +3709,7 @@ void() Emit_LoadForMap =
 		// ---- the brush classes: the volume IS the entity's submodel
 		bmin = bmax = '0 0 0';
 		if (kind != EK_FIRE && kind != EK_SPARK && kind != EK_STACK &&
-		    kind != EK_PSYS)
+		    kind != EK_PSYS && kind != EK_STEAM)
 		{
 			if (mdl == "" || substring(mdl, 0, 1) != "*")
 				continue;
@@ -3833,8 +3913,12 @@ void() Emit_LoadForMap =
 			*/
 			if (!(spawnflags & 4))
 			{
-				em_off[kind] = em_off[kind] + 1;
-				continue;
+				if (tn == "")
+				{
+					em_off[kind] = em_off[kind] + 1;
+					continue;
+				}
+				stopped = TRUE;         // P1433: for StartFire
 			}
 			// Source's choice of system, from the size as written.
 			fcls = floor(firesize / 36);
@@ -3915,8 +3999,12 @@ void() Emit_LoadForMap =
 			// Emit_Frame about there being no entity channel).
 			if (!(spawnflags & 64))
 			{
-				em_off[kind] = em_off[kind] + 1;
-				continue;
+				if (tn == "")
+				{
+					em_off[kind] = em_off[kind] + 1;
+					continue;
+				}
+				stopped = TRUE;         // P1433: for StartSpark / SparkOnce
 			}
 			if (magnitude <= 0) magnitude = 1;
 			if (traillen <= 0) traillen = 1;
@@ -3935,6 +4023,52 @@ void() Emit_LoadForMap =
 			vel = v_forward * ((60 + magnitude * 45) * (0.6 + traillen * 0.4));
 			jit = 40 + magnitude * 30;
 			eff = FX_SPARK;
+		}
+		else if (kind == EK_STEAM)
+		{	// P1433: steamjet.cpp / c_steamjet.cpp.  Particles along the entity's forward (env_steamjet: its left),
+			// +-SpreadSpeed along right and up, Rate a second, life JetLength / Speed.
+			if (stype == 1)
+			{	// STEAM_HEATWAVE: a refraction sprite
+				em_off[kind] = em_off[kind] + 1;
+				continue;
+			}
+			if (!initkey)
+				initst = 0;             // the FGD's default is off
+			if (!initst)
+			{
+				if (tn == "")
+				{
+					em_off[kind] = em_off[kind] + 1;
+					continue;
+				}
+				stopped = TRUE;
+			}
+			if (rate   <= 0) rate   = 26;
+			if (spd    <= 0) spd    = 120;
+			if (spread <  0) spread = 15;
+			if (ssize  <= 0) ssize  = 10;
+			if (esize  <= 0) esize  = 25;
+			if (jetlen <= 0) jetlen = 80;
+			bmin = bmax = org;
+			vel = ((cn == "env_steamjet") ? -v_right : v_forward) * spd;
+			jit = 0;
+			dist = 4000;
+			eff = FX_STACKJET + bucket;
+			// Lit by the world at the jet's middle (c_steamjet.cpp UpdateLightingRamp), sampled once as cl_ropes.qc
+			// does; a quarter step, so jets in similar light share one of the STK_MAX looks.
+			vc = cvar("hl2_lt_vcache");
+			if (vc)
+				cvar_set("hl2_lt_vcache", "0");
+			lt = getlight(org + normalize(vel) * jetlen * 0.5) * (1 / 255);
+			if (vc)
+				cvar_set("hl2_lt_vcache", ftos(vc));
+			if (spawnflags & 1)
+				lt = lt + col;          // SF_EMISSIVE
+			else
+				lt = [lt_x * col_x, lt_y * col_y, lt_z * col_z];
+			lt = [rint(min(1, lt_x) * 4) * 63.75, rint(min(1, lt_y) * 4) * 63.75, rint(min(1, lt_z) * 4) * 63.75];
+			sph = Emit_StackLook(strcat(sprintf("%g %g %g %g %g %g ", ssize, esize, jetlen / spd, lt_x, lt_y, lt_z),
+			                            sprintf("%g 0 %g steam %g", ramt, spread, rollsp)));   // sprintf takes eight
 		}
 		else if (kind == EK_STACK)
 		{
@@ -4137,6 +4271,13 @@ void() Emit_LoadForMap =
 			if (look >= 0)
 				em_life[j] = (lmin + lmax) * 0.5;
 			em_sph[j] = sph;
+			if (kind == EK_SPARK || kind == EK_FIRE || kind == EK_STEAM)
+			{	// P1433: the wire's identity; a named one that starts off waits stopped
+				em_tnc[j] = (tn != "") ? crc16(TRUE, tn) : -1;
+				em_korg[j] = org;
+				em_stop[j] = stopped;
+				em_fxwait = em_fxwait + stopped;
+			}
 			if (kind == EK_FIRE)
 			{
 				// 32 is No glow (fire.cpp:785).  This read 16, which is Don't
@@ -4184,6 +4325,9 @@ void() Emit_LoadForMap =
 	vbsp_em_map = mname;
 	for (net = find(world, classname, "emit_psysnet"); net; net = find(net, classname, "emit_psysnet"))
 		Emit_PsysNet(net);
+	for (net = find(world, classname, "fx_net"); net; net = find(net, classname, "fx_net"))
+		if (net.fx_ncls == FX_CLS_STEAM || net.fx_ncls == FX_CLS_SPARK || net.fx_ncls == FX_CLS_FIRE)
+			Emit_FxNet(net);           // P1433: states that arrived before this load
 
 	// The shared effect set.  The build 51b essay above says why it is exec'd
 	// from here and not from cfg/default.cfg.
@@ -4480,6 +4624,7 @@ void() Emit_Frame =
 		// vbsp_emit_smoke defaults to 0, so an env_smokestack falling through to
 		// it would be registered, parsed, counted and then silently never drawn.
 		else if (k == EK_STACK)                 d = wstack;
+		else if (k == EK_STEAM)                 d = wstack;     // P1433: a jet like the smokestacks
 		else if (k == EK_PSYS)                  d = wpsys;
 		/*
 		  NOTHING falls through here any more, and that is the point.  This arm
@@ -4779,6 +4924,8 @@ void() Emit_List =
 
 	print(sprintf("^3emit:^7 map %s, %g emitters, %g effect handles\n",
 	              vbsp_em_map, em_n, EM_FX_N));
+	if (em_fxwait)
+		print(sprintf("  %g named steam, spark and fire emitters start off and wait for the map (P1433)\n", em_fxwait));
 
 	tot = 0;
 	k = 0;

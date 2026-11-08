@@ -1615,6 +1615,8 @@ float(entity f, entity act) SV_CtxFilter =
 	return pass;
 };
 
+.float vbsp_fx_init;            // P1433: env_steam's InitialState (the key's case varies, so caught here)
+
 void(string key, string value) ED_ParseUnknownEpair =
 {
 	if (value == "")
@@ -1627,6 +1629,7 @@ void(string key, string value) ED_ParseUnknownEpair =
 		return;
 	}
 	if (!strcasecmp(key, "entitytemplate")) { self.tpl_maker = strcat(value); return; }
+	if (!strcasecmp(key, "initialstate")) { self.vbsp_fx_init = stof(value); return; }     // P1433: env_steam
 
 	if (substring(key, 0, 2) == "On" || strstrofs(VBSP_GUI_OUTPUTS, strcat("\n", strtolower(key), "\n"), 0) >= 0)
 	{
@@ -4421,6 +4424,7 @@ void() env_laser =
 */
 .float vbsp_fx_cls, vbsp_fx_on, vbsp_fx_ev, vbsp_fx_evt;
 .float vbsp_fx_dead;            // P1431: Killed -- off for good; later inputs find nothing, as in Source
+.float vbsp_fx_dis;             // P1433: env_fire Disabled -- StartFire does nothing until Enable
 .string m_bOn;                  // point_tesla's start state: a field, so the stash keeps it
 
 float(entity to, float changed) SV_FxSend =
@@ -4453,6 +4457,12 @@ float(entity t) SV_FxClass =
 			return FX_CLS_SPRITE;
 		case "point_spotlight": case "beam_spotlight":
 			return FX_CLS_SPOT;
+		case "env_steam": case "env_steamjet":
+			return FX_CLS_STEAM;
+		case "env_spark":
+			return FX_CLS_SPARK;
+		case "env_fire":
+			return FX_CLS_FIRE;
 	}
 	return 0;
 };
@@ -4463,6 +4473,12 @@ float(entity t, float cls) SV_FxStartOn =
 {
 	if (cls == FX_CLS_TESLA)
 		return stof(t.m_bOn) != 0;
+	if (cls == FX_CLS_STEAM)
+		return t.vbsp_fx_init != 0;
+	if (cls == FX_CLS_SPARK)
+		return (t.spawnflags & 64) != 0;    // SF_SPARK_START_ON
+	if (cls == FX_CLS_FIRE)
+		return (t.spawnflags & 4) != 0;     // SF_FIRE_START_ON
 	return (t.spawnflags & 1) != 0;
 };
 
@@ -4473,7 +4489,7 @@ void() SV_FxKeep =
 		remove(self);               // nothing can address it: the client draws it from the lump
 		return;
 	}
-	SV_LateStash("targetname origin spawnflags m_bOn");
+	SV_LateStash("targetname origin spawnflags m_bOn vbsp_fx_init");
 };
 
 void() point_tesla = { SV_FxKeep(); };
@@ -4515,12 +4531,58 @@ float(entity t, string in) SV_FxInput =
 		else
 			return FALSE;
 	}
-	else
+	else if (cls == FX_CLS_SPOT)
 	{
 		if (in == "lighton")
 			on = TRUE;
 		else if (in == "lightoff")
 			on = FALSE;
+		else
+			return FALSE;
+	}
+	else if (cls == FX_CLS_STEAM)
+	{
+		if (in == "turnon")
+			on = TRUE;
+		else if (in == "turnoff")
+			on = FALSE;
+		else if (in == "toggle")
+			on = !on;
+		else
+			return FALSE;
+	}
+	else if (cls == FX_CLS_SPARK)
+	{
+		if (in == "startspark")
+			on = TRUE;
+		else if (in == "stopspark")
+			on = FALSE;
+		else if (in == "togglespark")
+			on = !on;
+		else if (in == "sparkonce")
+		{	// one spark, and the think stops (EnvSpark.cpp InputSparkOnce)
+			on = FALSE;
+			ev = TRUE;
+		}
+		else
+			return FALSE;
+	}
+	else
+	{	// env_fire (fire.cpp): Extinguish's fade time is not drawn, the fire goes out
+		if (in == "startfire")
+		{
+			if (!t.vbsp_fx_dis)
+				on = TRUE;
+		}
+		else if (in == "extinguish" || in == "extinguishtemporary")
+			on = FALSE;
+		else if (in == "disable")
+		{
+			on = FALSE;
+			t.vbsp_fx_dis = TRUE;
+		}
+		else if (in == "enable")
+			t.vbsp_fx_dis = FALSE;
 		else
 			return FALSE;
 	}
@@ -6967,8 +7029,10 @@ void() beam_spotlight                   = { SV_FxKeep(); };
   draws nothing for it either, and it stays in the census as the genuinely
   unimplemented gameplay entity it is.
 */
-void() env_fire                         = { remove(self); };
-void() env_spark                        = { remove(self); };
+void() env_fire                         = { SV_FxKeep(); };     // P1433: a named one stays for its inputs
+void() env_spark                        = { SV_FxKeep(); };
+void() env_steam                        = { SV_FxKeep(); };     // P1433: drawn by cl_emit.qc (EK_STEAM)
+void() env_steamjet                     = { SV_FxKeep(); };
 
 /*
   Build 51 adds a third, under the same rule.
