@@ -190,6 +190,8 @@ DENY_EXACT = {
     "maps/surf_666.bsp": "Harness literal (cl_board.qc test path), not content.",
     "maps/surf_kitsune.bsp": "Harness literal (cl_hud.qc test path), not content.",
     "data/chatsilence.txt": "Written at runtime by the client (cl_chat.qc).",
+    "data/crash/error.txt": "P1418: written at runtime by the engine's Sys_Error record (P1421); "
+                            "m_crash.qc reads it to offer a report. No ship entry covers data/crash.",
     "data/consent.txt": "Written at runtime; in $DenyPatterns precisely so it can "
                         "never ship, because shipping it pre-accepts the terms.",
     "data/b316_buffered.txt": "Build-316 test scaffolding in m_main.qc.",
