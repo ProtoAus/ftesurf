@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1439 env_screenoverlay, env_shooter -- owner check pending
+## P1439 env_screenoverlay, env_shooter -- LIVE 9 Nov (lobbies + both installs, cs a4460fd9); owner check pending
 
 - surf_ab: the oil-splat overlay when the map triggers it, gone when the map stops it. surf_era: the plush
   shooters drop fumo plushies. Say if an overlay ever covers the screen with something solid or does not go away

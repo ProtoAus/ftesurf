@@ -56,3 +56,9 @@ applied to model gibs; renderamt counts only with a render mode. Admitted in the
 time; StartOverlays on a nameless overlay still deactivates the others; a spent one-shot shooter is spent on each
 client separately; a gib in the air across a hitch longer than 0.1 s loses the rest of it (the step is capped, the
 life is not), so a strict one can go mid-hop.
+
+## Delivery
+
+- LIVE 9 Nov ~10:08 local: 12 lobbies (nobody on; warned; 0 QC errors) qw 75759883 + cs a4460fd9 from main
+  88f35f4f (with P1437); both installs the same (.prev ac44d587 / e7e4c69d, .pre1439); csprogsvers f5d924b6 on the
+  Pi and both installs; codes.txt 106 -> 107 (.pre1439).
