@@ -503,8 +503,10 @@ def translate(d, e, unknown, mapname, content=None):
     em1 = find(d, e, "emitters", "emit_continuously")
     ie = find(d, e, "emitters", "emit_instantaneously")
     spurt = bool(em1 and float(em1.get("emission_duration", 0) or 0) > 0)
-    oneshot = spurt or (ie is not None and em1 is None)
-    persist = oneshot and not any("decay" in (o.get("functionName") or "").lower() for o in ops(d, e, "operators"))
+    oneshot = spurt or (ie is not None and em1 is None and find(d, e, "emitters", "emit noise") is None)
+    # A fade-out without a decay leaves the particle alive and invisible: as good as dead at its lifetime.
+    persist = oneshot and not any(w in (o.get("functionName") or "").lower()
+                                  for o in ops(d, e, "operators") for w in ("decay", "fade out"))
     if persist:
         die_lo = die_hi = PERSIST_DIE
     if die_hi <= 0:
@@ -1000,14 +1002,17 @@ def translate(d, e, unknown, mapname, content=None):
     burst = None                                # P1416: (count, duration, delay) -> a burst row
     if nominal > 0 and spurt:
         dur = float(em.get("emission_duration"))
-        cnt = (nominal if persist else rate) * dur      # the ceiling is alive/lifetime: no lifetime here
-        if persist and maxp > 0:
-            cnt = min(cnt, maxp)
+        # What can be alive caps a spurt, not the steady ceiling: 100/s for 0.02 s with max 20 is two,
+        # 200/s for 0.25 s with max 32 and a 2 s life is 32; past the first deaths the ceiling refills.
+        cnt = nominal * dur
+        if maxp > 0:
+            cnt = min(cnt, maxp + (0.0 if persist else rate * max(0.0, dur - die_lo)))
         burst = (cnt, dur, float(em.get("emission_start_time", 0) or 0))
         rate = 0.0
     elif rate <= 0 and ie is not None and em is None:
         n_hi = float(ie.get("num_to_emit", 100) or 0)
-        n_lo = float(ie.get("num_to_emit_minimum", -1) or -1)
+        n_lo = ie.get("num_to_emit_minimum")
+        n_lo = -1.0 if n_lo is None else float(n_lo)
         cnt = (n_lo + n_hi) * 0.5 if 0 <= n_lo <= n_hi else n_hi
         if maxp > 0:
             cnt = min(cnt, maxp)

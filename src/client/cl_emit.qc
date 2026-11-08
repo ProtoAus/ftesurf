@@ -198,6 +198,8 @@ float  *em_bdel;
 float  *em_bpend;
 float  *em_bacc;
 float  *em_bnext;
+float  *em_bpers;               // a never-dying one-shot (a glow): a state, placed while on and in range
+float  *em_bplaced;             //   and placed already (cleared by a particle reload)
 float  em_bactive;              // some emitter has particles pending
 float  em_bfired;               // starts fired this map, for emit_list,
 float  em_bfsrv;                //   of them by the server's Start
@@ -237,6 +239,8 @@ void() Emit_Alloc =
 	em_bpend = memalloc(sizeof(float) * EM_MAX);
 	em_bacc  = memalloc(sizeof(float) * EM_MAX);
 	em_bnext = memalloc(sizeof(float) * EM_MAX);
+	em_bpers = memalloc(sizeof(float) * EM_MAX);
+	em_bplaced = memalloc(sizeof(float) * EM_MAX);
 };
 void() Emit_AllocLife;
 
@@ -425,6 +429,7 @@ float *ps_thalf;
 float *ps_bcnt;                 // P1416: a burst row's count (0 = a container), -1 on a psys row,
 float *ps_bdur;                 //   its spurt length
 float *ps_bdel;                 //   and start delay
+float *ps_bpers;                //   and whether it never dies (pcf.py PERSIST_DIE)
 float  ps_bursts;
 float *ps_tfx;                  //   and [PS_MAX * TRAIL_N] its blocks by life
 
@@ -454,6 +459,7 @@ void() Emit_PsAlloc =
 	ps_bcnt = memalloc(sizeof(float) * PS_MAX);
 	ps_bdur = memalloc(sizeof(float) * PS_MAX);
 	ps_bdel = memalloc(sizeof(float) * PS_MAX);
+	ps_bpers = memalloc(sizeof(float) * PS_MAX);
 };
 float  ps_n;
 float  ps_links;                // how many of ps_n are child links
@@ -1137,6 +1143,7 @@ void(string mname) Emit_PsysLoad =
 			ps_bcnt[ps_n] = stof(argv(26));
 			ps_bdur[ps_n] = stof(argv(27));
 			ps_bdel[ps_n] = stof(argv(28));
+			ps_bpers[ps_n] = (stof(argv(8)) >= 3599);
 			ps_bursts = ps_bursts + 1;
 		}
 		// The build-53 columns.  Absent on an older bake: no offset, nothing
@@ -2564,6 +2571,8 @@ float(vector bmin, vector bmax, vector vel, float jit, float rate, float burst,
 	em_shape[i] = 0;
 	em_bcnt[i]  = 0;
 	em_bpend[i] = 0;
+	em_bpers[i] = 0;
+	em_bplaced[i] = 0;
 	em_stop[i]  = 0;
 	em_psidx[i] = -1;
 
@@ -3233,6 +3242,9 @@ void(float i, float ps) Emit_BurstMark =
 	em_bdur[i] = ps_bdur[ps];
 	em_bdel[i] = ps_bdel[ps];
 	em_rate[i] = 0;
+	em_bpers[i] = ps_bpers[ps];
+	if (em_bpers[i])
+		em_bactive = TRUE;          // the burst pass places it when it is on and in range
 };
 
 // A start: queue the burst (at most three deep) for Emit_Frame's burst pass.
@@ -3240,6 +3252,11 @@ void(float i, float times, string why) Emit_BurstFire =
 {
 	if (em_bcnt[i] <= 0 || times <= 0)
 		return;
+	if (em_bpers[i])
+	{
+		em_bactive = TRUE;          // a state, not an event: see the burst pass
+		return;
+	}
 	em_bpend[i] = min(em_bpend[i] + em_bcnt[i] * times, em_bcnt[i] * 3);
 	em_bnext[i] = cltime + em_bdel[i];
 	em_bacc[i] = 0;
@@ -3276,6 +3293,9 @@ void(entity e) Emit_PsysNet =
 				em_bpend[i] = 0;
 			else
 				Emit_BurstFire(i, e.em_npfire, "server start");
+			if (e.em_npon)
+			if (em_bpers[i])
+				em_bactive = TRUE;      // a late joiner places a glow the server started long ago
 		}
 	if (cvar("developer") >= 2)      // one line per system: 97 a press on bhop_ceaseless
 	dprint(sprintf("emit: psys %s at %v %s by the server\n", e.em_npeff, e.origin,
@@ -4290,7 +4310,7 @@ void(float i, vector v) Emit_PsysSpawn =
 void() Emit_Frame =
 {
 	local float i, n, ft, thr, budget, dscale, d, lights, lit, k, mdem, under;
-	local float wdust, wember, wbubble, wfire, wspark, wsmoke, wstack, wpsys, wunder;
+	local float wdust, wember, wbubble, wfire, wspark, wsmoke, wstack, wpsys, wunder, bfirst;
 	local vector eye, v;
 	local vector jn, jr, jf;
 	local float ja, jl;
@@ -4370,6 +4390,7 @@ void() Emit_Frame =
 	  so the first check always follows a drawn frame.  A console re-exec
 	  mid-map can still trip it once; harmless.
 	*/
+	bfirst = !em_drawn;
 	if (!em_drawn)
 	{
 		em_drawn = 1;
@@ -4400,6 +4421,9 @@ void() Emit_Frame =
 		if (k)
 		{
 			em_reload = em_reload + 1;
+			for (i = 0; i < em_n; i = i + 1)
+				em_bplaced[i] = 0;  // P1416: the re-exec drops what was placed
+			em_bactive = TRUE;
 			return;                 // the cbuf has not drained yet
 		}
 	}
@@ -4662,13 +4686,38 @@ void() Emit_Frame =
 	}
 
 	// P1416: one-shot bursts -- an event, so outside the budget, but capped a frame.  Out of range or
-	// with vbsp_emit_psys off a burst is dropped, as a rate emitter's spawns are.
-	if (!em_bactive)
+	// with vbsp_emit_psys off a burst is dropped, as a rate emitter's spawns are.  Not on the first frame
+	// after a load: its effect handles resolve inside that frame's draw (see em_drawn above).
+	if (!em_bactive || bfirst)
 		return;
 	em_bactive = FALSE;
 	lit = EM_BURST_TOTAL;           // reused: what the bursts may still place this frame
 	for (i = 0; i < em_n; i = i + 1)
 	{
+		if (em_bpers[i])
+		{	// never dies: placed once while on and in range, kept pending otherwise
+			if (em_bplaced[i] || em_stop[i])
+				continue;
+			em_bactive = TRUE;
+			if (!wpsys || lit < em_bcnt[i])
+				continue;
+			if (dscale > 0)
+			if (vlen(em_mid[i] - eye) - em_rad[i] > em_dist[i] * dscale)
+				continue;
+			n = floor(em_bcnt[i]);
+			lit = lit - n;
+			em_bplaced[i] = 1;
+			em_bfired = em_bfired + 1;
+			while (n > 0)
+			{
+				v = em_vel[i] + Emit_RandDir() * em_jit[i];
+				if (vlen(v) < 0.01)
+					v = '0 0 1';
+				Emit_PsysSpawn(i, v);
+				n = n - 1;
+			}
+			continue;
+		}
 		if (em_bpend[i] < 1)
 			continue;
 		em_bactive = TRUE;

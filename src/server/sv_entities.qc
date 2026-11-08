@@ -4319,8 +4319,13 @@ float(entity t, string in) SV_PsysInput =
 	if (in == "start")
 	{
 		on = TRUE;
-		t.vbsp_psys_starts = t.vbsp_psys_starts + 1;
-		t.vbsp_psys_fired = time;
+		// P1416: Source ignores a Start while the system runs (particle_system.cpp StartParticleSystem),
+		// so a one-shot fires on the off-to-on edge; a map replays one with Stop then Start.
+		if (!SV_PsysOn(t))
+		{
+			t.vbsp_psys_starts = t.vbsp_psys_starts + 1;
+			t.vbsp_psys_fired = time;
+		}
 	}
 	else if (in == "stop" || in == "stopplayendcap" || in == "destroyimmediately" || in == "kill")
 		on = FALSE;
@@ -4328,7 +4333,7 @@ float(entity t, string in) SV_PsysInput =
 		return FALSE;
 	if (cvar("developer") >= 2)     // one line per system: 97 a press on bhop_ceaseless
 		dprint(sprintf("psys %s at %v: %s, %s\n", t.effect_name, t.origin, in, on ? "on" : "off"));
-	if (t.SendEntity && on == t.vbsp_psys_on && in != "start")   // P1416: every Start is news (a burst fires again)
+	if (t.SendEntity && on == t.vbsp_psys_on)
 		return TRUE;
 	t.vbsp_psys_on = on;
 	t.SendEntity = SV_PsysSend;
