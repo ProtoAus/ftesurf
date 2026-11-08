@@ -1337,8 +1337,8 @@ void() HUD_RegisterCvars =
 	  Precached at init rather than on first draw.  drawpic on an unprecached name
 	  works -- the engine loads it there and then -- but it does so on the frame the
 	  player first switches to it, which is a disk hit in the middle of a run and
-	  exactly the frame they are looking at the thing that caused it.  Three 32x32
-	  RGBA textures is under 16 KB of VRAM for all of them.
+	  exactly the frame they are looking at the thing that caused it.  Five small
+	  RGBA textures is under 32 KB of VRAM for all of them.
 	*/
 	for (i = 1; i <= 5; i = i + 1)
 	{
