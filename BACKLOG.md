@@ -159,7 +159,12 @@
 
 - artifacts/run_lowsurvey.py: each map's best board replay from a fresh map load, Lex's settings, 35 s
   (survey-all.txt: 60 maps -- 40 with replays in Lex's board cache, 20 heavy candidates from /api/board).
-  So far: surf_tensor2 462 avg / 264 1% / 196 0.1%, surf_garden 568 / 320 / 201. Heavy maps with no replay
+  18 of 60 done (artifacts/survey-results.tsv), worst 0.1% first: surf_quarantine 51 (avg 593; one 83 ms hitch),
+  surf_fairy 52 (avg 214, 99 stutters, frames 15-33 ms along the route), surf_colony 83 (avg 316), surf_bossfight
+  91 (fixed by P1409 at r_blendsort 2), surf_shibboleth 96 (one 58 ms hitch), surf_jumble 138, surf_lux 140 (one
+  41 ms hitch), demise 179, boreas 180, beginner 188, tensor2 196, garden 201; the rest 204-288.
+  Leads: fairy and colony are heavy throughout (profile them); quarantine/shibboleth/lux/beginner are single long
+  frames on a first pass (first-traversal loading: check r_mapready_info). Heavy maps with no replay
   (eternity, vestige, voyager, lost_world_v2, affliction, waterworks...) need a scripted route instead.
 
 ## The window's multisampled pixel format duplicates P1260's scene target (8 Nov)

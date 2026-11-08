@@ -21,6 +21,9 @@
 
 ## next
 
+### P1409 Faster see-through surfaces with exact sorting
+- With r_blendsort 2 (see-through surfaces sorted back to front), maps with many glass or see-through faces no longer recompute every face's centre each frame: surf_bossfight went from about 280 to about 490 fps. The picture is the same. r_blendcache 0 brings back the old way.
+
 ### P1408 Five crosshairs
 - The crosshair setting (HUD editor) cycles five crosshairs and off: a new green plus, a small white dot and a magenta plus join the first two. Each draws at its own size.
 

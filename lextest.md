@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1409 r_blendsort 2 speed-up -- installed in both installs (engine patch-1409, 8 Nov); owner check pending
+
+- surf_bossfight with your r_blendsort 2: around 490 fps where it was ~280; the grass, glass and see-through
+  bits look the same. Lobbies unaffected (client-only); the Desktop copy gets it with the next release.
+
 ## P1408 crosshairs 1-5 -- LIVE (12 lobbies + both installs, 8 Nov); owner check pending
 
 - HUD editor, Crosshair: 1, 2, 3, 4, 5, off. 3 is your green 42 px plus at its native size, 4 the white
