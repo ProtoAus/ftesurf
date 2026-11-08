@@ -107,12 +107,23 @@ def free_mb():
     return int(out[0]) // 1024, int(out[1]) // 1024
 
 
+def game_running():
+    """A game process is up, or the listing failed. Fail closed: on 9 Nov, at 1.8 GB free, the wait
+    below took the lock and launched an arm beside the owner's running game."""
+    try:
+        r = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return True
+    if r.returncode != 0 or not re.search(r'(?im)^"python[^"]*\.exe"', r.stdout):    # it lists this process
+        return True
+    return re.search(r'(?im)^"(ftesurf64|fteqw64|fteqwsv64)\.exe"', r.stdout) is not None
+
+
 def take_lock(what):
     """Quiet first (no game process for 20 s), then the lock; never wait holding it."""
     quiet = None
     for _ in range(600):
-        busy = subprocess.run(["tasklist"], capture_output=True, text=True).stdout
-        if re.search(r"(?im)^(ftesurf64|fteqw64|fteqwsv64)\.exe", busy) or LOCK.exists():
+        if game_running() or LOCK.exists():
             quiet = None
         elif quiet is None:
             quiet = time.monotonic()
@@ -124,6 +135,10 @@ def take_lock(what):
                 continue
             (LOCK / "owner.txt").write_text("p840clock pid=%d since=%s for=%s\n" % (
                 os.getpid(), time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), what))
+            if game_running():          # one more look, holding it: a game that started meanwhile wins
+                drop_lock()
+                quiet = None
+                continue
             return
         time.sleep(2)
     raise SystemExit("rig lock / quiet machine not reached in 20 min")
