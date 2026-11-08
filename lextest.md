@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1405 name-checked teleports predicted, P1403 report timing -- LIVE (12 lobbies + both installs, 8 Nov); owner check pending
+
+- surf_concretejungle: fall off stage 1 (or any stage). You should land at the stage start at once, not
+  stop in a small room and jump a moment later. Same on surf_autumn_fix stage 3's drop, and on bhop
+  maps whose blocks send you back (bhop_futile and friends).
+- After a map change on a lobby, the same falls still work (the name resets with the map).
+- Nothing to check for P1403/P1404: reports quietly gain timing rows; the replay tool is for agents.
+
 ## P1402 flat water for new installs, surf_view planes with edges -- LIVE (12 lobbies + both installs, 8 Nov 22:20Z); owner check pending
 
 - Your C:\FTESurf copy (surf_view_style was still 1): on the next start the console says "surf_view/ent_view:

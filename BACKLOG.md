@@ -11,16 +11,30 @@
   the P1394 root) ran and snapped nowhere. Suspect the snapshot's acknowledged command against the
   commands the server has run when packets bunch; needs a lossy or jittered link (cl_delay_packets
   is fixed delay, not jitter). Raw reports kept privately in the P1394 root's notes.
-- What would settle it: a client row per received snapshot (arrival time, acknowledged command);
-  reports keep inputs and velocities per command but no packet timing. And a replay that starts a rig
-  at a report row's server origin and velocity and feeds its recorded inputs (Lex, 8 Nov: arms so far
-  approximate a report's path by hand, which is why surf_fiellu's did not reproduce).
+- P1403 adds the snapshot rows (# acks: arrival, acknowledged command, state) to every report from 8 Nov;
+  the next save/load/reset report shows whether a snapshot acknowledged a command it had not applied.
+  P1404's replay cannot reproduce these: warp ops (201 up) are not replayed (a reset lands on the rig's
+  map start, a load needs the player's saves) and loopback has no jitter. Seven reports wait on it
+  (cozy x3, goliath, boomer, fairy x2, flow, shape, autumn_fix 191047, concretejungle's resets).
 
 ## surf_fiellu: a teleport one command late at 2820 u/s (7 Nov reports, not demonstrated)
 
 - Two reports: the client fires the second of two overlapping teleports a command after the server.
   Six passes along the report's path at three start offsets fire on the server's command in both the
-  live build and P1396. What the arm does not vary is where inside a tick the edge is crossed.
+  live build and P1396. P1404 replays of both reports (recorded inputs, server path matched): NOT
+  REPRODUCED on the P1405 build.
+
+## Report replay (P1404) limits
+
+- Not restored: the server's tick carry (a 29 ms command splits into two ticks depending on it), the
+  ducked state, carriers, IO and trigger states, the player's name in reports before P1405's rows.
+  A replay that leaves the recorded path says CANNOT TELL; most old-report CANNOT TELLs are one of these.
+- surf_colin_blaster_69000 (coordinates past 50000): the rig client connects and never starts loading
+  the map within 2 minutes; both reports unreplayed.
+- Errors at the first rows of a ring (a join-time catch-up: surf_4am, chungus_fungus, eternity) have
+  no lead-in; P1403 moved "the first moments" to the first snapshot, which covers them.
+- A rig shared with other sessions hitches; P1404 forces each command's recorded duration, which made
+  the replays deterministic (two runs bit-identical).
 
 ## Screenshots skip the engine's file index; the report panel flushes it (8 Nov, P1391)
 

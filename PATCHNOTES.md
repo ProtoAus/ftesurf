@@ -21,6 +21,12 @@
 
 ## next
 
+### P1405 Teleports that check your name are predicted
+- Many maps rename you as you go (each stage, each bhop block) and send you back with teleports that check that name: falling into a stage's reset now takes you straight to the stage start instead of stopping at a hidden room and jumping a moment later. About 22,000 teleports on 577 maps.
+
+### P1403 Prediction reports carry packet timing
+- A prediction report now records when each update from the lobby arrived, so the remaining snaps around saves, loads and resets can be traced. Reports are no longer offered for the first moments after a slow map load.
+
 ### P1400 Type your own binds; more actions in the key settings
 - The Keyboard tab (K) has a "Your own command" box: type any console command, press Enter, then click keys to put it on them. The keys already running it light up.
 - Click a key, then Edit to change what it runs (Enter saves, an empty box clears it, Esc cancels) or Clear to unbind it.
