@@ -481,10 +481,10 @@ float(vector eye, vector fwd, float maxdist) Fx_Draw =
 		drawn = drawn + 1;
 	}
 	if (cvar("vbsp_fx_debug"))
-	if (time > fx_dbg_t)
+	if (gettime(0) > fx_dbg_t || gettime(0) < fx_dbg_t - 2)
 	{
-		fx_dbg_t = time + 1;
-		print(sprintf("fx: %g arcs drawn this frame, %g sources\n", drawn, fx_n));
+		fx_dbg_t = gettime(0) + 1;
+		print(sprintf("fx: %g arcs drawn this frame, %g sources, time %.3f real %.3f\n", drawn, fx_n, time, gettime(0)));
 	}
 	return drawn;
 };
