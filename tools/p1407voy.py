@@ -34,6 +34,7 @@ def main():
     ap.add_argument('--extra', default='', help='more console lines, ; separated')
     ap.add_argument('--hitch', type=int, default=0, help='random frame hitches per flight (cl_maxfps 15 for 60-250 ms)')
     ap.add_argument('--seed', type=int, default=1)
+    ap.add_argument('--tap', default='', help='SECONDS:CMD:HOLD -- e.g. 2.0:duck:0.12 presses +duck 2 s after release')
     a = ap.parse_args()
     out = a.out.resolve()
     R.owned(out)
@@ -82,6 +83,13 @@ def main():
             rnd = random.Random(a.seed * 1000 + len(res['attempts']))
             hitches = sorted(rnd.uniform(1, 62) for _ in range(a.hitch))
             hitlog = []
+            if a.tap:
+                ts, tc, th = a.tap.split(':')
+                time.sleep(float(ts))
+                send('+' + tc)
+                time.sleep(float(th))
+                send('-' + tc)
+                hitlog.append(('tap', ts, tc, th))
             states = []
             path = []
             fin = None

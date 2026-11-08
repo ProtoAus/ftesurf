@@ -29,7 +29,17 @@ the hosted .rec at every common sample (0.00 difference).
 - Settings: lobby .rec `pmpin` lines equal the hosted one. markbeaton54's 4419 (1 Nov) ran mover
   pmsrcver 11, the previous version.
 
-## Not demonstrated
+## Found: a click is a duck (8 Nov, Lex's guess, then measured)
+
+Lex's ftesurf.cfg binds `MOUSE1 +duck` (and `MOUSE2 +jump`); default.cfg binds MOUSE1 to +left. The
+P1406 helper's dedicated-server flight r54v1 leg 0 failed (back in the start at 12:57:51) right after
+the window took focus at 12:57:43 -- Lex clicked it to watch, and the click reached the game as a duck.
+Measured with `--tap 1.0:duck:0.12` (one 0.12 s duck one second after release): 3 of 3 flights cancelled
+back in the start, shield edge `z 4025.24 vz 166.23` (4025.92 once) against 4015.08/166.87 on every
+clean flight. A duck in the air shrinks the hull, so every contact after it moves -- as in Momentum.
+The 4 Nov lobby failure (4017.81 at the shield) fits an input of this kind; it is not proven to be one.
+
+## Not demonstrated (before the duck finding)
 
 One lobby attempt (Lex, lobby 1, 4 Nov ~16:40Z) left the shield trigger (*558) at `z 4017.81 vz 167.27`
 against 4015.08/166.87 and did not finish; its start edge (*561) was identical. Unfinished attempts keep
