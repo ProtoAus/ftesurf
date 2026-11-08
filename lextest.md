@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1431 switched sprites and spotlights -- (see delivery); owner check pending
+## P1431 switched sprites and spotlights -- LIVE 9 Nov (lobbies + both installs, cs a90ec502); owner check pending
 
 - surf_orbion: the spotlight rings around the start corridor switch on and off in a pattern (the map's light
   show). bhop_rpg: checkpoint sparkles appear when the map shows them. Say if any light or sprite is on that

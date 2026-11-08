@@ -46,6 +46,12 @@ Fixed: template members hidden for good (no copy is ever made) and matched to an
 Kill undone by a later input; unnamed dark spotlights taking table slots; the layout change in place (now 10).
 Wrong in the first record: point_spotlight DOES fire OnLightOn/OnLightOff (point_spotlight.cpp:244, :418).
 
+## Delivery
+
+- LIVE 9 Nov ~01:15 local: 12 lobbies (players on #3 and #6, warned; 0 QC errors) qw dd2b7fa2 + cs a90ec502 from
+  main 2f5b3df3; both installs the same (.prev e49f4a34 / a94e4f5a, .pre1431); csprogsvers fe5d1af7 on the Pi and
+  both installs; codes.txt 103 -> 104 (.pre1431). The client half is in csprogs: players have it from the lobbies.
+
 ## Left
 
 - point_spotlight OnLightOn/OnLightOff (12 outputs, surf_awp_sk337_v3): not fired -- the stash drops a stashed
