@@ -21,6 +21,9 @@
 
 ## next
 
+### P1432 Sprites maps spawn
+- Sprites a map spawns when something happens now appear where it spawns them: bhop_crash_egypt's CHECKPOINT letters at each checkpoint, bhop_exodus's pictures. Before, they never showed.
+
 ### P1439 Screen overlays and shooters
 - Full-screen overlays maps put up (7 maps: oil splats, drug effects, flashes) now show, and shooters that fling props (8 maps: plushies, debris, shell casings) now fire.
 

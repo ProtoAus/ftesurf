@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1432 sprites a map spawns -- owner check pending
+
+- bhop_crash_egypt: reach a checkpoint; the word CHECKPOINT appears at you for about 5 s. bhop_exodus: the
+  pictures a trigger shows. Say if the letters are missing, in the wrong place, or stay after they should go.
+
 ## P1439 env_screenoverlay, env_shooter -- LIVE 9 Nov (lobbies + both installs, cs a4460fd9); owner check pending
 
 - surf_ab: the oil-splat overlay when the map triggers it, gone when the map stops it. surf_era: the plush
