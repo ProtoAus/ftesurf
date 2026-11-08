@@ -21,6 +21,8 @@
 
 ## next
 
+## 0.1.42 2026-11-08
+
 ### P1423 Graphics menu: option numbers, Movers and Mover light
 - The Source Renderer menu (gfx_menu) shows where each setting sits, like "Full reflect (6/6)": 1 is the fastest option, the last is the fullest. Water, Glass, Prop distance, Tool brushes and Reflection AA now step in that order.
 - New Movers row: Off hides the moving decorations (passing trains, swarms, spinning props you cannot touch) for speed; on surf_centipedes about 2.4 to 2.1 ms a frame. Moving things you can hit always show.
