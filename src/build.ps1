@@ -94,6 +94,9 @@ param(
     [switch]$Full,
     [switch]$Run,
     [switch]$NoDeploy,
+    # P1412: keep csprogs' per-element array defs (foo[0], foo[1], ...), which
+    # -Fomitarraydefs otherwise drops. The offline QC VM finds arrays by them.
+    [switch]$KeepArrayDefs,
 
     # Parallel make jobs for engine targets. Plugin packaging stays serial:
     # concurrent MSYS ZIP metadata writes reproduced temporary-file failures.
@@ -189,6 +192,15 @@ then copy engine\release\fteqcc64.exe into $SrcDir, put it on PATH, or set
 # ---------------------------------------------------------------- QC ---------
 Step "QuakeC"
 Ok "fteqcc: $Fteqcc"
+# P1412: csprogs is never saved, so it drops its array element defs (3.1 MB on
+# 8.05). An fteqcc without the flag warns "Unrecognised flag parameter": ask it.
+$omitArrayDefs = $false
+if (-not $KeepArrayDefs) {
+    $probe = (& $Fteqcc -Fomitarraydefs --help 2>&1) -join "`n"
+    $omitArrayDefs = $probe -notmatch 'Unrecognised flag parameter'
+}
+Ok ("csprogs array element defs: " + $(if ($omitArrayDefs) { 'omitted (-Fomitarraydefs)' }
+    elseif ($KeepArrayDefs) { 'kept (-KeepArrayDefs)' } else { 'kept (this fteqcc has no -Fomitarraydefs)' }))
 if ($NoDeploy) {
     $NoDeployDir = Join-Path $SurfDir ("rig\build-nodeploy-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $NoDeployDir | Out-Null
@@ -213,6 +225,7 @@ try {
             Copy-Item -LiteralPath $controlSrc -Destination (Join-Path $NoDeployDir $src)
             $qcArgs = @('-max_strings', '4194304', '-srcfile', (Split-Path $controlSrc -Leaf))
         }
+        if ($src -eq 'cl_progs.src' -and $omitArrayDefs) { $qcArgs += '-Fomitarraydefs' }
         if ($src -eq 'm_progs.src') {
             # This is the compiled menu version, not an install-integrity verdict.
             $menuVersion = if ($ReleaseVersion) { $ReleaseVersion } else { (Get-Content -LiteralPath (Join-Path $SurfDir 'VERSION') -Raw).Trim() }
