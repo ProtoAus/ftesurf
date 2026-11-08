@@ -24,6 +24,12 @@ C:\FTESurf-worktrees\xhair-20261108-b8 (tools/bmrun.sh, tools/bm*.cfg, rigs/bm-*
   an unchecked name table. All fixed; surf_smart before/after the fix: the beams' common point moves to the
   first "beam" entity (screen centre from 330 units east of it).
 
+## Delivery
+
+- LIVE 8 Nov ~21:55 local: 12 lobbies (one player, warned; 0 QC errors) qw 91a462f4 + cs 6f716240; both installs
+  the same (.prev e1190bdf / 9d48016d, .pre1426); csprogsvers 8bae174c on the Pi and both installs; codes.txt
+  100 -> 101 (.pre1426). The client half is in csprogs, so players have it from the lobbies now.
+
 ## Left
 
 - No LightningEnd: random arcs (244 beams) -- with point_tesla's patch. NoiseAmplitude (204) drawn straight;
