@@ -8074,6 +8074,7 @@ void() m_init =
 	  Run it after anything registers and the default would win instead.
 	*/
 	FS_CvarsMoved();
+	Crash_Init();       // P1418: a crash report from the engine's Sys_Error record, if one is waiting
 
 	Font_Init();
 	sui_style_init();

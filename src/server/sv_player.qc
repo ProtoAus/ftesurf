@@ -428,6 +428,7 @@ void() ClientDisconnect =
 	SV_TASContactSpansFree(self);
 	SV_TASShareCancel(self);           // callbacks/deferred opens belong to this connection
 	SV_PeClose(self);                  // Patch 1195: a report still uploading
+	SV_CrClose(self);                  // P1418
 	SV_PeForget(self);                 // P1238: its command ring
 	SV_PcForget(self);                 // P1211: delayed rows counting this player's commands
 	self.bank_attempt = 0i;

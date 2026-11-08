@@ -21,6 +21,12 @@
 
 ## next
 
+### P1418 Crash reports you can send
+- If the game ever closes with an error, the next time you join a lobby a box offers to send the error and the last console lines (typed commands and anything naming a password or key are left out). F6 sends it; nothing is sent without that. ui_crash_report 0 turns the offer off.
+
+### P1417 A broken game file no longer closes the game
+- A map, model or texture file that claims an impossible size (over 2 GB) is now skipped with a console line naming it, instead of closing the game with a "BZ_Malloc: Failed on allocation" error.
+
 ### P1416 Map effects that fire on an event
 - Particle effects a map plays when something happens now show: booster and teleport bursts, fireworks, badge pops, and glows a button switches on. About 200 of them on 29 maps, fired when the map starts them, as in Source.
 

@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1417/P1421 engine + P1418 crash reports -- engine in both installs, QC on the lobbies (8 Nov); owner check pending
+
+- Nothing to do unless the game closes with an error. Then, the next time you join a lobby, a box "Game closed
+  with an error" offers the report; F6 sends it. Say if the box ever appears without a crash.
+- MetalGio: once the next release is out, a file that caused his BZ_Malloc error is skipped and named in the
+  console ("<file>: reports N bytes; not loaded") -- that line names the broken file.
+
 ## P1416 one-shot map effects -- LIVE (lobbies + your C:\FTESurf install, 8 Nov); owner check pending
 
 - bhop_angst: step onto the spawn booster -- a green puff at its top each time it launches you.

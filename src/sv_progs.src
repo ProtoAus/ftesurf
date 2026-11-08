@@ -72,6 +72,7 @@ server/sv_archive.qc
 shared/sh_tasdirectory.qc
 // Patch 1195: prederror reports from CSQC (CSEv_pe_fs); ClientDisconnect closes one.
 server/sv_prederr.qc
+server/sv_crash.qc          // P1418: after sv_prederr.qc (SV_PeSafe)
 server/sv_matreport.qc      // P1382: after sv_prederr.qc (SV_PeSafe)
 server/sv_player.qc
 server/sv_practicereturn.qc

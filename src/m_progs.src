@@ -30,6 +30,7 @@ menu/m_pics.qc              // Patch 789: after m_lobby (Lob_NextReq), before it
 menu/m_zonedl.qc
 menu/m_mapmedia.qc          // P1099: tiers, mounts and thumbnails from the Pi
 menu/m_loading.qc          // P1244: the loading screen (m_drawloading; m_draw draws it before the plaque)
+menu/m_crash.qc             // P1418: m_init calls Crash_Init
 menu/m_main.qc
 // Private CSQC snapshot view; uses the picker/UI helpers and forward MF_* declarations.
 menu/m_friends.qc

@@ -6258,6 +6258,8 @@ void() SV_EntityIOBuild =
 	// P1211: cl_triggers.qc predicts gravity writes only against an engine that applies them per command.
 	forceinfokey(world, "fs_grav", checkextension("FTESURF_SV_GRAVITY_PERCMD") ? "1" : "0");
 	forceinfokey(world, "fs_zegoto", "1");     // P1223: zone_edit_goto takes the zone's drawn point
+	// P1418: a lobby takes crash reports (sv_crash.qc), not a player's own game someone joined by address.
+	forceinfokey(world, "fs_crashrep", cvar("lobby_enable") ? "1" : "0");
 	if (!vbsp_io_on)
 		return;
 

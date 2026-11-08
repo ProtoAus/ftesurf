@@ -382,6 +382,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	SaveLoc_RegisterCvars();
 	WarpOp_RegisterCvars();         // Patch 753: goto_start, goto_spawn, cl_warpop
 	PE_RegisterCvars();             // Patch 1195: prederror reports
+	CR_Init();                      // P1418: a crash report waiting to be offered
 	registercommand("sp_dump");     // P1387: the server's `cmd spdump` asks for it
 	Gfx_RegisterCvars();
 	Vote_RegisterCvars();           // Patch 372: the vote box
@@ -1601,6 +1602,9 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (evtype == IE_KEYDOWN)
 		if (PE_Key(scanx))              // Patch 1195: F6 sends a prederror report
 			return TRUE;
+		if (evtype == IE_KEYDOWN)
+		if (CR_Key(scanx))              // P1418: F6 sends a crash report, while its box is up
+			return TRUE;
 		if (rec_sl_open || (rec_sl_holding && rec_sl_holdkey && scanx == rec_sl_holdkey))
 		if (SaveLoc_Key(scanx, evtype == IE_KEYDOWN))
 			return TRUE;
@@ -1652,6 +1656,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Friends_ToastKey(scanx))    // P788: F2 adds back, only while the toast is up
 			return TRUE;
 		if (PE_Key(scanx))              // P1195: F6 sends a prederror report, only while its box is up
+			return TRUE;
+		if (CR_Key(scanx))              // P1418
 			return TRUE;
 		// ESC puts the inspector overlay away; its toggle is the ent_cursor bind
 		// (Patch 809).  After the card, which keeps ESC while one is up.
@@ -1884,6 +1890,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	Account_Frame();                // Patch 615: here, not with the HUD, which a menu skips
 	StoryToast_Poll();               // medal mailbox advances even while a menu hides the HUD
 	PE_Frame();                     // Patch 1195: a prederror report is written even under a menu
+	CR_Frame();                     // P1418
 	Gfx_MissingReport();            // P1382: likewise
 	SteamPic_Frame();               // Patch 640
 
@@ -2341,6 +2348,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Friends_DrawToast(scr);
 		StoryToast_Draw(scr);           // Patch 856: a medal the lobby just told
 		PE_Draw(scr);                   // Patch 1195: the prederror report box
+		CR_Draw(scr);                   // P1418: the crash report box (not while that one is up)
 
 		/*
 		  PATCH 340: the avatar customizer, under the leaderboard and over the
@@ -2953,6 +2961,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (Trig_ConsoleCommand(cmd))
 		return TRUE;
 	if (PE_ConsoleCommand(cmd))     // Patch 1195: prederr_ack (the lobby), prederr_send
+		return TRUE;
+	if (CR_ConsoleCommand(cmd))     // P1418: crash_ack (the lobby), crash_send
 		return TRUE;
 
 	// Build 30.  Registered on the client and forwarded with `cmd rec_ghost`,
