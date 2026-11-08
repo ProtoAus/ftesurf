@@ -788,11 +788,18 @@ void(float isnew) CSQC_Ent_Update =
 				self.angles_z = readfloat();
 			}
 			self.tfx_on = readbyte();
+			st = readbyte();                // three bytes for every class (SV_TplFxSend)
+			fr = readbyte();
+			if (dd)
+			{	// an edict reused for the other kind before its remove arrived
+				if (self.classname == "tplfx_net" && self.tfx_cls == FX_CLS_PSYS)
+					Sprite_TplGone(self);
+				if (self.classname == "tplps_net" && self.tfx_cls != FX_CLS_PSYS)
+					Emit_TplGone(self);
+			}
 			if (self.tfx_cls == FX_CLS_PSYS)
-			{	// then ENTWIRE_PSYSSTATE2's start count and fresh flag, read as that branch reads them
+			{	// ENTWIRE_PSYSSTATE2's start count and fresh flag, read as that branch reads them
 				self.classname = "tplps_net";
-				st = readbyte();
-				fr = readbyte();
 				if (isnew)
 					self.tps_fire = fr ? 1 : 0;
 				else

@@ -190,6 +190,7 @@ vector *em_sb;                  //   shell: the .pcf's distance_bias
 float  *em_srad;                //   shell: outward speed
 float  *em_stop;                // EK_PSYS only, Patch 1028: stopped (start_active 0, or the server's Stop)
 float  *em_tnc;                 // P1433: steam, spark and fire: the name's crc (-1 unnamed), for ENTWIRE_FXSTATE2
+#define EM_TNC_TPL -2           //   P1432: a template copy's emitter, switched by its own wire (Emit_TplNet)
 vector *em_korg;                //   and the lump origin (a fire's em_mid may have dropped to the floor)
 float  em_fxwait;               //   named ones that start off and wait for the map
 vector em_eye;                  //   the last frame's eye
@@ -3315,6 +3316,7 @@ void(entity e) Emit_PsysNet =
 	for (i = 0; i < em_n; i = i + 1)
 		if (em_psidx[i] == ps)
 		if (vlen(em_psorg[i] - e.origin) < 0.1)
+		if (em_tnc[i] != EM_TNC_TPL)        // P1432: a template's copy is switched by its own wire
 		{
 			em_stop[i] = !e.em_npon;
 			if (!e.em_npon)
@@ -3535,7 +3537,7 @@ void(entity e) Emit_TplState =
 
 void(entity e, float id) Emit_TplNet =
 {
-	local float k, r, n, keep, live, child, norate;
+	local float k, r, n, i, keep, live, child, norate, over, clamped, trn;
 
 	if (e.tps_gen == em_gen && e.tps_r >= 0)
 	{
@@ -3579,10 +3581,16 @@ void(entity e, float id) Emit_TplNet =
 	live = em_live[EK_PSYS];            // the load's report counts the map's own systems
 	child = em_child;
 	norate = em_norate[EK_PSYS];
+	over = em_over;
+	clamped = em_clamped;
+	trn = em_trn;
 	n = Emit_PsysAt(vbsp_em_map, tple_eff[k], e.origin, e.angles, TRUE, em_tplchild, "server start");
 	em_live[EK_PSYS] = live;
 	em_child = child;
 	em_norate[EK_PSYS] = norate;
+	em_over = over;
+	em_clamped = clamped;
+	em_trn = trn;
 	if (n < 0)
 		n = 0;
 	if (r < tplr_n && n != tplr_cnt[r])
@@ -3595,6 +3603,14 @@ void(entity e, float id) Emit_TplNet =
 		tplr_n = tplr_n + 1;
 	}
 	em_n = max(keep, em_n);
+	for (i = tplr_first[r]; i < tplr_first[r] + tplr_cnt[r]; i = i + 1)
+	{
+		em_tnc[i] = EM_TNC_TPL;
+		// A never-dying glow cannot be taken back when the copy goes, so a copy places none rather than
+		// leave one per copy behind (no templated system in the library has one).
+		if (em_bpers[i])
+			em_bplaced[i] = TRUE;
+	}
 	tplr_used[r] = TRUE;
 	e.tps_r = r;
 	e.tps_porg = e.origin;
@@ -3924,7 +3940,8 @@ void() Emit_LoadForMap =
 		em_seen[kind] = em_seen[kind] + 1;
 		em_any = em_any + 1;
 		if (kind == EK_PSYS)
-		{	// P1432: a template's member -- kept for the copies the server spawns (Emit_TplNet)
+		{	// P1432: a template's member -- kept for the copies the server spawns (Emit_TplNet). A rope or orbit
+			// it starts is not drawn per copy (none in the library).
 			if (Tpl_ClCopied(tn, tparent))
 			if (tple_n >= TPLE_MAX)
 				tple_over = tple_over + 1;
@@ -4743,7 +4760,8 @@ void() Emit_Frame =
 		{
 			em_reload = em_reload + 1;
 			for (i = 0; i < em_n; i = i + 1)
-				em_bplaced[i] = 0;  // P1416: the re-exec drops what was placed
+				if (em_tnc[i] != EM_TNC_TPL)    // P1432: a copy's glow stays unplaced (Emit_TplNet)
+					em_bplaced[i] = 0;  // P1416: the re-exec drops what was placed
 			em_bactive = TRUE;
 			return;                 // the cbuf has not drained yet
 		}
@@ -5134,6 +5152,10 @@ void() Emit_List =
 	tot = tot + em_child;
 	if (em_child)
 		print(sprintf("  %g child system(s) started with their baked parent\n", em_child));
+	tot = tot - tple_skip;             // P1432: drawn per copy, not from the lump
+	if (tple_skip || tple_over)
+		print(sprintf("  %g template particle system(s) drawn per copy (%g past %g not drawn), %g copy range(s)\n",
+		              tple_skip, tple_over, TPLE_MAX, tplr_n));
 	if (!em_any)
 		print("  none of the nine classes on this map\n");
 

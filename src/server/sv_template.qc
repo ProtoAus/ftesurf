@@ -220,6 +220,11 @@ void(entity e) SV_TplRun =
 		{
 			e.vbsp_fx_cls = FX_CLS_PSYS;
 			e.vbsp_psys_on = SV_PsysOn(e);  // start_active: no sender yet
+			if (e.vbsp_psys_on)
+			{	// Source's copy starts its system on spawn: a one-shot fires (fresh for a second)
+				e.vbsp_psys_starts = 1;
+				e.vbsp_psys_fired = time;
+			}
 		}
 		else
 		{
@@ -269,12 +274,17 @@ float(entity to, float changed) SV_TplFxSend =
 		WriteFloat(MSG_ENTITY, self.angles_y);
 		WriteFloat(MSG_ENTITY, self.angles_z);
 	}
+	// The same three bytes for every class: a state-only send can reach a client whose identity packet was
+	// lost, and it reads them before it knows the class. A particle system's are ENTWIRE_PSYSSTATE2's on,
+	// start count and fresh flag.
 	if (self.vbsp_fx_cls != FX_CLS_PSYS)
 	{
 		WriteByte(MSG_ENTITY, self.vbsp_fx_on);
+		WriteByte(MSG_ENTITY, 0);
+		WriteByte(MSG_ENTITY, 0);
 		return TRUE;
 	}
-	WriteByte(MSG_ENTITY, self.vbsp_psys_on);   // then ENTWIRE_PSYSSTATE2's start count and fresh flag
+	WriteByte(MSG_ENTITY, self.vbsp_psys_on);
 	WriteByte(MSG_ENTITY, self.vbsp_psys_starts & 255);
 	WriteByte(MSG_ENTITY, (self.vbsp_psys_starts > 0 && time - self.vbsp_psys_fired < 1) ? 1 : 0);
 	return TRUE;

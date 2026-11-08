@@ -4362,7 +4362,8 @@ float(entity t) SV_PsysOn =
 	return (t.start_active == "" || stof(t.start_active) != 0);
 };
 
-// Kill stops it and keeps the edict: removed, the client would fall back to the lump's state.
+// Kill stops it and keeps the edict: removed, the client would fall back to the lump's state (a template's
+// copy is removed instead, SV_ApplyInput).
 // Stopped systems let their particles die out; DestroyImmediately cannot take them back here.
 float(entity t, string in) SV_PsysInput =
 {
@@ -14720,8 +14721,9 @@ void(void() spawnfunc) CheckSpawn =
 		SV_TplCapture(self);            // P1425: a point_template later in the lump may name it
 		trec = self.tpl_rec;
 		tio = self.tpl_io;
-		// P1432: an unparented env_sprite only. The stash keeps no parentname for SV_TplTakes to read, and
-		// another stashed class stays out as before (a templated filter would stay in trigger prediction).
+		// P1432: an unparented env_sprite or info_particle_system only. The stash keeps no parentname for
+		// SV_TplTakes to read, and another stashed class stays out as before (a templated filter would stay
+		// in trigger prediction).
 		if (pn == "" && (SV_FxClass(self) == FX_CLS_SPRITE || self.classname == "info_particle_system"))
 			nlate = (vbsp_late_buf > 0) ? buf_getsize(vbsp_late_buf) : 0;
 	}

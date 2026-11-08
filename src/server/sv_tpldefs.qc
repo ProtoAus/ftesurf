@@ -23,7 +23,7 @@
 .entity tpl_chain;          // an instance's members while it is built
 .entity tpl_by;             // a spawned entity: the env_entity_maker that made it
 
-.float  tpl_fxi;            // P1432: a copy of a member the client draws from the lump (env_sprite)...
+.float  tpl_fxi;            // P1432: a copy of a member the client draws from the lump (env_sprite, info_particle_system)...
 .vector tpl_morg;           // ...and that member's lump origin and name crc, which the client finds its keys by
 .float  tpl_mtnc;
 strbuf  tpl_lrec, tpl_lio;  // P1432: the captures of entities SV_LateStash set aside, by stash line
