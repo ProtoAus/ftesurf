@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1432 sprites a map spawns -- owner check pending
+## P1432 sprites a map spawns -- LIVE 9 Nov (lobbies + both installs, cs d24ffb5c); owner check pending
 
 - bhop_crash_egypt: reach a checkpoint; the word CHECKPOINT appears at you for about 5 s. bhop_exodus: the
   pictures a trigger shows. Say if the letters are missing, in the wrong place, or stay after they should go.

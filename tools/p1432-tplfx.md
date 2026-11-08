@@ -67,4 +67,11 @@ library scan: 16 unparented sprite members now copied (bhop_crash_egypt 10, bhop
     them on again (its screenshot landed after the map's 5 s Kill).
 - Cost: a copy is an ordinary sprite entry; placing one is one Sprite_Add and one occluder scan.
 
+## Delivery
+
+- LIVE 9 Nov ~10:20 local (23:14Z 8 Nov): 12 lobbies (build.ps1 -Pi from main 7845b087; nobody on; warned;
+  0 QC errors in server1-12.log) qw 418199d4 + cs d24ffb5c; both installs the same (.prev 75759883 /
+  a4460fd9, menu 997553ed, same source as 8904d61a); csprogsvers fc263735 on the Pi and both installs;
+  codes.txt 107 -> 108 (.pre1432). C:\FTESurf fast-forwarded to 7845b087.
+
 Left: info_particle_system members (13 on 10 maps) need a per-copy instance in cl_emit.qc; point_spotlight (1).
