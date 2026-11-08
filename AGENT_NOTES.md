@@ -1,5 +1,19 @@
 # AGENT_NOTES.md
 
+## P1424 a new .hid record kind must not move the clock (8 Nov 2026; ftesurf-b9)
+
+- hidcheck skips an unknown record kind BEFORE adding its dt to the running clock,
+  so a new kind written with a nonzero dt makes every older reader fault the file
+  ("trailer says t=... but the dt sum is ..."). The `end` trailer's field counts
+  are strict too (7/9/10/12). A new annotation therefore goes out as its own kind
+  with dt 0 (`IN_Journal_Line(in_jrn_last, ...)`) and no trailer field, as P1424's
+  'y' does; readers on the Pi then only note it until they are upgraded.
+- Found by running the new test cases against the parent commit's hidcheck: the
+  first fixture gave one 'y' a 500 us dt and the old reader faulted it.
+- PostMessage/SendInput drivers: set ctypes argtypes (a 64-bit HWND passed as an
+  int failed every post silently), and look the window up again after the map
+  loads -- the startup window is replaced during vid init (GetLastError 1400).
+
 ## P1393 patch reservations include published claim files (7 Nov 2026 UTC)
 
 - Scan tracked `tools/pNNN-claim.md` reservations on current `origin/main` as well

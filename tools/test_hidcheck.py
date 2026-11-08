@@ -53,7 +53,8 @@ class Journal:
     def __init__(self, sens=0.3, myaw=0.022, scale=1.0, mfilter=0.0, maccel=0.0,
                  p293=True, nolegacy=None, nolegacylive=None,
                  rawkbds=None, devices=None, render=None, synth=0,
-                 inputcvars=None, rawinput="1", rawkbd="0", rawmice=None):
+                 inputcvars=None, rawinput="1", rawkbd="0", rawmice=None,
+                 kbdobserve=None):
         self.sens, self.myaw, self.scale = sens, myaw, scale
         self.lines = []
         self.clock = 0.0          # seconds since base, as the sum of emitted dt
@@ -97,6 +98,8 @@ class Journal:
             head.append("nolegacy %d" % nolegacy)
         if nolegacylive is not None:
             head.append("nolegacylive %d" % nolegacylive)
+        if kbdobserve is not None:      # Patch 1424, omitted unless asked for
+            head.append("kbdobserve %d" % kbdobserve)
         head.append("synth %d" % synth)
         if p293:
             head += ["sensitivity %.9g" % sens,
@@ -225,6 +228,14 @@ class Journal:
         self._adv(us)
         self.lines.append("b %d %d" % (us, n))
         self.legacybtn += n
+
+    def legacykey(self, n, nohandle=0):
+        """Patch 1424's 'y' record. The engine always writes dt 0 (see in_generic.c)."""
+        self.lines.append("y 0 %d %d" % (n, nohandle))
+
+    def observe(self, state):
+        """Patch 1424's 'o' record: observation started (1) or stopped (0), dt 0."""
+        self.lines.append("o 0 %d" % state)
 
     def note(self, text, us=0):
         """A '#' annotation record."""
@@ -615,6 +626,127 @@ def case_legacy_reopened_midrun():
           "reopened: says the path was open for part of the run")
     check("legacy_path" not in r.info,
           "reopened: does NOT describe the run as protected")
+
+
+def case_keys_observed_clean():
+    """Patch 1424: kbdobserve 1 and no 'y' record is a measured zero."""
+    j = _clickrun(kbdobserve=1)
+    j.key(True, 57, prev=0)
+    j.key(False, 57, prev=1)
+    r = run(j.end())
+    check(r.ok, "keys clean: not a fault (%s)" % (r.faults[:1] or "none"))
+    check(r.info.get("legacy_keys") == 0 and r.info.get("kbd_nohandle") == 0,
+          "keys clean: zero measured (got %s/%s)"
+          % (r.info.get("legacy_keys"), r.info.get("kbd_nohandle")))
+    check(not has_note(r, "unknown header key"),
+          "keys clean: kbdobserve is a known header key")
+    check(not has_note(r, "no real keyboard"), "keys clean: no key note")
+
+
+def case_keys_injected_noted():
+    """Patch 1424: uncorroborated keys are summed and NOTED, never faulted."""
+    j = _clickrun(kbdobserve=1)
+    j.key(True, 57, prev=0)
+    j.legacykey(2, 2)
+    j.key(False, 57, prev=1)
+    j.legacykey(1, 0)
+    r = run(j.end())
+    check(r.ok, "keys injected: not a fault (%s)" % (r.faults[:1] or "none"))
+    check(r.info.get("legacy_keys") == 3 and r.info.get("kbd_nohandle") == 2,
+          "keys injected: 3 keys, 2 handle-less (got %s/%s)"
+          % (r.info.get("legacy_keys"), r.info.get("kbd_nohandle")))
+    check(has_note(r, "3 key press(es) reached the engine"),
+          "keys injected: surfaced as a note")
+    check(has_note(r, "what SendInput leaves"),
+          "keys injected: names the handle-less shape")
+
+
+def case_keys_nohandle_only():
+    """Handle-less reports with every press corroborated: a note, no key count."""
+    j = _clickrun(kbdobserve=1)
+    j.legacykey(0, 4)
+    r = run(j.end())
+    check(r.ok, "nohandle only: not a fault (%s)" % (r.faults[:1] or "none"))
+    check(r.info.get("legacy_keys") == 0, "nohandle only: no key counted")
+    check(has_note(r, "did not reach this window as presses"),
+          "nohandle only: says the keys did not arrive as presses")
+
+
+def case_keys_malformed_faults():
+    """A non-numeric or negative 'y' count is a fault, not a crash."""
+    for bad in ("y 0 x 1", "y 0 -1 0"):
+        j = _clickrun(kbdobserve=1)
+        j.lines.append(bad)
+        r = run(j.end())
+        check(has_fault(r, "'y' counts"), "malformed y %r: faulted" % bad)
+
+
+def case_keys_not_observed():
+    """0 and -1 both say keys were not checked; absent says nothing (pre-1424)."""
+    for v in (0, -1):
+        r = run(_clickrun(kbdobserve=v).end())
+        check(r.ok and has_note(r, "kbdobserve %d -- legacy keys were not checked" % v),
+              "kbdobserve %d: noted as unmeasured" % v)
+        check("legacy_keys" not in r.info,
+              "kbdobserve %d: no key count claimed (got %s)" % (v, r.info.get("legacy_keys")))
+    r = run(_clickrun(kbdobserve=0, rawkbd="1", rawkbds=1).end())
+    check(has_note(r, "opt-in raw keyboard was bound"),
+          "opt-in raw keyboard granted: says 'i' covers it, and only while registered")
+    r = run(_clickrun(kbdobserve=0, rawkbd="1", rawkbds=0).end())
+    check(has_note(r, "were not checked"),
+          "opt-in requested but not granted: still unmeasured, not exempt")
+    r = run(_clickrun().end())
+    check("legacy_keys" not in r.info and has_note(r, "predates the keyboard-observation"),
+          "pre-1424 file: no key claim, noted as not-askable not measured-zero")
+
+
+def case_keys_observed_midjournal():
+    """Observation that starts or stops mid-journal is partial, never a whole count."""
+    j = _clickrun(kbdobserve=0)
+    j.observe(1)
+    j.legacykey(1, 1)
+    r = run(j.end())
+    check(r.ok, "started: not a fault (%s)" % (r.faults[:1] or "none"))
+    check(has_note(r, "only part of this journal"), "started: noted as partial")
+    check("legacy_keys" not in r.info and r.info.get("legacy_keys_partial"),
+          "started: no whole-run count, flagged partial")
+    j = _clickrun(kbdobserve=1)
+    j.observe(0)
+    r = run(j.end())
+    check(has_note(r, "only part of this journal") and "legacy_keys" not in r.info,
+          "stopped: a later silence is not a measured zero")
+    j = _clickrun(kbdobserve=1)
+    j.observe(0)
+    j.observe(1)
+    r = run(j.end())
+    check("legacy_keys" not in r.info and r.info.get("kbdobserve_changes") == 2,
+          "off and on again: the gap still withholds the whole-run count")
+
+
+def case_keys_dt_must_be_zero():
+    """The engine writes 'y'/'o' with dt 0; any other dt is not its file."""
+    for bad in ("y 250 1 0", "o 10 1"):  # nonzero dt
+        j = _clickrun(kbdobserve=1)
+        j.lines.append(bad)
+        r = run(j.end())
+        check(has_fault(r, "the engine writes it with dt 0"), "dt in %r: faulted" % bad)
+
+
+def case_keys_o_negative_faults():
+    """An 'o' state below zero is a fault, like a negative 'y' count."""
+    j = _clickrun(kbdobserve=1)
+    j.lines.append("o 0 -1")
+    r = run(j.end())
+    check(has_fault(r, "'o' counts are not non-negative"), "negative o: faulted")
+
+
+def case_keys_records_without_header():
+    """'y' with no kbdobserve key: no claim, and the file is called unanchored."""
+    j = _clickrun()
+    j.legacykey(2, 0)
+    r = run(j.end())
+    check("legacy_keys" not in r.info and has_note(r, "unanchored"),
+          "no header key: counts unanchored, not claimed")
 
 
 def case_pre307_journal():
@@ -2192,6 +2324,11 @@ def main():
                case_pre305_downgrade, case_rejected_reports,
                case_rejected_trailer_mismatch, case_pre306_journal,
                case_rejected_backend_silent, case_legacy_press_counted,
+               case_keys_observed_clean, case_keys_injected_noted,
+               case_keys_nohandle_only, case_keys_malformed_faults,
+               case_keys_not_observed, case_keys_observed_midjournal,
+               case_keys_dt_must_be_zero, case_keys_records_without_header,
+               case_keys_o_negative_faults,
                case_legacy_trailer_mismatch, case_legacy_suppressed_throughout,
                case_legacy_reopened_midrun, case_pre307_journal,
                case_autorepeat_separated, case_orphan_release,

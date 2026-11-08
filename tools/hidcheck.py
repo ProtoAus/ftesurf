@@ -125,6 +125,8 @@ HEAD_P303 = {"dev"}
 HEAD_P307 = {"nolegacy", "nolegacylive"}
 # Patch 468: precision touchpad digitizer collections bound at raw-input init.
 HEAD_P468 = {"rawpads"}
+# Patch 1424: 1 = legacy keys are checked against an observe-only raw keyboard.
+HEAD_P1424 = {"kbdobserve"}
 
 # Engine Patch 310 appended the render-integrity table:
 #   render <cvar> "<value>" "<default>"
@@ -239,6 +241,13 @@ KINDS = {
     # Patch 307: legacy mouse buttons ACCEPTED although raw input -- which was
     # live -- could not corroborate them. Unlike 'i', these DID reach the game.
     "b": 1,     # n
+    # Patch 1424: legacy key presses no real raw keyboard report corroborated,
+    # and handle-less keyboard reports (SendInput's) since the last such record.
+    # The keys DID reach the game as their own '+' records. No trailer total.
+    "y": 2,     # legacykeys nohandle
+    # Patch 1424: keyboard observation started (1) or stopped (0) -- written on
+    # every transition, so an off-and-on again still leaves a record.
+    "o": 1,     # kbdobserve
     # Patch 468: handle-less reports ACCEPTED as precision-touchpad input since
     # the last such record, the digitizer reports that armed the window, and
     # the releases admitted outside it (at most the accepted count on the
@@ -435,7 +444,7 @@ def check_hid(path, verbose=False, *, data=None):
         if parts[0] not in HEAD_V1 and parts[0] not in HEAD_P293 \
            and parts[0] not in HEAD_P301 and parts[0] not in HEAD_P303 \
            and parts[0] not in HEAD_P307 and parts[0] not in HEAD_P310 \
-           and parts[0] not in HEAD_P468:
+           and parts[0] not in HEAD_P468 and parts[0] not in HEAD_P1424:
             r.note("unknown header key %r" % parts[0])
         i += 1
     else:
@@ -562,6 +571,10 @@ def check_hid(path, verbose=False, *, data=None):
     saw_i = False
     legacybtn = 0       # Patch 307: summed from the 'b' records
     saw_b = False
+    legacykeys = 0      # Patch 1424: summed from the 'y' records
+    kbdnohandle = 0
+    saw_y = False
+    obs_changes = []    # Patch 1424: every 'o' (observation started/stopped), in order
     padacc = 0          # Patch 468: summed from the 'p' records
     padrep = 0
     padrel = 0
@@ -791,6 +804,29 @@ def check_hid(path, verbose=False, *, data=None):
                 saw_b = True
             except ValueError:
                 r.fault("line %d: 'b' count is not a number" % (lineno + 1))
+        elif kind in ("y", "o"):
+            # Patch 1424. NOT events, like 'b'. The engine writes both with dt 0
+            # (an older hidcheck faults any other dt), so a nonzero one is not
+            # this engine's file.
+            if tok[1] != "0":
+                r.fault("line %d: %r carries dt %s; the engine writes it with dt 0"
+                        % (lineno + 1, kind, tok[1]))
+            try:
+                if kind == "o":
+                    st = int(tok[2])
+                    if st < 0:
+                        raise ValueError
+                    obs_changes.append(st)
+                else:
+                    dk, dn = int(tok[2]), int(tok[3])
+                    if dk < 0 or dn < 0:
+                        raise ValueError
+                    legacykeys += dk
+                    kbdnohandle += dn
+                    saw_y = True
+            except ValueError:
+                r.fault("line %d: %r counts are not non-negative numbers"
+                        % (lineno + 1, kind))
         elif kind == "p":
             # Patch 468. NOT an event, for the reason on the 'i' branch: what
             # reached the game is journalled as 'm'/'+'/'-' on the touchpad's
@@ -1127,6 +1163,75 @@ def check_hid(path, verbose=False, *, data=None):
                        "was live and could not corroborate them. These DID "
                        "reach the game. %s Check the device table above "
                        "before concluding anything." % (t_legacybtn, why))
+
+        # ---- the legacy key path (engine Patch 1424) -----------------------
+        # A whole-journal count needs kbdobserve 1 at begin AND no 'o' record:
+        # each 'o' marks observation stopping or restarting. Anything else is a
+        # partial or absent measurement and says so -- 0 and -1 never read as a
+        # measured zero. Absent key and no records: a pre-1424 file, silent.
+        try:
+            kbdobserve = int(head["kbdobserve"]) if "kbdobserve" in head else None
+        except ValueError:
+            kbdobserve = None
+            r.note("kbdobserve %r is not a number" % head["kbdobserve"])
+        if kbdobserve is not None:
+            r.info["kbdobserve"] = kbdobserve
+        if obs_changes:
+            r.info["kbdobserve_changes"] = len(obs_changes)
+        try:
+            kbds_bound = int(head.get("rawkbds", "-1"))
+        except ValueError:
+            kbds_bound = -1
+        if kbdobserve == 1 and not obs_changes:
+            r.info["legacy_keys"] = legacykeys
+            r.info["kbd_nohandle"] = kbdnohandle
+            if truncated is not None:
+                r.info["legacy_keys_partial"] = True    # no trailer total: a floor
+        elif kbdobserve is None:
+            if saw_y or obs_changes:
+                r.note("'y'/'o' records but no kbdobserve header key -- the "
+                       "engine never writes this; the key counts are unanchored")
+            elif not nonwin:
+                r.note("this file predates the keyboard-observation check (engine "
+                       "Patch 1424); whether a keystroke was injected cannot be "
+                       "asked of it -- absent is not a measured zero")
+        elif kbdobserve == 1 or 1 in obs_changes:
+            r.info["legacy_keys_partial"] = True
+            r.note("keys were checked for only part of this journal (kbdobserve "
+                   "%d at begin, %d change(s) after: %s); the key counts cover "
+                   "only the observed spans" % (kbdobserve, len(obs_changes),
+                   " ".join(str(s) for s in obs_changes)))
+        elif kbds_bound > 0:
+            r.note("kbdobserve %d -- the key observer was off because the opt-in "
+                   "raw keyboard was bound (rawkbds %d); Patch 306's 'i' counts "
+                   "handle-less key reports only while that is registered"
+                   % (kbdobserve, kbds_bound))
+        elif nonwin:
+            r.note("kbdobserve %d -- this input backend does not check legacy "
+                   "keys" % kbdobserve)
+        else:
+            r.note("kbdobserve %d -- legacy keys were not checked against raw "
+                   "input, so an injected keystroke cannot be seen in this file"
+                   % kbdobserve)
+        if legacykeys:
+            if kbdnohandle:
+                shape = ("%d handle-less keyboard report(s) arrived beside them, "
+                         "which is what SendInput leaves" % kbdnohandle)
+            else:
+                shape = ("no handle-less keyboard report arrived, so these came "
+                         "from a posted message or a system-generated key")
+            r.note("%d key press(es) reached the engine although no keyboard "
+                   "device reported them (a remote-desktop or virtual keyboard "
+                   "driver counts as one); %s. Innocent sources include "
+                   "on-screen keyboards, key remappers, controller-to-key tools, "
+                   "AltGr's synthesized Ctrl, and alt-tabbing back onto a held "
+                   "key; otherwise this is the shape of an injected keystroke. A "
+                   "NOTE, never a verdict." % (legacykeys, shape))
+        elif kbdnohandle:
+            r.note("%d handle-less keyboard report(s) arrived, but every legacy "
+                   "key press was vouched for by a keyboard device -- the "
+                   "synthesized keys did not reach this window as presses"
+                   % kbdnohandle)
 
         # Patch 468: handle-less reports ACCEPTED because a Windows precision
         # touchpad had reported contact inside the engine's window (the OS
