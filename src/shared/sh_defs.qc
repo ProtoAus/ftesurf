@@ -41,6 +41,7 @@
 #define ENTWIRE_TRKPROP 6       // P1378: a prop riding one
 #define ENTWIRE_SPSTATE 7       // P1387: a Patch 860 mover csprogs poses (sv_entities.qc SV_SpSend)
 #define ENTWIRE_PSYSSTATE2 8    // P1416: ENTWIRE_PSYSSTATE plus a start count and a fresh flag
+#define ENTWIRE_FXSTATE 9       // P1430: a look-only effect's class, on state and event count (cl_fx.qc)
 
 // --- hulls ------------------------------------------------------------------
 // Source puts the player origin AT THE FEET, unlike Quake's centred origin.

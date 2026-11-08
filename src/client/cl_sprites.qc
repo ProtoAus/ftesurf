@@ -508,6 +508,8 @@ float  beam_n;
 float  beam_spot_n;                     // P1252: the shafts; env_lasers follow them up to beam_n
 void(float want) Laser_LoadForMap;      // cl_lasers.qc
 float(vector eye, vector fwd, float maxdist, float skyon) Laser_Draw;
+void(float want) Fx_LoadForMap;         // cl_fx.qc, P1430
+float(vector eye, vector fwd, float maxdist) Fx_Draw;
 
 // ------------------------------------------------------------------ counters
 string vbsp_spr_map;                      // lazy-reload latch, as the decals use
@@ -516,6 +518,8 @@ float  spr_want_spr, spr_want_beam, spr_want_glow, spr_want_las;   // Patch 894:
 float  vbsp_las_seen, vbsp_las_n, vbsp_las_off, vbsp_las_notgt;
 float  vbsp_las_parent, vbsp_las_moving, vbsp_las_nomat, vbsp_las_over;
 // P1426: env_beam, through the laser path
+float  vbsp_fx_tesla, vbsp_fx_arc, vbsp_fx_skip;   // P1430, counted by cl_fx.qc
+float  fx_n;                              // P1430: cl_fx.qc's arc sources (Sprite_Draw's early exit reads it)
 float  vbsp_ebm_seen, vbsp_ebm_n, vbsp_ebm_off, vbsp_ebm_arc, vbsp_ebm_skip, vbsp_ebm_noise;   // not vbsp_beam_*: the shafts'
 float  las_drawn;                         // laser beams drawn last frame (vbsp_sprite_debug)
 float  vbsp_spr_seen;                     // sprite entities found, drawn or not
@@ -1805,6 +1809,7 @@ void() Sprite_LoadForMap =
 
 	// P1252: appended to the beam table after the shafts, so the sky test and the culls cover them.
 	Laser_LoadForMap(spr_want_las);
+	Fx_LoadForMap(spr_want_las);           // P1430: under vbsp_lasers too
 
 	// BUILD 54.  Needs both walks finished: the occluders exist and the sprites
 	// have been read.  Neither ever moves, so the answer is a load-time constant.
@@ -1862,6 +1867,9 @@ void() Sprite_LoadForMap =
 		if (vbsp_las_over)
 			print(sprintf("lasers: %g over the beam table's cap (BEAM_MAX)\n", vbsp_las_over));
 	}
+	if (vbsp_fx_tesla + vbsp_fx_arc + vbsp_fx_skip)
+		print(sprintf("arcs: %g point_tesla, %g env_beam with no end point, %g declined (parented, start missing, no material, over FX_MAX)\n",
+		              vbsp_fx_tesla, vbsp_fx_arc, vbsp_fx_skip));
 	if (vbsp_ebm_seen)
 		print(sprintf("env_beam: %g of %g drawn, %g start off, %g random arcs (no end point), %g declined (end missing or moving, parented, no material), %g noisy drawn straight\n",
 		              vbsp_ebm_n, vbsp_ebm_seen, vbsp_ebm_off, vbsp_ebm_arc, vbsp_ebm_skip, vbsp_ebm_noise));
@@ -2877,7 +2885,7 @@ void() Sprite_Draw =
 		Sprite_LoadForMap();
 	}
 
-	if (!spr_n && !beam_n)
+	if (!spr_n && !beam_n && !fx_n)
 		return;
 
 	eye = getproperty(VF_ORIGIN);
@@ -3436,6 +3444,7 @@ void() Sprite_Draw =
 	}
 	spr_skyhid = skyhid;
 	drawn = drawn + Laser_Draw(eye, fwd, maxdist, skyon);   // P1252: adds its sky skips to spr_skyhid
+	drawn = drawn + Fx_Draw(eye, fwd, maxdist);             // P1430: tesla and env_beam arcs
 
 	if (dbg)
 	{

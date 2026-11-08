@@ -4414,6 +4414,70 @@ void() env_laser =
 	SV_LateStash("targetname origin spawnflags");
 };
 
+/*
+  P1430: look-only effects the client draws from the lump (cl_fx.qc).  This edict holds one's on state and
+  an event count and, from the first input, sends them to every client (ENTWIRE_FXSTATE, matched there on
+  class, origin and name).  point_tesla: TurnOn, TurnOff, DoSpark (one spark: an event).
+*/
+#define FX_CLS_TESLA 1
+.float vbsp_fx_cls, vbsp_fx_on, vbsp_fx_ev, vbsp_fx_evt;
+.string m_bOn;                  // point_tesla's start state: a field, so the stash keeps it
+
+float(entity to, float changed) SV_FxSend =
+{
+	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
+	WriteByte(MSG_ENTITY, ENTWIRE_FXSTATE);
+	WriteByte(MSG_ENTITY, self.vbsp_fx_cls);
+	WriteFloat(MSG_ENTITY, self.origin_x);
+	WriteFloat(MSG_ENTITY, self.origin_y);
+	WriteFloat(MSG_ENTITY, self.origin_z);
+	WriteFloat(MSG_ENTITY, crc16(TRUE, self.targetname));
+	WriteByte(MSG_ENTITY, self.vbsp_fx_on);
+	WriteByte(MSG_ENTITY, self.vbsp_fx_ev & 255);
+	WriteByte(MSG_ENTITY, (self.vbsp_fx_ev > 0 && time - self.vbsp_fx_evt < 1) ? 1 : 0);
+	return TRUE;
+};
+
+void() point_tesla =
+{
+	if (self.targetname == "")
+	{
+		remove(self);               // nothing can address it: the client draws it from the lump
+		return;
+	}
+	SV_LateStash("targetname origin m_bOn");
+};
+
+float(entity t, string in) SV_FxInput =
+{
+	local float on, ev;
+	if (t.classname != "point_tesla")
+		return FALSE;
+	on = t.SendEntity ? t.vbsp_fx_on : (stof(t.m_bOn) != 0);
+	ev = FALSE;
+	if (in == "turnon")
+		on = TRUE;
+	else if (in == "turnoff" || in == "kill")
+		on = FALSE;
+	else if (in == "dospark")
+		ev = TRUE;
+	else
+		return FALSE;
+	if (t.SendEntity && on == t.vbsp_fx_on && !ev)
+		return TRUE;
+	if (ev)
+	{
+		t.vbsp_fx_ev = t.vbsp_fx_ev + 1;
+		t.vbsp_fx_evt = time;
+	}
+	t.vbsp_fx_cls = FX_CLS_TESLA;
+	t.vbsp_fx_on = on;
+	t.SendEntity = SV_FxSend;
+	t.pvsflags = PVSF_IGNOREPVS;
+	t.SendFlags = 1;
+	return TRUE;
+};
+
 // P1426: env_beam switches as env_laser does (CEnvBeam: named and not SF_BEAM_STARTON starts off); the
 // client draws it from the lump (cl_lasers.qc) and matches this edict's origin and name.
 void() env_beam = { env_laser(); };
@@ -4692,6 +4756,8 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	if (t.classname == "info_particle_system")
 		if (SV_PsysInput(t, in))
 			return;
+	if (SV_FxInput(t, in))          // P1430: point_tesla
+		return;
 	if (t.classname == "env_laser" || t.classname == "env_beam")
 		if (SV_LaserInput(t, in))
 			return;

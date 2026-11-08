@@ -702,6 +702,30 @@ void(float isnew) CSQC_Ent_Update =
 			Emit_PsysNet(self);
 			self.em_npfire = 0;     // the map-load walk reapplies the state, never the burst
 		}
+		else if (f == ENTWIRE_FXSTATE)
+		{	// P1430: as ENTWIRE_PSYSSTATE2's events -- on first sight only a fresh one fires
+			self.classname = "fx_net";
+			self.fx_ncls = readbyte();
+			self.origin_x = readfloat();
+			self.origin_y = readfloat();
+			self.origin_z = readfloat();
+			self.fx_ntnc = readfloat();
+			self.fx_non = readbyte();
+			st = readbyte();
+			dd = readbyte();
+			if (isnew)
+				self.fx_nfire = dd ? 1 : 0;
+			else
+			{
+				dd = st - self.em_npstarts;
+				if (dd < 0)
+					dd = dd + 256;
+				self.fx_nfire = min(dd, 3);
+			}
+			self.em_npstarts = st;
+			Fx_Net(self);
+			self.fx_nfire = 0;
+		}
 		else if (f == ENTWIRE_LASERSTATE)
 		{
 			self.classname = "laser_net";

@@ -90,6 +90,8 @@ float(string cn) Laser_Mover =
 // and name.  Kept on the entity, so a load after it arrives reapplies it.
 .float las_neton, las_nettnc;
 
+void(entity e) Fx_LaserNet;     // cl_fx.qc, P1430: env_beam arcs ride this wire too
+
 void(entity e) Laser_Net =
 {
 	local float i, k;
@@ -104,6 +106,7 @@ void(entity e) Laser_Net =
 	}
 	if (cvar("developer") >= 2)     // one line per laser: ~240 a second on surf_hyper
 		print(sprintf("lasers: the laser at %v turned %s by the server\n", e.origin, e.las_neton ? "on" : "off"));
+	Fx_LaserNet(e);
 };
 
 void(float want) Laser_LoadForMap =

@@ -21,6 +21,9 @@
 
 ## next
 
+### P1430 Electric arcs
+- Tesla coils now spark (point_tesla, on 132 maps): jagged electric arcs out to the nearest walls, fired when the map switches them on or sparks them. Beams set to arc at random draw the same way.
+
 ### P1428 Look triggers and map minigames
 - Triggers that fire when you look at something for a moment now work (21 maps), including their timeouts.
 - Map minigames that read your keys (game_ui, 20 maps: bowling, races) now get your movement and attack keys. They do not freeze you in place yet.

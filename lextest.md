@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1430 point_tesla arcs -- (see delivery); owner check pending
+
+- surf_y: blue, red and green electric arcs crackle around the spawn room from map start. surf_quasar_final,
+  surf_canisius: teslas near spawn. Say if arcs look too thick, too many, or spark where nothing should.
+
 ## P1426 env_beam -- LIVE (lobbies, 8 Nov); owner check pending
 
 - surf_canisius: a square of cyan electric beams above the spawn. surf_smart (start area): electric

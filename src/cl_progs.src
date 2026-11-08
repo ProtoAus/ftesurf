@@ -51,6 +51,7 @@ client/cl_tplskip.qc         // P1425: template members the server takes out; be
 client/cl_sprites.qc
 // P1252: env_laser, appended to cl_sprites.qc's beam table; that file holds the two prototypes.
 client/cl_lasers.qc
+client/cl_fx.qc             // P1430: arcs (point_tesla, env_beam with no end); before cl_body.qc
 // Source fog (env_fog_controller / sky_camera): a third independent walk of the
 // same lump, reading nothing from the other two.  It has to sit BEFORE
 // cl_gfx.qc, which greys the "Map fog" row out using vbsp_fog_count, and before
