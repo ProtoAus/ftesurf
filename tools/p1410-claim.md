@@ -1,0 +1,1 @@
+P1410 claimed by ftesurf-3a (Claude Code session 5e4b2e2d) 2026-11-08. Lex: the click that only brings the game window to the front must not press a game key (his MOUSE1 +duck ducked a surf_voyager flight; tools/p1407-voyager-handsfree.md). Engine client in_win.c / gl_vidnt.c.
