@@ -14717,7 +14717,10 @@ void(void() spawnfunc) CheckSpawn =
 		SV_TplCapture(self);            // P1425: a point_template later in the lump may name it
 		trec = self.tpl_rec;
 		tio = self.tpl_io;
-		nlate = (vbsp_late_buf > 0) ? buf_getsize(vbsp_late_buf) : 0;
+		// P1432: an unparented env_sprite only. The stash keeps no parentname for SV_TplTakes to read, and
+		// another stashed class stays out as before (a templated filter would stay in trigger prediction).
+		if (pn == "" && SV_FxClass(self) == FX_CLS_SPRITE)
+			nlate = (vbsp_late_buf > 0) ? buf_getsize(vbsp_late_buf) : 0;
 	}
 	if (spawnfunc)
 		spawnfunc();
@@ -14725,7 +14728,7 @@ void(void() spawnfunc) CheckSpawn =
 		remove(self);
 	if (wasfreed(e))
 	{
-		// P1432: set aside by SV_LateStash -- its capture goes to the edict SV_LateSpawnAll makes of it
+		// P1432: set aside by SV_LateStash -- the capture goes to the edict SV_LateSpawnAll makes of it
 		if (nlate >= 0 && vbsp_late_buf > 0 && buf_getsize(vbsp_late_buf) > nlate)
 		{
 			if (tpl_lrec <= 0)

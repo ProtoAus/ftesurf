@@ -559,7 +559,7 @@ float  vbsp_spr_hid;
 vector tpls_org[TPLS_MAX], tpls_ang[TPLS_MAX], tpls_col[TPLS_MAX];
 float  tpls_tnc[TPLS_MAX], tpls_kind[TPLS_MAX], tpls_mat[TPLS_MAX], tpls_scale[TPLS_MAX];
 float  tpls_alpha[TPLS_MAX], tpls_add[TPLS_MAX], tpls_pset[TPLS_MAX];
-float  tpls_n;
+float  tpls_n, tpls_over;
 float  *spr_free;                         // [SPR_MAX] a removed copy's entry, hidden, for the next copy
 float  spr_gen;                           // Sprite_LoadForMap's count: a copy's entry from an older load is gone
 .float tfx_cls, tfx_mtnc, tfx_on, tfx_slot, tfx_gen;
@@ -1579,6 +1579,7 @@ void(entity e) Sprite_TplGone =
 void(entity e, float id) Sprite_TplNet =
 {
 	local float k, i, keep, ok;
+	local entity o, p;
 
 	if (e.tfx_gen == spr_gen && e.tfx_slot >= 0)
 	{
@@ -1619,6 +1620,20 @@ void(entity e, float id) Sprite_TplNet =
 		spr_under[i] = spr_utime[i] = 0;
 	if (spr_gep)
 		spr_gep[i] = 0;
+	// Sprite_ResolveSkips for this one entry: the tightest occluder brush around it
+	if (spr_add[i] && spr_occ_n)
+		for (o = findfloat(world, spr_occluder, TRUE); o; o = findfloat(o, spr_occluder, TRUE))
+		{
+			if (e.origin_x < o.absmin_x || e.origin_x > o.absmax_x) continue;
+			if (e.origin_y < o.absmin_y || e.origin_y > o.absmax_y) continue;
+			if (e.origin_z < o.absmin_z || e.origin_z > o.absmax_z) continue;
+			p = spr_gskip[i];
+			if (p != world)
+			if ((o.absmax_x - o.absmin_x) * (o.absmax_y - o.absmin_y) * (o.absmax_z - o.absmin_z) >=
+			    (p.absmax_x - p.absmin_x) * (p.absmax_y - p.absmin_y) * (p.absmax_z - p.absmin_z))
+				continue;
+			spr_gskip[i] = o;
+		}
 	e.tfx_slot = i;
 };
 
@@ -1705,7 +1720,7 @@ void() Sprite_LoadForMap =
 	vbsp_spr_seen = vbsp_spr_off = vbsp_spr_nomat = vbsp_spr_over = 0;
 	vbsp_beam_seen = vbsp_beam_off = 0;
 	vbsp_spr_hid = 0;
-	tpls_n = 0;
+	tpls_n = tpls_over = 0;
 	spr_gen = spr_gen + 1;
 	if (!spr_hide)
 	{
@@ -1883,8 +1898,11 @@ void() Sprite_LoadForMap =
 			// the set is meaningful; the three zeros keep it one table.
 			spra_pset = Glow_ParamSet(0, 0, 0, gproxy);
 
-			if (tpls_n < TPLS_MAX && Tpl_ClMember(tn, tparent))
-			{	// P1432: drawn where the server spawns a copy (Sprite_TplNet)
+			if (Tpl_ClCopied(tn, tparent))
+			if (tpls_n >= TPLS_MAX)
+				tpls_over = tpls_over + 1;
+			else
+			{	// P1432: kept for the copies the server spawns (Sprite_TplNet)
 				tpls_org[tpls_n] = org;
 				tpls_ang[tpls_n] = ang;
 				tpls_col[tpls_n] = col;
@@ -1896,8 +1914,9 @@ void() Sprite_LoadForMap =
 				tpls_add[tpls_n] = additive;
 				tpls_pset[tpls_n] = spra_pset;
 				tpls_n = tpls_n + 1;
-				continue;
 			}
+			if (Tpl_ClMember(tn, tparent))
+				continue;               // the server took it out of the map
 			n0 = spr_n;
 			Sprite_Add(org, ang,
 			           (cn == "env_sprite_oriented") ? SPRK_ORIENTED : SPRK_BILLBOARD,
@@ -2044,6 +2063,8 @@ void() Sprite_LoadForMap =
 			print(sprintf("sprites: %g of %g drawn\n", spr_n - vbsp_glow_n, vbsp_spr_seen));
 		if (wantspr && vbsp_spr_hid)
 			print(sprintf("sprites: %g of them start hidden until the map shows them\n", vbsp_spr_hid));
+		if (tpls_over)
+			print(sprintf("^3sprites: %g template sprites past %g: their copies are not drawn\n", tpls_over, TPLS_MAX));
 	}
 
 	if (vbsp_beam_seen)
