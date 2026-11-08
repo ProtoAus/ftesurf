@@ -21,6 +21,15 @@
   (beamdraw.cpp DrawSegs); texture v runs length*0.01 from the laser, offset
   fmod(curtime * speed^2, 1) where speed = atoi(TextureScroll) * 0.1
   (RecvProxy_Beam_ScrollSpeed).  NoiseAmplitude and renderfx are not drawn.
+
+  P1426: env_beam rides the same path -- a laser whose start is the LightningStart entity and whose
+  target is LightningEnd, both picked as RandomTargetname does, drawn without the laser's wall trace
+  (CEnvBeam::Strike draws entity to entity).  BoltWidth is the width.  life > 0 strikes for life seconds
+  every life + StrikeTime (the random-strike flag's restrike at its mean).  One with no LightningEnd is a
+  random arc (RandomArea/RandomPoint) and is counted for point_tesla's patch; NoiseAmplitude draws straight,
+  SF_BEAM_TAPEROUT untapered.  CBeam::Spawn forces kRenderTransTexture, so renderamt always scales a beam.
+  BeamUpdateVars finds the FIRST entity of each name: a constant beam keeps its first end; a striking one
+  picks an end per strike (Strike's RandomTargetname), held for the strike.
 */
 
 #define LAS_MAX       1024      // lasers staged a map; worst (surf_s_t_a_t_i_o_n) is 232
@@ -36,6 +45,11 @@ float *las_pick;                // at a head: the entry drawn now
 float *las_next;                // at a head: when to pick again
 float *las_on;                  // at a head: drawn; the lump's start state until the server says (P1256)
 float *las_tnc;                 // at a head: crc16 of its targetname, with the origin what Laser_Net matches
+vector *las_korg;               // at a head: the entity's own origin, what Laser_Net matches (P1426: a beam
+                                //   draws from its LightningStart, not from itself)
+float *las_life;                // at a head, P1426: seconds a strike shows; 0 = always
+float *las_period;              //   and the strike's period, life + StrikeTime
+float *las_phase;               //   and its offset, so a map's beams do not strike together
 
 // Load-time staging: per laser (LAS_MAX), per target name (LAS_MAX), per target (LAS_TGT_MAX).
 vector *lsg_org;
@@ -46,6 +60,11 @@ float *lsg_mat;
 float *lsg_name;                // its target name's index; -1 once declined
 float *lsg_on;
 float *lsg_tnc;
+vector *lsg_korg;               // P1426: the entity's own origin
+float *lsg_sname;               // P1426: an env_beam's LightningStart name index; -1 on a laser
+float *lsg_life;
+float *lsg_period;
+float *lsg_noise;               // P1426: a noisy beam, counted when drawn
 float *lname_head;              // first target + 1, 0 = none
 vector *ltgt_org;
 float *ltgt_mov;
@@ -80,7 +99,7 @@ void(entity e) Laser_Net =
 	for (i = beam_spot_n; i < beam_n; i = i + 1)
 	{
 		k = i - beam_spot_n;
-		if (las_grp[k] == k && las_tnc[k] == e.las_nettnc && vlen(beam_org[i] - e.origin) < 0.1)
+		if (las_grp[k] == k && las_tnc[k] == e.las_nettnc && vlen(las_korg[k] - e.origin) < 0.1)
 			las_on[k] = e.las_neton;
 	}
 	if (cvar("developer") >= 2)     // one line per laser: ~240 a second on surf_hyper
@@ -89,17 +108,19 @@ void(entity e) Laser_Net =
 
 void(float want) Laser_LoadForMap =
 {
-	local string tok, key, cn, tn, pn, lt, tex, scol;
+	local string tok, key, cn, tn, pn, lt, tex, scol, ls;
 	local vector org, col, endp;
 	local float  sf, rmode, ramt, wid, ts, nl, nn, nt, l, w, t, n, mov, m, e, h, lost;
+	local float  bw, life, strike, noise, ws;
 	local hashtable names;
 	local entity net;
 
 	// vbsp_las_seen is counted by Sprite_LoadForMap's walk.
 	vbsp_las_n = vbsp_las_off = vbsp_las_notgt = 0;
 	vbsp_las_parent = vbsp_las_moving = vbsp_las_nomat = vbsp_las_over = 0;
+	vbsp_ebm_n = vbsp_ebm_off = vbsp_ebm_arc = vbsp_ebm_skip = vbsp_ebm_noise = 0;
 	las_drawn = 0;
-	if (!want || !vbsp_las_seen)
+	if (!want || !(vbsp_las_seen + vbsp_ebm_seen))
 		return;
 
 	if (!las_mat)
@@ -114,13 +135,22 @@ void(float want) Laser_LoadForMap =
 		lsg_on     = memalloc(sizeof(float) * LAS_MAX);
 		las_tnc    = memalloc(sizeof(float) * BEAM_MAX);
 		lsg_tnc    = memalloc(sizeof(float) * LAS_MAX);
+		las_korg   = memalloc(sizeof(vector) * BEAM_MAX);
+		las_life   = memalloc(sizeof(float) * BEAM_MAX);
+		las_period = memalloc(sizeof(float) * BEAM_MAX);
+		las_phase  = memalloc(sizeof(float) * BEAM_MAX);
+		lsg_korg   = memalloc(sizeof(vector) * LAS_MAX);
+		lsg_sname  = memalloc(sizeof(float) * LAS_MAX);
+		lsg_life   = memalloc(sizeof(float) * LAS_MAX);
+		lsg_period = memalloc(sizeof(float) * LAS_MAX);
+		lsg_noise  = memalloc(sizeof(float) * LAS_MAX);
 		lsg_org    = memalloc(sizeof(vector) * LAS_MAX);
 		lsg_col    = memalloc(sizeof(vector) * LAS_MAX);
 		lsg_wid    = memalloc(sizeof(float) * LAS_MAX);
 		lsg_speed  = memalloc(sizeof(float) * LAS_MAX);
 		lsg_mat    = memalloc(sizeof(float) * LAS_MAX);
 		lsg_name   = memalloc(sizeof(float) * LAS_MAX);
-		lname_head = memalloc(sizeof(float) * LAS_MAX);
+		lname_head = memalloc(sizeof(float) * LAS_MAX * 2);   // P1426: a beam wants two names
 		ltgt_org   = memalloc(sizeof(vector) * LAS_TGT_MAX);
 		ltgt_mov   = memalloc(sizeof(float) * LAS_TGT_MAX);
 		ltgt_next  = memalloc(sizeof(float) * LAS_TGT_MAX);
@@ -135,9 +165,9 @@ void(float want) Laser_LoadForMap =
 	{
 		if (tok != "{")
 			continue;
-		cn = tn = pn = lt = tex = scol = "";
+		cn = tn = pn = lt = tex = scol = ls = "";
 		org = '0 0 0';
-		sf = rmode = wid = ts = 0;
+		sf = rmode = wid = ts = bw = life = strike = noise = 0;
 		ramt = 255;
 		while ((key = getentitytoken()) != "" && key != "}")
 		{
@@ -156,13 +186,28 @@ void(float want) Laser_LoadForMap =
 			else if (key == "width"         || key == "Width")         wid = stof(tok);
 			else if (key == "LaserTarget"   || key == "lasertarget")   lt = tok;
 			else if (key == "TextureScroll" || key == "texturescroll") ts = stof(tok);
+			else if (key == "LightningStart" || key == "lightningstart") ls = tok;   // P1426: env_beam
+			else if (key == "LightningEnd"   || key == "lightningend")   lt = tok;
+			else if (key == "BoltWidth"      || key == "boltwidth")      bw = stof(tok);
+			else if (key == "life")                                      life = stof(tok);
+			else if (key == "StrikeTime"     || key == "striketime")     strike = stof(tok);
+			else if (key == "NoiseAmplitude" || key == "noiseamplitude") noise = stof(tok);
 		}
-		if (cn != "env_laser")
+		if (cn != "env_laser" && cn != "env_beam")
 			continue;
 
 		if (pn != "")
 		{
-			vbsp_las_parent = vbsp_las_parent + 1;
+			if (cn == "env_beam")
+				vbsp_ebm_skip = vbsp_ebm_skip + 1;
+			else
+				vbsp_las_parent = vbsp_las_parent + 1;
+			continue;
+		}
+		if (cn == "env_beam")
+		if (lt == "" || ls == "")
+		{	// no end: StrikeThink's RandomArea / RandomPoint arcs (point_tesla's family)
+			vbsp_ebm_arc = vbsp_ebm_arc + 1;
 			continue;
 		}
 		// No target: StrikeThink fires at its own end point, which PointsInit set to the origin.
@@ -176,10 +221,33 @@ void(float want) Laser_LoadForMap =
 			vbsp_las_over = vbsp_las_over + 1;
 			continue;
 		}
+		lsg_sname[nl] = -1;
+		if (cn == "env_beam")
+		{
+			ls = strtolower(ls);
+			ws = hash_get(names, ls, -1, EV_FLOAT);
+			if (ws < 0)
+			{
+				ws = nn;
+				nn = nn + 1;
+				hash_add(names, ls, ws, HASH_REPLACE | EV_FLOAT);
+				lname_head[ws] = 0;
+			}
+			lsg_sname[nl] = ws;
+			wid = bw;
+		}
 
 		// Names match case-blind in Source (NamesMatch); the hash is case-exact.
 		lt = strtolower(lt);
 		w = hash_get(names, lt, -1, EV_FLOAT);
+		if (w < 0 && nn >= LAS_MAX * 2 - 1)
+		{
+			if (cn == "env_beam")
+				vbsp_ebm_skip = vbsp_ebm_skip + 1;
+			else
+				vbsp_las_over = vbsp_las_over + 1;
+			continue;
+		}
 		if (w < 0)
 		{
 			w = nn;
@@ -191,7 +259,7 @@ void(float want) Laser_LoadForMap =
 		col = '1 1 1';
 		if (scol != "")
 			col = Sprite_ParseColor(scol);
-		if (rmode != 0)
+		if (rmode != 0 || cn == "env_beam")
 			col = col * ((ramt & 255) / 255);
 
 		// SetWidth caps it at MAX_BEAM_WIDTH; the send table's 10 bits step it by ~0.1 and
@@ -207,6 +275,10 @@ void(float want) Laser_LoadForMap =
 		lsg_name[nl]  = w;
 		lsg_on[nl]    = !(tn != "" && !(sf & 1));  // CEnvLaser::Spawn: off when named without SF_BEAM_STARTON
 		lsg_tnc[nl]   = crc16(TRUE, tn);           // 79 lasers share an origin with a differently named one
+		lsg_korg[nl]  = org;
+		lsg_life[nl]  = (cn == "env_beam" && life > 0) ? life : 0;
+		lsg_period[nl] = life + ((sf & 4) ? strike * 0.5 : strike);   // SF_BEAM_RANDOM: restrike at its mean
+		lsg_noise[nl] = (cn == "env_beam" && noise > 0);
 		nl = nl + 1;
 	}
 
@@ -252,6 +324,26 @@ void(float want) Laser_LoadForMap =
 	// Which bucket each staged laser lands in.
 	for (l = 0; l < nl; l = l + 1)
 	{
+		if (lsg_sname[l] >= 0)
+		{	// P1426: the beam starts at its LightningStart (the first entity of that name)
+			t = lname_head[lsg_sname[l]];
+			mov = FALSE;
+			for (n = t; n > 0; n = ltgt_next[n - 1])
+			{
+				if (ltgt_mov[n - 1])
+					mov = TRUE;
+				t = n;              // pass 2 prepends: the last node is the first in the lump
+			}
+			if (!lname_head[lsg_sname[l]])
+				t = 0;
+			if (!t || mov || lsg_mat[l] < 0)
+			{
+				vbsp_ebm_skip = vbsp_ebm_skip + 1;
+				lsg_name[l] = -1;
+				continue;
+			}
+			lsg_org[l] = ltgt_org[t - 1];
+		}
 		n = mov = 0;
 		for (t = lname_head[lsg_name[l]]; t > 0; t = ltgt_next[t - 1])
 		{
@@ -259,7 +351,15 @@ void(float want) Laser_LoadForMap =
 			if (ltgt_mov[t - 1])
 				mov = TRUE;
 		}
-		if (!n)
+		if (lsg_sname[l] >= 0)
+		{
+			if (!n || mov)
+			{
+				vbsp_ebm_skip = vbsp_ebm_skip + 1;
+				lsg_name[l] = -1;
+			}
+		}
+		else if (!n)
 		{
 			vbsp_las_notgt = vbsp_las_notgt + 1;
 			lsg_name[l] = -1;
@@ -289,9 +389,15 @@ void(float want) Laser_LoadForMap =
 			n = 0;
 			for (t = lname_head[lsg_name[l]]; t > 0; t = ltgt_next[t - 1])
 				n = n + 1;
+			if (lsg_sname[l] >= 0)
+			if (lsg_life[l] <= 0)
+				n = 1;              // P1426: a constant beam keeps its first end (BeamUpdateVars)
 			if (beam_n + n > BEAM_MAX)
 			{
-				vbsp_las_over = vbsp_las_over + 1;
+				if (lsg_sname[l] >= 0)
+					vbsp_ebm_skip = vbsp_ebm_skip + 1;
+				else
+					vbsp_las_over = vbsp_las_over + 1;
 				continue;
 			}
 
@@ -299,11 +405,18 @@ void(float want) Laser_LoadForMap =
 			org = lsg_org[l];
 			for (t = lname_head[lsg_name[l]]; t > 0; t = ltgt_next[t - 1])
 			{
+				if (n == 1)
+				if (lsg_sname[l] >= 0)
+				if (ltgt_next[t - 1] > 0)
+					continue;       // P1426: walk on to the list's tail, the name's first entity
 				// Sees the world and Sprite_LoadOccluders' brush copies, as Beam_Add does.
 				endp = ltgt_org[t - 1];
-				traceline(org, endp, MOVE_NOMONSTERS, world);
-				if (trace_fraction < 1)
-					endp = trace_endpos;
+				if (lsg_sname[l] < 0)
+				{	// a laser stops at a wall; a beam draws entity to entity (P1426)
+					traceline(org, endp, MOVE_NOMONSTERS, world);
+					if (trace_fraction < 1)
+						endp = trace_endpos;
+				}
 
 				e = beam_n;
 				beam_org[e] = org;
@@ -323,9 +436,24 @@ void(float want) Laser_LoadForMap =
 			las_next[h] = 0;
 			las_on[h]   = lsg_on[l];
 			las_tnc[h]  = lsg_tnc[l];
-			vbsp_las_n = vbsp_las_n + 1;
-			if (!lsg_on[l])
-				vbsp_las_off = vbsp_las_off + 1;
+			las_korg[h] = lsg_korg[l];
+			las_life[h] = lsg_life[l];
+			las_period[h] = max(lsg_period[l], 0.01);
+			las_phase[h] = random() * las_period[h];
+			if (lsg_sname[l] >= 0)
+			{
+				vbsp_ebm_n = vbsp_ebm_n + 1;
+				if (!lsg_on[l])
+					vbsp_ebm_off = vbsp_ebm_off + 1;
+				if (lsg_noise[l])
+					vbsp_ebm_noise = vbsp_ebm_noise + 1;
+			}
+			else
+			{
+				vbsp_las_n = vbsp_las_n + 1;
+				if (!lsg_on[l])
+					vbsp_las_off = vbsp_las_off + 1;
+			}
 		}
 	}
 
@@ -349,7 +477,26 @@ float(vector eye, vector fwd, float maxdist, float skyon) Laser_Draw =
 		h = las_grp[k];
 		if (!las_on[h])
 			continue;
+		if (las_life[h] > 0)
+		{	// P1426: a striking beam shows for life seconds of every period
+			len = time + las_phase[h];
+			if (len - las_period[h] * floor(len / las_period[h]) >= las_life[h])
+				continue;
+		}
 		if (las_cnt[h] > 1)
+		if (las_life[h] > 0)
+		{	// P1426: one end per strike, held for it (Strike's RandomTargetname)
+			len = floor((time + las_phase[h]) / las_period[h]);
+			if (len != las_next[h])
+			{
+				las_pick[h] = h + floor(random() * las_cnt[h]);
+				las_next[h] = len;
+			}
+			if (las_pick[h] != k)
+				continue;
+		}
+		if (las_cnt[h] > 1)
+		if (las_life[h] <= 0)
 		{
 			// The second test catches time running backwards (a demo seek, a reconnect).
 			if (time >= las_next[h] || time < las_next[h] - 1)

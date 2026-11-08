@@ -4380,6 +4380,10 @@ void() env_laser =
 	SV_LateStash("targetname origin spawnflags");
 };
 
+// P1426: env_beam switches as env_laser does (CEnvBeam: named and not SF_BEAM_STARTON starts off); the
+// client draws it from the lump (cl_lasers.qc) and matches this edict's origin and name.
+void() env_beam = { env_laser(); };
+
 // Kill turns it off and keeps the edict, as for particle systems.
 float(entity t, string in) SV_LaserInput =
 {
@@ -4643,7 +4647,7 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	if (t.classname == "info_particle_system")
 		if (SV_PsysInput(t, in))
 			return;
-	if (t.classname == "env_laser")
+	if (t.classname == "env_laser" || t.classname == "env_beam")
 		if (SV_LaserInput(t, in))
 			return;
 

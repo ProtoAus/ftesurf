@@ -21,6 +21,9 @@
 
 ## next
 
+### P1426 Beams between points
+- The laser and electric beams maps run between two points now draw (env_beam: about 1,200 on 90 maps), switched on and off by the map; striking beams flash as they do in Source.
+
 ### P1422 Faster maps with lots of glows and sprites
 - On maps full of glows and sprites (surf_fairy, surf_jumble...) the check that hides sprites behind the sky now does a fixed amount of work per second, and only for sprites you can see: surf_fairy went from about 225 to about 300 fps.
 - At 60 fps or below the check works as before. Glares on very wide screens, or with an unusual FOV mode, no longer freeze at the screen edges.

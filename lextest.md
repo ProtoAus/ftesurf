@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1426 env_beam -- LIVE (lobbies, 8 Nov); owner check pending
+
+- surf_canisius: a square of cyan electric beams above the spawn. surf_smart (start area): electric
+  beams fanning out from one point. surf_sh: the jail lasers appear when the map switches them on.
+- Not yet: beams that arc randomly (no end point) -- next, with point_tesla; noisy beams draw straight.
+
 ## P1424 -- genuine keyboard reads as zero injected (pending, not owner-confirmed)
 
 The engine now counts key presses that reached the game with no matching report from a real

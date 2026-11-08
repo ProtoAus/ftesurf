@@ -515,6 +515,8 @@ float  spr_want_spr, spr_want_beam, spr_want_glow, spr_want_las;   // Patch 894:
 // P1252: env_laser, counted per laser (a laser with several targets is several beam entries)
 float  vbsp_las_seen, vbsp_las_n, vbsp_las_off, vbsp_las_notgt;
 float  vbsp_las_parent, vbsp_las_moving, vbsp_las_nomat, vbsp_las_over;
+// P1426: env_beam, through the laser path
+float  vbsp_ebm_seen, vbsp_ebm_n, vbsp_ebm_off, vbsp_ebm_arc, vbsp_ebm_skip, vbsp_ebm_noise;   // not vbsp_beam_*: the shafts'
 float  las_drawn;                         // laser beams drawn last frame (vbsp_sprite_debug)
 float  vbsp_spr_seen;                     // sprite entities found, drawn or not
 float  vbsp_spr_off;                      // skipped: named and not "start on"
@@ -1579,6 +1581,7 @@ void() Sprite_LoadForMap =
 	vbsp_trail_seen = 0;
 	vbsp_glow_seen = vbsp_glow_off = vbsp_glow_n = 0;
 	vbsp_las_seen = 0;
+	vbsp_ebm_seen = 0;
 	opened = FALSE;
 
 	/*
@@ -1788,6 +1791,8 @@ void() Sprite_LoadForMap =
 		// P1252: counted here so Laser_LoadForMap walks the lump only on maps that have one.
 		else if (cn == "env_laser")
 			vbsp_las_seen = vbsp_las_seen + 1;
+		else if (cn == "env_beam")
+			vbsp_ebm_seen = vbsp_ebm_seen + 1;
 	}
 
 	beam_spot_n = beam_n;
@@ -1857,6 +1862,9 @@ void() Sprite_LoadForMap =
 		if (vbsp_las_over)
 			print(sprintf("lasers: %g over the beam table's cap (BEAM_MAX)\n", vbsp_las_over));
 	}
+	if (vbsp_ebm_seen)
+		print(sprintf("env_beam: %g of %g drawn, %g start off, %g random arcs (no end point), %g declined (end missing or moving, parented, no material), %g noisy drawn straight\n",
+		              vbsp_ebm_n, vbsp_ebm_seen, vbsp_ebm_off, vbsp_ebm_arc, vbsp_ebm_skip, vbsp_ebm_noise));
 
 	/*
 	  BUILD 53.  dprint, not print: this is a diagnostic about how a trace will
