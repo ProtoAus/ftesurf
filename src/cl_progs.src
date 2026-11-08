@@ -47,6 +47,7 @@ client/cl_decals.qc
 // AFTER cl_decals.qc only by convention -- the two are independent walks of the
 // same entity lump and neither reads the other.  Before cl_main.qc, which calls
 // Sprite_LoadFromWorld from CSQC_WorldLoaded and Sprite_Draw from UpdateView.
+client/cl_tplskip.qc         // P1425: template members the server takes out; before the lump walkers
 client/cl_sprites.qc
 // P1252: env_laser, appended to cl_sprites.qc's beam table; that file holds the two prototypes.
 client/cl_lasers.qc

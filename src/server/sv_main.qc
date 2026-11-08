@@ -183,8 +183,8 @@ void() StartFrame =
 		// called before the map's entities exist" trap the comment above
 		// records -- and it is early enough, because nothing resolves a target
 		// until a player touches something, which is strictly after this frame.
-		SV_TplBuild();              // P1425: template members leave before anything resolves a target
 		SV_LateSpawnAll();          // Patch 865: before the case repair, which reads them
+		SV_TplBuild();              // P1425: after the late spawns (their numbering), before any target resolve
 		SV_RepairTargetCase();
 
 		// Build 37: after the case repair, because an output's target is

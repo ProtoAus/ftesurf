@@ -2017,7 +2017,7 @@ void(string cmd) SV_ParseClientCommand =
 	}
 
 	// P1425: `cmd ent_named <targetname>` (a trailing * matches as in outputs) -- what carries it (map data, ungated).
-	if (c == "ent_named")
+	if (c == "ent_named" && cvar("sv_cheats"))      // a walk of every edict per call: not for anyone
 	{
 		local entity en;
 		local float nn;

@@ -14,9 +14,9 @@
   one PROTOTYPE per member from them -- parsed once, its outputs built once by SV_EntityIOBuild like
   the map's, its classname, targetname, parentname and model held in tpl_p* so no walker takes it for
   the real thing -- and removes the members (SV_TplBuild). An instance copies the prototypes and
-  their output edicts (copyentity) and runs each class's spawn function. Re-parsing a record and
-  rebuilding its outputs per instance cost 1.8 ms for bhop_crash_egypt's 3-entity fruit; see
-  tools/p1425-templates.md for the copy's.
+  their output edicts (copyentity) and runs each class's spawn function. A spawn costs about 0.5 ms
+  (one trigger) to 1.6 ms (bhop_crash_egypt's fruit, three entities and their outputs), nearly all
+  of it the engine's edict allocation (70 us each); tools/p1425-templates.md.
 */
 
 #define SF_TPL_DONTREMOVE       1
@@ -24,7 +24,9 @@
 #define SF_MAKER_AUTOSPAWN      1
 #define SF_MAKER_WAITDESTROY    2
 #define SF_MAKER_IGNOREFACING   4
-#define SF_MAKER_CHECKLOOK      16       // 8, CheckForSpace, is not tested: members are records, not bodies
+#define SF_MAKER_CHECKSPACE     8
+#define SF_MAKER_CHECKLOOK      16
+#define TPL_MAKER_ALIVE         64       // entities one maker's copies may hold at once
 
 void() point_template   = { self.solid = SOLID_NOT; self.movetype = MOVETYPE_NONE; setorigin(self, self.origin); };
 void() env_entity_maker = { self.solid = SOLID_NOT; self.movetype = MOVETYPE_NONE; setorigin(self, self.origin); };
@@ -139,28 +141,55 @@ void(entity e, vector torg, vector tang, vector morg, vector mang) SV_TplPlace =
 	e.angles_y = e.angles_y + mang_y - tang_y;
 };
 
-// One member through its class's spawn function (its outputs already attached, as Source's exist
-// from its keyvalues before Spawn), then what the first frame did for the map's.
+/*
+  A killed entity's output edicts (Kill, sv_entities.qc). Each goes once a delayed fire it started has
+  run -- Source's event queue fires those after the caller is gone, with no caller -- and none is
+  linked to the dead entity any more, so "!self" in such a fire resolves to nothing. Without this a
+  template's Kill-then-ForceSpawn cycle (bhop_4muddz, every use) left them all, edicts without end.
+*/
+void(entity t) SV_IOOrphan =
+{
+	local entity o, nx, p;
+
+	for (o = t.vbsp_io_out; o; o = nx)
+	{
+		nx = o.vbsp_io_next;
+		o.owner = world;
+		o.vbsp_io_next = world;
+		o.think = SUB_Remove;
+		o.nextthink = time + max(0, o.vbsp_io_delay) + 0.1;
+	}
+	t.vbsp_io_out = world;
+	if (vbsp_onjump_head == t)
+		vbsp_onjump_head = t.vbsp_onjump_next;
+	else
+		for (p = vbsp_onjump_head; p; p = p.vbsp_onjump_next)
+			if (p.vbsp_onjump_next == t)
+			{
+				p.vbsp_onjump_next = t.vbsp_onjump_next;
+				break;
+			}
+};
+
+// One member through its class's spawn function (its outputs already attached, as Source's exist from
+// its keyvalues before Spawn, and their text there to read: trigger_multiple drops a model with none,
+// SV_SpRawSelfOnly and path_track parse it), then what the first frame did for the map's.
 void(entity e) SV_TplRun =
 {
 	local entity oself, o, nx;
 
 	o = e.vbsp_io_out;
-	// A spawn function asks only whether the entity has outputs -- trigger_multiple drops a model with none
-	// (sv_entities.qc, "vbsp_io_raw is complete by now") -- and the instance's are already built.
-	if (e.tpl_hadio)
-		e.vbsp_io_raw = "outputs";
+	if (e.tpl_rawi)
+		e.vbsp_io_raw = bufstr_get(tpl_raws, e.tpl_rawi - 1);
 	oself = self;
 	self = e;
-	vbsp_late_respawn = TRUE;           // a model-less named trigger keeps its edict (SV_ToolTrig)
+	vbsp_late_respawn = TRUE;           // a model-less named trigger keeps its edict (SV_ToolTrig), a filter too
 	if (isfunction(e.classname))
 		callfunction(e.classname);
 	else
 		SV_OnEntityNoSpawnFunction();
 	vbsp_late_respawn = FALSE;
 	self = oself;
-	if (!wasfreed(e))
-		e.vbsp_io_raw = "";
 	if (wasfreed(e))
 	{
 		for (; o; o = nx)
@@ -170,8 +199,16 @@ void(entity e) SV_TplRun =
 		}
 		return;
 	}
+	e.vbsp_io_raw = "";
 	if (e.classname != "func_brush" && e.rendermode && substring(e.model, 0, 1) == "*")
 		SV_BrushRenderState(e);
+	for (o = e.vbsp_io_out; o; o = o.vbsp_io_next)
+		if (o.vbsp_io_name == "onjump")
+		{
+			e.vbsp_onjump_next = vbsp_onjump_head;      // SV_EntityIOBuild's OnJump chain
+			vbsp_onjump_head = e;
+			break;
+		}
 };
 
 string(float n) SV_TplSuffix =
@@ -184,7 +221,11 @@ string(float n) SV_TplSuffix =
 	return strcat("&", s);
 };
 
-// point_template.cpp CreateInstance at a pose (the template's own for ForceSpawn).
+// point_template.cpp CreateInstance at a pose (the template's own for ForceSpawn). It succeeds when the
+// records are there, as Source's does when they parse -- a member whose spawn function removes it (a CS
+// weapon) still counts. tpl_lastfirst is the first entity, Source's m_hCurrentInstance.
+entity tpl_lastfirst;
+entity tpl_maker_now;           // the env_entity_maker spawning, for tpl_by
 float(entity p, vector morg, vector mang) SV_TplInstance =
 {
 	local entity q, e, o, n, tail, nx, first, last;
@@ -200,8 +241,8 @@ float(entity p, vector morg, vector mang) SV_TplInstance =
 		e = spawn();
 		if (num_for_edict(e) > 100000)
 		{
-			// pr_maxedicts is 131072 and Sys_Error past it: an AutoSpawn maker without WaitForDestruction
-			// spawns every 0.5 s, as in Source, and only the map's own Kill outputs bound it.
+			// pr_maxedicts is 131072 and Sys_Error past it: an AutoSpawn maker of non-solid members without
+			// WaitForDestruction spawns every 0.5 s, as in Source, bounded only by the map's own Kill outputs.
 			remove(e);
 			for (e = first; e; e = nx)
 			{
@@ -224,6 +265,7 @@ float(entity p, vector morg, vector mang) SV_TplInstance =
 		e.model = q.tpl_pmodel;
 		e.tpl_pclass = e.tpl_pname = e.tpl_pparent = e.tpl_pmodel = "";
 		e.tpl_pnext = world;
+		e.vbsp_onjump_next = world;
 		e.vbsp_io_out = tail = world;
 		for (o = q.vbsp_io_out; o; o = o.vbsp_io_next)
 		{
@@ -239,6 +281,7 @@ float(entity p, vector morg, vector mang) SV_TplInstance =
 			vbsp_io_n = vbsp_io_n + 1;
 		}
 		e.tpl_instof = tpl_count;
+		e.tpl_by = tpl_maker_now;
 		e.tpl_chain = world;
 		SV_TplPlace(e, p.tpl_torg, p.tpl_tang, morg, mang);
 		if (last)
@@ -249,6 +292,7 @@ float(entity p, vector morg, vector mang) SV_TplInstance =
 	}
 	if (!(p.spawnflags & SF_TPL_PRESERVE))
 		SV_TplFixup(p, first, SV_TplSuffix(tpl_count));
+	tpl_lastfirst = first;
 	for (e = first; e; e = nx)
 	{
 		nx = e.tpl_chain;
@@ -260,23 +304,45 @@ float(entity p, vector morg, vector mang) SV_TplInstance =
 	return TRUE;
 };
 
-// CBaseCombatCharacter::FInViewCone plus a clear line, for any player.
+// env_entity_maker.cpp IsPlayerLooking: any player facing it at all (dot > 0), walls or not.
 float(vector org) SV_TplLooked =
 {
 	local entity pl;
-	local vector eye;
 
 	for (pl = find(world, classname, "player"); pl; pl = find(pl, classname, "player"))
 	{
-		eye = pl.origin + pl.view_ofs;
 		makevectors(pl.v_angle);
-		if (normalize(org - eye) * v_forward < 0.5)
-			continue;
-		traceline(eye, org, TRUE, pl);
-		if (trace_fraction == 1)
+		if (normalize(org - (pl.origin + pl.view_ofs)) * v_forward > 0)
 			return TRUE;
 	}
 	return FALSE;
+};
+
+// HasRoomToSpawn: the first instance's box at the maker against solids (triggers pass); a blocker that
+// has not moved since it blocked still blocks.
+float(entity m) SV_TplRoom =
+{
+	if (m.tpl_blk && !wasfreed(m.tpl_blk) && m.tpl_blk.origin == m.tpl_blkorg)
+		return FALSE;
+	m.tpl_blk = world;
+	tracebox(m.origin, m.tpl_vmin, m.tpl_vmax, m.origin, MOVE_NORMAL, m);
+	if (trace_startsolid || (trace_ent && trace_ent != world))
+	{
+		if (trace_ent != world)
+		{
+			m.tpl_blk = trace_ent;
+			m.tpl_blkorg = trace_ent.origin;
+		}
+		return FALSE;
+	}
+	return TRUE;
+};
+
+// The current instance lives while its first entity does (an EHANDLE in Source; the instance number
+// keeps a reused edict from passing for it).
+float(entity m) SV_TplLive =
+{
+	return m.tpl_cur && !wasfreed(m.tpl_cur) && m.tpl_cur.tpl_instof == m.tpl_inst;
 };
 
 void() SV_TplMakerThink;
@@ -294,9 +360,32 @@ void(entity m, vector org, vector ang) SV_TplMakerSpawn =
 			dprint(sprintf("^3env_entity_maker %s: no point_template named %s\n", m.targetname, m.tpl_maker));
 		return;
 	}
-	if (!SV_TplInstance(p, org, ang))
+	// Copies a maker has alive, capped: an AutoSpawn maker of non-solid members stacks one every 0.5 s in Source
+	// too, but there the map's movers Kill them on arrival, and a mover that cannot run here (surf_classics3's
+	// func_movelinear) never would.
+	local float alive;
+	local entity c;
+	alive = 0;
+	for (c = findentity(world, tpl_by, m); c; c = findentity(c, tpl_by, m))
+		alive = alive + 1;
+	if (alive >= TPL_MAKER_ALIVE)
+	{
+		if (SV_CensusAdd("env_entity_maker at its live-copy cap"))
+			dprint(sprintf("^3env_entity_maker %s: %g entities of its alive; not spawning more\n", m.targetname, alive));
+		return;
+	}
+	tpl_maker_now = m;
+	alive = SV_TplInstance(p, org, ang);
+	tpl_maker_now = world;
+	if (!alive)
 		return;
 	m.tpl_inst = tpl_count;
+	m.tpl_cur = tpl_lastfirst;
+	if (m.tpl_vmin == '0 0 0' && tpl_lastfirst && !wasfreed(tpl_lastfirst))
+	{
+		m.tpl_vmin = tpl_lastfirst.absmin - tpl_lastfirst.origin;
+		m.tpl_vmax = tpl_lastfirst.absmax - tpl_lastfirst.origin;
+	}
 	SV_FireOutput(m, "OnEntitySpawned", m);
 	if (m.spawnflags & SF_MAKER_AUTOSPAWN)
 	{
@@ -308,20 +397,20 @@ void(entity m, vector org, vector ang) SV_TplMakerSpawn =
 // env_entity_maker.cpp CheckSpawnThink; the first spawn is Activate's, without the checks.
 void() SV_TplMakerThink =
 {
-	self.nextthink = time + 0.5;
 	if (self.tpl_inst > 0)
 	{
-		if (self.spawnflags & SF_MAKER_WAITDESTROY)
-		if (findfloat(world, tpl_instof, self.tpl_inst))
+		self.nextthink = time + 0.5;
+		if (SV_TplLive(self) && (self.spawnflags & SF_MAKER_WAITDESTROY))
 			return;
-		if (!(self.spawnflags & SF_MAKER_IGNOREFACING))
-		if (SV_TplLooked(self.origin))
+		if (!SV_TplRoom(self))
+			return;
+		if (!(self.spawnflags & SF_MAKER_IGNOREFACING) && SV_TplLooked(self.origin))
 			return;
 	}
 	SV_TplMakerSpawn(self, self.origin, self.angles);
 };
 
-float(entity t, string in, string pm, entity act) SV_TplInput =
+float(entity t, string in, string pm, entity act, entity caller) SV_TplInput =
 {
 	local entity d;
 
@@ -337,8 +426,8 @@ float(entity t, string in, string pm, entity act) SV_TplInput =
 		return FALSE;
 	if (in == "forcespawn")
 	{
-		if (t.spawnflags & SF_MAKER_CHECKLOOK)
-		if (SV_TplLooked(t.origin))
+		if (((t.spawnflags & SF_MAKER_CHECKSPACE) && !SV_TplRoom(t)) ||
+		    ((t.spawnflags & SF_MAKER_CHECKLOOK) && SV_TplLooked(t.origin)))
 		{
 			SV_FireOutput(t, "OnEntityFailedSpawn", t);
 			return TRUE;
@@ -348,20 +437,53 @@ float(entity t, string in, string pm, entity act) SV_TplInput =
 	}
 	if (in == "forcespawnatentityorigin")
 	{
-		if (pm == "!activator")
+		// FindEntityByName's special names (entitylist.cpp), case folded as Source's FStrEq does.
+		if (FS_IsActivator(pm))
 			d = act;
-		else if (pm == "!self" || pm == "!caller")
+		else if (!strcasecmp(pm, "!caller"))
+			d = caller;
+		else if (!strcasecmp(pm, "!self"))
 			d = t;
 		else
 			d = SV_FindByName(pm, world);
-		if (d)
+		if (d && !wasfreed(d))
 			SV_TplMakerSpawn(t, d.origin, d.angles);
 		return TRUE;
 	}
 	return FALSE;
 };
 
-// The first frame, before the late spawns and every target resolve: prototypes, then members leave.
+/*
+  Which members are taken. Kept as they were: a solid one (SV_RecSim_Run replays a recording's movement
+  in a fresh map's physics world, which has no runtime copies), a parented one and a mover (follower and
+  rider chains are built once, SV_SpResolve / SV_TrkResolve, and a copy would never join), and a csprogs
+  effect drawn from its wire. Triggers -- their state wire (SV_TrigStateSend) included, which the spawn
+  function gives a copy again -- point entities and non-solid props are the members.
+*/
+float(entity e) SV_TplTakes =
+{
+	if (e.solid == SOLID_BSP || e.solid == SOLID_BBOX || e.solid == SOLID_SLIDEBOX || e.parentname != "")
+		return FALSE;
+	if (e.SendEntity == SV_SpSend || e.SendEntity == SV_TrkSend || e.SendEntity == SV_TrkPropSend ||
+	    e.SendEntity == SV_PsysSend || e.SendEntity == SV_LaserSend || e.SendEntity == SV_PortalSend)
+		return FALSE;
+	if (e.vbsp_trk_cand)
+		return FALSE;
+	switch (e.classname)
+	{
+		case "func_rotating": case "func_movelinear": case "func_tracktrain": case "func_train":
+		case "func_tanktrain": case "func_door": case "func_door_rotating": case "func_rot_button":
+		case "momentary_rot_button": case "func_plat": case "func_platrot":
+			return FALSE;
+	}
+	return TRUE;
+};
+
+/*
+  The first frame, before the late spawns and every target resolve: prototypes, then members leave.
+  In lump order, as mapentities.cpp walks its point_templates: a template that removes an entity takes
+  it from the ones after it; one with "Don't remove template entities" leaves it for them.
+*/
 void() SV_TplBuild =
 {
 	local entity p, e, q, last, nx;
@@ -369,6 +491,9 @@ void() SV_TplBuild =
 	local string names, nm, have;
 
 	tpl_built = TRUE;
+	if (tpl_raws > 0)
+		buf_del(tpl_raws);
+	tpl_raws = buf_create();
 	nrem = ntpl = nproto = 0;
 	// The captured names, once: a template name nothing carries (bhop_4muddz names 7 "glock" weapons, gone
 	// at spawn) then costs a string search instead of a walk of every edict (61 ms there before).
@@ -392,15 +517,21 @@ void() SV_TplBuild =
 			nm = substring(names, p0, pn - p0);
 			p0 = pn + 1;
 			nmem = 0;
-			if (SV_TplListed(have, nm))
+			if (strstrofs(nm, "*", 0) >= 0 || SV_TplListed(have, nm))
 			for (e = nextent(world); e; e = nextent(e))
 			{
-				if (e == p || e.tpl_rec == "" || e.classname == "tpl_proto" || strcasecmp(e.targetname, nm))
+				if (e == p || e.tpl_rec == "" || e.tpl_member || !SV_NamesMatch(nm, e.targetname))
+					continue;
+				if (!SV_TplTakes(e))
 					continue;
 				q = spawn();
 				parseentitydata(q, e.tpl_rec);
 				q.vbsp_io_raw = strcat(e.tpl_io);       // SV_EntityIOBuild, later this frame, builds them once
-				q.tpl_hadio = (e.tpl_io != "");
+				if (e.tpl_io != "")
+				{
+					bufstr_add(tpl_raws, e.tpl_io, TRUE);
+					q.tpl_rawi = buf_getsize(tpl_raws);
+				}
 				q.tpl_pclass = q.classname;
 				q.tpl_pname = q.targetname;
 				q.tpl_pparent = q.parentname;
@@ -416,9 +547,8 @@ void() SV_TplBuild =
 				p.tpl_n = p.tpl_n + 1;
 				nmem = nmem + 1;
 				nproto = nproto + 1;
-				e.tpl_member = TRUE;
-				if (p.spawnflags & SF_TPL_DONTREMOVE)
-					e.tpl_keep = TRUE;
+				if (!(p.spawnflags & SF_TPL_DONTREMOVE))
+					e.tpl_member = TRUE;
 			}
 			if (!nmem && cvar("developer"))
 				dprint(sprintf("point_template %s: nothing named %s\n", p.targetname, nm));
@@ -437,7 +567,7 @@ void() SV_TplBuild =
 			strunzone(e.tpl_io);
 			e.tpl_io = "";
 		}
-		if (e.tpl_member && !e.tpl_keep)
+		if (e.tpl_member)
 		{
 			remove(e);
 			nrem = nrem + 1;

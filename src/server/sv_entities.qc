@@ -1969,6 +1969,15 @@ void(string fields) SV_LateStash =
 	local float i, n, fld;
 	local string rec, nm, val;
 
+	// P1425: a template instance, spawned after the lump -- what SV_LateSpawnAll would make of it, now.
+	if (vbsp_late_respawn)
+	{
+		self.solid = SOLID_NOT;
+		self.movetype = MOVETYPE_NONE;
+		setorigin(self, self.origin);
+		return;
+	}
+
 	rec = strcat("classname\t", self.classname);
 	n = tokenize(fields);
 	for (i = 0; i < n; i = i + 1)
@@ -4651,7 +4660,7 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		if (SV_PortalInput(t, in, pm, act))
 			return;
 	if (t.classname == "point_template" || t.classname == "env_entity_maker")
-		if (SV_TplInput(t, in, pm, act))     // P1425
+		if (SV_TplInput(t, in, pm, act, o.owner))     // P1425
 			return;
 	// P1378: csprogs draws these from what was sent; any input may change how they look.
 	if (t.SendEntity == SV_TrkPropSend)
@@ -4698,6 +4707,7 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		if (t.SendEntity == SV_TrkSend)
 			SV_TrkKillRiders(t);        // P1378: Source removes a parent's children with it
 		SV_SpKillKids(t);               // P1387
+		SV_IOOrphan(t);                 // P1425: its output edicts, once their delayed fires have run
 		remove(t);
 		return;
 	}
@@ -6526,7 +6536,7 @@ void() SV_EntityIOBuild =
 	*/
 	for (e = nextent(world); e; e = nextent(e))
 	{
-		if (!e.vbsp_io_out)
+		if (!e.vbsp_io_out || e.classname == "tpl_proto")      // P1425: an instance links itself
 			continue;
 		for (o = e.vbsp_io_out; o; o = o.vbsp_io_next)
 		{

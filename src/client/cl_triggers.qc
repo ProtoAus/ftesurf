@@ -2213,7 +2213,7 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 void() Trig_LoadForMap =
 {
 	local string tok, key, cn, mdl;
-	local string target, landmark, filt, tname, uselm_s, snapv_s, farg;
+	local string target, landmark, filt, tname, uselm_s, snapv_s, farg, tparent;
 	local vector org, ang, pushdir, ssang, ssdir, cvdir, reloff;
 	local float  spawnflags, disabled, vmode, tspeed, speed;
 	local float  hmode, hs, hsmode, vsmode, hsp, vsp, ssstrict;
@@ -2263,6 +2263,7 @@ void() Trig_LoadForMap =
 	tg_c_event = tg_c_iodem = tg_c_sdok = tg_c_ioown = tg_c_iogated = 0;
 	tg_sod_n = 0;                   // P1238
 
+	Tpl_ClLoad(TRUE);               // P1425: before this walk (it resets the lump tokens)
 	getentitytoken(0);
 	opened = FALSE;
 	while ((tok = getentitytoken()) != "")
@@ -2272,7 +2273,7 @@ void() Trig_LoadForMap =
 		opened = TRUE;
 
 		cn = mdl = "";
-		target = landmark = filt = tname = uselm_s = snapv_s = farg = "";
+		target = landmark = filt = tname = uselm_s = snapv_s = farg = tparent = "";
 		org = ang = pushdir = ssang = ssdir = cvdir = reloff = '0 0 0';
 		spawnflags = disabled = vmode = tspeed = speed = 0;
 		hmode = hs = hsmode = vsmode = hsp = vsp = ssstrict = 0;
@@ -2331,6 +2332,7 @@ void() Trig_LoadForMap =
 			else if (key == "origin")                 org      = stov(tok);
 			else if (key == "angles")                 ang      = stov(tok);
 			else if (key == "targetname")             tname    = tok;
+			else if (key == "parentname")             tparent  = tok;
 			else if (key == "target")                 target   = tok;
 			else if (key == "landmark")               landmark = tok;
 			else if (key == "teleportoffset")         reloff   = stov(tok);   // P1238
@@ -2424,6 +2426,14 @@ void() Trig_LoadForMap =
 		{
 			for (r = pend0; r < io_n; r = r + 1)
 				io_src[r] = (!strcmp(cn, "logic_auto")) ? -3 : -1;
+			continue;
+		}
+		// P1425: a template's member is not in the server's map until a ForceSpawn makes a copy, and a copy
+		// is the server's alone: predicting the lump's would snap back every touch (cl_tplskip.qc).
+		if (Tpl_ClMember(tname, tparent))
+		{
+			for (r = pend0; r < io_n; r = r + 1)
+				io_src[r] = -1;
 			continue;
 		}
 
