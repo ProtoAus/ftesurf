@@ -24,3 +24,6 @@ C:\FTESurf-worktrees\lows2-20261107-opus (artifacts/run_twopass.py, run_cvarab.p
   for 200 sprites). The old code at 60 fps let every verdict be up to ~120 ms old.
 - Reviews: round 1 (a census that could not fail, the cone from `fov` on wide screens, glows, the cone's slope, the
   stale window after a turn -- measured, kept), round 2 (the glow margin under the largest glows; comments) fixed.
+- LIVE 8 Nov: 12 lobbies + both installs, qw e1190bdf, cs 9d48016d (tasrevd codes.txt, backup .pre1422), menu 8904d61a;
+  csprogsvers seeded in both installs (df4654af). artifacts/delivery-p1422 (its protected-file check stopped after
+  the copy on a peer's cfg/test/p1424keys.cfg written mid-delivery; postflight.json says so).
