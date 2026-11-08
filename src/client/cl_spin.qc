@@ -124,7 +124,7 @@ float() Sp_Predraw =
 {
 	// Drawn even where Patch 860 left it unwritten as tools-only ("draws nothing"): the engine drew those
 	// at their spawn pose before; a toolsblack one now turns as in Source.
-	if (self.effects & EF_NODRAW)
+	if (gfx_movers_off || (self.effects & EF_NODRAW))
 		return PREDRAW_NEXT;
 	if (!Sp_Place(self, time))          // its parent has not arrived, or went without a Kill (review 3)
 		return self.spc_drawn ? PREDRAW_AUTOADD : PREDRAW_NEXT;

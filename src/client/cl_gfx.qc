@@ -30,6 +30,7 @@ float ui_gfx_loadtime;          // cltime when this map's CSQC came up
 float ui_gfx_mmrsent;           // P1382: this map's missing-material report went (or was not due)
 float ui_gfx_waterbudget;       // LOCAL native renderer + loaded plugin capability
 float ui_gfx_waterscreen;       // Patch 1020: hl2_water 5 (screen-space) on this native renderer + plugin
+float gfx_movers_off;           // P1423: vbsp_movers 0, read once a frame (CSQC_UpdateView) by the mover predraws
 
 /*
   WHY THIS PAGES, when ten rows fit on screen perfectly well.
@@ -48,7 +49,7 @@ float ui_gfx_waterscreen;       // Patch 1020: hl2_water 5 (screen-space) on thi
   from ten settings to twenty-six and cost four more keystrokes, which is the
   whole point of having paged rather than found a tenth key.
 */
-#define GFX_ROWS     33         // highest row index (Patch 1376 added the two MSAA rows)
+#define GFX_ROWS     35         // highest row index (P1423 added Movers and Mover light)
 #define GFX_PER_PAGE 6          // digits 1..6; 7 reloads, 8/9 page, 0 closes
 
 void() Gfx_WaterSupport =
@@ -93,6 +94,7 @@ void() Gfx_RegisterCvars =
 	// describes, in miniature.
 	registercvar("fs_missingwarn", "1", CVAR_ARCHIVE);
 	registercvar("cl_matreport", "1", CVAR_ARCHIVE);    // P1382: 0 = no missing-material reports
+	registercvar("vbsp_movers", "1", CVAR_ARCHIVE);     // P1423: 0 = csprogs movers not posed or drawn
 
 	// CSQC_Init runs once per map load, so this is the map's own zero.
 	ui_gfx_loadtime = cltime;
@@ -287,19 +289,21 @@ void(vector scr) Gfx_DrawMissing =
 string(float row) Gfx_Def =
 {
 	// -- page 1: surface policy ---------------------------------------------
+	// P1423: field 2 runs fastest -> fullest (the menu shows the position, "3/6"); costs from the
+	// plugin's own descriptions (mod_vbsp.c hl2_water / hl2_refract). Rows without a cost keep their order.
 	// Plugin_GetCvar drops CVAR_SHADERSYSTEM; the renderer re-registers the material rows
 	// with it (Water, dither; Patch 894 the rest). `e` marks a row live only on such an engine.
 	if (row == 1)
 	{
 		if (ui_gfx_waterscreen && ui_gfx_waterbudget)
-			return "hl2_water|Water|0 1 2 3 4 5|Flat sheet;Cheap reflect;Full reflect;Dithered;Budget (no captures);Screen-space|";
+			return "hl2_water|Water|3 0 4 5 1 2|Dithered;Flat sheet;Budget (no captures);Screen-space;Cheap reflect;Full reflect|";
 		if (ui_gfx_waterbudget)
-			return "hl2_water|Water|0 1 2 3 4|Flat sheet;Cheap reflect;Full reflect;Dithered;Budget (no captures)|";
-		return "hl2_water|Water|0 1 2 3|Flat sheet;Cheap reflect;Full reflect;Dithered|*";
+			return "hl2_water|Water|3 0 4 1 2|Dithered;Flat sheet;Budget (no captures);Cheap reflect;Full reflect|";
+		return "hl2_water|Water|3 0 1 2|Dithered;Flat sheet;Cheap reflect;Full reflect|*";
 	}
 	// Patch 900: 2 dithers only a pane with its own texture (P859); 879 of the 1,047 pak Refract
 	// VMTs in the 1,926-map library have none -- surf_boreas's ice among them -- and draw as 0.
-	if (row == 2)  return "hl2_refract|Glass|0 1 2|Translucent;Refracting;Dithered if textured|*";
+	if (row == 2)  return "hl2_refract|Glass|2 0 1|Dithered if textured;Translucent;Refracting|*";
 	if (row == 3)  return "hl2_translucent|Translucent|0 1|Opaque;As authored|e";
 	/*
 	  BUILD 33, and it belongs on this page because it is the same kind of thing
@@ -427,8 +431,8 @@ string(float row) Gfx_Def =
 	  CVAR_ARCHIVE in the plugin, and the ONLY member of the family that is --
 	  see the seta note on Gfx_Cycle for what build 33 did about the other 22.
 	*/
-	if (row == 16) return "hl2_propdist|Prop distance|0 20000 12000 8000 4000|Unlimited;20k;12k;8k;4k|";
-	if (row == 17) return "hl2_hidetools|Tool brushes|0 1|Shown;Hidden|*";
+	if (row == 16) return "hl2_propdist|Prop distance|4000 8000 12000 20000 0|4k;8k;12k;20k;Unlimited|";
+	if (row == 17) return "hl2_hidetools|Tool brushes|1 0|Hidden;Shown|*";
 	if (row == 18) return "hl2_areaportals|Areaportals|0 1|Closed;Open|*";
 	if (row == 19) return "hl2_propcollision|Prop collide|0 1 2 3|None;VPhysics;Bbox;Mesh|*";
 	if (row == 20) return "hl2_dispcollision|Disp collide|0 1|None;Normal|*";
@@ -477,7 +481,14 @@ string(float row) Gfx_Def =
 	if (row == 31) return "r_renderscale|Render scale|1 1.5 2|1x;1.5x;2x|";
 	// Patch 1376: P1260's scene target and P1276's capture target read these every frame.
 	if (row == 32) return "vid_multisample|Anti-aliasing|0 2 4 8|Off;2x;4x;8x|";
-	if (row == 33) return "r_reflectmultisample|Reflection AA|-1 0 2 4|As screen;Off;2x;4x|";
+	if (row == 33) return "r_reflectmultisample|Reflection AA|0 2 4 -1|Off;2x;4x;As screen|";
+	// P1423: the movers csprogs poses every frame -- passable func_tracktrains and their riders (cl_trk.qc),
+	// non-solid func_rotating / func_movelinear chains (cl_spin.qc). Off skips their posing and drawing;
+	// solid movers are the server's and always draw (you can hit them). Live, the next frame.
+	if (row == 34) return "vbsp_movers|Movers|0 1|Off;On|";
+	// P1398's rate: how often a MOVING model re-samples the world's light (0 = every frame it moves). surf_centipedes
+	// skull swarm (tools/p1423-gfxmenu.md): 0.25/s 2.40 ms, 1/s 2.38, 4/s 2.50, every frame 5.5 -- nothing below 1/s.
+	if (row == 35) return "r_modellight_moverate|Mover light|1 4 0|1/s;4/s;Every frame|";
 
 	return "";
 };
@@ -598,6 +609,12 @@ string(float row) Gfx_Inert =
 		return "map has no env_sun";
 	if (cv == "vbsp_ropes" && !ropes_n)
 		return "map has no ropes";
+	if (cv == "vbsp_movers")
+	if (!find(world, classname, "sp_mover") && !find(world, classname, "trk_train"))
+		return "none near you";     // they are sent by PVS: nothing here to pose
+	// Engines before P1398 have no such cvar (cvar_description: a seta'd one has none either).
+	if (cv == "r_modellight_moverate" && cvar_description(cv) == "")
+		return "needs update";
 
 	/*
 	  THE TWO COLLISION ROWS ARE NOT THE PLAYER'S TO TURN OFF.  A surf map needs
@@ -670,6 +687,16 @@ string(float row) Gfx_ValueName =
 	if (i < 0)
 		return "";
 	return Gfx_Field(Gfx_Field(Gfx_Def(row), 3, "|"), i, ";");
+};
+
+// P1423: "(3/6)" -- the value's place in the row's fastest -> fullest list.
+string(float row) Gfx_Position =
+{
+	local float i;
+	i = Gfx_Index(row);
+	if (i < 0)
+		return "";
+	return sprintf("(%g/%g)", i + 1, tokenize(Gfx_Field(Gfx_Def(row), 2, "|")));
 };
 
 /*
@@ -885,8 +912,8 @@ float() Gfx_Console =
 		for (; i <= n; i = i + 1)
 		{
 			inert = Gfx_Inert(i);
-			print(sprintf("  %2g %-18s %-14s %-13s %s%s\n",
-			              i, Gfx_Cvar(i), Gfx_Label(i), Gfx_ValueName(i),
+			print(sprintf("  %2g %-21s %-14s %-20s %-6s %s%s\n",
+			              i, Gfx_Cvar(i), Gfx_Label(i), Gfx_ValueName(i), Gfx_Position(i),
 			              Gfx_NeedsReload(i) ? "^3*needs rebuild/map load^7 " : "",
 			              (inert != "") ? sprintf("^1inert^7: %s", inert) : ""));
 		}
@@ -910,7 +937,7 @@ string(float page) Gfx_PageName =
 	if (page == 1) return "Reflections and detail";
 	if (page == 2) return "Map content";
 	if (page == 3) return "Collision and prop light";
-	if (page == 5) return "Display";        // Patch 898: Render scale
+	if (page == 5) return "Display and movers";     // Patch 898: Render scale; P1423 movers
 	return "Models, fog and particles";
 };
 
@@ -919,7 +946,7 @@ void(vector scr) Gfx_Draw =
 {
 	local vector p, vc;
 	local float sc, w, h, lsz, ssz, y, i, row, total, hh, vx, pages;
-	local string val, inert;
+	local string val, inert, pos;
 
 	if (!ui_gfx_open)
 		return;
@@ -936,7 +963,7 @@ void(vector scr) Gfx_Draw =
 	ssz = Font_Px(6 * sc);
 	h   = 14 * sc;
 	hh  = 26 * sc;                      // title line + page line
-	w   = 168 * sc;
+	w   = 186 * sc;                     // P1423: 168 + the "(n/m)" column
 
 	total = 3 * sc + hh + GFX_PER_PAGE * h + 4 * sc + 4 * h + 2 * ssz + 6 * sc;
 	p = [scr_x * cvar("hud_gfx_x"), scr_y * cvar("hud_gfx_y"), 0];
@@ -979,7 +1006,11 @@ void(vector scr) Gfx_Draw =
 				vc = SUI_THEME_WARN;
 				if (val == "On")  vc = SUI_THEME_GOOD;
 				if (val == "Off") vc = SUI_THEME_DIM;
-				HUD_TextR([vx, y + (h - sc - lsz) * 0.5], val, lsz, vc, 1);
+				// P1423: where the value sits in the row's list, 1 = fastest.
+				pos = Gfx_Position(row);
+				HUD_TextR([vx, y + (h - sc - ssz) * 0.5], pos, ssz, SUI_THEME_MUTED, 1);
+				HUD_TextR([vx - stringwidth(pos, TRUE, [ssz, ssz]) - 3 * sc, y + (h - sc - lsz) * 0.5],
+				          val, lsz, vc, 1);
 			}
 			if (Gfx_NeedsReload(row))
 				HUD_Text([vx + 3 * sc, y + (h - sc - lsz) * 0.5], "*", lsz,

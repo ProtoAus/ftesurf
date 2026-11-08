@@ -1907,6 +1907,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// 397 times), and the player toggling vbsp_fog.  Both are string/float
 	// compares that do nothing on the overwhelming majority of frames.
 	Fog_Frame();
+	gfx_movers_off = !cvar("vbsp_movers");     // P1423: for the predraws in cl_trk.qc / cl_spin.qc
 
 	/*
 	  Patch 207: the portals do NOT use the idiom above, and this is the one

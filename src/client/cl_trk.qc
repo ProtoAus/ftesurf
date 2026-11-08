@@ -79,7 +79,7 @@ void(entity e) Trk_Relink =
 
 float() Trk_TrainPredraw =
 {
-	if (!self.trk_n || (self.effects & EF_NODRAW))
+	if (gfx_movers_off || !self.trk_n || (self.effects & EF_NODRAW))
 		return PREDRAW_NEXT;
 	Trk_Place(self, time);
 	// P1385: a field write, not setorigin: these are SOLID_NOT and only drawn, and relinking ~140 a
@@ -159,7 +159,7 @@ float() Trk_PropPredraw =
 {
 	local entity p;
 
-	if (self.effects & EF_NODRAW)
+	if (gfx_movers_off || (self.effects & EF_NODRAW))
 		return PREDRAW_NEXT;
 	p = self.trkp_pent;
 	if (!p || wasfreed(p) || p.entnum != self.trkp_par)
