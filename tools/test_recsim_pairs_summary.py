@@ -74,6 +74,20 @@ class PairsSummary(unittest.TestCase):
     def test_single_sample_control(self):
         self.assertEqual(self.p99([(37, 100)]), '0.3700')
 
+    def test_detail_reports_acquired_compared_not_source_length(self):
+        text = self.summary([(37, 100)])
+        lines = [line for line in text.splitlines() if line.startswith('    match ')]
+        self.assertEqual(len(lines), 1, text)
+        self.assertEqual(lines[0].split()[:8],
+                         ['match', '0.3700', 'cover', '0.1250', 'prefix', '80', 'compared', '100'])
+
+    def test_detail_full_length_opportunity_control(self):
+        text = self.summary([(74, 200)])
+        lines = [line for line in text.splitlines() if line.startswith('    match ')]
+        self.assertEqual(len(lines), 1, text)
+        self.assertEqual(lines[0].split()[:8],
+                         ['match', '0.3700', 'cover', '0.1250', 'prefix', '80', 'compared', '200'])
+
     def test_measured_zero_control(self):
         self.assertEqual(self.p99([(0, 100)] * 4), '0.0000')
 

@@ -764,7 +764,7 @@ def cmd_pairs(args):
                 neg.append((cover, frac, pl, max(len(a.moves), len(b.moves)),
                             m, leg, os.path.basename(ps[i]),
                             os.path.basename(ps[j]),
-                            who_of(ps[i]), who_of(ps[j])))
+                            who_of(ps[i]), who_of(ps[j]), compared))
                 taken += 1
                 done += 1
 
@@ -772,7 +772,8 @@ def cmd_pairs(args):
     print("NEGATIVE pairs (different runs, same map+leg): %d" % len(neg))
     pfs = []
     if neg:
-        neg.sort(reverse=True)
+        # Compared is display metadata; preserve the original ordering keys.
+        neg.sort(key=lambda n: n[:-1], reverse=True)
         pfs = [n[0] for n in neg]
         fr = sorted(n[1] for n in neg)
         # Nearest-rank p99: ceil(0.99 * n), including small samples.
@@ -787,7 +788,7 @@ def cmd_pairs(args):
         print("  the ten highest-MATCH negative pairs -- the false-positive risk:")
         for n in bym[:10]:
             print("    match %.4f  cover %.4f  prefix %d  compared %d  %s/%s  %s vs %s"
-                  % (n[1], n[0], n[2], n[3], n[4], n[5], n[6], n[7]))
+                  % (n[1], n[0], n[2], n[-1], n[4], n[5], n[6], n[7]))
 
         # THE IDENTITY SPLIT, and it is the difference between a calibration and
         # a number.  A same-identity pair is ONE PLAYER replaying ONE MAP -- the
