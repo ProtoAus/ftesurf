@@ -4486,6 +4486,9 @@ float(entity t, float cls) SV_FxStartOn =
 	return (t.spawnflags & 1) != 0;
 };
 
+// A non-repeatable env_explosion, 0.3 s after its last Explode (explode.cpp Smoke).
+void() SV_FxExplodeGone = { self.vbsp_fx_dead = TRUE; };
+
 // A fire with fuel, its time up: out, and gone for good.
 void() SV_FxFireOut =
 {
@@ -4589,7 +4592,10 @@ float(entity t, string in) SV_FxInput =
 			return FALSE;
 		ev = TRUE;
 		if (!(t.spawnflags & 2))
-			t.vbsp_fx_dead = TRUE;
+		{	// removed by the Smoke think 0.3 s on, which each Explode pushes back
+			t.think = SV_FxExplodeGone;
+			t.nextthink = time + 0.3;
+		}
 	}
 	else
 	{	// env_fire (fire.cpp): Extinguish's fade time is not drawn, the fire goes out

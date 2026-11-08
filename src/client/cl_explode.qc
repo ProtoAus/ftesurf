@@ -7,7 +7,12 @@
   sparks and flecks.  Magnitude only sets the probe length that picks the blast's direction (away from nearby
   walls); EXPLOSION_FORCE_MIN = MAX = 2, so the force is a constant.  The dynamic light is a FIXME in Source
   (never called) and the 0.1 s refraction bulge (CExplosionOverlay) is not drawn here.  Under water Source draws
-  a different effect; that one is skipped.
+  a different effect; that one is skipped.  The first Explode leaves a Scorch decal on the floor it found.
+
+  Not as Source: every client gets every explosion (Source's CPASFilter is not reproducible here), drawn within
+  XP_FAR; the particles draw in material passes, not depth-sorted, so fire is always over smoke; a spot the
+  light lookup cannot answer gets mid-grey smoke (Source's would be black); the CS:S fallback sound has no
+  80-110 pitch; flecks bounce off the world only.
 
   The lump gives each named one (the server keeps only those) its place, light and direction at map load; the
   effect-state wire (class FX_CLS_EXPLODE) fires it.  Particles are simulated here and drawn as polygons.
@@ -37,6 +42,9 @@ vector *xp_org;                 // where it goes off: pulled 24 off the floor be
 vector *xp_dir;                 // GetForceDirection
 vector *xp_lt;                  // the world's light there, for the smoke
 float  *xp_wet;
+vector *xp_hit;                 // the floor the ground trace hit, for the scorch; xp_hn '0 0 0' if none
+vector *xp_hn;
+float  *xp_scorch;              // the scorch decal's handle once placed
 float  xp_n;
 
 vector *xpp_p;
@@ -55,6 +63,7 @@ float  xpp_cur;
 float  xp_last;
 float  xp_mat[XM_N];            // sprmat indexes, -1 if the material does not resolve
 float  xp_snd;                  // 1: weapons/explode3-5 (Momentum's BaseExplosionEffect.Sound); 2: CS:S debris1-2
+float  xp_sndattn;
 float  vbsp_xp_n, vbsp_xp_skip, vbsp_xp_fired;
 
 void() Explode_Alloc =
@@ -68,6 +77,9 @@ void() Explode_Alloc =
 	xp_dir = memalloc(sizeof(vector) * XP_MAX);
 	xp_lt = memalloc(sizeof(vector) * XP_MAX);
 	xp_wet = memalloc(sizeof(float) * XP_MAX);
+	xp_hit = memalloc(sizeof(vector) * XP_MAX);
+	xp_hn = memalloc(sizeof(vector) * XP_MAX);
+	xp_scorch = memalloc(sizeof(float) * XP_MAX);
 	xpp_p = memalloc(sizeof(vector) * XP_PMAX);
 	xpp_v = memalloc(sizeof(vector) * XP_PMAX);
 	xpp_col = memalloc(sizeof(vector) * XP_PMAX);
@@ -132,7 +144,18 @@ void(float i) Explode_Go =
 			s = sprintf("weapons/explode%g.wav", Xp_RandI(3, 5));
 		else
 			s = sprintf("weapons/debris%g.wav", Xp_RandI(1, 2));
-		pointsound(org, s, 1, XP_ATTN);
+		pointsound(org, s, 1, xp_sndattn);
+	}
+	if (!(sf & 16) && xp_scorch[i] < 0 && xp_hn[i] != '0 0 0')
+	{	// UTIL_DecalTrace(&tr, "Scorch"): decals/scorch1-2, 128 wide; one a spot (they would only stack)
+		nc = xp_hn[i];
+		fw = (fabs(nc_z) < 0.9) ? normalize(crossproduct(nc, '0 0 1')) : normalize(crossproduct(nc, '1 0 0'));
+		xp_scorch[i] = adddecal_static(sprintf("decals/scorch%g", Xp_RandI(1, 2)), xp_hit[i] + nc * 0.5,
+		                               nc * (1 / DECAL_DEPTH), fw * (1 / 64), '1 1 1', '1 1 0');
+		if (xp_scorch[i] >= 0)
+			Decal_Keep(xp_scorch[i]);
+		else
+			xp_scorch[i] = 0;   // failed: do not try again
 	}
 	if (xp_wet[i])
 		return;
@@ -257,12 +280,24 @@ vector(vector org, float mag) Explode_Dir =
 	return normalize(sum);
 };
 
+// A file in any mounted pack (whichpack answers "" for one inside a .vpk; cl_banner.qc does this).
+float(string p) Explode_Have =
+{
+	local float h, n;
+	h = search_begin(p, TRUE, TRUE);
+	if (h < 0)
+		return FALSE;
+	n = search_getsize(h);
+	search_end(h);
+	return n > 0;
+};
+
 // The lump: every named env_explosion (the server keeps only those).  Called from Sprite_LoadForMap.
 void() Explode_LoadForMap =
 {
 	local string tok, key, cn, tn, pn;
-	local vector org, eo, lt;
-	local float sf, mag, i, vc;
+	local vector org, eo, lt, a, b, m;
+	local float sf, mag, i, vc, k;
 
 	Explode_Alloc();
 	xp_n = vbsp_xp_n = vbsp_xp_skip = vbsp_xp_fired = 0;
@@ -278,10 +313,14 @@ void() Explode_LoadForMap =
 	xp_mat[XM_FLECK1] = Sprite_Material("effects/fleck_cement1", 0);
 	xp_mat[XM_FLECK2] = Sprite_Material("effects/fleck_cement2", 0);
 	xp_snd = 0;
-	if (whichpack("sound/weapons/explode3.wav") != "")
+	xp_sndattn = XP_ATTN;
+	if (Explode_Have("sound/weapons/explode3.wav"))
 		xp_snd = 1;
-	else if (whichpack("sound/weapons/debris1.wav") != "")
+	else if (Explode_Have("sound/weapons/debris1.wav"))
+	{
 		xp_snd = 2;
+		xp_sndattn = 20 / (85 - 50);    // CS:S's BaseExplosionEffect.Sound is SNDLVL_85dB
+	}
 	if (xp_snd == 1)
 	{
 		precache_sound("weapons/explode3.wav");
@@ -325,10 +364,33 @@ void() Explode_LoadForMap =
 		xp_sf[i] = sf;
 		traceline(org + '0 0 8', org + '0 0 -32', MOVE_NOMONSTERS, world);
 		eo = org;
-		if (trace_fraction < 1)
+		xp_hn[i] = '0 0 0';
+		xp_scorch[i] = -1;
+		a = org + '0 0 8';
+		b = trace_endpos + '0 0 0.5';
+		if (pointcontents(a) != CONTENT_WATER && pointcontents(b) == CONTENT_WATER)
+		{	// the trace stops at the water's surface: find it
+			for (k = 0; k < 10; k = k + 1)
+			{
+				m = (a + b) * 0.5;
+				if (pointcontents(m) == CONTENT_WATER)
+					b = m;
+				else
+					a = m;
+			}
+			eo = a + '0 0 24';
+		}
+		else if (trace_fraction < 1)
+		{
 			eo = trace_endpos + trace_plane_normal * 24;
+			if (trace_ent == world)
+			{
+				xp_hit[i] = trace_endpos;
+				xp_hn[i] = trace_plane_normal;
+			}
+		}
 		xp_org[i] = eo;
-		xp_wet[i] = (pointcontents(eo) == CONTENT_WATER || pointcontents(eo) == CONTENT_SLIME);
+		xp_wet[i] = (pointcontents(eo) == CONTENT_WATER);   // c_te_explosion.cpp tests CONTENTS_WATER only
 		xp_dir[i] = Explode_Dir(eo, mag);
 		vc = cvar("hl2_lt_vcache");     // sampled once, as cl_emit.qc's steam jets
 		if (vc)
@@ -349,7 +411,7 @@ void() Explode_LoadForMap =
 // Simulates and draws the live particles; returns how many were drawn.  Called from Sprite_Draw.
 float(vector eye, vector fwd) Explode_Draw =
 {
-	local float k, m, dt, decay, age, t, ramp, sz, cr, sn, drawn, live, len, w, flags, a;
+	local float k, m, dt, decay, age, t, ramp, sz, cr, sn, drawn, live, len, w, flags, a, dmp;
 	local vector p, v, sv, vr, vu, r, u, col, nrm, d, sp;
 	local string mat;
 
@@ -395,8 +457,9 @@ float(vector eye, vector fwd) Explode_Draw =
 			xpp_p[k] = xpp_p[k] + v * dt;
 			v = v * max(0, 1 - dt * 8);
 		}
-		else
-		{	// CParticleCollision::MoveParticle, roughly: gravity, a bounce at half speed, stop in solid
+		else if (v != '0 0 0')
+		{	// CParticleCollision::MoveParticle: gravity; a bounce at 0.4-0.6 of the speed, roll reversed to a
+			// quarter; at rest on a floor slower than 48 down; stopped in solid
 			xpp_roll[k] = xpp_roll[k] + xpp_rd[k] * dt;
 			v_z = v_z - 800 * dt;
 			p = xpp_p[k];
@@ -410,8 +473,17 @@ float(vector eye, vector fwd) Explode_Draw =
 			{
 				nrm = trace_plane_normal;
 				xpp_p[k] = trace_endpos + nrm * 0.5;
-				v = (v - nrm * (2 * (v * nrm))) * 0.5;
-				xpp_rd[k] = xpp_rd[k] * 0.5;
+				if (nrm_z >= 0.5 && fabs(v_z) <= 48)
+				{
+					v = '0 0 0';
+					xpp_rd[k] = 0;
+				}
+				else
+				{
+					dmp = Xp_RandF(0.4, 0.6);
+					v = (v - nrm * (2 * (v * nrm))) * dmp;
+					xpp_rd[k] = xpp_rd[k] * -0.25;
+				}
 			}
 			else
 				xpp_p[k] = p + v * dt;
