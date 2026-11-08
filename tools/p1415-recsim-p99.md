@@ -43,13 +43,41 @@ calibration. The existing reader programs separately exercise real comparisons.
 - The complete module AST outside `cmd_pairs` is identical to the predecessor.
   No parser/metric/recorder semantics, native pin/tag, VM or QC Build change.
 
-## Delivery boundary
+- Independent read-only source review: CLEAR. Required clean exact-commit summary
+  gate: seven pass, old control three target failures/four passes. An optional
+  full parser-file invocation in the deliberately small source closure ran 15
+  passes/one missing `test_held_readers` import error; it is retained NOT PASSED,
+  not counted as full isolated parser coverage or repaired by expanding this task.
+- Actual aarch64/Python 3.11 qualification: direct CLI `--help` acted, corrected
+  seven pass, unchanged reader the same three target failures/four controls pass.
+  Full source closure hashes stayed exact; no bytecode or fixtures remained.
 
-Windows/source qualification and independent source review are complete. Clean
-exact-commit verification and actual ARM operator-only qualification/delivery are
-pending.
+## Delivery boundary — operator-only, 8 Nov 2026 04:53:08 UTC
+
+Source commit `b98e5db04e1c7ca8f5192ddf1ac906e1d204b965` supplies the four-file
+committed Python/test closure, plus its exact predecessor as the control. The
+explicit NanoPi operator copy is:
+
+```sh
+/usr/bin/python3.11 -I -B /srv/nvme/agent-work/ac-p99-1415-20261108-01a1/tools/census/recsim.py --root /srv/nvme/ftesurf-server/game/data pairs
+```
+
+The corrected source SHA256 is
+`2780da0b40cc927b0d8a3773eb2328f42afe63bac4d9c368be0c0727b2de66ce`.
+The command is an explicit opt-in diagnostic, not a scheduled/new corpus scan;
+qualification used synthetic metrics, not production corpus calibration.
+
+Before/after: canonical reader/checker/held-metadata hashes and full file metadata,
+all 159 backend bindings and the actual actor, unit/namespace policy and database
+inode/mode/owner stayed unchanged; admission remained OPEN. Database contents were
+not opened or claimed frozen. No service restart, live lease/gate or listener.
+Two local artifact-copy refusals after remote success were preserved, then completed
+only from the already-received immutable output; no remote action was repeated.
+
 The live backend pins its reader module's entire source hash. **Do not overwrite
 that canonical module or repeat the healthy activation for this CLI summary fix.**
-Any operator-only copy must be explicitly named and hash verified, with the live
-default reader/checker/held metadata, services and namespace left untouched.
-No current collector/default-reader deployment or new corpus calibration is claimed.
+No collector/default-reader deployment, new calibration, native binary/pin/tag or
+QC Build update is claimed. The `ENGINE.txt` patch counter tracks this ledger
+entry independently of its unchanged native commit/tag, as documented in that file.
+The small operator source/evidence root is retained intentionally; no full install,
+map library, player data copy or running task process is left there.
