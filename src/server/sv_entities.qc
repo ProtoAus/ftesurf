@@ -4420,13 +4420,13 @@ void() env_laser =
   class, origin and name).  point_tesla: TurnOn, TurnOff, DoSpark (one spark: an event).
 */
 .float vbsp_fx_cls, vbsp_fx_on, vbsp_fx_ev, vbsp_fx_evt;
-.float vbsp_fx_copy;            // P1431: a template's copy (the client hides members until a copy's state)
+.float vbsp_fx_dead;            // P1431: Killed -- off for good; later inputs find nothing, as in Source
 .string m_bOn;                  // point_tesla's start state: a field, so the stash keeps it
 
 float(entity to, float changed) SV_FxSend =
 {
 	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
-	WriteByte(MSG_ENTITY, ENTWIRE_FXSTATE);
+	WriteByte(MSG_ENTITY, ENTWIRE_FXSTATE2);
 	WriteByte(MSG_ENTITY, (changed & LAS_SF_ID) ? 1 : 0);
 	if (changed & LAS_SF_ID)
 	{	// P1431: the identity once (surf_orbion's light show switches ~100 spotlights a second)
@@ -4466,8 +4466,6 @@ float(entity t, float cls) SV_FxStartOn =
 	return (t.spawnflags & 1) != 0;
 };
 
-float(entity t, string in) SV_FxInput;
-
 void() SV_FxKeep =
 {
 	if (self.targetname == "")
@@ -4475,38 +4473,26 @@ void() SV_FxKeep =
 		remove(self);               // nothing can address it: the client draws it from the lump
 		return;
 	}
-	if (vbsp_late_respawn)
-	{	// P1425's copy, spawned after the lump: say it exists, in its start state
-		SV_LateStash("");
-		self.vbsp_fx_copy = TRUE;
-		SV_FxInput(self, "");
-		return;
-	}
 	SV_LateStash("targetname origin spawnflags m_bOn");
 };
 
 void() point_tesla = { SV_FxKeep(); };
 
-// in "" sends the current state (a template copy's first send).
 float(entity t, string in) SV_FxInput =
 {
 	local float on, ev, cls;
 	cls = SV_FxClass(t);
 	if (!cls)
 		return FALSE;
+	if (t.vbsp_fx_dead)
+		return TRUE;
 	on = t.SendEntity ? t.vbsp_fx_on : SV_FxStartOn(t, cls);
 	ev = FALSE;
 	if (in == "kill")
 	{
-		on = FALSE;                 // the edict stays, so a late joiner learns it is gone ...
-		if (t.vbsp_fx_copy)
-		{	// ... except a copy: a member is hidden in the lump anyway
-			t.think = SUB_Remove;
-			t.nextthink = time + 1;
-		}
+		on = FALSE;                 // the edict stays (off) so a late joiner learns it is gone
+		t.vbsp_fx_dead = TRUE;
 	}
-	else if (in == "")
-		ev = FALSE;
 	else if (cls == FX_CLS_TESLA)
 	{
 		if (in == "turnon")

@@ -702,10 +702,13 @@ void(float isnew) CSQC_Ent_Update =
 			Emit_PsysNet(self);
 			self.em_npfire = 0;     // the map-load walk reapplies the state, never the burst
 		}
-		else if (f == ENTWIRE_FXSTATE)
+		else if (f == ENTWIRE_FXSTATE || f == ENTWIRE_FXSTATE2)
 		{	// P1430: as ENTWIRE_PSYSSTATE2's events -- on first sight only a fresh one fires
 			self.classname = "fx_net";
-			if (readbyte())         // P1431: the identity, on a first send only
+			dd = TRUE;              // P1431's FXSTATE2: the identity on a first send only (not "||": both sides run)
+			if (f == ENTWIRE_FXSTATE2)
+				dd = readbyte();
+			if (dd)
 			{
 				self.fx_ncls = readbyte();
 				self.origin_x = readfloat();
