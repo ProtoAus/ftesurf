@@ -712,6 +712,9 @@ entity  vbsp_onjump_head;
 .int    vbsp_touch_out;         // absent for one window, not yet ended
 .int    vbsp_touch_cmd;         // Patch 1025: touched during the slot's current command
 .int    vbsp_once_done;
+.float  FieldOfView, LookTime, Timeout;     // P1428: trigger_look's and game_ui's keys, Source's spelling
+// P1428: game_ui's outputs are not "On" keys (game_ui.cpp DEFINE_OUTPUT), lower-cased between newlines.
+#define VBSP_GUI_OUTPUTS "\nplayeron\nplayeroff\npressedmoveleft\npressedmoveright\npressedforward\npressedback\npressedattack\npressedattack2\nunpressedmoveleft\nunpressedmoveright\nunpressedforward\nunpressedback\nunpressedattack\nunpressedattack2\nxaxis\nyaxis\nattackaxis\nattack2axis\n"
 
 /*
   Which players have already spent the current `wait` window.
@@ -1625,7 +1628,7 @@ void(string key, string value) ED_ParseUnknownEpair =
 	}
 	if (!strcasecmp(key, "entitytemplate")) { self.tpl_maker = strcat(value); return; }
 
-	if (substring(key, 0, 2) == "On")
+	if (substring(key, 0, 2) == "On" || strstrofs(VBSP_GUI_OUTPUTS, strcat("\n", strtolower(key), "\n"), 0) >= 0)
 	{
 		/*
 		  Build 63.  The per-entity ceiling -- see VBSP_IO_MAXRAW for why this
@@ -3386,6 +3389,8 @@ float(string lk) SV_IOOutputKnown =
 	if (lk == "onpass")          return TRUE;	// TestActivator, SV_ApplyInput
 	if (lk == "onfail")          return TRUE;	// TestActivator, SV_ApplyInput
 	if (lk == "ontimer")         return TRUE;	// SV_TimerThink, and FireTimer
+	if (lk == "ontimeout")       return TRUE;	// P1428 trigger_look (sv_gameui.qc)
+	if (strstrofs(VBSP_GUI_OUTPUTS, strcat("\n", lk, "\n"), 0) >= 0) return TRUE;	// P1428 game_ui
 
 	// Build 63.
 	if (lk == "onspawn")      return TRUE;	// SV_EntityIOBuild, logic_relay
@@ -4635,6 +4640,9 @@ void(entity e) SV_NoColPost =
 	e.nocol_in = trace_startsolid;
 };
 
+float(entity t, string in, string pm, entity act) SV_GuiInput;     // P1428 sv_gameui.qc
+float(entity t, string in, string pm, entity act) SV_SmallInput;
+
 void(entity t, entity o, entity act) SV_ApplyInput =
 {
 	local string in, pm;
@@ -4662,6 +4670,9 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	if (t.classname == "point_template" || t.classname == "env_entity_maker")
 		if (SV_TplInput(t, in, pm, act, o.owner))     // P1425
 			return;
+	if (t.classname == "game_ui")
+		if (SV_GuiInput(t, in, pm, act))     // P1428
+			return;
 	// P1378: csprogs draws these from what was sent; any input may change how they look.
 	if (t.SendEntity == SV_TrkPropSend)
 		t.SendFlags = 1;
@@ -4676,6 +4687,8 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		return;                         // sends its clock
 	if (t.SendEntity == SV_SpSend)
 		t.SendFlags = t.SendFlags | 1;  // P1387: any other input may change its look
+	if (SV_SmallInput(t, in, pm, act))       // P1428: breakable health, prop skins (after the resends)
+		return;
 	if (t.classname == "info_particle_system")
 		if (SV_PsysInput(t, in))
 			return;
