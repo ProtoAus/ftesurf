@@ -42,4 +42,14 @@ catalogue (343 MB) is near 2 GB, so his length came from a broken archive or VPK
 
 ## Delivery
 
-(see the commit that records it)
+- Engine, both installs: patch-1417 (8 Nov ~17:33 local) then patch-1421 (~18:34): exe 5798b897 / fteqwsv64
+  d99cbbcb (git-8564-patch-1421-0-g14f993f85), hl2 plugin 3b085f6c (patch-1417; P1421 left its source alone).
+  Records delivery-p1417/ and delivery-p1421/ in the task root (.prev, predecessors.tar, postflight.json).
+- P1418 LIVE 8 Nov ~19:05 local: 12 lobbies (one player, warned) qw e1190bdf + cs 1de415d0, 0 QC errors; both
+  installs qw/cs and menu 0c5633f6 (.prev, .pre1418); csprogsvers d2373ac2 on the Pi and both installs;
+  codes.txt 97 -> 98 (.pre1418).
+- Not shown on the live lobbies: fs_crashrep. Their status reply lists no fs_* key at all (fs_contexts, set
+  beside it and read by every client, is missing too), so that probe cannot see it; the arm shows the same
+  code setting it when lobby_enable is set before the map, which is lobby.cfg's order.
+- Players get the engine half (P1417, P1421) and the menu half with the next release; until then a player's
+  Sys_Error writes no record and no box appears.
