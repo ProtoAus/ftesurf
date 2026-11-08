@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P1424 -- genuine keyboard reads as zero injected (pending, not owner-confirmed)
+
+The engine now counts key presses that reached the game with no matching report from a real
+keyboard, and writes the count into the .hid (a note for a reviewer, never an accusation). An
+injected-key arm proved it counts PostMessage and SendInput keys and takes 0 when nothing is
+injected; what a synthetic arm cannot prove is that YOUR real keyboard reads as zero.
+
+Small check when the build is installed: run `exec cfg/test/p1424human.cfg` (it loads bhop_eazy,
+then records for 40 s). Click into the window and play normally -- move, jump, strafe, open chat
+and type a word or two. When it quits, the file is data/p1424_H.hid. Expected: `tools/hidcheck.py
+data/p1424_H.hid` shows `kbdobserve 1`, many '+' records, and legacy_keys 0. Any non-zero
+legacy_keys on honest play is a false positive to report before this counts for anything. Known
+innocent sources that WOULD count and are not cheating: AltGr on a non-US layout (it presses a
+synthesized Ctrl), an on-screen keyboard, a key remapper, a controller-to-key tool, a
+remote-desktop session. If you use any of those, say so. This is a measurement note only; no
+badge, clock, physics or enforcement changes, and nothing is auto-rejected from the count.
+
 ## P1422 sprite sky test -- installed in both installs and the lobbies (8 Nov); owner check pending
 
 - surf_fairy at your settings: about 300 fps where it was about 225; glows, glares and sprites look the same.

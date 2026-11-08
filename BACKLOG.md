@@ -1,5 +1,24 @@
 # BACKLOG.md
 
+## P1424 injected-keystroke counter -- follow-ups (8 Nov; engine patch-1424, installed both installs)
+
+- The key verdict does not travel in the signed receipt: rcptcheck.JOURNAL_METRICS omits legacy_keys/
+  kbd_nohandle/kbdobserve, so the sweep/server rows do not carry it. Consistent with Patch 307's legacy_presses
+  (also absent); a reviewer recovers it by re-running tools/hidcheck.py over the signed bytes. Pre-bake only if the
+  key verdict should be in the snapshot.
+- hidcheck's opt-in-raw-keyboard exemption reads the grant (rawkbds>0), but the grant counts ENUMERATED keyboards,
+  not whether Patch 306's NOLEGACY registration succeeded. With in_rawinput_keyboard 1 and registration refused (or
+  DirectInput, or before the first mouse grab) keys take the legacy path unchecked while rawkbds>0, so the note
+  "'i' covers it" is optimistic. Narrow (registration refusal is rare); base the engine observer skip on "raw
+  keyboard actually registered" and the reader note on the same if it ever matters. Falsifier: in_rawinput_keyboard 1
+  with a refused RegisterRawInputDevices.
+- Arm C (SendInput) cannot be driven in automation: SetForegroundWindow from a background process is refused by
+  Windows' foreground lock, so injected input does not reach an unfocused window. A focused human run is the clean
+  arm C; S4 measured it at 20 keys / 40 nohandle on the byte-identical KeyObserve path.
+- Known innocent over-counts (a NOTE, never a verdict): AltGr's synthesized Ctrl, Shift+numpad, FilterKeys, and
+  alt-tabbing back onto a physically-held key (the first typematic repeat after the focus-latch clear can read as a
+  fresh uncorroborated press). An arm for the alt-tab case would pin it; the counter is undercount-safe otherwise.
+
 ## Game-code frame cost on surf_voyager's flight (P1406, 8 Nov; branch p1406-gameperf, not deployed)
 
 - Rig PC, Lex's Desktop ftesurf.cfg (r_renderscale 1, MSAA 4, cl_maxfps 1000), 1920x1200 window, exe 9345821a /
