@@ -559,7 +559,7 @@ float  vbsp_spr_hid;
 vector tpls_org[TPLS_MAX], tpls_ang[TPLS_MAX], tpls_col[TPLS_MAX];
 float  tpls_tnc[TPLS_MAX], tpls_kind[TPLS_MAX], tpls_mat[TPLS_MAX], tpls_scale[TPLS_MAX];
 float  tpls_alpha[TPLS_MAX], tpls_add[TPLS_MAX], tpls_pset[TPLS_MAX];
-float  tpls_n, tpls_over;
+float  tpls_n, tpls_over, tpls_skip;   // ...stored, past TPLS_MAX, and not drawn from the lump
 float  *spr_free;                         // [SPR_MAX] a removed copy's entry, hidden, for the next copy
 float  spr_gen;                           // Sprite_LoadForMap's count: a copy's entry from an older load is gone
 .float tfx_cls, tfx_mtnc, tfx_on, tfx_slot, tfx_gen;
@@ -1720,7 +1720,7 @@ void() Sprite_LoadForMap =
 	vbsp_spr_seen = vbsp_spr_off = vbsp_spr_nomat = vbsp_spr_over = 0;
 	vbsp_beam_seen = vbsp_beam_off = 0;
 	vbsp_spr_hid = 0;
-	tpls_n = tpls_over = 0;
+	tpls_n = tpls_over = tpls_skip = 0;
 	spr_gen = spr_gen + 1;
 	if (!spr_hide)
 	{
@@ -1916,7 +1916,10 @@ void() Sprite_LoadForMap =
 				tpls_n = tpls_n + 1;
 			}
 			if (Tpl_ClMember(tn, tparent))
+			{
+				tpls_skip = tpls_skip + 1;
 				continue;               // the server took it out of the map
+			}
 			n0 = spr_n;
 			Sprite_Add(org, ang,
 			           (cn == "env_sprite_oriented") ? SPRK_ORIENTED : SPRK_BILLBOARD,
@@ -2056,9 +2059,9 @@ void() Sprite_LoadForMap =
 	{
 		if (!wantspr)
 			print(sprintf("sprites: %g found, none drawn (vbsp_sprites 0)\n", vbsp_spr_seen));
-		else if (vbsp_spr_off + vbsp_spr_nomat + vbsp_spr_over + tpls_n)
+		else if (vbsp_spr_off + vbsp_spr_nomat + vbsp_spr_over + tpls_skip)
 			print(sprintf("sprites: %g of %g drawn (%g off, %g no material, %g over cap, %g template members)\n",
-			              spr_n - vbsp_glow_n, vbsp_spr_seen, vbsp_spr_off, vbsp_spr_nomat, vbsp_spr_over, tpls_n));
+			              spr_n - vbsp_glow_n, vbsp_spr_seen, vbsp_spr_off, vbsp_spr_nomat, vbsp_spr_over, tpls_skip));
 		else
 			print(sprintf("sprites: %g of %g drawn\n", spr_n - vbsp_glow_n, vbsp_spr_seen));
 		if (wantspr && vbsp_spr_hid)
