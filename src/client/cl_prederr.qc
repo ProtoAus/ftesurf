@@ -523,7 +523,7 @@ void() PE_Send =
 // "<report seq> <msec> <pitch> <yaw> <roll> <fwd> <side> <up> <buttons> <impulse>".
 void(string fn) PE_ReplayStart =
 {
-	local float f, lead, n;
+	local float f, lead, n, hasnm;
 	local string ln, nm;
 	local vector o, v;
 	if (serverkey("*cheats") != "ON")
@@ -548,6 +548,7 @@ void(string fn) PE_ReplayStart =
 	o = [stof(argv(2)), stof(argv(3)), stof(argv(4))];
 	v = [stof(argv(5)), stof(argv(6)), stof(argv(7))];
 	nm = strzone((n >= 9) ? argv(8) : "");   // P1405: the activator name, if the report has one
+	hasnm = (n >= 9);                         // "" included: a cleared name is restored too
 	pe_rp_n = 0;
 	for (ln = fgets(f); ln && pe_rp_n < PE_RPMAX; ln = fgets(f))
 	{
@@ -572,7 +573,7 @@ void(string fn) PE_ReplayStart =
 	pe_rp_s = clientcommandframe + lead;
 	pe_rp_on = TRUE;
 	localcmd(strcat(sprintf("cmd pe_state %.0f %.3f %.3f %.3f %.3f %.3f %.3f", pe_rp_s, o_x, o_y, o_z, v_x, v_y, v_z),
-	                (nm != "") ? sprintf(" \"%s\"\n", nm) : "\n"));
+	                hasnm ? sprintf(" \"%s\"\n", nm) : "\n"));
 	print(sprintf("pe_replay: %g rows, state on command %.0f, name \"%s\"\n", pe_rp_n, pe_rp_s, nm));
 	strunzone(nm);
 };

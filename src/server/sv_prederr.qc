@@ -35,7 +35,8 @@ float  pe_hit_n, pe_rt_last;    // server frames longer than 50 ms: lobby-wide, 
 // first command at or past pe_st_seq, so the replayed rows start from the report's server state.
 .float  pe_st_seq;
 .vector pe_st_org, pe_st_vel;
-.string pe_st_name;                 // P1405: the activator name the report recorded ("" none)
+.string pe_st_name;                 // P1405: the activator name the report recorded
+.float  pe_st_hasname;              // ...when it gave one ("" included: a cleared name is a name)
 
 // P1405: each player's targetname as infokey *tn, so the client judges name filters itself (maps rename
 // the player with AddOutput: stage-nexus teleports, bhop block resets). Checked once a packet against the
@@ -62,9 +63,8 @@ void(entity p, float argc) SV_PeStateCmd =
 	p.pe_st_seq = stof(argv(1));
 	p.pe_st_org = [stof(argv(2)), stof(argv(3)), stof(argv(4))];
 	p.pe_st_vel = [stof(argv(5)), stof(argv(6)), stof(argv(7))];
-	if (p.pe_st_name != "")
-		strunzone(p.pe_st_name);
-	p.pe_st_name = (argc >= 9) ? strzone(argv(8)) : "";
+	p.pe_st_hasname = (argc >= 9);
+	p.pe_st_name = p.pe_st_hasname ? strzone(argv(8)) : "";
 };
 
 // StartFrame: a server frame that started 50+ ms after the last one.

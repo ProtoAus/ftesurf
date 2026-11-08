@@ -1172,7 +1172,7 @@ void() SV_PeStateApply =
 	self.velocity = self.pe_st_vel;
 	self.flags = self.flags - (self.flags & FL_ONGROUND);
 	self.run_wasground = FALSE;
-	if (self.pe_st_name != "")
+	if (self.pe_st_hasname)
 		self.targetname = self.pe_st_name;  // P1405: the name the report's player had
 	sprint(self, PRINT_HIGH, sprintf("pe_state: on command %.0f at %v vel %v\n", seq, self.origin, self.velocity));
 };

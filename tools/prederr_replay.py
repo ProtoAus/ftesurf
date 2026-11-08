@@ -111,7 +111,7 @@ def plan(rep, a):
         raise SystemExit('no ring row for the state before command %d' % start)
     end = min(max(ring), w + a.after)
     good = sorted(s for s, r in ring.items() if r['cmdvalid'])
-    rows, filled = [], 0
+    rows, filled, msfix = [], 0, 0
     for s in range(start, end + 1):
         r = ring.get(s)
         if r is None or not r['cmdvalid']:
@@ -128,9 +128,15 @@ def plan(rep, a):
             r = dict(p, ang=ang)
             filled += 1
         imp = rep['srv'].get(s, {}).get('impulse', 0)
+        sm = rep['srv'].get(s, {}).get('msec')
+        if sm is not None and abs(sm - r['msec']) > 0.01:
+            r = dict(r, msec=sm)            # the lobby ran this long (review 3: 200 ms filled as 15)
+            msfix += 1
         rows.append((s, r, imp))
     if not rows:
         raise SystemExit('CANNOT TELL: no ring rows from command %d' % start)
+    if msfix:
+        print('note: %d command durations taken from the lobby\'s rows' % msfix)
     if filled:
         print('note: %d of %d commands were not in the ring; their inputs are held/interpolated' % (filled, len(rows)))
     rep['start_name'] = None
@@ -143,16 +149,16 @@ def plan(rep, a):
         if g is not None and g in rep['names']:
             rep['start_name'] = rep['names'][g]
         elif g is not None:
-            print('note: the name in effect at the start (generation %d) is older than the report keeps' % g)
+            rep['start_name_why'] = 'its generation (%d) is older than the report keeps' % g
         return start, st['org'], st['vel'], rows
     return start, ring[start - 1]['sorg'], ring[start - 1]['svel'], rows
 
 
 def write_replay(path, start, org, vel, rows, name=None):
-    with open(path, 'w', newline='\n') as f:
+    with open(path, 'w', newline='\n', encoding='utf-8') as f:
         f.write('FTESURF-PEREPLAY 1\n')
         f.write('start %d %.3f %.3f %.3f %.3f %.3f %.3f%s\n' % ((start,) + tuple(org) + tuple(vel) +
-                ((' "%s"' % name) if name else '',)))
+                ((' "%s"' % name) if name is not None else '',)))
         for s, r, imp in rows:
             f.write('%d %.2f %.3f %.3f %.3f %g %g %g %d %d\n' % ((s, r['msec']) + r['ang'] + r['mv'] + (r['btn'], imp)))
 
@@ -291,12 +297,15 @@ def grade(rep, rig, start, rows):
         why[int(mm.group(1)) + shift] = mm.group(2)
     at = [x for x in range(w, w + 4) if x in dev]          # what the rig's server did at the error
     at_bad = [x for x in at if dev[x] > PATH_TOL or vdev[x] > VEL_TOL]
-    if first_bad is None and (len(at) < 2 or at_bad):
-        return 'CANNOT TELL', out + ['the rig\'s server did not do what the report\'s did at the error (%s)' % (
+    at_why = None
+    if len(at) < 2 or at_bad:
+        at_why = 'the rig\'s server did not do what the report\'s did at the error (%s)' % (
             'compared %d of 4 commands' % len(at) if len(at) < 2 else
-            'command %d off by %.1f units / %.1f u/s' % (at_bad[0], dev[at_bad[0]], vdev[at_bad[0]]))]
+            'command %d off by %.1f units / %.1f u/s' % (at_bad[0], dev[at_bad[0]], vdev[at_bad[0]]))
     hits = sorted(((x, e) for x, e in errs if abs(x - w) <= 3 and e >= 8.0), key=lambda t: -t[1])
     if hits and (first_bad is None or first_bad >= hits[0][0] - 1):
+        if at_why:
+            return 'CANNOT TELL', out + [at_why]
         h, e = hits[0]
         v = 'REPRODUCED' + (' (smaller)' if e < 0.5 * worst else '') + \
             (' (expected: %s)' % why[h][len('not reported: '):] if h in why else '')
@@ -305,6 +314,12 @@ def grade(rep, rig, start, rows):
         warps = [x for x, _, imp in rows if imp >= 201 and x <= first_bad]
         return 'CANNOT TELL', out + ['the replay left the recorded path before the error' +
                                      (' (a warp op at report command %d is not replayed)' % warps[-1] if warps else '')]
+    if at_why:
+        return 'CANNOT TELL', out + [at_why]
+    nf = re.findall(r'(\d+) name-filtered\)', txt)
+    if rep.get('start_name') is None and nf and int(nf[-1]) > 0:
+        return 'CANNOT TELL', out + ['the player\'s name at the start is unknown and the map has %s name-filtered '
+                                     'triggers' % nf[-1]]
     near = [x for x in range(w - 3, w + 4) if x in have]   # the report's own ring may skip some
     if not done or len(near) < 5:
         return 'CANNOT TELL', out + ['nothing measured at the worst command (%d of 7 rows around it%s)' % (
@@ -340,7 +355,8 @@ def main():
     rig.mkdir(parents=True)
     write_replay(rig / 'replay.rpl', start, org, vel, rows, rep.get('start_name'))
     if rep.get('start_name') is None:
-        print('note: the player\'s name at the start is not known (report predates the name rows): not restored')
+        print('note: the player\'s name at the start is not known (%s): not restored' % rep.get(
+            'start_name_why', 'the report predates the name rows'))
     if a.plan:
         print('wrote', rig / 'replay.rpl')
         return
