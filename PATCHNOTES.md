@@ -21,6 +21,9 @@
 
 ## next
 
+### P1414 Joining a lobby that is changing map works at high ping
+- Asking for a map no lobby is running switches a lobby to it and puts you there. With a slow connection (around 400 ms) the game used to give up and say the server never came live, even though the lobby had switched; now it waits for the switch properly, for up to 45 seconds.
+
 ### P1412 Smaller client game code
 - The game code a lobby sends you is 3 MB smaller (8.0 MB to 4.9 MB), so joining after an update downloads faster. It runs exactly the same.
 
