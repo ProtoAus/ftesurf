@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1401 site navigation -- LIVE (public pages + backend, 8 Nov); owner visual check pending
+
+- On https://proto.bar/worldofsurf/board/: Zoning and Log in are present (HTTP checked).
+- Logged in at play.proto.bar/admin/: Fleet, Maps, Runs, Accounts, Reports and Site should appear
+  on every admin page. Check Reports and the link back to the public site; confirm the header fits.
+
 ## P1409 r_blendsort 2 speed-up -- installed in both installs (engine patch-1409, 8 Nov); owner check pending
 
 - surf_bossfight with your r_blendsort 2: around 490 fps where it was ~280; the grass, glass and see-through
