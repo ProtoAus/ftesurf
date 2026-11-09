@@ -6430,6 +6430,8 @@ def board_fetch_request():
     if mp is None or track is None or leg is None or style not in ksftopup.STYLES:
         return fail(400, "bad board")
     mp = variant_base(mp) or mp
+    if mp not in map_index()[0]:
+        return fail(404, "no such map here")     # nothing is filed for a map this server cannot load
     out, codes = {}, []
     conn = connect()
     try:
@@ -6483,9 +6485,10 @@ def _fetch_player(raw, now):
             return fail(404, "no KSF or Momentum identity")
         db.execute("PRAGMA busy_timeout=50")
         try:
-            full = fetchq.fetch_profile(db, player, now)
             ksf = ksfprofile.enqueue(db, player, now, force=True)
             mom = momprofile.enqueue(db, player, now, force=True)
+            full = (ksf.get("state") in ("queued", "partial")
+                    and fetchq.fetch_profile(db, player, now))
         finally:
             db.execute("PRAGMA busy_timeout=5000")
     except sqlite3.OperationalError as exc:

@@ -305,8 +305,8 @@ void(float code, string bdy) Profile_FetchReply =
 	strunzone(pf_f_note);
 	if (code == 404) { pf_f_note = strzone("Fetch: no KSF or Momentum account for this player"); return; }
 	if (code == 429) { pf_f_note = strzone("Fetch: busy, try again in a minute"); return; }
-	root = (code == 0 || code == 202) ? json_parse(bdy) : -1;
-	if (root < 0) { pf_f_note = strzone("Fetch failed; try again"); return; }
+	root = (code == 0 || code == 202) ? json_parse(bdy) : 0;
+	if (root <= 0) { pf_f_note = strzone("Fetch failed; try again"); return; }   // json_parse: 0 is a failure
 	k = Profile_SyncState(json_find_object_child(root, "ksf_sync"));
 	m = Profile_SyncState(json_find_object_child(root, "mom_sync"));
 	json_free(root);

@@ -1123,7 +1123,7 @@ def strike(cache, idx, key, why):
     _save(sf, st)
 
 
-def topup_step(cache, idx, pacer, completed, fetched, filing=None):
+def topup_step(cache, idx, pacer, completed, fetched, filing=None, have=None):
     """Explicit selected boards, same pacing/park, three boards/five pages each.
     `fetched` holds only this tick's pages; `filing` requests cache-only recovery.
     Main acknowledges only after write_rows; a crash leaves the request owed.
@@ -1133,26 +1133,31 @@ def topup_step(cache, idx, pacer, completed, fetched, filing=None):
         jobs = KT.pending(conn)
     finally:
         conn.close()
-    for mp, track, leg, style, target in jobs:
+    for mp, track, leg, style, target, state in jobs:
         if pacer.left() <= 0:
             break
+        key = (mp, track, leg, style)
         mode = next((m for m, s in KSF_MODES.items() if s == style), None)
         zone = leg if track == 0 else track + KSF_STAGES if leg == 0 else -1
-        info = map_info(mp, cache, pacer)
-        if info is None or zone not in zones_of(info) or mode is None:
+        # P1448: a map this install cannot load is never filed (playable_maps' rule).
+        info = map_info(mp, cache, pacer) if have is None or mp in have else None
+        doc = board_load(cache, mp, zone, mode) if info is not None and mode is not None else None
+        if info is None or zone not in zones_of(info) or mode is None or _state(doc)[3]:
+            # A leg KSF has not, or a board strike() set aside: finished, not retried each tick.
             conn = S.connect()
             try:
-                with conn:
-                    conn.execute("UPDATE ksftopup SET state='unsupported',updated=?"
-                                 " WHERE map=? AND track=? AND leg=? AND style=? AND target=?",
-                                 (int(time.time()), mp, track, leg, style, target))
+                KT.drop(conn, key, target, int(time.time()))
             finally:
                 conn.close()
             continue
-        doc = board_load(cache, mp, zone, mode)
+        conn = S.connect()
+        try:
+            KT.touch(conn, key, target, int(time.time()))
+        finally:
+            conn.close()
         fresh = []
-        # P1448: Fetch also refreshes the leg -- new records arrive on page 1.
-        if pacer.left() > 0 and time.time() - int(doc.get("top") or 0) > FETCH_FRESH:
+        # P1448: Fetch also refreshes the leg -- new records arrive on page 1 -- once per press.
+        if state == "queued" and pacer.left() > 0 and time.time() - int(doc.get("top") or 0) > FETCH_FRESH:
             doc, page = board_page(cache, mp, zone, pacer, mode, top=True, idx=idx)
             fresh.extend(page)
         for _ in range(min(5, pacer.left())):
@@ -1169,8 +1174,10 @@ def topup_step(cache, idx, pacer, completed, fetched, filing=None):
         fetched.append((mp, zone, mode, fresh))
         if filing is not None:
             filing.append((mp, zone, mode))
+        # P1448: the rank cursor, not the rows held -- merge_page drops a player met twice as
+        # ranks shift, and a row count short of the target kept the job partial for good.
         completed.append(((mp, track, leg, style), target,
-                          len(doc.get("rows", [])), bool(doc.get("done"))))
+                          max(len(doc.get("rows", [])), _next(doc) - 1), bool(doc.get("done"))))
 
 
 def finish_topups(completed):
@@ -1225,7 +1232,7 @@ def watch_mode(args, have, cache):
                 pass
             maps = {m for m in names if m in have}
             prio = wanted_maps(now) & maps
-            topup_step(cache, idx, pacer, args._topups, fetched, filing)
+            topup_step(cache, idx, pacer, args._topups, fetched, filing, have)
             unblocked = unblock_step(cache, idx, maps, prio, pacer,
                                      min(UNBLOCK_MAX, args.max // 2), fetched, now)
             if cat["done"]:

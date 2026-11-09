@@ -1068,7 +1068,7 @@ float(float reqid, float code, string body) Mlb_Reply =
 		if (code == 0 || code == 202)
 		{
 			root = json_parse(body);
-			if (root >= 0)
+			if (root > 0)   // json_parse answers 0 for bad input
 			{
 				strunzone(mlb_kstate);
 				mlb_kstate = strzone(sprintf("KSF %s, Momentum %s",

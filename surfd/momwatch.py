@@ -102,7 +102,7 @@ EXTRA_MAX = 6
 ROTATE = 3               # page-1 refreshes a tick
 PROFILE_MAX = 1          # requests a tick for signed-in players' own PBs (momprofile)
 QUIET = 3600
-TOPUP_MAX = 8            # P1448: requests a tick for boards somebody pressed Fetch on
+TOPUP_MAX = 4            # P1448: requests a tick for boards somebody pressed Fetch on
 TOPUP_PAGES = 3          # per board: page 1 again (if older than TOPUP_FRESH) and deeper pages
 TOPUP_FRESH = 600
 
@@ -212,7 +212,7 @@ def topup_step(a):
             len(jobs), quiet or ("dry run" if not a.go else "momfetch predates --board")))
         return False, 0
     left, fetched, failed = TOPUP_MAX, False, 0
-    for mp, track, leg, target in jobs:
+    for mp, track, leg, target, state in jobs:
         key, now = (mp, track, leg), int(time.time())
         b = fetchq.mom_board(a.tracks, mp, track, leg)
         conn = S.connect()
@@ -231,10 +231,16 @@ def topup_step(a):
                "--take", str(a.take), "--delay", str(a.delay), "--depth", str(target),
                "--max", str(n), "--board", bk, "--go"]
         try:
-            if time.time() - os.path.getmtime(path) > TOPUP_FRESH:
-                cmd.append("--refresh")
+            if state == "queued" and time.time() - os.path.getmtime(path) > TOPUP_FRESH:
+                cmd.append("--refresh")     # page 1 again once per press
         except OSError:
             pass                        # never fetched: momfetch asks page 1 anyway
+        before = _depth(momfetch.load_board(path))
+        conn = S.connect()
+        try:
+            fetchq.mom_touch(conn, key, target, now)
+        finally:
+            conn.close()
         print("\n--- fetch: %s track %d leg %d to %d places (%s) ---" % (mp, track, leg, target, bk))
         if fetched:
             time.sleep(a.delay)
@@ -242,25 +248,32 @@ def topup_step(a):
         rc = subprocess.call(cmd)
         fetched, left = True, left - n
         if rc != 0:
-            print("fetch stopped (%d) -- the board stays queued" % rc)
+            print("fetch stopped (%d) -- the board goes to the back of the queue" % rc)
             rest(a.boards, "fetch refused")
             failed = rc
             break
         d = momfetch.load_board(path)
-        held = len(d["rows"]) if d else 0
+        held = _depth(d)
         total = min(int(d.get("total") or 0), momfetch.TOTAL_MAX) if d else 0
         conn = S.connect()
         try:
             st = fetchq.mom_finish(conn, key, target, held, total, d is None or bool(d.get("absent")),
-                                   int(time.time()))
+                                   int(time.time()), held > before)
         finally:
             conn.close()
         print("fetch                %s: %d of %d places held -> %s" % (bk, held, total, st))
     if fetched and a.index:
         sys.stdout.flush()
-        failed = subprocess.call([sys.executable, os.path.join(HERE, "momboards.py"),
-                                  "--boards", a.boards, "--link", "--go"]) or failed
+        subprocess.call([sys.executable, os.path.join(HERE, "momboards.py"),
+                         "--boards", a.boards, "--link", "--go"])
     return fetched, failed
+
+
+def _depth(d):
+    """Places a board file holds, or its deepest rank where that is more (holes)."""
+    if not d:
+        return 0
+    return max(len(d["rows"]), momfetch.deepest(d["rows"]))
 
 
 def live_maps(conn, fresh=LOBBY_FRESH):
@@ -344,9 +357,7 @@ def main():
     cat = momfetch.read_tracks(a.tracks)
     by_lower = {n.lower(): m for n, m in cat.items()}
 
-    _top, top_failed = topup_step(a)
-    if top_failed:
-        return top_failed
+    topup_step(a)       # a refusal rests the rotation and walks; the live maps still go
 
     conn = S.connect()
     live = live_maps(conn)

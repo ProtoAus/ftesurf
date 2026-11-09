@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS profilefetch (
 STEP = 100              # places a press adds, as ksftopup
 MAX_ROWS = 10000
 MAX_ACTIVE = 64
-RETRY_AFTER = 3600      # an exhausted board may be asked again after an hour
+RETRY_AFTER = 86400     # an unsupported leg is asked again after a day
+REFRESH_AFTER = 3600    # an exhausted board's Fetch refreshes page 1 after an hour
 ACTIVE = ("queued", "partial")
 FETCH_DAYS = 7          # a fetched profile walks fully for a week after the press
 MAX_FETCHED = 8         # live full walks of non-account profiles
@@ -113,12 +114,13 @@ def mom_enqueue(db, key, now, tracks):
             return old, 202
         if max(old["held"], old["target"]) >= MAX_ROWS:
             return dict(old, state="limited"), 200
-        if old["state"] == "exhausted" and now - old["updated"] < RETRY_AFTER:
+        quiet = {"exhausted": REFRESH_AFTER, "unsupported": RETRY_AFTER}.get(old["state"])
+        if quiet is not None and now - old["updated"] < quiet:
             return old, 200
         n = db.execute("SELECT COUNT(*) FROM momtopup WHERE state IN ('queued','partial')").fetchone()[0]
         if n >= MAX_ACTIVE:
             return None, 429
-        target = min(MAX_ROWS, max(old["held"], old["target"]) + STEP)
+        target = min(MAX_ROWS, max(old["held"], old["target"]) + (0 if quiet is not None else STEP))
         db.execute("INSERT INTO momtopup VALUES (?,?,?,?,?,?,'queued')"
                    " ON CONFLICT(map,track,leg) DO UPDATE SET target=excluded.target,"
                    " asked=excluded.asked, updated=excluded.updated, state='queued'",
@@ -135,7 +137,7 @@ def ensure_in_tx(db):
 
 def mom_pending(db, n=3):
     try:
-        return db.execute("SELECT map,track,leg,target FROM momtopup WHERE state IN"
+        return db.execute("SELECT map,track,leg,target,state FROM momtopup WHERE state IN"
                           " ('queued','partial') ORDER BY updated,asked,map LIMIT ?", (n,)).fetchall()
     except sqlite3.OperationalError as e:
         if not _missing(e):
@@ -143,12 +145,23 @@ def mom_pending(db, n=3):
         return []
 
 
-def mom_finish(db, key, target, held, total, absent, now):
-    """After momfetch wrote the board file: held = places in it, total = the board's size."""
+def mom_touch(db, key, target, now):
+    """Before a job's requests: a refusal leaves it at the back of the queue, not first."""
+    with db:
+        db.execute("UPDATE momtopup SET updated=? WHERE map=? AND track=? AND leg=? AND target=?"
+                   " AND state IN ('queued','partial')", (now, *key, target))
+
+
+def mom_finish(db, key, target, held, total, absent, now, progressed=True):
+    """After momfetch wrote the board file. `held` is the depth -- places held or the deepest
+    rank, whichever is more (momfetch pages from the deepest, so a board with holes counts its
+    rank) -- and a job that asked and gained nothing is done, not retried every tick."""
     if absent:
         state = "unsupported"
     elif held >= min(target, total):
         state = "exhausted" if held >= total else "limited" if target >= MAX_ROWS else "done"
+    elif not progressed:
+        state = "done"
     else:
         state = "partial"
     with db:
@@ -160,16 +173,19 @@ def mom_finish(db, key, target, held, total, absent, now):
 # --- Profiles --------------------------------------------------------------------------
 
 def fetch_profile(db, player, now):
-    """Mark a profile for a full KSF walk. -> False when MAX_FETCHED others are live."""
+    """Mark a profile for a full KSF walk. -> False when MAX_FETCHED others are live.
+    An account walks fully anyway and is never counted."""
     with db:
         db.execute("BEGIN IMMEDIATE")
         ensure_in_tx(db)
         cut = now - FETCH_DAYS * 86400
-        if not db.execute("SELECT 1 FROM profilefetch WHERE player=? AND asked>=?",
+        mine = db.execute("SELECT 1 FROM accounts WHERE steamid=? AND banned_at=0", (player,)).fetchone()
+        if not mine and not db.execute("SELECT 1 FROM profilefetch WHERE player=? AND asked>=?",
                           (player, cut)).fetchone():
             n = db.execute("SELECT COUNT(*) FROM profilefetch f JOIN ksfprofiles p"
-                           " ON p.player=f.player WHERE f.asked>=? AND p.state IN"
-                           " ('queued','partial')", (cut,)).fetchone()[0]
+                           " ON p.player=f.player WHERE f.asked>=? AND p.state IN ('queued','partial')"
+                           " AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.steamid=f.player"
+                           " AND a.banned_at=0)", (cut,)).fetchone()[0]
             if n >= MAX_FETCHED:
                 return False
         db.execute("INSERT INTO profilefetch VALUES (?,?) ON CONFLICT(player)"

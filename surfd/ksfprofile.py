@@ -118,8 +118,7 @@ def enqueue(db, player, now, force=False):
             if old and (old[0] in ('queued', 'partial') or now - old[1] < ttl):
                 return status(db, player)
             # Views of other profiles cannot fill an account's slots (P1117 review).
-            mine = (db.execute(ACCOUNT % "?", (player,)).fetchone() is not None
-                    or fetchq.fetched(db, player, now))
+            mine = db.execute(ACCOUNT % "?", (player,)).fetchone() is not None
             n = db.execute("SELECT count(*) FROM ksfprofiles p WHERE state IN ('queued','partial')"
                            " AND %sEXISTS (%s)" % ("" if mine else "NOT ", ACCOUNT % "p.player")
                            ).fetchone()[0]
@@ -137,17 +136,9 @@ def enqueue(db, player, now, force=False):
 
 
 def pending(db):
-    # P1117 review 2: signed-in accounts' walks first, then (P1448) fetched profiles, then by turn.
-    sql = ("SELECT player,mode,cursor,asked FROM ksfprofiles p WHERE state IN ('queued','partial')"
-           " ORDER BY NOT EXISTS (%s),%supdated,asked,player LIMIT 3")
-    try:
-        return db.execute(sql % (ACCOUNT % "p.player", "NOT EXISTS (SELECT 1 FROM profilefetch f"
-                                 " WHERE f.player=p.player AND f.asked>=%d)," % (
-                                     int(time.time()) - fetchq.FETCH_DAYS * 86400))).fetchall()
-    except sqlite3.OperationalError as e:
-        if "no such table" not in str(e):
-            raise
-        return db.execute(sql % (ACCOUNT % "p.player", "")).fetchall()
+    # P1117 review 2: signed-in accounts' walks first, then by turn (a Fetch's walk among the views).
+    return db.execute("SELECT player,mode,cursor,asked FROM ksfprofiles p WHERE state IN ('queued','partial')"
+                      " ORDER BY NOT EXISTS (%s),updated,asked,player LIMIT 3" % (ACCOUNT % "p.player")).fetchall()
 
 
 def kept(recs, fields):

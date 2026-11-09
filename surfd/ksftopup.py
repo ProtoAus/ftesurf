@@ -19,7 +19,8 @@ STYLES = ("clean", "sw", "hsw", "bw")
 STEP = 100
 MAX_ROWS = 10000
 MAX_ACTIVE = 64
-RETRY_AFTER = 86400
+RETRY_AFTER = 86400     # an unsupported leg is asked again after a day
+REFRESH_AFTER = 3600    # P1448: an exhausted board's Fetch refreshes page 1 after an hour
 ACTIVE = ("queued", "partial")
 
 
@@ -82,12 +83,14 @@ def enqueue(db, key, now, cache=None):
             return old, 202
         if max(old["held"], old["target"]) >= MAX_ROWS:
             return dict(old, state="limited"), 200
-        if old["state"] == "exhausted" and now - old["updated"] < RETRY_AFTER:
+        # P1448: a refresh of a board already walked to its end, or a retry, adds no depth.
+        quiet = {"exhausted": REFRESH_AFTER, "unsupported": RETRY_AFTER}.get(old["state"])
+        if quiet is not None and now - old["updated"] < quiet:
             return old, 200
         n = db.execute("SELECT COUNT(*) FROM ksftopup WHERE state IN ('queued','partial')").fetchone()[0]
         if n >= MAX_ACTIVE:
             return None, 429
-        target = min(MAX_ROWS, max(old["held"], old["target"]) + STEP)
+        target = min(MAX_ROWS, max(old["held"], old["target"]) + (0 if quiet is not None else STEP))
         db.execute("INSERT INTO ksftopup VALUES (?,?,?,?,?,?,?,'queued')"
                    " ON CONFLICT(map,track,leg,style) DO UPDATE SET"
                    " target=excluded.target, asked=excluded.asked,"
@@ -103,9 +106,22 @@ def recent(db, now, days=1):
 
 def pending(db):
     # Only a bounded snapshot. A popular board cannot starve another forever:
-    # a partial attempt moves its updated time to the back of the queue.
-    return db.execute("SELECT map,track,leg,style,target FROM ksftopup"
+    # an attempt moves its updated time to the back of the queue (touch).
+    return db.execute("SELECT map,track,leg,style,target,state FROM ksftopup"
                       " WHERE state IN ('queued','partial') ORDER BY updated,asked,map LIMIT 3").fetchall()
+
+
+def touch(db, key, target, now):
+    """P1448: before a job's requests, so a refusal mid-job leaves it at the back, not first."""
+    with db:
+        db.execute("UPDATE ksftopup SET updated=? WHERE map=? AND track=? AND leg=? AND style=?"
+                   " AND target=? AND state IN ('queued','partial')", (now, *key, target))
+
+
+def drop(db, key, target, now, state="unsupported"):
+    with db:
+        db.execute("UPDATE ksftopup SET state=?,updated=? WHERE map=? AND track=? AND leg=? AND style=?"
+                   " AND target=? AND state IN ('queued','partial')", (state, now, *key, target))
 
 
 def finish(db, key, target, cached, exhausted, now):

@@ -275,6 +275,8 @@ def case_steamsync_requeue():
     check("P1117r3: a walk that stopped short waits only the day", steamsync.requeue(c, NOW + 86400, True), 2)
     c.execute("UPDATE momprofiles SET state='complete', updated=0")
     for i in range(P.MAX_ACTIVE):
+        # P1448: accounts' walks have their own pool, so it is accounts that fill it.
+        c.execute("INSERT INTO accounts (steamid, name, created_at) VALUES (?, 'x', 1)", ("x%d" % i,))
         c.execute("INSERT INTO momprofiles (player, momid, cursor, state, asked, updated)"
                   " VALUES (?, 1, 0, 'queued', ?, ?)", ("x%d" % i, NOW, NOW))
     c.commit()

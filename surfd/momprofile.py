@@ -27,7 +27,9 @@ CREATE TABLE IF NOT EXISTS momprofiles (
 """
 TTL = 86400
 FORCE_TTL = 3600
-MAX_ACTIVE = 32
+MAX_ACTIVE = 32             # signed-in accounts' walks...
+MAX_VIEWED = 8              # ...and, apart (P1448), other profiles' Fetch walks
+ACCOUNT = "SELECT 1 FROM accounts a WHERE a.steamid = %s AND a.banned_at = 0"
 TAKE = 100                  # the API's own cap
 MAX_PAGES = 200             # 20,000 PBs; past it the walk is 'limited', not complete
 ACTIVE = ("queued", "partial")
@@ -58,9 +60,10 @@ def enqueue(db, player, now, force=False):
                              (player,)).fetchone()
             if old and (old[0] in ACTIVE or now - old[1] < (FORCE_TTL if force else TTL)):
                 return status(db, player)
-            n = db.execute("SELECT COUNT(*) FROM momprofiles WHERE state IN (?, ?)",
-                           ACTIVE).fetchone()[0]
-            if n >= MAX_ACTIVE:
+            mine = db.execute(ACCOUNT % "?", (player,)).fetchone() is not None
+            n = db.execute("SELECT COUNT(*) FROM momprofiles p WHERE state IN (?, ?) AND %sEXISTS (%s)"
+                           % ("" if mine else "NOT ", ACCOUNT % "p.player"), ACTIVE).fetchone()[0]
+            if n >= (MAX_ACTIVE if mine else MAX_VIEWED):
                 return {"state": "busy"}
             mid = db.execute("SELECT momid FROM momusers WHERE steamid = ?",
                              (player,)).fetchone()
@@ -127,9 +130,9 @@ def step(db, tracked, budget, get, delay=1.5, now=None):
     now = int(time.time()) if now is None else now
     spent = 0
     while spent < budget:
-        work = db.execute("SELECT player, momid, cursor, asked, pages FROM momprofiles"
-                          " WHERE state IN (?, ?) ORDER BY updated, asked, player LIMIT 3",
-                          ACTIVE).fetchall()
+        work = db.execute("SELECT player, momid, cursor, asked, pages FROM momprofiles p"
+                          " WHERE state IN (?, ?) ORDER BY NOT EXISTS (%s), updated, asked, player"
+                          " LIMIT 3" % (ACCOUNT % "p.player"), ACTIVE).fetchall()
         if not work:
             break
         for player, momid, cursor, asked, pages in work:

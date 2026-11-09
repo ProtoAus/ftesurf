@@ -1984,7 +1984,7 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 		if (responsecode == 0 || responsecode == 202)
 		{
 			kr = json_parse(resourcebody);
-			if (kr >= 0)
+			if (kr > 0)     // json_parse answers 0 for bad input
 			{
 				strunzone(ok_state);
 				ok_state = strzone(sprintf("KSF %s, Momentum %s",
