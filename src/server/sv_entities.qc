@@ -494,6 +494,8 @@ float  vbsp_io_over_map;	// refused by the map-wide ceiling
 .float  vbsp_toolshape;	// ...the box keys it has taken: 1 mins, 2 maxs
 .float  vbsp_slide_skin;	// Patch 280: a func_slide's tag, worn on .skin only while solid
 .string vbsp_defanim;		// P1202: a prop's DefaultAnim keyvalue
+.float  body;               // P1440: the engine's bodygroup selector, networked (PEXT2_BODYGROUP) -- Source's
+                            // packed m_nBody; the client draws each bodypart's model from it (gl_alias.c)
 .float  vbsp_skyent;		// P1202: in the 3D skybox (SV_SkyRoomAll): always sent; 2 = may animate
 float(entity t, string anim) SV_SkyAnim;
 
@@ -1659,6 +1661,7 @@ void(string key, string value) ED_ParseUnknownEpair =
 	if (!strcasecmp(key, "responsecontext")) { self.vbsp_ctx_kv = strcat(value); return; }
 	if (!strcasecmp(key, "any")) { self.vbsp_ctx_any = stof(value); return; }
 	if (!strcasecmp(key, "defaultanim")) { self.vbsp_defanim = strcat(value); return; }   // P1202
+	if (!strcasecmp(key, "setbodygroup")) { self.body = stof(value); return; }   // P1440: a keyfield on m_nBody
 
 	if (key == "x") { self.vbsp_gt_x = stof(value); return; }
 	if (key == "y") { self.vbsp_gt_y = stof(value); return; }
@@ -5048,6 +5051,7 @@ void(entity e) SV_NoColPost =
 
 float(entity t, string in, string pm, entity act) SV_GuiInput;     // P1428 sv_gameui.qc
 float(entity t, string in, string pm, entity act) SV_SmallInput;
+float(entity t, string anim) SV_ModelAnim;   // P1440: SetAnimation on a non-solid prop_dynamic
 
 void(entity t, entity o, entity act) SV_ApplyInput =
 {
@@ -5140,15 +5144,24 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		remove(t);
 		return;
 	}
-	if (t.vbsp_skyent == 2)	// P1202: only a non-solid 3D-skybox prop animates (props are static elsewhere)
+	// P1202: a non-solid 3D-skybox prop animates; P1440: so does a non-solid prop_dynamic, as its DefaultAnim
+	// does (P1273). A solid one stays still: its collision cannot follow an animation.
 	if (in == "setanimation" || in == "setdefaultanimation")
+	if (t.vbsp_skyent == 2 || (t.solid == SOLID_NOT && substring(t.classname, 0, 12) == "prop_dynamic"))
 	{
 		// Source's SetDefaultAnimation only names what follows a one-shot; there is no end-of-anim
 		// event here, so it plays nothing.
-		if (in == "setanimation")
-			SV_SkyAnim(t, pm);
-		else
+		if (in == "setdefaultanimation")
 			t.vbsp_defanim = strcat(pm);
+		else if (t.vbsp_skyent == 2)
+			SV_SkyAnim(t, pm);
+		else if (SV_ModelAnim(t, pm))
+		{
+			if (cvar("developer"))
+				dprint(sprintf("prop %s: SetAnimation %s -> frame %g\n", t.targetname, pm, t.frame));
+		}
+		else if (cvar("developer"))
+			dprint(sprintf("prop %s: SetAnimation %s: no such sequence\n", t.targetname, pm));
 		return;
 	}
 	if (in == "enable")         { SV_IOEnable(t, TRUE);                 return; }

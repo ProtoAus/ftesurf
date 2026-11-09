@@ -295,5 +295,12 @@ float(entity t, string in, string pm, entity act) SV_SmallInput =
 		t.skin = stof(pm);
 		return TRUE;                    // csprogs riders resend on any input (SV_ApplyInput's head)
 	}
+	// P1440: Source's SetBodygroup(0, v), the first bodypart's choice. Its base is 1, so the packed body is v
+	// while the other bodyparts are at 0 (every library prop that receives it has one bodypart).
+	if (in == "setbodygroup" && substring(t.classname, 0, 5) == "prop_")
+	{
+		t.body = max(0, floor(stof(pm)));
+		return TRUE;
+	}
 	return FALSE;
 };
