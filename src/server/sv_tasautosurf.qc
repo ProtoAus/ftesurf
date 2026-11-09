@@ -389,7 +389,11 @@ void(entity e) SV_TASAutoFrame =
 			else if (ph == 3)
 			{
 				ee = herr + bound(-20, -lat * 0.3, 20); ee = ee - 360 * floor((ee + 180) / 360);
-				d = (ee > 2) ? -1 : ((ee < -2) ? 1 : -e.as_sair);
+				d = (ee > 3) ? -1 : ((ee < -3) ? 1 : e.as_sair);	// a side change past 3 deg only, a tick a step:
+				e.as_sph = ph;										// the 3-tick alternation lost speed (247, tstart8)
+				SV_TASAutoStep(e, 400, d, 0, 1, vectoyaw(e.as_exd) - 90);
+				e.as_sn = e.as_sn + 1;
+				return;
 			}
 			else
 			{	// the runway capture: a right turn's circle (centre right of the velocity) meets the line when its
@@ -397,11 +401,11 @@ void(entity e) SV_TASAutoFrame =
 				u = normalize([e.velocity_x, e.velocity_y, 0]);
 				cr = e.origin + 116 * [u_y, -u_x, 0]; cl = e.origin + 116 * [-u_y, u_x, 0];
 				if (fabs(herr) < 100 && fabs((cr_x - e.as_ex_x) * nn_x + (cr_y - e.as_ex_y) * nn_y + 116) < 15 &&
-				    -((cr_x + 116 * nn_x - e.as_ex_x) * e.as_exd_x + (cr_y + 116 * nn_y - e.as_ex_y) * e.as_exd_y) >= 260)
+				    fabs(-((cr_x + 116 * nn_x - e.as_ex_x) * e.as_exd_x + (cr_y + 116 * nn_y - e.as_ex_y) * e.as_exd_y) - 430) <= 170)
 					{ d = 1; ph = 2; }
 				else if (fabs(herr) < 100 && fabs((cl_x - e.as_ex_x) * nn_x + (cl_y - e.as_ex_y) * nn_y - 116) < 15 &&
-				    -((cl_x - 116 * nn_x - e.as_ex_x) * e.as_exd_x + (cl_y - 116 * nn_y - e.as_ex_y) * e.as_exd_y) >= 260)
-					{ d = -1; ph = 2; }
+				    fabs(-((cl_x - 116 * nn_x - e.as_ex_x) * e.as_exd_x + (cl_y - 116 * nn_y - e.as_ex_y) * e.as_exd_y) - 430) <= 170)
+					{ d = -1; ph = 2; }	// a tangent point 260-600 u short: deeper, the turn met the back wall (tstart8: 213 u/s)
 				else if (fabs(herr) > 100) d = e.as_sair;                  // facing away: come round
 				else
 				{	// pursue a point 250 u ahead on the line
