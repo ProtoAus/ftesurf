@@ -77,9 +77,6 @@ float pf_on_play_known, pf_on_play_seconds, pf_on_attempts;
 float  pf_src, pf_n, pf_maps, pf_last, pf_wr, pf_wrc, pf_top10, pf_av, pf_total, pf_t;
 float  pf_bt_ours, pf_bt_mom, pf_bt_ksf;
 float  pf_ksfstate, pf_ksfskip; // 1 pending, 2 checked, 3 bounded/incomplete
-float  pf_momstate;             // P1448: Momentum's walk, the same values
-float  pf_f_req, pf_f_after;    // P1448: the profile's Fetch press
-string pf_f_note;
 float  pf_c_has, pf_c_done, pf_c_of;   // every map: the "maps finished" figure
 // Maps finished by tier, of every kind (0), surf (1) and bhop (2) alone (P853), PF_CMF floats
 // each: of, done, untiered, tiers, then PF_TIERS each of tier, done, of.
@@ -257,63 +254,6 @@ float(string url) Profile_Get =
 	if (!uri_get(url, pf_base + pf_seq))
 		return 0;
 	return pf_base + pf_seq;
-};
-
-// P1448: a walk's state (ksf_sync / mom_sync): 1 pending, 2 checked, 3 bounded/incomplete.
-float(float c) Profile_SyncState =
-{
-	local string h;
-	h = (c >= 0) ? json_get_string(json_find_object_child(c, "state")) : "";
-	if (h == "queued" || h == "partial") return 1;
-	if (h == "complete") return 2;
-	if (h == "limited" || h == "busy") return 3;
-	return 0;
-};
-
-// P1448: Fetch asks KSF and Momentum for all of this player's records (queued; the
-// importers walk them in the background). A POST: uri_get with a body.
-void() Profile_Fetch =
-{
-	local string url;
-	if (strlen(pf_handle) != 12 || cltime < pf_f_after) return;
-	if (ui_consent_ver < FS_TERMS_ONLINE)          // Online_MomAllowed; this file also builds into menu
-	if (cvar("rec_terms") < FS_TERMS_ONLINE) return;
-	if (!pf_base)
-		pf_base = 8000000 + floor(random() * 1000) * 4000;
-	pf_seq = (pf_seq >= 3999) ? 1 : pf_seq + 1;
-	url = sprintf("%s/api/board?fetch=1&player=%s", cvar_string("lobby_dir"), pf_handle);
-	pf_f_after = cltime + 10;
-	strunzone(pf_f_note); pf_f_note = strzone("Fetch: asking...");
-	pf_f_req = uri_get(url, pf_base + pf_seq, "application/json", "{}") ? pf_base + pf_seq : 0;
-	if (!pf_f_req)
-	{
-		strunzone(pf_f_note); pf_f_note = strzone("Fetch failed; try again");
-	}
-};
-
-string(float st) Profile_FetchWord =
-{
-	if (st == 1) return "queued";
-	if (st == 2) return "up to date";
-	if (st == 3) return "busy or at its limit";
-	return "no records there";
-};
-
-void(float code, string bdy) Profile_FetchReply =
-{
-	local float root, k, m;
-	strunzone(pf_f_note);
-	if (code == 404) { pf_f_note = strzone("Fetch: no KSF or Momentum account for this player"); return; }
-	if (code == 429) { pf_f_note = strzone("Fetch: busy, try again in a minute"); return; }
-	root = (code == 0 || code == 202) ? json_parse(bdy) : 0;
-	if (root <= 0) { pf_f_note = strzone("Fetch failed; try again"); return; }   // json_parse: 0 is a failure
-	k = Profile_SyncState(json_find_object_child(root, "ksf_sync"));
-	m = Profile_SyncState(json_find_object_child(root, "mom_sync"));
-	json_free(root);
-	if (k) pf_ksfstate = k;
-	if (m) pf_momstate = m;
-	pf_f_note = strzone(sprintf("Fetch: KSF %s, Momentum %s. Records arrive in the background; reopen later.",
-	                            Profile_FetchWord(k), Profile_FetchWord(m)));
 };
 
 void() Profile_Ask =
@@ -535,9 +475,6 @@ void(string who) Profile_Show =
 	pf_handle = "";
 	pf_ksfstate = 0;
 	pf_ksfskip = 0;
-	pf_momstate = 0;
-	pf_f_req = 0;
-	strunzone(pf_f_note); pf_f_note = "";
 	pf_scroll = '0 0 0';
 	pf_again = 0;
 	pf_said = FALSE;
@@ -843,7 +780,6 @@ void(string bdy) Profile_Parse =
 	if (!strcmp(h, "complete")) pf_ksfstate = 2;
 	if (!strcmp(h, "limited") || !strcmp(h, "busy")) pf_ksfstate = 3;
 	pf_ksfskip = json_get_float(json_find_object_child(c, "unavailable"));
-	pf_momstate = Profile_SyncState(json_find_object_child(root, "mom_sync"));
 	// No catalogue on the server is `null`, and reads as a table of nothing.
 	c = json_find_object_child(root, "completion");
 	pf_c_of   = json_get_float(json_find_object_child(c, "of"));
@@ -1094,13 +1030,6 @@ void(string bdy) Profile_ParseHits =
 // URI_Get_Callback's (cl_online.qc).  -> the reply was one of this file's.
 float(float reqid, float code, string bdy) Profile_Reply =
 {
-	if (pf_f_req)
-	if (reqid == pf_f_req)
-	{
-		pf_f_req = 0;
-		Profile_FetchReply(code, bdy);
-		return TRUE;
-	}
 	if (pf_req)
 	if (reqid == pf_req)
 	{
@@ -1951,7 +1880,7 @@ float(vector p, vector sz, float tsz, float hint) Profile_DrawOn =
 void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 {
 	local float i, x, y, w, tw, th, n, cols, rowh, lh, c0, c1, c2, c3, bw, at, r, retry;
-	local float tier, td, tof, rest, on, hot, cb, ch, wos, fn, fwr, fwrc, ft10, fmaps, chw;
+	local float tier, td, tof, rest, on, hot, cb, ch, wos, fn, fwr, fwrc, ft10, fmaps;
 	local float *f;
 	local string s, rid;
 	local vector lp, col, bo, bs;
@@ -2047,21 +1976,15 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	}
 	y = y + th + hint;
 
+	if (pf_bt_ksf > 0 || pf_ksfstate > 0)
 	{
-		// P1448: the line is there for everyone now, with its Fetch chip at the right.
 		s = "KSF completions not fully checked yet";
 		if (pf_ksfstate == 1) s = "KSF completion check queued / in progress; reopen later";
 		if (pf_ksfstate == 2) s = "KSF completion check finished (FW / SW / HSW / BW)";
 		if (pf_ksfstate == 3) s = "KSF completion check incomplete; showing imported results";
 		if (pf_ksfskip > 0) s = sprintf("%s; %g unavailable records excluded", s, pf_ksfskip);
-		if (pf_momstate == 1) s = strcat(s, "; Momentum queued");
-		if (pf_f_note != "" && cltime < pf_f_after + 20) s = pf_f_note;
-		chw = ceil(hint * 6);
-		sui_text([p_x, y], [hint, hint], Chat_Fit(s, sz_x - chw - 6, hint), SUI_THEME_MUTED, 1, 0);
-		if (Profile_Chip("pf_fetch", [p_x + sz_x - chw, y - ceil(hint * 0.45)], [chw, ceil(hint * 1.9)],
-		                 "Fetch", hint, pf_f_req != 0))
-			Profile_Fetch();
-		y = y + ceil(hint * 2.2);
+		sui_text([p_x, y], [hint, hint], Chat_Fit(s, sz_x, hint), SUI_THEME_MUTED, 1, 0);
+		y = y + ceil(hint * 1.8);
 	}
 
 	// ---- maps finished, by difficulty: two columns of bars, and a last one for

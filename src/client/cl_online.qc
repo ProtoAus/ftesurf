@@ -1904,11 +1904,11 @@ void(float code, string body) Online_MomReply =
 };
 
 // Explicit demand is separate from paging our already-held rows. HTTP only
-// enqueues the selected leg (P1448: with KSF and Momentum); the paced importers fetch.
+// enqueues a selected KSF board; the paced importer does the network work.
 float ok_req, ok_dead, ok_after;
 string ok_state, ok_map, ok_style;
 float ok_track, ok_leg;
-float(float track, float leg, string tier, string style) Online_KsfMore =
+float(float track, float leg, string style) Online_KsfMore =
 {
 	local string url, dir;
 	if (!Online_MomAllowed()) return FALSE;
@@ -1920,8 +1920,7 @@ float(float track, float leg, string tier, string style) Online_KsfMore =
 	strunzone(ok_map); ok_map = strzone(serverkey("map"));
 	strunzone(ok_style); ok_style = strzone(style);
 	ok_track = track; ok_leg = leg;
-	// ksfmore=1 too: a server from before P1448 then queues the KSF half (fetch=1 wins on a newer one).
-	url = sprintf("%s/api/board?fetch=1&ksfmore=1&map=%s&track=%g&leg=%g&style=%s",
+	url = sprintf("%s/api/board?ksfmore=1&map=%s&track=%g&leg=%g&style=%s",
 	              dir, uri_escape(serverkey("map")), track, leg, uri_escape(style));
 	ok_req = Online_NextReq();
 	ok_dead = cltime + OB_DEADLINE;
@@ -1929,27 +1928,13 @@ float(float track, float leg, string tier, string style) Online_KsfMore =
 	strunzone(ok_state); ok_state = strzone("asking");
 	if (uri_get(url, ok_req, "application/json", "{}"))
 	{
-		Online_Fetch(track, leg, tier, style);
+		// A real board view also gives advertised replays the normal mapwant priority.
+		Online_Fetch(track, leg, OB_TIER_KSF, style);
 		return TRUE;
 	}
 	ok_req = 0;
 	strunzone(ok_state); ok_state = strzone("failed");
 	return FALSE;
-};
-
-// P1448: one source's queue state, as the footer says it.
-string(float root, string src) Online_FetchWord =
-{
-	local float n;
-	local string st;
-	n = json_find_object_child(root, src);
-	if (n <= 0 && src == "ksf") n = root;  // a pre-P1448 server's ksfmore reply is KSF's alone
-	st = (n > 0) ? json_get_string(json_find_object_child(n, "state")) : "";
-	if (st == "queued" || st == "partial") return "queued";
-	if (st == "done" || st == "exhausted") return "up to date";
-	if (st == "limited") return "at its limit";
-	if (st == "busy") return "busy";
-	return "not listed";
 };
 
 string(float track, float leg, string style) Online_KsfState =
@@ -1986,23 +1971,14 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 		if (responsecode == 0 || responsecode == 202)
 		{
 			kr = json_parse(resourcebody);
-			if (kr > 0)     // json_parse answers 0 for bad input
+			if (kr >= 0)
 			{
 				strunzone(ok_state);
-				ok_state = strzone(sprintf("KSF %s, Momentum %s",
-				                           Online_FetchWord(kr, "ksf"), Online_FetchWord(kr, "momentum")));
+				ok_state = strzone(substring(json_get_string(json_find_object_child(kr, "state")), 0, 32));
 				json_free(kr);
 			}
 		}
-		else if (responsecode == 404)
-		{
-			strunzone(ok_state); ok_state = strzone("neither KSF nor Momentum lists this leg");
-		}
-		else if (responsecode == 429)
-		{
-			strunzone(ok_state); ok_state = strzone("busy, try again in a minute");
-		}
-		print(sprintf("scores: fetch %s (code %g); refresh after the background crawl\n", ok_state, responsecode));
+		print(sprintf("scores: KSF top-up %s (code %g); refresh after the background crawl\n", ok_state, responsecode));
 		return;
 	}
 	if (om_req)
