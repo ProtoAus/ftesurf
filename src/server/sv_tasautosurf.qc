@@ -14,6 +14,7 @@
 
 .float as_stage, as_i, as_try, as_backs, as_tprev, as_wait, as_goal;
 .float as_tube, as_look, as_tries, as_backmax, as_hop, as_finish;
+.float as_backhead, as_backfail;   // the head at the last rewind request, and requests since it last moved
 .string as_file;
 float as_n;                     // waypoints
 float as_wt[TAS_ASMAX];         // the demo's time there
@@ -146,13 +147,17 @@ void(entity e) SV_TASAutoLink =
 	as_ws[i] = SV_TimerTicks(e); as_wp[i] = e.as_tprev;
 	h = min(TOPT_HMAX, max(16, rint(1.25 * (as_wt[i] - e.as_tprev) / PM_TICK) + 10 + e.as_look));
 	argc = tokenize(sprintf("tas demorows %s %.4f", e.as_file, e.as_tprev + PM_TICK));    // a row's input produced it
+	e.topt_dn = 0;
 	SV_TASDemoRowsCommand(e, argc);
+	if (e.topt_dn < 16) { SV_TASAutoStop(e, "the demo's rows for this stretch did not load"); return; }   // not the last stretch's (review)
 	h = min(h, e.topt_dn);
 	o = [as_wo[i*3], as_wo[i*3+1], as_wo[i*3+2]]; n = [as_wn[i*3], as_wn[i*3+1], as_wn[i*3+2]];
 	r = (as_wk[i] == 2) ? 50 : ((as_wk[i] == 3) ? 400 : 800);
 	if (n == '0 0 0') argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f", o_x, o_y, o_z, r));
 	else argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f %.4f %.4f %.4f", o_x, o_y, o_z, r, n_x, n_y, n_z));
+	e.topt_tgton = 0;
 	SV_TASTargetCommand(e, argc);
+	if (!e.topt_tgton) { SV_TASAutoStop(e, "this stretch's target was refused"); return; }
 	argc = tokenize(sprintf("tas optimize %.0f left curve 12 demo aim late tube %.0f%s%s energy fast", h, e.as_tube,
 		e.as_hop ? " hop" : "", (e.as_look > 0) ? sprintf(" look %.0f", e.as_look) : ""));
 	SV_TASOptCommand(e, argc);
@@ -191,6 +196,7 @@ void(entity e) SV_TASAutoFrame =
 			return;
 		}
 		e.as_try = e.as_try + 1;
+		e.as_backhead = -1; e.as_backfail = 0;
 		if (e.as_try < e.as_tries) { e.as_goal = as_ws[e.as_i]; e.as_stage = 3; return; }
 		if (e.as_backs < e.as_backmax && e.as_i > 0)
 		{
@@ -208,6 +214,11 @@ void(entity e) SV_TASAutoFrame =
 		if (head == e.as_goal) { e.as_stage = 1; return; }
 		if (head < e.as_goal) { SV_TASAutoStop(e, "the head went back past the stretch's start"); return; }
 		if (e.run_tas_pending || time < e.as_wait) return;
+		// a refused request (no native checkpoint there, a pause not allowed) leaves the head: give up after 20
+		// tries rather than asking forever (review)
+		if (head == e.as_backhead) e.as_backfail = e.as_backfail + 1; else e.as_backfail = 0;
+		if (e.as_backfail > 20) { SV_TASAutoStop(e, sprintf("the rewind to tick %.0f was refused at tick %.0f", e.as_goal, head)); return; }
+		e.as_backhead = head;
 		SV_TASBack(e, min(128, head - e.as_goal), e.run_tas_req + 1);
 		e.as_wait = time + 0.05;
 	}
@@ -218,6 +229,7 @@ void(entity e) SV_TASAutoFrame =
 void(entity e) SV_TASToolsDisconnect =
 {
 	e.as_on = 0;
+	if (e.as_file != "") { strunzone(e.as_file); e.as_file = ""; }
 	if (e.tdem_on) SV_TASDemoStop(e, "disconnected");
 	if (e.topt_on) SV_TASOptStop(e, "disconnected");
 	if (topt_busy == e) topt_busy = world;
@@ -247,7 +259,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = 6; e.as_hop = 1; e.as_finish = 0;
 	for (i = 3; i < argc; i = i + 1)
 	{
-		w = argv(i); n = stof(argv(i + 1));
+		w = argv(i); n = FS_TASNumber(argv(i + 1)) ? stof(argv(i + 1)) : -1;    // not a number: refused below, not 0 (review)
 		if (w == "tube" && n >= 50 && n <= 2000) { e.as_tube = n; i = i + 1; }
 		else if (w == "look" && n >= 0 && n <= 400) { e.as_look = rint(n); i = i + 1; }
 		else if (w == "tries" && n >= 1 && n <= 10) { e.as_tries = rint(n); i = i + 1; }

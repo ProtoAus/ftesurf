@@ -1612,8 +1612,8 @@ void(entity e, float argc) SV_TASCommand =
 		sprint(e, PRINT_HIGH, "tas: a project load is running; wait, or tas play/off to stop it\n");
 		return;
 	}
-	if (e.topt_on && strcmp(action, "status"))
-	{
+	if (e.topt_on && strcmp(action, "status") && !(!strcmp(action, "autosurf") && argc == 3 && (argv(2) == "stop" || argv(2) == "status")))
+	{	// P1449 review: autosurf's own stop and status are how its chain is ended between and during searches
 		sprint(e, PRINT_HIGH, "tas: the optimizer is running; tas play or tas off stops it\n");
 		return;
 	}

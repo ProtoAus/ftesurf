@@ -523,7 +523,9 @@ float(entity e) SV_TASOptDemoRoll =
 			// flipped its right-hand flight strafes left: Lex, 9 Nov)
 			topt_rows[i*7+4] = (topt_dq[j] == 0) ? 0 : ((topt_dq[j] > 0) ? 1 : -1) * bound(0, fabs(topt_dq[j]) + off, TOPT_QMAX);
 			topt_rows[i*7+5] = 0;
-			a = ((e.topt_mode & 128) && (!(e.topt_mode & 256) || i >= SV_TASOptAimFrom(e)));    // this row aims
+			// this row aims: only where the demo holds a side key (before the engine's aim takes over, airk < 3,
+			// FOLLOW strafes a 0 command at side 0 as 450 left -- review)
+			a = ((e.topt_mode & 128) && (!(e.topt_mode & 256) || i >= SV_TASOptAimFrom(e)) && topt_dq[j]);
 			topt_rows[i*7+6] = (e.topt_hop ? (topt_drow[j*5+4] | 1) : topt_drow[j*5+4]) + (e.topt_pfoff ? 0 : TOPT_EPITCHV)
 				+ ((topt_dq[j] || a) ? TOPT_EFOLLOW : 0) + (a ? TOPT_EAIM : 0);
 			if (!topt_dq[j] && !a)
@@ -1188,7 +1190,13 @@ float(entity e, string what) SV_TASToolGate =
 #define TAS_DEMOLINES 40000
 float(string p) SV_TASDemoPathOK =
 {
-	if (p == "" || strstrofs(p, "..") >= 0 || strstrofs(p, "\\") >= 0 || strstrofs(p, ":") >= 0) return FALSE;
+	local float i, c;
+	if (p == "" || strstrofs(p, "..") >= 0) return FALSE;
+	for (i = 0; i < strlen(p); i = i + 1)
+	{	// letters, digits, _ - . / only: no space (re-tokenized by autosurf), no \\ or :
+		c = str2chr(p, i);
+		if (!((c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95 || c == 45 || c == 46 || c == 47)) return FALSE;
+	}
 	if (strlen(p) < 5 || strtolower(substring(p, strlen(p) - 4, 4)) != ".rec") return FALSE;
 	return strstrofs(p, "/") < 0 || substring(p, 0, 5) == "data/" || substring(p, 0, 15) == "cfg/ksfreplays/";
 };

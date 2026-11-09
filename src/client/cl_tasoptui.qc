@@ -20,6 +20,18 @@ void() TASAuto_Event =
 	taso_note = strzone(readstring());
 };
 
+// A name the console line can carry whole: letters, digits, _ - . / (the server's own rule, review).
+float(string f) TASOptUI_SafeName =
+{
+	local float i, c;
+	for (i = 0; i < strlen(f); i = i + 1)
+	{
+		c = str2chr(f, i);
+		if (!((c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95 || c == 45 || c == 46 || c == 47)) return FALSE;
+	}
+	return f != "";
+};
+
 // This map's KSF replays (cfg/ksfreplays/ksf_<map without surf_>_<runner>.rec), searched once a map.
 void() TASOptUI_List =
 {
@@ -30,7 +42,7 @@ void() TASOptUI_List =
 	taso_demon = 0; taso_pick = 0;
 	if (taso_listmap != "") strunzone(taso_listmap);
 	taso_listmap = strzone(zone_mapname); taso_listed = TRUE;
-	m = zone_mapname;
+	m = strtolower(zone_mapname);
 	if (substring(m, 0, 5) == "surf_") m = substring(m, 5, -1);
 	pre = strcat("ksf_", m, "_");
 	h = search_begin("cfg/ksfreplays/*.rec", TRUE, TRUE);
@@ -39,7 +51,7 @@ void() TASOptUI_List =
 	for (i = 0; i < n && taso_demon < TASO_DEMOS; i = i + 1)
 	{
 		f = search_getfilename(h, i);
-		if (strstrofs(strtolower(f), pre) >= 0) { taso_demo[taso_demon] = strzone(f); taso_demon = taso_demon + 1; }
+		if (strstrofs(strtolower(f), pre) >= 0 && TASOptUI_SafeName(f)) { taso_demo[taso_demon] = strzone(f); taso_demon = taso_demon + 1; }
 	}
 	search_end(h);
 };
