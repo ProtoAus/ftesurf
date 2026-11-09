@@ -4,6 +4,9 @@
 
 - bhop_crash_egypt: reach a checkpoint; the word CHECKPOINT appears at you for about 5 s. bhop_exodus: the
   pictures a trigger shows. Say if the letters are missing, in the wrong place, or stay after they should go.
+- Particles (pending deploy): bhop_crash_egypt's TNT crates explode where you set them off; booster puffs where
+  you boost on bhop_lego2, bhop_japan, bhop_nature, bhop_rin, bhop_epiphany2, bhop_angst. Say if an effect is
+  missing, at the wrong spot, or keeps going after it should stop.
 
 ## P1439 env_screenoverlay, env_shooter -- LIVE 9 Nov (lobbies + both installs, cs a4460fd9); owner check pending
 
