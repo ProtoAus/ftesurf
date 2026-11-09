@@ -6,3 +6,5 @@ SCOPE CHANGED 10 Nov: the multidraw sort and a same-batch blend-face merge measu
 "Patch 1457"). P1457 is now r_blendsort 2's overlap proofs skipping face/triangle pairs whose screen boxes are apart
 (gl_backend.c GLBE_BlendOverlapOrder, r_blendsort_boxes): surf_fairy's worst view sort 1.2 -> 0.92 ms, same verdicts.
 Engine branch p1457-blendboxes (on P1449), in review.
+
+INSTALLED 10 Nov: tag patch-1457 = 50ce81933 (engine main, on P1449); both installs client exe 78703a5a; ENGINE.txt, BACKLOG.

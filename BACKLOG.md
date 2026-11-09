@@ -249,6 +249,17 @@
   The worst frames carry transparent draws 4-5.6 ms, hl2 props and the rest of csqc too. Real levers: the glare's
   ray budget per second instead of per frame (8 at 300 fps: one run 251/112/89; glows ~2x staler -- Lex's call),
   and fairy's transparent draws. Driver now has SL_LATE (read-back), SL_CSPROGS (restored), SL_SAMPLE.
+- P1457 INSTALLED 10 Nov (ftesurf-1d, both installs exe 78703a5a, ENGINE.txt): fairy's 'transparent' CPU on its worst
+  views is r_blendsort 2's plane proof, ~1.0-1.2 ms per view in two views a frame, and both end status -2 (a cycle in
+  all three passes) so the baseline order draws anyway. P1457 skips face/triangle pairs with screen boxes apart (same
+  verdicts): sort 1.2 -> 0.92 ms per view. Paused-view probe: artifacts/probe_static.py in the lows2 root (replay seek
+  + pause, r_budget per variant, r_blendtrace now prints per-view ms + verdict counts). Parked, measured: sorting opaque
+  meshes for r_multidraw (40-60% fewer sub-draws, no CPU gain: the cost is per batch) and merging same-batch blend
+  faces (-0.03 ms). r_blendsort 1 at the same view: transparent 0.28 ms (a different order, not a free switch).
+  NEXT for the failing sorts (still ~0.9 ms/view): pass 1 resolves every strict pair's overlap verdict (1010 of 1311 on
+  fairy t=7.6) though a cycle needs only one confirmed incoming edge per stuck node -- a lazy Kahn (resolve a strict
+  edge only when deciding a pick) keeps the result while the budget lasts. Also fairy csqc 2.4-4.3 ms on paused views
+  (glare rays, Lex's budget call).
 - NEXT for water capture frames (why P1455 could not help: a one-view capture frame still costs 3.2-4 ms against
   3.3 at a 300 cap; sys_framepacing 5 already plans by the slowest of 64 frames, so pacing cannot help a frame longer
   than the interval). Each nested view spends ~1 ms in the hl2 plugin's PrepareFrame because (a) gl_rmain.c ~1760
