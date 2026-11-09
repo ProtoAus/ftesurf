@@ -318,8 +318,8 @@ void(entity e) SV_TASAutoLink =
 // After SV_TASDemoFrame (SV_TASOptFrame): the next step of the chain once no search is running.
 void(entity e) SV_TASAutoFrame =
 {
-	local float head, i, best, d, t, s;
-	local vector o;
+	local float head, i, best, d, t, s, along, lat, herr, ee, ph;
+	local vector u, cr, cl, nn;
 	// The TAS timeline (rewinds, edits, every tool here) begins with the running attempt, so a start box's
 	// prestrafe and jump stay the player's: paused on the first running tick, autosurf takes the fall to the
 	// first ramp from there (Lex, 10 Nov).
@@ -353,38 +353,64 @@ void(entity e) SV_TASAutoFrame =
 			best = vectoyaw(e.as_ex + e.as_exd * 300 - e.origin) - vectoyaw([e.velocity_x, e.velocity_y, 0]);
 			best = fabs(best - 360 * floor((best + 180) / 360));
 			// Time in the box is free: land (surf_null's start drops 160 u from a clip cage), build the speed on a left
-			// circle (at the 289 ceiling the guide's circle is ~116 u across), then pursue a point 150 u ahead on the
-			// demo's exit line, and jump on it 130-220 u short of the exit (the jump's 218 u arc then clears the edge);
-			// short of that, around again. Modelled offline first (startsim2.py: on the line at 289.6 u/s, tick 240).
+			// circle from across the line (the guide's circle at the 289 ceiling is ~116 u across), then capture the
+			// demo's exit line as a runway: on until a full-speed turn's circle meets it tangentially 260+ u short of
+			// the exit, that turn, then the line with a lateral trim; jump on it 130-220 u short (the jump's 218 u
+			// arc clears the edge). Past that unaligned: back to 450+ u and again. Modelled offline first
+			// (startsim4.py: every start heading 240-330 deg jumped at 289 u/s within 31 u of the line); a pursuit-only
+			// version circled the same loop 227 u off the line for 900 ticks (rig tstart7).
 			if (!(e.flags & FL_ONGROUND)) { SV_TASAutoGuide(e, 0, 0, e.v_angle_y, 0, 2); return; }
-			head = (e.origin_x - e.as_ex_x) * e.as_exd_x + (e.origin_y - e.as_ex_y) * e.as_exd_y;
-			d = -head;                                                          // along the line, to the exit
-			best = (e.origin_y - e.as_ex_y) * e.as_exd_x - (e.origin_x - e.as_ex_x) * e.as_exd_y;   // lateral, left +
-			i = (t > 30) ? vectoyaw([e.velocity_x, e.velocity_y, 0]) : vectoyaw(e.as_exd) + 100;
-			o_x = vectoyaw(e.as_ex + e.as_exd * (head + 150) - e.origin) - i;    // the pursuit point's bearing, off the heading
-			o_x = o_x - 360 * floor((o_x + 180) / 360);
-			o_y = vectoyaw(e.as_exd) - i; o_y = o_y - 360 * floor((o_y + 180) / 360);   // the line's heading, off ours
+			nn = [-e.as_exd_y, e.as_exd_x, 0];
+			along = -((e.origin_x - e.as_ex_x) * e.as_exd_x + (e.origin_y - e.as_ex_y) * e.as_exd_y);
+			lat = (e.origin_x - e.as_ex_x) * nn_x + (e.origin_y - e.as_ex_y) * nn_y;
+			i = (t > 1) ? vectoyaw([e.velocity_x, e.velocity_y, 0]) : vectoyaw(e.as_exd) + 100;
+			herr = vectoyaw(e.as_exd) - i; herr = herr - 360 * floor((herr + 180) / 360);
+			ph = e.as_sph;
 			if (cvar("developer") && !(e.as_sn % 30))
-				sprint(e, PRINT_HIGH, strcat(sprintf("tas autosurf: start %.0f ph %.0f at %v %.0f u/s hdg %.0f, ", e.as_sn, e.as_sph, e.origin, t, i),
-					sprintf("%.0f u to the exit, %.0f u off the line, pursuit %.0f deg, line %.0f deg, side %.0f\n", d, best, o_x, o_y, e.as_sair)));
-			if (e.as_sph == 0 && t >= 283) e.as_sph = 1;
-			if ((e.as_sph == 1 && fabs(best) < 25 && fabs(o_y) < 8 && d >= 130 && d <= 220) || d < 60 || e.as_sn >= e.as_sg)
+				sprint(e, PRINT_HIGH, strcat(sprintf("tas autosurf: start %.0f ph %.0f at %v %.0f u/s, ", e.as_sn, ph, e.origin, t),
+					sprintf("%.0f u short of the exit, %.0f u off the line, %.0f deg off it, side %.0f\n", along, lat, herr, e.as_sair)));
+			if (ph == 0 && t >= 283) ph = 1;
+			if ((ph >= 1 && ph != 4 && fabs(lat) < 100 && fabs(herr) < 10 && along >= 130 && along <= 220) || along < 60 || e.as_sn >= e.as_sg)
 			{
 				SV_TASAutoStep(e, 400, e.as_sair, 1, 1, e.v_angle_y);         // the start's one jump
-				SV_TASAutoNote(e, 1, sprintf("start: jumped at %.0f u/s, %.0f u short of the demo's exit, %.0f u and %.0f deg off its line", t, d, best, o_y));
+				SV_TASAutoNote(e, 1, sprintf("start: jumped at %.0f u/s, %.0f u short of the demo's exit, %.0f u and %.0f deg off its line", t, along, lat, herr));
 				e.as_stage = 12; e.as_sn = 0;
 				return;
 			}
-			if (e.as_sph == 1 && d < 130) e.as_sph = 2;
-			if (e.as_sph == 2 && d > 330) e.as_sph = 1;
-			if (e.as_sph == 0) t = -1;
-			else if (e.as_sph == 2) t = e.as_sair;
-			else
-			{
-				t = (fabs(o_x) < 4) ? -e.as_sair : ((o_x > 0) ? -1 : 1);       // + yaw turns left: the left key (-)
-				if (fabs(o_x) > 150) t = e.as_sair;
+			if (ph >= 1 && ph <= 3 && along < 130) ph = 4;
+			if (ph == 4 && along > 450) ph = 1;
+			if (ph == 0) d = -1;
+			else if (ph == 4)
+			{	// back toward the box's back: a point 520 u short of the exit on the line
+				ee = vectoyaw(e.as_ex - e.as_exd * 520 - e.origin) - i; ee = ee - 360 * floor((ee + 180) / 360);
+				d = (fabs(ee) > 150) ? e.as_sair : ((ee > 3) ? -1 : ((ee < -3) ? 1 : -e.as_sair));
 			}
-			SV_TASAutoStep(e, 400, t, 0, 3, i + 45 * t);
+			else if (ph == 2) { d = e.as_sair; if (fabs(herr) < 6) ph = 3; }
+			else if (ph == 3)
+			{
+				ee = herr + bound(-20, -lat * 0.3, 20); ee = ee - 360 * floor((ee + 180) / 360);
+				d = (ee > 2) ? -1 : ((ee < -2) ? 1 : -e.as_sair);
+			}
+			else
+			{	// the runway capture: a right turn's circle (centre right of the velocity) meets the line when its
+				// centre is R right of it, a left turn's when R left; R ~116 at the 289 ceiling
+				u = normalize([e.velocity_x, e.velocity_y, 0]);
+				cr = e.origin + 116 * [u_y, -u_x, 0]; cl = e.origin + 116 * [-u_y, u_x, 0];
+				if (fabs(herr) < 100 && fabs((cr_x - e.as_ex_x) * nn_x + (cr_y - e.as_ex_y) * nn_y + 116) < 15 &&
+				    -((cr_x + 116 * nn_x - e.as_ex_x) * e.as_exd_x + (cr_y + 116 * nn_y - e.as_ex_y) * e.as_exd_y) >= 260)
+					{ d = 1; ph = 2; }
+				else if (fabs(herr) < 100 && fabs((cl_x - e.as_ex_x) * nn_x + (cl_y - e.as_ex_y) * nn_y - 116) < 15 &&
+				    -((cl_x - 116 * nn_x - e.as_ex_x) * e.as_exd_x + (cl_y - 116 * nn_y - e.as_ex_y) * e.as_exd_y) >= 260)
+					{ d = -1; ph = 2; }
+				else if (fabs(herr) > 100) d = e.as_sair;                  // facing away: come round
+				else
+				{	// pursue a point 250 u ahead on the line
+					ee = vectoyaw(e.as_ex - e.as_exd * (along - 250) - e.origin) - i; ee = ee - 360 * floor((ee + 180) / 360);
+					d = (ee > 3) ? -1 : ((ee < -3) ? 1 : -e.as_sair);
+				}
+			}
+			e.as_sph = ph;
+			SV_TASAutoStep(e, 400, d, 0, 3, vectoyaw(e.as_exd) - 90);      // from rest: across the line (startsim4: 240-330 deg)
 			e.as_sn = e.as_sn + 3;
 		}
 		else if (e.run_t_state == TS_RUNNING && e.as_sn2 < 30 && (e.as_sn2 < 4 || SV_TASAutoTouching(e)))
