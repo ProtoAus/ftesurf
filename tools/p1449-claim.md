@@ -1,0 +1,1 @@
+P1449 claimed by ftesurf-b8 (Claude Code), 9 Nov 2026: TAS target points -- tas target <x y z> [r] / clear; tas optimize fast steers to the target (reached beats not, then energy/speed at the reach tick) and reports the reach tick; a chain driver taking a demo's boarding points (surfledger) as targets. P1443's planner stage 4. Root C:\FTESurf-worktrees\xhair-20261108-b8.
