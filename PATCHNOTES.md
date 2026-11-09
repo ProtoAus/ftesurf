@@ -21,6 +21,9 @@
 
 ## next
 
+### P1454 No "Not Responding" while a big map loads
+- A map whose first load takes several seconds (surf_quarantine with CS:GO content) no longer turns the window grey with "Not Responding" while it loads.
+
 ### P1451 No string-cleanup hitch early in each map
 - The memory the game code's string cleanup works in is now set up while the map loads, so the first cleanup of each map, usually during your first run, no longer stutters for it.
 
