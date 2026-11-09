@@ -182,6 +182,7 @@ string(entity e, float i) SV_TASAutoPace =
 void(entity e, float fwd, float side, float yaw, float bits, float n) SV_TASAutoGuide =
 {
 	local float argc;
+	yaw = yaw - 360 * floor((yaw + 180) / 360);     // the plan takes -360..360 (FS_TASEditValue); a mirror can leave it
 	argc = tokenize(sprintf("tas next guide %.0f %.0f 0 %.4f %.0f %.0f 1 0", fwd, side, yaw, bits, n));
 	SV_TASPlanCommand(e, argc);
 };
