@@ -116,6 +116,25 @@ are not isolation; trusted local processes and packages run with your permission
 
 ## Delegation safety and smoke test
 
+AGENTS.md records standing owner authorization to delegate in-scope work at the
+agent's discretion, without asking for permission on every use. Choose delegation
+for useful parallelism, specialization or independent review, not agent counts.
+
+Machine limits live in `~/.pi/agent/extensions/subagent/config.json`, NOT under
+`subagents` in project settings. This workstation uses unlimited session spawns
+(`maxSubagentSpawnsPerSession: 0`), 1,024 cumulative children per workflow
+(`maxSubagentSpawnsPerRun`), and 12 running children inside one workflow
+(`globalConcurrencyLimit`). Parallel calls allow 64 tasks with concurrency 12.
+The installed extension requires positive workflow limits; zero is NOT unlimited
+there. Raise workflow limits with supported per-call overrides when warranted.
+These are per-workflow defaults, not a machine-wide process cap. Restart pi.dev
+and resume the session to load changed machine defaults; an already-running
+process can retain old values. Supported workflow overrides work immediately.
+Use `/subagents-doctor` to inspect loaded default/environment limits; use the
+individual run's status to verify its effective budget, including overrides.
+These changes do not alter nested-delegation, model verification, permissions or
+publication authority.
+
 - Prefer native scout/worker/fresh reviewer. Ordinary children are leaves, not
   orchestrators; use the native supervisor channel, no extra intercom needed.
 - Use one async workflow for multi-step/parallel work. Consume native

@@ -100,6 +100,10 @@ Naming: `pi.dev` is the coding agent (`.pi/`, `Start-Pi.cmd`, the `pi` command).
   dual deployment. Use absolute paths when accessing any of these directories.
 - At task start inspect Git status/branch/ref in every affected checkout; read
   any sibling instructions that exist. Do not assume a clean or single-user tree.
+- Owner, 9 Nov 2026: native subagent delegation is pre-authorized at the agent's
+  discretion for in-scope work; no per-use permission request is needed. Delegate
+  when useful, not to fill a quota. Keep scoped child authority, one writer per
+  checkout, and all existing safety/privacy/review gates.
 - pi.dev's native subagent roles inherit the selected parent model; no silent
   provider/external-CLI fallback after a child failure. See .pi/README.md.
 
