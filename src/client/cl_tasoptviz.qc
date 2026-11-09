@@ -80,16 +80,38 @@ void(float base, float n, vector col, float alpha, float halfw) TASOptViz_Line =
 };
 
 // In the depth-tested world pass beside Zone_Draw.
+// P1449: the route clicked in the Optimizer tab (cl_tasoptui.qc keeps it as it sends `tas route add`): a post a
+// point (mint a ramp to board, butter a bhop floor, aqua a point) and a thin line through them in order.
+#define TOV_ROUTE 64
+float tov_rn;
+vector tov_rp[TOV_ROUTE];
+float tov_rk[TOV_ROUTE];
+
 void() TASOptViz_Draw =
 {
 	local float i, j, age, a, n;
 	local vector col;
-	if (!autocvar_tas_viz) return;
 	if (!tov_shader)
 	{
 		shaderforname(TOV_SHADER, "{\ncull disable\n{\nmap $whiteimage\nblendfunc blend\nrgbgen vertex\nalphagen vertex\n}\n}\n");
 		tov_shader = 1;
 	}
+	for (i = 0; i < tov_rn; i = i + 1)
+	{	// the route: shown whether or not the search lines are
+		col = (tov_rk[i] == 1) ? SUI_THEME_GOOD : ((tov_rk[i] == 2) ? SUI_THEME_WARN : SUI_THEME_INFO);
+		R_BeginPolygon(TOV_SHADER, 0);
+		R_PolygonVertex(tov_rp[i], '0.5 0 0', col, 0.9);
+		R_PolygonVertex(tov_rp[i] + '0 0 96', '0.5 0 0', col, 0.9);
+		R_EndPolygonRibbon(5, '0 1 0');
+		if (i > 0)
+		{
+			R_BeginPolygon(TOV_SHADER, 0);
+			R_PolygonVertex(tov_rp[i - 1] + '0 0 48', '0.5 0 0', '1 1 1', 0.45);
+			R_PolygonVertex(tov_rp[i] + '0 0 48', '0.5 0 0', '1 1 1', 0.45);
+			R_EndPolygonRibbon(2, '0 1 0');
+		}
+	}
+	if (!autocvar_tas_viz) return;
 	for (i = 0; i < TOV_LINES; i = i + 1)
 	{
 		n = tov_n[i];
