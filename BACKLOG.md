@@ -240,6 +240,11 @@
   VBSP_PVSMemo (P1261) bails, so every prop and displacement is re-tested; reflection, refraction and the 3D skybox
   also share recursion level 1's single cache slot (P273). Cache the merged PVS per plane (water meshes are static)
   and give the memo a key for a forced vis; then measure capture frames again, with and without P1455.
+  MEASURED 9 Nov (capped 300, surf_nuclear): r_capturemergevis 0 leaves capture frames' hl2 props at 1.08-1.10 ms
+  for two views (1.05-1.29 with it on) -- ~0.55 ms a view, and the merge is not the main part; caching saves at most
+  ~0.5 ms of a ~4.5 ms capture frame. r_capturerate 30 vs 60, alternating: 1% 275/268 vs 228/273, 0.1% 239/240 vs
+  181/243 -- 30 steadier, one 60 run as good; a settings choice (moving things in reflections update at 30 Hz,
+  turns stay corrected), not proven by these four runs.
 - Slow-throughout maps (artifacts/run_twopass.py, r_budget 3; twopass/<map>-budget.txt) are all CPU-bound:
   - fairy, jumble: cl_sprites 1.0-2.8 ms -> P1422 for the sky test (fairy 222 -> 303). Sprite_Glare is the next
     ~0.46 ms on fairy (338 -> 400 with vbsp_glare 0): 40 rays a frame, the same per-frame scaling, but its response
