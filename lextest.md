@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1440 model parts and prop animations -- LIVE 9 Nov (both installs' exe/plugin + lobbies' QC); owner check pending
+
+- bhop_crash_egypt: the crates are whole boxes; break one and it shatters frame by frame, then goes; the green
+  nitro crates jiggle. Elsewhere, Source models that used to show several variants stacked on top of each other
+  (props with alternative parts) should show one. Say if a prop now looks wrong or is missing a part it needs.
+  Players get the picture with the next release (the lobbies already send the parts).
+
 ## P1442 warm-up budget 6 s, window stays responsive -- engine in both installs (9 Nov), QC migration on main; owner check pending
 
 - `r_mapready_budget` in the console: 6 after your next connect to a lobby running the migration (your config held 2).
