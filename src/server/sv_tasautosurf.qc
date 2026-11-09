@@ -199,6 +199,8 @@ void(entity e, float fwd, float bits, float n, float tol, float fside, float res
 	d = vectoyaw(e.as_ex + e.as_exd * 300 - e.origin) - h;
 	d = d - 360 * floor((d + 180) / 360);
 	side = (fabs(d) < tol) ? -e.as_sair : ((d > 0) ? -1 : 1);       // + yaw turns left: the left key (-)
+	if (fabs(d) > 150) side = e.as_sair;    // the line behind: hold the turn (d's sign flipped each step there and
+	                                        // every flip's mirrored view bled speed: 269 u/s, rig tstart3)
 	if (fside) side = fside;
 	yaw = e.v_angle_y;
 	if (vlen([e.velocity_x, e.velocity_y, 0]) <= 30) yaw = h + ((side < 0) ? -45 : 45) * (fwd ? 1 : 2);   // from rest: wish along the line
