@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1447 website replays on Strata maps, faster builds -- on main 9 Nov; NOT live until the surfd generation
+- Watch in 3D a run on a Strata map (bhop_ahi, bhop_canals, bhop_2006isback): the map draws instead of "could not be
+  drawn". A map with lots of curved ground (ahop_coast, bhop_dunes) builds in a couple of seconds, not ten.
+- Known gaps: decals (overlays) on Strata maps, and df_elco-gbparadise draws no world.
+
 ## P1446 string-cleanup stutters -- engine in both installs (9 Nov); owner check pending
 
 - Play a few minutes on any map with `r_frametime 1; r_spikes 1; r_frametime_reset`, then `r_frametime_dump`: the
