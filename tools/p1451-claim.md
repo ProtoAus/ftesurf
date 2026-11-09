@@ -1,0 +1,1 @@
+P1451 claimed by ftesurf-1d (Claude Code), 9 Nov 2026: the CSQC tempstring GC's buffers allocated and touched during the map's loading screen (CL_MakeActive), so the first collection in play no longer faults ~25 MB of fresh pages in (one 3-5 ms hitch early on every map). Engine qclib initlib.c/progslib.h + pr_csqc.c/cl_main.c. Root C:\FTESurf-worktrees\lows2-20261107-opus.
