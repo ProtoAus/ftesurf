@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1464 join message -- on main 10 Nov; deploying to lobbies
+## P1464 join message -- LIVE on 12 lobbies 18:58Z 9 Nov (qw 1b2e0c00, deploy/p1464-lexlist49) + both installs
 - Join a lobby someone else is on (or have a friend join yours): the others see "<name> joined <map>".
 
 ## P1458-P1462 Lex's list of 10 Nov -- on main 10 Nov (engine patch-1460 7ab4e81a2, QC 647c05f7); C:\FTEQuake installed (exe a1fd4c50, hl2 adaa24d7, cs 36a67934 / qw 338e252c); LIVE on 12 lobbies 18:36Z 9 Nov (deploy/p1462-lexlist49 = main + P1448 client files held; .prev 7e843d1c/e1ac3414); C:\FTESurf installed 18:42Z (exe a1fd4c50, hl2 adaa24d7)
