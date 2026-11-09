@@ -383,7 +383,7 @@ void(entity e) SV_TASAutoFrame =
 			else if (ph == 4)
 			{	// back toward the box's back: a point 520 u short of the exit on the line
 				ee = vectoyaw(e.as_ex - e.as_exd * 520 - e.origin) - i; ee = ee - 360 * floor((ee + 180) / 360);
-				d = (fabs(ee) > 150) ? e.as_sair : ((ee > 3) ? -1 : ((ee < -3) ? 1 : -e.as_sair));
+				d = (fabs(ee) > 150) ? e.as_sair : ((ee > 4) ? -1 : ((ee < -4) ? 1 : e.as_sair));
 			}
 			else if (ph == 2) { d = e.as_sair; if (fabs(herr) < 6) ph = 3; }
 			else if (ph == 3)
@@ -401,16 +401,17 @@ void(entity e) SV_TASAutoFrame =
 				u = normalize([e.velocity_x, e.velocity_y, 0]);
 				cr = e.origin + 116 * [u_y, -u_x, 0]; cl = e.origin + 116 * [-u_y, u_x, 0];
 				if (fabs(herr) < 100 && fabs((cr_x - e.as_ex_x) * nn_x + (cr_y - e.as_ex_y) * nn_y + 116) < 15 &&
-				    fabs(-((cr_x + 116 * nn_x - e.as_ex_x) * e.as_exd_x + (cr_y + 116 * nn_y - e.as_ex_y) * e.as_exd_y) - 430) <= 170)
+				    fabs(-((cr_x + 116 * nn_x - e.as_ex_x) * e.as_exd_x + (cr_y + 116 * nn_y - e.as_ex_y) * e.as_exd_y) - 455) <= 195)
 					{ d = 1; ph = 2; }
 				else if (fabs(herr) < 100 && fabs((cl_x - e.as_ex_x) * nn_x + (cl_y - e.as_ex_y) * nn_y - 116) < 15 &&
-				    fabs(-((cl_x - 116 * nn_x - e.as_ex_x) * e.as_exd_x + (cl_y - 116 * nn_y - e.as_ex_y) * e.as_exd_y) - 430) <= 170)
+				    fabs(-((cl_x - 116 * nn_x - e.as_ex_x) * e.as_exd_x + (cl_y - 116 * nn_y - e.as_ex_y) * e.as_exd_y) - 455) <= 195)
 					{ d = -1; ph = 2; }	// a tangent point 260-600 u short: deeper, the turn met the back wall (tstart8: 213 u/s)
 				else if (fabs(herr) > 100) d = e.as_sair;                  // facing away: come round
 				else
 				{	// pursue a point 250 u ahead on the line
 					ee = vectoyaw(e.as_ex - e.as_exd * (along - 250) - e.origin) - i; ee = ee - 360 * floor((ee + 180) / 360);
-					d = (ee > 3) ? -1 : ((ee < -3) ? 1 : -e.as_sair);
+					d = (ee > 4) ? -1 : ((ee < -4) ? 1 : e.as_sair);	// a side change past 4 deg only: each one cost speed
+																		// in the game (pursuit fell to 242 u/s, tstart9)
 				}
 			}
 			e.as_sph = ph;
