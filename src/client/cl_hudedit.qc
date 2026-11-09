@@ -737,7 +737,7 @@ string(string id, float row) HE_OptDef =
 	if (id == "saves")
 	{
 		if (row == 0) return "cl_sl_leadin|Lead-in|n|1000 0 2000|ms"
-		                     "|Click and type 0..2000 milliseconds, then Enter. A saved path travels into the held save; without one, hold at the save instead. The center countdown shows when it is ready; keep the load key down to stay held. Both start on the press, at any ping. 0 disables the lead-in: a tap lets you go at once.";
+		                     "|Click and type 0..2000 milliseconds, then Enter. A saved path travels into the save while you hold the load key; letting go starts you at once from the save. Starts on the press, at any ping. 0 turns the run-up off.";
 		return "";
 	}
 	if (id == "ghost")

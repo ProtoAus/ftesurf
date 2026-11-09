@@ -947,7 +947,8 @@ string(float page) Gfx_PageName =
 	if (page == 1) return "Reflections and detail";
 	if (page == 2) return "Map content";
 	if (page == 3) return "Collision and prop light";
-	if (page == 5) return "Display and movers";     // Patch 898: Render scale; P1423 movers
+	if (page == 5) return "Display and movers";     // Patch 898: Render scale; P1423 movers; P1458 Light glows
+	if (page == 6) return "Post-process";           // P1459
 	return "Models, fog and particles";
 };
 

@@ -669,6 +669,7 @@ float() SaveLoc_LeadDone =
 string() SaveLoc_LeadText =
 {
 	if (!rec_sl_holding || Spec_Active() || cvar("cl_sl_leadin") <= 0) return "";
+	if (!rec_sl_holdkey) return "";     // a rewind's countdown: no key to let go
 	if (!SaveLoc_LeadDone()) return "Loading save";
 	return rec_sl_upwait ? "" : "Release to play";    // P1462: no countdown; letting go is never held
 };
@@ -704,7 +705,7 @@ void() SaveLoc_HoldFrame =
 			return;
 		}
 	}
-	// Cancellation/hold loss is authoritative even during a tapped-load minimum wait.
+	// Cancellation/hold loss is authoritative even while a key let go waits for the answer.
 	if (rec_sl_upwait)
 	{
 		if (SaveLoc_LeadDone())
