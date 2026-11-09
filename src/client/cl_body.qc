@@ -661,14 +661,33 @@ void(entity b) Body_ReadState =
 	c.pc_kp  = [cd, pb, 0];
 };
 
+.float tfx_held, tfx_inst;      // P1432: holds a template copy's sprite entry or emitter range; its instance
+
+// P1432: a template copy's edict now carries something else (its remove was lost): free what it held.
+void(entity e) TplFx_Drop =
+{
+	if (e.classname == "tplfx_net")
+		Sprite_TplGone(e);
+	if (e.classname == "tplps_net")
+		Emit_TplGone(e);
+	e.classname = "";
+	e.tfx_held = FALSE;
+};
+
 void(float isnew) CSQC_Ent_Update =
 {
-	local float f, st, dd, fr;
+	local float f, st, dd, fr, v2, nid;
 
 	f = readbyte();
+	if (self.tfx_held)
+	if (!(f & ENTWIRE_TYPED))
+		TplFx_Drop(self);
 	if (f & ENTWIRE_TYPED)
 	{
 		f = readbyte();
+		if (self.tfx_held)
+		if (f != ENTWIRE_TPLFX)
+			TplFx_Drop(self);
 		if (f == ENTWIRE_TRIGSTATE)
 		{
 			self.pb_trigwire = 1;
@@ -773,6 +792,9 @@ void(float isnew) CSQC_Ent_Update =
 			if (isnew)
 				self.tfx_gen = self.tps_gen = -1;
 			dd = readbyte();
+			v2 = dd & TPLFX_V2;
+			dd = dd & TPLFX_ID;
+			nid = self.tfx_inst;
 			if (dd)
 			{
 				self.tfx_cls = readbyte();
@@ -780,6 +802,8 @@ void(float isnew) CSQC_Ent_Update =
 				self.tfx_morg_y = readfloat();
 				self.tfx_morg_z = readfloat();
 				self.tfx_mtnc = readfloat();
+				if (v2)
+					self.tfx_inst = readfloat();
 				self.origin_x = readfloat();
 				self.origin_y = readfloat();
 				self.origin_z = readfloat();
@@ -788,19 +812,21 @@ void(float isnew) CSQC_Ent_Update =
 				self.angles_z = readfloat();
 			}
 			self.tfx_on = readbyte();
-			st = readbyte();                // three bytes for every class (SV_TplFxSend)
-			fr = readbyte();
-			if (dd)
-			{	// an edict reused for the other kind before its remove arrived
-				if (self.classname == "tplfx_net" && self.tfx_cls == FX_CLS_PSYS)
-					Sprite_TplGone(self);
-				if (self.classname == "tplps_net" && self.tfx_cls != FX_CLS_PSYS)
-					Emit_TplGone(self);
+			st = fr = 0;
+			if (v2)
+			{	// three bytes for every class (SV_TplFxSend)
+				st = readbyte();
+				fr = readbyte();
 			}
+			// A new copy here: a new edict, or another instance's identity on it (the last copy's remove lost).
+			nid = (isnew || (dd && self.tfx_inst != nid));     // bracketed: = binds tighter than || here
+			if (nid && !isnew)
+				TplFx_Drop(self);
+			self.tfx_held = TRUE;
 			if (self.tfx_cls == FX_CLS_PSYS)
 			{	// ENTWIRE_PSYSSTATE2's start count and fresh flag, read as that branch reads them
 				self.classname = "tplps_net";
-				if (isnew)
+				if (nid)
 					self.tps_fire = fr ? 1 : 0;
 				else
 				{

@@ -3585,6 +3585,8 @@ void(entity e, float id) Emit_TplNet =
 	clamped = em_clamped;
 	trn = em_trn;
 	n = Emit_PsysAt(vbsp_em_map, tple_eff[k], e.origin, e.angles, TRUE, em_tplchild, "server start");
+	if (em_over > over && cvar("developer"))
+		print(sprintf("^3tplfx: #%g: %g of its emitters past EM_MAX %g\n", e.entnum, em_over - over, EM_MAX));
 	em_live[EK_PSYS] = live;
 	em_child = child;
 	em_norate[EK_PSYS] = norate;

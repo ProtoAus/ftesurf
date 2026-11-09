@@ -259,7 +259,7 @@ float(entity to, float changed) SV_TplFxSend =
 {
 	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
 	WriteByte(MSG_ENTITY, ENTWIRE_TPLFX);
-	WriteByte(MSG_ENTITY, (changed & LAS_SF_ID) ? 1 : 0);
+	WriteByte(MSG_ENTITY, ((changed & LAS_SF_ID) ? TPLFX_ID : 0) | TPLFX_V2);
 	if (changed & LAS_SF_ID)
 	{
 		WriteByte(MSG_ENTITY, self.vbsp_fx_cls);
@@ -267,6 +267,7 @@ float(entity to, float changed) SV_TplFxSend =
 		WriteFloat(MSG_ENTITY, self.tpl_morg_y);
 		WriteFloat(MSG_ENTITY, self.tpl_morg_z);
 		WriteFloat(MSG_ENTITY, self.tpl_mtnc);
+		WriteFloat(MSG_ENTITY, self.tpl_instof);   // a new copy on a reused edict, to a client that missed the remove
 		WriteFloat(MSG_ENTITY, self.origin_x);
 		WriteFloat(MSG_ENTITY, self.origin_y);
 		WriteFloat(MSG_ENTITY, self.origin_z);
