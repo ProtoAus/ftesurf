@@ -369,7 +369,7 @@ void(entity e) SV_TASAutoLink =
 		cl = sprintf("tas optimize %.0f left curve 12 aim%s gens %.0f energy fast", h, (e.as_hop && as_wk[i] == 2) ? " hop" : "", min(90, 30 * (1 + e.as_try)));
 	else
 	{
-	ps = strcat(SV_TASAutoPace(e, i), SV_TASAutoEmin(e, i));   // not inside the sprintf's argument list (a call there clobbers the args set)
+	ps = strcat(SV_TASAutoPace(e, i), SV_TASAutoEmin(e, i));
 	ls = (e.as_look > 0) ? sprintf(" look %.0f", e.as_look) : "";
 	// a retry searches longer: 30 generations more a try (the pillar stretch's narrow line came in some searches only)
 	ps = strcat(ps, sprintf(" gens %.0f", min(90, 30 * (1 + e.as_try))));

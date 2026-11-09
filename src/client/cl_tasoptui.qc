@@ -29,8 +29,13 @@ void() TASAuto_Event =
 	else if (taso_state == 1 && taso_i < wasi)      // a backtrack: what came after it is to be done again
 		for (k = taso_i; k < TASO_STRETCHES; k = k + 1) taso_rb[k] = taso_rf[k] = 0;
 	if (rk >= 0 && rk < TASO_STRETCHES) { taso_rb[rk] = rb; taso_rf[rk] = (rf > 0) ? rf : -1; taso_lastk = rk; }   // -1: a route point
-	if (substring(taso_note, 0, 12) == "your route: ")      // the server's count: a refused add or another's clear (review)
-		tov_rn = min(tov_rn, stof(substring(taso_note, 12, -1)));
+	if (substring(taso_note, 0, 12) == "your route: ")
+	{	// the server's count: a grown count takes the pending add; a smaller one trims (an undo, a clear, another's)
+		k = stof(substring(taso_note, 12, -1));
+		if (tov_ppend && k > tov_rn && tov_rn < TOV_ROUTE) { tov_rp[tov_rn] = tov_pp; tov_rk[tov_rn] = tov_pk; tov_rn = tov_rn + 1; }
+		tov_ppend = 0;
+		tov_rn = min(tov_rn, k);
+	}
 };
 
 // One box a stretch: mint at or above farsh's speed there (within 2%), butter within 10%, rose below (a reach
@@ -155,12 +160,11 @@ void() TASOptUI_RouteAdd =
 	if (trace_fraction >= 1) { print("tas route: the crosshair is on nothing\n"); return; }
 	n = trace_plane_normal;
 	if (tov_rn >= TOV_ROUTE) { print("tas route: 64 points at most\n"); return; }
-	tov_rp[tov_rn] = trace_endpos;
-	tov_rk[tov_rn] = (fabs(n_z) >= 0.1 && fabs(n_z) <= 0.72) ? 1 : ((n_z > 0.72) ? 2 : 3);
-	if (tov_rk[tov_rn] == 1) localcmd(sprintf("tas route add %.1f %.1f %.1f %.4f %.4f %.4f\n", trace_endpos_x, trace_endpos_y, trace_endpos_z, n_x, n_y, n_z));
-	else if (tov_rk[tov_rn] == 2) localcmd(sprintf("tas route add %.1f %.1f %.1f 0 0 1\n", trace_endpos_x, trace_endpos_y, trace_endpos_z + 1));
+	tov_pp = trace_endpos; tov_ppend = 1;
+	tov_pk = (fabs(n_z) >= 0.1 && fabs(n_z) <= 0.72) ? 1 : ((n_z > 0.72) ? 2 : 3);
+	if (tov_pk == 1) localcmd(sprintf("tas route add %.1f %.1f %.1f %.4f %.4f %.4f\n", trace_endpos_x, trace_endpos_y, trace_endpos_z, n_x, n_y, n_z));
+	else if (tov_pk == 2) localcmd(sprintf("tas route add %.1f %.1f %.1f 0 0 1\n", trace_endpos_x, trace_endpos_y, trace_endpos_z + 1));
 	else localcmd(sprintf("tas route add %.1f %.1f %.1f 0 0 0\n", trace_endpos_x, trace_endpos_y, trace_endpos_z));
-	tov_rn = tov_rn + 1;
 };
 
 // The target where the crosshair points: the face it hits when that is a surf slope.

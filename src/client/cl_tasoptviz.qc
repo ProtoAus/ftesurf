@@ -86,6 +86,10 @@ void(float base, float n, vector col, float alpha, float halfw) TASOptViz_Line =
 float tov_rn;
 vector tov_rp[TOV_ROUTE];
 float tov_rk[TOV_ROUTE];
+// an add waiting for the server's count: drawn only once the count says it was taken (a refused add -- a lobby,
+// a search running, 64 points -- then leaves no marker; review 5)
+float tov_ppend, tov_pk;
+vector tov_pp;
 
 void() TASOptViz_Draw =
 {
