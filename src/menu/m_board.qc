@@ -698,7 +698,7 @@ void() Mlb_KsfMore =
 	if (time < mlb_kafter) return;
 	if (mlb_kreq && time < mlb_kdead) return;
 	mlb_kreq = Lob_NextReq(); mlb_kdead = time + MLB_DEADLINE; mlb_kafter = time + 10;
-	url = sprintf("%s/api/board?fetch=1&map=%s&track=%g&leg=%g&style=%s",
+	url = sprintf("%s/api/board?fetch=1&ksfmore=1&map=%s&track=%g&leg=%g&style=%s",   // see cl_online.qc
 	              cvar_string("lobby_dir"), uri_escape(mlb_map), mlb_track, mlb_leg, uri_escape(mlb_style));
 	strunzone(mlb_kstate); mlb_kstate = strzone("asking");
 	if (uri_get(url, mlb_kreq, "application/json", "{}")) return;
@@ -712,7 +712,8 @@ string(float root, string src) Mlb_FetchWord =
 	local float n;
 	local string st;
 	n = json_find_object_child(root, src);
-	st = (n >= 0) ? json_get_string(json_find_object_child(n, "state")) : "";
+	if (n <= 0 && src == "ksf") n = root;  // a pre-P1448 server's ksfmore reply is KSF's alone
+	st = (n > 0) ? json_get_string(json_find_object_child(n, "state")) : "";
 	if (st == "queued" || st == "partial") return "queued";
 	if (st == "done" || st == "exhausted") return "up to date";
 	if (st == "limited") return "at its limit";

@@ -1920,7 +1920,8 @@ float(float track, float leg, string tier, string style) Online_KsfMore =
 	strunzone(ok_map); ok_map = strzone(serverkey("map"));
 	strunzone(ok_style); ok_style = strzone(style);
 	ok_track = track; ok_leg = leg;
-	url = sprintf("%s/api/board?fetch=1&map=%s&track=%g&leg=%g&style=%s",
+	// ksfmore=1 too: a server from before P1448 then queues the KSF half (fetch=1 wins on a newer one).
+	url = sprintf("%s/api/board?fetch=1&ksfmore=1&map=%s&track=%g&leg=%g&style=%s",
 	              dir, uri_escape(serverkey("map")), track, leg, uri_escape(style));
 	ok_req = Online_NextReq();
 	ok_dead = cltime + OB_DEADLINE;
@@ -1942,7 +1943,8 @@ string(float root, string src) Online_FetchWord =
 	local float n;
 	local string st;
 	n = json_find_object_child(root, src);
-	st = (n >= 0) ? json_get_string(json_find_object_child(n, "state")) : "";
+	if (n <= 0 && src == "ksf") n = root;  // a pre-P1448 server's ksfmore reply is KSF's alone
+	st = (n > 0) ? json_get_string(json_find_object_child(n, "state")) : "";
 	if (st == "queued" || st == "partial") return "queued";
 	if (st == "done" || st == "exhausted") return "up to date";
 	if (st == "limited") return "at its limit";
