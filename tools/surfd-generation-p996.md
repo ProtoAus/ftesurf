@@ -1,6 +1,21 @@
 # Backend generation swap: P996 (25 Oct 2026) -- the procedure as run
 
-> **Current P1368 tuple, READ-ONLY completion verified7November2026 14:29:19UTC:**
+> **P1434 backend delivery, verified 9 November 2026 at 04:20:08 UTC:**
+> accepted primary OPEN after the existing guarded activation completed at
+> 04:15:00 UTC. Runtime84/external3 and the input-diagnostics reader delivery
+> were verified in the actual namespace. The SAME current database inode/schema26
+> was retained; the sealed activation interval preserved44-table data policy and
+> eight identity digests. Normal launcher, four cron routes and importer are bound
+> to primary; leases/closer and shared installer input/reservation are released.
+> Retain `/srv/nvme/agent-work/ac-keymetrics-20261108-01a1bc11/runtime` and
+> `state/`, plus that root's CLOSED `rollback-runtime` and `control/`, wrappers,
+> namespace pins and receipts. These are live/rollback dependencies, NOT scratch.
+> Rollback is qualified code-only recovery against CURRENT data, never an old DB
+> restore or a manual fence reopening. Do not replay healthy activation. This is
+> a dated deployment snapshot, not a new detector or hardware-attestation claim;
+> inspect the actual current launcher and admission state before future work.
+>
+> **Historical P1368 tuple, READ-ONLY completion verified7November2026 14:29:19UTC:**
 > accepted OPEN primary generation16fb0b54, collectorffed2432;84runtime/158declared
 > inputs exact, actual serving actor/namespace/mounts and canonical+fourcron+importer
 > bindings verified. Same schema26/44tables/currentDB, eight identity digests preserved;
