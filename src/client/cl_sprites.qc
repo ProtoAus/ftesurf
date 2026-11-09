@@ -3548,6 +3548,10 @@ void() Sprite_Draw =
 		  (mathlib RemapValClamped), which is what the degenerate branches here
 		  reproduce -- a map that writes MinDist == MaxDist means "on beyond
 		  this point", not "divide by zero".
+		  P1458: MaxDist < MinDist is NOT that case. The remap runs backwards
+		  (full at MaxDist and nearer, off at MinDist and beyond); reading it as
+		  "on beyond MaxDist" lit surf_beginner2's 1500-unit flare (150/75)
+		  from anywhere on stage 7.
 		*/
 		pset = spr_pset[i];
 		gmn  = glowp_min[pset];
@@ -3556,7 +3560,7 @@ void() Sprite_Draw =
 
 		if (gout > gmx && dist > gmx)
 			fade = 1 - (dist - gmx) / (gout - gmx);
-		else if (gmx > gmn)
+		else if (gmx != gmn)
 			fade = (dist - gmn) / (gmx - gmn);
 		else
 			fade = (dist >= gmx) ? 1 : 0;

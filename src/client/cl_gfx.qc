@@ -49,7 +49,7 @@ float gfx_movers_off;           // P1423: vbsp_movers 0, read once a frame (CSQC
   from ten settings to twenty-six and cost four more keystrokes, which is the
   whole point of having paged rather than found a tenth key.
 */
-#define GFX_ROWS     35         // highest row index (P1423 added Movers and Mover light)
+#define GFX_ROWS     37         // highest row index (P1458 Light glows, P1459 Post-process)
 #define GFX_PER_PAGE 6          // digits 1..6; 7 reloads, 8/9 page, 0 closes
 
 void() Gfx_WaterSupport =
@@ -489,6 +489,12 @@ string(float row) Gfx_Def =
 	// P1398's rate: how often a MOVING model re-samples the world's light (0 = every frame it moves). surf_centipedes
 	// skull swarm (tools/p1423-gfxmenu.md): 0.25/s 2.40 ms, 1/s 2.38, 4/s 2.50, every frame 5.5 -- nothing below 1/s.
 	if (row == 35) return "r_modellight_moverate|Mover light|1 4 0|1/s;4/s;Every frame|";
+	// P1458: env_lightglow flares have their own switch (cl_main.qc), so Sprites off left them on and a
+	// reload faded them back in. surf_fairy (460 glows): off 273/140/122 fps against 230/93/74 (P1456 notes).
+	if (row == 36) return "vbsp_lightglow|Light glows|0 1|Off;On|";
+	// P1459: engine master switch; Off drops bloom, the map's colour grade, FXAA, r_postprocshader and
+	// the underwater warp. Gamma is not a post effect here and stays. Live, the next frame.
+	if (row == 37) return "r_postprocess|Post-process|0 1|Off;On|";
 
 	return "";
 };
@@ -615,6 +621,10 @@ string(float row) Gfx_Inert =
 	// Engines before P1398 have no such cvar (cvar_description: a seta'd one has none either).
 	if (cv == "r_modellight_moverate" && cvar_description(cv) == "")
 		return "needs update";
+	if (cv == "r_postprocess" && cvar_description(cv) == "")
+		return "needs update";
+	if (cv == "vbsp_lightglow" && !vbsp_glow_seen)
+		return "map has none";
 
 	/*
 	  THE TWO COLLISION ROWS ARE NOT THE PLAYER'S TO TURN OFF.  A surf map needs
