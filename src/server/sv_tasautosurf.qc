@@ -191,13 +191,15 @@ void(entity e, float fwd, float side, float yaw, float bits, float n) SV_TASAuto
 // heading): the strafe side that turns the velocity toward it, alternating once within `tol` degrees so the line
 // holds; a side change mirrors the view about the velocity (the guide's own slew would take ~15 ticks to swing
 // it). A fixed side circled in the box (rig tpre1, 10 Nov).
-void(entity e, float fwd, float bits, float n, float tol) SV_TASAutoSteer =
+// fside -1 / 1 holds that side (the start's speed circle); from rest the wish starts along `rest`'s yaw.
+void(entity e, float fwd, float bits, float n, float tol, float fside, float rest) SV_TASAutoSteer =
 {
 	local float h, d, side, yaw;
-	h = (vlen([e.velocity_x, e.velocity_y, 0]) > 30) ? vectoyaw([e.velocity_x, e.velocity_y, 0]) : vectoyaw(e.as_exd);
+	h = (vlen([e.velocity_x, e.velocity_y, 0]) > 30) ? vectoyaw([e.velocity_x, e.velocity_y, 0]) : rest;
 	d = vectoyaw(e.as_ex + e.as_exd * 300 - e.origin) - h;
 	d = d - 360 * floor((d + 180) / 360);
 	side = (fabs(d) < tol) ? -e.as_sair : ((d > 0) ? -1 : 1);       // + yaw turns left: the left key (-)
+	if (fside) side = fside;
 	yaw = e.v_angle_y;
 	if (vlen([e.velocity_x, e.velocity_y, 0]) <= 30) yaw = h + ((side < 0) ? -45 : 45) * (fwd ? 1 : 2);   // from rest: wish along the line
 	else if (side != e.as_sair) yaw = 2 * h - yaw;
@@ -297,13 +299,20 @@ void(entity e) SV_TASAutoFrame =
 			t = vlen([e.velocity_x, e.velocity_y, 0]);
 			best = vectoyaw(e.as_ex + e.as_exd * 300 - e.origin) - vectoyaw([e.velocity_x, e.velocity_y, 0]);
 			best = fabs(best - 360 * floor((best + 180) / 360));
-			if (e.as_sn > 0 && ((t >= 280 && best < 15 && d < 260) || d < 200 || e.as_sn >= e.as_sg))
+			// Time in the box is free: build speed on a circle first (at the 289 ceiling the guide's circle is ~116 u
+			// across), starting across the line so it turns away from the edge, then line up and jump. Steering onto
+			// the line from rest jumped at 239 u/s, 194 u short (rig tstart2).
+			if (e.as_sn > 0 && ((t >= 280 && best < 12 && d < 260) || d < 140 || e.as_sn >= e.as_sg))
 			{
 				SV_TASAutoGuide(e, 400, 400 * e.as_sair, e.v_angle_y, 1, 1);     // the start's one jump
 				SV_TASAutoNote(e, 1, sprintf("start: jumped at %.0f u/s, %.0f u from the demo's exit, %.0f deg off its line", t, d, best));
 				e.as_stage = 12; e.as_sn = 0;
 			}
-			else { SV_TASAutoSteer(e, 400, 0, 3, 5); e.as_sn = e.as_sn + 3; }
+			else
+			{
+				SV_TASAutoSteer(e, 400, 0, 3, 5, (t < 283 && d > 230) ? -1 : 0, vectoyaw(e.as_exd) + 100);
+				e.as_sn = e.as_sn + 3;
+			}
 		}
 		else if (e.run_t_state == TS_RUNNING)
 		{
@@ -314,7 +323,7 @@ void(entity e) SV_TASAutoFrame =
 				vlen([e.velocity_x, e.velocity_y, 0]), SV_TimerTicks(e), as_n));
 		}
 		else if (e.as_sn >= 240) SV_TASAutoStop(e, "the start never left the box (240 air ticks)");
-		else { SV_TASAutoSteer(e, 0, 0, 2, 3); e.as_sn = e.as_sn + 2; }    // in the air in the box
+		else { SV_TASAutoSteer(e, 0, 0, 2, 3, 0, vectoyaw(e.as_exd)); e.as_sn = e.as_sn + 2; }    // in the air in the box
 		return;
 	}
 	if (!e.as_on || e.topt_on || e.tdem_on) return;
@@ -412,7 +421,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if (e.as_on || e.topt_on || e.tdem_on) { sprint(e, PRINT_HIGH, "tas autosurf: a search, demo or autosurf is running\n"); return; }
 	if (!SV_TASDemoPathOK(path)) { sprint(e, PRINT_HIGH, "tas autosurf: a .rec under data/ or cfg/ksfreplays/\n"); return; }
 	if (SV_TASOptBusy(e)) return;
-	st = 0; flip = 0; arm = 0; e.as_szone = 0; e.as_sg = 120; e.as_sy = 0; e.as_sside = -1;
+	st = 0; flip = 0; arm = 0; e.as_szone = 0; e.as_sg = 360; e.as_sy = 0; e.as_sside = -1;
 	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = 6; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.9;
 	for (i = 3; i < argc; i = i + 1)
 	{
