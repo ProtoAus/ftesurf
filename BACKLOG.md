@@ -223,6 +223,15 @@
   set the collection rate; big QC numeric arrays could take memnostrings (P763). Also: water-capture frames 4-6 ms
   in PrepareFrame + draws; a rare swap/present stall (9-50 ms, no focus change logged).
   r_capturerate 60 is better than every frame on every number; hl2_water 0 helps ceaseless's 1% only.
+- P1455 PARKED (engine branch p1455-capstagger in lows2-20261107-opus/engine, 3f8bb1247; not on main, never
+  installed): water reflection and refraction kept and rendered apart (per-group keep, m_capturefix2, r_capturestagger)
+  so a capture frame draws one extra view, not two. Capped at 300 / sys_framepacing 5 on surf_nuclear, quiet machine,
+  alternating: stagger on 1% 264/261, 0.1% 193/191; off 1% 269/278, 0.1% 222/243 -- WORSE. 120 one-view frames a
+  second still overrun 3.3 ms where 60 two-view frames did. Two reviews found wrong-pixel cases left to fix (a glass-
+  path batch reusing another batch's split keep; keptframe cleared by kinds not targets; a non-fix2 keep after a
+  stagger reads groups a frame apart; planes past BE_WATERPLANES). Lead instead: frame pacing that knows a capture
+  frame is coming (capture due is known before the frame) and starts it earlier, rather than splitting it.
+- P1451 (QC GC buffers at load) and P1454 (no window ghosting) are in both installs; see ENGINE.txt.
 - Slow-throughout maps (artifacts/run_twopass.py, r_budget 3; twopass/<map>-budget.txt) are all CPU-bound:
   - fairy, jumble: cl_sprites 1.0-2.8 ms -> P1422 for the sky test (fairy 222 -> 303). Sprite_Glare is the next
     ~0.46 ms on fairy (338 -> 400 with vbsp_glare 0): 40 rays a frame, the same per-frame scaling, but its response
