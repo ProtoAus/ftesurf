@@ -397,6 +397,7 @@ float  spr_gbrush;                      // traces stopped by one, since the last
   zero if it had.
 */
 float  spr_gcull;                       // glares skipped by the view test this frame
+float  spr_gnodraw;                     // P1456: glows skipped as undrawable this frame
 float  spr_gtraced_n;                   // glares actually traced this frame
 /*
   BUILD 60 -- THE DENOMINATOR, and adding it corrects a number I have been
@@ -2286,6 +2287,29 @@ float(float margin, vector fwd) Sprite_ConeTan =
 	return best * margin;
 };
 
+// P1456: FALSE for a glow the glow draw loop skips whatever its occlusion says -- behind the sky, a
+// one-sided glow seen from behind, or outside its distance ramp. That loop's own tests, in its order;
+// change them together.
+float(float i, vector d, float skyon) Sprite_GlowDrawable =
+{
+	local float dist, gmn, gmx, gout;
+	if (skyon && spr_sky[i] == SKY_BEHIND)
+		return FALSE;
+	dist = vlen(d);
+	if (dist < 0.01)
+		return FALSE;
+	if (spr_right[i] != '0 0 0' && (d * spr_right[i]) > 0)
+		return FALSE;
+	gmn = glowp_min[spr_pset[i]];
+	gmx = glowp_max[spr_pset[i]];
+	gout = glowp_outer[spr_pset[i]];
+	if (gout > gmx && dist > gmx)
+		return dist < gout;		// fade 1 - (dist - gmx) / (gout - gmx) > 0
+	if (gmx > gmn)
+		return dist > gmn;
+	return dist >= gmx;
+};
+
 void() Sprite_Glare =
 {
 	local float  i, n, budget, decay, target, step, back, jmp, spd;
@@ -2301,6 +2325,7 @@ void() Sprite_Glare =
 	// BUILD 61: the interval-targeted budget.
 	local float  interval, vmax, ft;
 	local entity pass;              // P799: carries SPR_GLARE_MASK
+	local float skyon;              // P1456
 
 	eye = getproperty(VF_ORIGIN);
 	if (!spr_gtracer)
@@ -2452,6 +2477,7 @@ void() Sprite_Glare =
 	  would have two ways to spell "off".
 	*/
 	docull = cvar("vbsp_glare_cull");
+	skyon = cvar("vbsp_sprite_skyrays") > 0;
 	maxdist = cvar("vbsp_sprite_dist");
 	tanx = (docull > 0) ? Sprite_ConeTan(docull, fwd) : 0;	// P1422: the drawn view's own cone, not a square from `fov`
 	slope = sqrt(1 + tanx * tanx);
@@ -2545,6 +2571,7 @@ void() Sprite_Glare =
 	visits = 0;
 	wrapped = FALSE;
 	spr_gcull = 0;
+	spr_gnodraw = 0;
 	spr_gtraced_n = 0;
 	spr_gcheap = 0;
 	spr_gforce = 0;
@@ -2608,6 +2635,13 @@ void() Sprite_Glare =
 					continue;
 				}
 			}
+		}
+		// P1456: no rays for a glow that cannot draw; free like a culled visit. Its answer is a sweep old
+		// when it comes into range, where its distance fade starts from 0.
+		if (spr_kind[i] == SPRK_GLOW && !Sprite_GlowDrawable(i, d, skyon))
+		{
+			spr_gnodraw = spr_gnodraw + 1;
+			continue;
 		}
 
 		/*
@@ -3733,8 +3767,8 @@ void() Sprite_Draw =
 		*/
 		if (useglare_on)
 			print(sprintf("vbsp_sprite_debug: glare sweep %g FRAMES measured (last full pass);"
-			              " this frame %g of %g visited (%g culled, %g traced)\n",
-			              spr_gsweep, spr_gvisits, spr_n, spr_gcull, spr_gtraced_n));
+			              " this frame %g of %g visited (%g culled, %g undrawable, %g traced)\n",
+			              spr_gsweep, spr_gvisits, spr_n, spr_gcull, spr_gnodraw, spr_gtraced_n));
 		/*
 		  BUILD 60.  The adaptive rays, and the LAST number is the measurement:
 		  rays/glare is what the 27.1us is multiplied by, so it is the only figure
