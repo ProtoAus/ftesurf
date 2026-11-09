@@ -1,0 +1,1 @@
+P1441 claimed by ftesurf-1d (Claude Code), 9 Nov 2026: glsl/warmseed.txt re-seeded from all 60 survey maps on a current build (768 entries, was 269). Cold NVIDIA cache, 6 maps: late compiles 31-64 -> 3-8, 0.1% lows up 1.4-2.4x. Data only; rides the next release. Root C:\FTESurf-worktrees\lows2-20261107-opus.
