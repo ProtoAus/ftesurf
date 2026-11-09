@@ -432,7 +432,7 @@ function deserializeGameLump_sprpStrata(buffer: ArrayBufferSlice): StaticObjects
             continue;
         const count = sprp.getUint32(at, true);
         const stride = count > 0 ? (sprp.byteLength - at - 0x04) / count : 0x54;
-        if (stride < 0x54 || stride !== Math.floor(stride))
+        if (stride < 0x54 || stride > 0x54 + 16 || stride !== Math.floor(stride))
             continue;
         const leafList = width === 4 ? buffer.createTypedArray(Uint32Array, idx, leafListCount, Endianness.LITTLE_ENDIAN)
                                      : buffer.createTypedArray(Uint16Array, idx, leafListCount, Endianness.LITTLE_ENDIAN);

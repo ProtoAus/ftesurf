@@ -21,11 +21,18 @@ slow". Every change is a tools/vendor.py PATCH (or stubs/), re-vendored from noc
 - Game lumps: a compressed sub-lump's region ends at the next entry's offset (or the lump end when that is 0); its
   size is the LZMA header's, because maps disagree about filelen (bhop_ancientcanals: compressed length;
   bhop_adventure: uncompressed); under 17 bytes is an empty stub. Engine VBSP_LoadGameLump's rules.
-- Not drawn yet: OVERLAYS v1-v3 (decals; some v20/v21 maps too), WORLDLIGHTS v2 (props light from ambient cubes).
+- Not drawn yet: OVERLAYS v1-v3 (Strata only: every v20/v21 overlay lump is v0), WORLDLIGHTS v2 (props light
+  from ambient cubes), PRIMVERTS geometry: df_elco-gbparadise's faces have no edges, only primitive vertices, and
+  it draws no world (the other six df_ maps with PRIMVERTS draw each face's polygon).
 
 ## Result
 
-- All 133 v25 maps and both odd v20/v21 maps parse. Shot in Chrome (tools/shot.mjs): bhop_2006isback and bhop_ahi
+- All 133 v25 maps and both odd v20/v21 maps parse. Review 1 found that "parses" is not "draws": upstream skipped a
+  face with primitive vertices by a `continue` after its vertices and indices were added and before dstIndexBase
+  moved, so the seven df_ maps (the library's only PRIMVERTS) drew nothing or misplaced geometry. Such a face now
+  draws its polygon's fan (and a face no model lists no longer throws, df_sdc-uk_26); the review's geometry probe
+  (faces drawn, displacement vertices inside their boxes, no index past the vertices) is clean on six of seven.
+  Shot in Chrome (tools/shot.mjs): bhop_2006isback and bhop_ahi
   draw (textures, lightmaps, sky, props), error "" and contextLost false.
 - Library census after (all 2,204 maps of the Momentum library, 23 of them over 200 MB): every map parses.
   On the way, 12 v20/v21 maps that failed before P1447 too: optional data now degrades instead of failing the map
@@ -42,8 +49,9 @@ slow". Every change is a tools/vendor.py PATCH (or stubs/), re-vendored from noc
   at 1/15/30 s, clock pinned) hash identically, and the control matched itself on a second run. (Every second
   page of a pixels.mjs run timed out here -- a harness quirk; the comparison is across two runs.)
 - LZMA is then 82-95% on Strata maps. A flattened decoder (stubs/rustlib.ts, same bytes as Python's lzma on 8,076
-  entries of 6 maps) gains ~12% (bhop_canals 6.0 -> 5.8 s, surf_leesriize 20.3 -> 17.8 s). It also decodes surf_fiellu,
-  where the old one threw "distance past start" on data Python's lzma reads (1,612 of 1,612 entries match). surf_leesriize's HDR
+  entries of 6 maps, and as the old decoder) gains ~12% (bhop_canals 6.0 -> 5.8 s, surf_leesriize 20.3 -> 17.8 s).
+  CORRECTION (review 1): surf_fiellu was not a decoder bug -- its 12-byte dprp stub was sliced to the end of the file
+  (the next entry's offset is 0) and the pakfile's bytes decoded as LZMA; the game-lump rule above fixed it. surf_leesriize's HDR
   lightmaps alone are 867 MB unpacked (Python's C lzma: 7.6 s for its lumps): that map stays slow.
 - Download: maps are served raw from R2 (68.6 MB for bhop_canals); gzip companions exist only where they save
   (Strata maps are LZMA inside), so a first view of a big map is its download. Kept copies (Cache Storage) skip it.

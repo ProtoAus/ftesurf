@@ -1432,7 +1432,8 @@ export class BSPFile {
         //#endregion
 
         //#region DISPINFO Parsing
-        // FTESurf P1447: DISPINFO v1 (Strata) is 232 bytes with mapFace u32; the fields read here keep their offsets.
+        // FTESurf P1447: DISPINFO v1 (Strata) is 232 bytes with mapFace u32 at +0x24 (the alpha and sample
+        // starts read below overlap it, unused).
         const [dispinfoLump, dispinfoVersion] = getLumpDataV(LumpType.DISPINFO, [0, 1]);
         const dispinfo = dispinfoLump.createDataView();
         const dispinfolist: DispInfo[] = [];
@@ -1954,15 +1955,11 @@ export class BSPFile {
                         primFirstVert = primitives.getUint16(primOffs + 0x06, true);
                         primVertCount = primitives.getUint16(primOffs + 0x08, true);
                     }
-                    if (primVertCount !== 0) {
-                        // Dynamic mesh. Skip for now.
-                        continue;
-                    }
 
                     // We should be in static mode, so we should have 1 prim maximum.
                     // FTESurf P1447: otherwise (several, a strip, a short list) draw the polygon's fan.
-                    if (m_NumPrims === 1 && primIndexCount === indexCount && primType === 0x00 /* PRIM_TRILIST */
-                        && primFirstIndex + indexCount <= primindices.length) {
+                    if (primVertCount === 0 && m_NumPrims === 1 && primIndexCount === indexCount
+                        && primType === 0x00 /* PRIM_TRILIST */ && primFirstIndex + indexCount <= primindices.length) {
                         for (let k = 0; k < indexCount; k++)
                             indexData[dstOffsIndex + k] = dstIndexBase + primindices[primFirstIndex + k];
                     } else {
@@ -1997,7 +1994,8 @@ export class BSPFile {
             faceInfo.surfaceIndex = surfaceIndex;
 
             const model = this.models[faceToModelIdx[face.index]];
-            ensureInList(model.surfaces, surfaceIndex);
+            if (model !== undefined) // FTESurf P1447: a face no model lists
+                ensureInList(model.surfaces, surfaceIndex);
 
             if (dispinfo >= 0) {
                 // Displacements don't come with surface leaf information.
@@ -2011,7 +2009,7 @@ export class BSPFile {
         //#endregion
 
         //#region Overlays
-        // FTESurf P1447: only the v0 record is parsed; v1-v3 (some v20/v21 maps, Strata) draw no overlays yet.
+        // FTESurf P1447: only the v0 record is parsed; Strata's v1-v3 draw no overlays yet.
         const [ovLump, ovVersion] = getLumpDataV(LumpType.OVERLAYS, [0, 1, 2, 3]);
         const overlays = (ovVersion === 0 ? ovLump : ovLump.subarray(0, 0)).createDataView();
         for (let i = 0, idx = 0; idx < overlays.byteLength; i++) {

@@ -437,7 +437,8 @@ PATCHES += [
         const dispinfolist: DispInfo[] = [];
         for (let idx = 0x00; idx < dispinfo.byteLength; idx += 0xB0) {
 ''',
-     '''        // FTESurf P1447: DISPINFO v1 (Strata) is 232 bytes with mapFace u32; the fields read here keep their offsets.
+     '''        // FTESurf P1447: DISPINFO v1 (Strata) is 232 bytes with mapFace u32 at +0x24 (the alpha and sample
+        // starts read below overlap it, unused).
         const [dispinfoLump, dispinfoVersion] = getLumpDataV(LumpType.DISPINFO, [0, 1]);
         const dispinfo = dispinfoLump.createDataView();
         const dispinfolist: DispInfo[] = [];
@@ -538,7 +539,7 @@ PATCHES += [
 '''),
     ('SourceEngine/BSPFile.ts',
      '        const overlays = getLumpData(LumpType.OVERLAYS).createDataView();\n',
-     '''        // FTESurf P1447: only the v0 record is parsed; v1-v3 (some v20/v21 maps, Strata) draw no overlays yet.
+     '''        // FTESurf P1447: only the v0 record is parsed; Strata's v1-v3 draw no overlays yet.
         const [ovLump, ovVersion] = getLumpDataV(LumpType.OVERLAYS, [0, 1, 2, 3]);
         const overlays = (ovVersion === 0 ? ovLump : ovLump.subarray(0, 0)).createDataView();
 '''),
@@ -569,7 +570,7 @@ function deserializeGameLump_sprpStrata(buffer: ArrayBufferSlice): StaticObjects
             continue;
         const count = sprp.getUint32(at, true);
         const stride = count > 0 ? (sprp.byteLength - at - 0x04) / count : 0x54;
-        if (stride < 0x54 || stride !== Math.floor(stride))
+        if (stride < 0x54 || stride > 0x54 + 16 || stride !== Math.floor(stride))
             continue;
         const leafList = width === 4 ? buffer.createTypedArray(Uint32Array, idx, leafListCount, Endianness.LITTLE_ENDIAN)
                                      : buffer.createTypedArray(Uint16Array, idx, leafListCount, Endianness.LITTLE_ENDIAN);
@@ -682,8 +683,8 @@ PATCHES += [
 ''',
      '''                    // We should be in static mode, so we should have 1 prim maximum.
                     // FTESurf P1447: otherwise (several, a strip, a short list) draw the polygon's fan.
-                    if (m_NumPrims === 1 && primIndexCount === indexCount && primType === 0x00 /* PRIM_TRILIST */
-                        && primFirstIndex + indexCount <= primindices.length) {
+                    if (primVertCount === 0 && m_NumPrims === 1 && primIndexCount === indexCount
+                        && primType === 0x00 /* PRIM_TRILIST */ && primFirstIndex + indexCount <= primindices.length) {
                         for (let k = 0; k < indexCount; k++)
                             indexData[dstOffsIndex + k] = dstIndexBase + primindices[primFirstIndex + k];
                     } else {
@@ -736,6 +737,23 @@ PATCHES += [
      '                        if (filelen === 0)\n'
      '                            return null; // FTESurf P1447: an empty stub\n'
      '                        const lump = buffer.subarray(fileofs, filelen);\n'),
+]
+
+PATCHES += [
+    # P1447 review: the dynamic-mesh skip goes (the fan fallback above draws such a face)...
+    ('SourceEngine/BSPFile.ts',
+     '                    if (primVertCount !== 0) {\n'
+     '                        // Dynamic mesh. Skip for now.\n'
+     '                        continue;\n'
+     '                    }\n',
+     ''),
+    # ...which shows faces no model lists (df_sdc-uk_26: 135): drawn in no model, not a throw.
+    ('SourceEngine/BSPFile.ts',
+     '            const model = this.models[faceToModelIdx[face.index]];\n'
+     '            ensureInList(model.surfaces, surfaceIndex);\n',
+     '            const model = this.models[faceToModelIdx[face.index]];\n'
+     '            if (model !== undefined) // FTESurf P1447: a face no model lists\n'
+     '                ensureInList(model.surfaces, surfaceIndex);\n'),
 ]
 
 ROOTS = [
